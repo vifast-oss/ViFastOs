@@ -1463,6 +1463,25 @@ Ghi nhận trung thực: test đầu của tôi (`pager2_evicts_only_once`) là 
 bỏ sót). Gate lần 1 FAIL `qemu` (1 `T-KHAC` + 1 **timeout thiếu `PREEMPT OK`** =
 chữ ký T33a), chạy lại xanh.
 
+
+## r311 — ĐÍNH CHÍNH T33a: `SMP AP STATE` vô dụng cho ca treo; T33a vẫn MỞ
+
+Đèn `SMP AP STATE` đòi **`TEST_DONE == true`** — mà ca treo T33a xảy ra **trước**
+`PREEMPT OK`, khi `TEST_DONE` chưa bật ⇒ **đèn tắt đúng lúc cần**. Đối chứng:
+20/20 boot xanh đều in nó; serial treo thật (`artifacts/flake-x86_64-16-a0`) thì
+không.
+
+Đính chính: `SMP IDLE STALL (post_ticks=2–3)` **cũng có ở boot xanh** ⇒ không
+phải chữ ký; `TIMER_TICKS` = **20** (không phải 99); `PREEMPT OK` có thể dính
+sau `shell> ` cùng dòng.
+
+Trạng thái thật: sau vá LINT0 (2,6 % → 0,66 %) vẫn còn **~1/301** treo ⇒
+**residual, không phải flake**. Ghi chú r309 ("gate FAIL qemu ⇒ flake") là **SAI**.
+
+Đo vòng này (ps, x86_64, `VIFAST_NO_RETRY=1`): 400 boot thường — `PAGER2 DUP`=0,
+thiếu `PREEMPT OK`=0; 400 boot `diag-tick` — treo=0. ⇒ chạy một mình trên `ps`,
+tần suất < 1/400; ca ở gate xảy ra khi máy chạy 3 arch liên tiếp ⇒ nghi tải host.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1471,7 +1490,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-8ca509a72a838b7478a0863701c2013acbe66385a4784d97a02a238e702e89da  docs/reviews/ViFastOs-report-r262.md
+5ff9778a1e32e50ac7bd3c3ff35432bf3c72f9634d70ae0753e6b0a1251719c6  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

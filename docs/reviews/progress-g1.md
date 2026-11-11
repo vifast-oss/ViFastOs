@@ -3302,3 +3302,44 @@ chạm đúng chỗ quyết định.
 ### Còn treo cho T31
 Cần biết **đường nào giao lặp** message: theo dõi `PAGER2 DUP` trong soak dài
 (≥1000 boot) và in thêm chuỗi `seen`/`hart` mỗi lần vào nhánh.
+
+## r311 — ĐÍNH CHÍNH T33a: đèn `SMP AP STATE` **không dùng được** cho ca treo; T33a vẫn MỞ
+
+### Vì sao `SMP AP STATE` vô dụng cho đúng ca cần đo
+Đèn in ở `on_timer` (hart 0) với điều kiện **`TEST_DONE == true`** + `post_idle_ready()`
++ `post_idle_stats()` + cờ one-shot. Ca treo T33a xảy ra **trước** `PREEMPT OK`,
+tức `TEST_DONE` **chưa** bật ⇒ **đèn tắt đúng lúc cần**. Đối chứng: 20/20 boot
+xanh trong `artifacts/ps-r295-S1n` đều in `SMP AP STATE`; còn serial treo thật
+(`artifacts/flake-x86_64-16-a0/serial.txt`) **không** có nó.
+
+### Đính chính các "dấu hiệu" từng bị coi là chữ ký T33a
+- `SMP IDLE STALL (post_ticks=2–3, post_idle=13–14)` — **cũng có ở 20/20 boot
+  xanh** ⇒ **không phải** chữ ký. (r276 đã tự đính chính, r288 lại dùng.)
+- `TIMER_TICKS` là **20** (`crates/vifast-runtime/src/lib.rs:20-22`), không phải
+  99 như hai chỗ tài liệu ghi.
+- `PREEMPT OK` có thể **dính sau `shell> `** trên cùng dòng ⇒ đếm theo `^`/exact-one
+  sẽ sai.
+
+### Cách phân loại ĐÚNG khi soak bắt được
+1. `status.txt`/`run.log`: **`rc` + thời lượng** — `rc=-9` và ~80 s = **treo thật**;
+   `rc=0` nhanh = thoát sớm; timeout mà **đủ marker** = máy tải (host).
+2. 3 dòng cuối của serial.
+3. Thứ tự `SHELL READY` → `IPC RIGHTS OK` → `PREEMPT OK`.
+4. Đèn: `SMP WAIT` (giá trị, có phải dòng cuối?), `SMP NO READY`, `KERNEL FAULT`,
+   `ROOT PANIC`, `TICK n (eoi=)` (chỉ có trong build `diag-tick`).
+
+### Trạng thái thật của T33a: **MỞ**
+Sau khi vá LINT0 (2,6 % → 0,66 %) vẫn còn **~1/301** treo ⇒ đây là **residual**,
+không phải flake. Vì vậy ghi chú "gate FAIL qemu ⇒ flake" ở r309 là **SAI**:
+lần đó gate bắt đúng một ca treo thật, và chạy lại xanh **không** chứng minh gì
+(với p≈1/300, chạy lại xanh là chuyện bình thường).
+
+### Số đo vòng này (ps, x86_64, `VIFAST_NO_RETRY=1`)
+| Lượt | Cấu hình | Kết quả |
+|---|---|---|
+| 400 boot | build thường | `PAGER2 DUP`=0, thiếu `PREEMPT OK`=0 |
+| 400 boot | `VIFAST_KERNEL_FEATURES=diag-tick` | treo=0 |
+
+⇒ Trên `ps` chạy **một mình**, tần suất treo < 1/400; ca ở gate xảy ra khi máy
+chạy 3 arch liên tiếp (tải cao) ⇒ nghi **tải host** làm hẹp cửa sổ. Cần soak dài
+hơn (≥1000) và/hoặc chạy song song để tái hiện.

@@ -644,6 +644,7 @@ Thư mục này LÀ git repository. Các mốc hiện tại:
 - 5c0e4ba x86/runtime/riscv: hết warning build ở mọi tổ hợp feature
 - 3008601 virtio-net: header 12 byte khi đã đàm phán VERSION_1 — mạng trong guest sống lại
 - b40a1b1 r308 (T-IPC): VÁ XONG — hoãn cổng thoát khi client đang chạy user mode; 0/80 boot thiếu marker
+- 6f6ab5b r309 (T31): giao lặp message PAGER2 — bảng quyết định thuần + marker PAGER2 DUP
 ### END GENERATED commits
 
 [HISTORICAL] Mốc 925f633 (vòng 20): per-hart ready queue + work stealing; VFS
