@@ -1442,6 +1442,27 @@ Sau khi chỉ xét khi `gate_ready`, chỉ khi `Running`, ngân sách 2 ⇒ **0/
 Đây là **xác nhận bằng can thiệp** cho kết luận r307: nguyên nhân là cổng thoát
 cắt ngang client, không phải scheduler.
 
+
+## r309 — T31: triệu chứng thật là **giao lặp** (nhánh chạy ≥3 lần)
+
+`PAGER EVICT OK` in hai dòng ⇒ nhánh `PAGER2_LABEL` chạy **≥3 lần** ⇒ có message
+bị giao lặp. Bản vá đầu của tôi (chặn evict lần hai) sửa lỗi khác và không làm
+hết `dup`.
+
+Vá: hàm thuần `vifast_abi::pager::pager2_step(seen)`: `1 → First` (in `PAGER2 OK`,
+evict), `2 → Evict` (in `PAGER EVICT OK`, không evict), **`≥3 → Dup`** (marker
+riêng `PAGER2 DUP seen=<n>`). Test đỏ-trước
+`pager2_third_delivery_is_flagged_not_relabelled`: **ĐỎ** trên mã cũ
+(`pager2_step(3) == Evict`), **XANH** sau vá.
+
+Ghi nhận trung thực: test đầu của tôi (`pager2_evicts_only_once`) là **test giả**
+— bản rà soát chỉ ra revert call site trong `root` thì nó vẫn xanh.
+
+Đo: soak **300 boot** (ps, x86_64, `VIFAST_NO_RETRY=1`) — `PAGER EVICT OK` đúng
+1 lần ở 300/300, không boot nào có `PAGER2 DUP` (chưa kết luận: p≈1/301 ⇒ ~37 %
+bỏ sót). Gate lần 1 FAIL `qemu` (1 `T-KHAC` + 1 **timeout thiếu `PREEMPT OK`** =
+chữ ký T33a), chạy lại xanh.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1450,7 +1471,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-53af396dda9de02c962fd220b7f420b449667e1a238a693c9f095576e9d4f9ca  docs/reviews/ViFastOs-report-r262.md
+8ca509a72a838b7478a0863701c2013acbe66385a4784d97a02a238e702e89da  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

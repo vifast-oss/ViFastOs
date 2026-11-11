@@ -3266,3 +3266,39 @@ Sau khi sửa (chỉ xét khi `gate_ready`, chỉ khi `Running`, ngân sách 2):
 
 ⇒ Kết luận của r307 (đây là **cổng thoát cắt ngang client**, không phải lỗi
 scheduler) được **xác nhận bằng can thiệp**: sửa đúng chỗ đó thì hiện tượng mất.
+
+## r309 — T31: triệu chứng thật là **giao lặp** (nhánh chạy ≥3 lần), không phải evict hai lần
+
+### Xác định lại triệu chứng (bản rà soát chỉ ra, tôi đã hiểu sai)
+Harness đòi `PAGER2 OK` và `PAGER EVICT OK` **exact-one**. Nếu `PAGER EVICT OK`
+in **hai dòng** thì nhánh đã chạy **≥ 3 lần** ⇒ có **message bị giao/xử lý lặp**.
+Bản vá đầu của tôi (chỉ chặn evict ở message thứ hai) sửa một lỗi **khác** và
+**không thể** làm hết `dup`.
+
+### Bản vá đúng
+Tách quyết định thành hàm thuần `vifast_abi::pager::pager2_step(seen)` với bảng:
+`1 → First` (in `PAGER2 OK`, evict), `2 → Evict` (in `PAGER EVICT OK`, không evict),
+**`≥3 → Dup`** (in marker riêng `PAGER2 DUP seen=<n>`, không evict).
+⇒ Lần giao lặp **không còn đội lốt** `PAGER EVICT OK` nữa, và không evict chồng.
+
+### Test đỏ-trước (D18) — và một lần tôi làm test GIẢ
+`pager2_third_delivery_is_flagged_not_relabelled`:
+- Trên mã cũ: `pager2_step(3) == Evict` ⇒ **ĐỎ** (đúng chỗ: đó là chỗ in trùng).
+- Sau vá: **XANH**.
+
+**Bài học**: bản đầu tôi viết test `pager2_evicts_only_once` cho hàm `pager2_evict`
+— bản rà soát chỉ ra đó là **test giả**: revert riêng call site trong `root` thì
+test vẫn xanh (vì `vifast-root` không có test host). Test chỉ có giá trị khi nó
+chạm đúng chỗ quyết định.
+
+### Đo
+- **Soak 300 boot** (ps, x86_64, `VIFAST_NO_RETRY=1`): `PAGER EVICT OK` đúng 1 lần
+  ở **300/300**, không boot nào in `PAGER2 DUP`. Chưa kết luận được (p≈1/301 ⇒
+  300 boot sạch vẫn còn ~37 % khả năng bỏ sót), nhưng **đèn bắt đã có**.
+- Gate lần 1 **FAIL `qemu`**: 1 ca `T-KHAC` + 1 ca **`timeout (thiếu 1 marker:
+  PREEMPT OK)`** — đúng chữ ký **T33a**, ghi lại để điều tra tiếp trong đêm.
+  Chạy lại gate ⇒ **all steps passed** (flake).
+
+### Còn treo cho T31
+Cần biết **đường nào giao lặp** message: theo dõi `PAGER2 DUP` trong soak dài
+(≥1000 boot) và in thêm chuỗi `seen`/`hart` mỗi lần vào nhánh.

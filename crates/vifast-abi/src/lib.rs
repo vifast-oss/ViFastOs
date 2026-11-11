@@ -25,6 +25,36 @@ pub const DEFAULT_PAGE_SIZE: u64 = 4096;
 /// only relays faults; mapping, eviction and file I/O stay in user space.
 pub mod pager {
 
+    /// r309 (T31): bước xử lý cho message `PAGER2_LABEL` thứ `seen`.
+    ///
+    /// Triệu chứng thật (đo được): `PAGER EVICT OK` in **hai lần** ⇒ nhánh chạy
+    /// **≥ 3 lần** ⇒ có message bị giao/xử lý lặp. Vì vậy bảng phải có nhánh
+    /// **thứ ba** riêng; in lại `PAGER EVICT OK` chỉ làm harness báo `dup` mà
+    /// không ai biết là giao lặp.
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Pager2Step {
+        /// Message đầu: in `PAGER2 OK` và evict để lần đọc 2 fault lại.
+        First,
+        /// Message thứ hai: in `PAGER EVICT OK`, KHÔNG evict lại.
+        Evict,
+        /// Từ message thứ ba: giao lặp — marker riêng, không evict.
+        Dup,
+    }
+
+    pub const fn pager2_step(seen: u8) -> Pager2Step {
+        // r309: lần 1 = First (in `PAGER2 OK` + evict), lần 2 = Evict (in
+        // `PAGER EVICT OK`), lần 3 trở đi = Dup (marker riêng). Trước đây mọi
+        // lần ≥2 đều là Evict ⇒ nếu một message bị giao lặp thì
+        // `PAGER EVICT OK` in hai lần và harness chỉ báo `dup` mơ hồ.
+        if seen <= 1 {
+            Pager2Step::First
+        } else if seen == 2 {
+            Pager2Step::Evict
+        } else {
+            Pager2Step::Dup
+        }
+    }
+
     pub const LABEL_FAULT: u64 = 0x5047_0001;
     pub const LABEL_MAP: u64 = 0x5047_0002;
     pub const LABEL_UNMAP: u64 = 0x5047_0003;
@@ -1423,5 +1453,25 @@ mod build_tests {
         let n = build::line(b"kernel", &mut out);
         assert_eq!(n, 4);
         assert_eq!(&out[..], b"BUIL");
+    }
+}
+
+#[cfg(test)]
+mod pager_tests {
+    use super::pager;
+
+    /// r309 (T31) — ĐỎ-TRƯỚC (D18), bảng quyết định THẬT:
+    /// lần 1 = First, lần 2 = Evict, lần 3 trở đi = Dup (KHÔNG phải Evict).
+    /// Trên mã hiện tại lần 3 trả Evict ⇒ test này ĐỎ, và nó ĐỎ đúng chỗ:
+    /// đó chính là chỗ làm `PAGER EVICT OK` in hai lần (harness `dup`).
+    #[test]
+    fn pager2_third_delivery_is_flagged_not_relabelled() {
+        assert_eq!(pager::pager2_step(1), pager::Pager2Step::First);
+        assert_eq!(pager::pager2_step(2), pager::Pager2Step::Evict);
+        assert_eq!(
+            pager::pager2_step(3),
+            pager::Pager2Step::Dup,
+            "message thứ ba là GIAO LẶP: phải có marker riêng, không được in lại PAGER EVICT OK"
+        );
     }
 }

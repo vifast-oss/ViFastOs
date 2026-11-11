@@ -379,24 +379,38 @@ pub extern "C" fn pager_server() -> ! {
                 PAGER2_SEEN = PAGER2_SEEN.wrapping_add(1);
                 PAGER2_SEEN
             };
-            if seen <= 1 {
-                write(if message.data[0] == PAGER2_VALUE {
+            // r309 (T31): bảng quyết định thuần trong `vifast_abi::pager`, có
+            // test host đỏ-trước. Lần ≥3 là GIAO LẶP ⇒ marker riêng
+            // (`PAGER2 DUP`), không in lại `PAGER EVICT OK`.
+            match vifast_abi::pager::pager2_step(seen) {
+                vifast_abi::pager::Pager2Step::First => write(if message.data[0] == PAGER2_VALUE {
                     PAGER2_OK
                 } else {
                     PAGER2_BAD
-                });
-            } else {
-                write(if message.data[0] == PAGER2_VALUE {
+                }),
+                vifast_abi::pager::Pager2Step::Evict => write(if message.data[0] == PAGER2_VALUE {
                     PAGER_EVICT_OK
                 } else {
                     PAGER_EVICT_BAD
-                });
+                }),
+                vifast_abi::pager::Pager2Step::Dup => {
+                    write(b"PAGER2 DUP seen=");
+                    write_decimal(seen as u64);
+                    write(b"\n");
+                }
             }
             // Pager v2 evict demo (vòng 34-35): sau khi client2 đọc xong,
             // unmap + destroy frame cũ (trả về Untyped), retype frame mới từ
             // Untyped con, copy lại nội dung và map lại. Client fault lần 2
             // vẫn đọc đúng giá trị.
-            if message.data[0] == PAGER2_VALUE {
+            //
+            // r309 (T31): CHỈ làm ở message ĐẦU. Trước đây khối này chạy cho
+            // CẢ HAI message ⇒ unmap/destroy/retype cùng một slot hai lần.
+            if matches!(
+                vifast_abi::pager::pager2_step(seen),
+                vifast_abi::pager::Pager2Step::First
+            ) && message.data[0] == PAGER2_VALUE
+            {
                 let _ =
                     vifast_user::frame_unmap(PAGER_SERVER_VSPACE, PAGER2_VA, PAGER_SERVER_FRAME2);
                 let _ = vifast_user::object_destroy(PAGER_SERVER_FRAME2);
