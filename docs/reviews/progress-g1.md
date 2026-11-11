@@ -3564,3 +3564,69 @@ message khác** (hoặc root không được đánh thức dù message đã vào
 peek) và `recv_ret=<n>` mỗi lần `recv_message` trả về — để biết root có nhận được
 message C_RUNNING hay không. Nếu root **có** nhận mà không chạy demo
 suspend ⇒ lỗi logic của root, không phải kernel.
+
+## r320/r321 — T33a: GỐC THẬT là **worker C panic `TIME MONOTONIC BAD`** (21/21 artifact)
+
+### Phát hiện quyết định (bản rà soát soi artifact, không phải tôi)
+**21/21** artifact treo đều có:
+```
+TIME MONOTONIC BAD
+ROOT PANIC
+crates/vifast-root/src/main.rs:494     ← panic!("GetTime went backwards on hart 1")
+```
+Đó là `smp_worker_c` (`crates/vifast-root/src/main.rs:493-495`). Trong **1448**
+artifact có `SMP WORKERS OK` thì **0** file có `ROOT PANIC`.
+
+⇒ "Treo T33a" **không phải** mất message/BKL/scheduler: **worker C panic vì
+`GetTime` trả giá trị nhỏ hơn lần trước trên hart 1**, C chết ⇒ không bao giờ gửi
+`WORKER_LABEL_C` ⇒ root chặn trong `recv` ⇒ không `SMP WORKERS OK` ⇒ không
+`TEST_DONE` ⇒ không `PREEMPT OK`. Mọi đèn trước đây chỉ nhìn thấy **hệ quả**.
+
+### Bản vá "clamp thời gian đơn điệu" — ĐÃ THỬ VÀ REVERT (D18)
+Thêm `Kernel::last_user_time` + `monotonic_time(hart)` (chặn giá trị trả về user
+nhỏ hơn lần trước, dùng ở cả fast-path x86 và nhánh syscall generic). Toàn bộ 262
+test kernel xanh, gate 10/10.
+
+Nhưng soak **600 boot** (mps, x86_64 TCG, 3 luồng song song) sau vá: **2+ treo**,
+và cả 2 vẫn có `TIME MONOTONIC BAD` + `ROOT PANIC` + `:494` ⇒ **không chặn được
+nguyên nhân** ⇒ **REVERT** theo D18 (đã `git checkout` cả kernel và platform).
+
+### Vì sao clamp không cứu
+Clamp giữ giá trị **theo hart**. Nếu `last` của worker C được lấy từ **hart khác**
+(demo suspend/resume của root có thể làm C chạy trên hart khác, hoặc lần gọi đầu đi
+đường khác và trả giá trị lớn), thì clamp theo hart **không** bảo đảm đơn điệu
+theo *tác vụ*. ⇒ Gốc nằm ở **nguồn thời gian/migration**, không phải ở biên syscall.
+
+### Việc kế tiếp (rõ ràng, làm được trong thời gian còn lại)
+1. Đổi `panic!` của worker C thành **đèn**: in `C TIME BACK last=<a> now=<b> hart=<?>`
+   rồi **thoát vòng** (gửi báo cáo) ⇒ vừa không giết boot, vừa đo được `a`,`b`.
+2. Xem `tcb_suspend/tcb_resume` có làm C **migrate** sang hart 0 không (in hart
+   trong đèn) — nếu có thì thời gian phải đơn điệu **theo tác vụ**, không theo hart.
+3. Nếu là migration: sửa `GetTime` để trả **max toàn cục** (đã là `system_ticks`)
+   và kiểm `system_ticks` không bị reset; hoặc cấm migrate khi đang suspend.
+
+## r322 — Vòng lặp phát triển: `gate.sh --smoke` 18 giây (thay vì 396 giây), và BUILD_ID chỉ hash mã nguồn
+
+### Số đo (máy mps, 12/11)
+| Việc | Trước | Sau |
+|---|---:|---:|
+| Cổng đầy đủ | 396 s | 396 s (giữ nguyên) |
+| **`gate.sh --smoke`** | — | **18 s** (khi mã không đổi: `build: SKIP`) |
+| `build.sh` khi chỉ sửa docs | ~6,6 phút (254 lượt `Compiling`) | **không rebuild** (id không đổi) |
+
+### Thay đổi
+1. **`BUILD_ID` chỉ hash `crates/ scripts/ Cargo.toml Cargo.lock`**
+   (`scripts/build.sh`). Trước đây hash **toàn bộ** `git diff HEAD` ⇒ sửa một
+   dòng tài liệu cũng đổi id ⇒ `option_env!` đổi ⇒ gần như cả đồ thị crate biên
+   dịch lại. Tài liệu không ảnh hưởng binary nên không được tính.
+2. **`scripts/gate.sh --smoke`**: build (có cache) + host test kernel + đặc tả
+   harness + **một** boot riscv64 + fmt. Đây là vòng lặp sau mỗi lần sửa; cổng
+   đầy đủ vẫn giữ nguyên cho cuối vòng.
+3. **Cache build trong `--smoke`**: nếu `target/vifast-build-id.txt` khớp id
+   vừa tính (cùng hàm hash với `build.sh`) thì in `build: SKIP` và đi tiếp.
+
+### Ghi chú
+- Các lệnh test trùng trong `build.sh` (fs/virtio chạy hai lần, kernel test lại
+  trong `gate.sh`) **chưa** cắt — đã ghi nhận, làm sau.
+- `CARGO_TARGET_DIR` riêng cho từng agent và `baseline.json` cho các ngưỡng tài
+  nguyên: chưa làm.

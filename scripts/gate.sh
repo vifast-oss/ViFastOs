@@ -11,10 +11,12 @@
 set -u
 
 QUICK=0
+SMOKE=0
 TCP=0
 INPUT=0
 for arg in "$@"; do
     case "$arg" in
+        --smoke) SMOKE=1 ;;
         --quick) QUICK=1 ;;
         --with-tcp) TCP=1 ;;
         --with-input) INPUT=1 ;;
@@ -38,6 +40,35 @@ step() {
     fi
 }
 
+if [ "$SMOKE" = "1" ]; then
+    # r322: vòng lặp NHANH (~90 s) để dùng sau mỗi lần sửa — không thay cổng
+    # đầy đủ. Gồm: build, host test kernel, đặc tả harness, MỘT boot QEMU, fmt.
+    # Chỉ build khi mã nguồn đã đổi (BUILD_ID tính giống build.sh nhưng chỉ
+    # trên crates/scripts/Cargo.*). Nhờ vậy chạy --smoke liên tiếp rất nhanh.
+    if command -v sha256sum >/dev/null 2>&1; then
+        _h8() { sha256sum | cut -c1-8; }
+    else
+        _h8() { shasum -a 256 | cut -c1-8; }
+    fi
+    want_id="$(git rev-parse --short HEAD 2>/dev/null || printf nogit0)-$(git diff HEAD -- crates scripts Cargo.toml Cargo.lock 2>/dev/null | _h8)"
+    have_id="$(cat target/vifast-build-id.txt 2>/dev/null || printf none)"
+    if [ "$want_id" = "$have_id" ] && [ -f target/vifast-build-id.txt ]; then
+        printf '\n=== build ===\n[gate] build: SKIP (BUILD_ID không đổi: %s)\n' "$want_id"
+    else
+        step "build" ./scripts/build.sh
+    fi
+    step "kernel-test" cargo test -p vifast-kernel
+    step "harness" python3 scripts/test-harness-spec.py
+    step "qemu-1" python3 scripts/test-qemu.py --arch riscv64
+    step "fmt" cargo fmt --check
+    printf '\n=== gate summary (smoke) ===\n'
+    if [ -n "$FAILED" ]; then
+        printf 'FAILED steps:%s\n' "$FAILED"
+        exit 1
+    fi
+    printf 'all steps passed\n'
+    exit 0
+fi
 step "build" ./scripts/build.sh
 # Host test của kernel chạy tường minh (audit #3 P1-4): bước fuzz chỉ chạy
 # --ignored, nên nếu chỉ dựa vào đó thì các test thường không nằm trong cổng.

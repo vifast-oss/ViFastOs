@@ -4139,6 +4139,23 @@ pub extern "C" fn root_main(bootinfo_ptr: u64) -> ! {
                 reap_ok &= vifast_user::tcb_destroy(cnode_tcb).error == KError::Ok;
                 reaped = reaped.saturating_add(1);
             } else if message.label == WORKER_LABEL_C_RUNNING {
+                // r320 (T33a): root CÓ nhận được báo cáo của worker C không, và
+                // lúc đó đã reaped đủ 3 chưa (demo suspend chỉ chạy khi
+                // `reaped >= 3`, nếu không thì C quay mãi chờ SUSPEND_FLAG).
+                // Một dòng mỗi boot — đủ ít để không đổi lịch.
+                {
+                    static mut SEEN: bool = false;
+                    unsafe {
+                        if !SEEN {
+                            SEEN = true;
+                            write(b"ROOT CRX reaped=");
+                            write_decimal(reaped as u64);
+                            write(b" done=");
+                            write_decimal(suspend_done as u64);
+                            write(b"\n");
+                        }
+                    }
+                }
                 if !suspend_done {
                     if reaped >= 3 {
                         start_worker_e = true;

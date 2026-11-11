@@ -1568,6 +1568,21 @@ trước vá **2, 5, 5** treo/600 (gộp 7/1200 = 0,58 %); sau vá **1/600 = 0,1
 (Fisher p ≈ 0,2 ⇒ chưa kết luận). **Treo vẫn còn**: ca `hang-w1-27` vẫn cùng chữ
 ký, `SENDFAIL=0`, worker C đã qua lệnh send ⇒ còn một đường mất message khác.
 
+
+## r322 — Vòng lặp phát triển: `gate.sh --smoke` **18 giây** (cổng đầy đủ 396 s)
+
+| Việc | Trước | Sau |
+|---|---:|---:|
+| Cổng đầy đủ | 396 s | 396 s |
+| `gate.sh --smoke` | — | **18 s** (`build: SKIP` khi mã không đổi) |
+| `build.sh` khi chỉ sửa docs | ~6,6 phút, 254 lượt `Compiling` | không rebuild |
+
+1. `BUILD_ID` chỉ hash `crates/ scripts/ Cargo.toml Cargo.lock` — trước đây hash
+   toàn bộ `git diff HEAD` nên sửa docs cũng kéo cả đồ thị crate biên dịch lại.
+2. `scripts/gate.sh --smoke`: build (có cache) + host test kernel + đặc tả harness
+   + một boot riscv64 + fmt — vòng lặp sau mỗi lần sửa.
+3. Cache: `target/vifast-build-id.txt` khớp id ⇒ `build: SKIP`.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1576,7 +1591,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-264c1e7d4cf03e94b6f4644cfaa74f0921870601b82a75c9fbd92cb64a4acec6  docs/reviews/ViFastOs-report-r262.md
+e84b5adae726c730ba0b506fcfbf32ac6b98190e42d6833b494dbdfe75a87354  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

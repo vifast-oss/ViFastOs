@@ -23,7 +23,11 @@ hash8() {
     fi
 }
 BUILD_SHA="$(git rev-parse --short HEAD 2>/dev/null || printf 'nogit0')"
-BUILD_DIFF="$(git diff HEAD 2>/dev/null | hash8 || printf '00000000')"
+# r322: chỉ hash phần MÃ NGUỒN. Trước đây hash toàn bộ `git diff HEAD`, nên
+# sửa một dòng tài liệu cũng đổi BUILD_ID → `option_env!` đổi → gần như cả đồ
+# thị crate biên dịch lại (đo được 254 lượt `Compiling`, ~6,6 phút cho một thay
+# đổi docs). Tài liệu không ảnh hưởng tới binary nên không được tính.
+BUILD_DIFF="$(git diff HEAD -- crates scripts Cargo.toml Cargo.lock 2>/dev/null | hash8 || printf '00000000')"
 VIFAST_BUILD_ID="${BUILD_SHA}-${BUILD_DIFF}"
 export VIFAST_BUILD_ID
 export VIFAST_BUILD_FEATS="none"
