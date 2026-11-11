@@ -143,7 +143,7 @@ Root kiểm tra magic/version/size và in `BOOTINFO OK`; mọi slot root dùng �
 
 ## 6. Bảng syscall
 
-Số syscall là ổn định. `-` nghĩa là không dùng.
+Có **58 syscall**, đánh số `0..57` (ổn định). `-` nghĩa là không dùng.
 
 | Số | Tên | Tham số chính | Kết quả/ghi chú |
 |---:|---|---|---|
@@ -199,6 +199,12 @@ Số syscall là ổn định. `-` nghĩa là không dùng.
 | 49 | `TcbDestroy` | a0 TCB | Reparent cspace rồi destroy; WouldBlock khi target có waiter TcbWait |
 | 50 | `ObjectDestroy` | a0 cap slot gốc | Destroy Frame/Endpoint/Notification/PageTable/VSpace/CNode/SchedContext; trả bộ nhớ về Untyped |
 | 51 | `TcbWait` | a0 TCB | Block tới khi target Exited (xong ngay nếu đã exit; WouldBlock nếu đã có waiter khác) |
+| 52 | `TcbInfo` | a0 TCB | Trả state/priority/hart/PC cho `ps`/`jobs` |
+| 53 | `MemInfo` | — | Trả untyped/đã dùng/còn lại cho `free` |
+| 54 | `TimerInfo` | — | Trả tick hiện tại + tần số cho `uptime` |
+| 55 | `ModuleRelease` | a0 module cap | Trả trang staging của module về Untyped (nếu port cho phép) |
+| 56 | `TcbSetArgs` | a0 TCB, a1 con trỏ argv | Ghi `argc/argv` vào khối 256 B trên stack con |
+| 57 | `TcbGrantCap` | a0 TCB, a1 cap nguồn, a2 slot đích | Ủy quyền cap cho tiến trình con (đường `exec`) |
 
 Tất cả 52 số 0..51 đều có handler (`SYSCALL_STATUS = true`).
 

@@ -1,5 +1,10 @@
 # Bộ cấp trang tự do & uỷ quyền cap cho exec (G2)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **proposal** — soạn ở r263 (T23 của `ViFastOs-decision-r254.md`).
 Chưa có dòng mã nào; tài liệu này chốt *hợp đồng* để G2 chia việc.
 Nguồn sự thật khi triển khai: `crates/vifast-kernel/src/lib.rs` (Untyped,

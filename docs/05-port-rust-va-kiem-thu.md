@@ -1,106 +1,104 @@
 # 05. Bản port Rust: cấu trúc, build, kiểm thử
 
-## 1. Cấu trúc workspace
+> Cập nhật 2026-11-11 (HEAD `3008601`). Thay hoàn toàn mô tả cũ về
+> `vifast-sim` / `manifests/` / 27 test — những phần đó đã bị bỏ khỏi cây.
+
+## 1. Toolchain
+
+[`rust-toolchain.toml`](../rust-toolchain.toml): `stable` + `rustfmt`, `clippy`,
+targets `x86_64-unknown-none`, `aarch64-unknown-none`, `riscv64gc-unknown-none-elf`.
+QEMU: `qemu-system-{riscv64,aarch64,x86_64}`; x86 cần OVMF
+(`scripts/test-qemu.py` tự tìm hoặc dùng `OVMF_CODE`).
+
+## 2. Cấu trúc workspace
 
 ```
-rust/
-├── Cargo.toml                    workspace, Rust 1.85+, edition 2021
-├── manifests/                    space.toml, desktop.toml (nhúng vào binary)
-└── crates/
-    ├── vifast-abi/src/lib.rs     ABI no_std
-    ├── vifast-kernel/src/
-    │   ├── lib.rs                no_std, forbid(unsafe_code)
-    │   ├── platform.rs           trait Platform
-    │   ├── object.rs             ObjRef, Cap, Slot, object, ObjectTable
-    │   ├── kernel.rs             struct Kernel, trap, dispatch, fault
-    │   ├── cspace.rs             phân giải cptr, CDT, revoke, zombie, retype
-    │   ├── ipc.rs                endpoint, call/reply, notification
-    │   ├── sched.rs              RunQueue, Hart, timer, MCS
-    │   ├── vm.rs                 Sv39, map/unmap, shootdown, IOMMU
-    │   ├── irq.rs                ngắt
-    │   └── tcb.rs                vòng đời thread
-    └── vifast-sim/
-        ├── src/
-        │   ├── lib.rs, main.rs
-        │   ├── hw.rs             PhysMem, Tlb, Hw: Platform, DmaSensor
-        │   ├── user.rs           Sys, Instr, Program (async), Images
-        │   ├── machine.rs        CPU nhiều hart, MMU, vòng tick
-        │   ├── boot.rs           manifest TOML
-        │   └── images.rs         chương trình mẫu
-        └── tests/kernel.rs       27 test port từ Python
+crates/
+  vifast-abi/          wire ABI: 58 syscall, KError, Rights, Message, layout user
+  vifast-kernel/       object · cap · ipc · sched · vm · ramfs · invariants
+  vifast-runtime/      boot, syscall dispatch, timer, Platform trait
+  vifast-arch/         trait Arch + BootInfo
+  vifast-arch-{riscv64,aarch64,x86_64}/       UART/clock/IRQ/shutdown
+  vifast-platform-{riscv64,aarch64,x86_64}/   trap · MMU · timer · IRQ · SMP
+  vifast-kernel-{riscv64,aarch64,x86_64-uefi}/ entry asm + linker + ảnh user
+  vifast-pte/ vifast-elf/ vifast-acpi/ vifast-maint/ vifast-fs/ vifast-virtio/
+  vifast-fsutil/      tool host cho ảnh FS
+  vifast-user/        wrapper syscall
+  vifast-root/ vifast-server/ vifast-client/ vifast-bin/
+scripts/              build.sh gate.sh check-all.sh test-qemu.py soak.py …
+docs/                 xem docs/README.md (phân loại sống / tham chiếu / lịch sử)
 ```
 
-## 2. Đối chiếu Python và Rust
+Cây `python-model/` và `legacy/` chỉ còn để tham chiếu lịch sử, **không** tham
+gia build/test.
 
-| Python | Rust | Ghi chú |
-|---|---|---|
-| `ktypes.py`, `abi.py` | `vifast-abi` | Op dataclass thành `enum Syscall` |
-| `objects.py` | `object.rs` | Mixin thành nhiều khối `impl Kernel` |
-| `kernel.py` | `kernel.rs` + `vifast-sim/machine.rs` | Vòng lặp CPU tách ra simulator |
-| `cspace.py`, `ipc.py`, `vm.py`, `irq.py`, `tcb.py`, `sched.py` | cùng tên `.rs` | Logic 1-1 |
-| `hw.py` | `vifast-sim/hw.rs` | |
-| `boot.py` | `vifast-sim/boot.rs` | |
-| `images.py` | `vifast-sim/images.rs` | Generator thành `async fn` |
-| `tests/test_kernel.py` | `vifast-sim/tests/kernel.rs` | Cùng 27 kịch bản |
-| `KernelError` | `Err(KError)` | |
-| `BLOCKED`, `PREEMPTED` | `Ret::Blocked`, `Ret::Preempted` | |
-| `t.program`, `t.retry_op` | `ThreadCtx` trong simulator | Kernel chỉ giữ `context_epoch` và `resume` |
-| Load/Store trong kernel | MMU trong `machine.rs` | Đúng với phần cứng hơn: không phải syscall |
-
-Khác biệt nhỏ về chuỗi kết quả trong test: Python in `(42,)`, Rust in `[42]`; Python in `b'\x00...'`, Rust in `[0, 0, ...]`.
-
-## 3. Chương trình user trong simulator
-
-```rust
-pub async fn hello(s: Sys) -> Result<(), String> {
-    let console = s.env("console")?;              // thiếu thì Err = panic
-    let r = s.call(console, Message::new(PRINT, &pack_text("xin chào"))).await;
-    if !r.is_ok() { s.print(format!("lỗi: {}", r.err.name())).await; }
-    Ok(())
-}
-images.register("hello", &["console", "ram_base"], |s| program(hello(s)));
-```
-
-Cơ chế: mỗi `.await` trên một lệnh đặt lệnh vào kênh và trả `Pending`. Simulator lấy lệnh, thực thi (syscall vào kernel, hoặc Load/Store qua MMU), đặt kết quả, poll tiếp. Trả `Err(text)` tương đương panic: kernel nhận `USER_EXCEPTION`.
-
-Tham số `&["console", "ram_base"]` là tên của a0, a1 khi tiến trình được tạo lúc chạy bằng `TcbConfigure { args: [...] }`.
-
-## 4. Build và chạy
+## 3. Build
 
 ```bash
-cd rust
-cargo build                        # build cả workspace
-cargo test -p vifast-sim           # 27 test
-cargo run -p vifast-sim -- space   # demo space, in log
-cargo run -p vifast-sim -- desktop
-cargo clippy --all-targets
-cargo build -p vifast-kernel --target riscv64gc-unknown-none-elf   # kiểm tra no_std thật
+./scripts/build.sh
 ```
 
-Lệnh cuối cần `rustup target add riscv64gc-unknown-none-elf`. Nó chứng minh `vifast-abi` và `vifast-kernel` không vô tình phụ thuộc `std`.
+Script làm tuần tự: host test 12 crate → build root/server/client + ảnh
+`/bin/vf` cho 3 target (objcopy strip, kiểm ngân sách trang client) → build
+kernel 3 arch + biến thể feature (`test-destroy-smp`, `test-boot-handoff`,
+`test-panic-hart1`, `test-shell-linger`…) → sinh `target/vifast-build-id.txt`
+và `target/vifast-build.log` (log này được `gen-docs.py` dùng lại).
 
-## 5. Khi biên dịch lần đầu
+Build lẻ một arch:
 
-Bản Rust chưa được biên dịch (xem `04-diem-chu-y.md` mục 8). Quy trình khuyến nghị:
+```bash
+cargo build -p vifast-kernel-riscv64 --target riscv64gc-unknown-none-elf --release
+cargo build -p vifast-kernel-aarch64 --target aarch64-unknown-none --release
+cargo build -p vifast-kernel-x86_64-uefi --target x86_64-unknown-uefi --release
+```
 
-1. `cargo build -p vifast-abi`: crate nhỏ nhất, sửa trước.
-2. `cargo build -p vifast-kernel`: lỗi hay gặp:
-   - **E0502/E0499 (mượn)**: lấy giá trị Copy ra biến cục bộ trước, kết thúc khối mượn, rồi mới gọi phương thức `&mut self`. Toàn bộ code đã viết theo mẫu này, nếu sót thì sửa theo đúng mẫu.
-   - **Type annotations needed** trong closure: thêm kiểu tham số, ví dụ `|pa: u64|`.
-   - **Unused import**: chỉ là cảnh báo, xoá đi.
-3. `cargo build -p vifast-sim`, rồi `cargo test -p vifast-sim`.
-4. Nếu test lệch: so với Python bằng cách chạy cùng kịch bản trong `python-model` với `verbose=True` và so log từng tick. Hai bản được thiết kế để cho **cùng chuỗi sự kiện**.
+## 4. Kiểm thử
 
-Gửi lại output của `cargo build` nếu cần hỗ trợ sửa.
+**Host test** (`cargo test -p …`, chạy trong `build.sh`):
 
-## 6. Thêm một test mới
+| Crate | Test | Ghi chú |
+|---|---|---|
+| `vifast-kernel` | 261 (+2 `#[ignore]`) | object/cap/IPC/sched/VM/ramfs |
+| `vifast-fs` | 52 | định dạng đĩa, journal, sparse, fsck |
+| `vifast-elf` | 20 | parse/W^X/overlap/args |
+| `vifast-abi` | 16 | layout, pager label, VA window |
+| `vifast-pte` | 12 | encode/decode 3 arch |
+| `vifast-virtio` | 11 | checksum TCP/IP + keymap bàn phím |
+| `vifast-acpi` | 8 | RSDP/MADT |
+| `vifast-arch` | 8 | primitive |
+| `vifast-runtime` / `vifast-maint` | 4 / 7 | timer + mailbox |
+| **Tổng bảng** | **388** | khớp `docs/11-hien-tai/09-testing.md` |
 
-1. Viết kịch bản trong Python trước (`python-model/tests/test_kernel.py`), chạy cho qua.
-2. Port sang `rust/crates/vifast-sim/tests/kernel.rs` với cùng manifest (TOML) và cùng chương trình (async fn).
-3. Nếu là bất biến bảo mật, thêm vào bảng S1..S12 trong `04-diem-chu-y.md`.
+**Cổng QEMU** (3 arch):
 
-## 7. Hướng phát triển code
+```bash
+python3 scripts/test-qemu.py --repeat 3
+python3 scripts/test-qemu.py --feature test-destroy-smp --repeat 5
+python3 scripts/test-qemu.py --tcp-check          # TCP echo qua hostfwd
+python3 scripts/test-qemu.py --input-check        # gõ phím vào shell
+python3 scripts/test-qemu.py --gpu-check          # screendump, kiểm pixel
+python3 scripts/test-qemu.py --interactive        # gõ lệnh qua socket
+python3 scripts/test-persist.py                   # 7 phase × 3 arch
+```
 
-- Thêm `Kernel::check_invariants()` (chỉ build test) kiểm tra: refs khớp số cap, CDT nhất quán, cap `mapped` khớp PTE, mọi thread READY nằm đúng một runqueue. Gọi sau mỗi syscall trong simulator.
-- Fuzz: sinh chuỗi syscall ngẫu nhiên (crate `arbitrary` + `cargo fuzz`), chạy với `check_invariants`. Kernel không được panic với bất kỳ đầu vào nào.
-- Kiểm chứng: dùng Kani cho các hàm thuần (`bits_at`, `leaf_flags`, `RunQueue`), Verus cho lõi `unsafe` của `vifast-core`.
+**Case âm / tài liệu:**
+
+```bash
+python3 scripts/test-harness-spec.py     # 677 case âm
+python3 scripts/gen-test-counts.py --check
+python3 scripts/gen-shell-table.py --check
+python3 scripts/gen-marker-table.py --check
+python3 scripts/gen-docs.py --check
+python3 scripts/check-docs.py
+cargo fmt --all --check
+```
+
+**Toàn bộ:** `./scripts/check-all.sh` (build + QEMU + persist + harness + docs).
+
+## 5. Quy ước khi sửa
+
+- Thêm/bớt marker guest → cập nhật `scripts/harness_spec.py` **và**
+  `docs/11-hien-tai/09-testing.md` (check-docs sẽ báo nếu thiếu).
+- Đổi số test → chạy `gen-test-counts.py` để sinh lại bảng.
+- Đổi lệnh shell → chạy `gen-shell-table.py`.
+- Commit mới → chạy `gen-docs.py` để cập nhật summary (check-docs so khớp).

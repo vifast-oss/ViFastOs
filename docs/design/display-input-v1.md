@@ -1,5 +1,10 @@
 # Thiết kế framebuffer + input MVP (dự thảo cho vòng 25)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **implemented-partial** (cập nhật r234). Đã có: virtio-gpu
 gradient + `--gpu-check` (160×120 pixel thật), splash, virtio-input,
 PS/2 x86, RAMFB. Chưa có: compositor, focus, cửa sổ nhiều client. Mục tiêu: đưa ViFastOs từ console text

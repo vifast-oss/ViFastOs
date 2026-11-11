@@ -1,5 +1,10 @@
 # 03.9. ABI và bảng syscall
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Mã nguồn: `vifast-abi/src/lib.rs`; Python `abi.py`, `ktypes.py`.
 
 ## 1. Quy ước gọi

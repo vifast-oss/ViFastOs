@@ -1,5 +1,10 @@
 # Chuỗi thu hồi sau exec (exec-teardown-chain)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **implemented** — chốt ở vòng 199–205, tài liệu hóa r234.
 Bằng chứng: `destroy_cap_object` + `vspace_in_use` (`crates/vifast-kernel`),
 test hồi quy `exec_teardown_chain_frees_tcb_vspace_frame` (vòng 205),

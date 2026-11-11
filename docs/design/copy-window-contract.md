@@ -1,5 +1,10 @@
 # Hợp đồng cửa sổ copy user (copy-window contract)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **implemented** — hình thành ở vòng 145–147, chốt thành hợp đồng r234.
 Nguồn sự thật duy nhất: `crates/vifast-abi/src/lib.rs` (`COPY_WINDOWS`,
 `copy_window_ok`, `USER_COPY_MAX`).

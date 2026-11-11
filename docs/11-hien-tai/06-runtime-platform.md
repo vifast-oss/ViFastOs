@@ -10,7 +10,7 @@ Nguồn: `crates/vifast-runtime/src/lib.rs`.
 - Console trait (không phụ thuộc vifast-arch);
 - tạo duy nhất root TCB và giao VSpace/Untyped;
 - Kernel được đặt trong static storage của platform, không nằm trên boot stack
-  (hiện khoảng 584 KiB với 128 object/64 cap/32 mapping);
+  (hiện khoảng 584 KiB với 168 object/128 cap root/16 cap task/64 mapping);
 - copy user image;
 - syscall action dispatch;
 - quản lý context switch khi block;

@@ -1,5 +1,10 @@
 # ViFastOs — Báo cáo bàn giao cho agent0
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](README.md).
+
 **Phiên bản:** 2026-11-06, cập nhật sau vòng 23 (ObjectDestroy)  
 **Repo:** `/Users/mps/dvchd/ViFastOs` (nhánh `main`)  
 **HEAD:** `c86de49` — `docs: document VFS stat-by-path`  
