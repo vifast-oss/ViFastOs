@@ -3140,3 +3140,46 @@ Lần chạy gate đầu vòng báo `FAILED steps: persist`; chạy riêng
 `python3 scripts/test-persist.py --check` **PASS**, chạy lại `./scripts/gate.sh`
 ⇒ **all steps passed**. Ghi là **flake** của bước `persist` (QEMU chậm khi máy
 đang chạy nhiều boot song song), không phải lỗi sản phẩm.
+
+## r306 — T-IPC: PC đã lưu của client **giống hệt** boot xanh ⇒ client đứng yên tại chỗ
+
+### Đèn `PC62 <hex>` (trait `Platform::context_pc`, default 0, chỉ x86_64 override)
+Cộng với `tcb_slot_at` (gen-safe, không dùng `unwrap_or(0)`).
+
+### Số đo (ps, 80 boot, **6 ca hỏng = 7,5 %**)
+| Boot | `SYSCALLS t=62` | `TICKS t=62` | `PC62` |
+|---|---:|---:|---|
+| xanh | 566 | 0 | `0x10000148e6` |
+| đỏ #3, #32, #74 | 555–557 | 1–2 | **`0x10000148e6`** (giống hệt xanh) |
+| đỏ #2 | 557 | 2 | `0x10000147d2` |
+| đỏ #9 | 556 | 2 | `0x10000147b0` |
+| đỏ #20 | 555 | 2 | `0x10000149f5` |
+
+### Kết luận
+1. **Phần lớn boot đỏ có PC y hệt boot xanh** ⇒ client **không chạy lạc chỗ nào**:
+   nó dừng đúng tại điểm mà boot xanh cũng dừng, chỉ **sớm hơn 9–11 syscall**.
+   ⇒ Loại "ngữ cảnh bị nạp sai / nhảy vào rác".
+2. Vài boot đỏ có PC lệch (`…47d2`, `…47b0`, `…49f5`) — vẫn trong cùng vùng mã, tức
+   cùng một đoạn (nghi là đoạn bao quanh `syscall`).
+3. `TICKS` 1–2 ở cả hai ⇒ client **không quay**; `SYSCALLS` đứng ⇒ **không được
+   chạy lại**. Mà `current[0]` lại **trỏ client** ⇒ nó không nằm trong ready queue
+   nên không bao giờ được `pick_on` nhặt lại.
+
+### Cơ chế nghi vấn (đã hẹp, chưa chứng minh)
+Đường preempt của hart 0 (timer) **lưu context** vào `contexts[slot]` rồi… không
+đưa tác vụ trở lại hàng đợi (`on_timer` trong runtime **không** gọi
+`yield_current_on`/`pick_on`; việc chuyển nằm ở platform), để `current[0]` trỏ
+client ở trạng thái `Running` ⇒ tác vụ **kẹt làm current nhưng không chạy**.
+Đây khớp mọi số đo: PC đứng yên, SYSCALLS đứng, TICKS ~0, `current[0]=62`.
+
+### Việc kế tiếp
+Đọc đường timer IRQ của x86 (`platform.rs` ~3506/3593) xem sau `on_timer` nó
+chuyển tác vụ bằng cách nào và **có** gọi `yield_current_on` cho `old` không.
+Nếu không: đó là chỗ sửa, và test là 80 boot phải về 0 ca hỏng.
+
+### Ghi chú vòng 50: `persist` flake lần thứ hai
+Gate báo `FAILED steps: persist`; chạy lại `./scripts/gate.sh` ngay sau đó ⇒
+**all steps passed**. Đây là lần thứ **hai** trong ngày gặp cùng hiện tượng
+(lần trước: chạy riêng `test-persist.py --check` PASS). Ghi nhận là flake của
+bước `persist` khi máy đang bận, không phải lỗi sản phẩm — nhưng nên xem lại
+timeout của bước này trong `scripts/gate.sh`.

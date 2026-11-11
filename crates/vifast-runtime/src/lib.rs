@@ -137,6 +137,11 @@ pub trait Platform: Arch + Console {
     fn context_for_user(entry: usize, stack: usize) -> Self::Context;
     /// Set the first integer argument (`a0`/`x0`/`rdi`) of a fresh context.
     fn set_context_arg0(context: &mut Self::Context, value: u64);
+    /// r306 (T-IPC): PC đã lưu trong context (chẩn đoán). Mặc định 0 = arch
+    /// chưa hỗ trợ; chỉ x86_64 override.
+    fn context_pc(_context: &Self::Context) -> u64 {
+        0
+    }
     /// D15 (r246): set the second integer argument (`a1`/`x1`/`rsi`) — the
     /// `argv` pointer of an exec'd program.
     fn set_context_arg1(context: &mut Self::Context, value: u64);
@@ -538,6 +543,18 @@ fn emit_boot_diag<A: Platform>(kernel: &vifast_kernel::Kernel) {
     vifast_kernel::klog!(A, "TICKS t=62 n={}", ticks);
     let fails = ENSURE_FAIL.load(core::sync::atomic::Ordering::Relaxed);
     vifast_kernel::klog!(A, "ENSURE FAIL n={}", fails);
+    // r306 (T-IPC): PC đã lưu của client. Trỏ ngay SAU lời gọi syscall cuối ⇒
+    // client chưa hề được chạy; trỏ chỗ khác ⇒ ngữ cảnh nạp sai.
+    match kernel.tcb_slot_at(62) {
+        Some(slot) => {
+            let contexts = A::contexts();
+            match contexts.get(slot as usize) {
+                Some(context) => vifast_kernel::klog!(A, "PC62 {:#x}", A::context_pc(context)),
+                None => vifast_kernel::klog!(A, "PC62 NOSLOT"),
+            }
+        }
+        None => vifast_kernel::klog!(A, "PC62 GONE"),
+    }
     let len = vifast_kernel::KILLED_LEN.load(core::sync::atomic::Ordering::Relaxed);
     let mut line = [0u8; 96];
     let mut at = 0usize;

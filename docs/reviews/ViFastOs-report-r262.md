@@ -1382,6 +1382,27 @@ Còn lại: client `Running`, `queued=0`, là `current[0]`, TICKS 1–3, SYSCALL
 ⇒ nó **được nhặt làm current nhưng gần như không chạy**. Đèn cuối cùng cần: **PC
 đã lưu của client** ở cuối boot.
 
+
+## r306 — T-IPC: PC đã lưu của client **giống hệt** boot xanh
+
+Đèn `PC62 <hex>` (trait `Platform::context_pc`, default 0, chỉ x86_64 override).
+Số đo (ps, **80 boot, 6 ca hỏng = 7,5 %**):
+
+| Boot | `SYSCALLS` | `TICKS` | `PC62` |
+|---|---:|---:|---|
+| xanh | 566 | 0 | `0x10000148e6` |
+| đỏ #3/#32/#74 | 555–557 | 1–2 | **`0x10000148e6`** |
+| đỏ #2/#9/#20 | 555–557 | 2 | `…47d2` / `…47b0` / `…49f5` |
+
+⇒ Client **không nhảy lạc chỗ**: phần lớn boot đỏ dừng **đúng điểm** boot xanh
+dừng, chỉ **sớm hơn 9–11 syscall**. `TICKS` ~0 ⇒ không quay; `SYSCALLS` đứng ⇒
+không được chạy lại; mà `current[0]` lại trỏ client ⇒ **kẹt làm current nhưng
+không chạy**, nên không bao giờ được `pick_on` nhặt lại.
+
+Cơ chế nghi vấn: đường preempt của hart 0 lưu context rồi không đưa tác vụ về
+hàng đợi (`on_timer` trong runtime không gọi `yield_current_on`/`pick_on`; việc
+chuyển nằm ở platform).
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1390,7 +1411,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-d0992ae2475041b295bff49f1b99a287759eca63627820816a9191ee59601664  docs/reviews/ViFastOs-report-r262.md
+ea96fafc81611321649d792e36e0a0eecd25a57998ff9a30b743fe498f06e3de  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

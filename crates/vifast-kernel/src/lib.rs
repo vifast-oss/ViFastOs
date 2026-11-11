@@ -1788,6 +1788,13 @@ impl Kernel {
         }
     }
 
+    /// r306 (T-IPC): slot context của tcb theo INDEX (chẩn đoán).
+    pub fn tcb_slot_at(&self, index: u8) -> Option<u8> {
+        let gen = self.objs.get(index as usize)?.gen;
+        self.context_slot(ObjRef { index, gen })
+            .map(|slot| slot as u8)
+    }
+
     /// r302 (T-IPC): trạng thái + cờ `queued` của tcb theo INDEX (chẩn đoán).
     pub fn tcb_state_at(&self, index: u8) -> Option<(ThreadState, bool)> {
         let gen = self.objs.get(index as usize)?.gen;

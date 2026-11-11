@@ -630,6 +630,7 @@ Thư mục này LÀ git repository. Các mốc hiện tại:
 - 026602f r301 (T-IPC): đèn KILLED — client KHÔNG bị huỷ; hẹp còn BlockedReply
 - 67b2232 r302 (T-IPC): boot đỏ kết thúc với client ở Running(2), boot xanh ở BlockedNotification(6)
 - 57a7048 r303 (T-IPC): ĐÍNH CHÍNH r302 — s=2 KHÔNG chứng minh client bị resume sai
+- 67ec8cd r304/r305 (T-IPC): client KHÔNG quay (TICKS≈0) và ensure_current_root không hỏng
 ### END GENERATED commits
 
 [HISTORICAL] Mốc 925f633 (vòng 20): per-hart ready queue + work stealing; VFS
