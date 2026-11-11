@@ -1529,6 +1529,25 @@ Artifact treo vẫn cùng chữ ký (thiếu `SMP WORKERS OK`, `done=0`, các c�
 `send_max > 0` ⇒ message kẹt hàng — hai cơ chế sửa khác nhau.
 300 boot với đèn mới: 0 treo (trong khoảng nhiễu, cần soak dài hơn).
 
+
+## r317–r318 — T33a: 5 ca treo cùng chữ ký "hệ đứng yên"
+
+```
+GATE QUEUE send_max=0 recv_max=1 ready0=0 ready1=0
+GATE STATES ready=0 running=1 brecv=2 bsend=0 bother=2 exited=0
+```
+⇒ không message nào chờ (`send_max=0`), đúng một tác vụ chờ nhận (root trong
+`recv_message`), **không còn tác vụ Ready** nào, một tác vụ đang giữ CPU
+(nghi worker C busy-spin), hai tác vụ chờ kiểu khác (nghi worker a/b đã `wait(2)`).
+
+Đèn mới: `GATE STATES` (histogram trạng thái TCB, in **lặp mỗi 500 tick** thay vì
+one-shot) và `GATE SENDFAIL n=` (`vifast_kernel::SEND_FAILS`) — phân biệt
+"chưa ai gửi" với "gửi nhưng bị kernel từ chối" (hàng đợi đầy/InvalidCap), vì
+người gọi thường `let _ = send(...)`.
+
+Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`): soak 600 boot: 2 treo (GATE QUEUE);
+600 boot: 3 treo (GATE STATES). ⇒ p ≈ 0,3–0,5 % dưới tải 3 luồng.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1537,7 +1556,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-9b7f6f8058a9db181ce049c138e3ae8eff3f16282f2ecd03cdd7a975413ed379  docs/reviews/ViFastOs-report-r262.md
+506876df350a00938d3fc8589b453b5be9375d41e7dea2dcbbd4c68fc1343d0b  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

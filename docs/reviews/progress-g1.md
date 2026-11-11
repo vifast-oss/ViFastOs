@@ -3464,3 +3464,52 @@ link=1 sym=1 tlb=1 post=1`, **không** `SMP WORKERS OK`, **không** `WORKER SEND
 ### Số đo vòng này
 300 boot song song (mps) với đèn mới: **0 treo** (trong khoảng nhiễu; cần soak dài
 hơn để bắt). Đèn đã sẵn sàng cho lần bắt tới.
+
+## r317–r318 — T33a: 3 ca treo cùng một chữ ký "hệ đứng yên": không Ready, root chờ recv, không ai gửi
+
+### Chữ ký (3/3 ca giống hệt, mps, x86_64 TCG, soak 3 luồng song song)
+```
+GATE QUEUE send_max=0 recv_max=1 ready0=0 ready1=0
+GATE STATES ready=0 running=1 brecv=2 bsend=0 bother=2 exited=0
+GATE STALL ticks=200 done=0 fs=1 fsl=1 link=1 sym=1 tlb=1 post=1
+```
+Artifact: `artifacts/r319/hang-w2-164.serial`, `hang-w2-200.serial`,
+`artifacts/r320/hang-w1-67.serial`, `hang-w2-26.serial`, `hang-w3-42.serial`
+(tổng **5 ca**, cả 5 cùng chữ ký).
+
+Đọc:
+- `send_max = 0` ⇒ **không có message nào đang chờ** trong BẤT KỲ endpoint.
+- `recv_max = 1` ⇒ **đúng một** tác vụ đang chờ nhận — root trong `recv_message`.
+- `ready = 0` ⇒ **không còn tác vụ nào chạy được** trên cả hai hart.
+- `running = 1` ⇒ một tác vụ đang giữ CPU (nghi worker C đang busy-spin).
+- `brecv = 2` ⇒ root + một tác vụ khác chờ recv (server).
+- `bother = 2` ⇒ hai tác vụ chờ "kiểu khác" (nghi worker a/b đã xong và đang `wait(2)`).
+
+⇒ Trạng thái cuối là **deadlock im lặng**: root chờ báo cáo, worker C quay, không ai
+Ready, không message nào trong hàng. Khớp giả thuyết:
+**báo cáo của worker C bị mất hoặc C không bao giờ thoát vòng busy-spin**
+(C chỉ thoát khi `SUSPEND_FLAG` được root set bởi demo suspend/resume, mà demo đó
+chạy khi root nhận `WORKER_LABEL_C_RUNNING`).
+
+### Đèn mới
+- `GATE STATES ready/running/brecv/bsend/bother/exited` — histogram trạng thái TCB
+  (`Kernel::thread_state_counts`), in **lặp mỗi 500 tick** (không còn one-shot như
+  r312; bản rà soát đã chỉ ra one-shot ở tick 200 là ảnh chụp quá sớm).
+- `GATE SENDFAIL n=<n>` — số lần `send` trả lỗi trong boot
+  (`vifast_kernel::SEND_FAILS`). Đây là đèn phân biệt **"chưa ai gửi"** với
+  **"đã gửi nhưng bị kernel từ chối"** (hàng đợi đầy `MAX_QUEUE=8`, `InvalidCap`,
+  `OutOfMemory`) — mà người gọi trong dự án thường `let _ = send(...)` nên lỗi
+  tạm thành mất message vĩnh viễn.
+
+### Số đo vòng này (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, timeout 150 s)
+| Lượt | boot | treo |
+|---|---:|---:|
+| soak 600 (3 luồng) với `GATE QUEUE` | 600 | **2** |
+| soak đang chạy với `GATE STATES` | 600 | **3** (bắt sớm) |
+⇒ p ≈ 0,3–0,5 % dưới tải 3 luồng trên mps.
+
+### Việc kế tiếp
+Soak với `GATE SENDFAIL`: nếu ca treo có `SENDFAIL > 0` ⇒ **message bị kernel từ
+chối** (sửa: người gửi phải thử lại / hàng đợi phải đủ). Nếu `SENDFAIL = 0` ⇒
+message **chưa bao giờ được gửi** ⇒ lỗi nằm ở worker C không chạy tới chỗ gửi
+(affinity/scheduling), hoặc root bỏ sót message đã nhận.

@@ -519,9 +519,6 @@ static ENSURE_FAIL: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU3
 
 /// r308: số lần đã hoãn thoát vì tác vụ đang chạy trong user mode.
 static EXIT_DEFERRALS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-/// r312 (T33a): đã in `GATE STALL` chưa (một lần mỗi boot).
-static GATE_STALL_PRINTED: core::sync::atomic::AtomicBool =
-    core::sync::atomic::AtomicBool::new(false);
 
 /// r304 (T-IPC): số tick timer rơi vào lúc client (tcb 62) đang là `current`.
 static TICKS_62: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
@@ -2211,11 +2208,21 @@ pub mod timer {
         // Ca treo T33a đo được: kernel vẫn tick tới 14 784 nhưng `PREEMPT OK`
         // không bao giờ in ⇒ phải biết cờ nào không bao giờ bật.
         #[cfg(feature = "test-exit")]
-        if hart == 0
-            && kernel.ticks_on(0) >= 200
-            && !GATE_STALL_PRINTED.swap(true, core::sync::atomic::Ordering::SeqCst)
-        {
+        if hart == 0 && kernel.ticks_on(0) >= 200 && kernel.ticks_on(0) % 500 == 0 {
             let (send_max, recv_max) = kernel.max_endpoint_queue();
+            let send_fails = vifast_kernel::SEND_FAILS.load(core::sync::atomic::Ordering::Relaxed);
+            vifast_kernel::klog!(A, "GATE SENDFAIL n={}", send_fails);
+            let states = kernel.thread_state_counts();
+            vifast_kernel::klog!(
+                A,
+                "GATE STATES ready={} running={} brecv={} bsend={} bother={} exited={}",
+                states[0],
+                states[1],
+                states[2],
+                states[3],
+                states[4],
+                states[5]
+            );
             vifast_kernel::klog!(
                 A,
                 "GATE QUEUE send_max={} recv_max={} ready0={} ready1={}",

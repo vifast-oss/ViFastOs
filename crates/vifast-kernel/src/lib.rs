@@ -360,6 +360,9 @@ pub static KILLED: [core::sync::atomic::AtomicU32; 16] =
     [const { core::sync::atomic::AtomicU32::new(0) }; 16];
 pub static KILLED_LEN: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
+/// r318 (T33a): số lần `send` trả lỗi trong cả boot (chẩn đoán).
+pub static SEND_FAILS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
 impl Kernel {
     pub const fn new_const() -> Kernel {
         Kernel {
@@ -1858,6 +1861,29 @@ impl Kernel {
             Kind::Endpoint(ref endpoint) => Some(endpoint),
             _ => None,
         }
+    }
+
+    /// r317 (T33a): đếm tcb theo trạng thái, gói trong vài con số đáng đọc.
+    /// `(ready, running, blocked_recv, blocked_send, blocked_other, exited)`.
+    pub fn thread_state_counts(&self) -> [u16; 6] {
+        let mut counts = [0u16; 6];
+        for index in 0..128u8 {
+            let Some(gen) = self.objs.get(index as usize).map(|object| object.gen) else {
+                continue;
+            };
+            let Some(tcb) = self.tcb(ObjRef { index, gen }) else {
+                continue;
+            };
+            match tcb.state {
+                ThreadState::Ready => counts[0] += 1,
+                ThreadState::Running => counts[1] += 1,
+                ThreadState::BlockedRecv => counts[2] += 1,
+                ThreadState::BlockedSend => counts[3] += 1,
+                ThreadState::Inactive | ThreadState::Exited => counts[5] += 1,
+                _ => counts[4] += 1,
+            }
+        }
+        counts
     }
 
     /// r315 (T33a): độ dài LỚN NHẤT trong mọi endpoint (send, recv).
@@ -6628,7 +6654,14 @@ impl Kernel {
                         error: KError::Ok,
                     },
                     Ok(false) => UserAction::Blocked,
-                    Err(error) => UserAction::Return { value: 0, error },
+                    Err(error) => {
+                        // r318 (T33a): đếm send THẤT BẠI. Người gọi trong dự án
+                        // thường `let _ = send(...)` ⇒ lỗi tạm thành MẤT message
+                        // vĩnh viễn. Đây là đèn phân biệt "chưa ai gửi" với
+                        // "đã gửi nhưng bị từ chối".
+                        SEND_FAILS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                        UserAction::Return { value: 0, error }
+                    }
                 }
             }
             n if n == SyscallId::Call as u64 => {
