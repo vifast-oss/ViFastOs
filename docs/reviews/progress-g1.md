@@ -3232,3 +3232,37 @@ thoát, **không** đụng scheduler.
   kết luận loại trừ đó **chưa đủ mạnh**.
 - Các đèn `SYSCALLS`/`PICKS`/`ORPHAN` **không phải marker của gate** — harness
   không kiểm chúng.
+
+## r308 — VÁ XONG: hoãn cổng thoát ⇒ **0/80 boot thiếu marker** (trước: 5–9/80)
+
+### Bản vá
+`on_timer` (runtime), cổng thoát `test-exit`: nếu tick quyết định thoát rơi **đúng
+lúc tác vụ đang `Running` và PC nằm trong user mode** (`>= user_code_base()`) thì
+**hoãn thoát**, tối đa **2 lượt**; sau đó vẫn thoát bình thường.
+
+### Bản đầu SAI (bản rà soát bắt) — ghi lại làm bài học
+Tôi tiêu ngân sách hoãn ở **mọi tick** có `mid_user`, không chỉ khi cổng đã sẵn
+sàng ⇒ hết 4 lượt từ lâu trước tick 20 ⇒ **bản vá là NO-OP**.
+Số đo chứng minh: **9/80** vẫn đỏ (không khác nền 5–8/80).
+Sau khi sửa (chỉ xét khi `gate_ready`, chỉ khi `Running`, ngân sách 2):
+**0/80**.
+
+### Vì sao đúng
+- Chỉ `Running` (không phải `Blocked`): tác vụ Blocked vẫn giữ `rip` user nên nếu
+  hoãn theo PC không thôi thì sẽ hoãn mãi và có thể làm `pick_on` trả `None`
+  ⇒ `SMP NO READY` (chữ ký đỏ MỚI).
+- Chỉ khi `gate_ready`: nếu không, ngân sách bị tiêu trước tick 20 (đúng lỗi trên).
+- Ngân sách 2: đủ để client in nốt `IPC RIGHTS OK`/`shell> `, và không làm lệch
+  `PREEMPT OK (ticks=…)` quá xa (chỉ +≤2 tick).
+- Không đụng `reload_timer`/`ack_timer`/`yield_current_on`/`pick_on`: ACPI/LAPIC
+  vẫn được EOI đúng, không có nguy cơ treo vì mất tick.
+
+### Số đo cuối (ps, x86_64, MAX_IO=128, `VIFAST_NO_RETRY=1`, 80 boot)
+| Bản | thiếu `IPC RIGHTS OK` |
+|---|---:|
+| trước vá (r307) | 5–9 / 80 |
+| bản vá SAI (no-op) | **9 / 80** |
+| **bản vá đúng (r308)** | **0 / 80** |
+
+⇒ Kết luận của r307 (đây là **cổng thoát cắt ngang client**, không phải lỗi
+scheduler) được **xác nhận bằng can thiệp**: sửa đúng chỗ đó thì hiện tượng mất.

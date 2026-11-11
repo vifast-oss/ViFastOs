@@ -1425,6 +1425,23 @@ khi `old` là tác vụ user đang chạy; không đụng scheduler.
 `CTX SLOT NONE`) chưa đủ mạnh vì marker đó ở đường nạp, không phải đường lưu;
 các đèn `SYSCALLS`/`PICKS`/`ORPHAN` không phải marker của gate.
 
+
+## r308 — VÁ XONG: hoãn cổng thoát ⇒ **0/80** boot thiếu marker
+
+Cổng thoát `test-exit` trong `on_timer`: nếu tick quyết định thoát rơi đúng lúc
+tác vụ đang `Running` và PC trong user mode thì **hoãn thoát tối đa 2 lượt**.
+
+| Bản | thiếu `IPC RIGHTS OK` (ps, 80 boot) |
+|---|---:|
+| trước vá (r307) | 5–9 / 80 |
+| bản vá SAI — tiêu ngân sách ở mọi tick (no-op) | **9 / 80** |
+| **bản vá đúng (r308)** | **0 / 80** |
+
+Bản đầu của tôi là **no-op** và bản rà soát bắt được; số đo 9/80 chứng minh.
+Sau khi chỉ xét khi `gate_ready`, chỉ khi `Running`, ngân sách 2 ⇒ **0/80**.
+Đây là **xác nhận bằng can thiệp** cho kết luận r307: nguyên nhân là cổng thoát
+cắt ngang client, không phải scheduler.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1433,7 +1450,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-2043ff426d5a951041f26f742205e35545d92601547acb174e60736a665b71f3  docs/reviews/ViFastOs-report-r262.md
+53af396dda9de02c962fd220b7f420b449667e1a238a693c9f095576e9d4f9ca  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

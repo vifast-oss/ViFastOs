@@ -517,6 +517,9 @@ static SYSCALL_COUNT: [core::sync::atomic::AtomicU32; 128] =
 /// r305 (T-IPC): số lần `ensure_current_root` thất bại trong cả boot.
 static ENSURE_FAIL: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
+/// r308: số lần đã hoãn thoát vì tác vụ đang chạy trong user mode.
+static EXIT_DEFERRALS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
 /// r304 (T-IPC): số tick timer rơi vào lúc client (tcb 62) đang là `current`.
 static TICKS_62: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
@@ -2200,8 +2203,55 @@ pub mod timer {
                 );
             }
         }
+        // r308 (T-IPC): hoãn thoát khi tick quyết định rơi ĐÚNG lúc tác vụ
+        // đang CHẠY trong USER mode (để nó kịp in nốt marker cuối).
+        //
+        // r308b — bản đầu SAI (bản rà soát bắt): tôi tiêu ngân sách ở MỌI tick
+        // `mid_user` chứ không chỉ khi cổng đã sẵn sàng, nên hết 4 lượt trước
+        // tick 20 ⇒ bản vá là NO-OP. Nay: chỉ xét khi `gate_ready`, chỉ khi tác
+        // vụ đang `Running` (không phải Blocked — Blocked vẫn giữ rip user),
+        // và ngân sách chỉ 2 lượt. Đặt SAU `ack_timer` là không được: phải giữ
+        // nguyên đường reload/ack/yield/pick bên dưới.
         #[cfg(feature = "test-exit")]
-        if hart == 0
+        let gate_ready = hart == 0
+            && kernel.ticks_on(0) >= TIMER_TICKS
+            && TEST_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && TEST_FS_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && TEST_FS_LARGE_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && TEST_HARD_LINK_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && TEST_SYMLINK_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && TEST_TLB_DONE.load(core::sync::atomic::Ordering::SeqCst)
+            && A::post_idle_ready();
+        #[cfg(feature = "test-exit")]
+        let defer_exit = if gate_ready {
+            let current = kernel.current_on(hart);
+            let running = current
+                .and_then(|tcb| kernel.tcb_state_at(tcb.index))
+                .map(|(state, _)| state == vifast_abi::ThreadState::Running)
+                .unwrap_or(false);
+            let mid_user = current
+                .and_then(|tcb| kernel.context_slot(tcb))
+                .map(|slot| {
+                    let contexts = A::contexts();
+                    contexts
+                        .get(slot as usize)
+                        .map(|context| A::context_pc(context) >= A::user_code_base() as u64)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            let done = EXIT_DEFERRALS.load(core::sync::atomic::Ordering::Relaxed);
+            if running && mid_user && done < 2 {
+                EXIT_DEFERRALS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(feature = "test-exit")]
+        if gate_ready
+            && !defer_exit
             && TEST_DONE.load(core::sync::atomic::Ordering::SeqCst)
             && TEST_FS_DONE.load(core::sync::atomic::Ordering::SeqCst)
             && TEST_FS_LARGE_DONE.load(core::sync::atomic::Ordering::SeqCst)
