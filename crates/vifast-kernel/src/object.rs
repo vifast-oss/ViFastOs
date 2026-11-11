@@ -151,6 +151,11 @@ pub struct Queue {
 }
 
 impl Queue {
+    /// r315 (T33a): số phần tử đang chờ (chẩn đoán).
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
     pub fn push(&mut self, value: ObjRef) -> bool {
         if self.len as usize >= MAX_QUEUE {
             return false;

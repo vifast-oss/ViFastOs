@@ -1513,6 +1513,22 @@ Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, timeout 150 s):
 Kèm: máy `ps` **hết quota** (`QuotaExceeded` khi cargo build; `~` đã dùng 101 GB
 bởi dữ liệu không thuộc dự án) ⇒ từ đây soak trên `mps`.
 
+
+## r314–r316 — T33a: bản vá "thử lại send" là NO-OP (đã revert); thêm đèn `GATE QUEUE`
+
+Giả thuyết worker mất báo cáo vì `send` lỗi tạm thời: đã vá `worker_loop` (a/b) và
+hai chỗ của worker C thành gửi-lại. Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`,
+soak 3 luồng song song, 300 boot): chưa vá **3–4** treo; vá a/b **3**; vá a/b+C
+**1**; và **0 lần** `WORKER SEND RETRY` ⇒ `send` **không** lỗi ⇒ bản vá không chạm
+cơ chế ⇒ **REVERT theo D18**.
+
+Artifact treo vẫn cùng chữ ký (thiếu `SMP WORKERS OK`, `done=0`, các cờ FS = 1).
+
+Đèn mới `GATE QUEUE send_max= recv_max= ready0= ready1=` (kernel
+`max_endpoint_queue` + `Queue::len`): `send_max = 0` ⇒ worker chưa gửi;
+`send_max > 0` ⇒ message kẹt hàng — hai cơ chế sửa khác nhau.
+300 boot với đèn mới: 0 treo (trong khoảng nhiễu, cần soak dài hơn).
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1521,7 +1537,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-c3bc10580e52fae28dc933afde3ff3ca4c6c2f7f06b55ef6e4ed939c4de68df2  docs/reviews/ViFastOs-report-r262.md
+9b7f6f8058a9db181ce049c138e3ae8eff3f16282f2ecd03cdd7a975413ed379  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

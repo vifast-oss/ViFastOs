@@ -3428,3 +3428,39 @@ không in. Kernel vẫn tick (14 784 lần ở artifact trước), client vẫn 
 2. Xem worker gửi báo cáo bằng gì (send trên notification? label nào) và vì sao có
    thể mất: notification one-shot bị coalesce, hoặc worker bị chặn trước khi send.
 3. Bản vá khả dĩ: worker gửi lại (retry) khi bị `WouldBlock`; root không chặn vô hạn.
+
+## r314–r316 — T33a: bản vá "thử lại send" là **no-op** (đã REVERT); thêm đèn `GATE QUEUE`
+
+### Bản vá thử lại send — KHÔNG chứng minh được, đã revert (D18)
+Giả thuyết: worker a/b/c gửi báo cáo bằng `send(1, label, …)` và bản cũ `let _ =`
+nuốt lỗi ⇒ mất báo cáo vĩnh viễn. Đã vá cả `worker_loop` (a/b) và hai chỗ của
+worker C thành "gửi lại tới khi được nhận".
+
+Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, soak **3 luồng song song**, 300 boot):
+| Bản | treo |
+|---|---:|
+| chưa vá | **3–4 / 300** |
+| vá a/b | **3 / 300** |
+| vá a/b + C | **1 / 300** |
+Và **0 lần** `WORKER SEND RETRY` xuất hiện ⇒ `send` **không hề lỗi** ⇒ bản vá
+không chạm cơ chế. Theo D18: **REVERT** (đã `git checkout`).
+
+### Artifact treo vẫn cùng chữ ký
+`artifacts/r317/hang-w2-38.serial`: `shell> GATE STALL ticks=200 done=0 fs=1 fsl=1
+link=1 sym=1 tlb=1 post=1`, **không** `SMP WORKERS OK`, **không** `WORKER SEND RETRY`,
+`ROOT READY` có ở dòng 106, `SCHED CTX OK` dòng 105.
+⇒ Root chặn trong `recv` không phải vì send lỗi. Phải phân biệt:
+**"worker chưa gửi"** (hàng đợi rỗng) với **"message gửi rồi mà kẹt"** (hàng đợi > 0).
+
+### Đèn mới `GATE QUEUE` (kernel + runtime)
+- `Kernel::max_endpoint_queue() -> (send_max, recv_max)` — quét mọi endpoint lấy
+  độ dài hàng đợi lớn nhất (`Queue::len` mới thêm).
+- `Kernel::endpoint_queue_lens(obj)` — cho một endpoint cụ thể.
+- `on_timer` in thêm một dòng ngay trước `GATE STALL`:
+  `GATE QUEUE send_max=<n> recv_max=<n> ready0=<0/1> ready1=<0/1>`.
+Đọc: `send_max = 0` ⇒ **không ai gửi** (worker chưa chạy tới chỗ send); `send_max > 0`
+⇒ có message **kẹt hàng** (gửi rồi mà không ai nhận) — hai cơ chế sửa khác nhau.
+
+### Số đo vòng này
+300 boot song song (mps) với đèn mới: **0 treo** (trong khoảng nhiễu; cần soak dài
+hơn để bắt). Đèn đã sẵn sàng cho lần bắt tới.

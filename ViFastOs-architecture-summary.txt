@@ -646,6 +646,7 @@ Thư mục này LÀ git repository. Các mốc hiện tại:
 - b40a1b1 r308 (T-IPC): VÁ XONG — hoãn cổng thoát khi client đang chạy user mode; 0/80 boot thiếu marker
 - 6f6ab5b r309 (T31): giao lặp message PAGER2 — bảng quyết định thuần + marker PAGER2 DUP
 - 387179a r311 (T33a): đính chính — SMP AP STATE vô dụng cho ca treo, T33a vẫn MỞ
+- f00593e r312/r313 (T33a): bắt được treo thật — thiếu SMP WORKERS OK, không phải treo kernel
 ### END GENERATED commits
 
 [HISTORICAL] Mốc 925f633 (vòng 20): per-hart ready queue + work stealing; VFS

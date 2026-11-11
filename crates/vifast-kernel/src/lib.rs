@@ -1860,6 +1860,34 @@ impl Kernel {
         }
     }
 
+    /// r315 (T33a): độ dài LỚN NHẤT trong mọi endpoint (send, recv).
+    /// `send_max == 0` ⇒ không ai gửi gì đang chờ; `send_max > 0` ⇒ có message
+    /// kẹt hàng (đã gửi mà không ai nhận). Phân biệt "worker chưa gửi" với
+    /// "message bị kẹt" khi root chặn trong `recv`.
+    pub fn max_endpoint_queue(&self) -> (usize, usize) {
+        let mut send_max = 0usize;
+        let mut recv_max = 0usize;
+        for index in 0..MAX_OBJECTS {
+            let reference = ObjRef {
+                index: index as u8,
+                gen: self.objs[index].gen,
+            };
+            if let Some(endpoint) = self.endpoint(reference) {
+                send_max = send_max.max(endpoint.send.len());
+                recv_max = recv_max.max(endpoint.recv.len());
+            }
+        }
+        (send_max, recv_max)
+    }
+
+    /// r315 (T33a): độ dài hàng đợi send/recv của endpoint (chẩn đoán).
+    /// Dùng để phân biệt "worker chưa gửi" (0,0) với "message kẹt hàng"
+    /// (send > 0) khi root chặn trong `recv`.
+    pub fn endpoint_queue_lens(&self, r: ObjRef) -> Option<(usize, usize)> {
+        let endpoint = self.endpoint(r)?;
+        Some((endpoint.send.len(), endpoint.recv.len()))
+    }
+
     pub fn endpoint_mut(&mut self, r: ObjRef) -> Option<&mut Endpoint> {
         match self.get_mut(r)?.kind {
             Kind::Endpoint(ref mut endpoint) => Some(endpoint),

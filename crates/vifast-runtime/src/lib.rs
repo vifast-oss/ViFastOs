@@ -2215,6 +2215,15 @@ pub mod timer {
             && kernel.ticks_on(0) >= 200
             && !GATE_STALL_PRINTED.swap(true, core::sync::atomic::Ordering::SeqCst)
         {
+            let (send_max, recv_max) = kernel.max_endpoint_queue();
+            vifast_kernel::klog!(
+                A,
+                "GATE QUEUE send_max={} recv_max={} ready0={} ready1={}",
+                send_max,
+                recv_max,
+                kernel.has_ready_on(0) as u8,
+                kernel.has_ready_on(1) as u8
+            );
             vifast_kernel::klog!(
                 A,
                 "GATE STALL ticks={} done={} fs={} fsl={} link={} sym={} tlb={} post={}",
