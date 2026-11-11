@@ -94,9 +94,12 @@ docs/       tài liệu sống, thiết kế tham chiếu và báo cáo lịch s
 
 - **Vi** — Việt Nam: làm bởi người Việt, cho tiếng Việt (bộ gõ, giọng đọc, và
   hệ điều hành này).
-- **Vi** — còn là *vi* trong *vi xử lý*: **nhỏ**. Kernel `no_std`, hạn mức tĩnh
-  rõ ràng thay vì phình to.
+- **Vi** — còn là *vi* trong *vi xử lý*: **nhỏ**. Phạm vi hẹp, kernel tối giản,
+  dễ đọc và dễ kiểm chứng.
 - **Fast** — nhanh: Rust biên dịch ra mã máy native, không máy ảo, không GC.
+
+> Hạn mức tĩnh, một khoá toàn cục… chỉ là giới hạn của bản hiện tại và sẽ được
+> cải thiện dần — không phải ý nghĩa của tên.
 
 Giải thích đầy đủ: [vifast.org/#ten-goi](https://vifast.org/#ten-goi).
 ViFastOs **không liên kết** với VinFast hay bất kỳ công ty nào khác.
