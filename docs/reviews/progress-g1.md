@@ -3183,3 +3183,52 @@ Gate báo `FAILED steps: persist`; chạy lại `./scripts/gate.sh` ngay sau đ�
 (lần trước: chạy riêng `test-persist.py --check` PASS). Ghi nhận là flake của
 bước `persist` khi máy đang bận, không phải lỗi sản phẩm — nhưng nên xem lại
 timeout của bước này trong `scripts/gate.sh`.
+
+## r307 — T-IPC KHÔNG phải lỗi scheduler: là **cổng thoát của test-exit** cắt ngang client
+
+### Đèn `ORPHAN n=` (bất biến "mỗi tcb `Running` phải là `current` của đúng một hart")
+| | xanh | đỏ (5 ca) |
+|---|---|---|
+| `ORPHAN` | **0** | **0** |
+| `STATE t=62` | s=6 (BlockedNotification) | s=2 (Running) |
+| `SYSCALLS` | 566 | 556–558 |
+
+⇒ **Bất biến đúng ở cả hai**: client `Running` **đúng là** `current[0]`. Vậy
+**không** có tác vụ nào bị bỏ rơi khỏi hàng đợi. Giả thuyết scheduler của r306
+**SAI** và bị **RÚT LẠI**.
+
+### Nguyên nhân thật (bản rà soát chỉ ra, khớp 100 % số đo)
+`A::exit(0)` trong `on_timer` nằm **TRƯỚC** `yield_current_on` + `pick_on`, và
+điều kiện thoát (`TEST_*`, `post_idle_ready`, `ticks >= TIMER_TICKS`) **không hề
+nhắc tới tcb 62**. Nếu tick quyết định rơi **đúng lúc `old == 62`** thì kernel
+thoát trong khi client đang dở:
+- `STATE s=2 (Running)`, `q=0`, `current[0] = 62` — vì chưa kịp yield/pick;
+- `TICKS[62] = 1–2` — chỉ vài tick của cửa sổ cuối;
+- `PC62` **y hệt** boot xanh — vì client chưa chạy thêm bước nào;
+- `SYSCALLS` hụt 9–11 — vì nó **chưa kịp** chạy phần cuối;
+- không fault, không kill, kernel in hết — vì đây là đường thoát **bình thường**.
+
+⇒ "Boot đỏ" mà tôi săn 6 vòng **không phải lỗi sản phẩm**: đó là **test-exit
+thoát đúng lúc client đang chạy**, nên marker `IPC RIGHTS OK` của client
+không kịp in. Xanh/đỏ chỉ khác nhau ở chỗ tick quyết định có rơi vào client hay
+không (`TICKS=0` ⇒ xanh).
+
+### Vì sao trước đây tôi không thấy
+Tôi đọc `on_timer` của runtime và thấy **không** có `yield_current_on`/`pick_on`
+— nhưng chúng nằm ở **cuối** hàm (sau `reload/ack`), ngoài đoạn tôi đọc. Bản rà
+soát chỉ ra đúng: `yield_current_on` (dòng ~2363) + `pick_on` (~2366) **đã có từ
+commit 74b7d75**. Mục "việc kế tiếp" của r306 vì thế dẫn tới một bản vá **trùng**.
+
+### Đề xuất sửa (chưa làm — cần đo)
+Cổng thoát nên **hoãn một tick** nếu `old` là tác vụ user đang chạy (hoặc chỉ
+thoát khi `current[0]` không phải tcb 62 / client đang Blocked). Sửa ở điều kiện
+thoát, **không** đụng scheduler.
+
+### Ghi nhận thêm của bản rà soát
+- r302 nói "`yield_current_on` ép Ready ⇒ double-run": **SAI** — nó chỉ đổi
+  `Running → Ready`, còn Blocked/Faulted giữ nguyên và không enqueue.
+- r303 loại giả thuyết slot dựa trên `CTX SLOT NONE`, nhưng marker đó chỉ tồn tại
+  ở đường **nạp**, không phải đường **lưu** (`context_slot(..).unwrap_or(0)`) ⇒
+  kết luận loại trừ đó **chưa đủ mạnh**.
+- Các đèn `SYSCALLS`/`PICKS`/`ORPHAN` **không phải marker của gate** — harness
+  không kiểm chúng.

@@ -1403,6 +1403,28 @@ Cơ chế nghi vấn: đường preempt của hart 0 lưu context rồi không �
 hàng đợi (`on_timer` trong runtime không gọi `yield_current_on`/`pick_on`; việc
 chuyển nằm ở platform).
 
+
+## r307 — T-IPC KHÔNG phải lỗi scheduler: là cổng thoát `test-exit` cắt ngang client
+
+Đèn `ORPHAN n=` (bất biến "mỗi tcb `Running` phải là `current` của đúng một
+hart"): **0 ở CẢ boot xanh lẫn boot đỏ**. Vậy client `Running` **đúng là**
+`current[0]` ⇒ không tác vụ nào bị bỏ rơi khỏi hàng đợi ⇒ **giả thuyết scheduler
+của r306 bị RÚT LẠI**.
+
+Nguyên nhân thật: `A::exit(0)` trong `on_timer` nằm **TRƯỚC**
+`yield_current_on`/`pick_on`, và điều kiện thoát **không nhắc tcb 62**. Tick quyết
+định rơi đúng lúc `old == 62` ⇒ kernel thoát khi client đang dở ⇒ `STATE s=2
+q=0`, `current[0]=62`, `TICKS` 1–2, `PC62` **y hệt** boot xanh, `SYSCALLS` hụt
+9–11, không fault/không kill.
+
+⇒ "Boot đỏ" (marker `IPC RIGHTS OK` thiếu) **không phải lỗi sản phẩm** — chỉ là
+test-exit thoát đúng lúc client đang chạy. Đề xuất sửa: **hoãn thoát một tick**
+khi `old` là tác vụ user đang chạy; không đụng scheduler.
+
+Đính chính kèm: r302 ("`yield_current_on` ép Ready") SAI; r303 (loại slot dựa
+`CTX SLOT NONE`) chưa đủ mạnh vì marker đó ở đường nạp, không phải đường lưu;
+các đèn `SYSCALLS`/`PICKS`/`ORPHAN` không phải marker của gate.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1411,7 +1433,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-ea96fafc81611321649d792e36e0a0eecd25a57998ff9a30b743fe498f06e3de  docs/reviews/ViFastOs-report-r262.md
+2043ff426d5a951041f26f742205e35545d92601547acb174e60736a665b71f3  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

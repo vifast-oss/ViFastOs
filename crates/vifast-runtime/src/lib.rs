@@ -543,6 +543,31 @@ fn emit_boot_diag<A: Platform>(kernel: &vifast_kernel::Kernel) {
     vifast_kernel::klog!(A, "TICKS t=62 n={}", ticks);
     let fails = ENSURE_FAIL.load(core::sync::atomic::Ordering::Relaxed);
     vifast_kernel::klog!(A, "ENSURE FAIL n={}", fails);
+    // r307 (T-IPC): BẤT BIẾN — mỗi tcb `Running` phải là `current` của đúng một
+    // hart. Ca vi phạm = tác vụ bị bỏ rơi khỏi hàng đợi mà vẫn mang trạng thái
+    // Running ⇒ không bao giờ được `pick_on` nhặt lại. Đây là đèn bắt đúng lớp
+    // T-IPC; `check_invariants` không có luật này.
+    {
+        let mut orphan = 0u32;
+        for index in 0..128u8 {
+            let Some((state, queued)) = kernel.tcb_state_at(index) else {
+                continue;
+            };
+            if state != vifast_abi::ThreadState::Running || queued {
+                continue;
+            }
+            let mut is_current = false;
+            for hart in 0..4usize {
+                if kernel.current_on(hart).map(|tcb| tcb.index) == Some(index) {
+                    is_current = true;
+                }
+            }
+            if !is_current {
+                orphan += 1;
+            }
+        }
+        vifast_kernel::klog!(A, "ORPHAN n={}", orphan);
+    }
     // r306 (T-IPC): PC đã lưu của client. Trỏ ngay SAU lời gọi syscall cuối ⇒
     // client chưa hề được chạy; trỏ chỗ khác ⇒ ngữ cảnh nạp sai.
     match kernel.tcb_slot_at(62) {
