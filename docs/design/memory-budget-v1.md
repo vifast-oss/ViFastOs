@@ -1,5 +1,10 @@
 # Ngân sách bộ nhớ để mở pager v2 (đề xuất vòng 26)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **implemented-partial** (cập nhật r234). Đã làm: cspace task
 48→16 slot, object 147→168, TCB 18→24, thu hồi trang staging module
 (syscall 55), arena 96 trang cho aarch64/x86. Chưa làm: free-page

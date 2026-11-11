@@ -1,5 +1,10 @@
 # Thiết kế pager protocol v2 (dự thảo cho vòng 24)
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](../00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](../README.md).
+
 Trạng thái: **implemented** (cập nhật r234). `PAGER4`/`DEMAND LOAD OK`
 trên cả 3 arch, `DEMAND VFSLOAD OK` nạp trang từ FS, evict/refault có
 marker riêng, harness đã bỏ loại trừ x86. Mục tiêu: thay demo pager hai client

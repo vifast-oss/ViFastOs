@@ -1,5 +1,10 @@
 # ViFastOs cho sinh viên năm nhất
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](README.md).
+
 Tài liệu này giải thích **các từ viết tắt và khái niệm** đang dùng trong ViFastOs
 theo cách gần gũi nhất có thể. Mục tiêu không phải biến bạn thành chuyên gia
 kernel sau một lần đọc, mà là giúp bạn:

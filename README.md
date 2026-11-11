@@ -11,10 +11,12 @@
 > (RISC-V, ARM, x86_64), chương trình đã ở được phòng riêng,
 > gọi điện cho nhau được, lưu file được, gõ lệnh được.
 > Nhưng đây vẫn là **“nhà mẫu demo”**, chưa phải nhà để ở thật:
-> chưa mạng, chưa màn hình đẹp, driver mới chỉ chạy trên QEMU.
+> mạng/GPU/bàn phím mới ở mức tối thiểu, chưa có compositor hay ứng dụng thật,
+> driver mới chạy trên QEMU.
 >
-> Trạng thái trong file này cập nhật tới `HEAD 61f0f2e (r274, 10/11/2026)`.
-> README cũ ghi `51 syscall` là đã cũ — nay là **58 syscall (0…57), 58/58 đã làm thật**.
+> Trạng thái trong file này cập nhật tới `HEAD 3008601 (r307, 11/11/2026)`.
+> Con số nhanh: **58 syscall (0…57)**, **388 host test**, **677 case âm**,
+> **3/3 kiến trúc PASS** cổng QEMU, persistence 7 phase.
 
 ## Dự án này là gì?
 
@@ -29,7 +31,7 @@
 * **Viết bằng Rust, `no_std`:** hầu hết crate kernel không dùng heap,
   bảng object đặt sẵn trong bộ nhớ tĩnh.
 
-## Đã làm được gì? (tính tới r274)
+## Đã làm được gì? (tính tới r307)
 
 ### 1. Bật máy được trên 3 máy ảo
 
@@ -116,36 +118,38 @@ Thêm nữa: demand paging có pager server (`PAGER OK / PAGER2 OK / PAGER3 OK /
 PAGER EVICT OK`), lỗi truy cập sai chỉ suspend thread đó (`USER FAULT`),
 không panic cả kernel. Timer IRQ / UART IRQ đã có object `IRQ + notification/ack`.
 
-## Có gì MỚI so với README cũ?
+### 6. Đã có mạng, GPU, bàn phím, nguồn ngẫu nhiên (VirtIO-MMIO v2)
 
-README cũ dừng ở khoảng `51 syscall`, `147 object / 18 TCB`,
-`pager 2 client`, `435 case âm`. Từ r249 tới r274 đã thêm:
+* **Net**: ARP, ICMP echo, UDP, DNS chọn bản ghi A, TCP listen/echo tối thiểu —
+  đủ để gate bắt tay TCP qua `hostfwd`. Marker: `VIRTIO NET PING REPLY`,
+  `VIRTIO TCP LISTEN OK`.
+* **GPU**: init + vẽ gradient/chữ 5×7; gate `--gpu-check` chụp màn hình và kiểm
+  pixel thật (`VIRTIO GPU DRAW OK`).
+* **Input**: bàn phím virtio → `RxQueue` của shell qua IRQ (`VIRTIO INPUT READY`).
+* **RNG**: `VIRTIO RNG READY`.
+* Đàm phán feature đã đúng thanh ghi (`0x14`/`0x10` đọc, `0x24`/`0x20` ghi) từ
+  r299; header net **12 byte** khi `VIRTIO_F_VERSION_1` từ r307 — chính là lỗi
+  từng làm đỏ cổng QEMU riscv64.
+* x86_64 **không** dùng VirtIO: đĩa qua ATA PIO, boot qua UEFI.
 
-* **r249:** `ps/jobs` qua `TcbInfo`, `cd/pwd` builtin, `uname/ps` là hard link.
-* **r254:** cổng interactive thật — đọc một luồng serial, gõ từng lệnh chờ đúng marker.
-  `help / cd+pwd / uname / ps / history / !!` PASS trên RISC-V + ARM.
-* **r259:** bất biến scheduler ở ranh giới về user
-  (RISC-V ~167k check, x86 ~95k check, 0 vi phạm), gate thêm bước `boundary`.
-* **r260:** đóng hết audit còn lại — `43 CLOSED, 3 UNREACHABLE, 0 OPEN`.
-* **r261:** x86 `GDT/TSS theo từng hart`, bỏ code gắn cứng chỉ chạy `hart 1`.
-* **r262:** `MAX_IO 256 → 128` vì `256` làm x86 hỏng boot `12/49 (~24%)` lỗi `FS V2 BAD`.
-  Về `128` thì `32/32` xanh. Đây là thu hẹp cửa sổ race, chưa phải sửa gốc.
-* **r263:** báo cáo G1 đầy đủ + khối `SHA-256` tự kiểm.
-  Lần đầu `gate full 10/10` xanh và `soak 100 × 3 arch = 298/300 (99.3%)`,
-  không còn lần nào hỏng `FS V2 OK`.
-* **r264:** thêm `TcbGrantCap = 57` + 6 host test khóa từng ràng buộc.
-* **r268:** `df` thành applet, con nhận cap VFS từ root (badge 1).
-* **r271 → r273 → r274 (drama T32/T33):**
-  r271 cho hủy được `TCB Exited` dù còn là `current` của hart idle.
-  Soak 100 treo sau `shell>` (thiếu `PREEMPT OK`) nên r273 hoàn nguyên.
-  Soak 40 trên bản đã hoàn nguyên vẫn treo đúng kiểu 1 lần,
-  chứng minh treo **có sẵn ~0.3–1% trên x86_64**, không phải do T32.
-  Nên r274 **áp lại bản vá** và mở **T33** để bắt bệnh treo `PREEMPT OK`.
+## Có gì mới (r275 → r307)?
 
-Nguồn thật mới nhất không phải file này mà là
-[docs/reviews/progress-g1.md](docs/reviews/progress-g1.md) và
-[ViFastOs-architecture-summary.txt](ViFastOs-architecture-summary.txt).
-[docs/00-hien-trang.md](docs/00-hien-trang.md) mới tới 06/11/2026 nên cũng đã cũ.
+* **r289:** mailbox maintenance dùng chung, TLB shootdown theo VA, bỏ IPI tự chế ở từng port.
+* **r295:** BUILD id trong log guest; gate chặn ảnh cũ (`T-BUILD`) trước mọi kiểm khác.
+* **r296–r296b (T26):** readdir đánh chỉ số theo slot; vá gốc lỗi 0/40 boot đỏ ở `MAX_IO=256`.
+* **r297–r307 (T-IPC):** truy "boot đỏ" 6 vòng; r307 chốt **không phải scheduler** mà
+  là cổng `test-exit` thoát đúng lúc client đang chạy user; **r308 đã vá** (hoãn exit một tick
+  khi task còn `Running`) — 0/80 boot thiếu marker.
+* **PR #14:** keymap virtio — Ctrl không còn gõ `a`, Shift đúng cho mọi phím,
+  `valid_label` đủ 8 label, dọn thư mục `ps@…` commit nhầm; 4 test keymap chống flaky.
+* **PR #15 (quét r299):** ~45 lỗi thật trên 12 crate (IPC/destroy, fs, virtio, root/elf,
+  3 platform, client/server); clippy về 0; docs 388 test; kèm bản vá header net 12 byte.
+* Gate hiện tại: `check-all.sh`, **677 case âm**, persistence 7 phase,
+  biến thể `test-destroy-smp` / `test-panic-hart1` / `test-check-boundary`.
+
+Nguồn thật mới nhất là [docs/00-hien-trang.md](docs/00-hien-trang.md) (cập nhật 11/11),
+[ViFastOs-architecture-summary.txt](ViFastOs-architecture-summary.txt) (tự sinh) và
+bản đồ tài liệu [docs/README.md](docs/README.md).
 
 ## Kiến trúc
 
@@ -179,6 +183,7 @@ Nguồn thật mới nhất không phải file này mà là
 | `vifast-pte` | Encode/decode PTE Sv39/x86/AArch64 | có | cấm |
 | `vifast-elf` | Parser ELF64, kiểm W^X/range/overlap | có | cấm |
 | `vifast-acpi` | Parser ACPI/MADT cho x86 SMP | có | cấm |
+| `vifast-maint` | Mailbox shootdown maintenance dùng chung | có | cấm |
 | `vifast-fs` | FS v3 có journal (64 inode, ảnh 4 MiB) | có | cấm |
 | `vifast-user` | Wrapper syscall cho user 3 arch | có | có (asm syscall) |
 | `vifast-arch-riscv64` | UART 16550, `rdtime`, SBI | có | có (MMIO/asm) |
@@ -194,7 +199,7 @@ Nguồn thật mới nhất không phải file này mà là
 | `vifast-server` | VFS server user-space | có | có |
 | `vifast-client` | Shell + demo client | có | có |
 | `vifast-bin` | Ảnh multicall `/bin/vf` (7 applet) | có | có |
-| `vifast-virtio` | VirtIO block/console | có | có |
+| `vifast-virtio` | VirtIO block/net/GPU/input/RNG | có | có |
 | `vifast-fsutil` | Tool host tạo ảnh đĩa (`mkfs/put/link`) | không | có (std) |
 
 Nguyên tắc: `vifast-kernel` **không** biết địa chỉ UART, thanh ghi,
@@ -265,26 +270,30 @@ PREEMPT OK
 Host test:
 
 ```bash
-cargo test -p vifast-kernel
-cargo test -p vifast-pte
-cargo test -p vifast-elf
-python3 scripts/test-harness-spec.py   # 632 case âm: PASS
+cargo test -p vifast-kernel      # 261 (2 #[ignore])
+cargo test -p vifast-fs          # 52
+cargo test -p vifast-elf         # 20
+cargo test -p vifast-abi         # 16
+cargo test -p vifast-pte         # 12
+cargo test -p vifast-virtio      # 11
+cargo test -p vifast-acpi        # 8
+cargo test -p vifast-arch        # 8
+# Tổng bảng 09-testing.md: 388 host test
+python3 scripts/test-harness-spec.py   # 677 case âm: PASS
+python3 scripts/check-docs.py && python3 scripts/gen-docs.py --check
 ```
 
 ## Độ ổn định hiện tại (trung thực)
 
-* Gate full tại r263–r274: **10/10 bước PASS**
-  (build, kernel-test, fuzz, QEMU, boundary, persist, docs, harness, fmt).
-* Soak dài:
-  `100 vòng × 3 arch = 298/300 (99.3%)` tại r262,
-  `30 × 3 = 90/90` tại r265,
-  `30 × 3 = 90/90` tại r269 sau khi `df` thành applet.
-  Gộp 3 đợt cuối: **chỉ 2 lỗi trên 480 lần boot**, không còn hỏng `FS V2 OK`.
-* Bệnh còn mở **T33**: treo sau `shell>`, thiếu `PREEMPT OK`,
-  chỉ gặp trên x86_64 tỉ lệ `~0.3–1%`.
-  Đã chứng minh không phải do bản vá T32.
-  Hướng nghi: hart phụ ngủ trong `wait_for_work` mà IPI không đánh thức,
-  hoặc đường `Sleep` trả về sai.
+* Đo trên `main` sau PR #15 (11/11/2026):
+  `test-qemu.py --repeat 2` → **6/6 PASS**, `test-destroy-smp --repeat 2`
+  → **6/6 PASS**, `test-persist.py` 7 phase PASS, `build.sh` exit 0, host test 388/388.
+* Soak lịch sử: `100 × 3 = 298/300 (99.3%)` tại r262, `90/90` tại r265 và r269;
+  trong 480 lần boot cuối chỉ 2 lỗi, không còn hỏng `FS V2 OK`.
+* **T33 vẫn mở:** treo sau `shell>`, thiếu `PREEMPT OK`, chỉ gặp x86_64 `~0.3–1%`;
+  cần soak dài để chốt nguyên nhân.
+* Cổng QEMU **nhạy tải máy**: chạy khi máy rảnh; gate chưa bật `--strict`
+  nên retry vẫn được tính xanh — nên siết.
 
 ## Những gì **chưa** có
 
@@ -294,20 +303,26 @@ python3 scripts/test-harness-spec.py   # 632 case âm: PASS
   chưa có libc, shell hệ thống đầy đủ, dynamic linking hay ứng dụng thật.
 * CNode mới bảng phẳng `16 slot`, chưa có guard, nhiều cấp.
 * Chưa có hardware IOMMU (VT-d/SMMU); `IoMap` mới là mô hình phần mềm.
-* Chưa có network, GPU/framebuffer, compositor hay ViFastKey.
-  Shell chưa có job control thật (`jobs` mới đếm TCB).
+* Network mới ở mức ARP/ICMP/UDP/DNS + TCP echo; chưa có socket API hay TCP
+  stack đầy đủ. GPU mới vẽ được khung hình đơn giản; **chưa có compositor,
+  framebuffer console hay ViFastKey**. Shell chưa có job control thật
+  (`jobs` mới đếm TCB).
 * FS giới hạn ảnh 4 MiB, chưa có mount/pager tổng quát hay barrier phần cứng thật.
   Driver disk mới cho QEMU, chưa kiểm chứng máy thật.
 * SMP mới test 2 hart (`MAX_HARTS = 4`); hart phụ vẫn dùng platform idle loop ở vài đường.
   Chưa có khóa mịn/x2APIC.
 * Chưa có CI (GitHub không dùng), formal verification/Kani/Verus;
-  mới có invariant checker, fuzz và 632 case kiểm âm.
-* Tài liệu `01`–`07` và `legacy/`, `python-model/` là tham chiếu lịch sử,
-  nhiều chỗ chưa được port sang bản bare-metal này.
+  mới có invariant checker, fuzz và 677 case kiểm âm.
+* Còn hở x86 TLB shootdown AP→BSP (hook `poll_maintenance` chỉ chạy hart 1) và
+  nhánh PCID (`reload_cr3` không xoá PCID khác).
+* Tài liệu `03-thanh-phan/`, `docs/design/`, `legacy/`, `python-model/` là
+  thiết kế tham chiếu/lịch sử — nhiều chỗ chưa port; xem bản đồ ở
+  [docs/README.md](docs/README.md).
 
-Trạng thái chi tiết: [docs/00-hien-trang.md](docs/00-hien-trang.md) (06/11),
-tiến độ mới nhất: [docs/reviews/progress-g1.md](docs/reviews/progress-g1.md),
-tài liệu thành phần: [docs/11-hien-tai/00-index.md](docs/11-hien-tai/00-index.md).
+Trạng thái chi tiết: [docs/00-hien-trang.md](docs/00-hien-trang.md) (11/11),
+lộ trình: [docs/06-lo-trinh.md](docs/06-lo-trinh.md),
+tài liệu thành phần: [docs/11-hien-tai/00-index.md](docs/11-hien-tai/00-index.md),
+bản đồ toàn bộ tài liệu: [docs/README.md](docs/README.md).
 
 ## Hướng phát triển
 
@@ -321,8 +336,10 @@ tài liệu thành phần: [docs/11-hien-tai/00-index.md](docs/11-hien-tai/00-in
    Còn allocator vật lý toàn cục.
 6. ~~Root task + user ELF~~ — đã có `/bin/vf` + `TcbGrantCap` cho exec.
    Còn chính sách badge đầy đủ và `exec` từ file bất kỳ mượt hơn.
-7. **Driver framework** user-space: VirtIO console/block đã có, còn net.
-8. **FS + pager + supervisor + compositor** — FS demo đã có, còn mount/pager tổng quát.
+7. **Driver framework** user-space: VirtIO block/net/GPU/input/RNG đã có (polling),
+   còn IRQ hoá driver và tách driver thành tiến trình riêng.
+8. **FS + pager + supervisor + compositor** — FS/pager đã có, còn mount/pager tổng
+   quát nạp file thật và compositor.
 9. **Verification**: mở rộng invariant checker, fuzz, Kani/Verus; bắt T33.
 
 ## Ghi chú thiết kế

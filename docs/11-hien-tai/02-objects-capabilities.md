@@ -8,10 +8,10 @@ Nguồn: `crates/vifast-kernel/src/object.rs`,
 Kernel dùng một bảng cố định:
 
 ```rust
-MAX_OBJECTS  = 147
-MAX_TCBS     = 18
+MAX_OBJECTS  = 168
+MAX_TCBS     = 24
 MAX_CAPS_ROOT = 128
-MAX_CAPS_TASK = 48
+MAX_CAPS_TASK = 16
 MAX_QUEUE    = 8
 MAX_FDS      = 8
 MAX_MAPPINGS = 64
@@ -47,7 +47,7 @@ use-after-free mà không cần con trỏ thô trong lõi portable.
 | `Frame` | Trang vật lý có thể map |
 | `VSpace` | Reverse mapping table + root page table |
 | `PageTable` | Metadata page table page |
-| `CNode` | Bảng cap phẳng 48 slot |
+| `CNode` | Bảng cap phẳng 16 slot (cap task) |
 | `SchedContext` | Budget/period + TCB bound |
 | `Irq` | Logical IRQ + notification + pending |
 | `Iommu` | Domain + 32 DMA mapping |

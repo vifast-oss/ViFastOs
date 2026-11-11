@@ -20,9 +20,11 @@ có magic hợp lệ và version 1/2. Các platform dùng nó để:
 ## 2. Trình tự khởi tạo chung (đã trả giá bằng lỗi thật)
 
 1. Ghi `Status = 0` (reset) → `1` (ACK) → `3` (ACK|DRIVER).
-2. Thoả thuận feature: chọn word cao (`0x14`), ghi `DriverFeatures` (`0x10`)
-   với bit 0 = `VIRTIO_F_VERSION_1`; đọc lại `Status` phải có bit 3
-   (`FEATURES_OK`).
+2. Thoả thuận feature (r299 sửa đúng thanh ghi — trước đó ghi nhầm): đọc
+   `DeviceFeatures (0x10)` **sau khi chọn word bằng `DeviceFeaturesSel (0x14)`**
+   (0 = word thấp, 1 = word cao, bit 0 = `VIRTIO_F_VERSION_1`); ghi
+   `DriverFeatures (0x20)` **sau khi chọn word bằng `DriverFeaturesSel (0x24)`**.
+   Đọc lại `Status` phải có bit 3 (`FEATURES_OK`).
 3. Cấu hình queue: `QueueSel (0x30)`, `QueueNum (0x38)` (luỹ thừa 2, ≤
    `QueueNumMax` 0x34), `QueueDesc/Driver/Device` tại `0x80/0x90/0xa0` (mỗi
    cái 2 thanh ghi 32-bit), rồi **`QueueReady (0x44) = 1`**.
@@ -34,8 +36,12 @@ có magic hợp lệ và version 1/2. Các platform dùng nó để:
 Ba lỗi từng làm RX "im lặng" suốt nhiều vòng:
 - `QueueReady` phải ghi **1**, không phải index queue (ghi 0 cho queue 0 làm
   RX không bao giờ ready).
-- Header virtio-net phải **10 byte** khi không thoả thuận `MRG_RXBUF`; dùng 12
-  byte làm QEMU lệch frame 2 byte và slirp bỏ mọi gói.
+- Header virtio-net phải **12 byte** khi thiết bị `version == 2` và đã đàm phán
+  `VIRTIO_F_VERSION_1` (QEMU dùng `virtio_net_hdr_mrg_rxbuf`); để 10 byte (legacy)
+  thì QEMU ăn mất 2 byte đầu khung Ethernet ở TX và ghi lệch buffer ở RX — mọi gói
+  ARP/PING/DNS/TCP đều mất. Đây là lỗi thật đã làm đỏ cổng QEMU riscv64 (vá ở r307).
+- Legacy (không `VERSION_1`) mới dùng 10 byte; mọi đường TX/RX của repo này chỉ chạy
+  khi `version == 2`, nên hằng số duy nhất là 12.
 - Thiếu kick sau khi đăng buffer và thiếu re-post sau khi tiêu thụ.
 
 Với thiết bị hai queue (net, input), cấu hình **cả hai queue trước DRIVER_OK**;
@@ -48,8 +54,9 @@ attach queue sau DRIVER_OK từng làm treo QEMU.
 - `read_sector`/`write_sector`/`flush`; dùng bởi VFS server qua syscall block.
 
 ### Net (id 1)
-- RX queue 0: descriptor header 10 byte + buffer 2048 byte; TX queue 1.
-- Feature chấp nhận: `MAC | STATUS | VERSION_1` (`accepted=0x10020`).
+- RX queue 0: descriptor header 12 byte + buffer 2048 byte; TX queue 1.
+- Feature chấp nhận: `MAC | STATUS | VERSION_1` (`accepted = 0x1_0001_0020`,
+  đo trên QEMU riscv64).
 - API: `net_init_both`, `net_send_arp_to(tpa)`, `net_ping(ip)` (ICMP + checksum
   RFC 1071), `net_send_udp`, `net_recv_udp`, `net_recv_icmp`, `net_recv_dns_a`.
 - `net_rx_poll_bounded` đếm `RX_SEEN`; DNS dùng bound lớn hơn vì phải qua

@@ -1,5 +1,10 @@
 # 04. Toàn bộ điểm cần chú ý
 
+> ⚠️ **Tài liệu THIẾT KẾ THAM CHIẾU** — mô tả thiết kế đầy đủ từ giai đoạn mô hình
+> Python; một số phần **chưa được port** sang kernel hiện tại (CDT, CNode nhiều
+> cấp, `vifast-sim`, profile tĩnh, IOMMU phần cứng, compositor…).
+> Trạng thái chạy được: [00-hien-trang.md](00-hien-trang.md). Bản đồ tài liệu: [docs/README.md](README.md).
+
 Tài liệu này gom mọi điểm dễ sai, giới hạn và đánh đổi. Nên đọc lại trước mỗi lần sửa kernel.
 
 ## 1. Bất biến bảo mật (không được phá)
