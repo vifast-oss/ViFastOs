@@ -14737,6 +14737,38 @@ mod tests {
     }
 
     #[test]
+    fn recv_returns_a_message_handed_off_while_the_receiver_was_running() {
+        // r319 (T33a, red-first D18): `send` giao NGAY cho receiver đang chờ
+        // trong `ep.recv`; nhưng nếu receiver đang `Running` thì `make_ready`
+        // KHÔNG wake (Running không nằm trong danh sách wakeable) và message
+        // chỉ nằm ở `resume`. Nếu `recv` không trả nó ra thì nó MẤT VĨNH VIỄN —
+        // đúng chữ ký T33a đo được: `send_max=0`, root `BlockedRecv`, worker
+        // đã gửi xong, không ai gửi lại.
+        let mut kernel = Kernel::new();
+        let server = kernel.create_tcb("server", 5).unwrap();
+        let client = kernel.create_tcb("client", 5).unwrap();
+        let endpoint = kernel.create_endpoint().unwrap();
+        // Receiver đang chạy (chưa vào recv) — cửa sổ thật của T33a.
+        kernel.tcb_mut(server).unwrap().state = ThreadState::Running;
+        let message = Message::new(0x77, &[1, 2, 3, 4]).unwrap();
+        // Receiver đang Running ⇒ KHÔNG được giao ngay (giao ngay thì
+        // `make_ready` no-op và message mất). Người gửi phải được xếp hàng.
+        assert_eq!(
+            kernel.send(client, endpoint, 0, message, false),
+            Ok(false),
+            "không được giao ngay cho receiver đang Running"
+        );
+        let got = kernel
+            .recv(server, endpoint, 0)
+            .expect("recv không được lỗi");
+        assert_eq!(
+            got.map(|message| message.label),
+            Some(0x77),
+            "message đã giao vào resume phải được trả ra, không được chặn"
+        );
+    }
+
+    #[test]
     fn signal_mixed_stale_and_live_waiters_loses_no_bit() {
         // K45 (r260, đóng bằng bằng chứng — D18): audit nghi `signal` xoá word
         // TRƯỚC vòng lặp nên khi hàng có cả waiter chết lẫn waiter sống thì

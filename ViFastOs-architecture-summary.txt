@@ -648,6 +648,7 @@ Thư mục này LÀ git repository. Các mốc hiện tại:
 - 387179a r311 (T33a): đính chính — SMP AP STATE vô dụng cho ca treo, T33a vẫn MỞ
 - f00593e r312/r313 (T33a): bắt được treo thật — thiếu SMP WORKERS OK, không phải treo kernel
 - e8f140c r314-r316 (T33a): REVERT bản vá retry-send (no-op) + đèn GATE QUEUE
+- d10c805 r317/r318 (T33a): 5 ca treo cùng chữ ký "hệ đứng yên" + đèn GATE STATES/SENDFAIL
 ### END GENERATED commits
 
 [HISTORICAL] Mốc 925f633 (vòng 20): per-hart ready queue + work stealing; VFS
@@ -695,7 +696,7 @@ hardening và vifast-user.
 Test hiện tại:
 ### BEGIN GENERATED tests
 - `cargo test -p vifast-abi`: 17/17 PASS
-- `cargo test -p vifast-kernel`: 261/261 PASS
+- `cargo test -p vifast-kernel`: 262/262 PASS
 - `cargo test -p vifast-arch`: 8/8 PASS
 - `cargo test -p vifast-pte`: 12/12 PASS
 - `cargo test -p vifast-elf`: 20/20 PASS

@@ -1548,6 +1548,26 @@ người gọi thường `let _ = send(...)`.
 Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`): soak 600 boot: 2 treo (GATE QUEUE);
 600 boot: 3 treo (GATE STATES). ⇒ p ≈ 0,3–0,5 % dưới tải 3 luồng.
 
+
+## r319 — T33a: vá MỘT đường mất message (test đỏ-trước 0,0 s); treo chưa hết
+
+`ipc.rs::send` nhánh giao ngay: `ep.recv.pop()` **không kiểm trạng thái**, rồi
+`resume = Some(msg)` + `make_ready` — mà `make_ready` **không wake** tác vụ đang
+`Running` ⇒ nếu receiver đang Running thì message **mất vĩnh viễn**.
+
+Test đỏ-trước (host, 0,0 giây)
+`recv_returns_a_message_handed_off_while_the_receiver_was_running`: trước vá
+`send` trả `Ok(true)` rồi `recv` trả `None` (mất); sau vá `send` trả `Ok(false)`
+(xếp hàng) và `recv` trả đúng message. 262/262 test kernel xanh.
+
+Vá: chỉ pop receiver nếu nó **wakeable**; ngược lại để nguyên trong hàng và xếp
+sender vào `ep.send`.
+
+Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, soak 3 luồng, 600 boot/lượt):
+trước vá **2, 5, 5** treo/600 (gộp 7/1200 = 0,58 %); sau vá **1/600 = 0,17 %**
+(Fisher p ≈ 0,2 ⇒ chưa kết luận). **Treo vẫn còn**: ca `hang-w1-27` vẫn cùng chữ
+ký, `SENDFAIL=0`, worker C đã qua lệnh send ⇒ còn một đường mất message khác.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1556,7 +1576,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-506876df350a00938d3fc8589b453b5be9375d41e7dea2dcbbd4c68fc1343d0b  docs/reviews/ViFastOs-report-r262.md
+264c1e7d4cf03e94b6f4644cfaa74f0921870601b82a75c9fbd92cb64a4acec6  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

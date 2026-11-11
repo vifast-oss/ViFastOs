@@ -157,9 +157,35 @@ impl Kernel {
                 }
             }
         }
+        // r319 (T33a): CHỈ lấy receiver ra khỏi `ep.recv` nếu nó thật sự
+        // wakeable. Trước đây lấy ra vô điều kiện rồi `make_ready` — mà
+        // `make_ready` KHÔNG wake `Running` — nên message nằm lại ở `resume`
+        // và MẤT VĨNH VIỄN khi receiver chặn tiếp. Chữ ký T33a đo được:
+        // `send_max=0`, root `BlockedRecv`, worker đã gửi xong, không ai gửi lại.
+        let front = self.endpoint(endpoint).and_then(|ep| ep.recv.front());
+        let front_wakeable = front.is_some_and(|candidate| {
+            self.tcb(candidate).is_some_and(|table| {
+                matches!(
+                    table.state,
+                    ThreadState::Inactive
+                        | ThreadState::Ready
+                        | ThreadState::BlockedSend
+                        | ThreadState::BlockedRecv
+                        | ThreadState::BlockedReply
+                        | ThreadState::BlockedNotification
+                        | ThreadState::BlockedSleep
+                        | ThreadState::BlockedFault
+                        | ThreadState::BlockedBudget
+                )
+            })
+        });
         let receiver = {
             let ep = self.endpoint_mut(endpoint).ok_or(KError::InvalidCap)?;
-            ep.recv.pop()
+            if front_wakeable {
+                ep.recv.pop()
+            } else {
+                None
+            }
         };
         if let Some(receiver) = receiver {
             let hint = self.tcb(receiver).map(|table| table.recv_slot).unwrap_or(0);

@@ -3513,3 +3513,54 @@ Soak với `GATE SENDFAIL`: nếu ca treo có `SENDFAIL > 0` ⇒ **message bị 
 chối** (sửa: người gửi phải thử lại / hàng đợi phải đủ). Nếu `SENDFAIL = 0` ⇒
 message **chưa bao giờ được gửi** ⇒ lỗi nằm ở worker C không chạy tới chỗ gửi
 (affinity/scheduling), hoặc root bỏ sót message đã nhận.
+
+## r319 — T33a: VÁ một đường MẤT MESSAGE thật (có test đỏ-trước 0,0 giây), treo chưa hết
+
+### Gốc của một đường mất message (chứng minh bằng test host, không cần QEMU)
+Trong `ipc.rs::send`, nhánh "giao ngay":
+```rust
+let receiver = { ep.recv.pop() };   // lấy ra KHÔNG kiểm trạng thái
+... table.resume = Some(msg); self.make_ready(receiver);
+```
+`make_ready` **cố ý không wake** tác vụ đang `Running` (để không có hai chủ). Nếu
+receiver đang `Running` (nó vừa được đánh thức bởi message khác nhưng chưa quay
+về user), thì `pop` đã lấy nó khỏi hàng, `resume` giữ message, `make_ready` không
+làm gì ⇒ **message mất vĩnh viễn** và receiver chặn tiếp ở `recv`.
+
+### Test đỏ-trước (D18) — 0,0 giây
+`recv_returns_a_message_handed_off_while_the_receiver_was_running` (kernel, host):
+dựng receiver `Running`, cho sender `send` → **trước vá**: `send` trả `Ok(true)`
+(giao ngay) rồi `recv` trả `None` (mất). **Sau vá**: `send` trả `Ok(false)` (xếp
+hàng) và `recv` trả đúng message. Toàn bộ 262 test kernel xanh.
+
+### Bản vá
+`send` **chỉ pop receiver khỏi `ep.recv` nếu nó wakeable**; nếu không thì để
+nguyên trong hàng và xếp sender vào `ep.send` như bình thường.
+
+### Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, soak 3 luồng song song, 600 boot/lượt)
+| Build | treo |
+|---|---:|
+| trước vá (`GATE QUEUE`) | 2 / 600 |
+| trước vá (`GATE STATES`) | 5 / 600 |
+| trước vá (`GATE SENDFAIL`) | 5 / 600 |
+| **sau vá (r319)** | **1 / 600** |
+Gộp trước vá: **7/1200 = 0,58 %**; sau vá **1/600 = 0,17 %** — Fisher p ≈ 0,2 ⇒
+**chưa đủ kết luận là giảm thật**, và **treo vẫn còn**.
+
+### Ca treo còn lại vẫn cùng chữ ký
+`artifacts/r322/hang-w1-27.serial`:
+```
+GATE QUEUE send_max=0 recv_max=1 ready0=0 ready1=0
+GATE STATES ready=0 running=1 brecv=2 bsend=0 bother=2 exited=0
+GATE SENDFAIL n=0        (in 3 lần, đều 0)
+SUSPEND/SMP WORKERS: không có
+```
+⇒ Worker C **đã gửi thành công** (`SENDFAIL=0`, và C đang ở vòng chờ `SUSPEND_FLAG`
+tức đã qua lệnh send), root vẫn chờ, không ai Ready. Vậy còn **một đường mất
+message khác** (hoặc root không được đánh thức dù message đã vào `resume`).
+
+### Việc kế tiếp
+Đèn ở **phía root**: in `root resume=<0/1>` (dùng `Kernel::take_resume`-style
+peek) và `recv_ret=<n>` mỗi lần `recv_message` trả về — để biết root có nhận được
+message C_RUNNING hay không. Nếu root **có** nhận mà không chạy demo
+suspend ⇒ lỗi logic của root, không phải kernel.
