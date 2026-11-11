@@ -13226,13 +13226,6 @@ mod tests {
         assert!(kernel.check_invariants().is_ok());
     }
 
-    #[test]
-    /// 290.4 (r290, đỏ-trước): mỗi lần call phải cấp epoch MỚI.
-    ///
-    /// Bản cũ `reply_epoch` không bao giờ tăng ⇒ mọi record `caller` đều mang
-    /// epoch 0 và guard K49 (`reply_epoch == epoch`) thành `0 == 0`, tức rỗng.
-    /// Test này khoá đúng điều đó: hai lần call liên tiếp phải khác epoch.
-    #[test]
     /// P0-3 (r290, đỏ-trước) — KỊCH BẢN ĐẦY ĐỦ 5 bước của bản soát:
     ///
     /// 1. root cấp cho A một cap endpoint (parent = cap của root) và một cap
@@ -13561,6 +13554,12 @@ mod tests {
         ObjRef { index: 0, gen: 0 }
     }
 
+    /// 290.4 (r290, đỏ-trước): mỗi lần call phải cấp epoch MỚI.
+    ///
+    /// Bản cũ `reply_epoch` không bao giờ tăng ⇒ mọi record `caller` đều mang
+    /// epoch 0 và guard K49 (`reply_epoch == epoch`) thành `0 == 0`, tức rỗng.
+    /// Test này khoá đúng điều đó: hai lần call liên tiếp phải khác epoch.
+    #[test]
     fn every_call_issues_a_fresh_reply_epoch() {
         let mut kernel = Kernel::new();
         let server = kernel.create_tcb("server", 1).unwrap();
@@ -13587,6 +13586,9 @@ mod tests {
         );
     }
 
+    /// 290.4 (tiếp): guard K49 phải bắt được caller với epoch cũ khi
+    /// `reply_recv` — chứ không im lặng reply nhầm thread khác.
+    #[test]
     fn reply_recv_rejects_stale_caller_epoch() {
         let mut kernel = Kernel::new();
         let server = kernel.create_tcb("server", 1).unwrap();
@@ -16464,7 +16466,6 @@ mod tests {
         assert!(kernel.check_invariants().is_ok());
     }
 
-    #[test]
     /// P0-3 (r290, đỏ-trước): `cap.parent` trỏ vào slot của một TCB sắp chết
     /// phải được SỬA khi TCB đó bị huỷ — kể cả khi TCB đang dùng CNode.
     ///
