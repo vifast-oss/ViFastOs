@@ -519,6 +519,9 @@ static ENSURE_FAIL: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU3
 
 /// r308: số lần đã hoãn thoát vì tác vụ đang chạy trong user mode.
 static EXIT_DEFERRALS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+/// r312 (T33a): đã in `GATE STALL` chưa (một lần mỗi boot).
+static GATE_STALL_PRINTED: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
 
 /// r304 (T-IPC): số tick timer rơi vào lúc client (tcb 62) đang là `current`.
 static TICKS_62: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
@@ -2202,6 +2205,28 @@ pub mod timer {
                     ipi_wakes
                 );
             }
+        }
+        // r312 (T33a): đèn GATE STALL — nếu đã qua xa mốc thoát bình thường
+        // (~200–211 tick) mà cổng vẫn chưa sẵn sàng thì in MỘT lần ĐỦ 6 cờ.
+        // Ca treo T33a đo được: kernel vẫn tick tới 14 784 nhưng `PREEMPT OK`
+        // không bao giờ in ⇒ phải biết cờ nào không bao giờ bật.
+        #[cfg(feature = "test-exit")]
+        if hart == 0
+            && kernel.ticks_on(0) >= 200
+            && !GATE_STALL_PRINTED.swap(true, core::sync::atomic::Ordering::SeqCst)
+        {
+            vifast_kernel::klog!(
+                A,
+                "GATE STALL ticks={} done={} fs={} fsl={} link={} sym={} tlb={} post={}",
+                kernel.ticks_on(0),
+                TEST_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                TEST_FS_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                TEST_FS_LARGE_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                TEST_HARD_LINK_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                TEST_SYMLINK_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                TEST_TLB_DONE.load(core::sync::atomic::Ordering::SeqCst) as u8,
+                A::post_idle_ready() as u8
+            );
         }
         // r308 (T-IPC): hoãn thoát khi tick quyết định rơi ĐÚNG lúc tác vụ
         // đang CHẠY trong USER mode (để nó kịp in nốt marker cuối).

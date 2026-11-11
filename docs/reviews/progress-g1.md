@@ -3343,3 +3343,88 @@ lần đó gate bắt đúng một ca treo thật, và chạy lại xanh **khôn
 ⇒ Trên `ps` chạy **một mình**, tần suất treo < 1/400; ca ở gate xảy ra khi máy
 chạy 3 arch liên tiếp (tải cao) ⇒ nghi **tải host** làm hẹp cửa sổ. Cần soak dài
 hơn (≥1000) và/hoặc chạy song song để tái hiện.
+
+## r312 — T33a: bắt được ca treo THẬT, kernel vẫn tick 14 784 lần, cổng test không bao giờ đóng
+
+### Artifact: `artifacts/r312-soak/hang-w2-52.serial` (ps, x86_64, soak **song song 3 luồng**, build `diag-tick`)
+- 1452 dòng: **298 dòng tiến trình** + **1152 dòng chỉ có `TICK n (eoi=n-1)`**.
+- `PREEMPT OK`: **0** ⇒ treo thật.
+- `PIC STALL` / `LAPIC STALL`: **0** ⇒ watchdog không thấy PIT/PIC kẹt.
+- Tick chạy tới **14 784** (boot xanh ~200–211) ⇒ **timer + EOI hoàn toàn bình thường**.
+- Dòng tiến trình cuối: `SYMLINK OK` → `IRQ OK` → `SHELL READY` → `IPC MINT REQ` →
+  `MINT IN` → `MINT OUT ilop` → `MINT RES h=0 t=62` → `NEXT n=32` → `IPC MINT RET`
+  → **`IPC RIGHTS OK`** → `shell>` — tức **client đã chạy xong** phần của nó.
+- `SMP WAIT (ticks=20, done=false fs=false fsl=false link=false sym=false tlb=true
+  post=false cur0=true cur1=true rq0=7 rq1=0)` — in ở tick 20 nên chỉ là **ảnh
+  chụp sớm**, không phải trạng thái lúc treo.
+
+⇒ Chữ ký chính xác của T33a: **kernel sống, timer chạy, user đã in hết marker
+của mình — nhưng cổng thoát `test-exit` không bao giờ đóng**, nên `PREEMPT OK`
+không in. Đây **không** phải treo scheduler/BKL như các giả thuyết cũ.
+
+### Đèn mới `GATE STALL` (r312)
+In MỘT lần khi `ticks_on(0) >= 200` (quá xa mốc thoát bình thường ~200–211) mà
+cổng vẫn chưa sẵn sàng, kèm **đủ 6 cờ**: `done fs fsl link sym tlb post`.
+Đây là đèn duy nhất trả lời được "cờ nào không bao giờ bật" ở ca treo.
+(Lưu ý: không dùng được `SMP AP STATE` — nó đòi `TEST_DONE` nên tắt đúng lúc cần.)
+
+### Chặn hạ tầng: máy `ps` HẾT QUOTA
+`cargo build` trên `ps` hỏng: `failed to write arguments to temporary file:
+Os { code: 122, kind: QuotaExceeded }`. `~` của `ps` đã dùng **101 GB** (không
+phải của dự án: `Documents` 22 G, `Android` 16 G…), `/tmp` là tmpfs chỉ còn 1,5 G.
+⇒ **Từ đây soak chuyển sang chạy trên `mps`** (x86_64 dưới TCG, chậm hơn ~2×).
+Muốn dùng lại `ps` phải giải phóng quota (việc của chủ máy, không tự xoá dữ liệu
+người khác).
+
+### Số đo vòng này
+| Lượt | Máy | Kết quả |
+|---|---|---|
+| 400 boot thường | ps | `PAGER2 DUP`=0, thiếu `PREEMPT OK`=0 |
+| 400 boot `diag-tick` (1 luồng) | ps | treo=0 |
+| **~360 boot song song 3 luồng** | ps | **1 treo** (artifact ở trên) |
+| 75 boot song song (3 luồng) | mps | treo=0 |
+
+⇒ Treo chỉ hiện khi **có tải** ⇒ phải soak song song, không soak tuần tự.
+
+## r313 — T33a GỐC ĐÃ LỘ: treo là **thiếu `SMP WORKERS OK`** (root chờ worker không bao giờ báo)
+
+### Đèn `GATE STALL` trả lời đúng câu hỏi
+Artifact `artifacts/r315/hang-w3-13.serial` (mps, x86_64, soak **song song 3 luồng**,
+build có `GATE STALL`):
+```
+shell> GATE STALL ticks=200 done=0 fs=1 fsl=1 link=1 sym=1 tlb=1 post=1
+```
+⇒ 5 cờ FS + `post_idle` **đều 1**; chỉ **`done=0`**. Vậy cổng không đóng vì **`TEST_DONE`**.
+
+### Vì sao `TEST_DONE` không bật
+`TEST_DONE` được bật bởi `ROOT READY` **hoặc** `SMP WORKERS OK`. Mà:
+`TEST_EXPECT_WORKERS = (sched_harts & 0b10 != 0)` = **true** trên cấu hình smp2
+(`crates/vifast-runtime/src/lib.rs:1224`), nên `ROOT READY` **không** đủ — phải có
+`SMP WORKERS OK (a=50, b=50, c=1)` (`crates/vifast-root/src/main.rs:126`).
+
+Trong serial treo: `SCHED CTX OK` (dòng 105) → `ROOT READY` (106) → … →
+`SHELL READY` (288) — **KHÔNG có `SMP WORKERS OK`**. Boot xanh đối chứng: có.
+
+### Cơ chế
+Sau `ROOT READY`, root vào vòng `recv_message(fault_endpoint_slot, 0)` để nhận báo
+cáo của worker a/b/c và in `SMP WORKERS OK` khi đủ bit. Một worker **không bao giờ
+báo** ⇒ root **chặn trong recv** ⇒ `TEST_DONE` không bao giờ bật ⇒ `PREEMPT OK`
+không in. Kernel vẫn tick (14 784 lần ở artifact trước), client vẫn chạy xong.
+
+⇒ T33a **không phải** treo kernel/BKL/scheduler (các giả thuyết cũ), mà là
+**mất/không có báo cáo của một worker** (hoặc root chờ notification không được đánh thức).
+
+### Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, `VIFAST_TIMEOUT=150`)
+| Lượt | Cách chạy | boot | treo |
+|---|---|---:|---:|
+| r314 | 3 luồng song song | 300 | **4** (1,3 %) |
+| r315 | 3 luồng song song, TMPDIR riêng | 180 | **1** (0,6 %) |
+| trước đó | 1 luồng (ps) | 400 | 0 |
+⇒ Treo **cần tải song song** để tái hiện; chạy tuần tự gần như không thấy.
+
+### Việc kế tiếp (đã có đích)
+1. Đèn: trong vòng recv của root, dùng **recv có giới hạn** (poll + `yield_now`) và
+   in `WORKERS WAIT bits=<n> a/b/c=<0/1>` mỗi ~200 lượt ⇒ biết **worker nào** thiếu.
+2. Xem worker gửi báo cáo bằng gì (send trên notification? label nào) và vì sao có
+   thể mất: notification one-shot bị coalesce, hoặc worker bị chặn trước khi send.
+3. Bản vá khả dĩ: worker gửi lại (retry) khi bị `WouldBlock`; root không chặn vô hạn.

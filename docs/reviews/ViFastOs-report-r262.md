@@ -1482,6 +1482,37 @@ Trạng thái thật: sau vá LINT0 (2,6 % → 0,66 %) vẫn còn **~1/301** tre
 thiếu `PREEMPT OK`=0; 400 boot `diag-tick` — treo=0. ⇒ chạy một mình trên `ps`,
 tần suất < 1/400; ca ở gate xảy ra khi máy chạy 3 arch liên tiếp ⇒ nghi tải host.
 
+
+## r313 — T33a: GỐC ĐÃ LỘ — treo là **thiếu `SMP WORKERS OK`**
+
+Đèn `GATE STALL` (in khi tick ≥200 mà cổng chưa đóng) trên artifact
+`artifacts/r315/hang-w3-13.serial`:
+```
+shell> GATE STALL ticks=200 done=0 fs=1 fsl=1 link=1 sym=1 tlb=1 post=1
+```
+⇒ 5 cờ FS + `post_idle` đều 1, chỉ **`TEST_DONE = 0`**.
+
+`TEST_DONE` cần `SMP WORKERS OK` vì `TEST_EXPECT_WORKERS = (sched_harts & 0b10) != 0`
+đúng trên smp2 (runtime:1224); `ROOT READY` không đủ. Serial treo **không có**
+`SMP WORKERS OK`, boot xanh có.
+
+Cơ chế: sau `ROOT READY`, root chặn trong `recv_message(fault_endpoint_slot, 0)`
+chờ báo cáo của worker a/b/c; một worker không bao giờ báo ⇒ root chặn ⇒
+`TEST_DONE` không bật ⇒ `PREEMPT OK` không in. Kernel vẫn tick, client vẫn xong.
+⇒ T33a **không phải** treo kernel/BKL/scheduler.
+
+Số đo (mps, x86_64 TCG, `VIFAST_NO_RETRY=1`, timeout 150 s):
+| Lượt | Cách chạy | boot | treo |
+|---|---|---:|---:|
+| r314 | 3 luồng song song | 300 | **4** (1,3 %) |
+| r315 | 3 luồng, TMPDIR riêng | 180 | **1** (0,6 %) |
+| trước | 1 luồng (ps) | 400 | 0 |
+
+⇒ Phải soak **song song** mới tái hiện (khớp "~1 %" của mục tiêu).
+
+Kèm: máy `ps` **hết quota** (`QuotaExceeded` khi cargo build; `~` đã dùng 101 GB
+bởi dữ liệu không thuộc dự án) ⇒ từ đây soak trên `mps`.
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1490,7 +1521,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-5ff9778a1e32e50ac7bd3c3ff35432bf3c72f9634d70ae0753e6b0a1251719c6  docs/reviews/ViFastOs-report-r262.md
+c3bc10580e52fae28dc933afde3ff3ca4c6c2f7f06b55ef6e4ed939c4de68df2  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm
