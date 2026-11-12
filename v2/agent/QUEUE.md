@@ -22,7 +22,8 @@ Trạng thái hợp lệ: `READY | BLOCKED | REVIEW | DONE`.
 
 **Cấm (9 điều)**
 
-1. Sửa `spec/` — trừ `KT-04a` (được ghi `spec/abi.toml`, `spec/kernel.toml`).
+1. Sửa `spec/` — trừ `KT-04a` (được ghi `spec/abi.toml`, `spec/kernel.toml`) và `KT-04b`
+   (một lần theo D2-32: chỉ chép draft reserved đã sửa theo D2-32 + D2-29).
 2. Sửa `accept()` / kỳ vọng / snapshot của harness để test xanh.
 3. `#[ignore]`, `#[should_panic]` để né, tắt test, bỏ case khỏi danh sách chạy.
 4. Nới ngưỡng (thời gian, seed, số ca đỏ, `MAX_IO`, `MAX_TCBS`, `MAX_OBJECTS`, `KERNEL_STATIC_BUDGET`).
@@ -99,10 +100,10 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` (Q10) | — | 1 h | DONE | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục QD §6, mỗi mục có ca kiểm v2 |
 | KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè tệp đã có), LICENSE tham chiếu root; port **tối đa** `vifast-fs` + `vifast-fsutil` + `vifast-elf` (D2-28), build xanh, mỗi tệp ≤1.500 dòng | — | 3 h | DONE | `cargo build` workspace xanh; có `v2/bin/`; mọi tệp ≤1.500 dòng |
 | KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | DONE | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
-| KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→15+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | READY | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
-| KT-04b | object reserved: chỉ số + `NotSupported` (VCpu.Configure, IOSpace.Attach, VSpace khách, PowerControl…) | KT-04a | 2 h | BLOCKED | method reserved trả NotSupported; số không trùng |
-| KT-04c | **21 kịch bản** `.scn` viết chỉ bằng ABI + **kiểm tĩnh**: mọi bước tham chiếu syscall/method/mã lỗi có thật trong `abi.toml`, đủ tham số (gồm ca **"Exit khi procsrv chưa Recv"**) | KT-04a | 3 h | BLOCKED | 21 tệp; kiểm tĩnh pass; ca không viết được → BLOCKED "thiếu ABI" |
-| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản | KT-04a,b,c | 1 h | REVIEW | dòng `APPROVED <ngày> Agent 0` trong QUEUE |
+| KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→15+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
+| KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | READY | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
+| KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | READY | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
+| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | REVIEW | dòng `APPROVED <ngày> Agent 0` trong QUEUE; `check_scn` 21/21 0 blocked; mapping đã sửa 2 lỗi số |
 | KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | BLOCKED | code sinh biên dịch; sửa tay bị bắt; gen-check bật sau APPROVED |
 | KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | READY | dùng được cho chính vòng này; JSON có `project` |
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
@@ -111,8 +112,31 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | BLOCKED | property test cây; Revoke |
 | KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c |
 | KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | READY | giải mã dump từ sim; cùng định dạng QEMU |
-| KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | READY | test đỏ trước; chạy seed |
+| KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | BLOCKED | đèn host DONE `02e0a96`; tái hiện đầy đủ chờ **YC-06**; không chạy lại 1.000 seed |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | READY | MD + JSON theo Khối E, có `project` |
+
+## Khối F — chỉ thị hiện hành (2026-11-12, sau `DUYET-YC-02-05`)
+
+> Nguồn: `review/agent0/DUYET-YC-02-05.md` (Agent 0) + D2-29..D2-33. Khối này thay mọi ghi chú cũ trái với nó.
+
+**Đã xong — không làm lại:**
+- `KT-04a` DONE `1766145`; `spec/abi.toml` lõi đã có.
+- `KT-04c` phần 21 `.scn` + checker DONE `9552832`; chỉ còn arity theo D2-33 và mở ca 18.
+- `KT-T26` phần đèn host DONE `02e0a96`; tái hiện đầy đủ BLOCKED chờ YC-06 — **không** chạy lại 1.000 seed.
+
+**Thứ tự bắt buộc:**
+1. **KT-04b**: sửa `v2/docs/abi-reserved-objects.toml` theo D2-32 (SchedControl=8 lên `core`; bỏ `VSpace.Configure`; thêm bit `GUEST` vào `Untyped.Retype.flags`; 8 object 9..16 reserved) → áp `spec/abi.toml` + D2-29 → cập nhật `check_abi.py`/`check_reserved.py` → `gate --fast` xanh → commit `[KT-04b]`.
+2. **KT-04c**: tạo `v2/docs/abi-call-signatures.toml` theo D2-33 (đủ enum TCB §4.4 + `Tcb.ReadState`); `check_scn.py` kiểm arity theo draft; ca `18-schedcontext-donation` **hết blocked** vì `SchedControl` đã lên lõi; `check_scn` **21/21, 0 blocked** → commit `[KT-04c]`.
+3. Sửa `v2/docs/abi-v1-v2-mapping.md`: 26 method/23 đích/20 bỏ; escape `Abort\|Defer`.
+4. **KT-04d**: gói gồm 21 `.scn`, draft chữ ký, checklist 5 mục/method, **nội dung D2-26..28**, mapping đã sửa; gửi Agent 0. **Không** ghi APPROVED.
+5. Sau KT-04d: `KT-06` → `KT-08` → `KT-12` → `KT-R1`; hết OS READY thì ViScript.
+
+**Chống lặp:**
+- Đọc bảng trạng thái trước mỗi task; task `DONE`/`BLOCKED` không làm lại.
+- **YC-04/YC-05 đã đóng** bởi D2-32/D2-33 — không mở lại, không hỏi lại.
+- Chỉ mở YC mới khi có blocker kỹ thuật mới, kèm `file:line` + 2 lựa chọn.
+- Review nói `DRIFT` thì đối chiếu DECISIONS trước khi đổi hướng; không tự tạo quyết định.
+- Không sửa `spec/` ngoài D2-29/D2-32; không ghi APPROVED.
 
 ## Ghi chú vận hành
 
@@ -121,6 +145,6 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 - `KT-04d` REVIEW chờ đúng dòng `APPROVED <YYYY-MM-DD> Agent 0`; **APPROVED mở KT-05**. Duyệt không bằng chat.
 - **KT-04d chỉ duyệt khi có sản phẩm KT-04a/b/c**; duyệt tài liệu thiết kế ghi bằng **D2-25** ở `DECISIONS.md`, không ghi ở đây.
 - Câu hỏi O1 (**Exit** vào ABI) đã chốt trong QD §1 Q-A: syscall **14 `Exit(code)`**.
-- Nhánh chạy song song được ngay: (KT-01, KT-02, KT-04a, KT-T26) và dòng ViScript `viscript/agent/QUEUE.md` (`ST-01`, `ST-02b`, `ST-10`).
+- Task READY hiện tại: `KT-04b`, `KT-04c`, `KT-06`, `KT-08`, `KT-12`, `KT-R1`; dòng ViScript `ST-01`, `ST-02b`, `ST-10`.
 - L1 **chưa bật** tới KT-08; ghi rõ trong `STATE.md`.
 - Mọi số trong bảng này lấy từ QD/brief; số nào chưa có nguồn thì ghi `[TK]`/`[ƯL]`, không tự đặt.

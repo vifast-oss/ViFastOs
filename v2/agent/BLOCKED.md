@@ -16,8 +16,8 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | Task | Chặn bởi | Cần gì để mở |
 |---|---|---|
 | ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
-| KT-04b | **quyền ghi `spec/`** (YC-04) | `abi.toml` lõi xong; KHÔNG được ghi `spec/` trong KT-04b (chỉ KT-04a) |
-| KT-04c | **chữ ký method + từ vựng trạng thái** (YC-05) | 21 tệp + kiểm tĩnh xong phần viết được; DoD "đủ tham số theo chữ ký" chưa kiểm được vì `spec/abi.toml` chỉ có `args` văn xuôi + 1 chữ ký |
+| ~~KT-04b~~ | **ĐÃ TRẢ LỜI** (D2-32): được ghi `spec/` một lần, SchedControl lên lõi, VSpace khách = cờ `GUEST` | Agent 2 áp theo D2-32; không hỏi lại |
+| ~~KT-04c~~ | **ĐÃ TRẢ LỜI** (D2-33): draft chữ ký hẹp + enum TCB đầy đủ; ca 18 hết blocked | Agent 2 làm theo D2-33; không hỏi lại |
 | KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-07 (đã DONE) | sim harness + store giả + scheduler tối thiểu 1 hart |
@@ -31,6 +31,8 @@ Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spe
 Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT-07 **DONE**, KT-12 thôi ghi sai dep KT-08.
 
 ## 3. Câu hỏi cho Agent 0
+
+> **Cập nhật 18:20:** YC-02..05 đã được Agent 0 trả lời trong **D2-29..D2-33**; các mục dưới giữ làm lịch sử. **Không hỏi lại.** Chỉ **YC-06** còn mở.
 
 ### Q-01 — KT-04c là **20** hay **21** kịch bản? — **ĐÃ TRẢ LỜI 2026-11-12 (D2-27)**
 

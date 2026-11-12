@@ -55,6 +55,19 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-28** **KT-02** dựng khung (`v2/Cargo.toml`, `v2/bin/`, `v2/agent/`, LICENSE) và được phép port **tối đa** các thư viện nền cần cho `vifast-fsutil`: `vifast-fs`, `vifast-fsutil`, `vifast-elf` (D2-26), với điều kiện `cargo build` xanh, mỗi tệp ≤1.500 dòng, giữ SPDX + `PORTED-FROM`. Không port thêm thư viện khác trong KT-02; quá 3 h thì dừng, phần còn lại sang KT-T26.
 - **D2-27** KT-04c có **21 kịch bản**: **20 ca gốc** theo QD §4 + **1 ca "Exit khi procsrv chưa Recv"** theo DUYET §1.3; QD §4 giữ nguyên 20 ca gốc, không sửa QD. Đây là câu trả lời Q-01.
 - **D2-26** Thư viện "giữ từ v1" (`vifast-pte`, `vifast-elf`, `vifast-acpi`, `vifast-fs`, `vifast-fsutil`, `vifast-virtio`) được **copy/port vào `v2/lib/`**, **không** path-dependency sang `crates/`; giữ SPDX và ghi `PORTED-FROM: crates/<tên>@ca2eaf5`. v1 vẫn đóng băng.
+- **D2-29** `DebugGetInfo` = **syscall 15**, dải reserved syscall còn **16..31**. `DebugGetInfo` **luôn có**, không phụ thuộc feature `debug`/`test` (khác 12, 13), vì nó trả `abi_version`, `min_compat` và bitmap tính năng mà runtime dùng để kiểm tương thích lúc khởi động. Trả về: `abi_version`, `min_compat`, `features` (bitmap), `num_harts`. Không trả địa chỉ kernel. `spec/abi.toml`: thêm `[syscall].15`, `[syscall_reserved].from = 16`, `[debug_info].number = 15`, `status = "frozen"`; `check_abi.py` cập nhật tương ứng.
+- **D2-30** Câu QD §4 "0..13 như cũ" nghĩa là **như bảng §4.21 của thiết kế**, không phải giữ số v1. v2 đánh số lại; `v2/docs/abi-v1-v2-mapping.md` là nguồn đối chiếu từng số. QD giữ nguyên.
+- **D2-31** `spec/` ở **gốc repo** là nguồn sự thật; cây `v2/spec/` trong thiết kế §8 là lỗi vẽ cây, không dùng. Errata ghi tại đây, không sửa thiết kế.
+- **D2-32** KT-04b được ghi `spec/abi.toml` **một lần**, theo draft `v2/docs/abi-reserved-objects.toml` **sau khi sửa hai điểm**:
+  1. **SchedControl (8) là object lõi**, `stability = "core"`, không reserved: MCS donation có từ K1b (D2-16) và `SchedControl.Configure` đã nằm trong chữ ký draft D2-33. Không được vừa reserved vừa có chữ ký.
+  2. **VSpace khách không phải method.** Bỏ `VSpace.Configure (id 1)`. Khách hay thường là **kiểu bảng trang**, quyết định lúc tạo, không đổi sau: dùng **bit cờ `GUEST` trong tham số `flags` của `Untyped.Retype` khi type = VSpace**. Bit này reserved; Retype với `GUEST` trả `NotSupported` tới H1. Method id 1 của VSpace để trống.
+
+  Object reserved còn lại: VSpace 9, PageTable 10, Frame 11, IrqControl 12, IrqHandler 13, IOSpace 14, VCpu 15, PowerControl 16; `stability = "reserved"`, `unsupported = true`, mọi method `unsupported = true`. `[object_reserved]` còn **17..31**. Agent 2 áp + cập nhật `check_abi.py`, `check_reserved.py`; `gate --fast` xanh; một commit `[KT-04b]`.
+- **Luật nâng bậc** (áp cho mọi object reserved): một object chuyển từ `reserved` sang `core` chỉ khi mốc cài nó (K2, K3, D3, H1, P1) gửi chữ ký method + kịch bản và có dòng `APPROVED` mới. ID object và ID method đã cấp không bao giờ đổi hay tái dùng (D2-15 mục 5).
+- **D2-33** KT-04c **không** kiểm arity từ `spec/`. Thay bằng draft `v2/docs/abi-call-signatures.toml` (`status = "REVIEW"`):
+  - Chữ ký cho **các method dùng trong 21 `.scn`**, tối thiểu: `Untyped.Retype` (có `flags`, gồm bit `GUEST` reserved), `CNode.Copy`, `CNode.Mint`, `CNode.Revoke`, `CNode.Delete`, `Tcb.Configure`, `Tcb.SetFaultEp`, `Tcb.Suspend(mode)`, `Tcb.Resume`, **`Tcb.ReadState`**, `SchedContext.Bind`, `SchedControl.Configure`. Method nào `.scn` dùng mà không có trong danh sách này thì thêm vào, **không** viết chữ ký cho method ngoài 21 ca.
+  - **Enum trạng thái TCB là enum đầy đủ §4.4**, không phải tập con: `Inactive | Ready | Running{hart} | BlockedOnSend{ep, call, fault: Option<FaultKind>} | BlockedOnRecv{ep, reply} | BlockedOnReply{reply} | BlockedOnNotification{ntfn} | BlockedOnAddress{frame, offset} | Sleeping{reason: Timeout|Budget} | Stopping | Dead`, cộng cờ trực giao `suspended` và `exit_code: Option<u64>`. Trường `fault` trong `BlockedOnSend` là bổ sung được duyệt tại đây (dùng cho Exit, mục 1 điểm 3 của `DUYET-AGENT0-vong-va`).
+  - Chữ ký method **không** thuộc 5 thứ đóng băng của D2-15, nên sau APPROVED draft vào `spec/` với `stability = "stable-draft"`; đổi chữ ký ở K1 vẫn qua Agent 0 nhưng không cần tăng `abi_version` major.
 
 ---
 
@@ -73,7 +86,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 | `MAX_HARTS` | mặc định **8**, trần cấu hình **64** `[TK]` (sửa 256) | QD §3.15 |
 | `vifast-core` | ≤ **25.000** dòng `[ƯL]` (sửa 15.000); tệp ≤ 1.500 dòng | QD §3.15 |
 | `.data + .bss` | ≤ **256 KiB** `[TK]` `[GT]`, đo ở K0.5 | QD §3.5, §9 Q8 |
-| mã lỗi kernel | **19** (bỏ `Restart`); syscall **0..13 + 14 Exit**; dải 15..31 reserved | QD §4 |
+| mã lỗi kernel | **19** (bỏ `Restart`); syscall **0..14** + **15 `DebugGetInfo`**; dải reserved **16..31** | QD §4, D2-29 |
 | soak v2 | **N = 1.000**, máy **ps**, 3 luồng, `n ≥ 3/p`, p = 0,3 % | QD §5.3 |
 | L1 trong `--fast` | **1.000** seed (nightly **100.000**) | QD §5.2 |
 | số kịch bản ABI | **21** `.scn` = 20 ca gốc (QD §4) + ca "Exit khi procsrv chưa Recv" (DUYET §1.3) | D2-27 |
