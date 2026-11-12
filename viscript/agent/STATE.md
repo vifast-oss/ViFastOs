@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
 ```
 HEAD          : xem `git log -1`
 BUILD_ID      : —
-Task          : ST-10 (báo cáo R1-viscript) — ST-01/02b DONE
+Task          : ST-10 (báo cáo R1-viscript) — ST-01/02b DONE; ST-03/04 chờ Agent 0 (YC-14)
 Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` PASS (ST-02b: 9 test, `vis explain` chạy; 4 case âm của cổng)

@@ -28,7 +28,7 @@ fn explain_mot_ma_co_nghia() {
 #[test]
 fn explain_ma_la_thi_do() {
     let (code, text) = vis(&["explain", "VS9999"]);
-    assert_eq!(code, 1, "mã lạ phải exit 1: {text}");
+    assert_eq!(code, 2, "mã lạ là lỗi dùng ⇒ exit 2 (VD-20): {text}");
     assert!(text.contains("không có mã"), "{text}");
 }
 

@@ -103,6 +103,10 @@ do_check() {
         echo "--- self-test case âm: FAIL" >&2; return 1
     fi
     echo "--- self-test case âm: OK"
+    if ! bash "$VIS_ROOT/bin/vis" explain VS0107 | grep -q "VS0107"; then
+        echo "--- vis explain: FAIL" >&2; return 1
+    fi
+    echo "--- vis explain: OK"
     if ! "$CARGO" build --manifest-path "$MANIFEST" --workspace; then
         echo "--- build: FAIL" >&2; return 1
     fi

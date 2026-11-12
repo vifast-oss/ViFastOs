@@ -3,4 +3,14 @@
 # Chạy `vis` từ workspace (chưa cài vào PATH ở vòng 1).
 set -u
 VIS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec cargo run -q --manifest-path "$VIS_ROOT/Cargo.toml" -p vis-cli --bin vis -- "$@"
+find_cargo() {
+    if command -v cargo >/dev/null 2>&1; then command -v cargo; return 0; fi
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then echo "$HOME/.cargo/bin/cargo"; return 0; fi
+    return 1
+}
+CARGO="$(find_cargo || true)"
+if [ -z "$CARGO" ]; then
+    echo "vis: không thấy cargo (đặt PATH hoặc \$HOME/.cargo/bin)" >&2
+    exit 1
+fi
+exec "$CARGO" run -q --manifest-path "$VIS_ROOT/Cargo.toml" -p vis-cli --bin vis -- "$@"

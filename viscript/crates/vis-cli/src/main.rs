@@ -35,8 +35,9 @@ fn main() -> ExitCode {
                     ExitCode::SUCCESS
                 }
                 None => {
+                    // VD-20: exit 1 dành cho lỗi từ main; mã sai là **lỗi dùng** ⇒ 2.
                     eprintln!("vis: không có mã {code} trong sổ (SPEC-lex §7)");
-                    ExitCode::from(1)
+                    ExitCode::from(2)
                 }
             },
         },

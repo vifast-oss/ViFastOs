@@ -153,6 +153,20 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
    để `CHECK_REPORT` và báo cáo khớp nhau.
 3. **Khoá `next`**: `agentctl report` có `next`; báo cáo Khối E không có. Có thêm vào JSON chuẩn không?
 
+
+### YC-14 — Dòng ViScript: duyệt ST-02a, xung đột `04xx`, lật sổ (mở 2026-11-12 sau review #13/#14, Agent 2)
+
+1. **Duyệt ST-02a cho đúng mẫu**: chỉ có chữ trong ô bảng `viscript/agent/QUEUE.md:98` + ghi chú `:111`;
+   mẫu bắt buộc là **dòng riêng** `APPROVED <YYYY-MM-DD> Agent 0` ngay dưới mục task. Cũng cần sửa 3 nơi còn `REVIEW`:
+   `docs/viscript/SPEC-lex.md:3`, `viscript/AGENTS.md:28`, `viscript/agent/DECISIONS.md:58`.
+2. **Xung đột quy tắc cấp**: thiết kế dùng `VS0412` = "kiểu không khớp" (`ViScript-thiet-ke.md:902,909,1006`).
+   Agent 2 đã sửa *đề xuất* trong `vis-diag` thành `01xx` từ vựng / `02xx` cú pháp / `03xx` tên / **`04xx` kiểu** / `05xx` runtime
+   và ghi rõ là **đề xuất chờ duyệt**; cần Agent 0 chốt vào SPEC (ST-02b được phép sửa SPEC hay không:
+   `AGENTS.md` §4.1 chỉ liệt ST-02a, còn `viscript/agent/QUEUE.md:25` lại cho ST-02b — **hai luật mâu thuẫn**).
+3. **Lật sổ**: `ST-02b` → DONE (đã xong `a48857b`); `ST-03` → READY (dep `ST-01` DONE); `v2/agent/QUEUE.md:152` còn liệt
+   6 task OS READY (thực tế 0); `viscript/agent/BLOCKED.md` mục 4 còn "4 task READY" (đã sửa thành 0).
+4. **`3d5539a [ST-00]`**: xác nhận ai viết commit lật sổ (nếu Agent 2 viết QUEUE thì trái AGENTS §3).
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2

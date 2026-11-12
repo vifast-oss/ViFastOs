@@ -4,8 +4,12 @@
 //! Vòng 1 mới có **định dạng mã lỗi** `VS` + 4 chữ số (sổ mã đầy đủ thuộc ST-02b).
 //! Không `unsafe` (luật dòng ViScript), không phụ thuộc ngoài.
 
-/// Định dạng một mã lỗi ViScript: `VS` + 4 chữ số, ví dụ `VS0001`.
+/// Định dạng một mã lỗi ViScript: `VS` + **đúng 4 chữ số** (VD: `VS0101`).
+///
+/// # Panics
+/// `n > 9999` — SPEC hứa 4 chữ số; cấp quá là lỗi lập trình, không được lặng lẽ thành 5 chữ số.
 pub fn code(n: u16) -> String {
+    assert!(n <= 9999, "mã lỗi phải 4 chữ số (0..=9999), nhận {n}");
     format!("VS{n:04}")
 }
 
@@ -26,10 +30,14 @@ pub struct Code {
 }
 
 /// Sổ mã lỗi **vòng 1**: đúng 10 mã `VS0101..VS0110` của `docs/viscript/SPEC-lex.md` §7.
-/// Quy tắc cấp (ST-02b):
-/// - mã 4 chữ số thập phân, khối theo tầng: `01xx` = từ vựng (lexer), `02xx` = cú pháp/parser,
-///   `03xx` = tên/kiểu, `04xx` = runtime; mỗi khối cấp tăng dần, **không tái dùng** số đã cấp;
-/// - mọi mã phải có mặt trong SPEC-lex (hoặc errata của Agent 0) trước khi vào sổ này;
+///
+/// **ĐỀ XUẤT quy tắc cấp** (chưa phải chuẩn — chờ Agent 0 duyệt qua YC-14; SPEC-lex là nơi
+/// *định nghĩa* chuẩn, crate này chỉ *thực thi*):
+/// - mã 4 chữ số thập phân, khối theo tầng: `01xx` từ vựng (lexer), `02xx` cú pháp/parser,
+///   `03xx` tên/phân giải, `04xx` **kiểu** (`VS0412` = "kiểu không khớp" đã có trong thiết kế),
+///   `05xx` runtime; cấp tăng dần, **không tái dùng** số đã cấp;
+/// - mọi mã phải có mặt trong SPEC-lex/errata trước khi vào sổ; `message_vi` ở đây là **placeholder
+///   vòng 1** — bảng vi/en/ja thuộc ST-03;
 /// - đổi nghĩa/đánh số lại phải qua Agent 0 (VD-08), không tự sửa.
 pub const CODES: [Code; 10] = [
     Code {
@@ -71,7 +79,7 @@ pub const CODES: [Code; 10] = [
     Code {
         id: 107,
         short: "VS0107",
-        message_vi: "tab (tab = 4, vẫn lex nhưng phải báo)",
+        message_vi: "tab (cảnh báo-lỗi; tab = 4)",
         severity: Severity::Warning,
     },
     Code {
@@ -94,7 +102,7 @@ pub const CODES: [Code; 10] = [
     },
 ];
 
-/// Tra một mã theo số (ví dụ `0x0103`). `None` nếu chưa cấp.
+/// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
 pub fn lookup(id: u16) -> Option<&'static Code> {
     CODES.iter().find(|c| c.id == id)
 }
@@ -115,18 +123,19 @@ pub fn next_block() -> u16 {
     phase * 100 + 1
 }
 
-/// Chẩn đoán tối thiểu: mã + thông điệp + vị trí byte (0-based).
+/// Chẩn đoán tối thiểu: mã **đã cấp trong sổ** + thông điệp + vị trí byte (0-based).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diag {
-    pub code: String,
+    pub code: &'static str,
     pub msg: String,
     pub offset: usize,
 }
 
 impl Diag {
-    pub fn new(n: u16, msg: impl Into<String>, offset: usize) -> Self {
+    /// Chỉ nhận `Code` lấy từ [`lookup`]/[`CODES`] — không có đường tạo mã ngoài sổ.
+    pub fn new(code: &'static Code, msg: impl Into<String>, offset: usize) -> Self {
         Self {
-            code: code(n),
+            code: code.short,
             msg: msg.into(),
             offset,
         }
@@ -179,9 +188,35 @@ mod tests {
     }
 
     #[test]
+    fn so_khop_spec_lex_that() {
+        // Đọc thẳng bảng §7 của SPEC-lex: sổ trong code không được lệch nguồn chuẩn.
+        let spec = std::fs::read_to_string("../../../docs/viscript/SPEC-lex.md")
+            .expect("phải đọc được docs/viscript/SPEC-lex.md");
+        let mut rows: Vec<(String, String)> = Vec::new();
+        for line in spec.lines() {
+            let t = line.trim();
+            if t.starts_with("| VS") {
+                let cells: Vec<&str> = t.trim_matches('|').split('|').map(|c| c.trim()).collect();
+                if cells.len() >= 2 {
+                    rows.push((cells[0].to_string(), cells[1].to_string()));
+                }
+            }
+        }
+        assert_eq!(
+            rows.len(),
+            CODES.len(),
+            "SPEC-lex §7 phải có {} hàng",
+            CODES.len()
+        );
+        for (row, code) in rows.iter().zip(CODES.iter()) {
+            assert_eq!(row.0, code.short);
+            assert_eq!(row.1, code.message_vi);
+        }
+    }
+
+    #[test]
     fn chan_doan_giu_vi_tri() {
-        let d = Diag::new(12, "token lạ", 7);
-        assert_eq!(d.code, "VS0012");
+        let d = Diag::new(&CODES[2], "token lạ", 7);
         assert_eq!(d.msg, "token lạ");
         assert_eq!(d.offset, 7);
     }

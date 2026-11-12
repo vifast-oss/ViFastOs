@@ -6,7 +6,7 @@ VIS_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEV="$VIS_ROOT/bin/vis-dev"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-echo "1..4"
+echo "1..5"
 n=0; bad=0
 expect_fail() {
     n=$((n + 1))
@@ -31,5 +31,16 @@ expect_fail "unsafe" "R2" "$tmp/3"
 # 4) vis-host-vifast nằm trong viscript/
 mkdir -p "$tmp/4/vis-host-vifast"; printf '# SPDX-License-Identifier: MIT OR Apache-2.0\n' > "$tmp/4/vis-host-vifast/Cargo.toml"
 expect_fail "vis-host-vifast trong viscript/" "R4" "$tmp/4"
+# 5) môi trường sạch không có cargo: phải báo "không thấy cargo", không được 127
+n=$((n + 1))
+out=$(env -i HOME=/nonexistent PATH=/usr/bin:/bin bash "$VIS_ROOT/bin/vis" explain VS0107 2>&1)
+rc=$?
+if [ "$rc" -eq 127 ]; then
+    echo "not ok $n - thiếu cargo vẫn nổ 127"; bad=$((bad + 1))
+elif [ "$rc" -ne 0 ] && echo "$out" | grep -q "không thấy cargo"; then
+    echo "ok $n - thiếu cargo báo rõ ($rc)"
+else
+    echo "not ok $n - thiếu cargo xử lý sai (rc=$rc): $out"; bad=$((bad + 1))
+fi
 if [ "$bad" -ne 0 ]; then echo "# fixtures: FAIL ($bad)"; exit 1; fi
 echo "# fixtures: PASS (cây sạch phải xanh)"
