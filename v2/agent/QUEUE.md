@@ -117,8 +117,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-13 | Bootstrap **Miri** (nightly + `miri` + `rust-src`) và lệnh `v2 miri`; test đỏ: lệnh chưa có/component thiếu | — | 1,5 h | DONE | `v2 miri` + PoC sim 13/13 PASS (33 s); thiếu toolchain fail rõ; gate 184 test; reviewer APPROVE |
 | KT-14 | `vifast-objmem` core: `ObjHeader` 16 B, `ObjRef`, `ObjStore`, arena thô căn lề, `place/with/with_mut/destroy`, `no_std` + Miri từ commit đầu | KT-13 | 3 h | DONE | 15 test; Miri 15/15; build bare-metal; gate 199 test; reviewer DRIFT đã sửa; YC-18 chốt D2-48 |
 | KT-15 | `with_many_mut` N≤8 + kiểm alias từng cặp + fuzz 10.000 chuỗi (200 chuỗi dưới Miri) | KT-14 | 2 h | DONE | 34 test; Miri alias 8/8 + fuzz 200; fuzz 10k; gate 218 test; guard `chua_header`/TypeId; reviewer DRIFT đã sửa |
-| KT-16 | Tích hợp objmem vào sim: thay `Store` **và** ruột `kobj::Machine`, giữ API; bước 0 gom helper ≤45′; cho phép tách KT-16a/b | KT-14, KT-15 | 3 h | READY | test cũ 0 dòng sửa; object body trong objmem; sim 100% safe; L1 1.000 seed; parity 10k; `.scn` 9/9; áp `chua_header` cho cả `with`/`with_mut`; giữ bảng kind→ctor (đo cỡ, không phình >8 KiB) |
-| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13..KT-16 | 2 h | BLOCKED | Miri tập chọn PASS; 9/9 `.scn`; parity 10k; gate không retry; STATE ghi đủ 2 dòng DoD K1a' |
+| KT-16 | Tích hợp objmem vào sim: thay `Store` **và** ruột `kobj::Machine`, giữ API; bước 0 gom helper ≤45′; cho phép tách KT-16a/b | KT-14, KT-15 | 3 h | DONE | 23 tệp; test cũ 0 dòng sửa; body trong objmem, Cap `Vec`; sim 0 unsafe; gate 227 test/L1 1000; parity 10k; Miri 39+4+8+13; reviewer APPROVE |
+| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13..KT-16 | 2 h | READY | Miri chọn PASS; 9/9 `.scn`; parity 10k; gate 227+; đóng 2 follow-up KT-16: cap/assert `align ≤ ARENA_ALIGN` trong `alloc_place_span`, chốt hợp đồng `Store::alloc` align>4096; `nightly --only-miri`; STATE đủ 2 dòng DoD K1a' |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 APPROVED 2026-11-12 Agent 0
@@ -136,8 +136,8 @@ APPROVED 2026-11-12 Agent 0
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
-1. `KT-16` (READY): tích hợp objmem vào sim; KT-15 DONE (c0d3163).
-2. `KT-17` sau KT-16; chỉ mở khi task trước DONE.
+1. `KT-17` (READY): cổng Miri tổng + KT-04c + đóng follow-up KT-16; KT-16 DONE (3db7ac7).
+2. Hết KT-17 là **K1a' DONE**; sau đó Agent 0 lập kế hoạch K1b (chưa mở).
 3. `KT-16` được tách `KT-16a/b` nếu >3 h (D2-47c); báo Agent 0 trước.
 4. OS hết READY mới lấy ViScript (D2-20); dòng ViScript do tab riêng quản lý.
 5. Không mở K1b/K1c/K2 trong phase này; không đụng `vifast-model`.

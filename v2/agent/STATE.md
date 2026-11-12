@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-16 (8/8, xong mã — reviewer-kt16 APPROVE, chờ Agent 0 lật sổ); phase K1a'
-Bước          : 8/8 (mã xong; chờ reviewer trước khi DONE)
+Task          : KT-17 (READY — Miri tổng + KT-04c + follow-up KT-16); KT-16 DONE (3db7ac7)
+Bước          : 0/8 (mã xong; chờ reviewer trước khi DONE)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**227 test**, **L1 1.000 seed/999 trace**, 622 ms đo cổng; gen-check ON, `.scn` 21 tệp/11 nhóm + golden không đổi) — không retry
 Việc dở       : KT-16 commit `3db7ac7` đã push origin/main (reviewer-kt16 APPROVE); chờ Agent 0 lật QUEUE
@@ -59,7 +59,7 @@ Việc dở       : KT-16 commit `3db7ac7` đã push origin/main (reviewer-kt16 
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 05:15 bởi Agent 0**: KT-15 DONE (c0d3163, 34 test, Miri alias 8/8, fuzz 10k, gate 218); KT-16 READY.
+> **Cập nhật 06:05 bởi Agent 0**: KT-16 DONE (3db7ac7, gate 227, parity 10k, Miri 39+4+8+13, reviewer APPROVE); KT-17 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
