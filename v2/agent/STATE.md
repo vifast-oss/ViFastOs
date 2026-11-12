@@ -4,12 +4,12 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : bf61901
+HEAD          : 545f3b4
 BUILD_ID      : —
-Task          : KT-04a (bắt đầu — bước 1/8)
+Task          : KT-04b (bắt đầu — bước 1/8)
 Bước          : 1/8
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (2,9–4,1 s) + boot riscv64 50/50 (KT-07)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
 Việc dở       : —
 ```
 
@@ -44,32 +44,36 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
-| `HEAD` | `bf61901` `[KT-07]` (đã push `origin/main`); KT-03 ở `3222602`+`d4d6bf2` | `git log -1 --oneline` |
+| `HEAD` | `545f3b4` `[KT-00]` lật QUEUE (Agent 0); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
 | Cổng | `./v2/bin/v2 check` PASS; `gate --fast` PASS **4,1 s**; `gate`/`nightly` exit 2 | `JOURNAL/2026-11-12.md` mục KT-03 |
 | Luật | self-test **6/6** (`ok 1..6`); R1..R5 có case âm đúng mã luật | `bash v2/test/rules/run.sh` |
 | Build/test | `cargo build` xanh 3 crate; `cargo test -p vifast-fs` 52/52; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
 | Luật 1.500 dòng | tệp lớn nhất `vifast-fs/src/fs.rs` = **1.248** dòng | `wc -l` |
-| `spec/` | **chưa tồn tại** (KT-04a tạo `spec/abi.toml`) | `ls spec/` rỗng |
+| `spec/` | **có** `spec/abi.toml` (KT-04a, `status = "REVIEW"`), được R3 quét | `ls spec/`, `./v2/bin/v2 check` |
 | `v2/bin/v2` | **có** (wrapper), `.gitkeep` giữ thư mục | `ls v2/bin` |
 
-## Việc đang làm — KT-07 (K0.5 boot riscv64, ngân sách 3 h)
+## Việc đang làm — KT-04b (object reserved: số + `NotSupported`)
 
-DoD QUEUE: 50 boot 0 lỗi, có log. **Bổ sung bắt buộc theo QD §3.5 / thiết kế §8**: đo `.data + .bss ≤ 256 KiB` [TK] ngay ở K0.5.
+Ngân sách 2 h. DoD (QUEUE:103): method reserved trả `NotSupported`; **số không trùng**.
 
-| Bước | Nội dung | Tệp | Kiểm |
-|---|---|---|---|
-| 1 | Test đỏ trước: harness boot N lần, đòi TAP `ok 1 - k0.5 boot` + `# k0.5 halt`, đo `.data+.bss` bằng `llvm-size` | `v2/test/boot/run.sh` | **đỏ** (chưa có crate kbin) — log ở JOURNAL |
-| 2 | Crate ảnh boot `vifast-kbin-riscv64` (no_std, `_start`, UART 16550 @0x10000000, SBI shutdown), linker script entry `0x80200000`, build.rs `-Tlinker.ld`; **workspace riêng** (exclude khỏi `v2/Cargo.toml` để `gate --fast` không build ảnh bare-metal) | `v2/kernel/vifast-kbin-riscv64/**`, `v2/Cargo.toml` (exclude) | `cargo build --target riscv64gc-unknown-none-elf --release` xanh |
-| 3 | In TAP: `TAP version 13` / `1..1` / `ok 1 - k0.5 boot` / `# k0.5 halt` rồi SBI shutdown | `v2/kernel/.../src/main.rs` | boot 1 lần thấy đủ marker, QEMU tự thoát |
-| 4 | 50 boot + đo cổng tĩnh; gắn vào `v2 gate --fast`? **Không** — boot test chạy tay/CI, ghi log | `v2/test/boot/run.sh` | `bash v2/test/boot/run.sh 50` ⇒ `50/50`, `.data+.bss ≤ 256 KiB` |
+_Kế hoạch nhỏ điền ở bước 2/8 sau khi review vòng này trả kết quả._
 
-Hạ tầng đã kiểm: `qemu-system-riscv64` 11.1.3; OpenSBI `opensbi-riscv64-generic-fw_dynamic.bin`; rust target `riscv64gc-unknown-none-elf`; `llvm-size` ở sysroot; 12 core.
-D2-08: TAP test **không** nằm trong ảnh sản phẩm — harness chỉ chạy ảnh boot, marker do chính ảnh in (chưa có test kernel nào được nhúng).
+## Đã xong — KT-04a (`spec/abi.toml` lõi + bảng ánh xạ)
+
+- `spec/` ở **gốc repo** (AGENTS.md §1/§4.1 — bậc cao hơn cây §8 của thiết kế): `version/abi_version/min_compat = 1`,
+  `status = "REVIEW"`, `[frozen]` đủ 5 thứ, `[message]` 64 MR + 4 cap, `[message_info]` 35 bit,
+  `[calling.riscv64]` lấy từ code v1 (`a7` số hiệu, `a0/a1` tham số, `a2` MessageInfo, `a3..a6` 4 MR),
+  `[object]` lõi 1..7 + `SchedControl`, `[object_reserved]` 8..31, `[error]` 19 mã, `[syscall]` 0..14, reserved 15..31.
+- Bảng ánh xạ: `v2/docs/abi-v1-v2-mapping.md` (25 crate, 58 syscall → 15 + 20 method + 23 bỏ, 22 biến thể KError → 0 + 19).
+- Máy kiểm: `v2/test/abi/check_abi.py` (Python ≥3.11 `tomllib`), **gắn vào `v2/bin/v2 check`** — `check` nay có 6 bước.
+- Câu hỏi mở: **YC-02** (DebugGetInfo chưa có số), **YC-03** (QD "0..13 như cũ"; cây `v2/spec/` của thiết kế §8).
 
 ## Lịch sử trạng thái (mới nhất ở trên)
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | **KT-04a** | 8/8 | `545f3b4` | — | `gate --fast` PASS | **DONE**: `spec/abi.toml` (REVIEW) + 3 bảng ánh xạ + `check_abi.py` gắn cổng; 4 điều kiện review #4 xử lý |
+| 2026-11-12 | KT-04a | 1–7/8 | `545f3b4` | — | — | review#4 ON-TRACK; đỏ trước `abi-check: KHÔNG có spec/abi.toml`; quy ước gọi lấy từ code v1 (4 MR) |
 | 2026-11-12 | **KT-07** | 8/8 | `c9cdc9e` | — | boot 50/50 + `gate --fast` | **DONE**: K0.5 boot riscv64 qua OpenSBI; TAP 1 test; `image 14.512 B`, `.data+.bss = 0 B` (trần 256 KiB), `.stack 64 KiB` NOLOAD báo riêng |
 | 2026-11-12 | KT-07 | 1–7/8 | `c9cdc9e` | — | — | review#3 ON-TRACK (3 điều kiện) → đỏ trước (`chưa có crate kbin`); `vifast-plat-riscv64` (unsafe, UART/SBI) + `vifast-kbin-riscv64` (safe, linker 0x80200000); kernel workspace tách khỏi v2 |
 | 2026-11-12 | **KT-03** | 8/8 | `785996a` | — | `gate --fast` PASS | **DONE**: wrapper `v2/bin/v2` (check/gate --fast/rules; gate đầy đủ + nightly từ chối), 5 luật R1..R5 + self-test 6/6, `check` PASS, `gate --fast` 4,1 s |

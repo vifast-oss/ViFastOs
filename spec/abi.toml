@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# spec/abi.toml — MỘT nguồn sự thật cho ABI v2 (D2-11). Code sinh từ tệp này, không sửa tay.
+#
+# status = "REVIEW": bản nháp của Agent 2 cho KT-04d. CHƯA được duyệt; sau khi có dòng
+# `APPROVED <ngày> Agent 0` trong v2/agent/QUEUE.md thì CHỈ Agent 0 sửa (D2-22).
+# Nhãn: mục nào không có nguồn dẫn thì là [TK] (thiết kế mới), chờ duyệt.
+#
+# Nguồn dẫn: QD §4 (syscall 0..13 + 14 Exit, dải 15..31 reserved, 19 mã lỗi, method thêm);
+# thiết kế §4.6 (MessageInfo 35 bit, 64 MR + 4 cap), §4.20 (mã lỗi), §4.21 (bảng ABI),
+# §3.9 (slot 48 B), §4.22 (kernel.toml); code v1 để lấy quy ước gọi riscv64:
+# crates/vifast-user/src/lib.rs (a7 = số hiệu, a0/a1 = tham số + (error,value),
+# a2 = MessageInfo, a3..a6 = 4 MR) — xem cụm [calling.riscv64].
+
+name = "vifast-abi"
+status = "REVIEW"
+abi_version = 1
+min_compat = 1
+# Golden file do vifast-gen sinh (KT-05); gate --fast chạy gen-check từ KT-05.
+golden = "test/abi/abi-v1.golden"
+
+# ---------------------------------------------------------------------------
+# Đóng băng ABI (D2-15 / QD §1 Q-B): đúng 5 thứ. Mọi thứ khác là `reserved`.
+[frozen]
+wire_syscalls = true          # (1) số syscall 0..14 + quy ước thanh ghi riscv64
+message_layout = true         # (2) layout MessageInfo + MR trong thanh ghi + receive window
+error_table = true            # (3) 19 mã lỗi + quy ước trả lỗi (a0 = error, a1 = value)
+object_layout = true          # (4) kích thước/căn lề object theo arch
+id_reuse = "never"            # (5) ID không bao giờ tái dùng; xoá = deprecated, giữ số
+
+# ---------------------------------------------------------------------------
+# Giới hạn message (QD §3.13: 64 MR + 4 cap — thay đổi có chủ ý so với v1).
+[message]
+max_words = 64
+max_caps = 4
+words_in_registers = 4        # MR0..MR3 ở a3..a6 (v1 riscv64 cũng 4; "có thể 6" [ƯL] không chọn)
+words_in_ipc_buffer = 60
+ipc_buffer_bytes = 4096
+ipc_buffer_align = 16
+
+# MessageInfo nằm gọn trong MỘT thanh ghi (thiết kế §4.6): 20+3+1+4+7 = 35 bit.
+[message_info]
+bits = 35
+label_bits = 20
+caps_bits = 3                 # ≤ 4 cap
+no_reply_bits = 1
+extra_caps_unwrapped_bits = 4
+length_bits = 7               # ≤ 64 MR
+# Thứ tự bit trên thanh ghi (bit thấp trước) — [TK], chờ duyệt ở KT-04d.
+layout = "label:0..19, caps:20..22, no_reply:23, extra_caps_unwrapped:24..27, length:28..34"
+
+# Quy ước gọi. riscv64 đóng băng NGAY (D2-15); 2 arch còn lại chỉ giữ chỗ (D2-10).
+[calling.riscv64]
+syscall_number = "a7"
+args = ["a0", "a1"]
+message_info = "a2"
+mr_registers = ["a3", "a4", "a5", "a6"]
+return_error = "a0"           # 0 = thành công, khác 0 = mã lỗi (1..19)
+return_value = "a1"
+ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, ≤4 cap)"
+preserved = ["sp", "gp", "tp", "s0..s11", "fs0..fs11"]
+note = "Lấy đúng quy ước v1 đang chạy (crates/vifast-user/src/lib.rs), không tự đặt"
+
+[calling.aarch64]
+reserved = true
+note = "Mở ở K4' theo D2-10; chỉ giữ số, không đóng băng chữ ký"
+
+[calling.x86_64]
+reserved = true
+note = "Mở ở K5' theo D2-10; chỉ giữ số, không đóng băng chữ ký"
+
+# ---------------------------------------------------------------------------
+# Kích thước/căn lề (thứ đóng băng thứ 4). slot 48 B là [TK] của QD §3.9.
+[object_size]
+slot = { bytes = 48, align_bytes = 16, note = "QD §3.9 [TK] — sửa từ 32 B" }
+default_align_bytes = 16
+page_bytes = 4096
+untyped_min_bytes = 4096
+# Sizes dưới đây là [TK] — thiết kế §4.21 không cho con số; chờ duyệt ở KT-04d.
+riscv64 = { tcb = 512, endpoint = 64, notification = 64, reply = 64, sched_context = 256, sched_control = 64, cnode_base = 64 }
+
+# ---------------------------------------------------------------------------
+# 19 mã lỗi (QD §4). Số 0 = thành công; 1..19 là mã lỗi. Mỗi mã kèm một word chi tiết.
+[error]
+1 = { name = "InvalidCapability", detail = "chỉ số tham số sai (a0/a1) hoặc cap không hợp lệ" }
+2 = { name = "WrongObjectType", detail = "chỉ số tham số sai hoặc loại object mong đợi" }
+3 = { name = "InsufficientRights", detail = "quyền còn thiếu (bit quyền)" }
+4 = { name = "WxViolation", detail = "địa chỉ vi phạm W^X" }
+5 = { name = "InvalidArgument", detail = "chỉ số tham số sai" }
+6 = { name = "Alignment", detail = "căn lề yêu cầu" }
+7 = { name = "SlotOccupied", detail = "slot đích đã có cap" }
+8 = { name = "SlotEmpty", detail = "slot nguồn rỗng" }
+9 = { name = "NotEnoughMemory", detail = "số byte còn thiếu" }
+10 = { name = "AlreadyMapped", detail = "địa chỉ ảo đã map" }
+11 = { name = "NotMapped", detail = "địa chỉ ảo chưa map" }
+12 = { name = "MissingPageTable", detail = "cấp bảng trang thiếu" }
+13 = { name = "HasChildren", detail = "số object con còn sống" }
+14 = { name = "Busy", detail = "tài nguyên đang bận (vd IRQ line)" }
+15 = { name = "Cancelled", detail = "thao tác bị huỷ do Suspend(Abort)" }
+16 = { name = "Timeout", detail = "hết timeout_ep" }
+17 = { name = "IllegalOperation", detail = "trạng thái TCB/object không cho phép" }
+18 = { name = "NotSupported", detail = "method/object reserved chưa cài" }
+19 = { name = "RangeError", detail = "chỉ số/chỉ số dải ngoài phạm vi" }
+
+# ---------------------------------------------------------------------------
+# 15 syscall (QD §4: 0..13 + 14 Exit). Dải 15..31 reserved, chưa gán cho ai.
+[syscall]
+0 = { name = "Call", args = "cap, MessageInfo, MR*, cap*", ret = "error, value", note = "Endpoint: IPC; object khác: invocation (method = label), trả ngay" }
+1 = { name = "Send", args = "cap, MessageInfo, MR*, cap*", ret = "error, value", note = "Notification: Signal; Reply: trả lời; fault Exit: giao qua hàng gửi của fault_ep, không Reply" }
+2 = { name = "NBSend", args = "cap, MessageInfo, MR*, cap*", ret = "error, value", note = "không chờ" }
+3 = { name = "Recv", args = "cap, reply_cptr?", ret = "error, value, MessageInfo, MR*, cap*", note = "Endpoint hoặc Notification" }
+4 = { name = "NBRecv", args = "cap", ret = "error, value, MessageInfo, MR*, cap*", note = "Poll: Busy khi không có message" }
+5 = { name = "ReplyRecv", args = "reply_cap, cap, MessageInfo, MR*", ret = "error, value, MessageInfo, MR*", note = "đường nóng của server" }
+6 = { name = "NBSendRecv", args = "send_cap, recv_cap, reply_cap, MessageInfo, MR*", ret = "error, value, MessageInfo, MR*", note = "passive server/driver" }
+7 = { name = "NBSendWait", args = "send_cap, recv_cap, MessageInfo, MR*", ret = "error, value, MessageInfo, MR*", note = "passive server/driver" }
+8 = { name = "Yield", args = "", ret = "error, value", note = "trả phần budget còn lại" }
+9 = { name = "WaitAddr", args = "mrs: addr, expected", ret = "error, value", note = "futex wait" }
+10 = { name = "WakeAddr", args = "mrs: addr, n", ret = "error, value", note = "futex wake" }
+11 = { name = "ClockRead", args = "", ret = "error, value(ns)", note = "đồng hồ đơn điệu" }
+12 = { name = "DebugPutStr", args = "user ptr, len", ret = "error, value", note = "feature debug" }
+13 = { name = "DebugHalt", args = "code", ret = "không trả", note = "feature test; chỉ dùng cho test (QD §4)" }
+14 = { name = "Exit", args = "code", ret = "không trả", note = "lưu exit_code; có fault_ep → BlockedOnSend{fault_ep, call:false} mang FaultKind::Exit{code}; procsrv Recv xong → Inactive; không có fault_ep → Inactive ngay" }
+
+[syscall_reserved]
+from = 15
+to = 31
+note = "Chưa gán; mọi thứ chưa cài chỉ giữ số (QD §1 Q-B). DebugGetInfo chưa có số — xem [debug_info]."
+
+# DebugGetInfo thuộc danh sách đóng băng (D2-15/Q-B) nhưng thiết kế KHÔNG cho số.
+# Agent 2 không tự chiếm số trong dải reserved: ghi REVIEW để Agent 0 chốt ở KT-04d.
+[debug_info]
+status = "REVIEW"
+returns = ["abi_version", "build_id", "config_hash"]
+note = "Chưa gán số. Đề xuất: lấy số đầu tiên còn trống trong 15..31 khi cài (K3), kèm một mục D2 mới."
+
+# ---------------------------------------------------------------------------
+# Object lõi (KT-04a). Số object đóng băng, ID không tái dùng.
+# Reserved 8..31 để KT-04b điền (VCpu/IOSpace/VSpace/PageTable/Frame/Irq*/PowerControl).
+[object]
+Untyped = { id = 1, stability = "frozen", method = { 0 = { name = "Retype", note = "Revoke đi qua CNode.Revoke trên cap Untyped" } } }
+CNode = { id = 2, stability = "frozen", method = { 0 = { name = "Copy" }, 1 = { name = "Mint" }, 2 = { name = "Move" }, 3 = { name = "Mutate" }, 4 = { name = "Delete" }, 5 = { name = "Revoke" }, 6 = { name = "Rotate" } } }
+Tcb = { id = 3, stability = "frozen", method = { 0 = { name = "Configure" }, 1 = { name = "SetFaultEp" }, 2 = { name = "ReadState" }, 3 = { name = "Suspend", args = "mode: Abort|Defer" }, 4 = { name = "SetPriority" }, 5 = { name = "SetMcp" }, 6 = { name = "SetAffinity" }, 7 = { name = "SetSchedParams" }, 8 = { name = "SetTimeoutEp" }, 9 = { name = "ReadRegs" }, 10 = { name = "WriteRegs" }, 11 = { name = "CopyRegs" }, 12 = { name = "Resume" }, 13 = { name = "BindNotification" }, 14 = { name = "UnbindNotification" }, 15 = { name = "SetTls", note = "K6" } } }
+SchedContext = { id = 4, stability = "frozen", method = { 0 = { name = "Bind" }, 1 = { name = "Unbind" }, 2 = { name = "Consumed" }, 3 = { name = "YieldTo" } } }
+Endpoint = { id = 5, stability = "frozen", method = {}, note = "chỉ qua syscall" }
+Notification = { id = 6, stability = "frozen", method = {}, note = "chỉ qua syscall" }
+Reply = { id = 7, stability = "frozen", method = {}, note = "chỉ qua syscall; Reply object do bên nhận cấp (QD §3.2)" }
+
+[object_reserved]
+from = 8
+to = 31
+note = "KT-04b điền số + NotSupported; chưa cài thì trả NotSupported (QD §1 Q-B)"

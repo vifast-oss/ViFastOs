@@ -15,18 +15,20 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 
 | Task | Chặn bởi | Cần gì để mở |
 |---|---|---|
-| KT-03 | KT-02 chưa `DONE` (brief xếp BLOCKED) | KT-02 xong (`cargo build` workspace rỗng xanh) ⇒ chuyển READY |
+| ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
 | KT-04b | KT-04a | `abi.toml` lõi parse được + bảng ánh xạ đủ |
-| KT-04c | KT-04a | như trên |
+| KT-04c | KT-04a | như trên (21 kịch bản, D2-27) |
 | KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
-| KT-07 | KT-02, KT-03 | khung `v2/` build được + `v2 gate --fast` khung chạy |
-| KT-08 | KT-07 | 50 boot riscv64 0 lỗi, có log |
+| ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
+| KT-08 | KT-07 (đã DONE) | sim harness + store giả + scheduler tối thiểu 1 hart |
 | KT-09 | KT-08 | kịch bản end-to-end Retype→Configure→Call/Reply chạy |
 | KT-10 | KT-09 | invariant tổng byte + preempt xanh |
 | KT-11 | KT-10 | property test cây + Revoke xanh |
-| KT-12 | KT-08 | sim harness chạy được |
+| KT-12 | KT-02 (đã DONE) — QUEUE:113 ghi dep KT-02, `READY` | traceformat + ring, giải mã dump từ sim |
 
 Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spec/thiếu quyết định: QD đã trả lời Q1..Q12 (QD §9).
+
+Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT-07 **DONE**, KT-12 thôi ghi sai dep KT-08.
 
 ## 3. Câu hỏi cho Agent 0
 
@@ -43,6 +45,23 @@ Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spe
 - **Vì sao Agent 2 không tự lật**: `AGENTS.md` §3 — Agent 2 không sửa `QUEUE.md`; bước 7 "`vifast-agentctl done`" chưa dùng được vì KT-06 chưa có.
 - **Đề nghị**: Agent 0 ghi `KT-01/02/03/07 = DONE`, `KT-08 = READY` (dep KT-07 xong), và cập nhật `v2/AGENTS.md` §3. Không chặn Agent 2: các task đang chạy theo điều phối miệng.
 - **ĐÃ XỬ LÝ 2026-11-12**: QUEUE đã lật `KT-01/02/03/07 = DONE`, `KT-06/08/12 = READY`; `v2/AGENTS.md` §3 đã sửa. Không cần chờ.
+
+
+### YC-02 — DebugGetInfo: chưa có số syscall (mở 2026-11-12, Agent 2)
+
+- D2-15/Q-B buộc ABI có `DebugGetInfo` (thiết kế:492), nhưng dải syscall đã đóng 0..14 và **15..31 reserved**.
+- Agent 2 **không tự chiếm số**; trong `spec/abi.toml` ghi `[debug_info] status = "REVIEW"`.
+- Đề nghị Agent 0 chốt: `DebugGetInfo` lấy **số 15** (đầu dải reserved) kèm một mục D2 mới, hay là một method của object (object nào?).
+- Không chặn KT-04a (spec ghi REVIEW); chặn phần "đóng băng đủ 5 thứ" ở KT-04d.
+
+### YC-03 — Hai câu trong QD/thiết kế không khớp code v1 (mở 2026-11-12, Agent 2)
+
+1. QD §4 "0..13 như cũ": **sai** với code v1 (`crates/vifast-abi/src/lib.rs`): v1 `14 = CapRevoke`, v2 `14 = Exit`;
+   v1 `0=Send,1=Call`, v2 `0=Call,1=Send`. Bảng ánh xạ của KT-04a ghi rõ đây là **đánh số lại** (không giữ số).
+   Đề nghị Agent 0 sửa câu chữ trong QD (tệp cấm với Agent 2) hoặc xác nhận cách hiểu.
+2. Thiết kế §8 (dòng ~680) vẽ `v2/spec/` trong khi `AGENTS.md` §1/§4.1, `v2/AGENTS.md` §1, QUEUE (KT-04a),
+   BLOCKED và `AGENT2-PROMPT` §2 đều dùng **`spec/` ở gốc**; ngay thiết kế §… cũng gọi `spec/abi.toml`.
+   Agent 2 đã tạo **`spec/` ở gốc** (bậc nguồn cao hơn) và đưa vào phạm vi quét R3. Đề nghị sửa cây §8 cho khớp.
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
