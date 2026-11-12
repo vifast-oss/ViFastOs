@@ -65,6 +65,14 @@ pub const RIGHTS_ALL: u8 = RIGHT_READ | RIGHT_WRITE | RIGHT_GRANT | RIGHT_GRANT_
 pub type ObjId = u32;
 pub type CapId = u32;
 
+/// Số hart của mô hình K1b: **1** (D2-49(a); push migration hoãn sang K1c).
+///
+/// Dùng để kiểm `affinity`/`home` của model API `Tcb.SetAffinity/SetHome` `[TK]`; KT-19 thay
+/// bằng cấu hình hart của `Machine`.
+pub const HART_COUNT: u16 = 1;
+/// `HartMask` mặc định: hart 0 (K1b 1 hart).
+pub const AFFINITY_HOME: u64 = 1;
+
 /// Loại object — 8 lõi + 8 reserved (spec `[object]`). Reserved ⇒ `NotSupported` khi Retype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjType {
@@ -244,114 +252,13 @@ pub struct CapInfo {
     pub alive: bool,
 }
 
-/// Nguyên nhân fault mang theo trạng thái chặn (D2-25: Exit mang mã thoát).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FaultKind {
-    Exit { code: u64 },
-}
-
-/// Lý do `Sleeping` — variants của `spec/[method_signature.state.Sleeping]` (D2-33).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SleepReason {
-    Timeout,
-    Budget,
-}
-
-impl SleepReason {
-    pub fn name(self) -> &'static str {
-        match self {
-            SleepReason::Timeout => "Timeout",
-            SleepReason::Budget => "Budget",
-        }
-    }
-}
-
-/// Trạng thái TCB — **đủ 11 tên** của `spec/[method_signature.state]` (D2-33);
-/// unit test `tcb_state_du_11_ten_theo_spec` so trực tiếp với `vifast_abi::TCB_STATES`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TcbState {
-    Inactive,
-    Ready,
-    Running {
-        hart: u16,
-    },
-    BlockedOnSend {
-        ep: ObjId,
-        call: bool,
-        fault: Option<FaultKind>,
-    },
-    BlockedOnRecv {
-        ep: ObjId,
-    },
-    BlockedOnReply {
-        reply: ObjId,
-    },
-    BlockedOnNotification {
-        ntfn: ObjId,
-    },
-    BlockedOnAddress {
-        frame: ObjId,
-        offset: u64,
-    },
-    Sleeping {
-        reason: SleepReason,
-    },
-    Stopping,
-    Dead,
-}
-
-impl TcbState {
-    /// Tên trạng thái (không kèm trường) — khớp `vifast_abi::TCB_STATES`.
-    pub fn name(&self) -> &'static str {
-        match self {
-            TcbState::Inactive => "Inactive",
-            TcbState::Ready => "Ready",
-            TcbState::Running { .. } => "Running",
-            TcbState::BlockedOnSend { .. } => "BlockedOnSend",
-            TcbState::BlockedOnRecv { .. } => "BlockedOnRecv",
-            TcbState::BlockedOnReply { .. } => "BlockedOnReply",
-            TcbState::BlockedOnNotification { .. } => "BlockedOnNotification",
-            TcbState::BlockedOnAddress { .. } => "BlockedOnAddress",
-            TcbState::Sleeping { .. } => "Sleeping",
-            TcbState::Stopping => "Stopping",
-            TcbState::Dead => "Dead",
-        }
-    }
-
-    /// Chỉ `Inactive`/`Ready`/`Running` là chạy được; còn lại là chặn/ngủ/dừng/chết.
-    pub fn is_runnable(&self) -> bool {
-        matches!(
-            self,
-            TcbState::Inactive | TcbState::Ready | TcbState::Running { .. }
-        )
-    }
-
-    pub fn render(&self) -> String {
-        match self {
-            TcbState::Inactive => "Inactive".to_string(),
-            TcbState::Ready => "Ready".to_string(),
-            TcbState::Running { hart } => format!("Running{{hart={hart}}}"),
-            TcbState::BlockedOnSend { ep, call, fault } => {
-                let fault = match fault {
-                    None => "none".to_string(),
-                    Some(FaultKind::Exit { code }) => format!("Exit{{{code}}}"),
-                };
-                format!("BlockedOnSend{{ep={ep}, call={call}, fault={fault}}}")
-            }
-            TcbState::BlockedOnRecv { ep } => format!("BlockedOnRecv{{ep={ep}}}"),
-            TcbState::BlockedOnReply { reply } => format!("BlockedOnReply{{reply={reply}}}"),
-            TcbState::BlockedOnNotification { ntfn } => {
-                format!("BlockedOnNotification{{ntfn={ntfn}}}")
-            }
-            TcbState::BlockedOnAddress { frame, offset } => {
-                format!("BlockedOnAddress{{frame={frame}, offset={offset}}}")
-            }
-            TcbState::Sleeping { reason } => format!("Sleeping{{reason={}}}", reason.name()),
-            TcbState::Stopping => "Stopping".to_string(),
-            TcbState::Dead => "Dead".to_string(),
-        }
-    }
-}
+// KT-18: `TcbState` + bảng `ALLOWED` 11×11 nằm ở `crate::tcb` (D2-49(d)) để mọi đường đổi
+// trạng thái đi qua **một** cửa `Machine::transition_tcb`. Re-export để đường dẫn cũ
+// (`vifast_sim::kobj::TcbState`, `::FaultKind`, `::SleepReason`) không đổi.
+pub use crate::tcb::{
+    BlockedOnKind, FaultKind, SleepReason, SuspendMode, TcbSnapshot, TcbState, ALLOWED,
+    TCB_STATE_COUNT,
+};
 
 #[derive(Debug, Default)]
 struct EndpointState {
@@ -375,15 +282,37 @@ enum Kind {
     SchedContext(Box<SchedData>),
     Endpoint(Box<EndpointState>),
     Reply(Box<ReplyData>),
+    Notification(Box<NotificationState>),
     Plain,
 }
 
+/// Ruột TCB — **đủ trường DoD KT-18** (thiết kế §4.4 `:285`, D2-33).
+///
+/// `suspended` và `exit_code` là cờ **trực giao** với `state` (D2-33): `Ready + suspended`
+/// không nằm trong ready queue, `Sleeping + suspended` vẫn `Sleeping`.
 #[derive(Debug)]
 struct TcbData {
     state: TcbState,
+    suspended: bool,
+    exit_code: Option<u64>,
     fault_ep: Option<CapId>,
     cspace: Option<ObjId>,
-    exit_code: Option<u64>,
+    priority: u8,
+    max_controlled_priority: u8,
+    /// `HartMask` ≤ 64 bit (D2-49(a): K1b 1 hart ⇒ bit 0).
+    affinity: u64,
+    home: u16,
+    /// Model API `set_sched_params(tcb, sc)` — D2-49(b); ABI `Tcb.SetSchedParams` để K1c/K3.
+    sched_context: Option<ObjId>,
+    bound_notification: Option<ObjId>,
+}
+
+/// Notification tối giản của K1b: **một** waiter (thiết kế §4.7: `Signal` đánh thức một
+/// người chờ). Word/badge/signal thuộc K1c (D2-49(a)) — KT-18 chỉ cần chỗ ghi waiter để
+/// `Suspend(Abort)`/finalise chứng minh "gỡ khỏi hàng chờ notification".
+#[derive(Debug, Default)]
+struct NotificationState {
+    waiter: Option<ObjId>,
 }
 
 #[derive(Debug)]
@@ -396,6 +325,37 @@ struct SchedData {
 #[derive(Debug)]
 struct ReplyData {
     caller: Option<ObjId>,
+}
+
+/// Ảnh chụp **toàn bộ** trường TCB của mô hình — đọc/ghi qua model API `[TK]` (D2-49(b,c)).
+///
+/// `Tcb.ReadState` (ABI) chỉ trả 4 giá trị ([`TcbSnapshot`]); các trường còn lại không có
+/// chữ ký method trong draft D2-33 nên K1b **không** tuyên bố ABI cho chúng.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TcbInfo {
+    pub state: TcbState,
+    pub suspended: bool,
+    pub exit_code: Option<u64>,
+    pub fault_ep: Option<CapId>,
+    pub cspace: Option<ObjId>,
+    pub priority: u8,
+    pub max_controlled_priority: u8,
+    pub affinity: u64,
+    pub home: u16,
+    pub sched_context: Option<ObjId>,
+    pub bound_notification: Option<ObjId>,
+}
+
+/// Một dòng log finalise TCB (KT-18 DoD 9): ghi **trước** khi body bị destroy.
+///
+/// `released_sched_context` là kết quả của hook trả `SchedContext` (thiết kế §4.3 bảng
+/// Finalise). K1b **chưa có** scheduler/refill queue (KT-19/KT-20) nên hook chỉ trả ObjId;
+/// KT-19 gắn thêm bước gỡ ready queue, KT-20 gỡ refill queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FinaliseEntry {
+    pub tcb: ObjId,
+    pub state: TcbState,
+    pub released_sched_context: Option<ObjId>,
 }
 
 /// Body phải vừa object **nhỏ nhất** của spec (64 B) sau header 16 B: `Kind ≤ 48 B`.
@@ -415,6 +375,7 @@ impl KObj for Kind {
             Kind::Endpoint(_) => 5,
             Kind::Plain => 6,
             Kind::Reply(_) => 7,
+            Kind::Notification(_) => 8,
         }
     }
 }
@@ -481,6 +442,13 @@ pub struct Machine {
     regions: Vec<OwnedMem>,
     objects: Vec<Meta>,
     caps: Vec<Cap>,
+    /// Bộ đếm cặp chuyển trạng thái TCB 11×11 (`hàng * 11 + cột`) — KT-18 DoD 4.
+    pair_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
+    /// Log finalise TCB (KT-18 DoD 9), ghi trước khi body bị destroy trong objmem.
+    finalise_log: Vec<FinaliseEntry>,
+    /// Hàng chờ WaitOnAddress mô hình hoá (thiết kế §4.7: bucket theo `(frame, offset)`).
+    /// K1b chưa có object Frame (K2) nên khoá dùng `ObjId` thô của frame.
+    address_waiters: Vec<(ObjId, u32, ObjId)>,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -537,6 +505,9 @@ impl Machine {
             regions: Vec::new(),
             objects: Vec::new(),
             caps: Vec::new(),
+            pair_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
+            finalise_log: Vec::new(),
+            address_waiters: Vec::new(),
         }
     }
 
@@ -1289,6 +1260,7 @@ impl Machine {
 
     // ---------------------------------------------------------------- cấu hình
 
+    /// `Tcb.Configure`: gắn CSpace; **xoá `exit_code`** (D2-25: `Configure`/`Resume` xoá).
     pub fn tcb_configure(&mut self, tcb: SlotRef, cspace: Option<SlotRef>) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
         let cspace_obj = match cspace {
@@ -1298,6 +1270,7 @@ impl Machine {
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.cspace = cspace_obj;
+                t.exit_code = None;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
@@ -1357,7 +1330,170 @@ impl Machine {
         })
     }
 
-    // ---------------------------------------------------------------- IPC
+    // ------------------------------------------- trường TCB qua model API `[TK]` (KT-18 DoD 1)
+    //
+    // Các method dưới đây **không** có chữ ký trong draft D2-33 (trừ `Tcb.ReadState`), nên
+    // K1b chỉ cài **model API**, không tuyên bố ABI (D2-49(b,c)). KT-21 sẽ dùng chúng cho
+    // donation/MCP.
+
+    /// `Tcb.SetPriority`/`Tcb.SetMcp` `[TK]`: `max_controlled_priority ≥ priority`
+    /// (thiết kế §4.5 `:311`: MCP ngăn tự nâng ưu tiên).
+    pub fn tcb_set_priority(
+        &mut self,
+        tcb: SlotRef,
+        priority: u8,
+        max_controlled_priority: u8,
+    ) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        if max_controlled_priority < priority {
+            return Err(KError::InvalidArgument);
+        }
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.priority = priority;
+                t.max_controlled_priority = max_controlled_priority;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// `Tcb.SetAffinity` `[TK]`: `HartMask` ≤ 64 bit, khác 0, chỉ bit của hart có thật.
+    pub fn tcb_set_affinity(&mut self, tcb: SlotRef, affinity: u64) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let hart_mask = (1u64 << HART_COUNT) - 1;
+        if affinity == 0 || affinity & !hart_mask != 0 {
+            return Err(KError::InvalidArgument);
+        }
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.affinity = affinity;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// `Tcb.SetHome` `[TK]`: home phải là hart có thật (K1b: hart 0).
+    pub fn tcb_set_home(&mut self, tcb: SlotRef, home: u16) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        if home >= HART_COUNT {
+            return Err(KError::InvalidArgument);
+        }
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.home = home;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Model API `set_sched_params(tcb, sc)` — **D2-49(b)**: gắn/gỡ `SchedContext` của TCB,
+    /// không sửa `spec/`/ABI ở K1b (`Tcb.SetSchedParams` để K1c/K3).
+    pub fn set_sched_params(&mut self, tcb: SlotRef, sched: Option<SlotRef>) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let sched_obj = match sched {
+            Some(s) => Some(self.require_type(s, ObjType::SchedContext)?),
+            None => None,
+        };
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.sched_context = sched_obj;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Bind notification vào TCB (thiết kế §4.7): model API `[TK]`, chưa có chữ ký ABI.
+    pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let ntfn_obj = self.require_type(ntfn, ObjType::Notification)?;
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.bound_notification = Some(ntfn_obj);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Ảnh chụp toàn bộ trường TCB của mô hình (đọc/ghi qua model API `[TK]`).
+    pub fn tcb_info(&self, tcb: SlotRef) -> Result<TcbInfo, KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        self.body(obj, |k| match k {
+            Kind::Tcb(t) => Ok(TcbInfo {
+                state: t.state,
+                suspended: t.suspended,
+                exit_code: t.exit_code,
+                fault_ep: t.fault_ep,
+                cspace: t.cspace,
+                priority: t.priority,
+                max_controlled_priority: t.max_controlled_priority,
+                affinity: t.affinity,
+                home: t.home,
+                sched_context: t.sched_context,
+                bound_notification: t.bound_notification,
+            }),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    // ------------------------------------------- một cửa chuyển trạng thái (KT-18 DoD 3+4)
+
+    /// `Tcb.ReadState` — trả **4 giá trị** `{state, suspended, blocked_on_kind, exit_code}`
+    /// (thiết kế §4.4 `:282`, D2-33). Trước KT-18 hàm này trả `TcbState` (drift đã sửa).
+    pub fn tcb_read_state(&self, tcb: SlotRef) -> Result<TcbSnapshot, KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        self.body(obj, |k| match k {
+            Kind::Tcb(t) => Ok(TcbSnapshot {
+                state: t.state,
+                suspended: t.suspended,
+                blocked_on_kind: t.state.blocked_on_kind(),
+                exit_code: t.exit_code,
+            }),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **Một cửa** đổi trạng thái TCB (D2-49(d)): tra bảng [`ALLOWED`]; cặp cấm trả
+    /// `IllegalOperation` và **không** đổi trạng thái; mỗi lần chuyển hợp lệ cộng
+    /// `pair_hits` để `transition_coverage()` báo phủ cặp.
+    ///
+    /// Mọi đường `call`/`recv`/`reply`/`exit`/`tcb_suspend`/`finalise_tcb` dùng hàm này.
+    /// Thao tác **không** đổi trạng thái (ví dụ `Resume`, `Suspend` trên `Ready`/`Sleeping`)
+    /// **không** gọi cổng — bảng không có cặp danh tính ngoài `BlockedOnSend → BlockedOnSend`.
+    pub fn transition_tcb(&mut self, tcb: ObjId, to: TcbState) -> Result<(), KError> {
+        let from = self.tcb_state(tcb)?;
+        if !crate::tcb::allowed(from, to) {
+            return Err(KError::IllegalOperation);
+        }
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.state = to;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
+        Ok(())
+    }
+
+    /// Số lần cặp `(from, to)` (chỉ số `TcbState::index`) đã đi qua cổng.
+    pub fn pair_hit_count(&self, from: usize, to: usize) -> u32 {
+        self.pair_hits[from * TCB_STATE_COUNT + to]
+    }
+
+    /// `(số cặp ALLOWED đã có ít nhất một hit, tổng số cặp ALLOWED)` — KT-18 DoD 4.
+    pub fn transition_coverage(&self) -> (usize, usize) {
+        crate::tcb::coverage(&self.pair_hits)
+    }
+
+    /// Log finalise TCB (theo thứ tự finalise) — KT-18 DoD 9.
+    pub fn finalise_log(&self) -> &[FinaliseEntry] {
+        &self.finalise_log
+    }
 
     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
         self.body(tcb, |k| match k {
@@ -1366,15 +1502,196 @@ impl Machine {
         })
     }
 
-    pub fn tcb_read_state(&self, tcb: SlotRef) -> Result<TcbState, KError> {
+    /// `Tcb.Suspend(mode)` (thiết kế §4.4 `:278-283`).
+    ///
+    /// - `Abort`: gỡ TCB khỏi **mọi** hàng chờ **trước** khi bật cờ `suspended`; `BlockedOn*`
+    ///   và `Running` → `Ready`; `Ready` giữ `Ready`; `Sleeping` **giữ** `Sleeping` (bảng §4.5
+    ///   `:302-311`). `exit_code` **giữ nguyên** (D2-25, DoD 8).
+    /// - `Defer`: K1b chưa có thao tác dài có `Restart` (§4.4 `:282`) ⇒ **luôn**
+    ///   `InvalidArgument`, trạng thái không đổi (DoD 6).
+    /// - `Inactive`/`Stopping`/`Dead`: không có gì để dừng ⇒ `IllegalOperation`.
+    pub fn tcb_suspend(&mut self, tcb: SlotRef, mode: SuspendMode) -> Result<(), KError> {
         let obj = self.require_type(tcb, ObjType::Tcb)?;
-        self.tcb_state(obj)
+        if mode == SuspendMode::Defer {
+            return Err(KError::InvalidArgument);
+        }
+        let state = self.tcb_state(obj)?;
+        if !state.is_live() || state == TcbState::Inactive {
+            return Err(KError::IllegalOperation);
+        }
+        // Invariant §4.4: gỡ khỏi hàng **trước** khi bật cờ để bất biến kiểm được sau event.
+        self.unlink_tcb_queues(obj);
+        if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
+            self.transition_tcb(obj, TcbState::Ready)?;
+        }
+        self.set_tcb_suspended(obj, true)
     }
 
+    /// `Tcb.Resume`: chỉ xoá cờ `suspended` + `exit_code` (D2-25); **không bao giờ** phát lại
+    /// Call/Send/Recv/ReplyRecv (thiết kế §4.4 `:283`, DoD 7). Idempotent khi TCB không treo.
+    pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        if self.tcb_state(obj)? == TcbState::Dead {
+            return Err(KError::IllegalOperation);
+        }
+        self.body_mut(obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.suspended = false;
+                t.exit_code = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Finalise TCB (thiết kế §4.3 bảng Finalise; KT-18 DoD 9): gỡ khỏi mọi hàng chờ, chuyển
+    /// `Dead` qua một cửa, trả `sched_context` bằng hook rỗng, ghi log.
+    ///
+    /// `revoke_children` gọi hàm này **trước** `destroy` trong objmem. Gỡ ready queue/refill
+    /// queue là hook của KT-19/KT-20 (K1b **chưa có** scheduler).
+    pub fn finalise_tcb(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let state = self.tcb_state(tcb)?;
+        if state == TcbState::Dead {
+            return Ok(());
+        }
+        self.unlink_tcb_queues(tcb);
+        let released = self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                let released = t.sched_context.take();
+                t.bound_notification = None;
+                Ok(released)
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.transition_tcb(tcb, TcbState::Dead)?;
+        self.finalise_log.push(FinaliseEntry {
+            tcb,
+            state: TcbState::Dead,
+            released_sched_context: released,
+        });
+        Ok(())
+    }
+
+    // ------------------------------------------- hàng chờ phụ của mô hình K1b `[TK]`
+
+    /// `Wait` trên Notification — **mô hình K1b** `[TK]` (D2-49(a): tín hiệu/word là K1c):
+    /// đặt TCB vào `BlockedOnNotification` và ghi **một** waiter trên object Notification.
+    /// Notification đã có waiter ⇒ `Busy` (thiết kế §4.7: `Signal` đánh thức một người chờ).
+    pub fn tcb_wait_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let ntfn_obj = self.require_type(ntfn, ObjType::Notification)?;
+        let state = self.ensure_started(tcb_obj)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        let busy = self.body(ntfn_obj, |k| match k {
+            Kind::Notification(n) => Ok(n.waiter.is_some()),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if busy {
+            return Err(KError::Busy);
+        }
+        self.body_mut(ntfn_obj, |k| match k {
+            Kind::Notification(n) => {
+                n.waiter = Some(tcb_obj);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })
+    }
+
+    /// `WaitAddr` — **mô hình K1b** `[TK]` (thiết kế §4.7; object Frame thuộc K2): xếp TCB vào
+    /// bucket `(frame, offset)` rồi `BlockedOnAddress`. Khoá theo địa chỉ vật lý là K2/K1c.
+    pub fn tcb_wait_address(
+        &mut self,
+        tcb: SlotRef,
+        frame: ObjId,
+        offset: u32,
+    ) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let state = self.ensure_started(tcb_obj)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        self.address_waiters.push((frame, offset, tcb_obj));
+        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })
+    }
+
+    // ------------------------------------------- đọc hàng chờ (test/đối chứng)
+
+    pub fn endpoint_send_len(&self, ep: ObjId) -> Result<usize, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.send.len()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    pub fn endpoint_recv_waiter(&self, ep: ObjId) -> Result<Option<ObjId>, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.recv.map(|(tcb, _)| tcb)),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    pub fn endpoint_last_mr(&self, ep: ObjId) -> Result<Option<u64>, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.last_mr),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    pub fn reply_caller(&self, reply: ObjId) -> Result<Option<ObjId>, KError> {
+        self.body(reply, |k| match k {
+            Kind::Reply(r) => Ok(r.caller),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+        self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok(n.waiter),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    pub fn address_waiter(&self, frame: ObjId, offset: u32) -> Option<ObjId> {
+        self.address_waiters
+            .iter()
+            .find(|(f, o, _)| *f == frame && *o == offset)
+            .map(|(_, _, tcb)| *tcb)
+    }
+
+    pub fn address_waiters_len(&self) -> usize {
+        self.address_waiters.len()
+    }
+
+    // ---------------------------------------------------------------- IPC
+
     /// `Call` trên Endpoint: chặn chờ reply; nếu có server đang `Recv` thì giao ngay.
+    ///
+    /// Mọi chuyển trạng thái đi qua [`Machine::transition_tcb`]: `Inactive → Ready` (kích hoạt
+    /// ngầm của mô hình), `Ready → BlockedOnSend`, server `BlockedOnRecv → Ready`,
+    /// `Ready → BlockedOnReply`.
     pub fn call(&mut self, tcb: ObjId, ep: SlotRef, mr: u64) -> Result<(), KError> {
-        let _ = self.tcb_state(tcb)?;
+        let state = self.ensure_started(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
         let ep_obj = self.require_type(ep, ObjType::Endpoint)?;
+        // Peek trước khi lấy waiter: `Recv` của server **không** kèm Reply cap ⇒ `Call` lỗi mà
+        // hàng nhận vẫn còn (trước KT-18 lấy rồi mới lỗi ⇒ waiter mồ côi).
+        let (has_waiter, reply_cap) = self.body(ep_obj, |k| match k {
+            Kind::Endpoint(e) => Ok((e.recv.is_some(), e.recv.as_ref().and_then(|(_, cap)| *cap))),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if has_waiter && reply_cap.is_none() {
+            return Err(KError::IllegalOperation);
+        }
+        let reply_obj = match reply_cap {
+            Some(cap) => Some(self.require_cap_type(cap, ObjType::Reply)?),
+            None => None,
+        };
         let waiter = self.body_mut(ep_obj, |k| match k {
             Kind::Endpoint(e) => {
                 e.last_mr = Some(mr);
@@ -1382,12 +1699,11 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
-        if let Some((server, reply)) = waiter {
-            self.set_tcb_state(server, TcbState::Ready)?;
-            let reply_cap = reply.ok_or(KError::IllegalOperation)?;
-            let reply_obj = self.require_cap_type(reply_cap, ObjType::Reply)?;
+        if let Some((server, _)) = waiter {
+            let reply_obj = reply_obj.ok_or(KError::IllegalOperation)?;
+            self.transition_tcb(server, TcbState::Ready)?;
             self.reply_set_caller(reply_obj, Some(tcb))?;
-            self.set_tcb_state(tcb, TcbState::BlockedOnReply { reply: reply_obj })?;
+            self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: reply_obj })?;
         } else {
             self.body_mut(ep_obj, |k| match k {
                 Kind::Endpoint(e) => {
@@ -1396,7 +1712,7 @@ impl Machine {
                 }
                 _ => Err(KError::WrongObjectType),
             })?;
-            self.set_tcb_state(
+            self.transition_tcb(
                 tcb,
                 TcbState::BlockedOnSend {
                     ep: ep_obj,
@@ -1408,12 +1724,21 @@ impl Machine {
         Ok(())
     }
 
-    /// `Recv` trên Endpoint: lấy message đang chờ, hoặc chặn `BlockedOnRecv`.
+    /// `Recv` trên Endpoint: lấy message đang chờ, hoặc chặn `BlockedOnRecv{ep, reply}`.
+    ///
+    /// `BlockedOnRecv` mang `reply: Option<ObjId>` — sửa drift D2-33 (trước KT-18 thiếu trường).
     pub fn recv(&mut self, tcb: ObjId, ep: SlotRef, reply: Option<SlotRef>) -> Result<(), KError> {
-        let _ = self.tcb_state(tcb)?;
+        let state = self.ensure_started(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
         let ep_obj = self.require_type(ep, ObjType::Endpoint)?;
         let reply_cap = match reply {
             Some(r) => Some(self.cap_at(r.cnode, r.slot)?),
+            None => None,
+        };
+        let reply_obj = match reply_cap {
+            Some(cap) => Some(self.require_cap_type(cap, ObjType::Reply)?),
             None => None,
         };
         let sender = self.body_mut(ep_obj, |k| match k {
@@ -1422,24 +1747,31 @@ impl Machine {
         })?;
         match sender {
             Some((sender, fault)) => {
+                let sender_state = self.tcb_state(sender)?;
                 match fault {
-                    // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A).
+                    // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
                     Some(FaultKind::Exit { .. }) => {
-                        self.set_tcb_state(sender, TcbState::Inactive)?;
+                        self.transition_tcb(sender, TcbState::Inactive)?;
                     }
-                    None => match reply_cap {
-                        Some(rc) => {
-                            let reply_obj = self.require_cap_type(rc, ObjType::Reply)?;
-                            self.reply_set_caller(reply_obj, Some(sender))?;
-                            self.set_tcb_state(
-                                sender,
-                                TcbState::BlockedOnReply { reply: reply_obj },
-                            )?;
+                    None => {
+                        let is_call =
+                            matches!(sender_state, TcbState::BlockedOnSend { call: true, .. });
+                        match (is_call, reply_obj) {
+                            (true, Some(reply_obj)) => {
+                                self.reply_set_caller(reply_obj, Some(sender))?;
+                                self.transition_tcb(
+                                    sender,
+                                    TcbState::BlockedOnReply { reply: reply_obj },
+                                )?;
+                            }
+                            // `Send` (không Call) hoặc `Call` mà server không đưa Reply cap.
+                            _ => self.transition_tcb(sender, TcbState::Ready)?,
                         }
-                        None => self.set_tcb_state(sender, TcbState::Ready)?,
-                    },
+                    }
                 }
-                self.set_tcb_state(tcb, TcbState::Ready)?;
+                if state != TcbState::Ready {
+                    self.transition_tcb(tcb, TcbState::Ready)?;
+                }
             }
             None => {
                 self.body_mut(ep_obj, |k| match k {
@@ -1449,38 +1781,70 @@ impl Machine {
                     }
                     _ => Err(KError::WrongObjectType),
                 })?;
-                self.set_tcb_state(tcb, TcbState::BlockedOnRecv { ep: ep_obj })?;
+                self.transition_tcb(
+                    tcb,
+                    TcbState::BlockedOnRecv {
+                        ep: ep_obj,
+                        reply: reply_obj,
+                    },
+                )?;
             }
         }
         Ok(())
     }
 
-    /// `Send` trên Reply: đánh thức người gọi đang chờ.
+    /// `Send` trên Reply: đánh thức người gọi `BlockedOnReply → Ready` (qua một cửa).
+    ///
+    /// Nếu `Reply.caller` đã bị `Suspend(Abort)` tách ra: thiết kế §4.4 `:281` — Send **thành
+    /// công nhưng reply bị bỏ** (không lỗi, không đánh thức ai).
     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
-        let _ = self.tcb_state(tcb)?;
+        let state = self.tcb_state(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
         let reply_obj = self.require_type(reply, ObjType::Reply)?;
         let caller = self.body_mut(reply_obj, |k| match k {
             Kind::Reply(r) => Ok(r.caller.take()),
             _ => Err(KError::WrongObjectType),
         })?;
-        let caller = caller.ok_or(KError::IllegalOperation)?;
-        self.set_tcb_state(caller, TcbState::Ready)?;
-        self.set_tcb_state(tcb, TcbState::Ready)?;
+        if let Some(caller) = caller {
+            self.transition_tcb(caller, TcbState::Ready)?;
+        }
+        if matches!(state, TcbState::Running { .. }) {
+            self.transition_tcb(tcb, TcbState::Ready)?;
+        }
         Ok(())
     }
 
-    /// `Exit`: có `fault_ep` ⇒ `BlockedOnSend{call=false, fault=Exit{code}}`; không ⇒ `Inactive`.
+    /// `Exit(code)`: có `fault_ep` ⇒ `BlockedOnSend{call=false, fault=Exit{code}}`; không ⇒
+    /// `Inactive` ngay; TCB đang `Inactive` + không `fault_ep` thì **không** chuyển trạng thái
+    /// (đặt `exit_code` thôi). Message/hàng chờ cũ bị huỷ **trước** khi giao fault (D2-25).
     pub fn exit(&mut self, tcb: ObjId, code: u64) -> Result<(), KError> {
-        let fault_ep = self.body_mut(tcb, |k| match k {
+        let state = self.tcb_state(tcb)?;
+        if !state.is_live() {
+            return Err(KError::IllegalOperation);
+        }
+        // Reviewer-kt18 mục 1: **kiểm `fault_ep` trước** khi ghi `exit_code`/gỡ hàng chờ.
+        // Cap `fault_ep` có thể đã bị Delete/Revoke ⇒ `Exit` lỗi mà TCB **không** bị đổi
+        // trạng thái/hàng chờ (thiết kế §4.4 invariant; trước sửa: state rác).
+        let fault_ep = self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.fault_ep),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let fault_ep_obj = match fault_ep {
+            Some(cap) => Some(self.require_cap_type(cap, ObjType::Endpoint)?),
+            None => None,
+        };
+        self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
                 t.exit_code = Some(code);
-                Ok(t.fault_ep)
+                Ok(())
             }
             _ => Err(KError::WrongObjectType),
         })?;
-        match fault_ep {
-            Some(cap) => {
-                let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
+        match fault_ep_obj {
+            Some(ep_obj) => {
+                self.unlink_tcb_queues(tcb);
                 self.body_mut(ep_obj, |k| match k {
                     Kind::Endpoint(e) => {
                         e.send.push_back((tcb, Some(FaultKind::Exit { code })));
@@ -1488,18 +1852,23 @@ impl Machine {
                     }
                     _ => Err(KError::WrongObjectType),
                 })?;
-                self.set_tcb_state(
+                self.transition_tcb(
                     tcb,
                     TcbState::BlockedOnSend {
                         ep: ep_obj,
                         call: false,
                         fault: Some(FaultKind::Exit { code }),
                     },
-                )?;
+                )
             }
-            None => self.set_tcb_state(tcb, TcbState::Inactive)?,
+            None => {
+                if state == TcbState::Inactive {
+                    return Ok(());
+                }
+                self.unlink_tcb_queues(tcb);
+                self.transition_tcb(tcb, TcbState::Inactive)
+            }
         }
-        Ok(())
     }
 
     // ---------------------------------------------------------------- nội bộ
@@ -1567,9 +1936,16 @@ impl Machine {
             },
             ObjType::Tcb => Kind::Tcb(Box::new(TcbData {
                 state: TcbState::Inactive,
+                suspended: false,
+                exit_code: None,
                 fault_ep: None,
                 cspace: None,
-                exit_code: None,
+                priority: 0,
+                max_controlled_priority: 0,
+                affinity: AFFINITY_HOME,
+                home: 0,
+                sched_context: None,
+                bound_notification: None,
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
@@ -1578,6 +1954,7 @@ impl Machine {
             })),
             ObjType::Endpoint => Kind::Endpoint(Box::default()),
             ObjType::Reply => Kind::Reply(Box::new(ReplyData { caller: None })),
+            ObjType::Notification => Kind::Notification(Box::default()),
             _ => Kind::Plain,
         }
     }
@@ -1708,14 +2085,92 @@ impl Machine {
         self.require_cap_type(self.cap_at(slot.cnode, slot.slot)?, ty)
     }
 
-    fn set_tcb_state(&mut self, tcb: ObjId, state: TcbState) -> Result<(), KError> {
+    /// Kích hoạt ngầm của **mô hình K1b**: mô hình chưa có method `Activate`, nên TCB
+    /// `Inactive` tự chuyển `Inactive → Ready` khi nó phát syscall IPC đầu tiên — cặp
+    /// `(Inactive, Ready)` của bảng ALLOWED. KHÔNG phải ABI; KT-19 thêm `pick`/`Ready`.
+    fn ensure_started(&mut self, tcb: ObjId) -> Result<TcbState, KError> {
+        let state = self.tcb_state(tcb)?;
+        if state == TcbState::Inactive {
+            self.transition_tcb(tcb, TcbState::Ready)?;
+            return Ok(TcbState::Ready);
+        }
+        Ok(state)
+    }
+
+    fn set_tcb_suspended(&mut self, tcb: ObjId, suspended: bool) -> Result<(), KError> {
         self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
-                t.state = state;
+                t.suspended = suspended;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
         })
+    }
+
+    /// Gỡ `tcb` khỏi **mọi** hàng chờ nó đang nằm trong: hàng gửi/nhận của Endpoint,
+    /// `Reply.caller`, waiter của Notification, bucket WaitOnAddress. Trả **số hàng** đã gỡ.
+    ///
+    /// Gọi **trước** khi bật `suspended`/chuyển trạng thái (thiết kế §4.4 invariant: TCB nằm
+    /// trong hàng của X **khi và chỉ khi** trạng thái mang X **và** `!suspended`).
+    fn unlink_tcb_queues(&mut self, tcb: ObjId) -> usize {
+        let live: Vec<(ObjId, ObjType)> = self
+            .objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive)
+            .map(|(i, m)| ((i as u32) + 1, m.ty))
+            .collect();
+        let mut removed = 0usize;
+        for (obj, ty) in live {
+            match ty {
+                ObjType::Endpoint => {
+                    let _ = self.body_mut(obj, |k| match k {
+                        Kind::Endpoint(e) => {
+                            if let Some((waiter, _)) = e.recv {
+                                if waiter == tcb {
+                                    e.recv = None;
+                                    removed += 1;
+                                }
+                            }
+                            let before = e.send.len();
+                            e.send.retain(|(t, _)| *t != tcb);
+                            removed += before - e.send.len();
+                            Ok(())
+                        }
+                        _ => Err(KError::WrongObjectType),
+                    });
+                }
+                ObjType::Reply => {
+                    let _ = self.body_mut(obj, |k| match k {
+                        Kind::Reply(r) => {
+                            if r.caller == Some(tcb) {
+                                r.caller = None;
+                                removed += 1;
+                            }
+                            Ok(())
+                        }
+                        _ => Err(KError::WrongObjectType),
+                    });
+                }
+                ObjType::Notification => {
+                    let _ = self.body_mut(obj, |k| match k {
+                        Kind::Notification(n) => {
+                            if n.waiter == Some(tcb) {
+                                n.waiter = None;
+                                removed += 1;
+                            }
+                            Ok(())
+                        }
+                        _ => Err(KError::WrongObjectType),
+                    });
+                }
+                _ => {}
+            }
+        }
+        let before = self.address_waiters.len();
+        self.address_waiters.retain(|(_, _, t)| *t != tcb);
+        removed += before - self.address_waiters.len();
+        removed
     }
 
     fn reply_set_caller(&mut self, reply: ObjId, caller: Option<ObjId>) -> Result<(), KError> {
@@ -1803,6 +2258,13 @@ impl Machine {
                     }
                     Ok(())
                 });
+            }
+            // KT-18 (DoD 9): finalise TCB **trước** khi object chết — gỡ hàng chờ, `Dead`,
+            // trả `sched_context` qua hook, ghi log (thiết kế §4.3 bảng Finalise).
+            for id in &dead_objs {
+                if self.objects[*id as usize - 1].ty == ObjType::Tcb {
+                    let _ = self.finalise_tcb(*id);
+                }
             }
             // Đánh dấu chết + **finalise body trong objmem** (KT-16; `free` guard `pa`).
             for id in &dead_objs {
@@ -1915,6 +2377,13 @@ impl Machine {
                             }
                         }
                     }
+                    Kind::Notification(n) => {
+                        if let Some(w) = n.waiter {
+                            if !is_alive(w) {
+                                n.waiter = None;
+                            }
+                        }
+                    }
                     Kind::Tcb(t) => {
                         if let Some(cap) = t.fault_ep {
                             if !cap_alive(cap) {
@@ -1926,12 +2395,25 @@ impl Machine {
                                 t.cspace = None;
                             }
                         }
+                        if let Some(c) = t.sched_context {
+                            if !is_alive(c) {
+                                t.sched_context = None;
+                            }
+                        }
+                        if let Some(c) = t.bound_notification {
+                            if !is_alive(c) {
+                                t.bound_notification = None;
+                            }
+                        }
                     }
                     _ => {}
                 }
                 Ok(())
             });
         }
+        // Bucket WaitOnAddress: bỏ waiter/nút có frame hoặc TCB đã chết (§4.7).
+        self.address_waiters
+            .retain(|(frame, _, tcb)| is_alive(*frame) && is_alive(*tcb));
     }
 }
 
@@ -1998,7 +2480,7 @@ mod tests {
                 call: true,
                 fault: None,
             },
-            TcbState::BlockedOnRecv { ep: 1 },
+            TcbState::BlockedOnRecv { ep: 1, reply: None },
             TcbState::BlockedOnReply { reply: 1 },
             TcbState::BlockedOnNotification { ntfn: 1 },
             TcbState::BlockedOnAddress {
