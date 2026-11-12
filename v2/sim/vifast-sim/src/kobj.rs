@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! KT-09 — mô hình object tối giản trên sim: Untyped (watermark), CNode (Revoke),
-//! TCB/Endpoint/Reply/SchedContext đủ cho `Retype → Configure → Call/Reply`.
+//! KT-09/KT-10 — mô hình object tối giản trên sim: Untyped (watermark), CNode (Copy/Mint/
+//! Delete/Revoke + cây dẫn xuất kiểu MDB), TCB/Endpoint/Reply/SchedContext đủ cho
+//! `Retype → Configure → Call/Reply`.
 //!
-//! Phạm vi có chủ ý (KT-09): **không** phải MDB đầy đủ của KT-10, không có Frame/VSpace,
-//! không có property test cây. Object nằm trong Untyped (D2-14); cỡ object lấy từ
-//! `spec/abi.toml` mục `[object_size].riscv64` (code sinh không chép tay sang đây).
+//! Phạm vi có chủ ý: **không** phải MDB đầy đủ của production (không `mdb_prev/mdb_next` trong
+//! slot 48 B — việc của K1a/`vifast-model`, KT-11), không có Frame/VSpace. Cây dẫn xuất ở đây
+//! giữ đúng bất biến mà MDB phải có: mỗi cap sống có cha sống (hoặc là gốc), con của cap bị xoá
+//! thuộc về ông, không cap nào trỏ object chết, slot ↔ cap đối xứng (`Machine::check_caps`).
+//! Object nằm trong Untyped (D2-14); cỡ object lấy từ `spec/abi.toml` mục
+//! `[object_size].riscv64` (code sinh không chép tay sang đây).
 //!
 //! Quy ước **sim** (không phải ABI — D2-35 để K1a chốt):
 //! - `Untyped.Retype` của spec có `returns = []`; mô hình trả `CapId` cho harness đặt
@@ -32,6 +36,14 @@ pub const CNODE_BASE_BYTES: usize = 64;
 pub const UNTYPED_MIN_BYTES: usize = 4096;
 /// `spec/abi.toml` `[object_size].default_align_bytes`.
 pub const DEFAULT_ALIGN: usize = 16;
+
+/// Quyền của cap — thiết kế §4.3 (không có bit EXEC: EXEC là thuộc tính lúc map, QD §3.12).
+pub const RIGHT_READ: u8 = 1 << 0;
+pub const RIGHT_WRITE: u8 = 1 << 1;
+pub const RIGHT_GRANT: u8 = 1 << 2;
+pub const RIGHT_GRANT_REPLY: u8 = 1 << 3;
+/// Cap gốc do kernel/harness cấp giữ đủ 4 quyền.
+pub const RIGHTS_ALL: u8 = RIGHT_READ | RIGHT_WRITE | RIGHT_GRANT | RIGHT_GRANT_REPLY;
 
 pub type ObjId = u32;
 pub type CapId = u32;
@@ -202,6 +214,19 @@ impl SlotRef {
     }
 }
 
+/// Ảnh chụp một cap cho harness/test — đọc-only, không lộ cấu trúc nội bộ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapInfo {
+    pub cap: CapId,
+    pub obj: ObjId,
+    pub ty: ObjType,
+    pub parent: Option<CapId>,
+    pub slot: Option<SlotRef>,
+    pub rights: u8,
+    pub badge: Option<u64>,
+    pub alive: bool,
+}
+
 /// Nguyên nhân fault mang theo trạng thái chặn (D2-25: Exit mang mã thoát).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaultKind {
@@ -361,6 +386,8 @@ struct Cap {
     ty: ObjType,
     parent: Option<CapId>,
     slot: Option<SlotRef>,
+    rights: u8,
+    badge: Option<u64>,
     alive: bool,
 }
 
@@ -431,7 +458,7 @@ impl Machine {
             .get(obj as usize - 1)
             .map(|o| o.ty)
             .expect("root_cap: object phải tồn tại");
-        self.push_cap(obj, ty, None)
+        self.push_cap(obj, ty, None, RIGHTS_ALL, None)
     }
 
     pub fn put_cap(&mut self, cnode: ObjId, slot: usize, cap: CapId) -> Result<(), KError> {
@@ -481,6 +508,51 @@ impl Machine {
 
     pub fn cap_obj_at(&self, cnode: ObjId, slot: usize) -> Result<ObjId, KError> {
         self.cap_obj(self.cap_at(cnode, slot)?)
+    }
+
+    /// Ảnh chụp cap; `Err(InvalidCapability)` khi id không hợp lệ (0 hoặc quá dải).
+    /// Cap **đã chết** vẫn trả `Ok` với `alive = false` để test kiểm dấu vết.
+    pub fn cap_info(&self, cap: CapId) -> Result<CapInfo, KError> {
+        let c = self.cap(cap)?;
+        Ok(CapInfo {
+            cap,
+            obj: c.obj,
+            ty: c.ty,
+            parent: c.parent,
+            slot: c.slot,
+            rights: c.rights,
+            badge: c.badge,
+            alive: c.alive,
+        })
+    }
+
+    /// Toàn bộ bảng cap theo thứ tự cấp phát (gồm cap đã chết) — test/property dùng.
+    pub fn cap_table(&self) -> Vec<CapInfo> {
+        (1..=self.caps.len() as CapId)
+            .map(|cap| {
+                self.cap_info(cap)
+                    .expect("cap_table: id trong dải phải hợp lệ")
+            })
+            .collect()
+    }
+
+    pub fn live_cap_count(&self) -> usize {
+        self.caps.iter().filter(|c| c.alive).count()
+    }
+
+    /// Con trực tiếp còn sống của `cap`, theo thứ tự cấp phát (thứ tự MDB của mô hình).
+    pub fn cap_children(&self, cap: CapId) -> Result<Vec<CapId>, KError> {
+        self.cap(cap)?;
+        Ok((1..=self.caps.len() as CapId)
+            .filter(|i| {
+                let c = &self.caps[*i as usize - 1];
+                c.alive && c.parent == Some(cap)
+            })
+            .collect())
+    }
+
+    pub fn cnode_slot_count(&self, cnode: ObjId) -> Result<usize, KError> {
+        Ok(self.cnode_slots(cnode)?.len())
     }
 
     pub fn object_alive(&self, obj: ObjId) -> bool {
@@ -622,6 +694,137 @@ impl Machine {
         Ok(())
     }
 
+    /// Bất biến cây dẫn xuất cap (MDB tối giản) — thiết kế §4.3/§9.6:
+    /// - cap sống trỏ object **sống** cùng loại với cap; không cap nào trỏ object chết;
+    /// - cap sống có cha ⇒ cha sống và không có chu trình (cha của cap do `Retype` sinh trỏ
+    ///   object khác là bình thường — quan hệ dẫn xuất, không phải quan hệ cùng object);
+    /// - cap sống nằm trong slot ⇒ CNode sống và slot trỏ ngược lại đúng cap; mọi slot của
+    ///   CNode sống chỉ chứa cap sống đúng chiều (không cap chết nằm lại trong slot);
+    /// - cap sống là con thì **phải** nằm trong một slot (không mồ côi); cap gốc được phép
+    ///   không slot (harness giữ trước khi đặt).
+    ///
+    /// Bất biến riêng của `Copy`/`Mint` — con trỏ **cùng object** với cha và quyền con
+    /// ⊆ quyền cha — được kiểm trong property test CSpace (`tests/kt10_property.rs`), nơi
+    /// toàn bộ cây chỉ dựng bằng Copy/Mint.
+    pub fn check_caps(&self) -> Result<(), String> {
+        // 1) cap ↔ object.
+        for (i, c) in self.caps.iter().enumerate() {
+            let cap = (i as u32) + 1;
+            if !c.alive {
+                if c.slot.is_some() {
+                    return Err(format!("cap chết {cap} còn giữ slot"));
+                }
+                continue;
+            }
+            if c.obj == 0 || c.obj as usize > self.objects.len() {
+                return Err(format!("cap {cap} trỏ object ngoài dải ({})", c.obj));
+            }
+            if !self.objects[c.obj as usize - 1].alive {
+                return Err(format!("cap {cap} trỏ object {} đã chết", c.obj));
+            }
+            if self.objects[c.obj as usize - 1].ty != c.ty {
+                return Err(format!(
+                    "cap {cap} kiểu {:?} nhưng object {} kiểu {:?}",
+                    c.ty,
+                    c.obj,
+                    self.objects[c.obj as usize - 1].ty
+                ));
+            }
+        }
+        // 2) quan hệ cha–con + không chu trình.
+        for (i, c) in self.caps.iter().enumerate() {
+            let cap = (i as u32) + 1;
+            if !c.alive {
+                continue;
+            }
+            let Some(p) = c.parent else { continue };
+            if p == 0 || p as usize > self.caps.len() {
+                return Err(format!("cap {cap} có cha ngoài dải ({p})"));
+            }
+            let parent = &self.caps[p as usize - 1];
+            if !parent.alive {
+                return Err(format!("cap {cap} mồ côi: cha {p} đã chết"));
+            }
+            let mut cur = Some(p);
+            let mut steps = 0usize;
+            while let Some(x) = cur {
+                if x == 0 || x as usize > self.caps.len() {
+                    return Err(format!("cap {cap}: chuỗi cha có id ngoài dải ({x})"));
+                }
+                if x == cap {
+                    return Err(format!("cap {cap}: chu trình cha"));
+                }
+                cur = self.caps[x as usize - 1].parent;
+                steps += 1;
+                if steps > self.caps.len() {
+                    return Err(format!("cap {cap}: chuỗi cha dài bất thường"));
+                }
+            }
+        }
+        // 3) slot ↔ cap (đối xứng MDB) và slot của CNode sống.
+        for (i, o) in self.objects.iter().enumerate() {
+            if !o.alive || o.ty != ObjType::CNode {
+                continue;
+            }
+            let cnode = (i as u32) + 1;
+            let Kind::CNode { slots } = &o.kind else {
+                return Err(format!("object {cnode} kiểu CNode nhưng kind lạ"));
+            };
+            for (slot, entry) in slots.iter().enumerate() {
+                let Some(cap) = entry else { continue };
+                if *cap == 0 || *cap as usize > self.caps.len() {
+                    return Err(format!("slot {slot} của CNode {cnode} có cap ngoài dải"));
+                }
+                let c = &self.caps[*cap as usize - 1];
+                if !c.alive {
+                    return Err(format!("slot {slot} của CNode {cnode} chứa cap chết {cap}"));
+                }
+                if c.slot != Some(SlotRef::new(cnode, slot)) {
+                    return Err(format!(
+                        "slot {slot} của CNode {cnode} trỏ cap {cap} nhưng cap không trỏ ngược"
+                    ));
+                }
+            }
+        }
+        for (i, c) in self.caps.iter().enumerate() {
+            let cap = (i as u32) + 1;
+            if !c.alive {
+                continue;
+            }
+            match c.slot {
+                Some(SlotRef { cnode, slot }) => {
+                    if !self.object_alive(cnode) {
+                        return Err(format!("cap {cap} nằm trong CNode {cnode} đã chết"));
+                    }
+                    if self.object_type(cnode) != Some(ObjType::CNode) {
+                        return Err(format!(
+                            "cap {cap} nằm trong object {cnode} không phải CNode"
+                        ));
+                    }
+                    let slots = self
+                        .cnode_slots(cnode)
+                        .map_err(|e| format!("cap {cap}: CNode {cnode}: {e:?}"))?;
+                    if slot >= slots.len() {
+                        return Err(format!(
+                            "cap {cap} ở slot {slot} ngoài dải của CNode {cnode}"
+                        ));
+                    }
+                    if slots[slot] != Some(cap) {
+                        return Err(format!(
+                            "cap {cap} nói nằm ở ({cnode}, {slot}) nhưng slot không trỏ lại"
+                        ));
+                    }
+                }
+                None => {
+                    if c.parent.is_some() {
+                        return Err(format!("cap {cap} là con nhưng không nằm trong slot nào"));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     // ---------------------------------------------------------------- Retype
 
     /// Cấp object từ Untyped theo `type/size_bits/flags` (spec `Untyped.Retype`).
@@ -723,33 +926,98 @@ impl Machine {
         if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
             *watermark = end;
         }
-        Ok(self.push_cap(obj, ty, Some(src_cap)))
+        Ok(self.push_cap(obj, ty, Some(src_cap), RIGHTS_ALL, None))
     }
 
     // ---------------------------------------------------------------- CSpace
 
-    /// `CNode.Copy`: tạo cap con ở đích; đích phải rỗng.
+    /// `CNode.Copy`: tạo cap con ở đích; đích phải rỗng. Giữ nguyên quyền + badge của nguồn.
     pub fn copy(&mut self, src: SlotRef, dst: SlotRef) -> Result<CapId, KError> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
+        let (obj, ty, rights, badge) = {
+            let c = self.cap(src_cap)?;
+            (c.obj, c.ty, c.rights, c.badge)
+        };
+        self.derive(src_cap, obj, ty, dst, rights, badge)
+    }
+
+    /// `CNode.Mint`: như Copy nhưng đặt lại quyền (phải ⊆ quyền nguồn, nếu không
+    /// `InsufficientRights`) và badge (chỉ Endpoint/Notification; `None`/`Some(0)` = giữ
+    /// badge nguồn). Badge cho loại khác ⇒ `InvalidArgument`.
+    pub fn mint(
+        &mut self,
+        src: SlotRef,
+        dst: SlotRef,
+        rights: u8,
+        badge: Option<u64>,
+    ) -> Result<CapId, KError> {
+        let src_cap = self.cap_at(src.cnode, src.slot)?;
+        let (obj, ty, src_rights, src_badge) = {
+            let c = self.cap(src_cap)?;
+            (c.obj, c.ty, c.rights, c.badge)
+        };
+        if rights & !src_rights != 0 {
+            return Err(KError::InsufficientRights);
+        }
+        let badge = match badge {
+            None | Some(0) => src_badge,
+            Some(b) => {
+                if !matches!(ty, ObjType::Endpoint | ObjType::Notification) {
+                    return Err(KError::InvalidArgument);
+                }
+                Some(b)
+            }
+        };
+        self.derive(src_cap, obj, ty, dst, rights, badge)
+    }
+
+    /// Tạo cap con của `src_cap` rồi gắn vào `dst` — đã kiểm nguồn/quyền trước khi cấp
+    /// ⇒ thao tác lỗi không để lại cap mồ côi.
+    fn derive(
+        &mut self,
+        src_cap: CapId,
+        obj: ObjId,
+        ty: ObjType,
+        dst: SlotRef,
+        rights: u8,
+        badge: Option<u64>,
+    ) -> Result<CapId, KError> {
         self.check_cnode_slot(dst.cnode, dst.slot)?;
         if self.cnode_slots(dst.cnode)?[dst.slot].is_some() {
             return Err(KError::SlotOccupied);
         }
-        let (obj, ty) = {
-            let c = self.cap(src_cap)?;
-            (c.obj, c.ty)
-        };
-        let new_cap = self.push_cap(obj, ty, Some(src_cap));
-        self.put_cap(dst.cnode, dst.slot, new_cap)?;
+        let new_cap = self.push_cap(obj, ty, Some(src_cap), rights, badge);
+        self.cnode_slots_mut(dst.cnode)?[dst.slot] = Some(new_cap);
+        self.caps[new_cap as usize - 1].slot = Some(dst);
         Ok(new_cap)
     }
 
     /// `CNode.Delete`: xoá cap trong slot (object không bị finalise — chỉ Revoke mới finalise).
+    /// Con của cap bị xoá thuộc về **ông** để cây dẫn xuất không mồ côi (MDB kiểu seL4).
     pub fn delete(&mut self, slot: SlotRef) -> Result<(), KError> {
         let cap = self.cap_at(slot.cnode, slot.slot)?;
+        // MDB seL4 `cteDelete`: con của cap bị xoá thuộc về ông (tổ tiên sống gần nhất),
+        // nếu không cây dẫn xuất sẽ mồ côi và Revoke của ông không còn thấy cháu.
+        let mut new_parent = self.cap(cap)?.parent;
+        while let Some(p) = new_parent {
+            if p != 0 && (p as usize) <= self.caps.len() && self.caps[p as usize - 1].alive {
+                break;
+            }
+            new_parent = if p != 0 && (p as usize) <= self.caps.len() {
+                self.caps[p as usize - 1].parent
+            } else {
+                None
+            };
+        }
+        for c in &mut self.caps {
+            if c.alive && c.parent == Some(cap) {
+                c.parent = new_parent;
+            }
+        }
         self.clear_slot_of(cap);
         if let Some(c) = self.caps.get_mut(cap as usize - 1) {
             c.alive = false;
+            c.parent = None;
         }
         Ok(())
     }
@@ -1021,12 +1289,21 @@ impl Machine {
         self.objects.len() as ObjId
     }
 
-    fn push_cap(&mut self, obj: ObjId, ty: ObjType, parent: Option<CapId>) -> CapId {
+    fn push_cap(
+        &mut self,
+        obj: ObjId,
+        ty: ObjType,
+        parent: Option<CapId>,
+        rights: u8,
+        badge: Option<u64>,
+    ) -> CapId {
         self.caps.push(Cap {
             obj,
             ty,
             parent,
             slot: None,
+            rights,
+            badge,
             alive: true,
         });
         self.caps.len() as CapId
@@ -1198,6 +1475,30 @@ impl Machine {
                     doomed.push(i);
                 }
             }
+            // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải chết
+            // theo **cả cây con của nó**, kể cả khi object đích còn sống (object ngoài Untyped).
+            let mut cnode_caps: Vec<CapId> = Vec::new();
+            for id in &dead_objs {
+                let idx = *id as usize - 1;
+                if self.objects[idx].ty != ObjType::CNode {
+                    continue;
+                }
+                if let Kind::CNode { slots } = &self.objects[idx].kind {
+                    cnode_caps.extend(slots.iter().flatten().copied());
+                }
+            }
+            for cap in cnode_caps {
+                if self.cap(cap)?.alive {
+                    self.collect_subtree(cap, &mut doomed);
+                }
+            }
+            // Slot của CNode chết không được giữ cap nào (kể cả cap đã chết từ trước).
+            for id in &dead_objs {
+                let idx = *id as usize - 1;
+                if let Kind::CNode { slots } = &mut self.objects[idx].kind {
+                    slots.iter_mut().for_each(|s| *s = None);
+                }
+            }
         }
 
         doomed.sort_unstable();
@@ -1212,6 +1513,26 @@ impl Machine {
         }
         self.purge_dead_refs();
         Ok(deleted)
+    }
+
+    /// Gom `root` và mọi con/cháu còn sống của nó (theo cạnh cha) vào `out`.
+    fn collect_subtree(&self, root: CapId, out: &mut Vec<CapId>) {
+        for i in 1..=self.caps.len() as CapId {
+            if !self.caps[i as usize - 1].alive {
+                continue;
+            }
+            let mut cur = Some(i);
+            while let Some(p) = cur {
+                if p == root {
+                    out.push(i);
+                    break;
+                }
+                if p == 0 || p as usize > self.caps.len() {
+                    break;
+                }
+                cur = self.caps[p as usize - 1].parent;
+            }
+        }
     }
 
     /// Gom mọi object sống nằm trong `u_idx`, đệ quy qua Untyped con.
@@ -1388,5 +1709,52 @@ mod tests {
         assert_eq!(align_up(1, 16), 16);
         assert_eq!(align_up(512, 4096), 4096);
         assert_eq!(align_up(4096, 4096), 4096);
+    }
+
+    /// `check_caps` không được là checker rỗng: gieo hỏng cây thì phải bắt.
+    #[test]
+    fn check_caps_bat_cap_mo_coi() {
+        let mut m = Machine::new();
+        let a = m.add_cnode(4);
+        let ep = m.add_kernel_object(ObjType::Endpoint);
+        let root = m.root_cap(ep);
+        m.put_cap(a, 0, root).expect("cap gốc");
+        let child = m
+            .copy(SlotRef::new(a, 0), SlotRef::new(a, 1))
+            .expect("cap con");
+        m.check_caps().expect("cây hợp lệ");
+        // Cha bị xoá (mất slot, chết) nhưng con **không được reparent** — đúng lỗi cũ
+        // của `delete`; checker phải bắt cap mồ côi.
+        m.caps[root as usize - 1].alive = false;
+        m.caps[root as usize - 1].slot = None;
+        m.cnode_slots_mut(a).expect("CNode")[0] = None;
+        let err = m.check_caps().expect_err("phải bắt cap mồ côi");
+        assert!(err.contains("mồ côi"), "{err}");
+        assert!(m.cap_info(child).expect("con").alive);
+    }
+
+    /// Slot trỏ cap nhưng cap không trỏ ngược (MDB hỏng) phải bị bắt.
+    #[test]
+    fn check_caps_bat_slot_khong_doi_xung() {
+        let mut m = Machine::new();
+        let a = m.add_cnode(4);
+        let ep = m.add_kernel_object(ObjType::Endpoint);
+        let cap = m.root_cap(ep);
+        m.put_cap(a, 0, cap).expect("cap gốc");
+        m.caps[cap as usize - 1].slot = None;
+        let err = m.check_caps().expect_err("phải bắt slot không đối xứng");
+        assert!(
+            err.contains("không trỏ ngược") || err.contains("không trỏ lại"),
+            "{err}"
+        );
+        // Cap chết còn giữ slot cũng là hỏng.
+        let mut m2 = Machine::new();
+        let b = m2.add_cnode(4);
+        let ep2 = m2.add_kernel_object(ObjType::Endpoint);
+        let cap2 = m2.root_cap(ep2);
+        m2.put_cap(b, 0, cap2).expect("cap gốc");
+        m2.caps[cap2 as usize - 1].alive = false;
+        let err = m2.check_caps().expect_err("phải bắt cap chết còn giữ slot");
+        assert!(err.contains("cap chết"), "{err}");
     }
 }

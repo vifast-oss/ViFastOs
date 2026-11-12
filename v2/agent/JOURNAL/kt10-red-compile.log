@@ -1,0 +1,735 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::RIGHT_GRANT`, `vifast_sim::kobj::RIGHT_GRANT_REPLY`, `vifast_sim::kobj::RIGHT_READ`, `vifast_sim::kobj::RIGHT_WRITE`
+  --> sim/vifast-sim/tests/kt10_property.rs:18:54
+   |
+18 |     CapId, KError, Machine, ObjId, ObjType, SlotRef, RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ,
+   |                                                      ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHT_READ` in `kobj`
+   |                                                      |            |
+   |                                                      |            no `RIGHT_GRANT_REPLY` in `kobj`
+   |                                                      no `RIGHT_GRANT` in `kobj`
+19 |     RIGHT_WRITE,
+   |     ^^^^^^^^^^^ no `RIGHT_WRITE` in `kobj`
+
+error[E0432]: unresolved imports `vifast_sim::kobj::RIGHT_GRANT`, `vifast_sim::kobj::RIGHT_GRANT_REPLY`, `vifast_sim::kobj::RIGHT_READ`, `vifast_sim::kobj::RIGHT_WRITE`, `vifast_sim::kobj::RIGHTS_ALL`
+  --> sim/vifast-sim/tests/kt10_cnode.rs:14:54
+   |
+14 |     CapId, KError, Machine, ObjId, ObjType, SlotRef, RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ,
+   |                                                      ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHT_READ` in `kobj`
+   |                                                      |            |
+   |                                                      |            no `RIGHT_GRANT_REPLY` in `kobj`
+   |                                                      no `RIGHT_GRANT` in `kobj`
+15 |     RIGHT_WRITE, RIGHTS_ALL,
+   |     ^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHTS_ALL` in `kobj`
+   |     |
+   |     no `RIGHT_WRITE` in `kobj`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:47:20
+   |
+47 |     let info = t.m.cap_info(root).expect("cap gốc");
+   |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:35:7
+    |
+ 35 |     m.cap_table()
+    |       ^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:55:26
+   |
+55 |     let child_info = t.m.cap_info(child).expect("cap con");
+   |                          ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_children` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:60:20
+   |
+60 |     assert_eq!(t.m.cap_children(root).expect("con của gốc"), vec![child]);
+   |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:167:23
+    |
+167 |         let table = m.cap_table();
+    |                       ^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_children` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:62:13
+   |
+62 |         t.m.cap_children(child).expect("con của cap con"),
+   |             ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:174:15
+    |
+174 |             m.live_cap_count(),
+    |               ^^^^^^^^^^^^^^ method not found in `&Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:65:9
+   |
+65 |     t.m.check_caps().expect("bất biến cây cap");
+   |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:216:22
+    |
+215 |                   let pi = m
+    |  __________________________-
+216 | |                     .cap_info(p)
+    | |                     -^^^^^^^^ method not found in `&Machine`
+    | |_____________________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:76:10
+   |
+74 |       let minted = t
+   |  __________________-
+75 | |         .m
+76 | |         .mint(slot(t.r, 0), slot(t.b, 0), rights, Some(0xBEEF))
+   | |         -^^^^ method not found in `Machine`
+   | |_________|
+   |
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:78:20
+   |
+78 |     let info = t.m.cap_info(minted).expect("cap mint");
+   |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_children` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:255:19
+    |
+255 |                 m.cap_children(cap).expect("cap sống"),
+    |                   ^^^^^^^^^^^^ method not found in `&Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:86:25
+   |
+86 |     let copy_info = t.m.cap_info(copy).expect("cap copy");
+   |                         ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt10_cnode.rs:90:9
+   |
+90 |     t.m.check_caps().expect("bất biến cây cap");
+   |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:316:14
+    |
+315 | /         self.m
+316 | |             .check_caps()
+    | |             -^^^^^^^^^^ method not found in `Machine`
+    | |_____________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:100:13
+    |
+100 |         t.m.mint(slot(t.r, 0), slot(t.b, 0), RIGHTS_ALL, Some(7)),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:323:14
+    |
+322 | /         self.m
+323 | |             .cap_table()
+    | |_____________-^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:107:10
+    |
+105 |       let cap = t
+    |  _______________-
+106 | |         .m
+107 | |         .mint(slot(t.r, 0), slot(t.b, 0), RIGHTS_ALL, Some(0))
+    | |         -^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:332:14
+    |
+331 | /         self.m
+332 | |             .cap_table()
+    | |_____________-^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:109:20
+    |
+109 |     assert_eq!(t.m.cap_info(cap).expect("cap").badge, None);
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cnode_slot_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:342:28
+    |
+342 |             let n = self.m.cnode_slot_count(cn).expect("CNode sống");
+    |                            ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:110:9
+    |
+110 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:120:10
+    |
+118 |       let hep = t
+    |  _______________-
+119 | |         .m
+120 | |         .mint(slot(t.r, 0), slot(t.b, 0), RIGHT_READ, None)
+    | |         -^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:385:27
+    |
+385 |         let info = self.m.cap_info(src).expect("cap nguồn");
+    |                           ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:122:22
+    |
+122 |     let before = t.m.cap_table().len();
+    |                      ^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:402:27
+    |
+402 |         let info = self.m.cap_info(src).expect("cap nguồn");
+    |                           ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:123:27
+    |
+123 |     let live_before = t.m.live_cap_count();
+    |                           ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:420:14
+    |
+418 |           let cap = self
+    |  ___________________-
+419 | |             .m
+420 | |             .mint(src_slot, dst, rights, badge)
+    | |             -^^^^ method not found in `Machine`
+    | |_____________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:126:13
+    |
+126 |         t.m.mint(slot(t.b, 0), slot(t.b, 1), RIGHT_READ | RIGHT_WRITE, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:424:27
+    |
+424 |         assert_eq!(self.m.cap_info(cap).expect("cap mint").rights, rights);
+    |                           ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:131:13
+    |
+131 |         t.m.mint(slot(t.b, 0), slot(t.b, 1), 0x80, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:433:27
+    |
+433 |         let slot = self.m.cap_info(cap).expect("cap").slot.expect("có slot");
+    |                           ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:134:20
+    |
+134 |     assert_eq!(t.m.cap_table().len(), before, "Mint lỗi không được tạo cap");
+    |                    ^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:445:24
+    |
+445 |                 self.m.cap_info(kid).expect("con").parent,
+    |                        ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:135:20
+    |
+135 |     assert_eq!(t.m.live_cap_count(), live_before);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:451:37
+    |
+451 |             if let Some(p) = self.m.cap_info(*alive).expect("cap sống").parent {
+    |                                     ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_children` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:136:20
+    |
+136 |     assert_eq!(t.m.cap_children(hep).expect("con"), Vec::<CapId>::new());
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:466:18
+    |
+464 |               let slot = self
+    |  ________________________-
+465 | |                 .m
+466 | |                 .cap_info(target)
+    | |                 -^^^^^^^^ method not found in `Machine`
+    | |_________________|
+    |
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:137:9
+    |
+137 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:516:34
+    |
+516 |         let live_before = self.m.live_cap_count();
+    |                                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:145:9
+    |
+145 |     t.m.mint(slot(t.r, 0), slot(t.b, 0), RIGHTS_ALL, None)
+    |         ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:524:22
+    |
+522 |                   let src_slot = self
+    |  ________________________________-
+523 | |                     .m
+524 | |                     .cap_info(src)
+    | |                     -^^^^^^^^ method not found in `Machine`
+    | |_____________________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:149:13
+    |
+149 |         t.m.mint(slot(t.r, 0), slot(t.b, 0), RIGHTS_ALL, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:533:22
+    |
+531 |                   let dst = self
+    |  ___________________________-
+532 | |                     .m
+533 | |                     .cap_info(dst_cap)
+    | |                     -^^^^^^^^ method not found in `Machine`
+    | |_____________________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:158:13
+    |
+158 |         t.m.mint(slot(t.r, 5), slot(t.b, 1), RIGHTS_ALL, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:560:22
+    |
+558 |                   let src_slot = self
+    |  ________________________________-
+559 | |                     .m
+560 | |                     .cap_info(src)
+    | |                     -^^^^^^^^ method not found in `Machine`
+    | |_____________________|
+    |
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:162:13
+    |
+162 |         t.m.mint(slot(t.r, 99), slot(t.b, 1), RIGHTS_ALL, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:568:28
+    |
+568 |                     self.m.mint(src_slot, dst, 0x80, None),
+    |                            ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:167:13
+    |
+167 |         t.m.mint(slot(t.r, 0), slot(t.b, 99), RIGHTS_ALL, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mint` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:171:13
+    |
+171 |         t.m.mint(slot(t.r, 0), slot(t.ep2, 0), RIGHTS_ALL, None),
+    |             ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:589:27
+    |
+589 |         assert_eq!(self.m.live_cap_count(), live_before);
+    |                           ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:175:17
+    |
+175 |     assert!(t.m.cap_info(root).expect("gốc").alive);
+    |                 ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:176:9
+    |
+176 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:649:20
+    |
+649 |     assert_eq!(a.m.live_cap_count(), b.m.live_cap_count());
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:187:9
+    |
+187 |     t.m.check_caps().expect("cây trước khi xoá");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:649:42
+    |
+649 |     assert_eq!(a.m.live_cap_count(), b.m.live_cap_count());
+    |                                          ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:191:18
+    |
+191 |     assert!(!t.m.cap_info(a1).expect("a1").alive);
+    |                  ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:193:13
+    |
+193 |         t.m.cap_info(b0).expect("b0").parent,
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:668:7
+    |
+668 |     m.check_caps().expect("cây trước revoke");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_children` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:197:20
+    |
+197 |     assert_eq!(t.m.cap_children(root).expect("con gốc"), vec![b0]);
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:674:15
+    |
+674 |     assert!(m.cap_info(root).expect("gốc").alive);
+    |               ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:675:15
+    |
+675 |     assert!(m.cap_info(other_root).expect("nhánh khác").alive);
+    |               ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_children` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:198:20
+    |
+198 |     assert_eq!(t.m.cap_children(b0).expect("con b0"), vec![c0]);
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:676:15
+    |
+676 |     assert!(m.cap_info(other).expect("con nhánh khác").alive);
+    |               ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:199:9
+    |
+199 |     t.m.check_caps().expect("bất biến cây cap sau delete");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:677:18
+    |
+677 |     assert_eq!(m.live_cap_count(), 3, "root + other_root + other");
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:207:17
+    |
+207 |     assert!(t.m.cap_info(root).expect("gốc").alive);
+    |                 ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:678:7
+    |
+678 |     m.check_caps().expect("bất biến cây cap");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:210:9
+    |
+210 |     t.m.check_caps().expect("bất biến cây cap sau revoke");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:692:7
+    |
+692 |     m.check_caps().expect("cây trước revoke");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:220:20
+    |
+220 |     let info = t.m.cap_info(b0).expect("b0");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:224:9
+    |
+224 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:700:7
+    |
+700 |     m.check_caps().expect("bất biến cây cap");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:239:9
+    |
+239 |     t.m.check_caps().expect("cây trước revoke");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:734:11
+    |
+734 |         m.check_caps().expect("cây trước revoke");
+    |           ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:243:10
+    |
+241 |       let before: Vec<CapId> = t
+    |  ______________________________-
+242 | |         .m
+243 | |         .cap_table()
+    | |_________-^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:742:11
+    |
+742 |         m.check_caps().expect("bất biến sau finalise");
+    |           ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:254:24
+    |
+254 |         let info = t.m.cap_info(cap).expect("cap chết");
+    |                        ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:744:22
+    |
+744 |         assert_eq!(m.live_cap_count(), 2, "seed {seed}: cap sống lệch");
+    |                      ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:261:21
+    |
+261 |         assert!(t.m.cap_info(cap).expect("cap sống").alive, "cap {cap} bị đụng");
+    |                     ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:746:14
+    |
+745 |           let live: BTreeSet<CapId> = m
+    |  _____________________________________-
+746 | |             .cap_table()
+    | |_____________-^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:265:10
+    |
+263 |       let after: Vec<CapId> = t
+    |  _____________________________-
+264 | |         .m
+265 | |         .cap_table()
+    | |_________-^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_table` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_property.rs:752:23
+    |
+752 |         for info in m.cap_table().into_iter().filter(|c| c.alive) {
+    |                       ^^^^^^^^^
+    |
+help: there is a method `cap_at` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:456:5
+    |
+456 |     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `live_cap_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:271:20
+    |
+271 |     assert_eq!(t.m.live_cap_count(), after.len());
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:272:9
+    |
+272 |     t.m.check_caps().expect("bất biến cây cap sau revoke");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:284:9
+    |
+284 |     t.m.check_caps().expect("cây trước revoke");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:292:17
+    |
+292 |     assert!(t.m.cap_info(root).expect("gốc").alive, "cap trong slot không bị xoá");
+    |                 ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:293:18
+    |
+293 |     assert!(!t.m.cap_info(a1).expect("a1").alive, "A1 là con của root nên chết");
+    |                  ^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:296:9
+    |
+296 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error: could not compile `vifast-sim` (test "kt10_property") due to 39 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:320:9
+    |
+320 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:331:18
+    |
+331 |     assert!(!t.m.cap_info(child).expect("cap chết").alive);
+    |                  ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:332:20
+    |
+332 |     assert_eq!(t.m.cap_info(0), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:333:20
+    |
+333 |     assert_eq!(t.m.cap_info(999), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:335:9
+    |
+335 |     t.m.check_caps().expect("bất biến cây cap");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:362:7
+    |
+362 |     m.check_caps().expect("cây trước revoke");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:379:7
+    |
+379 |     m.check_caps().expect("bất biến cây cap sau finalise");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:402:7
+    |
+402 |     m.check_caps().expect("cây trước revoke");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_caps` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt10_cnode.rs:409:7
+    |
+409 |     m.check_caps().expect("bất biến cây cap");
+    |       ^^^^^^^^^^ method not found in `Machine`
+
+error: could not compile `vifast-sim` (test "kt10_cnode") due to 61 previous errors
