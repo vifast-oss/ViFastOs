@@ -100,7 +100,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` (Q10) | — | 1 h | DONE | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục QD §6, mỗi mục có ca kiểm v2 |
 | KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè tệp đã có), LICENSE tham chiếu root; port **tối đa** `vifast-fs` + `vifast-fsutil` + `vifast-elf` (D2-28), build xanh, mỗi tệp ≤1.500 dòng | — | 3 h | DONE | `cargo build` workspace xanh; có `v2/bin/`; mọi tệp ≤1.500 dòng |
 | KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | DONE | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
-| KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→15+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
+| KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→16+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | READY | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
 | KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | READY | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
 | KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | REVIEW | dòng `APPROVED <ngày> Agent 0` trong QUEUE; `check_scn` 21/21 0 blocked; mapping đã sửa 2 lỗi số |
@@ -125,11 +125,12 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 - `KT-T26` phần đèn host DONE `02e0a96`; tái hiện đầy đủ BLOCKED chờ YC-06 — **không** chạy lại 1.000 seed.
 
 **Thứ tự bắt buộc:**
-1. **KT-04b**: sửa `v2/docs/abi-reserved-objects.toml` theo D2-32 (SchedControl=8 lên `core`; bỏ `VSpace.Configure`; thêm bit `GUEST` vào `Untyped.Retype.flags`; 8 object 9..16 reserved) → áp `spec/abi.toml` + D2-29 → cập nhật `check_abi.py`/`check_reserved.py` → `gate --fast` xanh → commit `[KT-04b]`.
+1. **KT-04b**: sửa `v2/docs/abi-reserved-objects.toml` theo D2-32 (SchedControl=8 lên `core`; bỏ `VSpace.Configure`; thêm bit `GUEST` vào `Untyped.Retype.flags`; 8 object 9..16 reserved) → áp `spec/abi.toml` + D2-29 (header: syscall **0..15**, reserved **16..31**) → cập nhật `check_abi.py`/`check_reserved.py` → `gate --fast` xanh → commit `[KT-04b]`.
 2. **KT-04c**: tạo `v2/docs/abi-call-signatures.toml` theo D2-33 (đủ enum TCB §4.4 + `Tcb.ReadState`); `check_scn.py` kiểm arity theo draft; ca `18-schedcontext-donation` **hết blocked** vì `SchedControl` đã lên lõi; `check_scn` **21/21, 0 blocked** → commit `[KT-04c]`.
-3. Sửa `v2/docs/abi-v1-v2-mapping.md`: 26 method/23 đích/20 bỏ; escape `Abort\|Defer`.
+3. Sửa `v2/docs/abi-v1-v2-mapping.md`: **16 syscall** (9 ánh xạ + 7 mới, gồm `DebugGetInfo` 15), 26 method/23 đích/20 bỏ; escape `Abort\|Defer`; sửa tiêu đề "15 syscall" → 16.
 4. **KT-04d**: gói gồm 21 `.scn`, draft chữ ký, checklist 5 mục/method, **nội dung D2-26..28**, mapping đã sửa; gửi Agent 0. **Không** ghi APPROVED.
-5. Sau KT-04d: `KT-06` → `KT-08` → `KT-12` → `KT-R1`; hết OS READY thì ViScript.
+5. Tệp `20-exit-procsrv-chua-recv.scn`: dùng enum TCB D2-33, bỏ ghi chú "chưa khẳng định".
+6. Sau KT-04d: `KT-06` → `KT-08` → `KT-12` → `KT-R1`; hết OS READY thì ViScript.
 
 **Chống lặp:**
 - Đọc bảng trạng thái trước mỗi task; task `DONE`/`BLOCKED` không làm lại.
@@ -137,6 +138,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 - Chỉ mở YC mới khi có blocker kỹ thuật mới, kèm `file:line` + 2 lựa chọn.
 - Review nói `DRIFT` thì đối chiếu DECISIONS trước khi đổi hướng; không tự tạo quyết định.
 - Không sửa `spec/` ngoài D2-29/D2-32; không ghi APPROVED.
+- **D2-34 không được ký**: KT-05 chỉ mở bằng dòng `APPROVED` thật của Agent 0, không có ủy quyền.
 
 ## Ghi chú vận hành
 
