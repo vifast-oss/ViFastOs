@@ -89,5 +89,15 @@ pub const METHOD_SIGNATURES: [(&str, &[&str], &[&str]); 13] = [
     ("Tcb.Suspend", &["tcb", "mode"], &[]),
     ("Untyped.Retype", &["cap", "type", "size_bits", "flags"], &[]),
 ];
+pub const TRACE_RECORD_BYTES: usize = 32;
+#[rustfmt::skip]
+pub const TRACE_FIELDS: [(&str, usize, usize); 6] = [
+    ("t_ns", 0, 8),
+    ("hart", 8, 2),
+    ("kind", 10, 2),
+    ("tcb", 12, 4),
+    ("a", 16, 8),
+    ("b", 24, 8),
+];
 #[rustfmt::skip]
 pub const TCB_STATES: [&str; 11] = ["Inactive", "Ready", "Running", "BlockedOnSend", "BlockedOnRecv", "BlockedOnReply", "BlockedOnNotification", "BlockedOnAddress", "Sleeping", "Stopping", "Dead"];
