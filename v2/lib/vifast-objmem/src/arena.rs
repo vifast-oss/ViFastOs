@@ -40,6 +40,23 @@ impl Arena {
         NonNull::new(ptr)
     }
 
+    /// `pa..pa + len` có nằm trọn trong vùng đã cấp lúc `new` không (không cấp phát gì).
+    ///
+    /// Dùng để chặn `pa` giả/ngoài vùng trước khi đọc header (KT-15).
+    pub(crate) fn chua(&self, pa: u64, len: usize) -> bool {
+        let base = self.base as usize;
+        let Ok(start) = usize::try_from(pa) else {
+            return false;
+        };
+        let Some(end) = start.checked_add(len) else {
+            return false;
+        };
+        let Some(vung_end) = base.checked_add(self.len) else {
+            return false;
+        };
+        start >= base && end <= vung_end
+    }
+
     /// Số byte đã cấp (gồm padding căn lề).
     #[must_use]
     pub fn used(&self) -> usize {

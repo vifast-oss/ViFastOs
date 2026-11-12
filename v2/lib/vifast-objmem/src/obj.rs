@@ -53,9 +53,26 @@ impl ObjHeader {
 ///
 /// Chỉ cần `kind()` (object-safe để `[&mut dyn KObj; N]` của `with_many_mut` dùng được);
 /// `'static` chặn object mượn dữ liệu ngắn hơn vòng đời của vùng Untyped.
+///
+/// `as_any_mut` (mặc định `None`) là đường **duy nhất** để closure của `with_many_mut`
+/// ghi theo kiểu cụ thể qua `&mut dyn KObj` mà không phải đổi chữ ký thiết kế
+/// `:207-208` (D2-48 giữ `ObjRef` 16 B). Object nào muốn nhận ghi kiểu cụ thể thì
+/// override trả `Some(self)`; object không cần thì giữ mặc định (KT-14 vẫn hợp lệ).
 pub trait KObj: 'static {
     /// Mã loại object; ghi vào [`ObjHeader`] lúc `place`.
+    ///
+    /// Bảng `kind → constructor` (D2-48) dùng giá trị này để tra vtable, nên trong một
+    /// store **một `kind` chỉ được ứng với một kiểu** (điều kiện của `place`).
     fn kind(&self) -> u8;
+
+    /// Truy cập kiểu cụ thể từ `&mut dyn KObj`; mặc định không hỗ trợ.
+    ///
+    /// Cần cho `with_many_mut`: closure chỉ nhận `[&mut dyn KObj; N]` (thiết kế
+    /// `:207-208`) nên không thể gọi trực tiếp field của `T`. Trả `Some(self)` để
+    /// cho phép `downcast_mut::<T>()`.
+    fn as_any_mut(&mut self) -> Option<&mut dyn core::any::Any> {
+        None
+    }
 }
 
 /// Tham chiếu tới một object: `pa` + `id`; **không** mang quyền truy cập.
@@ -90,6 +107,29 @@ impl<T: ?Sized> ObjRef<T> {
     #[must_use]
     pub fn id(&self) -> u64 {
         self.id
+    }
+}
+
+impl<T: KObj> ObjRef<T> {
+    /// Chuyển sang `ObjRef<dyn KObj>` — vẫn **16 B** (D2-48 giữ layout ref).
+    ///
+    /// Đây là đường duy nhất để người ngoài crate dựng `[ObjRef<dyn KObj>; N]` cho
+    /// `with_many_mut` (constructor của `ObjRef` là `pub(crate)`); phép chuyển chỉ
+    /// đổi kiểu tĩnh, **không** mang vtable — vtable do bảng `kind → constructor`
+    /// của store tra lúc truy cập (D2-48).
+    #[must_use]
+    pub fn into_dyn(self) -> ObjRef<dyn KObj> {
+        ObjRef {
+            pa: self.pa,
+            id: self.id,
+            _t: PhantomData::<dyn KObj>,
+        }
+    }
+
+    /// Bản mượn của [`ObjRef::into_dyn`].
+    #[must_use]
+    pub fn as_dyn(&self) -> ObjRef<dyn KObj> {
+        self.into_dyn()
     }
 }
 

@@ -6,19 +6,36 @@ use core::mem::{align_of, size_of};
 use core::ptr;
 
 use crate::arena::Arena;
+use crate::many::{self, KindTable};
 use crate::obj::{
-    body_ptr, header_ptr, KObj, ObjHeader, ObjRef, PAddr, BODY_OFFSET, STATE_FINALISING, STATE_LIVE,
+    body_ptr, header_ptr, KObj, ObjHeader, ObjRef, PAddr, BODY_OFFSET, HEADER_SIZE,
+    STATE_FINALISING, STATE_LIVE,
 };
 
 /// Tham chiếu không còn trỏ object sống (đã `destroy`, hoặc `id` lệch header).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dead;
 
-/// Hai tham chiếu chồng lấn trong `with_many_mut` (trùng `pa`).
+/// Hai tham chiếu chồng lấn, hoặc đầu vào không dựng được tham chiếu an toàn, trong
+/// `with_many_mut`.
+///
+/// Kết quả của các kiểm **làm được** mà không cần identity store: `pa` ngoài vùng arena
+/// của store, ref có `id` lệch header hoặc `state` ≠ LIVE, `kind` chưa đăng ký, trùng
+/// `pa`/`id`, chồng vùng. Closure **không** được gọi trong mọi trường hợp `Err(Alias)`.
+///
+/// `ObjRef` 16 B **không** mang identity store, nên "ref của store khác" chỉ bị chặn
+/// khi `pa` rơi ngoài arena hoặc `id`/`kind`/`state` lệch; đó là **hợp đồng** của
+/// [`ObjStore`] (xem `place`), không phải bất biến cưỡng chế được.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Alias;
 
 /// Hợp đồng truy cập bộ nhớ object (thiết kế `:204-210`).
+///
+/// Hợp đồng chung: `ObjRef` phải do [`ObjStore::place`] của **cùng store này** trả về và
+/// còn sống; [`ObjMem::reset`] làm mọi ref cũ vô hiệu. Ref chết (`id` lệch header hoặc
+/// `state` ≠ LIVE) ⇒ `with`/`with_mut` trả [`Dead`], `with_many_mut` trả [`Alias`] cho
+/// **cùng điều kiện** (chữ ký thiết kế `:207-208` chỉ có một kiểu lỗi). `ObjRef` không
+/// mang identity store nên hợp đồng này **không** được cưỡng chế hoàn toàn.
 pub trait ObjStore {
     /// Truy cập chia sẻ body `T` qua closure; ref chết → `Dead`.
     fn with<T: KObj, R>(&self, r: ObjRef<T>, f: impl FnOnce(&T) -> R) -> Result<R, Dead>;
@@ -30,11 +47,16 @@ pub trait ObjStore {
         f: impl FnOnce(&mut T) -> R,
     ) -> Result<R, Dead>;
 
-    /// Truy cập độc quyền nhiều object; N ≤ 8, trùng từng cặp → `Alias` (KT-15).
+    /// Truy cập độc quyền nhiều object; `N ≤ 8`, trùng/chồng từng cặp → `Alias`.
     ///
-    /// **KT-14 (khung)**: chưa cài đặt — mọi trường hợp trả `Err(Alias)` (fail-closed,
-    /// không panic, closure **không** được gọi); ma trận alias `N = 1..8`, `N = 9`
-    /// không build, fuzz 10.000 chuỗi thuộc KT-15.
+    /// Nguồn vtable là bảng tĩnh `kind → constructor` (D2-48): `ObjRef` vẫn 16 B.
+    /// `pa` ngoài vùng arena, ref chết (`id` lệch/`state` ≠ LIVE), `kind` lạ, trùng
+    /// `pa`/`id`, chồng vùng đều trả `Err(Alias)` và closure **không** được gọi.
+    /// `N > 8` **không build** (`const { assert!(N <= MAX_MANY) }`).
+    ///
+    /// Hợp đồng (không cưỡng chế được — xem [`ObjStore`]): mọi `r` phải do store này cấp
+    /// và kiểu của object phải khớp `kind` (điều kiện của `place`); `reset` làm ref cũ
+    /// vô hiệu.
     fn with_many_mut<const N: usize, R>(
         &mut self,
         rs: [ObjRef<dyn KObj>; N],
@@ -46,6 +68,12 @@ pub trait ObjStore {
     /// # Safety
     /// `pa` phải là vùng đủ chỗ, đã cấp từ [`ObjMem::alloc`] (hoặc tương đương) và
     /// chưa có object sống; `pa + BODY_OFFSET` phải đúng căn lề cho `T`.
+    ///
+    /// Ngoài ra `T` phải là kiểu **duy nhất** dùng `v.kind()` trong store này: bảng
+    /// `kind → constructor` (D2-48) giả định `kind` xác định đúng một `T`. Hai kiểu khác
+    /// nhau dùng chung `kind` sẽ khiến `with_many_mut` dựng `&mut dyn KObj` sai vtable.
+    /// Ref trả về chỉ dùng với **store này** (`ObjRef` không mang identity store), và
+    /// [`ObjMem::reset`] làm mọi ref cũ vô hiệu.
     unsafe fn place<T: KObj>(&mut self, pa: PAddr, v: T) -> ObjRef<T>;
 
     /// Finalise object: `drop_in_place` body rồi đánh dấu header đã chết.
@@ -62,6 +90,8 @@ pub trait ObjStore {
 pub struct ObjMem {
     arena: Arena,
     next_id: u64,
+    /// Bảng `kind → constructor` do `place::<T>` đăng ký (D2-48).
+    kinds: KindTable,
 }
 
 impl ObjMem {
@@ -72,6 +102,7 @@ impl ObjMem {
         Self {
             arena: unsafe { Arena::new(base, len) },
             next_id: 0,
+            kinds: KindTable::new(),
         }
     }
 
@@ -96,6 +127,19 @@ impl ObjMem {
     #[must_use]
     pub fn capacity(&self) -> usize {
         self.arena.capacity()
+    }
+
+    /// Bảng `kind → constructor` của store (KT-15 dùng để dựng `dyn KObj`).
+    pub(crate) fn bang(&self) -> &KindTable {
+        &self.kinds
+    }
+
+    /// `pa` có phải đầu một header 16 B **bên trong** vùng Untyped của store này không.
+    ///
+    /// Chặn `pa` giả/ngoài arena trước khi `ptr::read` header (KT-15); `reset` không làm
+    /// ref cũ trỏ ra ngoài vùng, trạng thái "đã revoke" do kiểm `id`/`state` xử lý.
+    pub(crate) fn chua_header(&self, pa: PAddr) -> bool {
+        pa.is_multiple_of(align_of::<ObjHeader>() as u64) && self.arena.chua(pa, HEADER_SIZE)
     }
 
     /// Đưa watermark về 0 sau khi mọi object đã finalise (Untyped `Revoke`).
@@ -141,28 +185,21 @@ impl ObjStore for ObjMem {
         rs: [ObjRef<dyn KObj>; N],
         f: impl FnOnce([&mut dyn KObj; N]) -> R,
     ) -> Result<R, Alias> {
-        // KT-14 mới là khung: kiểm trùng `pa` (đúng ngữ nghĩa `Alias`); dựng
-        // `[&mut dyn KObj; N]` cần vtable theo `kind` — phần đầy đủ thuộc KT-15.
-        // Trả `Alias` an toàn, không panic và không tạo tham chiếu nào.
-        for (i, a) in rs.iter().enumerate() {
-            for b in rs.iter().skip(i + 1) {
-                if a.pa() == b.pa() {
-                    return Err(Alias);
-                }
-            }
-        }
-        let _ = f;
-        Err(Alias)
+        // KT-15: khung fail-closed của KT-14 đã thay bằng cài đặt thật (D2-48).
+        many::with_many_mut(self, rs, f)
     }
 
     unsafe fn place<T: KObj>(&mut self, pa: PAddr, v: T) -> ObjRef<T> {
         self.next_id += 1;
+        let kind = v.kind();
         let header = ObjHeader {
-            kind: v.kind(),
+            kind,
             state: STATE_LIVE,
             _pad: 0,
             id: self.next_id,
         };
+        // D2-48: chỉ `place::<T>` biết `T`, nên đây là nơi duy nhất đăng ký constructor.
+        self.kinds.register::<T>(kind);
         // SAFETY: hợp đồng `place` — `pa` đã cấp, đủ chỗ và đúng căn lề cho `T`.
         unsafe {
             ptr::write(header_ptr(pa), header);
@@ -269,24 +306,27 @@ mod tests {
     }
 
     #[test]
-    fn with_many_mut_khung_fail_closed_tra_alias() {
+    fn with_many_mut_hai_ref_roi_nhau_tra_ok() {
+        // KT-15 thay khung fail-closed của KT-14: hai ref rời nhau giờ phải `Ok`.
+        // Ma trận alias đầy đủ ở `tests/alias.rs`; nhánh forged ở `many.rs::tests`.
         let mut buf = Buf([0u8; 8192]);
         let mut s = store(&mut buf);
         let a = place(&mut s, Counter { n: 1 });
         let b = place(&mut s, Counter { n: 2 });
         assert_ne!(a.pa(), b.pa());
 
-        // KT-14: khung chưa cài đặt ⇒ fail-closed kể cả khi hai ref rời nhau.
         let ra = ObjRef::<dyn KObj>::new(a.pa(), a.id());
         let rb = ObjRef::<dyn KObj>::new(b.pa(), b.id());
         let mut called = false;
-        let kq = s.with_many_mut([ra, rb], |_| {
+        let kq = s.with_many_mut([ra, rb], |rs| {
             called = true;
+            rs.len()
         });
-        assert_eq!(kq, Err(Alias), "KT-14: khung luôn fail-closed");
-        assert!(!called, "closure không được gọi khi chưa cài đặt");
+        assert_eq!(kq, Ok(2));
+        assert!(called, "closure phải được gọi khi mọi ref rời nhau");
 
-        // Cùng `pa` (kể cả khác id) cũng `Alias` — kiểm nhánh trùng địa chỉ.
+        // Cùng `pa` (kể cả khác id) vẫn `Alias` — kiểm nhánh trùng địa chỉ.
+        let mut called = false;
         let rc = ObjRef::<dyn KObj>::new(a.pa(), a.id() + 1);
         let kq = s.with_many_mut([ra, rc], |_| {
             called = true;
