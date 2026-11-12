@@ -5,6 +5,7 @@
 resolver = "2"
 members = [
     "crates/vis-diag",
+    "crates/vis-cli",
 ]
 
 [workspace.package]

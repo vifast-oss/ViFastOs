@@ -6,10 +6,10 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
 ```
 HEAD          : xem `git log -1`
 BUILD_ID      : —
-Task          : ST-02b (sổ mã lỗi VS) — ST-01 DONE
+Task          : ST-10 (báo cáo R1-viscript) — ST-01/02b DONE
 Bước          : 8/8
 Nhánh         : main
-Cổng gần nhất : `./vis-dev check` + `gate --fast` PASS (ST-01: 4 case âm, fmt/clippy/rules/build/L0)
+Cổng gần nhất : `./vis-dev gate --fast` PASS (ST-02b: 9 test, `vis explain` chạy; 4 case âm của cổng)
 Việc dở       : —
 ```
 
@@ -17,7 +17,7 @@ Việc dở       : —
 
 - `ST-01` **DONE**: có `./vis-dev check` + `./vis-dev gate --fast` (fmt, clippy, R1 ≤1500 dòng, R2 cấm `unsafe`, R3 SPDX theo loại tệp, R4 `vis-host-vifast` ngoài `viscript/`, self-test **4 case âm**, build, L0 test).
 - `ST-02a` **DONE** (APPROVED 2026-11-12 Agent 0). **ST-04 mở ngay**; 60 golden token là test đỏ đầu tiên của ST-04.
-- `ST-01` **DONE**. Việc làm được ngay: `ST-02b`, `ST-10`; `ST-03` (vis-diag) chờ Agent 0 lật READY (dep ST-01 đã DONE);
+- `ST-01` + `ST-02b` **DONE**. Việc làm được ngay: `ST-10`; `ST-03` (vis-diag) chờ Agent 0 lật READY (dep ST-01 đã DONE);
   `ST-04` **chưa mở** — SPEC-lex còn REVIEW + thiếu kind/keyword (YC-14).
 - Vòng 1 **không** có interpreter/kiểm kiểu; dừng ở lexer → parser/CST → `CmdCST` → `vis-fmt` → runner `--check` cú pháp.
 - Commit `[ST-##]`; SPDX `#` cho `.vis .vish .vidl .toml`, `//` cho Rust; mọi `unsafe` có case âm; tệp ≤ 1.500 dòng.
