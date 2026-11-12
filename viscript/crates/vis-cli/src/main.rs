@@ -3,12 +3,12 @@
 
 use std::process::ExitCode;
 
-use vis_diag::{lookup_str, Severity, CODES, SYNTAX_CODES};
+use vis_diag::{lookup_str, severity_label, Lang, CODES, SYNTAX_CODES};
 use vis_syntax::{parse, Mode};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain <VSxxxx> | vis explain --list | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
     );
     ExitCode::from(2)
 }
@@ -205,34 +205,69 @@ fn run_check(args: &[String]) -> ExitCode {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("explain") => match args.get(1).map(String::as_str) {
-            None => usage(),
-            Some("--list") => {
-                for c in CODES.iter().chain(SYNTAX_CODES.iter()) {
-                    let tag = match c.severity {
-                        Severity::Error => "lỗi",
-                        Severity::Warning => "cảnh báo",
-                    };
-                    println!("{}  {:<8} {}", c.short, tag, c.message_vi);
+        Some("explain") => {
+            let mut lang = Lang::Vi;
+            let mut list = false;
+            let mut ma: Option<String> = None;
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--list" => list = true,
+                    "--lang" => match args.get(i + 1) {
+                        Some(v) => match Lang::parse(v) {
+                            Some(l) => {
+                                lang = l;
+                                i += 1; // bỏ qua giá trị ngôn ngữ
+                            }
+                            None => {
+                                eprintln!("vis explain: ngôn ngữ không hỗ trợ `{v}` (vi|en|ja)");
+                                return ExitCode::from(2);
+                            }
+                        },
+                        None => {
+                            eprintln!("vis explain: `--lang` cần giá trị vi|en|ja");
+                            return ExitCode::from(2);
+                        }
+                    },
+                    a if a.starts_with('-') => {
+                        eprintln!("vis explain: không hỗ trợ cờ `{a}`");
+                        return usage();
+                    }
+                    a => ma = Some(a.to_string()),
                 }
-                ExitCode::SUCCESS
+                i += 1;
             }
-            Some(code) => match lookup_str(code) {
-                Some(c) => {
-                    let tag = match c.severity {
-                        Severity::Error => "lỗi",
-                        Severity::Warning => "cảnh báo",
-                    };
-                    println!("{} — {}: {}", c.short, tag, c.message_vi);
-                    ExitCode::SUCCESS
+            if list {
+                for c in CODES.iter().chain(SYNTAX_CODES.iter()) {
+                    println!(
+                        "{}  {:<8} {}",
+                        c.short,
+                        severity_label(c.severity, lang),
+                        c.message(lang)
+                    );
                 }
-                None => {
-                    // VD-20: exit 1 dành cho lỗi từ main; mã sai là **lỗi dùng** ⇒ 2.
-                    eprintln!("vis: không có mã {code} trong sổ (SPEC-lex §7)");
-                    ExitCode::from(2)
-                }
-            },
-        },
+                return ExitCode::SUCCESS;
+            }
+            match ma {
+                None => usage(),
+                Some(code) => match lookup_str(&code) {
+                    Some(c) => {
+                        println!(
+                            "{} — {}: {}",
+                            c.short,
+                            severity_label(c.severity, lang),
+                            c.message(lang)
+                        );
+                        ExitCode::SUCCESS
+                    }
+                    None => {
+                        // VD-20: exit 1 dành cho lỗi từ main; mã sai là **lỗi dùng** ⇒ 2.
+                        eprintln!("vis: không có mã {code} trong sổ (SPEC-lex §7)");
+                        ExitCode::from(2)
+                    }
+                },
+            }
+        }
         Some("check") => run_check(&args[1..]),
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),

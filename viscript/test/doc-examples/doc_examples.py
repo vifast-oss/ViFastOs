@@ -90,6 +90,16 @@ def load_allow(path: Path) -> list[tuple[str, int, str]]:
     return out
 
 
+def find_cargo() -> str | None:
+    """`cargo` có thể không nằm trên PATH (vis-dev tự dò `$HOME/.cargo/bin/cargo`)."""
+    import shutil
+
+    if shutil.which("cargo"):
+        return "cargo"
+    cand = Path.home() / ".cargo" / "bin" / "cargo"
+    return str(cand) if cand.is_file() else None
+
+
 def resolve_bin(vis_bin: str | None) -> Path | None:
     """Binary `vis` phải **mới hơn mọi .rs** trong `crates/` (không dùng bản cũ)."""
     path = Path(vis_bin) if vis_bin else REPO / "viscript" / "target" / "debug" / "vis"
@@ -102,9 +112,12 @@ def resolve_bin(vis_bin: str | None) -> Path | None:
             raise SystemExit(
                 f"doc-examples: binary {path} cũ hơn mã nguồn — từ chối chạy (build lại trước)"
             )
+        cargo = find_cargo()
+        if cargo is None:
+            raise SystemExit("doc-examples: không thấy cargo để build `vis`")
         build = subprocess.run(
             [
-                "cargo",
+                cargo,
                 "build",
                 "--manifest-path",
                 str(REPO / "viscript" / "Cargo.toml"),
@@ -132,8 +145,11 @@ def vis_check(files: list[Path], vis_bin: str | None) -> dict[str, tuple[bool, s
     if path is not None:
         cmd = [str(path)]
     else:
+        cargo = find_cargo()
+        if cargo is None:
+            raise SystemExit("doc-examples: không thấy cargo để chạy `vis`")
         cmd = [
-            "cargo",
+            cargo,
             "run",
             "-q",
             "--manifest-path",

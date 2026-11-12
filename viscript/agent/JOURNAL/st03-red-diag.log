@@ -1,0 +1,150 @@
+=== ST-03 D2-05: cột scalar + `render` + bảng vi/en/ja ĐỎ TRƯỚC khi hiện thực (harness cuối) ===
+thời điểm chụp: 2026-11-12T18:57:05Z
+cách chụp: `message_en`/`message_ja` để CHUỖI RỖNG, `render` trả chuỗi rỗng, `vis explain --lang` chưa có
+           (main.rs bản HEAD). Harness đã qua `cargo fmt` — hash dưới là bản cuối sẽ commit.
+           `col_scalar` XANH ngay vì lexer ST-04 đã đếm `char` (tab = 4) — test KHOÁ LẠI, ghi rõ.
+sha256 harness: crates/vis-diag/tests/messages.rs=aa9b85fdadce54691a561ecf5041bd8bdedf83d6b5d0aa6a48a4d5a6b4bb8aed
+sha256 harness: crates/vis-syntax/tests/col_scalar.rs=213361b1982c13da383033a7fda61cefef83aef9af7a6765ee6f78e24eb48f26
+sha256 harness: crates/vis-cli/tests/explain.rs=d6c76400dbfad826489d73424f3a4ff78192de68ea2845870b4f6efa3410e1c5
+   Compiling vis-diag v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-diag)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.82s
+     Running tests/messages.rs (target/debug/deps/messages-86405df88b19dbb9)
+
+running 7 tests
+test lang_parse_va_nhan_muc ... ok
+test render_canh_theo_emoji_va_tab ... FAILED
+test moi_ma_du_ba_ngon_ngu ... FAILED
+test snapshot_20_render ... FAILED
+test snapshot_20_ca_vi_en_ja ... FAILED
+test render_dong_tieu_de_va_nguon ... FAILED
+test render_khong_nguon_chi_mot_dong ... FAILED
+
+failures:
+
+---- render_canh_theo_emoji_va_tab stdout ----
+
+thread 'render_canh_theo_emoji_va_tab' (37091663) panicked at crates/vis-diag/tests/messages.rs:141:5:
+assertion `left == right` failed
+  left: ""
+ right: "e.vis:2:9: lỗi VS0103: ký tự lạ\nx = \"🚀\" §\n        ^"
+
+---- moi_ma_du_ba_ngon_ngu stdout ----
+
+thread 'moi_ma_du_ba_ngon_ngu' (37091662) panicked at crates/vis-diag/tests/messages.rs:65:13:
+VS0101 thiếu thông điệp En
+
+---- snapshot_20_render stdout ----
+
+thread 'snapshot_20_render' (37091667) panicked at crates/vis-diag/tests/messages.rs:272:9:
+assertion `left == right` failed: a.vis
+  left: ""
+ right: "a.vis:1:9: lỗi VS0103: ký tự lạ\nx = \"ố\" §\n        ^"
+
+---- snapshot_20_ca_vi_en_ja stdout ----
+
+thread 'snapshot_20_ca_vi_en_ja' (37091666) panicked at crates/vis-diag/tests/messages.rs:57:9:
+assertion `left == right` failed: VS0102 En
+  left: ""
+ right: "invalid escape"
+
+---- render_dong_tieu_de_va_nguon stdout ----
+
+thread 'render_dong_tieu_de_va_nguon' (37091664) panicked at crates/vis-diag/tests/messages.rs:122:5:
+assertion `left == right` failed
+  left: ""
+ right: "a.vis:1:9: lỗi VS0103: ký tự lạ\nx = \"ố\" §\n        ^"
+
+---- render_khong_nguon_chi_mot_dong stdout ----
+
+thread 'render_khong_nguon_chi_mot_dong' (37091665) panicked at crates/vis-diag/tests/messages.rs:169:5:
+assertion `left == right` failed
+  left: ""
+ right: "a.vis:3:2: lỗi VS0101: chuỗi chưa đóng"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    moi_ma_du_ba_ngon_ngu
+    render_canh_theo_emoji_va_tab
+    render_dong_tieu_de_va_nguon
+    render_khong_nguon_chi_mot_dong
+    snapshot_20_ca_vi_en_ja
+    snapshot_20_render
+
+test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-diag --test messages`
+exit_messages=101
+   Compiling vis-syntax v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-syntax)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.00s
+     Running tests/col_scalar.rs (target/debug/deps/col_scalar-b837f4ea14b15766)
+
+running 5 tests
+test emoji_gia_dinh_nhieu_scalar_va_zwj ... ok
+test dong_theo_scalar_khong_phai_byte ... ok
+test emoji_astral_la_mot_scalar ... ok
+test tab_bon_cot_va_vi_tri_sau_tab ... ok
+test tieng_viet_dung_san_va_to_hop ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+exit_col=0
+   Compiling vis-fmt v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-fmt)
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.03s
+     Running tests/explain.rs (target/debug/deps/explain-da194fea06823b34)
+
+running 7 tests
+test explain_mot_ma_co_nghia ... ok
+test explain_ma_la_thi_do ... ok
+test explain_lang_en_va_ja ... FAILED
+test list_in_du_10_ma_cua_spec_lex ... ok
+test explain_khong_tham_so_thi_doi_cach_dung ... ok
+test explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung ... FAILED
+test list_lang_in_du_ba_ngon_ngu_tung_ma ... FAILED
+
+failures:
+
+---- explain_lang_en_va_ja stdout ----
+
+thread 'explain_lang_en_va_ja' (37092243) panicked at crates/vis-cli/tests/explain.rs:55:5:
+assertion `left == right` failed: vis: không có mã --lang trong sổ (SPEC-lex §7)
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung stdout ----
+
+thread 'explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung' (37092244) panicked at crates/vis-cli/tests/explain.rs:89:5:
+assertion `left == right` failed: thiếu giá trị --lang là lỗi dùng
+  left: 0
+ right: 2
+
+---- list_lang_in_du_ba_ngon_ngu_tung_ma stdout ----
+
+thread 'list_lang_in_du_ba_ngon_ngu_tung_ma' (37092248) panicked at crates/vis-cli/tests/explain.rs:79:5:
+VS0101  lỗi      chuỗi chưa đóng
+VS0102  lỗi      escape không hợp lệ
+VS0103  lỗi      ký tự lạ ngoài bảng token
+VS0104  lỗi      literal số sai/tràn i64
+VS0105  lỗi      char literal không đúng 1 scalar
+VS0106  lỗi      byte string có ký tự > 0x7F
+VS0107  cảnh báo tab (cảnh báo-lỗi; tab = 4)
+VS0108  lỗi      nội suy `{` không đóng
+VS0109  lỗi      thụt lề không khớp đơn vị/DEDENT sai
+VS0110  lỗi      `^` sai ngữ cảnh (lexer chế độ lệnh biết đầu stage)
+VS0201  lỗi      lỗi cú pháp: token không mong đợi/thiếu vế
+VS0202  lỗi      `%` dùng như phần trăm — viết `50pct`
+
+
+
+failures:
+    explain_lang_en_va_ja
+    explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung
+    list_lang_in_du_ba_ngon_ngu_tung_ma
+
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+error: test failed, to rerun pass `-p vis-cli --test explain`
+exit_explain=101

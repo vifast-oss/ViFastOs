@@ -25,8 +25,44 @@ pub enum Severity {
 pub struct Code {
     pub id: u16,
     pub short: &'static str,
+    /// Thông điệp tiếng Việt — **nguồn chuẩn** (SPEC-lex §7; test `so_khop_spec_lex_that` khoá).
     pub message_vi: &'static str,
+    /// Thông điệp tiếng Anh (ST-03).
+    pub message_en: &'static str,
+    /// Thông điệp tiếng Nhật (ST-03).
+    pub message_ja: &'static str,
     pub severity: Severity,
+}
+
+/// Ngôn ngữ thông điệp (ST-03): mặc định `Vi`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    Vi,
+    En,
+    Ja,
+}
+
+impl Lang {
+    /// `vi`/`en`/`ja` (không phân biệt hoa thường); sai ⇒ `None`.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "vi" => Some(Self::Vi),
+            "en" => Some(Self::En),
+            "ja" => Some(Self::Ja),
+            _ => None,
+        }
+    }
+}
+
+impl Code {
+    /// Thông điệp theo ngôn ngữ; `message_vi` vẫn là chuẩn của SPEC-lex §7.
+    pub fn message(&self, lang: Lang) -> &'static str {
+        match lang {
+            Lang::Vi => self.message_vi,
+            Lang::En => self.message_en,
+            Lang::Ja => self.message_ja,
+        }
+    }
 }
 
 /// Sổ mã lỗi **vòng 1**: đúng 10 mã `VS0101..VS0110` của `docs/viscript/SPEC-lex.md` §7.
@@ -44,60 +80,80 @@ pub const CODES: [Code; 10] = [
         id: 101,
         short: "VS0101",
         message_vi: "chuỗi chưa đóng",
+        message_en: "unterminated string",
+        message_ja: "文字列が閉じられていません",
         severity: Severity::Error,
     },
     Code {
         id: 102,
         short: "VS0102",
         message_vi: "escape không hợp lệ",
+        message_en: "invalid escape",
+        message_ja: "無効なエスケープです",
         severity: Severity::Error,
     },
     Code {
         id: 103,
         short: "VS0103",
         message_vi: "ký tự lạ ngoài bảng token",
+        message_en: "unexpected character outside the token table",
+        message_ja: "トークン表にない不正な文字です",
         severity: Severity::Error,
     },
     Code {
         id: 104,
         short: "VS0104",
         message_vi: "literal số sai/tràn i64",
+        message_en: "invalid numeric literal / i64 overflow",
+        message_ja: "数値リテラルが不正、または i64 を超過しています",
         severity: Severity::Error,
     },
     Code {
         id: 105,
         short: "VS0105",
         message_vi: "char literal không đúng 1 scalar",
+        message_en: "char literal must be exactly one scalar",
+        message_ja: "char リテラルはちょうど 1 スカラーである必要があります",
         severity: Severity::Error,
     },
     Code {
         id: 106,
         short: "VS0106",
         message_vi: "byte string có ký tự > 0x7F",
+        message_en: "byte string contains a character > 0x7F",
+        message_ja: "バイト文字列に 0x7F を超える文字があります",
         severity: Severity::Error,
     },
     Code {
         id: 107,
         short: "VS0107",
         message_vi: "tab (cảnh báo-lỗi; tab = 4)",
+        message_en: "tab (warning-error; tab = 4)",
+        message_ja: "タブ（警告エラー、タブ = 4）",
         severity: Severity::Warning,
     },
     Code {
         id: 108,
         short: "VS0108",
         message_vi: "nội suy `{` không đóng",
+        message_en: "unclosed `{` interpolation",
+        message_ja: "補間 `{` が閉じられていません",
         severity: Severity::Error,
     },
     Code {
         id: 109,
         short: "VS0109",
         message_vi: "thụt lề không khớp đơn vị/DEDENT sai",
+        message_en: "inconsistent indentation / invalid DEDENT",
+        message_ja: "インデントの不一致／DEDENT が不正です",
         severity: Severity::Error,
     },
     Code {
         id: 110,
         short: "VS0110",
         message_vi: "`^` sai ngữ cảnh (lexer chế độ lệnh biết đầu stage)",
+        message_en: "`^` out of context (command-mode lexer knows stage start)",
+        message_ja: "`^` の文脈が不正です（コマンドモードの字句解析器が stage 先頭を判定）",
         severity: Severity::Error,
     },
 ];
@@ -110,12 +166,16 @@ pub const SYNTAX_CODES: [Code; 2] = [
         id: 201,
         short: "VS0201",
         message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế",
+        message_en: "syntax error: unexpected token / missing operand",
+        message_ja: "構文エラー: 予期しないトークン／項が不足しています",
         severity: Severity::Error,
     },
     Code {
         id: 202,
         short: "VS0202",
         message_vi: "`%` dùng như phần trăm — viết `50pct`",
+        message_en: "`%` used as percent — write `50pct`",
+        message_ja: "`%` がパーセントとして使われています — `50pct` と書いてください",
         severity: Severity::Error,
     },
 ];
@@ -168,6 +228,66 @@ impl Diag {
             offset,
         }
     }
+}
+
+/// Một chẩn đoán đã có vị trí **theo Unicode scalar** (1-based) để [`render`] hiển thị.
+///
+/// `col`/`line` do lexer/parser tính (lexer đếm `char`, tab = 4 — SPEC-lex §4); ST-03 chỉ
+/// **render** chứ không tự đoán lại vị trí.
+#[derive(Debug, Clone, Copy)]
+pub struct DiagLine<'a> {
+    pub path: &'a str,
+    pub line: u32,
+    pub col: u32,
+    pub severity: Severity,
+    pub code: &'a str,
+    pub message: &'a str,
+    /// Dòng nguồn (chưa có `\n`) để in con trỏ `^`; `None` ⇒ chỉ in dòng tiêu đề.
+    pub source: Option<&'a str>,
+}
+
+/// Nhãn mức theo ngôn ngữ.
+pub fn severity_label(sev: Severity, lang: Lang) -> &'static str {
+    match (sev, lang) {
+        (Severity::Error, Lang::Vi) => "lỗi",
+        (Severity::Warning, Lang::Vi) => "cảnh báo",
+        (Severity::Error, Lang::En) => "error",
+        (Severity::Warning, Lang::En) => "warning",
+        (Severity::Error, Lang::Ja) => "エラー",
+        (Severity::Warning, Lang::Ja) => "警告",
+    }
+}
+
+/// Render một chẩn đoán: `<tệp>:<dòng>:<cột>: <mức> <mã>: <thông điệp>`; có `source` thì in
+/// thêm dòng nguồn và con trỏ `^` **canh theo scalar** (tab tính 4 cột như lexer).
+pub fn render(d: &DiagLine<'_>, lang: Lang) -> String {
+    let mut ra = format!(
+        "{}:{}:{}: {} {}: {}",
+        d.path,
+        d.line,
+        d.col,
+        severity_label(d.severity, lang),
+        d.code,
+        d.message
+    );
+    if let Some(src) = d.source {
+        let src = src.trim_end_matches(['\n', '\r']);
+        ra.push('\n');
+        ra.push_str(src);
+        // Con trỏ canh theo **scalar**, tab = 4 cột (khớp cách lexer đếm).
+        let want = d.col.saturating_sub(1) as usize;
+        let mut width = 0usize;
+        for ch in src.chars() {
+            if width >= want {
+                break;
+            }
+            width += if ch == '\t' { 4 } else { 1 };
+        }
+        ra.push('\n');
+        ra.push_str(&" ".repeat(width));
+        ra.push('^');
+    }
+    ra
 }
 
 #[cfg(test)]

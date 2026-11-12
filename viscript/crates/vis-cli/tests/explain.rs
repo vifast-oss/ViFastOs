@@ -48,3 +48,43 @@ fn list_in_du_10_ma_cua_spec_lex() {
         assert!(text.contains(&want), "bảng thiếu {want}: {text}");
     }
 }
+
+#[test]
+fn explain_lang_en_va_ja() {
+    let (code, text) = vis(&["explain", "--lang", "en", "VS0101"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("unterminated string"), "{text}");
+    let (code, text) = vis(&["explain", "--lang", "ja", "VS0202"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        text.contains("50pct") && text.contains("パーセント"),
+        "{text}"
+    );
+}
+
+#[test]
+fn list_lang_in_du_ba_ngon_ngu_tung_ma() {
+    for lang in ["vi", "en", "ja"] {
+        let (code, text) = vis(&["explain", "--list", "--lang", lang]);
+        assert_eq!(code, 0, "{text}");
+        for n in 101..=110u16 {
+            assert!(
+                text.contains(&format!("VS{n:04}")),
+                "bảng {lang} thiếu VS{n:04}"
+            );
+        }
+        assert!(text.contains("VS0201") && text.contains("VS0202"), "{text}");
+    }
+    let (_, en) = vis(&["explain", "--list", "--lang", "en"]);
+    assert!(en.contains("unterminated string"), "{en}");
+    let (_, ja) = vis(&["explain", "--list", "--lang", "ja"]);
+    assert!(ja.contains("文字列が閉じられていません"), "{ja}");
+}
+
+#[test]
+fn explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung() {
+    let (code, _) = vis(&["explain", "--lang", "fr", "VS0101"]);
+    assert_eq!(code, 2, "ngôn ngữ lạ là lỗi dùng");
+    let (code, _) = vis(&["explain", "VS0101", "--lang"]);
+    assert_eq!(code, 2, "thiếu giá trị --lang là lỗi dùng");
+}
