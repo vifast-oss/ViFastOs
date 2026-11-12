@@ -1,0 +1,22 @@
+=== KT-17: KT-04c trên mô hình — .scn Untyped/CNode (kt11_scn) ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt11_scn.rs (v2/target/debug/deps/kt11_scn-3b458eb5bec2d931)
+
+running 2 tests
+test scn_untyped_cnode_cua_kt04c_parse_duoc ... ok
+# KT-11 scn: 9/9 bước khớp; 3 bước setup chưa mô hình (Frame/K2); 0 bước lệch
+test scn_untyped_cnode_cua_kt04c_chay_va_doi_chieu ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+=== parity 10.000 seed (kt11_diff_sim, oracle vifast-model) ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt11_diff_sim.rs (v2/target/debug/deps/kt11_diff_sim-e2a2755e91b65dcc)
+
+running 1 test
+# KT-11 diff: 10000 seed, 240000 thao tác, 9065 trace khác nhau, 0 lệch (14792 ms)
+test kt11_diff_model_va_sim_10000_seed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.80s
+

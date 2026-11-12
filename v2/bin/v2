@@ -3,7 +3,8 @@
 # v2/bin/v2 — cổng của dòng OS v2 (KT-03).
 #
 # Vòng 1: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), ABI/scn/report checks, L0, L1 1.000 seed.
-# gen-check đã bật (KT-05); Miri có lệnh rời `v2 miri` (KT-13, D2-47); nightly/mutation vẫn chưa có — AGENTS.md §6.
+# gen-check đã bật (KT-05); Miri có lệnh rời `v2 miri` (KT-13) và `nightly --only-miri` (KT-17, D2-47(a));
+# nightly đầy đủ (L1 100k/mutation/soak) vẫn CHƯA CÓ — AGENTS.md §6.
 # Mọi lệnh cargo dùng `--manifest-path v2/Cargo.toml`: KHÔNG bao giờ chạm workspace v1
 # (crates/, 25 crate đã đóng băng ở tag v1-archive).
 set -u
@@ -68,7 +69,11 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
   ./v2/bin/v2 check            fmt + clippy + 5 luật cấu trúc + self-test luật + build
   ./v2/bin/v2 gate --fast      như check + L0 (cargo test --workspace). BẮT BUỘC cuối mỗi task
   ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
-  ./v2/bin/v2 nightly          CHƯA CÓ trong vòng 1 (Miri đã tách thành `v2 miri`; nightly đầy đủ cần mutation/soak)
+  ./v2/bin/v2 nightly --only-miri
+                               CHỈ Miri trên tập chọn (KT-17, D2-47(a)): vifast-objmem (toàn bộ) +
+                               sim (--lib, kt16_objmem, kt09_untyped, kt09_revoke, kt10_cnode,
+                               kt17_align). KHÔNG L1 100k/mutation/soak
+  ./v2/bin/v2 nightly          CHƯA CÓ cho nightly đầy đủ (L1 100k/mutation/soak) — chỉ có `--only-miri`
   ./v2/bin/v2 miri [test|run|setup|clean] [tuỳ chọn]
                                Miri qua `cargo +nightly miri` trên v2/Cargo.toml; mặc định `test`
                                (D2-47: lệnh rời, KHÔNG nằm trong gate --fast)
@@ -77,7 +82,8 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
 Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
       R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
       R5 unsafe chỉ trong danh sách đóng (D2-17).
-L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; nightly 100.000 seed (chưa có lệnh nightly).
+L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; nightly 100.000 seed + mutation/soak vẫn chưa có
+(`nightly --only-miri` chỉ chạy Miri — D2-47(a)).
 Bootstrap Miri (khi `v2 miri` báo thiếu toolchain): rustup component add miri rust-src --toolchain nightly
 EOF
 }
@@ -314,7 +320,7 @@ do_gate_fast() {
     echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }
 
-# ---------------------------------------------------------------- Miri (KT-13, D2-47)
+# ---------------------------------------------------------------- Miri (KT-13/KT-17, D2-47)
 
 # In đúng câu lệnh bootstrap khi thiếu toolchain — không bao giờ im lặng bỏ qua.
 miri_bootstrap_hint() {
@@ -323,15 +329,19 @@ miri_bootstrap_hint() {
     echo "    rustup component add miri rust-src --toolchain nightly" >&2
 }
 
-do_miri() {
-    local rustup_bin installed missing sub
+# Kiểm toolchain Miri đủ (nightly + miri + rust-src + `cargo miri` chạy được).
+# Thiếu ⇒ in câu lệnh bootstrap và exit (127 nếu thiếu rustup, 2 nếu thiếu component).
+# Dùng chung cho `v2 miri` (KT-13) và `v2 nightly --only-miri` (KT-17) để hai lệnh không
+# bao giờ lệch nhau về điều kiện "đủ toolchain" (fail rõ, không im lặng).
+require_miri_toolchain() {
+    local ten="${1:-v2 miri}" rustup_bin installed missing
     rustup_bin="$(find_rustup)" || {
-        echo "v2 miri: không tìm thấy rustup (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)" >&2
+        echo "$ten: không tìm thấy rustup (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)" >&2
         miri_bootstrap_hint
         exit 127
     }
     if ! "$rustup_bin" toolchain list 2>/dev/null | grep -q '^nightly'; then
-        echo "v2 miri: thiếu toolchain nightly của rustup" >&2
+        echo "$ten: thiếu toolchain nightly của rustup" >&2
         miri_bootstrap_hint
         exit 2
     fi
@@ -340,16 +350,21 @@ do_miri() {
     printf '%s\n' "$installed" | grep -qE '^miri(-|$)' || missing="miri"
     printf '%s\n' "$installed" | grep -qE '^rust-src$' || missing="${missing:+$missing }rust-src"
     if [ -n "$missing" ]; then
-        echo "v2 miri: toolchain nightly thiếu component: $missing" >&2
+        echo "$ten: toolchain nightly thiếu component: $missing" >&2
         miri_bootstrap_hint
         exit 2
     fi
     # `component list` có thể lệch với thực tế — xác nhận cargo-miri chạy được.
     if ! "$CARGO" +nightly miri --version >/dev/null 2>&1; then
-        echo "v2 miri: 'cargo +nightly miri --version' thất bại dù component đã cài" >&2
+        echo "$ten: 'cargo +nightly miri --version' thất bại dù component đã cài" >&2
         miri_bootstrap_hint
         exit 2
     fi
+}
+
+do_miri() {
+    local sub
+    require_miri_toolchain "v2 miri"
     # Mặc định `test` (DoD KT-13: `v2 miri -p vifast-sim --lib`); chuyển tiếp nguyên tham số.
     sub="test"
     case "${1:-}" in
@@ -362,6 +377,40 @@ do_miri() {
         setup | clean) exec "$CARGO" +nightly miri "$sub" "$@" ;;
         *) exec "$CARGO" +nightly miri "$sub" --manifest-path "$MANIFEST" "$@" ;;
     esac
+}
+
+# Một bước Miri của tập chọn; dừng ngay ở bước đỏ (không retry — D2-07).
+run_miri_test() {
+    local ten="$1"
+    shift
+    echo "--- Miri $ten"
+    if "$CARGO" +nightly miri test --manifest-path "$MANIFEST" "$@"; then
+        echo "--- Miri $ten: OK"
+        return 0
+    fi
+    echo "--- Miri $ten: FAIL" >&2
+    return 1
+}
+
+# KT-17 (D2-47(a)): CHỈ Miri trên tập chọn; KHÔNG L1 100k/mutation/soak.
+#
+# Tập chọn: toàn bộ `vifast-objmem` (lib + alias + fuzz 200 chuỗi + contract) và các test
+# sim đi qua object store: `--lib`, kt16_objmem, kt09_untyped, kt09_revoke (plan §4 KT-17),
+# kt10_cnode, kt17_align. Không chạy `l1` (tránh L1 1.000 seed dưới Miri).
+do_nightly_only_miri() {
+    local t0 t1
+    require_miri_toolchain "v2 nightly --only-miri"
+    echo "== v2 nightly --only-miri (D2-47(a)): Miri trên tập chọn; KHÔNG L1 100k/mutation/soak =="
+    t0="$(date +%s)"
+    run_miri_test "vifast-objmem (lib + alias + fuzz 200 + contract)" -p vifast-objmem || return 1
+    run_miri_test "vifast-sim --lib" -p vifast-sim --lib || return 1
+    run_miri_test "vifast-sim kt16_objmem" -p vifast-sim --test kt16_objmem || return 1
+    run_miri_test "vifast-sim kt09_untyped" -p vifast-sim --test kt09_untyped || return 1
+    run_miri_test "vifast-sim kt09_revoke" -p vifast-sim --test kt09_revoke || return 1
+    run_miri_test "vifast-sim kt10_cnode" -p vifast-sim --test kt10_cnode || return 1
+    run_miri_test "vifast-sim kt17_align" -p vifast-sim --test kt17_align || return 1
+    t1="$(date +%s)"
+    echo "v2 nightly --only-miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
 }
 
 cmd="${1:-}"
@@ -384,8 +433,16 @@ case "$cmd" in
         fi
         ;;
     nightly)
-        echo "v2: nightly CHƯA CÓ (Miri đã tách thành 'v2 miri' — D2-47(a); nightly đầy đủ cần mutation/soak; L1 1.000 seed đã có trong gate --fast)" >&2
-        exit 2
+        if [ "${1:-}" = "--only-miri" ]; then
+            if [ $# -ne 1 ]; then
+                echo "v2: 'nightly --only-miri' không nhận thêm tham số (nhận: $*)" >&2
+                exit 2
+            fi
+            do_nightly_only_miri
+        else
+            echo "v2: nightly đầy đủ CHƯA CÓ (cần L1 100k/mutation/soak); chỉ có 'v2 nightly --only-miri' — Miri trên tập chọn (KT-17, D2-47(a)); Miri rời: 'v2 miri'" >&2
+            exit 2
+        fi
         ;;
     miri) do_miri "$@" ;;
     rules)

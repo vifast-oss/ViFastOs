@@ -6,13 +6,36 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-17 (READY — Miri tổng + KT-04c + follow-up KT-16); KT-16 DONE (3db7ac7)
-Bước          : 0/8 (mã xong; chờ reviewer trước khi DONE)
+Task          : KT-17 xong mã — K1a' đủ DoD (Miri tổng + KT-04c + 2 follow-up KT-16 đã đóng); KT-16 DONE (3db7ac7)
+Bước          : 8/8 (mã + test đỏ→xanh + Miri + parity + gate + tài liệu; reviewer-kt17 DRIFT nhẹ đã sửa)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**227 test**, **L1 1.000 seed/999 trace**, 622 ms đo cổng; gen-check ON, `.scn` 21 tệp/11 nhóm + golden không đổi) — không retry
-Việc dở       : KT-16 commit `3db7ac7` đã push origin/main (reviewer-kt16 APPROVE); chờ Agent 0 lật QUEUE
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**231 test/41 suite**; KT-16 là 227/40, +4 test mới; **L1 1.000 seed/999 trace**, 517 ms đo cổng; gen-check ON, `scn: OK`) — không retry
+Việc dở       : KT-17 commit `[KT-17]` đã push origin/main (reviewer-kt17: DRIFT nhẹ — chỉ tài liệu/DoD, đã sửa); chờ Agent 0 lật QUEUE + chốt K1a' DONE
 ```
 
+## DoD K1a' (chốt ở KT-17)
+
+Định nghĩa xong của K1a' (thiết kế `docs/v2/ViFastOs-v2-thiet-ke.md:872-873`): *thay store giả
+bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy trên mô hình.
+**Đủ 2 dòng, mỗi dòng có bằng chứng đo được:**
+
+| # | Điều kiện DoD | Bằng chứng |
+|---|---|---|
+| a | Thay store giả bằng objmem + **Miri từ commit đầu** | `vifast-objmem` Miri **40 test** (20 lib + 8 alias + 1 compile-fail + 1 fuzz 200 chuỗi/197,30 s + 10 contract); `./v2/bin/v2 nightly --only-miri` **PASS 365 s, exit 0** (sim `--lib` 13/13, kt16 4/4, kt09_untyped 8/8, kt09_revoke 7/7, kt10_cnode 13/13, kt17_align 3/3); `v2 miri` cũ vẫn xanh 13/13 — [`JOURNAL/kt17-nightly-only-miri.log`](JOURNAL/kt17-nightly-only-miri.log), [`JOURNAL/kt17-miri-old-cmd.log`](JOURNAL/kt17-miri-old-cmd.log) |
+| b | Ca Untyped/CNode của KT-04c chạy trên mô hình, không hồi quy | `.scn` Untyped/CNode **9/9** bước khớp, 0 lệch (3 bước setup Frame để K2); **parity 10.000 seed/240.000 thao tác/9.065 trace khác nhau/0 lệch**; `gate --fast` **231 test/41 suite**, L1 1.000 seed/999 trace, `.scn` 21 tệp OK — [`JOURNAL/kt17-kt04c-scn-parity.log`](JOURNAL/kt17-kt04c-scn-parity.log), [`JOURNAL/kt17-gate-fast.log`](JOURNAL/kt17-gate-fast.log) |
+
+> **Cập nhật 06:40 bởi Agent 2**: **KT-17 xong mã — K1a' đủ DoD** (task cuối phase K1a'):
+> (1) đóng **2 follow-up KT-16** — `alloc_place_span` cap `align ≤ ARENA_ALIGN` (fail-closed,
+> test đỏ `kt17-red-align.log` → xanh), `Machine::retype` Untyped `size_bits ≥ 13` trả
+> `Alignment` rõ; `Store::alloc` chốt hợp đồng `0/không lũy thừa 2/> 4096 ⇒ None` + test;
+> (2) **`v2 nightly --only-miri`** (D2-47(a), không vào `gate --fast`, không L1 100k/mutation/
+> soak; dùng chung `require_miri_toolchain` với `v2 miri` nên thiếu toolchain fail rõ);
+> (3) Miri tổng **PASS 365 s/exit 0** (objmem 40 test + sim 48 test); (4) `.scn` Untyped/CNode
+> **9/9** + parity **10.000 seed/0 lệch**; (5) `gate --fast` **PASS 231 test/41 suite**
+> (KT-16: 227/40; +4 test mới), L1 999 trace, **không retry**. Reviewer `reviewer-kt17`:
+> **DRIFT nhẹ (chỉ tài liệu/DoD)** — đã sửa đủ 4 mục. Chi tiết + log: `JOURNAL/kt17-journal.md`,
+> `JOURNAL/kt17-*.log`.
+>
 > **Cập nhật 06:00 bởi Agent 2**: **KT-16 xong mã** — thay **hai** store giả bằng
 > `vifast-objmem` (D2-14, D2-47d): (1) `vifast-sim::Store` dùng `OwnedArena` (vùng căn 4096
 > do objmem cấp, địa chỉ logic `0x1000+offset` giữ trace/golden tất định); (2) ruột
@@ -30,11 +53,11 @@ Việc dở       : KT-16 commit `3db7ac7` đã push origin/main (reviewer-kt16 
 > retry. Reviewer `reviewer-kt16`: **APPROVE** (không DRIFT/UNSAFE). Chi tiết + log:
 > `JOURNAL/kt16-journal.md`, `JOURNAL/kt16-*.log`.
 >
-> **Follow-up KT-17 (reviewer-kt16, không chặn KT-16)**: (1) `alloc_place_span` chưa chặn
-> `align > ARENA_ALIGN` — Untyped `size_bits ≥ 13` xin Layout căn > 4096, hiện chưa UB nhưng
-> vi phạm hợp đồng Layout ⇒ KT-17 cap/assert hoặc sửa `Arena::alloc` căn tuyệt đối;
-> (2) `Store::alloc` align > 4096 trả `None` (cũ nhận mọi lũy thừa 2) ⇒ ghi rõ hợp đồng mới
-> (đã ghi doc) hoặc mở rộng `ARENA_ALIGN` ở KT-17.
+> **Follow-up KT-17 (reviewer-kt16) — ĐÃ ĐÓNG ở KT-17**: (1) `alloc_place_span` cap
+> `align > ARENA_ALIGN` (fail-closed `None`, không đốt byte) + `Machine::retype` Untyped
+> `size_bits ≥ 13` ⇒ `Alignment` rõ ràng (trước: trả `pa` có thể sai căn); (2) `Store::alloc`
+> chốt hợp đồng `align 0/không lũy thừa 2/> 4096 ⇒ None` + test đối chứng, doc ghi rõ.
+> Không còn việc phải làm cho 2 follow-up này.
 
 > **Cập nhật 04:48 bởi Agent 2**: **KT-15 xong mã** — `with_many_mut` thật theo **D2-48 (a)**:
 > bảng cố định `kind → constructor` (256 ô trong `ObjMem`, `place::<T>` đăng ký), giữ `ObjRef` 16 B

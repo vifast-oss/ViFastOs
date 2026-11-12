@@ -193,6 +193,12 @@ impl OwnedMem {
     /// Dùng cho Untyped: watermark của mô hình chính là `Arena::used()` của vùng, nên
     /// `offset` trả về đúng bằng watermark cũ; `size` giữ nguyên cỡ logic của spec (không
     /// phải `size_of::<T>()`).
+    ///
+    /// **Hợp đồng căn lề (KT-17, follow-up KT-16)**: `align` hiệu dụng (sau khi lấy max với
+    /// căn của body/header) phải `≤` [`ARENA_ALIGN`]. Đáy vùng chỉ được bảo đảm căn
+    /// [`ARENA_ALIGN`] nên căn lớn hơn **không thể** bảo đảm địa chỉ tuyệt đối; khi đó trả
+    /// `None` (fail-closed, không đốt byte) thay vì trả `pa` sai căn — vi phạm hợp đồng
+    /// [`Layout`]. Đây là giới hạn của arena của mô hình, không phải thay đổi ABI.
     pub fn alloc_place_span<T: KObj>(
         &mut self,
         v: T,
@@ -209,6 +215,9 @@ impl OwnedMem {
         let align = align
             .max(align_t)
             .max(core::mem::align_of::<crate::ObjHeader>());
+        if align > ARENA_ALIGN {
+            return None;
+        }
         let layout = Layout::from_size_align(block, align).ok()?;
         let pa = self.mem.alloc_block(layout)?;
         let offset = usize::try_from(pa.checked_sub(self.base())?).ok()?;
@@ -343,5 +352,23 @@ mod tests {
         assert!(!b.owns(ra.pa()));
         b.free(ra);
         assert_eq!(a.with(ra, |d| d.n), Ok(3), "store A không bị đụng");
+    }
+
+    /// KT-17 (follow-up KT-16): đáy vùng chỉ căn `ARENA_ALIGN` ⇒ `align` lớn hơn phải
+    /// **fail-closed** (`None`, không đốt byte), không được trả `pa` sai căn tuyệt đối.
+    #[test]
+    fn alloc_place_span_tu_choi_align_lon_hon_arena_align() {
+        let mut mem = OwnedMem::new(1 << 16).expect("cấp vùng");
+        assert!(mem.alloc_place_span(Dem { n: 1 }, 8192, 8192).is_none());
+        assert_eq!(mem.used(), 0, "từ chối phải không đốt byte");
+
+        // Biên đúng ARENA_ALIGN: được nhận, `pa` căn tuyệt đối (đáy vùng căn ARENA_ALIGN).
+        let (r, off) = mem
+            .alloc_place_span(Dem { n: 2 }, ARENA_ALIGN, ARENA_ALIGN)
+            .expect("align = ARENA_ALIGN đúng biên");
+        assert_eq!(off, 0);
+        assert_eq!(r.pa() % ARENA_ALIGN as u64, 0);
+        assert_eq!(mem.used(), ARENA_ALIGN);
+        mem.free(r);
     }
 }

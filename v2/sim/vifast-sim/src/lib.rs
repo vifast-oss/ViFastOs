@@ -68,8 +68,10 @@ impl Store {
 
     /// Cấp `size` byte căn `align` (lũy thừa 2, ≤ `ARENA_ALIGN` = 4096). `None` khi hết chỗ.
     ///
-    /// `align > ARENA_ALIGN` trả `None` (đáy vùng chỉ được bảo đảm căn 4096); mô hình chỉ
-    /// dùng 16/32/64 nên không ảnh hưởng test/l1.
+    /// **Hợp đồng chốt ở KT-17** (follow-up KT-16): `align` không phải lũy thừa 2, `align = 0`,
+    /// hoặc `align > ARENA_ALIGN` ⇒ `None` (không đốt byte, không trả địa chỉ sai căn) — đáy
+    /// vùng chỉ được bảo đảm căn `ARENA_ALIGN`. Mô hình chỉ dùng 16/32/64 nên không đổi
+    /// test/L1; `pa` trả về là địa chỉ **logic** `0x1000 + offset` (trace/golden tất định).
     pub fn alloc(&mut self, size: usize, align: usize) -> Option<u64> {
         let offset = self.arena.alloc_offset(size, align)?;
         self.high_water = self.high_water.max(self.arena.used());

@@ -1,0 +1,14 @@
+=== KT-17: 'v2 miri' cũ vẫn xanh sau refactor (KT-13 PoC) ===
+test tests::seed_khac_trace_khac ... ok
+test tests::store_can_le_va_het_cho ... ok
+test tests::store_tu_choi_align_sai ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.78s
+
+warning: 2 warnings emitted
+
+exit=0
+
+=== KT-17: 'nightly --only-miri' từ chối tham số thừa ===
+v2: 'nightly --only-miri' không nhận thêm tham số (nhận: --only-miri extra)
+exit=2

@@ -28,6 +28,11 @@ impl Arena {
     }
 
     /// Cấp `layout.size()` byte căn lề `layout.align()`; hết chỗ trả `None` (không panic).
+    ///
+    /// Căn lề tính **tương đối so với `base`** (cursor bump). Caller phải bảo đảm `base`
+    /// căn ít nhất `layout.align()` thì địa chỉ tuyệt đối mới đúng `Layout`: các tầng trên
+    /// (`OwnedArena`/`OwnedMem`) cấp vùng căn [`crate::ARENA_ALIGN`] và chặn
+    /// `align > ARENA_ALIGN` (KT-17) trước khi gọi đây.
     pub fn alloc(&mut self, layout: Layout) -> Option<NonNull<u8>> {
         let align = layout.align();
         let aligned = self.cursor.checked_add(align - 1)? & !(align - 1);

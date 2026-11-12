@@ -15,7 +15,9 @@
 //!   vào slot. ABI không đổi.
 //! - `size_bits` với object cố định: `0` = dùng cỡ tự nhiên; nhỏ hơn cỡ ⇒ `Alignment`;
 //!   lớn hơn ⇒ `InvalidArgument`. Với `Untyped` con: `size_bits` = log2 cỡ, tối thiểu
-//!   `untyped_min_bytes` = 4096, căn lề = cỡ.
+//!   `untyped_min_bytes` = 4096, căn lề = cỡ; cỡ > `ARENA_ALIGN` (4096) — tức
+//!   `size_bits ≥ 13` — bị từ chối rõ bằng `Alignment` vì arena của mô hình chỉ bảo đảm
+//!   căn 4096 (KT-17; giới hạn triển khai, không phải ABI).
 //! - Revoke cap **Untyped**: finalise mọi object trong Untyped, xoá cap con/cháu, đặt
 //!   watermark về 0 (thiết kế §4.2). Revoke cap khác: chỉ xoá cap con/cháu, object sống.
 //!
@@ -38,7 +40,7 @@
 
 use std::collections::VecDeque;
 
-use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem};
+use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
 pub const FLAG_GUEST: u32 = 1;
@@ -1067,6 +1069,15 @@ impl Machine {
                 let len = 1usize << size_bits;
                 if len > u_size {
                     return Err(KError::NotEnoughMemory);
+                }
+                // KT-17 (follow-up KT-16): arena của mô hình chỉ bảo đảm căn `ARENA_ALIGN`
+                // (4096 B). Untyped con có `len` = căn của block; `size_bits ≥ 13` (8192 B)
+                // không thể cấp `pa` đúng căn tuyệt đối ⇒ **từ chối rõ** bằng `Alignment`
+                // (trước KT-17: trả `Ok` với `pa` có thể sai căn, vi phạm hợp đồng `Layout`).
+                // Đây là giới hạn của arena sim, không phải thay đổi ABI; `vifast-model`
+                // (oracle) vẫn nhận 12..=30 và parity 10.000 seed chỉ sinh `size_bits = 12`.
+                if len > ARENA_ALIGN {
+                    return Err(KError::Alignment);
                 }
                 (len, len, 0)
             }

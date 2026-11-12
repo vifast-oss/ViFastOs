@@ -1,0 +1,3 @@
+=== KT-17 red: nightly là stub (trước khi sửa wrapper) ===
+v2: nightly CHƯA CÓ (Miri đã tách thành 'v2 miri' — D2-47(a); nightly đầy đủ cần mutation/soak; L1 1.000 seed đã có trong gate --fast)
+exit=2
