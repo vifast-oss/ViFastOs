@@ -15,7 +15,7 @@ SPDX = "SPDX-License-Identifier"
 
 # Object reserved theo đúng thứ tự thiết kế §4.21 (sau Reply), kèm method mong đợi.
 RESERVED = {
-    "VSpace": ["GetAsid", "Configure"],          # Configure = tạo VSpace khách (reserved)
+    "VSpace": ["GetAsid"],                       # method id 1 TRỐNG: VSpace khách = bit GUEST (D2-32)
     "PageTable": ["Map", "Unmap"],
     "Frame": ["Map", "Unmap", "GetAddress", "MapIo", "UnmapIo"],
     "IrqControl": ["GetLine", "GetMsi"],
@@ -23,11 +23,10 @@ RESERVED = {
     "IOSpace": ["Flush", "Attach"],
     "VCpu": ["Run", "ReadRegs", "WriteRegs", "InjectIrq", "SetTsc", "Configure"],
     "PowerControl": ["HartOffline", "HartOnline", "Suspend"],
-    "SchedControl": ["Configure"],
 }
 
-ID_FROM = 8
-ID_TO = 31
+ID_FROM = 9
+ID_TO = 16
 
 fails = []
 
@@ -71,7 +70,7 @@ def main():
     check(SPDX.encode() in raw, "thiếu dòng SPDX-License-Identifier")
 
     objs = doc.get("object", {})
-    core = {n: o for n, o in objs.items() if o.get("stability") == "frozen"}
+    core = {n: o for n, o in objs.items() if o.get("stability") in ("frozen", "core")}
     reserved = {n: o for n, o in objs.items() if o.get("stability") == "reserved"}
     if not objs:
         print(f"reserved-check: {path} không có [object] nào")
@@ -118,6 +117,9 @@ def main():
     # 5) nếu tệp có cả core (bản đầy đủ) thì Reply phải = 7
     if core:
         check(core.get("Reply", {}).get("id") == 7, "core phải giữ Reply = 7 (KT-04a)")
+    if core:
+        check(core.get("SchedControl", {}).get("id") == 8, "SchedControl phải là object LÕI id 8 (D2-32)")
+        check("SchedControl" not in reserved, "SchedControl KHÔNG được vừa reserved vừa có chữ ký (D2-32)")
 
     # 7) nếu spec/abi.toml đã có object reserved thì phải KHỚP bản draft (không âm thầm lệch)
     import os
@@ -141,7 +143,7 @@ def main():
 
     # 6) dải reserved của ABI vẫn bao trùm id đã dùng
     rng = doc.get("object_reserved", {})
-    check(rng.get("from") == ID_FROM and rng.get("to") == ID_TO, "object_reserved phải 8..31")
+    check(rng.get("from") == 17 and rng.get("to") == 31, "object_reserved phải 17..31 (D2-32)")
 
     if fails:
         for msg in fails:

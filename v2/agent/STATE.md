@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-04b (bắt đầu lại theo D2-32); KT-T26 BLOCKED chờ YC-06; KT-04c chờ draft D2-33
-Bước          : 0/8
+Task          : KT-04b (xong theo D2-32); kế: KT-04c (draft chữ ký D2-33); KT-T26 BLOCKED chờ YC-06
+Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
 Việc dở       : —
@@ -47,11 +47,11 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
 | `HEAD` | xem `git log -1`: KT-04a ở `1766145` (+ commit STATE `a8bb272`); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
-| Cổng | `./v2/bin/v2 check` PASS; `gate --fast` PASS **4,1 s**; `gate`/`nightly` exit 2 | `JOURNAL/2026-11-12.md` mục KT-03 |
+| Cổng | `./v2/bin/v2 check` PASS (gồm `abi spec`, `abi reserved`, `scn`); `gate --fast` PASS (thời gian: xem log, không ghi tay — Q12); `gate`/`nightly` exit 2 | log cổng; `v2/bin/v2:255` |
 | Luật | self-test **6/6** (`ok 1..6`); R1..R5 có case âm đúng mã luật | `bash v2/test/rules/run.sh` |
-| Build/test | `cargo build` xanh 3 crate; `cargo test -p vifast-fs` 52/52; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
+| Build/test | `cargo test --manifest-path v2/Cargo.toml --workspace` xanh: fs **55** (52 unit + 3 T26) + elf **20** = **75**, 0 failed; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
 | Luật 1.500 dòng | tệp lớn nhất `vifast-fs/src/fs.rs` = **1.248** dòng | `wc -l` |
-| `spec/` | **có** `spec/abi.toml` (KT-04a, `status = "REVIEW"`), được R3 quét | `ls spec/`, `./v2/bin/v2 check` |
+| `spec/` | **có** `spec/abi.toml`: 16 syscall (0..14 + **15 DebugGetInfo** D2-29), dải reserved **16..31**, 19 mã lỗi, object **1..8** (SchedControl 8 = lõi, D2-32) + reserved **9..16** (`[object_reserved]` 17..31); `status = "REVIEW"` | `./v2/bin/v2 check` |
 | `v2/bin/v2` | **có** (wrapper), `.gitkeep` giữ thư mục | `ls v2/bin` |
 
 ## Việc đang làm — KT-T26 (3 h theo QUEUE/PATCH-BRIEF/thiết kế)

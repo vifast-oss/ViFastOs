@@ -214,8 +214,8 @@ do_check() {
             echo "--- scn fixtures: FAIL" >&2
             fails=$((fails + 1))
         fi
-        # KT-04b: draft object reserved (chưa được ghi spec/ — chờ YC-04)
-        if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$V2_ROOT/docs/abi-reserved-objects.toml"; then
+        # KT-04b: object reserved — nay nằm trong spec/abi.toml (D2-32)
+        if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; then
             echo "--- abi reserved: OK"
         else
             echo "--- abi reserved: FAIL" >&2

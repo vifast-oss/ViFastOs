@@ -118,19 +118,21 @@ riscv64 = { tcb = 512, endpoint = 64, notification = 64, reply = 64, sched_conte
 11 = { name = "ClockRead", args = "", ret = "error, value(ns)", note = "đồng hồ đơn điệu" }
 12 = { name = "DebugPutStr", args = "user ptr, len", ret = "error, value", note = "feature debug" }
 13 = { name = "DebugHalt", args = "code", ret = "không trả", note = "feature test; chỉ dùng cho test (QD §4)" }
+15 = { name = "DebugGetInfo", args = "", ret = "error, abi_version, min_compat, features, num_harts", note = "Luôn có, không phụ thuộc feature debug/test (D2-29); không trả địa chỉ kernel" }
 14 = { name = "Exit", args = "code", ret = "không trả", note = "lưu exit_code; có fault_ep → BlockedOnSend{fault_ep, call:false} mang FaultKind::Exit{code}; procsrv Recv xong → Inactive; không có fault_ep → Inactive ngay" }
 
 [syscall_reserved]
-from = 15
+from = 16
 to = 31
-note = "Chưa gán; mọi thứ chưa cài chỉ giữ số (QD §1 Q-B). DebugGetInfo chưa có số — xem [debug_info]."
+note = "Dải reserved sau khi cấp 15 cho DebugGetInfo (D2-29); object chưa cài chỉ giữ số (QD §1 Q-B)."
 
 # DebugGetInfo thuộc danh sách đóng băng (D2-15/Q-B) nhưng thiết kế KHÔNG cho số.
 # Agent 2 không tự chiếm số trong dải reserved: ghi REVIEW để Agent 0 chốt ở KT-04d.
 [debug_info]
-status = "REVIEW"
-returns = ["abi_version", "build_id", "config_hash"]
-note = "Chưa gán số. Đề xuất: lấy số đầu tiên còn trống trong 15..31 khi cài (K3), kèm một mục D2 mới."
+number = 15
+status = "frozen"
+returns = ["abi_version", "min_compat", "features", "num_harts"]
+note = "Syscall 15 (D2-29). Luôn có; features là bitmap tính năng runtime dùng để kiểm tương thích lúc khởi động."
 
 # ---------------------------------------------------------------------------
 # Object lõi (KT-04a). Số object đóng băng, ID không tái dùng.
@@ -143,8 +145,18 @@ SchedContext = { id = 4, stability = "frozen", method = { 0 = { name = "Bind" },
 Endpoint = { id = 5, stability = "frozen", method = {}, note = "chỉ qua syscall" }
 Notification = { id = 6, stability = "frozen", method = {}, note = "chỉ qua syscall" }
 Reply = { id = 7, stability = "frozen", method = {}, note = "chỉ qua syscall; Reply object do bên nhận cấp (QD §3.2)" }
+SchedControl = { id = 8, stability = "core", method = { 0 = { name = "Configure" } }, note = "LÕI theo D2-32: MCS donation có từ K1b (D2-16); không vừa reserved vừa có chữ ký" }
+
+VSpace = { id = 9, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "GetAsid", unsupported = true, note = "debug" } }, note = "method id 1 để TRỐNG: VSpace khách là bit GUEST trong flags của Untyped.Retype (D2-32)" }
+PageTable = { id = 10, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true } } }
+Frame = { id = 11, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true }, 2 = { name = "GetAddress", unsupported = true }, 3 = { name = "MapIo", unsupported = true }, 4 = { name = "UnmapIo", unsupported = true } } }
+IrqControl = { id = 12, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "GetLine", unsupported = true }, 1 = { name = "GetMsi", unsupported = true } } }
+IrqHandler = { id = 13, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "SetNotification", unsupported = true }, 1 = { name = "Ack", unsupported = true }, 2 = { name = "Clear", unsupported = true }, 3 = { name = "SetAffinity", unsupported = true } } }
+IOSpace = { id = 14, stability = "reserved", install_at = "D3", unsupported = true, method = { 0 = { name = "Flush", unsupported = true }, 1 = { name = "Attach", unsupported = true } } }
+VCpu = { id = 15, stability = "reserved", install_at = "H1", unsupported = true, method = { 0 = { name = "Run", unsupported = true }, 1 = { name = "ReadRegs", unsupported = true }, 2 = { name = "WriteRegs", unsupported = true }, 3 = { name = "InjectIrq", unsupported = true }, 4 = { name = "SetTsc", unsupported = true }, 5 = { name = "Configure", unsupported = true } } }
+PowerControl = { id = 16, stability = "reserved", install_at = "P1", unsupported = true, method = { 0 = { name = "HartOffline", unsupported = true }, 1 = { name = "HartOnline", unsupported = true }, 2 = { name = "Suspend", unsupported = true } } }
 
 [object_reserved]
-from = 8
+from = 17
 to = 31
-note = "KT-04b điền số + NotSupported; chưa cài thì trả NotSupported (QD §1 Q-B)"
+note = "9..16 đã cấp tên (KT-04b, D2-32); 17..31 còn trống, ID không tái dùng (D2-15)"

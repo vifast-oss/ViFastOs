@@ -28,6 +28,7 @@ SYSCALLS = {
     12: "DebugPutStr",
     13: "DebugHalt",
     14: "Exit",
+    15: "DebugGetInfo",
 }
 
 ERRORS = [
@@ -54,6 +55,7 @@ ERRORS = [
 
 CORE_OBJECTS = [
     "Untyped",
+    "SchedControl",
     "CNode",
     "Tcb",
     "SchedContext",
@@ -132,13 +134,14 @@ def main():
 
     # --- syscall 0..14, dải 15..31 reserved ---------------------------
     sc = {int(k): v for k, v in doc.get("syscall", {}).items()}
-    check(set(sc.keys()) == set(SYSCALLS.keys()), f"syscall phải là 0..14, đang có {sorted(sc)}")
+    check(set(sc.keys()) == set(SYSCALLS.keys()), f"syscall phải là 0..15, đang có {sorted(sc)}")
     for num, name in SYSCALLS.items():
         got = sc.get(num, {})
         got_name = got.get("name") if isinstance(got, dict) else got
         check(str(got_name) == name, f"syscall {num} phải tên {name}, đang {got_name!r}")
     res = doc.get("syscall_reserved", {})
-    check(res.get("from") == 15 and res.get("to") == 31, "dải reserved phải 15..31")
+    check(res.get("from") == 16 and res.get("to") == 31,
+          "dải reserved phải 16..31 (15 đã cấp cho DebugGetInfo, D2-29)")
 
     # --- 19 mã lỗi ----------------------------------------------------
     err = doc.get("error", {})
@@ -146,11 +149,12 @@ def main():
     check(names == ERRORS, f"19 mã lỗi phải đúng thứ tự QD §4; đang {names}")
     check(len(err) == 19, f"phải có đúng 19 mã lỗi, đang {len(err)}")
     reserved = doc.get("syscall_reserved", {})
-    check(reserved.get("from") == 15 and reserved.get("to") == 31, "dải reserved phải 15..31")
     objs_reserved = doc.get("object_reserved", {})
-    check(objs_reserved.get("from") == 8 and objs_reserved.get("to") == 31, "object reserved phải 8..31")
-    check(doc.get("debug_info", {}).get("status") == "REVIEW",
-          "DebugGetInfo chưa có số ⇒ phải status REVIEW, không tự chiếm dải reserved")
+    check(objs_reserved.get("from") == 17 and objs_reserved.get("to") == 31,
+          "object reserved phải 17..31 (D2-32: 9..16 đã cấp tên)")
+    dbg = doc.get("debug_info", {})
+    check(dbg.get("number") == 15, "DebugGetInfo phải là syscall 15 (D2-29)")
+    check(dbg.get("status") == "frozen", "DebugGetInfo đã chốt ⇒ status frozen (D2-29)")
 
     # --- object lõi ---------------------------------------------------
     objs = doc.get("object", {})
