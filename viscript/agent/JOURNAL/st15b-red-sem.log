@@ -1,0 +1,28 @@
+=== ST-15b D2-05: 4 lệch thiết kế — ĐỎ TRƯỚC khi sửa ===
+thời điểm chụp: 2026-11-12T23:39:25Z — chụp bằng cách **tạm gỡ bản vá** (`git stash push -- crates/vis-types/src crates/vis-interp/src`)
+  để chạy harness **cuối** (309 ca) trên code **trước sửa**, rồi `git stash pop` (đã kiểm lại 309/309 xanh).
+
+KẾT QUẢ ĐỎ: **5/7 ca mới ĐỎ** đúng 4 mục:
+  (Ghi chú: trong lúc sửa, `interp.rs` vượt trần R1 1.500 dòng ⇒ tách phần **khớp pattern** sang
+  `crates/vis-interp/src/pat.rs` (183 dòng), `interp.rs` còn 1.336 — không đổi ngữ nghĩa.)
+  (1) `list/push`, `list/push-cow` — push trên `var` không ghi lại biến (§7.1 CoW)
+  (2) `ham/closure-thoat` — closure thoát hàm mất tham số đã bắt (§3.4/§7.3)
+  (3) `match-nang-cao/record-mot` — `{x, ..}` bị `VS0402` oan (§4.3)
+  (4) `match-nang-cao/record-pattern` — pattern bản ghi trần không binding (HIR thiếu `sym`)
+  XANH SẴN (khai rõ, không giả vờ đỏ): `list/push-let` (push trên `let` vẫn trả list mới — đúng
+  hành vi đã chốt) và `match-nang-cao/record-thieu` (thiếu trường **không** `..` ⇒ `VS0402`).
+
+sha256 harness (bản commit):
+  sha256 crates/vis-cli/tests/sem.rs=1a79cdb59b8d8f12e56bbe8c6db6b252282135ed21f65e3e41bff63888e0f6a8
+  sha256 crates/vis-types/src/lower/pat.rs=b553567510ae9097ffe11273e2479d0c9479a937b2fbc1ba3a2f140e5e134a3d
+  sha256 crates/vis-types/src/tyck/pat.rs=60325759f955b06ce22a181c2763ab50cc71ac7046a27cbbcba8407f8559fc40
+  sha256 crates/vis-interp/src/interp.rs=1797f3643a5dc2450d9ab9a8ef85a0760ba5ae9b9c245c02047b6a5545003c3d
+  sha256 crates/vis-interp/src/pat.rs=d46f910ded1d204f1a7fee3582b9f1151589ffd387cc630d5d43f97c4c582a72
+  sha256 crates/vis-types/tests/exhaustive.rs=b59e360877a3c092baa92e982aebfc2089e8f71e102d72a366caf918aa21be13
+
+----- đầu ra (đỏ) -----
+test sem_309_ca_qua_binary ... FAILED
+---- sem_309_ca_qua_binary stdout ----
+thread 'sem_309_ca_qua_binary' (37865947) panicked at crates/vis-cli/tests/sem.rs:184:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.12s
+----- hết -----

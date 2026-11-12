@@ -308,7 +308,8 @@ impl<'a> Checker<'a> {
                     let mut cov = BTreeSet::new();
                     let mut open = false;
                     record_cov(p, &mut cov, &mut open);
-                    if !open && all.is_subset(&cov) {
+                    // ST-15b (mục 3): nhánh c�� `..` (open) **phủ mọi trường còn lại** (§4.3).
+                    if open || all.is_subset(&cov) {
                         return;
                     }
                 }

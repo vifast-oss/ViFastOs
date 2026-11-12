@@ -101,7 +101,7 @@ fn steps_cua(stderr: &str) -> usize {
 }
 
 #[test]
-fn sem_302_ca_qua_binary() {
+fn sem_309_ca_qua_binary() {
     let ds = gom_ca();
     let mut theo_nhom: BTreeMap<String, usize> = BTreeMap::new();
     for c in &ds {
@@ -110,8 +110,8 @@ fn sem_302_ca_qua_binary() {
     // ST-15: khoá **300 ca / 16 nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
     assert_eq!(
         ds.len(),
-        302,
-        "phải đúng 302 ca, thật {} — nhóm: {theo_nhom:?}",
+        309,
+        "phải đúng 309 ca, thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     assert_eq!(theo_nhom.len(), 16, "phải đúng 16 nhóm, thật {theo_nhom:?}");

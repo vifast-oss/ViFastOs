@@ -6,15 +6,14 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-15** (nâng bộ ngữ nghĩa lên ≥300 ca) — xong kỹ thuật 2026-11-13, **chưa commit**
-                — chờ review độc lập của Agent 0.
+Task          : **ST-15b** (4 lệch thiết kế) — xong kỹ thuật 2026-11-13, **chưa commit** (uỷ quyền
+                commit nếu cổng xanh — đang chờ gộp báo cáo với ST-16).
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-12T23:32:53Z = 2026-11-13 08:32 JST; không retry; **247** test workspace:
-                32 vis-cli + 18 vis-fmt + 96 vis-syntax + 20 vis-diag + 53 vis-types + 28 vis-interp;
-                trong đó **1** test `sem` chạy **302 ca**)
-Việc dở       : — (chờ Agent 0 review rồi commit `[ST-15]`)
+                (2026-11-12T23:41:43Z = 2026-11-13 08:41 JST; không retry; **247** test; **1** test `sem`
+                chạy **309 ca**)
+Việc dở       : ST-16 (fuzz parser + `vis-dev nightly`)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -47,6 +46,24 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-15b — 4 lệch thiết kế đã sửa (2026-11-13)
+
+| # | Lệch | Sửa | Ca khoá (`test/sem`) |
+|---|---|---|---|
+| 1 | `list.push` không ghi lại lvalue (§7.1 CoW) | `eval_call`: `push` trên `Field{base: Var}` **`var`** ⇒ ghi kết quả về `env[sym]`; trên `let`/biểu thức tạm giữ "trả list mới" (ghi JOURNAL — không silently no-op) | `list/push` `[1, 2]`, `list/push-cow` (`a`=`[1]`, `b`=`[1, 4]`), `list/push-let` |
+| 2 | Closure thoát hàm mất tham số đã bắt (§3.4/§7.3) | `HExpr::Lambda` **chụp snapshot env** tại điểm tạo (chọn snapshot thay vì chuỗi frame — ghi JOURNAL: biến `var` cập nhật **sau** khi tạo closure thì closure vẫn thấy giá trị lúc tạo) | `ham/closure-thoat` ⇒ `15` |
+| 3 | `{x, ..}` bị `VS0402` oan (§4.3) | `tyck/pat.rs`: nhánh **có `..`** phủ mọi trường còn lại; **thiếu** trường mà **không** `..` vẫn `VS0402` | `match-nang-cao/record-mot` ⇒ `1`; `record-thieu` ⇒ `VS0402` |
+| 4 | Pattern bản ghi **trần** không binding (HIR thiếu `sym`) | `lower/pat.rs`: trường trần hạ thành `HPat::Bind` **có `sym`** (hai chỗ: trường cuối + trường bị chặn bởi trường sau) | `match-nang-cao/record-pattern` ⇒ `3` |
+
+**Sửa 1 kỳ vọng cũ kèm lý do** (bắt buộc): `crates/vis-types/tests/exhaustive.rs` ca `{name, ..}` từ
+`!VS0402` → **`ok(int)`** (bản cũ khoá hành vi **trái §4.3**); thêm ca `{name}` (thiếu trường, không `..`)
+⇒ `!VS0402`. Ghi rõ trong tệp + JOURNAL.
+
+**Đỏ trước** (`JOURNAL/st15b-red-sem.log`): 5/7 ca mới đỏ (4 mục); 2 ca *xanh sẵn* khai rõ (`list/push-let`,
+`record-thieu`). Test `sem` khoá **309 ca** (302 + 7).
+
+**Đo được**: **247** test workspace; `gate --fast` PASS — 2026-11-12T23:41:43Z; fmt/clippy sạch.
 
 ## ST-15 — bộ ngữ nghĩa **302 ca / 16 nhóm** + cap độ sâu (2026-11-13)
 

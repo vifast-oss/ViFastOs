@@ -48,6 +48,7 @@ pub mod value;
 
 mod builtin;
 mod interp;
+mod pat;
 
 pub use value::{Closure, Value};
 

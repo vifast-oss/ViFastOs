@@ -151,9 +151,16 @@ const CASES: &[(&str, &str)] = &[
         "type U:\n    name: str\n    age: int\nlet u: U = {name: \"a\", age: 1}\nlet y = match u:\n    {name, age}: 1\ny",
         "ok(int)",
     ),
-    // kỳ vọng: !VS0402 — bản ghi có `..` ⇒ chưa phủ hết trường
+    // **SỬA KỲ VỌNG CŨ KÈM LÝ DO (ST-15b)**: §4.3 cho phép `..` và `{name, ..}` **phủ hết** mọi giá
+    // trị của bản ghi (mọi bản ghi đều có `name`) ⇒ `ok(int)`. Bản cũ khoá hành vi **trái thiết kế**
+    // (`!VS0402`). Ca thiếu trường **không** `..` vẫn `!VS0402` ở dưới.
     (
         "type U:\n    name: str\n    age: int\nlet u: U = {name: \"a\", age: 1}\nlet y = match u:\n    {name, ..}: 1\ny",
+        "ok(int)",
+    ),
+    // kỳ vọng: !VS0402 — thiếu trường **và không** có `..` ⇒ chưa phủ hết
+    (
+        "type U:\n    name: str\n    age: int\nlet u: U = {name: \"a\", age: 1}\nlet y = match u:\n    {name}: 1\ny",
         "!VS0402",
     ),
     // kỳ vọng: ok(int) — `list` (vô hạn) với `_`

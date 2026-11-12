@@ -178,8 +178,16 @@ impl<'a> Lowerer<'a> {
                         open = true;
                     } else if t.kind == Kind::Ident {
                         if let Some((n, sp)) = pending.take() {
-                            self.declare(&n, SymKind::PatBind, sp, None);
-                            fields.push((n, None));
+                            // ST-15b (mục 4): trường trần ⇒ Bind thật (xem cuối hàm).
+                            let id = self.declare(&n, SymKind::PatBind, sp, None);
+                            fields.push((
+                                n.clone(),
+                                Some(HPat::Bind {
+                                    name: n,
+                                    span: sp,
+                                    sym: id,
+                                }),
+                            ));
                         }
                         pending = Some((t.text.clone(), t.span));
                     }
@@ -194,8 +202,17 @@ impl<'a> Lowerer<'a> {
             }
         }
         if let Some((n, sp)) = pending.take() {
-            self.declare(&n, SymKind::PatBind, sp, None);
-            fields.push((n, None));
+            // ST-15b (mục 4): trường **trần** `{x}` phải **binding** thật (Bind + sym), không chỉ
+            // "khớp tên rồi bỏ" — trước đây HIR để `None` ⇒ interp không gán được biến.
+            let id = self.declare(&n, SymKind::PatBind, sp, None);
+            fields.push((
+                n.clone(),
+                Some(HPat::Bind {
+                    name: n,
+                    span: sp,
+                    sym: id,
+                }),
+            ));
         }
         HPat::Record {
             name: None,
