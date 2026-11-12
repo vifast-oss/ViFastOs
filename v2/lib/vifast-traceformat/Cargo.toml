@@ -12,3 +12,8 @@ vifast-sim = { path = "../../sim/vifast-sim" }
 default = ["std"]
 std = ["alloc"]
 alloc = []
+
+[[test]]
+name = "crosscheck"
+path = "tests/crosscheck.rs"
+required-features = ["std"]

@@ -100,7 +100,7 @@ pub fn decode_all(buf: &[u8]) -> Result<Vec<Record>, TraceError> {
 }
 
 /// Ring cố định: `push` ghi đè cũ nhất khi đầy; `iter` trả theo thứ tự thời gian.
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 #[derive(Debug, Clone)]
 pub struct Ring {
     buf: Vec<Record>,
@@ -109,7 +109,7 @@ pub struct Ring {
     len: usize,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 impl Ring {
     pub fn new(cap: usize) -> Self {
         assert!(cap > 0, "ring phải có sức chứa > 0");
@@ -142,7 +142,6 @@ impl Ring {
         (0..self.len).map(move |i| &self.buf[(start + i) % self.cap])
     }
 
-    #[cfg(feature = "alloc")]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.iter().flat_map(|r| r.to_bytes()).collect()
     }

@@ -87,3 +87,16 @@ SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng
 | `Tcb.SetFaultEp` | tcb, cap | — |
 | `Tcb.Suspend` | tcb, mode | — |
 | `Untyped.Retype` | cap, type, size_bits, flags | — |
+
+## Trace (D2-40, `[trace]`)
+
+`record_bytes = 32`, `little`; header `{'magic': 'VFT1', 'version': 1, 'count': 'u32', 'hash': 'fnv1a64'}`
+
+| Trường | Offset | Bytes | Kiểu |
+|---|---|---|---|
+| `t_ns` | 0 | 8 | `u64` |
+| `hart` | 8 | 2 | `u16` |
+| `kind` | 10 | 2 | `u16` |
+| `tcb` | 12 | 4 | `u32` |
+| `a` | 16 | 8 | `u64` |
+| `b` | 24 | 8 | `u64` |

@@ -85,6 +85,14 @@ def gen_rs(doc: dict) -> str:
         rets = ", ".join(f'"{r}"' for r in methods[name].get("returns", []))
         out.append(f'    ("{name}", &[{params}], &[{rets}]),')
     out.append("];")
+    tr = doc.get("trace") or {}
+    if tr:
+        out.append(f"pub const TRACE_RECORD_BYTES: usize = {int(tr.get('record_bytes', 0))};")
+        out.append("#[rustfmt::skip]")
+        out.append("pub const TRACE_FIELDS: [(&str, usize, usize); %d] = [" % len(tr.get("fields") or []))
+        for f in tr.get("fields") or []:
+            out.append(f'    ("{f["name"]}", {int(f["offset"])}, {int(f["bytes"])}),')
+        out.append("];")
     names = ", ".join(f'"{n}"' for n in states)
     out.append("#[rustfmt::skip]")
     out.append(f"pub const TCB_STATES: [&str; {len(states)}] = [{names}];")
@@ -121,6 +129,13 @@ def gen_md(doc: dict) -> str:
         params = ", ".join(sig[name].get("params", [])) or "—"
         rets = ", ".join(sig[name].get("returns", [])) or "—"
         out.append(f"| `{name}` | {params} | {rets} |")
+    tr = doc.get("trace")
+    if tr:
+        out += ["", "## Trace (D2-40, `[trace]`)", "",
+                f"`record_bytes = {tr.get('record_bytes')}`, `{tr.get('endianness')}`; header `{tr.get('header')}`", "",
+                "| Trường | Offset | Bytes | Kiểu |", "|---|---|---|---|"]
+        for f in tr.get("fields") or []:
+            out.append(f"| `{f['name']}` | {f['offset']} | {f['bytes']} | `{f['ty']}` |")
     out.append("")
     return "\n".join(out)
 
