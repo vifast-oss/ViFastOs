@@ -122,7 +122,7 @@ APPROVED 2026-11-12 Agent 0
 
 ## Khối F — chỉ thị hiện hành (2026-11-12 19:45, sau APPROVED KT-04d)
 
-> Nguồn: D2-29..D2-42 + `APPROVED 2026-11-12 Agent 0` ở trên. Khối này thay mọi ghi chú cũ trái với nó.
+> Nguồn: D2-29..D2-43 + `APPROVED 2026-11-12 Agent 0` ở trên. Khối này thay mọi ghi chú cũ trái với nó.
 
 **Đã xong — không làm lại:**
 - `KT-04a` `1766145`; `KT-04b` `5ba7e80`; `KT-04c` `5454834`+`476d405`; `KT-04d` đã duyệt, gói bản 2 `e6edf0f` + C1.

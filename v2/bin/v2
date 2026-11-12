@@ -201,6 +201,13 @@ do_check() {
             echo "--- abi spec: FAIL" >&2
             fails=$((fails + 1))
         fi
+        echo "--- golden trace (D2-43)"
+        if (cd "$REPO_ROOT" && "$PY" v2/test/trace/gen_golden.py --check); then
+            echo "--- golden trace: OK"
+        else
+            echo "--- golden trace: FAIL" >&2
+            fails=$((fails + 1))
+        fi
         echo "--- kịch bản .scn (KT-04c)"
         if (cd "$REPO_ROOT" && "$PY" v2/test/scn/check_scn.py); then
             echo "--- scn: OK"

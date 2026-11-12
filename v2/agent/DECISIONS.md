@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-42`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-43`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-42: quyết định v2 (D2-01..28 chép QD §8; D2-29..42 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-43: quyết định v2 (D2-01..28 chép QD §8; D2-29..43 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -76,6 +76,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-40** `[trace]` trong `spec/abi.toml` là nguồn sự thật cho bản ghi **32 B**: little-endian, `t_ns`@0/u64, `hart`@8/u16, `kind`@10/u16, `tcb`@12/u32, `a`@16/u64, `b`@24/u64; kind 1..7 = syscall/ipc/sched/fault/store/run/idle; header magic `VFT1`, version 1, count u32, hash FNV-1a 64. Đây là **cùng định dạng sim và QEMU** (dump `pmemsave`); text KT-08 chỉ là scenario log (D2-38). `spec.golden = "docs/abi.md"` (sinh từ spec, gen-check so byte); không còn đường dẫn treo `test/abi/abi-v1.golden`.
 - **D2-41** `expect_states` của `.scn` là **hậu điều kiện sau mỗi bước** của thread tương ứng, kiểm ngay sau khi bước trả về; với `exit`/`debug_halt` kiểm ngay sau `halt`, **trước** khi procsrv `Recv` xử lý xong. Phải khớp cả tên trạng thái và trường (`call=false`, `fault=Exit{code}` so mã). Không kiểm giữa các bước, không suy diễn trạng thái khi chưa có interpreter (KT-09).
 - **D2-42** `vifast-traceformat` phải là `#![no_std]` + feature `alloc` cho `decode_all`; `FixedRing<const N>` là ring chuẩn (không cấp phát, dùng trong kernel), `Ring`/`Vec` chỉ sau feature `std` cho host. KT-12 DONE phần host/format; **KT-12b** (2 h, READY) hoàn tất no_std + cross-check byte; **KT-09 phụ thuộc KT-12b**. Không tạo KT-12 khác.
+- **D2-43** Golden nhị phân của trace phải tái lập được bằng script đã commit: `v2/test/trace/gen_golden.py --check` đọc golden TEXT của sim, sinh 200×32 B và so byte với `golden-sim-seed7.bin`; `./v2/bin/v2 check` chạy bước này. Không nhận golden do tay/Python ngoài repo sinh; script không đọc code Rust.
 
 ---
 
