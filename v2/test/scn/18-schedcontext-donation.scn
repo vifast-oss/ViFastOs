@@ -2,5 +2,17 @@
 version = 1
 name = "18-schedcontext-donation"
 tags = ["donation"]
-blocked = "thieu ABI: SchedControl.Configure chi co trong draft (v2/docs/abi-reserved-objects.toml), chua nam trong spec/abi.toml (cho YC-04/YC-05)"
-# Khong co buoc nao: DoD KT-04c "ca khong viet duoc -> BLOCKED thieu ABI".
+caps = { sc_ctl = "SchedControl", sc0 = "SchedContext", rep0 = "Reply", ep0 = "Endpoint", ep1 = "Endpoint" }
+setup = [
+  "invoke SchedControl.Configure sched_control=sc_ctl sched=sc0 budget=1000 period=10000 => ok",
+]
+thread = [
+  { name = "client", steps = [
+    "call cap=ep0 => ok",
+  ] },
+  { name = "server", steps = [
+    "recv cap=ep1 => ok",
+    "invoke SchedContext.Bind sched=sc0 reply=rep0 => ok",
+    "send cap=rep0 => ok",
+  ] },
+]

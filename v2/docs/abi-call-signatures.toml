@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# v2/docs/abi-call-signatures.toml — DRAFT chữ ký method + từ vựng trạng thái TCB (D2-33).
+#
+# status = "REVIEW": Agent 2 soạn nháp; sau APPROVED mới vào `spec/` (D2-22/D2-33).
+# Chữ ký **không** thuộc 5 thứ đóng băng của D2-15 ⇒ sau duyệt ghi `stability = "stable-draft"`,
+# đổi chữ ký ở K1 vẫn qua Agent 0 nhưng không cần tăng `abi_version` major.
+#
+# Phạm vi: chỉ các method **dùng trong 21 `.scn`** (D2-33) + `Tcb.ReadState`; KHÔNG viết chữ ký
+# cho method ngoài phạm vi đó.
+
+status = "REVIEW"
+version = 1
+
+# ---------------------------------------------------------------------------
+# Chữ ký method. `params` liệt kê tham số theo thứ tự; hậu tố `?` = tuỳ chọn.
+# `returns` là danh sách giá trị trả (ngoài `error`, `value` chung của Call).
+[method."Untyped.Retype"]
+params = ["cap", "size_bits", "flags"]
+returns = ["cap"]
+note = "`flags` có bit GUEST (reserved, D2-32): type = VSpace + GUEST ⇒ trả NotSupported tới H1"
+
+[method."CNode.Copy"]
+params = ["cnode", "src", "dst", "rights?"]
+returns = []
+
+[method."CNode.Mint"]
+params = ["cnode", "src", "dst", "rights?", "badge?"]
+returns = []
+
+[method."CNode.Move"]
+params = ["cnode", "src", "dst"]
+returns = []
+
+[method."CNode.Revoke"]
+params = ["cnode", "slot?"]
+returns = []
+
+[method."CNode.Delete"]
+params = ["cnode", "slot"]
+returns = []
+
+[method."Tcb.Configure"]
+params = ["tcb", "cspace?", "vspace?", "entry?", "ipc_buffer?", "priority?"]
+returns = []
+
+[method."Tcb.SetFaultEp"]
+params = ["tcb", "cap"]
+returns = []
+
+[method."Tcb.Suspend"]
+params = ["tcb", "mode"]
+variants = { mode = ["Abort", "Defer"] }
+returns = []
+
+[method."Tcb.Resume"]
+params = ["tcb"]
+returns = []
+
+[method."Tcb.ReadState"]
+params = ["tcb"]
+returns = ["state"]
+
+[method."SchedContext.Bind"]
+params = ["sched", "reply"]
+returns = []
+
+[method."SchedControl.Configure"]
+params = ["sched_control", "sched", "budget?", "period?"]
+returns = []
+
+# ---------------------------------------------------------------------------
+# Trạng thái TCB — **enum đầy đủ §4.4** (D2-33), không phải tập con.
+[state]
+names = [
+  "Inactive",
+  "Ready",
+  "Running",
+  "BlockedOnSend",
+  "BlockedOnRecv",
+  "BlockedOnReply",
+  "BlockedOnNotification",
+  "BlockedOnAddress",
+  "Sleeping",
+  "Stopping",
+  "Dead",
+]
+orthogonal_flags = ["suspended", "exit_code: Option<u64>"]
+
+[state.BlockedOnSend]
+fields = ["ep", "call: bool", "fault: Option<FaultKind>"]
+
+[state.BlockedOnRecv]
+fields = ["ep", "reply"]
+
+[state.BlockedOnReply]
+fields = ["reply"]
+
+[state.BlockedOnNotification]
+fields = ["ntfn"]
+
+[state.BlockedOnAddress]
+fields = ["frame", "offset"]
+
+[state.Sleeping]
+fields = ["reason"]
+variants = { reason = ["Timeout", "Budget"] }
+
+[state.Running]
+fields = ["hart"]
+
+# D2-25: Exit mang theo mã thoát trong fault message; `BlockedOnSend.fault` là bổ sung D2-33.
+[fault_kind]
+names = ["Exit"]
+[ fault_kind.Exit ]
+fields = ["code: u64"]

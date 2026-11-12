@@ -46,7 +46,7 @@ Không crate nào bị **bỏ**; `vifast-kernel-x86_64-uefi` đổi vai trò th�
 D2-26: chỉ `vifast-pte`, `vifast-elf`, `vifast-acpi`, `vifast-fs`, `vifast-fsutil`, `vifast-virtio` là "giữ từ v1";
 D2-28 giới hạn KT-02 chỉ port `vifast-fs`, `vifast-fsutil`, `vifast-elf` (đã làm).
 
-## 2. 58 syscall v1 → 15 syscall v2 + method
+## 2. 58 syscall v1 → 16 syscall v2 + method
 
 Cột "v2" = số syscall mới, hoặc `Method` (invocation qua `Call` với `label` = method id), hoặc `bỏ`.
 
@@ -69,8 +69,8 @@ Cột "v2" = số syscall mới, hoặc `Method` (invocation qua `Call` với `l
 | 14 | CapRevoke | `CNode.Revoke` (5) | method; **v1 14 ≠ v2 14 (Exit)** |
 | 15 | TcbConfigure | `Tcb.Configure` (0) | method |
 | 16 | TcbResume | `Tcb.Resume` (12) | method |
-| 17 | TcbSuspend | `Tcb.Suspend(mode)` (3) | thêm `mode = Abort|Defer` |
-| 18 | TcbRestart | `Tcb.Suspend(Defer)` + `Resume` | **bỏ** (Restart chỉ còn là tín hiệu nội bộ core→platform, §4.13) |
+| 17 | TcbSuspend | `Tcb.Suspend(mode)` (3) | thêm `mode = Abort\|Defer` |
+| 18 | TcbRestart | **bỏ** | thay bằng `Tcb.Suspend(Defer)` + `Resume`; `Restart` chỉ còn là tín hiệu nội bộ core→platform (§4.13) |
 | 19 | TcbSetPriority | `Tcb.SetPriority` (4) | method |
 | 20 | TcbSetAffinity | `Tcb.SetAffinity` (6) | method |
 | 21 | TcbBindNotification | `Tcb.BindNotification` (13) | method |
@@ -111,10 +111,10 @@ Cột "v2" = số syscall mới, hoặc `Method` (invocation qua `Call` với `l
 | 56 | TcbSetArgs | **bỏ** | procsrv (`Configure` mang `pc/sp`) |
 | 57 | TcbGrantCap | `CNode.Mint`/`Move` | method |
 
-Tổng (đếm lại bằng máy ở review #5 — bản cũ ghi sai "15/20/23"): **58 hàng** =
-**12 hàng ánh xạ vào syscall v2** (dùng **9** số `{0,1,3,4,5,8,11,12,14}`) +
-**27 hàng thành method** (24 đích method khác nhau) + **19 hàng bỏ**. Bảng syscall v2 có **15** số:
-9 số nhận ánh xạ từ v1 + **6 số mới** `{2 NBSend, 6 NBSendRecv, 7 NBSendWait, 9 WaitAddr, 10 WakeAddr, 13 DebugHalt}`.
+Tổng (chốt theo Khối F + đếm lại bằng máy): **58 hàng** = **12 hàng ánh xạ vào syscall v2**
+(dùng **9** số `{0,1,3,4,5,8,11,12,14}`) + **26 hàng thành method** (23 đích method khác nhau)
++ **20 hàng bỏ**. Bảng syscall v2 có **16** số: 9 số nhận ánh xạ từ v1 + **7 số mới**
+`{2 NBSend, 6 NBSendRecv, 7 NBSendWait, 9 WaitAddr, 10 WakeAddr, 13 DebugHalt, 15 DebugGetInfo}`.
 `DebugHalt` (13) là syscall **mới** (không có ở v1); `WaitAddr`/`WakeAddr` (9/10) mới (v1 dùng futex trong std shim, không qua ABI).
 Dải **15..31 reserved**. `DebugGetInfo` **chưa có số** — xem `[debug_info]` trong `spec/abi.toml`.
 

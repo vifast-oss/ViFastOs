@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 version = 1
-# Chưa khẳng định được TCB còn BlockedOnSend (spec chưa có từ vựng trạng thái) — YC-05.
 name = "20-exit-procsrv-chua-recv"
 tags = ["exit"]
+expect_states = ["BlockedOnSend"]
 caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
 thread = [
   { name = "app", steps = [

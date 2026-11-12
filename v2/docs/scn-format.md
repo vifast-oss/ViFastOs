@@ -44,9 +44,10 @@ reply_recv, nb_send_recv, nb_send_wait, yield, wait_addr, wake_addr, clock_read,
 6. Tệp chưa viết được vì ABI thiếu phải ghi `blocked = "thiếu ABI: ..."` và **không** có bước;
    máy kiểm đếm và in ra (DoD KT-04c: "ca không viết được → BLOCKED 'thiếu ABI'").
 
-**Chưa kiểm được (chờ YC-05):** "đủ tham số theo chữ ký" — `spec/abi.toml` chỉ có `args` dạng văn xuôi cho
-syscall và **một** method (`Tcb.Suspend`); không có bảng chữ ký method ⇒ kiểm arity lúc này sẽ là **tự đặt ABI**.
-Cùng lý do: `BlockedOnSend{FaultKind::Exit}` chỉ là *note*, chưa có từ vựng trạng thái để khẳng định.
+**Arity + trạng thái (từ KT-04c)**: nguồn là draft `v2/docs/abi-call-signatures.toml` (D2-33, `status = "REVIEW"`):
+máy kiểm đòi `invoke Object.Method` **có chữ ký** trong draft, **đủ tham số bắt buộc**, **không tham số lạ**, giá trị
+`variants` đúng (vd `mode = Abort|Defer`); `expect_states` phải thuộc **enum TCB đầy đủ §4.4**. Danh sách method
+giới hạn đúng các method 21 `.scn` dùng (D2-33).
 
 ## 4. 21 kịch bản và nhóm phủ (QD §4)
 
@@ -69,7 +70,7 @@ Cùng lý do: `BlockedOnSend{FaultKind::Exit}` chỉ là *note*, chưa có từ 
 | 15 | `15-cap-transfer-four` | 4 cap |
 | 16 | `16-cap-transfer-no-grant` | 4 cap |
 | 17 | `17-call-no-reply-bit` | no_reply |
-| 18 | `18-schedcontext-donation` | donation (**blocked — thiếu ABI**) |
+| 18 | `18-schedcontext-donation` | donation (`SchedControl.Configure` + `SchedContext.Bind`) |
 | 19 | `19-reply-donation-passive` | donation |
 | 20 | `20-exit-procsrv-chua-recv` | exit (bắt buộc) |
 | 21 | `21-notification-signal-wait` | (thêm) Notification |

@@ -47,7 +47,7 @@ TAG_GROUPS = {
     "notification",
 }
 
-CAP_KEYS = {"cap", "src", "dst", "cnode", "ep", "reply", "notif", "tcb", "u", "sched"}
+CAP_KEYS = {"cap", "src", "dst", "cnode", "ep", "reply", "notif", "tcb", "u", "sched", "sched_control"}
 
 fails = []
 
@@ -93,6 +93,7 @@ def main():
     scn_dir = pathlib.Path("v2/test/scn")
     spec_path = pathlib.Path("spec/abi.toml")
     draft_path = pathlib.Path("v2/docs/abi-reserved-objects.toml")
+    sig_path = pathlib.Path("v2/docs/abi-call-signatures.toml")
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -119,6 +120,36 @@ def main():
             objects.update(draft.get("object", {}))
         except Exception:  # noqa: BLE001 - draft hỏng thì bỏ qua, spec vẫn là chuẩn
             pass
+
+    # D2-33: chữ ký method + enum trạng thái lấy từ draft (chưa vào spec/)
+    sig = {}
+    if sig_path.exists():
+        try:
+            _, sig = load_toml(sig_path)
+        except Exception as exc:  # noqa: BLE001
+            print(f"scn-check: draft chữ ký không parse được: {exc}")
+            return 1
+    sig_methods = sig.get("method", {})
+    state_names = set((sig.get("state", {}) or {}).get("names", []) or [])
+
+    def signature_ok(op, params):
+        """Trả (ok, lý do). Kiểm đúng chữ ký draft: đủ tham số bắt buộc, không tham số lạ."""
+        entry = sig_methods.get(op)
+        if entry is None:
+            return False, f"method {op} không có chữ ký trong draft D2-33"
+        declared = entry.get("params", [])
+        required = [x for x in declared if not x.endswith("?")]
+        optional = [x[:-1] for x in declared if x.endswith("?")]
+        missing = [x for x in required if x not in params]
+        if missing:
+            return False, f"{op} thiếu tham số bắt buộc {missing}"
+        unknown = [k for k in params if k not in required and k not in optional]
+        if unknown:
+            return False, f"{op} có tham số lạ {unknown}"
+        for key, allowed in (entry.get("variants") or {}).items():
+            if key in params and params[key] not in allowed:
+                return False, f"{op}.{key}={params[key]!r} không thuộc {allowed}"
+        return True, ""
 
     def method_exists(name):
         if "." not in name:
@@ -159,6 +190,9 @@ def main():
             check(tag in TAG_GROUPS, f"{path.name}: tag lạ {tag!r}")
             tags_seen.add(tag)
 
+        for st in doc.get("expect_states", []) or []:
+            check(st in state_names, f"{path.name}: trạng thái {st!r} không có trong enum D2-33")
+
         caps = doc.get("caps", {})
         steps = list(doc.get("setup", []))
         for thread in doc.get("thread", []):
@@ -177,6 +211,8 @@ def main():
                     check(want in syscall_by_name, f"{path.name}: {op} không có trong spec/abi.toml")
             else:
                 check(method_exists(op), f"{path.name}: {op} không có trong spec/abi.toml (hoặc draft)")
+                ok, why = signature_ok(op, params)
+                check(ok, f"{path.name}: {why}")
             check(expect == "ok" or expect in errors,
                   f"{path.name}: kết quả {expect!r} không phải ok/19 mã lỗi")
             for k, v in params.items():
@@ -191,6 +227,7 @@ def main():
     missing = TAG_GROUPS - tags_seen
     check(not missing, f"thiếu nhóm phủ: {sorted(missing)}")
 
+    check(not blocked, f"DoD KT-04c: phải 21/21 tệp không blocked, còn {len(blocked)}")
     for name, reason in blocked:
         print(f"# blocked: {name} — {reason}")
 
