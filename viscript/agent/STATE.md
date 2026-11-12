@@ -17,7 +17,8 @@ Việc dở       : —
 
 - `ST-01` **DONE**: có `./vis-dev check` + `./vis-dev gate --fast` (fmt, clippy, R1 ≤1500 dòng, R2 cấm `unsafe`, R3 SPDX theo loại tệp, R4 `vis-host-vifast` ngoài `viscript/`, self-test **4 case âm**, build, L0 test).
 - `ST-02a` **DONE** (APPROVED 2026-11-12 Agent 0). **ST-04 mở ngay**; 60 golden token là test đỏ đầu tiên của ST-04.
-- Việc làm được ngay, không chờ duyệt: `ST-01`, `ST-02b`, `ST-10`; `ST-03` mở khi `ST-01` xong.
+- `ST-01` **DONE**. Việc làm được ngay: `ST-02b`, `ST-10`; `ST-03` (vis-diag) chờ Agent 0 lật READY (dep ST-01 đã DONE);
+  `ST-04` **chưa mở** — SPEC-lex còn REVIEW + thiếu kind/keyword (YC-14).
 - Vòng 1 **không** có interpreter/kiểm kiểu; dừng ở lexer → parser/CST → `CmdCST` → `vis-fmt` → runner `--check` cú pháp.
 - Commit `[ST-##]`; SPDX `#` cho `.vis .vish .vidl .toml`, `//` cho Rust; mọi `unsafe` có case âm; tệp ≤ 1.500 dòng.
 - Ưu tiên hai dòng: OS trước (D2-20); dòng này chạy khi `v2/agent/QUEUE.md` không còn task `READY`, ST-02a đã DONE; ST-04 mở ngay.
