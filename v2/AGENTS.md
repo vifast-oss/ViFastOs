@@ -7,7 +7,7 @@ Nguồn sự thật của vòng vá: [`../docs/QUYET-DINH-sau-review.md`](../doc
 
 1. **Code + harness** trong `v2/`: crate chạy được, sim, `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`: một nguồn sự thật duy nhất; code sinh từ spec không sửa tay (D2-11).
-3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — D-01..D-08 (chỉ v1) + **D2-01..D2-39**.
+3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — D-01..D-08 (chỉ v1) + **D2-01..D2-42**.
 4. Tài liệu thiết kế [`../docs/v2/ViFastOs-v2-thiet-ke.md`](../docs/v2/ViFastOs-v2-thiet-ke.md) — tham chiếu, không phải hiện trạng.
 
 QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sinh.
@@ -19,14 +19,14 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 | [`../docs/v2/ViFastOs-v2-thiet-ke.md`](../docs/v2/ViFastOs-v2-thiet-ke.md) | thiết kế đầy đủ (mục 3 kiến trúc, 4 kernel, 9 kiểm thử, 10 lộ trình K0→K6, 11 quy trình) |
 | [`../docs/v1/KNOWN-ISSUES.md`](../docs/v1/KNOWN-ISSUES.md) | 7 lỗi v1 mang sang v2 + ca kiểm tương ứng |
 | [`agent/QUEUE.md`](agent/QUEUE.md) | 17 dòng task vòng 1: KT-01..KT-12 (KT-04 tách a/b/c/d), KT-T26, KT-R1 |
-| [`agent/DECISIONS.md`](agent/DECISIONS.md) | D-01..D-08 (v1) + D2-01..D2-39 |
+| [`agent/DECISIONS.md`](agent/DECISIONS.md) | D-01..D-08 (v1) + D2-01..D2-42 |
 | [`agent/STATE.md`](agent/STATE.md) | HEAD, BUILD_ID, task, bước — Agent 2 cập nhật sau mỗi bước |
 | [`agent/BLOCKED.md`](agent/BLOCKED.md) | task bị chặn + câu hỏi cho Agent 0 |
 | `agent/JOURNAL/`, `agent/reports/` | nhật ký ngày, `R<n>-v2.md` + `R<n>-v2.json` |
 
 ## 3. Trạng thái duyệt hiện tại
 
-- **KT-04d = APPROVED 2026-11-12 Agent 0**: đã duyệt checklist 5 mục/method + 21 kịch bản ABI + draft chữ ký (D2-35..39). **KT-05 đã mở** (`vifast-gen` + gen-check); sau duyệt chỉ Agent 0 sửa `spec/`. T04 cũ = KT-04d.
+- **KT-04d = APPROVED 2026-11-12 Agent 0**: đã duyệt checklist 5 mục/method + 21 kịch bản ABI + draft chữ ký (D2-35..42). **KT-05 đã mở** (`vifast-gen` + gen-check); sau duyệt chỉ Agent 0 sửa `spec/`. T04 cũ = KT-04d.
 - Câu hỏi O1 của vòng review (**Exit** vào ABI bằng gì) **đã chốt** trong QD §1 Q-A: syscall **14 `Exit(code)`**: lưu `exit_code`, TCB `BlockedOnSend` trên `fault_ep` mang `FaultKind::Exit{code}` (không Reply); procsrv `Recv` xong mới `Inactive`; `wait`/`kill` là giao thức procsrv. Không mở lại.
 - `./v2/bin/v2 check` và `./v2/bin/v2 gate --fast` **đã có từ KT-03** (`gate --fast` PASS); `gen-check` bật từ KT-05, L1 từ KT-08.
 

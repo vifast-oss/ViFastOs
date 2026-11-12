@@ -49,6 +49,11 @@ máy kiểm đòi `invoke Object.Method` **có chữ ký** trong draft, **đủ 
 `variants` đúng (vd `mode = Abort|Defer`); `expect_states` phải thuộc **enum TCB đầy đủ §4.4**. Danh sách method
 giới hạn đúng các method 21 `.scn` dùng (D2-33).
 
+**Ngữ nghĩa thời điểm (D2-41):** `expect_states` là **hậu điều kiện sau mỗi bước** của thread tương ứng,
+kiểm ngay sau khi bước trả về; với `exit`/`debug_halt` kiểm ngay sau `halt`, **trước** khi procsrv `Recv`
+xử lý xong. Phải khớp cả tên trạng thái và trường (`call=false`, `fault=Exit{code}` so mã). Không kiểm
+giữa các bước, không suy diễn trạng thái khi chưa có interpreter (KT-09).
+
 ## 4. 21 kịch bản và nhóm phủ (QD §4)
 
 | # | Tệp | Nhóm QD §4 |

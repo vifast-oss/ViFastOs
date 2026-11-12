@@ -158,6 +158,19 @@ def main():
     check(objs_reserved.get("from") == 17 and objs_reserved.get("to") == 31,
           "object reserved phải 17..31 (D2-32: 9..16 đã cấp tên)")
     dbg = doc.get("debug_info", {})
+    tr = doc.get("trace", {})
+    check(tr.get("record_bytes") == 32, "trace.record_bytes phải = 32 (D2-40)")
+    check(tr.get("endianness") == "little", "trace phải little-endian (D2-40)")
+    fields = tr.get("fields", [])
+    want = [("t_ns", 0, 8), ("hart", 8, 2), ("kind", 10, 2), ("tcb", 12, 4), ("a", 16, 8), ("b", 24, 8)]
+    got = [(f.get("name"), f.get("offset"), f.get("bytes")) for f in fields]
+    check(got == want, f"trace.fields sai offset/bytes: {got}")
+    kinds = tr.get("kind", {})
+    check([kinds.get(str(i)) for i in range(1, 8)] == ["syscall","ipc","sched","fault","store","run","idle"],
+          "trace.kind phải 1..7 đúng tên (D2-40)")
+    hdr = tr.get("header", {})
+    check(hdr.get("magic") == "VFT1" and hdr.get("version") == 1, "trace.header magic/version sai (D2-40)")
+
     check(dbg.get("number") == 15, "DebugGetInfo phải là syscall 15 (D2-29)")
 
     # --- KT-05 bước 0: chữ ký method trong spec, stable-draft (D2-33/D2-35)

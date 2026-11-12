@@ -15,7 +15,7 @@ status = "APPROVED"
 abi_version = 1
 min_compat = 1
 # Golden file do vifast-gen sinh (KT-05); gate --fast chạy gen-check từ KT-05.
-golden = "test/abi/abi-v1.golden"
+golden = "docs/abi.md"
 
 # ---------------------------------------------------------------------------
 # Đóng băng ABI (D2-15 / QD §1 Q-B): đúng 5 thứ. Mọi thứ khác là `reserved`.
@@ -269,3 +269,21 @@ fields = ["hart"]
 names = ["Exit"]
 [method_signature.fault_kind.Exit]
 fields = ["code: u64"]
+
+# ---------------------------------------------------------------------------
+# Traceformat (D2-38/D2-40): bản ghi 32 B dùng chung sim/QEMU.
+# Text của KT-08 chỉ là scenario log, không phải định dạng này.
+[trace]
+record_bytes = 32
+endianness = "little"
+fields = [
+  { name = "t_ns", offset = 0, bytes = 8, ty = "u64" },
+  { name = "hart", offset = 8, bytes = 2, ty = "u16" },
+  { name = "kind", offset = 10, bytes = 2, ty = "u16" },
+  { name = "tcb", offset = 12, bytes = 4, ty = "u32" },
+  { name = "a", offset = 16, bytes = 8, ty = "u64" },
+  { name = "b", offset = 24, bytes = 8, ty = "u64" },
+]
+kind = { "1" = "syscall", "2" = "ipc", "3" = "sched", "4" = "fault", "5" = "store", "6" = "run", "7" = "idle" }
+header = { magic = "VFT1", version = 1, count = "u32", hash = "fnv1a64" }
+note = "Ring theo hart, luôn bật; dump QEMU pmemsave; KT-12 sở hữu bản ghi, KT-08 text là scenario log (D2-38)."

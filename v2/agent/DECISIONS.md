@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-39`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-42`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-39: quyết định v2 (D2-01..28 chép QD §8; D2-29..39 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-42: quyết định v2 (D2-01..28 chép QD §8; D2-29..42 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -73,6 +73,9 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-37** (a) Agent 2 **không** ghi `v2/agent/QUEUE.md`/`viscript/agent/QUEUE.md`; `vifast-agentctl done` chỉ là **đề xuất đọc-only**, người điều phối/Agent 0 lật sổ bằng commit `[KT-00]`/`[ST-00]`. (b) Comment `spec/abi.toml` còn cũ do **Agent 0** sửa trong cùng cửa sổ APPROVED, không đổi giá trị ABI. (c) D2-21: vòng 1 **không** bắt buộc chạy `cargo-deny`; bắt buộc có `deny.toml` (allowlist QD §9.3) + bước kiểm "không registry dependency" trong `v2 check` **trước dependency ngoài đầu tiên**, `cargo-deny` đầy đủ từ mốc đó/K1a.
 - **D2-38** Dump text của KT-08 (`# scn seed=…`, `step=…`, `# trace-hash=`) là **scenario log** phục vụ debug/L1, **không** phải traceformat ABI/kernel. **KT-12** sở hữu bản ghi **32 B** `{t_ns,hart,kind,tcb,a,b}` dùng chung sim/QEMU. Golden text hiện có giữ nguyên làm hồi quy sự kiện; KT-12 thêm golden nhị phân + decoder + cross-check; không có hai định dạng chuẩn.
 - **D2-39** `R<n>-v2.json` có đúng **11 khoá**: `project, round, head, build_id, tasks, gates, sim, coverage, mutants, perf, blocked`. "Phủ task đã mở" = **mọi hàng QUEUE** tại thời điểm báo cáo (vòng 1: 17/17), không chỉ DONE/REVIEW. Không thêm khoá `next` vào JSON; `next` chỉ là thông tin CLI/MD.
+- **D2-40** `[trace]` trong `spec/abi.toml` là nguồn sự thật cho bản ghi **32 B**: little-endian, `t_ns`@0/u64, `hart`@8/u16, `kind`@10/u16, `tcb`@12/u32, `a`@16/u64, `b`@24/u64; kind 1..7 = syscall/ipc/sched/fault/store/run/idle; header magic `VFT1`, version 1, count u32, hash FNV-1a 64. Đây là **cùng định dạng sim và QEMU** (dump `pmemsave`); text KT-08 chỉ là scenario log (D2-38). `spec.golden = "docs/abi.md"` (sinh từ spec, gen-check so byte); không còn đường dẫn treo `test/abi/abi-v1.golden`.
+- **D2-41** `expect_states` của `.scn` là **hậu điều kiện sau mỗi bước** của thread tương ứng, kiểm ngay sau khi bước trả về; với `exit`/`debug_halt` kiểm ngay sau `halt`, **trước** khi procsrv `Recv` xử lý xong. Phải khớp cả tên trạng thái và trường (`call=false`, `fault=Exit{code}` so mã). Không kiểm giữa các bước, không suy diễn trạng thái khi chưa có interpreter (KT-09).
+- **D2-42** `vifast-traceformat` phải là `#![no_std]` + feature `alloc` cho `decode_all`; `FixedRing<const N>` là ring chuẩn (không cấp phát, dùng trong kernel), `Ring`/`Vec` chỉ sau feature `std` cho host. KT-12 DONE phần host/format; **KT-12b** (2 h, READY) hoàn tất no_std + cross-check byte; **KT-09 phụ thuộc KT-12b**. Không tạo KT-12 khác.
 
 ---
 

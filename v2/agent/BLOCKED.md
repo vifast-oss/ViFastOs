@@ -18,13 +18,13 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
 | ~~KT-04b~~ | **ĐÃ TRẢ LỜI** (D2-32): được ghi `spec/` một lần, SchedControl lên lõi, VSpace khách = cờ `GUEST` | Agent 2 áp theo D2-32; không hỏi lại |
 | ~~KT-04c~~ | **ĐÃ TRẢ LỜI** (D2-33): draft chữ ký hẹp + enum TCB đầy đủ; ca 18 hết blocked | Agent 2 làm theo D2-33; không hỏi lại |
-| ~~KT-05~~ | **APPROVED 2026-11-12**; READY — bước 0 chép draft chữ ký + D2-35 | — |
+| ~~KT-05~~ | **DONE** `845df91`+`c6487a9`; gen-check ON | — |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-02 (đã DONE) — **DONE `cf433b7`**, sửa theo review #11 | — |
 | KT-09 | KT-08 | kịch bản end-to-end Retype→Configure→Call/Reply chạy |
 | KT-10 | KT-09 | invariant tổng byte + preempt xanh |
 | KT-11 | KT-10 | property test cây + Revoke xanh |
-| ~~KT-12~~ | **D2-38**: KT-12 sở hữu 32 B; text KT-08 là scenario log — READY | — |
+| ~~KT-12~~ | **DONE** `e750847`..`d3dfe31` (host/format); no_std sang **KT-12b** (D2-42) | — |
 
 Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spec/thiếu quyết định: QD đã trả lời Q1..Q12 (QD §9).
 
@@ -32,7 +32,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 ## 3. Câu hỏi cho Agent 0
 
-> **Cập nhật 19:45:** YC-06/11/12/13 đã chốt bằng **D2-36..39**; KT-04d **APPROVED 2026-11-12**. Các mục dưới giữ làm lịch sử — **không hỏi lại**. YC-14 xử lý ở dòng ViScript.
+> **Cập nhật 21:10:** YC-06/11/12/13 chốt D2-36..39; YC-15/16/17 chốt D2-40..42. KT-05/12 DONE; KT-12b READY; KT-09 chờ KT-12b. Không hỏi lại.
 
 
 
@@ -172,7 +172,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 4. **`3d5539a [ST-00]`**: xác nhận ai viết commit lật sổ (nếu Agent 2 viết QUEUE thì trái AGENTS §3).
 
 
-### YC-15 — Dọn luật/đường dẫn sau KT-05 (mở 2026-11-12 sau review #16, Agent 2)
+### YC-15 — **ĐÃ CHỐT 2026-11-12** — Dọn luật/đường dẫn sau KT-05 (mở 2026-11-12 sau review #16, Agent 2)
 
 1. **`AGENTS.md` §3/§4** chỉ cho KT-04a/04b/ST-02a/ST-02b ghi `spec/`, trong khi `QUEUE:132` + D2-33 đã cho KT-05 ghi
    `[method_signature]` + `[debug_info].return_channel` ⇒ văn bản luật chưa khớp hành vi đã duyệt; đề nghị commit `[KT-00]`.
@@ -182,7 +182,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 4. **Lật sổ**: `QUEUE:107` KT-05 = DONE (commit `845df91` + sửa review #16); `QUEUE:151` còn liệt ST-02b/ST-10.
 
 
-### YC-16 — `[trace]` cần thành spec trước khi "dùng chung QEMU" (mở 2026-11-12 sau review #17)
+### YC-16 — **ĐÃ CHỐT 2026-11-12** — `[trace]` cần thành spec trước khi "dùng chung QEMU" (mở 2026-11-12 sau review #17)
 
 D2-38 ghim **32 B + 6 tên trường** nhưng chưa có: offset/endianness từng trường, bảng `kind`, ngữ nghĩa `t_ns`,
 header container (magic/version/count/hash). Golden nhị phân hiện do Python sinh độc lập từ golden text (200×32 B) nhưng
@@ -190,7 +190,7 @@ header container (magic/version/count/hash). Golden nhị phân hiện do Python
 Đề nghị Agent 0: (a) duyệt `[trace]` trong `spec/abi.toml` hoặc D2 mới; (b) khôi phục mệnh đề "cùng định dạng QEMU"
 ở `QUEUE:114`; (c) quyết `Ring<const N>` no-alloc thuộc KT-12 hay KT-12b.
 
-### YC-17 — gộp: lật sổ + `[trace]` + C5 (mở 2026-11-12 sau review #18)
+### YC-17 — **ĐÃ CHỐT 2026-11-12** — gộp: lật sổ + `[trace]` + C5 (mở 2026-11-12 sau review #18)
 
 1. Lật `QUEUE:107` KT-05 = DONE và `QUEUE:114` KT-12 = DONE ⇒ mở **KT-09**.
 2. Duyệt `[trace]` (YC-16a): offset/endianness/bảng kind/header trong `spec/abi.toml` hoặc D2 mới; khôi phục mệnh đề

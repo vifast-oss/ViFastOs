@@ -104,14 +104,15 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | DONE | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
 | KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | DONE | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
 | KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | DONE | **APPROVED 2026-11-12 Agent 0**; D2-35..39; KT-05 mở; `check_scn` 21/21 0 blocked |
-| KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | READY | bước 0: draft chữ ký D2-33 vào `spec/[method_signature]` (`stable-draft`) + D2-35; code sinh biên dịch; sửa tay bị bắt; gen-check bật |
+| KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | DONE | bước 0: draft chữ ký D2-33 vào `spec/[method_signature]` (`stable-draft`) + D2-35; code sinh biên dịch; sửa tay bị bắt; gen-check bật |
 | KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | DONE | dùng được cho chính vòng này; JSON có `project` |
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
 | KT-08 | sim harness + store giả + scheduler tối thiểu 1 hart; kịch bản rỗng tất định theo seed (chưa cần ABI) | KT-02 | 3 h | DONE | harness + store + scheduler chạy; cùng seed → cùng trace |
-| KT-09 | Untyped trên sim (watermark, Retype, Revoke qua CNode) + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05 | 3 h | BLOCKED | invariant tổng byte; preempt; kịch bản end-to-end chạy; fixture âm kiểm **thông điệp**; định nghĩa ngữ nghĩa thời điểm `expect_states` (C5) |
+| KT-09 | Untyped trên sim (watermark, Retype, Revoke qua CNode) + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05, KT-12b | 3 h | BLOCKED | invariant tổng byte; preempt; kịch bản end-to-end chạy; fixture âm kiểm **thông điệp**; định nghĩa ngữ nghĩa thời điểm `expect_states` (C5) |
 | KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | BLOCKED | property test cây; Revoke |
 | KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c |
-| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | READY | giải mã dump từ sim; D2-38: text = scenario log, KT-12 sở hữu bản ghi 32 B + golden nhị phân |
+| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | DONE | giải mã dump từ sim; D2-38: text = scenario log, KT-12 sở hữu bản ghi 32 B + golden nhị phân |
+| KT-12b | `vifast-traceformat` **no_std** + `FixedRing<const N>` (kernel); `alloc` feature cho `decode_all`; `Ring`/`Vec` chỉ sau `std`; cross-check byte với golden D2-40 | KT-12 | 2 h | READY | `#![no_std]` biên dịch; `FixedRing` không cấp phát; test host vẫn xanh |
 | KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | DONE | đèn host DONE `02e0a96` theo D2-36; T26 **OPEN** tới K3.5 (VFS/read_dir + smp); không chạy lại 1.000 seed |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
@@ -121,18 +122,19 @@ APPROVED 2026-11-12 Agent 0
 
 ## Khối F — chỉ thị hiện hành (2026-11-12 19:45, sau APPROVED KT-04d)
 
-> Nguồn: D2-29..D2-39 + `APPROVED 2026-11-12 Agent 0` ở trên. Khối này thay mọi ghi chú cũ trái với nó.
+> Nguồn: D2-29..D2-42 + `APPROVED 2026-11-12 Agent 0` ở trên. Khối này thay mọi ghi chú cũ trái với nó.
 
 **Đã xong — không làm lại:**
 - `KT-04a` `1766145`; `KT-04b` `5ba7e80`; `KT-04c` `5454834`+`476d405`; `KT-04d` đã duyệt, gói bản 2 `e6edf0f` + C1.
+- `KT-05` `845df91`+`c6487a9`; `KT-12` `e750847`..`d3dfe31` (host/format; no_std sang KT-12b);
 - `KT-06` `decc619`+`33dcf8d`; `KT-07` `bf61901`; `KT-08` `cf433b7`+`bcc84bb`; `KT-R1` `0ba7968`.
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại:**
-1. **KT-05** (READY): bước 0 bắt buộc — chép draft chữ ký D2-33 vào `spec/abi.toml` dưới `[method_signature]` (`stability="stable-draft"`), ghim `[debug_info].return_channel` D2-35, sửa `check_abi` nếu cần; sau đó mới sinh code. C3 (mapping/checker) phải xong trước commit đầu.
-2. **KT-12** (READY, D2-38): `vifast-traceformat` 32 B + ring + golden nhị phân + decoder; giữ golden text KT-08 làm scenario log, không đổi kỳ vọng cũ.
-3. Sau KT-05: **làm KT-12 trước KT-09** (D2-38). `agentctl next` có thể trả `KT-09` vì thứ tự bảng — bỏ qua `KT-09` cho tới khi KT-12 xong; `KT-10`/`KT-11` theo chuỗi.
-4. OS hết READY thì ViScript: `ST-02b` → `ST-04` (lexer) → `ST-10`; `ST-03` mở khi cần.
+1. **KT-12b** (READY, D2-42): `#![no_std]` + `FixedRing<const N>`; `alloc` feature cho decode; test host xanh.
+2. **KT-09** chỉ mở khi KT-12b DONE; `KT-10`/`KT-11` theo chuỗi.
+3. **KT-05/KT-12 DONE** — không làm lại.
+4. OS hết READY thì ViScript: **ST-04 lexer trước ST-03**; `ST-10` DONE.
 5. Không mở YC mới cho YC-06/11/12/13 — đã chốt D2-36..39.
 
 **Chống lặp:**
