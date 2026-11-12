@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-48`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-49`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-48: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-49: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -82,6 +82,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-46** Badge chỉ hợp lệ trên `Endpoint`/`Notification`; `Mint` badge trên loại khác trả `InvalidArgument`. Fixture `02-cnode-mint-badge.scn` sửa cho đúng: bước 1 dùng `src=ep0`, bước 2 thêm `c2` và dùng `dst=c2`; mục tiêu `.scn` Untyped/CNode **9/9**. Đây là sửa dữ liệu test, không đổi ABI.
 - **D2-47** Phase K1a' theo `review/agent0/K1A-PLAN.md`: (a) cài `miri` + `rust-src` cho nightly đã xong; Miri chạy bằng lệnh rời `v2 miri` và `nightly --only-miri`, **không** đưa vào `gate --fast` (giữ ≤60 s); (b) `cargo-deny`/`deny.toml` **chưa** bắt buộc ở K1a' vì chưa có dependency ngoài — vẫn theo D2-37(c), thêm trước dependency đầu tiên; (c) cho phép tách `KT-16a`/`KT-16b` nếu tích hợp >3 h, theo ranh giới đã định; (d) K1a' chỉ đưa **object body** vào `vifast-objmem`, bảng `Cap` của sim vẫn là `Vec<Cap>` (tiện ích mô hình; CSpace 2 cấp là K1b/K2); (e) không sửa `vifast-model` (`#![forbid(unsafe_code)]`, oracle).
 - **D2-48** YC-18: chọn **(a)** — giữ `ObjRef` 16 B; `vifast-objmem` có bảng tĩnh `kind → vtable/constructor` để dựng `*mut dyn KObj` từ `(pa, id, header.kind)`. `with_many_mut` kiểm alias từng cặp rồi dựng `[&mut dyn KObj; N]` qua bảng; không đổi layout/ABI. KT-15 sở hữu bảng + ma trận alias + fuzz; nếu Miri phát hiện UB do fat pointer thì dừng báo, không `#[allow]`.
+- **D2-49** Chốt K1b (Q1–Q8, `review/agent0/K1B-PLAN.md`): (a) **1 hart**; **hoãn push migration sang K1c** (nơi có `smp 1/2/4/8`), K1b đạt 3/4 tiêu chí + hộp thư; K1c kế thừa. (b) Gắn `SchedContext` vào TCB bằng **model API** `set_sched_params(tcb, sc)`, không sửa `spec/`/ABI ở K1b. (c) Donation **tự động** qua Call/Reply; server có SC riêng giữ SC riêng; các method chưa có chữ ký chỉ cài model API, không tuyên bố ABI. (d) Bảng `ALLOWED` 11×11 đặt ở `v2/docs/k1b-tcb-transition.md` (model-only `[TK]`), Agent 0 review; không phải spec. (e) Budget kiểm **chu kỳ thẳng hàng**; cửa sổ trượt/sporadic refill hoãn sau K6 (D2-16). (f) K1b chỉ **MCS donation**, không MCS lock/lock-free; hộp thư mô hình tất định; `vifast-sync`/loom để K1c/SMP. (g) Không mở rộng `vifast-model` cho TCB/scheduler; parity 10k chỉ là hồi quy. (h) Preempt/budget dùng **tick ảo**, không timer HW/QEMU.
 
 ---
 

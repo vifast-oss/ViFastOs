@@ -103,7 +103,9 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→16+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | DONE | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
 | KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | DONE | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
-| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | DONE | **APPROVED 2026-11-12 Agent 0**; D2-35..39; KT-05 mở; `check_scn` 21/21 0 blocked |
+| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | DONE | **APPROVED 2026-11-12 Agent 0
+
+APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**; D2-35..39; KT-05 mở; `check_scn` 21/21 0 blocked |
 | KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | DONE | bước 0: draft chữ ký D2-33 vào `spec/[method_signature]` (`stable-draft`) + D2-35; code sinh biên dịch; sửa tay bị bắt; gen-check bật |
 | KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | DONE | dùng được cho chính vòng này; JSON có `project` |
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
@@ -118,7 +120,13 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-14 | `vifast-objmem` core: `ObjHeader` 16 B, `ObjRef`, `ObjStore`, arena thô căn lề, `place/with/with_mut/destroy`, `no_std` + Miri từ commit đầu | KT-13 | 3 h | DONE | 15 test; Miri 15/15; build bare-metal; gate 199 test; reviewer DRIFT đã sửa; YC-18 chốt D2-48 |
 | KT-15 | `with_many_mut` N≤8 + kiểm alias từng cặp + fuzz 10.000 chuỗi (200 chuỗi dưới Miri) | KT-14 | 2 h | DONE | 34 test; Miri alias 8/8 + fuzz 200; fuzz 10k; gate 218 test; guard `chua_header`/TypeId; reviewer DRIFT đã sửa |
 | KT-16 | Tích hợp objmem vào sim: thay `Store` **và** ruột `kobj::Machine`, giữ API; bước 0 gom helper ≤45′; cho phép tách KT-16a/b | KT-14, KT-15 | 3 h | DONE | 23 tệp; test cũ 0 dòng sửa; body trong objmem, Cap `Vec`; sim 0 unsafe; gate 227 test/L1 1000; parity 10k; Miri 39+4+8+13; reviewer APPROVE |
-| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13, KT-14, KT-15, KT-16 | 2 h | READY | Miri chọn PASS; 9/9 `.scn`; parity 10k; gate 227+; đóng 2 follow-up KT-16: cap/assert `align ≤ ARENA_ALIGN` trong `alloc_place_span`, chốt hợp đồng `Store::alloc` align>4096; `nightly --only-miri`; STATE đủ 2 dòng DoD K1a' |
+| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13, KT-14, KT-15, KT-16 | 2 h | DONE | `nightly --only-miri` PASS 365 s; 231 test/41 suite; parity 10k; `.scn` 9/9; 2 follow-up đóng; reviewer DRIFT đã sửa; K1a' DONE |
+| KT-18 | TCB đầy đủ + `suspended` + bảng `ALLOWED` 11×11 + `Suspend/Resume/ReadState` + finalise | — | 3 h | READY | 100% cặp ALLOWED; cặp cấm `IllegalOperation`; `ReadState` 4 giá trị; Abort gỡ hàng chờ trước; test 11×11; Miri test mới; gate |
+| KT-19 | Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước, affinity, không đói, finalise khỏi queue | KT-18 | 3 h | BLOCKED | `pick` O(1); ≤1 Running/hart; `check_sched` sau mỗi op; 1.000 seed × 64 op; không đói |
+| KT-20 | MCS budget: timer ảo, consumed/refill một đoạn, `Sleeping{Budget}`, invariant theo chu kỳ | KT-19 | 3 h | BLOCKED | Budget 0 vi phạm (chu kỳ thẳng hàng); hết budget → `Sleeping`; test refill |
+| KT-21 | Donation Call/Reply + passive server + bind Reply/Notification + MCP + budget khi donation | KT-20 | 3 h | BLOCKED | Server passive chạy SC client; Reply trả SC; MCP; case server có SC riêng |
+| KT-22 | Hộp thư mô hình FIFO, đầy → `Busy`/backpressure; **không** lock-free/loom | KT-19 | 2 h | BLOCKED | FIFO tất định; đầy backpressure; không atomic/thread; D2-49(f) |
+| KT-23 | Tích hợp scenario + L1 K1b 1.000 seed + coverage 100% + Miri + parity 10k + bảng DoD K1b | KT-18, KT-19, KT-20, KT-21, KT-22 | 2 h | BLOCKED | 100% transition; budget 0 vi phạm; mailbox; push migration **hoãn K1c** theo D2-49(a); gate/Miri |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 APPROVED 2026-11-12 Agent 0
@@ -136,11 +144,11 @@ APPROVED 2026-11-12 Agent 0
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
-1. `KT-17` (READY): cổng Miri tổng + KT-04c + đóng follow-up KT-16; KT-16 DONE (3db7ac7).
-2. Hết KT-17 là **K1a' DONE**; sau đó Agent 0 lập kế hoạch K1b (chưa mở).
-3. `KT-16` được tách `KT-16a/b` nếu >3 h (D2-47c); báo Agent 0 trước.
-4. OS hết READY mới lấy ViScript (D2-20); dòng ViScript do tab riêng quản lý.
-5. Không mở K1b/K1c/K2 trong phase này; không đụng `vifast-model`.
+1. **K1a' DONE** (KT-13..KT-17); **K1b** mở: KT-18 READY, KT-19..KT-23 chờ.
+2. Thứ tự: KT-18 → KT-19 → KT-20 → KT-21 → KT-22 → KT-23; mỗi task ≤3 h.
+3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.
+4. Không đụng `spec/`/`vifast-model`/`.scn`; parity 10k chỉ hồi quy.
+5. OS hết READY mới lấy ViScript; dòng ViScript do tab riêng quản lý.
 
 **Chống lặp:**
 - Đọc bảng trạng thái trước mỗi task; task `DONE` không làm lại.
