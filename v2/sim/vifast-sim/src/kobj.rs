@@ -837,7 +837,7 @@ impl Machine {
         flags: u32,
     ) -> Result<CapId, KError> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
-        let (u_idx, size, watermark) = {
+        let (u_idx, size, watermark, src_rights) = {
             let c = self.cap(src_cap)?;
             if !c.alive {
                 return Err(KError::InvalidCapability);
@@ -847,10 +847,15 @@ impl Machine {
             }
             let idx = self.object_index(c.obj)?;
             match &self.objects[idx].kind {
-                Kind::Untyped { size, watermark } => (idx, *size, *watermark),
+                Kind::Untyped { size, watermark } => (idx, *size, *watermark, c.rights),
                 _ => return Err(KError::WrongObjectType),
             }
         };
+        // F3 (review KT-10): Retype là thao tác cấp phát trên Untyped ⇒ cap nguồn phải có
+        // WRITE; cap con kế thừa quyền nguồn (không nới ngược).
+        if src_rights & RIGHT_WRITE == 0 {
+            return Err(KError::InsufficientRights);
+        }
 
         // GUEST: chỉ VSpace nhận; tới H1 VSpace+GUEST vẫn NotSupported (D2-32).
         if flags & FLAG_GUEST != 0 {
@@ -926,17 +931,37 @@ impl Machine {
         if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
             *watermark = end;
         }
-        Ok(self.push_cap(obj, ty, Some(src_cap), RIGHTS_ALL, None))
+        Ok(self.push_cap(obj, ty, Some(src_cap), src_rights, None))
     }
 
     // ---------------------------------------------------------------- CSpace
 
     /// `CNode.Copy`: tạo cap con ở đích; đích phải rỗng. Giữ nguyên quyền + badge của nguồn.
     pub fn copy(&mut self, src: SlotRef, dst: SlotRef) -> Result<CapId, KError> {
+        self.copy_rights(src, dst, None)
+    }
+
+    /// `CNode.Copy` với `rights?` của spec (`[method_signature."CNode.Copy"]`): `None` =
+    /// giữ quyền nguồn; `Some(r)` phải là tập con, nếu không `InsufficientRights` (F3).
+    pub fn copy_rights(
+        &mut self,
+        src: SlotRef,
+        dst: SlotRef,
+        rights: Option<u8>,
+    ) -> Result<CapId, KError> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
-        let (obj, ty, rights, badge) = {
+        let (obj, ty, src_rights, badge) = {
             let c = self.cap(src_cap)?;
             (c.obj, c.ty, c.rights, c.badge)
+        };
+        let rights = match rights {
+            Some(r) => {
+                if r & !src_rights != 0 {
+                    return Err(KError::InsufficientRights);
+                }
+                r
+            }
+            None => src_rights,
         };
         self.derive(src_cap, obj, ty, dst, rights, badge)
     }
@@ -960,7 +985,9 @@ impl Machine {
             return Err(KError::InsufficientRights);
         }
         let badge = match badge {
-            None | Some(0) => src_badge,
+            // F3: `None` = giữ badge nguồn; `Some(0)` = badge 0 (không badge) ⇒ **xoá**.
+            None => src_badge,
+            Some(0) => None,
             Some(b) => {
                 if !matches!(ty, ObjType::Endpoint | ObjType::Notification) {
                     return Err(KError::InvalidArgument);

@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-43`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-46`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-43: quyết định v2 (D2-01..28 chép QD §8; D2-29..43 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-46: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -77,6 +77,9 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-41** `expect_states` của `.scn` là **hậu điều kiện sau mỗi bước** của thread tương ứng, kiểm ngay sau khi bước trả về; với `exit`/`debug_halt` kiểm ngay sau `halt`, **trước** khi procsrv `Recv` xử lý xong. Phải khớp cả tên trạng thái và trường (`call=false`, `fault=Exit{code}` so mã). Không kiểm giữa các bước, không suy diễn trạng thái khi chưa có interpreter (KT-09).
 - **D2-42** `vifast-traceformat` phải là `#![no_std]` + feature `alloc` cho `decode_all`; `FixedRing<const N>` là ring chuẩn (không cấp phát, dùng trong kernel), `Ring`/`Vec` chỉ sau feature `std` cho host. KT-12 DONE phần host/format; **KT-12b** (2 h, READY) hoàn tất no_std + cross-check byte; **KT-09 phụ thuộc KT-12b**. Không tạo KT-12 khác.
 - **D2-43** Golden nhị phân của trace phải tái lập được bằng script đã commit: `v2/test/trace/gen_golden.py --check` đọc golden TEXT của sim, sinh 200×32 B và so byte với `golden-sim-seed7.bin`; `./v2/bin/v2 check` chạy bước này. Không nhận golden do tay/Python ngoài repo sinh; script không đọc code Rust.
+- **D2-44** `CNode.Move` `[TK]`: chuyển cap nguồn sang `dst`; nếu `dst` đã có cap thì cap đích bị xoá trước rồi chuyển (overwrite), vì `01-cnode-copy.scn:13` yêu cầu `ok` sau khi `dst` đã bị `Copy` chiếm. `CNode.Copy`/`CNode.Mint` vẫn yêu cầu `dst` rỗng, trả `SlotOccupied`. Đây là ngữ nghĩa mô hình, chưa phải ABI chốt; `CNode.Mutate` giữ nghĩa biến đổi tại chỗ (chưa cài KT-11).
+- **D2-45** F3 `[TK]`: `Untyped.Retype` yêu cầu quyền `WRITE` trên cap nguồn; `CNode.Delete`/`CNode.Revoke` yêu cầu `WRITE` trên cap CNode dùng để triệu hồi. Chưa có nguồn spec/design; là chính sách mô hình `[TK]`, K1a rà lại trước khi đóng ABI. `Copy`/`Mint` giữ quyền ⊆ nguồn; `mint(Some(0))` xoá badge (không giữ badge nguồn).
+- **D2-46** Badge chỉ hợp lệ trên `Endpoint`/`Notification`; `Mint` badge trên loại khác trả `InvalidArgument`. Fixture `02-cnode-mint-badge.scn` sửa cho đúng: bước 1 dùng `src=ep0`, bước 2 thêm `c2` và dùng `dst=c2`; mục tiêu `.scn` Untyped/CNode **9/9**. Đây là sửa dữ liệu test, không đổi ABI.
 
 ---
 

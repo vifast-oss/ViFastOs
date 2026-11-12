@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-model"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "vifast_model"
+path = "src/lib.rs"
+
+[dependencies]
+# Tên/số mã lỗi lấy từ code sinh của spec (D2-11), không chép tay.
+vifast-abi = { path = "../vifast-abi" }
+
+[dev-dependencies]
+# Chỉ dùng cho test so vi sai 10.000 seed (KT-11); crate sản phẩm không phụ thuộc sim.
+vifast-sim = { path = "../../sim/vifast-sim" }

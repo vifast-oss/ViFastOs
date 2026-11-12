@@ -29,6 +29,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vifast-model"
+version = "0.1.0"
+dependencies = [
+ "vifast-abi",
+ "vifast-sim",
+]
+
+[[package]]
 name = "vifast-sim"
 version = "0.1.0"
 dependencies = [

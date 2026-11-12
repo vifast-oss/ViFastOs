@@ -2,13 +2,13 @@
 version = 1
 name = "02-cnode-mint-badge"
 tags = ["cap-copy"]
-caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", c2 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
 setup = [
   "invoke Untyped.Retype cap=u0 type=Frame size_bits=12 flags=0 => ok",
 ]
 thread = [
   { name = "t0", steps = [
-    "invoke CNode.Mint cnode=c0 src=u0 dst=c1 rights=READ badge=66 => ok",
-    "invoke CNode.Mint cnode=c0 src=u0 dst=c1 rights=WRITE|GRANT badge=67 => ok",
+    "invoke CNode.Mint cnode=c0 src=ep0 dst=c1 rights=READ badge=66 => ok",
+    "invoke CNode.Mint cnode=c0 src=ep0 dst=c2 rights=WRITE|GRANT badge=67 => ok",
   ] },
 ]

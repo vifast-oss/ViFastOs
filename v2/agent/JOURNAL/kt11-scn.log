@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt11_scn.rs (v2/target/debug/deps/kt11_scn-72e0ba86c1511813)
+
+running 2 tests
+test scn_untyped_cnode_cua_kt04c_parse_duoc ... ok
+# KT-11 scn: 9/9 bước khớp; 3 bước setup chưa mô hình (Frame/K2); 0 bước lệch
+test scn_untyped_cnode_cua_kt04c_chay_va_doi_chieu ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

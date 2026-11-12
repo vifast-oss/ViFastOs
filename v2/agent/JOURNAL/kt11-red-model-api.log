@@ -1,0 +1,81 @@
+   Compiling vifast-model v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-model)
+error[E0432]: unresolved imports `vifast_model::KError`, `vifast_model::Machine`, `vifast_model::ObjId`, `vifast_model::ObjType`, `vifast_model::SlotRef`
+  --> lib/vifast-model/tests/kt11_diff_sim.rs:12:5
+   |
+12 |     KError as ModelError, Machine as ModelMachine, ObjId as ModelObjId, ObjType as ModelObjType,
+   |     ------^^^^^^^^^^^^^^  -------^^^^^^^^^^^^^^^^  -----^^^^^^^^^^^^^^  -------^^^^^^^^^^^^^^^^
+   |     |                     |                        |                    |
+   |     |                     |                        |                    no `ObjType` in the root
+   |     |                     |                        no `ObjId` in the root
+   |     |                     no `Machine` in the root
+   |     no `KError` in the root
+13 |     SlotRef as ModelSlot,
+   |     -------^^^^^^^^^^^^^
+   |     |
+   |     no `SlotRef` in the root
+
+error[E0432]: unresolved imports `vifast_model::KError`, `vifast_model::Machine`, `vifast_model::ObjId`, `vifast_model::ObjType`, `vifast_model::SlotRef`, `vifast_model::RIGHT_GRANT`, `vifast_model::RIGHT_GRANT_REPLY`, `vifast_model::RIGHT_READ`, `vifast_model::RIGHT_WRITE`, `vifast_model::RIGHTS_ALL`
+  --> lib/vifast-model/tests/kt11_scn.rs:24:20
+   |
+24 | use vifast_model::{KError, Machine, ObjId, ObjType, SlotRef, RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ, RIGHT_WRITE, RIGHTS_ALL};
+   |                    ^^^^^^  ^^^^^^^  ^^^^^  ^^^^^^^  ^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHTS_ALL` in the root
+   |                    |       |        |      |        |        |            |                  |           |
+   |                    |       |        |      |        |        |            |                  |           no `RIGHT_WRITE` in the root
+   |                    |       |        |      |        |        |            |                  no `RIGHT_READ` in the root
+   |                    |       |        |      |        |        |            no `RIGHT_GRANT_REPLY` in the root
+   |                    |       |        |      |        |        no `RIGHT_GRANT` in the root
+   |                    |       |        |      |        no `SlotRef` in the root
+   |                    |       |        |      no `ObjType` in the root
+   |                    |       |        no `ObjId` in the root
+   |                    |       no `Machine` in the root
+   |                    no `KError` in the root
+
+error[E0432]: unresolved imports `vifast_model::KError`, `vifast_model::Machine`, `vifast_model::ObjId`, `vifast_model::ObjType`, `vifast_model::SlotRef`, `vifast_model::RIGHT_GRANT`, `vifast_model::RIGHT_GRANT_REPLY`, `vifast_model::RIGHT_READ`, `vifast_model::RIGHT_WRITE`, `vifast_model::RIGHTS_ALL`
+  --> lib/vifast-model/tests/kt11_model.rs:9:5
+   |
+ 9 |     KError, Machine, ObjId, ObjType, SlotRef, RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ,
+   |     ^^^^^^  ^^^^^^^  ^^^^^  ^^^^^^^  ^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHT_READ` in the root
+   |     |       |        |      |        |        |            |
+   |     |       |        |      |        |        |            no `RIGHT_GRANT_REPLY` in the root
+   |     |       |        |      |        |        no `RIGHT_GRANT` in the root
+   |     |       |        |      |        no `SlotRef` in the root
+   |     |       |        |      no `ObjType` in the root
+   |     |       |        no `ObjId` in the root
+   |     |       no `Machine` in the root
+   |     no `KError` in the root
+10 |     RIGHT_WRITE, RIGHTS_ALL,
+   |     ^^^^^^^^^^^  ^^^^^^^^^^ no `RIGHTS_ALL` in the root
+   |     |
+   |     no `RIGHT_WRITE` in the root
+
+error[E0433]: cannot find `KError` in `vifast_model`
+   --> lib/vifast-model/tests/kt11_model.rs:342:31
+    |
+342 |         let k = vifast_model::KError::from_index(i).expect("đủ 19 mã lỗi");
+    |                               ^^^^^^ could not find `KError` in `vifast_model`
+
+error[E0425]: cannot find value `ERRORS` in crate `vifast_model`
+   --> lib/vifast-model/tests/kt11_model.rs:341:42
+    |
+341 |     for (i, (name, id)) in vifast_model::ERRORS.iter().enumerate() {
+    |                                          ^^^^^^ not found in `vifast_model`
+
+error[E0425]: cannot find value `ERRORS` in crate `vifast_model`
+   --> lib/vifast-model/tests/kt11_model.rs:346:30
+    |
+346 |     assert_eq!(vifast_model::ERRORS.len(), 19);
+    |                              ^^^^^^ not found in `vifast_model`
+
+error[E0425]: cannot find value `CORE_OBJECTS` in crate `vifast_model`
+   --> lib/vifast-model/tests/kt11_model.rs:347:38
+    |
+347 |     for (name, _id) in vifast_model::CORE_OBJECTS {
+    |                                      ^^^^^^^^^^^^ not found in `vifast_model`
+
+Some errors have detailed explanations: E0425, E0432, E0433.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `vifast-model` (test "kt11_model") due to 5 previous errors
+warning: build failed, waiting for other jobs to finish...
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `vifast-model` (test "kt11_diff_sim") due to 1 previous error
+error: could not compile `vifast-model` (test "kt11_scn") due to 1 previous error
