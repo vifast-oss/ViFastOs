@@ -190,6 +190,14 @@ header container (magic/version/count/hash). Golden nhị phân hiện do Python
 Đề nghị Agent 0: (a) duyệt `[trace]` trong `spec/abi.toml` hoặc D2 mới; (b) khôi phục mệnh đề "cùng định dạng QEMU"
 ở `QUEUE:114`; (c) quyết `Ring<const N>` no-alloc thuộc KT-12 hay KT-12b.
 
+### YC-17 — gộp: lật sổ + `[trace]` + C5 (mở 2026-11-12 sau review #18)
+
+1. Lật `QUEUE:107` KT-05 = DONE và `QUEUE:114` KT-12 = DONE ⇒ mở **KT-09**.
+2. Duyệt `[trace]` (YC-16a): offset/endianness/bảng kind/header trong `spec/abi.toml` hoặc D2 mới; khôi phục mệnh đề
+   "cùng định dạng QEMU" (thiết kế `:835` vs `QUEUE:114`).
+3. **Định nghĩa C5**: "ngữ nghĩa thời điểm `expect_states`" (DoD KT-09) chưa có ở đâu trong repo — cần chốt trước khi KT-09 chạy được.
+4. Chủ sở hữu `#![no_std]`/feature `alloc` của `vifast-traceformat` (KT-12b hay KT-12 tiếp).
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2
