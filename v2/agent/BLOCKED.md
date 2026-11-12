@@ -20,11 +20,11 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | ~~KT-04c~~ | **ĐÃ TRẢ LỜI** (D2-33): draft chữ ký hẹp + enum TCB đầy đủ; ca 18 hết blocked | Agent 2 làm theo D2-33; không hỏi lại |
 | KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
-| KT-08 | KT-07 (đã DONE) | sim harness + store giả + scheduler tối thiểu 1 hart |
+| KT-08 | KT-02 (đã DONE) — **DONE `cf433b7`**, sửa theo review #11 | — |
 | KT-09 | KT-08 | kịch bản end-to-end Retype→Configure→Call/Reply chạy |
 | KT-10 | KT-09 | invariant tổng byte + preempt xanh |
 | KT-11 | KT-10 | property test cây + Revoke xanh |
-| KT-12 | KT-02 (đã DONE) — QUEUE:113 ghi dep KT-02, `READY` | traceformat + ring, giải mã dump từ sim |
+| KT-12 | KT-02 (đã DONE) — `QUEUE:114` ghi dep KT-02, `READY`; **chờ YC-12** (thứ tự/định dạng trace) | traceformat + ring, giải mã dump từ sim |
 
 Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spec/thiếu quyết định: QD đã trả lời Q1..Q12 (QD §9).
 
@@ -131,6 +131,17 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 2. **`QUEUE` Khối A bước 7** bảo chạy `` `vifast-agentctl done <id>` `` — đây là lệnh **ghi** QUEUE, trái `AGENTS.md` §3 (sổ thuộc Agent 0). Đề nghị: bỏ khỏi bước 7, hoặc ghi rõ agentctl là đường ghi được phép và ai chạy.
 3. **Comment `spec/abi.toml` còn cũ** (`:8` "0..13 + 14 Exit", `:24` "0..14", `:105` "15 syscall", `:139` "Reserved 8..31"). Agent 2 **đã revert** bản sửa (không có quyền sửa `spec/` ngoài D2-29/D2-32); đề nghị Agent 0 commit phần comment trong cùng cửa sổ APPROVED.
 4. **D2-21 chưa có máy kiểm**: không có `deny.toml`/`cargo-deny` trong repo — hiện chỉ dựa vào việc "không có `[dependencies]`".
+
+
+### YC-12 — Thứ tự/định dạng trace: KT-12 hay KT-08 sở hữu? (mở 2026-11-12 sau review #11, Agent 2)
+
+- **Hiện trạng**: KT-08 (`cf433b7`) dump trace **text** `# scn seed=… steps=… tasks=… cap=…` + `step=… kind=… task=… used=… value=…` + `# trace-hash=` (FNV-1a).
+  Thiết kế §9.11 và QD:350 nói **KT-12** sở hữu traceformat (bản ghi 32 B `{t_ns,hart,kind,tcb,a,b}`, "trước sim dump").
+- **Vấn đề**: Agent 2 đã cho KT-08 dump trước khi KT-12 mở ⇒ KT-12 sẽ phải phá hoặc chiều theo định dạng tự chế. Không tự quyết (D2-11/D2-22).
+- **Xin Agent 0 chọn**:
+  (a) KT-08 **bỏ dump text**, chỉ giữ `Event` + hash; **KT-12** sở hữu định dạng (đúng QD:350). Golden hiện có chuyển thành của KT-12.
+  (b) KT-12 **nhận** định dạng text hiện tại làm **legacy** và thêm bản ghi nhị phân 32 B song song (máy kiểm so byte cả hai).
+- Trong lúc chờ, KT-08 đã có: golden + so **hai tiến trình** + ca âm "lệch 1 byte" + test ngữ nghĩa "2 seed phải khác quỹ đạo" (trước sửa là **đỏ**, đã dán log).
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 

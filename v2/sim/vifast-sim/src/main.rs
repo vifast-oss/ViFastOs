@@ -61,9 +61,9 @@ fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    for line in a.trace_lines() {
+    for line in a.dump(steps) {
         println!("{line}");
     }
-    println!("# trace-hash={:016x}", a.hash());
+    println!("# trace-hash={:016x}", a.dump_hash(steps));
     ExitCode::SUCCESS
 }

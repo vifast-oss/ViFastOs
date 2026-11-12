@@ -29,3 +29,28 @@ fn l1_1000_seed_tat_dinh() {
     assert!(hashes.len() > 900, "trace quá trùng: {}", hashes.len());
     println!("# L1 OK: 1000 seed, {} trace khác nhau", hashes.len());
 }
+
+/// Ca âm ngữ nghĩa (review #11): bỏ nhãn `task=` và `value=` đi, **hai seed phải khác nhau**
+/// ở quỹ đạo store/scheduler. Nếu chỉ khác vì nhãn/nhiễu thì sim không thật "theo seed".
+#[test]
+fn seed_doi_quy_dao_chu_khong_chi_doi_nhan() {
+    fn shape(seed: u64) -> Vec<String> {
+        let mut h = Harness::new(seed, 4096, 4);
+        h.run(200);
+        h.trace_lines()
+            .iter()
+            .map(|l| {
+                l.split(' ')
+                    .filter(|kv| !kv.starts_with("task=") && !kv.starts_with("value="))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect()
+    }
+    assert_ne!(
+        shape(0),
+        shape(1),
+        "hai seed cho cùng quỹ đạo (step/kind/used) ⇒ seed không tác động"
+    );
+    assert_ne!(shape(3), shape(5));
+}

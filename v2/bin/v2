@@ -230,21 +230,26 @@ do_check() {
         echo "v2 check: $fails bước FAIL" >&2
         return 1
     fi
-    echo "v2 check: PASS (L1 chưa bật tới KT-08)"
+    echo "v2 check: PASS (L1 chạy trong gate --fast)"
 }
 
 do_gate_fast() {
     do_check || return 1
     run_step "L0 test" "$CARGO" test --manifest-path "$MANIFEST" --workspace || return 1
     echo "--- L1 (sim 1.000 seed)"
+    local t0 t1
+    PYTHON="$(find_python || true)"
+    t0=$("$PYTHON" -c 'import time;print(int(time.time()*1000))')
     if out=$("$CARGO" test --manifest-path "$MANIFEST" -p vifast-sim l1_ -- --nocapture 2>&1); then
         echo "$out" | grep -E "^# L1 OK" || true
-        echo "--- L1: OK"
+        t1=$("$PYTHON" -c 'import time;print(int(time.time()*1000))')
+        echo "--- L1: OK ($((t1 - t0)) ms, đo bởi cổng)"
     else
+        echo "$out" >&2
         echo "--- L1: FAIL" >&2
-        fails=$((fails + 1))
+        return 1
     fi
-    echo "v2 gate --fast: PASS (L1 sim 1.000 seed; gen-check bật từ KT-05)"
+    echo "v2 gate --fast: PASS (L1 sim 1.000 seed; gen-check CHƯA có — KT-05)"
 }
 
 cmd="${1:-}"
@@ -267,7 +272,7 @@ case "$cmd" in
         fi
         ;;
     nightly)
-        echo "v2: nightly CHƯA CÓ (cần sim KT-08 + mutation/Miri/soak)" >&2
+        echo "v2: nightly CHƯA CÓ (cần mutation/Miri/soak; L1 1.000 seed đã có trong gate --fast)" >&2
         exit 2
         ;;
     rules)

@@ -161,7 +161,6 @@ pub fn trace_hash(lines: &[String]) -> u64 {
 #[derive(Debug, Clone)]
 pub struct Harness {
     seed: u64,
-    rng: Lcg,
     pub store: Store,
     pub ready: VecDeque<u32>,
     pub tasks: Vec<Task>,
@@ -181,22 +180,25 @@ impl Harness {
             i -= 1;
             ids.swap(i, j);
         }
-        let tasks_vec: Vec<Task> = ids
-            .iter()
-            .map(|id| Task {
+        // Quỹ đạo store phải phụ thuộc seed: mỗi task nhận bytes/align/period suy từ seed.
+        let mut tasks_vec: Vec<Task> = Vec::with_capacity(ids.len());
+        for id in &ids {
+            let bytes = 32usize << rng.below(3); // 32 / 64 / 128
+            let align = 16usize << rng.below(2); // 16 / 32
+            let period = 1 + rng.below(4) as u32; // 1..=4
+            tasks_vec.push(Task {
                 id: *id,
                 prog: Prog::Alloc {
-                    bytes: 64,
-                    align: 16,
-                    period: 3,
+                    bytes,
+                    align,
+                    period,
                 },
                 runs: 0,
                 tick: 0,
-            })
-            .collect();
+            });
+        }
         Self {
             seed,
-            rng,
             store: Store::new(cap),
             ready: ids.into_iter().collect(),
             tasks: tasks_vec,
@@ -249,14 +251,12 @@ impl Harness {
         } else {
             0
         };
-        // Nhiễu theo seed: thêm nhịp timer để trace phụ thuộc seed ngay cả khi 1 task.
-        let noise = self.rng.below(0x1000);
         self.events.push(Event {
             step: self.step,
             kind: "run",
             task: Some(id),
             used: self.store.used(),
-            value: value ^ noise,
+            value,
         });
     }
 
@@ -264,6 +264,29 @@ impl Harness {
         self.events.iter().map(Event::render).collect()
     }
 
+    /// Dòng đầu của bản dump: cấu hình tái lập được (review #11 — hash phải quy được về cấu hình).
+    pub fn header(&self, steps: u64) -> String {
+        format!(
+            "# scn seed={} steps={} tasks={} cap={}",
+            self.seed,
+            steps,
+            self.tasks.len(),
+            self.store.cap()
+        )
+    }
+
+    /// Trace đầy đủ kèm header — dùng cho golden và cho CLI.
+    pub fn dump(&self, steps: u64) -> Vec<String> {
+        let mut out = vec![self.header(steps)];
+        out.extend(self.trace_lines());
+        out
+    }
+
+    pub fn dump_hash(&self, steps: u64) -> u64 {
+        trace_hash(&self.dump(steps))
+    }
+
+    #[allow(dead_code)] // dùng trong unit test và công cụ cũ; dump_hash mới là hash có header
     pub fn hash(&self) -> u64 {
         trace_hash(&self.trace_lines())
     }
