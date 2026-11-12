@@ -2,7 +2,8 @@
 //! `vis fmt` — giao diện CLI của ST-07 (đỏ trước, D2-05).
 //!
 //! Chốt: `vis fmt <một-tệp>` ⇒ stdout, exit 0; `--write` ⇒ ghi tại chỗ + `đã sửa|giữ nguyên`;
-//! `--check` ⇒ exit 0/1 (in đường dẫn cần sửa)/2 (tệp lỗi cú pháp); `.vish` ⇒ `Bail out!` + 2.
+//! `--check` ⇒ exit 0/1 (in đường dẫn cần sửa)/2 (tệp lỗi cú pháp); `.vish` ⇒ `Bail out!` + 2
+//! (ST-06 đã có CmdCST nhưng **chưa có đặc tả định dạng** chế độ lệnh — vẫn từ chối).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -177,7 +178,7 @@ fn vish_bail_out_exit_2() {
     assert_eq!(o.status.code(), Some(2));
     let out = stdout(&o);
     assert!(
-        out.contains("Bail out! chế độ lệnh (.vish) thuộc ST-06 — chưa hỗ trợ"),
+        out.contains("Bail out! định dạng chế độ lệnh (.vish) chưa có đặc tả — chưa hỗ trợ"),
         "thiếu `Bail out!`: {out}"
     );
     assert!(

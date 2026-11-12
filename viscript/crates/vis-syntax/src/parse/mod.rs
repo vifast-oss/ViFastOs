@@ -15,6 +15,7 @@
 //! Chế độ lệnh (`Mode::Command`) là ST-06: vòng này parser trả `Program` chứa nguyên token
 //! (lossless) và **không** phát chẩn đoán cú pháp.
 
+pub mod cmd;
 pub mod expr;
 
 use crate::cst::{Cst, Elem, Node, NodeKind};
@@ -39,12 +40,25 @@ pub fn parse(src: &str, mode: Mode) -> ParseOutput {
         diagnostics,
     } = lex::lex(src, mode);
     let mut diags = diagnostics;
+    let mut cmd_sexp = None;
     let root = if mode == Mode::Command {
-        // ST-06: chưa parse chế độ lệnh — giữ nguyên token để CST vẫn lossless.
-        let mut p = Parser::new(&tokens);
-        p.raw_program()
+        let mut p = Parser::new(&tokens, &text);
+        match p.cmd_file() {
+            Ok((n, s)) => {
+                cmd_sexp = Some(s);
+                n
+            }
+            Err(d) => {
+                // Lỗi **tầng**: đã có chẩn đoán từ vựng thì không thêm lỗi cú pháp (mỗi tệp đúng
+                // **1** lỗi đầu, VD-35) — chế độ lệnh giữ quy tắc này cho golden ST-06.
+                if diags.is_empty() {
+                    diags.push(d.0);
+                }
+                p.raw_program_from_current()
+            }
+        }
     } else {
-        let mut p = Parser::new(&tokens);
+        let mut p = Parser::new(&tokens, &text);
         match p.file() {
             Ok(n) => n,
             Err(d) => {
@@ -54,6 +68,9 @@ pub fn parse(src: &str, mode: Mode) -> ParseOutput {
         }
     };
     let mut cst = Cst::new(root, tokens);
+    if let Some(s) = cmd_sexp {
+        cst.set_cmd_sexp(s);
+    }
     cst.attach_comments();
     ParseOutput {
         text,
@@ -66,6 +83,8 @@ pub fn parse(src: &str, mode: Mode) -> ParseOutput {
 /// CST bằng [`Cst::attach_comments`]).
 pub struct Parser<'a> {
     toks: &'a [Token],
+    /// Văn bản nguồn đã NFC — cần cho chế độ lệnh (cắt biểu thức trong `( … )`, thân closure).
+    text: &'a str,
     /// Chỉ số token **không phải chú thích** (kể cả `EOF` ở cuối).
     sig: Vec<u32>,
     pos: usize,
@@ -77,14 +96,19 @@ pub struct PErr(pub Diagnostic);
 type PResult<T> = Result<T, PErr>;
 
 impl<'a> Parser<'a> {
-    fn new(toks: &'a [Token]) -> Self {
+    fn new(toks: &'a [Token], text: &'a str) -> Self {
         let sig = toks
             .iter()
             .enumerate()
             .filter(|(_, t)| !matches!(t.kind, Kind::Comment | Kind::DocComment))
             .map(|(i, _)| i as u32)
             .collect();
-        Self { toks, sig, pos: 0 }
+        Self {
+            toks,
+            text,
+            sig,
+            pos: 0,
+        }
     }
 
     // ----- truy cập token -----

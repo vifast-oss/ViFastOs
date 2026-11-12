@@ -5,7 +5,8 @@
 //!
 //! Giao diện chốt (để ST-09 dùng lại): `vis check <tệp…>` in TAP 13; mỗi tệp `ok`/`not ok`; dưới
 //! `not ok` **đúng một** dòng `# VSxxxx <dòng>:<cột> <thông điệp>` (lọc tầng theo VD-38 mục 8);
-//! thoát 0 sạch / 1 có tệp hỏng / 2 dùng sai; `.vish` ⇒ `Bail out!` + thoát 2.
+//! thoát 0 sạch / 1 có tệp hỏng / 2 dùng sai. `.vish` (chế độ lệnh) từ **ST-06** được kiểm bình
+//! thường bằng CmdCST — không còn `Bail out!`.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -158,22 +159,75 @@ fn thu_tu_tep_dung_theo_tham_so_truyen_vao() {
 }
 
 #[test]
-fn vish_bail_out_va_thoat_2() {
-    let o = run_strs(&[&fx("cmd_mode.vish")]);
-    assert_eq!(o.status.code(), Some(2), "chế độ lệnh chưa hỗ trợ ⇒ exit 2");
+fn vish_duoc_kiem_bang_cmdcst() {
+    // ST-06: `.vish` kiểm bằng `Mode::Command` — ca **chỉ đúng ở chế độ lệnh** (`^git`, pipeline,
+    // `let` có kiểu) phải `ok`, tệp lỗi phải `not ok` + đúng 1 chẩn đoán.
+    let ok = fx("cmd_ok.vish");
+    let o = run_strs(&[&ok]);
+    assert_eq!(o.status.code(), Some(0), "tệp .vish hợp lệ ⇒ exit 0");
     let out = stdout(&o);
-    assert!(out.contains("TAP version 13"), "vẫn là TAP: {out}");
+    assert_eq!(out.lines().nth(1), Some("1..1"));
     assert!(
-        out.contains("Bail out! chế độ lệnh (.vish) thuộc ST-06 — chưa hỗ trợ"),
-        "thiếu dòng Bail out! đúng câu chữ: {out}"
+        out.contains(&format!("ok 1 - {ok}")),
+        "phải `ok` thật (CmdCST): {out}"
     );
-    // TAP bail-out: **không** có plan `1..N`, không có dòng `ok`, stderr rỗng.
-    assert!(
-        !out.lines().any(|l| l.starts_with("1..")),
-        "không được in plan khi bail out: {out}"
+    assert!(!out.contains("Bail out!"), "không còn bail out: {out}");
+
+    let bad = fx("cmd_bad.vish");
+    let o = run_strs(&[&bad]);
+    assert_eq!(o.status.code(), Some(1), "tệp .vish lỗi ⇒ exit 1");
+    let ls = lines(&o);
+    assert!(ls[2].starts_with("not ok 1 - "), "{ls:?}");
+    assert_chan_doan(&ls[3]);
+    assert_eq!(
+        ls.iter().filter(|l| l.starts_with("# VS")).count(),
+        1,
+        "đúng 1 chẩn đoán: {ls:?}"
     );
-    assert!(!out.contains("ok "), "không được giả vờ `ok`: {out}");
-    assert_eq!(stderr(&o), "", "bail out không ghi stderr");
+}
+
+#[test]
+fn hai_khoi_vish_session_qua_cli_deu_ok() {
+    // DoD ST-06: 2 khối ```vish-session của tài liệu (trích tự động) phải `vis check` xanh.
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../docs/viscript/ViScript-thiet-ke.md");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("đọc {}: {e}", path.display()));
+    let mut bodies = Vec::new();
+    let mut it = text.lines();
+    while let Some(line) = it.next() {
+        if line.trim_end() == "```vish-session" {
+            let mut body = String::new();
+            for l in it.by_ref() {
+                if l.trim_end() == "```" {
+                    break;
+                }
+                body.push_str(l);
+                body.push('\n');
+            }
+            bodies.push(body);
+        }
+    }
+    assert_eq!(bodies.len(), 2, "tài liệu phải có 2 khối vish-session");
+    let dir = std::env::temp_dir().join(format!("vis-check-vish-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("thư mục tạm");
+    let mut files = Vec::new();
+    for (i, b) in bodies.iter().enumerate() {
+        let p = dir.join(format!("s{i}.vish"));
+        std::fs::write(&p, b).expect("ghi khối");
+        files.push(p.to_string_lossy().into_owned());
+    }
+    let o = run(&files);
+    let out = stdout(&o);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "2 khối vish-session phải sạch: {out}"
+    );
+    assert_eq!(lines(&o)[1], "1..2");
+    assert_eq!(out.matches("ok ").count(), 2, "{out}");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

@@ -62,7 +62,13 @@ fn chon_chan_doan(out: &vis_syntax::ParseOutput) -> Option<&vis_syntax::Diagnost
 /// `Err(không đọc được: …)`. Chỉ trả **một** chẩn đoán (lọc tầng như [`chon_chan_doan`]).
 fn check_one(path: &str) -> Result<(), String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("không đọc được: {e}"))?;
-    let out = parse(&src, Mode::Script);
+    // `.vish` = chế độ lệnh (ST-06, CmdCST); còn lại là script.
+    let mode = if path.ends_with(".vish") {
+        Mode::Command
+    } else {
+        Mode::Script
+    };
+    let out = parse(&src, mode);
     match chon_chan_doan(&out) {
         None => Ok(()),
         Some(d) => Err(dong_chan_doan(d.code_str(), d.line, d.col, &d.message)),
@@ -104,8 +110,9 @@ fn run_fmt(args: &[String]) -> ExitCode {
     }
     let mut ra = String::new();
     if files.iter().any(|f| f.ends_with(".vish")) {
-        // Chế độ lệnh là ST-06 — không im lặng bỏ qua, không coi như đã sửa.
-        ra.push_str("Bail out! chế độ lệnh (.vish) thuộc ST-06 — chưa hỗ trợ\n");
+        // `vis fmt` **chưa có đặc tả** định dạng chế độ lệnh (ST-06 đã có CmdCST, nhưng định dạng
+        // `.vish` chưa nằm trong phạm vi) — không im lặng bỏ qua, không coi như đã sửa.
+        ra.push_str("Bail out! định dạng chế độ lệnh (.vish) chưa có đặc tả — chưa hỗ trợ\n");
         if !xuat_stdout(&ra) {
             return ExitCode::from(2);
         }
@@ -172,15 +179,6 @@ fn run_check(args: &[String]) -> ExitCode {
         return usage_check();
     }
     let mut tap = String::new();
-    if args.iter().any(|a| a.ends_with(".vish")) {
-        // Chế độ lệnh là ST-06: **không** im lặng bỏ qua, không giả vờ `ok`.
-        tap.push_str("TAP version 13\n");
-        tap.push_str("Bail out! chế độ lệnh (.vish) thuộc ST-06 — chưa hỗ trợ\n");
-        if !xuat_stdout(&tap) {
-            return ExitCode::from(2);
-        }
-        return ExitCode::from(2);
-    }
     tap.push_str("TAP version 13\n");
     tap.push_str(&format!("1..{}\n", args.len()));
     let mut failed = false;

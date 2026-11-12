@@ -67,6 +67,20 @@ pub enum NodeKind {
     MatchStmt,
     MatchArm,
     ExprStmt,
+    // Chế độ lệnh (A.7) — CmdCST chưa định kiểu (ST-06)
+    CmdShell,
+    CmdItems,
+    CmdBg,
+    CmdPipe,
+    CmdStage,
+    CmdGroup,
+    CmdWord,
+    CmdFlag,
+    CmdStr,
+    CmdVar,
+    CmdEnv,
+    CmdClosure,
+    CmdLet,
     // Kiểu (A.5) và pattern (A.4)
     Type,
     Pattern,
@@ -178,6 +192,19 @@ impl NodeKind {
             NodeKind::RefExpr => "ref",
             NodeKind::AwaitExpr => "await",
             NodeKind::CmdBlock => "cmd_block",
+            NodeKind::CmdShell => "shell",
+            NodeKind::CmdItems => "items",
+            NodeKind::CmdBg => "bg",
+            NodeKind::CmdPipe => "pipe",
+            NodeKind::CmdStage => "stage",
+            NodeKind::CmdGroup => "group",
+            NodeKind::CmdWord => "word",
+            NodeKind::CmdFlag => "flag",
+            NodeKind::CmdStr => "str",
+            NodeKind::CmdVar => "var",
+            NodeKind::CmdEnv => "env",
+            NodeKind::CmdClosure => "closure",
+            NodeKind::CmdLet => "let_cmd",
         }
     }
 }
@@ -260,11 +287,24 @@ impl Node {
 pub struct Cst {
     pub root: Node,
     pub tokens: Vec<Token>,
+    /// Sexp của **CmdCST** (`Mode::Command`) — `None` với chế độ script. ST-06 pha B dựng trong
+    /// lúc parse (kèm `root` là cây node) để `vis check`/golden đối chiếu; quy ước ở đầu
+    /// `viscript/test/cmd/golden.cmd`.
+    pub cmd_sexp: Option<String>,
 }
 
 impl Cst {
     pub fn new(root: Node, tokens: Vec<Token>) -> Self {
-        Self { root, tokens }
+        Self {
+            root,
+            tokens,
+            cmd_sexp: None,
+        }
+    }
+
+    /// Gắn sexp CmdCST do parser dựng (ST-06).
+    pub fn set_cmd_sexp(&mut self, sexp: String) {
+        self.cmd_sexp = Some(sexp);
     }
 
     /// Gắn **chú thích** (`COMMENT`/`DOC_COMMENT`) vào node sâu nhất chứa nó.
@@ -334,6 +374,16 @@ impl Cst {
             out.push_str(&text[last..]);
         }
         out
+    }
+
+    /// Sexp của **CmdCST** (chế độ lệnh) — quy ước ở đầu `viscript/test/cmd/golden.cmd` (ST-06).
+    ///
+    /// **Pha A chưa hiện thực** (D2-05): trả chuỗi đánh dấu để harness `tests/cmd.rs` đỏ; pha B
+    /// mới dựng CmdCST từ `parse(Mode::Command)`.
+    pub fn sexp_cmd(&self) -> String {
+        self.cmd_sexp
+            .clone()
+            .unwrap_or_else(|| "# không phải CmdCST (Mode::Script)".to_string())
     }
 
     /// Sexp của **biểu thức gốc** (chương trình chỉ có đúng một `ExprStmt`) — định dạng quy ước

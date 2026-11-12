@@ -1,0 +1,359 @@
+=== ST-06 PHA B D2-05: CmdCST + .vish ĐỎ TRƯỚC khi hiện thực (harness/fixture cuối, sau review vòng 1) ===
+thời điểm chụp: 2026-11-12T18:08:42Z
+cách chụp: cmd_file() trả lỗi "chưa hiện thực CmdCST"; Cst::sexp_cmd() không được gắn nên trả chuỗi mặc định;
+           vis check đã chọn Mode::Command cho .vish nhưng chưa có CmdCST.
+sha256 golden:  test/cmd/golden.cmd=7cff89edb101e064ec964f0b9b4a378d6cce2777a4ed707cc1313a995ad34fc9
+sha256 harness: crates/vis-syntax/tests/cmd.rs=ca11a51aa24c6c58a9dd85eda6ff869da245de3983a58726a6ee558649179587
+sha256 harness: crates/vis-syntax/tests/doc_cmd.rs=b8f416af03788346fe3e2eeb011f0a949b3d24d4e5a932ce14086178157375c5
+sha256 harness: crates/vis-cli/tests/check.rs=8ba81608bc53ad89399d594c8a9c0edd467b49a9c3771ed05689f70bb2a447c5
+   Compiling vis-syntax v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-syntax)
+warning: unreachable statement
+  --> crates/vis-syntax/src/parse/cmd.rs:43:9
+   |
+42 |         return Err(self.err_here("# ST-06 pha B chưa hiện thực CmdCST"));
+   |         ---------------------------------------------------------------- any code following this expression is unreachable
+43 |         let mut elems = Vec::new();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-syntax` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.37s
+     Running tests/cmd.rs (target/debug/deps/cmd-ea20546b4031f4fa)
+
+running 35 tests
+test ca10 ... FAILED
+test ca04 ... FAILED
+test ca09 ... FAILED
+test ca05 ... FAILED
+test ca12 ... FAILED
+test ca07 ... FAILED
+test ca06 ... FAILED
+test ca01 ... FAILED
+test ca08 ... FAILED
+test ca03 ... FAILED
+test ca02 ... FAILED
+test ca11 ... FAILED
+test ca13 ... FAILED
+test ca14 ... FAILED
+test ca15 ... FAILED
+test ca16 ... FAILED
+test ca17 ... FAILED
+test ca18 ... FAILED
+test ca19 ... FAILED
+test ca20 ... FAILED
+test ca21 ... FAILED
+test ca22 ... ok
+test ca23 ... FAILED
+test ca24 ... FAILED
+test ca25 ... FAILED
+test ca26 ... FAILED
+test ca27 ... FAILED
+test ca29 ... FAILED
+test ca28 ... FAILED
+test ca30 ... FAILED
+test ca31 ... FAILED
+test ca32 ... FAILED
+test ca33 ... FAILED
+test dung_22_ca_va_12_hang_bang_9_4 ... ok
+test lossless_moi_ca ... ok
+
+failures:
+
+---- ca10 stdout ----
+
+thread 'ca10' (36956174) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls; pwd &": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca04 stdout ----
+
+thread 'ca04' (36956168) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls # ghi chú": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca09 stdout ----
+
+thread 'ca09' (36956173) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls [ab] | (1 + 2)": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca05 stdout ----
+
+thread 'ca05' (36956169) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | (a % 2)": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca12 stdout ----
+
+thread 'ca12' (36956176) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | save out.txt": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca07 stdout ----
+
+thread 'ca07' (36956171) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls -l -- x": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ca06 stdout ----
+
+thread 'ca06' (36956170) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls *.txt **/*.md": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca01 stdout ----
+
+thread 'ca01' (36956165) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | grep foo": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca08 stdout ----
+
+thread 'ca08' (36956172) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"echo $x $env.HOME": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 4 }, line: 1, col: 1 }]
+
+---- ca03 stdout ----
+
+thread 'ca03' (36956167) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | (a > b)": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca02 stdout ----
+
+thread 'ca02' (36956166) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"ls |> grep foo": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }
+
+---- ca11 stdout ----
+
+thread 'ca11' (36956175) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"^git status": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 1 }, line: 1, col: 1 }]
+
+---- ca13 stdout ----
+
+thread 'ca13' (36956177) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"echo hi > out.txt": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 4 }, line: 1, col: 1 }]
+
+---- ca14 stdout ----
+
+thread 'ca14' (36956178) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"curl https://x#y": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 4 }, line: 1, col: 1 }]
+
+---- ca15 stdout ----
+
+thread 'ca15' (36956179) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls 2*3": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca16 stdout ----
+
+thread 'ca16' (36956180) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls -5": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca17 stdout ----
+
+thread 'ca17' (36956181) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls [ab]": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca18 stdout ----
+
+thread 'ca18' (36956182) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"ls | (a | b)": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }
+
+---- ca19 stdout ----
+
+thread 'ca19' (36956183) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | filter x => x.size > 1": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca20 stdout ----
+
+thread 'ca20' (36956184) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"echo $env": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 4 }, line: 1, col: 1 }]
+
+---- ca21 stdout ----
+
+thread 'ca21' (36956185) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"ls & pwd": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }
+
+---- ca23 stdout ----
+
+thread 'ca23' (36956187) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"let out = ls | grep foo\npwd": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 3 }, line: 1, col: 1 }]
+
+---- ca24 stdout ----
+
+thread 'ca24' (36956188) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"let x: int = ls | grep foo": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 3 }, line: 1, col: 1 }]
+
+---- ca25 stdout ----
+
+thread 'ca25' (36956189) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"let x: int": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 3 }, line: 1, col: 1 }
+
+---- ca26 stdout ----
+
+thread 'ca26' (36956190) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls | filter x => a |> f": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca27 stdout ----
+
+thread 'ca27' (36956191) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"ls &; pwd": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }
+
+---- ca29 stdout ----
+
+thread 'ca29' (36956193) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls [ab]x": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca28 stdout ----
+
+thread 'ca28' (36956192) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls foo[ab]": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca30 stdout ----
+
+thread 'ca30' (36956194) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls [ab][cd]": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca31 stdout ----
+
+thread 'ca31' (36956195) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls --x=1": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca32 stdout ----
+
+thread 'ca32' (36956196) panicked at crates/vis-syntax/tests/cmd.rs:107:9:
+"ls -l=x": ca hợp lệ không được có chẩn đoán: [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+
+---- ca33 stdout ----
+
+thread 'ca33' (36956197) panicked at crates/vis-syntax/tests/cmd.rs:94:9:
+"ls | (a) b": lỗi không được ở token đầu: Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }
+
+
+failures:
+    ca01
+    ca02
+    ca03
+    ca04
+    ca05
+    ca06
+    ca07
+    ca08
+    ca09
+    ca10
+    ca11
+    ca12
+    ca13
+    ca14
+    ca15
+    ca16
+    ca17
+    ca18
+    ca19
+    ca20
+    ca21
+    ca23
+    ca24
+    ca25
+    ca26
+    ca27
+    ca28
+    ca29
+    ca30
+    ca31
+    ca32
+    ca33
+
+test result: FAILED. 3 passed; 32 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-syntax --test cmd`
+exit_cmd=101
+warning: unreachable statement
+  --> crates/vis-syntax/src/parse/cmd.rs:43:9
+   |
+42 |         return Err(self.err_here("# ST-06 pha B chưa hiện thực CmdCST"));
+   |         ---------------------------------------------------------------- any code following this expression is unreachable
+43 |         let mut elems = Vec::new();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-syntax` (lib) generated 1 warning
+   Compiling vis-syntax v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-syntax)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.64s
+     Running tests/doc_cmd.rs (target/debug/deps/doc_cmd-a79368216af8bcfd)
+
+running 1 test
+test hai_khoi_vish_session_parse_sach_va_lossless ... FAILED
+
+failures:
+
+---- hai_khoi_vish_session_parse_sach_va_lossless stdout ----
+
+thread 'hai_khoi_vish_session_parse_sach_va_lossless' (36956297) panicked at crates/vis-syntax/tests/doc_cmd.rs:39:9:
+khối vish-session @672 phải 0 lỗi, thật [Diagnostic { code: Code { id: 201, short: "VS0201", message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế", severity: Error }, message: "# ST-06 pha B chưa hiện thực CmdCST", span: Span { start: 0, end: 2 }, line: 1, col: 1 }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    hai_khoi_vish_session_parse_sach_va_lossless
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-syntax --test doc_cmd`
+exit_doc=101
+warning: unreachable statement
+  --> crates/vis-syntax/src/parse/cmd.rs:43:9
+   |
+42 |         return Err(self.err_here("# ST-06 pha B chưa hiện thực CmdCST"));
+   |         ---------------------------------------------------------------- any code following this expression is unreachable
+43 |         let mut elems = Vec::new();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-syntax` (lib) generated 1 warning
+   Compiling vis-fmt v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-fmt)
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.25s
+     Running tests/check.rs (target/debug/deps/check-59d62ba1ff793871)
+
+running 13 tests
+test co_la_la_dung_sai_thoat_2 ... ok
+test thieu_tham_so_la_dung_sai_thoat_2 ... ok
+test khong_doc_duoc_tep_la_not_ok ... ok
+test not_ok_co_dung_mot_dong_chan_doan_moi_tep ... ok
+test tap_sach_cau_truc_va_exit_0 ... ok
+test hai_khoi_vish_session_qua_cli_deu_ok ... FAILED
+test duong_dan_tuong_doi_in_nguyen_van ... ok
+test thu_tu_tep_dung_theo_tham_so_truyen_vao ... ok
+test mixed_lex_va_syntax_phai_bao_vs0101 ... ok
+test khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan ... ok
+test fixture_tai_lieu_15_khoi_deu_ok ... ok
+test vish_duoc_kiem_bang_cmdcst ... FAILED
+test thu_muc_tep_rong_va_non_utf8 ... ok
+
+failures:
+
+---- hai_khoi_vish_session_qua_cli_deu_ok stdout ----
+
+thread 'hai_khoi_vish_session_qua_cli_deu_ok' (36956561) panicked at crates/vis-cli/tests/check.rs:223:5:
+assertion `left == right` failed: 2 khối vish-session phải sạch: TAP version 13
+1..2
+not ok 1 - /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-check-vish-24233/s0.vish
+# VS0201 1:1 # ST-06 pha B chưa hiện thực CmdCST
+not ok 2 - /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-check-vish-24233/s1.vish
+# VS0201 1:1 # ST-06 pha B chưa hiện thực CmdCST
+
+  left: Some(1)
+ right: Some(0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- vish_duoc_kiem_bang_cmdcst stdout ----
+
+thread 'vish_duoc_kiem_bang_cmdcst' (36956591) panicked at crates/vis-cli/tests/check.rs:167:5:
+assertion `left == right` failed: tệp .vish hợp lệ ⇒ exit 0
+  left: Some(1)
+ right: Some(0)
+
+
+failures:
+    hai_khoi_vish_session_qua_cli_deu_ok
+    vish_duoc_kiem_bang_cmdcst
+
+test result: FAILED. 11 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+error: test failed, to rerun pass `-p vis-cli --test check`
+exit_check=101
