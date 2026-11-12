@@ -231,6 +231,13 @@ do_check() {
         # KT-04b: object reserved — nay nằm trong spec/abi.toml (D2-32)
         if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; then
             echo "--- abi reserved: OK"
+        echo "--- fixture âm của máy kiểm ABI"
+        if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/abi/run_fixtures.sh); then
+            echo "--- abi fixtures: OK"
+        else
+            echo "--- abi fixtures: FAIL" >&2
+            fails=$((fails + 1))
+        fi
         else
             echo "--- abi reserved: FAIL" >&2
             fails=$((fails + 1))

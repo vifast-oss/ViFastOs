@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")/../../.." || exit 1
 PY="${PYTHON:-python3}"
-echo "1..5"
+echo "1..6"
 n=0; bad=0
 run() {
     n=$((n + 1))
@@ -21,5 +21,6 @@ run bad-commit "commit"
 run bad-status "≠ QUEUE"
 run missing-task "thiếu task"
 run bad-yc "YC-99"
+run missing-blocked "không xuất hiện trong blocked"
 if [ "$bad" -ne 0 ]; then echo "# fixtures: FAIL ($bad)"; exit 1; fi
 echo "# fixtures: PASS"

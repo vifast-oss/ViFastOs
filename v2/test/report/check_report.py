@@ -185,8 +185,8 @@ def check_report(path: Path, round_no: int, queue: dict[str, str]) -> None:
     ids = {b.get("id") for b in blocked}
     for tid, st in queue.items():
         if st in {"BLOCKED", "REVIEW"}:
-            check(tid in ids or seen.get(tid) in {"BLOCKED", "REVIEW"},
-                  f"{tag}: {tid} ({st}) không xuất hiện trong blocked[]")
+            # Review #13: KHÔNG được miễn trừ vì task đã mang status BLOCKED/REVIEW trong tasks[].
+            check(tid in ids, f"{tag}: {tid} ({st}) không xuất hiện trong blocked[]")
 
 
 def rounds() -> list[int]:

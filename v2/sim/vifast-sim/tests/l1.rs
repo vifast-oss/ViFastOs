@@ -26,7 +26,11 @@ fn l1_1000_seed_tat_dinh() {
         hashes.insert(a.hash());
     }
     // 1.000 seed phải cho rất nhiều trace khác nhau (không suy biến về một trace).
-    assert!(hashes.len() > 900, "trace quá trùng: {}", hashes.len());
+    assert!(
+        hashes.len() >= 990,
+        "trace quá trùng: {} (kỳ vọng >= 990/1000)",
+        hashes.len()
+    );
     println!("# L1 OK: 1000 seed, {} trace khác nhau", hashes.len());
 }
 
