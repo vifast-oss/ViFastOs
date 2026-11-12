@@ -17,12 +17,12 @@ Bản máy đọc: [`R1-viscript.json`](R1-viscript.json) — 11 khoá Khối E,
 | ID | Trạng thái | Commit | Cổng | Ghi chú |
 |---|---|---|---|---|
 | ST-01 | DONE | `cbf512e`, `f6222a5` | fast | workspace + `vis-dev` R1..R4 + 5 case âm |
-| ST-02a | DONE | — (Agent 1 soạn) | — | APPROVED ghi trong ô bảng, **chưa đúng mẫu dòng riêng** (YC-14) |
+| ST-02a | DONE | — | — | APPROVED ghi trong ô bảng, **chưa đúng mẫu dòng riêng** (YC-14) |
 | ST-02b | DONE | `a48857b`, `c666f57` | fast | sổ 10 mã + `vis explain`; sửa theo review #14 |
 | ST-03 | READY | — | — | `vis-diag` cột scalar/render/vi-en-ja |
-| ST-04 | BLOCKED (QUEUE ghi `READY`) | — | — | **chưa được mở**: SPEC-lex `REVIEW` + thiếu kind/keyword |
+| ST-04 | READY | — | — | **chưa được mở**: SPEC-lex `REVIEW` + thiếu kind/keyword |
 | ST-05..ST-09 | BLOCKED | — | — | chuỗi phụ thuộc ST-04 |
-| ST-10 | DONE | `bc1dcf5` | fast | báo cáo này |
+| ST-10 | DONE | — | fast | báo cáo này |
 
 ## 3. Lỗi tìm thấy
 
@@ -55,8 +55,8 @@ Bản máy đọc: [`R1-viscript.json`](R1-viscript.json) — 11 khoá Khối E,
 | Câu hỏi | Nội dung | Cần gì |
 |---|---|---|
 | **YC-14** | ST-02a APPROVED (dòng riêng); VD-27 chốt `04xx` kiểu, ST-02b chỉ sửa bảng mã; ST-02b/ST-10 DONE, ST-03/ST-04 READY; `3d5539a` do người điều phối | **Đã chốt** |
-| **ST-03** | `vis-diag`: cột theo Unicode scalar, render, bảng vi/en/ja | chờ lật READY |
-| **ST-04** | Lexer theo SPEC-lex — cần bổ sung kind đang thiếu (`COMMENT`, `DOC_COMMENT`, `RANGE`, `RANGE_EQ`, `SET_LBRACE`, `WORD`, `DOLLAR`, `CARET`) + keyword + 4 ca âm golden (`VS0101/0102/0103/0110`) | errata SPEC-lex |
+| ST-03 | READY | — | — |  |
+| ST-04 | READY | — | — |  |
 
 **Task bị chặn**: ST-05..ST-09 (chuỗi phụ thuộc). ST-03/ST-04 READY.
 

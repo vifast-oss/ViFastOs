@@ -171,6 +171,16 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
    6 task OS READY (thực tế 0); `viscript/agent/BLOCKED.md` mục 4 còn "4 task READY" (đã sửa thành 0).
 4. **`3d5539a [ST-00]`**: xác nhận ai viết commit lật sổ (nếu Agent 2 viết QUEUE thì trái AGENTS §3).
 
+
+### YC-15 — Dọn luật/đường dẫn sau KT-05 (mở 2026-11-12 sau review #16, Agent 2)
+
+1. **`AGENTS.md` §3/§4** chỉ cho KT-04a/04b/ST-02a/ST-02b ghi `spec/`, trong khi `QUEUE:132` + D2-33 đã cho KT-05 ghi
+   `[method_signature]` + `[debug_info].return_channel` ⇒ văn bản luật chưa khớp hành vi đã duyệt; đề nghị commit `[KT-00]`.
+2. **`golden` treo**: `spec/abi.toml:18` khai `test/abi/abi-v1.golden` nhưng tệp không tồn tại và gen không sinh;
+   D2-15 đòi golden — chọn: bỏ khoá, hoặc sinh golden từ spec trong KT-05b.
+3. **Đường dẫn `docs/abi.md`**: DoD (`QUEUE:107`, thiết kế) ghi `docs/abi.md`; nay gen sinh đúng đường đó (đã bỏ `docs/v2/abi.md`).
+4. **Lật sổ**: `QUEUE:107` KT-05 = DONE (commit `845df91` + sửa review #16); `QUEUE:151` còn liệt ST-02b/ST-10.
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2

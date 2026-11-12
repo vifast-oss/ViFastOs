@@ -50,7 +50,14 @@ pub const ERRORS: [(&str, u16); ERROR_COUNT] = [
     ("RangeError", 19),
 ];
 #[rustfmt::skip]
-pub const CORE_OBJECTS: [(&str, u16); 1] = [
+pub const CORE_OBJECTS: [(&str, u16); 8] = [
+    ("Untyped", 1),
+    ("CNode", 2),
+    ("Tcb", 3),
+    ("SchedContext", 4),
+    ("Endpoint", 5),
+    ("Notification", 6),
+    ("Reply", 7),
     ("SchedControl", 8),
 ];
 #[rustfmt::skip]

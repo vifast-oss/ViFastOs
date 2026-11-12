@@ -37,7 +37,8 @@ def gen_rs(doc: dict) -> str:
     if sorted(errors) != list(range(1, 20)):
         die(f"error phải 1..19, đang {sorted(errors)}")
     objects = doc.get("object", {})
-    core = sorted(((v["id"], name) for name, v in objects.items() if v.get("stability") == "core"))
+    core = sorted(((v["id"], name) for name, v in objects.items()
+                   if v.get("stability") in {"core", "frozen"}))
     reserved = sorted((v["id"], name) for name, v in objects.items() if v.get("stability") == "reserved")
     sig = doc.get("method_signature", {})
     if sig.get("stability") != "stable-draft":
@@ -50,7 +51,7 @@ def gen_rs(doc: dict) -> str:
     out.append("#![allow(clippy::all)]")
     out.append("")
     out.append("#[rustfmt::skip]")
-    out.append(f"pub const ABI_VERSION: u32 = {int(doc.get('version', 1))};")
+    out.append(f"pub const ABI_VERSION: u32 = {int(doc.get('abi_version', doc.get('version', 1)))};")
     out.append("#[rustfmt::skip]")
     out.append(f"pub const SYSCALL_COUNT: usize = {len(syscalls)};")
     out.append("#[rustfmt::skip]")
@@ -99,7 +100,7 @@ def gen_md(doc: dict) -> str:
            "# ABI v2 — tài liệu sinh tự động",
            "",
            "SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng sửa tay** (`gen-check` sẽ bắt).",
-           f"`status = {doc.get('status', '?')!r}` · `abi_version = {int(doc.get('version', 1))}`",
+           f"`status = {doc.get('status', '?')!r}` · `abi_version = {int(doc.get('abi_version', doc.get('version', 1)))}`",
            "",
            "## Syscall (0..15)", "",
            "| # | Tên | Tham số | Trả |", "|---|---|---|---|"]
@@ -127,7 +128,7 @@ def gen_md(doc: dict) -> str:
 def targets(root: Path) -> list[tuple[Path, str]]:
     return [
         (root / "v2/lib/vifast-abi/src/generated.rs", "rs"),
-        (root / "docs/v2/abi.md", "md"),
+        (root / "docs/abi.md", "md"),
     ]
 
 

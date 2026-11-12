@@ -52,6 +52,21 @@ def split_row(line: str) -> list[str]:
     return out
 
 
+def queue_at(head: str) -> dict[str, str]:
+    out = subprocess.run(["git", "show", f"{head}:viscript/agent/QUEUE.md"],
+                         cwd=ROOT, capture_output=True, text=True, check=False)
+    if out.returncode != 0:
+        return {}
+    rows = {}
+    for line in out.stdout.splitlines():
+        t = line.strip()
+        if t.startswith("| ST-") or t.startswith("| KT-"):
+            c = split_row(t)
+            if len(c) >= 6:
+                rows[c[0]] = c[4].strip("`* ")
+    return rows
+
+
 def queue_statuses() -> dict[str, str]:
     rows = {}
     for line in QUEUE.read_text().splitlines():
@@ -80,7 +95,7 @@ def check_report(path: Path, round_no: int, queue: dict[str, str]) -> None:
     except json.JSONDecodeError as exc:
         fails.append(f"{tag}: JSON hỏng ({exc})")
         return
-    check(set(data) >= KEYS, f"{tag}: thiếu khoá {sorted(KEYS - set(data))}")
+    check(set(data) == KEYS, f"{tag}: phải ĐÚNG 11 khoá (D2-39), thừa/thiếu: {sorted(set(data) ^ KEYS)}")
     check(data.get("project") == "viscript", f"{tag}: project phải 'viscript'")
     check(data.get("round") == round_no, f"{tag}: round phải {round_no}")
 
@@ -174,7 +189,8 @@ def main() -> int:
     for path, n in targets:
         if not json_only:
             check_md(path.with_suffix(".md"))
-        check_report(path, n, queue)
+        head = json.loads(path.read_text()).get("head", "")
+        check_report(path, n, queue_at(head) or queue)
     if fails:
         for f in fails:
             print("not ok -", f)

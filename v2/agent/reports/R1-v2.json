@@ -1,7 +1,7 @@
 {
   "project": "v2",
   "round": 1,
-  "head": "bcc84bb",
+  "head": "96271d0",
   "build_id": "—",
   "tasks": [
     {
@@ -94,10 +94,11 @@
     },
     {
       "id": "KT-05",
-      "status": "READY",
+      "status": "DONE",
       "commits": [],
       "gates": [],
-      "note": "APPROVED mở; bước 0 chép draft chữ ký + D2-35"
+      "note": "APPROVED mở; bước 0 chép draft chữ ký + D2-35",
+      "queue": "READY"
     },
     {
       "id": "KT-T26",

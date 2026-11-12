@@ -79,6 +79,22 @@ def split_row(line: str) -> list[str]:
     return out
 
 
+def queue_at(head: str) -> dict[str, str]:
+    """Đọc QUEUE tại chính `head` của báo cáo (review #15/#16: không so working tree)."""
+    out = subprocess.run(["git", "show", f"{head}:v2/agent/QUEUE.md"],
+                         cwd=ROOT, capture_output=True, text=True, check=False)
+    if out.returncode != 0:
+        return {}
+    rows = {}
+    for line in out.stdout.splitlines():
+        t = line.strip()
+        if t.startswith("| KT-") or t.startswith("| ST-"):
+            cells = split_row(t)
+            if len(cells) >= 6:
+                rows[cells[0]] = cells[4].strip("`* ")
+    return rows
+
+
 def queue_statuses() -> dict[str, str]:
     rows: dict[str, str] = {}
     for line in QUEUE.read_text().splitlines():
@@ -112,7 +128,7 @@ def check_report(path: Path, round_no: int, queue: dict[str, str]) -> None:
         fails.append(f"{tag}: JSON hỏng ({exc})")
         return
 
-    check(set(data) >= KEYS, f"{tag}: thiếu khoá {sorted(KEYS - set(data))}")
+    check(set(data) == KEYS, f"{tag}: phải ĐÚNG 11 khoá (D2-39), thừa/thiếu: {sorted(set(data) ^ KEYS)}")
     check(data.get("project") == "v2", f"{tag}: project phải 'v2'")
     check(data.get("round") == round_no, f"{tag}: round phải {round_no}")
 
@@ -153,10 +169,12 @@ def check_report(path: Path, round_no: int, queue: dict[str, str]) -> None:
         tid = t.get("id")
         check(tid in queue, f"{tag}: task {tid!r} không có trong QUEUE")
         if tid in queue:
-            check(
-                t.get("status") == queue[tid],
-                f"{tag}: {tid} status {t.get('status')!r} ≠ QUEUE {queue[tid]!r}",
-            )
+            if t.get("status") != queue[tid]:
+                # Sổ chưa lật: được lệch CHỈ KHI ghi đúng giá trị QUEUE vào trường `queue` (D2-37: sổ do Agent 0).
+                check(
+                    t.get("queue") == queue[tid],
+                    f"{tag}: {tid} status {t.get('status')!r} ≠ QUEUE {queue[tid]!r} (thiếu/sai trường 'queue')",
+                )
         check(t.get("status") in STATUSES, f"{tag}: {tid} status ngoài 4 trạng thái")
         commits = t.get("commits")
         check(isinstance(commits, list), f"{tag}: {tid}.commits phải mảng")
@@ -189,6 +207,22 @@ def check_report(path: Path, round_no: int, queue: dict[str, str]) -> None:
             check(tid in ids, f"{tag}: {tid} ({st}) không xuất hiện trong blocked[]")
 
 
+def check_md_rows(path: Path, queue: dict[str, str]) -> None:
+    """MD phải có hàng cho mọi task và trạng thái khớp JSON (review #15: MD↔JSON)."""
+    md = path.with_suffix(".md")
+    if not md.is_file():
+        return
+    data = json.loads(path.read_text())
+    status = {t.get("id"): t.get("status") for t in data.get("tasks") or []}
+    for line in md.read_text().splitlines():
+        cells = split_row(line)
+        if len(cells) >= 2 and str(cells[0]).startswith(("KT-", "ST-")):
+            tid = cells[0].strip("`* ")
+            got = cells[1].strip("`* ").split()[0] if cells[1].strip("`* ") else ""
+            if tid in status and got in STATUSES and got != status[tid]:
+                fails.append(f"{md.name}: hàng {tid} ghi {got!r} ≠ JSON {status[tid]!r}")
+
+
 def rounds() -> list[int]:
     found = []
     for p in REPORTS.glob("R*-v2.json"):
@@ -219,7 +253,11 @@ def main() -> int:
     for path, n in targets:
         if not json_only:
             check_md(path.with_suffix(".md"))
-        check_report(path, n, queue)
+        head = json.loads(path.read_text()).get("head", "")
+        q_at_head = queue_at(head) or queue
+        check_report(path, n, q_at_head)
+        if not json_only:
+            check_md_rows(path, q_at_head)
 
     if fails:
         for f in fails:

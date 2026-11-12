@@ -3,7 +3,7 @@
 # v2/bin/v2 — cổng của dòng OS v2 (KT-03).
 #
 # Vòng 1: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), ABI/scn/report checks, L0, L1 1.000 seed.
-# CHƯA có gen-check (KT-05); nightly/mutation/Miri chưa có — AGENTS.md §6.
+# gen-check đã bật (KT-05); nightly/mutation/Miri chưa có — AGENTS.md §6.
 # Mọi lệnh cargo dùng `--manifest-path v2/Cargo.toml`: KHÔNG bao giờ chạm workspace v1
 # (crates/, 25 crate đã đóng băng ở tag v1-archive).
 set -u
