@@ -318,27 +318,40 @@ fn run_run(rest: &[String]) -> ExitCode {
         }
         return ExitCode::from(2);
     }
-    // 4) chạy
-    let out = vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args);
-    if !xuat_stdout(&out.stdout) {
+    // 4) chạy — **trong luồng có stack lớn** (ST-15): đệ quy sâu (đến cap `MAX_CALL_DEPTH` = 10^4)
+    //    không được làm tràn stack process; cap vượt ⇒ `VS0501` bình thường.
+    let (stdout, diags, steps) = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("vis-run".into())
+            // 256 MiB: đo được ~8 KiB/khung ⇒ 10^4 khung ≈ 80 MiB, còn dư.
+            .stack_size(256 * 1024 * 1024)
+            .spawn_scoped(scope, || {
+                let out = vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args);
+                let d: Vec<(String, u32, u32, String)> = out
+                    .diagnostics
+                    .iter()
+                    .map(|x| (x.code.short.to_string(), x.line, x.col, x.message.clone()))
+                    .collect();
+                (out.stdout, d, out.steps)
+            })
+            .expect("không tạo được luồng chạy")
+            .join()
+            .expect("luồng chạy lỗi")
+    });
+    if !xuat_stdout(&stdout) {
         return ExitCode::from(2);
     }
-    if out.is_clean() {
+    if diags.is_empty() {
         if tap {
-            eprintln!("ok 1 - {} (steps={})", tep, out.steps);
+            eprintln!("ok 1 - {} (steps={})", tep, steps);
         }
         ExitCode::from(0)
     } else {
-        for d in &out.diagnostics {
-            eprintln!("{}", in_chan_doan(&tep, &text, d));
+        for (ma, line, col, msg) in &diags {
+            eprintln!("{tep}:{line}:{col}: error {ma}: {msg}");
         }
         if tap {
-            let ma = out
-                .diagnostics
-                .first()
-                .map(|d| d.code.short)
-                .unwrap_or("VS0501");
-            eprintln!("not ok 1 - {} ({ma}, steps={})", tep, out.steps);
+            eprintln!("not ok 1 - {} ({}, steps={})", tep, diags[0].0, steps);
         }
         ExitCode::from(1)
     }

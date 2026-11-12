@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let n = 5
+match n:
+    0..10: print("trong")
+    _: print("ngoài")

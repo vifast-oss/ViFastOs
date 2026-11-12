@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+enum E:
+    A
+    B
+    C
+let e: E = E.C
+match e:
+    A | B: print("ab")
+    C: print("c")

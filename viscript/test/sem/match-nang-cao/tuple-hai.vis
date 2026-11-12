@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let t = (1, "a")
+match t:
+    (n, s): print("{s}{n}")

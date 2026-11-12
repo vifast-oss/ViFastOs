@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let x: int? = 5
+let v = match x:
+    some(y): y * 2
+    none: 0
+print(v)

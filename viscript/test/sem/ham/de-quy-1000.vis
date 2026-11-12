@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn sâu(n: int) -> int:
+    let r = if n == 0: 0 else: 1 + sâu(n - 1)
+    r
+print(sâu(1000))

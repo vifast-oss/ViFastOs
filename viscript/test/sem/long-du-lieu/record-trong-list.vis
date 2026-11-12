@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+let ps: list[P] = [{x: 1}, {x: 2}]
+print(ps[1].x)

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let n = 2
+let m = 3
+match n:
+    x if x < m: print("nhỏ hơn {m}")
+    _: print("khác")

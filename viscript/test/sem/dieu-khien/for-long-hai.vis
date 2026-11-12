@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+var s = 0
+for i in 0..2:
+    for j in 0..2:
+        if j == 1: continue
+        s += 1
+print(s)

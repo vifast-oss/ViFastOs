@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let xs = [1, 2]
+match xs:
+    [a, b]: print(a + b)
+    _: print(0)

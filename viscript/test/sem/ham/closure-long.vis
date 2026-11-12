@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let f = (x) => x + 1
+let g = (x) => f(x) * 2
+print(g(3))

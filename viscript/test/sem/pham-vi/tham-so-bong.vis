@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(x: int) -> int:
+    let x = x * 2
+    x
+print(f(3))

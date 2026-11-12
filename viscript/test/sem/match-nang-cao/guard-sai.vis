@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let n = 1
+match n:
+    x if x > 10: print("lớn")
+    _: print("bé")

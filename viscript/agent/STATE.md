@@ -6,15 +6,15 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-13b** (10 mục review ST-13) — **DONE, đã commit** `f1ac635` (2026-11-13).
-                **ST-14** (`vis run` + TAP + 100 ca + nội suy `{expr}`) — **dừng giữa đường** theo lệnh
-                Agent 0: mã + 100 fixture còn **trong cây, chưa commit** (chờ OK để commit `[ST-14]`).
-Bước          : ST-13b 4/4 (đỏ trước → hiện thực → xanh → cổng → commit → push)
+Task          : **ST-15** (nâng bộ ngữ nghĩa lên ≥300 ca) — xong kỹ thuật 2026-11-13, **chưa commit**
+                — chờ review độc lập của Agent 0.
+Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-12T23:22:24Z = 2026-11-13 08:22 JST; không retry; **247** test workspace:
-                32 vis-cli + 18 vis-fmt + 96 vis-syntax + 20 vis-diag + 53 vis-types + 28 vis-interp)
-Việc dở       : **ST-14** (xanh cục bộ: 100/100 ca `test/sem`, `vis run` có `--tap`, nội suy `{expr}`);
+                (2026-11-12T23:32:53Z = 2026-11-13 08:32 JST; không retry; **247** test workspace:
+                32 vis-cli + 18 vis-fmt + 96 vis-syntax + 20 vis-diag + 53 vis-types + 28 vis-interp;
+                trong đó **1** test `sem` chạy **302 ca**)
+Việc dở       : — (chờ Agent 0 review rồi commit `[ST-15]`)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -47,6 +47,40 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-15 — bộ ngữ nghĩa **302 ca / 16 nhóm** + cap độ sâu (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | Khoá cứng `crates/vis-cli/tests/sem.rs` | **302 ca**, **16 nhóm**, mỗi nhóm ≥ 6; thêm **test chống bỏ ca** (đếm `.vis` trên đĩa = số ca chạy = 302); `.out`/`.err` được bóc dòng SPDX đầu trước khi so **byte** |
+| 2 | 202 ca mới | 12 nhóm cũ lên **18 ca** mỗi nhóm (216) + 4 nhóm mới × 21 = **84**: `so-hoc-mep`, `match-nang-cao`, `long-du-lieu`, `chuoi-phuong-thuc` ⇒ **302 ca/16 nhóm** |
+| 3 | **Cap độ sâu gọi** | `MAX_CALL_DEPTH` = **2.000** khung (đo: 10^4 **tràn stack** kể cả 256 MiB; 1.900 tầng chạy được, vượt cap ⇒ `VS0501`); `vis run` chạy interp trong **luồng 256 MiB** để đệ quy sâu không chết process. Ca: `ham/de-quy-1000` (in `1000`) + `ham/de-quy-vo-han` (⇒ `VS0501`, không crash) |
+| 4 | Sửa nhỏ phát hiện khi viết ca | `()` pattern khớp `Value::Unit` (trước đây `match ()` không nhánh nào khớp ⇒ `VS0501` sai) |
+
+**Đỏ trước** (`JOURNAL/st15-red-sem.log`): đổi khoá 100 → 302 **trước** khi thêm ca ⇒ runner ĐỎ
+("phải đúng 300 ca, thật 100"). Trên harness cuối đã chụp lại bằng cách **nâng khoá tạm lên 400** ⇒
+"phải đúng 400 ca, thật 302" — chứng minh hàng rào đếm ca; sau đó đặt lại **302**.
+
+**Lệch thiết kế phát hiện (KHÔNG ghi kỳ vọng theo hiện thực — đã bỏ ca + báo Agent 0):**
+1. **`list.push` trên `var` không đổi bản thân list** — thiết kế §7.1 ("ngữ nghĩa giá trị + copy-on-write":
+   `var b = a; b.push(4)` ⇒ `b` đổi, `a` không) nhưng interp trả list mới, không ghi lại lvalue.
+2. **Closure thoát khỏi hàm mất tham số đã bắt** — `fn make(n: int) -> fn(int) -> int: (x) => x + n;
+   make(10)(5)` ⇒ `VS0501: tên 'n' chưa có giá trị`; interp dùng **một env phẳng** và khôi phục giá trị
+   tham số khi hàm trả về (thiết kế §3.4/§7.3 cần bắt theo phạm vi từ vựng).
+3. **Pattern bản ghi có `..` bị tyck từ chối** — `match p: {x, ..}` ⇒ `VS0402 "phải có đủ mọi trường"`;
+   thiết kế §4.3 cho phép `..`.
+4. **Pattern bản ghi trần không binding** — `match p: {x, y}` ⇒ `VS0501: tên 'x' chưa có giá trị`
+   (lỗ hổng đã biết từ ST-13: HIR pattern bản ghi thiếu `sym`).
+5. **`match`/`if` làm biểu thức trong **đối số gọi**** không parse (`print(match …)`) — giới hạn văn phạm;
+   ca đã viết lại dùng `let v = match …`.
+
+**Không phải lệch (ca của tôi sai, đã sửa):** `str + str` **không** có trong bảng §3.6 (nối chuỗi bằng nội
+suy/`join`); `size + int` không hợp lệ (§3.6 chỉ `size ± size`); `float / 0.0` ⇒ `inf` theo IEEE (§3.6,
+**không** panic); `char` in ra `'a'` (VD-47); `some(x)` chỉ là **pattern**, constructor là `Some(x)`;
+map in khoá `str` có nháy (quyết định VD-47); `.len()` đếm **scalar** (tiếng Việt/emoji).
+
+**Đo được**: **247** test workspace (1 test `sem` = 302 ca, chạy 2,3 s); `gate --fast` PASS —
+2026-11-12T23:32:53Z; fmt/clippy sạch; tệp lớn nhất `test/sem` chỉ là fixture nhỏ.
 
 ## ST-14 — `vis run` + TAP ngữ nghĩa + 100 ca + nội suy `{expr}` (2026-11-13)
 

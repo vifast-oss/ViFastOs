@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(n: int) -> int:
+    let m = n * 2
+    let r = if n == 0: 0 else: m + f(n - 1)
+    r
+print(f(2))

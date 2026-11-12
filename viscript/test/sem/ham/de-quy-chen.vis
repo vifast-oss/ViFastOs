@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn chan(n: int) -> int:
+    let r = if n == 0: 1 else: le(n - 1)
+    r
+fn le(n: int) -> int:
+    let r = if n == 0: 0 else: chan(n - 1)
+    r
+print(chan(4))

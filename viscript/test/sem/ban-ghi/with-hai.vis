@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+    y: int
+let p: P = {x: 1, y: 2}
+print((p with x: 9, y: 8).y)

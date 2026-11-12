@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(n: int) -> int:
+    f(n + 1)
+print(f(0))

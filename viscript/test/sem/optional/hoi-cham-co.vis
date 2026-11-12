@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type A:
+    b: B
+type B:
+    n: int
+let b: B? = none
+let a: A? = {b: b}
+print(a?.b?.n ?? 0)

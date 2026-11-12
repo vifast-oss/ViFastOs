@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn a(x: int) -> Result[int, str]:
+    Err("sâu")
+fn b(x: int) -> Result[int, str]:
+    let v = a(x)?
+    Ok(v)
+print(b(1))

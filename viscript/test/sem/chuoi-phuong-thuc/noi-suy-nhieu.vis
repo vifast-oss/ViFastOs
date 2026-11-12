@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let a = 1
+let b = 2
+print("{a} + {b} = {a + b}")

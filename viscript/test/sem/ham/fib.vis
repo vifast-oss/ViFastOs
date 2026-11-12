@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn fib(n: int) -> int:
+    let r = if n < 2: n else: fib(n - 1) + fib(n - 2)
+    r
+print(fib(10))

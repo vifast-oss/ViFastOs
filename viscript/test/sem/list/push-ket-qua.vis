@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let xs = [1]
+let ys = xs.push(2)
+print(ys)

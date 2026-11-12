@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+enum S:
+    Circle(r: float)
+    Empty
+let s: S = S.Circle(5.0)
+match s:
+    Circle(r) if r > 10.0: print("lớn")
+    Circle(r) if r > 1.0: print("vừa")
+    Circle(r): print("nhỏ")
+    Empty: print(0)

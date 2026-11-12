@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type A:
+    b: B
+type B:
+    c: C
+type C:
+    n: int
+let a: A = {b: {c: {n: 5}}}
+print(a.b.c.n)

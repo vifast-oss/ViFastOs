@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let x = 1
+if x > 0:
+    if x > 5:
+        print("lớn")
+    else:
+        print("vừa")
+else:
+    print("âm")

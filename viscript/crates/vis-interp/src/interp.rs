@@ -91,6 +91,8 @@ pub(crate) struct Interp<'a> {
     loop_depth: u32,
     /// Độ sâu hàm đang chạy (ST-13b mục 8: `?` ngoài hàm ⇒ `VS0501`).
     fn_depth: u32,
+    /// Độ sâu **khung gọi** đang mở (ST-15): vượt [`MAX_CALL_DEPTH`] ⇒ `VS0501`, không tràn stack.
+    depth: u32,
     types: &'a TypeTable,
     #[allow(dead_code)]
     symbols: &'a Symbols,
@@ -135,6 +137,7 @@ impl<'a> Interp<'a> {
             last: None,
             loop_depth: 0,
             fn_depth: 0,
+            depth: 0,
             types,
             symbols,
         }
@@ -853,9 +856,22 @@ impl<'a> Interp<'a> {
     }
 
     pub(crate) fn call_closure(&mut self, c: &Closure, pos: Vec<Value>, span: Span) -> R<Value> {
+        self.depth += 1;
+        if self.depth > MAX_CALL_DEPTH {
+            self.depth -= 1;
+            return Err(Abort::Trap(Trap::new(
+                RT,
+                format!(
+                    "gọi hàm quá sâu (>{} khung) — đệ quy không có điểm dừng?",
+                    MAX_CALL_DEPTH
+                ),
+                span,
+            )));
+        }
         self.fn_depth += 1;
         let kq = self.call_closure_trong(c, pos, span);
         self.fn_depth -= 1;
+        self.depth -= 1;
         kq
     }
 
@@ -908,9 +924,22 @@ impl<'a> Interp<'a> {
         named: Vec<(String, Value)>,
         span: Span,
     ) -> R<Value> {
+        self.depth += 1;
+        if self.depth > MAX_CALL_DEPTH {
+            self.depth -= 1;
+            return Err(Abort::Trap(Trap::new(
+                RT,
+                format!(
+                    "gọi hàm quá sâu (>{} khung) — đệ quy không có điểm dừng?",
+                    MAX_CALL_DEPTH
+                ),
+                span,
+            )));
+        }
         self.fn_depth += 1;
         let kq = self.call_hfn_trong(f, pos, named, span);
         self.fn_depth -= 1;
+        self.depth -= 1;
         kq
     }
 
@@ -1216,6 +1245,8 @@ impl<'a> Interp<'a> {
                 }
             }
             HPat::Tuple { items, .. } => match v {
+                // ST-15: `()` là pattern của `unit` (không phải list rỗng).
+                Value::Unit if items.is_empty() => true,
                 Value::List(xs) => {
                     if xs.len() != items.len() {
                         return false;
@@ -1431,6 +1462,9 @@ pub(crate) fn pos(text: &str, span: Span) -> (u32, u32) {
 }
 
 /// 8 tên dựng sẵn (VD-44 #3) mà bộ thông dịch gọi trực tiếp.
+/// Cap **độ sâu khung gọi** (ST-15): 10^4 khung — vượt ⇒ `VS0501` thay vì tràn stack process.
+pub(crate) const MAX_CALL_DEPTH: u32 = 2_000;
+
 fn builtin_name(name: &str) -> Option<&'static str> {
     match name {
         "print" => Some("print"),

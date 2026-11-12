@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(a: int, --b: int = 2, --c: int = 3) -> int:
+    a + b + c
+print(f(1))
+print(f(1, --c: 10))

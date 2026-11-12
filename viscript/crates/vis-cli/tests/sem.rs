@@ -12,6 +12,18 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Bỏ **dòng SPDX đầu** của tệp kỳ vọng (QD §9.3 yêu cầu SPDX cho mọi tệp văn bản); phần còn lại
+/// vẫn được so **từng byte** với stdout.
+fn boc_spdx(t: &str) -> String {
+    match t.strip_prefix("# SPDX-License-Identifier") {
+        Some(rest) => match rest.find('\n') {
+            Some(i) => rest[i + 1..].to_string(),
+            None => String::new(),
+        },
+        None => t.to_string(),
+    }
+}
+
 fn vis() -> &'static str {
     env!("CARGO_BIN_EXE_vis")
 }
@@ -51,8 +63,12 @@ fn gom_ca() -> Vec<Ca> {
         ca.sort();
         for f in ca {
             let stem = f.with_extension("");
-            let out = std::fs::read_to_string(stem.with_extension("out")).ok();
-            let err = std::fs::read_to_string(stem.with_extension("err")).ok();
+            let out = std::fs::read_to_string(stem.with_extension("out"))
+                .ok()
+                .map(|t| boc_spdx(&t));
+            let err = std::fs::read_to_string(stem.with_extension("err"))
+                .ok()
+                .map(|t| boc_spdx(&t));
             assert!(
                 out.is_some() ^ err.is_some(),
                 "{}: phải có **đúng một** trong `.out`/`.err`",
@@ -85,20 +101,39 @@ fn steps_cua(stderr: &str) -> usize {
 }
 
 #[test]
-fn sem_100_ca_qua_binary() {
+fn sem_302_ca_qua_binary() {
     let ds = gom_ca();
     let mut theo_nhom: BTreeMap<String, usize> = BTreeMap::new();
     for c in &ds {
         *theo_nhom.entry(c.nhom.clone()).or_default() += 1;
     }
-    // Khoá số ca: 100 ca / 12 nhóm, mỗi nhóm ≥ 6 — thiếu/thừa là ĐỎ (không âm thầm bỏ ca).
+    // ST-15: khoá **300 ca / 16 nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
     assert_eq!(
         ds.len(),
-        100,
-        "phải đúng 100 ca, thật {} — nhóm: {theo_nhom:?}",
+        302,
+        "phải đúng 302 ca, thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
-    assert_eq!(theo_nhom.len(), 12, "phải đúng 12 nhóm, thật {theo_nhom:?}");
+    assert_eq!(theo_nhom.len(), 16, "phải đúng 16 nhóm, thật {theo_nhom:?}");
+    // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
+    let tren_dia: usize = std::fs::read_dir(sem_dir())
+        .expect("đọc test/sem")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .map(|d| {
+            std::fs::read_dir(d)
+                .expect("đọc nhóm")
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().map(|x| x == "vis").unwrap_or(false))
+                .count()
+        })
+        .sum();
+    assert_eq!(
+        tren_dia,
+        ds.len(),
+        "số tệp `.vis` ({tren_dia}) phải bằng số ca chạy ({})",
+        ds.len()
+    );
     for (nhom, n) in &theo_nhom {
         assert!(*n >= 6, "nhóm `{nhom}` chỉ có {n} ca (cần ≥ 6)");
     }

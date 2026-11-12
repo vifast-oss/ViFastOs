@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(a: int, --b: int) -> int:
+    a - b
+print(f(5, --b: 1))

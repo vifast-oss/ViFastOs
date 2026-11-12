@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let xs: list[int] = []
+match xs:
+    []: print("rỗng")
+    _: print("khác")

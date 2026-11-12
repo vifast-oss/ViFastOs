@@ -1,0 +1,42 @@
+=== ST-15 D2-05: nâng bộ ngữ nghĩa 100 → 302 ca / 16 nhóm — ĐỎ vì **THIẾU CA** ===
+thời điểm chụp: 2026-11-12T23:32:21Z
+
+Đây **KHÔNG** phải 'ca ngữ nghĩa đỏ'. Thứ tự làm: (1) sửa **khoá cứng** trong
+  `crates/vis-cli/tests/sem.rs` (100 → **302** ca, 12 → **16** nhóm, mỗi nhóm ≥ 6, thêm test
+  chống bỏ ca: đếm tệp `.vis` trên đĩa phải **bằng** số ca chạy) ⇒ runner ĐỎ ngay vì thiếu ca;
+  (2) thêm 202 ca; (3) sửa các ca **tôi viết sai kỳ vọng** (liệt kê ở JOURNAL §'lệch thiết kế').
+
+Ảnh chụp A — lúc mới đổi khoá (100 ca có sẵn, khoá 300):
+  panicked: 'phải đúng 300 ca, thật 100 — nhóm: {...}' (xem dưới, đầu ra gốc)
+
+Ảnh chụp B — **trên harness cuối** (302 ca, khoá tạm nâng lên 400 để chứng minh hàng rào):
+  panicked: 'phải đúng 400 ca, thật 302' ⇒ guard bắt đúng số ca, không âm thầm bỏ.
+  (sau khi chụp, khoá đặt lại **302** — bản commit)
+
+sha256 harness:
+  sha256 crates/vis-cli/tests/sem.rs=cf5790dda4de282f37bd2fbffa067842ff114c6c268755382a535dd016a19574
+  sha256 crates/vis-interp/src/interp.rs=716d6209e8c6dcc6a74e1b24a63f2c39326e335cc144cbc268e7664599404f31
+  sha256 crates/vis-interp/src/builtin.rs=8a9c5236aaaa092e51a4c5ce7cf9cb39a04811de89034f7a9807df6b87a898db
+  test/sem/** (302 .vis + 302 kỳ vọng, sha256 danh sách đã sắp)=2d8df97590d888e972615261bfe773b4b8f729bd3e0140aeeaeb7ab8bfce15d4
+
+----- Ảnh B (đỏ, harness cuối) -----
+
+running 1 test
+test sem_302_ca_qua_binary ... FAILED
+
+failures:
+
+---- sem_302_ca_qua_binary stdout ----
+
+thread 'sem_302_ca_qua_binary' (37829607) panicked at crates/vis-cli/tests/sem.rs:111:5:
+assertion `left == right` failed: phải đúng 400 ca, thật 302 — nhóm: {"ban-ghi": 18, "chuoi": 18, "chuoi-phuong-thuc": 21, "dieu-khien": 18, "enum": 18, "ham": 21, "list": 18, "loi": 18, "long-du-lieu": 21, "map": 18, "match-nang-cao": 20, "optional": 18, "pham-vi": 18, "result": 18, "so-hoc": 18, "so-hoc-mep": 21}
+  left: 302
+ right: 400
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sem_302_ca_qua_binary
+
+test result: FAILED. 0 passed; 1 failed; 0 igno
+----- hết -----

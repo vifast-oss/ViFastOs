@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let s = "ab"
+match s:
+    "ab": print(1)
+    _: print(0)

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let x = 1
+let y = 2
+if true:
+    let x = 10
+    print(x + y)
+print(x + y)

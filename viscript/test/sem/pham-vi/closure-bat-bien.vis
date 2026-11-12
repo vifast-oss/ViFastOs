@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let n = 1
+let f = () => n + 1
+let m = 10
+print(f() + m)
