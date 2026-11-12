@@ -101,8 +101,32 @@ fn snapshot_6_ca_so_ten_03xx() {
             "lookup phải tra sổ tên"
         );
     }
-    for id in [401u16, 501] {
-        assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-11 (VD-44 #5)");
+    // Sửa kỳ vọng cũ kèm lý do: ST-12 **đã cấp** sổ kiểu `04xx` (VD-42) ⇒ `lookup(401)` nay `Some`;
+    // `05xx` (runtime) vẫn chưa cấp tới ST-13.
+    assert!(lookup(401).is_some(), "ST-12 đã cấp sổ kiểu `04xx`");
+    assert!(lookup(501).is_none(), "mã 501 chưa cấp ở ST-12 (ST-13)");
+}
+
+/// Bộ 12 snapshot cho **sổ kiểu** `04xx` (ST-12, VD-42): 4 mã × vi/en/ja.
+#[test]
+fn snapshot_12_ca_so_kieu_04xx() {
+    let cases: [(u16, Lang, &str); 12] = [
+        (401, Lang::Vi, "sai số lượng hoặc thứ tự đối số"),
+        (401, Lang::En, "wrong number or order of arguments"),
+        (401, Lang::Ja, "引数の数または順序が正しくありません"),
+        (402, Lang::Vi, "`match` không xét hết trường hợp"),
+        (402, Lang::En, "`match` is not exhaustive"),
+        (402, Lang::Ja, "`match` が網羅的ではありません"),
+        (403, Lang::Vi, "trường hoặc kiểu không tồn tại"),
+        (403, Lang::En, "field or type does not exist"),
+        (403, Lang::Ja, "フィールドまたは型が存在しません"),
+        (412, Lang::Vi, "kiểu không khớp"),
+        (412, Lang::En, "type mismatch"),
+        (412, Lang::Ja, "型が一致しません"),
+    ];
+    for (id, lang, want) in cases {
+        let c = lookup(id).unwrap_or_else(|| panic!("mã {id} phải có trong sổ"));
+        assert_eq!(c.message(lang), want, "{} {:?}", c.short, lang);
     }
 }
 

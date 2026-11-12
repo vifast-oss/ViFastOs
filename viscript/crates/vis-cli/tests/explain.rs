@@ -105,8 +105,34 @@ fn explain_so_ten_03xx() {
     for want in ["VS0301", "VS0302"] {
         assert!(text.contains(want), "--list thiếu {want}: {text}");
     }
-    assert!(!text.contains("VS0412"), "04xx chưa cấp ở ST-11: {text}");
-    // Mã của khối chưa cấp là **lỗi dùng** ⇒ exit 2.
-    let (code, _) = vis(&["explain", "VS0412"]);
+    // Sửa kỳ vọng cũ kèm lý do: ST-12 cấp sổ kiểu `04xx` (VD-42) ⇒ `VS0412` nay có trong danh sách;
+    // khối **chưa** cấp là `05xx` (ST-13).
+    assert!(text.contains("VS0412"), "ST-12 cấp 04xx: {text}");
+    let (code, _) = vis(&["explain", "VS0501"]);
     assert_eq!(code, 2, "mã chưa cấp phải exit 2");
+}
+
+#[test]
+fn explain_so_kieu_04xx() {
+    // ST-12 (VD-42): sổ thứ tư; `04xx` cấp đủ 4 mã, `05xx` vẫn chưa cấp.
+    for (ma, tu) in [
+        ("VS0401", "đối số"),
+        ("VS0402", "xét hết"),
+        ("VS0403", "không tồn tại"),
+        ("VS0412", "không khớp"),
+    ] {
+        let (code, text) = vis(&["explain", ma]);
+        assert_eq!(code, 0, "{ma}: {text}");
+        assert!(text.contains(ma) && text.contains(tu), "{ma}: {text}");
+    }
+    let (code, text) = vis(&["explain", "--lang", "en", "VS0412"]);
+    assert_eq!(code, 0);
+    assert!(text.contains("type mismatch"), "{text}");
+    let (code, text) = vis(&["explain", "--list"]);
+    assert_eq!(code, 0);
+    for want in ["VS0301", "VS0412", "VS0402"] {
+        assert!(text.contains(want), "--list thiếu {want}");
+    }
+    let (code, _) = vis(&["explain", "VS0501"]);
+    assert_eq!(code, 2, "05xx chưa cấp");
 }

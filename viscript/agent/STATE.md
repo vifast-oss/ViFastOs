@@ -6,15 +6,58 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : ST-11 (`vis-types` nền: `Type`, HIR, giải tên, hạ CST→HIR chế độ script) — xong kỹ thuật
-                2026-11-13, **đề nghị DONE** (chờ Agent 0 duyệt + review độc lập trên diff)
-Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng); theo **VD-44** (8 điểm Agent 0 bổ sung)
+Task          : ST-12 (kiểm kiểu VS0 + `match` xét hết) — xong kỹ thuật 2026-11-13, **đề nghị DONE**
+                (chờ Agent 0 duyệt; **chưa commit** — báo cáo trước theo yêu cầu)
+Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-12T21:52:22Z = 2026-11-13 06:52 JST; không retry; **194** test workspace:
-                30 vis-cli + 18 vis-fmt + 96 vis-syntax + 16 vis-diag + **34 vis-types**)
-Việc dở       : — (ST-11 chờ Agent 0 lật sổ; ST-12 mở sau khi ST-11 DONE)
+                (2026-11-12T22:14:32Z = 2026-11-13 07:13 JST; không retry; **205** test workspace:
+                31 vis-cli + 18 vis-fmt + 96 vis-syntax + 18 vis-diag + **42 vis-types**)
+Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit `[ST-12]`)
 ```
+
+## ST-12 — kết quả (2026-11-13)
+
+| Mục DoD (đề bài Agent 0) | Bằng chứng đo được |
+|---|---|
+| Crate `crates/vis-types` (không crate mới): `src/tyck/` tách tệp | `tyck/{mod.rs 650, expr.rs 792, pat.rs 404, num.rs 87}` — 4 tệp, lớn nhất 792 ≤ 1.500 |
+| API `check(hir, symbols, types) -> CheckOutput { diags, types_of_expr, file_expr_types, item_types }` | `tyck/mod.rs`: `CheckOutput::is_clean`/`codes`/`value_type`; `pub use tyck::{check, CheckOutput}` trong `lib.rs` |
+| Số học cùng đơn vị; `size*int`, `size/int`, `size*percent`; trộn đơn vị ⇒ `VS0412`; `%`/`/` cho 0 là runtime | `tyck/num.rs` (bảng 22 dòng) + `tests/tyck.rs` 25 ca `so_hoc_theo_don_vi` (gồm `5mb+1s`, `1+5mb`, `1/0` ⇒ ok, `5mb**2`, `50pct%2`) |
+| So sánh cùng kiểu; `and/or/not` cần `bool`; `??` bỏ Option | `tyck/expr.rs::kiem_bin`; 16 ca `so_sanh_logic_va_coalesce` |
+| `list/map/record/enum/T?/Result` đúng thành phần; `with`; trường lạ ⇒ `VS0403` | 17 ca `kien_truc_list_map_record_enum` (bản ghi so khớp **cấu trúc**, `with` trường lạ/sai kiểu, `.` trên `T?` ⇒ `VS0412`) |
+| Gọi hàm: số đối số `VS0401` + kiểu đối số `VS0412` (kể cả tham số tên `--b` + mặc định) | 20 ca `ham_doi_so_va_optional`; `FnSig` giữ tên tham số + có mặc định ⇒ thiếu tham số **bắt buộc** mới `VS0401` |
+| `match` xét hết ⇒ `VS0402` (enum/Option/`bool`; guard không tính; or-pattern tính cả hai) | `tyck/pat.rs::xet_het`; **28** ca `tests/exhaustive.rs` (enum, `bool`, `T?`, `Result`, vô hạn, bản ghi đủ trường, `..` ⇒ thiếu) |
+| Tên kiểu: builtin VS0 + khai trong tệp ⇒ `Record/Enum`; lạ ⇒ `VS0301` | `tyck/mod.rs::resolve_ann`/`resolve_named`; ca `let x: Unknown = 1` ⇒ `!VS0301` |
+| Sổ thứ tư `TYPE_CODES` (`VS0401/0402/0403/0412`) + 3 ngôn ngữ + snapshot; `lookup` 4 sổ; `lookup(501)=None`; `next_block()` **601** | `vis-diag`: `TYPE_CODES` + `BOOKS: [&[Code];4]` + `all_codes()` 18 mã; test `so_kieu_04xx_khoa_theo_vd42`, `snapshot_12_ca_so_kieu_04xx`; `khoi_ke_tiep_khong_tai_dung` vẫn **601**; `vis-cli` test `explain_so_kieu_04xx` |
+| **Đỏ trước** (D2-05): `tests/tyck.rs` ≥ 80 ca + `tests/exhaustive.rs` ≥ 20 ca | `JOURNAL/st12-red-tyck.log` — **116/116 ca đỏ** (tyck **88**, exhaustive **28**) khi `check()` trả khung rỗng; **2 test xanh cố ý** (chỉ **đếm** ca: `du_80_ca`, `du_20_ca_match`); có **chống xanh-giả**: `ok(...)` mà `types_of_expr` rỗng ⇒ tính SAI |
+| Giữ 194 test cũ xanh | **205** test workspace (194 + 11 mới: 8 tyck/exhaustive + 2 vis-diag + 1 vis-cli); 2 test cũ của ST-11 sửa **kèm lý do** (xem dưới) |
+| Cổng xanh, không retry | `./vis-dev gate --fast: PASS` — 2026-11-12T22:14:32Z; **205** test; fmt/clippy sạch (`-D warnings`) |
+| Không `unsafe`/`#[ignore]`/`panic` trên HIR hợp lệ; SPDX | `grep`: 0 `unsafe`/`#[ignore]`/`todo!`/`unwrap` trong `tyck/`; mọi tệp có `// SPDX-License-Identifier: MIT OR Apache-2.0` |
+
+**Chốt của Agent 0 — VD-46** (2026-11-13): **Q1** gán cho `let`/tham số **giữ `VS0412`** ("chỉ `var` mới
+gán được"; **không** cấp mã `04xx` mới, **không** mượn `05xx` — lỗi bất biến/kiểu, không phải runtime);
+**Q2** tham số lambda **giữ `{error}`** ở VS0, **hoãn** suy kiểu hai chiều cho ST-14/R2, parser **không**
+mở (đúng §A.3); **Q3** **hoãn** thêm `sym` vào HIR pattern bản ghi (ST-14/task riêng); **`line`/`col` = 0
+chấp nhận** nhưng **ST-14 bắt buộc** in lại thật từ `span` + văn bản nguồn ở tầng `vis` (Agent 0 kiểm ở
+DoD); sửa 2 test cũ **đúng** (VD-42). Danh sách "lỗ hổng đã biết" ở `JOURNAL/2026-11-12.md` §6.
+
+**Việc phải biết:**
+1. **Hai test cũ phải sửa kèm lý do** (VD-42 bắt buộc cấp `04xx`): `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`
+   (`lookup(401)` nay `Some`) và `vis-cli/tests/explain.rs::explain_so_ten_03xx` (`VS0412` nay có trong
+   `--list`, exit 0; mã **chưa** cấp là `VS0501`). Comment ghi rõ "Sửa kỳ vọng cũ kèm lý do: ST-12 đã cấp sổ kiểu".
+2. **Chẩn đoán tyck có `line`/`col` = 0**: `check` chỉ nhận HIR (không có văn bản nguồn) nên không tính
+   được dòng/cột; `span` vẫn đúng. Tầng `vis` (ST-14) in lại từ `span`. Ghi rõ trong `diag()`.
+3. **3 khoảng trống của tầng dưới (không sửa được ở ST-12, cần quyết định)**:
+   (a) **Kiểu cho tham số lambda**: parser VS0 **không nhận** `(x: int) =>` (⇒ `VS0201`), nên tham số
+   lambda là `{error}`; suy kiểu lambda hai chiều thuộc ST-14 ⇒ ca `let f = (x) => x
+f(1)` khoá hành vi
+   **hiện tại** `ok({error})`.
+   (b) **Pattern bản ghi dạng trần** `{name, age}`: HIR `HPat::Record` chỉ giữ `(String, Option<HPat>)`,
+   **mất** `sym` của tên trần ⇒ tyck không gán được kiểu cho `name`/`age` (để `{error}`). Pattern có
+   sub-pattern `{name: n}` thì parser cũng chưa nhận (`VS0201`). Đề xuất: ST-14 thêm `sym` vào HIR.
+   (c) **Gán cho `let`/tham số** (thiết kế §4.1 cấm, **chưa có mã riêng** trong VD-42) ⇒ ST-12 báo
+   **`VS0412`** với thông điệp "chỉ `var` mới gán được". Nếu muốn mã riêng thì cần cấp `05xx`.
+
 
 ## ST-11 — kết quả (2026-11-13)
 

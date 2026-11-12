@@ -1,0 +1,900 @@
+=== ST-12 D2-05: kiểm kiểu VS0 + match xét hết — ĐỎ TRƯỚC khi hiện thực ===
+thời điểm chụp: 2026-11-12T22:12:33Z (sau cùng — sau khi sửa mọi kỳ vọng test và trước khi commit)
+cách chụp: tạm thời thay thân `check()` (tyck/mod.rs) bằng khung RỖNG (`CheckOutput::default()`),
+           chạy đúng harness cuối với `--no-fail-fast`, chụp log; khôi phục `tyck/mod.rs`
+           từ /tmp/st12-tyck-impl.rs (sha256 dưới, trùng bản commit).
+
+sha256 bản cài đặt được khôi phục: f7c4d1e1b3320e91c97af110b2cab3efaceb982f20271399de4af42aa862e3ba  /tmp/st12-tyck-impl.rs
+
+sha256 harness (bản commit — không đổi sau khi chụp):
+  sha256 crates/vis-types/tests/tyck.rs=91faa9e00ab0ccc3d2688f71264dd8409ab8d8fd63348291cbbcfa702c07bb94
+  sha256 crates/vis-types/tests/exhaustive.rs=3800ba5391d1f9483c59b1e896b93a155ca699bc5627b2407762ea6eeae2f8be
+  sha256 crates/vis-types/src/tyck/mod.rs=f7c4d1e1b3320e91c97af110b2cab3efaceb982f20271399de4af42aa862e3ba
+  sha256 crates/vis-types/src/tyck/expr.rs=1497786a6f507a93b3cb312eb21bdc8335b8ea53870eb97f669b15b1ff5fbe7d
+  sha256 crates/vis-types/src/tyck/pat.rs=dfb301826b9e44b04a5d2519a6839d54cecc782f48cf02793ed75df57132b2a9
+  sha256 crates/vis-types/src/tyck/num.rs=b1e53d82b8d203cdae81ae3fc121f0861475f38cf7c27aebbd7dbb805c6caeed
+  sha256 crates/vis-types/src/ty.rs=dc5aa8996ef32fbd3b49ad7beede2ff0b3751fb485bb98a84ef82cacd62304ee
+  sha256 crates/vis-types/src/lower.rs=7f76f5d5c60ed4ea3e4c50f46b7ec0797871c0b36814547efb2f64b61fa5205f
+  sha256 crates/vis-diag/src/lib.rs=9f3352c3e832df3f66d8680011db46489013b625af581ad068c2dbf9d01a598a
+sha256 fixture (chỉ đọc — KHÔNG dùng golden cho tyck, chỉ ghi để chứng minh không đụng):
+  sha256 test/expr/golden.expr=f751f4554740d01f44013015ee9ba80ff1a56ec79c49dbb1585746541a507425
+  sha256 ../docs/viscript/ViScript-thiet-ke.md=70da3dd5393eff6cd1062bd760a507675ba39d18f0a259b82713640db5dc7094
+  sha256 ../docs/viscript/doc-examples-allow.txt=cfd733a415db994ad0dac93ad7225530d48de11d13246858a259665cef4b7ed9
+
+lệnh: cargo test -p vis-types --test tyck --test exhaustive --no-fail-fast   (chạy từ viscript/)
+
+KẾT QUẢ: 116 ca, ĐỎ 116/116 — 8 test, ĐỎ 6 (tyck) + 1 (exhaustive), XANH 2 là **CỐ Ý**:
+  1) tests/tyck.rs::du_80_ca         — chỉ **đếm** số ca (88 ≥ 80), không gọi `check`
+  2) tests/exhaustive.rs::du_20_ca_match — chỉ **đếm** số ca (28 ≥ 20), không gọi `check`
+
+CHỐNG XANH-GIẢ: `so_ca` coi là **SAI** nếu ra `ok(...)` mà `types_of_expr` **rỗng** ("chưa kiểm
+  biểu thức nào") — nhờ vậy ca `ok(())` (match câu lệnh xét đủ) cũng ĐỎ khi `check` rỗng.
+
+GHI CHÚ (như ST-11, reviewer3 NOTE): tệp log có **mtime cùng giây** với lúc khôi phục
+  `src/tyck/mod.rs` — KHÔNG phải log ghi sau hiện thực. Bằng chứng: sha256 bản khôi phục ở trên
+  trùng `crates/vis-types/src/tyck/mod.rs` của bản commit.
+
+----- đầu ra (đỏ) -----
+   Compiling vis-types v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-types)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.61s
+     Running tests/exhaustive.rs (target/debug/deps/exhaustive-7875ee5df0eaaf29)
+
+running 2 tests
+test du_20_ca_match ... ok
+test match_phai_xet_het ... FAILED
+
+failures:
+
+---- match_phai_xet_het stdout ----
+
+thread 'match_phai_xet_het' (37551115) panicked at crates/vis-types/tests/exhaustive.rs:209:5:
+28/28 ca sai
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    A: 1
+    B: 2
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    A: 1
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    _: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    A if true: 1
+    B: 2
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    A | B: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: bool = true
+let y = match x:
+    true: 1
+    false: 2
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: bool = true
+let y = match x:
+    true: 1
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: bool = true
+let y = match x:
+    _: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: bool = true
+let y = match x:
+    true if false: 1
+    false: 2
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+let y = match x:
+    some(v): v
+    none: 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+let y = match x:
+    some(v): v
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+let y = match x:
+    Some(v): v
+    None: 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+let y = match x:
+    _: 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f() -> Result[int, str]:
+    Ok(1)
+let r = f()
+let y = match r:
+    Ok(v): v
+    Err(e): 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f() -> Result[int, str]:
+    Ok(1)
+let r = f()
+let y = match r:
+    Ok(v): v
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x = 1
+let y = match x:
+    _: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x = 1
+let y = match x:
+    1: 1
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x = "a"
+let y = match x:
+    _: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type U:
+    name: str
+    age: int
+let u: U = {name: "a", age: 1}
+let y = match u:
+    {name, age}: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type U:
+    name: str
+    age: int
+let u: U = {name: "a", age: 1}
+let y = match u:
+    {name, ..}: 1
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let xs = [1]
+let y = match xs:
+    _: 1
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let xs = [1]
+let y = match xs:
+    [a]: a
+y
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+let y = match x:
+    A: 1
+    B: "a"
+y
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+match x:
+    A: print(1)
+   muốn: !VS0402
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+match x:
+    A: print(1)
+    B: print(2)
+   muốn: ok(())
+   được: ok(())
+   nhưng **chưa kiểm biểu thức nào**
+---
+nguồn: enum E:
+    A(v: int)
+    B
+let x: E = E.B
+let y = match x:
+    A(v): v
+    B: 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A(v: int)
+    B
+let x: E = E.B
+let y = match x:
+    A: 1
+    B: 0
+y
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A(v: int)
+    B
+let x: E = E.B
+let y = match x:
+    A(_): 1
+    B: 0
+y
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    match_phai_xet_het
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-types --test exhaustive`
+     Running tests/tyck.rs (target/debug/deps/tyck-e6644eb3f71a1687)
+
+running 6 tests
+test du_80_ca ... ok
+test literal_va_chu_thich_kieu ... FAILED
+test so_sanh_logic_va_coalesce ... FAILED
+test so_hoc_theo_don_vi ... FAILED
+test kien_truc_list_map_record_enum ... FAILED
+test ham_doi_so_va_optional ... FAILED
+
+failures:
+
+---- literal_va_chu_thich_kieu stdout ----
+
+thread 'literal_va_chu_thich_kieu' (37551125) panicked at crates/vis-types/tests/tyck.rs:78:5:
+literal: 10/10 ca sai
+nguồn: 1
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1.5
+   muốn: ok(float)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: "a"
+   muốn: ok(str)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: true
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 250ms
+   muốn: ok(duration)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 50pct
+   muốn: ok(percent)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: b"a"
+   muốn: ok(bytes)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: p"./x"
+   muốn: ok(path)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 'a'
+   muốn: ok(char)
+   được: ok(())
+   chẩn đoán: []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- so_sanh_logic_va_coalesce stdout ----
+
+thread 'so_sanh_logic_va_coalesce' (37551127) panicked at crates/vis-types/tests/tyck.rs:78:5:
+so sánh/logic: 16/16 ca sai
+nguồn: 1 == 2
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 < 2
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 == 1.5
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb < 1s
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: "a" < "b"
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 == "a"
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: true == false
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: true and false
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 and true
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: not true
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: not 1
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 or 2
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: true or false and true
+   muốn: ok(bool)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+x ?? 0
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+x ?? "a"
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int = 5
+x ?? 0
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+
+---- so_hoc_theo_don_vi stdout ----
+
+thread 'so_hoc_theo_don_vi' (37551126) panicked at crates/vis-types/tests/tyck.rs:78:5:
+số học: 25/25 ca sai
+nguồn: 1 + 2
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1.5 + 2.5
+   muốn: ok(float)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb + 5mb
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb - 1kb
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 250ms + 1s
+   muốn: ok(duration)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 50pct + 10pct
+   muốn: ok(percent)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb + 1s
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 + 5mb
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb * 2
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 2 * 5mb
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb / 2
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb * 50pct
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 50pct * 5mb
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 250ms * 2
+   muốn: ok(duration)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb / 5mb
+   muốn: ok(float)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 250ms / 250ms
+   muốn: ok(float)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 / 0
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 2 ** 3
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 2 ** -1
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb ** 2
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: "a" + "b"
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1 % 2
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 5mb % 2
+   muốn: ok(size)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 50pct % 2
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: 1.5 + 1
+   muốn: ok(float)
+   được: ok(())
+   chẩn đoán: []
+
+---- kien_truc_list_map_record_enum stdout ----
+
+thread 'kien_truc_list_map_record_enum' (37551124) panicked at crates/vis-types/tests/tyck.rs:78:5:
+kiến trúc: 17/17 ca sai
+nguồn: [1, 2]
+   muốn: ok(list[int])
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: [1, "a"]
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: {"a": 1}
+   muốn: ok(map[str, int])
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: {"a": 1, "b": "x"}
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: list[int] = []
+x
+   muốn: ok(list[int])
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+    age: int
+let u: User = {name: "An", age: 20}
+u
+   muốn: ok(User)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+let u: User = {name: 1}
+u
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+let u: User = {name: "An"}
+u with age: 1
+   muốn: !VS0403
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+let u: User = {name: "An"}
+u with name: 1
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+    Empty
+Shape.Circle(1.0)
+   muốn: ok(Shape)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+Shape.Circle("a")
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+Shape.Circle(1.0, 2.0)
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+    Empty
+let s: Shape = Shape.Empty
+s
+   muốn: ok(Shape)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+let u: User = {name: "A"}
+u.name
+   muốn: ok(str)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+let u: User = {name: "A"}
+u.age
+   muốn: !VS0403
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+x.foo
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let x: Unknown = 1
+x
+   muốn: !VS0301
+   được: ok(())
+   chẩn đoán: []
+
+---- ham_doi_so_va_optional stdout ----
+
+thread 'ham_doi_so_va_optional' (37551123) panicked at crates/vis-types/tests/tyck.rs:78:5:
+hàm: 20/20 ca sai
+nguồn: fn f(a: int) -> int:
+    a
+f(1)
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int) -> int:
+    a
+f("a")
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int, b: int) -> int:
+    a
+f(1)
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int) -> int:
+    a
+f(1, 2)
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int) -> int:
+    "a"
+f(1)
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f() -> str:
+    1
+f()
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn g(a: int, --b: int = 1) -> int:
+    a
+g(1, --b: 2)
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn g(a: int, --b: int = 1) -> int:
+    a
+g(1, --b: "x")
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn g(a: int, --b: int = 1) -> int:
+    a
+g()
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let f = (x) => x
+f(1, 2)
+   muốn: !VS0401
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let f = (x) => x
+f(1)
+   muốn: ok({error})
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn apply(f: fn(int) -> int, x: int) -> int:
+    f(x)
+fn inc(y: int) -> int:
+    y + 1
+apply(inc, 1)
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn apply(f: fn(int) -> int, x: int) -> int:
+    f(x)
+apply(1, 1)
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> int?:
+    x
+f(1)
+   muốn: ok(int?)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> int:
+    x?
+f(1)
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(x: int?) -> int:
+    x?
+f(5)
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(x: int?) -> str:
+    x?
+f(5)
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(x: int?) -> int?:
+    x
+f(5)
+   muốn: ok(int?)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int = 1) -> int:
+    a
+f()
+   muốn: ok(int)
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: fn f(a: int = "x") -> int:
+    a
+f()
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+
+
+failures:
+    ham_doi_so_va_optional
+    kien_truc_list_map_record_enum
+    literal_va_chu_thich_kieu
+    so_hoc_theo_don_vi
+    so_sanh_logic_va_coalesce
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-types --test tyck`
+error: 2 targets failed:
+    `-p vis-types --test exhaustive`
+    `-p vis-types --test tyck`
+----- hết -----

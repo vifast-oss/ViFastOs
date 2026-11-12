@@ -204,25 +204,64 @@ pub const NAME_CODES: [Code; 2] = [
     },
 ];
 
-/// **Ba sổ** mã lỗi đã cấp ở ST-11: từ vựng `01xx`, cú pháp `02xx`, tên `03xx` (VD-27/VD-35/VD-42).
+/// Sổ **mã kiểu** `04xx` (VD-42, ST-12) — sổ thứ tư. `VS0412` giữ đúng nghĩa "kiểu không khớp"
+/// của thiết kế §9; `VS0401` sai số/thứ tự đối số; `VS0402` `match` không xét hết; `VS0403`
+/// trường/kiểu không tồn tại.
+pub const TYPE_CODES: [Code; 4] = [
+    Code {
+        id: 401,
+        short: "VS0401",
+        message_vi: "sai số lượng hoặc thứ tự đối số",
+        message_en: "wrong number or order of arguments",
+        message_ja: "引数の数または順序が正しくありません",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 402,
+        short: "VS0402",
+        message_vi: "`match` không xét hết trường hợp",
+        message_en: "`match` is not exhaustive",
+        message_ja: "`match` が網羅的ではありません",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 403,
+        short: "VS0403",
+        message_vi: "trường hoặc kiểu không tồn tại",
+        message_en: "field or type does not exist",
+        message_ja: "フィールドまたは型が存在しません",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 412,
+        short: "VS0412",
+        message_vi: "kiểu không khớp",
+        message_en: "type mismatch",
+        message_ja: "型が一致しません",
+        severity: Severity::Error,
+    },
+];
+
+/// **Bốn sổ** mã lỗi đã cấp ở ST-12: từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`
+/// (VD-27/VD-35/VD-42).
 ///
-/// `04xx` (kiểu) và `05xx` (runtime) **chưa cấp mã nào** ở ST-11 ⇒ `lookup(401)`/`lookup(501)` là
-/// `None`; chúng vẫn là khối **đã dành trước** ([`BLOCKS_RESERVED`]) nên [`next_block`] nhảy tới `06xx`.
-pub const BOOKS: [&[Code]; 3] = [&CODES, &SYNTAX_CODES, &NAME_CODES];
+/// `05xx` (runtime) **chưa cấp mã nào** ở ST-12 ⇒ `lookup(501)` là `None`; khối này vẫn **đã dành
+/// trước** ([`BLOCKS_RESERVED`]) nên [`next_block`] vẫn nhảy tới `06xx`.
+pub const BOOKS: [&[Code]; 4] = [&CODES, &SYNTAX_CODES, &NAME_CODES, &TYPE_CODES];
 
 /// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`05xx`); VD-42 cấp `04xx` ở ST-12 và
 /// `05xx` ở ST-13. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
 pub const BLOCKS_RESERVED: [u16; 5] = [1, 2, 3, 4, 5];
 
-/// Duyệt **cả ba sổ** đã cấp, theo đúng thứ tự khối.
+/// Duyệt **cả bốn sổ** đã cấp, theo đúng thứ tự khối.
 pub fn all_codes() -> impl Iterator<Item = &'static Code> {
     BOOKS.iter().flat_map(|b| b.iter())
 }
 
 /// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
 ///
-/// Tra **cả ba sổ** đã cấp (VD-42): từ vựng `01xx`, cú pháp `02xx`, tên `03xx`. `04xx`/`05xx`
-/// **chưa cấp mã nào** ở ST-11 (ST-12/13) nên `lookup(401)`/`lookup(501)` là `None`.
+/// Tra **cả bốn sổ** đã cấp (VD-42): từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`.
+/// `05xx` **chưa cấp mã nào** ở ST-12 (ST-13) nên `lookup(501)` là `None`.
 /// [`CODES`]/[`SYNTAX_CODES`] vẫn nguyên vẹn nên test "khớp SPEC-lex §7" không đổi.
 pub fn lookup(id: u16) -> Option<&'static Code> {
     all_codes().find(|c| c.id == id)
@@ -240,7 +279,7 @@ pub fn lookup_str(s: &str) -> Option<&'static Code> {
 
 /// Khối mã kế tiếp còn trống (quy tắc cấp): trả số đầu của khối mới, không tái dùng.
 ///
-/// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`, `02xx`, `03xx`) **và** khối đã **dành trước**
+/// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`..`04xx`) **và** khối đã **dành trước**
 /// ([`BLOCKS_RESERVED`]: `01xx`..`05xx`) ⇒ `max(3, 5) + 1 = 06` ⇒ **`601`** (VD-42). Không hardcode
 /// `601`; thêm sổ mới thì số tự nhảy.
 pub fn next_block() -> u16 {
@@ -379,16 +418,42 @@ mod tests {
     }
 
     #[test]
+    fn so_kieu_04xx_khoa_theo_vd42() {
+        let ids: Vec<u16> = TYPE_CODES.iter().map(|c| c.id).collect();
+        assert_eq!(
+            ids,
+            vec![401, 402, 403, 412],
+            "sổ kiểu đúng thứ tự tăng dần"
+        );
+        assert_eq!(TYPE_CODES[3].short, "VS0412");
+        assert_eq!(
+            TYPE_CODES[3].message_vi, "kiểu không khớp",
+            "VS0412 giữ đúng nghĩa thiết kế §9"
+        );
+        for c in TYPE_CODES.iter() {
+            assert_eq!(lookup(c.id).map(|x| x.short), Some(c.short));
+            assert_eq!(lookup_str(c.short).map(|x| x.id), Some(c.id));
+            for lang in [Lang::Vi, Lang::En, Lang::Ja] {
+                assert!(!c.message(lang).is_empty(), "{} thiếu {:?}", c.short, lang);
+            }
+        }
+        assert!(
+            TYPE_CODES[1].message_vi.contains("xét hết"),
+            "VS0402 phải nói 'xét hết'"
+        );
+    }
+
+    #[test]
     fn so_ten_03xx_khoa_theo_vd42() {
         let ids: Vec<u16> = NAME_CODES.iter().map(|c| c.id).collect();
         assert_eq!(ids, vec![301, 302]);
         assert_eq!(NAME_CODES[0].short, "VS0301");
         assert_eq!(NAME_CODES[1].short, "VS0302");
-        // Ba sổ đã cấp: 10 + 2 + 2 mã; `04xx`/`05xx` **chưa** cấp ở ST-11.
-        assert_eq!(all_codes().count(), 14);
-        assert_eq!(BOOKS.len(), 3);
-        for id in [401u16, 402, 403, 412, 501, 502, 503] {
-            assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-11 (VD-44)");
+        // Bốn sổ đã cấp: 10 + 2 + 2 + 4 mã; `05xx` **chưa** cấp ở ST-12.
+        assert_eq!(all_codes().count(), 18);
+        assert_eq!(BOOKS.len(), 4);
+        for id in [501u16, 502, 503] {
+            assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-12 (ST-13)");
         }
         // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx/05xx.
         assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5]);

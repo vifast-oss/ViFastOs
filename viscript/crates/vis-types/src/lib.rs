@@ -53,6 +53,7 @@
 pub mod hir;
 pub mod lower;
 pub mod ty;
+pub mod tyck;
 
 pub use hir::{
     AssignOp, BinOp, FnKind, HAlias, HArm, HBody, HCond, HConst, HElse, HEnum, HExpr, HField, HFn,
@@ -63,3 +64,4 @@ pub use lower::{
     LowerOptions, NamePolicy, SymKind, Symbols, BUILTIN_VALUE_NAMES,
 };
 pub use ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
+pub use tyck::{check, CheckOutput};
