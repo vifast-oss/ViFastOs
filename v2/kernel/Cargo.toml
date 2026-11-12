@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Workspace bare-metal của kernel (KT-07). Tách hẳn workspace host ở v2/Cargo.toml:
+# `gate --fast` chỉ build phần chạy được trên host; ảnh boot build riêng cho
+# riscv64gc-unknown-none-elf qua `v2/test/boot/run.sh`.
+[workspace]
+resolver = "2"
+members = [
+    "vifast-kbin-riscv64",
+    "vifast-plat-riscv64",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99.1"
+license = "MIT OR Apache-2.0"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"

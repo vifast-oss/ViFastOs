@@ -55,11 +55,20 @@ EOF
 
 # Tập thư mục được quét (thiết kế §8). Fixture của self-test nằm ở v2/test/rules nên
 # không tự quét chính nó; `target/` luôn bị bỏ.
-SCAN_DIRS="kernel lib sim user std boot platform tools"
+SCAN_DIRS="kernel lib sim user std boot test tools"
 
 # rules <root>: in vi phạm "R<k> <đường dẫn>[:dòng]: <lý do>", trả 0 nếu sạch.
 rules() {
-    local root="$1" found=0 dirs=() d f n line path
+    local root found=0 dirs=() d f n line path
+    root="$(cd "$1" 2>/dev/null && pwd)" || {
+        echo "rules: không có thư mục $1" >&2
+        return 1
+    }
+    # Fixture cố ý vi phạm nằm ở v2/test/fixtures — chỉ loại khi quét chính cây v2.
+    local EXCL=(-not -path '/__khong_ton_tai__/*')
+    if [ "$root" = "$V2_ROOT" ]; then
+        EXCL=(-not -path "$V2_ROOT/test/fixtures/*")
+    fi
     for d in $SCAN_DIRS; do
         [ -d "$root/$d" ] && dirs+=("$root/$d")
     done
@@ -78,7 +87,7 @@ rules() {
                 found=1
             fi
         done < <(find "$root/$d" -type f \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
-            -not -path '*/target/*' -print0 2>/dev/null)
+            -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
     done
 
     # R2: cấm cfg(target_arch) trong kernel/vifast-core và lib/ (thiết kế §8)
@@ -94,7 +103,7 @@ rules() {
     for d in "${dirs[@]}"; do
         while IFS= read -r -d '' f; do
             case "$f" in
-                *.rs | *.s | *.asm | *.toml | *.vis | *.vish | *.vidl | *.sh | *.py)
+                *.rs | *.s | *.asm | *.ld | *.toml | *.vis | *.vish | *.vidl | *.sh | *.py)
                     if ! head -5 "$f" | grep -q 'SPDX-License-Identifier'; then
                         echo "R3 ${f#"$root"/}: thiếu SPDX-License-Identifier trong 5 dòng đầu"
                         found=1
@@ -107,7 +116,7 @@ rules() {
                     fi
                     ;;
             esac
-        done < <(find "$d" -type f -not -path '*/target/*' -print0 2>/dev/null)
+        done < <(find "$d" -type f -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
     done
 
     # R4: cấm path-dependency sang crates/ — v1 đã đóng băng (D2-26)
@@ -119,7 +128,7 @@ rules() {
                 echo "R4 ${f#"$root"/}:$n: path-dependency sang crates/ ($line)"
                 found=1
             done < <(grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*crates/' "$f" 2>/dev/null)
-        done < <(find "$d" -name Cargo.toml -not -path '*/target/*' -print0 2>/dev/null)
+        done < <(find "$d" -name Cargo.toml -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
     done
 
     # R5: unsafe chỉ trong danh sách đóng (D2-17): vifast-sync, vifast-objmem,
@@ -135,7 +144,7 @@ rules() {
                 found=1
             done < <(grep -nE '\bunsafe[[:space:]]*(fn|impl|trait|extern|\{)' "$f" 2>/dev/null |
                 sed "s|^|$path:|")
-        done < <(find "$d" -name '*.rs' -not -path '*/target/*' -print0 2>/dev/null)
+        done < <(find "$d" -name '*.rs' -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
     done
 
     return "$found"

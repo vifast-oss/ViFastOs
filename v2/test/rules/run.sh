@@ -20,7 +20,7 @@ check() {
         fail=$((fail + 1))
         return
     fi
-    out="$(cd "$V2_ROOT/.." && "$V2" rules --root "$HERE/$dir" 2>&1)"
+    out="$(cd "$V2_ROOT/.." && "$V2" rules --root "$HERE/../fixtures/$dir" 2>&1)"
     got=$?
     [ "$got" -eq "$want" ] || ok=0
     if [ "$want" -ne 0 ]; then

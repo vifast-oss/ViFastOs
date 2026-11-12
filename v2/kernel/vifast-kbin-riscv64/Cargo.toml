@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-kbin-riscv64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ảnh boot riscv64 tối thiểu cho K0.5 (KT-07) — code safe, nạp qua OpenSBI"
+
+[[bin]]
+name = "vifast-kbin-riscv64"
+path = "src/main.rs"
+
+[dependencies]
+vifast-plat-riscv64 = { path = "../vifast-plat-riscv64" }

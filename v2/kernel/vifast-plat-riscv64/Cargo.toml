@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-plat-riscv64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Platform tối thiểu QEMU virt riscv64 cho K0.5: UART + SBI (có unsafe, D2-17)"
+
+[dependencies]

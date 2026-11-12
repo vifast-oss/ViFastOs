@@ -2,6 +2,7 @@
 # Workspace của v2 — tách hẳn workspace v1 (crates/) đã đóng băng (D2-26).
 [workspace]
 resolver = "2"
+exclude = ["kernel"]
 members = [
     "lib/vifast-elf",
     "lib/vifast-fs",
