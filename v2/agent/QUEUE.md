@@ -14,8 +14,8 @@ Trạng thái hợp lệ: `READY | BLOCKED | REVIEW | DONE`.
 1. **Đọc** `STATE.md`, `QUEUE.md`, `DECISIONS.md`, phần spec liên quan. Không đọc lại toàn repo.
 2. **Lập kế hoạch nhỏ** trong `STATE.md`: các bước, tệp sẽ chạm, test sẽ thêm.
 3. **Test đỏ trước**: viết test/kịch bản thể hiện yêu cầu; chạy, xác nhận đỏ **đúng lý do**.
-4. **Cài đặt** theo bước nhỏ; sau mỗi bước chạy `./v2 check`.
-5. **Cổng**: `./v2 gate --fast` (luôn); `./v2 gate` nếu chạm platform/user.
+4. **Cài đặt** theo bước nhỏ; sau mỗi bước chạy `./v2/bin/v2 check`.
+5. **Cổng**: `./v2/bin/v2 gate --fast` (luôn); `./v2/bin/v2 gate` nếu chạm platform/user.
 6. **Commit**: `[KT-##] <tóm tắt>` + kết quả cổng + `BUILD_ID`.
 7. **Cập nhật** `STATE.md`, `JOURNAL/YYYY-MM-DD.md`; `vifast-agentctl done <id>`.
 8. **Nén ngữ cảnh** nếu lớn, rồi quay lại bước 1 với task kế.
@@ -28,7 +28,7 @@ Trạng thái hợp lệ: `READY | BLOCKED | REVIEW | DONE`.
 4. Nới ngưỡng (thời gian, seed, số ca đỏ, `MAX_IO`, `MAX_TCBS`, `MAX_OBJECTS`, `KERNEL_STATIC_BUDGET`).
 5. Retry để qua cổng; flake là `T-INFRA`, ghi log, chạy lại tối đa **một** lần chỉ để phân loại.
 6. Thêm `unsafe` ngoài danh sách crate đóng; thêm `cfg(target_arch)` vào kernel/runtime.
-7. Đưa số đo viết tay vào tài liệu (số đo do `./v2 nightly` sinh).
+7. Đưa số đo viết tay vào tài liệu (số đo do `./v2/bin/v2 nightly` sinh).
 8. Sửa `DECISIONS.md` của mình hoặc của dòng ViScript.
 9. `pkill -f qemu-system` toàn cục — chỉ `kill <pid>` do chính task tạo.
 
@@ -42,7 +42,7 @@ Trạng thái hợp lệ: `READY | BLOCKED | REVIEW | DONE`.
 | Kẹt **hai lần** cùng một ý | `BLOCKED` + câu hỏi cho Agent 0, chuyển task kế (quy tắc 2.5: đổi nhánh, không thử lần ba) |
 | Spec mâu thuẫn/thiếu | `BLOCKED` kèm đề xuất cụ thể, **không** tự đổi spec |
 | Cổng đỏ do lỗi không thuộc task | Mở mục lỗi trong `JOURNAL` (+ `.scn` nếu có), **không** sửa lan |
-| Hết task khả dụng | Chạy `./v2 nightly`, viết báo cáo, dừng |
+| Hết task khả dụng | Chạy `./v2/bin/v2 nightly`, viết báo cáo, dừng |
 
 **Mỗi task ≤ 3 giờ. Task lớn hơn phải tách** (ví dụ KT-04 tách a/b/c/d). Không gộp hai task vào một commit.
 
@@ -56,15 +56,15 @@ Trạng thái hợp lệ: `READY | BLOCKED | REVIEW | DONE`.
 ## Khối D — Lệnh cổng
 
 ```bash
-./v2 check          # fmt + clippy + luật cấu trúc (nhanh, không sim)
-./v2 gate --fast    # BẮT BUỘC cuối mỗi task: fmt, clippy, luật cấu trúc, L0
+./v2/bin/v2 check          # fmt + clippy + luật cấu trúc (nhanh, không sim)
+./v2/bin/v2 gate --fast    # BẮT BUỘC cuối mỗi task: fmt, clippy, luật cấu trúc, L0
                     # + gen-check (từ khi có KT-05) + L1 1.000 seed (từ khi có sim)
-./v2 nightly        # L1 100.000 seed, mutation, Miri, soak — không chạy trong vòng task
+./v2/bin/v2 nightly        # L1 100.000 seed, mutation, Miri, soak — không chạy trong vòng task
 ```
 
 - Giai đoạn đầu (trước KT-03): cổng **chưa có** ⇒ ghi "cổng chưa có" vào `STATE.md`, không tự tạo cổng ngoài task.
 - **L1 chưa bật tới KT-08** (chưa có sim). Đo thời gian L1 ngay khi sim chạy; vượt 60 s thì giảm seed của `--fast`, **không** giảm invariant.
-- `./v2 nightly` và soak **không** chạy song song với build/cổng khác; tối đa 3 QEMU song song; sim dùng tối đa `số core − 1`.
+- `./v2/bin/v2 nightly` và soak **không** chạy song song với build/cổng khác; tối đa 3 QEMU song song; sim dùng tối đa `số core − 1`.
 
 ## Khối E — Định dạng báo cáo
 
@@ -97,8 +97,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ID | Task | Phụ thuộc | Ngân sách | Trạng thái | Tiêu chí xong |
 |---|---|---|---|---|---|
 | KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` (Q10) | — | 1 h | READY | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục QD §6, mỗi mục có ca kiểm v2 |
-| KT-02 | khung `v2/` + `v2/agent/` (không ghi đè tệp đã có), LICENSE tham chiếu root, thêm `vifast-fsutil` | — | 3 h | READY | `cargo build` workspace rỗng xanh; `ls v2/agent` đủ tệp |
-| KT-03 | `v2 check` + `v2 gate --fast` khung: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | BLOCKED | cổng chạy; 5 luật có 5 case âm |
+| KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè tệp đã có), LICENSE tham chiếu root, thêm `vifast-fsutil` | — | 3 h | READY | `cargo build` workspace rỗng xanh; `ls v2/agent` đủ tệp; có `v2/bin/` |
+| KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | BLOCKED | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
 | KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→15+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | READY | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved: chỉ số + `NotSupported` (VCpu.Configure, IOSpace.Attach, VSpace khách, PowerControl…) | KT-04a | 2 h | BLOCKED | method reserved trả NotSupported; số không trùng |
 | KT-04c | **21 kịch bản** `.scn` viết chỉ bằng ABI + **kiểm tĩnh**: mọi bước tham chiếu syscall/method/mã lỗi có thật trong `abi.toml`, đủ tham số (gồm ca **"Exit khi procsrv chưa Recv"**) | KT-04a | 3 h | BLOCKED | 21 tệp; kiểm tĩnh pass; ca không viết được → BLOCKED "thiếu ABI" |

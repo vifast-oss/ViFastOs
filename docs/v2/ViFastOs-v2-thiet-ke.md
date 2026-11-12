@@ -10,14 +10,14 @@ Nhãn (QD §2.2): `[V1:CODE]`, `[V1:ĐO]`, `[V1:DOC]` = lấy từ dossier, gi�
 ## Thay đổi sau review (2026-11-12)
 
 Bản này đã vá theo `docs/QUYET-DINH-sau-review.md` (QD). Các nhóm thay đổi:
-1. Không gian tên: D-09..D-27 → **D2-01..D2-24**; G1..G6 → **R1..R6**; task T01.. → **KT-##**; báo cáo `R<n>-v2`.
+1. Không gian tên: D-09..D-27 → **D2-01..D2-26**; G1..G6 → **R1..R6**; task T01.. → **KT-##**; báo cáo `R<n>-v2`.
 2. ABI: syscall 0..13 + **14 `Exit(code)`**; dải 15..31 reserved; 19 mã lỗi; thêm `Tcb.ReadState/Suspend(mode)/SetFaultEp`; object chưa cài giữ số reserved; `abi_version`, `min_compat`, golden file.
 3. Kernel: cờ `suspended` + `Suspend(Abort/Defer)`; `Resume` không phát lại IPC; `FaultKind::Exit`; objmem API closure; slot cap 48 B; WaitAddr bảng băm; id theo cụm; MCS giai đoạn đầu.
 4. Tích hợp: U1 không hứa net (net ở N1); VSH2 phụ thuộc N1; shell sở hữu tty; `term.vidl` thành mốc `TUI`.
 5. Lộ trình không ngày: K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6 → K4'/K5'; chỉ riscv64 tới K6.
 6. Đo lường: N=1.000 trên máy `ps`, 3 luồng; bỏ 750; harness-v2; `--fast` L1 1.000 seed.
 7. v1: tag `v1-archive`, không soak lại; sổ lỗi mang sang v2 (Phụ lục A).
-8. Quyết định/Q&A: D2-01..D2-24 (mục 12); Q1–Q12 của dossier (Phụ lục B).
+8. Quyết định/Q&A: D2-01..D2-26 (mục 12); Q1–Q12 của dossier (Phụ lục B).
 
 ---
 
@@ -78,7 +78,7 @@ Phụ: Untyped chỉ là quota (object thật nằm trong pool static, hai trầ
 
 Mã lỗi gốc đổi **G1..G6 → R1..R6** (QD §2.1): chữ **G** để dành cho mốc desktop (G1..G5, mục 10.4), tránh trùng mã khi grep.
 
-Giữ từ v1: mô hình seL4, `forbid(unsafe_code)` cho core, check_invariants + mutation, **cơ chế marker (kế thừa dưới dạng `harness-v2`, mục 9.12)**, BUILD_ID, W^X theo Frame, văn hoá test đỏ trước; thư viện vifast-pte, vifast-elf, vifast-acpi, vifast-fs, vifast-fsutil, vifast-virtio, ý tưởng hộp thư của vifast-maint.
+Giữ từ v1: mô hình seL4, `forbid(unsafe_code)` cho core, check_invariants + mutation, **cơ chế marker (kế thừa dưới dạng `harness-v2`, mục 9.12)**, BUILD_ID, W^X theo Frame, văn hoá test đỏ trước; thư viện vifast-pte, vifast-elf, vifast-acpi, vifast-fs, vifast-fsutil, vifast-virtio, ý tưởng hộp thư của vifast-maint. Các thư viện này **copy/port vào `v2/lib/`** (D2-26), không path-dependency sang `crates/`.
 
 ---
 
@@ -848,12 +848,12 @@ Muốn tuyên bố tỉ lệ dưới p cần $$n \ge \frac{3}{p}$$. Chốt n tr�
 
 | Lệnh | Nội dung |
 |---|---|
-| `v2 check` | L0 các crate bị chạm |
-| `v2 gate --fast` | fmt, clippy -D warnings, luật cấu trúc, L0 toàn bộ; + gen-check (từ KT-05); + L1 **1.000 seed** (từ KT-08). < 2 phút |
-| `v2 gate` | + L2 + L3 arch đã port |
-| `v2 nightly` | L1 100.000, mutation, Miri, soak + cập nhật `STATUS.md` + perf history |
-| `v2 repro <seed\|scn> [--arch X]` | chạy lại một ca, mở trace |
-| `v2 mutants [tên]` | chạy đột biến |
+| `./v2/bin/v2 check` | L0 các crate bị chạm |
+| `./v2/bin/v2 gate --fast` | fmt, clippy -D warnings, luật cấu trúc, L0 toàn bộ; + gen-check (từ KT-05); + L1 **1.000 seed** (từ KT-08). < 2 phút |
+| `./v2/bin/v2 gate` | + L2 + L3 arch đã port |
+| `./v2/bin/v2 nightly` | L1 100.000, mutation, Miri, soak + cập nhật `STATUS.md` + perf history |
+| `./v2/bin/v2 repro <seed\|scn> [--arch X]` | chạy lại một ca, mở trace |
+| `./v2/bin/v2 mutants [tên]` | chạy đột biến |
 
 Không retry ở mọi cổng. Flake hạ tầng phân loại T-INFRA, không bao giờ tính PASS.
 
@@ -867,7 +867,7 @@ Quy tắc: một mốc bắt đầu khi mọi phụ thuộc đã đạt tiêu ch
 
 | Mốc | Nội dung | Tiêu chí xong |
 |---|---|---|
-| K0 | Spec đầy đủ (`abi.toml` 15 syscall + method + 19 lỗi + reserved; `kernel.toml`; `deps.toml`), bảng trạng thái, vifast-gen, khung workspace, luật cấu trúc, vifast-agentctl | `v2 gate --fast` chạy; Agent 0 duyệt spec (KT-04d APPROVED) |
+| K0 | Spec đầy đủ (`abi.toml` 15 syscall + method + 19 lỗi + reserved; `kernel.toml`; `deps.toml`), bảng trạng thái, vifast-gen, khung workspace, luật cấu trúc, vifast-agentctl | `./v2/bin/v2 gate --fast` chạy; Agent 0 duyệt spec (KT-04d APPROVED) |
 | **K0.5** | boot riscv64 QEMU qua OpenSBI nạp trực tiếp; `DebugPutStr`/`DebugHalt`; TAP 1 test; đo image/`.data`/`.bss` | **50 boot 0 lỗi**; `.data + .bss ≤ 256 KiB` [TK] |
 | K1a | sim harness store giả + scheduler tối thiểu 1 hart; Untyped; CNode/MDB test-first (mô hình tối giản trong test) | 1 kịch bản end-to-end; invariant tổng byte; property test cây |
 | K1a' | thay store giả bằng objmem (API closure) + Miri | Miri xanh từ commit đầu; các ca Untyped/CNode của KT-04c chạy trên mô hình |
@@ -958,8 +958,8 @@ K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6. Dòn
 1. **Đọc** STATE.md, QUEUE.md, DECISIONS.md, phần spec liên quan. Không đọc lại toàn repo.
 2. **Lập kế hoạch nhỏ** trong STATE.md: các bước, tệp sẽ chạm, test sẽ thêm.
 3. **Test đỏ trước**: viết test/kịch bản thể hiện yêu cầu; chạy, xác nhận đỏ đúng lý do.
-4. **Cài đặt** theo bước nhỏ; sau mỗi bước `v2 check`.
-5. **Cổng**: `v2 gate --fast` (luôn); `v2 gate` nếu chạm platform/user.
+4. **Cài đặt** theo bước nhỏ; sau mỗi bước `./v2/bin/v2 check`.
+5. **Cổng**: `./v2/bin/v2 gate --fast` (luôn); `./v2/bin/v2 gate` nếu chạm platform/user.
 6. **Commit**: `[KT-##] <tóm tắt>` + kết quả cổng + BUILD_ID.
 7. **Cập nhật** STATE.md, JOURNAL; `agentctl done`.
 8. **Nén ngữ cảnh** nếu lớn, rồi quay lại bước 1 với task kế.
@@ -973,7 +973,7 @@ K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6. Dòn
 - Lỗi logic: tái hiện trên sim trước khi sửa; kèm `.scn`.
 - Thêm `unsafe` ngoài danh sách đóng: cấm; cần thì ghi BLOCKED.
 - Thêm phụ thuộc crate ngoài: thuần Rust, giấy phép tương thích MIT/Apache-2.0, ghi lý do trong JOURNAL, kiểm `deps.toml`.
-- Không đưa số liệu viết tay vào tài liệu; số liệu do `v2 nightly` sinh.
+- Không đưa số liệu viết tay vào tài liệu; số liệu do `./v2/bin/v2 nightly` sinh.
 - `cargo fmt` trước commit; clippy sạch.
 - SPDX theo loại tệp (D2-21, QD §9.3): `//` cho Rust/asm, `#` cho `.vis .vish .vidl .toml`; tệp không có chú thích dùng sidecar `.license`; tệp sinh do generator phát header. Thêm `license.workspace = true` cho mọi crate; LICENSE-MIT/APACHE một bản ở gốc; `THIRD-PARTY.md` sinh tự động; **không** tạo NOTICE.
 
@@ -985,14 +985,14 @@ K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6. Dòn
 | Kẹt hai lần cùng một ý | BLOCKED, chuyển task kế |
 | Spec mâu thuẫn hoặc thiếu | BLOCKED với đề xuất cụ thể, không tự đổi spec |
 | Cổng đỏ do lỗi không thuộc task | Mở mục lỗi trong JOURNAL + `.scn` nếu có; không sửa lan |
-| Hết task khả dụng | Chạy `v2 nightly`, viết báo cáo, dừng |
+| Hết task khả dụng | Chạy `./v2/bin/v2 nightly`, viết báo cáo, dừng |
 | Máy bận/QEMU treo | giết **đúng PID do task tạo** (cấm `pkill -f qemu-system` toàn cục), ghi T-INFRA, tiếp |
 
 ### 11.6 Chạy qua đêm
 
 - Trước khi rời máy: QUEUE.md có ít nhất 8 task READY chia nhỏ (1 tới 3 giờ mỗi task), phụ thuộc rõ, ít nhất 3 nhánh độc lập để khi một nhánh BLOCKED vẫn còn việc. Dòng ViScript chỉ mở khi OS hết task READY (D2-20).
-- Agent 2 chạy vòng 11.3 liên tục; sau mỗi task chạy `v2 gate --fast` toàn bộ để phát hiện hồi quy chéo.
-- Cuối phiên hoặc khi hết task: `v2 nightly`, `agentctl report`.
+- Agent 2 chạy vòng 11.3 liên tục; sau mỗi task chạy `./v2/bin/v2 gate --fast` toàn bộ để phát hiện hồi quy chéo.
+- Cuối phiên hoặc khi hết task: `./v2/bin/v2 nightly`, `agentctl report`.
 - Tài nguyên: tối đa **3 QEMU** song song [TK], sim dùng tối đa `số core − 1`.
 
 ### 11.7 Định dạng báo cáo
@@ -1042,6 +1042,7 @@ Quyết định v1 (D-01..D-08, D11, D18) giữ nguyên mã, **chỉ áp cho v1*
 | D2-22 | Duyệt spec bằng dòng APPROVED; Agent 2 soạn nháp ở REVIEW, sau duyệt chỉ Agent 0 sửa |
 | D2-23 | D-08 (không đụng đồ hoạ/ViFastKey) còn hiệu lực tới K6 |
 | D2-24 | Mọi soak trên máy `ps`, N theo `n ≥ 3/p` |
+| D2-26 | Thư viện v1 dùng lại được **copy/port** vào `v2/lib/`, không path-dep; `PORTED-FROM: crates/<tên>@ca2eaf5` |
 
 Ba ghi chú bắt buộc (QD §2.1, §2.3, §5.3):
 
@@ -1060,8 +1061,8 @@ Ba ghi chú bắt buộc (QD §2.1, §2.3, §5.3):
 | ID | Task | Phụ thuộc | Ngân sách | Trạng thái | Tiêu chí xong |
 |---|---|---|---|---|---|
 | KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` | — | 1 h | READY | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục |
-| KT-02 | khung `v2/` + `v2/agent/` (không ghi đè), LICENSE tham chiếu root, `vifast-fsutil` | — | 3 h | READY | `cargo build` workspace rỗng xanh |
-| KT-03 | `v2 check` + `v2 gate --fast` khung: fmt, clippy, luật cấu trúc, L0, SPDX; chưa gen-check/L1 | KT-02 | 3 h | BLOCKED | cổng chạy; 5 luật có 5 case âm |
+| KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè), LICENSE tham chiếu root, `vifast-fsutil` | — | 3 h | READY | `cargo build` workspace rỗng xanh; có `v2/bin/` |
+| KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX; chưa gen-check/L1 | KT-02 | 3 h | BLOCKED | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
 | KT-04a | bảng ánh xạ v1→v2 + `spec/abi.toml` lõi (15 syscall, 19 lỗi, layout 48 B, riscv64) | KT-02 | 3 h | READY | abi.toml parse; đủ bảng ánh xạ |
 | KT-04b | object reserved: số + `NotSupported` | KT-04a | 2 h | BLOCKED | số không trùng; trả NotSupported |
 | KT-04c | **21 kịch bản** `.scn` chỉ bằng ABI + **kiểm tĩnh** (syscall/method/mã lỗi có thật, đủ tham số; gồm "Exit khi procsrv chưa Recv") | KT-04a | 3 h | BLOCKED | 21 tệp; kiểm tĩnh pass; ca không viết được → BLOCKED "thiếu ABI" |

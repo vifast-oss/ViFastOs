@@ -26,7 +26,8 @@ Mục tiêu vòng này: đưa dòng OS từ K0 lên **K0.5 boot riscv64** và d�
 
 - Không sửa `spec/` trừ `KT-04a` (`spec/abi.toml`, `spec/kernel.toml`); không sửa `docs/QUYET-DINH-sau-review.md`, `docs/v2/ViFastOs-v2-thiet-ke.md`, `docs/viscript/ViScript-thiet-ke.md`, `docs/viscript/SPEC-lex.md`, `docs/v1/`, `DECISIONS.md`, `QUEUE.md`.
 - Không sửa `accept()`/kỳ vọng/snapshot harness; không `#[ignore]`; không nới ngưỡng; không retry để lấy xanh.
-- Không đưa số đo viết tay vào tài liệu; số đo chỉ từ `./v2 nightly` / `./vis-dev nightly`.
+- Không đưa số đo viết tay vào tài liệu; số đo chỉ từ `./v2/bin/v2 nightly` / `./vis-dev nightly`.
+- Thư viện v1 dùng lại: **copy/port vào `v2/lib/`**, không path-dep sang `crates/`; giữ SPDX + `PORTED-FROM: crates/<tên>@ca2eaf5` (D2-26).
 - Luôn test đỏ trước; lỗi logic phải có `.scn`; hồi quy thì revert trước.
 - Mỗi task ≤ 3 giờ; vượt thì dừng, ghi tiến độ, chuyển task không phụ thuộc.
 - Không ghi `APPROVED`; không tự coi "coi như đã duyệt". `KT-04d` vẫn `REVIEW`.
@@ -36,8 +37,8 @@ Mục tiêu vòng này: đưa dòng OS từ K0 lên **K0.5 boot riscv64** và d�
 1. Đọc STATE/QUEUE/DECISIONS + phần spec liên quan.
 2. Ghi kế hoạch nhỏ vào STATE: bước, tệp, test sẽ thêm.
 3. Viết test/kịch bản thể hiện yêu cầu; chạy, xác nhận **đỏ đúng lý do**, dán log vào JOURNAL.
-4. Cài đặt từng bước; sau mỗi bước chạy `./v2 check` (hoặc `./vis-dev check`).
-5. Cổng cuối task: `./v2 gate --fast` (hoặc `./vis-dev gate --fast`). Không retry.
+4. Cài đặt từng bước; sau mỗi bước chạy `./v2/bin/v2 check` (hoặc `./vis-dev check`).
+5. Cổng cuối task: `./v2/bin/v2 gate --fast` (hoặc `./vis-dev gate --fast`). Không retry.
 6. Commit `[KT-##] …` / `[ST-##] …` + kết quả cổng + BUILD_ID.
 7. Cập nhật STATE, JOURNAL; `vifast-agentctl done <id>` nếu có.
 8. Nén ngữ cảnh nếu lớn; quay lại bước 1 với task kế.
@@ -78,12 +79,13 @@ Sau khi nhận kết quả:
 - Không nói "test xanh" nếu chưa dán log; không nói "đã sửa" nếu chưa commit.
 - Không suy diễn yêu cầu ngoài QUEUE; gặp mơ hồ → `BLOCKED` kèm 2 phương án + đề xuất.
 - Trước khi sửa tệp: đọc tệp; trước khi ghi đè: kiểm tra không phải tệp cấm.
+- Tệp lớn: ghi theo khối **≤ 400 dòng/lần**; không xuất quá **~20k token** trong một phản hồi; nếu bị cắt, ghi tiếp khối kế (tránh chết vì giới hạn output).
 - Không chạy `pkill -f qemu-system`; chỉ giết PID do mình tạo.
 
 ## 6. Thứ tự khởi động vòng 1
 
 1. Ghi STATE: HEAD hiện tại, "L1 chưa bật", task đầu.
-2. OS READY làm trước: **KT-01** (v1-archive + KNOWN-ISSUES) → **KT-02** (khung v2 + agent) → **KT-04a** (abi.toml lõi + bảng ánh xạ) → **KT-T26** (FS host test) → **KT-R1** (báo cáo).
+2. OS READY làm trước: **KT-01** (v1-archive + KNOWN-ISSUES) → **KT-02** (khung v2 + agent + `v2/bin/`) → **KT-04a** (abi.toml lõi + bảng ánh xạ) → **KT-T26** (FS host test) → **KT-R1** (báo cáo).
 3. Sau KT-02 mở: **KT-03** (cổng khung), **KT-06** (agentctl), **KT-08** (sim harness, không cần QEMU), **KT-12** (traceformat).
 4. ViScript chỉ khi OS hết READY (D2-20), trừ **ST-04 mở ngay** (ST-02a đã DONE): ST-04 lexer với 60 golden token đỏ trước. ST-01/ST-02b/ST-10 khi rảnh.
 5. Không làm KT-04b/c/d, KT-05 cho tới khi KT-04a xong; KT-04d là `REVIEW` của Agent 0.

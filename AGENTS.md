@@ -11,12 +11,12 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-25) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-26).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-26) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-26).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
 
-Nhãn số liệu (bắt buộc, QD §2.2): `[V1:CODE]` `[V1:ĐO]` `[V1:DOC]` (từ dossier, giữ độ tin cậy gốc), `[TK]` thiết kế mới (**mặc định** cho dòng không nhãn), `[GT]` giả thuyết, `[ƯL]` số ước lượng cần đo. Hằng số thiết kế là `[TK]`, **không** phải `[ƯL]`. Số đo chỉ do `v2 nightly` / `vis-dev nightly` sinh; tài liệu không chứa số đo viết tay (QD §9 Q12).
+Nhãn số liệu (bắt buộc, QD §2.2): `[V1:CODE]` `[V1:ĐO]` `[V1:DOC]` (từ dossier, giữ độ tin cậy gốc), `[TK]` thiết kế mới (**mặc định** cho dòng không nhãn), `[GT]` giả thuyết, `[ƯL]` số ước lượng cần đo. Hằng số thiết kế là `[TK]`, **không** phải `[ƯL]`. Số đo chỉ do `./v2/bin/v2 nightly` / `vis-dev nightly` sinh; tài liệu không chứa số đo viết tay (QD §9 Q12).
 
 ## 2. Bản đồ tài liệu
 
@@ -66,16 +66,17 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 ## 6. Lệnh
 
 ```bash
-./v2 check                  # nhanh: fmt + clippy + luật cấu trúc, không chạy sim
-./v2 gate --fast            # cổng bắt buộc cuối mỗi task: fmt, clippy, luật cấu trúc, L0, gen-check (từ KT-05), L1 1.000 seed (từ khi có sim)
-./v2 nightly                # L1 100.000 seed, mutation, Miri, soak (không chạy trong vòng task)
+./v2/bin/v2 check                  # nhanh: fmt + clippy + luật cấu trúc, không chạy sim
+./v2/bin/v2 gate --fast            # cổng bắt buộc cuối mỗi task: fmt, clippy, luật cấu trúc, L0, gen-check (từ KT-05), L1 1.000 seed (từ khi có sim)
+./v2/bin/v2 nightly                # L1 100.000 seed, mutation, Miri, soak (không chạy trong vòng task)
 
 ./vis-dev check             # dòng ViScript
 ./vis-dev gate --fast       # cổng bắt buộc cuối mỗi task ViScript
 ./vis-dev nightly
 ```
 
-- `v2 nightly` và soak **không** chạy song song với build/cổng khác.
+- Lệnh v2 nằm ở `v2/bin/v2` (không thể là `./v2` vì `v2/` là thư mục). Có thể `export PATH="$PWD/v2/bin:$PATH"` rồi gõ `v2 …`; tài liệu dùng dạng đầy đủ `./v2/bin/v2`.
+- `./v2/bin/v2 nightly` và soak **không** chạy song song với build/cổng khác.
 - **L1 chưa bật** cho tới khi có sim (KT-08); giai đoạn trước đó `v2/agent/STATE.md` ghi rõ "L1 chưa bật".
 - Chưa có `gate` đầy đủ trong vòng 1; chỉ `gate --fast`.
 - Đo thời gian L1 ngay khi sim chạy; vượt 60 s thì giảm seed của `--fast`, **không** giảm invariant (QD §5.2).
