@@ -234,6 +234,20 @@ do_check() {
         echo "--- fixture âm của máy kiểm ABI"
         if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/abi/run_fixtures.sh); then
             echo "--- abi fixtures: OK"
+        echo "--- gen-check (KT-05: code + docs sinh từ spec)"
+        if (cd "$REPO_ROOT" && ./v2/bin/vifast-gen --check); then
+            echo "--- gen-check: OK"
+        else
+            echo "--- gen-check: FAIL" >&2
+            fails=$((fails + 1))
+        fi
+        echo "--- fixture âm của gen-check"
+        if (cd "$REPO_ROOT" && bash v2/test/gen/run_fixtures.sh); then
+            echo "--- gen fixtures: OK"
+        else
+            echo "--- gen fixtures: FAIL" >&2
+            fails=$((fails + 1))
+        fi
         else
             echo "--- abi fixtures: FAIL" >&2
             fails=$((fails + 1))
@@ -270,7 +284,7 @@ do_gate_fast() {
         echo "--- L1: FAIL" >&2
         return 1
     fi
-    echo "v2 gate --fast: PASS (L1 sim 1.000 seed; gen-check CHƯA có — KT-05)"
+    echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }
 
 cmd="${1:-}"

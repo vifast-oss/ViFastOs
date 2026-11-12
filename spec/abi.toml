@@ -160,3 +160,112 @@ PowerControl = { id = 16, stability = "reserved", install_at = "P1", unsupported
 from = 17
 to = 31
 note = "9..16 đã cấp tên (KT-04b, D2-32); 17..31 còn trống, ID không tái dùng (D2-15)"
+
+# ---------------------------------------------------------------------------
+# Chữ ký method — KT-05 bước 0 (D2-33 draft đã duyệt, D2-35). `stable-draft`: đổi chữ ký qua Agent 0,
+# không cần tăng abi_version major (không thuộc 5 thứ đóng băng D2-15). Nguồn sinh code + docs/abi.md.
+[method_signature]
+stability = "stable-draft"
+version = 1
+
+[method_signature."Untyped.Retype"]
+params = ["cap", "type", "size_bits", "flags"]
+returns = []
+# Giá trị trả `cap` chưa có nguồn thiết kế và 21 .scn không dùng; để K1a chốt riêng (D2-35).
+note = "`flags` = tập TÊN cờ (bit GUEST reserved, D2-32); KHÔNG gán số bit ở đây. type = VSpace + GUEST ⇒ NotSupported tới H1"
+
+[method_signature."CNode.Copy"]
+params = ["cnode", "src", "dst", "rights?"]
+returns = []
+
+[method_signature."CNode.Mint"]
+params = ["cnode", "src", "dst", "rights?", "badge?"]
+returns = []
+
+[method_signature."CNode.Move"]
+params = ["cnode", "src", "dst"]
+returns = []
+
+[method_signature."CNode.Revoke"]
+params = ["cnode", "slot?"]
+returns = []
+
+[method_signature."CNode.Delete"]
+params = ["cnode", "slot"]
+returns = []
+
+[method_signature."Tcb.Configure"]
+params = ["tcb", "cspace?", "vspace?", "entry?", "ipc_buffer?", "priority?"]
+returns = []
+
+[method_signature."Tcb.SetFaultEp"]
+params = ["tcb", "cap"]
+returns = []
+
+[method_signature."Tcb.Suspend"]
+params = ["tcb", "mode"]
+variants = { mode = ["Abort", "Defer"] }
+returns = []
+
+[method_signature."Tcb.Resume"]
+params = ["tcb"]
+returns = []
+
+[method_signature."Tcb.ReadState"]
+params = ["tcb"]
+returns = ["state", "suspended", "blocked_on_kind", "exit_code"]
+
+[method_signature."SchedContext.Bind"]
+params = ["sched", "target"]
+note = "`target` là cap Reply/Notification (design §4.5: Notification bind SchedContext; donation qua Reply). TCB bind không có nguồn — bỏ."
+returns = []
+
+[method_signature."SchedControl.Configure"]
+params = ["sched_control", "sched", "budget?", "period?", "refills?"]
+returns = []
+
+# ---------------------------------------------------------------------------
+# Trạng thái TCB — **enum đầy đủ §4.4** (D2-33), không phải tập con.
+[method_signature.state]
+names = [
+  "Inactive",
+  "Ready",
+  "Running",
+  "BlockedOnSend",
+  "BlockedOnRecv",
+  "BlockedOnReply",
+  "BlockedOnNotification",
+  "BlockedOnAddress",
+  "Sleeping",
+  "Stopping",
+  "Dead",
+]
+orthogonal_flags = ["suspended", "exit_code: Option<u64>"]
+
+[method_signature.state.BlockedOnSend]
+fields = ["ep", "call: bool", "fault: Option<FaultKind>"]
+
+[method_signature.state.BlockedOnRecv]
+fields = ["ep", "reply"]
+
+[method_signature.state.BlockedOnReply]
+fields = ["reply"]
+
+[method_signature.state.BlockedOnNotification]
+fields = ["ntfn"]
+
+[method_signature.state.BlockedOnAddress]
+fields = ["frame", "offset"]
+
+[method_signature.state.Sleeping]
+fields = ["reason"]
+variants = { reason = ["Timeout", "Budget"] }
+
+[method_signature.state.Running]
+fields = ["hart"]
+
+# D2-25: Exit mang theo mã thoát trong fault message; `BlockedOnSend.fault` là bổ sung D2-33.
+[method_signature.fault_kind]
+names = ["Exit"]
+[method_signature.fault_kind.Exit]
+fields = ["code: u64"]

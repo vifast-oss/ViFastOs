@@ -159,6 +159,29 @@ def main():
           "object reserved phải 17..31 (D2-32: 9..16 đã cấp tên)")
     dbg = doc.get("debug_info", {})
     check(dbg.get("number") == 15, "DebugGetInfo phải là syscall 15 (D2-29)")
+
+    # --- KT-05 bước 0: chữ ký method trong spec, stable-draft (D2-33/D2-35)
+    sig = doc.get("method_signature") or {}
+    check(sig.get("stability") == "stable-draft",
+          "thiếu [method_signature].stability = 'stable-draft' (KT-05 bước 0)")
+    methods = {k: v for k, v in sig.items() if isinstance(v, dict) and "params" in v}
+    check(len(methods) == 13, f"phải có 13 chữ ký method, đang {len(methods)}")
+    objs = doc.get("object", {})
+    for name, entry in methods.items():
+        obj, _, meth = name.partition(".")
+        check(obj in objs, f"chữ ký {name}: object {obj!r} không có trong [object]")
+        if obj in objs:
+            names = {m.get("name") for m in (objs[obj].get("method") or {}).values()}
+            check(meth in names, f"chữ ký {name}: method {meth!r} không có trong [object.{obj}]")
+    if "Tcb.ReadState" in methods:
+        check(methods["Tcb.ReadState"].get("returns") ==
+              ["state", "suspended", "blocked_on_kind", "exit_code"],
+              "Tcb.ReadState phải trả 4 giá trị (D2-33)")
+    if "Untyped.Retype" in methods:
+        check("type" in methods["Untyped.Retype"].get("params", []),
+              "Untyped.Retype phải có tham số 'type' (D2-33)")
+    check(len((sig.get("state") or {}).get("names", [])) == 11,
+          "enum TCB phải đủ 11 trạng thái (D2-33)")
     check(dbg.get("status") == "frozen", "DebugGetInfo đã chốt ⇒ status frozen (D2-29)")
     rc = dbg.get("return_channel", {})
     check(rc.get("a1") == "abi_version" and rc.get("a3") == "min_compat"

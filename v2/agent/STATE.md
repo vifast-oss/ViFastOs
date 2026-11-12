@@ -9,7 +9,7 @@ BUILD_ID      : —
 Task          : KT-05 (READY — bước 0 chép draft chữ ký + D2-35); KT-12 READY (D2-38); KT-04d APPROVED 2026-11-12
 Bước          : 0/8
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (abi + scn + L0 + **L1 1.000 seed**); boot riscv64 50/50 (KT-07)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**gen-check ON**, abi + scn + L0 + L1 1.000 seed); boot riscv64 50/50 (KT-07)
 Việc dở       : —
 ```
 
@@ -96,6 +96,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | **KT-05** | 8/8 | — | — | `check`+`gate --fast` PASS (gen-check ON) | **DONE**: `[method_signature]` stable-draft vào spec; `vifast-gen` sinh code+`docs/v2/abi.md`; gen-check so byte + 3 fixture âm |
 | 2026-11-12 | **KT-R1** | 8/8 | — | — | `check` PASS (báo cáo) | **DONE**: `R1-v2.md` 6 mục + `R1-v2.json` 11 khoá (project v2); `check_report.py` nối vào `v2 check`; ghi cả hai trạng thái khi sổ lệch |
 | 2026-11-12 | **KT-08** | 8/8 | — | — | `gate --fast` PASS (**L1 1000 seed**) | **DONE**: `v2/sim/vifast-sim` (store giả + scheduler 1 hart, trace băm FNV-1a); `v2 sim` CLI; **L1 1.000 seed bật trong gate --fast**; 7 test unit + 1 test L1 |
 | 2026-11-12 | **KT-06** | 8/8 | — | — | `check` PASS (agentctl 9/9 test) | **DONE** (sửa theo review #10): `vifast-agentctl next/list/report/start/done/block` (đọc mặc định; `--write` mới ghi; `start` chỉ READY); parser nhận **KT- và ST-**, chuẩn hoá `**DONE**`, `set_status` giữ escape; `v2 agentctl` nối đúng dispatch; **13/13** test |

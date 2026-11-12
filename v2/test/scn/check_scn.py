@@ -158,9 +158,15 @@ def main():
         except Exception:  # noqa: BLE001 - draft hỏng thì bỏ qua, spec vẫn là chuẩn
             pass
 
-    # D2-33: chữ ký method + enum trạng thái lấy từ draft (chưa vào spec/)
+    # KT-05: chữ ký đã vào `spec/[method_signature]` (stable-draft) — spec là nguồn.
     sig = {}
-    if sig_path.exists():
+    spec_sig = spec.get("method_signature") or {}
+    if spec_sig.get("stability") == "stable-draft":
+        sig = {
+            "method": {k: v for k, v in spec_sig.items() if isinstance(v, dict) and "params" in v},
+            "state": spec_sig.get("state", {}),
+        }
+    elif sig_path.exists():
         try:
             _, sig = load_toml(sig_path)
         except Exception as exc:  # noqa: BLE001
