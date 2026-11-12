@@ -96,15 +96,19 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 |---|---|---|---|---|---|
 | ST-01 | workspace `viscript/` + `viscript/agent/` (không ghi đè) + SPDX theo loại tệp + cổng 1.500 dòng/unsafe có case âm + `vis-host-vifast` **không** nằm trong `viscript/` | — | 3 h | DONE | cổng chạy; 3 case âm |
 | ST-02a | **Áp errata mục 3 (S1..S11, L1..L8) + APPROVED**; SPEC-lex + Phụ lục A + bảng ưu tiên do Agent 1 soạn | — | 3 h (2 phiên) | **DONE** | errata áp xong; **APPROVED 2026-11-12 Agent 0** |
-| ST-02b | sổ mã lỗi VS + 4 chữ số + quy tắc cấp | ST-01 | 2 h | READY | bảng mã; `vis explain` được |
-| ST-03 | `vis-diag`: cột theo Unicode scalar, render, bảng vi/en/ja | ST-01 | 3 h | BLOCKED | snapshot 20 ca, có tiếng Việt/emoji |
+| ST-02b | sổ mã lỗi VS + 4 chữ số + quy tắc cấp | ST-01 | 2 h | DONE | bảng mã; `vis explain` được |
+| ST-03 | `vis-diag`: cột theo Unicode scalar, render, bảng vi/en/ja | ST-01 | 3 h | READY | snapshot 20 ca, có tiếng Việt/emoji |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | READY | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
 | ST-05 | parser + CST lossless | ST-04 | 3 h | BLOCKED | **30 golden biểu thức đỏ trước**; 100 % fixture tài liệu parse; mỗi tệp lỗi đúng 1 lỗi đầu |
 | ST-06 | CmdCST + golden từng hàng bảng 9.4 + 10 ca mơ hồ | ST-05 | 3 h | BLOCKED | golden AST/CST |
 | ST-07 | `vis-fmt` lossless, idempotent, sửa tab | ST-05 | 3 h | BLOCKED | vòng tròn parse→fmt→parse |
 | ST-08 | runner `--check` cú pháp (chưa interpreter) | ST-05 | 2 h | BLOCKED | TAP; chạy fixture |
 | ST-09 | fixture theo QD §7.4 (1/khối mã + 1/quyết định; cấm `...`) | ST-06,07,08 | 2 h | BLOCKED | xanh |
-| ST-10 | báo cáo `R1-viscript` | các task | 1 h | READY | MD + JSON có `project` |
+| ST-10 | báo cáo `R1-viscript` | các task | 1 h | DONE | MD + JSON có `project` |
+
+APPROVED 2026-11-12 Agent 0
+
+> ST-02a DONE; VD-27 chốt mã lỗi 01xx..05xx. ST-02b/ST-10 DONE; ST-03 READY. Commit `3d5539a` do người điều phối, không phải Agent 2.
 
 ## Ghi chú vận hành
 

@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-28`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-39`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-28: quyết định v2 (chép nguyên văn QD §8)
+## Phần II — D2-01..D2-39: quyết định v2 (D2-01..28 chép QD §8; D2-29..39 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -68,6 +68,11 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
   - Chữ ký cho **các method dùng trong 21 `.scn`**, tối thiểu: `Untyped.Retype` (có `flags`, gồm bit `GUEST` reserved), `CNode.Copy`, `CNode.Mint`, `CNode.Revoke`, `CNode.Delete`, `Tcb.Configure`, `Tcb.SetFaultEp`, `Tcb.Suspend(mode)`, `Tcb.Resume`, **`Tcb.ReadState`**, `SchedContext.Bind`, `SchedControl.Configure`. Method nào `.scn` dùng mà không có trong danh sách này thì thêm vào, **không** viết chữ ký cho method ngoài 21 ca.
   - **Enum trạng thái TCB là enum đầy đủ §4.4**, không phải tập con: `Inactive | Ready | Running{hart} | BlockedOnSend{ep, call, fault: Option<FaultKind>} | BlockedOnRecv{ep, reply} | BlockedOnReply{reply} | BlockedOnNotification{ntfn} | BlockedOnAddress{frame, offset} | Sleeping{reason: Timeout|Budget} | Stopping | Dead`, cộng cờ trực giao `suspended` và `exit_code: Option<u64>`. Trường `fault` trong `BlockedOnSend` là bổ sung được duyệt tại đây (dùng cho Exit, mục 1 điểm 3 của `DUYET-AGENT0-vong-va`).
   - Chữ ký method **không** thuộc 5 thứ đóng băng của D2-15, nên sau APPROVED draft vào `spec/` với `stability = "stable-draft"`; đổi chữ ký ở K1 vẫn qua Agent 0 nhưng không cần tăng `abi_version` major.
+- **D2-35** Duyệt **nguyên đề xuất** `[TK]`: `[object_size].riscv64` (`tcb=512`, `endpoint=64`, `notification=64`, `reply=64`, `sched_context=256`, `sched_control=64`, `cnode_base=64`) và `[message_info]` 35 bit + 64 MR + 4 cap + IPC buffer 4 KiB. Đổi các số này phải có D2 mới. `DebugGetInfo` trả: `a0=error`, `a1=abi_version`, `a3=min_compat`, `a4=features`, `a5=num_harts` (syscall không dùng MR vào); ghi `[debug_info].return_channel` trong `spec/abi.toml`. Top-level `status = "APPROVED"` đặt trong cùng cửa sổ với dòng APPROVED KT-04d.
+- **D2-36** `KT-T26` là **đèn host** (read-your-own-write trên `vifast-fs` + `CachedDev`, `MAX_IO=256`, ca âm mất ghi im lặng), **không** tuyên bố đóng T26. T26 giữ **OPEN** trong v2 tới **K3.5** (VFS/`read_dir` + cache + `smp`); **không** chuyển sang KT-08. Không chạy lại 1.000 seed. DoD KT-T26 = "đèn + ca âm xanh, có log đỏ trước"; ghi T26 OPEN tới K3.5 trong `BLOCKED.md`.
+- **D2-37** (a) Agent 2 **không** ghi `v2/agent/QUEUE.md`/`viscript/agent/QUEUE.md`; `vifast-agentctl done` chỉ là **đề xuất đọc-only**, người điều phối/Agent 0 lật sổ bằng commit `[KT-00]`/`[ST-00]`. (b) Comment `spec/abi.toml` còn cũ do **Agent 0** sửa trong cùng cửa sổ APPROVED, không đổi giá trị ABI. (c) D2-21: vòng 1 **không** bắt buộc chạy `cargo-deny`; bắt buộc có `deny.toml` (allowlist QD §9.3) + bước kiểm "không registry dependency" trong `v2 check` **trước dependency ngoài đầu tiên**, `cargo-deny` đầy đủ từ mốc đó/K1a.
+- **D2-38** Dump text của KT-08 (`# scn seed=…`, `step=…`, `# trace-hash=`) là **scenario log** phục vụ debug/L1, **không** phải traceformat ABI/kernel. **KT-12** sở hữu bản ghi **32 B** `{t_ns,hart,kind,tcb,a,b}` dùng chung sim/QEMU. Golden text hiện có giữ nguyên làm hồi quy sự kiện; KT-12 thêm golden nhị phân + decoder + cross-check; không có hai định dạng chuẩn.
+- **D2-39** `R<n>-v2.json` có đúng **11 khoá**: `project, round, head, build_id, tasks, gates, sim, coverage, mutants, perf, blocked`. "Phủ task đã mở" = **mọi hàng QUEUE** tại thời điểm báo cáo (vòng 1: 17/17), không chỉ DONE/REVIEW. Không thêm khoá `next` vào JSON; `next` chỉ là thông tin CLI/MD.
 
 ---
 

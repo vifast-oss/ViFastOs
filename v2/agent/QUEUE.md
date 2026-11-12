@@ -103,52 +103,51 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→16+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | DONE | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
 | KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | DONE | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
-| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | REVIEW | dòng `APPROVED <ngày> Agent 0` trong QUEUE; `check_scn` 21/21 0 blocked; mapping đã sửa 2 lỗi số |
-| KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | BLOCKED | code sinh biên dịch; sửa tay bị bắt; gen-check bật sau APPROVED |
+| KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | DONE | **APPROVED 2026-11-12 Agent 0**; D2-35..39; KT-05 mở; `check_scn` 21/21 0 blocked |
+| KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | READY | code sinh biên dịch; sửa tay bị bắt; gen-check bật (đã duyệt) |
 | KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | DONE | dùng được cho chính vòng này; JSON có `project` |
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
 | KT-08 | sim harness + store giả + scheduler tối thiểu 1 hart; kịch bản rỗng tất định theo seed (chưa cần ABI) | KT-02 | 3 h | DONE | harness + store + scheduler chạy; cùng seed → cùng trace |
 | KT-09 | Untyped trên sim (watermark, Retype, Revoke qua CNode) + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05 | 3 h | BLOCKED | invariant tổng byte; preempt; kịch bản end-to-end chạy |
 | KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | BLOCKED | property test cây; Revoke |
 | KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c |
-| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | BLOCKED | giải mã dump từ sim; cùng định dạng QEMU — **chờ YC-12** |
-| KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | BLOCKED | đèn host DONE `02e0a96`; tái hiện đầy đủ chờ **YC-06**; không chạy lại 1.000 seed |
+| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | READY | giải mã dump từ sim; D2-38: text = scenario log, KT-12 sở hữu bản ghi 32 B + golden nhị phân |
+| KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | DONE | đèn host DONE `02e0a96` theo D2-36; T26 **OPEN** tới K3.5 (VFS/read_dir + smp); không chạy lại 1.000 seed |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
-## Khối F — chỉ thị hiện hành (2026-11-12, sau `DUYET-YC-02-05`)
+APPROVED 2026-11-12 Agent 0
 
-> Nguồn: `review/agent0/DUYET-YC-02-05.md` (Agent 0) + D2-29..D2-33. Khối này thay mọi ghi chú cũ trái với nó.
+> KT-04d DONE: duyệt gói bản 2 sau C1/C2; D2-35..39. **APPROVED mở KT-05.**
+
+## Khối F — chỉ thị hiện hành (2026-11-12 19:45, sau APPROVED KT-04d)
+
+> Nguồn: D2-29..D2-39 + `APPROVED 2026-11-12 Agent 0` ở trên. Khối này thay mọi ghi chú cũ trái với nó.
 
 **Đã xong — không làm lại:**
-- `KT-04a` DONE `1766145`; `KT-04b` DONE `5ba7e80`; `KT-04c` DONE `5454834`+`476d405`
-  (`check_scn` 21/21, 0 blocked; draft chữ ký D2-33).
-- `KT-06` DONE `decc619`+`33dcf8d`; `KT-08` DONE `cf433b7`+`bcc84bb` (L1 1.000 seed trong `gate --fast`);
-  `KT-R1` DONE `0ba7968`.
-- `KT-T26` đèn host DONE `02e0a96`; tái hiện đầy đủ BLOCKED chờ YC-06 — **không** chạy lại 1.000 seed.
-- `KT-04d` **REVIEW**: gói bản 2 `e6edf0f` đã gửi; chờ `APPROVED` thật. **KT-05** vẫn BLOCKED.
+- `KT-04a` `1766145`; `KT-04b` `5ba7e80`; `KT-04c` `5454834`+`476d405`; `KT-04d` đã duyệt, gói bản 2 `e6edf0f` + C1.
+- `KT-06` `decc619`+`33dcf8d`; `KT-07` `bf61901`; `KT-08` `cf433b7`+`bcc84bb`; `KT-R1` `0ba7968`.
+- `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
-**Thứ tự hiện tại (19:05):**
-1. `KT-04d` chờ `APPROVED` — **không** làm lại, **không** ghi APPROVED; `KT-05` chờ dòng đó.
-2. `KT-12` **BLOCKED YC-12** (KT-08 hay KT-12 sở hữu định dạng trace) — không tự chọn.
-3. OS **hết task READY** ⇒ theo D2-20 sang dòng ViScript: `ST-01` (workspace/cổng) → `ST-02b` → `ST-04`
-   (`ST-02a` đã DONE; `ST-03/05..09` còn BLOCKED).
-4. Khi Agent 0 trả lời YC-06/YC-11/YC-12 thì mở lại đúng task, không mở thêm YC trùng.
+**Thứ tự hiện tại:**
+1. **KT-05** (READY): bước 0 bắt buộc — chép draft chữ ký D2-33 vào `spec/abi.toml` dưới `[method_signature]` (`stability="stable-draft"`), ghim `[debug_info].return_channel` D2-35, sửa `check_abi` nếu cần; sau đó mới sinh code. C3 (mapping/checker) phải xong trước commit đầu.
+2. **KT-12** (READY, D2-38): `vifast-traceformat` 32 B + ring + golden nhị phân + decoder; giữ golden text KT-08 làm scenario log, không đổi kỳ vọng cũ.
+3. `KT-09` chỉ mở khi KT-05 xong; `KT-10`/`KT-11` theo chuỗi.
+4. OS hết READY thì ViScript: `ST-02b` → `ST-04` (lexer) → `ST-10`; `ST-03` mở khi cần.
+5. Không mở YC mới cho YC-06/11/12/13 — đã chốt D2-36..39.
 
 **Chống lặp:**
-- Đọc bảng trạng thái trước mỗi task; task `DONE`/`BLOCKED` không làm lại.
-- **YC-04/YC-05 đã đóng** bởi D2-32/D2-33 — không mở lại, không hỏi lại.
-- Chỉ mở YC mới khi có blocker kỹ thuật mới, kèm `file:line` + 2 lựa chọn.
-- Review nói `DRIFT` thì đối chiếu DECISIONS trước khi đổi hướng; không tự tạo quyết định.
-- Không sửa `spec/` ngoài D2-29/D2-32; không ghi APPROVED.
-- **D2-34 không được ký**: KT-05 chỉ mở bằng dòng `APPROVED` thật của Agent 0, không có ủy quyền.
+- Đọc bảng trạng thái trước mỗi task; task `DONE` không làm lại.
+- Agent 2 **không** ghi QUEUE; `agentctl done` chỉ đề xuất (D2-37). Người điều phối lật sổ.
+- Không sửa `spec/` ngoài D2-35 (Agent 0 đã duyệt); không ghi APPROVED.
+- Review nói `DRIFT` thì đối chiếu DECISIONS trước; chỉ mở YC mới khi có blocker kỹ thuật mới kèm `file:line` + 2 lựa chọn.
 
 ## Ghi chú vận hành
 
-- `vifast-agentctl next` **bỏ qua** task `REVIEW` (KT-04d) — không tự làm, không tự duyệt. `next` chỉ trả task `READY` có phụ thuộc `DONE`.
+- `vifast-agentctl next` **bỏ qua** task `REVIEW` — không tự làm, không tự duyệt. `next` chỉ trả task `READY` có phụ thuộc `DONE`; agentctl **không** ghi QUEUE (D2-37).
 - **Mỗi task ≤ 3 h; task lớn tách** (KT-04 đã tách a/b/c/d; KT-01 tách khỏi soak v1 — v1 **không** soak lại).
-- `KT-04d` REVIEW chờ đúng dòng `APPROVED <YYYY-MM-DD> Agent 0`; **APPROVED mở KT-05**. Duyệt không bằng chat.
-- **KT-04d chỉ duyệt khi có sản phẩm KT-04a/b/c**; duyệt tài liệu thiết kế ghi bằng **D2-25** ở `DECISIONS.md`, không ghi ở đây.
+- `KT-04d` đã có dòng `APPROVED 2026-11-12 Agent 0`; **APPROVED mở KT-05**. Duyệt không bằng chat.
+- **KT-04d đã duyệt** với sản phẩm KT-04a/b/c + C1; D2-35..39 ghi ở `DECISIONS.md`.
 - Câu hỏi O1 (**Exit** vào ABI) đã chốt trong QD §1 Q-A: syscall **14 `Exit(code)`**.
-- Task READY hiện tại: `KT-04b`, `KT-04c`, `KT-06`, `KT-08`, `KT-12`, `KT-R1`; dòng ViScript `ST-01`, `ST-02b`, `ST-10`.
-- L1 **chưa bật** tới KT-08; ghi rõ trong `STATE.md`.
+- Task READY hiện tại: `KT-05`, `KT-12`; dòng ViScript `ST-02b`, `ST-04`, `ST-10`.
+- L1 **đã bật** trong `gate --fast` (KT-08): 1.000 seed; nightly 100.000 seed.
 - Mọi số trong bảng này lấy từ QD/brief; số nào chưa có nguồn thì ghi `[TK]`/`[ƯL]`, không tự đặt.

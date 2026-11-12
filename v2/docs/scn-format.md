@@ -20,26 +20,26 @@ Revoke, Touch, ReadClock, Spin, Yield, SetAffinity, Suspend, Exit`.
 **Chiếu sang ABI v2** (đây là chỗ §9.3 dùng tên v1): `Signal` = `Send` trên Notification, `Wait` = `Recv`
 trên Notification, `Retype/Map/Unmap/Revoke/Suspend/SetAffinity` = invocation (`invoke <Object>.<Method>`),
 `Touch/Spin` = thao tác bộ nhớ/thời gian của harness (chưa có bước tương ứng trong syscall), `ReadClock` =
-`ClockRead`. Tên syscall dùng đúng 15 tên trong `spec/abi.toml` (`call, send, nb_send, recv, nb_recv,
-reply_recv, nb_send_recv, nb_send_wait, yield, wait_addr, wake_addr, clock_read, debug_put_str, debug_halt, exit`).
+`ClockRead`. Tên syscall dùng đúng 16 tên trong `spec/abi.toml` (`call, send, nb_send, recv, nb_recv,
+reply_recv, nb_send_recv, nb_send_wait, yield, wait_addr, wake_addr, clock_read, debug_put_str, debug_halt, debug_get_info, exit`).
 
 ## 2. Cú pháp một bước
 
 ```
 <op> [k=v ...] => <kết quả>
 ```
-- `op`: một trong 15 syscall (viết `snake_case`) **hoặc** `invoke <Object>.<Method>`.
+- `op`: một trong 16 syscall (viết `snake_case`) **hoặc** `invoke <Object>.<Method>`.
 - `k=v`: tham số; `v` là số, hex, `true/false`, hoặc **tên cap** khai trong `caps`.
 - kết quả: `ok` hoặc **một trong 19 mã lỗi** của `spec/abi.toml` (0 = thành công).
 
 ## 3. Ràng buộc máy kiểm (`v2/test/scn/check_scn.py`)
 
 1. `version = 1`; `name` trùng tên tệp; `name`/`tags` không trùng toàn bộ 21 tệp.
-2. `op` phải có thật: syscall 0..14 trong `spec/abi.toml`, hoặc `invoke` với `Object.Method` có trong
+2. `op` phải có thật: syscall 0..15 trong `spec/abi.toml`, hoặc `invoke` với `Object.Method` có trong
    `[object]` của spec (hoặc draft reserved `v2/docs/abi-reserved-objects.toml`).
 3. `=>` phải là `ok` hoặc tên đúng một trong 19 mã lỗi.
 4. Cap dùng ở bước phải khai trong `caps` (dataflow tối thiểu).
-5. Đúng **21 tệp**; phủ **9 nhóm** QD §4 (xem mục 4); **bắt buộc** có ca `20-exit-procsrv-chua-recv`
+5. Đúng **21 tệp**; phủ **11 nhóm** (9 nhóm QD §4 + notification + nhóm mở rộng; xem mục 4); **bắt buộc** có ca `20-exit-procsrv-chua-recv`
    với một bước `exit`.
 6. Tệp chưa viết được vì ABI thiếu phải ghi `blocked = "thiếu ABI: ..."` và **không** có bước;
    máy kiểm đếm và in ra (DoD KT-04c: "ca không viết được → BLOCKED 'thiếu ABI'").

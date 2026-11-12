@@ -18,11 +18,11 @@ Bản máy đọc: [`R1-viscript.json`](R1-viscript.json) — 11 khoá Khối E,
 |---|---|---|---|---|
 | ST-01 | DONE | `cbf512e`, `f6222a5` | fast | workspace + `vis-dev` R1..R4 + 5 case âm |
 | ST-02a | DONE | — (Agent 1 soạn) | — | APPROVED ghi trong ô bảng, **chưa đúng mẫu dòng riêng** (YC-14) |
-| ST-02b | DONE (QUEUE vẫn `READY`) | `a48857b`, `c666f57` | fast | sổ 10 mã + `vis explain`; sửa theo review #14 |
-| ST-03 | BLOCKED | — | — | `vis-diag` cột scalar/render/vi-en-ja — chờ lật READY |
+| ST-02b | DONE | `a48857b`, `c666f57` | fast | sổ 10 mã + `vis explain`; sửa theo review #14 |
+| ST-03 | READY | — | — | `vis-diag` cột scalar/render/vi-en-ja |
 | ST-04 | BLOCKED (QUEUE ghi `READY`) | — | — | **chưa được mở**: SPEC-lex `REVIEW` + thiếu kind/keyword |
 | ST-05..ST-09 | BLOCKED | — | — | chuỗi phụ thuộc ST-04 |
-| ST-10 | REVIEW | (báo cáo này) | fast | — |
+| ST-10 | DONE | `bc1dcf5` | fast | báo cáo này |
 
 ## 3. Lỗi tìm thấy
 
@@ -54,10 +54,10 @@ Bản máy đọc: [`R1-viscript.json`](R1-viscript.json) — 11 khoá Khối E,
 
 | Câu hỏi | Nội dung | Cần gì |
 |---|---|---|
-| **YC-14** | (a) duyệt ST-02a bằng **dòng riêng** `APPROVED <ngày> Agent 0` + sửa 3 nơi còn `REVIEW` (`SPEC-lex.md:3`, `viscript/AGENTS.md:28`, `DECISIONS.md:58`); (b) chốt quy tắc cấp `04xx` (kiểu, theo `VS0412`) và ai được sửa SPEC (AGENTS §4.1 chỉ ST-02a vs QUEUE:25 cho ST-02b); (c) lật `ST-02b` DONE, `ST-03` READY, và `ST-04` chỉ mở **sau errata**; (d) xác nhận `[ST-00]` do ai viết | Agent 0 |
+| **YC-14** | ST-02a APPROVED (dòng riêng); VD-27 chốt `04xx` kiểu, ST-02b chỉ sửa bảng mã; ST-02b/ST-10 DONE, ST-03/ST-04 READY; `3d5539a` do người điều phối | **Đã chốt** |
 | **ST-03** | `vis-diag`: cột theo Unicode scalar, render, bảng vi/en/ja | chờ lật READY |
 | **ST-04** | Lexer theo SPEC-lex — cần bổ sung kind đang thiếu (`COMMENT`, `DOC_COMMENT`, `RANGE`, `RANGE_EQ`, `SET_LBRACE`, `WORD`, `DOLLAR`, `CARET`) + keyword + 4 ca âm golden (`VS0101/0102/0103/0110`) | errata SPEC-lex |
 
-**Task bị chặn**: ST-03 (chờ lật), ST-04 (SPEC), ST-05..ST-09 (chuỗi phụ thuộc).
+**Task bị chặn**: ST-05..ST-09 (chuỗi phụ thuộc). ST-03/ST-04 READY.
 
 **Đề xuất 3 task kế**: (1) `ST-03` ngay khi được lật (độc lập SPEC); (2) `ST-04` chỉ sau errata có `APPROVED`; (3) quay lại dòng OS ngay khi có `APPROVED` cho KT-04d (mở KT-05) hoặc trả lời YC-12.

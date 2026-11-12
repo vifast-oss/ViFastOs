@@ -13,7 +13,7 @@ import sys
 
 SPDX = "SPDX-License-Identifier"
 
-# 15 syscall của spec, tên snake_case -> tên trong abi.toml
+# 16 syscall của spec (0..15), tên snake_case -> tên trong abi.toml
 SYSCALL_NAMES = {
     "call": "Call",
     "send": "Send",
@@ -33,7 +33,7 @@ SYSCALL_NAMES = {
     "exit": "Exit",
 }
 
-# 9 nhóm phủ theo QD §4 (cột "phủ" của bảng 21 kịch bản)
+# 11 nhóm phủ (9 nhóm QD §4 + notification + exit tách riêng)
 TAG_GROUPS = {
     "cap-copy",
     "cap-revoke",

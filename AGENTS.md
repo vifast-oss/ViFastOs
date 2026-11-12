@@ -11,7 +11,7 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-33) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-26).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-39) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-27).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
@@ -36,7 +36,7 @@ Nhãn số liệu (bắt buộc, QD §2.2): `[V1:CODE]` `[V1:ĐO]` `[V1:DOC]` (t
 | `v2/agent/QUEUE.md`, `v2/agent/DECISIONS.md`, `viscript/agent/QUEUE.md`, `viscript/agent/DECISIONS.md` | **Agent 0** (qua người điều phối) | Agent 2 **không** sửa; cần đổi thì BLOCKED + đề xuất |
 | `v2/agent/STATE.md`, `v2/agent/BLOCKED.md`, `v2/agent/JOURNAL/`, `v2/agent/reports/` | **Agent 2** dòng OS | STATE cập nhật **sau mỗi bước** |
 | `viscript/agent/STATE.md`, `viscript/agent/BLOCKED.md`, `viscript/agent/JOURNAL/`, `viscript/agent/reports/` | **Agent 2** dòng ViScript | như trên |
-| `spec/` | chỉ task được ghi rõ (KT-04a, KT-04b một lần theo D2-32, ST-02a) | xem §4 |
+| `spec/` | chỉ task được ghi rõ (KT-04a, KT-04b một lần theo D2-32, ST-02a, ST-02b chỉ bảng mã lỗi) | xem §4 |
 | `v2/AGENTS.md`, `viscript/AGENTS.md`, `AGENTS.md` | người điều phối / Agent 0 | Agent 2 không sửa |
 
 Hai QUEUE **độc lập**: một task OS bị BLOCKED **không** chặn dòng ViScript và ngược lại (trừ cặp phụ thuộc ghi trong chính QUEUE).
@@ -45,7 +45,7 @@ Hai QUEUE **độc lập**: một task OS bị BLOCKED **không** chặn dòng V
 
 Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
-1. **Sửa `spec/`** trừ task được ghi rõ trong QUEUE (`KT-04a`: `spec/abi.toml`, `spec/kernel.toml`; `KT-04b`: một lần theo D2-32, chỉ chép draft reserved đã sửa + D2-29; `ST-02a`: `docs/viscript/SPEC-lex.md`). Mọi thay đổi ABI/ngữ nghĩa khác phải qua Agent 0 (D2-04, D2-22).
+1. **Sửa `spec/`** trừ task được ghi rõ trong QUEUE (`KT-04a`: `spec/abi.toml`, `spec/kernel.toml`; `KT-04b`: một lần theo D2-32, chỉ chép draft reserved đã sửa + D2-29; `ST-02a`: `docs/viscript/SPEC-lex.md`; `ST-02b`: chỉ bảng mã lỗi trong SPEC/phụ lục, theo VD-27). Mọi thay đổi ABI/ngữ nghĩa khác phải qua Agent 0 (D2-04, D2-22).
 2. Sửa `accept()` / kỳ vọng / snapshot của harness để test xanh.
 3. Thêm `#[ignore]`, `#[should_panic]` để né, tắt test, hoặc bỏ case khỏi danh sách chạy.
 4. **Nới ngưỡng** (thời gian, seed, số ca đỏ, `MAX_IO`, `MAX_TCBS`, `MAX_OBJECTS`, `KERNEL_STATIC_BUDGET`).
@@ -77,7 +77,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Lệnh v2 nằm ở `v2/bin/v2` (không thể là `./v2` vì `v2/` là thư mục). Có thể `export PATH="$PWD/v2/bin:$PATH"` rồi gõ `v2 …`; tài liệu dùng dạng đầy đủ `./v2/bin/v2`.
 - `./v2/bin/v2 nightly` và soak **không** chạy song song với build/cổng khác.
-- **L1 chưa bật** cho tới khi có sim (KT-08); giai đoạn trước đó `v2/agent/STATE.md` ghi rõ "L1 chưa bật".
+- **L1 đã bật** trong `gate --fast` từ KT-08 (1.000 seed; nightly 100.000 seed).
 - Chưa có `gate` đầy đủ trong vòng 1; chỉ `gate --fast`.
 - Đo thời gian L1 ngay khi sim chạy; vượt 60 s thì giảm seed của `--fast`, **không** giảm invariant (QD §5.2).
 
@@ -95,7 +95,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
   `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = gửi duyệt (checklist 5 mục/method + 21 kịch bản ABI); **APPROVED mở KT-05**. `ST-02a` = **DONE** (APPROVED 2026-11-12); ST-04 mở ngay.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..39); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12); ST-04 mở ngay.
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
 

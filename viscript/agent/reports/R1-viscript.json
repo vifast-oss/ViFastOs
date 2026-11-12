@@ -23,7 +23,7 @@
       "gates": [
         "—"
       ],
-      "note": "Agent 1 soạn SPEC; APPROVED ghi trong ô bảng chưa đúng mẫu dòng riêng (YC-14)"
+      "note": "APPROVED 2026-11-12 Agent 0 (dòng riêng); DONE"
     },
     {
       "id": "ST-02b",
@@ -35,23 +35,21 @@
       "gates": [
         "fast"
       ],
-      "queue": "READY",
-      "note": "QUEUE chưa lật; đã xong"
+      "note": "sổ mã lỗi; DONE"
     },
     {
       "id": "ST-03",
-      "status": "BLOCKED",
+      "status": "READY",
       "commits": [],
       "gates": [],
-      "note": "vis-diag cột scalar/render — chờ Agent 0 lật READY (YC-14)"
+      "note": "vis-diag — READY"
     },
     {
       "id": "ST-04",
-      "status": "BLOCKED",
+      "status": "READY",
       "commits": [],
       "gates": [],
-      "queue": "READY",
-      "note": "SPEC-lex còn REVIEW + thiếu kind/keyword ⇒ chưa được mở"
+      "note": "SPEC-lex APPROVED; 60 golden token đỏ trước"
     },
     {
       "id": "ST-05",
@@ -85,11 +83,10 @@
     },
     {
       "id": "ST-10",
-      "status": "REVIEW",
+      "status": "DONE",
       "commits": [],
       "gates": [],
-      "queue": "READY",
-      "note": "báo cáo này"
+      "note": "báo cáo này; DONE"
     }
   ],
   "gates": {
@@ -112,18 +109,6 @@
   },
   "perf": {},
   "blocked": [
-    {
-      "id": "YC-14",
-      "question": "Duyệt ST-02a đúng mẫu dòng APPROVED; chốt quy tắc cấp 04xx (VS0412=kiểu); lật ST-02b/ST-03/ST-04; sửa QUEUE:152; xác nhận [ST-00]"
-    },
-    {
-      "id": "ST-03",
-      "question": "vis-diag: cột theo Unicode scalar, render, bảng vi/en/ja — chờ lật READY"
-    },
-    {
-      "id": "ST-04",
-      "question": "Chặn bởi SPEC-lex còn REVIEW + thiếu kind (COMMENT/DOC_COMMENT/RANGE/RANGE_EQ/SET_LBRACE/WORD/DOLLAR/CARET) và 4 ca âm VS0101/0102/0103/0110"
-    },
     {
       "id": "ST-05",
       "question": "Chờ ST-04"

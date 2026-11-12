@@ -7,9 +7,9 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 
 | Task | Trạng thái | Nội dung chờ | Cần gì để mở |
 |---|---|---|---|
-| **KT-04d** | **REVIEW** | Checklist **5 mục/method** + **21 kịch bản** `.scn` viết chỉ bằng ABI (QD §4). Gửi kèm: `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B `[TK]`), bảng ánh xạ v1→v2, danh sách object reserved, 21 `.scn` | Đúng một dòng `APPROVED <YYYY-MM-DD> Agent 0` trong `v2/agent/QUEUE.md`. **APPROVED mở KT-05.** Duyệt không bằng chat, không tự suy ra |
+| ~~KT-04d~~ | **APPROVED 2026-11-12 Agent 0** | Gói bản 2 + C1/C2; D2-35..39; `KT-05` mở | — |
 
-**O1 (Exit) — ĐÃ CHỐT, không còn là câu hỏi mở.** Nguồn: **QD §1 Q-A + D2-25** (câu chữ QD ghi gọn "chuyển `Inactive` rồi gửi fault"; bản chốt đầy đủ là D2-25 + thiết kế §4.4 — `docs/v2/ViFastOs-v2-thiet-ke.md:285` và `:469`): `Exit` là **syscall 14 `Exit(code)`**; kernel lưu `exit_code`, TCB thành **`BlockedOnSend { ep: fault_ep, call: false }`** mang `FaultKind::Exit{code}` — giao qua **hàng gửi của `fault_ep`, không có Reply**; procsrv `Recv` xong TCB **mới** thành `Inactive`; không có `fault_ep` thì `Inactive` ngay. `Resume`/`Configure` xoá `exit_code`. `wait` là RPC của procsrv; `kill` = procsrv `Tcb.Suspend(Abort)` rồi Revoke cap TCB. Dải syscall **15..31 reserved**. Không mở lại O1; **không** chép nguyên văn QD:23 vào `abi.toml` khi làm KT-04a.
+**O1 (Exit) — ĐÃ CHỐT, không còn là câu hỏi mở.** Nguồn: **QD §1 Q-A + D2-25** (câu chữ QD ghi gọn "chuyển `Inactive` rồi gửi fault"; bản chốt đầy đủ là D2-25 + thiết kế §4.4 — `docs/v2/ViFastOs-v2-thiet-ke.md:285` và `:469`): `Exit` là **syscall 14 `Exit(code)`**; kernel lưu `exit_code`, TCB thành **`BlockedOnSend { ep: fault_ep, call: false }`** mang `FaultKind::Exit{code}` — giao qua **hàng gửi của `fault_ep`, không có Reply**; procsrv `Recv` xong TCB **mới** thành `Inactive`; không có `fault_ep` thì `Inactive` ngay. `Resume`/`Configure` xoá `exit_code`. `wait` là RPC của procsrv; `kill` = procsrv `Tcb.Suspend(Abort)` rồi Revoke cap TCB. Dải syscall **16..31 reserved** (15 = DebugGetInfo, D2-29). Không mở lại O1; **không** chép nguyên văn QD:23 vào `abi.toml` khi làm KT-04a.
 
 ## 2. BLOCKED theo bảng `review/PATCH-BRIEF.md` §1
 
@@ -18,13 +18,13 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
 | ~~KT-04b~~ | **ĐÃ TRẢ LỜI** (D2-32): được ghi `spec/` một lần, SchedControl lên lõi, VSpace khách = cờ `GUEST` | Agent 2 áp theo D2-32; không hỏi lại |
 | ~~KT-04c~~ | **ĐÃ TRẢ LỜI** (D2-33): draft chữ ký hẹp + enum TCB đầy đủ; ca 18 hết blocked | Agent 2 làm theo D2-33; không hỏi lại |
-| KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
+| ~~KT-05~~ | **APPROVED 2026-11-12**; READY — bước 0 chép draft chữ ký + D2-35 | — |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-02 (đã DONE) — **DONE `cf433b7`**, sửa theo review #11 | — |
 | KT-09 | KT-08 | kịch bản end-to-end Retype→Configure→Call/Reply chạy |
 | KT-10 | KT-09 | invariant tổng byte + preempt xanh |
 | KT-11 | KT-10 | property test cây + Revoke xanh |
-| KT-12 | KT-02 (đã DONE) — `QUEUE:114` ghi dep KT-02, `READY`; **chờ YC-12** (thứ tự/định dạng trace) | traceformat + ring, giải mã dump từ sim |
+| ~~KT-12~~ | **D2-38**: KT-12 sở hữu 32 B; text KT-08 là scenario log — READY | — |
 
 Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spec/thiếu quyết định: QD đã trả lời Q1..Q12 (QD §9).
 
@@ -32,7 +32,11 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 ## 3. Câu hỏi cho Agent 0
 
-> **Cập nhật 18:20:** YC-02..05 đã được Agent 0 trả lời trong **D2-29..D2-33**; các mục dưới giữ làm lịch sử. **Không hỏi lại.** Chỉ **YC-06** còn mở.
+> **Cập nhật 19:45:** YC-06/11/12/13 đã chốt bằng **D2-36..39**; KT-04d **APPROVED 2026-11-12**. Các mục dưới giữ làm lịch sử — **không hỏi lại**. YC-14 xử lý ở dòng ViScript.
+
+
+
+> **Cập nhật 18:20:** YC-02..05 đã được Agent 0 trả lời trong **D2-29..D2-33**; các mục dưới giữ làm lịch sử. **Không hỏi lại.**
 
 ### Q-01 — KT-04c là **20** hay **21** kịch bản? — **ĐÃ TRẢ LỜI 2026-11-12 (D2-27)**
 

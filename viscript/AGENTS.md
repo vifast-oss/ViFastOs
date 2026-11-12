@@ -25,7 +25,7 @@ QD thắng tài liệu thiết kế.
 
 ## 3. Trạng thái duyệt hiện tại
 
-- **ST-02a = REVIEW**: `SPEC-lex.md` + EBNF tự chứa + bảng ưu tiên + 60 golden token + 30 golden biểu thức. **Chặn ST-04..ST-09**; **không** chặn `ST-02b`, `ST-03`, `ST-10`. Chờ dòng `APPROVED <YYYY-MM-DD> Agent 0` trong [`agent/QUEUE.md`](agent/QUEUE.md).
+- **ST-02a = APPROVED 2026-11-12 Agent 0 / DONE**: `SPEC-lex.md` + EBNF + bảng ưu tiên + 60 golden token + 30 golden biểu thức. **ST-04 mở**; ST-02b được sửa bảng mã lỗi (VD-27).
 - Không tự sửa `SPEC-lex.md`/`SPEC.md` ngoài phạm vi ST-02a/ST-02b. Không đổi ngữ nghĩa ngôn ngữ: mọi thay đổi cú pháp/quy tắc kiểu qua Agent 0 (VD-08).
 
 ## 4. Riêng của dòng ViScript

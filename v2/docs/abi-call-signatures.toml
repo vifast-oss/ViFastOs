@@ -16,7 +16,8 @@ version = 1
 # `returns` là danh sách giá trị trả (ngoài `error`, `value` chung của Call).
 [method."Untyped.Retype"]
 params = ["cap", "type", "size_bits", "flags"]
-returns = ["cap"]
+returns = []
+# Giá trị trả `cap` chưa có nguồn thiết kế và 21 .scn không dùng; để K1a chốt riêng (D2-35).
 note = "`flags` = tập TÊN cờ (bit GUEST reserved, D2-32); KHÔNG gán số bit ở đây. type = VSpace + GUEST ⇒ NotSupported tới H1"
 
 [method."CNode.Copy"]
@@ -62,7 +63,7 @@ returns = ["state", "suspended", "blocked_on_kind", "exit_code"]
 
 [method."SchedContext.Bind"]
 params = ["sched", "target"]
-note = "`target` là cap TCB/Notification/Reply (loại quyết định ngữ nghĩa bind, design §4.3/§4.5)"
+note = "`target` là cap Reply/Notification (design §4.5: Notification bind SchedContext; donation qua Reply). TCB bind không có nguồn — bỏ."
 returns = []
 
 [method."SchedControl.Configure"]

@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # spec/abi.toml — MỘT nguồn sự thật cho ABI v2 (D2-11). Code sinh từ tệp này, không sửa tay.
 #
-# status = "REVIEW": bản nháp của Agent 2 cho KT-04d. CHƯA được duyệt; sau khi có dòng
-# `APPROVED <ngày> Agent 0` trong v2/agent/QUEUE.md thì CHỈ Agent 0 sửa (D2-22).
-# Nhãn: mục nào không có nguồn dẫn thì là [TK] (thiết kế mới), chờ duyệt.
+# status = "APPROVED": duyệt 2026-11-12 bởi Agent 0 (D2-35); sau duyệt CHỈ Agent 0 sửa (D2-22).
+# Nhãn: mục nào không có nguồn dẫn thì là [TK] (thiết kế mới), đã duyệt nguyên đề xuất.
 #
-# Nguồn dẫn: QD §4 (syscall 0..13 + 14 Exit, dải 15..31 reserved, 19 mã lỗi, method thêm);
+# Nguồn dẫn: QD §4 (syscall 0..15, dải 16..31 reserved, 19 mã lỗi, method thêm);
 # thiết kế §4.6 (MessageInfo 35 bit, 64 MR + 4 cap), §4.20 (mã lỗi), §4.21 (bảng ABI),
 # §3.9 (slot 48 B), §4.22 (kernel.toml); code v1 để lấy quy ước gọi riscv64:
 # crates/vifast-user/src/lib.rs (a7 = số hiệu, a0/a1 = tham số + (error,value),
 # a2 = MessageInfo, a3..a6 = 4 MR) — xem cụm [calling.riscv64].
 
 name = "vifast-abi"
-status = "REVIEW"
+status = "APPROVED"
 abi_version = 1
 min_compat = 1
 # Golden file do vifast-gen sinh (KT-05); gate --fast chạy gen-check từ KT-05.
@@ -21,7 +20,7 @@ golden = "test/abi/abi-v1.golden"
 # ---------------------------------------------------------------------------
 # Đóng băng ABI (D2-15 / QD §1 Q-B): đúng 5 thứ. Mọi thứ khác là `reserved`.
 [frozen]
-wire_syscalls = true          # (1) số syscall 0..14 + quy ước thanh ghi riscv64
+wire_syscalls = true          # (1) số syscall 0..15 + quy ước thanh ghi riscv64
 message_layout = true         # (2) layout MessageInfo + MR trong thanh ghi + receive window
 error_table = true            # (3) 19 mã lỗi + quy ước trả lỗi (a0 = error, a1 = value)
 object_layout = true          # (4) kích thước/căn lề object theo arch
@@ -102,7 +101,7 @@ riscv64 = { tcb = 512, endpoint = 64, notification = 64, reply = 64, sched_conte
 19 = { name = "RangeError", detail = "chỉ số/chỉ số dải ngoài phạm vi" }
 
 # ---------------------------------------------------------------------------
-# 15 syscall (QD §4: 0..13 + 14 Exit). Dải 15..31 reserved, chưa gán cho ai.
+# 16 syscall (0..15; D2-29 cấp 15 cho DebugGetInfo). Dải 16..31 reserved.
 [syscall]
 0 = { name = "Call", args = "cap, MessageInfo, MR*, cap*", ret = "error, value", note = "Endpoint: IPC; object khác: invocation (method = label), trả ngay" }
 1 = { name = "Send", args = "cap, MessageInfo, MR*, cap*", ret = "error, value", note = "Notification: Signal; Reply: trả lời; fault Exit: giao qua hàng gửi của fault_ep, không Reply" }
@@ -126,19 +125,20 @@ from = 16
 to = 31
 note = "Dải reserved sau khi cấp 15 cho DebugGetInfo (D2-29); object chưa cài chỉ giữ số (QD §1 Q-B)."
 
-# DebugGetInfo thuộc danh sách đóng băng (D2-15/Q-B) nhưng thiết kế KHÔNG cho số.
-# Agent 2 không tự chiếm số trong dải reserved: ghi REVIEW để Agent 0 chốt ở KT-04d.
+# DebugGetInfo = syscall 15 (D2-29); luôn có, không feature gate.
 [debug_info]
 number = 15
 status = "frozen"
 returns = ["abi_version", "min_compat", "features", "num_harts"]
-note = "Syscall 15 (D2-29). Luôn có; features là bitmap tính năng runtime dùng để kiểm tương thích lúc khởi động."
+# Kênh trả (D2-35): syscall không dùng MR vào; a0 = error.
+return_channel = { a1 = "abi_version", a3 = "min_compat", a4 = "features", a5 = "num_harts" }
+note = "Luôn có; features là bitmap tính năng runtime dùng để kiểm tương thích lúc khởi động; không trả địa chỉ kernel."
 
 # ---------------------------------------------------------------------------
 # Object lõi (KT-04a). Số object đóng băng, ID không tái dùng.
-# Reserved 8..31 để KT-04b điền (VCpu/IOSpace/VSpace/PageTable/Frame/Irq*/PowerControl).
+# Lõi 1..8; reserved 9..16 đã cấp tên (D2-32); 17..31 còn trống.
 [object]
-Untyped = { id = 1, stability = "frozen", method = { 0 = { name = "Retype", note = "Revoke đi qua CNode.Revoke trên cap Untyped" } } }
+Untyped = { id = 1, stability = "frozen", method = { 0 = { name = "Retype", args = "cap, type, size_bits, flags", note = "Revoke qua CNode.Revoke trên cap Untyped; flags có bit GUEST reserved (D2-32), type=VSpace+GUEST trả NotSupported tới H1" } } }
 CNode = { id = 2, stability = "frozen", method = { 0 = { name = "Copy" }, 1 = { name = "Mint" }, 2 = { name = "Move" }, 3 = { name = "Mutate" }, 4 = { name = "Delete" }, 5 = { name = "Revoke" }, 6 = { name = "Rotate" } } }
 Tcb = { id = 3, stability = "frozen", method = { 0 = { name = "Configure" }, 1 = { name = "SetFaultEp" }, 2 = { name = "ReadState" }, 3 = { name = "Suspend", args = "mode: Abort|Defer" }, 4 = { name = "SetPriority" }, 5 = { name = "SetMcp" }, 6 = { name = "SetAffinity" }, 7 = { name = "SetSchedParams" }, 8 = { name = "SetTimeoutEp" }, 9 = { name = "ReadRegs" }, 10 = { name = "WriteRegs" }, 11 = { name = "CopyRegs" }, 12 = { name = "Resume" }, 13 = { name = "BindNotification" }, 14 = { name = "UnbindNotification" }, 15 = { name = "SetTls", note = "K6" } } }
 SchedContext = { id = 4, stability = "frozen", method = { 0 = { name = "Bind" }, 1 = { name = "Unbind" }, 2 = { name = "Consumed" }, 3 = { name = "YieldTo" } } }

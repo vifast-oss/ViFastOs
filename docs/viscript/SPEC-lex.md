@@ -1,6 +1,6 @@
 # SPEC-lex — Đặc tả từ vựng ViScript
 
-Trạng thái: **REVIEW** (ST-02a). Nguồn sự thật: `docs/QUYET-DINH-sau-review.md` §7.1–7.2 (QD).
+Trạng thái: **APPROVED 2026-11-12 Agent 0** (ST-02a, DONE). Nguồn sự thật: `docs/QUYET-DINH-sau-review.md` §7.1–7.2 (QD).
 Tài liệu liên quan: `ViScript-thiet-ke.md` §2, §4.5, §9, Phụ lục A.
 Quy ước: "scalar" = Unicode scalar value; mọi offset tính bằng byte, cột tính bằng scalar (1-based).
 

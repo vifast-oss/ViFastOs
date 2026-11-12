@@ -64,6 +64,11 @@ CORE_OBJECTS = [
     "Reply",
 ]
 
+CORE_IDS = {
+    "Untyped": 1, "CNode": 2, "Tcb": 3, "SchedContext": 4,
+    "Endpoint": 5, "Notification": 6, "Reply": 7, "SchedControl": 8,
+}
+
 TCB_METHODS = [
     "Configure",
     "SetFaultEp",
@@ -155,6 +160,10 @@ def main():
     dbg = doc.get("debug_info", {})
     check(dbg.get("number") == 15, "DebugGetInfo phải là syscall 15 (D2-29)")
     check(dbg.get("status") == "frozen", "DebugGetInfo đã chốt ⇒ status frozen (D2-29)")
+    rc = dbg.get("return_channel", {})
+    check(rc.get("a1") == "abi_version" and rc.get("a3") == "min_compat"
+          and rc.get("a4") == "features" and rc.get("a5") == "num_harts",
+          "DebugGetInfo return_channel phải là a1/a3/a4/a5 (D2-35)")
 
     # --- object lõi ---------------------------------------------------
     objs = doc.get("object", {})
@@ -180,6 +189,9 @@ def main():
 
     for name in CORE_OBJECTS:
         check(name in objs, f"thiếu object lõi {name}")
+    for name, want in CORE_IDS.items():
+        got = objs.get(name, {}).get("id")
+        check(got == want, f"{name}.id phải = {want} (D2-32), đang {got}")
     if "Tcb" in objs:
         methods = objs["Tcb"].get("method", {})
         got = [v.get("name") if isinstance(v, dict) else v for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # v2/bin/v2 — cổng của dòng OS v2 (KT-03).
 #
-# Vòng 1 chỉ có: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), L0.
-# CHƯA có gen-check (KT-05) và CHƯA có L1 (KT-08) — AGENTS.md §6.
+# Vòng 1: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), ABI/scn/report checks, L0, L1 1.000 seed.
+# CHƯA có gen-check (KT-05); nightly/mutation/Miri chưa có — AGENTS.md §6.
 # Mọi lệnh cargo dùng `--manifest-path v2/Cargo.toml`: KHÔNG bao giờ chạm workspace v1
 # (crates/, 25 crate đã đóng băng ở tag v1-archive).
 set -u
@@ -58,7 +58,7 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
 Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
       R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
       R5 unsafe chỉ trong danh sách đóng (D2-17).
-L1 CHƯA BẬT tới KT-08 (chưa có sim).
+L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; nightly 100.000 seed (chưa có lệnh nightly).
 EOF
 }
 

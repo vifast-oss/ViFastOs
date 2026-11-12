@@ -145,10 +145,11 @@ Dải **16..31 reserved**; `DebugGetInfo` = syscall **15** (D2-29, `[debug_info]
 | `NoCaller` | 17 `IllegalOperation` | Reply không có caller |
 | `ObjectDestroyed` | 1 `InvalidCapability` | cap trỏ object đã bị xoá |
 | `PrioTooHigh` | 5 `InvalidArgument` | |
+| `Busy` | 14 `Busy` | giữ nguyên (v1 20: object còn tham chiếu/mapping/binding) |
 | `WouldBlock` | 14 `Busy` | thao tác non-blocking chưa làm được |
 | — | 19 `RangeError` | **mới** (chỉ số/dải) |
 
 **7 mã v1 biến mất** (`NoCaller`, `ObjectDestroyed`, `IrqInUse`, `PrioTooHigh`, `NotImplemented`, `WouldBlock`,
-`NotFound`) — mỗi mã có dòng thay thế ở trên, **không mã nào bị bỏ im lặng**. **6 mã mới**: `WxViolation`,
-`SlotEmpty`, `NotEnoughMemory` (đổi tên từ `OutOfMemory`), `Timeout`, `NotSupported` (đổi tên), `RangeError`.
+`NotFound`) — mỗi mã có dòng thay thế ở trên, **không mã nào bị bỏ im lặng**. **4 mã mới**: `WxViolation`,
+`SlotEmpty`, `Timeout`, `RangeError`; `NotEnoughMemory`/`NotSupported` là **đổi tên** (từ `OutOfMemory`/`NotImplemented`).
 `BrokenPipe`, `Stopped` thuộc **giao thức user** (IDL procsrv/pipe), không phải kernel (QD §4).

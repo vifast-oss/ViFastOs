@@ -6,14 +6,16 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-12 (chờ YC-12) — nếu chưa có trả lời: theo D2-20 sang ViScript ST-01; KT-04d chờ APPROVED
-Bước          : 8/8
+Task          : KT-05 (READY — bước 0 chép draft chữ ký + D2-35); KT-12 READY (D2-38); KT-04d APPROVED 2026-11-12
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (abi + scn + L0 + **L1 1.000 seed**); boot riscv64 50/50 (KT-07)
 Việc dở       : —
 ```
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
+
+> **Cập nhật 19:55 bởi Agent 0**: KT-04d **APPROVED 2026-11-12**; D2-35..39; KT-05 mở, KT-12 mở. Không còn YC OS mở.
 
 ## Ghi chú
 
