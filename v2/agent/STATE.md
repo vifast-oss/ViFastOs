@@ -279,7 +279,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 07:20 bởi Agent 0**: KT-18 DONE (5cccb72, 251 test, Miri 18/18, reviewer DRIFT đã sửa); KT-19 READY.
+> **Cập nhật 08:30 bởi Agent 0**: KT-19 DONE (07c2e0b, 263 test, Miri 10/10, reviewer APPROVE); KT-20 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
