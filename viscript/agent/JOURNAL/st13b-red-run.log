@@ -1,0 +1,76 @@
+=== ST-13b D2-05: 10 mục review ST-13 — ĐỎ TRƯỚC khi sửa ===
+thời điểm chụp: 2026-11-12T23:13:36Z — chụp bằng cách **tạm gỡ bản vá** (`git stash push -- crates/{vis-types,vis-interp,vis-syntax}/src`)
+  để chạy đúng harness cuối trên code **trước sửa**; sau đó `git stash pop` (đã kiểm lại xanh).
+harness: `crates/vis-interp/tests/interp_v2.rs` (mới) + nhóm `SINH_TU_DONG` trong
+  `crates/vis-types/tests/tyck_v2.rs`. `tests/run.rs`/`show.rs`/`tyck.rs` của ST-13 **giữ nguyên**
+  (log `st13-red-run.log` là bản ghi lịch sử của `5e9a962`).
+
+KẾT QUẢ ĐỎ (trên code trước sửa):
+  interp_v2: **6/7 test ĐỎ** — (2) range tràn, (3) thân vòng lặp, (5) số học lệch, (6) phương thức
+    + `has`, (7) vị trí tab, (9) Show (`w`/char). XANH SẴN: `break_continue_va_try_ngoai_ngu_canh`
+    (`break`/`continue`/`?` ngoài ngữ cảnh đã ra mã lỗi ở đường khác — khai rõ, không giả vờ đỏ).
+  tyck_v2: **1/11 test ĐỎ** — nhóm `SINH_TU_DONG` (mục 1 `Never`, mục 3 thân vòng lặp/scope,
+    mục 4 `for` trên `str`/range đơn vị). 10 nhóm cũ của ST-12b vẫn xanh (không hồi quy).
+
+----- interp_v2 (đỏ) -----
+test break_continue_va_try_ngoai_ngu_canh ... ok
+test vi_tri_tab_va_utf8 ... FAILED
+test than_vong_lap_bo_gia_tri ... FAILED
+test so_hoc_doi_xung_voi_don_vi ... FAILED
+test phuong_thuc_kiem_kieu_va_has ... FAILED
+test show_don_vi_va_char ... FAILED
+test range_khong_tran_so ... FAILED
+---- vi_tri_tab_va_utf8 stdout ----
+thread 'vi_tri_tab_va_utf8' (37747889) panicked at crates/vis-interp/tests/interp_v2.rs:122:5:
+assertion `left == right` failed: tab giữa dòng = 4 cột
+  left: (2, 10)
+ right: (2, 13)
+---- than_vong_lap_bo_gia_tri stdout ----
+thread 'than_vong_lap_bo_gia_tri' (37747888) panicked at crates/vis-interp/tests/interp_v2.rs:32:5:
+assertion `left == right` failed: for: nguồn:
+  left: ("", Some("VS0412"))
+ right: ("2\n", None)
+---- so_hoc_doi_xung_voi_don_vi stdout ----
+thread 'so_hoc_doi_xung_voi_don_vi' (37747887) panicked at crates/vis-interp/tests/interp_v2.rs:32:5:
+assertion `left == right` failed: size*percent: nguồn:
+  left: ("", Some("VS0501"))
+ right: ("2500kb\n", None)
+---- phuong_thuc_kiem_kieu_va_has stdout ----
+thread 'phuong_thuc_kiem_kieu_va_has' (37747884) panicked at crates/vis-interp/tests/interp_v2.rs:32:5:
+assertion `left == right` failed: filter-so: nguồn:
+  left: ("", Some("VS0501"))
+ right: ("", Some("VS0412"))
+---- show_don_vi_va_char stdout ----
+thread 'show_don_vi_va_char' (37747886) panicked at crates/vis-interp/tests/interp_v2.rs:32:5:
+assertion `left == right` failed: tuan: nguồn:
+  left: ("7d\n", None)
+ right: ("1w\n", None)
+---- range_khong_tran_so stdout ----
+thread 'range_khong_tran_so' (37747885) panicked at crates/vis-interp/src/interp.rs:1034:37:
+test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+----- tyck_v2 (đỏ) -----
+test percent_so_sanh_float_theo_ti_le ... ok
+test kieu_ngoai_vs0_bao_vs0301_ro_rang ... ok
+test gan_field_index_kiem_bat_bien ... ok
+test builtin_co_kiem_chu_ky ... ok
+test phep_cua_vs0_theo_vd48 ... ok
+test nang_int_float_chi_cho_literal ... ok
+test match_unit_tuple_la_huu_han ... ok
+test ten_tham_so_phai_khai_dau_hai_gach ... ok
+test phu_them_bieu_thuc_va_kieu ... ok
+test try_chi_dung_khi_ham_tra_optional_hoac_result ... ok
+test never_vong_lap_va_for_theo_vs0 ... FAILED
+---- never_vong_lap_va_for_theo_vs0 stdout ----
+thread 'never_vong_lap_va_for_theo_vs0' (37747963) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+nguồn: fn f() -> int:
+nguồn: fn f(n: int) -> int:
+nguồn: fn f(n: int) -> int:
+nguồn: fn f(n: int) -> int:
+nguồn: for i in 0..1:
+nguồn: while false:
+nguồn: fn f() -> int:
+nguồn: fn f() -> str:
+nguồn: for c in "ab":
+nguồn: for x in 1s..3s:
+test result: FAILED. 10 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+----- hết -----

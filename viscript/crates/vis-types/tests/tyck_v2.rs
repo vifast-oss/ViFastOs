@@ -264,6 +264,46 @@ fn kieu_ngoai_vs0_bao_vs0301_ro_rang() {
     }
 }
 
+/// (10) **ST-13b** — `Never` (return-tail), thân vòng lặp bỏ giá trị, `for` trên `str`/range.
+const SINH_TU_DONG: &[(&str, &str)] = &[
+    // kỳ vọng: ok(()) — chỉ `return` trong thân ⇒ `never`, nhận `int`
+    ("fn f() -> int:\n    return 1", "ok(())"),
+    // kỳ vọng: ok(()) — `if/else` cả hai nhánh `return`
+    (
+        "fn f(n: int) -> int:\n    if n > 0:\n        return 1\n    else:\n        return 2",
+        "ok(())",
+    ),
+    // kỳ vọng: ok(()) — `match` mọi nhánh `return`
+    (
+        "fn f(n: int) -> int:\n    match n:\n        0: return 1\n        _: return 2",
+        "ok(())",
+    ),
+    // kỳ vọng: ok(()) — `if` không `else` rồi `return` ở đuôi
+    (
+        "fn f(n: int) -> int:\n    if n > 0:\n        return 1\n    return 2",
+        "ok(())",
+    ),
+    // kỳ vọng: ok(()) — thân `for` cho giá trị nhưng **bị bỏ**
+    ("for i in 0..1:\n    1\nprint(2)", "ok(())"),
+    // kỳ vọng: ok(()) — thân `while` cho giá trị nhưng **bị bỏ**
+    ("while false:\n    1", "ok(())"),
+    // kỳ vọng: ok(()) — `scope` (câu lệnh) **cho giá trị khối** ⇒ thân fn kiểu `int`
+    ("fn f() -> int:\n    scope:\n        1", "ok(())"),
+    // kỳ vọng: !VS0412 — giá trị khối `scope` không khớp kiểu trả
+    ("fn f() -> str:\n    scope:\n        1", "!VS0412"),
+    // kỳ vọng: ok(()) — duyệt chuỗi cho `char`
+    ("for c in \"ab\":\n    print(c)", "ok(())"),
+    // kỳ vọng: !VS0412 — `char + int`
+    ("for c in \"ab\":\n    print(c + 1)", "!VS0412"),
+    // kỳ vọng: !VS0412 — VS0 chỉ duyệt range `int`
+    ("for x in 1s..3s:\n    print(x)", "!VS0412"),
+];
+
+#[test]
+fn never_vong_lap_va_for_theo_vs0() {
+    kiem("ST-13b", SINH_TU_DONG);
+}
+
 #[test]
 fn try_chi_dung_khi_ham_tra_optional_hoac_result() {
     kiem("`?`", TRY_KHONG_KHOP);

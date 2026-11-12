@@ -81,7 +81,7 @@ impl Value {
             Value::Str(s) => s.clone(),
             Value::Bool(b) => b.to_string(),
             Value::Bytes(b) => show_bytes(b),
-            Value::Char(c) => format!("'{c}'"),
+            Value::Char(c) => show_char(*c),
             Value::Path(p) => p.clone(),
             Value::List(xs) => {
                 let body: Vec<String> = xs.iter().map(Value::show).collect();
@@ -209,6 +209,22 @@ fn show_map_key(k: &Value) -> String {
     }
 }
 
+/// `char` phải **escape** ký tự điều khiển (`'\n'` in ra `'\\n'`, không phải xuống dòng thật).
+fn show_char(c: char) -> String {
+    let mut s = String::from("'");
+    match c {
+        '\n' => s.push_str("\\n"),
+        '\t' => s.push_str("\\t"),
+        '\r' => s.push_str("\\r"),
+        '\0' => s.push_str("\\0"),
+        '\\' => s.push_str("\\\\"),
+        '\'' => s.push_str("\\'"),
+        other => s.push(other),
+    }
+    s.push('\'');
+    s
+}
+
 /// `float`: dùng `Display` (Rust in `1` cho `1.0`, `1.5` cho `1.5`).
 fn show_float(f: f64) -> String {
     if f.is_nan() {
@@ -224,7 +240,7 @@ fn show_float(f: f64) -> String {
     }
 }
 
-const SIZE_UNITS: [(&str, i64); 10] = [
+const SIZE_UNITS: [(&str, i64); 8] = [
     ("tb", 1_000_000_000_000),
     ("tib", 1_099_511_627_776),
     ("gb", 1_000_000_000),
@@ -233,8 +249,6 @@ const SIZE_UNITS: [(&str, i64); 10] = [
     ("mib", 1_048_576),
     ("kb", 1000),
     ("kib", 1024),
-    ("b", 1),
-    ("b", 1),
 ];
 
 fn show_size(n: i64) -> String {
@@ -249,15 +263,15 @@ fn show_size(n: i64) -> String {
     format!("{n}b")
 }
 
-const DUR_UNITS: [(&str, i64); 8] = [
+const DUR_UNITS: [(&str, i64); 7] = [
+    // ST-13b (mục 9): `w` phải có — `parse_duration` nhận `w` nên `Show` phải in ra `w`.
+    ("w", 604_800_000_000_000),
     ("d", 86_400_000_000_000),
     ("h", 3_600_000_000_000),
     ("m", 60_000_000_000),
     ("s", 1_000_000_000),
     ("ms", 1_000_000),
     ("us", 1000),
-    ("ns", 1),
-    ("ns", 1),
 ];
 
 fn show_duration(n: i64) -> String {
@@ -476,4 +490,18 @@ fn unescape(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests_show_char {
+    use super::show_char;
+
+    #[test]
+    fn show_char_escape_ky_tu_dieu_khien() {
+        // ST-13b (mục 9): ký tự điều khiển phải **escape**, không in ra ký tự thật.
+        assert_eq!(show_char('\n'), "'\\n'");
+        assert_eq!(show_char('\t'), "'\\t'");
+        assert_eq!(show_char('\''), "'\\''");
+        assert_eq!(show_char('a'), "'a'");
+    }
 }

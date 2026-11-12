@@ -66,6 +66,11 @@ pub(super) fn so_hoc(op: BinOp, l: &Type, r: &Type, l_lit: bool, r_lit: bool) ->
         (Rem, Int, Int) => Type::Int,
         (Rem, Size, Int) => Type::Size,
         (Rem, Duration, Int) => Type::Duration,
+        // ST-13b (mục 5, VD-48): `size % size ⇒ size`, `duration % duration ⇒ duration`,
+        // `percent % percent ⇒ percent` — đối xứng với runtime.
+        (Rem, Size, Size) => Type::Size,
+        (Rem, Duration, Duration) => Type::Duration,
+        (Rem, Percent, Percent) => Type::Percent,
         (Pow, Int, Int) => Type::Int,
         (Pow, Float, Float) => Type::Float,
         _ => return None,

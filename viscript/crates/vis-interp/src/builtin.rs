@@ -100,6 +100,51 @@ impl<'a> Interp<'a> {
                 return Ok(Value::Int(((*n as f64) * p) as i64));
             }
         }
+        // ST-13b (mục 5): đối xứng `size/duration * percent` và `percent / percent` (VD-48: **float**).
+        if let (Value::Size(n), Value::Percent(p)) = (&l, &r) {
+            if matches!(op, Mul) {
+                return Ok(Value::Size(((*n as f64) * p) as i64));
+            }
+        }
+        if let (Value::Duration(n), Value::Percent(p)) = (&l, &r) {
+            if matches!(op, Mul) {
+                return Ok(Value::Duration(((*n as f64) * p) as i64));
+            }
+        }
+        if let (Value::Percent(a), Value::Percent(b)) = (&l, &r) {
+            match op {
+                // VD-48(b): `percent / percent` ⇒ **float** (tỉ lệ của hai tỉ lệ).
+                Div => {
+                    if *b == 0.0 {
+                        return Err(self.trap(DIV0, "chia cho 0", span));
+                    }
+                    return Ok(Value::Float(a / b));
+                }
+                Rem => {
+                    if *b == 0.0 {
+                        return Err(self.trap(DIV0, "lấy dư cho 0", span));
+                    }
+                    return Ok(Value::Percent(a % b));
+                }
+                _ => {}
+            }
+        }
+        if let (Value::Size(a), Value::Size(b)) = (&l, &r) {
+            if matches!(op, Rem) {
+                if *b == 0 {
+                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
+                }
+                return Ok(Value::Size(a % b));
+            }
+        }
+        if let (Value::Duration(a), Value::Duration(b)) = (&l, &r) {
+            if matches!(op, Rem) {
+                if *b == 0 {
+                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
+                }
+                return Ok(Value::Duration(a % b));
+            }
+        }
         match (op, l, r) {
             // int
             (Add, Value::Int(a), Value::Int(b)) => {

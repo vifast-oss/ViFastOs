@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-12b** (sửa 7 lỗi kiểm kiểu do review độc lập bắt) — xong kỹ thuật 2026-11-13,
-                **chưa commit** — chờ review độc lập của Agent 0
+Task          : **ST-13b** (sửa 10 mục review ST-13 của reviewer3) — xong kỹ thuật 2026-11-13,
+                **chưa commit** — chờ review độc lập của Agent 0.
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
@@ -15,6 +15,35 @@ Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1
                 31 vis-cli + 18 vis-fmt + 96 vis-syntax + 18 vis-diag + **42 vis-types**)
 Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit `[ST-12]`)
 ```
+
+## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
+
+| # | Mục review | Sửa | Khoá bằng |
+|---|---|---|---|
+| 1 | **BLOCKER** `Never`/return-tail | thêm `Type::Never`: `return` ⇒ `never`; `if`/`match` toàn nhánh phân kỳ ⇒ `never`; `unify_branch`/`coerce` bỏ qua `never` | `tyck_v2::never_vong_lap_va_for_theo_vs0` (4 ca) |
+| 2 | **BLOCKER** panic tràn range | `iter_items`: `checked_add`, chạm `i64::MAX` ⇒ **dừng dải** (không lỗi, không panic) | `interp_v2::range_khong_tran_so` (3 ca) |
+| 3 | **MAJOR** thân vòng lặp bị ép `unit` | `kiem_than_bo` (bỏ giá trị cuối) cho `for`/`while`/`loop`; `scope` **cho giá trị khối** (thống nhất interp) | `interp_v2::than_vong_lap_bo_gia_tri`, `tyck_v2` (3 ca) |
+| 4 | **MAJOR** `elem_of_iter` lệch | `Str ⇒ char`; range VS0 **chỉ `int`** (`size`/`duration`/`char` ⇒ `VS0412`), span thật | `tyck_v2` (3 ca) + `interp_v2` |
+| 5 | **MAJOR** số học bất đối xứng | runtime thêm `size/duration * percent`, `percent / percent ⇒ float`, `size%size`, `duration%duration`, `percent%percent`; tyck thêm 3 phép `%` | `interp_v2::so_hoc_doi_xung_voi_don_vi` (6 ca) |
+| 6 | **MAJOR** bảng phương thức không kiểm kiểu | `filter`/`each` đòi **hàm 1 tham số** (filter trả `bool`), `sum` chỉ list số; **parser cho từ khoá sau `.`** ⇒ `m.has(..)` gọi được | `interp_v2::phuong_thuc_kiem_kieu_va_has` (4 ca) |
+| 7 | **MAJOR** vị trí sai | `pos`: **tab = 4 cột**; lỗi `iter_items`/range dùng **span thật** (không còn `0,0`) | `interp_v2::vi_tri_tab_va_utf8` (tab giữa dòng = 4 cột; tiếng Việt/emoji theo scalar) |
+| 8 | **MAJOR** `break`/`continue`/`?` ngoài ngữ cảnh | `loop_depth`/`fn_depth`: ngoài vòng/hàm ⇒ **`VS0501`** (chọn runtime, ghi JOURNAL) | `interp_v2::break_continue_va_try_ngoai_ngu_canh` |
+| 9 | **MAJOR** `Show` | `DUR_UNITS` thêm **`w`**; `char` điều khiển **escape** (`'\n'`); đơn vị decimal trước binary (`1024kb`); bỏ mục trùng | `show_char` unit-test + `interp_v2::show_don_vi_va_char` |
+| 10 | **Coverage + số liệu** | 9 test mới (7 `interp_v2` + 1 unit `show_char` + 1 nhóm `tyck_v2`); đính chính STATE/JOURNAL (4 test cũ; 227 = 32+18+96+20+45+16; 74→79 ca) | chính các tệp trên |
+
+**Đỏ trước**: `JOURNAL/st13b-red-run.log` — `interp_v2` **6/7 test đỏ** (mục 2,3,5,6,7,9), `tyck_v2` **1/11**
+(nhóm `SINH_TU_DONG`). Xanh sẵn: `break_continue_va_try_ngoai_ngu_canh` (đã ra mã lỗi ở đường khác) —
+**khai rõ**, không giả vờ đỏ. Chụp bằng `git stash push -- crates/{vis-types,vis-interp,vis-syntax}/src`
+trên harness cuối, rồi `stash pop`.
+
+**Đo được**: **246** test workspace; `vis-dev gate --fast` PASS — 2026-11-12T23:19:43Z; fmt/clippy sạch.
+
+**Lỗ hổng đã biết (mục C, chưa làm)**: `None(1)` không kiểm đối số; map literal trùng khoá (giữ cả hai,
+`get` lấy bản đầu); `str.chars()` trả `list[str]` (nên **chưa** tạo được `char` từ chuỗi ⇒ test `Show` của
+`char` điều khiển chỉ chạy qua unit-test); thứ tự đơn vị `size` (decimal trước binary — đã chốt);
+`unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
+`10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
+(**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
 ## ST-12b — 7 lỗi kiểm kiểu của review độc lập (2026-11-13)
 
@@ -54,7 +83,7 @@ PASS — 2026-11-12T22:51:51Z; fmt/clippy sạch.
 | **Đỏ trước** (D2-05): `tests/run.rs` ≥ 60 ca | `JOURNAL/st13-red-run.log` — **79/79 ca đỏ** (số học 21, điều khiển 12, hàm 12, tập hợp 17, kiểu 12, **giá trị đuôi 5**) khi `run()` trả khung rỗng; **1 test xanh cố ý** (`du_60_ca` chỉ đếm); chống xanh-giả: `steps > 0` cho **mọi** ca `out(...)`; sha256 harness khớp bản commit |
 | **VD-47 — giá trị câu lệnh cuối** (sửa lỗ hổng (b), bắt buộc) | `exec_block`/`exec_body` + tyck `than_value`/`HStmt::{If,Match,Block}`: `if`/`match`/khối con ở **đuôi** cho giá trị; `if` **không** `else` ⇒ `()`; 5 ca mới trong `run.rs` (`gia_tri_cua_khoi_theo_vd47`) + 4 ca tyck (`tyck_methods.rs::gia_tri_cau_lenh_cuoi_vd47`) |
 | Khoá bảng phương thức + `Show` | `tests/tyck_methods.rs` (8 ca: `len/get/sum/upper/keys/join/map` + `sort` ⇒ `VS0403`) và `tests/show.rs` (**5 snapshot**: scalar, size, duration, percent, record/enum/opt/Result/list/map) |
-| Giữ 205 test cũ xanh | **227** test workspace (205 + 22: 9 test + 2 doc-test `vis-interp` + 5 `show` + 3 `tyck_methods` + 2 `vis-diag` + 1 `vis-cli`); 3 test cũ sửa **kèm lý do** (VD-42 cấp `05xx`) |
+| Giữ 205 test cũ xanh | **227** test workspace (đính chính ST-13b: **32 cli + 18 fmt + 96 syntax + 20 diag + 45 types + 16 interp = 227**); **4 test cũ** sửa **kèm lý do** (VD-42 cấp `05xx`): `so_ten_03xx_khoa_theo_vd42`, `snapshot_6_ca_so_ten_03xx`, `explain_so_ten_03xx`, `explain_so_kieu_04xx` |
 | Cổng xanh, không retry | `./vis-dev gate --fast: PASS` — 2026-11-12T22:40:05Z; **227** test; fmt/clippy sạch (`-D warnings`) |
 | Không `unsafe`/`#[ignore]`/`unwrap` trên dữ liệu người dùng; SPDX | `grep` 0 `unsafe`/`#[ignore]`; `unwrap` chỉ ở chỗ đã chứng minh (`unwrap_or`), không trên dữ liệu người dùng; mọi tệp có SPDX (`#` cho `.toml`) |
 
@@ -76,7 +105,8 @@ await/cmd`/bit ⇒ `VS0501`; (d) gán trường/phần tử ⇒ `VS0501` + gợi
    `Circle(2)`/`Empty`; `opt` ⇒ `some(5)`/`none`; `Result` ⇒ `Ok(1)`/`Err(âm)`; `char` `'a'`; `bytes`
    `b"…"`; `path` nguyên văn; `fn` `<fn …>`; `()`.
 4. **`percent * size|int` cắt về 0** — **quyết định** (VD-47 #4).
-5. **3 test cũ sửa kèm lý do** (VD-42 buộc cấp `05xx`): `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`,
+5. **4 test cũ sửa kèm lý do** (VD-42 buộc cấp `05xx`; đính chính ST-13b — thêm `so_ten_03xx_khoa_theo_vd42`
+   và `explain_so_kieu_04xx`): `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`,
    `vis-cli/tests/explain.rs::{explain_so_ten_03xx, explain_so_kieu_04xx}` (giờ `VS0501` exit 0, mã chưa
    cấp là `VS0601`).
 

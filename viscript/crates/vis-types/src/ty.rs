@@ -52,6 +52,9 @@ pub enum Type {
         args: Vec<Type>,
     },
     Unit,
+    /// **Phân kỳ** (`return`, khối toàn `return`, `match` mọi nhánh `return`) — ST-13b mục 1:
+    /// tương thích với **mọi** kiểu (không bao giờ cho giá trị).
+    Never,
     /// `{error}` — kiểu "không biết/không hợp lệ", lan truyền im lặng (thiết kế §14.3).
     Error,
 }
@@ -136,6 +139,7 @@ impl Type {
                 }
             }
             Type::Unit => "()".into(),
+            Type::Never => "never".into(),
             Type::Error => "{error}".into(),
         }
     }

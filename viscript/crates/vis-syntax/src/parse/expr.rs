@@ -283,7 +283,13 @@ impl<'a> Parser<'a> {
             if self.at_punct(".") {
                 let mut elems = vec![Elem::Node(Box::new(base))];
                 elems.push(self.bump());
-                let name = self.expect_ident()?;
+                // ST-13b (mục 6): sau dấu chấm nhận cả **từ khoá** làm tên trường/phương thức
+                // (`m.has(..)`, `x.type`) — từ khoá vẫn là từ khoá ở mọi vị trí khác.
+                let name = if self.tok().kind == Kind::Kw {
+                    self.bump()
+                } else {
+                    self.expect_ident()?
+                };
                 elems.push(name);
                 base = self.node(NodeKind::Field, elems);
                 continue;
@@ -291,7 +297,11 @@ impl<'a> Parser<'a> {
             if self.at_punct("?.") {
                 let mut elems = vec![Elem::Node(Box::new(base))];
                 elems.push(self.bump());
-                let name = self.expect_ident()?;
+                let name = if self.tok().kind == Kind::Kw {
+                    self.bump()
+                } else {
+                    self.expect_ident()?
+                };
                 elems.push(name);
                 base = self.node(NodeKind::OptField, elems);
                 continue;

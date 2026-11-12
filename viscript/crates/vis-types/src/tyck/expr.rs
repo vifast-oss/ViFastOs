@@ -722,20 +722,69 @@ impl<'a> Checker<'a> {
                     }
                     "filter" => {
                         self.arity(args, 1, name, span);
-                        let f = arg_tys.first().cloned().unwrap_or(Type::Error);
-                        if let Type::Fn(_, ret) = &f {
-                            if !matches!(**ret, Type::Bool | Type::Error) {
-                                self.diag(MISMATCH, "`filter` cần hàm trả `bool`", span);
+                        // ST-13b (mục 6): `filter` phải nhận **hàm 1 tham số** trả `bool`.
+                        match arg_tys.first() {
+                            Some(Type::Fn(params, ret)) => {
+                                if params.len() != 1 {
+                                    self.diag(MISMATCH, "`filter` cần hàm **1 tham số**", span);
+                                }
+                                if !matches!(**ret, Type::Bool | Type::Error) {
+                                    self.diag(MISMATCH, "`filter` cần hàm trả `bool`", span);
+                                }
+                            }
+                            Some(Type::Error) | None => {}
+                            Some(other) => {
+                                let o = other.clone();
+                                self.diag(
+                                    MISMATCH,
+                                    format!("`filter` cần **hàm**, được `{}`", self.show(&o)),
+                                    span,
+                                );
                             }
                         }
                         Type::List(Box::new(e))
                     }
                     "each" => {
                         self.arity(args, 1, name, span);
+                        // ST-13b (mục 6): `each` phải nhận **hàm 1 tham số**.
+                        match arg_tys.first() {
+                            Some(Type::Fn(params, _)) => {
+                                if params.len() != 1 {
+                                    let n = params.len();
+                                    self.diag(
+                                        MISMATCH,
+                                        format!("`each` cần hàm **1 tham số**, được {n}"),
+                                        span,
+                                    );
+                                }
+                            }
+                            Some(Type::Error) | None => {}
+                            Some(other) => {
+                                let o = other.clone();
+                                self.diag(
+                                    MISMATCH,
+                                    format!("`each` cần **hàm**, được `{}`", self.show(&o)),
+                                    span,
+                                );
+                            }
+                        }
                         Type::Unit
                     }
                     "sum" => {
                         self.arity(args, 0, name, span);
+                        // ST-13b (mục 6): `sum` chỉ trên list **số**.
+                        if !matches!(e, Type::Int | Type::Float | Type::Error) {
+                            let t = e.clone();
+                            self.diag(
+                                MISMATCH,
+                                format!(
+                                    "`sum` chỉ dùng cho list số, phần tử là `{}`",
+                                    self.show(&t)
+                                ),
+                                span,
+                            );
+                            return Some(Type::Error);
+                        }
                         e
                     }
                     "join" => {

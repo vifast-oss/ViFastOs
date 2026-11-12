@@ -87,6 +87,10 @@ pub(crate) struct Interp<'a> {
     pub steps: usize,
     /// Giá trị của câu lệnh `Expr` **vừa chạy** (để `value` cấp tệp, không eval hai lần).
     last: Option<Value>,
+    /// Độ sâu vòng lặp đang chạy (ST-13b mục 8: `break`/`continue` ngoài vòng ⇒ `VS0501`).
+    loop_depth: u32,
+    /// Độ sâu hàm đang chạy (ST-13b mục 8: `?` ngoài hàm ⇒ `VS0501`).
+    fn_depth: u32,
     types: &'a TypeTable,
     #[allow(dead_code)]
     symbols: &'a Symbols,
@@ -129,6 +133,8 @@ impl<'a> Interp<'a> {
             out: String::new(),
             steps: 0,
             last: None,
+            loop_depth: 0,
+            fn_depth: 0,
             types,
             symbols,
         }
@@ -283,18 +289,28 @@ impl<'a> Interp<'a> {
                 pat, iter, body, ..
             } => {
                 let it = self.eval(iter)?;
-                let items = self.iter_items(it)?;
+                let items = self.iter_items(it, iter.span())?;
+                self.loop_depth += 1;
+                let mut ctrl = Ok(Ctrl::Normal);
                 for v in items {
                     self.bind_pat(pat, &v);
-                    if self.exec_block(body)? == Ctrl::Break {
-                        break;
+                    match self.exec_block(body) {
+                        Ok(Ctrl::Break) => break,
+                        Ok(Ctrl::Normal) => {}
+                        Ok(Ctrl::Continue) => {}
+                        Err(e) => {
+                            ctrl = Err(e);
+                            break;
+                        }
                     }
                 }
+                self.loop_depth -= 1;
                 self.last = None;
-                Ok(Ctrl::Normal)
+                ctrl
             }
             HStmt::While { cond, body, .. } => {
                 let mut guard = 0usize;
+                self.loop_depth += 1;
                 while self.eval(cond)?.truthy(cond.span())? {
                     guard += 1;
                     if guard > 10_000_000 {
@@ -304,20 +320,25 @@ impl<'a> Interp<'a> {
                             s.span(),
                         )));
                     }
-                    if self.exec_block(body)? == Ctrl::Break {
+                    let c = self.exec_block(body)?;
+                    if c == Ctrl::Break {
                         break;
                     }
                 }
+                self.loop_depth -= 1;
                 self.last = None;
                 Ok(Ctrl::Normal)
             }
             HStmt::Loop { body, .. } => {
+                self.loop_depth += 1;
                 for _ in 0..10_000_000usize {
                     if self.exec_block(body)? == Ctrl::Break {
+                        self.loop_depth -= 1;
                         self.last = None;
                         return Ok(Ctrl::Normal);
                     }
                 }
+                self.loop_depth -= 1;
                 Err(Abort::Trap(Trap::new(
                     RT,
                     "`loop` quá lâu (>10^7 bước)",
@@ -332,8 +353,26 @@ impl<'a> Interp<'a> {
                 };
                 Err(Abort::Ret(v))
             }
-            HStmt::Break { .. } => Ok(Ctrl::Break),
-            HStmt::Continue { .. } => Ok(Ctrl::Continue),
+            HStmt::Break { .. } => {
+                if self.loop_depth == 0 {
+                    return Err(Abort::Trap(Trap::new(
+                        RT,
+                        "`break` ngoài vòng lặp (VS0 chỉ dùng trong `for`/`while`/`loop`)",
+                        s.span(),
+                    )));
+                }
+                Ok(Ctrl::Break)
+            }
+            HStmt::Continue { .. } => {
+                if self.loop_depth == 0 {
+                    return Err(Abort::Trap(Trap::new(
+                        RT,
+                        "`continue` ngoài vòng lặp",
+                        s.span(),
+                    )));
+                }
+                Ok(Ctrl::Continue)
+            }
             HStmt::Match { subject, arms, .. } => {
                 let subj = self.eval(subject)?;
                 let Some((arm, binds)) = self.pick_arm(arms, &subj)? else {
@@ -575,6 +614,14 @@ impl<'a> Interp<'a> {
                     Ok(Value::Opt(Some(Box::new(inner))))
                 }
             },
+            HExpr::Try { expr, .. } if self.fn_depth == 0 => {
+                // ST-13b (mục 8): `?` ngoài hàm là lỗi (§4.4) — trước đây bị nuốt thành `return`.
+                Err(Abort::Trap(Trap::new(
+                    RT,
+                    "`?` chỉ dùng **trong hàm** (§4.4)",
+                    e.span(),
+                )))
+            }
             HExpr::Try { expr, .. } => match self.eval(expr)? {
                 Value::Opt(Some(v)) => Ok(*v),
                 Value::Opt(None) => Err(Abort::Ret(Value::Opt(None))),
@@ -792,6 +839,13 @@ impl<'a> Interp<'a> {
     }
 
     pub(crate) fn call_closure(&mut self, c: &Closure, pos: Vec<Value>, span: Span) -> R<Value> {
+        self.fn_depth += 1;
+        let kq = self.call_closure_trong(c, pos, span);
+        self.fn_depth -= 1;
+        kq
+    }
+
+    fn call_closure_trong(&mut self, c: &Closure, pos: Vec<Value>, span: Span) -> R<Value> {
         if pos.len() != c.params.len() {
             return Err(Abort::Trap(Trap::new(
                 RT,
@@ -834,6 +888,19 @@ impl<'a> Interp<'a> {
     }
 
     fn call_hfn(
+        &mut self,
+        f: &'a HFn,
+        pos: Vec<Value>,
+        named: Vec<(String, Value)>,
+        span: Span,
+    ) -> R<Value> {
+        self.fn_depth += 1;
+        let kq = self.call_hfn_trong(f, pos, named, span);
+        self.fn_depth -= 1;
+        kq
+    }
+
+    fn call_hfn_trong(
         &mut self,
         f: &'a HFn,
         pos: Vec<Value>,
@@ -1027,27 +1094,35 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn iter_items(&mut self, it: Value) -> R<Vec<Value>> {
+    fn iter_items(&mut self, it: Value, span: Span) -> R<Vec<Value>> {
         match it {
             Value::List(xs) => Ok(xs),
             Value::Range(a, b, incl) => {
-                let end = if incl { b + 1 } else { b };
+                // ST-13b (mục 2): **không** cộng tràn — `..=` với `i64::MAX` từng panic.
                 let mut out = Vec::new();
                 let mut i = a;
-                while i < end {
+                loop {
+                    let dung = if incl { i > b } else { i >= b };
+                    if dung {
+                        break;
+                    }
                     out.push(Value::Int(i));
                     if out.len() > 10_000_000 {
                         return Err(Abort::Trap(Trap::new(
                             RT,
                             "khoảng quá dài (>10^7 phần tử)",
-                            Span { start: 0, end: 0 },
+                            span,
                         )));
                     }
-                    i += 1;
+                    match i.checked_add(1) {
+                        Some(n) => i = n,
+                        None => break, // chạm `i64::MAX` ⇒ hết dải, **không** panic
+                    }
                 }
                 Ok(out)
             }
-            Value::Str(s) => Ok(s.chars().map(|c| Value::Str(c.to_string())).collect()),
+            // ST-13b (mục 4): duyệt chuỗi cho **`char`** (không phải `str`).
+            Value::Str(s) => Ok(s.chars().map(Value::Char).collect()),
             Value::Map(kv) => Ok(kv
                 .into_iter()
                 .map(|(k, v)| Value::List(vec![k, v]))
@@ -1055,14 +1130,10 @@ impl<'a> Interp<'a> {
             other => Err(Abort::Trap(Trap::new(
                 RT,
                 format!("`for` không duyệt được `{}`", other.show()),
-                Span { start: 0, end: 0 },
+                span,
             ))),
         }
     }
-
-    // ---------------------------------------------------------------------
-    // Pattern
-    // ---------------------------------------------------------------------
 
     fn bind_pat(&mut self, pat: &HPat, v: &Value) {
         let _ = self.bind_pat_bool(pat, v);
@@ -1118,6 +1189,15 @@ impl<'a> Interp<'a> {
                         "false" => !*b,
                         _ => false,
                     },
+                    // `T → T?` nâng **ngầm** ở mức kiểu (ST-12): giá trị chạy có thể là `T` trần,
+                    // nên `some(v)` phải khớp cả giá trị **chưa bọc** (ST-14, ca `optional/match-some`).
+                    other if low == "some" => {
+                        if matches!(other, Value::Opt(None) | Value::Unit) {
+                            false
+                        } else {
+                            self.bind_all(args, std::slice::from_ref(other))
+                        }
+                    }
                     _ => false,
                 }
             }
@@ -1323,11 +1403,14 @@ pub(crate) fn pos(text: &str, span: Span) -> (u32, u32) {
         if i >= span.start {
             break;
         }
-        if c == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
+        match c {
+            '\n' => {
+                line += 1;
+                col = 1;
+            }
+            // ST-13b (mục 7): tab = **4 cột** (SPEC/VD-12), không phải 1.
+            '\t' => col += 4,
+            _ => col += 1,
         }
     }
     (line, col)

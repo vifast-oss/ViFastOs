@@ -224,6 +224,10 @@ impl<'a> Checker<'a> {
 
     /// Ép `from` về `to` **có báo lỗi**: tự nâng `T → T?`, literal `int` ở vị trí `float` (§3.5).
     pub(crate) fn coerce(&mut self, from: &Type, to: &Type, span: Span, what: &str) -> bool {
+        // ST-13b (mục 1): khối phân kỳ (`never`) nhận mọi kiểu — không có giá trị để sai kiểu.
+        if matches!(from, Type::Never) || matches!(to, Type::Never) {
+            return true;
+        }
         if self.same(from, to) {
             return true;
         }
@@ -282,6 +286,7 @@ impl<'a> Checker<'a> {
             | Type::Path
             | Type::Char
             | Type::Unit
+            | Type::Never
             | Type::Error
             | Type::Record(_)
             | Type::Enum(_) => ty.clone(),
@@ -585,30 +590,28 @@ impl<'a> Checker<'a> {
                 }
             }
             HStmt::For {
-                pat,
-                iter,
-                body,
-                span,
+                pat, iter, body, ..
             } => {
                 let it = self.kiem_expr(iter);
-                let elem = self.elem_of_iter(&it);
+                let elem = self.elem_of_iter(&it, iter.span());
                 self.bind_pat(pat, &elem);
-                self.kiem_than(body, &Type::Unit, *span);
+                // ST-13b (mục 3): thân vòng lặp **bỏ** giá trị cuối, không ép `unit`.
+                self.kiem_than_bo(body);
                 Type::Unit
             }
-            HStmt::While { cond, body, span } => {
+            HStmt::While { cond, body, .. } => {
                 let t = self.kiem_expr(cond);
                 self.coerce(&t, &Type::Bool, cond.span(), "điều kiện `while`");
-                self.kiem_than(body, &Type::Unit, *span);
+                self.kiem_than_bo(body);
                 Type::Unit
             }
-            HStmt::Loop { body, span } => {
-                self.kiem_than(body, &Type::Unit, *span);
+            HStmt::Loop { body, .. } => {
+                self.kiem_than_bo(body);
                 Type::Unit
             }
-            HStmt::Scope { body, span, .. } => {
-                self.kiem_than(body, &Type::Unit, *span);
-                Type::Unit
+            HStmt::Scope { body, .. } => {
+                // ST-13b (mục 3): `scope` **cho giá trị khối** — thống nhất với interp.
+                self.than_value(body)
             }
             HStmt::Return { value, span } => {
                 let want = self.cur_ret.clone().unwrap_or(Type::Error);
@@ -625,7 +628,8 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                Type::Unit
+                // ST-13b (mục 1): `return` **phân kỳ** — kiểu `never`, nhận mọi kiểu trả về.
+                Type::Never
             }
             HStmt::Break { .. } | HStmt::Continue { .. } => Type::Unit,
             HStmt::Match {
@@ -664,18 +668,43 @@ impl<'a> Checker<'a> {
     }
 
     /// Kiểu phần tử khi `for` duyệt `iter`.
-    fn elem_of_iter(&mut self, it: &Type) -> Type {
+    fn elem_of_iter(&mut self, it: &Type, span: Span) -> Type {
         match it {
             Type::List(t) => (**t).clone(),
             Type::Map(k, v) => Type::TypeRef {
                 name: "tuple".into(),
                 args: vec![(**k).clone(), (**v).clone()],
             },
+            Type::Str => Type::Char,
             Type::TypeRef { name, args } if name == "range" => {
-                args.first().cloned().unwrap_or(Type::Int)
+                // ST-13b (mục 4): VS0 chỉ duyệt range **`int`**; `size`/`duration`/`char` ⇒ VS0412
+                // (tyck và runtime phải khớp — runtime chưa hỗ trợ range đơn vị).
+                match args.first() {
+                    Some(Type::Int) | None => Type::Int,
+                    Some(Type::Error) => Type::Error,
+                    Some(other) => {
+                        let o = other.clone();
+                        self.diag(
+                            MISMATCH,
+                            format!(
+                                "`for` chỉ duyệt được range `int` ở VS0, được `{}` (§A.7)",
+                                self.show(&o)
+                            ),
+                            span,
+                        );
+                        Type::Error
+                    }
+                }
             }
             Type::Error => Type::Error,
             _ => Type::Error,
+        }
+    }
+
+    /// Kiểm thân khối **bỏ giá trị cuối** (vòng lặp — ST-13b mục 3).
+    pub(crate) fn kiem_than_bo(&mut self, body: &[HStmt]) {
+        for s in body {
+            self.kiem_stmt(s);
         }
     }
 
