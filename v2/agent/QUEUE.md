@@ -109,8 +109,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
 | KT-08 | sim harness + store giả + scheduler tối thiểu 1 hart; kịch bản rỗng tất định theo seed (chưa cần ABI) | KT-02 | 3 h | DONE | harness + store + scheduler chạy; cùng seed → cùng trace |
 | KT-09 | Untyped trên sim (watermark, Retype, Revoke qua CNode) + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05, KT-12b | 3 h | DONE | 29 test (gồm 11 TCB state, gap căn lề, Untyped lồng nhau); invariant tổng byte; preempt; end-to-end; fixture âm kiểm **thông điệp**; C5 D2-41; sửa review Agent 0 ở `da7d30f` |
-| KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | READY | property test cây; Revoke |
-| KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c |
+| KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | DONE | 20 test mới (13 CNode + 5 property + 2 unit); property 128×48=6144; Revoke/finalise; reviewer APPROVE; F1/F2 đã sửa |
+| KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | READY | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c; xử lý F3 quyền Copy/Retype/Delete/Revoke (từ review KT-10) |
 | KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | DONE | giải mã dump; D2-38/D2-40: text = scenario log, KT-12 sở hữu bản ghi 32 B **cùng định dạng sim/QEMU** + golden nhị phân |
 | KT-12b | `vifast-traceformat` **no_std** + `FixedRing<const N>` (kernel); `alloc` feature cho `decode_all`; `Ring`/`Vec` chỉ sau `std`; cross-check byte với golden D2-40 | KT-12 | 2 h | DONE | `#![no_std]` biên dịch; `FixedRing` không cấp phát; test host vẫn xanh |
 | KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | DONE | đèn host DONE `02e0a96` theo D2-36; T26 **OPEN** tới K3.5 (VFS/read_dir + smp); không chạy lại 1.000 seed |
@@ -131,8 +131,8 @@ APPROVED 2026-11-12 Agent 0
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại:**
-1. **KT-10** (READY): CNode/MDB test-first, mô hình tối giản trong test; KT-09 DONE (3d578c0 + da7d30f).
-2. `KT-11` sau KT-10; không mở lại KT-09/KT-12.
+1. **KT-11** (READY): `vifast-model` Untyped/CNode; chạy ca KT-04c, khớp sim 10.000 seed; KT-10 DONE (c78e814).
+2. Sau KT-11, OS vòng 1 hết task READY — dừng sạch, không mở task ngoài phạm vi.
 3. **KT-05/KT-12 DONE** — không làm lại.
 4. OS hết READY thì ViScript: **ST-04 lexer trước ST-03**; `ST-10` DONE.
 5. Không mở YC mới cho YC-06/11/12/13 — đã chốt D2-36..39.

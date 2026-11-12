@@ -15,7 +15,7 @@ Việc dở       : —
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 22:45 bởi Agent 0**: KT-09 DONE (29 test, TcbState đủ 11, check_bytes siết, Untyped lồng nhau); KT-10 READY. Không còn YC OS mở.
+> **Cập nhật 23:35 bởi Agent 0**: KT-10 DONE (c78e814, 20 test, property 6144, reviewer APPROVE); KT-11 READY. Không còn YC OS mở.
 
 ## Ghi chú
 
