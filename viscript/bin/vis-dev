@@ -86,6 +86,11 @@ usage() {
 
 do_check() {
     echo "== vis-dev check =="
+    PY=""
+    for c in python3.12 python3.11 python3; do
+        if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
+    done
+    if [ -z "$PY" ]; then echo "--- báo cáo: FAIL (không thấy python3)"; return 1; fi
     if [ -z "$CARGO" ]; then echo "vis-dev: không thấy cargo" >&2; return 1; fi
     if ! "$CARGO" fmt --manifest-path "$MANIFEST" --all -- --check; then
         echo "--- fmt: FAIL" >&2; return 1
@@ -107,6 +112,18 @@ do_check() {
         echo "--- vis explain: FAIL" >&2; return 1
     fi
     echo "--- vis explain: OK"
+    echo "--- báo cáo R*-viscript (Khối E)"
+    if (cd "$REPO_ROOT" && PYTHON="$PY" "$PY" viscript/test/report/check_report.py --all); then
+        echo "--- báo cáo: OK"
+    else
+        echo "--- báo cáo: FAIL" >&2; return 1
+    fi
+    echo "--- fixture âm của máy kiểm báo cáo"
+    if (cd "$REPO_ROOT" && PYTHON="$PY" bash viscript/test/report/run_fixtures.sh); then
+        echo "--- báo cáo fixtures: OK"
+    else
+        echo "--- báo cáo fixtures: FAIL" >&2; return 1
+    fi
     if ! "$CARGO" build --manifest-path "$MANIFEST" --workspace; then
         echo "--- build: FAIL" >&2; return 1
     fi

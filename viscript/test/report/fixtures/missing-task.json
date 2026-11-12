@@ -1,0 +1,136 @@
+{
+  "project": "viscript",
+  "round": 1,
+  "head": "c666f57",
+  "build_id": "—",
+  "tasks": [
+    {
+      "id": "ST-02a",
+      "status": "DONE",
+      "commits": [],
+      "gates": [
+        "—"
+      ],
+      "note": "Agent 1 soạn SPEC; APPROVED ghi trong ô bảng chưa đúng mẫu dòng riêng (YC-14)"
+    },
+    {
+      "id": "ST-02b",
+      "status": "DONE",
+      "commits": [
+        "a48857b",
+        "c666f57"
+      ],
+      "gates": [
+        "fast"
+      ],
+      "queue": "READY",
+      "note": "QUEUE chưa lật; đã xong"
+    },
+    {
+      "id": "ST-03",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": [],
+      "note": "vis-diag cột scalar/render — chờ Agent 0 lật READY (YC-14)"
+    },
+    {
+      "id": "ST-04",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": [],
+      "queue": "READY",
+      "note": "SPEC-lex còn REVIEW + thiếu kind/keyword ⇒ chưa được mở"
+    },
+    {
+      "id": "ST-05",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": []
+    },
+    {
+      "id": "ST-06",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": []
+    },
+    {
+      "id": "ST-07",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": []
+    },
+    {
+      "id": "ST-08",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": []
+    },
+    {
+      "id": "ST-09",
+      "status": "BLOCKED",
+      "commits": [],
+      "gates": []
+    },
+    {
+      "id": "ST-10",
+      "status": "REVIEW",
+      "commits": [],
+      "gates": [],
+      "queue": "READY",
+      "note": "báo cáo này"
+    }
+  ],
+  "gates": {
+    "fast": "PASS",
+    "full": "—",
+    "nightly": "—"
+  },
+  "sim": {
+    "seeds": 0,
+    "failures": 0
+  },
+  "coverage": {
+    "tokens": "—",
+    "fixtures": 5
+  },
+  "mutants": {
+    "killed": null,
+    "alive": null,
+    "measured": false
+  },
+  "perf": {},
+  "blocked": [
+    {
+      "id": "YC-14",
+      "question": "Duyệt ST-02a đúng mẫu dòng APPROVED; chốt quy tắc cấp 04xx (VS0412=kiểu); lật ST-02b/ST-03/ST-04; sửa QUEUE:152; xác nhận [ST-00]"
+    },
+    {
+      "id": "ST-03",
+      "question": "vis-diag: cột theo Unicode scalar, render, bảng vi/en/ja — chờ lật READY"
+    },
+    {
+      "id": "ST-04",
+      "question": "Chặn bởi SPEC-lex còn REVIEW + thiếu kind (COMMENT/DOC_COMMENT/RANGE/RANGE_EQ/SET_LBRACE/WORD/DOLLAR/CARET) và 4 ca âm VS0101/0102/0103/0110"
+    },
+    {
+      "id": "ST-05",
+      "question": "Chờ ST-04"
+    },
+    {
+      "id": "ST-06",
+      "question": "Chờ ST-05"
+    },
+    {
+      "id": "ST-07",
+      "question": "Chờ ST-06"
+    },
+    {
+      "id": "ST-08",
+      "question": "Chờ ST-07"
+    },
+    {
+      "id": "ST-09",
+      "question": "Chờ ST-08"
+    }
+  ]
+}
