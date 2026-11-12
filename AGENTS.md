@@ -89,6 +89,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 - Mỗi commit: `cargo fmt` đã chạy, cổng `--fast` xanh, header SPDX đúng loại tệp (QD §9.3: `//` cho Rust/asm, `#` cho `.vis .vish .vidl .toml`).
 - Commit chạm `kernel/` hoặc `lib/` phải xanh `--fast`; lỗi logic phải có `.scn` đỏ trước (D2-05).
 - Hồi quy ⇒ **revert trước**, điều tra sau (D2-03).
+- **Push sau mỗi commit xanh của task**: `git push origin main`; tag đẩy riêng `git push origin <tag>`. Không push khi cổng đỏ; không push commit WIP.
 
 ## 8. Duyệt
 

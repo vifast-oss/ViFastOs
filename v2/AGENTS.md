@@ -50,4 +50,4 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 
 Lệnh nằm ở `v2/bin/v2`; có thể `export PATH="$PWD/v2/bin:$PATH"` để gõ `v2 …`.
 
-Commit: `[KT-##] <tóm tắt>`. Duyệt: dòng `APPROVED <YYYY-MM-DD> Agent 0` trong `agent/QUEUE.md`.
+Commit: `[KT-##] <tóm tắt>`. Push sau mỗi commit xanh: `git push origin main`. Duyệt: dòng `APPROVED <YYYY-MM-DD> Agent 0` trong `agent/QUEUE.md`.

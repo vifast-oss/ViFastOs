@@ -39,7 +39,7 @@ Mục tiêu vòng này: đưa dòng OS từ K0 lên **K0.5 boot riscv64** và d�
 3. Viết test/kịch bản thể hiện yêu cầu; chạy, xác nhận **đỏ đúng lý do**, dán log vào JOURNAL.
 4. Cài đặt từng bước; sau mỗi bước chạy `./v2/bin/v2 check` (hoặc `./vis-dev check`).
 5. Cổng cuối task: `./v2/bin/v2 gate --fast` (hoặc `./vis-dev gate --fast`). Không retry.
-6. Commit `[KT-##] …` / `[ST-##] …` + kết quả cổng + BUILD_ID.
+6. Commit `[KT-##] …` / `[ST-##] …` + kết quả cổng + BUILD_ID; **push ngay** `git push origin main` (tag đẩy riêng).
 7. Cập nhật STATE, JOURNAL; `vifast-agentctl done <id>` nếu có.
 8. Nén ngữ cảnh nếu lớn; quay lại bước 1 với task kế.
 
