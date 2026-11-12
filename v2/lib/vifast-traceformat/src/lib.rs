@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! `vifast-traceformat` — bản ghi trace **32 B** dùng chung sim/QEMU (KT-12, D2-38).
 //!
+#![no_std]
+//!
+//! **no_std** (D2-42): `FixedRing` chạy trong kernel; `decode_all`/`Ring` cần feature `alloc`/`std`.
+//!
 //! Layout little-endian, không padding: `t_ns:u64, hart:u16, kind:u16, tcb:u32, a:u64, b:u64`.
 //! Ring là bộ đệm vòng cố định: ghi đè bản ghi cũ nhất khi đầy, đọc ra theo thứ tự thời gian.
 
 pub const RECORD_BYTES: usize = 32;
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 pub const KIND_SYSCALL: u16 = 1;
 pub const KIND_IPC: u16 = 2;
 pub const KIND_SCHED: u16 = 3;
@@ -76,6 +85,7 @@ pub fn is_known_kind(k: u16) -> bool {
 }
 
 /// Giải mã một dump liền mạch; lỗi nếu độ dài không chia hết 32 hoặc kind lạ.
+#[cfg(feature = "alloc")]
 pub fn decode_all(buf: &[u8]) -> Result<Vec<Record>, TraceError> {
     if !buf.len().is_multiple_of(RECORD_BYTES) {
         return Err(TraceError::Truncated(buf.len() % RECORD_BYTES));
@@ -90,6 +100,7 @@ pub fn decode_all(buf: &[u8]) -> Result<Vec<Record>, TraceError> {
 }
 
 /// Ring cố định: `push` ghi đè cũ nhất khi đầy; `iter` trả theo thứ tự thời gian.
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct Ring {
     buf: Vec<Record>,
@@ -98,11 +109,12 @@ pub struct Ring {
     len: usize,
 }
 
+#[cfg(feature = "alloc")]
 impl Ring {
     pub fn new(cap: usize) -> Self {
         assert!(cap > 0, "ring phải có sức chứa > 0");
         Self {
-            buf: vec![Record::new(0, 0, 0, 0, 0, 0); cap],
+            buf: alloc::vec![Record::new(0, 0, 0, 0, 0, 0); cap],
             cap,
             next: 0,
             len: 0,
@@ -130,12 +142,13 @@ impl Ring {
         (0..self.len).map(move |i| &self.buf[(start + i) % self.cap])
     }
 
+    #[cfg(feature = "alloc")]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.iter().flat_map(|r| r.to_bytes()).collect()
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
@@ -183,7 +196,7 @@ mod tests {
         let ts: Vec<u64> = ring.iter().map(|x| x.t_ns).collect();
         assert_eq!(
             ts,
-            vec![3, 4, 5, 6],
+            alloc::vec![3, 4, 5, 6],
             "phải giữ 4 bản ghi mới nhất theo thứ tự"
         );
     }
@@ -198,12 +211,15 @@ mod tests {
         assert_eq!(ring.len(), 4);
         assert_eq!(
             ring.iter().map(|x| x.t_ns).collect::<Vec<_>>(),
-            vec![3, 4, 5, 6]
+            alloc::vec![3, 4, 5, 6]
         );
         let mut one: FixedRing<1> = FixedRing::new();
         one.push(r(9));
         one.push(r(10));
-        assert_eq!(one.iter().map(|x| x.t_ns).collect::<Vec<_>>(), vec![10]);
+        assert_eq!(
+            one.iter().map(|x| x.t_ns).collect::<Vec<_>>(),
+            alloc::vec![10]
+        );
     }
 
     #[test]
@@ -214,7 +230,7 @@ mod tests {
         let bytes = ring.to_bytes();
         assert_eq!(bytes.len(), 2 * RECORD_BYTES);
         let back = decode_all(&bytes).unwrap();
-        assert_eq!(back, vec![r(1), r(2)]);
+        assert_eq!(back, alloc::vec![r(1), r(2)]);
     }
 }
 

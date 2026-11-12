@@ -7,3 +7,8 @@ license.workspace = true
 
 [dev-dependencies]
 vifast-sim = { path = "../../sim/vifast-sim" }
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []

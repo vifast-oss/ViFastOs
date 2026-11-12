@@ -193,6 +193,18 @@ def main():
     if "Untyped.Retype" in methods:
         check("type" in methods["Untyped.Retype"].get("params", []),
               "Untyped.Retype phải có tham số 'type' (D2-33)")
+    # D2-40: [trace] là nguồn sự thật cho bản ghi 32 B
+    tr = doc.get("trace") or {}
+    check(tr.get("record_bytes") == 32, "[trace].record_bytes phải 32 (D2-40)")
+    check(tr.get("endianness") == "little", "[trace].endianness phải little (D2-40)")
+    fields = tr.get("fields") or []
+    check(len(fields) == 6, f"[trace] phải có 6 trường, đang {len(fields)}")
+    total = 0
+    for f in fields:
+        check(f.get("offset") == total, f"[trace] {f.get('name')} offset {f.get('offset')} phải {total}")
+        total += f.get("bytes", 0)
+    check(total == 32, f"[trace] tổng bytes phải 32, đang {total}")
+    check(len(tr.get("kind") or {}) == 7, "[trace].kind phải đủ 7 (1..7)")
     check(len((sig.get("state") or {}).get("names", [])) == 11,
           "enum TCB phải đủ 11 trạng thái (D2-33)")
     check(dbg.get("status") == "frozen", "DebugGetInfo đã chốt ⇒ status frozen (D2-29)")
