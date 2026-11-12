@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-04d (soạn + gửi gói duyệt Agent 0); KT-T26 BLOCKED chờ YC-06
-Bước          : 1/8
+Task          : KT-04d (gói duyệt ĐÃ GỬI — chờ dòng APPROVED của Agent 0); KT-T26 BLOCKED chờ YC-06
+Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
 Việc dở       : —

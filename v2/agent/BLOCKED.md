@@ -115,6 +115,13 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 - Nhắc lại hai con số đúng: `MAX_IO` **v1 = 128** (r262 hạ từ 256 vì 256: 12/49 hỏng); `USER_COPY_MAX = 256`
   là hằng số khác. 256 ở KT-T26 là **cấu hình tái hiện** (D-04), không phải giá trị sản phẩm.
 
+### KT-04d — gói duyệt đã gửi (2026-11-12, **không phải blocker**)
+
+- Tệp: [`reports/KT-04d-goi-duyet.md`](reports/KT-04d-goi-duyet.md) — `spec/abi.toml`, 21 `.scn`, draft chữ ký D2-33,
+  checklist 5 mục/13 method, mapping đã sửa (16 syscall / 26 method / 23 đích / 20 bỏ), D2-26..28.
+- Chờ **một dòng** `APPROVED <ngày> Agent 0` trong `v2/agent/QUEUE.md`; dòng đó mở **KT-05**. Agent 2 **không** ghi APPROVED.
+- Còn mở đúng **một** câu hỏi kỹ thuật: **YC-06** (phạm vi T26).
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2
