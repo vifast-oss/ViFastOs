@@ -118,7 +118,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-14 | `vifast-objmem` core: `ObjHeader` 16 B, `ObjRef`, `ObjStore`, arena thô căn lề, `place/with/with_mut/destroy`, `no_std` + Miri từ commit đầu | KT-13 | 3 h | DONE | 15 test; Miri 15/15; build bare-metal; gate 199 test; reviewer DRIFT đã sửa; YC-18 chốt D2-48 |
 | KT-15 | `with_many_mut` N≤8 + kiểm alias từng cặp + fuzz 10.000 chuỗi (200 chuỗi dưới Miri) | KT-14 | 2 h | DONE | 34 test; Miri alias 8/8 + fuzz 200; fuzz 10k; gate 218 test; guard `chua_header`/TypeId; reviewer DRIFT đã sửa |
 | KT-16 | Tích hợp objmem vào sim: thay `Store` **và** ruột `kobj::Machine`, giữ API; bước 0 gom helper ≤45′; cho phép tách KT-16a/b | KT-14, KT-15 | 3 h | DONE | 23 tệp; test cũ 0 dòng sửa; body trong objmem, Cap `Vec`; sim 0 unsafe; gate 227 test/L1 1000; parity 10k; Miri 39+4+8+13; reviewer APPROVE |
-| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13..KT-16 | 2 h | READY | Miri chọn PASS; 9/9 `.scn`; parity 10k; gate 227+; đóng 2 follow-up KT-16: cap/assert `align ≤ ARENA_ALIGN` trong `alloc_place_span`, chốt hợp đồng `Store::alloc` align>4096; `nightly --only-miri`; STATE đủ 2 dòng DoD K1a' |
+| KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13, KT-14, KT-15, KT-16 | 2 h | READY | Miri chọn PASS; 9/9 `.scn`; parity 10k; gate 227+; đóng 2 follow-up KT-16: cap/assert `align ≤ ARENA_ALIGN` trong `alloc_place_span`, chốt hợp đồng `Store::alloc` align>4096; `nightly --only-miri`; STATE đủ 2 dòng DoD K1a' |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 APPROVED 2026-11-12 Agent 0
