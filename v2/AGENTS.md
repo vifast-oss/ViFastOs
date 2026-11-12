@@ -18,7 +18,7 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 |---|---|
 | [`../docs/v2/ViFastOs-v2-thiet-ke.md`](../docs/v2/ViFastOs-v2-thiet-ke.md) | thiết kế đầy đủ (mục 3 kiến trúc, 4 kernel, 9 kiểm thử, 10 lộ trình K0→K6, 11 quy trình) |
 | [`../docs/v1/KNOWN-ISSUES.md`](../docs/v1/KNOWN-ISSUES.md) | 7 lỗi v1 mang sang v2 + ca kiểm tương ứng |
-| [`agent/QUEUE.md`](agent/QUEUE.md) | 17 dòng task vòng 1: KT-01..KT-12 (KT-04 tách a/b/c/d), KT-T26, KT-R1 |
+| [`agent/QUEUE.md`](agent/QUEUE.md) | 18 dòng task vòng 1: KT-01..KT-12 (KT-04 tách a/b/c/d), **KT-12b**, KT-T26, KT-R1 |
 | [`agent/DECISIONS.md`](agent/DECISIONS.md) | D-01..D-08 (v1) + D2-01..D2-42 |
 | [`agent/STATE.md`](agent/STATE.md) | HEAD, BUILD_ID, task, bước — Agent 2 cập nhật sau mỗi bước |
 | [`agent/BLOCKED.md`](agent/BLOCKED.md) | task bị chặn + câu hỏi cho Agent 0 |
