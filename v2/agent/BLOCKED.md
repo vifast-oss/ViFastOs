@@ -42,6 +42,7 @@ Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spe
 - **Thực tế đã kiểm**: KT-01 `19659ee` (tag `v1-archive`), KT-02 `b4a8693` (build xanh 3 crate, 52/52 test), KT-03 `3222602` (`gate --fast` PASS), KT-07 (50/50 boot riscv64 + `.data+.bss` 0 B ≤ 256 KiB) — **phụ thuộc đã DONE**.
 - **Vì sao Agent 2 không tự lật**: `AGENTS.md` §3 — Agent 2 không sửa `QUEUE.md`; bước 7 "`vifast-agentctl done`" chưa dùng được vì KT-06 chưa có.
 - **Đề nghị**: Agent 0 ghi `KT-01/02/03/07 = DONE`, `KT-08 = READY` (dep KT-07 xong), và cập nhật `v2/AGENTS.md` §3. Không chặn Agent 2: các task đang chạy theo điều phối miệng.
+- **ĐÃ XỬ LÝ 2026-11-12**: QUEUE đã lật `KT-01/02/03/07 = DONE`, `KT-06/08/12 = READY`; `v2/AGENTS.md` §3 đã sửa. Không cần chờ.
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
