@@ -1,0 +1,11 @@
+LICENSE — ViFastOs v2
+=====================
+
+Giấy phép của mọi mã nguồn trong v2/ là **MIT OR Apache-2.0** (D2-21, QD §9.3).
+
+Một bản duy nhất của mỗi tệp giấy phép nằm ở **gốc repo** (không nhân bản vào v2/):
+
+- ../LICENSE-MIT
+- ../LICENSE-APACHE
+
+Không tạo NOTICE. THIRD-PARTY.md sinh tự động, không viết tay (D2-21).

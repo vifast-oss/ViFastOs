@@ -30,14 +30,11 @@ Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spe
 
 ## 3. Câu hỏi cho Agent 0
 
-### Q-01 — KT-04c là **20** hay **21** kịch bản? (mở 2026-11-12, bởi Agent 2)
+### Q-01 — KT-04c là **20** hay **21** kịch bản? — **ĐÃ TRẢ LỜI 2026-11-12 (D2-27)**
 
-- **Hiện tượng mâu thuẫn nguồn**:
-  - **20**: `docs/QUYET-DINH-sau-review.md:176` (QD §4, bảng T04 tách: "KT-04c | 20 kịch bản") và `v2/agent/DECISIONS.md:77` (Phần IV: "số kịch bản ABI | **20** `.scn` | QD §4").
-  - **21**: `v2/agent/QUEUE.md:104` ("**21 kịch bản** `.scn` … gồm ca **"Exit khi procsrv chưa Recv"**") và `docs/v2/ViFastOs-v2-thiet-ke.md:1068`; `review/PATCH-BRIEF.md` §1 ghi 20.
-- **Vì sao không tự chọn**: số kịch bản là nội dung của bộ ABI gửi duyệt (KT-04d) và là đầu vào KT-05/KT-11. Tự chọn ⇒ có thể đóng băng ABI sai (đúng loại rủi ro reviewer nêu ở mục 6.1 của `JOURNAL/review-2026-11-12-1.md`).
-- **Chặn gì**: chỉ chặn `KT-04c` (và con số trong checklist `KT-04d`). **Không** chặn `KT-01`/`KT-02`/`KT-T26`/`KT-R1`; cũng không chặn phần `abi.toml` lõi của `KT-04a` (15 syscall + 19 lỗi + method đã chốt ở QD §4).
-- **Đề xuất**: giữ **21** (QUEUE + thiết kế, bản mới hơn sau vòng vá) và Agent 0 ghi một mục **D2-27** xác nhận "21 kịch bản, gồm ca Exit khi procsrv chưa Recv"; nếu chọn 20 thì QUEUE phải sửa dòng KT-04c và bỏ ca Exit-khi-chưa-Recv khỏi DoD. Không có phương án nào Agent 2 tự quyết.
+- **Chốt**: **21** kịch bản = 20 theo QD §4 + ca **"Exit khi procsrv chưa Recv"** (D2-27, Agent 0). KT-04c/KT-04d dùng 21, không hỏi lại, không tự đổi.
+- Bối cảnh mâu thuẫn (giữ lại để tra cứu): **20** ở `docs/QUYET-DINH-sau-review.md:176` (QD §4) và `v2/agent/DECISIONS.md` Phần IV; **21** ở `v2/agent/QUEUE.md:104` + `docs/v2/ViFastOs-v2-thiet-ke.md:1068`; `review/PATCH-BRIEF.md` §1 ghi 20.
+- Đóng cùng ngày với **D2-28** (KT-02 chỉ port tối đa `vifast-fs`, `vifast-fsutil`, `vifast-elf`; `cargo build` xanh + mỗi tệp ≤ 1.500 dòng).
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 

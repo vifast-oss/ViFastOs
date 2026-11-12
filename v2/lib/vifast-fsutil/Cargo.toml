@@ -1,0 +1,12 @@
+# lib/vifast-fsutil — port từ v1 (D2-26)
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-fsutil"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Host-side FS image utility (port v1, D2-26)"
+
+[dependencies]
+vifast-fs = { path = "../vifast-fs" }

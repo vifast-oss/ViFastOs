@@ -1,0 +1,11 @@
+# lib/vifast-elf — port từ v1 (D2-26)
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-elf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Minimal allocation-free ELF64 validation (port v1, D2-26)"
+
+[dependencies]
