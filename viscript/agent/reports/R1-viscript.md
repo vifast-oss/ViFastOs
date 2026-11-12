@@ -10,7 +10,7 @@ Bản máy đọc: [`R1-viscript.json`](R1-viscript.json) — 11 khoá Khối E,
 2. **Sổ mã lỗi + CLI**: `vis-diag` có đúng **10 mã `VS0101..VS0110`** của SPEC-lex §7, `Code`/`Code::severity`/`lookup`/`next_block`; `vis-cli` cho `vis explain` (`exit 0` mã có thật, `exit 2` mã sai/thiếu tham số).
 3. **10 test** xanh (6 `vis-diag` + 4 `vis-cli` integration chạy binary thật); `./vis-dev gate --fast` **PASS**.
 4. **`./vis` chạy trong shell sạch** (tự tìm `cargo` ở `$HOME/.cargo/bin`); cổng có bước `vis explain` nên lỗi 127 không lọt lại.
-5. **Chưa có lexer/parser** (ST-04 chưa mở): SPEC-lex còn `REVIEW`, thiếu kind/keyword dùng trong chính golden ⇒ **không tự đặt ngữ nghĩa** (YC-14).
+5. **Chưa có lexer/parser** (ST-04 chưa mở): SPEC-lex đã `APPROVED`, thiếu kind/keyword dùng trong chính golden ⇒ **không tự đặt ngữ nghĩa** (YC-14).
 
 ## 2. Bảng task (11 hàng QUEUE)
 

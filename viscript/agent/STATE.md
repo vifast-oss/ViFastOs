@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
 ```
 HEAD          : xem `git log -1`
 BUILD_ID      : —
-Task          : ST-03 (vis-diag scalar/render) ngay khi được lật READY; ST-04 chờ errata SPEC (YC-14)
+Task          : ST-04 (vis-diag scalar/render) ngay khi được lật READY; ST-04 READY (SPEC-lex APPROVED) — theo D2-20 sau khi sổ OS lật
 Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` PASS (ST-10: 10 test, báo cáo + 5 fixture âm + `vis explain`)

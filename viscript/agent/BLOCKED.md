@@ -31,6 +31,6 @@ Không có câu hỏi mở tại thời điểm bàn giao. Khi phát sinh (SPEC 
 
 ## 4. Dòng OS **không** bị chặn bởi mục 1–2
 
-`v2/agent/QUEUE.md` **không còn** task `READY` (KT-04d REVIEW; KT-05/09/10/11/12/T26 BLOCKED) ⇒ dòng ViScript được chạy (D2-20). Hai dòng độc lập; KT-04d REVIEW không cản dòng ViScript.
+`v2/agent/QUEUE.md` còn KT-05/KT-12 READY (đã xong, chờ lật); KT-09 BLOCKED; KT-04d/T26 DONE ⇒ dòng ViScript được chạy (D2-20). Hai dòng độc lập; KT-04d REVIEW không cản dòng ViScript.
 
 Câu hỏi mở của dòng ViScript: **YC-14** trong `v2/agent/BLOCKED.md` §3 (duyệt ST-02a đúng mẫu, xung đột `04xx`, lật ST-02b/ST-03).
