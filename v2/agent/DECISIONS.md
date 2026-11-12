@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-46`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-47`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-46: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-47: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -80,6 +80,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-44** `CNode.Move` `[TK]`: chuyển cap nguồn sang `dst`; nếu `dst` đã có cap thì cap đích bị xoá trước rồi chuyển (overwrite), vì `01-cnode-copy.scn:13` yêu cầu `ok` sau khi `dst` đã bị `Copy` chiếm. `CNode.Copy`/`CNode.Mint` vẫn yêu cầu `dst` rỗng, trả `SlotOccupied`. Đây là ngữ nghĩa mô hình, chưa phải ABI chốt; `CNode.Mutate` giữ nghĩa biến đổi tại chỗ (chưa cài KT-11).
 - **D2-45** F3 `[TK]`: `Untyped.Retype` yêu cầu quyền `WRITE` trên cap nguồn; `CNode.Delete`/`CNode.Revoke` yêu cầu `WRITE` trên cap CNode dùng để triệu hồi. Chưa có nguồn spec/design; là chính sách mô hình `[TK]`, K1a rà lại trước khi đóng ABI. `Copy`/`Mint` giữ quyền ⊆ nguồn; `mint(Some(0))` xoá badge (không giữ badge nguồn).
 - **D2-46** Badge chỉ hợp lệ trên `Endpoint`/`Notification`; `Mint` badge trên loại khác trả `InvalidArgument`. Fixture `02-cnode-mint-badge.scn` sửa cho đúng: bước 1 dùng `src=ep0`, bước 2 thêm `c2` và dùng `dst=c2`; mục tiêu `.scn` Untyped/CNode **9/9**. Đây là sửa dữ liệu test, không đổi ABI.
+- **D2-47** Phase K1a' theo `review/agent0/K1A-PLAN.md`: (a) cài `miri` + `rust-src` cho nightly đã xong; Miri chạy bằng lệnh rời `v2 miri` và `nightly --only-miri`, **không** đưa vào `gate --fast` (giữ ≤60 s); (b) `cargo-deny`/`deny.toml` **chưa** bắt buộc ở K1a' vì chưa có dependency ngoài — vẫn theo D2-37(c), thêm trước dependency đầu tiên; (c) cho phép tách `KT-16a`/`KT-16b` nếu tích hợp >3 h, theo ranh giới đã định; (d) K1a' chỉ đưa **object body** vào `vifast-objmem`, bảng `Cap` của sim vẫn là `Vec<Cap>` (tiện ích mô hình; CSpace 2 cấp là K1b/K2); (e) không sửa `vifast-model` (`#![forbid(unsafe_code)]`, oracle).
 
 ---
 

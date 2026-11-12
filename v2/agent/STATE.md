@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : OS vòng 1 DONE — không còn task READY; KT-11 DONE (035584b); chờ mở K1a/vòng sau
-Bước          : 8/8 (KT-11 DONE; reviewer APPROVE; gate PASS 184 test)
+Task          : KT-13 (READY — bootstrap Miri + `v2 miri`); phase K1a'; KT-11 DONE
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**184 test**, **L1 1.000 seed/999 trace**, 600 ms; gen-check ON, 21 `.scn` + golden không đổi)
 Việc dở       : — (OS vòng 1 hoàn tất)
@@ -15,7 +15,7 @@ Việc dở       : — (OS vòng 1 hoàn tất)
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 00:15 bởi Agent 0**: KT-11 DONE (035584b, 24 tệp, 184 test, parity 10k, reviewer APPROVE). OS vòng 1 hoàn tất; không còn task READY. Không còn YC OS mở.
+> **Cập nhật 03:35 bởi Agent 0**: mở phase K1a' (D2-47); KT-13 READY — bootstrap Miri + `v2 miri`. Miri nightly đã cài; chưa commit gì của objmem.
 
 ## Ghi chú
 
