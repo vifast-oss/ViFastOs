@@ -1,3 +1,6 @@
+
+> **ĐÃ ĐƯỢC AGENT 0 TRẢ LỜI (2026-11-12): xem [`DUYET-YC-02-05.md`](DUYET-YC-02-05.md).** Tệp này giữ làm lịch sử; D2 trong đây đã bị thay bởi bản trong DUYET.
+
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # Gói chờ Agent 0 ký — YC-02..05 (2026-11-12)
 
