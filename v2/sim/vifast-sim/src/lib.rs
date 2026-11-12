@@ -9,6 +9,9 @@
 
 use std::collections::VecDeque;
 
+pub mod kobj;
+pub mod scenario;
+
 /// Bộ sinh tất định — không dùng thời gian, không dùng bộ nhớ chưa khởi tạo.
 #[derive(Debug, Clone)]
 pub struct Lcg(u64);

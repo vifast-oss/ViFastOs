@@ -1,0 +1,43 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj`
+  --> sim/vifast-sim/tests/kt09_preempt.rs:10:17
+   |
+10 | use vifast_sim::kobj::{Machine, ObjType, SlotRef};
+   |                 ^^^^ could not find `kobj` in `vifast_sim`
+
+error[E0432]: unresolved import `vifast_sim::scenario`
+  --> sim/vifast-sim/tests/kt09_preempt.rs:11:17
+   |
+11 | use vifast_sim::scenario::{run_interleaved, ScenarioStep, Step};
+   |                 ^^^^^^^^ could not find `scenario` in `vifast_sim`
+
+error[E0432]: unresolved import `vifast_sim::kobj`
+ --> sim/vifast-sim/tests/kt09_revoke.rs:9:17
+  |
+9 | use vifast_sim::kobj::{KError, Machine, ObjType, SlotRef};
+  |                 ^^^^ could not find `kobj` in `vifast_sim`
+
+error[E0432]: unresolved import `vifast_sim::kobj`
+  --> sim/vifast-sim/tests/kt09_untyped.rs:10:17
+   |
+10 | use vifast_sim::kobj::{KError, Machine, ObjType, SlotRef, FLAG_GUEST};
+   |                 ^^^^ could not find `kobj` in `vifast_sim`
+
+error[E0432]: unresolved import `vifast_sim::kobj`
+ --> sim/vifast-sim/tests/kt09_e2e.rs:9:17
+  |
+9 | use vifast_sim::kobj::{FaultKind, KError, Machine, ObjType, SlotRef, TcbState};
+  |                 ^^^^ could not find `kobj` in `vifast_sim`
+
+error[E0432]: unresolved import `vifast_sim::scenario`
+  --> sim/vifast-sim/tests/kt09_e2e.rs:10:17
+   |
+10 | use vifast_sim::scenario::{run_sequential, ScenarioStep, Step};
+   |                 ^^^^^^^^ could not find `scenario` in `vifast_sim`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt09_revoke") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `vifast-sim` (test "kt09_e2e") due to 2 previous errors
+error: could not compile `vifast-sim` (test "kt09_untyped") due to 1 previous error
+error: could not compile `vifast-sim` (test "kt09_preempt") due to 2 previous errors

@@ -9,6 +9,10 @@ license = "MIT OR Apache-2.0"
 name = "vifast_sim"
 path = "src/lib.rs"
 
+[dependencies]
+# Tên/số mã lỗi + enum trạng thái lấy từ code sinh của spec (D2-11), không chép tay.
+vifast-abi = { path = "../../lib/vifast-abi" }
+
 [[bin]]
 name = "vifast-sim"
 path = "src/main.rs"

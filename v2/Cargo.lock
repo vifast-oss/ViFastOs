@@ -31,6 +31,9 @@ dependencies = [
 [[package]]
 name = "vifast-sim"
 version = "0.1.0"
+dependencies = [
+ "vifast-abi",
+]
 
 [[package]]
 name = "vifast-traceformat"

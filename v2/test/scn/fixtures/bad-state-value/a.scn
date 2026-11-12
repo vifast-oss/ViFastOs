@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-09 fixture âm: `expect_states` sai **giá trị** (call=maybe), không chỉ sai tên trường.
+# D2-41 đòi khớp cả trường (`call=false`), nên máy kiểm phải bắt đúng giá trị.
+version = 1
+name = "bad-state-value"
+tags = ["exit"]
+expect_states = ["BlockedOnSend{ep, call=maybe, fault=Exit{7}}"]
+caps = { ep0 = "Endpoint" }
+thread = [
+  { name = "t0", steps = [
+    "call cap=ep0 => ok",
+  ] },
+]

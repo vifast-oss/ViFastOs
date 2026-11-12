@@ -71,6 +71,22 @@ def split_fields(body):
     return out
 
 
+def check_state_value(fname, key, val, ty):
+    """D2-41: `expect_states` phải khớp cả **trường** (`call=false`, `fault=Exit{code}`),
+    không chỉ tên trường. Chỉ kiểm khi giá trị được ghi ra (trường trần như `ep` được phép)."""
+    if ty == "bool":
+        if val not in ("true", "false"):
+            fails.append(f"{fname}: giá trị {val!r} của trường {key!r} không hợp lệ (bool)")
+    elif ty in ("Option<FaultKind>", "FaultKind"):
+        if not re.fullmatch(r"Exit(\{\d+\})?", val):
+            fails.append(
+                f"{fname}: giá trị {val!r} của trường {key!r} không hợp lệ (FaultKind: Exit{{code}})"
+            )
+    elif ty in ("Option<u64>", "u64"):
+        if not re.fullmatch(r"\d+", val):
+            fails.append(f"{fname}: giá trị {val!r} của trường {key!r} không hợp lệ (u64)")
+
+
 def check_state(fname, st, sig, state_names):
     """Kiểm `Name` hoặc `Name{field=value,...}` theo enum + field của draft D2-33."""
     if "{" in st:
@@ -82,11 +98,18 @@ def check_state(fname, st, sig, state_names):
     if name not in state_names:
         fails.append(f"{fname}: trạng thái {name!r} không có trong enum D2-33")
         return
-    declared = {f.split(":")[0].strip() for f in (sig.get("state", {}).get(name, {}) or {}).get("fields", [])}
+    declared = {}
+    for f in (sig.get("state", {}).get(name, {}) or {}).get("fields", []) or []:
+        key, _, ty = f.partition(":")
+        declared[key.strip()] = ty.strip()
     for field in split_fields(body) if body else []:
-        key = field.split("=")[0].strip()
+        key, sep, val = field.partition("=")
+        key, val = key.strip(), val.strip()
         if declared and key not in declared:
             fails.append(f"{fname}: {name} không có trường {key!r} (D2-33: {sorted(declared)})")
+            continue
+        if sep and val:
+            check_state_value(fname, key, val, declared.get(key, ""))
 
 
 def check(cond, msg):

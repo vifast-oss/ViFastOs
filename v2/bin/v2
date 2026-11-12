@@ -216,7 +216,7 @@ do_check() {
             fails=$((fails + 1))
         fi
         if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/scn/run_fixtures.sh >/dev/null 2>&1); then
-            echo "--- scn fixtures: OK (4 case âm)"
+            echo "--- scn fixtures: OK (5 case âm, kiểm thông điệp)"
         else
             echo "--- scn fixtures: FAIL" >&2
             fails=$((fails + 1))
