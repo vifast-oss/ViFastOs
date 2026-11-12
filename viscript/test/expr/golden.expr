@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// 30 GOLDEN BIỂU THỨC — kỳ vọng do **Agent 0** chốt 2026-11-12 (VD-34), đầu vào test ĐỎ của ST-05.
+// Agent 2 KHÔNG sửa tệp này (kỳ vọng, không phải mã); nếu thấy sai/thiếu thì báo Agent 0.
+//
+// Nguồn: `docs/viscript/ViScript-thiet-ke.md` §4.5 (8 hệ quả ưu tiên bắt buộc có golden) +
+// §A.5 (bảng ưu tiên 12 mức, kèm kết hợp) + §A.3 (văn phạm biểu thức) + `SPEC-lex.md` §8
+// (ca `50%` — L3 của `docs/DUYET-AGENT0-vong-va.md`: lỗi thuộc **parser**, kèm gợi ý `50pct`).
+//
+// ĐỊNH DẠNG mỗi ca (một dòng):
+//   <nguồn> => <sexp>          cây biểu thức, dạng ngoặc hoá của CST
+//   <nguồn> => !ERR            parse phải hỏng, **đúng 1** lỗi (DoD ST-05 "mỗi tệp lỗi đúng 1 lỗi đầu")
+//   <nguồn> => !ERR "<chuỗi>"  như trên, và thông điệp lỗi phải chứa <chuỗi>
+//
+// QUY ƯỚC sexp (áp cho cả 30 ca):
+// - literal giữ **nguyên văn nguồn**: `1`, `"a"`, `1.5`, `50pct`, `true`.
+// - toán tử nhị phân: `(op lhs rhs)` — `(+ 1 (* 2 3))`.
+// - một ngôi: `(- x)`, `(not x)`.
+// - ngoặc tròn thật trong nguồn: nút `(paren X)` (CST lossless giữ ngoặc).
+// - postfix: `(field X ten)`, `(?field X ten)` cho `?.`, `(call f a b)`, `(index X i)`,
+//   `(try X)` cho `?`, `(with X ten: v …)`.
+// - literal cấu trúc: `(list a b)`, `(set a b)`, `(map k v)`, `(record ten: v …)`, `(tuple a b)`.
+// - `|>` và các toán tử **kết hợp trái** vẫn viết lồng trái: `(|> (|> a f) g)` — không làm phẳng,
+//   để phân biệt được với kết hợp phải.
+// - `??` **kết hợp phải** (§A.5, §4.5): `(?? a (?? b c))`.
+//
+// BẤT BIẾN kèm mọi ca (không viết lại từng dòng): parse xong thì **CST lossless** — ghép CST theo
+// đúng thứ tự phải ra **nguyên văn** nguồn (kể cả khoảng trắng, chú thích, độ rộng thụt lề).
+
+// #1 nhân bám chặt hơn cộng
+1 + 2 * 3 => (+ 1 (* 2 3))
+// #2 ngoặc đổi nhóm, CST phải giữ nút `paren`
+(1 + 2) * 3 => (* (paren (+ 1 2)) 3)
+// #3 `**` kết hợp PHẢI (§4.5, §A.5)
+2 ** 3 ** 2 => (** 2 (** 3 2))
+// #4 `**` cao hơn `*`
+2 * 3 ** 2 => (* 2 (** 3 2))
+// #5 một ngôi `-` THẤP hơn `**` (§4.5 hệ quả bắt buộc)
+-2 ** 2 => (- (** 2 2))
+// #6 `* / %` cùng mức, kết hợp trái
+8 / 2 % 3 => (% (/ 8 2) 3)
+// #7 `+ -` cùng mức, kết hợp trái
+1 - 2 - 3 => (- (- 1 2) 3)
+// #8 khoảng `..` thấp hơn `+` (§4.5 hệ quả bắt buộc)
+0..n+1 => (.. 0 (+ n 1))
+// #9 khoảng đóng `..=`
+0..=10 => (..= 0 10)
+// #10 khoảng KHÔNG kết hợp (§A.5) ⇒ lỗi cú pháp
+a .. b .. c => !ERR
+// #11 `??` thấp hơn so sánh (§4.5 hệ quả bắt buộc)
+a ?? b == c => (== (?? a b) c)
+// #12 `??` kết hợp PHẢI (§A.5)
+a ?? b ?? c => (?? a (?? b c))
+// #13 so sánh KHÔNG kết hợp (§4.5: `1 < x < 10` là lỗi cú pháp)
+1 < x < 10 => !ERR
+// #14 `not` THẤP hơn so sánh (§4.5 hệ quả bắt buộc)
+not a == b => (not (== a b))
+// #15 `and` cao hơn `or` (§4.5 hệ quả bắt buộc)
+a and b or c => (or (and a b) c)
+// #16 `?` postfix bám trước `|>` (§4.5 hệ quả bắt buộc)
+x? |> f => (|> (try x) f)
+// #17 `with` postfix bám trước `|>` (§4.5 hệ quả bắt buộc)
+u with age: 21 |> f => (|> (with u age: 21) f)
+// #18 `|>` kết hợp trái
+a |> f |> g => (|> (|> a f) g)
+// #19 chỉ số danh sách
+xs[0] => (index xs 0)
+// #20 `?` sau chỉ số = chỉ số có kiểm
+xs[0]? => (try (index xs 0))
+// #21 chuỗi trường bám trái
+a.b.c => (field (field a b) c)
+// #22 `?.` là nút riêng (không phải `try` + `field`)
+a?.b => (?field a b)
+// #23 gọi hàm hai đối số
+f(1, 2) => (call f 1 2)
+// #24 `?` sau lời gọi
+f()? => (try (call f))
+// #25 list literal
+[1, 2, 3] => (list 1 2 3)
+// #26 set literal (SET_LBRACE dính liền, SPEC-lex §5)
+set{1, 2} => (set 1 2)
+// #27 tuple (ngoặc có dấu phẩy), không phải nhóm
+(1, "a") => (tuple 1 "a")
+// #28 map: khoá là literal chuỗi (A.5 ghi chú 4)
+{"a": 1} => (map "a" 1)
+// #29 record: khoá là định danh trần (A.5 ghi chú 4)
+{name: "An", age: 20} => (record name: "An" age: 20)
+// #30 `50%` KHÔNG phải percent: lexer cho INT(50) PUNCT(%), parser báo lỗi kèm gợi ý `50pct`
+//     (L3 của `docs/DUYET-AGENT0-vong-va.md`; SPEC-lex §8 ghi chú đúng ca này)
+50% => !ERR "50pct"
