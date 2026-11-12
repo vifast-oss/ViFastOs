@@ -4,10 +4,10 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : c9cdc9e
+HEAD          : bf61901
 BUILD_ID      : —
-Task          : KT-07 (bước 8/8 — đã xong, chờ commit)
-Bước          : 8/8
+Task          : KT-04a (bắt đầu — bước 1/8)
+Bước          : 1/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (2,9–4,1 s) + boot riscv64 50/50 (KT-07)
 Việc dở       : —
@@ -44,7 +44,7 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
-| `HEAD` | `c9cdc9e` `[KT-00]` README (commit điều phối); KT-03 ở `3222602`+`d4d6bf2` | `git log -1 --oneline` |
+| `HEAD` | `bf61901` `[KT-07]` (đã push `origin/main`); KT-03 ở `3222602`+`d4d6bf2` | `git log -1 --oneline` |
 | Cổng | `./v2/bin/v2 check` PASS; `gate --fast` PASS **4,1 s**; `gate`/`nightly` exit 2 | `JOURNAL/2026-11-12.md` mục KT-03 |
 | Luật | self-test **6/6** (`ok 1..6`); R1..R5 có case âm đúng mã luật | `bash v2/test/rules/run.sh` |
 | Build/test | `cargo build` xanh 3 crate; `cargo test -p vifast-fs` 52/52; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
