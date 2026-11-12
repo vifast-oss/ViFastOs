@@ -181,6 +181,15 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 3. **Đường dẫn `docs/abi.md`**: DoD (`QUEUE:107`, thiết kế) ghi `docs/abi.md`; nay gen sinh đúng đường đó (đã bỏ `docs/v2/abi.md`).
 4. **Lật sổ**: `QUEUE:107` KT-05 = DONE (commit `845df91` + sửa review #16); `QUEUE:151` còn liệt ST-02b/ST-10.
 
+
+### YC-16 — `[trace]` cần thành spec trước khi "dùng chung QEMU" (mở 2026-11-12 sau review #17)
+
+D2-38 ghim **32 B + 6 tên trường** nhưng chưa có: offset/endianness từng trường, bảng `kind`, ngữ nghĩa `t_ns`,
+header container (magic/version/count/hash). Golden nhị phân hiện do Python sinh độc lập từ golden text (200×32 B) nhưng
+**layout vẫn là lựa chọn của Agent 2**; crate còn dùng `Vec` nên chưa link được vào kernel `no_std`.
+Đề nghị Agent 0: (a) duyệt `[trace]` trong `spec/abi.toml` hoặc D2 mới; (b) khôi phục mệnh đề "cùng định dạng QEMU"
+ở `QUEUE:114`; (c) quyết `Ring<const N>` no-alloc thuộc KT-12 hay KT-12b.
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2

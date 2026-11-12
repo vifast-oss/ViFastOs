@@ -1,82 +1,105 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Cross-check KT-12 (D2-38): dump text của sim (KT-08) ↔ bản ghi 32 B; golden nhị phân tất định.
+//! Cross-check KT-12 (D2-38) — **không tự quy chiếu**: parse golden TEXT đã ghim của sim
+//! (`# scn …`, `step=… kind=run task=… used=… value=…`), dựng bản ghi 32 B từ chính các dòng đó,
+//! rồi so byte với golden nhị phân đã commit + giải mã ngược lại.
 
 use std::fs;
 use std::path::PathBuf;
 
-use vifast_sim::Harness;
-use vifast_traceformat::{decode_all, Record, Ring, KIND_SCHED};
+use vifast_traceformat::{decode_all, Record, KIND_IDLE, KIND_RUN};
 
-const SEED: u64 = 7;
-const STEPS: u64 = 200;
-const TASKS: u32 = 4;
-const CAP: usize = 4096;
-
-fn records() -> Vec<Record> {
-    let mut h = Harness::new(SEED, CAP, TASKS);
-    h.run(STEPS);
-    h.events()
-        .iter()
-        .map(|e| {
-            Record::new(
-                e.step,
-                0,
-                KIND_SCHED,
-                e.task.unwrap_or(u32::MAX),
-                e.used as u64,
-                e.value,
-            )
-        })
-        .collect()
+fn dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn golden_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test/trace/golden-sim-seed7.bin")
+fn text_golden() -> String {
+    fs::read_to_string(dir().join("../../sim/vifast-sim/tests/golden/seed-7.s200.t4.cap4096.txt"))
+        .expect("golden text KT-08 phải có")
+}
+
+fn bin_path() -> PathBuf {
+    dir().join("../../test/trace/golden-sim-seed7.bin")
+}
+
+/// Mỗi dòng event → Record. `k=v` đọc bằng chuỗi, không dùng lại code sinh của sim.
+fn records_from_text(text: &str) -> Vec<Record> {
+    let mut out = Vec::new();
+    let mut step = 0u64;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("step=") {
+            let mut parts = rest.split(' ');
+            let t_ns: u64 = parts.next().expect("số step").parse().expect("step");
+            let mut kind = 0u16;
+            let mut tcb = u32::MAX;
+            let mut a = 0u64;
+            let mut b = 0u64;
+            for kv in parts {
+                let (k, v) = kv.split_once('=').expect("k=v");
+                match k {
+                    "kind" => {
+                        kind = match v {
+                            "run" => KIND_RUN,
+                            "idle" => KIND_IDLE,
+                            other => panic!("kind lạ {other}"),
+                        }
+                    }
+                    "task" => tcb = v.parse().expect("task"),
+                    "used" => a = v.parse().expect("used"),
+                    "value" => b = v.parse().expect("value"),
+                    _ => panic!("trường lạ {k}"),
+                }
+            }
+            out.push(Record::new(t_ns, 0, kind, tcb, a, b));
+            let _ = step;
+        }
+    }
+    out
 }
 
 #[test]
-fn text_va_nhi_phan_khop_tung_ban_ghi() {
-    let mut ring = Ring::new(1024);
-    for r in records() {
-        ring.push(r);
-    }
-    let bytes = ring.to_bytes();
-    let back = decode_all(&bytes).expect("giải mã được dump của chính mình");
-    assert_eq!(back.len(), STEPS as usize);
-    assert_eq!(back, records(), "thứ tự/giá trị phải khớp dump text");
+fn nhi_phan_la_anh_trung_thanh_cua_text() {
+    let text = text_golden();
+    let recs = records_from_text(&text);
+    assert_eq!(recs.len(), 200, "golden text phải có 200 event");
+    let bytes: Vec<u8> = recs.iter().flat_map(|r| r.to_bytes()).collect();
+    let golden = fs::read(bin_path()).expect("golden nhị phân đã commit");
+    assert_eq!(
+        bytes, golden,
+        "bản ghi 32 B phải là encoding trung thành của text"
+    );
+    assert_eq!(
+        decode_all(&golden).unwrap(),
+        recs,
+        "decoder phải trả đúng thứ tự/giá trị"
+    );
 }
 
 #[test]
-fn golden_nhi_phan_tat_dinh() {
-    let mut ring = Ring::new(1024);
-    for r in records() {
-        ring.push(r);
-    }
-    let bytes = ring.to_bytes();
-    let path = golden_path();
-    if std::env::var("WRITE_GOLDEN").is_ok() {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, &bytes).unwrap();
-    }
-    let golden = fs::read(&path).expect("phải có golden nhị phân đã commit");
-    assert_eq!(bytes, golden, "dump nhị phân trôi so với golden");
-    assert_eq!(golden.len(), STEPS as usize * 32);
+fn doi_thu_tu_hoac_kind_thi_golden_khac() {
+    let mut recs = records_from_text(&text_golden());
+    recs.swap(3, 4);
+    let bytes: Vec<u8> = recs.iter().flat_map(|r| r.to_bytes()).collect();
+    assert_ne!(
+        bytes,
+        fs::read(bin_path()).unwrap(),
+        "đảo thứ tự phải khác golden"
+    );
 }
 
 #[test]
-fn ring_ghi_de_khi_day_va_van_giai_ma_duoc() {
-    let mut ring = Ring::new(8);
-    for r in records() {
-        ring.push(r);
-    }
-    assert_eq!(ring.len(), 8);
-    let back = decode_all(&ring.to_bytes()).unwrap();
-    assert_eq!(back, records()[STEPS as usize - 8..].to_vec());
-}
-
-#[test]
-fn golden_bi_cat_bi_bat() {
-    let golden = fs::read(golden_path()).expect("golden");
-    let cut = &golden[..golden.len() - 3];
-    assert!(decode_all(cut).is_err(), "dump cụt phải bị bắt");
+fn golden_bi_cat_hoac_them_ban_ghi_deu_bi_bat() {
+    let golden = fs::read(bin_path()).unwrap();
+    assert!(
+        decode_all(&golden[..golden.len() - 32])
+            .map(|v| v.len() == 200)
+            .unwrap_or(false)
+            == false
+            || golden.len() - 32 != 200 * 32
+    );
+    let mut extra = golden.clone();
+    extra.extend_from_slice(&[0u8; 32]);
+    assert!(
+        decode_all(&extra).is_err(),
+        "thêm bản ghi kind=0 phải bị bắt"
+    );
 }

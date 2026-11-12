@@ -10,6 +10,8 @@ pub const KIND_IPC: u16 = 2;
 pub const KIND_SCHED: u16 = 3;
 pub const KIND_FAULT: u16 = 4;
 pub const KIND_STORE: u16 = 5;
+pub const KIND_RUN: u16 = 6;
+pub const KIND_IDLE: u16 = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Record {
@@ -70,7 +72,7 @@ impl Record {
 }
 
 pub fn is_known_kind(k: u16) -> bool {
-    (KIND_SYSCALL..=KIND_STORE).contains(&k)
+    matches!(k, KIND_SYSCALL..=KIND_IDLE)
 }
 
 /// Giải mã một dump liền mạch; lỗi nếu độ dài không chia hết 32 hoặc kind lạ.

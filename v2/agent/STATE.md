@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-05 (READY — bước 0 chép draft chữ ký + D2-35); KT-12 READY (D2-38); KT-04d APPROVED 2026-11-12
-Bước          : 0/8
+Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**gen-check ON**, abi + scn + L0 + L1 1.000 seed); boot riscv64 50/50 (KT-07)
 Việc dở       : —
