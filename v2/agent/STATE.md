@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-T26 (bắt đầu — bước 1/8); KT-04b BLOCKED (YC-04), KT-04c BLOCKED phần arity (YC-05)
-Bước          : 1/8
+Task          : KT-T26 (bước 8/8 — đèn host xong; tái hiện đầy đủ BLOCKED chờ YC-06); KT-04b BLOCKED (YC-04), KT-04c BLOCKED phần arity (YC-05)
+Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
 Việc dở       : —
@@ -52,11 +52,15 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 | `spec/` | **có** `spec/abi.toml` (KT-04a, `status = "REVIEW"`), được R3 quét | `ls spec/`, `./v2/bin/v2 check` |
 | `v2/bin/v2` | **có** (wrapper), `.gitkeep` giữ thư mục | `ls v2/bin` |
 
-## Việc đang làm — KT-T26 (host test `vifast-fs` với `MAX_IO = 256`)
+## Việc đang làm — KT-T26 (3 h theo QUEUE/PATCH-BRIEF/thiết kế)
 
-Ngân sách 2 h. DoD (QUEUE): test host cho `vifast-fs` **giữ nguyên** `MAX_IO = 256` (không nới); đỏ trước; chạy trong `gate --fast`.
+DoD đủ 5 mệnh đề (khôi phục theo review #7 — không được tự rút): (1) host test `vifast-fs`;
+(2) **block giả + cache**; (3) `MAX_IO = 256`; (4) đọc **RAW** kiểm read-your-own-write;
+(5) đánh **"ai chen giữa"** theo D-03.
 
-_Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
+**Đã làm**: `v2/lib/vifast-fs/tests/t26_read_your_own_write.rs` (3 test, 1.000 seed, `CachedDev` đang ship,
+ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-t26-analysis.md` (bảng kẻ chen giữa).
+**Chưa làm được trong crate**: tái hiện đầy đủ T26 (`-smp 2`, 50 boot) — **YC-06**.
 
 ## KT-04c — `.scn` xong phần viết được; arity BLOCKED (YC-05)
 
@@ -88,6 +92,7 @@ _Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | **KT-T26** | 8/8 | — | — | `check` PASS + 3 test T26 | **DONE đèn host** (1.000 seed, RAW, ca âm mất ghi im lặng); **tái hiện đầy đủ BLOCKED** (YC-06: crate không có VFS/smp) |
 | 2026-11-12 | **KT-04c** | 8/8 | — | — | `check` PASS (scn 21 tệp) | **DONE một phần**: 21 `.scn` + kiểm tĩnh + 3 fixture âm; arity + donation **BLOCKED "thiếu ABI"** (YC-05) |
 | 2026-11-12 | **KT-04b** | 8/8 | — | — | `check` PASS | **BLOCKED** (YC-04): không được ghi `spec/`; draft id 8..16 + `check_reserved.py` gắn cổng; vá 2 lỗ máy kiểm (trùng id/ngoài dải), sửa 2 sai số KT-04a |
 | 2026-11-12 | KT-04b | 1–7/8 | `a8bb272` | — | — | review#5 **DRIFT** → dừng trước `spec/`, chuyển draft + YC-04; đỏ trước: 9 object reserved thiếu |

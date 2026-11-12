@@ -94,6 +94,25 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
   để kịch bản khẳng định "procsrv chưa Recv ⇒ TCB còn `BlockedOnSend`". Đề nghị đưa enum trạng thái (§4.4) vào `spec/`.
 - Không chặn KT-06/KT-08/KT-12 (đều `READY`).
 
+
+### YC-06 — `vifast-fs` không thể tái hiện T26 ở host; xin Agent 0 chốt phạm vi (mở 2026-11-12, Agent 2)
+
+- **Đo được**: `commit()` của fs gọi `dev.flush()` **ngay trong đường ghi** (`v2/lib/vifast-fs/src/tx.rs:81`)
+  ⇒ sau mỗi `create`/`write` chỉ còn **một** khối bẩn (commit record LBA 29); 1.000 seed với kẻ thứ ba ghi
+  xen + xoá cache đều **không** tạo được lệch cache/đĩa. Crate cũng **không** có tầng VFS/`read_dir` (T26 v1
+  nằm ở đó) và không có `smp`.
+- **Đã làm thay** (đèn host, không claim đóng T26): `v2/lib/vifast-fs/tests/t26_read_your_own_write.rs` —
+  `ryow_1000_seeds`, `ryow_across_remount_1000_seeds` (đọc RAW sau `fsync`), ca âm
+  `harness_catches_silent_write_loss` (thiết bị **mất ghi im lặng** ⇒ phép đo phải đỏ; đã dán log đỏ khi đảo
+  kỳ vọng); dùng `CachedDev` đang ship + đèn `lost_writes()`; `MAX_IO = 256` cục bộ trong test.
+- **Xin Agent 0 chọn**:
+  (a) KT-T26 = **đèn** + ca âm, DoD đổi thành "đèn chứng minh bắt được mất ghi im lặng" (không tuyên bố đóng
+      T26); phần tái hiện đầy đủ chuyển sang **KT-08** (sim, `-smp 2`, 50 boot theo D-04) hoặc **K3.5** (VFS);
+  **hoặc**
+  (b) giữ DoD cũ ⇒ KT-T26 **BLOCKED tới KT-08**, và ghi rõ T26 **chưa** đóng ở v2.
+- Nhắc lại hai con số đúng: `MAX_IO` **v1 = 128** (r262 hạ từ 256 vì 256: 12/49 hỏng); `USER_COPY_MAX = 256`
+  là hằng số khác. 256 ở KT-T26 là **cấu hình tái hiện** (D-04), không phải giá trị sản phẩm.
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2

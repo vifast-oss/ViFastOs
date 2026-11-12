@@ -44,6 +44,7 @@ TAG_GROUPS = {
     "four-cap",
     "no-reply",
     "donation",
+    "notification",
 }
 
 CAP_KEYS = {"cap", "src", "dst", "cnode", "ep", "reply", "notif", "tcb", "u", "sched"}
