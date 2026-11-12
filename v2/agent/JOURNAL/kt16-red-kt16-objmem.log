@@ -1,0 +1,76 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0599]: no method named `arena_capacity` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt16_objmem.rs:39:11
+   |
+39 |         m.arena_capacity(),
+   |           ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no associated function or constant named `with_arena_bytes` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt16_objmem.rs:43:22
+    |
+ 43 |     let m = Machine::with_arena_bytes(4096);
+    |                      ^^^^^^^^^^^^^^^^ associated function or constant not found in `Machine`
+    |
+note: if you're trying to build a new `Machine`, consider using `Machine::new` which returns `Machine`
+   --> sim/vifast-sim/src/kobj.rs:412:5
+    |
+412 |     pub fn new() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `untyped_arena` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt16_objmem.rs:51:25
+   |
+51 |     let (base, cap) = m.untyped_arena(u0).expect("Untyped phải có arena riêng");
+   |                         ^^^^^^^^^^^^^
+   |
+help: there is a method `untyped_free` with a similar name
+   |
+51 -     let (base, cap) = m.untyped_arena(u0).expect("Untyped phải có arena riêng");
+51 +     let (base, cap) = m.untyped_free(u0).expect("Untyped phải có arena riêng");
+   |
+
+error[E0599]: no method named `object_addr` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt16_objmem.rs:57:18
+   |
+57 |     let addr = m.object_addr(tcb).expect("object phải có địa chỉ trong arena");
+   |                  ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `object_addr` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt16_objmem.rs:81:21
+   |
+81 |     let addr_cn = m.object_addr(cn).expect("địa chỉ CNode");
+   |                     ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `with_object` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt16_objmem.rs:97:11
+   |
+97 |         m.with_object(tcb, |_| ()),
+   |           ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `with_object` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt16_objmem.rs:107:11
+    |
+107 |         m.with_object(tcb, |_| ()),
+    |           ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `arena_base` found for struct `Store` in the current scope
+   --> sim/vifast-sim/tests/kt16_objmem.rs:117:18
+    |
+117 |     assert_eq!(s.arena_base(), 0x1000, "địa chỉ logic của sim không đổi");
+    |                  ^^^^^^^^^^ method not found in `Store`
+
+error[E0599]: no method named `arena_used` found for struct `Store` in the current scope
+   --> sim/vifast-sim/tests/kt16_objmem.rs:118:18
+    |
+118 |     assert_eq!(s.arena_used(), 0);
+    |                  ^^^^^^^^^^ method not found in `Store`
+
+error[E0599]: no method named `arena_used` found for struct `Store` in the current scope
+   --> sim/vifast-sim/tests/kt16_objmem.rs:124:18
+    |
+124 |     assert_eq!(s.arena_used(), s.used(), "used của store = watermark arena");
+    |                  ^^^^^^^^^^ method not found in `Store`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vifast-sim` (test "kt16_objmem") due to 10 previous errors
+warning: build failed, waiting for other jobs to finish...

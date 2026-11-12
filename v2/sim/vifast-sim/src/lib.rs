@@ -9,6 +9,8 @@
 
 use std::collections::VecDeque;
 
+use vifast_objmem::OwnedArena;
+
 pub mod kobj;
 pub mod scenario;
 
@@ -42,12 +44,16 @@ impl Lcg {
     }
 }
 
-/// Store giả: cấp phát kiểu bump có căn lề, đo watermark; chưa cần Untyped của kernel (KT-09).
-#[derive(Debug, Clone)]
+/// Store của sim: bump allocator **của `vifast-objmem`** (KT-16, D2-14) + căn lề/watermark.
+///
+/// Địa chỉ trả về là **địa chỉ logic** (`0x1000 + offset trong arena`) để trace/golden của
+/// sim vẫn tất định; vùng nhớ thật do [`vifast_objmem::OwnedArena`] sở hữu và căn lề 4096.
+/// `used()`/`cap()` là watermark/dung lượng của arena objmem, nên không còn bộ đếm bump
+/// viết tay nào trong `v2/sim/**`.
+#[derive(Debug)]
 pub struct Store {
     base: u64,
-    cap: usize,
-    used: usize,
+    arena: OwnedArena,
     high_water: usize,
 }
 
@@ -55,43 +61,46 @@ impl Store {
     pub fn new(cap: usize) -> Self {
         Self {
             base: 0x1000,
-            cap,
-            used: 0,
+            arena: OwnedArena::new(cap).expect("cấp vùng nhớ cho store của sim"),
             high_water: 0,
         }
     }
 
-    /// Cấp `size` byte căn `align` (lũy thừa 2). `None` khi hết chỗ.
+    /// Cấp `size` byte căn `align` (lũy thừa 2, ≤ `ARENA_ALIGN` = 4096). `None` khi hết chỗ.
+    ///
+    /// `align > ARENA_ALIGN` trả `None` (đáy vùng chỉ được bảo đảm căn 4096); mô hình chỉ
+    /// dùng 16/32/64 nên không ảnh hưởng test/l1.
     pub fn alloc(&mut self, size: usize, align: usize) -> Option<u64> {
-        if align == 0 || !align.is_power_of_two() {
-            return None;
-        }
-        let start = self.base as usize + self.used;
-        let aligned = (start + align - 1) & !(align - 1);
-        let end = aligned + size;
-        if end > self.base as usize + self.cap {
-            return None;
-        }
-        self.used = end - self.base as usize;
-        self.high_water = self.high_water.max(self.used);
-        Some(aligned as u64)
+        let offset = self.arena.alloc_offset(size, align)?;
+        self.high_water = self.high_water.max(self.arena.used());
+        Some(self.base + offset as u64)
     }
 
     pub fn used(&self) -> usize {
-        self.used
+        self.arena.used()
     }
 
     pub fn cap(&self) -> usize {
-        self.cap
+        self.arena.capacity()
     }
 
     pub fn high_water(&self) -> usize {
         self.high_water
     }
 
+    /// Địa chỉ logic của đáy vùng (KT-16: bump do objmem cấp, không phải hằng số giả).
+    pub fn arena_base(&self) -> u64 {
+        self.base
+    }
+
+    /// Watermark của arena objmem — bằng `used()`.
+    pub fn arena_used(&self) -> usize {
+        self.arena.used()
+    }
+
     /// Bất biến của store — harness gọi sau **mỗi** event.
     pub fn invariant(&self) -> bool {
-        self.used <= self.cap && self.high_water <= self.cap
+        self.used() <= self.cap() && self.high_water <= self.cap()
     }
 }
 
@@ -161,7 +170,7 @@ pub fn trace_hash(lines: &[String]) -> u64 {
     h
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Harness {
     seed: u64,
     pub store: Store,

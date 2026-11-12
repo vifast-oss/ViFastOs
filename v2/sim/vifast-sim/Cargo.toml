@@ -12,6 +12,8 @@ path = "src/lib.rs"
 [dependencies]
 # Tên/số mã lỗi + enum trạng thái lấy từ code sinh của spec (D2-11), không chép tay.
 vifast-abi = { path = "../../lib/vifast-abi" }
+# KT-16 (D2-14, D2-47d): object body của sim nằm trong allocator của objmem.
+vifast-objmem = { path = "../../lib/vifast-objmem", features = ["heap"] }
 
 [[bin]]
 name = "vifast-sim"

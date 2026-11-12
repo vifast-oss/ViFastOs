@@ -87,6 +87,7 @@ pub trait ObjStore {
 }
 
 /// Store object trên một vùng Untyped do người gọi cấp.
+#[derive(Debug)]
 pub struct ObjMem {
     arena: Arena,
     next_id: u64,
@@ -99,11 +100,33 @@ impl ObjMem {
     /// `base..base + len` phải là vùng nhớ hợp lệ, ghi được, không bị tham chiếu khác
     /// truy cập trong thời gian `ObjMem` sống.
     pub unsafe fn new(base: *mut u8, len: usize) -> Self {
+        // SAFETY: điều kiện của `new`.
+        unsafe { Self::new_with_id(base, len, 0) }
+    }
+
+    /// Như [`ObjMem::new`] nhưng `id` đầu tiên là `id_base + 1` (KT-16: nhiều store trong
+    /// một cụm phải cho `id` duy nhất toàn cụm).
+    ///
+    /// # Safety
+    /// Như [`ObjMem::new`].
+    pub(crate) unsafe fn new_with_id(base: *mut u8, len: usize, id_base: u64) -> Self {
         Self {
             arena: unsafe { Arena::new(base, len) },
-            next_id: 0,
+            next_id: id_base,
             kinds: KindTable::new(),
         }
+    }
+
+    /// Cấp một block thô `layout` (đầu block là header 16 B); trả `pa` của header.
+    ///
+    /// Dùng cho `OwnedMem::alloc_place_span`: block có cỡ **logic** của object (ví dụ
+    /// 512 B của TCB) chứ không phải `size_of::<body>()`. Caller bảo đảm `layout.align()`
+    /// đủ cho header + body của kiểu sẽ `place`.
+    #[cfg(any(feature = "heap", test))]
+    pub(crate) fn alloc_block(&mut self, layout: Layout) -> Option<PAddr> {
+        debug_assert!(layout.align() >= align_of::<ObjHeader>());
+        let base = self.arena.alloc(layout)?;
+        Some(base.as_ptr() as PAddr)
     }
 
     /// Cấp vùng (header + body, đã xét căn lề) cho object `T`; trả `pa` cho `place`.
@@ -153,6 +176,11 @@ impl ObjMem {
 
 impl ObjStore for ObjMem {
     fn with<T: KObj, R>(&self, r: ObjRef<T>, f: impl FnOnce(&T) -> R) -> Result<R, Dead> {
+        // KT-16 (reviewer KT-15): guard `pa` ngoài arena **trước** khi đọc header, nên ref
+        // của store khác trả `Dead` thay vì đọc bộ nhớ ngoài vùng (id hai store có thể trùng).
+        if !self.chua_header(r.pa()) {
+            return Err(Dead);
+        }
         // Đọc bản sao header, không giữ tham chiếu sống qua lúc tạo `&T`.
         // SAFETY: `r` do `place` trả về và vùng nhớ còn hợp lệ (hợp đồng store).
         let header = unsafe { ptr::read(header_ptr(r.pa())) };
@@ -170,6 +198,10 @@ impl ObjStore for ObjMem {
         r: ObjRef<T>,
         f: impl FnOnce(&mut T) -> R,
     ) -> Result<R, Dead> {
+        // Guard như `with` (KT-16).
+        if !self.chua_header(r.pa()) {
+            return Err(Dead);
+        }
         // SAFETY: như `with`.
         let header = unsafe { ptr::read(header_ptr(r.pa())) };
         if header.id != r.id() || header.state != STATE_LIVE {
@@ -303,6 +335,37 @@ mod tests {
         );
         // Ref gốc vẫn sống, object không bị đụng.
         assert_eq!(s.with(r, |c| c.n), Ok(1));
+    }
+
+    /// KT-16 (reviewer KT-15): `chua_header` phải áp cho **cả** `with`/`with_mut`, không
+    /// chỉ `with_many_mut`. Ref của store khác có `pa` nằm trong vùng của A (bộ nhớ hợp lệ)
+    /// và `id` trùng (hai store cùng đếm từ 1) — trước guard, `with`/`with_mut` đọc header
+    /// của A và trả `Ok` (sai ngữ nghĩa); sau guard phải là `Dead`.
+    #[test]
+    fn with_va_with_mut_chan_ref_cua_store_khac() {
+        let mut buf_a = Buf([0u8; 8192]);
+        let mut buf_b = Buf([0u8; 8192]);
+        let mut a = store(&mut buf_a);
+        let mut b = store(&mut buf_b);
+        let ra = place(&mut a, Counter { n: 7 });
+        assert_eq!(
+            ra.id(),
+            1,
+            "store B cũng cấp id 1 cho object đầu ⇒ va chạm id"
+        );
+        assert_eq!(b.with(ra, |c| c.n), Err(Dead), "ref store khác ⇒ Dead");
+        assert_eq!(
+            b.with_mut(ra, |c| c.n = 9),
+            Err(Dead),
+            "ref store khác ⇒ Dead (with_mut)"
+        );
+        assert_eq!(
+            a.with(ra, |c| c.n),
+            Ok(7),
+            "store A vẫn đọc được object của mình"
+        );
+        let rb = place(&mut b, Counter { n: 3 });
+        assert_eq!(b.with(rb, |c| c.n), Ok(3), "object của B vẫn Ok");
     }
 
     #[test]

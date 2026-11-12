@@ -76,6 +76,16 @@ pub(crate) struct KindTable {
     slots: [Option<Entry>; MAX_KINDS],
 }
 
+impl core::fmt::Debug for KindTable {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let da = self.slots.iter().flatten().count();
+        f.debug_struct("KindTable")
+            .field("slots", &MAX_KINDS)
+            .field("da_dang_ky", &da)
+            .finish()
+    }
+}
+
 impl KindTable {
     pub(crate) const fn new() -> Self {
         Self {
@@ -444,6 +454,24 @@ mod tests {
         assert_eq!(kq, Ok(()));
         assert_eq!(s.with(a, |d| d.n), Ok(1));
         assert_eq!(s.with(b, |k| k.n), Ok(1));
+    }
+
+    /// KT-16: bảng `kind → ctor` giữ nguyên cấu trúc, **không phình quá 8 KiB**.
+    /// 256 ô × `Entry { ctor, size, type_id }` = 8.192 B đúng trần.
+    #[test]
+    fn bang_kind_giu_nguyen_va_khong_phinh_qua_8_kib() {
+        let n = core::mem::size_of::<KindTable>();
+        assert!(
+            n <= 8 * 1024,
+            "bảng kind→ctor phình: {n} B > 8 KiB (256 ô × {} B)",
+            core::mem::size_of::<Option<Entry>>()
+        );
+        assert_eq!(n, MAX_KINDS * core::mem::size_of::<Option<Entry>>());
+        // Đo được trên 64-bit: 256 ô × 32 B = 8.192 B = trần 8 KiB (không phình).
+        println!(
+            "# KT-16: bảng kind→ctor = {n} B ({} B/ô)",
+            core::mem::size_of::<Option<Entry>>()
+        );
     }
 
     #[test]

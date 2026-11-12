@@ -9,3 +9,8 @@ license.workspace = true
 [lib]
 name = "vifast_objmem"
 path = "src/lib.rs"
+
+[features]
+default = []
+# KT-16: vùng nhớ căn lề do objmem sở hữu (tầng sim). KHÔNG bật cho kernel/bare-metal.
+heap = []

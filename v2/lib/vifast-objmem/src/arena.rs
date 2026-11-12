@@ -8,6 +8,7 @@ use core::ptr::NonNull;
 ///
 /// Không giải phóng từng block (Untyped thu hồi bằng `Revoke` → [`Arena::reset`]);
 /// `destroy` của object không trả bộ nhớ cho arena.
+#[derive(Debug)]
 pub struct Arena {
     base: *mut u8,
     len: usize,

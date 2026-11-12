@@ -6,12 +6,35 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-15 (8/8, xong mã — chờ review độc lập + Agent 0 lật sổ); phase K1a'
-Bước          : 0/8
+Task          : KT-16 (8/8, xong mã — chờ review độc lập + Agent 0 lật sổ); phase K1a'
+Bước          : 8/8 (mã xong; chờ reviewer trước khi DONE)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**218 test**, **L1 1.000 seed/999 trace**, 596 ms đo cổng; gen-check ON, 21 `.scn` + golden không đổi) — không retry
-Việc dở       : KT-15 commit `c0d3163` đã push origin/main; chờ Agent 0 lật sổ (reviewer DRIFT nhẹ đã sửa đủ)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**227 test**, **L1 1.000 seed/999 trace**, 622 ms đo cổng; gen-check ON, `.scn` 21 tệp/11 nhóm + golden không đổi) — không retry
+Việc dở       : KT-16 mã xong (commit `[KT-16]` sau reviewer), chưa lật QUEUE
 ```
+
+> **Cập nhật 06:00 bởi Agent 2**: **KT-16 xong mã** — thay **hai** store giả bằng
+> `vifast-objmem` (D2-14, D2-47d): (1) `vifast-sim::Store` dùng `OwnedArena` (vùng căn 4096
+> do objmem cấp, địa chỉ logic `0x1000+offset` giữ trace/golden tất định); (2) ruột
+> `kobj::Machine` — body `Kind` nằm trong `ObjMem`, **mỗi Untyped một arena riêng** nên
+> watermark = `Arena::used()` (bỏ `Vec<Object>` + `align_up` viết tay), Revoke Untyped
+> `reset` cả cây; `Meta` giữ metadata cho `object_type`/`object_bytes` của object đã chết
+> (parity hash cả object chết), `Cap` vẫn `Vec<Cap>`. Thêm `OwnedArena`/`OwnedMem` (feature
+> `heap`) vào objmem — **toàn bộ `unsafe` nằm trong objmem**, `v2/sim/**` 0 `unsafe` (R5
+> xanh); guard `chua_header` áp cho **cả** `with`/`with_mut` (reviewer KT-15, test đỏ trước
+> `Ok(7)` vs `Dead`); bảng kind → ctor **đo 8.192 B = 8 KiB** (không phình); `ObjMem` có
+> `id_base` để `id` duy nhất giữa các vùng. Test đỏ trước `kt16_objmem.rs` **10 × E0599**.
+> Bằng chứng: **227 test/40 suite**, old test `git diff --stat kt09*/kt10*/kt11*` **rỗng**;
+> parity 10.000 seed 0 lệch; **Miri PASS** (objmem 39 test; kt16 4/4; kt09_untyped 8/8;
+> kt10_cnode 13/13); `aarch64-unknown-none` xanh (feature off); `gate --fast` PASS không
+> retry. Reviewer `reviewer-kt16`: **APPROVE** (không DRIFT/UNSAFE). Chi tiết + log:
+> `JOURNAL/kt16-journal.md`, `JOURNAL/kt16-*.log`.
+>
+> **Follow-up KT-17 (reviewer-kt16, không chặn KT-16)**: (1) `alloc_place_span` chưa chặn
+> `align > ARENA_ALIGN` — Untyped `size_bits ≥ 13` xin Layout căn > 4096, hiện chưa UB nhưng
+> vi phạm hợp đồng Layout ⇒ KT-17 cap/assert hoặc sửa `Arena::alloc` căn tuyệt đối;
+> (2) `Store::alloc` align > 4096 trả `None` (cũ nhận mọi lũy thừa 2) ⇒ ghi rõ hợp đồng mới
+> (đã ghi doc) hoặc mở rộng `ARENA_ALIGN` ở KT-17.
 
 > **Cập nhật 04:48 bởi Agent 2**: **KT-15 xong mã** — `with_many_mut` thật theo **D2-48 (a)**:
 > bảng cố định `kind → constructor` (256 ô trong `ObjMem`, `place::<T>` đăng ký), giữ `ObjRef` 16 B

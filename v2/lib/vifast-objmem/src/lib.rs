@@ -21,6 +21,11 @@
 //! `N > 8` không build. Fuzz chuỗi thao tác ở `tests/fuzz.rs` (10.000 chuỗi stable,
 //! 200 chuỗi dưới Miri).
 //!
+//! Tầng sim (KT-16) dùng vùng nhớ **do objmem sở hữu** ([`OwnedArena`] / [`OwnedMem`],
+//! feature `heap`): object body nằm trong `ObjMem` của từng Untyped, watermark của mô hình
+//! chính là `Arena::used()`. `with`/`with_mut`/`with_many_mut` đều guard `chua_header` trước
+//! khi đọc header (KT-15/KT-16), nên ref của store khác trả `Dead`/`Alias` thay vì đọc bừa.
+//!
 //! **Hợp đồng không cưỡng chế được**: `ObjRef` không mang identity store, nên ref chỉ
 //! được dùng với store sinh ra nó; `with_many_mut` chặn được `pa` ngoài vùng arena và
 //! `id`/`kind`/`state` lệch, còn ref của store khác nằm trong cùng vùng nhớ là trách
@@ -37,9 +42,14 @@
 //!   store khác bị chặn khi `pa` ngoài arena; guard chưa áp cho `with`/`with_mut` (KT-16).
 #![cfg_attr(not(test), no_std)]
 
+#[cfg(any(feature = "heap", test))]
+extern crate alloc;
+
 mod arena;
 mod many;
 mod obj;
+#[cfg(any(feature = "heap", test))]
+mod owned;
 mod store;
 
 pub use arena::Arena;
@@ -47,4 +57,6 @@ pub use many::{MAX_KINDS, MAX_MANY};
 pub use obj::{
     KObj, ObjHeader, ObjRef, PAddr, BODY_OFFSET, HEADER_SIZE, STATE_FINALISING, STATE_LIVE,
 };
+#[cfg(any(feature = "heap", test))]
+pub use owned::{OwnedArena, OwnedMem, ARENA_ALIGN};
 pub use store::{Alias, Dead, ObjMem, ObjStore};

@@ -1,0 +1,24 @@
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.17s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_objmem-d86a595e1bb54261)
+
+running 1 test
+test store::tests::with_va_with_mut_chan_ref_cua_store_khac ... FAILED
+
+failures:
+
+---- store::tests::with_va_with_mut_chan_ref_cua_store_khac stdout ----
+
+thread 'store::tests::with_va_with_mut_chan_ref_cua_store_khac' (37298298) panicked at lib/vifast-objmem/src/store.rs:347:9:
+assertion `left == right` failed: ref store khác ⇒ Dead
+  left: Ok(7)
+ right: Err(Dead)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    store::tests::with_va_with_mut_chan_ref_cua_store_khac
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-objmem --lib`

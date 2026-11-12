@@ -22,8 +22,23 @@
 //! Bất biến (thiết kế §9.6 mục 9): `byte đã cấp + byte còn trống == cỡ Untyped ban đầu`;
 //! không object nào chồng lấn; watermark chỉ tiến trong một chuỗi Retype (revoke Untyped
 //! là ngoại lệ có chủ ý: đặt về 0 để làm tiếp được).
+//!
+//! **KT-16 — tích hợp `vifast-objmem`** (D2-14, D2-47d): body của object (`Kind`) nằm
+//! trong `ObjMem`; mỗi Untyped có một arena vùng nhớ riêng do objmem cấp, nên watermark
+//! của mô hình **chính là** `Arena::used()` (không còn `Vec<Object>`/bộ đếm viết tay).
+//! Truy cập body chỉ qua closure (`with`/`with_mut`) — `v2/sim/**` không có `unsafe`
+//! (R5); `ObjRef` không mang identity store nên `Machine` cấp `id` duy nhất theo vùng và
+//! phân phối truy cập theo `Meta::loc`. Bảng `Cap` vẫn là `Vec<Cap>` (D2-47d).
+//! Object đã Revoke bị finalise trong objmem ⇒ truy cập trả `Dead`; arena của cây Untyped
+//! được `reset` sau khi mọi body trong vùng đã finalise.
+//!
+//! Untyped con: vùng nhớ của nó là arena **riêng** cấp đúng cỡ vùng cắt (`len`) — quan hệ
+//! cha/con trong mô hình là quan hệ **logic** (offset/cỡ trong `object_bytes`), không phải
+//! containment vật lý; chi tiết của harness sim, không phải ABI.
 
 use std::collections::VecDeque;
+
+use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem};
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
 pub const FLAG_GUEST: u32 = 1;
@@ -343,41 +358,96 @@ struct EndpointState {
     last_mr: Option<u64>,
 }
 
+/// Payload ("body") của object — **phần được đặt trong `vifast-objmem`** (KT-16, D2-14).
+///
+/// Một kiểu Rust duy nhất cho mọi loại object; bảng `kind → ctor` của objmem đăng ký
+/// `ctor::<Kind>` theo `kind()` (D2-48). Các variant lớn (`TcbData`, `SchedData`,
+/// `EndpointState`, `ReplyData`) nằm sau `Box`/`Vec` để `size_of::<Kind>()` vừa 48 B —
+/// cỡ nhỏ nhất của body trong object 64 B (`Endpoint`/`Notification`/`Reply`/`SchedControl`)
+/// sau khi trừ header 16 B; assert bên dưới cưỡng chế **lúc biên dịch**.
 #[derive(Debug)]
 enum Kind {
-    Untyped {
-        size: usize,
-        watermark: usize,
-    },
-    CNode {
-        slots: Vec<Option<CapId>>,
-    },
-    Tcb {
-        state: TcbState,
-        fault_ep: Option<CapId>,
-        cspace: Option<ObjId>,
-        exit_code: Option<u64>,
-    },
-    SchedContext {
-        bound: Option<CapId>,
-        budget: u64,
-        period: u64,
-    },
-    Endpoint(EndpointState),
-    Reply {
-        caller: Option<ObjId>,
-    },
+    Untyped,
+    CNode { slots: Vec<Option<CapId>> },
+    Tcb(Box<TcbData>),
+    SchedContext(Box<SchedData>),
+    Endpoint(Box<EndpointState>),
+    Reply(Box<ReplyData>),
     Plain,
 }
 
 #[derive(Debug)]
-struct Object {
+struct TcbData {
+    state: TcbState,
+    fault_ep: Option<CapId>,
+    cspace: Option<ObjId>,
+    exit_code: Option<u64>,
+}
+
+#[derive(Debug)]
+struct SchedData {
+    bound: Option<CapId>,
+    budget: u64,
+    period: u64,
+}
+
+#[derive(Debug)]
+struct ReplyData {
+    caller: Option<ObjId>,
+}
+
+/// Body phải vừa object **nhỏ nhất** của spec (64 B) sau header 16 B: `Kind ≤ 48 B`.
+const _: () = assert!(
+    core::mem::size_of::<Kind>() + vifast_objmem::HEADER_SIZE <= 64,
+    "Kind phải vừa body của object 64 B (Reply/Endpoint/Notification/SchedControl)"
+);
+
+impl KObj for Kind {
+    fn kind(&self) -> u8 {
+        // Một kiểu Rust ⇒ một `ctor`; các mã dưới đây chỉ để header/`kind` dễ đọc.
+        match self {
+            Kind::Untyped => 1,
+            Kind::CNode { .. } => 2,
+            Kind::Tcb(_) => 3,
+            Kind::SchedContext(_) => 4,
+            Kind::Endpoint(_) => 5,
+            Kind::Plain => 6,
+            Kind::Reply(_) => 7,
+        }
+    }
+}
+
+/// Nơi body của object nằm (KT-16).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Loc {
+    /// Arena kernel của `Machine`: object do harness cấp + body của Untyped gốc.
+    Kernel,
+    /// Arena của Untyped thứ `i` trong `Machine::regions`.
+    Untyped(u32),
+}
+
+/// Sổ cái của một object — **metadata mô hình**, không phải object body.
+///
+/// Body (`Kind`) nằm trong `vifast-objmem`; metadata ở đây giữ phần mô hình cần kể cả khi
+/// object đã chết (`object_type`/`object_bytes` của object đã Revoke vẫn phải trả lời —
+/// `kt11_diff_sim` băm cả object chết), nên không thể đọc ngược từ body đã finalise.
+#[derive(Debug)]
+struct Meta {
     ty: ObjType,
     alive: bool,
+    /// Chỉ số (0-based) của Untyped chứa object; `None` với object không cấp từ Untyped.
     untyped: Option<usize>,
+    /// Offset logic trong Untyped; với Untyped gốc là 0 (không cấp từ Untyped).
     offset: usize,
+    /// Cỡ logic của spec (512 TCB, 64 Reply, ...); với Untyped gốc là 0.
     len: usize,
-    kind: Kind,
+    loc: Loc,
+    body: ObjRef<Kind>,
+    /// Với object Untyped: chỉ số arena vùng nhớ của chính nó (watermark = `used()`).
+    region: Option<usize>,
+    /// Với CNode: số slot (giữ để `cap_at`/`cnode_slot_count` của CNode **đã finalise**
+    /// vẫn trả `SlotEmpty` như API cũ — body đã bị `drop_in_place` nên không đọc ngược được).
+    slots: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -391,11 +461,34 @@ struct Cap {
     alive: bool,
 }
 
+/// Cỡ arena kernel mặc định của `Machine` [ƯL] (K1A-PLAN §4/KT-16).
+pub const DEFAULT_ARENA_BYTES: usize = 1 << 20;
+
 /// Mô hình kernel tối giản: object + cap + IPC tối thiểu cho KT-09.
+///
+/// **KT-16**: object body nằm trong `vifast-objmem` (`OwnedMem`): mỗi Untyped một arena
+/// vùng nhớ riêng (`Meta::region`), object Retype nằm **ngay trong** vùng của Untyped và
+/// watermark của mô hình chính là `Arena::used()` — không còn `Vec<Object>` hay bộ đếm
+/// watermark viết tay. Object không cấp từ Untyped (harness cấp + body Untyped gốc) nằm
+/// trong arena kernel. Bảng `Cap` vẫn là `Vec<Cap>` (D2-47d).
 #[derive(Debug)]
 pub struct Machine {
-    objects: Vec<Object>,
+    /// Arena kernel: `add_untyped`/`add_cnode`/`add_kernel_object` và body Untyped gốc.
+    kernel: OwnedMem,
+    /// Mỗi Untyped một vùng nhớ: object cấp từ Untyped nằm ở đây (kể cả Untyped con).
+    regions: Vec<OwnedMem>,
+    objects: Vec<Meta>,
     caps: Vec<Cap>,
+}
+
+/// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
+#[derive(Debug, Default, Clone, Copy)]
+struct ChoDat {
+    untyped: Option<usize>,
+    offset: usize,
+    len: usize,
+    region: Option<usize>,
+    slots: Option<usize>,
 }
 
 impl Default for Machine {
@@ -404,51 +497,93 @@ impl Default for Machine {
     }
 }
 
-fn align_up(value: usize, align: usize) -> usize {
-    (value + align - 1) & !(align - 1)
+impl Drop for Machine {
+    fn drop(&mut self) {
+        // Finalise body còn sống để `Box`/`Vec` bên trong `Kind` được drop trước khi arena
+        // giải phóng vùng nhớ (Miri: không rò; object đã chết đã được finalise ở Revoke).
+        let Machine {
+            kernel,
+            regions,
+            objects,
+            ..
+        } = self;
+        for m in objects.iter() {
+            if !m.alive {
+                continue;
+            }
+            match m.loc {
+                Loc::Kernel => kernel.free(m.body),
+                Loc::Untyped(i) => regions[i as usize].free(m.body),
+            }
+        }
+    }
 }
 
 impl Machine {
     pub fn new() -> Self {
+        Self::with_arena_bytes(DEFAULT_ARENA_BYTES)
+    }
+
+    /// `Machine` với arena kernel `bytes` byte (mặc định [`DEFAULT_ARENA_BYTES`] = 1 MiB).
+    ///
+    /// Arena kernel chứa body của object **không** cấp từ Untyped; object Retype nằm trong
+    /// arena riêng của Untyped chứa nó.
+    pub fn with_arena_bytes(bytes: usize) -> Self {
+        assert!(bytes > 0, "arena kernel phải có cỡ dương");
         Self {
+            kernel: OwnedMem::new(bytes).expect("cấp arena kernel của Machine"),
+            regions: Vec::new(),
             objects: Vec::new(),
             caps: Vec::new(),
         }
     }
 
+    /// Dung lượng arena kernel (byte).
+    pub fn arena_capacity(&self) -> usize {
+        self.kernel.capacity()
+    }
+
+    /// Số byte arena kernel đã cấp.
+    pub fn arena_used(&self) -> usize {
+        self.kernel.used()
+    }
+
     // ---------------------------------------------------------------- dựng cảnh
 
     /// Thêm một Untyped gốc. `base` chỉ để kịch bản ghi nhớ; mô hình tính offset từ 0.
+    ///
+    /// Vùng nhớ thật của Untyped (arena của nó) do objmem cấp với cỡ `size`.
     pub fn add_untyped(&mut self, base: u64, size: usize) -> ObjId {
         let _ = base;
         assert!(size > 0, "Untyped phải có cỡ dương");
-        self.push_object(
+        let region = self.push_region(size);
+        self.push_kernel(
             ObjType::Untyped,
-            Kind::Untyped { size, watermark: 0 },
-            None,
-            0,
-            0,
+            Kind::Untyped,
+            ChoDat {
+                region: Some(region),
+                ..ChoDat::default()
+            },
         )
     }
 
     /// Thêm CNode do harness cấp (init giữ CNode gốc — không cần Retype CNode ở KT-09).
     pub fn add_cnode(&mut self, slots: usize) -> ObjId {
         assert!(slots > 0, "CNode phải có ít nhất một slot");
-        self.push_object(
+        self.push_kernel(
             ObjType::CNode,
-            Kind::CNode {
-                slots: vec![None; slots],
+            Self::fresh_kind(ObjType::CNode, slots),
+            ChoDat {
+                slots: Some(slots),
+                ..ChoDat::default()
             },
-            None,
-            0,
-            0,
         )
     }
 
     /// Thêm object lõi do harness cấp (SchedControl, TCB khởi tạo, ...) — không tính byte Untyped.
     pub fn add_kernel_object(&mut self, ty: ObjType) -> ObjId {
         assert!(ty.is_core(), "chỉ object lõi mới dựng trực tiếp");
-        self.push_object(ty, Self::fresh_kind(ty, 0), None, 0, 0)
+        self.push_kernel(ty, Self::fresh_kind(ty, 0), ChoDat::default())
     }
 
     /// Cap gốc cho một object (không có cha) — harness đặt vào CNode bằng `put_cap`.
@@ -456,22 +591,23 @@ impl Machine {
         let ty = self
             .objects
             .get(obj as usize - 1)
-            .map(|o| o.ty)
+            .map(|m| m.ty)
             .expect("root_cap: object phải tồn tại");
         self.push_cap(obj, ty, None, RIGHTS_ALL, None)
     }
 
     pub fn put_cap(&mut self, cnode: ObjId, slot: usize, cap: CapId) -> Result<(), KError> {
         self.check_cnode_slot(cnode, slot)?;
-        let cap_ref = self.cap(cap)?;
-        if cap_ref.slot.is_some() {
-            return Err(KError::IllegalOperation);
+        {
+            let cap_ref = self.cap(cap)?;
+            if cap_ref.slot.is_some() {
+                return Err(KError::IllegalOperation);
+            }
         }
-        let slots = self.cnode_slots_mut(cnode)?;
-        if slots[slot].is_some() {
+        if self.cnode_slot(cnode, slot)?.is_some() {
             return Err(KError::SlotOccupied);
         }
-        slots[slot] = Some(cap);
+        self.cnode_set_slot(cnode, slot, Some(cap))?;
         if let Some(c) = self.caps.get_mut(cap as usize - 1) {
             c.slot = Some(SlotRef::new(cnode, slot));
         }
@@ -481,11 +617,11 @@ impl Machine {
     // ---------------------------------------------------------------- truy vấn
 
     pub fn cap_at(&self, cnode: ObjId, slot: usize) -> Result<CapId, KError> {
-        let slots = self.cnode_slots(cnode)?;
-        if slot >= slots.len() {
+        let n = self.cnode_slot_count(cnode)?;
+        if slot >= n {
             return Err(KError::RangeError);
         }
-        match slots[slot] {
+        match self.cnode_slot(cnode, slot)? {
             None => Err(KError::SlotEmpty),
             Some(cap) => {
                 if self.cap(cap)?.alive {
@@ -552,38 +688,83 @@ impl Machine {
     }
 
     pub fn cnode_slot_count(&self, cnode: ObjId) -> Result<usize, KError> {
-        Ok(self.cnode_slots(cnode)?.len())
+        let (alive, slots) = {
+            let m = self.meta(cnode)?;
+            (m.alive, m.slots)
+        };
+        // CNode đã finalise: slot đã xoá trắng trước khi body bị destroy; giữ nguyên
+        // kết quả API cũ (`SlotEmpty`) bằng số slot ghi trong metadata.
+        if !alive {
+            return slots.ok_or(KError::WrongObjectType);
+        }
+        self.body(cnode, |k| match k {
+            Kind::CNode { slots } => Ok(slots.len()),
+            _ => Err(KError::WrongObjectType),
+        })
     }
 
     pub fn object_alive(&self, obj: ObjId) -> bool {
         self.objects
             .get(obj as usize - 1)
-            .map(|o| o.alive)
+            .map(|m| m.alive)
             .unwrap_or(false)
     }
 
     pub fn object_type(&self, obj: ObjId) -> Option<ObjType> {
-        self.objects.get(obj as usize - 1).map(|o| o.ty)
+        self.objects.get(obj as usize - 1).map(|m| m.ty)
     }
 
     /// `(offset, len)` trong Untyped; `None` với object không cấp từ Untyped.
     pub fn object_bytes(&self, obj: ObjId) -> Option<(usize, usize)> {
-        let o = self.objects.get(obj as usize - 1)?;
-        o.untyped.map(|_| (o.offset, o.len))
+        let m = self.objects.get(obj as usize - 1)?;
+        m.untyped.map(|_| (m.offset, m.len))
+    }
+
+    /// Địa chỉ **thật** của body trong arena objmem (KT-16).
+    pub fn object_addr(&self, obj: ObjId) -> Option<u64> {
+        self.objects.get(obj as usize - 1).map(|m| m.body.pa())
+    }
+
+    /// `(base, capacity)` của vùng nhớ thật của một Untyped (KT-16); `None` nếu không phải
+    /// Untyped. Object Retype từ Untyped đó nằm trong `[base, base + capacity)`.
+    pub fn untyped_arena(&self, untyped: ObjId) -> Option<(u64, usize)> {
+        let m = self.objects.get(untyped as usize - 1)?;
+        if m.ty != ObjType::Untyped {
+            return None;
+        }
+        let r = m.region?;
+        Some((self.regions[r].base(), self.regions[r].capacity()))
+    }
+
+    /// Truy cập body qua `vifast-objmem` (KT-16): object đã finalise ⇒ `Dead`.
+    ///
+    /// Đây là đường duy nhất lộ body ra ngoài crate mô hình (dạng `&dyn KObj`), dùng cho
+    /// test tích hợp; `ObjRef` không mang identity store nên không lộ ref thô.
+    pub fn with_object<R>(&self, obj: ObjId, f: impl FnOnce(&dyn KObj) -> R) -> Result<R, Dead> {
+        let Some(m) = self.objects.get(obj as usize - 1) else {
+            return Err(Dead);
+        };
+        self.store(m.loc).with(m.body, |k| f(k))
     }
 
     pub fn untyped_size(&self, obj: ObjId) -> usize {
-        match self.objects.get(obj as usize - 1).map(|o| &o.kind) {
-            Some(Kind::Untyped { size, .. }) => *size,
-            _ => 0,
+        let Some(m) = self.objects.get(obj as usize - 1) else {
+            return 0;
+        };
+        if m.ty != ObjType::Untyped {
+            return 0;
         }
+        m.region.map(|r| self.regions[r].capacity()).unwrap_or(0)
     }
 
     pub fn untyped_used(&self, obj: ObjId) -> usize {
-        match self.objects.get(obj as usize - 1).map(|o| &o.kind) {
-            Some(Kind::Untyped { watermark, .. }) => *watermark,
-            _ => 0,
+        let Some(m) = self.objects.get(obj as usize - 1) else {
+            return 0;
+        };
+        if m.ty != ObjType::Untyped {
+            return 0;
         }
+        m.region.map(|r| self.regions[r].used()).unwrap_or(0)
     }
 
     pub fn untyped_free(&self, obj: ObjId) -> usize {
@@ -598,8 +779,8 @@ impl Machine {
         };
         self.objects
             .iter()
-            .filter(|o| o.alive && o.untyped == Some(idx))
-            .map(|o| o.len)
+            .filter(|m| m.alive && m.untyped == Some(idx))
+            .map(|m| m.len)
             .sum()
     }
 
@@ -613,11 +794,8 @@ impl Machine {
     pub fn total_used(&self) -> usize {
         self.objects
             .iter()
-            .filter(|o| o.alive)
-            .map(|o| match &o.kind {
-                Kind::Untyped { watermark, .. } => *watermark,
-                _ => 0,
-            })
+            .filter(|m| m.alive && m.ty == ObjType::Untyped)
+            .map(|m| m.region.map(|r| self.regions[r].used()).unwrap_or(0))
             .sum()
     }
 
@@ -625,22 +803,26 @@ impl Machine {
 
     /// Bất biến tổng byte của một Untyped: không chồng lấn, không vượt biên, không đếm hai lần.
     pub fn check_bytes(&self, untyped: ObjId) -> Result<(), String> {
-        let idx = self
-            .objects
-            .get(untyped as usize - 1)
-            .map(|_| untyped as usize - 1)
-            .ok_or_else(|| format!("Untyped {untyped} không tồn tại"))?;
-        let (size, watermark) = match &self.objects[idx].kind {
-            Kind::Untyped { size, watermark } => (*size, *watermark),
-            _ => return Err(format!("object {untyped} không phải Untyped")),
+        let Some(m) = self.objects.get(untyped as usize - 1) else {
+            return Err(format!("Untyped {untyped} không tồn tại"));
         };
+        if m.ty != ObjType::Untyped {
+            return Err(format!("object {untyped} không phải Untyped"));
+        }
+        let Some(region) = m.region else {
+            return Err(format!("object {untyped} không có vùng nhớ"));
+        };
+        let size = self.regions[region].capacity();
+        // Watermark của mô hình = `Arena::used()` của vùng (KT-16).
+        let watermark = self.regions[region].used();
         if watermark > size {
             return Err(format!("watermark {watermark} > cỡ {size}"));
         }
+        let u_idx = untyped as usize - 1;
         let mut ranges: Vec<(usize, usize, ObjId)> = Vec::new();
         let mut allocated = 0usize;
         for (i, o) in self.objects.iter().enumerate() {
-            if !o.alive || o.untyped != Some(idx) {
+            if !o.alive || o.untyped != Some(u_idx) {
                 continue;
             }
             let end = o.offset + o.len;
@@ -686,8 +868,8 @@ impl Machine {
     }
 
     pub fn check_all_bytes(&self) -> Result<(), String> {
-        for (i, o) in self.objects.iter().enumerate() {
-            if o.alive && o.ty == ObjType::Untyped {
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.alive && m.ty == ObjType::Untyped {
                 self.check_bytes((i as u32) + 1)?;
             }
         }
@@ -719,15 +901,14 @@ impl Machine {
             if c.obj == 0 || c.obj as usize > self.objects.len() {
                 return Err(format!("cap {cap} trỏ object ngoài dải ({})", c.obj));
             }
-            if !self.objects[c.obj as usize - 1].alive {
+            let m = &self.objects[c.obj as usize - 1];
+            if !m.alive {
                 return Err(format!("cap {cap} trỏ object {} đã chết", c.obj));
             }
-            if self.objects[c.obj as usize - 1].ty != c.ty {
+            if m.ty != c.ty {
                 return Err(format!(
                     "cap {cap} kiểu {:?} nhưng object {} kiểu {:?}",
-                    c.ty,
-                    c.obj,
-                    self.objects[c.obj as usize - 1].ty
+                    c.ty, c.obj, m.ty
                 ));
             }
         }
@@ -767,9 +948,9 @@ impl Machine {
                 continue;
             }
             let cnode = (i as u32) + 1;
-            let Kind::CNode { slots } = &o.kind else {
-                return Err(format!("object {cnode} kiểu CNode nhưng kind lạ"));
-            };
+            let slots = self
+                .cnode_slots_of(cnode)
+                .map_err(|e| format!("CNode {cnode}: kind lạ ({e:?})"))?;
             for (slot, entry) in slots.iter().enumerate() {
                 let Some(cap) = entry else { continue };
                 if *cap == 0 || *cap as usize > self.caps.len() {
@@ -801,15 +982,19 @@ impl Machine {
                             "cap {cap} nằm trong object {cnode} không phải CNode"
                         ));
                     }
-                    let slots = self
-                        .cnode_slots(cnode)
+                    let n = self
+                        .cnode_slot_count(cnode)
                         .map_err(|e| format!("cap {cap}: CNode {cnode}: {e:?}"))?;
-                    if slot >= slots.len() {
+                    if slot >= n {
                         return Err(format!(
                             "cap {cap} ở slot {slot} ngoài dải của CNode {cnode}"
                         ));
                     }
-                    if slots[slot] != Some(cap) {
+                    if self
+                        .cnode_slot(cnode, slot)
+                        .map_err(|e| format!("cap {cap}: CNode {cnode}: {e:?}"))?
+                        != Some(cap)
+                    {
                         return Err(format!(
                             "cap {cap} nói nằm ở ({cnode}, {slot}) nhưng slot không trỏ lại"
                         ));
@@ -829,6 +1014,9 @@ impl Machine {
 
     /// Cấp object từ Untyped theo `type/size_bits/flags` (spec `Untyped.Retype`).
     /// Trả `CapId` cho harness (ABI `returns = []`, D2-35); cap là con của cap nguồn.
+    ///
+    /// **KT-16**: vùng cấp phát là arena objmem của Untyped; `offset` trả về là watermark
+    /// cũ, `untyped_used` = `Arena::used()`, nên không còn phép `align_up` viết tay.
     pub fn retype(
         &mut self,
         src: SlotRef,
@@ -837,7 +1025,7 @@ impl Machine {
         flags: u32,
     ) -> Result<CapId, KError> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
-        let (u_idx, size, watermark, src_rights) = {
+        let (u_idx, u_region, u_size, src_rights) = {
             let c = self.cap(src_cap)?;
             if !c.alive {
                 return Err(KError::InvalidCapability);
@@ -846,10 +1034,12 @@ impl Machine {
                 return Err(KError::WrongObjectType);
             }
             let idx = self.object_index(c.obj)?;
-            match &self.objects[idx].kind {
-                Kind::Untyped { size, watermark } => (idx, *size, *watermark, c.rights),
-                _ => return Err(KError::WrongObjectType),
+            let m = &self.objects[idx];
+            if m.ty != ObjType::Untyped {
+                return Err(KError::WrongObjectType);
             }
+            let region = m.region.ok_or(KError::WrongObjectType)?;
+            (idx, region, self.regions[region].capacity(), c.rights)
         };
         // F3 (review KT-10): Retype là thao tác cấp phát trên Untyped ⇒ cap nguồn phải có
         // WRITE; cap con kế thừa quyền nguồn (không nới ngược).
@@ -875,7 +1065,7 @@ impl Machine {
                     return Err(KError::InvalidArgument);
                 }
                 let len = 1usize << size_bits;
-                if len > size {
+                if len > u_size {
                     return Err(KError::NotEnoughMemory);
                 }
                 (len, len, 0)
@@ -909,28 +1099,35 @@ impl Machine {
             }
         };
 
-        let start = align_up(watermark, align);
-        let end = start.checked_add(len).ok_or(KError::InvalidArgument)?;
-        if end > size {
-            return Err(KError::NotEnoughMemory);
-        }
-
-        let obj = self.push_object(
+        // Cấp **ngay trong arena của Untyped nguồn** (objmem): block đúng `len`/`align`
+        // của spec ⇒ watermark mô hình = `Arena::used()`.
+        let kind = Self::fresh_kind(ty, child_slots);
+        let (body, offset) = self.regions[u_region]
+            .alloc_place_span(kind, len, align)
+            .ok_or(KError::NotEnoughMemory)?;
+        // Untyped con có vùng nhớ riêng bằng cỡ vùng vừa cắt (tạo **sau** khi cấp body để
+        // lỗi hết chỗ không đốt byte).
+        let region = if ty == ObjType::Untyped {
+            Some(self.push_region(len))
+        } else {
+            None
+        };
+        let obj = self.push_meta(
             ty,
-            Self::fresh_kind(ty, child_slots),
-            Some(u_idx),
-            start,
-            len,
+            Loc::Untyped(u_region as u32),
+            body,
+            ChoDat {
+                untyped: Some(u_idx),
+                offset,
+                len,
+                region,
+                slots: if ty == ObjType::CNode {
+                    Some(child_slots)
+                } else {
+                    None
+                },
+            },
         );
-        if ty == ObjType::Untyped {
-            // Untyped con có cỡ riêng = vùng vừa cắt (fresh_kind dùng 0 cho object chưa cắt).
-            if let Kind::Untyped { size: s, .. } = &mut self.objects[obj as usize - 1].kind {
-                *s = len;
-            }
-        }
-        if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
-            *watermark = end;
-        }
         Ok(self.push_cap(obj, ty, Some(src_cap), src_rights, None))
     }
 
@@ -1010,11 +1207,11 @@ impl Machine {
         badge: Option<u64>,
     ) -> Result<CapId, KError> {
         self.check_cnode_slot(dst.cnode, dst.slot)?;
-        if self.cnode_slots(dst.cnode)?[dst.slot].is_some() {
+        if self.cnode_slot(dst.cnode, dst.slot)?.is_some() {
             return Err(KError::SlotOccupied);
         }
         let new_cap = self.push_cap(obj, ty, Some(src_cap), rights, badge);
-        self.cnode_slots_mut(dst.cnode)?[dst.slot] = Some(new_cap);
+        self.cnode_set_slot(dst.cnode, dst.slot, Some(new_cap))?;
         self.caps[new_cap as usize - 1].slot = Some(dst);
         Ok(new_cap)
     }
@@ -1054,7 +1251,7 @@ impl Machine {
     /// watermark về 0 (thiết kế §4.2). Trả số cap bị xoá.
     pub fn revoke(&mut self, cnode: ObjId, slot: Option<usize>) -> Result<usize, KError> {
         let targets: Vec<CapId> = {
-            let slots = self.cnode_slots(cnode)?;
+            let slots = self.cnode_slots_of(cnode)?;
             match slot {
                 Some(s) => {
                     if s >= slots.len() {
@@ -1087,13 +1284,13 @@ impl Machine {
             Some(s) => Some(self.require_type(s, ObjType::CNode)?),
             None => None,
         };
-        match &mut self.object_mut(tcb_obj)?.kind {
-            Kind::Tcb { cspace: c, .. } => {
-                *c = cspace_obj;
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.cspace = cspace_obj;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     pub fn tcb_set_fault_ep(&mut self, tcb: SlotRef, ep: SlotRef) -> Result<(), KError> {
@@ -1102,13 +1299,13 @@ impl Machine {
         if self.cap(ep_cap)?.ty != ObjType::Endpoint {
             return Err(KError::WrongObjectType);
         }
-        match &mut self.object_mut(tcb_obj)?.kind {
-            Kind::Tcb { fault_ep, .. } => {
-                *fault_ep = Some(ep_cap);
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.fault_ep = Some(ep_cap);
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     pub fn sched_control_configure(
@@ -1123,18 +1320,14 @@ impl Machine {
         if budget == 0 || period == 0 || budget > period {
             return Err(KError::InvalidArgument);
         }
-        match &mut self.object_mut(sched_obj)?.kind {
-            Kind::SchedContext {
-                budget: b,
-                period: p,
-                ..
-            } => {
-                *b = budget;
-                *p = period;
+        self.body_mut(sched_obj, |k| match k {
+            Kind::SchedContext(s) => {
+                s.budget = budget;
+                s.period = period;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     pub fn sched_context_bind(&mut self, sched: SlotRef, target: SlotRef) -> Result<(), KError> {
@@ -1144,22 +1337,22 @@ impl Machine {
         if !matches!(target_ty, ObjType::Reply | ObjType::Notification) {
             return Err(KError::WrongObjectType);
         }
-        match &mut self.object_mut(sched_obj)?.kind {
-            Kind::SchedContext { bound, .. } => {
-                *bound = Some(target_cap);
+        self.body_mut(sched_obj, |k| match k {
+            Kind::SchedContext(s) => {
+                s.bound = Some(target_cap);
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     // ---------------------------------------------------------------- IPC
 
     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
-        match &self.object(tcb)?.kind {
-            Kind::Tcb { state, .. } => Ok(*state),
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.state),
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     pub fn tcb_read_state(&self, tcb: SlotRef) -> Result<TcbState, KError> {
@@ -1171,13 +1364,13 @@ impl Machine {
     pub fn call(&mut self, tcb: ObjId, ep: SlotRef, mr: u64) -> Result<(), KError> {
         let _ = self.tcb_state(tcb)?;
         let ep_obj = self.require_type(ep, ObjType::Endpoint)?;
-        let waiter = match &mut self.object_mut(ep_obj)?.kind {
+        let waiter = self.body_mut(ep_obj, |k| match k {
             Kind::Endpoint(e) => {
                 e.last_mr = Some(mr);
-                e.recv.take()
+                Ok(e.recv.take())
             }
-            _ => return Err(KError::WrongObjectType),
-        };
+            _ => Err(KError::WrongObjectType),
+        })?;
         if let Some((server, reply)) = waiter {
             self.set_tcb_state(server, TcbState::Ready)?;
             let reply_cap = reply.ok_or(KError::IllegalOperation)?;
@@ -1185,10 +1378,13 @@ impl Machine {
             self.reply_set_caller(reply_obj, Some(tcb))?;
             self.set_tcb_state(tcb, TcbState::BlockedOnReply { reply: reply_obj })?;
         } else {
-            match &mut self.object_mut(ep_obj)?.kind {
-                Kind::Endpoint(e) => e.send.push_back((tcb, None)),
-                _ => return Err(KError::WrongObjectType),
-            }
+            self.body_mut(ep_obj, |k| match k {
+                Kind::Endpoint(e) => {
+                    e.send.push_back((tcb, None));
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
             self.set_tcb_state(
                 tcb,
                 TcbState::BlockedOnSend {
@@ -1209,10 +1405,10 @@ impl Machine {
             Some(r) => Some(self.cap_at(r.cnode, r.slot)?),
             None => None,
         };
-        let sender = match &mut self.object_mut(ep_obj)?.kind {
-            Kind::Endpoint(e) => e.send.pop_front(),
-            _ => return Err(KError::WrongObjectType),
-        };
+        let sender = self.body_mut(ep_obj, |k| match k {
+            Kind::Endpoint(e) => Ok(e.send.pop_front()),
+            _ => Err(KError::WrongObjectType),
+        })?;
         match sender {
             Some((sender, fault)) => {
                 match fault {
@@ -1235,10 +1431,13 @@ impl Machine {
                 self.set_tcb_state(tcb, TcbState::Ready)?;
             }
             None => {
-                match &mut self.object_mut(ep_obj)?.kind {
-                    Kind::Endpoint(e) => e.recv = Some((tcb, reply_cap)),
-                    _ => return Err(KError::WrongObjectType),
-                }
+                self.body_mut(ep_obj, |k| match k {
+                    Kind::Endpoint(e) => {
+                        e.recv = Some((tcb, reply_cap));
+                        Ok(())
+                    }
+                    _ => Err(KError::WrongObjectType),
+                })?;
                 self.set_tcb_state(tcb, TcbState::BlockedOnRecv { ep: ep_obj })?;
             }
         }
@@ -1249,10 +1448,10 @@ impl Machine {
     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
         let _ = self.tcb_state(tcb)?;
         let reply_obj = self.require_type(reply, ObjType::Reply)?;
-        let caller = match &mut self.object_mut(reply_obj)?.kind {
-            Kind::Reply { caller } => caller.take(),
-            _ => return Err(KError::WrongObjectType),
-        };
+        let caller = self.body_mut(reply_obj, |k| match k {
+            Kind::Reply(r) => Ok(r.caller.take()),
+            _ => Err(KError::WrongObjectType),
+        })?;
         let caller = caller.ok_or(KError::IllegalOperation)?;
         self.set_tcb_state(caller, TcbState::Ready)?;
         self.set_tcb_state(tcb, TcbState::Ready)?;
@@ -1261,26 +1460,23 @@ impl Machine {
 
     /// `Exit`: có `fault_ep` ⇒ `BlockedOnSend{call=false, fault=Exit{code}}`; không ⇒ `Inactive`.
     pub fn exit(&mut self, tcb: ObjId, code: u64) -> Result<(), KError> {
-        let fault_ep = match &mut self.object_mut(tcb)?.kind {
-            Kind::Tcb {
-                fault_ep,
-                exit_code,
-                ..
-            } => {
-                *exit_code = Some(code);
-                *fault_ep
+        let fault_ep = self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.exit_code = Some(code);
+                Ok(t.fault_ep)
             }
-            _ => return Err(KError::WrongObjectType),
-        };
+            _ => Err(KError::WrongObjectType),
+        })?;
         match fault_ep {
             Some(cap) => {
                 let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
-                match &mut self.object_mut(ep_obj)?.kind {
+                self.body_mut(ep_obj, |k| match k {
                     Kind::Endpoint(e) => {
                         e.send.push_back((tcb, Some(FaultKind::Exit { code })));
+                        Ok(())
                     }
-                    _ => return Err(KError::WrongObjectType),
-                }
+                    _ => Err(KError::WrongObjectType),
+                })?;
                 self.set_tcb_state(
                     tcb,
                     TcbState::BlockedOnSend {
@@ -1297,23 +1493,39 @@ impl Machine {
 
     // ---------------------------------------------------------------- nội bộ
 
-    fn push_object(
-        &mut self,
-        ty: ObjType,
-        kind: Kind,
-        untyped: Option<usize>,
-        offset: usize,
-        len: usize,
-    ) -> ObjId {
-        self.objects.push(Object {
+    /// Cấp vùng nhớ (arena) cho một Untyped; trả chỉ số trong `regions`.
+    ///
+    /// `id_base` khác nhau cho từng vùng để `ObjRef` của vùng này không trùng `id` vùng
+    /// khác (ref không mang identity store — KT-15/KT-16); tối đa `2^40` object/vùng.
+    fn push_region(&mut self, size: usize) -> usize {
+        let id_base = ((self.regions.len() as u64) + 1) << 40;
+        let mem = OwnedMem::with_id_base(size, id_base).expect("cấp vùng nhớ cho Untyped");
+        self.regions.push(mem);
+        self.regions.len() - 1
+    }
+
+    fn push_meta(&mut self, ty: ObjType, loc: Loc, body: ObjRef<Kind>, cho: ChoDat) -> ObjId {
+        self.objects.push(Meta {
             ty,
             alive: true,
-            untyped,
-            offset,
-            len,
-            kind,
+            untyped: cho.untyped,
+            offset: cho.offset,
+            len: cho.len,
+            loc,
+            body,
+            region: cho.region,
+            slots: cho.slots,
         });
         self.objects.len() as ObjId
+    }
+
+    /// Đặt body của object do harness cấp vào arena kernel.
+    fn push_kernel(&mut self, ty: ObjType, kind: Kind, cho: ChoDat) -> ObjId {
+        let body = self
+            .kernel
+            .alloc_place(kind)
+            .expect("arena kernel còn chỗ (tăng bằng Machine::with_arena_bytes)");
+        self.push_meta(ty, Loc::Kernel, body, cho)
     }
 
     fn push_cap(
@@ -1338,26 +1550,23 @@ impl Machine {
 
     fn fresh_kind(ty: ObjType, child_slots: usize) -> Kind {
         match ty {
-            ObjType::Untyped => Kind::Untyped {
-                size: 0,
-                watermark: 0,
-            },
+            ObjType::Untyped => Kind::Untyped,
             ObjType::CNode => Kind::CNode {
                 slots: vec![None; child_slots.max(1)],
             },
-            ObjType::Tcb => Kind::Tcb {
+            ObjType::Tcb => Kind::Tcb(Box::new(TcbData {
                 state: TcbState::Inactive,
                 fault_ep: None,
                 cspace: None,
                 exit_code: None,
-            },
-            ObjType::SchedContext => Kind::SchedContext {
+            })),
+            ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
                 budget: 0,
                 period: 0,
-            },
-            ObjType::Endpoint => Kind::Endpoint(EndpointState::default()),
-            ObjType::Reply => Kind::Reply { caller: None },
+            })),
+            ObjType::Endpoint => Kind::Endpoint(Box::default()),
+            ObjType::Reply => Kind::Reply(Box::new(ReplyData { caller: None })),
             _ => Kind::Plain,
         }
     }
@@ -1369,13 +1578,48 @@ impl Machine {
         Ok(obj as usize - 1)
     }
 
-    fn object(&self, obj: ObjId) -> Result<&Object, KError> {
+    fn meta(&self, obj: ObjId) -> Result<&Meta, KError> {
         Ok(&self.objects[self.object_index(obj)?])
     }
 
-    fn object_mut(&mut self, obj: ObjId) -> Result<&mut Object, KError> {
-        let idx = self.object_index(obj)?;
-        Ok(&mut self.objects[idx])
+    fn store(&self, loc: Loc) -> &OwnedMem {
+        match loc {
+            Loc::Kernel => &self.kernel,
+            Loc::Untyped(i) => &self.regions[i as usize],
+        }
+    }
+
+    fn store_mut(&mut self, loc: Loc) -> &mut OwnedMem {
+        match loc {
+            Loc::Kernel => &mut self.kernel,
+            Loc::Untyped(i) => &mut self.regions[i as usize],
+        }
+    }
+
+    /// Truy cập body qua store chứa nó; lỗi objmem (`Dead`) quy về `InvalidCapability`
+    /// như `object()` cũ (mọi thao tác công khai đều kiểm `cap`/`require_*` trước).
+    fn body<R>(&self, obj: ObjId, f: impl FnOnce(&Kind) -> Result<R, KError>) -> Result<R, KError> {
+        let (loc, body) = {
+            let m = self.meta(obj)?;
+            (m.loc, m.body)
+        };
+        self.store(loc)
+            .with(body, f)
+            .map_err(|_| KError::InvalidCapability)?
+    }
+
+    fn body_mut<R>(
+        &mut self,
+        obj: ObjId,
+        f: impl FnOnce(&mut Kind) -> Result<R, KError>,
+    ) -> Result<R, KError> {
+        let (loc, body) = {
+            let m = self.meta(obj)?;
+            (m.loc, m.body)
+        };
+        self.store_mut(loc)
+            .with_mut(body, f)
+            .map_err(|_| KError::InvalidCapability)?
     }
 
     fn cap(&self, cap: CapId) -> Result<&Cap, KError> {
@@ -1385,23 +1629,54 @@ impl Machine {
         Ok(&self.caps[cap as usize - 1])
     }
 
-    fn cnode_slots(&self, cnode: ObjId) -> Result<&[Option<CapId>], KError> {
-        match &self.object(cnode)?.kind {
-            Kind::CNode { slots } => Ok(slots),
+    /// Ảnh chụp slot của CNode (clone — body nằm trong arena, closure không trả tham chiếu).
+    fn cnode_slots_of(&self, cnode: ObjId) -> Result<Vec<Option<CapId>>, KError> {
+        self.body(cnode, |k| match k {
+            Kind::CNode { slots } => Ok(slots.clone()),
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
-    fn cnode_slots_mut(&mut self, cnode: ObjId) -> Result<&mut [Option<CapId>], KError> {
-        match &mut self.object_mut(cnode)?.kind {
-            Kind::CNode { slots } => Ok(slots),
-            _ => Err(KError::WrongObjectType),
+    fn cnode_slot(&self, cnode: ObjId, slot: usize) -> Result<Option<CapId>, KError> {
+        let (alive, slots) = {
+            let m = self.meta(cnode)?;
+            (m.alive, m.slots)
+        };
+        if !alive {
+            let n = slots.ok_or(KError::WrongObjectType)?;
+            return if slot < n {
+                Ok(None)
+            } else {
+                Err(KError::RangeError)
+            };
         }
+        self.body(cnode, |k| match k {
+            Kind::CNode { slots } => slots.get(slot).copied().ok_or(KError::RangeError),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    fn cnode_set_slot(
+        &mut self,
+        cnode: ObjId,
+        slot: usize,
+        cap: Option<CapId>,
+    ) -> Result<(), KError> {
+        self.body_mut(cnode, |k| match k {
+            Kind::CNode { slots } => match slots.get_mut(slot) {
+                Some(s) => {
+                    *s = cap;
+                    Ok(())
+                }
+                None => Err(KError::RangeError),
+            },
+            _ => Err(KError::WrongObjectType),
+        })
     }
 
     fn check_cnode_slot(&self, cnode: ObjId, slot: usize) -> Result<(), KError> {
-        let slots = self.cnode_slots(cnode)?;
-        if slot >= slots.len() {
+        let n = self.cnode_slot_count(cnode)?;
+        if slot >= n {
             return Err(KError::RangeError);
         }
         Ok(())
@@ -1423,23 +1698,23 @@ impl Machine {
     }
 
     fn set_tcb_state(&mut self, tcb: ObjId, state: TcbState) -> Result<(), KError> {
-        match &mut self.object_mut(tcb)?.kind {
-            Kind::Tcb { state: s, .. } => {
-                *s = state;
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.state = state;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     fn reply_set_caller(&mut self, reply: ObjId, caller: Option<ObjId>) -> Result<(), KError> {
-        match &mut self.object_mut(reply)?.kind {
-            Kind::Reply { caller: c } => {
-                *c = caller;
+        self.body_mut(reply, |k| match k {
+            Kind::Reply(r) => {
+                r.caller = caller;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        }
+        })
     }
 
     fn clear_slot_of(&mut self, cap: CapId) {
@@ -1448,15 +1723,21 @@ impl Machine {
             .get_mut(cap as usize - 1)
             .and_then(|c| c.slot.take());
         if let Some(SlotRef { cnode, slot: s }) = slot {
-            if let Ok(slots) = self.cnode_slots_mut(cnode) {
-                if slots.get(s).copied().flatten() == Some(cap) {
-                    slots[s] = None;
+            // Object có thể đã bị đánh dấu chết nhưng body còn sống trong lúc revoke;
+            // lỗi `Dead` (nếu có) được bỏ qua — slot của CNode chết đã được xoá trắng trước.
+            let _ = self.body_mut(cnode, |k| {
+                if let Kind::CNode { slots } = k {
+                    if slots.get(s).copied().flatten() == Some(cap) {
+                        slots[s] = None;
+                    }
                 }
-            }
+                Ok(())
+            });
         }
     }
 
-    /// Xoá cap con/cháu của `root`; nếu `root` là cap Untyped thì finalise object + reset watermark.
+    /// Xoá cap con/cháu của `root`; nếu `root` là cap Untyped thì finalise object + reset
+    /// arena của cả cây Untyped (watermark về 0, thiết kế §4.2 — KT-16: arena `reset`).
     fn revoke_children(&mut self, root: CapId) -> Result<usize, KError> {
         if !self.cap(root)?.alive {
             return Err(KError::InvalidCapability);
@@ -1484,33 +1765,14 @@ impl Machine {
             // Untyped lồng nhau: finalise **cả cây con** (object của Untyped con cũng chết,
             // không để cap trỏ tới object mồ côi — review Agent 0 mục 3).
             self.collect_untyped_tree(u_idx, &mut dead_objs);
-            // Watermark của chính Untyped gốc về 0 (thiết kế §4.2) — con/cháu về 0 ở dưới.
-            if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
-                *watermark = 0;
-            }
-            for id in &dead_objs {
-                let idx = *id as usize - 1;
-                if let Kind::Untyped { watermark, .. } = &mut self.objects[idx].kind {
-                    *watermark = 0;
-                }
-                self.objects[idx].alive = false;
-            }
-            for i in 1..=self.caps.len() as CapId {
-                if self.caps[i as usize - 1].alive
-                    && dead_objs.contains(&self.caps[i as usize - 1].obj)
-                {
-                    doomed.push(i);
-                }
-            }
             // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải chết
             // theo **cả cây con của nó**, kể cả khi object đích còn sống (object ngoài Untyped).
             let mut cnode_caps: Vec<CapId> = Vec::new();
             for id in &dead_objs {
-                let idx = *id as usize - 1;
-                if self.objects[idx].ty != ObjType::CNode {
+                if self.objects[*id as usize - 1].ty != ObjType::CNode {
                     continue;
                 }
-                if let Kind::CNode { slots } = &self.objects[idx].kind {
+                if let Ok(slots) = self.cnode_slots_of(*id) {
                     cnode_caps.extend(slots.iter().flatten().copied());
                 }
             }
@@ -1521,9 +1783,44 @@ impl Machine {
             }
             // Slot của CNode chết không được giữ cap nào (kể cả cap đã chết từ trước).
             for id in &dead_objs {
-                let idx = *id as usize - 1;
-                if let Kind::CNode { slots } = &mut self.objects[idx].kind {
-                    slots.iter_mut().for_each(|s| *s = None);
+                if self.objects[*id as usize - 1].ty != ObjType::CNode {
+                    continue;
+                }
+                let _ = self.body_mut(*id, |k| {
+                    if let Kind::CNode { slots } = k {
+                        slots.fill(None);
+                    }
+                    Ok(())
+                });
+            }
+            // Đánh dấu chết + **finalise body trong objmem** (KT-16; `free` guard `pa`).
+            for id in &dead_objs {
+                let (loc, body) = {
+                    let m = &mut self.objects[*id as usize - 1];
+                    m.alive = false;
+                    (m.loc, m.body)
+                };
+                self.store_mut(loc).free(body);
+            }
+            // Reset arena của **mọi** Untyped trong cây: watermark của mô hình = `used()`;
+            // chỉ reset sau khi mọi body trong vùng đã finalise.
+            let mut regions: Vec<usize> = Vec::new();
+            for id in &dead_objs {
+                if let Some(r) = self.objects[*id as usize - 1].region {
+                    regions.push(r);
+                }
+            }
+            if let Some(r) = self.objects[u_idx].region {
+                regions.push(r);
+            }
+            for r in regions {
+                self.regions[r].reset();
+            }
+            for i in 1..=self.caps.len() as CapId {
+                if self.caps[i as usize - 1].alive
+                    && dead_objs.contains(&self.caps[i as usize - 1].obj)
+                {
+                    doomed.push(i);
                 }
             }
         }
@@ -1564,63 +1861,65 @@ impl Machine {
 
     /// Gom mọi object sống nằm trong `u_idx`, đệ quy qua Untyped con.
     fn collect_untyped_tree(&self, u_idx: usize, out: &mut Vec<ObjId>) {
-        for (i, o) in self.objects.iter().enumerate() {
-            if o.alive && o.untyped == Some(u_idx) {
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.alive && m.untyped == Some(u_idx) {
                 out.push((i as u32) + 1);
-                if o.ty == ObjType::Untyped {
+                if m.ty == ObjType::Untyped {
                     self.collect_untyped_tree(i, out);
                 }
             }
         }
     }
 
-    /// Bỏ tham chiếu tới object chết (thiết kế §4.2: không trường nào trỏ tới object chết).
+    /// Bỏ tham chiếu tới object/cap chết (thiết kế §4.2: không trường nào trỏ tới object chết).
     fn purge_dead_refs(&mut self) {
-        let alive: Vec<bool> = self.objects.iter().map(|o| o.alive).collect();
-        let is_alive = |id: ObjId| -> bool {
-            id > 0 && (id as usize) <= alive.len() && alive[id as usize - 1]
+        let alive_objs: Vec<bool> = self.objects.iter().map(|m| m.alive).collect();
+        let alive_caps: Vec<bool> = self.caps.iter().map(|c| c.alive).collect();
+        let n = alive_objs.len();
+        let n_caps = alive_caps.len();
+        let is_alive =
+            |id: ObjId| -> bool { id > 0 && (id as usize) <= n && alive_objs[id as usize - 1] };
+        let cap_alive = |cap: CapId| -> bool {
+            cap > 0 && (cap as usize) <= n_caps && alive_caps[cap as usize - 1]
         };
-        for o in &mut self.objects {
-            if !o.alive {
+        for (i, alive) in alive_objs.iter().enumerate() {
+            if !*alive {
                 continue;
             }
-            match &mut o.kind {
-                Kind::Endpoint(e) => {
-                    if let Some((tcb, _)) = e.recv {
-                        if !is_alive(tcb) {
-                            e.recv = None;
+            let obj = (i + 1) as ObjId;
+            let _ = self.body_mut(obj, |k| {
+                match k {
+                    Kind::Endpoint(e) => {
+                        if let Some((tcb, _)) = e.recv {
+                            if !is_alive(tcb) {
+                                e.recv = None;
+                            }
+                        }
+                        e.send.retain(|(tcb, _)| is_alive(*tcb));
+                    }
+                    Kind::Reply(r) => {
+                        if let Some(c) = r.caller {
+                            if !is_alive(c) {
+                                r.caller = None;
+                            }
                         }
                     }
-                    e.send.retain(|(tcb, _)| is_alive(*tcb));
+                    Kind::Tcb(t) => {
+                        if let Some(cap) = t.fault_ep {
+                            if !cap_alive(cap) {
+                                t.fault_ep = None;
+                            }
+                        }
+                        if let Some(c) = t.cspace {
+                            if !is_alive(c) {
+                                t.cspace = None;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                Kind::Reply { caller } => {
-                    if let Some(c) = caller {
-                        if !is_alive(*c) {
-                            *caller = None;
-                        }
-                    }
-                }
-                Kind::Tcb {
-                    fault_ep, cspace, ..
-                } => {
-                    if let Some(cap) = fault_ep {
-                        if !self
-                            .caps
-                            .get(*cap as usize - 1)
-                            .map(|c| c.alive)
-                            .unwrap_or(false)
-                        {
-                            *fault_ep = None;
-                        }
-                    }
-                    if let Some(c) = cspace {
-                        if !is_alive(*c) {
-                            *cspace = None;
-                        }
-                    }
-                }
-                _ => {}
-            }
+                Ok(())
+            });
         }
     }
 }
@@ -1730,6 +2029,12 @@ mod tests {
         assert!(TcbState::Running { hart: 0 }.is_runnable());
     }
 
+    /// Công thức căn lề cũ — giữ làm **mốc so** cho phần đã chuyển vào arena objmem
+    /// (KT-16: `Arena::alloc` phải cho cùng kết quả alignment này).
+    fn align_up(value: usize, align: usize) -> usize {
+        (value + align - 1) & !(align - 1)
+    }
+
     #[test]
     fn can_le_va_can_duoi() {
         assert_eq!(align_up(0, 16), 0);
@@ -1754,7 +2059,7 @@ mod tests {
         // của `delete`; checker phải bắt cap mồ côi.
         m.caps[root as usize - 1].alive = false;
         m.caps[root as usize - 1].slot = None;
-        m.cnode_slots_mut(a).expect("CNode")[0] = None;
+        m.cnode_set_slot(a, 0, None).expect("CNode");
         let err = m.check_caps().expect_err("phải bắt cap mồ côi");
         assert!(err.contains("mồ côi"), "{err}");
         assert!(m.cap_info(child).expect("con").alive);
