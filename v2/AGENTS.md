@@ -26,7 +26,7 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 
 ## 3. Trạng thái duyệt hiện tại
 
-- **KT-04d = APPROVED 2026-11-12 Agent 0**: đã duyệt checklist 5 mục/method + 21 kịch bản ABI + draft chữ ký (D2-35..42). **KT-05 đã mở** (`vifast-gen` + gen-check); sau duyệt chỉ Agent 0 sửa `spec/`. T04 cũ = KT-04d.
+- **KT-04d = APPROVED 2026-11-12 Agent 0**: đã duyệt checklist 5 mục/method + 21 kịch bản ABI + draft chữ ký (D2-35..43). **KT-05 đã mở** (`vifast-gen` + gen-check); sau duyệt chỉ Agent 0 sửa `spec/`. T04 cũ = KT-04d.
 - Câu hỏi O1 của vòng review (**Exit** vào ABI bằng gì) **đã chốt** trong QD §1 Q-A: syscall **14 `Exit(code)`**: lưu `exit_code`, TCB `BlockedOnSend` trên `fault_ep` mang `FaultKind::Exit{code}` (không Reply); procsrv `Recv` xong mới `Inactive`; `wait`/`kill` là giao thức procsrv. Không mở lại.
 - `./v2/bin/v2 check` và `./v2/bin/v2 gate --fast` **đã có từ KT-03** (`gate --fast` PASS); `gen-check` bật từ KT-05, L1 từ KT-08.
 

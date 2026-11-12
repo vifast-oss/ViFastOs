@@ -95,7 +95,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
   `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..39); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12); ST-04 mở ngay.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12); ST-04 mở ngay.
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
 
