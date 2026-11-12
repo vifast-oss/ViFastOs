@@ -85,7 +85,7 @@ Sau khi nhận kết quả:
 ## 6. Thứ tự khởi động vòng 1
 
 1. Ghi STATE: HEAD hiện tại, "L1 chưa bật", task đầu.
-2. OS READY làm trước: **KT-01** (v1-archive + KNOWN-ISSUES) → **KT-02** (khung v2 + agent + `v2/bin/`) → **KT-04a** (abi.toml lõi + bảng ánh xạ) → **KT-T26** (FS host test) → **KT-R1** (báo cáo).
+2. OS READY làm trước: **KT-01** (v1-archive + KNOWN-ISSUES) → **KT-02** (khung v2 + agent + `v2/bin/`; **chỉ** port `vifast-fsutil`, **không** port `vifast-fs`) → **KT-04a** (abi.toml lõi + bảng ánh xạ) → **KT-T26** (FS host test) → **KT-R1** (báo cáo).
 3. Sau KT-02 mở: **KT-03** (cổng khung), **KT-06** (agentctl), **KT-08** (sim harness, không cần QEMU), **KT-12** (traceformat).
 4. ViScript chỉ khi OS hết READY (D2-20), trừ **ST-04 mở ngay** (ST-02a đã DONE): ST-04 lexer với 60 golden token đỏ trước. ST-01/ST-02b/ST-10 khi rảnh.
 5. Không làm KT-04b/c/d, KT-05 cho tới khi KT-04a xong; KT-04d là `REVIEW` của Agent 0.

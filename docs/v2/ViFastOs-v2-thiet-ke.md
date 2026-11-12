@@ -10,14 +10,14 @@ Nhãn (QD §2.2): `[V1:CODE]`, `[V1:ĐO]`, `[V1:DOC]` = lấy từ dossier, gi�
 ## Thay đổi sau review (2026-11-12)
 
 Bản này đã vá theo `docs/QUYET-DINH-sau-review.md` (QD). Các nhóm thay đổi:
-1. Không gian tên: D-09..D-27 → **D2-01..D2-26**; G1..G6 → **R1..R6**; task T01.. → **KT-##**; báo cáo `R<n>-v2`.
+1. Không gian tên: D-09..D-27 → **D2-01..D2-27**; G1..G6 → **R1..R6**; task T01.. → **KT-##**; báo cáo `R<n>-v2`.
 2. ABI: syscall 0..13 + **14 `Exit(code)`**; dải 15..31 reserved; 19 mã lỗi; thêm `Tcb.ReadState/Suspend(mode)/SetFaultEp`; object chưa cài giữ số reserved; `abi_version`, `min_compat`, golden file.
 3. Kernel: cờ `suspended` + `Suspend(Abort/Defer)`; `Resume` không phát lại IPC; `FaultKind::Exit`; objmem API closure; slot cap 48 B; WaitAddr bảng băm; id theo cụm; MCS giai đoạn đầu.
 4. Tích hợp: U1 không hứa net (net ở N1); VSH2 phụ thuộc N1; shell sở hữu tty; `term.vidl` thành mốc `TUI`.
 5. Lộ trình không ngày: K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6 → K4'/K5'; chỉ riscv64 tới K6.
 6. Đo lường: N=1.000 trên máy `ps`, 3 luồng; bỏ 750; harness-v2; `--fast` L1 1.000 seed.
 7. v1: tag `v1-archive`, không soak lại; sổ lỗi mang sang v2 (Phụ lục A).
-8. Quyết định/Q&A: D2-01..D2-26 (mục 12); Q1–Q12 của dossier (Phụ lục B).
+8. Quyết định/Q&A: D2-01..D2-27 (mục 12); Q1–Q12 của dossier (Phụ lục B).
 
 ---
 
@@ -1043,6 +1043,7 @@ Quyết định v1 (D-01..D-08, D11, D18) giữ nguyên mã, **chỉ áp cho v1*
 | D2-23 | D-08 (không đụng đồ hoạ/ViFastKey) còn hiệu lực tới K6 |
 | D2-24 | Mọi soak trên máy `ps`, N theo `n ≥ 3/p` |
 | D2-26 | Thư viện v1 dùng lại được **copy/port** vào `v2/lib/`, không path-dep; `PORTED-FROM: crates/<tên>@ca2eaf5` |
+| D2-27 | KT-04c **21** kịch bản = 20 ca gốc (QD §4) + ca "Exit khi procsrv chưa Recv" (DUYET §1.3); trả lời Q-01 |
 
 Ba ghi chú bắt buộc (QD §2.1, §2.3, §5.3):
 
