@@ -4,7 +4,7 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : 19659ee
+HEAD          : b4a8693
 BUILD_ID      : —
 Task          : KT-03 (bắt đầu)
 Bước          : 1/8 — đọc + lập kế hoạch nhỏ (KT-02 vừa DONE)
@@ -29,7 +29,7 @@ Việc dở       : —
 
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
-| `HEAD` | `19659ee` `[KT-01]` (trước commit KT-02) | `git log -1 --oneline` |
+| `HEAD` | `b4a8693` `[KT-02]` (đã push `origin/main`) | `git log -1 --oneline` |
 | Tag v1 | `v1-archive` (annotated) trên `ca2eaf5`, subject `T33a mở` | `git for-each-ref refs/tags/v1-archive` |
 | `v2/` | workspace riêng: `Cargo.toml`, `LICENSE` (+`.license`), `README.md`, `bin/`, `lib/{vifast-elf,vifast-fs,vifast-fsutil}`, `tools/port/`, `agent/` | `find v2 -maxdepth 2` |
 | Build `v2/` | `cargo build` **xanh** (3 crate); `cargo test -p vifast-fs` **52/52**; `cargo clippy --all-targets -- -D warnings` **0 warning**; `cargo fmt --all --check` sạch | `JOURNAL/2026-11-12.md` mục KT-02 |
