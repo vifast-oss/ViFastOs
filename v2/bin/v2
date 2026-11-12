@@ -236,13 +236,24 @@ do_check() {
 do_gate_fast() {
     do_check || return 1
     run_step "L0 test" "$CARGO" test --manifest-path "$MANIFEST" --workspace || return 1
-    echo "v2 gate --fast: PASS (chưa gen-check tới KT-05, L1 chưa bật tới KT-08)"
+    echo "--- L1 (sim 1.000 seed)"
+    if out=$("$CARGO" test --manifest-path "$MANIFEST" -p vifast-sim l1_ -- --nocapture 2>&1); then
+        echo "$out" | grep -E "^# L1 OK" || true
+        echo "--- L1: OK"
+    else
+        echo "--- L1: FAIL" >&2
+        fails=$((fails + 1))
+    fi
+    echo "v2 gate --fast: PASS (L1 sim 1.000 seed; gen-check bật từ KT-05)"
 }
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
+    sim)
+        exec "$CARGO" run -q --manifest-path "$V2_ROOT/Cargo.toml" -p vifast-sim -- "$@"
+        ;;
     agentctl)
         exec "$CARGO" run -q --manifest-path "$V2_ROOT/Cargo.toml" -p vifast-agentctl -- "$@"
         ;;

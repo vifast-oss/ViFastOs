@@ -23,3 +23,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-fs",
 ]
+
+[[package]]
+name = "vifast-sim"
+version = "0.1.0"

@@ -8,6 +8,7 @@ members = [
     "lib/vifast-fs",
     "lib/vifast-fsutil",
     "tools/vifast-agentctl",
+    "sim/vifast-sim",
 ]
 
 [workspace.package]
