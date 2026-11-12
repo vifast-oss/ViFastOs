@@ -673,8 +673,20 @@ pub enum HExpr {
     Await { expr: Box<HExpr>, span: Span },
     /// `cmd { … }` — **chưa định kiểu** (VD-22: `cmd_lower` là VS1); giữ nguyên văn.
     CmdBlock { raw: String, span: Span },
+    /// Chuỗi **có nội suy** `{expr}` (ST-14, VD-47(a)): các mảnh chữ + biểu thức đã hạ **trong cùng
+    /// ngữ cảnh giải tên** của điểm dùng ⇒ chạy chỉ cần đánh giá, **không** parse lại.
+    Interp { parts: Vec<InterpPart>, span: Span },
     /// Biểu thức không hạ được (giữ chỗ, **không** panic — VD-44 #6).
     Error { span: Span },
+}
+
+/// Một mảnh của chuỗi nội suy (ST-14).
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpPart {
+    /// Chữ thường, **đã giải escape** (`\n`, `{{` → `{`, …).
+    Str(String),
+    /// `{expr}` — hạ như biểu thức bình thường.
+    Expr(Box<HExpr>),
 }
 
 impl HExpr {
@@ -701,6 +713,7 @@ impl HExpr {
             | HExpr::Tuple { span, .. }
             | HExpr::Ref { span, .. }
             | HExpr::Await { span, .. }
+            | HExpr::Interp { span, .. }
             | HExpr::CmdBlock { span, .. }
             | HExpr::Error { span } => *span,
         }
@@ -806,6 +819,17 @@ impl HExpr {
             HExpr::Ref { expr, .. } => format!("(ref {})", expr.sexp()),
             HExpr::Await { expr, .. } => format!("(await {})", expr.sexp()),
             HExpr::CmdBlock { raw, .. } => format!("(cmd-block {})", raw.trim()),
+            HExpr::Interp { parts, .. } => {
+                let mut out = String::from("(interp");
+                for p in parts {
+                    match p {
+                        InterpPart::Str(t) => out.push_str(&format!(" \"{t}\"")),
+                        InterpPart::Expr(e) => out.push_str(&format!(" {}", e.sexp())),
+                    }
+                }
+                out.push(')');
+                out
+            }
             HExpr::Error { .. } => "{error}".into(),
         }
     }

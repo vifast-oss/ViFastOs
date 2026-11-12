@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let x = 1
+if x > 0:
+    print("d")
+else:
+    print("a")

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type U:
+    name: str
+    age: int
+let u: U = {name: "An", age: 20}
+print((u with age: 21).age)

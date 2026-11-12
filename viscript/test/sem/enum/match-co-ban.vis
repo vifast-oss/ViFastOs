@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+enum S:
+    Circle(r: float)
+    Empty
+let s: S = S.Circle(2.0)
+match s:
+    Circle(r): print(r)
+    Empty: print(0)

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(n: int) -> Result[int, str]:
+    let r = if n > 0: Ok(n) else: Err("âm")
+    r
+fn g(n: int) -> Result[int, str]:
+    let v = f(n)?
+    Ok(v * 2)
+print(g(-1))

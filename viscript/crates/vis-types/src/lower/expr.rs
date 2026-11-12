@@ -5,10 +5,10 @@
 //! literal và nhận ra enum literal khi tên biến thể đã khai trong tệp. Mọi thứ khác giữ
 //! `sym = None` / `Type::Error` và **không** sinh chẩn đoán (VD-44 #1).
 
-use vis_syntax::{Elem, Kind, Node, NodeKind, Span};
+use vis_syntax::{lex, parse, Cst, Elem, Kind, LexOutput, Mode, Node, NodeKind, Span};
 
 use super::{bin_op, lit_kind, un_op, Lowerer};
-use crate::hir::{BinOp, HBody, HCond, HExpr, HParam, Lit, LitKind};
+use crate::hir::{BinOp, HBody, HCond, HExpr, HParam, InterpPart, Lit, LitKind};
 use crate::ty::{FieldDef, RecDef, RecId, Type};
 
 impl<'a> Lowerer<'a> {
@@ -313,12 +313,170 @@ impl<'a> Lowerer<'a> {
         let Some(kind) = lit_kind(t.kind) else {
             return HExpr::Error { span };
         };
+        // ST-14 (VD-47a): chuỗi có `{expr}` ⇒ hạ **từng mảnh** thành `HExpr::Interp`.
+        if kind == LitKind::Str
+            && t.kind != Kind::RawStr
+            && t.kind != Kind::RawMulti
+            && t.text.contains('{')
+        {
+            let ngoac = if t.kind == Kind::MultiStr { 3 } else { 1 };
+            if t.text.len() >= ngoac * 2 {
+                let trong = &t.text[ngoac..t.text.len() - ngoac];
+                return self.chuoi_noi_suy(trong, ngoac, span);
+            }
+        }
         let lit = Lit {
             kind,
             text: t.text.clone(),
         };
         let ty = lit.ty();
         HExpr::Lit { lit, ty, span }
+    }
+
+    /// Hạ chuỗi **có nội suy** (ST-14): tách mảnh chữ + `{expr}`, hạ từng `{expr}` **bằng chính
+    /// `Lowerer` này** (chia sẻ `symbols`/`scope` ⇒ tên trong nội suy giải đúng ngữ cảnh), với CST
+    /// của mảnh được **đệm khoảng trắng** tới đúng **offset tuyệt đối** trong tệp để `span` (và do đó
+    /// `dòng:cột`) trỏ **đúng chỗ**.
+    fn chuoi_noi_suy(&mut self, trong: &str, ngoac: usize, span: Span) -> HExpr {
+        let mut parts: Vec<InterpPart> = Vec::new();
+        let mut chu = String::new();
+        let mut i = 0usize;
+        let mut hong = false;
+        while i < trong.len() {
+            let c = trong[i..].chars().next().unwrap();
+            let n = c.len_utf8();
+            let sau = &trong[i + n..];
+            match c {
+                '{' if sau.starts_with('{') => {
+                    chu.push('{');
+                    i += n + 1;
+                }
+                '}' if sau.starts_with('}') => {
+                    chu.push('}');
+                    i += n + 1;
+                }
+                '{' => {
+                    // quét tới `}` cân bằng (cho phép `{ f({a: 1}) }` ở mức ngoặc)
+                    let start = i + n;
+                    let mut depth = 1usize;
+                    let mut j = start;
+                    let mut end = None;
+                    while j < trong.len() {
+                        let d = trong[j..].chars().next().unwrap();
+                        if d == '{' {
+                            depth += 1;
+                        } else if d == '}' {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = Some(j);
+                                break;
+                            }
+                        }
+                        j += d.len_utf8();
+                    }
+                    let Some(end) = end else {
+                        self.diag(
+                            &vis_diag::SYNTAX_CODES[0],
+                            "nội suy `{` không có `}` đóng (§A.6)",
+                            Span {
+                                start: span.start + ngoac + i,
+                                end: span.start + ngoac + trong.len(),
+                            },
+                        );
+                        hong = true;
+                        break;
+                    };
+                    if !chu.is_empty() {
+                        parts.push(InterpPart::Str(std::mem::take(&mut chu)));
+                    }
+                    let off = span.start + ngoac + start;
+                    match self.ha_manh(&trong[start..end], off) {
+                        Some(e) => parts.push(InterpPart::Expr(Box::new(e))),
+                        None => {
+                            hong = true;
+                            break;
+                        }
+                    }
+                    i = end + 1;
+                }
+                '\\' => {
+                    let (c2, dung) = giai_escape(sau);
+                    chu.push(c2);
+                    i += n + dung;
+                }
+                _ => {
+                    chu.push(c);
+                    i += n;
+                }
+            }
+        }
+        if !chu.is_empty() {
+            parts.push(InterpPart::Str(chu));
+        }
+        if hong && parts.is_empty() {
+            return HExpr::Error { span };
+        }
+        HExpr::Interp { parts, span }
+    }
+
+    /// Hạ **một** mảnh `{…}` tại offset tuyệt đối `off` — đệm khoảng trắng để `span` tuyệt đối.
+    fn ha_manh(&mut self, manh: &str, off: usize) -> Option<HExpr> {
+        // Đệm **đúng `off` byte** nhưng chèn `\n` ở byte cuối: giữ offset tuyệt đối mà **không**
+        // sinh `INDENT` giả ở đầu tệp (lexer coi dòng 1 là dòng trắng, mảnh bắt đầu ở cột 1).
+        let dem = " ".repeat(off.saturating_sub(1));
+        let src = if off == 0 {
+            manh.to_string()
+        } else {
+            format!("{dem}\n{manh}")
+        };
+        let parsed = parse(&src, Mode::Script);
+        if !parsed.diagnostics.is_empty() {
+            for d in &parsed.diagnostics {
+                self.diag(
+                    d.code,
+                    d.message.clone(),
+                    Span {
+                        start: off,
+                        end: off + manh.len(),
+                    },
+                );
+            }
+            return None;
+        }
+        let cst: &'static Cst = Box::leak(Box::new(parsed.cst));
+        let text: &'static str = Box::leak(src.into_boxed_str());
+        let _lex: &'static LexOutput = Box::leak(Box::new(lex(text, Mode::Script)));
+        let cu_cst = self.cst;
+        let cu_text = self.text;
+        self.cst = cst;
+        self.text = text;
+        let mut ket_qua = None;
+        let con: Vec<Node> = self.cst.root.children().cloned().collect();
+        // Mảnh phải là **đúng một** câu lệnh biểu thức.
+        match con.as_slice() {
+            [child] => match self.lower_stmt(child) {
+                Some(crate::hir::HStmt::Expr(expr)) => ket_qua = Some(expr),
+                _ => self.diag(
+                    &vis_diag::SYNTAX_CODES[0],
+                    "nội suy `{…}` chỉ nhận **một biểu thức**",
+                    Span {
+                        start: off,
+                        end: off + manh.len(),
+                    },
+                ),
+            },
+            _ => self.diag(
+                &vis_diag::SYNTAX_CODES[0],
+                "nội suy `{…}` chỉ nhận **một biểu thức**",
+                Span {
+                    start: off,
+                    end: off + manh.len(),
+                },
+            ),
+        }
+        self.cst = cu_cst;
+        self.text = cu_text;
+        ket_qua
     }
 
     /// `nilai_kiểu` cho các vị trí cần suy ra kiểu phần tử (list/map/tuple).
@@ -554,4 +712,23 @@ fn first_known(it: impl Iterator<Item = Type>) -> Type {
         }
     }
     Type::Error
+}
+
+/// Giải một escape trong chuỗi (`\n`, `\t`, `\"`, `\\`, `\{`, …) — trả (ký tự, số byte đã dùng
+/// sau dấu `\`).
+fn giai_escape(sau: &str) -> (char, usize) {
+    let mut it = sau.chars();
+    match it.next() {
+        Some('n') => ('\n', 1),
+        Some('t') => ('\t', 1),
+        Some('r') => ('\r', 1),
+        Some('0') => ('\0', 1),
+        Some('\\') => ('\\', 1),
+        Some('"') => ('"', 1),
+        Some('\'') => ('\'', 1),
+        Some('{') => ('{', 1),
+        Some('}') => ('}', 1),
+        Some(c) => (c, c.len_utf8()),
+        None => ('\\', 0),
+    }
 }

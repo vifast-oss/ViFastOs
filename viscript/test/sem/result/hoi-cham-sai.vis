@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn f(r: Result[int, str]) -> int:
+    let v = r?
+    v
+f(Ok(1))

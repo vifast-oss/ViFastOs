@@ -13,3 +13,5 @@ path = "src/main.rs"
 vis-diag = { path = "../vis-diag" }
 vis-syntax = { path = "../vis-syntax" }
 vis-fmt = { path = "../vis-fmt" }
+vis-types = { path = "../vis-types" }
+vis-interp = { path = "../vis-interp" }

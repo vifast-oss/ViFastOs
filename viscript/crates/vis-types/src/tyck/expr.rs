@@ -312,6 +312,15 @@ impl<'a> Checker<'a> {
                 let _ = self.kiem_expr(expr);
                 Type::Error
             }
+            // ST-14: chuỗi nội suy — kiểm **từng** phần biểu thức, kiểu của cả chuỗi là `str`.
+            HExpr::Interp { parts, .. } => {
+                for p in parts {
+                    if let crate::hir::InterpPart::Expr(e) = p {
+                        self.kiem_expr(e);
+                    }
+                }
+                Type::Str
+            }
             HExpr::CmdBlock { .. } | HExpr::Error { .. } => Type::Error,
         }
     }

@@ -4,11 +4,12 @@
 use std::process::ExitCode;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
-use vis_syntax::{parse, Mode};
+use vis_syntax::{lex, parse, Diagnostic, Mode};
+use vis_types::{check, lower};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
     );
     ExitCode::from(2)
 }
@@ -202,6 +203,147 @@ fn run_check(args: &[String]) -> ExitCode {
     }
 }
 
+/// Vị trí `dòng:cột` từ `span` + văn bản (cột theo Unicode scalar, bắt đầu từ 1 — §2.4).
+fn vi_tri(text: &str, span: vis_syntax::Span) -> (u32, u32) {
+    let mut line = 1u32;
+    let mut col = 1u32;
+    for (i, c) in text.char_indices() {
+        if i >= span.start {
+            break;
+        }
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// In một chẩn đoán ra stderr: `<tệp>:<dòng>:<cột>: error VSxxxx: …`.
+fn in_chan_doan(tep: &str, text: &str, d: &Diagnostic) -> String {
+    let (mut line, mut col) = (d.line, d.col);
+    if line == 0 {
+        let (l, c) = vi_tri(text, d.span);
+        line = l;
+        col = c;
+    }
+    format!("{tep}:{line}:{col}: error {}: {}", d.code.short, d.message)
+}
+
+/// `vis run [--tap] <tệp.vis> [-- args…]` — parse → lower → check → interp (ST-14).
+fn run_run(rest: &[String]) -> ExitCode {
+    let mut tap = false;
+    let mut tep: Option<String> = None;
+    let mut prog_args: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--tap" => tap = true,
+            "--" => {
+                prog_args = rest[i + 1..].to_vec();
+                break;
+            }
+            a if a.starts_with('-') => {
+                eprintln!("vis run: không hỗ trợ cờ `{a}`");
+                return ExitCode::from(2);
+            }
+            a => {
+                if tep.is_some() {
+                    eprintln!("vis run: chỉ nhận **một** tệp");
+                    return ExitCode::from(2);
+                }
+                tep = Some(a.to_string());
+            }
+        }
+        i += 1;
+    }
+    let Some(tep) = tep else {
+        eprintln!("dùng: vis run [--tap] <tệp.vis> [-- args…]");
+        return ExitCode::from(2);
+    };
+    if tep.ends_with(".vish") {
+        eprintln!("Bail out! `{tep}` là `.vish` — chế độ lệnh (VS1) chưa chạy được ở VS0 (ST-14)");
+        return ExitCode::from(2);
+    }
+    let text = match std::fs::read_to_string(&tep) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("vis run: không đọc được `{tep}`: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    if tap {
+        eprintln!("TAP version 13");
+        eprintln!("1..1");
+    }
+    // 1) parse
+    let parsed = parse(&text, Mode::Script);
+    if !parsed.diagnostics.is_empty() {
+        for d in &parsed.diagnostics {
+            eprintln!("{}", in_chan_doan(&tep, &text, d));
+        }
+        if tap {
+            eprintln!("not ok 1 - {} (VS0201)", tep);
+        }
+        return ExitCode::from(2);
+    }
+    // 2) lower
+    let lexed = lex(&text, Mode::Script);
+    let h = lower(&parsed.cst, &lexed);
+    if !h.is_clean() {
+        for d in &h.diagnostics {
+            eprintln!("{}", in_chan_doan(&tep, &text, d));
+        }
+        if tap {
+            let ma = h
+                .diagnostics
+                .first()
+                .map(|d| d.code.short)
+                .unwrap_or("VS0201");
+            eprintln!("not ok 1 - {} ({ma})", tep);
+        }
+        return ExitCode::from(2);
+    }
+    // 3) kiểm kiểu
+    let t = check(&h.hir, &h.symbols, &h.types);
+    if !t.is_clean() {
+        for d in &t.diags {
+            eprintln!("{}", in_chan_doan(&tep, &text, d));
+        }
+        if tap {
+            let ma = t.diags.first().map(|d| d.code.short).unwrap_or("VS0412");
+            eprintln!("not ok 1 - {} ({ma})", tep);
+        }
+        return ExitCode::from(2);
+    }
+    // 4) chạy
+    let out = vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args);
+    if !xuat_stdout(&out.stdout) {
+        return ExitCode::from(2);
+    }
+    if out.is_clean() {
+        if tap {
+            eprintln!("ok 1 - {} (steps={})", tep, out.steps);
+        }
+        ExitCode::from(0)
+    } else {
+        for d in &out.diagnostics {
+            eprintln!("{}", in_chan_doan(&tep, &text, d));
+        }
+        if tap {
+            let ma = out
+                .diagnostics
+                .first()
+                .map(|d| d.code.short)
+                .unwrap_or("VS0501");
+            eprintln!("not ok 1 - {} ({ma}, steps={})", tep, out.steps);
+        }
+        ExitCode::from(1)
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -269,6 +411,7 @@ fn main() -> ExitCode {
                 },
             }
         }
+        Some("run") => run_run(&args[1..]),
         Some("check") => run_check(&args[1..]),
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),

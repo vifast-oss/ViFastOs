@@ -720,6 +720,20 @@ impl<'a> Interp<'a> {
                 "`await` là VS1 — chưa hỗ trợ ở VS0",
                 *span,
             ))),
+            // ST-14: chuỗi nội suy — đánh giá từng mảnh rồi ghép (không parse lại lúc chạy).
+            HExpr::Interp { parts, .. } => {
+                let mut out = String::new();
+                for p in parts {
+                    match p {
+                        vis_types::InterpPart::Str(t) => out.push_str(t),
+                        vis_types::InterpPart::Expr(e) => {
+                            let v = self.eval(e)?;
+                            out.push_str(&v.show());
+                        }
+                    }
+                }
+                Ok(Value::Str(out))
+            }
             HExpr::CmdBlock { span, .. } => Err(Abort::Trap(Trap::new(
                 RT,
                 "khối `cmd` là VS1 — chưa hỗ trợ ở VS0",

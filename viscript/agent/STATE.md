@@ -6,14 +6,16 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-13b** (sửa 10 mục review ST-13 của reviewer3) — xong kỹ thuật 2026-11-13,
-                **chưa commit** — chờ review độc lập của Agent 0.
-Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
+Task          : **ST-13b** (10 mục review ST-13) — **DONE, đã commit** `f1ac635` (2026-11-13).
+                **ST-14** (`vis run` + TAP + 100 ca + nội suy `{expr}`) — **dừng giữa đường** theo lệnh
+                Agent 0: mã + 100 fixture còn **trong cây, chưa commit** (chờ OK để commit `[ST-14]`).
+Bước          : ST-13b 4/4 (đỏ trước → hiện thực → xanh → cổng → commit → push)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-12T22:14:32Z = 2026-11-13 07:13 JST; không retry; **205** test workspace:
-                31 vis-cli + 18 vis-fmt + 96 vis-syntax + 18 vis-diag + **42 vis-types**)
-Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit `[ST-12]`)
+                (2026-11-12T23:22:24Z = 2026-11-13 08:22 JST; không retry; **247** test workspace:
+                32 vis-cli + 18 vis-fmt + 96 vis-syntax + 20 vis-diag + 53 vis-types + 28 vis-interp)
+Việc dở       : **ST-14** (xanh cục bộ: 100/100 ca `test/sem`, `vis run` có `--tap`, nội suy `{expr}`);
+                chờ Agent 0 cho commit `[ST-14]`.
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -36,7 +38,8 @@ Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit
 **khai rõ**, không giả vờ đỏ. Chụp bằng `git stash push -- crates/{vis-types,vis-interp,vis-syntax}/src`
 trên harness cuối, rồi `stash pop`.
 
-**Đo được**: **246** test workspace; `vis-dev gate --fast` PASS — 2026-11-12T23:19:43Z; fmt/clippy sạch.
+**Đo được**: **247** test (gồm 1 test `sem` của ST-14 đang dở **trong cây, chưa commit**);
+`vis-dev gate --fast` PASS — 2026-11-12T23:14:55Z; fmt/clippy sạch.
 
 **Lỗ hổng đã biết (mục C, chưa làm)**: `None(1)` không kiểm đối số; map literal trùng khoá (giữ cả hai,
 `get` lấy bản đầu); `str.chars()` trả `list[str]` (nên **chưa** tạo được `char` từ chuỗi ⇒ test `Show` của
@@ -44,6 +47,31 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-14 — `vis run` + TAP ngữ nghĩa + 100 ca + nội suy `{expr}` (2026-11-13)
+
+| # | Sản phẩm | Cách làm | Khoá bằng |
+|---|---|---|---|
+| 1 | **Nội suy `{expr}`** (lỗ hổng (a) VD-47) | `HExpr::Interp { parts: Vec<InterpPart::Str|Expr> }`; `lower` tách mảnh, hạ **từng** `{expr}` **bằng chính `Lowerer`** (chia sẻ `symbols`/`scope` ⇒ giải tên đúng ngữ cảnh) với CST của mảnh **đệm đúng `off` byte** (dòng 1 trắng + `\n` ở byte cuối) ⇒ `span` **tuyệt đối**, `dòng:cột` thật; `vis-interp` chỉ đánh giá rồi ghép — **không** parse lúc chạy | 6 ca `test/sem/chuoi/*` + `ban-ghi/nhieu-truong` |
+| 2 | **`vis run <tệp.vis> [-- args…]`** | parse → lower → check → interp; stdout = chương trình, chẩn đoán ra **stderr** dạng `<tệp>:<dòng>:<cột>: error VSxxxx: …`; exit **0** xong, **1** lỗi runtime, **2** lỗi cú pháp/tên/kiểu (không chạy); `--tap` in TAP ra **stderr** (`ok 1 - <tệp> (steps=N)`); `.vish` ⇒ `Bail out!` (chế độ lệnh = VS1) | `crates/vis-cli/tests/sem.rs` (chạy **qua binary**) |
+| 3 | **Harness TAP ngữ nghĩa** | `test/sem/<nhóm>/<ca>.vis` + `<ca>.out` (**byte** stdout) hoặc `<ca>.err` (mã lỗi); runner so **byte** + mã thoát, đọc `steps=N` **đòi > 0**, khoá **100 ca/12 nhóm, mỗi nhóm ≥ 6** | chính runner |
+| 4 | **100 ca / 12 nhóm** | số học+đơn vị 9, chuỗi+nội suy 9, `list` 8, `map` 8, bản ghi+`with` 8, `enum`+`match` 9, `T?`/`??` 8, `Result`/`?` 8, hàm+closure+đệ quy 9, điều khiển 8, phạm vi 8, lỗi runtime/kiểu 8 | — |
+
+**Đỏ trước (khai trung thực, `JOURNAL/st14-red-run.log`)**: hai ảnh chụp —
+**Ảnh 1** (chưa có `vis run`): **100/100 ca đỏ vì *thiếu tính năng*** (không có đường chạy);
+**Ảnh 2** (có `vis run`, chưa có nội suy): **8/100 đỏ** — 6 ca nội suy thật + **2 lỗi fixture của tôi**
+(`has` là **từ khoá** ⇒ đổi fixture; `some(v)` trên giá trị chưa bọc ⇒ vá `bind_pat_bool`).
+⇒ **92/100 ca xanh sẵn** (interp ST-13 đã làm được) — không giả vờ tất cả đỏ.
+
+**Vá kèm**: `bind_pat_bool` cho `some(v)` khớp cả giá trị **chưa bọc** (`let x: int? = 3` giữ `3` trần ở
+runtime) — lệch ngữ nghĩa giữa tyck (tự nâng `T → T?`) và interp, phát hiện bởi ca `optional/match-some`.
+
+**Đo được**: **238** test workspace (237 + 1 `sem`); `vis-dev gate --fast` PASS — 2026-11-12T23:04:43Z;
+fmt/clippy sạch; `vis run` chạy 100/100 ca, 0,66 s.
+
+**Hoãn có ghi**: `.vish` (chế độ lệnh = VS1) ⇒ `Bail out!`; TAP in ra **stderr** (giữ stdout sạch cho
+chương trình — TAP chuẩn thường ở stdout, ghi rõ để review); nội suy **không** đệ quy vào phần chữ
+(`"{{x}}"` là chữ `{x}`); escape `\u{…}` chưa hỗ trợ.
 
 ## ST-12b — 7 lỗi kiểm kiểu của review độc lập (2026-11-13)
 

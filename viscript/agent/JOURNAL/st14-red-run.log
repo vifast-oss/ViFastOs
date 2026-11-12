@@ -1,0 +1,113 @@
+=== ST-14 D2-05: harness ngữ nghĩa TAP + nội suy — ĐỎ TRƯỚC, khai **trung thực** ===
+thời điểm chụp: 2026-11-12T23:03:22Z; thứ tự làm: (A) 100 fixture + runner → (B) `vis run` → (C) nội suy `{expr}`.
+Vì vậy log có **HAI** ảnh chụp, đúng thứ tự đó:
+
+### Ảnh 1 — khi CHƯA có `vis run` (nhóm A xong, B chưa)
+  Trạng thái: **100/100 ca ĐỎ** — nhưng **đỏ vì THIẾU TÍNH NĂNG** (binary `vis` chưa có lệnh
+  `run`; mọi ca nhận exit 2 + không stdout). Đây là ca 'đỏ-trước-của-bản-fix' cho cả 12 nhóm.
+  Không ca nào xanh sẵn ở ảnh này (chưa có đường chạy).
+
+### Ảnh 2 — có `vis run`, CHƯA có nội suy (B xong, C chưa)
+  **8/100 ca ĐỎ**, toàn bộ vì thiếu tính năng **nội suy `{expr}`**:
+   - `chuoi`: 5 ca (`noi-suy-bien`, `noi-suy-bieu-thuc`, `noi-suy-hai`, `noi-suy-phuong-thuc`, `escape-ngoac`)
+   - `ban-ghi/nhieu-truong`: 1 (in ra nguyên văn `{u.name} {u.age}`)
+   - `map/has` + `optional/match-some`: 2 ca **lỗi fixture của tôi**, không phải lỗi sản phẩm:
+     `has` là **từ khoá** (không parse được `m.has(..)`) ⇒ đổi fixture sang `keys().join()`;
+     `some(v)` trên giá trị **chưa bọc** (`let x: int? = 3` giữ `3` trần) ⇒ vá `bind_pat_bool`.
+  ⇒ **92/100 ca XANH SẴN** (interp ST-13 đã làm được): số học/đơn vị, list, map, bản ghi, enum,
+  optional, result, hàm, điều khiển, phạm vi, lỗi runtime/kiểu. **Không** giả vờ tất cả đỏ.
+
+sha256 harness (bản commit):
+  crates/vis-cli/tests/sem.rs=9d007ca68776b759fbdb0cd6632bcf0263496c70f66095b67e7c53e77f201b41
+  crates/vis-types/src/lower/expr.rs=e15ef8c4cdc548ffe847348e6a193f7ad0b5ea596ce220f7c7fe9b797e9a824b
+  crates/vis-types/src/hir.rs=b4f835bf4c98bd94006450b6a3112b1774bd66b7cb38fb7936179f84177c3e72
+  crates/vis-types/src/tyck/expr.rs=93a0020de586b6e644d068c99e955dbec00d81738f17c373c771eedb3f34b8f2
+  crates/vis-interp/src/interp.rs=3d920f3756ebea286dc957cef4de2feb8d95d5653353435f16a1e457cacf109f
+  crates/vis-cli/src/main.rs=4b24f79fc24a63db6a734d8b2022275c27a936b181aaa64e9002c7427dd596bd
+  test/sem/** (100 `.vis` + 100 kỳ vọng; sha256 của danh sách đã sắp)=f296b056f8e80e94c191b0417622bcd7cf88defbc36054cddb206729a079ef4c
+
+Chống xanh-giả (runner `crates/vis-cli/tests/sem.rs`): (i) so **byte** stdout với `.out`;
+  (ii) đọc `steps=N` từ TAP (`vis run --tap`) và **đòi N > 0** cho ca chạy được (kể cả lỗi runtime);
+  (iii) khoá **đúng 100 ca / 12 nhóm, mỗi nhóm ≥ 6** — thiếu/thừa là ĐỎ; (iv) `.err` buộc đúng
+  mã + đúng mã thoát (VS05xx ⇒ 1, 0xxx ⇒ 2).
+
+----- Ảnh 1: chưa có `vis run` (100/100 đỏ) -----
+
+running 1 test
+test sem_100_ca_qua_binary ... FAILED
+
+failures:
+
+---- sem_100_ca_qua_binary stdout ----
+
+thread 'sem_100_ca_qua_binary' (37716513) panicked at crates/vis-cli/tests/sem.rs:142:5:
+100/100 ca sai:
+ban-ghi/gan-truong: muốn exit 2 + stderr chứa `VS0412`, được exit 2
+  stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+ban-ghi/long: muốn exit 0 + stdout "An\n", được exit 2 + stdout ""
+... (rút gọn: 100 ca, cùng một dạng lỗi 'muốn exit 0 + stdout …, được exit 2 + stdout ""') ...
+100
+
+----- Ảnh 2: có `vis run`, chưa có nội suy (8/100 đỏ) -----
+
+running 1 test
+test sem_100_ca_qua_binary ... FAILED
+
+failures:
+
+---- sem_100_ca_qua_binary stdout ----
+
+thread 'sem_100_ca_qua_binary' (37718611) panicked at crates/vis-cli/tests/sem.rs:142:5:
+8/100 ca sai:
+ban-ghi/nhieu-truong: muốn exit 0 + stdout "An 20\n", được exit 0 + stdout "{u.name} {u.age}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/ban-ghi/nhieu-truong.vis (steps=8)
+
+chuoi/escape-ngoac: muốn exit 0 + stdout "{x}\n", được exit 0 + stdout "{{x}}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/chuoi/escape-ngoac.vis (steps=4)
+
+chuoi/noi-suy-bien: muốn exit 0 + stdout "x = 2\n", được exit 0 + stdout "x = {x}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/chuoi/noi-suy-bien.vis (steps=6)
+
+chuoi/noi-suy-bieu-thuc: muốn exit 0 + stdout "3\n", được exit 0 + stdout "{1 + 2}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/chuoi/noi-suy-bieu-thuc.vis (steps=4)
+
+chuoi/noi-suy-hai: muốn exit 0 + stdout "12\n", được exit 0 + stdout "{a}{b}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/chuoi/noi-suy-hai.vis (steps=8)
+
+chuoi/noi-suy-phuong-thuc: muốn exit 0 + stdout "độ dài 3\n", được exit 0 + stdout "độ dài {s.len()}\n"
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/chuoi/noi-suy-phuong-thuc.vis (steps=6)
+
+map/has: muốn exit 0 + stdout "false\n", được exit 2 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/map/has.vis:3:9: error VS0201: mong định danh, thật `has`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/map/has.vis (VS0201)
+
+optional/match-some: muốn exit 0 + stdout "6\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/optional/match-some.vis:3:1: error VS0501: `match` không khớp nhánh nào (không xét hết bị lọt)
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/optional/match-some.vis (VS0501, steps=4)
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sem_100_ca_qua_binary
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+----- hết -----

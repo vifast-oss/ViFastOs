@@ -57,7 +57,8 @@ pub mod tyck;
 
 pub use hir::{
     AssignOp, BinOp, FnKind, HAlias, HArm, HBody, HCond, HConst, HElse, HEnum, HExpr, HField, HFn,
-    HImpl, HItem, HParam, HPat, HRec, HSig, HStmt, HTrait, HUse, HVariant, Hir, Lit, LitKind, UnOp,
+    HImpl, HItem, HParam, HPat, HRec, HSig, HStmt, HTrait, HUse, HVariant, Hir, InterpPart, Lit,
+    LitKind, UnOp,
 };
 pub use lower::{
     is_builtin_value, lower, lower_with, FrameKind, HFrame, HSym, HirOutput, LowerError,
