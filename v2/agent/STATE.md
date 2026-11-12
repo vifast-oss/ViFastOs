@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-12b (READY — no_std + FixedRing; D2-42); KT-05/KT-12 DONE; KT-09 chờ KT-12b
+Task          : KT-09 (READY — Untyped/Retype/Revoke + end-to-end); KT-12b DONE (D2-42)
 Bước          : 8/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**gen-check ON**, abi + scn + L0 + L1 1.000 seed); boot riscv64 50/50 (KT-07)
@@ -15,7 +15,7 @@ Việc dở       : —
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 21:10 bởi Agent 0**: D2-40..42; KT-05/KT-12 DONE; KT-12b READY; KT-09 chờ KT-12b. Không còn YC OS mở.
+> **Cập nhật 21:55 bởi Agent 0**: KT-12b DONE (no_std + FixedRing); KT-09 READY. Không còn YC OS mở.
 
 ## Ghi chú
 
