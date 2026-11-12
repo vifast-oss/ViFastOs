@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-16 (8/8, xong mã — chờ review độc lập + Agent 0 lật sổ); phase K1a'
+Task          : KT-16 (8/8, xong mã — reviewer-kt16 APPROVE, chờ Agent 0 lật sổ); phase K1a'
 Bước          : 8/8 (mã xong; chờ reviewer trước khi DONE)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**227 test**, **L1 1.000 seed/999 trace**, 622 ms đo cổng; gen-check ON, `.scn` 21 tệp/11 nhóm + golden không đổi) — không retry
-Việc dở       : KT-16 mã xong (commit `[KT-16]` sau reviewer), chưa lật QUEUE
+Việc dở       : KT-16 commit `3db7ac7` đã push origin/main (reviewer-kt16 APPROVE); chờ Agent 0 lật QUEUE
 ```
 
 > **Cập nhật 06:00 bởi Agent 2**: **KT-16 xong mã** — thay **hai** store giả bằng

@@ -1,7 +1,11 @@
 # KT-16 — tích hợp `vifast-objmem` vào sim (2026-11-13)
 
 - **HEAD vào**: `b15d480` ([KT-00] lật KT-15 DONE, mở KT-16); KT-16 = READY.
-- **Commit**: `[KT-16] …` — xem `git log -1` (hash điền trong báo cáo gửi Agent 0).
+- **Commit**: `3db7ac7` `[KT-16] objmem vào sim: Store + body Machine trong ObjMem
+  (227 test, parity 10k, Miri)` — đã push `origin/main` (fast-forward `aae08d4..3db7ac7`).
+- **Review độc lập**: `reviewer-kt16` **APPROVE** (không DRIFT/UNSAFE); tự chạy gate 227 test,
+  L1 1000/999, Miri kt16 4/4, bare-metal, xác nhận test cũ 0 dòng sửa, body thật trong objmem.
+  Hai follow-up không chặn commit đã ghi ở §6 (chuyển KT-17).
 - **Ngân sách**: bắt đầu 05:14, kết thúc mã ~06:00 (≈46′ < 3 h) ⇒ **không** phải tách
   `KT-16a`/`KT-16b` (D2-47c cho phép nhưng không cần).
 - **Phạm vi**: thay **hai** store giả bằng `vifast-objmem`:
