@@ -11,7 +11,7 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-43) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-27).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-46) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-35).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
@@ -95,7 +95,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
   `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12); ST-04 mở ngay.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12); **ST-04 = DONE** (`663eacb`); **ST-05 mở** (parser + CST).
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
 

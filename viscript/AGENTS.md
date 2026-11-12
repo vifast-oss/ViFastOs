@@ -7,7 +7,7 @@ Nguồn sự thật của vòng vá: [`../docs/QUYET-DINH-sau-review.md`](../doc
 
 1. **Code + test** trong `viscript/`: crate biên dịch được, golden, fuzz, TAP.
 2. **`SPEC`** — [`../docs/viscript/SPEC-lex.md`](../docs/viscript/SPEC-lex.md) (từ vựng + EBNF tự chứa) và `SPEC.md` (do ST-02a/ST-02b sinh); sửa **chỉ** qua Agent 0.
-3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — VD-01..VD-10 + VD-11..VD-22 (chốt từ QD §7).
+3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — VD-01..VD-10 + VD-11..VD-35 (chốt từ QD §7 + các câu Q1..Q5 của SPEC-lex).
 4. Tài liệu thiết kế [`../docs/viscript/ViScript-thiet-ke.md`](../docs/viscript/ViScript-thiet-ke.md) — tham chiếu.
 
 QD thắng tài liệu thiết kế.
@@ -19,13 +19,14 @@ QD thắng tài liệu thiết kế.
 | [`../docs/viscript/ViScript-thiet-ke.md`](../docs/viscript/ViScript-thiet-ke.md) | thiết kế đầy đủ (9.4 bảng xung đột chế độ lệnh, 14 cấu trúc crate, 20 quy trình, 22 quyết định) |
 | [`../docs/viscript/SPEC-lex.md`](../docs/viscript/SPEC-lex.md) | đặc tả từ vựng + EBNF tự chứa — sản phẩm của **ST-02a** |
 | [`agent/QUEUE.md`](agent/QUEUE.md) | 10 task vòng 1: ST-01..ST-10 (ST-02 tách a/b ⇒ 11 dòng) |
-| [`agent/DECISIONS.md`](agent/DECISIONS.md) | VD-01..VD-10 + Q1..Q8 + VD-11..VD-22 |
+| [`agent/DECISIONS.md`](agent/DECISIONS.md) | VD-01..VD-10 + Q1..Q8 + VD-11..VD-35 |
 | [`agent/STATE.md`](agent/STATE.md), [`agent/BLOCKED.md`](agent/BLOCKED.md) | trạng thái + chặn (Agent 2 ghi) |
 | `agent/JOURNAL/`, `agent/reports/` | nhật ký ngày, `R<n>-viscript.md` + `.json` |
 
 ## 3. Trạng thái duyệt hiện tại
 
-- **ST-02a = APPROVED 2026-11-12 Agent 0 / DONE**: `SPEC-lex.md` + EBNF + bảng ưu tiên + 60 golden token + 30 golden biểu thức. **ST-04 mở**; ST-02b được sửa bảng mã lỗi (VD-27).
+- **ST-02a = APPROVED 2026-11-12 Agent 0 / DONE**: `SPEC-lex.md` + EBNF + bảng ưu tiên + 60 golden token + 30 golden biểu thức (bộ 30 nay ở `viscript/test/expr/golden.expr`, VD-34).
+- **ST-04 = DONE** (commit `663eacb`, 2026-11-12): lexer `crates/vis-syntax` — 60/60 golden token (đỏ trước), fuzz 10 phút, NFC/NFD, `gate --fast` PASS. **ST-05 = READY** (parser + CST lossless). Quyết định kèm theo: **VD-28..VD-35** (Q1..Q5 của SPEC-lex, phụ thuộc Unicode, quy ước golden biểu thức, sổ mã cú pháp 02xx).
 - Không tự sửa `SPEC-lex.md`/`SPEC.md` ngoài phạm vi ST-02a/ST-02b. Không đổi ngữ nghĩa ngôn ngữ: mọi thay đổi cú pháp/quy tắc kiểu qua Agent 0 (VD-08).
 
 ## 4. Riêng của dòng ViScript
