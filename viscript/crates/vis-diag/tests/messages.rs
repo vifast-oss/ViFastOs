@@ -101,10 +101,14 @@ fn snapshot_6_ca_so_ten_03xx() {
             "lookup phải tra sổ tên"
         );
     }
-    // Sửa kỳ vọng cũ kèm lý do: ST-12 **đã cấp** sổ kiểu `04xx` (VD-42) ⇒ `lookup(401)` nay `Some`;
-    // `05xx` (runtime) vẫn chưa cấp tới ST-13.
+    // Sửa kỳ vọng cũ kèm lý do: ST-12 đã cấp `04xx`; **ST-13 đã cấp** `05xx` (VD-42) ⇒ `lookup(501)`
+    // nay `Some`; khối **chưa** cấp là `06xx`.
     assert!(lookup(401).is_some(), "ST-12 đã cấp sổ kiểu `04xx`");
-    assert!(lookup(501).is_none(), "mã 501 chưa cấp ở ST-12 (ST-13)");
+    assert!(lookup(501).is_some(), "ST-13 đã cấp sổ runtime `05xx`");
+    assert!(
+        lookup(601).is_none(),
+        "mã 601 chưa cấp ở ST-13 (khối `06xx`)"
+    );
 }
 
 /// Bộ 12 snapshot cho **sổ kiểu** `04xx` (ST-12, VD-42): 4 mã × vi/en/ja.
@@ -123,6 +127,38 @@ fn snapshot_12_ca_so_kieu_04xx() {
         (412, Lang::Vi, "kiểu không khớp"),
         (412, Lang::En, "type mismatch"),
         (412, Lang::Ja, "型が一致しません"),
+    ];
+    for (id, lang, want) in cases {
+        let c = lookup(id).unwrap_or_else(|| panic!("mã {id} phải có trong sổ"));
+        assert_eq!(c.message(lang), want, "{} {:?}", c.short, lang);
+    }
+}
+
+/// Bộ 9 snapshot cho **sổ runtime** `05xx` (ST-13, VD-42): 3 mã × vi/en/ja.
+#[test]
+fn snapshot_9_ca_so_runtime_05xx() {
+    let cases: [(u16, Lang, &str); 9] = [
+        (
+            501,
+            Lang::Vi,
+            "lỗi runtime: phép toán hoặc tính năng chưa hỗ trợ ở VS0",
+        ),
+        (
+            501,
+            Lang::En,
+            "runtime error: operation or feature not supported in VS0",
+        ),
+        (
+            501,
+            Lang::Ja,
+            "実行時エラー: VS0 では未対応の演算または機能です",
+        ),
+        (502, Lang::Vi, "chia hoặc lấy dư cho 0"),
+        (502, Lang::En, "division or remainder by zero"),
+        (502, Lang::Ja, "0 による除算または剰余"),
+        (503, Lang::Vi, "chỉ số ngoài phạm vi"),
+        (503, Lang::En, "index out of range"),
+        (503, Lang::Ja, "インデックスが範囲外です"),
     ];
     for (id, lang, want) in cases {
         let c = lookup(id).unwrap_or_else(|| panic!("mã {id} phải có trong sổ"));

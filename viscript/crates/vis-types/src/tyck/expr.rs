@@ -317,7 +317,7 @@ impl<'a> Checker<'a> {
         acc
     }
 
-    fn unify_branch(&mut self, acc: &mut Type, t: &Type, span: vis_syntax::Span) {
+    pub(crate) fn unify_branch(&mut self, acc: &mut Type, t: &Type, span: vis_syntax::Span) {
         if matches!(acc, Type::Error) {
             *acc = t.clone();
             return;
@@ -407,6 +407,10 @@ impl<'a> Checker<'a> {
                 Type::Bool
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                // `{error}` lan truyền im lặng (lambda chưa có kiểu tham số ở VS0).
+                if l.is_error() || r.is_error() {
+                    return Type::Bool;
+                }
                 let (a, b) = num::promote(l, r);
                 if !self.same(&a, &b) || !num::ordered(&a) {
                     self.diag(
@@ -480,6 +484,19 @@ impl<'a> Checker<'a> {
         } = callee
         {
             if let Some(t) = self.kiem_builtin(name, args, *cspan) {
+                return t;
+            }
+        }
+        // 0) Phương thức lõi của list/str/map (ST-13, VD-47).
+        if let HExpr::Field {
+            base,
+            name,
+            optional: false,
+            ..
+        } = callee
+        {
+            let recv = self.kiem_expr(base);
+            if let Some(t) = self.kiem_method(&recv, name, args, span) {
                 return t;
             }
         }
@@ -586,6 +603,193 @@ impl<'a> Checker<'a> {
                     a.span(),
                 ),
             }
+        }
+    }
+
+    /// Phương thức lõi trên `list`/`str`/`map` (ST-13): trả `None` nếu `recv` không phải kiểu có
+    /// phương thức (để nhánh bản ghi/enum xử lý). Phương thức lạ ⇒ `VS0403` (tyck chặn trước khi chạy).
+    fn kiem_method(
+        &mut self,
+        recv: &Type,
+        name: &str,
+        args: &[HExpr],
+        span: vis_syntax::Span,
+    ) -> Option<Type> {
+        let arg_tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
+        let elem = |t: &Type| match t {
+            Type::List(e) => (**e).clone(),
+            _ => Type::Error,
+        };
+        let out = match recv {
+            Type::List(_) => {
+                let e = elem(recv);
+                match name {
+                    "len" => {
+                        self.arity(args, 0, name, span);
+                        Type::Int
+                    }
+                    "get" => {
+                        self.arity(args, 1, name, span);
+                        self.arg_ty(&arg_tys, 0, &Type::Int, name, args, span);
+                        Type::Opt(Box::new(e))
+                    }
+                    "first" | "last" => {
+                        self.arity(args, 0, name, span);
+                        Type::Opt(Box::new(e))
+                    }
+                    "push" => {
+                        self.arity(args, 1, name, span);
+                        self.arg_ty(&arg_tys, 0, &e, name, args, span);
+                        Type::List(Box::new(e))
+                    }
+                    "map" => {
+                        self.arity(args, 1, name, span);
+                        let f = arg_tys.first().cloned().unwrap_or(Type::Error);
+                        match f {
+                            Type::Fn(_, ret) => Type::List(ret),
+                            Type::Error => Type::List(Box::new(Type::Error)),
+                            other => {
+                                self.diag(
+                                    MISMATCH,
+                                    format!("`map` cần hàm, được `{}`", self.show(&other)),
+                                    span,
+                                );
+                                Type::List(Box::new(Type::Error))
+                            }
+                        }
+                    }
+                    "filter" => {
+                        self.arity(args, 1, name, span);
+                        let f = arg_tys.first().cloned().unwrap_or(Type::Error);
+                        if let Type::Fn(_, ret) = &f {
+                            if !matches!(**ret, Type::Bool | Type::Error) {
+                                self.diag(MISMATCH, "`filter` cần hàm trả `bool`", span);
+                            }
+                        }
+                        Type::List(Box::new(e))
+                    }
+                    "each" => {
+                        self.arity(args, 1, name, span);
+                        Type::Unit
+                    }
+                    "sum" => {
+                        self.arity(args, 0, name, span);
+                        e
+                    }
+                    "join" => {
+                        self.arity(args, 1, name, span);
+                        self.arg_ty(&arg_tys, 0, &Type::Str, name, args, span);
+                        Type::Str
+                    }
+                    _ => {
+                        self.diag(
+                            NO_FIELD,
+                            format!(
+                                "`list` không có phương thức `{name}` (ST-13: len get first last push map filter each sum join)"
+                            ),
+                            span,
+                        );
+                        Type::Error
+                    }
+                }
+            }
+            Type::Str => match name {
+                "len" => {
+                    self.arity(args, 0, name, span);
+                    Type::Int
+                }
+                "upper" | "lower" => {
+                    self.arity(args, 0, name, span);
+                    Type::Str
+                }
+                "chars" => {
+                    self.arity(args, 0, name, span);
+                    Type::List(Box::new(Type::Str))
+                }
+                "contains" => {
+                    self.arity(args, 1, name, span);
+                    self.arg_ty(&arg_tys, 0, &Type::Str, name, args, span);
+                    Type::Bool
+                }
+                "split" => {
+                    self.arity(args, 1, name, span);
+                    self.arg_ty(&arg_tys, 0, &Type::Str, name, args, span);
+                    Type::List(Box::new(Type::Str))
+                }
+                _ => {
+                    self.diag(
+                        NO_FIELD,
+                        format!("`str` không có phương thức `{name}` (ST-13: len upper lower split chars contains)"),
+                        span,
+                    );
+                    Type::Error
+                }
+            },
+            Type::Map(k, v) => {
+                let kk = (**k).clone();
+                let vv = (**v).clone();
+                match name {
+                    "len" => {
+                        self.arity(args, 0, name, span);
+                        Type::Int
+                    }
+                    "get" => {
+                        self.arity(args, 1, name, span);
+                        self.arg_ty(&arg_tys, 0, &kk, name, args, span);
+                        Type::Opt(Box::new(vv))
+                    }
+                    "has" => {
+                        self.arity(args, 1, name, span);
+                        self.arg_ty(&arg_tys, 0, &kk, name, args, span);
+                        Type::Bool
+                    }
+                    "keys" => {
+                        self.arity(args, 0, name, span);
+                        Type::List(Box::new(kk))
+                    }
+                    "values" => {
+                        self.arity(args, 0, name, span);
+                        Type::List(Box::new(vv))
+                    }
+                    _ => {
+                        self.diag(
+                            NO_FIELD,
+                            format!("`map` không có phương thức `{name}` (ST-13: len get has keys values)"),
+                            span,
+                        );
+                        Type::Error
+                    }
+                }
+            }
+            _ => return None,
+        };
+        Some(out)
+    }
+
+    fn arity(&mut self, args: &[HExpr], want: usize, name: &str, span: vis_syntax::Span) {
+        if args.len() != want {
+            self.diag(
+                ARG_COUNT,
+                format!("`{name}` cần {want} đối số, được {}", args.len()),
+                span,
+            );
+        }
+    }
+
+    fn arg_ty(
+        &mut self,
+        got: &[Type],
+        i: usize,
+        want: &Type,
+        name: &str,
+        args: &[HExpr],
+        span: vis_syntax::Span,
+    ) {
+        if let Some(g) = got.get(i) {
+            let g = g.clone();
+            let w = want.clone();
+            let at = args.get(i).map(|a| a.span()).unwrap_or(span);
+            self.coerce(&g, &w, at, &format!("đối số `{name}`"));
         }
     }
 

@@ -10,6 +10,7 @@ members = [
     "crates/vis-cli",
     "crates/vis-fmt",
     "crates/vis-types",
+    "crates/vis-interp",
 ]
 
 [workspace.package]

@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : ST-12 (kiểm kiểu VS0 + `match` xét hết) — xong kỹ thuật 2026-11-13, **đề nghị DONE**
-                (chờ Agent 0 duyệt; **chưa commit** — báo cáo trước theo yêu cầu)
+Task          : ST-13 (`vis-interp`: thông dịch cây trên HIR + builtins lõi) — xong kỹ thuật 2026-11-13,
+                **đã áp VD-47** (giá trị câu lệnh cuối), **chưa commit** — chờ review độc lập của Agent 0
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
@@ -15,6 +15,45 @@ Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1
                 31 vis-cli + 18 vis-fmt + 96 vis-syntax + 18 vis-diag + **42 vis-types**)
 Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit `[ST-12]`)
 ```
+
+## ST-13 — kết quả (2026-11-13)
+
+| Mục DoD (đề bài Agent 0) | Bằng chứng đo được |
+|---|---|
+| Crate mới `crates/vis-interp` (lib `vis_interp`, dep path, không crate ngoài) | `crates/vis-interp/{Cargo.toml,src/{lib,interp,builtin,value}.rs}` — dep `vis-types` + `vis-diag` + `vis-syntax` (path; **cần** cho `Span`/`Diagnostic`); lớn nhất `interp.rs` **1.365** dòng (trần 1.500) |
+| API `run(text, hir, symbols, types, args) -> RunOutput { stdout, diagnostics, value, exit, steps }` | `lib.rs`; chạy `main` (đối số `args: list[str]`) nếu có, không thì câu lệnh cấp tệp; `exit` = 0 / int của `main` / 1 khi lỗi; `steps` để **chống xanh-giả** |
+| `Value` đủ kiểu VS0 | `value.rs`: `Unit Int Float Size Duration Percent Str Bool Bytes Char Path List Map Record Enum Opt Res Range Fn Builtin`; map giữ **thứ tự chèn** (`Vec<(Value,Value)>`) |
+| Ngữ nghĩa §3–§6 | `let` bất biến / `var` gán (gán `let` ⇒ `VS0412`, phòng thủ); bóng tên; `if/elif/else`; `while`; `loop/break/continue`; `for` (list + `..`/`..=` + str + map); `match` (guard, or-pattern, enum, `T?`, `Result`, bản ghi); `return`; `?` (trả sớm); `??`; `|>`; `with`; chỉ số (âm/ngoài ⇒ `VS0503` + gợi ý `last()`); gọi hàm + tham số tên `--b` + mặc định; closure bắt môi trường; đệ quy |
+| Builtins + bộ phương thức **đã khoá** | `print` `len` `str` `Ok` `Err` `Some` `None` (`ref` = VS1 ⇒ `VS0501`); `list`: `len get first last push map filter each sum join`; `str`: `len upper lower split chars contains`; `map`: `len get has keys values`; ngoài tập ⇒ **`VS0501` "chưa hỗ trợ ở VS0"** (không panic) |
+| Mã runtime `VS0501/0502/0503` + `span` + in `dòng:cột` | `vis-diag`: sổ thứ năm `RUNTIME_CODES` (vi/en/ja, snapshot 9 ca), `BOOKS` 5 sổ, `all_codes()` **21**; `interp.rs::pos()` tính `line/col` **thật** từ `text`+`span` (VD-46) — test `chan_doan_runtime_co_dong_cot_that` |
+| **Đỏ trước** (D2-05): `tests/run.rs` ≥ 60 ca | `JOURNAL/st13-red-run.log` — **79/79 ca đỏ** (số học 21, điều khiển 12, hàm 12, tập hợp 17, kiểu 12, **giá trị đuôi 5**) khi `run()` trả khung rỗng; **1 test xanh cố ý** (`du_60_ca` chỉ đếm); chống xanh-giả: `steps > 0` cho **mọi** ca `out(...)`; sha256 harness khớp bản commit |
+| **VD-47 — giá trị câu lệnh cuối** (sửa lỗ hổng (b), bắt buộc) | `exec_block`/`exec_body` + tyck `than_value`/`HStmt::{If,Match,Block}`: `if`/`match`/khối con ở **đuôi** cho giá trị; `if` **không** `else` ⇒ `()`; 5 ca mới trong `run.rs` (`gia_tri_cua_khoi_theo_vd47`) + 4 ca tyck (`tyck_methods.rs::gia_tri_cau_lenh_cuoi_vd47`) |
+| Khoá bảng phương thức + `Show` | `tests/tyck_methods.rs` (8 ca: `len/get/sum/upper/keys/join/map` + `sort` ⇒ `VS0403`) và `tests/show.rs` (**5 snapshot**: scalar, size, duration, percent, record/enum/opt/Result/list/map) |
+| Giữ 205 test cũ xanh | **227** test workspace (205 + 22: 9 test + 2 doc-test `vis-interp` + 5 `show` + 3 `tyck_methods` + 2 `vis-diag` + 1 `vis-cli`); 3 test cũ sửa **kèm lý do** (VD-42 cấp `05xx`) |
+| Cổng xanh, không retry | `./vis-dev gate --fast: PASS` — 2026-11-12T22:40:05Z; **227** test; fmt/clippy sạch (`-D warnings`) |
+| Không `unsafe`/`#[ignore]`/`unwrap` trên dữ liệu người dùng; SPDX | `grep` 0 `unsafe`/`#[ignore]`; `unwrap` chỉ ở chỗ đã chứng minh (`unwrap_or`), không trên dữ liệu người dùng; mọi tệp có SPDX (`#` cho `.toml`) |
+
+**Chốt của Agent 0 — VD-47** (2026-11-13): (1) `size`/`duration` in **đơn vị lớn nhất chia hết**
+(đúng ý thiết kế); (2) `percent` = `ratio*100` + `pct`, bỏ `.0`; (3) các dạng `record/enum/opt/Result/
+char/bytes/fn` như đề xuất — **khoá bằng snapshot** (`tests/show.rs`, 5 test); (4) `percent * size|int`
+**cắt về 0** — ghi JOURNAL là **quyết định**, không phải mặc định ngầm. **Bắt buộc sửa** lỗ hổng (b):
+`if`/`match` câu lệnh cuối **phải cho giá trị** — đã sửa **trong `vis-interp`** (+ tyck để pipeline
+nhận), khoá bằng 5 ca `run.rs` + 4 ca tyck. Tyck mở rộng bảng phương thức: **chấp nhận**, đã khoá bằng
+`tyck_methods.rs`. Hoãn có ghi: (a) nội suy `{expr}` ⇒ **ST-14** (HIR phải mang phần nội suy); (c) `ref/
+await/cmd`/bit ⇒ `VS0501`; (d) gán trường/phần tử ⇒ `VS0501` + gợi ý `with`; (e) pattern bản ghi trần.
+
+**Việc phải biết:**
+1. **`vis-syntax` là dep thứ ba** của `vis-interp` (ngoài `vis-types` + `vis-diag`): `Span`/`Diagnostic`
+   nằm ở đó. Vẫn là path dep nội bộ, không crate ngoài.
+2. **Đơn vị**: `size` = **byte**; `duration` = **nanosecond**; `percent` = **tỉ lệ 0..1** (theo §3.1/§3.6).
+3. **`Show`** (VD-47, khoá ở `tests/show.rs`): `size`/`duration` đơn vị lớn nhất chia hết; `percent`
+   `ratio*100`+`pct`; `record` ⇒ `User(name: An, age: 20)` (str không nháy, khoá map có nháy); `enum` ⇒
+   `Circle(2)`/`Empty`; `opt` ⇒ `some(5)`/`none`; `Result` ⇒ `Ok(1)`/`Err(âm)`; `char` `'a'`; `bytes`
+   `b"…"`; `path` nguyên văn; `fn` `<fn …>`; `()`.
+4. **`percent * size|int` cắt về 0** — **quyết định** (VD-47 #4).
+5. **3 test cũ sửa kèm lý do** (VD-42 buộc cấp `05xx`): `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`,
+   `vis-cli/tests/explain.rs::{explain_so_ten_03xx, explain_so_kieu_04xx}` (giờ `VS0501` exit 0, mã chưa
+   cấp là `VS0601`).
 
 ## ST-12 — kết quả (2026-11-13)
 

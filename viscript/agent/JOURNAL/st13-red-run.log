@@ -1,0 +1,864 @@
+=== ST-13 D2-05: vis-interp (thông dịch cây trên HIR) — ĐỎ TRƯỚC khi hiện thực ===
+thời điểm chụp: 2026-11-12T22:39:05Z (sau cùng — SAU `cargo fmt`, khi harness đã đóng băng; trước commit)
+cách chụp: tạm thời thay thân `run()` (vis-interp/src/lib.rs) bằng `RunOutput::default()`
+           (không chạy gì ⇒ `steps = 0`, `stdout = ""`, không chẩn đoán), chạy đúng harness cuối
+           với `--no-fail-fast`, chụp log; khôi phục `lib.rs` từ /tmp/st13-lib3.rs (sha256 dưới).
+
+sha256 bản cài đặt được khôi phục: 03f0ccf7fccd5c842ddead2cc617446ab771b56f2e68d2b332fda5fdc0368121  /tmp/st13-lib3.rs
+
+sha256 harness (bản commit — mọi tệp **sau** fmt, không đổi sau khi chụp):
+  sha256 crates/vis-interp/tests/run.rs=4b49290742a487869fba4298e40311750da2927b2475796e7151196244ad84cb
+  sha256 crates/vis-interp/tests/show.rs=b0e554684630760e7ef3d36b0311491e2a0bac30a1a844fa29b42acfd045abce
+  sha256 crates/vis-interp/src/lib.rs=03f0ccf7fccd5c842ddead2cc617446ab771b56f2e68d2b332fda5fdc0368121
+  sha256 crates/vis-interp/src/interp.rs=f080e834a379f2cc1a8fd3b76f9b298034fbd3922901440db74bdb769ba90c41
+  sha256 crates/vis-interp/src/builtin.rs=19a4114372b9539694e424003d82b7d8100413ae619e081923e5b6880411ccb4
+  sha256 crates/vis-interp/src/value.rs=4d20acc9151af03a7eedd151e5989b58f153874111d58bafd92bab766c5e369d
+  sha256 crates/vis-types/src/tyck/mod.rs=c786f4914b73d7057c8202c983863e24d09bf22dfd18d80ad7d11954c3d795dd
+  sha256 crates/vis-types/src/tyck/expr.rs=24ec0307d85d62d029fb3f3617f93968c00a561bc927c3f564b31f1d9e113c66
+  sha256 crates/vis-types/tests/tyck_methods.rs=fdce506eda93b06470089233f470df63d6b8c4528b12cf286c6d5ba27940e327
+  sha256 crates/vis-diag/src/lib.rs=b2c7290425d3cfdf2dd69ff789055294db661a7b04f600a7230dd5bfef9ca00c
+sha256 fixture (chỉ đọc — chứng minh không đụng):
+  sha256 test/expr/golden.expr=f751f4554740d01f44013015ee9ba80ff1a56ec79c49dbb1585746541a507425
+  sha256 ../docs/viscript/ViScript-thiet-ke.md=70da3dd5393eff6cd1062bd760a507675ba39d18f0a259b82713640db5dc7094
+
+lệnh: cargo test -p vis-interp --test run --no-fail-fast   (chạy từ viscript/)
+
+KẾT QUẢ: 79 ca, ĐỎ 79/79 (số học 21, điều khiển 12, hàm 12, tập hợp 17, kiểu 12, giá trị đuôi 5);
+  9 test, ĐỎ 8, XANH 1 là **CỐ Ý**: `du_60_ca` chỉ **đếm** ca (79 ≥ 60), không gọi `run`.
+
+CHỐNG XANH-GIẢ: `so_ca` đòi `RunOutput.steps > 0` cho **mọi** ca `out(...)` — kể cả ca không in
+  gì — nên khung rỗng (steps = 0) không thể "xanh nhờ không làm gì"; ca `!VS05xx` đòi đúng một
+  chẩn đoán runtime.
+
+GHI CHÚ: `tests/show.rs` + `tests/tyck_methods.rs` là test **khoá** (viết sau khi có bảng Show/
+  phương thức, theo yêu cầu "khoá bằng snapshot" của VD-47), **không** thuộc bộ đỏ-trước.
+  Tệp log có **mtime cùng giây** với lúc khôi phục `lib.rs`; bằng chứng: sha256 bản khôi phục
+  trùng `crates/vis-interp/src/lib.rs` của bản commit.
+
+----- đầu ra (đỏ) -----
+   Compiling vis-interp v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-interp)
+warning: multiple methods are never used
+   --> crates/vis-interp/src/builtin.rs:19:19
+    |
+ 14 | impl<'a> Interp<'a> {
+    | ------------------- methods in this implementation
+...
+ 19 |     pub(crate) fn bin(
+    |                   ^^^
+...
+ 68 |     fn arith(&mut self, op: BinOp, l: Value, r: Value, span: Span) -> crate::interp::R<Value> {
+    |        ^^^^^
+...
+222 |     pub(crate) fn call_builtin(
+    |                   ^^^^^^^^^^^^
+...
+297 |     pub(crate) fn call_method(
+    |                   ^^^^^^^^^^^
+...
+316 |     fn list_method(
+    |        ^^^^^^^^^^^
+...
+396 |     fn str_method(
+    |        ^^^^^^^^^^
+...
+435 |     fn map_method(
+    |        ^^^^^^^^^^
+...
+471 |     fn call_value_pub(
+    |        ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `overflow` is never used
+   --> crates/vis-interp/src/builtin.rs:485:4
+    |
+485 | fn overflow(span: Span) -> Abort {
+    |    ^^^^^^^^
+
+warning: constant `RT` is never used
+  --> crates/vis-interp/src/interp.rs:16:18
+   |
+16 | pub(crate) const RT: &Code = &RUNTIME_CODES[0];
+   |                  ^^
+
+warning: constant `DIV0` is never used
+  --> crates/vis-interp/src/interp.rs:18:18
+   |
+18 | pub(crate) const DIV0: &Code = &RUNTIME_CODES[1];
+   |                  ^^^^
+
+warning: constant `IDX` is never used
+  --> crates/vis-interp/src/interp.rs:20:18
+   |
+20 | pub(crate) const IDX: &Code = &RUNTIME_CODES[2];
+   |                  ^^^
+
+warning: constant `MISMATCH` is never used
+  --> crates/vis-interp/src/interp.rs:22:18
+   |
+22 | pub(crate) const MISMATCH: &Code = &TYPE_CODES[3];
+   |                  ^^^^^^^^
+
+warning: struct `Trap` is never constructed
+  --> crates/vis-interp/src/interp.rs:26:19
+   |
+26 | pub(crate) struct Trap {
+   |                   ^^^^
+
+warning: associated items `new` and `to_diag` are never used
+  --> crates/vis-interp/src/interp.rs:33:19
+   |
+32 | impl Trap {
+   | --------- associated items in this implementation
+33 |     pub(crate) fn new(code: &'static Code, msg: impl Into<String>, span: Span) -> Self {
+   |                   ^^^
+...
+42 |     pub(crate) fn to_diag(&self, text: &str) -> Diagnostic {
+   |                   ^^^^^^^
+
+warning: enum `Abort` is never used
+  --> crates/vis-interp/src/interp.rs:56:17
+   |
+56 | pub(crate) enum Abort {
+   |                 ^^^^^
+
+warning: type alias `R` is never used
+  --> crates/vis-interp/src/interp.rs:61:17
+   |
+61 | pub(crate) type R<T> = Result<T, Abort>;
+   |                 ^
+
+warning: type alias `Args` is never used
+  --> crates/vis-interp/src/interp.rs:64:17
+   |
+64 | pub(crate) type Args = (Vec<Value>, Vec<(String, Value)>);
+   |                 ^^^^
+
+warning: type alias `Picked` is never used
+  --> crates/vis-interp/src/interp.rs:67:17
+   |
+67 | pub(crate) type Picked<'s> = (&'s HArm, Vec<(u32, Value)>);
+   |                 ^^^^^^
+
+warning: enum `Ctrl` is never used
+  --> crates/vis-interp/src/interp.rs:71:17
+   |
+71 | pub(crate) enum Ctrl {
+   |                 ^^^^
+
+warning: struct `Interp` is never constructed
+  --> crates/vis-interp/src/interp.rs:77:19
+   |
+77 | pub(crate) struct Interp<'a> {
+   |                   ^^^^^^
+
+warning: multiple associated items are never used
+    --> crates/vis-interp/src/interp.rs:96:19
+     |
+  95 | impl<'a> Interp<'a> {
+     | ------------------- associated items in this implementation
+  96 |     pub(crate) fn new(hir: &'a Hir, symbols: &'a Symbols, types: &'a TypeTable) -> Self {
+     |                   ^^^
+...
+ 137 |     pub(crate) fn take_stdout(&mut self) -> String {
+     |                   ^^^^^^^^^^^
+...
+ 141 |     pub(crate) fn run_program(&mut self, args: &[String]) -> R<Option<Value>> {
+     |                   ^^^^^^^^^^^
+...
+ 183 |     fn exec_block(&mut self, body: &[HStmt]) -> R<Ctrl> {
+     |        ^^^^^^^^^^
+...
+ 196 |     fn exec_body(&mut self, body: &[HStmt]) -> R<Value> {
+     |        ^^^^^^^^^
+...
+ 203 |     fn exec_stmt(&mut self, s: &HStmt) -> R<Ctrl> {
+     |        ^^^^^^^^^
+...
+ 355 |     fn eval_cond(&mut self, c: &HCond) -> R<bool> {
+     |        ^^^^^^^^^
+...
+ 382 |     fn eval(&mut self, e: &HExpr) -> R<Value> {
+     |        ^^^^
+...
+ 689 |     fn type_name(&self, ty: &vis_types::Type) -> String {
+     |        ^^^^^^^^^
+...
+ 709 |     fn eval_call(
+     |        ^^^^^^^^^
+...
+ 756 |     fn eval_args(&mut self, args: &[HExpr], named: &[(String, HExpr)]) -> R<Args> {
+     |        ^^^^^^^^^
+...
+ 768 |     fn call_value(
+     |        ^^^^^^^^^^
+...
+ 794 |     pub(crate) fn call_closure(&mut self, c: &Closure, pos: Vec<Value>, span: Span) -> R<Value> {
+     |                   ^^^^^^^^^^^^
+...
+ 836 |     fn call_hfn(
+     |        ^^^^^^^^
+...
+ 906 |     fn lvalue_get(&mut self, target: &HExpr) -> R<Value> {
+     |        ^^^^^^^^^^
+...
+ 923 |     fn lvalue_set(&mut self, target: &HExpr, v: Value, span: Span) -> R<()> {
+     |        ^^^^^^^^^^
+...
+ 945 |     fn field_of(&mut self, b: Value, name: &str, span: Span) -> R<Value> {
+     |        ^^^^^^^^
+...
+ 981 |     fn index_of(&mut self, b: Value, i: Value, span: Span) -> R<Value> {
+     |        ^^^^^^^^
+...
+1030 |     fn iter_items(&mut self, it: Value) -> R<Vec<Value>> {
+     |        ^^^^^^^^^^
+...
+1067 |     fn bind_pat(&mut self, pat: &HPat, v: &Value) {
+     |        ^^^^^^^^
+...
+1072 |     fn bind_pat_bool(&mut self, pat: &HPat, v: &Value) -> bool {
+     |        ^^^^^^^^^^^^^
+...
+1212 |     fn lit_of_pat(&self, p: &HPat) -> Option<Value> {
+     |        ^^^^^^^^^^
+...
+1219 |     fn bind_all(&mut self, pats: &[HPat], vals: &[Value]) -> bool {
+     |        ^^^^^^^^
+...
+1232 |     fn pick_arm<'s>(&mut self, arms: &'s [HArm], subj: &Value) -> R<Option<Picked<'s>>> {
+     |        ^^^^^^^^
+...
+1262 |     pub(crate) fn trap(&self, code: &'static Code, msg: impl Into<String>, span: Span) -> Abort {
+     |                   ^^^^
+
+warning: function `lit_value` is never used
+    --> crates/vis-interp/src/interp.rs:1268:4
+     |
+1268 | fn lit_value(lit: &Lit) -> std::result::Result<Value, String> {
+     |    ^^^^^^^^^
+
+warning: function `parse_int_lit` is never used
+    --> crates/vis-interp/src/interp.rs:1304:4
+     |
+1304 | fn parse_int_lit(text: &str) -> Option<i64> {
+     |    ^^^^^^^^^^^^^
+
+warning: function `pos` is never used
+    --> crates/vis-interp/src/interp.rs:1319:15
+     |
+1319 | pub(crate) fn pos(text: &str, span: Span) -> (u32, u32) {
+     |               ^^^
+
+warning: function `builtin_name` is never used
+    --> crates/vis-interp/src/interp.rs:1337:4
+     |
+1337 | fn builtin_name(name: &str) -> Option<&'static str> {
+     |    ^^^^^^^^^^^^
+
+warning: method `truthy` is never used
+    --> crates/vis-interp/src/interp.rs:1353:19
+     |
+1351 | impl Value {
+     | ---------- method in this implementation
+1352 |     /// Chân trị cho `if`/`while`/`and`/`or`/`not`/guard.
+1353 |     pub(crate) fn truthy(&self, span: Span) -> R<bool> {
+     |                   ^^^^^^
+
+warning: `vis-interp` (lib) generated 20 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.44s
+     Running tests/run.rs (target/debug/deps/run-fd9ddd3470a0a76c)
+
+running 9 tests
+test du_60_ca ... ok
+test chan_doan_runtime_co_dong_cot_that ... FAILED
+test phuong_thuc_ngoai_tap_bao_vs0501 ... FAILED
+test gia_tri_cua_khoi_theo_vd47 ... FAILED
+test so_hoc_va_don_vi ... FAILED
+test dieu_khien_va_khai_bao ... FAILED
+test tap_hop_va_phuong_thuc ... FAILED
+test ham_closure_va_tham_so ... FAILED
+test kieu_du_lieu_va_match ... FAILED
+
+failures:
+
+---- chan_doan_runtime_co_dong_cot_that stdout ----
+
+thread 'chan_doan_runtime_co_dong_cot_that' (37661963) panicked at crates/vis-interp/tests/run.rs:424:5:
+assertion `left == right` failed
+  left: []
+ right: ["VS0503"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- phuong_thuc_ngoai_tap_bao_vs0501 stdout ----
+
+thread 'phuong_thuc_ngoai_tap_bao_vs0501' (37661969) panicked at crates/vis-interp/tests/run.rs:442:5:
+assertion `left == right` failed: []
+  left: []
+ right: ["VS0501"]
+
+---- gia_tri_cua_khoi_theo_vd47 stdout ----
+
+thread 'gia_tri_cua_khoi_theo_vd47' (37661966) panicked at crates/vis-interp/tests/run.rs:81:5:
+giá trị đuôi: 5/5 ca sai
+nguồn: fn f(x: int) -> int:
+    if x > 0: 1 else: 2
+print(f(1))
+   muốn: out("1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> int:
+    if x > 0: 1 else: 2
+print(f(-1))
+   muốn: out("2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> int:
+    match x:
+        1: 10
+        _: 20
+print(f(1))
+   muốn: out("10\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(x: int):
+    if x > 0: 1
+print(f(1))
+   muốn: out("()\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> int:
+    if x > 0:
+        if x > 1: 10 else: 20
+    else: 30
+print(f(5))
+   muốn: out("10\n")
+   được: out("")
+   chẩn đoán: []
+
+---- so_hoc_va_don_vi stdout ----
+
+thread 'so_hoc_va_don_vi' (37661970) panicked at crates/vis-interp/tests/run.rs:81:5:
+số học: 21/21 ca sai
+nguồn: print(1 + 2)
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(7 / 2)
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(-7 / 2)
+   muốn: out("-3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(-7 % 2)
+   muốn: out("-1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(2 ** 10)
+   muốn: out("1024\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(2 ** 3 ** 2)
+   muốn: out("512\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(1.5 + 2)
+   muốn: out("3.5\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(5mb + 5mb)
+   muốn: out("10mb\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(5mb / 5mb)
+   muốn: out("1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(250ms + 750ms)
+   muốn: out("1s\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(50pct + 10pct)
+   muốn: out("60pct\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(50pct * 200)
+   muốn: out("100\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(1 / 0)
+   muốn: !VS0502
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(1 % 0)
+   muốn: !VS0502
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(2 ** -1)
+   muốn: !VS0501
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(9223372036854775807 + 1)
+   muốn: !VS0501
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(true and false)
+   muốn: out("false\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(not false)
+   muốn: out("true\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(1 < 2)
+   muốn: out("true\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(50pct < 60pct)
+   muốn: out("true\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(ref(1))
+   muốn: !VS0501
+   được: out("")
+   chẩn đoán: []
+
+---- dieu_khien_va_khai_bao stdout ----
+
+thread 'dieu_khien_va_khai_bao' (37661964) panicked at crates/vis-interp/tests/run.rs:81:5:
+điều khiển: 12/12 ca sai
+nguồn: var x = 1
+x = x + 1
+print(x)
+   muốn: out("2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let x = 1
+if x > 0:
+    print("d")
+else:
+    print("a")
+   muốn: out("d\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: for i in 0..3:
+    print(i)
+   muốn: out("0\n1\n2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: for i in 0..=2:
+    print(i)
+   muốn: out("0\n1\n2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: var s = 0
+for i in 1..=4:
+    s = s + i
+print(s)
+   muốn: out("10\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: var i = 0
+while i < 3:
+    i = i + 1
+print(i)
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: var i = 0
+loop:
+    i += 1
+    if i == 2: break
+print(i)
+   muốn: out("2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: var s = 0
+for i in 0..4:
+    if i == 2: continue
+    s += i
+print(s)
+   muốn: out("4\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let x = 1
+if true:
+    let x = "a"
+    print(x)
+print(x)
+   muốn: out("a\n1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let (a, b) = (1, 2)
+print(a + b)
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let x = if true: 1 else: 2
+print(x)
+   muốn: out("1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let s = if 1 > 2: "a" elif 1 == 1: "b" else: "c"
+print(s)
+   muốn: out("b\n")
+   được: out("")
+   chẩn đoán: []
+
+---- tap_hop_va_phuong_thuc stdout ----
+
+thread 'tap_hop_va_phuong_thuc' (37661971) panicked at crates/vis-interp/tests/run.rs:81:5:
+tập hợp: 17/17 ca sai
+nguồn: let xs = [1, 2, 3]
+print(xs.len())
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs[0])
+   muốn: out("1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs[-1])
+   muốn: !VS0503
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs[5])
+   muốn: !VS0503
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs.get(9) ?? 0)
+   muốn: out("0\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs.sum())
+   muốn: out("6\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs.map(x => x * 2))
+   muốn: out("[2, 4, 6]\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+print(xs.filter(x => x > 1))
+   muốn: out("[2, 3]\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2, 3]
+xs.each(x => print(x))
+   muốn: out("1\n2\n3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print([1, 2].join("-"))
+   muốn: out("1-2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print("abc".upper())
+   muốn: out("ABC\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print("ABC".lower())
+   muốn: out("abc\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print("a,b".split(","))
+   muốn: out("[a, b]\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print("héllo".len())
+   muốn: out("5\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print("abc".contains("bc"))
+   muốn: out("true\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: print(len("héllo"))
+   muốn: out("5\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let m = {"a": 1, "b": 2}
+print(m.len())
+   muốn: out("2\n")
+   được: out("")
+   chẩn đoán: []
+
+---- ham_closure_va_tham_so stdout ----
+
+thread 'ham_closure_va_tham_so' (37661967) panicked at crates/vis-interp/tests/run.rs:81:5:
+hàm: 12/12 ca sai
+nguồn: fn add(a: int, b: int) -> int:
+    a + b
+print(add(2, 3))
+   muốn: out("5\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(a: int, --b: int = 10) -> int:
+    a + b
+print(f(1))
+   muốn: out("11\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(a: int, --b: int = 10) -> int:
+    a + b
+print(f(1, --b: 5))
+   muốn: out("6\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn fact(n: int) -> int:
+    let r = if n <= 1: 1 else: n * fact(n - 1)
+    r
+print(fact(5))
+   muốn: out("120\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let inc = (x) => x + 1
+print(inc(41))
+   muốn: out("42\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let n = 10
+let f = () => n + 1
+print(f())
+   muốn: out("11\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn apply(f: fn(int) -> int, x: int) -> int:
+    f(x)
+fn inc(y: int) -> int:
+    y + 1
+print(apply(inc, 41))
+   muốn: out("42\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(n: int) -> int:
+    if n > 0: return 1
+    2
+print(f(5))
+   muốn: out("1\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn twice(f: fn(int) -> int, x: int) -> int:
+    f(f(x))
+fn inc(y: int) -> int:
+    y + 1
+print(twice(inc, 1))
+   muốn: out("3\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn pick(a: int, --b: int = 2) -> int:
+    a * b
+print(pick(3, --b: 4))
+   muốn: out("12\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn pick(a: int, --b: int = 2) -> int:
+    a * b
+print(pick(3))
+   muốn: out("6\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn main():
+    print("hi")
+   muốn: out("hi\n")
+   được: out("")
+   chẩn đoán: []
+
+---- kieu_du_lieu_va_match stdout ----
+
+thread 'kieu_du_lieu_va_match' (37661968) panicked at crates/vis-interp/tests/run.rs:81:5:
+kiểu: 12/12 ca sai
+nguồn: type User:
+    name: str
+    age: int
+let u: User = {name: "An", age: 20}
+print(u.age)
+   muốn: out("20\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: type User:
+    name: str
+    age: int
+let u: User = {name: "An", age: 20}
+print((u with age: 21).age)
+   muốn: out("21\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+    Empty
+let s: Shape = Shape.Circle(2.0)
+match s:
+    Circle(r): print(r)
+    Empty: print(0)
+   muốn: out("2\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: enum Shape:
+    Circle(r: float)
+    Rect(w: float, h: float)
+let s: Shape = Shape.Circle(2.0)
+match s:
+    Circle(r) if r > 100.0: print("lớn")
+    Circle(r): print("nhỏ")
+    Rect(w, h): print("vuông")
+   muốn: out("nhỏ\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: enum E:
+    A
+    B
+let x: E = E.A
+match x:
+    A | B: print("cả hai")
+   muốn: out("cả hai\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let x: int? = none
+match x:
+    some(v): print(v)
+    none: print(0)
+   muốn: out("0\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let x: int? = 5
+print(x ?? 0)
+   muốn: out("5\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: let y: int? = none
+print(y ?? 7)
+   muốn: out("7\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f(n: int) -> Result[int, str]:
+    let r = if n > 0: Ok(n) else: Err("âm")
+    r
+fn g(n: int) -> Result[int, str]:
+    let v = f(n)?
+    Ok(v * 2)
+match g(-1):
+    Ok(x): print(x)
+    Err(e): print(e)
+   muốn: out("âm\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn first(xs: list[int]) -> int?:
+    let a = xs.first()?
+    a
+print(first([7]) ?? 0)
+   muốn: out("7\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn inc(x: int) -> int:
+    x + 1
+print(3 |> inc)
+   muốn: out("4\n")
+   được: out("")
+   chẩn đoán: []
+---
+nguồn: fn f() -> Result[int, str]:
+    Ok(1)
+match f():
+    Ok(v): print(v == 1)
+    Err(e): print(false)
+   muốn: out("true\n")
+   được: out("")
+   chẩn đoán: []
+
+
+failures:
+    chan_doan_runtime_co_dong_cot_that
+    dieu_khien_va_khai_bao
+    gia_tri_cua_khoi_theo_vd47
+    ham_closure_va_tham_so
+    kieu_du_lieu_va_match
+    phuong_thuc_ngoai_tap_bao_vs0501
+    so_hoc_va_don_vi
+    tap_hop_va_phuong_thuc
+
+test result: FAILED. 1 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-interp --test run`
+error: 1 target failed:
+    `-p vis-interp --test run`
+----- hết -----

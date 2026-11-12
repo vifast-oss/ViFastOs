@@ -429,11 +429,9 @@ impl<'a> Checker<'a> {
         for (i, s) in body.iter().enumerate() {
             let t = self.kiem_stmt(s);
             if i + 1 == n {
-                value = if matches!(s, HStmt::Expr(_)) {
-                    t
-                } else {
-                    Type::Unit
-                };
+                // §4/§6: câu lệnh cuối của khối **cho giá trị** (`Expr`, `if`/`match` có `else`,
+                // khối con); các dạng khác là `()` — VD-47 (sửa lỗ hổng ST-13).
+                value = t;
             }
         }
         value
@@ -526,16 +524,23 @@ impl<'a> Checker<'a> {
                 else_,
                 span,
             } => {
+                // VD-47: `if` ở vị trí câu lệnh **vẫn cho giá trị** (`if x: 1 else: 2` là `int`);
+                // không có `else` ⇒ `()`.
                 self.kiem_cond(cond);
-                self.kiem_than(then, &Type::Unit, *span);
+                let mut acc = self.than_value(then);
                 for (c, body) in elifs {
                     self.kiem_cond(c);
-                    self.kiem_than(body, &Type::Unit, *span);
+                    let t = self.than_value(body);
+                    self.unify_branch(&mut acc, &t, *span);
                 }
-                if let Some(e) = else_ {
-                    self.kiem_than(e, &Type::Unit, *span);
+                match else_ {
+                    Some(e) if !e.is_empty() => {
+                        let t = self.than_value(e);
+                        self.unify_branch(&mut acc, &t, *span);
+                        acc
+                    }
+                    _ => Type::Unit,
                 }
-                Type::Unit
             }
             HStmt::For {
                 pat,
@@ -587,20 +592,26 @@ impl<'a> Checker<'a> {
                 span,
             } => {
                 let subj = self.kiem_expr(subject);
+                let mut acc: Option<Type> = None;
                 for arm in arms {
                     self.bind_pat(&arm.pat, &subj);
                     if let Some(g) = &arm.guard {
                         let gt = self.kiem_expr(g);
                         self.coerce(&gt, &Type::Bool, g.span(), "guard `if`");
                     }
-                    self.kiem_than(&arm.body, &Type::Unit, arm.span);
+                    let t = self.than_value(&arm.body);
+                    match &mut acc {
+                        None => acc = Some(t),
+                        Some(a) => self.unify_branch(a, &t, arm.span),
+                    }
                 }
                 self.xet_het(&subj, arms, *span);
-                Type::Unit
+                // VD-47: `match` ở vị trí câu lệnh vẫn cho giá trị (hợp nhất các arm).
+                acc.unwrap_or(Type::Unit)
             }
             HStmt::Block { body, .. } => {
-                self.kiem_than(body, &Type::Unit, s.span());
-                Type::Unit
+                // VD-47: khối con ở đuôi **cho giá trị** của nó.
+                self.than_value(body)
             }
         }
     }

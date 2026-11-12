@@ -242,12 +242,45 @@ pub const TYPE_CODES: [Code; 4] = [
     },
 ];
 
-/// **Bốn sổ** mã lỗi đã cấp ở ST-12: từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`
-/// (VD-27/VD-35/VD-42).
-///
-/// `05xx` (runtime) **chưa cấp mã nào** ở ST-12 ⇒ `lookup(501)` là `None`; khối này vẫn **đã dành
-/// trước** ([`BLOCKS_RESERVED`]) nên [`next_block`] vẫn nhảy tới `06xx`.
-pub const BOOKS: [&[Code]; 4] = [&CODES, &SYNTAX_CODES, &NAME_CODES, &TYPE_CODES];
+/// Sổ **mã runtime** `05xx` (VD-42, ST-13) — sổ thứ năm: `VS0501` lỗi runtime chung (tràn `i64`,
+/// phép chưa hỗ trợ ở VS0), `VS0502` chia/lấy dư cho 0, `VS0503` chỉ số ngoài phạm vi.
+pub const RUNTIME_CODES: [Code; 3] = [
+    Code {
+        id: 501,
+        short: "VS0501",
+        message_vi: "lỗi runtime: phép toán hoặc tính năng chưa hỗ trợ ở VS0",
+        message_en: "runtime error: operation or feature not supported in VS0",
+        message_ja: "実行時エラー: VS0 では未対応の演算または機能です",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 502,
+        short: "VS0502",
+        message_vi: "chia hoặc lấy dư cho 0",
+        message_en: "division or remainder by zero",
+        message_ja: "0 による除算または剰余",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 503,
+        short: "VS0503",
+        message_vi: "chỉ số ngoài phạm vi",
+        message_en: "index out of range",
+        message_ja: "インデックスが範囲外です",
+        severity: Severity::Error,
+    },
+];
+
+/// **Năm sổ** mã lỗi đã cấp ở ST-13: từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`,
+/// runtime `05xx` (VD-27/VD-35/VD-42). Nay **mọi** khối dành trước đều đã có mã; `06xx` là khối
+/// kế tiếp chưa cấp nên [`next_block`] vẫn trả **601**.
+pub const BOOKS: [&[Code]; 5] = [
+    &CODES,
+    &SYNTAX_CODES,
+    &NAME_CODES,
+    &TYPE_CODES,
+    &RUNTIME_CODES,
+];
 
 /// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`05xx`); VD-42 cấp `04xx` ở ST-12 và
 /// `05xx` ở ST-13. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
@@ -261,7 +294,7 @@ pub fn all_codes() -> impl Iterator<Item = &'static Code> {
 /// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
 ///
 /// Tra **cả bốn sổ** đã cấp (VD-42): từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`.
-/// `05xx` **chưa cấp mã nào** ở ST-12 (ST-13) nên `lookup(501)` là `None`.
+/// Nay đủ **năm sổ** (`01xx`..`05xx`); `lookup(601)` mới là `None`.
 /// [`CODES`]/[`SYNTAX_CODES`] vẫn nguyên vẹn nên test "khớp SPEC-lex §7" không đổi.
 pub fn lookup(id: u16) -> Option<&'static Code> {
     all_codes().find(|c| c.id == id)
@@ -279,7 +312,7 @@ pub fn lookup_str(s: &str) -> Option<&'static Code> {
 
 /// Khối mã kế tiếp còn trống (quy tắc cấp): trả số đầu của khối mới, không tái dùng.
 ///
-/// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`..`04xx`) **và** khối đã **dành trước**
+/// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`..`05xx`) **và** khối đã **dành trước**
 /// ([`BLOCKS_RESERVED`]: `01xx`..`05xx`) ⇒ `max(3, 5) + 1 = 06` ⇒ **`601`** (VD-42). Không hardcode
 /// `601`; thêm sổ mới thì số tự nhảy.
 pub fn next_block() -> u16 {
@@ -418,6 +451,23 @@ mod tests {
     }
 
     #[test]
+    fn so_runtime_05xx_khoa_theo_vd42() {
+        let ids: Vec<u16> = RUNTIME_CODES.iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec![501, 502, 503], "sổ runtime đúng thứ tự tăng dần");
+        for c in RUNTIME_CODES.iter() {
+            assert_eq!(lookup(c.id).map(|x| x.short), Some(c.short));
+            assert_eq!(lookup_str(c.short).map(|x| x.id), Some(c.id));
+            for lang in [Lang::Vi, Lang::En, Lang::Ja] {
+                assert!(!c.message(lang).is_empty(), "{} thiếu {:?}", c.short, lang);
+            }
+        }
+        assert!(
+            RUNTIME_CODES[2].message_vi.contains("ngoài phạm vi"),
+            "VS0503 nói 'ngoài phạm vi'"
+        );
+    }
+
+    #[test]
     fn so_kieu_04xx_khoa_theo_vd42() {
         let ids: Vec<u16> = TYPE_CODES.iter().map(|c| c.id).collect();
         assert_eq!(
@@ -449,11 +499,14 @@ mod tests {
         assert_eq!(ids, vec![301, 302]);
         assert_eq!(NAME_CODES[0].short, "VS0301");
         assert_eq!(NAME_CODES[1].short, "VS0302");
-        // Bốn sổ đã cấp: 10 + 2 + 2 + 4 mã; `05xx` **chưa** cấp ở ST-12.
-        assert_eq!(all_codes().count(), 18);
-        assert_eq!(BOOKS.len(), 4);
-        for id in [501u16, 502, 503] {
-            assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-12 (ST-13)");
+        // Năm sổ đã cấp: 10 + 2 + 2 + 4 + 3 mã (ST-13 cấp `05xx`).
+        assert_eq!(all_codes().count(), 21);
+        assert_eq!(BOOKS.len(), 5);
+        for id in [601u16, 602] {
+            assert!(
+                lookup(id).is_none(),
+                "mã {id} chưa cấp ở ST-13 (khối `06xx`)"
+            );
         }
         // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx/05xx.
         assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5]);
