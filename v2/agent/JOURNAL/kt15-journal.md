@@ -1,6 +1,7 @@
 # KT-15 — `with_many_mut` + alias từng cặp + fuzz (2026-11-13)
 
 - **HEAD vào**: `d391628` (KT-14 DONE, KT-15 READY); YC-18 đã chốt **D2-48 (a)**.
+- **Commit**: `c0d3163` — đã push `origin/main` (sau khi reviewer DRIFT nhẹ và đã sửa đủ).
 - **Phạm vi**: bảng tĩnh `kind → constructor` trong `vifast-objmem`, `with_many_mut` thật
   (kiểm alias **từng cặp** trước khi tạo ref), trần `N ≤ 8` **lúc biên dịch**, ma trận
   alias, fuzz tất định, Miri toàn bộ test alias + bản rút gọn fuzz.
