@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Golden token — SPEC-lex §8 (nguồn kỳ vọng, không được sửa để test xanh).
+// Định dạng: <nguồn> => <kind>(<payload>) ...  |  !VSxxxx (chẩn đoán phải có mặt).
+// Escape của tệp .tok: \\ = một dấu chéo ngược thật, \n = LF, \t = TAB, \r = CR.
+//   Nguồn có dấu chéo ngược thật PHẢI viết \\ (xem #22, #23, #27, #28).
+// So sánh: bỏ EOF luôn; bỏ các DEDENT do EOF sinh (SPEC-lex §4.6) trừ khi kỳ vọng có DEDENT.
+// Một dòng `!VSxxxx` không kèm token = chỉ kiểm chẩn đoán (token không đối chiếu).
+// Dòng `// §8 #N` ngay trên mỗi ca = số thứ tự ca trong SPEC-lex §8 (1..60).
+// Chế độ LỆNH (`.vish`/REPL) — 12 ca #44..#55, đúng thứ tự SPEC-lex §8.
+// §8 #44
+ls -5 => WORD(ls) WORD(-5)
+// §8 #45
+ls -la => WORD(ls) WORD(-la)
+// §8 #46
+ls -- -x => WORD(ls) WORD(--) WORD(-x)
+// §8 #47
+echo "a b" => WORD(echo) STRING(a b)
+// §8 #48
+echo 'a b' => WORD(echo) RAW_STRING(a b)
+// §8 #49
+$HOME => DOLLAR IDENT(HOME)
+// §8 #50
+$env.PATH => DOLLAR env . IDENT(PATH)
+// §8 #51
+a;b => WORD(a) PUNCT(;) WORD(b)
+// §8 #52
+a & => WORD(a) PUNCT(&)
+// §8 #53
+a > b => WORD(a) PUNCT(>) WORD(b)
+// §8 #54
+https://x/y#frag => WORD(https://x/y#frag)
+// §8 #55
+^git => CARET WORD(git)

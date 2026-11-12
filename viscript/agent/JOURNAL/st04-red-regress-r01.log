@@ -1,0 +1,40 @@
+=== ST-04 R-01: hồi quy fuzz — test ĐỎ với code CŨ (bump_char chưa đếm dòng khi gặp \n) ===
+thời điểm: 2026-11-12T14:41:59Z
+nguồn: vis-lex-fuzz --seed 7, ca 161 (2026-11-12) — thu nhỏ còn 2 ca trong tests/regress.rs
+sha256: tests/regress.rs=3b0fecfd4dec98483b3339a43b99ae63e409a5a834f33f097db1be132d59b60a
+lệnh: cargo test -p vis-syntax --test regress
+
+   Compiling vis-syntax v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-syntax)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.38s
+     Running tests/regress.rs (target/debug/deps/regress-5db6df6b28e4bdcc)
+
+running 2 tests
+test r01_dong_dem_sau_newline_trong_chuoi_va_noi_suy ... FAILED
+test r01b_chuoi_tho_nhieu_dong ... FAILED
+
+failures:
+
+---- r01_dong_dem_sau_newline_trong_chuoi_va_noi_suy stdout ----
+
+thread 'r01_dong_dem_sau_newline_trong_chuoi_va_noi_suy' (36627121) panicked at crates/vis-syntax/tests/regress.rs:25:5:
+assertion `left == right` failed
+  left: ["vị trí lệch tại Span { start: 9, end: 10 }: khai 1:10 thật 2:5", "vị trí lệch tại Span { start: 10, end: 11 }: khai 2:1 thật 3:1", "vị trí lệch tại Span { start: 11, end: 12 }: khai 2:2 thật 3:2", "vị trí lệch tại Span { start: 12, end: 12 }: khai 3:1 thật 4:1"]
+ right: []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- r01b_chuoi_tho_nhieu_dong stdout ----
+
+thread 'r01b_chuoi_tho_nhieu_dong' (36627122) panicked at crates/vis-syntax/tests/regress.rs:42:5:
+assertion `left == right` failed
+  left: ["vị trí lệch tại Span { start: 10, end: 11 }: khai 1:11 thật 2:5", "vị trí lệch tại Span { start: 11, end: 12 }: khai 2:1 thật 3:1", "vị trí lệch tại Span { start: 12, end: 13 }: khai 2:2 thật 3:2", "vị trí lệch tại Span { start: 13, end: 13 }: khai 3:1 thật 4:1"]
+ right: []
+
+
+failures:
+    r01_dong_dem_sau_newline_trong_chuoi_va_noi_suy
+    r01b_chuoi_tho_nhieu_dong
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-syntax --test regress`
+exit=101

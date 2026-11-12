@@ -1,0 +1,291 @@
+=== ST-04 D2-05: 60 golden token ĐỎ TRƯỚC khi hiện thực lexer ===
+thời điểm chụp: 2026-11-12T15:01:15Z
+cách chụp: tạm thay thân lex() bằng stub trả danh sách token rỗng (đúng khung ban đầu),
+           giữ NGUYÊN harness cuối (đã bỏ Item::Text ở review vòng 3) để số dòng trong log khớp byte-for-byte với tệp đã commit.
+sha256 harness: tests/golden.rs=8bc8258f59b26c3c2ebdbda59c83437a4fd225e7de21f9e1c2351823ae711550
+                tests/lex/script.tok=379c1d31f91287153e6a035fb484ce2f981baa40cfc6d4581e46a2769d896d0b
+                tests/lex/cmd.tok=97c198a7934ad866a075e7d4cc191f075b811514b85cd2733348a6efb872d5d6
+sha256 src/lex/mod.rs (bản thật, đã backup /tmp/keep-mod.rs)=947f2ffc0b707097885ef0902d2fa6ed42c52783279c1494c5913c2d8e1d85be
+lệnh: cargo test -p vis-syntax --test golden -- --nocapture
+
+   Compiling vis-syntax v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-syntax)
+warning: struct `Lexer` is never constructed
+  --> crates/vis-syntax/src/lex/mod.rs:90:8
+   |
+90 | struct Lexer<'a> {
+   |        ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple associated items are never used
+   --> crates/vis-syntax/src/lex/mod.rs:115:8
+    |
+114 | impl<'a> Lexer<'a> {
+    | ------------------ associated items in this implementation
+115 |     fn new(src: &'a str, mode: Mode) -> Self {
+    |        ^^^
+...
+136 |     fn rest(&self) -> &'a str {
+    |        ^^^^
+...
+140 |     fn byte(&self) -> Option<u8> {
+    |        ^^^^
+...
+144 |     fn peek(&self, n: usize) -> Option<u8> {
+    |        ^^^^
+...
+148 |     fn starts_with(&self, s: &str) -> bool {
+    |        ^^^^^^^^^^^
+...
+152 |     fn cur_char(&self) -> Option<char> {
+    |        ^^^^^^^^
+...
+156 |     fn bump_ascii(&mut self) {
+    |        ^^^^^^^^^^
+...
+163 |     fn bump_char(&mut self) {
+    |        ^^^^^^^^^
+...
+178 |     fn line_col_at(&self, offset: usize) -> (u32, u32) {
+    |        ^^^^^^^^^^^
+...
+196 |     fn push_at(&mut self, kind: Kind, start: usize, line: u32, col: u32) {
+    |        ^^^^^^^
+...
+220 |     fn push_zero(&mut self, kind: Kind) {
+    |        ^^^^^^^^^
+...
+231 |     fn note_stage(&mut self, kind: Kind, text: &str) {
+    |        ^^^^^^^^^^
+...
+242 |     fn error(&mut self, id: u16, span: Span, line: u32, col: u32) {
+    |        ^^^^^
+...
+254 |     fn error_at(&mut self, id: u16, offset: usize) {
+    |        ^^^^^^^^
+...
+261 |     fn run(&mut self) {
+    |        ^^^
+...
+300 |     fn skip_inline_ws(&mut self) {
+    |        ^^^^^^^^^^^^^^
+...
+320 |     fn begin_line(&mut self) {
+    |        ^^^^^^^^^^
+...
+337 |     fn measure_indent(&mut self) -> usize {
+    |        ^^^^^^^^^^^^^^
+...
+359 |     fn apply_indent(&mut self, indent: usize, start: usize, line: u32, col: u32) {
+    |        ^^^^^^^^^^^^
+...
+391 |     fn finish_newline(&mut self, start: usize, line: u32, col: u32) {
+    |        ^^^^^^^^^^^^^^
+...
+417 |     fn peek_join_next(&self) -> bool {
+    |        ^^^^^^^^^^^^^^
+...
+426 |     fn finish(&mut self) {
+    |        ^^^^^^
+...
+438 |     fn token_script(&mut self) {
+    |        ^^^^^^^^^^^^
+...
+463 |     fn is_ident_start(&self) -> bool {
+    |        ^^^^^^^^^^^^^^
+...
+470 |     fn scan_ident(&mut self) {
+    |        ^^^^^^^^^^
+...
+497 |     fn scan_comment(&mut self) {
+    |        ^^^^^^^^^^^^
+...
+516 |     fn scan_char(&mut self) {
+    |        ^^^^^^^^^
+...
+540 |     fn scan_punct(&mut self) {
+    |        ^^^^^^^^^^
+...
+561 |     fn scan_number(&mut self) {
+    |        ^^^^^^^^^^^
+...
+664 |     fn scan_exponent(&mut self) -> bool {
+    |        ^^^^^^^^^^^^^
+...
+688 |     fn scan_quoted(&mut self, kind: Kind) {
+    |        ^^^^^^^^^^^
+...
+757 |     fn skip_interpolation(&mut self) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+787 |     fn token_cmd(&mut self) {
+    |        ^^^^^^^^^
+...
+812 |     fn is_cmd_metachar(c: char) -> bool {
+    |        ^^^^^^^^^^^^^^^
+...
+836 |     fn scan_word(&mut self) {
+    |        ^^^^^^^^^
+...
+853 |     fn scan_dollar(&mut self) {
+    |        ^^^^^^^^^^^
+...
+889 |     fn scan_caret(&mut self) {
+    |        ^^^^^^^^^^
+...
+903 |     fn scan_cmd_raw_string(&mut self) {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `scan_size_suffix` is never used
+   --> crates/vis-syntax/src/lex/mod.rs:929:4
+    |
+929 | fn scan_size_suffix(s: &str) -> Option<usize> {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: function `scan_duration_suffix` is never used
+   --> crates/vis-syntax/src/lex/mod.rs:938:4
+    |
+938 | fn scan_duration_suffix(s: &str) -> Option<usize> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: `vis-syntax` (lib) generated 4 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.21s
+     Running tests/golden.rs (target/debug/deps/golden-f0f0d8ac1d3b8dc2)
+
+running 1 test
+FAIL script.tok:11 (§8 #1) nguồn="42"
+     số token: mong 1 [INT(42)], thật 0 []
+FAIL script.tok:13 (§8 #2) nguồn="1_000_000"
+     số token: mong 1 [INT(1000000)], thật 0 []
+FAIL script.tok:15 (§8 #3) nguồn="0xff"
+     số token: mong 1 [INT(255)], thật 0 []
+FAIL script.tok:17 (§8 #4) nguồn="0b101"
+     số token: mong 1 [INT(5)], thật 0 []
+FAIL script.tok:19 (§8 #5) nguồn="0b"
+     số token: mong 1 [SIZE(0,b)], thật 0 []
+FAIL script.tok:21 (§8 #6) nguồn="1."
+     chẩn đoán: mong ["VS0104"], thật []
+FAIL script.tok:23 (§8 #7) nguồn="3.14"
+     số token: mong 1 [FLOAT(3.14)], thật 0 []
+FAIL script.tok:25 (§8 #8) nguồn="1e-9"
+     số token: mong 1 [FLOAT(1e-9)], thật 0 []
+FAIL script.tok:27 (§8 #9) nguồn="0..10"
+     số token: mong 3 [INT(0) .. INT(10)], thật 0 []
+FAIL script.tok:29 (§8 #10) nguồn="0..=10"
+     số token: mong 3 [INT(0) ..= INT(10)], thật 0 []
+FAIL script.tok:31 (§8 #11) nguồn="1.2..3.4"
+     số token: mong 3 [FLOAT(1.2) .. FLOAT(3.4)], thật 0 []
+FAIL script.tok:33 (§8 #12) nguồn="50pct"
+     số token: mong 1 [PERCENT(50)], thật 0 []
+FAIL script.tok:35 (§8 #13) nguồn="12.5pct"
+     số token: mong 1 [PERCENT(12.5)], thật 0 []
+FAIL script.tok:37 (§8 #14) nguồn="50 % 3"
+     số token: mong 3 [INT(50) PUNCT(%) INT(3)], thật 0 []
+FAIL script.tok:39 (§8 #15) nguồn="50%"
+     số token: mong 2 [INT(50) PUNCT(%)], thật 0 []
+FAIL script.tok:41 (§8 #16) nguồn="5kb"
+     số token: mong 1 [SIZE(5,kb)], thật 0 []
+FAIL script.tok:43 (§8 #17) nguồn="5kib"
+     số token: mong 1 [SIZE(5,kib)], thật 0 []
+FAIL script.tok:45 (§8 #18) nguồn="5mib"
+     số token: mong 1 [SIZE(5,mib)], thật 0 []
+FAIL script.tok:47 (§8 #19) nguồn="2h30m"
+     số token: mong 1 [DURATION(2h30m)], thật 0 []
+FAIL script.tok:49 (§8 #20) nguồn="250ms"
+     số token: mong 1 [DURATION(250ms)], thật 0 []
+FAIL script.tok:51 (§8 #21) nguồn="1d"
+     số token: mong 1 [DURATION(1d)], thật 0 []
+FAIL script.tok:54 (§8 #22) nguồn="\"a\\nb\""
+     số token: mong 1 [STRING(a,b)], thật 0 []
+FAIL script.tok:57 (§8 #23) nguồn="r\"C:\\raw\""
+     số token: mong 1 [RAW_STRING], thật 0 []
+FAIL script.tok:59 (§8 #24) nguồn="\"a{x:>8}b\""
+     số token: mong 1 [STRING(parts)], thật 0 []
+FAIL script.tok:61 (§8 #25) nguồn="\"{{\""
+     số token: mong 1 [STRING({)], thật 0 []
+FAIL script.tok:64 (§8 #26) nguồn="\"{x\""
+     chẩn đoán: mong ["VS0108"], thật []
+FAIL script.tok:67 (§8 #27) nguồn="\"\"\"a\\nb\"\"\""
+     số token: mong 1 [MULTI_STRING], thật 0 []
+FAIL script.tok:70 (§8 #28) nguồn="b\"\\x00\\x01\""
+     số token: mong 1 [BYTES], thật 0 []
+FAIL script.tok:72 (§8 #29) nguồn="b\"ố\""
+     chẩn đoán: mong ["VS0106"], thật []
+FAIL script.tok:74 (§8 #30) nguồn="p\"./a.txt\""
+     số token: mong 1 [PATH], thật 0 []
+FAIL script.tok:76 (§8 #31) nguồn="'ố'"
+     số token: mong 1 [CHAR(ố)], thật 0 []
+FAIL script.tok:79 (§8 #32) nguồn="'o\u{302}\u{301}'"
+     số token: mong 1 [CHAR(ố)], thật 0 []
+FAIL script.tok:81 (§8 #33) nguồn="'ab'"
+     chẩn đoán: mong ["VS0105"], thật []
+FAIL script.tok:83 (§8 #34) nguồn="set{1,2}"
+     số token: mong 5 [SET_LBRACE INT(1) PUNCT(,) INT(2) PUNCT(})], thật 0 []
+FAIL script.tok:85 (§8 #35) nguồn="set {1}"
+     số token: mong 4 [IDENT(set) PUNCT({) INT(1) PUNCT(})], thật 0 []
+FAIL script.tok:87 (§8 #36) nguồn="x??y"
+     số token: mong 3 [IDENT(x) ?? IDENT(y)], thật 0 []
+FAIL script.tok:89 (§8 #37) nguồn="x?.y"
+     số token: mong 3 [IDENT(x) ?. IDENT(y)], thật 0 []
+FAIL script.tok:91 (§8 #38) nguồn="f()?"
+     số token: mong 4 [IDENT(f) ( ) ?], thật 0 []
+FAIL script.tok:93 (§8 #39) nguồn="a|b"
+     số token: mong 3 [IDENT(a) | IDENT(b)], thật 0 []
+FAIL script.tok:95 (§8 #40) nguồn="a|>b"
+     số token: mong 3 [IDENT(a) |> IDENT(b)], thật 0 []
+FAIL script.tok:97 (§8 #41) nguồn="2**3"
+     số token: mong 3 [INT(2) ** INT(3)], thật 0 []
+FAIL script.tok:99 (§8 #42) nguồn="# c"
+     số token: mong 1 [COMMENT], thật 0 []
+FAIL script.tok:101 (§8 #43) nguồn="## doc"
+     số token: mong 1 [DOC_COMMENT], thật 0 []
+FAIL script.tok:104 (§8 #56) nguồn="\tif"
+     chẩn đoán: mong ["VS0107"], thật []
+     số token: mong 2 [INDENT KW(if)], thật 0 []
+FAIL script.tok:106 (§8 #57) nguồn="if x:\n    y\n  z"
+     chẩn đoán: mong ["VS0109"], thật []
+FAIL script.tok:109 (§8 #58) nguồn="(1 +\n 2)"
+     số token: mong 5 [( INT(1) + INT(2) )], thật 0 []
+FAIL script.tok:111 (§8 #59) nguồn="x |> f"
+     số token: mong 3 [IDENT(x) |> IDENT(f)], thật 0 []
+FAIL script.tok:113 (§8 #60) nguồn="1_"
+     chẩn đoán: mong ["VS0104"], thật []
+FAIL cmd.tok:11 (§8 #44) nguồn="ls -5"
+     số token: mong 2 [WORD(ls) WORD(-5)], thật 0 []
+FAIL cmd.tok:13 (§8 #45) nguồn="ls -la"
+     số token: mong 2 [WORD(ls) WORD(-la)], thật 0 []
+FAIL cmd.tok:15 (§8 #46) nguồn="ls -- -x"
+     số token: mong 3 [WORD(ls) WORD(--) WORD(-x)], thật 0 []
+FAIL cmd.tok:17 (§8 #47) nguồn="echo \"a b\""
+     số token: mong 2 [WORD(echo) STRING(a b)], thật 0 []
+FAIL cmd.tok:19 (§8 #48) nguồn="echo 'a b'"
+     số token: mong 2 [WORD(echo) RAW_STRING(a b)], thật 0 []
+FAIL cmd.tok:21 (§8 #49) nguồn="$HOME"
+     số token: mong 2 [DOLLAR IDENT(HOME)], thật 0 []
+FAIL cmd.tok:23 (§8 #50) nguồn="$env.PATH"
+     số token: mong 4 [DOLLAR IDENT(env) . IDENT(PATH)], thật 0 []
+FAIL cmd.tok:25 (§8 #51) nguồn="a;b"
+     số token: mong 3 [WORD(a) PUNCT(;) WORD(b)], thật 0 []
+FAIL cmd.tok:27 (§8 #52) nguồn="a &"
+     số token: mong 2 [WORD(a) PUNCT(&)], thật 0 []
+FAIL cmd.tok:29 (§8 #53) nguồn="a > b"
+     số token: mong 3 [WORD(a) PUNCT(>) WORD(b)], thật 0 []
+FAIL cmd.tok:31 (§8 #54) nguồn="https://x/y#frag"
+     số token: mong 1 [WORD(https://x/y#frag)], thật 0 []
+FAIL cmd.tok:33 (§8 #55) nguồn="^git"
+     số token: mong 2 [CARET WORD(git)], thật 0 []
+
+thread 'golden_token_theo_spec_lex_8' (36662436) panicked at crates/vis-syntax/tests/golden.rs:395:5:
+golden: 60 ca ĐỎ / 60 ca chạy (0 token)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test golden_token_theo_spec_lex_8 ... FAILED
+
+failures:
+
+failures:
+    golden_token_theo_spec_lex_8
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-syntax --test golden`
+exit=101

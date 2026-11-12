@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# `vis-syntax` — lexer + parser + CST + CmdCST (tài liệu thiết kế §14.2). ST-04 mới dựng lexer.
+[package]
+name = "vis-syntax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "vis_syntax"
+path = "src/lib.rs"
+
+# Hai phụ thuộc Unicode, cả hai nằm trong allowlist giấy phép QD §9.3:
+#   unicode-normalization (MIT OR Apache-2.0) AND Unicode-3.0 → `nfc()` cho SPEC-lex §0.1 / VD-11
+#   unicode-ident         (MIT OR Apache-2.0) AND Unicode-3.0 → UAX #31 cho `IDENT` (SPEC-lex §1)
+# Kéo theo `tinyvec` (Zlib OR Apache-2.0 OR MIT) — cũng trong allowlist.
+[dependencies]
+vis-diag = { path = "../vis-diag" }
+unicode-ident = "1"
+unicode-normalization = "0.1"
+
+# Công cụ fuzz 10 phút của ST-04 (QD §7.5). Chạy tay, không phải một phần `gate --fast`.
+[[bin]]
+name = "vis-lex-fuzz"
+path = "src/bin/vis_lex_fuzz.rs"

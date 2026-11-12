@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Golden token — SPEC-lex §8 (nguồn kỳ vọng, không được sửa để test xanh).
+// Định dạng: <nguồn> => <kind>(<payload>) ...  |  !VSxxxx (chẩn đoán phải có mặt).
+// Escape của tệp .tok: \\ = một dấu chéo ngược thật, \n = LF, \t = TAB, \r = CR.
+//   Nguồn có dấu chéo ngược thật PHẢI viết \\ (xem #22, #23, #27, #28).
+// So sánh: bỏ EOF luôn; bỏ các DEDENT do EOF sinh (SPEC-lex §4.6) trừ khi kỳ vọng có DEDENT.
+// Một dòng `!VSxxxx` không kèm token = chỉ kiểm chẩn đoán (token không đối chiếu).
+// Dòng `// §8 #N` ngay trên mỗi ca = số thứ tự ca trong SPEC-lex §8 (1..60).
+// Chế độ SCRIPT (`.vis`) — 48 ca: #1..#43 ở trên, #56..#60 ở cuối đúng thứ tự SPEC-lex §8.
+// §8 #1
+42 => INT(42)
+// §8 #2
+1_000_000 => INT(1000000)
+// §8 #3
+0xff => INT(255)
+// §8 #4
+0b101 => INT(5)
+// §8 #5
+0b => SIZE(0,b)
+// §8 #6
+1. => !VS0104
+// §8 #7
+3.14 => FLOAT(3.14)
+// §8 #8
+1e-9 => FLOAT(1e-9)
+// §8 #9
+0..10 => INT(0) RANGE INT(10)
+// §8 #10
+0..=10 => INT(0) RANGE_EQ INT(10)
+// §8 #11
+1.2..3.4 => FLOAT(1.2) RANGE FLOAT(3.4)
+// §8 #12
+50pct => PERCENT(50)
+// §8 #13
+12.5pct => PERCENT(12.5)
+// §8 #14
+50 % 3 => INT(50) PUNCT(%) INT(3)
+// §8 #15
+50% => INT(50) PUNCT(%)
+// §8 #16
+5kb => SIZE(5,kb)
+// §8 #17
+5kib => SIZE(5,kib)
+// §8 #18
+5mib => SIZE(5,mib)
+// §8 #19
+2h30m => DURATION(2h30m)
+// §8 #20
+250ms => DURATION(250ms)
+// §8 #21
+1d => DURATION(1d)
+//   SPEC §8 gốc: "a\nb" => STRING(a,b) — trong tệp .tok, dấu chéo ngược thật viết \\
+// §8 #22
+"a\\nb" => STRING(a,b)
+//   SPEC §8 gốc: r"C:\raw" => RAW_STRING
+// §8 #23
+r"C:\\raw" => RAW_STRING
+// §8 #24
+"a{x:>8}b" => STRING(parts)
+// §8 #25
+"{{" => STRING({)
+//   #26 giữ nguyên văn §8 dòng 146: "{x" => !VS0108 (nội suy `{` chỉ có nghĩa trong chuỗi, §3)
+// §8 #26
+"{x" => !VS0108
+//   SPEC §8 gốc: """a\nb""" => MULTI_STRING
+// §8 #27
+"""a\\nb""" => MULTI_STRING
+//   SPEC §8 gốc: b"\x00\x01" => BYTES
+// §8 #28
+b"\\x00\\x01" => BYTES
+// §8 #29
+b"ố" => !VS0106
+// §8 #30
+p"./a.txt" => PATH
+// §8 #31
+'ố' => CHAR(ố)
+//   NFD: o + U+0302 + U+0301 — sau NFC phải thành MỘT scalar U+1ED1
+// §8 #32
+'ố' => CHAR(ố)
+// §8 #33
+'ab' => !VS0105
+// §8 #34
+set{1,2} => SET_LBRACE INT(1) PUNCT(,) INT(2) PUNCT(})
+// §8 #35
+set {1} => IDENT(set) PUNCT({) INT(1) PUNCT(})
+// §8 #36
+x??y => IDENT(x) ?? IDENT(y)
+// §8 #37
+x?.y => IDENT(x) ?. IDENT(y)
+// §8 #38
+f()? => IDENT(f) ( ) ?
+// §8 #39
+a|b => IDENT(a) | IDENT(b)
+// §8 #40
+a|>b => IDENT(a) |> IDENT(b)
+// §8 #41
+2**3 => INT(2) ** INT(3)
+// §8 #42
+# c => COMMENT
+// §8 #43
+## doc => DOC_COMMENT
+//   SPEC §8 gốc: \tif => !VS0107 INDENT — danh sách đầy đủ gồm cả KW(if) (ví dụ §8 lược đuôi)
+// §8 #56
+\tif => !VS0107 INDENT KW(if)
+// §8 #57
+if x:\n    y\n  z => !VS0109
+//   SPEC §8 gốc: (1 +\n 2) => INT + INT — danh sách đầy đủ gồm cả ngoặc (ví dụ §8 lược)
+// §8 #58
+(1 +\n 2) => ( INT(1) + INT(2) )
+// §8 #59
+x |> f => IDENT(x) |> IDENT(f)
+// §8 #60
+1_ => !VS0104

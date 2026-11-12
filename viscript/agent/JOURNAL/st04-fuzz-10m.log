@@ -1,0 +1,49 @@
+=== vis-lex-fuzz 10 phút — ST-04 — bản CUỐI (sau review vòng 2) — 2026-11-12T14:42:45Z ===
+lệnh: ./target/release/vis-lex-fuzz --seconds 600 --seed 20261112
+sha256 src/lex/mod.rs=947f2ffc0b707097885ef0902d2fa6ed42c52783279c1494c5913c2d8e1d85be
+       src/lex/lit.rs=817813a3ae34a114bc580654a46b879bc15c7e71263fc0f61ecb484f2d5f03da
+vis-lex-fuzz: seed=20261112 thời lượng=600s chế độ=script+lệnh kiểm: span/vị trí/NFC idempotent/INDENT-DEDENT/mã chẩn đoán
+     15s  ca=480768  token=8660225  32034 ca/s
+     30s  ca=933376  token=16815154  31104 ca/s
+     45s  ca=1404416  token=25319471  31198 ca/s
+     60s  ca=1867520  token=33660782  31114 ca/s
+     75s  ca=2333696  token=42065096  31104 ca/s
+     90s  ca=2803712  token=50540904  31140 ca/s
+    105s  ca=3276288  token=59056238  31192 ca/s
+    120s  ca=3760896  token=67790845  31330 ca/s
+    135s  ca=4231168  token=76260166  31332 ca/s
+    150s  ca=4713984  token=84953740  31416 ca/s
+    165s  ca=5190912  token=93555115  31449 ca/s
+    180s  ca=5674496  token=102262697  31514 ca/s
+    195s  ca=6151936  token=110868476  31538 ca/s
+    210s  ca=6633984  token=119563843  31581 ca/s
+    225s  ca=7103232  token=128012645  31560 ca/s
+    240s  ca=7584512  token=136692337  31593 ca/s
+    255s  ca=8054528  token=145163130  31577 ca/s
+    270s  ca=8534272  token=153806283  31599 ca/s
+    285s  ca=9005312  token=162293120  31588 ca/s
+    300s  ca=9480192  token=170849296  31592 ca/s
+    315s  ca=9892608  token=178280943  31396 ca/s
+    330s  ca=10358784  token=186689050  31381 ca/s
+    345s  ca=10831104  token=195196227  31386 ca/s
+    360s  ca=11303424  token=203719709  31389 ca/s
+    375s  ca=11768576  token=212100587  31374 ca/s
+    390s  ca=12234240  token=220497527  31361 ca/s
+    405s  ca=12693504  token=228786547  31333 ca/s
+    420s  ca=13084160  token=235827937  31144 ca/s
+    435s  ca=13464576  token=242683250  30944 ca/s
+    450s  ca=13935872  token=251174638  30960 ca/s
+    465s  ca=14368768  token=258973721  30892 ca/s
+    480s  ca=14853632  token=267707310  30937 ca/s
+    495s  ca=15336448  token=276415265  30974 ca/s
+    510s  ca=15820032  token=285121409  31011 ca/s
+    525s  ca=16276224  token=293337475  30993 ca/s
+    540s  ca=16757760  token=302006702  31024 ca/s
+    555s  ca=17233664  token=310586775  31043 ca/s
+    570s  ca=17713664  token=319232543  31068 ca/s
+    585s  ca=18200064  token=328002031  31102 ca/s
+vis-lex-fuzz: XONG seed=20261112 ca=18661376 token=336316250 31102 ca/s trong 600.0s
+phủ mã lỗi: VS0101=7327614 VS0102=573653 VS0103=31744230 VS0104=225213 VS0105=3277700 VS0106=18424 VS0107=5805955 VS0108=647328 VS0109=75323 VS0110=2462305
+phủ kind: 25/25 — BYTES CARET CHAR COMMENT DEDENT DOC_COMMENT DOLLAR DURATION EOF FLOAT IDENT INDENT INT KW MULTI_STRING NEWLINE PATH PERCENT PUNCT RAW_MULTI RAW_STRING SET_LBRACE SIZE STRING WORD
+exit=0
+=== kết thúc 2026-11-12T14:52:46Z ===
