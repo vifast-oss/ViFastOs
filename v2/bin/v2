@@ -214,6 +214,13 @@ do_check() {
             echo "--- scn fixtures: FAIL" >&2
             fails=$((fails + 1))
         fi
+        echo "--- báo cáo R1-v2 (Khối E)"
+        if (cd "$REPO_ROOT" && "$PY" v2/test/report/check_report.py --n 1); then
+            echo "--- báo cáo: OK"
+        else
+            echo "--- báo cáo: FAIL" >&2
+            fails=$((fails + 1))
+        fi
         # KT-04b: object reserved — nay nằm trong spec/abi.toml (D2-32)
         if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; then
             echo "--- abi reserved: OK"

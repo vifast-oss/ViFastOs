@@ -1,0 +1,35 @@
+{
+  "project": "v2",
+  "round": 1,
+  "head": "bcc84bb",
+  "build_id": "—",
+  "tasks": [
+    {"id": "KT-01", "status": "DONE", "commits": ["19659ee"], "gates": ["fast"]},
+    {"id": "KT-02", "status": "DONE", "commits": ["b4a8693", "054c3e2"], "gates": ["fast"]},
+    {"id": "KT-03", "status": "DONE", "commits": ["3222602", "d4d6bf2"], "gates": ["fast"]},
+    {"id": "KT-07", "status": "DONE", "commits": ["bf61901", "e01a81f"], "gates": ["fast", "boot50"]},
+    {"id": "KT-04a", "status": "DONE", "commits": ["1766145", "a8bb272"], "gates": ["fast"], "queue": "READY"},
+    {"id": "KT-04b", "status": "DONE", "commits": ["1788b86", "5ba7e80"], "gates": ["fast"], "queue": "READY"},
+    {"id": "KT-04c", "status": "DONE", "commits": ["9552832", "123fe1c", "5454834", "476d405"], "gates": ["fast"], "queue": "READY"},
+    {"id": "KT-04d", "status": "REVIEW", "commits": ["e6edf0f"], "gates": [], "note": "gói duyệt bản 2 đã gửi; chờ dòng APPROVED"},
+    {"id": "KT-T26", "status": "BLOCKED", "commits": ["02e0a96"], "gates": ["fast"], "note": "đèn host DONE; tái hiện đầy đủ BLOCKED (YC-06)"},
+    {"id": "KT-06", "status": "DONE", "commits": ["decc619", "33dcf8d"], "gates": ["fast"]},
+    {"id": "KT-08", "status": "DONE", "commits": ["cf433b7", "bcc84bb"], "gates": ["fast", "l1-1000"]},
+    {"id": "KT-R1", "status": "REVIEW", "commits": [], "gates": ["fast"], "note": "báo cáo này"}
+  ],
+  "gates": {"fast": "PASS", "full": "—", "nightly": "—"},
+  "sim": {"seeds": 1000, "failures": 0},
+  "coverage": {"transitions": "—", "error_paths": "—"},
+  "mutants": {"killed": 0, "alive": 0},
+  "perf": {},
+  "blocked": [
+    {"id": "YC-06", "question": "T26: crate vifast-fs không có VFS/smp — (a) KT-T26 = đèn + ca âm, hay (b) chuyển tái hiện sang KT-08/K3.5?"},
+    {"id": "YC-11", "question": "Lật QUEUE:105/150? Sửa Khối A bước 7? Agent 0 commit comment spec? Thêm cargo-deny?"},
+    {"id": "YC-12", "question": "Trace: (a) KT-08 bỏ dump text cho KT-12 sở hữu định dạng, hay (b) KT-12 nhận text hiện tại làm legacy?"},
+    {"id": "KT-04d", "question": "Chờ dòng APPROVED <ngày> Agent 0 trong QUEUE để mở KT-05"},
+    {"id": "KT-05", "question": "Chỉ mở bằng APPROVED thật (D2-34 không được ký)"},
+    {"id": "KT-09", "question": "Chờ KT-08 (DONE) + KT-05 (APPROVED)"},
+    {"id": "KT-10", "question": "Chờ KT-09"},
+    {"id": "KT-11", "question": "Chờ KT-10"}
+  ]
+}
