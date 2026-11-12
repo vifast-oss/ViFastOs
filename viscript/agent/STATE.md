@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
 ```
 HEAD          : xem `git log -1`
 BUILD_ID      : —
-Task          : ST-05 (parser + CST lossless) — xong kỹ thuật 2026-11-13, **đề nghị DONE** (chờ review độc lập + Agent 0 lật sổ)
-Bước          : 7/7
+Task          : ST-08 (runner `vis check` — TAP, chỉ kiểm cú pháp) — xong kỹ thuật 2026-11-13, **đề nghị DONE** (chờ review độc lập + Agent 0 lật sổ)
+Bước          : 6/6
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)` (2026-11-12T16:00:19Z, sau khi sửa review vòng 1–2; không retry; 55 test vis-syntax + 10 test cũ)
-Việc dở       : — (ST-05 chờ **review độc lập trên diff** rồi mới commit; ST-06/ST-07/ST-08 chờ ST-05 DONE)
+Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)` (2026-11-12T16:28:27Z, sau khi sửa review vòng 1; không retry; **78** test workspace: 16 vis-cli + 55 vis-syntax + 7 vis-diag)
+Việc dở       : — (ST-08 chờ **review độc lập trên diff**; ST-07 `vis-fmt` chờ Agent 0 giao)
 ```
 
 ## Kế hoạch ST-04 (lập 2026-11-12, trước khi viết test đỏ)
@@ -92,10 +92,38 @@ khối một dòng dừng ở `else`/`elif` cùng dòng; A.3 cho `with` lấy `e
 `+=` ⇒ parser nhận cặp **dính nhau** `+` `=` sau định danh; A.1 có `param := '...'` nhưng §1 không có token
 `...` — khối dùng nó đã loại trừ theo VD-36 nên **không** hỗ trợ. Không thêm cú pháp nào khác ngoài A.1/A.2.
 
+## Kế hoạch ST-08 (lập 2026-11-13, trước khi hiện thực)
+
+| Bước | Việc | Tệp sẽ chạm | Đo được bằng |
+|---|---|---|---|
+| 1 | Fixture tĩnh (3 tệp sạch, 2 lỗi cú pháp, 1 lỗi từ vựng, 1 `.vish`) + harness TAP **đỏ trước** | `test/check/*.vis(.vish)`, `crates/vis-cli/tests/check.rs` | log đỏ 8/8 `JOURNAL/st08-red-check.log` |
+| 2 | Hiện thực `vis check <tệp…>`: TAP 13, `ok`/`not ok` + **1** dòng `# VSxxxx <dòng>:<cột> <thông điệp>`, exit 0/1/2, `.vish` ⇒ `Bail out!` + 2 | `crates/vis-cli/src/main.rs`, `Cargo.toml`, `Cargo.lock` | 8 test xanh |
+| 3 | Lọc tầng theo **VD-38 mục 8** (lỗi từ vựng không bị VS0201 che) + escape ký tự điều khiển để TAP là **một dòng** | `src/main.rs` | `# VS0101` cho tệp lỗi chuỗi |
+| 4 | Test tài liệu: trích tự động 15 khối đủ thân (VD-36) vào thư mục tạm ⇒ tất cả `ok`, exit 0 | `tests/check.rs` | `1..15`, 15 ok |
+| 5 | `cargo fmt` + `clippy -D warnings` + `./vis-dev gate --fast` PASS, cập nhật STATE/JOURNAL, review độc lập rồi commit | — | dòng cuối cổng |
+| 6 | Commit `[ST-08]` (`git commit --only`) + push | `viscript/…` | `git log` |
+
+## ST-08 — kết quả (2026-11-12T16:10Z)
+
+| Mục DoD (QUEUE) | Bằng chứng đo được |
+|---|---|
+| **TAP** | mẫu thật: `TAP version 13` / `1..3` / `ok 1 - …` / `not ok 2 - …` + `# VS0201 3:8 …` / `not ok 3 - …` + `# VS0101 3:9 chuỗi chưa đóng`, exit 1 |
+| **Đỏ trước** (D2-05) | 8/8 ca ĐỎ khi CLI chưa có nhánh `check`: `JOURNAL/st08-red-check.log` (header: giờ + sha256 harness + 7 fixture + lệnh, `exit=101`) |
+| Chạy fixture | 3 tệp sạch ⇒ exit 0; 2 lỗi cú pháp + 1 lỗi từ vựng ⇒ exit 1, **mỗi tệp đúng 1** dòng `# VS…`; thứ tự tệp = thứ tự truyền vào |
+| `.vish` | `TAP version 13` + `Bail out! chế độ lệnh (.vish) thuộc ST-06 — chưa hỗ trợ`, **exit 2** (không im lặng bỏ qua) |
+| Mã thoát | 0 sạch / 1 có tệp hỏng (kể cả không đọc được tệp: `not ok` + `# không đọc được: …`) / 2 dùng sai (không tham số, cờ lạ — usage ra **stderr**) |
+| Fixture tài liệu | trích **tự động** 22 khối ```vis (loại 7 theo VD-36) ⇒ 15 tệp tạm, `1..15`, **15 ok**, exit 0 |
+| Cổng | `./vis-dev gate --fast: PASS` (**2026-11-12T16:28:27Z**, sau khi sửa review vòng 1; không retry); `cargo fmt` + `clippy -D warnings` sạch; **78** test workspace (16 vis-cli: **12 check** + 4 explain; 55 vis-syntax; 7 vis-diag) |
+
+**Ghi chú kỹ thuật:** `vis-cli` thêm phụ thuộc **path nội bộ** `vis-syntax` (không crate ngoài mới; `Cargo.lock` đổi).
+Chẩn đoán TAP là **một dòng** nên CLI escape `\n`/`\r`/`\t` trong message (thông điệp parser có thể chứa token
+NEWLINE thật) — **không** sửa parser (ST-05 đã DONE), chỉ sửa cách render của CLI.
+
 ## Lịch sử trạng thái (mới nhất ở trên)
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
-| 2026-11-12 | ST-05 | 7/7 | `xem git log` | — | `gate --fast` PASS | parser + CST lossless: 30/30 golden biểu thức (đỏ trước), fixture 15/15 khối đủ thân + 7 loại trừ (VD-36), lỗi đầu 1/tệp; 55 test; đề nghị **DONE** |
+| 2026-11-12 | ST-08 | 6/6 | `xem git log` | — | `gate --fast` PASS | `vis check` TAP: 3 sạch/2 lỗi cú pháp/1 lỗi từ vựng/1 `.vish`; exit 0/1/2; 15 khối tài liệu ok; 78 test workspace; đề nghị **DONE** |
+| 2026-11-12 | ST-05 | 7/7 | `49f2539` | — | `gate --fast` PASS | parser + CST lossless: 30/30 golden biểu thức (đỏ trước), 15/15 khối đủ thân + 7 loại trừ (VD-36); 55 test; **DONE** (đã push) |
 | 2026-11-12 | ST-04 | 8/8 | `663eacb` | — | `gate --fast` PASS | lexer `vis-syntax`: 60/60 golden (đỏ trước), fuzz 10 phút, NFC/NFD; 40 test; **DONE** (đã push) |
 | 2026-11-12 | — | khởi tạo | `ca2eaf5` | — | — | bàn giao vòng 1: 10 task, 3 READY (ST-01, ST-02b, ST-10), ST-02a DONE; ST-04 READY |

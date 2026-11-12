@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+let xs = [3, 1, 2] |> sort_by(x => x) |> collect()
+let cfg = load("a.json") else err:
+    default()

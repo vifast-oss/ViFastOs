@@ -1,0 +1,107 @@
+=== ST-08 D2-05: TAP của "vis check" ĐỎ TRƯỚC khi có runner ===
+thời điểm chụp: 2026-11-12T16:28:17Z
+cách chụp: khôi phục crates/vis-cli/src/main.rs về đúng bản HEAD (chỉ có "explain", CHƯA có nhánh
+           "check"), build rồi chạy harness cuối — binary không có "check" nên mọi ca rơi vào usage.
+           Sau khi chụp, main.rs được khôi phục từ backup /tmp/keep-main.rs (sha256 trước/sau trùng).
+sha256 harness: tests/check.rs=8523adb6c45fc64a8b9df485dc0f20e5c3a568d173ae3d60e72903beaa49334f
+sha256 fixture: test/check/bad_lex_chuoi.vis=7c49bc17e39c8c181c386547600c73413fdeb70a864d412490aac40b5b1cae1f
+sha256 fixture: test/check/bad_syntax_tham_so.vis=ea68b1ce41b79776795b721db7bbeded88a356f84a45d13921955d8102e02a44
+sha256 fixture: test/check/bad_syntax_thieu_ve.vis=8cfe25d9d866211979fc2277d15205703a73fb91b58deb3fe125926b10042a38
+sha256 fixture: test/check/ok_basic.vis=18995ceafa89207503b7e7dbfb9a3f791d02cf87d0da2a03689f8f757e3a6a02
+sha256 fixture: test/check/ok_match.vis=e3e46faa0f06da7babcdac3ac4766644090218fb3f74671be467e6ed13a348c8
+sha256 fixture: test/check/ok_pipeline.vis=783c5493f0b70c69ef4472f41bb19677876ea4db560bd76aef69acf6f12812e5
+sha256 fixture: test/check/cmd_mode.vish=0c864892e6501841f8642f8d60da51cf39207f9185352c7888ba97f3d86b9ca4
+lệnh: cargo test -p vis-cli --test check -- --nocapture
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/check.rs (target/debug/deps/check-8ce5e2d6cfd3e57b)
+
+running 12 tests
+
+thread 'thu_tu_tep_dung_theo_tham_so_truyen_vao' (36821889) panicked at crates/vis-cli/tests/check.rs:149:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'fixture_tai_lieu_15_khoi_deu_ok' (36821877) panicked at crates/vis-cli/tests/check.rs:276:5:
+assertion `left == right` failed: 15 khối tài liệu phải sạch cú pháp; stdout=
+
+  left: Some(2)
+ right: Some(0)
+
+thread 'mixed_lex_va_syntax_phai_bao_vs0101' (36821880) panicked at crates/vis-cli/tests/check.rs:307:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+
+thread 'thu_muc_tep_rong_va_non_utf8' (36821888) panicked at crates/vis-cli/tests/check.rs:402:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+
+thread 'duong_dan_tuong_doi_in_nguyen_van' (36821876) panicked at crates/vis-cli/tests/check.rs:382:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(0)
+
+thread 'khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan' (36821878) panicked at crates/vis-cli/tests/check.rs:348:5:
+assertion `left == right` failed: 7 khối loại trừ phải exit 1
+  left: Some(2)
+ right: Some(1)
+
+thread 'not_ok_co_dung_mot_dong_chan_doan_moi_tep' (36821881) panicked at crates/vis-cli/tests/check.rs:108:5:
+assertion `left == right` failed: có tệp hỏng ⇒ exit 1
+  left: Some(2)
+ right: Some(1)
+
+thread 'co_la_la_dung_sai_thoat_2' (36821875) panicked at crates/vis-cli/tests/check.rs:195:5:
+usage phải ra stderr: "dùng: vis explain <VSxxxx> | vis explain --list\n"
+test mixed_lex_va_syntax_phai_bao_vs0101 ... FAILED
+test thu_muc_tep_rong_va_non_utf8 ... FAILED
+test duong_dan_tuong_doi_in_nguyen_van ... FAILED
+test khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan ... FAILED
+test not_ok_co_dung_mot_dong_chan_doan_moi_tep ... FAILED
+test co_la_la_dung_sai_thoat_2 ... FAILED
+test fixture_tai_lieu_15_khoi_deu_ok ... FAILED
+test thu_tu_tep_dung_theo_tham_so_truyen_vao ... FAILED
+
+thread 'vish_bail_out_va_thoat_2' (36821891) panicked at crates/vis-cli/tests/check.rs:165:5:
+vẫn là TAP: 
+test vish_bail_out_va_thoat_2 ... FAILED
+
+thread 'thieu_tham_so_la_dung_sai_thoat_2' (36821883) panicked at crates/vis-cli/tests/check.rs:183:5:
+usage phải ra stderr: "dùng: vis explain <VSxxxx> | vis explain --list\n"
+test thieu_tham_so_la_dung_sai_thoat_2 ... FAILED
+
+thread 'khong_doc_duoc_tep_la_not_ok' (36821879) panicked at crates/vis-cli/tests/check.rs:209:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+test khong_doc_duoc_tep_la_not_ok ... FAILED
+
+thread 'tap_sach_cau_truc_va_exit_0' (36821882) panicked at crates/vis-cli/tests/check.rs:84:5:
+assertion `left == right` failed: mọi tệp sạch ⇒ exit 0; stdout=
+  left: Some(2)
+ right: Some(0)
+test tap_sach_cau_truc_va_exit_0 ... FAILED
+
+failures:
+
+failures:
+    co_la_la_dung_sai_thoat_2
+    duong_dan_tuong_doi_in_nguyen_van
+    fixture_tai_lieu_15_khoi_deu_ok
+    khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan
+    khong_doc_duoc_tep_la_not_ok
+    mixed_lex_va_syntax_phai_bao_vs0101
+    not_ok_co_dung_mot_dong_chan_doan_moi_tep
+    tap_sach_cau_truc_va_exit_0
+    thieu_tham_so_la_dung_sai_thoat_2
+    thu_muc_tep_rong_va_non_utf8
+    thu_tu_tep_dung_theo_tham_so_truyen_vao
+    vish_bail_out_va_thoat_2
+
+test result: FAILED. 0 passed; 12 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+error: test failed, to rerun pass `-p vis-cli --test check`
