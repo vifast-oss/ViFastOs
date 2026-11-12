@@ -28,12 +28,20 @@ name = "vis-cli"
 version = "0.1.0"
 dependencies = [
  "vis-diag",
+ "vis-fmt",
  "vis-syntax",
 ]
 
 [[package]]
 name = "vis-diag"
 version = "0.1.0"
+
+[[package]]
+name = "vis-fmt"
+version = "0.1.0"
+dependencies = [
+ "vis-syntax",
+]
 
 [[package]]
 name = "vis-syntax"

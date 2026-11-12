@@ -1,0 +1,298 @@
+=== ST-07 D2-05: harness `vis-fmt` + `vis fmt` ĐỎ TRƯỚC khi hiện thực ===
+thời điểm chụp: 2026-11-12T17:05:10Z
+cách chụp: crates/vis-fmt/src/lib.rs là KHUNG (format panic 'chưa hiện thực', GIỮ nguyên unit test);
+           crates/vis-cli/src/main.rs khôi phục về bản HEAD (ST-08: chỉ explain + check, CHƯA có fmt).
+sha256 harness: crates/vis-fmt/tests/fmt.rs=03a83abe7cdfcf31006c453c00900f92f03a6dadb6eef04d868e1a6a5fe92d78
+sha256 harness: crates/vis-cli/tests/fmt.rs=7a591a44ccd504b39989dc0ea12ec21fc51e7eb0aca56022b1977af7852b2820
+sha256 fixture: test/fmt/chuan.vis=bc78ab14cdd31cd24701e642ad2081a09f7b386c91e2fdb0eb26ee745b190088
+sha256 fixture: test/fmt/crlf.vis=828c5026dfd5cf02b292ee412eb306f12c915bd7c2a98246cfd4d6571e0e430e
+sha256 fixture: test/fmt/duoi_dong_trang.vis=aab02cce0b3944676c27bb7bdceeaa8b33c8b2b0feed9abbaa283cbfa13f23d0
+sha256 fixture: test/fmt/loi_cu_phap.vis=8cfe25d9d866211979fc2277d15205703a73fb91b58deb3fe125926b10042a38
+sha256 fixture: test/fmt/nfd.vis=75823d131193c785e300d1c123f459b410e64be8d15889e3254e94910dbdb799
+sha256 fixture: test/fmt/sai_thut_le.vis=1f13302fb6442cc6483d246b283e4c5d0247eadde51503f12be41461b5b46930
+sha256 fixture: test/fmt/tab.vis=b8f10649358485adbebf17641fbed537c40d53ef046932428bb947d1325b275e
+sha256 fixture: test/check/cmd_mode.vish=0c864892e6501841f8642f8d60da51cf39207f9185352c7888ba97f3d86b9ca4
+
+### lệnh 1: cargo test -p vis-fmt --lib   (unit test)
+
+warning: unused import: `Mode`
+  --> crates/vis-fmt/src/lib.rs:23:24
+   |
+23 | use vis_syntax::{Kind, Mode, ParseOutput};
+   |                        ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-fmt` (lib test) generated 1 warning (run `cargo fix --lib -p vis-fmt --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (target/debug/deps/vis_fmt-af1b1ba92dc8e7e8)
+
+running 5 tests
+test tests::idempotent ... FAILED
+test tests::tab_mot_cap_thanh_bon ... FAILED
+test tests::tep_rong_ra_mot_newline ... FAILED
+test tests::loi_tra_ve_ma ... FAILED
+test tests::trong_dong_giu_nguyen ... FAILED
+
+failures:
+
+---- tests::idempotent stdout ----
+
+thread 'tests::idempotent' (36869980) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::tab_mot_cap_thanh_bon stdout ----
+
+thread 'tests::tab_mot_cap_thanh_bon' (36869982) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- tests::tep_rong_ra_mot_newline stdout ----
+
+thread 'tests::tep_rong_ra_mot_newline' (36869983) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- tests::loi_tra_ve_ma stdout ----
+
+thread 'tests::loi_tra_ve_ma' (36869981) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- tests::trong_dong_giu_nguyen stdout ----
+
+thread 'tests::trong_dong_giu_nguyen' (36869984) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+
+failures:
+    tests::idempotent
+    tests::loi_tra_ve_ma
+    tests::tab_mot_cap_thanh_bon
+    tests::tep_rong_ra_mot_newline
+    tests::trong_dong_giu_nguyen
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-fmt --lib`
+
+### lệnh 2: cargo test -p vis-fmt --test fmt   (integration)
+
+warning: unused import: `Mode`
+  --> crates/vis-fmt/src/lib.rs:23:24
+   |
+23 | use vis_syntax::{Kind, Mode, ParseOutput};
+   |                        ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-fmt` (lib) generated 1 warning (run `cargo fix --lib -p vis-fmt` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/fmt.rs (target/debug/deps/fmt-77035e4848c0bb53)
+
+running 13 tests
+test dong_chi_chu_thich_va_dong_noi_giu_nguyen ... FAILED
+test khoang_trang_cuoi_dong_va_mot_newline_cuoi ... FAILED
+test dau_ra_nfc ... FAILED
+test sai_thut_le_duoc_sua_ve_bon ... FAILED
+test tab_duoc_sua_thanh_bon_dau_cach ... FAILED
+test crlf_chuan_hoa_va_giu_nguyen_trong_dong ... FAILED
+test tab_trong_dong_va_trong_chu_thich_duoc_giu ... FAILED
+test dong_noi_giu_thut_le_goc_sau_chu_thich ... FAILED
+test diem_bat_dong_mau_chuan ... FAILED
+test loi_cu_phap_khong_duoc_sua ... FAILED
+test diem_bat_dong_tai_lieu_15_khoi ... FAILED
+test idempotent_tren_moi_nguon ... FAILED
+test token_khong_doi ... FAILED
+
+failures:
+
+---- dong_chi_chu_thich_va_dong_noi_giu_nguyen stdout ----
+
+thread 'dong_chi_chu_thich_va_dong_noi_giu_nguyen' (36870017) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- khoang_trang_cuoi_dong_va_mot_newline_cuoi stdout ----
+
+thread 'khoang_trang_cuoi_dong_va_mot_newline_cuoi' (36870020) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- dau_ra_nfc stdout ----
+
+thread 'dau_ra_nfc' (36870014) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- sai_thut_le_duoc_sua_ve_bon stdout ----
+
+thread 'sai_thut_le_duoc_sua_ve_bon' (36870022) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- tab_duoc_sua_thanh_bon_dau_cach stdout ----
+
+thread 'tab_duoc_sua_thanh_bon_dau_cach' (36870023) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- crlf_chuan_hoa_va_giu_nguyen_trong_dong stdout ----
+
+thread 'crlf_chuan_hoa_va_giu_nguyen_trong_dong' (36870013) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- tab_trong_dong_va_trong_chu_thich_duoc_giu stdout ----
+
+thread 'tab_trong_dong_va_trong_chu_thich_duoc_giu' (36870024) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- dong_noi_giu_thut_le_goc_sau_chu_thich stdout ----
+
+thread 'dong_noi_giu_thut_le_goc_sau_chu_thich' (36870018) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- diem_bat_dong_mau_chuan stdout ----
+
+thread 'diem_bat_dong_mau_chuan' (36870015) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- loi_cu_phap_khong_duoc_sua stdout ----
+
+thread 'loi_cu_phap_khong_duoc_sua' (36870021) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- diem_bat_dong_tai_lieu_15_khoi stdout ----
+
+thread 'diem_bat_dong_tai_lieu_15_khoi' (36870016) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- idempotent_tren_moi_nguon stdout ----
+
+thread 'idempotent_tren_moi_nguon' (36870019) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+---- token_khong_doi stdout ----
+
+thread 'token_khong_doi' (36870025) panicked at crates/vis-fmt/src/lib.rs:43:5:
+vis-fmt chưa hiện thực (ST-07 đỏ trước, D2-05)
+
+
+failures:
+    crlf_chuan_hoa_va_giu_nguyen_trong_dong
+    dau_ra_nfc
+    diem_bat_dong_mau_chuan
+    diem_bat_dong_tai_lieu_15_khoi
+    dong_chi_chu_thich_va_dong_noi_giu_nguyen
+    dong_noi_giu_thut_le_goc_sau_chu_thich
+    idempotent_tren_moi_nguon
+    khoang_trang_cuoi_dong_va_mot_newline_cuoi
+    loi_cu_phap_khong_duoc_sua
+    sai_thut_le_duoc_sua_ve_bon
+    tab_duoc_sua_thanh_bon_dau_cach
+    tab_trong_dong_va_trong_chu_thich_duoc_giu
+    token_khong_doi
+
+test result: FAILED. 0 passed; 13 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-fmt --test fmt`
+
+### lệnh 3: cargo test -p vis-cli --test fmt   (CLI)
+
+warning: unused import: `Mode`
+  --> crates/vis-fmt/src/lib.rs:23:24
+   |
+23 | use vis_syntax::{Kind, Mode, ParseOutput};
+   |                        ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-fmt` (lib) generated 1 warning (run `cargo fix --lib -p vis-fmt` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/fmt.rs (target/debug/deps/fmt-09da42eb729354cc)
+
+running 9 tests
+test thieu_tham_so_va_co_la_la_usage ... FAILED
+test vish_bail_out_exit_2 ... FAILED
+test check_nhieu_tep_va_tep_loi ... FAILED
+test write_sua_roi_giu_nguyen ... FAILED
+test khong_panic_khi_pipe_dong ... FAILED
+test loi_cu_phap_ra_stderr_exit_2 ... FAILED
+test check_ma_thoat_0_1_2 ... FAILED
+test write_khong_ghi_tep_loi ... FAILED
+test mot_tep_in_ra_stdout_giu_nguyen_tep ... FAILED
+
+failures:
+
+---- thieu_tham_so_va_co_la_la_usage stdout ----
+
+thread 'thieu_tham_so_va_co_la_la_usage' (36870050) panicked at crates/vis-cli/tests/fmt.rs:194:5:
+stderr: dùng: vis explain <VSxxxx> | vis explain --list | vis check <tệp…>
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- vish_bail_out_exit_2 stdout ----
+
+thread 'vish_bail_out_exit_2' (36870051) panicked at crates/vis-cli/tests/fmt.rs:179:5:
+thiếu `Bail out!`: 
+
+---- check_nhieu_tep_va_tep_loi stdout ----
+
+thread 'check_nhieu_tep_va_tep_loi' (36870046) panicked at crates/vis-cli/tests/fmt.rs:132:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+
+---- write_sua_roi_giu_nguyen stdout ----
+
+thread 'write_sua_roi_giu_nguyen' (36870054) panicked at crates/vis-cli/tests/fmt.rs:82:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(0)
+
+---- khong_panic_khi_pipe_dong stdout ----
+
+thread 'khong_panic_khi_pipe_dong' (36870047) panicked at crates/vis-cli/tests/fmt.rs:229:5:
+assertion `left == right` failed: BrokenPipe phải thoát 0 im lặng; stderr=dùng: vis explain <VSxxxx> | vis explain --list | vis check <tệp…>
+
+  left: Some(2)
+ right: Some(0)
+
+---- loi_cu_phap_ra_stderr_exit_2 stdout ----
+
+thread 'loi_cu_phap_ra_stderr_exit_2' (36870048) panicked at crates/vis-cli/tests/fmt.rs:145:5:
+stderr: dùng: vis explain <VSxxxx> | vis explain --list | vis check <tệp…>
+
+
+---- check_ma_thoat_0_1_2 stdout ----
+
+thread 'check_ma_thoat_0_1_2' (36870045) panicked at crates/vis-cli/tests/fmt.rs:106:5:
+assertion `left == right` failed: đã đúng chuẩn ⇒ 0
+  left: Some(2)
+ right: Some(0)
+
+---- write_khong_ghi_tep_loi stdout ----
+
+thread 'write_khong_ghi_tep_loi' (36870053) panicked at crates/vis-cli/tests/fmt.rs:157:5:
+lỗi cú pháp phải được nêu (không phải usage): dùng: vis explain <VSxxxx> | vis explain --list | vis check <tệp…>
+
+
+---- mot_tep_in_ra_stdout_giu_nguyen_tep stdout ----
+
+thread 'mot_tep_in_ra_stdout_giu_nguyen_tep' (36870049) panicked at crates/vis-cli/tests/fmt.rs:63:5:
+assertion `left == right` failed: tệp sạch ⇒ exit 0
+  left: Some(2)
+ right: Some(0)
+
+
+failures:
+    check_ma_thoat_0_1_2
+    check_nhieu_tep_va_tep_loi
+    khong_panic_khi_pipe_dong
+    loi_cu_phap_ra_stderr_exit_2
+    mot_tep_in_ra_stdout_giu_nguyen_tep
+    thieu_tham_so_va_co_la_la_usage
+    vish_bail_out_exit_2
+    write_khong_ghi_tep_loi
+    write_sua_roi_giu_nguyen
+
+test result: FAILED. 0 passed; 9 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p vis-cli --test fmt`
+exit_lib=101
+exit_fmt=101
+exit_cli=101

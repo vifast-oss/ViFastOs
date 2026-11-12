@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 vis-diag = { path = "../vis-diag" }
 vis-syntax = { path = "../vis-syntax" }
+vis-fmt = { path = "../vis-fmt" }
