@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-27`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-28`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-27: quyết định v2 (chép nguyên văn QD §8)
+## Phần II — D2-01..D2-28: quyết định v2 (chép nguyên văn QD §8)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -52,6 +52,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-23** D-08 còn hiệu lực tới K6.
 - **D2-24** mọi soak trên máy ps, N theo `n ≥ 3/p` (p mục tiêu 0,3 % ⇒ **N = 1.000**, song song 3 luồng).
 - **D2-25** Tài liệu `docs/v2/ViFastOs-v2-thiet-ke.md` bản vá 2026-11-12 được Agent 0 duyệt, kèm errata `DUYET-AGENT0-vong-va.md`.
+- **D2-28** **KT-02** dựng khung (`v2/Cargo.toml`, `v2/bin/`, `v2/agent/`, LICENSE) và được phép port **tối đa** các thư viện nền cần cho `vifast-fsutil`: `vifast-fs`, `vifast-fsutil`, `vifast-elf` (D2-26), với điều kiện `cargo build` xanh, mỗi tệp ≤1.500 dòng, giữ SPDX + `PORTED-FROM`. Không port thêm thư viện khác trong KT-02; quá 3 h thì dừng, phần còn lại sang KT-T26.
 - **D2-27** KT-04c có **21 kịch bản**: **20 ca gốc** theo QD §4 + **1 ca "Exit khi procsrv chưa Recv"** theo DUYET §1.3; QD §4 giữ nguyên 20 ca gốc, không sửa QD. Đây là câu trả lời Q-01.
 - **D2-26** Thư viện "giữ từ v1" (`vifast-pte`, `vifast-elf`, `vifast-acpi`, `vifast-fs`, `vifast-fsutil`, `vifast-virtio`) được **copy/port vào `v2/lib/`**, **không** path-dependency sang `crates/`; giữ SPDX và ghi `PORTED-FROM: crates/<tên>@ca2eaf5`. v1 vẫn đóng băng.
 

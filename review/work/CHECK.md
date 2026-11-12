@@ -7,7 +7,7 @@
 | 1 | Không còn chuỗi "header Frame" trong `docs/v2/` | **0** — ĐẠT |
 | 2 | VD-01..VD-26 giống hệt giữa `ViScript-thiet-ke.md §22` và `viscript/agent/DECISIONS.md` | **26/26, text trùng khớp** — ĐẠT |
 | 3 | Không còn link `review/` trong `docs/` | **0 tệp** — ĐẠT |
-| 4 | `v2/agent/DECISIONS.md` đúng D2-01..D2-27 | **27/27 bullet** — ĐẠT |
+| 4 | `v2/agent/DECISIONS.md` đúng D2-01..D2-28 | **28/28 bullet** — ĐẠT |
 
 ## ViFastOs v2 (`docs/v2/ViFastOs-v2-thiet-ke.md`, 1.132 dòng)
 

@@ -97,7 +97,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ID | Task | Phụ thuộc | Ngân sách | Trạng thái | Tiêu chí xong |
 |---|---|---|---|---|---|
 | KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` (Q10) | — | 1 h | READY | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục QD §6, mỗi mục có ca kiểm v2 |
-| KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè tệp đã có), LICENSE tham chiếu root, thêm `vifast-fsutil` (**không** port `vifast-fs` — để KT-T26/K2) | — | 3 h | READY | `cargo build` workspace rỗng xanh; `ls v2/agent` đủ tệp; có `v2/bin/` |
+| KT-02 | khung `v2/` + `v2/agent/` + `v2/bin/` (không ghi đè tệp đã có), LICENSE tham chiếu root; port **tối đa** `vifast-fs` + `vifast-fsutil` + `vifast-elf` (D2-28), build xanh, mỗi tệp ≤1.500 dòng | — | 3 h | READY | `cargo build` workspace xanh; có `v2/bin/`; mọi tệp ≤1.500 dòng |
 | KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | BLOCKED | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
 | KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→15+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | READY | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved: chỉ số + `NotSupported` (VCpu.Configure, IOSpace.Attach, VSpace khách, PowerControl…) | KT-04a | 2 h | BLOCKED | method reserved trả NotSupported; số không trùng |
