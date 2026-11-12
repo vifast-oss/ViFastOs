@@ -40,6 +40,7 @@
 
 use std::collections::VecDeque;
 
+use crate::sched::HartSched;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
@@ -307,6 +308,25 @@ struct TcbData {
     bound_notification: Option<ObjId>,
 }
 
+impl TcbData {
+    /// Ảnh chụp toàn bộ trường TCB (model API `[TK]`; `Tcb.ReadState` ABI chỉ trả 4 giá trị).
+    fn snapshot(&self) -> TcbInfo {
+        TcbInfo {
+            state: self.state,
+            suspended: self.suspended,
+            exit_code: self.exit_code,
+            fault_ep: self.fault_ep,
+            cspace: self.cspace,
+            priority: self.priority,
+            max_controlled_priority: self.max_controlled_priority,
+            affinity: self.affinity,
+            home: self.home,
+            sched_context: self.sched_context,
+            bound_notification: self.bound_notification,
+        }
+    }
+}
+
 /// Notification tối giản của K1b: **một** waiter (thiết kế §4.7: `Signal` đánh thức một
 /// người chờ). Word/badge/signal thuộc K1c (D2-49(a)) — KT-18 chỉ cần chỗ ghi waiter để
 /// `Suspend(Abort)`/finalise chứng minh "gỡ khỏi hàng chờ notification".
@@ -449,6 +469,12 @@ pub struct Machine {
     /// Hàng chờ WaitOnAddress mô hình hoá (thiết kế §4.7: bucket theo `(frame, offset)`).
     /// K1b chưa có object Frame (K2) nên khoá dùng `ObjId` thô của frame.
     address_waiters: Vec<(ObjId, u32, ObjId)>,
+    /// Scheduler theo hart (KT-19): KT-19 dựng **1** hart (D2-49(a)); mỗi hart một
+    /// [`HartSched`] (256 mức + bitmap) để K1c thêm hart/push migration mà không đổi API.
+    sched: Vec<HartSched>,
+    /// Preempt **ép tại mọi public op** (thiết kế §4.13) — mặc định **tắt** để không đổi
+    /// ngữ nghĩa KT-18; test KT-19 bật bằng [`Machine::set_preempt_every_step`].
+    preempt_every_step: bool,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -508,6 +534,8 @@ impl Machine {
             pair_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
             finalise_log: Vec::new(),
             address_waiters: Vec::new(),
+            sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
+            preempt_every_step: false,
         }
     }
 
@@ -1110,6 +1138,9 @@ impl Machine {
                 },
             },
         );
+        // KT-19 DoD 3: Retê có thể tạo TCB `Inactive` (không vào hàng) — kiểm lại bất biến
+        // sau mỗi public op như các op TCB khác.
+        self.sched_after_op(false);
         Ok(self.push_cap(obj, ty, Some(src_cap), src_rights, None))
     }
 
@@ -1225,6 +1256,7 @@ impl Machine {
             c.alive = false;
             c.parent = None;
         }
+        self.sched_after_op(true);
         Ok(())
     }
 
@@ -1255,6 +1287,7 @@ impl Machine {
             }
             deleted += self.revoke_children(target)?;
         }
+        self.sched_after_op(true);
         Ok(deleted)
     }
 
@@ -1274,7 +1307,9 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     pub fn tcb_set_fault_ep(&mut self, tcb: SlotRef, ep: SlotRef) -> Result<(), KError> {
@@ -1289,7 +1324,9 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     pub fn sched_control_configure(
@@ -1311,7 +1348,9 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     pub fn sched_context_bind(&mut self, sched: SlotRef, target: SlotRef) -> Result<(), KError> {
@@ -1327,7 +1366,9 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     // ------------------------------------------- trường TCB qua model API `[TK]` (KT-18 DoD 1)
@@ -1348,6 +1389,12 @@ impl Machine {
         if max_controlled_priority < priority {
             return Err(KError::InvalidArgument);
         }
+        // KT-19: priority đổi ⇒ gỡ khỏi bucket cũ **trước** khi sửa (bucket == priority),
+        // rồi `sched_sync` đưa vào bucket mới nếu đang `Ready`. Chỉ TCB `Ready` mới có thể
+        // nằm trong hàng ⇒ khỏi quét 256 bucket khi TCB đang chạy/chặn.
+        if self.tcb_state(tcb_obj)? == TcbState::Ready {
+            self.sched_remove_all(tcb_obj);
+        }
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.priority = priority;
@@ -1355,7 +1402,10 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_sync(tcb_obj)?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// `Tcb.SetAffinity` `[TK]`: `HartMask` ≤ 64 bit, khác 0, chỉ bit của hart có thật.
@@ -1365,13 +1415,19 @@ impl Machine {
         if affinity == 0 || affinity & !hart_mask != 0 {
             return Err(KError::InvalidArgument);
         }
+        if self.tcb_state(tcb_obj)? == TcbState::Ready {
+            self.sched_remove_all(tcb_obj);
+        }
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.affinity = affinity;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_sync(tcb_obj)?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// `Tcb.SetHome` `[TK]`: home phải là hart có thật (K1b: hart 0).
@@ -1380,13 +1436,19 @@ impl Machine {
         if home >= HART_COUNT {
             return Err(KError::InvalidArgument);
         }
+        if self.tcb_state(tcb_obj)? == TcbState::Ready {
+            self.sched_remove_all(tcb_obj);
+        }
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.home = home;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_sync(tcb_obj)?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// Model API `set_sched_params(tcb, sc)` — **D2-49(b)**: gắn/gỡ `SchedContext` của TCB,
@@ -1403,7 +1465,9 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     /// Bind notification vào TCB (thiết kế §4.7): model API `[TK]`, chưa có chữ ký ABI.
@@ -1416,26 +1480,22 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        self.sched_after_op(false);
+        Ok(())
     }
 
     /// Ảnh chụp toàn bộ trường TCB của mô hình (đọc/ghi qua model API `[TK]`).
     pub fn tcb_info(&self, tcb: SlotRef) -> Result<TcbInfo, KError> {
         let obj = self.require_type(tcb, ObjType::Tcb)?;
-        self.body(obj, |k| match k {
-            Kind::Tcb(t) => Ok(TcbInfo {
-                state: t.state,
-                suspended: t.suspended,
-                exit_code: t.exit_code,
-                fault_ep: t.fault_ep,
-                cspace: t.cspace,
-                priority: t.priority,
-                max_controlled_priority: t.max_controlled_priority,
-                affinity: t.affinity,
-                home: t.home,
-                sched_context: t.sched_context,
-                bound_notification: t.bound_notification,
-            }),
+        self.tcb_info_obj(obj)
+    }
+
+    /// Như [`Machine::tcb_info`] nhưng nhận thẳng `ObjId` — cho scheduler (KT-19) đọc
+    /// `state`/`suspended`/`priority`/`affinity`/`home` không cần cap.
+    fn tcb_info_obj(&self, tcb: ObjId) -> Result<TcbInfo, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.snapshot()),
             _ => Err(KError::WrongObjectType),
         })
     }
@@ -1469,6 +1529,18 @@ impl Machine {
         if !crate::tcb::allowed(from, to) {
             return Err(KError::IllegalOperation);
         }
+        // Bất biến ≤1 `Running`/hart (KT-19 DoD 2): TCB vào `Running{hart}` khi hart đang có
+        // TCB chạy ⇒ đưa TCB cũ về `Ready` **trước**, qua đúng cửa này (không đường tắt).
+        if let TcbState::Running { hart } = to {
+            if hart as usize >= self.sched.len() {
+                return Err(KError::InvalidArgument);
+            }
+            if let Some(cur) = self.sched[hart as usize].current() {
+                if cur != tcb {
+                    self.transition_tcb(cur, TcbState::Ready)?;
+                }
+            }
+        }
         self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
                 t.state = to;
@@ -1477,6 +1549,8 @@ impl Machine {
             _ => Err(KError::WrongObjectType),
         })?;
         self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
+        // KT-19: state đổi ⇒ ready queue/`current` đổi theo (một cửa duy nhất).
+        self.sched_sync(tcb)?;
         Ok(())
     }
 
@@ -1524,7 +1598,9 @@ impl Machine {
         if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
             self.transition_tcb(obj, TcbState::Ready)?;
         }
-        self.set_tcb_suspended(obj, true)
+        self.set_tcb_suspended(obj, true)?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// `Tcb.Resume`: chỉ xoá cờ `suspended` + `exit_code` (D2-25); **không bao giờ** phát lại
@@ -1534,6 +1610,7 @@ impl Machine {
         if self.tcb_state(obj)? == TcbState::Dead {
             return Err(KError::IllegalOperation);
         }
+        let dang_treo = self.tcb_info_obj(obj)?.suspended;
         self.body_mut(obj, |k| match k {
             Kind::Tcb(t) => {
                 t.suspended = false;
@@ -1541,7 +1618,14 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        // KT-19 DoD 5: chỉ khi thực sự gỡ cờ `suspended` mới enqueue lại **đúng priority**;
+        // `Resume` trên TCB đang chạy không được làm nó nhảy về đuôi hàng FIFO.
+        if dang_treo {
+            self.sched_sync(obj)?;
+        }
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// Finalise TCB (thiết kế §4.3 bảng Finalise; KT-18 DoD 9): gỡ khỏi mọi hàng chờ, chuyển
@@ -1569,9 +1653,383 @@ impl Machine {
             state: TcbState::Dead,
             released_sched_context: released,
         });
+        // KT-19 DoD 6: `transition_tcb(Dead)` đã gỡ khỏi ready queue; kiểm lại bất biến.
+        self.sched_after_op(false);
         Ok(())
     }
 
+    // ------------------------------------------- scheduler theo hart (KT-19) `[TK]`
+    //
+    // Model-only `[TK]`, **không** phải spec/ABI (D2-49(a)): KT-19 dựng **1 hart** nhưng mọi
+    // thao tác viết theo hart để K1c thêm hart/push migration. `HartSched` nằm ở
+    // [`crate::sched`]; phần dưới là **một cửa** nối TCB ↔ ready queue.
+    //
+    // Bất biến (DoD 2/3, `check_sched` kiểm sau **mỗi** public op):
+    // - `Ready` (không treo) ⇔ có trong ready queue; cùng mức FIFO;
+    // - `Running{hart}` ⇔ `current(hart)`, **không** nằm trong hàng; ≤1 `Running`/hart;
+    // - bucket == `priority`; `len`/bitmap/`idle`/`cur_prio` khớp.
+
+    /// Số hart của mô hình (KT-19: 1 — D2-49(a); K1c mở rộng).
+    pub fn hart_count(&self) -> u16 {
+        self.sched.len() as u16
+    }
+
+    fn hart_index(&self, hart: u16) -> usize {
+        assert!(
+            (hart as usize) < self.sched.len(),
+            "hart {hart} ngoài số hart {} của mô hình",
+            self.sched.len()
+        );
+        hart as usize
+    }
+
+    /// Số TCB trong ready queue của `hart` (không tính `current`).
+    pub fn ready_len(&self, hart: u16) -> usize {
+        self.sched[self.hart_index(hart)].len()
+    }
+
+    /// Số TCB trong bucket mức `prio` của `hart` — kiểm "bucket khớp priority".
+    pub fn ready_len_at(&self, hart: u16, prio: u8) -> usize {
+        self.sched[self.hart_index(hart)].len_at(prio)
+    }
+
+    /// TCB có nằm trong ready queue của `hart` không.
+    pub fn ready_contains(&self, hart: u16, tcb: ObjId) -> bool {
+        self.sched[self.hart_index(hart)].contains(tcb)
+    }
+
+    /// TCB đang chạy của `hart` (`None` ⇔ hart rảnh).
+    pub fn current(&self, hart: u16) -> Option<ObjId> {
+        self.sched[self.hart_index(hart)].current()
+    }
+
+    /// Hart có rảnh không (`current == None`).
+    pub fn sched_idle(&self, hart: u16) -> bool {
+        self.sched[self.hart_index(hart)].idle()
+    }
+
+    /// Mức ưu tiên của TCB đang chạy; `0` khi hart rảnh.
+    pub fn sched_cur_prio(&self, hart: u16) -> u8 {
+        self.sched[self.hart_index(hart)].cur_prio()
+    }
+
+    /// `pick()` O(1) của hart 0 — tiện cho mô hình **1 hart**; nhiều hart dùng
+    /// [`Machine::sched_pick_on`].
+    pub fn sched_pick(&self) -> Option<ObjId> {
+        self.sched_pick_on(0)
+    }
+
+    /// `pick()` O(1) của `hart`: mức cao nhất, cùng mức FIFO; **không** gỡ khỏi hàng.
+    pub fn sched_pick_on(&self, hart: u16) -> Option<ObjId> {
+        self.sched[self.hart_index(hart)].pick()
+    }
+
+    /// Bật/tắt preempt **ép sau mỗi** public op (thiết kế §4.13). Mặc định tắt để giữ
+    /// nguyên ngữ nghĩa KT-18; test KT-19 bật.
+    pub fn set_preempt_every_step(&mut self, on: bool) {
+        self.preempt_every_step = on;
+    }
+
+    pub fn preempt_every_step(&self) -> bool {
+        self.preempt_every_step
+    }
+
+    /// `dispatch(hart)`: đưa TCB đang chạy (`Running`) về `Ready` (enqueue lại cuối hàng
+    /// cùng mức) rồi chọn TCB mức cao nhất (`Ready → Running`). Trả `None` khi hàng rỗng
+    /// (hart rảnh). Mọi chuyển trạng thái đi qua [`Machine::transition_tcb`].
+    pub fn dispatch(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
+        let got = self.dispatch_step(hart)?;
+        self.sched_after_op(false);
+        Ok(got)
+    }
+
+    /// Thân của [`Machine::dispatch`] **không** tự kiểm bất biến — `sched_after_op` gọi
+    /// thẳng để một op không phải kiểm hai lần (hiệu năng Miri), còn `dispatch` công khai
+    /// kiểm sau khi xong.
+    fn dispatch_step(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        let h = hart as usize;
+        if let Some(cur) = self.sched[h].current() {
+            if !matches!(self.tcb_state(cur)?, TcbState::Running { .. }) {
+                return Err(KError::IllegalOperation);
+            }
+            self.transition_tcb(cur, TcbState::Ready)?;
+        }
+        let next = match self.sched[h].pick() {
+            Some(tcb) => tcb,
+            None => {
+                self.sched[h].clear_current();
+                return Ok(None);
+            }
+        };
+        // Hàng chỉ chứa TCB `Ready` + `!suspended`; kiểm lại để lỗi rõ nếu bất biến vỡ.
+        let info = self.tcb_info_obj(next)?;
+        if info.state != TcbState::Ready || info.suspended {
+            return Err(KError::IllegalOperation);
+        }
+        self.transition_tcb(next, TcbState::Running { hart })?;
+        Ok(Some(next))
+    }
+
+    /// `block_current(hart, to)` — model API `[TK]` (DoD 5): TCB đang chạy của hart chuyển
+    /// sang trạng thái chặn/ngủ `to` qua [`Machine::transition_tcb`] và rời `current`.
+    /// Chỉ nhận trạng thái `BlockedOn*`/`Sleeping` (không dùng để đổi sang `Ready`).
+    ///
+    /// Đây là **primitive scheduler** cho test, không công bố wait trên object nào: các
+    /// đường IPC thật (`call`/`recv`/`tcb_wait_*`) mới ghi hàng chờ của Endpoint/Reply/
+    /// Notification; [`Machine::wake`] gỡ mọi tham chiếu còn lại trước khi `→ Ready`.
+    pub fn block_current(&mut self, hart: u16, to: TcbState) -> Result<ObjId, KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if !(to.is_blocked() || matches!(to, TcbState::Sleeping { .. })) {
+            return Err(KError::InvalidArgument);
+        }
+        let cur = self.sched[hart as usize]
+            .current()
+            .ok_or(KError::IllegalOperation)?;
+        self.unlink_tcb_queues(cur);
+        self.transition_tcb(cur, to)?;
+        self.sched_after_op(false);
+        Ok(cur)
+    }
+
+    /// `wake(tcb)` — model API `[TK]` (DoD 5): đánh thức TCB đang chặn/ngủ bằng cách gỡ
+    /// khỏi hàng chờ của object (endpoint/Reply/notification/address) rồi `→ Ready`.
+    /// **Không** phát lại Call/Send/Recv (như `Resume`). TCB `suspended` ⇒ vẫn `Ready` nhưng
+    /// **không** vào ready queue (D2-33: `Ready + suspended`). TCB đã `Ready` ⇒ no-op.
+    pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let state = self.tcb_state(tcb)?;
+        if state == TcbState::Ready {
+            self.sched_after_op(false);
+            return Ok(());
+        }
+        if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
+            return Err(KError::IllegalOperation);
+        }
+        self.unlink_tcb_queues(tcb);
+        self.transition_tcb(tcb, TcbState::Ready)?;
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// `yield_current(hart)` — model API `[TK]` (DoD 5): TCB đang chạy nhường CPU
+    /// (`Running → Ready`, vào **cuối** hàng cùng mức) rồi `dispatch` chọn TCB kế tiếp.
+    /// Trả `current` mới (có thể chính TCB vừa nhường nếu nó vẫn cao nhất và hàng rỗng).
+    pub fn yield_current(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        let cur = self.sched[hart as usize]
+            .current()
+            .ok_or(KError::IllegalOperation)?;
+        self.transition_tcb(cur, TcbState::Ready)?;
+        let next = self.dispatch(hart)?;
+        self.sched_after_op(false);
+        Ok(next)
+    }
+
+    /// Đồng bộ **một** TCB với ready queue sau khi `state`/`suspended`/`priority`/`home`/
+    /// `affinity` đổi. Idempotent: gỡ bản cũ rồi đặt chỗ mới theo state hiện tại.
+    fn sched_sync(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        // 1) gỡ khỏi bucket priority hiện tại (bất biến: bucket == priority).
+        for h in 0..self.sched.len() {
+            self.sched[h].remove_at(tcb, info.priority);
+        }
+        // 2) nhả `current` nếu TCB không còn `Running` đúng hart đó.
+        for h in 0..self.sched.len() {
+            let giu = matches!(info.state, TcbState::Running { hart } if hart as usize == h);
+            if !giu && self.sched[h].current() == Some(tcb) {
+                self.sched[h].clear_current();
+            }
+        }
+        // 3) đặt chỗ mới: Ready (không treo, home trong affinity) hoặc Running.
+        match info.state {
+            TcbState::Ready if !info.suspended && info.affinity & (1u64 << info.home) != 0 => {
+                let h = info.home as usize;
+                if h >= self.sched.len() {
+                    return Err(KError::InvalidArgument);
+                }
+                self.sched[h].enqueue(tcb, info.priority);
+            }
+            TcbState::Running { hart } => {
+                let h = hart as usize;
+                if h >= self.sched.len() {
+                    return Err(KError::InvalidArgument);
+                }
+                if let Some(cur) = self.sched[h].current() {
+                    if cur != tcb {
+                        return Err(KError::IllegalOperation);
+                    }
+                }
+                self.sched[h].set_current(tcb, info.priority);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Gỡ `tcb` khỏi **mọi** bucket của mọi hart — gọi **trước** khi sửa
+    /// `priority`/`home`/`affinity` để bucket luôn khớp priority.
+    fn sched_remove_all(&mut self, tcb: ObjId) {
+        for h in 0..self.sched.len() {
+            self.sched[h].remove_all(tcb);
+        }
+    }
+
+    /// KT-19 DoD 3+4: sau **mỗi** public op — nếu bật `preempt_every_step` thì ép preempt
+    /// (`dispatch` đưa `Running` về `Ready` rồi chọn lại), rồi tự kiểm bất biến
+    /// [`Machine::check_sched`]. Vi phạm là lỗi mô hình: panic ở build có debug assertion.
+    fn sched_after_op(&mut self, preempt: bool) {
+        if preempt && self.preempt_every_step {
+            for h in 0..self.sched.len() {
+                if self.dispatch_step(h as u16).is_err() {
+                    debug_assert!(false, "preempt_every_step: dispatch lỗi");
+                    return;
+                }
+            }
+        }
+        if let Err(e) = self.check_sched() {
+            debug_assert!(false, "bất biến scheduler vỡ sau public op: {e}");
+        }
+    }
+
+    /// Kiểm **toàn bộ** bất biến scheduler (DoD 3):
+    ///
+    /// 1. không TCB nào trùng trong hàng; bucket khớp `priority`;
+    /// 2. mọi TCB trong hàng tồn tại, `Ready`, **không** `suspended`, home trong affinity;
+    /// 3. `Ready` (không treo) ⇔ trong hàng; `Running{hart}` ⇔ `current`; trạng thái khác
+    ///    **không** nằm trong hàng; ≤ 1 `Running`/hart;
+    /// 4. `len`/bitmap khớp; `idle ⇔ current == None`; `cur_prio` khớp priority của `current`.
+    ///
+    /// Dùng **bảng đánh dấu theo `ObjId`** (`ObjId` 1-based, tối đa `objects.len()`) nên mỗi
+    /// TCB tra O(1) thay vì quét 256 hàng — kiểm được sau **mỗi** op mà vẫn rẻ.
+    pub fn check_sched(&self) -> Result<(), String> {
+        if self.sched.is_empty() {
+            return Err("mô hình không có hart nào".to_string());
+        }
+        // `None` = không nằm trong hàng; `Some(h)` = đang ở ready queue của hart `h`.
+        let mut hang_cua: Vec<Option<usize>> = vec![None; self.objects.len() + 1];
+        for (h, hs) in self.sched.iter().enumerate() {
+            hs.check_local()?;
+            hs.for_each_queued(|prio, tcb| {
+                let o = hang_cua
+                    .get_mut(tcb as usize)
+                    .ok_or_else(|| format!("TCB {tcb} trong hàng nhưng ngoài bảng object"))?;
+                if o.is_some() {
+                    return Err(format!("TCB {tcb} trùng trong ready queue"));
+                }
+                *o = Some(h);
+                let info = self
+                    .tcb_info_obj(tcb)
+                    .map_err(|e| format!("TCB {tcb} trong hàng nhưng không đọc được: {e:?}"))?;
+                if info.state != TcbState::Ready {
+                    return Err(format!(
+                        "TCB {tcb} trong hàng nhưng state {}",
+                        info.state.name()
+                    ));
+                }
+                if info.suspended {
+                    return Err(format!("TCB {tcb} suspended nhưng vẫn nằm trong hàng"));
+                }
+                if info.priority != prio {
+                    return Err(format!(
+                        "TCB {tcb} ở bucket {prio} nhưng priority {}",
+                        info.priority
+                    ));
+                }
+                if info.affinity & (1u64 << info.home) == 0 {
+                    return Err(format!(
+                        "TCB {tcb} home {} không nằm trong affinity",
+                        info.home
+                    ));
+                }
+                Ok(())
+            })?;
+            match hs.current() {
+                Some(cur) => {
+                    let info = self
+                        .tcb_info_obj(cur)
+                        .map_err(|e| format!("current {cur} của hart {h} không đọc được: {e:?}"))?;
+                    match info.state {
+                        TcbState::Running { hart } if hart as usize == h => {}
+                        other => {
+                            return Err(format!(
+                                "current của hart {h} là TCB {cur} nhưng state {}",
+                                other.name()
+                            ));
+                        }
+                    }
+                    if hang_cua.get(cur as usize).copied().flatten().is_some() {
+                        return Err(format!("TCB {cur} Running nhưng vẫn nằm trong hàng"));
+                    }
+                    if info.priority != hs.cur_prio() {
+                        return Err(format!(
+                            "cur_prio {} nhưng priority của TCB {cur} là {}",
+                            hs.cur_prio(),
+                            info.priority
+                        ));
+                    }
+                    if hs.idle() {
+                        return Err(format!("hart {h} có current nhưng idle=true"));
+                    }
+                }
+                None => {
+                    if !hs.idle() {
+                        return Err(format!("hart {h} không có current nhưng idle=false"));
+                    }
+                }
+            }
+        }
+        // Mọi TCB sống: Ready ⇔ trong hàng (đúng hart home); Running ⇔ current; còn lại
+        // **không** được nằm trong hàng.
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let info = self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB sống {obj} không đọc được: {e:?}"))?;
+            let hang = hang_cua.get(obj as usize).copied().flatten();
+            match info.state {
+                TcbState::Ready => {
+                    if info.suspended {
+                        if hang.is_some() {
+                            return Err(format!("TCB {obj} Ready+suspended nhưng nằm trong hàng"));
+                        }
+                    } else if hang != Some(info.home as usize) {
+                        return Err(format!(
+                            "TCB {obj} Ready nhưng không nằm trong ready queue (hart home {})",
+                            info.home
+                        ));
+                    }
+                }
+                TcbState::Running { hart } => {
+                    if self.sched.get(hart as usize).and_then(|x| x.current()) != Some(obj) {
+                        return Err(format!(
+                            "TCB {obj} Running{{hart={hart}}} nhưng không phải current"
+                        ));
+                    }
+                    if hang.is_some() {
+                        return Err(format!("TCB {obj} Running nhưng vẫn nằm trong hàng"));
+                    }
+                }
+                _ => {
+                    if hang.is_some() {
+                        return Err(format!(
+                            "TCB {obj} state {} nhưng vẫn nằm trong hàng",
+                            info.state.name()
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     // ------------------------------------------- hàng chờ phụ của mô hình K1b `[TK]`
 
     /// `Wait` trên Notification — **mô hình K1b** `[TK]` (D2-49(a): tín hiệu/word là K1c):
@@ -1598,7 +2056,9 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
-        self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })
+        self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     /// `WaitAddr` — **mô hình K1b** `[TK]` (thiết kế §4.7; object Frame thuộc K2): xếp TCB vào
@@ -1615,7 +2075,9 @@ impl Machine {
             return Err(KError::IllegalOperation);
         }
         self.address_waiters.push((frame, offset, tcb_obj));
-        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })
+        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
+        self.sched_after_op(true);
+        Ok(())
     }
 
     // ------------------------------------------- đọc hàng chờ (test/đối chứng)
@@ -1721,6 +2183,7 @@ impl Machine {
                 },
             )?;
         }
+        self.sched_after_op(true);
         Ok(())
     }
 
@@ -1790,6 +2253,7 @@ impl Machine {
                 )?;
             }
         }
+        self.sched_after_op(true);
         Ok(())
     }
 
@@ -1813,6 +2277,7 @@ impl Machine {
         if matches!(state, TcbState::Running { .. }) {
             self.transition_tcb(tcb, TcbState::Ready)?;
         }
+        self.sched_after_op(true);
         Ok(())
     }
 
@@ -1859,16 +2324,19 @@ impl Machine {
                         call: false,
                         fault: Some(FaultKind::Exit { code }),
                     },
-                )
+                )?;
             }
             None => {
                 if state == TcbState::Inactive {
+                    self.sched_after_op(true);
                     return Ok(());
                 }
                 self.unlink_tcb_queues(tcb);
-                self.transition_tcb(tcb, TcbState::Inactive)
+                self.transition_tcb(tcb, TcbState::Inactive)?;
             }
         }
+        self.sched_after_op(true);
+        Ok(())
     }
 
     // ---------------------------------------------------------------- nội bộ
@@ -2104,7 +2572,10 @@ impl Machine {
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
-        })
+        })?;
+        // `suspended` trực giao với state: bật ⇒ gỡ khỏi ready queue; tắt ⇒ sched_sync
+        // của caller đưa lại đúng mức (KT-19 DoD 5).
+        self.sched_sync(tcb)
     }
 
     /// Gỡ `tcb` khỏi **mọi** hàng chờ nó đang nằm trong: hàng gửi/nhận của Endpoint,

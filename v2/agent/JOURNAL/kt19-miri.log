@@ -1,0 +1,76 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt19_sched.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/c1717b67600c3a5c/out/kt19_sched-c1717b67600c3a5c)
+
+running 10 tests
+test block_current_va_yield_current_doi_current ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `block_current_va_yield_current_doi_current`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:2372:20: 2374:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:574:9: 581:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt19_sched.rs:56:18: 56:33
+          6: block_current_va_yield_current_doi_current
+              at sim/vifast-sim/tests/kt19_sched.rs:624:17: 624:27
+          7: block_current_va_yield_current_doi_current::{closure#0}
+              at sim/vifast-sim/tests/kt19_sched.rs:623:48: 623:48
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `block_current_va_yield_current_doi_current`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:2372:20: 2374:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:574:9: 581:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt19_sched.rs:56:18: 56:33
+          6: block_current_va_yield_current_doi_current
+              at sim/vifast-sim/tests/kt19_sched.rs:624:17: 624:27
+          7: block_current_va_yield_current_doi_current::{closure#0}
+              at sim/vifast-sim/tests/kt19_sched.rs:623:48: 623:48
+
+ok
+test check_sched_sau_moi_op_cong_khai ... ok
+test cung_muc_fifo_va_yield_quay_vong ... ok
+test dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien ... ok
+test finalise_va_suspend_go_ready_queue ... ok
+test mac_dinh_affinity_home_va_rebucket_priority ... ok
+test mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu ... ok
+test pick_du_256_muc_uu_tien_cao_nhat_duoc_chon ... ok
+test preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi ... ok
+test wake_suspended_khong_enqueue_resume_enqueue_dung_priority ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 122.61s
+
+warning: 2 warnings emitted
+
+
+real	4m22.068s
+user	4m4.912s
+sys	0m1.121s

@@ -13,6 +13,7 @@ use vifast_objmem::OwnedArena;
 
 pub mod kobj;
 pub mod scenario;
+pub mod sched;
 pub mod tcb;
 
 /// Bộ sinh tất định — không dùng thời gian, không dùng bộ nhớ chưa khởi tạo.

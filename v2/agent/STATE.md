@@ -6,12 +6,115 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-19 (READY — scheduler 1 hart, run queue, preempt, affinity); KT-18 DONE (5cccb72)
-Bước          : 0/8 (mã + test đỏ→xanh + Miri + gate + tài liệu; **reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục**)
+Task          : KT-19 (xong mã — scheduler 1 hart; **reviewer-kt19 APPROVE**; Miri PASS); KT-18 DONE (5cccb72)
+Bước          : 8/8 (đỏ → mã → 256 mức/preempt/1.000 seed → Miri → gate → tài liệu; chờ commit/push + Agent 0 lật QUEUE)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**251 test/42 suite**, 0 failed; KT-17 là 231/41, +20 test mới; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `[KT-18]` **`5cccb72` đã push origin/main** (reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục); chờ Agent 0 lật QUEUE. **KT-19 chờ** (scheduler 1 hart)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**263 test/43 suite**, 0 failed; KT-18 là 251/42, +12 test mới; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
+Việc dở       : commit `[KT-19]` + push origin/main (Miri 10/10 PASS, 4 m 22 s); **KT-20..KT-23 chờ**; không lật QUEUE (Agent 0)
 ```
+
+## KT-19 — Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước (K1b, D2-49(a))
+
+**Vào**: READY (agentctl `next --project v2` trả KT-19) · HEAD `26643ba` · KT-18 DONE · baseline
+`gate --fast` PASS 251 test/42 suite ([`JOURNAL/kt19-baseline-gate-fast.log`](JOURNAL/kt19-baseline-gate-fast.log)).
+**Phạm vi**: scheduler **1 hart** cho **mô hình TCB** (không phải scheduler harness KT-08 `lib.rs`);
+**không** budget/refill (KT-20), donation (KT-21), hộp thư/push migration (KT-22, K1c); không
+`spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không thêm dependency/`unsafe`;
+không `#[allow]`/`#[ignore]`. Working tree: `viscript/` + tệp ngoài `v2/` có thay đổi của tab khác —
+**không chạm**, chỉ stage `v2/`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt19-red-compile.log`](JOURNAL/kt19-red-compile.log) — `tests/kt19_sched.rs` không biên dịch:
+  **93 × `E0599`** cho toàn bộ API còn thiếu (`ready_len`, `sched_pick`, `current`, `dispatch`,
+  `check_sched`, `block_current`, `wake`, `yield_current`, `set_preempt_every_step`, `sched_idle`,
+  `sched_cur_prio`, `ready_contains`).
+- [`JOURNAL/kt19-red-queue.log`](JOURNAL/kt19-red-queue.log) — **sau khung** (đã có `HartSched` +
+  `check_sched`/`dispatch` nhưng **chưa** nối `transition_tcb` với ready queue): **0/10 test pass**;
+  thông điệp đúng dự kiến K1B-PLAN §5 KT-19 #2: `check_sched sau transition Ready: TCB 7 Ready nhưng
+  không nằm trong ready queue`; test dispatch đỏ vì chưa TCB nào vào hàng ⇒ `current(0) == None`.
+- Test red trước then chốt ở 2 log trên; sau khi nối một cửa `transition_tcb → sched_sync`, toàn bộ xanh.
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/sched.rs` (**mới**, ~300 dòng + 2 unit test): `HartSched {
+  queues: [VecDeque<ObjId>; 256], bitmap: [u64; 4], len, current, idle, cur_prio }`;
+  `highest_priority`/`pick` **O(1)** (tối đa 4 word, `leading_zeros`, không quét 256 hàng), cùng mức
+  FIFO (`VecDeque::front`); `enqueue/remove_at/remove_all/set_current/clear_current`; `check_local`
+  (bitmap ⇔ hàng khác rỗng + `len`) và `for_each_queued` (chỉ đi bit bật — bản quét 256 hàng/kiểm
+  làm kt19 chậm 15 µs/kiểm, đã tối ưu còn 0,19 µs). Không `HashMap`/thời gian thực ⇒ tất định theo seed.
+- `v2/sim/vifast-sim/src/kobj.rs`: `Machine.sched: Vec<HartSched>` (KT-19: `HART_COUNT = 1`, cấu trúc
+  theo hart để K1c mở rộng) + `preempt_every_step: bool` (mặc định **tắt** — không đổi ngữ nghĩa KT-18);
+  **một cửa**: `transition_tcb` preempt TCB cũ về `Ready` khi vào `Running{hart}` rồi `sched_sync`
+  (gỡ khỏi bucket theo `priority`, nhả `current`, đặt `Ready`+`!suspended` vào hàng / `Running` thành
+  `current`); hook `set_tcb_suspended`, `tcb_resume` (chỉ enqueue khi thực sự gỡ cờ `suspended`),
+  `tcb_set_priority`/`tcb_set_affinity`/`tcb_set_home` (gỡ bucket cũ trước khi đổi). Model API `[TK]`:
+  `ready_len`, `ready_len_at`, `ready_contains`, `current`, `sched_idle`, `sched_cur_prio`, `sched_pick`,
+  `sched_pick_on`, `dispatch`, `block_current`, `wake`, `yield_current`, `check_sched`,
+  `set_preempt_every_step`/`preempt_every_step`, `hart_count`; `TcbInfo` có `snapshot()` dùng chung.
+  `sched_after_op(preempt)` gọi sau **mỗi** public op TCB/scheduler (`call/recv/reply/exit/suspend/
+  resume/wait_notification/wait_address/set_priority/set_affinity/set_home/delete/revoke/retype` =
+  preempt+kiểm; `finalise_tcb/configure/set_fault_ep/set_sched_params/bind_notification` = kiểm).
+- `v2/sim/vifast-sim/tests/kt19_sched.rs` (**mới**, **10 test**, 0 ignored): (1) `pick` đủ **256 mức**
+  0..=255, mức cao nhất trước, FIFO cùng mức, rút hết bằng `dispatch`+`Suspend(Abort)` (assert đúng
+  từng mức); (2) dispatch `Running→Ready→Running`, ≤1 `Running`/hart, Running không trong hàng, tôn
+  trọng priority + preempt khi có mức cao hơn; (3) `check_sched` sau **mỗi** public op (tour đủ
+  Configure/SetFaultEp/set_sched_params/bind_notification/affinity/home/Ready/Call/Recv/Reply/Suspend/
+  Resume/Wait notification/WaitAddr/Exit/finalise); (4) preempt ép **mọi bước**: 2 TCB cùng mức xen kẽ
+  40 bước, **không đói** (≥19/40 mỗi TCB); (5) **1.000 seed × 64 op** ngẫu nhiên
+  (call/recv/reply/suspend/resume/exit/retype): cùng seed ⇒ cùng trace, bất biến sau **mỗi** op,
+  1.000/1.000 trace khác nhau; (6) wake TCB `suspended` **không** enqueue, `Resume` enqueue đúng
+  priority; (7) `block_current`/`yield_current` đổi `current`, `block_current(Ready)` bị từ chối;
+  (8) finalise TCB đang chạy + Suspend(Abort) + Revoke Untyped ⇒ `ready_len` giảm đúng, `current` được
+  thay, không ObjId chết trong hàng; (9) affinity/home mặc định (1/0) + rebucket khi đổi priority;
+  (10) phủ "một cửa"/curr.
+
+### Bằng chứng đo (DoD 1-7)
+
+- **256 mức**: test tạo đủ 256 TCB priority 0..=255, `sched_pick()` = mức 255; vòng rút hạ dần assert
+  `pick == mức p` và `sched_cur_prio == p` cho **mọi** p (255→0) — O(1) theo 4 word bitmap, FIFO cùng mức.
+- **≤1 Running/hart**: mỗi bước `dem_running(...) == 1`; `Running` không nằm trong hàng (`ready_contains`).
+- **`Ready` ⇔ hàng + `!suspended`**: `check_sched` bắt mọi lệch (gồm cả `Ready+suspended` trong hàng);
+  gọi sau mỗi public op + sau mỗi preempt; test gọi thêm sau từng op trong 1.000 seed (kể cả op lỗi).
+- **Preempt/không đói**: 40 bước preempt trên 2 TCB cùng mức cho 20/20 lượt; 1.000 seed × 64 op =
+  **64.000 op** (đo phân bố tạm thời: call 5.077 ok/4.137 lỗi, recv 5.476/3.714, reply 1.781/7.223,
+  suspend 5.436/3.812, resume 8.936/0, exit 9.340/0, retype 9.068/0) — mọi op đều kiểm bất biến.
+- **Gỡ hàng**: `Suspend(Abort)`/`finalise_tcb`/`Revoke Untyped` giảm `ready_len` đúng và thay `current`;
+  `check_sched` xác nhận không còn ObjId chết/không Ready trong hàng (revoke 2 TCB ⇒ hàng 2→0).
+
+### Cổng + Miri (không retry — D2-07)
+
+- [`JOURNAL/kt19-gate-fast.log`](JOURNAL/kt19-gate-fast.log) — `gate --fast` **PASS 263 test / 0 failed**
+  (43 suite; KT-18 là 251/42 ⇒ **+12 test**: 10 integration + 2 unit `HartSched`), **L1 1.000 seed/999
+  trace**, gen-check ON, `.scn` 21 tệp OK, **không retry**; KT-19 test native 2,8 s.
+- [`JOURNAL/kt19-miri.log`](JOURNAL/kt19-miri.log) — `v2 miri -p vifast-sim --test kt19_sched` **PASS
+  10/10** (0 ignored, 4 m 32 s); 2 cảnh báo `integer-to-pointer cast` **có sẵn** từ objmem
+  (`v2/lib/vifast-objmem/src/obj.rs:166,175`, D2-14/D2-17), không phát sinh từ KT-19; `v2/sim/**` **0 unsafe**.
+- **Miri cần giảm phạm vi (ghi rõ, chỉ dưới `cfg(miri)`; stable giữ nguyên DoD)**: `check_sched` sau
+  **mỗi** op quét toàn bộ TCB sống nên Miri chậm hơn ~1000 lần — đo thật 1.000 seed sẽ >4 h. Trên
+  stable vẫn **1.000 seed × 64 op** và **đủ 256 mức**; dưới Miri: **5 seed × 64 op** và **64 mức**
+  (`#[cfg(miri)] N_SEED = 5`, `N_PRIO = 64`; log 20 seed = 5 m 46 s trước khi giảm:
+  [`JOURNAL/kt19-miri-1000seed-aborted.log`](JOURNAL/kt19-miri-1000seed-aborted.log)). Không `#[ignore]`,
+  không nới ngưỡng `gate --fast`/L1.
+
+### Phạm vi / không chạm
+
+Chỉ `v2/sim/vifast-sim/src/{sched.rs,kobj.rs,lib.rs}` (`lib.rs` +1 dòng `pub mod sched;`),
+`v2/sim/vifast-sim/tests/kt19_sched.rs`, `v2/agent/{STATE.md,JOURNAL/}`. Không sửa `spec/`,
+`vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không dependency/`unsafe`;
+không `#[allow]`/`#[ignore]`.
+
+### Review độc lập + đề xuất
+
+Đã báo lead spawn reviewer trước commit (depth 1/1) — lead spawn `reviewer-kt19` (review-only, đọc
+diff uncommitted + tự chạy gate/Miri). **Verdict `reviewer-kt19`: APPROVE** (không DRIFT/UNSAFE);
+reviewer tự chạy `gate --fast` **263 test/43 suite**, L1 1000/999, `kt19_sched` **10/10**; xác nhận
+`pick`/bitmap/FIFO, bất biến Ready⇔queue, ≤1 Running, preempt mặc định tắt, scope sạch.
+
+**Đề xuất: REVIEW → DONE sau khi Agent 0 lật** (không tự DONE, không lật QUEUE — D2-37).
+**Follow-up**: KT-20 thêm điều kiện "chỉ pick TCB có SC còn budget" (bổ sung vào `dispatch_step`,
+không đổi API KT-19); KT-22/K1c push migration đọc `idle`/`cur_prio` đã công bố; KT-23 thêm
+`kt19_sched` vào `nightly --only-miri` và cân nhắc thời lượng Miri (hiện 4 m 32 s với 5 seed/64 mức).
 
 ## KT-18 — TCB đầy đủ, bảng `ALLOWED` 11×11, `suspended` (xong mã, chờ verdict reviewer)
 
