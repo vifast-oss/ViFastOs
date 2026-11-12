@@ -29,6 +29,7 @@ SYSCALL_NAMES = {
     "clock_read": "ClockRead",
     "debug_put_str": "DebugPutStr",
     "debug_halt": "DebugHalt",
+    "debug_get_info": "DebugGetInfo",
     "exit": "Exit",
 }
 
@@ -50,6 +51,42 @@ TAG_GROUPS = {
 CAP_KEYS = {"cap", "src", "dst", "cnode", "ep", "reply", "notif", "tcb", "u", "sched", "sched_control"}
 
 fails = []
+
+
+def split_fields(body):
+    """Tách `a, b=c, d=E{1}` theo dấu phẩy ở mức ngoài cùng."""
+    out, depth, cur = [], 0, ""
+    for ch in body:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def check_state(fname, st, sig, state_names):
+    """Kiểm `Name` hoặc `Name{field=value,...}` theo enum + field của draft D2-33."""
+    if "{" in st:
+        name, body = st.split("{", 1)
+        body = body.rsplit("}", 1)[0]
+    else:
+        name, body = st, ""
+    name = name.strip()
+    if name not in state_names:
+        fails.append(f"{fname}: trạng thái {name!r} không có trong enum D2-33")
+        return
+    declared = {f.split(":")[0].strip() for f in (sig.get("state", {}).get(name, {}) or {}).get("fields", [])}
+    for field in split_fields(body) if body else []:
+        key = field.split("=")[0].strip()
+        if declared and key not in declared:
+            fails.append(f"{fname}: {name} không có trường {key!r} (D2-33: {sorted(declared)})")
 
 
 def check(cond, msg):
@@ -151,6 +188,26 @@ def main():
                 return False, f"{op}.{key}={params[key]!r} không thuộc {allowed}"
         return True, ""
 
+    # D2-11: nếu spec đã có chuỗi `args` cho một method thì draft không được nói khác
+    def spec_params(obj_name, meth_name):
+        obj = objects.get(obj_name) or {}
+        for m in (obj.get("method") or {}).values():
+            if isinstance(m, dict) and m.get("name") == meth_name and m.get("args"):
+                return [t.split(":")[0].strip() for t in m["args"].split(",")]
+        return None
+
+    for op, entry in sig_methods.items():
+        if "." not in op:
+            continue
+        obj_name, meth = op.split(".", 1)
+        have = spec_params(obj_name, meth)
+        if have is None:
+            continue
+        draft = [x.rstrip("?") for x in entry.get("params", [])]
+        for param in have:
+            if param not in draft:
+                fails.append(f"draft lệch spec: {op} có {param!r} trong spec nhưng không có trong draft")
+
     def method_exists(name):
         if "." not in name:
             return False
@@ -191,7 +248,8 @@ def main():
             tags_seen.add(tag)
 
         for st in doc.get("expect_states", []) or []:
-            check(st in state_names, f"{path.name}: trạng thái {st!r} không có trong enum D2-33")
+            check_state(path.name, st, sig, state_names)
+        _ = 0
 
         caps = doc.get("caps", {})
         steps = list(doc.get("setup", []))
@@ -213,8 +271,12 @@ def main():
                 check(method_exists(op), f"{path.name}: {op} không có trong spec/abi.toml (hoặc draft)")
                 ok, why = signature_ok(op, params)
                 check(ok, f"{path.name}: {why}")
-            check(expect == "ok" or expect in errors,
-                  f"{path.name}: kết quả {expect!r} không phải ok/19 mã lỗi")
+            if expect == "halt":
+                check(kind == "syscall" and op in ("exit", "debug_halt"),
+                      f"{path.name}: `halt` chỉ dùng cho exit/debug_halt")
+            else:
+                check(expect == "ok" or expect in errors,
+                      f"{path.name}: kết quả {expect!r} không phải ok/19 mã lỗi")
             for k, v in params.items():
                 if k in CAP_KEYS and v not in caps:
                     fails.append(f"{path.name}: cap {v!r} dùng ở {op} chưa khai trong caps")

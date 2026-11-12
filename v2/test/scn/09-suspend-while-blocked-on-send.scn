@@ -4,8 +4,10 @@ name = "09-suspend-while-blocked-on-send"
 tags = ["suspend-blocked"]
 caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
 thread = [
-  { name = "t0", steps = [
+  { name = "victim", steps = [
     "send cap=ep0 => ok",
+  ] },
+  { name = "procsrv", steps = [
     "invoke Tcb.Suspend tcb=tcb0 mode=Abort => ok",
   ] },
 ]

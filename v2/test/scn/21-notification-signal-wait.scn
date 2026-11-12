@@ -5,8 +5,9 @@ tags = ["notification"]
 caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
 thread = [
   { name = "t0", steps = [
+    "nb_recv cap=ntf0 => Busy",
     "send cap=ntf0 => ok",
-    "nb_recv cap=ntf0 => ok",
     "recv cap=ntf0 => ok",
+    "nb_recv cap=ntf0 => Busy",
   ] },
 ]

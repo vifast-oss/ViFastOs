@@ -121,25 +121,9 @@ def main():
         check(core.get("SchedControl", {}).get("id") == 8, "SchedControl phải là object LÕI id 8 (D2-32)")
         check("SchedControl" not in reserved, "SchedControl KHÔNG được vừa reserved vừa có chữ ký (D2-32)")
 
-    # 7) nếu spec/abi.toml đã có object reserved thì phải KHỚP bản draft (không âm thầm lệch)
+    # 7) (bỏ) khối so draft cũ: đường dẫn tự tính không tồn tại nên không bao giờ chạy —
+    #    KT-04b đã hợp nhất draft vào spec/abi.toml (D2-32), spec là nguồn sự thật duy nhất.
     import os
-    spec_path = os.path.join(os.path.dirname(path), "..", "..", "spec", "abi.toml")
-    spec_path = os.path.normpath(spec_path)
-    if os.path.exists(spec_path) and os.path.abspath(spec_path) != os.path.abspath(path):
-        try:
-            with open(spec_path, "rb") as fh:
-                import tomllib as _t
-                spec = _t.loads(fh.read().decode("utf-8"))
-            spec_res = {n: o for n, o in spec.get("object", {}).items() if o.get("stability") == "reserved"}
-            if spec_res:
-                for name, obj in reserved.items():
-                    got = spec_res.get(name)
-                    check(got is not None and got.get("id") == obj.get("id"),
-                          f"spec/abi.toml lệch draft ở {name}: spec={None if got is None else got.get('id')} draft={obj.get('id')}")
-            elif reserved:
-                print(f"# chú ý: draft có {len(reserved)} object reserved nhưng spec/abi.toml chưa hợp nhất (chờ YC-04)")
-        except Exception as exc:  # noqa: BLE001
-            print(f"# chú ý: không đọc được spec/abi.toml để so ({exc})")
 
     # 6) dải reserved của ABI vẫn bao trùm id đã dùng
     rng = doc.get("object_reserved", {})

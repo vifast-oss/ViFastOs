@@ -116,7 +116,7 @@ Tổng (chốt theo Khối F + đếm lại bằng máy): **58 hàng** = **12 h�
 + **20 hàng bỏ**. Bảng syscall v2 có **16** số: 9 số nhận ánh xạ từ v1 + **7 số mới**
 `{2 NBSend, 6 NBSendRecv, 7 NBSendWait, 9 WaitAddr, 10 WakeAddr, 13 DebugHalt, 15 DebugGetInfo}`.
 `DebugHalt` (13) là syscall **mới** (không có ở v1); `WaitAddr`/`WakeAddr` (9/10) mới (v1 dùng futex trong std shim, không qua ABI).
-Dải **15..31 reserved**. `DebugGetInfo` **chưa có số** — xem `[debug_info]` trong `spec/abi.toml`.
+Dải **16..31 reserved**; `DebugGetInfo` = syscall **15** (D2-29, `[debug_info].number = 15`, `status = "frozen"`).
 
 ## 3. 22 biến thể `KError` v1 → 0 + 19 mã v2
 

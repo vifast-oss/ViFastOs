@@ -119,6 +119,8 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 - Tệp: [`reports/KT-04d-goi-duyet.md`](reports/KT-04d-goi-duyet.md) — `spec/abi.toml`, 21 `.scn`, draft chữ ký D2-33,
   checklist 5 mục/13 method, mapping đã sửa (16 syscall / 26 method / 23 đích / 20 bỏ), D2-26..28.
+- **Bản 2 (sau review #9, 18:40)**: gói đã được sửa (chữ ký theo thiết kế, `.scn` hết ca sai ngữ nghĩa,
+  `expect_states` có trường, fixture âm arity, cross-check spec↔draft). Agent 0 nên đọc **bản 2**, không duyệt bản 18:29.
 - Chờ **một dòng** `APPROVED <ngày> Agent 0` trong `v2/agent/QUEUE.md`; dòng đó mở **KT-05**. Agent 2 **không** ghi APPROVED.
 - Còn mở đúng **một** câu hỏi kỹ thuật: **YC-06** (phạm vi T26).
 

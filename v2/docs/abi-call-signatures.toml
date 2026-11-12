@@ -15,9 +15,9 @@ version = 1
 # Chữ ký method. `params` liệt kê tham số theo thứ tự; hậu tố `?` = tuỳ chọn.
 # `returns` là danh sách giá trị trả (ngoài `error`, `value` chung của Call).
 [method."Untyped.Retype"]
-params = ["cap", "size_bits", "flags"]
+params = ["cap", "type", "size_bits", "flags"]
 returns = ["cap"]
-note = "`flags` có bit GUEST (reserved, D2-32): type = VSpace + GUEST ⇒ trả NotSupported tới H1"
+note = "`flags` = tập TÊN cờ (bit GUEST reserved, D2-32); KHÔNG gán số bit ở đây. type = VSpace + GUEST ⇒ NotSupported tới H1"
 
 [method."CNode.Copy"]
 params = ["cnode", "src", "dst", "rights?"]
@@ -58,14 +58,15 @@ returns = []
 
 [method."Tcb.ReadState"]
 params = ["tcb"]
-returns = ["state"]
+returns = ["state", "suspended", "blocked_on_kind", "exit_code"]
 
 [method."SchedContext.Bind"]
-params = ["sched", "reply"]
+params = ["sched", "target"]
+note = "`target` là cap TCB/Notification/Reply (loại quyết định ngữ nghĩa bind, design §4.3/§4.5)"
 returns = []
 
 [method."SchedControl.Configure"]
-params = ["sched_control", "sched", "budget?", "period?"]
+params = ["sched_control", "sched", "budget?", "period?", "refills?"]
 returns = []
 
 # ---------------------------------------------------------------------------

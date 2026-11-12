@@ -3,8 +3,10 @@ version = 1
 name = "16-cap-transfer-no-grant"
 tags = ["four-cap"]
 caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+# §4.6: chuyển cap thất bại KHÔNG mất message — nó đặt cờ trong MessageInfo (ca 15).
+# InsufficientRights ở đây là đường Mint vượt quyền của cap nguồn.
 thread = [
   { name = "t0", steps = [
-    "call cap=ep0 caps=c0 => InsufficientRights",
+    "invoke CNode.Mint cnode=c0 src=c1 dst=c0 rights=WRITE|GRANT => InsufficientRights",
   ] },
 ]

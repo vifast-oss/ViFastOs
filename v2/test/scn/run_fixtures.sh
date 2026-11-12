@@ -17,10 +17,11 @@ run() {
     fi
 }
 echo "TAP version 13"
-echo "1..3"
+echo "1..4"
 run bad-method
 run bad-error
 run dup-name
-echo "1..3" >/dev/null
+run bad-arity
+echo "1..4" >/dev/null
 if [ "$fails" -eq 0 ]; then echo "# scn fixtures: PASS"; exit 0; fi
 echo "# scn fixtures: FAIL ($fails)"; exit 1

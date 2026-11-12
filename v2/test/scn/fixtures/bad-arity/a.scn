@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "bad-arity"
+tags = ["exit"]
+caps = { c0 = "CNode", c1 = "CNode" }
+thread = [
+  { name = "t0", steps = [
+    "invoke CNode.Copy cnode=c0 src=c1 => ok",
+  ] },
+]

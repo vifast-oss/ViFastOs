@@ -2,6 +2,14 @@
 # KT-04d — Gói gửi Agent 0 duyệt ABI v2
 
 **Ngày gửi**: 2026-11-12 · **Người soạn**: Agent 2 (dòng OS) · **Trạng thái**: gửi duyệt, **không** tự ghi APPROVED.
+
+> **Bản 2 (sau review #9)** — bản gửi 18:29 đã bị thay bằng bản này. Các sửa: draft chữ ký theo đúng thiết kế
+> (`Retype` có `type`; `ReadState` trả đủ `state/suspended/blocked_on_kind/exit_code`; `SchedControl.Configure`
+> có `refills`; `SchedContext.Bind` nhận `target` là cap TCB/Notification/Reply), `.scn` sửa các ca sai ngữ nghĩa
+> (Exit **không trả** ⇒ token `halt`; 09/10 có peer thật; 16 lấy `InsufficientRights` từ Mint vượt quyền vì §4.6
+> nói chuyển cap thất bại **không** mất message; 21 `nb_recv` sau `recv` là `Busy`), `expect_states` có **trường**
+> (`BlockedOnSend{ep, call=false, fault=Exit{7}}`) thay vì chỉ kiểm tên, thêm **fixture âm arity** thứ 4,
+> cross-check `spec ↔ draft` cho `Tcb.Suspend`, và dọn comment `spec/` còn "0..14/15..31".
 Duyệt theo `AGENTS.md` §8: một dòng `APPROVED <YYYY-MM-DD> Agent 0` trong `v2/agent/QUEUE.md` dưới mục KT-04d.
 APPROVED mở **KT-05**.
 

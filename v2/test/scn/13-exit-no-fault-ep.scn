@@ -6,6 +6,6 @@ caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "En
 thread = [
   { name = "t0", steps = [
     "invoke Tcb.Configure tcb=tcb0 entry=4194304 => ok",
-    "exit code=0 => ok",
+    "exit code=0 => halt",
   ] },
 ]

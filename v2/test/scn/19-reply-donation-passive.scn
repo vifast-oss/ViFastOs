@@ -9,7 +9,7 @@ thread = [
   ] },
   { name = "server", steps = [
     "recv cap=ep1 => ok",
-    "invoke SchedContext.Bind sched=sc0 reply=rep0 => ok",
+    "invoke SchedContext.Bind sched=sc0 target=rep0 => ok",
     "send cap=rep0 => ok",
   ] },
 ]

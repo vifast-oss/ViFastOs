@@ -2,15 +2,14 @@
 version = 1
 name = "20-exit-procsrv-chua-recv"
 tags = ["exit"]
-expect_states = ["BlockedOnSend"]
+expect_states = ["BlockedOnSend{ep, call=false, fault=Exit{7}}"]
 caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
 thread = [
   { name = "app", steps = [
     "invoke Tcb.SetFaultEp tcb=tcb0 cap=ep0 => ok",
-    "exit code=7 => ok",
+    "exit code=7 => halt",
   ] },
   { name = "procsrv", steps = [
-    "invoke Tcb.ReadState tcb=tcb0 => ok",
     "recv cap=ep1 => ok",
   ] },
 ]

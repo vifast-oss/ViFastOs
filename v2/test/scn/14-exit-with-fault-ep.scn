@@ -6,7 +6,7 @@ caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "En
 thread = [
   { name = "t0", steps = [
     "invoke Tcb.SetFaultEp tcb=tcb0 cap=ep0 => ok",
-    "exit code=3 => ok",
+    "exit code=3 => halt",
   ] },
   { name = "procsrv", steps = [
     "recv cap=ep1 => ok",

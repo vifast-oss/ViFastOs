@@ -132,7 +132,7 @@ def main():
     for key in ("wire_syscalls", "message_layout", "error_table", "object_layout"):
         check(frozen.get(key) is True, f"frozen.{key} phải true (5 thứ đóng băng, D2-15)")
 
-    # --- syscall 0..14, dải 15..31 reserved ---------------------------
+    # --- syscall 0..15, dải 16..31 reserved ---------------------------
     sc = {int(k): v for k, v in doc.get("syscall", {}).items()}
     check(set(sc.keys()) == set(SYSCALLS.keys()), f"syscall phải là 0..15, đang có {sorted(sc)}")
     for num, name in SYSCALLS.items():
