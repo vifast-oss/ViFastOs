@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-agentctl"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "vifast_agentctl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vifast-agentctl"
+path = "src/main.rs"
