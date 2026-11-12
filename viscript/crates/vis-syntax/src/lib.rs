@@ -26,9 +26,13 @@
 //! assert_eq!(kinds, [Kind::Kw, Kind::Ident, Kind::Punct, Kind::Int, Kind::Eof]);
 //! ```
 
+pub mod cst;
 pub mod lex;
+pub mod parse;
 
+pub use cst::{Cst, Elem, Node, NodeKind};
 pub use lex::lit;
 pub use lex::token::{is_keyword, Kind, Span, Token, KEYWORDS, PUNCTS};
 pub use lex::verify;
 pub use lex::{lex, Diagnostic, LexOutput, Mode};
+pub use parse::{parse, ParseOutput};

@@ -1,0 +1,106 @@
+=== ST-05 D2-05: 30 golden biểu thức ĐỎ TRƯỚC khi hiện thực parser ===
+thời điểm chụp: 2026-11-12T15:16:06Z
+cách chụp: parser còn là khung (file()/expr() trả lỗi ngay token đầu; CST Program chứa nguyên token
+           để render vẫn lossless) — giữ NGUYÊN harness cuối để số dòng trong log khớp byte-for-byte
+           với tệp đã commit.
+sha256 fixture: test/expr/golden.expr=f751f4554740d01f44013015ee9ba80ff1a56ec79c49dbb1585746541a507425
+sha256 harness: tests/expr.rs=7dcb5c50d51279dfc2a515216d2b1ee0bb075d128d941eaf8025328475703f65
+                src/parse/mod.rs=6e485f87313fd2c07f8497e53f8c36c664966b5024560e35f3ab6d75c5ceb899
+                src/parse/expr.rs=c946f9b708c924f62584317865aee04bca707b6b628efe8a32b7f938ce3f74cb
+                src/cst.rs=6038d5382b0bffed89a431c88cae547aeb1f8332f324ab39003b0685e45cbd08
+lệnh: cargo test -p vis-syntax --test expr -- --nocapture
+
+warning: multiple methods are never used
+   --> crates/vis-syntax/src/parse/mod.rs:103:8
+    |
+ 78 | impl<'a> Parser<'a> {
+    | ------------------- methods in this implementation
+...
+103 |     fn at_punct(&self, s: &str) -> bool {
+    |        ^^^^^^^^
+...
+107 |     fn at_kw(&self, s: &str) -> bool {
+    |        ^^^^^
+...
+126 |     fn eat_punct(&mut self, s: &str) -> Option<Elem> {
+    |        ^^^^^^^^^
+...
+134 |     fn eat_kw(&mut self, s: &str) -> Option<Elem> {
+    |        ^^^^^^
+...
+142 |     fn expect_punct(&mut self, s: &str) -> PResult<Elem> {
+    |        ^^^^^^^^^^^^
+...
+150 |     fn expect_kw(&mut self, s: &str) -> PResult<Elem> {
+    |        ^^^^^^^^^
+...
+158 |     fn expect_ident(&mut self) -> PResult<Elem> {
+    |        ^^^^^^^^^^^^
+...
+166 |     fn expect_newline(&mut self) -> PResult<Elem> {
+    |        ^^^^^^^^^^^^^^
+...
+194 |     fn node(&self, kind: NodeKind, elems: Vec<Elem>) -> Node {
+    |        ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `expr` is never used
+ --> crates/vis-syntax/src/parse/expr.rs:8:19
+  |
+6 | impl<'a> Parser<'a> {
+  | ------------------- method in this implementation
+7 |     /// `expr := lambda | pipe_expr` — chưa hiện thực (đỏ trước).
+8 |     pub(crate) fn expr(&mut self) -> PResult<Node> {
+  |                   ^^^^
+
+warning: `vis-syntax` (lib) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/expr.rs (target/debug/deps/expr-d951660937aed24a)
+
+running 1 test
+FAIL golden.expr:30 nguồn="1 + 2 * 3": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:32 nguồn="(1 + 2) * 3": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:34 nguồn="2 ** 3 ** 2": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:36 nguồn="2 * 3 ** 2": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:38 nguồn="-2 ** 2": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:40 nguồn="8 / 2 % 3": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:42 nguồn="1 - 2 - 3": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:44 nguồn="0..n+1": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:46 nguồn="0..=10": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:48 nguồn="a .. b .. c": lỗi báo ở token đầu (byte 0) — phải tại chỗ vi phạm
+FAIL golden.expr:50 nguồn="a ?? b == c": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:52 nguồn="a ?? b ?? c": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:54 nguồn="1 < x < 10": lỗi báo ở token đầu (byte 0) — phải tại chỗ vi phạm
+FAIL golden.expr:56 nguồn="not a == b": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:58 nguồn="a and b or c": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:60 nguồn="x? |> f": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:62 nguồn="u with age: 21 |> f": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:64 nguồn="a |> f |> g": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:66 nguồn="xs[0]": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:68 nguồn="xs[0]?": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:70 nguồn="a.b.c": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:72 nguồn="a?.b": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:74 nguồn="f(1, 2)": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:76 nguồn="f()?": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:78 nguồn="[1, 2, 3]": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:80 nguồn="set{1, 2}": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:82 nguồn="(1, \"a\")": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:84 nguồn="{\"a\": 1}": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:86 nguồn="{name: \"An\", age: 20}": mong parse được, thật 1 lỗi [VS0201] — "parser chưa hiện thực (ST-05 đỏ trước)"
+FAIL golden.expr:89 nguồn="50%": lỗi báo ở token đầu (byte 0) — phải tại chỗ vi phạm
+
+thread 'golden_30_bieu_thuc_theo_vd34' (36721854) panicked at crates/vis-syntax/tests/expr.rs:162:9:
+expr: 30 ca ĐỎ / 30 ca chạy (golden biểu thức VD-34)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test golden_30_bieu_thuc_theo_vd34 ... FAILED
+
+failures:
+
+failures:
+    golden_30_bieu_thuc_theo_vd34
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-syntax --test expr`
+exit=101

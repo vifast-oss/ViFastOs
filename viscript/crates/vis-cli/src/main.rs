@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use vis_diag::{lookup_str, Severity, CODES};
+use vis_diag::{lookup_str, Severity, CODES, SYNTAX_CODES};
 
 fn usage() -> ExitCode {
     eprintln!("dùng: vis explain <VSxxxx> | vis explain --list");
@@ -16,7 +16,7 @@ fn main() -> ExitCode {
         Some("explain") => match args.get(1).map(String::as_str) {
             None => usage(),
             Some("--list") => {
-                for c in CODES.iter() {
+                for c in CODES.iter().chain(SYNTAX_CODES.iter()) {
                     let tag = match c.severity {
                         Severity::Error => "lỗi",
                         Severity::Warning => "cảnh báo",

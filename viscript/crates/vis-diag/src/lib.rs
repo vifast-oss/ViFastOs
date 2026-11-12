@@ -102,9 +102,29 @@ pub const CODES: [Code; 10] = [
     },
 ];
 
+/// Sổ **mã cú pháp** `02xx` (VD-35) — tách khỏi [`CODES`] để test "CODES khớp SPEC-lex §7" vẫn
+/// là hàng rào thật (không nới kỳ vọng cũ). Quy tắc cấp: `VS0201` lỗi cú pháp chung; `VS0202`
+/// `%` dùng như phần trăm (thông điệp phải gợi ý `50pct`, L3 của `docs/DUYET-AGENT0-vong-va.md`).
+pub const SYNTAX_CODES: [Code; 2] = [
+    Code {
+        id: 201,
+        short: "VS0201",
+        message_vi: "lỗi cú pháp: token không mong đợi/thiếu vế",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 202,
+        short: "VS0202",
+        message_vi: "`%` dùng như phần trăm — viết `50pct`",
+        severity: Severity::Error,
+    },
+];
+
 /// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
+///
+/// Tra **cả hai sổ**: từ vựng [`CODES`] (`01xx`) và cú pháp [`SYNTAX_CODES`] (`02xx`) — VD-35.
 pub fn lookup(id: u16) -> Option<&'static Code> {
-    CODES.iter().find(|c| c.id == id)
+    CODES.iter().chain(SYNTAX_CODES.iter()).find(|c| c.id == id)
 }
 
 /// Tra theo chuỗi `VSxxxx` (chấp nhận `vs0103`); `None` nếu sai định dạng hoặc chưa cấp.
@@ -118,9 +138,17 @@ pub fn lookup_str(s: &str) -> Option<&'static Code> {
 }
 
 /// Khối mã kế tiếp còn trống (quy tắc cấp): trả số đầu của khối mới, không tái dùng.
+///
+/// Tính trên **cả hai sổ** (từ vựng `01xx` + cú pháp `02xx`) ⇒ sau `VS0101..VS0110` và
+/// `VS0201..VS0202`, khối kế là `03xx` (`301`), không quay lại số đã cấp.
 pub fn next_block() -> u16 {
-    let phase = CODES.iter().map(|c| c.id / 100).max().unwrap_or(0) + 1;
-    phase * 100 + 1
+    let max = CODES
+        .iter()
+        .chain(SYNTAX_CODES.iter())
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0);
+    (max / 100 + 1) * 100 + 1
 }
 
 /// Chẩn đoán tối thiểu: mã **đã cấp trong sổ** + thông điệp + vị trí byte (0-based).
@@ -180,11 +208,31 @@ mod tests {
 
     #[test]
     fn khoi_ke_tiep_khong_tai_dung() {
+        // 01xx (từ vựng) + 02xx (cú pháp, VD-35) đã dùng ⇒ khối kế là 03xx.
         assert_eq!(
             next_block(),
-            201,
-            "khối từ vựng đã dùng 01xx ⇒ khối kế 02xx"
+            301,
+            "khối từ vựng 01xx và cú pháp 02xx đã dùng ⇒ khối kế 03xx"
         );
+    }
+
+    #[test]
+    fn so_cu_phap_02xx_khoa_theo_vd35() {
+        // Sổ cú pháp riêng: 2 mã, đúng thứ tự, đúng nghĩa, và `CODES` KHÔNG bị đụng.
+        let ids: Vec<u16> = SYNTAX_CODES.iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec![201, 202]);
+        assert_eq!(SYNTAX_CODES[0].short, "VS0201");
+        assert_eq!(SYNTAX_CODES[1].short, "VS0202");
+        assert!(
+            SYNTAX_CODES[1].message_vi.contains("50pct"),
+            "VS0202 phải gợi ý `50pct` (L3)"
+        );
+        assert_eq!(CODES.len(), 10, "sổ từ vựng vẫn đúng 10 mã của §7");
+        // Tra xuyên sổ: `vis explain VS0201` phải chạy.
+        for (i, c) in SYNTAX_CODES.iter().enumerate() {
+            assert_eq!(lookup(201 + i as u16).map(|x| x.short), Some(c.short));
+            assert_eq!(lookup_str(c.short).map(|x| x.id), Some(c.id));
+        }
     }
 
     #[test]
