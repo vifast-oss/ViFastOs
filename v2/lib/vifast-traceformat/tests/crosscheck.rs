@@ -24,7 +24,6 @@ fn bin_path() -> PathBuf {
 /// Mỗi dòng event → Record. `k=v` đọc bằng chuỗi, không dùng lại code sinh của sim.
 fn records_from_text(text: &str) -> Vec<Record> {
     let mut out = Vec::new();
-    let mut step = 0u64;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("step=") {
             let mut parts = rest.split(' ');
@@ -50,7 +49,6 @@ fn records_from_text(text: &str) -> Vec<Record> {
                 }
             }
             out.push(Record::new(t_ns, 0, kind, tcb, a, b));
-            let _ = step;
         }
     }
     out
@@ -89,12 +87,11 @@ fn doi_thu_tu_hoac_kind_thi_golden_khac() {
 #[test]
 fn golden_bi_cat_hoac_them_ban_ghi_deu_bi_bat() {
     let golden = fs::read(bin_path()).unwrap();
-    assert!(
-        decode_all(&golden[..golden.len() - 32])
-            .map(|v| v.len() == 200)
-            .unwrap_or(false)
-            == false
-            || golden.len() - 32 != 200 * 32
+    let cut = &golden[..golden.len() - 32];
+    assert_eq!(
+        decode_all(cut).unwrap().len(),
+        199,
+        "cụt 1 bản ghi phải còn 199"
     );
     let mut extra = golden.clone();
     extra.extend_from_slice(&[0u8; 32]);
