@@ -80,8 +80,30 @@ run_rules() {
 }
 
 usage() {
-    echo "dùng: vis-dev <check|gate --fast|nightly|rules [--root DIR]>" >&2
+    echo "dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>" >&2
     exit 2
+}
+
+do_doc_examples() {
+    # Bước cổng "mọi khối mã trong tài liệu parse được" (QD §7.4, ST-09).
+    #   $1 = đường dẫn python3 (rỗng ⇒ tự dò); $2 = gốc thay thế; $3 = --temp-root (case âm)
+    local py="${1:-}"
+    local root="${2:-}"
+    if [ -z "$py" ]; then
+        for c in python3.12 python3.11 python3; do
+            if command -v "$c" >/dev/null 2>&1; then py="$c"; break; fi
+        done
+    fi
+    if [ -z "$py" ]; then
+        echo "vis-dev: không thấy python3 cho bước doc-examples" >&2
+        return 1
+    fi
+    local args=(--gate)
+    if [ -n "$root" ]; then args+=(--root "$root"); fi
+    if [ "${3:-}" = "--temp-root" ]; then args+=(--temp-root); fi
+    if ! "$py" "$VIS_ROOT/test/doc-examples/doc_examples.py" "${args[@]}"; then
+        return 1
+    fi
 }
 
 do_check() {
@@ -128,6 +150,11 @@ do_check() {
         echo "--- build: FAIL" >&2; return 1
     fi
     echo "--- build: OK"
+    # Bước sau build: `vis check` phải dùng binary vừa build (không dùng bản cũ).
+    if ! do_doc_examples "$PY"; then
+        echo "--- doc-examples: FAIL" >&2
+        return 1
+    fi
     echo "vis-dev check: PASS"
 }
 
@@ -149,6 +176,22 @@ case "${1:-}" in
     nightly)
         echo "vis-dev: nightly CHƯA CÓ (cần lexer/parser + mutation/Miri/soak)" >&2
         exit 2
+        ;;
+    doc-examples)
+        root=""
+        temp=""
+        i=2
+        while [ "$i" -le "$#" ]; do
+            case "${!i}" in
+                --root) i=$((i + 1)); root="${!i:-}" ;;
+                --temp-root) temp="--temp-root" ;;
+            esac
+            i=$((i + 1))
+        done
+        if ! do_doc_examples "" "$root" "$temp"; then
+            echo "--- doc-examples: FAIL" >&2
+            exit 1
+        fi
         ;;
     rules)
         root="$VIS_ROOT"

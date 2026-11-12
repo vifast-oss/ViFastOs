@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+if x > 0: print("dương")
+elif x < 0: print("âm")
+else: print("không")
+
+let label = if ok: "OK" else: "FAIL"
+
+for i in 0..10: ...        # 0 tới 9
+for i in 0..=10: ...
+for (k, v) in m: ...
+while cond: ...
+loop:
+    if done(): break

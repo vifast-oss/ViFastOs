@@ -6,7 +6,7 @@ VIS_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEV="$VIS_ROOT/bin/vis-dev"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-echo "1..5"
+echo "1..12"
 n=0; bad=0
 expect_fail() {
     n=$((n + 1))
@@ -18,6 +18,28 @@ expect_fail() {
     else
         echo "not ok $n - $name bị bắt nhưng sai lý do"; sed 's/^/    /' "$tmp/out"; bad=$((bad + 1))
     fi
+}
+expect_fail_dev() {
+    n=$((n + 1))
+    local name="$1" want="$2"
+    shift 2
+    if "$@" >"$tmp/out" 2>&1; then
+        echo "not ok $n - $name KHÔNG bị bắt"; bad=$((bad + 1))
+    elif grep -q "$want" "$tmp/out"; then
+        echo "ok $n - $name bị bắt ($want)"
+    else
+        echo "not ok $n - $name bị bắt nhưng sai lý do"; sed 's/^/    /' "$tmp/out"; bad=$((bad + 1))
+    fi
+}
+# qd fixtures (symlink) cho cây tạm: $1 = gốc, $2 = số lượng
+mk_qd() {
+    mkdir -p "$1/viscript/test/doc-examples"
+    local i=0 f
+    for f in "$VIS_ROOT"/test/doc-examples/qd*; do
+        i=$((i + 1))
+        [ "$i" -gt "$2" ] && break
+        ln -sf "$f" "$1/viscript/test/doc-examples/"
+    done
 }
 # 1) thiếu SPDX
 mkdir -p "$tmp/1"; printf 'fn x() {}\n' > "$tmp/1/bad.rs"
@@ -42,5 +64,58 @@ elif [ "$rc" -ne 0 ] && echo "$out" | grep -q "không thấy cargo"; then
 else
     echo "not ok $n - thiếu cargo xử lý sai (rc=$rc): $out"; bad=$((bad + 1))
 fi
+# 6) doc-examples: khối ```vis chứa "..." KHÔNG khai báo allowlist ⇒ đỏ
+mkdir -p "$tmp/6/docs/viscript"
+printf '# tài liệu âm\n\n```vis\nfor i in 0..10: ...\n```\n' > "$tmp/6/docs/viscript/neg.md"
+: > "$tmp/6/docs/viscript/doc-examples-allow.txt"
+mk_qd "$tmp/6" 12
+expect_fail_dev "doc-examples: khối đỏ ngoài allowlist" "khối đỏ không khai báo" \
+    bash "$DEV" doc-examples --root "$tmp/6" --temp-root
+# 7) allowlist cũ (khối đã xanh) ⇒ đỏ
+mkdir -p "$tmp/7/docs/viscript"
+printf '# tài liệu sạch\n\n```vis\nx = 1\n```\n' > "$tmp/7/docs/viscript/clean.md"
+printf 'clean.md:3 lý do cũ (khối đã xanh)\n' > "$tmp/7/docs/viscript/doc-examples-allow.txt"
+mk_qd "$tmp/7" 12
+expect_fail_dev "doc-examples: ngoại lệ cũ đã xanh" "ngoại lệ cũ" \
+    bash "$DEV" doc-examples --root "$tmp/7" --temp-root
+# 8) allowlist sai số 7 (--root KHÔNG kèm --temp-root vẫn đủ luật) ⇒ đỏ
+expect_fail_dev "doc-examples: allowlist sai số mục" "phải đúng 7 mục" \
+    bash "$DEV" doc-examples --root "$tmp/7"
+# 9) fixture lệch byte so với tài liệu ⇒ đỏ
+mkdir -p "$tmp/9/docs/viscript" "$tmp/9/viscript/test/doc-examples"
+cp "$VIS_ROOT"/../docs/viscript/*.md "$tmp/9/docs/viscript/"
+cp "$VIS_ROOT"/../docs/viscript/doc-examples-allow.txt "$tmp/9/docs/viscript/"
+cp "$VIS_ROOT"/test/doc-examples/doc-* "$tmp/9/viscript/test/doc-examples/"
+mk_qd "$tmp/9" 12
+printf '\n# lệch byte\n' >> "$tmp/9/viscript/test/doc-examples/doc-ViScript-thiet-ke-305.vis"
+expect_fail_dev "doc-examples: fixture lệch byte" "KHÔNG khớp khối" \
+    bash "$DEV" doc-examples --root "$tmp/9"
+# 10) thiếu fixture qd (10) ⇒ đỏ (số do Agent 0 chốt: đúng 12)
+mkdir -p "$tmp/10/docs/viscript"
+printf '# tài liệu sạch\n\n```vis\nx = 1\n```\n' > "$tmp/10/docs/viscript/clean.md"
+: > "$tmp/10/docs/viscript/doc-examples-allow.txt"
+mk_qd "$tmp/10" 10
+expect_fail_dev "doc-examples: qd-* = 10" "phải đúng 12 fixture qd" \
+    bash "$DEV" doc-examples --root "$tmp/10" --temp-root
+# 11) thừa fixture qd (13) ⇒ đỏ
+mkdir -p "$tmp/11/docs/viscript"
+cp "$tmp/10/docs/viscript/clean.md" "$tmp/11/docs/viscript/"
+: > "$tmp/11/docs/viscript/doc-examples-allow.txt"
+mk_qd "$tmp/11" 13
+printf '# SPDX-License-Identifier: MIT OR Apache-2.0\n# QD 7.1: fixture thừa (case âm)\n# kỳ vọng: ok\nx = 1\n' \
+    > "$tmp/11/viscript/test/doc-examples/qd-extra.vis"
+expect_fail_dev "doc-examples: qd-* = 13" "phải đúng 12 fixture qd" \
+    bash "$DEV" doc-examples --root "$tmp/11" --temp-root
+# 12) binary `vis` cũ hơn mã nguồn ⇒ từ chối chạy (không dùng bản cũ)
+mkdir -p "$tmp/12/docs/viscript"
+cp "$tmp/10/docs/viscript/clean.md" "$tmp/12/docs/viscript/"
+: > "$tmp/12/docs/viscript/doc-examples-allow.txt"
+mk_qd "$tmp/12" 12
+printf '#!/bin/sh\nexit 0\n' > "$tmp/12/fakevis"
+chmod +x "$tmp/12/fakevis"
+touch -t 200001010000 "$tmp/12/fakevis"
+PY=$(command -v python3.12 || command -v python3.11 || command -v python3 || true)
+expect_fail_dev "doc-examples: binary cũ bị từ chối" "cũ hơn mã nguồn" \
+    "$PY" "$VIS_ROOT/test/doc-examples/doc_examples.py" --gate --root "$tmp/12" --temp-root --vis-bin "$tmp/12/fakevis"
 if [ "$bad" -ne 0 ]; then echo "# fixtures: FAIL ($bad)"; exit 1; fi
 echo "# fixtures: PASS (cây sạch phải xanh)"

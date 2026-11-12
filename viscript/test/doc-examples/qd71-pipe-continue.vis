@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.1/7.4: cho phép dòng bắt đầu bằng `|>` nối với dòng trước
+# kỳ vọng: ok
+xs |> f
+|> g

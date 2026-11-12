@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+ls ./photos | where size > 5mb | sort_by modified --desc | take 10
+let big = ls ./photos | where size > 5mb
+big | each f => f.copy_to(p"./backup")
+open users.json | from json[User] | where age >= 18 | get name
+git log --oneline | lines | take 5
+ps | where cpu > 50pct | each p => p.kill()
+http get https://api.example.com/items | from json[Item] | to csv | save items.csv

@@ -1,0 +1,32 @@
+=== ST-09 D2-05: cổng "doc-examples" ĐỎ TRƯỚC khi nối vào vis-dev (12 case âm) ===
+thời điểm chụp: 2026-11-12T18:38:18Z
+cách chụp: các case âm #6..#12 và script `doc_examples.py` đã có, nhưng `bin/vis-dev` CHƯA nối bước
+           `doc-examples`; case #6..#11 đòi `vis-dev doc-examples` phải đỏ đúng lý do ⇒ KHÔNG bắt được;
+           case #12 gọi thẳng script (kiểm binary cũ) vẫn chạy được — ghi rõ để không giấu.
+sha256 harness: test/fixtures/run_fixtures.sh=cf3fffed4f13ac60bff07acb6ce69803f130b1f4e8068af3e774016e41667f69
+sha256 script:  test/doc-examples/doc_examples.py=03c22b5169fd2cdfdeee229374649627ffe11d98e33c4c4a1f93cb22ad23ab8c
+sha256 allow:   ../docs/viscript/doc-examples-allow.txt=cfd733a415db994ad0dac93ad7225530d48de11d13246858a259665cef4b7ed9
+sha256 doc:     ../docs/viscript/ViScript-thiet-ke.md=70da3dd5393eff6cd1062bd760a507675ba39d18f0a259b82713640db5dc7094
+1..12
+ok 1 - thiếu SPDX bị bắt (R3)
+ok 2 - tệp 1.501 dòng bị bắt (R1)
+ok 3 - unsafe bị bắt (R2)
+ok 4 - vis-host-vifast trong viscript/ bị bắt (R4)
+ok 5 - thiếu cargo báo rõ (1)
+not ok 6 - doc-examples: khối đỏ ngoài allowlist bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+not ok 7 - doc-examples: ngoại lệ cũ đã xanh bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+not ok 8 - doc-examples: allowlist sai số mục bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+not ok 9 - doc-examples: fixture lệch byte bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+not ok 10 - doc-examples: qd-* = 10 bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+not ok 11 - doc-examples: qd-* = 13 bị bắt nhưng sai lý do
+    dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+ok 12 - doc-examples: binary cũ bị từ chối bị bắt (cũ hơn mã nguồn)
+# fixtures: FAIL (6)
+exit_run_fixtures=1
+dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>
+exit_doc_examples=2

@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn fetch_all(net: cap[Net], urls: list[str]) -> list[Result[str, AnyError]]:
+    scope s:
+        let tasks = urls.map(u => s.spawn(net.get_text(u)))
+        tasks.map(t => await t)

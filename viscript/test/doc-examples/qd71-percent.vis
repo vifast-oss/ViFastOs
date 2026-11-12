@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.1: bỏ literal `50%`, dùng `50pct`; `%` chỉ là modulo — VS0202 + gợi ý
+# kỳ vọng: VS0202
+x = 50%

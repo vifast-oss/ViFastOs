@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.3: `str(x)` = `x.show()`; `str(e.path)` hợp lệ
+# kỳ vọng: ok
+f = str(e.path)

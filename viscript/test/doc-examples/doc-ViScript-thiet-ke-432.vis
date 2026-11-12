@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn first[T](xs: list[T]) -> T?:
+    if xs.is_empty(): none else: xs[0]
+
+fn max_by[T, K: Ord](xs: list[T], key: fn(T) -> K) -> T?: ...

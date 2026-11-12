@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.2: `#` chỉ là chú thích khi đứng đầu từ; `https://…/y#frag` giữ nguyên
+# kỳ vọng: ok
+curl https://x/y#frag

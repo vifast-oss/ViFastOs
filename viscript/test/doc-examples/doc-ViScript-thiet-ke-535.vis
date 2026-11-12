@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+var a = [1, 2, 3]
+var b = a
+b.push(4)        # a vẫn là [1, 2, 3]

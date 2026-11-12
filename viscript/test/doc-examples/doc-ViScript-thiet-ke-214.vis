@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type User derives Eq, Show, Json:
+    name: str
+    age: int
+    email: str? = none
+
+enum Shape derives Show:
+    Circle(r: float)
+    Rect(w: float, h: float)
+    Empty
+
+alias UserId = int
+newtype Email = str             # kiểu mới, không tự chuyển đổi với str

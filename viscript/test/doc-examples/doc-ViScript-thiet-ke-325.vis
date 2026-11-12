@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+match s:
+    Circle(r) if r > 100.0: "lớn"
+    Circle(r) | Rect(r, _): "tròn {r}"
+    Rect(w, h): "chữ nhật {w}x{h}"
+    Empty: "rỗng"

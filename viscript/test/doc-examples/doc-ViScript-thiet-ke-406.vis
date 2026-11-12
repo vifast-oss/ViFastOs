@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+pub fn greet(name: str, times: int = 1, --loud: bool = false) -> str:
+    let s = "Xin chào {name}".repeat(times)
+    if loud: s.upper() else: s

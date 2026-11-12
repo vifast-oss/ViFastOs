@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#!/usr/bin/env vis
+use std.fmt.json
+use std.time
+
+type Entry derives Json, Show:
+    path: str
+    size: size
+    modified: datetime
+
+## Tìm 20 tệp lớn nhất đã sửa trong 7 ngày, ghi báo cáo JSON
+fn main(src: cap[Dir] @ p".", out: cap[Dir] @ p"./reports" (write)) -> Result[(), AnyError]:
+    let since = time.now() - 7d
+    let files = src.walk()
+        |> filter(e => e.is_file() and e.modified >= since)
+        |> sort_by(e => e.size, --desc)
+        |> take(20)
+        |> map(e => Entry(path: str(e.path), size: e.size, modified: e.modified))
+        |> collect()
+
+    out.write_text("big-files.json", json.to_string(files, --pretty))?
+    print("Đã ghi {files.len()} mục")
+    Ok(())
+
+test fn sort_desc_works():
+    let xs = [3, 1, 2] |> sort_by(x => x, --desc) |> collect()
+    assert xs == [3, 2, 1]

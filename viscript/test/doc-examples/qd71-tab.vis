@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.1: tab = 4 cột, lexer báo VS0107 và VẪN lex tiếp; `vis check` coi là lỗi
+# kỳ vọng: VS0107
+if x:
+	y

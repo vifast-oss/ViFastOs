@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.1/7.3: `1..2` là range, không phải float `1.`
+# kỳ vọng: ok
+r = 1..2

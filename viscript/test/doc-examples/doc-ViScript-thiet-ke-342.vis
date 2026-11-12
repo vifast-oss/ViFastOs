@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let e = user.email ?? "không có"
+let domain = user.email?.split("@").last()
+if let mail = user.email:
+    send(mail)

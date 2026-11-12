@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn read_config(dir: cap[Dir]) -> Result[Config, AnyError]:
+    let text = dir.read_text("config.json")?
+    let cfg = json.parse[Config](text)?
+    Ok(cfg)

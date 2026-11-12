@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+trait Show:
+    fn show(self) -> str
+
+impl Show for Shape:
+    fn show(self) -> str: ...
+
+trait Storage:
+    fn get(self, key: str) -> bytes?
+    fn put(var self, key: str, value: bytes)

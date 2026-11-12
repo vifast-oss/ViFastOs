@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# QD 7.1: float phải có chữ số sau `.` (`1.` sai)
+# kỳ vọng: VS0104
+x = 1.

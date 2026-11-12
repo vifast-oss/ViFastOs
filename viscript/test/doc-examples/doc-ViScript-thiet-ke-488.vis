@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let cfg = read_config(dir) else err:
+    print("Dùng cấu hình mặc định: {err}")
+    Config.default()

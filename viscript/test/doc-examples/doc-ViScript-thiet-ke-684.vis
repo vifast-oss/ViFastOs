@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn backup_big(ctx: Ctx, dir: path) -> Result[int, AnyError]:
+    let files = cmd { ls (dir) | where size > 5mb } |> collect()
+    for f in files:
+        f.copy_to(p"./backup")?
+    Ok(files.len())
