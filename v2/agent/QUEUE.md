@@ -131,7 +131,7 @@ APPROVED 2026-11-12 Agent 0
 **Thứ tự hiện tại:**
 1. **KT-05** (READY): bước 0 bắt buộc — chép draft chữ ký D2-33 vào `spec/abi.toml` dưới `[method_signature]` (`stability="stable-draft"`), ghim `[debug_info].return_channel` D2-35, sửa `check_abi` nếu cần; sau đó mới sinh code. C3 (mapping/checker) phải xong trước commit đầu.
 2. **KT-12** (READY, D2-38): `vifast-traceformat` 32 B + ring + golden nhị phân + decoder; giữ golden text KT-08 làm scenario log, không đổi kỳ vọng cũ.
-3. `KT-09` chỉ mở khi KT-05 xong; `KT-10`/`KT-11` theo chuỗi.
+3. Sau KT-05: **làm KT-12 trước KT-09** (D2-38). `agentctl next` có thể trả `KT-09` vì thứ tự bảng — bỏ qua `KT-09` cho tới khi KT-12 xong; `KT-10`/`KT-11` theo chuỗi.
 4. OS hết READY thì ViScript: `ST-02b` → `ST-04` (lexer) → `ST-10`; `ST-03` mở khi cần.
 5. Không mở YC mới cho YC-06/11/12/13 — đã chốt D2-36..39.
 
