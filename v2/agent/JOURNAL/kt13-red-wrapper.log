@@ -1,0 +1,15 @@
+$ ./v2/bin/v2 miri
+v2: lệnh không biết: miri
+v2 — cổng dòng OS ViFastOs v2 (vòng 1)
+
+  ./v2/bin/v2 check            fmt + clippy + 5 luật cấu trúc + self-test luật + build
+  ./v2/bin/v2 gate --fast      như check + L0 (cargo test --workspace). BẮT BUỘC cuối mỗi task
+  ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
+  ./v2/bin/v2 nightly          CHƯA CÓ trong vòng 1 (cần L1/mutation/Miri/soak)
+  ./v2/bin/v2 rules [--root D] chỉ chạy 5 luật cấu trúc trên D (mặc định v2/)
+
+Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
+      R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
+      R5 unsafe chỉ trong danh sách đóng (D2-17).
+L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; nightly 100.000 seed (chưa có lệnh nightly).
+[exit 2]
