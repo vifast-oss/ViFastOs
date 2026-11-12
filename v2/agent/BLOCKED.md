@@ -23,7 +23,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | KT-08 | KT-02 (đã DONE) — **DONE `cf433b7`**, sửa theo review #11 | — |
 | ~~KT-09~~ | **DONE** `3d578c0` + `da7d30f`; 29 test, C5 D2-41 | — |
 | ~~KT-10~~ | **DONE** `c78e814`; 20 test, reviewer APPROVE | — |
-| ~~KT-11~~ | **READY** — KT-10 DONE; `vifast-model` + F3 quyền | — |
+| ~~KT-11~~ | **DONE** `035584b`; 184 test, parity 10k, .scn 9/9, reviewer APPROVE | — |
 | ~~KT-12~~ | **DONE** `e750847`..`d3dfe31` (host/format); no_std sang **KT-12b** (D2-42) | — |
 
 Không có phụ thuộc vòng. Không có task nào bị chặn vì thiếu spec/thiếu quyết định: QD đã trả lời Q1..Q12 (QD §9).
@@ -32,7 +32,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 ## 3. Câu hỏi cho Agent 0
 
-> **Cập nhật 23:35:** KT-10 DONE; KT-11 READY. YC-06..17 đã chốt; không hỏi lại.
+> **Cập nhật 00:15:** KT-11 DONE; OS vòng 1 hoàn tất, không còn task READY. YC-06..17 đã chốt; không hỏi lại.
 
 
 

@@ -6,16 +6,16 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-11 (`vifast-model` Untyped/CNode + F3 + so sim 10.000 seed — mã xong, chờ review/duyệt); KT-10 DONE (c78e814)
-Bước          : 7/8 (test đỏ → xanh; gate PASS; chờ review độc lập + commit)
+Task          : OS vòng 1 DONE — không còn task READY; KT-11 DONE (035584b); chờ mở K1a/vòng sau
+Bước          : 8/8 (KT-11 DONE; reviewer APPROVE; gate PASS 184 test)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**184 test**, **L1 1.000 seed/999 trace**, 600 ms; gen-check ON, 21 `.scn` + golden không đổi)
-Việc dở       : chờ reviewer độc lập trước commit (đề xuất REVIEW, không tự nhận DONE)
+Việc dở       : — (OS vòng 1 hoàn tất)
 ```
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 23:35 bởi Agent 0**: KT-10 DONE (c78e814, 20 test, property 6144, reviewer APPROVE); KT-11 READY. Không còn YC OS mở.
+> **Cập nhật 00:15 bởi Agent 0**: KT-11 DONE (035584b, 24 tệp, 184 test, parity 10k, reviewer APPROVE). OS vòng 1 hoàn tất; không còn task READY. Không còn YC OS mở.
 
 ## Ghi chú
 
@@ -205,7 +205,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
-| 2026-11-13 | **KT-11** | 8/8 | — | — | `gate --fast` PASS (L1 1000 seed/999 trace, **184 test**) | **xong mã — chờ Agent 0**; `vifast-model` Untyped/CNode + F3 (Copy/Retype/Delete/Revoke, badge Some(0)); parity sim **10.000 seed/0 lệch**; `.scn` **9/9** (D2-44..46) |
+| 2026-11-13 | **KT-11** | 8/8 | — | — | `gate --fast` PASS (L1 1000 seed/999 trace, **184 test**) | **DONE** `035584b`; `vifast-model` Untyped/CNode + F3; parity sim **10.000 seed/0 lệch**; `.scn` **9/9** (D2-44..46) |
 | 2026-11-12 | **KT-10** | 8/8 | — | — | `gate --fast` PASS (L1 1000 seed/999 trace, 161 test) | **xong mã — chờ Agent 0**; CNode/MDB test-first: `mint`, `check_caps`, delete reparent, finalise CNode; **20 test mới**, property 6.144 thao tác |
 | 2026-11-12 | **KT-09b** | 8/8 | — | — | `gate --fast` PASS (L1 1000 seed/999 trace) | sửa review Agent 0: `TcbState` đủ 11 variant (test spec), `check_bytes` siết allocated/gap, revoke Untyped lồng nhau; **29 test** |
 | 2026-11-12 | **KT-09** | 8/8 | — | — | `gate --fast` PASS (L1 1000 seed/999 trace) | **xong mã — chờ Agent 0 lật sổ** (D2-37); Untyped/Revoke/e2e + C5; **27 test**; fixture âm kiểm thông điệp |
