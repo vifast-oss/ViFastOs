@@ -189,6 +189,24 @@ mod tests {
     }
 
     #[test]
+    fn fixed_ring_khong_cap_phat_giu_thu_tu() {
+        let mut ring: FixedRing<4> = FixedRing::new();
+        assert!(ring.is_empty());
+        for n in 1..=6 {
+            ring.push(r(n));
+        }
+        assert_eq!(ring.len(), 4);
+        assert_eq!(
+            ring.iter().map(|x| x.t_ns).collect::<Vec<_>>(),
+            vec![3, 4, 5, 6]
+        );
+        let mut one: FixedRing<1> = FixedRing::new();
+        one.push(r(9));
+        one.push(r(10));
+        assert_eq!(one.iter().map(|x| x.t_ns).collect::<Vec<_>>(), vec![10]);
+    }
+
+    #[test]
     fn decode_all_tron_du_va_noi_lien_ring() {
         let mut ring = Ring::new(3);
         ring.push(r(1));
@@ -197,5 +215,59 @@ mod tests {
         assert_eq!(bytes.len(), 2 * RECORD_BYTES);
         let back = decode_all(&bytes).unwrap();
         assert_eq!(back, vec![r(1), r(2)]);
+    }
+}
+
+/// Ring **không cấp phát** (dùng được trong kernel `no_std`): `[Record; N]` trên stack.
+/// Cùng ngữ nghĩa với [`Ring`]: đầy thì ghi đè bản ghi cũ nhất, `iter` theo thời gian.
+#[derive(Debug, Clone)]
+pub struct FixedRing<const N: usize> {
+    buf: [Record; N],
+    next: usize,
+    len: usize,
+}
+
+impl<const N: usize> Default for FixedRing<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> FixedRing<N> {
+    pub const fn new() -> Self {
+        assert!(N > 0, "FixedRing cần N > 0");
+        Self {
+            buf: [Record {
+                t_ns: 0,
+                hart: 0,
+                kind: 0,
+                tcb: 0,
+                a: 0,
+                b: 0,
+            }; N],
+            next: 0,
+            len: 0,
+        }
+    }
+
+    pub fn push(&mut self, r: Record) {
+        self.buf[self.next] = r;
+        self.next = (self.next + 1) % N;
+        if self.len < N {
+            self.len += 1;
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Record> {
+        let start = if self.len == N { self.next } else { 0 };
+        (0..self.len).map(move |i| &self.buf[(start + i) % N])
     }
 }
