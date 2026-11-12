@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# v2/bin/v2 — cổng của dòng OS v2 (KT-03).
+#
+# Vòng 1 chỉ có: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), L0.
+# CHƯA có gen-check (KT-05) và CHƯA có L1 (KT-08) — AGENTS.md §6.
+# Mọi lệnh cargo dùng `--manifest-path v2/Cargo.toml`: KHÔNG bao giờ chạm workspace v1
+# (crates/, 25 crate đã đóng băng ở tag v1-archive).
+set -u
+
+V2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
+MANIFEST="$V2_ROOT/Cargo.toml"
+
+# cargo có thể không nằm trên PATH (máy này: ~/.cargo/bin).
+find_cargo() {
+    if command -v cargo >/dev/null 2>&1; then
+        command -v cargo
+        return 0
+    fi
+    local c
+    for c in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo" "/opt/homebrew/bin/cargo"; do
+        if [ -x "$c" ]; then
+            echo "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+CARGO="$(find_cargo)" || {
+    echo "v2: không tìm thấy cargo (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)" >&2
+    exit 127
+}
+export PATH="$(dirname "$CARGO"):$PATH"
+
+usage() {
+    cat <<'EOF'
+v2 — cổng dòng OS ViFastOs v2 (vòng 1)
+
+  ./v2/bin/v2 check            fmt + clippy + 5 luật cấu trúc + self-test luật + build
+  ./v2/bin/v2 gate --fast      như check + L0 (cargo test --workspace). BẮT BUỘC cuối mỗi task
+  ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
+  ./v2/bin/v2 nightly          CHƯA CÓ trong vòng 1 (cần L1/mutation/Miri/soak)
+  ./v2/bin/v2 rules [--root D] chỉ chạy 5 luật cấu trúc trên D (mặc định v2/)
+
+Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
+      R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
+      R5 unsafe chỉ trong danh sách đóng (D2-17).
+L1 CHƯA BẬT tới KT-08 (chưa có sim).
+EOF
+}
+
+# ---------------------------------------------------------------- luật cấu trúc
+
+# Tập thư mục được quét (thiết kế §8). Fixture của self-test nằm ở v2/test/rules nên
+# không tự quét chính nó; `target/` luôn bị bỏ.
+SCAN_DIRS="kernel lib sim user std boot platform tools"
+
+# rules <root>: in vi phạm "R<k> <đường dẫn>[:dòng]: <lý do>", trả 0 nếu sạch.
+rules() {
+    local root="$1" found=0 dirs=() d f n line path
+    for d in $SCAN_DIRS; do
+        [ -d "$root/$d" ] && dirs+=("$root/$d")
+    done
+    if [ "${#dirs[@]}" -eq 0 ]; then
+        echo "rules: không có thư mục nào trong ($SCAN_DIRS) dưới $root" >&2
+        return 1
+    fi
+
+    # R1: tệp trong kernel/ và lib/ không quá 1.500 dòng [TK]
+    for d in kernel lib; do
+        [ -d "$root/$d" ] || continue
+        while IFS= read -r -d '' f; do
+            n=$(wc -l <"$f" | tr -d ' ')
+            if [ "$n" -gt 1500 ]; then
+                echo "R1 ${f#"$root"/}: $n dòng > 1500"
+                found=1
+            fi
+        done < <(find "$root/$d" -type f \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
+            -not -path '*/target/*' -print0 2>/dev/null)
+    done
+
+    # R2: cấm cfg(target_arch) trong kernel/vifast-core và lib/ (thiết kế §8)
+    for d in "$root/kernel/vifast-core" "$root/lib"; do
+        [ -d "$d" ] || continue
+        while IFS= read -r line; do
+            echo "R2 ${line#"$root"/}"
+            found=1
+        done < <(grep -rn --include='*.rs' 'cfg(target_arch' "$d" 2>/dev/null)
+    done
+
+    # R3: SPDX theo loại tệp (QD §9.3)
+    for d in "${dirs[@]}"; do
+        while IFS= read -r -d '' f; do
+            case "$f" in
+                *.rs | *.s | *.asm | *.toml | *.vis | *.vish | *.vidl | *.sh | *.py)
+                    if ! head -5 "$f" | grep -q 'SPDX-License-Identifier'; then
+                        echo "R3 ${f#"$root"/}: thiếu SPDX-License-Identifier trong 5 dòng đầu"
+                        found=1
+                    fi
+                    ;;
+                *.json | *.bin | *.txt)
+                    if [ ! -f "$f.license" ]; then
+                        echo "R3 ${f#"$root"/}: tệp không có cú pháp chú thích cần sidecar .license"
+                        found=1
+                    fi
+                    ;;
+            esac
+        done < <(find "$d" -type f -not -path '*/target/*' -print0 2>/dev/null)
+    done
+
+    # R4: cấm path-dependency sang crates/ — v1 đã đóng băng (D2-26)
+    for d in "${dirs[@]}"; do
+        while IFS= read -r -d '' f; do
+            n=0
+            while IFS= read -r line; do
+                n=$((n + 1))
+                echo "R4 ${f#"$root"/}:$n: path-dependency sang crates/ ($line)"
+                found=1
+            done < <(grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*crates/' "$f" 2>/dev/null)
+        done < <(find "$d" -name Cargo.toml -not -path '*/target/*' -print0 2>/dev/null)
+    done
+
+    # R5: unsafe chỉ trong danh sách đóng (D2-17): vifast-sync, vifast-objmem,
+    #     kernel/vifast-plat-*, boot/
+    for d in "${dirs[@]}"; do
+        while IFS= read -r -d '' f; do
+            path="${f#"$root"/}"
+            case "$path" in
+                boot/* | kernel/vifast-plat-* | *vifast-sync* | *vifast-objmem*) continue ;;
+            esac
+            while IFS= read -r line; do
+                echo "R5 $line"
+                found=1
+            done < <(grep -nE '\bunsafe[[:space:]]*(fn|impl|trait|extern|\{)' "$f" 2>/dev/null |
+                sed "s|^|$path:|")
+        done < <(find "$d" -name '*.rs' -not -path '*/target/*' -print0 2>/dev/null)
+    done
+
+    return "$found"
+}
+
+# ---------------------------------------------------------------- các lệnh
+
+run_step() { # <tên> <lệnh...>
+    local name="$1"
+    shift
+    echo "--- $name"
+    if "$@"; then
+        echo "--- $name: OK"
+        return 0
+    fi
+    echo "--- $name: FAIL" >&2
+    return 1
+}
+
+do_check() {
+    local fails=0
+    echo "== v2 check (HEAD $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')) =="
+    run_step "fmt" "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || fails=$((fails + 1))
+    run_step "clippy" "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings || fails=$((fails + 1))
+    echo "--- luật cấu trúc R1..R5"
+    if rules "$V2_ROOT"; then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
+    run_step "self-test luật" bash "$V2_ROOT/test/rules/run.sh" || fails=$((fails + 1))
+    run_step "build (L0 compile)" "$CARGO" build --manifest-path "$MANIFEST" --workspace || fails=$((fails + 1))
+    if [ "$fails" -ne 0 ]; then
+        echo "v2 check: $fails bước FAIL" >&2
+        return 1
+    fi
+    echo "v2 check: PASS (L1 chưa bật tới KT-08)"
+}
+
+do_gate_fast() {
+    do_check || return 1
+    run_step "L0 test" "$CARGO" test --manifest-path "$MANIFEST" --workspace || return 1
+    echo "v2 gate --fast: PASS (chưa gen-check tới KT-05, L1 chưa bật tới KT-08)"
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+    check) do_check ;;
+    gate)
+        if [ "${1:-}" = "--fast" ]; then
+            do_gate_fast
+        else
+            echo "v2: cổng đầy đủ CHƯA CÓ trong vòng 1 — chỉ dùng 'gate --fast' (AGENTS.md §6)" >&2
+            exit 2
+        fi
+        ;;
+    nightly)
+        echo "v2: nightly CHƯA CÓ (cần sim KT-08 + mutation/Miri/soak)" >&2
+        exit 2
+        ;;
+    rules)
+        root="$V2_ROOT"
+        if [ "${1:-}" = "--root" ] && [ -n "${2:-}" ]; then
+            root="$2"
+        elif [ -n "${1:-}" ]; then
+            echo "v2: 'rules' chỉ nhận --root <thư mục>" >&2
+            exit 2
+        fi
+        if [ ! -d "$root" ]; then
+            echo "v2: không có thư mục $root" >&2
+            exit 2
+        fi
+        if rules "$root"; then
+            echo "rules: PASS ($root)"
+            exit 0
+        fi
+        echo "rules: FAIL ($root)" >&2
+        exit 1
+        ;;
+    "" | -h | --help | help) usage ;;
+    *)
+        echo "v2: lệnh không biết: $cmd" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
