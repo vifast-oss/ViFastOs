@@ -121,12 +121,12 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-15 | `with_many_mut` N≤8 + kiểm alias từng cặp + fuzz 10.000 chuỗi (200 chuỗi dưới Miri) | KT-14 | 2 h | DONE | 34 test; Miri alias 8/8 + fuzz 200; fuzz 10k; gate 218 test; guard `chua_header`/TypeId; reviewer DRIFT đã sửa |
 | KT-16 | Tích hợp objmem vào sim: thay `Store` **và** ruột `kobj::Machine`, giữ API; bước 0 gom helper ≤45′; cho phép tách KT-16a/b | KT-14, KT-15 | 3 h | DONE | 23 tệp; test cũ 0 dòng sửa; body trong objmem, Cap `Vec`; sim 0 unsafe; gate 227 test/L1 1000; parity 10k; Miri 39+4+8+13; reviewer APPROVE |
 | KT-17 | Cổng Miri tổng `nightly --only-miri` + KT-04c trên objmem + chốt DoD K1a' | KT-13, KT-14, KT-15, KT-16 | 2 h | DONE | `nightly --only-miri` PASS 365 s; 231 test/41 suite; parity 10k; `.scn` 9/9; 2 follow-up đóng; reviewer DRIFT đã sửa; K1a' DONE |
-| KT-18 | TCB đầy đủ + `suspended` + bảng `ALLOWED` 11×11 + `Suspend/Resume/ReadState` + finalise | — | 3 h | READY | 100% cặp ALLOWED; cặp cấm `IllegalOperation`; `ReadState` 4 giá trị; Abort gỡ hàng chờ trước; test 11×11; Miri test mới; gate |
-| KT-19 | Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước, affinity, không đói, finalise khỏi queue | KT-18 | 3 h | BLOCKED | `pick` O(1); ≤1 Running/hart; `check_sched` sau mỗi op; 1.000 seed × 64 op; không đói |
+| KT-18 | TCB đầy đủ + `suspended` + bảng `ALLOWED` 11×11 + `Suspend/Resume/ReadState` + finalise | — | 3 h | DONE | 48 cặp (46 reachable + 2 Stopping reserved); 121 cặp; `ReadState` 4 giá trị; Abort gỡ hàng; 18 test; Miri 18/18; gate 251 test; reviewer DRIFT đã sửa |
+| KT-19 | Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước, affinity, không đói, finalise khỏi queue | KT-18 | 3 h | READY | `pick` O(1); ≤1 Running/hart; `check_sched` sau mỗi op; 1.000 seed × 64 op; không đói |
 | KT-20 | MCS budget: timer ảo, consumed/refill một đoạn, `Sleeping{Budget}`, invariant theo chu kỳ | KT-19 | 3 h | BLOCKED | Budget 0 vi phạm (chu kỳ thẳng hàng); hết budget → `Sleeping`; test refill |
 | KT-21 | Donation Call/Reply + passive server + bind Reply/Notification + MCP + budget khi donation | KT-20 | 3 h | BLOCKED | Server passive chạy SC client; Reply trả SC; MCP; case server có SC riêng |
 | KT-22 | Hộp thư mô hình FIFO, đầy → `Busy`/backpressure; **không** lock-free/loom | KT-19 | 2 h | BLOCKED | FIFO tất định; đầy backpressure; không atomic/thread; D2-49(f) |
-| KT-23 | Tích hợp scenario + L1 K1b 1.000 seed + coverage 100% + Miri + parity 10k + bảng DoD K1b | KT-18, KT-19, KT-20, KT-21, KT-22 | 2 h | BLOCKED | 100% transition; budget 0 vi phạm; mailbox; push migration **hoãn K1c** theo D2-49(a); gate/Miri |
+| KT-23 | Tích hợp scenario + L1 K1b 1.000 seed + coverage 100% + Miri + parity 10k + bảng DoD K1b | KT-18, KT-19, KT-20, KT-21, KT-22 | 2 h | BLOCKED | 100% transition thao tác (46 reachable); budget 0 vi phạm; mailbox; push migration hoãn K1c; sửa fixture `12-...scn:13` Defer (không nới ngữ nghĩa); thêm `kt18_tcb` vào `nightly --only-miri`; gate/Miri |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 APPROVED 2026-11-12 Agent 0
@@ -144,8 +144,8 @@ APPROVED 2026-11-12 Agent 0
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
-1. **K1a' DONE** (KT-13..KT-17); **K1b** mở: KT-18 READY, KT-19..KT-23 chờ.
-2. Thứ tự: KT-18 → KT-19 → KT-20 → KT-21 → KT-22 → KT-23; mỗi task ≤3 h.
+1. **K1a' DONE**; K1b: KT-18 DONE (5cccb72), **KT-19 READY**, KT-20..KT-23 chờ.
+2. Thứ tự: KT-19 → KT-20 → KT-21 → KT-22 → KT-23; mỗi task ≤3 h.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.
 4. Không đụng `spec/`/`vifast-model`/`.scn`; parity 10k chỉ hồi quy.
 5. OS hết READY mới lấy ViScript; dòng ViScript do tab riêng quản lý.

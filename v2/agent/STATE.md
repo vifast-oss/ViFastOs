@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : **KT-18** (K1b, READY) — TCB đầy đủ + bảng `ALLOWED` 11×11 + `suspended` + `Suspend/Resume/ReadState` + finalise TCB; mã + test xong
-Bước          : 8/8 (mã + test đỏ→xanh + Miri + gate + tài liệu; **reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục**)
+Task          : KT-19 (READY — scheduler 1 hart, run queue, preempt, affinity); KT-18 DONE (5cccb72)
+Bước          : 0/8 (mã + test đỏ→xanh + Miri + gate + tài liệu; **reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục**)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**251 test/42 suite**, 0 failed; KT-17 là 231/41, +20 test mới; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
 Việc dở       : commit `[KT-18]` **`5cccb72` đã push origin/main** (reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục); chờ Agent 0 lật QUEUE. **KT-19 chờ** (scheduler 1 hart)
@@ -176,7 +176,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 06:50 bởi Agent 0**: KT-17 DONE (ab87bb9), **K1a' DONE**; chốt K1b Q1–Q8 tại D2-49; KT-18 READY.
+> **Cập nhật 07:20 bởi Agent 0**: KT-18 DONE (5cccb72, 251 test, Miri 18/18, reviewer DRIFT đã sửa); KT-19 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
