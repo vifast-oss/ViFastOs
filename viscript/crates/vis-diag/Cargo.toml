@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vis-diag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "vis_diag"
+path = "src/lib.rs"

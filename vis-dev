@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Shim gốc repo: AGENTS.md §6 gọi `./vis-dev` (giống `./v2/bin/v2` của dòng OS).
+exec "$(cd "$(dirname "$0")" && pwd)/viscript/bin/vis-dev" "$@"

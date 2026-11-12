@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# vis-dev — cổng của dòng ViScript (ST-01).
+#   check      : fmt + clippy + luật R1..R4 + self-test case âm + build
+#   gate --fast: check + L0 test
+#   nightly    : CHƯA CÓ (exit 2)
+set -u
+VIS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$VIS_ROOT/.." && pwd)"
+MANIFEST="$VIS_ROOT/Cargo.toml"
+fails=0
+
+find_cargo() {
+    command -v cargo >/dev/null 2>&1 && return 0
+    [ -x "$HOME/.cargo/bin/cargo" ] && { echo "$HOME/.cargo/bin/cargo"; return 0; }
+    return 1
+}
+CARGO="$(find_cargo || true)"
+relpath() {
+    case "$1" in
+        "$VIS_ROOT"/*) printf '%s' "${1#"$VIS_ROOT"/}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+rule_fail() { echo "$1" >&2; fails=$((fails + 1)); }
+
+# R1..R4 trên một cây bất kỳ (dùng cho self-test với --root).
+run_rules() {
+    local root="$1"
+    local found=0
+    # R1: tệp nguồn ≤ 1.500 dòng
+    while IFS= read -r -d '' f; do
+        case "$f" in
+            *.rs | *.vis | *.vish | *.vidl | *.toml | *.sh | *.py)
+                n=$(wc -l <"$f" | tr -d ' ')
+                if [ "$n" -gt 1500 ]; then
+                    echo "R1 $(relpath "$f"): $n dòng > 1500" >&2
+                    found=1
+                fi
+                ;;
+        esac
+    done < <(find "$root" -type f -not -path '*/target/*' -print0 2>/dev/null)
+    # R2: cấm `unsafe` ngoài danh sách crate đóng (hiện danh sách TRỐNG ở vòng 1)
+    while IFS= read -r -d '' f; do
+        case "$f" in
+            *.rs)
+                # Bỏ chú thích trước khi tìm từ khoá: nhắc chữ "unsafe" trong docs không phải vi phạm.
+                hit=$(awk '{ sub(/\/\/.*/, ""); if ($0 ~ /(^|[^A-Za-z0-9_])unsafe([^A-Za-z0-9_]|$)/) { print FNR; exit } }' "$f")
+                if [ -n "$hit" ]; then
+                    echo "R2 $(relpath "$f"):$hit: có 'unsafe' — vòng 1 chưa crate nào được phép" >&2
+                    found=1
+                fi
+                ;;
+        esac
+    done < <(find "$root" -type f -name '*.rs' -not -path '*/target/*' -print0 2>/dev/null)
+    # R3: SPDX theo loại tệp (QD §9.3)
+    while IFS= read -r -d '' f; do
+        case "$f" in
+            *.rs | *.s | *.asm | *.vis | *.vish | *.vidl | *.toml | *.sh | *.py)
+                if ! head -5 "$f" | grep -q 'SPDX-License-Identifier'; then
+                    echo "R3 $(relpath "$f"): thiếu SPDX-License-Identifier trong 5 dòng đầu" >&2
+                    found=1
+                fi
+                ;;
+            *.json | *.bin | *.txt)
+                if [ ! -f "$f.license" ]; then
+                    echo "R3 $(relpath "$f"): tệp cần sidecar .license" >&2
+                    found=1
+                fi
+                ;;
+        esac
+    done < <(find "$root" -type f -not -path '*/target/*' -print0 2>/dev/null)
+    # R4: `vis-host-vifast` KHÔNG được nằm trong viscript/ (QD §7.5, thiết kế §14.2)
+    if [ -d "$root/vis-host-vifast" ] || [ -d "$root/crates/vis-host-vifast" ]; then
+        echo "R4: vis-host-vifast nằm trong viscript/ — phải ở workspace ngoài" >&2
+        found=1
+    fi
+    return "$found"
+}
+
+usage() {
+    echo "dùng: vis-dev <check|gate --fast|nightly|rules [--root DIR]>" >&2
+    exit 2
+}
+
+do_check() {
+    echo "== vis-dev check =="
+    if [ -z "$CARGO" ]; then echo "vis-dev: không thấy cargo" >&2; return 1; fi
+    if ! "$CARGO" fmt --manifest-path "$MANIFEST" --all -- --check; then
+        echo "--- fmt: FAIL" >&2; return 1
+    fi
+    echo "--- fmt: OK"
+    if ! "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; then
+        echo "--- clippy: FAIL" >&2; return 1
+    fi
+    echo "--- clippy: OK"
+    if ! run_rules "$VIS_ROOT"; then
+        echo "--- luật R1..R4: FAIL" >&2; return 1
+    fi
+    echo "--- luật R1..R4: OK"
+    if ! bash "$VIS_ROOT/test/fixtures/run_fixtures.sh"; then
+        echo "--- self-test case âm: FAIL" >&2; return 1
+    fi
+    echo "--- self-test case âm: OK"
+    if ! "$CARGO" build --manifest-path "$MANIFEST" --workspace; then
+        echo "--- build: FAIL" >&2; return 1
+    fi
+    echo "--- build: OK"
+    echo "vis-dev check: PASS"
+}
+
+do_gate_fast() {
+    do_check || return 1
+    if ! "$CARGO" test --manifest-path "$MANIFEST" --workspace; then
+        echo "--- L0 test: FAIL" >&2; return 1
+    fi
+    echo "--- L0 test: OK"
+    echo "vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)"
+}
+
+case "${1:-}" in
+    check) do_check ;;
+    gate)
+        [ "${2:-}" = "--fast" ] || { echo "vis-dev: chỉ 'gate --fast' ở vòng 1" >&2; exit 2; }
+        do_gate_fast
+        ;;
+    nightly)
+        echo "vis-dev: nightly CHƯA CÓ (cần lexer/parser + mutation/Miri/soak)" >&2
+        exit 2
+        ;;
+    rules)
+        root="$VIS_ROOT"
+        if [ "${2:-}" = "--root" ] && [ -n "${3:-}" ]; then root="$3"; fi
+        run_rules "$root" && echo "--- rules: OK"
+        ;;
+    *) usage ;;
+esac

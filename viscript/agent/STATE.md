@@ -4,18 +4,18 @@ Người ghi: **Agent 2** dòng ViScript. Cập nhật **sau mỗi bước**.
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
 
 ```
-HEAD          : ca2eaf5
+HEAD          : xem `git log -1`
 BUILD_ID      : —
-Task          : —
-Bước          : —
+Task          : ST-02b (sổ mã lỗi VS) — ST-01 DONE
+Bước          : 8/8
 Nhánh         : main
-Cổng gần nhất : —
+Cổng gần nhất : `./vis-dev check` + `gate --fast` PASS (ST-01: 4 case âm, fmt/clippy/rules/build/L0)
 Việc dở       : —
 ```
 
 ## Ghi chú
 
-- Giai đoạn đầu (`ST-01` chưa xong) **chưa có** `./vis-dev check` / `./vis-dev gate --fast` ⇒ ô `Cổng gần nhất` ghi "cổng chưa có".
+- `ST-01` **DONE**: có `./vis-dev check` + `./vis-dev gate --fast` (fmt, clippy, R1 ≤1500 dòng, R2 cấm `unsafe`, R3 SPDX theo loại tệp, R4 `vis-host-vifast` ngoài `viscript/`, self-test **4 case âm**, build, L0 test).
 - `ST-02a` **DONE** (APPROVED 2026-11-12 Agent 0). **ST-04 mở ngay**; 60 golden token là test đỏ đầu tiên của ST-04.
 - Việc làm được ngay, không chờ duyệt: `ST-01`, `ST-02b`, `ST-10`; `ST-03` mở khi `ST-01` xong.
 - Vòng 1 **không** có interpreter/kiểm kiểu; dừng ở lexer → parser/CST → `CmdCST` → `vis-fmt` → runner `--check` cú pháp.
