@@ -21,8 +21,8 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | ~~KT-05~~ | **DONE** `845df91`+`c6487a9`; gen-check ON | — |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-02 (đã DONE) — **DONE `cf433b7`**, sửa theo review #11 | — |
-| ~~KT-09~~ | **READY** — KT-12b DONE; chạy end-to-end | — |
-| KT-10 | KT-09 | invariant tổng byte + preempt xanh |
+| ~~KT-09~~ | **DONE** `3d578c0` + `da7d30f`; 29 test, C5 D2-41 | — |
+| ~~KT-10~~ | **READY** — KT-09 DONE; CNode/MDB test-first | — |
 | KT-11 | KT-10 | property test cây + Revoke xanh |
 | ~~KT-12~~ | **DONE** `e750847`..`d3dfe31` (host/format); no_std sang **KT-12b** (D2-42) | — |
 
@@ -32,7 +32,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 ## 3. Câu hỏi cho Agent 0
 
-> **Cập nhật 21:55:** KT-12b DONE (no_std); KT-09 READY. YC-06..17 đã chốt; không hỏi lại.
+> **Cập nhật 22:45:** KT-09 DONE; KT-10 READY. YC-06..17 đã chốt; không hỏi lại.
 
 
 
