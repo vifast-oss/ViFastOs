@@ -8,24 +8,25 @@
 use crate::hir::BinOp;
 use crate::ty::Type;
 
-/// Nâng literal `int` sang `float` ở vị trí `float` (thiết kế §3.5 — ngoại lệ duy nhất).
-pub(super) fn promote(l: &Type, r: &Type) -> (Type, Type) {
+/// Nâng `int → float` **chỉ khi** phía `int` là **literal số nguyên** (thiết kế §3.5 — ngoại lệ
+/// duy nhất; ST-12b BLOCKER #2: biến `int` **không** được nâng).
+pub(super) fn promote(l: &Type, r: &Type, l_lit: bool, r_lit: bool) -> (Type, Type) {
     match (l, r) {
-        (Type::Int, Type::Float) => (Type::Float, Type::Float),
-        (Type::Float, Type::Int) => (Type::Float, Type::Float),
+        (Type::Int, Type::Float) if l_lit => (Type::Float, Type::Float),
+        (Type::Float, Type::Int) if r_lit => (Type::Float, Type::Float),
         _ => (l.clone(), r.clone()),
     }
 }
 
 /// Kiểu kết quả của toán tử số học; `None` = không hợp lệ (⇒ `VS0412`).
-pub(super) fn so_hoc(op: BinOp, l: &Type, r: &Type) -> Option<Type> {
+pub(super) fn so_hoc(op: BinOp, l: &Type, r: &Type, l_lit: bool, r_lit: bool) -> Option<Type> {
     use BinOp::{Add, Div, Mul, Pow, Range, RangeIncl, Rem, Sub};
     use Type::{Char, Duration, Float, Int, Percent, Size};
 
     if l.is_error() || r.is_error() {
         return Some(Type::Error);
     }
-    let (l, r) = promote(l, r);
+    let (l, r) = promote(l, r, l_lit, r_lit);
     // Khoảng `a..b`: hai đầu cùng kiểu số; kết quả là `range[T]` (mã hoá nội bộ của ST-11/12).
     if matches!(op, Range | RangeIncl) {
         let ok = matches!(
@@ -60,7 +61,8 @@ pub(super) fn so_hoc(op: BinOp, l: &Type, r: &Type) -> Option<Type> {
         (Div, Size, Size) => Type::Float,
         (Div, Duration, Duration) => Type::Float,
         (Div, Percent, Int) => Type::Percent,
-        (Div, Percent, Percent) => Type::Percent,
+        // VD-48(b): `percent / percent` ⇒ **float** (tỉ lệ của hai tỉ lệ); giữ `percent / int ⇒ percent`.
+        (Div, Percent, Percent) => Type::Float,
         (Rem, Int, Int) => Type::Int,
         (Rem, Size, Int) => Type::Size,
         (Rem, Duration, Int) => Type::Duration,

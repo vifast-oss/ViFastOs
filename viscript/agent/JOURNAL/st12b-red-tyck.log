@@ -1,0 +1,251 @@
+=== ST-12b D2-05: 7 lỗi kiểm kiểu do review độc lập — ĐỎ TRƯỚC khi sửa ===
+thời điểm chụp: 2026-11-12T22:50:17Z — **sau** `cargo fmt` (harness đã đóng băng), chụp bằng cách **tạm gỡ** bản vá
+  (`git stash push -- crates/vis-types/src/tyck`) để chạy đúng harness cuối trên code **trước sửa**;
+  sau đó `git stash pop` khôi phục (đã kiểm lại: 10/10 test xanh).
+harness: `crates/vis-types/tests/tyck_v2.rs` (**tệp mới** của ST-12b). `tests/{tyck,exhaustive}.rs`
+  của ST-12 **không** dùng làm nguồn đỏ; log `st12-red-tyck.log` chỉ là **bản ghi lịch sử** của `273a921`.
+  (`tests/tyck.rs` có **một** kỳ vọng sửa theo yêu cầu Agent 0 — ca `fn f(x:int?)->int: x?` từ
+  `ok(int)` thành `!VS0412` — ngoại lệ hợp lệ của "không sửa kỳ vọng cũ".)
+lệnh: cargo test -p vis-types --test tyck_v2 --no-fail-fast
+
+sha256 harness (bản commit — mọi tệp sau fmt, không đổi sau khi chụp):
+  sha256 crates/vis-types/tests/tyck_v2.rs=d1e9d5bd35ea8c7ff285ebe5b617ccf9256f4a409b3035d8e2809a7c86264827
+  sha256 crates/vis-types/tests/tyck.rs=61478716777f17b2bbf8d302dc1aa96fabbf7a16a97b09fa66d053e7c278a10c
+  sha256 crates/vis-types/src/tyck/mod.rs=fee26edd2f4fed9f2f651c07fc2e9bc51b2ee77fa4387a4a5b408f0a355c7db4
+  sha256 crates/vis-types/src/tyck/expr.rs=060934613d46a560568d8c0b795800cd6a6f9d47ac982297eb39a8aaa2c60d10
+  sha256 crates/vis-types/src/tyck/pat.rs=2ebefe844b40cef66e41b7cb2ee00f169f378b998c39582960de9639da6baaab
+  sha256 crates/vis-types/src/tyck/num.rs=ada2b6fe0e6f3367e2d43c52834ae2337f0b27fa171730e9cd74f8561b4b1db0
+
+KẾT QUẢ ĐỎ: 42 ca trong 8 nhóm + 1 test thông điệp VD-48; **24 chỗ đỏ** đúng 7 hành vi sai cần sửa:
+  (1) `?`: 2/6 — `int? -> int`, `Result -> int?`
+  (2) nâng float: 4/7 — biến `int` bị nâng thành `float` (4 ca)
+  (3) builtin: 6/7 — `Ok('a')`, `Some('a')`, `len()`, `str(1,2)`, `len(1)`, `print(1)` chưa ra `unit`
+  (4) gán: 2/5 — `u.name = …` trên bản ghi, `xs[0] = …` trên `let`
+  (5) tham số tên: 2/4 — `--a` cho tham số vị trí, trùng tên
+  (6) percent/float: 3/4 — `50pct == 0.5`, `25pct < 0.3`, `0.5 < 50pct`
+  (7) match hữu hạn: 3/4 — `unit`/`tuple` bị coi vô hạn, đòi `_` oan
+  (8) phép VS0 (VD-48b): 1/5 — `percent / percent` phải ra `float`
+  (+) test thông điệp VD-48(a): đỏ (thiếu câu "VS0/vis-std")
+
+XANH cố ý: `phu_them_bieu_thuc_va_kieu` 0/6 đỏ — 6 ca khoá hành vi **đúng** đã có (`|>` đúng/sai,
+  `?.` trên `U?`, `.` trên `U?`, cấm `str[i]`, `s.len()`); các ca "đúng" trong 7 nhóm cũng xanh.
+
+----- đầu ra (đỏ) -----
+   Compiling vis-types v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-types)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.37s
+     Running tests/tyck_v2.rs (target/debug/deps/tyck_v2-af1444e3e3ebd6be)
+
+running 10 tests
+test kieu_ngoai_vs0_bao_vs0301_ro_rang ... FAILED
+test percent_so_sanh_float_theo_ti_le ... FAILED
+test phep_cua_vs0_theo_vd48 ... FAILED
+test nang_int_float_chi_cho_literal ... FAILED
+test gan_field_index_kiem_bat_bien ... FAILED
+test phu_them_bieu_thuc_va_kieu ... ok
+test builtin_co_kiem_chu_ky ... FAILED
+test ten_tham_so_phai_khai_dau_hai_gach ... FAILED
+test try_chi_dung_khi_ham_tra_optional_hoac_result ... FAILED
+test match_unit_tuple_la_huu_han ... FAILED
+
+failures:
+
+---- kieu_ngoai_vs0_bao_vs0301_ro_rang stdout ----
+
+thread 'kieu_ngoai_vs0_bao_vs0301_ro_rang' (37696658) panicked at crates/vis-types/tests/tyck_v2.rs:254:9:
+phải có thông điệp nêu VS0/vis-std: ["tên không tồn tại: kiểu `AnyError` không có trong VS0 (VD-43) và không được khai trong tệp"]
+nguồn: let x: AnyError = none
+x
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- percent_so_sanh_float_theo_ti_le stdout ----
+
+thread 'percent_so_sanh_float_theo_ti_le' (37696661) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+percent/float: 3/4 ca sai
+nguồn: 50pct == 0.5
+   muốn: ok(bool)
+   được: !VS0412
+   chẩn đoán: ["VS0412 0:0 so sánh khác kiểu: `percent` và `float`"]
+---
+nguồn: 25pct < 0.3
+   muốn: ok(bool)
+   được: !VS0412
+   chẩn đoán: ["VS0412 0:0 so sánh thứ tự cần cùng kiểu sắp được: `percent` và `float`"]
+---
+nguồn: 0.5 < 50pct
+   muốn: ok(bool)
+   được: !VS0412
+   chẩn đoán: ["VS0412 0:0 so sánh thứ tự cần cùng kiểu sắp được: `float` và `percent`"]
+
+---- phep_cua_vs0_theo_vd48 stdout ----
+
+thread 'phep_cua_vs0_theo_vd48' (37696662) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+phép VS0: 1/5 ca sai
+nguồn: 50pct / 25pct
+   muốn: ok(float)
+   được: ok(percent)
+   chẩn đoán: []
+
+---- nang_int_float_chi_cho_literal stdout ----
+
+thread 'nang_int_float_chi_cho_literal' (37696660) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+nâng float: 4/7 ca sai
+nguồn: let x = 1
+let y: float = x
+y
+   muốn: !VS0412
+   được: ok(float)
+   chẩn đoán: []
+---
+nguồn: let x = 1
+x == 1.5
+   muốn: !VS0412
+   được: ok(bool)
+   chẩn đoán: []
+---
+nguồn: let x = 1
+x + 1.5
+   muốn: !VS0412
+   được: ok(float)
+   chẩn đoán: []
+---
+nguồn: fn f(x: int) -> float:
+    x
+f(1)
+   muốn: !VS0412
+   được: ok(float)
+   chẩn đoán: []
+
+---- gan_field_index_kiem_bat_bien stdout ----
+
+thread 'gan_field_index_kiem_bat_bien' (37696657) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+gán: 2/5 ca sai
+nguồn: type U:
+    name: str
+let u: U = {name: "a"}
+u.name = "b"
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+---
+nguồn: let xs = [1, 2]
+xs[0] = 3
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+
+---- builtin_co_kiem_chu_ky stdout ----
+
+thread 'builtin_co_kiem_chu_ky' (37696656) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+builtin: 6/7 ca sai
+nguồn: let x: Result[int, str] = Ok("a")
+x
+   muốn: !VS0412
+   được: ok(Result[int, str])
+   chẩn đoán: []
+---
+nguồn: let x: int? = Some("a")
+x
+   muốn: !VS0412
+   được: ok(int?)
+   chẩn đoán: []
+---
+nguồn: print(1)
+   muốn: ok(())
+   được: ok({error})
+   chẩn đoán: []
+---
+nguồn: len()
+   muốn: !VS0401
+   được: ok({error})
+   chẩn đoán: []
+---
+nguồn: str(1, 2)
+   muốn: !VS0401
+   được: ok({error})
+   chẩn đoán: []
+---
+nguồn: len(1)
+   muốn: !VS0412
+   được: ok({error})
+   chẩn đoán: []
+
+---- ten_tham_so_phai_khai_dau_hai_gach stdout ----
+
+thread 'ten_tham_so_phai_khai_dau_hai_gach' (37696664) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+tham số tên: 2/4 ca sai
+nguồn: fn f(a: int, --b: int = 1) -> int:
+    a + b
+f(1, --a: 2)
+   muốn: !VS0401
+   được: ok(int)
+   chẩn đoán: []
+---
+nguồn: fn f(--a: int, --b: int = 1) -> int:
+    a
+f(--a: 1, --a: 2)
+   muốn: !VS0401
+   được: ok(int)
+   chẩn đoán: []
+
+---- try_chi_dung_khi_ham_tra_optional_hoac_result stdout ----
+
+thread 'try_chi_dung_khi_ham_tra_optional_hoac_result' (37696665) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+`?`: 2/6 ca sai
+nguồn: fn f(x: int?) -> int:
+    x?
+f(5)
+   muốn: !VS0412
+   được: ok(int)
+   chẩn đoán: []
+---
+nguồn: fn f(r: Result[int, str]) -> int?:
+    let v = r?
+    Some(v)
+   muốn: !VS0412
+   được: ok(())
+   chẩn đoán: []
+
+---- match_unit_tuple_la_huu_han stdout ----
+
+thread 'match_unit_tuple_la_huu_han' (37696659) panicked at crates/vis-types/tests/tyck_v2.rs:70:5:
+match hữu hạn: 3/4 ca sai
+nguồn: let u = ()
+match u:
+    (): print(0)
+   muốn: ok(())
+   được: !VS0402
+   chẩn đoán: ["VS0402 0:0 `tuple` là kiểu vô hạn — `match` bắt buộc có nhánh `_` (thiết kế §4.3)"]
+---
+nguồn: let t = (1, 2)
+match t:
+    (a, b): print(a)
+   muốn: ok(())
+   được: !VS0402
+   chẩn đoán: ["VS0402 0:0 `tuple[int, int]` là kiểu vô hạn — `match` bắt buộc có nhánh `_` (thiết kế §4.3)"]
+---
+nguồn: let t = (1, 2)
+let v = match t:
+    (a, b): a
+v
+   muốn: ok(int)
+   được: !VS0402
+   chẩn đoán: ["VS0402 0:0 `tuple[int, int]` là kiểu vô hạn — `match` bắt buộc có nhánh `_` (thiết kế §4.3)"]
+
+
+failures:
+    builtin_co_kiem_chu_ky
+    gan_field_index_kiem_bat_bien
+    kieu_ngoai_vs0_bao_vs0301_ro_rang
+    match_unit_tuple_la_huu_han
+    nang_int_float_chi_cho_literal
+    percent_so_sanh_float_theo_ti_le
+    phep_cua_vs0_theo_vd48
+    ten_tham_so_phai_khai_dau_hai_gach
+    try_chi_dung_khi_ham_tra_optional_hoac_result
+
+test result: FAILED. 1 passed; 9 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-types --test tyck_v2`
+error: 1 target failed:
+    `-p vis-types --test tyck_v2`
+----- hết -----

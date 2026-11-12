@@ -23,7 +23,14 @@ impl<'a> Checker<'a> {
             HExpr::Bin { op, lhs, rhs, span } => {
                 let l = self.kiem_expr(lhs);
                 let r = self.kiem_expr(rhs);
-                self.kiem_bin(*op, &l, &r, lhs.span(), rhs.span(), *span)
+                let (l_lit, r_lit) = (super::is_int_lit(lhs), super::is_int_lit(rhs));
+                self.kiem_bin(
+                    *op,
+                    (&l, &r),
+                    (l_lit, r_lit),
+                    (lhs.span(), rhs.span()),
+                    *span,
+                )
             }
             HExpr::Un { op, expr, span } => {
                 let t = self.kiem_expr(expr);
@@ -107,8 +114,8 @@ impl<'a> Checker<'a> {
                         kt = kt2;
                         vt = vt2;
                     } else {
-                        self.coerce(&kt2, &kt, k.span(), "khoá `map`");
-                        self.coerce(&vt2, &vt, v.span(), "giá trị `map`");
+                        self.coerce_e(k, &kt2, &kt, "khoá `map`");
+                        self.coerce_e(v, &vt2, &vt, "giá trị `map`");
                     }
                 }
                 let _ = span;
@@ -138,7 +145,39 @@ impl<'a> Checker<'a> {
             HExpr::Try { expr, span } => {
                 let t = self.kiem_expr(expr);
                 match t {
-                    Type::Opt(inner) | Type::Result(inner, _) => (*inner).clone(),
+                    Type::Opt(inner) => {
+                        // ST-12b BLOCKER #1 (§4.4): `T?` chỉ dùng `?` khi hàm trả `U?`.
+                        if self.try_hop_le(true) {
+                            (*inner).clone()
+                        } else {
+                            self.diag(
+                                MISMATCH,
+                                format!(
+                                    "`?` trên `{}` chỉ dùng được khi hàm trả `{}?`, hàm này trả `{}` (§4.4)",
+                                    self.show(&Type::Opt(inner.clone())),
+                                    self.show(&inner),
+                                    self.show(&self.ham_tra())
+                                ),
+                                *span,
+                            );
+                            Type::Error
+                        }
+                    }
+                    Type::Result(inner, _) => {
+                        if self.try_hop_le(false) {
+                            (*inner).clone()
+                        } else {
+                            self.diag(
+                                MISMATCH,
+                                format!(
+                                    "`?` trên `Result` chỉ dùng được khi hàm trả `Result[…, …]`, hàm này trả `{}` (§4.4)",
+                                    self.show(&self.ham_tra())
+                                ),
+                                *span,
+                            );
+                            Type::Error
+                        }
+                    }
                     Type::Error => Type::Error,
                     other => {
                         self.diag(
@@ -162,7 +201,7 @@ impl<'a> Checker<'a> {
                             match self.types.field(id, n) {
                                 Some(f) => {
                                     let want = f.ty.clone();
-                                    self.coerce(&vt, &want, v.span(), "`with` cập nhật trường");
+                                    self.coerce_e(v, &vt, &want, "`with` cập nhật trường");
                                 }
                                 None => self.diag(
                                     NO_FIELD,
@@ -311,7 +350,7 @@ impl<'a> Checker<'a> {
             if i == 0 {
                 acc = t;
             } else {
-                self.coerce(&t, &acc, it.span(), what);
+                self.coerce_e(it, &t, &acc, what);
             }
         }
         acc
@@ -341,10 +380,9 @@ impl<'a> Checker<'a> {
     fn kiem_bin(
         &mut self,
         op: BinOp,
-        l: &Type,
-        r: &Type,
-        lspan: vis_syntax::Span,
-        rspan: vis_syntax::Span,
+        (l, r): (&Type, &Type),
+        (l_lit, r_lit): (bool, bool),
+        (lspan, rspan): (vis_syntax::Span, vis_syntax::Span),
         span: vis_syntax::Span,
     ) -> Type {
         match op {
@@ -355,7 +393,7 @@ impl<'a> Checker<'a> {
             | BinOp::Rem
             | BinOp::Pow
             | BinOp::Range
-            | BinOp::RangeIncl => match num::so_hoc(op, l, r) {
+            | BinOp::RangeIncl => match num::so_hoc(op, l, r, l_lit, r_lit) {
                 Some(t) => t,
                 None => {
                     self.diag(
@@ -384,7 +422,7 @@ impl<'a> Checker<'a> {
                         return Type::Error;
                     }
                 };
-                self.coerce(r, &inner, rspan, "`??`");
+                self.coerce_lit(r, &inner, rspan, "`??`", r_lit);
                 inner
             }
             BinOp::Eq | BinOp::Ne => {
@@ -392,7 +430,10 @@ impl<'a> Checker<'a> {
                     self.diag(MISMATCH, "không so sánh được hàm (VD-43 #4)", span);
                     return Type::Bool;
                 }
-                let (a, b) = num::promote(l, r);
+                if is_percent_float(l, r) {
+                    return Type::Bool;
+                }
+                let (a, b) = num::promote(l, r, l_lit, r_lit);
                 if !self.same(&a, &b) {
                     self.diag(
                         MISMATCH,
@@ -411,7 +452,11 @@ impl<'a> Checker<'a> {
                 if l.is_error() || r.is_error() {
                     return Type::Bool;
                 }
-                let (a, b) = num::promote(l, r);
+                // ST-12b (MAJOR #6): `percent` so sánh `float` **theo tỉ lệ** (§3.1/§3.6).
+                if is_percent_float(l, r) {
+                    return Type::Bool;
+                }
+                let (a, b) = num::promote(l, r, l_lit, r_lit);
                 if !self.same(&a, &b) || !num::ordered(&a) {
                     self.diag(
                         MISMATCH,
@@ -477,14 +522,17 @@ impl<'a> Checker<'a> {
         named: &[(String, HExpr)],
         span: vis_syntax::Span,
     ) -> Type {
-        if let HExpr::Var {
-            name,
-            sym: None,
-            span: cspan,
-        } = callee
-        {
-            if let Some(t) = self.kiem_builtin(name, args, *cspan) {
-                return t;
+        // Hàm dựng sẵn: kiểm **chữ ký** (ST-12b BLOCKER #3) — cả khi `sym = None` lẫn khi `sym`
+        // trỏ tới ký hiệu `SymKind::Builtin` (ST-11 khai 8 tên dựng sẵn).
+        if let HExpr::Var { name, sym, .. } = callee {
+            let la_builtin = match sym {
+                None => builtin_is_value(name),
+                Some(id) => self.symbols.kind_of(*id) == Some(crate::lower::SymKind::Builtin),
+            };
+            if la_builtin {
+                if let Some(t) = self.kiem_builtin(name, args, span) {
+                    return t;
+                }
             }
         }
         // 0) Phương thức lõi của list/str/map (ST-13, VD-47).
@@ -528,7 +576,7 @@ impl<'a> Checker<'a> {
                 for (i, a) in arg_tys.iter().enumerate() {
                     if let Some(p) = params.get(i) {
                         let p = p.clone();
-                        self.coerce(a, &p, args[i].span(), "đối số");
+                        self.coerce_e(&args[i], a, &p, "đối số");
                     }
                 }
                 for (n, t, sp) in &named_tys {
@@ -587,16 +635,30 @@ impl<'a> Checker<'a> {
         for (i, t) in arg_tys.iter().enumerate() {
             if let Some(p) = sig.params.get(i) {
                 let want = p.1.clone();
-                self.coerce(t, &want, args[i].span(), "đối số");
+                self.coerce_e(&args[i], t, &want, "đối số");
             }
         }
+        let mut da_gap: Vec<&str> = Vec::new();
         for (n, a) in named {
             let t = self.kiem_expr(a);
             match sig.params.iter().find(|p| &p.0 == n) {
-                Some(p) => {
+                Some(p) if p.3 => {
+                    // ST-12b MAJOR #5: `--tên` chỉ dùng cho tham số **khai `--`**, và không lặp.
+                    if da_gap.contains(&n.as_str()) {
+                        self.diag(ARG_COUNT, format!("đối số tên `--{n}` bị lặp"), a.span());
+                    }
+                    da_gap.push(n);
                     let want = p.1.clone();
-                    self.coerce(&t, &want, a.span(), "đối số có tên");
+                    self.coerce_e(a, &t, &want, "đối số có tên");
                 }
+                Some(_) => self.diag(
+                    ARG_COUNT,
+                    format!(
+                        "`{n}` là tham số **vị trí** của `{}` — không truyền bằng `--{n}` (§A.3)",
+                        sig.name
+                    ),
+                    a.span(),
+                ),
                 None => self.diag(
                     ARG_COUNT,
                     format!("hàm `{}` không có tham số tên `{n}`", sig.name),
@@ -793,26 +855,108 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn kiem_builtin(
-        &mut self,
-        name: &str,
-        args: &[HExpr],
-        _span: vis_syntax::Span,
-    ) -> Option<Type> {
-        // 8 tên dựng sẵn (VD-44 #3) — mỗi tên một chữ ký tối thiểu.
+    /// `?` có hợp lệ không: hàm đang kiểm phải trả `U?` (với `T?`) hoặc `Result[…, …]` (với
+    /// `Result`); ngoài hàm (hoặc trong lambda) `cur_ret = None` ⇒ **cho phép** (không có ngữ cảnh).
+    fn try_hop_le(&self, opt: bool) -> bool {
+        match &self.cur_ret {
+            None => true,
+            Some(Type::Error) => true,
+            Some(Type::Opt(_)) => opt,
+            Some(Type::Result(..)) => !opt,
+            Some(_) => false,
+        }
+    }
+
+    fn ham_tra(&self) -> Type {
+        self.cur_ret.clone().unwrap_or(Type::Unit)
+    }
+
+    /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.
+    fn kiem_builtin(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
         let tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
-        let arg0 = || tys.first().cloned().unwrap_or(Type::Error);
-        Some(match name {
-            "print" => Type::Unit,
-            "len" => Type::Int,
-            "str" => Type::Str,
-            "Ok" => Type::Result(Box::new(arg0()), Box::new(Type::Error)),
-            "Err" => Type::Result(Box::new(Type::Error), Box::new(arg0())),
-            "Some" => Type::Opt(Box::new(arg0())),
-            "None" => Type::Opt(Box::new(Type::Error)),
-            "ref" => Type::Error,
-            _ => return None,
-        })
+        let arity = |n: usize| args.len() == n;
+        let sai_so = format!("`{name}` cần {} đối số, được {}", 0, args.len());
+        let _ = sai_so;
+        let t0 = || tys.first().cloned().unwrap_or(Type::Error);
+        match name {
+            "print" => {
+                if !arity(1) {
+                    self.diag(
+                        ARG_COUNT,
+                        format!("`print` cần 1 đối số, được {}", args.len()),
+                        span,
+                    );
+                }
+                Some(Type::Unit)
+            }
+            "str" => {
+                if !arity(1) {
+                    self.diag(
+                        ARG_COUNT,
+                        format!("`str` cần 1 đối số, được {}", args.len()),
+                        span,
+                    );
+                }
+                Some(Type::Str)
+            }
+            "len" => {
+                if !arity(1) {
+                    self.diag(
+                        ARG_COUNT,
+                        format!("`len` cần 1 đối số, được {}", args.len()),
+                        span,
+                    );
+                } else if let Some(t) = tys.first() {
+                    let ok = matches!(
+                        t,
+                        Type::Str | Type::List(_) | Type::Map(..) | Type::Bytes | Type::Error
+                    );
+                    if !ok {
+                        let t = t.clone();
+                        self.diag(
+                            MISMATCH,
+                            format!(
+                                "`len` không nhận `{}` (chỉ `str`/`list`/`map`/`bytes`)",
+                                self.show(&t)
+                            ),
+                            span,
+                        );
+                    }
+                }
+                Some(Type::Int)
+            }
+            "Some" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`Some` cần 1 đối số", span);
+                }
+                Some(Type::Opt(Box::new(t0())))
+            }
+            "None" => {
+                if !args.is_empty() {
+                    self.diag(ARG_COUNT, "`None` không có đối số", span);
+                }
+                Some(Type::Opt(Box::new(Type::Error)))
+            }
+            "Ok" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`Ok` cần 1 đối số", span);
+                }
+                Some(Type::Result(Box::new(t0()), Box::new(Type::Error)))
+            }
+            "Err" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`Err` cần 1 đối số", span);
+                }
+                Some(Type::Result(Box::new(Type::Error), Box::new(t0())))
+            }
+            "ref" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`ref` cần 1 đối số", span);
+                }
+                Some(Type::Error)
+            }
+            _ => None,
+        }
     }
 
     fn kiem_enum_lit(
@@ -939,7 +1083,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn kiem_index(&mut self, base: &HExpr, index: &HExpr, _span: vis_syntax::Span) -> Type {
+    pub(crate) fn kiem_index(
+        &mut self,
+        base: &HExpr,
+        index: &HExpr,
+        _span: vis_syntax::Span,
+    ) -> Type {
         let bt = self.kiem_expr(base);
         let it = self.kiem_expr(index);
         match &bt {
@@ -986,11 +1135,27 @@ fn builtin_value_ty(name: &str) -> Type {
 #[derive(Debug, Clone)]
 pub(crate) struct FnSig {
     pub name: String,
-    /// `(tên, kiểu, có_mặc_định)`
-    pub params: Vec<(String, Type, bool)>,
+    /// `(tên, kiểu, có_mặc_định, khai `--`)`
+    pub params: Vec<(String, Type, bool, bool)>,
     pub ret: Type,
 }
 
 /// Giữ chỗ: `HPat`/`HStmt` dùng ở module khác (tránh import thừa).
 #[allow(dead_code)]
 fn _giu(_: &HPat, _: &HStmt) {}
+
+/// `percent` và `float` so sánh được **theo tỉ lệ** (§3.1/§3.6) — đặc cách duy nhất.
+fn is_percent_float(a: &Type, b: &Type) -> bool {
+    matches!(
+        (a, b),
+        (Type::Percent, Type::Float) | (Type::Float, Type::Percent)
+    )
+}
+
+/// 8 tên dựng sẵn (VD-44 #3) — dùng khi `sym = None`.
+fn builtin_is_value(name: &str) -> bool {
+    matches!(
+        name,
+        "print" | "len" | "str" | "Ok" | "Err" | "Some" | "None" | "ref"
+    )
+}

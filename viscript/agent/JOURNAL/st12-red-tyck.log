@@ -23,7 +23,9 @@ sha256 fixture (chỉ đọc — KHÔNG dùng golden cho tyck, chỉ ghi để c
 
 lệnh: cargo test -p vis-types --test tyck --test exhaustive --no-fail-fast   (chạy từ viscript/)
 
-KẾT QUẢ: 116 ca, ĐỎ 116/116 — 8 test, ĐỎ 6 (tyck) + 1 (exhaustive), XANH 2 là **CỐ Ý**:
+KẾT QUẢ: 116 ca, ĐỎ 116/116 — 8 test: **ĐỎ 6** (5 nhóm tyck + 1 nhóm exhaustive) và **XANH 2** là **CỐ Ý**:
+  [ĐÍNH CHÍNH ST-12b: dòng đếm ban đầu ghi "6 (tyck) + 1 (exhaustive)" là **đánh số sai** — đúng là
+   5 nhóm tyck + 1 nhóm exhaustive = 6 đỏ, 2 xanh; **đầu ra bên dưới giữ nguyên** bản ghi gốc.]
   1) tests/tyck.rs::du_80_ca         — chỉ **đếm** số ca (88 ≥ 80), không gọi `check`
   2) tests/exhaustive.rs::du_20_ca_match — chỉ **đếm** số ca (28 ≥ 20), không gọi `check`
 

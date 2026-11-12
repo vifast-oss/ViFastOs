@@ -76,6 +76,11 @@ pub fn check(hir: &Hir, symbols: &Symbols, types: &TypeTable) -> CheckOutput {
     c.finish()
 }
 
+/// `true` nếu biểu thức là **literal số nguyên** (§3.5: chỉ literal được nâng `int → float`).
+pub(crate) fn is_int_lit(e: &HExpr) -> bool {
+    matches!(e, HExpr::Lit { lit, .. } if lit.kind == crate::hir::LitKind::Int)
+}
+
 pub(crate) struct Checker<'a> {
     symbols: &'a Symbols,
     types: &'a TypeTable,
@@ -89,6 +94,8 @@ pub(crate) struct Checker<'a> {
     item_types: Vec<(String, Type)>,
     /// Kiểu trả về của hàm đang kiểm (`None` = đang ở cấp tệp).
     cur_ret: Option<Type>,
+    /// >0 ⇒ **không** ghi chẩn đoán (lượt khai báo trước, tránh báo trùng — ST-12b).
+    quiet: u32,
     /// Chữ ký đầy đủ của hàm **khai trong tệp** (tên tham số + có mặc định), theo `sym`.
     sigs: Vec<Option<FnSig>>,
 }
@@ -106,6 +113,7 @@ impl<'a> Checker<'a> {
             file_expr_types: Vec::new(),
             item_types: Vec::new(),
             cur_ret: None,
+            quiet: 0,
             sigs: vec![None; n],
         }
     }
@@ -224,9 +232,8 @@ impl<'a> Checker<'a> {
                 return true; // tự nâng `T → T?` (§4.4)
             }
         }
-        if matches!((from, to), (Type::Int, Type::Float)) {
-            return true; // literal int ở vị trí float
-        }
+        // ST-12b (BLOCKER #2): **không** nâng `int → float` đại trà — chỉ literal số nguyên
+        // (§3.5). Việc nâng literal do `coerce_e` quyết định theo biểu thức nguồn.
         let msg = format!(
             "{what}: cần `{}`, được `{}`",
             self.types.show(to),
@@ -234,6 +241,31 @@ impl<'a> Checker<'a> {
         );
         self.diag(MISMATCH, msg, span);
         false
+    }
+
+    /// Ép kiểu **có biết biểu thức nguồn**: chỉ nâng `int → float` khi nguồn là **literal** số
+    /// nguyên (§3.5, ngoại lệ duy nhất của "không chuyển đổi ngầm").
+    pub(crate) fn coerce_e(&mut self, e: &HExpr, from: &Type, to: &Type, what: &str) -> bool {
+        if matches!((from, to), (Type::Int, Type::Float)) && is_int_lit(e) {
+            return true;
+        }
+        let span = e.span();
+        self.coerce(from, to, span, what)
+    }
+
+    /// Ép kiểu có **cờ literal** (tầng toán tử chỉ còn kiểu + cờ).
+    pub(crate) fn coerce_lit(
+        &mut self,
+        from: &Type,
+        to: &Type,
+        span: Span,
+        what: &str,
+        from_lit: bool,
+    ) -> bool {
+        if from_lit && matches!((from, to), (Type::Int, Type::Float)) {
+            return true;
+        }
+        self.coerce(from, to, span, what)
     }
 
     /// Phân giải một kiểu **chú thích**: `TypeRef` chưa biết ⇒ `VS0301` (VD-43 #3).
@@ -306,20 +338,27 @@ impl<'a> Checker<'a> {
             }
             _ => {}
         }
-        self.diag(
-            NO_TYPE,
+        // VD-48(a): kiểu **ngoài VS0** (`AnyError`, `cap`, `ref`, `Json`, `set`, `stream`, …) vẫn
+        // là `VS0301` nhưng thông điệp phải nói rõ "không có ở VS0 (vis-std/vòng 2)".
+        let msg = if la_kieu_ngoai_vs0(name) {
+            format!(
+                "kiểu `{name}` không có ở VS0 — thuộc vis-std/vòng 2; ở VS0 dùng kiểu khác hoặc bỏ chú thích"
+            )
+        } else {
             format!(
                 "tên không tồn tại: kiểu `{name}` không có trong VS0 (VD-43) và không được khai trong tệp"
-            ),
-            span,
-        );
+            )
+        };
+        self.diag(NO_TYPE, msg, span);
         Type::Error
     }
 
     // ----- duyệt chương trình -----
 
     fn run(&mut self, hir: &Hir) {
+        self.quiet += 1;
         self.khai_bao_item(hir);
+        self.quiet -= 1;
         for item in &hir.items {
             self.kiem_item(item);
         }
@@ -352,7 +391,9 @@ impl<'a> Checker<'a> {
                                 .params
                                 .iter()
                                 .zip(params.iter())
-                                .map(|(p, t)| (p.name.clone(), t.clone(), p.default.is_some()))
+                                .map(|(p, t)| {
+                                    (p.name.clone(), t.clone(), p.default.is_some(), p.named)
+                                })
                                 .collect(),
                             ret,
                         });
@@ -405,7 +446,7 @@ impl<'a> Checker<'a> {
                         let dty = self.kiem_expr(d);
                         let want = p.ty.clone();
                         let want = self.resolve_ann(&want, p.span);
-                        self.coerce(&dty, &want, d.span(), "giá trị mặc định");
+                        self.coerce_e(d, &dty, &want, "giá trị mặc định");
                     }
                 }
                 let ret = self.resolve_ann(&f.ret, f.span);
@@ -416,7 +457,7 @@ impl<'a> Checker<'a> {
             HItem::Const(c) => {
                 let want = self.resolve_ann(&c.ty, c.span);
                 let got = self.kiem_expr(&c.value);
-                self.coerce(&got, &want, c.value.span(), "hằng");
+                self.coerce_e(&c.value, &got, &want, "hằng");
             }
             _ => {}
         }
@@ -454,7 +495,7 @@ impl<'a> Checker<'a> {
                 let declared = match ty {
                     Some(ann) => {
                         let ann = self.resolve_ann(ann, init.span());
-                        self.coerce(&got, &ann, init.span(), "khai báo `let`");
+                        self.coerce_e(init, &got, &ann, "khai báo `let`");
                         ann
                     }
                     None => got,
@@ -474,7 +515,7 @@ impl<'a> Checker<'a> {
                 let declared = match ty {
                     Some(ann) => {
                         let ann = self.resolve_ann(ann, init.span());
-                        self.coerce(&got, &ann, init.span(), "khai báo `var`");
+                        self.coerce_e(init, &got, &ann, "khai báo `var`");
                         ann
                     }
                     None => got,
@@ -496,7 +537,7 @@ impl<'a> Checker<'a> {
                 let _ = span;
                 match op {
                     crate::hir::AssignOp::Set => {
-                        self.coerce(&got, &wanted, value.span(), "gán");
+                        self.coerce_e(value, &got, &wanted, "gán");
                     }
                     _ => {
                         // `+=` … ⇒ kiểm như `target + value` rồi ép về kiểu đích.
@@ -507,10 +548,11 @@ impl<'a> Checker<'a> {
                             crate::hir::AssignOp::Div => crate::hir::BinOp::Div,
                             _ => crate::hir::BinOp::Rem,
                         };
-                        if let Some(res) = num::so_hoc(op2, &wanted, &got) {
+                        let v_lit = is_int_lit(value);
+                        if let Some(res) = num::so_hoc(op2, &wanted, &got, false, v_lit) {
                             self.coerce(&res, &wanted, value.span(), "gán ghép");
                         } else {
-                            self.coerce(&got, &wanted, value.span(), "gán ghép");
+                            self.coerce_e(value, &got, &wanted, "gán ghép");
                         }
                     }
                 }
@@ -616,6 +658,11 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Kiểu phần tử khi gán/chỉ số (gọi lại `kiem_index` của `expr.rs`).
+    pub(crate) fn kiem_index_expr(&mut self, base: &HExpr, index: &HExpr, span: Span) -> Type {
+        self.kiem_index(base, index, span)
+    }
+
     /// Kiểu phần tử khi `for` duyệt `iter`.
     fn elem_of_iter(&mut self, it: &Type) -> Type {
         match it {
@@ -654,8 +701,71 @@ impl<'a> Checker<'a> {
                 ty
             }
             HExpr::Var { sym: None, .. } => Type::Error,
-            HExpr::Field { .. } | HExpr::Index { .. } => self.kiem_expr(target),
+            HExpr::Field {
+                base, name, span, ..
+            } => {
+                // ST-12b (MAJOR #4): bản ghi **bất biến** (§3.2) ⇒ `u.name = …` là lỗi kiểu.
+                let bt = self.kiem_expr(base);
+                let _ = name;
+                match &bt {
+                    Type::Error => Type::Error,
+                    Type::Record(_) => {
+                        self.diag(
+                            MISMATCH,
+                            "bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)",
+                            *span,
+                        );
+                        Type::Error
+                    }
+                    other => {
+                        self.diag(
+                            MISMATCH,
+                            format!(
+                                "không gán được trường của `{}` ở VS0 (§4.1)",
+                                self.types.show(other)
+                            ),
+                            *span,
+                        );
+                        Type::Error
+                    }
+                }
+            }
+            HExpr::Index { base, index, span } => {
+                // ST-12b (MAJOR #4): chỉ gán được phần tử của **`var`** (§4.1).
+                let bt = self.kiem_expr(base);
+                let mutable = match &**base {
+                    HExpr::Var { sym: Some(id), .. } => self.is_mutable(*id),
+                    _ => false,
+                };
+                if !mutable && !bt.is_error() {
+                    self.diag(
+                        MISMATCH,
+                        "chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)",
+                        *span,
+                    );
+                }
+                self.kiem_index_expr(base, index, *span)
+            }
             _ => Type::Error,
         }
     }
+}
+
+/// Kiểu **không thuộc VS0** (VD-48(a)) — vẫn `VS0301` nhưng thông điệp nêu rõ vis-std/vòng 2.
+fn la_kieu_ngoai_vs0(name: &str) -> bool {
+    matches!(
+        name,
+        "AnyError"
+            | "cap"
+            | "ref"
+            | "weak"
+            | "Json"
+            | "set"
+            | "stream"
+            | "Future"
+            | "Task"
+            | "datetime"
+            | "bigint"
+            | "decimal"
+    )
 }

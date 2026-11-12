@@ -327,6 +327,32 @@ impl<'a> Checker<'a> {
                     span,
                 );
             }
+            // ST-12b MAJOR #7: `unit` và tuple là kiểu **hữu hạn** — không đòi `_` oan.
+            Type::Unit => {
+                let covered = plain
+                    .iter()
+                    .any(|p| matches!(p, HPat::Tuple { items, .. } if items.is_empty()));
+                if !covered {
+                    self.diag(
+                        NON_EXHAUSTIVE,
+                        "`match` trên `()` cần nhánh `()` hoặc `_` (kiểu `unit` chỉ có một giá trị)",
+                        span,
+                    );
+                }
+            }
+            Type::TypeRef { name, args } if name == "tuple" => {
+                let n = args.len();
+                let covered = plain.iter().any(|p| tuple_phu_het(p, n));
+                if !covered {
+                    self.diag(
+                        NON_EXHAUSTIVE,
+                        format!(
+                            "`match` trên tuple {n} thành phần phải phủ **mọi** thành phần bằng `_`/tên trần (hoặc dùng `_` cho cả tuple)"
+                        ),
+                        span,
+                    );
+                }
+            }
             other => {
                 self.diag(
                     NON_EXHAUSTIVE,
@@ -400,5 +426,23 @@ fn record_cov(p: &HPat, out: &mut BTreeSet<String>, open: &mut bool) {
             }
         }
         _ => {}
+    }
+}
+
+/// Tuple pattern phủ hết tuple `n` thành phần: đúng số thành phần và **mọi** thành phần bất khả bác
+/// (`_`, tên trần, hoặc tuple con như vậy).
+fn tuple_phu_het(p: &HPat, n: usize) -> bool {
+    match p {
+        HPat::Tuple { items, .. } => items.len() == n && items.iter().all(bat_kha_bac),
+        _ => false,
+    }
+}
+
+fn bat_kha_bac(p: &HPat) -> bool {
+    match p {
+        HPat::Wild { .. } | HPat::Bind { .. } => true,
+        HPat::Tuple { items, .. } => items.iter().all(bat_kha_bac),
+        HPat::Or { alts, .. } => alts.iter().any(bat_kha_bac),
+        _ => false,
     }
 }

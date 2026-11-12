@@ -324,8 +324,9 @@ const HAM: &[(&str, &str)] = &[
     ("fn f(x: int) -> int?:\n    x\nf(1)", "ok(int?)"),
     // kỳ vọng: !VS0412 — `?` trên kiểu không phải `T?`
     ("fn f(x: int) -> int:\n    x?\nf(1)", "!VS0412"),
-    // kỳ vọng: ok(int) — `?` trên `T?` trong hàm trả `U` (không phải `U?`)
-    ("fn f(x: int?) -> int:\n    x?\nf(5)", "ok(int)"),
+    // kỳ vọng: !VS0412 — **SỬA KỲ VỌNG CŨ KÈM LÝ DO (ST-12b, Agent 0 cho phép)**: `?` trên `T?`
+    // chỉ dùng được khi hàm trả `U?` (§4.4); ca này từng khoá **hành vi sai** (`ok(int)`).
+    ("fn f(x: int?) -> int:\n    x?\nf(5)", "!VS0412"),
     // kỳ vọng: !VS0412 — `?` cho `int` nhưng hàm trả `str`
     ("fn f(x: int?) -> str:\n    x?\nf(5)", "!VS0412"),
     // kỳ vọng: ok(int?) — gọi hàm trả `T?`

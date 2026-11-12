@@ -6,8 +6,8 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : ST-13 (`vis-interp`: thông dịch cây trên HIR + builtins lõi) — xong kỹ thuật 2026-11-13,
-                **đã áp VD-47** (giá trị câu lệnh cuối), **chưa commit** — chờ review độc lập của Agent 0
+Task          : **ST-12b** (sửa 7 lỗi kiểm kiểu do review độc lập bắt) — xong kỹ thuật 2026-11-13,
+                **chưa commit** — chờ review độc lập của Agent 0
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
@@ -15,6 +15,31 @@ Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1
                 31 vis-cli + 18 vis-fmt + 96 vis-syntax + 18 vis-diag + **42 vis-types**)
 Việc dở       : — (ST-12 xanh + cổng PASS; chờ Agent 0 OK rồi commit `[ST-12]`)
 ```
+
+## ST-12b — 7 lỗi kiểm kiểu của review độc lập (2026-11-13)
+
+| # | Lỗi (review) | Sửa | Khoá bằng test (`tests/tyck_v2.rs`) |
+|---|---|---|---|
+| 1 | **BLOCKER** `?` không kiểm hàm trả gì | `HExpr::Try`: `T?` chỉ khi hàm trả `U?`, `Result` chỉ khi hàm trả `Result[…, …]`; ngoài hàm/lambda (`cur_ret = None`) cho phép; `E: Error` bỏ qua (ghi JOURNAL) | nhóm `TRY_KHONG_KHOP` (6 ca) |
+| 2 | **BLOCKER** `int→float` cho **mọi** `int` | `coerce` **không** nâng nữa; thêm `coerce_e`/`coerce_lit` + `num::promote(…, l_lit, r_lit)` — chỉ nâng khi phía `int` là **literal** (§3.5) | `NANG_FLOAT` (7 ca) |
+| 3 | **BLOCKER** builtin không kiểm | `kiem_call` nhận cả `sym = None` lẫn `SymKind::Builtin`; `kiem_builtin` kiểm **số lượng + kiểu** cho `print/len/str/Ok/Err/Some/None/ref` | `BUILTIN` (7 ca) |
+| 4 | **MAJOR** gán `Field`/`Index` | trường bản ghi **bất biến** ⇒ `VS0412` + gợi ý `with`; `Index` chỉ gán được khi gốc là **`var`** | `GAN` (5 ca) |
+| 5 | **MAJOR** `--` cho tham số vị trí | `FnSig.params` thêm cờ `named`; `--x` cho tham số vị trí ⇒ `VS0401`; trùng tên ⇒ `VS0401` | `TEN_THAM_SO` (4 ca) |
+| 6 | **MAJOR** `percent` vs `float` | `is_percent_float` cho `== != < <= > >=` (§3.1/§3.6); cộng/trừ vẫn `VS0412` | `PERCENT_FLOAT` (4 ca) |
+| 7 | **MAJOR** `match` trên `unit`/tuple | `unit` hữu hạn (nhánh `()`), tuple hữu hạn khi pattern cùng arity và **mọi thành phần bất khả bác** | `MATCH_HUU_HAN` (4 ca) |
+| 8 | **VD-48** phạm vi | (a) kiểu ngoài VS0 (`AnyError/cap/ref/weak/Json/set/stream/Future/Task/datetime/bigint/decimal`) vẫn `VS0301` nhưng thông điệp nêu **"không có ở VS0 — vis-std/vòng 2"**; (b) `percent / percent ⇒ float`, `percent / int ⇒ percent`, `size % int`/`duration % int` giữ đơn vị | `PHEP_VS0` (5 ca) + `kieu_ngoai_vs0_bao_vs0301_ro_rang` |
+| — | Kỳ vọng **sai** của ST-12 | `tests/tyck.rs`: `fn f(x:int?)->int: x?` từ `ok(int)` → **`!VS0412`** (ngoại lệ Agent 0 cho phép, có comment lý do) | — |
+| — | Trùng chẩn đoán | lượt **khai báo** chạy ở chế độ `quiet` (không báo) — hết báo đôi `VS0301` cho cùng một chú thích | — |
+
+**Đỏ trước (đúng nghĩa "fix")**: `JOURNAL/st12b-red-tyck.log` — chụp bằng cách **tạm gỡ bản vá**
+(`git stash push -- crates/vis-types/src/tyck`) để chạy harness cuối trên code **trước sửa**:
+**42 ca + 1 test thông điệp, 24 chỗ ĐỎ** đúng 7 hành vi sai; 10 test thì 9 đỏ, 1 xanh cố ý
+(`phu_them_bieu_thuc_va_kieu` — 6 ca khoá hành vi **đúng** đã có). sha256 harness khớp bản commit
+(sau `fmt`). `st12-red-tyck.log` chỉ là **bản ghi lịch sử của `273a921`**; đã **đính chính** dòng đếm
+(5 nhóm tyck + 1 exhaustive = 6 đỏ, 2 xanh) mà **giữ nguyên đầu ra** gốc.
+
+**Đo được**: **237** test workspace (227 + 10 mới: 8 test `tyck_v2` + 2 test); `./vis-dev gate --fast`
+PASS — 2026-11-12T22:51:51Z; fmt/clippy sạch.
 
 ## ST-13 — kết quả (2026-11-13)
 
@@ -81,7 +106,8 @@ chấp nhận** nhưng **ST-14 bắt buộc** in lại thật từ `span` + văn
 DoD); sửa 2 test cũ **đúng** (VD-42). Danh sách "lỗ hổng đã biết" ở `JOURNAL/2026-11-12.md` §6.
 
 **Việc phải biết:**
-1. **Hai test cũ phải sửa kèm lý do** (VD-42 bắt buộc cấp `04xx`): `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`
+1. **Ba test cũ phải sửa kèm lý do** (VD-42 bắt buộc cấp `04xx`) — đính chính ST-12b: không phải **2**:
+   `vis-diag/src/lib.rs::so_ten_03xx_khoa_theo_vd42` (số mã 14 → 18), `vis-diag/tests/messages.rs::snapshot_6_ca_so_ten_03xx`
    (`lookup(401)` nay `Some`) và `vis-cli/tests/explain.rs::explain_so_ten_03xx` (`VS0412` nay có trong
    `--list`, exit 0; mã **chưa** cấp là `VS0501`). Comment ghi rõ "Sửa kỳ vọng cũ kèm lý do: ST-12 đã cấp sổ kiểu".
 2. **Chẩn đoán tyck có `line`/`col` = 0**: `check` chỉ nhận HIR (không có văn bản nguồn) nên không tính
