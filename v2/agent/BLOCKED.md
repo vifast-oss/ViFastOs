@@ -41,7 +41,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 > **Cập nhật 04:20:** KT-14 xong mã (reviewer DRIFT nhẹ, đã sửa); mở **YC-18** (thiết kế `with_many_mut`).
 > Không chặn KT-14 — chỉ cần Agent 0 chốt **trước KT-15**.
 
-### YC-18 — `with_many_mut` cần vtable cho `ObjRef<dyn KObj>` (mở 2026-11-13, Agent 2)
+### YC-18 — **ĐÃ CHỐT 2026-11-13 (D2-48, chọn a)** — `with_many_mut` cần vtable cho `ObjRef<dyn KObj>` (mở 2026-11-13, Agent 2)
 
 - **Hiện trạng**: thiết kế `:207-208` yêu cầu
   `with_many_mut<const N, R>(&mut self, rs: [ObjRef<dyn KObj>; N], f: impl FnOnce([&mut dyn KObj; N]) -> R)`.
@@ -49,6 +49,7 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
   từ `(pa, id)` + `header.kind` không dựng được `&mut dyn KObj` (thiếu vtable). KT-14 đã làm **khung
   fail-closed**: kiểm trùng `pa` → `Alias`, còn lại cũng `Alias`, closure **không** được gọi, không panic
   (K1A-PLAN §4 cho phép "stub/khung"; ma trận alias + fuzz thuộc KT-15).
+- **Đã chốt D2-48: chọn (a)** — bảng tĩnh `kind → vtable/constructor`, giữ `ObjRef` 16 B; KT-15 cài.
 - **Đề xuất 2 lựa chọn** (Agent 0 chốt **trước KT-15**):
   - **(a) khuyến nghị** — bảng `kind → vtable/constructor` trong `vifast-objmem`: `ObjMem` tra
     `header.kind` để dựng `*mut dyn KObj` (bảng tĩnh, `no_std`); không đổi layout `ObjRef` 16 B.

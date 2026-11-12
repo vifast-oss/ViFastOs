@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-14 (8/8, xong mã — reviewer DRIFT nhẹ đã sửa, chờ Agent 0 lật sổ); phase K1a'; KT-15 mở sau khi KT-14 DONE
-Bước          : 8/8
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**199 test**, **L1 1.000 seed/999 trace**, 433 ms đo cổng; gen-check ON, 21 `.scn` + golden không đổi) — không retry
 Việc dở       : KT-14 chờ Agent 0 lật sổ; YC-18 (`with_many_mut` cần vtable) chờ quyết trước KT-15
@@ -22,7 +22,7 @@ Việc dở       : KT-14 chờ Agent 0 lật sổ; YC-18 (`with_many_mut` cần
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 03:47 bởi Agent 0**: KT-13 DONE (74cb8fe, `v2 miri` PoC 13/13, reviewer APPROVE); KT-14 READY.
+> **Cập nhật 04:30 bởi Agent 0**: KT-14 DONE (36c51bc, Miri 15/15, gate 199 test, reviewer DRIFT đã sửa); YC-18 chốt D2-48; KT-15 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
