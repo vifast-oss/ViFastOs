@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-traceformat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+vifast-sim = { path = "../../sim/vifast-sim" }
