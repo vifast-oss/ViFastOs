@@ -20,6 +20,18 @@ Tài liệu trong repo chia **3 loại**. Trước khi đọc hoặc sửa, xác
 Quy ước: mọi thay đổi hành vi phải cập nhật các file trên **trong cùng commit**.
 `scripts/check-docs.py` + `gen-*.py --check` là cổng chặn.
 
+## 2a. Thiết kế v2 đang thi công (nguồn: QD, 2026-11-12)
+
+| Tệp | Nội dung |
+|---|---|
+| [`v2/ViFastOs-v2-thiet-ke.md`](v2/ViFastOs-v2-thiet-ke.md) | thiết kế v2: ABI 15 syscall + 19 lỗi, K0→K0.5→K6, D2-01..24 |
+| [`viscript/ViScript-thiet-ke.md`](viscript/ViScript-thiet-ke.md) | ViScript/ViShell: lexer 2 chế độ, Phụ lục A EBNF tự chứa, ST-01..10 |
+| [`viscript/SPEC-lex.md`](viscript/SPEC-lex.md) | đặc tả từ vựng (token, escape, thụt lề, chế độ lệnh, mã lỗi VS01xx) |
+| [`QUYET-DINH-sau-review.md`](QUYET-DINH-sau-review.md) | quyết định của Agent 0 cho vòng vá — **nguồn sự thật**, cấm sửa |
+| [`DUYET-AGENT0-vong-va.md`](DUYET-AGENT0-vong-va.md) | duyệt + errata E1–E5/S1–S11/L1–L8/Q1–Q7; cách ghi D2-25 và APPROVED |
+
+Điều khiển: [`../v2/agent/QUEUE.md`](../v2/agent/QUEUE.md), [`../viscript/agent/QUEUE.md`](../viscript/agent/QUEUE.md); lưu trữ v1 ở [`v1/`](v1/).
+
 ## 2. Tài liệu THIẾT KẾ THAM CHIẾU (có thể lệch code)
 
 Mô tả thiết kế đầy đủ từ giai đoạn mô hình Python (CDT, CNode nhiều cấp,
@@ -44,14 +56,15 @@ port** sang kernel hiện tại.
 - [`reviews/`](reviews/) — báo cáo từng vòng (r2xx–r3xx), `progress-g1.md`
 - [`audits/`](audits/) — audit bảo mật/kiến trúc
 - [`bugs/`](bugs/) — hồ sơ lỗi
-- [`decisions/log.md`](decisions/log.md) — nhật ký quyết định
+- [`v1/README.md`](v1/README.md) — **kho lưu trữ v1** (tag `v1-archive`, đọc-only): báo cáo phiên, nhật ký quyết định, soak
+- [`v1/decisions/log.md`](v1/decisions/log.md) — nhật ký quyết định (v1, lưu trữ)
 - [`bundles/`](bundles/) — bundle bằng chứng đã ký (SHA-256)
-- [`overnight-log.md`](overnight-log.md), [`agent2-report-*.md`](.) — log phiên agent
+- [`v1/overnight-log.md`](v1/overnight-log.md), [`v1/agent2-report-*.md`](v1/) — log phiên agent (v1, lưu trữ)
 - [`../legacy/`](../legacy/), [`../python-model/`](../python-model/) — mô hình Python gốc
 
 ## 4. Thêm tài liệu mới
 
 1. Nếu là **mô tả hiện trạng** → sửa file sống tương ứng, không tạo file mới.
 2. Nếu là **báo cáo một vòng** → `docs/reviews/ViFastOs-report-<vòng>.md`.
-3. Nếu là **quyết định** → thêm mục vào `docs/decisions/log.md` (kèm ngày, lý do).
+3. Nếu là **quyết định** → quyết định v1: thêm mục vào `docs/v1/decisions/log.md` (kèm ngày, lý do); quyết định v2: `v2/agent/DECISIONS.md` (Agent 0 ghi), quyết định ViScript: `viscript/agent/DECISIONS.md`.
 4. Cập nhật [`00-hien-trang.md`](00-hien-trang.md) nếu thay đổi ảnh hưởng trạng thái.

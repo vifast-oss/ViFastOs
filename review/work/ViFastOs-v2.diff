@@ -1,0 +1,863 @@
+--- review/src/ViFastOs-v2-thiet-ke.md	2026-11-12 14:34:15
++++ docs/v2/ViFastOs-v2-thiet-ke.md	2026-11-12 16:01:39
+@@ -5,8 +5,20 @@
+ Tài liệu liên quan: `ViScript-thiet-ke.md` (ngôn ngữ script và shell, sản phẩm độc lập chạy đa nền tảng).
+ Giấy phép mã nguồn: **MIT OR Apache-2.0** (giống Rust).
+ 
+-Nhãn: [DOSSIER] lấy từ hồ sơ v1; [GT] giả thuyết cần kiểm; [ƯL] con số ước lượng, phải đo lại.
++Nhãn (QD §2.2): `[V1:CODE]`, `[V1:ĐO]`, `[V1:DOC]` = lấy từ dossier, giữ độ tin cậy gốc; `[TK]` = thiết kế mới (**mặc định** cho dòng không nhãn); `[GT]` = giả thuyết cần kiểm; `[ƯL]` = số ước lượng phải đo lại. Hằng số thiết kế là `[TK]`, không phải `[ƯL]`.
+ 
++## Thay đổi sau review (2026-11-12)
++
++Bản này đã vá theo `docs/QUYET-DINH-sau-review.md` (QD). Các nhóm thay đổi:
++1. Không gian tên: D-09..D-27 → **D2-01..D2-24**; G1..G6 → **R1..R6**; task T01.. → **KT-##**; báo cáo `R<n>-v2`.
++2. ABI: syscall 0..13 + **14 `Exit(code)`**; dải 15..31 reserved; 19 mã lỗi; thêm `Tcb.ReadState/Suspend(mode)/SetFaultEp`; object chưa cài giữ số reserved; `abi_version`, `min_compat`, golden file.
++3. Kernel: cờ `suspended` + `Suspend(Abort/Defer)`; `Resume` không phát lại IPC; `FaultKind::Exit`; objmem API closure; slot cap 48 B; WaitAddr bảng băm; id theo cụm; MCS giai đoạn đầu.
++4. Tích hợp: U1 không hứa net (net ở N1); VSH2 phụ thuộc N1; shell sở hữu tty; `term.vidl` thành mốc `TUI`.
++5. Lộ trình không ngày: K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6 → K4'/K5'; chỉ riscv64 tới K6.
++6. Đo lường: N=1.000 trên máy `ps`, 3 luồng; bỏ 750; harness-v2; `--fast` L1 1.000 seed.
++7. v1: tag `v1-archive`, không soak lại; sổ lỗi mang sang v2 (Phụ lục A).
++8. Quyết định/Q&A: D2-01..D2-24 (mục 12); Q1–Q12 của dossier (Phụ lục B).
++
+ ---
+ 
+ ## Mục lục
+@@ -27,6 +39,9 @@
+ 13. Giao việc vòng 1
+ 14. Rủi ro
+ 
++Phụ lục A. Sổ lỗi v1 mang sang v2
++Phụ lục B. Q1–Q12 của dossier
++
+ ---
+ 
+ ## 0. Kết luận chính
+@@ -48,21 +63,23 @@
+ 
+ ---
+ 
+-## 1. Chẩn đoán v1 [DOSSIER]
++## 1. Chẩn đoán v1 [V1:DOC]
+ 
+ | # | Lỗi gốc | Triệu chứng | Hướng v2 |
+ |---|---|---|---|
+-| G1 | 58 syscall, ramfs, fd, block, console, args trong kernel; kernel dựng VSpace cho server | lib.rs 17.715 dòng | 14 syscall + invocation; dịch vụ ra user |
+-| G2 | Trạng thái static reset hai lần; đồng hồ nằm trong trạng thái reset được | T33a: thời gian lùi 49 về 8 | Đồng hồ phần cứng; `init` một lần |
+-| G3 | Trạng thái TCB tách khỏi hàng đợi; message chờ trong ô `resume` | Mất message r319; hàng 8 phần tử đầy; O(n) | Trạng thái mang object chờ; danh sách xâm nhập; ghi thẳng context |
+-| G4 | COPY_WINDOWS, read_user/write_user | Lỗi exec vòng 112 tới 145 | Không con trỏ user trong kernel |
+-| G5 | Identity map nhỏ, pool trong .data | Trần 566 KB, 24 TCB, tràn .data AArch64 | Nửa cao + physmap; object trong Untyped |
+-| G6 | Test = boot demo + grep marker | 11 vòng cho một lỗi | Sim tất định, mô hình, QEMU TAP |
++| R1 | 58 syscall [V1:CODE], ramfs, fd, block, console, args trong kernel; kernel dựng VSpace cho server | lib.rs 17.715 dòng [V1:CODE] | 15 syscall (0..14) + invocation; dịch vụ ra user |
++| R2 | Trạng thái static reset hai lần; đồng hồ nằm trong trạng thái reset được | T33a: thời gian lùi 49 về 8 | Đồng hồ phần cứng; `init` một lần |
++| R3 | Trạng thái TCB tách khỏi hàng đợi; message chờ trong ô `resume` | Mất message r319; hàng 8 phần tử đầy; O(n) | Trạng thái mang object chờ; danh sách xâm nhập; ghi thẳng context |
++| R4 | COPY_WINDOWS, read_user/write_user | Lỗi exec vòng 112 tới 145 [V1:ĐO] | Không con trỏ user trong kernel |
++| R5 | Identity map nhỏ, pool trong .data | Trần 566 KB, 24 TCB, tràn .data AArch64 [V1:ĐO] | Nửa cao + physmap; object trong Untyped |
++| R6 | Test = boot demo + grep marker | 11 vòng cho một lỗi [V1:DOC] | Sim tất định, mô hình, QEMU TAP |
+ 
+ Phụ: Untyped chỉ là quota (object thật nằm trong pool static, hai trần chồng nhau); SMP không có giao thức thống nhất (kênh wake lệch 3 port, poll_maintenance khác nhau, lỗ shootdown AP->BSP).
+ 
+-Giữ từ v1: mô hình seL4, `forbid(unsafe_code)` cho core, check_invariants + mutation, hợp đồng marker có case âm, BUILD_ID, W^X theo Frame, văn hoá test đỏ trước; thư viện vifast-pte, vifast-elf, vifast-acpi, vifast-fs, vifast-fsutil, vifast-virtio, ý tưởng hộp thư của vifast-maint.
++Mã lỗi gốc đổi **G1..G6 → R1..R6** (QD §2.1): chữ **G** để dành cho mốc desktop (G1..G5, mục 10.4), tránh trùng mã khi grep.
+ 
++Giữ từ v1: mô hình seL4, `forbid(unsafe_code)` cho core, check_invariants + mutation, **cơ chế marker (kế thừa dưới dạng `harness-v2`, mục 9.12)**, BUILD_ID, W^X theo Frame, văn hoá test đỏ trước; thư viện vifast-pte, vifast-elf, vifast-acpi, vifast-fs, vifast-fsutil, vifast-virtio, ý tưởng hộp thư của vifast-maint.
++
+ ---
+ 
+ ## 2. Nguyên tắc
+@@ -91,10 +108,26 @@
+ 
+ | Làm ngay | Khai báo ABI, cài sau | Để sau |
+ |---|---|---|
+-| Object trong Untyped, CSpace 2 cấp, IPC 4 cap, Reply, MCS, Frame nhiều cỡ + attrs, WaitOnAddress, thao tác làm tiếp, FPU eager, đồng hồ user, hộp thư, đẩy cân bằng tải | IOSpace, MSI, VCpu + VSpace khách, KPTI, power hook, SetTls (cài ở K6) | IPC fastpath, cụm (S3), khoá mịn (S4), libc, wasm |
++| Object trong Untyped, CSpace 2 cấp, IPC 4 cap [TK], Reply, MCS phần **donation** (mục 4.5), Frame nhiều cỡ + attrs, WaitOnAddress, thao tác làm tiếp, FPU eager, đồng hồ user, hộp thư, đẩy cân bằng tải | IOSpace, MSI, VCpu + VSpace khách, KPTI, power hook, SetTls (cài ở K6), phần hoãn của MCS (refill nhiều đoạn, timeout fault) | IPC fastpath, cụm (S3), khoá mịn (S4), libc, wasm |
+ 
+ ---
+ 
++### 2.3 Ràng buộc v1 còn hiệu lực (QD §2.3)
++
++| v1 | Trạng thái trong v2 |
++|---|---|
++| D-01 gate mềm | thay bằng D2-07 (không retry) cho v2; còn hiệu lực cho v1 |
++| D-02 đóng băng tính năng | **hết hiệu lực** từ khi v1 lưu trữ (`v1-archive`) |
++| D-03 T26 "ai chen giữa" | chuyển sang v2: **KT-T26** |
++| D-04 `MAX_IO=256` khi đo | giữ cho KT-T26 (cấu hình tái hiện) |
++| D-05 teardown ≤2 chỗ/vòng | giữ tinh thần: finalise theo nhóm, mỗi task ≤2 loại object, mỗi loại có test |
++| D-06 soak 600..1000 trên máy `ps` | giữ: mọi soak v2 trên `ps`, N theo mục 9.12 |
++| D-07 không tách `lib.rs` | hết đối tượng (v2 viết mới) |
++| D-08 không đụng đồ hoạ/ViFastKey | **còn hiệu lực tới K6** |
++| D11 không sửa mò | D2-02 |
++| D18 hồi quy thì revert | D2-03 |
++| Quy tắc 2.5 | giữ nguyên văn: hai phiên kẹt cùng ý thì đổi nhánh, không thử lần ba |
++
+ ## 3. Kiến trúc tổng thể
+ 
+ ```
+@@ -162,29 +195,30 @@
+                                                                  └ mọi object kernel nằm ở đây
+ ```
+ 
+-**vifast-objmem** (crate duy nhất có unsafe liên quan object, mục tiêu dưới 800 dòng):
++**vifast-objmem** (crate duy nhất có unsafe liên quan object, mục tiêu dưới 800 dòng [ƯL]):
+ 
+ ```rust
+-#[repr(C)] pub struct ObjHeader { kind: ObjKind, state: u8, _pad: u16, refs: u32, id: u64 }
++#[repr(C)] pub struct ObjHeader { kind: ObjKind, state: LifeState, _pad: u16, id: u64 } // không còn `refs`
+ pub struct ObjRef<T> { pa: PAddr, id: u64, _t: PhantomData<T> }
+ 
+ pub trait ObjStore {
+-    fn get<T: KObj>(&self, r: ObjRef<T>) -> Result<&T, Dead>;
+-    fn get_mut<T: KObj>(&mut self, r: ObjRef<T>) -> Result<&mut T, Dead>;
+-    fn get2_mut<A: KObj, B: KObj>(&mut self, a: ObjRef<A>, b: ObjRef<B>) -> Result<(&mut A, &mut B), Alias>;
++    fn with<T: KObj, R>(&self, r: ObjRef<T>, f: impl FnOnce(&T) -> R) -> Result<R, Dead>;
++    fn with_mut<T: KObj, R>(&mut self, r: ObjRef<T>, f: impl FnOnce(&mut T) -> R) -> Result<R, Dead>;
++    fn with_many_mut<const N: usize, R>(&mut self, rs: [ObjRef<dyn KObj>; N],
++        f: impl FnOnce([&mut dyn KObj; N]) -> R) -> Result<R, Alias>; // N ≤ 8, kiểm từng cặp
+     unsafe fn place<T: KObj>(&mut self, pa: PAddr, v: T) -> ObjRef<T>;   // chỉ Retype gọi
+     unsafe fn destroy<T: KObj>(&mut self, r: ObjRef<T>);                  // chỉ finalise gọi
+ }
+ ```
+ 
+-- `id` u64 tăng đơn điệu toàn cục, không lặp lại. Truy cập bằng `ObjRef` có `id` khác header là `Dead`.
+-- `get2_mut` cho thao tác chạm hai object (IPC giữa hai TCB) mà không vi phạm aliasing; cùng địa chỉ trả `Alias`.
+-- Trên máy thật đi qua physmap; trên sim đi qua `Vec<u8>` căn lề. **Cùng một code unsafe**, kiểm bằng Miri.
++- `id = (cluster_id << 56) | counter` của cụm; duy nhất, không tái dùng. Truy cập bằng `ObjRef` có `id` khác header là `Dead`. Retype không phải đường nóng nên đếm dưới khoá cụm là đủ; sang S3 mỗi cụm đếm riêng.
++- `with_many_mut` thay `get2_mut`: IPC cần chạm ≥4 object (2 TCB + Endpoint + Reply + IPC buffer); trùng địa chỉ trả `Alias`. Cài đặt bằng con trỏ thô + `UnsafeCell`, **không** tạo tham chiếu tới cả vùng nhớ; sim cấp vùng bằng bộ cấp phát thô căn lề, không dùng `Vec<u8>`; Miri từ commit đầu.
++- Trên máy thật đi qua physmap; trên sim đi qua **bộ cấp phát thô có căn lề** (không `Vec<u8>` — QD §3.5). **Cùng một code unsafe**, kiểm bằng Miri.
+ - Kích thước object là hằng số theo arch lúc build, riêng TCB = phần cố định + vùng FPU/vector tính lúc boot theo tính năng CPU (XSAVE size, SVE VL, RISC-V VLEN).
+ 
+ **Untyped**:
+ - Mỗi Untyped có `watermark` (bump). Retype lấy từ watermark, căn lề theo kích thước object.
+-- Chỉ thu hồi khi **Revoke Untyped**: finalise mọi con, đặt watermark về 0, xoá trắng (làm tiếp được, mục 4.13).
++- Thu hồi bằng **`CNode.Revoke` trên cap Untyped** (không có method `Untyped.Revoke` riêng): finalise mọi con, đặt watermark về 0, xoá trắng (làm tiếp được, mục 4.13).
+ - Untyped con: Retype Untyped thành Untyped nhỏ hơn để chia quyền sở hữu (memory server dùng).
+ - Device Untyped: chỉ Retype thành Frame với attrs Device/UC; không chứa object kernel.
+ 
+@@ -207,12 +241,14 @@
+ 
+ Invariant sim: sau mỗi event, **không trường nào trong bất kỳ object sống nào trỏ tới object chết**.
+ 
++**Trần tĩnh [GT]**: lỗi v1 khi tách pool ra khỏi `.data` (3 lần, hỏng AArch64) đến từ pool tĩnh trong `.data`; v2 đặt object trong RAM Untyped nên cơ chế đó không áp dụng, **nhưng vẫn phải đo** ở K0.5 (kích thước image, `.data`/`.bss`, headroom) và giữ **cổng cứng `.data + .bss ≤ 256 KiB` [TK]** (mục 8).
++
+ ### 4.3 CSpace và capability
+ 
+-- **Hai cấp cố định**: địa chỉ cap 64 bit = `[L1 index | L2 index]`, kích thước mỗi cấp do CNode quyết định (2^n slot, n do người tạo chọn, tối đa 2^20 [ƯL]). CNode gốc chứa cap tới CNode lá. Đủ cho hàng triệu cap, không có guard.
+-- **Slot cap** 32 byte [ƯL]: `{ objref, kind, rights, badge, mdb_prev, mdb_next, mdb_depth }`.
++- **Hai cấp cố định**: địa chỉ cap 64 bit = `[L1 index | L2 index]`, kích thước mỗi cấp do CNode quyết định (2^n slot, n do người tạo chọn, tối đa **2^20 slot [TK]**). CNode gốc chứa cap tới CNode lá. Đủ cho hàng triệu cap, không có guard.
++- **Slot cap 48 B** [TK]: `pa u64 | id u64 | badge u64 | mdb_prev u64 | mdb_next u64 | kind u8, rights u8, depth u16, flags u32`. Thêm test `size_of::<Slot>() == 48`.
+ - **MDB** kiểu seL4: danh sách liên kết theo thứ tự cây dẫn xuất; Revoke xoá con theo thứ tự, làm tiếp được.
+-- **Rights**: READ, WRITE, GRANT, GRANT_REPLY. EXEC và attrs là thuộc tính lúc map.
++- **Rights**: READ, WRITE, GRANT, GRANT_REPLY. **Cap không có bit EXEC — thay đổi có chủ ý so với v1** (QD §3.12): EXEC là **thuộc tính lúc map** (mục 4.10), kiểm bởi W^X theo Frame; attrs cũng là thuộc tính lúc map.
+ - **Badge**: Mint endpoint/notification với badge 64 bit.
+ - **Thao tác**: Copy, Mint, Move, Mutate, Delete, Revoke, Rotate (Rotate để server đổi Reply hiệu quả).
+ - **Cap allocator ở user** (`vifast-capalloc`): quản lý slot trống trong CSpace của tiến trình, tự xin CNode lá mới từ memory server khi cần.
+@@ -220,56 +256,81 @@
+ ### 4.4 TCB và bảng chuyển trạng thái
+ 
+ ```rust
++pub enum SleepReason { Timeout, Budget }
++
+ pub enum ThreadState {
+     Inactive,
+-    Ready,                                         // trong ready queue của hart
++    Ready,                                         // trong ready queue của hart, chỉ khi !suspended
+     Running { hart: HartId },
+     BlockedOnSend  { ep: ObjRef<Endpoint>, call: bool },
+     BlockedOnRecv  { ep: ObjRef<Endpoint>, reply: Option<ObjRef<Reply>> },
+     BlockedOnReply { reply: ObjRef<Reply> },
+     BlockedOnNotification { ntfn: ObjRef<Notification> },
+     BlockedOnAddress { frame: ObjRef<Frame>, offset: u32 },
+-    Sleeping,
++    Sleeping { reason: SleepReason },   // Timeout | Budget
+     Stopping,                                      // chờ hart khác dừng mình (finalise, migrate)
+     Dead,
+ }
+ ```
+ 
+ - `transition(tcb, to)` duy nhất, tra `const ALLOWED`. Bảng xuất ra tài liệu và dùng sinh case âm.
+-- Liên kết xâm nhập bằng `ObjRef` (crate `vifast-ilist`, không unsafe vì đi qua `ObjStore`). Invariant: TCB ở trong hàng của X khi và chỉ khi trạng thái mang X.
++- Liên kết xâm nhập bằng `ObjRef` (crate `vifast-ilist`, không unsafe vì đi qua `ObjStore`).
++- **Invariant (sửa)**: TCB ở trong hàng của X **khi và chỉ khi** trạng thái mang X **và `!suspended`**. `Ready + suspended` **không** nằm trong ready queue; `Abort` gỡ khỏi hàng **trước** khi bật cờ, nên bất biến vẫn kiểm được sau mỗi event.
+ - Không ô `resume`: message ghi thẳng vào context + IPC buffer rồi mới chuyển Ready. Đường mất message kiểu r319 không biểu diễn được.
+-- Trường TCB chính: context, FPU area, cspace_root, vspace, ipc_buffer (Frame), fault_ep, timeout_ep, sched_context, bound_notification, priority, max_controlled_priority, affinity (HartMask), home hart, tls.
++- **Cờ `suspended: bool` trực giao** với `ThreadState` (không thêm trạng thái mới). `Tcb.Suspend(mode)`:
++  - `Abort` (mặc định): nếu đang `BlockedOn*`, gỡ khỏi hàng chờ, syscall đang chờ trả `Cancelled`, ip đã tiến qua syscall, TCB thành `Ready + suspended`. Nếu đang `BlockedOnReply`, Reply object được tách khỏi caller: server `Send(reply)` sau đó **thành công nhưng reply bị bỏ**, để client bị dừng không làm hỏng đường lỗi của server.
++  - `Defer`: chỉ hợp lệ khi TCB đang trong thao tác dài có `Restart`; với IPC trả `InvalidArgument`.
++- `Tcb.Resume` xoá cờ. **Không bao giờ phát lại Call/Send/Recv/ReplyRecv**; `Restart` chỉ dùng cho thao tác dài (mục 4.13).
++- `Tcb.ReadState -> {state, suspended, blocked_on_kind, exit_code: Option<u64>}`; `Tcb.SetFaultEp` tách khỏi `Configure`.
++- `Exit(code)` (QD §1 Q-A, sửa E2): lưu `exit_code: Option<u64>` trong TCB; nếu có `fault_ep` thì TCB thành `BlockedOnSend { ep: fault_ep, call: false }` mang `FaultKind::Exit{code}` — **giao qua hàng gửi của `fault_ep`, không có Reply**; khi procsrv `Recv` thì TCB thành `Inactive`. Không có `fault_ep` thì `Inactive` ngay. `Resume`/`Configure` xoá `exit_code`. `Suspend(Abort)` khi đang chờ giao Exit huỷ message nhưng `exit_code` vẫn đọc được qua `ReadState`.
++- Trường TCB chính: context, FPU area, cspace_root, vspace, ipc_buffer (Frame), fault_ep, timeout_ep, sched_context, bound_notification, priority, max_controlled_priority, affinity (HartMask), home hart, tls, **suspended**.
+ 
+ ### 4.5 MCS: SchedContext
+ 
+-- **SchedContext** object: `budget`, `period`, danh sách refill (sporadic server, tối đa K refill [ƯL K=8]), `badge`, hart.
+-- TCB chỉ chạy khi có SchedContext còn budget. Hết budget: TCB vào hàng chờ refill; nếu có `timeout_ep` thì kernel gửi timeout fault.
++- **SchedContext** object: `budget`, `period`, danh sách refill là chi tiết cài đặt (tối đa **K = 8 refill [TK]**), `badge`, hart.
++- TCB chỉ chạy khi có SchedContext còn budget. Hết budget: TCB vào **`Sleeping` với `reason = Budget`** — **không thêm enum mới** (QD §3.4); `timeout_ep` và timeout fault thuộc phần **hoãn sau K6**.
+ - **SchedControl** cap (mỗi hart một cái, chỉ init có): `Configure(sc, budget, period, refills)`.
+ - **Passive server**: server không có SchedContext riêng. Khi client Call, SchedContext của client **đi theo** sang server; Reply trả về. Thời gian phục vụ tính cho client. Đảo ưu tiên được xử lý vì server chạy bằng SchedContext của client (MCP kiểm soát mức ưu tiên).
+ - Notification có thể bind SchedContext để đánh thức passive driver.
+-- Ưu tiên: 256 mức; `max_controlled_priority` ngăn tự nâng ưu tiên.
++- Ưu tiên: **256 mức [TK]**; `max_controlled_priority` ngăn tự nâng ưu tiên.
+ - Kiểm sim: tổng thời gian chạy của mỗi SchedContext trong mọi cửa sổ `period` không vượt `budget` (cộng sai số tick); không TCB nào chạy khi SchedContext hết budget.
+ 
++**Giai đoạn đầu (QD §3.4):**
++
++| Có ở K1b | Hoãn sau K6 (không đổi ABI) |
++|---|---|
++| SchedContext object, `SchedControl.Configure`, budget/period đơn giản (nạp lại đầu mỗi chu kỳ), **donation qua Call/Reply**, passive server, bind Notification | Refill sporadic nhiều đoạn, timeout fault + `timeout_ep`, phân tích độ trễ audio |
++
++Trạng thái chờ ngân sách dùng `Sleeping` với `reason = Budget` (không thêm enum, QD §3.4). Bảng chuyển trạng thái liên quan ngân sách:
++
++| Từ | Sự kiện | Đến |
++|---|---|---|
++| `Running` | hết budget, còn refill kế | `Sleeping{reason = Budget}` |
++| `Sleeping{reason = Budget}` | timer refill kế tới hạn | `Ready` |
++| `Sleeping{reason = Budget}` | `Tcb.Suspend(Abort)` | `Sleeping{reason = Budget}` + `suspended` (không ở hàng chờ) |
++| `Sleeping{reason = Budget} + suspended` | `Tcb.Resume` | `Sleeping{reason = Budget}` (chờ refill; **không phát lại** gì) |
++
+ ### 4.6 IPC
+ 
+ - **Syscall**: Call, Send, NBSend, Recv, NBRecv, ReplyRecv, NBSendRecv, NBSendWait (hai cái cuối cho passive server và driver).
+-- **MessageInfo** (một thanh ghi): `label: u20`, `caps: u3 (≤4)`, `extra_caps_unwrapped: u4`, `len: u7 (≤64 MR)`.
+-- MR0 tới MR3 trong thanh ghi (riscv64/aarch64 có thể 6 [ƯL]), còn lại trong IPC buffer.
+-- **IPC buffer** là Frame bind qua `Tcb.Configure`; kernel copy bằng `PhysMem`. Header chứa receive window (CNode + chỉ số + độ sâu cho tối đa 4 cap).
++- **MessageInfo** (một thanh ghi): `label: u20`, `caps: u3 (≤4)`, `no_reply: u1`, `extra_caps_unwrapped: u4`, `len: u7 (≤64 MR)`.
++- MR0 tới MR3 trong thanh ghi (riscv64/aarch64 có thể 6 [ƯL]), còn lại trong IPC buffer. 64 MR + 4 cap là thay đổi có chủ ý so với v1: compositor cần buffer + fence + vùng chia sẻ trong **một** message; MR ngoài thanh ghi nằm trong IPC buffer nên chi phí chỉ phát sinh khi dùng.
++- **IPC buffer** là Frame bind qua `Tcb.Configure`; kernel copy bằng `PhysMem`. Header chứa **receive window là CPTR** (địa chỉ cap giải qua CSpace của chính thread, không phải `ObjRef<CNode>`) cho tối đa 4 cap; kernel kiểm slot trống và quyền ghi trước khi cài.
+ - **Chuyển cap**: cần GRANT; cap nhận bỏ GRANT; cap cùng endpoint với badge được "unwrap" thành badge (kiểu seL4). Chuyển thất bại không mất message, đặt cờ trong MessageInfo.
+-- **Reply object**: `Recv(ep, reply)`; Call làm caller sang `BlockedOnReply{reply}`; server trả lời bằng `Send(reply)` hoặc `ReplyRecv`. Server giữ nhiều Reply, phục vụ xen kẽ nhiều client. Generation trong `id` thay cho reply_epoch của v1. MCS: SchedContext gắn với Reply khi server passive.
+-- **Fault**: Call tới fault endpoint với Reply; trả lời Reply để tiếp tục, có thể kèm thanh ghi mới. Loại fault: VM, unknown syscall, user exception, timeout (MCS), VM exit (H1).
++- **Reply object do bên nhận cấp** (QD §3.2): `Recv(ep, reply)` và `ReplyRecv`; **bên gọi Call không cần và không cấp Reply**. Call làm caller sang `BlockedOnReply{reply}`; server trả lời bằng `Send(reply)` hoặc `ReplyRecv`. Server giữ nhiều Reply, phục vụ xen kẽ nhiều client. Generation trong `id` thay cho reply_epoch của v1. MCS: SchedContext gắn với Reply khi server passive. **Không có `Tcb.SetReplyObject`.**
++- **Fault**: Call tới fault endpoint với Reply; trả lời Reply để tiếp tục, có thể kèm thanh ghi mới. Loại fault: VM, unknown syscall, user exception, timeout (MCS), **Exit (Send, không Reply)**, VM exit (H1).
++- **Ca biên `no_reply`** (QD §3.2): Call gặp bên nhận đã `Recv` **không** có Reply ⇒ message vẫn giao, cờ `no_reply` bật trong MessageInfo phía nhận, caller **trả ngay `Cancelled`**. Kèm kịch bản sim.
++- **Invocation trả ngay**: Call tới object **không phải Endpoint** là invocation (method = label) — **không chặn, không sinh Reply**, kết quả trả trong MR (mục 4.21). Chỉ Endpoint mới đi đường IPC chặn.
+ - **Một hàm lõi** `ipc::transfer`. Fastpath sau này phải gọi cùng hàm copy cap/MR hoặc được sim so vi sai.
+ 
+ ### 4.7 Notification và WaitOnAddress
+ 
+-**Notification**: word 64 bit; Signal OR badge, đánh thức một waiter, giao word, xoá word; Wait/Poll; bound notification với TCB và SchedContext; IrqHandler signal vào notification. Broadcast là việc của user space.
++**Notification** (giữ **nguyên ngữ nghĩa seL4**, QD §3.11): word 64 bit; Signal OR badge, đánh thức **một** waiter, giao word, **xoá word**; Wait/Poll; bound notification với TCB và SchedContext; IrqHandler signal vào notification. **Đây là thay đổi có chủ ý so với v1** (v1 đổi sang "đánh thức tất cả"): lý do v1 phải đổi là root đậu 4 worker trên **một** notification — **lỗi cách dùng**, không phải yêu cầu của giao diện. Broadcast = mỗi bên chờ một notification riêng, bên phát Signal từng cái (việc của user space).
+ 
+-**WaitOnAddress** (futex):
+-- `WaitAddr(frame_cap, offset, expected: u32|u64, timeout)`: kernel đọc giá trị tại (Frame, offset) qua physmap; bằng `expected` thì chặn, khác thì trả ngay.
+-- `WakeAddr(frame_cap, offset, count)`: đánh thức tối đa `count` người.
+-- Khoá theo **địa chỉ vật lý** (Frame + offset), nên hoạt động với bộ nhớ chia sẻ giữa tiến trình.
+-- Hàng chờ nằm trong **header Frame** (danh sách waiter sắp xếp theo offset; nâng lên cây khi có số đo). [GT: chi phí với Frame 2 MiB nhiều địa chỉ cần đo.]
++**WaitOnAddress** (futex, QD §3.8):
++- Hàng chờ là **bảng băm trong arena kernel**, khoá `(frame_id, offset)`, số bucket theo `kernel.toml`; nút nằm trong TCB. Không có gì nằm trong trang của user.
++- `WaitAddr(frame_cap, offset, expected, timeout)`: đọc giá trị và xếp hàng **trong cùng một lần giữ khoá**; `WakeAddr` cũng giữ khoá, nên không mất đánh thức.
++- Khoá theo **địa chỉ vật lý** (Frame + offset), hoạt động với bộ nhớ chia sẻ giữa tiến trình.
+ - Kiểm: không mất đánh thức (Wake sau khi giá trị đổi luôn đánh thức người đã Wait với giá trị cũ).
+ 
+ ### 4.8 Scheduler theo hart
+@@ -277,8 +338,8 @@
+ - Mỗi hart: 256 mức `ilist` + bitmap; refill queue (MCS); timer heap theo deadline.
+ - `pick` O(1). Lượng thời gian do SchedContext quyết định.
+ - **Affinity** là HartMask; **home** là hart hiện tại.
+-- **Đẩy cân bằng (push migration)**: khi hart X có > 1 TCB Ready cùng mức cao nhất và có hart Y trong affinity đang Idle, X đẩy một TCB sang Y qua hộp thư `Migrate`. Quyết định tất định (hart rảnh có chỉ số nhỏ nhất). Không work stealing (kéo) vì phải đọc trạng thái hart khác.
+-- Wake chéo hart: hộp thư `Wake` + IPI nếu ưu tiên cao hơn current của đích.
++- **Đẩy cân bằng (push migration)**: mỗi hart **công bố** `idle: AtomicBool` và `cur_prio: AtomicU8` trong mảng căn cache line (QD §3.10). Khi hart X có > 1 TCB Ready cùng mức cao nhất và có hart Y trong affinity đang `idle`, X đẩy một TCB sang Y qua hộp thư `Migrate`. Quyết định tất định (hart rảnh có chỉ số nhỏ nhất). Không work stealing (kéo) vì phải **ghi** trạng thái hart khác; **đọc** trường công bố thì được phép (mục 4.16 luật 3).
++- Wake chéo hart: hộp thư `Wake` + IPI nếu ưu tiên cao hơn **`cur_prio` công bố** của đích.
+ - Idle: `Decision::Idle(hint)`, platform chọn mức idle sâu theo deadline kế tiếp.
+ - Đo: thời gian chờ khoá, độ dài ready queue, số migrate.
+ 
+@@ -292,7 +353,7 @@
+ ### 4.10 Bộ nhớ ảo
+ 
+ - Object: VSpace, PageTable, Frame (`size_bits` 12/21/30), Device Frame.
+-- `Frame.Map(vspace, va, rights, attrs)` với attrs: `WB`, `WC`, `UC`, `Device`, `NX`. Kernel chọn cấp lá theo kích thước Frame. Kernel không tự cấp page table.
++- `Frame.Map(vspace, va, rights, attrs)`: `rights` chỉ còn READ/WRITE; **EXEC là thuộc tính lúc map** (trong `attrs`), **không phải bit trong cap** (QD §3.12). attrs: `WB`, `WC`, `UC`, `Device`, `NX`, `EXEC`. Kernel chọn cấp lá theo kích thước Frame. Kernel không tự cấp page table.
+ - W^X: một Frame vật lý không được map vừa W vừa X ở bất kỳ VSpace nào (bộ đếm mapped_w/mapped_x, giữ từ v1). JIT (nếu có sau này) phải unmap W rồi map X.
+ - **Không gian kernel**: nửa cao + physmap (trang lớn, NX). RISC-V copy entry nửa cao vào root mới; AArch64 TTBR1; x86 copy PML4[256..511], hoặc KPTI. Logic copy nửa cao nằm trong `PageTableFormat` của vifast-pte, dùng chung.
+ - **ASID** có generation (hết ASID thì tăng generation và flush toàn bộ), module chung; độ rộng theo `Mmu`.
+@@ -316,11 +377,12 @@
+ - Object `IOSpace` gắn với một thiết bị (PCI BDF hoặc stream ID). `Frame.MapIo(iospace, iova, rights)`.
+ - Khai báo trong ABI từ K0; cài ở mốc D3: Intel VT-d trên QEMU `intel-iommu`, virtio-iommu, ARM SMMUv3; RISC-V IOMMU khi QEMU hỗ trợ ổn định [GT].
+ - Máy không có IOMMU: memory server chỉ cấp Frame cho DMA từ một vùng riêng, driver DMA được đánh dấu tin cậy trong manifest. Đây là chính sách user.
++- **Threat model (QD §3.14)**: trước mốc **D3** và trên máy **không** có IOMMU, **mọi driver có DMA thuộc vùng tin cậy**; tuyên bố bảo mật ở mục 4.15 chỉ áp cho **CPU, không áp cho DMA**. Không làm lại software IOMMU (v1 đã bỏ).
+ 
+ ### 4.13 Thao tác dài làm tiếp được
+ 
+ - Áp dụng cho: Retype lớn (xoá trắng), Revoke, Delete CNode lớn, finalise VSpace, unmap vùng lớn.
+-- Cơ chế chung `Preempt`: mỗi thao tác chia thành bước có cận; sau mỗi bước kiểm `p.pending_interrupt()`; nếu có, lưu tiến độ **trong object** (ví dụ `untyped.zero_cursor`, `cnode.delete_cursor`), trả `Restart` để platform quay lại chính lệnh syscall (đặt lại ip).
++- Cơ chế chung `Preempt`: mỗi thao tác chia thành bước có cận; sau mỗi bước kiểm `p.pending_interrupt()`; nếu có, lưu tiến độ **trong object** (ví dụ `untyped.zero_cursor`, `cnode.delete_cursor`), trả `Restart` để platform quay lại chính lệnh syscall (đặt lại ip). **`Restart` là tín hiệu nội bộ core → platform, KHÔNG phải mã lỗi ABI** (QD §3.7): nó không bao giờ tới user và **đã bị bỏ khỏi bảng mã lỗi** (mục 4.20).
+ - Trạng thái trung gian phải thoả mọi invariant (sim kiểm ở mọi điểm preempt).
+ - Ở sim: bộ lập lịch có thể ép preempt tại mọi bước.
+ 
+@@ -342,21 +404,21 @@
+ 
+ | Bậc | Nội dung | Khi nào |
+ |---|---|---|
+-| S1 | BKL dạng **queue lock (MCS lock)** | K1 |
+-| S2 | Đường không khoá: hộp thư, ack TLB, IPI, timer riêng hart, idle | K1 |
+-| S3 | Cụm: mỗi cụm một khoá + một `Kernel` riêng; chéo cụm qua hộp thư | Khi chờ khoá > ngưỡng (mục 9.9) |
++| S1 | BKL dạng **queue lock (MCS lock)** | K1a |
++| S2 | Đường không khoá: hộp thư, ack TLB, IPI, timer riêng hart, idle | K1a |
++| S3 | Cụm: mỗi cụm một khoá + một `Kernel` riêng; chéo cụm qua hộp thư | Khi chờ khoá > ngưỡng (mục 9.10) |
+ | S4 | Khoá mịn cục bộ | Sau S3, chỉ đúng đường nóng |
+ 
+-Năm luật bắt buộc từ K1:
++Năm luật bắt buộc từ **K1a**:
+ 1. vifast-core không biết khoá; platform lấy khoá rồi gọi `handle`.
+ 2. Đường nóng chỉ ghi `PerHart` của hart đang chạy + object mà thao tác chạm tới; không bộ đếm global trên đường nóng.
+-3. Không sửa `PerHart` của hart khác; đi qua hộp thư + IPI.
++3. Không **ghi** trạng thái hart khác; đi qua hộp thư + IPI. **Đọc** trường công bố (`idle`, `cur_prio` — mục 4.8) là **được phép** (QD §3.10).
+ 4. Mỗi object có `home`.
+ 5. Không giữ khoá khi chờ; đang chờ khoá hay chờ ack đều phải xử lý hộp thư của mình.
+ 
+-Build sim có guard ghi lại hart truy cập `PerHart`; vi phạm luật 2, 3 là panic.
++Build sim có guard ghi lại hart truy cập `PerHart`; vi phạm luật 2, 3 là panic (đọc trường công bố không tính là vi phạm).
+ 
+-`MAX_HARTS` cấu hình tối đa 256; HartMask kích thước theo số hart lúc boot (bitmap trong arena).
++`MAX_HARTS` **mặc định 8, trần cấu hình 64 [TK]** (sửa 256); HartMask kích thước theo số hart lúc boot (bitmap trong arena). **Arena chỉ cấp cho hart phát hiện được** lúc boot, không cấp đủ `MAX_HARTS` [TK].
+ 
+ ### 4.17 Hộp thư theo hart (`vifast-sync`)
+ 
+@@ -380,18 +442,18 @@
+ 
+ ### 4.20 Mã lỗi
+ 
+-InvalidCapability, WrongObjectType, InsufficientRights, WxViolation, InvalidArgument, Alignment, SlotOccupied, SlotEmpty, NotEnoughMemory, AlreadyMapped, NotMapped, MissingPageTable, HasChildren, Busy, Cancelled, Timeout, IllegalOperation, NotSupported, RangeError, Restart (nội bộ, không bao giờ tới user).
++**19 mã** (QD §4): InvalidCapability, WrongObjectType, InsufficientRights, WxViolation, InvalidArgument, Alignment, SlotOccupied, SlotEmpty, NotEnoughMemory, AlreadyMapped, NotMapped, MissingPageTable, HasChildren, Busy, Cancelled, Timeout, IllegalOperation, NotSupported, RangeError.
+ 
+-Mỗi mã một nghĩa. Kèm một word chi tiết (chỉ số tham số sai, cấp bảng trang thiếu, số byte thiếu). Tất cả nằm trong `abi.toml`.
++Mỗi mã một nghĩa; kèm một word chi tiết (chỉ số tham số sai, cấp bảng trang thiếu, số byte thiếu). Tất cả nằm trong `abi.toml`. `Restart` **không phải mã lỗi ABI** — là tín hiệu nội bộ core → platform (mục 4.13). `BrokenPipe`, `Stopped` thuộc giao thức user (IDL procsrv/pipe), không phải kernel.
+ 
+ ### 4.21 Bảng ABI
+ 
+-**Syscall**
++**Syscall** — 0..13 như cũ, thêm **14 Exit**; dải **15..31 reserved** (QD §4).
+ 
+ | # | Tên | Ghi chú |
+ |---|---|---|
+-| 0 | Call | Endpoint: IPC; object khác: invocation (method = label) |
+-| 1 | Send | Notification: Signal; Reply: trả lời |
++| 0 | Call | Endpoint: IPC; object khác: invocation (method = label), **trả ngay** |
++| 1 | Send | Notification: Signal; Reply: trả lời; fault `Exit`: giao qua hàng gửi của `fault_ep`, không có Reply |
+ | 2 | NBSend | |
+ | 3 | Recv | Endpoint hoặc Notification |
+ | 4 | NBRecv | Poll |
+@@ -404,33 +466,46 @@
+ | 11 | ClockRead | dự phòng |
+ | 12 | DebugPutStr | feature debug |
+ | 13 | DebugHalt | feature test, thoát QEMU với mã |
++| 14 | Exit(code) | Lưu `exit_code`; có `fault_ep` → `BlockedOnSend{fault_ep, call:false}` mang `FaultKind::Exit{code}`; procsrv `Recv` xong → `Inactive`; không có `fault_ep` → `Inactive` ngay |
+ 
+ **Object và method** (method id sinh từ `abi.toml`)
+ 
+ | Object | Method | Cài ở |
+ |---|---|---|
+-| Untyped | Retype | K1 |
+-| CNode | Copy, Mint, Move, Mutate, Delete, Revoke, Rotate | K1 |
+-| Tcb | Configure, SetPriority, SetMcp, SetAffinity, SetSchedParams, SetTimeoutEp, ReadRegs, WriteRegs, CopyRegs, Resume, Suspend, BindNotification, UnbindNotification, SetTls | K1 (SetTls K6) |
+-| SchedControl | Configure | K1 |
+-| SchedContext | Bind, Unbind, Consumed, YieldTo | K1 |
+-| Endpoint, Notification, Reply | (qua syscall) | K1 |
+-| VSpace | GetAsid (debug) | K2 |
++| Untyped | Retype (Revoke qua `CNode.Revoke` trên cap Untyped) | K1a |
++| CNode | Copy, Mint, Move, Mutate, Delete, Revoke, Rotate | K1a |
++| Tcb | Configure, **SetFaultEp**, **ReadState**, **Suspend(mode)**, SetPriority, SetMcp, SetAffinity, SetSchedParams, SetTimeoutEp, ReadRegs, WriteRegs, CopyRegs, Resume, BindNotification, UnbindNotification, SetTls | K1b (SetTls K6) |
++| SchedControl | Configure | K1b |
++| SchedContext | Bind, Unbind, Consumed, YieldTo | K1b |
++| Endpoint, Notification, Reply | (qua syscall) | K1c |
++| VSpace | GetAsid (debug); **tạo/khách: reserved** | K2 |
+ | PageTable | Map, Unmap | K2 |
+ | Frame | Map, Unmap, GetAddress, MapIo, UnmapIo | K2 (Io: D3) |
+ | IrqControl | GetLine, GetMsi | K3 (Msi: D2) |
+ | IrqHandler | SetNotification, Ack, Clear, SetAffinity | K3 |
+-| IOSpace | (Map qua Frame), Flush | D3 |
+-| VCpu | Run, ReadRegs, WriteRegs, InjectIrq, SetTsc | H1 |
++| IOSpace | Flush; **Attach: reserved** | D3 |
++| VCpu | Run, ReadRegs, WriteRegs, InjectIrq, SetTsc; **Configure: reserved** | H1 |
+ | PowerControl | HartOffline, HartOnline, Suspend | P1 |
+ 
+-Method chưa cài trả `NotSupported`; conformance test kiểm điều đó.
++Object chưa cài chỉ giữ **số reserved**, không đóng băng chữ ký; method chưa cài trả `NotSupported`; conformance test kiểm điều đó (QD §1 Q-B).
+ 
+-Bỏ hẳn so với v1: Open, Read, Write, Close, Stat, Seek, Block*, ConsoleRead, TcbSetArgs, ModuleRelease, MemInfo/TcbInfo/TimerInfo, software IOMMU.
++**Đóng băng ABI (D2-15):** 5 thứ — (1) số syscall + quy ước thanh ghi: **riscv64 đóng băng ngay**; aarch64/x86_64 đóng băng khi port (K4'/K5'), chỉ thêm, không đổi riscv64; (2) layout MessageInfo + MR trong thanh ghi + receive window; (3) bảng mã lỗi + quy ước trả lỗi; (4) kích thước/căn lề object theo arch; (5) luật "ID không tái dùng". Có `abi_version`, `min_compat`, `DebugGetInfo`, golden file.
+ 
++Bỏ hẳn so với v1: Open, Read, Write, Close, Stat, Seek, Block*, ConsoleRead, TcbSetArgs, ModuleRelease, MemInfo/TcbInfo/TimerInfo, software IOMMU. Bảng ánh xạ 58 syscall v1 → 15 + method, 22 KError → 19 là việc KT-04a.
++
++**Exit, kill, wait** (QD §1 Q-A, §3.3):
++
++| Việc | Ai làm | Ngữ nghĩa |
++|---|---|---|
++| `exit(code)` | syscall **14** | Lưu `exit_code`; nếu có `fault_ep`, TCB `BlockedOnSend` mang `FaultKind::Exit{code}` (giao qua hàng gửi, không Reply); procsrv nhận xong mới `Inactive`; không có `fault_ep` thì `Inactive` ngay. |
++| `wait` | RPC procsrv | Trả `{code, how}` với `how ∈ Exited | Cancelled | Faulted | Killed` (mục 6.4). |
++| `kill` | procsrv | `Tcb.Suspend(Abort)` rồi Revoke cap TCB; ghi `how = Killed`. |
++
++`DebugHalt` vẫn chỉ dùng cho test.
++
+ ### 4.22 KernelConfig
+ 
+-Khai báo trong `spec/kernel.toml`, sinh thành hằng số Rust: `MAX_HARTS`, kích thước trace ring, kích thước hộp thư, số refill tối đa, định nghĩa cụm, feature (debug, test, trace, kpti). Sim và cả 3 platform đọc cùng tệp; kịch bản sim có thể ghi đè.
++Khai báo trong `spec/kernel.toml`, sinh thành hằng số Rust: `MAX_HARTS` (mặc định **8**, trần **64** [TK]), kích thước trace ring, kích thước hộp thư, số refill tối đa, định nghĩa cụm, feature (debug, test, kpti). **Trace luôn bật, không có cờ tắt** (D2-09). Sim và cả 3 platform đọc cùng tệp; kịch bản sim có thể ghi đè.
+ 
+ ---
+ 
+@@ -441,6 +516,7 @@
+ - Ứng dụng UEFI cho cả 3 arch (QEMU: OVMF cho x86, AAVMF cho aarch64, EDK2/U-Boot cho riscv64 [GT: kiểm EDK2 riscv64 trên QEMU đang dùng]). Đường dự phòng riscv64: OpenSBI + nạp trực tiếp.
+ - Đọc bản đồ RAM, ACPI (vifast-acpi) hoặc DTB (vifast-dtb), nạp kernel ELF + init + module archive, dựng bảng trang ban đầu (nửa cao + physmap), điền **BootDesc** (vifast-bootdesc) rồi nhảy vào kernel.
+ - Kết quả: điểm vào kernel giống nhau ở mọi arch.
++- **Tới K6 chỉ riscv64, OpenSBI nạp trực tiếp**; UEFI và aarch64/x86_64 chỉ sau K6 (D2-10, QD §1 Q-F(1)).
+ 
+ ### 5.2 Chia RAM lúc boot
+ 
+@@ -468,7 +544,7 @@
+ | IPI | SBI IPI / IMSIC | SGI | LAPIC IPI |
+ | Hart phụ | SBI HSM | PSCI | INIT-SIPI trampoline (tham khảo v1) |
+ | Ảo hoá | H extension | EL2 | VT-x |
+-| Mục tiêu | < 2.500 dòng Rust + asm riêng | như trái | như trái |
++| Mục tiêu | < 2.500 dòng Rust + asm riêng [ƯL] | như trái | như trái |
+ 
+ ---
+ 
+@@ -507,8 +583,18 @@
+ 
+ ### 6.4 process server
+ 
+-Tạo tiến trình từ ELF (vifast-elf): CSpace, VSpace, IPC buffer, stack với argv/env, trang thời gian, TLS; SchedContext theo chính sách; theo dõi thoát; cung cấp `wait`, `kill`, danh sách tiến trình; **job control không dùng signal** (huỷ, tạm dừng, tiếp tục qua IPC) cho ViShell.
++Tạo tiến trình từ ELF (vifast-elf): CSpace, VSpace, IPC buffer, stack với argv/env, trang thời gian, TLS; SchedContext theo chính sách. **Job control không dùng signal** (QD §3.1, §3.3):
+ 
++| RPC (IDL) | Ngữ nghĩa |
++|---|---|
++| `Spawn(spec) -> pid` | tạo tiến trình; trả cap/pid |
++| `Wait(pid\|gid) -> {code, how}` | `how ∈ Exited \| Cancelled \| Faulted \| Killed` |
++| `Stop(gid)` / `Cont(gid)` | `Tcb.Suspend(Abort)` / `Tcb.Resume`; Resume **không** phát lại IPC |
++| `Cancel(gid)` | huỷ từ stage cuối về đầu, chờ tối đa **2 s** [ƯL], rồi finalise TCB |
++| `List() -> [...]` | danh sách tiến trình/nhóm |
++
++procsrv giữ bảng `gid -> [tcb cap]`. **Terminal: shell sở hữu tty**; tiến trình con nhận pipe, **không** nhận `cap[Term]`; chương trình toàn màn hình (vim, less) để sau với tty server riêng. Exit: syscall 14 → TCB `BlockedOnSend` trên `fault_ep` mang `FaultKind::Exit{code}` → procsrv `Recv`, ghi mã thoát rồi finalise; `kill` = `Suspend(Abort)` + Revoke cap TCB (message Exit đang chờ bị huỷ, `exit_code` vẫn đọc được).
++
+ ### 6.5 VFS
+ 
+ - Nhiều luồng worker, mỗi worker giữ Reply object riêng.
+@@ -569,13 +655,13 @@
+ 
+ | Việc | Nơi | Mốc |
+ |---|---|---|
+-| `vis-host-vifast`: cài trait Host bằng IPC tới VFS, process server, net server; quyền là cap thật | `viscript/` dùng `vifast-urt` | VSH2 |
++| `vis-host-vifast`: cài trait Host bằng IPC tới VFS, process server, net server; quyền là cap thật | workspace ngoài `viscript/`, dùng `vifast-urt` | VSH2 |
+ | Binding ViScript sinh từ IDL (vifast-gen thêm đầu ra binding) | `tools/vifast-gen` | VSH2 |
+ | ViShell làm shell mặc định, thay shell tạm của K6 | đóng gói trong `user/` | VSH2 |
+-| Giao thức hiển thị có cấu trúc ViShell và ViTerm | `term.vidl` | VS3 + G3 |
++| Giao thức hiển thị có cấu trúc ViShell và ViTerm | `term.vidl` | mốc riêng **TUI** (trước G3) |
+ | Job control không signal trong process server | `procsrv` | U1 |
+ 
+-Yêu cầu từ ViScript lên OS: Rust std đầy đủ (thread, time, fs, net), WaitAddr cho Mutex, trang thời gian, process server có `kill/wait/list`. Tất cả nằm trong U1.
++Yêu cầu từ ViScript lên OS: Rust std phần **thread, time, fs, process** trong U1; **net để ở N1** (U1 không hứa net); WaitAddr cho Mutex; trang thời gian; procsrv có `kill/wait/list`. VSH2 phụ thuộc **U1 + N1 + VS2** (sửa lệch C §3); VS3 phụ thuộc **VS2 + G3**.
+ 
+ ### 7.4 Linux qua máy ảo
+ 
+@@ -596,7 +682,7 @@
+   lib/           (no_std, chạy được trên host)
+     vifast-abi2  vifast-ilist  vifast-pte  vifast-elf  vifast-dtb  vifast-acpi
+     vifast-bootdesc  vifast-sync(*)  vifast-objmem(*)  vifast-traceformat
+-    vifast-wire  vifast-fs  vifast-virtio  vifast-nvme  vifast-pci  vifast-capalloc
++    vifast-wire  vifast-fs  vifast-fsutil  vifast-virtio  vifast-nvme  vifast-pci  vifast-capalloc
+   kernel/        vifast-core  vifast-plat-common  vifast-plat-{riscv64,aarch64,x86_64}  vifast-kbin-*
+   boot/          vifast-boot
+   sim/           vifast-sim  vifast-model
+@@ -611,12 +697,14 @@
+ ```
+ 
+ **Luật cấu trúc (cổng cứng)**:
+-- Tệp trong `kernel/`, `lib/` không quá 1.500 dòng; vifast-core dưới 15.000 dòng không tính test [ƯL].
++- Tệp trong `kernel/`, `lib/` không quá **1.500 dòng [TK]**; `vifast-core` dưới **25.000 dòng** không tính test [ƯL].
+ - `cfg(target_arch)` cấm trong core và lib.
+ - `unsafe` chỉ trong danh sách crate đóng + `kernel/vifast-plat-*` + `boot/`.
+ - Đồ thị phụ thuộc theo `deps.toml`.
+ - Code sinh trùng spec.
+-- Mỗi platform dưới 2.500 dòng không tính asm.
++- Mỗi platform dưới **2.500 dòng [ƯL]** không tính asm.
++- **Bảng ánh xạ 25 crate v1 → v2 là việc của KT-04a** (cùng bảng 58 syscall → 15 + method, 22 KError → 19); tài liệu không chép tay bảng đó.
++- Ngân sách tĩnh: `.data + .bss ≤ 256 KiB` [TK], đo ở K0.5; arena chỉ cấp cho hart phát hiện được (QD §3.5, §3.15).
+ 
+ **Ma trận tái sử dụng**:
+ 
+@@ -641,12 +729,12 @@
+ | Tầng | Nội dung | Mục tiêu | Khi chạy |
+ |---|---|---|---|
+ | L0 | Unit + property test từng crate | < 15 s | mỗi lần lưu, mỗi bước vòng lặp |
+-| L1 | Sim tất định, invariant sau mỗi event | 10.000 seed < 60 s | mỗi commit |
++| L1 | Sim tất định, invariant sau mỗi event | `--fast`: 1.000 seed; nightly: 100.000; đo lại khi có sim | mỗi commit (sau KT-08) |
+ | L2 | So mô hình + kịch bản có tên + hồi quy `.scn` | < 5 phút | mỗi commit chạm core |
+ | L3 | QEMU: ktest + conformance, 3 arch, smp 1/2/4 | < 2 phút/arch | commit chạm platform/user; cổng ngày |
+ | L4 | Sim triệu seed, mutation đầy đủ, Miri, L3 lặp, soak, đo hiệu năng | hàng giờ | đêm |
+ 
+-Vòng lặp hằng ngày khi sửa logic kernel: L0 + L1 trên host, không cần QEMU.
++Vòng lặp hằng ngày khi sửa logic kernel: L0 + L1 trên host, không cần QEMU. **L1 chưa bật tới KT-08**; trước đó `STATE.md` ghi rõ. Đo thời gian L1 ngay khi sim chạy; vượt 60 s thì giảm seed của `--fast`, **không** giảm invariant (QD §5.2).
+ 
+ ### 9.2 Kiểm thử theo từng phần
+ 
+@@ -707,7 +795,7 @@
+ ### 9.5 SimPlatform
+ 
+ - N hart (1 tới 8 trong test thường, tới 64 trong nightly), đồng hồ ảo ns, deadline theo hart, IPI.
+-- RAM là `Vec<u8>` căn lề; bảng trang thật ghi vào đó bằng vifast-pte; object thật đặt bằng vifast-objmem.
++- RAM là **vùng thô có căn lề** (bộ cấp phát thô, **không** `Vec<u8>` — QD §3.5); bảng trang thật ghi vào đó bằng vifast-pte; object thật đặt bằng vifast-objmem.
+ - **Mô hình TLB theo hart**: cache (asid, va) -> (pa, rights) khi user Touch; chỉ xoá khi kernel flush. Truy cập qua TLB tới PA đã trả về Untyped hoặc quyền đã hạ = vi phạm TLB-safety.
+ - Hộp thư dùng đúng vifast-sync.
+ - Đi qua đúng bộ giải mã syscall sinh từ ABI.
+@@ -752,17 +840,19 @@
+ 
+ $$p_{95} \approx \frac{3}{n}$$
+ 
+-Muốn tuyên bố tỉ lệ dưới p cần $$n \ge \frac{3}{p}$$. Chốt n trước, cùng BUILD_ID, cùng máy. Lỗi logic phải tái hiện ở L1 trước; soak chỉ xác nhận.
++Muốn tuyên bố tỉ lệ dưới p cần $$n \ge \frac{3}{p}$$. Chốt n trước, cùng **máy `ps`**, BUILD_ID, cấu hình (smp, `MAX_IO`); 0/N chỉ là trần; không đếm artifact; T-BUILD không tính. Với p mục tiêu **0,3 %**, N = **1.000** chạy **3 luồng** (QD §5.3). Bỏ con số 750. Lỗi logic phải tái hiện ở L1 trước; soak chỉ xác nhận.
+ 
++**Hợp đồng marker (harness-v2):** TAP là định dạng kết quả; `harness-v2` có `FORBIDDEN` (panic, invariant fail, `TIME BACK`), `EXACT_ONE` (dòng plan TAP, BUILD_ID), và bộ case âm cho chính harness (T-IPC: harness mới phải chứng minh bắt được lỗi trước khi dùng để tuyên bố).
++
+ ### 9.13 Lệnh
+ 
+ | Lệnh | Nội dung |
+ |---|---|
+ | `v2 check` | L0 các crate bị chạm |
+-| `v2 gate --fast` | gen-check, fmt, clippy -D warnings, luật cấu trúc, L0 toàn bộ, L1 10.000 seed. < 2 phút |
+-| `v2 gate` | + L2 + L3 các arch đã port |
+-| `v2 nightly` | L4 + cập nhật STATUS.md + perf history |
+-| `v2 repro <seed|scn> [--arch X]` | chạy lại một ca, mở trace |
++| `v2 gate --fast` | fmt, clippy -D warnings, luật cấu trúc, L0 toàn bộ; + gen-check (từ KT-05); + L1 **1.000 seed** (từ KT-08). < 2 phút |
++| `v2 gate` | + L2 + L3 arch đã port |
++| `v2 nightly` | L1 100.000, mutation, Miri, soak + cập nhật `STATUS.md` + perf history |
++| `v2 repro <seed\|scn> [--arch X]` | chạy lại một ca, mở trace |
+ | `v2 mutants [tên]` | chạy đột biến |
+ 
+ Không retry ở mọi cổng. Flake hạ tầng phân loại T-INFRA, không bao giờ tính PASS.
+@@ -771,67 +861,74 @@
+ 
+ ## 10. Lộ trình đầy đủ
+ 
+-Quy tắc: một mốc bắt đầu khi mọi phụ thuộc đã đạt tiêu chí. Các dòng khác nhau chạy song song nếu không phụ thuộc.
++Quy tắc: một mốc bắt đầu khi mọi phụ thuộc đã đạt tiêu chí. Các dòng khác nhau chạy song song nếu không phụ thuộc. **Không có mốc theo ngày** (QD §1 Q-F, §5.1); mọi tiêu chí đo được.
+ 
+ ### 10.1 Dòng lõi
+ 
+ | Mốc | Nội dung | Tiêu chí xong |
+ |---|---|---|
+-| V1-END | Commit r323, soak n=750 không retry, tag `v1-final` | Có báo cáo |
+-| K0 | Spec đầy đủ (`abi.toml` mọi object/method mục 4.20, 4.21; `kernel.toml`; `deps.toml`), bảng trạng thái, vifast-gen, khung workspace, luật cấu trúc, vifast-agentctl | `v2 gate --fast` chạy; Agent 0 duyệt spec |
+-| K1a | objmem, Untyped, CSpace 2 cấp + MDB, finalise khung, preempt khung | Miri xanh; sim kịch bản cap/untyped 100.000 seed; khớp mô hình |
+-| K1b | TCB + transition, scheduler theo hart, hộp thư, MCS | Bao phủ cặp 100%; kiểm budget; push migration |
+-| K1c | IPC + Reply + Notification + WaitAddr + fault | Bảo toàn message, không mất đánh thức; mọi đột biến chuẩn bị bắt; 100.000 seed x smp 1/2/4/8 |
+-| K2 | VSpace/PageTable/Frame 3 cỡ + attrs, ASID, shootdown, W^X, mô hình TLB | 0 vi phạm TLB-safety 100.000 seed; đột biến AP->BSP bị bắt |
+-| K3 | vifast-boot + plat-common + plat-riscv64; init tối thiểu; ktest + conformance | TAP 100% smp 1/2/4; 750 boot 0 lỗi; perf đầu tiên |
+-| K4 | plat-aarch64 | Như K3 |
+-| K5 | plat-x86_64 (+ KPTI tuỳ chọn) | Như K3, + `-cpu max` |
+-| K6 | memsrv, procsrv, vifast-alloc, capalloc, IDL + ring, VFS (pager, page cache, journal), virtio-blk/console, SetTls, shell tạm (Rust) | Tương đương v1; test-persist 7 pha x 3 arch; harness sản phẩm có case âm |
++| K0 | Spec đầy đủ (`abi.toml` 15 syscall + method + 19 lỗi + reserved; `kernel.toml`; `deps.toml`), bảng trạng thái, vifast-gen, khung workspace, luật cấu trúc, vifast-agentctl | `v2 gate --fast` chạy; Agent 0 duyệt spec (KT-04d APPROVED) |
++| **K0.5** | boot riscv64 QEMU qua OpenSBI nạp trực tiếp; `DebugPutStr`/`DebugHalt`; TAP 1 test; đo image/`.data`/`.bss` | **50 boot 0 lỗi**; `.data + .bss ≤ 256 KiB` [TK] |
++| K1a | sim harness store giả + scheduler tối thiểu 1 hart; Untyped; CNode/MDB test-first (mô hình tối giản trong test) | 1 kịch bản end-to-end; invariant tổng byte; property test cây |
++| K1a' | thay store giả bằng objmem (API closure) + Miri | Miri xanh từ commit đầu; các ca Untyped/CNode của KT-04c chạy trên mô hình |
++| K1b | TCB + transition + `suspended`; scheduler theo hart; hộp thư; **MCS giai đoạn đầu** (donation) | Bao phủ cặp 100%; kiểm budget; push migration |
++| K1c | IPC + Reply + Notification + WaitAddr + fault + **Exit** | Bảo toàn message; không mất đánh thức; mọi đột biến chuẩn bị bắt; 100.000 seed × smp 1/2/4/8 |
++| K2 | VSpace/PageTable/Frame 3 cỡ + attrs, ASID, shootdown, W^X, mô hình TLB | 0 vi phạm TLB-safety 100.000 seed; đột biến AP→BSP bị bắt |
++| K3 | plat-common + plat-riscv64; init tối thiểu; ktest + conformance | TAP 100% smp 1/2/4 [TK]; soak boot **0 lỗi / N = 1.000** trên máy `ps` [TK] (D2-24); perf đầu tiên |
++| **K3.5** | procsrv + shell Rust tối thiểu (ABI được ứng dụng thật dùng) | spawn/wait/exit/kill chạy; shell chạy một lệnh |
++| K6 | memsrv, vifast-alloc, capalloc, IDL + ring, VFS (pager, page cache, journal), virtio-blk/console, SetTls | "Tương đương v1" theo danh sách đo được (VFS journal/fsck/rename/truncate/double-indirect; pager nhiều client; exec chain; test-persist 7 pha) |
++| K4' | plat-aarch64 | như K3 |
++| K5' | plat-x86_64 (+ KPTI tuỳ chọn) | như K3 + `-cpu max` |
++| UEFI | `vifast-boot` UEFI cho 3 arch (sau K5') | boot 3 arch qua UEFI, hoặc ghi quyết định giữ OpenSBI cho riscv64 |
+ 
+ ### 10.2 Dòng runtime và ViScript
+ 
+-| Mốc | Nội dung | Phụ thuộc |
+-|---|---|---|
+-| VS-SPEC, VS0, VS1, VSH1, VS2 | Ngôn ngữ, VM, ViShell trên Mac/Linux/Windows/wasm (tài liệu ViScript mục 19) | Không phụ thuộc ViFastOs, chạy song song dòng lõi |
+-| U1 | Rust std cho ViFastOs + job control trong procsrv | K6 |
+-| VSH2 | vis-host-vifast, binding IDL, ViShell thành shell mặc định | U1, VS2 |
+-| VS3 | Plugin, binding toolkit, ViTerm có cấu trúc | VSH2, G3 |
++| Mốc | Nội dung | Phụ thuộc | Tiêu chí |
++|---|---|---|---|
++| VS-SPEC..VS2 | Ngôn ngữ, VM, ViShell trên Mac/Linux/Windows/wasm (tài liệu ViScript mục 19) | không phụ thuộc ViFastOs | theo ViScript §19 |
++| U1 | Rust std phần thread/time/fs/process + job control trong procsrv | K6 | test con std; spawn/wait/kill |
++| **N1** | Net server, socket qua IDL, DHCP/DNS | D1, U1 | ping/DNS qua socket |
++| VSH2 | vis-host-vifast, binding IDL, ViShell thành shell mặc định | **U1, N1**, VS2 | chạy được ViShell trên ViFastOs |
++| VS3 | Plugin, binding toolkit, ViTerm có cấu trúc | VSH2, G3 | ứng dụng desktop nhỏ |
+ 
+ ### 10.3 Dòng thiết bị và mạng
+ 
+-| Mốc | Nội dung | Phụ thuộc |
+-|---|---|---|
+-| D1 | virtio-net, virtio-gpu, virtio-input | K6 |
+-| N1 | Net server, socket qua IDL, DHCP/DNS | D1, U1 |
+-| D2 | PCIe enumeration, MSI-X, NVMe, AHCI | K5 |
+-| D3 | IOSpace: VT-d, SMMUv3, virtio-iommu | D2 |
+-| D4 | xHCI + USB HID + mass storage | D2 |
+-| D5 | Âm thanh | D2, số đo MCS |
++| Mốc | Nội dung | Phụ thuộc | Tiêu chí |
++|---|---|---|---|
++| D1 | virtio-net, virtio-gpu, virtio-input | K6 | thiết bị giả + QEMU |
++| N1 | Net server, socket qua IDL, DHCP/DNS | D1, U1 | xem §10.2 |
++| D2 | PCIe enumeration, MSI-X, NVMe, AHCI | K5' | enumerate + IRQ |
++| D3 | IOSpace: VT-d, SMMUv3, virtio-iommu | D2 | DMA được cô lập |
++| D4 | xHCI + USB HID + mass storage | D2 | HID hoạt động |
++| D5 | Âm thanh | D2, số đo MCS | phát 1 tệp |
+ 
+ ### 10.4 Dòng desktop
+ 
+-| Mốc | Nội dung | Phụ thuộc |
+-|---|---|---|
+-| G1 | Framebuffer + console đồ hoạ, font tiếng Việt/Nhật | D1 |
+-| G2 | Compositor phần mềm, input server, cửa sổ | G1, U1 |
+-| G3 | Toolkit Rust, ứng dụng mẫu (ViTerm chạy ViShell, trình quản lý tệp) | G2 |
+-| G4 | ViFastKey IME server | G2 |
+-| G5 | Audio + trình phát | D5, G3 |
++| Mốc | Nội dung | Phụ thuộc | Tiêu chí |
++|---|---|---|---|
++| **TUI** | `term.vidl` — giao thức hiển thị có cấu trúc ViShell/ViTerm | VS2, K6 | ViShell chạy trong ViTerm |
++| G1 | Framebuffer + console đồ hoạ, font Việt/Nhật | D1 | hiện chữ có dấu |
++| G2 | Compositor phần mềm, input server, cửa sổ | G1, U1 | 2 cửa sổ |
++| G3 | Toolkit Rust, ứng dụng mẫu (ViTerm, quản lý tệp) | G2 | chạy ViShell |
++| G4 | ViFastKey IME server | G2 | gõ tiếng Việt |
++| G5 | Audio + trình phát | D5, G3 | phát 1 tệp |
+ 
++**D-08 còn hiệu lực tới K6** (D2-23): dòng G và ViFastKey (G4) chỉ mở **sau K6**, không chạy song song dòng lõi.
++
+ ### 10.5 Dòng nâng cao
+ 
+-| Mốc | Nội dung | Phụ thuộc |
+-|---|---|---|
+-| P1 | Power: idle sâu, hart offline/online, suspend/resume | K5 |
+-| H1 | VCpu + VMM (riscv64 H trước), Linux khách tới shell | K6, D1 |
+-| H2 | Linux khách trên aarch64, x86_64; chia sẻ tệp, cửa sổ khách vào compositor | H1, G2 |
+-| S3 | Cụm, khi số đo vượt ngưỡng | perf |
+-| F1 | IPC fastpath | perf |
+-| HW1 | Chạy trên máy thật (một board riscv64/aarch64 + một PC x86) | K5, D2 |
++| Mốc | Nội dung | Phụ thuộc | Tiêu chí |
++|---|---|---|---|
++| P1 | Power: idle sâu, hart offline/online, suspend/resume | K5' | đo tiêu thụ |
++| H1 | VCpu + VMM (riscv64 H trước), Linux khách tới shell | K6, D1 | shell khách |
++| H2 | Linux khách trên aarch64/x86_64; chia sẻ tệp, cửa sổ khách vào compositor | H1, G2 | chia sẻ tệp |
++| S3 | Cụm, khi số đo vượt ngưỡng | perf §9.10 | chờ khoá > 10 % |
++| F1 | IPC fastpath | perf §9.10 | p99 giảm |
++| HW1 | Máy thật (board riscv64/aarch64 + PC x86) | K5', D2 | boot tới shell |
+ 
+-### 10.6 Định hướng thời gian [ƯL]
++### 10.6 Thứ tự ưu tiên (không ngày)
+ 
+-90 ngày đầu: V1-END, K0, K1a/b/c, K2; ViScript VS-SPEC, VS0 song song. 90 ngày tiếp: K3, K4, K5; ViScript VS1, VSH1. Sau đó K6, U1, D1, VS2, VSH2. Các dòng G, N, H mở dần.
++K0 → K0.5 → K1a → K1a' → K1b → K1c → K2 → K3 → K3.5 → K6. Dòng ViScript VS-SPEC..VS2 chạy song song nhưng **OS trước**: Agent 2 chỉ lấy task ViScript khi QUEUE v2 không còn task READY (D2-20), ngoại lệ ST-02a (tài liệu). Không cam kết ngày; tiến độ đo bằng mốc đạt.
+ 
+ ---
+ 
+@@ -847,14 +944,14 @@
+ 
+ | Tệp | Ai ghi | Nội dung |
+ |---|---|---|
+-| `QUEUE.md` | Agent 0 (qua người điều phối) | Task có ID, phụ thuộc, tiêu chí xong, ngân sách |
++| `QUEUE.md` | Agent 0 (qua người điều phối) | Task có ID, phụ thuộc, ngân sách, **trạng thái `READY\|BLOCKED\|REVIEW\|DONE`**, tiêu chí xong, dòng `APPROVED` khi duyệt spec |
+ | `STATE.md` | Agent 2 | Task đang làm, bước, HEAD, cổng gần nhất, việc dở. **Cập nhật sau mỗi bước** để nén ngữ cảnh bất cứ lúc nào |
+ | `JOURNAL/YYYY-MM-DD.md` | Agent 2 | Nhật ký ngắn: làm gì, kết quả, quyết định nhỏ |
+ | `BLOCKED.md` | Agent 2 | Task bị chặn + lý do + câu hỏi cho Agent 0 |
+-| `reports/R<n>.md` + `R<n>.json` | Agent 2 | Báo cáo cuối vòng; JSON máy đọc được |
++| `reports/R<n>-v2.md` + `R<n>-v2.json` | Agent 2 | Báo cáo cuối vòng; JSON có `project` |
+ | `DECISIONS.md` | Agent 0 | Danh sách quyết định có hiệu lực (chép từ mục 12) |
+ 
+-`vifast-agentctl`: `next` (task kế có phụ thuộc đã xong), `start <id>`, `done <id>`, `block <id> <lý do>`, `report` (sinh R<n>.json từ git + kết quả cổng). Nhận `--project v2|viscript` để dùng chung cho hai dòng.
++`vifast-agentctl`: `next` (task kế có phụ thuộc đã DONE, **bỏ qua REVIEW**), `start <id>`, `done <id>`, `block <id> <lý do>`, `report` (sinh `R<n>-v2.json` từ git + kết quả cổng). Nhận `--project v2|viscript` để dùng chung cho hai dòng.
+ 
+ ### 11.3 Vòng lặp chuẩn cho mỗi task
+ 
+@@ -863,13 +960,13 @@
+ 3. **Test đỏ trước**: viết test/kịch bản thể hiện yêu cầu; chạy, xác nhận đỏ đúng lý do.
+ 4. **Cài đặt** theo bước nhỏ; sau mỗi bước `v2 check`.
+ 5. **Cổng**: `v2 gate --fast` (luôn); `v2 gate` nếu chạm platform/user.
+-6. **Commit**: `[T<id>] <tóm tắt>` + kết quả cổng + BUILD_ID.
++6. **Commit**: `[KT-##] <tóm tắt>` + kết quả cổng + BUILD_ID.
+ 7. **Cập nhật** STATE.md, JOURNAL; `agentctl done`.
+ 8. **Nén ngữ cảnh** nếu lớn, rồi quay lại bước 1 với task kế.
+ 
+ ### 11.4 Luật bắt buộc
+ 
+-- Không sửa `spec/` (trừ khi task cho phép rõ), DECISIONS.md, ngưỡng cổng, `accept()` của harness; danh sách đột biến chỉ được thêm.
++- Không sửa `spec/` trừ task được ghi rõ (`KT-04a`), không sửa DECISIONS.md, ngưỡng cổng, `accept()` của harness; danh sách đột biến chỉ được thêm. **Duyệt chỉ bằng dòng `APPROVED <ngày> Agent 0` trong `QUEUE.md` + một mục D2**, không duyệt bằng chat (D2-22); Agent 2 soạn nháp spec ở `REVIEW`, sau duyệt chỉ Agent 0 sửa.
+ - Không tắt test, không `#[ignore]`, không nới invariant để qua cổng.
+ - Không retry để qua cổng. Flake: ghi T-INFRA kèm log, chạy lại tối đa một lần **chỉ để phân loại**.
+ - Hồi quy (cổng từng xanh nay đỏ): revert trước, điều tra sau.
+@@ -878,7 +975,7 @@
+ - Thêm phụ thuộc crate ngoài: thuần Rust, giấy phép tương thích MIT/Apache-2.0, ghi lý do trong JOURNAL, kiểm `deps.toml`.
+ - Không đưa số liệu viết tay vào tài liệu; số liệu do `v2 nightly` sinh.
+ - `cargo fmt` trước commit; clippy sạch.
+-- Mọi tệp mã nguồn mới có header SPDX `// SPDX-License-Identifier: MIT OR Apache-2.0`.
++- SPDX theo loại tệp (D2-21, QD §9.3): `//` cho Rust/asm, `#` cho `.vis .vish .vidl .toml`; tệp không có chú thích dùng sidecar `.license`; tệp sinh do generator phát header. Thêm `license.workspace = true` cho mọi crate; LICENSE-MIT/APACHE một bản ở gốc; `THIRD-PARTY.md` sinh tự động; **không** tạo NOTICE.
+ 
+ ### 11.5 Ngân sách và điều kiện dừng
+ 
+@@ -889,20 +986,20 @@
+ | Spec mâu thuẫn hoặc thiếu | BLOCKED với đề xuất cụ thể, không tự đổi spec |
+ | Cổng đỏ do lỗi không thuộc task | Mở mục lỗi trong JOURNAL + `.scn` nếu có; không sửa lan |
+ | Hết task khả dụng | Chạy `v2 nightly`, viết báo cáo, dừng |
+-| Máy bận/QEMU treo | `pkill -f qemu-system`, ghi T-INFRA, tiếp |
++| Máy bận/QEMU treo | giết **đúng PID do task tạo** (cấm `pkill -f qemu-system` toàn cục), ghi T-INFRA, tiếp |
+ 
+ ### 11.6 Chạy qua đêm
+ 
+-- Trước khi rời máy: QUEUE.md có ít nhất 8 task chia nhỏ (1 tới 3 giờ mỗi task), phụ thuộc rõ, ít nhất 3 nhánh độc lập để khi một nhánh BLOCKED vẫn còn việc. Dòng ViScript là nguồn nhánh độc lập tốt.
++- Trước khi rời máy: QUEUE.md có ít nhất 8 task READY chia nhỏ (1 tới 3 giờ mỗi task), phụ thuộc rõ, ít nhất 3 nhánh độc lập để khi một nhánh BLOCKED vẫn còn việc. Dòng ViScript chỉ mở khi OS hết task READY (D2-20).
+ - Agent 2 chạy vòng 11.3 liên tục; sau mỗi task chạy `v2 gate --fast` toàn bộ để phát hiện hồi quy chéo.
+ - Cuối phiên hoặc khi hết task: `v2 nightly`, `agentctl report`.
+-- Tài nguyên: tối đa 3 QEMU song song trên máy hiện tại [DOSSIER], sim dùng tối đa số core - 1.
++- Tài nguyên: tối đa **3 QEMU** song song [TK], sim dùng tối đa `số core − 1`.
+ 
+ ### 11.7 Định dạng báo cáo
+ 
+-`R<n>.md`: tóm tắt 5 dòng, bảng task (ID, trạng thái, commit, cổng), lỗi tìm thấy (`.scn`), số đo thay đổi, đột biến sống, BLOCKED + câu hỏi, đề xuất task kế.
++`R<n>-v2.md`: tóm tắt 5 dòng, bảng task (ID, trạng thái, commit, cổng), lỗi tìm thấy (`.scn`), số đo thay đổi, đột biến sống, BLOCKED + câu hỏi, đề xuất task kế.
+ 
+-`R<n>.json`: `{round, head, build_id, tasks:[{id,status,commits,gates}], gates:{fast,full,nightly}, sim:{seeds, failures}, coverage:{transitions, error_paths}, mutants:{killed, alive}, perf:{...}, blocked:[...]}`.
++`R<n>-v2.json`: `{project:"v2", round, head, build_id, tasks:[{id,status,commits,gates}], gates:{fast,full,nightly}, sim:{seeds, failures}, coverage:{transitions, error_paths}, mutants:{killed, alive}, perf:{...}, blocked:[...]}`.
+ 
+ Agent 0 đọc JSON trước, MD sau.
+ 
+@@ -917,56 +1014,70 @@
+ 
+ ## 12. Quyết định
+ 
++Quyết định v1 (D-01..D-08, D11, D18) giữ nguyên mã, **chỉ áp cho v1** (xem §2.3). Quyết định v2 dùng **D2-xx** (QD §2.1, §8), không trùng mã v1.
++
+ | Mã | Nội dung |
+ |---|---|
+-| D-09 | v1 đóng băng sau r323 + một soak; v2 là nhánh chính |
+-| D-10 | Core không chứa FS, fd, block, console, args, demo; syscall/method/object mới phải vào `abi.toml` qua Agent 0 |
+-| D-11 | Commit chạm `kernel/` hoặc `lib/` phải xanh `v2 gate --fast`; lỗi logic tái hiện trên sim trước, kèm `.scn` |
+-| D-12 | Luật cấu trúc mục 8 là cổng cứng |
+-| D-13 | Test kernel không nằm trong boot sản phẩm |
+-| D-14 | Trace ring luôn bật; cấm đèn chẩn đoán ad-hoc trên đường nóng |
+-| D-15 | Không retry ở mọi cổng; flake phân loại T-INFRA |
+-| D-16 | Port riscv64, aarch64, x86_64 theo thứ tự |
+-| D-17 | Một nguồn sự thật trong `spec/`; code sinh không sửa tay |
+-| D-18 | Đồng thời theo thang S1 tới S4; nâng bậc theo số đo |
+-| D-19 | Kịch bản test viết dạng `.scn`/Scenario chạy cả sim và QEMU |
+-| D-20 | Object kernel nằm trong Untyped của người tạo (vifast-objmem); không pool cố định |
+-| D-21 | MCS là mô hình lập lịch duy nhất từ K1 |
+-| D-22 | ABI lõi chốt ở K0 gồm cả object chưa cài (IOSpace, VCpu, PowerControl); sau K0 chỉ thêm, không đổi |
+-| D-23 | `unsafe` chỉ trong danh sách crate đóng; mỗi crate unsafe có Miri hoặc loom/stress trong nightly |
+-| D-24 | Ứng dụng hệ thống viết bằng Rust std, chỉ crate thuần Rust; libc và wasm để sau |
+-| D-25 | ViScript (kiểu tĩnh, đa nền tảng, một ngôn ngữ cho script và shell) là ngôn ngữ script và shell chính, thiết kế trong tài liệu riêng; tương thích Linux qua máy ảo |
+-| D-26 | Agent 2 làm việc theo mục 11; STATE.md cập nhật sau mỗi bước |
+-| D-27 | Giấy phép MIT OR Apache-2.0 cho toàn bộ mã nguồn; phụ thuộc phải tương thích |
++| D2-01 | v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang v2 (Phụ lục A) |
++| D2-02 | Không sửa mò (D11 cũ): cần đường tái hiện hoặc chứng minh cơ chế |
++| D2-03 | Hồi quy thì revert trước (D18 cũ) |
++| D2-04 | Core không chứa FS/fd/block/console/args/demo; thay đổi ABI/ngữ nghĩa qua Agent 0 |
++| D2-05 | Commit chạm `kernel/`, `lib/` phải xanh `--fast`; lỗi logic tái hiện trên sim, kèm `.scn` đỏ trước |
++| D2-06 | Luật cấu trúc mục 8 là cổng cứng |
++| D2-07 | Không retry ở mọi cổng; flake là T-INFRA |
++| D2-08 | Test kernel không nằm trong boot sản phẩm |
++| D2-09 | Trace luôn bật, không có cờ tắt |
++| D2-10 | Chỉ riscv64 tới K6; aarch64/x86 sau K6 |
++| D2-11 | Một nguồn sự thật trong `spec/`; code sinh không sửa tay |
++| D2-12 | Đồng thời theo S1..S4 theo số đo; đọc trường công bố của hart khác được phép |
++| D2-13 | Kịch bản `.scn` chạy cả sim và QEMU |
++| D2-14 | Object trong Untyped qua objmem (API closure, Miri từ đầu) |
++| D2-15 | ABI đóng băng 5 thứ + `abi_version` + golden (mục 4.21) |
++| D2-16 | MCS: donation từ K1b, thuật toán refill sau K6 |
++| D2-17 | `unsafe` chỉ trong danh sách crate đóng |
++| D2-18 | Ứng dụng hệ thống viết bằng Rust std, crate thuần Rust; libc, wasm để sau |
++| D2-19 | ViScript là ngôn ngữ script và shell chính; Linux qua máy ảo |
++| D2-20 | OS trước; ViScript khi không còn task OS READY (ngoại lệ ST-02a) |
++| D2-21 | Giấy phép MIT OR Apache-2.0; `cargo-deny` allowlist; `THIRD-PARTY.md` tự sinh; license nhúng ảnh; không NOTICE |
++| D2-22 | Duyệt spec bằng dòng APPROVED; Agent 2 soạn nháp ở REVIEW, sau duyệt chỉ Agent 0 sửa |
++| D2-23 | D-08 (không đụng đồ hoạ/ViFastKey) còn hiệu lực tới K6 |
++| D2-24 | Mọi soak trên máy `ps`, N theo `n ≥ 3/p` |
+ 
+-Giữ từ v1: hồi quy thì revert; hai phiên kẹt cùng ý thì đổi nhánh; không nới ngưỡng; không sửa `accept()`; fmt trước commit.
++Ba ghi chú bắt buộc (QD §2.1, §2.3, §5.3):
+ 
++| Ghi chú | Nội dung |
++|---|---|
++| D-01..D-08, D11, D18 | **Vẫn hiệu lực cho v1**; v2 dùng D2-xx, không dùng lại mã D-xx (chi tiết mục 2.3). |
++| Duyệt | bằng dòng `APPROVED <ngày> Agent 0` trong `QUEUE.md` + một mục D2 — **không duyệt bằng chat**. |
++| Soak | mọi soak trên máy `ps`; **N = 1.000** với p mục tiêu 0,3 % (mục 9.12). |
++
+ ---
+ 
+ ## 13. Giao việc vòng 1 cho Agent 2
+ 
+-Đưa vào `v2/agent/QUEUE.md`. Ngân sách mặc định 3 giờ/task. Dòng ViScript có QUEUE riêng (tài liệu ViScript mục 20).
++Đưa vào `v2/agent/QUEUE.md`; bảng dưới là bản rút gọn, QUEUE có đủ 5 khối tự chứa. Ngân sách **3 h/task**; task lớn tách. `agentctl next` bỏ qua `REVIEW`.
+ 
+-| ID | Task | Phụ thuộc | Tiêu chí xong |
+-|---|---|---|---|
+-| T01 | Đóng v1: commit r323; `pkill -f qemu-system`; soak x86_64 3 luồng `VIFAST_NO_RETRY=1` n=750; tag `v1-final` | | Báo cáo n, số treo, số `TIME MONOTONIC BAD`/`C TIME BACK`, BUILD_ID |
+-| T02 | Khung workspace `v2/` theo mục 8 (crate rỗng biên dịch được), `v2/agent/` với các tệp mục 11.2, LICENSE-MIT + LICENSE-APACHE | | `cargo build` toàn workspace |
+-| T03 | Luật cấu trúc: kiểm dòng, `cfg(target_arch)`, danh sách unsafe, `deps.toml`, header SPDX; lệnh `v2 check`, `v2 gate --fast` khung | T02 | Cổng chạy, có case âm cho từng luật |
+-| T04 | `spec/abi.toml` đầy đủ mục 4.20, 4.21 (cả object chưa cài) + `kernel.toml` | T02 | Gửi Agent 0 duyệt (BLOCKED tới khi duyệt) |
+-| T05 | vifast-gen: sinh vifast-abi2, bảng dispatch, stub urt, `docs/abi.md`; gen-check trong cổng | T04 | Code sinh biên dịch; sửa tay bị cổng bắt |
+-| T06 | vifast-agentctl: next/start/done/block/report, `--project` | T02 | Dùng được cho chính vòng này |
+-| T07 | vifast-objmem + Miri | T02 | Miri xanh; fuzz chuỗi place/get/destroy |
+-| T08 | vifast-ilist trên ObjStore | T07 | Property test so Vec |
+-| T09 | Untyped (watermark, Untyped con, device) + preempt khung + Retype làm tiếp | T05, T07 | Test ép preempt mọi bước |
+-| T10 | CNode 2 cấp + slot + MDB + Copy/Mint/Move/Mutate/Delete/Revoke/Rotate | T09 | Property test so mô hình cây |
+-| T11 | Bảng ThreadState + transition + xuất tài liệu | T08 | Mọi cặp cấm bị từ chối |
+-| T12 | vifast-scenario + SimPlatform (chưa VM) + bộ lập lịch event + checker 1, 2, 3, 9 | T09, T10 | Seed tái hiện được; dump trace |
+-| T13 | vifast-model phần Untyped/CNode | T10 | Khớp core trên 10.000 seed |
+-| T14 | vifast-traceformat + ring + vifast-trace | T12 | Giải mã dump từ sim |
+-| T15 | vifast-shrink + `v2 repro` + `test/regress/` | T12 | Thu nhỏ được một đột biến cố ý |
+-| T16 | Báo cáo R1 (MD + JSON) | tất cả | Theo mục 11.7 |
++| ID | Task | Phụ thuộc | Ngân sách | Trạng thái | Tiêu chí xong |
++|---|---|---|---|---|---|
++| KT-01 | tag `v1-archive` trên `ca2eaf5`; `docs/v1/KNOWN-ISSUES.md`; chuyển tài liệu v1 vào `docs/v1/` | — | 1 h | READY | tag có message "T33a mở"; KNOWN-ISSUES đủ 7 mục |
++| KT-02 | khung `v2/` + `v2/agent/` (không ghi đè), LICENSE tham chiếu root, `vifast-fsutil` | — | 3 h | READY | `cargo build` workspace rỗng xanh |
++| KT-03 | `v2 check` + `v2 gate --fast` khung: fmt, clippy, luật cấu trúc, L0, SPDX; chưa gen-check/L1 | KT-02 | 3 h | BLOCKED | cổng chạy; 5 luật có 5 case âm |
++| KT-04a | bảng ánh xạ v1→v2 + `spec/abi.toml` lõi (15 syscall, 19 lỗi, layout 48 B, riscv64) | KT-02 | 3 h | READY | abi.toml parse; đủ bảng ánh xạ |
++| KT-04b | object reserved: số + `NotSupported` | KT-04a | 2 h | BLOCKED | số không trùng; trả NotSupported |
++| KT-04c | **21 kịch bản** `.scn` chỉ bằng ABI + **kiểm tĩnh** (syscall/method/mã lỗi có thật, đủ tham số; gồm "Exit khi procsrv chưa Recv") | KT-04a | 3 h | BLOCKED | 21 tệp; kiểm tĩnh pass; ca không viết được → BLOCKED "thiếu ABI" |
++| KT-04d | gửi Agent 0 duyệt (checklist + 21 kịch bản) | KT-04a,b,c | 1 h | REVIEW | `APPROVED <ngày> Agent 0` |
++| KT-05 | `vifast-gen` + gen-check + `docs/abi.md` | KT-04d | 3 h | BLOCKED | code sinh biên dịch; sửa tay bị bắt |
++| KT-06 | `vifast-agentctl --project v2\|viscript` | KT-02 | 2 h | BLOCKED | dùng được; JSON có `project` |
++| KT-07 | K0.5: boot riscv64 OpenSBI; DebugPutStr/Halt; TAP; 50 boot | KT-02, KT-03 | 3 h | BLOCKED | 50 boot 0 lỗi |
++| KT-08 | sim harness + store giả + scheduler 1 hart; kịch bản rỗng tất định theo seed | KT-02 | 3 h | BLOCKED | cùng seed → cùng trace (chưa cần ABI) |
++| KT-09 | Untyped trên sim + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05 | 3 h | BLOCKED | invariant tổng byte; kịch bản end-to-end chạy |
++| KT-10 | CNode/MDB test-first | KT-09 | 3 h | BLOCKED | property test cây |
++| KT-11 | `vifast-model` Untyped/CNode; chạy ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp 10.000 seed |
++| KT-12 | `vifast-traceformat` + ring | KT-02 | 2 h | BLOCKED | giải mã dump |
++| KT-T26 | host test `vifast-fs` + block giả + cache, `MAX_IO=256`, RAW | — | 3 h | READY | test đỏ trước |
++| KT-R1 | báo cáo `R1-v2` + `blocked[]` | task READY | 1 h | READY | MD + JSON có `project` |
+ 
+-Nhánh độc lập để chạy qua đêm: (T01), (T02 → T03/T06), (T07 → T08 → T11), và toàn bộ dòng ViScript VT01 tới VT09. T04 chờ duyệt nên T05, T09, T10, T12 tới T15 có thể dừng ở BLOCKED; khi đó Agent 2 làm T07, T08, T11 và dòng ViScript.
++Nhánh chạy song song: (KT-01, KT-02, KT-04a, KT-T26), (KT-02 → KT-08 → KT-09 → KT-10 → KT-11), (KT-05/KT-06 sau KT-04a/KT-04d). KT-04d **REVIEW** và **chỉ duyệt khi có sản phẩm KT-04a/b/c**; APPROVED mở KT-05. Duyệt tài liệu thiết kế ghi bằng **D2-25**, không ghi dưới KT-04d.
+ 
+ ---
+ 
+@@ -984,3 +1095,38 @@
+ | Agent 2 trôi khi chạy dài | STATE.md sau mỗi bước, ngân sách, điều kiện dừng, báo cáo JSON |
+ | Dòng ViScript tranh tài nguyên dòng lõi | QUEUE riêng; ViScript dùng làm nhánh độc lập khi lõi BLOCKED hoặc theo tỉ lệ người điều phối đặt |
+ | Phần cứng thật (GPU, Wi-Fi) quá lớn | Ưu tiên virtio; phần cứng thật theo từng mốc HW |
++| **Cắt còn 1 arch tới K6** (D2-10) làm lỗi aarch64/x86_64 dồn về sau | OpenSBI là đường duy nhất phải đúng; `PageTableFormat`/`Mmu` dùng chung từ K2; conformance viết sẵn cho 3 arch, chạy lại ngay khi port (K4'/K5') |
++| **MCS cắt phần thuật toán** (refill nhiều đoạn, timeout fault) làm phát hiện muộn lỗi ngữ nghĩa ngân sách | Donation + `Sleeping{reason=Budget}` vào từ K1b; mô hình tham chiếu có budget từ đầu; phần hoãn là chi tiết trong, không đổi ABI (D2-16) |
++| **objmem là crate unsafe duy nhất** phải tự viết cấp phát thô + Miri | Miri từ commit đầu (D2-14); test `with_many_mut` kiểm alias từng cặp; fuzz chuỗi thao tác; cấm tạo tham chiếu tới cả vùng |
++| **Phạm vi hai dòng (OS + ViScript)** tranh ngân sách | D2-20: OS trước, ViScript chỉ khi QUEUE v2 hết task READY (ngoại lệ ST-02a); hai QUEUE độc lập, mỗi task ≤ 3 h |
++
++---
++
++## Phụ lục A. Sổ lỗi v1 mang sang v2
++
++| Lỗi v1 | Mô tả | Ca kiểm trong v2 |
++|---|---|---|
++| T33a | Đồng hồ lùi sau migrate/reset | Kịch bản sim "đơn điệu sau migrate" + conformance chéo hart |
++| T26 | FS 20 % đỏ ở `MAX_IO=256` | **KT-T26**: host test + block giả + cache, RAW read-your-own-write |
++| T31 | PAGER2 nhận message lặp | Sim pager 4 client + checker "giao đúng một lần" + đột biến "phát lại Call khi Resume" |
++| T-IPC | Lỗi cổng đo bị coi là lỗi sản phẩm | Luật: mọi harness mới phải có case âm chứng minh bắt được lỗi trước khi tuyên bố |
++| x86 AP→BSP + PCID | Shootdown chưa xử lý hộp thư khi chờ ack | Đột biến "bỏ xử lý hộp thư khi chờ ack" + conformance TLB khi tới x86 |
++| Audit P1-5 | `Ready` nhưng không trong runqueue | Invariant hàng đợi khớp trạng thái + kịch bản riêng |
++| Audit Q1-A | Kênh wake lệch 3 port | `vifast-sync` dùng chung mọi arch |
++
++## Phụ lục B. Câu hỏi mở Q1–Q12 của dossier
++
++| Câu | Trả lời |
++|---|---|
++| Q1 mục tiêu gần | K0 → K0.5 → K1a; không hứa ngày |
++| Q2 chiến lược lỗi hiếm | Sim tất định + mô hình; soak chỉ xác nhận |
++| Q3 T33a | Không sửa trên v1; mang sang v2 bằng kịch bản (Phụ lục A) |
++| Q4 worker C | Thành kịch bản đơn điệu đồng hồ |
++| Q5 T26 | KT-T26 trên host |
++| Q6 `--strict` | Thay bằng D2-07 (không retry) |
++| Q7 tách `lib.rs` | Không; v2 viết mới |
++| Q8 trần tĩnh | Object trong Untyped; `.data+.bss ≤ 256 KiB`; `[GT]` đo ở K0.5 |
++| Q9 đóng băng x86 | x86 sau K6 (D2-10) |
++| Q10 archive tài liệu | `docs/v1/` (báo cáo, decisions, overnight-log); v2 ở `docs/v2/`, ViScript ở `docs/viscript/` |
++| Q11 định nghĩa xong | Mỗi mốc có cột tiêu chí; "tương đương v1" có danh sách đo được |
++| Q12 nguồn số liệu | `STATUS.md` sinh bởi nightly; tài liệu chỉ chứa `[TK]`/`[ƯL]` |
