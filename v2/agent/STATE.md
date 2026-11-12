@@ -10,7 +10,7 @@ Task          : **KT-18** (K1b, READY) — TCB đầy đủ + bảng `ALLOWED` 1
 Bước          : 8/8 (mã + test đỏ→xanh + Miri + gate + tài liệu; **reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục**)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**251 test/42 suite**, 0 failed; KT-17 là 231/41, +20 test mới; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `[KT-18]` + push; chờ Agent 0 lật QUEUE. **KT-19 chờ** (scheduler 1 hart)
+Việc dở       : commit `[KT-18]` **`5cccb72` đã push origin/main** (reviewer-kt18 DRIFT nhẹ đã sửa đủ 4 mục); chờ Agent 0 lật QUEUE. **KT-19 chờ** (scheduler 1 hart)
 ```
 
 ## KT-18 — TCB đầy đủ, bảng `ALLOWED` 11×11, `suspended` (xong mã, chờ verdict reviewer)
@@ -415,7 +415,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
-| 2026-11-13 | **KT-18** | 8/8 | `ecb0e08` | — | `gate --fast` PASS (**248 test/42 suite**, L1 1000 seed/999 trace) | xong mã + test (15 test), Miri kt18 **15/15**; bảng `ALLOWED` 48 cặp, coverage **100%**; drift D2-33 sửa; đỏ trước 3 log; **chờ verdict reviewer-kt18 rồi commit** |
+| 2026-11-13 | **KT-18** | 8/8 | `5cccb72` | — | `gate --fast` PASS (**251 test/42 suite**, L1 1000 seed/999 trace) | **commit `5cccb72` đã push**; TCB 11 trường + **một cửa** `transition_tcb` + bảng `ALLOWED` 48 = **46+2 reserved**, 18 test (ma trận 121 cặp, coverage bảng 100%), Miri kt18 **18/18**; drift D2-33 sửa; reviewer DRIFT nhẹ đã sửa; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-15** | 8/8 | `c0d3163` | — | `gate --fast` PASS (**218 test**, L1 1000 seed/999 trace, 596 ms) | **commit `c0d3163` đã push — reviewer DRIFT nhẹ đã sửa, chờ Agent 0 lật sổ**; `with_many_mut` D2-48(a): bảng `kind→ctor`, alias từng cặp, N=9 không build; Miri PASS (alias 8/8, fuzz 200/191,95 s); fuzz 10.000 chuỗi/4,51 s; `aarch64-none` xanh; guard `chua_header` + `TypeId` |
 | 2026-11-13 | **KT-14** | 8/8 | `e1921ab` | — | `gate --fast` PASS (199 test, L1 1000 seed/999 trace, 433 ms) | **DONE** `36c51bc`; `vifast-objmem` 15 test, Miri 15/15, build `aarch64-unknown-none`; reviewer DRIFT nhẹ đã sửa; **YC-18** chốt **D2-48** |
 | 2026-11-13 | **KT-13** | 8/8 | `5ad86e5` | — | `check` + `gate --fast` PASS (184 test, L1 1000 seed/999 trace, 603 ms) | **reviewer-kt13 APPROVE — chờ Agent 0 lật sổ**; `v2 miri` (D2-47(a): lệnh rời, không trong `gate --fast`); Miri PoC 13 test PASS; nhánh thiếu toolchain fail rõ |
