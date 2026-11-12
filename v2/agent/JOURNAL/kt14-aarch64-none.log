@@ -1,0 +1,5 @@
+# KT-14 — build bare-metal (no_std)
+$ cargo build --manifest-path v2/Cargo.toml -p vifast-objmem --target aarch64-unknown-none
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
+[exit=0]

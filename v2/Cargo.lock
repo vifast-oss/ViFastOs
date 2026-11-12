@@ -37,6 +37,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vifast-objmem"
+version = "0.1.0"
+
+[[package]]
 name = "vifast-sim"
 version = "0.1.0"
 dependencies = [

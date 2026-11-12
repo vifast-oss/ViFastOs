@@ -6,6 +6,7 @@ exclude = ["kernel"]
 members = [
     "lib/vifast-abi",
     "lib/vifast-model",
+    "lib/vifast-objmem",
     "lib/vifast-traceformat",
     "lib/vifast-elf",
     "lib/vifast-fs",

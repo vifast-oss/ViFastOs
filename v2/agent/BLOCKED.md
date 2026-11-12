@@ -38,6 +38,25 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 
 > **Cập nhật 18:20:** YC-02..05 đã được Agent 0 trả lời trong **D2-29..D2-33**; các mục dưới giữ làm lịch sử. **Không hỏi lại.**
 
+> **Cập nhật 04:20:** KT-14 xong mã (reviewer DRIFT nhẹ, đã sửa); mở **YC-18** (thiết kế `with_many_mut`).
+> Không chặn KT-14 — chỉ cần Agent 0 chốt **trước KT-15**.
+
+### YC-18 — `with_many_mut` cần vtable cho `ObjRef<dyn KObj>` (mở 2026-11-13, Agent 2)
+
+- **Hiện trạng**: thiết kế `:207-208` yêu cầu
+  `with_many_mut<const N, R>(&mut self, rs: [ObjRef<dyn KObj>; N], f: impl FnOnce([&mut dyn KObj; N]) -> R)`.
+  Nhưng `ObjRef<T: ?Sized> { pa, id, PhantomData }` (thiết kế `:199`) chỉ **16 B** và **không mang vtable**;
+  từ `(pa, id)` + `header.kind` không dựng được `&mut dyn KObj` (thiếu vtable). KT-14 đã làm **khung
+  fail-closed**: kiểm trùng `pa` → `Alias`, còn lại cũng `Alias`, closure **không** được gọi, không panic
+  (K1A-PLAN §4 cho phép "stub/khung"; ma trận alias + fuzz thuộc KT-15).
+- **Đề xuất 2 lựa chọn** (Agent 0 chốt **trước KT-15**):
+  - **(a) khuyến nghị** — bảng `kind → vtable/constructor` trong `vifast-objmem`: `ObjMem` tra
+    `header.kind` để dựng `*mut dyn KObj` (bảng tĩnh, `no_std`); không đổi layout `ObjRef` 16 B.
+  - **(b)** — đổi biểu diễn ref: mang thêm metadata/vtable (fat pointer thật, ~24 B) — lệch thiết kế
+    `:199` (16 B), phải sửa thiết kế/QD trước.
+- **Không phải lỗi KT-14**: phần core (`Arena`, `place`, `with`, `with_mut`, `destroy`, `Dead`, id) đúng DoD;
+  KT-14 đã Miri 15/15 + build bare-metal + `gate --fast` xanh (199 test).
+
 ### Q-01 — KT-04c là **20** hay **21** kịch bản? — **ĐÃ TRẢ LỜI 2026-11-12 (D2-27)**
 
 - **Chốt**: **21** kịch bản = 20 theo QD §4 + ca **"Exit khi procsrv chưa Recv"** (D2-27, Agent 0). KT-04c/KT-04d dùng 21, không hỏi lại, không tự đổi.
