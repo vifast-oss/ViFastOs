@@ -4,7 +4,7 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : 545f3b4
+HEAD          : 1766145
 BUILD_ID      : —
 Task          : KT-04b (bắt đầu — bước 1/8)
 Bước          : 1/8
@@ -44,7 +44,7 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
-| `HEAD` | `545f3b4` `[KT-00]` lật QUEUE (Agent 0); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
+| `HEAD` | `1766145` `[KT-04a]` (đã push `origin/main`); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
 | Cổng | `./v2/bin/v2 check` PASS; `gate --fast` PASS **4,1 s**; `gate`/`nightly` exit 2 | `JOURNAL/2026-11-12.md` mục KT-03 |
 | Luật | self-test **6/6** (`ok 1..6`); R1..R5 có case âm đúng mã luật | `bash v2/test/rules/run.sh` |
 | Build/test | `cargo build` xanh 3 crate; `cargo test -p vifast-fs` 52/52; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
