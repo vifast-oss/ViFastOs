@@ -143,6 +143,16 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
   (b) KT-12 **nhận** định dạng text hiện tại làm **legacy** và thêm bản ghi nhị phân 32 B song song (máy kiểm so byte cả hai).
 - Trong lúc chờ, KT-08 đã có: golden + so **hai tiến trình** + ca âm "lệch 1 byte" + test ngữ nghĩa "2 seed phải khác quỹ đạo" (trước sửa là **đỏ**, đã dán log).
 
+
+### YC-13 — Khối E: "8 khoá" hay 11, "task đã mở" nghĩa là gì (mở 2026-11-12 sau review #12, Agent 2)
+
+1. **Số khoá**: `QUEUE:74` ghi "8 khoá" nhưng ví dụ ngay dưới (`:76-90`) và thiết kế §11.7 có **11** khoá
+   (`project, round, head, build_id, tasks, gates, sim, coverage, mutants, perf, blocked`). Báo cáo `R1-v2.json`
+   chọn **11** và máy kiểm `check_report.py` ép đủ 11. Đề nghị Agent 0 sửa câu chữ Khối E thành **11**.
+2. **"Phủ task đã mở"**: hiện máy kiểm ép phủ **đủ 17/17 hàng QUEUE** (mạnh hơn "đã mở"); đề nghị chốt định nghĩa
+   để `CHECK_REPORT` và báo cáo khớp nhau.
+3. **Khoá `next`**: `agentctl report` có `next`; báo cáo Khối E không có. Có thêm vào JSON chuẩn không?
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2
