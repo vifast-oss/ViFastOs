@@ -43,11 +43,19 @@ Mục tiêu vòng này: đưa dòng OS từ K0 lên **K0.5 boot riscv64** và d�
 7. Cập nhật STATE, JOURNAL; `vifast-agentctl done <id>` nếu có.
 8. Nén ngữ cảnh nếu lớn; quay lại bước 1 với task kế.
 
-## 4. BẮT BUỘC: review subagent ở mỗi vòng goal
+## 4. Review định hướng: chạy SONG SONG, chặn ở cửa ghi
 
-Ở **đầu mỗi vòng goal/continuation** (và sau mỗi 3 task hoàn thành hoặc 3 giờ, cái nào tới trước), **trước khi làm task tiếp theo**, bạn phải mở **một subagent riêng** để review hướng đi. Không tự review bằng chính ngữ cảnh của mình.
+Mục đích của review là **phát hiện lạc hướng trước khi sửa code/commit**, không phải bắt Agent 2 ngồi chờ. Vì vậy review chạy song song với phần **đọc – lập kế hoạch – viết test đỏ**, và chỉ chặn ở **cửa ghi** (sửa code sản phẩm, commit).
 
-Cách làm: dùng công cụ `subagent` (không dùng `subagent_fork`) với prompt dưới đây, rồi đọc kết quả.
+Ở đầu mỗi vòng goal/continuation (và sau mỗi 3 task hoặc 3 giờ, cái nào tới trước):
+
+1. Mở **một** subagent review ngay (dùng `subagent`, không dùng `subagent_fork`) với prompt bên dưới.
+2. **Không chờ**: làm tiếp bước 1–2 của task — đọc tệp, lập kế hoạch nhỏ, viết test/kịch bản đỏ. Đây là việc không sửa code sản phẩm và không commit.
+3. **Trước khi sửa code sản phẩm hoặc commit**: phải đọc kết luận review. Nếu review chưa xong, chờ hoặc tiếp tục test/tài liệu; **không commit khi chưa có kết luận**.
+4. `ON-TRACK` → tiếp tục; `DRIFT` → sửa hướng theo đề xuất, ghi STATE; `UNSAFE` → dừng ngay, ghi `BLOCKED`, không commit thêm.
+5. Có thể mở review của task vừa xong chạy song song với task kế; nhưng phải tiêu thụ kết quả trước commit kế.
+
+Không mở quá 1 review cùng lúc. Review **không** thay test/cổng; không dùng để "chờ cho có".
 
 ### Prompt mẫu cho subagent review
 
@@ -68,8 +76,7 @@ Cách làm: dùng công cụ `subagent` (không dùng `subagent_fork`) với pro
 
 Sau khi nhận kết quả:
 - Ghi nguyên văn kết luận vào `v2/agent/JOURNAL/review-<YYYY-MM-DD>-<n>.md` (hoặc `viscript/agent/JOURNAL/...`).
-- Nếu `ON-TRACK`: tiếp tục task kế.
-- Nếu `DRIFT`: dừng, sửa hướng theo đề xuất, ghi STATE; nếu vẫn còn mơ hồ → `BLOCKED` + câu hỏi cho Agent 0.
+- Nếu `DRIFT`: dừng, sửa hướng, ghi STATE; nếu vẫn mơ hồ → `BLOCKED` + câu hỏi cho Agent 0.
 - Nếu `UNSAFE`: dừng ngay, ghi `BLOCKED`, không commit thêm.
 
 ## 5. Chống ảo giác (bắt buộc)
@@ -106,7 +113,7 @@ Sau khi nhận kết quả:
 
 ## 9. Câu mở đầu mỗi vòng (dùng khi tiếp tục goal)
 
-> Tiếp tục vòng lặp. Trước khi làm task: mở subagent review theo mục 4, ghi kết quả vào JOURNAL. Nếu ON-TRACK, làm task READY kế tiếp theo QUEUE; nếu DRIFT/UNSAFE, dừng và ghi BLOCKED. Không đọc lại toàn repo; không đổi spec/ABI; không ghi APPROVED.
+> Tiếp tục vòng lặp. Mở subagent review NGAY theo mục 4 và chạy song song với bước đọc/lập kế hoạch/test đỏ; chỉ sửa code sản phẩm và commit sau khi có kết luận ON-TRACK. Nếu DRIFT/UNSAFE, dừng và ghi BLOCKED. Không đọc lại toàn repo; không đổi spec/ABI; không ghi APPROVED.
 
 ---
 
