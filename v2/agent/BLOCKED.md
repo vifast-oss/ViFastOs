@@ -17,7 +17,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 |---|---|---|
 | ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
 | KT-04b | **quyền ghi `spec/`** (YC-04) | `abi.toml` lõi xong; KHÔNG được ghi `spec/` trong KT-04b (chỉ KT-04a) |
-| KT-04c | KT-04a (đã xong) | 21 kịch bản object lõi — **không** phụ thuộc KT-04b, làm được ngay |
+| KT-04c | **chữ ký method + từ vựng trạng thái** (YC-05) | 21 tệp + kiểm tĩnh xong phần viết được; DoD "đủ tham số theo chữ ký" chưa kiểm được vì `spec/abi.toml` chỉ có `args` văn xuôi + 1 chữ ký |
 | KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-07 (đã DONE) | sim harness + store giả + scheduler tối thiểu 1 hart |
@@ -76,6 +76,23 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
   (b) Agent 0 tự chép draft vào `spec/abi.toml` (một mục D2 mới) và đánh dấu KT-04b DONE.
 - **Xin lật sổ**: `QUEUE:102` KT-04a = **DONE**, `QUEUE:103` KT-04b = **BLOCKED** (chờ YC-04), `QUEUE:104` KT-04c = **READY** (độc lập với reserved).
 - **Cảnh báo cho KT-04d**: sau dòng `APPROVED`, `spec/abi.toml` phải đổi `status = "REVIEW"` → `"APPROVED"` trong **cùng** cửa sổ; `v2/test/abi/check_abi.py` nay chấp nhận cả hai (tránh cổng đỏ ngay sau duyệt).
+
+
+### YC-05 — Chữ ký method + từ vựng trạng thái cho `.scn` (mở 2026-11-12, Agent 2)
+
+- **Việc đã xong** (không vi phạm quyền ghi): `v2/docs/scn-format.md` (chiếu §9.3, `[TK]`, `version = 1`),
+  `v2/test/scn/check_scn.py` + 3 fixture âm, `v2/test/scn/*.scn` **21 tệp** (1 tệp `blocked = "thiếu ABI"`:
+  `18-schedcontext-donation` vì `SchedControl.Configure` chỉ có trong draft, chưa trong `spec/`), gắn vào
+  `v2/bin/v2 check` (bước "scn" + "scn fixtures").
+- **Phần KHÔNG đạt trung thực**: DoD KT-04c đòi kiểm "**đủ tham số**". `spec/abi.toml` chỉ có `args` dạng văn xuôi
+  cho syscall và **một** chữ ký method (`Tcb.Suspend`); `CNode.Copy/Revoke`, `Untyped.Retype`, `Tcb.Configure`…
+  **không có chữ ký** ⇒ kiểm arity lúc này sẽ là **tự đặt ABI** (D2-22, `AGENTS.md` §4.1).
+- **Xin Agent 0 chọn 1 trong 2**:
+  (a) cho **KT-04c** ghi `args/ret` cho từng method vào `spec/abi.toml` (như KT-04a), hoặc
+  (b) duyệt draft `v2/docs/abi-call-signatures.toml` để Agent 2 soạn chữ ký ở trạng thái REVIEW, hợp nhất sau.
+- **Cùng lý do**: `BlockedOnSend{FaultKind::Exit}` chỉ là *note* trong `spec/abi.toml`; chưa có **từ vựng trạng thái TCB**
+  để kịch bản khẳng định "procsrv chưa Recv ⇒ TCB còn `BlockedOnSend`". Đề nghị đưa enum trạng thái (§4.4) vào `spec/`.
+- Không chặn KT-06/KT-08/KT-12 (đều `READY`).
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 

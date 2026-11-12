@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "11-suspend-abort"
+tags = ["kill-blocked"]
+caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+thread = [
+  { name = "t0", steps = [
+    "send cap=ntf0 => ok",
+    "invoke Tcb.Suspend tcb=tcb0 mode=Abort => ok",
+    "invoke Tcb.Resume tcb=tcb0 => ok",
+  ] },
+]

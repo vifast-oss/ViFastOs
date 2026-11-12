@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "dup-name"
+tags = ["exit"]
+caps = { ep0 = "Endpoint" }
+thread = [
+  { name = "t0", steps = [
+    "exit code=0 => ok",
+  ] },
+]

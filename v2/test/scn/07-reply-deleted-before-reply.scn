@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "07-reply-deleted-before-reply"
+tags = ["reply-deleted"]
+caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+thread = [
+  { name = "client", steps = [
+    "call cap=ep0 => ok",
+  ] },
+  { name = "server", steps = [
+    "recv cap=ep1 => ok",
+    "invoke CNode.Delete cnode=c0 slot=rep0 => ok",
+    "send cap=rep0 => InvalidCapability",
+  ] },
+]

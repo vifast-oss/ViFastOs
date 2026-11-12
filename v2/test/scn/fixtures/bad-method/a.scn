@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "bad-method"
+tags = ["exit"]
+caps = { ep0 = "Endpoint" }
+thread = [
+  { name = "t0", steps = [
+    "invoke CNode.Frobnicate cnode=ep0 => ok",
+  ] },
+]

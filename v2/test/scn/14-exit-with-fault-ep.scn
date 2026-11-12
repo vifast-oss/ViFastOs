@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "14-exit-with-fault-ep"
+tags = ["exit"]
+caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+thread = [
+  { name = "t0", steps = [
+    "invoke Tcb.SetFaultEp tcb=tcb0 cap=ep0 => ok",
+    "exit code=3 => ok",
+  ] },
+  { name = "procsrv", steps = [
+    "recv cap=ep1 => ok",
+  ] },
+]

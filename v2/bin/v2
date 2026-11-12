@@ -201,6 +201,19 @@ do_check() {
             echo "--- abi spec: FAIL" >&2
             fails=$((fails + 1))
         fi
+        echo "--- kịch bản .scn (KT-04c)"
+        if (cd "$REPO_ROOT" && "$PY" v2/test/scn/check_scn.py); then
+            echo "--- scn: OK"
+        else
+            echo "--- scn: FAIL" >&2
+            fails=$((fails + 1))
+        fi
+        if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/scn/run_fixtures.sh >/dev/null 2>&1); then
+            echo "--- scn fixtures: OK (3 case âm)"
+        else
+            echo "--- scn fixtures: FAIL" >&2
+            fails=$((fails + 1))
+        fi
         # KT-04b: draft object reserved (chưa được ghi spec/ — chờ YC-04)
         if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$V2_ROOT/docs/abi-reserved-objects.toml"; then
             echo "--- abi reserved: OK"

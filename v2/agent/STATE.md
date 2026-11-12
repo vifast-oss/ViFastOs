@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-04c (bắt đầu — bước 1/8); KT-04b BLOCKED chờ YC-04
+Task          : KT-T26 (bắt đầu — bước 1/8); KT-04b BLOCKED (YC-04), KT-04c BLOCKED phần arity (YC-05)
 Bước          : 1/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
@@ -52,12 +52,19 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 | `spec/` | **có** `spec/abi.toml` (KT-04a, `status = "REVIEW"`), được R3 quét | `ls spec/`, `./v2/bin/v2 check` |
 | `v2/bin/v2` | **có** (wrapper), `.gitkeep` giữ thư mục | `ls v2/bin` |
 
-## Việc đang làm — KT-04c (21 kịch bản `.scn` chỉ bằng ABI)
+## Việc đang làm — KT-T26 (host test `vifast-fs` với `MAX_IO = 256`)
 
-Ngân sách 3 h. DoD (QUEUE:104, D2-27): **21 tệp** `.scn`; kiểm tĩnh: mọi bước tham chiếu syscall/method/mã lỗi
-**có thật trong `spec/abi.toml`**, đủ tham số; có ca **"Exit khi procsrv chưa Recv"**.
+Ngân sách 2 h. DoD (QUEUE): test host cho `vifast-fs` **giữ nguyên** `MAX_IO = 256` (không nới); đỏ trước; chạy trong `gate --fast`.
 
 _Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
+
+## KT-04c — `.scn` xong phần viết được; arity BLOCKED (YC-05)
+
+- `v2/docs/scn-format.md` (`[TK]`, `version = 1`, chiếu §9.3), `v2/test/scn/check_scn.py` + 3 fixture âm,
+  **21 tệp** `.scn`, gắn vào `v2/bin/v2 check` (bước "scn" + "scn fixtures").
+- `18-schedcontext-donation.scn` để `blocked = "thiếu ABI"` (SchedControl chỉ có trong draft) — đúng DoD.
+- **Chưa kiểm được "đủ tham số"**: `spec/abi.toml` thiếu chữ ký method ⇒ **YC-05** (xin quyền ghi `args/ret`
+  hoặc duyệt draft chữ ký + enum trạng thái TCB).
 
 ## KT-04b — BLOCKED chờ YC-04 (không ghi `spec/`)
 
@@ -73,7 +80,7 @@ _Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
   `status = "REVIEW"`, `[frozen]` đủ 5 thứ, `[message]` 64 MR + 4 cap, `[message_info]` 35 bit,
   `[calling.riscv64]` lấy từ code v1 (`a7` số hiệu, `a0/a1` tham số, `a2` MessageInfo, `a3..a6` 4 MR),
   `[object]` lõi **1..7** (SchedControl **chưa** nằm trong `spec/` — nó ở draft reserved id 8), `[object_reserved]` 8..31, `[error]` 19 mã, `[syscall]` 0..14, reserved 15..31.
-- Bảng ánh xạ: `v2/docs/abi-v1-v2-mapping.md` (25 crate; 58 hàng = 12→9 số syscall + 27 hàng method (24 đích) + 19 bỏ; 22 biến thể KError → 0 + 19).
+- Bảng ánh xạ: `v2/docs/abi-v1-v2-mapping.md` (25 crate; 58 hàng = 12→9 số syscall + 27 hàng method (23–24 đích, chưa chuẩn) + 19 bỏ; 22 biến thể KError → 0 + 19).
 - Máy kiểm: `v2/test/abi/check_abi.py` (Python ≥3.11 `tomllib`), **gắn vào `v2/bin/v2 check`** — `check` nay có 6 bước.
 - Câu hỏi mở: **YC-02** (DebugGetInfo chưa có số), **YC-03** (QD "0..13 như cũ"; cây `v2/spec/` của thiết kế §8).
 
@@ -81,6 +88,7 @@ _Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | **KT-04c** | 8/8 | — | — | `check` PASS (scn 21 tệp) | **DONE một phần**: 21 `.scn` + kiểm tĩnh + 3 fixture âm; arity + donation **BLOCKED "thiếu ABI"** (YC-05) |
 | 2026-11-12 | **KT-04b** | 8/8 | — | — | `check` PASS | **BLOCKED** (YC-04): không được ghi `spec/`; draft id 8..16 + `check_reserved.py` gắn cổng; vá 2 lỗ máy kiểm (trùng id/ngoài dải), sửa 2 sai số KT-04a |
 | 2026-11-12 | KT-04b | 1–7/8 | `a8bb272` | — | — | review#5 **DRIFT** → dừng trước `spec/`, chuyển draft + YC-04; đỏ trước: 9 object reserved thiếu |
 | 2026-11-12 | **KT-04a** | 8/8 | `545f3b4` | — | `gate --fast` PASS | **DONE**: `spec/abi.toml` (REVIEW) + 3 bảng ánh xạ + `check_abi.py` gắn cổng; 4 điều kiện review #4 xử lý |

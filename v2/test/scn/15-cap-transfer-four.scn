@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+name = "15-cap-transfer-four"
+tags = ["four-cap"]
+caps = { u0 = "Untyped", c0 = "CNode", c1 = "CNode", ep0 = "Endpoint", ep1 = "Endpoint", ntf0 = "Notification", tcb0 = "Tcb", tcb1 = "Tcb", rep0 = "Reply", sc0 = "SchedContext" }
+thread = [
+  { name = "t0", steps = [
+    "call cap=ep0 caps=c0,c0,c0,c0 => ok",
+    "send cap=ep0 caps=c0,c0,c0,c0,c0 => InvalidArgument",
+  ] },
+]
