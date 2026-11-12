@@ -208,12 +208,31 @@ pub enum FaultKind {
     Exit { code: u64 },
 }
 
-/// Trạng thái TCB — đúng enum đầy đủ của `spec/[method_signature.state]` (D2-33).
+/// Lý do `Sleeping` — variants của `spec/[method_signature.state.Sleeping]` (D2-33).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepReason {
+    Timeout,
+    Budget,
+}
+
+impl SleepReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            SleepReason::Timeout => "Timeout",
+            SleepReason::Budget => "Budget",
+        }
+    }
+}
+
+/// Trạng thái TCB — **đủ 11 tên** của `spec/[method_signature.state]` (D2-33);
+/// unit test `tcb_state_du_11_ten_theo_spec` so trực tiếp với `vifast_abi::TCB_STATES`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcbState {
     Inactive,
     Ready,
-    Running,
+    Running {
+        hart: u16,
+    },
     BlockedOnSend {
         ep: ObjId,
         call: bool,
@@ -225,15 +244,51 @@ pub enum TcbState {
     BlockedOnReply {
         reply: ObjId,
     },
+    BlockedOnNotification {
+        ntfn: ObjId,
+    },
+    BlockedOnAddress {
+        frame: ObjId,
+        offset: u64,
+    },
+    Sleeping {
+        reason: SleepReason,
+    },
+    Stopping,
     Dead,
 }
 
 impl TcbState {
+    /// Tên trạng thái (không kèm trường) — khớp `vifast_abi::TCB_STATES`.
+    pub fn name(&self) -> &'static str {
+        match self {
+            TcbState::Inactive => "Inactive",
+            TcbState::Ready => "Ready",
+            TcbState::Running { .. } => "Running",
+            TcbState::BlockedOnSend { .. } => "BlockedOnSend",
+            TcbState::BlockedOnRecv { .. } => "BlockedOnRecv",
+            TcbState::BlockedOnReply { .. } => "BlockedOnReply",
+            TcbState::BlockedOnNotification { .. } => "BlockedOnNotification",
+            TcbState::BlockedOnAddress { .. } => "BlockedOnAddress",
+            TcbState::Sleeping { .. } => "Sleeping",
+            TcbState::Stopping => "Stopping",
+            TcbState::Dead => "Dead",
+        }
+    }
+
+    /// Chỉ `Inactive`/`Ready`/`Running` là chạy được; còn lại là chặn/ngủ/dừng/chết.
+    pub fn is_runnable(&self) -> bool {
+        matches!(
+            self,
+            TcbState::Inactive | TcbState::Ready | TcbState::Running { .. }
+        )
+    }
+
     pub fn render(&self) -> String {
         match self {
             TcbState::Inactive => "Inactive".to_string(),
             TcbState::Ready => "Ready".to_string(),
-            TcbState::Running => "Running".to_string(),
+            TcbState::Running { hart } => format!("Running{{hart={hart}}}"),
             TcbState::BlockedOnSend { ep, call, fault } => {
                 let fault = match fault {
                     None => "none".to_string(),
@@ -243,6 +298,14 @@ impl TcbState {
             }
             TcbState::BlockedOnRecv { ep } => format!("BlockedOnRecv{{ep={ep}}}"),
             TcbState::BlockedOnReply { reply } => format!("BlockedOnReply{{reply={reply}}}"),
+            TcbState::BlockedOnNotification { ntfn } => {
+                format!("BlockedOnNotification{{ntfn={ntfn}}}")
+            }
+            TcbState::BlockedOnAddress { frame, offset } => {
+                format!("BlockedOnAddress{{frame={frame}, offset={offset}}}")
+            }
+            TcbState::Sleeping { reason } => format!("Sleeping{{reason={}}}", reason.name()),
+            TcbState::Stopping => "Stopping".to_string(),
             TcbState::Dead => "Dead".to_string(),
         }
     }
@@ -456,6 +519,24 @@ impl Machine {
         size.saturating_sub(self.untyped_used(obj))
     }
 
+    /// Tổng `len` của object **sống** cấp từ Untyped (không gồm byte đệm căn lề).
+    pub fn untyped_allocated(&self, obj: ObjId) -> usize {
+        let Some(idx) = self.objects.get(obj as usize - 1).map(|_| obj as usize - 1) else {
+            return 0;
+        };
+        self.objects
+            .iter()
+            .filter(|o| o.alive && o.untyped == Some(idx))
+            .map(|o| o.len)
+            .sum()
+    }
+
+    /// Byte đệm căn lề nằm giữa watermark và tổng `len` của object sống.
+    pub fn untyped_gap(&self, obj: ObjId) -> usize {
+        self.untyped_used(obj)
+            .saturating_sub(self.untyped_allocated(obj))
+    }
+
     /// Tổng watermark của mọi Untyped còn sống — dùng cho trace/tất định.
     pub fn total_used(&self) -> usize {
         self.objects
@@ -485,6 +566,7 @@ impl Machine {
             return Err(format!("watermark {watermark} > cỡ {size}"));
         }
         let mut ranges: Vec<(usize, usize, ObjId)> = Vec::new();
+        let mut allocated = 0usize;
         for (i, o) in self.objects.iter().enumerate() {
             if !o.alive || o.untyped != Some(idx) {
                 continue;
@@ -496,6 +578,14 @@ impl Machine {
                     i + 1
                 ));
             }
+            // Từng range phải nằm trong vùng đã cấp (0..=watermark), không chỉ trong `size`.
+            if end > watermark {
+                return Err(format!(
+                    "object {} kết thúc ở {end} > watermark {watermark}",
+                    i + 1
+                ));
+            }
+            allocated += o.len;
             ranges.push((o.offset, end, (i as u32) + 1));
         }
         ranges.sort_unstable();
@@ -507,16 +597,18 @@ impl Machine {
                 ));
             }
         }
-        if let Some(last) = ranges.last() {
-            if last.1 > watermark {
-                return Err(format!("object {} vượt watermark {watermark}", last.2));
-            }
+        // Không object nào chồng lấn ⇒ tổng `len` không thể vượt watermark; byte đệm căn lề
+        // (gap) là phần `watermark - allocated` và **không** thuộc object nào.
+        if allocated > watermark {
+            return Err(format!("tổng len {allocated} > watermark {watermark}"));
         }
-        // "đã cấp + còn trống == cỡ ban đầu" và không byte nào bị tính hai lần.
-        let used = watermark;
+        let gap = watermark - allocated;
         let free = size - watermark;
-        if used + free != size {
-            return Err(format!("tổng byte sai: {used} + {free} != {size}"));
+        // "đã cấp + còn trống == cỡ ban đầu", tách rõ object thật vs byte đệm căn lề.
+        if allocated + gap + free != size {
+            return Err(format!(
+                "tổng byte sai: allocated {allocated} + gap {gap} + free {free} != {size}"
+            ));
         }
         Ok(())
     }
@@ -622,6 +714,12 @@ impl Machine {
             start,
             len,
         );
+        if ty == ObjType::Untyped {
+            // Untyped con có cỡ riêng = vùng vừa cắt (fresh_kind dùng 0 cho object chưa cắt).
+            if let Kind::Untyped { size: s, .. } = &mut self.objects[obj as usize - 1].kind {
+                *s = len;
+            }
+        }
         if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
             *watermark = end;
         }
@@ -1079,11 +1177,19 @@ impl Machine {
         if root_ty == ObjType::Untyped {
             let u_idx = self.object_index(root_obj)?;
             let mut dead_objs: Vec<ObjId> = Vec::new();
-            for (i, o) in self.objects.iter_mut().enumerate() {
-                if o.alive && o.untyped == Some(u_idx) {
-                    o.alive = false;
-                    dead_objs.push((i as u32) + 1);
+            // Untyped lồng nhau: finalise **cả cây con** (object của Untyped con cũng chết,
+            // không để cap trỏ tới object mồ côi — review Agent 0 mục 3).
+            self.collect_untyped_tree(u_idx, &mut dead_objs);
+            // Watermark của chính Untyped gốc về 0 (thiết kế §4.2) — con/cháu về 0 ở dưới.
+            if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
+                *watermark = 0;
+            }
+            for id in &dead_objs {
+                let idx = *id as usize - 1;
+                if let Kind::Untyped { watermark, .. } = &mut self.objects[idx].kind {
+                    *watermark = 0;
                 }
+                self.objects[idx].alive = false;
             }
             for i in 1..=self.caps.len() as CapId {
                 if self.caps[i as usize - 1].alive
@@ -1091,9 +1197,6 @@ impl Machine {
                 {
                     doomed.push(i);
                 }
-            }
-            if let Kind::Untyped { watermark, .. } = &mut self.objects[u_idx].kind {
-                *watermark = 0;
             }
         }
 
@@ -1109,6 +1212,18 @@ impl Machine {
         }
         self.purge_dead_refs();
         Ok(deleted)
+    }
+
+    /// Gom mọi object sống nằm trong `u_idx`, đệ quy qua Untyped con.
+    fn collect_untyped_tree(&self, u_idx: usize, out: &mut Vec<ObjId>) {
+        for (i, o) in self.objects.iter().enumerate() {
+            if o.alive && o.untyped == Some(u_idx) {
+                out.push((i as u32) + 1);
+                if o.ty == ObjType::Untyped {
+                    self.collect_untyped_tree(i, out);
+                }
+            }
+        }
     }
 
     /// Bỏ tham chiếu tới object chết (thiết kế §4.2: không trường nào trỏ tới object chết).
@@ -1211,6 +1326,60 @@ mod tests {
             assert!(!t.is_core(), "{name} phải là reserved");
         }
         assert_eq!(ObjType::from_name("KhongCo"), None);
+    }
+
+    #[test]
+    fn tcb_state_du_11_ten_theo_spec() {
+        use std::collections::BTreeSet;
+        let all = [
+            TcbState::Inactive,
+            TcbState::Ready,
+            TcbState::Running { hart: 0 },
+            TcbState::BlockedOnSend {
+                ep: 1,
+                call: true,
+                fault: None,
+            },
+            TcbState::BlockedOnRecv { ep: 1 },
+            TcbState::BlockedOnReply { reply: 1 },
+            TcbState::BlockedOnNotification { ntfn: 1 },
+            TcbState::BlockedOnAddress {
+                frame: 1,
+                offset: 16,
+            },
+            TcbState::Sleeping {
+                reason: SleepReason::Timeout,
+            },
+            TcbState::Stopping,
+            TcbState::Dead,
+        ];
+        let names: BTreeSet<&str> = all.iter().map(TcbState::name).collect();
+        let want: BTreeSet<&str> = vifast_abi::TCB_STATES.iter().copied().collect();
+        assert_eq!(names, want, "TcbState phải đủ 11 tên của spec D2-33");
+        assert_eq!(all.len(), 11);
+        assert_eq!(TcbState::Running { hart: 2 }.render(), "Running{hart=2}");
+        assert_eq!(
+            TcbState::BlockedOnNotification { ntfn: 5 }.render(),
+            "BlockedOnNotification{ntfn=5}"
+        );
+        assert_eq!(
+            TcbState::BlockedOnAddress {
+                frame: 3,
+                offset: 16
+            }
+            .render(),
+            "BlockedOnAddress{frame=3, offset=16}"
+        );
+        assert_eq!(
+            TcbState::Sleeping {
+                reason: SleepReason::Budget
+            }
+            .render(),
+            "Sleeping{reason=Budget}"
+        );
+        assert_eq!(TcbState::Stopping.render(), "Stopping");
+        assert!(!TcbState::Stopping.is_runnable());
+        assert!(TcbState::Running { hart: 0 }.is_runnable());
     }
 
     #[test]

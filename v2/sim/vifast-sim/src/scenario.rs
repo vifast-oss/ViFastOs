@@ -357,12 +357,7 @@ pub fn run_interleaved(
                     return false;
                 };
                 match steps[idx].step.actor(m) {
-                    Some(actor) => !matches!(
-                        m.tcb_state(actor),
-                        Ok(TcbState::BlockedOnSend { .. }
-                            | TcbState::BlockedOnReply { .. }
-                            | TcbState::BlockedOnRecv { .. })
-                    ),
+                    Some(actor) => !matches!(m.tcb_state(actor), Ok(st) if st.is_runnable()),
                     None => true,
                 }
             })

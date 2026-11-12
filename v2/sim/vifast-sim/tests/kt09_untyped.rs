@@ -50,6 +50,12 @@ fn tong_byte_bat_bien_sau_moi_retype() {
             "object phải xếp liền sau watermark"
         );
         assert_eq!(m.untyped_used(u0), want_used);
+        assert_eq!(
+            m.untyped_allocated(u0),
+            want_used,
+            "object liền nhau ⇒ không gap"
+        );
+        assert_eq!(m.untyped_gap(u0), 0);
         assert_eq!(m.untyped_free(u0), 8192 - want_used);
         m.check_bytes(u0)
             .unwrap_or_else(|e| panic!("bất biến byte vỡ sau {ty:?}: {e}"));
@@ -177,6 +183,14 @@ fn untyped_con_duoc_can_le_va_tinh_du_byte() {
         "khoảng đệm căn lề vẫn tính là đã cấp"
     );
     assert_eq!(m.untyped_free(u0), 0);
+    // Siết theo review Agent 0: tổng `len` object thật < watermark vì có gap căn lề;
+    // gap không thuộc object nào, và allocated + gap + free == cỡ ban đầu.
+    assert_eq!(m.untyped_allocated(u0), 512 + 4096);
+    assert_eq!(
+        m.untyped_gap(u0),
+        8192 - (512 + 4096),
+        "byte đệm căn lề (512..4096) là gap, không phải byte của object"
+    );
     m.check_bytes(u0)
         .expect("bất biến byte có khoảng đệm căn lề");
     assert_eq!(
@@ -213,6 +227,48 @@ fn revoke_untyped_tra_byte_ve_0_va_lam_tiep_duoc() {
     assert_eq!(m.object_bytes(obj2), Some((0, 512)));
     assert_eq!(m.untyped_used(u0), 512);
     m.check_bytes(u0).expect("bất biến byte sau khi cấp lại");
+}
+
+/// Review Agent 0 mục 3: revoke Untyped **lồng nhau** phải finalise cả cây con,
+/// không để cap trỏ tới object mồ côi (object thuộc Untyped con đã chết).
+#[test]
+fn revoke_untyped_long_nhau_finalise_ca_cay() {
+    let (mut m, c0, u0) = setup(16384);
+    let src = slot(c0, 0);
+    let child_cap = m
+        .retype(src, ObjType::Untyped, 12, 0)
+        .expect("Untyped con 4096 B");
+    m.put_cap(c0, 3, child_cap).expect("slot Untyped con");
+    let child_obj = m.cap_obj(child_cap).expect("object Untyped con");
+    let tcb_cap = m
+        .retype(slot(c0, 3), ObjType::Tcb, 0, 0)
+        .expect("TCB cấp từ Untyped con");
+    m.put_cap(c0, 4, tcb_cap).expect("slot TCB");
+    let tcb_obj = m.cap_obj(tcb_cap).expect("object TCB");
+    assert_eq!(m.untyped_used(child_obj), 512);
+
+    let deleted = m.revoke(c0, Some(0)).expect("revoke Untyped cha");
+    assert_eq!(deleted, 2, "cap Untyped con + cap TCB trong con");
+    assert!(!m.object_alive(child_obj), "Untyped con phải bị finalise");
+    assert!(
+        !m.object_alive(tcb_obj),
+        "object trong Untyped con cũng chết"
+    );
+    assert_eq!(m.cap_at(c0, 3), Err(KError::SlotEmpty));
+    assert_eq!(m.cap_at(c0, 4), Err(KError::SlotEmpty));
+    assert_eq!(m.cap_obj(tcb_cap), Err(KError::InvalidCapability));
+    assert_eq!(m.untyped_used(u0), 0);
+    assert_eq!(
+        m.untyped_used(child_obj),
+        0,
+        "watermark Untyped con cũng về 0"
+    );
+    m.check_bytes(u0).expect("bất biến byte Untyped cha");
+    m.check_bytes(child_obj)
+        .expect("bất biến byte Untyped con (đã chết)");
+    // Làm tiếp được từ cap cha.
+    m.retype(src, ObjType::Tcb, 0, 0)
+        .expect("retype lại sau revoke cây");
 }
 
 #[test]
