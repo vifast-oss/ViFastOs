@@ -3630,3 +3630,39 @@ theo *tác vụ*. ⇒ Gốc nằm ở **nguồn thời gian/migration**, không 
   trong `gate.sh`) **chưa** cắt — đã ghi nhận, làm sau.
 - `CARGO_TARGET_DIR` riêng cho từng agent và `baseline.json` cho các ngưỡng tài
   nguyên: chưa làm.
+
+## r323 — T33a: `last` bị hỏng thành HẰNG SỐ 49, không phải đồng hồ lùi
+
+### Số đo quyết định (mps, x86_64 TCG, soak 3 luồng song song, `VIFAST_NO_RETRY=1`)
+Sau khi đổi `panic!` của worker C thành đèn (`C TIME BACK last= now= start=`):
+| Artifact | Giá trị |
+|---|---|
+| `artifacts/r325/back-w2-57.serial` | `last=49 now=8 start=2` |
+| `artifacts/r326/bad-w2-40.serial` | `last=49 now=11 start=2` |
+
+**`last` luôn đúng bằng 49** ở cả hai ca, trong khi `now` là 8 và 11 ⇒ đây **không
+phải đồng hồ lùi đều** mà là **`last` bị hỏng thành một hằng số**. 49 không phải
+giá trị thời gian hợp lý (boot mới ở tick 8–11); nó giống **index/slot** hoặc giá
+trị rác của một thanh ghi được khôi phục từ **ngữ cảnh khác**.
+
+⇒ T33a nghiêng hẳn về **lỗi lưu/khôi phục ngữ cảnh** (saved register bị lấy từ
+frame của tác vụ khác), khớp với: chỉ xảy ra khi ≥2 hart chịu tải; mọi nỗ lực sửa
+*đồng hồ* đều vô ích; và ghi chú cũ về `contexts[slot]` bị ghi đè.
+
+### Hai thay đổi trong vòng (giữ lại, có test)
+1. **Worker C: bỏ `panic!`, in `C TIME BACK last= now= start=` rồi TIẾP TỤC chờ**
+   (`crates/vifast-root/src/main.rs`). Trước đây panic giết C ⇒ boot treo (21/21
+   artifact) mà không có số đo. Nay boot vẫn **đỏ** (`TIME MONOTONIC BAD` là
+   FORBIDDEN, đúng thiết kế) nhưng **đỏ có số đo**, không còn treo. Không `break`
+   để `elapsed`/`c=1` còn nghĩa (bản rà soát chỉ ra `break` sẽ sinh `TCB SUSPEND BAD`).
+2. **`reset()` không kéo `system_ticks` về 0** + test đỏ-trước
+   `reset_does_not_rewind_the_system_clock` (263 test kernel xanh). Đây là bất biến
+   đúng tự thân, **nhưng KHÔNG sửa được T33a**: soak sau vá vẫn 1/360 ca
+   `TIME MONOTONIC BAD` với đúng dạng `last=49`.
+
+### Việc kế tiếp (đã hẹp)
+1. In thêm **hart + tcb + slot context** trong `C TIME BACK` để xác nhận `last`
+   được khôi phục từ frame của ai.
+2. Soi đường `contexts[slot] = *context` / `apply_resume` khi hart 1 preempt đúng
+   lúc worker C bị `tcb_suspend` (demo suspend/resume của root) — nghi frame bị
+   ghi đè bởi tác vụ khác dùng cùng slot.

@@ -414,8 +414,19 @@ impl Kernel {
         self.current = [None; MAX_HARTS];
         self.seq = 0;
         self.ticks = [0; MAX_HARTS];
+        // r323 (T33a): KHÔNG đưa đồng hồ hệ thống về 0 trong `reset()`.
+        //
+        // Đo được ở ca treo: worker C thấy `start=2`, `last=49`, rồi `now=8` —
+        // tức thời gian LÙI từ 49 về 8, đúng dấu hiệu `system_ticks` bị reset
+        // về 0 rồi leo lại. `reset()` được gọi bởi `init_kernel()`, và nếu nó
+        // chạy muộn (hart phụ/khởi tạo lại) thì mọi tác vụ đang chạy thấy
+        // `GetTime` nhảy lùi ⇒ worker C panic `TIME MONOTONIC BAD` ⇒ T33a.
+        // Đồng hồ là tài nguyên hệ thống nên phải đơn điệu qua cả `reset()`.
+        let clock = self
+            .system_ticks
+            .load(core::sync::atomic::Ordering::Acquire);
         self.system_ticks
-            .store(0, core::sync::atomic::Ordering::Release);
+            .store(clock, core::sync::atomic::Ordering::Release);
         self.root = None;
         self.fs = fs::RamFs::new();
         self.stats = KernelStats {
@@ -14734,6 +14745,26 @@ mod tests {
         assert_eq!(message.label, LABEL_NOTIFICATION);
         assert_eq!(message.words()[0], 0b100);
         assert_eq!(kernel.poll(ntfn), Ok(0), "bit đã tiêu thụ đúng một lần");
+    }
+
+    #[test]
+    fn reset_does_not_rewind_the_system_clock() {
+        // r323 (T33a, red-first D18): đo được worker C thấy thời gian LÙI
+        // (`last=49` → `now=8`). Nguồn duy nhất hạ được `system_ticks` là
+        // `reset()` (mọi hart khác chỉ `fetch_max`). Đồng hồ hệ thống phải
+        // đơn điệu qua cả `reset()`.
+        let mut kernel = Kernel::new();
+        kernel.tick(0);
+        kernel.tick(0);
+        kernel.tick(0);
+        let before = kernel.fast_time();
+        assert!(before > 0, "đồng hồ phải tiến sau 3 tick");
+        kernel.reset();
+        assert_eq!(
+            kernel.fast_time(),
+            before,
+            "reset() KHÔNG được kéo đồng hồ hệ thống về 0 — user đang chạy sẽ thấy thời gian lùi"
+        );
     }
 
     #[test]

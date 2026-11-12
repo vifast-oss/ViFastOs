@@ -1583,6 +1583,24 @@ ký, `SENDFAIL=0`, worker C đã qua lệnh send ⇒ còn một đường mất 
    + một boot riscv64 + fmt — vòng lặp sau mỗi lần sửa.
 3. Cache: `target/vifast-build-id.txt` khớp id ⇒ `build: SKIP`.
 
+
+## r323 — T33a: `last` hỏng thành HẰNG SỐ 49 ⇒ nghi lỗi ngữ cảnh, không phải đồng hồ
+
+Đổi `panic!` của worker C thành đèn `C TIME BACK last= now= start=` (rồi tiếp tục
+chờ, không `break`). Đo trên mps (x86_64 TCG, soak 3 luồng song song,
+`VIFAST_NO_RETRY=1`):
+- `artifacts/r325/back-w2-57.serial`: `last=49 now=8 start=2`
+- `artifacts/r326/bad-w2-40.serial`: `last=49 now=11 start=2`
+
+**`last` luôn đúng bằng 49** ở cả hai ca trong khi `now` là 8 và 11 ⇒ không phải
+"đồng hồ lùi đều" mà **`last` bị hỏng thành hằng số**, nghi thanh ghi được khôi
+phục từ **ngữ cảnh của tác vụ khác**. Khớp với: chỉ xảy ra khi ≥2 hart chịu tải,
+và mọi bản vá *đồng hồ* đều vô ích.
+
+Kèm: `reset()` không còn kéo `system_ticks` về 0 + test đỏ-trước
+`reset_does_not_rewind_the_system_clock` (263 test kernel xanh) — bất biến đúng tự
+thân nhưng **không sửa được T33a** (soak sau vá vẫn 1/360 ca, đúng dạng `last=49`).
+
 Báo cáo này đã được ký lại sau mỗi lần sửa nội dung; khối SHA-256 ở cuối là của
 phiên bản hiện tại.
 
@@ -1591,7 +1609,7 @@ phiên bản hiện tại.
 ## SHA-256
 
 ```text
-e84b5adae726c730ba0b506fcfbf32ac6b98190e42d6833b494dbdfe75a87354  docs/reviews/ViFastOs-report-r262.md
+07b55350a600087a7a34a06c9c5ed21d217025b6625ebefb0b2114bc197f0019  docs/reviews/ViFastOs-report-r262.md
 ```
 
 Kiểm: băm mọi byte TRƯỚC dấu `<!-- SHA-256` (sau khi `rstrip()` và thêm

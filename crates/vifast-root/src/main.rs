@@ -491,9 +491,24 @@ pub extern "C" fn smp_worker_c() -> ! {
         let now = vifast_user::get_time().value;
         if now < last {
             write(TIME_MONOTONIC_BAD);
-            panic!("GetTime went backwards on hart 1");
+            // r323 (T33a): ĐO trước khi chết. `panic!` cũ giết worker C ⇒ boot
+            // treo (21/21 artifact) mà không cho biết giá trị nào lùi. Nay in
+            // `last`/`now` rồi THOÁT VÒNG để C vẫn gửi báo cáo — boot vẫn đỏ
+            // (TIME MONOTONIC BAD nằm trong FORBIDDEN, đúng như thiết kế) nhưng
+            // là đỏ CÓ SỐ ĐO, không còn là treo.
+            write(b"C TIME BACK last=");
+            write_decimal(last);
+            write(b" now=");
+            write_decimal(now);
+            write(b" start=");
+            write_decimal(start);
+            write(b"\n");
+            // r323: KHÔNG `break`. Bản rà soát chỉ ra: thoát vòng sớm làm
+            // `elapsed` lấy sau đó không còn nghĩa "bị treo 5 tick" ⇒ sinh
+            // `TCB SUSPEND BAD` (FORBIDDEN) và mất marker exact-one. Chỉ bỏ
+            // `panic!`; vẫn chờ `SUSPEND_FLAG` như thiết kế.
         }
-        last = now;
+        last = if now < last { last } else { now };
     }
     let elapsed = vifast_user::get_time().value.saturating_sub(start);
     let _ = vifast_user::signal_bits(3, 2);

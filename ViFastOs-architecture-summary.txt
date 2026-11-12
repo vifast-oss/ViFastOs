@@ -651,6 +651,7 @@ Thư mục này LÀ git repository. Các mốc hiện tại:
 - d10c805 r317/r318 (T33a): 5 ca treo cùng chữ ký "hệ đứng yên" + đèn GATE STATES/SENDFAIL
 - fa904cb site: ghi rõ ViFastOs không liên kết VinFast + link giải thích tên gọi
 - bce9856 r319 (T33a): vá đường MẤT MESSAGE trong ipc::send (test đỏ-trước 0,0 giây)
+- 8077d71 r322: vòng lặp phát triển 18 giây — gate.sh --smoke + BUILD_ID chỉ hash mã nguồn
 ### END GENERATED commits
 
 [HISTORICAL] Mốc 925f633 (vòng 20): per-hart ready queue + work stealing; VFS
@@ -698,7 +699,7 @@ hardening và vifast-user.
 Test hiện tại:
 ### BEGIN GENERATED tests
 - `cargo test -p vifast-abi`: 17/17 PASS
-- `cargo test -p vifast-kernel`: 262/262 PASS
+- `cargo test -p vifast-kernel`: 263/263 PASS
 - `cargo test -p vifast-arch`: 8/8 PASS
 - `cargo test -p vifast-pte`: 12/12 PASS
 - `cargo test -p vifast-elf`: 20/20 PASS
@@ -711,7 +712,7 @@ Test hiện tại:
 ### BEGIN GENERATED status
 - RISC-V headroom: 2257504 byte (`kernel_end=0x803d8da0`)
 - `Kernel = 552120`, `Object = 3192`, `Tcb = 1648`, `Cap = 64` byte
-- QEMU lần chạy gần nhất (`--repeat 3`): riscv64 0/3, aarch64 3/3, x86_64 3/3
+- QEMU lần chạy gần nhất (`--repeat 3`): riscv64 3/3, aarch64 3/3, x86_64 3/3
 ### END GENERATED status
 - root ELF link: PASS (ET_EXEC, segment/window, soft-float check)
 - root ELF stripped (đo lại r233): RISC-V 41.472 B, AArch64 49.504 B, x86 49.576 B
