@@ -102,35 +102,37 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | KT-03 | wrapper `v2/bin/v2` + khung `check`/`gate --fast`: fmt, clippy, luật cấu trúc, L0, SPDX theo loại tệp; **chưa** gen-check/L1 | KT-02 | 3 h | DONE | `./v2/bin/v2 check` chạy từ repo root; 5 luật có 5 case âm |
 | KT-04a | bảng ánh xạ v1→v2 (25 crate, 58 syscall→16+method, 22 KError→19) + `spec/abi.toml` lõi (Untyped, CNode, Tcb, SchedContext, Endpoint, Notification, Reply, MessageInfo, lỗi, quy ước gọi riscv64, layout slot 48 B) | KT-02 | 3 h | DONE | abi.toml parse; bảng ánh xạ đủ; `abi_version`/`min_compat` |
 | KT-04b | object reserved theo **D2-32**: SchedControl=8 lên **lõi**; 8 object reserved 9..16; VSpace khách = cờ `GUEST` trong `Untyped.Retype`, **không** method; chỉ số + `NotSupported` | KT-04a | 2 h | DONE | method reserved trả NotSupported; số không trùng; `check_reserved` xanh trên `spec/` |
-| KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | READY | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
+| KT-04c | **21 kịch bản** `.scn` + kiểm tĩnh (D2-27) + **arity theo draft D2-33**; ca 18 hết blocked khi SchedControl lên lõi; **21/21, 0 blocked** | KT-04a | 3 h | DONE | 21 tệp; `check_scn` 21/21 0 blocked; draft chữ ký REVIEW |
 | KT-04d | gửi Agent 0 duyệt: checklist 5 mục/method + 21 kịch bản + draft chữ ký + **nội dung D2-26..28** | KT-04a,b,c | 1 h | REVIEW | dòng `APPROVED <ngày> Agent 0` trong QUEUE; `check_scn` 21/21 0 blocked; mapping đã sửa 2 lỗi số |
 | KT-05 | `vifast-gen` + gen-check + `docs/abi.md`; sinh từ `abi.toml` | KT-04d | 3 h | BLOCKED | code sinh biên dịch; sửa tay bị bắt; gen-check bật sau APPROVED |
-| KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | READY | dùng được cho chính vòng này; JSON có `project` |
+| KT-06 | `vifast-agentctl` `--project v2\|viscript`: next/start/done/block/report, bỏ qua REVIEW | KT-02 | 2 h | DONE | dùng được cho chính vòng này; JSON có `project` |
 | KT-07 | K0.5: boot riscv64 QEMU qua OpenSBI nạp trực tiếp; DebugPutStr/DebugHalt; TAP 1 test; 50 boot 0 lỗi | KT-02, KT-03 | 3 h | DONE | 50 boot 0 lỗi, có log |
-| KT-08 | sim harness + store giả + scheduler tối thiểu 1 hart; kịch bản rỗng tất định theo seed (chưa cần ABI) | KT-02 | 3 h | READY | harness + store + scheduler chạy; cùng seed → cùng trace |
+| KT-08 | sim harness + store giả + scheduler tối thiểu 1 hart; kịch bản rỗng tất định theo seed (chưa cần ABI) | KT-02 | 3 h | DONE | harness + store + scheduler chạy; cùng seed → cùng trace |
 | KT-09 | Untyped trên sim (watermark, Retype, Revoke qua CNode) + end-to-end Retype→Configure→Call/Reply | KT-08, KT-05 | 3 h | BLOCKED | invariant tổng byte; preempt; kịch bản end-to-end chạy |
 | KT-10 | CNode/MDB test-first, mô hình tối giản **trong test** | KT-09 | 3 h | BLOCKED | property test cây; Revoke |
 | KT-11 | `vifast-model` Untyped/CNode; chạy các ca Untyped/CNode của KT-04c | KT-10 | 2 h | BLOCKED | khớp sim 10.000 seed; chạy các ca Untyped/CNode của KT-04c |
-| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | READY | giải mã dump từ sim; cùng định dạng QEMU |
+| KT-12 | `vifast-traceformat` + ring (trước khi sim dump) | KT-02 | 2 h | BLOCKED | giải mã dump từ sim; cùng định dạng QEMU — **chờ YC-12** |
 | KT-T26 | host test `vifast-fs` + block giả + cache; MAX_IO=256; đọc RAW kiểm read-your-own-write; theo D-03 "ai chen giữa" | — | 3 h | BLOCKED | đèn host DONE `02e0a96`; tái hiện đầy đủ chờ **YC-06**; không chạy lại 1.000 seed |
-| KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | READY | MD + JSON theo Khối E, có `project` |
+| KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 ## Khối F — chỉ thị hiện hành (2026-11-12, sau `DUYET-YC-02-05`)
 
 > Nguồn: `review/agent0/DUYET-YC-02-05.md` (Agent 0) + D2-29..D2-33. Khối này thay mọi ghi chú cũ trái với nó.
 
 **Đã xong — không làm lại:**
-- `KT-04a` DONE `1766145`; `spec/abi.toml` lõi đã có.
-- `KT-04c` phần 21 `.scn` + checker DONE `9552832`; chỉ còn arity theo D2-33 và mở ca 18.
-- `KT-T26` phần đèn host DONE `02e0a96`; tái hiện đầy đủ BLOCKED chờ YC-06 — **không** chạy lại 1.000 seed.
+- `KT-04a` DONE `1766145`; `KT-04b` DONE `5ba7e80`; `KT-04c` DONE `5454834`+`476d405`
+  (`check_scn` 21/21, 0 blocked; draft chữ ký D2-33).
+- `KT-06` DONE `decc619`+`33dcf8d`; `KT-08` DONE `cf433b7`+`bcc84bb` (L1 1.000 seed trong `gate --fast`);
+  `KT-R1` DONE `0ba7968`.
+- `KT-T26` đèn host DONE `02e0a96`; tái hiện đầy đủ BLOCKED chờ YC-06 — **không** chạy lại 1.000 seed.
+- `KT-04d` **REVIEW**: gói bản 2 `e6edf0f` đã gửi; chờ `APPROVED` thật. **KT-05** vẫn BLOCKED.
 
-**Thứ tự bắt buộc:**
-1. **KT-04b**: sửa `v2/docs/abi-reserved-objects.toml` theo D2-32 (SchedControl=8 lên `core`; bỏ `VSpace.Configure`; thêm bit `GUEST` vào `Untyped.Retype.flags`; 8 object 9..16 reserved) → áp `spec/abi.toml` + D2-29 (header: syscall **0..15**, reserved **16..31**) → cập nhật `check_abi.py`/`check_reserved.py` → `gate --fast` xanh → commit `[KT-04b]`.
-2. **KT-04c**: tạo `v2/docs/abi-call-signatures.toml` theo D2-33 (đủ enum TCB §4.4 + `Tcb.ReadState`); `check_scn.py` kiểm arity theo draft; ca `18-schedcontext-donation` **hết blocked** vì `SchedControl` đã lên lõi; `check_scn` **21/21, 0 blocked** → commit `[KT-04c]`.
-3. Sửa `v2/docs/abi-v1-v2-mapping.md`: **16 syscall** (9 ánh xạ + 7 mới, gồm `DebugGetInfo` 15), 26 method/23 đích/20 bỏ; escape `Abort\|Defer`; sửa tiêu đề "15 syscall" → 16.
-4. **KT-04d**: gói gồm 21 `.scn`, draft chữ ký, checklist 5 mục/method, **nội dung D2-26..28**, mapping đã sửa; gửi Agent 0. **Không** ghi APPROVED.
-5. Tệp `20-exit-procsrv-chua-recv.scn`: dùng enum TCB D2-33, bỏ ghi chú "chưa khẳng định".
-6. Sau KT-04d: `KT-06` → `KT-08` → `KT-12` → `KT-R1`; hết OS READY thì ViScript.
+**Thứ tự hiện tại (19:05):**
+1. `KT-04d` chờ `APPROVED` — **không** làm lại, **không** ghi APPROVED; `KT-05` chờ dòng đó.
+2. `KT-12` **BLOCKED YC-12** (KT-08 hay KT-12 sở hữu định dạng trace) — không tự chọn.
+3. OS **hết task READY** ⇒ theo D2-20 sang dòng ViScript: `ST-01` (workspace/cổng) → `ST-02b` → `ST-04`
+   (`ST-02a` đã DONE; `ST-03/05..09` còn BLOCKED).
+4. Khi Agent 0 trả lời YC-06/YC-11/YC-12 thì mở lại đúng task, không mở thêm YC trùng.
 
 **Chống lặp:**
 - Đọc bảng trạng thái trước mỗi task; task `DONE`/`BLOCKED` không làm lại.
