@@ -29,7 +29,9 @@ version = "0.1.0"
 dependencies = [
  "vis-diag",
  "vis-fmt",
+ "vis-interp",
  "vis-syntax",
+ "vis-types",
 ]
 
 [[package]]
