@@ -1,17 +1,60 @@
-# STATE — ViScript (vòng 1)
+# STATE — ViScript (vòng 2 / VS0)
 
 Người ghi: **Agent 2** dòng ViScript. Cập nhật **sau mỗi bước**.
-Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review).
+Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật vòng 2 (VS0): 2026-11-13.
 
 ```
-HEAD          : xem `git log -1`
+HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : ST-03 (chẩn đoán: cột theo scalar + `render` + bảng vi/en/ja) — xong kỹ thuật 2026-11-13, **đề nghị DONE** (chờ review độc lập + Agent 0 lật sổ)
-Bước          : 1/1 (đỏ trước → hiện thực → cổng; task cuối vòng 1)
+Task          : ST-11 (`vis-types` nền: `Type`, HIR, giải tên, hạ CST→HIR chế độ script) — xong kỹ thuật
+                2026-11-13, **đề nghị DONE** (chờ Agent 0 duyệt + review độc lập trên diff)
+Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng); theo **VD-44** (8 điểm Agent 0 bổ sung)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)` (2026-11-12T18:57:42Z; không retry; **157** test workspace: 29 vis-cli + 18 vis-fmt + 96 vis-syntax + 14 vis-diag)
-Việc dở       : — (ST-03 chờ **review độc lập trên diff**; hết task READY của vòng 1)
+Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
+                (2026-11-12T21:52:22Z = 2026-11-13 06:52 JST; không retry; **194** test workspace:
+                30 vis-cli + 18 vis-fmt + 96 vis-syntax + 16 vis-diag + **34 vis-types**)
+Việc dở       : — (ST-11 chờ Agent 0 lật sổ; ST-12 mở sau khi ST-11 DONE)
 ```
+
+## ST-11 — kết quả (2026-11-13)
+
+| Mục DoD (QUEUE Khối C) | Bằng chứng đo được |
+|---|---|
+| Crate `vis-types` (lib `vis_types`, dep path `vis-syntax` + `vis-diag`, **không** crate ngoài) | `crates/vis-types/{Cargo.toml,src/{ty,hir,lower,lib}.rs,src/lower/{expr,pat,stmt}.rs}`; mọi tệp ≤ 1.500 dòng (lớn nhất `hir.rs` 1.112) |
+| `Type` theo VD-43 (+ `float` §3.1) + tên hiển thị ổn định + `Display` | `ty.rs`: `Type` (**20** biến thể = 17 của VD-43 + `Float` (thiết kế §3.1, VD-44 #1) + `TypeRef` (VD-44 #2) + `Error`), `TypeTable` (RecDef/EnumDef/FieldDef/VariantDef), `Type::name`/`Display`/`TypeTable::show`; test `ten_hien_thi_on_dinh` |
+| HIR chế độ script: `HItem`/`HStmt`/`HExpr`/`HPat` + `sexp` | `hir.rs`: 9 `HItem`, 14 `HStmt`, 23 `HExpr`, 10 `HPat`, `HCond`, `HBody`, `Lit`/`LitKind`, `BinOp`/`UnOp`/`AssignOp`; `sexp` theo VD-34 **không** nút `paren` |
+| `lower(&Cst, &LexOutput) -> HirOutput { hir, diagnostics, symbols }` | `lower.rs` (+`types`, +`error` cho lỗi cấp API); hạ **permissive** (VD-44 #1) |
+| Giải tên: khung + thân hàm + khối, shadowing hợp lệ, trùng ⇒ `VS0302`, tên lạ ⇒ `VS0301` | `Symbols`/`HSym`/`SymKind`; `VS0302` cho khai trùng **cùng khung**; `VS0301` cho **tên giá trị** (gán cho tên chưa khai ở mọi chế độ; mọi lần dùng ở `NamePolicy::Strict`); **tên kiểu** giữ `Type::TypeRef`, ST-11 **không** báo (VD-44 #2) |
+| Điền kiểu literal + list/map/record/enum + `T?` | 12 ca literal (`tests/hir.rs::literal_duoc_dien_kieu`); `Record(RecId)` ẩn danh có trường; `Opt` cho `none`/`T?`; `Try` cho `x?` |
+| **Đỏ trước** (D2-05): `tests/hir.rs` + `tests/names.rs` | `JOURNAL/st11-red-types.log` — **27 ca, 24 đỏ** (hir 7/10, names 17/17) khi thân `Lowerer::run` còn **rỗng**; **3 ca xanh cố ý** đã khai báo ngay trong header (tệp tồn tại, 22/15/7, 3 ca `!ERR` dừng ở parse); header có giờ + sha256 harness/fixture + lệnh; sha256 harness khớp bản commit |
+| 15 khối ```vis đủ thân ⇒ **0 chẩn đoán** + đúng số item/khai báo | `tests/hir.rs::ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao` (bảng `DOC_BLOCKS`: 15 dòng × (item, câu lệnh, khai báo)); khoá thêm **22/15/7** + danh sách 7 dòng loại trừ |
+| 30 golden biểu thức ⇒ **sexp HIR** | `tests/hir.rs::golden_30_bieu_thuc_ha_ra_sexp_hir`: **27** ca hợp lệ so sexp (bỏ lớp `(paren …)`), **3** ca `!ERR` dừng ở parse (không lower) |
+| Sổ mã `03xx` + `next_block()` ⇒ 601 | `vis-diag`: `NAME_CODES` (VS0301/VS0302, vi/en/ja), `BOOKS`, `all_codes()`, `BLOCKS_RESERVED`; `next_block()` **suy ra** từ khối đã cấp/dành trước; `lookup(401)`/`lookup(501)` = `None` (VD-44 #5) |
+| `CODES` (10) + `SYNTAX_CODES` (2) **không đụng** | test cũ `so_khop_spec_lex_that` vẫn đọc thẳng SPEC-lex §7; `so_cu_phap_02xx_khoa_theo_vd35` giữ nguyên |
+| Cổng xanh, không retry | `./vis-dev gate --fast: PASS` — 2026-11-12T21:52:22Z; **194** test (157 cũ + 37 mới) |
+| Không `unwrap`/`todo!`/`#[ignore]`/`unsafe` trong `src/` | `grep` trên `crates/vis-types/src`: 0 (chỉ nhắc trong doc comment); test rác/7 khối loại trừ ⇒ không panic (`khong_panic_tren_7_khoi_loai_tru_va_rac`) |
+
+**Chốt của Agent 0 = VD-45** (2026-11-13): **Q1** `NamePolicy::Permissive` là mặc định của ST-11
+(`VS0301` chỉ khi **gán** cho tên chưa khai; `Strict` thành mặc định từ ST-13/14 — **đã có test riêng
+cho cả 2 policy**); **Q2** đúng (kiểu khai trong tệp ⇒ `Record/Enum`, không khai ⇒ `TypeRef`);
+**Q3** chấp nhận `HirOutput` 5 trường + `Type::Float`.
+
+**Việc phải biết (ghi ở JOURNAL + báo Agent 0):**
+1. `VS0301` **mặc định** (`NamePolicy::Permissive` — VD-45) chỉ báo khi **gán** cho tên chưa khai
+   (kể cả gốc lvalue phức hợp `a.b = 1`); `NamePolicy::Strict` báo mọi lần dùng. Lý do: 30 golden và
+   nhiều khối tài liệu dùng **tên tự do** (`a`, `b`, `xs`, `user`, `json`, `collect`, `pair`, `send`,
+   `read_config`, `Config`, `s`) — nếu báo hết thì "15 khối + 30 golden hạ sạch" (VD-44 #1/#3) không
+   thể đạt.
+2. Tên kiểu **đã khai trong tệp** phân giải thành `Record(RecId)`/`Enum(EnumId)` (để bản ghi/enum
+   literal có kiểu + `TypeTable::show` in tên); tên kiểu **không khai** ⇒ `TypeRef` (VD-44 #2, VD-45 Q2).
+3. `lower` trên CST `Mode::Command` trả `LowerError::CommandMode` trong `HirOutput::error` (VD-22,
+   VD-44 #6) — **không** dùng mã `VSxxxx` nào cho lỗi cấp API (VD-45 Q3 giữ nguyên).
+4. Gate chạy **sau** thay đổi code/test cuối cùng (chỉ còn sửa `STATE.md`/`JOURNAL` sau đó): 2026-11-12T21:52:22Z, **194** test.
+5. **Reviewer3 (DRIFT) — 2 MAJOR đã sửa + khoá bằng test**: (a) `lower_let` hạ **`init` trước** rồi mới khai
+   `pat` (§4.1) — test `let_ha_gia_tri_truoc_khi_khai_ten` (file-level `let x = x + 1` ⇒ RHS `sym=None`;
+   shadow trong khối ⇒ RHS frame ngoài, thân frame trong); (b) gán cho tên chưa khai chỉ báo **một**
+   `VS0301` ở **cả** Permissive/Strict (cờ `suppress_name_diag` khi hạ đích) — test
+   `gan_ten_la_chi_mot_vs0301_moi_dang` cho `x = 1`, `a.b = 1`, `xs[0] = 1`.
 
 ## Kế hoạch ST-04 (lập 2026-11-12, trước khi viết test đỏ)
 

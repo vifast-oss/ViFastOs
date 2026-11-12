@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use vis_diag::{lookup_str, severity_label, Lang, CODES, SYNTAX_CODES};
+use vis_diag::{all_codes, lookup_str, severity_label, Lang};
 use vis_syntax::{parse, Mode};
 
 fn usage() -> ExitCode {
@@ -238,7 +238,8 @@ fn main() -> ExitCode {
                 i += 1;
             }
             if list {
-                for c in CODES.iter().chain(SYNTAX_CODES.iter()) {
+                // `explain --list` phủ **cả ba** sổ đã cấp (01xx + 02xx + 03xx, VD-44 #7).
+                for c in all_codes() {
                     println!(
                         "{}  {:<8} {}",
                         c.short,

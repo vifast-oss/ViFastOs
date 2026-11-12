@@ -180,11 +180,52 @@ pub const SYNTAX_CODES: [Code; 2] = [
     },
 ];
 
+/// Sổ **mã tên** `03xx` (VD-42, ST-11) — sổ **thứ ba**, tách khỏi [`CODES`]/[`SYNTAX_CODES`] vì
+/// cùng lý do VD-35: sổ từ vựng vẫn đúng bằng bảng SPEC-lex §7.
+///
+/// Cấp tối thiểu theo VD-42: `VS0301` tên không tồn tại (ST-11 dùng cho **tên giá trị**; tên kiểu
+/// để ST-12), `VS0302` khai báo trùng trong **cùng** phạm vi.
+pub const NAME_CODES: [Code; 2] = [
+    Code {
+        id: 301,
+        short: "VS0301",
+        message_vi: "tên không tồn tại",
+        message_en: "name does not exist",
+        message_ja: "名前が見つかりません",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 302,
+        short: "VS0302",
+        message_vi: "khai báo trùng trong cùng phạm vi",
+        message_en: "duplicate declaration in the same scope",
+        message_ja: "同じスコープで重複した宣言です",
+        severity: Severity::Error,
+    },
+];
+
+/// **Ba sổ** mã lỗi đã cấp ở ST-11: từ vựng `01xx`, cú pháp `02xx`, tên `03xx` (VD-27/VD-35/VD-42).
+///
+/// `04xx` (kiểu) và `05xx` (runtime) **chưa cấp mã nào** ở ST-11 ⇒ `lookup(401)`/`lookup(501)` là
+/// `None`; chúng vẫn là khối **đã dành trước** ([`BLOCKS_RESERVED`]) nên [`next_block`] nhảy tới `06xx`.
+pub const BOOKS: [&[Code]; 3] = [&CODES, &SYNTAX_CODES, &NAME_CODES];
+
+/// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`05xx`); VD-42 cấp `04xx` ở ST-12 và
+/// `05xx` ở ST-13. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
+pub const BLOCKS_RESERVED: [u16; 5] = [1, 2, 3, 4, 5];
+
+/// Duyệt **cả ba sổ** đã cấp, theo đúng thứ tự khối.
+pub fn all_codes() -> impl Iterator<Item = &'static Code> {
+    BOOKS.iter().flat_map(|b| b.iter())
+}
+
 /// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
 ///
-/// Tra **cả hai sổ**: từ vựng [`CODES`] (`01xx`) và cú pháp [`SYNTAX_CODES`] (`02xx`) — VD-35.
+/// Tra **cả ba sổ** đã cấp (VD-42): từ vựng `01xx`, cú pháp `02xx`, tên `03xx`. `04xx`/`05xx`
+/// **chưa cấp mã nào** ở ST-11 (ST-12/13) nên `lookup(401)`/`lookup(501)` là `None`.
+/// [`CODES`]/[`SYNTAX_CODES`] vẫn nguyên vẹn nên test "khớp SPEC-lex §7" không đổi.
 pub fn lookup(id: u16) -> Option<&'static Code> {
-    CODES.iter().chain(SYNTAX_CODES.iter()).find(|c| c.id == id)
+    all_codes().find(|c| c.id == id)
 }
 
 /// Tra theo chuỗi `VSxxxx` (chấp nhận `vs0103`); `None` nếu sai định dạng hoặc chưa cấp.
@@ -199,16 +240,15 @@ pub fn lookup_str(s: &str) -> Option<&'static Code> {
 
 /// Khối mã kế tiếp còn trống (quy tắc cấp): trả số đầu của khối mới, không tái dùng.
 ///
-/// Tính trên **cả hai sổ** (từ vựng `01xx` + cú pháp `02xx`) ⇒ sau `VS0101..VS0110` và
-/// `VS0201..VS0202`, khối kế là `03xx` (`301`), không quay lại số đã cấp.
+/// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`, `02xx`, `03xx`) **và** khối đã **dành trước**
+/// ([`BLOCKS_RESERVED`]: `01xx`..`05xx`) ⇒ `max(3, 5) + 1 = 06` ⇒ **`601`** (VD-42). Không hardcode
+/// `601`; thêm sổ mới thì số tự nhảy.
 pub fn next_block() -> u16 {
-    let max = CODES
-        .iter()
-        .chain(SYNTAX_CODES.iter())
-        .map(|c| c.id)
-        .max()
-        .unwrap_or(0);
-    (max / 100 + 1) * 100 + 1
+    // Suy ra từ **khối** đã cấp (mã lớn nhất / 100) và khối đã dành trước — không hardcode số.
+    let issued = all_codes().map(|c| c.id / 100).max().unwrap_or(0);
+    let reserved = BLOCKS_RESERVED.iter().copied().max().unwrap_or(0);
+    let block = issued.max(reserved) + 1;
+    block * 100 + 1
 }
 
 /// Chẩn đoán tối thiểu: mã **đã cấp trong sổ** + thông điệp + vị trí byte (0-based).
@@ -328,12 +368,35 @@ mod tests {
 
     #[test]
     fn khoi_ke_tiep_khong_tai_dung() {
-        // 01xx (từ vựng) + 02xx (cú pháp, VD-35) đã dùng ⇒ khối kế là 03xx.
+        // 01xx (từ vựng) + 02xx (cú pháp) + 03xx (tên, VD-42) đã cấp, và 04xx/05xx đã **dành
+        // trước** (VD-27) ⇒ khối kế là 06xx. Sửa kỳ vọng cũ 301 kèm lý do: VD-42 cấp thêm `03xx`
+        // và dành trước `04xx`/`05xx`; `next_block` nay suy ra từ khối, không đếm mã.
         assert_eq!(
             next_block(),
-            301,
-            "khối từ vựng 01xx và cú pháp 02xx đã dùng ⇒ khối kế 03xx"
+            601,
+            "01xx..05xx đã cấp/dành trước ⇒ khối kế 06xx (601)"
         );
+    }
+
+    #[test]
+    fn so_ten_03xx_khoa_theo_vd42() {
+        let ids: Vec<u16> = NAME_CODES.iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec![301, 302]);
+        assert_eq!(NAME_CODES[0].short, "VS0301");
+        assert_eq!(NAME_CODES[1].short, "VS0302");
+        // Ba sổ đã cấp: 10 + 2 + 2 mã; `04xx`/`05xx` **chưa** cấp ở ST-11.
+        assert_eq!(all_codes().count(), 14);
+        assert_eq!(BOOKS.len(), 3);
+        for id in [401u16, 402, 403, 412, 501, 502, 503] {
+            assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-11 (VD-44)");
+        }
+        // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx/05xx.
+        assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5]);
+        for c in NAME_CODES.iter() {
+            for lang in [Lang::Vi, Lang::En, Lang::Ja] {
+                assert!(!c.message(lang).is_empty(), "{} thiếu {:?}", c.short, lang);
+            }
+        }
     }
 
     #[test]

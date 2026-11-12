@@ -1,0 +1,263 @@
+=== ST-11 D2-05: hạ CST→HIR + giải tên ĐỎ TRƯỚC khi hiện thực ===
+thời điểm chụp: 2026-11-12T21:51:20Z  (chụp lại lần cuối: sau khi sửa 2 MAJOR của reviewer3 + thêm test khoá)
+cách chụp: tạm thời thay thân `Lowerer::run` bằng khung RỖNG (return ngay — không hạ gì),
+           chạy đúng harness cuối (`--no-fail-fast` để cả 2 tệp test đều chạy), chụp log;
+           sau đó khôi phục `crates/vis-types/src/lower.rs` từ /tmp/st11-lower-impl4.rs
+           (sha256 trước/sau trùng — dòng dưới).
+sha256 bản cài đặt được khôi phục: 7f76f5d5c60ed4ea3e4c50f46b7ec0797871c0b36814547efb2f64b61fa5205f  /tmp/st11-lower-impl4.rs
+
+sha256 harness (bản sẽ commit — không đổi sau khi chụp):
+  sha256 crates/vis-types/tests/hir.rs=8399c795d671198fc2195da8dbe7681b55445698aaf451101f6faca0efc3394a
+  sha256 crates/vis-types/tests/names.rs=b5eb87eda4adcba6c9a740432eb0aa280f5b745bf5b6cb9b3cc4029545478fda
+  sha256 crates/vis-types/src/lib.rs=d374b9bf98069b8027e9e0668db2622f1a46d7370df585646064085e5f354bc3
+sha256 fixture (chỉ đọc — nguồn kỳ vọng của Agent 0):
+  sha256 test/expr/golden.expr=f751f4554740d01f44013015ee9ba80ff1a56ec79c49dbb1585746541a507425
+  sha256 ../docs/viscript/ViScript-thiet-ke.md=70da3dd5393eff6cd1062bd760a507675ba39d18f0a259b82713640db5dc7094
+  sha256 ../docs/viscript/doc-examples-allow.txt=cfd733a415db994ad0dac93ad7225530d48de11d13246858a259665cef4b7ed9
+
+lệnh: cargo test -p vis-types --test hir --test names --no-fail-fast   (chạy từ viscript/)
+
+KẾT QUẢ: 27 ca, ĐỎ 24, XANH 3 — 3 ca xanh là CỐ Ý (không phụ thuộc `lower`), đã khai báo:
+  1) tests/hir.rs::doc_va_golden_ton_tai      — chỉ kiểm 2 tệp nguồn tồn tại (điều kiện đầu)
+  2) tests/hir.rs::khoi_tai_lieu_22_15_7      — chỉ đếm cấu trúc tài liệu 22/15/7 + danh sách loại trừ
+  3) tests/hir.rs::ba_ca_err_dung_o_parse     — 3 ca `!ERR` của golden **dừng ở parse** (VD-44 #4),
+                                                cố ý không gọi `lower`
+
+GHI CHÚ (reviewer3 NOTE): tệp log này có **mtime cùng giây** với lúc khôi phục `src/lower.rs`
+  (restore ngay sau khi chụp) — KHÔNG phải log được ghi sau khi hiện thực. Bằng chứng đúng bản:
+  sha256 harness ở trên khớp bản commit, và dòng 'sha256 bản cài đặt được khôi phục' trùng
+  sha256 `crates/vis-types/src/lower.rs` sau khôi phục (đo lại ngay bên dưới, cùng phiên).
+
+----- đầu ra (đỏ) -----
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/hir.rs (target/debug/deps/hir-c72a17b8a8a1c08c)
+
+running 10 tests
+test doc_va_golden_ton_tai ... ok
+test ba_ca_err_dung_o_parse_khong_lower ... ok
+test kieu_cau_truc_va_option ... FAILED
+test golden_27_bieu_thuc_ha_ra_sexp_hir ... FAILED
+test literal_duoc_dien_kieu ... FAILED
+test cst_che_do_lenh_bao_loi_tuong_minh ... FAILED
+test kieu_hien_thi_on_dinh_va_type_ref ... FAILED
+test khoi_tai_lieu_22_15_7 ... ok
+test ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao ... FAILED
+test khong_panic_tren_7_khoi_loai_tru_va_rac ... FAILED
+
+failures:
+
+---- kieu_cau_truc_va_option stdout ----
+
+thread 'kieu_cau_truc_va_option' (37483141) panicked at crates/vis-types/tests/hir.rs:409:18:
+`[1, 2, 3]` phải là đúng một biểu thức, thật []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- golden_27_bieu_thuc_ha_ra_sexp_hir stdout ----
+
+thread 'golden_27_bieu_thuc_ha_ra_sexp_hir' (37483137) panicked at crates/vis-types/tests/hir.rs:370:32:
+golden.expr:30 `1 + 2 * 3` không ra biểu thức
+
+---- literal_duoc_dien_kieu stdout ----
+
+thread 'literal_duoc_dien_kieu' (37483143) panicked at crates/vis-types/tests/hir.rs:409:18:
+`1` phải là đúng một biểu thức, thật []
+
+---- cst_che_do_lenh_bao_loi_tuong_minh stdout ----
+
+thread 'cst_che_do_lenh_bao_loi_tuong_minh' (37483135) panicked at crates/vis-types/tests/hir.rs:623:5:
+assertion `left == right` failed: CST chế độ lệnh phải trả LowerError::CommandMode
+  left: None
+ right: Some(CommandMode)
+
+---- kieu_hien_thi_on_dinh_va_type_ref stdout ----
+
+thread 'kieu_hien_thi_on_dinh_va_type_ref' (37483142) panicked at crates/vis-types/tests/hir.rs:515:12:
+index out of bounds: the len is 0 but the index is 0
+
+---- ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao stdout ----
+
+thread 'ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao' (37483138) panicked at crates/vis-types/tests/hir.rs:206:9:
+assertion `left == right` failed: khối 214: (item, câu lệnh, khai báo) sai
+  left: (0, 0, 0)
+ right: (4, 0, 4)
+
+---- khong_panic_tren_7_khoi_loai_tru_va_rac stdout ----
+
+thread 'khong_panic_tren_7_khoi_loai_tru_va_rac' (37483140) panicked at crates/vis-types/tests/hir.rs:603:5:
+assertion `left == right` failed: ca đối chứng: `lower` phải hạ được `let x = 1` (không phải khung rỗng)
+  left: 0
+ right: 1
+
+
+failures:
+    cst_che_do_lenh_bao_loi_tuong_minh
+    golden_27_bieu_thuc_ha_ra_sexp_hir
+    ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao
+    khong_panic_tren_7_khoi_loai_tru_va_rac
+    kieu_cau_truc_va_option
+    kieu_hien_thi_on_dinh_va_type_ref
+    literal_duoc_dien_kieu
+
+test result: FAILED. 3 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-types --test hir`
+     Running tests/names.rs (target/debug/deps/names-4181e0051216f834)
+
+running 17 tests
+test gan_cho_ten_chua_khai_bao_vs0301_mac_dinh ... FAILED
+test for_bind_if_let_match_arm_va_lambda ... FAILED
+test danh_sach_builtin_khoa_dung_8_ten ... FAILED
+test builtin_phan_giai_duoc_o_moi_che_do ... FAILED
+test bong_ten_trong_khoi_hop_le_va_phan_giai_dung ... FAILED
+test ham_goi_truoc_va_sau_khai_bao ... FAILED
+test let_trong_khoi_khong_ro_ra_ngoai ... FAILED
+test gan_ten_la_chi_mot_vs0301_moi_dang ... FAILED
+test permissive_van_bao_vs0301_khi_gan_ten_la ... FAILED
+test nhan_scope_la_khai_bao ... FAILED
+test strict_bao_ca_ten_tu_do_khi_doc ... FAILED
+test let_ha_gia_tri_truoc_khi_khai_ten ... FAILED
+test ten_la_bao_vs0301_o_che_do_chat ... FAILED
+test ten_kieu_chua_khai_khong_bao_o_st11 ... FAILED
+test tham_so_thay_trong_than_ham ... FAILED
+test vs0302_let_trung_cung_khung ... FAILED
+test vs0302_tham_so_trung_va_item_trung ... FAILED
+
+failures:
+
+---- gan_cho_ten_chua_khai_bao_vs0301_mac_dinh stdout ----
+
+thread 'gan_cho_ten_chua_khai_bao_vs0301_mac_dinh' (37483149) panicked at crates/vis-types/tests/names.rs:281:5:
+assertion `left == right` failed
+  left: []
+ right: ["VS0301"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- for_bind_if_let_match_arm_va_lambda stdout ----
+
+thread 'for_bind_if_let_match_arm_va_lambda' (37483148) panicked at crates/vis-types/tests/names.rs:182:52:
+index out of bounds: the len is 0 but the index is 0
+
+---- danh_sach_builtin_khoa_dung_8_ten stdout ----
+
+thread 'danh_sach_builtin_khoa_dung_8_ten' (37483147) panicked at crates/vis-types/tests/names.rs:489:63:
+index out of bounds: the len is 0 but the index is 0
+
+---- builtin_phan_giai_duoc_o_moi_che_do stdout ----
+
+thread 'builtin_phan_giai_duoc_o_moi_che_do' (37483146) panicked at crates/vis-types/tests/names.rs:517:9:
+assertion `left == right` failed: print phải có ký hiệu Builtin ở khung tệp
+  left: None
+ right: Some(Builtin)
+
+---- bong_ten_trong_khoi_hop_le_va_phan_giai_dung stdout ----
+
+thread 'bong_ten_trong_khoi_hop_le_va_phan_giai_dung' (37483145) panicked at crates/vis-types/tests/names.rs:90:5:
+assertion `left == right` failed: phải có 2 khai báo `x` (ngoài + trong)
+  left: 0
+ right: 2
+
+---- ham_goi_truoc_va_sau_khai_bao stdout ----
+
+thread 'ham_goi_truoc_va_sau_khai_bao' (37483151) panicked at crates/vis-types/tests/names.rs:152:36:
+index out of bounds: the len is 0 but the index is 0
+
+---- let_trong_khoi_khong_ro_ra_ngoai stdout ----
+
+thread 'let_trong_khoi_khong_ro_ra_ngoai' (37483153) panicked at crates/vis-types/tests/names.rs:132:5:
+assertion `left == right` failed: sau khối, `y` phải không phân giải
+  left: []
+ right: ["VS0301"]
+
+---- gan_ten_la_chi_mot_vs0301_moi_dang stdout ----
+
+thread 'gan_ten_la_chi_mot_vs0301_moi_dang' (37483150) panicked at crates/vis-types/tests/names.rs:449:9:
+assertion `left == right` failed: Permissive `x = 1
+`: phải **đúng một** VS0301, thật []
+  left: []
+ right: ["VS0301"]
+
+---- permissive_van_bao_vs0301_khi_gan_ten_la stdout ----
+
+thread 'permissive_van_bao_vs0301_khi_gan_ten_la' (37483155) panicked at crates/vis-types/tests/names.rs:343:9:
+assertion `left == right` failed: `z = 1
+` phải VS0301 ở Permissive
+  left: []
+ right: ["VS0301"]
+
+---- nhan_scope_la_khai_bao stdout ----
+
+thread 'nhan_scope_la_khai_bao' (37483154) panicked at crates/vis-types/tests/names.rs:255:56:
+index out of bounds: the len is 0 but the index is 0
+
+---- strict_bao_ca_ten_tu_do_khi_doc stdout ----
+
+thread 'strict_bao_ca_ten_tu_do_khi_doc' (37483156) panicked at crates/vis-types/tests/names.rs:361:5:
+assertion `left == right` failed: Strict: đọc `z` phải VS0301
+  left: []
+ right: ["VS0301"]
+
+---- let_ha_gia_tri_truoc_khi_khai_ten stdout ----
+
+thread 'let_ha_gia_tri_truoc_khi_khai_ten' (37483152) panicked at crates/vis-types/tests/names.rs:380:52:
+index out of bounds: the len is 0 but the index is 0
+
+---- ten_la_bao_vs0301_o_che_do_chat stdout ----
+
+thread 'ten_la_bao_vs0301_o_che_do_chat' (37483158) panicked at crates/vis-types/tests/names.rs:296:5:
+assertion `left == right` failed: Strict: `z` chưa khai ⇒ VS0301
+  left: []
+ right: ["VS0301"]
+
+---- ten_kieu_chua_khai_khong_bao_o_st11 stdout ----
+
+thread 'ten_kieu_chua_khai_khong_bao_o_st11' (37483157) panicked at crates/vis-types/tests/names.rs:307:5:
+assertion `left == right` failed
+  left: []
+ right: ["VS0301", "VS0301"]
+
+---- tham_so_thay_trong_than_ham stdout ----
+
+thread 'tham_so_thay_trong_than_ham' (37483159) panicked at crates/vis-types/tests/names.rs:110:36:
+index out of bounds: the len is 0 but the index is 0
+
+---- vs0302_let_trung_cung_khung stdout ----
+
+thread 'vs0302_let_trung_cung_khung' (37483160) panicked at crates/vis-types/tests/names.rs:45:5:
+assertion `left == right` failed: hai `let x` cùng khung phải VS0302
+  left: []
+ right: ["VS0302"]
+
+---- vs0302_tham_so_trung_va_item_trung stdout ----
+
+thread 'vs0302_tham_so_trung_va_item_trung' (37483161) panicked at crates/vis-types/tests/names.rs:63:5:
+assertion `left == right` failed: hai tham số cùng tên ⇒ VS0302
+  left: []
+ right: ["VS0302"]
+
+
+failures:
+    bong_ten_trong_khoi_hop_le_va_phan_giai_dung
+    builtin_phan_giai_duoc_o_moi_che_do
+    danh_sach_builtin_khoa_dung_8_ten
+    for_bind_if_let_match_arm_va_lambda
+    gan_cho_ten_chua_khai_bao_vs0301_mac_dinh
+    gan_ten_la_chi_mot_vs0301_moi_dang
+    ham_goi_truoc_va_sau_khai_bao
+    let_ha_gia_tri_truoc_khi_khai_ten
+    let_trong_khoi_khong_ro_ra_ngoai
+    nhan_scope_la_khai_bao
+    permissive_van_bao_vs0301_khi_gan_ten_la
+    strict_bao_ca_ten_tu_do_khi_doc
+    ten_kieu_chua_khai_khong_bao_o_st11
+    ten_la_bao_vs0301_o_che_do_chat
+    tham_so_thay_trong_than_ham
+    vs0302_let_trung_cung_khung
+    vs0302_tham_so_trung_va_item_trung
+
+test result: FAILED. 0 passed; 17 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-types --test names`
+error: 2 targets failed:
+    `-p vis-types --test hir`
+    `-p vis-types --test names`
+----- hết -----

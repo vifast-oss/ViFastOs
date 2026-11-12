@@ -88,3 +88,25 @@ fn explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung() {
     let (code, _) = vis(&["explain", "VS0101", "--lang"]);
     assert_eq!(code, 2, "thiếu giá trị --lang là lỗi dùng");
 }
+
+#[test]
+fn explain_so_ten_03xx() {
+    // ST-11 (VD-42/VD-44 #7): `vis explain` phải tra được **sổ thứ ba** (tên).
+    let (code, text) = vis(&["explain", "VS0302"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("VS0302"), "{text}");
+    assert!(text.contains("khai báo trùng"), "{text}");
+    let (code, text) = vis(&["explain", "--lang", "en", "VS0301"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("name does not exist"), "{text}");
+    // `--list` phủ cả 3 sổ; `VS0412` (sổ kiểu) chưa cấp ở ST-11 ⇒ không có trong danh sách.
+    let (code, text) = vis(&["explain", "--list"]);
+    assert_eq!(code, 0, "{text}");
+    for want in ["VS0301", "VS0302"] {
+        assert!(text.contains(want), "--list thiếu {want}: {text}");
+    }
+    assert!(!text.contains("VS0412"), "04xx chưa cấp ở ST-11: {text}");
+    // Mã của khối chưa cấp là **lỗi dùng** ⇒ exit 2.
+    let (code, _) = vis(&["explain", "VS0412"]);
+    assert_eq!(code, 2, "mã chưa cấp phải exit 2");
+}

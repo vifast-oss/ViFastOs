@@ -4,7 +4,7 @@
 //! Snapshot **20 ca** phủ 12 mã × 3 ngôn ngữ (có tiếng Việt dựng sẵn/tổ hợp và emoji trong nguồn);
 //! `message_vi` vẫn là chuẩn của SPEC-lex §7 — test `so_khop_spec_lex_that` của lib không đổi.
 
-use vis_diag::{lookup, render, severity_label, DiagLine, Lang, Severity, CODES, SYNTAX_CODES};
+use vis_diag::{all_codes, lookup, render, severity_label, DiagLine, Lang, Severity, NAME_CODES};
 
 /// 20 ca snapshot: (mã, ngôn ngữ, chuỗi đúng).
 const CASES: [(u16, Lang, &str); 20] = [
@@ -60,7 +60,8 @@ fn snapshot_20_ca_vi_en_ja() {
 
 #[test]
 fn moi_ma_du_ba_ngon_ngu() {
-    for c in CODES.iter().chain(SYNTAX_CODES.iter()) {
+    // ST-11 (VD-44 #7): phủ **cả ba** sổ đã cấp — 01xx + 02xx + 03xx.
+    for c in all_codes() {
         for lang in [Lang::Vi, Lang::En, Lang::Ja] {
             assert!(
                 !c.message(lang).is_empty(),
@@ -69,6 +70,39 @@ fn moi_ma_du_ba_ngon_ngu() {
                 lang
             );
         }
+    }
+}
+
+/// Bộ 6 snapshot cho **sổ tên** `03xx` (ST-11, VD-42/VD-44 #7): vi/en/ja cho cả 2 mã.
+#[test]
+fn snapshot_6_ca_so_ten_03xx() {
+    let cases: [(u16, Lang, &str); 6] = [
+        (301, Lang::Vi, "tên không tồn tại"),
+        (301, Lang::En, "name does not exist"),
+        (301, Lang::Ja, "名前が見つかりません"),
+        (302, Lang::Vi, "khai báo trùng trong cùng phạm vi"),
+        (302, Lang::En, "duplicate declaration in the same scope"),
+        (302, Lang::Ja, "同じスコープで重複した宣言です"),
+    ];
+    for (id, lang, want) in cases {
+        let c = lookup(id).unwrap_or_else(|| panic!("mã {id} phải có trong sổ"));
+        assert_eq!(c.message(lang), want, "{} {:?}", c.short, lang);
+    }
+    // `lookup_str` tra được mã ở sổ thứ ba; `lookup` của khối chưa cấp vẫn `None`.
+    assert_eq!(
+        vis_diag::lookup_str("vs0302").map(|c| c.id),
+        Some(302),
+        "lookup_str phải tra cả sổ 03xx"
+    );
+    for c in NAME_CODES.iter() {
+        assert_eq!(
+            lookup(c.id).map(|x| x.short),
+            Some(c.short),
+            "lookup phải tra sổ tên"
+        );
+    }
+    for id in [401u16, 501] {
+        assert!(lookup(id).is_none(), "mã {id} chưa cấp ở ST-11 (VD-44 #5)");
     }
 }
 

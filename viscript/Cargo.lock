@@ -51,3 +51,11 @@ dependencies = [
  "unicode-normalization",
  "vis-diag",
 ]
+
+[[package]]
+name = "vis-types"
+version = "0.1.0"
+dependencies = [
+ "vis-diag",
+ "vis-syntax",
+]
