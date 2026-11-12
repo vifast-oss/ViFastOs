@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""KT-04b — kiểm phần object reserved của ABI: số không trùng + `NotSupported`.
+
+Hợp đồng lấy từ thiết kế §4.21 (bảng object) và QD §1 Q-B ("object chưa cài chỉ giữ
+số reserved, method chưa cài trả NotSupported"). Viết TRƯỚC khi viết bảng reserved
+để "đỏ trước".
+
+Dùng: `python3 check_reserved.py [--file spec/abi.toml]`
+"""
+
+import sys
+
+SPDX = "SPDX-License-Identifier"
+
+# Object reserved theo đúng thứ tự thiết kế §4.21 (sau Reply), kèm method mong đợi.
+RESERVED = {
+    "VSpace": ["GetAsid", "Configure"],          # Configure = tạo VSpace khách (reserved)
+    "PageTable": ["Map", "Unmap"],
+    "Frame": ["Map", "Unmap", "GetAddress", "MapIo", "UnmapIo"],
+    "IrqControl": ["GetLine", "GetMsi"],
+    "IrqHandler": ["SetNotification", "Ack", "Clear", "SetAffinity"],
+    "IOSpace": ["Flush", "Attach"],
+    "VCpu": ["Run", "ReadRegs", "WriteRegs", "InjectIrq", "SetTsc", "Configure"],
+    "PowerControl": ["HartOffline", "HartOnline", "Suspend"],
+    "SchedControl": ["Configure"],
+}
+
+ID_FROM = 8
+ID_TO = 31
+
+fails = []
+
+
+def check(cond, msg):
+    if not cond:
+        fails.append(msg)
+
+
+def method_names(obj):
+    methods = obj.get("method", {})
+    return [v.get("name") if isinstance(v, dict) else v
+            for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]
+
+
+def main():
+    path = "spec/abi.toml"
+    args = sys.argv[1:]
+    if len(args) == 2 and args[0] == "--file":
+        path = args[1]
+
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except FileNotFoundError:
+        print(f"reserved-check: KHÔNG có {path}")
+        return 1
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        print("reserved-check: cần Python ≥3.11 (tomllib)")
+        return 2
+
+    try:
+        doc = tomllib.loads(raw.decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"reserved-check: TOML không parse được: {exc}")
+        return 1
+
+    check(SPDX.encode() in raw, "thiếu dòng SPDX-License-Identifier")
+
+    objs = doc.get("object", {})
+    core = {n: o for n, o in objs.items() if o.get("stability") == "frozen"}
+    reserved = {n: o for n, o in objs.items() if o.get("stability") == "reserved"}
+    if not objs:
+        print(f"reserved-check: {path} không có [object] nào")
+        return 1
+
+    # 1) đủ 9 object reserved theo thiết kế
+    for name in RESERVED:
+        check(name in reserved, f"thiếu object reserved {name}")
+
+    # 2) method đúng danh sách + đánh số từ 0 liền mạch
+    for name, want in RESERVED.items():
+        obj = reserved.get(name)
+        if obj is None:
+            continue
+        got = method_names(obj)
+        check(got == want, f"{name}.method sai: muốn {want}, đang {got}")
+        ids = sorted(int(k) for k in obj.get("method", {}))
+        check(ids == list(range(len(want))), f"{name}.method phải đánh số 0..{len(want)-1}, đang {ids}")
+
+    # 3) object id không trùng, nằm trong dải reserved
+    all_ids = {}
+    for name, obj in objs.items():
+        oid = obj.get("id")
+        check(isinstance(oid, int), f"{name} thiếu id số nguyên")
+        if not isinstance(oid, int):
+            continue
+        check(oid not in all_ids, f"object id {oid} trùng giữa {all_ids.get(oid)} và {name}")
+        all_ids[oid] = name
+    for name in RESERVED:
+        if name not in reserved:
+            continue
+        oid = reserved[name].get("id")
+        if isinstance(oid, int):
+            check(ID_FROM <= oid <= ID_TO, f"{name}.id={oid} ngoài dải reserved {ID_FROM}..{ID_TO}")
+
+    # 4) mọi entry reserved phải trả NotSupported
+    for name, obj in reserved.items():
+        check(obj.get("unsupported") is True, f"{name} phải có unsupported = true (trả NotSupported)")
+        for key, m in obj.get("method", {}).items():
+            if isinstance(m, dict):
+                check(m.get("unsupported") is True,
+                      f"{name}.method[{key}] ({m.get('name')}) phải unsupported = true")
+
+    # 5) nếu tệp có cả core (bản đầy đủ) thì Reply phải = 7
+    if core:
+        check(core.get("Reply", {}).get("id") == 7, "core phải giữ Reply = 7 (KT-04a)")
+
+    # 7) nếu spec/abi.toml đã có object reserved thì phải KHỚP bản draft (không âm thầm lệch)
+    import os
+    spec_path = os.path.join(os.path.dirname(path), "..", "..", "spec", "abi.toml")
+    spec_path = os.path.normpath(spec_path)
+    if os.path.exists(spec_path) and os.path.abspath(spec_path) != os.path.abspath(path):
+        try:
+            with open(spec_path, "rb") as fh:
+                import tomllib as _t
+                spec = _t.loads(fh.read().decode("utf-8"))
+            spec_res = {n: o for n, o in spec.get("object", {}).items() if o.get("stability") == "reserved"}
+            if spec_res:
+                for name, obj in reserved.items():
+                    got = spec_res.get(name)
+                    check(got is not None and got.get("id") == obj.get("id"),
+                          f"spec/abi.toml lệch draft ở {name}: spec={None if got is None else got.get('id')} draft={obj.get('id')}")
+            elif reserved:
+                print(f"# chú ý: draft có {len(reserved)} object reserved nhưng spec/abi.toml chưa hợp nhất (chờ YC-04)")
+        except Exception as exc:  # noqa: BLE001
+            print(f"# chú ý: không đọc được spec/abi.toml để so ({exc})")
+
+    # 6) dải reserved của ABI vẫn bao trùm id đã dùng
+    rng = doc.get("object_reserved", {})
+    check(rng.get("from") == ID_FROM and rng.get("to") == ID_TO, "object_reserved phải 8..31")
+
+    if fails:
+        for msg in fails:
+            print(f"not ok - {msg}")
+        print(f"# {len(fails)} mục sai trong {path}")
+        return 1
+    print(f"reserved-check: PASS ({len(reserved)} object reserved, {path})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

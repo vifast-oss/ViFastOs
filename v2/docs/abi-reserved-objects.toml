@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# v2/docs/abi-reserved-objects.toml — DRAFT cho KT-04b (object reserved: số + NotSupported).
+#
+# VÌ SAO LÀ DRAFT Ở ĐÂY MÀ KHÔNG NẰM TRONG spec/:
+# `AGENTS.md` §3/§4.1 + `v2/agent/QUEUE.md` Khối A + `docs/v2/AGENT2-PROMPT.md` §2 chỉ cho
+# **KT-04a** ghi `spec/`; KT-04b không có tên ⇒ Agent 2 KHÔNG được sửa `spec/abi.toml`
+# trong task này. Bảng dưới là đề xuất chờ Agent 0 (YC-04), kèm máy kiểm `v2/test/abi/check_reserved.py`.
+# Khi Agent 0 chấp thuận: chép nguyên khối `[object]` của tệp này vào `spec/abi.toml` (một mục D2 mới).
+#
+# Nguồn số: thiết kế §4.21 (bảng object/method), §4.10 (VSpace/PageTable/Frame), §4.11 (IRQ),
+# §4.12 (IOSpace), §4.18 (VCpu), §4.19 (PowerControl), QD §1 Q-B ("object chưa cài chỉ giữ số
+# reserved, method chưa cài trả NotSupported" = mã lỗi 18 trong spec/abi.toml).
+
+status = "REVIEW"
+
+# 9 object CHƯA cài + SchedControl (cài ở K1b). ID 8..16 theo đúng thứ tự hàng bảng §4.21
+# sau Reply (=7); 17..31 để trống cho object thêm sau này (ID không tái dùng — D2-15).
+[object]
+SchedControl = { id = 8, stability = "reserved", install_at = "K1b", unsupported = true, method = { 0 = { name = "Configure", unsupported = true } } }
+VSpace = { id = 9, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "GetAsid", unsupported = true, note = "debug" }, 1 = { name = "Configure", unsupported = true, note = "tạo VSpace khách — reserved (QD §4)" } } }
+PageTable = { id = 10, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true } } }
+Frame = { id = 11, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true }, 2 = { name = "GetAddress", unsupported = true }, 3 = { name = "MapIo", unsupported = true, note = "D3" }, 4 = { name = "UnmapIo", unsupported = true, note = "D3" } } }
+IrqControl = { id = 12, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "GetLine", unsupported = true }, 1 = { name = "GetMsi", unsupported = true, note = "D2" } } }
+IrqHandler = { id = 13, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "SetNotification", unsupported = true }, 1 = { name = "Ack", unsupported = true }, 2 = { name = "Clear", unsupported = true }, 3 = { name = "SetAffinity", unsupported = true } } }
+IOSpace = { id = 14, stability = "reserved", install_at = "D3", unsupported = true, method = { 0 = { name = "Flush", unsupported = true }, 1 = { name = "Attach", unsupported = true, note = "reserved (QD §4)" } } }
+VCpu = { id = 15, stability = "reserved", install_at = "H1", unsupported = true, method = { 0 = { name = "Run", unsupported = true }, 1 = { name = "ReadRegs", unsupported = true }, 2 = { name = "WriteRegs", unsupported = true }, 3 = { name = "InjectIrq", unsupported = true }, 4 = { name = "SetTsc", unsupported = true }, 5 = { name = "Configure", unsupported = true, note = "reserved (QD §4)" } } }
+PowerControl = { id = 16, stability = "reserved", install_at = "P1", unsupported = true, method = { 0 = { name = "HartOffline", unsupported = true }, 1 = { name = "HartOnline", unsupported = true }, 2 = { name = "Suspend", unsupported = true } } }
+
+[object_reserved]
+from = 8
+to = 31
+note = "8..16 đã cấp tên ở trên; 17..31 còn trống, chưa cấp (ID không tái dùng)"

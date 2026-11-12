@@ -120,7 +120,8 @@ def main():
     check(SPDX.encode() in raw, "thiếu dòng SPDX-License-Identifier")
 
     # --- version -------------------------------------------------------
-    check(doc.get("status") == "REVIEW", "spec chưa duyệt phải status = REVIEW (D2-22)")
+    check(doc.get("status") in ("REVIEW", "APPROVED"),
+          "status phải REVIEW (chưa duyệt) hoặc APPROVED (đã duyệt, D2-22)")
     check(isinstance(doc.get("golden"), str) and doc["golden"], "thiếu golden file (D2-15)")
     check(doc.get("abi_version") == 1, "abi_version phải = 1")
     check(doc.get("min_compat") == 1, "min_compat phải = 1")
@@ -153,6 +154,26 @@ def main():
 
     # --- object lõi ---------------------------------------------------
     objs = doc.get("object", {})
+    # --- id object/method: KHÔNG trùng, đúng dải (lỗ review #5 bắt được) ---
+    ids = {}
+    for oid_name, obj in objs.items():
+        oid = obj.get("id")
+        check(isinstance(oid, int), f"object {oid_name} thiếu id số nguyên")
+        if not isinstance(oid, int):
+            continue
+        check(1 <= oid <= 31, f"object {oid_name} id={oid} ngoài dải 1..31")
+        check(oid not in ids, f"object id {oid} trùng giữa {ids.get(oid)} và {oid_name}")
+        ids[oid] = oid_name
+    for oname, obj in objs.items():
+        mids = {}
+        for key, m in obj.get("method", {}).items():
+            mid = int(key)
+            check(0 <= mid < (1 << 20), f"{oname}.method[{mid}] vượt label 20 bit")
+            check(mid not in mids, f"{oname}.method id {mid} trùng")
+            mids[mid] = True
+            if isinstance(m, dict):
+                check(bool(m.get("name")), f"{oname}.method[{mid}] thiếu name")
+
     for name in CORE_OBJECTS:
         check(name in objs, f"thiếu object lõi {name}")
     if "Tcb" in objs:

@@ -201,6 +201,13 @@ do_check() {
             echo "--- abi spec: FAIL" >&2
             fails=$((fails + 1))
         fi
+        # KT-04b: draft object reserved (chưa được ghi spec/ — chờ YC-04)
+        if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$V2_ROOT/docs/abi-reserved-objects.toml"; then
+            echo "--- abi reserved: OK"
+        else
+            echo "--- abi reserved: FAIL" >&2
+            fails=$((fails + 1))
+        fi
     else
         echo "--- abi spec: FAIL (không có python ≥3.11 với tomllib)" >&2
         fails=$((fails + 1))

@@ -4,9 +4,9 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : 1766145
+HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-04b (bắt đầu — bước 1/8)
+Task          : KT-04c (bắt đầu — bước 1/8); KT-04b BLOCKED chờ YC-04
 Bước          : 1/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (gồm `spec/abi.toml`); boot riscv64 50/50 (KT-07)
@@ -44,7 +44,7 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 
 | Hạng mục | Hiện trạng | Dẫn chứng |
 |---|---|---|
-| `HEAD` | `1766145` `[KT-04a]` (đã push `origin/main`); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
+| `HEAD` | xem `git log -1`: KT-04a ở `1766145` (+ commit STATE `a8bb272`); KT-07 ở `bf61901`+`e01a81f` | `git log -1 --oneline` |
 | Cổng | `./v2/bin/v2 check` PASS; `gate --fast` PASS **4,1 s**; `gate`/`nightly` exit 2 | `JOURNAL/2026-11-12.md` mục KT-03 |
 | Luật | self-test **6/6** (`ok 1..6`); R1..R5 có case âm đúng mã luật | `bash v2/test/rules/run.sh` |
 | Build/test | `cargo build` xanh 3 crate; `cargo test -p vifast-fs` 52/52; clippy `-D warnings` 0 warning; fmt sạch | trong `gate --fast` |
@@ -52,19 +52,28 @@ Ghi chú: bộ **5 luật này là R1..R5** (Agent 2 chọn; không phải 6 lu�
 | `spec/` | **có** `spec/abi.toml` (KT-04a, `status = "REVIEW"`), được R3 quét | `ls spec/`, `./v2/bin/v2 check` |
 | `v2/bin/v2` | **có** (wrapper), `.gitkeep` giữ thư mục | `ls v2/bin` |
 
-## Việc đang làm — KT-04b (object reserved: số + `NotSupported`)
+## Việc đang làm — KT-04c (21 kịch bản `.scn` chỉ bằng ABI)
 
-Ngân sách 2 h. DoD (QUEUE:103): method reserved trả `NotSupported`; **số không trùng**.
+Ngân sách 3 h. DoD (QUEUE:104, D2-27): **21 tệp** `.scn`; kiểm tĩnh: mọi bước tham chiếu syscall/method/mã lỗi
+**có thật trong `spec/abi.toml`**, đủ tham số; có ca **"Exit khi procsrv chưa Recv"**.
 
-_Kế hoạch nhỏ điền ở bước 2/8 sau khi review vòng này trả kết quả._
+_Kế hoạch nhỏ điền ở bước 2/8 sau review vòng kế._
+
+## KT-04b — BLOCKED chờ YC-04 (không ghi `spec/`)
+
+- Sản phẩm hợp lệ đã làm: draft `v2/docs/abi-reserved-objects.toml` (9 object reserved + SchedControl, id 8..16,
+  `unsupported = true`) + `v2/test/abi/check_reserved.py` gắn vào `v2/bin/v2 check`.
+- **YC-04** (BLOCKED): xin Agent 0 (a) cho KT-04b ghi `spec/abi.toml`, hay (b) Agent 0 tự chép draft; kèm câu hỏi
+  "VSpace khách = object riêng hay method" và đề nghị lật `QUEUE:102/103/104`.
+- Máy kiểm đã vá 2 lỗ (trùng id, ngoài dải) + gỡ bom `status == "REVIEW"`.
 
 ## Đã xong — KT-04a (`spec/abi.toml` lõi + bảng ánh xạ)
 
 - `spec/` ở **gốc repo** (AGENTS.md §1/§4.1 — bậc cao hơn cây §8 của thiết kế): `version/abi_version/min_compat = 1`,
   `status = "REVIEW"`, `[frozen]` đủ 5 thứ, `[message]` 64 MR + 4 cap, `[message_info]` 35 bit,
   `[calling.riscv64]` lấy từ code v1 (`a7` số hiệu, `a0/a1` tham số, `a2` MessageInfo, `a3..a6` 4 MR),
-  `[object]` lõi 1..7 + `SchedControl`, `[object_reserved]` 8..31, `[error]` 19 mã, `[syscall]` 0..14, reserved 15..31.
-- Bảng ánh xạ: `v2/docs/abi-v1-v2-mapping.md` (25 crate, 58 syscall → 15 + 20 method + 23 bỏ, 22 biến thể KError → 0 + 19).
+  `[object]` lõi **1..7** (SchedControl **chưa** nằm trong `spec/` — nó ở draft reserved id 8), `[object_reserved]` 8..31, `[error]` 19 mã, `[syscall]` 0..14, reserved 15..31.
+- Bảng ánh xạ: `v2/docs/abi-v1-v2-mapping.md` (25 crate; 58 hàng = 12→9 số syscall + 27 hàng method (24 đích) + 19 bỏ; 22 biến thể KError → 0 + 19).
 - Máy kiểm: `v2/test/abi/check_abi.py` (Python ≥3.11 `tomllib`), **gắn vào `v2/bin/v2 check`** — `check` nay có 6 bước.
 - Câu hỏi mở: **YC-02** (DebugGetInfo chưa có số), **YC-03** (QD "0..13 như cũ"; cây `v2/spec/` của thiết kế §8).
 
@@ -72,6 +81,8 @@ _Kế hoạch nhỏ điền ở bước 2/8 sau khi review vòng này trả kế
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | **KT-04b** | 8/8 | — | — | `check` PASS | **BLOCKED** (YC-04): không được ghi `spec/`; draft id 8..16 + `check_reserved.py` gắn cổng; vá 2 lỗ máy kiểm (trùng id/ngoài dải), sửa 2 sai số KT-04a |
+| 2026-11-12 | KT-04b | 1–7/8 | `a8bb272` | — | — | review#5 **DRIFT** → dừng trước `spec/`, chuyển draft + YC-04; đỏ trước: 9 object reserved thiếu |
 | 2026-11-12 | **KT-04a** | 8/8 | `545f3b4` | — | `gate --fast` PASS | **DONE**: `spec/abi.toml` (REVIEW) + 3 bảng ánh xạ + `check_abi.py` gắn cổng; 4 điều kiện review #4 xử lý |
 | 2026-11-12 | KT-04a | 1–7/8 | `545f3b4` | — | — | review#4 ON-TRACK; đỏ trước `abi-check: KHÔNG có spec/abi.toml`; quy ước gọi lấy từ code v1 (4 MR) |
 | 2026-11-12 | **KT-07** | 8/8 | `c9cdc9e` | — | boot 50/50 + `gate --fast` | **DONE**: K0.5 boot riscv64 qua OpenSBI; TAP 1 test; `image 14.512 B`, `.data+.bss = 0 B` (trần 256 KiB), `.stack 64 KiB` NOLOAD báo riêng |

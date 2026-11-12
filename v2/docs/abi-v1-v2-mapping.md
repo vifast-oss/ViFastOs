@@ -111,8 +111,11 @@ Cột "v2" = số syscall mới, hoặc `Method` (invocation qua `Call` với `l
 | 56 | TcbSetArgs | **bỏ** | procsrv (`Configure` mang `pc/sp`) |
 | 57 | TcbGrantCap | `CNode.Mint`/`Move` | method |
 
-Tổng: **58 → 15 syscall + 20 method + 23 bỏ**. `DebugHalt` (13) là syscall **mới** (không có ở v1);
-`WaitAddr`/`WakeAddr` (9/10) mới (v1 dùng futex trong std shim, không qua ABI).
+Tổng (đếm lại bằng máy ở review #5 — bản cũ ghi sai "15/20/23"): **58 hàng** =
+**12 hàng ánh xạ vào syscall v2** (dùng **9** số `{0,1,3,4,5,8,11,12,14}`) +
+**27 hàng thành method** (24 đích method khác nhau) + **19 hàng bỏ**. Bảng syscall v2 có **15** số:
+9 số nhận ánh xạ từ v1 + **6 số mới** `{2 NBSend, 6 NBSendRecv, 7 NBSendWait, 9 WaitAddr, 10 WakeAddr, 13 DebugHalt}`.
+`DebugHalt` (13) là syscall **mới** (không có ở v1); `WaitAddr`/`WakeAddr` (9/10) mới (v1 dùng futex trong std shim, không qua ABI).
 Dải **15..31 reserved**. `DebugGetInfo` **chưa có số** — xem `[debug_info]` trong `spec/abi.toml`.
 
 ## 3. 22 biến thể `KError` v1 → 0 + 19 mã v2

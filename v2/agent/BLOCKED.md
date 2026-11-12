@@ -16,8 +16,8 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | Task | Chặn bởi | Cần gì để mở |
 |---|---|---|
 | ~~KT-03~~ | **đã DONE** (`3222602`, `d4d6bf2`) — Agent 0 đã lật trạng thái ở `545f3b4` | — |
-| KT-04b | KT-04a | `abi.toml` lõi parse được + bảng ánh xạ đủ |
-| KT-04c | KT-04a | như trên (21 kịch bản, D2-27) |
+| KT-04b | **quyền ghi `spec/`** (YC-04) | `abi.toml` lõi xong; KHÔNG được ghi `spec/` trong KT-04b (chỉ KT-04a) |
+| KT-04c | KT-04a (đã xong) | 21 kịch bản object lõi — **không** phụ thuộc KT-04b, làm được ngay |
 | KT-05 | KT-04a + **APPROVED KT-04d** | dòng `APPROVED <ngày> Agent 0`; gen-check chỉ bật sau duyệt |
 | ~~KT-07~~ | **đã DONE** (`bf61901`, `e01a81f`): 50/50 boot, `.data+.bss` 0 B | — |
 | KT-08 | KT-07 (đã DONE) | sim harness + store giả + scheduler tối thiểu 1 hart |
@@ -62,6 +62,20 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 2. Thiết kế §8 (dòng ~680) vẽ `v2/spec/` trong khi `AGENTS.md` §1/§4.1, `v2/AGENTS.md` §1, QUEUE (KT-04a),
    BLOCKED và `AGENT2-PROMPT` §2 đều dùng **`spec/` ở gốc**; ngay thiết kế §… cũng gọi `spec/abi.toml`.
    Agent 2 đã tạo **`spec/` ở gốc** (bậc nguồn cao hơn) và đưa vào phạm vi quét R3. Đề nghị sửa cây §8 cho khớp.
+
+
+### YC-04 — KT-04b không được ghi `spec/`; xin Agent 0 quyết (mở 2026-11-12, Agent 2)
+
+- **Quyền ghi**: 4 nguồn chỉ cho **KT-04a** ghi `spec/` (`AGENTS.md` §3 dòng 39, §4.1 dòng 48; `QUEUE.md` Khối A #1; `AGENT2-PROMPT.md` §2; D2-22). KT-04b **không** có tên ⇒ Agent 2 **không** chép số reserved vào `spec/abi.toml` trong task này (làm vậy là UNSAFE, không phải DRIFT).
+- **Đã làm thay** (sản phẩm hợp lệ): draft `v2/docs/abi-reserved-objects.toml` (`status = "REVIEW"`) + máy kiểm `v2/test/abi/check_reserved.py` gắn vào `v2/bin/v2 check` (bước "abi reserved"), tự báo khi spec chưa hợp nhất. Máy kiểm bắt: thiếu object, id trùng, id ngoài dải 8..31, method id trùng/không liền mạch, thiếu `unsupported = true`.
+- **Đề xuất số** (theo đúng thứ tự bảng thiết kế §4.21 sau Reply=7, dải 8..31 còn 24 ô nên thừa chỗ):
+  `8 SchedControl, 9 VSpace, 10 PageTable, 11 Frame, 12 IrqControl, 13 IrqHandler, 14 IOSpace, 15 VCpu, 16 PowerControl`; `17..31` để trống.
+- **Method reserved theo thiết kế**: `VCpu.Configure`, `IOSpace.Attach`, `VSpace` tạo/khách (đề xuất `VSpace.Configure`); **câu hỏi**: QD §4 ghi "VSpace **khách**" là *số reserved* còn thiết kế §4.21 ghi là *method* — Agent 0 chốt: object riêng `VSpaceGuest` (lấy ô 17) hay method `VSpace.Configure`?
+- **Xin Agent 0 chọn 1 trong 2**:
+  (a) thêm `KT-04b` vào danh sách được ghi `spec/` (sửa `AGENTS.md` §3/§4.1 + QUEUE Khối A + `AGENT2-PROMPT` §2) ⇒ Agent 2 chép draft vào `spec/abi.toml`; **hoặc**
+  (b) Agent 0 tự chép draft vào `spec/abi.toml` (một mục D2 mới) và đánh dấu KT-04b DONE.
+- **Xin lật sổ**: `QUEUE:102` KT-04a = **DONE**, `QUEUE:103` KT-04b = **BLOCKED** (chờ YC-04), `QUEUE:104` KT-04c = **READY** (độc lập với reserved).
+- **Cảnh báo cho KT-04d**: sau dòng `APPROVED`, `spec/abi.toml` phải đổi `status = "REVIEW"` → `"APPROVED"` trong **cùng** cửa sổ; `v2/test/abi/check_abi.py` nay chấp nhận cả hai (tránh cổng đỏ ngay sau duyệt).
 
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
