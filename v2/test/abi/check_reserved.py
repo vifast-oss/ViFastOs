@@ -76,7 +76,7 @@ def main():
         print(f"reserved-check: {path} không có [object] nào")
         return 1
 
-    # 1) đủ 9 object reserved theo thiết kế
+    # 1) đủ 8 object reserved (9..16) theo thiết kế
     for name in RESERVED:
         check(name in reserved, f"thiếu object reserved {name}")
 

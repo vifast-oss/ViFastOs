@@ -243,6 +243,9 @@ cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
+    agentctl)
+        exec "$CARGO" run -q --manifest-path "$V2_ROOT/Cargo.toml" -p vifast-agentctl -- "$@"
+        ;;
     check) do_check ;;
     gate)
         if [ "${1:-}" = "--fast" ]; then

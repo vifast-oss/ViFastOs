@@ -124,6 +124,14 @@ Danh sách trên đã dọn theo trạng thái thật ngày 2026-11-12: KT-03/KT
 - Chờ **một dòng** `APPROVED <ngày> Agent 0` trong `v2/agent/QUEUE.md`; dòng đó mở **KT-05**. Agent 2 **không** ghi APPROVED.
 - Còn mở đúng **một** câu hỏi kỹ thuật: **YC-06** (phạm vi T26).
 
+
+### YC-11 — Sổ và `spec/` cần Agent 0 xử lý (mở 2026-11-12 sau review #10, Agent 2)
+
+1. **Lật trạng thái**: `QUEUE:105` `KT-04c` vẫn `READY` dù đã DONE `5454834`; `QUEUE:150` vẫn liệt `KT-04b/04c` là READY. `agentctl next` vì thế trả `KT-04c` thay vì `KT-06`/`KT-08`.
+2. **`QUEUE` Khối A bước 7** bảo chạy `` `vifast-agentctl done <id>` `` — đây là lệnh **ghi** QUEUE, trái `AGENTS.md` §3 (sổ thuộc Agent 0). Đề nghị: bỏ khỏi bước 7, hoặc ghi rõ agentctl là đường ghi được phép và ai chạy.
+3. **Comment `spec/abi.toml` còn cũ** (`:8` "0..13 + 14 Exit", `:24` "0..14", `:105` "15 syscall", `:139` "Reserved 8..31"). Agent 2 **đã revert** bản sửa (không có quyền sửa `spec/` ngoài D2-29/D2-32); đề nghị Agent 0 commit phần comment trong cùng cửa sổ APPROVED.
+4. **D2-21 chưa có máy kiểm**: không có `deny.toml`/`cargo-deny` trong repo — hiện chỉ dựa vào việc "không có `[dependencies]`".
+
 Không có câu hỏi mở nào khác tại thời điểm này. Khi phát sinh: ghi ở đây kèm dẫn chứng (`tệp:dòng`), đề xuất cụ thể, và task kế sẽ làm thay.
 
 ## 4. Dòng ViScript **không** bị chặn bởi mục 1–2

@@ -4,7 +4,7 @@
 use std::fs;
 use std::process::ExitCode;
 
-use vifast_agentctl::{parse_queue, report_json, Error, PROJECTS};
+use vifast_agentctl::{parse_queue, report_json, startable, Error, PROJECTS};
 
 fn queue_path(project: &str, root: &str) -> Result<String, Error> {
     if !PROJECTS.contains(&project) {
@@ -100,12 +100,19 @@ fn main() -> ExitCode {
                 return usage();
             };
             match queue.find(id) {
-                Some(t) => {
+                Some(t) if startable(t) => {
                     println!(
                         "bắt đầu {} ({}, {}). Bước tiếp: đọc STATE, mở review, viết test đỏ trước.",
                         t.id, t.status, t.budget
                     );
                     ExitCode::SUCCESS
+                }
+                Some(t) => {
+                    eprintln!(
+                        "agentctl: {} đang {} — chỉ start task READY (AGENTS.md §10)",
+                        t.id, t.status
+                    );
+                    ExitCode::from(2)
                 }
                 None => {
                     eprintln!("agentctl: {}", Error::UnknownTask(id.clone()));
@@ -120,6 +127,13 @@ fn main() -> ExitCode {
             if !write {
                 eprintln!("agentctl: cần --write (sổ QUEUE thuộc Agent 0 — AGENTS.md §3)");
                 return ExitCode::from(2);
+            }
+            if cmd == "block" {
+                if positional.len() < 2 {
+                    eprintln!("agentctl: block cần lý do: block <id> <lý do>");
+                    return ExitCode::from(2);
+                }
+                eprintln!("lý do ghi kèm: {}", positional[1]);
             }
             let status = if cmd == "done" { "DONE" } else { "BLOCKED" };
             match queue.set_status(&text, id, status) {

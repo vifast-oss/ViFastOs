@@ -11,6 +11,15 @@ use std::fmt;
 pub const PROJECTS: [&str; 2] = ["v2", "viscript"];
 const STATUSES: [&str; 4] = ["READY", "BLOCKED", "REVIEW", "DONE"];
 
+/// Chuẩn hoá ô trạng thái: bỏ backtick/`*` (sổ thật có `**DONE**`) và viết hoa.
+pub fn norm_status(cell: &str) -> String {
+    cell.trim()
+        .trim_matches('`')
+        .trim_matches('*')
+        .trim()
+        .to_uppercase()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Task {
     pub id: String,
@@ -78,7 +87,7 @@ pub fn parse_queue(path: &str, text: &str) -> Queue {
     let mut tasks = Vec::new();
     for line in text.lines() {
         let trimmed = line.trim_start();
-        if !trimmed.starts_with("| KT-") {
+        if !(trimmed.starts_with("| KT-") || trimmed.starts_with("| ST-")) {
             continue;
         }
         let cells = split_row(trimmed);
@@ -90,7 +99,7 @@ pub fn parse_queue(path: &str, text: &str) -> Queue {
             desc: cells[1].clone(),
             deps: cells[2].clone(),
             budget: cells[3].clone(),
-            status: cells[4].clone(),
+            status: norm_status(&cells[4]),
             dod: cells[5].clone(),
         });
     }
@@ -98,6 +107,11 @@ pub fn parse_queue(path: &str, text: &str) -> Queue {
         path: path.to_string(),
         tasks,
     }
+}
+
+/// `start` chỉ hợp lệ cho task đang READY (không đẩy agent vào task REVIEW/BLOCKED/DONE).
+pub fn startable(task: &Task) -> bool {
+    task.status == "READY"
 }
 
 impl Queue {
@@ -157,13 +171,11 @@ impl Queue {
         let mut changed = false;
         for line in text.lines() {
             let trimmed = line.trim_start();
-            if trimmed.starts_with(&format!("| {id} ")) || trimmed.starts_with(&format!("| {id} |"))
-            {
-                let mut cells = split_row(trimmed);
-                if cells.len() >= 6 {
-                    cells[4] = status.to_string();
-                    let rebuilt = format!("| {} |", cells.join(" | "));
-                    out.push_str(&rebuilt);
+            let is_row = trimmed.starts_with(&format!("| {id} "))
+                || trimmed.starts_with(&format!("| {id} |"));
+            if !changed && is_row {
+                if let Some(new_line) = replace_cell(trimmed, 4, status) {
+                    out.push_str(&new_line);
                     out.push('\n');
                     changed = true;
                     continue;
@@ -177,6 +189,35 @@ impl Queue {
         }
         Ok(out)
     }
+}
+
+/// Thay nội dung ô `idx` (0-based, không tính dấu `|` bao ngoài) trên **dòng gốc**,
+/// giữ nguyên mọi byte khác — kể cả escape `\|` trong ô khác.
+pub fn replace_cell(line: &str, idx: usize, value: &str) -> Option<String> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut seps = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' {
+            i += 2;
+            continue;
+        }
+        if chars[i] == '|' {
+            seps.push(i);
+        }
+        i += 1;
+    }
+    if seps.len() < idx + 2 {
+        return None;
+    }
+    let start = seps[idx] + 1;
+    let end = seps[idx + 1];
+    let mut out: String = chars[..start].iter().collect();
+    out.push(' ');
+    out.push_str(value);
+    out.push(' ');
+    out.extend(chars[end..].iter());
+    Some(out)
 }
 
 /// `KT-04a,b,c` → `[KT-04a, KT-04b, KT-04c]`; `KT-02, KT-03` → tách theo dấu phẩy/`+`.
@@ -337,6 +378,50 @@ mod tests {
         let cells = split_row("| KT-06 | `x` `v2\\|viscript` | KT-02 | 2 h | READY | y |");
         assert_eq!(cells[1], "`x` `v2|viscript`");
         assert_eq!(cells.len(), 6);
+    }
+
+    #[test]
+    fn so_that_v2_va_viscript_deu_doc_duoc() {
+        let v2 = std::fs::read_to_string("../../agent/QUEUE.md").expect("v2 QUEUE");
+        let q = parse_queue("v2/agent/QUEUE.md", &v2);
+        assert!(
+            q.tasks.len() >= 17,
+            "v2 phải có >=17 task, đang {}",
+            q.tasks.len()
+        );
+        let st =
+            std::fs::read_to_string("../../../viscript/agent/QUEUE.md").expect("viscript QUEUE");
+        let qs = parse_queue("viscript/agent/QUEUE.md", &st);
+        assert!(!qs.tasks.is_empty(), "viscript phải có task ST-, đang 0");
+        assert!(qs.tasks.iter().any(|t| t.id.starts_with("ST-")));
+    }
+
+    #[test]
+    fn trang_thai_in_dam_van_doc_duoc() {
+        let text = "| ST-01 | x | — | 1 h | **DONE** | y |\n";
+        let q = parse_queue("q", text);
+        assert_eq!(q.tasks[0].status, "DONE");
+        assert_eq!(q.by_status("DONE").len(), 1);
+    }
+
+    #[test]
+    fn set_status_giu_escape_va_khong_lech_cot() {
+        let text = "| KT-06 | `x` `v2\\|viscript` | KT-02 | 2 h | READY | y |\n";
+        let q = parse_queue("q", text);
+        let out = q.set_status(text, "KT-06", "DONE").expect("đổi được");
+        assert!(out.contains("`v2\\|viscript`"), "mất escape: {out}");
+        let again = parse_queue("q", &out);
+        assert_eq!(again.tasks.len(), 1);
+        assert_eq!(again.tasks[0].status, "DONE");
+        assert_eq!(again.tasks[0].deps, "KT-02");
+    }
+
+    #[test]
+    fn start_chi_cho_ready() {
+        let q = parse_queue("q", Q);
+        assert!(startable(q.find("KT-02").unwrap()));
+        assert!(!startable(q.find("KT-04d").unwrap()));
+        assert!(!startable(q.find("KT-03").unwrap()));
     }
 
     #[test]
