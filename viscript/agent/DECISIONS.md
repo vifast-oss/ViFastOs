@@ -380,3 +380,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   **dùng ngữ nghĩa có sẵn** (so sánh cấu trúc, `show`, `json.encode`) — **chưa** sinh phương thức riêng (nợ VS1b).
   (5) `self` **theo giá trị**; `&self`/`&mut self` = **nợ VS1**. (6) Mồ côi (§5.4) **mới kiểm trong một tệp**;
   siêu trait chưa kiểm — nợ VS1b.
+
+- **VD-63** **`vis test` + SHA-256 + đồng bộ chẩn đoán (ST-30/30b)**: (1) **SHA-256 thật** (`sha2 0.10`, MIT OR
+  Apache-2.0 — duyệt allowlist theo QD §9.3) **thay** FNV-1a×4 cho **hash nguồn `VBC1`** và **`cache::khoa_multi`** —
+  gỡ nợ VD-54 (1); vẫn 32 byte, **không** bump version; cache cũ tự miss; nạp **luôn** qua `load_verified`.
+  (2) `vis test [--vm] [thư mục|tệp]` in **TAP** (`1..N`, `ok/not ok`, `# <tệp>:<dòng>:<cột>: <mã> <thông điệp>`),
+  exit **0/1/2**; `--vm` **so đúng mã** như interp, ca cần **host chương trình ngoài** ⇒ **`ok … # SKIP`** đúng TAP
+  (không giả xanh). (3) **Hai đường phải cho CÙNG danh sách chẩn đoán** — differential so **đủ** `(mã, dòng, cột,
+  thông điệp)`, không chỉ phần tử đầu (lỗ hổng cũ: bỏ 100% ca `.err`); sửa **bên sai** (VM `index` ⇒ `VS0503` +
+  câu interp, thêm `Bytes`, thông điệp đệ quy sâu; interp "tên …") ⇒ **312/312 khớp, 0 lệch**; ca khoá
+  `hai_duong_cung_so_chan_doan`. (4) **26 ca bỏ qua** = ca **lỗi biên dịch** (hai đường chung front end) — muốn so
+  chúng cần harness riêng cho chẩn đoán biên dịch (**nợ**).

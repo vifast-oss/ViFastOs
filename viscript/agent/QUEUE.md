@@ -118,8 +118,9 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **DONE** | chạy `ls`/`echo` thật; quyền tối thiểu |
 | ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | **DONE** | ≥ 40 ca; differential vẫn 0 lệch |
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **DONE** | ≥ 30 ca |
-| ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | **READY** | `sha2` duyệt allowlist; thay FNV |
-| ST-31 | báo cáo **R4** | ST-25..ST-30 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
+| ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | **DONE** | `sha2` duyệt allowlist; thay FNV |
+| ST-30b | đồng bộ chẩn đoán interp↔VM + siết differential (so đủ) | ST-30 | 2 h | **DONE** | 312/312 khớp, 0 lệch |
+| ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **READY** | MD+JSON, số liệu tái lập | MD+JSON, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | **DONE** | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
@@ -412,6 +413,18 @@ APPROVED 2026-11-13 Agent 0
 > **Sự cố của tôi (Agent 0)**: commit `520c2fe` (thông điệp `[ST-29]`) đã **cuốn theo 3 tệp đầu của ST-30** (`sha2`
 > + hash SHA-256) — cây vẫn xanh, không mất gì, không rewrite lịch sử; đã yêu cầu Agent 2 ghi rõ trong `[ST-30]`.
 > **ST-30 mở** (`sha2` + `vis test`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-30 DONE** — `02b97ad`: **`vis test [--vm] [đường dẫn]`** (TAP `1..338`, exit 0/1/2, tự tìm `test/sem`,
+> quy ước `.out`/`.err`) + **SHA-256 thật** (`sha2 0.10` — duyệt allowlist, **gỡ nợ VD-54 (1)**: hash nguồn VBC1 **và**
+> `cache::khoa_multi`, cache cũ tự miss, nạp vẫn qua `load_verified`; vector FIPS khoá trong test). **435** test.
+> **ST-30b DONE** — `e11efae`: **đồng bộ chẩn đoán hai đường** (VM `index` ⇒ `VS0503` + **đúng câu** interp, thêm nhánh
+> `Bytes`, thông điệp đệ quy sâu; interp "tên …" thay "hàm …"); **differential so ĐỦ** `(mã,dòng,cột,thông điệp)` trên
+> 338 ca ⇒ **312/312 khớp, 0 lệch** (26 ca bỏ qua là **lỗi biên dịch** — nợ); `vis test --vm` **so đúng mã** (không nới),
+> **6 SKIP** đúng TAP cho ca cần host. **436** test. Sự cố `520c2fe` (3 tệp ST-30 lỡ nằm trong commit ST-29) do **tôi**
+> gây ra, đã ghi trong commit/JOURNAL — không rewrite lịch sử.
+> **ST-31 mở** (R4 — chốt VS1b).
 
 ## Ghi chú vận hành
 
