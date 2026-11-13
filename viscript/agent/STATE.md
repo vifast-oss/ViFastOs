@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-54** (`CODEGEN_TIN_TYCK` 21 → **0**) — xong, **chưa commit**.
-Bước          : 5/5 (đo HIR → `compile_kiem` + `ChanDoan` → CLI/`diag_cmp` → 12 ca → gate)
+Task          : **ST-55** (báo cáo **R9**, chốt **VSH2** + kế hoạch **VS2**) — xong, **chưa commit**.
+Bước          : 5/5 (đo lại → R9 `.md/.json/.json.license` + bảng VS2 → `report-check --all` PASS → gate → STATE/JOURNAL)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T17:03:53Z**; **730** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
-Việc dở       : commit `[ST-54]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T17:17:57Z** (đo lại sau khi ghi báo cáo); **730** test / sem **370** / `vis test` **370 ok** / parity **344/344** / differential 100k **0 lệch** / **`CODEGEN_TIN_TYCK = 0`** / allowlist **6**; `nightly` **PASS** `2026-11-13T17:13:27Z`
+Việc dở       : commit `[ST-55]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,18 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-54 — codegen từ chối HIR lỗi (2026-11-14)
+## ST-55 — báo cáo R9 (chốt VSH2 + kế hoạch VS2), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **R9** | `agent/reports/R9-viscript.{md,json,json.license}` — **11 khoá**, `round=9`, `head=8c8c36a`; `report-check --all` **PASS** (9 báo cáo, 61 hàng QUEUE) |
+| 2 | **Số liệu** | **730** test (21+96+18+143+24+**62**+9+**357**); sem **370/18**; `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**; parity **344/344**; differential **100k/0 lệch** (213,2 s, seed 3523158054); fuzz 1 phút **2.996.353 ca/0 vi phạm**; `VBC1` **53**; **7 sổ/29 mã**; **`CODEGEN_TIN_TYCK = 0`**; ấm **11,12/11,27/11,17 ms**; allowlist **6** |
+| 3 | **Bảng vòng 9** | ST-53 `d68eb16`, ST-54 `4627fbb`, ST-55 (commit này); VD-86..VD-88 mỗi cái một dòng |
+| 4 | **§19 + VS2** | bảng **8 hạng mục VS2** (async, kênh, net/http, Landlock thật, LSP, gói+registry, host windows/wasm, hợp chuẩn 4 nền) — mỗi mục **tiêu chí đo được + ước lượng**; nói rõ **ViScript chưa hoàn thiện toàn bộ** |
+| 5 | **Lỗ hổng** | **đóng** 3 (`to json`, hợp nhất comparator, `CODEGEN_TIN_TYCK = 0`); **còn** **10 nợ có chủ đích** + **VS2** |
+| 6 | **Đề xuất** | AGENTS §8 (câu R9), `viscript/AGENTS.md`, QUEUE vòng 10: ST-56 nợ lõi (tách ≤3 h), ST-57 miếng VS2 đầu (async+kênh), ST-58 R10 |
+
+ (2026-11-14)
 
 | # | Việc | Kết quả |
 |---|---|---|
