@@ -597,3 +597,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (4) **Hai mã field-access khác nhau đang tồn tại**: closure tường minh ⇒ **`VS0403`** (tyck), viết tắt `it` ⇒
   **`VS0605`** (hạ) — **cả hai đều đỏ**; **thống nhất** thành một mã ⇒ task riêng (nợ). (5) R1 (>1.500 dòng) ⇒ tách
   `lower/sugar.rs`, không nới ngưỡng.
+
+- **VD-80** **`ls --long` + nhóm-đối-số (ST-46)**: (1) `ls --long` ⇒ **`list[FileEntryLong]`** (`name,size,modified,is_file,
+  mode,modified_time`) — **bản ghi riêng**, prelude `FileEntry` **không đổi**; `mode: u32` trong `MucFs` (**0 ⇒ `-`**),
+  `modified_time` = **UTC `YYYY-MM-DD HH:MM`** (civil-from-days, **không** thêm crate). (2) **Nhóm là đối số** = biểu
+  thức (`take ( 1 + 1 )`), **bỏ `VS0603`** cho trường hợp này, sai kiểu ⇒ `VS0412`; nhóm **rỗng** vẫn là **lời gọi
+  0 đối số**; shell-let (VD-78(5)) **không** đổi. (3) **Chẩn đoán tuyệt đối** trong `( … )` bằng **đệm dấu cách**
+  (không `\n` ⇒ không sinh `Indent`/`Dedent` giả). (4) Nợ: **nhóm-lệnh có cờ** (`( ls … --long )`), nhóm **nhiều dòng**,
+  `where ( x => x )` kiểm **động** (tyck chưa kiểm call `where`).
