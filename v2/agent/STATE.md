@@ -6,13 +6,67 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-33 (đóng C3 12/12 + Miri `kt25_ipc2`, siết driver) — REVIEW (đề xuất DONE; commit `[KT-33]`, hash xem `git log -1`); KT-32 REVIEW (đề xuất DONE, D2-62); KT-31 DONE một phần (D2-61, 83df94a); KT-30 DONE (29718a6)
-Bước          : 6/6 (baseline → 12 mutation → Miri all → siết driver + 10k×4 → gate → report/commit)
+Task          : KT-34 (đóng C2 cuối K1c: cap Reply active + bất biến + 100k×4) — REVIEW (đề xuất DONE; commit `[KT-34]`, hash xem `git log -1`); KT-33 DONE (461 test, C3 12/12, Miri 300); KT-32 DONE; KT-31 DONE một phần (D2-61, 83df94a)
+Bước          : 6/6 (baseline → test đỏ → code+test → 10k×4 → gate → Miri → 100k×4 → report/commit)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test/62 suite**, L1 1.000 seed **653 ms**, fmt/clippy `-D warnings` sạch, gen-check ON, driver `l1_k1c` (bản siết) trong L0 **13,37 s**; wall **221,41 s** (**wall host**, không phải ngưỡng: QD §5.2 đặt 60 s cho L1 1.000 seed = **653 ms** ⇒ đạt; baseline cùng ngày 223,87 s; không nới ngưỡng/không retry) (`JOURNAL/kt33-gate-fast.log`). **KT-33**: 12/12 mutation (`kt33-mutation.log`), Miri all **19 tập/300 test/4141,74 s** có `kt25_ipc2` 24 test (`kt33-miri-all.log`), 10k×4 PASS **658,60 s** 40.000 lượt (`kt33-l1-10k.log`), baseline gate 223,87 s (`kt33-baseline-gate-fast.log`). KT-32: 100k×4 **6596,88 s** `ipc_sent` 5.786.297 (`kt32-l1-100k-mixed.log`); 10k×4 503,02 s; 1k×4 62,54 s.
-Miri          : `./v2/bin/v2 nightly --only-miri` — **PASS 300 test / 19 tập**, wall **4141,74 s** (`JOURNAL/kt33-miri-all.log`), **có `kt25_ipc2` 24/24 (89,28 s)**; K1c trong Miri **128 test** (kt24 13, kt25 24, kt26 24, kt27 26, kt28 12, kt29 13, sync 16). **Đã đóng nợ D2-61** (danh sách `--only-miri` trong `v2/bin/v2` có `kt25_ipc2`; KT-31 trước đó 276 test/thiếu kt25).
-Việc dở       : **KT-33 REVIEW** — chờ Agent 0 lật; **C3 ĐÃ ĐÓNG 12/12** (§3b K1C-DOD), **Miri #3 ĐÃ ĐẠT** (§4b), **2 nợ driver đã đóng** (§2c: `ipc_sent>1`, `ipc_delivered>0`, panic `kiem` kèm seed/smp). **K1c giữ REVIEW — CHƯA DONE** (C1 ĐẠT §2b, C3 ĐẠT 12/12, C4 ĐẠT theo định nghĩa, Miri ĐẠT; **C2 CHỈ ĐẠT MỘT PHẦN — nợ Reply cap reuse có thể ghi đè `caller`; KT-34 đóng C2**). Nợ còn mở thuộc phase sau: **model-only** (sim 1 luồng, không kernel/QEMU), **K2** (VM/Frame/ASID/TLB), **K3** (D2-56..60). Không claim C2.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 468 test/62 suite** (461 + 5 `kt25_ipc2` + 1 `kt27_notification` + 1 `kt28_waitaddr`), L1 1.000 seed **275 ms**, fmt/clippy `-D warnings` sạch, gen-check ON; wall **239,32 s** là **wall host** (không phải ngưỡng: QD §5.2 đặt 60 s cho L1 1.000 seed = **275 ms** ⇒ đạt; baseline cùng ngày 236,86 s; không nới ngưỡng/không retry) (`JOURNAL/kt34-gate-fast.log`). **KT-34**: 10k×4 PASS **661 s** (`kt34-l1-10k.log`), 100k×4 PASS **6306,38 s (105m06,38)** (`kt34-l1-100k.log`), Miri 3 tập ảnh hưởng PASS (`kt34-miri-kt25/27/28.log`), test đỏ trước `kt34-red-reply-reuse.log`. Baseline KT-34: gate PASS 461 test, wall 236,86 s (`kt34-baseline-gate-fast.log`).
+Miri          : KT-34 — **PASS 3 tập ảnh hưởng**: `kt25_ipc2` **29** test (111,28 s; wall 3m51), `kt27_notification` **27** test (66,02 s; wall 2m13), `kt28_waitaddr` **13** test (115,91 s; wall 3m49). KT-33 (lịch sử): `nightly --only-miri` 19 tập/**300 test**, 0 failed, 4141,74 s.
+Việc dở       : **KT-34 REVIEW — chờ Agent 0 lật**; reviewer độc lập `reviewer-kt34`: **APPROVE code** (Call/Recv thường không bị chặn; kt22 1→3 Reply hợp lý one-shot; .scn 04/05/07/08 + KT-21/23/26 xanh; vị trí kiểm đúng). **C2 ĐÃ ĐÓNG (ĐẠT) — §2d/§7 K1C-DOD**; **K1c DONE (đề xuất)**: C1/C2/C3/C4 + Miri + gate ĐẠT, nợ còn lại là **model-only / K2 / K3** (K1C-DOD §9.1/§9.3/§9.4) — không thuộc K1c. Không tự lật QUEUE.
 ```
+
+## KT-34 — đóng **C2** cuối K1c: cap `Reply` đang active, bất biến liên kết Reply, 100k×4 (D2-63)
+
+**Vào**: READY (D2-63) · HEAD `43c2e3c` · `git rev-list --count HEAD..origin/main` = 0 · baseline
+`gate --fast` **PASS 461 test/62 suite**, L1 **38.973 ms** (máy tải; các gate trước 611–747 ms), wall **236,86 s**
+([`JOURNAL/kt34-baseline-gate-fast.log`](JOURNAL/kt34-baseline-gate-fast.log)).
+
+**Mục tiêu** (D2-63): (1) `recv`/`call` **từ chối** cap `Reply` đang `caller=Some` (**trước** khi
+đổi state/nhận message) — **không** ghi đè caller làm TCB cũ `BlockedOnReply` mất đường Reply;
+(2) bất biến C2 `BlockedOnReply ⇔ Reply.caller == Some(tcb)` sau **mỗi** public op; (3) test + fuzz
+property (Signal/WakeAddr sau khi xếp hàng **phải** đánh thức, mọi thứ tự bước); (4) 10k×4 rồi
+**100k×4**; (5) gate + Miri các test ảnh hưởng; (6) report C2 ĐẠT + đề xuất K1c DONE.
+
+**Không** làm: sửa semantics ngoài phạm vi C2, `spec/`/`.scn`/`vifast-model`/QUEUE/DECISIONS/
+AGENTS/`viscript/`; không dependency/`unsafe`/`#[ignore]`/`#[allow]` mới; không nới seed/ngưỡng;
+không dùng lại cap Reply active trong driver; không "sửa test cho xanh".
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`JOURNAL/kt34-red-reply-reuse.log`](JOURNAL/kt34-red-reply-reuse.log) —
+  trên code cũ `Recv` lần hai với cap `Reply` đang active **thành công**, `left: Ok(())` vs
+  `right: Err(Busy)` ⇒ đúng lỗi model (ghi đè caller), không phải test-only.
+- **Sửa** (`v2/sim/vifast-sim/src/kobj.rs`, model-only `[TK]`, ABI/`spec/` **không đổi**): `recv`
+  trả `Busy` khi Reply cap đang `caller=Some` (**trước** `reset_ipc_error`, trước pop/đổi trạng
+  thái); `call_msg` lớp 2 (Reply cap của waiter đã bind **qua cap khác** cùng object) **trước**
+  `admit_message`; `reply_recv`/`nb_send_recv` kiểm Reply **mới** trước khi gửi reply (ngoại lệ
+  `recv_reply == reply`); **`check_reply_links()`** trong `sched_after_op` sau **mỗi** op; cổng
+  `transition_tcb` giữ liên kết (vào bind, rời gỡ, ghi đè ⇒ `IllegalOperation`).
+- **Test**: `kt25_ipc2` **+5** (Busy + caller cũ giữ nguyên + Reply đúng ⇒ `Ready` + cap dùng lại
+  được; lớp 2 qua cap khác; cổng transition bind/gỡ/từ chối ghi đè; `Call` **trước** `Recv` đầu
+  vẫn hợp lệ; `ReplyRecv` Reply mới ⇒ Busy trước khi gửi + dùng lại chính Reply hợp lệ);
+  `kt27_notification` **+1** + `kt28_waitaddr` **+1** property **6/6 hoán vị** (C2 hai chiều);
+  `kt22_mailbox` đổi rig 1 → **3 Reply riêng** (3 `Recv` cần 3 Reply chưa bind — one-shot; kỳ
+  vọng FIFO giữ nguyên); driver `l1_k1c` chỉ cấp Reply **rảnh** + `check_reply_links` mỗi op.
+- **10k×4 PASS**: 40.000 lượt, **661 s**, `ipc_sent` 144.977/144.871/144.552/145.056; `delivered`
+  27.845/28.155/28.177/28.404; `sent>1` mọi lượt, `delivered>0` mọi smp
+  ([`JOURNAL/kt34-l1-10k.log`](JOURNAL/kt34-l1-10k.log)).
+- **100k×4 PASS**: 400.000 lượt, `ipc_sent` **5.786.296**, `ipc_delivered` 1.123.598, `ipc_dropped` 3.748.173, wall **6306,38 s (105m06,38)**, cùng seed ⇒ cùng trace, `sent>1` mọi lượt, `delivered>0` mọi smp, **0 panic/0 vi phạm `check_reply_links`** ([`JOURNAL/kt34-l1-100k.log`](JOURNAL/kt34-l1-100k.log))
+- **Gate cuối PASS 468 test/62 suite**, L1 **275 ms**, wall **239,32 s** (wall host)
+  ([`JOURNAL/kt34-gate-fast.log`](JOURNAL/kt34-gate-fast.log)).
+- **Miri 3 tập ảnh hưởng PASS**: `kt25_ipc2` 29/111,28 s, `kt27_notification` 27/66,02 s,
+  `kt28_waitaddr` 13/115,91 s — 0 failed ([`JOURNAL/kt34-miri-kt25.log`](JOURNAL/kt34-miri-kt25.log),
+  [`-kt27`](JOURNAL/kt34-miri-kt27.log), [`-kt28`](JOURNAL/kt34-miri-kt28.log)).
+- **Docs**: [`v2/docs/k1c-ipc-semantics.md`](../docs/k1c-ipc-semantics.md) **§15** — quy tắc cap
+  `Reply` đang active (`Busy` **model-only**, không đổi ABI), bất biến, bằng chứng, giới hạn.
+- **Review độc lập**: `reviewer-kt34` **APPROVE code** — "normal Call/Recv không bị chặn (Recv đầu
+  thấy caller=None; chỉ cap đang active mới `Busy`); kt22 1→3 Reply hợp lý one-shot, không phải
+  sửa test cho xanh; `.scn` 04/05/07/08 + KT-21/23/26 xanh; vị trí kiểm đúng".
+
+**Đề xuất**: **KT-34 DONE**; **K1c DONE (đề xuất)** — C1/C2/C3/C4 + Miri + gate ĐẠT; nợ **model-only
+/ K2 / K3** vẫn mở nhưng **không thuộc K1c** (K1C-DOD §9.1/§9.3/§9.4). Không tự lật QUEUE.
+
+**Commit**: `[KT-34]` (hash xem `git log -1`; chỉ stage `v2/`, `viscript/` không chạm).
+
+**Trạng thái**: **REVIEW** — chờ Agent 0 lật (không tự DONE).
 
 ## KT-33 — đóng 2 nợ cuối K1c: **C3 12/12** + Miri `kt25_ipc2` + siết driver (D2-61/62)
 

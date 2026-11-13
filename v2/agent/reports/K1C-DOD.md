@@ -2,8 +2,9 @@
 # K1C-DOD — bằng chứng cổng cuối phase K1c (KT-31)
 
 Người ghi: **Agent 2 dòng OS** · Ngày: 2026-11-13; **cập nhật 2026-11-14 (KT-32 §2b/§2c, KT-33
-§3b/§4b)** · Task: **KT-31** (cổng cuối K1c) + KT-33 (đóng nợ C3/Miri) ·
-HEAD khi mở task: `0d026bd`; HEAD khi KT-33 mở: `16eb801` · Nhánh `main`.
+§3b/§4b, KT-34 §2d/§4c/§5c — đóng C2)** · Task: **KT-31** (cổng cuối K1c) + KT-33 (C3/Miri) +
+**KT-34 (C2: cap Reply active)** · HEAD khi mở task: `0d026bd`; HEAD khi KT-33 mở: `16eb801`;
+HEAD khi KT-34 mở: `43c2e3c` · Nhánh `main`.
 
 **Phạm vi**: chỉ **chạy cổng, thu log, đối chiếu DoD**. Không sửa semantics IPC/Notification/
 WaitAddr/Fault/Exit/SMP/sync, không sửa `spec/`/`vifast-model`/`.scn`/QUEUE/DECISIONS/AGENTS/
@@ -24,8 +25,15 @@ sách đột biến), `v2/agent/DECISIONS.md` D2-53..D2-60, `v2/agent/STATE.md`.
 | 5 | Bảng DoD K1c (file này) | **Đã lập** — §7/§8 dưới đây | `v2/agent/reports/K1C-DOD.md` |
 | 6 | Parity 10k (hồi quy, Q12) | **PASS** — `kt11_diff_model_va_sim_10000_seed` 10.000 seed × 24 op, 15,52 s | `JOURNAL/kt31-parity-10k.log` |
 | 7 | **KT-33**: siết driver (`ipc_sent>1` + `ipc_delivered>0` + panic `kiem` kèm `seed/smp`) + 10k×4 + gate | **PASS** — xem §2c/§5b: 10k×4 **40.000 lượt**, `sent>1` từng lượt, gate **461 test** | `JOURNAL/kt33-l1-10k.log`, `JOURNAL/kt33-gate-fast.log` |
+| 8 | **KT-34**: từ chối cap `Reply` đang active (`Busy`) + bất biến `check_reply_links` + property C2 mọi thứ tự + 10k×4/100k×4 | **PASS** — §2d: 10k×4 **661 s**, 100k×4 **6306,38 s (105m06)**, 0 panic/0 vi phạm; test đỏ trước `JOURNAL/kt34-red-reply-reuse.log` | `JOURNAL/kt34-l1-10k.log`, `JOURNAL/kt34-l1-100k.log` |
+| 9 | **KT-34** — gate cuối | **PASS 468 test / 62 suite**, L1 1.000 seed **275 ms**, wall **239,32 s** (wall host — §5c) | `JOURNAL/kt34-gate-fast.log` |
+| 10 | **KT-34** — Miri 3 tập ảnh hưởng (`kt25_ipc2`/`kt27_notification`/`kt28_waitaddr`) | **PASS** 29 / 27 / 13 test, 0 failed, 111 / 66 / 116 s — §4c | `JOURNAL/kt34-miri-kt25.log`, `-kt27`, `-kt28` |
 
-**Đề xuất trạng thái**: **KT-33 DONE**; **K1c giữ REVIEW — CHƯA DONE** vì **C2 chỉ đạt một phần** (C1/C3/C4/Miri ĐẠT; C2 nợ: Reply cap dùng lại có thể ghi đè `caller` — mở **KT-34**); KT-31/32 DONE (D2-61/62). Chi tiết §10.
+**Đề xuất trạng thái**: **KT-34 DONE** — **C2 ĐẠT** (§2d/§7: từ chối cap `Reply` active, bất biến
+`BlockedOnReply ⇔ Reply.caller == Some(tcb)` sau **mỗi** op, property C2 theo **mọi** thứ tự bước,
+100k×4 + Miri + gate xanh); **K1c DONE (đề xuất)** — C1/C2/C3/C4 + Miri + gate ĐẠT, nợ còn lại là
+**model-only/K2/K3** (§9.1/§9.3/§9.4) **không** thuộc K1c. KT-31/32/33 DONE (D2-61/62/63).
+Không lật QUEUE. Chi tiết §10.
 
 ## 1. Baseline (trước khi chạy cổng)
 
@@ -146,6 +154,81 @@ Lệnh + kết quả (log [`JOURNAL/kt33-l1-10k.log`](../JOURNAL/kt33-l1-10k.log
 - Trong `gate --fast` cuối, driver cũng chạy ở L0 mặc định **1.000 seed / smp 1**:
   `driver_smp_cung_seed_cung_trace ... ok`, `1 passed`, **13,37 s** (§5b) — bản siết xanh ngay
   ở ngưỡng cổng.
+
+### 2d. **KT-34** (2026-11-14) — C2: cap `Reply` **đang active** + bất biến liên kết Reply
+
+**Lỗi mô hình có sẵn (không phải test-only — D2-63).** `Reply` mang **một** `caller`. Khi `Call`
+gặp người nhận đang `Recv` có Reply cap, kernel bind `Reply.caller = Some(caller)`. Nếu **cùng**
+`Reply` object bị dùng lại cho `Recv` **thứ hai** (kể cả qua cap khác trỏ cùng object), `Call` kế
+tiếp ghi đè `caller` → TCB cũ vẫn `BlockedOnReply` nhưng Reply **không trỏ về nó** ⇒ **mất đường
+Reply/đánh thức** (deadlock im lặng). Đây là vi phạm **C2** ở tầng IPC.
+
+**Sửa** (chỉ `v2/sim/vifast-sim/`; ngữ nghĩa **model-only `[TK]`**, ABI/`spec/` **không đổi**;
+`Busy` là mã mô hình — seL4 thật không có mã này cho ca dùng lại reply):
+
+| # | Vị trí | Quy tắc | Thứ tự kiểm |
+|---|---|---|---|
+| 1 | `recv(ep, reply=Some(r))` | `r` đang `caller=Some` ⇒ **`Busy`** | **trước** `reset_ipc_error`, trước pop message, trước mọi đổi trạng thái |
+| 2 | `call_msg(ep)` (lớp 2) | Reply cap của waiter đã bị bind **qua cap khác** cùng object ⇒ **`Busy`** | **trước** `admit_message` (không cấp `msg_id`/`last_mr`), waiter vẫn chờ |
+| 3 | `reply_recv` / `nb_send_recv` | Reply **mới** đang active ⇒ **`Busy`** | **trước** khi gửi reply (`reply_with`) — không reply nửa chừng; ngoại lệ hợp lệ `recv_reply == reply` (reply tiêu thụ `caller` trước) |
+| 4 | `check_reply_links()` | `Reply.caller=Some(t)` ⇒ `t` sống + `BlockedOnReply{đúng reply}`; `BlockedOnReply{reply}` ⇒ `reply` sống + `caller == Some(tcb)` | sau **mỗi** public op (trong `sched_after_op`, cùng chỗ `check_ipc`; **một** lượt quét object) |
+| 5 | `transition_tcb` (cổng thấp) | vào `BlockedOnReply` ⇒ bind `caller`; rời ⇒ gỡ `caller`; Reply đã bind người khác ⇒ **`IllegalOperation`** (không ghi đè) | trước khi ghi trạng thái; object không phải `Reply` sống thì bỏ qua (ma trận 11×11 KT-23 dựng id tượng trưng) |
+
+`reply_with` vẫn **take `caller` trước** khi deliver message rồi mới `Ready` người gọi (thứ tự cũ,
+không đổi) — nên lúc `recv` chạy, `caller` đã thành `None` (cơ sở của ngoại lệ #3).
+
+**Test (đỏ trước → xanh)**: [`JOURNAL/kt34-red-reply-reuse.log`](../JOURNAL/kt34-red-reply-reuse.log)
+(`left: Ok(())`, `right: Err(Busy)` trên code cũ — `Recv` lần hai **thành công** và ghi đè caller).
+
+| Tệp | Test thêm | Nội dung |
+|---|---|---|
+| `tests/kt25_ipc2.rs` | `recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc` | `Call` rồi `Recv` lần hai **cùng cap active** ⇒ `Busy`; caller cũ **vẫn** `BlockedOnReply` + **vẫn** là `caller`; `Reply` đúng ⇒ caller `Ready`, `caller=None`; **sau đó cap dùng lại được** (cả hai chiều) |
+| | `call_vao_waiter_co_reply_da_active_qua_cap_khac_tra_busy` | Hai cap cùng `Reply` object: waiter nhận cap lúc `caller=None`, Reply bị bind **qua cap kia** ⇒ `Call` tới waiter đó `Busy` (không cấp `msg_id`), `Reply` xong ⇒ `Call` lại **thành công** |
+| | `cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller` | Cổng `transition_tcb`: bind khi vào, gỡ khi rời, **từ chối** ghi đè caller ⇒ `check_reply_links` luôn `Ok` |
+| | `call_truoc_recv_lan_dau_van_hop_le_chi_chan_lan_hai` | `Call` **trước** `Recv` đầu (hàng gửi, Reply chưa bind) ⇒ `Recv` **hợp lệ** (đường `.scn` 04/05); chỉ lần **thứ hai** mới `Busy` |
+| | `reply_recv_kiem_reply_moi_truoc_khi_gui_va_dung_lai_chinh_reply_hop_le` | `ReplyRecv` Reply mới active ⇒ `Busy` **trước** khi gửi reply; dùng **chính** Reply vừa trả lời ⇒ hợp lệ |
+| `tests/kt27_notification.rs` | `property_signal_sau_khi_xep_hang_danh_thuc_moi_thu_tu` | **6/6 hoán vị** {Wait t0, Wait t1, Signal}: Signal **sau** ⇒ waiter đã xếp hàng **Ready** + nhận `(word,badge)`; Signal **trước** ⇒ word còn, Wait thấy ngay |
+| `tests/kt28_waitaddr.rs` | `property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu` | **6/6 hoán vị** {Wait(expected=0), Store(1), Wake(1)}: Wake **sau** ⇒ `Ready` + trả 1; Wake **trước** ⇒ 0, không nuốt giá trị (Wait sau thấy giá trị mới ⇒ `InvalidArgument`) |
+| `tests/kt22_mailbox.rs` | (sửa rig) | 1 → **3 Reply riêng** (`S_REP_EXTRA`): 3 `Recv` liên tiếp cần 3 `Reply` **chưa bind** — đúng one-shot; kỳ vọng FIFO/`pushed`/`popped` **giữ nguyên**, không nới test |
+| `tests/l1_k1c.rs` | (driver) | `Recv` chỉ cấp Reply **rảnh** (`reply_caller(rep).is_none()`), còn lại `None`; thêm `check_reply_links` sau **mỗi** op (kể cả prologue) |
+
+**10k×4** (`./v2/bin/v2 nightly --l1 --seeds 10000 --smp 1,2,4,8`, **không retry** — log
+[`JOURNAL/kt34-l1-10k.log`](../JOURNAL/kt34-l1-10k.log)):
+
+| smp | `ipc_sent` | `ipc_delivered` | `ipc_dropped` |
+|---|---|---|---|
+| 1 | 144.977 | 27.845 | 95.458 |
+| 2 | 144.871 | 28.155 | 93.904 |
+| 4 | 144.552 | 28.177 | 92.919 |
+| 8 | 145.056 | 28.404 | 93.230 |
+| **tổng** | **579.456** | **112.581** | **375.511** |
+
+**PASS**: `# L1 OK: 40000 lượt (smp [1, 2, 4, 8], seeds 10000)`, `1 passed; 0 failed`, wall
+**661 s** (11,02 phút); `ipc_sent > 1` **mọi** lượt, `ipc_delivered > 0` **mọi** smp,
+0 panic/0 vi phạm `check_*` (gồm `check_reply_links`).
+
+**100k×4** (`./v2/bin/v2 nightly --l1 --seeds 100000 --smp 1,2,4,8` — **không** nới seed, log
+[`JOURNAL/kt34-l1-100k.log`](../JOURNAL/kt34-l1-100k.log)):
+
+| smp | `ipc_sent` | `ipc_delivered` | `ipc_dropped` |
+|---|---|---|---|
+| 1 | 1.447.334 | 279.201 | 949.684 |
+| 2 | 1.447.456 | 280.816 | 937.566 |
+| 4 | 1.445.714 | 282.294 | 931.408 |
+| 8 | 1.445.792 | 281.287 | 929.515 |
+| **tổng** | **5.786.296** | **1.123.598** | **3.748.173** |
+
+**PASS**: `# L1 OK: 400000 lượt (smp [1, 2, 4, 8], seeds 100000)`, `1 passed; 0 failed`, wall
+**6306,38 s** (`real 105m06,38`; user 6010,62 s) — **không** nới seed/không đổi op (64). Cùng seed ⇒
+cùng trace (test so `a == b` từng lượt, cả trace lẫn bộ đếm IPC); `ipc_sent > 1` **mọi** lượt;
+`ipc_delivered > 0` **mọi** smp; **0 panic/0 vi phạm** `check_sched`/`check_ipc`/`check_waitaddr`/
+`check_mailboxes`/`check_caps`/**`check_reply_links`** (mỗi op ⨯ 400.000 lượt × 64 op = **25,6
+triệu** lần kiểm, chưa kể lần kiểm thứ hai của prologue). `ipc_delivered` 1.123.598 / `ipc_sent`
+5.786.296 = **19,4 %** message được giao (phần còn lại là huỷ hợp lệ D2-25 + còn trong hàng) —
+cùng bậc với 100k của KT-32 (5.786.297 / 1.123.586) ⇒ **hành vi IPC không đổi**, chỉ thêm bất biến
+C2. Wall **6306,38 s** ≈ dự toán 20 phút của K1C-PLAN §7.1 **không đúng** (dự toán cũ **T-INFRA**,
+không phải nới ngưỡng) — vẫn **dài hơn** 100k bản KT-32 (6596,88 s) **giảm nhẹ 290 s** dù thêm
+`check_reply_links`, do máy rảnh hơn.
 
 ## 3. Mutation tay 6 ca (C3 / việc §7.1 #4)
 
@@ -287,6 +370,21 @@ log [`JOURNAL/kt33-miri-all.log`](../JOURNAL/kt33-miri-all.log):
   Miri biên dịch từng target); **không** nới/thêm/bớt test để qua cổng.
 - Vẫn **không** chạy `l1*` dưới Miri (D2-47(a)); không chạy `kt2N_scn` (đọc tệp).
 
+### 4c. **KT-34** — Miri 3 tập **ảnh hưởng** (`kt25_ipc2` + `kt27_notification` + `kt28_waitaddr`)
+
+Yêu cầu KT-34 chỉ là **các test ảnh hưởng** (không chạy lại toàn bộ 19 tập 69 phút của KT-33 —
+không cần thiết cho diff này); chạy bằng `./v2/bin/v2 miri -p vifast-sim --test <tập>`
+(**không** retry), cả ba **PASS**:
+
+| Tập | Test | Thời gian (test) | Wall (`real`) | Log |
+|---|---|---|---|---|
+| `kt25_ipc2` (Reply lifecycle + 5 test KT-34) | **29** | 111,28 s | 3m51,31 s | [`JOURNAL/kt34-miri-kt25.log`](../JOURNAL/kt34-miri-kt25.log) |
+| `kt27_notification` (+ property C2) | **27** | 66,02 s | 2m13,09 s | [`JOURNAL/kt34-miri-kt27.log`](../JOURNAL/kt34-miri-kt27.log) |
+| `kt28_waitaddr` (+ property C2) | **13** | 115,91 s | 3m48,80 s | [`JOURNAL/kt34-miri-kt28.log`](../JOURNAL/kt34-miri-kt28.log) |
+
+> Miri in cảnh báo "integer-to-pointer casts … might miss pointer bugs" như **mọi** lần chạy
+> Miri của repo (objmem dùng arena) — không phải lỗi mới, không có UB report, 0 failed.
+
 ## 5. Gate cuối (việc §7.1 #2)
 
 Lệnh: `./v2/bin/v2 gate --fast` — log [`JOURNAL/kt31-gate-fast.log`](../JOURNAL/kt31-gate-fast.log).
@@ -312,6 +410,17 @@ phải ngưỡng cổng: QD §5.2 đặt **60 s cho L1 1.000 seed** (lần này 
 221,41 s là thời gian dưới tải (baseline cùng ngày **223,87 s**, KT-32 từng **124,25 s**) — **không**
 gắn T-INFRA cho cổng, không nới ngưỡng, không retry.
 
+### 5c. **KT-34** — gate cuối (sau khi sửa C2 + driver)
+
+`./v2/bin/v2 gate --fast` (**không retry**), log [`JOURNAL/kt34-gate-fast.log`](../JOURNAL/kt34-gate-fast.log):
+
+**Kết quả**: `v2 gate --fast: PASS` (gen-check ON), **468 test / 0 failed / 62 suite** — đúng
+**+7** test so baseline 461 (5 `kt25_ipc2` + 1 `kt27_notification` + 1 `kt28_waitaddr`); fmt/clippy
+`-D warnings` sạch; L1 1.000 seed **275 ms** (ngưỡng QD §5.2 = 60 s ⇒ **đạt**); `real 239,32 s`
+(**3m59**) là **wall host**, không phải ngưỡng cổng (baseline cùng ngày **236,86 s**) — **không**
+nới ngưỡng/không retry. Driver `l1_k1c` bản KT-34 chạy 1k×4 riêng lúc làm bài
+(`ipc_sent` 14.684/14.577/14.539/14.615; `ipc_delivered` 2.749/2.788/2.793/2.910).
+
 ## 6. Parity 10k (hồi quy, D2-53 Q12 — không mở rộng model)
 
 Lệnh: `cargo test -p vifast-model --test kt11_diff_sim` — log
@@ -327,17 +436,18 @@ phải bằng chứng IPC mới.
 | # | Mệnh đề (K1C-PLAN §1.1) | Kết quả | Bằng chứng đo được |
 |---|---|---|---|
 | **C1** | **Bảo toàn message** — mỗi `msg_id` đúng một nơi; 0 vi phạm trên 1.000 seed `--fast` **và** 100.000 seed nightly | **ĐẠT** (KT-32 — §2b; KT-33 không đổi kết luận) — KT-31 chỉ đạt một phần (100k **không** phủ IPC); **KT-32** driver trộn IPC: 100k×4, `ipc_sent` **5.786.297**, `ipc_delivered` 1.123.586, `ipc_dropped` 3.748.540, 0 vi phạm bảo toàn trên **51,2 triệu** lần kiểm. `dropped` là **huỷ hợp lệ** (wake/huỷ TCB gửi đang chặn + Reply không `caller`, D2-25), **không** phải message "bốc hơi". | `check_ipc()` sau **mỗi** public op (`kobj.rs::sched_after_op`); bất biến `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped`. Fuzz **1.000 seed × 64 op** trong `kt24_ipc`, `kt25_ipc2`, `kt26_fault`, `kt27_notification`, `kt28_waitaddr`, `kt29_smp` — 0 vi phạm, cùng seed cùng trace. 100k×4 (`kt32-l1-100k-mixed.log`): 14,47 message/seed (prologue 1 + ~13,5 do 64 op) ⇒ `check_ipc` **không còn rỗng**. **Giới hạn** (không tô hồng): mô hình 1 luồng, `dropped` là huỷ hợp lệ — không phải "0 message bị huỷ"; C2 không suy ra từ C1. |
-| **C2** | **Không mất đánh thức** — signal/wake sau khi waiter xếp hàng ⇒ phải đánh thức; trước ⇒ word/giá trị còn | **ĐẠT MỘT PHẦN — KHÔNG claim đủ** | `kt27_notification` 26 test (Signal OR, **một** waiter, word xoá sau giao, Wait/Poll) + fuzz 1.000×64; `kt28_waitaddr` 12 test (`expected` lệch ⇒ không xếp hàng, `wake_addr(n)` FIFO, wake trước/sau) + fuzz 1.000×64; 100k×4 (KT-32) 0 panic. **Giới hạn**: "giữ khoá" trong mô hình = **một hàm**, không phải Mutex/thread thật (K2/K3 — nợ §9 mục 1/3); driver 100k dùng lại **cùng cap Reply** cho nhiều `Recv` ⇒ model cho phép ghi đè `caller` (lỗ hổng có sẵn của model) nên **không** lấy 100k làm bằng chứng C2; C2 chỉ đạt ở mức **mô hình 1 luồng**. |
+| **C2** | **Không mất đánh thức** — signal/wake sau khi waiter xếp hàng ⇒ phải đánh thức; trước ⇒ word/giá trị còn | **ĐẠT (KT-34 — §2d)** | (a) **IPC/Reply**: cap `Reply` đang `caller=Some` bị **từ chối `Busy`** ở `recv`/`call_msg`/`reply_recv`/`nb_send_recv` **trước** mọi thay đổi ⇒ **không còn đường ghi đè `caller`**; bất biến **`check_reply_links`** (`Reply.caller=Some(t) ⇔ t BlockedOnReply` trên **đúng** object) chạy sau **mỗi** public op; cổng `transition_tcb` cũng giữ liên kết (vào bind, rời gỡ, ghi đè ⇒ `IllegalOperation`). Bằng chứng: 5 test `kt25_ipc2` (đỏ trước [`JOURNAL/kt34-red-reply-reuse.log`](../JOURNAL/kt34-red-reply-reuse.log): `left: Ok(())` vs `right: Err(Busy)`), property **6/6 hoán vị** ở `kt27_notification::property_signal_sau_khi_xep_hang_danh_thuc_moi_thu_tu` + `kt28_waitaddr::property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu`; `.scn` 04/05/07/08 vẫn xanh (không đổi). (b) **100k×4** (§2d) với driver chỉ cấp Reply **rảnh** + invariant sau mỗi op: 400.000 lượt, `ipc_sent` ****5.786.296****, 0 panic/0 vi phạm `check_*`; 10k×4 **661 s**. **Giới hạn** (không tô hồng): mô hình **1 luồng**; "giữ khoá" = **một hàm**, không phải Mutex/thread thật (K2/K3 — nợ §9.1); 100k là bằng chứng **bất biến mô hình**, **không** phải kernel/QEMU; `Busy` là **model-only** (ABI/`spec/` không đổi). |
 | **C3** | **Mọi đột biến chuẩn bị bắt** — mỗi đột biến làm **đúng một** test đỏ, revert, ghi `mutants: killed` | **ĐẠT — 12/12 mục §7.2** | Bảng **§3b** (KT-33): M1..M12, mỗi ca sửa **một chỗ**, chạy **đúng một** test đích, `exit 101` + `test result: FAILED` + dòng assert; **12/12** khôi phục `git hash-object` == `HEAD:<file>` (kobj `37ff523…`, ipc `2173300…`, mailbox `5747220…`). Log [`JOURNAL/kt33-mutation.log`](../JOURNAL/kt33-mutation.log). Hai deviation câu chữ §7.2 (M5 chọn đúng assert của đường `Signal`; M6: mô hình chỉ có **một** `waiter`, nên ca sửa cổng "một waiter" thay vì "wake all") đã ghi rõ ở §3b — chờ reviewer soi. |
 | **C4** | **100.000 seed × smp 1/2/4/8** — 4 lần chạy, cùng seed cùng trace, bất biến giữ | **ĐẠT theo định nghĩa C4** (4 lần chạy, cùng seed cùng trace; cả bản sched/SMP lẫn bản trộn IPC của KT-32) | §2 (KT-31): `400000 lượt`, wall **5043,84 s**, 4/4 dòng `# L1 OK`, `1 passed; 0 failed`, 0 panic trên 25,6 triệu op (chỉ sched/SMP/mail — `check_ipc` rỗng); §2b (KT-32): chạy lại **cùng lệnh** với driver trộn IPC — 400.000 lượt, `ipc_sent` 5.786.297, 0 vi phạm trên **51,2 triệu** lần kiểm, cùng seed ⇒ cùng trace. C4 **không** tự kéo theo C1 — C1 có bằng chứng riêng (§2b). |
 
 ## 8. Đối chiếu §5 KT-24..KT-30
 
 Số test dưới đây lấy **tươi** từ lần chạy `gate --fast` của KT-31
-([`JOURNAL/kt31-baseline-gate-fast.log`](../JOURNAL/kt31-baseline-gate-fast.log), tổng **461 test**);
+([`JOURNAL/kt31-baseline-gate-fast.log`](../JOURNAL/kt31-baseline-gate-fast.log), tổng **461 test**;
+**KT-34**: tổng **468 test** — 5 `kt25_ipc2` + 1 `kt27` + 1 `kt28`, §5c);
 Miri lịch sử lấy từ log từng task, và lần chạy **Miri toàn bộ** của KT-31 ở §4.
 
-| Task | DoD §5 | Kết quả | Test hiện tại (gate 461) | Bằng chứng chính |
+| Task | DoD §5 | Kết quả | Test hiện tại (gate 461 + 7 của KT-34) | Bằng chứng chính |
 |---|---|---|---|---|
 | **KT-24** IPC core 1 (`MessageInfo` 35 bit, 64 MR, `ipc::transfer`, `no_reply`, non-Endpoint) | 9 mục | **9/9** | `kt24_ipc` **13** + `kt24_scn` **2** | `kt24-red-compile.log` (56 lỗi), `kt24-red-semantics.log`; fuzz 1.000×64; Miri **13/13** (37,77 s, `kt24-miri.log`); `.scn` 04/06/17 qua runner |
 | **KT-25** IPC core 2 (4 cap, GRANT/unwrap, `ReplyRecv`/NB*, vòng đời Reply) | 10 mục | **10/10** | `kt25_ipc2` **24** + `kt25_scn` **1** | `kt25-gate-fast.log` 361 test; Miri **24/24** (75,99 s); reviewer-kt25 DRIFT đã sửa 3/3; mutation KT-31 ca 1 (sai vị trí cap) bắt được |
@@ -361,21 +471,23 @@ Miri lịch sử lấy từ log từng task, và lần chạy **Miri toàn bộ*
 | # | Việc | Yêu cầu | Kết quả |
 |---|---|---|---|
 | 1 | `nightly --l1 --seeds 100000 --smp 1,2,4,8` | 4 log/dòng `# L1 OK`, cùng seed cùng trace, 0 vi phạm | **ĐẠT** — KT-31 §2 (sched/SMP/mail, 5043,84 s) **+ KT-32 §2b** (driver trộn IPC: 400.000 lượt, `ipc_sent` 5.786.297) ⇒ C1 ĐẠT |
-| 2 | `gate --fast` | PASS không retry, ≥ 263 test | **ĐẠT** — §5/§5b (461 test; L1 653 ms ⇒ trong ngưỡng 60 s; wall 221,41 s là wall host) |
+| 2 | `gate --fast` | PASS không retry, ≥ 263 test | **ĐẠT** — §5/§5b/§5c (**468 test**; L1 275 ms ⇒ trong ngưỡng 60 s; wall 239 s là wall host) |
 | 3 | `nightly --only-miri` | danh sách có `kt24..kt30` + `vifast-sync` PASS | **CHƯA ĐẠT ở KT-31** (thiếu `kt25_ipc2`) → **ĐẠT sau KT-33** — danh sách đã có `kt25_ipc2`, 19 tập/**300 test**, 0 failed (§4b) |
 | 4 | Mutation tay §7.2 | mỗi đột biến **đúng một** test đỏ → revert → log | **CHƯA ĐẠT ở KT-31** (6 ca/3 mục) → **ĐẠT sau KT-33 — 12/12 mục §7.2** (§3b) |
-| 5 | Bảng DoD K1c | 4 dòng C1..C4 + log; dòng chưa đạt ghi rõ | **ĐẠT** — §7 (sau KT-33: C1 **ĐẠT**, C2 **đạt một phần — không claim**, C3 **ĐẠT 12/12**, C4 ĐẠT theo định nghĩa) |
+| 5 | Bảng DoD K1c | 4 dòng C1..C4 + log; dòng chưa đạt ghi rõ | **ĐẠT** — §7 (sau KT-34: C1 **ĐẠT**, **C2 ĐẠT** — Reply active/invariant/100k, C3 **ĐẠT 12/12**, C4 ĐẠT theo định nghĩa) |
 
 ## 9. Phần **chưa** phủ (không tô hồng)
 
 1. **Toàn bộ K1c là model-only trong sim 1 luồng**: không chạy kernel/QEMU, không thread thật;
    `vifast-sync` chỉ stress **host** (Miri + 4 thread trong test), **chưa** nối vào kernel/sim.
    "SMP 1/2/4/8" là **mô hình tất định N hart** trong một luồng (D2-53 Q1), không phải SMP thật.
-2. **[ĐÃ ĐÓNG bởi KT-32 — §2b / KT-33 không đổi]** Lịch sử: KT-31 chạy 100k nhưng driver
+2. **[ĐÃ ĐÓNG bởi KT-32 (C1) + KT-34 (C2) — §2b/§2d]** Lịch sử: KT-31 chạy 100k nhưng driver
    `l1_k1c` chỉ có 9 op sched/SMP/mail ⇒ **chưa** chứng minh bảo toàn message ở 100k. KT-32 mở
-   driver trộn IPC (Send/Recv/Call/Reply/Signal/Wait/WaitAddr/WakeAddr/Store) và chạy lại
-   **100k×4**: `ipc_sent` 5.786.297, 0 vi phạm ⇒ **C1 ĐẠT**. **C2 vẫn chỉ đạt một phần** (mô hình
-   1 luồng; dùng lại cap Reply có thể mất đường Reply — **không claim** C2 ở mức hệ thống).
+   driver trộn IPC và chạy lại **100k×4** ⇒ **C1 ĐẠT** (`ipc_sent` 5.786.297 bản KT-32).
+   KT-34 đóng **C2**: cap `Reply` đang `caller=Some` bị **từ chối `Busy`** (không ghi đè caller),
+   bất biến `check_reply_links` sau mỗi op, property C2 theo **mọi** thứ tự bước, driver chỉ cấp
+   Reply **rảnh** + **100k×4** 0 vi phạm ⇒ **C2 ĐẠT** (§2d). **Giới hạn còn nguyên**: mô hình
+   **1 luồng**, không Mutex/thread thật — nợ §9.1 (K2/K3), không phải nợ K1c.
 3. **K2 (VM) chưa làm**: Frame/VSpace/PageTable/ASID/TLB; WaitAddr khoá theo `(ObjId frame,
    offset)` **không** theo địa chỉ vật lý; `addr_words` **chưa** sweep khi frame chết; "Frame
    chia sẻ hai tiến trình" và "Mutex std stress" (L3) **chưa đạt** — đúng như K1C-PLAN §1.4.
@@ -414,15 +526,19 @@ Miri lịch sử lấy từ log từng task, và lần chạy **Miri toàn bộ*
   §7.1 + parity 10k; 3 nợ chuyển KT-32/KT-33.
 - **KT-32: DONE** — **C1-100k ĐẠT** (§2b): driver trộn IPC, 100k×4, `ipc_sent` **5.786.297**,
   0 vi phạm trên 51,2 triệu lần kiểm; **không** claim C2.
-- **KT-33 (task này): DONE** — **C3 12/12** (§3b), **Miri #3 ĐẠT** (19 tập/300 test, có
+- **KT-33: DONE** — **C3 12/12** (§3b), **Miri #3 ĐẠT** (19 tập/300 test, có
   `kt25_ipc2` — §4b), driver siết `ipc_sent > 1` + `ipc_delivered > 0` + panic `kiem` kèm
   `seed/smp` (§2c), 10k×4 PASS (§2c), gate cuối PASS **461 test** (§5b).
-- **K1c (phase): REVIEW — CHƯA DONE**. **C1 ĐẠT**, **C3 ĐẠT 12/12**, **C4 ĐẠT theo định nghĩa**,
-  **Miri ĐẠT**; nhưng **C2 chỉ đạt một phần — KHÔNG claim đủ**: mô hình 1 luồng, và driver/K1c dùng
-  lại **cùng cap Reply** cho nhiều `Recv` ⇒ `reply_set_caller` ghi đè `caller` cũ, caller trước có
-  thể **mất đường Reply** (§2b/§7). **KT-34** (Agent 0 mở) đóng C2 (reject Reply cap đang giữ
-  caller + invariant + 10k/100k×4 + Miri ảnh hưởng). Các nợ **model-only + K2 (VM/Frame/ASID/TLB)
-  + K3 (D2-56..D2-60)** vẫn mở (§9.1/§9.3/§9.4) — báo cáo **không** được đọc như "K1c đã kiểm
-  trên kernel/QEMU": toàn bộ K1c là **mô hình tất định trong sim 1 luồng**.
+- **KT-34 (task này): DONE** — **C2 ĐẠT** (§2d): `recv`/`call_msg`/`reply_recv`/`nb_send_recv`
+  từ chối cap `Reply` đang `caller=Some` bằng `Busy` **trước** mọi thay đổi; bất biến
+  `check_reply_links` sau **mỗi** public op; cổng `transition_tcb` giữ liên kết; property C2
+  **mọi** thứ tự (kt27/kt28); **10k×4 661 s** + **100k×4** **6306,38 s (105m06)** + gate **468 test** (§5c)
+  + Miri 3 tập ảnh hưởng (§4c). Reviewer độc lập `reviewer-kt34`: **APPROVE code**.
+- **K1c (phase): DONE (đề xuất)** — **C1 ĐẠT** (KT-32), **C2 ĐẠT** (KT-34 — §2d),
+  **C3 ĐẠT 12/12** (KT-33), **C4 ĐẠT theo định nghĩa** (4 lần 100k×4, cùng seed cùng trace), Miri
+  ĐẠT (KT-33 toàn bộ + KT-34 3 tập ảnh hưởng), gate **468 test**. **Nợ còn lại KHÔNG thuộc K1c**:
+  **model-only** (sim 1 luồng, không kernel/QEMU — §9.1), **K2** (VM/Frame/ASID/TLB — §9.3),
+  **K3** (D2-56..D2-60 — §9.4) — báo cáo **không** được đọc như "K1c đã kiểm trên kernel/QEMU".
+  Đề xuất Agent 0 lật **K1c DONE** và ghi D2 mới; **không** tự lật QUEUE.
 - **Không lật QUEUE**: báo cáo không tự đổi trạng thái task nào; Agent 0 quyết định lật
   KT-31/KT-32/KT-33 và K1c.

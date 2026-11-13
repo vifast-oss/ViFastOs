@@ -1,0 +1,80 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt28_waitaddr.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/bb6671ff06cb4680/out/kt28_waitaddr-bb6671ff06cb4680)
+
+running 13 tests
+test bang_bam_64_bucket_va_cung_khoa_cung_bucket ... ok
+test check_waitaddr_bat_waiter_lech_trang_thai ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `check_waitaddr_bat_waiter_lech_trang_thai`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:60:18: 60:33
+          6: check_waitaddr_bat_waiter_lech_trang_thai
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:534:17: 534:27
+          7: check_waitaddr_bat_waiter_lech_trang_thai::{closure#0}
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:533:47: 533:47
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `check_waitaddr_bat_waiter_lech_trang_thai`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:60:18: 60:33
+          6: check_waitaddr_bat_waiter_lech_trang_thai
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:534:17: 534:27
+          7: check_waitaddr_bat_waiter_lech_trang_thai::{closure#0}
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:533:47: 533:47
+
+ok
+test exit_va_finalise_go_waiter ... ok
+test expected_lech_tra_ngay_khong_xep_hang ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test hai_frame_offset_doc_lap ... ok
+test khong_mat_danh_thuc_wake_truoc_va_sau ... ok
+test khong_timeout_du_tick_rat_nhieu ... ok
+test property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu ... ok
+test suspend_abort_go_dung_bucket ... ok
+test va_cham_bucket_khong_anh_huong_tim_kiem ... ok
+test wake_0_1_n_nhieu_va_fifo ... ok
+test xep_hang_mot_lan ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 115.91s
+
+warning: 2 warnings emitted
+
+
+real	3m48.801s
+user	3m39.839s
+sys	0m0.845s

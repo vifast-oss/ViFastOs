@@ -1,0 +1,20 @@
+
+running 1 test
+test recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc ... FAILED
+
+failures:
+
+---- recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc stdout ----
+
+thread 'recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc' (42482979) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:1405:5:
+assertion `left == right` failed: cap Reply đang caller=Some ⇒ Busy (không ghi đè caller)
+  left: Ok(())
+ right: Err(Busy)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+

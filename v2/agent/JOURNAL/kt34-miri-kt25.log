@@ -1,0 +1,96 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.53s
+     Running tests/kt25_ipc2.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/3efce9ba9665e04e/out/kt25_ipc2-3efce9ba9665e04e)
+
+running 29 tests
+test bon_cap_cai_du_bo_grant_giu_badge ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `bon_cap_cai_du_bo_grant_giu_badge`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt25_ipc2.rs:89:18: 89:34
+          6: bon_cap_cai_du_bo_grant_giu_badge
+              at sim/vifast-sim/tests/kt25_ipc2.rs:297:17: 297:28
+          7: bon_cap_cai_du_bo_grant_giu_badge::{closure#0}
+              at sim/vifast-sim/tests/kt25_ipc2.rs:296:39: 296:39
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `bon_cap_cai_du_bo_grant_giu_badge`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt25_ipc2.rs:89:18: 89:34
+          6: bon_cap_cai_du_bo_grant_giu_badge
+              at sim/vifast-sim/tests/kt25_ipc2.rs:297:17: 297:28
+          7: bon_cap_cai_du_bo_grant_giu_badge::{closure#0}
+              at sim/vifast-sim/tests/kt25_ipc2.rs:296:39: 296:39
+
+ok
+test call_truoc_recv_lan_dau_van_hop_le_chi_chan_lan_hai ... ok
+test call_vao_waiter_co_reply_da_active_qua_cap_khac_tra_busy ... ok
+test cap_da_nhan_khong_chuyen_lai_duoc_vi_mat_grant ... ok
+test cap_nguon_chet_loi_cung_truoc_khi_giao ... ok
+test cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller ... ok
+test delete_reply_dang_trong_recv_waiter_khong_lam_hong_call ... ok
+test donation_khong_ro_khi_reply_bi_xoa ... ok
+test donation_khong_ro_khi_revoke_reply ... ok
+test donation_khong_ro_khi_suspend_abort_caller ... ok
+test fuzz_1000_seed_64_op_ipc2 ... ok
+test hai_badge_or_vao_message_badge ... ok
+test message_info_giu_nguyen_35_bit_khi_co_cap ... ok
+test nam_cap_bi_tu_choi_truoc_khi_giao ... ok
+test nb_send_recv_nhanh_gui_duoc_va_nhanh_khong_gui_duoc ... ok
+test nb_send_wait_hai_nhanh ... ok
+test o_dich_da_co_cap_that_bai_mem ... ok
+test receive_window_chua_bind_tra_invalid_argument ... ok
+test recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc ... ok
+test reply_bi_revoke_caller_cancelled_va_delete_slot_empty ... ok
+test reply_bi_xoa_caller_cancelled ... ok
+test reply_loi_cung_khong_lam_mat_caller ... ok
+test reply_recv_giao_reply_truoc_roi_recv ... ok
+test reply_recv_khong_co_message_thi_blocked_on_recv ... ok
+test reply_recv_kiem_reply_moi_truoc_khi_gui_va_dung_lai_chinh_reply_hop_le ... ok
+test revoke_cap_con_reply_de_slot_empty ... ok
+test scenario_step_reply_recv_nb_cap ... ok
+test thieu_grant_that_bai_mem_message_van_giao ... ok
+test unwrap_badge_khong_chiem_receive_window ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 111.28s
+
+warning: 2 warnings emitted
+
+
+real	3m51.312s
+user	3m39.646s
+sys	0m1.109s

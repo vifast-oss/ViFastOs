@@ -123,7 +123,7 @@ fn drive_to(m: &mut Machine, tcb: ObjId, index: usize, ids: &Ids) {
 /// `forbidden_pairs_attempted == forbidden_pairs_total == 73`, `forbidden_attempts > 0`.
 #[test]
 fn ma_tran_46_cap_va_73_cap_cam() {
-    let ids = ids();
+    let mut ids = ids();
     let mut m = Machine::new();
     // SC mặc định **test-only** cho mọi TCB của ma trận (D2-50): TCB vào `Running` phải có
     // ngân sách, nếu không `check_budget` (đúng) sẽ đỏ ở report cuối.
@@ -149,6 +149,11 @@ fn ma_tran_46_cap_va_73_cap_cam() {
             m.put_cap(c0, 2, cap).expect("cap TCB ma trận");
             m.set_sched_params(tcb_s, Some(sc_s))
                 .expect("SC mặc định (test-only)");
+            // **KT-34**: mỗi TCB một `Reply` **thật** — `transition_tcb` nay giữ liên kết
+            // `Reply.caller ⇔ BlockedOnReply` (vào thì bind `caller`, rời thì gỡ), nên ma trận
+            // không thể dùng id tượng trưng cho `BlockedOnReply` và không thể tái dùng một
+            // `Reply` cho TCB khác khi TCB cũ còn sống + còn `BlockedOnReply`.
+            ids.rep = m.add_kernel_object(ObjType::Reply);
             drive_to(&mut m, tcb, from, &ids);
             let before = m.tcb_state(tcb).expect("trạng thái nguồn");
             let target = state_for(to, &ids);

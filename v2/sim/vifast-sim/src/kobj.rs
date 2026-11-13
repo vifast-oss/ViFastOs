@@ -2098,6 +2098,30 @@ impl Machine {
         {
             self.release_donation_of(tcb)?;
         }
+        // **KT-34** (C2, D2-63) — giữ liên kết `Reply ⇔ BlockedOnReply` ở **chính** cổng trạng
+        // thái (một cửa, cùng chỗ hook KT-21 donation ở trên):
+        // - vào `BlockedOnReply{reply}` ⇒ `Reply.caller = Some(tcb)` (Reply **đã** bind người
+        //   khác ⇒ `IllegalOperation`, **không** ghi đè — chặn lỗi C2 ngay cả ở cổng thấp);
+        // - rời `BlockedOnReply` ⇒ gỡ `caller` nếu đang là `tcb` (giống `wake`/`finalise` đã làm
+        //   qua `unlink_tcb_queues`), để **không** còn `caller = Some(t)` mà `t` không chờ.
+        // Object **không** phải `Reply` sống thì bỏ qua: ma trận 11×11 (KT-23) dựng trạng thái
+        // bằng id tượng trưng — cùng quy ước chiều ngược của `check_notifications` (KT-27).
+        if let TcbState::BlockedOnReply { reply } = to {
+            if self.object_alive(reply) && self.object_type(reply) == Some(ObjType::Reply) {
+                match self.reply_caller(reply)? {
+                    None => self.reply_set_caller(reply, Some(tcb))?,
+                    Some(c) if c == tcb => {}
+                    Some(_) => return Err(KError::IllegalOperation),
+                }
+            }
+        } else if let TcbState::BlockedOnReply { reply } = from {
+            if self.object_alive(reply)
+                && self.object_type(reply) == Some(ObjType::Reply)
+                && self.reply_caller(reply)? == Some(tcb)
+            {
+                self.reply_set_caller(reply, None)?;
+            }
+        }
         // Bất biến ≤1 `Running`/hart (KT-19 DoD 2): TCB vào `Running{hart}` khi hart đang có
         // TCB chạy ⇒ đưa TCB cũ về `Ready` **trước**, qua đúng cửa này (không đường tắt).
         if let TcbState::Running { hart } = to {
@@ -3040,6 +3064,13 @@ impl Machine {
                 "bất biến IPC (bảo toàn message) vỡ sau public op: {e}"
             );
         }
+        // **KT-34** — bất biến liên kết Reply (C2): `BlockedOnReply ⇔ Reply.caller == Some(tcb)`.
+        if let Err(e) = self.check_reply_links() {
+            debug_assert!(
+                false,
+                "bất biến Reply (C2: caller ⇔ BlockedOnReply) vỡ sau public op: {e}"
+            );
+        }
         if let Err(e) = self.check_notifications() {
             debug_assert!(false, "bất biến Notification vỡ sau public op: {e}");
         }
@@ -3296,6 +3327,83 @@ impl Machine {
                 self.ipc_dropped,
                 pan = pending
             ));
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- KT-34: bất biến liên kết Reply (C2)
+
+    /// **KT-34** — bất biến **liên kết Reply** (C2 của K1C-DOD; D2-63), chạy sau **mỗi** public
+    /// op qua [`Machine::sched_after_op`] (cùng chỗ `check_ipc`/`check_notifications`; gom một
+    /// hàm vì mỗi op chỉ thêm **một** lượt quét object, xem `v2/docs/k1c-ipc-semantics.md` §15):
+    ///
+    /// 1. `Reply.caller = Some(t)` ⇒ `t` là TCB **sống** và **đang** `BlockedOnReply{reply}`
+    ///    với `reply` **đúng** object này. Chiều này bắt đường "đổi trạng thái trực tiếp"
+    ///    (`transition_tcb`) làm TCB rời `BlockedOnReply` mà quên gỡ `caller`, và bắt **ghi đè**
+    ///    caller (hai TCB cùng chờ một Reply thì một trong hai sai).
+    /// 2. `TcbState::BlockedOnReply{reply}` ⇒ `reply` là object `Reply` **sống** và
+    ///    `caller == Some(tcb)` (chiều ngược). Thiếu chiều này, caller bị "treo im lặng": chờ
+    ///    một Reply không còn trỏ về mình nên `Send(reply)` không bao giờ đánh thức.
+    ///
+    /// Không có "trạng thái transition hợp lệ" nào ở **cuối** op: `call_msg`/`deliver_queued`/
+    /// `reply_with`/`cancel_reply` đều đặt `caller` và trạng thái trong **cùng** một op
+    /// (đường ghi duy nhất [`Machine::transition_tcb`]); trạng thái nửa vời chỉ tồn tại **bên
+    /// trong** op nên không bị kiểm. `Reply.caller = Some(t)` mà `t` không `BlockedOnReply`
+    /// (kể cả `BlockedOnRecv{reply: rep}` — dùng lại cap active) là **lỗi mô hình**.
+    pub fn check_reply_links(&self) -> Result<(), String> {
+        let n = self.objects.len();
+        // 1. Mọi Reply **sống**: `caller` phải là TCB sống đang chờ **đúng** Reply này.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Reply {
+                continue;
+            }
+            let rep = (i + 1) as ObjId;
+            let caller = self
+                .reply_caller(rep)
+                .map_err(|e| format!("Reply {rep}: caller không đọc được: {e:?}"))?;
+            let Some(t) = caller else { continue };
+            if t == 0 || t as usize > n || !self.objects[t as usize - 1].alive {
+                return Err(format!("Reply {rep}: caller {t} không phải TCB sống"));
+            }
+            if self.objects[t as usize - 1].ty != ObjType::Tcb {
+                return Err(format!("Reply {rep}: caller {t} không phải TCB"));
+            }
+            match self.tcb_state(t) {
+                Ok(TcbState::BlockedOnReply { reply }) if reply == rep => {}
+                other => {
+                    return Err(format!(
+                        "Reply {rep}: caller {t} không ở BlockedOnReply trên Reply này ({other:?})"
+                    ));
+                }
+            }
+        }
+        // 2. Mọi TCB **sống** đang `BlockedOnReply{reply}`: Reply đó phải sống và trỏ về TCB.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i + 1) as ObjId;
+            let Ok(TcbState::BlockedOnReply { reply }) = self.tcb_state(tcb) else {
+                continue;
+            };
+            if reply == 0 || reply as usize > n || !self.objects[reply as usize - 1].alive {
+                return Err(format!(
+                    "TCB {tcb}: BlockedOnReply trên Reply {reply} đã chết/không tồn tại"
+                ));
+            }
+            if self.objects[reply as usize - 1].ty != ObjType::Reply {
+                return Err(format!(
+                    "TCB {tcb}: BlockedOnReply trên object {reply} không phải Reply"
+                ));
+            }
+            let caller = self
+                .reply_caller(reply)
+                .map_err(|e| format!("TCB {tcb}: Reply {reply} không đọc được: {e:?}"))?;
+            if caller != Some(tcb) {
+                return Err(format!(
+                    "TCB {tcb}: BlockedOnReply{{reply {reply}}} nhưng Reply.caller = {caller:?}"
+                ));
+            }
         }
         Ok(())
     }
@@ -5785,6 +5893,20 @@ impl Machine {
         if !has_waiter && self.endpoint_full(ep_obj)? {
             return Err(KError::Busy);
         }
+        // **KT-34** (C2) — lớp chặn **thứ hai** cho lỗi "ghi đè `caller`": Reply cap mà waiter
+        // `Recv` đang giữ có thể **đã** bị bind `caller` qua **một cap khác** cùng object (hai
+        // cap cùng trỏ một `Reply`) trong lúc waiter chờ. Call này mà giao thì
+        // `reply_set_caller` sẽ **ghi đè** caller cũ ⇒ TCB cũ mất đường Reply. Kiểm **trước**
+        // `admit_message` (chưa cấp `msg_id`, chưa `take_waiter`, chưa đổi trạng thái), và chỉ
+        // khi Call này **sẽ** bind (`!no_reply` + có Reply cap): `Call no_reply=1` = Send.
+        let user_no_reply = msg.info.no_reply();
+        if !user_no_reply {
+            if let Some(rep) = reply_obj {
+                if self.reply_caller(rep)?.is_some() {
+                    return Err(KError::Busy);
+                }
+            }
+        }
         // **KT-25**: chụp ảnh cap nguồn + kiểm receive window bên nhận **trước** khi cấp
         // `msg_id` (lỗi cứng ⇒ message không bị giao nửa chừng, không mất).
         let snaps = self.resolve_caps(&msg)?;
@@ -5794,7 +5916,6 @@ impl Machine {
         };
         let mut msg = self.admit_message(msg, snaps.clone())?;
         self.set_endpoint_last_mr(ep_obj, msg.mr[0])?;
-        let user_no_reply = msg.info.no_reply();
         if has_waiter {
             let waiter = self
                 .endpoint_take_waiter(ep_obj)?
@@ -5995,7 +6116,6 @@ impl Machine {
             _ => return Err(KError::WrongObjectType),
         }
         let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
-        self.reset_ipc_error(tcb)?;
         let reply_cap = match reply {
             Some(r) => Some(self.cap_at(r.cnode, r.slot)?),
             None => None,
@@ -6004,6 +6124,18 @@ impl Machine {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Reply)?),
             None => None,
         };
+        // **KT-34** (C2, D2-63) — cap `Reply` **đang active** (`caller = Some`) **không** được
+        // dùng lại để `Recv`: nếu nhận, `Call` kế tiếp sẽ `reply_set_caller(rep, Some(new))` và
+        // **ghi đè** `caller` cũ ⇒ TCB cũ đang `BlockedOnReply` **mất đường Reply/đánh thức**
+        // (treo vĩnh viễn). Từ chối `Busy` **trước** khi xoá lỗi IPC cũ, trước khi pop/đổi
+        // trạng thái ⇒ không mất message, không đổi `caller` (xem `v2/docs/k1c-ipc-semantics.md`
+        // §15). `Reply` **không** còn caller (chưa dùng hoặc vừa `Reply` xong) dùng lại **được**.
+        if let Some(rep) = reply_obj {
+            if self.reply_caller(rep)?.is_some() {
+                return Err(KError::Busy);
+            }
+        }
+        self.reset_ipc_error(tcb)?;
         // **KT-25**: kiểm receive window **trước** khi pop (message có cap mà window chưa bind
         // ⇒ `InvalidArgument`, message **ở lại** hàng — không mất, không giao nửa chừng).
         let plan = match self.endpoint_front_snaps(ep_obj)? {
@@ -6192,7 +6324,16 @@ impl Machine {
         let _ = self.require_type(reply, ObjType::Reply)?;
         let _ = self.require_type(ep, ObjType::Endpoint)?;
         if let Some(r) = recv_reply {
-            let _ = self.require_type(r, ObjType::Reply)?;
+            let rep = self.require_type(r, ObjType::Reply)?;
+            let dang = self.require_type(reply, ObjType::Reply)?;
+            // **KT-34** (C2) — kiểm Reply **mới** *trước* khi giao reply: nếu nó đang active thì
+            // trả `Busy` mà **không** gửi reply nửa chừng (cùng hợp đồng "kiểm mọi tham số
+            // trước khi giao" của KT-25). `recv` cũng kiểm, nhưng lúc đó reply đã gửi rồi.
+            // Ngoại lệ hợp lệ: `recv_reply` **chính là** Reply vừa trả lời (`rep == dang`) —
+            // `reply_with` ở dưới tiêu thụ `caller` trước, nên lúc `recv` chạy nó đã inactive.
+            if rep != dang && self.reply_caller(rep)?.is_some() {
+                return Err(KError::Busy);
+            }
         }
         self.reply_with(tcb, reply, Some(msg))?;
         self.recv(tcb, ep, recv_reply)
@@ -6216,7 +6357,12 @@ impl Machine {
         // Kiểm phía nhận **trước** để lỗi cấu hình không làm message gửi đi rồi mới báo lỗi.
         let _ = self.require_type(recv_ep, ObjType::Endpoint)?;
         if let Some(r) = recv_reply {
-            let _ = self.require_type(r, ObjType::Reply)?;
+            let rep = self.require_type(r, ObjType::Reply)?;
+            // **KT-34** (C2) — như `reply_recv`: Reply **mới** đang active ⇒ `Busy` **trước** khi
+            // `NBSend`/`Recv` chạy (không gửi message rồi mới phát hiện cấu hình sai).
+            if self.reply_caller(rep)?.is_some() {
+                return Err(KError::Busy);
+            }
         }
         let send_err = self.nb_send(tcb, send_ep, msg).err();
         match self.recv(tcb, recv_ep, recv_reply) {

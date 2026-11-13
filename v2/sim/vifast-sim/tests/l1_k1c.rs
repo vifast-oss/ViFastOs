@@ -31,7 +31,8 @@
 //! của KT-28, không tạo lỗi giả); `Store` đổi giá trị để lượt sau có động lực đánh thức.
 //!
 //! **Bất biến sau MỖI op** (kể cả prologue): `check_sched` + `check_harts` + `check_ipc` +
-//! `check_waitaddr` + `check_mailboxes` + `check_caps` — vi phạm ⇒ panic kèm dòng gây lỗi.
+//! `check_waitaddr` + `check_mailboxes` + `check_caps` + **`check_reply_links`** (KT-34: C2 —
+//! `BlockedOnReply ⇔ Reply.caller == Some(tcb)`) — vi phạm ⇒ panic kèm dòng gây lỗi.
 //! Cuối mỗi lượt (**KT-33**: siết từ `ipc_sent > 0`): `ipc_sent > 1` và
 //! `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` (C1 của K1C-PLAN §1.1); cuối **mỗi
 //! smp**: `ipc_delivered > 0`. Prologue `NBSend` (không chặn ⇒ TCB vẫn `Ready`) chỉ bảo đảm
@@ -339,7 +340,17 @@ impl Rig {
                     return;
                 };
                 let j = rng.below(2) as usize;
-                let co_reply = rng.below(2) == 0;
+                let muon_reply = rng.below(2) == 0;
+                // **KT-34** (C2, D2-63) — **không** dùng lại cap Reply đang `caller = Some`:
+                // model từ chối `Busy` (không ghi đè caller cũ). Driver chỉ cấp cap Reply
+                // **rảnh**; không rảnh thì `Recv` không Reply (vẫn hợp lệ — `Call` sau đó đi
+                // nhánh Q7(b) `Cancelled`). Đây là chỗ driver cũ **dùng lại** cap active.
+                let rep_ranh = self
+                    .m
+                    .reply_caller(self.rep[j])
+                    .map(|c| c.is_none())
+                    .unwrap_or(false);
+                let co_reply = muon_reply && rep_ranh;
                 let rep = if co_reply { Some(self.rep_s[j]) } else { None };
                 match self.m.recv(self.t[i], self.ep_s[j], rep) {
                     Ok(()) => dong.push_str(&format!(" recv{i}<-ep{j} rep={co_reply}")),
@@ -485,6 +496,10 @@ fn kiem(m: &Machine, dong: &str, seed: u64, harts: u16) {
     }
     if let Err(e) = m.check_caps() {
         panic!("check_caps sau {dong} (seed {seed}, smp {harts}): {e}");
+    }
+    // **KT-34** — bất biến C2: `BlockedOnReply ⇔ Reply.caller == Some(tcb)` sau **mỗi** op.
+    if let Err(e) = m.check_reply_links() {
+        panic!("check_reply_links sau {dong} (seed {seed}, smp {harts}): {e}");
     }
 }
 

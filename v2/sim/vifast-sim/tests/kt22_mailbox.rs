@@ -113,6 +113,9 @@ fn kiem_ep(m: &Machine, eps: &[ObjId], buoc: &str) {
 
 const S_EP: [usize; 2] = [0, 1];
 const S_REP: usize = 2;
+/// **KT-34** — thêm 2 `Reply` **riêng** cho các `Recv` kế tiếp của server: một `Reply` object
+/// chỉ phục vụ **một** `Call` tại một thời điểm (cap đang `caller=Some` không dùng lại được).
+const S_REP_EXTRA: [usize; 2] = [3, 4];
 const S_TCB: usize = 10;
 const S_SC: usize = 64;
 const S_CTL: usize = 120;
@@ -123,6 +126,8 @@ struct Rig {
     ep_s: [SlotRef; 2],
     rep: ObjId,
     rep_s: SlotRef,
+    rep_extra: [ObjId; 2],
+    rep_extra_s: [SlotRef; 2],
     t: Vec<ObjId>,
     ts: Vec<SlotRef>,
 }
@@ -145,6 +150,15 @@ impl Rig {
         let rep_cap = m.root_cap(rep);
         m.put_cap(c0, S_REP, rep_cap).expect("cap Reply");
         let rep_s = slot(c0, S_REP);
+        // **KT-34**: 2 Reply nữa cho các `Recv` kế tiếp (mỗi `Call` một Reply).
+        let mut rep_extra = [0u32; 2];
+        let mut rep_extra_s = [slot(c0, S_REP_EXTRA[0]); 2];
+        for (k, s) in S_REP_EXTRA.iter().enumerate() {
+            rep_extra[k] = m.add_kernel_object(ObjType::Reply);
+            let cap = m.root_cap(rep_extra[k]);
+            m.put_cap(c0, *s, cap).expect("cap Reply phụ");
+            rep_extra_s[k] = slot(c0, *s);
+        }
         let ctl_cap = m.root_cap(ctl);
         m.put_cap(c0, S_CTL, ctl_cap).expect("cap SchedControl");
         let ctl_s = slot(c0, S_CTL);
@@ -176,6 +190,8 @@ impl Rig {
             ep_s,
             rep,
             rep_s,
+            rep_extra,
+            rep_extra_s,
             t,
             ts,
         };
@@ -197,6 +213,17 @@ impl Rig {
     fn recv(&mut self, i: usize, epi: usize, reply: bool) -> Result<(), KError> {
         let rep = if reply { Some(self.rep_s) } else { None };
         self.m.recv(self.t[i], self.ep_s[epi], rep)
+    }
+
+    /// **KT-34** — `Recv` với Reply **riêng** thứ `k` (0 = Reply gốc): mỗi `Call` cần một
+    /// `Reply` object chưa bị bind; dùng lại cap đang `caller=Some` là lỗi mô hình (`Busy`).
+    fn recv_rep(&mut self, i: usize, epi: usize, k: usize) -> Result<(), KError> {
+        let rep = if k == 0 {
+            self.rep_s
+        } else {
+            self.rep_extra_s[k - 1]
+        };
+        self.m.recv(self.t[i], self.ep_s[epi], Some(rep))
     }
 
     fn reply(&mut self, i: usize) -> Result<(), KError> {
@@ -530,8 +557,9 @@ fn nhieu_endpoint_doc_lap() {
     );
     assert_eq!(r.ep_info(1).len, 0);
     assert_eq!(r.ep_info(1).popped, 1);
-    // Recv ep0 (đang đầy) lấy đúng message cũ nhất của ep0.
-    r.recv(srv, 0, true).expect("Recv ep0");
+    // Recv ep0 (đang đầy) lấy đúng message cũ nhất của ep0 — Reply **khác** (Reply gốc đang
+    // giữ caller của message ep1; KT-34: không dùng lại cap active).
+    r.recv_rep(srv, 0, 1).expect("Recv ep0");
     assert_eq!(r.ep_info(0).len, MAILBOX_CAP - 1);
     assert_eq!(r.ep_info(0).popped, 1);
     r.kiem("nhiều endpoint");
@@ -629,11 +657,17 @@ fn recv_fault_message_dung_thu_tu_fifo() {
         }
     );
     // Recv lần 2: fault Exit → TCB exit thành Inactive (D2-25: procsrv Recv xong mới Inactive).
-    r.recv(srv, 0, true).expect("Recv #2");
+    // Reply **riêng** (KT-34): Reply #1 đang giữ caller của client 0.
+    r.recv_rep(srv, 0, 1).expect("Recv #2");
     assert_eq!(r.state(exit_tcb), TcbState::Inactive);
     // Recv lần 3: client 1.
-    r.recv(srv, 0, true).expect("Recv #3");
-    assert_eq!(r.state(1), TcbState::BlockedOnReply { reply: r.rep });
+    r.recv_rep(srv, 0, 2).expect("Recv #3");
+    assert_eq!(
+        r.state(1),
+        TcbState::BlockedOnReply {
+            reply: r.rep_extra[1]
+        }
+    );
     let info = r.ep_info(0);
     assert_eq!((info.len, info.popped, info.removed), (0, 3, 0));
     assert_eq!(info.pushed, 3);

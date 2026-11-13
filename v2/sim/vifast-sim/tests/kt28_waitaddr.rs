@@ -671,3 +671,97 @@ fn fuzz_1000_seed_64_op_bat_bien_va_tat_dinh() {
         assert_eq!(trace, trace2, "seed {seed}: hai lượt phải cùng trace");
     }
 }
+
+// ===========================================================================
+// 14. KT-34 (C2) — **property trên MỌI thứ tự** của 3 bước {Wait(t0, expected = 0), Store(1),
+//     Wake(1)}: Wake **sau** khi waiter xếp hàng ⇒ waiter **phải** Ready; Wake **trước** ⇒ trả 0
+//     và **không** nuốt giá trị (lần Wait sau thấy giá trị mới ⇒ `InvalidArgument`, không chờ
+//     trên giá trị cũ). Bổ sung cho ca định hướng `khong_mat_danh_thuc_wake_truoc_va_sau`.
+// ===========================================================================
+
+#[test]
+fn property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu() {
+    // Mọi hoán vị của 3 bước: 0 = Wait t[0] (expected = 0), 1 = Store(1), 2 = Wake(1).
+    let hoan_vi: [[usize; 3]; 6] = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    for thu_tu in hoan_vi {
+        let mut r = Rig::new();
+        let ep = r.ep;
+        // Giá trị khởi đầu 0 = `expected` của Wait ⇒ Wait **hợp lệ** (không tạo lỗi giả).
+        r.set(ep, 0, 0);
+        let mut dang_cho = false;
+        let mut da_store = false;
+        for (buoc, &op) in thu_tu.iter().enumerate() {
+            match op {
+                0 => {
+                    if da_store {
+                        // Giá trị đã đổi ⇒ **không** xếp hàng (KT-28: so giá trị **trước** khi
+                        // chờ), không để lại waiter ma.
+                        assert_eq!(
+                            r.wait(0, ep, 0, 0),
+                            Err(KError::InvalidArgument),
+                            "thứ tự {thu_tu:?} bước {buoc}: expected cũ ⇒ InvalidArgument"
+                        );
+                        assert_eq!(r.waiters(ep, 0).len(), 0, "không được để lại waiter");
+                        assert!(!dang_cho);
+                    } else {
+                        r.wait(0, ep, 0, 0).expect("WaitAddr khớp giá trị hiện tại");
+                        dang_cho = true;
+                        assert_eq!(
+                            r.st(0),
+                            TcbState::BlockedOnAddress {
+                                frame: ep,
+                                offset: 0
+                            },
+                            "thứ tự {thu_tu:?} bước {buoc}: phải xếp hàng"
+                        );
+                    }
+                }
+                1 => {
+                    r.set(ep, 0, 1);
+                    da_store = true;
+                }
+                _ => {
+                    let k = r.wake(ep, 0, 1).expect("WakeAddr");
+                    // **C2 (chiều "sau")**: Wake sau khi waiter xếp hàng ⇒ đúng waiter đó Ready.
+                    // **C2 (chiều "trước")**: chưa ai chờ ⇒ 0, không đánh thức nhầm.
+                    assert_eq!(
+                        k,
+                        u32::from(dang_cho),
+                        "thứ tự {thu_tu:?} bước {buoc}: số waiter được đánh thức"
+                    );
+                    if dang_cho {
+                        assert_eq!(
+                            r.st(0),
+                            TcbState::Ready,
+                            "thứ tự {thu_tu:?}: Wake sau khi xếp hàng phải đánh thức t[0]"
+                        );
+                        assert!(r.m.ready_contains(0, r.t[0]), "phải vào hàng Ready");
+                        dang_cho = false;
+                    }
+                    // Không nuốt giá trị (mô hình futex: state là giá trị, không phải "cờ treo").
+                    assert_eq!(r.m.addr_word(ep, 0), if da_store { 1 } else { 0 });
+                }
+            }
+            r.kiem(&format!("thứ tự {thu_tu:?} bước {buoc}"));
+        }
+        if dang_cho {
+            assert_eq!(r.waiters(ep, 0), vec![r.t[0]], "waiter còn chờ đúng khoá");
+            assert_eq!(
+                r.st(0),
+                TcbState::BlockedOnAddress {
+                    frame: ep,
+                    offset: 0
+                }
+            );
+        } else {
+            assert_eq!(r.waiters(ep, 0).len(), 0, "không còn waiter ma");
+        }
+    }
+}

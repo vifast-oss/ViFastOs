@@ -205,6 +205,11 @@ impl Rig {
         if let Err(e) = self.m.check_caps() {
             panic!("check_caps sau {buoc}: {e}");
         }
+        // **KT-34** — bất biến liên kết Reply (C2) sau **mỗi** bước của cả test định hướng lẫn
+        // fuzz 1.000 seed.
+        if let Err(e) = self.m.check_reply_links() {
+            panic!("check_reply_links sau {buoc}: {e}");
+        }
     }
 
     fn st(&self, i: usize) -> TcbState {
@@ -1378,4 +1383,233 @@ fn message_info_giu_nguyen_35_bit_khi_co_cap() {
     );
     assert!(MessageInfo::new(0, 0, false, 0x10, 0).is_err());
     assert_eq!(MAX_WORDS, 64);
+}
+
+// ===========================================================================
+// 14. KT-34 (C2, D2-63) — cap `Reply` **đang active** (`caller = Some`) không được dùng lại
+//     để `Recv`/`Call`: ghi đè `caller` làm TCB cũ `BlockedOnReply` **mất đường Reply**.
+// ===========================================================================
+
+/// `Recv` bằng cap `Reply` **đang** giữ `caller` ⇒ `Busy` **trước** khi nhận message nào:
+/// caller cũ **vẫn** `BlockedOnReply` và **vẫn** là `caller` của Reply (không ghi đè); `Reply`
+/// đúng ⇒ caller `Ready` + `caller = None`; sau đó cap **dùng lại được** (cả hai chiều).
+#[test]
+fn recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc() {
+    let mut r = Rig::new(3);
+    // Server t[1] chờ trên ep0 với Reply `rep0` chưa dùng ⇒ `caller = None`: Recv **bình
+    // thường** (đúng ca `.scn` 04/05) — không bị chặn oan.
+    r.recv(1, 0, Some(0)).expect("Recv thường (caller None)");
+    assert!(matches!(r.st(1), TcbState::BlockedOnRecv { .. }));
+    // Client t[0] `Call` ⇒ message giao, `rep0.caller = Some(t[0])`, t[0] `BlockedOnReply`.
+    r.call(0, 0, msg(0x34, &[0xA])).expect("Call");
+    assert_eq!(r.st(0), TcbState::BlockedOnReply { reply: r.rep[0] });
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    assert_eq!(r.st(1), TcbState::Ready, "server được đánh thức");
+    r.kiem("Call");
+    // Server `Recv` **lại** bằng đúng cap Reply đang active ⇒ `Busy`, **không** đổi gì.
+    assert_eq!(
+        r.recv(1, 0, Some(0)),
+        Err(KError::Busy),
+        "cap Reply đang caller=Some ⇒ Busy (không ghi đè caller)"
+    );
+    assert_eq!(
+        r.m.reply_caller(r.rep[0]),
+        Ok(Some(r.t[0])),
+        "caller cũ phải giữ nguyên sau Busy"
+    );
+    assert_eq!(
+        r.st(0),
+        TcbState::BlockedOnReply { reply: r.rep[0] },
+        "caller cũ vẫn BlockedOnReply — không mất đường Reply"
+    );
+    assert_eq!(
+        r.st(1),
+        TcbState::Ready,
+        "Busy không đổi trạng thái người nhận"
+    );
+    r.kiem("Recv cap active ⇒ Busy");
+    // Reply **đúng** ⇒ caller `Ready`, `caller = None`.
+    r.m.reply(r.t[1], r.rep_s[0]).expect("Reply");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(None));
+    assert_eq!(r.st(0), TcbState::Ready, "Reply đánh thức caller");
+    r.kiem("Reply");
+    // Chiều ngược: sau Reply, cap **dùng lại được** (caller None ⇒ không bị chặn).
+    r.recv(1, 0, Some(0))
+        .expect("Recv lại sau Reply (caller None)");
+    assert!(matches!(r.st(1), TcbState::BlockedOnRecv { .. }));
+    r.call(2, 0, msg(0x35, &[0xB])).expect("Call thứ hai");
+    assert_eq!(r.st(2), TcbState::BlockedOnReply { reply: r.rep[0] });
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[2])));
+    r.kiem("Call thứ hai");
+}
+
+/// Lớp chặn **thứ hai** ở `Call`: hai cap cùng trỏ **một** `Reply` object, waiter `Recv` đã
+/// nhận cap lúc `caller = None` nhưng Reply bị bind **qua cap kia** ⇒ `Call` tới waiter đó phải
+/// `Busy` (không giao message, không ghi đè caller). Sau `Reply` (caller None) thì `Call`
+/// **thành công** — không chặn vĩnh viễn.
+#[test]
+fn call_vao_waiter_co_reply_da_active_qua_cap_khac_tra_busy() {
+    let mut r = Rig::new(3);
+    // Bản sao cap `Reply rep0` (cùng object, khác slot) — đường "cap khác" của mô hình.
+    let rep2_s = slot(r.c0, 110);
+    r.m.copy(r.rep_s[0], rep2_s).expect("copy cap Reply");
+    // t[1] Recv ep0 bằng cap **gốc** (caller None lúc nhận ⇒ hợp lệ).
+    r.recv(1, 0, Some(0)).expect("Recv t1");
+    // t[2] Recv ep1 bằng cap **copy** (cùng object rep0).
+    r.m.recv(r.t[2], r.ep_s[1], Some(rep2_s)).expect("Recv t2");
+    // t[0] Call ep1 ⇒ bind `rep0.caller = Some(t[0])` **qua cap copy**.
+    r.call(0, 1, msg(0x36, &[0xC])).expect("Call ep1");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    r.kiem("Call ep1 bind caller");
+    // t[2] (đã Ready) Call ep0: waiter t[1] giữ Reply **đã active** ⇒ `Busy`; message **không**
+    // vào IPC (không cấp `msg_id`), waiter vẫn chờ, caller cũ giữ nguyên.
+    assert_eq!(r.call(2, 0, msg(0x37, &[0xD])), Err(KError::Busy));
+    assert_eq!(r.m.ipc_sent(), 1, "Call bị từ chối không cấp msg_id");
+    assert!(
+        matches!(r.st(1), TcbState::BlockedOnRecv { .. }),
+        "waiter ep0 vẫn chờ"
+    );
+    assert_eq!(
+        r.m.reply_caller(r.rep[0]),
+        Ok(Some(r.t[0])),
+        "caller cũ giữ nguyên"
+    );
+    r.kiem("Call vào waiter có Reply active ⇒ Busy");
+    // Reply ⇒ caller None; `Call` lại **thành công** (không chặn vĩnh viễn).
+    r.m.reply(r.t[2], rep2_s).expect("Reply");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(None));
+    assert_eq!(r.st(0), TcbState::Ready);
+    r.call(2, 0, msg(0x38, &[0xE])).expect("Call lại sau Reply");
+    assert_eq!(r.st(1), TcbState::Ready);
+    assert_eq!(r.st(2), TcbState::BlockedOnReply { reply: r.rep[0] });
+    r.kiem("Call lại sau Reply");
+}
+
+/// **Bất biến C2** (`Machine::check_reply_links`) và **cổng** `transition_tcb` cùng giữ liên
+/// kết `Reply.caller ⇔ BlockedOnReply`: rời `BlockedOnReply` qua cổng thấp thì `caller` được
+/// gỡ; vào `BlockedOnReply` thì `caller` được bind; **ghi đè** caller đang active bị cổng từ
+/// chối (`IllegalOperation`) — cùng lỗi C2, chặn ở mọi đường.
+#[test]
+fn cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller() {
+    let mut r = Rig::new(3);
+    r.recv(1, 0, Some(0)).expect("Recv");
+    r.call(0, 0, msg(0x39, &[0xF])).expect("Call");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    // Trạng thái **đúng** ⇒ `Ok`.
+    r.m.check_reply_links().expect("liên kết Reply đúng");
+    // Cổng thấp: t[2] thử vào `BlockedOnReply` trên **cùng** Reply đang active ⇒ từ chối,
+    // không đổi trạng thái, **không** ghi đè caller (lỗi C2 bị chặn ngay ở cổng).
+    let st2 = r.st(2);
+    assert_eq!(
+        r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[0] }),
+        Err(KError::IllegalOperation),
+        "Reply đang bind caller khác ⇒ cổng không cho bind đè"
+    );
+    assert_eq!(r.st(2), st2, "cổng từ chối ⇒ trạng thái không đổi");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    r.m.check_reply_links().expect("liên kết Reply vẫn đúng");
+    // Vào `BlockedOnReply` bằng cổng thấp trên Reply **rảnh** ⇒ tự bind `caller = Some(t[2])`.
+    assert_eq!(r.m.reply_caller(r.rep[1]), Ok(None));
+    r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[1] })
+        .expect("vào BlockedOnReply trên Reply rảnh");
+    assert_eq!(
+        r.m.reply_caller(r.rep[1]),
+        Ok(Some(r.t[2])),
+        "cổng vào BlockedOnReply phải bind caller"
+    );
+    r.m.check_reply_links().expect("liên kết Reply sau khi vào");
+    // Rời `BlockedOnReply` bằng cổng thấp ⇒ tự gỡ `caller` (không còn "caller ma").
+    r.m.transition_tcb(r.t[2], TcbState::Ready)
+        .expect("rời BlockedOnReply");
+    assert_eq!(
+        r.m.reply_caller(r.rep[1]),
+        Ok(None),
+        "cổng rời BlockedOnReply phải gỡ caller"
+    );
+    r.m.check_reply_links().expect("liên kết Reply sau khi rời");
+}
+
+/// **Phân biệt then chốt của KT-34** (đúng câu hỏi reviewer): `Call` xảy ra **trước** `Recv` đầu
+/// tiên ⇒ message nằm ở **hàng gửi**, `Reply` **chưa** bind (`caller = None`) ⇒ `Recv` với cap
+/// Reply **vẫn hợp lệ** (kernel mới bind `caller` lúc giao). Chỉ **lần Recv thứ hai** trên cùng
+/// `Reply` đang active mới `Busy`. Tức quy tắc là "Reply **đã** dùng cho một Call đang chờ", không
+/// phải "cứ có Call trước là cấm Recv".
+#[test]
+fn call_truoc_recv_lan_dau_van_hop_le_chi_chan_lan_hai() {
+    let mut r = Rig::new(3);
+    // Client `Call` khi **chưa** ai `Recv` ⇒ xếp hàng gửi, chưa bind Reply.
+    r.call(0, 0, msg(0x3A, &[0x11]))
+        .expect("Call khi chưa có waiter");
+    assert!(matches!(r.st(0), TcbState::BlockedOnSend { .. }));
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(None), "Reply chưa bị bind");
+    r.kiem("Call xếp hàng");
+    // `Recv` **đầu tiên** với cap Reply **rảnh** ⇒ Ok (đường `.scn` 04/05).
+    r.recv(1, 0, Some(0)).expect("Recv đầu tiên sau Call");
+    assert_eq!(r.st(0), TcbState::BlockedOnReply { reply: r.rep[0] });
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    assert_eq!(r.st(1), TcbState::Ready);
+    r.kiem("Recv đầu tiên");
+    // `Recv` **thứ hai** với cùng cap **đang active** ⇒ Busy (mới là lỗi C2).
+    assert_eq!(
+        r.recv(1, 0, Some(0)),
+        Err(KError::Busy),
+        "chỉ lần Recv thứ hai trên Reply đã bind mới bị chặn"
+    );
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    r.kiem("Recv thứ hai ⇒ Busy");
+}
+
+/// `ReplyRecv` với Reply **mới** đang active ⇒ `Busy` **trước** khi gửi reply; còn dùng **chính**
+/// `Reply` vừa trả lời (`reply == recv_reply`) ⇒ hợp lệ (reply tiêu thụ `caller` trước, lúc `recv`
+/// chạy Reply đã rảnh) và vẫn bind được cho `Call` kế — không bị `Busy` oan.
+#[test]
+fn reply_recv_kiem_reply_moi_truoc_khi_gui_va_dung_lai_chinh_reply_hop_le() {
+    let mut r = Rig::new(3);
+    // t[1] server ep0 (rep0); t[0] Call ⇒ rep0.caller = Some(t[0]); t[1] Ready (có message).
+    r.recv(1, 0, Some(0)).expect("Recv ep0");
+    r.call(0, 0, msg(0x3B, &[0x12])).expect("Call ep0");
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    // t[2] server ep1 (rep1); t[1] Call ep1 ⇒ rep1.caller = Some(t[1]) (**active**), t[2] Ready.
+    r.m.recv(r.t[2], r.ep_s[1], Some(r.rep_s[1]))
+        .expect("Recv ep1 (rep1)");
+    r.call(1, 1, msg(0x3C, &[0x13])).expect("Call ep1");
+    assert_eq!(r.m.reply_caller(r.rep[1]), Ok(Some(r.t[1])));
+    r.kiem("hai Reply đều active");
+    // t[2] `reply_recv` với Reply **mới** = rep0 (đang active) ⇒ Busy **trước** khi gửi reply trên
+    // rep1: không reply nửa chừng, caller hai bên giữ nguyên.
+    assert_eq!(
+        r.reply_recv(2, 1, 0, msg(0x3D, &[0x14]), Some(0)),
+        Err(KError::Busy),
+        "Reply mới (rep0) đang active ⇒ Busy trước khi gửi reply"
+    );
+    assert_eq!(
+        r.m.reply_caller(r.rep[1]),
+        Ok(Some(r.t[1])),
+        "chưa gửi reply nào (rep1 vẫn bind caller)"
+    );
+    assert_eq!(r.m.reply_caller(r.rep[0]), Ok(Some(r.t[0])));
+    r.kiem("ReplyRecv bị chặn trước khi gửi");
+    // t[2] `reply_recv` dùng **chính** rep1 (vừa trả lời) cho lượt Recv kế ⇒ hợp lệ.
+    r.reply_recv(2, 1, 0, msg(0x3E, &[0x15]), Some(1))
+        .expect("reply_recv reply=recv_reply=rep1");
+    assert_eq!(
+        r.m.reply_caller(r.rep[1]),
+        Ok(None),
+        "reply tiêu thụ caller"
+    );
+    assert_eq!(r.st(1), TcbState::Ready, "caller t[1] được đánh thức");
+    assert_eq!(
+        r.st(2),
+        TcbState::BlockedOnRecv {
+            ep: r.ep[0],
+            reply: Some(r.rep[1])
+        },
+        "server chờ Call kế trên ep0 với Reply vừa dùng (đã rảnh)"
+    );
+    r.kiem("ReplyRecv dùng lại chính Reply");
+    // `Call` kế bind lại bình thường (rep1 đã rảnh).
+    r.call(1, 0, msg(0x3F, &[0x16])).expect("Call kế");
+    assert_eq!(r.st(1), TcbState::BlockedOnReply { reply: r.rep[1] });
+    assert_eq!(r.m.reply_caller(r.rep[1]), Ok(Some(r.t[1])));
+    r.kiem("Call kế bind lại");
 }

@@ -844,3 +844,93 @@ fn fuzz_1000_seed_64_op_bat_bien_va_tat_dinh() {
         assert_eq!(trace, trace2, "seed {seed}: hai lượt phải cùng trace");
     }
 }
+
+// ===========================================================================
+// 14. KT-34 (C2) — **property trên MỌI thứ tự** của 3 bước {Wait t0, Wait t1, Signal}:
+//     Signal **sau** khi waiter xếp hàng ⇒ waiter đó **phải** Ready + nhận word/badge; Signal
+//     **trước** ⇒ word còn để Wait sau thấy (không mất đánh thức). Bổ sung cho ca định hướng
+//     `khong_mat_danh_thuc_signal_truoc_va_sau_wait` (một thứ tự cụ thể).
+// ===========================================================================
+
+#[test]
+fn property_signal_sau_khi_xep_hang_danh_thuc_moi_thu_tu() {
+    let badge = 0x0F0F;
+    // Mọi hoán vị của 3 bước: 0 = Wait t[0], 1 = Wait t[1], 2 = Signal ntf0 (badge).
+    let hoan_vi: [[usize; 3]; 6] = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    for thu_tu in hoan_vi {
+        let mut r = Rig::new(2);
+        let mut dang_cho: Vec<usize> = Vec::new();
+        let mut nhan_ngay = 0usize;
+        for (buoc, &op) in thu_tu.iter().enumerate() {
+            if op == 2 {
+                r.m.notification_signal(r.ntfn[0], badge).expect("Signal");
+                // **C2 (chiều "sau")**: mọi waiter đã xếp hàng **trước** bước Signal phải được
+                // đánh thức và nhận đúng `(word, badge)`.
+                for &ti in &dang_cho {
+                    assert_eq!(
+                        r.st(ti),
+                        TcbState::Ready,
+                        "thứ tự {thu_tu:?} bước {buoc}: Signal sau khi t[{ti}] xếp hàng phải đánh thức"
+                    );
+                    let v = r.tval(ti).expect("waiter vừa được giao word");
+                    assert_eq!(v.word, badge, "thứ tự {thu_tu:?}: word giao cho t[{ti}]");
+                    assert_eq!(v.badge, badge, "thứ tự {thu_tu:?}: badge giao cho t[{ti}]");
+                }
+                if !dang_cho.is_empty() {
+                    assert_eq!(r.word(0), 0, "word phải xoá sau khi giao (một waiter)");
+                }
+                dang_cho.clear();
+            } else {
+                let ti = op;
+                match r.recv_ntfn(ti, 0) {
+                    // `Wait` trả `Ok` cho **cả** hai nhánh (`spec/abi.toml:109`): giao ngay khi
+                    // word ≠ 0, hoặc xếp hàng khi word = 0 — phân biệt bằng **trạng thái**.
+                    Ok(()) => {
+                        if matches!(r.st(ti), TcbState::BlockedOnNotification { .. }) {
+                            assert_eq!(
+                                r.word(0),
+                                0,
+                                "chỉ xếp hàng được khi word = 0 (không nuốt tín hiệu)"
+                            );
+                            dang_cho.push(ti);
+                        } else {
+                            // **C2 (chiều "trước")**: Signal đã xảy ra ⇒ word còn ⇒ Wait trả ngay.
+                            nhan_ngay += 1;
+                            assert_eq!(r.st(ti), TcbState::Ready, "word có sẵn ⇒ Wait không chặn");
+                            assert_eq!(
+                                r.tval(ti).map(|v| v.word),
+                                Some(badge),
+                                "thứ tự {thu_tu:?}: Wait sau Signal phải thấy word"
+                            );
+                            assert_eq!(r.word(0), 0, "word xoá sau khi giao");
+                        }
+                    }
+                    Err(KError::Busy) => {
+                        // Waiter thứ hai trên **một** notification (KT-27) — chỉ khi đã có
+                        // waiter khác đang chờ, tức chưa ai được đánh thức.
+                        assert!(
+                            !dang_cho.is_empty(),
+                            "thứ tự {thu_tu:?}: Busy chỉ khi đã có waiter khác"
+                        );
+                        assert_eq!(r.st(ti), TcbState::Ready, "Busy không đổi trạng thái");
+                    }
+                    Err(e) => panic!("thứ tự {thu_tu:?} bước {buoc}: Wait lỗi {e:?}"),
+                }
+            }
+            r.kiem(&format!("thứ tự {thu_tu:?} bước {buoc}"));
+        }
+        // Signal **trước** mọi Wait ⇒ đúng **một** Wait nhận ngay (word còn), không chặn.
+        assert_eq!(
+            nhan_ngay,
+            usize::from(thu_tu[0] == 2),
+            "thứ tự {thu_tu:?}: số Wait nhận ngay phải khớp (1 nếu Signal đầu, 0 nếu không)"
+        );
+    }
+}
