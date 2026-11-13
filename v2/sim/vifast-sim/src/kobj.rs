@@ -307,6 +307,10 @@ struct TcbData {
     home: u16,
     /// Model API `set_sched_params(tcb, sc)` — D2-49(b); ABI `Tcb.SetSchedParams` để K1c/K3.
     sched_context: Option<ObjId>,
+    /// **KT-21** — `SchedContext` được **donate** cho TCB này (server passive chạy bằng ngân
+    /// sách của client); model-only `[TK]`, D2-49(c). `None` ⇔ TCB tự chủ theo `sched_context`.
+    /// Bất biến: `donated_sc.is_some()` ⇒ `sched_context.is_none()` (một SC một TCB một lúc).
+    donated_sc: Option<ObjId>,
     bound_notification: Option<ObjId>,
 }
 
@@ -324,6 +328,7 @@ impl TcbData {
             affinity: self.affinity,
             home: self.home,
             sched_context: self.sched_context,
+            donated_sc: self.donated_sc,
             bound_notification: self.bound_notification,
         }
     }
@@ -342,6 +347,12 @@ struct SchedData {
     bound: Option<CapId>,
     /// KT-20: ngân sách MCS — `budget`/`period`/`consumed`/`refill` (model-only `[TK]`).
     budget: ScBudget,
+    /// **KT-21** — TCB **đang nhận** donation từ SC này (server passive); `None` khi SC đang ở
+    /// chủ sở hữu hợp lệ. Model-only `[TK]`, D2-49(c).
+    donated_to: Option<ObjId>,
+    /// **KT-21** — TCB **cho mượn** SC (client đang `BlockedOnReply`); cặp hai chiều với
+    /// [`SchedData::donated_to`] — cả hai cùng `Some` hoặc cùng `None`.
+    donor: Option<ObjId>,
 }
 
 #[derive(Debug)]
@@ -365,6 +376,8 @@ pub struct TcbInfo {
     pub affinity: u64,
     pub home: u16,
     pub sched_context: Option<ObjId>,
+    /// **KT-21** — SC được **donate** cho TCB (server passive): model-only `[TK]`, D2-49(c).
+    pub donated_sc: Option<ObjId>,
     pub bound_notification: Option<ObjId>,
 }
 
@@ -1361,6 +1374,10 @@ impl Machine {
         Ok(())
     }
 
+    /// `SchedContext.Bind(sc, reply|notification)` — chỉ **gắn/kiểm** quan hệ cấu trúc
+    /// (chữ ký đã duyệt, D2-33). **KT-21 DoD 3**: `Bind` **không** tạo/xoá donation (donation tự
+    /// động qua `Call`/`Reply`, D2-49(c)); `Bind` Notification chỉ kiểm cấu trúc (thức dậy thật ở
+    /// K1c). `Bind` không đổi ngân sách.
     pub fn sched_context_bind(&mut self, sched: SlotRef, target: SlotRef) -> Result<(), KError> {
         let sched_obj = self.require_type(sched, ObjType::SchedContext)?;
         let target_cap = self.cap_at(target.cnode, target.slot)?;
@@ -1397,10 +1414,17 @@ impl Machine {
         if max_controlled_priority < priority {
             return Err(KError::InvalidArgument);
         }
-        // KT-19: priority đổi ⇒ gỡ khỏi bucket cũ **trước** khi sửa (bucket == priority),
-        // rồi `sched_sync` đưa vào bucket mới nếu đang `Ready`. Chỉ TCB `Ready` mới có thể
-        // nằm trong hàng ⇒ khỏi quét 256 bucket khi TCB đang chạy/chặn.
-        if self.tcb_state(tcb_obj)? == TcbState::Ready {
+        // KT-21: priority của **donor** đang được donate không đổi được (sẽ đổi priority hiệu
+        // lực của donee giữa chừng) — phải `Reply`/huỷ donation trước. Donee thì đổi được
+        // `priority` gốc (không ảnh hưởng khi đang donate) và **MCP** (đổi priority hiệu lực).
+        let info = self.tcb_info_obj(tcb_obj)?;
+        if self.is_donation_donor(tcb_obj) {
+            return Err(KError::IllegalOperation);
+        }
+        // KT-19: priority đổi ⇒ gỡ khỏi bucket cũ **trước** khi sửa (bucket == priority hiệu
+        // lực), rồi `sched_sync` đưa vào bucket mới nếu đang `Ready`. Donee phải gỡ cả khi
+        // không `Ready` (MCP đổi ⇒ priority hiệu lực đổi).
+        if info.state == TcbState::Ready || info.donated_sc.is_some() {
             self.sched_remove_all(tcb_obj);
         }
         self.body_mut(tcb_obj, |k| match k {
@@ -1467,6 +1491,17 @@ impl Machine {
             Some(s) => Some(self.require_type(s, ObjType::SchedContext)?),
             None => None,
         };
+        // KT-21: không đổi ngân sách của TCB đang nhận donation / đang cho mượn SC (phải
+        // `Reply` hoặc huỷ donation trước); không lấy SC đang bị donate cho TCB khác.
+        let info = self.tcb_info_obj(tcb_obj)?;
+        if info.donated_sc.is_some() || self.is_donation_donor(tcb_obj) {
+            return Err(KError::IllegalOperation);
+        }
+        if let Some(sc) = sched_obj {
+            if self.donation_of(sc)?.0.is_some() {
+                return Err(KError::Busy);
+            }
+        }
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.sched_context = sched_obj;
@@ -1541,6 +1576,15 @@ impl Machine {
         if !crate::tcb::allowed(from, to) {
             return Err(KError::IllegalOperation);
         }
+        // KT-21: rời `BlockedOnReply` bằng đường **khác** `Reply` (wake/suspend/exit/finalise
+        // hoặc `transition_tcb` trực tiếp) = bỏ cuộc gọi ⇒ SC donation phải trả về client ngay,
+        // không để SC treo trên TCB không còn chờ reply (bất biến "donor đang BlockedOnReply").
+        if matches!(from, TcbState::BlockedOnReply { .. })
+            && !matches!(to, TcbState::BlockedOnReply { .. })
+            && self.is_donation_donor(tcb)
+        {
+            self.release_donation_of(tcb)?;
+        }
         // Bất biến ≤1 `Running`/hart (KT-19 DoD 2): TCB vào `Running{hart}` khi hart đang có
         // TCB chạy ⇒ đưa TCB cũ về `Ready` **trước**, qua đúng cửa này (không đường tắt).
         if let TcbState::Running { hart } = to {
@@ -1605,6 +1649,10 @@ impl Machine {
         if !state.is_live() || state == TcbState::Inactive {
             return Err(KError::IllegalOperation);
         }
+        // KT-21 DoD 5: huỷ donation **trước** khi gỡ hàng/đổi trạng thái — TCB là donor thì thu
+        // hồi SC (donee đang `Running` mất ngân sách ⇒ `Sleeping{Budget}` ngay, D2-50); TCB là
+        // donee thì trả SC về client và đánh thức client (reply sẽ không tới).
+        self.release_donation_of(obj)?;
         // Invariant §4.4: gỡ khỏi hàng **trước** khi bật cờ để bất biến kiểm được sau event.
         self.unlink_tcb_queues(obj);
         if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
@@ -1650,6 +1698,8 @@ impl Machine {
         if state == TcbState::Dead {
             return Ok(());
         }
+        // KT-21 DoD 5: huỷ donation trước khi finalise — không để SC trỏ tới TCB chết.
+        self.release_donation_of(tcb)?;
         self.unlink_tcb_queues(tcb);
         let released = self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
@@ -1737,6 +1787,8 @@ impl Machine {
     /// `SchedControl.Configure` **không có budget** nên bị bỏ qua, TCB có SC đã cấu hình mà
     /// `consumed == budget` cũng bị bỏ qua (§4.5, K1B-PLAN §5 KT-20 DoD 4). `pick` vẫn O(1)
     /// khi phần tử đầu hàng hợp lệ (KT-19), chỉ quét tiếp khi gặp TCB bị loại.
+    /// **KT-21**: server passive (`donated_sc`) được `pick` nhờ ngân sách SC của client; server
+    /// passive **không** được donate vẫn bị bỏ qua (D2-50).
     pub fn sched_pick_on(&self, hart: u16) -> Option<ObjId> {
         self.sched[self.hart_index(hart)].pick_where(|tcb| self.tcb_has_budget(tcb))
     }
@@ -1852,9 +1904,12 @@ impl Machine {
     /// `affinity` đổi. Idempotent: gỡ bản cũ rồi đặt chỗ mới theo state hiện tại.
     fn sched_sync(&mut self, tcb: ObjId) -> Result<(), KError> {
         let info = self.tcb_info_obj(tcb)?;
-        // 1) gỡ khỏi bucket priority hiện tại (bất biến: bucket == priority).
+        // KT-21: bucket dùng **priority hiệu lực** (`donated_priority` khi nhận donation, ngược
+        // lại priority gốc) — giống hệt `check_sched`.
+        let prio = self.effective_priority(tcb)?;
+        // 1) gỡ khỏi bucket priority hiện tại (bất biến: bucket == priority hiệu lực).
         for h in 0..self.sched.len() {
-            self.sched[h].remove_at(tcb, info.priority);
+            self.sched[h].remove_at(tcb, prio);
         }
         // 2) nhả `current` nếu TCB không còn `Running` đúng hart đó.
         for h in 0..self.sched.len() {
@@ -1870,7 +1925,7 @@ impl Machine {
                 if h >= self.sched.len() {
                     return Err(KError::InvalidArgument);
                 }
-                self.sched[h].enqueue(tcb, info.priority);
+                self.sched[h].enqueue(tcb, prio);
             }
             TcbState::Running { hart } => {
                 let h = hart as usize;
@@ -1882,7 +1937,7 @@ impl Machine {
                         return Err(KError::IllegalOperation);
                     }
                 }
-                self.sched[h].set_current(tcb, info.priority);
+                self.sched[h].set_current(tcb, prio);
             }
             _ => {}
         }
@@ -1952,10 +2007,14 @@ impl Machine {
                 if info.suspended {
                     return Err(format!("TCB {tcb} suspended nhưng vẫn nằm trong hàng"));
                 }
-                if info.priority != prio {
+                // KT-21: bucket phải khớp **priority hiệu lực** (priority gốc khi không nhận
+                // donation, `donated_priority` khi đang nhận).
+                let eff = self
+                    .effective_priority(tcb)
+                    .map_err(|e| format!("TCB {tcb}: priority hiệu lực lỗi {e:?}"))?;
+                if eff != prio {
                     return Err(format!(
-                        "TCB {tcb} ở bucket {prio} nhưng priority {}",
-                        info.priority
+                        "TCB {tcb} ở bucket {prio} nhưng priority hiệu lực {eff}"
                     ));
                 }
                 if info.affinity & (1u64 << info.home) == 0 {
@@ -1983,11 +2042,13 @@ impl Machine {
                     if hang_cua.get(cur as usize).copied().flatten().is_some() {
                         return Err(format!("TCB {cur} Running nhưng vẫn nằm trong hàng"));
                     }
-                    if info.priority != hs.cur_prio() {
+                    let eff = self
+                        .effective_priority(cur)
+                        .map_err(|e| format!("current {cur}: priority hiệu lực lỗi {e:?}"))?;
+                    if eff != hs.cur_prio() {
                         return Err(format!(
-                            "cur_prio {} nhưng priority của TCB {cur} là {}",
-                            hs.cur_prio(),
-                            info.priority
+                            "cur_prio {} nhưng priority hiệu lực của TCB {cur} là {eff}",
+                            hs.cur_prio()
                         ));
                     }
                     if hs.idle() {
@@ -2052,16 +2113,113 @@ impl Machine {
                 }
             }
         }
+        // KT-21: bất biến **donation** (DoD 7) — liên kết hai chiều khớp, mỗi SC ↔ đúng một
+        // donee, donee không có SC riêng và không phải donor (không chuỗi >1), donor đang
+        // `BlockedOnReply`, donor ≠ donee, donor/donee **không** cùng `Running`, priority hiệu
+        // lực không vượt MCP của một trong hai bên.
+        let scs = self.live_sched_contexts();
+        let mut donee_cua: Vec<Option<ObjId>> = vec![None; self.objects.len() + 1];
+        for sc in &scs {
+            let (donated_to, donor) = self
+                .donation_of(*sc)
+                .map_err(|e| format!("SC {sc}: donation không đọc được: {e:?}"))?;
+            match (donated_to, donor) {
+                (None, None) => {}
+                (Some(donee), Some(donor)) => {
+                    if donee == donor {
+                        return Err(format!("SC {sc}: donor trùng donee"));
+                    }
+                    let di = self
+                        .tcb_info_obj(donee)
+                        .map_err(|e| format!("SC {sc}: donee {donee} không đọc được: {e:?}"))?;
+                    let oi = self
+                        .tcb_info_obj(donor)
+                        .map_err(|e| format!("SC {sc}: donor {donor} không đọc được: {e:?}"))?;
+                    if di.donated_sc != Some(*sc) {
+                        return Err(format!(
+                            "SC {sc} donate cho {donee} nhưng donee không trỏ lại (donated_sc={:?})",
+                            di.donated_sc
+                        ));
+                    }
+                    if di.sched_context.is_some() {
+                        return Err(format!(
+                            "donee {donee} vừa có SC riêng vừa nhận donation (D2-49c)"
+                        ));
+                    }
+                    if oi.sched_context != Some(*sc) {
+                        return Err(format!("donor {donor} không còn gắn SC {sc}"));
+                    }
+                    if oi.donated_sc.is_some() {
+                        return Err(format!("TCB {donor} vừa donor vừa donee (chuỗi >1)"));
+                    }
+                    if !matches!(oi.state, TcbState::BlockedOnReply { .. }) {
+                        return Err(format!(
+                            "donor {donor} state {} nhưng phải BlockedOnReply",
+                            oi.state.name()
+                        ));
+                    }
+                    if matches!(di.state, TcbState::Inactive | TcbState::Dead) {
+                        return Err(format!("donee {donee} state {}", di.state.name()));
+                    }
+                    if matches!(di.state, TcbState::Running { .. })
+                        && matches!(oi.state, TcbState::Running { .. })
+                    {
+                        return Err(format!("donor {donor} và donee {donee} cùng Running"));
+                    }
+                    let eff = crate::mcs::donated_priority(
+                        oi.priority,
+                        oi.max_controlled_priority,
+                        di.max_controlled_priority,
+                    );
+                    if eff > oi.max_controlled_priority || eff > di.max_controlled_priority {
+                        return Err(format!(
+                            "SC {sc}: priority donation {eff} vượt MCP (donor {} / donee {})",
+                            oi.max_controlled_priority, di.max_controlled_priority
+                        ));
+                    }
+                    if let Some(slot) = donee_cua.get_mut(donee as usize) {
+                        if slot.replace(*sc).is_some() {
+                            return Err(format!("donee {donee} nhận donation từ >1 SC"));
+                        }
+                    }
+                }
+                other => return Err(format!("SC {sc}: donation nửa vời {other:?}")),
+            }
+        }
+        // Chiều ngược lại: `Tcb.donated_sc` phải khớp `SchedContext.donated_to`, và donee
+        // **không** được có SC riêng (một SC một TCB tại một thời điểm).
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let Some(sc) = self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB {obj} không đọc được: {e:?}"))?
+                .donated_sc
+            else {
+                continue;
+            };
+            let (donated_to, _) = self
+                .donation_of(sc)
+                .map_err(|e| format!("TCB {obj}: donated_sc {sc} không đọc được: {e:?}"))?;
+            if donated_to != Some(obj) {
+                return Err(format!(
+                    "TCB {obj} giữ donated_sc {sc} nhưng SC không trỏ lại (donated_to={donated_to:?})"
+                ));
+            }
+            if self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB {obj} không đọc được: {e:?}"))?
+                .sched_context
+                .is_some()
+            {
+                return Err(format!("donee {obj} vừa có SC riêng vừa nhận donation"));
+            }
+        }
         // KT-20: bất biến ngân sách của **mọi** `SchedContext` sống — `consumed ≤ budget`,
         // `budget`/`period` dương khi đã cấu hình, `refill` ở tương lai; `Sleeping{Budget}`
         // không nằm ready queue đã được nhánh "trạng thái khác" ở trên kiểm.
-        let scs: Vec<ObjId> = self
-            .objects
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| m.alive && m.ty == ObjType::SchedContext)
-            .map(|(i, _)| (i as u32) + 1)
-            .collect();
         for sc in scs {
             let budget = self
                 .body(sc, |k| match k {
@@ -2081,8 +2239,10 @@ impl Machine {
     // Model-only `[TK]`, **không** phải spec/ABI (D2-49(b,e,h)): `SchedContext` có
     // `budget`/`period`/`consumed`/`refill`; thời gian là đồng hồ ảo `tick(n)`; TCB chỉ chạy
     // khi SC còn budget, hết budget ⇒ `Sleeping{reason = Budget}` qua `transition_tcb`, biên
-    // refill ⇒ `Ready` nếu `!suspended`. **Không** làm refill sporadic/timeout fault (D2-16),
-    // **không** donation (KT-21).
+    // refill ⇒ `Ready` nếu `!suspended`. **Không** làm refill sporadic/timeout fault (D2-16).
+    // **Donation** (`Call`/`Reply`, passive server, MCP) là phần KT-21 ở mục riêng ngay dưới:
+    // charge/refill vẫn tính trên cùng một `SchedContext`, nên ngân sách của client bị trừ đúng
+    // bằng thời gian server phục vụ (D2-49(c)).
 
     /// Thời gian ảo hiện tại (đơn vị tick) — **không** đọc `Instant`/wall clock (D2-49(h)).
     pub fn virtual_now(&self) -> u64 {
@@ -2117,15 +2277,19 @@ impl Machine {
     }
 
     /// Charge **một** tick cho TCB đang chạy; hết budget ⇒ `Sleeping{Budget}` (một cửa
-    /// [`Machine::transition_tcb`]). TCB không SC/SC chưa cấu hình không bị charge.
+    /// [`Machine::transition_tcb`]). TCB không SC cấp ngân sách/SC chưa cấu hình không bị charge.
+    /// **KT-21**: SC cấp ngân sách có thể là SC **được donate** — charge vào SC của client.
     fn charge_tick(&mut self, tcb: ObjId) -> Result<(), KError> {
         let info = self.tcb_info_obj(tcb)?;
         if !matches!(info.state, TcbState::Running { .. }) {
             return Ok(());
         }
-        let Some(sc) = info.sched_context else {
+        // KT-21: SC cấp ngân sách = SC **riêng** (không bị donate) hoặc SC **được donate** cho
+        // TCB (server passive). Charge vào chính SC đó ⇒ thời gian server chạy trừ ngân sách của
+        // client (D2-49(c)); SC của client có thể đã cạn ⇒ server `Sleeping{Budget}`.
+        let Some(sc) = self.funding_sc(tcb) else {
             // Không SC = không có budget ⇒ không chạy (chỉ tới `Running` bằng transition trực
-            // tiếp; `pick` đã chặn từ đầu).
+            // tiếp; `pick` đã chặn từ đầu, D2-50).
             self.transition_tcb(
                 tcb,
                 TcbState::Sleeping {
@@ -2207,7 +2371,9 @@ impl Machine {
                 }
             ) && !info.suspended
             {
-                if let Some(sc) = info.sched_context {
+                // KT-21: SC cấp ngân sách có thể là SC riêng **hoặc** SC được donate — cả hai
+                // đều phải được đánh thức ở biên refill (DoD 4: server ngủ, refill, Reply).
+                if let Some(sc) = self.funding_sc(tcb) {
                     if refilled.contains(&sc) {
                         wake.push(tcb);
                     }
@@ -2242,7 +2408,12 @@ impl Machine {
     pub fn sched_info(&self, sched: SlotRef) -> Result<ScInfo, KError> {
         let obj = self.require_type(sched, ObjType::SchedContext)?;
         self.body(obj, |k| match k {
-            Kind::SchedContext(s) => Ok(s.budget.info()),
+            Kind::SchedContext(s) => {
+                let mut info = s.budget.info();
+                info.donated_to = s.donated_to;
+                info.donor = s.donor;
+                Ok(info)
+            }
             _ => Err(KError::WrongObjectType),
         })
     }
@@ -2262,16 +2433,14 @@ impl Machine {
         })
     }
 
-    /// TCB có được phép chạy theo ngân sách không: **phải có** `SchedContext` **đã**
-    /// `SchedControl.Configure` và `consumed < budget`. Không SC hoặc SC chưa cấu hình ⇒
-    /// `false` — TCB không được `pick` (ngữ nghĩa §4.5, K1B-PLAN §5 KT-20 DoD 4; sửa theo
-    /// verdict reviewer-kt20, không phải "không giới hạn"). Dùng bởi `pick`/`dispatch`,
-    /// `enforce_budget` và test bất biến.
+    /// TCB có được phép chạy theo ngân sách không: **phải có** SC cấp ngân sách **đã**
+    /// `SchedControl.Configure` và `consumed < budget`. SC cấp ngân sách là SC **riêng**
+    /// (không bị donate) hoặc SC **được donate** cho TCB (KT-21, D2-49(c)); không SC / SC chưa
+    /// cấu hình ⇒ `false` — TCB không được `pick` (ngữ nghĩa §4.5, K1B-PLAN §5 KT-20 DoD 4,
+    /// D2-50: không SC **không phải** "không giới hạn"). Dùng bởi `pick`/`dispatch`,
+    /// `enforce_budget`, `charge_tick` và test bất biến.
     pub fn tcb_has_budget(&self, tcb: ObjId) -> bool {
-        let Ok(info) = self.tcb_info_obj(tcb) else {
-            return false;
-        };
-        let Some(sc) = info.sched_context else {
+        let Some(sc) = self.funding_sc(tcb) else {
             return false;
         };
         self.body(sc, |k| match k {
@@ -2279,6 +2448,284 @@ impl Machine {
             _ => Err(KError::WrongObjectType),
         })
         .unwrap_or(false)
+    }
+
+    // ------------------------------------------- MCS donation (KT-21) `[TK]`
+    //
+    // Nguồn: **D2-49(c)** ("donation **tự động** qua Call/Reply; server có SC riêng giữ SC
+    // riêng; các method chưa có chữ ký chỉ cài model API"), **D2-50** ("TCB không SC **không
+    // chạy**, trừ khi được donation"), thiết kế §4.5 (`:288-311`), K1B-PLAN §5 KT-21.
+    // Model-only `[TK]` — **không** mở chữ ký ABI nào.
+    //
+    // Liên kết **hai chiều** để tra O(1) và kiểm bất biến:
+    //   `SchedData { donated_to: Option<donee>, donor: Option<donor> }`
+    //   `TcbData  { donated_sc: Option<sc> }`
+    // Bất biến (kiểm trong [`Machine::check_sched`] sau **mỗi** public op): hai chiều khớp;
+    // donee **không** có SC riêng; donor đang `BlockedOnReply`; donor ≠ donee; mỗi SC một donee
+    // và mỗi donee một SC; donor/donee **không** cùng `Running`; priority hiệu lực không vượt
+    // MCP của một trong hai bên.
+    //
+    // **Không chuỗi >1** (K1B-PLAN §5 KT-21 rủi ro (a)): chỉ TCB có `sched_context` **và**
+    // không phải donee mới donate được. K1b cũng **không** mô hình hoá một server phục vụ nhiều
+    // client cùng lúc (server chỉ nhận donation khi đang không có donation khác).
+
+    /// `(donated_to, donor)` của một `SchedContext` — `(None, None)` khi SC không bị donate.
+    fn donation_of(&self, sc: ObjId) -> Result<(Option<ObjId>, Option<ObjId>), KError> {
+        self.body(sc, |k| match k {
+            Kind::SchedContext(s) => Ok((s.donated_to, s.donor)),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Danh sách `SchedContext` còn sống (mô hình nhỏ; dùng cho donation/bất biến).
+    fn live_sched_contexts(&self) -> Vec<ObjId> {
+        self.objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive && m.ty == ObjType::SchedContext)
+            .map(|(i, _)| (i as u32) + 1)
+            .collect()
+    }
+
+    /// SC đang **cấp ngân sách** cho `tcb`: SC riêng (khi **không** bị donate) hoặc SC được
+    /// donate cho TCB. `None` ⇔ không có ngân sách ⇒ không được `pick` (D2-50).
+    fn funding_sc(&self, tcb: ObjId) -> Option<ObjId> {
+        let info = self.tcb_info_obj(tcb).ok()?;
+        if let Some(sc) = info.donated_sc {
+            return Some(sc);
+        }
+        let own = info.sched_context?;
+        match self.donation_of(own) {
+            Ok((None, _)) => Some(own),
+            // SC riêng đang cho người khác mượn (hoặc SC chết) ⇒ chủ sở hữu **không** có budget.
+            _ => None,
+        }
+    }
+
+    /// `tcb` có phải **donor** của một donation đang hiệu lực không.
+    fn is_donation_donor(&self, tcb: ObjId) -> bool {
+        self.live_sched_contexts()
+            .into_iter()
+            .any(|sc| matches!(self.donation_of(sc), Ok((_, Some(o))) if o == tcb))
+    }
+
+    /// Model API `[TK]` (K1B-PLAN §5 KT-21 #1): SC đang cấp ngân sách cho `tcb` — SC được
+    /// donate nếu `tcb` là donee, SC riêng nếu không bị donate, `None` nếu không có.
+    pub fn sc_of(&self, tcb: ObjId) -> Result<Option<ObjId>, KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        if let Some(sc) = info.donated_sc {
+            return Ok(Some(sc));
+        }
+        let Some(own) = info.sched_context else {
+            return Ok(None);
+        };
+        Ok(match self.donation_of(own)? {
+            (None, _) => Some(own),
+            _ => None,
+        })
+    }
+
+    /// Model API `[TK]`: SC **được donate cho** `tcb` (`None` nếu không phải donee).
+    pub fn donated_sc(&self, tcb: ObjId) -> Result<Option<ObjId>, KError> {
+        Ok(self.tcb_info_obj(tcb)?.donated_sc)
+    }
+
+    /// `SchedContext.DonatedTo` `[TK]`: TCB đang nhận donation của `sched` (`None` nếu không).
+    pub fn sched_donated_to(&self, sched: SlotRef) -> Result<Option<ObjId>, KError> {
+        let obj = self.require_type(sched, ObjType::SchedContext)?;
+        Ok(self.donation_of(obj)?.0)
+    }
+
+    /// `SchedContext.Donor` `[TK]`: TCB đang cho mượn `sched` (`None` nếu không).
+    pub fn sched_donor_of(&self, sched: SlotRef) -> Result<Option<ObjId>, KError> {
+        let obj = self.require_type(sched, ObjType::SchedContext)?;
+        Ok(self.donation_of(obj)?.1)
+    }
+
+    /// Priority **hiệu lực** của `tcb` (KT-21 DoD 6): khi nhận donation =
+    /// [`crate::mcs::donated_priority`] (kẹp theo MCP của donor và donee); ngược lại priority
+    /// gốc. Priority gốc **không** bị đổi — chỉ bucket ready queue/`cur_prio` dùng giá trị này.
+    pub fn effective_priority(&self, tcb: ObjId) -> Result<u8, KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        let Some(sc) = info.donated_sc else {
+            return Ok(info.priority);
+        };
+        let (_, donor) = self.donation_of(sc)?;
+        let Some(donor) = donor else {
+            return Ok(info.priority);
+        };
+        let oi = self.tcb_info_obj(donor)?;
+        Ok(crate::mcs::donated_priority(
+            oi.priority,
+            oi.max_controlled_priority,
+            info.max_controlled_priority,
+        ))
+    }
+
+    /// Đặt donation tự động `donor → donee` (KT-21 DoD 1). Trả `false` (**không đổi gì**) khi
+    /// không đủ điều kiện — quan trọng: `Call` vẫn thành công, chỉ là server không có ngân sách
+    /// nên không chạy (D2-50); **không** từ chối IPC vì thiếu SC (giữ KT-20 DoD 4).
+    ///
+    /// Điều kiện: donor có SC riêng **đã** `SchedControl.Configure`, donor **không** đang là
+    /// donee (không chuỗi >1), donee **không** có SC riêng và **không** đang nhận donation khác
+    /// (D2-49(c): "server có SC riêng giữ SC riêng"), SC chưa bị donate.
+    fn donate_sc(&mut self, donor: ObjId, donee: ObjId) -> Result<bool, KError> {
+        if donor == donee {
+            return Ok(false);
+        }
+        let dinfo = self.tcb_info_obj(donor)?;
+        if dinfo.donated_sc.is_some() {
+            return Ok(false);
+        }
+        let Some(sc) = dinfo.sched_context else {
+            return Ok(false);
+        };
+        let configured = self.body(sc, |k| match k {
+            Kind::SchedContext(s) => Ok(s.budget.is_configured()),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if !configured {
+            return Ok(false);
+        }
+        // KT-21 **siết** "một SC một TCB tại một thời điểm" cho donation: mô hình KT-20 chưa
+        // cấm hai TCB chia một SC; nếu SC đang gắn cho TCB khác thì **không donate** (nếu vẫn
+        // donate, TCB kia đang `Running` sẽ mất ngân sách giữa chừng — vỡ bất biến "Running ⇒
+        // còn budget"). SC dùng chung vẫn chạy bình thường theo KT-20, chỉ không donate.
+        let mut chu_so_huu = 0usize;
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            if let Ok(info) = self.tcb_info_obj((idx as u32) + 1) {
+                if info.sched_context == Some(sc) {
+                    chu_so_huu += 1;
+                }
+            }
+        }
+        if chu_so_huu != 1 {
+            return Ok(false);
+        }
+        let donee_info = self.tcb_info_obj(donee)?;
+        if donee_info.sched_context.is_some() || donee_info.donated_sc.is_some() {
+            return Ok(false);
+        }
+        if self.donation_of(sc)?.0.is_some() {
+            return Ok(false);
+        }
+        // Liên kết hai chiều **trước** khi sync bucket (priority hiệu lực đọc từ đây).
+        self.body_mut(sc, |k| match k {
+            Kind::SchedContext(s) => {
+                s.donated_to = Some(donee);
+                s.donor = Some(donor);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.body_mut(donee, |k| match k {
+            Kind::Tcb(t) => {
+                t.donated_sc = Some(sc);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        // Donee đang `Ready` ⇒ chuyển sang bucket priority hiệu lực (một SC một TCB một lúc).
+        self.sched_remove_all(donee);
+        self.sched_sync(donee)?;
+        Ok(true)
+    }
+
+    /// Trả SC donation của `donee` về donor (KT-21 DoD 2). Gỡ bucket **cũ** (priority donate)
+    /// trước khi đổi priority hiệu lực, rồi sync lại theo priority gốc. Trả SC đã trả (nếu có).
+    fn return_donation(&mut self, donee: ObjId) -> Result<Option<ObjId>, KError> {
+        let Some(sc) = self.tcb_info_obj(donee)?.donated_sc else {
+            return Ok(None);
+        };
+        self.sched_remove_all(donee);
+        self.body_mut(donee, |k| match k {
+            Kind::Tcb(t) => {
+                t.donated_sc = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.body_mut(sc, |k| match k {
+            Kind::SchedContext(s) => {
+                s.donated_to = None;
+                s.donor = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.sched_sync(donee)?;
+        Ok(Some(sc))
+    }
+
+    /// Huỷ reply đang chờ của `donor`: gỡ `Reply.caller` rồi đánh thức về `Ready`.
+    ///
+    /// Model-only `[TK]` (KT-21 DoD 5): server chết/treo khi đang được donate thì reply **không
+    /// bao giờ** tới, nên client không được treo vĩnh viễn. Mã kết quả `Cancelled` đầy đủ (mang
+    /// giá trị trả về của `Call`) thuộc K1c — K1b chỉ mô hình hoá việc đánh thức.
+    fn cancel_reply_of(&mut self, donor: ObjId) -> Result<(), KError> {
+        if let TcbState::BlockedOnReply { reply } = self.tcb_state(donor)? {
+            self.reply_set_caller(reply, None)?;
+            self.transition_tcb(donor, TcbState::Ready)?;
+        }
+        Ok(())
+    }
+
+    /// Huỷ donation khi `tcb` là **donee** hoặc **donor** (suspend/exit/finalise — DoD 5).
+    ///
+    /// - `tcb` là donee ⇒ trả SC về donor + đánh thức donor (reply sẽ không tới).
+    /// - `tcb` là donor ⇒ thu hồi SC khỏi donee; donee đang `Running` mất ngân sách ⇒
+    ///   `Sleeping{Budget}` ngay (D2-50), `Ready` thì ở lại hàng và bị `pick` bỏ qua.
+    ///
+    /// Không rò SC: sau hàm này không còn `donated_to`/`donor`/`donated_sc` nào trỏ tới `tcb`.
+    fn release_donation_of(&mut self, tcb: ObjId) -> Result<(), KError> {
+        // (1) `tcb` là donee.
+        if let Some(sc) = self.tcb_info_obj(tcb)?.donated_sc {
+            let (_, donor) = self.donation_of(sc)?;
+            self.return_donation(tcb)?;
+            if let Some(donor) = donor {
+                self.cancel_reply_of(donor)?;
+            }
+        }
+        // (2) `tcb` là donor (SC của nó đang cho mượn).
+        for sc in self.live_sched_contexts() {
+            let (donated_to, donor) = self.donation_of(sc)?;
+            if donor != Some(tcb) {
+                continue;
+            }
+            let Some(donee) = donated_to else {
+                continue;
+            };
+            self.sched_remove_all(donee);
+            self.body_mut(donee, |k| match k {
+                Kind::Tcb(t) => {
+                    t.donated_sc = None;
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+            self.body_mut(sc, |k| match k {
+                Kind::SchedContext(s) => {
+                    s.donated_to = None;
+                    s.donor = None;
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if matches!(self.tcb_state(donee)?, TcbState::Running { .. }) {
+                self.transition_tcb(
+                    donee,
+                    TcbState::Sleeping {
+                        reason: SleepReason::Budget,
+                    },
+                )?;
+            } else {
+                self.sched_sync(donee)?;
+            }
+        }
+        Ok(())
     }
 
     // ------------------------------------------- hàng chờ phụ của mô hình K1b `[TK]`
@@ -2417,6 +2864,10 @@ impl Machine {
             self.transition_tcb(server, TcbState::Ready)?;
             self.reply_set_caller(reply_obj, Some(tcb))?;
             self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: reply_obj })?;
+            // KT-21 (D2-49(c)): SC của client **đi theo** `Call` sang server **passive**. Không
+            // đủ điều kiện (server có SC riêng/SC client chưa `Configure`) ⇒ no-op: server vẫn
+            // `Ready` nhưng không có ngân sách nên `pick` bỏ qua (D2-50) — **không** lỗi IPC.
+            self.donate_sc(tcb, server)?;
         } else {
             self.body_mut(ep_obj, |k| match k {
                 Kind::Endpoint(e) => {
@@ -2477,6 +2928,9 @@ impl Machine {
                                     sender,
                                     TcbState::BlockedOnReply { reply: reply_obj },
                                 )?;
+                                // KT-21: `Call` đã xếp hàng gửi nay mới giao được cho server ⇒
+                                // SC của client đi theo message (donation tự động, D2-49(c)).
+                                self.donate_sc(sender, tcb)?;
                             }
                             // `Send` (không Call) hoặc `Call` mà server không đưa Reply cap.
                             _ => self.transition_tcb(sender, TcbState::Ready)?,
@@ -2518,6 +2972,9 @@ impl Machine {
             return Err(KError::IllegalOperation);
         }
         let reply_obj = self.require_type(reply, ObjType::Reply)?;
+        // KT-21 (D2-49(c)): server trả SC về client **trước** khi đổi trạng thái — bucket của
+        // server quay về priority gốc, client giữ nguyên `consumed` của chu kỳ (DoD 2).
+        self.return_donation(tcb)?;
         let caller = self.body_mut(reply_obj, |k| match k {
             Kind::Reply(r) => Ok(r.caller.take()),
             _ => Err(KError::WrongObjectType),
@@ -2551,6 +3008,9 @@ impl Machine {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Endpoint)?),
             None => None,
         };
+        // KT-21 DoD 5: `Exit` khi đang donate ⇒ trả SC (server chết) / thu hồi SC (client chết)
+        // trước khi ghi `exit_code` + đổi trạng thái; không rò SC/không bỏ treo client.
+        self.release_donation_of(tcb)?;
         self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
                 t.exit_code = Some(code);
@@ -2664,11 +3124,14 @@ impl Machine {
                 affinity: AFFINITY_HOME,
                 home: 0,
                 sched_context: None,
+                donated_sc: None,
                 bound_notification: None,
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
                 budget: ScBudget::new(),
+                donated_to: None,
+                donor: None,
             })),
             ObjType::Endpoint => Kind::Endpoint(Box::default()),
             ObjType::Reply => Kind::Reply(Box::new(ReplyData { caller: None })),
@@ -3125,6 +3588,23 @@ impl Machine {
                             if !is_alive(c) {
                                 t.bound_notification = None;
                             }
+                        }
+                        if let Some(c) = t.donated_sc {
+                            if !is_alive(c) {
+                                t.donated_sc = None;
+                            }
+                        }
+                    }
+                    Kind::SchedContext(sd) => {
+                        // KT-21: donation chỉ còn hiệu lực khi **cả hai** TCB sống.
+                        let con = match (sd.donated_to, sd.donor) {
+                            (Some(d), Some(o)) => is_alive(d) && is_alive(o),
+                            (None, None) => true,
+                            _ => false,
+                        };
+                        if !con {
+                            sd.donated_to = None;
+                            sd.donor = None;
                         }
                     }
                     _ => {}

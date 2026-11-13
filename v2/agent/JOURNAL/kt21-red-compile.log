@@ -1,0 +1,401 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0599]: no method named `effective_priority` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:208:14
+    |
+207 | /         self.m
+208 | |             .effective_priority(self.t[i])
+    | |             -^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_____________|
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:248:13
+    |
+248 |         r.m.donated_sc(r.t[1]),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:253:13
+    |
+253 |         r.m.sc_of(r.t[1]),
+    |             ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:258:13
+    |
+258 |         r.m.sc_of(r.t[0]),
+    |             ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:262:20
+    |
+262 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+262 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])));
+262 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(Some(r.t[1])));
+    |
+
+error[E0599]: no method named `sched_donor_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:263:20
+    |
+263 |     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(Some(r.t[0])));
+    |                    ^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+263 -     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(Some(r.t[0])));
+263 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(Some(r.t[0])));
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:279:20
+    |
+279 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+279 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+279 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `sched_donor_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:280:20
+    |
+280 |     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+280 -     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(None));
+280 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:281:20
+    |
+281 |     assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:282:20
+    |
+282 |     assert_eq!(r.m.sc_of(r.t[1]), Ok(None), "server trở lại trạng thái không SC");
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:284:20
+    |
+284 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:339:20
+    |
+339 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:369:13
+    |
+369 |         r.m.sched_donated_to(r.sc[0]),
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+369 -         r.m.sched_donated_to(r.sc[0]),
+369 +         r.m.sched_info(r.sc[0]),
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:373:20
+    |
+373 |     assert_eq!(r.m.sched_donated_to(r.sc[1]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+373 -     assert_eq!(r.m.sched_donated_to(r.sc[1]), Ok(None));
+373 +     assert_eq!(r.m.sched_info(r.sc[1]), Ok(None));
+    |
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:374:20
+    |
+374 |     assert_eq!(r.m.sc_of(r.t[2]), Ok(Some(r.sc_obj[1])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:375:20
+    |
+375 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:387:20
+    |
+387 |     assert_eq!(r.m.sc_of(r.t[2]), Ok(Some(r.sc_obj[1])), "vẫn giữ SC riêng");
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:393:20
+    |
+393 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+393 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+393 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:477:20
+    |
+477 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+477 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+477 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:478:20
+    |
+478 |     assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:479:20
+    |
+479 |     assert_eq!(r.m.sc_of(r.t[1]), Ok(None), "không rò SC về server");
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:480:20
+    |
+480 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:499:20
+    |
+499 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+499 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+499 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:500:20
+    |
+500 |     assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:503:20
+    |
+503 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:526:20
+    |
+526 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+526 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+526 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:527:20
+    |
+527 |     assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:528:20
+    |
+528 |     assert_eq!(r.m.sc_of(r.t[1]), Ok(None));
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:536:20
+    |
+536 |     assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])), "SC về client");
+    |                    ^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:562:13
+    |
+562 |         r.m.sched_donated_to(r.sc[0]),
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+562 -         r.m.sched_donated_to(r.sc[0]),
+562 +         r.m.sched_info(r.sc[0]),
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:571:20
+    |
+571 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])), "chỉ Call tạo donation");
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+571 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])), "chỉ Call tạo donation");
+571 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(Some(r.t[1])), "chỉ Call tạo donation");
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:576:13
+    |
+576 |         r.m.sched_donated_to(r.sc[0]),
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+576 -         r.m.sched_donated_to(r.sc[0]),
+576 +         r.m.sched_info(r.sc[0]),
+    |
+
+error[E0599]: no method named `sched_donor_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:580:20
+    |
+580 |     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(Some(r.t[0])));
+    |                    ^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+580 -     assert_eq!(r.m.sched_donor_of(r.sc[0]), Ok(Some(r.t[0])));
+580 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(Some(r.t[0])));
+    |
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:603:20
+    |
+603 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+603 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+603 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(None));
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:618:20
+    |
+618 |     assert_eq!(r.m.donated_sc(r.t[1]), Ok(Some(r.sc_obj[0])));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:624:13
+    |
+624 |         r.m.sched_donated_to(r.sc[0]),
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+624 -         r.m.sched_donated_to(r.sc[0]),
+624 +         r.m.sched_info(r.sc[0]),
+    |
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:628:20
+    |
+628 |     assert_eq!(r.m.donated_sc(r.t[2]), Ok(None));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_donated_to` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:647:20
+    |
+647 |     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])));
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sched_info` with a similar name
+    |
+647 -     assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(Some(r.t[1])));
+647 +     assert_eq!(r.m.sched_info(r.sc[0]), Ok(Some(r.t[1])));
+    |
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:783:30
+    |
+783 |             let cap_sc = r.m.sc_of(r.t[i]).expect("sc_of");
+    |                              ^^^^^ method not found in `Machine`
+
+error[E0609]: no field `donated_to` on type `ScInfo`
+   --> sim/vifast-sim/tests/kt21_donation.rs:814:25
+    |
+814 |             match (info.donated_to, info.donor) {
+    |                         ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `budget`, `period`, `consumed`, `refill`, `charged`, `configured`
+
+error[E0609]: no field `donor` on type `ScInfo`
+   --> sim/vifast-sim/tests/kt21_donation.rs:814:42
+    |
+814 |             match (info.donated_to, info.donor) {
+    |                                          ^^^^^ unknown field
+    |
+    = note: available fields are: `budget`, `period`, `consumed`, `refill`, `charged`, `configured`
+
+error[E0599]: no method named `donated_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:818:29
+    |
+818 |                         r.m.donated_sc(d),
+    |                             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sc_of` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:823:29
+    |
+823 |                         r.m.sc_of(d),
+    |                             ^^^^^ method not found in `Machine`
+
+error[E0609]: no field `donated_sc` on type `TcbInfo`
+   --> sim/vifast-sim/tests/kt21_donation.rs:865:29
+    |
+865 |             trace.push(info.donated_sc.is_some() as u64);
+    |                             ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `state`, `suspended`, `exit_code`, `fault_ep`, `cspace` ... and 6 others
+
+error[E0599]: no method named `effective_priority` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt21_donation.rs:866:28
+    |
+866 |             trace.push(r.m.effective_priority(r.t[i]).expect("effective") as u64);
+    |                            ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0609]: no field `donated_to` on type `ScInfo`
+   --> sim/vifast-sim/tests/kt21_donation.rs:872:29
+    |
+872 |             trace.push(info.donated_to.unwrap_or(0) as u64);
+    |                             ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `budget`, `period`, `consumed`, `refill`, `charged`, `configured`
+
+error[E0609]: no field `donor` on type `ScInfo`
+   --> sim/vifast-sim/tests/kt21_donation.rs:873:29
+    |
+873 |             trace.push(info.donor.unwrap_or(0) as u64);
+    |                             ^^^^^ unknown field
+    |
+    = note: available fields are: `budget`, `period`, `consumed`, `refill`, `charged`, `configured`
+
+Some errors have detailed explanations: E0599, E0609.
+For more information about an error, try `rustc --explain E0599`.
+error: could not compile `vifast-sim` (test "kt21_donation") due to 47 previous errors

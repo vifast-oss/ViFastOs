@@ -6,12 +6,114 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-20 (xong mã sau **DRIFT reviewer-kt20 đã sửa** — MCS budget/tick ảo/refill/`Sleeping{Budget}`); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b)
-Bước          : 8/8 (đỏ → mã → 12 test → invariant 1.000 seed → **review DRIFT → sửa no-SC** → Miri → gate → tài liệu; chờ commit)
+Task          : KT-21 (xong mã — **MCS donation/passive server/MCP**; chờ review độc lập); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39)
+Bước          : 8/8 (đỏ → mã → 9 test → invariant 1.000 seed → gate → Miri → tài liệu; chờ commit + review)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**284 test/44 suite**, 0 failed; KT-19 là 263/43 ⇒ **+21 test**; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `[KT-20]` + push origin/main; **KT-21..KT-23 chờ**; không lật QUEUE (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**294 test/45 suite**, 0 failed; KT-20 là 284/44 ⇒ **+10 test**; **L1 1.000 seed/999 trace** 658 ms; gen-check ON, `scn: OK`) — không retry
+Việc dở       : commit `[KT-21]` + push origin/main; **review độc lập** (lead spawn vì depth 1/1); **KT-22..KT-23 chờ**; không lật QUEUE (Agent 0)
 ```
+
+## KT-21 — MCS donation: passive server, `Call`/`Reply`, MCP (K1b, D2-49(c), D2-50, D2-16)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-21) · HEAD `d547bbf` · KT-18/19/20 DONE · baseline
+`gate --fast` PASS 284 test/44 suite ([`JOURNAL/kt21-baseline-gate-fast.log`](JOURNAL/kt21-baseline-gate-fast.log)).
+**Phạm vi**: donation của **mô hình sim**; **không** IPC 4 cap/badge/`ReplyRecv` (K1c), hộp thư
+(KT-22), SMP/push migration, Notification đầy đủ, refill sporadic/timeout fault (sau K6 — D2-16);
+không `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không dependency/`unsafe`;
+không `#[allow]`/`#[ignore]`. Working tree có thay đổi `viscript/` của tab khác — **không chạm**, chỉ
+stage `v2/`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt21-red-compile.log`](JOURNAL/kt21-red-compile.log) — `tests/kt21_donation.rs` **không
+  biên dịch**: **42 × `E0599`** cho API chưa có (`sc_of`, `sched_donated_to`, `sched_donor_of`,
+  `donated_sc`, `effective_priority`) + **5 × `E0609`** (`ScInfo.donated_to/donor`,
+  `TcbInfo.donated_sc`).
+- [`JOURNAL/kt21-red-charge.log`](JOURNAL/kt21-red-charge.log) — tệp dò **tạm (không commit)**, dùng
+  API **đang có**: sau `Call`, server passive `Ready` nhưng `tcb_has_budget == false`,
+  `sched_pick() == None`, `dispatch == None` ⇒ `Call` **không bao giờ được phục vụ**; `2 tick` sau,
+  `SC client consumed == 0` (kỳ vọng 2) ⇒ đúng 2 lỗi KT-21 (server không chạy + client không bị trừ).
+  Tệp dò đã xoá sau khi lấy log.
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/mcs.rs`: `ScInfo` thêm `donated_to`/`donor` (model-only `[TK]`);
+  `donated_priority(donor_priority, donor_mcp, donee_mcp) = min(...)` + **1 unit test** (kẹp MCP,
+  quét 7×5×4 tổ hợp bất biến `p_eff ≤ cả ba`).
+- `v2/sim/vifast-sim/src/kobj.rs`:
+  - `TcbData.donated_sc: Option<ObjId>`, `SchedData.donated_to/donor: Option<ObjId>` — liên kết
+    **hai chiều** (tra O(1), kiểm bất biến); `TcbInfo.donated_sc`.
+  - Model API `[TK]`: `sc_of`, `donated_sc`, `sched_donated_to`, `sched_donor_of`,
+    `effective_priority`.
+  - **Donation tự động** đúng hai chỗ giao message của `Call`: `call` (server đang `Recv`) và
+    `recv` (server lấy `Call` đang xếp hàng); `reply` trả SC; `donate_sc` chỉ nhận donor có SC
+    **đã `Configure`**, SC **không** bị donate, **không** gắn cho TCB khác ("một SC một TCB" khi
+    donate — KT-20 chưa cấm chia SC), donee **không** có SC riêng (D2-49(c)), donor không là donee
+    (không chuỗi >1). **Không** từ chối `Call/Recv` vì thiếu SC (giữ KT-20 DoD 4).
+  - `charge_tick`/`process_refills` dùng `funding_sc` (SC riêng **hoặc** SC được donate) ⇒ thời
+    gian server chạy trừ đúng ngân sách client, hết budget ⇒ **server** `Sleeping{Budget}`, refill
+    đánh thức server.
+  - `sched_sync`/`check_sched` dùng **priority hiệu lực**; `check_sched` thêm bất biến donation
+    (hai chiều khớp, một SC ↔ một donee, donee không SC riêng/không donor, donor
+    `BlockedOnReply`, donor ≠ donee, không cùng `Running`, `p_eff ≤ MCP` cả hai bên).
+  - Huỷ donation: `transition_tcb` (rời `BlockedOnReply` bằng đường khác `Reply`), `tcb_suspend`,
+    `exit`, `finalise_tcb` → `release_donation_of` (donee ⇒ trả SC + đánh thức donor qua
+    `cancel_reply_of`; donor ⇒ thu hồi SC, donee `Running` ⇒ `Sleeping{Budget}` ngay);
+    `set_sched_params`/`tcb_set_priority` **từ chối** đổi SC/priority của donor đang donate
+    (`IllegalOperation`/`Busy`); `purge_dead_refs` dọn liên kết khi một bên chết.
+- `v2/sim/vifast-sim/tests/kt21_donation.rs` (**mới, 9 test**): server passive chỉ chạy khi được
+  donate (trước `Call` `pick` không chọn dù `Ready`); charge vào SC client/`Sleeping{Budget}` +
+  refill + `Reply` không mất; server có SC riêng giữ SC riêng; MCP 3 ca (kế thừa/kẹp 40/không nâng
+  20); suspend/exit/**finalise** server; abort/finalise client; `SchedContext.Bind` không tạo
+  donation; donation cần SC đã `Configure` + không chuỗi 2 tầng + các ca `set_sched_params` bị từ
+  chối; **invariant 1.000 seed × 64 op** (stable; `#[cfg(miri)]` 3×8) — mỗi bước `check_sched`,
+  không TCB `Running` nào thiếu SC cấp/thiếu budget, donation hai chiều, **12.551 bước có donation**
+  (đếm trong 64.000 bước), cùng seed cùng trace.
+
+### Quyết định đã chốt (model-only `[TK]`, ghi rõ để review)
+
+- **Donation tự động, không chuỗi >1** (D2-49(c); K1B-PLAN §5 KT-21 rủi ro (a)); server có SC
+  riêng **giữ** SC riêng, không nhận donation.
+- **Priority khi donate** `p_eff = min(client.priority, client.mcp, server.mcp)`. KT-18 buộc
+  `priority ≤ mcp` cho **mọi** TCB (`kobj.rs:1397`) nên chặn thực tế là **MCP của server**: client
+  mức cao hơn MCP server ⇒ **kẹp** xuống `server.mcp` (không chạy vượt MCP); client mức thấp hơn ⇒
+  server chạy thấp hơn priority gốc (không được nâng). Priority **gốc** của server không đổi — chỉ
+  bucket ready queue/`cur_prio` dùng `p_eff`.
+- **Huỷ donation** khi server suspend/exit/finalise ⇒ SC về client + client được **đánh thức**
+  (`Reply.caller = None`; mã `Cancelled` đầy đủ thuộc K1c); khi client suspend/exit/finalise ⇒ thu
+  hồi SC, server mất ngân sách ⇒ `Sleeping{Budget}` (D2-50).
+- **"Một SC một TCB" khi donate**: SC đang gắn cho >1 TCB (KT-20 chưa cấm chia SC) **không** được
+  donate — nếu donate, TCB kia đang `Running` sẽ mất ngân sách giữa chừng. SC dùng chung vẫn chạy
+  bình thường theo KT-20.
+- **K1b không mô hình hoá** server phục vụ nhiều client cùng lúc / `ReplyRecv` / badge — K1c.
+
+### Cổng + Miri (không retry — D2-07)
+
+- [`JOURNAL/kt21-gate-fast.log`](JOURNAL/kt21-gate-fast.log) — `gate --fast` **PASS 294 test / 0
+  failed** (**45 suite**; KT-20: 284/44 ⇒ **+10 test** = 9 integration + 1 unit `mcs`), **L1 1.000
+  seed/999 trace** (658 ms), gen-check ON, `.scn` 21 tệp OK, **không retry**; `kt21_donation` native
+  ~4,0 s.
+- [`JOURNAL/kt21-miri.log`](JOURNAL/kt21-miri.log) — `v2 miri -p vifast-sim --test kt21_donation`
+  **PASS 9/9** (0 failed, 0 ignored, **118,98 s**); 2 cảnh báo `integer-to-pointer cast` **có sẵn**
+  từ objmem (`v2/lib/vifast-objmem/src/obj.rs`, D2-14/D2-17), không phát sinh từ KT-21;
+  `v2/sim/**` **0 unsafe**. Invariant test dưới Miri giảm còn 3 seed × 8 bước (`#[cfg(miri)]`;
+  stable giữ **1.000 × 64**) — không `#[ignore]`, không nới `gate --fast`/L1.
+
+### Phạm vi / không chạm
+
+Chỉ `v2/sim/vifast-sim/src/{mcs.rs,kobj.rs}`, `v2/sim/vifast-sim/tests/kt21_donation.rs` (mới),
+`v2/agent/{STATE.md,JOURNAL/}`. Không sửa `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS,
+`viscript/`; không dependency/`unsafe`; không `#[allow]`/`#[ignore]`.
+
+### Review độc lập + đề xuất
+
+Review độc lập: **lead spawn** (`reviewer-kt21`) vì depth 1/1 — **chưa có verdict** tại thời điểm
+ghi mục này; tự soát đã làm (9 test + invariant + Miri + gate). **Đề xuất: REVIEW** (không tự DONE,
+không lật QUEUE — D2-37). **YC/Follow-up**: (1) Agent 0 xác nhận cách hiểu **MCP khi donate** =
+`min(donor.priority, donor.mcp, donee.mcp)` (plan ghi "MCP của client", nhưng KT-18 buộc
+`priority ≤ mcp` nên chặn thực tế là MCP **server**; nếu Agent 0 muốn **từ chối** thay vì **kẹp**
+thì KT-21 phải sửa `donate_sc` + 1 test); (2) KT-22 hộp thư; (3) KT-23 thêm `kt21_donation` vào
+`nightly --only-miri` (119 s).
 
 ## KT-20 — MCS budget: timer ảo `tick`, consumed/refill, `Sleeping{Budget}` (K1b, D2-49(b,e,h))
 
@@ -627,6 +729,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**294 test/45 suite**, L1 1000 seed/999 trace, 658 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); 9 test (invariant **1.000 seed × 64 op**, 12.551 bước có donation), Miri **9/9** (119 s); **chờ reviewer-kt21 + Agent 0 lật sổ** |
 | 2026-11-13 | **KT-18** | 8/8 | `5cccb72` | — | `gate --fast` PASS (**251 test/42 suite**, L1 1000 seed/999 trace) | **commit `5cccb72` đã push**; TCB 11 trường + **một cửa** `transition_tcb` + bảng `ALLOWED` 48 = **46+2 reserved**, 18 test (ma trận 121 cặp, coverage bảng 100%), Miri kt18 **18/18**; drift D2-33 sửa; reviewer DRIFT nhẹ đã sửa; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-15** | 8/8 | `c0d3163` | — | `gate --fast` PASS (**218 test**, L1 1000 seed/999 trace, 596 ms) | **commit `c0d3163` đã push — reviewer DRIFT nhẹ đã sửa, chờ Agent 0 lật sổ**; `with_many_mut` D2-48(a): bảng `kind→ctor`, alias từng cặp, N=9 không build; Miri PASS (alias 8/8, fuzz 200/191,95 s); fuzz 10.000 chuỗi/4,51 s; `aarch64-none` xanh; guard `chua_header` + `TypeId` |
 | 2026-11-13 | **KT-14** | 8/8 | `e1921ab` | — | `gate --fast` PASS (199 test, L1 1000 seed/999 trace, 433 ms) | **DONE** `36c51bc`; `vifast-objmem` 15 test, Miri 15/15, build `aarch64-unknown-none`; reviewer DRIFT nhẹ đã sửa; **YC-18** chốt **D2-48** |

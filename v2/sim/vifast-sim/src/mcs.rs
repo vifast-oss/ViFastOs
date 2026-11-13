@@ -29,6 +29,14 @@
 //!
 //! Mọi phép cộng thời gian dùng `saturating_add`/`saturating_mul` để **không wrap** ở `u64`
 //! (K1B-PLAN §5 KT-20 rủi ro (b)); có unit test ở cuối tệp.
+//!
+//! **KT-21** bổ sung phần **donation** (D2-49(c)): `ScInfo` mang thêm `donated_to`/`donor`
+//! (liên kết hai chiều nằm ở `SchedData`/`TcbData` trong `kobj`), và
+//! [`donated_priority`] là công thức priority khi server chạy bằng SC được donate. Bản thân
+//! `ScBudget` **không** đổi ngữ nghĩa ngân sách: charge/refill vẫn tính trên cùng một SC, nên
+//! thời gian server phục vụ trừ đúng ngân sách của client.
+
+use crate::kobj::ObjId;
 
 /// Số liệu ngân sách của một `SchedContext` — model-only `[TK]`.
 ///
@@ -56,6 +64,25 @@ pub struct ScInfo {
     pub charged: u64,
     /// `budget > 0 && period > 0` — chỉ SC đã `SchedControl.Configure` mới bị giới hạn.
     pub configured: bool,
+    /// **KT-21**: TCB đang **nhận** donation từ SC này (server passive) — `None` khi SC đang ở
+    /// chủ sở hữu hợp lệ. Cặp với [`ScInfo::donor`]: cả hai cùng `Some` hoặc cùng `None`.
+    pub donated_to: Option<ObjId>,
+    /// **KT-21**: TCB **cho mượn** SC (client đang `BlockedOnReply`) — `None` khi không donate.
+    pub donor: Option<ObjId>,
+}
+
+/// **KT-21** — priority **hiệu lực** của TCB khi chạy bằng SC **được donate** (model-only
+/// `[TK]`, D2-49(c), K1B-PLAN §5 KT-21 DoD 6).
+///
+/// `p_eff = min(donor.priority, donor.max_controlled_priority, donee.max_controlled_priority)`.
+///
+/// Lý do: donation chuyển **ngân sách** (không chuyển quyền điều khiển) nên server không được
+/// chạy **vượt** `max_controlled_priority` của một trong hai bên; `donor.priority ≤ donor.mcp`
+/// đã là bất biến của `Tcb.SetPriority` (`kobj.rs`, KT-18) nên chặn thực tế là MCP của
+/// **donee** — client mức cao hơn MCP server ⇒ server bị **kẹp** xuống `donee.mcp`. Priority
+/// **gốc** của server không đổi; chỉ bucket ready queue/`cur_prio` dùng giá trị này.
+pub fn donated_priority(donor_priority: u8, donor_mcp: u8, donee_mcp: u8) -> u8 {
+    donor_priority.min(donor_mcp).min(donee_mcp)
 }
 
 impl ScBudget {
@@ -151,6 +178,9 @@ impl ScBudget {
             refill: self.refill,
             charged: self.charged,
             configured: self.is_configured(),
+            // Donation thuộc `SchedData` (kobj) — `ScBudget` không biết donee/donor.
+            donated_to: None,
+            donor: None,
         }
     }
 
@@ -295,6 +325,27 @@ mod tests {
         assert!(s.refill_due(u64::MAX));
         assert_eq!(s.refill(), u64::MAX);
         assert_eq!(s.consumed(), 0);
+    }
+
+    #[test]
+    fn donated_priority_khong_vuot_mcp_hai_ben() {
+        // Client ≤ MCP ⇒ lấy đúng priority client (kế thừa, không đảo ưu tiên).
+        assert_eq!(donated_priority(100, 255, 200), 100);
+        // Priority client vượt MCP donee ⇒ kẹp xuống MCP donee.
+        assert_eq!(donated_priority(100, 255, 40), 40);
+        // Priority client thấp hơn priority gốc server ⇒ chạy thấp hơn (không được nâng).
+        assert_eq!(donated_priority(20, 255, 200), 20);
+        // Donor tự khai MCP thấp hơn priority (không dựng được qua API, vẫn phải kẹp).
+        assert_eq!(donated_priority(100, 30, 200), 30);
+        assert_eq!(donated_priority(0, 0, 0), 0);
+        for p in [0u8, 1, 63, 64, 128, 254, 255] {
+            for d in [0u8, 7, 40, 200, 255] {
+                for o in [0u8, 5, 100, 255] {
+                    let e = donated_priority(p, d, o);
+                    assert!(e <= p && e <= d && e <= o);
+                }
+            }
+        }
     }
 
     #[test]
