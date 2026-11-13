@@ -391,3 +391,15 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   câu interp, thêm `Bytes`, thông điệp đệ quy sâu; interp "tên …") ⇒ **312/312 khớp, 0 lệch**; ca khoá
   `hai_duong_cung_so_chan_doan`. (4) **26 ca bỏ qua** = ca **lỗi biên dịch** (hai đường chung front end) — muốn so
   chúng cần harness riêng cho chẩn đoán biên dịch (**nợ**).
+
+- **VD-64** **Phạm vi vòng 5 (VS1c — đóng nợ `R4` §5)**: (1) **harness chẩn đoán biên dịch**: so **đủ**
+  `(mã, dòng, cột, thông điệp)` giữa đường **interp** và đường **bytecode/VM** cho **cả** ca lỗi biên dịch (26 ca
+  hiện bị bỏ qua) ⇒ **0 lệch**; nếu hai đường khác nhau thì sửa **bên sai**, **không** bỏ ca. (2) **`json.decode`**:
+  đối xứng `encode`, trả `Result[Any, str]`? — chốt: `Result[T, str]` với `T = Any`, lỗi cú pháp ⇒ `Err(msg)` chứ
+  **không** panic; `std.fs` **tối thiểu** (`read`, `write`, `exists`, `list`) **đi qua `trait Ngoai`/`Host`**, tuyệt
+  đối **không** để `vis-interp`/`vis-vm` phụ thuộc OS; không host ⇒ `VS0604`. (3) **`| complete`**: stage cuối nhận
+  `{stdout: list[str], stderr: list[str], code: int}` để `grep`/`exit 1` **không** còn là lỗi; **pipe→stdin** giữa
+  hai chương trình ngoài (ghi vào stdin tiến trình sau), cap/timeout giữ như VD-60. (4) **generic thật**:
+  `Hop[int]` ≠ `Hop[str]` — instantiation ở `tyck` + `codegen` (nếu buộc phải bump `VBC1` thì **hỏi Agent 0**);
+  sai kiểu ⇒ `VS0412`; differential 100k **phải vẫn 0 lệch**. (5) **Quy trình**: từ vòng này **Agent 2 tự commit**
+  task của mình (`--only` + push); Agent 0 chỉ commit `QUEUE`/`DECISIONS`/`AGENTS` + `docs/viscript/doc-examples-allow.txt`.
