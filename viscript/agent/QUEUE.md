@@ -145,6 +145,13 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **DONE** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
 | ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **DONE** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
 | ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **DONE** | MD+JSON; nêu rõ khoảng cách VS2 |
+| ST-56 | nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`/`&expr` (hết `Unsupported` ở codegen); `Hop[Hop[int]]` đóng nốt | ST-55 | 3 h | **READY** | 3 nợ đóng, mỗi nợ ≥2 ca; interp ↔ `--vm` cùng byte |
+| ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **READY** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
+| ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **READY** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
+| ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **READY** | ≥6 ca; `x \| take 1` chạy 2 đường |
+| ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **READY** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
+| ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
+| ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -825,3 +832,21 @@ APPROVED 2026-11-13 Agent 0
 > **Thứ tự**: ST-37 chỉ mở khi **ST-36 DONE**; ST-37..ST-42 đụng `lower/cmd.rs` + `tyck` nên **không** chạy
 > song song với nhau. ST-42 là task chạm `docs/viscript/doc-examples-allow.txt` ⇒ **Agent 0** sửa tệp đó, Agent 2
 > chỉ báo kết quả cổng.
+
+APPROVED 2026-11-14 Agent 0
+
+> **Mở vòng 10 — nợ lõi + miếng VS2 đầu.** Sáu task **ST-56..ST-61** + **ST-62 (R10)**, làm **tuần tự**; mỗi task
+> red-first → xanh → `[ST-##]` commit riêng → push. **Quyết định kèm theo: VD-89..VD-94.**
+> **Điều kiện bắt buộc**: (1) **không** nới ngưỡng, **không** tăng allowlist; (2) mọi nợ đóng phải có **≥2 ca**
+> (một ca xanh, một ca âm) và **interp ↔ `--vm` cùng byte** khi tính năng chạy ở hai đường; (3) **ST-56 đóng nốt
+> `Hop[Hop[int]]`** — nếu probe cho thấy đã chạy, ghi rõ "đã xanh từ trước" + khoá bằng test, **không** giả vờ sửa;
+> (4) **ST-60/ST-61**: Agent 2 **báo cáo thiết kế trước khi code** (bộ lập lịch, biểu diễn `Task`/`Chan`, chỗ sửa trong
+> `vis-interp` và `vis-vm`, cách giữ cùng byte) — Agent 0 duyệt rồi mới code; (5) async/kênh **không** được hứa hơn
+> thực tế: mô hình "chạy tới hoàn tất" là **nợ có chủ đích**, ghi vào `R10` §5.
+>
+> **Không làm ở vòng 10**: song song thật/đa luồng; đình chỉ giữa thân tác vụ; net/http; Landlock; LSP; gói/registry;
+> host windows/wasm; mượn thật `&T`. Các mục này ở vòng 11+.
+>
+> **Thứ tự**: ST-56 → ST-57 → ST-58 → ST-59 → ST-60 → ST-61 → ST-62. ST-58 chạm `stdlib.rs` + `tyck` nên ST-59 chỉ mở
+> sau khi ST-58 xanh. ST-60/ST-61 chạm `vis-types`/`vis-interp`/`vis-bytecode`/`vis-vm` ⇒ **cấm** chạy song song với nhau
+> hoặc với task khác đang sửa cùng crate.

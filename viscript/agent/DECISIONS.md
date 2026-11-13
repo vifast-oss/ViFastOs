@@ -664,3 +664,39 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (= `compile_kiem(…, &[])`). (3) Phòng thủ `HExpr::Error` ⇒ `Err(Unsupported("error-expr"))`. (4) Cửa **chỉ chặn
   `Severity::Error`**; cảnh báo **không** chặn (có ca). (5) `CODEGEN_TIN_TYCK` = **0**; `diag_cmp` so **đủ** ba thứ
   (mã, dòng:cột, thông điệp) qua `compile_kiem`.
+
+- **VD-89** **Phạm vi vòng 10**: (1) Sáu task **ST-56..ST-61** + **ST-62 (R10)**, chạy **tuần tự** (đụng chung
+  `stdlib.rs`/`tyck`/`codegen`/`lower` ⇒ không song song ghi). (2) Mỗi task **red-first**, commit riêng `[ST-##]`,
+  push sau khi cổng xanh. (3) **Không** nới ngưỡng, **không** tăng allowlist (chỉ được giảm). (4) Async/kênh **phải**
+  cùng byte interp ↔ `--vm`; nếu một task không đủ thì **tách** thành task nhỏ hơn, **không** hạ tiêu chí.
+
+- **VD-90** **Async — tác vụ chạy tới hoàn tất, một luồng, tất định (ST-60)**: (1) `async fn` khai báo được; **gọi**
+  `async fn` **không** chạy thân ngay mà trả `Task[T]`; `spawn f(args)` = tạo tác vụ + đưa vào **hàng đợi FIFO**;
+  `await t` chạy `t` **tới hoàn tất** (nếu chưa chạy) rồi trả `T`. (2) Bộ lập lịch **một luồng, tất định**; **không
+  nhường giữa thân** (run-to-completion) — đây là **nợ ghi rõ**: chưa có đình chỉ giữa thân nên **không** có song song
+  thật; mô hình này để hai đường (interp/VM) ra **cùng byte**. (3) Cuối chương trình: task chưa `await` được **join**
+  theo **thứ tự spawn**; thân task lỗi ⇒ `VS0506` (mã mới, sổ 05) kèm tên hàm. (4) `await` lần hai trả **cùng** giá trị
+  đã lưu (không chạy lại). (5) 10.000 task dùng **hàng đợi phẳng** (Vec), không đệ quy theo số task ⇒ không tràn.
+  (6) Benchmark 10k task là **test thật**, không `#[ignore]`.
+
+- **VD-91** **Kênh — đệm hữu hạn + deadlock có chẩn đoán (ST-61)**: (1) `chan[T](n)`, `n ≥ 0`; `send(v)`,
+  `recv() -> T?`, `close()`. (2) `recv` khi rỗng: **chạy tác vụ khác** trong hàng đợi (FIFO, tới hoàn tất) rồi thử lại;
+  vẫn rỗng và **không còn task** ⇒ `VS0505` **deadlock** (không treo). (3) `send` khi đầy: như (2); vẫn đầy ⇒ `VS0505`;
+  `send` sau `close` ⇒ `VS0504`. (4) `recv` sau `close`: còn hàng ⇒ trả phần còn lại; rỗng ⇒ **`none`**.
+  (5) `Chan[T]` là kiểu dựng sẵn; tyck **đòi khớp `T`** khi `send`/`recv`.
+
+- **VD-92** **`&self`/`&expr` — không mượn thật (ST-56)**: (1) `&self` trong `impl` là receiver **không mượn thật**,
+  hạ **y như** `self`; `&expr` giữ **nguyên kiểu trong**, hạ **identity** (không tạo giá trị mới). (2) Codegen **hết**
+  `HExpr::Ref ⇒ Unsupported`; interp ↔ `--vm` cùng kết quả. (3) Mượn thật/kiểm vòng đời là **nợ VS2+**, phải ghi rõ —
+  **không** được mô tả là "đã có borrow".
+
+- **VD-93** **`derives` sinh mã ở `lower` (ST-57)**: (1) Sinh **HIR** trong `lower` (không macro, không sửa parser).
+  (2) Tối thiểu: `Show`, `Eq` (thêm `Json` nếu rẻ) — sinh **phương thức thật** gọi được như `p.show()`/`a.eq(b)`, thứ tự
+  theo **trường khai báo**, tất định. (3) Trường không derive được (`float` với `Eq`) ⇒ chẩn đoán **tĩnh** `VS04xx`,
+  **không** sinh mã. (4) Người dùng viết tay cùng tên ⇒ **người dùng thắng**, không sinh bản trùng.
+
+- **VD-94** **Bỏ `Ty::Any` bằng biến kiểu trong chữ ký std (ST-58)**: (1) `stdlib.rs` dùng **biến kiểu** thay `Any`
+  (`list.sort: (list[T]) -> list[T]`; `list.sort_by: (list[T], fn(T) -> int) -> list[T]`; `map.get_or: (map[K,V], K, V) -> V`).
+  (2) `tyck` **hợp nhất** kiểu đối số thật với biến kiểu; không khớp ⇒ `VS0401` **tĩnh**. (3) Ngoại lệ **có ghi** (closure
+  chưa suy hai chiều) phải viết rõ tại chỗ, **không** để `Any` quay lại. (4) `all_codes()` **không** đổi, trừ mã mới
+  của ST-60/ST-61.
