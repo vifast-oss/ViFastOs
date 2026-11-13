@@ -296,7 +296,48 @@ impl Nap {
             .unwrap_or_else(|| self.main_dir.clone());
         let mut con: Vec<String> = Vec::new();
         let mut da_co: Vec<String> = Vec::new();
+        let mut std_mods: Vec<String> = Vec::new();
         for (seg, span) in ds {
+            // ST-26: `use std.<module>` — module **trong Rust**, không phải tệp.
+            if seg.first().map(String::as_str) == Some("std") {
+                let m2 = seg.get(1).cloned().unwrap_or_default();
+                if vis_types::stdlib::module_ho_tro(&m2) {
+                    if std_mods.contains(&m2) {
+                        self.bao(
+                            &rel,
+                            &MODULE_CODES[2],
+                            format!("`use std.{m2}` trùng"),
+                            span,
+                        );
+                    } else {
+                        std_mods.push(m2);
+                    }
+                } else if m2 == "fs" {
+                    self.bao(
+                        &rel,
+                        &MODULE_CODES[0],
+                        "`std.fs` chưa có — ST-27 (cần host)".to_string(),
+                        span,
+                    );
+                } else if vis_types::stdlib::MODULES_HOAN.contains(&m2.as_str()) {
+                    self.bao(
+                        &rel,
+                        &MODULE_CODES[0],
+                        format!("`std.{m2}` chưa hỗ trợ (VS1b)"),
+                        span,
+                    );
+                } else {
+                    self.bao(
+                        &rel,
+                        &MODULE_CODES[0],
+                        format!(
+                            "không có module `std.{m2}` (ST-26 có: str/list/map/path/time/json)"
+                        ),
+                        span,
+                    );
+                }
+                continue;
+            }
             match self.giai_use(&seg, &tu_dir) {
                 Ok(dich) => {
                     let d_rel = rel_cua(&self.main_dir, &dich);
@@ -351,6 +392,7 @@ impl Nap {
             mod_id,
             imports,
             imported_types,
+            std_mods,
         };
         let out = lower_into(
             &mut self.symbols,

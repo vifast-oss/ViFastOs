@@ -9,7 +9,9 @@ use vis_syntax::{lex, parse, Cst, Elem, Kind, LexOutput, Mode, Node, NodeKind, S
 
 use super::{bin_op, lit_kind, un_op, Lowerer};
 use crate::hir::{BinOp, HBody, HCond, HExpr, HParam, InterpPart, Lit, LitKind};
+use crate::stdlib as vis_types_stdlib;
 use crate::ty::{FieldDef, RecDef, RecId, Type};
+use vis_diag::NAME_CODES;
 
 impl<'a> Lowerer<'a> {
     /// Hạ một biểu thức; không bao giờ panic — node lạ ⇒ [`HExpr::Error`].
@@ -187,6 +189,22 @@ impl<'a> Lowerer<'a> {
                     .child(NodeKind::Args)
                     .map(|a| self.lower_args(a))
                     .unwrap_or_default();
+                // ST-26: `str.split(…)`, `list.sort(…)` — **tên đầy đủ** `std.<module>.<fn>` khi tệp đã
+                // `use std.<module>`; gọi vào tên đã biết nhưng hoãn ⇒ `VS0301` "chưa hỗ trợ (VS1b)".
+                // ST-26: chuyển `str.split(…)` sang tên đầy đủ `std.str.split` (nếu tệp đã `use`).
+                if let HExpr::Field {
+                    base,
+                    name: f,
+                    optional: false,
+                    ..
+                } = &callee
+                {
+                    if let HExpr::Var { name: m, .. } = &**base {
+                        if self.opts.std_mods.iter().any(|x| x == m) {
+                            return self.std_call_named(m.clone(), f.clone(), args, span);
+                        }
+                    }
+                }
                 self.maybe_enum_lit(callee, args, named, span)
             }
             NodeKind::Index => {
@@ -525,6 +543,33 @@ impl<'a> Lowerer<'a> {
             }
         }
         (positional, named)
+    }
+
+    /// Gọi `std.<module>.<fn>(…)` khi `<module>` đã `use` (ST-26) — tên đầy đủ `std.m.f`.
+    fn std_call_named(&mut self, m: String, f: String, args: Vec<HExpr>, span: Span) -> HExpr {
+        let ngan = format!("{m}.{f}");
+        if vis_types_stdlib::hoan(&ngan) {
+            self.diag(&NAME_CODES[0], format!("`{ngan}` chưa hỗ trợ (VS1b)"), span);
+            return HExpr::Error { span };
+        }
+        if !vis_types_stdlib::la_std(&ngan) {
+            self.diag(
+                &NAME_CODES[0],
+                format!("module `std.{m}` không có hàm `{f}`"),
+                span,
+            );
+            return HExpr::Error { span };
+        }
+        HExpr::Call {
+            callee: Box::new(HExpr::Var {
+                name: format!("std.{ngan}"),
+                sym: None,
+                span,
+            }),
+            args,
+            named: Vec::new(),
+            span,
+        }
     }
 
     /// `Circle(1.0)` / `Shape.Circle(1.0)` ⇒ [`HExpr::EnumLit`] khi biến thể **đã khai**.

@@ -1253,6 +1253,13 @@ pub fn pos(text: &str, span: Span) -> (u32, u32) {
 pub(crate) const MAX_CALL_DEPTH: u32 = 2_000;
 
 fn builtin_name(name: &str) -> Option<&'static str> {
+    // ST-26: `std.<module>.<fn>` gọi qua bảng `stdlib` (dùng chung với VM, VD-55).
+    if name.starts_with("std.") {
+        return name
+            .strip_prefix("std.")
+            .and_then(vis_types::stdlib::sig_of)
+            .map(|f| f.name);
+    }
     match name {
         "print" => Some("print"),
         "len" => Some("len"),

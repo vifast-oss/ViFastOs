@@ -44,6 +44,7 @@
 //! assert_eq!(out.exit, 1);
 //! ```
 
+pub mod stdlib;
 pub mod value;
 
 /// Tên ngắn cho **bảng ngữ nghĩa dùng chung** (ST-20): `ops::bin`, `ops::un`.

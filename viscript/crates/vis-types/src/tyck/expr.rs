@@ -534,6 +534,10 @@ impl<'a> Checker<'a> {
         // Hàm dựng sẵn: kiểm **chữ ký** (ST-12b BLOCKER #3) — cả khi `sym = None` lẫn khi `sym`
         // trỏ tới ký hiệu `SymKind::Builtin` (ST-11 khai 8 tên dựng sẵn).
         if let HExpr::Var { name, sym, .. } = callee {
+            // ST-26: `std.<module>.<fn>` — kiểm chữ ký theo bảng `vis_types::stdlib`.
+            if let Some(t) = self.kiem_std(name, args, span) {
+                return t;
+            }
             let la_builtin = match sym {
                 None => builtin_is_value(name),
                 Some(id) => self.symbols.kind_of(*id) == Some(crate::lower::SymKind::Builtin),
@@ -927,6 +931,36 @@ impl<'a> Checker<'a> {
 
     fn ham_tra(&self) -> Type {
         self.cur_ret.clone().unwrap_or(Type::Unit)
+    }
+
+    /// Chữ ký `std.*` (ST-26): `None` nếu `name` không phải `std.*`.
+    fn kiem_std(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
+        let ngan = name.strip_prefix("std.")?;
+        let sig = crate::stdlib::sig_of(ngan)?;
+        let tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
+        if tys.len() != sig.so_doi() {
+            self.diag(
+                ARG_COUNT,
+                format!("`{ngan}` cần {} đối số, được {}", sig.so_doi(), tys.len()),
+                span,
+            );
+        }
+        for (i, (t, mong)) in tys.iter().zip(sig.params.iter()).enumerate() {
+            let Some(mong) = mong.kieu() else { continue };
+            if !matches!(t, Type::Error) && *t != mong {
+                self.diag(
+                    MISMATCH,
+                    format!(
+                        "`{ngan}`: đối số {} cần `{}`, được `{}`",
+                        i + 1,
+                        mong.name(),
+                        t.name()
+                    ),
+                    span,
+                );
+            }
+        }
+        sig.ret.kieu().or(Some(Type::Error))
     }
 
     /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.

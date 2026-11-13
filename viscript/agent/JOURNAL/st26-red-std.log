@@ -1,0 +1,49 @@
+=== ST-26 D2-05: `std.*` lõi — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T04:21:33Z
+
+## 1. Trước ST-26 (đỏ thật)
+
+`use std.str` (ST-25) ⇒ `VS0701` "`std` chưa có — ST-26" — **không** module std nào tồn tại:
+  std/main.vis:2:1: error VS0701: `std` chưa có — ST-26
+
+## 2. Sau khi cấp bảng chữ ký + sổ `07xx`, **chưa** nối tầng chạy (đỏ của tầng chạy)
+
+Chạy `vis run /tmp/std1.vis` (use std.str + str.upper/ split/ join):
+  /tmp/std1.vis:2:7: error VS0501: tên `std.str.upper` chưa hỗ trợ ở VS0
+⇒ hạ đã chuyển đúng tên đầy đủ `std.str.upper` nhưng interp/VM **chưa** biết tra bảng ⇒ đỏ.
+
+## 3. Sau khi nối (interp builtin_name + tyck + codegen) — xanh
+
+70 fixture `test/std/**` (mỗi ca `.vis` + `.out` **viết theo thiết kế**, không chép từ hiện thực)
++ 8 ca lỗi trong `crates/vis-cli/tests/stdlib.rs`:
+  · `use std.fs` ⇒ `VS0701` "ST-27" · `use std.khong_co` ⇒ `VS0701`
+  · `json.decode` ⇒ `VS0301` "chưa hỗ trợ (VS1b)" · không `use` ⇒ `VS0501` (không rò rỉ)
+  · `str.repeat(-1)` ⇒ `VS0501` · `list.sort("x")` ⇒ `VS0501` nêu hàm + kiểu nhận
+  · `str.upper()` ⇒ `VS0401` (tyck kiểm số đối số)
+
+**Kỳ vọng cũ đã sửa kèm lý do**: `modules.rs::std_bao_st26` → `std_fs_bao_st27` (ST-26 dời
+`std.fs` sang **ST-27** vì cần host) — chỉ đổi **giá trị kỳ vọng**, không bỏ ca.
+
+## 4. Lỗi **của chính em** trong lúc làm (đã sửa, ghi để trung thực)
+
+1. Bộ sinh fixture viết `''.join(f'use std.{m}' for m in mos)` với `mos='list'` ⇒ sinh ra
+   `use std.l` / `std.i` / `std.s` / `std.t` (lặp theo **ký tự**). Phát hiện ngay ở lần chạy đầu
+   (68/68 đỏ vì `VS0701` module lạ) — sửa bộ sinh, **không** sửa test hay nới gì.
+2. 10 kỳ vọng `.out` sai do em đoán `Show` của map (in `{a: 2}` thay vì `{"a": 2}`) và quên
+   `print` chỉ nhận **1** đối số ⇒ sửa **kỳ vọng theo thiết kế**, giữ nguyên hiện thực.
+
+## 5. Chốt
+
+- **344** test workspace (335 + 9 `stdlib.rs`), **70** fixture `test/std` (+ `.out`),
+  differential **mọi** ca std giữa interp và VM: **0 lệch**.
+- 323 ca sem + 272/272 differential + gate `--fast` xanh (giờ ở STATE).
+- sha256 bản commit:
+  sha256 crates/vis-types/src/stdlib.rs=06d1665b777ef62036880eab1e5836f7e9a186924d8fc6954008f4ff4a54a047
+  sha256 crates/vis-interp/src/stdlib.rs=5cc1cfe813d947240506c83d4b7c3ccb7d4c6cba27df2f08b3409ba57037a61c
+  sha256 crates/vis-interp/src/builtin.rs=86b7717daf4e9d8c7016c52746c087edb4b438f0fd3699d18548c2e8f610552f
+  sha256 crates/vis-interp/src/interp.rs=cfe5dbdb7dfed543350f4d05424c0ba5dac3706a987a1909747160cc50375c7c
+  sha256 crates/vis-types/src/tyck/expr.rs=281b4153028a23530df2fa786b4b12691f42b864c010add1b6c1ed4ebd92c8eb
+  sha256 crates/vis-types/src/lower/expr.rs=d990c56ffde0d2c62d07609d16a1a7be5770d6e054238a7f0db2ab1d13169a1b
+  sha256 crates/vis-cli/src/modules.rs=a24447d54983e671aac207e2cfd205e15ea0504619606b70a404ce8e448e1c75
+  sha256 crates/vis-cli/tests/stdlib.rs=351d342964a1a9de8c19fc3168088beba59d580ba09885b1f7c2bd9777cda73c
+  sha256 crates/vis-bytecode/src/util.rs=d6e0be1f97ac13cc14731a628b1a2b6de6b2510e0cc6ec32017516b1e5e877f9

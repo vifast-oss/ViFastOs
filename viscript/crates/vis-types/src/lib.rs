@@ -52,6 +52,7 @@
 
 pub mod hir;
 pub mod lower;
+pub mod stdlib;
 pub mod ty;
 pub mod tyck;
 

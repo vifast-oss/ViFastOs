@@ -6,13 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-25** (module đa tệp: `use ./util`, cấm vòng, `pub`, hash closure) — xong
-                2026-11-13, **chưa commit** (chờ Agent 0 OK).
-Bước          : 4/4 (cú pháp `./x` → bộ nạp + tầm nhìn `pub` → CLI/cache → test + log đỏ)
+Task          : **ST-26** (`std.*` lõi: str/list/map/path/time/json) — xong 2026-11-13,
+                **chưa commit** (chờ Agent 0 OK).
+Bước          : 4/4 (bảng chữ ký → ngữ nghĩa dùng chung → nối interp/VM/tyck/codegen → 68 fixture)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:11:40Z** (13:11 JST, không retry);
-                **335** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-25]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:24:02Z** (13:24 JST, không retry);
+                **344** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-26]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +45,27 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-26 — `std.*` lõi: str/list/map/path/time/json (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | Bảng chữ ký `vis-types/src/stdlib.rs` | **33** hàm, tên **đầy đủ** `str.split`, `list.sort_by`, `time.now_ms`… ⇒ `str.join` và `path.join` không đụng nhau, không rò tên trần; `MODULES` = str/list/map/path/time/json; `HA_CHUA_HO_TRO` = `json.decode` |
+| 2 | Ngữ nghĩa `vis-interp/src/stdlib.rs` | **một** hiện thực cho interp **và** VM (VD-55): `builtin::call` chuyển tiếp `std.*`; VM gọi cùng đường. Sai kiểu ⇒ `VS0501` nêu hàm + kiểu nhận |
+| 3 | Tyck | `kiem_std`: kiểm **số đối số** + kiểu cụ thể (`str.*`/`path.*`/`time.*`); `list.*`/`map.*` dùng **`Any`** (chỉ số đối số) theo chỉ đạo Agent 0 — nợ generic VS1c |
+| 4 | Hạ tên | `str.upper(…)` → `HExpr::Var{name:"std.str.upper"}` khi tệp đã `use std.str`; `json.decode` ⇒ `VS0301` "chưa hỗ trợ (VS1b)"; hàm lạ trong module ⇒ `VS0301` nêu tên |
+| 5 | `use std.X` | `str/list/map/path/time/json` ⇒ nhập module (không phải tệp); `std.fs` ⇒ `VS0701` **ST-27**; `std.khong_co` ⇒ `VS0701` |
+| 6 | `std.path` | **thuần chuỗi** (`join/basename/dirname/ext/stem/is_abs`), không chạm đĩa |
+| 7 | `std.time` | đọc đồng hồ **trong Rust** (`SystemTime`/`Instant`), **không** thêm method vào `Host` |
+| 8 | `std.json.encode` | compact + `encode_pretty`; map theo **thứ tự chèn**, bản ghi theo thứ tự trường, `none` ⇒ `null`, `Result` ⇒ `{"ok":…}`/`{"err":…}`, enum ⇒ `{"variant":…,"value":…}`; **decode hoãn** (VS1b) |
+| 9 | Test | **344** workspace (335 + 9 `stdlib.rs`); **68** fixture `test/std` (`.vis` + `.out` viết theo thiết kế); differential **mọi** ca std interp ↔ VM: **0 lệch**; 323 ca sem + 272/272 vẫn xanh |
+
+**Hàm**: `str.{split,join,trim,upper,lower,starts_with,ends_with,contains,repeat,replace}` ·
+`list.{sort,sort_by,reverse,unique,concat,chunk,take,drop}` · `map.{keys,values,merge,get_or,remove}` ·
+`path.{join,basename,dirname,ext,stem,is_abs}` · `time.{now_ms,monotonic_ms}` · `json.{encode,encode_pretty}`.
+
+**Quyết định**: `sort_by` = **closure khoá**, tăng dần, **ổn định** (có ca chứng minh); `--desc` = nợ VS1b.
+`std.fs` **không** làm (ST-27); `json.decode` **không** export ⇒ `VS0301` "chưa hỗ trợ (VS1b)".
 
 ## ST-25 — module đa tệp: `use ./util`, cấm vòng, `pub`, hash closure (2026-11-13)
 

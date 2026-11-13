@@ -82,11 +82,13 @@ fn thieu_tep_la_vs0701() {
 }
 
 #[test]
-fn std_bao_st26() {
+fn std_fs_bao_st27() {
+    // **SỬA KÈM LÝ DO (ST-26)**: `std.fs` cần host ⇒ dời sang **ST-27**; thông điệp nay là "ST-27"
+    // (trước ST-26 nó là "ST-26" vì chưa có module std nào).
     let k = run("std/main.vis");
     assert_eq!(k.code, 2);
     assert!(
-        k.err.contains("VS0701") && k.err.contains("ST-26"),
+        k.err.contains("VS0701") && k.err.contains("ST-27"),
         "stderr: {}",
         k.err
     );

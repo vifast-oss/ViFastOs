@@ -366,6 +366,10 @@ pub fn call(
     args: Vec<Value>,
     span: Span,
 ) -> crate::interp::R<Value> {
+    // ST-26: `std.*` — một hiện thực dùng chung cho interp và VM (VD-55).
+    if name.starts_with("std.") {
+        return crate::stdlib::call(host, name.trim_start_matches("std."), args, span);
+    }
     match name {
         "print" => {
             if args.len() != 1 {

@@ -61,6 +61,8 @@ pub struct LowerOptions {
     pub imports: Vec<u16>,
     /// Kiểu **công khai** nhập từ module khác (ST-25): tên → kiểu đã hạ.
     pub imported_types: Vec<(String, Type)>,
+    /// Module `std.*` đã `use` (ST-26) — bật dạng gọi `str.split(…)` trong tệp này.
+    pub std_mods: Vec<String>,
 }
 
 impl LowerOptions {

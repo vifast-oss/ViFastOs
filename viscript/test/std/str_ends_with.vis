@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use std.str
+print(str.ends_with("abc", "bc"))
+print(str.ends_with("abc", "a"))
