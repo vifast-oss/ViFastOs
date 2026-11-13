@@ -159,22 +159,49 @@ impl<'a> Lowerer<'a> {
 
     /// ST-37: hạ **nội dung** stage `( … )` — parser chỉ giữ token nên hạ lại văn bản trong ngoặc
     /// ở chế độ script. Chỉ dùng cho **biểu thức thuần** (literal/phép toán); biến trong nhóm chưa hỗ trợ.
+    /// **ST-51**: nhóm **không có ngoặc** (stage đầu là biểu thức đóng).
+    pub(super) fn nhom_khong_ngoac(&self, g: &Node) -> bool {
+        match g.elems.first() {
+            Some(Elem::Token(i)) => self.tok(*i).map(|t| t.text != "(").unwrap_or(false),
+            _ => false,
+        }
+    }
+
     pub(super) fn vach_text(&self, g: &Node) -> Option<String> {
         let first = g.elems.first().and_then(|e| match e {
-            Elem::Token(i) => self.tok(*i).map(|t| t.span),
+            Elem::Token(i) => self.tok(*i).map(|t| (t.span, t.text.clone())),
             _ => None,
         })?;
         let last = g.elems.last().and_then(|e| match e {
-            Elem::Token(i) => self.tok(*i).map(|t| t.span),
+            Elem::Token(i) => self.tok(*i).map(|t| (t.span, t.text.clone())),
             _ => None,
         })?;
-        self.text.get(first.end..last.start).map(|s| s.to_string())
+        // **ST-51**: nhóm **không ngoặc** (stage đầu là biểu thức đóng) ⇒ lấy **nguyên span**.
+        if first.1 == "(" && last.1 == ")" {
+            self.text
+                .get(first.0.end..last.0.start)
+                .map(|s| s.to_string())
+        } else {
+            self.text
+                .get(first.0.start..last.0.end)
+                .map(|s| s.to_string())
+        }
     }
 
     pub(super) fn lower_vach(&mut self, g: &Node) -> Option<HExpr> {
         let txt = self.vach_text(g)?;
         let bat_dau = match g.elems.first() {
-            Some(Elem::Token(i)) => self.tok(*i).map(|t| t.span.end).unwrap_or(0),
+            Some(Elem::Token(i)) => self
+                .tok(*i)
+                .map(|t| {
+                    if t.text == "(" {
+                        t.span.end
+                    } else {
+                        // ST-51: nhóm-không-ngoặc ⇒ biểu thức bắt đầu ngay tại token đầu.
+                        t.span.start
+                    }
+                })
+                .unwrap_or(0),
             _ => 0,
         };
         let sau_mo = &self.text[bat_dau.min(self.text.len())..];
@@ -553,6 +580,10 @@ impl<'a> Lowerer<'a> {
                     if !matches!(t, Type::Error) {
                         return t;
                     }
+                    // ST-51: nhóm-không-ngoặc bắt đầu `{…}` ⇒ **list một phần tử** (đã bọc ở hạ).
+                    if self.nhom_khong_ngoac(g) && phang.trim_start().starts_with('{') {
+                        return Type::List(Box::new(Type::Error));
+                    }
                     // Nhóm-lệnh (`( ls --long )`, `( ls | where … )`) ⇒ kiểu stage **đầu**.
                     let t2 = self.kieu_nhom(g, sigs);
                     if !matches!(t2, Type::Error) {
@@ -675,9 +706,29 @@ impl<'a> Lowerer<'a> {
             // **văn bản trong ngoặc** ở chế độ script (biểu thức thuần: literal/phép toán).
             // ST-46: không phải biểu thức ⇒ thử **một lệnh** trong ngoặc (`( ls ./photos )`).
             // ST-49: biểu thức script (kể cả **nhiều dòng**) → pipeline lệnh (cờ, nhiều stage).
+            // ST-51: nhóm **không ngoặc** bắt đầu bằng `{…}` (bản ghi) ⇒ **bọc list một phần tử**
+            // để hạ nguồn (`where`/`take`/`select`/bảng) chạy như một dòng; kiểu `list` cho hook.
             let v = self
                 .lower_vach(g)
-                .map(|e| (e, Type::Error))
+                .map(|e| {
+                    let la_ban_ghi = self.nhom_khong_ngoac(g)
+                        && self
+                            .vach_text(g)
+                            .map(|t| t.trim_start().starts_with('{'))
+                            .unwrap_or(false);
+                    if la_ban_ghi {
+                        (
+                            HExpr::List {
+                                items: vec![e],
+                                elem: Type::Error,
+                                span: g.span,
+                            },
+                            Type::List(Box::new(Type::Error)),
+                        )
+                    } else {
+                        (e, Type::Error)
+                    }
+                })
                 .or_else(|| self.lower_nhom(g, sigs));
             if v.is_none() {
                 if let Some(e) = truoc.as_ref() {

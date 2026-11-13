@@ -279,6 +279,11 @@ impl<'a> Parser<'a> {
             }
             return Ok((e, s));
         }
+        // **ST-51**: dòng **bắt đầu bằng biểu thức đóng** (`[`, `{`, hoặc chuỗi) **và** có `|`
+        // ở độ sâu 0 ⇒ stage đầu là **biểu thức** (nới **hẹp nhất**, chỉ chế độ lệnh).
+        if let Some(r) = self.cmd_bieu_thuc_dau()? {
+            return Ok(r);
+        }
         let mut elems = Vec::new();
         let mut its = Vec::new();
         loop {
@@ -304,6 +309,79 @@ impl<'a> Parser<'a> {
                 format!("(items {})", its.join(" ")),
             ))
         }
+    }
+
+    /// **ST-51**: stage đầu là **biểu thức đóng** — chỉ nhận khi dòng **bắt đầu** bằng `[`,
+    /// `{`, hoặc **chuỗi**, **và** có `|` độ sâu 0; tiền tố phải parse **sạch** ở `Mode::Script`.
+    /// `None` ⇒ không đụng (`pos` giữ nguyên) ⇒ đường cũ báo `VS0201` như trước.
+    fn cmd_bieu_thuc_dau(&mut self) -> PResult<Option<(Elem, String)>> {
+        let la_mo = match self.tok().kind {
+            Kind::Str => true,
+            Kind::Punct => self.tok().is_punct("[") || self.tok().is_punct("{"),
+            _ => false,
+        };
+        if !la_mo {
+            return Ok(None);
+        }
+        let start = self.tok().span.start;
+        let mut k = 0usize;
+        let mut depth = 0i32;
+        let mut gap = None;
+        loop {
+            let t = self.tok_at(k);
+            if t.kind == Kind::Eof || t.kind == Kind::Newline {
+                break;
+            }
+            match t.text.as_str() {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => depth -= 1,
+                "|" if depth == 0 => {
+                    gap = Some(k);
+                    break;
+                }
+                ";" | "&" if depth == 0 => break,
+                _ => {}
+            }
+            k += 1;
+        }
+        let Some(k) = gap else { return Ok(None) };
+        let pipe = self.tok_at(k).span;
+        let dau = self
+            .text
+            .get(start..pipe.start)
+            .unwrap_or("")
+            .trim_end()
+            .to_string();
+        if crate::parse::parse(&dau, crate::lex::Mode::Script)
+            .diagnostics
+            .iter()
+            .any(|_| true)
+        {
+            return Ok(None);
+        }
+        let sub = crate::parse::parse(&dau, crate::lex::Mode::Script);
+        let inner = sub.cst.sexp_expr().unwrap_or_else(|| "expr".to_string());
+        // Token của **biểu thức** (chưa tới `|`).
+        let mut tok_elems: Vec<Elem> = Vec::new();
+        for _ in 0..k {
+            tok_elems.push(self.bump());
+        }
+        let gnode = self.node(NodeKind::CmdGroup, tok_elems);
+        let mut elems: Vec<Elem> = Vec::new();
+        let mut ss: Vec<String> = vec![format!("(group {inner})")];
+        let stage = self.node(NodeKind::CmdStage, vec![Elem::Node(Box::new(gnode))]);
+        elems.push(Elem::Node(Box::new(stage)));
+        while self.at_punct("|") {
+            elems.push(self.bump());
+            let (e, s2) = self.cmd_stage()?;
+            elems.push(e);
+            ss.push(s2);
+        }
+        let pipe_node = self.node(NodeKind::CmdPipe, elems);
+        Ok(Some((
+            Elem::Node(Box::new(pipe_node)),
+            format!("(pipe {})", ss.join(" ")),
+        )))
     }
 
     fn cmd_pipeline(&mut self) -> PResult<(Elem, String)> {

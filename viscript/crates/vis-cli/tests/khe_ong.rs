@@ -128,12 +128,14 @@ fn co_khong_bi_chiem_lam_khe() {
 }
 
 #[test]
-fn khong_ngoac_van_la_loi_parse() {
-    // Nợ **VSH1b**: stage đầu là **biểu thức** chưa được văn phạm §9.5 nhận ⇒ `VS0201`.
+fn bieu_thuc_dau_khong_ngoac_chay() {
+    // **SỬA KÈM LÝ DO (ST-51, Agent 0 duyệt)**: nợ VSH1b-2 đóng — stage đầu là **biểu thức đóng**
+    // (`[`, `{`, chuỗi) **có `|`** nay hợp lệ (§9.5 nới **hẹp nhất**, chỉ chế độ lệnh) ⇒ chạy,
+    // không còn `VS0201`. Không có `|` vẫn là `VS0201` (ca riêng ở `stage_dau.rs`).
     let d = tam("parse");
-    let (c, _, e) = chay(&d, "parse", "[1, 2] | take 1\n");
-    assert_eq!(c, 2, "stderr: {e}");
-    assert!(e.contains("VS0201"), "stderr: {e}");
+    let (c, o, e) = chay(&d, "parse", "[1, 2] | take 1\n");
+    assert_eq!(c, 0, "stderr: {e}");
+    assert_eq!(o, "[1]\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 

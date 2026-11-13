@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-50** (một mã trường `VS0405` + `where` kiểm tĩnh) — xong, **chưa commit**.
-Bước          : 5/5 (đổi tên/đổi sổ → tyck `kiem_field` → nhánh `where` + gán kiểu lambda → 12 ca → gate)
+Task          : **ST-51** (stage đầu là biểu thức đóng) — xong, **chưa commit**.
+Bước          : 5/5 (parser nhận `[`/`{`/chuỗi + `|` → CST nhóm-không-ngoặc → bọc list cho `{…}` → 12 ca → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T15:42:25Z**; **692** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
-Việc dở       : commit `[ST-50]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:05:08Z**; **704** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
+Việc dở       : commit `[ST-51]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-50 — một mã trường + `where` tĩnh (2026-11-13)
+## ST-51 — stage đầu là biểu thức (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Văn phạm hẹp** | chỉ chế độ lệnh: dòng đầu `[`, `{`, **chuỗi** + có `|` độ sâu 0 + tiền tố `Script` sạch ⇒ stage đầu là **biểu thức**; không có `|` ⇒ `VS0201` |
+| 2 | **Không nhận** | **số** (`1 \| …` vốn là lệnh ngoài) và **biến** (`x \| …` giữ nguyên lệnh ngoài) — tránh nhập nhằng §9.5 |
+| 3 | **Hạ** | `CmdGroup` **không ngoặc** dùng lại đường `( … )`; **`{…}` bọc list 1 phần tử** ⇒ `where`/`take`/`select`/bảng chạy thật, interp ↔ `--vm` cùng byte |
+| 4 | **Không hồi quy** | golden ca 24 + `(a \| b)` xanh; `take 1` vẫn lệnh (VS0602); `ls`/nhóm-ngoặc cũ y hệt; sửa **kèm lý do** ca `khe_ong` cũ |
+| 5 | **Đo** | **692 → 704** test (+12 `stage_dau.rs`); `vis test` **370 ok**; parity 344/344; diff 100k 0 lệch; allowlist **6** |
+
+ + `where` tĩnh (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
