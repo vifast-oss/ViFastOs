@@ -135,7 +135,9 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-28 | WaitOnAddress: bảng băm `(frame,offset)`, đọc + xếp hàng một lần, `WakeAddr(n)`, không timeout | KT-23 | 2 h | DONE | 427 test; Miri 12/12; bucket 64; expected lệch trả ngay; WakeAddr FIFO n=0/1/2/MAX; không timeout; reviewer APPROVE |
 | KT-29 | SMP 1/2/4/8 + push migration: `with_harts`, `published.idle`/`cur_prio`, `Migrate`, tất định, không work stealing | KT-28 | 3 h | DONE | 442 test; Miri 13/13; 1/2/4/8; push 1/hart nguồn; FIFO drain; ≤1 Migrate/TCB; guard n>1; reviewer CONFIRM 5/5 |
 | KT-30 | `vifast-sync`: MCS lock + Mailbox MPSC cố định, ack thế hệ, đầy backpressure; stress+Miri (không loom) | KT-24 | 3 h | DONE | 461 test; Miri 16/16; MCS FIFO/không reentrant; 7 loại/đầy Busy; stress 200/0; acked≠delivered; reviewer CONFIRM |
-| KT-31 | Cổng cuối K1c: 100.000 seed × smp 1/2/4/8 + mutation + Miri toàn bộ + bảng DoD K1c (không sửa semantics) | KT-30 | 3 h | READY | `nightly --l1 --seeds 100000 --smp 1,2,4,8` PASS cùng seed/trace; mutation hand; Miri all; bảng DoD; log thật |
+| KT-31 | Cổng cuối K1c: 100.000 seed × smp 1/2/4/8 + mutation + Miri toàn bộ + bảng DoD K1c (không sửa semantics) | KT-30 | 3 h | DONE | 400k lượt; 6 mutation; Miri 276; gate 461; report C1/C3 **chưa đạt**; D2-61; K1c REVIEW |
+| KT-32 | Đóng nợ C1: driver `l1_k1c` trộn IPC/Notification/WaitAddr + 100.000 seed × smp 1/2/4/8; `check_ipc` thật, cùng seed cùng trace | KT-31 | 2 h | READY | 400k lượt; `ipc_sent>0`; bảo toàn `sent==delivered+pending+dropped`; gate 461+; log |
+| KT-33 | Đóng nợ C3+Miri: đủ **12/12** mutation §7.2 + thêm `kt25_ipc2` vào Miri all + chạy lại + cập nhật K1C-DOD (C1/C3 ĐẠT) | KT-32 | 2 h | BLOCKED | 12/12 đỏ đúng test; Miri all có kt25; report không overclaim; gate |
 
 
 APPROVED 2026-11-12 Agent 0
@@ -154,8 +156,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K1c**: KT-24..30 DONE; **KT-31 READY** (cổng cuối); D2-53 + D2-54..60.
-3. Thứ tự: KT-31 (cổng cuối K1c) → chốt K1c; mỗi task ≤3 h.
+2. **K1c REVIEW**: KT-24..31 DONE (KT-31 gate một phần, D2-61); **KT-32 READY** → KT-33; chưa DONE.
+3. Thứ tự: KT-32 (C1) → KT-33 (C3+Miri) → chốt K1c; mỗi task ≤3 h.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.

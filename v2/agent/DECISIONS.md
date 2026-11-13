@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-60`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-61`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-60: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-61: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -94,6 +94,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-58** Backlog K3 cho WaitAddr: `addr_words` phải sweep khi frame chết; invariant một chiều (`BlockedOnAddress` không nút chưa bắt); `wake_addr` bỏ `sched_after_op` nếu `wake_step` lỗi giữa chừng (hiện không xảy ra); `suspended ⇒ IllegalOperation` và `InvalidArgument`/`EAGAIN` chốt khi có Frame thật; `set_addr_word` là model API. Không đổi code K1c.
 - **D2-59** Backlog K3 cho SMP: mô hình IPI/timer thật; thêm `TlbFlush`/`VmKick`/`PowerReq` vào hộp thư (K1c mới có Wake/Reschedule/Migrate/Stop); multicast/IRQ; `Migrate` trùng đã bị từ chối ở `post_mail` (KT-29). Không đổi code K1c.
 - **D2-60** KT-30 `vifast-sync`: ack thế hệ `[TK]` — `generation` = số `send` Ok, `ack(gen)` = `fetch_max` (không lùi/kẹp), `pending` = `min(gen,generation) - acked`; **`acked ≠ delivered`** (K3 chốt TLB). MCS `MAX_WAITERS = 16`, `Mailbox<N>` yêu cầu `N ≥ 2`; hook test chỉ `pub(crate) + cfg(test)`. Cổng wall >60 s do tải host (baseline 159 s) là **T-INFRA**, không nới ngưỡng. **KT-31** = cổng cuối K1c: `nightly --l1` 100k seed × smp 1/2/4/8 + mutation + Miri toàn bộ + bảng DoD K1c.
+- **D2-61** KT-31 là **gate run một phần**, được lật DONE như task thi hành nhưng **K1c vẫn REVIEW**: C1-100k **chưa đạt** (driver `l1_k1c` không sinh IPC/Notification/WaitAddr; `check_ipc` rỗng), C3 **3/12 §7.2**, Miri all thiếu `kt25_ipc2`. Ba nợ này đóng bởi **KT-32** (driver L1 trộn + 100k×4) và **KT-33** (đủ 12 mutation + thêm kt25 vào Miri + chạy lại + báo cáo). Không tuyên bố K1c DONE trước KT-33.
 
 ---
 

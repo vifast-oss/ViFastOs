@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-31 (cổng cuối K1c) — REVIEW (đề xuất DONE một phần qua D2-61); KT-30 DONE (29718a6)
-Bước          : 8/8
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test**, L1 1.000 seed **720 ms**, fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON (`JOURNAL/kt31-gate-fast.log`). **T-INFRA**: wall **254,19 s** > 60 s (QD §5.2) do tải máy (baseline KT-30 cùng ngày 199,3 s); **không** nới ngưỡng. Cổng cuối K1c: **100k×4 L1 PASS** 400.000 lượt **5043,84 s** (`kt31-l1-100k-smp.log`); **Miri toàn bộ PASS** 276 test/18 tập **4058,24 s** (`kt31-miri-all.log`); **mutation 6/6 đỏ đúng test** (`kt31-mutation.log`); **parity 10k PASS** 15,52 s (`kt31-parity-10k.log`)
 Miri          : `./v2/bin/v2 nightly --only-miri` — **PASS 276 test / 18 tập**, wall **4058,24 s** (`JOURNAL/kt31-miri-all.log`); K1c 104 test (kt24/26/27/28/29 + sync). **Ghi rõ**: danh sách `--only-miri` **không có `kt25_ipc2`** (Miri KT-25 rời: 24/24, `kt25-miri.log`); `kt30_stress` tự gạt dưới Miri
