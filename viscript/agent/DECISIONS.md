@@ -580,3 +580,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (`MucFs` mở rộng `mode`/`mtime`), **không** đụng `Render` bảng mặc định (chỉ khi `--long`). (4) **`( … )` làm đối số**:
   nhóm được dùng như biểu thức ở vị trí đối số; **chẩn đoán trong ngoặc** dùng vị trí **tuyệt đối** trong tệp (hết nợ
   "vị trí tương đối"). (5) **Không** thêm mã lỗi mới trừ khi được duyệt; mọi thay đổi hành vi phải liệt kê ca `.out` đổi.
+
+- **VD-78** **Khai báo trong `.vish` (ST-44)**: (1) `.vish` = **vùng item ở đầu tệp** + **vùng stage** phía sau; ranh giới là
+  dòng **cột 1** đầu tiên không bắt đầu bằng từ khoá item (`type|enum|cmd|fn|use|const|trait|impl|alias|newtype|extern`)
+  và không phải `let` ⇒ từ đó là stage. (2) Tiền tố parse lại **Mode::Script** với **span tuyệt đối** (đệm offset) và hạ
+  vào **cùng** `Symbols`/`TypeTable` ⇒ item thấy prelude, stage thấy item. (3) Khai báo **sau** stage ⇒ **`VS0201`** kèm
+  gợi ý "khai báo phải đứng trước stage đầu tiên"; **trùng tên** (kể cả `FileEntry`/`ProcEntry`) ⇒ **`VS0302`** (không
+  thêm mã). (4) **`f()`** = lời gọi **0 đối số**; nhóm rỗng đứng riêng ⇒ `VS0201`. (5) `let x: T = <có `|`/`;`/`>`/`<`/`&`>`
+  ⇒ **shell-let**, ngược lại ⇒ khai báo script. (6) **Nợ VSH1b-2**: thân `cmd` viết bằng **pipeline lệnh** (thụt) chưa
+  hỗ trợ — thân hiện là **script**.

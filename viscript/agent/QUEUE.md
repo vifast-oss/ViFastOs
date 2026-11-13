@@ -133,8 +133,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | **DONE** | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
 | ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | **DONE** | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
 | ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | **DONE** | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
-| ST-44 | `.vish` **khai báo kiểu**: `type` / `let x: T` / `cmd f(...) -> T` | ST-43 | 3 h | **READY** | prelude dùng bằng khai báo thật; `VS0302` khi trùng; differential 0 lệch |
-| ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | BLOCKED | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
+| ST-44 | `.vish` **khai báo kiểu**: `type` / `let x: T` / `cmd f(...) -> T` | ST-43 | 3 h | **DONE** | prelude dùng bằng khai báo thật; `VS0302` khi trùng; differential 0 lệch |
+| ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **READY** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
 | ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | BLOCKED | 3 nợ VSH1b hết; allowlist không tăng |
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -603,6 +603,19 @@ APPROVED 2026-11-13 Agent 0
 > `gate --fast` + `nightly` PASS · **allowlist 8 → 6** (khối 1451 + 672 xanh thật; 672 **chạy** từ ST-42).
 > **17 lỗ hổng còn mở** ghi trong `R6` §5. Vòng sau (**VSH1b**): cú pháp khai `cmd`/`type`/`let` có kiểu trong `.vish`;
 > `where` kiểm tĩnh đầy đủ; `--long` thật; `( … )` làm đối số + chẩn đoán tuyệt đối trong ngoặc.
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-44 DONE** — commit `32c5af5` (**Agent 2 tự commit**): **`.vish` có khai báo kiểu** bằng cách **tách vùng** ở cột 1
+> (từ khoá item + `let`): tiền tố parse lại **Mode::Script** với span **tuyệt đối**, hạ vào **cùng** `Symbols`/`TypeTable`;
+> `type`/`enum`/`let x: T`/`cmd f(...) -> T` dùng **nguyên** `item()`/`suite()` của `.vis`; khai báo **sau** stage ⇒
+> **`VS0201`** + gợi ý; trùng tên (kể cả prelude) ⇒ **`VS0302`**; `.vish` không khai báo ⇒ hành vi **y hệt vòng 6**
+> (4 fixture ST-42 xanh + ca riêng); `.vis` **không** đổi. **622** test (+16 `vish_decl`); sem **370 không đổi**;
+> `vis test` **370 ok**; parity 344/344; differential 100k **0 lệch** (203,1 s); allowlist **6**. Phát hiện & sửa:
+> `f()` phải là **lời gọi 0 đối số** (không thì bị coi là lệnh `(`); `let x: int = ls | grep foo` vẫn là **shell-let**
+> (phân biệt theo RHS) ⇒ không phá golden `test/cmd/golden.cmd` ca 24.
+> Nợ mới: **thân `cmd` bằng pipeline lệnh** (thụt) chưa hỗ trợ ⇒ **VSH1b-2** (task riêng).
+> **ST-45 mở** (`where` kiểm tĩnh đầy đủ).
 
 ## Ghi chú vận hành
 
