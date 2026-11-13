@@ -1,0 +1,23 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.39s
+     Running tests/kt28_waitaddr.rs (target/debug/deps/kt28_waitaddr-7cef4eb68f5dab09)
+
+running 1 test
+test expected_lech_tra_ngay_khong_xep_hang ... FAILED
+
+failures:
+
+---- expected_lech_tra_ngay_khong_xep_hang stdout ----
+
+thread 'expected_lech_tra_ngay_khong_xep_hang' (39934538) panicked at sim/vifast-sim/tests/kt28_waitaddr.rs:108:13:
+check_waitaddr sau expected lệch: waiter khoá (3,16) của TCB 7 lệch trạng thái Ready
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    expected_lech_tra_ngay_khong_xep_hang
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt28_waitaddr`
+EXIT:101

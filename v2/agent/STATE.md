@@ -6,13 +6,50 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-27 **xong mã + test** (**Notification**: word 64 bit + badge, `Signal` OR + **một** waiter + xoá word, `Wait`/`Poll`, bound TCB + `SchedContext.Bind` 1:1, unbind khi TCB chết; model-only D2-53 Q6, không thêm chữ ký ABI). KT-26 DONE (`e5350f0` lật), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
-Bước          : 8/8 — **DONE mã**, commit `093b986` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
+Task          : KT-28 **xong mã + test** (**WaitOnAddress**: bảng băm `(frame, offset)` `WAITADDR_BUCKETS = 64` hằng model `[TK]`, `WaitAddr` đọc giá trị + xếp hàng **một lần**, **không timeout** (D2-53 Q4), `WakeAddr(n)` tối đa n theo FIFO, không mất đánh thức; model-only D2-53 Q3). KT-27 DONE (`093b986` lật), KT-26 DONE (`e5350f0`), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
+Bước          : 9/10 — xong mã + test + gate + Miri + **review độc lập APPROVE**; bước 10: commit `[KT-28]` + push
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 413 test/55 suite** (baseline 386/53 ⇒ +27 = 26 `kt27_notification` + 1 `kt27_scn`), L1 1.000 seed/999 trace **738 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt27-gate-fast.log`)
-Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt27_notification` — **PASS 26/26** (`JOURNAL/kt27-miri.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
-Việc dở       : không. Task kế: **KT-28** (WaitAddr) sau khi Agent 0 lật KT-27 DONE
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 427 test/56 suite** (baseline 413/55 ⇒ +14 = 12 `kt28_waitaddr` + 2 unit `check_waitaddr`), L1 1.000 seed/999 trace **704 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt28-gate-fast.log`)
+Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt28_waitaddr` — **PASS 12/12** (`JOURNAL/kt28-miri.log`, 105 s) + `--lib check_waitaddr` **2/2** (`JOURNAL/kt28-miri-lib.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
+Việc dở       : chờ verdict `reviewer-kt28`; sau verdict: commit `[KT-28]` + push, không lật QUEUE. Task kế: **KT-29** (SMP/push) sau khi Agent 0 lật KT-28
 ```
+
+## KT-28 — WaitOnAddress: bảng băm `(frame, offset)`, Wait đọc giá trị + xếp hàng một lần, `WakeAddr(n)` (K1c, D2-53 Q3/Q4)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-28) · HEAD `8e36f55` ([KT-27] DONE) ·
+`rev-list --count HEAD..origin/main` = 0 · baseline `gate --fast` PASS **413 test/55 suite**
+([`JOURNAL/kt28-baseline-gate-fast.log`](JOURNAL/kt28-baseline-gate-fast.log)).
+**Phạm vi**: `WAITADDR_BUCKETS = 64` hằng **model `[TK]`** (Q3: **không** tạo `spec/kernel.toml`) +
+`waitaddr_bucket((frame, offset))`; `address_waiters: [Vec<(frame, offset, tcb)>; 64]`; `wait_addr`
+đọc `addr_word` **và** xếp hàng trong **một** hàm, lệch `expected` ⇒ `InvalidArgument` không xếp
+hàng, TCB `suspended` ⇒ `IllegalOperation`; **không timeout** (Q4); `wake_addr(frame, offset, n)`
+FIFO, trả số đã đánh thức, `n = u32::MAX` = tất cả; `set_addr_word`/`addr_word`; `check_waitaddr`
+sau mỗi public op (đúng bucket/TCB sống + đúng trạng thái/không trùng/không TCB chết/suspended);
+`unlink_tcb_queues` + sweep nút chết theo **đúng bucket**; API K1b `tcb_wait_address`/`address_waiter`/
+`address_waiters_len` giữ nguyên (KT-18/19/23 xanh), `tcb_wait_address` đi qua `wait_addr`.
+**Không** làm: timeout/K6, `Cancelled` khi Frame unmap (K2), SMP/push (KT-29), `vifast-sync` (KT-30),
+Notification mới; không sửa `spec/`, `vifast-model`, `.scn`, QUEUE, DECISIONS, AGENTS, `viscript/`;
+không dependency/`unsafe`/`#[allow]`/`#[ignore]`; không đổi ABI.
+**Bước**: (1) baseline; (2) test đỏ `tests/kt28_waitaddr.rs` (E0432/E0599) + probe; (3) bảng băm +
+`addr_words`; (4) `wait_addr`/`wake_addr`/`set_addr_word`/`addr_word`; (5) `check_waitaddr` +
+`sched_after_op`; (6) `unlink_tcb_queues`/sweep theo bucket; (7) test 12 + fuzz 1.000×64; (8) doc
+`v2/docs/k1c-waitaddr.md` + Miri list; (9) gate + Miri + mutation + log; (10) review độc lập → commit.
+**Kết quả**: test đỏ [`JOURNAL/kt28-red-compile.log`](JOURNAL/kt28-red-compile.log) (24 lỗi
+E0432/E0599) + [`JOURNAL/kt28-red-semantics.log`](JOURNAL/kt28-red-semantics.log); `check` PASS
+([`JOURNAL/kt28-check.log`](JOURNAL/kt28-check.log)); `gate --fast` **PASS 427 test/56 suite**, L1
+704 ms ([`JOURNAL/kt28-gate-fast.log`](JOURNAL/kt28-gate-fast.log)); Miri **12/12** + lib **2/2**;
+đột biến "xếp hàng trước rồi so" bị bắt ([`JOURNAL/kt28-mutation-red.log`](JOURNAL/kt28-mutation-red.log));
+doc model-only `[TK]`: [`v2/docs/k1c-waitaddr.md`](../docs/k1c-waitaddr.md); nhật ký đầy đủ:
+[`JOURNAL/kt28-journal.md`](JOURNAL/kt28-journal.md).
+**Nợ đã ghi (không chặn, reviewer-kt28 APPROVE 2026-11-13)**: (a) `addr_words` **không** được sweep
+khi frame chết — chưa có vòng đời Frame (K2 Frame thật, K3 xem lại); (b) bất biến
+`check_waitaddr` **một chiều** (`nút ⇒ TcbState`, không kiểm `TcbState ⇒ nút` — cùng lý do
+`check_notifications`/ma trận 11×11 KT-23); (c) `wake_addr` **bỏ** `sched_after_op` nếu `wake_step`
+lỗi giữa chừng (hiện không xảy ra: mọi nút đều `BlockedOnAddress` theo bất biến); (d) docs §6:
+"giữ khoá = một hàm" **chấp nhận cho K1c**, `WaitAddr` trên TCB `suspended` ⇒ `IllegalOperation`
+là **nợ K3 conformance**, giữ `InvalidArgument`, `set_addr_word`/`addr_word` là **model API**.
+**Trạng thái**: **REVIEW → chờ Agent 0 lật** (đã có verdict reviewer độc lập **APPROVE**); commit
+`[KT-28]` đã push, **không** tự DONE, **không** lật QUEUE.
 
 ## KT-27 — Notification: word 64 + badge, Signal OR, một waiter, Wait/Poll, bind 1:1 (K1c, D2-53 Q6)
 

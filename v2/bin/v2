@@ -410,6 +410,9 @@ run_miri_test() {
 # **KT-27** (K1C-PLAN §5 KT-27 DoD 8): thêm `kt27_notification` (word 64 + badge, Signal OR, một
 # waiter, Wait/Poll, bind 1:1, TCB chết; fuzz 1.000 seed tự giảm còn 3 seed × 8 op bằng
 # `cfg(miri)`). KHÔNG thêm `kt27_scn` (đọc tệp — test I/O).
+# **KT-28** (K1C-PLAN §5 KT-28 DoD 8): thêm `kt28_waitaddr` (bảng băm `(frame, offset)` 64 bucket,
+# WaitAddr đọc giá trị + xếp hàng một lần, `WakeAddr(n)`, không timeout; fuzz 1.000 seed tự giảm
+# còn 3 seed × 8 op bằng `cfg(miri)`). KHÔNG có tệp `.scn` mới nên không có test I/O để bỏ.
 do_nightly_only_miri() {
     local t0 t1
     require_miri_toolchain "v2 nightly --only-miri"
@@ -430,6 +433,7 @@ do_nightly_only_miri() {
     run_miri_test "vifast-sim kt24_ipc" -p vifast-sim --test kt24_ipc || return 1
     run_miri_test "vifast-sim kt26_fault" -p vifast-sim --test kt26_fault || return 1
     run_miri_test "vifast-sim kt27_notification" -p vifast-sim --test kt27_notification || return 1
+    run_miri_test "vifast-sim kt28_waitaddr" -p vifast-sim --test kt28_waitaddr || return 1
     t1="$(date +%s)"
     echo "v2 nightly --only-miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
 }

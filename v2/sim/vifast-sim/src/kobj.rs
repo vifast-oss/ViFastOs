@@ -99,7 +99,7 @@ pub const WAITADDR_BUCKETS: usize = 64;
 /// 64 **va chạm có chủ ý** (test KT-28 dùng cặp `(f,0)`/`(f,64)`); khoá được so **đầy đủ**
 /// `(frame, offset)` trong bucket nên va chạm không ảnh hưởng tìm/đánh thức.
 pub fn waitaddr_bucket(frame: ObjId, offset: u32) -> usize {
-    frame.wrapping_mul(0x9E37_79B1) as usize % WAITADDR_BUCKETS ^ (offset as usize % WAITADDR_BUCKETS)
+    ((frame.wrapping_mul(0x9E37_79B1) ^ offset) as usize) % WAITADDR_BUCKETS
 }
 
 /// Loại object — 8 lõi + 8 reserved (spec `[object]`). Reserved ⇒ `NotSupported` khi Retype.
@@ -639,9 +639,15 @@ pub struct Machine {
     cap_unwrapped: u64,
     /// Log finalise TCB (KT-18 DoD 9), ghi trước khi body bị destroy trong objmem.
     finalise_log: Vec<FinaliseEntry>,
-    /// Hàng chờ WaitOnAddress mô hình hoá (thiết kế §4.7: bucket theo `(frame, offset)`).
-    /// K1b chưa có object Frame (K2) nên khoá dùng `ObjId` thô của frame.
-    address_waiters: Vec<(ObjId, u32, ObjId)>,
+    /// **KT-28** — bảng băm waiter WaitOnAddress (thiết kế §4.7 `:330-334`, QD §3.8):
+    /// `[Vec<(frame, offset, tcb)>; WAITADDR_BUCKETS]`, bucket =
+    /// [`waitaddr_bucket`]. K1b chưa có object Frame (K2) nên khoá dùng `ObjId` thô của frame.
+    address_waiters: [Vec<(ObjId, u32, ObjId)>; WAITADDR_BUCKETS],
+    /// **KT-28** — giá trị "từ" tại `(frame, offset)` (mô hình thay vùng nhớ Frame của K2):
+    /// [`Machine::set_addr_word`] ghi, [`Machine::wait_addr`] đọc **trong cùng một hàm** với
+    /// lúc xếp hàng ("giữ khoá" của mô hình một luồng). Tra tuyến tính theo khoá đầy đủ; chưa
+    /// ghi ⇒ 0 (như bộ nhớ mới).
+    addr_words: Vec<(ObjId, u32, u64)>,
     /// Scheduler theo hart (KT-19): KT-19 dựng **1** hart (D2-49(a)); mỗi hart một
     /// [`HartSched`] (256 mức + bitmap) để K1c thêm hart/push migration mà không đổi API.
     sched: Vec<HartSched>,
@@ -784,7 +790,8 @@ impl Machine {
             cap_transfer_failed: 0,
             cap_unwrapped: 0,
             finalise_log: Vec::new(),
-            address_waiters: Vec::new(),
+            address_waiters: std::array::from_fn(|_| Vec::new()),
+            addr_words: Vec::new(),
             sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
             mail: (0..HART_COUNT).map(|_| HartMailbox::new()).collect(),
             preempt_every_step: false,
@@ -2647,6 +2654,9 @@ impl Machine {
         if let Err(e) = self.check_notifications() {
             debug_assert!(false, "bất biến Notification vỡ sau public op: {e}");
         }
+        if let Err(e) = self.check_waitaddr() {
+            debug_assert!(false, "bất biến WaitOnAddress vỡ sau public op: {e}");
+        }
     }
 
     /// KT-22 — kiểm **toàn bộ** bất biến hộp thư (chạy sau **mỗi** public op qua
@@ -3042,6 +3052,78 @@ impl Machine {
                     return Err(format!(
                         "SC {sc} bind Notification {ntfn} nhưng notification.bound_sc = {bsc:?}"
                     ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- KT-28: bất biến WaitOnAddress
+
+    /// **KT-28** — bất biến bảng băm WaitOnAddress (chạy sau **mỗi** public op qua
+    /// [`Machine::sched_after_op`], cùng chỗ `check_sched`/`check_ipc`/`check_notifications`):
+    ///
+    /// 1. mỗi nút nằm **đúng** bucket `waitaddr_bucket(frame, offset)` của khoá (bắt bảng băm
+    ///    bị ghi sai chỗ — va chạm bucket **không** phải lỗi, khoá được so đầy đủ);
+    /// 2. TCB của nút **còn sống**, **không** `suspended`, và trạng thái đúng
+    ///    `BlockedOnAddress{frame, offset}` của nút (bắt "đổi trạng thái trực tiếp" không qua
+    ///    `unlink_tcb_queues` — như `check_notifications`, chiều `TcbState ⇒ nút` **không** kiểm
+    ///    vì `transition_tcb` là cổng thấp của ma trận 11×11 KT-23 dựng trạng thái với `ObjId`
+    ///    không tồn tại; mọi đường thật đều đi qua [`Machine::wait_addr`]);
+    /// 3. **không trùng**: một TCB tối đa **một** nút waiter.
+    ///
+    /// Đường nhanh khi **chưa từng** có waiter (L1 1.000 seed của cổng): mọi bucket rỗng ⇒ bất
+    /// biến vacuous, không đọc trạng thái TCB nào.
+    pub fn check_waitaddr(&self) -> Result<(), String> {
+        if self.address_waiters.iter().all(|v| v.is_empty()) {
+            return Ok(());
+        }
+        let n_objs = self.objects.len();
+        let mut seen: Vec<bool> = vec![false; n_objs + 1];
+        for (b, bucket) in self.address_waiters.iter().enumerate() {
+            for (frame, offset, tcb) in bucket {
+                let mong = waitaddr_bucket(*frame, *offset);
+                if mong != b {
+                    return Err(format!(
+                        "waiter khoá ({frame},{offset}) nằm ở bucket {b}, phải là {mong}"
+                    ));
+                }
+                if *tcb == 0 || *tcb as usize > n_objs || !self.objects[*tcb as usize - 1].alive {
+                    return Err(format!("waiter cho TCB không tồn tại/đã chết: {tcb}"));
+                }
+                if seen[*tcb as usize] {
+                    return Err(format!("TCB {tcb} có nhiều hơn một nút waiter (trùng)"));
+                }
+                seen[*tcb as usize] = true;
+                let st = self
+                    .tcb_state(*tcb)
+                    .map_err(|e| format!("TCB {tcb}: không đọc được trạng thái: {e:?}"))?;
+                if matches!(st, TcbState::Stopping | TcbState::Dead) {
+                    return Err(format!(
+                        "waiter khoá ({frame},{offset}) cho TCB {tcb} đã chết ({})",
+                        st.name()
+                    ));
+                }
+                match st {
+                    TcbState::BlockedOnAddress {
+                        frame: f,
+                        offset: o,
+                    } if f == *frame && o == *offset => {}
+                    other => {
+                        return Err(format!(
+                            "waiter khoá ({frame},{offset}) của TCB {tcb} lệch trạng thái {}",
+                            other.render()
+                        ));
+                    }
+                }
+                let suspended = self
+                    .body(*tcb, |k| match k {
+                        Kind::Tcb(t) => Ok(t.suspended),
+                        _ => Err(KError::WrongObjectType),
+                    })
+                    .map_err(|e| format!("TCB {tcb}: không đọc được cờ suspended: {e:?}"))?;
+                if suspended {
+                    return Err(format!("waiter của TCB {tcb} đang bị treo (suspended)"));
                 }
             }
         }
@@ -4328,23 +4410,114 @@ impl Machine {
         })
     }
 
-    /// `WaitAddr` — **mô hình K1b** `[TK]` (thiết kế §4.7; object Frame thuộc K2): xếp TCB vào
-    /// bucket `(frame, offset)` rồi `BlockedOnAddress`. Khoá theo địa chỉ vật lý là K2/K1c.
-    pub fn tcb_wait_address(
+    // ------------------------------------------- WaitOnAddress (KT-28) `[TK]`
+
+    /// **KT-28** — ghi giá trị "từ" tại `(frame, offset)` (mô hình thay vùng nhớ Frame của
+    /// K2; object `Frame` mới là reserved). Giá trị mặc định 0 như bộ nhớ mới.
+    pub fn set_addr_word(&mut self, frame: ObjId, offset: u32, value: u64) {
+        for e in self.addr_words.iter_mut() {
+            if e.0 == frame && e.1 == offset {
+                e.2 = value;
+                return;
+            }
+        }
+        self.addr_words.push((frame, offset, value));
+    }
+
+    /// **KT-28** — đọc giá trị "từ" tại `(frame, offset)`; chưa ghi ⇒ 0.
+    pub fn addr_word(&self, frame: ObjId, offset: u32) -> u64 {
+        self.addr_words
+            .iter()
+            .find(|e| e.0 == frame && e.1 == offset)
+            .map_or(0, |e| e.2)
+    }
+
+    /// **KT-28** — `WaitAddr(frame, offset, expected)` đúng thiết kế `:330-334` + QD §3.8:
+    /// **đọc giá trị hiện tại và xếp hàng trong cùng một lần giữ khoá**.
+    ///
+    /// "Giữ khoá" của mô hình **một luồng** = **một hàm**: đọc [`Machine::addr_word`] và push
+    /// nút vào [`waitaddr_bucket`] không có public op nào chen giữa (không `sched_after_op` ở
+    /// giữa) ⇒ mô hình **không có** cửa sổ lost wake để biểu diễn. Bằng chứng "không mất đánh
+    /// thức" là property theo **thứ tự bước** (fuzz KT-28), không phải thread thật — khoá/Mutex
+    /// thật thuộc K2/K3 (K1C-PLAN §5 KT-28 rủi ro (a)).
+    ///
+    /// - `expected` **khác** giá trị hiện tại ⇒ `InvalidArgument`, TCB **không** xếp hàng và giữ
+    ///   `Ready`/`Running` (K1C-PLAN §5 KT-28 DoD 2; bắt đột biến "xếp hàng trước rồi so").
+    /// - Bằng ⇒ TCB `BlockedOnAddress{frame, offset}` + đúng **một** nút trong bucket của khoá.
+    /// - **Không timeout** (D2-53 Q4 — spec thắng, `timeout` thuộc K6): không sinh
+    ///   `Sleeping{Timeout}`, `tick` ảo không đánh thức waiter; chỉ `WakeAddr` (hoặc đường huỷ
+    ///   `Suspend(Abort)`/`Exit`/finalise) đưa TCB ra khỏi hàng.
+    pub fn wait_addr(
         &mut self,
         tcb: SlotRef,
         frame: ObjId,
         offset: u32,
+        expected: u64,
     ) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
         let state = self.ensure_started(tcb_obj)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);
         }
-        self.address_waiters.push((frame, offset, tcb_obj));
+        // TCB đang bị treo (`Ready + suspended`) **không** được vào hàng chờ: bất biến §4.4 là
+        // "TCB nằm trong hàng của X ⇔ trạng thái mang X **và** `!suspended`" — nếu không chặn,
+        // `check_waitaddr` sẽ thấy waiter của TCB suspended.
+        if self.tcb_info_obj(tcb_obj)?.suspended {
+            return Err(KError::IllegalOperation);
+        }
+        // ---- "khoá": đọc giá trị **và** xếp hàng, không public op nào ở giữa ----
+        let current = self.addr_word(frame, offset);
+        if current != expected {
+            return Err(KError::InvalidArgument);
+        }
+        // Chuyển trạng thái **trước** khi push: `transition_tcb` có thể từ chối cặp (bảng
+        // 11×11) và không được để nút mồ côi; push không lỗi ⇒ hàng và trạng thái luôn khớp.
         self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
+        let bucket = waitaddr_bucket(frame, offset);
+        self.address_waiters[bucket].push((frame, offset, tcb_obj));
         self.sched_after_op(true);
         Ok(())
+    }
+
+    /// `WaitAddr` bản **K1b** `[TK]` (không có `expected`) — **giữ nguyên API** cho KT-18/19/23:
+    /// đọc giá trị hiện tại rồi đi **cùng một cửa** [`Machine::wait_addr`] (một đường xếp hàng),
+    /// nên luôn khớp ⇒ luôn chặn như trước.
+    pub fn tcb_wait_address(
+        &mut self,
+        tcb: SlotRef,
+        frame: ObjId,
+        offset: u32,
+    ) -> Result<(), KError> {
+        let current = self.addr_word(frame, offset);
+        self.wait_addr(tcb, frame, offset, current)
+    }
+
+    /// **KT-28** — `WakeAddr(frame, offset, n)`: đánh thức **tối đa `n`** waiter **cùng khoá**
+    /// đầy đủ `(frame, offset)` theo **FIFO** (thứ tự xếp hàng), trả **số đã đánh thức**;
+    /// `n = u32::MAX` = tất cả; waiter còn lại vẫn `BlockedOnAddress` (**không** đánh thức quá
+    /// n, **không** mất). Waiter của khoá khác trong **cùng bucket** (va chạm) không bị đụng.
+    ///
+    /// "Khoá" mô hình như [`Machine::wait_addr`]: chọn nút và gỡ nút (`wake_step` → `unlink`)
+    /// trong cùng một hàm, không có public op ở giữa ⇒ không có cửa sổ lost wake.
+    pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+        let bucket = waitaddr_bucket(frame, offset);
+        let mut chon: Vec<ObjId> = Vec::new();
+        if n > 0 {
+            for (f, o, t) in self.address_waiters[bucket].iter() {
+                if *f == frame && *o == offset {
+                    chon.push(*t);
+                    if chon.len() == n as usize {
+                        break;
+                    }
+                }
+            }
+        }
+        for tcb in &chon {
+            // `wake_step` gỡ TCB khỏi **mọi** hàng chờ (kể cả bucket này) rồi `→ Ready`.
+            self.wake_step(*tcb)?;
+        }
+        self.sched_after_op(false);
+        Ok(chon.len() as u32)
     }
 
     // ------------------------------------------- đọc hàng chờ (test/đối chứng)
@@ -4586,15 +4759,39 @@ impl Machine {
         })
     }
 
+    /// **KT-28** — waiter **đầu tiên** (FIFO) của đúng khoá `(frame, offset)`; API K1b giữ
+    /// nguyên tên/chữ ký. Va chạm bucket không ảnh hưởng: khoá được so **đầy đủ**.
     pub fn address_waiter(&self, frame: ObjId, offset: u32) -> Option<ObjId> {
-        self.address_waiters
-            .iter()
-            .find(|(f, o, _)| *f == frame && *o == offset)
-            .map(|(_, _, tcb)| *tcb)
+        self.address_waiters_for(frame, offset).first().copied()
     }
 
+    /// **KT-28** — tổng số nút waiter trên **mọi** bucket.
     pub fn address_waiters_len(&self) -> usize {
-        self.address_waiters.len()
+        self.address_waiters.iter().map(Vec::len).sum()
+    }
+
+    /// **KT-28** — danh sách waiter **cùng khoá** `(frame, offset)` theo **FIFO** (test/đối
+    /// chứng); nút của khoá va chạm bucket **khác** không lẫn vào.
+    pub fn address_waiters_for(&self, frame: ObjId, offset: u32) -> Vec<ObjId> {
+        self.address_waiters[waitaddr_bucket(frame, offset)]
+            .iter()
+            .filter(|(f, o, _)| *f == frame && *o == offset)
+            .map(|(_, _, t)| *t)
+            .collect()
+    }
+
+    /// **KT-28** — số nút trong **bucket** `bucket` (gồm cả khoá va chạm) — test "gỡ đúng
+    /// bucket": sau `Suspend(Abort)`/`Exit`/finalise, bucket của khoá phải **rỗng**.
+    pub fn waitaddr_bucket_len(&self, bucket: usize) -> usize {
+        self.address_waiters.get(bucket).map_or(0, Vec::len)
+    }
+
+    /// **KT-28** — số bucket **đang có** waiter (`0` ⇒ mọi bucket rỗng) — test gỡ đúng bucket.
+    pub fn waitaddr_nonempty_buckets(&self) -> usize {
+        self.address_waiters
+            .iter()
+            .filter(|v| !v.is_empty())
+            .count()
     }
 
     // ---------------------------------------------------------------- IPC (KT-24)
@@ -5977,9 +6174,24 @@ impl Machine {
                 _ => {}
             }
         }
-        let before = self.address_waiters.len();
-        self.address_waiters.retain(|(_, _, t)| *t != tcb);
-        removed += before - self.address_waiters.len();
+        // KT-28: bảng băm — gỡ theo **đúng bucket** suy từ trạng thái của TCB (khoá nằm trong
+        // `BlockedOnAddress{frame, offset}`), không quét tuyến tính toàn bảng. Nếu trạng thái
+        // đã bị đổi trước (đường hỏng), `debug_assert` bắt phần còn sót; `check_waitaddr` bắt
+        // trên mọi build sau public op.
+        let mut da_go = 0usize;
+        if let Ok(TcbState::BlockedOnAddress { frame, offset }) = self.tcb_state(tcb) {
+            let bucket = waitaddr_bucket(frame, offset);
+            let before = self.address_waiters[bucket].len();
+            self.address_waiters[bucket].retain(|(_, _, t)| *t != tcb);
+            da_go = before - self.address_waiters[bucket].len();
+        }
+        debug_assert!(
+            self.address_waiters
+                .iter()
+                .all(|v| v.iter().all(|(_, _, t)| *t != tcb)),
+            "KT-28: còn nút waiter của TCB {tcb} sau khi gỡ khỏi bucket"
+        );
+        removed += da_go;
         self.ipc_dropped += msg_dropped as u64;
         removed
     }
@@ -6339,9 +6551,11 @@ impl Machine {
             tong_dropped += dropped;
         }
         self.ipc_dropped += tong_dropped;
-        // Bucket WaitOnAddress: bỏ waiter/nút có frame hoặc TCB đã chết (§4.7).
-        self.address_waiters
-            .retain(|(frame, _, tcb)| is_alive(*frame) && is_alive(*tcb));
+        // Bucket WaitOnAddress: bỏ waiter/nút có frame hoặc TCB đã chết (§4.7). KT-28: quét
+        // **từng bucket** của bảng băm (không còn `Vec` tuyến tính).
+        for bucket in self.address_waiters.iter_mut() {
+            bucket.retain(|(frame, _, tcb)| is_alive(*frame) && is_alive(*tcb));
+        }
     }
 }
 
@@ -6509,5 +6723,66 @@ mod tests {
         m2.caps[cap2 as usize - 1].alive = false;
         let err = m2.check_caps().expect_err("phải bắt cap chết còn giữ slot");
         assert!(err.contains("cap chết"), "{err}");
+    }
+
+    /// **KT-28** — `check_waitaddr` không được là checker rỗng: nút nằm **sai bucket** phải bị
+    /// bắt (va chạm bucket là hợp lệ, sai bucket là hỏng).
+    #[test]
+    fn check_waitaddr_bat_sai_bucket() {
+        let mut m = Machine::new();
+        let tcb = m.add_kernel_object(ObjType::Tcb);
+        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.transition_tcb(
+            tcb,
+            TcbState::BlockedOnAddress {
+                frame: 5,
+                offset: 8,
+            },
+        )
+        .expect("BlockedOnAddress");
+        let dung = waitaddr_bucket(5, 8);
+        let sai = (dung + 1) % WAITADDR_BUCKETS;
+        m.address_waiters[sai].push((5, 8, tcb));
+        let e = m.check_waitaddr().expect_err("phải bắt sai bucket");
+        assert!(e.contains("bucket"), "{e}");
+        // Về đúng bucket ⇒ sạch.
+        m.address_waiters[sai].clear();
+        m.address_waiters[dung].push((5, 8, tcb));
+        m.check_waitaddr().expect("đúng bucket phải sạch");
+        // TCB bị treo mà vẫn còn nút cũng hỏng (§4.4: hàng chỉ chứa TCB `!suspended`).
+        m.set_tcb_suspended(tcb, true).expect("bật suspended");
+        let e = m
+            .check_waitaddr()
+            .expect_err("phải bắt waiter của TCB suspended");
+        assert!(e.contains("treo") || e.contains("suspended"), "{e}");
+    }
+
+    /// **KT-28** — trùng nút và nút của TCB **đã chết** phải bị bắt.
+    #[test]
+    fn check_waitaddr_bat_trung_va_tcb_chet() {
+        let mut m = Machine::new();
+        let tcb = m.add_kernel_object(ObjType::Tcb);
+        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.transition_tcb(
+            tcb,
+            TcbState::BlockedOnAddress {
+                frame: 9,
+                offset: 16,
+            },
+        )
+        .expect("BlockedOnAddress");
+        let b = waitaddr_bucket(9, 16);
+        m.address_waiters[b].push((9, 16, tcb));
+        m.address_waiters[b].push((9, 16, tcb));
+        let e = m.check_waitaddr().expect_err("phải bắt trùng");
+        assert!(e.contains("trùng") || e.contains("nhiều hơn một"), "{e}");
+        // TCB chết: `finalise_tcb` gỡ nút đúng đường; gieo lại nút chết để kiểm checker.
+        m.address_waiters[b].clear();
+        m.finalise_tcb(tcb).expect("finalise TCB");
+        m.address_waiters[b].push((9, 16, tcb));
+        let e = m
+            .check_waitaddr()
+            .expect_err("phải bắt waiter của TCB đã chết");
+        assert!(e.contains("chết") || e.contains("không tồn tại"), "{e}");
     }
 }
