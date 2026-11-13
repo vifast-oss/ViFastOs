@@ -125,8 +125,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **DONE** | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **DONE** | MD+JSON, số liệu tái lập |
-| ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | **READY** | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
-| ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | BLOCKED | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
+| ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | **DONE** | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
+| ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | **READY** | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
 | ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | BLOCKED | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
 | ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | BLOCKED | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
@@ -507,6 +507,16 @@ APPROVED 2026-11-13 Agent 0
 > Căn cứ lộ trình §19 (bước "shell dùng được") + pipeline mẫu §9.7 (khối tài liệu dòng 672 **còn** trong allowlist 8 mục).
 > **ST-37 mở**; thứ tự bắt buộc ST-37 → ST-38 → … → ST-42 → ST-43; ST-37..ST-42 đụng `lower/cmd.rs` + `tyck` nên
 > **không** chạy song song. Allowlist `doc-examples` **chỉ** được giảm **8 → 7** khi ST-42 **thật xanh** (Agent 0 sửa).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-37 DONE** — commit `02daf9f` (**Agent 2 tự commit**): **khe ống hợp nhất** (chọn vị trí theo **khả năng nhận**
+> bằng hợp nhất một chiều; `up_ty = {error}` ⇒ khe **vị trí đầu**), `CmdSig`/`SigSource` ở `vis-types` (`cmdsig.rs`),
+> `kieu_stage` cho `CmdGroup` suy kiểu literal ⇒ `( [1,2] ) | take 1` ⇒ **`[1]`**; `VS0603`/`VS0602` giữ nghĩa cũ.
+> **521** test (+14 `khe_ong`); sem **346 → 349**, `vis test` **349 ok**, parity **323/323**, `fuzz_mutate` 297;
+> differential 100k **0 lệch** (197,8 s). **Allowlst doc-examples 8 → 6** (VD-70): khối **1451** và **672** (§9.7) nay
+> **hợp lệ** — chặt hơn, không nới (APPROVED `59a407c` + `260fe8a`). Nợ **VSH1b**: `[1,2] | take 1` không ngoặc ⇒
+> `VS0201`; `( … )` làm đối số ⇒ `VS0603`. **ST-38 mở** (closure-arg + `where`/`each`/`first`/`count`).
 
 ## Ghi chú vận hành
 

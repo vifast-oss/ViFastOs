@@ -506,3 +506,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (5) `get`/`select` chiếu theo trường. (6) `Render`: bảng `list[bản ghi]` + khối khoá–giá trị, căn cột theo **NFC**;
   `print` cũ cho `list[str]` **không đổi**. (7) `ls`/`open` qua **`FsHost`** (+ `list_entries` metadata), `--all/--long`,
   cờ **`--fs-mock`** cho test tất định; pipeline §9.7 dòng 672 chạy được ⇒ allowlist **8 → 7** (chỉ khi thật xanh).
+
+- **VD-70** **Khe ống hợp nhất + allowlist 8 → 6 (ST-37)**: (1) khe ống chọn tham số vị trí **đầu tiên nhận được**
+  kiểu vào, kiểm bằng **hợp nhất một chiều** (`T := int` rồi so phần còn lại) — **không** dùng so `==`; đầu vào
+  `{error}` (stage nhóm/lệnh lạ) ⇒ chọn khe **vị trí đầu**; khe **không** vào tham số `--cờ`, **không** đè bind tường
+  minh; không khớp ⇒ `VS0603`; **`take 1` không có pipe** vẫn là `VS0602` (đúng VD-53 (4)). (2) `CmdSig`/`SigSource`
+  đặt ở **`vis-types`** (`src/cmdsig.rs`) — **một** nguồn chữ ký cho `tyck` **và** khe ống; `vis-std`/prelude cắm
+  bằng impl trait. (3) `CmdGroup` **suy kiểu literal** (list/str/int/bool) thay `{error}`. (4) **Allowlist doc-examples
+  giảm 8 → 6** vì khối **1451** (`walk`/`where`/`sort_by`/`to json`/`save`) và **672** (`ls | where | sort_by --desc |
+  take 10`) **nay hợp lệ** — lệnh lạ = chương trình ngoài + khe hợp nhất; **chặt hơn, không nới**. (5) Nợ **VSH1b**:
+  stage đầu là **biểu thức** không ngoặc (`[1,2] | take 1` ⇒ `VS0201`); `( … )` làm **đối số** ⇒ `VS0603`; chẩn đoán
+  lúc chạy trong `( … )` dùng vị trí **tương đối** trong ngoặc.
