@@ -507,7 +507,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// `pipeline := stage ('|' stage)*` ⇒ **lồng call** theo khe ống (§9.5, ST-18 (a)).
-    fn ha_pipeline(&mut self, node: &Node, sigs: &[CmdSig]) -> Option<HExpr> {
+    pub(crate) fn ha_pipeline(&mut self, node: &Node, sigs: &[CmdSig]) -> Option<HExpr> {
         let stage: Vec<&Node> = node
             .children()
             .filter(|n| n.kind == NodeKind::CmdStage)
@@ -1322,124 +1322,6 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Chuyển một **từ trần**/chuỗi thành literal **đúng kiểu tham số** (pha 2 của VD-22).
-    /// ST-46: `( <lệnh> … )` — nhóm làm **stage** nhưng nội dung là **một lệnh** (không `|`/`;`).
-    /// Parse nội dung bằng `Mode::Command` **không đệm** rồi cộng bù `at` cho span (chẩn đoán tuyệt đối).
-    pub(super) fn lower_nhom_lenh(&mut self, g: &Node, sigs: &[CmdSig]) -> Option<HExpr> {
-        let text = self.vach_text(g)?;
-        let bat_dau = match g.elems.first() {
-            Some(Elem::Token(i)) => self.tok(*i).map(|t| t.span.end).unwrap_or(0),
-            _ => 0,
-        };
-        let sau = &self.text[bat_dau.min(self.text.len())..];
-        let lead = sau.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-        let at = bat_dau + lead;
-        let inner = text.trim();
-        let parsed = vis_syntax::parse(inner, vis_syntax::lex::Mode::Command);
-        if !parsed.diagnostics.is_empty() {
-            return None;
-        }
-        // Tệp **một dòng** ⇒ root KHÔNG có `CmdItems` (VD-40 #1): pipeline nằm thẳng ở root.
-        let dong = parsed
-            .cst
-            .root
-            .children()
-            .find(|n| n.kind == NodeKind::CmdItems)
-            .cloned()
-            .or_else(|| {
-                parsed
-                    .cst
-                    .root
-                    .children()
-                    .find(|n| n.kind == NodeKind::CmdPipe)
-                    .cloned()
-            })?;
-        let stage = dong.children().find(|n| n.kind == NodeKind::CmdStage)?;
-        let doan = |sp: Span| inner.get(sp.start..sp.end).unwrap_or("").to_string();
-        let ten = match stage.elems.first()? {
-            Elem::Token(i) => parsed.cst.tokens.get(*i as usize)?.text.clone(),
-            Elem::Node(n) => n.tokens(&parsed.cst.tokens).next()?.text.clone(),
-        };
-        let sig = sigs.iter().find(|s| s.name == ten)?.clone();
-        if !sig.generics.is_empty() {
-            return None;
-        }
-        let mut args: Vec<Option<HExpr>> = sig.params.iter().map(|p| p.default.clone()).collect();
-        let mut vi_tri = 0usize;
-        for e in &stage.elems[1..] {
-            if let Elem::Node(n) = e {
-                if n.kind == NodeKind::CmdGroup {
-                    let raw = doan(n.span);
-                    let inner_nhom = raw.strip_prefix('(')?.strip_suffix(')')?;
-                    while vi_tri < sig.params.len() && sig.params[vi_tri].named {
-                        vi_tri += 1;
-                    }
-                    if vi_tri >= sig.params.len() {
-                        return None;
-                    }
-                    let rel = n.span.start + 1 + (raw.len() - raw.trim_start().len());
-                    let e = self.lower_bieu_thuc_tai(inner_nhom, at + rel)?;
-                    args[vi_tri] = Some(e);
-                    vi_tri += 1;
-                    continue;
-                }
-            }
-            let (la_co, raw, sp) = match e {
-                Elem::Token(i) => {
-                    let t = parsed.cst.tokens.get(*i as usize)?;
-                    (
-                        t.text.starts_with('-') && t.text != "-",
-                        t.text.clone(),
-                        t.span,
-                    )
-                }
-                Elem::Node(n) if n.kind == NodeKind::CmdFlag => {
-                    let t = n.tokens(&parsed.cst.tokens).next()?;
-                    (true, t.text.clone(), n.span)
-                }
-                Elem::Node(n) => (false, doan(n.span), n.span),
-            };
-            let sp = Span::new(sp.start + at, sp.end + at);
-            if la_co {
-                let ten_co = raw.trim_start_matches('-');
-                if let Some(i) = sig.params.iter().position(|p| p.named && p.name == ten_co) {
-                    args[i] = Some(HExpr::Lit {
-                        ty: Type::Bool,
-                        lit: Lit {
-                            kind: LitKind::Bool,
-                            text: "true".into(),
-                        },
-                        span: sp,
-                    });
-                }
-                continue;
-            }
-            while vi_tri < sig.params.len() && sig.params[vi_tri].named {
-                vi_tri += 1;
-            }
-            if vi_tri >= sig.params.len() {
-                return None;
-            }
-            let ty = sig.params[vi_tri].ty.clone();
-            let e = self.chuyen_doi_text(&raw, &ty, sp)?;
-            args[vi_tri] = Some(e);
-            vi_tri += 1;
-        }
-        let mut ds = Vec::new();
-        for a in args {
-            ds.push(a?);
-        }
-        Some(HExpr::Call {
-            callee: Box::new(HExpr::Var {
-                name: ten,
-                sym: None,
-                span: g.span,
-            }),
-            args: ds,
-            named: Vec::new(),
-            span: g.span,
-        })
-    }
-
     pub(super) fn chuyen_doi(&mut self, node: &Node, ty: &Type) -> Option<HExpr> {
         let raw = self.text_of(node.span).to_string();
         self.chuyen_doi_text(&raw, ty, node.span)

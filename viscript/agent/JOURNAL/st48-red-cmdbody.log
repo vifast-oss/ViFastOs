@@ -1,0 +1,36 @@
+=== ST-48 D2-05: thân `cmd` bằng **pipeline lệnh** — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T14:20:45Z
+
+## 1. Đỏ **thật** ở HEAD `f39c9ea` (worktree `/tmp/vis-red48`, chỉ thêm tệp test + fixture)
+
+```
+$ cargo test -p vis-cli --test vish_cmd_body
+test result: FAILED. **3 passed; 12 failed**
+```
+
+12 ca đỏ: thân 1 stage / nhiều stage / dùng như stage / `where` kiểm tĩnh từ chữ ký / thân rỗng /
+lẫn `let`+lệnh / lẫn lệnh+biểu thức / hai pipeline / item sau thân (dòng:cột) / `--long` trong thân /
+gọi `cmd` khác trong pipeline / thư mục thật / interp↔`--vm` / 3 fixture.
+
+3 ca xanh **có lý do**: thân script ST-44 (giữ nguyên), `interp_va_vm_cung_byte` bản cũ, fixture script.
+
+## 2. Sau khi sửa — đo được
+
+- Parser: `cmd` thân **thử script trước**; thân lệnh ⇒ `CmdKhai` **dừng sau dòng `:`**, dòng thân do
+  parser lệnh chính parse (span tuyệt đối); `cmd_file` bỏ qua `INDENT`/`DEDENT` của thân.
+- Hạ: tiền tố parse bằng **bản sao filler** (thân thay `()` **giữ nguyên byte**) ⇒ item sau vẫn đúng
+  `dòng:cột`; thân lệnh parse lại bản `dedent` (**dịch span tuyệt đối**) rồi hạ bằng Lowerer **con**
+  dùng chung `Symbols`/`TypeTable`; thay `body` của `HItem::Fn` bằng **giá trị cuối pipeline**.
+- `KieuThan`: `Script`/`Command`/`Mixed`; Mixed (script+lệnh), rỗng, >1 pipeline ⇒ **`VS0201`**.
+- Đo: **651 → 666** test (+**15** `vish_cmd_body.rs`); `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**;
+  3 fixture `test/cmd/body/**`; interp ↔ `--vm` **cùng byte**.
+
+## 3. sha256 bản commit:
+  sha256 crates/vis-syntax/src/parse/cmd.rs=21e0d8d73869621bfb0b773545828144fbc105a5e021cc092f39fb911b53aa53
+  sha256 crates/vis-syntax/src/parse/mod.rs=37b5dde07447daccf57be5cc4ac387e2c6480270d0e97ba8076427f86fda8a4a
+  sha256 crates/vis-syntax/src/lib.rs=bc551026c12d063baaba4457f4a2aa4dc88b17050fd3cc73979a5e50124a2e18
+  sha256 crates/vis-types/src/lower.rs=5eb91cd00d9c2a37a67f9d47a8cc2ca755b34d5499c6b2bfffb80e07f281aaee
+  sha256 crates/vis-types/src/lower/cmd.rs=b6d960a8a3814f3c0a1f2f0960cce42dec67825f919bc79b2c385f14ca57ef96
+  sha256 crates/vis-types/src/lower/khai.rs=f5b1ee580672850a72d432b81c0ce90ac8d7de07f22d8a28297aded4f590bde1
+  sha256 crates/vis-types/src/lower/than.rs=42efe652bbe08a77e6d555433c489d9397d9d573aee530e5c0e7e85fc5665b03
+  sha256 crates/vis-cli/tests/vish_cmd_body.rs=9da9c49ba7ac7ccfe66f2f17108e16a929086969aa975b814764707444a03c7b

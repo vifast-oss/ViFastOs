@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-47** (báo cáo R7 — chốt VSH1b) — xong, **chưa commit**.
-Bước          : 5/5 (đo lại toàn bộ → `R7-viscript.{md,json,json.license}` → report-check PASS → gate PASS)
+Task          : **ST-48** (thân `cmd` bằng pipeline lệnh — VSH1b-2) — xong, **chưa commit**.
+Bước          : 5/5 (parser thân script/lệnh → filler giữ byte → Lowerer con hạ pipeline → 15 ca + 3 fixture → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T13:14:52Z**; nightly (fuzz 1 phút) **PASS** 13:10:35Z; report-check **PASS** (7 báo cáo, 53 hàng QUEUE)
-Việc dở       : commit `[ST-47]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T14:19:16Z**; **666** test / sem **370** / `vis test` **370 ok**, `--vm` **370 ok/6 SKIP** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
+Việc dở       : commit `[ST-48]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-47 — báo cáo R7 (2026-11-13)
+## ST-48 — thân `cmd` pipeline (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Văn phạm** | thân `cmd` = **script** (ST-44 giữ nguyên) **hoặc đúng một pipeline lệnh**; parser thử Script trước, hỏng ⇒ thân lệnh (`CmdKhai` dừng sau `:`, dòng thân do parser lệnh parse) |
+| 2 | **Hạ** | tiền tố parse bằng **filler** (`()` giữ nguyên byte ⇒ offset tuyệt đối); thân lệnh parse `dedent` **dịch span tuyệt đối**, hạ bằng Lowerer **con** chung bảng ⇒ `HItem::Fn.body = [giá trị cuối pipeline]` |
+| 3 | **Lỗi rõ** | thân rỗng / lẫn script+lệnh (`let`+lệnh, lệnh+biểu thức) / >1 pipeline ⇒ **`VS0201`**; thân script cũ **không đổi** |
+| 4 | **Tách R1** | `lower/than.rs` (`ha_than_cmd`, `lower_nhom_lenh`, `lower_than`, `ThanCtx`, `is_builtin_value`); `lower.rs` 1.4xx, `cmd.rs` 1.4xx |
+| 5 | **Đo** | **651 → 666** test (+15 `vish_cmd_body.rs`); 3 fixture `test/cmd/body/**`; interp ↔ `--vm` **cùng byte**; diff 100k 0 lệch; allowlist **6** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

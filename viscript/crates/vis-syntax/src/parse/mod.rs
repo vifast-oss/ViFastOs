@@ -32,6 +32,45 @@ pub struct ParseOutput {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// **ST-48**: parse với **token đã lex sẵn** (span tuyệt đối) — dùng cho thân `cmd` lệnh: lex
+/// phần thân đã bỏ thụt rồi **dịch span** về vị trí thật trong tệp, giữ `text` = văn bản tệp.
+pub fn parse_voi(text: &str, tokens: Vec<Token>, mode: Mode) -> ParseOutput {
+    let mut diags = Vec::new();
+    let mut cmd_sexp = None;
+    let root = if mode == Mode::Command {
+        let mut p = Parser::new(&tokens, text);
+        match p.cmd_file() {
+            Ok((n, s)) => {
+                cmd_sexp = Some(s);
+                n
+            }
+            Err(d) => {
+                diags.push(d.0);
+                p.raw_program_from_current()
+            }
+        }
+    } else {
+        let mut p = Parser::new(&tokens, text);
+        match p.file() {
+            Ok(n) => n,
+            Err(d) => {
+                diags.push(d.0);
+                p.raw_program_from_current()
+            }
+        }
+    };
+    let mut cst = Cst::new(root, tokens);
+    if let Some(s) = cmd_sexp {
+        cst.set_cmd_sexp(s);
+    }
+    cst.attach_comments();
+    ParseOutput {
+        text: text.to_string(),
+        cst,
+        diagnostics: diags,
+    }
+}
+
 /// Parse một văn bản nguồn theo chế độ.
 pub fn parse(src: &str, mode: Mode) -> ParseOutput {
     let LexOutput {

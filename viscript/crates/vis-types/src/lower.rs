@@ -41,6 +41,9 @@ mod khai;
 mod pat;
 mod stmt;
 mod sugar;
+mod than;
+pub use than::is_builtin_value;
+pub(crate) use than::{lower_than, ThanCtx};
 
 /// **8 tên giá trị dựng sẵn** của VS0 — danh sách **khoá bằng test** (VD-44 #3: thêm/bớt phải
 /// qua Agent 0). `true`/`false`/`none` là **literal**, không phải tên.
@@ -292,11 +295,6 @@ pub fn lower_into(
     l.finish()
 }
 
-/// `true` nếu tên là tên giá trị dựng sẵn (VD-44 #3).
-pub fn is_builtin_value(name: &str) -> bool {
-    BUILTIN_VALUE_NAMES.contains(&name)
-}
-
 /// Template biến thể enum generic (ST-35): `(tên, tham số kiểu, [(biến thể, kiểu trường)])`.
 type EnumTmpl = (String, Vec<String>, Vec<(String, Vec<Type>)>);
 
@@ -430,8 +428,12 @@ impl<'a> Lowerer<'a> {
             // ST-44: **vùng khai báo** ở đầu tệp (type/enum/cmd/let…) hạ trước, vào **cùng**
             // bảng ký hiệu/kiểu; stage chạy sau với mốc tách để **bỏ** các dòng đã hạ.
             let (moc, co_khai) = khai::tach(self.text);
+            // ST-48: thân `cmd` **lệnh** thay bằng `()` trong bản sao tiền tố (giữ nguyên byte).
+            let ds_than = khai::than_cmd(self.text);
+            let tien_to = khai::filler(self.text, &ds_than);
             if co_khai && moc > 0 {
-                self.ha_tien_to_khai(moc, &prelude);
+                self.ha_tien_to_khai(moc, &prelude, &tien_to);
+                self.ha_than_cmd(&ds_than);
             } else if let Some((line, col)) = khai::khai_sau_stage(self.text, 0) {
                 // Tệp **không** mở đầu bằng khai báo nhưng có khai báo ở cột 1 ⇒ lỗi rõ.
                 let sp = Lowerer::span_dong_cot(self.text, line, col);

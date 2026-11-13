@@ -35,4 +35,4 @@ pub use lex::lit;
 pub use lex::token::{is_keyword, Kind, Span, Token, KEYWORDS, PUNCTS};
 pub use lex::verify;
 pub use lex::{lex, Diagnostic, LexOutput, Mode};
-pub use parse::{parse, ParseOutput};
+pub use parse::{parse, parse_voi, ParseOutput};

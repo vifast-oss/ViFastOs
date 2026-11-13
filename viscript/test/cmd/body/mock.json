@@ -1,0 +1,3 @@
+{ "dirs": { "./photos": [
+  {"name": "a.jpg", "size": "2mb", "modified": "3h", "is_file": true, "mode": "rw-r--r--", "mtime": "1700000000s"},
+  {"name": "b.jpg", "size": "6mb", "modified": "1h", "is_file": true, "mode": "rw-------", "mtime": "1700086400s"} ] } }

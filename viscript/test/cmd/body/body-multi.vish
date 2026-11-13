@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+cmd loc() -> list[FileEntry]:
+  ls ./photos | where size > 1mb | sort_by size --desc
+
+loc()
