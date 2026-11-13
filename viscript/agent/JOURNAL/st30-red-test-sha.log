@@ -1,0 +1,50 @@
+=== ST-30 D2-05: SHA-256 thật + `vis test` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T05:45:18Z
+
+## 1. Đỏ **thật** ở `7633a56` (worktree `/tmp/vis-red30`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-bytecode --test hash        # 7633a56
+test result: FAILED. **3 passed; 2 failed**   # hai ca vector SHA-256 đỏ (hash còn là FNV)
+$ cargo test -p vis-cli --test vis_test        # 7633a56
+test result: FAILED. **2 passed; 7 failed**   # `vis test` chưa có (unknown subcommand ⇒ exit 2)
+```
+
+⇒ 2 ca hash đỏ vì `source_hash` = FNV-1a × 4 seed (không khớp `sha256("abc")`), 7 ca `vis test` đỏ vì
+lệnh chưa tồn tại. **Khai minh bạch**: 3 + 2 ca xanh sẵn là ca không phụ thuộc hash/lệnh mới.
+
+## 2. Hiện trạng trước khi sửa (đo tay)
+
+```
+$ vis test
+(không có lệnh `test` — chỉ check/run/fmt/explain/…)
+$ sha256 FNV-1a×4 trong format.rs: source_hash("abc") = 32 byte KHÔNG khớp vector FIPS 180-4
+```
+
+## 3. Sau khi sửa — đo được
+
+- **435** test workspace (421 + **5** `crates/vis-bytecode/tests/hash.rs` + **9** `crates/vis-cli/tests/vis_test.rs`)
+- `vis test` ⇒ `TAP version 13` / `1..338` / **338 ok**, exit **0**
+- `vis test --vm` ⇒ 338 ok, **4 SKIP** (chương trình ngoài cần host — VM không có, ST-27), exit **0**
+- SHA-256 đúng vector: `sha256("abc")=ba7816bf…15ad`, `sha256("")=e3b0c442…b855`
+- sem **338** + differential **286** giữ nguyên; cache vẫn `load_verified`
+
+## 4. Lưu ý lịch sử (Agent 0 yêu cầu ghi)
+
+Phần `viscript/Cargo.lock` + `viscript/crates/vis-bytecode/{Cargo.toml,format.rs}` của **ST-30** đã **lỡ** nằm
+trong commit **`520c2fe`** (thông điệp ghi *ST-29*) — **Agent 0 gây ra**, không phải nội dung ST-29.
+Không rewrite lịch sử.
+
+## 5. Nợ (VS1b)
+
+Chẩn đoán VM **chưa** trùng interp với lỗi chỉ số (interp `VS0501` + `VS0503`, VM `VS0501`) ⇒
+`vis test --vm` khoá **exit**, không khoá mã; cần đồng bộ hai đường (ST-31).
+
+## 6. sha256 bản commit
+  sha256 crates/vis-bytecode/Cargo.toml=8054a0743d26ff3236e0ee19462eec1cf24fd75b7d0133d5adf206b1b0d16779
+  sha256 crates/vis-bytecode/src/format.rs=8f24c7b0c9c1d7a7787d96a92afb07065f94c726202a0b680b8239102ace3849
+  sha256 crates/vis-bytecode/tests/hash.rs=64b383acf056e0847c9d0255fbcb6e5e28f196d41a5f54230f4714c2b3b73f30
+  sha256 crates/vis-cli/src/vistest.rs=bf1790fbc1b7d9f75f72cc1f8a065139c343f21c79937893223df21a8f2ce7eb
+  sha256 crates/vis-cli/src/main.rs=a47bd14b5bfb6adb09a5c89d91a58ca674a2666d822c768dd82a0155a42a4d39
+  sha256 crates/vis-cli/tests/vis_test.rs=abbe6311fc0fb36f06b0e49e28fac359207952567b6affcf4e4edeedb3314ac6
+  sha256 Cargo.lock=2a9819cac9d5acb36b7d21a6c87a6bd0d242ffeaaf450288ed173d32e65672be

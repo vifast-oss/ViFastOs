@@ -6,6 +6,7 @@ use std::process::ExitCode;
 mod cache;
 mod modules;
 mod ngoai;
+mod vistest;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
 
@@ -582,6 +583,8 @@ fn main() -> ExitCode {
         }
         Some("run") => run_run(&args[1..]),
         Some("check") => run_check(&args[1..]),
+        // ST-30: chạy bộ ca `test/sem/**` in TAP.
+        Some("test") => vistest::run(&args[1..]),
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),
     }

@@ -17,13 +17,13 @@
 //! Mọi số **little-endian**, mọi độ dài **tường minh** (u32) — `decode` từ chối dữ liệu hỏng bằng
 //! [`crate::decode::DecodeError`], **không** panic.
 //!
-//! # ⚠️ Hash nguồn **không** phải SHA-256
+//! # Hash nguồn = **SHA-256 thật** (từ ST-30)
 //!
-//! VD-52 đòi "hash nguồn 32 byte" cho khoá cache. Repo **không** có crate hash ngoài allowlist, nên
-//! ST-19 dùng **FNV-1a 64 bit × 4 seed** ⇒ 32 byte. Đây **chỉ** là khoá cache, **không** phải bằng
-//! chứng an toàn: khi làm **consent/quyền** (§11.3, vòng sau) **phải** thay bằng **SHA-256 thật**
-//! (crate `sha2`, cần Agent 0 duyệt allowlist). Hàng rào bù: **mọi** bytecode nạp từ cache **luôn**
-//! phải qua **verifier** (ST-21, VD-52 #3) — xem [`crate::decode::decode`].
+//! VD-52 đòi "hash nguồn 32 byte" cho khoá cache. ST-19 tạm dùng **FNV-1a 64 bit × 4 seed**; **ST-30**
+//! thay bằng **SHA-256 thật** (crate `sha2` — MIT OR Apache-2.0, Agent 0 duyệt allowlist, VD-54 (1)).
+//! Hash này dùng cho **cả** khoá cache (`vis run --vm`) **và** trường `hash nguồn` trong `VBC1`.
+//! Hàng rào bù vẫn giữ: **mọi** bytecode nạp từ cache **luôn** qua **verifier** (ST-21, VD-52 #3) —
+//! xem [`crate::decode::decode`].
 //!
 //! # Vì sao verifier kiểm lại được
 //!

@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-29** (trait + `derives`, dispatch **tĩnh**) — xong, **chưa commit** (chờ Agent 0).
-Bước          : 4/4 (VS0403 mở nghĩa → thu thập trait/impl → dispatch tĩnh + derives → 22+7 ca)
+Task          : **ST-30** (`sha2`/SHA-256 cho hash nguồn + `vis test`) — xong, **chưa commit**.
+Bước          : 3/3 (sha2 → `vis test` TAP → 5+9 ca)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:36:42Z** (14:36 JST, không retry);
-                **421** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-29]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:46:44Z** (14:46 JST, không retry);
+                **435** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-30]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,18 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-30 — SHA-256 thật + `vis test` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`sha2`** | Thêm `sha2 = "0.10"` (MIT OR Apache-2.0, Agent 0 duyệt allowlist) vào `vis-bytecode`; **thay** FNV-1a × 4 seed bằng **SHA-256 thật** trong `format::source_hash` ⇒ dùng cho **cả** `VBC1` (`hash nguồn`) **và** khoá cache (`cache::khoa_multi`). Cache vẫn nạp qua `load_verified` (không đổi). |
+| 2 | **`vis test`** | `vis test [--vm] [thư mục|tệp]` — quét `test/sem/**`, in **TAP**: `TAP version 13`, `1..338`, `ok/not ok`, mỗi `not ok` kèm `# <tệp>:<dòng>:<cột>: <mã> <thông điệp>`; exit **0** toàn xanh, **1** có đỏ, **2** dùng sai. Không truyền đường dẫn ⇒ tự tìm `test/sem` (leo từ cwd). |
+| 3 | **`--vm`** | Chạy đường VM (`--vm --no-cache`); ca cần **host chương trình ngoài** ⇒ `ok … # SKIP` (VM không có host — ST-27); ca `.err` khoá **exit** (mã chẩn đoán có thể khác — VM in một, interp in hai cho lỗi chỉ số; nợ ghi JOURNAL) |
+| 4 | **Đo** | **435** test (421 + **5** `vis-bytecode/tests/hash.rs` + **9** `vis-cli/tests/vis_test.rs`); `vis test` = **338/338 ok** (interp), `--vm` = 338 ok + **4 SKIP**, 0 đỏ; sem 338 + differential 286 giữ nguyên |
+
+**Lưu ý lịch sử**: phần `Cargo.lock`/`vis-bytecode/{Cargo.toml,format.rs}` của ST-30 **đã lỡ** nằm trong
+commit `520c2fe` (thông điệp ghi ST-29) — **Agent 0 gây ra**, không phải nội dung ST-29; không rewrite lịch sử.
 
 ## ST-29 — trait + `derives` (2026-11-13)
 
