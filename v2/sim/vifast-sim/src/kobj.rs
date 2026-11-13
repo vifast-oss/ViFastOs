@@ -260,6 +260,8 @@ pub use crate::tcb::{
     BlockedOnKind, FaultKind, SleepReason, SuspendMode, TcbSnapshot, TcbState, ALLOWED,
     TCB_STATE_COUNT,
 };
+// KT-20: ngân sách MCS (`SchedContext`) — model-only `[TK]`, không phải ABI (D2-49(b,e)).
+pub use crate::mcs::{ScBudget, ScInfo};
 
 #[derive(Debug, Default)]
 struct EndpointState {
@@ -338,8 +340,8 @@ struct NotificationState {
 #[derive(Debug)]
 struct SchedData {
     bound: Option<CapId>,
-    budget: u64,
-    period: u64,
+    /// KT-20: ngân sách MCS — `budget`/`period`/`consumed`/`refill` (model-only `[TK]`).
+    budget: ScBudget,
 }
 
 #[derive(Debug)]
@@ -475,6 +477,8 @@ pub struct Machine {
     /// Preempt **ép tại mọi public op** (thiết kế §4.13) — mặc định **tắt** để không đổi
     /// ngữ nghĩa KT-18; test KT-19 bật bằng [`Machine::set_preempt_every_step`].
     preempt_every_step: bool,
+    /// KT-20: thời gian ảo (tick), **không** đọc `Instant`/wall clock (D2-49(h)).
+    now: u64,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -536,6 +540,7 @@ impl Machine {
             address_waiters: Vec::new(),
             sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
             preempt_every_step: false,
+            now: 0,
         }
     }
 
@@ -1341,14 +1346,17 @@ impl Machine {
         if budget == 0 || period == 0 || budget > period {
             return Err(KError::InvalidArgument);
         }
+        let now = self.now;
         self.body_mut(sched_obj, |k| match k {
             Kind::SchedContext(s) => {
-                s.budget = budget;
-                s.period = period;
+                s.budget.configure(now, budget, period);
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
         })?;
+        // KT-20: `Configure` hợp lệ luôn đặt `consumed = 0` (cấu hình lại giữa chu kỳ = bắt
+        // đầu chu kỳ mới theo `period` mới — quy ước model-only `[TK]`, xem `mcs`) nên TCB
+        // đang gắn (kể cả `Running`) chắc chắn còn budget; chỉ cần kiểm bất biến sau op.
         self.sched_after_op(false);
         Ok(())
     }
@@ -1466,6 +1474,10 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
+        // KT-20: gắn SC **đã cạn** cho TCB đang `Running` ⇒ ngủ ngay (`Running → Sleeping`
+        // là cặp ALLOWED; không để `Running` mà hết budget). TCB `Ready` giữ nguyên trong
+        // hàng — `pick` bỏ qua theo điều kiện budget, tới biên refill lại chọn được.
+        self.enforce_budget(tcb_obj)?;
         self.sched_after_op(false);
         Ok(())
     }
@@ -1720,8 +1732,13 @@ impl Machine {
     }
 
     /// `pick()` O(1) của `hart`: mức cao nhất, cùng mức FIFO; **không** gỡ khỏi hàng.
+    ///
+    /// **KT-20** (follow-up KT-19): chỉ trả TCB **có budget** — TCB không SC **hoặc** SC chưa
+    /// `SchedControl.Configure` **không có budget** nên bị bỏ qua, TCB có SC đã cấu hình mà
+    /// `consumed == budget` cũng bị bỏ qua (§4.5, K1B-PLAN §5 KT-20 DoD 4). `pick` vẫn O(1)
+    /// khi phần tử đầu hàng hợp lệ (KT-19), chỉ quét tiếp khi gặp TCB bị loại.
     pub fn sched_pick_on(&self, hart: u16) -> Option<ObjId> {
-        self.sched[self.hart_index(hart)].pick()
+        self.sched[self.hart_index(hart)].pick_where(|tcb| self.tcb_has_budget(tcb))
     }
 
     /// Bật/tắt preempt **ép sau mỗi** public op (thiết kế §4.13). Mặc định tắt để giữ
@@ -1757,7 +1774,7 @@ impl Machine {
             }
             self.transition_tcb(cur, TcbState::Ready)?;
         }
-        let next = match self.sched[h].pick() {
+        let next = match self.sched_pick_on(hart) {
             Some(tcb) => tcb,
             None => {
                 self.sched[h].clear_current();
@@ -1995,6 +2012,13 @@ impl Machine {
                 .tcb_info_obj(obj)
                 .map_err(|e| format!("TCB sống {obj} không đọc được: {e:?}"))?;
             let hang = hang_cua.get(obj as usize).copied().flatten();
+            // KT-20: "TCB chỉ chạy khi SC còn budget" — `Running` với SC đã cạn là vi phạm
+            // (mọi đường rời `Running` hết budget đều đi qua `Sleeping{Budget}`).
+            if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(obj) {
+                return Err(format!(
+                    "TCB {obj} Running nhưng SchedContext đã cạn budget (consumed == budget)"
+                ));
+            }
             match info.state {
                 TcbState::Ready => {
                     if info.suspended {
@@ -2028,8 +2052,235 @@ impl Machine {
                 }
             }
         }
+        // KT-20: bất biến ngân sách của **mọi** `SchedContext` sống — `consumed ≤ budget`,
+        // `budget`/`period` dương khi đã cấu hình, `refill` ở tương lai; `Sleeping{Budget}`
+        // không nằm ready queue đã được nhánh "trạng thái khác" ở trên kiểm.
+        let scs: Vec<ObjId> = self
+            .objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive && m.ty == ObjType::SchedContext)
+            .map(|(i, _)| (i as u32) + 1)
+            .collect();
+        for sc in scs {
+            let budget = self
+                .body(sc, |k| match k {
+                    Kind::SchedContext(s) => Ok(s.budget),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("SchedContext {sc} không đọc được: {e:?}"))?;
+            budget
+                .check(self.now)
+                .map_err(|e| format!("SchedContext {sc}: {e}"))?;
+        }
         Ok(())
     }
+
+    // ------------------------------------------- ngân sách MCS (KT-20) `[TK]`
+    //
+    // Model-only `[TK]`, **không** phải spec/ABI (D2-49(b,e,h)): `SchedContext` có
+    // `budget`/`period`/`consumed`/`refill`; thời gian là đồng hồ ảo `tick(n)`; TCB chỉ chạy
+    // khi SC còn budget, hết budget ⇒ `Sleeping{reason = Budget}` qua `transition_tcb`, biên
+    // refill ⇒ `Ready` nếu `!suspended`. **Không** làm refill sporadic/timeout fault (D2-16),
+    // **không** donation (KT-21).
+
+    /// Thời gian ảo hiện tại (đơn vị tick) — **không** đọc `Instant`/wall clock (D2-49(h)).
+    pub fn virtual_now(&self) -> u64 {
+        self.now
+    }
+
+    /// `tick(n)` — chạy đồng hồ ảo `n` đơn vị; tất định, cùng kịch bản ⇒ cùng mốc refill.
+    ///
+    /// Mỗi đơn vị: charge TCB đang `Running` cho `[now, now+1)`, `now += 1`, rồi xử lý biên
+    /// refill tại `now` mới (charge trước — refill sau, xem `mcs`). **Không** tự `dispatch`:
+    /// chọn TCB vẫn là thao tác tường minh như KT-19.
+    pub fn tick(&mut self, n: u64) -> Result<(), KError> {
+        for _ in 0..n {
+            self.tick_one()?;
+        }
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    fn tick_one(&mut self) -> Result<(), KError> {
+        // 1) Charge TCB đang chạy của từng hart (K1b: 1 hart — D2-49(a)); hết budget ⇒
+        //    `Running → Sleeping{Budget}` ngay, gỡ `current` qua `sched_sync`.
+        for h in 0..self.sched.len() {
+            if let Some(cur) = self.sched[h].current() {
+                self.charge_tick(cur)?;
+            }
+        }
+        // 2) Thời gian ảo tiến 1 (bão hoà ở trần `u64`, không wrap).
+        self.now = self.now.saturating_add(1);
+        // 3) Biên refill tại `now` mới: `Sleeping{Budget} + !suspended → Ready`.
+        self.process_refills()
+    }
+
+    /// Charge **một** tick cho TCB đang chạy; hết budget ⇒ `Sleeping{Budget}` (một cửa
+    /// [`Machine::transition_tcb`]). TCB không SC/SC chưa cấu hình không bị charge.
+    fn charge_tick(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        if !matches!(info.state, TcbState::Running { .. }) {
+            return Ok(());
+        }
+        let Some(sc) = info.sched_context else {
+            // Không SC = không có budget ⇒ không chạy (chỉ tới `Running` bằng transition trực
+            // tiếp; `pick` đã chặn từ đầu).
+            self.transition_tcb(
+                tcb,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget,
+                },
+            )?;
+            return Ok(());
+        };
+        // SC chưa `SchedControl.Configure` = **không có budget** ⇒ không charge; nếu TCB đang
+        // `Running` (chỉ tới được bằng `transition_tcb` trực tiếp, không qua `pick`), đưa về
+        // `Sleeping{Budget}` để giữ "không có budget ⇒ không chạy".
+        let configured = self.body(sc, |k| match k {
+            Kind::SchedContext(s) => Ok(s.budget.is_configured()),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if !configured {
+            self.transition_tcb(
+                tcb,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget,
+                },
+            )?;
+            return Ok(());
+        }
+        let charged = self.body_mut(sc, |k| match k {
+            Kind::SchedContext(s) => Ok(s.budget.charge()),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let can = self.tcb_has_budget(tcb);
+        if !charged || !can {
+            self.transition_tcb(
+                tcb,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Xử lý biên nạp lại tại `now` cho mọi `SchedContext` sống: `consumed = 0`, rồi đánh
+    /// thức TCB `Sleeping{Budget}` **không** `suspended` đang gắn SC đó.
+    fn process_refills(&mut self) -> Result<(), KError> {
+        let now = self.now;
+        let scs: Vec<ObjId> = self
+            .objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive && m.ty == ObjType::SchedContext)
+            .map(|(i, _)| (i as u32) + 1)
+            .collect();
+        let mut refilled: Vec<ObjId> = Vec::new();
+        for sc in scs {
+            let did = self.body_mut(sc, |k| match k {
+                Kind::SchedContext(s) => Ok(s.budget.refill_due(now)),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if did {
+                refilled.push(sc);
+            }
+        }
+        if refilled.is_empty() {
+            return Ok(());
+        }
+        let tcbs: Vec<ObjId> = self
+            .objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive && m.ty == ObjType::Tcb)
+            .map(|(i, _)| (i as u32) + 1)
+            .collect();
+        let mut wake: Vec<ObjId> = Vec::new();
+        for tcb in tcbs {
+            let info = self.tcb_info_obj(tcb)?;
+            if matches!(
+                info.state,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget
+                }
+            ) && !info.suspended
+            {
+                if let Some(sc) = info.sched_context {
+                    if refilled.contains(&sc) {
+                        wake.push(tcb);
+                    }
+                }
+            }
+        }
+        for tcb in wake {
+            self.transition_tcb(tcb, TcbState::Ready)?;
+        }
+        Ok(())
+    }
+
+    /// Gắn/gỡ SC khiến TCB đang `Running` **không còn budget** (SC đã cạn, SC chưa cấu hình,
+    /// hoặc gỡ SC) ⇒ ngủ ngay `Sleeping{Budget}` (giữ bất biến "Running ⇒ còn budget", và
+    /// "không SC/SC chưa cấu hình ⇒ không chạy" — reviewer-kt20 mục 1). TCB `Ready` không đổi
+    /// trạng thái (bảng ALLOWED cấm `Ready → Sleeping`) — `pick` bỏ qua nó cho tới khi có SC
+    /// đã cấu hình còn budget.
+    fn enforce_budget(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(tcb) {
+            self.transition_tcb(
+                tcb,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Ảnh chụp ngân sách của `SchedContext` — model API `[TK]` (D2-49(b)).
+    pub fn sched_info(&self, sched: SlotRef) -> Result<ScInfo, KError> {
+        let obj = self.require_type(sched, ObjType::SchedContext)?;
+        self.body(obj, |k| match k {
+            Kind::SchedContext(s) => Ok(s.budget.info()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// `SchedContext.Consumed` `[TK]`: số tick đã charge trong chu kỳ hiện tại.
+    pub fn sched_consumed(&self, sched: SlotRef) -> Result<u64, KError> {
+        Ok(self.sched_info(sched)?.consumed)
+    }
+
+    /// Budget còn lại của chu kỳ hiện tại; `0` khi SC chưa cấu hình (không có budget).
+    pub fn sched_remaining(&self, sched: SlotRef) -> Result<u64, KError> {
+        let info = self.sched_info(sched)?;
+        Ok(if info.configured {
+            info.budget - info.consumed
+        } else {
+            0
+        })
+    }
+
+    /// TCB có được phép chạy theo ngân sách không: **phải có** `SchedContext` **đã**
+    /// `SchedControl.Configure` và `consumed < budget`. Không SC hoặc SC chưa cấu hình ⇒
+    /// `false` — TCB không được `pick` (ngữ nghĩa §4.5, K1B-PLAN §5 KT-20 DoD 4; sửa theo
+    /// verdict reviewer-kt20, không phải "không giới hạn"). Dùng bởi `pick`/`dispatch`,
+    /// `enforce_budget` và test bất biến.
+    pub fn tcb_has_budget(&self, tcb: ObjId) -> bool {
+        let Ok(info) = self.tcb_info_obj(tcb) else {
+            return false;
+        };
+        let Some(sc) = info.sched_context else {
+            return false;
+        };
+        self.body(sc, |k| match k {
+            Kind::SchedContext(s) => Ok(s.budget.has_budget()),
+            _ => Err(KError::WrongObjectType),
+        })
+        .unwrap_or(false)
+    }
+
     // ------------------------------------------- hàng chờ phụ của mô hình K1b `[TK]`
 
     /// `Wait` trên Notification — **mô hình K1b** `[TK]` (D2-49(a): tín hiệu/word là K1c):
@@ -2417,8 +2668,7 @@ impl Machine {
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
-                budget: 0,
-                period: 0,
+                budget: ScBudget::new(),
             })),
             ObjType::Endpoint => Kind::Endpoint(Box::default()),
             ObjType::Reply => Kind::Reply(Box::new(ReplyData { caller: None })),

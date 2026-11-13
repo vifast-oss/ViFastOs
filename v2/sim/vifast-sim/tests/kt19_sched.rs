@@ -38,7 +38,20 @@ const S_REP: usize = 2;
 const S_NTFN: usize = 3;
 const S_SC: usize = 4;
 const S_CNODE: usize = 5;
+const S_CTL: usize = 6;
 const S_T0: usize = 8;
+
+/// SC mặc định **test-only** cho rig KT-19: KT-20 siết "TCB không SC/SC chưa Configure không
+/// được `pick`" (reviewer-kt20 mục 1), nên rig cũ phải gắn một SC đã `Configure` cho TCB cần
+/// chạy. Không đổi production; không đổi kỳ vọng test KT-19 (không có `tick` nên `consumed`
+/// luôn 0). Budget = period = 64 là hằng **test**, không phải ngưỡng cổng.
+const SC_MAC_DINH: u64 = 64;
+
+/// Gắn SC mặc định cho một TCB (test-only).
+fn gan_sc_mac_dinh(m: &mut Machine, c0: ObjId, tcb_slot: usize, sc_slot: usize) {
+    m.set_sched_params(slot(c0, tcb_slot), Some(slot(c0, sc_slot)))
+        .expect("set_sched_params SC mặc định (test-only)");
+}
 
 struct Rig {
     m: Machine,
@@ -59,6 +72,7 @@ impl Rig {
         let rep = m.add_kernel_object(ObjType::Reply);
         let ntfn = m.add_kernel_object(ObjType::Notification);
         let sc = m.add_kernel_object(ObjType::SchedContext);
+        let sched_control = m.add_kernel_object(ObjType::SchedControl);
         // CNode thứ hai để `Tcb.Configure` có CSpace hợp lệ (không tự trỏ CNode gốc).
         let c1 = m.add_cnode(4);
         let mut t = [0u32; 3];
@@ -70,18 +84,23 @@ impl Rig {
             (S_NTFN, ntfn),
             (S_SC, sc),
             (S_CNODE, c1),
+            (S_CTL, sched_control),
         ]
         .into_iter()
         {
             let cap = m.root_cap(dst);
             m.put_cap(c0, i, cap).expect("cap object");
         }
+        // KT-20 (reviewer mục 1): cấp ngân sách mặc định test-only cho SC và gắn cho 3 TCB.
+        m.sched_control_configure(slot(c0, S_CTL), slot(c0, S_SC), SC_MAC_DINH, SC_MAC_DINH)
+            .expect("SchedControl.Configure SC mặc định (test-only)");
         for i in 0..3 {
             let tcb = m.add_kernel_object(ObjType::Tcb);
             let cap = m.root_cap(tcb);
             m.put_cap(c0, S_T0 + i, cap).expect("cap TCB");
             t[i] = tcb;
             s[i] = slot(c0, S_T0 + i);
+            gan_sc_mac_dinh(&mut m, c0, S_T0 + i, S_SC);
         }
         Rig {
             m,
@@ -141,6 +160,16 @@ const N_PRIO: usize = 256;
 fn pick_du_256_muc_uu_tien_cao_nhat_duoc_chon() {
     let mut m = Machine::with_arena_bytes(1 << 20);
     let c0 = m.add_cnode(512);
+    // KT-20 (reviewer mục 1): SC mặc định test-only cho mọi TCB cần chạy (không có `tick`
+    // trong test này nên `consumed` luôn 0). Slot 256 = SchedControl, 257 = SchedContext.
+    let ctl = m.add_kernel_object(ObjType::SchedControl);
+    let cap = m.root_cap(ctl);
+    m.put_cap(c0, 256, cap).expect("cap SchedControl");
+    let sc = m.add_kernel_object(ObjType::SchedContext);
+    let cap = m.root_cap(sc);
+    m.put_cap(c0, 257, cap).expect("cap SchedContext");
+    m.sched_control_configure(slot(c0, 256), slot(c0, 257), SC_MAC_DINH, SC_MAC_DINH)
+        .expect("SchedControl.Configure (test-only)");
     let mut tcb = Vec::with_capacity(N_PRIO);
     let mut sl = Vec::with_capacity(N_PRIO);
     for p in 0..N_PRIO {
@@ -148,6 +177,7 @@ fn pick_du_256_muc_uu_tien_cao_nhat_duoc_chon() {
         let cap = m.root_cap(t);
         m.put_cap(c0, p, cap).expect("cap TCB");
         let sr = slot(c0, p);
+        gan_sc_mac_dinh(&mut m, c0, p, 257);
         m.tcb_set_priority(sr, p as u8, 255).expect("priority p");
         m.transition_tcb(t, TcbState::Ready).expect("Ready");
         tcb.push(t);
@@ -265,6 +295,7 @@ fn dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien() {
     let d = r.m.add_kernel_object(ObjType::Tcb);
     let dcap = r.m.root_cap(d);
     r.m.put_cap(r.c0, 11, dcap).expect("cap D");
+    gan_sc_mac_dinh(&mut r.m, r.c0, 11, S_SC);
     r.m.tcb_set_priority(slot(r.c0, 11), 10, 255)
         .expect("priority D");
     r.m.transition_tcb(d, TcbState::Ready).expect("D Ready");
@@ -817,6 +848,15 @@ impl RandRig {
             let cap = m.root_cap(obj);
             m.put_cap(c0, i, cap).expect("cap object");
         }
+        // KT-20 (reviewer mục 1): SC mặc định test-only để TCB thực sự chạy trong 1.000 seed.
+        let ctl = m.add_kernel_object(ObjType::SchedControl);
+        let cap = m.root_cap(ctl);
+        m.put_cap(c0, 5, cap).expect("cap SchedControl");
+        let sc = m.add_kernel_object(ObjType::SchedContext);
+        let cap = m.root_cap(sc);
+        m.put_cap(c0, 6, cap).expect("cap SchedContext");
+        m.sched_control_configure(slot(c0, 5), slot(c0, 6), SC_MAC_DINH, SC_MAC_DINH)
+            .expect("SchedControl.Configure (test-only)");
         let mut t = [0u32; 3];
         let mut s = [slot(c0, 8), slot(c0, 9), slot(c0, 10)];
         for i in 0..3 {
@@ -825,6 +865,7 @@ impl RandRig {
             m.put_cap(c0, 8 + i, cap).expect("cap TCB");
             t[i] = tcb;
             s[i] = slot(c0, 8 + i);
+            gan_sc_mac_dinh(&mut m, c0, 8 + i, 6);
         }
         // Bật preempt ép tại mọi bước (thiết kế §4.13) cho quỹ đạo ngẫu nhiên.
         m.set_preempt_every_step(true);

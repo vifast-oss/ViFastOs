@@ -107,6 +107,28 @@ impl HartSched {
         self.queues[prio as usize].front().copied()
     }
 
+    /// `pick` có **điều kiện** (KT-20): mức cao nhất trước, cùng mức FIFO, nhưng chỉ nhận TCB
+    /// thoả `ok`. Duyệt từng bit đang bật của bitmap (tối đa 4 word, mỗi word lấy bit cao nhất
+    /// trước) nên **vẫn O(1) khi phần tử đầu hàng thoả**; chỉ khi TCB đầu hàng bị loại (ví dụ
+    /// `Ready` nhưng `SchedContext` đã cạn budget) mới quét tiếp trong hàng/các mức thấp hơn.
+    /// **Không** gỡ khỏi hàng.
+    pub fn pick_where(&self, mut ok: impl FnMut(ObjId) -> bool) -> Option<ObjId> {
+        for w in (0..BITMAP_WORDS).rev() {
+            let mut bits = self.bitmap[w];
+            while bits != 0 {
+                let bit = 63 - bits.leading_zeros() as usize;
+                bits &= !(1u64 << bit);
+                let prio = w * 64 + bit;
+                for &t in self.queues[prio].iter() {
+                    if ok(t) {
+                        return Some(t);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// TCB có nằm trong ready queue của hart này không (dùng cho `check_sched`/test).
     pub fn contains(&self, tcb: ObjId) -> bool {
         self.queues.iter().any(|q| q.iter().any(|t| *t == tcb))
@@ -223,6 +245,26 @@ impl Default for HartSched {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pick_where_bo_qua_phan_tu_bi_loai_giu_thu_tu_uu_tien_fifo() {
+        let mut h = HartSched::new();
+        h.enqueue(1, 5);
+        h.enqueue(2, 5);
+        h.enqueue(3, 9);
+        h.enqueue(4, 9);
+        // Tất cả thoả ⇒ y như `pick` (mức cao nhất, FIFO).
+        assert_eq!(h.pick_where(|_| true), Some(3));
+        // Loại phần tử đầu mức cao nhất ⇒ phần tử kế tiếp cùng mức.
+        assert_eq!(h.pick_where(|t| t != 3), Some(4));
+        // Loại cả mức 9 ⇒ xuống mức 5, FIFO.
+        assert_eq!(h.pick_where(|t| t < 3), Some(1));
+        assert_eq!(h.pick_where(|t| t == 2), Some(2));
+        // Không ai thoả ⇒ None, hàng không đổi.
+        assert_eq!(h.pick_where(|_| false), None);
+        assert_eq!(h.len(), 4);
+        h.check_local().expect("bất biến nội tại");
+    }
 
     #[test]
     fn pick_lay_muc_cao_nhat_va_fifo_cung_muc() {

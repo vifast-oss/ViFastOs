@@ -6,12 +6,121 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-19 (xong mã — scheduler 1 hart; **reviewer-kt19 APPROVE**; Miri PASS); KT-18 DONE (5cccb72)
-Bước          : 8/8 (đỏ → mã → 256 mức/preempt/1.000 seed → Miri → gate → tài liệu; chờ commit/push + Agent 0 lật QUEUE)
+Task          : KT-20 (xong mã sau **DRIFT reviewer-kt20 đã sửa** — MCS budget/tick ảo/refill/`Sleeping{Budget}`); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b)
+Bước          : 8/8 (đỏ → mã → 12 test → invariant 1.000 seed → **review DRIFT → sửa no-SC** → Miri → gate → tài liệu; chờ commit)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**263 test/43 suite**, 0 failed; KT-18 là 251/42, +12 test mới; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `[KT-19]` + push origin/main (Miri 10/10 PASS, 4 m 22 s); **KT-20..KT-23 chờ**; không lật QUEUE (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**284 test/44 suite**, 0 failed; KT-19 là 263/43 ⇒ **+21 test**; **L1 1.000 seed/999 trace**; gen-check ON, `scn: OK`) — không retry
+Việc dở       : commit `[KT-20]` + push origin/main; **KT-21..KT-23 chờ**; không lật QUEUE (Agent 0)
 ```
+
+## KT-20 — MCS budget: timer ảo `tick`, consumed/refill, `Sleeping{Budget}` (K1b, D2-49(b,e,h))
+
+**Vào**: READY (agentctl `next --project v2` trả KT-20) · HEAD `54af1a8` · KT-18/19 DONE · baseline
+`gate --fast` PASS 263 test/43 suite ([`JOURNAL/kt20-baseline-gate-fast.log`](JOURNAL/kt20-baseline-gate-fast.log)).
+**Phạm vi**: ngân sách MCS của **mô hình sim**; **không** donation (KT-21), hộp thư/push migration
+(KT-22/K1c), refill sporadic/timeout fault (**hoãn sau K6** — D2-16, D2-49(e)); không `spec/`,
+`vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không dependency/`unsafe`; không
+`#[allow]`/`#[ignore]`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt20-red-compile.log`](JOURNAL/kt20-red-compile.log) — `tests/kt20_budget.rs` **không biên dịch**:
+  **58 × `E0599`** cho API chưa có (`tick`, `virtual_now`, `sched_info`, `sched_consumed`,
+  `sched_remaining`, `tcb_has_budget`) + **`E0432`** (`ScInfo`) + `E0308`.
+- [`JOURNAL/kt20-red-mutation-bo-charge.log`](JOURNAL/kt20-red-mutation-bo-charge.log) — đột biến tay
+  **bỏ dòng `consumed += 1`** trong `ScBudget::charge` (không commit): test invariant **1.000 seed**
+  đỏ đúng lý do (`SC 0 cửa sổ 0: 1+1 > budget 1`) ⇒ bộ kiểm bắt được "quên trừ budget" (DoD 10).
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/mcs.rs` (**mới**): `ScBudget { budget, period, consumed, refill, charged }`
+  + `ScInfo`; `configure(now, budget, period)` đặt `refill` = **biên thẳng hàng toàn cục kế tiếp**
+  (`next_boundary`, bão hoà `u64`, không wrap); `charge()`, `refill_due(now)`, `has_budget()`,
+  `remaining()`, `check(now)`; **8 unit test** (biên toàn cục, overflow ở trần, configure, charge
+  đúng biên, refill nhảy nhiều biên, trần `u64` không lặp, `check` bắt budget/period/consumed sai,
+  **SC chưa cấu hình ⇒ không có budget**).
+- `v2/sim/vifast-sim/src/sched.rs`: `HartSched::pick_where(ok)` — `pick` có điều kiện, vẫn mức cao
+  nhất + FIFO, O(1) khi phần tử đầu hợp lệ; **+1 unit test**.
+- `v2/sim/vifast-sim/src/kobj.rs`: `SchedData.budget: ScBudget` (thay `budget/period` thô);
+  `Machine.now: u64`; `tick(n)` (charge TCB đang `Running` cho `[now, now+1)` → `now += 1` → xử lý
+  biên refill: **charge trước, refill sau**), `charge_tick` (hết budget ⇒ `Running → Sleeping{Budget}`
+  qua **một cửa** `transition_tcb`), `process_refills` (refill ⇒ `Sleeping{Budget} + !suspended →
+  Ready` + enqueue), `enforce_budget` (gắn/gỡ SC khiến TCB `Running` không còn budget ⇒ ngủ ngay);
+  `SchedControl.Configure` đặt `consumed = 0` + `refill` biên mới (giữ kiểm `budget > 0`,
+  `period > 0`, `budget ≤ period`); model API `virtual_now/tick/sched_info/sched_consumed/
+  sched_remaining/tcb_has_budget`; `sched_pick_on` lọc budget; `check_sched` thêm bất biến ngân
+  sách (mọi SC sống: `budget`/`period` dương, `budget ≤ period`, `consumed ≤ budget`,
+  `refill > now`; `Running` ⇒ còn budget).
+- `v2/sim/vifast-sim/tests/kt20_budget.rs` (**mới, 12 test**): tick tất định cùng seed cùng mốc
+  refill; Configure 0/oversize bị từ chối, không đổi trạng thái; charge **chỉ** khi `Running` qua
+  đường IPC thật (Call/Recv/Reply); hết budget ⇒ `Sleeping{Budget}` đúng biên (không `budget + 1`),
+  gỡ khỏi ready queue, timer biên kế; không charge quá budget; refill ⇒ `Ready`, `+suspended` giữ
+  `Sleeping{Budget}`, `Resume` không phát lại; `pick`/`dispatch` bỏ qua TCB `Ready` hết budget rồi
+  nhận lại sau refill; **không SC / SC chưa `Configure` ⇒ không có budget ⇒ không chạy**, sau
+  `Configure` mới chạy, gỡ SC khi `Running` ⇒ ngủ ngay; yield không mất budget/thời gian; gắn SC cạn
+  cho TCB `Running` ⇒ ngủ ngay + refill đánh thức nhiều TCB; gỡ SC khi `Sleeping{Budget}` không còn
+  biên refill; invariant **1.000 seed × 64 bước ngẫu nhiên** với cửa sổ thẳng hàng.
+
+### Quyết định đã chốt (model-only `[TK]`, ghi rõ)
+
+- **Chu kỳ thẳng hàng toàn cục** (D2-49(e)): `refill` = bội số kế tiếp của `period`; **không** cửa
+  sổ trượt/sporadic refill/timeout fault (D2-16 — hoãn sau K6).
+- **TCB không SC / SC chưa `SchedControl.Configure` = KHÔNG có budget ⇒ `pick`/`dispatch` không
+  chọn** (ngữ nghĩa §4.5 + K1B-PLAN §5 KT-20 DoD 4). TCB muốn chạy phải có SC **đã `Configure`**;
+  passive server chạy bằng donation ở KT-21. **Đây là sửa theo verdict `reviewer-kt20` (DRIFT mục
+  1)**, không phải "không giới hạn"; Agent 0 sẽ ghi **D2-50** khi lật sổ.
+- **Charge trước, refill sau**; cấu hình lại giữa chu kỳ reset `consumed` + tính lại biên (quy ước
+  5 trong `mcs.rs`); không dồn budget.
+
+### Sửa theo review `reviewer-kt20` (DRIFT → đã sửa, không UNSAFE)
+
+- **Mục 1 — no-SC ≠ unlimited (đã sửa đúng ngữ nghĩa)**: `ScBudget::has_budget` =
+  `is_configured() && consumed < budget`; `ScBudget::remaining` = 0 khi chưa cấu hình;
+  `Machine::tcb_has_budget` = **false** khi không SC hoặc SC chưa `Configure` ⇒ `sched_pick_on`
+  (và `dispatch_step`) bỏ qua; `enforce_budget` đưa TCB `Running` về `Sleeping{Budget}` khi gỡ SC /
+  gắn SC cạn / SC chưa `Configure`; `charge_tick` cũng đưa `Running` không SC/chưa cấu hình về
+  `Sleeping{Budget}`. **Không** đổi `call/recv/reply`.
+- **Rig test cập nhật (test-only, không đổi kỳ vọng cũ)**: `kt19_sched.rs` — `Rig` thêm
+  `SchedControl` (slot 6) + `SchedControl.Configure` SC slot 4 với `SC_MAC_DINH = 64` rồi gắn cho 3
+  TCB qua helper `gan_sc_mac_dinh`; `pick_du_256` thêm SchedControl/SchedContext (slot 256/257) và
+  gắn cho **256** TCB; TCB "D" của test dispatch và 3 TCB của `RandRig` (1.000 seed) cũng được gắn.
+  KT-18 không cần (không `dispatch`; chuyển trạng thái trực tiếp là model API, suite vẫn xanh).
+- **Mục 2 — Miri**: reviewer đọc `kt20-miri.log` **giữa lúc tệp đang ghi** nên thấy 11/12 và chưa có
+  `test result`; log hoàn chỉnh của lần chạy trước đã có `test result: ok. 12 passed`. Sau khi sửa
+  review đã **chạy lại** (số dưới đây) ⇒ PASS đủ 12/12.
+
+### Cổng + Miri (không retry — D2-07)
+
+- [`JOURNAL/kt20-gate-fast.log`](JOURNAL/kt20-gate-fast.log) — `gate --fast` **PASS 284 test / 0 failed**
+  (**44 suite**; KT-19: 263/43 ⇒ **+21 test** = 12 integration + 8 unit `mcs` + 1 unit `pick_where`),
+  **L1 1.000 seed/999 trace**, gen-check ON, `.scn` 21 tệp OK, **không retry**; `kt20_budget` native
+  2,8 s.
+- [`JOURNAL/kt20-miri.log`](JOURNAL/kt20-miri.log) — chạy lại sau sửa review:
+  `v2 miri -p vifast-sim --test kt20_budget` **PASS 12/12** (0 failed, 0 ignored, **117,12 s**);
+  2 cảnh báo `integer-to-pointer cast` **có sẵn** từ objmem (`v2/lib/vifast-objmem/src/obj.rs`,
+  D2-14/D2-17), không phát sinh từ KT-20; `v2/sim/**` **0 unsafe**. Invariant test dưới Miri vẫn
+  chạy nhưng giảm `N_SEED = 5`, `N_STEP = 16` (`#[cfg(miri)]`; stable giữ **1.000 × 64**) — không
+  `#[ignore]`, không nới `gate --fast`/L1.
+
+### Phạm vi / không chạm
+
+Chỉ `v2/sim/vifast-sim/src/{mcs.rs,sched.rs,kobj.rs,lib.rs}` (`lib.rs` +1 dòng `pub mod mcs;`),
+`v2/sim/vifast-sim/tests/{kt20_budget.rs,kt19_sched.rs}` (rig test-only gắn SC mặc định),
+`v2/agent/{STATE.md,JOURNAL/}`. Không sửa `spec/`, `vifast-model`, `.scn`,
+QUEUE/DECISIONS/AGENTS, `viscript/`; không dependency/`unsafe`; không `#[allow]`/`#[ignore]`.
+
+### Review độc lập + đề xuất
+
+`reviewer-kt20` (lead spawn vì depth 1/1): **DRIFT** (không UNSAFE) — (1) "TCB không SC = không
+giới hạn" trái §4.5/K1B-PLAN DoD 4 ⇒ **đã sửa** sang "không SC/chưa `Configure` = không có budget,
+không chạy" + rig test-only gắn SC mặc định + test no-SC/chưa-Configure/cạn budget; (2) Miri "chưa
+xong" do đọc log giữa lúc ghi ⇒ log hoàn chỉnh + chạy lại **PASS 12/12, 117,12 s**. Không phát hiện
+UNSAFE; `v2/sim/**` 0 unsafe.
+
+**Đề xuất: REVIEW → DONE sau khi Agent 0 lật** (không tự DONE, không lật QUEUE — D2-37).
+**YC/Follow-up**: (1) **Agent 0 ghi D2-50** "no SC ≠ unlimited" khi lật sổ (lead đã xác nhận sẽ
+ghi); (2) KT-21 donation/passive server (SC đi theo Call/Reply — SC-less server chỉ chạy khi được
+donate); (3) KT-23 thêm `kt20_budget` vào `nightly --only-miri` (117 s) và cân nhắc thời lượng Miri.
 
 ## KT-19 — Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước (K1b, D2-49(a))
 

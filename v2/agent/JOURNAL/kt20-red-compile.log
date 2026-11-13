@@ -1,0 +1,370 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::ScInfo`
+  --> sim/vifast-sim/tests/kt20_budget.rs:27:38
+   |
+27 |     KError, Machine, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode, TcbState,
+   |                                      ^^^^^^ no `ScInfo` in `kobj`
+   |
+help: a similar name exists in the module
+   |
+27 -     KError, Machine, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode, TcbState,
+27 +     KError, Machine, ObjId, ObjType, TcbInfo, SleepReason, SlotRef, SuspendMode, TcbState,
+   |
+
+error[E0308]: mismatched types
+  --> sim/vifast-sim/tests/kt20_budget.rs:90:18
+   |
+90 |     Rig { m, c0, ctl, sc, ts, t }
+   |                  ^^^ expected `SlotRef`, found `u32`
+
+error[E0599]: no method named `tick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:130:16
+    |
+130 |         self.m.tick(n).expect("tick");
+    |                ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:135:16
+    |
+135 |         self.m.sched_info(self.sc[i]).expect("sched_info")
+    |                ^^^^^^^^^^
+    |
+help: there is a method `sched_idle` with a similar name
+    |
+135 -         self.m.sched_info(self.sc[i]).expect("sched_info")
+135 +         self.m.sched_idle(self.sc[i]).expect("sched_info")
+    |
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:187:20
+    |
+187 |     assert_eq!(r.m.virtual_now(), 0);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:189:20
+    |
+189 |     assert_eq!(r.m.virtual_now(), 0);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:191:20
+    |
+191 |     assert_eq!(r.m.virtual_now(), 7);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:169:28
+    |
+169 |             assert_eq!(r.m.virtual_now(), trace.len() as u64);
+    |                            ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:173:21
+    |
+173 |                 r.m.virtual_now(),
+    |                     ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:209:20
+    |
+209 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:235:20
+    |
+235 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_remaining` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:244:20
+    |
+244 |     assert_eq!(r.m.sched_remaining(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:245:20
+    |
+245 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:253:20
+    |
+253 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(1));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:258:31
+    |
+258 |     assert!(info.refill > r.m.virtual_now());
+    |                               ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:275:20
+    |
+275 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:284:13
+    |
+284 |         r.m.sched_consumed(r.sc[0]),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:288:20
+    |
+288 |     assert_eq!(r.m.virtual_now(), 7);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:297:13
+    |
+297 |         r.m.sched_consumed(r.sc[0]),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:301:20
+    |
+301 |     assert_eq!(r.m.virtual_now(), 10);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:311:13
+    |
+311 |         r.m.sched_consumed(r.sc[0]),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:329:17
+    |
+329 |     assert!(r.m.tcb_has_budget(r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:332:20
+    |
+332 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(1));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:336:20
+    |
+336 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2), "charge đúng biên budget");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:346:18
+    |
+346 |     assert!(!r.m.tcb_has_budget(r.t[0]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:351:20
+    |
+351 |     assert_eq!(r.m.virtual_now(), 2);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:356:20
+    |
+356 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:360:20
+    |
+360 |     assert_eq!(r.m.virtual_now(), 4);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:361:20
+    |
+361 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:365:17
+    |
+365 |     assert!(r.m.tcb_has_budget(r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:397:35
+    |
+397 |         assert!(info.refill > r.m.virtual_now(), "refill phải > now");
+    |                                   ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:428:20
+    |
+428 |     assert_eq!(r.m.virtual_now(), 4);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:429:20
+    |
+429 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:441:20
+    |
+441 |     assert_eq!(r.m.virtual_now(), 8);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:444:20
+    |
+444 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:462:20
+    |
+462 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(1));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:469:18
+    |
+469 |     assert!(!r.m.tcb_has_budget(r.t[0]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:482:20
+    |
+482 |     assert_eq!(r.m.virtual_now(), 4);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:483:20
+    |
+483 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:484:17
+    |
+484 |     assert!(r.m.tcb_has_budget(r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:502:17
+    |
+502 |     assert!(r.m.tcb_has_budget(r.t[0]), "không SC ⇒ không giới hạn");
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:512:17
+    |
+512 |     assert!(r.m.tcb_has_budget(r.t[1]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:513:20
+    |
+513 |     assert_eq!(r.m.sched_consumed(r.sc[1]), Ok(0));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_remaining` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:531:20
+    |
+531 |     assert_eq!(r.m.sched_remaining(r.sc[0]), Ok(3));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:532:25
+    |
+532 |     let now_truoc = r.m.virtual_now();
+    |                         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:537:20
+    |
+537 |     assert_eq!(r.m.virtual_now(), now_truoc, "yield không trôi thời gian");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:539:20
+    |
+539 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_remaining` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:540:20
+    |
+540 |     assert_eq!(r.m.sched_remaining(r.sc[0]), Ok(3));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:549:20
+    |
+549 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2), "yield không charge SC t[0]");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:551:20
+    |
+551 |     assert_eq!(r.m.sched_consumed(r.sc[1]), Ok(1), "t[1] chạy ⇒ charge SC t[1]");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:552:20
+    |
+552 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:556:20
+    |
+556 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(3));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_remaining` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:557:20
+    |
+557 |     assert_eq!(r.m.sched_remaining(r.sc[0]), Ok(2));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_consumed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:575:20
+    |
+575 |     assert_eq!(r.m.sched_consumed(r.sc[0]), Ok(1));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:589:20
+    |
+589 |     assert_eq!(r.m.virtual_now(), 4);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:645:35
+    |
+645 |                     let now = r.m.virtual_now();
+    |                                   ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:718:39
+    |
+718 |                     info.refill > r.m.virtual_now(),
+    |                                       ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `virtual_now` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:721:25
+    |
+721 |                     r.m.virtual_now()
+    |                         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_has_budget` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt20_budget.rs:735:33
+    |
+735 |                     assert!(r.m.tcb_has_budget(r.t[i]), "Running mà SC đã cạn");
+    |                                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0308, E0432, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `vifast-sim` (test "kt20_budget") due to 59 previous errors

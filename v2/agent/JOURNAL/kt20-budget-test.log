@@ -1,0 +1,19 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt20_budget.rs (target/debug/deps/kt20_budget-cd81693877532c0d)
+
+running 12 tests
+test configure_tu_choi_budget_0_va_budget_lon_hon_period ... ok
+test het_budget_sang_sleeping_budget_va_go_khoi_hang ... ok
+test go_sc_khi_sleeping_budget_khong_con_bien_refill ... ok
+test chi_charge_khi_running_qua_duong_ipc_that ... ok
+test pick_bo_qua_tcb_ready_het_budget_va_nhan_lai_sau_refill ... ok
+test refill_ton_trong_suspended_va_resume_khong_phat_lai ... ok
+test tcb_khong_sc_hoac_sc_chua_configure_khong_chay ... ok
+test khong_charge_qua_budget_va_khong_chay_khi_da_het ... ok
+test yield_khong_mat_budget_va_thoi_gian ... ok
+test gan_sc_het_budget_cho_tcb_dang_chay_thi_ngu_ngay ... ok
+test thoi_gian_ao_tat_dinh_cung_kich_ban_cung_moc_refill ... ok
+test invariant_budget_moi_chu_ky_thang_hang_khong_vuot ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.96s
+
