@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-30b** (đồng bộ chẩn đoán hai đường + siết differential) — xong, **chưa commit**.
-Bước          : 3/3 (đo đỏ 9 ca lệch → sửa engine → siết test 312/312)
+Task          : **ST-31** (báo cáo `R4-viscript` — **chốt VS1b**) — xong, chờ commit/push.
+Bước          : 4/4 (đo lại toàn bộ → viết MD/JSON → `report-check` PASS → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:59:15Z** (14:59 JST, không retry);
-                **436** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-30b]`
+Cổng gần nhất : `./vis-dev gate --fast` PASS (06:07Z) + `./vis-dev nightly --fuzz-minutes 1` PASS (06:09:38Z);
+                **436** test / **338** ca / parity **312/312** / diff 100k **0 lệch**
+Việc dở       : commit `[ST-31]` (đã được uỷ quyền) rồi push
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,15 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-31 — báo cáo `R4-viscript` (chốt VS1b), 2026-11-13
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Đo lại toàn bộ** | 436 test (21+96+18+118+24+50+9+100); 338 ca/18 nhóm, 52 `.err`; `vis test` **338 ok**, `--vm` **338 ok/6 SKIP/0 đỏ`; parity **312/312, 0 lệch**; diff 100k `lech=0 giay=203.5 seed=3523158054`; fuzz parser 1 phút **3.098.833 ca/0 vi phạm**; warm start **10,31–11,08 ms**; `VBC1` **53 tag**; **7 sổ/28 mã**; SHA-256 vector FIPS |
+| 2 | **`reports/R4-viscript.{md,json}`** | Đúng **11 khoá**, `round = 4`, `head = d92e947`, **36 hàng** QUEUE; bảng ST-25..ST-31 + ST-30b; VD-57..VD-63; **13 mục** lỗ hổng; đối chiếu §19 trung thực (đạt/VS2) |
+| 3 | **`report-check`** | `PASS (1 báo cáo, 36 hàng QUEUE phủ đủ)` — hàng `ST-20b` nay 6 cột nên **có** trong JSON |
+| 4 | **Cổng + nightly** | `gate --fast` **PASS** (06:07Z); `nightly --fuzz-minutes 1` **PASS** (06:09:38Z) |
 
 ## ST-30b — đồng bộ chẩn đoán interp ↔ VM (2026-11-13)
 
