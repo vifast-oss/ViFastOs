@@ -6,14 +6,14 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-15b** (4 lệch thiết kế) — xong kỹ thuật 2026-11-13, **chưa commit** (uỷ quyền
-                commit nếu cổng xanh — đang chờ gộp báo cáo với ST-16).
+Task          : **ST-16** (fuzz parser 1 giờ + `vis-dev nightly`) — xong kỹ thuật 2026-11-13, **chưa
+                commit** (uỷ quyền commit nếu cổng xanh).
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-12T23:41:43Z = 2026-11-13 08:41 JST; không retry; **247** test; **1** test `sem`
-                chạy **309 ca**)
-Việc dở       : ST-16 (fuzz parser + `vis-dev nightly`)
+                (2026-11-13T00:44:56Z = 2026-11-13 09:44 JST; không retry; **247** test; **1** test `sem`
+                chạy **309 ca**); `./vis-dev nightly --fuzz-minutes 1` → `vis-dev nightly: PASS`
+Việc dở       : —
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -47,6 +47,21 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
+## ST-16 — fuzz parser 1 giờ + `vis-dev nightly` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Fuzz parser** | `crates/vis-syntax/src/bin/vis_parse_fuzz.rs` (bin `vis-parse-fuzz`, PRNG xorshift tất định, 3 nguồn: ngẫu nhiên / đột biến corpus / soup token). Bất biến mỗi ca: **không panic** (`catch_unwind`), **CST lossless** (`cst.render(text) == text` khi parse sạch), **span hợp lệ** (biên ký tự, `end ≤ len`), lỗi ⇒ có chẩn đoán |
+| 2 | **Chạy 1 giờ thật** | `JOURNAL/st16-fuzz-parse.log`: **182.328.926 ca / 4.145.431.263 token**, 50.647 ca/s, 3.600 s, **0 vi phạm** (chạy lại 60 s trên binary sau `fmt`: 2.716.321 ca, 0 vi phạm) |
+| 3 | **`vis-dev nightly`** | `bin/vis-dev`: `nightly [--fuzz-minutes N]` = `gate --fast` (fmt/clippy/luật/build/L0 test) + **fuzz parser N phút** + **vòng tròn fmt** (fmt bất động trên 309 ca ngữ nghĩa, bỏ qua 45 ca cố ý hỏng cú pháp) ⇒ dòng cuối `vis-dev nightly: PASS`, exit 0. Mặc định N=2 phút; `--fuzz-minutes 60` cho chế độ đêm. **Không** nới/bỏ bước nào của `gate --fast` |
+| 4 | Tài liệu | mục này + JOURNAL §ST-16 |
+
+**Đo được**: `vis-dev nightly --fuzz-minutes 1` → **PASS** (L0 test OK, fuzz 2,7 triệu ca/0 vi phạm,
+vòng tròn fmt 309 tệp bất động); `gate --fast` PASS — 2026-11-13T00:44:56Z; fmt/clippy sạch.
+
+**Ghi chú**: `viscript/AGENTS.md` **thuộc Agent 0** — tôi **không** sửa; cần cập nhật dòng lệnh `nightly`
+thì Agent 0 sửa (nội dung gợi ý: `./vis-dev nightly [--fuzz-minutes N]` = gate --fast + fuzz parser + vòng tròn fmt).
+
 ## ST-15b — 4 lệch thiết kế đã sửa (2026-11-13)
 
 | # | Lệch | Sửa | Ca khoá (`test/sem`) |
@@ -63,7 +78,7 @@ trên harness cuối, rồi `stash pop`.
 **Đỏ trước** (`JOURNAL/st15b-red-sem.log`): 5/7 ca mới đỏ (4 mục); 2 ca *xanh sẵn* khai rõ (`list/push-let`,
 `record-thieu`). Test `sem` khoá **309 ca** (302 + 7).
 
-**Đo được**: **247** test workspace; `gate --fast` PASS — 2026-11-12T23:41:43Z; fmt/clippy sạch.
+**Đo được**: **247** test workspace; `gate --fast` PASS — 2026-11-13T00:44:56Z; fmt/clippy sạch.
 
 ## ST-15 — bộ ngữ nghĩa **302 ca / 16 nhóm** + cap độ sâu (2026-11-13)
 

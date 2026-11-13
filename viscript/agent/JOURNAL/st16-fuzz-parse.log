@@ -1,0 +1,15 @@
+=== ST-16 — fuzz PARSER 1 giờ ===
+bắt đầu: 2026-11-12T23:43:45Z
+lệnh: ./target/release/vis-parse-fuzz --seconds 3600 --seed 20261113
+nguồn: (a) chuỗi ngẫu nhiên từ bảng ký tự hiểm, (b) đột biến corpus mã hợp lệ, (c) soup token có cấu trúc
+bất biến: không panic; CST lossless (render == text) khi parse sạch; span hợp lệ (biên ký tự, end ≤ len);
+          chẩn đoán không rỗng khi lỗi (parser VS0 dừng ở lỗi đầu)
+
+vis-parse-fuzz: 182328926 ca, 4145431263 token, 50647 ca/s, 1151509 token/s, 3600.0 s, vi phạm 0
+vis-parse-fuzz: PASS (không vi phạm)
+
+--- kết luận ---
+1 giờ liên tục, 0 vi phạm (không panic / không mất CST lossless / không span hỏng).
+Ghi chú: binary của lần chạy 1 giờ build từ nguồn **trước `cargo fmt`** (chỉ khác khoảng trắng); sau khi
+`cargo fmt`, `./vis-dev nightly --fuzz-minutes 1` chạy lại trên binary **mới** — 2.716.321 ca /
+61.707.292 token, **0 vi phạm** (`vis-dev nightly: PASS`).

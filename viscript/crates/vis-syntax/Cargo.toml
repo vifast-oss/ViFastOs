@@ -23,3 +23,8 @@ unicode-normalization = "0.1"
 [[bin]]
 name = "vis-lex-fuzz"
 path = "src/bin/vis_lex_fuzz.rs"
+
+# ST-16: fuzz **parser** (bất biến: không panic, CST lossless, span hợp lệ). Chạy tay/nightly.
+[[bin]]
+name = "vis-parse-fuzz"
+path = "src/bin/vis_parse_fuzz.rs"

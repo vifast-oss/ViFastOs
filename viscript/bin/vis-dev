@@ -3,7 +3,7 @@
 # vis-dev — cổng của dòng ViScript (ST-01).
 #   check      : fmt + clippy + luật R1..R4 + self-test case âm + build
 #   gate --fast: check + L0 test
-#   nightly    : CHƯA CÓ (exit 2)
+#   nightly    : gate --fast + fuzz parser (--fuzz-minutes, mặc định 2) + vòng tròn fmt (idempotent)
 set -u
 VIS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$VIS_ROOT/.." && pwd)"
@@ -80,7 +80,7 @@ run_rules() {
 }
 
 usage() {
-    echo "dùng: vis-dev <check|gate --fast|nightly|doc-examples [--root DIR]|rules [--root DIR]>" >&2
+    echo "dùng: vis-dev <check|gate --fast|nightly [--fuzz-minutes N]|doc-examples [--root DIR]|rules [--root DIR]>" >&2
     exit 2
 }
 
@@ -167,15 +167,104 @@ do_gate_fast() {
     echo "vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)"
 }
 
+# Vòng tròn fmt: `vis fmt` phải **bất động** (fmt(fmt(x)) == fmt(x)) trên mọi ca ngữ nghĩa.
+do_vong_tron_fmt() {
+    local vis="$VIS_ROOT/target/debug/vis"
+    if [ ! -x "$vis" ]; then
+        echo "--- vòng tròn fmt: FAIL (chưa có $vis — chạy build trước)" >&2
+        return 1
+    fi
+    local n=0 bad=0 bo_qua=0
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/visfmt.XXXXXX.vis")" || return 1
+    while IFS= read -r -d '' f; do
+        n=$((n + 1))
+        local a b
+        # Ca **cố ý hỏng cú pháp** (có `.err`) thì `vis fmt` phải lỗi — bỏ qua, không tính là hỏng.
+        if [ -f "${f%.vis}.err" ]; then
+            bo_qua=$((bo_qua + 1))
+            continue
+        fi
+        if ! a="$("$vis" fmt "$f" 2>/dev/null)"; then
+            echo "--- fmt lỗi trên $f" >&2
+            bad=$((bad + 1))
+            continue
+        fi
+        printf '%s\n' "$a" >"$tmp"
+        if ! b="$("$vis" fmt "$tmp" 2>/dev/null)"; then
+            echo "--- fmt lỗi vòng 2 trên $f" >&2
+            bad=$((bad + 1))
+            continue
+        fi
+        if [ "$a" != "$b" ]; then
+            echo "--- vòng tròn fmt: KHÔNG bất động: $f" >&2
+            bad=$((bad + 1))
+        fi
+    done < <(find "$VIS_ROOT/test/sem" -type f -name '*.vis' -print0 2>/dev/null)
+    rm -f "$tmp"
+    if [ "$bad" -ne 0 ]; then
+        echo "--- vòng tròn fmt: FAIL ($bad/$n tệp, bỏ qua $bo_qua)" >&2
+        return 1
+    fi
+    echo "--- vòng tròn fmt: OK ($n tệp, bất động; bỏ qua $bo_qua ca lỗi cú pháp)"
+}
+
+# Fuzz **parser** (ST-16): chạy `vis-parse-fuzz` với số phút cho trước; vi phạm ⇒ FAIL.
+do_fuzz_parser() {
+    local phut="$1"
+    local bin="$VIS_ROOT/target/release/vis-parse-fuzz"
+    if [ ! -x "$bin" ]; then
+        if ! "$CARGO" build --release --manifest-path "$MANIFEST" -p vis-syntax --bin vis-parse-fuzz; then
+            echo "--- fuzz parser: FAIL (không build được)" >&2
+            return 1
+        fi
+    fi
+    local giay=$((phut * 60))
+    echo "--- fuzz parser: ${phut} phút (${giay}s)"
+    if ! "$bin" --seconds "$giay" --seed "$(date +%Y%m%d)"; then
+        echo "--- fuzz parser: FAIL" >&2
+        return 1
+    fi
+    echo "--- fuzz parser: OK"
+}
+
+do_nightly() {
+    local phut=2
+    local i=2
+    while [ "$i" -le "$#" ]; do
+        case "${!i}" in
+            --fuzz-minutes)
+                i=$((i + 1))
+                phut="${!i:-}"
+                ;;
+            *)
+                echo "vis-dev: nightly không hiểu \`${!i}\`" >&2
+                return 2
+                ;;
+        esac
+        i=$((i + 1))
+    done
+    case "$phut" in
+        '' | *[!0-9]*)
+            echo "vis-dev: --fuzz-minutes cần số nguyên (phút)" >&2
+            return 2
+            ;;
+    esac
+    do_gate_fast || return 1
+    do_fuzz_parser "$phut" || return 1
+    do_vong_tron_fmt || return 1
+    echo "vis-dev nightly: PASS"
+}
+
 case "${1:-}" in
+
     check) do_check ;;
     gate)
         [ "${2:-}" = "--fast" ] || { echo "vis-dev: chỉ 'gate --fast' ở vòng 1" >&2; exit 2; }
         do_gate_fast
         ;;
     nightly)
-        echo "vis-dev: nightly CHƯA CÓ (cần lexer/parser + mutation/Miri/soak)" >&2
-        exit 2
+        do_nightly "$@"
         ;;
     doc-examples)
         root=""
