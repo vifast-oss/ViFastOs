@@ -496,6 +496,16 @@ pub struct Machine {
     caps: Vec<Cap>,
     /// Bộ đếm cặp chuyển trạng thái TCB 11×11 (`hàng * 11 + cột`) — KT-18 DoD 4.
     pair_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
+    /// **KT-23**: bộ đếm cặp **cấm** bị **thử** (`hàng * 11 + cột`) — mỗi lần
+    /// [`Machine::transition_tcb`] từ chối một cặp `.` của bảng `ALLOWED`. Là nguồn của
+    /// `forbidden_attempts`/`forbidden_pairs_attempted` trong [`K1bReport`] (DoD 3).
+    forbidden_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
+    /// **KT-23**: số lần `Running → Sleeping{Budget}` (hết budget, D2-49(e)) — đếm ở **một cửa**
+    /// `transition_tcb`; `k1b_report().budget.budget_sleeps` (DoD 2/8).
+    budget_sleeps: u64,
+    /// **KT-23**: số lần một `SchedContext` được nạp lại (`consumed = 0` ở biên `period`) —
+    /// `k1b_report().budget.refills`.
+    budget_refills: u64,
     /// Log finalise TCB (KT-18 DoD 9), ghi trước khi body bị destroy trong objmem.
     finalise_log: Vec<FinaliseEntry>,
     /// Hàng chờ WaitOnAddress mô hình hoá (thiết kế §4.7: bucket theo `(frame, offset)`).
@@ -522,6 +532,69 @@ struct ChoDat {
     len: usize,
     region: Option<usize>,
     slots: Option<usize>,
+}
+
+/// Ảnh chụp **bộ đếm chuyển trạng thái** (KT-18) + **cặp cấm bị thử** (KT-23).
+///
+/// `transition_hit/allowed` là **46 cặp suy ra từ thiết kế** (bảng 48 trừ 2 cặp
+/// `Stopping` reserved cho K1c — [`crate::tcb::coverage_design`]); `transition_hit_table`
+/// /`transition_table_allowed` là con số **toàn bảng 48** (gồm 2 cặp reserved, chỉ đi được
+/// qua cổng `transition_tcb` trực tiếp). `forbidden_*` đếm **mọi** lần thử cặp `.` của bảng.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct K1bTransitionReport {
+    pub hit: usize,
+    pub allowed: usize,
+    pub hit_table: usize,
+    pub table_allowed: usize,
+    pub reserved: usize,
+    pub forbidden_attempts: u64,
+    pub forbidden_pairs_attempted: usize,
+    pub forbidden_pairs_total: usize,
+}
+
+/// Ảnh chụp **ready queue/trạng thái TCB** của mô hình 1 hart (KT-19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct K1bQueueReport {
+    pub live_tcbs: usize,
+    pub ready: usize,
+    pub running: usize,
+    pub blocked: usize,
+    pub sleeping: usize,
+    pub inactive: usize,
+    pub dead: usize,
+    /// Số TCB **thực sự** nằm trong ready queue (không tính `current`).
+    pub queued: usize,
+    pub current: Option<ObjId>,
+    pub idle: bool,
+}
+
+/// Ảnh chụp **ngân sách MCS** (KT-20/21): tick ảo đã chạy, số lần
+/// `Running → Sleeping{Budget}`, số lần refill, và tổng `charged` của các SC sống.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct K1bBudgetReport {
+    pub ticks: u64,
+    pub budget_sleeps: u64,
+    pub refills: u64,
+    pub live_sched_contexts: usize,
+    pub configured: usize,
+    pub charged: u64,
+    pub consumed_now: u64,
+}
+
+/// **KT-23** — tổng kết K1b trên **một** `Machine` (test/harness). Gồm 4 miền:
+/// transition (KT-18/23), queue (KT-19), budget (KT-20/21), và **số miền bất biến đang
+/// vi phạm tại thời điểm dựng report** (`*_violations = 1` nếu `check_*` tương ứng lỗi —
+/// 0 khi sạch). Test KT-23 còn cộng dồn vi phạm sau **mỗi** bước; report là ảnh chụp cuối.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct K1bReport {
+    pub transition: K1bTransitionReport,
+    pub queue: K1bQueueReport,
+    pub budget: K1bBudgetReport,
+    pub sched_violations: u64,
+    pub sc_ref_violations: u64,
+    pub budget_violations: u64,
+    pub mailbox_violations: u64,
+    pub byte_violations: u64,
 }
 
 impl Default for Machine {
@@ -569,6 +642,9 @@ impl Machine {
             objects: Vec::new(),
             caps: Vec::new(),
             pair_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
+            forbidden_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
+            budget_sleeps: 0,
+            budget_refills: 0,
             finalise_log: Vec::new(),
             address_waiters: Vec::new(),
             sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
@@ -1595,6 +1671,8 @@ impl Machine {
     pub fn transition_tcb(&mut self, tcb: ObjId, to: TcbState) -> Result<(), KError> {
         let from = self.tcb_state(tcb)?;
         if !crate::tcb::allowed(from, to) {
+            // KT-23: đếm **cặp cấm bị thử** (DoD 3) — không đổi trạng thái, không đếm hit.
+            self.forbidden_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
             return Err(KError::IllegalOperation);
         }
         // KT-21: rời `BlockedOnReply` bằng đường **khác** `Reply` (wake/suspend/exit/finalise
@@ -1626,6 +1704,18 @@ impl Machine {
             _ => Err(KError::WrongObjectType),
         })?;
         self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
+        // KT-23: đếm hoạt động ngân sách ở **một cửa** (DoD 2/8): `Running` hết budget ⇒
+        // `Sleeping{Budget}` (bảng §4.5 `:302-311`; refill đếm ở `process_refills`).
+        if matches!(from, TcbState::Running { .. })
+            && matches!(
+                to,
+                TcbState::Sleeping {
+                    reason: SleepReason::Budget
+                }
+            )
+        {
+            self.budget_sleeps += 1;
+        }
         // KT-19: state đổi ⇒ ready queue/`current` đổi theo (một cửa duy nhất).
         self.sched_sync(tcb)?;
         Ok(())
@@ -1639,6 +1729,17 @@ impl Machine {
     /// `(số cặp ALLOWED đã có ít nhất một hit, tổng số cặp ALLOWED)` — KT-18 DoD 4.
     pub fn transition_coverage(&self) -> (usize, usize) {
         crate::tcb::coverage(&self.pair_hits)
+    }
+
+    /// **KT-23** — số lần cặp **cấm** `(from, to)` bị thử (mọi lần trả `IllegalOperation`, state
+    /// không đổi). Dùng cho DoD 3: **mọi** cặp cấm phải được thử ít nhất một lần.
+    pub fn forbidden_attempt_count(&self, from: usize, to: usize) -> u32 {
+        self.forbidden_hits[from * TCB_STATE_COUNT + to]
+    }
+
+    /// **KT-23** — `(số cặp thiết kế đã có hit, 46)`; bỏ 2 cặp `Stopping` reserved (K1c).
+    pub fn design_coverage(&self) -> (usize, usize) {
+        crate::tcb::coverage_design(&self.pair_hits)
     }
 
     /// Log finalise TCB (theo thứ tự finalise) — KT-18 DoD 9.
@@ -2306,13 +2407,9 @@ impl Machine {
                 .tcb_info_obj(obj)
                 .map_err(|e| format!("TCB sống {obj} không đọc được: {e:?}"))?;
             let hang = hang_cua.get(obj as usize).copied().flatten();
-            // KT-20: "TCB chỉ chạy khi SC còn budget" — `Running` với SC đã cạn là vi phạm
-            // (mọi đường rời `Running` hết budget đều đi qua `Sleeping{Budget}`).
-            if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(obj) {
-                return Err(format!(
-                    "TCB {obj} Running nhưng SchedContext đã cạn budget (consumed == budget)"
-                ));
-            }
+            // KT-23: phần "Running còn budget" **tách sang** `check_budget` (DoD 2 — kiểm riêng
+            // từng miền bất biến); `check_sched` vẫn gọi `check_budget` ở cuối nên sau mỗi op
+            // bất biến vẫn được kiểm đủ.
             match info.state {
                 TcbState::Ready => {
                     if info.suspended {
@@ -2346,10 +2443,26 @@ impl Machine {
                 }
             }
         }
-        // KT-21: bất biến **donation** (DoD 7) — liên kết hai chiều khớp, mỗi SC ↔ đúng một
-        // donee, donee không có SC riêng và không phải donor (không chuỗi >1), donor đang
-        // `BlockedOnReply`, donor ≠ donee, donor/donee **không** cùng `Running`, priority hiệu
-        // lực không vượt MCP của một trong hai bên.
+        // KT-23: hai miền bất biến còn lại tách thành hàm riêng (`check_sc_refs`: tham chiếu
+        // `SchedContext`/donation; `check_budget`: ngân sách) để DoD 2 kiểm **từng miền**;
+        // `check_sched` vẫn gọi cả hai nên sau **mỗi** public op bất biến vẫn được kiểm đủ
+        // (không nới lỏng so với KT-20/KT-21).
+        self.check_sc_refs()?;
+        self.check_budget()?;
+        Ok(())
+    }
+
+    /// **KT-23** — miền bất biến **tham chiếu `SchedContext` + donation** (tách nguyên văn từ
+    /// `check_sched` của KT-21, không đổi ngữ nghĩa):
+    ///
+    /// 1. donation **hai chiều** khớp (`SchedContext.donated_to/donor` ↔ `Tcb.donated_sc`), mỗi
+    ///    SC ↔ đúng một donee, donee **không** có SC riêng và **không** phải donor (không chuỗi
+    ///    donation nhiều tầng), donor đang `BlockedOnReply`, donor ≠ donee, donee còn sống,
+    ///    donor/donee **không** cùng `Running`, priority hiệu lực không vượt MCP của một bên;
+    /// 2. mọi `Tcb.sched_context`/`Tcb.donated_sc` trỏ tới **object còn sống đúng kiểu**
+    ///    `SchedContext` (bắt SC đã bị Revoke/finalise mà TCB còn giữ tham chiếu);
+    /// 3. `SchedContext.bound` (nếu có) trỏ tới **cap còn sống** thuộc Reply/Notification.
+    pub fn check_sc_refs(&self) -> Result<(), String> {
         let scs = self.live_sched_contexts();
         let mut donee_cua: Vec<Option<ObjId>> = vec![None; self.objects.len() + 1];
         for sc in &scs {
@@ -2464,7 +2577,225 @@ impl Machine {
                 .check(self.now)
                 .map_err(|e| format!("SchedContext {sc}: {e}"))?;
         }
+
+        // KT-23 mục 2: tham chiếu SC của TCB phải trỏ tới object **sống** đúng kiểu
+        // `SchedContext` (không chỉ kiểm donation — bắt cả SC bị Revoke mà TCB còn giữ).
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let info = self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB {obj} không đọc được: {e:?}"))?;
+            if let Some(sc) = info.sched_context {
+                self.check_sc_alive(obj, sc, "sched_context")?;
+            }
+            if let Some(sc) = info.donated_sc {
+                self.check_sc_alive(obj, sc, "donated_sc")?;
+            }
+        }
+        // KT-23 mục 3: `SchedContext.bound` (Reply/Notification) còn sống, đúng kiểu.
+        for sc in self.live_sched_contexts() {
+            let bound = self
+                .body(sc, |k| match k {
+                    Kind::SchedContext(s) => Ok(s.bound),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("SchedContext {sc} không đọc được: {e:?}"))?;
+            let Some(cap) = bound else { continue };
+            let c = self
+                .cap(cap)
+                .map_err(|e| format!("SchedContext {sc}: bound cap {cap} không đọc được: {e:?}"))?;
+            if !c.alive {
+                return Err(format!("SchedContext {sc}: bound cap {cap} đã chết"));
+            }
+            if !matches!(c.ty, ObjType::Reply | ObjType::Notification) {
+                return Err(format!(
+                    "SchedContext {sc}: bound cap {cap} kiểu {:?}, phải Reply/Notification",
+                    c.ty
+                ));
+            }
+        }
         Ok(())
+    }
+
+    /// Kiểm một tham chiếu `SchedContext` của TCB trỏ tới object sống đúng kiểu.
+    fn check_sc_alive(&self, tcb: ObjId, sc: ObjId, truong: &str) -> Result<(), String> {
+        let meta = self
+            .objects
+            .get(sc as usize - 1)
+            .ok_or_else(|| format!("TCB {tcb}: {truong} trỏ tới {sc} ngoài bảng object"))?;
+        if !meta.alive {
+            return Err(format!("TCB {tcb}: {truong} trỏ tới {sc} đã chết"));
+        }
+        if meta.ty != ObjType::SchedContext {
+            return Err(format!(
+                "TCB {tcb}: {truong} trỏ tới {sc} kiểu {:?}, phải SchedContext",
+                meta.ty
+            ));
+        }
+        Ok(())
+    }
+
+    /// **KT-23** — miền bất biến **ngân sách** (KT-20, giữ nguyên ngữ nghĩa):
+    ///
+    /// 1. `Running` ⇒ SC cấp ngân sách **đã `Configure` và còn budget** (bất biến "TCB chỉ chạy
+    ///    khi SC còn budget" — mọi đường rời `Running` hết budget đi qua `Sleeping{Budget}`);
+    /// 2. mọi `SchedContext` sống: `consumed ≤ budget`, `budget`/`period` dương khi đã cấu hình,
+    ///    `refill` ở tương lai ([`ScBudget::check`]).
+    pub fn check_budget(&self) -> Result<(), String> {
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let info = self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB {obj} không đọc được: {e:?}"))?;
+            if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(obj) {
+                return Err(format!(
+                    "TCB {obj} Running nhưng SchedContext đã cạn budget (consumed == budget)"
+                ));
+            }
+        }
+        // KT-20: bất biến ngân sách của **mọi** `SchedContext` sống — `consumed ≤ budget`,
+        // `budget`/`period` dương khi đã cấu hình, `refill` ở tương lai.
+        for sc in self.live_sched_contexts() {
+            let budget = self
+                .body(sc, |k| match k {
+                    Kind::SchedContext(s) => Ok(s.budget),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("SchedContext {sc} không đọc được: {e:?}"))?;
+            budget
+                .check(self.now)
+                .map_err(|e| format!("SchedContext {sc}: {e}"))?;
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- tổng kết K1b cho test/harness (KT-23) `[TK]`
+    //
+    // **Model-only, không phải ABI**: `k1b_report` là ảnh chụp bộ đếm của mô hình để KT-23
+    // in `transitions hit/allowed`, `forbidden_attempts`, `budget_violations` (K1B-PLAN §5
+    // KT-23 DoD 2/3) — **không** thêm method ABI nào, không đổi ngữ nghĩa.
+
+    /// Bất biến K1b tại **một** thời điểm, gộp cả 5 miền — trả lỗi **đầu tiên** kèm tên miền
+    /// (test KT-23 gọi sau **mỗi** bước; `sched_after_op` vẫn kiểm sau mỗi public op).
+    pub fn k1b_audit(&self) -> Result<(), String> {
+        if let Err(e) = self.check_sched() {
+            return Err(format!("sched: {e}"));
+        }
+        if let Err(e) = self.check_sc_refs() {
+            return Err(format!("sc_refs: {e}"));
+        }
+        if let Err(e) = self.check_budget() {
+            return Err(format!("budget: {e}"));
+        }
+        if let Err(e) = self.check_mailboxes() {
+            return Err(format!("mailbox: {e}"));
+        }
+        self.check_all_bytes().map_err(|e| format!("bytes: {e}"))?;
+        Ok(())
+    }
+
+    /// Dựng [`K1bReport`] từ bộ đếm của mô hình (KT-23 DoD 2/3). Chạy các `check_*` để điền
+    /// `*_violations` (0 = sạch tại thời điểm gọi).
+    pub fn k1b_report(&self) -> K1bReport {
+        let (hit, allowed) = crate::tcb::coverage_design(&self.pair_hits);
+        let (hit_table, table_allowed) = crate::tcb::coverage(&self.pair_hits);
+        let mut forbidden_attempts = 0u64;
+        let mut forbidden_pairs_attempted = 0usize;
+        for from in 0..TCB_STATE_COUNT {
+            for to in 0..TCB_STATE_COUNT {
+                if crate::tcb::ALLOWED[from][to] {
+                    continue;
+                }
+                let n = self.forbidden_hits[from * TCB_STATE_COUNT + to] as u64;
+                if n > 0 {
+                    forbidden_attempts += n;
+                    forbidden_pairs_attempted += 1;
+                }
+            }
+        }
+        let mut q = K1bQueueReport {
+            live_tcbs: 0,
+            ready: 0,
+            running: 0,
+            blocked: 0,
+            sleeping: 0,
+            inactive: 0,
+            dead: 0,
+            queued: 0,
+            current: self.sched[0].current(),
+            idle: self.sched[0].idle(),
+        };
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let Ok(info) = self.tcb_info_obj(obj) else {
+                continue;
+            };
+            q.live_tcbs += 1;
+            match info.state {
+                TcbState::Ready => q.ready += 1,
+                TcbState::Running { .. } => q.running += 1,
+                TcbState::Sleeping { .. } => q.sleeping += 1,
+                TcbState::Inactive => q.inactive += 1,
+                TcbState::Dead => q.dead += 1,
+                other => {
+                    if other.is_blocked() {
+                        q.blocked += 1;
+                    }
+                }
+            }
+        }
+        q.queued = self.sched[0].len();
+        let mut b = K1bBudgetReport {
+            ticks: self.now,
+            budget_sleeps: self.budget_sleeps,
+            refills: self.budget_refills,
+            live_sched_contexts: 0,
+            configured: 0,
+            charged: 0,
+            consumed_now: 0,
+        };
+        for sc in self.live_sched_contexts() {
+            let Ok(budget) = self.body(sc, |k| match k {
+                Kind::SchedContext(s) => Ok(s.budget),
+                _ => Err(KError::WrongObjectType),
+            }) else {
+                continue;
+            };
+            b.live_sched_contexts += 1;
+            if budget.is_configured() {
+                b.configured += 1;
+            }
+            b.charged = b.charged.saturating_add(budget.charged());
+            b.consumed_now = b.consumed_now.saturating_add(budget.consumed());
+        }
+        K1bReport {
+            transition: K1bTransitionReport {
+                hit,
+                allowed,
+                hit_table,
+                table_allowed,
+                reserved: crate::tcb::reserved_count(),
+                forbidden_attempts,
+                forbidden_pairs_attempted,
+                forbidden_pairs_total: crate::tcb::forbidden_count(),
+            },
+            queue: q,
+            budget: b,
+            sched_violations: u64::from(self.check_sched().is_err()),
+            sc_ref_violations: u64::from(self.check_sc_refs().is_err()),
+            budget_violations: u64::from(self.check_budget().is_err()),
+            mailbox_violations: u64::from(self.check_mailboxes().is_err()),
+            byte_violations: u64::from(self.check_all_bytes().is_err()),
+        }
     }
 
     // ------------------------------------------- ngân sách MCS (KT-20) `[TK]`
@@ -2581,6 +2912,8 @@ impl Machine {
                 _ => Err(KError::WrongObjectType),
             })?;
             if did {
+                // KT-23: đếm lần nạp lại (một SC một lần/chu kỳ) cho `k1b_report`.
+                self.budget_refills += 1;
                 refilled.push(sc);
             }
         }
@@ -3293,17 +3626,31 @@ impl Machine {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Endpoint)?),
             None => None,
         };
-        // KT-22: hộp thư của `fault_ep` **cố định** — đầy ⇒ `Busy` **trước** mọi thay đổi
-        // (không ghi `exit_code`, không đổi trạng thái, không trả donation): message fault là
-        // message quan trọng, không được "mất nửa chừng". Người gọi thử lại sau khi hộp thư
-        // được xử lý (procsrv `Recv`) — cùng ngữ nghĩa backpressure §4.17.
-        if let Some(ep_obj) = fault_ep_obj {
-            let con_cho = self.body(ep_obj, |k| match k {
-                Kind::Endpoint(e) => Ok(!e.send.is_full()),
+        // KT-23 (bug fuzz tìm ra, xem `kt23_k1b` + JOURNAL): nếu `fault_ep` đang có **người nhận
+        // chờ** (`Recv` waiter) thì giao fault **trực tiếp** như đường nhanh của `call` — message
+        // **không** vào hàng đợi, nên bất biến "có message ⇒ không `Recv` waiter" (KT-22) giữ
+        // nguyên. Procsrv đã chờ sẵn ⇒ coi như `Recv` xong tại thời điểm giao: TCB thoát đi
+        // `Inactive` ngay (D2-25 nói `Inactive` sau khi procsrv `Recv`) và **không** bị
+        // `BlockedOnSend` trên một message không còn trong hàng.
+        // Không có waiter ⇒ giữ nguyên D2-25: hàng gửi cố định, đầy ⇒ `Busy` **trước** mọi thay
+        // đổi (không ghi `exit_code`, không đổi trạng thái, không trả donation) — message fault
+        // không được "mất nửa chừng"; người gọi thử lại sau khi procsrv `Recv` (§4.17).
+        let nguoi_nhan = match fault_ep_obj {
+            Some(ep_obj) => self.body(ep_obj, |k| match k {
+                Kind::Endpoint(e) => Ok(e.recv.is_some()),
                 _ => Err(KError::WrongObjectType),
-            })?;
-            if !con_cho {
-                return Err(KError::Busy);
+            })?,
+            None => false,
+        };
+        if let Some(ep_obj) = fault_ep_obj {
+            if !nguoi_nhan {
+                let con_cho = self.body(ep_obj, |k| match k {
+                    Kind::Endpoint(e) => Ok(!e.send.is_full()),
+                    _ => Err(KError::WrongObjectType),
+                })?;
+                if !con_cho {
+                    return Err(KError::Busy);
+                }
             }
         }
         // KT-21 DoD 5: `Exit` khi đang donate ⇒ trả SC (server chết) / thu hồi SC (client chết)
@@ -3317,6 +3664,26 @@ impl Machine {
             _ => Err(KError::WrongObjectType),
         })?;
         match fault_ep_obj {
+            // Có `Recv` waiter: giao **thẳng** (không vào hàng) — xem chú thích phía trên.
+            Some(ep_obj) if nguoi_nhan => {
+                self.unlink_tcb_queues(tcb);
+                let waiter = self.body_mut(ep_obj, |k| match k {
+                    Kind::Endpoint(e) => Ok(e.recv.take()),
+                    _ => Err(KError::WrongObjectType),
+                })?;
+                if let Some((w, _)) = waiter {
+                    // Waiter khác TCB đang thoát (procsrv) ⇒ đánh thức; nếu chính nó là waiter
+                    // (procsrv tự Exit khi đang chờ `Recv` cùng endpoint) thì đi thẳng `Inactive`.
+                    if w != tcb {
+                        self.transition_tcb(w, TcbState::Ready)?;
+                    }
+                }
+                // KT-23: `Exit` từ `Inactive` giữ `Inactive` (cặp danh tính `(Inactive, Inactive)`
+                // bị cấm — cùng quy ước với nhánh không `fault_ep`, D2-25/KT-18).
+                if state != TcbState::Inactive {
+                    self.transition_tcb(tcb, TcbState::Inactive)?;
+                }
+            }
             Some(ep_obj) => {
                 self.unlink_tcb_queues(tcb);
                 self.body_mut(ep_obj, |k| match k {

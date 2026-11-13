@@ -70,9 +70,10 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
   ./v2/bin/v2 gate --fast      như check + L0 (cargo test --workspace). BẮT BUỘC cuối mỗi task
   ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
   ./v2/bin/v2 nightly --only-miri
-                               CHỈ Miri trên tập chọn (KT-17, D2-47(a)): vifast-objmem (toàn bộ) +
-                               sim (--lib, kt16_objmem, kt09_untyped, kt09_revoke, kt10_cnode,
-                               kt17_align). KHÔNG L1 100k/mutation/soak
+                               CHỈ Miri trên tập chọn (KT-17, D2-47(a) + KT-23): vifast-objmem
+                               (toàn bộ) + sim (--lib, kt16_objmem, kt09_untyped, kt09_revoke,
+                               kt10_cnode, kt17_align, kt18_tcb, kt19_sched, kt20_budget,
+                               kt21_donation, kt22_mailbox). KHÔNG L1 100k/mutation/soak
   ./v2/bin/v2 nightly          CHƯA CÓ cho nightly đầy đủ (L1 100k/mutation/soak) — chỉ có `--only-miri`
   ./v2/bin/v2 miri [test|run|setup|clean] [tuỳ chọn]
                                Miri qua `cargo +nightly miri` trên v2/Cargo.toml; mặc định `test`
@@ -397,6 +398,10 @@ run_miri_test() {
 # Tập chọn: toàn bộ `vifast-objmem` (lib + alias + fuzz 200 chuỗi + contract) và các test
 # sim đi qua object store: `--lib`, kt16_objmem, kt09_untyped, kt09_revoke (plan §4 KT-17),
 # kt10_cnode, kt17_align. Không chạy `l1` (tránh L1 1.000 seed dưới Miri).
+# **KT-23** (K1B-PLAN §5 KT-23 DoD 4): thêm các test K1b đi qua TCB/scheduler/budget/donation/
+# hộp thư — kt18_tcb, kt19_sched, kt20_budget, kt21_donation, kt22_mailbox (mỗi tệp tự giảm
+# seed/bước bằng `cfg(miri)`); **không** thêm `kt23_k1b` (1.000 seed × 64 bước — keo dài, và
+# không có I/O cần Miri kiểm; bất biến của nó chạy trong L0). KHÔNG thêm test I/O.
 do_nightly_only_miri() {
     local t0 t1
     require_miri_toolchain "v2 nightly --only-miri"
@@ -409,6 +414,11 @@ do_nightly_only_miri() {
     run_miri_test "vifast-sim kt09_revoke" -p vifast-sim --test kt09_revoke || return 1
     run_miri_test "vifast-sim kt10_cnode" -p vifast-sim --test kt10_cnode || return 1
     run_miri_test "vifast-sim kt17_align" -p vifast-sim --test kt17_align || return 1
+    run_miri_test "vifast-sim kt18_tcb" -p vifast-sim --test kt18_tcb || return 1
+    run_miri_test "vifast-sim kt19_sched" -p vifast-sim --test kt19_sched || return 1
+    run_miri_test "vifast-sim kt20_budget" -p vifast-sim --test kt20_budget || return 1
+    run_miri_test "vifast-sim kt21_donation" -p vifast-sim --test kt21_donation || return 1
+    run_miri_test "vifast-sim kt22_mailbox" -p vifast-sim --test kt22_mailbox || return 1
     t1="$(date +%s)"
     echo "v2 nightly --only-miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
 }

@@ -1,0 +1,19 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.87s
+     Running tests/kt23_probe_tmp.rs (v2/target/debug/deps/kt23_probe_tmp-9f92577fcf18c96f)
+
+running 1 test
+
+thread 'interleaver_cu_be_tac_tren_tcb_ready' (38433564) panicked at sim/vifast-sim/tests/kt23_probe_tmp.rs:35:48:
+TCB Ready phải chạy được dưới scheduler: Deadlock { remaining: 1 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test interleaver_cu_be_tac_tren_tcb_ready ... FAILED
+
+failures:
+
+failures:
+    interleaver_cu_be_tac_tren_tcb_ready
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt23_probe_tmp`

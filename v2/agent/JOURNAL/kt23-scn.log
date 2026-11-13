@@ -1,0 +1,9 @@
+scn-check: PASS (21 tệp, 0 blocked, 11 nhóm)
+TAP version 13
+1..5
+ok 1 - fixture bad-method bị bắt đúng thông điệp
+ok 2 - fixture bad-error bị bắt đúng thông điệp
+ok 3 - fixture dup-name bị bắt đúng thông điệp
+ok 4 - fixture bad-arity bị bắt đúng thông điệp
+ok 5 - fixture bad-state-value bị bắt đúng thông điệp
+# scn fixtures: PASS

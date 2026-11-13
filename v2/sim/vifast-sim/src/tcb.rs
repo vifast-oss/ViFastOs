@@ -338,6 +338,74 @@ pub fn allowed_count() -> usize {
     ALLOWED.iter().flatten().filter(|ok| **ok).count()
 }
 
+/// Cặp **`Stopping` reserved cho KT-19/K1c**: `Ready → Stopping`, `Running → Stopping`
+/// (bảng vẫn ALLOWED để hàng/cột đủ khi K1c có nguồn nhập `Stopping`, nhưng **K1b 1 hart**
+/// chưa có thao tác nào đi qua hai cặp này). 46 cặp **suy ra từ thiết kế** = 48 − 2.
+pub fn is_reserved(from: TcbState, to: TcbState) -> bool {
+    matches!(from, TcbState::Ready | TcbState::Running { .. }) && matches!(to, TcbState::Stopping)
+}
+
+/// Số cặp reserved (phải là **2** — KT-23 kiểm trong unit test).
+pub fn reserved_count() -> usize {
+    ALLOWED
+        .iter()
+        .enumerate()
+        .flat_map(|(from, row)| row.iter().enumerate().map(move |(to, ok)| (*ok, from, to)))
+        .filter(|(ok, from, to)| *ok && is_reserved(state_at(*from), state_at(*to)))
+        .count()
+}
+
+/// Số cặp **cấm** của bảng (`121 − 48 = 73`) — mọi cặp này phải bị thử ít nhất một lần ở
+/// KT-23 DoD 3 và trả `IllegalOperation`.
+pub fn forbidden_count() -> usize {
+    ALLOWED.iter().flatten().filter(|ok| !**ok).count()
+}
+
+/// `(số cặp ALLOWED **suy ra từ thiết kế** đã có hit, 46)` — **không** tính 2 cặp `Stopping`
+/// reserved; là "hit/allowed" mà KT-23 dùng cho DoD 3 (`46/46`, 100%).
+pub fn coverage_design(pair_hits: &[u32; TCB_STATE_COUNT * TCB_STATE_COUNT]) -> (usize, usize) {
+    let mut hit = 0;
+    let mut total = 0;
+    for from in 0..TCB_STATE_COUNT {
+        for to in 0..TCB_STATE_COUNT {
+            if !ALLOWED[from][to] || is_reserved(state_at(from), state_at(to)) {
+                continue;
+            }
+            total += 1;
+            if pair_hits[from * TCB_STATE_COUNT + to] > 0 {
+                hit += 1;
+            }
+        }
+    }
+    (hit, total)
+}
+
+/// `TcbState` chỉ để tra bảng theo chỉ số (trường payload không mang nghĩa khi tra).
+fn state_at(index: usize) -> TcbState {
+    match index {
+        0 => TcbState::Inactive,
+        1 => TcbState::Ready,
+        2 => TcbState::Running { hart: 0 },
+        3 => TcbState::BlockedOnSend {
+            ep: 0,
+            call: true,
+            fault: None,
+        },
+        4 => TcbState::BlockedOnRecv { ep: 0, reply: None },
+        5 => TcbState::BlockedOnReply { reply: 0 },
+        6 => TcbState::BlockedOnNotification { ntfn: 0 },
+        7 => TcbState::BlockedOnAddress {
+            frame: 0,
+            offset: 0,
+        },
+        8 => TcbState::Sleeping {
+            reason: SleepReason::Budget,
+        },
+        9 => TcbState::Stopping,
+        _ => TcbState::Dead,
+    }
+}
+
 /// `(số cặp ALLOWED đã có hit, tổng số cặp ALLOWED)` từ bộ đếm `pair_hits` 121 ô.
 pub fn coverage(pair_hits: &[u32; TCB_STATE_COUNT * TCB_STATE_COUNT]) -> (usize, usize) {
     let mut hit = 0;
@@ -374,6 +442,31 @@ mod tests {
             ALLOWED[3][3],
             "Exit khi đang chờ gửi dùng cặp danh tính (3,3)"
         );
+    }
+
+    /// **KT-23** — 46 cặp thiết kế + 2 reserved + 73 cặp cấm; `coverage_design` bỏ **đúng**
+    /// 2 cặp `Stopping` reserved nên không bao giờ báo 48/46 hay 48/48 lẫn nhau.
+    #[test]
+    fn kt23_coverage_design_46_va_73_cap_cam() {
+        assert_eq!(allowed_count(), 48);
+        assert_eq!(reserved_count(), 2);
+        assert_eq!(forbidden_count(), 73);
+        let mut hits = [0u32; TCB_STATE_COUNT * TCB_STATE_COUNT];
+        assert_eq!(coverage(&hits), (0, 48));
+        assert_eq!(coverage_design(&hits), (0, 46));
+        // Cặp **reserved** có hit: coverage bảng tăng, coverage thiết kế **không** đổi.
+        hits[TcbState::Ready.index() * TCB_STATE_COUNT + TcbState::Stopping.index()] = 1;
+        assert_eq!(coverage(&hits), (1, 48));
+        assert_eq!(coverage_design(&hits), (0, 46));
+        // Cặp **thiết kế** có hit: cả hai cùng tăng.
+        hits[TcbState::Ready.index() * TCB_STATE_COUNT + TcbState::Running { hart: 0 }.index()] = 1;
+        assert_eq!(coverage(&hits), (2, 48));
+        assert_eq!(coverage_design(&hits), (1, 46));
+        assert!(is_reserved(
+            TcbState::Running { hart: 0 },
+            TcbState::Stopping
+        ));
+        assert!(!is_reserved(TcbState::Stopping, TcbState::Dead));
     }
 
     /// Bảng phủ đủ 11 tên: mỗi trạng thái có chỉ số duy nhất khớp `TCB_STATES`.

@@ -105,9 +105,13 @@ Cặp **không** có nguồn thiết kế (ví dụ `Ready → Inactive` khi kh�
    `Call/Send/Recv/ReplyRecv` (§4.4 `:283`). `Tcb.Configure` cũng xoá `exit_code` (D2-25).
 5. **`Suspend(Defer)`**: §4.4 `:282` chỉ hợp lệ với thao tác dài có `Restart`; K1b **chưa có**
    thao tác dài ⇒ **mọi** `Defer` trả `InvalidArgument`, trạng thái không đổi.
-   ⚠️ `.scn` `12-suspend-abort-while-reply-wait.scn:13` đang ghi `mode=Defer => ok`; kịch bản này
-   mới chỉ được kiểm **tĩnh** (KT-04c) — khi KT-23 chạy `.scn` trên mô hình sẽ phải chốt lại
-   (nhiều khả năng sửa fixture, vì thiết kế nói `Defer` **không** dùng cho IPC).
+   ✅ **KT-23 đã chốt** (D2-52): `.scn` `12-suspend-abort-while-reply-wait.scn:13` sửa đúng
+   **một** dòng `mode=Defer => InvalidArgument` — khớp bảng/cửa `tcb_suspend`, không đổi ABI;
+   `scn-check` vẫn PASS **21 tệp/11 nhóm**. Đây là ngoại lệ **duy nhất** được phép sửa `.scn`
+   của K1b (K1B-PLAN §5 KT-23 DoD 8 + D2-52).
+   **Bằng chứng phủ bảng (KT-23)**: `kt23_k1b` đi **121/121** ô qua chính cổng
+   `transition_tcb` — **46/46** cặp thiết kế có hit (100%), **73/73** cặp cấm bị thử và trả
+   `IllegalOperation`, 2 cặp `Stopping` reserved đi được nhưng đếm riêng (`hit_table = 48`).
 6. **`Suspend(Abort)` trên `Inactive`/`Stopping`/`Dead`** ⇒ `IllegalOperation` (không có gì để dừng).
 7. **`Send(reply)` khi `Reply.caller = None`** (client đã bị `Abort` tách ra) ⇒ **thành công nhưng
    reply bị bỏ** (§4.4 `:281`), không đánh thức ai, không lỗi.

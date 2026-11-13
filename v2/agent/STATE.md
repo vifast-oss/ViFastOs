@@ -6,12 +6,124 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-22 (xong mã — **hộp thư FIFO cố định + backpressure**, 1 hart); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b)
-Bước          : 7/8 (đỏ → mã → 13 test → invariant 1.000 seed → gate → Miri → **review APPROVE + 3 điểm sửa xong**; chờ commit/push; chưa đề xuất DONE)
+Task          : KT-23 (xong mã — **tích hợp K1b: scenario + coverage 46/46 + 73/73 cặp cấm + Miri + parity + chốt DoD**); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
+Bước          : 7/8 (đỏ → mã → 9 test + bug fuzz sửa → invariant 1.000 seed → gate → Miri → **chờ review độc lập**; chưa commit/push, chưa đề xuất DONE)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**311 test/46 suite**, 0 failed; KT-21 là 298/45 ⇒ **+13 test** = 10 integration `kt22_mailbox` + 3 unit `mailbox`; **L1 1.000 seed/999 trace** 631 ms; gen-check ON, `scn: OK`, R1..R5 OK) — không retry
-Việc dở       : commit `[KT-22]` + push origin/main (hash: `git log -1`); Miri PASS 10/10 (123 s); **KT-23 chờ**; không lật QUEUE (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**321 test/47 suite**, 0 failed; KT-22 là 311/46 ⇒ **+10 test** = 9 integration `kt23_k1b` + 1 unit `tcb`; **L1 1.000 seed/999 trace** 687 ms; gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK). Lần chạy **trước** FAIL clippy (`doc_lazy_continuation` + `unused_variables`) → **sửa code** (không retry cùng trạng thái) rồi PASS
+Việc dở       : commit `[KT-23]` + push origin/main sau verdict reviewer; Miri PASS **12/12 (2.608 giây, ~43 phút)**; parity 10.000 seed/0 lệch; **chưa lật QUEUE** (Agent 0)
 ```
+
+## KT-23 — Tích hợp scenario, coverage 100%, Miri, parity, chốt DoD K1b (K1b, D2-49..D2-52)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-23) · HEAD `67aa8bc` · KT-18..KT-22 DONE ·
+baseline `gate --fast` PASS **311 test/46 suite** ([`JOURNAL/kt23-baseline-gate-fast.log`](JOURNAL/kt23-baseline-gate-fast.log)).
+**Phạm vi**: nối các mảnh K1b vào bộ chạy kịch bản + chứng minh 4 tiêu chí K1b bằng log; **không**
+IPC 4 cap/badge/`ReplyRecv`/Notification đầy đủ (K1c), không SMP/push migration (**D2-49(a)** —
+hoãn K1c), không sửa `spec/`/`vifast-model`; `.scn` chỉ sửa **một dòng** theo **D2-52**; không
+`unsafe`/dependency/`#[allow]`/`#[ignore]`; Miri **không** vào `gate --fast`. Working tree có thay
+đổi `viscript/` của tab khác — **không chạm**, chỉ stage `v2/`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt23-red-compile.log`](JOURNAL/kt23-red-compile.log) — `tests/kt23_k1b.rs` **không
+  biên dịch**: **30 lỗi** = 27×`E0599` (method mới `k1b_report`/`k1b_audit`/`check_budget`/
+  `check_sc_refs`/`forbidden_attempt_count`/`design_coverage`, bước kịch bản mới) + 2×`E0425`
+  (`tcb::reserved_count`/`tcb::forbidden_count`) + 1×`E0432` (`tcb::coverage_design`).
+- [`JOURNAL/kt23-red-interleave.log`](JOURNAL/kt23-red-interleave.log) — probe **tạm (đã xoá)**
+  dùng API **đang có**: interleaver KT-09 lọc "actor **không** runnable" ⇒ TCB `Ready` sẵn sàng
+  chạy vẫn bị `Deadlock { remaining: 1 }` — đúng lý do DoD 1 phải sửa `run_interleaved`.
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/scenario.rs`: **6 bước mới** — `TcbSuspend`, `TcbResume`,
+  `TcbReadState` (tên DoD; đổi từ `ReadState`), `TcbSetSchedParams` (model API D2-49(b), cần để
+  dựng cảnh ngân sách), `SchedTick`, `SchedPick` (= `dispatch`: pick + chuyển ngữ cảnh — `pick`
+  thuần chỉ đọc nên không tạo event). `Step::dispatchable`: bước syscall (`Call/Recv/Reply/Exit`)
+  chỉ chạy khi actor `Running`, hoặc `Ready` **trong ready queue** + `tcb_has_budget`, hoặc
+  `Inactive` + budget (kích hoạt ngầm KT-18) — D2-50: không SC/SC chưa `Configure` **không** chạy;
+  bước quản trị (suspend/resume/read/set-params/tick/pick/retype/...) luôn chọn được.
+  `run_interleaved` chỉ chọn thread có bước kế `dispatchable` ⇒ tôn trọng `Running`/ready
+  queue/SC budget; cùng seed ⇒ cùng trace. `kt09_e2e` chỉ đổi tên `Step::ReadState` →
+  `Step::TcbReadState` (3 dòng, cùng ngữ nghĩa).
+- `v2/sim/vifast-sim/src/kobj.rs`:
+  - **Tách bất biến** (giữ nguyên tổng năng lực kiểm): `check_sched` (queue/current/Ready⇔hàng)
+    + **`check_sc_refs`** (donation hai chiều, donee không SC riêng/không chuỗi, donor
+    `BlockedOnReply`, `effective_priority` ≤ MCP; **mới**: mọi `Tcb.sched_context`/`donated_sc`
+    trỏ object **sống đúng kiểu** `SchedContext`, `SchedContext.bound` cap còn sống Reply/Notification)
+    + **`check_budget`** (Running ⇒ có budget; mọi SC sống `ScBudget::check`). `check_sched` gọi cả
+    hai ⇒ sau **mỗi** public op vẫn kiểm đủ (không nới).
+  - **Đếm cặp cấm**: `forbidden_hits[121]` + `forbidden_attempt_count` ở **một cửa**
+    `transition_tcb`; `budget_sleeps` (Running→Sleeping{Budget}) + `budget_refills` (biên refill).
+  - **`K1bReport` + `k1b_report()` + `k1b_audit()`** (model-only, không ABI): transition
+    `hit/allowed` = **46** cặp thiết kế (`coverage_design`, trừ 2 cặp `Stopping` reserved),
+    `hit_table/table_allowed` = 48, `reserved` = 2, forbidden `73/73`, queue counters,
+    budget ticks/sleeps/refills/charged, và 5 miền `*_violations` (ảnh chụp lúc dựng report).
+- `v2/sim/vifast-sim/src/tcb.rs`: `is_reserved`/`reserved_count` (**2**)/`forbidden_count`
+  (**73**)/`coverage_design` (**46**) + 1 unit test (reserved không lẫn vào 46/46).
+- **Bug do fuzz KT-23 tìm ra + đã sửa** (regression `exit_fault_giao_thang_cho_recv_waiter`):
+  `Exit` mang fault vào `fault_ep` khi endpoint **đang có `Recv` waiter** trước đây vẫn đẩy
+  message vào hàng ⇒ vỡ bất biến KT-22 "có message ⇒ không `Recv` waiter" (fuzz bắt 44 lần).
+  Nay giao **thẳng** cho waiter (message **không** vào hàng), procsrv `Recv` coi như xong ⇒ TCB
+  thoát `Inactive` ngay (D2-25); `Exit` từ `Inactive` **giữ** `Inactive` (cặp danh tính bị cấm).
+  Không đổi ABI; nhánh **không** waiter (`.scn` 14/20) giữ nguyên `BlockedOnSend{fault}`.
+- `v2/sim/vifast-sim/tests/kt23_k1b.rs` (**mới, 9 test**):
+  1. ma trận 11×11 qua cổng: **46/46** cặp thiết kế (100%), **48/48** toàn bảng, **73/73** cặp
+     cấm bị thử đúng 1 lần + `IllegalOperation` + state không đổi + không đếm hit;
+  2. 4 ca cấm viết **từ lý do thiết kế** (không đọc bảng ra kỳ vọng);
+  3. interleaved 64 seed: 64 trace khác nhau, cùng seed ⇒ cùng trace, 12 bước/kịch bản;
+  4. ca âm **hết budget** (`Sleeping{Budget}` ⇒ bế tắc; có `SchedTick` refill ⇒ chạy);
+  5. ca âm **`Ready + suspended`** ⇒ bế tắc; `TcbResume` rồi chạy;
+  6. **fuzz 1.000 seed × 64 bước** (LCG**: retype/call/recv/reply/suspend/resume/tick/pick/
+     exit/wait-notify/wait-addr/wake/mail/finalise): **256.000** lần kiểm 4 miền
+     (`check_sched`/`check_budget`/`check_sc_refs`/`check_all_bytes` + `check_mailboxes`),
+     **0 vi phạm**; ops coverage **45/46** (thiếu `Stopping→Dead` — K1b không có nguồn nhập
+     `Stopping`; 46/46 chứng minh ở test ma trận, không hạ tiêu chí); `forbidden_attempts`
+     (thao tác hợp lệ) = 0;
+  7. **Exit `Busy` snapshot**: `exit_code`=None, `TcbInfo`/`ScInfo`/donation hai chiều/
+     `Reply.caller`/`endpoint len-pushed-popped-removed` + danh sách message **không đổi**;
+  8. regression exit-fault-waiter (giao thẳng cho `Recv` waiter, `len == 0`, `Inactive`);
+  9. chốt 2 cặp `Stopping` reserved / 48 allowed / 73 cấm.
+- `v2/bin/v2`: `nightly --only-miri` thêm **kt18_tcb, kt19_sched, kt20_budget, kt21_donation,
+  kt22_mailbox** (mỗi tệp tự giảm seed bằng `cfg(miri)`); **không** thêm `kt23_k1b` (1.000 seed —
+  không có I/O cần Miri) và **không** thêm test I/O.
+- `v2/test/scn/12-suspend-abort-while-reply-wait.scn`: **đúng một dòng** `Defer => ok` →
+  `Defer => InvalidArgument` (**D2-52**); không sửa `.scn` khác.
+- `v2/docs/k1b-tcb-transition.md`: đóng cảnh báo fixture `Defer` + ghi bằng chứng phủ 121 ô.
+
+### Đo (K1b)
+
+| Việc | Số | Log |
+|---|---|---|
+| Coverage cặp thiết kế | **46/46 (100%)**; toàn bảng 48/48; cặp cấm **73/73** thử, `forbidden_attempts = 73` | `cargo test -p vifast-sim --test kt23_k1b` → `# KT-23 ma trận: ...` |
+| Fuzz 1.000 seed × 64 bước | 256.000 kiểm 4 miền, **0 vi phạm**; ops coverage 45/46 | cùng log → `# KT-23 fuzz: ...` |
+| Budget | `budget_sleeps = 542`, `refills = 7056`, `ticks = 12883`, **0** vi phạm | cùng log |
+| Interleaver | 64 seed/64 trace khác nhau, 2 ca âm đúng (hết budget, suspended) | cùng log |
+| Exit `Busy` | `exit_code=None`, donation/`Reply.caller`/hàng đợi không đổi | cùng log |
+| Gate | `gate --fast` **321 test/47 suite** (+10 so KT-22: 9 `kt23_k1b` + 1 unit `tcb`), L1 1.000 seed/999 trace 687 ms | `JOURNAL/kt23-gate-fast.log` |
+| Miri | `nightly --only-miri`: **12/12 PASS** (2.608 giây, ~43 phút) — objmem + sim 11 mục, thêm 5 test K1b (không thêm `kt23_k1b`, không test I/O) | `JOURNAL/kt23-miri-only.log` |
+| Parity (Q7) | `kt11_diff_sim` 10.000 seed / 0 lệch — **chỉ** Untyped/CNode, **không** phải oracle TCB/scheduler | `JOURNAL/kt23-parity.log` |
+| `.scn` | **21 tệp / 11 nhóm**, 0 blocked, fixtures 5 ca âm PASS; fixture 12 sửa 1 dòng (D2-52) | `JOURNAL/kt23-scn.log` |
+
+### K1b DoD (4 dòng — K1B-PLAN §1.1/§5 + D2-49(a)) — trung thực, không tô hồng
+
+| # | Tiêu chí K1b | Kết quả | Bằng chứng |
+|---|---|---|---|
+| 1 | **TCB + transition + `suspended`**: bảng `ALLOWED` 11×11 một cửa, **100%** cặp ALLOWED, mọi cặp cấm `IllegalOperation` | **ĐẠT** — 46/46 cặp thiết kế (48/48 toàn bảng), 73/73 cặp cấm bị thử | `kt23_k1b::ma_tran_46_cap_va_73_cap_cam` + `kt18_tcb` 18 test |
+| 2 | **Scheduler 1 hart + budget (chu kỳ thẳng hàng)**: ready queue 256 mức/bitmap, `pick` O(1), preempt mọi bước, affinity, không đói; **0 vi phạm budget** | **ĐẠT** — 1.000 seed × 64 bước, 0 vi phạm; `budget_sleeps=542`/`refills=7056`/`ticks=12883`; `Running ⇒ còn budget` kiểm sau mỗi bước | `kt23_k1b::fuzz_1000_seed_64_buoc_k1b` + `kt19_sched`/`kt20_budget` |
+| 3 | **Hộp thư**: hàng cố định, đầy ⇒ backpressure `Busy`, thứ tự tất định | **ĐẠT** — KT-22 (10 test, `MAILBOX_CAP=8`, `pushed == popped + removed + len`) + KT-23 fuzz `mail_pushed=1742` sau mỗi bước; **bug exit-fault-waiter** fuzz tìm ra đã sửa | `kt22_mailbox` + `kt23_k1b::exit_fault_giao_thang_cho_recv_waiter` + `kt23_k1b::exit_busy_...` |
+| 4 | **Push migration** (tiêu chí gốc thiết kế `:874`) | **CHƯA ĐẠT trong K1b** — **hoãn K1c** theo **D2-49(a)**: K1b 1 hart, K1c mới có `smp 1/2/4/8`; `Migrate` bị từ chối rõ `NotSupported`, không im lặng bỏ | D2-49(a) + `kt22_mailbox::migrate_tren_1_hart_bi_tu_choi_not_supported` |
+
+### Giới hạn còn lại (K1c)
+
+- **Không** push migration/2 hart (D2-49(a)); **không** MPSC lock-free thật/loom/stress
+  (D2-49(f)); IPC 4 cap/badge/`ReplyRecv`/Notification signal-wait/WaitAddr đầy đủ, `Send` thường
+  (nới `check_mailboxes` đang mã hoá `call == fault.is_none()`), fault ngoài `Exit` — K1c.
+- **Parity `kt11_diff_sim` chỉ phủ Untyped/CNode** (Q7): là **hồi quy**, **không** phải oracle
+  cho TCB/scheduler/MCS; bằng chứng K1b là bất biến + coverage + `check_*` sau mỗi bước.
+- 2 cặp `Stopping` của bảng để K1c dùng (K1b **không** có nguồn nhập `Stopping`); cặp
+  `Stopping→Dead` chỉ đi được qua cổng trực tiếp (ma trận), không qua thao tác nào.
+- `check_sc_refs` chưa kiểm "một SC một TCB" (KT-20 cho phép chia SC; D2-49 ghi model API);
+  binding ABI `Tcb.SetSchedParams` để K1c/K3.
 
 ## KT-22 — Hộp thư FIFO cố định: backpressure `Busy`, nhiều endpoint, 1 hart (K1b, D2-49(a,f), D2-50)
 
@@ -818,6 +930,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-13 | **KT-23** | 7/8 | `67aa8bc` | — | `gate --fast` PASS (**321 test/47 suite**, L1 1000 seed/999 trace, 687 ms) | **xong mã — chờ review độc lập rồi mới commit**; coverage **46/46** (bảng 48/48) + **73/73** cặp cấm (`forbidden_attempts=73`), fuzz 1.000×64 = **256.000** kiểm 4 miền/0 vi phạm; **bug fuzz tìm ra đã sửa** (Exit fault giao thẳng Recv waiter); Miri **12/12** (2.608 s); parity 10.000 seed/0 lệch (chỉ Untyped/CNode); `.scn` 21 tệp/11 nhóm, fixture 12 sửa **1 dòng** (D2-52); DoD K1b: 3/4 ĐẠT, push migration **hoãn K1c** (D2-49(a)) |
 | 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**298 test/45 suite**, L1 1000 seed/999 trace, 550 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); **13 test** (invariant **1.000 seed × 64 op**, **14.609** bước có donation), Miri **13/13** (129 s); commit `eae876b` + follow-up `[KT-21]` (3 điều kiện `reviewer-kt21`) đã push; **chờ Agent 0 ghi D2-51 + lật sổ** |
 | 2026-11-13 | **KT-18** | 8/8 | `5cccb72` | — | `gate --fast` PASS (**251 test/42 suite**, L1 1000 seed/999 trace) | **commit `5cccb72` đã push**; TCB 11 trường + **một cửa** `transition_tcb` + bảng `ALLOWED` 48 = **46+2 reserved**, 18 test (ma trận 121 cặp, coverage bảng 100%), Miri kt18 **18/18**; drift D2-33 sửa; reviewer DRIFT nhẹ đã sửa; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-15** | 8/8 | `c0d3163` | — | `gate --fast` PASS (**218 test**, L1 1000 seed/999 trace, 596 ms) | **commit `c0d3163` đã push — reviewer DRIFT nhẹ đã sửa, chờ Agent 0 lật sổ**; `with_many_mut` D2-48(a): bảng `kind→ctor`, alias từng cặp, N=9 không build; Miri PASS (alias 8/8, fuzz 200/191,95 s); fuzz 10.000 chuỗi/4,51 s; `aarch64-none` xanh; guard `chua_header` + `TypeId` |

@@ -1,0 +1,210 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::tcb::coverage_design`
+  --> sim/vifast-sim/tests/kt23_k1b.rs:35:5
+   |
+35 | use vifast_sim::tcb::coverage_design;
+   |     ^^^^^^^^^^^^^^^^^---------------
+   |                      |
+   |                      no `coverage_design` in `tcb`
+
+error[E0425]: cannot find function `reserved_count` in module `vifast_sim::tcb`
+    --> sim/vifast-sim/tests/kt23_k1b.rs:1183:33
+     |
+1183 |     assert_eq!(vifast_sim::tcb::reserved_count(), 2);
+     |                                 ^^^^^^^^^^^^^^ not found in `vifast_sim::tcb`
+
+error[E0425]: cannot find function `forbidden_count` in module `vifast_sim::tcb`
+    --> sim/vifast-sim/tests/kt23_k1b.rs:1184:33
+     |
+1184 |     assert_eq!(vifast_sim::tcb::forbidden_count(), 73);
+     |                                 ^^^^^^^^^^^^^^^ not found in `vifast_sim::tcb`
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:185:23
+    |
+185 |                     m.forbidden_attempt_count(from, to),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `k1b_report` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:197:15
+    |
+197 |     let r = m.k1b_report();
+    |               ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:272:18
+    |
+272 |     assert_eq!(m.forbidden_attempt_count(0, 2), 1);
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:273:18
+    |
+273 |     assert_eq!(m.forbidden_attempt_count(8, 2), 1);
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:274:18
+    |
+274 |     assert_eq!(m.forbidden_attempt_count(10, 1), 1);
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:275:18
+    |
+275 |     assert_eq!(m.forbidden_attempt_count(1, 8), 1);
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `TcbReadState` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:381:30
+    |
+381 |         step("client", Step::TcbReadState { tcb: r.t0_s }),
+    |                              ^^^^^^^^^^^^
+    |
+help: there is a variant with a similar name
+    |
+381 -         step("client", Step::TcbReadState { tcb: r.t0_s }),
+381 +         step("client", Step::ReadState { tcb: r.t0_s }),
+    |
+
+error[E0599]: no variant named `TcbReadState` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:390:30
+    |
+390 |         step("server", Step::TcbReadState { tcb: r.t1_s }),
+    |                              ^^^^^^^^^^^^
+    |
+help: there is a variant with a similar name
+    |
+390 -         step("server", Step::TcbReadState { tcb: r.t1_s }),
+390 +         step("server", Step::ReadState { tcb: r.t1_s }),
+    |
+
+error[E0599]: no variant named `TcbSuspend` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:393:19
+    |
+393 |             Step::TcbSuspend {
+    |                   ^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `TcbResume` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:398:28
+    |
+398 |         step("init", Step::TcbResume { tcb: r.t0_s }),
+    |                            ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `TcbSuspend` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:401:19
+    |
+401 |             Step::TcbSuspend {
+    |                   ^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `TcbResume` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:406:28
+    |
+406 |         step("init", Step::TcbResume { tcb: r.t1_s }),
+    |                            ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `SchedTick` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:407:29
+    |
+407 |         step("sched", Step::SchedTick { n: 1 }),
+    |                             ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `SchedPick` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:408:29
+    |
+408 |         step("sched", Step::SchedPick { hart: 0 }),
+    |                             ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `SchedTick` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:409:29
+    |
+409 |         step("sched", Step::SchedTick { n: 2 }),
+    |                             ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `SchedPick` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:410:29
+    |
+410 |         step("sched", Step::SchedPick { hart: 0 }),
+    |                             ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no method named `k1b_audit` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:433:13
+    |
+433 |         a.m.k1b_audit()
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `SchedTick` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:491:29
+    |
+491 |         step("sched", Step::SchedTick { n: 100 }),
+    |                             ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no method named `k1b_audit` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:507:9
+    |
+507 |     r.m.k1b_audit().expect("bất biến sau refill + Call");
+    |         ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `TcbResume` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt23_k1b.rs:534:28
+    |
+534 |         step("init", Step::TcbResume { tcb: r.t0_s }),
+    |                            ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no method named `k1b_audit` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:546:9
+    |
+546 |     r.m.k1b_audit().expect("bất biến sau Resume + Call");
+    |         ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_budget` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:717:23
+    |
+717 |     if let Err(e) = m.check_budget() {
+    |                       ^^^^^^^^^^^^
+    |
+help: there is a method `check_bytes` with a similar name, but with different arguments
+   --> sim/vifast-sim/src/kobj.rs:845:5
+    |
+845 |     pub fn check_bytes(&self, untyped: ObjId) -> Result<(), String> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_sc_refs` found for reference `&Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:721:23
+    |
+721 |     if let Err(e) = m.check_sc_refs() {
+    |                       ^^^^^^^^^^^^^
+    |
+help: there is a method `check_sched` with a similar name
+    |
+721 -     if let Err(e) = m.check_sc_refs() {
+721 +     if let Err(e) = m.check_sched() {
+    |
+
+error[E0599]: no method named `forbidden_attempt_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:822:42
+    |
+822 |             tk.forbidden_attempts += r.m.forbidden_attempt_count(from, to) as u64;
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `k1b_report` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt23_k1b.rs:825:19
+    |
+825 |     let rep = r.m.k1b_report();
+    |                   ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `k1b_audit` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt23_k1b.rs:1114:9
+     |
+1114 |     r.m.k1b_audit().expect("bất biến sau Exit Busy");
+     |         ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `k1b_audit` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt23_k1b.rs:1173:11
+     |
+1173 |         m.k1b_audit().expect("bất biến K1b");
+     |           ^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0425, E0432, E0599.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `vifast-sim` (test "kt23_k1b") due to 30 previous errors

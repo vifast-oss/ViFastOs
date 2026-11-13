@@ -142,7 +142,7 @@ fn e2e_steps(r: &Rig) -> Vec<ScenarioStep> {
         // C5: sau `Recv`, người gọi đã chuyển sang chờ Reply — kiểm ngay sau bước.
         ScenarioStep {
             thread: "client",
-            step: Step::ReadState { tcb: slot(c, 2) },
+            step: Step::TcbReadState { tcb: slot(c, 2) },
             expect: Ok(()),
             expect_state: Some(TcbState::BlockedOnReply { reply: r.rep }),
         },
@@ -157,7 +157,7 @@ fn e2e_steps(r: &Rig) -> Vec<ScenarioStep> {
         },
         ScenarioStep {
             thread: "client",
-            step: Step::ReadState { tcb: slot(c, 2) },
+            step: Step::TcbReadState { tcb: slot(c, 2) },
             expect: Ok(()),
             expect_state: Some(TcbState::Ready),
         },
@@ -274,7 +274,7 @@ fn exit_kiem_ngay_sau_halt_truoc_procsrv_recv() {
         },
         ScenarioStep {
             thread: "app",
-            step: Step::ReadState { tcb: slot(c, 2) },
+            step: Step::TcbReadState { tcb: slot(c, 2) },
             expect: Ok(()),
             expect_state: Some(TcbState::Inactive),
         },

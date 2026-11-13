@@ -12,12 +12,14 @@
 //! Hai chế độ:
 //! - `run_sequential`: thứ tự cố định — dùng cho end-to-end và kiểm C5.
 //! - `run_interleaved`: scheduler tối thiểu chen **giữa các bước**, chọn thread theo seed
-//!   (cùng seed ⇒ cùng trace); kiểm bất biến byte sau **mỗi** event.
+//!   (cùng seed ⇒ cùng trace); kiểm bất biến byte sau **mỗi** event. **KT-23**: chỉ chọn
+//!   thread có bước kế **chạy được dưới scheduler** (xem [`Step::dispatchable`]) — tôn trọng
+//!   `Running`/ready queue/`SchedContext` budget; cùng seed ⇒ cùng trace (DoD 1).
 
 use std::collections::VecDeque;
 use std::fmt;
 
-use crate::kobj::{KError, Machine, ObjId, ObjType, SlotRef, TcbState};
+use crate::kobj::{KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
 use crate::Lcg;
 
 /// Một bước kịch bản — chiếu tối giản của `enum Step` thiết kế §9.3 sang ABI v2.
@@ -77,8 +79,36 @@ pub enum Step {
         tcb: ObjId,
         code: u64,
     },
-    ReadState {
+    TcbReadState {
         tcb: SlotRef,
+    },
+    // ------------------------------------------- KT-23: bước TCB/scheduler của K1b
+    //
+    // Các bước dưới gọi **model API** của K1b (D2-49): `Tcb.Suspend/Resume` (KT-18),
+    // `Tcb.ReadState` (KT-18), `set_sched_params` (D2-49(b), KT-20) và scheduler `tick`/
+    // `dispatch` (KT-19/20). Không thêm method ABI nào; tên bước là chiếu của method đã có
+    // trong draft chữ ký (`v2/docs/abi-call-signatures.toml`) — riêng `set_sched_params` là
+    // model API `[TK]` (D2-49(b)).
+    TcbSuspend {
+        tcb: SlotRef,
+        mode: SuspendMode,
+    },
+    TcbResume {
+        tcb: SlotRef,
+    },
+    /// Gắn/gỡ `SchedContext` của TCB bằng model API `set_sched_params` (D2-49(b)).
+    TcbSetSchedParams {
+        tcb: SlotRef,
+        sched: Option<SlotRef>,
+    },
+    /// `tick(n)` của đồng hồ ảo (D2-49(h)) — charge `Running` rồi xử lý biên refill.
+    SchedTick {
+        n: u64,
+    },
+    /// `pick` + chuyển ngữ cảnh = `dispatch(hart)` (KT-19): `Ready` cao nhất → `Running`.
+    /// `pick` thuần chỉ **đọc** nên không tạo event; bước này là "một lát cắt scheduler".
+    SchedPick {
+        hart: u16,
     },
 }
 
@@ -97,7 +127,12 @@ impl Step {
             Step::Recv { .. } => "recv",
             Step::Reply { .. } => "reply",
             Step::Exit { .. } => "exit",
-            Step::ReadState { .. } => "read_state",
+            Step::TcbReadState { .. } => "tcb_read_state",
+            Step::TcbSuspend { .. } => "tcb_suspend",
+            Step::TcbResume { .. } => "tcb_resume",
+            Step::TcbSetSchedParams { .. } => "tcb_set_sched_params",
+            Step::SchedTick { .. } => "sched_tick",
+            Step::SchedPick { .. } => "sched_pick",
         }
     }
 
@@ -106,7 +141,10 @@ impl Step {
         match self {
             Step::TcbConfigure { tcb, .. }
             | Step::TcbSetFaultEp { tcb, .. }
-            | Step::ReadState { tcb } => m.cap_obj_at(tcb.cnode, tcb.slot).ok(),
+            | Step::TcbReadState { tcb }
+            | Step::TcbSuspend { tcb, .. }
+            | Step::TcbResume { tcb }
+            | Step::TcbSetSchedParams { tcb, .. } => m.cap_obj_at(tcb.cnode, tcb.slot).ok(),
             Step::Call { tcb, .. }
             | Step::Recv { tcb, .. }
             | Step::Reply { tcb, .. }
@@ -255,7 +293,51 @@ pub fn execute(m: &mut Machine, step: &Step) -> Result<(), KError> {
         Step::Recv { tcb, ep, reply } => m.recv(tcb, ep, reply),
         Step::Reply { tcb, reply } => m.reply(tcb, reply),
         Step::Exit { tcb, code } => m.exit(tcb, code),
-        Step::ReadState { tcb } => m.tcb_read_state(tcb).map(|_| ()),
+        Step::TcbReadState { tcb } => m.tcb_read_state(tcb).map(|_| ()),
+        Step::TcbSuspend { tcb, mode } => m.tcb_suspend(tcb, mode),
+        Step::TcbResume { tcb } => m.tcb_resume(tcb),
+        Step::TcbSetSchedParams { tcb, sched } => m.set_sched_params(tcb, sched),
+        Step::SchedTick { n } => m.tick(n),
+        Step::SchedPick { hart } => m.dispatch(hart).map(|_| ()),
+    }
+}
+
+impl Step {
+    /// Bước **syscall của một TCB** (cần actor chạy được dưới scheduler) — `Call`/`Recv`/
+    /// `Reply`/`Exit`. Các bước quản trị (`TcbSuspend/Resume/ReadState/SetSchedParams`,
+    /// `SchedTick/Pick`, retype/copy/...) do **người điều khiển** phát nên luôn chạy được.
+    pub fn is_tcb_syscall(self) -> bool {
+        matches!(
+            self,
+            Step::Call { .. } | Step::Recv { .. } | Step::Reply { .. } | Step::Exit { .. }
+        )
+    }
+
+    /// KT-23 DoD 1 — bước này có **chạy được ngay** dưới scheduler 1 hart không?
+    ///
+    /// - bước không có TCB actor (retype/copy/delete/revoke/sched configure/tick/pick...) ⇒ có;
+    /// - bước quản trị trên TCB (`Suspend/Resume/ReadState/SetSchedParams`) ⇒ có (người điều
+    ///   khiển gọi, không phải TCB tự chạy);
+    /// - bước **syscall** ⇒ actor phải `Running` **hoặc** `Ready` **đang nằm trong ready queue**
+    ///   (không `suspended`) và **còn budget** (`tcb_has_budget`, D2-50: không SC/SC chưa
+    ///   `Configure` **không** chạy), hoặc `Inactive` còn budget (kích hoạt ngầm `Inactive→Ready`
+    ///   của KT-18). TCB chặn/ngủ/chết/treo ⇒ bước của thread đó **chờ**.
+    pub fn dispatchable(self, m: &Machine) -> bool {
+        let Some(actor) = self.actor(m) else {
+            return true;
+        };
+        if !self.is_tcb_syscall() {
+            return true;
+        }
+        match m.tcb_state(actor) {
+            Ok(TcbState::Running { .. }) => m.tcb_has_budget(actor),
+            Ok(TcbState::Ready) => {
+                let trong_hang = (0..m.hart_count()).any(|h| m.ready_contains(h, actor));
+                trong_hang && m.tcb_has_budget(actor)
+            }
+            Ok(TcbState::Inactive) => m.tcb_has_budget(actor),
+            _ => false,
+        }
     }
 }
 
@@ -351,15 +433,15 @@ pub fn run_interleaved(
         if remaining == 0 {
             break;
         }
+        // KT-23 DoD 1: chỉ chọn thread có bước kế **chạy được dưới scheduler** (Running/ready
+        // queue + budget; xem [`Step::dispatchable`]) — không còn "chọn theo trạng thái TCB"
+        // của bản KT-09. Bước không có actor (retype/copy/tick/pick...) luôn chọn được.
         let runnable: Vec<usize> = (0..queues.len())
             .filter(|t| {
                 let Some(&idx) = queues[*t].front() else {
                     return false;
                 };
-                match steps[idx].step.actor(m) {
-                    Some(actor) => !matches!(m.tcb_state(actor), Ok(st) if st.is_runnable()),
-                    None => true,
-                }
+                steps[idx].step.dispatchable(m)
             })
             .collect();
         if runnable.is_empty() {

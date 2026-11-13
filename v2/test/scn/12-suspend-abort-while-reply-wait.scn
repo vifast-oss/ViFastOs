@@ -10,6 +10,6 @@ thread = [
   { name = "procsrv", steps = [
     "recv cap=ep1 => ok",
     "invoke Tcb.Suspend tcb=tcb0 mode=Abort => ok",
-    "invoke Tcb.Suspend tcb=tcb1 mode=Defer => ok",
+    "invoke Tcb.Suspend tcb=tcb1 mode=Defer => InvalidArgument",
   ] },
 ]

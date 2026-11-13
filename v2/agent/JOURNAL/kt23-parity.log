@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt11_diff_sim.rs (v2/target/debug/deps/kt11_diff_sim-e2a2755e91b65dcc)
+
+running 1 test
+test kt11_diff_model_va_sim_10000_seed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.53s
+
