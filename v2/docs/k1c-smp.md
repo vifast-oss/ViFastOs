@@ -43,7 +43,9 @@ vòng preempt khi `preempt_every_step` bật):
 2. Tìm hart đích `y ≠ x` **nhỏ nhất** sao cho: `y` nằm trong **affinity** của TCB **và**
    `published(y).idle == true`. Không có ⇒ hart `x` không đẩy gì.
 3. Đẩy **đúng một** TCB/hart **nguồn**/vòng qua `MailboxMsg::Migrate { tcb, to_hart }` vào hộp
-   thư `y`; hộp thư đầy ⇒ **bỏ** yêu cầu (backpressure, không mất TCB). "≤ 1 TCB/hart/bước"
+   thư `y`; hộp thư đầy ⇒ **bỏ** yêu cầu (backpressure, không mất TCB). `post_mail` kiểm **tại
+   cửa vào**: chỉ **một** yêu cầu `Migrate`/TCB được chờ trong mọi hộp thư — yêu cầu thứ hai cho
+   cùng TCB ⇒ `InvalidArgument` (khớp bất biến (ii) `check_smp`, không để `debug_assert` phải bắt). "≤ 1 TCB/hart/bước"
    (D2-53 Q2) được hiểu là **mỗi hart nguồn**: nếu nhiều hart nguồn cùng chọn một hart đích rảnh
    trong cùng vòng thì đích nhận **một TCB từ mỗi nguồn** (≤ `n − 1`), không phải ≤ 1/đích.
 4. **Cuối vòng**, mỗi hart nhận `Migrate` xử lý hộp thư theo **FIFO** (cùng một hàm drain với

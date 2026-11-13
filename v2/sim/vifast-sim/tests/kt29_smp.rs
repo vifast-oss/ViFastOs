@@ -587,6 +587,46 @@ fn post_migrate_qua_hop_thu_di_tru_that() {
 }
 
 // ---------------------------------------------------------------------------
+// 8b. **Chỉ một** yêu cầu `Migrate`/TCB đang chờ (reviewer-kt29b): `post_mail` lần hai cho
+//     **cùng TCB** ⇒ `InvalidArgument`, **không panic** (`check_smp` bất biến (ii) xanh);
+//     xử lý xong yêu cầu mới lại hợp lệ.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn post_hai_migrate_cung_tcb_bi_tu_choi() {
+    let mut r = Rig::new(2, 1);
+    r.dat(0, 5, 0b11, 0);
+    let yeu_cau = MailboxMsg::Migrate {
+        tcb: r.t[0],
+        to_hart: 1,
+    };
+    r.m.post_mail(1, yeu_cau).expect("yêu cầu đầu hợp lệ");
+    assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+    assert_eq!(
+        r.m.post_mail(1, yeu_cau),
+        Err(KError::InvalidArgument),
+        "yêu cầu thứ hai cho cùng TCB phải bị từ chối"
+    );
+    assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+    kiem(&r.m, "post trùng Migrate"); // không panic, bất biến (ii) vẫn xanh
+
+    // Xử lý xong ⇒ yêu cầu mới hợp lệ (TCB đã home 1 nên gửi về hart 0).
+    assert_eq!(r.m.process_mail(1).expect("process_mail"), 1);
+    assert_eq!(r.m.migrate_count(), 1);
+    r.m.post_mail(
+        0,
+        MailboxMsg::Migrate {
+            tcb: r.t[0],
+            to_hart: 0,
+        },
+    )
+    .expect("sau khi xử lý, yêu cầu mới hợp lệ");
+    assert_eq!(r.m.process_mail(0).expect("process_mail"), 1);
+    assert_eq!(r.m.tcb_info(r.s[0]).expect("info").home, 0);
+    kiem(&r.m, "Migrate về hart 0");
+}
+
+// ---------------------------------------------------------------------------
 // 9. Wake chéo hart: `wake(tcb home=Y)` từ hart X ⇒ `Wake` vào hộp thư Y; Y chỉ preempt nếu
 //    ưu tiên **>** `published(Y).cur_prio`; hai nhánh cao hơn/không cao hơn (DoD 5).
 // ---------------------------------------------------------------------------

@@ -2681,9 +2681,11 @@ impl Machine {
         posted
     }
 
-    /// **KT-29** — kiểm một yêu cầu `Migrate` **trước** khi vào hộp thư (một cửa dùng chung cho
-    /// `post_mail` và push nội bộ): hart đích có thật, TCB sống/`Ready`/không treo,
-    /// `to_hart != home`, `home` và `to_hart` đều trong affinity. Vi phạm ⇒ `InvalidArgument`.
+    /// **KT-29** — kiểm một yêu cầu `Migrate` **trước** khi vào hộp thư (cửa của `post_mail`):
+    /// hart đích có thật, TCB sống/`Ready`/không treo, `to_hart != home`, `home` và `to_hart`
+    /// đều trong affinity, và **không** đã có yêu cầu `Migrate` nào khác cho **cùng TCB** đang
+    /// chờ trong bất kỳ hộp thư (bất biến (ii) `check_smp`: ≤ 1 yêu cầu/TCB — reviewer-kt29b).
+    /// Vi phạm ⇒ `InvalidArgument` (message **không** vào hàng).
     fn check_migrate_request(&self, tcb: ObjId, to_hart: u16) -> Result<(), KError> {
         if to_hart as usize >= self.sched.len() {
             return Err(KError::InvalidArgument);
@@ -2697,6 +2699,13 @@ impl Machine {
         }
         let can = (1u64 << info.home) | (1u64 << to_hart);
         if info.affinity & can != can {
+            return Err(KError::InvalidArgument);
+        }
+        let da_co = self.mail.iter().any(|hb| {
+            hb.iter()
+                .any(|m| matches!(m, MailboxMsg::Migrate { tcb: t, .. } if *t == tcb))
+        });
+        if da_co {
             return Err(KError::InvalidArgument);
         }
         Ok(())

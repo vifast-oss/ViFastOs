@@ -73,6 +73,18 @@ thật/QEMU.
 
 Sau sửa: chạy lại `kt29_smp` (12 test) + `l1_k1c` + `gate --fast` + Miri (log cập nhật bên dưới).
 
+### 2c. `reviewer-kt29b`: CONFIRM 5/5 + 1 lỗi mới — đã vá
+
+Reviewer xác nhận 5/5 điểm trên (gate 441/58, L1 747 ms, `kt29_smp` 12/12, Miri 12/12, scope
+`v2/` sạch), nhưng phát hiện `post_mail` cho phép **2 yêu cầu `Migrate` cùng TCB** ⇒
+`check_smp` bất biến (ii) vi phạm ⇒ `debug_assert!` panic ngay `post_mail` thứ hai (release tắt
+assert nên ngữ nghĩa không đổi, nhưng debug/test build panic; không test nào phủ).
+
+**Vá**: `check_migrate_request` (cửa của `post_mail`) từ chối yêu cầu thứ hai cho **cùng TCB**
+đang chờ trong bất kỳ hộp thư ⇒ `InvalidArgument`; test mới `post_hai_migrate_cung_tcb_bi_tu_choi`
+(lần 1 `Ok`, lần 2 `InvalidArgument`, `check_smp` xanh/không panic; xử lý xong yêu cầu mới hợp lệ).
+Sau vá: `kt29_smp` **13/13**, `gate --fast` **PASS 442 test/58 suite**, L1 1.000 seed/999 trace **767 ms** (`kt29-gate-fast.log`); không retry.
+
 ## 3. Kết quả (lệnh + log)
 
 - **Baseline** `./v2/bin/v2 gate --fast`: PASS **427 test/56 suite**, L1 1.000 seed/999 trace
@@ -86,7 +98,7 @@ Sau sửa: chạy lại `kt29_smp` (12 test) + `l1_k1c` + `gate --fast` + Miri (
   ([`kt29-miri.log`](kt29-miri.log); fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; stable vẫn
   1.000 × 64; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing).
 - **Driver L1 theo smp**: `./v2/bin/v2 nightly --l1 --seeds 200 --smp 1,2,4,8` — xem mục 4.
-- **Số liệu test**: 12 test `kt29_smp` + 1 unit `check_smp` + 1 driver L1; fuzz 1.000 seed × 64
+- **Số liệu test**: 13 test `kt29_smp` + 1 unit `check_smp` + 1 driver L1; fuzz 1.000 seed × 64
   op × 4 cấu hình smp (256.000 op/lượt, chạy 2 lượt/seed để so trace).
 
 ## 4. Lệnh nightly --l1 (đo trong vòng task)
