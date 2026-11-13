@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-24 (xong mã — **IPC core 1: `MessageInfo` 35 bit + `Message` 64 MR + `ipc::transfer` + `Send/NBSend/Recv/NBRecv` + `no_reply` 2 chiều + Call non-Endpoint `NotSupported`**); KT-23 DONE (65702fa), KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
-Bước          : 7/8 (đỏ → mã → 15 test mới → invariant 1.000 seed → gate → Miri → **chờ review độc lập**; chưa commit/push, chưa đề xuất DONE)
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**336 test/49 suite**, 0 failed, 1 doc-test ignored pre-existing; KT-23 là 321/47 ⇒ **+15 test** = 13 `kt24_ipc` + 2 `kt24_scn`; **L1 1.000 seed/999 trace** 674 ms (đo bởi cổng); gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK, clippy `-D warnings` sạch)
 Việc dở       : commit `[KT-24]` + push origin/main sau verdict reviewer; Miri `-p vifast-sim --test kt24_ipc`; **chưa lật QUEUE** (Agent 0)
@@ -775,7 +775,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 12:40 bởi Agent 0**: K1b DONE; chốt K1c Q1–Q15 tại D2-53; KT-24 READY (IPC core 1).
+> **Cập nhật 13:10 bởi Agent 0**: KT-24 DONE (217b7d1, 336 test, Miri 13/13, D2-54); KT-25 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
