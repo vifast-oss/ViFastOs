@@ -28,6 +28,7 @@ use crate::hir::{
     HStmt, HTrait, HUse, HVariant, Hir, LitKind, UnOp,
 };
 
+mod generic;
 mod trait_impl;
 use crate::ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
 pub(crate) use trait_impl::ChuKyTrait;
@@ -298,6 +299,15 @@ struct Lowerer<'a> {
     type_env: std::collections::HashMap<u32, Type>,
     /// ST-29: tên kiểu của `impl` đang hạ (để tái dùng sym đã khai ở lượt thu thập).
     cur_impl: Option<String>,
+    /// ST-35: **template** trường của `type T[..]` — kiểu còn **ký hiệu** `TypeRef{"T"}` để thay khi
+    /// instantiation (`Hop[int]`), thay vì xoá kiểu như ST-28.
+    rec_tmpl: Vec<(String, Vec<String>, Vec<Type>)>,
+    /// ST-35: template biến thể của `enum E[..]` — `(tên biến thể, kiểu từng trường)`.
+    enum_tmpl: Vec<(String, Vec<String>, Vec<(String, Vec<Type>)>)>,
+    /// ST-35: cache instantiation `(tên gốc, đối số) → id`.
+    inst_cache: Vec<((String, Vec<Type>), u32)>,
+    /// ST-35: `true` khi đang dựng **template** ⇒ tham số kiểu giữ dạng `TypeRef{"T"}`.
+    sym_generic: bool,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -335,6 +345,10 @@ impl<'a> Lowerer<'a> {
             generic_scope: Vec::new(),
             impls: Vec::new(),
             traits: Vec::new(),
+            rec_tmpl: Vec::new(),
+            enum_tmpl: Vec::new(),
+            inst_cache: Vec::new(),
+            sym_generic: false,
             type_env: std::collections::HashMap::new(),
             cur_impl: None,
             cst,
@@ -916,6 +930,13 @@ impl<'a> Lowerer<'a> {
             .collect();
         let field_tys: Vec<Type> = fields.iter().map(|f| f.ty.clone()).collect();
         self.kiem_derives(node, &derives, &field_tys);
+        // ST-35: dựng **template** (kiểu còn ký hiệu `T`) để instantiation `Hop[int]` thay được.
+        if !self.generic_scope.is_empty() {
+            if std::env::var("VIS_DBG_GEN").is_ok() {
+                eprintln!("template rec {name} {:?}", self.generic_scope);
+            }
+            self.dung_template_rec(node, &name);
+        }
         let id = self
             .rec_names
             .iter()
@@ -971,6 +992,10 @@ impl<'a> Lowerer<'a> {
             }
         }
         self.kiem_derives(node, &derives, &vt);
+        // ST-35: template biến thể (kiểu còn ký hiệu `T`) cho instantiation `Or[int, str]`.
+        if !self.generic_scope.is_empty() {
+            self.dung_template_enum(node, &name);
+        }
         let id = self
             .enum_names
             .iter()
@@ -1109,6 +1134,22 @@ impl<'a> Lowerer<'a> {
     // ----- kiểu -----
 
     /// Phân giải một nút `Type` (VD-44 #2: **không** báo `VS0301` cho kiểu).
+    /// Kiểu của **một đối số generic**: giữ **ký hiệu** `T` khi `T` là tham số kiểu đang có hiệu lực
+    /// (ST-35) — nhờ vậy `Hop[T]` trong chữ ký hàm hợp nhất được với `Hop[int]` ở call-site.
+    fn resolve_arg_type(&mut self, node: &Node) -> Type {
+        if let Some(Elem::Token(i)) = node.elems.first() {
+            if let Some(t) = self.tok(*i) {
+                if t.kind == Kind::Ident && self.generic_scope.iter().any(|g| g == &t.text) {
+                    return Type::TypeRef {
+                        name: t.text.clone(),
+                        args: Vec::new(),
+                    };
+                }
+            }
+        }
+        self.resolve_type(node)
+    }
+
     fn resolve_type(&mut self, node: &Node) -> Type {
         if let Some(Elem::Token(i)) = node.elems.last() {
             if self.tok(*i).map(|t| t.is_punct("?")).unwrap_or(false) {
@@ -1136,7 +1177,7 @@ impl<'a> Lowerer<'a> {
                 .map(|g| {
                     g.children()
                         .filter(|n| n.kind == NodeKind::Type)
-                        .map(|t| self.resolve_type(t))
+                        .map(|t| self.resolve_arg_type(t))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -1225,7 +1266,16 @@ impl<'a> Lowerer<'a> {
         // ST-28: tham số kiểu của `type`/`enum` đang khai ⇒ **xoá kiểu** (`{error}`) —
         // chưa có instantiation thật (nợ VS1b), nhờ vậy trường/biến thể generic không bị `VS0301`.
         if args.is_empty() && self.generic_scope.iter().any(|g| g == name) {
-            return Type::Error;
+            // ST-35: khi dựng **template** (hoặc trong chú thích hàm) giữ **ký hiệu** `T`;
+            // ngoài ra vẫn xoá kiểu như ST-28 (thân hàm dựa vào `{error}` để im lặng).
+            return if self.sym_generic {
+                Type::TypeRef {
+                    name: name.to_string(),
+                    args: Vec::new(),
+                }
+            } else {
+                Type::Error
+            };
         }
         match (name, args.len()) {
             ("list", 1) => {
@@ -1248,11 +1298,39 @@ impl<'a> Lowerer<'a> {
             _ => {
                 // ST-28: `Or[str, int]` / `Hop[T]` — enum/record **generic** đã khai ⇒ bỏ đối số
                 // kiểu (chưa có instantiation thật, nợ VS1b) và trả thẳng `Enum`/`Record`.
-                if let Some((_, id)) = self.enum_names.iter().find(|(n, _)| n == name) {
-                    return Type::Enum(*id);
+                // ST-35: còn tham số **ký hiệu** (vd `Hop[T]` trong chữ ký hàm) ⇒ giữ `TypeRef`
+                // để hợp nhất ở call-site; ngược lại ⇒ **instantiation thật** (id riêng).
+                let co_ky_hieu = args.iter().any(|a| {
+                    matches!(a, Type::TypeRef { args, .. } if args.is_empty())
+                        || matches!(a, Type::Error)
+                });
+                if co_ky_hieu {
+                    return Type::TypeRef {
+                        name: name.to_string(),
+                        args,
+                    };
                 }
-                if let Some((_, id)) = self.rec_names.iter().find(|(n, _)| n == name) {
-                    return Type::Record(*id);
+                let enum_base = self
+                    .enum_names
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, id)| *id);
+                if let Some(id) = enum_base {
+                    return self
+                        .inst_enum(name, id, args)
+                        .map(Type::Enum)
+                        .unwrap_or(Type::Enum(id));
+                }
+                let rec_base = self
+                    .rec_names
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, id)| *id);
+                if let Some(id) = rec_base {
+                    return self
+                        .inst_rec(name, id, args)
+                        .map(Type::Record)
+                        .unwrap_or(Type::Record(id));
                 }
                 return Type::TypeRef {
                     name: name.to_string(),

@@ -5,7 +5,10 @@
 
 # Issue #21 → **VSH1a**: bộ lệnh shell có cấu trúc (bản chờ ký)
 
-Nguồn: <https://github.com/vifast-oss/ViFastOs/issues/21> (`khoa-pham-aepsy`, 2026-11-13).
+Nguồn: #21 <https://github.com/vifast-oss/ViFastOs/issues/21> (`khoa-pham-aepsy`, 2026-11-13). **#21 đã bị chính tác giả
+đóng** (17:28 JST, `not_planned`, kèm ghi chú "đăng lại từ tài khoản cá nhân ở #22"); **luồng sống: #22
+<https://github.com/vifast-oss/ViFastOs/issues/22>** (`khoajunior`, cùng người — nội dung trùng từng byte, chỉ thêm
+một dòng trống cuối).
 Đối chiếu: `docs/viscript/ViScript-thiet-ke.md` §9/§12/§13/§19, `viscript/agent/{QUEUE,DECISIONS,STATE}.md`,
 code `viscript/crates/**` ở HEAD `0e65446`, binary `viscript/target/debug/vis`.
 

@@ -524,7 +524,9 @@ APPROVED 2026-11-13 Agent 0
 
 APPROVED 2026-11-13 Agent 0
 
-> **Mở vòng 6 — VSH1a.** Issue #21 (`khoa-pham-aepsy`, <https://github.com/vifast-oss/ViFastOs/issues/21>) xin
+> **Mở vòng 6 — VSH1a.** Issue #21 (`khoa-pham-aepsy`, <https://github.com/vifast-oss/ViFastOs/issues/21>) — tác giả
+> **đã đóng #21** và đăng lại y nguyên ở **#22** (`khoajunior`, cùng người, tài khoản cá nhân); **luồng sống là #22**
+> (<https://github.com/vifast-oss/ViFastOs/issues/22>) — xin
 > `std.shell` (`where/sort_by/ls/ps`) theo §9/§13. **Nhận hướng, không nhận cách chia P1..P4**: chốt lại thành
 > **ST-37..ST-43** (8 hàng, ST-40 tách a/b) ≈ 21,5 h ≈ 3 vòng, **sau ST-36 (R5)**. Căn cứ lộ trình §19:
 > `VSH1 ← VS1`, `VS2 ← VS1` ⇒ VSH1 là anh em của VS2; issue xin đúng **nửa đầu VSH1**. Gói quyết định + bằng

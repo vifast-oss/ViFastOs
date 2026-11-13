@@ -193,6 +193,11 @@ pub struct EnumDef {
 pub struct TypeTable {
     recs: Vec<RecDef>,
     enums: Vec<EnumDef>,
+    /// ST-35: **instantiation** — với mỗi `RecId`/`EnumId` sinh từ `Hop[int]`, ghi `(tên gốc, đối số kiểu)`.
+    /// `None` = kiểu khai báo gốc. Nhờ vậy tyck hợp nhất được `Hop[T]` ↔ `Hop[int]` **và** giữ
+    /// `Hop[int] ≠ Hop[str]` (hai id khác nhau).
+    rec_inst: Vec<Option<(String, Vec<Type>)>>,
+    enum_inst: Vec<Option<(String, Vec<Type>)>>,
 }
 
 impl TypeTable {
@@ -208,6 +213,33 @@ impl TypeTable {
         &self.enums
     }
 
+    /// Ghi một **instantiation** của bản ghi (`Hop[int]`) — id mới, cùng tên gốc.
+    pub fn push_rec_inst(&mut self, base: String, args: Vec<Type>, mut def: RecDef) -> RecId {
+        let id = RecId(self.recs.len() as u32);
+        def.anonymous = false;
+        self.recs.push(def);
+        self.rec_inst.push(Some((base, args)));
+        id
+    }
+
+    /// Ghi một **instantiation** của enum (`Or[int, str]`).
+    pub fn push_enum_inst(&mut self, base: String, args: Vec<Type>, def: EnumDef) -> EnumId {
+        let id = EnumId(self.enums.len() as u32);
+        self.enums.push(def);
+        self.enum_inst.push(Some((base, args)));
+        id
+    }
+
+    /// `(tên gốc, đối số)` nếu `id` là một instantiation (ST-35).
+    pub fn rec_inst_of(&self, id: RecId) -> Option<&(String, Vec<Type>)> {
+        self.rec_inst.get(id.0 as usize).and_then(|x| x.as_ref())
+    }
+
+    /// Như [`TypeTable::rec_inst_of`] cho enum.
+    pub fn enum_inst_of(&self, id: EnumId) -> Option<&(String, Vec<Type>)> {
+        self.enum_inst.get(id.0 as usize).and_then(|x| x.as_ref())
+    }
+
     pub fn rec(&self, id: RecId) -> Option<&RecDef> {
         self.recs.get(id.0 as usize)
     }
@@ -220,6 +252,7 @@ impl TypeTable {
     pub fn push_rec(&mut self, rec: RecDef) -> RecId {
         let id = RecId(self.recs.len() as u32);
         self.recs.push(rec);
+        self.rec_inst.push(None);
         id
     }
 
@@ -227,6 +260,7 @@ impl TypeTable {
     pub fn push_enum(&mut self, e: EnumDef) -> EnumId {
         let id = EnumId(self.enums.len() as u32);
         self.enums.push(e);
+        self.enum_inst.push(None);
         id
     }
 

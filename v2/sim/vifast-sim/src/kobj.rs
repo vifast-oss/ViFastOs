@@ -87,6 +87,21 @@ pub const HART_COUNT: u16 = 1;
 /// `HartMask` mặc định: hart 0 (K1b 1 hart).
 pub const AFFINITY_HOME: u64 = 1;
 
+/// Số bucket của bảng băm WaitOnAddress — hằng số **model** `[TK]` (D2-53 Q3; K1C-PLAN §5
+/// KT-28 DoD 1). `spec/kernel.toml` **chưa tồn tại** (K3), nên ngưỡng bucket ghi ở
+/// `v2/docs/k1c-waitaddr.md` §1 chứ **không** phải `spec/`.
+pub const WAITADDR_BUCKETS: usize = 64;
+
+/// Bucket của khoá `(frame, offset)` trong bảng WaitOnAddress — hàm băm **tất định** `[TK]`:
+/// `(frame.wrapping_mul(0x9E37_79B1) ^ offset) % WAITADDR_BUCKETS`.
+///
+/// `WAITADDR_BUCKETS` = 2^6 nên `% 64` chỉ lấy 6 bit thấp của phép XOR ⇒ hai offset lệch bội
+/// 64 **va chạm có chủ ý** (test KT-28 dùng cặp `(f,0)`/`(f,64)`); khoá được so **đầy đủ**
+/// `(frame, offset)` trong bucket nên va chạm không ảnh hưởng tìm/đánh thức.
+pub fn waitaddr_bucket(frame: ObjId, offset: u32) -> usize {
+    frame.wrapping_mul(0x9E37_79B1) as usize % WAITADDR_BUCKETS ^ (offset as usize % WAITADDR_BUCKETS)
+}
+
 /// Loại object — 8 lõi + 8 reserved (spec `[object]`). Reserved ⇒ `NotSupported` khi Retype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjType {
