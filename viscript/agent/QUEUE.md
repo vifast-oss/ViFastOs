@@ -123,8 +123,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-32 | harness so chẩn đoán **biên dịch** hai đường (đóng nợ 26 ca) | ST-31 | 2 h | **DONE** | 0 lệch; không nới |
 | ST-33 | `json.decode` + `std.fs` tối thiểu (qua `Host`) | ST-32 | 3 h | **DONE** | đối xứng encode; interp/vm không chạm OS |
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
-| ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **READY** | sai kiểu ⇒ VS0412; differential 0 lệch |
-| ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
+| ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **DONE** | sai kiểu ⇒ VS0412; differential 0 lệch |
+| ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **READY** | MD+JSON, số liệu tái lập |
 | ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | BLOCKED | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
 | ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | BLOCKED | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
@@ -479,6 +479,16 @@ APPROVED 2026-11-13 Agent 0
 > khớp **hết là lỗi**; chỉ cho stage ngoài, Vis ⇒ `VS0602`); timeout 10 s/**stage** nêu **stage nào**, không cap tổng.
 > `Ty::Any` cho `complete` (nợ kiểm tĩnh). **482** test (+16 `pipeline.rs`) + 4 fixture `.vish`; **338 ca sem giữ
 > nguyên**; parity 312/312; differential 100k **0 lệch** (206,2 s). **ST-35 mở** (generic thật).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-35 DONE** — commit `a0b5525` (**Agent 2 tự commit**): **generic thật** — `RecId`/`EnumId` **interned theo tổ hợp**
+> (`Hop[int]` ≠ `Hop[str]`), `inst_args` + `rec_pos`/`enum_pos`, `Hop[T]` chưa ràng buộc **giữ** hành vi xoá kiểu;
+> `a.gia_tri` ⇒ **`int`**; hàm liên kết `f[T](x: T, h: Hop[T])`; `Or[int,str]` (`match` thiếu nhánh ⇒ `VS0402`); gán
+> chéo hai instantiation ⇒ `VS0412`, cùng instantiation ⇒ sạch; `Hop[Hop[int]]` chạy được (nợ: chưa tạo id cho lớp
+> trong). **Không** đụng `codegen`/`VBC1` ⇒ differential **100.000 chương trình 0 lệch** (228,6 s). **507** test;
+> **sem 338 → 346** (+8) với bảng cũ→mới ở **đủ 6 chỗ khoá số**; parity **320/320**; `vis test` **346 ok**.
+> **ST-36 mở** (R5 — chốt VS1c).
 
 ## Ghi chú vận hành
 

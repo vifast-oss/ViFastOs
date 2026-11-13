@@ -488,3 +488,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (3) `vis-interp`/`vis-vm` **không** gọi OS (ca âm khoá lại); thiếu host ⇒ `VS0604`. (4) Cờ **`--fs-mock`** của
   `vis-cli` chỉ để **test tất định** (không phải API); `ls`/`open` test qua mock, không đọc đĩa thật. (5) Cưỡng
   chế quyền (`cap[Dir]`) **không** thuộc vòng 6 — VS2.
+
+- **VD-68** **Generic thật (ST-35)**: (1) instantiation biểu diễn bằng **`RecId`/`EnumId` interned theo tổ hợp**
+  (`rec_inst`/`enum_inst` + `rec_pos`/`enum_pos`), **không** thêm biến thể `Type` ⇒ `Hop[int]` ≠ `Hop[str]` mà
+  `same`/`coerce`/`tbl.field` **không** phải sửa lan rộng. (2) **Payload runtime vẫn xoá kiểu** ⇒ **không** đụng
+  `codegen`/`VBC1`; differential 100k **0 lệch**. (3) `T` **chưa ràng buộc** ⇒ **giữ** hành vi xoá kiểu (không làm đỏ
+  ca cũ). (4) Gán chéo hai instantiation ⇒ **`VS0412`**; cùng instantiation ⇒ **sạch**; trường thay `T` ⇒ kiểu cụ thể;
+  `match` trên `Or[int,str]` thiếu nhánh ⇒ `VS0402`. (5) **Nợ**: kiểu trả hàm generic còn `{error}` khi `T` chưa suy;
+  `Hop[Hop[int]]` chưa có id cho lớp trong (an toàn vì payload xoá kiểu).
