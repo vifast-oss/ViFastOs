@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-30 **xong mã + test** (**`vifast-sync`**: MCS queue lock FIFO (pool node cố định, liên kết chỉ số slot, `Guard` Drop mở khoá) + `Mailbox<N>` MPSC cố định 7 loại message, ack theo bộ đếm thế hệ, đầy ⇒ `Busy` (backpressure); `no_std`, 0 dependency, stress 4×500 + Miri; **không** loom theo D2-53 Q9(a)). KT-29 xong mã (`0ab2267`) + follow-up `e091708`, KT-24..28 DONE
-Bước          : 8/8 — **xong mã + cổng + Miri + stress**, commit `29718a6` đã push `origin/main`; verdict `reviewer-kt30` **DRIFT** (2 lỗi chặn) đã sửa **2/2** (assertion stress `try_lock`; hook test `pub` → `pub(crate)` + `cfg(test)`) + 4 việc làm luôn; **chờ Agent 0 lật KT-30**
+Task          : KT-31 (cổng cuối K1c); KT-30 DONE (29718a6)
+Bước          : 0/8
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test/62 suite** (baseline 442/58 ⇒ +19 = 4 unit lib + 10 integration + 3 stress + 2 doctest), L1 1.000 seed/999 trace **750 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON, `scn: OK` (`JOURNAL/kt30-gate-fast.log`). **T-INFRA**: wall **199,3 s** > 60 s (QD §5.2) do tải máy — baseline cùng máy đã 159,5 s tổng thời gian test; test mới **1,42 s** cả crate / **≈2,6 ms** thân stress; **không** nới ngưỡng, **không** gọi là đạt 60 s
 Miri          : `./v2/bin/v2 miri -p vifast-sync` — **PASS 4 unit + 10 integration + 2 doctest** (`JOURNAL/kt30-miri.log`, 13,5 s); stress đa luồng **không** chạy Miri (`#![cfg(not(miri))]`, lý do ghi đầu tệp)
-Việc dở       : chờ Agent 0 lật KT-30 (+ dòng D2 nếu muốn chuẩn hoá ngữ nghĩa ack `[TK]`/`MAX_WAITERS`). Cổng cuối K1c (§7.1: 100.000 seed × smp 1/2/4/8 + mutation tay + Miri + bảng DoD) là **task riêng**, chưa phải KT-30
+Việc dở       : KT-31 READY — cổng cuối K1c: 100.000 seed × smp 1/2/4/8 + mutation + Miri + bảng DoD. Không sửa semantics.
 ```
 
 ## KT-30 — `vifast-sync`: MCS lock + Mailbox MPSC cố định (K1c, D2-53 Q9)
@@ -1003,7 +1003,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 19:00 bởi Agent 0**: KT-29 DONE (0ab2267+edc41d4, 442 test, Miri 13/13, D2-59); KT-30 READY.
+> **Cập nhật 20:00 bởi Agent 0**: KT-30 DONE (29718a6, 461 test, Miri 16/16, D2-60); KT-31 READY — cổng cuối K1c.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
