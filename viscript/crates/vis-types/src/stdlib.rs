@@ -20,6 +20,12 @@ pub enum Ty {
     FnIntInt,
     /// **Không** kiểm kiểu tĩnh (chỉ số đối số).
     Any,
+    /// `Result[str, str]` — ST-33 (`std.fs.read`, `std.fs.list` lỗi trả `str`).
+    ResultStrStr,
+    /// `Result[(), str]` — ST-33 (`std.fs.write`).
+    ResultUnitStr,
+    /// `Result[list[str], str]` — ST-33 (`std.fs.list`).
+    ResultListStrStr,
 }
 
 impl Ty {
@@ -30,6 +36,12 @@ impl Ty {
             Ty::Str => Some(Type::Str),
             Ty::Bool => Some(Type::Bool),
             Ty::ListStr => Some(Type::List(Box::new(Type::Str))),
+            Ty::ResultStrStr => Some(Type::Result(Box::new(Type::Str), Box::new(Type::Str))),
+            Ty::ResultUnitStr => Some(Type::Result(Box::new(Type::Unit), Box::new(Type::Str))),
+            Ty::ResultListStrStr => Some(Type::Result(
+                Box::new(Type::List(Box::new(Type::Str))),
+                Box::new(Type::Str),
+            )),
             // Closure chưa suy kiểu hai chiều (VS0 nợ, xem JOURNAL ST-26) ⇒ **không** kiểm tĩnh;
             // tầng chạy kiểm "gọi được" và "khoá trả `int`" (VS0501).
             Ty::FnIntInt => None,
@@ -46,6 +58,9 @@ impl Ty {
             Ty::ListStr => "list[str]",
             Ty::FnIntInt => "fn(int) -> int",
             Ty::Any => "bất kỳ",
+            Ty::ResultStrStr => "Result[str, str]",
+            Ty::ResultUnitStr => "Result[(), str]",
+            Ty::ResultListStrStr => "Result[list[str], str]",
         }
     }
 }
@@ -66,13 +81,13 @@ impl StdFn {
 }
 
 /// Module `std` được hỗ trợ ở ST-26 (mỗi phần tử là tên ngắn).
-pub const MODULES: [&str; 6] = ["str", "list", "map", "path", "time", "json"];
+pub const MODULES: [&str; 7] = ["str", "list", "map", "path", "time", "json", "fs"];
 
-/// `std.fs` **chưa** làm (cần host ⇒ ST-27) — giữ tên để thông điệp rõ.
-pub const MODULES_HOAN: [&str; 2] = ["fs", "io"];
+/// `std.io` **chưa** làm — giữ tên để thông điệp rõ (ST-33: `std.fs` **đã có**).
+pub const MODULES_HOAN: [&str; 1] = ["io"];
 
 /// Toàn bộ hàm `std.*` của ST-26.
-pub const FUNCS: [StdFn; 33] = [
+pub const FUNCS: [StdFn; 38] = [
     // ----- std.str -----
     StdFn {
         name: "str.split",
@@ -244,10 +259,39 @@ pub const FUNCS: [StdFn; 33] = [
         params: &[Ty::Any],
         ret: Ty::Str,
     },
+    // ST-33: `json.decode` — trả `Result[Any, str]` nhưng `Type` **không** có `Any` ⇒ `Ty::Any`
+    // (bỏ kiểm tĩnh như `list.*`/`map.*`, VD-59 (3)); giá trị thật là `Result` lúc chạy.
+    StdFn {
+        name: "json.decode",
+        params: &[Ty::Str],
+        ret: Ty::Any,
+    },
+    // ----- std.fs (ST-33) — **đi qua `Host`**, không OS trong crate này -----
+    StdFn {
+        name: "fs.read",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "fs.write",
+        params: &[Ty::Str, Ty::Str],
+        ret: Ty::ResultUnitStr,
+    },
+    StdFn {
+        name: "fs.exists",
+        params: &[Ty::Str],
+        ret: Ty::Bool,
+    },
+    StdFn {
+        name: "fs.list",
+        params: &[Ty::Str],
+        ret: Ty::ResultListStrStr,
+    },
 ];
 
-/// Tên **đã biết nhưng chưa hỗ trợ** ở VS1b — dùng để báo `VS0301` với thông điệp riêng.
-pub const HA_CHUA_HO_TRO: [&str; 1] = ["json.decode"];
+/// Tên **đã biết nhưng chưa hỗ trợ** ở VS1c — dùng để báo `VS0301` với thông điệp riêng.
+/// (ST-33: `json.decode` **đã có** ⇒ bảng **rỗng**; giữ API cho các tên hoãn sau này.)
+pub const HA_CHUA_HO_TRO: [&str; 0] = [];
 
 /// Tra chữ ký theo tên đầy đủ.
 pub fn sig_of(name: &str) -> Option<&'static StdFn> {

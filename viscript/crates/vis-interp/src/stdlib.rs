@@ -10,13 +10,30 @@
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use vis_diag::RUNTIME_CODES;
+use vis_diag::{COMMAND_CODES, RUNTIME_CODES};
 use vis_syntax::Span;
 use vis_types::stdlib::{sig_of, Ty};
 
 use crate::builtin::Host;
 use crate::interp::{Abort, Trap, R};
 use crate::value::{eq, Value};
+
+/// `Err(String)` của host ⇒ `Result` của VS0 (`Err(msg)`), **không** phải trap.
+fn hop_nhat_fs(r: Result<Value, String>) -> Value {
+    match r {
+        Ok(v) => Value::Res(Ok(Box::new(v))),
+        Err(e) => Value::Res(Err(Box::new(Value::Str(e)))),
+    }
+}
+
+/// Không có host ⇒ `VS0604` (cùng câu với chương trình ngoài, VD-60 (2)).
+fn khong_host(name: &str, span: Span) -> Abort {
+    Abort::Trap(Trap::new(
+        &COMMAND_CODES[3],
+        format!("`std.{name}` chưa hỗ trợ ở môi trường này (không có host)"),
+        span,
+    ))
+}
 
 fn loi(msg: impl Into<String>, span: Span) -> Abort {
     Abort::Trap(Trap::new(&RUNTIME_CODES[0], msg, span))
@@ -46,6 +63,8 @@ fn kiem(name: &str, args: &[Value], span: Span) -> Result<(), Abort> {
                 matches!(a, Value::List(xs) if xs.iter().all(|v| matches!(v, Value::Str(_))))
             }
             Ty::FnIntInt => matches!(a, Value::Fn(_) | Value::Vm(_) | Value::Builtin(_)),
+            // ST-33: `std.fs` trả `Result[..]` — kiểu **trả**, không dùng để kiểm đối số.
+            Ty::ResultStrStr | Ty::ResultUnitStr | Ty::ResultListStrStr => true,
         };
         if !ok {
             return Err(loi(
@@ -347,7 +366,14 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             let goc = GOC.get_or_init(Instant::now);
             Ok(Value::Int(goc.elapsed().as_millis() as i64))
         }
-        // ----- std.json (chỉ encode) -----
+        // ----- std.json (encode + decode — ST-33) -----
+        "json.decode" => {
+            let s = chuoi(name, &args[0], 0, span)?;
+            match crate::json::decode(s) {
+                Ok(v) => Ok(Value::Res(Ok(Box::new(v)))),
+                Err(e) => Ok(Value::Res(Err(Box::new(Value::Str(e))))),
+            }
+        }
         "json.encode" => {
             let mut s = String::new();
             json(&args[0], false, &mut s);
@@ -357,6 +383,30 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             let mut s = String::new();
             json(&args[0], true, &mut s);
             Ok(Value::Str(s))
+        }
+        // ----- std.fs (ST-33) — **chỉ qua `Host`**, không OS trong crate này -----
+        "fs.read" => {
+            let p = chuoi(name, &args[0], 0, span)?;
+            let host = host.fs().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.read(p).map(Value::Str)))
+        }
+        "fs.write" => {
+            let p = chuoi(name, &args[0], 0, span)?;
+            let v = chuoi(name, &args[1], 1, span)?;
+            let host = host.fs().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.write(p, v).map(|()| Value::Unit)))
+        }
+        "fs.exists" => {
+            let p = chuoi(name, &args[0], 0, span)?;
+            let host = host.fs().ok_or_else(|| khong_host(name, span))?;
+            Ok(Value::Bool(host.exists(p)))
+        }
+        "fs.list" => {
+            let p = chuoi(name, &args[0], 0, span)?;
+            let host = host.fs().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.list(p).map(|xs| {
+                Value::List(xs.into_iter().map(Value::Str).collect())
+            })))
         }
         other => Err(loi(
             format!("`std.{other}` chưa cài (bảng chữ ký có nhưng tầng chạy thiếu)"),

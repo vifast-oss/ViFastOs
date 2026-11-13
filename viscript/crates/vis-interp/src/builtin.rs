@@ -29,11 +29,29 @@ pub trait Ngoai {
     ) -> crate::interp::R<Value>;
 }
 
+/// **Host hệ thống tệp** (ST-33) — `vis-interp`/`vis-vm` **không** biết `std::fs`; `vis-cli` cài bằng
+/// `std::fs`. Thiếu host ⇒ `VS0604` "chưa hỗ trợ ở môi trường này" (cùng mẫu `Ngoai`, VD-60 (2)).
+pub trait FsHost {
+    /// Đọc cả tệp thành chuỗi (UTF-8).
+    fn read(&mut self, p: &str) -> Result<String, String>;
+    /// Ghi đè cả tệp.
+    fn write(&mut self, p: &str, s: &str) -> Result<(), String>;
+    /// Tệp/thư mục có tồn tại.
+    fn exists(&mut self, p: &str) -> bool;
+    /// Tên các mục trong thư mục, **đã sắp xếp**, **không** đệ quy.
+    fn list(&mut self, p: &str) -> Result<Vec<String>, String>;
+}
+
 pub trait Host {
     /// Bộ đệm `stdout` của chương trình.
     fn out(&mut self) -> &mut String;
     /// Gọi một giá trị hàm (closure/builtin) với đối số đã đánh giá.
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> crate::interp::R<Value>;
+    /// Hệ thống tệp (ST-33). Mặc định: `None` ⇒ môi trường không có host ⇒ `VS0604`.
+    fn fs(&mut self) -> Option<&mut dyn FsHost> {
+        None
+    }
+
     /// Chương trình **ngoài** (ST-27). Mặc định: `None` ⇒ môi trường không có host ⇒ `VS0604`.
     fn ngoai(
         &mut self,

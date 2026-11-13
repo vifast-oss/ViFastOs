@@ -119,13 +119,19 @@ fn std_differential_interp_va_vm() {
 
 #[test]
 fn std_fs_bao_st27() {
+    // **SỬA KÈM LÝ DO (ST-33)**: `std.fs` **đã có** (qua `Host`, VD-64 (2)) ⇒ `use std.fs` nay **hợp lệ**.
+    // Ca "module std chưa cấp ⇒ `VS0701`" giữ ở `std.io` (vẫn hoãn) — không nới luật, chỉ đổi tên.
     let tmp = std::env::temp_dir().join(format!("vis-std-fs-{}.vis", std::process::id()));
     std::fs::write(&tmp, "use std.fs\nprint(1)\n").expect("ghi");
     let k = chay(&["run", tmp.to_str().unwrap()]);
     let _ = std::fs::remove_file(&tmp);
-    assert_eq!(k.code, 2);
-    assert!(k.err.contains("VS0701"), "stderr: {}", k.err);
-    assert!(k.err.contains("ST-27"), "phải nêu ST-27: {}", k.err);
+    assert_eq!(k.code, 0, "stderr: {}", k.err);
+    let tmp2 = std::env::temp_dir().join(format!("vis-std-io-{}.vis", std::process::id()));
+    std::fs::write(&tmp2, "use std.io\nprint(1)\n").expect("ghi");
+    let k2 = chay(&["run", tmp2.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&tmp2);
+    assert_eq!(k2.code, 2, "stderr: {}", k2.err);
+    assert!(k2.err.contains("VS0701"), "stderr: {}", k2.err);
 }
 
 #[test]
@@ -138,16 +144,17 @@ fn std_la_bao_vs0701() {
     assert!(k.err.contains("VS0701"), "stderr: {}", k.err);
 }
 
-/// `json.decode` **đã biết nhưng chưa có** ⇒ `VS0301` nói rõ "chưa hỗ trợ (VS1b)".
+/// **SỬA KÈM LÝ DO (ST-33)**: `json.decode` **đã có** (VD-64 (2)) — trước đây ca này khoá `VS0301`
+/// "chưa hỗ trợ (VS1b)". Nay khoá **hành vi mới**: chạy được và in `Result` (không còn `VS0301`).
 #[test]
-fn json_decode_bao_chua_ho_tro() {
+fn json_decode_da_co() {
     let tmp = std::env::temp_dir().join(format!("vis-std-json-{}.vis", std::process::id()));
     std::fs::write(&tmp, "use std.json\nprint(json.decode(\"1\"))\n").expect("ghi");
     let k = chay(&["run", tmp.to_str().unwrap()]);
     let _ = std::fs::remove_file(&tmp);
-    assert_eq!(k.code, 2, "stderr: {}", k.err);
-    assert!(k.err.contains("VS0301"), "stderr: {}", k.err);
-    assert!(k.err.contains("chưa hỗ trợ (VS1b)"), "stderr: {}", k.err);
+    assert_eq!(k.code, 0, "stderr: {}", k.err);
+    assert!(!k.err.contains("VS0301"), "không còn `VS0301`: {}", k.err);
+    assert!(k.out.contains("1"), "stdout: {}", k.out);
 }
 
 /// Sai kiểu **lúc chạy** (tham số `Any`) ⇒ `VS0501` nêu hàm + kiểu nhận được.

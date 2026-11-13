@@ -1,0 +1,61 @@
+=== ST-33 D2-05: json.decode + std.fs tối thiểu (qua Host) — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T07:03:50Z
+
+## 1. Đỏ **thật** ở HEAD `3770c5e` (worktree `/tmp/vis-red33`, chỉ thêm tệp test mới)
+
+```
+$ cd /tmp/vis-red33/viscript && cargo test -p vis-cli --test std_fs_json
+test result: FAILED. **0 passed; 23 failed**; 0 ignored
+```
+
+23/23 ca đỏ vì:
+
+- `json.decode` **chưa có** ⇒ `use std.json` + `json.decode(…)` ⇒ **`VS0301`** “chưa hỗ trợ (VS1b)”
+  (bảng `HA_CHUA_HO_TRO`), nên mọi ca round-trip/escape/offset đều đỏ;
+- `std.fs` **chưa có** ⇒ `use std.fs` ⇒ **`VS0701`** “chưa hỗ trợ”, nên mọi ca FS đều đỏ;
+- `Host::fs()` **chưa tồn tại** ⇒ ca “không host ⇒ `VS0604`” chưa thể có (VS0701 thay vì VS0604).
+
+**Khai minh bạch**: đây là đỏ **tính năng chưa có** (không phải lỗi cũ bị che), đúng D2-05 cho task mở
+tính năng mới.
+
+## 2. Hiện trạng trước khi sửa (đo tay trên HEAD)
+
+```
+$ vis run t.vis          # use std.json; print(json.decode("1"))
+t.vis:2:18: error VS0301: `json.decode` chưa hỗ trợ (VS1b)
+$ vis run f.vis          # use std.fs; print(1)
+f.vis:1:1: error VS0701: `std.fs` chưa hỗ trợ (VS1b) — ST-27 (cần host)
+```
+
+## 3. Sau khi sửa — đo được
+
+- **466** test workspace (443 + **23** `crates/vis-cli/tests/std_fs_json.rs`);
+- `vis test` = **338 ok**, `vis test --vm` = **338 ok** ⇒ **sem 338 ca giữ nguyên** (không fixture nào cần FS);
+- JSON round-trip: int/float/bool/none/str/list/map/bản ghi; escape **đủ** + **surrogate pair** ⇒ `😀`;
+  tràn i64 ⇒ `Err` ở **byte 0**; `1e400` ⇒ `Err`; JSON hỏng ⇒ `Err` kèm **byte offset** đúng (kể cả khi
+  có UTF-8 nhiều byte: `"á😀" x` ⇒ lỗi ở **byte 9**);
+- `std.fs`: write/read/exists/list (sắp xếp, không đệ quy), đường dẫn tuyệt đối được phép, `--explain-perms`
+  in `FS write …`; lỗi OS ⇒ `Err` (không panic);
+- **không host ⇒ `VS0604` ở CẢ HAI đường**: `vis_interp::run` (không host) **và** `vis_vm::run` (không host)
+  trong **cùng** một test ⇒ không nửa vời.
+
+## 4. Sửa test cũ (kèm lý do, không nới luật)
+
+- `vis-cli/tests/stdlib.rs::std_fs_bao_st27` — `use std.fs` nay **hợp lệ** (exit 0); ca `VS0701` giữ bằng
+  `std.io` (vẫn hoãn).
+- `vis-cli/tests/stdlib.rs::json_decode_da_co` (trước là `..._bao_chua_ho_tro`) — `json.decode` nay **chạy**,
+  không còn `VS0301`.
+- `vis-cli/tests/modules.rs::std_fs_bao_st27` — fixture `std/main.vis` (`use std.fs`) nay **hợp lệ**; ca
+  `VS0701` giữ bằng `std.io`.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-interp/src/builtin.rs=7d022b65f216a15b52fcc6b14ac7a1f2f16d91f3e50435f34299ce98f116e0c1
+  sha256 crates/vis-interp/src/json.rs=c0abe01c7c01c1f863c057fb4e45d9cf4fa79aab5712c31d06b0a3d4fb3a58d6
+  sha256 crates/vis-interp/src/stdlib.rs=5720087449a925255c29a83c74d34baeaefe4baad9ab48c7bb22bff2b0c7a8af
+  sha256 crates/vis-interp/src/interp.rs=20fa40c827bc2e336e8e5b98df9650c4be4a2216ffa97ab640de0248657831f3
+  sha256 crates/vis-interp/src/lib.rs=3399815b44698b554528a7be39ad1ed026d59904d918c6c07926af5b2ac6e642
+  sha256 crates/vis-vm/src/vm.rs=854a8188501f47dcc365c1a95fd4816fa923fe5542987cd24369ffe5cc91d0e4
+  sha256 crates/vis-types/src/stdlib.rs=a4a60717f0d417b0363ecbccbb5b1b74bd7df5230dd2243960774c24ea2785f1
+  sha256 crates/vis-cli/src/ngoai.rs=7a206a8f71f80bf5ea0b7bf5cf87ad49b5193eb45c03dc85cfb4581566e6f7e6
+  sha256 crates/vis-cli/src/main.rs=a11f92747a90a2a43a0dc2e36a4aa6980d6b92fc474d4589c01f030db15d99d6
+  sha256 crates/vis-cli/tests/std_fs_json.rs=50b39a424923e75494f0eb8442e4a783435b02ec6609349f5e8637b87cafdd82

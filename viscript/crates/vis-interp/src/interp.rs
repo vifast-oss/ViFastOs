@@ -98,6 +98,8 @@ pub(crate) struct Interp<'a> {
     symbols: &'a Symbols,
     /// Host chương trình ngoài (ST-27); `None` ⇒ `VS0604` — interp **không** biết OS.
     ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
+    /// Host hệ thống tệp (ST-33); `None` ⇒ `VS0604` — interp **không** biết `std::fs`.
+    fs: Option<&'a mut dyn crate::builtin::FsHost>,
 }
 
 impl<'a> Interp<'a> {
@@ -133,7 +135,6 @@ impl<'a> Interp<'a> {
             }
         }
         Self {
-            ngoai: None,
             fns,
             consts,
             tags,
@@ -149,6 +150,8 @@ impl<'a> Interp<'a> {
             depth: 0,
             types,
             symbols,
+            ngoai: None,
+            fs: None,
         }
     }
 
@@ -156,6 +159,12 @@ impl<'a> Interp<'a> {
     #[allow(dead_code)]
     pub(crate) fn set_ngoai(&mut self, n: &'a mut dyn crate::builtin::Ngoai) {
         self.ngoai = Some(n);
+    }
+
+    /// Gắn host hệ thống tệp (ST-33) — chỉ dùng trong crate (`run_with_hosts`).
+    #[allow(dead_code)]
+    pub(crate) fn set_fs(&mut self, f: &'a mut dyn crate::builtin::FsHost) {
+        self.fs = Some(f);
     }
 
     pub(crate) fn take_stdout(&mut self) -> String {
@@ -1327,6 +1336,12 @@ impl crate::builtin::Host for Interp<'_> {
 
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
         self.call_value(f.clone(), args, Vec::new(), span)
+    }
+
+    fn fs(&mut self) -> Option<&mut dyn crate::builtin::FsHost> {
+        self.fs
+            .as_mut()
+            .map(|f| &mut **f as &mut dyn crate::builtin::FsHost)
     }
 
     fn ngoai(&mut self, ten: &str, args: &[String], raw: bool, span: Span) -> Option<R<Value>> {

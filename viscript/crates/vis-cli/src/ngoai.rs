@@ -126,3 +126,45 @@ impl vis_interp::builtin::Ngoai for Runner {
         Ok(Value::List(dong))
     }
 }
+
+/// **Host hệ thống tệp** (ST-33) — `std::fs` **chỉ** ở đây; `vis-interp`/`vis-vm` chỉ thấy trait.
+///
+/// Chốt an toàn (Agent 0 duyệt): **cho phép** đường dẫn tuyệt đối và `..` (không sandbox — consent
+/// thật/`cap[Dir]` là **VS2**); mỗi lần truy cập in `FS …` ra stderr khi `--explain-perms`.
+impl vis_interp::builtin::FsHost for Runner {
+    fn read(&mut self, p: &str) -> Result<String, String> {
+        self.nhat_ky("read", p);
+        std::fs::read_to_string(p).map_err(|e| format!("không đọc được `{p}`: {e}"))
+    }
+
+    fn write(&mut self, p: &str, s: &str) -> Result<(), String> {
+        self.nhat_ky("write", p);
+        std::fs::write(p, s).map_err(|e| format!("không ghi được `{p}`: {e}"))
+    }
+
+    fn exists(&mut self, p: &str) -> bool {
+        self.nhat_ky("exists", p);
+        std::path::Path::new(p).exists()
+    }
+
+    fn list(&mut self, p: &str) -> Result<Vec<String>, String> {
+        self.nhat_ky("list", p);
+        let rd = std::fs::read_dir(p).map_err(|e| format!("không đọc được thư mục `{p}`: {e}"))?;
+        let mut ten: Vec<String> = Vec::new();
+        for e in rd {
+            let e = e.map_err(|x| format!("lỗi đọc mục trong `{p}`: {x}"))?;
+            ten.push(e.file_name().to_string_lossy().to_string());
+        }
+        // **Sắp xếp** theo byte — ổn định giữa các hệ tệp; **không** đệ quy.
+        ten.sort();
+        Ok(ten)
+    }
+}
+
+impl Runner {
+    fn nhat_ky(&self, thao_tac: &str, p: &str) {
+        if self.giai_thich {
+            eprintln!("FS {thao_tac} {p}");
+        }
+    }
+}

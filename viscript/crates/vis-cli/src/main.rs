@@ -351,7 +351,11 @@ fn run_run(rest: &[String]) -> ExitCode {
                     .name("vis-run".into())
                     .stack_size(256 * 1024 * 1024)
                     .spawn_scoped(scope, || {
-                        let out = vis_vm::run(&m, &text, &prog_args);
+                        let mut fs = ngoai::Runner {
+                            giai_thich: explain_perms,
+                            ..ngoai::Runner::default()
+                        };
+                        let out = vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs));
                         let d: Vec<(String, u32, u32, String)> = out
                             .diagnostics
                             .iter()
@@ -447,23 +451,46 @@ fn run_run(rest: &[String]) -> ExitCode {
                     if dump {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
-                    vis_vm::run(&m, &text, &prog_args)
+                    // ST-33: `std.fs` đi qua host hệ thống tệp (chỉ CLI biết OS).
+                    let mut fs = ngoai::Runner {
+                        giai_thich: explain_perms,
+                        ..ngoai::Runner::default()
+                    };
+                    vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs))
                 } else if che_do == vis_syntax::Mode::Command && !co_no_extern {
                     // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
                         ..ngoai::Runner::default()
                     };
-                    vis_interp::run_with_ngoai(
+                    let mut fs = ngoai::Runner {
+                        giai_thich: explain_perms,
+                        ..ngoai::Runner::default()
+                    };
+                    vis_interp::run_with_hosts(
                         &text,
                         &h.hir,
                         &h.symbols,
                         &h.types,
                         &prog_args,
                         Some(&mut runner),
+                        Some(&mut fs),
                     )
                 } else {
-                    vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args)
+                    // ST-33: `.vis` cũng có `std.fs` (không có chương trình ngoài).
+                    let mut fs = ngoai::Runner {
+                        giai_thich: explain_perms,
+                        ..ngoai::Runner::default()
+                    };
+                    vis_interp::run_with_hosts(
+                        &text,
+                        &h.hir,
+                        &h.symbols,
+                        &h.types,
+                        &prog_args,
+                        None,
+                        Some(&mut fs),
+                    )
                 };
                 let d: Vec<(String, u32, u32, String)> = out
                     .diagnostics

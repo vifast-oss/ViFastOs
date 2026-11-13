@@ -18,6 +18,20 @@ pub fn run(m: &Module, text: &str, args: &[String]) -> RunOutput {
     Vm::new(m, text).run(args)
 }
 
+/// Như [`run`] nhưng gắn **host hệ thống tệp** (ST-33). `None` ⇒ `std.fs.*` ⇒ `VS0604`.
+pub fn run_with_fs<'a>(
+    m: &'a Module,
+    text: &'a str,
+    args: &[String],
+    fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+) -> RunOutput {
+    let mut vm = Vm::new(m, text);
+    if let Some(f) = fs {
+        vm.set_fs(f);
+    }
+    vm.run(args)
+}
+
 /// Cap số khung gọi lồng nhau (VD-49).
 pub const MAX_FRAMES: usize = 2_000;
 /// Cap số **lệnh** đã thực thi — cùng ngưỡng 10^7 với interp (khác đơn vị đếm).
@@ -62,6 +76,8 @@ pub struct Vm<'a> {
     depth: usize,
     /// Độ sâu ngăn xếp giá trị **lớn nhất đã dùng** (bất biến của fuzz ST-21).
     dinh: usize,
+    /// Host hệ thống tệp (ST-33); `None` ⇒ `VS0604` — VM **không** biết `std::fs`.
+    fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
 }
 
 impl<'a> Vm<'a> {
@@ -74,6 +90,7 @@ impl<'a> Vm<'a> {
             steps: 0,
             depth: 0,
             dinh: 0,
+            fs: None,
         }
     }
 
@@ -187,9 +204,22 @@ impl<'a> Vm<'a> {
     }
 }
 
+impl<'a> Vm<'a> {
+    /// Gắn host hệ thống tệp (ST-33) — chỉ dùng qua [`crate::run_with_fs`].
+    pub fn set_fs(&mut self, f: &'a mut dyn vis_interp::builtin::FsHost) {
+        self.fs = Some(f);
+    }
+}
+
 impl Host for Vm<'_> {
     fn out(&mut self) -> &mut String {
         &mut self.out
+    }
+
+    fn fs(&mut self) -> Option<&mut dyn vis_interp::builtin::FsHost> {
+        self.fs
+            .as_mut()
+            .map(|f| &mut **f as &mut dyn vis_interp::builtin::FsHost)
     }
 
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {

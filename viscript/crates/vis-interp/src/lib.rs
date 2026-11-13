@@ -44,6 +44,7 @@
 //! assert_eq!(out.exit, 1);
 //! ```
 
+pub mod json;
 pub mod stdlib;
 pub mod value;
 
@@ -112,9 +113,26 @@ pub fn run_with_ngoai<'a>(
     args: &[String],
     ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
 ) -> RunOutput {
+    run_with_hosts(text, hir, symbols, types, args, ngoai, None)
+}
+
+/// Như [`run`] nhưng gắn **cả hai** host: chương trình ngoài (ST-27) và hệ thống tệp (ST-33).
+/// `None` ở host nào ⇒ tính năng đó ⇒ `VS0604`.
+pub fn run_with_hosts<'a>(
+    text: &str,
+    hir: &'a Hir,
+    symbols: &'a Symbols,
+    types: &'a TypeTable,
+    args: &[String],
+    ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
+    fs: Option<&'a mut dyn crate::builtin::FsHost>,
+) -> RunOutput {
     let mut it = interp::Interp::new(hir, symbols, types);
     if let Some(n) = ngoai {
         it.set_ngoai(n);
+    }
+    if let Some(f) = fs {
+        it.set_fs(f);
     }
     let res = it.run_program(args);
     let stdout = it.take_stdout();

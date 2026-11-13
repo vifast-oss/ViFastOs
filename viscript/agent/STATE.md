@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-32** (harness so chẩn đoán **biên dịch** hai đường) — xong, **chưa commit**.
-Bước          : 3/3 (phân loại 3 tầng khoá cứng → harness 3 đường + chuẩn hoá escape → 26 ca chạm bytecode)
+Task          : **ST-33** (`json.decode` + `std.fs` tối thiểu qua `Host`) — xong, **chưa commit**.
+Bước          : 4/4 (FsHost trên Host → parser JSON → std.fs CLI → 23 ca test)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T06:42:56Z** (15:42 JST, không retry);
-                **443** test workspace
-Việc dở       : chờ gate rồi commit `[ST-32]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:08:04Z** (16:08 JST, không retry);
+                **466** test / diff 100k **0 lệch** (201,9 s) / `vis test` 338 ok
+Việc dở       : chờ gate rồi commit `[ST-33]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-33 — `json.decode` + `std.fs` tối thiểu (qua `Host`), 2026-11-13
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`FsHost` trên `Host`** | `trait FsHost` 4 hàm (`read/write/exists/list`) + `Host::fs()` mặc định `None` ⇒ **`VS0604`** (đúng mẫu `Ngoai`, VD-60 (2)); `Interp`/`Vm` giữ `Option<&mut dyn FsHost>`; `vis-interp`/`vis-vm` **không** biết `std::fs` |
+| 2 | **`vis-cli` cài** | `ngoai::Runner` impl `FsHost` bằng `std::fs`; `--explain-perms` in `FS read|write|exists|list <p>` ra stderr; **cho phép** đường dẫn tuyệt đối/`..` (consent thật + `cap[Dir]` ⇒ **VS2**); lỗi OS ⇒ `Err(msg)`; `list` **sắp xếp**, **không** đệ quy |
+| 3 | **`json.decode`** | `Result[Any, str]` (`Ty::Any` — bỏ kiểm tĩnh theo VD-59 (3)); object ⇒ `map[str, Any]` **giữ thứ tự**, trùng khoá ⇒ giá trị cuối/vị trí đầu; array ⇒ `list[Any]`; `.`/`e` ⇒ float, còn lại ⇒ int (**tràn i64 ⇒ lỗi**); escape **đủ** (`\" \\ \/ \b \f \n \r \t \uXXXX` + **surrogate pair**); `null` ⇒ `none` (`Opt(Error)`); lỗi ⇒ `Err("JSON không hợp lệ ở byte N: …")` **theo byte**, không panic; depth cap 128 |
+| 4 | **Đối xứng** | `json.encode(decode(encode(x))) == encode(x)` cho int/float/bool/str/none/list/map/record(⇒map); **enum/Result chưa round-trip** (nợ JOURNAL) |
+| 5 | **Đo** | **466** test (443 + **23** `std_fs_json`); ca không-host khoá **cả hai đường** (interp + VM ⇒ `VS0604`); 338 ca sem **giữ nguyên** (không fixture nào cần FS) |
 
 ## ST-32 — harness so chẩn đoán **biên dịch** hai đường (2026-11-13)
 

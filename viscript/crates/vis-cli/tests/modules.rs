@@ -83,15 +83,27 @@ fn thieu_tep_la_vs0701() {
 
 #[test]
 fn std_fs_bao_st27() {
-    // **SỬA KÈM LÝ DO (ST-26)**: `std.fs` cần host ⇒ dời sang **ST-27**; thông điệp nay là "ST-27"
-    // (trước ST-26 nó là "ST-26" vì chưa có module std nào).
+    // **SỬA KÈM LÝ DO (ST-33)**: `std.fs` **đã có** (qua `Host`, VD-64 (2)) ⇒ fixture `std/main.vis`
+    // (`use std.fs`) nay **hợp lệ**, chương trình chạy được (exit 0). Giữ ca "module std chưa có ⇒
+    // `VS0701`" bằng module **vẫn hoãn** (`std.io`) — không nới luật, chỉ đổi tên module chưa cấp.
     let k = run("std/main.vis");
-    assert_eq!(k.code, 2);
+    assert_eq!(k.code, 0, "stderr: {}", k.err);
+    let d = std::env::temp_dir().join(format!("vis-std-io-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&d);
+    let p = d.join("io.vis");
+    std::fs::write(
+        &p,
+        "# SPDX-License-Identifier: MIT OR Apache-2.0\nuse std.io\nprint(1)\n",
+    )
+    .expect("ghi");
+    let k2 = chay(&["run", p.to_str().unwrap()], &[]);
+    assert_eq!(k2.code, 2, "stderr: {}", k2.err);
     assert!(
-        k.err.contains("VS0701") && k.err.contains("ST-27"),
+        k2.err.contains("VS0701") && k2.err.contains("VS1b") || k2.err.contains("chưa hỗ trợ"),
         "stderr: {}",
-        k.err
+        k2.err
     );
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 #[test]

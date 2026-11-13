@@ -22,4 +22,4 @@
 pub mod dump;
 pub mod vm;
 
-pub use vm::{run, Vm, VmError, MAX_FRAMES, MAX_STEPS};
+pub use vm::{run, run_with_fs, Vm, VmError, MAX_FRAMES, MAX_STEPS};
