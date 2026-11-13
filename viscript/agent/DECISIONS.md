@@ -621,3 +621,9 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (3) Thân lệnh = **đúng một pipeline**; rỗng / nhiều pipeline / lẫn `let`-và-lệnh ⇒ **`VS0201`**. (4) Hạ bằng
   `ha_pipeline` trên Lowerer **con** (chung bảng) ⇒ `HItem::Fn.body = [giá trị cuối pipeline]`, **không** `HExpr::Pipeline`,
   **bỏ** `boc_render`. (5) Nợ: thân lệnh **chưa dùng tham số `cmd`**; body "vừa script vừa lệnh" ⇒ `VS0201` (bảo thủ).
+
+- **VD-83** **Nhóm-lệnh + nhóm nhiều dòng (ST-49)**: (1) **một** đường hạ nhóm duy nhất (`lower_nhom_lenh` tự-dựng-Call
+  **đã xoá**): nội dung nhóm được **đổi newline thành dấu cách** (1 byte→1 byte ⇒ offset **tuyệt đối** giữ nguyên), parse
+  lại (`parse_voi`), hạ **cả pipeline** bằng Lowerer **con** chung `Symbols`/`TypeTable`. (2) Parser **không** còn chặn `|`
+  trong nhóm; newline **không** kết thúc nhóm. (3) `kieu_stage` trả kiểu **đúng** của nhóm ⇒ `( ls --long ) | select mode`
+  kiểm tĩnh được. (4) Nợ: trong nhóm chỉ **một** pipeline (nhiều pipeline/`;` ⇒ `VS0201`); kiểu tĩnh lấy **stage đầu**.

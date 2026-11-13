@@ -138,8 +138,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | **DONE** | 3 nợ VSH1b hết; allowlist không tăng |
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **DONE** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
-| ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **READY** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
-| ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | BLOCKED | một mã duy nhất; snapshot vi/en/ja kèm lý do |
+| ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **DONE** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
+| ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **READY** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -669,6 +669,19 @@ APPROVED 2026-11-13 Agent 0
 > item sau thân đúng dòng:cột). Tách `lower/than.rs` khi R1 đỏ.
 > Nợ: thân lệnh **chưa dùng tham số `cmd`**; body "vừa script vừa lệnh" ⇒ `VS0201` (bảo thủ).
 > **ST-49 mở** (nhóm-lệnh có cờ + nhóm nhiều dòng).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-49 DONE** — commit `e0c084a` (**Agent 2 tự commit**): **xoá** `lower_nhom_lenh` (nay **một** đường hạ nhóm:
+> newline→dấu cách 1 byte→1 byte, `parse_voi` + span **tuyệt đối**, Lowerer con chung bảng) ⇒ **nhóm-lệnh có cờ** chạy
+> (`( ls --long )` ⇒ **6 cột**, `kieu_stage` trả `list[FileEntryLong]` ⇒ `… | select mode` kiểm tĩnh) + **nhóm nhiều dòng**
+> (`( 1 +
+ 1 )` ⇒ 2; `( 1 +
+ 0 / 0 )` ⇒ **3:3**; nhóm chứa pipeline). **680** test (+14); sem 370; `vis test` **370 ok** /
+> `--vm` 370 ok+6 SKIP; parity 344/344; differential 100k **0 lệch** (210,4 s); allowlist **6**.
+> **APPROVED** đổi golden `ls | (a | b)` từ `!ERR` → hợp lệ (có dòng lý do), ca 24 không đụng.
+> Nợ: trong nhóm chỉ hạ **một** pipeline; kiểu tĩnh lấy **stage đầu**.
+> **ST-50 mở** (thống nhất mã field-access + `where ( x => x )` kiểm tĩnh).
 
 ## Ghi chú vận hành
 
