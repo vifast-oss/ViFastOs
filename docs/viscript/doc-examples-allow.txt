@@ -8,4 +8,3 @@ ViScript-thiet-ke.md:445 `...` ở 450 (`fn show(self) -> str: ...`) — thân h
 ViScript-thiet-ke.md:610 `...` ở 613 (`pub cmd ls(...): ...`) — thân hàm lược
 ViScript-thiet-ke.md:737 `...` ở 739 (`fn main(...): ...`) — thân hàm lược
 ViScript-thiet-ke.md:1412 lỗi đầu `Entry(path: str(e.path), …)` ở 1429 — constructor có trường tên không có trong §A.3; `assert` ở 1438 cũng ngoài §A.1/A.2 (VD-36, hai lỗ hổng tài liệu ghi R2)
-ViScript-thiet-ke.md:672 phiên shell §9.7 dùng lệnh của shell/vis-std VS1 (`ls`, `where`, `sort_by`, `take`) — ngoài bảng chữ ký lệnh VS0/VS1-khung (VS0601); `vish-session` là input shell hợp lệ ở VS1, không phải chương trình VS0
