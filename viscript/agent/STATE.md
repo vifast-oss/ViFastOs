@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-44** (`.vish` có khai báo kiểu) — xong, **chưa commit**.
-Bước          : 5/5 (tách vùng item/stage + `CmdKhai` + `ha_tien_to_khai` → `VS0302`/`VS0201` → `f()` lời gọi 0 đối số → 16 ca + 4 fixture → gate)
+Task          : **ST-45** (`where` kiểm tĩnh + `each` không kiểm kiểu trả) — xong, **chưa commit**.
+Bước          : 4/4 (đo trước → nới `each` → 14 ca + 3 fixture → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T12:09:53Z**; **622** test / sem **370** / parity **344/344** / diff 100k **0 lệch**
-Việc dở       : commit `[ST-44]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T12:27:12Z**; **636** test / sem **370** / parity **344/344** / diff 100k **0 lệch**
+Việc dở       : commit `[ST-45]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-44 — `.vish` khai báo kiểu (2026-11-13)
+## ST-45 — `where` kiểm tĩnh, `each` không kiểm kiểu trả (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Đo trước** | `where size`/`it.size`/`1`/`x => x` **đã** `VS0412` (từ ST-38, qua `coerce` thân lambda); `.vish` **có** tyck |
+| 2 | **Nới `each`** | khai kiểu trả lambda = **`{error}` (any)** ⇒ thân `int`/bản ghi **sạch**; không nuốt lỗi trường (`VS0403`/`VS0605`) |
+| 3 | **Ca bắt buộc** | `.vish` khai báo + `cmd` trả `list[FileEntry]` + `where size` ⇒ **`VS0412`** |
+| 4 | **Đo** | **622 → 636** test (+14 `where_tinh.rs`); sem **370** không đổi; **3 fixture** `test/cmd/where/**`; allowlist **6** |
+| 5 | **Tách tệp** | `lower/sugar.rs` (271 dòng) — `ha_sugar`/`ha_closure`/`arg_start`/`stage_end`/`kiem_it` rời `cmd.rs` (1.509 → **1.252** dòng) để giữ **R1** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

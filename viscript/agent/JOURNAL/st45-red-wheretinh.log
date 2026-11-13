@@ -1,0 +1,46 @@
+=== ST-45 D2-05: `where` kiểm tĩnh + `each` không kiểm kiểu trả — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T12:19:46Z
+
+## 1. Đỏ **thật** ở HEAD `8b5c98d` (worktree `/tmp/vis-red45`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test where_tinh
+test result: FAILED. **11 passed; 3 failed**
+```
+
+3 ca đỏ: `each_tra_int_sach` (`each x => x + 1` bị `VS0412` "cần `()`, được `int`"),
+`each_tra_ban_ghi_sach` (tương tự), `fixture_cmd_where` (fixture chưa có).
+
+## 2. **Đo trước khi sửa** — phần lớn `where` đã kiểm tĩnh từ ST-38
+
+| Nguồn (`list[FileEntry]`) | Trước ST-45 |
+|---|---|
+| `where size` | **`VS0412`** (cần `bool`, được `size`) |
+| `where it.size` | **`VS0412`** |
+| `where 1` | **`VS0412`** (được `int`) |
+| `where x => x` | **`VS0412`** (được `FileEntry`) |
+| `each x => 1` | **`VS0412`** (cần `()`, được `int`) ⇒ **sửa ở ST-45** |
+| `each x => x.khong_co` | `VS0403` (đường script) — vẫn đỏ, không bị nuốt |
+| `( [] ) \| where size` (kiểu không biết) | **không** lỗi tĩnh (giữ kiểm động) |
+
+Cơ chế: lambda của `where` khai **kiểu trả `bool`** ⇒ tyck `coerce(body, bool, "thân lambda")`;
+`.vish` **có** qua tyck (ca `( 1 + "a" )` ⇒ `VS0412`).
+
+## 3. Sau khi sửa — đo được
+
+- `each`: kiểu trả lambda khai **`{error}` (any)** ⇒ thân trả `int`/bản ghi **sạch**; thân **vẫn** kiểm
+  trường/kiểu (`x.khong_co` ⇒ `VS0403`; viết tắt `where khong_co` ⇒ `VS0605`) ⇒ **không nuốt lỗi**.
+- `where`: giữ **`bool`**; `it` không biết kiểu ⇒ **không** chẩn đoán; `.vish` khai báo + `cmd` trả
+  `list[FileEntry]` ⇒ **`VS0412`** (ca bắt buộc của Agent 0).
+- 3 fixture `test/cmd/where/**`; `each` theo hệ quả "không kiểm kiểu trả (giống `for` trong Rust)".
+
+## 4. Số ca
+
+- test workspace **622 → 636** (+**14** `where_tinh.rs`); sem **370 không đổi**;
+- parity **344/344**; differential **100.000 / 0 lệch**; allowlist **6**.
+
+## 5. sha256 bản commit
+  (tệp `lower/sugar.rs` mới: tách hàm sugar khỏi `cmd.rs` để giữ **R1 ≤ 1.500 dòng** — cùng khuôn `chieu.rs` ST-40b)
+  sha256 crates/vis-types/src/lower/cmd.rs=813d126ee9a68df04289a6c4724b3e66159f96c6d4aa374dd32db9ce79302c0c
+  sha256 crates/vis-cli/tests/where_tinh.rs=d3ba341f96033b0a07f7f1ca5e10b828285e951ac9a49283a7930bfe38ca796e
+  sha256 crates/vis-types/src/lower/sugar.rs=7fca5e1b89963efc9185c22c12e46bf347de744014864793268370c8080f0c04

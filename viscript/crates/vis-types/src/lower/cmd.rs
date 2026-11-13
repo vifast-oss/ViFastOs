@@ -59,263 +59,6 @@ fn lit(kind: LitKind, text: &str) -> HExpr {
 /// Tên kiểu ngắn để đưa vào thông điệp `VS0602`/`VS0603`.
 impl<'a> Lowerer<'a> {
     /// Vị trí **bắt đầu** vùng đối số của stage (token đầu sau tên lệnh).
-    fn arg_start(&self, node: &Node) -> Option<usize> {
-        // Parser có thể **không** sinh token cho mọi từ (vd `size > 5mb` thành redirect) ⇒ quét
-        // thẳng văn bản: hết **tên lệnh**, bỏ khoảng trắng ⇒ đó là đầu vùng đối số.
-        let ten = node.tokens(&self.cst.tokens).next()?;
-        let mut i = ten.span.end;
-        let bytes = self.text.as_bytes();
-        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
-            i += 1;
-        }
-        Some(i)
-    }
-
-    /// `true` nếu `name` đã **khai** trong phạm vi hiện tại (biến/hàm/const/dựng sẵn).
-    fn da_khai(&self, name: &str) -> bool {
-        self.symbols
-            .syms
-            .iter()
-            .any(|s| s.name == name && s.kind != SymKind::Generic)
-    }
-
-    /// ST-40a: đăng ký `FileEntry`/`ProcEntry` vào bảng kiểu của tệp `.vish` **và** bảng tên.
-    pub(crate) fn dang_ky_prelude(&mut self) -> Vec<(String, crate::ty::RecId)> {
-        let mut file_id = None;
-        let mut ds = Vec::new();
-        for (ten, id) in crate::prelude::dang_ky_vish(self.tbl) {
-            if ten == "FileEntry" {
-                file_id = Some(id);
-            }
-            self.rec_names.push((ten.clone(), id));
-            self.prelude_recs.push((ten.clone(), id));
-            ds.push((ten, id));
-        }
-        // ST-42: `ls` trả `list[FileEntry]` — `RecId` cấp **theo tệp** nên phải **vá** ret của chữ ký
-        // (bảng `BuiltinSigs` là tĩnh, không biết id).
-        if let Some(id) = file_id {
-            for s in self.cmd_sigs.iter_mut() {
-                if s.name == "ls" {
-                    s.ret = Type::List(Box::new(Type::Record(id)));
-                }
-            }
-        }
-        ds
-    }
-
-    /// Kết thúc stage (gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng) — dùng cho sugar `sort_by`.
-    fn stage_end(&self, start: usize) -> usize {
-        let bytes = self.text.as_bytes();
-        let mut depth = 0i32;
-        let mut i = start;
-        while i < bytes.len() {
-            match bytes[i] {
-                b'(' | b'[' | b'{' => depth += 1,
-                b')' | b']' | b'}' => depth -= 1,
-                b'|' | b';' | b'&' | b'\n' if depth <= 0 => return i,
-                _ => {}
-            }
-            i += 1;
-        }
-        bytes.len()
-    }
-
-    /// ST-40a: kiểm **tĩnh** thân vị từ khi `it` có kiểu bản ghi **thật** (prelude):
-    /// - `it.<trường>` không tồn tại ⇒ **`VS0605`**;
-    /// - `it.<trường> <op> <literal>` mà kiểu trường ≠ kiểu literal ⇒ **`VS0412`**.
-    ///
-    /// Span **tuyệt đối** (văn bản thân bắt đầu ở `base`). Không kiểu được ⇒ bỏ qua (kiểm động như cũ).
-    fn kiem_it(&mut self, body: &str, base: usize, it_ty: &Type) {
-        let Type::Record(id) = it_ty else { return };
-        let Some(rec) = self.tbl.rec(*id).cloned() else {
-            return;
-        };
-        let lexed = vis_syntax::lex(body, vis_syntax::Mode::Script);
-        let toks: Vec<(String, usize, usize)> = lexed
-            .tokens
-            .iter()
-            .map(|t| (t.text.clone(), t.span.start, t.span.end))
-            .collect();
-        let mut i = 0usize;
-        while i < toks.len() {
-            if toks[i].0 == "it" && toks.get(i + 1).map(|t| t.0 == ".").unwrap_or(false) {
-                if let Some(f) = toks.get(i + 2) {
-                    let span = Span::new(base + f.1, base + f.2);
-                    match rec.fields.iter().find(|x| x.name == f.0) {
-                        None => self.diag(
-                            &COMMAND_CODES[4],
-                            format!("`it` không có trường `{}`", f.0),
-                            span,
-                        ),
-                        Some(fd) => {
-                            let op = toks.get(i + 3).map(|t| t.0.as_str()).unwrap_or("");
-                            if matches!(op, ">" | "<" | ">=" | "<=" | "==" | "!=") {
-                                if let Some(lit) = toks.get(i + 4) {
-                                    let lt = self.kieu_text(&lit.0);
-                                    if !matches!(lt, Type::Error) && lt != fd.ty {
-                                        self.diag(
-                                            &TYPE_CODES[3],
-                                            format!(
-                                                "so sánh `it.{}` (`{}`) với `{}`",
-                                                f.0,
-                                                ten_kieu(&fd.ty),
-                                                ten_kieu(&lt)
-                                            ),
-                                            Span::new(base + lit.1, base + lit.2),
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                i += 1;
-                continue;
-            }
-            i += 1;
-        }
-    }
-
-    /// ST-38: **vị từ ngầm `it`** — `where size > 5mb` ⇒ `it => it.size > 5mb`.
-    ///
-    /// Luật (Agent 0 chốt): chỉ đổi **định danh trần chưa khai báo**, không đổi `it` viết tường minh,
-    /// không đổi tên đã khai; không đổi luật nào khác. `where 1` vẫn là **lỗi kiểm tĩnh** (`VS0602`
-    /// "đối số sai kiểu" vì `1` không phải hàm) — ghi JOURNAL.
-    fn ha_sugar(
-        &mut self,
-        start: usize,
-        end_co: Option<usize>,
-        pty: Type,
-        rty: Type,
-    ) -> Option<HExpr> {
-        // Kết thúc **stage**: gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng.
-        let mut depth = 0i32;
-        let mut end = self.text.len();
-        let bytes = self.text.as_bytes();
-        let mut i = start;
-        while end == self.text.len() && i < bytes.len() {
-            let c = bytes[i];
-            match c {
-                b'(' | b'[' | b'{' => depth += 1,
-                b')' | b']' | b'}' => depth -= 1,
-                b'|' | b';' | b'&' if depth <= 0 => {
-                    end = i;
-                    break;
-                }
-                b'\n' if depth <= 0 => {
-                    end = i;
-                    break;
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        let end = end_co.unwrap_or(end);
-        let text = self
-            .text
-            .get(start..end.min(self.text.len()))?
-            .trim()
-            .to_string();
-        if text.is_empty() {
-            return None;
-        }
-        let lexed = vis_syntax::lex(&text, vis_syntax::Mode::Script);
-        let mut chen: Vec<usize> = Vec::new();
-        let toks: Vec<(usize, String)> = lexed
-            .tokens
-            .iter()
-            .map(|t| (t.span.start, t.text.clone()))
-            .collect();
-        for (i, (off, txt)) in toks.iter().enumerate() {
-            if txt != "it" && self.da_khai(txt) {
-                continue;
-            }
-            if txt == "it"
-                || txt.is_empty()
-                || !txt.starts_with(|c: char| c.is_alphabetic() || c == '_')
-            {
-                continue;
-            }
-            if matches!(txt.as_str(), "and" | "or" | "not" | "true" | "false") {
-                continue;
-            }
-            if toks
-                .get(i.wrapping_sub(1))
-                .map(|(_, p)| p == ".")
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            if txt == "it" || self.da_khai(txt) {
-                continue;
-            }
-            // `it` tường minh: `it.x` — không đổi; `f(` là lời gọi hàm — không đổi.
-            if toks.get(i + 1).map(|(_, p)| p == "(").unwrap_or(false) {
-                continue;
-            }
-            // `time.now()`, `it.is_file()` — tên **module/trường** (theo sau là `.`) ⇒ không đổi.
-            if toks.get(i + 1).map(|(_, p)| p == ".").unwrap_or(false) {
-                continue;
-            }
-            chen.push(*off);
-        }
-        let mut src_body = String::new();
-        let mut last = 0usize;
-        for off in &chen {
-            src_body.push_str(&text[last..*off]);
-            src_body.push_str("it.");
-            last = *off;
-        }
-        src_body.push_str(&text[last..]);
-        self.tam_n += 1;
-        if matches!(&pty, Type::Record(_)) {
-            self.kiem_it(&src_body, start, &pty);
-        }
-        let prefix = format!("let _c{} = it => ", self.tam_n);
-        if start < prefix.len() {
-            return None;
-        }
-        let pad = start - prefix.len();
-        let src = format!("{prefix}{}{src_body}", " ".repeat(pad));
-        let lexed2 = vis_syntax::lex(&src, vis_syntax::Mode::Script);
-        let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
-        self.push_frame(FrameKind::Fn, Span::new(start, end));
-        let scope = self.scope.clone();
-        let mut sub = super::Lowerer::new(
-            &parsed.cst,
-            &lexed2,
-            self.opts.clone(),
-            self.symbols,
-            self.tbl,
-        );
-        sub.scope = scope;
-        sub.run();
-        let out = sub.finish();
-        self.pop_frame();
-        self.diags.extend(out.diagnostics);
-        let init = match out.hir.stmts.first() {
-            Some(crate::hir::HStmt::Let { init, .. }) => init.clone(),
-            _ => return None,
-        };
-        match init {
-            HExpr::Lambda {
-                params, body, span, ..
-            } => {
-                let mut params = params;
-                if let Some(p) = params.first_mut() {
-                    p.ty = pty;
-                }
-                Some(HExpr::Lambda {
-                    params,
-                    ret: rty,
-                    body,
-                    span,
-                })
-            }
-            _ => None,
-        }
-    }
-
     /// ST-38: hạ **thân closure** `x => <biểu thức>` thành `HExpr::Lambda`.
     ///
     /// Span: parser re-parse thân từ **slice** (span tương đối) ⇒ ở đây lex/parse lại văn bản thân
@@ -411,7 +154,7 @@ impl<'a> Lowerer<'a> {
 
     /// ST-37: hạ **nội dung** stage `( … )` — parser chỉ giữ token nên hạ lại văn bản trong ngoặc
     /// ở chế độ script. Chỉ dùng cho **biểu thức thuần** (literal/phép toán); biến trong nhóm chưa hỗ trợ.
-    fn vach_text(&self, g: &Node) -> Option<String> {
+    pub(super) fn vach_text(&self, g: &Node) -> Option<String> {
         let first = g.elems.first().and_then(|e| match e {
             Elem::Token(i) => self.tok(*i).map(|t| t.span),
             _ => None,
@@ -423,7 +166,7 @@ impl<'a> Lowerer<'a> {
         self.text.get(first.end..last.start).map(|s| s.to_string())
     }
 
-    fn lower_vach(&mut self, g: &Node) -> Option<HExpr> {
+    pub(super) fn lower_vach(&mut self, g: &Node) -> Option<HExpr> {
         let txt = self.vach_text(g)?;
         // Bọc `let` để **giữ** biểu thức (câu lệnh trần bị bỏ ở cấp tệp) — không chạy tyck ở đây.
         let src = format!("let __vach = {}", txt.trim());
@@ -447,7 +190,7 @@ impl<'a> Lowerer<'a> {
 
     /// ST-37: kiểu **literal** suy từ văn bản (`[1, 2]` ⇒ `list[int]`, `"x"` ⇒ `str`, …).
     /// Chỉ để chọn khe ống / buộc `T`; `{error}` nếu không chắc (tyck/lúc chạy kiểm sau).
-    fn kieu_text(&self, raw: &str) -> Type {
+    pub(super) fn kieu_text(&self, raw: &str) -> Type {
         let t = raw.trim();
         if let Some(tron) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
             let dau = super::chieu::tach_phay(tron)
@@ -543,7 +286,7 @@ impl<'a> Lowerer<'a> {
     }
 }
 
-fn ten_kieu(t: &Type) -> String {
+pub(super) fn ten_kieu(t: &Type) -> String {
     match t {
         Type::Int => "int".into(),
         Type::Float => "float".into(),
@@ -1289,6 +1032,16 @@ impl<'a> Lowerer<'a> {
             }
             // ST-37: thay tham số kiểu đã suy (từ khe hoặc từ đối số trước) trước khi kiểm đối số.
             let ty = super::generic::thay(&sig.params[i_vi_tri].ty, &bang);
+            // ST-45: **`each` không kiểm kiểu trả** (giống `for` trong Rust) — khai kiểu trả lambda là
+            // `{error}` để tyck **không** `coerce` về `()`; thân vẫn được kiểm (field/kiểu/cú pháp).
+            let ty = if sig.name == "each" {
+                match ty {
+                    Type::Fn(ps, _) => Type::Fn(ps, Box::new(Type::Error)),
+                    other => other,
+                }
+            } else {
+                ty
+            };
             // ST-37: buộc `T` từ **kiểu suy được của đối số** (literal) trước khi chuyển.
             let suy = match gt.as_ref() {
                 Some(g) if g.kind == NodeKind::CmdGroup => self
@@ -1447,13 +1200,13 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Chuyển một **từ trần**/chuỗi thành literal **đúng kiểu tham số** (pha 2 của VD-22).
-    fn chuyen_doi(&mut self, node: &Node, ty: &Type) -> Option<HExpr> {
+    pub(super) fn chuyen_doi(&mut self, node: &Node, ty: &Type) -> Option<HExpr> {
         let raw = self.text_of(node.span).to_string();
         self.chuyen_doi_text(&raw, ty, node.span)
     }
 
     /// Như [`Self::chuyen_doi`] nhưng nhận **văn bản** (dùng cho token rời của stage).
-    fn chuyen_doi_text(&mut self, raw: &str, ty: &Type, span: Span) -> Option<HExpr> {
+    pub(super) fn chuyen_doi_text(&mut self, raw: &str, ty: &Type, span: Span) -> Option<HExpr> {
         let text = raw.trim();
         let (kind, ty_lit) = match ty {
             Type::Str => {
