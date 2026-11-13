@@ -1,0 +1,1561 @@
+# KT-31 Miri toàn bộ — 2026-11-13T12:37:27Z
+# lệnh: ./v2/bin/v2 nightly --only-miri
+== v2 nightly --only-miri (D2-47(a)): Miri trên tập chọn; KHÔNG L1 100k/mutation/soak ==
+--- Miri vifast-objmem (lib + alias + fuzz 200 + contract)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/1fd59584d7410547/out/vifast_objmem-1fd59584d7410547)
+
+running 20 tests
+test many::tests::bang_kind_giu_nguyen_va_khong_phinh_qua_8_kib ... ok
+test many::tests::chong_lan_tung_cap_vung ... ok
+test many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap ... warning: integer-to-pointer cast
+   --> lib/vifast-objmem/src/obj.rs:166:5
+    |
+166 |     pa as *mut ObjHeader
+    |     ^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+    = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+    = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+    = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+    = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+    = note: this is on thread `many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap`
+    = note: stack backtrace:
+            0: obj::header_ptr
+                at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+            1: <store::ObjMem as store::ObjStore>::place::<many::tests::Gia>
+                at lib/vifast-objmem/src/store.rs:237:24: 237:38
+            2: many::tests::place::<many::tests::Gia>
+                at lib/vifast-objmem/src/many.rs:262:18: 262:32
+            3: many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap
+                at lib/vifast-objmem/src/many.rs:333:17: 341:10
+            4: many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap::{closure#0}
+                at lib/vifast-objmem/src/many.rs:327:50: 327:50
+
+warning: integer-to-pointer cast
+   --> lib/vifast-objmem/src/obj.rs:175:14
+    |
+175 |     unsafe { (pa as *mut u8).add(BODY_OFFSET).cast::<T>() }
+    |              ^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: this is on thread `many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap`
+    = note: stack backtrace:
+            0: obj::body_ptr::<many::tests::Gia>
+                at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+            1: <store::ObjMem as store::ObjStore>::place::<many::tests::Gia>
+                at lib/vifast-objmem/src/store.rs:238:24: 238:41
+            2: many::tests::place::<many::tests::Gia>
+                at lib/vifast-objmem/src/many.rs:262:18: 262:32
+            3: many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap
+                at lib/vifast-objmem/src/many.rs:333:17: 341:10
+            4: many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap::{closure#0}
+                at lib/vifast-objmem/src/many.rs:327:50: 327:50
+
+ok
+test many::tests::hai_kind_khac_nhau_ok_va_ghi_duoc_tung_object ... ok
+test many::tests::khong_ref_nao_thi_ok_rong ... ok
+test many::tests::kiem_alias_bat_ca_cap_khong_ke_nhau ... ok
+test many::tests::pa_dung_lai_sau_reset_van_bat_duoc_ref_cu ... ok
+test many::tests::ref_cua_store_khac_bi_chan_boi_guard_arena ... ok
+test many::tests::ref_lech_vao_trong_header_tra_alias_fail_closed ... ok
+test many::tests::trung_pa_khac_id_tra_alias_va_khong_dung_object ... ok
+test obj::tests::header_dung_16_byte_khong_refs ... ok
+test obj::tests::objref_dung_16_byte_va_phantomdata_dyn ... ok
+test owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align ... ok
+test owned::tests::free_ref_cua_store_khac_la_no_op ... ok
+test owned::tests::id_base_tao_id_khong_trung_giua_hai_store ... ok
+test owned::tests::owned_arena_va_mem_can_le_va_dung_lai_duoc_sau_reset ... ok
+test store::tests::ref_id_lech_header_tra_dead ... ok
+test store::tests::with_many_mut_hai_ref_roi_nhau_tra_ok ... ok
+test store::tests::with_va_with_mut_chan_ref_cua_store_khac ... ok
+test store::tests::with_va_with_mut_chay_closure ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.51s
+
+warning: 2 warnings emitted
+
+     Running tests/alias.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/a0b998904e522362/out/alias-a0b998904e522362)
+
+running 8 tests
+test ba_kind_khac_nhau_ma_co_ref_trung_tra_alias ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `ba_kind_khac_nhau_ma_co_ref_trung_tra_alias`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Counter>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: place::<Counter>
+              at lib/vifast-objmem/tests/alias.rs:84:14: 84:28
+          3: ba_kind_khac_nhau_ma_co_ref_trung_tra_alias
+              at lib/vifast-objmem/tests/alias.rs:311:13: 311:44
+          4: ba_kind_khac_nhau_ma_co_ref_trung_tra_alias::{closure#0}
+              at lib/vifast-objmem/tests/alias.rs:308:49: 308:49
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `ba_kind_khac_nhau_ma_co_ref_trung_tra_alias`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<Counter>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Counter>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: place::<Counter>
+              at lib/vifast-objmem/tests/alias.rs:84:14: 84:28
+          3: ba_kind_khac_nhau_ma_co_ref_trung_tra_alias
+              at lib/vifast-objmem/tests/alias.rs:311:13: 311:44
+          4: ba_kind_khac_nhau_ma_co_ref_trung_tra_alias::{closure#0}
+              at lib/vifast-objmem/tests/alias.rs:308:49: 308:49
+
+ok
+test ba_kind_khac_nhau_trong_mot_lan_goi_ok ... ok
+test goi_lien_tiep_ghi_don_dung_tren_tung_object ... ok
+test moi_ref_deu_trung_nhau_tra_alias ... ok
+test n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object ... ok
+test ref_da_destroy_trong_mang_tra_alias_fail_closed ... ok
+test trung_pa_moi_n_tra_alias_va_khong_dung_object ... ok
+test zst_cung_object_thuong_trong_mot_lan_goi_ok ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s
+
+warning: 2 warnings emitted
+
+     Running tests/compile_fail.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/e8ab305122d9b1d5/out/compile_fail-e8ab305122d9b1d5)
+
+running 1 test
+test n9_khong_build_va_stderr_neu_tran_n ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/fuzz.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/9b25d33a4bdde467/out/fuzz-9b25d33a4bdde467)
+
+running 1 test
+test fuzz_chuoi_thao_tac_tat_dinh ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `fuzz_chuoi_thao_tac_tat_dinh`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Z>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: chay_mot_chuoi
+              at lib/vifast-objmem/tests/fuzz.rs:342:46: 342:60
+          3: fuzz_chuoi_thao_tac_tat_dinh
+              at lib/vifast-objmem/tests/fuzz.rs:505:9: 505:29
+          4: fuzz_chuoi_thao_tac_tat_dinh::{closure#0}
+              at lib/vifast-objmem/tests/fuzz.rs:501:34: 501:34
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `fuzz_chuoi_thao_tac_tat_dinh`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<Z>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Z>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: chay_mot_chuoi
+              at lib/vifast-objmem/tests/fuzz.rs:342:46: 342:60
+          3: fuzz_chuoi_thao_tac_tat_dinh
+              at lib/vifast-objmem/tests/fuzz.rs:505:9: 505:29
+          4: fuzz_chuoi_thao_tac_tat_dinh::{closure#0}
+              at lib/vifast-objmem/tests/fuzz.rs:501:34: 501:34
+
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 197.30s
+
+warning: 2 warnings emitted
+
+     Running tests/objmem_contract.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/30ade76b9274b4a7/out/objmem_contract-30ade76b9274b4a7)
+
+running 10 tests
+test arena_can_le_8_16_64_va_het_cho_none ... ok
+test arena_day_dung_64_byte_thi_tra_none ... ok
+test arena_used_va_reset ... ok
+test chu_ky_objstore_dung_thiet_ke ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `chu_ky_objstore_dung_thiet_ke`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Counter>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: place_sig::<vifast_objmem::ObjMem>
+              at lib/vifast-objmem/tests/objmem_contract.rs:50:14: 50:28
+          3: chu_ky_objstore_dung_thiet_ke
+              at lib/vifast-objmem/tests/objmem_contract.rs:119:22: 119:62
+          4: chu_ky_objstore_dung_thiet_ke::{closure#0}
+              at lib/vifast-objmem/tests/objmem_contract.rs:115:35: 115:35
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `chu_ky_objstore_dung_thiet_ke`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<Counter>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<Counter>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: place_sig::<vifast_objmem::ObjMem>
+              at lib/vifast-objmem/tests/objmem_contract.rs:50:14: 50:28
+          3: chu_ky_objstore_dung_thiet_ke
+              at lib/vifast-objmem/tests/objmem_contract.rs:119:22: 119:62
+          4: chu_ky_objstore_dung_thiet_ke::{closure#0}
+              at lib/vifast-objmem/tests/objmem_contract.rs:115:35: 115:35
+
+ok
+test destroy_drop_dung_mot_lan_hai_lan_khong_ub ... ok
+test header_16b_va_objref_16b ... ok
+test id_khong_tai_dung_ba_vong ... ok
+test object_can_le_64_body_can_le ... ok
+test ref_cu_sau_khi_pa_duoc_dung_lai_tra_dead ... ok
+test ref_sau_destroy_tra_dead_va_khong_goi_closure ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+warning: 2 warnings emitted
+
+   Doc-tests vifast_objmem
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- Miri vifast-objmem (lib + alias + fuzz 200 + contract): OK
+--- Miri vifast-sim --lib
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/f213698b4a078224/out/vifast_sim-f213698b4a078224)
+
+running 34 tests
+test kobj::tests::can_le_va_can_duoi ... ok
+test kobj::tests::check_caps_bat_cap_mo_coi ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_caps_bat_cap_mo_coi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: kobj::tests::check_caps_bat_cap_mo_coi
+              at sim/vifast-sim/src/kobj.rs:7294:17: 7294:31
+          6: kobj::tests::check_caps_bat_cap_mo_coi::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:7292:35: 7292:35
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_caps_bat_cap_mo_coi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: kobj::tests::check_caps_bat_cap_mo_coi
+              at sim/vifast-sim/src/kobj.rs:7294:17: 7294:31
+          6: kobj::tests::check_caps_bat_cap_mo_coi::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:7292:35: 7292:35
+
+ok
+test kobj::tests::check_caps_bat_slot_khong_doi_xung ... ok
+test kobj::tests::check_smp_bat_published_lech_va_migrate_sai ... ok
+test kobj::tests::check_waitaddr_bat_sai_bucket ... ok
+test kobj::tests::check_waitaddr_bat_trung_va_tcb_chet ... ok
+test kobj::tests::ma_loi_lay_dung_tu_spec ... ok
+test kobj::tests::tcb_state_du_11_ten_theo_spec ... ok
+test kobj::tests::ten_object_khop_spec ... ok
+test mailbox::tests::fifo_va_backpressure_tra_lai_message ... ok
+test mailbox::tests::hart_mailbox_log_dung_thu_tu_va_co_stopped ... ok
+test mailbox::tests::retain_giu_fifo_va_dem_removed ... ok
+test mcs::tests::bien_bao_hoa_o_tran_khong_wrap ... ok
+test mcs::tests::bien_thang_hang_toan_cuc ... ok
+test mcs::tests::charge_dung_bien_budget ... ok
+test mcs::tests::check_bat_budget_period_va_consumed_sai ... ok
+test mcs::tests::configure_dat_consumed_0_va_refill_toan_cuc ... ok
+test mcs::tests::donated_priority_khong_vuot_mcp_hai_ben ... ok
+test mcs::tests::refill_due_khi_now_o_tran_khong_lap ... ok
+test mcs::tests::refill_due_tai_bien_va_nhay_nhieu_bien ... ok
+test mcs::tests::sc_chua_cau_hinh_khong_co_budget ... ok
+test sched::tests::bitmap_phu_du_256_muc ... ok
+test sched::tests::pick_lay_muc_cao_nhat_va_fifo_cung_muc ... ok
+test sched::tests::pick_where_bo_qua_phan_tu_bi_loai_giu_thu_tu_uu_tien_fifo ... ok
+test tcb::tests::bang_allowed_khong_co_cap_danh_tinh_ngoai_blocked_on_send ... ok
+test tcb::tests::chi_so_trang_thai_khop_tcb_states ... ok
+test tcb::tests::kt23_coverage_design_46_va_73_cap_cam ... ok
+test tests::cung_seed_cung_trace ... ok
+test tests::hash_tai_lap_tu_trace ... ok
+test tests::khong_task_nao_bi_bo_doi ... ok
+test tests::kich_ban_rong_van_tat_dinh ... ok
+test tests::seed_khac_trace_khac ... ok
+test tests::store_can_le_va_het_cho ... ok
+test tests::store_tu_choi_align_sai ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.30s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim --lib: OK
+--- Miri vifast-sim kt16_objmem
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.73s
+     Running tests/kt16_objmem.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/9eda4fa598e1de91/out/kt16_objmem-9eda4fa598e1de91)
+
+running 4 tests
+test machine_co_arena_kernel_mac_dinh_1mib_va_with_arena_bytes ... ok
+test object_retype_nam_trong_arena_cua_untyped ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `object_retype_nam_trong_arena_cua_untyped`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt16_objmem.rs:28:14: 28:28
+          6: object_retype_nam_trong_arena_cua_untyped
+              at sim/vifast-sim/tests/kt16_objmem.rs:50:27: 50:38
+          7: object_retype_nam_trong_arena_cua_untyped::{closure#0}
+              at sim/vifast-sim/tests/kt16_objmem.rs:49:47: 49:47
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `object_retype_nam_trong_arena_cua_untyped`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt16_objmem.rs:28:14: 28:28
+          6: object_retype_nam_trong_arena_cua_untyped
+              at sim/vifast-sim/tests/kt16_objmem.rs:50:27: 50:38
+          7: object_retype_nam_trong_arena_cua_untyped::{closure#0}
+              at sim/vifast-sim/tests/kt16_objmem.rs:49:47: 49:47
+
+ok
+test revoke_truy_cap_body_qua_objmem_tra_dead ... ok
+test store_dung_bump_cua_objmem_va_can_le_64 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.09s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt16_objmem: OK
+--- Miri vifast-sim kt09_untyped
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt09_untyped.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/650d8f7575377d00/out/kt09_untyped-650d8f7575377d00)
+
+running 8 tests
+test double_free_bi_bat ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `double_free_bi_bat`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt09_untyped.rs:21:14: 21:28
+          6: double_free_bi_bat
+              at sim/vifast-sim/tests/kt09_untyped.rs:276:27: 276:38
+          7: double_free_bi_bat::{closure#0}
+              at sim/vifast-sim/tests/kt09_untyped.rs:275:24: 275:24
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `double_free_bi_bat`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt09_untyped.rs:21:14: 21:28
+          6: double_free_bi_bat
+              at sim/vifast-sim/tests/kt09_untyped.rs:276:27: 276:38
+          7: double_free_bi_bat::{closure#0}
+              at sim/vifast-sim/tests/kt09_untyped.rs:275:24: 275:24
+
+ok
+test lap_lai_retype_va_revoke_khong_ro_byte ... ok
+test retype_loi_tra_dung_ma ... ok
+test revoke_untyped_long_nhau_finalise_ca_cay ... ok
+test revoke_untyped_tra_byte_ve_0_va_lam_tiep_duoc ... ok
+test tong_byte_bat_bien_sau_moi_retype ... ok
+test untyped_con_duoc_can_le_va_tinh_du_byte ... ok
+test watermark_chi_tien_va_het_cho_khong_ro_byte ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.04s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt09_untyped: OK
+--- Miri vifast-sim kt09_revoke
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt09_revoke.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/4b1f77c5026592bc/out/kt09_revoke-4b1f77c5026592bc)
+
+running 7 tests
+test copy_tra_dung_ma_loi ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `copy_tra_dung_ma_loi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: tree
+              at sim/vifast-sim/tests/kt09_revoke.rs:31:13: 31:27
+          6: copy_tra_dung_ma_loi
+              at sim/vifast-sim/tests/kt09_revoke.rs:139:17: 139:23
+          7: copy_tra_dung_ma_loi::{closure#0}
+              at sim/vifast-sim/tests/kt09_revoke.rs:138:26: 138:26
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `copy_tra_dung_ma_loi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: tree
+              at sim/vifast-sim/tests/kt09_revoke.rs:31:13: 31:27
+          6: copy_tra_dung_ma_loi
+              at sim/vifast-sim/tests/kt09_revoke.rs:139:17: 139:23
+          7: copy_tra_dung_ma_loi::{closure#0}
+              at sim/vifast-sim/tests/kt09_revoke.rs:138:26: 138:26
+
+ok
+test delete_roi_dung_lai_cap_cu ... ok
+test revoke_chi_xoa_con_chau_cua_cap ... ok
+test revoke_khong_dung_cay_cap_khac ... ok
+test revoke_khong_slot_xoa_moi_con_trong_cnode ... ok
+test revoke_none_khong_loi_khi_cap_long_trong_cung_cnode ... ok
+test revoke_slot_rong_hoac_ngoai_dai ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.22s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt09_revoke: OK
+--- Miri vifast-sim kt10_cnode
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt10_cnode.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/d30338b60684cdf6/out/kt10_cnode-d30338b60684cdf6)
+
+running 13 tests
+test cap_chet_tra_invalid_capability ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `cap_chet_tra_invalid_capability`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt10_cnode.rs:34:13: 34:27
+          6: cap_chet_tra_invalid_capability
+              at sim/vifast-sim/tests/kt10_cnode.rs:336:17: 336:22
+          7: cap_chet_tra_invalid_capability::{closure#0}
+              at sim/vifast-sim/tests/kt10_cnode.rs:335:37: 335:37
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `cap_chet_tra_invalid_capability`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt10_cnode.rs:34:13: 34:27
+          6: cap_chet_tra_invalid_capability
+              at sim/vifast-sim/tests/kt10_cnode.rs:336:17: 336:22
+          7: cap_chet_tra_invalid_capability::{closure#0}
+              at sim/vifast-sim/tests/kt10_cnode.rs:335:37: 335:37
+
+ok
+test copy_giu_quan_he_cha_con_va_slot ... ok
+test delete_cap_goc_thi_con_thanh_goc ... ok
+test delete_cha_reparent_con_cho_ong ... ok
+test finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con ... ok
+test mint_badge_chi_cho_endpoint_notification ... ok
+test mint_rights_hep_va_badge_endpoint ... ok
+test mint_va_copy_ma_loi_slot ... ok
+test mint_vuot_quyen_tra_insufficient_rights_va_khong_ro_cap ... ok
+test revoke_dung_pham_vi_khong_dung_nhanh_khac ... ok
+test revoke_none_xoa_moi_cay_con_trong_cnode ... ok
+test revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot ... ok
+test revoke_va_delete_tra_dung_ma_loi ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.37s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt10_cnode: OK
+--- Miri vifast-sim kt17_align
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt17_align.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/7e46f15170444415/out/kt17_align-7e46f15170444415)
+
+running 3 tests
+test retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt17_align.rs:27:14: 27:28
+          6: retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi
+              at sim/vifast-sim/tests/kt17_align.rs:74:27: 74:38
+          7: retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi::{closure#0}
+              at sim/vifast-sim/tests/kt17_align.rs:73:64: 73:64
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: setup
+              at sim/vifast-sim/tests/kt17_align.rs:27:14: 27:28
+          6: retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi
+              at sim/vifast-sim/tests/kt17_align.rs:74:27: 74:38
+          7: retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi::{closure#0}
+              at sim/vifast-sim/tests/kt17_align.rs:73:64: 73:64
+
+ok
+test retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte ... ok
+test store_alloc_chot_hop_dong_align_lon_hon_arena_align ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt17_align: OK
+--- Miri vifast-sim kt18_tcb
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt18_tcb.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/141275949e3ab7ff/out/kt18_tcb-141275949e3ab7ff)
+
+running 18 tests
+test bang_allowed_11x11_du_cap_va_cam ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `bang_allowed_11x11_du_cap_va_cam`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_kernel_object
+              at sim/vifast-sim/src/kobj.rs:896:9: 896:73
+          5: bang_allowed_11x11_du_cap_va_cam
+              at sim/vifast-sim/tests/kt18_tcb.rs:314:23: 314:56
+          6: bang_allowed_11x11_du_cap_va_cam::{closure#0}
+              at sim/vifast-sim/tests/kt18_tcb.rs:307:38: 307:38
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `bang_allowed_11x11_du_cap_va_cam`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_kernel_object
+              at sim/vifast-sim/src/kobj.rs:896:9: 896:73
+          5: bang_allowed_11x11_du_cap_va_cam
+              at sim/vifast-sim/tests/kt18_tcb.rs:314:23: 314:56
+          6: bang_allowed_11x11_du_cap_va_cam::{closure#0}
+              at sim/vifast-sim/tests/kt18_tcb.rs:307:38: 307:38
+
+ok
+test cap_cam_theo_thiet_ke_bi_tu_choi ... ok
+test exit_cap_fault_ep_chet_khong_doi_trang_thai ... ok
+test exit_giu_d2_25 ... ok
+test finalise_tcb_truoc_khi_revoke_untyped ... ok
+test moi_duong_dung_mot_cua_transition_tcb ... ok
+test read_state_tra_bon_gia_tri ... ok
+test resume_chi_xoa_co_khong_phat_lai ... ok
+test suspend_abort_blocked_on_recv ... ok
+test suspend_abort_blocked_on_reply_va_reply_bi_bo ... ok
+test suspend_abort_blocked_on_send ... ok
+test suspend_abort_khi_cho_giao_exit_giu_exit_code ... ok
+test suspend_abort_notification_va_address ... ok
+test suspend_abort_tren_sleeping_giu_trang_thai ... ok
+test suspend_defer_invalid_argument_state_khong_doi ... ok
+test suspend_tcb_inactive_va_dead_illegal ... ok
+test tcb_data_du_truong_va_model_api ... ok
+test tcb_state_khop_d2_33_va_render ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.85s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt18_tcb: OK
+--- Miri vifast-sim kt19_sched
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt19_sched.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/c1717b67600c3a5c/out/kt19_sched-c1717b67600c3a5c)
+
+running 10 tests
+test block_current_va_yield_current_doi_current ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `block_current_va_yield_current_doi_current`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt19_sched.rs:69:18: 69:33
+          6: block_current_va_yield_current_doi_current
+              at sim/vifast-sim/tests/kt19_sched.rs:655:17: 655:27
+          7: block_current_va_yield_current_doi_current::{closure#0}
+              at sim/vifast-sim/tests/kt19_sched.rs:654:48: 654:48
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `block_current_va_yield_current_doi_current`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt19_sched.rs:69:18: 69:33
+          6: block_current_va_yield_current_doi_current
+              at sim/vifast-sim/tests/kt19_sched.rs:655:17: 655:27
+          7: block_current_va_yield_current_doi_current::{closure#0}
+              at sim/vifast-sim/tests/kt19_sched.rs:654:48: 654:48
+
+ok
+test check_sched_sau_moi_op_cong_khai ... ok
+test cung_muc_fifo_va_yield_quay_vong ... ok
+test dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien ... ok
+test finalise_va_suspend_go_ready_queue ... ok
+test mac_dinh_affinity_home_va_rebucket_priority ... ok
+test mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu ... ok
+test pick_du_256_muc_uu_tien_cao_nhat_duoc_chon ... ok
+test preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi ... ok
+test wake_suspended_khong_enqueue_resume_enqueue_dung_priority ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 391.92s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt19_sched: OK
+--- Miri vifast-sim kt20_budget
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt20_budget.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/2d46ab6ae2c5be25/out/kt20_budget-2d46ab6ae2c5be25)
+
+running 12 tests
+test chi_charge_khi_running_qua_duong_ipc_that ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `chi_charge_khi_running_qua_duong_ipc_that`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt20_budget.rs:67:14: 67:29
+          6: chi_charge_khi_running_qua_duong_ipc_that
+              at sim/vifast-sim/tests/kt20_budget.rs:298:17: 298:22
+          7: chi_charge_khi_running_qua_duong_ipc_that::{closure#0}
+              at sim/vifast-sim/tests/kt20_budget.rs:297:47: 297:47
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `chi_charge_khi_running_qua_duong_ipc_that`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt20_budget.rs:67:14: 67:29
+          6: chi_charge_khi_running_qua_duong_ipc_that
+              at sim/vifast-sim/tests/kt20_budget.rs:298:17: 298:22
+          7: chi_charge_khi_running_qua_duong_ipc_that::{closure#0}
+              at sim/vifast-sim/tests/kt20_budget.rs:297:47: 297:47
+
+ok
+test configure_tu_choi_budget_0_va_budget_lon_hon_period ... ok
+test gan_sc_het_budget_cho_tcb_dang_chay_thi_ngu_ngay ... ok
+test go_sc_khi_sleeping_budget_khong_con_bien_refill ... ok
+test het_budget_sang_sleeping_budget_va_go_khoi_hang ... ok
+test invariant_budget_moi_chu_ky_thang_hang_khong_vuot ... ok
+test khong_charge_qua_budget_va_khong_chay_khi_da_het ... ok
+test pick_bo_qua_tcb_ready_het_budget_va_nhan_lai_sau_refill ... ok
+test refill_ton_trong_suspended_va_resume_khong_phat_lai ... ok
+test tcb_khong_sc_hoac_sc_chua_configure_khong_chay ... ok
+test thoi_gian_ao_tat_dinh_cung_kich_ban_cung_moc_refill ... ok
+test yield_khong_mat_budget_va_thoi_gian ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 256.79s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt20_budget: OK
+--- Miri vifast-sim kt21_donation
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt21_donation.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/8ad98f15234ae739/out/kt21_donation-8ad98f15234ae739)
+
+running 13 tests
+test abort_client_dang_donate_thu_hoi_sc_khong_ro ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `abort_client_dang_donate_thu_hoi_sc_khong_ro`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt21_donation.rs:109:14: 109:29
+          6: abort_client_dang_donate_thu_hoi_sc_khong_ro
+              at sim/vifast-sim/tests/kt21_donation.rs:566:17: 566:22
+          7: abort_client_dang_donate_thu_hoi_sc_khong_ro::{closure#0}
+              at sim/vifast-sim/tests/kt21_donation.rs:565:50: 565:50
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `abort_client_dang_donate_thu_hoi_sc_khong_ro`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt21_donation.rs:109:14: 109:29
+          6: abort_client_dang_donate_thu_hoi_sc_khong_ro
+              at sim/vifast-sim/tests/kt21_donation.rs:566:17: 566:22
+          7: abort_client_dang_donate_thu_hoi_sc_khong_ro::{closure#0}
+              at sim/vifast-sim/tests/kt21_donation.rs:565:50: 565:50
+
+ok
+test charge_budget_het_can_refill_va_reply_khong_mat ... ok
+test donation_can_sc_configure_va_khong_chuoi_hai_tang ... ok
+test invariant_1000_seed_64_op_donation ... ok
+test khong_donate_chuoi_hai_tang_qua_donee ... ok
+test mcp_kep_priority_khi_duoc_donate ... ok
+test reply_nham_reply_object_khong_tra_donation ... ok
+test sc_dung_chung_nhieu_tcb_khong_donate ... ok
+test sched_context_bind_khong_tao_donation ... ok
+test server_co_sc_rieng_giu_sc_rieng ... ok
+test server_passive_chi_chay_khi_duoc_donate ... ok
+test suspend_abort_server_dang_donate_tra_sc_va_danh_thuc_client ... ok
+test tcb_set_priority_tu_choi_donor_chap_nhan_donee ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 236.33s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt21_donation: OK
+--- Miri vifast-sim kt22_mailbox
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/kt22_mailbox.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/07912508981e4d5f/out/kt22_mailbox-07912508981e4d5f)
+
+running 10 tests
+test endpoint_day_call_tra_busy_va_recv_giai_phong ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `endpoint_day_call_tra_busy_va_recv_giai_phong`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt22_mailbox.rs:134:18: 134:34
+          6: endpoint_day_call_tra_busy_va_recv_giai_phong
+              at sim/vifast-sim/tests/kt22_mailbox.rs:456:17: 456:28
+          7: endpoint_day_call_tra_busy_va_recv_giai_phong::{closure#0}
+              at sim/vifast-sim/tests/kt22_mailbox.rs:454:51: 454:51
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `endpoint_day_call_tra_busy_va_recv_giai_phong`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt22_mailbox.rs:134:18: 134:34
+          6: endpoint_day_call_tra_busy_va_recv_giai_phong
+              at sim/vifast-sim/tests/kt22_mailbox.rs:456:17: 456:28
+          7: endpoint_day_call_tra_busy_va_recv_giai_phong::{closure#0}
+              at sim/vifast-sim/tests/kt22_mailbox.rs:454:51: 454:51
+
+ok
+test exit_fault_ep_day_tra_busy_va_message_fault_vao_cuoi_hang ... ok
+test hart_mailbox_fifo_day_busy_va_xu_ly_cuoi_buoc ... ok
+test hart_mailbox_migrate_not_supported_tren_1_hart ... ok
+test invariant_1000_seed_64_op_mailbox ... ok
+test mailbox_backpressure_1000_lan_khong_mat_message ... ok
+test mailbox_fifo_co_dinh_day_tra_lai_message ... ok
+test mailbox_retain_dem_removed_va_giu_fifo ... ok
+test nhieu_endpoint_doc_lap ... ok
+test recv_fault_message_dung_thu_tu_fifo ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 221.22s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt22_mailbox: OK
+--- Miri vifast-sim kt24_ipc
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt24_ipc.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/e7f046c3d5ae9fab/out/kt24_ipc-e7f046c3d5ae9fab)
+
+running 13 tests
+test bao_toan_message_khi_khong_abort ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `bao_toan_message_khi_khong_abort`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt24_ipc.rs:75:18: 75:34
+          6: bao_toan_message_khi_khong_abort
+              at sim/vifast-sim/tests/kt24_ipc.rs:795:17: 795:28
+          7: bao_toan_message_khi_khong_abort::{closure#0}
+              at sim/vifast-sim/tests/kt24_ipc.rs:794:38: 794:38
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `bao_toan_message_khi_khong_abort`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt24_ipc.rs:75:18: 75:34
+          6: bao_toan_message_khi_khong_abort
+              at sim/vifast-sim/tests/kt24_ipc.rs:795:17: 795:28
+          7: bao_toan_message_khi_khong_abort::{closure#0}
+              at sim/vifast-sim/tests/kt24_ipc.rs:794:38: 794:38
+
+ok
+test call_non_endpoint_not_supported_khong_doi_trang_thai ... ok
+test call_reply_va_send_tren_reply ... ok
+test fuzz_1000_seed_64_op_bat_bien_ipc ... ok
+test hang_gui_day_tra_busy_khong_mat_message ... ok
+test message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer ... ok
+test message_info_dung_layout_35_bit ... ok
+test message_info_roundtrip_1000_va_bien ... ok
+test no_reply_caller_dat_co_khong_sinh_reply ... ok
+test no_reply_kernel_thieu_reply_tra_cancelled ... ok
+test recv_chan_va_giao_thang_cho_waiter ... ok
+test send_nb_send_fifo_va_nb_recv_busy ... ok
+test transfer_mot_duong_va_xoa_du_lieu_cu ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 44.49s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt24_ipc: OK
+--- Miri vifast-sim kt26_fault
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt26_fault.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/79c2f4f7e3b8e76e/out/kt26_fault-79c2f4f7e3b8e76e)
+
+running 24 tests
+test exit_co_fault_ep_thanh_blocked_on_send_call_false ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `exit_co_fault_ep_thanh_blocked_on_send_call_false`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new_variant
+              at sim/vifast-sim/tests/kt26_fault.rs:75:18: 75:33
+          6: Rig::new
+              at sim/vifast-sim/tests/kt26_fault.rs:68:9: 68:32
+          7: exit_co_fault_ep_thanh_blocked_on_send_call_false
+              at sim/vifast-sim/tests/kt26_fault.rs:415:17: 415:27
+          8: exit_co_fault_ep_thanh_blocked_on_send_call_false::{closure#0}
+              at sim/vifast-sim/tests/kt26_fault.rs:414:55: 414:55
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `exit_co_fault_ep_thanh_blocked_on_send_call_false`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new_variant
+              at sim/vifast-sim/tests/kt26_fault.rs:75:18: 75:33
+          6: Rig::new
+              at sim/vifast-sim/tests/kt26_fault.rs:68:9: 68:32
+          7: exit_co_fault_ep_thanh_blocked_on_send_call_false
+              at sim/vifast-sim/tests/kt26_fault.rs:415:17: 415:27
+          8: exit_co_fault_ep_thanh_blocked_on_send_call_false::{closure#0}
+              at sim/vifast-sim/tests/kt26_fault.rs:414:55: 414:55
+
+ok
+test exit_khong_fault_ep_inactive_ngay ... ok
+test exit_procsrv_recv_xong_moi_inactive ... ok
+test exit_suspend_abort_huy_message_giu_code ... ok
+test fault_call_gap_recv_khong_co_reply_bi_cancelled ... ok
+test fault_donation_di_theo_call_va_tra_lai_khi_reply ... ok
+test fault_ep_chet_invalid_capability_khong_doi_trang_thai ... ok
+test fault_khi_hang_gui_day_busy_khong_doi_gi ... ok
+test fault_khong_co_fault_ep_bi_tu_choi ... ok
+test fault_kind_bon_bien_the_model_only ... ok
+test fault_unknown_syscall_qua_call_roi_reply_ghi_thanh_ghi ... ok
+test fault_vm_va_user_exception_cung_duong_call_reply ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test msg_rong_khong_dung_duoc_cho_resume_thanh_ghi ... ok
+test procsrv_kill_la_suspend_abort_cong_revoke_cap ... ok
+test procsrv_kill_revoke_xoa_cap_dan_xuat ... ok
+test procsrv_wait_cancelled_khi_abort_truoc_khi_giao ... ok
+test procsrv_wait_exited_khi_exit_co_va_khong_fault_ep ... ok
+test procsrv_wait_faulted_va_resume_fault ... ok
+test resume_with_regs_giu_exit_code_va_khong_phat_lai ... ok
+test resume_with_regs_giu_sleeping_va_ghi_thanh_ghi ... ok
+test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... ok
+test resume_with_regs_khi_fault_chua_giao_huy_message ... ok
+test scenario_step_fault_replyfault_resumewithregs ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 87.07s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt26_fault: OK
+--- Miri vifast-sim kt27_notification
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/kt27_notification.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/8d2ff098d8fce47a/out/kt27_notification-8d2ff098d8fce47a)
+
+running 26 tests
+test badge_0_hop_le_va_van_danh_thuc_waiter ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `badge_0_hop_le_va_van_danh_thuc_waiter`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt27_notification.rs:80:18: 80:34
+          6: badge_0_hop_le_va_van_danh_thuc_waiter
+              at sim/vifast-sim/tests/kt27_notification.rs:260:17: 260:28
+          7: badge_0_hop_le_va_van_danh_thuc_waiter::{closure#0}
+              at sim/vifast-sim/tests/kt27_notification.rs:258:44: 258:44
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `badge_0_hop_le_va_van_danh_thuc_waiter`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt27_notification.rs:80:18: 80:34
+          6: badge_0_hop_le_va_van_danh_thuc_waiter
+              at sim/vifast-sim/tests/kt27_notification.rs:260:17: 260:28
+          7: badge_0_hop_le_va_van_danh_thuc_waiter::{closure#0}
+              at sim/vifast-sim/tests/kt27_notification.rs:258:44: 258:44
+
+ok
+test badge_or_nhieu_signal_va_wait_tra_badge ... ok
+test bind_sched_context_notification_1_1 ... ok
+test bind_tcb_notification_1_1 ... ok
+test check_notifications_bat_waiter_lech ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test khong_mat_danh_thuc_signal_truoc_va_sau_wait ... ok
+test mot_waiter_duy_nhat_ba_tcb ... ok
+test nb_recv_tra_word_badge_va_xoa ... ok
+test nb_send_tren_notification_cung_la_signal ... ok
+test nbsend_wait_voi_word_co_san_khong_chan ... ok
+test notification_khong_bind_sc_van_chay ... ok
+test poll_rong_model_api_va_nb_recv_busy ... ok
+test poll_tren_notification_cap_khi_tcb_khong_chay_busy ... ok
+test recv_notification_co_reply_cap_loi ... ok
+test recv_notification_xoa_last_ipc_error_cu ... ok
+test scenario_buoc_signal_wait_poll ... ok
+test send_notification_khi_tcb_khong_chay_loi ... ok
+test send_tren_notification_la_signal_theo_badge_cap ... ok
+test signal_bound_khong_danh_thuc_tcb_bound_khac ... ok
+test signal_danh_thuc_bound_tcb_dang_blocked_on_recv ... ok
+test signal_or_ba_lan_truoc_khi_wait ... ok
+test tcb_chet_go_binding_va_waiter ... ok
+test wait_tren_rong_blocked_on_notification ... ok
+test word_64_bit_cao_va_thap ... ok
+test word_chi_xoa_khi_giao_cho_waiter ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 53.35s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt27_notification: OK
+--- Miri vifast-sim kt28_waitaddr
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt28_waitaddr.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/bb6671ff06cb4680/out/kt28_waitaddr-bb6671ff06cb4680)
+
+running 12 tests
+test bang_bam_64_bucket_va_cung_khoa_cung_bucket ... ok
+test check_waitaddr_bat_waiter_lech_trang_thai ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `check_waitaddr_bat_waiter_lech_trang_thai`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:60:18: 60:33
+          6: check_waitaddr_bat_waiter_lech_trang_thai
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:534:17: 534:27
+          7: check_waitaddr_bat_waiter_lech_trang_thai::{closure#0}
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:533:47: 533:47
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `check_waitaddr_bat_waiter_lech_trang_thai`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:60:18: 60:33
+          6: check_waitaddr_bat_waiter_lech_trang_thai
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:534:17: 534:27
+          7: check_waitaddr_bat_waiter_lech_trang_thai::{closure#0}
+              at sim/vifast-sim/tests/kt28_waitaddr.rs:533:47: 533:47
+
+ok
+test exit_va_finalise_go_waiter ... ok
+test expected_lech_tra_ngay_khong_xep_hang ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test hai_frame_offset_doc_lap ... ok
+test khong_mat_danh_thuc_wake_truoc_va_sau ... ok
+test khong_timeout_du_tick_rat_nhieu ... ok
+test suspend_abort_go_dung_bucket ... ok
+test va_cham_bucket_khong_anh_huong_tim_kiem ... ok
+test wake_0_1_n_nhieu_va_fifo ... ok
+test xep_hang_mot_lan ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 105.19s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt28_waitaddr: OK
+--- Miri vifast-sim kt29_smp
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/kt29_smp.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/58073a53be1bf891/out/kt29_smp-58073a53be1bf891)
+
+running 13 tests
+test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `check_harts_chay_moi_cau_hinh_va_publish_trung_thuc`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
+          6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
+          7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `check_harts_chay_moi_cau_hinh_va_publish_trung_thuc`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
+          6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
+          7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
+
+ok
+test fuzz_smp_tat_dinh_bat_bien ... ok
+test post_hai_migrate_cung_tcb_bi_tu_choi ... ok
+test post_migrate_qua_hop_thu_di_tru_that ... ok
+test published_idle_cur_prio_va_guard_luat_3 ... ok
+test push_chi_khi_dich_idle_va_trong_affinity ... ok
+test push_drain_fifo_va_mot_tcb_moi_hart_nguon ... ok
+test push_dung_mot_tcb_cuoi_hang_qua_migrate ... ok
+test push_khong_day_tcb_running_va_dung_muc_cao_nhat ... ok
+test push_tu_dong_khi_preempt_moi_buoc ... ok
+test push_vao_cuoi_hang_cua_dich ... ok
+test wake_cheo_hart_qua_hop_thu_va_nguong_preempt ... ok
+test with_harts_1_2_4_8_va_mac_dinh_mot_hart ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 261.03s
+
+warning: 2 warnings emitted
+
+--- Miri vifast-sim kt29_smp: OK
+--- Miri vifast-sync (lib + kt30_sync)
+   Compiling vifast-sync v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-sync)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/4f5ce7a28db69354/out/vifast_sync-4f5ce7a28db69354)
+
+running 4 tests
+test mcs::tests::fifo_theo_thu_tu_xep_hang ... ok
+test mcs::tests::free_mask_khong_tran ... ok
+test mcs::tests::khong_reentrant ... ok
+test mcs::tests::pool_can_muoi_sau_slot_thi_try_lock_none_va_khong_panic ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running tests/kt30_stress.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/51b5058ffab6c032/out/kt30_stress-51b5058ffab6c032)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/kt30_sync.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/6c7abb43a5b62b64/out/kt30_sync-6c7abb43a5b62b64)
+
+running 10 tests
+test mailbox_backpressure_1000_vong ... ok
+test mailbox_day_tra_busy_khong_mat_message_dau ... ok
+test mailbox_du_7_loai_fifo ... ok
+test mailbox_generation_khong_tang_khi_busy ... ok
+test mailbox_len_rong_va_capacity ... ok
+test mailbox_the_he_ack_pending ... ok
+test mcs_capacity_va_hang_cho_mac_dinh ... ok
+test mcs_lock_unlock_mutates_value ... ok
+test mcs_ticket_tang_theo_lan_xep_hang ... ok
+test mcs_try_lock_khi_dang_giu_tra_none ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s
+
+   Doc-tests vifast_sync
+
+running 2 tests
+test lib/vifast-sync/src/mailbox.rs - mailbox::Mailbox (line 134) ... ok
+test lib/vifast-sync/src/mcs.rs - mcs::McsLock (line 86) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+--- Miri vifast-sync (lib + kt30_sync): OK
+v2 nightly --only-miri: PASS (4058 s; không mutation/soak/L1 100k)
+real 4058.24
+user 3764.09
+sys 22.03
+# EXIT=0
+# kết thúc: 2026-11-13T13:45:06Z

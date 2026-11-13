@@ -1,0 +1,336 @@
+================================================================================
+## CA 1 — IPC cap: cài cap sai vị trí (window[0] thay window[i])
+file: v2/sim/vifast-sim/src/ipc.rs · test binary: vifast-sim · test kỳ vọng đỏ: kt25_ipc2::bon_cap_cai_du_bo_grant_giu_badge
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/sim/vifast-sim/src/ipc.rs: thay 1 chuỗi (42B -> 79B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/sim/vifast-sim/src/ipc.rs b/v2/sim/vifast-sim/src/ipc.rs
+index 2173300..2ee77b1 100644
+--- a/v2/sim/vifast-sim/src/ipc.rs
++++ b/v2/sim/vifast-sim/src/ipc.rs
+@@ -398,7 +398,7 @@ pub fn plan_cap_transfer(
+             plan.skipped += 1;
+             continue;
+         }
+-        plan.install.push((i, window[i]));
++        plan.install.push((i, window[0])); // ĐỘT BIẾN KT-31: sai vị trí ô đích
+     }
+     Ok(plan)
+ }
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sim kt25_ipc2::bon_cap_cai_du_bo_grant_giu_badge -- --nocapture
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.14s
+     Running tests/kt25_ipc2.rs (v2/target/debug/deps/kt25_ipc2-9c0d425b36720312)
+
+running 1 test
+
+thread 'bon_cap_cai_du_bo_grant_giu_badge' (41213939) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:206:13:
+check_caps sau 4 cap: cap 17 nói nằm ở (1, 94) nhưng slot không trỏ lại
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test bon_cap_cai_du_bo_grant_giu_badge ... FAILED
+
+failures:
+
+failures:
+    bon_cap_cai_du_bo_grant_giu_badge
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt25_ipc2`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/sim/vifast-sim/src/ipc.rs hash=21733009828f0bf62f1f7251ecd6b4a80268c0c3 == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 1 — IPC cap: cài cap sai vị trí (window[0] thay window[i])
+================================================================================
+## CA 2 — Notification: bỏ OR word/badge (ghi đè thay vì OR dồn)
+file: v2/sim/vifast-sim/src/kobj.rs · test binary: vifast-sim · test kỳ vọng đỏ: kt27_notification::signal_or_ba_lan_truoc_khi_wait
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/sim/vifast-sim/src/kobj.rs: thay 1 chuỗi (79B -> 118B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/sim/vifast-sim/src/kobj.rs b/v2/sim/vifast-sim/src/kobj.rs
+index 37ff523..39fa3e8 100644
+--- a/v2/sim/vifast-sim/src/kobj.rs
++++ b/v2/sim/vifast-sim/src/kobj.rs
+@@ -5222,8 +5222,8 @@ impl Machine {
+             Kind::Notification(n) => Ok((n.word, n.badge, n.waiter)),
+             _ => Err(KError::WrongObjectType),
+         })?;
+-        let new_word = word | badge;
+-        let new_badge = acc_badge | badge;
++        let new_word = badge; // ĐỘT BIẾN KT-31: bỏ OR dồn
++        let new_badge = badge; // ĐỘT BIẾN KT-31: bỏ OR dồn
+         // Chọn **một** người được đánh thức: waiter của notification trước, rồi TCB **bound**
+         // đang `BlockedOnRecv` (model-only `[TK]`, K1C-PLAN §5 KT-27 DoD 5).
+         let target = match waiter {
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sim kt27_notification::signal_or_ba_lan_truoc_khi_wait -- --nocapture
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+warning: unused variable: `word`
+    --> sim/vifast-sim/src/kobj.rs:5221:14
+     |
+5221 |         let (word, acc_badge, waiter) = self.body(ntfn, |k| match k {
+     |              ^^^^ help: if this is intentional, prefix it with an underscore: `_word`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `acc_badge`
+    --> sim/vifast-sim/src/kobj.rs:5221:20
+     |
+5221 |         let (word, acc_badge, waiter) = self.body(ntfn, |k| match k {
+     |                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_acc_badge`
+
+warning: `vifast-sim` (lib) generated 2 warnings (run `cargo fix --lib -p vifast-sim` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.27s
+     Running tests/kt27_notification.rs (v2/target/debug/deps/kt27_notification-d6044dc87f28feb7)
+
+running 1 test
+
+thread 'signal_or_ba_lan_truoc_khi_wait' (41214584) panicked at sim/vifast-sim/tests/kt27_notification.rs:243:5:
+assertion `left == right` failed: Signal phải OR vào word
+  left: 4
+ right: 7
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test signal_or_ba_lan_truoc_khi_wait ... FAILED
+
+failures:
+
+failures:
+    signal_or_ba_lan_truoc_khi_wait
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt27_notification`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/sim/vifast-sim/src/kobj.rs hash=37ff523a35896456822d9967d3402d0688a6b5cb == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 2 — Notification: bỏ OR word/badge (ghi đè thay vì OR dồn)
+================================================================================
+## CA 3 — WaitAddr: xếp hàng TRƯỚC rồi mới so expected
+file: v2/sim/vifast-sim/src/kobj.rs · test binary: vifast-sim · test kỳ vọng đỏ: kt28_waitaddr::expected_lech_tra_ngay_khong_xep_hang
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/sim/vifast-sim/src/kobj.rs: thay 1 chuỗi (621B -> 481B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/sim/vifast-sim/src/kobj.rs b/v2/sim/vifast-sim/src/kobj.rs
+index 37ff523..dc1b16a 100644
+--- a/v2/sim/vifast-sim/src/kobj.rs
++++ b/v2/sim/vifast-sim/src/kobj.rs
+@@ -5074,16 +5074,15 @@ impl Machine {
+         if self.tcb_info_obj(tcb_obj)?.suspended {
+             return Err(KError::IllegalOperation);
+         }
+-        // ---- "khoá": đọc giá trị **và** xếp hàng, không public op nào ở giữa ----
++        // ĐỘT BIẾN KT-31: xếp hàng **trước** rồi mới so `expected` (nút mồ côi khi lệch).
++        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
++        let bucket = waitaddr_bucket(frame, offset);
++        self.address_waiters[bucket].push((frame, offset, tcb_obj));
+         let current = self.addr_word(frame, offset);
+         if current != expected {
++            self.sched_after_op(true);
+             return Err(KError::InvalidArgument);
+         }
+-        // Chuyển trạng thái **trước** khi push: `transition_tcb` có thể từ chối cặp (bảng
+-        // 11×11) và không được để nút mồ côi; push không lỗi ⇒ hàng và trạng thái luôn khớp.
+-        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
+-        let bucket = waitaddr_bucket(frame, offset);
+-        self.address_waiters[bucket].push((frame, offset, tcb_obj));
+         self.sched_after_op(true);
+         Ok(())
+     }
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sim kt28_waitaddr::expected_lech_tra_ngay_khong_xep_hang -- --nocapture
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.03s
+     Running tests/kt28_waitaddr.rs (v2/target/debug/deps/kt28_waitaddr-7cef4eb68f5dab09)
+
+running 1 test
+
+thread 'expected_lech_tra_ngay_khong_xep_hang' (41214916) panicked at sim/vifast-sim/tests/kt28_waitaddr.rs:246:5:
+assertion `left == right` failed: TCB phải **giữ** Ready, không bị chặn
+  left: BlockedOnAddress { frame: 3, offset: 16 }
+ right: Ready
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test expected_lech_tra_ngay_khong_xep_hang ... FAILED
+
+failures:
+
+failures:
+    expected_lech_tra_ngay_khong_xep_hang
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt28_waitaddr`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/sim/vifast-sim/src/kobj.rs hash=37ff523a35896456822d9967d3402d0688a6b5cb == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 3 — WaitAddr: xếp hàng TRƯỚC rồi mới so expected
+================================================================================
+## CA 4 — Fault resume: KHÔNG ghi MR/thanh ghi trước Ready (đường r319)
+file: v2/sim/vifast-sim/src/kobj.rs · test binary: vifast-sim · test kỳ vọng đỏ: kt26_fault::resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/sim/vifast-sim/src/kobj.rs: thay 1 chuỗi (247B -> 106B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/sim/vifast-sim/src/kobj.rs b/v2/sim/vifast-sim/src/kobj.rs
+index 37ff523..a92ec40 100644
+--- a/v2/sim/vifast-sim/src/kobj.rs
++++ b/v2/sim/vifast-sim/src/kobj.rs
+@@ -2273,10 +2273,8 @@ impl Machine {
+         // `BlockedOnSend` đây là chỗ huỷ message fault đang chờ (fault message không có `msg_id`
+         // nên không tăng `ipc_dropped`).
+         self.unlink_tcb_queues(obj);
+-        // Ghi thanh ghi **trước** khi `Ready` — qua đúng một hàm `ipc::transfer`.
+-        let snaps = self.resolve_caps(&msg)?;
+-        let mut m = self.admit_message(msg, snaps.clone())?;
+-        self.deliver_message(obj, &mut m, &snaps, None)?;
++        // ĐỘT BIẾN KT-31: **không** ghi thanh ghi/MR trước khi `Ready` (đường r319).
++        let _ = msg;
+         // Bỏ cờ `suspended` (nếu có) rồi về trạng thái đích qua **một** cửa `transition_tcb`.
+         if suspended {
+             self.set_tcb_suspended(obj, false)?;
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sim kt26_fault::resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready -- --nocapture
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.36s
+     Running tests/kt26_fault.rs (v2/target/debug/deps/kt26_fault-65b6ad5277ae13ca)
+
+running 1 test
+
+thread 'resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready' (41215364) panicked at sim/vifast-sim/tests/kt26_fault.rs:341:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0]
+ right: [7, 8, 9, 10]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... FAILED
+
+failures:
+
+failures:
+    resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt26_fault`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/sim/vifast-sim/src/kobj.rs hash=37ff523a35896456822d9967d3402d0688a6b5cb == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 4 — Fault resume: KHÔNG ghi MR/thanh ghi trước Ready (đường r319)
+================================================================================
+## CA 5 — SMP: bỏ guard published.idle khi push migration
+file: v2/sim/vifast-sim/src/kobj.rs · test binary: vifast-sim · test kỳ vọng đỏ: kt29_smp::push_chi_khi_dich_idle_va_trong_affinity
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/sim/vifast-sim/src/kobj.rs: thay 1 chuỗi (131B -> 123B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/sim/vifast-sim/src/kobj.rs b/v2/sim/vifast-sim/src/kobj.rs
+index 37ff523..34efc9e 100644
+--- a/v2/sim/vifast-sim/src/kobj.rs
++++ b/v2/sim/vifast-sim/src/kobj.rs
+@@ -2887,10 +2887,9 @@ impl Machine {
+                 if y == x || info.affinity & (1u64 << y) == 0 {
+                     continue;
+                 }
+-                if self.published[y].idle {
+-                    dest = Some(y as u16);
+-                    break;
+-                }
++                // ĐỘT BIẾN KT-31: bỏ guard `published.idle`.
++                dest = Some(y as u16);
++                break;
+             }
+             let Some(y) = dest else {
+                 continue;
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sim kt29_smp::push_chi_khi_dich_idle_va_trong_affinity -- --nocapture
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.21s
+     Running tests/kt29_smp.rs (v2/target/debug/deps/kt29_smp-f7202e4e40d6c326)
+
+running 1 test
+
+thread 'push_chi_khi_dich_idle_va_trong_affinity' (41215672) panicked at sim/vifast-sim/tests/kt29_smp.rs:416:5:
+assertion `left == right` failed: đích bận ⇒ 0
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test push_chi_khi_dich_idle_va_trong_affinity ... FAILED
+
+failures:
+
+failures:
+    push_chi_khi_dich_idle_va_trong_affinity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt29_smp`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/sim/vifast-sim/src/kobj.rs hash=37ff523a35896456822d9967d3402d0688a6b5cb == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 5 — SMP: bỏ guard published.idle khi push migration
+================================================================================
+## CA 6 — Sync: mailbox đầy GHI ĐÈ thay vì Busy
+file: v2/lib/vifast-sync/src/mailbox.rs · test binary: vifast-sync · test kỳ vọng đỏ: kt30_sync::mailbox_day_tra_busy_khong_mat_message_dau
+--- TRƯỚC ĐỘT BIẾN (phải sạch) ---
+--- ÁP ĐỘT BIẾN ---
+APPLIED v2/lib/vifast-sync/src/mailbox.rs: thay 1 chuỗi (125B -> 503B)
+--- DIFF ĐỘT BIẾN ---
+diff --git a/v2/lib/vifast-sync/src/mailbox.rs b/v2/lib/vifast-sync/src/mailbox.rs
+index 5747220..a4d6079 100644
+--- a/v2/lib/vifast-sync/src/mailbox.rs
++++ b/v2/lib/vifast-sync/src/mailbox.rs
+@@ -213,8 +213,15 @@ impl<const N: usize> Mailbox<N> {
+                     Err(actual) => pos = actual,
+                 }
+             } else if dif < 0 {
+-                // Slot còn thuộc vòng trước ⇒ hộp thư đầy.
+-                return Err(Busy);
++                // ĐỘT BIẾN KT-31: hộp thư đầy **ghi đè** message đã công bố gần nhất thay
++                // vì trả `Busy`; không đổi head/tail/seq.
++                let old = pos.wrapping_sub(1);
++                let slot_old = &self.slots[old % N];
++                // SAFETY: chỉ tồn tại trong ca đột biến tạm thời, khôi phục ngay sau test.
++                unsafe {
++                    (*slot_old.value.get()).write(msg);
++                }
++                return Ok(());
+             } else {
+                 // Slot đã vượt `pos` (người khác vừa đặt chỗ): đọc lại vị trí đầu.
+                 pos = self.head.load(Relaxed);
+--- CHẠY TEST ---
+$ /Users/mps/.cargo/bin/cargo test --manifest-path v2/Cargo.toml -p vifast-sync kt30_sync::mailbox_day_tra_busy_khong_mat_message_dau -- --nocapture
+   Compiling vifast-sync v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-sync)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.39s
+     Running tests/kt30_sync.rs (v2/target/debug/deps/kt30_sync-c789e0adc9957a90)
+
+running 1 test
+
+thread 'mailbox_day_tra_busy_khong_mat_message_dau' (41215831) panicked at lib/vifast-sync/tests/kt30_sync.rs:130:5:
+assertion `left == right` failed
+  left: Ok(())
+ right: Err(Busy)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mailbox_day_tra_busy_khong_mat_message_dau ... FAILED
+
+failures:
+
+failures:
+    mailbox_day_tra_busy_khong_mat_message_dau
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sync --test kt30_sync`
+EXIT=101 (kỳ vọng != 0)
+--- KHÔI PHỤC ---
+RESTORE_OK: v2/lib/vifast-sync/src/mailbox.rs hash=57472205a2c647dcc732bb635fa0ba02089392cf == HEAD
+KẾT LUẬN: ĐỎ ĐÚNG CHỖ (exit 101, test result FAILED) — CA 6 — Sync: mailbox đầy GHI ĐÈ thay vì Busy
+================================================================================
+## TỔNG KẾT
+6/6 đột biến bị bắt (test result FAILED); 6/6 tệp khôi phục đúng HEAD (hash == HEAD:path).
+--- trạng thái cây làm việc sau cùng (v2/) ---
+?? v2/agent/JOURNAL/kt31-baseline-gate-fast.log
+?? v2/agent/JOURNAL/kt31-l1-100k-smp.log
+?? v2/agent/JOURNAL/kt31-mutation.log
+?? v2/agent/reports/K1C-DOD.md

@@ -6,13 +6,63 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-31 (cổng cuối K1c); KT-30 DONE (29718a6)
-Bước          : 0/8
+Task          : KT-31 (cổng cuối K1c) — REVIEW (đề xuất DONE một phần qua D2-61); KT-30 DONE (29718a6)
+Bước          : 8/8
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test/62 suite** (baseline 442/58 ⇒ +19 = 4 unit lib + 10 integration + 3 stress + 2 doctest), L1 1.000 seed/999 trace **750 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON, `scn: OK` (`JOURNAL/kt30-gate-fast.log`). **T-INFRA**: wall **199,3 s** > 60 s (QD §5.2) do tải máy — baseline cùng máy đã 159,5 s tổng thời gian test; test mới **1,42 s** cả crate / **≈2,6 ms** thân stress; **không** nới ngưỡng, **không** gọi là đạt 60 s
-Miri          : `./v2/bin/v2 miri -p vifast-sync` — **PASS 4 unit + 10 integration + 2 doctest** (`JOURNAL/kt30-miri.log`, 13,5 s); stress đa luồng **không** chạy Miri (`#![cfg(not(miri))]`, lý do ghi đầu tệp)
-Việc dở       : KT-31 READY — cổng cuối K1c: 100.000 seed × smp 1/2/4/8 + mutation + Miri + bảng DoD. Không sửa semantics.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test**, L1 1.000 seed **720 ms**, fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON (`JOURNAL/kt31-gate-fast.log`). **T-INFRA**: wall **254,19 s** > 60 s (QD §5.2) do tải máy (baseline KT-30 cùng ngày 199,3 s); **không** nới ngưỡng. Cổng cuối K1c: **100k×4 L1 PASS** 400.000 lượt **5043,84 s** (`kt31-l1-100k-smp.log`); **Miri toàn bộ PASS** 276 test/18 tập **4058,24 s** (`kt31-miri-all.log`); **mutation 6/6 đỏ đúng test** (`kt31-mutation.log`); **parity 10k PASS** 15,52 s (`kt31-parity-10k.log`)
+Miri          : `./v2/bin/v2 nightly --only-miri` — **PASS 276 test / 18 tập**, wall **4058,24 s** (`JOURNAL/kt31-miri-all.log`); K1c 104 test (kt24/26/27/28/29 + sync). **Ghi rõ**: danh sách `--only-miri` **không có `kt25_ipc2`** (Miri KT-25 rời: 24/24, `kt25-miri.log`); `kt30_stress` tự gạt dưới Miri
+Việc dở       : KT-31 REVIEW — chờ Agent 0 lật (đề xuất D2-61: gate run một phần + mở KT-32); 3 nợ: C1-100k (driver `l1_k1c` không sinh IPC/Notification/WaitAddr, `check_ipc` rỗng), C3 mới 3/12 mục §7.2, Miri `--only-miri` thiếu `kt25_ipc2`; model-only + K2/K3 backlog D2-56..60.
 ```
+
+## KT-31 — cổng cuối K1c: 100k×4 + mutation + Miri + gate + bảng DoD (K1C-PLAN §7.1, D2-60)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-31) · HEAD `0d026bd` · `rev-list --count
+HEAD..origin/main` = 0 · baseline `gate --fast` PASS **461 test**, L1 **611 ms**
+([`JOURNAL/kt31-baseline-gate-fast.log`](JOURNAL/kt31-baseline-gate-fast.log)).
+
+**Mục tiêu**: chạy **đúng** 5 việc §7.1 (không sửa semantics, không nới seed/ngưỡng, không retry):
+(1) `nightly --l1 --seeds 100000 --smp 1,2,4,8`; (2) `gate --fast` cuối; (3) `nightly
+--only-miri`; (4) mutation tay 6 bất biến K1c; (5) bảng DoD K1c; thêm (6) parity 10k hồi quy.
+
+**Không** làm: sửa `spec/`/`vifast-model`/`.scn`/QUEUE/DECISIONS/AGENTS/`viscript/`; không
+dependency/`unsafe`/`#[ignore]`/`#[allow]`/`#[should_panic]`; không "sửa test cho xanh"; không
+lật QUEUE.
+
+**Kết quả**:
+- **100k×4 L1 PASS**: 4 dòng `# L1 OK: smp 1/2/4/8, 100000 seed × 64 op`, tổng **400.000 lượt**
+  (`# L1 OK: 400000 lượt (smp [1, 2, 4, 8], seeds 100000)`), wall **5043,84 s** (84,06 phút;
+  `[ƯL]` plan 20 phút — **T-INFRA** dự toán, không giảm seed). Driver chạy **2 lần/seed** và
+  `assert_eq!(a, b)` ⇒ **cùng seed cùng trace**; `check_sched`/`check_harts`/`check_ipc` sau **mỗi**
+  op, 0 panic. Log [`JOURNAL/kt31-l1-100k-smp.log`](JOURNAL/kt31-l1-100k-smp.log).
+- **Mutation 6/6 đỏ đúng test** (exit 101, `test result: FAILED`, đúng tên test + dòng assert),
+  khôi phục `git checkout` → hash == `HEAD:<file>`: IPC cap sai vị trí (`kt25_ipc2::bon_cap...`),
+  Notification bỏ OR (`kt27::signal_or...` left 4 right 7), WaitAddr xếp hàng trước
+  (`kt28::expected_lech...` BlockedOnAddress vs Ready), Fault resume không ghi MR
+  (`kt26::resume_with_regs...` `[0,0,0,0]` vs `[7,8,9,10]`), SMP bỏ guard idle
+  (`kt29::push_chi_khi_dich_idle...` left 1 right 0), Sync mailbox ghi đè
+  (`kt30_sync::mailbox_day...` `Ok(())` vs `Err(Busy)`). Log
+  [`JOURNAL/kt31-mutation.log`](JOURNAL/kt31-mutation.log) — 1 lần chạy (bản đầu gọi thiếu
+  `--manifest-path` là lỗi cargo, **không** tính).
+- **Miri toàn bộ PASS**: `nightly --only-miri` 18 tập, **276 test**, wall **4058,24 s**; K1c 104
+  test (kt24 13, kt26 24, kt27 26, kt28 12, kt29 13, sync 16); **không có `kt25_ipc2`** trong
+  danh sách (Miri rời ở KT-25 24/24) — ghi rõ, không claim phủ 100%. Log
+  [`JOURNAL/kt31-miri-all.log`](JOURNAL/kt31-miri-all.log).
+- **Gate cuối PASS 461 test**, L1 720 ms, wall **254,19 s** ⇒ **T-INFRA** (> 60 s, tải máy,
+  không nới ngưỡng). Log [`JOURNAL/kt31-gate-fast.log`](JOURNAL/kt31-gate-fast.log).
+- **Parity 10k PASS**: `kt11_diff_model_va_sim_10000_seed` 10.000 seed × 24 op, 15,52 s. Log
+  [`JOURNAL/kt31-parity-10k.log`](JOURNAL/kt31-parity-10k.log).
+- **Bảng DoD K1c**: [`reports/K1C-DOD.md`](reports/K1C-DOD.md) — C1 **đạt một phần** (100k không
+  phủ IPC), C2 đạt (model 1 luồng), C3 **6/6 ca** (không đủ 12 mục §7.2), C4 **ĐẠT**; 60/60 mục
+  DoD KT-24..30 theo log từng task; §9 liệt kê phần **chưa** phủ (model-only, K2, K3
+  D2-56..60, `spec/kernel.toml` chưa có, mutation chưa đủ 12 mục).
+
+**Đề xuất**: KT-31 **REVIEW** — đề xuất Agent 0 lật `DONE` như **"gate run một phần"** (D2-61) và
+mở **KT-32** đóng 3 nợ (C1-100k: driver L1 trộn IPC; C3 đủ 12 mục §7.2; Miri thêm `kt25_ipc2`).
+**K1c REVIEW — chưa DONE**. Không tự lật QUEUE.
+
+**Commit**: `[KT-31]` trên `main` (hash xem `git log -1`; không ghi hash trong tệp để khỏi lệch sau commit).
+
+**Trạng thái**: **REVIEW** — reviewer-kt31 verdict **DRIFT** (nhãn DoD overclaim: C1-100k, C3 3/12, Miri thiếu kt25) đã sửa nhãn report/STATE; chờ Agent 0 lật (không tự DONE).
 
 ## KT-30 — `vifast-sync`: MCS lock + Mailbox MPSC cố định (K1c, D2-53 Q9)
 
