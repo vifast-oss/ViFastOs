@@ -110,10 +110,10 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-19 | `vis-bytecode`: định dạng VBC1 + sinh mã từ HIR | ST-18 | 3 h | **DONE** | magic/phiên bản; sinh mã cho subset VS0; test khứ hồi |
 | ST-20b | differential về **0 lệch** (sửa 19 ca) | ST-20 | 2 h | **DONE** |
 | ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | **DONE** | chạy 309 ca sem qua VM = interp |
-| ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **READY** | bytecode hỏng bị từ chối; fuzz 10 phút |
-| ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | BLOCKED | sinh chương trình có seed; so stdout+mã lỗi |
-| ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | BLOCKED | đo thật, không ước lượng |
-| ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
+| ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **DONE** | bytecode hỏng bị từ chối; fuzz 10 phút |
+| ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | **DONE** | sinh chương trình có seed; so stdout+mã lỗi |
+| ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
+| ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **READY** | MD+JSON, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | **DONE** | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
 | ST-05 | parser + CST lossless | ST-04 | 3 h | **DONE** | **30 golden biểu thức đỏ trước**; 100 % fixture tài liệu parse; mỗi tệp lỗi đúng 1 lỗi đầu |
@@ -317,6 +317,20 @@ APPROVED 2026-11-13 Agent 0
 > `?.` phẳng, `JumpIfNone` luôn pop, `LoadCaptured` trong closure, named-arg theo thứ tự tham số, `T?` tự nâng,
 > một quy ước đích nhảy duy nhất) ⇒ **272/272 khớp 0 lệch**, `KNOWN_LECH` **rỗng** + test khoá **hai chiều**.
 > **ST-21 mở** (verifier).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-21 DONE** — `70a5d38`: `verify(&Module)` + `need_stack` mô phỏng ngăn xếp trên **worklist CFG** (độc lập
+> metadata; codegen dùng **chính** hàm này nên `declared == need`), **13 `VerifyError`**, `load_verified`,
+> `Vm::run` verify trước; verifier chặn **4 bug codegen**, fuzz đột biến **10 phút 2.289.260 vòng / 0 vi phạm**
+> (lần đầu vi phạm ⇒ **sửa VM: mỗi khung một ngăn xếp giá trị**). **316** test.
+> **ST-22 DONE** — `f071166`: **100.000 chương trình sinh tự động, 0 lệch** (`DIFF tong=100000 loi_tinh=0
+> chay=100000 lech=0 giay=189.2 seed=3523158054`), cổng chạy 1.000 (~1,3 s) + `bin/vis-diff` cho 100k; bắt 1 bug
+> span `IterInit`. **ST-23 DONE** — `213e691`: cache `$XDG_CACHE_HOME/vifast/vis/<hash>.vbc` (FNV-1a×4 trên
+> compiler+VBC1+mode+toàn văn), nạp **luôn** `load_verified`, ghi tệp tạm + rename, `--no-cache`/`vis cache`;
+> **khởi động ấm: 8,96–10,57 ms trung vị, p95 ≤ 11,2 ms ⇒ ĐẠT §19 < 20 ms** (lợi ích cache 7–8 % vì chi phối là
+> khởi động tiến trình ~8 ms; mặc định vẫn **interp** — xem VD-56).
+> **ST-24 mở** (R3).
 
 ## Ghi chú vận hành
 
