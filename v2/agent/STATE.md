@@ -6,13 +6,85 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-34 (đóng C2 cuối K1c: cap Reply active + bất biến + 100k×4) — REVIEW (đề xuất DONE; commit `[KT-34]`, hash xem `git log -1`); KT-33 DONE (461 test, C3 12/12, Miri 300); KT-32 DONE; KT-31 DONE một phần (D2-61, 83df94a)
-Bước          : 6/6 (baseline → test đỏ → code+test → 10k×4 → gate → Miri → 100k×4 → report/commit)
+Task          : KT-35 (mở K2: crate `vifast-pte` + `v2/docs/k2-vm.md` — hình 3 cấp, 7 hằng số) — REVIEW (đề xuất DONE; commit `[KT-35]`, hash xem `git log -1`); KT-34 REVIEW (D2-64); K1c DONE (D2-64)
+Bước          : 6/6 (baseline → test đỏ E0432 → code+test → gate → Miri → review/commit)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 468 test/62 suite** (461 + 5 `kt25_ipc2` + 1 `kt27_notification` + 1 `kt28_waitaddr`), L1 1.000 seed **275 ms**, fmt/clippy `-D warnings` sạch, gen-check ON; wall **239,32 s** là **wall host** (không phải ngưỡng: QD §5.2 đặt 60 s cho L1 1.000 seed = **275 ms** ⇒ đạt; baseline cùng ngày 236,86 s; không nới ngưỡng/không retry) (`JOURNAL/kt34-gate-fast.log`). **KT-34**: 10k×4 PASS **661 s** (`kt34-l1-10k.log`), 100k×4 PASS **6306,38 s (105m06,38)** (`kt34-l1-100k.log`), Miri 3 tập ảnh hưởng PASS (`kt34-miri-kt25/27/28.log`), test đỏ trước `kt34-red-reply-reuse.log`. Baseline KT-34: gate PASS 461 test, wall 236,86 s (`kt34-baseline-gate-fast.log`).
-Miri          : KT-34 — **PASS 8 tập / 123 test** (0 failed): `kt25_ipc2` 29 (111,28 s), `kt27_notification` 27 (66,02 s), `kt28_waitaddr` 13 (115,91 s) — §4c; **follow-up F1** (reviewer-kt34b): `kt22_mailbox` **10** (240,93 s; wall 7m07), `kt21_donation` 13 (245,40 s), `kt24_ipc` 13 (45,79 s), `kt26_fault` 24 (90,99 s), `kt29_smp` 13 (264,62 s) — §4d. KT-33 (lịch sử): `nightly --only-miri` 19 tập/**300 test**, 0 failed, 4141,74 s.
-Việc dở       : **KT-34 REVIEW — chờ Agent 0 lật**; reviewer độc lập `reviewer-kt34`: **APPROVE code** (Call/Recv thường không bị chặn; kt22 1→3 Reply hợp lý one-shot; .scn 04/05/07/08 + KT-21/23/26 xanh; vị trí kiểm đúng). **C2 ĐÃ ĐÓNG (ĐẠT) — §2d/§7 K1C-DOD**; **K1c DONE (đề xuất)**: C1/C2/C3/C4 + Miri + gate ĐẠT, nợ còn lại là **model-only / K2 / K3** (K1C-DOD §9.1/§9.3/§9.4) — không thuộc K1c. Không tự lật QUEUE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 477 test/65 suite** (baseline 468 + 9 `kt35_pte`), L1 1.000 seed **607 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt35-gate-fast.log`, chạy **sau** fix reviewer B1/B2). Hai lần đỏ trước đó: (a) luật **R2** bắt **chữ** `cfg(target_arch)` trong doc-comment (grep thô) — sửa chú thích, log `kt35-gate-fast-fail-r2-doc.log`; (b) reviewer B1 thiếu inner attribute — sửa rồi chạy lại; bản PASS trước review giữ `kt35-gate-fast-pre-review.log`. Baseline KT-35: PASS **468 test**, L1 **711 ms** (`kt35-baseline-gate-fast.log`). KT-34 (lịch sử): gate PASS 468 test/62 suite, 10k×4 661 s, 100k×4 6306,38 s.
+Miri          : KT-35 — **PASS 9 test** `vifast-pte` (0 failed, 3,98 s): `./v2/bin/v2 miri -p vifast-pte` (`JOURNAL/kt35-miri.log`); property 10.000 vòng ở test thường, **256** dưới Miri bằng `cfg!(miri)` (giữ nguyên 10.000 của test thường — D2-47(a)). Không thêm `vifast-pte` vào `nightly --only-miri` (không unsafe/alloc/IO; lệnh rời đã kiểm; KT-43 quyết khi chốt cổng K2) — không sửa `v2/bin/v2`. KT-34 (lịch sử): Miri 8 tập/123 test.
+Việc dở       : **KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật**; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
 ```
+
+## KT-35 — mở K2: crate `vifast-pte` (hình 3 cấp + PTE array) và `v2/docs/k2-vm.md` (D2-65 Q1/Q2/Q8)
+
+**Vào**: READY (D2-65) · HEAD `53417d9` · `git rev-list --count HEAD..origin/main` = 0 · baseline
+`gate --fast` **PASS 468 test**, L1 **711 ms** ([`JOURNAL/kt35-baseline-gate-fast.log`](JOURNAL/kt35-baseline-gate-fast.log)).
+
+**Mục tiêu** (KT-35, K2-PLAN §3): (1) crate `v2/lib/vifast-pte` `no_std` + `forbid(unsafe_code)`,
+không dependency, không `cfg` theo kiến trúc: `FrameSize{K4,M2,G1} ↔ size_bits{12,21,30}` (lạ ⇒
+`InvalidArgument`), `Pte(u64)`, `PteArray<const N>`, `walk_shape` VA 39 bit (3 chỉ số bit 12/21/30);
+(2) `v2/docs/k2-vm.md` 7 hằng số `[TK]`, hình 3 cấp, căn lề, bảng 7 mã lỗi dùng lại, Q1–Q8 + mục
+"K2 không phải kernel thật", ghi rõ `spec/` không đổi và `kernel.toml` chưa tạo; (3) test đỏ trước;
+(4) gate + Miri + log + STATE.
+
+**Không** làm: PageTable walker/map thật (KT-37), Frame/VSpace/TLB (KT-36..KT-41), sửa `spec/`,
+`v2/lib/vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không `unsafe`/dep/`#[ignore]`;
+không tạo `spec/kernel.toml`; không đổi ABI.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): crate dựng khung rỗng (chưa API) + `tests/kt35_pte.rs` ⇒ **E0432**
+  13 unresolved imports (`walk_shape`, `FrameSize`, `Pte`, `PteArray`, `PteError`, `WalkShape`,
+  7 hằng số) ([`JOURNAL/kt35-red-compile.log`](JOURNAL/kt35-red-compile.log)).
+- **Crate** `v2/lib/vifast-pte` (6 tệp src/test): `FrameSize::{K4,M2,G1}` +
+  `size_bits()`/`size_bytes()`/`from_size_bits()`/`TryFrom<u8>`; `Pte::EMPTY` + `from_raw`/`raw`/
+  `is_empty` (u64 thô, **không** gán nghĩa bit — KT-37); `PteArray<N>` không cấp phát,
+  `PteArray<512>` = **4096 B**, `get`/`set` trả `Option` (ngoài biên không panic/không ghi);
+  `walk_shape(u64) -> WalkShape` trả `[cấp2, cấp1, cấp0]` (9 bit/cấp, bit 30/21/12);
+  `PteError::InvalidArgument` model/local (`code_name()` = tên `spec/abi.toml`).
+- **Test** `tests/kt35_pte.rs` **9 test**: hằng số Q1; roundtrip cỡ/bits/byte; **size_bits lạ
+  0..=255** ⇒ chỉ 12/21/30 OK, còn lại `InvalidArgument`; `va=1<<38 ⇒ [256,0,0]`,
+  `u64::MAX ⇒ [511,511,511]` (cắt, không panic); `PteArray<512>` 4096 B + mọi chỉ số biên/`usize::MAX`;
+  property **10.000 VA/shape** tất định (LCG) dựng lại bit 12..38; Miri chạy 256 vòng.
+- **Docs** [`v2/docs/k2-vm.md`](../docs/k2-vm.md): 7 hằng số `[TK]` (PAGE_SIZE_BITS=[12,21,30],
+  PTE_LEVELS=3, VA_BITS=39, ASID_BITS=8, TLB_ENTRIES_PER_HART=16, MAX_FRAMES_PER_VSPACE=4096,
+  MAX_MAP_DEPTH=3), hình 3 cấp 9/9/9/12 + bảng lá theo cỡ + căn lề `pa/va % frame_size == 0`,
+  bảng **7 mã lỗi dùng lại** (4/6/10/11/12/13/19; `InvalidArgument` 5 là mã chung cho `size_bits`),
+  Q1–Q8 theo D2-65, **"K2 không phải kernel thật"**, `spec/` không đổi + `kernel.toml` chưa tạo.
+- **Gate** `gate --fast` **PASS 477 test/65 suite**, L1 1.000 seed **607 ms**, fmt/clippy sạch,
+  luật R1..R5 OK, gen-check ON ([`JOURNAL/kt35-gate-fast.log`](JOURNAL/kt35-gate-fast.log), chạy
+  **sau** fix B1/B2). Hai lần đỏ trước đó: (a) **R2** bắt **chữ** `cfg(target_arch)` trong
+  doc-comment (grep thô) — sửa chú thích, log
+  [`kt35-gate-fast-fail-r2-doc.log`](JOURNAL/kt35-gate-fast-fail-r2-doc.log); (b) reviewer B1 thiếu
+  inner attribute — sửa rồi chạy lại; bản PASS trước review giữ
+  [`kt35-gate-fast-pre-review.log`](JOURNAL/kt35-gate-fast-pre-review.log).
+- **Miri** `./v2/bin/v2 miri -p vifast-pte` **PASS 9 test**, 0 failed
+  ([`JOURNAL/kt35-miri.log`](JOURNAL/kt35-miri.log)); không thêm vào `nightly --only-miri`
+  (crate không unsafe/alloc/IO; lệnh rời đã đủ; KT-43 quyết khi chốt cổng K2) — `v2/bin/v2` **không đổi**.
+- **Không đổi ABI**: `spec/` nguyên trạng (VSpace 9/PageTable 10/Frame 11 vẫn reserved +
+  unsupported), không `.scn`, không `vifast-model`, không `viscript/`; chỉ stage `v2/`.
+
+**Review độc lập**: `reviewer-kt35` verdict **DRIFT** (2 mục chặn) — **đã sửa, chạy lại xanh**:
+- **B1 (chặn)**: crate root **thiếu** inner attribute thật — `#![no_std]`/`#![forbid(unsafe_code)]`
+  mới chỉ nằm trong doc comment (`grep '^#!'` = 0). Đã thêm **2 dòng đầu `lib.rs`** (DoD Q8/D2-65);
+  reviewer đã thử bản 2 attribute + 9/9 test.
+- **B2 (chặn nhỏ)**: `k2-vm.md` bảng lá sai — M2 (2 MiB) phủ **một bảng cấp 0** (512 entry =
+  `2^9` trang 4 KiB), lá ở cấp 1; G1 (1 GiB) phủ **một bảng cấp 1** (`512 × 512 = 2^18` trang
+  4 KiB), lá ở cấp 2 — đã sửa ô bảng cho khớp.
+- **Nit**: `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]` (không chép 12); nguồn design sửa `:353-375` →
+  `:353-366` (§4.10 kết thúc trước §4.11); ghi rõ `MAX_FRAMES_PER_VSPACE=4096` /
+  `MAX_MAP_DEPTH=3` là `[TK]` do KT-35 chọn, được reviewer-kt35/Agent 0 chấp nhận.
+- Sau sửa: `cargo test -p vifast-pte` **9/9**, **Miri 9/9**, **gate 477 PASS**; log cuối
+  `kt35-gate-fast.log`/`kt35-miri.log` (bản trước review giữ `*-pre-review.log`).
+
+**Đề xuất**: **KT-35 DONE** (crate + docs + test đỏ + gate + Miri đạt; không nới ngưỡng/không retry
+để lấy xanh — lần đỏ R2 là lỗi tooling do chú thích, đã sửa đúng chỗ). **YC mới**: (i) `reviewer-kt35`
+xác nhận hình 39 bit/truncation + `PteArray` biên + hằng số Q1; (ii) Agent 0 lật KT-35 DONE và mở
+KT-36 (Frame 3 cỡ) khi D2-65 còn hiệu lực; (iii) KT-43 cân nhắc thêm `vifast-pte` vào
+`nightly --only-miri` khi có task cài đặt.
+
+**Commit**: `[KT-35]` trên HEAD `41a37d3` (commit **ST-00 ViScript** đến trong lúc chạy — chỉ
+chạm `viscript/agent/DECISIONS.md`, **không chạm `v2/`**; baseline/gate của KT-35 chạy ở
+`53417d9` + cây `v2/` hiện tại); chỉ stage `v2/` (crate + docs + Cargo.toml/lock + JOURNAL + STATE),
+không `git add -A`, không `viscript/`.
 
 ## KT-34 — đóng **C2** cuối K1c: cap `Reply` đang active, bất biến liên kết Reply, 100k×4 (D2-63)
 

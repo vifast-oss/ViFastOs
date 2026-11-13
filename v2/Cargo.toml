@@ -7,6 +7,7 @@ members = [
     "lib/vifast-abi",
     "lib/vifast-model",
     "lib/vifast-objmem",
+    "lib/vifast-pte",
     "lib/vifast-sync",
     "lib/vifast-traceformat",
     "lib/vifast-elf",
