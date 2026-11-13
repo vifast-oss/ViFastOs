@@ -403,3 +403,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   `Hop[int]` ≠ `Hop[str]` — instantiation ở `tyck` + `codegen` (nếu buộc phải bump `VBC1` thì **hỏi Agent 0**);
   sai kiểu ⇒ `VS0412`; differential 100k **phải vẫn 0 lệch**. (5) **Quy trình**: từ vòng này **Agent 2 tự commit**
   task của mình (`--only` + push); Agent 0 chỉ commit `QUEUE`/`DECISIONS`/`AGENTS` + `docs/viscript/doc-examples-allow.txt`.
+
+- **VD-65** **Harness chẩn đoán 3 đường (ST-32)**: (1) mọi ca `.vis`/`.vish` được phân loại **cứng** thành 3 tầng —
+  **xanh** / **lỗi biên dịch** (`01xx–04xx`, `06xx`, `07xx`) / **lỗi lúc chạy** (`05xx`) — tổng phải bằng số ca sem;
+  **không** ca nào bị bỏ qua. (2) Với ca lỗi biên dịch: `vis check` và `vis run --vm --no-cache` phải cho **cùng**
+  `(mã, dòng, cột, thông điệp)`; **exit code ánh xạ `1 ↔ 2`** (không đòi bằng) — và `vis_bytecode::compile()` phải
+  **được gọi tới** (không panic). (3) Với ca lỗi lúc chạy: `vis check` **rỗng**, `run` = `run --vm`. (4) Một hàm
+  **`chuan_hoa`** dùng chung cho cả 3 đường (escape `\n`/`\t`/`\\`) + unit-test riêng — không rải logic chuẩn hoá.
+  (5) **Codegen TIN tyck** (không tự kiểm kiểu): hiện **21/26** ca lỗi biên dịch vẫn sinh module chạy được; khoá hằng
+  số `CODEGEN_TIN_TYCK = 21` để thay đổi phải có ý thức — đây là **nợ**, không phải hợp đồng.

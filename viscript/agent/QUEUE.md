@@ -120,8 +120,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **DONE** | ≥ 30 ca |
 | ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | **DONE** | `sha2` duyệt allowlist; thay FNV |
 | ST-30b | đồng bộ chẩn đoán interp↔VM + siết differential (so đủ) | ST-30 | 2 h | **DONE** | 312/312 khớp, 0 lệch |
-| ST-32 | harness so chẩn đoán **biên dịch** hai đường (đóng nợ 26 ca) | ST-31 | 2 h | **READY** | 0 lệch; không nới |
-| ST-33 | `json.decode` + `std.fs` tối thiểu (qua `Host`) | ST-32 | 3 h | BLOCKED | đối xứng encode; interp/vm không chạm OS |
+| ST-32 | harness so chẩn đoán **biên dịch** hai đường (đóng nợ 26 ca) | ST-31 | 2 h | **DONE** | 0 lệch; không nới |
+| ST-33 | `json.decode` + `std.fs` tối thiểu (qua `Host`) | ST-32 | 3 h | **READY** | đối xứng encode; interp/vm không chạm OS |
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | BLOCKED | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | BLOCKED | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
@@ -442,6 +442,16 @@ APPROVED 2026-11-13 Agent 0
 > Dòng ViScript **hết task trong QUEUE** (36/36 DONE). Vòng 5 (đề xuất, ưu tiên): 26 ca lỗi biên dịch chưa so
 > chẩn đoán hai đường · `&self` · `json.decode` · `std.fs` · `| complete`/pipe→stdin · consent/`cap[Proc]` ·
 > `Hop[int] ≠ Hop[str]` (generic thật) · `pkg.*`/registry ⇒ VS2.
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-32 DONE** — commit `774369b` (**Agent 2 tự commit**): harness 3 đường so **cả 338 ca** (286 xanh / 26 lỗi
+> biên dịch / 26 lỗi lúc chạy, **0 ca bỏ qua**), **0 lệch**; ca biên dịch so `check` ↔ `run --vm --no-cache` cùng
+> `(mã,dòng,cột,thông điệp)` + **ánh xạ exit 1↔2** (không đòi bằng); `chuan_hoa` dùng chung 3 đường + unit-test;
+> **`vis_bytecode::compile()` gọi tới cả 26 ca** (không panic); **phát hiện**: **21/26 ca codegen vẫn sinh module và
+> VM chạy sạch** dù HIR sai kiểu ⇒ codegen **tin tyck**, khoá hằng số `CODEGEN_TIN_TYCK = 21` (nợ có ý thức).
+> **443** test; parity 312/312; differential 100k 0 lệch; gate PASS.
+> **ST-33 mở** (`json.decode` + `std.fs` qua `Host`).
 
 ## Ghi chú vận hành
 
