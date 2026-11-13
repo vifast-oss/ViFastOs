@@ -139,8 +139,8 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-32 | Đóng nợ C1: driver `l1_k1c` trộn IPC/Notification/WaitAddr + 100.000 seed × smp 1/2/4/8; `check_ipc` thật, cùng seed cùng trace | KT-31 | 2 h | DONE | 400k lượt; ipc_sent 5.786.297; delivered 1.123.586; dropped 3.748.540; 0 vi phạm; reviewer APPROVE |
 | KT-33 | Đóng nợ C3+Miri: đủ **12/12** mutation §7.2 + thêm `kt25_ipc2` vào Miri all + chạy lại + cập nhật K1C-DOD (C1/C3 ĐẠT) | KT-32 | 2 h | DONE | 12/12 §7.2; Miri 300/kt25 24; driver 10k; gate 461; C2 nợ → KT-34 |
 | KT-34 | Đóng C2: reject cap Reply đang `caller=Some` (test), bất biến `BlockedOnReply ⇒ Reply.caller==tcb`, fuzz Signal/WakeAddr sau xếp hàng; 10k×4 rồi 100k×4 | KT-33 | 3 h | DONE | 468 test; C2 ĐẠT; 100k sent 5.786.296/delivered 1.123.598/pending 914.525/dropped 3.748.173; Miri 8 tập/123 test; reviewer CONFIRM |
-| KT-35 | `vifast-pte` (safe, forbid unsafe) + `v2/docs/k2-vm.md` hằng số 3 cấp | — | 2,5 h | READY | crate + docs; test biên size_bits/va 1<<38; Miri; gate |
-| KT-36 | Frame 3 cỡ + ownership/Untyped + `GetAddress` | KT-35 | 3 h | BLOCKED | 4K/2M/1G; retype sai `InvalidArgument`/`Alignment`; frame chết sạch; gate/Miri |
+| KT-35 | `vifast-pte` (safe, forbid unsafe) + `v2/docs/k2-vm.md` hằng số 3 cấp | — | 2,5 h | DONE | 477 test; Miri 9/9; shape 9/9/9/12; PteArray 4096 B; no_std/forbid; reviewer CONFIRM |
+| KT-36 | Frame 3 cỡ + ownership/Untyped + `GetAddress` | KT-35 | 3 h | READY | 4K/2M/1G; retype sai `InvalidArgument`/`Alignment`; frame chết sạch; gate/Miri |
 | KT-37 | PageTable 3 cấp map/unmap + rights/attrs + 7 mã lỗi | KT-35, KT-36 | 3 h | BLOCKED | MissingPageTable/AlreadyMapped/NotMapped/HasChildren/Alignment; walk ngược 10k; gate/Miri |
 | KT-38 | VSpace + ASID + generation + `active_on` | KT-37 | 2,5 h | BLOCKED | ASID 8 bit; cạn ⇒ gen+1; active_on ⊆ online; gate |
 | KT-39 | W^X counters + protect/unmap + bất biến | KT-37 | 2,5 h | BLOCKED | `!(w>0&&x>0)`; map W sau X `WxViolation` atomic; recount; gate/Miri |
@@ -166,8 +166,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K2 mở** (D2-65): KT-35..KT-43; K1c DONE (D2-64).
-3. Thứ tự K2: A(35→36→37) → B(38→40) ∥ C(39) → 41 → 42 → 43; mỗi task ≤3 h.
+2. **K2**: KT-35 DONE; **KT-36 READY** (Frame 3 cỡ); K1c DONE (D2-64).
+3. Thứ tự K2: 36→37 → B(38→40) ∥ C(39) → 41 → 42 → 43; mỗi task ≤3 h.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.
