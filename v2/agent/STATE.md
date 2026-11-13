@@ -6,13 +6,50 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-31 (cổng cuối K1c) — REVIEW (đề xuất DONE một phần qua D2-61); KT-30 DONE (29718a6)
-Bước          : 0/8
+Task          : KT-32 (driver L1 trộn IPC, đóng nợ C1-100k) — REVIEW (đề xuất DONE; commit `[KT-32]`, hash xem `git log -1`); KT-31 DONE một phần (D2-61, 83df94a); KT-30 DONE (29718a6)
+Bước          : 7/7 (baseline → driver → 1k → 10k → 100k → gate → commit/push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test**, L1 1.000 seed **720 ms**, fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON (`JOURNAL/kt31-gate-fast.log`). **T-INFRA**: wall **254,19 s** > 60 s (QD §5.2) do tải máy (baseline KT-30 cùng ngày 199,3 s); **không** nới ngưỡng. Cổng cuối K1c: **100k×4 L1 PASS** 400.000 lượt **5043,84 s** (`kt31-l1-100k-smp.log`); **Miri toàn bộ PASS** 276 test/18 tập **4058,24 s** (`kt31-miri-all.log`); **mutation 6/6 đỏ đúng test** (`kt31-mutation.log`); **parity 10k PASS** 15,52 s (`kt31-parity-10k.log`)
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test**, L1 1.000 seed **269 ms**, fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON, wall **124,25 s** (`JOURNAL/kt32-gate-fast.log`; baseline cùng ngày 233,94 s do máy tải; L1 269 ms < 60 s). **KT-32**: **100k×4 L1 trộn IPC PASS** 400.000 lượt **6596,88 s** (`kt32-l1-100k-mixed.log`), `ipc_sent` 5.786.297; 10k×4 PASS **503,02 s** (`kt32-l1-10k-mixed.log`); 1k×4 PASS **62,54 s** (`kt32-l1-1k-mixed.log`); driver `l1_k1c` chạy trong L0 **4,71 s**/1.000 seed. KT-31: 100k×4 5043,84 s (`kt31-l1-100k-smp.log`), mutation 6/6 (`kt31-mutation.log`), parity 10k 15,52 s (`kt31-parity-10k.log`), Miri 4058,24 s (`kt31-miri-all.log`)
 Miri          : `./v2/bin/v2 nightly --only-miri` — **PASS 276 test / 18 tập**, wall **4058,24 s** (`JOURNAL/kt31-miri-all.log`); K1c 104 test (kt24/26/27/28/29 + sync). **Ghi rõ**: danh sách `--only-miri` **không có `kt25_ipc2`** (Miri KT-25 rời: 24/24, `kt25-miri.log`); `kt30_stress` tự gạt dưới Miri
-Việc dở       : KT-31 REVIEW — chờ Agent 0 lật (đề xuất D2-61: gate run một phần + mở KT-32); 3 nợ: C1-100k (driver `l1_k1c` không sinh IPC/Notification/WaitAddr, `check_ipc` rỗng), C3 mới 3/12 mục §7.2, Miri `--only-miri` thiếu `kt25_ipc2`; model-only + K2/K3 backlog D2-56..60.
+Việc dở       : **KT-32 REVIEW** — chờ Agent 0 lật; **C1-100k ĐÃ ĐÓNG** ([`reports/KT32-L1-MIXED.md`](reports/KT32-L1-MIXED.md), K1C-DOD §2b). **K1c vẫn REVIEW**: KT-33 còn **C3** (đủ 12 mutation §7.2) + Miri `--only-miri` thiếu `kt25_ipc2`; 2 nợ nhỏ của driver chuyển KT-33 (`ipc_sent>0` gần tautology do prologue ⇒ siết `sent>1`/`delivered>0`; panic `kiem` chưa kèm seed/smp). Không claim C2 (model cho phép ghi đè `caller` khi dùng lại cap Reply). Model-only + K2/K3 backlog D2-56..60.
 ```
+
+## KT-32 — driver L1 **trộn IPC** cho K1c, đóng nợ **C1-100k** (D2-61)
+
+**Vào**: READY · HEAD khi mở `83df94a` (khi commit `efa787f` — hai commit `739fc3e`/`efa787f`
+dòng ViScript đến trong lúc chạy, **không chạm `v2/`**) · `git rev-list --count HEAD..origin/main`
+= 0 · baseline `gate --fast` PASS **461 test**, wall **233,94 s**, L1 **2.846 ms**
+([`JOURNAL/kt32-baseline-gate-fast.log`](JOURNAL/kt32-baseline-gate-fast.log)).
+
+**Mục tiêu**: mở rộng **chỉ** driver [`sim/vifast-sim/tests/l1_k1c.rs`](sim/vifast-sim/tests/l1_k1c.rs)
+(test-only) để 100k seed **thật sự** đi qua IPC/Notification/WaitAddr — K1C-DOD §9.2 (nợ C1),
+D2-61. Không sửa semantics, không nới seed/ngưỡng/op (giữ `SO_OP = 64`), không `.scn`/spec/
+QUEUE/DECISIONS/AGENTS/`viscript/`, không `#[ignore]`/`unsafe`/dependency.
+
+**Kết quả**:
+- Driver: giữ **9 op** KT-29 + thêm **10 op** K1c — Send/NBSend/Recv/Call/Reply (Endpoint/Reply
+  cap gốc trong CNode), Signal/Wait (Notification + cap `mint` badge), WaitAddr/WakeAddr/Store
+  (khoá `(frame, offset)`, `expected = addr_word`). Fallback `san_sang` chọn TCB `Ready|Running`,
+  `wake` rồi thử lại, cạn thì ghi nhận — **không** panic/không gọi op sai state; prologue
+  `NBSend` bảo đảm `ipc_sent ≥ 1` từ seed đầu. Sau **mỗi** op (kể cả prologue):
+  `check_sched/check_harts/check_ipc/check_waitaddr/check_mailboxes/check_caps`; cuối lượt
+  `sent == delivered+pending+dropped`; 2 lần/seed + `assert_eq` trace **và** bộ đếm.
+- **100k×4 PASS**: 4 dòng `# L1 OK: smp 1/2/4/8`, **400.000 lượt**, wall **6596,88 s**
+  (109,95 phút), `ipc_sent` **5.786.297** (14,47/seed), `ipc_delivered` **1.123.586**,
+  `ipc_dropped` **3.748.540**, `1 passed; 0 failed`, 0 panic (51,2 triệu lần kiểm) —
+  [`JOURNAL/kt32-l1-100k-mixed.log`](JOURNAL/kt32-l1-100k-mixed.log).
+- **1k×4** PASS 62,54 s (`kt32-l1-1k-mixed.log`); **10k×4** PASS 503,02 s (`kt32-l1-10k-mixed.log`).
+- **Gate cuối**: PASS **461 test**, L1 1.000 seed **269 ms**, wall **124,25 s**, fmt/clippy
+  `-D warnings` sạch ([`JOURNAL/kt32-gate-fast.log`](JOURNAL/kt32-gate-fast.log)); driver cũng
+  chạy trong L0 (1.000 seed/1 hart) **4,71 s** `1 passed`.
+- **Review độc lập**: `reviewer-kt32` (lead spawn, read-only) **APPROVE** — tự chạy 100 seed
+  (14,67 ipc_sent/seed), 1k×4 64,03 s (bộ đếm khớp byte-for-byte log tác giả), gate 461; xác
+  nhận đủ 10 op/6 checker/tất định/1 tệp test/không ignore-unsafe-dep.
+- **Nợ chuyển KT-33**: `ipc_sent>0` gần tautology do prologue (siết `sent>1`/`delivered>0`),
+  panic `kiem` chưa kèm seed/smp; **không** claim C2 (dùng lại cap Reply có thể ghi đè `caller`
+  — lỗ hổng có sẵn của model).
+
+**Không** làm: đóng K1c (KT-33 còn C3 + Miri), sửa test cũ, đổi QUEUE/DECISIONS.
 
 ## KT-31 — cổng cuối K1c: 100k×4 + mutation + Miri + gate + bảng DoD (K1C-PLAN §7.1, D2-60)
 

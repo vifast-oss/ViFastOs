@@ -68,6 +68,45 @@ Lệnh (đúng biến thể `v2 nightly --l1` do KT-29 thêm; **không** giảm 
   100.000 seed × 2 lần chạy/seed trên máy đang tải (baseline `gate --fast` cùng ngày 199,3 s ở
   KT-30) — **T-INFRA** nếu so với `[ƯL]` 20 phút của K1C-PLAN §7.1, nhưng **không** nới seed.
 
+### 2b. Cập nhật **sau KT-32** (2026-11-14) — nợ **C1-100k** đã đóng
+
+KT-31 ghi C1 **chưa đạt** vì driver `l1_k1c` chỉ có 9 op sched/SMP/mail. **KT-32** mở rộng
+**chỉ driver** đó (test-only, không sửa semantics `kobj/ipc/...`) thêm **10 op** K1c —
+Send/NBSend/Recv/Call/Reply trên Endpoint/Reply **thật**, Signal/Wait trên Notification,
+WaitAddr/WakeAddr/Store — rồi chạy lại **đúng** lệnh §7.1 (không giảm seed, không đổi invariant):
+
+```
+./v2/bin/v2 nightly --l1 --seeds 100000 --smp 1,2,4,8
+```
+
+| smp | Dòng log | `ipc_sent` | `ipc_delivered` | `ipc_dropped` |
+|---|---|---|---|---|
+| 1 | `# L1 OK: smp 1, 100000 seed × 64 op` | 1.447.334 | 279.209 | 949.749 |
+| 2 | `# L1 OK: smp 2, 100000 seed × 64 op` | 1.447.459 | 280.812 | 937.672 |
+| 4 | `# L1 OK: smp 4, 100000 seed × 64 op` | 1.445.714 | 282.294 | 931.485 |
+| 8 | `# L1 OK: smp 8, 100000 seed × 64 op` | 1.445.790 | 281.271 | 929.634 |
+| **tổng** | `# L1 OK: 400000 lượt (smp [1, 2, 4, 8], seeds 100000)` | **5.786.297** | **1.123.586** | **3.748.540** |
+
+- **Wall 6596,88 s** (109,95 phút; `1 passed; 0 failed`; **0** panic; không retry), log
+  [`JOURNAL/kt32-l1-100k-mixed.log`](../JOURNAL/kt32-l1-100k-mixed.log), báo cáo
+  [`reports/KT32-L1-MIXED.md`](KT32-L1-MIXED.md).
+- `ipc_sent` = **14,47 message/seed** (prologue `NBSend` 1/seed; ~13,5 do 64 op ngẫu nhiên sinh)
+  ⇒ 100k **thật sự** đi qua đường IPC/Notification/WaitAddr; `check_ipc` **không còn rỗng**.
+- Bất biến `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` đúng sau **mỗi** op trên
+  **51,2 triệu** lần kiểm (400.000 lượt × 64 op × 2 lần chạy/seed); cùng seed ⇒ cùng trace (hai
+  lần/seed, `assert_eq` cả trace lẫn bộ đếm).
+- **`ipc_dropped` cao là CÓ ĐẾM, không phải "không mất message"**: chủ yếu là message bị **huỷ hợp
+  lệ** theo D2-25 khi TCB gửi đang chặn bị `wake`/huỷ (`unlink_tcb_queues`, bất biến
+  `pushed == popped + removed + len`) và Reply **không có `caller`** (`reply_with` đếm
+  `ipc_dropped`) — bảo toàn vẫn đúng, không phải message "bốc hơi".
+- **Không** claim **C2**: driver dùng lại **cùng cap `Reply`** cho nhiều `Recv`; model cho phép
+  `reply_set_caller` ghi đè `caller` cũ ⇒ caller trước có thể **mất đường Reply** — lỗ hổng **có
+  sẵn của model**, không phải C1 và **không** được tính là C2. C2 vẫn chỉ đạt ở mức mô hình 1
+  luồng như §7.
+- Nợ chuyển **KT-33**: `ipc_sent > 0` mỗi lượt hiện **gần tautology** nhờ prologue (nên siết
+  `ipc_sent > 1`/`ipc_delivered > 0`), panic của `kiem` chưa kèm `seed`/`smp`; **C3** (đủ 12
+  mutation §7.2) + Miri `kt25_ipc2` **vẫn mở** — K1c **chưa** DONE.
+
 ## 3. Mutation tay 6 ca (C3 / việc §7.1 #4)
 
 Mỗi ca: áp **một** đột biến (không commit) → chạy **đúng một** test bất biến → test **đỏ** →
@@ -145,7 +184,7 @@ phải bằng chứng IPC mới.
 
 | # | Mệnh đề (K1C-PLAN §1.1) | Kết quả | Bằng chứng đo được |
 |---|---|---|---|
-| **C1** | **Bảo toàn message** — mỗi `msg_id` đúng một nơi; 0 vi phạm trên 1.000 seed `--fast` **và** 100.000 seed nightly | **CHƯA ĐẠT** — chỉ đạt **một phần**: fuzz 1.000×64 ĐẠT; **100k KHÔNG phủ IPC** (`check_ipc` rỗng) | `check_ipc()` sau **mỗi** public op (`kobj.rs::sched_after_op`); bất biến `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` (`dropped` chỉ cho đường huỷ hợp lệ D2-25). Fuzz **1.000 seed × 64 op** trong `kt24_ipc`, `kt25_ipc2`, `kt26_fault`, `kt27_notification`, `kt28_waitaddr`, `kt29_smp` — 0 vi phạm, cùng seed cùng trace; `kt31-baseline-gate-fast.log` chạy lại toàn bộ: **131 test K1c** xanh. **Hạn chế**: driver 100k (`l1_k1c`, 9 op sched/SMP/mail) **không** sinh message ⇒ `check_ipc` chạy nhưng **rỗng**; 100k **không** chứng minh bảo toàn message ở quy mô đó (nợ ghi §9 mục 2) |
+| **C1** | **Bảo toàn message** — mỗi `msg_id` đúng một nơi; 0 vi phạm trên 1.000 seed `--fast` **và** 100.000 seed nightly | **ĐẠT (cập nhật KT-32 — §2b)** — KT-31 chỉ đạt một phần (fuzz 1.000×64 ĐẠT; 100k **không** phủ IPC); **KT-32** driver trộn IPC: 100k×4, `ipc_sent 5.786.297`, 0 vi phạm bảo toàn trên 51,2 triệu lần kiểm | `check_ipc()` sau **mỗi** public op (`kobj.rs::sched_after_op`); bất biến `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` (`dropped` chỉ cho đường huỷ hợp lệ D2-25). Fuzz **1.000 seed × 64 op** trong `kt24_ipc`, `kt25_ipc2`, `kt26_fault`, `kt27_notification`, `kt28_waitaddr`, `kt29_smp` — 0 vi phạm, cùng seed cùng trace; `kt31-baseline-gate-fast.log` chạy lại toàn bộ: **131 test K1c** xanh. **Hạn chế**: driver 100k (`l1_k1c`, 9 op sched/SMP/mail) **không** sinh message ⇒ `check_ipc` chạy nhưng **rỗng**; 100k **không** chứng minh bảo toàn message ở quy mô đó (nợ ghi §9 mục 2) |
 | **C2** | **Không mất đánh thức** — signal/wake sau khi waiter xếp hàng ⇒ phải đánh thức; trước ⇒ word/giá trị còn | **ĐẠT (model 1 luồng)** | `kt27_notification` 26 test (Signal OR, **một** waiter, word xoá sau giao, Wait/Poll) + fuzz 1.000×64; `kt28_waitaddr` 12 test (`expected` lệch ⇒ không xếp hàng, `wake_addr(n)` FIFO, wake trước/sau) + fuzz 1.000×64; 100k×4 L1 0 panic. **Giới hạn**: "giữ khoá" trong mô hình = **một hàm**, không phải Mutex/thread thật (K2/K3 — nợ §9 mục 1/3) |
 | **C3** | **Mọi đột biến chuẩn bị bắt** — mỗi đột biến làm **đúng một** test đỏ, revert, ghi `mutants: killed` | **CHƯA ĐẠT** — 6/6 ca đỏ đúng test, nhưng chỉ **3/12 mục §7.2** (M7/M10/M11) | Bảng §3: 6 đột biến (IPC cap vị trí, Notification OR, WaitAddr xếp hàng trước, Fault resume không ghi MR, SMP bỏ guard idle, Sync mailbox ghi đè) đều `test result: FAILED` đúng test + dòng assert; 6/6 khôi phục hash == `HEAD`. **Không** chạy lại đủ 12 mục §7.2 (xem §3 "Đối chiếu §7.2") |
 | **C4** | **100.000 seed × smp 1/2/4/8** — 4 lần chạy, cùng seed cùng trace, bất biến giữ | **ĐẠT theo định nghĩa C4** (4 lần chạy, cùng seed cùng trace); **KHÔNG** kéo theo C1 | §2: `400000 lượt`, wall **5043,84 s**, 4/4 dòng `# L1 OK`, `1 passed; 0 failed`, 0 panic (⇒ 0 vi phạm `check_sched`/`check_harts` sau mỗi op trên 25,6 triệu op); **`check_ipc` rỗng** (driver không sinh message) ⇒ **không** phải bằng chứng C1 |
@@ -190,7 +229,7 @@ Miri lịch sử lấy từ log từng task, và lần chạy **Miri toàn bộ*
 1. **Toàn bộ K1c là model-only trong sim 1 luồng**: không chạy kernel/QEMU, không thread thật;
    `vifast-sync` chỉ stress **host** (Miri + 4 thread trong test), **chưa** nối vào kernel/sim.
    "SMP 1/2/4/8" là **mô hình tất định N hart** trong một luồng (D2-53 Q1), không phải SMP thật.
-2. **C1 chưa đạt ở mức 100.000 seed** (C2 cũng chỉ đạt một phần): driver `l1_k1c` có 9 op
+2. **[ĐÃ ĐÓNG bởi KT-32 — §2b]** **C1 chưa đạt ở mức 100.000 seed** (C2 cũng chỉ đạt một phần): driver `l1_k1c` có 9 op
    (`prio/affinity/dispatch/block/wake/process_mail/push_migration/yield`) — **không** sinh
    Send/Recv/Call/Reply/Signal/WaitAddr. Vì vậy 100k **không** chứng minh bảo toàn message /
    không mất đánh thức ở quy mô 100k; bằng chứng cho IPC/Notification/WaitAddr dừng ở **1.000
