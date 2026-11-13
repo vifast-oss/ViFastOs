@@ -404,6 +404,9 @@ run_miri_test() {
 # không có I/O cần Miri kiểm; bất biến của nó chạy trong L0). KHÔNG thêm test I/O.
 # **KT-24** (K1C-PLAN §5 KT-24 DoD 9): thêm `kt24_ipc` (MessageInfo/64 MR/ipc::transfer/no_reply;
 # fuzz tự giảm seed/bước bằng `cfg(miri)`). KHÔNG thêm `kt24_scn` (đọc tệp — test I/O).
+# **KT-26** (K1C-PLAN §5 KT-26 DoD 8): thêm `kt26_fault` (FaultKind 4 biến thể model-only, fault
+# Call+Reply, `tcb_resume_with_regs`, Exit D2-25, mô hình procsrv; fuzz 1.000 seed tự giảm còn
+# 3 seed × 8 op bằng `cfg(miri)`). KHÔNG thêm `kt26_scn` (đọc tệp — test I/O).
 do_nightly_only_miri() {
     local t0 t1
     require_miri_toolchain "v2 nightly --only-miri"
@@ -422,6 +425,7 @@ do_nightly_only_miri() {
     run_miri_test "vifast-sim kt21_donation" -p vifast-sim --test kt21_donation || return 1
     run_miri_test "vifast-sim kt22_mailbox" -p vifast-sim --test kt22_mailbox || return 1
     run_miri_test "vifast-sim kt24_ipc" -p vifast-sim --test kt24_ipc || return 1
+    run_miri_test "vifast-sim kt26_fault" -p vifast-sim --test kt26_fault || return 1
     t1="$(date +%s)"
     echo "v2 nightly --only-miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
 }

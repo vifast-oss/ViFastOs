@@ -1,0 +1,402 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::FaultAccess`
+  --> sim/vifast-sim/tests/kt26_fault.rs:23:5
+   |
+23 |     FaultAccess, FaultKind, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+   |     ^^^^^^^^^^^ no `FaultAccess` in `kobj`
+
+error[E0432]: unresolved import `vifast_sim::procsrv_model`
+  --> sim/vifast-sim/tests/kt26_fault.rs:25:17
+   |
+25 | use vifast_sim::procsrv_model::{ProcsrvModel, WaitHow, WaitResult};
+   |                 ^^^^^^^^^^^^^ could not find `procsrv_model` in `vifast_sim`
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:149:16
+    |
+149 |         self.m.inject_fault(self.t[i], kind).expect("inject_fault");
+    |                ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:188:25
+    |
+188 |     let vm = FaultKind::Vm {
+    |                         ^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:192:26
+    |
+192 |     let unk = FaultKind::UnknownSyscall { nr: 77 };
+    |                          ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `UserException` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:193:26
+    |
+193 |     let usr = FaultKind::UserException {
+    |                          ^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `name` found for enum `FaultKind` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:197:21
+    |
+197 |     assert_eq!(exit.name(), "Exit");
+    |                     ^^^^
+    |
+help: there is a method `ne` with a similar name, but with different arguments
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/cmp.rs:275:4
+
+error[E0599]: no method named `is_exit` found for enum `FaultKind` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:201:18
+    |
+201 |     assert!(exit.is_exit(), "chỉ Exit mới đi Send không Reply (D2-25)");
+    |                  ^^^^^^^ method not found in `FaultKind`
+
+error[E0599]: no method named `exit_code` found for enum `FaultKind` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:205:21
+    |
+205 |     assert_eq!(exit.exit_code(), Some(9));
+    |                     ^^^^^^^^^ method not found in `FaultKind`
+
+error[E0599]: no method named `render` found for enum `FaultKind` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:209:21
+    |
+209 |     assert_eq!(exit.render(), "Exit{9}");
+    |                     ^^^^^^ method not found in `FaultKind`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:237:27
+    |
+237 |     let kind = FaultKind::UnknownSyscall { nr: 77 };
+    |                           ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_last_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:249:13
+    |
+249 |         r.m.tcb_last_fault(r.t[1]).expect("last_fault"),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:259:13
+    |
+259 |         r.m.tcb_regs(r.t[0]).expect("tcb_regs"),
+    |             ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+259 |         r.m.tcb_ipc_regs(r.t[0]).expect("tcb_regs"),
+    |                 ++++
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:275:20
+    |
+275 |         FaultKind::Vm {
+    |                    ^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `UserException` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:279:20
+    |
+279 |         FaultKind::UserException {
+    |                    ^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:295:17
+    |
+295 |             r.m.tcb_regs(r.t[0]).expect("regs"),
+    |                 ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+295 |             r.m.tcb_ipc_regs(r.t[0]).expect("regs"),
+    |                     ++++
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:315:27
+    |
+315 |     let kind = FaultKind::Vm {
+    |                           ^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_resume_with_regs` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt26_fault.rs:323:9
+     |
+ 323 |     r.m.tcb_resume_with_regs(r.t_s[0], msg(0, &[7, 8, 9, 10]))
+     |         ^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_resume` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1925:5
+     |
+1925 |     pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:326:20
+    |
+326 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [7, 8, 9, 10]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+326 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [7, 8, 9, 10]);
+    |                        ++++
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:342:31
+    |
+342 |     r.cho_fault(0, FaultKind::UnknownSyscall { nr: 5 }, "inject");
+    |                               ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_resume_with_regs` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt26_fault.rs:344:9
+     |
+ 344 |     r.m.tcb_resume_with_regs(r.t_s[0], msg(0, &[1, 2, 3, 4]))
+     |         ^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_resume` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1925:5
+     |
+1925 |     pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:352:20
+    |
+352 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [1, 2, 3, 4]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+352 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [1, 2, 3, 4]);
+    |                        ++++
+
+error[E0599]: no method named `tcb_resume_with_regs` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt26_fault.rs:377:9
+     |
+ 377 |     r.m.tcb_resume_with_regs(r.t_s[0], msg(0, &[0xAA, 0xBB]))
+     |         ^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_resume` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1925:5
+     |
+1925 |     pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:385:20
+    |
+385 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [0xAA, 0xBB, 0, 0]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+385 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [0xAA, 0xBB, 0, 0]);
+    |                        ++++
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:470:13
+    |
+470 |         r.m.inject_fault(r.t[3], FaultKind::UnknownSyscall { nr: 1 }),
+    |             ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:470:45
+    |
+470 |         r.m.inject_fault(r.t[3], FaultKind::UnknownSyscall { nr: 1 }),
+    |                                             ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:485:13
+    |
+485 |         r.m.inject_fault(r.t[0], FaultKind::Vm {
+    |         ----^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:485:45
+    |
+485 |         r.m.inject_fault(r.t[0], FaultKind::Vm {
+    |                                             ^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:502:9
+    |
+502 |     r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 3 })
+    |         ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:502:41
+    |
+502 |     r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 3 })
+    |                                         ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_last_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:515:13
+    |
+515 |         r.m.tcb_last_fault(r.t[1]).expect("last"),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:516:34
+    |
+516 |         Some((r.t[0], FaultKind::UnknownSyscall { nr: 3 }))
+    |                                  ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:535:13
+    |
+535 |         r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 1 }),
+    |             ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:535:45
+    |
+535 |         r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 1 }),
+    |                                             ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:593:27
+    |
+593 |     let kind = FaultKind::Vm {
+    |                           ^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:613:20
+    |
+613 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [5, 6, 7, 8]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+613 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [5, 6, 7, 8]);
+    |                        ++++
+
+error[E0599]: no variant named `Vm` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:659:37
+    |
+659 |                     0 => FaultKind::Vm {
+    |                                     ^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:667:37
+    |
+667 |                     1 => FaultKind::UnknownSyscall {
+    |                                     ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `UserException` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:670:37
+    |
+670 |                     _ => FaultKind::UserException {
+    |                                     ^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:675:21
+    |
+675 |                 r.m.inject_fault(r.t[i], kind)
+    |                     ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_resume_with_regs` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt26_fault.rs:681:21
+     |
+ 681 |                 r.m.tcb_resume_with_regs(r.t_s[i], msg(0, &w))
+     |                     ^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_resume` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1925:5
+     |
+1925 |     pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:754:27
+    |
+754 |     let kind = FaultKind::UnknownSyscall { nr: 12 };
+    |                           ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no variant named `Fault` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt26_fault.rs:760:25
+    |
+760 |             step: Step::Fault { tcb: app, kind },
+    |                         ^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `ResumeWithRegs` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt26_fault.rs:780:25
+    |
+780 |             step: Step::ResumeWithRegs {
+    |                         ^^^^^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `Fault` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt26_fault.rs:789:25
+    |
+789 |             step: Step::Fault { tcb: app, kind },
+    |                         ^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `ReplyFault` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt26_fault.rs:809:25
+    |
+809 |             step: Step::ReplyFault {
+    |                         ^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:820:18
+    |
+820 |     assert_eq!(m.tcb_regs(app).expect("regs"), [0x55, 0x66, 0, 0]);
+    |                  ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+820 |     assert_eq!(m.tcb_ipc_regs(app).expect("regs"), [0x55, 0x66, 0, 0]);
+    |                      ++++
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:830:31
+    |
+830 |     r.cho_fault(0, FaultKind::UnknownSyscall { nr: 2 }, "inject");
+    |                               ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:834:20
+    |
+834 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [1, 2, 3, 4]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+834 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [1, 2, 3, 4]);
+    |                        ++++
+
+error[E0599]: no method named `inject_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:836:9
+    |
+836 |     r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 3 })
+    |         ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no variant named `UnknownSyscall` found for enum `FaultKind`
+   --> sim/vifast-sim/tests/kt26_fault.rs:836:41
+    |
+836 |     r.m.inject_fault(r.t[0], FaultKind::UnknownSyscall { nr: 3 })
+    |                                         ^^^^^^^^^^^^^^ variant not found in `FaultKind`
+
+error[E0599]: no method named `tcb_resume_with_regs` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt26_fault.rs:838:9
+     |
+ 838 |     r.m.tcb_resume_with_regs(r.t_s[0], msg_empty())
+     |         ^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_resume` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1925:5
+     |
+1925 |     pub fn tcb_resume(&mut self, tcb: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_regs` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt26_fault.rs:840:20
+    |
+840 |     assert_eq!(r.m.tcb_regs(r.t[0]).expect("regs"), [0, 0, 0, 0]);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_ipc_regs` with a similar name
+    |
+840 |     assert_eq!(r.m.tcb_ipc_regs(r.t[0]).expect("regs"), [0, 0, 0, 0]);
+    |                        ++++
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt26_fault") due to 53 previous errors
+warning: build failed, waiting for other jobs to finish...
+EXIT=101

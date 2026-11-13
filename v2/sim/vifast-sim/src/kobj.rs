@@ -286,8 +286,8 @@ pub struct EndpointInfo {
 // trạng thái đi qua **một** cửa `Machine::transition_tcb`. Re-export để đường dẫn cũ
 // (`vifast_sim::kobj::TcbState`, `::FaultKind`, `::SleepReason`) không đổi.
 pub use crate::tcb::{
-    BlockedOnKind, FaultKind, SleepReason, SuspendMode, TcbSnapshot, TcbState, ALLOWED,
-    TCB_STATE_COUNT,
+    BlockedOnKind, FaultAccess, FaultKind, SleepReason, SuspendMode, TcbSnapshot, TcbState,
+    ALLOWED, TCB_STATE_COUNT,
 };
 // KT-20: ngân sách MCS (`SchedContext`) — model-only `[TK]`, không phải ABI (D2-49(b,e)).
 pub use crate::mcs::{ScBudget, ScInfo};
@@ -379,6 +379,11 @@ struct TcbData {
     /// (b)). Cần trường này vì mô hình gọi syscall **đồng bộ**: nhánh caller đã xếp hàng nhận
     /// kết quả lúc message được giao, không phải lúc `call` trả về.
     last_ipc_error: Option<KError>,
+    /// **KT-26** — `(sender, FaultKind)` của **fault** vừa được giao cho TCB này làm bên nhận
+    /// (procsrv). Model-only `[TK]`: message fault không mang nội dung MR (`msg: None`) nên
+    /// procsrv cần biết sender + loại fault để `recv_exit`/`wait`; `take_last_fault` tiêu thụ.
+    /// Ghi **một chỗ** trong [`Machine::deliver_queued`] (và đường nhanh của `exit`/`inject_fault`).
+    last_fault: Option<(ObjId, FaultKind)>,
 }
 
 impl TcbData {
@@ -1945,6 +1950,70 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-26** — model API `[TK]` `tcb_resume_with_regs(tcb, regs)`: cho TCB **chạy tiếp** sau
+    /// fault với **thanh ghi/MR mới**, đúng đường thiết kế §4.4 `:279` — *"message ghi thẳng vào
+    /// context + IPC buffer rồi mới chuyển `Ready`. Đường mất message kiểu r319 không biểu diễn
+    /// được"*. Đây là **một cửa** cho fault-resume:
+    ///
+    /// - Ghi `regs` qua **cùng** [`crate::ipc::transfer`] (một message thanh ghi được `admit` +
+    ///   giao như message thường: `ipc_sent`/`ipc_delivered` cùng tăng, `check_ipc` giữ nguyên)
+    ///   **trước** khi đổi trạng thái ⇒ không có cửa sổ "Ready nhưng message chưa tới" (r319).
+    /// - Nhận các trạng thái: `BlockedOnReply{reply}` (fault đã giao, procsrv đang giữ Reply),
+    ///   `BlockedOnSend{call:true, fault:Some(k≠Exit)}` (fault còn trong hàng — huỷ message đó),
+    ///   `Ready` (bỏ cờ `suspended` — `Tcb.Resume` + thanh ghi) và `Sleeping` (giữ **nguyên**
+    ///   `Sleeping{reason}`, bảng §4.5 `:309-310`). Trạng thái khác ⇒ `IllegalOperation`.
+    /// - **Không phát lại** Call/Send/Recv/Reply cũ: trả TCB về `Ready` (hoặc giữ `Sleeping`)
+    ///   **đúng priority** của nó; không đụng `exit_code` (khác `Tcb.Resume` của KT-18 — D2-25
+    ///   chỉ buộc `Tcb.Resume`/`Configure` xoá `exit_code`; đường fault-resume phải **giữ** mã
+    ///   để procsrv còn đọc được).
+    /// - Message **không** mang cap (model API cho thanh ghi; chuyển cap thuộc Call/Reply).
+    pub fn tcb_resume_with_regs(&mut self, tcb: SlotRef, msg: Message) -> Result<(), KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        if !msg.caps.is_empty() || msg.caps.len() != msg.info.caps() as usize {
+            return Err(KError::InvalidArgument);
+        }
+        let state = self.tcb_state(obj)?;
+        let suspended = self.tcb_info_obj(obj)?.suspended;
+        // Trạng thái đích — kiểm **trước** khi gỡ hàng/giao thanh ghi (lỗi không đổi gì).
+        match state {
+            TcbState::BlockedOnReply { reply } => {
+                if self.reply_caller(reply)? != Some(obj) {
+                    return Err(KError::IllegalOperation);
+                }
+            }
+            TcbState::BlockedOnSend {
+                call: true,
+                fault: Some(kind),
+                ..
+            } if !kind.is_exit() => {}
+            TcbState::Ready => {}
+            TcbState::Sleeping { .. } => {}
+            _ => return Err(KError::IllegalOperation),
+        }
+        // Gỡ khỏi **mọi** hàng chờ/Reply.caller **trước** khi giao (bất biến §4.4); với
+        // `BlockedOnSend` đây là chỗ huỷ message fault đang chờ (fault message không có `msg_id`
+        // nên không tăng `ipc_dropped`).
+        self.unlink_tcb_queues(obj);
+        // Ghi thanh ghi **trước** khi `Ready` — qua đúng một hàm `ipc::transfer`.
+        let snaps = self.resolve_caps(&msg)?;
+        let mut m = self.admit_message(msg, snaps.clone())?;
+        self.deliver_message(obj, &mut m, &snaps, None)?;
+        // Bỏ cờ `suspended` (nếu có) rồi về trạng thái đích qua **một** cửa `transition_tcb`.
+        if suspended {
+            self.set_tcb_suspended(obj, false)?;
+        }
+        match state {
+            // `Sleeping` giữ nguyên (bảng §4.5 `:309-310`; không có cặp danh tính trong bảng).
+            TcbState::Sleeping { .. } => {}
+            // Đã `Ready`: nếu vừa bỏ `suspended`, `set_tcb_suspended(false)` đã sync đúng bucket;
+            // nếu không, TCB vẫn ở đúng chỗ — **không** gọi `transition_tcb` (cặp danh tính cấm).
+            TcbState::Ready => {}
+            _ => self.transition_tcb(obj, TcbState::Ready)?,
+        }
+        self.sched_after_op(true);
+        Ok(())
+    }
+
     /// Finalise TCB (thiết kế §4.3 bảng Finalise; KT-18 DoD 9): gỡ khỏi mọi hàng chờ, chuyển
     /// `Dead` qua một cửa, trả `sched_context` bằng hook rỗng, ghi log.
     ///
@@ -2449,9 +2518,21 @@ impl Machine {
                         }
                     }
                 }
-                // Fault `Exit` không bao giờ là `Call` (D2-25: đi qua hàng gửi, không Reply).
-                if fault.is_some() && call {
-                    return Err(format!("Endpoint {ep}: fault {fault:?} nhưng cờ call=true"));
+                // **KT-26**: fault `Exit` **không bao giờ** là `Call` (D2-25: đi qua hàng gửi,
+                // không Reply); fault ≠ Exit **phải** là `Call` (thiết kế §4.6 `:321`: procsrv
+                // nhận qua Call rồi Reply để chạy tiếp). Hai chiều đều cấm nửa vời.
+                match fault {
+                    None => {}
+                    Some(kind) if kind.is_exit() && call => {
+                        return Err(format!("Endpoint {ep}: fault Exit nhưng cờ call=true"));
+                    }
+                    Some(kind) if !kind.is_exit() && !call => {
+                        return Err(format!(
+                            "Endpoint {ep}: fault {} phải là Call (có Reply)",
+                            kind.name()
+                        ));
+                    }
+                    Some(_) => {}
                 }
                 // Người gửi **chặn** ⇒ phải đang `BlockedOnSend` khớp đúng hàng/cờ/fault.
                 // Người gửi **không chặn** (`NBSend`/`Call no_reply=1`) ⇒ chỉ cần còn sống.
@@ -2671,6 +2752,32 @@ impl Machine {
     pub fn tcb_ipc_regs(&self, tcb: ObjId) -> Result<[u64; ipc::WORDS_IN_REGISTERS], KError> {
         self.body(tcb, |k| match k {
             Kind::Tcb(t) => Ok(t.ipc.regs),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-26** — alias model API `[TK]` của [`Machine::tcb_ipc_regs`] cho đường **fault-resume**:
+    /// "thanh ghi" của TCB sau khi được `Reply`/`tcb_resume_with_regs` ghi **trước** `Ready`
+    /// (thiết kế §4.4 `:279`, chống đường mất message r319).
+    pub fn tcb_regs(&self, tcb: ObjId) -> Result<[u64; ipc::WORDS_IN_REGISTERS], KError> {
+        self.tcb_ipc_regs(tcb)
+    }
+
+    /// **KT-26** — `(sender, FaultKind)` của **fault vừa giao** cho TCB làm bên nhận (procsrv);
+    /// `None` nếu lần nhận gần nhất không phải fault. Model-only `[TK]`: message fault không có
+    /// nội dung MR nên procsrv đọc sender + loại fault qua đây.
+    pub fn tcb_last_fault(&self, tcb: ObjId) -> Result<Option<(ObjId, FaultKind)>, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.last_fault),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-26** — như [`Machine::tcb_last_fault`] nhưng **tiêu thụ** bản ghi (đặt `None`).
+    /// `ProcsrvModel::recv_exit` dùng để không xử lý hai lần cùng một fault.
+    pub fn take_last_fault(&mut self, tcb: ObjId) -> Result<Option<(ObjId, FaultKind)>, KError> {
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.last_fault.take()),
             _ => Err(KError::WrongObjectType),
         })
     }
@@ -4164,6 +4271,26 @@ impl Machine {
         self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
                 t.last_ipc_error = None;
+                // **KT-26**: fault vừa giao thuộc về lần nhận **trước**; một op IPC mới của
+                // bên nhận bắt đầu ⇒ bản ghi "fault vừa nhận" hết hiệu lực (tránh procsrv
+                // tiêu thụ nhầm fault cũ).
+                t.last_fault = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Ghi `(sender, fault)` vừa giao cho **bên nhận** (procsrv) — model-only `[TK]`, KT-26.
+    fn record_last_fault(
+        &mut self,
+        receiver: ObjId,
+        sender: ObjId,
+        kind: FaultKind,
+    ) -> Result<(), KError> {
+        self.body_mut(receiver, |k| match k {
+            Kind::Tcb(t) => {
+                t.last_fault = Some((sender, kind));
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
@@ -4204,9 +4331,33 @@ impl Machine {
             self.deliver_message(receiver, m, &queued_snaps, plan.as_ref())?;
         }
         match q.fault {
-            // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
-            Some(FaultKind::Exit { .. }) => {
-                self.transition_tcb(q.sender, TcbState::Inactive)?;
+            // **KT-26** — fault được ghi nhận cho bên nhận (procsrv) **trước** mọi chuyển
+            // trạng thái; message fault không mang MR nên đây là đường duy nhất procsrv biết
+            // `(sender, kind)`.
+            Some(kind) => {
+                self.record_last_fault(receiver, q.sender, kind)?;
+                if kind.is_exit() {
+                    // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
+                    self.transition_tcb(q.sender, TcbState::Inactive)?;
+                } else {
+                    // Fault ≠ Exit đi **Call + Reply** tới `fault_ep` (thiết kế §4.6 `:321`):
+                    // caller chờ `BlockedOnReply` để procsrv trả lời kèm thanh ghi mới.
+                    // Bên nhận **không** cấp Reply ⇒ không có đường resume: caller
+                    // `Cancelled` (cùng khuôn Q7(b) cho `Call`), không treo vĩnh viễn.
+                    match (q.call, reply_obj) {
+                        (true, Some(rep)) if q.blocking => {
+                            self.reply_set_caller(rep, Some(q.sender))?;
+                            self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                            self.donate_sc(q.sender, receiver)?;
+                        }
+                        _ => {
+                            if q.blocking {
+                                self.set_last_ipc_error(q.sender, KError::Cancelled)?;
+                                self.transition_tcb(q.sender, TcbState::Ready)?;
+                            }
+                        }
+                    }
+                }
             }
             None => match (q.call, reply_obj) {
                 (true, Some(rep)) if q.blocking => {
@@ -4574,6 +4725,15 @@ impl Machine {
         if matches!(state, TcbState::Running { .. }) {
             self.transition_tcb(tcb, TcbState::Ready)?;
         }
+        // **KT-26**: server vừa trả lời (Reply/ReplyRecv) ⇒ bản ghi "fault vừa nhận" đã xử lý
+        // xong; xoá để `recv_exit` kế tiếp không tiêu thụ nhầm fault cũ.
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.last_fault = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
         self.sched_after_op(true);
         Ok(())
     }
@@ -4720,6 +4880,8 @@ impl Machine {
                     // Waiter khác TCB đang thoát (procsrv) ⇒ đánh thức; nếu chính nó là waiter
                     // (procsrv tự Exit khi đang chờ `Recv` cùng endpoint) thì đi thẳng `Inactive`.
                     if w != tcb {
+                        // **KT-26**: procsrv phải biết `(sender, Exit{code})` vừa nhận.
+                        self.record_last_fault(w, tcb, FaultKind::Exit { code })?;
                         self.transition_tcb(w, TcbState::Ready)?;
                     }
                 }
@@ -4766,6 +4928,105 @@ impl Machine {
                 }
                 self.unlink_tcb_queues(tcb);
                 self.transition_tcb(tcb, TcbState::Inactive)?;
+            }
+        }
+        self.sched_after_op(true);
+        Ok(())
+    }
+
+    /// **KT-26** — `inject_fault(tcb, kind)`: mô phỏng một **trap/fault** xảy ra khi `tcb` đang
+    /// chạy (`Ready`/`Running`), theo thiết kế §4.6 `:321`: fault ≠ Exit đi **Call tới
+    /// `fault_ep`** (caller chờ `BlockedOnReply`, procsrv trả lời để chạy tiếp); `Exit` **không**
+    /// đi đường này — dùng [`Machine::exit`] (D2-25, Send không Reply).
+    ///
+    /// **Model-only `[TK]`, không phải ABI** (D2-53 Q5): `tcb.fault_ep` **phải** có (KT-26 chỉ mô
+    /// hình đường có fault endpoint; fault không handler để K3 chốt — trả `InvalidArgument` và
+    /// **không** đổi trạng thái). Cap `fault_ep` chết ⇒ `InvalidCapability` (như `Exit`), hàng
+    /// gửi của `fault_ep` đầy và không có `Recv` waiter ⇒ `Busy` — **trước** mọi thay đổi, không
+    /// giao nửa chừng.
+    ///
+    /// Có `Recv` waiter (procsrv đang chờ) ⇒ giao **thẳng** như đường nhanh của `call`/`exit`
+    /// (message không vào hàng, bất biến "có message ⇒ không waiter" giữ nguyên); waiter **không**
+    /// cấp Reply cap ⇒ caller `Cancelled` (không treo vĩnh viễn — cùng khuôn D2-53 Q7(b)).
+    pub fn inject_fault(&mut self, tcb: ObjId, kind: FaultKind) -> Result<(), KError> {
+        if kind.is_exit() {
+            return Err(KError::InvalidArgument);
+        }
+        let state = self.tcb_state(tcb)?;
+        if !matches!(state, TcbState::Ready | TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        let fault_ep = self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.fault_ep),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let fault_ep_cap = fault_ep.ok_or(KError::InvalidArgument)?;
+        let ep_obj = self.require_cap_type(fault_ep_cap, ObjType::Endpoint)?;
+        // Đọc waiter + Reply cap của nó **trước** khi đổi bất cứ thứ gì (lỗi cap cứng không để
+        // fault mất nửa chừng).
+        let waiter = self.body(ep_obj, |k| match k {
+            Kind::Endpoint(e) => Ok(e.recv),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let reply_obj = match waiter {
+            Some((_, Some(cap))) => Some(self.require_cap_type(cap, ObjType::Reply)?),
+            _ => None,
+        };
+        if waiter.is_none() && self.endpoint_full(ep_obj)? {
+            return Err(KError::Busy);
+        }
+        match waiter {
+            Some((w, _)) => {
+                // Giao thẳng: đưa TCB vào trạng thái chặn **trước** (mọi chuyển trạng thái bên
+                // trong `deliver_queued` khi đó nằm trong bảng `ALLOWED`: `3→5` Reply, `3→1`
+                // Cancelled), rồi lấy waiter khỏi Endpoint và dùng **cùng** đường
+                // `deliver_queued` (một chỗ xử lý fault: `last_fault` + Reply/Cancelled).
+                self.transition_tcb(
+                    tcb,
+                    TcbState::BlockedOnSend {
+                        ep: ep_obj,
+                        call: true,
+                        fault: Some(kind),
+                    },
+                )?;
+                let taken = self.body_mut(ep_obj, |k| match k {
+                    Kind::Endpoint(e) => Ok(e.recv.take()),
+                    _ => Err(KError::WrongObjectType),
+                })?;
+                debug_assert!(matches!(taken, Some((w2, _)) if w2 == w));
+                let q = QueuedMessage {
+                    msg: None,
+                    sender: tcb,
+                    call: true,
+                    fault: Some(kind),
+                    blocking: true,
+                    snaps: Vec::new(),
+                };
+                let _ = self.deliver_queued(w, q, reply_obj, None)?;
+                if w != tcb {
+                    self.transition_tcb(w, TcbState::Ready)?;
+                }
+            }
+            None => {
+                self.endpoint_enqueue(
+                    ep_obj,
+                    QueuedMessage {
+                        msg: None,
+                        sender: tcb,
+                        call: true,
+                        fault: Some(kind),
+                        blocking: true,
+                        snaps: Vec::new(),
+                    },
+                )?;
+                self.transition_tcb(
+                    tcb,
+                    TcbState::BlockedOnSend {
+                        ep: ep_obj,
+                        call: true,
+                        fault: Some(kind),
+                    },
+                )?;
             }
         }
         self.sched_after_op(true);
@@ -4851,6 +5112,7 @@ impl Machine {
                 ipc: IpcArea::new(),
                 recv_window: None,
                 last_ipc_error: None,
+                last_fault: None,
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,

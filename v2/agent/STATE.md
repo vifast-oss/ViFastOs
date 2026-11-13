@@ -6,13 +6,43 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-25 (xong mã — **IPC core 2: `Call/Reply/ReplyRecv/NBSendRecv/NBSendWait` + 4 cap (GRANT/bỏ GRANT/unwrap badge/receive window) + vòng đời Reply ⇒ caller `Cancelled` + NBSendRecv/NBSendWait Q15a + donation không rò**); KT-24 DONE (`217b7d1`), KT-23 DONE (65702fa), KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
-Bước          : 0/8
+Task          : KT-26 (đang làm — **Fault + Exit + mô hình procsrv**: `FaultKind` VM/unknown/user **model-only** (D2-53 Q5), fault qua **Call + Reply** có thanh ghi (chống r319), `Exit` D2-25, procsrv `{code, how}` Q10); KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`), KT-23 DONE (65702fa)
+Bước          : 8/8 (mã + gate + Miri + mutation + **verdict reviewer-kt26 APPROVE** + sửa 3 yêu cầu bằng chứng; đang stage/commit/push)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**361 test/51 suite**, 0 failed, 1 doc-test ignored pre-existing; KT-24 là 336/49 ⇒ **+25 test** = 24 `kt25_ipc2` + 1 `kt25_scn`; **L1 1.000 seed/999 trace** 708 ms (đo bởi cổng); gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK, clippy `-D warnings` sạch)
-Miri          : `./v2/bin/v2 miri test -p vifast-sim --test kt25_ipc2` — **PASS 24/24**, 75,99 s (`JOURNAL/kt25-miri.log`)
-Việc dở       : commit `[KT-25]` + push origin/main sau verdict reviewer; **chưa lật QUEUE** (Agent 0)
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 386 test/53 suite** (baseline 361/51 ⇒ +25 = 24 `kt26_fault` + 1 `kt26_scn`), L1 1.000 seed/999 trace **713 ms** (đo bởi cổng), clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt26-gate-fast.log`)
+Miri          : `./v2/bin/v2 miri test -p vifast-sim --test kt26_fault` — **PASS 24/24** (`JOURNAL/kt26-miri.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
+Việc dở       : KT-26 — đang commit `[KT-26]` + push sau verdict **APPROVE**; **không lật QUEUE** (Agent 0)
 ```
+
+## KT-26 — Fault + Exit + mô hình procsrv (K1c, D2-53 Q5/Q10, D2-25)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-26) · HEAD `20e137c` ([KT-00] lật KT-25 DONE) ·
+baseline `gate --fast` PASS **361 test/51 suite** ([`JOURNAL/kt26-baseline-gate-fast.log`](JOURNAL/kt26-baseline-gate-fast.log)).
+**Phạm vi**: `FaultKind` 4 biến thể **model-only** (`Exit` + `Vm{fault_addr, access}` +
+`UnknownSyscall{nr}` + `UserException{ip, kind}`; **không** sửa `spec/` — spec là **tập con** tới K3,
+Q5); fault ≠ Exit đi **Call + Reply** tới `fault_ep`, procsrv Reply **ghi thanh ghi/MR vào TCB
+trước khi `Ready`** (chống mất message r319); `tcb_resume_with_regs` model API (ghi regs một cửa
+`ipc::transfer`, không phát lại IPC cũ, giữ `exit_code`); `Exit` đúng D2-25 (4 nhánh); mô hình
+procsrv `[TK]` `{code, how}` (`recv_exit`/`wait`/`kill` = `Suspend(Abort)` + Revoke cap TCB).
+**Không** làm: Notification (KT-27), WaitAddr (KT-28), SMP/push (KT-29), `vifast-sync` (KT-30);
+không sửa `spec/`, `vifast-model`, `.scn`, QUEUE, DECISIONS, AGENTS, `viscript/`; không
+dependency/`unsafe`/`#[allow]`/`#[ignore]`; không đổi ABI.
+**Bước**: (1) test đỏ `tests/kt26_fault.rs` + `tests/kt26_scn.rs` (E0599/API) + probe ngữ nghĩa;
+(2) `tcb.rs` 4 FaultKind; (3) `kobj.rs` `inject_fault`/delivery fault Call+Reply/`tcb_resume_with_regs`/
+`tcb_last_fault`/`tcb_regs` + nới `check_mailboxes` cho fault-Call; (4) `procsrv_model.rs`; (5)
+`scenario.rs` `Step::{Fault, ReplyFault, ResumeWithRegs}`; (6) `kt26_scn.rs` đọc 13/14/20; (7) fuzz
+1.000 seed × 64 op; (8) gate + Miri + mutation "resume không ghi MR"; (9) `v2/docs/k1c-fault.md`,
+STATE/JOURNAL, review độc lập rồi commit/push.
+
+**Kết quả**: test đỏ [`JOURNAL/kt26-red-compile.log`](JOURNAL/kt26-red-compile.log) (53 lỗi:
+51×E0599 + 2×E0432) + [`JOURNAL/kt26-red-semantics.log`](JOURNAL/kt26-red-semantics.log) (probe
+tạm); `gate --fast` **PASS 386 test/53 suite**, L1 713 ms ([`JOURNAL/kt26-gate-fast.log`](JOURNAL/kt26-gate-fast.log));
+Miri `kt26_fault` **PASS 24/24** ([`JOURNAL/kt26-miri.log`](JOURNAL/kt26-miri.log));
+đột biến "resume không ghi MR" ⇒ 3 test resume **đỏ** rồi khôi phục
+([`JOURNAL/kt26-mutation-resume.log`](JOURNAL/kt26-mutation-resume.log)); fuzz **1.000 seed × 64 op**
+bất biến sau mỗi bước + cùng seed cùng trace; `.scn` 13/14/20 chạy qua runner. Chi tiết DoD 1..8 +
+8 quyết định mô hình + verdict **reviewer-kt26 APPROVE** (và 3 yêu cầu bằng chứng đã sửa):
+[`JOURNAL/kt26-journal.md`](JOURNAL/kt26-journal.md); docs [`../docs/k1c-fault.md`](../docs/k1c-fault.md).
 
 ## KT-25 — IPC core 2: 4 cap + vòng đời Reply + `ReplyRecv`/NB* (K1c, D2-53 Q6/Q8/Q15)
 

@@ -1,0 +1,43 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.19s
+     Running tests/kt26_fault.rs (v2/target/debug/deps/kt26_fault-65b6ad5277ae13ca)
+
+running 3 tests
+test resume_with_regs_giu_exit_code_va_khong_phat_lai ... FAILED
+test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... FAILED
+test resume_with_regs_khi_fault_chua_giao_huy_message ... FAILED
+
+failures:
+
+---- resume_with_regs_giu_exit_code_va_khong_phat_lai stdout ----
+
+thread 'resume_with_regs_giu_exit_code_va_khong_phat_lai' (39457673) panicked at sim/vifast-sim/tests/kt26_fault.rs:394:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0]
+ right: [170, 187, 0, 0]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready stdout ----
+
+thread 'resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready' (39457674) panicked at sim/vifast-sim/tests/kt26_fault.rs:331:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0]
+ right: [7, 8, 9, 10]
+
+---- resume_with_regs_khi_fault_chua_giao_huy_message stdout ----
+
+thread 'resume_with_regs_khi_fault_chua_giao_huy_message' (39457675) panicked at sim/vifast-sim/tests/kt26_fault.rs:361:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0]
+ right: [1, 2, 3, 4]
+
+
+failures:
+    resume_with_regs_giu_exit_code_va_khong_phat_lai
+    resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+    resume_with_regs_khi_fault_chua_giao_huy_message
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt26_fault`
+EXIT=101

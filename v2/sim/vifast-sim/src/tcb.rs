@@ -16,10 +16,86 @@ use crate::kobj::ObjId;
 /// Số trạng thái của `TcbState` — khớp `vifast_abi::TCB_STATES` (D2-33).
 pub const TCB_STATE_COUNT: usize = 11;
 
+/// Quyền truy cập gây fault VM (`FaultKind::Vm.access`) — **model-only `[TK]`**, không phải ABI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaultAccess {
+    Read,
+    Write,
+    Execute,
+}
+
+impl FaultAccess {
+    pub fn name(self) -> &'static str {
+        match self {
+            FaultAccess::Read => "Read",
+            FaultAccess::Write => "Write",
+            FaultAccess::Execute => "Execute",
+        }
+    }
+}
+
 /// Nguyên nhân fault mang theo trạng thái chặn (D2-25: Exit mang mã thoát).
+///
+/// **KT-26 — model-only `[TK]`, không phải spec/ABI.** `spec/abi.toml:268-271` **vẫn chỉ** khai
+/// `Exit`; ba biến thể `Vm`/`UnknownSyscall`/`UserException` là mô hình của K1c theo thiết kế
+/// §4.6 `:321`, chờ K3 chốt conformance (**D2-53 Q5** = (a): spec là **tập con** tới K3, KT-26
+/// **không** sửa `spec/`). Chỉ `Exit` đi đường `Send` không Reply (D2-25); ba loại còn lại đi
+/// **Call + Reply** tới `fault_ep` để procsrv trả lời và cho chạy tiếp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaultKind {
-    Exit { code: u64 },
+    Exit {
+        code: u64,
+    },
+    Vm {
+        fault_addr: u64,
+        access: FaultAccess,
+    },
+    UnknownSyscall {
+        nr: u64,
+    },
+    UserException {
+        ip: u64,
+        kind: u64,
+    },
+}
+
+impl FaultKind {
+    /// Tên biến thể — trùng tên trong `render`/trace (không phải tên ABI; spec chỉ có `Exit`).
+    pub fn name(self) -> &'static str {
+        match self {
+            FaultKind::Exit { .. } => "Exit",
+            FaultKind::Vm { .. } => "Vm",
+            FaultKind::UnknownSyscall { .. } => "UnknownSyscall",
+            FaultKind::UserException { .. } => "UserException",
+        }
+    }
+
+    /// Chỉ `Exit` đi qua **hàng gửi, không Reply** (D2-25); fault khác phải là Call.
+    pub fn is_exit(self) -> bool {
+        matches!(self, FaultKind::Exit { .. })
+    }
+
+    /// Mã thoát nếu là `Exit` (procsrv đọc `ReadState.exit_code` song song — D2-25).
+    pub fn exit_code(self) -> Option<u64> {
+        match self {
+            FaultKind::Exit { code } => Some(code),
+            _ => None,
+        }
+    }
+
+    /// Chuỗi ổn định cho trace/`expect_states` (không phải `Debug`).
+    pub fn render(self) -> String {
+        match self {
+            FaultKind::Exit { code } => format!("Exit{{{code}}}"),
+            FaultKind::Vm { fault_addr, access } => {
+                format!("Vm{{fault_addr={fault_addr}, access={}}}", access.name())
+            }
+            FaultKind::UnknownSyscall { nr } => format!("UnknownSyscall{{nr={nr}}}"),
+            FaultKind::UserException { ip, kind } => {
+                format!("UserException{{ip={ip}, kind={kind}}}")
+            }
+        }
+    }
 }
 
 /// Lý do `Sleeping` — variants của `spec/[method_signature.state.Sleeping]` (D2-33).
@@ -212,7 +288,7 @@ impl TcbState {
             TcbState::BlockedOnSend { ep, call, fault } => {
                 let fault = match fault {
                     None => "none".to_string(),
-                    Some(FaultKind::Exit { code }) => format!("Exit{{{code}}}"),
+                    Some(k) => k.render(),
                 };
                 format!("BlockedOnSend{{ep={ep}, call={call}, fault={fault}}}")
             }

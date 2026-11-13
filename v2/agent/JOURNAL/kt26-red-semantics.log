@@ -1,0 +1,17 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.63s
+     Running tests/kt26_probe.rs (v2/target/debug/deps/kt26_probe-17869337c6bf3491)
+
+running 1 test
+PROBE 1: FaultKind hiện có = Exit { code: 7 }
+PROBE 1: không có Vm/UnknownSyscall/UserException, không có inject_fault
+PROBE 2: sau exit state = BlockedOnSend { ep: 2, call: false, fault: Some(Exit { code: 7 }) }, hàng gửi = 1
+PROBE 3: sau Recv state = Inactive, ipc_sent=0, delivered=0
+PROBE 4: sau tcb_resume state = Inactive, exit_code = None (D2-25 cần giữ để procsrv đọc)
+PROBE 5: thanh ghi vùng nhận sau resume = [0, 0, 0, 0] (không có đường ghi 'message + Ready')
+PROBE 6: không có procsrv model ⇒ không có wait/{code, how}/kill
+test probe_kt26 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT=0

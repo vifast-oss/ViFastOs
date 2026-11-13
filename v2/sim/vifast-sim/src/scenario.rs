@@ -20,7 +20,9 @@ use std::collections::VecDeque;
 use std::fmt;
 
 use crate::ipc::{Message, MessageInfo, MAX_CAPS, MAX_WORDS};
-use crate::kobj::{CapId, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
+use crate::kobj::{
+    CapId, FaultKind, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+};
 use crate::Lcg;
 
 /// **KT-24** — message đầy đủ cho bước kịch bản `Send`/`NBSend` (model-only `[TK]`):
@@ -168,6 +170,26 @@ pub enum Step {
     TcbReadState {
         tcb: SlotRef,
     },
+    // ------------------------------------------- KT-26: fault + Exit (model-only `[TK]`)
+    /// Fault **khác** Exit (model API [`Machine::inject_fault`]) — fault đi **Call + Reply** tới
+    /// `fault_ep` (thiết kế §4.6 `:321`; `Exit` giữ đường `Send` của D2-25 qua bước `Exit`).
+    Fault {
+        tcb: ObjId,
+        kind: FaultKind,
+    },
+    /// Cho TCB chạy tiếp sau fault với **thanh ghi mới** (model API
+    /// [`Machine::tcb_resume_with_regs`]) — cửa duy nhất "ghi message rồi mới `Ready`" (r319).
+    ResumeWithRegs {
+        tcb: SlotRef,
+        msg: Msg,
+    },
+    /// procsrv `Reply` cho fault đang chờ (`Call` + `Reply`) kèm thanh ghi mới — tương đương
+    /// `Send` trên cap Reply nhưng nêu rõ ngữ nghĩa fault-resume của KT-26.
+    ReplyFault {
+        tcb: ObjId,
+        reply: SlotRef,
+        msg: Msg,
+    },
     // ------------------------------------------- KT-23: bước TCB/scheduler của K1b
     //
     // Các bước dưới gọi **model API** của K1b (D2-49): `Tcb.Suspend/Resume` (KT-18),
@@ -221,6 +243,9 @@ impl Step {
             Step::NBSendWait { .. } => "nb_send_wait",
             Step::SendCaps { .. } => "send_caps",
             Step::TcbReadState { .. } => "tcb_read_state",
+            Step::Fault { .. } => "fault",
+            Step::ResumeWithRegs { .. } => "resume_with_regs",
+            Step::ReplyFault { .. } => "reply_fault",
             Step::TcbSuspend { .. } => "tcb_suspend",
             Step::TcbResume { .. } => "tcb_resume",
             Step::TcbSetSchedParams { .. } => "tcb_set_sched_params",
@@ -237,7 +262,8 @@ impl Step {
             | Step::TcbReadState { tcb }
             | Step::TcbSuspend { tcb, .. }
             | Step::TcbResume { tcb }
-            | Step::TcbSetSchedParams { tcb, .. } => m.cap_obj_at(tcb.cnode, tcb.slot).ok(),
+            | Step::TcbSetSchedParams { tcb, .. }
+            | Step::ResumeWithRegs { tcb, .. } => m.cap_obj_at(tcb.cnode, tcb.slot).ok(),
             Step::Call { tcb, .. }
             | Step::Recv { tcb, .. }
             | Step::Reply { tcb, .. }
@@ -248,7 +274,9 @@ impl Step {
             | Step::ReplyRecv { tcb, .. }
             | Step::NBSendRecv { tcb, .. }
             | Step::NBSendWait { tcb, .. }
-            | Step::SendCaps { tcb, .. } => Some(tcb),
+            | Step::SendCaps { tcb, .. }
+            | Step::Fault { tcb, .. }
+            | Step::ReplyFault { tcb, .. } => Some(tcb),
             _ => None,
         }
     }
@@ -435,6 +463,9 @@ pub fn execute(m: &mut Machine, step: &Step) -> Result<(), KError> {
             m.send(tcb, cap, message)
         }
         Step::TcbReadState { tcb } => m.tcb_read_state(tcb).map(|_| ()),
+        Step::Fault { tcb, kind } => m.inject_fault(tcb, kind),
+        Step::ResumeWithRegs { tcb, msg } => m.tcb_resume_with_regs(tcb, msg.to_message()?),
+        Step::ReplyFault { tcb, reply, msg } => m.reply_msg(tcb, reply, msg.to_message()?),
         Step::TcbSuspend { tcb, mode } => m.tcb_suspend(tcb, mode),
         Step::TcbResume { tcb } => m.tcb_resume(tcb),
         Step::TcbSetSchedParams { tcb, sched } => m.set_sched_params(tcb, sched),
@@ -461,6 +492,8 @@ impl Step {
                 | Step::NBSendRecv { .. }
                 | Step::NBSendWait { .. }
                 | Step::SendCaps { .. }
+                | Step::Fault { .. }
+                | Step::ReplyFault { .. }
         )
     }
 
