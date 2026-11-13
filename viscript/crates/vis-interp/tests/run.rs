@@ -132,8 +132,8 @@ const SO_HOC: &[(&str, &str)] = &[
     ("print(1 < 2)", "out(\"true\\n\")"),
     // kỳ vọng: out("true\n")
     ("print(50pct < 60pct)", "out(\"true\\n\")"),
-    // kỳ vọng: !VS0501 — `ref` là VS1
-    ("print(ref(1))", "!VS0501"),
+    // kỳ vọng: out("1\n") — **ST-56 (VD-92)**: `ref` hạ **identity** (trước là `!VS0501`)
+    ("print(ref(1))", "out(\"1\\n\")"),
 ];
 
 // ---------------------------------------------------------------------------

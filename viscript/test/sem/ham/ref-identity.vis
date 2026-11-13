@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+
+print(ref(1) + 1)
+print(ref(ref("a")))
+let p: P = {x: 7}
+print(ref(p).x)

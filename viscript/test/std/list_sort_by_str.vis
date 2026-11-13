@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use std.list
+print(list.sort_by(["b", "Á", "a", "à", "🍎", "z"], s => s))
+print(list.sort_by([{k: "b", i: 1}, {k: "a", i: 2}, {k: "b", i: 3}], r => r.k).map(r => r.i))

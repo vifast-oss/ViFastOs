@@ -94,17 +94,19 @@ fn vong_lap_co_nhay_lui() {
 
 #[test]
 fn bien_di_khong_ho_tro_bao_loi_ro_rang() {
-    // `ref` là VS1 — codegen phải báo lỗi **có tên biến thể**, không panic/im lặng.
-    let src = "let x = ref(1)\n";
+    // `await` là VS1 — codegen phải báo lỗi **có tên biến thể**, không panic/im lặng.
+    // **SỬA KÈM LÝ DO (ST-56)**: `ref` **đã** hạ **identity** (VD-92) ⇒ ca này đổi sang `await`
+    // (vẫn `Unsupported`); ca `ref` chạy hai đường nay ở `vis-cli/tests/ref_identity.rs`.
+    let src = "fn main():\n    print(await 1)\n";
     let p = vis_syntax::parse(src, vis_syntax::Mode::Script);
     let l = vis_syntax::lex(src, vis_syntax::Mode::Script);
     let h = vis_types::lower(&p.cst, &l);
     if h.diagnostics.is_empty() {
         match compile(&h.hir, &h.symbols, src) {
-            Ok(_) => panic!("`ref` phải bị từ chối ở VS0"),
+            Ok(_) => panic!("`await` phải bị từ chối ở VS0"),
             Err(e) => {
                 let s = format!("{e}");
-                assert!(s.contains("ref"), "thông điệp phải nêu biến thể: {s}");
+                assert!(s.contains("await"), "thông điệp phải nêu biến thể: {s}");
             }
         }
     }

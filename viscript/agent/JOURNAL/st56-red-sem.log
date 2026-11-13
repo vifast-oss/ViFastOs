@@ -1,0 +1,64 @@
+# ST-56 — log ĐỎ trước khi sửa (8 ca sem mới) — 2026-11-13T20:55:10Z
+# Chạy: target/debug/vis run <ca> (và --vm) tại HEAD 4f88ffa — chưa sửa mã nguồn.
+===== test/sem/list/sort-by-str.vis =====
+--- interp:
+  test/sem/list/sort-by-str.vis:4:7: error VS0501: `list.sort_by`: khoá phải là `int`, được `b`
+  [exit 1]
+--- vm:
+  test/sem/list/sort-by-str.vis:4:7: error VS0501: `list.sort_by`: khoá phải là `int`, được `b`
+  [exit 1]
+===== test/sem/list/sort-by-tron-kieu.vis =====
+--- interp:
+  test/sem/list/sort-by-tron-kieu.vis:4:7: error VS0501: `list.sort_by`: khoá phải là `int`, được `a`
+  [exit 1]
+--- vm:
+  test/sem/list/sort-by-tron-kieu.vis:4:7: error VS0501: `list.sort_by`: khoá phải là `int`, được `a`
+  [exit 1]
+===== test/sem/ham/ref-identity.vis =====
+--- interp:
+  test/sem/ham/ref-identity.vis:5:7: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0
+  [exit 1]
+--- vm:
+  vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 71..77
+  [exit 0]
+===== test/sem/ham/ref-hai-doi-so.vis =====
+--- interp:
+  ref-hai-doi-so.vis:2:12: error VS0201: mong `)`, thật `,`
+  [exit 2]
+--- vm:
+  ref-hai-doi-so.vis:2:12: error VS0201: mong `)`, thật `,`
+  [exit 2]
+===== test/sem/ban-ghi/self-amp.vis =====
+--- interp:
+  self-amp.vis:6:13: error VS0201: mong định danh, thật `&`
+  [exit 2]
+--- vm:
+  self-amp.vis:6:13: error VS0201: mong định danh, thật `&`
+  [exit 2]
+===== test/sem/ban-ghi/self-amp-thieu-truong.vis =====
+--- interp:
+  self-amp-thieu-truong.vis:6:12: error VS0201: mong định danh, thật `&`
+  [exit 2]
+--- vm:
+  self-amp-thieu-truong.vis:6:12: error VS0201: mong định danh, thật `&`
+  [exit 2]
+===== test/sem/generic/hop-long-hai.vis =====
+--- interp:
+  1
+  2
+  5
+  6
+  [exit 0]
+--- vm:
+  1
+  2
+  5
+  6
+  [exit 0]
+===== test/sem/generic/hop-long-sai-kieu.vis =====
+--- interp:
+  hop-long-sai-kieu.vis:5:24: error VS0412: khai báo `let`: cần `Hop`, được `record#4`
+  [exit 2]
+--- vm:
+  hop-long-sai-kieu.vis:5:24: error VS0412: khai báo `let`: cần `Hop`, được `record#4`
+  [exit 2]

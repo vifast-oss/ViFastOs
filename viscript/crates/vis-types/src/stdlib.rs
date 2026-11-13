@@ -16,8 +16,8 @@ pub enum Ty {
     Str,
     Bool,
     ListStr,
-    /// `fn(int) -> int` (khoá của `list.sort_by`).
-    FnIntInt,
+    /// Khoá của `list.sort_by`: `fn(T) -> int` **hoặc** `fn(T) -> str` (ST-56).
+    FnKhoa,
     /// **Không** kiểm kiểu tĩnh (chỉ số đối số).
     Any,
     /// `Result[str, str]` — ST-33 (`std.fs.read`, `std.fs.list` lỗi trả `str`).
@@ -43,8 +43,8 @@ impl Ty {
                 Box::new(Type::Str),
             )),
             // Closure chưa suy kiểu hai chiều (VS0 nợ, xem JOURNAL ST-26) ⇒ **không** kiểm tĩnh;
-            // tầng chạy kiểm "gọi được" và "khoá trả `int`" (VS0501).
-            Ty::FnIntInt => None,
+            // tầng chạy kiểm "gọi được" và "khoá trả `int` **hoặc** `str`" (VS0501, ST-56).
+            Ty::FnKhoa => None,
             Ty::Any => None,
         }
     }
@@ -56,7 +56,8 @@ impl Ty {
             Ty::Str => "str",
             Ty::Bool => "bool",
             Ty::ListStr => "list[str]",
-            Ty::FnIntInt => "fn(int) -> int",
+            // ST-56: khoá nhận **cả** `str` ⇒ tên hiển thị nói đúng hợp đồng mới.
+            Ty::FnKhoa => "fn(T) -> int | str",
             Ty::Any => "bất kỳ",
             Ty::ResultStrStr => "Result[str, str]",
             Ty::ResultUnitStr => "Result[(), str]",
@@ -147,7 +148,7 @@ pub const FUNCS: [StdFn; 38] = [
     },
     StdFn {
         name: "list.sort_by",
-        params: &[Ty::Any, Ty::FnIntInt],
+        params: &[Ty::Any, Ty::FnKhoa],
         ret: Ty::Any,
     },
     StdFn {

@@ -760,6 +760,14 @@ impl<'a> Parser<'a> {
             elems.push(self.bump());
             return Ok(self.node(NodeKind::Param, elems));
         }
+        // **ST-56 (VD-92)**: `&self` / `& self` — receiver **không mượn thật**, hạ **y như** `self`.
+        // `&` **chưa** là toán tử tiền tố (SPEC-lex §4) nên chỉ nhận đúng dạng này ở vị trí tham số;
+        // mọi chỗ khác `&` vẫn là lỗi cú pháp như trước.
+        if self.at_punct("&") && self.peek_kw(1, "self") {
+            elems.push(self.bump());
+            elems.push(self.bump());
+            return Ok(self.node(NodeKind::Param, elems));
+        }
         if self.at_kw("self") {
             elems.push(self.bump());
             return Ok(self.node(NodeKind::Param, elems));

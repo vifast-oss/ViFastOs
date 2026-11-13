@@ -6,12 +6,16 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-55** (báo cáo **R9**, chốt **VSH2** + kế hoạch **VS2**) — xong, **chưa commit**.
-Bước          : 5/5 (đo lại → R9 `.md/.json/.json.license` + bảng VS2 → `report-check --all` PASS → gate → STATE/JOURNAL)
+Task          : **ST-56** (nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`; `ref(expr)` identity;
+                `Hop[Hop[int]]` khoá) — xong, **chưa commit**.
+Bước          : 8/8 (kế hoạch → 2 log đỏ → 3 nợ sửa từng bước (`check` sau mỗi bước) → cổng `gate --fast`
+                → differential 100k → STATE/JOURNAL → commit + push).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T17:17:57Z** (đo lại sau khi ghi báo cáo); **730** test / sem **370** / `vis test` **370 ok** / parity **344/344** / differential 100k **0 lệch** / **`CODEGEN_TIN_TYCK = 0`** / allowlist **6**; `nightly` **PASS** `2026-11-13T17:13:27Z`
-Việc dở       : commit `[ST-55]` + push (đã được uỷ quyền)
-                chờ Agent 0 cho commit `[ST-14]`.
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T21:29Z**; **747** test / sem
+                **376** / `vis test` **376 ok** (+`--vm` **376 ok/6 SKIP**) / parity **348/348** /
+                differential **100.000 chương trình 0 lệch** (202,7 s) / **7 sổ-29 mã** (không mã mới) /
+                allowlist **6**; fuzz đột biến **3 × 0 vi phạm**
+Việc dở       : commit `[ST-56]` + push (đã được uỷ quyền)
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -43,6 +47,19 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-56 — nợ lõi A: khoá `str` cho `std.list.sort_by` + `&self` + `ref` identity + `Hop[Hop[int]]` (2026-11-14)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Nợ 1 — khoá `str`** | `KieuKhoa::ChiIntHoacStr` trong **cùng** lõi `sap_xep_theo_khoa` (khoá 1 lần, **ổn định**): `int` **hoặc** `str`, **một** kiểu/lần gọi; trộn ⇒ `VS0501` "khoá trộn kiểu … (`int` và `str`)"; khoá khác (`bool`…) ⇒ `VS0501` nêu giá trị thật; **byte UTF-8** = đúng `cmp_value` ⇒ **nhất quán** shell `sort_by`; `Ty::FnIntInt` → **`Ty::FnKhoa`**, `ten()` = `fn(T) -> int | str`; ca `int` cũ không đổi |
+| 2 | **Nợ 2 — `ref(expr)`** | `HExpr::Ref` hạ **identity** ở **cả** interp (`self.eval(expr)`) **và** codegen (`self.expr(expr)`) — hết `Unsupported("ref")`; tyck **giữ nguyên kiểu** trong (bỏ `Type::Error`). `ref(1)+1`=2, `ref(ref("a"))`=`"a"`, `ref(p).x`=trường, `[ref(2),ref(3)]`=`[2, 3]`; **CHƯA CÓ BORROW** (nợ VS2+): `x=2` sau `ref` ⇒ `r` vẫn `1`; `ref(1,2)` vẫn `VS0201` |
+| 3 | **Nợ 3 — `&self`** | `param()` nhận `&self`/`& self` ⇒ **cùng** nút `Param` như `self`; lowering ⇒ `is_self`, **không** `is_var_self` ⇒ hạ **y như** `self`; chạy **cả** `impl` **và** `trait`; `fn bump(self)` cũ không đổi; `&self: int` vẫn `VS0201` |
+| 4 | **`Hop[Hop[int]]` — ĐÃ XANH TỪ TRƯỚC** | probe HEAD `4f88ffa`: **5** biến thể chạy hai đường (annotation, `list[…]`, tham số hàm, `impl Hop[Hop[int]]`, ba tầng); **không sửa mã**, thêm **2 ca sem + 2 ca Rust khoá** (dương đủ biến thể; âm `VS0412` payload sâu sai kiểu) |
+| 5 | **Sửa kèm (bắt buộc)** | *arity guard* ở `builtin::call` (`open`/`render`/`get`/`select`/`sort_by`): số base module `fuzz_mutate` 318 → 321 làm lộ **panic** `index out of bounds` khi bytecode **đột biến** gọi `render` rỗng; guard **không** đổi mã hợp lệ (front end đã kiểm số đối số); 3 lần fuzz **0 vi phạm** |
+| 6 | **Đỏ trước** | `JOURNAL/st56-red-sem.log` sha256 `291123e73347c2342e0ede0f305ca626650bf9387590ea1cbbfd3923b37759cf` — 8 ca: **5 đỏ đúng lý do**, **3 xanh từ trước** (`ref-hai-doi-so` `VS0201`, 2 ca `hop-long-*`) — khai rõ, không giả vờ đỏ. `JOURNAL/st56-red-rust.log` sha256 `728659fd24d99339c9626ee2b7d88767be411744e66b7db144dbea09f8800f96` — 17 ca Rust: **11 đỏ** / 6 xanh-sẵn |
+| 7 | **Đo** | **747** test (21+96+18+143+24+62+9+**374**); sem **376/18 nhóm** (333 `.vis` + 43 `.vish`, 55 `.err`); `vis test` **376 ok**; `--vm` **376 ok + 6 SKIP**; parity **348/348** (28 ca lỗi biên dịch); differential **100.000/0 lệch** (202,7 s, 493/s, seed 3523158054); `VBC1` **53** tag; **7 sổ/29 mã**; allowlist **6**; `gate --fast` **PASS** `2026-11-13T21:29Z` |
+| 8 | **Bất ngờ (không sửa)** | (a) `self.field = v`: interp `VS0501` ↔ VM **thực thi** — lệch **có từ trước**, tái hiện với `fn bump(self)`; sửa = đổi ngữ nghĩa ⇒ chờ Agent 0. (b) `run --vm` codegen `Unsupported` ⇒ **exit 0** (nhánh trả `(…, 0)`). (c) Ca sem cho `std.list.sort_by` chuyển sang **`test/std/`** + Rust vì harness `test/sem` chạy **in-process** (không nạp `use std.*`) |
 
 ## ST-55 — báo cáo R9 (chốt VSH2 + kế hoạch VS2), 2026-11-14
 

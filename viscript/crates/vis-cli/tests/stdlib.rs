@@ -58,7 +58,8 @@ fn ds_ca() -> Vec<PathBuf> {
 #[test]
 fn std_70_ca_qua_binary() {
     let ds = ds_ca();
-    assert_eq!(ds.len(), 70, "phải đủ 70 ca `test/std`");
+    // **SỬA KÈM LÝ DO (ST-56)**: 70 → **71** (+`list_sort_by_str.vis` — khoá `str`).
+    assert_eq!(ds.len(), 71, "phải đủ 71 ca `test/std`");
     let mut sai = Vec::new();
     for p in &ds {
         let k = chay(&["run", p.to_str().unwrap()]);

@@ -290,7 +290,9 @@ fn ca_that_truong_khong_co_bi_tu_choi() {
 #[test]
 fn moi_ca_loi_bien_dich_khong_panic_va_bi_tu_choi() {
     let ds = ca_loi_bien_dich(None);
-    assert_eq!(ds.len(), 26, "phải đúng 26 ca lỗi biên dịch");
+    // **SỬA KÈM LÝ DO (ST-56)**: 26 → **28** ca lỗi biên dịch (+`ham/ref-hai-doi-so` VS0201,
+    // +`generic/hop-long-sai-kieu` VS0412).
+    assert_eq!(ds.len(), 28, "phải đúng 28 ca lỗi biên dịch");
     for (src, ma) in ds {
         let (hir, syms, text, chan_doan) = phan_tich(&src);
         let kq = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

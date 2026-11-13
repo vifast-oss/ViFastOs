@@ -1,0 +1,158 @@
+# ST-56 — log ĐỎ trước khi sửa: 3 tệp test Rust mới — 2026-11-13T20:58:41Z
+# HEAD 4f88ffa — chưa sửa mã nguồn (chỉ thêm ca).
+# lệnh: cargo test -p vis-cli --no-fail-fast --test sort_by_str --test ref_identity --test self_amp_hop_long
+     Running tests/ref_identity.rs (target/debug/deps/ref_identity-c26d66ded9c32ac0)
+
+running 4 tests
+test ref_hai_doi_so_van_la_vs0201 ... ok
+test ref_giu_kieu_va_identity_hai_duong ... FAILED
+test ref_khong_muon_that_chi_la_identity ... FAILED
+test ref_khong_con_chan_doan_khi_chay ... FAILED
+
+failures:
+
+---- ref_giu_kieu_va_identity_hai_duong stdout ----
+
+thread 'ref_giu_kieu_va_identity_hai_duong' (42631446) panicked at crates/vis-cli/tests/ref_identity.rs:46:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-identity-3246/identity.vis:6:11: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+  vm: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 86..92\n")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-identity-3246/identity.vis:6:11: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+ right: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 86..92\n")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ref_khong_muon_that_chi_la_identity stdout ----
+
+thread 'ref_khong_muon_that_chi_la_identity' (42631449) panicked at crates/vis-cli/tests/ref_identity.rs:46:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-khong-muon-3246/khong-muon.vis:4:13: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+  vm: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 82..88\n")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-khong-muon-3246/khong-muon.vis:4:13: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+ right: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 82..88\n")
+
+---- ref_khong_con_chan_doan_khi_chay stdout ----
+
+thread 'ref_khong_con_chan_doan_khi_chay' (42631448) panicked at crates/vis-cli/tests/ref_identity.rs:46:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-sach-3246/sach.vis:3:11: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+  vm: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 66..72\n")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-ref-sach-3246/sach.vis:3:11: error VS0501: `ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0\n")
+ right: (0, "", "vis run --vm: codegen lỗi: chưa biểu diễn được `ref` tại byte 66..72\n")
+
+
+failures:
+    ref_giu_kieu_va_identity_hai_duong
+    ref_khong_con_chan_doan_khi_chay
+    ref_khong_muon_that_chi_la_identity
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+error: test failed, to rerun pass `-p vis-cli --test ref_identity`
+     Running tests/self_amp_hop_long.rs (target/debug/deps/self_amp_hop_long-c1a24367acc6afa9)
+
+running 6 tests
+test self_amp_khong_cho_gan_truong ... FAILED
+test self_amp_va_self_khoang_trang_chay_hai_duong ... FAILED
+test hop_long_sai_kieu_la_vs0412 ... ok
+test self_thuong_van_nhu_cu ... ok
+test self_amp_trong_trait_va_impl ... FAILED
+test hop_long_bon_bien_the_chay_hai_duong ... ok
+
+failures:
+
+---- self_amp_khong_cho_gan_truong stdout ----
+
+thread 'self_amp_khong_cho_gan_truong' (42631527) panicked at crates/vis-cli/tests/self_amp_hop_long.rs:98:5:
+assertion `left == right` failed: phải là lỗi **lúc chạy**, stderr: gan-truong.vis:6:13: error VS0201: mong định danh, thật `&`
+
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- self_amp_va_self_khoang_trang_chay_hai_duong stdout ----
+
+thread 'self_amp_va_self_khoang_trang_chay_hai_duong' (42631529) panicked at crates/vis-cli/tests/self_amp_hop_long.rs:62:5:
+assertion `left == right` failed: stderr: co-ban.vis:6:13: error VS0201: mong định danh, thật `&`
+
+  left: 2
+ right: 0
+
+---- self_amp_trong_trait_va_impl stdout ----
+
+thread 'self_amp_trong_trait_va_impl' (42631528) panicked at crates/vis-cli/tests/self_amp_hop_long.rs:75:5:
+assertion `left == right` failed: stderr: trait.vis:3:13: error VS0201: mong định danh, thật `&`
+
+  left: 2
+ right: 0
+
+
+failures:
+    self_amp_khong_cho_gan_truong
+    self_amp_trong_trait_va_impl
+    self_amp_va_self_khoang_trang_chay_hai_duong
+
+test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p vis-cli --test self_amp_hop_long`
+     Running tests/sort_by_str.rs (target/debug/deps/sort_by_str-85478a971007cd43)
+
+running 6 tests
+test khoa_bool_bao_vs0501_va_neu_kieu_that ... FAILED
+test khoa_khong_goi_duoc_neu_ten_hien_thi_moi ... FAILED
+test khoa_int_cu_khong_doi ... ok
+test khoa_str_chay_hai_duong_cung_byte ... FAILED
+test tron_int_va_str_la_vs0501_neu_kieu_that ... FAILED
+test khoa_str_nhat_quan_voi_shell_sort_by ... FAILED
+
+failures:
+
+---- khoa_bool_bao_vs0501_va_neu_kieu_that stdout ----
+
+thread 'khoa_bool_bao_vs0501_va_neu_kieu_that' (42631564) panicked at crates/vis-cli/tests/sort_by_str.rs:141:5:
+phải nêu kiểu thật `bool`: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-sort-bool-3274/bool.vis:4:11: error VS0501: `list.sort_by`: khoá phải là `int`, được `false`
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- khoa_khong_goi_duoc_neu_ten_hien_thi_moi stdout ----
+
+thread 'khoa_khong_goi_duoc_neu_ten_hien_thi_moi' (42631566) panicked at crates/vis-cli/tests/sort_by_str.rs:157:5:
+tên hiển thị phải nói khoá `int` **hoặc** `str`: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-sort-khong-goi-3274/khong-goi.vis:4:11: error VS0501: `list.sort_by`: đối số 2 cần `fn(int) -> int`, được `3`
+
+
+---- khoa_str_chay_hai_duong_cung_byte stdout ----
+
+thread 'khoa_str_chay_hai_duong_cung_byte' (42631567) panicked at crates/vis-cli/tests/sort_by_str.rs:66:5:
+assertion `left == right` failed: phải xanh, stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-sort-co-ban-3274/co-ban.vis:4:11: error VS0501: `list.sort_by`: khoá phải là `int`, được `b`
+
+  left: 1
+ right: 0
+
+---- tron_int_va_str_la_vs0501_neu_kieu_that stdout ----
+
+thread 'tron_int_va_str_la_vs0501_neu_kieu_that' (42631569) panicked at crates/vis-cli/tests/sort_by_str.rs:127:5:
+thông điệp phải nêu **cả hai** kiểu thật (`int` và `str`): /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-sort-tron-3274/tron.vis:4:11: error VS0501: `list.sort_by`: khoá phải là `int`, được `a`
+
+
+---- khoa_str_nhat_quan_voi_shell_sort_by stdout ----
+
+thread 'khoa_str_nhat_quan_voi_shell_sort_by' (42631568) panicked at crates/vis-cli/tests/sort_by_str.rs:83:5:
+assertion `left == right` failed: std stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56-sort-nhat-quan-3274/std.vis:4:11: error VS0501: `list.sort_by`: khoá phải là `int`, được `b`
+
+  left: 1
+ right: 0
+
+
+failures:
+    khoa_bool_bao_vs0501_va_neu_kieu_that
+    khoa_khong_goi_duoc_neu_ten_hien_thi_moi
+    khoa_str_chay_hai_duong_cung_byte
+    khoa_str_nhat_quan_voi_shell_sort_by
+    tron_int_va_str_la_vs0501_neu_kieu_that
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p vis-cli --test sort_by_str`
+error: 3 targets failed:
+    `-p vis-cli --test ref_identity`
+    `-p vis-cli --test self_amp_hop_long`
+    `-p vis-cli --test sort_by_str`

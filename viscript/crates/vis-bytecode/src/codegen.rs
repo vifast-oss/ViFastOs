@@ -1256,7 +1256,9 @@ impl<'g> Emit<'g> {
                 // ST-54: HIR còn nút **lỗi** ⇒ từ chối, không phát chuỗi rỗng cho VM chạy "sạch".
                 Err(CodegenError::Unsupported("error-expr", *span))
             }
-            HExpr::Ref { span, .. } => Err(CodegenError::Unsupported("ref", *span)),
+            // **ST-56 (VD-92)**: `ref(expr)` hạ **identity** (không sinh lệnh) — hết
+            // `Unsupported("ref")`; **chưa** có mượn thật (nợ VS2+).
+            HExpr::Ref { expr, .. } => self.expr(expr),
             HExpr::Await { span, .. } => Err(CodegenError::Unsupported("await", *span)),
             HExpr::CmdBlock { span, .. } => Err(CodegenError::Unsupported("cmd-block", *span)),
         }

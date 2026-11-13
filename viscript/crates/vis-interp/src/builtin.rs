@@ -586,8 +586,10 @@ fn nha_ket_qua(kq: KetQua) -> Value {
 /// Khoá tính **một lần**/phần tử; sắp xếp **ổn định**; `desc` chỉ đảo comparator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KieuKhoa {
-    /// `std.list.sort_by`: hợp đồng cũ `fn(int)->int` (giữ nguyên thông điệp lỗi).
-    ChiInt,
+    /// `std.list.sort_by` **ST-56**: `int` **hoặc** `str`, nhưng **một** kiểu trong cả lần gọi
+    /// (trộn ⇒ `VS0501` nêu **cả hai** kiểu thật). Cùng comparator `cmp_value` với shell ⇒ thứ tự
+    /// chuỗi **nhất quán** shell `sort_by` (byte UTF-8).
+    ChiIntHoacStr,
     /// Shell `sort_by`: `int/float/size/duration/percent/str` (bool/không so được ⇒ lỗi).
     Moi,
 }
@@ -602,16 +604,38 @@ pub(crate) fn sap_xep_theo_khoa(
     span: Span,
 ) -> crate::interp::R<Value> {
     let mut cap: Vec<(Value, Value)> = Vec::with_capacity(xs.len());
+    // ST-56: kiểu khoá **đã gặp** ở `ChiIntHoacStr` — trộn `int`/`str` ⇒ lỗi (không so được).
+    let mut loai_da_gap: Option<&'static str> = None;
     for x in xs.iter().cloned() {
         let k = host.call(f, vec![x.clone()], span)?;
         match kieu {
-            KieuKhoa::ChiInt => {
-                if !matches!(k, Value::Int(_)) {
-                    return Err(trap(
-                        RT,
-                        format!("`{ten}`: khoá phải là `int`, được `{}`", k.show()),
-                        span,
-                    ));
+            KieuKhoa::ChiIntHoacStr => {
+                let loai = match &k {
+                    Value::Int(_) => "int",
+                    Value::Str(_) => "str",
+                    other => {
+                        return Err(trap(
+                            RT,
+                            format!(
+                                "`{ten}`: khoá phải là `int` hoặc `str`, được `{}`",
+                                other.show()
+                            ),
+                            span,
+                        ))
+                    }
+                };
+                match loai_da_gap {
+                    None => loai_da_gap = Some(loai),
+                    Some(truoc) if truoc != loai => {
+                        return Err(trap(
+                            RT,
+                            format!(
+                                "`{ten}`: khoá trộn kiểu trong một lần gọi (`{truoc}` và `{loai}`)"
+                            ),
+                            span,
+                        ))
+                    }
+                    Some(_) => {}
                 }
             }
             KieuKhoa::Moi => {
@@ -836,7 +860,9 @@ pub fn call(
             ))
         }
         "open" => {
-            let Value::Str(p) = &args[0] else {
+            // ST-56 (phòng thủ): bytecode bị **đột biến** (`fuzz_mutate`) có thể gọi với `argc`
+            // sai ⇒ `args[0]` panic. Front end **đã** kiểm số đối số ⇒ mã hợp lệ không đổi.
+            let Some(Value::Str(p)) = args.first() else {
                 return Err(trap(RT, "`open` cần `str`", span));
             };
             let host = host.fs().ok_or_else(|| {
@@ -853,14 +879,18 @@ pub fn call(
         }
         // ST-41: `Render` — **chỉ** cho giá trị cuối pipeline (`boc_render`); `print` giữ nguyên.
         "render" => {
+            // ST-56 (phòng thủ): `argc = 0` từ bytecode **đột biến** từng panic ở đây.
+            let Some(v) = args.first() else {
+                return Err(trap(RT, "`render` cần 1 đối số", span));
+            };
             let co_ban_ghi = matches!(args.get(1), Some(Value::Bool(true)));
-            match crate::render::in_gia_tri(&args[0], co_ban_ghi) {
+            match crate::render::in_gia_tri(v, co_ban_ghi) {
                 Some(s) => {
                     host.out().push_str(&s);
                     Ok(Value::Unit)
                 }
                 None => {
-                    host.out().push_str(&args[0].show());
+                    host.out().push_str(&v.show());
                     host.out().push('\n');
                     Ok(Value::Unit)
                 }
@@ -868,10 +898,11 @@ pub fn call(
         }
         // ST-40b: `get`/`select` — chiếu từng phần tử qua closure (cùng một hiện thực cho hai đường).
         "get" | "select" => {
-            let Value::List(xs) = &args[0] else {
-                return Err(trap(RT, format!("`{name}` cần `list`"), span));
+            // ST-56 (phòng thủ): số đối số — xem ghi chú ở `open`.
+            let (Some(Value::List(xs)), Some(f)) = (args.first(), args.get(1)) else {
+                return Err(trap(RT, format!("`{name}` cần `list` và hàm"), span));
             };
-            let f = args[1].clone();
+            let f = f.clone();
             let mut out: Vec<Value> = Vec::with_capacity(xs.len());
             for x in xs.clone() {
                 out.push(host.call(&f, vec![x], span)?);
@@ -881,8 +912,9 @@ pub fn call(
         // ST-39: `sort_by` — khoá `int/size/duration/percent/str`; **ổn định** cả hai chiều (đảo
         // comparator, `sort_by` của Rust ổn định), `--desc` mặc định `false`.
         "sort_by" => {
-            let Value::List(xs) = &args[0] else {
-                return Err(trap(RT, "`sort_by` cần `list`", span));
+            // ST-56 (phòng thủ): số đối số — xem ghi chú ở `open`.
+            let (Some(Value::List(xs)), Some(f)) = (args.first(), args.get(1)) else {
+                return Err(trap(RT, "`sort_by` cần `list` và hàm", span));
             };
             let desc = match args.get(2) {
                 None => false,
@@ -896,7 +928,7 @@ pub fn call(
                 }
             };
             // ST-53: cùng lõi với `std.list.sort_by` (khoá rộng hơn, `--desc`).
-            sap_xep_theo_khoa(host, xs, &args[1], desc, KieuKhoa::Moi, "sort_by", span)
+            sap_xep_theo_khoa(host, xs, f, desc, KieuKhoa::Moi, "sort_by", span)
         }
         // ST-38: `where`/`each` — closure-arg; **một** hiện thực cho cả hai đường (`Host::call`).
         "where" => {
@@ -995,7 +1027,12 @@ pub fn call(
             let v = it.next().unwrap_or(Value::Unit);
             Ok(Value::Res(Err(Box::new(v))))
         }
-        "ref" => Err(trap(RT, "`ref(x)` là VS1 — chưa hỗ trợ ở VS0", span)),
+        // ST-56 (VD-92): `ref(x)` là **biểu thức** hạ identity — cái tên `ref` **không** phải hàm.
+        "ref" => Err(trap(
+            RT,
+            "`ref` chỉ là biểu thức `ref(x)`, không phải hàm",
+            span,
+        )),
         other => Err(trap(RT, format!("tên `{other}` chưa hỗ trợ ở VS0"), span)),
     }
 }

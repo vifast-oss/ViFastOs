@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    n: int
+
+impl P:
+    fn doc(&self) -> int:
+        self.khong_co
+
+let p: P = {n: 1}
+print(p.doc())

@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Số ca mà harness `sem.rs` đang khoá — `vis test` **phải** khớp, không tự bịa.
-const SO_CA: usize = 370;
+/// **SỬA KÈM LÝ DO (ST-56)**: 370 → **376** (+6 ca nợ lõi A).
+const SO_CA: usize = 376;
 
 fn vis(args: &[&str]) -> (i32, String, String) {
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))

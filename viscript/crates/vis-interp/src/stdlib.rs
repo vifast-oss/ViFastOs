@@ -62,7 +62,7 @@ fn kiem(name: &str, args: &[Value], span: Span) -> Result<(), Abort> {
             Ty::ListStr => {
                 matches!(a, Value::List(xs) if xs.iter().all(|v| matches!(v, Value::Str(_))))
             }
-            Ty::FnIntInt => matches!(a, Value::Fn(_) | Value::Vm(_) | Value::Builtin(_)),
+            Ty::FnKhoa => matches!(a, Value::Fn(_) | Value::Vm(_) | Value::Builtin(_)),
             // ST-33: `std.fs` trả `Result[..]` — kiểu **trả**, không dùng để kiểm đối số.
             Ty::ResultStrStr | Ty::ResultUnitStr | Ty::ResultListStrStr => true,
         };
@@ -225,8 +225,8 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             ds.sort_by(|a, b| a.cmp_value(b).unwrap_or(std::cmp::Ordering::Equal));
             Ok(Value::List(ds))
         }
-        // ST-53: **cùng lõi** `sap_xep_theo_khoa` với shell `sort_by`; hợp đồng tĩnh cũ
-        // `fn(int) -> int` **giữ nguyên** (chế độ `ChiInt`).
+        // ST-53: **cùng lõi** `sap_xep_theo_khoa` với shell `sort_by`; ST-56: khoá nhận **`int`
+        // hoặc `str`** (một kiểu trong cả lần gọi) — ca `int` cũ **không đổi**.
         "list.sort_by" => {
             let xs = danh_sach(name, &args[0], 0, span)?.to_vec();
             crate::builtin::sap_xep_theo_khoa(
@@ -234,7 +234,7 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
                 &xs,
                 &args[1],
                 false,
-                crate::builtin::KieuKhoa::ChiInt,
+                crate::builtin::KieuKhoa::ChiIntHoacStr,
                 name,
                 span,
             )

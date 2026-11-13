@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type Hop[T]:
+    gia_tri: T
+
+impl Hop[Hop[int]]:
+    fn sau(self) -> int:
+        self.gia_tri.gia_tri + 1
+
+fn tong(xs: list[Hop[Hop[int]]]) -> int:
+    xs.len() + xs[0].gia_tri.gia_tri
+
+let h: Hop[Hop[int]] = {gia_tri: {gia_tri: 1}}
+let ds: list[Hop[Hop[int]]] = [{gia_tri: {gia_tri: 5}}]
+print(h.gia_tri.gia_tri)
+print(h.sau())
+print(ds[0].gia_tri.gia_tri)
+print(tong(ds))

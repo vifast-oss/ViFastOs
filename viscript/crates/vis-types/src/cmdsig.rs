@@ -161,7 +161,8 @@ impl BuiltinSigs {
                 args: Vec::new(),
             })),
         };
-        // ST-39: `sort_by(xs, f, --desc)` — lệnh **shell** (khác `std.list.sort_by` khoá `fn(int)->int`).
+        // ST-39: `sort_by(xs, f, --desc)` — lệnh **shell** (khoá rộng hơn `std.list.sort_by`
+        // `fn(T) -> int | str` của ST-56; shell nhận thêm `size`/`duration`/`percent`).
         let k_ty = Type::TypeRef {
             name: "K".into(),
             args: Vec::new(),

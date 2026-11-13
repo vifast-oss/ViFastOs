@@ -304,10 +304,9 @@ impl<'a> Checker<'a> {
                     args: tys,
                 }
             }
-            HExpr::Ref { expr, .. } => {
-                let _ = self.kiem_expr(expr);
-                Type::Error
-            }
+            // **ST-56 (VD-92)**: `ref(x)` **giữ nguyên kiểu** của `x` — hạ **identity** ở cả hai
+            // đường (interp/codegen). **Chưa có mượn thật**: `&T`, kiểm vòng đời là nợ **VS2+**.
+            HExpr::Ref { expr, .. } => self.kiem_expr(expr),
             HExpr::Await { expr, .. } => {
                 let _ = self.kiem_expr(expr);
                 Type::Error

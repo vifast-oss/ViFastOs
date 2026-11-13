@@ -728,11 +728,9 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::List(vs))
             }
-            HExpr::Ref { span, .. } => Err(Abort::Trap(Trap::new(
-                RT,
-                "`ref`/`ref[T]` là VS1 — chưa hỗ trợ ở VS0",
-                *span,
-            ))),
+            // **ST-56 (VD-92)**: `ref(expr)` giữ **nguyên kiểu trong**, hạ **identity** — **không**
+            // tạo giá trị mới, **không** mượn thật (borrow/vòng đời là nợ **VS2+**).
+            HExpr::Ref { expr, .. } => self.eval(expr),
             HExpr::Await { span, .. } => Err(Abort::Trap(Trap::new(
                 RT,
                 "`await` là VS1 — chưa hỗ trợ ở VS0",
