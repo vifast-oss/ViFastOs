@@ -132,7 +132,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | **DONE** | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
 | ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | **DONE** | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
 | ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | **DONE** | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
-| ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | **READY** | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
+| ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | **DONE** | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -587,6 +587,18 @@ APPROVED 2026-11-13 Agent 0
 > tăng số ảo; differential 100k **0 lệch** (207,2 s). Sửa: cờ bị bỏ khi ô sau cờ để trống (phải điền default **mọi**
 > ô trống); R3 cần sidecar `.license` cho `mock.json`.
 > **ST-43 mở** (R6 — chốt VSH1a).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-43 DONE — VÒNG 6 (VSH1a) CHỐT.** `reports/R6-viscript.{md,json,license}` (`a63914a`, nền 05f3311) —
+> `report-check` **PASS (6 báo cáo, 49 hàng QUEUE phủ đủ, `blocked[]` rỗng)**. Số đo **chạy lại**: **606 test**
+> (21 diag · 96 syntax · 18 fmt · 143 types · 24 interp · 50 bytecode · 9 vm · **245** cli) · **370 ca sem/18 nhóm**
+> (327 `.vis` + 43 `.vish`, 52 `.err`) · `vis test` **370 ok** / `--vm` **370 ok + 6 SKIP** · **parity 344/344** ·
+> **differential 100.000 chương trình 0 lệch** (208,0 s, 481/s) · fuzz parser 60 s **2.853.740 ca/0 vi phạm** ·
+> `VBC1` 53 tag · **7 sổ/29 mã** (`VS0605`) · khởi động ấm 11,4–11,6 ms (debug) · prelude **+0,08 ms** ·
+> `gate --fast` + `nightly` PASS · **allowlist 8 → 6** (khối 1451 + 672 xanh thật; 672 **chạy** từ ST-42).
+> **17 lỗ hổng còn mở** ghi trong `R6` §5. Vòng sau (**VSH1b**): cú pháp khai `cmd`/`type`/`let` có kiểu trong `.vish`;
+> `where` kiểm tĩnh đầy đủ; `--long` thật; `( … )` làm đối số + chẩn đoán tuyệt đối trong ngoặc.
 
 ## Ghi chú vận hành
 
