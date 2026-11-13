@@ -642,3 +642,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   `HExpr::List` một phần tử** ⇒ stage hạ nguồn (`where`/`take`/`select`/bảng) hiểu như một dòng. (4) **KHÔNG** nhận:
   số (`1 | …` vốn là lệnh ngoài), **biến** (`x | …` nhập nhằng §9.5), **tên lệnh**; không `|` ⇒ giữ **`VS0201`**.
   (5) Nợ: bọc-list chỉ cho stage **đầu**; biến ⇒ **VSH1c-2**.
+
+- **VD-86** **Phạm vi vòng 9 (VSH2)**: (1) **Bản ghi ẩn danh đi được JSON**: `select`/literal ẩn danh phải `json.encode`
+  được (dùng **tên tổng hợp** ổn định hoặc `null` cho tên, **không** cần `Type::Any`). (2) **Một `sort_by`**: shell
+  `sort_by` và `std.list.sort_by` dùng **cùng** comparator (khoá `int/float/size/duration/percent/str`; **ổn định**;
+  `--desc` chỉ ở shell) — `std.list.sort_by` cũ **không** phá (nhận `fn(int)->int` vẫn chạy). (3) **`CODEGEN_TIN_TYCK`**:
+  codegen **không** im lặng sinh module khi HIR còn kiểu `Error` — phải **từ chối** với chẩn đoán rõ **hoặc** chứng minh
+  và **hạ hằng số** 21 xuống; differential **0 lệch** bắt buộc. (4) `Ty::Any`/`&self` **chỉ** nếu rẻ, còn lại nợ có chủ đích.
+  (5) **VS2** phải có **tiêu chí đo** trong `R9` (async/kênh/net/Landlock/LSP/gói/registry/4 nền tảng).

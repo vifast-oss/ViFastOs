@@ -142,6 +142,9 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **DONE** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | **DONE** | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
+| ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **READY** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
+| ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | BLOCKED | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
+| ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | BLOCKED | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
