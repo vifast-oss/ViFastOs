@@ -3,6 +3,8 @@
 
 use std::process::ExitCode;
 
+mod cache;
+
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
 use vis_syntax::{lex, parse, Diagnostic, Mode};
 use vis_types::{check, lower};
@@ -252,6 +254,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut tap = false;
     let mut dung_vm = false;
     let mut dump = false;
+    let mut dung_cache = true;
     let mut tep: Option<String> = None;
     let mut prog_args: Vec<String> = Vec::new();
     let mut i = 0;
@@ -261,6 +264,8 @@ fn run_run(rest: &[String]) -> ExitCode {
             // ST-20: chạy đường **VM** thay cho interp (cùng ngữ nghĩa; `steps` đơn vị **lệnh**).
             "--vm" => dung_vm = true,
             "--dump-bytecode" => dump = true,
+            // ST-23: cache bytecode bật **mặc định** cho đường VM; `--no-cache` để tắt.
+            "--no-cache" => dung_cache = false,
             "--" => {
                 prog_args = rest[i + 1..].to_vec();
                 break;
@@ -280,7 +285,9 @@ fn run_run(rest: &[String]) -> ExitCode {
         i += 1;
     }
     let Some(tep) = tep else {
-        eprintln!("dùng: vis run [--tap] [--vm] [--dump-bytecode] <tệp.vis> [-- args…]");
+        eprintln!(
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--no-cache] <tệp.vis> [-- args…]"
+        );
         return ExitCode::from(2);
     };
     // ST-18: `.vish` chạy được (parse → `cmd_lower` → tyck → interp), không còn `Bail out!`.
@@ -299,6 +306,52 @@ fn run_run(rest: &[String]) -> ExitCode {
     if tap {
         eprintln!("TAP version 13");
         eprintln!("1..1");
+    }
+    // ST-23 fast-path: **cache hit ⇒ bỏ qua frontend**, chạy bytecode đã xác minh.
+    let khoa_cache = cache::khoa(
+        &text,
+        if che_do == vis_syntax::Mode::Command {
+            "vish"
+        } else {
+            "vis"
+        },
+    );
+    if dung_vm && dung_cache {
+        if let Some(m) = cache::nap(&khoa_cache) {
+            let (stdout, diags, steps) = std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .name("vis-run".into())
+                    .stack_size(256 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        let out = vis_vm::run(&m, &text, &prog_args);
+                        let d: Vec<(String, u32, u32, String)> = out
+                            .diagnostics
+                            .iter()
+                            .map(|x| (x.code.short.to_string(), x.line, x.col, x.message.clone()))
+                            .collect();
+                        (out.stdout, d, out.steps)
+                    })
+                    .expect("không tạo được luồng chạy")
+                    .join()
+                    .expect("luồng chạy lỗi")
+            });
+            if !xuat_stdout(&stdout) {
+                return ExitCode::from(2);
+            }
+            if diags.is_empty() {
+                if tap {
+                    eprintln!("ok 1 - {} (steps={}, cache)", tep, steps);
+                }
+                return ExitCode::from(0);
+            }
+            for (ma, line, col, msg) in &diags {
+                eprintln!("{tep}:{line}:{col}: error {ma}: {msg}");
+            }
+            if tap {
+                eprintln!("not ok 1 - {} ({}, steps={})", tep, diags[0].0, steps);
+            }
+            return ExitCode::from(1);
+        }
     }
     // 1) parse (ST-18: `.vish` ⇒ `Mode::Command` ⇒ `cmd_lower`)
     let parsed = parse(&text, che_do);
@@ -350,18 +403,35 @@ fn run_run(rest: &[String]) -> ExitCode {
             .spawn_scoped(scope, || {
                 let out = if dung_vm {
                     // ST-20: đường **VM** — cùng `Show`/builtin/bảng ngữ nghĩa với interp.
-                    match vis_bytecode::compile(&h.hir, &h.symbols, &text) {
-                        Ok(m) => {
-                            if dump {
-                                eprintln!("{}", vis_vm::dump::dump(&m));
+                    // ST-23: cache theo hash closure; **luôn** nạp qua `load_verified`.
+                    let khoa = cache::khoa(
+                        &text,
+                        if che_do == vis_syntax::Mode::Command {
+                            "vish"
+                        } else {
+                            "vis"
+                        },
+                    );
+                    let tu_cache = if dung_cache { cache::nap(&khoa) } else { None };
+                    let m = match tu_cache {
+                        Some(m) => m,
+                        None => match vis_bytecode::compile(&h.hir, &h.symbols, &text) {
+                            Ok(m) => {
+                                if dung_cache {
+                                    let _ = cache::luu(&khoa, &m);
+                                }
+                                m
                             }
-                            vis_vm::run(&m, &text, &prog_args)
-                        }
-                        Err(e) => {
-                            eprintln!("vis run --vm: codegen lỗi: {e}");
-                            return (String::new(), Vec::new(), 0);
-                        }
+                            Err(e) => {
+                                eprintln!("vis run --vm: codegen lỗi: {e}");
+                                return (String::new(), Vec::new(), 0);
+                            }
+                        },
+                    };
+                    if dump {
+                        eprintln!("{}", vis_vm::dump::dump(&m));
                     }
+                    vis_vm::run(&m, &text, &prog_args)
                 } else {
                     vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args)
                 };
@@ -398,6 +468,25 @@ fn run_run(rest: &[String]) -> ExitCode {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        // ST-23: quản lý cache bytecode.
+        Some("cache") => match args.get(1).map(String::as_str) {
+            Some("--clear") => {
+                let n = cache::xoa();
+                eprintln!("vis cache: đã xoá {n} tệp");
+                ExitCode::from(0)
+            }
+            Some("--path") | None => {
+                match cache::thu_muc() {
+                    Some(p) => println!("{}", p.display()),
+                    None => eprintln!("vis cache: không xác định được thư mục cache"),
+                }
+                ExitCode::from(0)
+            }
+            Some(khac) => {
+                eprintln!("vis cache: cờ lạ `{khac}` (dùng --clear | --path)");
+                ExitCode::from(2)
+            }
+        },
         Some("explain") => {
             let mut lang = Lang::Vi;
             let mut list = false;
