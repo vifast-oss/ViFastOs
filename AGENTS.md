@@ -11,7 +11,7 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-53) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-51).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-53) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-56).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
@@ -95,7 +95,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
   `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript: VÒNG 1 + VÒNG 2 (mốc VS0) đều DONE** — vòng 1 `ST-01..ST-10` (157 test); vòng 2 `ST-11..ST-17` + `ST-12b`/`ST-13b`/`ST-15b` (`R2-viscript`): **247 test**, **309 ca ngữ nghĩa/16 nhóm**, **fuzz parser 1 giờ 182.328.926 ca / 0 vi phạm**, `vis-dev nightly` PASS, `gate --fast` PASS.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript: VÒNG 1 (ST-01..ST-10) + VÒNG 2 (VS0, ST-11..ST-17) + VÒNG 3 (khung VS1, ST-18..ST-24) đều DONE** — vòng 2 (`R2-viscript`): 247 test, 309 ca ngữ nghĩa, fuzz parser 1 giờ 0 vi phạm; vòng 3 (`R3-viscript`): **318 test**, **323 ca ngữ nghĩa/17 nhóm**, **differential interp↔VM 100.000 chương trình 0 lệch**, **khởi động ấm 8,5–9,9 ms (< 20 ms)**, bytecode `VBC1` 53 tag + verifier 13 biến thể + fuzz đột biến 10 phút 0 vi phạm, `vis-dev nightly` PASS. Còn VS1b (generic/trait/module/`vis-std`/host) cho vòng sau.
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
 

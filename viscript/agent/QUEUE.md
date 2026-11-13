@@ -108,12 +108,12 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-16 | fuzz parser **1 giờ** + `vis-dev nightly` chạy được (bỏ exit 2) | ST-14 | 2 h | **DONE** | không panic; nightly PASS |
 | ST-18 | `cmd_lower`: chế độ lệnh `.vish` hạ xuống HIR + chạy được | ST-17 | 3 h | **DONE** | bảng chữ ký tối thiểu; `vis run t.vsh` chạy; `VS06xx`? (hỏi A0) |
 | ST-19 | `vis-bytecode`: định dạng VBC1 + sinh mã từ HIR | ST-18 | 3 h | **DONE** | magic/phiên bản; sinh mã cho subset VS0; test khứ hồi |
-| ST-20b | differential về **0 lệch** (sửa 19 ca) | ST-20 | 2 h | **DONE** |
+| ST-20b | differential về **0 lệch** (sửa 19 ca) | ST-20 | 2 h | **DONE** | 272/272 khớp (stdout+exit+mã,dòng,cột); KNOWN_LECH rỗng |
 | ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | **DONE** | chạy 309 ca sem qua VM = interp |
 | ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **DONE** | bytecode hỏng bị từ chối; fuzz 10 phút |
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | **DONE** | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
-| ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **READY** | MD+JSON, số liệu tái lập |
+| ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | **DONE** | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
 | ST-05 | parser + CST lossless | ST-04 | 3 h | **DONE** | **30 golden biểu thức đỏ trước**; 100 % fixture tài liệu parse; mỗi tệp lỗi đúng 1 lỗi đầu |
@@ -331,6 +331,19 @@ APPROVED 2026-11-13 Agent 0
 > **khởi động ấm: 8,96–10,57 ms trung vị, p95 ≤ 11,2 ms ⇒ ĐẠT §19 < 20 ms** (lợi ích cache 7–8 % vì chi phối là
 > khởi động tiến trình ~8 ms; mặc định vẫn **interp** — xem VD-56).
 > **ST-24 mở** (R3).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-24 DONE — VÒNG 3 (KHUNG VS1) CHỐT.** `reports/R3-viscript.{md,json}` (`c194ae7`) — 27 hàng QUEUE, số liệu
+> tái lập được: **318 test** (20 diag + 96 syntax + 18 fmt + 65 types + 24 interp + 45 bytecode + 8 vm + 42 cli);
+> **323 ca ngữ nghĩa/17 nhóm**; differential gốc **272/272**; **100.000 chương trình sinh tự động, 0 lệch**
+> (192,6 s, 519/s, seed 3523158054); **VBC1 53 tag**; verifier **13 biến thể / 26 ca**; fuzz đột biến **10 phút
+> 2.311.244 vòng / 0 vi phạm**; **khởi động ấm 8,51 / 9,92 / 8,64 ms trung vị** (p95 ≤ 10,33) ⇒ **đạt §19 VS1 < 20 ms**;
+> `gate --fast` PASS; `nightly --fuzz-minutes 1` PASS.
+> **Đối chiếu §19 VS1**: **đạt** differential 100k 0 lệch + khởi động ấm < 20 ms; **chưa** generic/trait/module/
+> `vis-std`/`vis-host-posix`/`vis run|check|fmt|test` đầy đủ ⇒ **VS1b** (15 mục liệt kê ở §5 báo cáo).
+> Dòng ViScript **hết task trong QUEUE**; vòng 4 (đề xuất): VS1b (generic/trait/module, `vis-std`, host posix,
+> `cmd` variadic/tham chiếu theo tên, SHA-256 cho consent, đổi mặc định sang VM có đo lại).
 
 ## Ghi chú vận hành
 
