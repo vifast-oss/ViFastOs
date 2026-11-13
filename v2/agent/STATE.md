@@ -10,7 +10,7 @@ Task          : KT-21 (xong mã — **MCS donation/passive server/MCP**; chờ r
 Bước          : 8/8 (đỏ → mã → 9 test → invariant 1.000 seed → gate → Miri → tài liệu; chờ commit + review)
 Nhánh         : main
 Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**294 test/45 suite**, 0 failed; KT-20 là 284/44 ⇒ **+10 test**; **L1 1.000 seed/999 trace** 658 ms; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `[KT-21]` + push origin/main; **review độc lập** (lead spawn vì depth 1/1); **KT-22..KT-23 chờ**; không lật QUEUE (Agent 0)
+Việc dở       : commit `eae876b` **đã push** origin/main; **review độc lập** (lead spawn `reviewer-kt21`); **KT-22..KT-23 chờ**; không lật QUEUE (Agent 0)
 ```
 
 ## KT-21 — MCS donation: passive server, `Call`/`Reply`, MCP (K1b, D2-49(c), D2-50, D2-16)
@@ -86,6 +86,9 @@ stage `v2/`.
   donate — nếu donate, TCB kia đang `Running` sẽ mất ngân sách giữa chừng. SC dùng chung vẫn chạy
   bình thường theo KT-20.
 - **K1b không mô hình hoá** server phục vụ nhiều client cùng lúc / `ReplyRecv` / badge — K1c.
+- **Agent 0 (lead) chốt 2026-11-13**: giữ cách **kẹp** `p_eff = min(client.priority, client.mcp,
+  server.mcp)` cho K1b, **model-only `[TK]`**; **K1c** sẽ chốt **strict reject** nếu cần — Agent 0
+  ghi **D2-51** khi lật sổ. Không sửa thêm code vì MCP trong KT-21.
 
 ### Cổng + Miri (không retry — D2-07)
 
@@ -109,11 +112,11 @@ Chỉ `v2/sim/vifast-sim/src/{mcs.rs,kobj.rs}`, `v2/sim/vifast-sim/tests/kt21_do
 
 Review độc lập: **lead spawn** (`reviewer-kt21`) vì depth 1/1 — **chưa có verdict** tại thời điểm
 ghi mục này; tự soát đã làm (9 test + invariant + Miri + gate). **Đề xuất: REVIEW** (không tự DONE,
-không lật QUEUE — D2-37). **YC/Follow-up**: (1) Agent 0 xác nhận cách hiểu **MCP khi donate** =
-`min(donor.priority, donor.mcp, donee.mcp)` (plan ghi "MCP của client", nhưng KT-18 buộc
-`priority ≤ mcp` nên chặn thực tế là MCP **server**; nếu Agent 0 muốn **từ chối** thay vì **kẹp**
-thì KT-21 phải sửa `donate_sc` + 1 test); (2) KT-22 hộp thư; (3) KT-23 thêm `kt21_donation` vào
-`nightly --only-miri` (119 s).
+không lật QUEUE — D2-37). **Đã chốt với Agent 0**: cách hiểu **MCP khi donate** = **kẹp**
+`p_eff = min(client.priority, client.mcp, server.mcp)` cho K1b (**model-only `[TK]`**; KT-18 buộc
+`priority ≤ mcp` nên chặn thực tế là MCP **server**); K1c chốt **strict reject** nếu cần — Agent 0
+ghi **D2-51** khi lật sổ. **YC/Follow-up**: (1) D2-51 (Agent 0 ghi khi lật sổ, không phải YC mới);
+(2) KT-22 hộp thư; (3) KT-23 thêm `kt21_donation` vào `nightly --only-miri` (119 s).
 
 ## KT-20 — MCS budget: timer ảo `tick`, consumed/refill, `Sleeping{Budget}` (K1b, D2-49(b,e,h))
 
@@ -729,7 +732,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
-| 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**294 test/45 suite**, L1 1000 seed/999 trace, 658 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); 9 test (invariant **1.000 seed × 64 op**, 12.551 bước có donation), Miri **9/9** (119 s); **chờ reviewer-kt21 + Agent 0 lật sổ** |
+| 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**294 test/45 suite**, L1 1000 seed/999 trace, 658 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); 9 test (invariant **1.000 seed × 64 op**, 12.551 bước có donation), Miri **9/9** (119 s); **commit `eae876b` đã push**; **chờ reviewer-kt21 + Agent 0 lật sổ** |
 | 2026-11-13 | **KT-18** | 8/8 | `5cccb72` | — | `gate --fast` PASS (**251 test/42 suite**, L1 1000 seed/999 trace) | **commit `5cccb72` đã push**; TCB 11 trường + **một cửa** `transition_tcb` + bảng `ALLOWED` 48 = **46+2 reserved**, 18 test (ma trận 121 cặp, coverage bảng 100%), Miri kt18 **18/18**; drift D2-33 sửa; reviewer DRIFT nhẹ đã sửa; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-15** | 8/8 | `c0d3163` | — | `gate --fast` PASS (**218 test**, L1 1000 seed/999 trace, 596 ms) | **commit `c0d3163` đã push — reviewer DRIFT nhẹ đã sửa, chờ Agent 0 lật sổ**; `with_many_mut` D2-48(a): bảng `kind→ctor`, alias từng cặp, N=9 không build; Miri PASS (alias 8/8, fuzz 200/191,95 s); fuzz 10.000 chuỗi/4,51 s; `aarch64-none` xanh; guard `chua_header` + `TypeId` |
 | 2026-11-13 | **KT-14** | 8/8 | `e1921ab` | — | `gate --fast` PASS (199 test, L1 1000 seed/999 trace, 433 ms) | **DONE** `36c51bc`; `vifast-objmem` 15 test, Miri 15/15, build `aarch64-unknown-none`; reviewer DRIFT nhẹ đã sửa; **YC-18** chốt **D2-48** |
