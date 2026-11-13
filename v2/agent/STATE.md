@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-26 (đang làm — **Fault + Exit + mô hình procsrv**: `FaultKind` VM/unknown/user **model-only** (D2-53 Q5), fault qua **Call + Reply** có thanh ghi (chống r319), `Exit` D2-25, procsrv `{code, how}` Q10); KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`), KT-23 DONE (65702fa)
-Bước          : 8/8 (mã + gate + Miri + mutation + **verdict reviewer-kt26 APPROVE** + sửa 3 yêu cầu bằng chứng; đang stage/commit/push)
+Task          : KT-26 **xong mã + commit/push `56e8209`** (**Fault + Exit + mô hình procsrv**: `FaultKind` VM/unknown/user **model-only** D2-53 Q5, fault qua **Call + Reply** có thanh ghi chống r319, `Exit` D2-25, procsrv `{code, how}` Q10; reviewer APPROVE); chờ Agent 0 lật DONE. KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
+Bước          : 8/8 — **DONE mã**, commit `56e8209` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 386 test/53 suite** (baseline 361/51 ⇒ +25 = 24 `kt26_fault` + 1 `kt26_scn`), L1 1.000 seed/999 trace **713 ms** (đo bởi cổng), clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt26-gate-fast.log`)
 Miri          : `./v2/bin/v2 miri test -p vifast-sim --test kt26_fault` — **PASS 24/24** (`JOURNAL/kt26-miri.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
-Việc dở       : KT-26 — đang commit `[KT-26]` + push sau verdict **APPROVE**; **không lật QUEUE** (Agent 0)
+Việc dở       : không. Task kế: **KT-27** (Notification) chờ Agent 0 lật KT-26 DONE; KT-28 (WaitAddr) độc lập KT-26 nhưng cùng hàng chờ Agent 0
 ```
 
 ## KT-26 — Fault + Exit + mô hình procsrv (K1c, D2-53 Q5/Q10, D2-25)
