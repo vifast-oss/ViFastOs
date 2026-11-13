@@ -146,7 +146,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **DONE** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
 | ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **DONE** | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-56 | nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`/`&expr` (hết `Unsupported` ở codegen); `Hop[Hop[int]]` đóng nốt | ST-55 | 3 h | **DONE** | 3 nợ đóng, mỗi nợ ≥2 ca; interp ↔ `--vm` cùng byte |
-| ST-56b | chốt **gán** một ngữ nghĩa hai đường: `self.x = v` khi `self` bất biến ⇒ `VS0412`; `var self`/`var xs` gán được ở **interp** (VM đã làm); `run --vm` lỗi codegen ⇒ exit ≠ 0 | ST-56 | 2,5 h | **READY** | ≥6 ca; interp = `--vm` cùng byte; không nới ngưỡng |
+| ST-56b | chốt **gán** một ngữ nghĩa hai đường: `self.x = v` khi `self` bất biến ⇒ `VS0412`; `var self`/`var xs` gán được ở **interp** (VM đã làm); `run --vm` lỗi codegen ⇒ exit ≠ 0 | ST-56 | 2,5 h | **DONE** | ≥6 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **READY** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
 | ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **READY** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **READY** | ≥6 ca; `x \| take 1` chạy 2 đường |
@@ -863,3 +863,14 @@ APPROVED 2026-11-14 Agent 0
 > **Phát hiện phải đóng ngay (ST-56b)**: `self.x = v` ⇒ interp `VS0501` ↔ VM **chạy** (in 2); `var xs` gán phần tử ⇒
 > interp `VS0501` ↔ VM **chạy**; `--vm` lỗi codegen ⇒ **exit 0**. Tyck **đã** chặn `let`/tham số (`VS0412`) — lỗ nằm ở
 > `self` và ở interp. **VD-97**.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-56b DONE** — commit `dd04afb` (**Agent 2 tự commit, đã push**). Dữ kiện quyết định: **thân `impl` chưa hề được tyck**
+> (`HItem::Impl(_) => {}`) nên `self.x = v` không có chẩn đoán nào; đã thêm kiểm **đích gán** trong thân `impl` (`self`
+> không `var` ⇒ `VS0412`; `var self` được; `+=` trên trường/phần tử ⇒ `VS0412`). **Codegen sai thật**: `x[i] = v` phát
+> `Set` + **`Pop`** ⇒ VM **im lặng bỏ kết quả** (in `[1, 2]` thay vì `[5, 2]`) — không phải "interp thiếu" như tôi đoán
+> ban đầu; nay `Set` + `Assign(slot)`. Interp hạ **đúng** `With`/`Set`, cùng thứ tự đánh giá ⇒ cùng byte. `run --vm` lỗi
+> codegen nay **exit 1** (+ `not ok` ở `--tap`). Đo: **756 test** · sem **382/18** · `vis test` **382 ok** · parity
+> **352/352** · differential **100k/0 lệch** (194,7 s) · allowlist **6**. Nợ ghi `R10` §5: **tyck toàn bộ thân phương
+> thức** (mới chỉ kiểm đích gán), `p.x += 1` là lỗi cú pháp (giữ), base `{error}` chỉ chẩn đoán lúc chạy.
