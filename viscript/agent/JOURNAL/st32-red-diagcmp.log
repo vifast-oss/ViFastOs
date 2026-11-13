@@ -1,0 +1,64 @@
+=== ST-32 D2-05: harness so chẩn đoán BIÊN DỊCH hai đường — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T06:41:29Z
+
+## 1. Đỏ **tự nhiên** (không phải cố tình): so **thô văn bản** ⇒ 1 ca lệch
+
+Trước khi có `chuan_hoa`, phép so thô (đúng như harness ban đầu) báo **1 ca lệch**:
+
+```
+test/sem/loi/cu-phap.vis:
+  check  : VS0201 2:8  mong biểu thức, thật `\n` (NEWLINE)
+  run-vm : VS0201 2:8  mong biểu thức, thật `
+                     ` (NEWLINE)
+```
+⇒ **Đỏ vì ĐỊNH DẠNG, không phải vì chẩn đoán sai**: `check` in TAP với escape `` `\n` ``, `run` in
+**xuống dòng thật** trong backtick. Sau khi thêm **một** hàm `chuan_hoa` (dùng chung 3 đường, có unit-test
+riêng cho `\n`/`\t`/`\\`) ⇒ **0 lệch**. Đây đúng là ca khoá Agent 0 đã duyệt.
+
+## 2. Đỏ **cố tình** (chứng minh harness bắt được lệch thật)
+
+Vì 26 ca biên dịch vốn đã khớp, em làm lệch **một** thông điệp VM (+`" — ĐỎ THỬ"`) rồi chạy lại:
+
+```
+$ # sửa tạm: vm.rs  "chỉ số âm `{i}` (dùng `.last()` hoặc `xs[i]?`)" → thêm " — ĐỎ THỬ"
+$ cargo test -p vis-cli --test diag_cmp
+1 ca lệch:
+  test/sem/loi/chi-so-am.vis: run-vm (VS0503 3:7 "…(dùng `.last()` hoặc `xs[i]?`) — ĐỎ THỬ")
+                            ≠ run     (VS0503 3:7 "…(dùng `.last()` hoặc `xs[i]?`)")
+test result: FAILED. 5 passed; 1 failed
+$ # hoàn lại (grep 'ĐỎ THỬ' ⇒ 0), chạy lại ⇒ ok. 6 passed
+```
+⇒ Harness **bắt được** lệch chẩn đoán thật, không phải test trang trí.
+
+## 3. Ba tầng phân loại khoá cứng (0 ca bỏ qua)
+
+| Tầng | Số ca | Cách so |
+|---|---|---|
+| xanh | **286** | `check` rỗng + `run` = `run --vm` (stdout+exit 0) |
+| lỗi **biên dịch** | **26** | `check` ↔ `run --vm --no-cache`: cùng `(mã, dòng, cột, thông điệp)`; exit **ánh xạ** `1 ↔ 2` |
+| lỗi **lúc chạy** | **26** | `check` **rỗng**; `run` = `run --vm` |
+| **tổng** | **338** | **0 ca bỏ qua** |
+
+**Ngoại lệ có lý do (ST-27)**: **6** ca cần **host chương trình ngoài** (4 xanh + 2 lỗi chạy) — VM không có
+host ⇒ `VS0604`; khoá **đúng số ca** (`XANH_CAN_HOST=4`, `LUC_CHAY_CAN_HOST=2`), không nới cho ca khác.
+
+## 4. Phát hiện khi chạm **đường bytecode** (26 ca biên dịch)
+
+- `vis_bytecode::compile()` **không panic** ở cả 26 ca ✅
+- **21/26** ca: codegen vẫn sinh module và **VM chạy "sạch"** (exit 0, không chẩn đoán) dù HIR sai kiểu
+  ⇒ **codegen TIN tyck**, không tự kiểm kiểu. Cổng chặn là **front end** (`vis run`/`vis check` dừng trước
+  khi chạy bytecode, exit 2/1). Khoá hằng số `CODEGEN_TIN_TYCK = 21` trong test để ai sửa codegen thì đỏ.
+  Ghi vào JOURNAL là **nợ ST-32** (không phải lỗi mới).
+
+## 5. Tệp test
+
+- `crates/vis-cli/tests/diag_cmp.rs` — **6** ca: `chuan_hoa_escape`, `phan_loai_ba_tang_khoa_cung`,
+  `ca_bien_dich_hai_duong_cung_chan_doan`, `ca_bien_dich_di_qua_bytecode_khong_panic`,
+  `ca_luc_chay_check_rong_hai_duong_giong`, `ca_xanh_ba_duong_khop_stdout`.
+- `crates/vis-vm/tests/vs_interp.rs` — mở rộng **cả 338** ca (312 chạy được + 26 lỗi biên dịch chạm bytecode).
+- `crates/vis-cli/tests/vis_test.rs` — +1 ca `.err` biên dịch ra cùng mã ở `--vm`.
+
+## 6. sha256 bản commit
+  sha256 crates/vis-cli/tests/diag_cmp.rs=04cb3dbb71fc66131c93ac66308112c9c3bb9e05b7e72235a1b55a0c6278637a
+  sha256 crates/vis-vm/tests/vs_interp.rs=4babe7e12d94f3947a4d8d8ec6c0ad03dca58b48826db3bb9e605f3d16d40a80
+  sha256 crates/vis-cli/tests/vis_test.rs=e0db60338393f5660a0d5345173d7dfa26a00ca143ea3a9943f592cc3a484826

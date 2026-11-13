@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-31** (báo cáo `R4-viscript` — **chốt VS1b**) — xong, chờ commit/push.
-Bước          : 4/4 (đo lại toàn bộ → viết MD/JSON → `report-check` PASS → gate PASS)
+Task          : **ST-32** (harness so chẩn đoán **biên dịch** hai đường) — xong, **chưa commit**.
+Bước          : 3/3 (phân loại 3 tầng khoá cứng → harness 3 đường + chuẩn hoá escape → 26 ca chạm bytecode)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` PASS (06:07Z) + `./vis-dev nightly --fuzz-minutes 1` PASS (06:09:38Z);
-                **436** test / **338** ca / parity **312/312** / diff 100k **0 lệch**
-Việc dở       : commit `[ST-31]` (đã được uỷ quyền) rồi push
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T06:42:56Z** (15:42 JST, không retry);
+                **443** test workspace
+Việc dở       : chờ gate rồi commit `[ST-32]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-32 — harness so chẩn đoán **biên dịch** hai đường (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Ba tầng khoá cứng** | **286 xanh** / **26 lỗi biên dịch** / **26 lỗi lúc chạy** = **338**, **0 ca bỏ qua** (`diag_cmp::phan_loai_ba_tang_khoa_cung`) |
+| 2 | **Hai đường cho ca biên dịch** | `check` ↔ `run --vm --no-cache`: **cùng** `(mã, dòng, cột, thông điệp)`; exit **ánh xạ** `1 ↔ 2` (không đòi bằng — đúng thiết kế); 26/26 khớp |
+| 3 | **Chuẩn hoá escape** | **một** hàm `chuan_hoa` dùng chung 3 đường + unit-test riêng (`\n`, `\t`, `\\`); ca `loi/cu-phap.vis` (check in escape, run in xuống dòng thật) nay khớp |
+| 4 | **Đường bytecode** | 26 ca biên dịch: `compile()` **không panic**; **21/26** codegen vẫn sinh module (VM chạy "sạch") ⇒ **codegen tin tyck**, front end là cổng — khoá `CODEGEN_TIN_TYCK = 21` |
+| 5 | **Lỗi lúc chạy** | `check` **rỗng**; `run` = `run --vm`; **6 ca cần host** (4 xanh + 2 lỗi chạy) ⇒ `VS0604` ở VM, khoá đúng số ca |
+| 6 | **Đo** | **443** test (436 + **6** `diag_cmp` + **1** `vis_test`); `vs_interp` phủ **cả 338** (312 + 26) |
 
 ## ST-31 — báo cáo `R4-viscript` (chốt VS1b), 2026-11-13
 

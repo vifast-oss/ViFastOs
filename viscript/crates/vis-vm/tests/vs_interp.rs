@@ -103,7 +103,7 @@ fn than_chay() {
     assert_eq!(tat_ca.len(), 338, "phải đủ 338 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
-    let mut bo_qua = 0;
+    let mut bien_dich = 0;
     for p in &tat_ca {
         // **SỬA KÈM LÝ DO (ST-30b)**: **không** bỏ ca `.err` nữa — chẩn đoán lúc chạy của hai đường
         // phải **trùng đủ** `(mã, dòng, cột, thông điệp)`; trước đây bỏ qua nên lọt 6 ca lệch mã
@@ -115,7 +115,21 @@ fn than_chay() {
             vis_syntax::Mode::Script
         };
         let (Some(a), Some(b)) = (chay_interp(&text, mode), chay_vm(&text, mode)) else {
-            bo_qua += 1;
+            // **ST-32**: ca lỗi **biên dịch** — không chạy được ở đường nào, nhưng **đường bytecode**
+            // vẫn phải được **chạm tới**: `compile()` không panic (codegen tin tyck ⇒ có thể ra module;
+            // front end mới là cổng). Đếm riêng để khoá **đủ 338**.
+            let lexed = vis_syntax::lex(&text, mode);
+            let parsed = vis_syntax::parse(&text, mode);
+            let h = vis_types::lower(&parsed.cst, &lexed);
+            let kq = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compile(&h.hir, &h.symbols, &text)
+            }));
+            assert!(
+                kq.is_ok(),
+                "{}: `compile()` panic trên HIR lỗi",
+                p.display()
+            );
+            bien_dich += 1;
             continue;
         };
         if mo_ta(&a) == mo_ta(&b) {
@@ -151,18 +165,17 @@ fn than_chay() {
         "**không** còn ca lệch nào (danh sách phải rỗng, thật {})",
         so_biet
     );
-    // **SỬA KÈM LÝ DO (ST-30b)**: **không** bỏ ca `.err` nữa ⇒ so **đủ 338** ca (trước 286);
-    // 312 khớp + 0 lệch + 26 bỏ qua (ca có lỗi **biên dịch** `VS0x` — hai đường dùng chung front end
-    // nên chẩn đoán giống nhau theo cấu trúc, không chạy được để so lúc chạy).
+    // **SỬA KÈM LÝ DO (ST-32)**: **0 ca bỏ qua** — 312 ca **chạy được** so interp ↔ VM, **26** ca lỗi
+    // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **338**.
     assert_eq!(
-        khop + so_biet + bo_qua,
+        khop + so_biet + bien_dich,
         338,
-        "338 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
+        "338 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     assert_eq!(
-        (khop, bo_qua),
+        (khop, bien_dich),
         (312, 26),
-        "phải khớp **đủ** 312 ca chạy được (bỏ qua 26 ca lỗi biên dịch), thật khớp {khop} bỏ qua {bo_qua}"
+        "312 ca chạy được khớp + 26 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
     );
 }
 

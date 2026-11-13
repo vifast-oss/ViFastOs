@@ -168,3 +168,23 @@ fn tap_moi_not_ok_deu_co_dong_chan_doan() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// **ST-32**: ca `.err` lỗi **biên dịch** phải ra **cùng mã** ở `--vm` (không SKIP, không khác mã) —
+/// trước ST-30b VM in `VS0501` cho lỗi chỉ số, nay đồng bộ; ca này khoá nhánh **biên dịch**.
+#[test]
+fn err_bien_dich_ra_cung_ma_o_vm() {
+    let d = tam("biendich");
+    std::fs::write(d.join("sai.vis"), "let x: int = \"chuoi\"\n").expect("ghi");
+    std::fs::write(d.join("sai.err"), "VS0412\n").expect("ghi");
+    let (ci, oi, ei) = vis(&["test", d.to_str().unwrap()]);
+    let (cv, ov, ev) = vis(&["test", "--vm", d.to_str().unwrap()]);
+    assert_eq!(ci, 0, "interp phải ok: {oi} {ei}");
+    assert_eq!(cv, 0, "--vm phải ok (cùng mã VS0412): {ov} {ev}");
+    assert!(oi.contains("ok 1"), "TAP interp: {oi}");
+    assert!(ov.contains("ok 1"), "TAP vm: {ov}");
+    assert!(
+        !ov.contains("# SKIP"),
+        "ca lỗi biên dịch **không** được SKIP ở --vm: {ov}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
