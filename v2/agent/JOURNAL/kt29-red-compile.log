@@ -1,0 +1,410 @@
+# KT-29 — test đỏ trước (D2-05): tests/kt29_smp.rs KHÔNG biên dịch trước khi cài KT-29
+# HEAD dd4761e; lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt29_smp --no-run
+# Ngày: 2026-11-13; lý do: E0432 (Published/MAX_HARTS chưa có) + E0599 (API SMP/push/migration chưa có)
+
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::Published`, `vifast_sim::kobj::MAX_HARTS`
+  --> sim/vifast-sim/tests/kt29_smp.rs:27:38
+   |
+27 |     KError, Machine, ObjId, ObjType, Published, SlotRef, TcbState, MAX_HARTS,
+   |                                      ^^^^^^^^^                     ^^^^^^^^^ no `MAX_HARTS` in `kobj`
+   |                                      |
+   |                                      no `Published` in `kobj`
+
+error[E0599]: no method named `check_harts` found for reference `&Machine` in the current scope
+  --> sim/vifast-sim/tests/kt29_smp.rs:43:23
+   |
+43 |     if let Err(e) = m.check_harts() {
+   |                       ^^^^^^^^^^^
+   |
+help: there is a method `check_caps` with a similar name
+   |
+43 -     if let Err(e) = m.check_harts() {
+43 +     if let Err(e) = m.check_caps() {
+   |
+
+error[E0599]: no associated function or constant named `with_harts` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:73:30
+    |
+ 73 |         let mut m = Machine::with_harts(harts);
+    |                              ^^^^^^^^^^ associated function or constant not found in `Machine`
+    |
+note: if you're trying to build a new `Machine` consider using one of the following associated functions:
+      Machine::new
+      Machine::with_arena_bytes
+   --> sim/vifast-sim/src/kobj.rs:766:5
+    |
+766 |     pub fn new() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^
+...
+774 |     pub fn with_arena_bytes(bytes: usize) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `with_harts` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:153:26
+    |
+153 |         let m = Machine::with_harts(n);
+    |                          ^^^^^^^^^^ associated function or constant not found in `Machine`
+    |
+note: if you're trying to build a new `Machine` consider using one of the following associated functions:
+      Machine::new
+      Machine::with_arena_bytes
+   --> sim/vifast-sim/src/kobj.rs:766:5
+    |
+766 |     pub fn new() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^
+...
+774 |     pub fn with_arena_bytes(bytes: usize) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `with_harts` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:170:54
+    |
+170 |         let r = std::panic::catch_unwind(|| Machine::with_harts(bad));
+    |                                                      ^^^^^^^^^^ associated function or constant not found in `Machine`
+    |
+note: if you're trying to build a new `Machine` consider using one of the following associated functions:
+      Machine::new
+      Machine::with_arena_bytes
+   --> sim/vifast-sim/src/kobj.rs:766:5
+    |
+766 |     pub fn new() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^
+...
+774 |     pub fn with_arena_bytes(bytes: usize) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `current_hart` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt29_smp.rs:184:20
+     |
+ 184 |     assert_eq!(r.m.current_hart(), 0, "hart hiện tại mặc định 0");
+     |                    ^^^^^^^^^^^^
+     |
+help: there is a method `current` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2298:5
+     |
+2298 |     pub fn current(&self, hart: u16) -> Option<ObjId> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:186:13
+    |
+186 |         r.m.published(0).expect("published 0"),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:197:13
+    |
+197 |         r.m.published(0).expect("published 0"),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:204:13
+    |
+204 |         r.m.published(1).expect("published 1"),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:218:13
+    |
+218 |         r.m.published(0).expect("published 0"),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `publish` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:226:9
+    |
+226 |     r.m.publish(0, true, 0).expect("publish hart hiện tại");
+    |         ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_current_hart` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:229:9
+    |
+229 |     r.m.set_current_hart(1).expect("set_current_hart");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `publish` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:231:13
+    |
+231 |         r.m.publish(0, false, 9),
+    |             ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:236:13
+    |
+236 |         r.m.published(0).expect("published 0"),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:244:20
+    |
+244 |     assert_eq!(r.m.published(0), Ok(Published {
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_current_hart` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:251:13
+    |
+251 |         r.m.set_current_hart(2),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:255:20
+    |
+255 |     assert_eq!(r.m.published(2), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `publish` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:256:20
+    |
+256 |     assert_eq!(r.m.publish(2, true, 0), Err(KError::InvalidArgument));
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:274:20
+    |
+274 |     assert_eq!(r.m.push_migration().expect("push_migration"), 1);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:275:20
+    |
+275 |     assert_eq!(r.m.migrate_count(), 1);
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+275 -     assert_eq!(r.m.migrate_count(), 1);
+275 +     assert_eq!(r.m.hart_count(), 1);
+    |
+
+error[E0599]: no method named `mailbox_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:285:20
+    |
+285 |     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 0);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `mail_len` with a similar name
+    |
+285 -     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 0);
+285 +     assert_eq!(r.m.mail_len(1).expect("mailbox_len"), 0);
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:314:20
+    |
+314 |     assert_eq!(r.m.push_migration().expect("push"), 1);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:338:20
+    |
+338 |     assert_eq!(r.m.push_migration().expect("push"), 0, "đích bận ⇒ 0");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:339:20
+    |
+339 |     assert_eq!(r.m.migrate_count(), 0);
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+339 -     assert_eq!(r.m.migrate_count(), 0);
+339 +     assert_eq!(r.m.hart_count(), 0);
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:346:20
+    |
+346 |     assert_eq!(r.m.push_migration().expect("push"), 0, "ngoài affinity ⇒ 0");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:347:20
+    |
+347 |     assert_eq!(r.m.migrate_count(), 0);
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+347 -     assert_eq!(r.m.migrate_count(), 0);
+347 +     assert_eq!(r.m.hart_count(), 0);
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:354:20
+    |
+354 |     assert_eq!(r.m.push_migration().expect("push"), 0, "top chỉ 1 ⇒ 0");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:361:20
+    |
+361 |     assert_eq!(r.m.push_migration().expect("push"), 0);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:362:20
+    |
+362 |     assert_eq!(r.m.migrate_count(), 0);
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+362 -     assert_eq!(r.m.migrate_count(), 0);
+362 +     assert_eq!(r.m.hart_count(), 0);
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:383:20
+    |
+383 |     assert_eq!(r.m.push_migration().expect("push"), 1, "đúng 1 TCB Ready");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:416:20
+    |
+416 |     assert_eq!(r.m.migrate_count(), 1, "đúng 1 migrate trong bước");
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+416 -     assert_eq!(r.m.migrate_count(), 1, "đúng 1 migrate trong bước");
+416 +     assert_eq!(r.m.hart_count(), 1, "đúng 1 migrate trong bước");
+    |
+
+error[E0599]: no method named `mailbox_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:448:20
+    |
+448 |     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `mail_len` with a similar name
+    |
+448 -     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+448 +     assert_eq!(r.m.mail_len(1).expect("mailbox_len"), 1);
+    |
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:449:20
+    |
+449 |     assert_eq!(r.m.migrate_count(), 0, "chưa xử lý hộp thư thì chưa di trú");
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+449 -     assert_eq!(r.m.migrate_count(), 0, "chưa xử lý hộp thư thì chưa di trú");
+449 +     assert_eq!(r.m.hart_count(), 0, "chưa xử lý hộp thư thì chưa di trú");
+    |
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:451:20
+    |
+451 |     assert_eq!(r.m.migrate_count(), 1);
+    |                    ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+451 -     assert_eq!(r.m.migrate_count(), 1);
+451 +     assert_eq!(r.m.hart_count(), 1);
+    |
+
+error[E0599]: no method named `current_hart` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt29_smp.rs:536:20
+     |
+ 536 |     assert_eq!(r.m.current_hart(), 0);
+     |                    ^^^^^^^^^^^^
+     |
+help: there is a method `current` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2298:5
+     |
+2298 |     pub fn current(&self, hart: u16) -> Option<ObjId> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `mailbox_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:539:20
+    |
+539 |     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `mail_len` with a similar name
+    |
+539 -     assert_eq!(r.m.mailbox_len(1).expect("mailbox_len"), 1);
+539 +     assert_eq!(r.m.mail_len(1).expect("mailbox_len"), 1);
+    |
+
+error[E0599]: no method named `mailbox_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:595:20
+    |
+595 |     assert_eq!(r.m.mailbox_len(0).expect("mailbox_len"), 0);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `mail_len` with a similar name
+    |
+595 -     assert_eq!(r.m.mailbox_len(0).expect("mailbox_len"), 0);
+595 +     assert_eq!(r.m.mail_len(0).expect("mailbox_len"), 0);
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:701:29
+    |
+701 |                 let n = r.m.push_migration().expect("push_migration");
+    |                             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `published` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:743:25
+    |
+743 |             let p = r.m.published(h).expect("published");
+    |                         ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `migrate_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:752:56
+    |
+752 |         mo_ta.push_str(&format!(" | {anh} mig={}", r.m.migrate_count()));
+    |                                                        ^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+752 -         mo_ta.push_str(&format!(" | {anh} mig={}", r.m.migrate_count()));
+752 +         mo_ta.push_str(&format!(" | {anh} mig={}", r.m.hart_count()));
+    |
+
+error[E0599]: no method named `push_migration` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:784:20
+    |
+784 |     assert_eq!(r.m.push_migration().expect("push"), 0, "chưa đủ 2 TCB");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_current_hart` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:787:9
+    |
+787 |     r.m.set_current_hart(0).expect("hart 0");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt29_smp.rs:790:33
+    |
+790 |     assert_eq!(r.m.dispatch(1), None, "hart 1 không có TCB");
+    |                                 ^^^^ expected `Result<Option<u32>, KError>`, found `Option<_>`
+    |
+    = note: expected enum `std::result::Result<Option<u32>, KError>`
+               found enum `Option<_>`
+help: try wrapping the expression in `Ok`
+    |
+790 |     assert_eq!(r.m.dispatch(1), Ok(None), "hart 1 không có TCB");
+    |                                 +++    +
+
+error[E0599]: no method named `check_harts` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt29_smp.rs:797:17
+    |
+797 |     assert!(r.m.check_harts().is_ok(), "trạng thái sạch phải qua checker");
+    |                 ^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+797 -     assert!(r.m.check_harts().is_ok(), "trạng thái sạch phải qua checker");
+797 +     assert!(r.m.check_caps().is_ok(), "trạng thái sạch phải qua checker");
+    |
+
+Some errors have detailed explanations: E0308, E0432, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `vifast-sim` (test "kt29_smp") due to 44 previous errors

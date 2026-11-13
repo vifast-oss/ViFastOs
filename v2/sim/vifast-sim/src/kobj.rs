@@ -54,6 +54,9 @@
 use crate::ipc::{self, IpcArea, Message, MessageInfo};
 use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
 use crate::sched::HartSched;
+/// **KT-29** — trường công bố `idle`/`cur_prio` của mỗi hart (định nghĩa ở [`crate::sched`];
+/// re-export để test dùng `vifast_sim::kobj::Published`).
+pub use crate::sched::Published;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
@@ -79,12 +82,19 @@ pub const RIGHTS_ALL: u8 = RIGHT_READ | RIGHT_WRITE | RIGHT_GRANT | RIGHT_GRANT_
 pub type ObjId = u32;
 pub type CapId = u32;
 
-/// Số hart của mô hình K1b: **1** (D2-49(a); push migration hoãn sang K1c).
+/// Số hart **mặc định** của mô hình: **1** (`Machine::new()` — D2-49(a); KT-29 mở rộng bằng
+/// [`Machine::with_harts`]).
 ///
-/// Dùng để kiểm `affinity`/`home` của model API `Tcb.SetAffinity/SetHome` `[TK]`; KT-19 thay
-/// bằng cấu hình hart của `Machine`.
+/// Không còn là trần: `Machine::new()` giữ 1 hart để **không đổi ngữ nghĩa** 427 test cũ; SMP
+/// 1/2/4/8 phải opt-in bằng `Machine::with_harts(n)` (K1C-PLAN §5 KT-29 rủi ro (d)).
 pub const HART_COUNT: u16 = 1;
-/// `HartMask` mặc định: hart 0 (K1b 1 hart).
+
+/// **KT-29** — trần số hart của mô hình `[TK]` (**D2-53 Q1/Q3**; thiết kế §4.16
+/// `docs/v2/ViFastOs-v2-thiet-ke.md:425-428`: `MAX_HARTS` mặc định 8, trần cấu hình 64 là hằng
+/// model để K3). K1c chỉ cần 1/2/4/8; `with_harts(n)` assert `1 ≤ n ≤ MAX_HARTS`.
+pub const MAX_HARTS: u16 = 8;
+
+/// `HartMask` mặc định: hart 0 (K1b 1 hart; TCB mới tạo home 0/affinity 0).
 pub const AFFINITY_HOME: u64 = 1;
 
 /// Số bucket của bảng băm WaitOnAddress — hằng số **model** `[TK]` (D2-53 Q3; K1C-PLAN §5
@@ -653,7 +663,18 @@ pub struct Machine {
     sched: Vec<HartSched>,
     /// KT-22: hộp thư **theo hart** (thiết kế §4.17) — `HART_COUNT` = 1 ở K1b (D2-49(a)),
     /// mô hình tất định: `post_mail`/`process_mail`/`send_mail` (không atomic/thread/loom).
+    /// **KT-29**: mỗi hart một hộp thư; `Migrate` chỉ hợp lệ khi có ≥ 2 hart.
     mail: Vec<HartMailbox>,
+    /// **KT-29** — trường **công bố** `idle`/`cur_prio` của từng hart (thiết kế §4.8 `:338-342`,
+    /// §4.16 luật 3): hart khác **đọc** được, chỉ hart đang chạy **ghi** được qua
+    /// [`Machine::publish`]. Model một luồng: làm tươi từ `HartSched` sau mỗi op, nên
+    /// `published.idle ⇔ current == None` là bất biến [`Machine::check_smp`].
+    published: Vec<Published>,
+    /// **KT-29** — hart "đang chạy" của mô hình tại thời điểm gọi (D2-53 Q1: mô hình tất định
+    /// một luồng mô phỏng N hart). [`Machine::publish`] chỉ ghi được hart này (luật 3).
+    current_hart: u16,
+    /// **KT-29** — số TCB đã **di trú** thành công qua `MailboxMsg::Migrate` (nguồn test/đo).
+    migrate_count: u64,
     /// Preempt **ép tại mọi public op** (thiết kế §4.13) — mặc định **tắt** để không đổi
     /// ngữ nghĩa KT-18; test KT-19 bật bằng [`Machine::set_preempt_every_step`].
     preempt_every_step: bool,
@@ -767,11 +788,31 @@ impl Machine {
         Self::with_arena_bytes(DEFAULT_ARENA_BYTES)
     }
 
-    /// `Machine` với arena kernel `bytes` byte (mặc định [`DEFAULT_ARENA_BYTES`] = 1 MiB).
+    /// `Machine` với arena kernel `bytes` byte (mặc định [`DEFAULT_ARENA_BYTES`] = 1 MiB) và
+    /// **1 hart** ([`HART_COUNT`]) — đường mặc định của mọi test cũ.
     ///
     /// Arena kernel chứa body của object **không** cấp từ Untyped; object Retype nằm trong
     /// arena riêng của Untyped chứa nó.
     pub fn with_arena_bytes(bytes: usize) -> Self {
+        Self::with_harts_and_arena_bytes(HART_COUNT, bytes)
+    }
+
+    /// **KT-29** — `Machine` mô hình **N hart tất định** (`1 ≤ n ≤ MAX_HARTS`, D2-53 Q1):
+    /// mỗi hart một [`HartSched`] + [`HartMailbox`] + trường công bố [`Published`]; arena kernel
+    /// mặc định. `n = 0`/`n > MAX_HARTS` ⇒ `assert!` (cùng kiểu `with_arena_bytes`).
+    ///
+    /// `Machine::new()` **vẫn 1 hart** — không đổi ngữ nghĩa 427 test cũ; SMP phải opt-in.
+    pub fn with_harts(harts: u16) -> Self {
+        Self::with_harts_and_arena_bytes(harts, DEFAULT_ARENA_BYTES)
+    }
+
+    /// Thân chung của [`Machine::with_arena_bytes`]/[`Machine::with_harts`]: kiểm tham số rồi
+    /// dựng mô hình (một đường cấp phát duy nhất để hai constructor không lệch nhau).
+    fn with_harts_and_arena_bytes(harts: u16, bytes: usize) -> Self {
+        assert!(
+            harts > 0 && harts <= MAX_HARTS,
+            "số hart phải trong 1..={MAX_HARTS} (nhận {harts})"
+        );
         assert!(bytes > 0, "arena kernel phải có cỡ dương");
         Self {
             kernel: OwnedMem::new(bytes).expect("cấp arena kernel của Machine"),
@@ -792,8 +833,16 @@ impl Machine {
             finalise_log: Vec::new(),
             address_waiters: std::array::from_fn(|_| Vec::new()),
             addr_words: Vec::new(),
-            sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
-            mail: (0..HART_COUNT).map(|_| HartMailbox::new()).collect(),
+            sched: (0..harts).map(|_| HartSched::new()).collect(),
+            mail: (0..harts).map(|_| HartMailbox::new()).collect(),
+            published: (0..harts)
+                .map(|_| Published {
+                    idle: true,
+                    cur_prio: 0,
+                })
+                .collect(),
+            current_hart: 0,
+            migrate_count: 0,
             preempt_every_step: false,
             now: 0,
         }
@@ -1799,11 +1848,17 @@ impl Machine {
         Ok(())
     }
 
-    /// `Tcb.SetAffinity` `[TK]`: `HartMask` ≤ 64 bit, khác 0, chỉ bit của hart có thật.
+    /// `Tcb.SetAffinity` `[TK]`: `HartMask` ≤ 64 bit, khác 0, chỉ bit của hart có thật, và phải
+    /// chứa hart `home` hiện tại (KT-19: `home` của TCB phải nằm trong affinity — nếu không
+    /// `Ready` không thể vào hàng nào; KT-29 giữ bất biến này khi có nhiều hart).
     pub fn tcb_set_affinity(&mut self, tcb: SlotRef, affinity: u64) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
-        let hart_mask = (1u64 << HART_COUNT) - 1;
+        let hart_mask = (1u64 << self.sched.len()) - 1;
         if affinity == 0 || affinity & !hart_mask != 0 {
+            return Err(KError::InvalidArgument);
+        }
+        let home = self.tcb_info_obj(tcb_obj)?.home;
+        if affinity & (1u64 << home) == 0 {
             return Err(KError::InvalidArgument);
         }
         if self.tcb_state(tcb_obj)? == TcbState::Ready {
@@ -1821,13 +1876,24 @@ impl Machine {
         Ok(())
     }
 
-    /// `Tcb.SetHome` `[TK]`: home phải là hart có thật (K1b: hart 0).
+    /// `Tcb.SetHome` `[TK]`: home phải là hart có thật và **nằm trong affinity** của TCB.
+    /// **KT-29**: không đổi `home` của TCB đang `Running` (`Running{hart}` ⇒ `home == hart` là
+    /// bất biến `check_smp`; muốn đổi phải preempt/`Ready` trước).
     pub fn tcb_set_home(&mut self, tcb: SlotRef, home: u16) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
-        if home >= HART_COUNT {
+        if home as usize >= self.sched.len() {
             return Err(KError::InvalidArgument);
         }
-        if self.tcb_state(tcb_obj)? == TcbState::Ready {
+        let info = self.tcb_info_obj(tcb_obj)?;
+        // **KT-29**: với `n > 1` bất biến `Running{hart} ⇒ home == hart`; với `n = 1` giữ
+        // nguyên hành vi cũ (chỉ hart 0 nên đổi home vô hại) — reviewer-kt29 mục 5.
+        if self.sched.len() > 1 && matches!(info.state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        if info.affinity & (1u64 << home) == 0 {
+            return Err(KError::InvalidArgument);
+        }
+        if info.state == TcbState::Ready {
             self.sched_remove_all(tcb_obj);
         }
         self.body_mut(tcb_obj, |k| match k {
@@ -2037,6 +2103,11 @@ impl Machine {
         if let TcbState::Running { hart } = to {
             if hart as usize >= self.sched.len() {
                 return Err(KError::InvalidArgument);
+            }
+            // **KT-29**: `Running{hart}` chỉ hợp lệ khi `home == hart` (bất biến `check_smp`:
+            // home khớp hart đang giữ `current`); TCB muốn đổi hart phải qua `Ready`/dispatch.
+            if self.tcb_info_obj(tcb)?.home != hart {
+                return Err(KError::IllegalOperation);
             }
             if let Some(cur) = self.sched[hart as usize].current() {
                 if cur != tcb {
@@ -2265,9 +2336,99 @@ impl Machine {
     // - `Running{hart}` ⇔ `current(hart)`, **không** nằm trong hàng; ≤1 `Running`/hart;
     // - bucket == `priority`; `len`/bitmap/`idle`/`cur_prio` khớp.
 
-    /// Số hart của mô hình (KT-19: 1 — D2-49(a); K1c mở rộng).
+    /// Số hart của mô hình (KT-19: 1 — D2-49(a); **KT-29**: 1/2/4/8 qua
+    /// [`Machine::with_harts`]).
     pub fn hart_count(&self) -> u16 {
         self.sched.len() as u16
+    }
+
+    /// **KT-29** — hart "đang chạy" của mô hình tại thời điểm gọi (mô hình một luồng mô phỏng
+    /// N hart tất định, D2-53 Q1). Mặc định 0; [`Machine::publish`] chỉ ghi được hart này
+    /// (luật 3 §4.16).
+    pub fn current_hart(&self) -> u16 {
+        self.current_hart
+    }
+
+    /// **KT-29** — đặt hart "đang chạy" của mô hình (`0..hart_count()`), dùng trước
+    /// [`Machine::publish`] để mô phỏng hart nào tự công bố trạng thái của mình.
+    /// Không đổi scheduler/ready queue; hart không tồn tại ⇒ `InvalidArgument`.
+    pub fn set_current_hart(&mut self, hart: u16) -> Result<(), KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        self.current_hart = hart;
+        Ok(())
+    }
+
+    /// **KT-29** — trường **công bố** của `hart` (`idle`, `cur_prio`; thiết kế §4.8/§4.16 luật
+    /// 3). **Đọc được từ mọi hart** (không tính vi phạm luật 3); hart ngoài mô hình ⇒
+    /// `InvalidArgument`.
+    pub fn published(&self, hart: u16) -> Result<Published, KError> {
+        self.published
+            .get(hart as usize)
+            .copied()
+            .ok_or(KError::InvalidArgument)
+    }
+
+    /// **KT-29** — tự công bố `idle`/`cur_prio` của hart **đang chạy** (`current_hart()`).
+    ///
+    /// Guard **luật 3** (§4.16 `:415,419`): ghi trạng thái hart khác ⇒ `Err(IllegalOperation)`
+    /// và **không** đổi gì. Thiết kế nói "panic" cho build sim; mô hình trả lỗi để test âm
+    /// quan sát được **không** cần `#[should_panic]` (K1C-PLAN §5 KT-29 DoD 2 — ghi rõ).
+    /// Mô hình một luồng giữ `published` là **ảnh trung thực** của `HartSched` (bất biến
+    /// `check_smp`: `published.idle ⇔ current == None`), nên giá trị công bố phải khớp trạng
+    /// thái thật; lệch ⇒ `IllegalOperation` (hart không thể "nói dối" trong mô hình này).
+    pub fn publish(&mut self, hart: u16, idle: bool, prio: u8) -> Result<(), KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if self.current_hart != hart {
+            return Err(KError::IllegalOperation);
+        }
+        if idle != self.sched[hart as usize].idle() || prio != self.sched[hart as usize].cur_prio()
+        {
+            return Err(KError::IllegalOperation);
+        }
+        self.published[hart as usize] = Published {
+            idle,
+            cur_prio: prio,
+        };
+        // Bất biến (iv) của `check_smp`: published là **ảnh trung thực** của scheduler; assert
+        // tại cửa ghi để lỗi nội bộ lộ ngay (lỗi người dùng ở trên đã trả `Err` trước).
+        debug_assert_eq!(
+            self.published[hart as usize].idle,
+            self.sched[hart as usize].idle(),
+            "publish: published.idle lệch current == None"
+        );
+        debug_assert_eq!(
+            self.published[hart as usize].cur_prio,
+            self.sched[hart as usize].cur_prio(),
+            "publish: published.cur_prio lệch cur_prio thật"
+        );
+        Ok(())
+    }
+
+    /// **KT-29** — số TCB đã di trú thành công (qua `MailboxMsg::Migrate`) từ đầu vòng đời
+    /// `Machine` (nguồn test/đo "số migrate", thiết kế §4.8).
+    pub fn migrate_count(&self) -> u64 {
+        self.migrate_count
+    }
+
+    /// **KT-29** — bí danh của [`Machine::mail_len`] (tên dùng trong test/brief KT-29:
+    /// "mailbox_len(hart)"); hart ngoài mô hình ⇒ `InvalidArgument`.
+    pub fn mailbox_len(&self, hart: u16) -> Result<usize, KError> {
+        self.mail_len(hart)
+    }
+
+    /// **KT-29** — làm tươi trường công bố từ `HartSched` (một luồng, tất định): sau mỗi op
+    /// `published[h] = { idle: sched[h].idle(), cur_prio: sched[h].cur_prio() }`.
+    fn refresh_published(&mut self) {
+        for h in 0..self.sched.len() {
+            self.published[h] = Published {
+                idle: self.sched[h].idle(),
+                cur_prio: self.sched[h].cur_prio(),
+            };
+        }
     }
 
     fn hart_index(&self, hart: u16) -> usize {
@@ -2340,8 +2501,15 @@ impl Machine {
     /// `dispatch(hart)`: đưa TCB đang chạy (`Running`) về `Ready` (enqueue lại cuối hàng
     /// cùng mức) rồi chọn TCB mức cao nhất (`Ready → Running`). Trả `None` khi hàng rỗng
     /// (hart rảnh). Mọi chuyển trạng thái đi qua [`Machine::transition_tcb`].
+    ///
+    /// **KT-29**: với mô hình nhiều hart, sau `dispatch` chạy **một** vòng push migration
+    /// (DoD 3: "sau mỗi op … và/hoặc `dispatch`") — `dispatch` của `n = 1` **không** đổi gì.
     pub fn dispatch(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
         let got = self.dispatch_step(hart)?;
+        if self.sched.len() > 1 {
+            self.refresh_published();
+            let _ = self.push_step();
+        }
         self.sched_after_op(false);
         Ok(got)
     }
@@ -2427,7 +2595,17 @@ impl Machine {
     /// khỏi hàng chờ của object (endpoint/Reply/notification/address) rồi `→ Ready`.
     /// **Không** phát lại Call/Send/Recv (như `Resume`). TCB `suspended` ⇒ vẫn `Ready` nhưng
     /// **không** vào ready queue (D2-33: `Ready + suspended`). TCB đã `Ready` ⇒ no-op.
+    ///
+    /// **KT-29 — wake chéo hart** (thiết kế §4.8 `:342`, D2-53 Q1): với mô hình nhiều hart,
+    /// nếu `home(tcb) != current_hart()` thì **không** ghi trạng thái hart khác (luật 3) mà gửi
+    /// `MailboxMsg::Wake(tcb)` vào hộp thư của `home`; hart đích đánh thức khi xử lý hộp thư và
+    /// **chỉ preempt** nếu ưu tiên của TCB **>** `published.cur_prio` của đích. Cùng hart (và
+    /// `n = 1`) giữ nguyên đường cũ.
     pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        if self.sched.len() > 1 && info.home != self.current_hart {
+            return self.post_mail(info.home, MailboxMsg::Wake(tcb));
+        }
         self.wake_step(tcb)?;
         self.sched_after_op(false);
         Ok(())
@@ -2474,15 +2652,26 @@ impl Machine {
     /// Gửi một message vào hộp thư của hart (không chờ).
     ///
     /// - hart không tồn tại ⇒ `InvalidArgument`; `HART_COUNT == 1` (K1b, D2-49(a)) và message
-    ///   `Migrate` ⇒ `NotSupported` — **không** im lặng bỏ (push migration thuộc K1c);
+    ///   `Migrate` ⇒ `NotSupported` — **không** im lặng bỏ (giữ nguyên ngữ nghĩa KT-22);
+    /// - **KT-29**: với ≥ 2 hart, `Migrate { tcb, to_hart }` được kiểm **trước** khi vào hàng:
+    ///   `to_hart` phải là hart có thật, TCB phải sống và `Ready` (không `suspended`),
+    ///   `to_hart != home(tcb)`, và cả `home` lẫn `to_hart` nằm trong affinity của TCB; sai ⇒
+    ///   `InvalidArgument` (message **không** vào hàng);
     /// - hộp thư đầy ⇒ `Busy` (backpressure §4.17) — message **không** bị ghi đè/mất, người gửi
     ///   xử lý hộp thư (hoặc gọi [`Machine::process_mail`]) rồi thử lại.
     pub fn post_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
         if hart as usize >= self.mail.len() {
             return Err(KError::InvalidArgument);
         }
-        if matches!(msg, MailboxMsg::Migrate { .. }) && self.mail.len() == 1 {
-            return Err(KError::NotSupported);
+        if let MailboxMsg::Migrate { tcb, to_hart } = msg {
+            if self.mail.len() == 1 {
+                return Err(KError::NotSupported);
+            }
+            // `Migrate` phải đi vào hộp thư của **hart đích** (thiết kế §4.8: X đẩy sang Y).
+            if hart != to_hart {
+                return Err(KError::InvalidArgument);
+            }
+            self.check_migrate_request(tcb, to_hart)?;
         }
         let posted = match self.mail[hart as usize].try_push(msg) {
             Ok(()) => Ok(()),
@@ -2492,12 +2681,35 @@ impl Machine {
         posted
     }
 
+    /// **KT-29** — kiểm một yêu cầu `Migrate` **trước** khi vào hộp thư (một cửa dùng chung cho
+    /// `post_mail` và push nội bộ): hart đích có thật, TCB sống/`Ready`/không treo,
+    /// `to_hart != home`, `home` và `to_hart` đều trong affinity. Vi phạm ⇒ `InvalidArgument`.
+    fn check_migrate_request(&self, tcb: ObjId, to_hart: u16) -> Result<(), KError> {
+        if to_hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        let info = self.tcb_info_obj(tcb)?;
+        if info.state != TcbState::Ready || info.suspended {
+            return Err(KError::InvalidArgument);
+        }
+        if info.home == to_hart {
+            return Err(KError::InvalidArgument);
+        }
+        let can = (1u64 << info.home) | (1u64 << to_hart);
+        if info.affinity & can != can {
+            return Err(KError::InvalidArgument);
+        }
+        Ok(())
+    }
+
     /// Xử lý (drain) hộp thư của hart theo **FIFO**; mỗi message áp dụng **đúng một lần**:
     ///
-    /// - `Wake(tcb)` — đánh thức TCB đang chặn/ngủ (idempotent: TCB khác `Ready` ⇒ no-op);
+    /// - `Wake(tcb)` — đánh thức TCB đang chặn/ngủ có `home == hart` (idempotent: TCB khác
+    ///   `Ready` ⇒ no-op); **KT-29**: preempt nếu ưu tiên > `cur_prio` công bố;
     /// - `Reschedule` — `dispatch` hart một lượt;
     /// - `Stop` — bật cờ `stopped` của hart (mô hình; không đổi hàng chờ);
-    /// - `Migrate` — không thể có trong hàng ở K1b (đã bị `post_mail` từ chối); di trú thật K1c.
+    /// - **KT-29** `Migrate { tcb, to_hart }` — di trú thật nếu TCB còn `Ready`/trong affinity;
+    ///   `n = 1` thì `post_mail` đã từ chối (`NotSupported`).
     ///
     /// Trả số message đã xử lý. Hộp thư rỗng sau khi xong (drain tới cạn) ⇒ không có trạng thái
     /// trung gian "message đã pop nhưng chưa áp dụng".
@@ -2505,12 +2717,7 @@ impl Machine {
         if hart as usize >= self.mail.len() {
             return Err(KError::InvalidArgument);
         }
-        let mut n = 0usize;
-        while let Some(msg) = self.mail[hart as usize].pop() {
-            self.apply_mail(hart, msg);
-            self.mail[hart as usize].record(msg);
-            n += 1;
-        }
+        let (n, _) = self.drain_mail_fifo(hart);
         self.sched_after_op(false);
         Ok(n)
     }
@@ -2551,15 +2758,34 @@ impl Machine {
 
     /// Áp dụng **một** message lên mô hình — infallible (message không hợp lệ là **no-op** hoặc
     /// `debug_assert`), để drain không để lại trạng thái nửa vời.
+    ///
+    /// **KT-29**: `Wake` chỉ áp dụng cho TCB có `home == hart` (đúng hart đích; message `Wake`
+    /// gửi sai hart là no-op) và — với ≥ 2 hart — **preempt** hart đích khi ưu tiên TCB được
+    /// đánh thức **>** `cur_prio` công bố (thiết kế §4.8 `:342`, DoD 5). `Migrate` di trú thật
+    /// khi hart đích xử lý (xem [`Machine::apply_migrate`]).
     fn apply_mail(&mut self, hart: u16, msg: MailboxMsg) {
         match msg {
             MailboxMsg::Wake(tcb) => {
-                let state = match self.tcb_state(tcb) {
-                    Ok(s) => s,
+                let info = match self.tcb_info_obj(tcb) {
+                    Ok(i) => i,
                     Err(_) => return,
                 };
-                if state.is_blocked() || matches!(state, TcbState::Sleeping { .. }) {
+                if info.home != hart {
+                    return;
+                }
+                if info.state.is_blocked() || matches!(info.state, TcbState::Sleeping { .. }) {
                     let _ = self.wake_step(tcb);
+                }
+                if self.sched.len() > 1 {
+                    let eff = match self.effective_priority(tcb) {
+                        Ok(p) => p,
+                        Err(_) => return,
+                    };
+                    if eff > self.sched[hart as usize].cur_prio()
+                        && self.dispatch_step(hart).is_err()
+                    {
+                        debug_assert!(false, "Wake: preempt lỗi (bất biến scheduler vỡ)");
+                    }
                 }
             }
             MailboxMsg::Reschedule => {
@@ -2568,11 +2794,150 @@ impl Machine {
                 }
             }
             MailboxMsg::Stop => self.mail[hart as usize].set_stopped(),
-            MailboxMsg::Migrate { .. } => {
-                // K1b: `post_mail` đã từ chối `Migrate` trên 1 hart ⇒ không thể ở đây.
-                debug_assert!(false, "Migrate không được nhận trên 1 hart (K1c)");
+            MailboxMsg::Migrate { tcb, to_hart } => {
+                if to_hart != hart {
+                    debug_assert!(false, "Migrate nằm sai hộp thư hart đích");
+                    return;
+                }
+                self.apply_migrate(tcb, to_hart);
             }
         }
+    }
+
+    /// **KT-29** — thân di trú một TCB sang `to` (đã qua `check_migrate_request` khi vào hàng;
+    /// trạng thái có thể đổi giữa lúc gửi và lúc xử lý nên kiểm lại): TCB còn sống, `Ready`,
+    /// không treo, `home != to`, `to` trong affinity ⇒ gỡ khỏi hàng nguồn, đặt `home = to`,
+    /// enqueue **cuối** hàng mức hiện tại của hart đích, `migrate_count += 1`. Không thoả ⇒
+    /// no-op (message vẫn được đếm đã xử lý; không mất TCB).
+    fn apply_migrate(&mut self, tcb: ObjId, to: u16) -> bool {
+        let info = match self.tcb_info_obj(tcb) {
+            Ok(i) => i,
+            Err(_) => return false,
+        };
+        if info.state != TcbState::Ready
+            || info.suspended
+            || info.home == to
+            || to as usize >= self.sched.len()
+            || info.affinity & (1u64 << to) == 0
+        {
+            return false;
+        }
+        self.sched_remove_all(tcb);
+        let doi = self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.home = to;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        });
+        if doi.is_err() {
+            return false;
+        }
+        if self.sched_sync(tcb).is_err() {
+            return false;
+        }
+        self.migrate_count += 1;
+        true
+    }
+
+    /// **KT-29** — một vòng **push migration** tất định (thiết kế §4.8 `:338-342`, D2-53 Q2).
+    ///
+    /// Với **mỗi** hart nguồn `x` theo thứ tự tăng dần: nếu hart `x` có **> 1** TCB `Ready` ở
+    /// mức cao nhất và tồn tại hart `y != x` **trong affinity** của TCB **cuối hàng** mức đó mà
+    /// `published(y).idle` ⇒ chọn `y` **nhỏ nhất** và đẩy **đúng một** TCB (TCB cuối hàng mức
+    /// Ready cao nhất) qua `MailboxMsg::Migrate` vào hộp thư `y`. Cuối vòng, mỗi hart nhận
+    /// `Migrate` xử lý message **trong cùng bước** (không có trạng thái in-flight — rủi ro (a)
+    /// K1C-PLAN §5 KT-29): gỡ khỏi hàng nguồn, `home = y`, enqueue **cuối** hàng `y`,
+    /// `migrate_count += 1`.
+    ///
+    /// Không work stealing: chỉ hart **nguồn** quyết định đẩy; hart đích không tự kéo. Không
+    /// bao giờ chọn `current`/TCB `Running` (chỉ lấy từ ready queue). Hộp thư đầy ⇒ **bỏ** yêu
+    /// cầu (backpressure, không mất TCB). Trả số TCB di trú thành công.
+    fn push_step(&mut self) -> usize {
+        let n = self.sched.len();
+        if n <= 1 {
+            return 0;
+        }
+        let mut nhan = vec![false; n];
+        for x in 0..n {
+            let Some(top) = self.sched[x].highest_priority() else {
+                continue;
+            };
+            // Chốt Q2: chỉ đẩy khi **cùng mức Ready cao nhất** có > 1 TCB (giữ ít nhất một).
+            if self.sched[x].len_at(top) < 2 {
+                continue;
+            }
+            let Some(cand) = self.sched[x].last_at(top) else {
+                continue;
+            };
+            let Ok(info) = self.tcb_info_obj(cand) else {
+                continue;
+            };
+            let mut dest = None;
+            for y in 0..n {
+                if y == x || info.affinity & (1u64 << y) == 0 {
+                    continue;
+                }
+                if self.published[y].idle {
+                    dest = Some(y as u16);
+                    break;
+                }
+            }
+            let Some(y) = dest else {
+                continue;
+            };
+            let msg = MailboxMsg::Migrate {
+                tcb: cand,
+                to_hart: y,
+            };
+            if self.mail[y as usize].try_push(msg).is_ok() {
+                nhan[y as usize] = true;
+            }
+        }
+        let mut applied = 0usize;
+        for (y, co_nhan) in nhan.iter().enumerate() {
+            if !*co_nhan {
+                continue;
+            }
+            // **Drain FIFO** (reviewer-kt29 mục 1): `Migrate` không bị rút từ giữa hàng; mọi
+            // message đến trước (Wake/Reschedule/Stop) được xử lý + ghi log **trước** nó, đúng
+            // thứ tự KT-22. `Migrate` được đẩy vào **cuối** hàng nên drain tới cạn là đủ.
+            applied += self.drain_mail_fifo(y as u16).1;
+        }
+        applied
+    }
+
+    /// **KT-29** — drain hộp thư hart theo **FIFO** (dùng chung cho [`Machine::process_mail`]
+    /// và cuối vòng push): pop từng message, áp dụng đúng một lần, ghi log theo thứ tự; trả
+    /// `(số message đã xử lý, số TCB di trú thành công)`.
+    fn drain_mail_fifo(&mut self, hart: u16) -> (usize, usize) {
+        let mut n = 0usize;
+        let mut di_tru = 0usize;
+        while let Some(msg) = self.mail[hart as usize].pop() {
+            match msg {
+                MailboxMsg::Migrate { tcb, to_hart } => {
+                    if to_hart != hart {
+                        debug_assert!(false, "Migrate nằm sai hộp thư hart đích");
+                    } else if self.apply_migrate(tcb, to_hart) {
+                        di_tru += 1;
+                    }
+                }
+                other => self.apply_mail(hart, other),
+            }
+            self.mail[hart as usize].record(msg);
+            n += 1;
+        }
+        (n, di_tru)
+    }
+
+    /// **KT-29** — chạy **một** vòng push migration công khai (model API `[TK]`, không phải
+    /// ABI). `n = 1` ⇒ `Ok(0)` (không có hart đích; `Migrate` vẫn `NotSupported`). Dùng cho
+    /// test tất định; đường tự động là `dispatch` và `preempt_every_step`.
+    pub fn push_migration(&mut self) -> Result<usize, KError> {
+        self.refresh_published();
+        let n = self.push_step();
+        self.sched_after_op(false);
+        Ok(n)
     }
 
     /// Đồng bộ **một** TCB với ready queue sau khi `state`/`suspended`/`priority`/`home`/
@@ -2630,6 +2995,11 @@ impl Machine {
     /// KT-19 DoD 3+4: sau **mỗi** public op — nếu bật `preempt_every_step` thì ép preempt
     /// (`dispatch` đưa `Running` về `Ready` rồi chọn lại), rồi tự kiểm bất biến
     /// [`Machine::check_sched`]. Vi phạm là lỗi mô hình: panic ở build có debug assertion.
+    ///
+    /// **KT-29**: (i) làm tươi `published` từ scheduler; (ii) khi `preempt_every_step` bật, sau
+    /// vòng dispatch chạy **một** vòng push migration (DoD 3 — "sau mỗi op khi
+    /// `preempt_every_step` bật"); (iii) với `n > 1` kiểm thêm [`Machine::check_smp`]. `n = 1`
+    /// giữ nguyên chi phí/ngữ nghĩa cũ (check_smp trùng `check_sched` nên chỉ chạy khi n > 1).
     fn sched_after_op(&mut self, preempt: bool) {
         if preempt && self.preempt_every_step {
             for h in 0..self.sched.len() {
@@ -2638,9 +3008,19 @@ impl Machine {
                     return;
                 }
             }
+            self.refresh_published();
+            if self.sched.len() > 1 {
+                let _ = self.push_step();
+            }
         }
+        self.refresh_published();
         if let Err(e) = self.check_sched() {
             debug_assert!(false, "bất biến scheduler vỡ sau public op: {e}");
+        }
+        if self.sched.len() > 1 {
+            if let Err(e) = self.check_smp() {
+                debug_assert!(false, "bất biến SMP vỡ sau public op: {e}");
+            }
         }
         if let Err(e) = self.check_mailboxes() {
             debug_assert!(false, "bất biến mailbox vỡ sau public op: {e}");
@@ -3420,6 +3800,226 @@ impl Machine {
         self.check_sc_refs()?;
         self.check_budget()?;
         Ok(())
+    }
+
+    /// **KT-29** — bất biến **SMP** sau **mỗi** op (K1C-PLAN §5 KT-29 DoD 6), tách khỏi
+    /// `check_sched` để kiểm **riêng** miền hart (DoD 2 kiểu KT-23). Năm phần:
+    ///
+    /// 1. **không TCB nào `Running` trên 2 hart** (và `current` mỗi hart trùng `Running{hart}`);
+    /// 2. **bảo toàn TCB**: số TCB `Ready` (không treo)/`Running` = số TCB trong 256 hàng +
+    ///    `current` + số yêu cầu `Migrate` đang chờ. Mô hình **không** có in-flight (rủi ro (a)
+    ///    KT-29): message `Migrate` là **yêu cầu** còn TCB vẫn nằm hàng nguồn, nên hạng tử
+    ///    mailbox được đếm ở **cả hai vế** (đẳng thức rút gọn `hàng + current = Ready/Running`,
+    ///    vẫn bắt thừa/thiếu/nhân bản); nội dung từng yêu cầu được kiểm riêng;
+    /// 3. `home` khớp hart đang giữ `current`/hàng;
+    /// 4. `published.idle ⇔ current == None` và `published.cur_prio == cur_prio` thật;
+    /// 5. không TCB nào nằm trong hàng của hart **ngoài** affinity của nó; `home` luôn trong
+    ///    affinity; mỗi TCB tối đa một chỗ (một hàng hoặc một `current`).
+    pub fn check_smp(&self) -> Result<(), String> {
+        let n = self.sched.len();
+        if n == 0 {
+            return Err("mô hình không có hart nào".to_string());
+        }
+        if n > MAX_HARTS as usize {
+            return Err(format!("số hart {n} vượt MAX_HARTS {MAX_HARTS}"));
+        }
+        if self.mail.len() != n || self.published.len() != n {
+            return Err(format!(
+                "số hộp thư {} / published {} khác số hart {n}",
+                self.mail.len(),
+                self.published.len()
+            ));
+        }
+        // (4) published phải là ảnh trung thực của scheduler (idle ⇔ current == None).
+        for h in 0..n {
+            let p = self.published[h];
+            let idle = self.sched[h].idle();
+            let prio = self.sched[h].cur_prio();
+            if p.idle != idle {
+                return Err(format!(
+                    "hart {h}: published.idle={} nhưng current={:?}",
+                    p.idle,
+                    self.sched[h].current()
+                ));
+            }
+            if p.cur_prio != prio {
+                return Err(format!(
+                    "hart {h}: published.cur_prio={} nhưng cur_prio thật {prio}",
+                    p.cur_prio
+                ));
+            }
+        }
+        // (5) + (3): mỗi TCB trong hàng thuộc đúng hart home, trong affinity, không trùng.
+        let mut hang_cua: Vec<Option<usize>> = vec![None; self.objects.len() + 1];
+        let mut queued_total = 0usize;
+        for h in 0..n {
+            self.sched[h].for_each_queued(|_prio, tcb| {
+                let info = self
+                    .tcb_info_obj(tcb)
+                    .map_err(|e| format!("TCB {tcb} trong hàng hart {h} không đọc được: {e:?}"))?;
+                if info.state != TcbState::Ready || info.suspended {
+                    return Err(format!(
+                        "TCB {tcb} trong hàng hart {h} nhưng state {} (suspended={})",
+                        info.state.name(),
+                        info.suspended
+                    ));
+                }
+                if info.home as usize != h {
+                    return Err(format!(
+                        "TCB {tcb} home {} nhưng nằm trong hàng hart {h}",
+                        info.home
+                    ));
+                }
+                if info.affinity & (1u64 << h) == 0 {
+                    return Err(format!("TCB {tcb} ở hart {h} ngoài affinity"));
+                }
+                let slot = hang_cua
+                    .get_mut(tcb as usize)
+                    .ok_or_else(|| format!("TCB {tcb} ngoài bảng object"))?;
+                if slot.replace(h).is_some() {
+                    return Err(format!("TCB {tcb} nằm trong hàng nhiều hart"));
+                }
+                queued_total += 1;
+                Ok(())
+            })?;
+        }
+        // (1) + (3): `current` mỗi hart đúng `Running{hart}`, `home == hart`, không trùng.
+        let mut running_on: Vec<Option<usize>> = vec![None; self.objects.len() + 1];
+        let mut current_total = 0usize;
+        for h in 0..n {
+            let Some(cur) = self.sched[h].current() else {
+                continue;
+            };
+            let info = self
+                .tcb_info_obj(cur)
+                .map_err(|e| format!("current {cur} của hart {h} không đọc được: {e:?}"))?;
+            if !matches!(info.state, TcbState::Running { hart } if hart as usize == h) {
+                return Err(format!(
+                    "current của hart {h} là TCB {cur} state {}",
+                    info.state.name()
+                ));
+            }
+            if info.home as usize != h {
+                return Err(format!(
+                    "TCB {cur} Running{{hart={h}}} nhưng home {}",
+                    info.home
+                ));
+            }
+            let slot = running_on
+                .get_mut(cur as usize)
+                .ok_or_else(|| format!("current {cur} ngoài bảng object"))?;
+            if slot.replace(h).is_some() {
+                return Err(format!("TCB {cur} Running trên nhiều hart"));
+            }
+            if hang_cua.get(cur as usize).copied().flatten().is_some() {
+                return Err(format!("TCB {cur} Running nhưng vẫn nằm trong hàng"));
+            }
+            current_total += 1;
+        }
+        // (2): mọi TCB sống — `Ready` (không treo) ⇔ đúng một chỗ; `Running` ⇔ `current`.
+        let mut ready_or_running = 0usize;
+        for (idx, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let obj = (idx as u32) + 1;
+            let info = self
+                .tcb_info_obj(obj)
+                .map_err(|e| format!("TCB sống {obj} không đọc được: {e:?}"))?;
+            let hang = hang_cua.get(obj as usize).copied().flatten();
+            match info.state {
+                TcbState::Ready => {
+                    if info.suspended {
+                        if hang.is_some() {
+                            return Err(format!("TCB {obj} Ready+suspended nhưng nằm trong hàng"));
+                        }
+                    } else {
+                        ready_or_running += 1;
+                        if hang != Some(info.home as usize) {
+                            return Err(format!(
+                                "TCB {obj} Ready nhưng không nằm trong hàng hart home {}",
+                                info.home
+                            ));
+                        }
+                    }
+                }
+                TcbState::Running { hart } => {
+                    ready_or_running += 1;
+                    if running_on.get(obj as usize).copied().flatten() != Some(hart as usize) {
+                        return Err(format!(
+                            "TCB {obj} Running{{hart={hart}}} nhưng không phải current"
+                        ));
+                    }
+                }
+                _ => {
+                    if hang.is_some() {
+                        return Err(format!(
+                            "TCB {obj} state {} nhưng vẫn nằm trong hàng",
+                            info.state.name()
+                        ));
+                    }
+                }
+            }
+        }
+        // (2) phần mailbox: đếm yêu cầu `Migrate` đang chờ + kiểm nội dung từng yêu cầu.
+        // Mô hình **không in-flight** nên hạng tử `pending` triệt tiêu ở hai vế; phần kiểm
+        // thật sự là **nội dung** yêu cầu và "≤ 1 yêu cầu/TCB" (reviewer-kt29 mục 3).
+        let mut pending = 0usize;
+        let mut yeu_cau_cua: Vec<u8> = vec![0; self.objects.len() + 1];
+        for (y, hb) in self.mail.iter().enumerate() {
+            for msg in hb.iter() {
+                let MailboxMsg::Migrate { tcb, to_hart } = *msg else {
+                    continue;
+                };
+                pending += 1;
+                if to_hart as usize != y {
+                    return Err(format!(
+                        "Migrate {{ tcb: {tcb}, to_hart: {to_hart} }} nằm trong hộp thư hart {y}"
+                    ));
+                }
+                if to_hart as usize >= n {
+                    return Err(format!("Migrate tới hart {to_hart} ngoài mô hình"));
+                }
+                let info = self
+                    .tcb_info_obj(tcb)
+                    .map_err(|e| format!("Migrate tới TCB {tcb} không đọc được: {e:?}"))?;
+                if !(matches!(info.state, TcbState::Ready | TcbState::Running { .. })) {
+                    return Err(format!(
+                        "Migrate tới TCB {tcb} state {} (phải Ready/Running)",
+                        info.state.name()
+                    ));
+                }
+                if info.home == to_hart {
+                    return Err(format!("Migrate TCB {tcb}: home == to_hart"));
+                }
+                let can = (1u64 << info.home) | (1u64 << to_hart);
+                if info.affinity & can != can {
+                    return Err(format!("Migrate TCB {tcb}: hart ngoài affinity"));
+                }
+                if let Some(dem) = yeu_cau_cua.get_mut(tcb as usize) {
+                    *dem += 1;
+                    if *dem > 1 {
+                        return Err(format!(
+                            "TCB {tcb} có nhiều hơn một yêu cầu Migrate đang chờ"
+                        ));
+                    }
+                }
+            }
+        }
+        // (2) đẳng thức bảo toàn: hạng tử mailbox đếm ở **cả hai vế** (không in-flight).
+        if ready_or_running + pending != queued_total + current_total + pending {
+            return Err(format!(
+                "bảo toàn TCB vỡ: Ready/Running={ready_or_running} + migrate chờ={pending} \
+                 != hàng={queued_total} + current={current_total} + migrate chờ={pending}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// **KT-29** — bí danh của [`Machine::check_smp`] (tên dùng trong test/brief KT-29:
+    /// "check_harts"): cùng một bộ bất biến, không nới lỏng.
+    pub fn check_harts(&self) -> Result<(), String> {
+        self.check_smp()
     }
 
     /// **KT-23** — miền bất biến **tham chiếu `SchedContext` + donation** (tách nguyên văn từ
@@ -6784,5 +7384,37 @@ mod tests {
             .check_waitaddr()
             .expect_err("phải bắt waiter của TCB đã chết");
         assert!(e.contains("chết") || e.contains("không tồn tại"), "{e}");
+    }
+
+    /// **KT-29** — `check_smp` không là checker rỗng: `published` lệch trạng thái thật, TCB
+    /// nằm trong hàng **sai hart**, và yêu cầu `Migrate` sai (home == đích) đều bị bắt.
+    #[test]
+    fn check_smp_bat_published_lech_va_migrate_sai() {
+        // (a) published.idle lệch `current == None`.
+        let mut m = Machine::with_harts(2);
+        let tcb = m.add_kernel_object(ObjType::Tcb);
+        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.check_smp().expect("mô hình sạch");
+        m.published[0].idle = false;
+        let e = m.check_smp().expect_err("phải bắt published lệch");
+        assert!(e.contains("published"), "{e}");
+        m.published[0].idle = true;
+        m.check_smp().expect("khôi phục thì sạch");
+
+        // (b) TCB Ready home 0 bị đặt thêm vào hàng hart 1.
+        m.sched[1].enqueue(tcb, 0);
+        let e = m.check_smp().expect_err("phải bắt hàng sai hart");
+        assert!(e.contains("hart") || e.contains("hàng"), "{e}");
+        m.sched[1].remove_all(tcb);
+        m.check_smp().expect("gỡ bản sao thì sạch");
+
+        // (c) yêu cầu Migrate có `to_hart == home` (không di trú được) trong hộp thư hart 0.
+        m.mail[0]
+            .try_push(MailboxMsg::Migrate { tcb, to_hart: 0 })
+            .expect("hộp thư còn chỗ");
+        let e = m.check_smp().expect_err("phải bắt Migrate home == to_hart");
+        assert!(e.contains("home == to_hart"), "{e}");
+        assert!(matches!(m.mail[0].pop(), Some(MailboxMsg::Migrate { .. })));
+        m.check_smp().expect("gỡ yêu cầu sai thì sạch");
     }
 }

@@ -15,10 +15,30 @@
 //! `pick` là **O(1)**: tìm word bitmap cao nhất khác 0 rồi `leading_zeros` trên 64 bit —
 //! tối đa 4 bước, **không** quét 256 hàng. Cùng mức lấy phần tử đầu hàng (`VecDeque::front`)
 //! nên đúng FIFO; không dùng `HashMap`/thời gian thực nên quỹ đạo tất định theo seed.
+//!
+//! **KT-29 — SMP**: [`Published`] là **trường công bố** mỗi hart (`idle: bool`, `cur_prio: u8`,
+//! thiết kế §4.8 `:338-342`) để hart khác **đọc** khi quyết định push migration — luật 3 §4.16
+//! cấm **ghi** trạng thái hart khác, chỉ đọc trường công bố. [`HartSched::last_at`] cho push
+//! lấy TCB **cuối hàng** mức cao nhất (chốt Q2: đẩy cuối hàng, không chen đầu).
 
 use std::collections::VecDeque;
 
 use crate::kobj::ObjId;
+
+/// **KT-29** — trạng thái một hart **công bố** cho các hart khác đọc (thiết kế §4.8/§4.16 luật
+/// 3; **D2-53 Q1/Q2**): `idle` ⇔ hart không có `current`; `cur_prio` là mức ưu tiên của TCB
+/// đang chạy (`0` khi rảnh). Model-only `[TK]`, không phải spec/ABI.
+///
+/// Mô hình một luồng **không** có atomic: `Machine` giữ `Vec<Published>` và làm tươi nó từ
+/// `HartSched` sau **mỗi** public op, nên `published.idle` luôn khớp `current == None` (bất biến
+/// `check_smp`); `Machine::publish` là API tự công bố của hart đang chạy (guard luật 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Published {
+    /// Hart không có TCB đang chạy (`current == None`).
+    pub idle: bool,
+    /// Mức ưu tiên của TCB đang chạy; `0` khi rảnh.
+    pub cur_prio: u8,
+}
 
 /// Số mức ưu tiên của một hart (thiết kế §4.8: "256 mức `ilist` + bitmap").
 pub const MAX_PRIORITY: usize = 256;
@@ -84,6 +104,12 @@ impl HartSched {
     /// Số TCB ở một mức (dùng cho test/bất biến "bucket khớp priority").
     pub fn len_at(&self, prio: u8) -> usize {
         self.queues[prio as usize].len()
+    }
+
+    /// **KT-29** — TCB **cuối hàng** mức `prio` (chốt Q2: push đẩy TCB cuối hàng mức Ready cao
+    /// nhất, không chen đầu). `None` nếu mức rỗng.
+    pub fn last_at(&self, prio: u8) -> Option<ObjId> {
+        self.queues[prio as usize].back().copied()
     }
 
     /// Mức cao nhất đang có TCB — `None` nếu hàng rỗng.

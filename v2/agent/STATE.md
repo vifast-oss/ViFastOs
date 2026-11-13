@@ -6,13 +6,41 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-28 **xong mã + test** (**WaitOnAddress**: bảng băm `(frame, offset)` `WAITADDR_BUCKETS = 64` hằng model `[TK]`, `WaitAddr` đọc giá trị + xếp hàng **một lần**, **không timeout** (D2-53 Q4), `WakeAddr(n)` tối đa n theo FIFO, không mất đánh thức; model-only D2-53 Q3). KT-27 DONE (`093b986` lật), KT-26 DONE (`e5350f0`), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
-Bước          : 0/8 — **DONE mã**, commit `ff94538` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
+Task          : KT-29 **xong mã + test** (**SMP mô hình tất định 1/2/4/8 + push migration**: `with_harts`, `Published { idle, cur_prio }` + guard luật 3, push **cuối hàng** mức Ready cao nhất **≤1 TCB/hart/bước** chỉ khi `published.idle`/đúng affinity, qua `Mailbox::Migrate`, `migrate_count`, wake chéo hart qua `Wake` + ngưỡng `cur_prio`, `check_smp`/`check_harts`, driver L1 theo `VIFAST_SMP`; model-only D2-53 Q1/Q2). KT-28 DONE (`dd4761e` lật), KT-27 DONE, KT-26 DONE, KT-25 DONE, KT-24 DONE
+Bước          : 0/8 — **DONE mã**, chờ review độc lập (`reviewer-kt29`); chưa commit/push
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 427 test/56 suite** (baseline 413/55 ⇒ +14 = 12 `kt28_waitaddr` + 2 unit `check_waitaddr`), L1 1.000 seed/999 trace **704 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt28-gate-fast.log`)
-Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt28_waitaddr` — **PASS 12/12** (`JOURNAL/kt28-miri.log`, 105 s) + `--lib check_waitaddr` **2/2** (`JOURNAL/kt28-miri-lib.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
-Việc dở       : chờ verdict `reviewer-kt28`; sau verdict: commit `[KT-28]` + push, không lật QUEUE. Task kế: **KT-29** (SMP/push) sau khi Agent 0 lật KT-28
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 441 test/58 suite** (baseline 427/56 ⇒ +14 = 12 `kt29_smp` + 1 unit `check_smp` + 1 driver `l1_k1c`), L1 1.000 seed/999 trace **756 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt29-gate-fast.log`)
+Miri          : `./v2/bin/v2 miri test --test kt29_smp` — **PASS 12/12** (`JOURNAL/kt29-miri.log`, 257,92 s; fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing)
+Việc dở       : chờ verdict `reviewer-kt29` (đã báo lead); sau verdict: commit `[KT-29]` + push, không lật QUEUE. Task kế: **KT-30** (`vifast-sync` MCS lock + Mailbox MPSC) sau khi Agent 0 lật KT-29
 ```
+
+## KT-29 — SMP mô hình tất định 1/2/4/8 + push migration (K1c, D2-53 Q1/Q2)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-29) · HEAD `dd4761e` ([KT-28] DONE) ·
+`rev-list --count HEAD..origin/main` = 0 · baseline `gate --fast` PASS **427 test/56 suite**,
+L1 **725 ms** (`JOURNAL/kt29-baseline-gate-fast.log`) · working tree có thay đổi `viscript/` của
+tab khác — **không chạm**, chỉ stage `v2/`.
+
+**Mục tiêu**: mô hình **N hart tất định** (không thread/QEMU) 1/2/4/8; mỗi hart công bố
+`idle`/`cur_prio`; push migration **cuối hàng mức Ready cao nhất**, **≤1 TCB/hart/bước**, chỉ khi
+`published.idle`, đúng affinity, hart đích **nhỏ nhất**; **không** work stealing; wake chéo hart
+qua `Mailbox::Wake` + ngưỡng `published.cur_prio`; guard luật 3.
+
+**Không** làm: `vifast-sync`/MCS lock/MPSC (KT-30), IPC/Notification/WaitAddr, `spec/`,
+`vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không dependency/`unsafe`/
+`#[allow]`/`#[ignore]`; không đổi ABI; không thread thật/QEMU.
+
+**Bước**: (1) baseline + đỏ `tests/kt29_smp.rs` (E0432/E0599) + probe ngữ nghĩa cũ; (2)
+`Published`/`last_at` (`sched.rs`), `iter` (`mailbox.rs`) + drain FIFO `Migrate`; (3) `with_harts`,
+`current_hart`/`set_current_hart`, `publish`/`published` + guard luật 3, `migrate_count`,
+`mailbox_len`; (4) `push_step`/`push_migration`/`apply_migrate` + `post_mail` kiểm Migrate; (5)
+wake chéo hart + preempt theo `cur_prio`; (6) `check_smp`/`check_harts` + `sched_after_op`/`dispatch`;
+(7) test 11 + fuzz 1.000×64×4 + driver `l1_k1c` + `nightly --l1`; (8) doc `k1c-smp.md`, gate,
+Miri, JOURNAL, review, commit.
+
+**Kết quả**: gate PASS **441 test/58 suite**, L1 **756 ms**; Miri `kt29_smp` **12/12**
+(243,85 s); `nightly --l1 --seeds 200 --smp 1,2,4,8` PASS (800 lượt); test đỏ
+`JOURNAL/kt29-red-compile.log` + `kt29-red-semantics.log`; chi tiết `JOURNAL/kt29-journal.md`.
 
 ## KT-28 — WaitOnAddress: bảng băm `(frame, offset)`, Wait đọc giá trị + xếp hàng một lần, `WakeAddr(n)` (K1c, D2-53 Q3/Q4)
 

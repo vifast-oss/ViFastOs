@@ -1,0 +1,20 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.04s
+     Running tests/kt29_smp.rs (v2/target/debug/deps/kt29_smp-f7202e4e40d6c326)
+
+running 12 tests
+test with_harts_1_2_4_8_va_mac_dinh_mot_hart ... ok
+test push_tu_dong_khi_preempt_moi_buoc ... ok
+test push_dung_mot_tcb_cuoi_hang_qua_migrate ... ok
+test post_migrate_qua_hop_thu_di_tru_that ... ok
+test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... ok
+test push_vao_cuoi_hang_cua_dich ... ok
+test published_idle_cur_prio_va_guard_luat_3 ... ok
+test wake_cheo_hart_qua_hop_thu_va_nguong_preempt ... ok
+test push_chi_khi_dich_idle_va_trong_affinity ... ok
+test push_khong_day_tcb_running_va_dung_muc_cao_nhat ... ok
+test push_drain_fifo_va_mot_tcb_moi_hart_nguon ... ok
+test fuzz_smp_tat_dinh_bat_bien ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.93s
+

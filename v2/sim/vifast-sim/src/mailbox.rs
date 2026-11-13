@@ -202,6 +202,13 @@ impl HartMailbox {
         self.mb.pop_front()
     }
 
+    /// Duyệt message **đang nằm trong hàng** theo FIFO (không pop, không đổi bộ đếm).
+    ///
+    /// **KT-29** dùng để `check_smp` đếm/kiểm message `Migrate` đang chờ.
+    pub fn iter(&self) -> impl Iterator<Item = &MailboxMsg> {
+        self.mb.iter()
+    }
+
     /// Ghi message **vừa xử lý xong** vào nhật ký (theo thứ tự drain).
     pub fn record(&mut self, msg: MailboxMsg) {
         self.log.push(msg);

@@ -1,0 +1,28 @@
+# KT-29 — probe ngữ nghĩa ĐỎ bằng API CŨ (D2-05), tệp tạm tests/kt29_probe_tmp.rs (đã xoá sau log)
+# HEAD dd4761e; lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt29_probe_tmp -- --nocapture
+
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.73s
+     Running tests/kt29_probe_tmp.rs (v2/target/debug/deps/kt29_probe_tmp-09315b06f63f366a)
+
+running 1 test
+hart_count() = 1
+dispatch(1) = Err(InvalidArgument)
+post_mail(1, Wake) = Err(InvalidArgument)
+post_mail(0, Migrate) = Err(NotSupported)
+
+thread 'mo_hinh_cu_chi_co_mot_hart_va_khong_migrate' (40114953) panicked at sim/vifast-sim/tests/kt29_probe_tmp.rs:28:5:
+assertion `left == right` failed: KT-29 cần mô hình 2 hart
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mo_hinh_cu_chi_co_mot_hart_va_khong_migrate ... FAILED
+
+failures:
+
+failures:
+    mo_hinh_cu_chi_co_mot_hart_va_khong_migrate
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt29_probe_tmp`
