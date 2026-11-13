@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-54`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-55`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-54: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-55: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -88,6 +88,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-52** KT-23 được phép sửa **duy nhất một dòng** của `v2/test/scn/12-suspend-abort-while-reply-wait.scn` (`Defer => ok` → `Defer => InvalidArgument`) để khớp thiết kế §4.4 `:282`; các `.scn` khác giữ nguyên, không đổi ABI. Đây là ngoại lệ có ghi cho K1B-PLAN KT-23 DoD 8 (vốn cấm sửa `.scn`).
 - **D2-53** Chốt K1c (Q1–Q15, `review/agent0/K1C-PLAN.md`): Q1 mô hình **N hart tất định 1/2/4/8**, không thread/QEMU; Q2 push **cuối hàng**, ≤1 TCB/bước, chỉ khi `published.idle`, chỉ TCB cùng mức Ready cao nhất; Q3 hằng số `WAITADDR_BUCKETS`/`MAX_HARTS` model `[TK]` trong `v2/docs`, **chưa** tạo `spec/kernel.toml` (K3); Q4 `WaitAddr` **không timeout** (spec thắng; timeout K6); Q5 `FaultKind` VM/unknown/user **model-only**, spec là tập con tới K3; Q6 bind Notification bằng model API, không thêm chữ ký; chuyển cap thất bại là **đếm mềm** (`cap_transfer_failed`), không thêm bit MessageInfo; Q7 caller `no_reply=1` ⇒ Call=Send, `Ok` ngay, không Reply, receiver thấy cờ; kernel thiếu Reply ⇒ caller `Cancelled`; Q8 Reply bị xoá khi caller `BlockedOnReply` ⇒ caller `Cancelled`; Q9 `vifast-sync` + stress host có biên + Miri, **không loom**; Q10 procsrv chỉ mô hình, shell K3.5; Q11 Call non-Endpoint `NotSupported`, không block/không Reply; Q12 không mở `vifast-model` IPC, bằng chứng = invariant/coverage/mutation, parity 10k hồi quy; Q13 `v2 nightly --l1` 100k seed × smp 1/2/4/8, gate vẫn 1k, không tách KT-31; Q14 không chạm ViScript; Q15 `NBSendRecv` = `NBSend` rồi `Recv`; nếu NBSend không giao được vẫn `Recv`, message không bị coi là mất bởi kernel.
 - **D2-54** K1c: hàng gửi Endpoint dùng **`MAILBOX_CAP=8` + `Busy`** (code KT-22 thắng dòng "không giới hạn" cũ trong K1C-PLAN; `Send` chặn khi đầy là backpressure mô hình, K3 fastpath xem lại). Runner `.scn` dùng quy ước **`ep0`/`ep1` là cùng một Endpoint**, và `recv` không có `reply=` thì cấp **`rep0`** (model-only; K3 conformance phải kiểm lại).
+- **D2-55** KT-25 model-only: `NBRecv` poll trả **`Busy`** khi TCB không chạy được (cần cho `.scn` 05; có thể che lỗi trạng thái, K3 xem lại); **một** cap Reply bị `Delete`/`Revoke` = huỷ đường Reply ⇒ caller `Cancelled` (seL4 chỉ huỷ theo object — K3 conformance). Nợ nhỏ: `deliver_caps` có thể để cap mồ côi nếu `cnode_set_slot` lỗi giữa kế hoạch (khó đạt; KT-26/27 xem cùng `check_caps`). Không đổi ABI.
 
 ---
 

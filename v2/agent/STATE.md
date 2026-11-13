@@ -54,7 +54,7 @@ DECISIONS, AGENTS, `viscript/`; không dependency/`unsafe`/`#[allow]`/`#[ignore]
   `cap_transfer_{installed,failed,unwrapped}`; `nb_recv` = **poll** (TCB không chạy được ⇒ `Busy`).
 - `v2/sim/vifast-sim/src/scenario.rs`: `Step::{ReplyRecv, NBSendRecv, NBSendWait, SendCaps}` +
   `Msg::words`.
-- `v2/sim/vifast-sim/tests/kt25_ipc2.rs` (**mới, 23 test**) + `tests/kt25_scn.rs` (**mới, 1 test**).
+- `v2/sim/vifast-sim/tests/kt25_ipc2.rs` (**mới, 24 test**) + `tests/kt25_scn.rs` (**mới, 1 test**).
 - `v2/docs/k1c-ipc-semantics.md`: §10 (4 cap/receive window), §11 (vòng đời Reply), §12
   (`ReplyRecv`/NB*), §13 (runner `.scn`), §14 (giới hạn còn lại).
 - [`JOURNAL/kt25-journal.md`](JOURNAL/kt25-journal.md): bảng đối chiếu DoD 1..10 + 6 quyết định
@@ -839,7 +839,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 13:10 bởi Agent 0**: KT-24 DONE (217b7d1, 336 test, Miri 13/13, D2-54); KT-25 READY.
+> **Cập nhật 14:30 bởi Agent 0**: KT-25 DONE (dd0e30c, 361 test, Miri 24/24, D2-55); KT-26 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
