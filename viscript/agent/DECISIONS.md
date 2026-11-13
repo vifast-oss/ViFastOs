@@ -650,3 +650,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   codegen **không** im lặng sinh module khi HIR còn kiểu `Error` — phải **từ chối** với chẩn đoán rõ **hoặc** chứng minh
   và **hạ hằng số** 21 xuống; differential **0 lệch** bắt buộc. (4) `Ty::Any`/`&self` **chỉ** nếu rẻ, còn lại nợ có chủ đích.
   (5) **VS2** phải có **tiêu chí đo** trong `R9` (async/kênh/net/Landlock/LSP/gói/registry/4 nền tảng).
+
+- **VD-87** **`to json` + hợp nhất `sort_by` (ST-53)**: (1) **`to json`** là **stage lệnh** (hạ `Call(std.json.encode,
+  [prev])`, `--pretty` ⇒ `encode_pretty`), **không** cần `use std.json`; bản ghi **ẩn danh** encode **theo trường**
+  (serializer **bỏ tên** bản ghi) ⇒ **không** cần `Type::Any`. (2) **Một comparator**: `sap_xep_theo_khoa` — tính khoá
+  **một lần**, **sort ổn định**, `desc` chỉ **đảo comparator**; shell `sort_by` = `KieuKhoa::Moi`
+  (`int/float/size/duration/percent/str`), `std.list.sort_by` = `KieuKhoa::ChiInt` (**giữ** `FnIntInt` + câu lỗi cũ).
+  (3) Nợ: khoá `str` cho `std.list.sort_by`.

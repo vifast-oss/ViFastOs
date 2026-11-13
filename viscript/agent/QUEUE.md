@@ -142,8 +142,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **DONE** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | **DONE** | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
-| ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **READY** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
-| ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | BLOCKED | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
+| ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **DONE** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
+| ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **READY** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
 | ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | BLOCKED | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -721,6 +721,19 @@ APPROVED 2026-11-13 Agent 0
 > **Sửa sổ**: hàng ST-51 trước còn `BLOCKED` (lỗi mẫu regex của tôi khi lật) ⇒ nay `**DONE**` cùng ST-52; `report-check`
 > vẫn PASS cả trước và sau (máy kiểm đọc `blocked[]` theo `queue`).
 > **Vòng 9 (mở sau)**: ST-53.. (nợ lõi) + khung VS2 có tiêu chí đo.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-53 DONE** — commit `d68eb16` (**Agent 2 tự commit**): **`to json`** = stage lệnh **còn thiếu** (trước đó chạy `to`
+> như chương trình ngoài ⇒ `VS0501`), nay hạ `Call(std.json.encode, [prev])` (+ `--pretty` ⇒ `encode_pretty`), **không**
+> cần `use std.json`; bản ghi **ẩn danh** đi JSON đúng **khoá trường + thứ tự** (serializer bỏ tên) ⇒ **không** cần
+> `Type::Any`. **Hợp nhất comparator**: một lõi `sap_xep_theo_khoa` (khoá tính 1 lần, **sort ổn định**, `desc` đảo
+> comparator) cho **cả** shell `sort_by` (`KieuKhoa::Moi`) và `std.list.sort_by` (`KieuKhoa::ChiInt`, **giữ** hợp đồng
+> `FnIntInt`). **718** test (+14); sem 370; `vis test` **370 ok**; parity 344/344; differential 100k **0 lệch** (204,8 s);
+> allowlist **6**. Ca bắt buộc: `( ls ) | where size > 5mb | select name, size | to json` với `--fs-mock` ⇒ JSON đúng,
+> interp ↔ `--vm` **cùng byte**. Tách `lower/sugar.rs` (`ha_to_json`) giữ R1.
+> Nợ: khoá `str` cho `std.list.sort_by` (cần task riêng).
+> **ST-54 mở** (`CODEGEN_TIN_TYCK`).
 
 ## Ghi chú vận hành
 
