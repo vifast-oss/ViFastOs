@@ -125,7 +125,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **DONE** | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **DONE** | MD+JSON, số liệu tái lập |
-| ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | BLOCKED | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
+| ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | **READY** | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
 | ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | BLOCKED | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
 | ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | BLOCKED | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
@@ -500,6 +500,13 @@ APPROVED 2026-11-13 Agent 0
 > 11,2–11,7 ms (debug) · `gate --fast` + `nightly --fuzz-minutes 1` PASS. **5 lỗ hổng đóng/nới** trong vòng (26 ca biên
 > dịch đã so; `grep exit 1` hết là lỗi; `json.decode`; `std.fs`; `Hop[int] ≠ Hop[str]`), **15 nợ còn lại** ghi rõ.
 > **VS2** (async/kênh/net/Landlock/LSP/gói/4 nền tảng) là vòng sau. QUEUE: **41/41 hàng DONE**.
+
+APPROVED 2026-11-13 Agent 0
+
+> **VÒNG 6 mở (VSH1a — chế độ shell dùng được, §9.5–§9.7)**: 8 hàng `ST-37..ST-43` (ST-40 tách a/b) ≈ 21,5 h ≈ 3 vòng.
+> Căn cứ lộ trình §19 (bước "shell dùng được") + pipeline mẫu §9.7 (khối tài liệu dòng 672 **còn** trong allowlist 8 mục).
+> **ST-37 mở**; thứ tự bắt buộc ST-37 → ST-38 → … → ST-42 → ST-43; ST-37..ST-42 đụng `lower/cmd.rs` + `tyck` nên
+> **không** chạy song song. Allowlist `doc-examples` **chỉ** được giảm **8 → 7** khi ST-42 **thật xanh** (Agent 0 sửa).
 
 ## Ghi chú vận hành
 

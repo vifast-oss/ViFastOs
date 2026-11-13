@@ -496,3 +496,13 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   ca cũ). (4) Gán chéo hai instantiation ⇒ **`VS0412`**; cùng instantiation ⇒ **sạch**; trường thay `T` ⇒ kiểu cụ thể;
   `match` trên `Or[int,str]` thiếu nhánh ⇒ `VS0402`. (5) **Nợ**: kiểu trả hàm generic còn `{error}` khi `T` chưa suy;
   `Hop[Hop[int]]` chưa có id cho lớp trong (an toàn vì payload xoá kiểu).
+
+- **VD-69** **Phạm vi vòng 6 (VSH1a)**: (1) **khe ống hợp nhất**: khe không còn phụ thuộc so **bằng** kiểu — chọn vị trí
+  theo **khả năng nhận** (generic `CmdSig`), nên `( [1,2] ) | take 1` hợp lệ; seam `SigSource` để `vis-std`/prelude cấp
+  chữ ký **generic** cho lệnh. (2) **closure-arg** (`CmdClosure`) hạ thành `Lambda` **cộng offset span** để lỗi trong
+  thân closure báo đúng `dòng:cột`; thêm `where`/`each`/`first`/`count`. (3) `sort_by` **`--desc`** (giữ **ổn định**),
+  khoá `int/size/duration/str`; `bool` ⇒ `VS0412`. (4) **prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt
+  trường** ⇒ mã mới **`VS0605`** trong sổ `06xx` (4 → 5 mã; `BOOKS`/`all_codes()`/`next_block()` cập nhật **kèm lý do**).
+  (5) `get`/`select` chiếu theo trường. (6) `Render`: bảng `list[bản ghi]` + khối khoá–giá trị, căn cột theo **NFC**;
+  `print` cũ cho `list[str]` **không đổi**. (7) `ls`/`open` qua **`FsHost`** (+ `list_entries` metadata), `--all/--long`,
+  cờ **`--fs-mock`** cho test tất định; pipeline §9.7 dòng 672 chạy được ⇒ allowlist **8 → 7** (chỉ khi thật xanh).
