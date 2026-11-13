@@ -412,3 +412,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   **`chuan_hoa`** dùng chung cho cả 3 đường (escape `\n`/`\t`/`\\`) + unit-test riêng — không rải logic chuẩn hoá.
   (5) **Codegen TIN tyck** (không tự kiểm kiểu): hiện **21/26** ca lỗi biên dịch vẫn sinh module chạy được; khoá hằng
   số `CODEGEN_TIN_TYCK = 21` để thay đổi phải có ý thức — đây là **nợ**, không phải hợp đồng.
+
+- **VD-66** **`json.decode` + `std.fs` (ST-33)**: (1) `json.decode(s) -> Result[Any, str]` (tyck dùng `Ty::Any` ⇒ **bỏ
+  kiểm tĩnh**, đúng VD-59(3)); object giữ **thứ tự xuất hiện**, trùng khoá ⇒ **giá trị cuối, vị trí đầu**; number có
+  `.`/`e` ⇒ `float`, còn lại ⇒ `int`, **tràn i64 ⇒ `Err`** (không bão hoà/không thành float); escape **đủ** gồm
+  **surrogate pair** (nửa cặp ⇒ `Err`); `null` ⇒ `none` kiểu `Opt(Error)` — hệ quả **nợ**: `let v: int? = json.decode(…)`
+  ⇒ `VS0412` (đóng ở **ST-35**); lỗi ⇒ `Err("JSON không hợp lệ ở byte N: …")` với **byte offset** trong chuỗi gốc; cap
+  độ sâu **128**. (2) **`std.fs`**: `read/write/exists/list` khai **có kiểu**, đi qua **`FsHost`** (một hàm `Host::fs()`
+  mặc định `None`) ⇒ `vis-interp`/`vis-vm` **không** phụ thuộc OS; **không host ⇒ `VS0604` ở cả hai đường**;
+  `vis-cli` impl bằng `std::fs`; `--explain-perms` in `FS read|write|exists|list <p>`; **cho phép** đường dẫn tuyệt
+  đối/`..` (không sandbox), **consent thật + `cap[Dir]` ⇒ VS2**; `list` sắp xếp theo byte, **không** đệ quy. (3) **Bộ
+  sem giữ hermetic**: không fixture nào cần FS ⇒ **338 ca không đổi**; test FS/JSON nằm trong `crates/vis-cli/tests/`.
