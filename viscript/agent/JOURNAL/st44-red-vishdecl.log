@@ -1,0 +1,37 @@
+=== ST-44 D2-05: `.vish` khai báo kiểu — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T12:10:08Z
+
+## 1. Đỏ **thật** ở HEAD `20e3f79` (worktree `/tmp/vis-head44`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test vish_decl
+test result: FAILED. **5 passed; 11 failed**
+```
+
+Lý do: `.vish` **không** có vùng khai báo — mọi dòng cột 1 (kể cả `type Hop:`) là **stage**;
+`cmd loc() -> list[FileEntry]:` bị đọc thành lệnh ngoài; `let z: int = 5` là shell-let sai cú pháp;
+`() ` và `f()` chưa có nghĩa; trùng prelude chưa báo `VS0302`; khai báo sau stage chưa báo `VS0201`.
+5 ca xanh là các ca **không** phụ thuộc khai báo (`.vis` thuần, `.vish` không khai báo, in/VM).
+
+## 2. Sau khi sửa — đo được
+
+- **Vùng khai báo** ở đầu tệp (dòng **cột 1** + từ khoá, dòng thụt = thân item), hạ bằng **đường script**
+  (span tuyệt đối) vào **cùng** bảng ký hiệu/kiểu; stage chạy sau qua `run_shell_tu(mốc)`.
+- `cmd f(...)` trong `.vish` ⇒ **`CmdSig`** ⇒ `f() | where size > 5mb` **kiểm tĩnh** (không `VS0501`),
+  trả `list[FileEntry]` ⇒ bảng; rỗng ⇒ `(rỗng)`.
+- Trùng tên (kể cả **prelude**) ⇒ **`VS0302`**; khai báo **sau** stage ⇒ **`VS0201`** kèm gợi ý; `( )` ⇒ `VS0201`.
+- `.vish` **không** khai báo ⇒ hành vi **y hệt** vũng 6 (4 fixture `test/cmd/fs/**` xanh, ca riêng);
+  `.vis` **không** đổi; `let x: int = ls | grep foo` **vẫn là shell-let** (golden ca 24).
+
+## 3. Số ca
+
+- test workspace **606 → 622** (+**16** `vish_decl.rs`); sem **370 không đổi**; 4 fixture `test/cmd/decl/**`;
+- parity **344/344**, differential **100.000 / 0 lệch** (203,1 s), `fuzz_mutate` **318**, `diag_cmp` **318/370**.
+
+## 4. sha256 bản commit
+  sha256 crates/vis-syntax/src/cst.rs=f7e4584b911c74641e810a0cfb82979b3d7e2d37d15b865c991a9d16c5245a85
+  sha256 crates/vis-syntax/src/parse/cmd.rs=c187d26f94e6f54f5e062c2327d9f6406b094b5ffa49050e2a348981d8347c74
+  sha256 crates/vis-types/src/lower.rs=780ed2c91ba070437571b5b3bec8a87069aa88765f2d1cdd7a7795474949f2d5
+  sha256 crates/vis-types/src/lower/cmd.rs=84b83f4a4d6fbcdff13d8905947ba08ff3538b0f5142fc4f77efe8ec721a26e5
+  sha256 crates/vis-types/src/lower/khai.rs=9124d6deec3dab2a241cce7452f488d95c5c899bb9ec843b7e9768d898a6d044
+  sha256 crates/vis-cli/tests/vish_decl.rs=d1953bb7c11600534cb534263da14a852caff1adb9630bfb450482f3b204e969

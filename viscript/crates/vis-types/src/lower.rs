@@ -37,6 +37,7 @@ pub(crate) use trait_impl::ChuKyTrait;
 mod chieu;
 mod cmd;
 mod expr;
+mod khai;
 mod pat;
 mod stmt;
 
@@ -421,8 +422,23 @@ impl<'a> Lowerer<'a> {
             // ST-18 (VD-22 pha 2): `.vish`/`cmd { … }` hạ xuống **cùng HIR** — `cmd_lower`.
             // ST-40a: prelude bản ghi **chỉ** cho chế độ lệnh, đăng ký **trước** khi hạ item để
             // `type FileEntry` của người dùng trùng tên bị `VS0302`.
-            self.dang_ky_prelude();
-            self.run_shell();
+            let prelude = self.dang_ky_prelude();
+            // ST-44: **vùng khai báo** ở đầu tệp (type/enum/cmd/let…) hạ trước, vào **cùng**
+            // bảng ký hiệu/kiểu; stage chạy sau với mốc tách để **bỏ** các dòng đã hạ.
+            let (moc, co_khai) = khai::tach(self.text);
+            if co_khai && moc > 0 {
+                self.ha_tien_to_khai(moc, &prelude);
+            } else if let Some((line, col)) = khai::khai_sau_stage(self.text, 0) {
+                // Tệp **không** mở đầu bằng khai báo nhưng có khai báo ở cột 1 ⇒ lỗi rõ.
+                let sp = Lowerer::span_dong_cot(self.text, line, col);
+                self.diag(
+                    &vis_diag::SYNTAX_CODES[0],
+                    "khai báo phải đứng **trước** stage đầu tiên (`.vish`: item ở đầu tệp, rồi mới\
+                     tới pipeline)",
+                    sp,
+                );
+            }
+            self.run_shell_tu(moc);
             return;
         }
         self.declare_builtins();

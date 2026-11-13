@@ -81,6 +81,8 @@ pub enum NodeKind {
     CmdEnv,
     CmdClosure,
     CmdLet,
+    /// ST-44: **khối khai báo** trong `.vish` (raw — hạ bằng đường script ở tiền tố tệp).
+    CmdKhai,
     // Kiểu (A.5) và pattern (A.4)
     Type,
     Pattern,
@@ -205,6 +207,7 @@ impl NodeKind {
             NodeKind::CmdEnv => "env",
             NodeKind::CmdClosure => "closure",
             NodeKind::CmdLet => "let_cmd",
+            NodeKind::CmdKhai => "cmd_khai",
         }
     }
 }

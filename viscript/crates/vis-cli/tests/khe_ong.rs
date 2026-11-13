@@ -160,7 +160,8 @@ fn nhom_khong_phai_list_thi_bao_loi_luc_chay() {
 
 #[test]
 fn nhom_lam_doi_so_chua_ho_tro() {
-    // Hiện trạng: `( … )` làm **đối số** bị parser tách thành stage ⇒ VS0603 (nợ VSH1b).
+    // Hiện trạng: `( … )` làm **đối số** ⇒ `VS0603` (nợ VSH1b — ST-44 giữ nguyên; `f()` rỗng đã
+    // được nhận là **lời gọi không đối số**, còn nhóm có nội dung làm đối số vẫn chưa có kiểu riêng).
     let d = tam("arg");
     let (c, _, e) = chay(&d, "arg", "( [1, 2] ) | take ([9, 9]) 1\n");
     assert_eq!(c, 2, "stderr: {e}");

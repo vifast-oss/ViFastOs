@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-43** (báo cáo R6 — chốt VSH1a) — xong, **chưa commit**.
-Bước          : 5/5 (đo lại toàn bộ → `R6-viscript.{md,json,json.license}` → `check_report.py --all` PASS → gate PASS)
+Task          : **ST-44** (`.vish` có khai báo kiểu) — xong, **chưa commit**.
+Bước          : 5/5 (tách vùng item/stage + `CmdKhai` + `ha_tien_to_khai` → `VS0302`/`VS0201` → `f()` lời gọi 0 đối số → 16 ca + 4 fixture → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T11:01:17Z**; nightly (fuzz 1 phút) **PASS** 10:55:40Z; report-check **PASS** (6 báo cáo, 49 hàng QUEUE)
-Việc dở       : commit `[ST-43]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T12:09:53Z**; **622** test / sem **370** / parity **344/344** / diff 100k **0 lệch**
+Việc dở       : commit `[ST-44]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-43 — báo cáo R6 (2026-11-13)
+## ST-44 — `.vish` khai báo kiểu (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Tách vùng** | dòng **cột 1** mở đầu bằng `type/enum/cmd/fn/use/const/trait/impl/alias/newtype/extern` (hoặc `let` **có kiểu**, RHS không `|`/`;`/`>`/`<`/`&`) ⇒ **vùng khai báo** ở đầu tệp; hết vùng ⇒ stage; dòng thụt thuộc thân item |
+| 2 | **Hạ** | tiền tố parse lại `Mode::Script` (span **tuyệt đối**), `lower_into` vào **cùng** bảng ký hiệu/kiểu ⇒ `cmd` đăng ký `CmdSig` cho khe ống; `run_shell_tu(mốc)` **bỏ** các dòng đã hạ |
+| 3 | **Lỗi** | trùng tên (kể cả prelude `FileEntry`/`ProcEntry`) ⇒ **`VS0302`**; khai báo **sau** stage ⇒ **`VS0201`** kèm gợi ý; `( )` rỗng đứng riêng ⇒ `VS0201`; `f()` ⇒ **lời gọi 0 đối số** |
+| 4 | **Không phá** | `.vish` **không** khai báo giữ nguyên vũng 6 (4 fixture `test/cmd/fs/**` xanh); `.vis` **không** đổi; parser Command chỉ thêm **khối raw** `CmdKhai`; `let x: int = ls | grep foo` **vẫn là shell-let** (golden ca 24) |
+| 5 | **Đo** | **622** test (606 + **16** `vish_decl.rs`); sem **370** không đổi; **4 fixture** `test/cmd/decl/**`; nợ: **thân `cmd` pipeline** (script body chưa pipeline) ⇒ **VSH1b-2** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

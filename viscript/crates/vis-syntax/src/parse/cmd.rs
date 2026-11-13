@@ -23,6 +23,12 @@ use super::{PResult, Parser};
 use crate::cst::{Elem, NodeKind};
 use crate::lex::token::{Kind, Span};
 
+/// Từ khoá **khai báo** ở cột 1 trong `.vish` (ST-44) — phần còn lại là stage.
+pub(crate) const KHAI: [&str; 13] = [
+    "type", "enum", "cmd", "fn", "use", "const", "trait", "impl", "alias", "newtype", "extern",
+    "pub", "async",
+];
+
 impl<'a> Parser<'a> {
     fn tok_span(&self, e: &Elem) -> Span {
         match e {
@@ -65,12 +71,94 @@ impl<'a> Parser<'a> {
         Ok((node, sexp))
     }
 
+    /// Văn bản **dòng hiện tại** (từ đầu dòng tới trước `\n`) — dùng cho luật `let` khai báo.
+    fn cmd_dong_nay(&self) -> String {
+        let start = self.tok().span.start;
+        let base = self.text[..start.min(self.text.len())]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let end = self.text[base..]
+            .find('\n')
+            .map(|i| base + i)
+            .unwrap_or(self.text.len());
+        self.text[base..end].to_string()
+    }
+
+    /// Khối khai báo `.vish`: gom token từ dòng cột 1 tới **hết** các dòng thụt (thân item), dừng
+    /// trước dòng cột 1 kế tiếp. Không sinh sexp cú pháp (nội dung hạ bằng đường script).
+    fn cmd_khai(&mut self) -> PResult<(Elem, String)> {
+        let mut elems: Vec<Elem> = Vec::new();
+        let mut sau_dong_dau = false;
+        loop {
+            if self.at_eof() {
+                break;
+            }
+            if sau_dong_dau {
+                let t = self.tok();
+                if !self.at_kind(Kind::Newline) && t.col == 1 {
+                    break;
+                }
+            }
+            if self.at_kind(Kind::Newline) {
+                // Kết thúc khối **trước** newline cuối nếu dòng kế tiếp là cột 1 (hoặc EOF) — để
+                // `cmd_file` tự tiêu thụ newline như mọi dòng.
+                let mut j = self.pos;
+                while j < self.sig.len() && self.toks[self.sig[j] as usize].kind == Kind::Newline {
+                    j += 1;
+                }
+                let het = match self.sig.get(j) {
+                    None => true,
+                    Some(&ti) => {
+                        let t = &self.toks[ti as usize];
+                        t.kind == Kind::Eof || t.col == 1
+                    }
+                };
+                if het {
+                    break;
+                }
+                elems.push(self.bump());
+                sau_dong_dau = true;
+                continue;
+            }
+            elems.push(self.bump());
+        }
+        Ok((
+            Elem::Node(Box::new(self.node(NodeKind::CmdKhai, elems))),
+            "(khai)".to_string(),
+        ))
+    }
+
     fn cmd_at_line_end(&self) -> bool {
         self.at_kind(Kind::Newline) || self.at_eof()
     }
 
     fn cmd_line(&mut self) -> PResult<(Elem, String)> {
-        // `let` = `shell_let` (chỉ ở đầu dòng).
+        // ST-44: dòng **cột 1** mở đầu bằng từ khoá khai báo (hoặc `let`) ⇒ khối **raw**; nội dung
+        // được parse lại bằng `Mode::Script` ở tầng hạ (tiền tố tệp). Không đổi `.vish` không khai báo.
+        if self.at_kind(Kind::Word) && self.tok().col == 1 {
+            let w = self.tok().text.clone();
+            let let_khai = w == "let" && {
+                let dong = self.cmd_dong_nay();
+                match dong.split_once('=') {
+                    None => false,
+                    Some((trai, phai)) => {
+                        let rhs = phai.trim();
+                        trai.contains(':')
+                            && !rhs.is_empty()
+                            && !rhs.contains('|')
+                            && !rhs.contains(';')
+                            && !rhs.contains('>')
+                            && !rhs.contains('<')
+                            && !rhs.contains('&')
+                    }
+                }
+            };
+            if KHAI.contains(&w.as_str()) || let_khai {
+                return self.cmd_khai();
+            }
+        }
+        // `let` = `shell_let` (chỉ ở đầu dòng, khi **không** phải khai báo cấp tệp).
         if self.at_kind(Kind::Word) && self.tok().text == "let" {
             let (e, s) = self.cmd_let()?;
             if !(self.cmd_at_line_end() || self.at_punct(";")) {
@@ -365,10 +453,13 @@ impl<'a> Parser<'a> {
         if let Some(d) = sub.diagnostics.first() {
             return Err(self.err_here(format!("trong `( … )`: {}", d.message)));
         }
-        let inner = sub
-            .cst
-            .sexp_expr()
-            .ok_or_else(|| self.err_here("`( … )` không phải một biểu thức"))?;
+        // ST-44: `()` **rỗng** hợp lệ làm dấu **lời gọi không đối số** (`f() | where …`); tầng hạ
+        // quyết định nghĩa (bỏ qua như đối số rỗng). Nhóm rỗng **đứng một mình** vẫn bị hạ báo lỗi.
+        let inner = match sub.cst.sexp_expr() {
+            Some(x) => x,
+            None if slice.is_empty() => "()".to_string(),
+            None => return Err(self.err_here("`( … )` không phải một biểu thức")),
+        };
         let node = self.node(NodeKind::CmdGroup, elems);
         Ok((Elem::Node(Box::new(node)), format!("(group {inner})")))
     }

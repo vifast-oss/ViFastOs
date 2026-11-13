@@ -80,14 +80,16 @@ impl<'a> Lowerer<'a> {
     }
 
     /// ST-40a: đăng ký `FileEntry`/`ProcEntry` vào bảng kiểu của tệp `.vish` **và** bảng tên.
-    pub(crate) fn dang_ky_prelude(&mut self) {
+    pub(crate) fn dang_ky_prelude(&mut self) -> Vec<(String, crate::ty::RecId)> {
         let mut file_id = None;
+        let mut ds = Vec::new();
         for (ten, id) in crate::prelude::dang_ky_vish(self.tbl) {
             if ten == "FileEntry" {
                 file_id = Some(id);
             }
             self.rec_names.push((ten.clone(), id));
-            self.prelude_recs.push((ten, id));
+            self.prelude_recs.push((ten.clone(), id));
+            ds.push((ten, id));
         }
         // ST-42: `ls` trả `list[FileEntry]` — `RecId` cấp **theo tệp** nên phải **vá** ret của chữ ký
         // (bảng `BuiltinSigs` là tĩnh, không biết id).
@@ -98,6 +100,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        ds
     }
 
     /// Kết thúc stage (gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng) — dùng cho sugar `sort_by`.
@@ -616,16 +619,18 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Chạy hạ chế độ lệnh: item (`cmd`/`fn`/`extern`) trước, rồi từng dòng lệnh thành `HStmt`.
-    pub(crate) fn run_shell(&mut self) {
+    /// Chạy các dòng lệnh của CST chế độ lệnh; **bỏ** mọi node có `span.start < tu` (ST-44: dòng
+    /// đã hạ trong **vùng khai báo** ở tiền tố tệp).
+    pub(crate) fn run_shell_tu(&mut self, tu: usize) {
         self.declare_builtins();
         let kids: Vec<Node> = self.cst.root.children().cloned().collect();
         for child in &kids {
-            if is_item(child.kind) {
+            if is_item(child.kind) && child.span.start >= tu {
                 self.predeclare_item(child);
             }
         }
         for child in &kids {
-            if is_item(child.kind) {
+            if is_item(child.kind) && child.span.start >= tu {
                 if let Some(it) = self.build_item(child) {
                     self.items.push(it);
                 }
@@ -647,6 +652,9 @@ impl<'a> Lowerer<'a> {
             .collect();
         sigs.extend(self.cmd_sigs.clone());
         for child in &kids {
+            if child.span.start < tu {
+                continue;
+            }
             match child.kind {
                 NodeKind::CmdItems => self.ha_dong(child, &sigs),
                 NodeKind::CmdBg => {
@@ -750,17 +758,22 @@ impl<'a> Lowerer<'a> {
             .next()
             .filter(|c| c.kind == NodeKind::CmdGroup);
         if let Some(g) = head_group {
+            // ST-44: nhóm **rỗng** (`f()`) không phải biểu thức ⇒ rơi xuống tra chữ ký.
             if let Some(txt) = self.vach_text(g) {
-                return self.kieu_text(&txt);
+                if !txt.trim().is_empty() {
+                    return self.kieu_text(&txt);
+                }
             }
         }
         let Some(ten) = self.ten_lenh(node) else {
             return Type::Error;
         };
-        sigs.iter()
+        let r = sigs
+            .iter()
             .find(|s| s.name == ten)
             .map(|s| s.ret.clone())
-            .unwrap_or(Type::Error)
+            .unwrap_or(Type::Error);
+        r
     }
 
     /// Tên lệnh = **phần tử đầu** của stage (token `Word` hoặc node `CmdWord`).
@@ -785,6 +798,23 @@ impl<'a> Lowerer<'a> {
         truoc: Option<(HExpr, Type)>,
         sigs: &[CmdSig],
     ) -> Option<HExpr> {
+        // ST-44: nhóm `()` **rỗng đứng một mình** (không phải `f()`) ⇒ lỗi rõ, không coi là lệnh `(`.
+        if let Some(Elem::Node(g)) = node.elems.first() {
+            if g.kind == NodeKind::CmdGroup
+                && node.elems.len() == 1
+                && self
+                    .vach_text(g)
+                    .map(|t| t.trim().is_empty())
+                    .unwrap_or(false)
+            {
+                self.diag(
+                    &vis_diag::SYNTAX_CODES[0],
+                    "`( … )` rỗng không phải biểu thức (chỉ `f()` mới hợp lệ làm lời gọi)",
+                    g.span,
+                );
+                return None;
+            }
+        }
         // ST-34: `| complete` — stage **giả**, chỉ dùng sau chương trình ngoài; nó **đổi tên** callee
         // của stage trước thành `exec.complete.<ten>` (không thêm biến thể HIR ⇒ codegen không đổi).
         if self.ten_lenh(node).as_deref() == Some("complete") {
@@ -859,6 +889,13 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         };
+        if std::env::var("VIS_DBG44").is_ok() {
+            eprintln!(
+                "stage ten={ten:?} sigs={:?} tu_child={:?}",
+                sigs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+                node.span
+            );
+        }
         let Some(sig) = sigs.iter().find(|s| s.name == ten).cloned() else {
             // ST-27: lệnh **lạ** ⇒ chương trình ngoài (§9.3) — trừ khi host tắt (`--no-extern`).
             if !self.opts.cho_ngoai {
@@ -1218,6 +1255,27 @@ impl<'a> Lowerer<'a> {
                 };
                 theo_ten.push((ten_sach, gt));
                 continue;
+            }
+            // ST-44: `f()` — nhóm **rỗng** là dấu **lời gọi không đối số**, không phải đối số.
+            // Nhóm **không rỗng** làm đối số vẫn là **nợ VSH1b** ⇒ giữ `VS0603` như trước.
+            if let Some(g) = gt.as_ref() {
+                if g.kind == NodeKind::CmdGroup {
+                    if self
+                        .vach_text(g)
+                        .map(|t| t.trim().is_empty())
+                        .unwrap_or(false)
+                    {
+                        continue; // `f()` — lời gọi **không đối số**
+                    }
+                    // Nợ VSH1b (ST-47): `( … )` làm **đối số** chưa có kiểu riêng ⇒ giữ `VS0603`
+                    // như trước ST-44 (không để nó lặng lẽ thành đối số vô kiểu).
+                    self.diag(
+                        &COMMAND_CODES[2],
+                        "`( … )` làm đối số chưa hỗ trợ ở VSH1a (nợ VSH1b)",
+                        g.span,
+                    );
+                    return None;
+                }
             }
             // Đối số vị trí (bỏ qua ô **khe ống** đã giữ chỗ).
             while i_vi_tri < sig.params.len()
