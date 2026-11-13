@@ -120,7 +120,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **DONE** | ≥ 30 ca |
 | ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | **DONE** | `sha2` duyệt allowlist; thay FNV |
 | ST-30b | đồng bộ chẩn đoán interp↔VM + siết differential (so đủ) | ST-30 | 2 h | **DONE** | 312/312 khớp, 0 lệch |
-| ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **READY** | MD+JSON, số liệu tái lập | MD+JSON, số liệu tái lập |
+| ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập | MD+JSON, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | **DONE** | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
@@ -425,6 +425,18 @@ APPROVED 2026-11-13 Agent 0
 > **6 SKIP** đúng TAP cho ca cần host. **436** test. Sự cố `520c2fe` (3 tệp ST-30 lỡ nằm trong commit ST-29) do **tôi**
 > gây ra, đã ghi trong commit/JOURNAL — không rewrite lịch sử.
 > **ST-31 mở** (R4 — chốt VS1b).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-31 DONE — VÒNG 4 (VS1b) CHỐT.** `reports/R4-viscript.{md,json}` (`4748ec4`, `head` d92e947) — **436 test**
+> (21 diag + 96 syntax + 18 fmt + 118 types + 24 interp + 50 bytecode + 9 vm + 100 cli), **338 ca sem/18 nhóm**,
+> `vis test` **338 ok** / `--vm` **338 ok + 6 SKIP**, **parity chẩn đoán 312/312 khớp 0 lệch**, differential
+> **100.000 chương trình 0 lệch** (203,5 s, 491/s, so **đủ** cả thông điệp), **SHA-256** thay FNV, `VBC1` 53 tag,
+> **7 sổ mã / 28 mã**, `gate --fast` PASS + `nightly --fuzz-minutes 1` PASS, khởi động ấm 10,3–11,1 ms (debug,
+> đường `--vm`). **VD-57..VD-63**; **13 lỗ hổng** đã liệt kê; §19 VS1 **đạt phần khung**, phần còn lại = **VS2**.
+> Dòng ViScript **hết task trong QUEUE** (36/36 DONE). Vòng 5 (đề xuất, ưu tiên): 26 ca lỗi biên dịch chưa so
+> chẩn đoán hai đường · `&self` · `json.decode` · `std.fs` · `| complete`/pipe→stdin · consent/`cap[Proc]` ·
+> `Hop[int] ≠ Hop[str]` (generic thật) · `pkg.*`/registry ⇒ VS2.
 
 ## Ghi chú vận hành
 
