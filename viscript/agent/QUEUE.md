@@ -143,8 +143,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | **DONE** | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **DONE** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
-| ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **READY** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
-| ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | BLOCKED | MD+JSON; nêu rõ khoảng cách VS2 |
+| ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **DONE** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
+| ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **READY** | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -734,6 +734,18 @@ APPROVED 2026-11-14 Agent 0
 > interp ↔ `--vm` **cùng byte**. Tách `lower/sugar.rs` (`ha_to_json`) giữ R1.
 > Nợ: khoá `str` cho `std.list.sort_by` (cần task riêng).
 > **ST-54 mở** (`CODEGEN_TIN_TYCK`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-54 DONE** — commit `4627fbb` (**Agent 2 tự commit**): **`CODEGEN_TIN_TYCK` 21 → 0**. Dữ kiện quyết định: walker trên
+> 370 ca cho **0 nút `HExpr::Error` / 0 kiểu `{error}`** kể cả ở ca lỗi tyck ⇒ **không thể** chặn bằng soi kiểu; cửa đúng
+> là **truyền chẩn đoán** vào codegen: `compile_kiem(hir, symbols, text, chan_doan)` (giữ `compile()` = `&[]`),
+> `Err(CodegenError::ChanDoan{short,dong,cot,msg})` mang **đủ mã + dòng:cột + thông điệp**; CLI `run --vm` truyền
+> `loaded.diags`; phòng thủ `HExpr::Error` ⇒ `Err(Unsupported("error-expr"))`. `diag_cmp` dùng `compile_kiem` với **đủ 3
+> tầng** chẩn đoán ⇒ **26/26 bị từ chối**, so **đủ** mã/dòng/cột/message; **26/26 không còn ca nào ra module chạy sạch**;
+> cửa **chỉ chặn `error`** (cảnh báo vẫn compile — có ca). **730** test (+12); sem 370; `vis test` **370 ok**; parity 344/344;
+> differential 100k **0 lệch** (203,0 s); allowlist **6**.
+> **ST-55 mở** (R9 — chốt VSH2).
 
 ## Ghi chú vận hành
 

@@ -657,3 +657,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   **một lần**, **sort ổn định**, `desc` chỉ **đảo comparator**; shell `sort_by` = `KieuKhoa::Moi`
   (`int/float/size/duration/percent/str`), `std.list.sort_by` = `KieuKhoa::ChiInt` (**giữ** `FnIntInt` + câu lỗi cũ).
   (3) Nợ: khoá `str` cho `std.list.sort_by`.
+
+- **VD-88** **Codegen từ chối HIR có chẩn đoán (ST-54)**: (1) **Không** chặn bằng soi `Type::Error`/`TypeRef` — walker chứng
+  minh HIR **sạch kiểu** kể cả khi tyck báo lỗi. (2) Cửa đúng: `compile_kiem(hir, symbols, text, chan_doan)` — **có**
+  chẩn đoán `error` ⇒ `Err(CodegenError::ChanDoan{short, dong, cot, msg})`, **không** sinh module; `compile()` giữ nguyên
+  (= `compile_kiem(…, &[])`). (3) Phòng thủ `HExpr::Error` ⇒ `Err(Unsupported("error-expr"))`. (4) Cửa **chỉ chặn
+  `Severity::Error`**; cảnh báo **không** chặn (có ca). (5) `CODEGEN_TIN_TYCK` = **0**; `diag_cmp` so **đủ** ba thứ
+  (mã, dòng:cột, thông điệp) qua `compile_kiem`.
