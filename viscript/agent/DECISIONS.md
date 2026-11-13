@@ -589,3 +589,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   thêm mã). (4) **`f()`** = lời gọi **0 đối số**; nhóm rỗng đứng riêng ⇒ `VS0201`. (5) `let x: T = <có `|`/`;`/`>`/`<`/`&`>`
   ⇒ **shell-let**, ngược lại ⇒ khai báo script. (6) **Nợ VSH1b-2**: thân `cmd` viết bằng **pipeline lệnh** (thụt) chưa
   hỗ trợ — thân hiện là **script**.
+
+- **VD-79** **`where` kiểm tĩnh / `each` không kiểm (ST-45)**: (1) **`where`** kiểm ở **`tyck`** (`coerce` thân lambda,
+  khai `fn(T)->bool`) — đã chạy cho cả `.vish`; vị từ sai ⇒ **`VS0412`** nêu **kiểu thật**. (2) **`each`** khai kiểu trả
+  lambda = **`{error}` (any)** ⇒ **không** kiểm kiểu trả (giống `for` trong Rust); lỗi khác trong thân **vẫn** báo.
+  (3) **`it` không suy được kiểu** (`{error}`/`Any`) ⇒ **giữ kiểm động** (`VS0501` lúc chạy), **không** đỏ oan.
+  (4) **Hai mã field-access khác nhau đang tồn tại**: closure tường minh ⇒ **`VS0403`** (tyck), viết tắt `it` ⇒
+  **`VS0605`** (hạ) — **cả hai đều đỏ**; **thống nhất** thành một mã ⇒ task riêng (nợ). (5) R1 (>1.500 dòng) ⇒ tách
+  `lower/sugar.rs`, không nới ngưỡng.

@@ -134,8 +134,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | **DONE** | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
 | ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | **DONE** | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
 | ST-44 | `.vish` **khai báo kiểu**: `type` / `let x: T` / `cmd f(...) -> T` | ST-43 | 3 h | **DONE** | prelude dùng bằng khai báo thật; `VS0302` khi trùng; differential 0 lệch |
-| ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **READY** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
-| ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | BLOCKED | 3 nợ VSH1b hết; allowlist không tăng |
+| ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **DONE** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
+| ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | **READY** | 3 nợ VSH1b hết; allowlist không tăng |
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -616,6 +616,18 @@ APPROVED 2026-11-13 Agent 0
 > (phân biệt theo RHS) ⇒ không phá golden `test/cmd/golden.cmd` ca 24.
 > Nợ mới: **thân `cmd` bằng pipeline lệnh** (thụt) chưa hỗ trợ ⇒ **VSH1b-2** (task riêng).
 > **ST-45 mở** (`where` kiểm tĩnh đầy đủ).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-45 DONE** — commit `ea42dd1` (**Agent 2 tự commit**): đo trước ⇒ **`where` đã kiểm tĩnh từ ST-38** (`VS0412` nêu kiểu
+> thật); việc thật là **nới `each`** (kiểu trả lambda = `{error}` ⇒ không `coerce`, giống `for` trong Rust) + **bộ
+> regression 14 ca** giữ `where` không bị nới ngược + ca **kiểu không biết ⇒ kiểm động** (`( [] ) | where size` ⇒ `[]`).
+> Ca bắt buộc: `.vish` **khai báo** + `cmd loc() -> list[FileEntry]` + `where size` ⇒ `VS0412`; bản `> 5mb` ⇒ bảng,
+> interp ↔ `--vm` **cùng byte**. **636** test (+14); sem 370; parity 344/344; differential 100k **0 lệch** (202,7 s);
+> allowlist 6. Khác brief (đo được): `each x => x.khong_co` (closure tường minh) ⇒ **`VS0403`**, còn `where khong_co`
+> (viết tắt `it`) ⇒ **`VS0605`** — **cả hai đều đỏ**, 2 ca khoá cả hai mã; thống nhất mã ⇒ task riêng.
+> R1 đỏ khi thêm hook ⇒ **tách** `lower/sugar.rs` (271 dòng), `cmd.rs` còn 1.252.
+> **ST-46 mở** (`ls --long` thật + `( … )` làm đối số + chẩn đoán tuyệt đối trong ngoặc).
 
 ## Ghi chú vận hành
 
