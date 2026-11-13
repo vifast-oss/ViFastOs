@@ -718,3 +718,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (3) `send` sau `close` ⇒ **`VS0504`**; `recv` sau `close` còn hàng ⇒ trả tiếp, rỗng ⇒ `none`. (4) Sổ `05xx` thêm
   **`VS0504`/`VS0505`/`VS0506`** (giữ index 0..2), `all_codes()` **29 → 32**; sửa **đủ** 6 chỗ khoá số ca. (5) Byte
   giống nhau nhờ: cùng `rt.rs`, cùng thứ tự join, cùng hằng thông điệp, span **nút gọi** — cấm in địa chỉ/thứ tự map.
+
+- **VD-97** **Một ngữ nghĩa cho phép gán (ST-56b)**: (1) `self` là **tham số bất biến** như mọi tham số ⇒ `self.x = v`
+  khi `self` (không `var`) là **`VS0412`** ở **cả hai** đường (tyck chặn trước codegen). (2) `var self`/`var x` được gán:
+  `x.f = v` = **rebind cục bộ** `x = x with f: v` (đúng codegen hiện có; người gọi **không** thấy đổi — giá trị), `x[i] = v`
+  = sửa **tại chỗ**. (3) `let`/tham số thường: giữ `VS0412` (đã có). (4) **Interp** phải làm đúng hai đường gán trên
+  (hiện chỉ VM làm) ⇒ interp ↔ VM cùng byte. (5) `vis run --vm` gặp **lỗi codegen** phải **exit ≠ 0** + chẩn đoán ra
+  stderr (hiện in rồi exit 0); nếu chương trình đó là lỗi **tĩnh** thì tyck phải chặn trước để parity không lệch.
