@@ -562,3 +562,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (4) **Đổi hành vi có chủ ý**: 7 fixture `.out` chuyển `Show` → bảng (liệt kê trong commit `f2c256f`), ~20 assertion
   Rust theo cùng luật. (5) **Cache**: nhãn `PHIEN_BAN` phải đổi khi ngữ nghĩa render đổi (`+render-st41`) — nếu không,
   `--vm` dùng module cache cũ và in `Show`.
+
+- **VD-76** **`ls`/`open` + `--fs-mock` (ST-42)**: (1) `ls [p] [--all] [--long]` ⇒ `list[FileEntry]` (prelude VD-73),
+  **sắp xếp theo tên byte**, `--all` gồm tên bắt đầu `.`, **`--long` no-op** (nợ), **không đối số ⇒ `"."`**;
+  `open(p)` ⇒ `str`, lỗi ⇒ `VS0501` nêu **đường dẫn + lỗi OS**. (2) **`FsHost` mở rộng** `MucFs{name,size,modified_ns,
+  is_file}` + `list_entries` **có default `Err`** ⇒ impl cũ vẫn biên dịch; `vis-interp`/`vis-vm` **không** biết OS.
+  (3) **`--fs-mock <tệp.json>`** (`dirs`/`files`; `size` = literal **theo bảng lexer** ⇒ `2mb` = **2 000 000**, `2mib` =
+  2 097 152; `modified` = duration **từ epoch** ⇒ **tất định**); không mock ⇒ `FsHost` thật. (4) **§9.7 khối 672 chạy
+  thật end-to-end** với `--fs-mock` (bảng, interp ↔ `--vm` cùng byte). (5) `vis test` **không** có `--fs-mock` ⇒ fixture
+  cần FS nằm ở `test/cmd/fs/**` chạy bằng test riêng, **không** tăng `sem` ảo.
