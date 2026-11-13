@@ -11,7 +11,7 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-57) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-63).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-57) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-68).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
@@ -95,7 +95,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
   `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript: VÒNG 1 (ST-01..ST-10) + VÒNG 2 (VS0) + VÒNG 3 (khung VS1) + VÒNG 4 (VS1b) đều DONE** — vòng 4 (`R4-viscript`): **436 test**, **338 ca ngữ nghĩa/18 nhóm**, `vis test` TAP + `vis test --vm`, **parity chẩn đoán interp↔VM 312/312 khớp 0 lệch**, differential **100.000 chương trình 0 lệch** (so đủ thông điệp), **SHA-256** cho hash nguồn/cache, module đa tệp (`use ./x`), `vis-std` lõi (str/list/map/path/time/json), chương trình ngoài (§9.3), generic `[T]` (xoá kiểu + hợp nhất), trait/impl (dispatch tĩnh, chạy cả 2 đường). Còn **VS2**: async/kênh/net/quyền Landlock/LSP/gói + các nợ ghi trong `R4` §5.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript: VÒNG 1 + VÒNG 2 (VS0) + VÒNG 3 (khung VS1) + VÒNG 4 (VS1b) + VÒNG 5 (VS1c) đều DONE** — vòng 4 (`R4-viscript`): **436 test**, **338 ca ngữ nghĩa/18 nhóm**, `vis test` TAP + `--vm`, parity chẩn đoán **312/312**, differential **100.000 chương trình 0 lệch**, **SHA-256**, module đa tệp, `vis-std` lõi, chương trình ngoài (§9.3), generic `[T]`, trait/impl (dispatch tĩnh). Vòng 5 (`R5-viscript`): **507 test**, **346 ca/18 nhóm**, `vis test` **346 ok** (`--vm` 346 ok/6 SKIP), parity **320/320**, differential **100k 0 lệch**, harness so **cả** chẩn đoán **biên dịch** (0 lệch), `json.decode` + `std.fs` (qua `FsHost`), **pipe→stdin** + **`| complete`**, **generic thật** (`Hop[int] ≠ Hop[str]`). Còn **VS2**: async/kênh/net/quyền Landlock/LSP/gói/4 nền tảng + 15 nợ trong `R5` §4.
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
 
