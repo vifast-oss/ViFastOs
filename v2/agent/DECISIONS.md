@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-58`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-59`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-58: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-59: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -92,6 +92,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-56** Backlog K3 conformance (chưa làm ở K1c): (a) đưa `FaultKind` VM/unknown/user vào `spec/abi.toml` + D2 riêng; (b) thay `procsrv_model.rs` bằng procsrv thật + shell ở K3.5; (c) chốt ngữ nghĩa fault **không** `fault_ep` (K1c trả `InvalidArgument`, ghi docs). Không thay đổi code K1c.
 - **D2-57** Backlog K3 cho Notification (K1c model-only): bound notification đánh thức TCB `BlockedOnRecv`; `NBRecv` Notification trả `Message`/`value` + badge theo seL4; `IrqHandler.SetNotification` còn reserved; hai nợ `block_current`/`notification_signal` ghi trong `kt27-journal.md`. Không đổi ABI K1c.
 - **D2-58** Backlog K3 cho WaitAddr: `addr_words` phải sweep khi frame chết; invariant một chiều (`BlockedOnAddress` không nút chưa bắt); `wake_addr` bỏ `sched_after_op` nếu `wake_step` lỗi giữa chừng (hiện không xảy ra); `suspended ⇒ IllegalOperation` và `InvalidArgument`/`EAGAIN` chốt khi có Frame thật; `set_addr_word` là model API. Không đổi code K1c.
+- **D2-59** Backlog K3 cho SMP: mô hình IPI/timer thật; thêm `TlbFlush`/`VmKick`/`PowerReq` vào hộp thư (K1c mới có Wake/Reschedule/Migrate/Stop); multicast/IRQ; `Migrate` trùng đã bị từ chối ở `post_mail` (KT-29). Không đổi code K1c.
 
 ---
 
