@@ -94,9 +94,9 @@ Sau vá: `kt29_smp` **13/13**, `gate --fast` **PASS 442 test/58 suite**, L1 1.00
   `-D warnings` sạch, gen-check ON, scn OK, R1..R5 OK; L1 1.000 seed/999 trace **756 ms**
   ([`kt29-gate-fast.log`](kt29-gate-fast.log)). Không retry (D2-07). (Trước verdict: 440 test,
   L1 663 ms — cùng bộ test, thêm 1 test FIFO sau verdict.)
-- **Miri** `./v2/bin/v2 miri test --test kt29_smp` (sau verdict): **PASS 12/12**, 257,92 s
-  ([`kt29-miri.log`](kt29-miri.log); fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; stable vẫn
-  1.000 × 64; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing).
+- **Miri** `./v2/bin/v2 miri test --test kt29_smp` (bản vá cuối, 13 test): **PASS 13/13**,
+  261,03 s ([`kt29-miri.log`](kt29-miri.log); fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8;
+  stable vẫn 1.000 × 64; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing).
 - **Driver L1 theo smp**: `./v2/bin/v2 nightly --l1 --seeds 200 --smp 1,2,4,8` — xem mục 4.
 - **Số liệu test**: 13 test `kt29_smp` + 1 unit `check_smp` + 1 driver L1; fuzz 1.000 seed × 64
   op × 4 cấu hình smp (256.000 op/lượt, chạy 2 lượt/seed để so trace).

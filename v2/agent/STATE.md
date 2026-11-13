@@ -10,7 +10,7 @@ Task          : KT-29 **xong mã + test** (**SMP mô hình tất định 1/2/4/8
 Bước          : 0/8 — **DONE mã**, commit `0ab2267` đã push `origin/main`; reviewer-kt29 verdict **DRIFT** đã sửa 5/5 (drain FIFO, debug_assert publish, ≤1 Migrate/TCB, "≤1/hart nguồn", guard n>1); chờ Agent 0 lật KT-29
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 442 test/58 suite** (baseline 427/56 ⇒ +15 = 13 `kt29_smp` + 1 unit `check_smp` + 1 driver `l1_k1c`), L1 1.000 seed/999 trace **767 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt29-gate-fast.log`)
-Miri          : `./v2/bin/v2 miri test --test kt29_smp` — **PASS 12/12** (`JOURNAL/kt29-miri.log`, 257,92 s; fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing)
+Miri          : `./v2/bin/v2 miri test --test kt29_smp` — **PASS 13/13** (`JOURNAL/kt29-miri.log`, 261,03 s; fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing)
 Việc dở       : chờ verdict `reviewer-kt29` (đã báo lead); sau verdict: commit `[KT-29]` + push, không lật QUEUE. Task kế: **KT-30** (`vifast-sync` MCS lock + Mailbox MPSC) sau khi Agent 0 lật KT-29
 ```
 
@@ -38,7 +38,7 @@ wake chéo hart + preempt theo `cur_prio`; (6) `check_smp`/`check_harts` + `sche
 (7) test 11 + fuzz 1.000×64×4 + driver `l1_k1c` + `nightly --l1`; (8) doc `k1c-smp.md`, gate,
 Miri, JOURNAL, review, commit.
 
-**Kết quả**: gate PASS **442 test/58 suite**, L1 **767 ms**; Miri `kt29_smp` **12/12** (bản trước khi vá trùng Migrate; `kt29_smp` 13/13 stable)
+**Kết quả**: gate PASS **442 test/58 suite**, L1 **767 ms**; Miri `kt29_smp` **13/13** (261,03 s)
 (243,85 s); `nightly --l1 --seeds 200 --smp 1,2,4,8` PASS (800 lượt); test đỏ
 `JOURNAL/kt29-red-compile.log` + `kt29-red-semantics.log`; chi tiết `JOURNAL/kt29-journal.md`.
 

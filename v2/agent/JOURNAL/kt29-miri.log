@@ -1,8 +1,8 @@
    Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.39s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.37s
      Running tests/kt29_smp.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/58073a53be1bf891/out/kt29_smp-58073a53be1bf891)
 
-running 12 tests
+running 13 tests
 test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... warning: integer-to-pointer cast
  --> lib/vifast-objmem/src/obj.rs:166:4
   |
@@ -22,15 +22,15 @@ test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... warning: integer-to
           2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
               at lib/vifast-objmem/src/owned.rs:187:23: 187:44
           3: vifast_sim::kobj::Machine::push_kernel
-              at sim/vifast-sim/src/kobj.rs:6489:20: 6491:31
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
           4: vifast_sim::kobj::Machine::add_cnode
               at sim/vifast-sim/src/kobj.rs:883:9: 890:10
           5: Rig::new
               at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
           6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
-              at sim/vifast-sim/tests/kt29_smp.rs:858:17: 858:31
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
           7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
-              at sim/vifast-sim/tests/kt29_smp.rs:852:57: 852:57
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
 
 warning: integer-to-pointer cast
  --> lib/vifast-objmem/src/obj.rs:175:13
@@ -46,18 +46,19 @@ warning: integer-to-pointer cast
           2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
               at lib/vifast-objmem/src/owned.rs:187:23: 187:44
           3: vifast_sim::kobj::Machine::push_kernel
-              at sim/vifast-sim/src/kobj.rs:6489:20: 6491:31
+              at sim/vifast-sim/src/kobj.rs:6498:20: 6500:31
           4: vifast_sim::kobj::Machine::add_cnode
               at sim/vifast-sim/src/kobj.rs:883:9: 890:10
           5: Rig::new
               at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
           6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
-              at sim/vifast-sim/tests/kt29_smp.rs:858:17: 858:31
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
           7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
-              at sim/vifast-sim/tests/kt29_smp.rs:852:57: 852:57
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
 
 ok
 test fuzz_smp_tat_dinh_bat_bien ... ok
+test post_hai_migrate_cung_tcb_bi_tu_choi ... ok
 test post_migrate_qua_hop_thu_di_tru_that ... ok
 test published_idle_cur_prio_va_guard_luat_3 ... ok
 test push_chi_khi_dich_idle_va_trong_affinity ... ok
@@ -69,7 +70,7 @@ test push_vao_cuoi_hang_cua_dich ... ok
 test wake_cheo_hart_qua_hop_thu_va_nguong_preempt ... ok
 test with_harts_1_2_4_8_va_mac_dinh_mot_hart ... ok
 
-test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 257.92s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 261.03s
 
 warning: 2 warnings emitted
 
