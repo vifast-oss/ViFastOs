@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-28 **xong mã + test** (**WaitOnAddress**: bảng băm `(frame, offset)` `WAITADDR_BUCKETS = 64` hằng model `[TK]`, `WaitAddr` đọc giá trị + xếp hàng **một lần**, **không timeout** (D2-53 Q4), `WakeAddr(n)` tối đa n theo FIFO, không mất đánh thức; model-only D2-53 Q3). KT-27 DONE (`093b986` lật), KT-26 DONE (`e5350f0`), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
-Bước          : 9/10 — xong mã + test + gate + Miri + **review độc lập APPROVE**; bước 10: commit `[KT-28]` + push
+Bước          : 10/10 — **DONE mã**, commit `ff94538` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 427 test/56 suite** (baseline 413/55 ⇒ +14 = 12 `kt28_waitaddr` + 2 unit `check_waitaddr`), L1 1.000 seed/999 trace **704 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt28-gate-fast.log`)
 Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt28_waitaddr` — **PASS 12/12** (`JOURNAL/kt28-miri.log`, 105 s) + `--lib check_waitaddr` **2/2** (`JOURNAL/kt28-miri-lib.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
@@ -48,8 +48,10 @@ khi frame chết — chưa có vòng đời Frame (K2 Frame thật, K3 xem lại
 lỗi giữa chừng (hiện không xảy ra: mọi nút đều `BlockedOnAddress` theo bất biến); (d) docs §6:
 "giữ khoá = một hàm" **chấp nhận cho K1c**, `WaitAddr` trên TCB `suspended` ⇒ `IllegalOperation`
 là **nợ K3 conformance**, giữ `InvalidArgument`, `set_addr_word`/`addr_word` là **model API**.
-**Trạng thái**: **REVIEW → chờ Agent 0 lật** (đã có verdict reviewer độc lập **APPROVE**); commit
-`[KT-28]` đã push, **không** tự DONE, **không** lật QUEUE.
+**Commit**: `ff94538` (đã push `origin/main`, 14 tệp: +3.348/−25 — gồm 12 test `kt28_waitaddr`, 2
+unit checker, doc `v2/docs/k1c-waitaddr.md`, `v2/bin/v2` Miri list, log `JOURNAL/kt28-*`).
+**Trạng thái**: **REVIEW → chờ Agent 0 lật** (reviewer độc lập `reviewer-kt28` verdict **APPROVE**
+2026-11-13); **không** tự DONE, **không** lật QUEUE.
 
 ## KT-27 — Notification: word 64 + badge, Signal OR, một waiter, Wait/Poll, bind 1:1 (K1c, D2-53 Q6)
 
@@ -1176,6 +1178,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-13 | **KT-28** | 10/10 | `ff94538` | — | `gate --fast` PASS (**427 test/56 suite**, L1 1000 seed/999 trace, 704 ms) | **commit `ff94538` đã push**; WaitOnAddress bảng băm `(frame, offset)` 64 bucket hằng model `[TK]` (không tạo `spec/kernel.toml`), `wait_addr` đọc giá trị + xếp hàng một lần (expected lệch ⇒ `InvalidArgument` không xếp hàng), **không timeout** (D2-53 Q4), `wake_addr(n)` FIFO tối đa n, `check_waitaddr` sau mỗi op, API K1b giữ nguyên; 12 test + fuzz **1.000 seed × 64 op**, Miri **12/12** + lib **2/2**; đột biến "xếp hàng trước rồi so" bị bắt; **reviewer-kt28 APPROVE**; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-23** | 7/8 | `67aa8bc` | — | `gate --fast` PASS (**321 test/47 suite**, L1 1000 seed/999 trace, 687 ms) | **xong mã — chờ review độc lập rồi mới commit**; coverage **46/46** (bảng 48/48) + **73/73** cặp cấm (`forbidden_attempts=73`), fuzz 1.000×64 = **256.000** kiểm 4 miền/0 vi phạm; **bug fuzz tìm ra đã sửa** (Exit fault giao thẳng Recv waiter); Miri **12/12** (2.608 s); parity 10.000 seed/0 lệch (chỉ Untyped/CNode); `.scn` 21 tệp/11 nhóm, fixture 12 sửa **1 dòng** (D2-52); DoD K1b: 3/4 ĐẠT, push migration **hoãn K1c** (D2-49(a)) |
 | 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**298 test/45 suite**, L1 1000 seed/999 trace, 550 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); **13 test** (invariant **1.000 seed × 64 op**, **14.609** bước có donation), Miri **13/13** (129 s); commit `eae876b` + follow-up `[KT-21]` (3 điều kiện `reviewer-kt21`) đã push; **chờ Agent 0 ghi D2-51 + lật sổ** |
 | 2026-11-13 | **KT-18** | 8/8 | `5cccb72` | — | `gate --fast` PASS (**251 test/42 suite**, L1 1000 seed/999 trace) | **commit `5cccb72` đã push**; TCB 11 trường + **một cửa** `transition_tcb` + bảng `ALLOWED` 48 = **46+2 reserved**, 18 test (ma trận 121 cặp, coverage bảng 100%), Miri kt18 **18/18**; drift D2-33 sửa; reviewer DRIFT nhẹ đã sửa; chờ Agent 0 lật sổ |

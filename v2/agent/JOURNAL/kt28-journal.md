@@ -108,5 +108,5 @@ lặp** do chèn KT-28; `Bước` đổi `7/8` → `9/10`; stage **đường d�
 
 ## 8. Trạng thái
 
-**REVIEW** — reviewer độc lập **APPROVE**; commit `[KT-28]` đã push; **không** tự DONE, **không**
-lật QUEUE (Agent 0 lật).
+**REVIEW** — reviewer độc lập **APPROVE**; commit `ff94538` đã push `origin/main`; **không** tự
+DONE, **không** lật QUEUE (Agent 0 lật).
