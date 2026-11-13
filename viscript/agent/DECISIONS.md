@@ -546,3 +546,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   "trường không có trên `it`" trong sổ `06xx` (4 → 5 mã) ⇒ `all_codes()` **29**; `BOOKS` 7, `next_block()` **801**.
   (5) `.vish` **chưa có** cú pháp khai `cmd`/`type`/`let` có kiểu ⇒ kiểu `it` thật đến từ **literal bản ghi** khớp
   prelude; nợ: khi `.vish` có khai `type` ⇒ phải `VS0302` với tên prelude.
+
+- **VD-74** **`get`/`select` (ST-40b)**: (1) `get(xs, f) -> list[K]` — `… | get name` ⇒ sugar `it => it.name` (VD-71);
+  kiểu `K` tính **từ thân lambda** ở `kiem_builtin` (không để `TypeRef` xuống tyck ⇒ không `VS0301` oan). (2)
+  `select(xs, k1, k2, …) -> list[record#N ẩn danh]` — hạ thành lambda trả **record literal**, trường kiểu lấy từ `it`,
+  **giữ đúng thứ tự đối số**; **không** thêm `Type::Any` (nợ VS2: chưa `to json` được). (3) Trường lạ trên `it` kiểu
+  **thật** ⇒ **`VS0605`**; `it` kiểu `{error}`/`Any` ⇒ **kiểm động**, **không** báo oan. (4) `get`/`select` 0 đối số ⇒
+  `VS0602`; `get` trên list rỗng ⇒ `[]`. (5) R1 (>1.500 dòng) ⇒ **tách** `lower/chieu.rs`, không nới ngưỡng.

@@ -129,8 +129,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | **DONE** | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | **DONE** | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
 | ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | **DONE** | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
-| ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | **READY** | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
-| ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | BLOCKED | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
+| ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | **DONE** | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
+| ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | **READY** | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
 | ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | BLOCKED | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
 | ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | BLOCKED | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -553,6 +553,16 @@ APPROVED 2026-11-13 Agent 0
 > **không có** cú pháp khai `cmd`/`type`/`let` có kiểu ⇒ ca "chạy thật" dùng **literal bản ghi khớp prelude** (đã khoá
 > interp ↔ `--vm`); nợ: khi `.vish` có cú pháp khai `type` thì phải `VS0302` với prelude.
 > **ST-40b mở** (`get`/`select`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-40b DONE** — commit `942bcff` (**Agent 2 tự commit**): **`get`** (`get name` ⇒ sugar `it => it.name`, `list[K]` thật)
+> + **`select`** (`select pid, name` ⇒ hạ lambda trả **bản ghi ẩn danh** `list[record#N]` với trường lấy từ `it`, giữ **đúng
+> thứ tự đối số**) — **không** thêm `Type::Any`; trường lạ ⇒ **`VS0605`**; `it` kiểu `{error}` ⇒ **kiểm động** (không oan);
+> `get` trên list rỗng ⇒ `[]`. **576** test (+13); sem **367** (336 `.vis` + 40 `.vish`), `vis test` **367 ok**, parity
+> **341/341**; differential 100k **0 lệch** (225,9 s); allowlist **vẫn 6**; R1 đỏ ⇒ **tách** `lower/chieu.rs` (188 dòng,
+> `cmd.rs` 1.390). Nợ: `select` bản ghi ẩn danh chưa `to json` được (cần `Type::Any` ⇒ VS2).
+> **ST-41 mở** (`Render`).
 
 ## Ghi chú vận hành
 
