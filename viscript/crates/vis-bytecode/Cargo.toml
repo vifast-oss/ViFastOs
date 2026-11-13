@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vis-bytecode"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "VBC1 — định dạng bytecode nội bộ của ViScript (ST-19, VD-52)"
+
+[dependencies]
+vis-syntax = { path = "../vis-syntax" }
+vis-types = { path = "../vis-types" }
+vis-diag = { path = "../vis-diag" }

@@ -1,0 +1,59 @@
+=== ST-19 D2-05: vis-bytecode (VBC1) — ĐỎ TRƯỚC khi sửa ===
+thời điểm chụp: 2026-11-13T01:44:21Z
+
+Thứ tự thật (khai đúng, không giả vờ): dựng **khung** crate (format/encode/decode/codegen) →
+viết test → **đỏ thật ở 3 lớp** dưới đây → sửa → xanh. Khai rõ phần **xanh sẵn**:
+  • `tests/decode_neg.rs` (11 ca) và `tests/codegen.rs` (5 ca) viết **sau** khi đã sửa lỗi encode
+    ⇒ lần chạy đầu đã xanh; **không** tính là đỏ.
+  • `roundtrip.rs`: 1/3 ca xanh sẵn (`code_len_khong_rong_va_co_span`, 10 tệp đầu).
+
+ẢNH 1 — `cargo test -p vis-bytecode --test roundtrip` lần đầu: 2/3 ĐỎ
+  • `roundtrip_30_golden_bieu_thuc`: `decode: Truncated(192)` — encode ghi thiếu toán hạng
+    của `CallBuiltin` (u32+u16) ⇒ lệch 2 byte mỗi lệnh.
+  • `roundtrip_tren_toan_bo_323_ca`: `decode: đích nhảy ngoài code: -10` — kiểm đích nhảy
+    quên rằng offset **âm** là hợp lệ (nhảy lùi của vòng lặp).
+
+ẢNH 2 — sau khi sửa encode/jump: còn 1/3 ĐỎ — **272 ca** báo `ngăn xếp âm` vì codegen
+  ước lượng ngăn xếp tuần tự (không theo CFG) ⇒ đổi sang **ước lượng trên có kẹp tại 0** và ghi
+  rõ: `max_stack` chỉ là ước lượng, **ST-21 kiểm lại độc lập** từ byte stream.
+
+ẢNH 3 — lần chạy cuối: roundtrip 3/3, decode_neg 11/11, codegen 5/5; `cargo test --workspace` = **284**.
+
+sha256 (bản commit):
+  sha256 crates/vis-bytecode/Cargo.toml=0c85ef20129fff789526e190a949a561bc727cb0fb670a92c707f08b8b78294d
+  sha256 crates/vis-bytecode/src/lib.rs=634345fea88a83169c929ac6e9d9da58e75c059a2a0c9b1893af23fc70a399a0
+  sha256 crates/vis-bytecode/src/format.rs=c7fa25e435896ecb5c7cbd8fbaf30d76581c0dc4ac0ee268d4a5953cb55278ef
+  sha256 crates/vis-bytecode/src/encode.rs=84d15b74aa6335e69109f1744af6708d92778b1537e45de24eee2b05988b06d7
+  sha256 crates/vis-bytecode/src/decode.rs=9821a744ec58243fb49962d1fec6884499ddc64329135d9a889627275c0240f3
+  sha256 crates/vis-bytecode/src/codegen.rs=d626ef4a23c209e998250ba54a3b5ccf85863ed626e734df3f9b5901e5bfeef9
+  sha256 crates/vis-bytecode/tests/roundtrip.rs=51f7ae2b916369b2dafe4c22e226db84978e6790a8e4040a8fa5f1cc656b5595
+  sha256 crates/vis-bytecode/tests/decode_neg.rs=0e3e41ff4101a3fdf8400569022367bb6090a9c9283ddd7663834095ea3c5bb2
+  sha256 crates/vis-bytecode/tests/codegen.rs=26fdce4ab60fe87d1417c8a10d5a2616d48de596787500bf629e5a7edcf7eb8d
+  sha256 Cargo.toml=4d6d0496335848f4b2dc7523e078bef8470f87e1e5ad15c0454246cccb92d986
+
+----- ẢNH 1 (đỏ, đầu ra gốc) -----
+test code_len_khong_rong_va_co_span ... ok
+test roundtrip_30_golden_bieu_thuc ... FAILED
+test roundtrip_tren_toan_bo_323_ca ... FAILED
+thread 'roundtrip_30_golden_bieu_thuc' (38329253) panicked at crates/vis-bytecode/tests/roundtrip.rs:121:9:
+thread 'roundtrip_tren_toan_bo_323_ca' (38329254) panicked at crates/vis-bytecode/tests/roundtrip.rs:92:60:
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/loop-break.vis: decode: đích nhảy ngoài code: -10
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+----- ẢNH 2 (đỏ, 16 dòng đầu) -----
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/break-long.vis: ngăn xếp âm tại byte 55..103",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/continue-long.vis: ngăn xếp âm tại byte 55..109",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/continue.vis: ngăn xếp âm tại byte 55..105",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/for-bao-gom.vis: ngăn xếp âm tại byte 45..74",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/for-list.vis: ngăn xếp âm tại byte 45..82",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/for-long-hai.vis: ngăn xếp âm tại byte 74..132",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/for-range.vis: ngăn xếp âm tại byte 45..73",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/for-str.vis: ngăn xếp âm tại byte 45..73",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/dieu-khien/long.vis: ngăn xếp âm tại byte 74..108",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/bien-the-nhieu-doi.vis: ngăn xếp âm tại byte 110..148",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/empty-branch.vis: ngăn xếp âm tại byte 147..163",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/guard-hai.vis: ngăn xếp âm tại byte 186..200",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/guard.vis: ngăn xếp âm tại byte 176..190",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/match-co-ban.vis: ngăn xếp âm tại byte 153..161",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/match-long.vis: ngăn xếp âm tại byte 144..152",
+    "/Users/mps/dvchd/ViFastOs/viscript/crates/vis-bytecode/../../test/sem/enum/or-ba.vis: ngăn xếp âm tại byte 125..135",
+----- hết -----

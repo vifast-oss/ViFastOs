@@ -6,14 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-18** (`cmd_lower`: `.vish` hạ xuống HIR + chạy được) — xong kỹ thuật 2026-11-13,
+Task          : **ST-19** (`vis-bytecode`: định dạng VBC1 + sinh mã từ HIR) — xong 2026-11-13,
                 **chưa commit** (chờ Agent 0 OK).
 Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T01:29:53Z = 2026-11-13 10:29 JST; không retry) — **265** test; **1** test `sem` chạy
-                **323 ca / 17 nhóm** (309 `.vis` + 14 `.vish`)
-Việc dở       : chờ Agent 0 duyệt rồi commit `[ST-18]`
+                (2026-11-13T01:45:38Z = 2026-11-13 10:45 JST; không retry) — **284** test
+Việc dở       : chờ duyệt rồi commit `[ST-19]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -46,6 +45,22 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-19 — `vis-bytecode`: VBC1 + sinh mã từ HIR (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | Crate mới `crates/vis-bytecode` (lib `vis_bytecode`; dep `vis-types`/`vis-syntax`/`vis-diag`) | `format.rs` (magic `VBC1`, `u16` version=1, **hash nguồn 32 byte**, const pool, bảng hàm), `encode.rs`/`decode.rs` (little-endian, độ dài tường minh, `DecodeError` **9 biến thể**), `codegen.rs` (HIR ⇒ `Module`) |
+| 2 | Tập lệnh `Instr` | **45 tag** (hằng/biến/`LoadCaptured`, `Bin`/`Un` mang **chính** `vis_types::BinOp`/`UnOp`, `Call`/`CallBuiltin`/`CallMethod`, nhảy 6 loại, `Return`/`Halt`, dựng list/set/tuple/map/record/enum/opt/result/closure, `Field`/`Index`/`Set`/`With`/`Interp`, test pattern 6 loại + `BindLocal`, `Try`, `Dup`); mỗi lệnh có **span byte** (bảng song song), mỗi hàm có `arity`/`nparams`/`nlocals`/`max_stack` |
+| 3 | **`match` = chuỗi test + nhảy** | VM **không** biết pattern; `Rest` không đầu/cuối ⇒ `CodegenError::Unsupported` |
+| 4 | **Round-trip** | `decode(encode(m)) == m`, `encode(decode(encode(m))) == encode(m)`, `total_code() > 0`, `is_well_formed()` trên **272 ca sinh mã** (323 ca − 51 ca cố ý lỗi tĩnh) + **27 golden biểu thức hợp lệ** (30 − 3 ca cố ý lỗi) |
+| 5 | Đo được | **284** test workspace (265 + 19 mới: 3 roundtrip + 11 decode_neg + 5 codegen); **3.827 lệnh** cho 272 ca (TB **14,1** lệnh/ca, max **46**), **36** tag đã dùng; sổ `06xx` giữ nguyên |
+
+**Hash nguồn**: **FNV-1a 64 bit × 4 seed** ⇒ 32 byte (không thêm dep) — **không phải SHA-256**; ghi rõ trong `format.rs` + **lỗ hổng đã biết**: khi làm consent/quyền (§11.3) **phải** thay bằng SHA-256 thật (`sha2`, cần duyệt allowlist); **cache luôn phải qua verifier** (ST-21) — hàng rào bù (ghi trong doc của `decode`).
+
+**Chưa làm (đúng phạm vi)**: VM + verifier (ST-20/ST-21); `max_stack` hiện là **ước lượng trên** (kẹp 0) — ST-21 kiểm lại độc lập.
+
+**Đỏ trước** `JOURNAL/st19-red-vbc.log`: 2/3 roundtrip đỏ (encode thiếu toán hạng `CallBuiltin` ⇒ `Truncated`; kiểm đích nhảy sai ⇒ `BadJump(-10)`), sau đó 272 ca `ngăn xếp âm` ⇒ sửa cách ước lượng; khai rõ `decode_neg`/`codegen` **xanh sẵn** (viết sau khi sửa encode).
 
 ## ST-18 — `cmd_lower`: `.vish` chạy được (2026-11-13)
 
