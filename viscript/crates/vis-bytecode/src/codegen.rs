@@ -15,7 +15,7 @@ mod pattern;
 use std::collections::HashMap;
 
 use vis_syntax::Span;
-use vis_types::{HBody, HCond, HExpr, HItem, HPat, HStmt, Hir, InterpPart, LitKind, Symbols};
+use vis_types::{HBody, HCond, HExpr, HFn, HItem, HPat, HStmt, Hir, InterpPart, LitKind, Symbols};
 
 use crate::format::{binop_tag, unop_tag};
 use crate::format::{Const, Func, Instr, Module, HASH_LEN};
@@ -222,7 +222,13 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         if let HItem::Enum(e) = it {
             g.enums.insert(e.sym, e.name.clone());
         }
-        if let HItem::Fn(f) = it {
+        // ST-29: hàm `impl` cũng là hàm thường (dispatch tĩnh trỏ thẳng `sym`).
+        let ham: Vec<&HFn> = match it {
+            HItem::Fn(f) => vec![f],
+            HItem::Impl(i) => i.methods.iter().collect(),
+            _ => Vec::new(),
+        };
+        for f in ham {
             g.fmap.insert(f.sym, g.funcs.len() as u32);
             g.fmap_ten.insert(f.name.clone(), g.funcs.len() as u32);
             g.fparams.insert(
@@ -237,7 +243,12 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
     g.funcs.push(Func::default());
     // Lượt 2: thân hàm cấp tệp.
     for it in &hir.items {
-        if let HItem::Fn(f) = it {
+        let ham: Vec<&HFn> = match it {
+            HItem::Fn(f) => vec![f],
+            HItem::Impl(i) => i.methods.iter().collect(),
+            _ => Vec::new(),
+        };
+        for f in ham {
             let idx = g.fmap[&f.sym] as usize;
             let mut st = Emit {
                 g: &mut g,

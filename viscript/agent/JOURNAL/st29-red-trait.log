@@ -1,0 +1,54 @@
+=== ST-29 D2-05: trait + `derives` (dispatch **tĩnh**) — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T05:32:30Z
+
+## 1. Đỏ **thật** ở HEAD `9159198` (worktree `/tmp/vis-red29`, chỉ thêm tệp test mới)
+
+```
+$ cd /tmp/vis-red29/viscript && cargo test -p vis-types --test trait
+test result: FAILED. **10 passed; 12 failed**; 0 ignored
+$ cargo test -p vis-cli --test trait_cli
+test result: FAILED. **2 passed; 5 failed**; 0 ignored
+```
+
+12 ca đỏ vì trait/impl **chưa được kiểm** và `x.m()` chưa dispatch; 5 ca CLI đỏ vì `h.show()`/`h.gap()`
+chưa hạ thành call (và `derives` chưa kiểm). **Khai minh bạch**: 10 + 2 ca xanh sẵn là các ca “báo lỗi cũ
+đã đúng” (vd `h.khong_co()` vốn đã `VS0403` với thông điệp **trường**; `derives` hợp lệ vốn không lỗi).
+
+## 2. Hiện trạng trước khi sửa (đo bằng `vis check` thật)
+
+```
+$ vis check t1.vis    # trait Show + impl Show for Hop + fn show(self) + print(h.show())
+not ok 1 - … # VS0403 12:7 bản ghi không có trường `show` (VD-43 #6)
+$ vis check t3.vis    # impl Hop (inherent) + print(h.gap())
+not ok 1 - … # VS0403 9:7 bản ghi không có trường `gap` (VD-43 #6)
+```
+⇒ `trait`/`impl` **parse + hạ** đúng nhưng tyck **bỏ qua** (`tyck/mod.rs:599`), và interp/codegen **không** đăng ký
+hàm `impl` ⇒ gọi phương thức không thể chạy.
+
+## 3. Sau khi sửa — đo được
+
+- **421** test workspace (392 + **22** `crates/vis-types/tests/trait.rs` + **7** `crates/vis-cli/tests/trait_cli.rs`)
+- **dispatch thật**: `impl Show for Hop` + `let h: Hop` + `h.show()` ⇒ `hop`, **interp và VM in giống nhau**
+  (`trait_cli::dispatch_impl_show_chay_ca_hai_duong` chạy `vis run` **và** `vis run --vm --no-cache`)
+- `derives Eq, Show, Json` chạy bằng ngữ nghĩa có sẵn (`a == b` ⇒ `true`, `print(a)` ⇒ `{gia_tri: 1}`)
+- `VS0403` **mở rộng nghĩa** sang phương thức (vi/en/ja) — `TYPE_CODES` vẫn **4**, `all_codes()` **28**
+  (snapshot `messages.rs` sửa **kèm lý do**, không nới luật)
+- **sem 338 / differential 286 giữ nguyên** (không thêm ca sem)
+
+## 4. Giới hạn (VS1b — ghi JOURNAL)
+
+- `self` **theo giá trị**; `&self`/`&mut self` cần tham chiếu (§3.7) ⇒ VS1.
+- Dispatch **chỉ khi kiểu tĩnh**: generic `T`, `{error}`, kết quả `std.list` ⇒ `VS0403` “không tĩnh (VS1b)”.
+- **Mồ côi** mới kiểm trong **một tệp** (chéo module = nợ); **siêu trait** chưa kiểm; `derives` chưa sinh mã.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-diag/src/lib.rs=07cba252decd0c7802048209526faf887c0ab8e5c4fb649c3534bceb76481c95
+  sha256 crates/vis-diag/tests/messages.rs=746efe53682d32ed28adfac6d10bb7a9a4feb0c2515020059267578ce7447199
+  sha256 crates/vis-types/src/lower.rs=cf88a75c4bec946a434f1bd92d48e272604e507a08bb2b027f43f4de7441458f
+  sha256 crates/vis-types/src/lower/trait_impl.rs=2774a58278f04322e8e2376db8086a28d222066182f7b7e712f692aadf6ec16c
+  sha256 crates/vis-types/src/lower/expr.rs=6cd8bf9a5d3018ac08e200a979de013aa3e0ecc83a29cdd4d1c0cde4feba94ec
+  sha256 crates/vis-types/src/lower/stmt.rs=0430c4cf8fd83b2239317904152426e167f341d0eefba16da443b848236046d0
+  sha256 crates/vis-types/tests/trait.rs=23fcf0821b105ddbf73de92a2578767b9e9e6bb350ac022b06128335483b56c2
+  sha256 crates/vis-interp/src/interp.rs=0d1e497db69374ba803c2b1a0483b074905860f8166c717ab8ec20e1ed7156c8
+  sha256 crates/vis-bytecode/src/codegen.rs=ddfced646130812f751b622aeb1490d48c65b53c44303f9cdf25ecd4d0571736
+  sha256 crates/vis-cli/tests/trait_cli.rs=eddb17bdc87680b5a053c00e4979412f75136792068ac6d2a12af1a48cf772ca

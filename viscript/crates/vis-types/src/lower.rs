@@ -27,7 +27,10 @@ use crate::hir::{
     BinOp, FnKind, HAlias, HConst, HEnum, HExpr, HField, HFn, HImpl, HItem, HParam, HRec, HSig,
     HStmt, HTrait, HUse, HVariant, Hir, LitKind, UnOp,
 };
+
+mod trait_impl;
 use crate::ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
+pub(crate) use trait_impl::ChuKyTrait;
 
 mod cmd;
 mod expr;
@@ -288,6 +291,13 @@ struct Lowerer<'a> {
     stmts: Vec<HStmt>,
     /// Tham số kiểu đang có hiệu lực (`type Hop[T]`, `enum Or[A, B]`) — ST-28: xoá kiểu.
     generic_scope: Vec<String>,
+    impls: Vec<(Type, String, u32)>,
+    /// ST-29: trait `name → [(method, params_len, ret)]` để kiểm impl khớp trait.
+    traits: Vec<ChuKyTrait>,
+    /// ST-29: kiểu tĩnh của biến (chỉ từ **chú thích** tường minh: tham số + `let`/`var`).
+    type_env: std::collections::HashMap<u32, Type>,
+    /// ST-29: tên kiểu của `impl` đang hạ (để tái dùng sym đã khai ở lượt thu thập).
+    cur_impl: Option<String>,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -323,6 +333,10 @@ impl<'a> Lowerer<'a> {
         }
         Self {
             generic_scope: Vec::new(),
+            impls: Vec::new(),
+            traits: Vec::new(),
+            type_env: std::collections::HashMap::new(),
+            cur_impl: None,
             cst,
             text: &lex.text,
             opts,
@@ -365,6 +379,15 @@ impl<'a> Lowerer<'a> {
         for child in self.cst.root.children() {
             if is_item(child.kind) {
                 self.predeclare_item(child);
+            }
+        }
+        // ST-29: **lượt 1b** — thu thập `trait`/`impl` + sym phương thức (sau khi mọi `type`/`enum`
+        // đã khai ⇒ `impl Show for Hop` phân giải được kể cả khi `type Hop` viết sau).
+        for child in self.cst.root.children() {
+            match child.kind {
+                NodeKind::TraitDecl => self.collect_trait(child),
+                NodeKind::ImplDecl => self.collect_impl(child),
+                _ => {}
             }
         }
         // Lượt 2 — thân item + câu lệnh cấp tệp, **theo đúng thứ tự nguồn**.
@@ -741,9 +764,19 @@ impl<'a> Lowerer<'a> {
         self.push_frame(FrameKind::Fn, node.span);
         let sym = match kind {
             FnKind::Fn | FnKind::Cmd | FnKind::Test => self.item_sym(&name),
-            FnKind::TraitMethod | FnKind::ImplMethod => {
-                self.declare(&name, SymKind::Item, node.span, None)
+            FnKind::ImplMethod => {
+                // ST-29: sym đã khai ở **lượt 1b** (để call-site trỏ tới trước khi thân hạ).
+                let tim = self.cur_impl.clone().and_then(|t| {
+                    self.impls
+                        .iter()
+                        .find(|(ty, mn, _)| {
+                            self.ten_kieu(ty).as_deref() == Some(t.as_str()) && mn == &name
+                        })
+                        .map(|(_, _, sym)| *sym)
+                });
+                tim.unwrap_or_else(|| self.declare(&name, SymKind::Item, node.span, None))
             }
+            FnKind::TraitMethod => self.declare(&name, SymKind::Item, node.span, None),
         };
         for g in &generics {
             self.declare(g, SymKind::Generic, node.span, None);
@@ -816,6 +849,10 @@ impl<'a> Lowerer<'a> {
                 ty
             };
             let sym = self.declare(&name, SymKind::Param, p.span, Some(ty.clone()));
+            // ST-29: kiểu tĩnh của tham số (từ **chú thích**) để dispatch phương thức impl.
+            if !matches!(ty, Type::Error) {
+                self.type_env.insert(sym, ty.clone());
+            }
             out.push(HParam {
                 name,
                 span: p.span,
@@ -877,6 +914,8 @@ impl<'a> Lowerer<'a> {
             .filter(|n| n.kind == NodeKind::TypeField)
             .map(|f| self.field_of(f))
             .collect();
+        let field_tys: Vec<Type> = fields.iter().map(|f| f.ty.clone()).collect();
+        self.kiem_derives(node, &derives, &field_tys);
         let id = self
             .rec_names
             .iter()
@@ -911,7 +950,7 @@ impl<'a> Lowerer<'a> {
         let name = self.decl_name(node)?;
         let sym = self.item_sym(&name);
         let derives = self.derives_of(node);
-        let mut variants = Vec::new();
+        let mut variants: Vec<HVariant> = Vec::new();
         for v in node.children().filter(|n| n.kind == NodeKind::Variant) {
             let vname = self.decl_name(v)?;
             let fields: Vec<HField> = v
@@ -925,6 +964,13 @@ impl<'a> Lowerer<'a> {
                 fields,
             });
         }
+        let mut vt: Vec<Type> = Vec::new();
+        for v in &variants {
+            for f in &v.fields {
+                vt.push(f.ty.clone());
+            }
+        }
+        self.kiem_derives(node, &derives, &vt);
         let id = self
             .enum_names
             .iter()
@@ -1045,9 +1091,13 @@ impl<'a> Lowerer<'a> {
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Error);
         let mut methods = Vec::new();
+        let truct = self.ten_kieu(&ty);
+        self.cur_impl = truct.clone();
         for m in node.children().filter(|n| n.kind == NodeKind::FnDecl) {
             methods.push(self.lower_fn(m, FnKind::ImplMethod));
         }
+        self.cur_impl = None;
+        self.kiem_impl_khop(node, &trait_name, &ty, &methods);
         Some(HItem::Impl(HImpl {
             trait_name,
             ty,

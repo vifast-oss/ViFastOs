@@ -124,9 +124,11 @@ fn snapshot_12_ca_so_kieu_04xx() {
         (402, Lang::Vi, "`match` không xét hết trường hợp"),
         (402, Lang::En, "`match` is not exhaustive"),
         (402, Lang::Ja, "`match` が網羅的ではありません"),
-        (403, Lang::Vi, "trường hoặc kiểu không tồn tại"),
-        (403, Lang::En, "field or type does not exist"),
-        (403, Lang::Ja, "フィールドまたは型が存在しません"),
+        // **SỬA KÈM LÝ DO (ST-29)**: `VS0403` mở rộng nghĩa sang **phương thức** (trait/impl) —
+        // Agent 0 chốt giữ mã, không cấp `VS0404`.
+        (403, Lang::Vi, "trường, kiểu hoặc phương thức không tồn tại"),
+        (403, Lang::En, "field, type or method does not exist"),
+        (403, Lang::Ja, "フィールド・型・メソッドが存在しません"),
         (412, Lang::Vi, "kiểu không khớp"),
         (412, Lang::En, "type mismatch"),
         (412, Lang::Ja, "型が一致しません"),

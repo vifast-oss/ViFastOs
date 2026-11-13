@@ -6,13 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-28** (generic hàm + kiểu `[T]`, xoá kiểu + hợp nhất call-site) — xong,
-                **chưa commit** (chờ Agent 0).
-Bước          : 4/4 (xoá kiểu ở lower → `FnSig` raw/erased → `hop_nhat` call-site → 31+4 ca + 10 sem)
+Task          : **ST-29** (trait + `derives`, dispatch **tĩnh**) — xong, **chưa commit** (chờ Agent 0).
+Bước          : 4/4 (VS0403 mở nghĩa → thu thập trait/impl → dispatch tĩnh + derives → 22+7 ca)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:16:59Z** (14:16 JST, không retry);
-                **392** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-28]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:36:42Z** (14:36 JST, không retry);
+                **421** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-29]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +44,20 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-29 — trait + `derives` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`derives`** | `Eq`/`Show`/`Json` = **kiểm + đăng ký** (không sinh mã): `Eq` = so sánh cấu trúc, `Show` = `show`, `Json` = `json.encode` (đều có sẵn); derives lạ ⇒ `VS0403`; `Json` trên trường/biến thể **kiểu hàm** ⇒ `VS0403` |
+| 2 | **`trait`/`impl`** | thu thập ở **lượt 1b** (sau predeclare ⇒ `impl` thấy được `type` khai sau); `impl Trait for Type` kiểm **khớp chữ ký** (thiếu/thừa ⇒ `VS0403`, sai số ⇒ `VS0401`, sai kiểu ⇒ `VS0412`); trait lạ ⇒ `VS0403` |
+| 3 | **Dispatch tĩnh** | `x.m(…)` với `x` kiểu tĩnh **record/enum** và `m` không nội tại ⇒ hạ **thẳng** `Call(impl_fn)` (chèn `self` đầu) ⇒ **cùng HIR** cho interp và VM (**không** bảng `impls`, **không** bump VBC1); kiểu không tĩnh ⇒ `VS0403` "không phân giải được … (VS1b)" |
+| 4 | **Nội tại thắng** | `[1,2].len()` vẫn là phương thức nội tại dù có `impl` cùng tên cho kiểu khác |
+| 5 | **VS0403** | nghĩa mở rộng "trường, kiểu hoặc **phương thức** không tồn tại" (vi/en/ja) — **không** cấp `VS0404`, `TYPE_CODES` vẫn 4, `all_codes()` 28 |
+| 6 | **Đo** | **421** test (392 + **22** `vis-types/tests/trait.rs` + **7** `vis-cli/tests/trait_cli.rs`); sem **338** / differential **286** giữ nguyên; gate PASS |
+
+**Giới hạn (VS1b, ghi JOURNAL)**: `self` **theo giá trị** (`&self` cần tham chiếu = VS1); dispatch chỉ khi kiểu **tĩnh**;
+mồ côi kiểm trong **một tệp** (module-cross-file = nợ); siêu trait chưa kiểm.
 
 ## ST-28 — generic hàm + kiểu `[T]` (2026-11-13)
 

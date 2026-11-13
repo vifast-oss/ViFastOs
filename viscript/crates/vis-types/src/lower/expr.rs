@@ -11,7 +11,7 @@ use super::{bin_op, lit_kind, un_op, Lowerer};
 use crate::hir::{BinOp, HBody, HCond, HExpr, HParam, InterpPart, Lit, LitKind};
 use crate::stdlib as vis_types_stdlib;
 use crate::ty::{FieldDef, RecDef, RecId, Type};
-use vis_diag::NAME_CODES;
+use vis_diag::{NAME_CODES, TYPE_CODES};
 
 impl<'a> Lowerer<'a> {
     /// Hạ một biểu thức; không bao giờ panic — node lạ ⇒ [`HExpr::Error`].
@@ -191,6 +191,11 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_default();
                 // ST-26: `str.split(…)`, `list.sort(…)` — **tên đầy đủ** `std.<module>.<fn>` khi tệp đã
                 // `use std.<module>`; gọi vào tên đã biết nhưng hoãn ⇒ `VS0301` "chưa hỗ trợ (VS1b)".
+                // ST-29: **dispatch tĩnh** — `x.m(…)` với `x` kiểu tĩnh record/enum và `m` không
+                // phải phương thức nội tại ⇒ hạ thẳng `Call(impl_fn)` (chèn `self/dt` đầu).
+                if let Some(e) = self.dispatch_tinh(&callee, &args, span) {
+                    return e;
+                }
                 // ST-26: chuyển `str.split(…)` sang tên đầy đủ `std.str.split` (nếu tệp đã `use`).
                 if let HExpr::Field {
                     base,
@@ -569,6 +574,84 @@ impl<'a> Lowerer<'a> {
             args,
             named: Vec::new(),
             span,
+        }
+    }
+
+    /// ST-29 — **dispatch tĩnh**: `x.m(…)` với `x` có kiểu tĩnh **record/enum** ⇒ tìm `impl` và hạ
+    /// thành gọi **trực tiếp** hàm impl (chèn `self`/`dt` làm đối số đầu). Không có ⇒ `VS0403`;
+    /// nhiều ⇒ `VS0403` (mơ hồ). Kiểu không tĩnh ⇒ để nguyên (nội tại/`VS0403` ở tầng sau).
+    fn dispatch_tinh(&mut self, callee: &HExpr, args: &[HExpr], span: Span) -> Option<HExpr> {
+        let HExpr::Field {
+            base,
+            name,
+            optional: false,
+            ..
+        } = callee
+        else {
+            return None;
+        };
+        let Some(ty) = self.static_ty(base) else {
+            // ST-29: kiểu bên nhận **không tĩnh** (generic/`{error}`) — nếu tên khớp một phương thức
+            // `impl` nào đó thì báo rõ (VS1b), thay vì để lỗi mờ lúc chạy.
+            if self.impls.iter().any(|(_, n, _)| n == name) {
+                self.diag(
+                    &TYPE_CODES[2],
+                    format!(
+                        "không phân giải được phương thức `{name}` cho kiểu không tĩnh (VS1b — thêm chú thích kiểu)"
+                    ),
+                    span,
+                );
+                return Some(HExpr::Error { span });
+            }
+            return None;
+        };
+        let ten = self.ten_kieu(&ty)?;
+        let khop: Vec<u32> = self
+            .impls
+            .iter()
+            .filter(|(t, n, _)| self.ten_kieu(t).as_deref() == Some(ten.as_str()) && n == name)
+            .map(|(_, _, sym)| *sym)
+            .collect();
+        match khop.len() {
+            1 => {
+                // Đối số đầu = chính biểu thức nhận (`self`/`dt` theo giá trị).
+                let mut ds: Vec<HExpr> = Vec::with_capacity(args.len() + 1);
+                ds.push((**base).clone());
+                ds.extend(args.iter().cloned());
+                Some(HExpr::Call {
+                    callee: Box::new(HExpr::Var {
+                        name: format!("{ten}.{name}"),
+                        sym: Some(khop[0]),
+                        span,
+                    }),
+                    args: ds,
+                    named: Vec::new(),
+                    span,
+                })
+            }
+            0 => {
+                let co_trait = self
+                    .traits
+                    .iter()
+                    .find(|(_, ms)| ms.iter().any(|(mn, _, _, _)| mn == name))
+                    .map(|(tn, _)| tn.clone());
+                let msg = match co_trait {
+                    Some(tn) => format!(
+                        "trait `{tn}` có phương thức `{name}` nhưng `{ten}` chưa cài (`impl {tn} for {ten}`)"
+                    ),
+                    None => format!("không có phương thức `{name}` cho `{ten}` (VS0403)"),
+                };
+                self.diag(&TYPE_CODES[2], msg, span);
+                Some(HExpr::Error { span })
+            }
+            n => {
+                self.diag(
+                    &TYPE_CODES[2],
+                    format!("mơ hồ: {n} impl cùng cung cấp phương thức `{name}` cho `{ten}`"),
+                    span,
+                );
+                Some(HExpr::Error { span })
+            }
         }
     }
 

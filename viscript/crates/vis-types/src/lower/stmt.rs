@@ -5,6 +5,7 @@ use vis_syntax::{Elem, Kind, Node, NodeKind, Span};
 
 use super::{FrameKind, Lowerer, SymKind, NAME_CODES};
 use crate::hir::{AssignOp, HArm, HCond, HElse, HExpr, HPat, HStmt};
+use crate::ty::Type;
 
 impl<'a> Lowerer<'a> {
     // ----- câu lệnh -----
@@ -148,6 +149,14 @@ impl<'a> Lowerer<'a> {
             .child(NodeKind::Pattern)
             .map(|p| self.lower_pat(p))
             .unwrap_or(HPat::Wild { span: node.span });
+        // ST-29: ghi kiểu tĩnh của biến khi có **chú thích** (`let h: Hop = …`).
+        if let Some(t) = &ty {
+            if let HPat::Bind { sym, .. } = &pat {
+                if !matches!(t, Type::Error) {
+                    self.type_env.insert(*sym, t.clone());
+                }
+            }
+        }
         let else_ = self.lower_let_else(node);
         HStmt::Let {
             pat,

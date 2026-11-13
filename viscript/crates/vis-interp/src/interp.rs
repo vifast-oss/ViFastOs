@@ -120,6 +120,12 @@ impl<'a> Interp<'a> {
                 HItem::Enum(e) => {
                     tags.insert(e.sym, (e.name.clone(), true));
                 }
+                // ST-29: phương thức `impl` là hàm thường (dispatch tĩnh trỏ thẳng `sym`).
+                HItem::Impl(i) => {
+                    for m in &i.methods {
+                        fns.insert(m.sym, m);
+                    }
+                }
                 HItem::Rec(r) => {
                     tags.insert(r.sym, (r.name.clone(), false));
                 }

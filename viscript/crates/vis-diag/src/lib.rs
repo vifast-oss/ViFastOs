@@ -227,9 +227,11 @@ pub const TYPE_CODES: [Code; 4] = [
     Code {
         id: 403,
         short: "VS0403",
-        message_vi: "trường hoặc kiểu không tồn tại",
-        message_en: "field or type does not exist",
-        message_ja: "フィールドまたは型が存在しません",
+        // **SỬA KÈM LÝ DO (ST-29)**: mở rộng nghĩa sang **phương thức** (trait/impl) — Agent 0 chốt
+        // giữ mã, không cấp `VS0404`; mỗi ca có thông điệp riêng nêu cụ thể.
+        message_vi: "trường, kiểu hoặc phương thức không tồn tại",
+        message_en: "field, type or method does not exist",
+        message_ja: "フィールド・型・メソッドが存在しません",
         severity: Severity::Error,
     },
     Code {
