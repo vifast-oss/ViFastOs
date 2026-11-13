@@ -475,6 +475,10 @@ do_nightly_only_miri() {
     run_miri_test "vifast-sim kt21_donation" -p vifast-sim --test kt21_donation || return 1
     run_miri_test "vifast-sim kt22_mailbox" -p vifast-sim --test kt22_mailbox || return 1
     run_miri_test "vifast-sim kt24_ipc" -p vifast-sim --test kt24_ipc || return 1
+    # **KT-33** (D2-61/K1C-DOD §4): thêm `kt25_ipc2` — KT-31 đã ghi nợ "Miri all thiếu kt25_ipc2";
+    # tệp tự giảm fuzz còn 3 seed × 8 op bằng `cfg(miri)` như các tệp K1c khác. KHÔNG thêm
+    # `kt25_scn` (đọc tệp — test I/O) và không chạy `l1_k1c`.
+    run_miri_test "vifast-sim kt25_ipc2" -p vifast-sim --test kt25_ipc2 || return 1
     run_miri_test "vifast-sim kt26_fault" -p vifast-sim --test kt26_fault || return 1
     run_miri_test "vifast-sim kt27_notification" -p vifast-sim --test kt27_notification || return 1
     run_miri_test "vifast-sim kt28_waitaddr" -p vifast-sim --test kt28_waitaddr || return 1

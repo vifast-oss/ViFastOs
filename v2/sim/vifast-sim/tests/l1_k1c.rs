@@ -32,9 +32,12 @@
 //!
 //! **Bất biến sau MỖI op** (kể cả prologue): `check_sched` + `check_harts` + `check_ipc` +
 //! `check_waitaddr` + `check_mailboxes` + `check_caps` — vi phạm ⇒ panic kèm dòng gây lỗi.
-//! Cuối mỗi lượt: `ipc_sent > 0` và `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped`
-//! (C1 của K1C-PLAN §1.1). Prologue `NBSend` (không chặn ⇒ TCB vẫn `Ready`) bảo đảm
-//! `ipc_sent ≥ 1` **ngay từ seed đầu**, không phụ thuộc may rủi của 64 op.
+//! Cuối mỗi lượt (**KT-33**: siết từ `ipc_sent > 0`): `ipc_sent > 1` và
+//! `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` (C1 của K1C-PLAN §1.1); cuối **mỗi
+//! smp**: `ipc_delivered > 0`. Prologue `NBSend` (không chặn ⇒ TCB vẫn `Ready`) chỉ bảo đảm
+//! `ipc_sent ≥ 1`; `ipc_sent > 1` buộc **64 op ngẫu nhiên** phải sinh thêm ít nhất một message
+//! (không còn tautology nhờ prologue). `ipc_delivered > 0` kiểm ở mức **tổng mỗi smp** vì một
+//! seed đơn lẻ có thể không giao được message nào (hàng đầy/caller bị huỷ — huỷ hợp lệ D2-25).
 //!
 //! `gate --fast` vẫn chạy **1.000 seed / smp 1** (mặc định env, không nới ngưỡng); quét
 //! 1/2/4/8 dùng `./v2/bin/v2 nightly --l1 --smp 1,2,4,8 [--seeds N]` (100k seed thuộc cổng
@@ -462,25 +465,26 @@ impl Rig {
 }
 
 /// Bất biến K1c sau **mỗi** op (KT-32): scheduler, hart, bảo toàn message, WaitAddr, hộp thư,
-/// cap. Vi phạm ⇒ panic kèm dòng gây lỗi (không nuốt lỗi, không "chạy tiếp để xanh").
-fn kiem(m: &Machine, dong: &str) {
+/// cap. Vi phạm ⇒ panic kèm dòng gây lỗi **và** `seed`/`smp` (KT-33 — log đỏ tự đủ ngữ cảnh,
+/// không phải truy ngược dòng `# L1 OK`): không nuốt lỗi, không "chạy tiếp để xanh".
+fn kiem(m: &Machine, dong: &str, seed: u64, harts: u16) {
     if let Err(e) = m.check_sched() {
-        panic!("check_sched sau {dong}: {e}");
+        panic!("check_sched sau {dong} (seed {seed}, smp {harts}): {e}");
     }
     if let Err(e) = m.check_harts() {
-        panic!("check_harts sau {dong}: {e}");
+        panic!("check_harts sau {dong} (seed {seed}, smp {harts}): {e}");
     }
     if let Err(e) = m.check_ipc() {
-        panic!("check_ipc sau {dong}: {e}");
+        panic!("check_ipc sau {dong} (seed {seed}, smp {harts}): {e}");
     }
     if let Err(e) = m.check_waitaddr() {
-        panic!("check_waitaddr sau {dong}: {e}");
+        panic!("check_waitaddr sau {dong} (seed {seed}, smp {harts}): {e}");
     }
     if let Err(e) = m.check_mailboxes() {
-        panic!("check_mailboxes sau {dong}: {e}");
+        panic!("check_mailboxes sau {dong} (seed {seed}, smp {harts}): {e}");
     }
     if let Err(e) = m.check_caps() {
-        panic!("check_caps sau {dong}: {e}");
+        panic!("check_caps sau {dong} (seed {seed}, smp {harts}): {e}");
     }
 }
 
@@ -495,22 +499,23 @@ fn mot_luot(seed: u64, harts: u16, so_op: usize) -> (Vec<String>, u64, u64, u64)
     // không phụ thuộc 64 op ngẫu nhiên có gặp Send/Call hay không.
     r.m.nb_send(r.t[0], r.ep_s[0], msg(0xFFFF, &[0xA5]))
         .expect("prologue NBSend");
-    kiem(&r.m, "prologue NBSend");
+    kiem(&r.m, "prologue NBSend", seed, harts);
     for step in 0..so_op {
         let op = rng.below(N_OP);
         let mut dong = format!("s{step} op{op}");
         r.mot_op(op, &mut rng, &mut dong);
-        kiem(&r.m, &dong);
+        kiem(&r.m, &dong, seed, harts);
         dong.push_str(&format!(" | {} mig={}", r.anh_chup(), r.m.migrate_count()));
         trace.push(dong);
     }
     let sent = r.m.ipc_sent();
     let delivered = r.m.ipc_delivered();
     let dropped = r.m.ipc_dropped();
-    // C1 (K1C-PLAN §1.1): bảo toàn message — không mất, không thêm.
+    // C1 (K1C-PLAN §1.1): bảo toàn message — không mất, không thêm. **KT-33** siết `> 0`
+    // thành `> 1`: prologue chỉ lo 1 message, 64 op còn lại phải sinh thêm ⇒ không tautology.
     assert!(
-        sent > 0,
-        "seed {seed} smp {harts}: ipc_sent = 0 — driver chưa đi qua đường IPC (C1)"
+        sent > 1,
+        "seed {seed} smp {harts}: ipc_sent = {sent} ≤ 1 — 64 op không sinh thêm message (C1)"
     );
     assert_eq!(
         sent,
@@ -521,7 +526,7 @@ fn mot_luot(seed: u64, harts: u16, so_op: usize) -> (Vec<String>, u64, u64, u64)
 }
 
 /// **L1 theo smp**: cùng seed ⇒ **cùng trace** byte-for-byte, 0 vi phạm bất biến sau mỗi op,
-/// `ipc_sent > 0` mỗi lượt, và bảo toàn message cuối lượt.
+/// `ipc_sent > 1` mỗi lượt, `ipc_delivered > 0` tổng mỗi smp, và bảo toàn message cuối lượt.
 ///
 /// Tên **không** bắt đầu bằng `l1_` để `gate --fast` (bộ lọc `l1_` của L1 cũ) **không** chạy
 /// driver này: gate giữ L1 1.000 seed cũ ≤ 60 s (K1C-PLAN §5 KT-29 DoD 8); `nightly --l1` đặt
@@ -548,12 +553,21 @@ fn driver_smp_cung_seed_cung_trace() {
                 "smp {harts} seed {seed}: cùng seed phải cùng bộ đếm IPC"
             );
             assert_eq!(a.len(), SO_OP, "smp {harts} seed {seed}: thiếu op");
-            assert!(sent_a > 0, "smp {harts} seed {seed}: ipc_sent = 0");
+            assert!(
+                sent_a > 1,
+                "smp {harts} seed {seed}: ipc_sent = {sent_a} ≤ 1 (KT-33)"
+            );
             ipc_sent += sent_a;
             ipc_delivered += del_a;
             ipc_dropped += dr_a;
             tong += 1;
         }
+        // **KT-33**: 64 op × `seeds` phải **thật sự giao** được message (không chỉ xếp hàng
+        // hoặc rơi hợp lệ) — kiểm ở mức tổng mỗi smp, không bắt một seed đơn lẻ.
+        assert!(
+            ipc_delivered > 0,
+            "smp {harts}: tổng ipc_delivered = 0 trên {seeds} seed — driver không giao message nào"
+        );
         println!(
             "# L1 OK: smp {harts}, {seeds} seed × {SO_OP} op (ipc_sent {ipc_sent}, ipc_delivered {ipc_delivered}, ipc_dropped {ipc_dropped})"
         );
