@@ -553,3 +553,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   **giữ đúng thứ tự đối số**; **không** thêm `Type::Any` (nợ VS2: chưa `to json` được). (3) Trường lạ trên `it` kiểu
   **thật** ⇒ **`VS0605`**; `it` kiểu `{error}`/`Any` ⇒ **kiểm động**, **không** báo oan. (4) `get`/`select` 0 đối số ⇒
   `VS0602`; `get` trên list rỗng ⇒ `[]`. (5) R1 (>1.500 dòng) ⇒ **tách** `lower/chieu.rs`, không nới ngưỡng.
+
+- **VD-75** **`Render` (ST-41)**: (1) giá trị **cuối pipeline** ở chế độ shell được render qua builtin **`render`**
+  (`vis-interp/src/render.rs`) — `boc_print` → `boc_render`; **`print` giữ nguyên từng byte**. (2) `list[bản ghi]` ⇒
+  **bảng**: tiêu đề = tên trường, căn **trái** `str`, **phải** `int`/`float`/`size`/`duration`/`percent`; bản ghi đơn ⇒
+  **khối khoá–giá trị**; `list[bản ghi]` **rỗng** ⇒ `(rỗng)`; **`list[str]`/`list[int]` rỗng và kiểu `{error}` giữ
+  `Show` (`[]`)**. (3) Độ rộng cột = **số `char` sau NFC** (không `display_width`) ⇒ NFD/NFC cùng bảng, emoji/CJK = 1.
+  (4) **Đổi hành vi có chủ ý**: 7 fixture `.out` chuyển `Show` → bảng (liệt kê trong commit `f2c256f`), ~20 assertion
+  Rust theo cùng luật. (5) **Cache**: nhãn `PHIEN_BAN` phải đổi khi ngữ nghĩa render đổi (`+render-st41`) — nếu không,
+  `--vm` dùng module cache cũ và in `Show`.
