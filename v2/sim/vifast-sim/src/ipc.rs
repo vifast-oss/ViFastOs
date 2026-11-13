@@ -30,10 +30,16 @@
 //!   `recv`/`reply` không copy MR tại chỗ (đếm `Machine::transfer_calls`). Hàm **xoá sạch**
 //!   vùng nhận trước khi chép nên message ngắn không lộ dữ liệu message trước.
 //! - Cap: KT-24 **chưa** chuyển cap (thiết kế `:319`; KT-25). [`Message::new`] chỉ nhận
-//!   message `caps = 0`; message có cap phải dựng qua [`Message::with_caps`] và kernel từ chối
-//!   `NotSupported` cho tới KT-25 (không im lặng bỏ cap).
+//!   message `caps = 0`; message có cap phải dựng qua [`Message::with_caps`] hoặc
+//!   [`Message::with_cap_ids`].
+//! - **KT-25** — [`plan_cap_transfer`] là **quyết định mô hình** chuyển ≤ 4 cap vào receive
+//!   window của thread nhận: cap trỏ **chính Endpoint đang gọi** + có badge ⇒ **unwrap**
+//!   (OR badge vào message, không chiếm window); thiếu `RIGHT_GRANT` / ô đích đã có cap ⇒
+//!   **thất bại mềm** (D2-53 Q6: message **vẫn** giao, `MessageInfo.caps` = số cap cài được,
+//!   `Machine::cap_transfer_failed` tăng, **không** thêm bit MessageInfo). Hàm này **không**
+//!   đổi trạng thái — `Machine` cài cap theo kế hoạch qua `derive` (bỏ `RIGHT_GRANT`).
 
-use crate::kobj::{CapId, KError};
+use crate::kobj::{CapId, KError, ObjId, ObjType, SlotRef};
 
 /// Số MR tối đa của một message — `spec/abi.toml` `[message].max_words = 64`.
 pub const MAX_WORDS: usize = 64;
@@ -145,6 +151,24 @@ impl MessageInfo {
         self
     }
 
+    /// Bản sao có `extra_caps_unwrapped` mới (kiểm biên 4 bit).
+    pub fn with_extra_caps_unwrapped(mut self, extra: u8) -> Result<Self, KError> {
+        if extra >= (1 << EXTRA_CAPS_UNWRAPPED_BITS) {
+            return Err(KError::InvalidArgument);
+        }
+        self.extra_caps_unwrapped = extra;
+        Ok(self)
+    }
+
+    /// Bản sao có `caps` mới — **biên ABI** `max_caps = 4`, không nới (D2-53 Q6).
+    pub fn with_caps(mut self, caps: u8) -> Result<Self, KError> {
+        if caps as usize > MAX_CAPS {
+            return Err(KError::InvalidArgument);
+        }
+        self.caps = caps;
+        Ok(self)
+    }
+
     /// Bản sao có `length` mới (kiểm biên như [`MessageInfo::new`]).
     pub fn with_length(mut self, length: u8) -> Result<Self, KError> {
         if length as usize > MAX_WORDS {
@@ -210,18 +234,26 @@ impl Message {
         Self::build(info, words, Vec::new(), 0)
     }
 
-    /// Message **có** cap/badge — dựng sẵn cho KT-25 (KT-24 chưa có đường chuyển cap nên kernel
-    /// từ chối `NotSupported` nếu message thật sự mang cap).
+    /// Message **có** cap/badge — `caps.len()` phải bằng `info.caps()` (≤ 4) và mỗi phần tử
+    /// là `CapId` **nguồn** (kernel chụp ảnh ở `admit`, cài vào receive window khi giao).
     pub fn with_caps(
         info: MessageInfo,
         words: &[u64],
         caps: Vec<CapId>,
         badge: u64,
     ) -> Result<Self, KError> {
-        if caps.len() != info.caps() as usize {
+        if caps.len() > MAX_CAPS || caps.len() != info.caps() as usize {
             return Err(KError::InvalidArgument);
         }
         Self::build(info, words, caps, badge)
+    }
+
+    /// Message từ danh sách `CapId` + độ dài tự suy — dạng dùng cho test/runner `.scn`
+    /// (`caps=c0,c1,...`). **5 cap ⇒ `InvalidArgument`** ngay khi dựng message
+    /// (`spec/abi.toml` `max_caps = 4`), trước khi vào đường IPC (`.scn` 15, KT-25 DoD 3).
+    pub fn with_cap_ids(label: u32, words: &[u64], caps: &[CapId]) -> Result<Self, KError> {
+        let info = MessageInfo::new(label, caps.len() as u8, false, 0, words.len() as u8)?;
+        Self::with_caps(info, words, caps.to_vec(), 0)
     }
 
     fn build(
@@ -249,6 +281,18 @@ impl Message {
         &self.mr[..self.info.length() as usize]
     }
 
+    /// `CapId` **nguồn** của các cap mang theo (≤ 4). Sau khi kernel giao message, cap đã
+    /// được cài vào receive window nên danh sách này **rỗng** — số cap đã cài nằm ở
+    /// [`MessageInfo::caps`] của message nhận.
+    pub fn caps(&self) -> &[CapId] {
+        &self.caps
+    }
+
+    /// Số cap nguồn đi cùng message (0..=4).
+    pub fn cap_count(&self) -> usize {
+        self.caps.len()
+    }
+
     /// `length` của message (0..=64).
     pub fn len(&self) -> usize {
         self.info.length() as usize
@@ -265,8 +309,101 @@ impl Message {
     }
 }
 
-/// Vùng nhận IPC của **một** TCB — hai field **riêng** đúng `spec/abi.toml`:
+/// Một cap **nguồn** của message, chụp ảnh ở thời điểm message vào đường IPC (KT-25).
 ///
+/// Kernel **không** giữ `CapId` của bên gửi trong đường IPC (bên gửi có thể xoá cap ngay sau
+/// khi gửi); ảnh chụp đủ để cài một cap con vào receive window của bên nhận.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapSnapshot {
+    pub cap: CapId,
+    pub obj: ObjId,
+    pub ty: ObjType,
+    pub rights: u8,
+    pub badge: Option<u64>,
+}
+
+/// Kế hoạch chuyển cap cho **một** lần giao message (model-only `[TK]`, D2-53 Q6).
+///
+/// - `install`: `(chỉ số cap trong message, ô receive window đích)`;
+/// - `unwrap_badges`: badge của các cap **unwrap** (OR vào `Message.badge`);
+/// - `skipped`: số cap **thất bại mềm** (thiếu `RIGHT_GRANT` hoặc ô đích đã có cap) — message
+///   **vẫn** giao, bộ đếm `cap_transfer_failed` tăng (không thêm bit MessageInfo).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CapPlan {
+    pub install: Vec<(usize, SlotRef)>,
+    pub unwrap_badges: Vec<u64>,
+    pub skipped: usize,
+}
+
+impl CapPlan {
+    /// Số cap sẽ cài vào receive window.
+    pub fn installed(&self) -> usize {
+        self.install.len()
+    }
+
+    /// Số cap được unwrap thành badge.
+    pub fn unwrapped(&self) -> usize {
+        self.unwrap_badges.len()
+    }
+
+    /// OR các badge unwrap (0 nếu không có).
+    pub fn badge(&self) -> u64 {
+        self.unwrap_badges.iter().fold(0u64, |a, b| a | *b)
+    }
+
+    /// Không có cap nào (message không mang cap).
+    pub fn is_empty(&self) -> bool {
+        self.install.is_empty() && self.unwrap_badges.is_empty() && self.skipped == 0
+    }
+}
+
+/// **Quyết định** chuyển ≤ 4 cap vào receive window của thread nhận — **không** đổi trạng thái
+/// (thiết kế §4.6 `:319`, D2-53 Q6, K1C-PLAN §5 KT-25 DoD 3/4/5).
+///
+/// Quy tắc (theo **vị trí**: cap thứ `i` ứng với ô window thứ `i`):
+/// 1. cap trỏ **chính Endpoint đang gọi** (`endpoint == Some(obj)`) **và** có badge ⇒
+///    **unwrap**: badge OR vào message, `extra_caps_unwrapped` tăng, **không** chiếm window;
+/// 2. thiếu `RIGHT_GRANT` ⇒ **thất bại mềm** (`skipped += 1`), message vẫn giao;
+/// 3. ô window đích **đã có cap** ⇒ **thất bại mềm**;
+/// 4. còn lại ⇒ cài vào `window[i]` (bên gọi `Machine` tạo cap con **bỏ** `RIGHT_GRANT`, giữ
+///    badge).
+///
+/// `caps.len() > 4` ⇒ `InvalidArgument` (biên ABI, **không** nới). `window = None` (TCB nhận
+/// **chưa bind**) ⇒ `InvalidArgument` khi có cap **cần cài**; message chỉ mang cap **unwrap**
+/// vẫn giao được (không cần window).
+pub fn plan_cap_transfer(
+    caps: &[CapSnapshot],
+    window: Option<&[SlotRef; MAX_CAPS]>,
+    occupied: &[bool; MAX_CAPS],
+    endpoint: Option<ObjId>,
+) -> Result<CapPlan, KError> {
+    if caps.len() > MAX_CAPS {
+        return Err(KError::InvalidArgument);
+    }
+    let mut plan = CapPlan::default();
+    for (i, c) in caps.iter().enumerate() {
+        if let (Some(ep), Some(badge)) = (endpoint, c.badge) {
+            if ep == c.obj {
+                // Unwrap badge: không chuyển cap, badge OR vào message (thiết kế `:319`).
+                plan.unwrap_badges.push(badge);
+                continue;
+            }
+        }
+        // Cap **cần cài** mà TCB nhận **chưa bind** receive window ⇒ lỗi cấu hình (khác "các
+        // cap đều unwrap": không cần window nên vẫn giao được).
+        let Some(window) = window else {
+            return Err(KError::InvalidArgument);
+        };
+        if c.rights & crate::kobj::RIGHT_GRANT == 0 || occupied[i] {
+            plan.skipped += 1;
+            continue;
+        }
+        plan.install.push((i, window[i]));
+    }
+    Ok(plan)
+}
+
+/// Vùng nhận IPC của **một** TCB — hai field **riêng** đúng `spec/abi.toml`:
 /// - `regs: [u64; 4]` — MR0..MR3 đi "thanh ghi" (`words_in_registers = 4`);
 /// - `buffer: [u64; 60]` — MR4..MR63 đi "IPC buffer model" (`words_in_ipc_buffer = 60`);
 /// - `info`/`badge`/`msg_id` — metadata của message **vừa nhận** (`None`/`0` = chưa nhận).

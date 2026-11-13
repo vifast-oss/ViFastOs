@@ -19,8 +19,8 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use crate::ipc::{Message, MessageInfo, MAX_WORDS};
-use crate::kobj::{KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
+use crate::ipc::{Message, MessageInfo, MAX_CAPS, MAX_WORDS};
+use crate::kobj::{CapId, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
 use crate::Lcg;
 
 /// **KT-24** — message đầy đủ cho bước kịch bản `Send`/`NBSend` (model-only `[TK]`):
@@ -42,6 +42,11 @@ impl Msg {
         let mut mr = [0u64; MAX_WORDS];
         mr[..words.len()].copy_from_slice(words);
         Ok(Self { info, mr })
+    }
+
+    /// Các MR **thật** của `Msg` (`mr[..length]`) — dùng cho bước `SendCaps` (KT-25).
+    pub fn words(&self) -> &[u64] {
+        &self.mr[..self.info.length() as usize]
     }
 
     /// `Message` tương ứng (chưa có `msg_id` — kernel cấp khi nhận vào đường IPC).
@@ -125,6 +130,41 @@ pub enum Step {
         tcb: ObjId,
         cap: SlotRef,
     },
+    // ------------------------------------------- KT-25: IPC core 2 (4 cap/ReplyRecv/NB*)
+    /// `ReplyRecv` — giao Reply (`reply`) rồi `Recv` trên `ep`; `recv_reply` là Reply **mới**
+    /// cấp cho Call kế (`None` = không cấp).
+    ReplyRecv {
+        tcb: ObjId,
+        reply: SlotRef,
+        ep: SlotRef,
+        msg: Msg,
+        recv_reply: Option<SlotRef>,
+    },
+    /// `NBSendRecv` (D2-53 Q15a) — `NBSend` không chặn rồi `Recv`; lỗi của `NBSend` không
+    /// chặn `Recv` (bước vẫn `Ok` nếu `Recv` chạy được).
+    NBSendRecv {
+        tcb: ObjId,
+        send: SlotRef,
+        msg: Msg,
+        recv: SlotRef,
+        recv_reply: Option<SlotRef>,
+    },
+    /// `NBSendWait` (D2-53 Q15a) — `NBSend` không chặn rồi `Wait` trên Notification.
+    NBSendWait {
+        tcb: ObjId,
+        send: SlotRef,
+        msg: Msg,
+        ntfn: SlotRef,
+    },
+    /// `Send` mang **cap** (≤ 4, `caps[..n_caps]`) tới Endpoint/Reply — đường chuyển cap của
+    /// KT-25 (`MessageInfo.caps` ≤ 4, `spec/abi.toml:34`).
+    SendCaps {
+        tcb: ObjId,
+        cap: SlotRef,
+        msg: Msg,
+        caps: [CapId; MAX_CAPS],
+        n_caps: u8,
+    },
     TcbReadState {
         tcb: SlotRef,
     },
@@ -176,6 +216,10 @@ impl Step {
             Step::Send { .. } => "send",
             Step::NBSend { .. } => "nb_send",
             Step::NBRecv { .. } => "nb_recv",
+            Step::ReplyRecv { .. } => "reply_recv",
+            Step::NBSendRecv { .. } => "nb_send_recv",
+            Step::NBSendWait { .. } => "nb_send_wait",
+            Step::SendCaps { .. } => "send_caps",
             Step::TcbReadState { .. } => "tcb_read_state",
             Step::TcbSuspend { .. } => "tcb_suspend",
             Step::TcbResume { .. } => "tcb_resume",
@@ -200,7 +244,11 @@ impl Step {
             | Step::Exit { tcb, .. }
             | Step::Send { tcb, .. }
             | Step::NBSend { tcb, .. }
-            | Step::NBRecv { tcb, .. } => Some(tcb),
+            | Step::NBRecv { tcb, .. }
+            | Step::ReplyRecv { tcb, .. }
+            | Step::NBSendRecv { tcb, .. }
+            | Step::NBSendWait { tcb, .. }
+            | Step::SendCaps { tcb, .. } => Some(tcb),
             _ => None,
         }
     }
@@ -348,6 +396,44 @@ pub fn execute(m: &mut Machine, step: &Step) -> Result<(), KError> {
         Step::Send { tcb, cap, msg } => m.send(tcb, cap, msg.to_message()?),
         Step::NBSend { tcb, cap, msg } => m.nb_send(tcb, cap, msg.to_message()?),
         Step::NBRecv { tcb, cap } => m.nb_recv(tcb, cap).map(|_| ()),
+        Step::ReplyRecv {
+            tcb,
+            reply,
+            ep,
+            msg,
+            recv_reply,
+        } => m.reply_recv(tcb, reply, ep, msg.to_message()?, recv_reply),
+        Step::NBSendRecv {
+            tcb,
+            send,
+            msg,
+            recv,
+            recv_reply,
+        } => m
+            .nb_send_recv(tcb, send, msg.to_message()?, recv, recv_reply)
+            .map(|_| ()),
+        Step::NBSendWait {
+            tcb,
+            send,
+            msg,
+            ntfn,
+        } => m
+            .nb_send_wait(tcb, send, msg.to_message()?, ntfn)
+            .map(|_| ()),
+        Step::SendCaps {
+            tcb,
+            cap,
+            msg,
+            caps,
+            n_caps,
+        } => {
+            let n = n_caps as usize;
+            if n > MAX_CAPS {
+                return Err(KError::InvalidArgument);
+            }
+            let message = Message::with_cap_ids(msg.info.label(), msg.words(), &caps[..n])?;
+            m.send(tcb, cap, message)
+        }
         Step::TcbReadState { tcb } => m.tcb_read_state(tcb).map(|_| ()),
         Step::TcbSuspend { tcb, mode } => m.tcb_suspend(tcb, mode),
         Step::TcbResume { tcb } => m.tcb_resume(tcb),
@@ -371,6 +457,10 @@ impl Step {
                 | Step::Send { .. }
                 | Step::NBSend { .. }
                 | Step::NBRecv { .. }
+                | Step::ReplyRecv { .. }
+                | Step::NBSendRecv { .. }
+                | Step::NBSendWait { .. }
+                | Step::SendCaps { .. }
         )
     }
 

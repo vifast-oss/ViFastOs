@@ -1,14 +1,16 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-# Ngữ nghĩa IPC core 1 — KT-24 (model-only `[TK]`)
+# Ngữ nghĩa IPC core 1+2 — KT-24/25 (model-only `[TK]`)
 
 **Trạng thái:** REVIEW (Agent 2 dòng OS soạn cho Agent 0/reviewer độc lập). **Không phải ABI.**
 Nguồn sự thật của ABI vẫn là `spec/abi.toml` (D2-11); tệp này chỉ ghi **quy ước mô hình** đã
-dùng trong `v2/sim/vifast-sim` cho KT-24, để KT-25..KT-28 không phải suy lại.
+dùng trong `v2/sim/vifast-sim` cho KT-24 (**IPC core 1**) và KT-25 (**IPC core 2**), để
+KT-26..KT-28 không phải suy lại.
 
 **Nguồn ngữ nghĩa:** `spec/abi.toml:31-49` (MessageInfo/MR/cap), `:105-121` (syscall),
 thiết kế `docs/v2/ViFastOs-v2-thiet-ke.md:316-324` (MessageInfo/MR/4 cap/`ipc::transfer`/
-invocation), **D2-53 Q7** (`no_reply` hai chiều) và **Q11** (Call non-Endpoint `NotSupported`),
-K1C-PLAN §5 KT-24 (DoD 1..9).
+invocation), **D2-53 Q6** (thất bại chuyển cap = đếm mềm), **Q7** (`no_reply` hai chiều),
+**Q8** (Reply bị xoá ⇒ caller `Cancelled`), **Q11** (Call non-Endpoint `NotSupported`),
+**Q15** (`NBSendRecv`/`NBSendWait`), K1C-PLAN §5 KT-24 (DoD 1..9) + KT-25 (DoD 1..10).
 
 ## 1. `MessageInfo` — 35 bit, đúng thứ tự bit của spec
 
@@ -136,3 +138,108 @@ D2-25 vẫn đi qua hàng gửi và `Recv` chuyển người thoát `Inactive`).
 - **Không** đổi ABI/`spec/`/`vifast-model`/`.scn`; không thêm bit `MessageInfo` ngoài spec
   (D2-15 mục 2): "thất bại chuyển cap" vẫn là **đếm mềm** ở KT-25 (D2-53 Q6), không có bit mới.
 - IPC buffer model chỉ giữ **word** + metadata, chưa cấp 4 KiB/căn 16 thật (K2/K3 mới có Frame).
+
+## 10. Chuyển **4 cap** + receive window (KT-25, D2-53 Q6)
+
+**API model-only `[TK]`** (không thêm chữ ký ABI): `Machine::tcb_set_recv_window(tcb, [SlotRef; 4])`
+bind **receive window** (CPTR 4 ô CSpace của thread nhận), `Machine::tcb_recv_window(tcb)` đọc
+lại. Window luôn **4 ô**; **chưa bind** (`None`) khác **bind 4 ô rỗng** — message có cap mà window
+chưa bind ⇒ `InvalidArgument` **trước** khi message được giao (lỗi cấu hình, message **không** mất).
+
+**Đường chuyển**: message mang `caps: Vec<CapId>` nguồn (≤ `MAX_CAPS = 4`). Khi message vào đường
+IPC, kernel **chụp ảnh** cap (`ipc::CapSnapshot { cap, obj, ty, rights, badge }`):
+
+| Bước | Khi nào | Kết quả |
+|---|---|---|
+| `resolve_caps` | mọi message có cap, **trước** khi cấp `msg_id` | cap chết/không tồn tại ⇒ **`InvalidCapability`** (lỗi **cứng**, message không vào IPC) |
+| `plan_cap_transfer` | trước khi giao (waiter đã biết, hoặc lúc `recv`/`nb_recv` **trước** khi pop) | quyết định cài/unwrap/bỏ theo bảng dưới |
+| `deliver_caps` | lúc giao message (`ipc::transfer`) | `derive` cap con vào window: **bỏ `RIGHT_GRANT`**, giữ `badge`; cập nhật `MessageInfo` của message **nhận** |
+
+**Bảng quyết định theo vị trí** (cap thứ `i` ứng ô window thứ `i`):
+
+| Trường hợp | Xử lý | `MessageInfo` phía nhận |
+|---|---|---|
+| cap trỏ **chính Endpoint đang gọi** **và** có `badge` | **unwrap**: không chuyển cap, badge **OR** vào message | `extra_caps_unwrapped` += 1; khung window **không** bị chiếm |
+| cap nguồn **thiếu `RIGHT_GRANT`** | **thất bại mềm** | `caps` = số cài được; `cap_transfer_failed` += 1 |
+| ô window đích **đã có cap** | **thất bại mềm** (không đè cap cũ) | `caps` = số cài được; `cap_transfer_failed` += 1 |
+| còn lại | cài cap con (mất `RIGHT_GRANT`, giữ `badge`) | `caps` = số cài được |
+
+- **Không** thêm bit/cờ vào `MessageInfo` (35 bit giữ nguyên — D2-15 mục 2): "thất bại chuyển
+  cap" là **bộ đếm mềm** `Machine::cap_transfer_failed` (đọc bằng `cap_transfer_failed()`/
+  `cap_transfer_stats()`); `MessageInfo.caps` = **số cap cài được**, `extra_caps_unwrapped` = số
+  cap unwrap. `caps > 4` hoặc số cap không khớp ⇒ `InvalidArgument` **trước** khi vào IPC.
+- **Lỗi cứng** chỉ khi cap nguồn chết/không tồn tại (`InvalidCapability`) hoặc window chưa bind
+  (`InvalidArgument`) — message **không** bị giao nửa chừng, `ipc_sent` không đổi.
+- Cap nguồn chết **giữa lúc xếp hàng và lúc giao** (bên gửi `BlockedOnSend` bị revoke cap) ⇒
+  thất bại **mềm** (không tạo cap mồ côi, message vẫn giao).
+- `Message.caps` của message **đã giao** được **xoá** (cap đã nằm trong window của bên nhận);
+  muốn gửi tiếp phải chỉ cap trong CSpace của mình — và cap đã nhận **mất `RIGHT_GRANT`** nên
+  không chuyển tiếp được (thất bại mềm), đúng "bỏ GRANT".
+- `badge` của message **nhận** = OR các badge unwrap (model-only `[TK]`); `transfer` xoá vùng
+  nhận mỗi message nên badge **không** rò giữa các message.
+
+## 11. Vòng đời `Reply` (KT-25, D2-53 Q8)
+
+- Caller `Call` có Reply ⇒ `BlockedOnReply{reply}`; `Reply.caller = caller`. `Send` trên Reply
+  (= trả lời) giao message + **trả donation** (KT-21) rồi đánh thức caller `Ready`.
+- **Reply bị xoá** khi caller đang `BlockedOnReply` (`CNode.Delete` cap Reply, `CNode.Revoke` cap
+  cha của nó, hoặc Reply nằm trong Untyped bị revoke) ⇒ caller được đánh thức **`Ready`** với
+  `last_ipc_error = Some(Cancelled)` (**không deadlock**), `Reply.caller = None`; sau đó
+  `Send` trên cap đó ⇒ `InvalidCapability` (`.scn` 07), `Delete` slot đã bị `Revoke` xoá ⇒
+  `SlotEmpty` (`.scn` 08).
+- **Model-only `[TK]`**: seL4 chỉ mất object khi Untyped bị revoke, nhưng `.scn` 07/08 xoá **cap**
+  Reply; mô hình coi **một cap Reply bị xoá** = đường reply bị huỷ (object **không** finalise).
+  Gọi nhiều lần là idempotent (`caller = None` sau lần đầu).
+- **Donation không rò**: huỷ caller đi qua **một** cửa `transition_tcb` (`BlockedOnReply → Ready`)
+  ⇒ hook KT-21 trả `SchedContext` về donor (`SchedContext.donated_to/donor = None`,
+  `Tcb.donated_sc = None`); kiểm bằng `Machine::check_sc_refs()` sau mỗi nhánh
+  (Delete/Revoke/`Suspend(Abort)` caller).
+- `Reply.caller` chết (không còn sống) ⇒ `purge_dead_refs` gỡ về `None`. Reply cap đã chết mà
+  vẫn nằm trong Recv waiter của Endpoint ⇒ gỡ thành "không cấp Reply": `Delete` gọi
+  `clear_dead_reply_in_waiters()` (chỉ đụng **Reply cap chết trong waiter**, giữ nguyên ngữ nghĩa
+  khác như KT-18 `Exit` với `fault_ep` chết ⇒ `InvalidCapability`), `Revoke` gỡ qua
+  `purge_dead_refs`. `Call` sau đó đi nhánh Q7(b): message **vẫn giao**, caller `Cancelled` —
+  không trả cứng `InvalidCapability` (`.scn` 07 tạo đúng trạng thái này).
+
+## 12. `ReplyRecv` / `NBSendRecv` / `NBSendWait` (KT-25, D2-53 Q15a)
+
+- **`ReplyRecv(tcb, reply, ep, msg, recv_reply)`**: giao **reply trước** (`reply_with`) rồi
+  `recv`. Reply được giao **xong** trước khi `Recv` có thể chặn ⇒ không mất reply (K1C-PLAN §5
+  KT-25 rủi ro (a)). Không có message ⇒ `BlockedOnRecv{ep, reply: recv_reply}` (Reply **mới**).
+  Mọi tham số kiểm **trước** khi giao reply ⇒ lỗi cấu hình không để reply đã gửi nửa chừng.
+- **`NBSendRecv`** = `NBSend` (không chặn) **rồi** `Recv` (chặn). Nếu `NBSend` **không giao
+  được** (`Busy` khi hàng đầy, cap sai…) ⇒ **vẫn** `Recv`; message **không** bị kernel coi là
+  mất (`ipc_sent` **không** đổi, người gọi vẫn giữ message để thử lại). Kết quả trả về
+  `Ok(None)` = NBSend giao được, `Ok(Some(err))` = NBSend lỗi nhưng Recv đã chạy, `Err` = lỗi
+  cứng của Recv.
+- **`NBSendWait`** = `NBSend` rồi `Wait` trên Notification (model K1b: **một** waiter,
+  `BlockedOnNotification`; word/badge/`Signal` đầy đủ thuộc KT-27). Cùng quy ước kết quả như
+  `NBSendRecv`: NBSend lỗi ⇒ **vẫn** Wait.
+- **`NBRecv` là poll**: TCB đang **không chạy được** (`BlockedOnReply`/`BlockedOnSend`/
+  `BlockedOnRecv`/`BlockedOnNotification`…) ⇒ `Busy` **không** đổi trạng thái (poll không thể
+  tạo chuyển trạng thái trái `ALLOWED`). `.scn` 05 dựa vào đúng ngữ nghĩa này (client poll
+  Endpoint sau khi `ReplyRecv` của server đã lấy message của nó).
+
+## 13. Quy ước runner `.scn` của KT-25 (`tests/kt25_scn.rs`)
+
+1. `ep0`/`ep1` là **cùng một** Endpoint (D2-54); `recv`/`reply_recv` không nêu `reply=` ⇒ `rep0`.
+2. `.scn` 08: `rep0` là **cap con** của cap Reply gốc (slot 1) ⇒ `CNode.Revoke cnode=c0` xoá
+   được nó; `Delete slot=rep0` sau đó ⇒ `SlotEmpty`.
+3. `.scn` 15: `c0,...` là **tên cap**; runner dựng 4 cap thật ở slot 30..33. **5 tên** ⇒
+   `InvalidArgument` khi dựng message (không bao giờ vào IPC). Bước 2 của tệp là `send` cùng
+   dạng ⇒ cùng kết quả.
+4. `.scn` 16: `c1` là cap **thiếu** `RIGHT_GRANT` (`copy_rights(..., READ|WRITE)`) ⇒
+   `Mint rights=WRITE|GRANT` trả `InsufficientRights`.
+5. Runner **đọc tệp** (không sửa `.scn`) và so từng bước; tệp này **không** chạy dưới Miri
+   (isolation chặn `open`) — Miri của KT-25 chạy `tests/kt25_ipc2.rs`, cùng quy ước
+   `kt24_scn.rs`/`kt24_ipc.rs`.
+
+## 14. Giới hạn còn lại của KT-25 (không tuyên bố đạt)
+
+- **Chưa** có `Fault`/`Exit` model (KT-26), `Notification` word/badge/`Signal` (KT-27),
+  `WaitAddr`/`WakeAddr` (KT-28), SMP/push migration (KT-29), `vifast-sync` (KT-30).
+- Cap chuyển **chưa** mang theo "reply cap" (`RIGHT_GRANT_REPLY`) — K1c dùng `RIGHT_GRANT` cho
+  mọi cap; quyền chi tiết theo loại object để K3 conformance.
+- Receive reset: không có method "unbind" window (bind lại là thay); `Tcb.Configure` **không**
+  đổi window (giữ D2-33: chưa có chữ ký ABI).
+- Không đổi `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS; không dependency/`unsafe`.

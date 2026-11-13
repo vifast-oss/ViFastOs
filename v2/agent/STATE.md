@@ -6,12 +6,76 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-24 (xong mã — **IPC core 1: `MessageInfo` 35 bit + `Message` 64 MR + `ipc::transfer` + `Send/NBSend/Recv/NBRecv` + `no_reply` 2 chiều + Call non-Endpoint `NotSupported`**); KT-23 DONE (65702fa), KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
+Task          : KT-25 (xong mã — **IPC core 2: `Call/Reply/ReplyRecv/NBSendRecv/NBSendWait` + 4 cap (GRANT/bỏ GRANT/unwrap badge/receive window) + vòng đời Reply ⇒ caller `Cancelled` + NBSendRecv/NBSendWait Q15a + donation không rò**); KT-24 DONE (`217b7d1`), KT-23 DONE (65702fa), KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
 Bước          : 0/8
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**336 test/49 suite**, 0 failed, 1 doc-test ignored pre-existing; KT-23 là 321/47 ⇒ **+15 test** = 13 `kt24_ipc` + 2 `kt24_scn`; **L1 1.000 seed/999 trace** 674 ms (đo bởi cổng); gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK, clippy `-D warnings` sạch)
-Việc dở       : commit `[KT-24]` + push origin/main sau verdict reviewer; Miri `-p vifast-sim --test kt24_ipc`; **chưa lật QUEUE** (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**361 test/51 suite**, 0 failed, 1 doc-test ignored pre-existing; KT-24 là 336/49 ⇒ **+25 test** = 24 `kt25_ipc2` + 1 `kt25_scn`; **L1 1.000 seed/999 trace** 708 ms (đo bởi cổng); gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK, clippy `-D warnings` sạch)
+Miri          : `./v2/bin/v2 miri test -p vifast-sim --test kt25_ipc2` — **PASS 24/24**, 75,99 s (`JOURNAL/kt25-miri.log`)
+Việc dở       : commit `[KT-25]` + push origin/main sau verdict reviewer; **chưa lật QUEUE** (Agent 0)
 ```
+
+## KT-25 — IPC core 2: 4 cap + vòng đời Reply + `ReplyRecv`/NB* (K1c, D2-53 Q6/Q8/Q15)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-25) · HEAD `47cea0d` ([KT-00] lật KT-24 DONE) ·
+baseline `gate --fast` PASS **336 test/49 suite** ([`JOURNAL/kt25-baseline-gate-fast.log`](JOURNAL/kt25-baseline-gate-fast.log)).
+**Phạm vi**: **4 cap** (GRANT, bỏ GRANT đúng, unwrap badge, receive window; `MessageInfo.caps ≤ 4`);
+thất bại chuyển cap **mềm** (D2-53 Q6: message vẫn giao, `caps` = số cài được,
+`cap_transfer_failed`, **không** thêm bit MessageInfo); vòng đời `Reply` (bị xoá/revoke ⇒ caller
+**`Cancelled`**, D2-53 Q8); `ReplyRecv` + `NBSendRecv`/`NBSendWait` (Q15a: NBSend lỗi **vẫn**
+Recv/Wait); donation không rò `SchedContext`.
+**Không** làm: Fault/Exit (KT-26), Notification word/badge/`Signal` (KT-27), WaitAddr (KT-28),
+SMP/push (KT-29), `vifast-sync` (KT-30); không sửa `spec/`, `vifast-model`, `.scn`, QUEUE,
+DECISIONS, AGENTS, `viscript/`; không dependency/`unsafe`/`#[allow]`/`#[ignore]`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt25-red-compile.log`](JOURNAL/kt25-red-compile.log) — `tests/kt25_ipc2.rs` **không biên
+  dịch**: **34 lỗi** = **31×`E0599`** (`Message::with_cap_ids`; `Machine::{tcb_set_recv_window,
+  reply_recv, nb_send_recv, nb_send_wait, cap_transfer_stats, cap_transfer_failed,
+  cap_transfer_installed, cap_unwrapped}`; `Step::{ReplyRecv, NBSendRecv, NBSendWait, SendCaps}`)
+  + 3×`E0308` phụ thuộc API mới.
+- [`JOURNAL/kt25-red-semantics.log`](JOURNAL/kt25-red-semantics.log) — probe **tạm (đã xoá)**: (1)
+  `NBSend` message mang cap ⇒ `Err(NotSupported)` (cần giao được + cài cap); (2) `CNode.Delete` cap
+  Reply khi caller `BlockedOnReply` ⇒ caller **vẫn treo** + `last_ipc_error = None` ⇒ **deadlock**
+  (Q8 cần `Cancelled`).
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/ipc.rs` (+~120 dòng): `CapSnapshot`, `CapPlan`, **`plan_cap_transfer`**
+  (unwrap badge tới chính Endpoint / thiếu `RIGHT_GRANT` ⇒ mềm / ô đích có cap ⇒ mềm / cài theo
+  vị trí), `MessageInfo::{with_caps, with_extra_caps_unwrapped}`, `Message::{with_cap_ids, caps}`.
+- `v2/sim/vifast-sim/src/kobj.rs`: `TcbData.recv_window` + `tcb_set_recv_window`/`tcb_recv_window`;
+  `resolve_caps`/`prepare_caps`/`deliver_caps`/`deliver_message` (cap chết ⇒ `InvalidCapability`
+  **trước** `msg_id`; window chưa bind ⇒ `InvalidArgument` **trước** khi giao; cài cap con **bỏ
+  `RIGHT_GRANT`**, giữ badge; `MessageInfo.caps`/`extra_caps_unwrapped`/`badge` cập nhật);
+  `QueuedMessage.snaps`; `recv`/`nb_recv` **peek** kiểm window trước khi pop; `reply_recv`,
+  `nb_send_recv`, `nb_send_wait`, `wait_notification_obj`; **vòng đời Reply** (`cancel_reply` +
+  hook `delete`/`revoke_children`/Untyped-revoke + `purge_dead_refs`); bộ đếm
+  `cap_transfer_{installed,failed,unwrapped}`; `nb_recv` = **poll** (TCB không chạy được ⇒ `Busy`).
+- `v2/sim/vifast-sim/src/scenario.rs`: `Step::{ReplyRecv, NBSendRecv, NBSendWait, SendCaps}` +
+  `Msg::words`.
+- `v2/sim/vifast-sim/tests/kt25_ipc2.rs` (**mới, 23 test**) + `tests/kt25_scn.rs` (**mới, 1 test**).
+- `v2/docs/k1c-ipc-semantics.md`: §10 (4 cap/receive window), §11 (vòng đời Reply), §12
+  (`ReplyRecv`/NB*), §13 (runner `.scn`), §14 (giới hạn còn lại).
+- [`JOURNAL/kt25-journal.md`](JOURNAL/kt25-journal.md): bảng đối chiếu DoD 1..10 + 6 quyết định
+  mô hình cần reviewer soi.
+
+### Cổng
+
+| Hạng mục | Kết quả | Log |
+|---|---|---|
+| `gate --fast` | **PASS 361 test/51 suite** (+25), L1 1.000 seed/999 trace 708 ms, clippy `-D warnings` sạch | [`kt25-gate-fast.log`](JOURNAL/kt25-gate-fast.log) |
+| Miri `--test kt25_ipc2` | **PASS 24/24**, 75,99 s | [`kt25-miri.log`](JOURNAL/kt25-miri.log) |
+
+### Review độc lập (reviewer-kt25)
+
+Verdict **DRIFT (nhẹ)** — lõi DoD đạt, 3 điểm phải sửa trước commit; **đã sửa cả 3** (xem
+`kt25-journal.md` §4 "Reviewer verdict"): (1) Reply cap chết còn trong Recv waiter sau
+`CNode.Delete` ⇒ thêm `clear_dead_reply_in_waiters()` cuối `delete` khi cap là `Reply` (giữ nguyên
+ngữ nghĩa KT-18 `fault_ep` chết) + test hồi quy + mutation check; (2) comment lỗi thời
+`admit_message`; (3) số liệu cây cuối (gate **361 test/51 suite**, Miri **24/24**) — log
+`kt25-gate-fast.log` / `kt25-miri.log` ghi đè bản cuối.
+
 
 ## KT-24 — IPC core 1 (K1c, D2-53 Q7/Q11)
 
