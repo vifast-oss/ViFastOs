@@ -136,7 +136,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-44 | `.vish` **khai báo kiểu**: `type` / `let x: T` / `cmd f(...) -> T` | ST-43 | 3 h | **DONE** | prelude dùng bằng khai báo thật; `VS0302` khi trùng; differential 0 lệch |
 | ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **DONE** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
 | ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | **DONE** | 3 nợ VSH1b hết; allowlist không tăng |
-| ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **READY** | MD+JSON, số liệu tái lập |
+| ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -641,6 +641,17 @@ APPROVED 2026-11-13 Agent 0
 > `ls_open` (`--long` hết no-op ⇒ 6 cột), `khe_ong` (nhóm-đối-số `VS0603` → `VS0412`).
 > Nợ còn: `( ls … --long )` (nhóm-**lệnh** có cờ), nhóm **nhiều dòng** ⇒ `VS0201`, `where ( x => x )` kiểm **động**.
 > **ST-47 mở** (R7 — chốt VSH1b).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-47 DONE — VÒNG 7 (VSH1b) CHỐT.** `reports/R7-viscript.{md,json,license}` (`a06434b`, nền 426eb91) —
+> `report-check` **PASS (7 báo cáo, 53 hàng QUEUE phủ đủ, `blocked[]` rỗng)**. Số đo **chạy lại**: **651 test**
+> (21 diag · 96 syntax · 18 fmt · 143 types · 24 interp · 50 bytecode · 9 vm · **290** cli) · **370 ca sem/18 nhóm**
+> (327 `.vis` + 43 `.vish`) · `vis test` **370 ok** / `--vm` **370 ok + 6 SKIP** · **parity 344/344** · **differential
+> 100.000 chương trình 0 lệch** (212,2 s, 471/s) · fuzz parser 60 s **3.003.112 ca/0 vi phạm** · `VBC1` 53 tag ·
+> **7 sổ/29 mã** · khởi động ấm 11,1–11,3 ms · **allowlist 6** · `gate --fast` + `nightly` PASS.
+> **§19 VSH1b: 8/8 hạng mục đạt.** **14 nợ còn mở** + **VSH1b-2** + **VS2** (async/kênh/net/Landlock thật/LSP/gói/
+> registry/4 nền tảng) ghi trong `R7` §5 — **ViScript chưa hoàn thiện toàn bộ**, khoảng cách đã liệt kê chính xác.
 
 ## Ghi chú vận hành
 
