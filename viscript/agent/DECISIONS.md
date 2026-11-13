@@ -736,3 +736,24 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   `Value::show`; `eq` = `self == other` (dùng `eq_value` sẵn có); người dùng viết tay **thắng**; generic/`float`+`Eq`/
   `Fn` ⇒ `VS0403` **tĩnh, không sinh mã**; `Json` giữ **kiểm-only**; `enum show` **cắt** (nợ), `enum eq` làm được.
   (4) Ca mới ở **nhóm `trait/`** ⇒ **19 nhóm**; khoá interp=`--vm` tự động.
+
+- **VD-99** **Bỏ `Ty::Any`: biến kiểu trong chữ ký `std.*` (ST-58)**: (1) `Ty` const-friendly giữ `Copy`, thêm
+  `Var(u8)` (`0=T,1=K,2=V`), `List(&'static Ty)`, `Map(&'static Ty,&'static Ty)`; **xoá hẳn** `Ty::Any` và `Ty::kieu()`
+  (cái `else { continue }` là lỗ làm "Any" lọt im lặng). (2) `sang_type()` **tổng**: `Var(i)` → `Type::TypeRef{name:
+  ["T","K","V"][i]}` (tái dùng `TypeRef`, **không** thêm `Type::Param`). (3) `kiem_std` **hợp nhất** bằng `hop_nhat` +
+  `thay_gen` sẵn có (trái→phải, `{error}` không gán, biến xuất hiện 2 lần phải `same`); số đối số ⇒ `VS0401`, kiểu ⇒
+  `VS0412`; **không** mã mới. (4) **16/38** chữ ký đổi (list 8, map 5, json 3); `json.decode` trả `Var` **không gán** ⇒
+  `{error}` (giữ VD-66). (5) **Ngoại lệ có ghi duy nhất**: `list.sort_by` khoá = `Ty::FnKhoa` (lambda chưa chú thích là
+  `{error}`; `Type` không có union `int|str` sau ST-56) — tầng chạy vẫn kiểm. (6) `kiem()` của `vis-interp` coi
+  `Var/List/Map` là **nhận** (thân hàm tự kiểm như hôm nay) ⇒ 71 ca `test/std` + differential không đổi.
+
+- **VD-100** **Net/HTTP: socket thô ở host, giao thức ở `vis-interp` (ST-63..ST-66, vòng 11)**: (1) Thêm `NetHost` cạnh
+  `FsHost` (`connect/listen/local_addr/accept/read/write/close`, handle = `str` mờ); `Host::net` default `None` ⇒
+  **`VS0604`** cả hai đường. (2) **HTTP client nằm trong `vis-interp`** (module mới `net.rs`) ⇒ interp ↔ VM **cùng byte**,
+  codegen **không** sửa (duyệt `std.*` theo tên). (3) API: `net.connect/connect_timeout/listen/local_addr/accept/
+  accept_timeout/read/write/close`, `http.get/get_timeout` — tham số tuỳ chọn **tách tên hàm** (builtin bỏ đối số có tên);
+  handle là `str`, **không** thêm variant `Ty`. (4) **Chỉ loopback** (`127.0.0.1`/`localhost`; host khác ⇒ `Err`) trong
+  vòng này; **không** thêm `--net-mock` — ca net dựng **server loopback thật** trong test Rust (`bind("127.0.0.1:0")`);
+  timeout ≤ 400 ms; coi `WouldBlock` **và** `TimedOut` là hết giờ. (5) **Không mã lỗi mới**: lỗi mạng = `Err(str)`,
+  không host = `VS0604`, sai kiểu/arity = `VS04xx`/`VS0501`. (6) R1: `interp.rs` sát 1.500 dòng ⇒ **tách `impl Host`**
+  hoặc phần net ra tệp riêng **trước** khi thêm. (7) Ca: ≥13 ca e2e (≥2 lỗi) + `--vm` **có cache và `--no-cache`**.
