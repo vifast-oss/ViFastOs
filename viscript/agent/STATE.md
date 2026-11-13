@@ -6,13 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-19** (`vis-bytecode`: định dạng VBC1 + sinh mã từ HIR) — xong 2026-11-13,
-                **chưa commit** (chờ Agent 0 OK).
-Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
+Task          : **ST-20** (`vis-vm`: máy ảo VBC1, ngữ nghĩa **trùng** interp) — xong 2026-11-13,
+                **chưa commit** (chờ Agent 0 OK). **253/272 ca khớp**, 19 ca lệch đã khoá danh sách.
+Bước          : 4/4 (refactor API dùng chung → VM → differential → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T01:45:38Z = 2026-11-13 10:45 JST; không retry) — **284** test
-Việc dở       : chờ duyệt rồi commit `[ST-19]`
+                (2026-11-13T02:16:21Z = 2026-11-13 11:16 JST; không retry) — **289** test
+Việc dở       : 19 ca `KNOWN_LECH` (pattern lồng, named-arg, Show none, match ()) ⇒ đề nghị **ST-20b**
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +45,24 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-20 — `vis-vm`: máy ảo VBC1, ngữ nghĩa trùng interp (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Tách ngữ nghĩa dùng chung** trong `vis-interp` | `builtin::{Host, BuiltinSig, SIGS, sig, builtin_name, bin, un, call, method}`; `value::{show, eq, cmp, iter_items, lit_value, exit_code}`; `interp::{Trap, Abort, R, pos, lit_value}` **công khai**; `ops::{bin, un}` là bí danh. `Interp::{bin,un,call_builtin,call_method,iter_items}` nay chỉ là **vỏ mỏng**; **284 test + 323 ca xanh y nguyên** sau refactor |
+| 2 | Crate `crates/vis-vm` | `vm.rs` (fetch–decode–execute trên `Module`, khung `locals/captured/pc`, ngăn xếp **động** `Vec<Value>`, `iters` cho `for`, call/closure/pattern/interp/with/set), `dump.rs` (`--dump-bytecode`, histogram tag) |
+| 3 | Cùng ngữ nghĩa | Cùng `Show`/builtin/bảng toán tử ⇒ cùng `stdout`; cùng mã+`dòng:cột` (từ `spans[i]` của module); cap khung **2.000** (VD-49) + cap **10^7 lệnh**, cùng mã `VS0501`; **không** `unsafe` |
+| 4 | `vis run --vm` + `--dump-bytecode` | In kết quả/diagnostics **y hệt** interp; `steps` theo **đơn vị lệnh** (khác interp — đã ghi rõ) |
+| 5 | **Differential** | `crates/vis-vm/tests/vs_interp.rs`: **253/272 khớp**; **19 lệch** khoá trong `KNOWN_LECH` (đúng danh sách: lệch thêm ⇒ đỏ, sửa mà không cập nhật ⇒ đỏ) |
+| 6 | Lệnh mới trong VBC1 (vẫn **version 1** vì chưa ghi cache) | `Unwrap(45)`, `CallValue(46)`, `UnwrapOpt(47)`, `IsUnit(48)`, `BoolOr(49)`, `BoolAnd(50)` — tất cả để hoàn thiện codegen/pattern, **không** đổi ngữ nghĩa |
+
+**19 ca lệch (ST-20b)**: pattern **lồng** (`some(some(x))`, `Ok((a,b))`, `A(1..3)`) 10 ca; named-arg đổi
+thứ tự 1 ca (`ham/mac-dinh-hai`); `Show` của `none` + `?.` trên `none` lồng 3 ca; `match` trả `()` /
+guard-or 4 ca; gọi kết quả biểu thức 1 ca (`ham/closure-long`).
+
+**Đỏ trước** `JOURNAL/st20-red-vm.log`: VM thô **122 lệch** (bằng chứng khuyết điểm ST-19: codegen `match`
+chỉ *kiểm* mà **không** bind pattern) → 88 → … → **253 khớp / 19 lệch**; hash log khớp bản commit.
 
 ## ST-19 — `vis-bytecode`: VBC1 + sinh mã từ HIR (2026-11-13)
 

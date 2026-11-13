@@ -250,12 +250,17 @@ fn in_chan_doan(tep: &str, text: &str, d: &Diagnostic) -> String {
 /// `vis run [--tap] <tệp.vis> [-- args…]` — parse → lower → check → interp (ST-14).
 fn run_run(rest: &[String]) -> ExitCode {
     let mut tap = false;
+    let mut dung_vm = false;
+    let mut dump = false;
     let mut tep: Option<String> = None;
     let mut prog_args: Vec<String> = Vec::new();
     let mut i = 0;
     while i < rest.len() {
         match rest[i].as_str() {
             "--tap" => tap = true,
+            // ST-20: chạy đường **VM** thay cho interp (cùng ngữ nghĩa; `steps` đơn vị **lệnh**).
+            "--vm" => dung_vm = true,
+            "--dump-bytecode" => dump = true,
             "--" => {
                 prog_args = rest[i + 1..].to_vec();
                 break;
@@ -275,7 +280,7 @@ fn run_run(rest: &[String]) -> ExitCode {
         i += 1;
     }
     let Some(tep) = tep else {
-        eprintln!("dùng: vis run [--tap] <tệp.vis> [-- args…]");
+        eprintln!("dùng: vis run [--tap] [--vm] [--dump-bytecode] <tệp.vis> [-- args…]");
         return ExitCode::from(2);
     };
     // ST-18: `.vish` chạy được (parse → `cmd_lower` → tyck → interp), không còn `Bail out!`.
@@ -343,7 +348,23 @@ fn run_run(rest: &[String]) -> ExitCode {
             // 256 MiB: đo được ~8 KiB/khung ⇒ 10^4 khung ≈ 80 MiB, còn dư.
             .stack_size(256 * 1024 * 1024)
             .spawn_scoped(scope, || {
-                let out = vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args);
+                let out = if dung_vm {
+                    // ST-20: đường **VM** — cùng `Show`/builtin/bảng ngữ nghĩa với interp.
+                    match vis_bytecode::compile(&h.hir, &h.symbols, &text) {
+                        Ok(m) => {
+                            if dump {
+                                eprintln!("{}", vis_vm::dump::dump(&m));
+                            }
+                            vis_vm::run(&m, &text, &prog_args)
+                        }
+                        Err(e) => {
+                            eprintln!("vis run --vm: codegen lỗi: {e}");
+                            return (String::new(), Vec::new(), 0);
+                        }
+                    }
+                } else {
+                    vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args)
+                };
                 let d: Vec<(String, u32, u32, String)> = out
                     .diagnostics
                     .iter()

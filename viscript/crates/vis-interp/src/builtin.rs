@@ -1,579 +1,656 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **Toán tử + 8 tên dựng sẵn + bộ phương thức lõi** (ST-13).
+//! **Bảng ngữ nghĩa dùng chung** (ST-20, VD-54 #4): toán tử, 11 tên dựng sẵn, bộ phương thức lõi.
 //!
-//! Tập phương thức đã khoá (tối thiểu để chạy VS0, ghi ở JOURNAL):
-//! `list`: `len get first last push map filter each sum join`; `str`: `len upper lower split chars contains`;
-//! `map`: `len get has keys values`. Cái gì ngoài tập này ⇒ **`VS0501` "chưa hỗ trợ ở VS0"** (không panic).
+//! `vis-interp` và `vis-vm` **gọi** các hàm ở đây — **không** chép ngữ nghĩa. Hàm nào cần tác dụng
+//! phụ thì nhận [`Host`] (ghi `stdout`, gọi closure cho `map/filter/each`).
+//!
+//! Tập phương thức đã khoá (tối thiểu để chạy VS0): `list`: `len get first last push map filter each
+//! sum join`; `str`: `len upper lower split chars contains`; `map`: `len get has keys values`. Ngoài
+//! tập này ⇒ **`VS0501` "chưa hỗ trợ ở VS0"** (không panic).
 
 use vis_syntax::Span;
 use vis_types::hir::BinOp;
 
-use crate::interp::{Abort, Interp, Trap, DIV0, RT};
+use crate::interp::{Abort, Trap, DIV0, RT};
 use crate::value::Value;
 
-impl<'a> Interp<'a> {
-    // ---------------------------------------------------------------------
-    // Toán tử
-    // ---------------------------------------------------------------------
+/// **Chủ nhà** cho các hàm ngữ nghĩa cần tác dụng phụ.
+pub trait Host {
+    /// Bộ đệm `stdout` của chương trình.
+    fn out(&mut self) -> &mut String;
+    /// Gọi một giá trị hàm (closure/builtin) với đối số đã đánh giá.
+    fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> crate::interp::R<Value>;
+}
 
-    pub(crate) fn bin(
-        &mut self,
-        op: BinOp,
-        l: Value,
-        r: Value,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        use BinOp::*;
-        match op {
-            Range | RangeIncl => match (&l, &r) {
-                (Value::Int(a), Value::Int(b)) => Ok(Value::Range(*a, *b, matches!(op, RangeIncl))),
-                _ => Err(self.trap(
-                    RT,
-                    format!(
-                        "`{op:?}` cần hai `int`, được `{}` và `{}`",
-                        l.show(),
-                        r.show()
-                    ),
-                    span,
-                )),
-            },
-            Eq => Ok(Value::Bool(l.eq_value(&r))),
-            Ne => Ok(Value::Bool(!l.eq_value(&r))),
-            Lt | Le | Gt | Ge => {
-                let Some(ord) = l.cmp_value(&r) else {
-                    return Err(self.trap(
-                        RT,
-                        format!("không so sánh được `{}` và `{}`", l.show(), r.show()),
-                        span,
-                    ));
-                };
-                use std::cmp::Ordering::*;
-                let b = match op {
-                    Lt => ord == Less,
-                    Le => ord != Greater,
-                    Gt => ord == Greater,
-                    _ => ord != Less,
-                };
-                Ok(Value::Bool(b))
-            }
-            Add | Sub | Mul | Div | Rem | Pow => self.arith(op, l, r, span),
-            And | Or | Coalesce | Pipe => Err(self.trap(
-                RT,
-                format!("toán tử `{op:?}` phải xử lý ở tầng biểu thức"),
-                span,
-            )),
-        }
-    }
+/// Lỗi runtime kèm `span` (cùng cấu trúc với `Interp::trap`).
+fn trap(code: &'static vis_diag::Code, msg: impl Into<String>, span: Span) -> Abort {
+    Abort::Trap(Trap::new(code, msg, span))
+}
 
-    fn arith(&mut self, op: BinOp, l: Value, r: Value, span: Span) -> crate::interp::R<Value> {
-        use BinOp::*;
-        // `int` ↔ `float`: nâng literal int (thiết kế §3.5, ngoại lệ duy nhất).
-        let (l, r) = match (l, r) {
-            (Value::Int(a), Value::Float(b)) => (Value::Float(a as f64), Value::Float(b)),
-            (Value::Float(a), Value::Int(b)) => (Value::Float(a), Value::Float(b as f64)),
-            (l, r) => (l, r),
-        };
-        // `percent` với số: `percent * int -> int`, `percent * size -> size` (§3.6).
-        if let (Value::Percent(p), rhs) = (&l, &r) {
-            match (op, rhs) {
-                (Mul, Value::Int(n)) => return Ok(Value::Int((p * (*n as f64)) as i64)),
-                (Mul, Value::Size(n)) => return Ok(Value::Size((p * (*n as f64)) as i64)),
-                (Mul, Value::Duration(n)) => return Ok(Value::Duration((p * (*n as f64)) as i64)),
-                (Add | Sub, Value::Percent(q)) => {
-                    return Ok(Value::Percent(if matches!(op, Add) {
-                        p + q
-                    } else {
-                        p - q
-                    }))
-                }
-                (Div, Value::Int(n)) => {
-                    if *n == 0 {
-                        return Err(self.trap(DIV0, "chia cho 0", span));
-                    }
-                    return Ok(Value::Percent(p / (*n as f64)));
-                }
-                _ => {}
-            }
-        }
-        if let (Value::Int(n), Value::Percent(p)) = (&l, &r) {
-            if matches!(op, Mul) {
-                return Ok(Value::Int(((*n as f64) * p) as i64));
-            }
-        }
-        // ST-13b (mục 5): đối xứng `size/duration * percent` và `percent / percent` (VD-48: **float**).
-        if let (Value::Size(n), Value::Percent(p)) = (&l, &r) {
-            if matches!(op, Mul) {
-                return Ok(Value::Size(((*n as f64) * p) as i64));
-            }
-        }
-        if let (Value::Duration(n), Value::Percent(p)) = (&l, &r) {
-            if matches!(op, Mul) {
-                return Ok(Value::Duration(((*n as f64) * p) as i64));
-            }
-        }
-        if let (Value::Percent(a), Value::Percent(b)) = (&l, &r) {
-            match op {
-                // VD-48(b): `percent / percent` ⇒ **float** (tỉ lệ của hai tỉ lệ).
-                Div => {
-                    if *b == 0.0 {
-                        return Err(self.trap(DIV0, "chia cho 0", span));
-                    }
-                    return Ok(Value::Float(a / b));
-                }
-                Rem => {
-                    if *b == 0.0 {
-                        return Err(self.trap(DIV0, "lấy dư cho 0", span));
-                    }
-                    return Ok(Value::Percent(a % b));
-                }
-                _ => {}
-            }
-        }
-        if let (Value::Size(a), Value::Size(b)) = (&l, &r) {
-            if matches!(op, Rem) {
-                if *b == 0 {
-                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
-                }
-                return Ok(Value::Size(a % b));
-            }
-        }
-        if let (Value::Duration(a), Value::Duration(b)) = (&l, &r) {
-            if matches!(op, Rem) {
-                if *b == 0 {
-                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
-                }
-                return Ok(Value::Duration(a % b));
-            }
-        }
-        match (op, l, r) {
-            // int
-            (Add, Value::Int(a), Value::Int(b)) => {
-                Ok(Value::Int(a.checked_add(b).ok_or_else(|| overflow(span))?))
-            }
-            (Sub, Value::Int(a), Value::Int(b)) => {
-                Ok(Value::Int(a.checked_sub(b).ok_or_else(|| overflow(span))?))
-            }
-            (Mul, Value::Int(a), Value::Int(b)) => {
-                Ok(Value::Int(a.checked_mul(b).ok_or_else(|| overflow(span))?))
-            }
-            (Div, Value::Int(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "chia cho 0 (`/0`)", span));
-                }
-                Ok(Value::Int(a.checked_div(b).ok_or_else(|| overflow(span))?))
-            }
-            (Rem, Value::Int(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "lấy dư cho 0 (`%0`)", span));
-                }
-                Ok(Value::Int(a.wrapping_rem(b)))
-            }
-            (Pow, Value::Int(a), Value::Int(b)) => {
-                if b < 0 {
-                    return Err(self.trap(RT, "`int ** int` với số mũ âm (VD-43 #2)", span));
-                }
-                let e = u32::try_from(b).map_err(|_| overflow(span))?;
-                Ok(Value::Int(a.checked_pow(e).ok_or_else(|| overflow(span))?))
-            }
-            // float (IEEE 754 — `/0.0` không lỗi)
-            (Add, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Sub, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            (Mul, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            (Div, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-            (Rem, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
-            (Pow, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
-            // size
-            (Add, Value::Size(a), Value::Size(b)) => {
-                Ok(Value::Size(a.checked_add(b).ok_or_else(|| overflow(span))?))
-            }
-            (Sub, Value::Size(a), Value::Size(b)) => {
-                Ok(Value::Size(a.checked_sub(b).ok_or_else(|| overflow(span))?))
-            }
-            (Mul, Value::Size(a), Value::Int(b)) => {
-                Ok(Value::Size(a.checked_mul(b).ok_or_else(|| overflow(span))?))
-            }
-            (Mul, Value::Int(a), Value::Size(b)) => {
-                Ok(Value::Size(a.checked_mul(b).ok_or_else(|| overflow(span))?))
-            }
-            (Div, Value::Size(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "chia cho 0", span));
-                }
-                Ok(Value::Size(a / b))
-            }
-            (Div, Value::Size(a), Value::Size(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "chia cho 0", span));
-                }
-                Ok(Value::Float(a as f64 / b as f64))
-            }
-            (Rem, Value::Size(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
-                }
-                Ok(Value::Size(a % b))
-            }
-            // duration
-            (Add, Value::Duration(a), Value::Duration(b)) => Ok(Value::Duration(
-                a.checked_add(b).ok_or_else(|| overflow(span))?,
-            )),
-            (Sub, Value::Duration(a), Value::Duration(b)) => Ok(Value::Duration(
-                a.checked_sub(b).ok_or_else(|| overflow(span))?,
-            )),
-            (Mul, Value::Duration(a), Value::Int(b)) => Ok(Value::Duration(
-                a.checked_mul(b).ok_or_else(|| overflow(span))?,
-            )),
-            (Mul, Value::Int(a), Value::Duration(b)) => Ok(Value::Duration(
-                a.checked_mul(b).ok_or_else(|| overflow(span))?,
-            )),
-            (Div, Value::Duration(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "chia cho 0", span));
-                }
-                Ok(Value::Duration(a / b))
-            }
-            (Div, Value::Duration(a), Value::Duration(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "chia cho 0", span));
-                }
-                Ok(Value::Float(a as f64 / b as f64))
-            }
-            (Rem, Value::Duration(a), Value::Int(b)) => {
-                if b == 0 {
-                    return Err(self.trap(DIV0, "lấy dư cho 0", span));
-                }
-                Ok(Value::Duration(a % b))
-            }
-            // percent
-            (Add, Value::Percent(a), Value::Percent(b)) => Ok(Value::Percent(a + b)),
-            (Sub, Value::Percent(a), Value::Percent(b)) => Ok(Value::Percent(a - b)),
-            // còn lại: chưa hỗ trợ ở VS0
-            (op, l, r) => Err(self.trap(
+/// Chữ ký builtin (số đối số tối thiểu/tối đa).
+#[derive(Debug, Clone, Copy)]
+pub struct BuiltinSig {
+    pub name: &'static str,
+    pub min: usize,
+    pub max: usize,
+}
+
+/// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
+pub const SIGS: [BuiltinSig; 11] = [
+    BuiltinSig {
+        name: "print",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "len",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "str",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "echo",
+        min: 1,
+        max: 4,
+    },
+    BuiltinSig {
+        name: "lines",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "take",
+        min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "Ok",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "Err",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "Some",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "None",
+        min: 0,
+        max: 0,
+    },
+    BuiltinSig {
+        name: "ref",
+        min: 1,
+        max: 1,
+    },
+];
+
+/// Tra chữ ký theo tên.
+pub fn sig(name: &str) -> Option<BuiltinSig> {
+    SIGS.iter().copied().find(|s| s.name == name)
+}
+
+/// `true` nếu `name` là builtin.
+pub fn builtin_name(name: &str) -> Option<&'static str> {
+    sig(name).map(|s| s.name)
+}
+
+pub fn bin(op: BinOp, l: Value, r: Value, span: Span) -> crate::interp::R<Value> {
+    use BinOp::*;
+    match op {
+        Range | RangeIncl => match (&l, &r) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Range(*a, *b, matches!(op, RangeIncl))),
+            _ => Err(trap(
                 RT,
                 format!(
-                    "`{op:?}` chưa hỗ trợ cho `{}` và `{}` ở VS0",
+                    "`{op:?}` cần hai `int`, được `{}` và `{}`",
                     l.show(),
                     r.show()
                 ),
                 span,
             )),
+        },
+        Eq => Ok(Value::Bool(l.eq_value(&r))),
+        Ne => Ok(Value::Bool(!l.eq_value(&r))),
+        Lt | Le | Gt | Ge => {
+            let Some(ord) = l.cmp_value(&r) else {
+                return Err(trap(
+                    RT,
+                    format!("không so sánh được `{}` và `{}`", l.show(), r.show()),
+                    span,
+                ));
+            };
+            use std::cmp::Ordering::*;
+            let b = match op {
+                Lt => ord == Less,
+                Le => ord != Greater,
+                Gt => ord == Greater,
+                _ => ord != Less,
+            };
+            Ok(Value::Bool(b))
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // 8 tên dựng sẵn
-    // ---------------------------------------------------------------------
-
-    pub(crate) fn call_builtin(
-        &mut self,
-        name: &str,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match name {
-            "print" => {
-                if args.len() != 1 {
-                    return Err(self.trap(
-                        RT,
-                        format!("`print` cần 1 đối số, được {}", args.len()),
-                        span,
-                    ));
-                }
-                self.out.push_str(&args[0].show());
-                self.out.push('\n');
-                Ok(Value::Unit)
-            }
-            "str" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`str` cần 1 đối số", span));
-                }
-                Ok(Value::Str(args[0].show()))
-            }
-            // ST-18 — 3 lệnh builtin chế độ lệnh (`echo`/`lines`/`take`), thuần, không FS.
-            "echo" => {
-                if args.len() > 4 {
-                    return Err(self.trap(RT, "`echo` nhận tối đa 4 đối số", span));
-                }
-                let upper = match args.get(3) {
-                    Some(Value::Bool(b)) => *b,
-                    None => false,
-                    Some(_) => return Err(self.trap(RT, "`--upper` cần `bool`", span)),
-                };
-                let mut phan: Vec<String> = Vec::new();
-                for a in args.iter().take(3) {
-                    match a {
-                        Value::Str(s) => {
-                            if !s.is_empty() {
-                                phan.push(s.clone());
-                            }
-                        }
-                        _ => return Err(self.trap(RT, "`echo` cần đối số `str`", span)),
-                    }
-                }
-                let kq = phan.join(" ");
-                Ok(Value::Str(if upper { kq.to_uppercase() } else { kq }))
-            }
-            "lines" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`lines` cần 1 đối số", span));
-                }
-                let Value::Str(s) = &args[0] else {
-                    return Err(self.trap(RT, "`lines` cần `str`", span));
-                };
-                let mut ds: Vec<Value> = s.split('\n').map(|x| Value::Str(x.to_string())).collect();
-                if matches!(ds.last(), Some(Value::Str(x)) if x.is_empty()) {
-                    ds.pop();
-                }
-                Ok(Value::List(ds))
-            }
-            "take" => {
-                if args.len() != 2 {
-                    return Err(self.trap(RT, "`take` cần 2 đối số", span));
-                }
-                let (Value::List(xs), Value::Int(n)) = (&args[0], &args[1]) else {
-                    return Err(self.trap(RT, "`take` cần `list[str]` và `int`", span));
-                };
-                let n = (*n).max(0) as usize;
-                Ok(Value::List(xs.iter().take(n).cloned().collect()))
-            }
-            "len" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`len` cần 1 đối số", span));
-                }
-                match &args[0] {
-                    Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-                    Value::List(xs) => Ok(Value::Int(xs.len() as i64)),
-                    Value::Map(kv) => Ok(Value::Int(kv.len() as i64)),
-                    Value::Bytes(b) => Ok(Value::Int(b.len() as i64)),
-                    other => Err(self.trap(
-                        RT,
-                        format!("`len` chưa hỗ trợ cho `{}` ở VS0", other.show()),
-                        span,
-                    )),
-                }
-            }
-            "Some" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`Some` cần 1 đối số", span));
-                }
-                let mut it = args.into_iter();
-                let v = it.next().unwrap_or(Value::Unit);
-                Ok(Value::Opt(Some(Box::new(v))))
-            }
-            "None" => Ok(Value::Opt(None)),
-            "Ok" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`Ok` cần 1 đối số", span));
-                }
-                let mut it = args.into_iter();
-                let v = it.next().unwrap_or(Value::Unit);
-                Ok(Value::Res(Ok(Box::new(v))))
-            }
-            "Err" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`Err` cần 1 đối số", span));
-                }
-                let mut it = args.into_iter();
-                let v = it.next().unwrap_or(Value::Unit);
-                Ok(Value::Res(Err(Box::new(v))))
-            }
-            "ref" => Err(self.trap(RT, "`ref(x)` là VS1 — chưa hỗ trợ ở VS0", span)),
-            other => Err(self.trap(RT, format!("hàm `{other}` chưa hỗ trợ ở VS0"), span)),
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // Bộ phương thức lõi
-    // ---------------------------------------------------------------------
-
-    pub(crate) fn call_method(
-        &mut self,
-        recv: Value,
-        name: &str,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match recv {
-            Value::List(xs) => self.list_method(xs, name, args, span),
-            Value::Str(s) => self.str_method(s, name, args, span),
-            Value::Map(kv) => self.map_method(kv, name, args, span),
-            other => Err(self.trap(
-                RT,
-                format!("`{}` không có phương thức `{name}`", other.show()),
-                span,
-            )),
-        }
-    }
-
-    fn list_method(
-        &mut self,
-        xs: Vec<Value>,
-        name: &str,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match name {
-            "len" => Ok(Value::Int(xs.len() as i64)),
-            "get" => {
-                let Some(Value::Int(i)) = args.first() else {
-                    return Err(self.trap(RT, "`get` cần chỉ số `int`", span));
-                };
-                Ok(Value::Opt(match xs.get(*i as usize) {
-                    Some(v) if *i >= 0 => Some(Box::new(v.clone())),
-                    _ => None,
-                }))
-            }
-            "first" => Ok(Value::Opt(xs.first().cloned().map(Box::new))),
-            "last" => Ok(Value::Opt(xs.last().cloned().map(Box::new))),
-            "push" => {
-                if args.len() != 1 {
-                    return Err(self.trap(RT, "`push` cần 1 đối số", span));
-                }
-                let mut out = xs;
-                out.push(args[0].clone());
-                Ok(Value::List(out))
-            }
-            "map" => {
-                let f = args.first().cloned().unwrap_or(Value::Unit);
-                let mut out = Vec::with_capacity(xs.len());
-                for x in xs {
-                    out.push(self.call_value_pub(f.clone(), vec![x], span)?);
-                }
-                Ok(Value::List(out))
-            }
-            "filter" => {
-                let f = args.first().cloned().unwrap_or(Value::Unit);
-                let mut out = Vec::new();
-                for x in xs {
-                    let keep = self.call_value_pub(f.clone(), vec![x.clone()], span)?;
-                    if keep.truthy(span)? {
-                        out.push(x);
-                    }
-                }
-                Ok(Value::List(out))
-            }
-            "each" => {
-                let f = args.first().cloned().unwrap_or(Value::Unit);
-                for x in xs {
-                    self.call_value_pub(f.clone(), vec![x], span)?;
-                }
-                Ok(Value::Unit)
-            }
-            "sum" => {
-                let mut acc: Option<Value> = None;
-                for x in xs {
-                    acc = Some(match acc {
-                        None => x,
-                        Some(a) => self.bin(BinOp::Add, a, x, span)?,
-                    });
-                }
-                Ok(acc.unwrap_or(Value::Int(0)))
-            }
-            "join" => {
-                let sep = match args.first() {
-                    Some(Value::Str(s)) => s.clone(),
-                    _ => return Err(self.trap(RT, "`join` cần dấu ngăn `str`", span)),
-                };
-                let parts: Vec<String> = xs.iter().map(Value::show).collect();
-                Ok(Value::Str(parts.join(&sep)))
-            }
-            other => Err(self.trap(
-                RT,
-                format!("`list.{other}()` chưa hỗ trợ ở VS0 (danh sách: len get first last push map filter each sum join)"),
-                span,
-            )),
-        }
-    }
-
-    fn str_method(
-        &mut self,
-        s: String,
-        name: &str,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match name {
-            "len" => Ok(Value::Int(s.chars().count() as i64)),
-            "upper" => Ok(Value::Str(s.to_uppercase())),
-            "lower" => Ok(Value::Str(s.to_lowercase())),
-            "chars" => Ok(Value::List(
-                s.chars().map(|c| Value::Str(c.to_string())).collect(),
-            )),
-            "contains" => {
-                let Some(Value::Str(sub)) = args.first() else {
-                    return Err(self.trap(RT, "`contains` cần `str`", span));
-                };
-                Ok(Value::Bool(s.contains(sub.as_str())))
-            }
-            "split" => {
-                let Some(Value::Str(sep)) = args.first() else {
-                    return Err(self.trap(RT, "`split` cần dấu ngăn `str`", span));
-                };
-                if sep.is_empty() {
-                    return Err(self.trap(RT, "`split` cần dấu ngăn khác rỗng", span));
-                }
-                Ok(Value::List(
-                    s.split(sep.as_str()).map(|p| Value::Str(p.to_string())).collect(),
-                ))
-            }
-            other => Err(self.trap(
-                RT,
-                format!("`str.{other}()` chưa hỗ trợ ở VS0 (danh sách: len upper lower split chars contains)"),
-                span,
-            )),
-        }
-    }
-
-    fn map_method(
-        &mut self,
-        kv: Vec<(Value, Value)>,
-        name: &str,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match name {
-            "len" => Ok(Value::Int(kv.len() as i64)),
-            "get" => {
-                let Some(k) = args.first() else {
-                    return Err(self.trap(RT, "`get` cần 1 khoá", span));
-                };
-                Ok(Value::Opt(
-                    kv.iter()
-                        .find(|(kk, _)| kk.eq_value(k))
-                        .map(|(_, v)| Box::new(v.clone())),
-                ))
-            }
-            "has" => {
-                let Some(k) = args.first() else {
-                    return Err(self.trap(RT, "`has` cần 1 khoá", span));
-                };
-                Ok(Value::Bool(kv.iter().any(|(kk, _)| kk.eq_value(k))))
-            }
-            "keys" => Ok(Value::List(kv.into_iter().map(|(k, _)| k).collect())),
-            "values" => Ok(Value::List(kv.into_iter().map(|(_, v)| v).collect())),
-            other => Err(self.trap(
-                RT,
-                format!("`map.{other}()` chưa hỗ trợ ở VS0 (danh sách: len get has keys values)"),
-                span,
-            )),
-        }
-    }
-
-    /// Gọi một giá trị hàm (đã eval) — dùng cho `map/filter/each`.
-    fn call_value_pub(
-        &mut self,
-        f: Value,
-        args: Vec<Value>,
-        span: Span,
-    ) -> crate::interp::R<Value> {
-        match f {
-            Value::Fn(c) => self.call_closure(&c, args, span),
-            Value::Builtin(name) => self.call_builtin(name, args, span),
-            other => Err(self.trap(RT, format!("`{}` không phải hàm", other.show()), span)),
-        }
+        Add | Sub | Mul | Div | Rem | Pow => arith(op, l, r, span),
+        And | Or | Coalesce | Pipe => Err(trap(
+            RT,
+            format!("toán tử `{op:?}` phải xử lý ở tầng biểu thức"),
+            span,
+        )),
     }
 }
 
+fn arith(op: BinOp, l: Value, r: Value, span: Span) -> crate::interp::R<Value> {
+    use BinOp::*;
+    // `int` ↔ `float`: nâng literal int (thiết kế §3.5, ngoại lệ duy nhất).
+    let (l, r) = match (l, r) {
+        (Value::Int(a), Value::Float(b)) => (Value::Float(a as f64), Value::Float(b)),
+        (Value::Float(a), Value::Int(b)) => (Value::Float(a), Value::Float(b as f64)),
+        (l, r) => (l, r),
+    };
+    // `percent` với số: `percent * int -> int`, `percent * size -> size` (§3.6).
+    if let (Value::Percent(p), rhs) = (&l, &r) {
+        match (op, rhs) {
+            (Mul, Value::Int(n)) => return Ok(Value::Int((p * (*n as f64)) as i64)),
+            (Mul, Value::Size(n)) => return Ok(Value::Size((p * (*n as f64)) as i64)),
+            (Mul, Value::Duration(n)) => return Ok(Value::Duration((p * (*n as f64)) as i64)),
+            (Add | Sub, Value::Percent(q)) => {
+                return Ok(Value::Percent(if matches!(op, Add) {
+                    p + q
+                } else {
+                    p - q
+                }))
+            }
+            (Div, Value::Int(n)) => {
+                if *n == 0 {
+                    return Err(trap(DIV0, "chia cho 0", span));
+                }
+                return Ok(Value::Percent(p / (*n as f64)));
+            }
+            _ => {}
+        }
+    }
+    if let (Value::Int(n), Value::Percent(p)) = (&l, &r) {
+        if matches!(op, Mul) {
+            return Ok(Value::Int(((*n as f64) * p) as i64));
+        }
+    }
+    // ST-13b (mục 5): đối xứng `size/duration * percent` và `percent / percent` (VD-48: **float**).
+    if let (Value::Size(n), Value::Percent(p)) = (&l, &r) {
+        if matches!(op, Mul) {
+            return Ok(Value::Size(((*n as f64) * p) as i64));
+        }
+    }
+    if let (Value::Duration(n), Value::Percent(p)) = (&l, &r) {
+        if matches!(op, Mul) {
+            return Ok(Value::Duration(((*n as f64) * p) as i64));
+        }
+    }
+    if let (Value::Percent(a), Value::Percent(b)) = (&l, &r) {
+        match op {
+            // VD-48(b): `percent / percent` ⇒ **float** (tỉ lệ của hai tỉ lệ).
+            Div => {
+                if *b == 0.0 {
+                    return Err(trap(DIV0, "chia cho 0", span));
+                }
+                return Ok(Value::Float(a / b));
+            }
+            Rem => {
+                if *b == 0.0 {
+                    return Err(trap(DIV0, "lấy dư cho 0", span));
+                }
+                return Ok(Value::Percent(a % b));
+            }
+            _ => {}
+        }
+    }
+    if let (Value::Size(a), Value::Size(b)) = (&l, &r) {
+        if matches!(op, Rem) {
+            if *b == 0 {
+                return Err(trap(DIV0, "lấy dư cho 0", span));
+            }
+            return Ok(Value::Size(a % b));
+        }
+    }
+    if let (Value::Duration(a), Value::Duration(b)) = (&l, &r) {
+        if matches!(op, Rem) {
+            if *b == 0 {
+                return Err(trap(DIV0, "lấy dư cho 0", span));
+            }
+            return Ok(Value::Duration(a % b));
+        }
+    }
+    match (op, l, r) {
+        // int
+        (Add, Value::Int(a), Value::Int(b)) => {
+            Ok(Value::Int(a.checked_add(b).ok_or_else(|| overflow(span))?))
+        }
+        (Sub, Value::Int(a), Value::Int(b)) => {
+            Ok(Value::Int(a.checked_sub(b).ok_or_else(|| overflow(span))?))
+        }
+        (Mul, Value::Int(a), Value::Int(b)) => {
+            Ok(Value::Int(a.checked_mul(b).ok_or_else(|| overflow(span))?))
+        }
+        (Div, Value::Int(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "chia cho 0 (`/0`)", span));
+            }
+            Ok(Value::Int(a.checked_div(b).ok_or_else(|| overflow(span))?))
+        }
+        (Rem, Value::Int(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "lấy dư cho 0 (`%0`)", span));
+            }
+            Ok(Value::Int(a.wrapping_rem(b)))
+        }
+        (Pow, Value::Int(a), Value::Int(b)) => {
+            if b < 0 {
+                return Err(trap(RT, "`int ** int` với số mũ âm (VD-43 #2)", span));
+            }
+            let e = u32::try_from(b).map_err(|_| overflow(span))?;
+            Ok(Value::Int(a.checked_pow(e).ok_or_else(|| overflow(span))?))
+        }
+        // float (IEEE 754 — `/0.0` không lỗi)
+        (Add, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+        (Sub, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+        (Mul, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+        (Div, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
+        (Rem, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
+        (Pow, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
+        // size
+        (Add, Value::Size(a), Value::Size(b)) => {
+            Ok(Value::Size(a.checked_add(b).ok_or_else(|| overflow(span))?))
+        }
+        (Sub, Value::Size(a), Value::Size(b)) => {
+            Ok(Value::Size(a.checked_sub(b).ok_or_else(|| overflow(span))?))
+        }
+        (Mul, Value::Size(a), Value::Int(b)) => {
+            Ok(Value::Size(a.checked_mul(b).ok_or_else(|| overflow(span))?))
+        }
+        (Mul, Value::Int(a), Value::Size(b)) => {
+            Ok(Value::Size(a.checked_mul(b).ok_or_else(|| overflow(span))?))
+        }
+        (Div, Value::Size(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "chia cho 0", span));
+            }
+            Ok(Value::Size(a / b))
+        }
+        (Div, Value::Size(a), Value::Size(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "chia cho 0", span));
+            }
+            Ok(Value::Float(a as f64 / b as f64))
+        }
+        (Rem, Value::Size(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "lấy dư cho 0", span));
+            }
+            Ok(Value::Size(a % b))
+        }
+        // duration
+        (Add, Value::Duration(a), Value::Duration(b)) => Ok(Value::Duration(
+            a.checked_add(b).ok_or_else(|| overflow(span))?,
+        )),
+        (Sub, Value::Duration(a), Value::Duration(b)) => Ok(Value::Duration(
+            a.checked_sub(b).ok_or_else(|| overflow(span))?,
+        )),
+        (Mul, Value::Duration(a), Value::Int(b)) => Ok(Value::Duration(
+            a.checked_mul(b).ok_or_else(|| overflow(span))?,
+        )),
+        (Mul, Value::Int(a), Value::Duration(b)) => Ok(Value::Duration(
+            a.checked_mul(b).ok_or_else(|| overflow(span))?,
+        )),
+        (Div, Value::Duration(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "chia cho 0", span));
+            }
+            Ok(Value::Duration(a / b))
+        }
+        (Div, Value::Duration(a), Value::Duration(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "chia cho 0", span));
+            }
+            Ok(Value::Float(a as f64 / b as f64))
+        }
+        (Rem, Value::Duration(a), Value::Int(b)) => {
+            if b == 0 {
+                return Err(trap(DIV0, "lấy dư cho 0", span));
+            }
+            Ok(Value::Duration(a % b))
+        }
+        // percent
+        (Add, Value::Percent(a), Value::Percent(b)) => Ok(Value::Percent(a + b)),
+        (Sub, Value::Percent(a), Value::Percent(b)) => Ok(Value::Percent(a - b)),
+        // còn lại: chưa hỗ trợ ở VS0
+        (op, l, r) => Err(trap(
+            RT,
+            format!(
+                "`{op:?}` chưa hỗ trợ cho `{}` và `{}` ở VS0",
+                l.show(),
+                r.show()
+            ),
+            span,
+        )),
+    }
+}
+
+pub fn un(op: vis_types::hir::UnOp, v: Value, span: Span) -> crate::interp::R<Value> {
+    match op {
+        vis_types::hir::UnOp::Neg => match v {
+            Value::Int(i) => i
+                .checked_neg()
+                .map(Value::Int)
+                .ok_or_else(|| trap(RT, "tràn i64 khi đổi dấu", span)),
+            Value::Float(f) => Ok(Value::Float(-f)),
+            other => Err(trap(
+                RT,
+                format!("`-` không dùng được cho `{}`", other.show()),
+                span,
+            )),
+        },
+        vis_types::hir::UnOp::Not => Ok(Value::Bool(!v.truthy(span)?)),
+    }
+}
+
+pub fn call(
+    host: &mut dyn Host,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match name {
+        "print" => {
+            if args.len() != 1 {
+                return Err(trap(
+                    RT,
+                    format!("`print` cần 1 đối số, được {}", args.len()),
+                    span,
+                ));
+            }
+            host.out().push_str(&args[0].show());
+            host.out().push('\n');
+            Ok(Value::Unit)
+        }
+        "str" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`str` cần 1 đối số", span));
+            }
+            Ok(Value::Str(args[0].show()))
+        }
+        // ST-18 — 3 lệnh builtin chế độ lệnh (`echo`/`lines`/`take`), thuần, không FS.
+        "echo" => {
+            if args.len() > 4 {
+                return Err(trap(RT, "`echo` nhận tối đa 4 đối số", span));
+            }
+            let upper = match args.get(3) {
+                Some(Value::Bool(b)) => *b,
+                None => false,
+                Some(_) => return Err(trap(RT, "`--upper` cần `bool`", span)),
+            };
+            let mut phan: Vec<String> = Vec::new();
+            for a in args.iter().take(3) {
+                match a {
+                    Value::Str(s) => {
+                        if !s.is_empty() {
+                            phan.push(s.clone());
+                        }
+                    }
+                    _ => return Err(trap(RT, "`echo` cần đối số `str`", span)),
+                }
+            }
+            let kq = phan.join(" ");
+            Ok(Value::Str(if upper { kq.to_uppercase() } else { kq }))
+        }
+        "lines" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`lines` cần 1 đối số", span));
+            }
+            let Value::Str(s) = &args[0] else {
+                return Err(trap(RT, "`lines` cần `str`", span));
+            };
+            let mut ds: Vec<Value> = s.split('\n').map(|x| Value::Str(x.to_string())).collect();
+            if matches!(ds.last(), Some(Value::Str(x)) if x.is_empty()) {
+                ds.pop();
+            }
+            Ok(Value::List(ds))
+        }
+        "take" => {
+            if args.len() != 2 {
+                return Err(trap(RT, "`take` cần 2 đối số", span));
+            }
+            let (Value::List(xs), Value::Int(n)) = (&args[0], &args[1]) else {
+                return Err(trap(RT, "`take` cần `list[str]` và `int`", span));
+            };
+            let n = (*n).max(0) as usize;
+            Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        "len" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`len` cần 1 đối số", span));
+            }
+            match &args[0] {
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                Value::List(xs) => Ok(Value::Int(xs.len() as i64)),
+                Value::Map(kv) => Ok(Value::Int(kv.len() as i64)),
+                Value::Bytes(b) => Ok(Value::Int(b.len() as i64)),
+                other => Err(trap(
+                    RT,
+                    format!("`len` chưa hỗ trợ cho `{}` ở VS0", other.show()),
+                    span,
+                )),
+            }
+        }
+        "Some" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`Some` cần 1 đối số", span));
+            }
+            let mut it = args.into_iter();
+            let v = it.next().unwrap_or(Value::Unit);
+            Ok(Value::Opt(Some(Box::new(v))))
+        }
+        "None" => Ok(Value::Opt(None)),
+        "Ok" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`Ok` cần 1 đối số", span));
+            }
+            let mut it = args.into_iter();
+            let v = it.next().unwrap_or(Value::Unit);
+            Ok(Value::Res(Ok(Box::new(v))))
+        }
+        "Err" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`Err` cần 1 đối số", span));
+            }
+            let mut it = args.into_iter();
+            let v = it.next().unwrap_or(Value::Unit);
+            Ok(Value::Res(Err(Box::new(v))))
+        }
+        "ref" => Err(trap(RT, "`ref(x)` là VS1 — chưa hỗ trợ ở VS0", span)),
+        other => Err(trap(RT, format!("hàm `{other}` chưa hỗ trợ ở VS0"), span)),
+    }
+}
+
+pub fn method(
+    host: &mut dyn Host,
+    recv: Value,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match recv {
+        Value::List(xs) => list_method(host, xs, name, args, span),
+        Value::Str(s) => str_method(host, s, name, args, span),
+        Value::Map(kv) => map_method(host, kv, name, args, span),
+        other => Err(trap(
+            RT,
+            format!("`{}` không có phương thức `{name}`", other.show()),
+            span,
+        )),
+    }
+}
+
+fn list_method(
+    host: &mut dyn Host,
+    xs: Vec<Value>,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match name {
+        "len" => Ok(Value::Int(xs.len() as i64)),
+        "get" => {
+            let Some(Value::Int(i)) = args.first() else {
+                return Err(trap(RT, "`get` cần chỉ số `int`", span));
+            };
+            Ok(Value::Opt(match xs.get(*i as usize) {
+                Some(v) if *i >= 0 => Some(Box::new(v.clone())),
+                _ => None,
+            }))
+        }
+        "first" => Ok(Value::Opt(xs.first().cloned().map(Box::new))),
+        "last" => Ok(Value::Opt(xs.last().cloned().map(Box::new))),
+        "push" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`push` cần 1 đối số", span));
+            }
+            let mut out = xs;
+            out.push(args[0].clone());
+            Ok(Value::List(out))
+        }
+        "map" => {
+            let f = args.first().cloned().unwrap_or(Value::Unit);
+            let mut out = Vec::with_capacity(xs.len());
+            for x in xs {
+                out.push(host.call(&f, vec![x], span)?);
+            }
+            Ok(Value::List(out))
+        }
+        "filter" => {
+            let f = args.first().cloned().unwrap_or(Value::Unit);
+            let mut out = Vec::new();
+            for x in xs {
+                let keep = host.call(&f, vec![x.clone()], span)?;
+                if keep.truthy(span)? {
+                    out.push(x);
+                }
+            }
+            Ok(Value::List(out))
+        }
+        "each" => {
+            let f = args.first().cloned().unwrap_or(Value::Unit);
+            for x in xs {
+                host.call(&f, vec![x], span)?;
+            }
+            Ok(Value::Unit)
+        }
+        "sum" => {
+            let mut acc: Option<Value> = None;
+            for x in xs {
+                acc = Some(match acc {
+                    None => x,
+                    Some(a) => bin(BinOp::Add, a, x, span)?,
+                });
+            }
+            Ok(acc.unwrap_or(Value::Int(0)))
+        }
+        "join" => {
+            let sep = match args.first() {
+                Some(Value::Str(s)) => s.clone(),
+                _ => return Err(trap(RT, "`join` cần dấu ngăn `str`", span)),
+            };
+            let parts: Vec<String> = xs.iter().map(Value::show).collect();
+            Ok(Value::Str(parts.join(&sep)))
+        }
+        other => Err(trap(
+            RT,
+            format!("`list.{other}()` chưa hỗ trợ ở VS0 (danh sách: len get first last push map filter each sum join)"),
+            span,
+        )),
+    }
+}
+
+fn str_method(
+    _host: &mut dyn Host,
+    s: String,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match name {
+        "len" => Ok(Value::Int(s.chars().count() as i64)),
+        "upper" => Ok(Value::Str(s.to_uppercase())),
+        "lower" => Ok(Value::Str(s.to_lowercase())),
+        "chars" => Ok(Value::List(
+            s.chars().map(|c| Value::Str(c.to_string())).collect(),
+        )),
+        "contains" => {
+            let Some(Value::Str(sub)) = args.first() else {
+                return Err(trap(RT, "`contains` cần `str`", span));
+            };
+            Ok(Value::Bool(s.contains(sub.as_str())))
+        }
+        "split" => {
+            let Some(Value::Str(sep)) = args.first() else {
+                return Err(trap(RT, "`split` cần dấu ngăn `str`", span));
+            };
+            if sep.is_empty() {
+                return Err(trap(RT, "`split` cần dấu ngăn khác rỗng", span));
+            }
+            Ok(Value::List(
+                s.split(sep.as_str()).map(|p| Value::Str(p.to_string())).collect(),
+            ))
+        }
+        other => Err(trap(
+            RT,
+            format!("`str.{other}()` chưa hỗ trợ ở VS0 (danh sách: len upper lower split chars contains)"),
+            span,
+        )),
+    }
+}
+
+fn map_method(
+    _host: &mut dyn Host,
+    kv: Vec<(Value, Value)>,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match name {
+        "len" => Ok(Value::Int(kv.len() as i64)),
+        "get" => {
+            let Some(k) = args.first() else {
+                return Err(trap(RT, "`get` cần 1 khoá", span));
+            };
+            Ok(Value::Opt(
+                kv.iter()
+                    .find(|(kk, _)| kk.eq_value(k))
+                    .map(|(_, v)| Box::new(v.clone())),
+            ))
+        }
+        "has" => {
+            let Some(k) = args.first() else {
+                return Err(trap(RT, "`has` cần 1 khoá", span));
+            };
+            Ok(Value::Bool(kv.iter().any(|(kk, _)| kk.eq_value(k))))
+        }
+        "keys" => Ok(Value::List(kv.into_iter().map(|(k, _)| k).collect())),
+        "values" => Ok(Value::List(kv.into_iter().map(|(_, v)| v).collect())),
+        other => Err(trap(
+            RT,
+            format!("`map.{other}()` chưa hỗ trợ ở VS0 (danh sách: len get has keys values)"),
+            span,
+        )),
+    }
+}
+/// Tràn `i64` — `VS0501` (VD-43 #2).
 fn overflow(span: Span) -> Abort {
-    Abort::Trap(Trap::new(RT, "tràn i64 lúc chạy (VD-43 #2)", span))
+    trap(RT, "tràn i64 lúc chạy (VD-43 #2)", span)
 }

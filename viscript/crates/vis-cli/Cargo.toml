@@ -15,3 +15,5 @@ vis-syntax = { path = "../vis-syntax" }
 vis-fmt = { path = "../vis-fmt" }
 vis-types = { path = "../vis-types" }
 vis-interp = { path = "../vis-interp" }
+vis-bytecode = { path = "../vis-bytecode" }
+vis-vm = { path = "../vis-vm" }

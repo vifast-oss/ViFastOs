@@ -13,24 +13,24 @@ use vis_types::TypeTable;
 use crate::value::*;
 
 /// `VS0501` — lỗi runtime chung.
-pub(crate) const RT: &Code = &RUNTIME_CODES[0];
+pub const RT: &Code = &RUNTIME_CODES[0];
 /// `VS0502` — chia/lấy dư cho 0.
-pub(crate) const DIV0: &Code = &RUNTIME_CODES[1];
+pub const DIV0: &Code = &RUNTIME_CODES[1];
 /// `VS0503` — chỉ số ngoài phạm vi.
-pub(crate) const IDX: &Code = &RUNTIME_CODES[2];
+pub const IDX: &Code = &RUNTIME_CODES[2];
 /// `VS0412` — gán cho `let`/tham số (phòng thủ: tyck đã chặn trước).
 pub(crate) const MISMATCH: &Code = &TYPE_CODES[3];
 
 /// Lỗi runtime kèm `span`.
 #[derive(Debug, Clone)]
-pub(crate) struct Trap {
+pub struct Trap {
     pub code: &'static Code,
     pub msg: String,
     pub span: Span,
 }
 
 impl Trap {
-    pub(crate) fn new(code: &'static Code, msg: impl Into<String>, span: Span) -> Self {
+    pub fn new(code: &'static Code, msg: impl Into<String>, span: Span) -> Self {
         Self {
             code,
             msg: msg.into(),
@@ -39,7 +39,7 @@ impl Trap {
     }
 
     /// Chẩn đoán có **`line`/`col` thật** từ `span` + văn bản (VD-46).
-    pub(crate) fn to_diag(&self, text: &str) -> Diagnostic {
+    pub fn to_diag(&self, text: &str) -> Diagnostic {
         let (line, col) = pos(text, self.span);
         Diagnostic {
             code: self.code,
@@ -53,12 +53,12 @@ impl Trap {
 
 /// Dừng chương trình: lỗi runtime, hoặc `return`/`?` trả sớm.
 #[derive(Debug)]
-pub(crate) enum Abort {
+pub enum Abort {
     Trap(Trap),
     Ret(Value),
 }
 
-pub(crate) type R<T> = Result<T, Abort>;
+pub type R<T> = Result<T, Abort>;
 
 /// Đối số đã eval: (vị trí, có tên).
 pub(crate) type Args = (Vec<Value>, Vec<(String, Value)>);
@@ -241,7 +241,7 @@ impl<'a> Interp<'a> {
                             AssignOp::Div => BinOp::Div,
                             _ => BinOp::Rem,
                         };
-                        self.bin(bop, cur, rhs, *span)?
+                        crate::builtin::bin(bop, cur, rhs, *span)?
                     }
                 };
                 self.lvalue_set(target, new, *span)?;
@@ -505,25 +505,12 @@ impl<'a> Interp<'a> {
                 _ => {
                     let l = self.eval(lhs)?;
                     let r = self.eval(rhs)?;
-                    self.bin(*op, l, r, *span)
+                    crate::builtin::bin(*op, l, r, *span)
                 }
             },
             HExpr::Un { op, expr, span } => {
                 let v = self.eval(expr)?;
-                match op {
-                    UnOp::Neg => match v {
-                        Value::Int(i) => i.checked_neg().map(Value::Int).ok_or_else(|| {
-                            Abort::Trap(Trap::new(RT, "tràn i64 khi đổi dấu", *span))
-                        }),
-                        Value::Float(f) => Ok(Value::Float(-f)),
-                        other => Err(Abort::Trap(Trap::new(
-                            RT,
-                            format!("`-` không dùng được cho `{}`", other.show()),
-                            *span,
-                        ))),
-                    },
-                    UnOp::Not => Ok(Value::Bool(!v.truthy(*span)?)),
-                }
+                crate::builtin::un(*op, v, *span)
             }
             HExpr::Call {
                 callee,
@@ -795,7 +782,7 @@ impl<'a> Interp<'a> {
                 for a in args {
                     vs.push(self.eval(a)?);
                 }
-                let kq = self.call_method(recv, name, vs, span)?;
+                let kq = crate::builtin::method(self, recv, name, vs, span)?;
                 // ST-15b (mục 1, §7.1 ngữ nghĩa giá trị + CoW): `push` trên **`var`** phải **ghi lại**
                 // biến (bản thân list đổi), không chỉ trả list mới. `push` trên `let`/biểu thức tạm
                 // vẫn "trả list mới" (không có lvalue để ghi) — ghi rõ trong JOURNAL.
@@ -823,7 +810,7 @@ impl<'a> Interp<'a> {
         {
             if builtin_name(name).is_some() {
                 let (pos, _nm) = self.eval_args(args, named)?;
-                return self.call_builtin(name, pos, span);
+                return crate::builtin::call(self, name, pos, span);
             }
         }
         // 4) Còn lại: giá trị hàm (closure/lambda/builtin value).
@@ -853,7 +840,7 @@ impl<'a> Interp<'a> {
     ) -> R<Value> {
         match f {
             Value::Fn(c) => self.call_closure(&c, pos, span),
-            Value::Builtin(name) => self.call_builtin(name, pos, span),
+            Value::Builtin(name) => crate::builtin::call(self, name, pos, span),
             Value::Record(name, fields) if fields.is_empty() => {
                 // `User(name: "An", age: 20)` — khởi tạo bản ghi theo tên kiểu.
                 let _ = pos;
@@ -1153,44 +1140,7 @@ impl<'a> Interp<'a> {
     }
 
     fn iter_items(&mut self, it: Value, span: Span) -> R<Vec<Value>> {
-        match it {
-            Value::List(xs) => Ok(xs),
-            Value::Range(a, b, incl) => {
-                // ST-13b (mục 2): **không** cộng tràn — `..=` với `i64::MAX` từng panic.
-                let mut out = Vec::new();
-                let mut i = a;
-                loop {
-                    let dung = if incl { i > b } else { i >= b };
-                    if dung {
-                        break;
-                    }
-                    out.push(Value::Int(i));
-                    if out.len() > 10_000_000 {
-                        return Err(Abort::Trap(Trap::new(
-                            RT,
-                            "khoảng quá dài (>10^7 phần tử)",
-                            span,
-                        )));
-                    }
-                    match i.checked_add(1) {
-                        Some(n) => i = n,
-                        None => break, // chạm `i64::MAX` ⇒ hết dải, **không** panic
-                    }
-                }
-                Ok(out)
-            }
-            // ST-13b (mục 4): duyệt chuỗi cho **`char`** (không phải `str`).
-            Value::Str(s) => Ok(s.chars().map(Value::Char).collect()),
-            Value::Map(kv) => Ok(kv
-                .into_iter()
-                .map(|(k, v)| Value::List(vec![k, v]))
-                .collect()),
-            other => Err(Abort::Trap(Trap::new(
-                RT,
-                format!("`for` không duyệt được `{}`", other.show()),
-                span,
-            ))),
-        }
+        crate::value::iter_items(it, span)
     }
 
     /// Chọn nhánh `match`: thử pattern rồi guard; trả binding của nhánh khớp.
@@ -1223,14 +1173,10 @@ impl<'a> Interp<'a> {
     // ---------------------------------------------------------------------
     // Mã lỗi chung
     // ---------------------------------------------------------------------
-
-    pub(crate) fn trap(&self, code: &'static Code, msg: impl Into<String>, span: Span) -> Abort {
-        Abort::Trap(Trap::new(code, msg, span))
-    }
 }
 
 /// Đọc literal thành `Value` (lỗi → thông điệp cho `VS0501`).
-pub(crate) fn lit_value(lit: &Lit) -> std::result::Result<Value, String> {
+pub fn lit_value(lit: &Lit) -> std::result::Result<Value, String> {
     match lit.kind {
         LitKind::Int => parse_int_lit(&lit.text)
             .map(Value::Int)
@@ -1281,7 +1227,7 @@ fn parse_int_lit(text: &str) -> Option<i64> {
 }
 
 /// Vị trí `dòng:cột` (cột đếm theo **Unicode scalar**, bắt đầu từ 1 — §2.4) từ `span` + văn bản.
-pub(crate) fn pos(text: &str, span: Span) -> (u32, u32) {
+pub fn pos(text: &str, span: Span) -> (u32, u32) {
     let mut line = 1u32;
     let mut col = 1u32;
     for (i, c) in text.char_indices() {
@@ -1326,7 +1272,7 @@ fn builtin_name(name: &str) -> Option<&'static str> {
 
 impl Value {
     /// Chân trị cho `if`/`while`/`and`/`or`/`not`/guard.
-    pub(crate) fn truthy(&self, span: Span) -> R<bool> {
+    pub fn truthy(&self, span: Span) -> R<bool> {
         match self {
             Value::Bool(b) => Ok(*b),
             Value::Opt(None) => Ok(false),
@@ -1337,5 +1283,15 @@ impl Value {
                 span,
             ))),
         }
+    }
+}
+
+impl crate::builtin::Host for Interp<'_> {
+    fn out(&mut self) -> &mut String {
+        &mut self.out
+    }
+
+    fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
+        self.call_value(f.clone(), args, Vec::new(), span)
     }
 }

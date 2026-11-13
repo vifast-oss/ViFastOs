@@ -170,6 +170,18 @@ pub enum Instr {
     Try,
     /// Nhân đôi giá trị đỉnh — 1→2 (dùng cho match/destructuring).
     Dup,
+    /// Lấy **đối số thứ `i`** của enum/option/result/tuple trên đỉnh — 1→1 (gán biến pattern).
+    Unwrap(u16),
+    /// Gọi **giá trị hàm** trên đỉnh (closure/biến) với `n` đối số — n+1→1.
+    CallValue(u16),
+    /// Bóc `some(x)` → `x`; giá trị khác giữ nguyên — 1→1 (cho `?.`/`??`).
+    UnwrapOpt,
+    /// `true` nếu đỉnh là `()` — 1→1 (prologue tham số có default).
+    IsUnit,
+    /// Hoặc logic **không đoản mạch** trên hai `bool` — 2→1 (gộp pattern `|`).
+    BoolOr,
+    /// Và logic **không đoản mạch** trên hai `bool` — 2→1 (gộp test pattern lồng).
+    BoolAnd,
 }
 
 impl Instr {
@@ -221,6 +233,12 @@ impl Instr {
             Instr::BindLocal(_) => 42,
             Instr::Try => 43,
             Instr::Dup => 44,
+            Instr::Unwrap(_) => 45,
+            Instr::CallValue(_) => 46,
+            Instr::UnwrapOpt => 47,
+            Instr::IsUnit => 48,
+            Instr::BoolOr => 49,
+            Instr::BoolAnd => 50,
         }
     }
 
@@ -269,6 +287,10 @@ impl Instr {
             | Instr::IterInit
             | Instr::Try
             | Instr::Dup => 0,
+            Instr::Unwrap(_) => 2,
+            Instr::CallValue(_) => 2,
+            Instr::UnwrapOpt => 0,
+            Instr::IsUnit | Instr::BoolOr | Instr::BoolAnd => 0,
         }
     }
 }

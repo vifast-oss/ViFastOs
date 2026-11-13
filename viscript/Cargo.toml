@@ -12,6 +12,7 @@ members = [
     "crates/vis-types",
     "crates/vis-interp",
     "crates/vis-bytecode",
+    "crates/vis-vm",
 ]
 
 [workspace.package]

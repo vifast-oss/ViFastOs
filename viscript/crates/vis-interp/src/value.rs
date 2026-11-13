@@ -61,6 +61,16 @@ pub enum Value {
     /// Nội bộ: hàm dựng sẵn chưa gọi.
     Builtin(&'static str),
     Fn(Rc<Closure>),
+    /// **Chỉ VM tạo** (ST-20): hàm bytecode + biến bắt (snapshot, VD-51). `interp` không bao giờ
+    /// sinh biến thể này; `Show` in `<hàm>`.
+    Vm(Rc<VmFunc>),
+}
+
+/// Hàm bytecode (ST-20): chỉ số hàm trong `Module` + biến bắt **snapshot**.
+#[derive(Debug, Clone)]
+pub struct VmFunc {
+    pub idx: u32,
+    pub captured: Vec<Value>,
 }
 
 impl Value {
@@ -128,6 +138,7 @@ impl Value {
                     format!("<fn {}>", c.name)
                 }
             }
+            Value::Vm(_) => "<hàm>".to_string(),
         }
     }
 
@@ -490,6 +501,72 @@ fn unescape(s: &str) -> String {
         }
     }
     out
+}
+
+/// Vật phẩm của `for` trên **mọi** kiểu lặp được (list/range/str/map) — dùng **chung** cho interp
+/// và VM (ST-20). Khoảng quá dài ⇒ `VS0501` (ST-13b: không cộng tràn `i64`).
+pub fn iter_items(it: Value, span: vis_syntax::Span) -> crate::interp::R<Vec<Value>> {
+    match it {
+        Value::List(xs) => Ok(xs),
+        Value::Range(a, b, incl) => {
+            // ST-13b (mục 2): **không** cộng tràn — `..=` với `i64::MAX` từng panic.
+            let mut out = Vec::new();
+            let mut i = a;
+            loop {
+                let dung = if incl { i > b } else { i >= b };
+                if dung {
+                    break;
+                }
+                out.push(Value::Int(i));
+                if out.len() > 10_000_000 {
+                    return Err(crate::interp::Abort::Trap(crate::interp::Trap::new(
+                        crate::interp::RT,
+                        "khoảng quá dài (>10^7 phần tử)",
+                        span,
+                    )));
+                }
+                match i.checked_add(1) {
+                    Some(n) => i = n,
+                    None => break, // chạm `i64::MAX` ⇒ hết dải, **không** panic
+                }
+            }
+            Ok(out)
+        }
+        // ST-13b (mục 4): duyệt chuỗi cho **`char`** (không phải `str`).
+        Value::Str(s) => Ok(s.chars().map(Value::Char).collect()),
+        Value::Map(kv) => Ok(kv
+            .into_iter()
+            .map(|(k, v)| Value::List(vec![k, v]))
+            .collect()),
+        other => Err(crate::interp::Abort::Trap(crate::interp::Trap::new(
+            crate::interp::RT,
+            format!("`for` không duyệt được `{}`", other.show()),
+            span,
+        ))),
+    }
+}
+
+/// Mã thoát: `main` trả `int` ⇒ dùng số đó (cắt 8 bit); còn lại `0`.
+pub fn exit_code(v: &Value) -> i32 {
+    match v {
+        Value::Int(i) => (*i & 0xff) as i32,
+        _ => 0,
+    }
+}
+
+/// `Show` dùng chung (đơn vị `size`/`duration`/`percent`, map/record…).
+pub fn show(v: &Value) -> String {
+    v.show()
+}
+
+/// Bằng nhau **theo ngữ nghĩa VS0** (không phải `PartialEq` của Rust).
+pub fn eq(a: &Value, b: &Value) -> bool {
+    a.eq_value(b)
+}
+
+/// So sánh thứ tự (chỉ cùng kiểu so được) — `None` nếu không so được.
+pub fn cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
+    a.cmp_value(b)
 }
 
 #[cfg(test)]

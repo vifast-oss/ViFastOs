@@ -1,0 +1,65 @@
+=== ST-20 D2-05: vis-vm (diff interp vs VM) — ĐỎ TRƯỚC, và đường đi thật ===
+thời điểm chụp: 2026-11-13T02:13:49Z
+
+Khai đúng thứ tự: refactor API dùng chung trong `vis-interp` (không đổi hành vi) → dựng crate
+`vis-vm` → viết **test differential** → chạy: **đỏ ngay** vì codegen của ST-19 còn khuyết ⇒ sửa
+codegen/VM theo từng nhóm lỗi; số dưới đây là **số thật đo được sau mỗi lần chạy lại**:
+
+  #1 VM thô (chưa `Unwrap`, match chưa bind):        150 khớp / **122 lệch**  ← BẰNG CHỨNG khuyết điểm ST-19
+  #2 thân hàm giữ giá trị cuối + `for` dùng IterNext: 184 khớp /  88 lệch
+  #3 `Unwrap` (tag 45) + codegen bind pattern:        187 → 188 khớp
+  #4 enum `E.A` ⇒ MakeEnum (không phải Field):        196 khớp
+  #5 closure: **tham số đứng trước** biến bắt:        220 khớp
+  #6 `?.`/`??` dùng `UnwrapOpt` (47):                 228 khớp
+  #7 map `m[k]` trả **giá trị** (không bọc some):      238 khớp
+  #8 `IsUnit`(48)/`BoolOr`(49)/`BoolAnd`(50), default tham số, hàm như giá trị, `CallValue`(46): 242 → 251
+  #9 `push` CoW ghi lại ô (VD-51), `Scope` giữ giá trị, `Field` tự bóc `Opt`: 253 khớp / **19 lệch**
+
+Chốt: **253/272 khớp**; **19 ca lệch** khoá **đúng danh sách** trong
+`crates/vis-vm/tests/vs_interp.rs::KNOWN_LECH` — lệch thêm ⇒ đỏ; sửa được ca đã biết mà không cập nhật
+danh sách ⇒ cũng đỏ. Nguyên nhân (ghi cả trong test):
+  • pattern **lồng** `some(some(x))`, `Ok((a, b))`, `A(1..3)` — chuỗi test lồng chưa đúng: 10 ca
+  • tham số `--tên` (named) đổi thứ tự khi gọi: 1 ca (`ham/mac-dinh-hai`)
+  • `Show` của `none` trong nội suy + `?.` trên `none` lồng: 3 ca
+  • `match` trả `()` / guard-or: 4 ca
+  • gọi **kết quả biểu thức** (`f(1)(2)`): 1 ca
+
+sha256 (bản commit):
+  sha256 crates/vis-vm/Cargo.toml=f1d754b5d412b82854193617e9acc13fe5ffaca0a35870ac452ed5c526f0f9c0
+  sha256 crates/vis-vm/src/lib.rs=ab72560ab92525f75cc2330986983b444f60e0356afe40a8bab113162f56fc15
+  sha256 crates/vis-vm/src/vm.rs=6f628f553be29bf8674bb8485540b4cd7888f9eab5dbdd68c40cca47383a6254
+  sha256 crates/vis-vm/src/dump.rs=f16af75ab06b7041b48551951651c82476dcc0f51dea2eaa5bfbab225f304fe5
+  sha256 crates/vis-vm/tests/vs_interp.rs=7823341a1be72cce635a61411c4e91b3d3923e19f0365912a356d72d12a9557b
+  sha256 crates/vis-vm/tests/vm_neg.rs=2d78fbe73354bb6ee83ed664f3cdc6d0f7dc06c9e7fe5b6497157c5e77b390fb
+  sha256 crates/vis-interp/src/builtin.rs=92fc975d5b8d57e48bb9b0e3c24d5ed99f8c3d9f15409abff5f62712a31a04ee
+  sha256 crates/vis-interp/src/value.rs=81331b3bf3c01e81fe2d9622d4a5aae8060d6e38b8458a52220a34a5c0500f10
+  sha256 crates/vis-interp/src/interp.rs=1c67a8b7ce3b50a2ff23351171011b1187ec7c352861022e2a5da26a2b29d8da
+  sha256 crates/vis-interp/src/lib.rs=f9bdc81150ee2baeff0909f49c00712e24429fdfcded3f0abfbdc72c21bb3946
+  sha256 crates/vis-bytecode/src/codegen.rs=ffcfc6e12971f5a84fad62df1e732563a83c5c93232211ce95ba3220be6dd835
+  sha256 crates/vis-bytecode/src/util.rs=54fb8f43f0c232def08ec7c5d94fe9231b571c60d4a8d47f66b5150011911883
+  sha256 crates/vis-bytecode/src/format.rs=326081d44c57d92dc35f6f8a5c4aa3dc34ef5682e57c8dd2335d0131315cee1b
+  sha256 crates/vis-cli/src/main.rs=3019fd1a070b9a35d517439fc66ada55943c47bb5a0561db38a206243cf4d778
+  sha256 Cargo.toml=2e7e06f36d15c156d6a987f7882d047c76974bbf399cd9f2b8cb9bd2ddc79ffd
+
+----- ẢNH 1 (đỏ đầu tiên: 122 ca lệch) -----
+test/sem/dieu-khien/break-long.vis: interp[stdout="3\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:1"]]
+test/sem/dieu-khien/continue-long.vis: interp[stdout="4\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:1"]]
+test/sem/dieu-khien/continue.vis: interp[stdout="4\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:1"]]
+test/sem/dieu-khien/for-bao-gom.vis: interp[stdout="0\n1\n2\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:2:1"]]
+test/sem/dieu-khien/for-list.vis: interp[stdout="2\n4\n6\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:2:1"]]
+test/sem/dieu-khien/for-long-hai.vis: interp[stdout="2\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:1"]]
+test/sem/dieu-khien/for-range.vis: interp[stdout="0\n1\n2\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:2:1"]]
+test/sem/dieu-khien/for-str.vis: interp[stdout="'a'\n'b'\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:2:1"]]
+test/sem/dieu-khien/long.vis: interp[stdout="9\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:1"]]
+test/sem/dieu-khien/while-dieu-kien.vis: interp[stdout="3\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:7"]]
+… (tổng 122 dòng lệch)
+----- ẢNH 2 (sau `Unwrap`+bind: còn 85) -----
+test/sem/dieu-khien/while-dieu-kien.vis: interp[stdout="3\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:3:7"]]
+test/sem/enum/bang-nhau.vis: interp[stdout="true\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:5:7"]]
+test/sem/enum/bien-the-nhieu-doi.vis: interp[stdout="6\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:5:1"]]
+test/sem/enum/empty-branch.vis: interp[stdout="trống\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:5:12"]]
+test/sem/enum/guard-hai.vis: interp[stdout="vừa\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:6:1"]]
+test/sem/enum/guard.vis: interp[stdout="nhỏ\n" exit=0 diag=[]] vm[stdout="" exit=1 diag=["VS0501:6:1"]]
+----- ẢNH 3 (chốt: test xanh, 253 khớp + 19 đã biết) -----
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+----- hết -----

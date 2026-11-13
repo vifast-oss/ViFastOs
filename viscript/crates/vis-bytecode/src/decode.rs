@@ -168,6 +168,12 @@ fn decode_instr(d: &mut Doc<'_>, n_code: u32) -> Result<Instr, DecodeError> {
         42 => Instr::BindLocal(d.u16()?),
         43 => Instr::Try,
         44 => Instr::Dup,
+        45 => Instr::Unwrap(d.u16()?),
+        46 => Instr::CallValue(d.u16()?),
+        47 => Instr::UnwrapOpt,
+        48 => Instr::IsUnit,
+        49 => Instr::BoolOr,
+        50 => Instr::BoolAnd,
         t => return Err(DecodeError::BadTag(t)),
     })
 }

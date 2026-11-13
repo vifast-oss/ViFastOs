@@ -36,11 +36,13 @@ dependencies = [
 name = "vis-cli"
 version = "0.1.0"
 dependencies = [
+ "vis-bytecode",
  "vis-diag",
  "vis-fmt",
  "vis-interp",
  "vis-syntax",
  "vis-types",
+ "vis-vm",
 ]
 
 [[package]]
@@ -78,4 +80,15 @@ version = "0.1.0"
 dependencies = [
  "vis-diag",
  "vis-syntax",
+]
+
+[[package]]
+name = "vis-vm"
+version = "0.1.0"
+dependencies = [
+ "vis-bytecode",
+ "vis-diag",
+ "vis-interp",
+ "vis-syntax",
+ "vis-types",
 ]

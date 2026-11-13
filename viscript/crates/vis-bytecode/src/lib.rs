@@ -15,6 +15,7 @@ pub mod codegen;
 pub mod decode;
 pub mod encode;
 pub mod format;
+pub mod util;
 
 pub use codegen::{compile, CodegenError};
 pub use decode::{decode, DecodeError};

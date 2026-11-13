@@ -46,11 +46,18 @@
 
 pub mod value;
 
-mod builtin;
-mod interp;
+/// Tên ngắn cho **bảng ngữ nghĩa dùng chung** (ST-20): `ops::bin`, `ops::un`.
+pub mod ops {
+    pub use crate::builtin::{bin, un};
+}
+
+pub mod builtin;
+pub mod interp;
 mod pat;
 
-pub use value::{Closure, Value};
+pub use builtin::{BuiltinSig, Host, SIGS};
+pub use interp::{pos, Abort, Trap, R};
+pub use value::{exit_code, show, Closure, Value};
 
 use vis_syntax::Diagnostic;
 use vis_types::hir::Hir;

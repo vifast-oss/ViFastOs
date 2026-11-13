@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vis-vm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Máy ảo VBC1 cho ViScript — ngữ nghĩa trùng interp (ST-20, VD-54)"
+
+[dependencies]
+vis-bytecode = { path = "../vis-bytecode" }
+vis-diag = { path = "../vis-diag" }
+vis-interp = { path = "../vis-interp" }
+vis-syntax = { path = "../vis-syntax" }
+vis-types = { path = "../vis-types" }
