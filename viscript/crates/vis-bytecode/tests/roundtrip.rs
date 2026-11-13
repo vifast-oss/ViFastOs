@@ -80,8 +80,8 @@ fn bien_dich(p: &Path) -> Result<vis_bytecode::Module, String> {
 #[test]
 fn roundtrip_tren_toan_bo_323_ca() {
     let tat_ca = tep_sem();
-    // **SỬA KÈM LÝ DO (ST-28)**: +10 ca `generic/*` ⇒ 338 ca (319 `.vis` + 19 `.vish`).
-    assert_eq!(tat_ca.len(), 338, "phải đủ 338 ca (319 .vis + 19 .vish)");
+    // **SỬA KÈM LÝ DO (ST-35)**: +8 ca `generic/*` ⇒ 346 ca (327 `.vis` + 19 `.vish`).
+    assert_eq!(tat_ca.len(), 346, "phải đủ 346 ca (327 .vis + 19 .vish)");
     // Ca **cố ý lỗi tĩnh** (có `.err`) không sinh mã — `sem.rs` kiểm chúng bằng chẩn đoán.
     let so_loi = so_ca_loi(&tat_ca);
     let ds: Vec<PathBuf> = tat_ca
@@ -89,7 +89,7 @@ fn roundtrip_tren_toan_bo_323_ca() {
         .filter(|p| !p.with_extension("err").exists())
         .cloned()
         .collect();
-    assert_eq!(ds.len() + so_loi, 338);
+    assert_eq!(ds.len() + so_loi, 346);
     let mut loi = Vec::new();
     let mut tong_lenh = 0usize;
     for p in &ds {

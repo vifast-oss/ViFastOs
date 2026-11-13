@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **ST-33** — `json.decode` + `std.fs` tối thiểu (**qua `Host`**). Không fixture sem nào cần FS
-//! (giữ 338 ca **hermetic**); toàn bộ ca ở đây dùng **thư mục tạm** và tự dọn.
+//! (giữ 346 ca **hermetic**); toàn bộ ca ở đây dùng **thư mục tạm** và tự dọn.
 //!
 //! Khoá: round-trip encode↔decode, escape đủ (kể cả **surrogate pair**), tràn i64/`1e400`,
 //! **byte offset** khi JSON hỏng, `fs` read/write/exists/list (sắp xếp, không đệ quy), `--explain-perms`

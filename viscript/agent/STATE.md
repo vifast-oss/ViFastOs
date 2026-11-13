@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-34** (`| complete` + pipe→stdin cho chương trình ngoài) — xong, **chưa commit**.
-Bước          : 4/4 (traits stdin/complete → lowering → Runner → 16 ca + 4 fixture)
+Task          : **ST-35** (generic THẬT: `Hop[int] ≠ Hop[str]`) — xong, **chưa commit**.
+Bước          : 4/4 (TypeTable inst → template + instantiation → tyck hợp nhất → 25 test + 8 sem)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:20:36Z** (16:20 JST, không retry);
-                **482** test / diff 100k **0 lệch** (206,2 s) / `vis test` 338 ok
-Việc dở       : chờ gate rồi commit `[ST-34]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:47:57Z** (16:47 JST, không retry);
+                **507** test / sem **346** / parity **320/320** / diff 100k **0 lệch** (228,6 s); `vis test` 346 ok
+Việc dở       : chờ gate rồi commit `[ST-35]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-35 — generic **thật**: instantiation theo tổ hợp (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Biểu diễn** | `TypeTable` thêm `rec_inst`/`enum_inst` + `rec_pos`/`enum_pos`: mỗi tổ hợp `Hop[int]` ⇒ **`RecId` riêng** (bản sao với trường đã thay `T`), cache theo `(tên, args)` ⇒ `Hop[int] ≠ Hop[str]` **tự nhiên** qua mọi so sánh có sẵn; **không** thêm biến thể `Type`, **không** đụng `codegen`/`VBC1` |
+| 2 | **Lowering** | template `type`/`enum` generic giữ `TypeRef{"T"}` (`sym_generic`); chữ ký hàm generic cũng giữ `T` (thân hàm vẫn **xoá** ⇒ không đỏ ca cũ); `named_type` instantiation ⇒ `Record/Enum(id_inst)`; `Hop[T]` trong chữ ký ⇒ `TypeRef` để hợp nhất |
+| 3 | **tyck** | `chuan()` (TypeRef người dùng ⇒ bản gốc khi đã xoá), `same_enum` (bản gốc ↔ inst cùng tên, **khác đối số vẫn khác**), `hop_nhat` thêm nhánh `TypeRef` người dùng + fallback **cấu trúc theo vị trí tham số** (buộc `T`, báo sai kiểu); `coerce_e` kiểm literal enum theo biến thể của **bản instantiation** |
+| 4 | **Đo** | **507** test (482 + **25** `generic_that.rs`); sem **338 → 346** (+8 `test/sem/generic/gen-*.vis`, khoá **chạy** interp↔VM); parity **312/312 → 320/320**; `fuzz_mutate` **286 → 294**; `diag_cmp` 286 → 294, tổng 338 → 346 |
+| 5 | **Nợ** | kiểu trả của hàm generic vẫn có thể là `{error}` nếu `T` chưa suy; chưa có instantiation **lồng nhau tường minh** (`Hop[Hop[int]]` chạy được nhưng không tạo id riêng cho lớp trong — an toàn vì payload xoá kiểu) |
 
 ## ST-34 — `| complete` + pipe→stdin (2026-11-13)
 

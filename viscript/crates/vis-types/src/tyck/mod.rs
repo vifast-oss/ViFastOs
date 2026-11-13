@@ -27,7 +27,7 @@ use vis_syntax::{Diagnostic, Span};
 
 use crate::hir::{HExpr, HItem, HStmt, Hir};
 use crate::lower::{SymKind, Symbols};
-use crate::ty::{RecId, Type, TypeTable};
+use crate::ty::{EnumId, RecId, Type, TypeTable};
 
 /// Mã `VS0401` — sai số lượng/thứ tự đối số.
 pub(crate) const ARG_COUNT: &vis_diag::Code = &TYPE_CODES[0];
@@ -280,6 +280,65 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            // ST-35: `Hop[T]` — thay ràng buộc đã biết; khớp theo **instantiation** (id riêng) nên
+            // `Hop[int]` ≠ `Hop[str]`; chưa suy được `T` ⇒ **bỏ qua** (giữ hành vi xoá kiểu ST-28).
+            Type::TypeRef { name, args } if !args.is_empty() => {
+                let cu: Vec<Type> = args.iter().map(|a| thay_gen(a, bang)).collect();
+                if cu
+                    .iter()
+                    .any(|t| matches!(t, Type::TypeRef { args, .. } if args.is_empty()))
+                {
+                    return true;
+                }
+                if let Some(id) = self.types.find_rec_inst(name, &cu) {
+                    return self.hop_nhat(&Type::Record(id), that, gens, bang, ten, span);
+                }
+                if let Some(id) = self.types.find_enum_inst(name, &cu) {
+                    return self.hop_nhat(&Type::Enum(id), that, gens, bang, ten, span);
+                }
+                // Chưa có instantiation trong bảng (vd chưa ai viết `let x: Hop[int]`): khớp
+                // **cấu trúc** theo vị trí tham số của trường ⇒ vẫn buộc được `T` và báo sai kiểu.
+                if let (Type::Record(that_id), Some(base)) = (that, self.types.find_rec_base(name))
+                {
+                    let (Some(def), Some(that_def)) = (
+                        self.types.rec(base).cloned(),
+                        self.types.rec(*that_id).cloned(),
+                    ) else {
+                        return self.hop_nhat_loi(mau, that, ten, span);
+                    };
+                    let pos = self.types.rec_pos(base).to_vec();
+                    if def.fields.len() == that_def.fields.len()
+                        && def
+                            .fields
+                            .iter()
+                            .zip(that_def.fields.iter())
+                            .all(|(f, g)| f.name == g.name)
+                    {
+                        let mut ok = true;
+                        for (i, g) in that_def.fields.iter().enumerate() {
+                            match pos.get(i).copied().flatten() {
+                                Some(p) => {
+                                    let want = cu.get(p).cloned().unwrap_or(Type::Error);
+                                    if !self.hop_nhat(&want, &g.ty, gens, bang, ten, span) {
+                                        ok = false;
+                                    }
+                                }
+                                None => {
+                                    if !self.same(&def.fields[i].ty, &g.ty) {
+                                        ok = false;
+                                    }
+                                }
+                            }
+                        }
+                        return ok;
+                    }
+                }
+                if self.same(mau, that) {
+                    true
+                } else {
+                    self.hop_nhat_loi(mau, that, ten, span)
+                }
+            }
             Type::List(a) => match that {
                 Type::List(b) => self.hop_nhat(a, b, gens, bang, ten, span),
                 _ => self.hop_nhat_loi(mau, that, ten, span),
@@ -327,7 +386,7 @@ impl<'a> Checker<'a> {
         match (a, b) {
             (Type::Error, _) | (_, Type::Error) => true,
             (Type::Record(x), Type::Record(y)) => self.same_record(*x, *y),
-            (Type::Enum(x), Type::Enum(y)) => x == y,
+            (Type::Enum(x), Type::Enum(y)) => self.same_enum(*x, *y),
             (Type::List(x), Type::List(y)) => self.same(x, y),
             (Type::Map(k1, v1), Type::Map(k2, v2)) => self.same(k1, k2) && self.same(v1, v2),
             (Type::Opt(x), Type::Opt(y)) => self.same(x, y),
@@ -343,6 +402,21 @@ impl<'a> Checker<'a> {
                     && a1.iter().zip(a2.iter()).all(|(x, y)| self.same(x, y))
             }
             _ => a == b,
+        }
+    }
+
+    /// ST-35: bản gốc ↔ bản instantiation **cùng tên enum** ⇒ coi là cùng họ (kiểm đối số ở
+    /// `coerce_e` khi là literal); hai instantiation **khác đối số** vẫn **khác** (`Or[int,str] ≠ Or[str,int]`).
+    fn same_enum(&self, x: EnumId, y: EnumId) -> bool {
+        if x == y {
+            return true;
+        }
+        let nx = self.types.enum_def(x).map(|d| d.name.clone());
+        let ny = self.types.enum_def(y).map(|d| d.name.clone());
+        match (self.types.enum_inst_of(x), self.types.enum_inst_of(y)) {
+            (Some((b, _)), None) => ny.as_deref() == Some(b.as_str()),
+            (None, Some((b, _))) => nx.as_deref() == Some(b.as_str()),
+            _ => false,
         }
     }
 
@@ -362,11 +436,25 @@ impl<'a> Checker<'a> {
     }
 
     /// Ép `from` về `to` **có báo lỗi**: tự nâng `T → T?`, literal `int` ở vị trí `float` (§3.5).
+    /// ST-35: `Hop[{error}]` (đã xoá generic) ⇒ bản ghi **gốc** `Hop`; `Or[..]` ⇒ enum gốc.
+    fn chuan(&self, t: &Type) -> Type {
+        if let Type::TypeRef { name, .. } = t {
+            if let Some(id) = self.types.find_rec_base(name) {
+                return Type::Record(id);
+            }
+            if let Some(id) = self.types.find_enum_base(name) {
+                return Type::Enum(id);
+            }
+        }
+        t.clone()
+    }
+
     pub(crate) fn coerce(&mut self, from: &Type, to: &Type, span: Span, what: &str) -> bool {
         // ST-13b (mục 1): khối phân kỳ (`never`) nhận mọi kiểu — không có giá trị để sai kiểu.
         if matches!(from, Type::Never) || matches!(to, Type::Never) {
             return true;
         }
+        let (from, to) = (&self.chuan(from), &self.chuan(to));
         if self.same(from, to) {
             return true;
         }
@@ -391,6 +479,25 @@ impl<'a> Checker<'a> {
     pub(crate) fn coerce_e(&mut self, e: &HExpr, from: &Type, to: &Type, what: &str) -> bool {
         if matches!((from, to), (Type::Int, Type::Float)) && is_int_lit(e) {
             return true;
+        }
+        // ST-35: `Or.Trai(1)` gán vào `Or[int, str]` — kiểm **đối số biến thể** theo bản
+        // instantiation (bản gốc đã xoá kiểu nên không tự bắt được).
+        if let (HExpr::EnumLit { variant, args, .. }, Type::Enum(inst)) = (e, to) {
+            if let Some(def) = self.types.enum_def(*inst).cloned() {
+                if let Some(v) = def.variants.iter().find(|v| &v.name == variant) {
+                    let fields = v.fields.clone();
+                    for (i, a) in args.iter().enumerate() {
+                        if let Some(f) = fields.get(i) {
+                            let t = self.kiem_expr(a);
+                            let want = f.ty.clone();
+                            if !self.coerce_e(a, &t, &want, "đối số biến thể") {
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                }
+            }
         }
         let span = e.span();
         self.coerce(from, to, span, what)
@@ -492,6 +599,36 @@ impl<'a> Checker<'a> {
             }
             _ => {}
         }
+        // ST-35: tham số kiểu **đang có hiệu lực** (`T` trong `fn f[T]`) ⇒ giữ ký hiệu.
+        if resolved.is_empty() && self.generic_scope.iter().any(|g| g == name) {
+            return Type::TypeRef {
+                name: name.to_string(),
+                args: Vec::new(),
+            };
+        }
+        // ST-35: kiểu **người dùng generic** — instantiation đã dựng trong bảng, hoặc bản gốc.
+        if let Some(id) = self.types.find_rec_inst(name, &resolved) {
+            return Type::Record(id);
+        }
+        if let Some(id) = self.types.find_enum_inst(name, &resolved) {
+            return Type::Enum(id);
+        }
+        if resolved.is_empty() {
+            if let Some(id) = self.types.find_rec_base(name) {
+                return Type::Record(id);
+            }
+            if let Some(id) = self.types.find_enum_base(name) {
+                return Type::Enum(id);
+            }
+        } else if resolved
+            .iter()
+            .any(|t| matches!(t, Type::TypeRef { args, .. } if args.is_empty()))
+        {
+            return Type::TypeRef {
+                name: name.to_string(),
+                args: resolved,
+            };
+        }
         // VD-48(a): kiểu **ngoài VS0** (`AnyError`, `cap`, `ref`, `Json`, `set`, `stream`, …) vẫn
         // là `VS0301` nhưng thông điệp phải nói rõ "không có ở VS0 (vis-std/vòng 2)".
         let msg = if la_kieu_ngoai_vs0(name) {
@@ -540,11 +677,13 @@ impl<'a> Checker<'a> {
                     let raw_ret = self.resolve_ann(&f.ret, f.span);
                     self.generic_scope = luu;
                     // …nhưng thân hàm và mọi chỗ khác dùng bản **đã xoá kiểu** (`{error}`).
+                    // ST-35: sau khi xoá generic, `Hop[?]` phải quay về **bản ghi gốc** `Hop`
+                    // (không để `TypeRef{Hop}` lửng ⇒ trường không tra được trong thân hàm).
                     let params: Vec<Type> = raw_params
                         .iter()
-                        .map(|t| erase_gen(t, &f.generics))
+                        .map(|t| self.chuan(&erase_gen(t, &f.generics)))
                         .collect();
-                    let ret = erase_gen(&raw_ret, &f.generics);
+                    let ret = self.chuan(&erase_gen(&raw_ret, &f.generics));
                     let ty = Type::Fn(params.clone().into_boxed_slice(), Box::new(ret.clone()));
                     self.set_ty(f.sym, ty.clone());
                     self.item_types.push((f.name.clone(), ty));
@@ -610,7 +749,7 @@ impl<'a> Checker<'a> {
                 self.generic_scope = f.generics.clone();
                 for p in &f.params {
                     let raw = self.resolve_ann(&p.ty, p.span);
-                    let ty = erase_gen(&raw, &f.generics);
+                    let ty = self.chuan(&erase_gen(&raw, &f.generics));
                     self.set_ty(p.sym, ty.clone());
                     if p.is_var_self {
                         self.set_mutable(p.sym);
@@ -621,7 +760,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 let raw_ret = self.resolve_ann(&f.ret, f.span);
-                let ret = erase_gen(&raw_ret, &f.generics);
+                let ret = self.chuan(&erase_gen(&raw_ret, &f.generics));
                 self.generic_scope = luu;
                 let saved = self.cur_ret.replace(ret.clone());
                 self.kiem_than(&f.body, &ret, f.span);

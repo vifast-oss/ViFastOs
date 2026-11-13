@@ -82,12 +82,12 @@ fn mo_ta(o: &RunOutput) -> String {
     format!("stdout={:?} exit={} diag={:?}", o.stdout, o.exit, d)
 }
 
-/// **Danh sách ca lệch phải LUÔN RỖNG** (ST-20b; ST-30b: so **đủ** 338 ca, kể cả ca `.err` ⇒ 312/312). Nếu ai thêm ca vào đây,
+/// **Danh sách ca lệch phải LUÔN RỖNG** (ST-20b; ST-35: so **đủ** 346 ca, kể cả ca `.err` ⇒ 320/320). Nếu ai thêm ca vào đây,
 /// test sẽ đỏ ngay (`so_biet == 0`) — mục đích là **không** cho nợ kỹ thuật quay lại.
 const KNOWN_LECH: [&str; 0] = [];
 
 #[test]
-fn vm_khop_interp_tren_312_ca() {
+fn vm_khop_interp_tren_320_ca() {
     // VM đệ quy theo **khung bytecode** (cap 2.000) ⇒ cần stack lớn như `vis run` (256 MiB).
     std::thread::Builder::new()
         .stack_size(256 * 1024 * 1024)
@@ -99,8 +99,8 @@ fn vm_khop_interp_tren_312_ca() {
 
 fn than_chay() {
     let tat_ca = tep_sem();
-    // **SỬA KÈM LÝ DO (ST-28)**: 338 ca sem (319 `.vis` + 19 `.vish`, +10 `generic`).
-    assert_eq!(tat_ca.len(), 338, "phải đủ 338 ca");
+    // **SỬA KÈM LÝ DO (ST-35)**: +8 ca `generic/*` (instantiation thật) ⇒ 346 ca (327 `.vis` + 19 `.vish`).
+    assert_eq!(tat_ca.len(), 346, "phải đủ 346 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bien_dich = 0;
@@ -117,7 +117,7 @@ fn than_chay() {
         let (Some(a), Some(b)) = (chay_interp(&text, mode), chay_vm(&text, mode)) else {
             // **ST-32**: ca lỗi **biên dịch** — không chạy được ở đường nào, nhưng **đường bytecode**
             // vẫn phải được **chạm tới**: `compile()` không panic (codegen tin tyck ⇒ có thể ra module;
-            // front end mới là cổng). Đếm riêng để khoá **đủ 338**.
+            // front end mới là cổng). Đếm riêng để khoá **đủ 346**.
             let lexed = vis_syntax::lex(&text, mode);
             let parsed = vis_syntax::parse(&text, mode);
             let h = vis_types::lower(&parsed.cst, &lexed);
@@ -165,22 +165,22 @@ fn than_chay() {
         "**không** còn ca lệch nào (danh sách phải rỗng, thật {})",
         so_biet
     );
-    // **SỬA KÈM LÝ DO (ST-32)**: **0 ca bỏ qua** — 312 ca **chạy được** so interp ↔ VM, **26** ca lỗi
-    // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **338**.
+    // **SỬA KÈM LÝ DO (ST-35)**: **0 ca bỏ qua** — 320 ca **chạy được** so interp ↔ VM, **26** ca lỗi
+    // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **346**.
     assert_eq!(
         khop + so_biet + bien_dich,
-        338,
-        "338 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
+        346,
+        "346 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     assert_eq!(
         (khop, bien_dich),
-        (312, 26),
-        "312 ca chạy được khớp + 26 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
+        (320, 26),
+        "320 ca chạy được khớp + 26 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
     );
 }
 
 /// **ST-30b**: hai đường phải cho **cùng SỐ** chẩn đoán (không chỉ cùng nội dung phần tử đầu) — quét
-/// **toàn bộ** 338 ca, kể cả `.err`; ít nhất một ca có chẩn đoán để phép so không rỗng nghĩa.
+/// **toàn bộ** 346 ca, kể cả `.err`; ít nhất một ca có chẩn đoán để phép so không rỗng nghĩa.
 #[test]
 fn hai_duong_cung_so_chan_doan() {
     std::thread::Builder::new()
@@ -220,10 +220,10 @@ fn hai_duong_cung_so_chan_doan() {
                     so_ca_co_chan_doan += 1;
                 }
             }
-            // **SỬA KÈM LÝ DO (ST-30b)**: 312 ca chạy được (26 ca lỗi biên dịch bị bỏ qua), trong đó
+            // **SỬA KÈM LÝ DO (ST-35)**: 320 ca chạy được (26 ca lỗi biên dịch bị bỏ qua), trong đó
             // **30** ca có chẩn đoán lúc chạy (6 ca chỉ số/map + `.vish` không host + phạm vi) — mỗi ca
             // đúng **1** chẩn đoán ở **cả hai** đường.
-            assert_eq!(so_ca, 312, "phải so đủ 312 ca chạy được");
+            assert_eq!(so_ca, 320, "phải so đủ 320 ca chạy được");
             assert_eq!(
                 so_ca_co_chan_doan, 30,
                 "30 ca có chẩn đoán lúc chạy (hai đường cùng số)"

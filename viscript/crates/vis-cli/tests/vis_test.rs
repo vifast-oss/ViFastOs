@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! ST-30 — **`vis test`**: chạy bộ `test/sem/**` in **TAP**, đếm khớp harness (338), `--vm` khớp interp.
+//! ST-30 — **`vis test`**: chạy bộ `test/sem/**` in **TAP**, đếm khớp harness (346), `--vm` khớp interp.
 //!
 //! Khoá: `1..N` đúng số ca; ca đỏ ⇒ exit 1 + `not ok` + dòng `# <tệp>:<dòng>:<cột>: <mã>`; `--vm`
 //! chạy đường VM (SKIP ca cần host chương trình ngoài — VM không có, ST-27).
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Số ca mà harness `sem.rs` đang khoá — `vis test` **phải** khớp, không tự bịa.
-const SO_CA: usize = 338;
+const SO_CA: usize = 346;
 
 fn vis(args: &[&str]) -> (i32, String, String) {
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))

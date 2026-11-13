@@ -1,0 +1,41 @@
+=== ST-35 D2-05: generic THẬT `Hop[int] ≠ Hop[str]` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T07:44:21Z
+
+## 1. Đỏ **thật** ở HEAD `0e65446` (worktree `/tmp/vis-red35`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-types --test generic_that
+test result: FAILED. **15 passed; 10 failed**; 0 ignored
+```
+
+10 ca **hành vi mới** đỏ (gán chéo instantiation, trường `T` chưa thay, hàm liên kết, enum sai biến thể…).
+15 ca xanh là ca **hợp lệ** — chương trình đúng vốn đã chạy được (nhờ xoá kiểu), nên không đỏ.
+
+## 2. Hiện trạng trước khi sửa (đo tay trên HEAD)
+
+```
+$ vis run hop.vis        # type Hop[T]: gia_tri: T ; let a: Hop[int] = {gia_tri: 1} ; let b: Hop[str] = a
+ok                       # ❌ KHÔNG lỗi — Hop[int] và Hop[str] cùng một RecId (nợ VD-61)
+$ vis run truong.vis     # let n: int = a.gia_tri
+error VS0412: cần `int`, được `{error}`   # trường bị xoá kiểu
+```
+
+## 3. Sau khi sửa — đo được
+
+- **507** test workspace (482 + **25** `crates/vis-types/tests/generic_that.rs`);
+- `Hop[int]` và `Hop[str]` là **hai** `RecId` ⇒ gán chéo ⇒ **`VS0412`**, cùng kiểu ⇒ **sạch**;
+- `a.gia_tri` ⇒ **`int`** (không còn `{error}`); `let s: str = a.gia_tri` ⇒ `VS0412`;
+- `Or[int, str]` sạch, `Or.Trai("x")` vào `Or[int, str]` ⇒ `VS0412`, gán chéo ⇒ `VS0412`,
+  `match` thiếu nhánh **vẫn** `VS0402`;
+- `fn f[T](x: T, h: Hop[T])`: `f(1, {gia_tri: 2})` sạch, `f(1, {gia_tri: "s"})` ⇒ `VS0412`,
+  `f("a", {gia_tri: "b"})` sạch; `g[T](a: T, b: T)` lệch ⇒ `VS0412`;
+- **sem 338 → 346** (+8 `test/sem/generic/gen-*.vis`), `vis test` **346 ok**, parity **320/320**,
+  `fuzz_mutate` 286 → **294**, `diag_cmp` 286/338 → **294/346**;
+- **differential 100.000 chương trình / 0 lệch** (payload xoá kiểu ⇒ `codegen`/`VBC1` **không đổi**).
+
+## 4. sha256 bản commit
+  sha256 crates/vis-types/src/ty.rs=9e4ecb510a337fa6206ee0fed00650241f8a939b07c3bf2596784d32ed5d698c
+  sha256 crates/vis-types/src/lower.rs=325bc8ca400dfbf6d3f39abd09f9da4cf91ca52bf82c29538fe244911dfe766a
+  sha256 crates/vis-types/src/lower/generic.rs=08a778896f0fb213c7d9f5f10bd29b1d77269d4c7e1989c72bd61a5bb4f9e42b
+  sha256 crates/vis-types/src/tyck/mod.rs=05cba6235d800c49676e3444b3d056b6541bb3edb4f3dcb818686a4d355bc5f7
+  sha256 crates/vis-types/tests/generic_that.rs=e8142e0e4c416a5f66d03604dd677d64adf70a6495ea13ada3a57337bb5a641f

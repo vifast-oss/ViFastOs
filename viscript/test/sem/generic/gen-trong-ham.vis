@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type Hop[T]:
+    gia_tri: T
+
+fn lay[T](h: Hop[T]) -> T:
+    h.gia_tri
+
+let a: Hop[int] = {gia_tri: 7}
+let b: Hop[str] = {gia_tri: "z"}
+print(lay(a))
+print(lay(b))

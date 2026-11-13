@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+enum Or[A, B]:
+    Trai(x: A)
+    Phai(y: B)
+
+let y: Or[str, int] = Or.Phai(2)
+match y:
+    Trai(s): print(s)
+    Phai(v): print(v)

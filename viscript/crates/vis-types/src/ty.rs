@@ -198,6 +198,10 @@ pub struct TypeTable {
     /// `Hop[int] ≠ Hop[str]` (hai id khác nhau).
     rec_inst: Vec<Option<(String, Vec<Type>)>>,
     enum_inst: Vec<Option<(String, Vec<Type>)>>,
+    /// ST-35: với mỗi bản ghi, **vị trí tham số kiểu** của từng trường (`None` = kiểu cụ thể).
+    rec_pos: Vec<Vec<Option<usize>>>,
+    /// ST-35: như `rec_pos` nhưng cho enum — `[biến thể][trường]`.
+    enum_pos: Vec<Vec<Vec<Option<usize>>>>,
 }
 
 impl TypeTable {
@@ -213,12 +217,45 @@ impl TypeTable {
         &self.enums
     }
 
+    /// Ghi vị trí tham số kiểu cho trường của bản ghi **gốc** (ST-35).
+    pub fn set_rec_pos(&mut self, id: RecId, pos: Vec<Option<usize>>) {
+        if self.rec_pos.len() <= id.0 as usize {
+            self.rec_pos.resize(id.0 as usize + 1, Vec::new());
+        }
+        self.rec_pos[id.0 as usize] = pos;
+    }
+
+    /// Vị trí tham số kiểu của trường bản ghi gốc (rỗng nếu chưa ghi).
+    pub fn rec_pos(&self, id: RecId) -> &[Option<usize>] {
+        self.rec_pos
+            .get(id.0 as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Ghi vị trí tham số kiểu cho biến thể enum **gốc** (ST-35).
+    pub fn set_enum_pos(&mut self, id: EnumId, pos: Vec<Vec<Option<usize>>>) {
+        if self.enum_pos.len() <= id.0 as usize {
+            self.enum_pos.resize(id.0 as usize + 1, Vec::new());
+        }
+        self.enum_pos[id.0 as usize] = pos;
+    }
+
+    /// Vị trí tham số kiểu của biến thể enum gốc (rỗng nếu chưa ghi).
+    pub fn enum_pos(&self, id: EnumId) -> &[Vec<Option<usize>>] {
+        self.enum_pos
+            .get(id.0 as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
     /// Ghi một **instantiation** của bản ghi (`Hop[int]`) — id mới, cùng tên gốc.
     pub fn push_rec_inst(&mut self, base: String, args: Vec<Type>, mut def: RecDef) -> RecId {
         let id = RecId(self.recs.len() as u32);
         def.anonymous = false;
         self.recs.push(def);
         self.rec_inst.push(Some((base, args)));
+        self.rec_pos.push(Vec::new());
         id
     }
 
@@ -227,6 +264,7 @@ impl TypeTable {
         let id = EnumId(self.enums.len() as u32);
         self.enums.push(def);
         self.enum_inst.push(Some((base, args)));
+        self.enum_pos.push(Vec::new());
         id
     }
 
@@ -238,6 +276,41 @@ impl TypeTable {
     /// Như [`TypeTable::rec_inst_of`] cho enum.
     pub fn enum_inst_of(&self, id: EnumId) -> Option<&(String, Vec<Type>)> {
         self.enum_inst.get(id.0 as usize).and_then(|x| x.as_ref())
+    }
+
+    /// ST-35: tìm **instantiation** đã có theo `(tên gốc, đối số)` — `None` nếu chưa ai dựng.
+    pub fn find_rec_inst(&self, name: &str, args: &[Type]) -> Option<RecId> {
+        self.rec_inst.iter().enumerate().find_map(|(i, x)| match x {
+            Some((n, a)) if n == name && a.as_slice() == args => Some(RecId(i as u32)),
+            _ => None,
+        })
+    }
+
+    /// Như [`TypeTable::find_rec_inst`] cho enum.
+    pub fn find_enum_inst(&self, name: &str, args: &[Type]) -> Option<EnumId> {
+        self.enum_inst
+            .iter()
+            .enumerate()
+            .find_map(|(i, x)| match x {
+                Some((n, a)) if n == name && a.as_slice() == args => Some(EnumId(i as u32)),
+                _ => None,
+            })
+    }
+
+    /// Id bản ghi gốc (khai báo) theo tên — bỏ qua bản instantiation.
+    pub fn find_rec_base(&self, name: &str) -> Option<RecId> {
+        self.recs.iter().enumerate().find_map(|(i, d)| {
+            (d.name.as_deref() == Some(name) && self.rec_inst.get(i).is_none_or(|x| x.is_none()))
+                .then_some(RecId(i as u32))
+        })
+    }
+
+    /// Id enum gốc (khai báo) theo tên.
+    pub fn find_enum_base(&self, name: &str) -> Option<EnumId> {
+        self.enums.iter().enumerate().find_map(|(i, d)| {
+            (d.name == name && self.enum_inst.get(i).is_none_or(|x| x.is_none()))
+                .then_some(EnumId(i as u32))
+        })
     }
 
     pub fn rec(&self, id: RecId) -> Option<&RecDef> {
@@ -253,6 +326,7 @@ impl TypeTable {
         let id = RecId(self.recs.len() as u32);
         self.recs.push(rec);
         self.rec_inst.push(None);
+        self.rec_pos.push(Vec::new());
         id
     }
 
@@ -261,6 +335,7 @@ impl TypeTable {
         let id = EnumId(self.enums.len() as u32);
         self.enums.push(e);
         self.enum_inst.push(None);
+        self.enum_pos.push(Vec::new());
         id
     }
 

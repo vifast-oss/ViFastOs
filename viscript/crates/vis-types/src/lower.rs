@@ -277,6 +277,9 @@ pub fn is_builtin_value(name: &str) -> bool {
     BUILTIN_VALUE_NAMES.contains(&name)
 }
 
+/// Template biến thể enum generic (ST-35): `(tên, tham số kiểu, [(biến thể, kiểu trường)])`.
+type EnumTmpl = (String, Vec<String>, Vec<(String, Vec<Type>)>);
+
 struct Lowerer<'a> {
     cst: &'a Cst,
     text: &'a str,
@@ -302,8 +305,8 @@ struct Lowerer<'a> {
     /// ST-35: **template** trường của `type T[..]` — kiểu còn **ký hiệu** `TypeRef{"T"}` để thay khi
     /// instantiation (`Hop[int]`), thay vì xoá kiểu như ST-28.
     rec_tmpl: Vec<(String, Vec<String>, Vec<Type>)>,
-    /// ST-35: template biến thể của `enum E[..]` — `(tên biến thể, kiểu từng trường)`.
-    enum_tmpl: Vec<(String, Vec<String>, Vec<(String, Vec<Type>)>)>,
+    /// ST-35: template biến thể của `enum E[..]` — `(tên enum, tham số, [(biến thể, kiểu trường)])`.
+    enum_tmpl: Vec<EnumTmpl>,
     /// ST-35: cache instantiation `(tên gốc, đối số) → id`.
     inst_cache: Vec<((String, Vec<Type>), u32)>,
     /// ST-35: `true` khi đang dựng **template** ⇒ tham số kiểu giữ dạng `TypeRef{"T"}`.
@@ -795,11 +798,19 @@ impl<'a> Lowerer<'a> {
         for g in &generics {
             self.declare(g, SymKind::Generic, node.span, None);
         }
+        // ST-35: tham số kiểu của **chính hàm** phải có hiệu lực khi hạ chữ ký — nhờ vậy `Hop[T]`
+        // trong chú thích giữ được **ký hiệu** `T` (không xoá thành `{error}`) để tyck hợp nhất.
+        let luu_gen = std::mem::replace(&mut self.generic_scope, generics.clone());
+        // ST-35: trong **chữ ký** hàm generic, `T` giữ dạng **ký hiệu** (không xoá thành `{error}`) để
+        // call-site hợp nhất được; thân hàm vẫn dùng bản đã xoá (tyck `erase_gen`).
+        let luu_sym = std::mem::replace(&mut self.sym_generic, !generics.is_empty());
         let params = self.lower_params(node);
         let ret = node
             .child(NodeKind::Type)
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Unit);
+        self.sym_generic = luu_sym;
+        self.generic_scope = luu_gen;
         let body = node
             .child(NodeKind::Suite)
             .map(|s| self.lower_suite(s))
@@ -932,9 +943,6 @@ impl<'a> Lowerer<'a> {
         self.kiem_derives(node, &derives, &field_tys);
         // ST-35: dựng **template** (kiểu còn ký hiệu `T`) để instantiation `Hop[int]` thay được.
         if !self.generic_scope.is_empty() {
-            if std::env::var("VIS_DBG_GEN").is_ok() {
-                eprintln!("template rec {name} {:?}", self.generic_scope);
-            }
             self.dung_template_rec(node, &name);
         }
         let id = self
@@ -1137,14 +1145,31 @@ impl<'a> Lowerer<'a> {
     /// Kiểu của **một đối số generic**: giữ **ký hiệu** `T` khi `T` là tham số kiểu đang có hiệu lực
     /// (ST-35) — nhờ vậy `Hop[T]` trong chữ ký hàm hợp nhất được với `Hop[int]` ở call-site.
     fn resolve_arg_type(&mut self, node: &Node) -> Type {
-        if let Some(Elem::Token(i)) = node.elems.first() {
-            if let Some(t) = self.tok(*i) {
-                if t.kind == Kind::Ident && self.generic_scope.iter().any(|g| g == &t.text) {
-                    return Type::TypeRef {
-                        name: t.text.clone(),
-                        args: Vec::new(),
-                    };
-                }
+        // Token đầu (dù nằm trong `elems` hay trong node con) — đủ để nhận ra `T`.
+        let dau = node
+            .tokens(&self.cst.tokens)
+            .next()
+            .filter(|t| t.kind == Kind::Ident)
+            .map(|t| t.text.clone())
+            .or_else(|| {
+                let txt = self
+                    .text
+                    .get(node.span.start..node.span.end)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                txt.chars()
+                    .next()
+                    .filter(|c| c.is_alphabetic() || *c == '_')
+                    .filter(|_| txt.chars().all(|c| c.is_alphanumeric() || c == '_'))
+                    .map(|_| txt)
+            });
+        if let Some(t) = dau {
+            if self.generic_scope.iter().any(|g| g == &t) {
+                return Type::TypeRef {
+                    name: t,
+                    args: Vec::new(),
+                };
             }
         }
         self.resolve_type(node)

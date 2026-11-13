@@ -2,8 +2,9 @@
 //! **ST-32** — harness so **chẩn đoán BIÊN DỊCH** giữa hai đường, đóng nợ `R4` §5 (26 ca lỗi biên dịch
 //! trước đây **không** được so).
 //!
-//! Ba tầng **khoá cứng** (tổng **338**, **0 ca bỏ qua**):
-//! - **286 xanh** — `check` không chẩn đoán, `run` và `run --vm --no-cache` cùng stdout + exit 0.
+//! Ba tầng **khoá cứng** (tổng **346**, **0 ca bỏ qua**):
+//! - **294 xanh** — `check` không chẩn đoán, `run` và `run --vm --no-cache` cùng stdout + exit 0.
+//!   (ST-35: 346 ca − 52 `.err` = 294; trước 286.)
 //! - **26 lỗi BIÊN DỊCH** (`VS01/02/03/04/06/07`) — `check` và `run --vm --no-cache` phải cho **cùng**
 //!   `(mã, dòng, cột, thông điệp)` sau [`chuan_hoa`]; **exit KHÔNG bằng nhau** theo thiết kế:
 //!   `check` = **1** ↔ `run` = **2** (khoá **ánh xạ**, không đòi bằng).
@@ -17,8 +18,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Tổng số ca `test/sem/**` — khoá cứng (ai thêm ca phải cập nhật **có ý thức**).
-const TONG: usize = 338;
-const XANH: usize = 286;
+const TONG: usize = 346;
+const XANH: usize = 294;
 const LOI_BIEN_DICH: usize = 26;
 const LOI_LUC_CHAY: usize = 26;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.

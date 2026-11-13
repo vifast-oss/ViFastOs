@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type Hop[T]:
+    gia_tri: T
+
+let a: Hop[list[int]] = {gia_tri: [1, 2]}
+print(a.gia_tri)
