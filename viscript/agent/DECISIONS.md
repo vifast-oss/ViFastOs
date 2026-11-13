@@ -725,3 +725,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   = sửa **tại chỗ**. (3) `let`/tham số thường: giữ `VS0412` (đã có). (4) **Interp** phải làm đúng hai đường gán trên
   (hiện chỉ VM làm) ⇒ interp ↔ VM cùng byte. (5) `vis run --vm` gặp **lỗi codegen** phải **exit ≠ 0** + chẩn đoán ra
   stderr (hiện in rồi exit 0); nếu chương trình đó là lỗi **tĩnh** thì tyck phải chặn trước để parity không lệch.
+
+- **VD-98** **Mồ côi đa tệp + siêu trait + derives sinh mã (ST-57)**: (1) **Mồ côi**: cho `impl` khi **trait hoặc
+  kiểu** được khai trong **chương trình** (luật Rust); `impl` inherent trên kiểu nhập **giữ nguyên** (ca đang xanh);
+  mồ côi **thật** = cả trait lẫn kiểu ngoài chương trình ⇒ `VS0403` thông điệp riêng. Dữ liệu: `TraitSig{name,
+  supertraits, methods}` + `LowerOptions.trait_ngoai/impl_ngoai` (module xuất `pub_traits`). (2) **Siêu trait**: dùng
+  **`VS0403`** (không cấp mã mới — tiền lệ ST-29); kiểm **một tầng**, **sau** vòng 1b (thứ tự impl tự do); bắc cầu = nợ.
+  (3) **`derives`**: sinh **HIR ở lượt 1c** (sau 1b, trước mọi lượt hạ thân — để `p.show()` trước khai báo vẫn phân giải);
+  tên nội bộ **có tiền tố** `<Kiểu>.show`/`<Kiểu>.eq` (không `VS0302`); `show` dựng bằng `HExpr::Interp` để **khớp byte**
+  `Value::show`; `eq` = `self == other` (dùng `eq_value` sẵn có); người dùng viết tay **thắng**; generic/`float`+`Eq`/
+  `Fn` ⇒ `VS0403` **tĩnh, không sinh mã**; `Json` giữ **kiểm-only**; `enum show` **cắt** (nợ), `enum eq` làm được.
+  (4) Ca mới ở **nhóm `trait/`** ⇒ **19 nhóm**; khoá interp=`--vm` tự động.
