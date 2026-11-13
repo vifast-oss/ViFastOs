@@ -528,3 +528,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   closure ⇒ hạ `it => …`, chỉ đổi **định danh trần chưa khai báo** thành `it.<tên>`; `where 1` ⇒ **`VS0412`**.
   (5) `lower_vach` hạ nhóm **vào bảng chung** (`RecId` ẩn danh phải cùng bảng). Nợ: `where size` (kiểu không `bool`)
   hiện `VS0501` lúc chạy.
+
+- **VD-72** **`sort_by` chế độ shell (ST-39)**: (1) lệnh builtin **mới** `sort_by[T](xs: list[T], f: fn(T)->K,
+  --desc: bool = false) -> list[T]`, **một** hiện thực qua `Host::call`; **`std.list.sort_by` giữ nguyên** (khoá
+  `fn(int)->int`) — **hai** `sort_by` là **nợ VS2** (hợp nhất khi có generic + trait). (2) `--desc` là **cờ** (khe ống
+  không chiếm); `--desc=false` hợp lệ; thân closure **dừng** ở `--…` (parser không nuốt cờ vào thân). (3) So sánh
+  khoá: `int`/`float` theo số, **`size` theo BYTE**, **`duration` theo NANOGIÂY**, `percent` theo `f64`, `str`/`path`
+  theo **byte UTF-8**; **ổn định cả hai chiều** (đảo comparator, không đảo mảng). (4) Khoá `bool`/`map`/`record`/`list`/
+  `set`/`unit` ⇒ **`VS0412`** (kiểm ở lowering cho `.vish` + `kiem_builtin` cho `.vis`; runtime `VS0501` là chốt hai).
+  (5) `sort_by` 1 đối số (không closure) vẫn là **chương trình ngoài** (không bị tyck chặn).
