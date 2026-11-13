@@ -700,3 +700,21 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (2) `tyck` **hợp nhất** kiểu đối số thật với biến kiểu; không khớp ⇒ `VS0401` **tĩnh**. (3) Ngoại lệ **có ghi** (closure
   chưa suy hai chiều) phải viết rõ tại chỗ, **không** để `Any` quay lại. (4) `all_codes()` **không** đổi, trừ mã mới
   của ST-60/ST-61.
+
+- **VD-95** **Hiện thực async — builtin nội bộ, không thêm tag `VBC1` (ST-60)**: (1) `async`/`await` **đã** lex+parse+lower
+  sẵn (`HFn::is_async`, `HExpr::Await`); chỉ thiếu tyck + runtime. (2) Hạ `async fn`/`spawn`/`await` thành **lời gọi
+  builtin nội bộ** `$tac_vu`, `$spawn`, `$await` (tên có `$` ⇒ người dùng không viết được) + **một** runtime chia sẻ
+  `vis-interp/src/rt.rs`; **không** thêm tag `VBC1`, không đổi verifier/cache. (3) `Task[T]`/`Chan[T]` =
+  `Type::TypeRef{name,args}` (đã đệ quy sẵn); `FnSig.is_async`; `await` bỏ **một** lớp `Task`. (4) `spawn` chỉ nhận
+  **tên hàm `async` cấp tệp**, đối số **vị trí**, **không** `--tên`; `async fn` không dùng làm giá trị; `async` trên
+  method/`cmd` ⇒ **`VS0412`** (nợ ghi `R10` §5). (5) Lỗi thân tác vụ: **mọi** lỗi bọc `VS0506` (message kèm mã gốc),
+  span = **lúc tạo**, áp **cả** `await` lẫn join — một quy tắc, một kết quả. (6) Join cuối **theo thứ tự spawn**,
+  **chỉ khi main thành công**; `await` lần hai trả cache. (7) `MAX_TASK_NEST = 256` cho chặn lồng; 10k task phẳng là
+  test thật. Nợ: không nhường giữa thân, không GC (chu trình `Rc`), `await` sâu sát ngưỡng frame.
+
+- **VD-96** **Hiện thực kênh + ba mã runtime mới (ST-61)**: (1) `$kenh` tạo `Chan` (**một** hiện thực trong `builtin`),
+  `send/recv/close` đi cùng một nhánh method cho cả interp lẫn VM. (2) Chặn (`send` đầy, `recv` rỗng) ⇒ **drain** hàng
+  đợi FIFO (chạy task đầu tới hoàn tất, bỏ task đã xong), thử lại; hết queue ⇒ **`VS0505`** (deadlock, không treo).
+  (3) `send` sau `close` ⇒ **`VS0504`**; `recv` sau `close` còn hàng ⇒ trả tiếp, rỗng ⇒ `none`. (4) Sổ `05xx` thêm
+  **`VS0504`/`VS0505`/`VS0506`** (giữ index 0..2), `all_codes()` **29 → 32**; sửa **đủ** 6 chỗ khoá số ca. (5) Byte
+  giống nhau nhờ: cùng `rt.rs`, cùng thứ tự join, cùng hằng thông điệp, span **nút gọi** — cấm in địa chỉ/thứ tự map.
