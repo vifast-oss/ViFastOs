@@ -6,12 +6,14 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-22 + ST-23** (differential 100k chương trình sinh tự động; cache bytecode +
-                khởi động ấm) — xong 2026-11-13, **chưa commit** (chờ Agent 0 OK).
-Bước          : 2/2 (ST-22: 100.000 chương trình, 0 lệch · ST-23: cache + đo ấm)
+Task          : **ST-24** (báo cáo **R3** — chốt VS1-khung) — xong 2026-11-13, **chưa commit**
+                (chờ gate + push theo uỷ quyền).
+Bước          : 3/3 (thu số lại → viết `reports/R3-viscript.{md,json}` → gate/nightly)
 Nhánh         : main
-Cổng gần nhất : (chạy sau khi ghi mục này)
-Việc dở       : chờ duyệt rồi commit `[ST-22]` rồi `[ST-23]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T03:18:11Z**;
+                `./vis-dev nightly --fuzz-minutes 1` → PASS lúc **2026-11-13T03:19:56Z**.
+                `report-check`: **PASS (3 báo cáo, 27 hàng QUEUE phủ đủ)**. **318** test.
+Việc dở       : commit `[ST-24]` + push; Agent 0 lật ST-24 DONE
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +46,20 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-24 — báo cáo **R3**, chốt VS1-khung (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | `agent/reports/R3-viscript.json` | **đúng 11 khoá**, `round = 3`, `head = c427d64` (QUEUE@head có **27 hàng** 6 cột, `report-check` PASS) |
+| 2 | `agent/reports/R3-viscript.md` | đủ `## 1.` … `## 6.`, > 800 ký tự; bảng task **ST-18..ST-24 (+ ST-20b)** với hash thật |
+| 3 | Số đo **chạy lại** (03:03–03:20Z) | **318** test (20 diag + 96 syntax + 18 fmt + 65 types + 24 interp + 45 bytecode + 8 vm + 42 cli); **323 ca/17 nhóm** (309 `.vis` + 14 `.vish`, 51 `.err`); **272/272** differential; `DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=192.6 toc_do=519/s`; fuzz **2.311.244 vòng / 0 vi phạm / 602,3 s**; **53 tag** VBC1 (0..52 — *không phải 51*, đã ghi thật); verifier **13 biến thể**; ấm **8,51/9,92/8,64 ms** trung vị (p95 9,14/10,33/10,26) vs nguội **9,16/10,96/9,31 ms** |
+| 4 | `report-check` | **PASS (3 báo cáo, 27 hàng QUEUE phủ đủ)** — lưu ý: `ST-20b` **chỉ ở MD** vì hàng QUEUE của nó **5 cột** (thiếu DoD) |
+| 5 | Cổng | `gate --fast` PASS (03:18:11Z) · `nightly --fuzz-minutes 1` PASS (03:19:56Z) |
+
+**Đối chiếu §19 VS1**: **đạt** differential 100k 0 lệch + khởi động ấm < 20 ms; **chưa** generic/trait/module/
+`vis-std`/`vis-host-posix`/`vis run|check|fmt|test` đầy đủ ⇒ **VS1b**. Đề xuất sửa `AGENTS.md` §8,
+`viscript/AGENTS.md` §3/§5, hàng `ST-20b`/`ST-24` trong `QUEUE.md` ghi ở §6 của báo cáo.
 
 ## ST-22 — differential trên chương trình **sinh tự động**: 100.000 chương trình, **0 lệch** (2026-11-13)
 
