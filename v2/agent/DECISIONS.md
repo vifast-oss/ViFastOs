@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-56`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-57`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-56: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-57: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -90,6 +90,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-54** K1c: hàng gửi Endpoint dùng **`MAILBOX_CAP=8` + `Busy`** (code KT-22 thắng dòng "không giới hạn" cũ trong K1C-PLAN; `Send` chặn khi đầy là backpressure mô hình, K3 fastpath xem lại). Runner `.scn` dùng quy ước **`ep0`/`ep1` là cùng một Endpoint**, và `recv` không có `reply=` thì cấp **`rep0`** (model-only; K3 conformance phải kiểm lại).
 - **D2-55** KT-25 model-only: `NBRecv` poll trả **`Busy`** khi TCB không chạy được (cần cho `.scn` 05; có thể che lỗi trạng thái, K3 xem lại); **một** cap Reply bị `Delete`/`Revoke` = huỷ đường Reply ⇒ caller `Cancelled` (seL4 chỉ huỷ theo object — K3 conformance). Nợ nhỏ: `deliver_caps` có thể để cap mồ côi nếu `cnode_set_slot` lỗi giữa kế hoạch (khó đạt; KT-26/27 xem cùng `check_caps`). Không đổi ABI.
 - **D2-56** Backlog K3 conformance (chưa làm ở K1c): (a) đưa `FaultKind` VM/unknown/user vào `spec/abi.toml` + D2 riêng; (b) thay `procsrv_model.rs` bằng procsrv thật + shell ở K3.5; (c) chốt ngữ nghĩa fault **không** `fault_ep` (K1c trả `InvalidArgument`, ghi docs). Không thay đổi code K1c.
+- **D2-57** Backlog K3 cho Notification (K1c model-only): bound notification đánh thức TCB `BlockedOnRecv`; `NBRecv` Notification trả `Message`/`value` + badge theo seL4; `IrqHandler.SetNotification` còn reserved; hai nợ `block_current`/`notification_signal` ghi trong `kt27-journal.md`. Không đổi ABI K1c.
 
 ---
 
