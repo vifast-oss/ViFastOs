@@ -6,12 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-35** (generic THẬT: `Hop[int] ≠ Hop[str]`) — xong, **chưa commit**.
-Bước          : 4/4 (TypeTable inst → template + instantiation → tyck hợp nhất → 25 test + 8 sem)
+Task          : **ST-36** (báo cáo `R5-viscript`, chốt VS1c) — xong, **chưa commit**.
+Bước          : 3/3 (đo lại toàn bộ → `R5-viscript.{md,json,license}` → `report-check --all` PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:47:57Z** (16:47 JST, không retry);
-                **507** test / sem **346** / parity **320/320** / diff 100k **0 lệch** (228,6 s); `vis test` 346 ok
-Việc dở       : chờ gate rồi commit `[ST-35]` + push (đã được uỷ quyền)
+Cổng gần nhất : (chạy sau khi ghi mục này) — **507** test / sem **346** / parity **320/320**
+Việc dở       : chờ gate rồi commit `[ST-36]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +43,15 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-36 — báo cáo **R5** chốt VS1c (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Đo lại, không chép** | **507** test (21 diag + 96 syntax + 18 fmt + 143 types + 24 interp + 50 bytecode + 9 vm + 146 cli); sem **346 / 18 nhóm** (327 `.vis` + 19 `.vish`, 52 `.err`); `vis test` **346 ok**, `--vm` **346 ok / 6 SKIP** |
+| 2 | **Differential + fuzz** | `DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=200.4 toc_do=499/s seed=3523158054`; fuzz parser **3.035.575 ca / 68.968.426 token / 50.593 ca/s / 0 vi phạm** (60,0 s) |
+| 3 | **Bất biến** | parity **320/320** (26 ca lỗi biên dịch đã so, 0 lệch); `VBC1` **53 tag** không đổi; **7 sổ / 28 mã**; khởi động ấm **11,16–11,73 ms** |
+| 4 | **Báo cáo** | `agent/reports/R5-viscript.md` (6 mục, bảng vòng 5 ST-32..ST-36, VD-64..VD-68, lỗ hổng đóng/mới, đối chiếu §19) + `.json` **đúng 11 khoá** + `.json.license`; `head = 58080a9`; **`report-check --all` PASS** (5 báo cáo, 49 hàng QUEUE) |
 
 ## ST-35 — generic **thật**: instantiation theo tổ hợp (2026-11-13)
 
