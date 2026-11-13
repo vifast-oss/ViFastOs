@@ -124,9 +124,9 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-18 | TCB đầy đủ + `suspended` + bảng `ALLOWED` 11×11 + `Suspend/Resume/ReadState` + finalise | — | 3 h | DONE | 48 cặp (46 reachable + 2 Stopping reserved); 121 cặp; `ReadState` 4 giá trị; Abort gỡ hàng; 18 test; Miri 18/18; gate 251 test; reviewer DRIFT đã sửa |
 | KT-19 | Scheduler 1 hart: 256 mức + bitmap, `Ready/Running`, preempt mọi bước, affinity, không đói, finalise khỏi queue | KT-18 | 3 h | DONE | 263 test; Miri 10/10 (5 seed/64 mức cfg); 256 mức; preempt 20/20; 1k seed/64k op; reviewer APPROVE |
 | KT-20 | MCS budget: timer ảo, consumed/refill một đoạn, `Sleeping{Budget}`, invariant theo chu kỳ | KT-19 | 3 h | DONE | 284 test; Miri 12/12; budget 0 vi phạm; no SC/unconfigured **không chạy** (D2-50); refill/Sleeping; 1k seed; reviewer DRIFT đã sửa |
-| KT-21 | Donation Call/Reply + passive server + bind Reply/Notification + MCP + budget khi donation | KT-20 | 3 h | READY | Donation tự động Call/Reply (D2-49c); SC-less server **chỉ chạy khi donate** (D2-50); Reply trả SC; MCP; server có SC riêng giữ; charge client; test red/Miri |
-| KT-22 | Hộp thư mô hình FIFO, đầy → `Busy`/backpressure; **không** lock-free/loom | KT-19 | 2 h | BLOCKED | FIFO tất định; đầy backpressure; không atomic/thread; D2-49(f) |
-| KT-23 | Tích hợp scenario + L1 K1b 1.000 seed + coverage 100% + Miri + parity 10k + bảng DoD K1b | KT-18, KT-19, KT-20, KT-21, KT-22 | 2 h | BLOCKED | 100% transition thao tác (46 reachable); budget 0 vi phạm; donation; mailbox; push migration hoãn K1c; sửa fixture `12-...scn:13` Defer; thêm `kt18_tcb`+`kt19_sched`+`kt20_budget`+`kt21_donation` vào `nightly --only-miri`; gate/Miri |
+| KT-21 | Donation Call/Reply + passive server + bind Reply/Notification + MCP + budget khi donation | KT-20 | 3 h | DONE | 13 test; Miri 13/13; 14.609 bước donation/64.000; SC-less chỉ donate; Reply đúng donor; MCP clamp D2-51; gate 298; reviewer APPROVE |
+| KT-22 | Hộp thư mô hình FIFO, đầy → `Busy`/backpressure; **không** lock-free/loom | KT-19 | 2 h | READY | FIFO tất định; đầy → `Busy`/backpressure; không atomic/thread/loom; D2-49(f); push migration **không** làm ở đây (D2-49a); test red/Miri |
+| KT-23 | Tích hợp scenario + L1 K1b 1.000 seed + coverage 100% + Miri + parity 10k + bảng DoD K1b | KT-18, KT-19, KT-20, KT-21, KT-22 | 2 h | BLOCKED | 100% transition thao tác (46 reachable); budget 0; donation; mailbox; push migration hoãn K1c; sửa fixture `12-...scn:13` Defer; thêm `kt18_tcb`+`kt19_sched`+`kt20_budget`+`kt21_donation`+`kt22_mailbox` vào `nightly --only-miri`; gate/Miri |
 | KT-R1 | báo cáo `R1-v2` phủ task đã mở + `blocked[]` | các task READY | 1 h | DONE | MD + JSON theo Khối E, có `project` |
 
 APPROVED 2026-11-12 Agent 0
@@ -144,8 +144,8 @@ APPROVED 2026-11-12 Agent 0
 - `KT-T26` **DONE** theo D2-36: đèn host, **T26 OPEN** tới K3.5; không chạy lại 1.000 seed.
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
-1. **K1a' DONE**; K1b: KT-18/19/20 DONE, **KT-21 READY**, KT-22/23 chờ.
-2. Thứ tự: KT-21 → KT-22 → KT-23; mỗi task ≤3 h.
+1. **K1a' DONE**; K1b: KT-18/19/20/21 DONE, **KT-22 READY**, KT-23 chờ.
+2. Thứ tự: KT-22 → KT-23; mỗi task ≤3 h.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.
 4. Không đụng `spec/`/`vifast-model`/`.scn`; parity 10k chỉ hồi quy.
 5. OS hết READY mới lấy ViScript; dòng ViScript do tab riêng quản lý.
