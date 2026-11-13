@@ -4,10 +4,9 @@
 use std::process::ExitCode;
 
 mod cache;
+mod modules;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
-use vis_syntax::{lex, parse, Diagnostic, Mode};
-use vis_types::{check, lower};
 
 fn usage() -> ExitCode {
     eprintln!(
@@ -48,49 +47,63 @@ fn usage_check() -> ExitCode {
     ExitCode::from(2)
 }
 
-/// Chọn chẩn đoán **theo tầng** (VD-38 mục 8): có lỗi **từ vựng** (`01xx`) thì in cái đầu tiên
-/// thuộc `01xx` (chuỗi token không còn tin được ⇒ lỗi parser chỉ là hệ quả); không có `01xx` mới
-/// in cái đầu tiên thuộc `02xx` (cú pháp). Không dùng "vị trí sớm nhất": `let a = 1 let b = "x`
-/// có VS0201 ở vị trí sớm hơn nhưng phải báo VS0101.
-fn chon_chan_doan(out: &vis_syntax::ParseOutput) -> Option<&vis_syntax::Diagnostic> {
-    let tang = |d: &&vis_syntax::Diagnostic, block: u16| d.code.id / 100 == block;
-    out.diagnostics
-        .iter()
-        .find(|d| tang(d, 1))
-        .or_else(|| out.diagnostics.iter().find(|d| tang(d, 2)))
-        .or_else(|| out.diagnostics.first())
-}
-
 /// Kết quả kiểm **một** tệp: `Ok(())` sạch, `Err(<mã> <dòng>:<cột> <thông điệp>)` hoặc
 /// `Err(không đọc được: …)`. Chỉ trả **một** chẩn đoán (lọc tầng như [`chon_chan_doan`]).
-fn check_one(path: &str) -> Result<(), String> {
-    let src = std::fs::read_to_string(path).map_err(|e| format!("không đọc được: {e}"))?;
-    // `.vish` = chế độ lệnh (ST-06, CmdCST); còn lại là script.
-    let mode = if path.ends_with(".vish") {
-        Mode::Command
-    } else {
-        Mode::Script
+/// Chẩn đoán của `vis check` cho một tệp (ST-25: có thể đến từ tệp **phụ**).
+struct ChanDoanCheck {
+    ma: &'static str,
+    line: u32,
+    col: u32,
+    msg: String,
+    /// Tệp phụ (rỗng nếu chẩn đoán ở tệp chính).
+    phu: String,
+}
+
+fn check_one(path: &str) -> Result<(), ChanDoanCheck> {
+    if let Err(e) = std::fs::read_to_string(path) {
+        return Err(ChanDoanCheck {
+            ma: "VS0201",
+            line: 1,
+            col: 1,
+            msg: format!("không đọc được: {e}"),
+            phu: String::new(),
+        });
+    }
+    let loaded = modules::load(path).map_err(|e| ChanDoanCheck {
+        ma: "VS0201",
+        line: 1,
+        col: 1,
+        msg: e.to_string(),
+        phu: String::new(),
+    })?;
+    let la_vish = path.ends_with(".vish");
+    let Some((rel, d)) = loaded.diags.first() else {
+        return Ok(());
     };
-    let out = parse(&src, mode);
-    if let Some(d) = chon_chan_doan(&out) {
-        return Err(dong_chan_doan(d.code_str(), d.line, d.col, &d.message));
+    let ma = d.code.short;
+    let chinh = path.rsplit('/').next().unwrap_or(path);
+    let phu = if rel == chinh {
+        String::new()
+    } else {
+        rel.clone()
+    };
+    // Chế độ script: tệp **chính** chỉ cần đúng cú pháp (+ module), như trước; nhưng chẩn đoán ở
+    // **tệp phụ** (ST-25) luôn đáng báo — module phải hợp lệ toàn bộ.
+    let giu = la_vish
+        || !phu.is_empty()
+        || ma.starts_with("VS01")
+        || ma.starts_with("VS02")
+        || ma.starts_with("VS07");
+    if !giu {
+        return Ok(());
     }
-    if mode == Mode::Command {
-        // ST-18: `.vish` **không** chỉ parse — hạ (`cmd_lower`) rồi kiểm kiểu, chẩn đoán thật.
-        let lexed = lex(&src, Mode::Command);
-        let h = vis_types::lower(&out.cst, &lexed);
-        if let Some(e) = &h.error {
-            return Err(format!("{e:?}"));
-        }
-        if let Some(d) = h.diagnostics.first() {
-            return Err(dong_chan_doan(d.code.short, d.line, d.col, &d.message));
-        }
-        let kq = vis_types::check(&h.hir, &h.symbols, &h.types);
-        if let Some(d) = kq.diags.first() {
-            return Err(dong_chan_doan(d.code.short, d.line, d.col, &d.message));
-        }
-    }
-    Ok(())
+    Err(ChanDoanCheck {
+        ma,
+        line: d.line,
+        col: d.col,
+        msg: d.message.clone(),
+        phu,
+    })
 }
 
 fn usage_fmt() -> ExitCode {
@@ -204,9 +217,21 @@ fn run_check(args: &[String]) -> ExitCode {
         let n = i + 1;
         match check_one(path) {
             Ok(()) => tap.push_str(&format!("ok {n} - {path}\n")),
-            Err(msg) => {
+            Err(d) => {
                 failed = true;
-                tap.push_str(&format!("not ok {n} - {path}\n# {msg}\n"));
+                // ST-25: chẩn đoán ở tệp phụ ⇒ dòng `not ok` nêu `tệp:dòng:cột` (TAP đúng tệp).
+                let them = if d.phu.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({}:{}:{})", d.phu, d.line, d.col)
+                };
+                // Lỗi **đọc tệp** giữ nguyên định dạng cũ: `# không đọc được: …` (không mã).
+                let dong = if d.msg.starts_with("không đọc được") {
+                    d.msg.clone()
+                } else {
+                    dong_chan_doan(d.ma, d.line, d.col, &d.msg)
+                };
+                tap.push_str(&format!("not ok {n} - {path}{them}\n# {dong}\n"));
             }
         }
     }
@@ -220,41 +245,13 @@ fn run_check(args: &[String]) -> ExitCode {
     }
 }
 
-/// Vị trí `dòng:cột` từ `span` + văn bản (cột theo Unicode scalar, bắt đầu từ 1 — §2.4).
-fn vi_tri(text: &str, span: vis_syntax::Span) -> (u32, u32) {
-    let mut line = 1u32;
-    let mut col = 1u32;
-    for (i, c) in text.char_indices() {
-        if i >= span.start {
-            break;
-        }
-        if c == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
-/// In một chẩn đoán ra stderr: `<tệp>:<dòng>:<cột>: error VSxxxx: …`.
-fn in_chan_doan(tep: &str, text: &str, d: &Diagnostic) -> String {
-    let (mut line, mut col) = (d.line, d.col);
-    if line == 0 {
-        let (l, c) = vi_tri(text, d.span);
-        line = l;
-        col = c;
-    }
-    format!("{tep}:{line}:{col}: error {}: {}", d.code.short, d.message)
-}
-
 /// `vis run [--tap] <tệp.vis> [-- args…]` — parse → lower → check → interp (ST-14).
 fn run_run(rest: &[String]) -> ExitCode {
     let mut tap = false;
     let mut dung_vm = false;
     let mut dump = false;
     let mut dung_cache = true;
+    let mut dump_deps = false;
     let mut tep: Option<String> = None;
     let mut prog_args: Vec<String> = Vec::new();
     let mut i = 0;
@@ -266,6 +263,8 @@ fn run_run(rest: &[String]) -> ExitCode {
             "--dump-bytecode" => dump = true,
             // ST-23: cache bytecode bật **mặc định** cho đường VM; `--no-cache` để tắt.
             "--no-cache" => dung_cache = false,
+            // ST-25: in cây phụ thuộc của module.
+            "--dump-deps" => dump_deps = true,
             "--" => {
                 prog_args = rest[i + 1..].to_vec();
                 break;
@@ -286,7 +285,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--no-cache] <tệp.vis> [-- args…]"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--no-cache] <tệp.vis> [-- args…]"
         );
         return ExitCode::from(2);
     };
@@ -353,46 +352,41 @@ fn run_run(rest: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     }
-    // 1) parse (ST-18: `.vish` ⇒ `Mode::Command` ⇒ `cmd_lower`)
-    let parsed = parse(&text, che_do);
-    if !parsed.diagnostics.is_empty() {
-        for d in &parsed.diagnostics {
-            eprintln!("{}", in_chan_doan(&tep, &text, d));
+    // 1–3) nạp **module** (ST-25): đa tệp, `use`, cấm vòng, chẩn đoán đúng tên tệp.
+    let loaded = match modules::load(&tep) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("vis run: {e}");
+            return ExitCode::from(2);
         }
-        if tap {
-            eprintln!("not ok 1 - {} (VS0201)", tep);
-        }
-        return ExitCode::from(2);
+    };
+    if dump_deps {
+        eprint!("{}", modules::dump_deps(&loaded));
     }
-    // 2) lower
-    let lexed = lex(&text, che_do);
-    let h = lower(&parsed.cst, &lexed);
-    if !h.is_clean() {
-        for d in &h.diagnostics {
-            eprintln!("{}", in_chan_doan(&tep, &text, d));
+    if !loaded.diags.is_empty() {
+        for (rel, d) in &loaded.diags {
+            eprintln!(
+                "{rel}:{}:{}: error {}: {}",
+                d.line, d.col, d.code.short, d.message
+            );
         }
         if tap {
-            let ma = h
-                .diagnostics
+            let ma = loaded
+                .diags
                 .first()
-                .map(|d| d.code.short)
+                .map(|(_, d)| d.code.short)
                 .unwrap_or("VS0201");
             eprintln!("not ok 1 - {} ({ma})", tep);
         }
         return ExitCode::from(2);
     }
-    // 3) kiểm kiểu
-    let t = check(&h.hir, &h.symbols, &h.types);
-    if !t.is_clean() {
-        for d in &t.diags {
-            eprintln!("{}", in_chan_doan(&tep, &text, d));
-        }
-        if tap {
-            let ma = t.diags.first().map(|d| d.code.short).unwrap_or("VS0412");
-            eprintln!("not ok 1 - {} ({ma})", tep);
-        }
-        return ExitCode::from(2);
-    }
+    let h = vis_types::HirOutput {
+        hir: loaded.hir,
+        diagnostics: Vec::new(),
+        symbols: loaded.symbols,
+        types: loaded.types,
+        error: None,
+    };
     // 4) chạy — **trong luồng có stack lớn** (ST-15): đệ quy sâu (đến cap `MAX_CALL_DEPTH` = 10^4)
     //    không được làm tràn stack process; cap vượt ⇒ `VS0501` bình thường.
     let (stdout, diags, steps) = std::thread::scope(|scope| {
@@ -404,14 +398,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                 let out = if dung_vm {
                     // ST-20: đường **VM** — cùng `Show`/builtin/bảng ngữ nghĩa với interp.
                     // ST-23: cache theo hash closure; **luôn** nạp qua `load_verified`.
-                    let khoa = cache::khoa(
-                        &text,
-                        if che_do == vis_syntax::Mode::Command {
-                            "vish"
-                        } else {
-                            "vis"
-                        },
-                    );
+                    let khoa = cache::khoa_multi(&loaded.files, che_do);
                     let tu_cache = if dung_cache { cache::nap(&khoa) } else { None };
                     let m = match tu_cache {
                         Some(m) => m,

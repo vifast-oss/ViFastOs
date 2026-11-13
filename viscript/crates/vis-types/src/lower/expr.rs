@@ -142,8 +142,8 @@ impl<'a> Lowerer<'a> {
                     });
                     fields.push((name, value));
                 }
-                let id = RecId(self.recs.len() as u32);
-                self.recs.push(RecDef {
+                let id = RecId(self.tbl.recs().len() as u32);
+                self.tbl.push_rec(RecDef {
                     name: None,
                     fields: defs,
                     span,

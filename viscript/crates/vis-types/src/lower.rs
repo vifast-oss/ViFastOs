@@ -41,27 +41,26 @@ pub const BUILTIN_VALUE_NAMES: [&str; 11] = [
 ];
 
 /// Chính sách báo `VS0301` cho **tên giá trị** chưa khai.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NamePolicy {
     /// **Mặc định ST-11 (VD-45)**: tên tự do được phép (giữ `sym = None`). Vẫn báo `VS0301` khi
     /// **gán** cho tên chưa khai — chỗ chắc chắn sai. `Strict` là mặc định từ ST-13/14.
+    #[default]
     Permissive,
     /// Báo `VS0301` cho **mọi** tên giá trị chưa phân giải (mặc định từ ST-13/14 khi có prelude).
     Strict,
 }
 
 /// Tuỳ chọn hạ.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LowerOptions {
     pub names: NamePolicy,
-}
-
-impl Default for LowerOptions {
-    fn default() -> Self {
-        Self {
-            names: NamePolicy::Permissive,
-        }
-    }
+    /// Module của tệp đang hạ (ST-25); `0` = biên dịch một tệp.
+    pub mod_id: u16,
+    /// Module mà tệp này `use` (ST-25) — được phép thấy item `pub` của chúng.
+    pub imports: Vec<u16>,
+    /// Kiểu **công khai** nhập từ module khác (ST-25): tên → kiểu đã hạ.
+    pub imported_types: Vec<(String, Type)>,
 }
 
 impl LowerOptions {
@@ -69,6 +68,7 @@ impl LowerOptions {
     pub fn strict() -> Self {
         Self {
             names: NamePolicy::Strict,
+            ..Self::default()
         }
     }
 }
@@ -159,11 +159,38 @@ pub struct HSym {
     pub ty: Option<Type>,
 }
 
+/// Thông tin **module** (ST-25): một tệp nguồn trong đơn vị biên dịch.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModInfo {
+    /// Tên hiển thị (tên tệp, không kèm thư mục).
+    pub name: String,
+    /// Đường dẫn tương đối tới tệp chính (ổn định khi đổi `cwd`).
+    pub path: String,
+}
+
 /// Bảng ký hiệu của một lượt hạ: các khung + ký hiệu theo thứ tự khai báo.
+///
+/// ST-25 thêm ba mảng **song song** với `syms` để kiểm tầm nhìn `pub`/`use` **ở tầng giải tên**
+/// (`mod_of` = module sở hữu, `pub_of` = có `pub` hay không) và `mods` = danh sách module.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Symbols {
     pub frames: Vec<HFrame>,
     pub syms: Vec<HSym>,
+    /// Module sở hữu từng ký hiệu; `u16::MAX` = dựng sẵn (luôn thấy).
+    pub mod_of: Vec<u16>,
+    /// Ký hiệu có `pub` hay không (chỉ có nghĩa với item cấp tệp).
+    pub pub_of: Vec<bool>,
+    /// Các module của đơn vị biên dịch (chỉ số = `mod_of`).
+    pub mods: Vec<ModInfo>,
+}
+
+impl Symbols {
+    /// Thêm một module, trả id.
+    pub fn add_mod(&mut self, m: ModInfo) -> u16 {
+        let id = self.mods.len() as u16;
+        self.mods.push(m);
+        id
+    }
 }
 
 impl Symbols {
@@ -200,9 +227,25 @@ pub fn lower(cst: &Cst, lex: &LexOutput) -> HirOutput {
     lower_with(cst, lex, LowerOptions::default())
 }
 
-/// Hạ một CST chế độ script với tuỳ chọn cho trước.
+/// Hạ một CST chế độ script với tuỳ chọn cho trước (bảng ký hiệu/kiểu **mới**).
 pub fn lower_with(cst: &Cst, lex: &LexOutput, opts: LowerOptions) -> HirOutput {
-    let mut l = Lowerer::new(cst, lex, opts);
+    let mut symbols = Symbols::default();
+    let mut types = TypeTable::new();
+    lower_into(&mut symbols, &mut types, cst, lex, opts)
+}
+
+/// Hạ một tệp **vào bảng chung** (ST-25): ký hiệu và kiểu được **append** ⇒ id ổn định giữa các tệp.
+///
+/// `symbols.mods` do nơi gọi khai bằng [`Symbols::add_mod`] trước khi hạ tệp tương ứng; tên item
+/// cấp tệp của tệp mới bắt đầu từ `symbols.syms.len()`.
+pub fn lower_into(
+    symbols: &mut Symbols,
+    types: &mut TypeTable,
+    cst: &Cst,
+    lex: &LexOutput,
+    opts: LowerOptions,
+) -> HirOutput {
+    let mut l = Lowerer::new(cst, lex, opts, symbols, types);
     l.run();
     l.finish()
 }
@@ -218,13 +261,13 @@ struct Lowerer<'a> {
     opts: LowerOptions,
     diags: Vec<Diagnostic>,
     error: Option<LowerError>,
-    symbols: Symbols,
+    symbols: &'a mut Symbols,
+    /// Bảng kiểu **chung** của đơn vị biên dịch (ST-25: id ổn định, append theo tệp).
+    tbl: &'a mut TypeTable,
     /// Chồng khung hiện tại; đáy luôn là khung tệp `0`.
     scope: Vec<u32>,
     items: Vec<HItem>,
     stmts: Vec<HStmt>,
-    recs: Vec<RecDef>,
-    enums: Vec<EnumDef>,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -240,23 +283,39 @@ struct Lowerer<'a> {
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(cst: &'a Cst, lex: &'a LexOutput, opts: LowerOptions) -> Self {
+    fn new(
+        cst: &'a Cst,
+        lex: &'a LexOutput,
+        opts: LowerOptions,
+        symbols: &'a mut Symbols,
+        tbl: &'a mut TypeTable,
+    ) -> Self {
+        // ST-25: kiểu **công khai** của các module đã `use` được nhập vào bảng tên của tệp này.
+        let mut rec_names: Vec<(String, RecId)> = Vec::new();
+        let mut enum_names: Vec<(String, EnumId)> = Vec::new();
+        let mut aliases: Vec<(String, Type)> = Vec::new();
+        for (n, t) in &opts.imported_types {
+            match t {
+                Type::Record(id) => rec_names.push((n.clone(), *id)),
+                Type::Enum(id) => enum_names.push((n.clone(), *id)),
+                other => aliases.push((n.clone(), other.clone())),
+            }
+        }
         Self {
             cst,
             text: &lex.text,
             opts,
             diags: Vec::new(),
             error: None,
-            symbols: Symbols::default(),
+            symbols,
+            tbl,
             scope: Vec::new(),
             items: Vec::new(),
             stmts: Vec::new(),
-            recs: Vec::new(),
-            enums: Vec::new(),
-            rec_names: Vec::new(),
-            enum_names: Vec::new(),
+            rec_names,
+            enum_names,
             variant_index: Vec::new(),
-            aliases: Vec::new(),
+            aliases,
             item_syms: Vec::new(),
             suppress_dup: false,
             suppress_name_diag: false,
@@ -264,11 +323,15 @@ impl<'a> Lowerer<'a> {
     }
 
     fn run(&mut self) {
-        self.symbols.frames.push(HFrame {
-            parent: None,
-            span: self.cst.root.span,
-            kind: FrameKind::File,
-        });
+        // ST-25: đơn vị biên dịch **dùng chung** khung gốc `0` và bảng ký hiệu — tệp thứ hai trở đi
+        // **không** tạo khung mới, để mọi item cấp tệp nằm cùng một phạm vi (tầm nhìn lọc bằng `use`).
+        if self.symbols.frames.is_empty() {
+            self.symbols.frames.push(HFrame {
+                parent: None,
+                span: self.cst.root.span,
+                kind: FrameKind::File,
+            });
+        }
         self.scope.push(0);
         if self.command_mode() {
             // ST-18 (VD-22 pha 2): `.vish`/`cmd { … }` hạ xuống **cùng HIR** — `cmd_lower`.
@@ -296,13 +359,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn finish(self) -> HirOutput {
-        let mut types = TypeTable::new();
-        for r in self.recs {
-            types.push_rec(r);
-        }
-        for e in self.enums {
-            types.push_enum(e);
-        }
+        let symbols = self.symbols.clone();
+        let types = self.tbl.clone();
         HirOutput {
             hir: Hir {
                 items: self.items,
@@ -310,7 +368,7 @@ impl<'a> Lowerer<'a> {
                 span: self.cst.root.span,
             },
             diagnostics: self.diags,
-            symbols: self.symbols,
+            symbols,
             types,
             error: self.error,
         }
@@ -404,6 +462,9 @@ impl<'a> Lowerer<'a> {
     }
 
     fn declare_builtins(&mut self) {
+        if self.symbols.syms.iter().any(|s| s.kind == SymKind::Builtin) {
+            return;
+        }
         for name in BUILTIN_VALUE_NAMES {
             self.symbols.syms.push(HSym {
                 name: name.to_string(),
@@ -412,6 +473,9 @@ impl<'a> Lowerer<'a> {
                 span: Span::new(0, 0),
                 ty: None,
             });
+            // Dựng sẵn **luôn** thấy, không phụ thuộc module.
+            self.symbols.mod_of.push(u16::MAX);
+            self.symbols.pub_of.push(true);
         }
     }
 
@@ -431,6 +495,8 @@ impl<'a> Lowerer<'a> {
             span,
             ty,
         });
+        self.symbols.mod_of.push(self.opts.mod_id);
+        self.symbols.pub_of.push(false);
         id
     }
 
@@ -450,18 +516,41 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Giải tên **giá trị** từ khung trong ra ngoài. `None` = chưa phân giải (tên tự do).
+    ///
+    /// ST-25: tên thuộc **module khác** chỉ thấy khi tệp hiện tại `use` module đó **và** mục có `pub`
+    /// (mô hình "chỉ `pub`", §7.10). Tên dựng sẵn (`mod_of == u16::MAX`) luôn thấy.
     fn resolve(&self, name: &str) -> Option<u32> {
         for frame in self.scope.iter().rev() {
-            if let Some(i) = self
-                .symbols
-                .syms
-                .iter()
-                .rposition(|s| s.frame == *frame && s.name == name)
-            {
-                return Some(i as u32);
+            for (i, s) in self.symbols.syms.iter().enumerate().rev() {
+                if s.frame == *frame && s.name == name && self.duoc_thay(i) {
+                    return Some(i as u32);
+                }
             }
         }
         None
+    }
+
+    /// Ký hiệu thứ `i` có nằm trong tầm nhìn của tệp đang hạ không.
+    fn duoc_thay(&self, i: usize) -> bool {
+        let m = match self.symbols.mod_of.get(i) {
+            Some(m) => *m,
+            // Bảng cũ/không đồng bộ: coi như cùng module (an toàn cho API một tệp).
+            None => return true,
+        };
+        if m == u16::MAX || m == self.opts.mod_id {
+            return true;
+        }
+        self.opts.imports.contains(&m) && self.symbols.pub_of.get(i).copied().unwrap_or(false)
+    }
+
+    /// Tên module sở hữu ký hiệu đầu tiên mang `name` (dùng cho thông điệp `VS0301`).
+    fn module_cua_ten(&self, name: &str) -> Option<&str> {
+        let i = self.symbols.syms.iter().rposition(|s| s.name == name)?;
+        let m = *self.symbols.mod_of.get(i)?;
+        if m == u16::MAX {
+            return None;
+        }
+        self.symbols.mods.get(m as usize).map(|x| x.name.as_str())
     }
 
     /// Hạ **một lần dùng tên giá trị**: phân giải + `VS0301` theo chính sách.
@@ -474,7 +563,14 @@ impl<'a> Lowerer<'a> {
             },
             None => {
                 if self.opts.names == NamePolicy::Strict && !self.suppress_name_diag {
-                    self.diag(&NAME_CODES[0], format!("tên không tồn tại: `{name}`"), span);
+                    // ST-25: nếu tên **có** ở module khác thì nêu tên module và lý do bị chặn.
+                    let msg = match self.module_cua_ten(name) {
+                        Some(m) => format!(
+                            "không thấy tên `{name}`: module `{m}` chưa được `use` hoặc mục không `pub`"
+                        ),
+                        None => format!("tên không tồn tại: `{name}`"),
+                    };
+                    self.diag(&NAME_CODES[0], msg, span);
                 }
                 HExpr::Var {
                     name: name.to_string(),
@@ -503,9 +599,14 @@ impl<'a> Lowerer<'a> {
                     return;
                 };
                 let id = self.declare(&name, SymKind::Item, node.span, None);
+                if self.has_token(node, "pub") {
+                    if let Some(p) = self.symbols.pub_of.get_mut(id as usize) {
+                        *p = true;
+                    }
+                }
                 self.item_syms.push((name.clone(), id));
-                let rid = RecId(self.recs.len() as u32);
-                self.recs.push(RecDef {
+                let rid = RecId(self.tbl.recs().len() as u32);
+                self.tbl.push_rec(RecDef {
                     name: Some(name.clone()),
                     fields: Vec::new(),
                     span: node.span,
@@ -518,9 +619,14 @@ impl<'a> Lowerer<'a> {
                     return;
                 };
                 let id = self.declare(&name, SymKind::Item, node.span, None);
+                if self.has_token(node, "pub") {
+                    if let Some(p) = self.symbols.pub_of.get_mut(id as usize) {
+                        *p = true;
+                    }
+                }
                 self.item_syms.push((name.clone(), id));
-                let eid = EnumId(self.enums.len() as u32);
-                self.enums.push(EnumDef {
+                let eid = EnumId(self.tbl.enums().len() as u32);
+                self.tbl.push_enum(EnumDef {
                     name: name.clone(),
                     variants: Vec::new(),
                     span: node.span,
@@ -544,6 +650,13 @@ impl<'a> Lowerer<'a> {
             | NodeKind::ConstDecl => {
                 if let Some(name) = self.decl_name(node) {
                     let id = self.declare(&name, SymKind::Item, node.span, None);
+                    // ST-25: `pub` quyết định tầm nhìn ra module khác (`let`/`const` **chưa** hỗ trợ
+                    // `pub` — nợ VS1b, ghi JOURNAL).
+                    if self.has_token(node, "pub") {
+                        if let Some(p) = self.symbols.pub_of.get_mut(id as usize) {
+                            *p = true;
+                        }
+                    }
                     self.item_syms.push((name, id));
                 }
             }
@@ -564,10 +677,18 @@ impl<'a> Lowerer<'a> {
             NodeKind::AliasDecl | NodeKind::NewtypeDecl => self.lower_alias(node),
             NodeKind::ConstDecl => self.lower_const(node),
             NodeKind::UseDecl => {
+                // ST-25: đường dẫn **tệp tương đối** (`./util`, `./a/b`) giữ nguyên trong **một**
+                // đoạn (có `/`); đường dẫn chấm (`std.fs`, `pkg.http`) tách theo `.`.
                 let path = node
                     .child(NodeKind::DottedPath)
-                    .map(|p| self.dotted_text(p))
-                    .map(|s| s.split('.').map(str::to_string).collect())
+                    .map(|p| self.text_of(p.span).trim().to_string())
+                    .map(|raw| {
+                        if raw.contains('/') {
+                            vec![raw]
+                        } else {
+                            raw.split('.').map(str::to_string).collect()
+                        }
+                    })
                     .unwrap_or_default();
                 Some(HItem::Use(HUse {
                     path,
@@ -723,7 +844,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .find(|(n, _)| *n == name)
             .map(|(_, id)| *id)?;
-        if let Some(def) = self.recs.get_mut(id.0 as usize) {
+        if let Some(def) = self.tbl.rec_mut(id) {
             def.fields = fields
                 .iter()
                 .map(|f| FieldDef {
@@ -767,7 +888,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .find(|(n, _)| *n == name)
             .map(|(_, id)| *id)?;
-        if let Some(def) = self.enums.get_mut(id.0 as usize) {
+        if let Some(def) = self.tbl.enum_mut(id) {
             def.variants = variants
                 .iter()
                 .map(|v| VariantDef {
@@ -993,8 +1114,8 @@ impl<'a> Lowerer<'a> {
                         has_default: hf.has_default,
                     });
                 }
-                let id = RecId(self.recs.len() as u32);
-                self.recs.push(RecDef {
+                let id = RecId(self.tbl.recs().len() as u32);
+                self.tbl.push_rec(RecDef {
                     name: None,
                     fields,
                     span: node.span,

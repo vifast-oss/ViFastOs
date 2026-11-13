@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+pub fn cong(a: int, b: int) -> int:
+    a + b
+
+pub type P:
+    x: int
+    y: int
+
+fn rieng() -> int:
+    99

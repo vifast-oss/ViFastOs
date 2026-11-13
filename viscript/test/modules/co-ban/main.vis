@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use ./util
+
+let p: P = {x: 1, y: 2}
+print(cong(p.x, p.y))

@@ -1,0 +1,48 @@
+=== ST-25 D2-05: module đa tệp — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T04:10:09Z
+
+## 1. Trước khi làm: không có `use ./util` (đỏ thật)
+
+Đo trực tiếp trên bản trước ST-25 (parser chỉ nhận `use std.fs`):
+  "use ./util"     parse-diags=[("VS0201", 1, 5)]
+  "use ./util.vis" parse-diags=[("VS0201", 1, 5)]
+  "use .util"      parse-diags=[("VS0201", 1, 5)]
+  "use util"       parse-diags=[]            (nhưng lower không giải tệp)
+⇒ **cả 16 ca** trong `crates/vis-cli/tests/modules.rs` đều đỏ: không tệp nào nạp được.
+
+## 2. Sau khi thêm cú pháp `./x` + bộ nạp: 16/16 xanh, kèm 4 kỳ vọng cũ phải sửa
+
+| Tệp | Kỳ vọng cũ | Sửa | Lý do |
+|---|---|---|---|
+| `crates/vis-diag/src/lib.rs::khoi_ke_tiep_khong_tai_dung` | `next_block() == 701` | `801` | `07xx` đã cấp 3 mã module (VD-57) |
+| `crates/vis-diag/src/lib.rs::so_…` (BOOKS/all_codes) | 6 sổ / 25 mã / `lookup(701)==None` | 7 sổ / 28 mã / `lookup(701)==Some` | như trên |
+| `crates/vis-diag/tests/messages.rs` | `lookup(701)` None, 3 sổ tên | Some + snapshot 9 ca `07xx` | như trên |
+| `crates/vis-cli/tests/explain.rs` | `explain VS0701` exit 2 | exit 0; `VS0801` exit 2 | như trên |
+
+**Không** nới ngưỡng, **không** bỏ ca: 16 ca module là ca mới; các sửa trên chỉ đổi *giá trị kỳ vọng theo sổ mã đã cấp thêm*, mỗi chỗ đều ghi `SỬA KÈM LÝ DO (ST-25)`.
+
+## 3. Hồi quy bắt được trong lúc làm (đã sửa, không nới test)
+
+1. `vis check` chạy **cả tyck** sau khi dùng bộ nạp ⇒ 9 ca `check.rs` đỏ (fixture tài liệu có tên tự do).
+   Sửa: giữ **nguyên ngữ nghĩa cũ** — tệp chính chế độ script chỉ báo cú pháp (`01xx`/`02xx`) + module
+   (`07xx`); chẩn đoán ở **tệp phụ** luôn báo; `.vish` báo tất cả. TAP `#` line giữ định dạng cũ, tệp phụ
+   nêu ở dòng `not ok - <path> (util.vis:3:18)`.
+2. `sem` 2 ca `loi/ten-la.vis`, `pham-vi/ten-la.vis` (kỳ vọng **VS0501** runtime) đỏ vì bộ nạp dùng
+   `NamePolicy::Strict`. Sửa: **Permissive** cho tệp **không** tham gia module (đúng VD-45), **Strict** cho
+   tệp có `use`/bị `use` — không đổi ngữ nghĩa VS0 cũ, vẫn bắt được `pub`.
+3. Tyck không có văn bản ⇒ `dòng:cột` = 0. Sửa: `modules` tự tính lại `dòng:cột` theo **tệp được gán**.
+
+## 4. Chốt
+
+- **335** test workspace (318 + 16 module + 1 snapshot `07xx`), 323 ca sem, differential **272/272** xanh.
+- `gate --fast` PASS (xem STATE để có giờ); `report-check` không đổi.
+- sha256 bản commit:
+  sha256 crates/vis-cli/src/modules.rs=10e2637a250d4dd95fd00bb42506caa7cf96ff3bb18361022a640fc77a8c3cd0
+  sha256 crates/vis-cli/src/main.rs=6f5e5a6bb14ee68d91b49b8938e8bcdd0fdac47a8edf91381f1b5f8f05d2e80f
+  sha256 crates/vis-cli/src/cache.rs=1eb0b640233ff1b0eb2aec5359cd093007a880759ac602ada8ed1ef4dd6c4bbe
+  sha256 crates/vis-cli/tests/modules.rs=3b13413e31b8795620d3c18f9278985e99240abf536688887d2fb5e0b2ac9de3
+  sha256 crates/vis-types/src/lower.rs=aee132c10eb1bf258b0cbdd61ed0537b261ae2d1c41c15ecace8303505e112f3
+  sha256 crates/vis-syntax/src/parse/mod.rs=063a7dc46a81451599c9acd163537b93041fc5ccd6519c6b840a450dc03b618a
+  sha256 crates/vis-diag/src/lib.rs=819ce40693634251cde4095e069d8955449dc09be600a8deab1ae70e47cb2996
+  sha256 crates/vis-diag/tests/messages.rs=e84cd638cd6e4efc9db407b6939797d2dc72991c1d5483e2b88041ab7c0734ca
+  sha256 crates/vis-cli/tests/explain.rs=cbd2d483b2a4d1340fe0c14c0499250364680a0444557f2dde92705164b4d9a1

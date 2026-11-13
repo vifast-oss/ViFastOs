@@ -308,21 +308,53 @@ pub const RUNTIME_CODES: [Code; 3] = [
     },
 ];
 
+/// **Sổ thứ bảy** — `07xx` module (ST-25, VD-57): `use` không thấy tệp, vòng phụ thuộc, `use` trùng.
+///
+/// `07xx` được cấp ở **ST-25** cho khung module; `std.*` vẫn **hoãn** (ST-26) và `pkg.*` hoãn (VS2)
+/// — cả hai báo `VS0701` với thông điệp riêng (VD-57).
+pub const MODULE_CODES: [Code; 3] = [
+    Code {
+        id: 701,
+        short: "VS0701",
+        message_vi: "không thấy tệp module (hoặc `std`/`pkg` chưa hỗ trợ)",
+        message_en: "module file not found (or `std`/`pkg` not supported)",
+        message_ja: "モジュールファイルが見つかりません (または `std`/`pkg` は未対応)",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 702,
+        short: "VS0702",
+        message_vi: "vòng phụ thuộc giữa các tệp module",
+        message_en: "dependency cycle between module files",
+        message_ja: "モジュールファイル間の循環依存",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 703,
+        short: "VS0703",
+        message_vi: "`use` trùng hoặc mơ hồ (hai đường dẫn cùng một module)",
+        message_en: "duplicate or ambiguous `use` (two paths to the same module)",
+        message_ja: "重複または曖昧な `use` (同じモジュールへの2つの経路)",
+        severity: Severity::Error,
+    },
+];
+
 /// **Năm sổ** mã lỗi đã cấp ở ST-13: từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`,
 /// runtime `05xx` (VD-27/VD-35/VD-42). Nay **mọi** khối dành trước đều đã có mã; `06xx` là khối
 /// kế tiếp chưa cấp nên [`next_block`] vẫn trả **601**.
-pub const BOOKS: [&[Code]; 6] = [
+pub const BOOKS: [&[Code]; 7] = [
     &CODES,
     &SYNTAX_CODES,
     &NAME_CODES,
     &TYPE_CODES,
     &RUNTIME_CODES,
     &COMMAND_CODES,
+    &MODULE_CODES,
 ];
 
 /// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`06xx`); VD-42 cấp `04xx` ở ST-12, `05xx` ở
 /// ST-13, ST-18 cấp `06xx`. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
-pub const BLOCKS_RESERVED: [u16; 6] = [1, 2, 3, 4, 5, 6];
+pub const BLOCKS_RESERVED: [u16; 7] = [1, 2, 3, 4, 5, 6, 7];
 
 /// Duyệt **cả bốn sổ** đã cấp, theo đúng thứ tự khối.
 pub fn all_codes() -> impl Iterator<Item = &'static Code> {
@@ -483,9 +515,9 @@ mod tests {
         // và dành trước `04xx`/`05xx`; `next_block` nay suy ra từ khối, không đếm mã.
         assert_eq!(
             next_block(),
-            701,
-            // **SỬA KÈM LÝ DO (ST-18)**: `06xx` đã cấp đủ 4 mã ⇒ khối kế là `07xx` (701).
-            "01xx..06xx đã cấp/dành trước ⇒ khối kế 07xx (701)"
+            801,
+            // **SỬA KÈM LÝ DO (ST-25)**: `07xx` đã cấp 3 mã module (`VS0701..0703`) ⇒ khối kế `08xx` (801).
+            "01xx..07xx đã cấp/dành trước ⇒ khối kế 08xx (801)"
         );
     }
 
@@ -540,20 +572,29 @@ mod tests {
         assert_eq!(NAME_CODES[1].short, "VS0302");
         // **SỬA KÈM LÝ DO (ST-18)**: ST-18 cấp sổ thứ **sáu** `06xx` (4 mã chế độ lệnh) ⇒
         // 10 + 2 + 2 + 4 + 3 + 4 = **25** mã, **6** sổ; `lookup(601)` nay **có**, mã chưa cấp là `701`.
-        assert_eq!(all_codes().count(), 25);
-        assert_eq!(BOOKS.len(), 6);
+        // **SỬA KÈM LÝ DO (ST-25)**: sổ thứ bảy `07xx` (module) đã cấp ⇒ 25 + 3 = **28** mã,
+        // `BOOKS` = **7**; khối kế tiếp là `801` (xem `next_block` bên dưới).
+        assert_eq!(all_codes().count(), 28);
+        assert_eq!(BOOKS.len(), 7);
         for id in [601u16, 602, 603, 604] {
             assert!(
                 lookup(id).is_some(),
                 "mã {id} phải có ở ST-18 (khối `06xx`)"
             );
         }
+        // **SỬA KÈM LÝ DO (ST-25)**: `07xx` nay đã cấp cho module (`VS0701/0702/0703`).
+        for id in [701u16, 702, 703] {
+            assert!(
+                lookup(id).is_some(),
+                "mã {id} phải có ở ST-25 (khối `07xx` module)"
+            );
+        }
         assert!(
-            lookup(701).is_none(),
-            "mã 701 chưa cấp — khối `07xx` là của vòng sau"
+            lookup(801).is_none(),
+            "mã 801 chưa cấp — khối `08xx` là của vòng sau"
         );
-        // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx..06xx.
-        assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5, 6]);
+        // Khối đã dành trước vẫn chặn `next_block` rơi vào 01xx..07xx.
+        assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5, 6, 7]);
         for c in NAME_CODES.iter() {
             for lang in [Lang::Vi, Lang::En, Lang::Ja] {
                 assert!(!c.message(lang).is_empty(), "{} thiếu {:?}", c.short, lang);

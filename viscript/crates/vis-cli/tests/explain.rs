@@ -110,8 +110,12 @@ fn explain_so_ten_03xx() {
     assert!(text.contains("VS0412"), "ST-12 cấp 04xx: {text}");
     assert!(text.contains("VS0501"), "ST-13 cấp 05xx: {text}");
     assert!(text.contains("VS0601"), "ST-18 cấp 06xx: {text}");
-    let (code, _) = vis(&["explain", "VS0701"]);
-    assert_eq!(code, 2, "mã chưa cấp (07xx) phải exit 2");
+    // **SỬA KÈM LÝ DO (ST-25)**: `07xx` đã cấp (module) ⇒ `VS0701` exit 0; mã **chưa** cấp là `VS0801`.
+    let (code, text) = vis(&["explain", "VS0701"]);
+    assert_eq!(code, 0, "ST-25 đã cấp 07xx: {text}");
+    assert!(text.contains("VS0701"), "{text}");
+    let (code, _) = vis(&["explain", "VS0801"]);
+    assert_eq!(code, 2, "mã chưa cấp (08xx) phải exit 2");
 }
 
 #[test]
@@ -141,8 +145,11 @@ fn explain_so_kieu_04xx() {
     // **SỬA KÈM LÝ DO (ST-18)**: `06xx` đã cấp ⇒ `VS0601` exit 0; mã chưa cấp là `VS0701`.
     let (code, _) = vis(&["explain", "VS0601"]);
     assert_eq!(code, 0, "ST-18 đã cấp 06xx");
+    // **SỬA KÈM LÝ DO (ST-25)**: `07xx` đã cấp cho module ⇒ exit 0; `08xx` chưa cấp.
     let (code, _) = vis(&["explain", "VS0701"]);
-    assert_eq!(code, 2, "07xx chưa cấp");
+    assert_eq!(code, 0, "ST-25 đã cấp 07xx");
+    let (code, _) = vis(&["explain", "VS0801"]);
+    assert_eq!(code, 2, "08xx chưa cấp");
 }
 
 #[test]

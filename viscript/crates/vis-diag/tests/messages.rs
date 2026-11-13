@@ -108,7 +108,10 @@ fn snapshot_6_ca_so_ten_03xx() {
     // **SỬA KÈM LÝ DO (ST-18)**: ST-18 cấp sổ thứ sáu `06xx` ⇒ `lookup(601)` nay `Some`; mã chưa cấp
     // là `701` (khối `07xx` của vòng sau).
     assert!(lookup(601).is_some(), "ST-18 đã cấp sổ lệnh `06xx`");
-    assert!(lookup(701).is_none(), "mã 701 chưa cấp (khối `07xx`)");
+    // **SỬA KÈM LÝ DO (ST-25)**: ST-25 cấp sổ thứ bảy `07xx` (module) ⇒ `lookup(701)` nay `Some`;
+    // mã chưa cấp là `801` (khối `08xx` của vòng sau).
+    assert!(lookup(701).is_some(), "ST-25 đã cấp sổ module `07xx`");
+    assert!(lookup(801).is_none(), "mã 801 chưa cấp (khối `08xx`)");
 }
 
 /// Bộ 12 snapshot cho **sổ kiểu** `04xx` (ST-12, VD-42): 4 mã × vi/en/ja.
@@ -365,4 +368,35 @@ fn snapshot_20_render() {
         );
         assert_eq!(got, c.want, "{}", c.path);
     }
+}
+
+/// Bộ 9 snapshot cho **sổ module** `07xx` (ST-25, VD-57): 3 mã × vi/en/ja.
+#[test]
+fn snapshot_9_ca_so_module_07xx() {
+    let cases: [(u16, Lang, &str); 9] = [
+        (701, Lang::Vi, "không thấy tệp module"),
+        (701, Lang::En, "module file not found"),
+        (701, Lang::Ja, "モジュールファイルが見つかりません"),
+        (702, Lang::Vi, "vòng phụ thuộc giữa các tệp module"),
+        (702, Lang::En, "dependency cycle between module files"),
+        (702, Lang::Ja, "モジュールファイル間の循環依存"),
+        (703, Lang::Vi, "`use` trùng hoặc mơ hồ"),
+        (703, Lang::En, "duplicate or ambiguous `use`"),
+        (703, Lang::Ja, "重複または曖昧な `use`"),
+    ];
+    for (id, lang, want) in cases {
+        let c = lookup(id).unwrap_or_else(|| panic!("mã {id} phải có trong sổ module"));
+        assert!(
+            c.message(lang).contains(want),
+            "{} {:?}: {:?} không chứa {:?}",
+            c.short,
+            lang,
+            c.message(lang),
+            want
+        );
+    }
+    assert_eq!(vis_diag::MODULE_CODES.len(), 3);
+    assert_eq!(vis_diag::BOOKS.len(), 7, "ST-25: bảy sổ mã");
+    assert_eq!(vis_diag::all_codes().count(), 28);
+    assert_eq!(vis_diag::next_block(), 801, "khối kế tiếp là 08xx");
 }

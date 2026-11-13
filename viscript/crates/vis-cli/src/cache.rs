@@ -34,6 +34,37 @@ pub fn khoa(nguon: &str, che_do: &str) -> [u8; 32] {
     vis_bytecode::format::source_hash(&s)
 }
 
+/// Khoá cache cho **đơn vị biên dịch nhiều tệp** (ST-25): hash closure trên (phiên bản, mode, thứ tự
+/// tất định các tệp `(rel, nội dung)`). Vì `files` ở **hậu duyệt DFS** theo thứ tự `use` trong nguồn,
+/// kết quả **tất định**; sửa bất kỳ tệp phụ thuộc nào ⇒ khoá đổi.
+pub fn khoa_multi(files: &[crate::modules::FileUnit], mode: vis_syntax::Mode) -> [u8; 32] {
+    let che_do = if mode == vis_syntax::Mode::Command {
+        "vish"
+    } else {
+        "vis"
+    };
+    let mut s = String::with_capacity(
+        64 + files
+            .iter()
+            .map(|f| f.rel.len() + f.text.len() + 2)
+            .sum::<usize>(),
+    );
+    s.push_str("vifast-vis-cache-v2\n");
+    s.push_str(PHIEN_BAN);
+    s.push('\n');
+    s.push_str(&vis_bytecode::VERSION.to_string());
+    s.push('\n');
+    s.push_str(che_do);
+    s.push('\n');
+    for f in files {
+        s.push_str(&f.rel);
+        s.push('\n');
+        s.push_str(&f.text);
+        s.push('\n');
+    }
+    vis_bytecode::format::source_hash(&s)
+}
+
 /// Đường dẫn tệp cache cho một khoá.
 pub fn duong_dan(k: &[u8; 32]) -> Option<PathBuf> {
     let mut ten = String::with_capacity(64 + 4);

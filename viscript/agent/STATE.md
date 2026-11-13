@@ -6,14 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-24** (báo cáo **R3** — chốt VS1-khung) — xong 2026-11-13, **chưa commit**
-                (chờ gate + push theo uỷ quyền).
-Bước          : 3/3 (thu số lại → viết `reports/R3-viscript.{md,json}` → gate/nightly)
+Task          : **ST-25** (module đa tệp: `use ./util`, cấm vòng, `pub`, hash closure) — xong
+                2026-11-13, **chưa commit** (chờ Agent 0 OK).
+Bước          : 4/4 (cú pháp `./x` → bộ nạp + tầm nhìn `pub` → CLI/cache → test + log đỏ)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T03:18:11Z**;
-                `./vis-dev nightly --fuzz-minutes 1` → PASS lúc **2026-11-13T03:19:56Z**.
-                `report-check`: **PASS (3 báo cáo, 27 hàng QUEUE phủ đủ)**. **318** test.
-Việc dở       : commit `[ST-24]` + push; Agent 0 lật ST-24 DONE
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:11:40Z** (13:11 JST, không retry);
+                **335** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-25]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -46,6 +45,28 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-25 — module đa tệp: `use ./util`, cấm vòng, `pub`, hash closure (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | Cú pháp | `dotted_path` nhận **đường dẫn tương đối** `./util`, `./a/b` (dấu `.`/`/` trong node `DottedPath`); `use ./util` trước đó là **VS0201** |
+| 2 | Bộ nạp `crates/vis-cli/src/modules.rs` | DFS **hậu duyệt** theo thứ tự `use` (tất định), mỗi tệp một lần, tệp chính cuối; **cấm vòng** `VS0702`; `use` trùng/mơ hồ `VS0703`; thiếu tệp / `std.*` (ST-26) / `pkg.*` (VS2) ⇒ `VS0701` |
+| 3 | Mô hình xuất tên | **chỉ `pub`** (mặc định riêng tư), kiểm ở **tầng giải tên** (`lower::resolve` + `duoc_thay`) — **không** đụng `tyck`; `Symbols` thêm `mod_of`/`pub_of`/`mods` (song song với `syms`) |
+| 4 | Hợp nhất | `lower_into(&mut Symbols, &mut TypeTable, …)` — item ghép theo hậu duyệt, `RecId`/`EnumId` **ổn định**; kiểu `pub` của phụ thuộc nạp vào bảng tên tệp `use` nó |
+| 5 | Chẩn đoán | in **đúng tên tệp** (`util.vis:3:18: error VS0412: …`); tyck diag được tính lại `dòng:cột` theo tệp được gán |
+| 6 | Hash closure | `cache::khoa_multi(files, mode)` = FNV-1a×4 trên (phiên bản compiler/VBC1, mode, **từng tệp** rel+text theo hậu duyệt); sửa phụ thuộc ⇒ khoá **đổi** (ca test chứng minh: 2 khoá `.vbc`) |
+| 7 | CLI | `vis run` tự nạp module; `--dump-deps` in cây; `vis check` TAP `not ok - <path> (util.vis:3:18)`; cache áp cho `--vm` |
+| 8 | Sổ mã | `MODULE_CODES` `07xx` (0701/0702/0703 vi/en/ja + snapshot 9 ca) ⇒ `BOOKS` 7, `all_codes()` **28**, `next_block()` **801**; 4 kỳ vọng cũ sửa **kèm lý do** |
+| 9 | Test | **335** workspace (318 + 16 `modules.rs` + 1 snapshot); 323 ca sem; differential **272/272** |
+
+**Hồi quy bắt được trong lúc làm** (đã sửa, không nới test): `vis check` phải giữ ngữ nghĩa cũ (script chỉ
+cú pháp; tệp phụ luôn báo), `NamePolicy` **Permissive** cho tệp ngoài module (giữ `VS0501` runtime), tyck diag
+phải tính lại `dòng:cột`. Ghi trong `JOURNAL/st25-red-module.log`.
+
+**Nợ đã biết (VS1b)**: `pub` cho `let`/`const` **chưa** có; chẩn đoán **runtime** ở hàm thuộc tệp phụ vẫn tính
+`dòng:cột` theo văn bản **tệp chính** (HIR chưa mang `file` của item); `use` không re-export; `..` được phép
+nhưng chưa có chốt "không ra ngoài cây dự án".
 
 ## ST-24 — báo cáo **R3**, chốt VS1-khung (2026-11-13)
 

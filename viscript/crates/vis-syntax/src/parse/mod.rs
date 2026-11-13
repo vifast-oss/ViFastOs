@@ -408,9 +408,21 @@ impl<'a> Parser<'a> {
         Ok(self.node(NodeKind::UseDecl, elems))
     }
 
+    /// Đường dẫn `use`: `std.fs` (chấm) **hoặc** `./util`, `./a/b` (tương đối — ST-25).
+    ///
+    /// Cho phép `.`/`/` làm dấu phân cách; mở đầu bằng `.` (và tuỳ chọn `/`) nghĩa là **tệp tương đối**
+    /// so với tệp đang `use`. Mọi dấu đều nằm trong node `DottedPath` ⇒ hạ đọc lại được văn bản gốc.
     fn dotted_path(&mut self) -> PResult<Node> {
-        let mut elems = vec![self.expect_ident()?];
-        while self.at_punct(".") {
+        let mut elems = Vec::new();
+        // Mở đầu tương đối: `.` hoặc `./`
+        if self.at_punct(".") {
+            elems.push(self.bump());
+            if self.at_punct("/") {
+                elems.push(self.bump());
+            }
+        }
+        elems.push(self.expect_ident()?);
+        while self.at_punct(".") || self.at_punct("/") {
             elems.push(self.bump());
             elems.push(self.expect_ident()?);
         }

@@ -230,6 +230,16 @@ impl TypeTable {
         id
     }
 
+    /// Truy cập **ghi** bản ghi theo id (ST-25: hạ đa tệp điền trường sau khi predeclare).
+    pub fn rec_mut(&mut self, id: RecId) -> Option<&mut RecDef> {
+        self.recs.get_mut(id.0 as usize)
+    }
+
+    /// Truy cập **ghi** enum theo id (ST-25).
+    pub fn enum_mut(&mut self, id: EnumId) -> Option<&mut EnumDef> {
+        self.enums.get_mut(id.0 as usize)
+    }
+
     /// Tên **có thật** của kiểu: bản ghi/enum đã khai in tên, chưa có tên in `record#N`/`enum#N`.
     pub fn show(&self, ty: &Type) -> String {
         match ty {

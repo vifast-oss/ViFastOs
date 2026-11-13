@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+pub fn hong() -> int:
+    let x: int = "chuỗi"
+    x
