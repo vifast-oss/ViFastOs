@@ -125,6 +125,14 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **READY** | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
+| ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | BLOCKED | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
+| ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | BLOCKED | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
+| ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
+| ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | BLOCKED | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
+| ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | BLOCKED | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
+| ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | BLOCKED | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
+| ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | BLOCKED | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
+| ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | BLOCKED | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -509,3 +517,30 @@ APPROVED 2026-11-13 Agent 0
 - `ST-09` cấm `...` trong fixture: mọi khối mã trong tài liệu phải parse được, ngoại lệ phải khai báo trong SPEC.
 - Ưu tiên hai dòng: **OS trước**; dòng này chỉ lấy task khi `v2/agent/QUEUE.md` không còn task `READY` (D2-20). Ngoại lệ đã đóng: ST-02a DONE, ST-04 mở ngay.
 - Số nào chưa có nguồn trong QD/tài liệu ViScript thì ghi `[TK]`/`[ƯL]`, không tự đặt.
+
+---
+
+## Vòng 6 — VSH1a (từ issue #21, "bộ lệnh shell có cấu trúc")
+
+APPROVED 2026-11-13 Agent 0
+
+> **Mở vòng 6 — VSH1a.** Issue #21 (`khoa-pham-aepsy`, <https://github.com/vifast-oss/ViFastOs/issues/21>) xin
+> `std.shell` (`where/sort_by/ls/ps`) theo §9/§13. **Nhận hướng, không nhận cách chia P1..P4**: chốt lại thành
+> **ST-37..ST-43** (8 hàng, ST-40 tách a/b) ≈ 21,5 h ≈ 3 vòng, **sau ST-36 (R5)**. Căn cứ lộ trình §19:
+> `VSH1 ← VS1`, `VS2 ← VS1` ⇒ VSH1 là anh em của VS2; issue xin đúng **nửa đầu VSH1**. Gói quyết định + bằng
+> chứng đo (3 lệnh `vis check/run` chạy thật ở HEAD `0e65446`):
+> [`review/agent0/GOI-ISSUE-21-VSH1a.md`](../../review/agent0/GOI-ISSUE-21-VSH1a.md).
+>
+> **Quyết định kèm theo: VD-68..VD-75.** Ba điều kiện bắt buộc của vòng:
+> (1) **typed** — verb có chữ ký, **không** đi đường `Ty::Any` của `std.list.*` (nợ VD-59 (3));
+> (2) **ranh giới tách repo** — mọi thứ thuộc ngôn ngữ nằm trong `viscript/` (`Type`, prelude bản ghi, `Render`,
+> `Host`, `HOST_API`); `ps`/`kill` chạy thật là `vis-host-vifast` (ngoài `viscript/`) + `procsrv`, sau VS2;
+> (3) **không nới ngưỡng**; allowlist `doc-examples` chỉ được giảm **8 → 7** khi ST-42 **thật xanh**.
+>
+> **Không làm ở vòng 6** (ghi để khỏi trôi): `stream[T]` lười/SIGPIPE/huỷ pipeline (VSH1b); `walk`/`save`/
+> `to json`/`from json[T]`/`http` (VSH1b, mục 1451 của allowlist); `std.shell` **viết bằng ViScript** (seam
+> `SigSource` giữ đường, làm sau khi tách repo); cưỡng chế `cap[Dir]`/`cap[Proc]` (VS2); `ps`/`kill` chạy thật.
+>
+> **Thứ tự**: ST-37 chỉ mở khi **ST-36 DONE**; ST-37..ST-42 đụng `lower/cmd.rs` + `tyck` nên **không** chạy
+> song song với nhau. ST-42 là task chạm `docs/viscript/doc-examples-allow.txt` ⇒ **Agent 0** sửa tệp đó, Agent 2
+> chỉ báo kết quả cổng.

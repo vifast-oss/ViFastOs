@@ -432,3 +432,59 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (Vis ⇒ `VS0602`); nhờ đó `grep` không khớp (`exit 1`) **không** còn là lỗi. (4) **Timeout 10 s/stage**, thông điệp
   nêu **stage nào**; **không** cap tổng (chuỗi N stage ⇒ tối đa N×10 s) — ghi JOURNAL. (5) `complete` có kiểu tĩnh
   **`Ty::Any`** (nợ kiểm tĩnh: `r.code` chưa kiểm được; pipeline chưa là biểu thức ở `.vish`).
+
+- **VD-68** **Chữ ký lệnh generic (ST-37)**: (1) `CmdSig` mang **tham số kiểu** `[T]`; so khớp tham số khi hạ
+  dùng **hợp nhất** (`unify`, mượn máy ST-28) thay so sánh bằng — khe ống (VD-53 (1)) tìm tham số vị trí **đầu
+  tiên** hợp nhất được với kiểu giá trị vào; `take`/`lines` thành `take[T](xs: list[T], n: int) -> list[T]` /
+  `lines(s: str) -> list[str]`. (2) **Xoá kiểu ở biên lệnh** như ST-28; **không** bump `VBC1`; **không** đơn
+  hình hoá. (3) `CmdSig` thêm `nguon: SigSource { Builtin, FileCmd, ModuleCmd }` — tra chữ ký **không** hard-code
+  "builtin ⇒ Rust"; vòng 6 chỉ dùng `Builtin`/`FileCmd`, `ModuleCmd` để dành cho `std.shell` viết bằng ViScript
+  sau khi tách repo. (4) Không đổi hành vi `echo/lines/take` hiện có; 338 ca sem **không đổi**.
+
+- **VD-69** **Closure-arg trong chế độ lệnh (ST-38)**: (1) `closure_arg` (§A.7) hạ **trong `cmd_lower`** bằng
+  **re-parse span** — parser **không** giữ cây con (chỉ giữ token), chỉ kiểm cú pháp thân; hạ xong thành
+  `HExpr::Lambda`; kiểu tham số là `fn(T) -> R`. (2) **Cộng offset** span của thân với vị trí bắt đầu trong
+  nguồn ⇒ chẩn đoán bên trong thân báo **đúng** `dòng:cột` của tệp (ca khoá riêng). (3) `it` **chưa** có ở bước
+  này (xem VD-72) — ST-38 chỉ nhận lambda tường minh `x => …`. (4) Không hạ closure-arg cho **chương trình
+  ngoài** (mọi tham số ngoài vẫn là `str`, VD-60).
+
+- **VD-70** **Ngữ nghĩa verb shell (ST-38)**: (1) **một** ngữ nghĩa, **hai** tên: `where` ≡ `.filter`,
+  `each` ≡ `.each`, `first` ≡ `.first`, `count` ≡ `.len` — verb là **alias có chữ ký**, gọi lại bảng phương thức
+  (`builtin::method`) để interp và VM dùng **cùng** đường (VD-55) ⇒ differential giữ 0 lệch. (2) `get`/`select`
+  **không** phải `.get(i)` mà là **chiếu theo trường** (§9.7 `get name`) ⇒ thuộc nhóm bản ghi (ST-40b).
+  (3) Vòng 6 làm trên **`list`**; `stream[T]` lười/SIGPIPE/`take` dừng nguồn sớm để **VSH1b** (§9.5) — ghi rõ
+  trong `STATE`/báo cáo, không hứa ngữ nghĩa stream. (4) `first` trả `T?` (Opt); `count` trả `int`; `each` trả
+  `()`.
+
+- **VD-71** **`sort_by` (ST-39)**: (1) Mở rộng `list.sort_by` cho khoá `K ∈ {int, size, duration, str}` (hiện
+  chỉ `int`, `Ty::FnIntInt`); sắp xếp **ổn định** (§13 `coll`), khoá tính **một lần**/phần tử (giữ như ST-26).
+  (2) `--desc` đảo chiều; `--asc` không có. (3) Khoá `bool`/`path` **chưa** sắp được ở vòng 6 ⇒ `VS0412` kèm
+  gợi ý. (4) Ca cũ của `list.sort_by` **phải vẫn xanh** (mở rộng, không đổi hành vi).
+
+- **VD-72** **`it` + viết tắt trường (ST-40a)**: (1) Chỉ áp cho **tham số closure** của `cmd` đã biết chữ ký;
+  dải token của tham số dừng ở `--flag`/`|`/`;`/`&` **độ sâu ngoặc 0**. (2) Ident trần tra `RecDef` của kiểu
+  phần tử ⇒ `it.<field>`; `it` tường minh vẫn hợp lệ; shell **không** có biến trần nên không nhập nhằng với
+  `$x`. (3) Trường không tồn tại ⇒ mã mới **`VS0605`** (sổ `COMMAND_CODES` 4 → 5; `all_codes()` tăng 1;
+  `next_block()` **không** đổi). (4) Không áp cho chương trình ngoài; `where size > 5mb` trên `list[str]` ⇒
+  `VS0602`/`VS0605` (không có trường), không im lặng.
+
+- **VD-73** **Prelude bản ghi + `Host` proc (ST-40a)**: (1) `FileEntry{name: str, path: path, size: size,
+  modified: int, is_dir: bool}` — `modified` là **ms** ở vòng 6 (`Type` chưa có `datetime`; §3.1 để VS2);
+  `ProcEntry{pid: int, ppid: int, name: str, cpu: percent, mem: size, state: ProcState}`. (2) Bản ghi prelude
+  nằm trong `TypeTable` do **ViScript** cấp (không phải tệp người dùng) — vì `sig_builtin()` không biểu diễn
+  được `Record(RecId)` của tệp. (3) `ProcEntry` **portable**: không `tcb`/`service`/`cap`; ViFastOs tự ánh xạ.
+  (4) `Host::procs`/`list_procs` **chưa** vào hợp đồng ở vòng 6 — chỉ chốt khi có backend; thêm `HOST_API: u32`
+  (bắt đầu 1) để backend ngoài `viscript/` biết mình lệch hợp đồng.
+
+- **VD-74** **`Render` (ST-41)**: (1) Giá trị cuối pipeline in qua `Render`: `list[bản ghi]` ⇒ **bảng** (tiêu đề
+  = tên trường, canh trái, **một** dấu cách phân cột); bản ghi đơn ⇒ khối `khoá: giá trị`; `list[str]` giữ
+  nguyên `Show` cũ (không phá 338 ca). (2) Độ rộng cột đo theo **Unicode scalar** trên chuỗi **NFC** (NFD tiếng
+  Việt làm lệch cột; §9.6 + kinh nghiệm ST-03). (3) **Không** màu, **không** cắt theo bề rộng terminal, **không**
+  ViTerm ở vòng 6 (VSH1b). (4) `print` của giá trị khác `list[bản ghi]`/bản ghi **không** đổi.
+
+- **VD-75** **`ls`/`open` qua `Host` (ST-42)**: (1) `FsHost::list_entries(dir) -> Result[list[FileEntry], str]`
+  — **một** lần gọi, có metadata, thứ tự **đã sắp** theo tên (byte); không đệ quy. (2) `ls(path = p".", --all:
+  bool = false, --long: bool = false) -> list[FileEntry]`; `--long` **không đổi kiểu** (chỉ đổi hiển thị, VD-74).
+  (3) `vis-interp`/`vis-vm` **không** gọi OS (ca âm khoá lại); thiếu host ⇒ `VS0604`. (4) Cờ **`--fs-mock`** của
+  `vis-cli` chỉ để **test tất định** (không phải API); `ls`/`open` test qua mock, không đọc đĩa thật. (5) Cưỡng
+  chế quyền (`cap[Dir]`) **không** thuộc vòng 6 — VS2.
