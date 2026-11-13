@@ -6,13 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-21** (verifier bytecode + fuzz không panic) — xong 2026-11-13,
-                **chưa commit** (chờ Agent 0 OK). 13 biến thể `VerifyError`, fuzz 10 phút 0 vi phạm.
-Bước          : 4/4 (verify → cắm codegen/VM → test → fuzz)
+Task          : **ST-22 + ST-23** (differential 100k chương trình sinh tự động; cache bytecode +
+                khởi động ấm) — xong 2026-11-13, **chưa commit** (chờ Agent 0 OK).
+Bước          : 2/2 (ST-22: 100.000 chương trình, 0 lệch · ST-23: cache + đo ấm)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T02:41:20Z = 2026-11-13 11:41 JST; không retry) — **316** test
-Việc dở       : chờ duyệt rồi commit `[ST-21]`
+Cổng gần nhất : (chạy sau khi ghi mục này)
+Việc dở       : chờ duyệt rồi commit `[ST-22]` rồi `[ST-23]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +44,34 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-22 — differential trên chương trình **sinh tự động**: 100.000 chương trình, **0 lệch** (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | Bộ sinh trong `crates/vis-vm/tests/diff_100k.rs` | subset VS0, **tất định** theo seed (LCG), ≤ **200 token**, không vòng lặp vô hạn, đệ quy có base (`fact(3)`) |
+| 2 | Mỗi chương trình | `parse → lower → tyck → codegen → verify`; tĩnh sạch ⇒ chạy **interp** và **VM**, so `stdout` + `exit` + `(mã, dòng, cột)`; codegen/verify lỗi cũng tính **lệch** |
+| 3 | **Chốt** | **100.000** chương trình · **0** lỗi tĩnh · **100.000** chạy · **0 lệch** · 189,2 s · ~528 chương trình/s · seed 3523158054 |
+| 4 | Lựa chọn chạy | Cổng chạy **1.000** (~1,3 s); **100.000** qua `bin/vis-diff` (đã ghi log thật) — **không** nói cổng chạy 100k |
+
+**Bug thật do differential bắt** (đã sửa): `IterInit` dùng span của **cả câu `for`** thay vì span của **biểu thức lặp** ⇒ chẩn đoán runtime lệch `cột` (6:10 vs 6:1) giữa interp và VM.
+
+Log: `JOURNAL/st22-diff-100k.log`.
+
+## ST-23 — cache bytecode theo hash closure + khởi động ấm (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | `crates/vis-cli/src/cache.rs` | `~/.cache/vifast/vis/<hash>.vbc` (`$XDG_CACHE_HOME`), hash **FNV-1a×4** trên (phiên bản compiler, phiên bản VBC1, chế độ, **toàn văn nguồn**); nạp **luôn** qua `load_verified`; hỏng/lệch ⇒ biên dịch lại + ghi lại; ghi tệp tạm + `rename` |
+| 2 | Cờ | `vis run --vm` dùng cache **mặc định**, `--no-cache` tắt; `vis cache --path|--clear`; cache hit **bỏ qua frontend** |
+| 3 | Đo (220 mẫu) | ấm **8,96 ms** trung vị / **9,61 ms** p95 (`co-ban`), 10,57/11,17 (`fib`), 9,04/9,65 (`or-hai`); nguội 9,63–11,37 ms ⇒ **giảm 7–8 %** |
+| 4 | Mục tiêu §19 `< 20 ms [ƯL]` | **đạt**, nhưng lợi ích **nhỏ** vì chi phối là **khởi động tiến trình (~8 ms)**, không phải frontend (~0,7 ms) |
+
+**Lệch có chủ ý (báo Agent 0)**: `vis run` **mặc định vẫn interp** (đường tham chiếu); cache áp cho đường **`--vm`**.
+Muốn đổi mặc định sang VM (và hưởng cache ở mọi lần chạy) thì cần Agent 0 chốt, vì nó đổi `steps` (đơn vị lệnh
+vs bước ngữ nghĩa) trong output TAP.
+
+Log: `JOURNAL/st23-warm.log`.
 
 ## ST-21 — verifier VBC1 + fuzz không panic (2026-11-13)
 

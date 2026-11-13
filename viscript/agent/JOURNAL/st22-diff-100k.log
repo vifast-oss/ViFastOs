@@ -1,0 +1,31 @@
+=== ST-22: differential trên chương trình SINH TỰ ĐỘNG — 100.000 chương trình, 0 lệch ===
+thời điểm chạy: 2026-11-13T02:58:40Z
+
+Lệnh: `VIS_DIFF_N=100000 cargo test -p vis-vm --test diff_100k -- --nocapture`
+(script tương đương: `./bin/vis-diff`; cổng `gate --fast` chạy bản **1.000** chương trình)
+
+Kết quả (dòng `DIFF` thật):
+  DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=189.2 toc_do=528/s seed=3523158054
+
+| Số | Giá trị |
+|---|---|
+| tổng chương trình sinh | **100.000** |
+| lỗi tĩnh (parse/lower/tyck) | **0** |
+| chạy được (cả hai đường) | **100.000** |
+| **lệch** | **0** |
+| thời gian / tốc độ | 189,2 s · ~**528 chương trình/giây** |
+| seed | 3523158054 (mặc định `0xD1FF_2026`) |
+
+Bộ sinh: subset VS0 (literal/đơn vị, `let`/`var`, `if`/`for`, `match` lồng ≤ 3, list/map/bản ghi/enum/
+`T?`/`Result`, hàm + closure + đệ quy **có base** (`fact(3)`), nội suy, `?.`/`??`, `push`, phương thức lõi),
+mỗi chương trình ≤ 200 token, **tất định** (LCG theo seed), không vòng lặp vô hạn.
+
+Quy trình mỗi chương trình: `parse → lower → tyck → codegen → verify` → nếu tĩnh sạch thì chạy **interp**
+và **VM**, so `stdout` + `exit` + `(mã, dòng, cột)`. Codegen/verify lỗi cũng tính là **lệch** (không xảy ra).
+
+**Lựa chọn 100k**: cổng chạy **1.000** (≈1,3 s) để giữ `gate --fast` nhanh; **100.000** do `bin/vis-diff`
+và lần chạy ghi trong log này. Không nói cổng chạy 100k.
+
+sha256 (bản commit):
+  sha256 crates/vis-vm/tests/diff_100k.rs=4a6007635aaa4d4a9873d26d8b28af681ee33f8318099f294ddb4dbd2808e72f
+  sha256 bin/vis-diff=4c157446188c6259dbf49d3843cf064eb8c9b2fcf9f683d883418a682575faac

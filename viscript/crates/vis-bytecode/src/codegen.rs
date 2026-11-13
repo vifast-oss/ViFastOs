@@ -505,8 +505,9 @@ impl<'g> Emit<'g> {
                 body,
                 span,
             } => {
+                let sp_iter = iter.span();
                 self.expr(iter)?;
-                self.f.push(Instr::IterInit, *span, 0);
+                self.f.push(Instr::IterInit, sp_iter, 0);
                 let start = self.f.here();
                 self.f.push(Instr::IterNext(0), *span, 1);
                 let next = self.f.code.len() - 1;

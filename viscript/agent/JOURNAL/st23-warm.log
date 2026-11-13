@@ -1,0 +1,27 @@
+=== ST-23: cache bytecode theo hash closure + khởi động ấm ===
+thời điểm đo: 2026-11-13T02:58:40Z
+
+Thiết kế: `~/.cache/vifast/vis/<hash>.vbc` (`$XDG_CACHE_HOME` nếu có); hash 32 byte = FNV-1a×4 trên
+`(phiên bản compiler, phiên bản VBC1, chế độ vis/vish, **toàn văn nguồn**)` — tức closure nguồn + phụ thuộc
+biên dịch. Nạp **luôn** qua `vis_bytecode::load_verified` (VD-52 #3): hỏng/lệch ⇒ biên dịch lại + ghi lại;
+**không** bao giờ chạy bytecode chưa xác minh. Ghi bằng tệp tạm + `rename` (không để tệp cụt).
+
+Cờ: `vis run --vm` dùng cache **mặc định**; `--no-cache` tắt; `vis cache --path|--clear`.
+Cache hit **bỏ qua toàn bộ frontend** (parse/lower/tyck) → chạy thẳng bytecode đã xác minh.
+
+Đo (220 mẫu mỗi cấu hình, cùng máy, `hyperfine`-style bằng Python):
+
+| Tệp | Ấm median | Ấm p95 | Nguội median | Nguội p95 | Giảm |
+|---|---|---|---|---|---|
+| `test/sem/ham/co-ban.vis` | **8,96 ms** | **9,61 ms** | 9,63 ms | 10,35 ms | 7,0 % |
+| `test/sem/ham/fib.vis` | **10,57 ms** | **11,17 ms** | 11,37 ms | 11,96 ms | 7,0 % |
+| `test/sem/match-nang-cao/or-hai.vis` | **9,04 ms** | **9,65 ms** | 9,83 ms | 10,44 ms | 8,0 % |
+
+Mục tiêu §19: **< 20 ms [ƯL]** ⇒ **đạt** (8,96–10,57 ms trung vị), nhưng **lợi ích của cache nhỏ (7–8 %)**
+vì chi phí chi phối là **khởi động tiến trình (~8 ms)**, không phải frontend (~0,7 ms) trên tệp nhỏ.
+Không sửa số trong tài liệu; nếu muốn cải thiện thật thì phải giảm chi phí tiến trình (ST-24: `vis` chạy
+nhiều tệp/daemon) — ghi nhận, không hứa.
+
+sha256 (bản commit):
+  sha256 crates/vis-cli/src/cache.rs=90d5aea8aaef09c5d9941b591cd9c7ee27675ced545ef6d21d2d4b8dc16ee717
+  sha256 crates/vis-cli/src/main.rs=3ec3e4fe09f1157038203d5cdb658b37e7e4ec79b5826756b69484c2c12b9a55

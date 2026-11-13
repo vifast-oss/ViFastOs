@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ST-22 — chạy **differential 100.000 chương trình** (interp vs VM), in dòng `DIFF …` để ghi log.
+#
+#   ./bin/vis-diff              # 100.000 chương trình (mặc định)
+#   VIS_DIFF_N=5000 ./bin/vis-diff
+#   VIS_DIFF_SEED=123 ./bin/vis-diff
+#
+# Cổng `gate --fast` chạy bản **1.000** chương trình (mặc định trong test) để giữ cổng nhanh;
+# con số **100.000** là của script này và được ghi thật vào `agent/JOURNAL/st22-diff-100k.log`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export PATH="${HOME}/.cargo/bin:${PATH}"
+export VIS_DIFF_N="${VIS_DIFF_N:-100000}"
+cargo test -p vis-vm --test diff_100k -- --nocapture 2>&1 | grep -E '^(DIFF|LECH|test result)'
