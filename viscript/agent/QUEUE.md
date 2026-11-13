@@ -107,8 +107,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-15 | thêm test ngữ nghĩa tới **≥ 300 ca** | ST-14 | 3 h | **DONE** | tổng ≥ 300 `.vis` + kỳ vọng stdout |
 | ST-16 | fuzz parser **1 giờ** + `vis-dev nightly` chạy được (bỏ exit 2) | ST-14 | 2 h | **DONE** | không panic; nightly PASS |
 | ST-18 | `cmd_lower`: chế độ lệnh `.vish` hạ xuống HIR + chạy được | ST-17 | 3 h | **DONE** | bảng chữ ký tối thiểu; `vis run t.vsh` chạy; `VS06xx`? (hỏi A0) |
-| ST-19 | `vis-bytecode`: định dạng VBC1 + sinh mã từ HIR | ST-18 | 3 h | **READY** | magic/phiên bản; sinh mã cho subset VS0; test khứ hồi |
-| ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | BLOCKED | chạy 309 ca sem qua VM = interp |
+| ST-19 | `vis-bytecode`: định dạng VBC1 + sinh mã từ HIR | ST-18 | 3 h | **DONE** | magic/phiên bản; sinh mã cho subset VS0; test khứ hồi |
+| ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | **READY** | chạy 309 ca sem qua VM = interp |
 | ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | BLOCKED | bytecode hỏng bị từ chối; fuzz 10 phút |
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | BLOCKED | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | BLOCKED | đo thật, không ước lượng |
@@ -294,6 +294,16 @@ APPROVED 2026-11-13 Agent 0
 > **265 test**, **323 ca sem/17 nhóm** (309 `.vis` + 14 `.vish`), `gate --fast` PASS; 7 kỳ vọng cũ sửa **có lý do**
 > trong từng tệp (VD-42 cấp `06xx`, tên dựng sẵn 11, `CommandMode` hạ thật, allowlist 9).
 > **ST-19 mở** (`vis-bytecode`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-19 DONE** — commit `750815b` (đã push): crate `crates/vis-bytecode` (không phụ thuộc OS, không `unsafe`) —
+> `VBC1` + u16 + 32 byte hash nguồn, const pool nguyên văn, bảng hàm (`arity/nparams/nlocals/max_stack`) + code +
+> **bảng span song song**; **45 lệnh**; `Bin`/`Un` mang chính `vis_types::{BinOp,UnOp}`; **`match` = chuỗi test +
+> nhảy** (VM không biết pattern); closure `MakeClosure`+`LoadCaptured` (snapshot, VD-51); `DecodeError` 9 biến thể,
+> không panic với dữ liệu hỏng. Sinh mã **272/323** ca sem (51 ca lỗi tĩnh), **0 Unsupported**, 3.827 lệnh, 36/45 tag;
+> round-trip xanh trên 272 ca + 27 golden. **284 test**, `gate --fast` PASS.
+> **ST-20 mở** (`vis-vm`).
 
 ## Ghi chú vận hành
 
