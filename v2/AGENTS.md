@@ -7,7 +7,7 @@ Nguồn sự thật của vòng vá: [`../docs/QUYET-DINH-sau-review.md`](../doc
 
 1. **Code + harness** trong `v2/`: crate chạy được, sim, `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`: một nguồn sự thật duy nhất; code sinh từ spec không sửa tay (D2-11).
-3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — D-01..D-08 (chỉ v1) + **D2-01..D2-52**.
+3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — D-01..D-08 (chỉ v1) + **D2-01..D2-53**.
 4. Tài liệu thiết kế [`../docs/v2/ViFastOs-v2-thiet-ke.md`](../docs/v2/ViFastOs-v2-thiet-ke.md) — tham chiếu, không phải hiện trạng.
 
 QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sinh.
@@ -18,8 +18,8 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 |---|---|
 | [`../docs/v2/ViFastOs-v2-thiet-ke.md`](../docs/v2/ViFastOs-v2-thiet-ke.md) | thiết kế đầy đủ (mục 3 kiến trúc, 4 kernel, 9 kiểm thử, 10 lộ trình K0→K6, 11 quy trình) |
 | [`../docs/v1/KNOWN-ISSUES.md`](../docs/v1/KNOWN-ISSUES.md) | 7 lỗi v1 mang sang v2 + ca kiểm tương ứng |
-| [`agent/QUEUE.md`](agent/QUEUE.md) | 29 dòng: vòng 1 + K1a' (KT-13..KT-17 DONE) + **K1b** (KT-18..KT-23) |
-| [`agent/DECISIONS.md`](agent/DECISIONS.md) | D-01..D-08 (v1) + D2-01..D2-52 |
+| [`agent/QUEUE.md`](agent/QUEUE.md) | 36 dòng: vòng 1 + K1a' + K1b (DONE) + **K1c** (KT-24..KT-30) |
+| [`agent/DECISIONS.md`](agent/DECISIONS.md) | D-01..D-08 (v1) + D2-01..D2-53 |
 | [`agent/STATE.md`](agent/STATE.md) | HEAD, BUILD_ID, task, bước — Agent 2 cập nhật sau mỗi bước |
 | [`agent/BLOCKED.md`](agent/BLOCKED.md) | task bị chặn + câu hỏi cho Agent 0 |
 | `agent/JOURNAL/`, `agent/reports/` | nhật ký ngày, `R<n>-v2.md` + `R<n>-v2.json` |
