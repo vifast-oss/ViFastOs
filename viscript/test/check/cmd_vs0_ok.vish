@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+echo "a\nb" | lines | take 1
+echo "x" --upper

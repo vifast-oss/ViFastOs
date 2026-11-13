@@ -29,14 +29,16 @@ use crate::hir::{
 };
 use crate::ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
 
+mod cmd;
 mod expr;
 mod pat;
 mod stmt;
 
 /// **8 tên giá trị dựng sẵn** của VS0 — danh sách **khoá bằng test** (VD-44 #3: thêm/bớt phải
 /// qua Agent 0). `true`/`false`/`none` là **literal**, không phải tên.
-pub const BUILTIN_VALUE_NAMES: [&str; 8] =
-    ["print", "len", "str", "Ok", "Err", "Some", "None", "ref"];
+pub const BUILTIN_VALUE_NAMES: [&str; 11] = [
+    "print", "len", "str", "echo", "lines", "take", "Ok", "Err", "Some", "None", "ref",
+];
 
 /// Chính sách báo `VS0301` cho **tên giá trị** chưa khai.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,7 +271,8 @@ impl<'a> Lowerer<'a> {
         });
         self.scope.push(0);
         if self.command_mode() {
-            self.error = Some(LowerError::CommandMode);
+            // ST-18 (VD-22 pha 2): `.vish`/`cmd { … }` hạ xuống **cùng HIR** — `cmd_lower`.
+            self.run_shell();
             return;
         }
         self.declare_builtins();

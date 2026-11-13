@@ -70,10 +70,25 @@ fn check_one(path: &str) -> Result<(), String> {
         Mode::Script
     };
     let out = parse(&src, mode);
-    match chon_chan_doan(&out) {
-        None => Ok(()),
-        Some(d) => Err(dong_chan_doan(d.code_str(), d.line, d.col, &d.message)),
+    if let Some(d) = chon_chan_doan(&out) {
+        return Err(dong_chan_doan(d.code_str(), d.line, d.col, &d.message));
     }
+    if mode == Mode::Command {
+        // ST-18: `.vish` **không** chỉ parse — hạ (`cmd_lower`) rồi kiểm kiểu, chẩn đoán thật.
+        let lexed = lex(&src, Mode::Command);
+        let h = vis_types::lower(&out.cst, &lexed);
+        if let Some(e) = &h.error {
+            return Err(format!("{e:?}"));
+        }
+        if let Some(d) = h.diagnostics.first() {
+            return Err(dong_chan_doan(d.code.short, d.line, d.col, &d.message));
+        }
+        let kq = vis_types::check(&h.hir, &h.symbols, &h.types);
+        if let Some(d) = kq.diags.first() {
+            return Err(dong_chan_doan(d.code.short, d.line, d.col, &d.message));
+        }
+    }
+    Ok(())
 }
 
 fn usage_fmt() -> ExitCode {
@@ -263,10 +278,12 @@ fn run_run(rest: &[String]) -> ExitCode {
         eprintln!("dùng: vis run [--tap] <tệp.vis> [-- args…]");
         return ExitCode::from(2);
     };
-    if tep.ends_with(".vish") {
-        eprintln!("Bail out! `{tep}` là `.vish` — chế độ lệnh (VS1) chưa chạy được ở VS0 (ST-14)");
-        return ExitCode::from(2);
-    }
+    // ST-18: `.vish` chạy được (parse → `cmd_lower` → tyck → interp), không còn `Bail out!`.
+    let che_do = if tep.ends_with(".vish") {
+        vis_syntax::Mode::Command
+    } else {
+        vis_syntax::Mode::Script
+    };
     let text = match std::fs::read_to_string(&tep) {
         Ok(t) => t,
         Err(e) => {
@@ -278,8 +295,8 @@ fn run_run(rest: &[String]) -> ExitCode {
         eprintln!("TAP version 13");
         eprintln!("1..1");
     }
-    // 1) parse
-    let parsed = parse(&text, Mode::Script);
+    // 1) parse (ST-18: `.vish` ⇒ `Mode::Command` ⇒ `cmd_lower`)
+    let parsed = parse(&text, che_do);
     if !parsed.diagnostics.is_empty() {
         for d in &parsed.diagnostics {
             eprintln!("{}", in_chan_doan(&tep, &text, d));
@@ -290,7 +307,7 @@ fn run_run(rest: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
     // 2) lower
-    let lexed = lex(&text, Mode::Script);
+    let lexed = lex(&text, che_do);
     let h = lower(&parsed.cst, &lexed);
     if !h.is_clean() {
         for d in &h.diagnostics {

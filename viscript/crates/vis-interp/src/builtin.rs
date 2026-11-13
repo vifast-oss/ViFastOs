@@ -289,6 +289,53 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::Str(args[0].show()))
             }
+            // ST-18 — 3 lệnh builtin chế độ lệnh (`echo`/`lines`/`take`), thuần, không FS.
+            "echo" => {
+                if args.len() > 4 {
+                    return Err(self.trap(RT, "`echo` nhận tối đa 4 đối số", span));
+                }
+                let upper = match args.get(3) {
+                    Some(Value::Bool(b)) => *b,
+                    None => false,
+                    Some(_) => return Err(self.trap(RT, "`--upper` cần `bool`", span)),
+                };
+                let mut phan: Vec<String> = Vec::new();
+                for a in args.iter().take(3) {
+                    match a {
+                        Value::Str(s) => {
+                            if !s.is_empty() {
+                                phan.push(s.clone());
+                            }
+                        }
+                        _ => return Err(self.trap(RT, "`echo` cần đối số `str`", span)),
+                    }
+                }
+                let kq = phan.join(" ");
+                Ok(Value::Str(if upper { kq.to_uppercase() } else { kq }))
+            }
+            "lines" => {
+                if args.len() != 1 {
+                    return Err(self.trap(RT, "`lines` cần 1 đối số", span));
+                }
+                let Value::Str(s) = &args[0] else {
+                    return Err(self.trap(RT, "`lines` cần `str`", span));
+                };
+                let mut ds: Vec<Value> = s.split('\n').map(|x| Value::Str(x.to_string())).collect();
+                if matches!(ds.last(), Some(Value::Str(x)) if x.is_empty()) {
+                    ds.pop();
+                }
+                Ok(Value::List(ds))
+            }
+            "take" => {
+                if args.len() != 2 {
+                    return Err(self.trap(RT, "`take` cần 2 đối số", span));
+                }
+                let (Value::List(xs), Value::Int(n)) = (&args[0], &args[1]) else {
+                    return Err(self.trap(RT, "`take` cần `list[str]` và `int`", span));
+                };
+                let n = (*n).max(0) as usize;
+                Ok(Value::List(xs.iter().take(n).cloned().collect()))
+            }
             "len" => {
                 if args.len() != 1 {
                     return Err(self.trap(RT, "`len` cần 1 đối số", span));

@@ -957,6 +957,43 @@ impl<'a> Checker<'a> {
                 }
                 Some(Type::Str)
             }
+            // ST-18: 3 lệnh builtin chế độ lệnh — chữ ký như `sig_builtin()` ở `lower/cmd.rs`.
+            "echo" => {
+                if tys.len() > 4 {
+                    self.diag(
+                        ARG_COUNT,
+                        format!(
+                            "`echo` nhận tối đa 4 đối số (a, b, c, --sep), được {}",
+                            tys.len()
+                        ),
+                        span,
+                    );
+                }
+                Some(Type::Str)
+            }
+            "lines" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`lines` cần 1 đối số", span);
+                }
+                Some(Type::List(Box::new(Type::Str)))
+            }
+            "take" => {
+                if !arity(2) {
+                    self.diag(ARG_COUNT, "`take` cần 2 đối số", span);
+                } else {
+                    if let Some(t) = tys.first() {
+                        if !matches!(t, Type::List(_) | Type::Error) {
+                            self.diag(MISMATCH, "`take` cần `list[str]` ở đối số 1", span);
+                        }
+                    }
+                    if let Some(t) = tys.get(1) {
+                        if !matches!(t, Type::Int | Type::Error) {
+                            self.diag(MISMATCH, "`take` cần `int` ở đối số 2", span);
+                        }
+                    }
+                }
+                Some(Type::List(Box::new(Type::Str)))
+            }
             "len" => {
                 if !arity(1) {
                     self.diag(

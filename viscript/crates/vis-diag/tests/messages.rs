@@ -105,10 +105,10 @@ fn snapshot_6_ca_so_ten_03xx() {
     // nay `Some`; khối **chưa** cấp là `06xx`.
     assert!(lookup(401).is_some(), "ST-12 đã cấp sổ kiểu `04xx`");
     assert!(lookup(501).is_some(), "ST-13 đã cấp sổ runtime `05xx`");
-    assert!(
-        lookup(601).is_none(),
-        "mã 601 chưa cấp ở ST-13 (khối `06xx`)"
-    );
+    // **SỬA KÈM LÝ DO (ST-18)**: ST-18 cấp sổ thứ sáu `06xx` ⇒ `lookup(601)` nay `Some`; mã chưa cấp
+    // là `701` (khối `07xx` của vòng sau).
+    assert!(lookup(601).is_some(), "ST-18 đã cấp sổ lệnh `06xx`");
+    assert!(lookup(701).is_none(), "mã 701 chưa cấp (khối `07xx`)");
 }
 
 /// Bộ 12 snapshot cho **sổ kiểu** `04xx` (ST-12, VD-42): 4 mã × vi/en/ja.

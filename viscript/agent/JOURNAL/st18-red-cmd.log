@@ -1,0 +1,74 @@
+=== ST-18 D2-05: cmd_lower (`.vish` chạy được) — ĐỎ TRƯỚC khi hiện thực ===
+thời điểm chụp: 2026-11-13T01:22:20Z
+
+Ba lớp đỏ, chụp **trước** khi viết code (ảnh 1) và bằng cách tạm gỡ bản vá
+  (`git stash push -- crates/vis-types/src crates/vis-interp/src crates/vis-cli/src`) cho ảnh 2:
+
+ẢNH 1 — `crates/vis-cli/tests/cmd_run.rs` (9 ca) chạy trên binary **trước ST-18**:
+  `vis run *.vish` còn `Bail out! ... (VS1) chưa chạy được ở VS0 (ST-14)` ⇒ **8/9 ca ĐỎ**;
+  1 ca xanh oan (ca chỉ kiểm exit 2).
+ẢNH 2 — `crates/vis-types/tests/cmd_lower.rs` (9 ca) + `crates/vis-cli/tests/cmd_run.rs` trên code cũ:
+  cmd_lower: 2 ca hỏng (stmts=0 vì `lower` trả `LowerError::CommandMode`); cmd_run: 8 ca hỏng.
+ẢNH 3 — 14 ca `.vish` trong `test/sem/vish/` (pipeline, `;`, `--flag`, VS0601..0604): đỏ vì
+  `vis run *.vish` chỉ `Bail out!`; harness `sem.rs` mở rộng đuôi `.vish` nên đếm được chúng.
+
+sha256 (bản commit):
+  sha256 crates/vis-types/src/lower/cmd.rs=deb603df4b0acf58af97ff5a838146a6e707f8dcece42abf68766a84a1ba6d2e
+  sha256 crates/vis-types/src/lower.rs=43a208263ec0e3e2eb6bd393a8eb6875014a0478fa4edd68b75a6514e7015fca
+  sha256 crates/vis-types/src/tyck/expr.rs=aa4faee7a643e3dc213cc0f8b753ca910a3a2bb93b5f8321af47fc618b3b511d
+  sha256 crates/vis-interp/src/builtin.rs=1a05cd78805717a025ac8f82df713c88c05e8019b11d24e2f689921a336b7ec8
+  sha256 crates/vis-interp/src/interp.rs=38f4c5a6318e1fbe22adfc2db16e42e17ac7149883c3cd935e42ff8658e7d323
+  sha256 crates/vis-cli/src/main.rs=02361f1d40b2051bb7e50748661a930dc17f77d5a521af3e80a8f2d59cf88e1e
+  sha256 crates/vis-cli/tests/cmd_run.rs=8b1132012b21f4f0bbe4a3fc523829e4da1f11a738aaf6fb9ef8294cd92af770
+  sha256 crates/vis-types/tests/cmd_lower.rs=a3768e0fad9080548945d5e2c13cd6f6f24aad3e64e0f3b0675f01d8ce20db58
+  sha256 crates/vis-cli/tests/sem.rs=dbd0bd04a82c5ce7f3d1b911c8714a583b7b65a8de00255b79f0971ea86dad77
+  sha256 crates/vis-diag/src/lib.rs=1b328982385b8c6bd84cb2a0c8362466c26d568742772e71e492f600d5e54a65
+  sha256 test/doc-examples/doc_examples.py=8c65b187c4808b521d7f1b454e301123cabb68e04dd65d30c7a9406d3924e75e
+  test/sem/vish/** (14 ca)=eb2152e94bd7e398d57d110182f634735c8d15f1a18cfadb0a156d6684b3e350
+
+----- ẢNH 1 (đỏ thật, trước khi code) -----
+test pipeline_ba_stage_chay ... FAILED
+test chay_nen_la_vs0604 ... FAILED
+test hai_item_bang_cham_phay ... FAILED
+test noi_khong_duoc_la_vs0603 ... FAILED
+test check_bao_lenh_la_vs0601 ... FAILED
+test check_khong_con_bail_out ... ok
+test sai_doi_so_la_vs0602 ... FAILED
+test flag_co_default ... FAILED
+test lenh_khong_ton_tai_la_vs0601 ... FAILED
+test result: FAILED. 1 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+----- ẢNH 2 (đỏ trên code cũ, sau stash) -----
+thread 'cham_phay_thanh_hai_cau_lenh_tuan_tu' (38201181) panicked at crates/vis-types/tests/cmd_lower.rs:46:5:
+  left: 0
+ right: 2
+thread 'noi_khong_duoc_la_vs0603' (38201187) panicked at crates/vis-types/tests/cmd_lower.rs:14:5:
+thread 'lenh_la_la_vs0601' (38201186) panicked at crates/vis-types/tests/cmd_lower.rs:14:5:
+thread 'chay_nen_la_vs0604' (38201183) panicked at crates/vis-types/tests/cmd_lower.rs:14:5:
+thread 'chan_doan_co_dong_cot_that' (38201182) panicked at crates/vis-types/tests/cmd_lower.rs:93:35:
+thread 'pipeline_ba_stage_ha_thanh_ba_call_long_nhau' (38201188) panicked at crates/vis-types/tests/cmd_lower.rs:41:5:
+  left: 0
+ right: 1
+thread 'flag_bool_dung_default' (38201185) panicked at crates/vis-types/tests/cmd_lower.rs:52:5:
+  left: 0
+ right: 1
+thread 'chuong_trinh_ngoai_la_vs0604' (38201184) panicked at crates/vis-types/tests/cmd_lower.rs:14:5:
+thread 'sai_doi_so_la_vs0602' (38201189) panicked at crates/vis-types/tests/cmd_lower.rs:14:5:
+test result: FAILED. 0 passed; 9 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+thread 'lenh_khong_ton_tai_la_vs0601' (38201560) panicked at crates/vis-cli/tests/cmd_run.rs:73:5:
+thread 'pipeline_ba_stage_chay' (38201562) panicked at crates/vis-cli/tests/cmd_run.rs:53:5:
+  left: (2, "")
+ right: (0, "[x, y]\n")
+thread 'flag_co_default' (38201558) panicked at crates/vis-cli/tests/cmd_run.rs:60:5:
+  left: (2, "")
+ right: (0, "A B\n")
+thread 'noi_khong_duoc_la_vs0603' (38201561) panicked at crates/vis-cli/tests/cmd_run.rs:87:5:
+thread 'hai_item_bang_cham_phay' (38201559) panicked at crates/vis-cli/tests/cmd_run.rs:66:5:
+  left: (2, "")
+ right: (0, "a\nb\n")
+thread 'check_bao_lenh_la_vs0601' (38201556) panicked at crates/vis-cli/tests/cmd_run.rs:107:5:
+  left: 0
+ right: 1
+thread 'chay_nen_la_vs0604' (38201555) panicked at crates/vis-cli/tests/cmd_run.rs:94:5:
+thread 'sai_doi_so_la_vs0602' (38201563) panicked at crates/vis-cli/tests/cmd_run.rs:80:5:
+test result: FAILED. 1 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+----- hết -----

@@ -160,9 +160,12 @@ fn thu_tu_tep_dung_theo_tham_so_truyen_vao() {
 
 #[test]
 fn vish_duoc_kiem_bang_cmdcst() {
-    // ST-06: `.vish` kiểm bằng `Mode::Command` — ca **chỉ đúng ở chế độ lệnh** (`^git`, pipeline,
-    // `let` có kiểu) phải `ok`, tệp lỗi phải `not ok` + đúng 1 chẩn đoán.
-    let ok = fx("cmd_ok.vish");
+    // ST-06: `.vish` kiểm bằng `Mode::Command` — ca **chỉ đúng ở chế độ lệnh** phải `ok`, tệp lỗi
+    // phải `not ok` + đúng 1 chẩn đoán.
+    // **SỬA KÈM LÝ DO (ST-18)**: từ ST-18 `vis check *.vish` **hạ thật** (`cmd_lower`) rồi kiểm kiểu,
+    // nên ca cũ `cmd_ok.vish` (dùng `^git`, `ls`, `grep` — **ngoài bảng chữ ký VS0**) nay đúng là
+    // `not ok` với `VS0601`/`VS0604`; ca "hợp lệ" mới là `cmd_vs0_ok.vish` chỉ dùng lệnh VS0.
+    let ok = fx("cmd_vs0_ok.vish");
     let o = run_strs(&[&ok]);
     assert_eq!(o.status.code(), Some(0), "tệp .vish hợp lệ ⇒ exit 0");
     let out = stdout(&o);
@@ -171,6 +174,13 @@ fn vish_duoc_kiem_bang_cmdcst() {
         out.contains(&format!("ok 1 - {ok}")),
         "phải `ok` thật (CmdCST): {out}"
     );
+    assert!(!out.contains("Bail out!"), "không còn bail out: {out}");
+
+    // Ca cũ (lệnh ngoài bảng VS0) — vẫn **không** Bail out, mà `not ok` + đúng 1 chẩn đoán `VS06xx`.
+    let cu = fx("cmd_ok.vish");
+    let o = run_strs(&[&cu]);
+    assert_eq!(o.status.code(), Some(1), "lệnh ngoài bảng VS0 ⇒ exit 1");
+    let out = stdout(&o);
     assert!(!out.contains("Bail out!"), "không còn bail out: {out}");
 
     let bad = fx("cmd_bad.vish");
@@ -218,15 +228,20 @@ fn hai_khoi_vish_session_qua_cli_deu_ok() {
         std::fs::write(&p, b).expect("ghi khối");
         files.push(p.to_string_lossy().into_owned());
     }
+    // **SỬA KÈM LÝ DO (ST-18)**: 2 khối ```vish-session của tài liệu dùng lệnh **VS1** (`ls`,
+    // `where`, `sort_by`, `each`, …) — chúng **không** có trong bảng chữ ký VS0, nên từ khi `.vish`
+    // hạ thật thì đúng là `not ok` với **đúng một** chẩn đoán `VS0601` mỗi tệp (không Bail out,
+    // không im lặng). Bất biến cũ "parse được" vẫn giữ: `vis check` chạy hết, TAP đủ 2 dòng.
     let o = run(&files);
     let out = stdout(&o);
-    assert_eq!(
-        o.status.code(),
-        Some(0),
-        "2 khối vish-session phải sạch: {out}"
-    );
+    assert_eq!(o.status.code(), Some(1), "khối dùng lệnh ngoài VS0: {out}");
     assert_eq!(lines(&o)[1], "1..2");
-    assert_eq!(out.matches("ok ").count(), 2, "{out}");
+    assert_eq!(out.matches("not ok ").count(), 2, "{out}");
+    assert_eq!(
+        out.matches("VS0601").count(),
+        2,
+        "mỗi khối đúng một VS0601 (lệnh ngoài bảng VS0): {out}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

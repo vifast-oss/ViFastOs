@@ -615,22 +615,27 @@ fn khong_panic_tren_7_khoi_loai_tru_va_rac() {
 }
 
 #[test]
-fn cst_che_do_lenh_bao_loi_tuong_minh() {
-    // VD-22/VD-44 #6: `cmd_lower` là VS1 ⇒ `lower` báo lỗi cấp API, **không** panic.
-    let src = "ls | grep foo\n";
+fn cst_che_do_lenh_ha_that_qua_cmd_lower() {
+    // **SỬA KÈM LÝ DO (ST-18)**: VD-22 pha 2 đã hiện thực (`cmd_lower`) ⇒ `lower` trên CST chế độ
+    // lệnh **hạ thật** (không còn `LowerError::CommandMode`). Giữ nguyên tính chất "không panic";
+    // ca lệnh ngoài bảng VS0 (`ls`) nay cho **chẩn đoán `VS0601`** thay vì lỗi cấp API.
+    let src = "echo \"a\"\n";
     let p = parse(src, Mode::Command);
     let h = lower(&p.cst, &lex(src, Mode::Command));
-    assert_eq!(
-        h.error,
-        Some(vis_types::LowerError::CommandMode),
-        "CST chế độ lệnh phải trả LowerError::CommandMode"
-    );
-    assert!(h.hir.stmts.is_empty());
+    assert!(h.error.is_none(), "không còn lỗi cấp API: {:?}", h.error);
+    assert_eq!(h.hir.stmts.len(), 1, "một dòng lệnh ⇒ một `HStmt`");
+
+    let p2 = parse("ls | grep foo\n", Mode::Command);
+    let h2 = lower(&p2.cst, &lex("ls | grep foo\n", Mode::Command));
     assert!(
-        vis_types::LowerError::CommandMode
-            .message()
-            .contains("cmd_lower"),
-        "thông điệp phải chỉ đúng task VS1"
+        h2.error.is_none(),
+        "không panic/lỗi cấp API: {:?}",
+        h2.error
+    );
+    assert_eq!(
+        h2.diagnostics.first().map(|d| d.code.short),
+        Some("VS0601"),
+        "lệnh ngoài bảng chữ ký VS0 ⇒ VS0601"
     );
 }
 

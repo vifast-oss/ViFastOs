@@ -58,7 +58,11 @@ fn gom_ca() -> Vec<Ca> {
         let mut ca: Vec<PathBuf> = std::fs::read_dir(&d)
             .unwrap_or_else(|e| panic!("không đọc được {}: {e}", d.display()))
             .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().map(|x| x == "vis").unwrap_or(false))
+            .filter(|p| {
+                p.extension()
+                    .map(|x| x == "vis" || x == "vish")
+                    .unwrap_or(false)
+            })
             .collect();
         ca.sort();
         for f in ca {
@@ -101,20 +105,21 @@ fn steps_cua(stderr: &str) -> usize {
 }
 
 #[test]
-fn sem_309_ca_qua_binary() {
+fn sem_323_ca_qua_binary() {
     let ds = gom_ca();
     let mut theo_nhom: BTreeMap<String, usize> = BTreeMap::new();
     for c in &ds {
         *theo_nhom.entry(c.nhom.clone()).or_default() += 1;
     }
-    // ST-15: khoá **300 ca / 16 nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
+    // ST-15: khoá **ca / nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
+    // ST-18: 309 `.vis` + 14 `.vish` (nhóm `vish`, chế độ lệnh) ⇒ **323 ca / 17 nhóm**.
     assert_eq!(
         ds.len(),
-        309,
-        "phải đúng 309 ca, thật {} — nhóm: {theo_nhom:?}",
+        323,
+        "phải đúng 323 ca (309 `.vis` + 14 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
-    assert_eq!(theo_nhom.len(), 16, "phải đúng 16 nhóm, thật {theo_nhom:?}");
+    assert_eq!(theo_nhom.len(), 17, "phải đúng 17 nhóm, thật {theo_nhom:?}");
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())
         .expect("đọc test/sem")
@@ -124,14 +129,18 @@ fn sem_309_ca_qua_binary() {
             std::fs::read_dir(d)
                 .expect("đọc nhóm")
                 .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| p.extension().map(|x| x == "vis").unwrap_or(false))
+                .filter(|p| {
+                    p.extension()
+                        .map(|x| x == "vis" || x == "vish")
+                        .unwrap_or(false)
+                })
                 .count()
         })
         .sum();
     assert_eq!(
         tren_dia,
         ds.len(),
-        "số tệp `.vis` ({tren_dia}) phải bằng số ca chạy ({})",
+        "số tệp `.vis`/`.vish` ({tren_dia}) phải bằng số ca chạy ({})",
         ds.len()
     );
     for (nhom, n) in &theo_nhom {

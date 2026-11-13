@@ -34,7 +34,9 @@ FIXTURES = REPO / "viscript" / "test" / "doc-examples"
 SPDX = "# SPDX-License-Identifier: MIT OR Apache-2.0"
 FENCE = re.compile(r"^```(vis|vish-session)\s*$")
 # Số do Agent 0 chốt cho VT09/QD §7.4 — ĐỔI là thay đổi ngưỡng, phải xin Agent 0.
-ALLOW_COUNT = 7
+# 9 mục: 2 mục thêm ở **ST-18** cho §9.7 (`vish-session` dùng lệnh shell VS1 — ngoài bảng chữ ký VS0);
+# mỗi mục vẫn phải **thật đỏ** khi `vis check` (đỏ bằng `VS0601`), không phải để né cổng.
+ALLOW_COUNT = 9
 BLOCK_COUNT = 24
 VISH_COUNT = 2
 QD_COUNT = 12

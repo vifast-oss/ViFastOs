@@ -7,7 +7,8 @@
 //! - tên **giá trị** chưa khai ⇒ `VS0301` — mặc định chỉ ở chỗ chắc chắn sai (**gán** cho tên
 //!   chưa khai), và ở **mọi** lần dùng khi bật `NamePolicy::Strict`;
 //! - tên **kiểu** chưa khai **không** báo `VS0301` ở ST-11 (ST-12 làm) — giữ `Type::TypeRef`;
-//! - **8 tên giá trị dựng sẵn** khoá bằng test (VD-44 #3: thêm/bớt phải qua Agent 0).
+//! - **11 tên giá trị dựng sẵn** khoá bằng test (VD-44 #3: thêm/bớt phải qua Agent 0; **ST-18**
+//!   thêm `echo`/`lines`/`take` — 3 lệnh chế độ lệnh, **đã được Agent 0 duyệt** trong báo cáo trước code).
 
 use vis_syntax::{lex, parse, Mode};
 use vis_types::{
@@ -471,11 +472,15 @@ fn gan_ten_la_chi_mot_vs0301_moi_dang() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn danh_sach_builtin_khoa_dung_8_ten() {
+fn danh_sach_builtin_khoa_dung_11_ten() {
+    // **SỬA KÈM LÝ DO (ST-18)**: thêm 3 lệnh builtin của chế độ lệnh (`echo`/`lines`/`take`) —
+    // Agent 0 đã duyệt (báo cáo trước code, (c) 3 lệnh builtin).
     assert_eq!(
         BUILTIN_VALUE_NAMES,
-        ["print", "len", "str", "Ok", "Err", "Some", "None", "ref"],
-        "VD-44 #3: 8 tên giá trị dựng sẵn — thêm/bớt phải qua Agent 0"
+        [
+            "print", "len", "str", "echo", "lines", "take", "Ok", "Err", "Some", "None", "ref"
+        ],
+        "VD-44 #3: 11 tên giá trị dựng sẵn (8 cũ + 3 lệnh chế độ lệnh ST-18) — thêm/bớt phải qua Agent 0"
     );
     for n in BUILTIN_VALUE_NAMES {
         assert!(vis_types::is_builtin_value(n), "{n} phải là builtin");

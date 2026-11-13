@@ -1302,7 +1302,8 @@ pub(crate) fn pos(text: &str, span: Span) -> (u32, u32) {
 }
 
 /// 8 tên dựng sẵn (VD-44 #3) mà bộ thông dịch gọi trực tiếp.
-/// Cap **độ sâu khung gọi** (ST-15): 10^4 khung — vượt ⇒ `VS0501` thay vì tràn stack process.
+/// Cap **độ sâu khung gọi** (ST-15): **2.000** khung (đo 10^4 tràn stack cả trên luồng 256 MiB) —
+/// vượt ⇒ `VS0501` thay vì tràn stack process.
 pub(crate) const MAX_CALL_DEPTH: u32 = 2_000;
 
 fn builtin_name(name: &str) -> Option<&'static str> {
@@ -1315,6 +1316,10 @@ fn builtin_name(name: &str) -> Option<&'static str> {
         "Some" => Some("Some"),
         "None" => Some("None"),
         "ref" => Some("ref"),
+        // ST-18: 3 lệnh builtin của chế độ lệnh (VS0) — chữ ký ở `vis-types/lower/cmd.rs`.
+        "echo" => Some("echo"),
+        "lines" => Some("lines"),
+        "take" => Some("take"),
         _ => None,
     }
 }

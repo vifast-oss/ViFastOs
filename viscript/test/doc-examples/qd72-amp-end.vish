@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # QD 7.2: `&` nền chỉ khi là token cuối dòng
-# kỳ vọng: ok
+# kỳ vọng: VS0604
+# ST-18 (sửa kèm lý do): `.vish` nay hạ thật (`cmd_lower`) ⇒ lệnh ngoài bảng chữ ký VS0 cho VS0601;
+# `&` ⇒ VS0604. Phần **lex/CmdCST** của ca QD §7.2 không đổi.
 ls &
 pwd

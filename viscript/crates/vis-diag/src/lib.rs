@@ -244,6 +244,43 @@ pub const TYPE_CODES: [Code; 4] = [
 
 /// Sổ **mã runtime** `05xx` (VD-42, ST-13) — sổ thứ năm: `VS0501` lỗi runtime chung (tràn `i64`,
 /// phép chưa hỗ trợ ở VS0), `VS0502` chia/lấy dư cho 0, `VS0503` chỉ số ngoài phạm vi.
+/// Khối `06xx` — **chế độ lệnh** (ST-18, VD-52). Bốn mã, đúng phạm vi VS0:
+/// lệnh không có trong bảng chữ ký, sai đối số, pipeline không nối được, tính năng chưa hỗ trợ.
+pub const COMMAND_CODES: [Code; 4] = [
+    Code {
+        id: 601,
+        short: "VS0601",
+        message_vi: "không có lệnh này: tên không có trong bảng chữ ký (cmd/builtin/extern)",
+        message_en: "no such command: name not found in the signature table (cmd/builtin/extern)",
+        message_ja: "そのコマンドはありません: シグネチャ表（cmd/builtin/extern）にありません",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 602,
+        short: "VS0602",
+        message_vi: "sai đối số lệnh: thiếu, thừa hoặc sai kiểu",
+        message_en: "bad command argument: missing, extra or wrong type",
+        message_ja: "コマンド引数が不正です: 不足・過剰・型違い",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 603,
+        short: "VS0603",
+        message_vi: "pipeline không nối được: kiểu ra của stage trước ≠ kiểu vào của stage sau",
+        message_en: "pipeline not connectable: previous stage output type ≠ next stage input type",
+        message_ja: "パイプが接続できません: 前段の出力型と次段の入力型が異なります",
+        severity: Severity::Error,
+    },
+    Code {
+        id: 604,
+        short: "VS0604",
+        message_vi: "tính năng chưa hỗ trợ ở VS0 (ví dụ chạy nền `&`)",
+        message_en: "feature not supported in VS0 (e.g. background `&`)",
+        message_ja: "VS0 では未対応の機能です（例: バックグラウンド `&`）",
+        severity: Severity::Error,
+    },
+];
+
 pub const RUNTIME_CODES: [Code; 3] = [
     Code {
         id: 501,
@@ -274,17 +311,18 @@ pub const RUNTIME_CODES: [Code; 3] = [
 /// **Năm sổ** mã lỗi đã cấp ở ST-13: từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`,
 /// runtime `05xx` (VD-27/VD-35/VD-42). Nay **mọi** khối dành trước đều đã có mã; `06xx` là khối
 /// kế tiếp chưa cấp nên [`next_block`] vẫn trả **601**.
-pub const BOOKS: [&[Code]; 5] = [
+pub const BOOKS: [&[Code]; 6] = [
     &CODES,
     &SYNTAX_CODES,
     &NAME_CODES,
     &TYPE_CODES,
     &RUNTIME_CODES,
+    &COMMAND_CODES,
 ];
 
-/// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`05xx`); VD-42 cấp `04xx` ở ST-12 và
-/// `05xx` ở ST-13. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
-pub const BLOCKS_RESERVED: [u16; 5] = [1, 2, 3, 4, 5];
+/// Khối mã **đã dành trước** theo sơ đồ VD-27 (`01xx`..`06xx`); VD-42 cấp `04xx` ở ST-12, `05xx` ở
+/// ST-13, ST-18 cấp `06xx`. Dùng cho [`next_block`] để khối kế không rơi vào khối đã dành.
+pub const BLOCKS_RESERVED: [u16; 6] = [1, 2, 3, 4, 5, 6];
 
 /// Duyệt **cả bốn sổ** đã cấp, theo đúng thứ tự khối.
 pub fn all_codes() -> impl Iterator<Item = &'static Code> {
@@ -294,7 +332,7 @@ pub fn all_codes() -> impl Iterator<Item = &'static Code> {
 /// Tra một mã theo số (ví dụ `103` ⇒ `VS0103`). `None` nếu chưa cấp.
 ///
 /// Tra **cả bốn sổ** đã cấp (VD-42): từ vựng `01xx`, cú pháp `02xx`, tên `03xx`, kiểu `04xx`.
-/// Nay đủ **năm sổ** (`01xx`..`05xx`); `lookup(601)` mới là `None`.
+/// Nay đủ **sáu sổ** (`01xx`..`06xx`); `lookup(701)` mới là `None`.
 /// [`CODES`]/[`SYNTAX_CODES`] vẫn nguyên vẹn nên test "khớp SPEC-lex §7" không đổi.
 pub fn lookup(id: u16) -> Option<&'static Code> {
     all_codes().find(|c| c.id == id)
@@ -313,8 +351,8 @@ pub fn lookup_str(s: &str) -> Option<&'static Code> {
 /// Khối mã kế tiếp còn trống (quy tắc cấp): trả số đầu của khối mới, không tái dùng.
 ///
 /// Suy ra từ **khối** đã cấp ([`all_codes`]: `01xx`..`05xx`) **và** khối đã **dành trước**
-/// ([`BLOCKS_RESERVED`]: `01xx`..`05xx`) ⇒ `max(3, 5) + 1 = 06` ⇒ **`601`** (VD-42). Không hardcode
-/// `601`; thêm sổ mới thì số tự nhảy.
+/// ([`BLOCKS_RESERVED`]: `01xx`..`06xx`) ⇒ `max(3, 6) + 1 = 07` ⇒ **`701`** (VD-42, ST-18). Không
+/// hardcode `701`; thêm sổ mới thì số tự nhảy.
 pub fn next_block() -> u16 {
     // Suy ra từ **khối** đã cấp (mã lớn nhất / 100) và khối đã dành trước — không hardcode số.
     let issued = all_codes().map(|c| c.id / 100).max().unwrap_or(0);
@@ -445,8 +483,9 @@ mod tests {
         // và dành trước `04xx`/`05xx`; `next_block` nay suy ra từ khối, không đếm mã.
         assert_eq!(
             next_block(),
-            601,
-            "01xx..05xx đã cấp/dành trước ⇒ khối kế 06xx (601)"
+            701,
+            // **SỬA KÈM LÝ DO (ST-18)**: `06xx` đã cấp đủ 4 mã ⇒ khối kế là `07xx` (701).
+            "01xx..06xx đã cấp/dành trước ⇒ khối kế 07xx (701)"
         );
     }
 
@@ -499,17 +538,22 @@ mod tests {
         assert_eq!(ids, vec![301, 302]);
         assert_eq!(NAME_CODES[0].short, "VS0301");
         assert_eq!(NAME_CODES[1].short, "VS0302");
-        // Năm sổ đã cấp: 10 + 2 + 2 + 4 + 3 mã (ST-13 cấp `05xx`).
-        assert_eq!(all_codes().count(), 21);
-        assert_eq!(BOOKS.len(), 5);
-        for id in [601u16, 602] {
+        // **SỬA KÈM LÝ DO (ST-18)**: ST-18 cấp sổ thứ **sáu** `06xx` (4 mã chế độ lệnh) ⇒
+        // 10 + 2 + 2 + 4 + 3 + 4 = **25** mã, **6** sổ; `lookup(601)` nay **có**, mã chưa cấp là `701`.
+        assert_eq!(all_codes().count(), 25);
+        assert_eq!(BOOKS.len(), 6);
+        for id in [601u16, 602, 603, 604] {
             assert!(
-                lookup(id).is_none(),
-                "mã {id} chưa cấp ở ST-13 (khối `06xx`)"
+                lookup(id).is_some(),
+                "mã {id} phải có ở ST-18 (khối `06xx`)"
             );
         }
-        // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx/05xx.
-        assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5]);
+        assert!(
+            lookup(701).is_none(),
+            "mã 701 chưa cấp — khối `07xx` là của vòng sau"
+        );
+        // Khối đã dành trước vẫn chặn `next_block` rơi vào 04xx..06xx.
+        assert_eq!(BLOCKS_RESERVED, [1, 2, 3, 4, 5, 6]);
         for c in NAME_CODES.iter() {
             for lang in [Lang::Vi, Lang::En, Lang::Ja] {
                 assert!(!c.message(lang).is_empty(), "{} thiếu {:?}", c.short, lang);

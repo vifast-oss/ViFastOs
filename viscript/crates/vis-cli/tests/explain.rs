@@ -105,12 +105,13 @@ fn explain_so_ten_03xx() {
     for want in ["VS0301", "VS0302"] {
         assert!(text.contains(want), "--list thiếu {want}: {text}");
     }
-    // Sửa kỳ vọng cũ kèm lý do: ST-12 cấp sổ kiểu `04xx`, **ST-13 cấp** sổ runtime `05xx` (VD-42)
-    // ⇒ `VS0501` nay có trong danh sách + `explain` exit 0; mã **chưa** cấp là `VS0601`.
+    // Sửa kỳ vọng cũ kèm lý do: ST-12 cấp `04xx`, ST-13 cấp `05xx`, **ST-18 cấp `06xx`** ⇒
+    // `VS0501`/`VS0601` nay có trong danh sách + `explain` exit 0; mã **chưa** cấp là `VS0701`.
     assert!(text.contains("VS0412"), "ST-12 cấp 04xx: {text}");
     assert!(text.contains("VS0501"), "ST-13 cấp 05xx: {text}");
-    let (code, _) = vis(&["explain", "VS0601"]);
-    assert_eq!(code, 2, "mã chưa cấp phải exit 2");
+    assert!(text.contains("VS0601"), "ST-18 cấp 06xx: {text}");
+    let (code, _) = vis(&["explain", "VS0701"]);
+    assert_eq!(code, 2, "mã chưa cấp (07xx) phải exit 2");
 }
 
 #[test]
@@ -137,8 +138,11 @@ fn explain_so_kieu_04xx() {
     }
     let (code, _) = vis(&["explain", "VS0501"]);
     assert_eq!(code, 0, "ST-13 đã cấp 05xx");
+    // **SỬA KÈM LÝ DO (ST-18)**: `06xx` đã cấp ⇒ `VS0601` exit 0; mã chưa cấp là `VS0701`.
     let (code, _) = vis(&["explain", "VS0601"]);
-    assert_eq!(code, 2, "06xx chưa cấp");
+    assert_eq!(code, 0, "ST-18 đã cấp 06xx");
+    let (code, _) = vis(&["explain", "VS0701"]);
+    assert_eq!(code, 2, "07xx chưa cấp");
 }
 
 #[test]

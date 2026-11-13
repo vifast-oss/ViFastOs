@@ -6,13 +6,14 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-17** (báo cáo R2 — chốt VS0) — xong 2026-11-13, **chưa commit** (uỷ quyền commit).
-Bước          : 4/4 (bằng chứng số đo → viết R2 → gate chứa máy kiểm báo cáo → cổng)
+Task          : **ST-18** (`cmd_lower`: `.vish` hạ xuống HIR + chạy được) — xong kỹ thuật 2026-11-13,
+                **chưa commit** (chờ Agent 0 OK).
+Bước          : 4/4 (đỏ trước → hiện thực → xanh → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T00:56:44Z = 2026-11-13 09:56 JST; không retry; **247** test; **1** test `sem`
-                chạy **309 ca**; máy kiểm báo cáo: `report-check: PASS (2 báo cáo, 20 hàng QUEUE phủ đủ)`)
-Việc dở       : — (**VS0 đã chốt**; chờ Agent 0 duyệt R2 và sửa 2 hàng QUEUE thiếu cột)
+                (2026-11-13T01:29:53Z = 2026-11-13 10:29 JST; không retry) — **265** test; **1** test `sem` chạy
+                **323 ca / 17 nhóm** (309 `.vis` + 14 `.vish`)
+Việc dở       : chờ Agent 0 duyệt rồi commit `[ST-18]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +46,25 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-18 — `cmd_lower`: `.vish` chạy được (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`cmd_lower`** (`crates/vis-types/src/lower/cmd.rs`, ~430 dòng) | CST chế độ lệnh ⇒ **cùng HIR**: mỗi dòng lệnh = pipeline lồng call; `cmd` decl hạ thành `HItem::Fn` với `FnKind::Cmd` (đúng thiết kế §9.2 "cmd là hàm bình thường"); `;` ⇒ nhiều `HStmt` tuần tự |
+| 2 | **Khe ống** (Agent 0 duyệt (a)1) | tham số vị trí **đầu tiên** khớp kiểu với giá trị vào **giữ chỗ trước** (đối số vị trí không chiếm mất); `echo "a\nb" \| lines \| take 1` ⇒ `take(lines(echo("a\nb")), 1)`; không có khe khớp ⇒ `VS0603` |
+| 3 | **Sổ thứ sáu `06xx`** | `VS0601` lệnh không tồn tại · `VS0602` sai đối số/kiểu · `VS0603` pipeline không nối · **`VS0604`** chưa hỗ trợ ở VS0 (`&`, `^…`, `$x`/`$env`) — vi/en/ja; `BOOKS` **6**, `all_codes()` = **25**, `next_block()` ⇒ **701** |
+| 4 | **3 lệnh builtin** | `echo(a, b="", c="", --upper: bool=false) -> str` · `lines(s) -> list[str]` · `take(xs, n) -> list[str]`; **bỏ `pwd`** (không FS); variadic `...rest` **chưa có** ⇒ hạn chế đã biết |
+| 5 | **CLI** | `vis check *.vish` = parse + **cmd_lower** + tyck (bỏ "parse-only"); `vis run *.vish` **chạy** qua interp (bỏ `Bail out!`); chẩn đoán `<tệp>:<dòng>:<cột>` thật |
+| 6 | **Ca** | 14 ca `.vish` trong `test/sem/vish/` (pipeline 2–3 stage, `--flag`, `;`, VS0601/0602/0603/0604) + `cmd_lower.rs` (9 ca) + `cmd_run.rs` (9 ca) ⇒ `sem` **323 ca/17 nhóm** (309 + 14), workspace **265** test |
+
+**Đỏ trước** `JOURNAL/st18-red-cmd.log`: 8/9 ca `cmd_run` đỏ trên binary cũ (`Bail out!`), 2 ca `cmd_lower`
+hỏng trên code cũ (`LowerError::CommandMode`), 14 ca `.vish` đỏ; hash log khớp bản commit.
+
+**5 kỳ vọng cũ phải sửa (kèm lý do trong tệp)**: `vis-diag` `all_codes` 21→25/`lookup(601)`/`next_block`
+601→701; `vis-diag/tests/messages.rs` `lookup(601)`; `vis-types/tests/names.rs` 8→**11** tên dựng sẵn
+(Agent 0 duyệt 3 lệnh); `vis-types/tests/hir.rs` `CommandMode` ⇒ hạ thật; `vis-cli/tests/explain.rs`
+`VS0601` exit 0 / `VS0701` exit 2; `vis-cli/tests/check.rs` (lệnh ngoài bảng VS0 nay `not ok` + VS0601).
 
 ## ST-17 — báo cáo **R2** + chốt VS0 (2026-11-13)
 
