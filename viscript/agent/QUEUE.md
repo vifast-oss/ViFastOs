@@ -126,8 +126,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **DONE** | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | **DONE** | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
-| ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | **READY** | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
-| ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
+| ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | **DONE** | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
+| ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | **READY** | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
 | ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | BLOCKED | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
 | ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | BLOCKED | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
 | ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | BLOCKED | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
@@ -517,6 +517,19 @@ APPROVED 2026-11-13 Agent 0
 > differential 100k **0 lệch** (197,8 s). **Allowlst doc-examples 8 → 6** (VD-70): khối **1451** và **672** (§9.7) nay
 > **hợp lệ** — chặt hơn, không nới (APPROVED `59a407c` + `260fe8a`). Nợ **VSH1b**: `[1,2] | take 1` không ngoặc ⇒
 > `VS0201`; `( … )` làm đối số ⇒ `VS0603`. **ST-38 mở** (closure-arg + `where`/`each`/`first`/`count`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-38 DONE** — commit `86f7804` (**Agent 2 tự commit**): **closure-arg** hạ thành `Lambda` với span **tuyệt đối**
+> bằng đệm **byte** (có ca chứng minh bẫy nhiều byte: dòng tiếng Việt + emoji trước closure ⇒ cột **không đổi**);
+> **4 lệnh mới** `where`/`each`/`first`/`count` (hai chỗ `cmdsig` + `builtin`, **một** hiện thực qua `Host::call`);
+> `each` trả `()` và là **stage cuối** (nối tiếp ⇒ `VS0603`); `first` rỗng ⇒ `none`; **sugar `it`** (`where size > 5mb`
+> ⇒ `it.size > 5mb`, `where 1` ⇒ `VS0412`); `BUILTIN_VALUE_NAMES` **giữ 11**. **538** test (+17); sem **355**
+> (336 `.vis` + 28 `.vish`), `vis test` **355 ok**, parity **329/329**; differential 100k **0 lệch** (229,5 s).
+> **Allowlst giữ 6** (khối 672/1451 vẫn xanh). Hai bug tự phát hiện & sửa: `lower_vach` hạ vào **bảng chung**
+> (`RecId` ẩn danh); **không** thêm 4 lệnh vào `BUILTIN_VALUE_NAMES` (làm hỏng `fn first` của người dùng ⇒ `VS0302`).
+> Nợ: `where size` (kiểu không `bool`) hiện `VS0501` lúc chạy — "kiểm tĩnh khi pipe chưa rõ kiểu".
+> **ST-39 mở** (`sort_by --desc`).
 
 ## Ghi chú vận hành
 

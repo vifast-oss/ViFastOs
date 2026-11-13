@@ -517,3 +517,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   take 10`) **nay hợp lệ** — lệnh lạ = chương trình ngoài + khe hợp nhất; **chặt hơn, không nới**. (5) Nợ **VSH1b**:
   stage đầu là **biểu thức** không ngoặc (`[1,2] | take 1` ⇒ `VS0201`); `( … )` làm **đối số** ⇒ `VS0603`; chẩn đoán
   lúc chạy trong `( … )` dùng vị trí **tương đối** trong ngoặc.
+
+- **VD-71** **Closure-arg + lệnh shell VS1a (ST-38)**: (1) `CmdClosure` hạ thành `Lambda`; **span tuyệt đối** bằng cách
+  lex/parse `" ".repeat(offset_byte) + thân` ⇒ lỗi trong thân báo **đúng `dòng:cột` của tệp** (kể cả khi trước đó có
+  ký tự nhiều byte). (2) Lệnh mới `where[T](list[T], fn(T)->bool) -> list[T]`, `each[T](list[T], fn(T)->()) -> ()`,
+  `first[T](list[T]) -> T?`, `count[T](list[T]) -> int` — khai **hai chỗ** (`cmdsig` cho tyck/khe, `builtin` cho chạy),
+  **một** hiện thực dùng **`Host::call`** cho cả interp/VM; **không** thêm vào `BUILTIN_VALUE_NAMES` (chúng là lệnh
+  **chế độ shell**, thêm vào sẽ chặn `fn first` của người dùng ⇒ `VS0302`). (3) `each` trả `()` và **là stage cuối**
+  (nối tiếp ⇒ `VS0603`); `first` trên list rỗng ⇒ `none`. (4) **Sugar vị từ ngầm `it`**: đối số `where` không phải
+  closure ⇒ hạ `it => …`, chỉ đổi **định danh trần chưa khai báo** thành `it.<tên>`; `where 1` ⇒ **`VS0412`**.
+  (5) `lower_vach` hạ nhóm **vào bảng chung** (`RecId` ẩn danh phải cùng bảng). Nợ: `where size` (kiểu không `bool`)
+  hiện `VS0501` lúc chạy.
