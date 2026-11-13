@@ -571,3 +571,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   2 097 152; `modified` = duration **từ epoch** ⇒ **tất định**); không mock ⇒ `FsHost` thật. (4) **§9.7 khối 672 chạy
   thật end-to-end** với `--fs-mock` (bảng, interp ↔ `--vm` cùng byte). (5) `vis test` **không** có `--fs-mock` ⇒ fixture
   cần FS nằm ở `test/cmd/fs/**` chạy bằng test riêng, **không** tăng `sem` ảo.
+
+- **VD-77** **Phạm vi vòng 7 (VSH1b)**: (1) **`.vish` có khai báo kiểu** — `type`/`enum`/`let x: T`/`cmd f(…) -> T` được
+  chấp nhận **trong chế độ lệnh** (trước đây `(` bị hiểu là `CmdGroup`): khai báo là **item** đứng trước stage, không
+  trộn với biểu thức; tên trùng prelude ⇒ **`VS0302`**. (2) **`where` kiểm tĩnh đầy đủ**: khi kiểu `it` **biết được**
+  mà vị từ không ra `bool` ⇒ lỗi **kiểm tĩnh** (`VS0412`), hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ **giữ kiểm động**.
+  (3) **`ls --long` thật**: thêm cột thời gian (định dạng **tất định**, UTC) + quyền/kích thước **chỉ đọc** từ `FsHost`
+  (`MucFs` mở rộng `mode`/`mtime`), **không** đụng `Render` bảng mặc định (chỉ khi `--long`). (4) **`( … )` làm đối số**:
+  nhóm được dùng như biểu thức ở vị trí đối số; **chẩn đoán trong ngoặc** dùng vị trí **tuyệt đối** trong tệp (hết nợ
+  "vị trí tương đối"). (5) **Không** thêm mã lỗi mới trừ khi được duyệt; mọi thay đổi hành vi phải liệt kê ca `.out` đổi.
