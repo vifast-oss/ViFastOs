@@ -537,3 +537,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   theo **byte UTF-8**; **ổn định cả hai chiều** (đảo comparator, không đảo mảng). (4) Khoá `bool`/`map`/`record`/`list`/
   `set`/`unit` ⇒ **`VS0412`** (kiểm ở lowering cho `.vish` + `kiem_builtin` cho `.vis`; runtime `VS0501` là chốt hai).
   (5) `sort_by` 1 đối số (không closure) vẫn là **chương trình ngoài** (không bị tyck chặn).
+
+- **VD-73** **Prelude bản ghi + `VS0605` (ST-40a)**: (1) `FileEntry { name: str, size: size, modified: duration,
+  is_file: bool }` và `ProcEntry { pid: int, name: str, cpu: percent, mem: size }` khai **trong Rust**
+  (`vis-types/src/prelude.rs`) và đăng ký **chỉ khi hạ `.vish`** — `.vis` **không** thấy chúng (khai trùng vẫn chạy).
+  (2) `it` suy kiểu **thật** từ kiểu phần tử của giá trị vào (`kieu_text`/`kieu_stage`); không suy được (`{error}`/`Any`)
+  ⇒ **kiểm động** như cũ, **không** đỏ oan. (3) Viết tắt trường (`size` ≡ `it.size`) giữ luật VD-71. (4) **`VS0605`**
+  "trường không có trên `it`" trong sổ `06xx` (4 → 5 mã) ⇒ `all_codes()` **29**; `BOOKS` 7, `next_block()` **801**.
+  (5) `.vish` **chưa có** cú pháp khai `cmd`/`type`/`let` có kiểu ⇒ kiểu `it` thật đến từ **literal bản ghi** khớp
+  prelude; nợ: khi `.vish` có khai `type` ⇒ phải `VS0302` với tên prelude.

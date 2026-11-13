@@ -128,8 +128,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | **DONE** | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
 | ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | **DONE** | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | **DONE** | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
-| ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | **READY** | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
-| ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | BLOCKED | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
+| ST-40a | **Prelude bản ghi** `FileEntry`/`ProcEntry` + `it` + **viết tắt trường**; mã `VS0605` | ST-39 | 3 h | **DONE** | `where size > 5mb` xanh trên `list[FileEntry]`; 6 ca mơ hồ; sổ `06xx` 4 → 5 mã |
+| ST-40b | `get`/`select` chiếu theo trường (hạ thành `map` trên `it.<field>`) | ST-40a | 2 h | **READY** | `\| get name` ⇒ `list[str]`; trường không có ⇒ `VS0605` |
 | ST-41 | **`Render`**: bảng `list[bản ghi]` + khối khoá–giá trị; cột theo scalar sau **NFC** | ST-40b | 3 h | BLOCKED | 15 snapshot (Việt NFD/emoji/CJK); `print` cũ cho `list[str]` không đổi |
 | ST-42 | `ls`/`open` qua `FsHost` (`list_entries` + metadata), `--all/--long`, cờ **`--fs-mock`** | ST-41 | 3 h | BLOCKED | 12 ca tất định; pipeline §9.7 dòng 672 chạy được; allowlist **8 → 7** |
 | ST-43 | báo cáo **R6** (VSH1a) | ST-42 | 1,5 h | BLOCKED | MD + JSON `project: "viscript"`, số liệu tái lập, 8 hàng |
@@ -541,6 +541,18 @@ APPROVED 2026-11-13 Agent 0
 > **359 ok**, parity **333/333**; differential 100k **0 lệch** (202,8 s); allowlist **vẫn 6**. Nợ: **hai** `sort_by`
 > (shell vs `std.list`) ⇒ hợp nhất ở VS2; chạy end-to-end khối 672 ⇒ ST-42.
 > **ST-40a mở** (prelude bản ghi + `it` + viết tắt trường + `VS0605`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-40a DONE** — commit `9b97d75` (**Agent 2 tự commit**): **prelude bản ghi** `FileEntry`/`ProcEntry` khai trong
+> `vis-types/src/prelude.rs`, đăng ký **chỉ cho `.vish`** (`.vis` không thấy ⇒ không `VS0302` oan); `it` nay suy **kiểu
+> thật** từ kiểu phần tử (`kieu_text`/`kieu_stage`, **không** đụng `CmdSig`), không suy được ⇒ **kiểm động** như cũ;
+> **`VS0605`** "trường không có trên `it`" vào `COMMAND_CODES` (4 → 5) ⇒ `all_codes()` **29**, `BOOKS` 7,
+> `next_block()` 801. **563** test (+13); sem **363** (336 `.vis` + 36 `.vish`), `vis test` **363 ok**, parity **337/337**;
+> differential 100k **0 lệch** (204,2 s); allowlist **vẫn 6**; khởi động **+0,08 ms** (10,06 → 10,14). Phát hiện: `.vish`
+> **không có** cú pháp khai `cmd`/`type`/`let` có kiểu ⇒ ca "chạy thật" dùng **literal bản ghi khớp prelude** (đã khoá
+> interp ↔ `--vm`); nợ: khi `.vish` có cú pháp khai `type` thì phải `VS0302` với prelude.
+> **ST-40b mở** (`get`/`select`).
 
 ## Ghi chú vận hành
 
