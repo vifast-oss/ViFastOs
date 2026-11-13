@@ -116,8 +116,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **DONE** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
 | ST-26 | `vis-std` lõi: `std.str/list/map/path/time/json` | ST-25 | 3 h | **DONE** | ≥ 60 ca; `use std.x` chạy |
 | ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **DONE** | chạy `ls`/`echo` thật; quyền tối thiểu |
-| ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | **READY** | ≥ 40 ca; differential vẫn 0 lệch |
-| ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | BLOCKED | ≥ 30 ca |
+| ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | **DONE** | ≥ 40 ca; differential vẫn 0 lệch |
+| ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **READY** | ≥ 30 ca |
 | ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | BLOCKED | `sha2` duyệt allowlist; thay FNV |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -386,6 +386,19 @@ APPROVED 2026-11-13 Agent 0
 > differential **276/276**; gate PASS. **Allowlist doc-examples 9 → 8** (`APPROVED e009411`) vì khối 662 dạng
 > `extern cmd … ...rest` nay **hợp lệ** — chặt hơn, không nới. Hoãn: `| complete`, pipe→stdin, consent thật/cap[Proc].
 > **ST-28 mở** (generic).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-28 DONE** — commit `0423e67` (đã push): **generic** hàm + kiểu `[T]` theo hướng **xoá kiểu + hợp nhất ở
+> call-site** (không đơn hình hoá ⇒ **một** hiện thực, differential 0 lệch **theo cấu trúc**): `FnSig{generics,
+> raw_params, raw_ret}`, thân hàm dùng `erase_gen` (không `VS0301` oan), call-site `hop_nhat` đệ quy ⇒ mâu thuẫn
+> `VS0412` nêu `T` + hai kiểu; record/enum generic payload xoá kiểu, `match` chạy đúng cả 2 kiểu. **Hai bug thật
+> được phát hiện & sửa**: (i) `vis check` lọc theo lô khác `vis run` ⇒ `check` nay báo **đúng chẩn đoán đầu**,
+> lọc chỉ ở `--syntax` (cổng tài liệu giữ 24 khối = 16 xanh + 8 ngoại lệ); (ii) **VM bỏ qua `fn main`** (entry vào
+> thân cấp tệp) — differential trước đó **chưa phủ** chương trình có `main`, nay entry phát `Call(main, 0)`.
+> **392** test; **338 ca sem/18 nhóm**; differential **286/286**; gate PASS.
+> Hoãn (VS1b): instantiation thật (`Hop[int] ≠ Hop[str]`), phép toán trên `T` kiểm động, constraint/trait ⇒ ST-29.
+> **ST-29 mở** (trait + `derives`).
 
 ## Ghi chú vận hành
 
