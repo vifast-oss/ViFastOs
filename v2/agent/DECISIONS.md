@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-64`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-65`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-64: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-65: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -98,6 +98,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-62** KT-32 đóng **C1-100k**: 400.000 lượt, `ipc_sent 5.786.297`, `delivered 1.123.586`, `dropped 3.748.540`, `pending 914.171`, 0 vi phạm, cùng seed/trace; `dropped` là huỷ hợp lệ (wake/Reply không caller) — **không** claim C2. K1c vẫn REVIEW; **KT-33** đóng C3 **12/12 §7.2**, thêm `kt25_ipc2` vào Miri all, siết `ipc_sent>1`, cập nhật DoD.
 - **D2-63** KT-33 DONE (C3 12/12, Miri 300/kt25 24, driver 10k, gate 461) nhưng **K1c vẫn REVIEW** vì C2 chưa đạt: `recv`/`call` dùng lại cap Reply đang giữ `caller` có thể ghi đè, làm caller cũ mất đường Reply. **KT-34** đóng C2: reject Reply cap đang `caller=Some` (test), bất biến `BlockedOnReply ⇒ Reply.caller == tcb`, fuzz Signal/WakeAddr sau xếp hàng, 10k×4 rồi 100k×4, Miri các test ảnh hưởng; chỉ sau đó mới lật K1c DONE.
 - **D2-64** **K1c DONE (phase-level)**: KT-34 đóng C2 — `recv`/`call_msg`/`reply_recv`/`nb_send_recv` từ chối cap Reply đang `caller=Some` bằng `Busy` **trước** mọi thay đổi; `check_reply_links` hai chiều sau mỗi op; 100k×4 **400.000 lượt**, sent **5.786.296**, delivered 1.123.598, pending 914.525, dropped 3.748.173, 0 vi phạm; gate **468 test/62 suite**; Miri 300 + 8 tập ảnh hưởng/123 test. C1/C2/C3/C4 ĐẠT. Nợ **model-only 1 luồng**, `Busy` model-only, K2/K3 (D2-56..60) — **không** phải toàn bộ v2 DONE. Tiếp theo K2.
+- **D2-65** Chốt **K2 Q1–Q10** (`review/agent0/K2-PLAN.md`): Q1 hằng số `[TK]` trong `v2/docs/k2-vm.md`, **không** mở `spec/kernel.toml`; Q2 page table **3 cấp Sv39** (1G/2M/4K); Q3 W^X đếm toàn cục theo Frame, map W sau X ⇒ `WxViolation` atomic, không tự unmap; Q4 ASID 8 bit/256 + generation, invalidate `(asid,va)`/`asid`/`gen`; Q5 **`TlbFlush` vào hộp thư model ở K2** (nới D2-59), ack `fetch_max`, `unmap` chỉ `Ok` khi đủ ack, chờ ack phải rút hộp thư; Q6 `FaultKind::Vm` **model-only**, không vào spec, không fault_ep giữ K1c; Q7 shared read-only **có**, COW **không**; Q8 crate `vifast-pte` `forbid(unsafe_code)`; Q9 A→B∥C→41→42→43; Q10 cổng 100k×4 + 16 mutation + Miri + `.scn`, 0 vi phạm TLB-safety. K2 **không** phải kernel thật; K3 mới QEMU.
 
 ---
 
