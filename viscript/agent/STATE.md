@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-51** (stage đầu là biểu thức đóng) — xong, **chưa commit**.
-Bước          : 5/5 (parser nhận `[`/`{`/chuỗi + `|` → CST nhóm-không-ngoặc → bọc list cho `{…}` → 12 ca → gate)
+Task          : **ST-52** (báo cáo **R8**, chốt **VSH1c**) — xong, **chưa commit**.
+Bước          : 5/5 (đo lại → R8 `.md/.json/.json.license` → `report-check --all` PASS → gate → STATE/JOURNAL)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:05:08Z**; **704** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
-Việc dở       : commit `[ST-51]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:18:21Z** (đo lại sau khi ghi báo cáo); **704** test / sem **370** / `vis test` **370 ok** / parity **344/344** / differential 100k **0 lệch** / allowlist **6**; `nightly` **PASS** `2026-11-13T16:14:11Z`
+Việc dở       : commit `[ST-52]` + push (đã được uỷ quyền); **đề nghị Agent 0 lật hàng ST-51 `BLOCKED`→`DONE`** khi mở vòng 9
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,18 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-51 — stage đầu là biểu thức (2026-11-13)
+## ST-52 — báo cáo R8 (chốt VSH1c), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **R8** | `agent/reports/R8-viscript.{md,json,json.license}` — **11 khoá**, `round=8`, `head=a44c357`; `report-check --all` **PASS** (8 báo cáo, 58 hàng QUEUE) |
+| 2 | **Số liệu** | **704** test (21+96+18+143+24+50+9+343); sem **370/18**; `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**; parity **344/344**; differential **100k/0 lệch** (211,5 s, seed 3523158054); fuzz 1 phút **3.023.954 ca/0 vi phạm**; `VBC1` **53**; **7 sổ/29 mã** (`VS0405` sổ **kiểu**); ấm **10,87/10,70/10,96 ms**; allowlist **6** |
+| 3 | **Bảng vòng 8** | ST-48 `739fc3e`, ST-49 `e0c084a`, ST-50 `da50f28`, ST-51 `e721858`, ST-52 (commit này); VD-81..VD-85 mỗi cái một dòng |
+| 4 | **Lỗ hổng** | **đóng** 5 (cmd pipeline, nhóm/cờ/nhiều dòng/một đường hạ, một mã `VS0405`, `where` tĩnh, stage đầu biểu thức); **còn** 9 mục + **nợ lõi 9** + **VS2** |
+| 5 | **§19** | VSH1c DONE; **ViScript chưa hoàn thiện toàn bộ** — khoảng cách = nợ lõi + VS2 |
+| 6 | **JOURNAL** | tệp **mới** `agent/JOURNAL/2026-11-14.md` (sang ngày; quy ước tệp theo ngày — ghi rõ) |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
