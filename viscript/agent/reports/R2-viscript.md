@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # R2-viscript — báo cáo vòng 2, dòng ViScript
 
-Agent 2 · 2026-11-13 · `head` = `d680703` là **head lúc thu số liệu** (mọi task trước ST-17 đã `DONE`);
+Agent 2 · 2026-11-13 · `head` = `0ce1adc` là **head lúc thu số liệu** (QUEUE có đủ **20 hàng** 6 cột; mọi task trước ST-17 đã `DONE`);
 commit chứa báo cáo là commit `[ST-17]` kế tiếp. Bản máy đọc: [`R2-viscript.json`](R2-viscript.json) —
 **đúng 11 khoá** Khối E (`project = "viscript"`, `round = 2`).
 
@@ -23,21 +23,21 @@ commit chứa báo cáo là commit `[ST-17]` kế tiếp. Bản máy đọc: [`R
 
 | ID | Trạng thái | Commit | Cổng | Kết quả đo được |
 |---|---|---|---|---|
+| ST-03 | DONE | `ada1ebc` | fast | `vis-diag`: cột theo Unicode scalar, `render`, bảng vi/en/ja; **20 snapshot `render`** khoá hành vi |
 | ST-11 | DONE | `94a5342` | fast | `vis-types` nền: `Type` (VD-43), HIR, giải tên, `lower(CST)→HIR`; 15 khối tài liệu hạ đúng |
 | ST-12 | DONE | `273a921` | fast | kiểm kiểu VS0 + `match` xét hết; 116 ca (89 trong `tyck.rs` + 30 `exhaustive.rs`); `VS0401/0402/0403/0412` |
 | ST-12b | DONE | `dec75e3` | fast | 7 lỗi kiểm kiểu (review độc lập) + VD-48; **227** test |
 | ST-13 | DONE | `5e9a962` | fast | `vis-interp` + builtins lõi; **79/79 ca đỏ trước**; sổ `05xx` |
 | ST-13b | DONE | `f1ac635` | fast | 10 mục review ST-13 (Never, range tràn, vòng lặp, đơn vị, phương thức, vị trí, `break/?`); cap độ sâu; **246** test |
 | ST-14 | DONE | `9aafdb8`, `4d52164` | fast | `vis run` + TAP + **100 ca** + nội suy `{expr}`; **247** test |
+| ST-15b | DONE | `806e29a` | fast | 4 lệch thiết kế (push CoW, closure snapshot, `{x, ..}`, pattern trần): **4 ca sem mới** + **1 kỳ vọng cũ sửa có lý do** (`exhaustive.rs` ca `{name, ..}`) ⇒ 309 ca |
 | ST-15 | DONE | `27aa6aa` | fast | **302 ca / 16 nhóm**; cap `MAX_CALL_DEPTH = 2.000`; luồng 256 MiB |
 | ST-15b | DONE | `806e29a` | fast | 4 lệch thiết kế: `push` CoW, closure snapshot, `{x, ..}`, pattern trần ⇒ **309 ca** |
 | ST-16 | DONE | `a89f036` | fast | fuzz parser **1 giờ / 0 vi phạm**; `vis-dev nightly` PASS |
 | ST-17 | READY → **báo cáo này** | — | fast | tệp này + `R2-viscript.json` (task đang viết; QUEUE@head ghi `READY`) |
 
-Ghi chú: hai hàng `ST-03` và `ST-15b` trong `viscript/agent/QUEUE.md` (bản `d680703`) **thiếu một cột** so
-mẫu 6 cột ⇒ máy kiểm báo cáo không thấy chúng trong `queue_at(head)`; chúng là task **DONE** thật
-(`ada1ebc`, `806e29a`) nhưng không thể liệt kê trong `tasks[]` nếu không làm đỏ máy kiểm. Đề nghị Agent 0
-sửa hai hàng đó (thêm cột) — chi tiết ở §6.
+**20 hàng QUEUE** khớp đúng `queue_at(0ce1adc)` (không thừa, không thiếu); `ST-17` giữ `READY` trong JSON vì
+báo cáo này chính là sản phẩm của nó (không tự lật trạng thái QUEUE).
 
 ## 3. Số đo (mọi số tái lập bằng lệnh ghi kèm, chạy 2026-11-13 09:44 JST)
 
@@ -99,6 +99,5 @@ kỳ vọng của harness (không có bộ đếm độc lập); báo cáo dùng
 1. `viscript/AGENTS.md`: dòng lệnh thêm `./vis-dev nightly [--fuzz-minutes N]` (đã có, không còn `exit 2`);
    dải quyết định ViScript nay là **VD-01..VD-51** (không phải VD-41).
 2. `AGENTS.md` §8: nhắc **vòng 2** đã chốt (`ST-11..ST-17`, `R2-viscript`).
-3. `viscript/agent/QUEUE.md`: hai hàng **ST-03** và **ST-15b** thiếu một cột so mẫu 6 cột ⇒ máy kiểm
-   `check_report.py` không thấy; thêm cột cho chúng (nếu không, `R2` buộc phải bỏ hai task DONE khỏi
-   `tasks[]`).
+3. `viscript/agent/QUEUE.md`: **đã sửa** (`0ce1adc` thêm cột DoD cho ST-03/ST-15b) — `report-check` giờ
+   `PASS (2 báo cáo, 20 hàng QUEUE phủ đủ)`.

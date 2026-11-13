@@ -10,8 +10,8 @@ Task          : **ST-17** (báo cáo R2 — chốt VS0) — xong 2026-11-13, **c
 Bước          : 4/4 (bằng chứng số đo → viết R2 → gate chứa máy kiểm báo cáo → cổng)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T00:52:33Z = 2026-11-13 09:52 JST; không retry; **247** test; **1** test `sem`
-                chạy **309 ca**; máy kiểm báo cáo: `report-check: PASS (2 báo cáo, 18 hàng QUEUE phủ đủ)`)
+                (2026-11-13T00:56:44Z = 2026-11-13 09:56 JST; không retry; **247** test; **1** test `sem`
+                chạy **309 ca**; máy kiểm báo cáo: `report-check: PASS (2 báo cáo, 20 hàng QUEUE phủ đủ)`)
 Việc dở       : — (**VS0 đã chốt**; chờ Agent 0 duyệt R2 và sửa 2 hàng QUEUE thiếu cột)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
@@ -50,10 +50,10 @@ trên harness cuối, rồi `stash pop`.
 
 | # | Việc | Kết quả |
 |---|---|---|
-| 1 | `agent/reports/R2-viscript.md` + `.json` (+ `.license`) | JSON **đúng 11 khoá** (`project=viscript`, `round=2`), `head = d680703` (mọi task trước ST-17 `DONE`); MD đủ `## 1.`..`## 6.` |
-| 2 | Bảng task + quyết định + lỗ hổng | 18 hàng máy kiểm thấy (ST-03/ST-15b **bị bỏ** vì hàng QUEUE thiếu cột — đã đề nghị Agent 0 sửa); VD-42..VD-51 mỗi cái 1 dòng; **14 lỗ hổng** đã biết liệt kê đủ |
+| 1 | `agent/reports/R2-viscript.md` + `.json` (+ `.license`) | JSON **đúng 11 khoá** (`project=viscript`, `round=2`), `head = 0ce1adc` (QUEUE đủ 20 hàng; mọi task trước ST-17 `DONE`); MD đủ `## 1.`..`## 6.` |
+| 2 | Bảng task + quyết định + lỗ hổng | **20 hàng** khớp `queue_at(0ce1adc)` (Agent 0 đã thêm cột DoD cho ST-03/ST-15b tại `0ce1adc`); VD-42..VD-51 mỗi cái 1 dòng; **14 lỗ hổng** đã biết liệt kê đủ |
 | 3 | Số đo tái lập | 247 test (96+56+24+33+20+18); 309 ca sem/16 nhóm; 21 mã/5 sổ; fuzz 1 giờ **182.328.926 ca / 4.145.431.263 token / 0 vi phạm**; 24 khối tài liệu (17+7); nightly PASS — mỗi số ghi **lệnh + giờ chạy** |
-| 4 | Máy kiểm báo cáo | `report-check: PASS (2 báo cáo, 18 hàng QUEUE phủ đủ)` — chạy **trong** `gate --fast` |
+| 4 | Máy kiểm báo cáo | `report-check: PASS (2 báo cáo, 20 hàng QUEUE phủ đủ)` — chạy **trong** `gate --fast` |
 | 5 | **Chốt VS0 (§19)** | ≥300 ca `.vis` ✓ 309; fuzz parser 1 giờ không panic ✓ 0 vi phạm; vòng tròn fmt ✓ trong `nightly`; 100 % fixture tài liệu parse ✓ 24/24 |
 
 **Đề xuất cho Agent 0** (tôi không sửa): `viscript/AGENTS.md` thêm dòng `nightly` + dải `VD-01..VD-51`;
@@ -69,7 +69,7 @@ trên harness cuối, rồi `stash pop`.
 | 4 | Tài liệu | mục này + JOURNAL §ST-16 |
 
 **Đo được**: `vis-dev nightly --fuzz-minutes 1` → **PASS** (L0 test OK, fuzz 2,7 triệu ca/0 vi phạm,
-vòng tròn fmt 309 tệp bất động); `gate --fast` PASS — 2026-11-13T00:52:33Z; fmt/clippy sạch.
+vòng tròn fmt 309 tệp bất động); `gate --fast` PASS — 2026-11-13T00:56:44Z; fmt/clippy sạch.
 
 **Ghi chú**: `viscript/AGENTS.md` **thuộc Agent 0** — tôi **không** sửa; cần cập nhật dòng lệnh `nightly`
 thì Agent 0 sửa (nội dung gợi ý: `./vis-dev nightly [--fuzz-minutes N]` = gate --fast + fuzz parser + vòng tròn fmt).
@@ -90,7 +90,7 @@ thì Agent 0 sửa (nội dung gợi ý: `./vis-dev nightly [--fuzz-minutes N]` 
 **Đỏ trước** (`JOURNAL/st15b-red-sem.log`): 5/7 ca mới đỏ (4 mục); 2 ca *xanh sẵn* khai rõ (`list/push-let`,
 `record-thieu`). Test `sem` khoá **309 ca** (302 + 7).
 
-**Đo được**: **247** test workspace; `gate --fast` PASS — 2026-11-13T00:52:33Z; fmt/clippy sạch.
+**Đo được**: **247** test workspace; `gate --fast` PASS — 2026-11-13T00:56:44Z; fmt/clippy sạch.
 
 ## ST-15 — bộ ngữ nghĩa **302 ca / 16 nhóm** + cap độ sâu (2026-11-13)
 
