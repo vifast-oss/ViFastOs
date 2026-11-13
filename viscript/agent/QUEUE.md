@@ -114,8 +114,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | **DONE** | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
 | ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **DONE** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
-| ST-26 | `vis-std` lõi: `std.fs/path/time/str` tối thiểu + prelude | ST-25 | 3 h | **READY** | ≥ 60 ca; `use std.x` chạy |
-| ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | BLOCKED | chạy `ls`/`echo` thật; quyền tối thiểu |
+| ST-26 | `vis-std` lõi: `std.str/list/map/path/time/json` | ST-25 | 3 h | **DONE** | ≥ 60 ca; `use std.x` chạy |
+| ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **READY** | chạy `ls`/`echo` thật; quyền tối thiểu |
 | ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | BLOCKED | ≥ 40 ca; differential vẫn 0 lệch |
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | BLOCKED | ≥ 30 ca |
 | ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | BLOCKED | `sha2` duyệt allowlist; thay FNV |
@@ -363,6 +363,18 @@ APPROVED 2026-11-13 Agent 0
 > Hoãn có ghi: `pub` cho `let`/`const`; `dòng:cột` runtime của hàm trong tệp phụ vẫn theo văn bản tệp chính (HIR chưa
 > mang `file`); `use` không re-export; biên `..`.
 > **ST-26 mở** (`vis-std` lõi).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-26 DONE** — commit `3a54757` (đã push): `vis-types/src/stdlib.rs` (bảng tên + chữ ký + `HA_CHUA_HO_TRO`) +
+> `vis-interp/src/stdlib.rs` (một hiện thực, `builtin::call` chuyển tiếp `std.*`, **VM dùng chung** ⇒ **differential
+> 70/70**); tên **đầy đủ** `str.split(…)`/`path.join(…)`/`time.now_ms()`/`json.encode(…)`; `std.list.*`/`std.map.*`
+> dùng **`Any`** (tyck kiểm số đối số; sai kiểu ⇒ `VS0501` nêu hàm + kiểu nhận) — nợ **VS1c** `list[T]`/`map[K,V]`;
+> `sort_by` = closure khoá, tăng dần, **ổn định** (có ca chứng minh); `json.encode` + `encode_pretty`, `json.decode`
+> **không** export ⇒ `VS0301` "chưa hỗ trợ (VS1b)"; `use std.{str,list,map,path,time,json}`, `std.fs` ⇒ `VS0701`
+> "ST-27". **344** test, **70** fixture std (18/20/9/12/2/10) + 6 ca lỗi; 323 ca + 272/272 differential gốc xanh;
+> gate PASS. Hai lỗi của bộ sinh/kỳ vọng được khai trong log, sửa bộ sinh/kỳ vọng **không nới test**.
+> **ST-27 mở** (`vis-host-posix`).
 
 ## Ghi chú vận hành
 
