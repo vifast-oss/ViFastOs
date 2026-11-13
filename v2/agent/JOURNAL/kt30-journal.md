@@ -120,6 +120,6 @@ stress **200 lần / 0 fail**; `gate --fast` **461 test PASS**; Miri **16/16 PAS
 
 - Tệp thay đổi: xem §2 (chỉ `v2/`). Không chạm `viscript/`, `spec/`, QUEUE/DECISIONS/AGENTS,
   `vifast-model`, `.scn`.
-- Bước tiếp: verdict → sửa (nếu có) → commit `[KT-30]` + push `origin/main` → **không** lật QUEUE
+- Bước tiếp: verdict → sửa (nếu có) → commit `[KT-30]` **`29718a6`** + push `origin/main` → **không** lật QUEUE
   (đề xuất Agent 0: KT-30 DONE/REVIEW) → cổng cuối K1c (§7.1: 100.000 seed × smp 1/2/4/8) là
   **task riêng**, chưa phải KT-30.
