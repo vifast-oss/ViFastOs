@@ -122,8 +122,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-30b | đồng bộ chẩn đoán interp↔VM + siết differential (so đủ) | ST-30 | 2 h | **DONE** | 312/312 khớp, 0 lệch |
 | ST-32 | harness so chẩn đoán **biên dịch** hai đường (đóng nợ 26 ca) | ST-31 | 2 h | **DONE** | 0 lệch; không nới |
 | ST-33 | `json.decode` + `std.fs` tối thiểu (qua `Host`) | ST-32 | 3 h | **DONE** | đối xứng encode; interp/vm không chạm OS |
-| ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **READY** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
-| ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | BLOCKED | sai kiểu ⇒ VS0412; differential 0 lệch |
+| ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
+| ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **READY** | sai kiểu ⇒ VS0412; differential 0 lệch |
 | ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -462,6 +462,15 @@ APPROVED 2026-11-13 Agent 0
 > in `FS …`; cho phép đường dẫn tuyệt đối/`..`, consent thật ⇒ VS2). **466** test (+23); ~20 ca round-trip JSON, 6 ca FS;
 > **338 ca sem giữ nguyên**, parity 312/312, differential 100k **0 lệch** (201,9 s). 3 test cũ sửa **kèm lý do**
 > (`std.fs`/`json.decode` nay hợp lệ). **ST-34 mở** (`| complete` + pipe→stdin).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-34 DONE** — commit `4ababc6` (**Agent 2 tự commit**): **pipe→stdin** (`a | b` với `b` ngoài ⇒ ghi stdout của `a`
+> vào stdin `b`; str nguyên văn, `list[str]` nối `\n`; cap `MAX_STDIN` **8 MiB** ⇒ `VS0501` nêu số byte **trước khi
+> spawn**; thread ghi + `drop` + bỏ qua `EPIPE` sau timeout) + **`| complete`** (`{stdout, stderr, code}`, `grep` không
+> khớp **hết là lỗi**; chỉ cho stage ngoài, Vis ⇒ `VS0602`); timeout 10 s/**stage** nêu **stage nào**, không cap tổng.
+> `Ty::Any` cho `complete` (nợ kiểm tĩnh). **482** test (+16 `pipeline.rs`) + 4 fixture `.vish`; **338 ca sem giữ
+> nguyên**; parity 312/312; differential 100k **0 lệch** (206,2 s). **ST-35 mở** (generic thật).
 
 ## Ghi chú vận hành
 

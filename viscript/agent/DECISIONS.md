@@ -423,3 +423,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   `vis-cli` impl bằng `std::fs`; `--explain-perms` in `FS read|write|exists|list <p>`; **cho phép** đường dẫn tuyệt
   đối/`..` (không sandbox), **consent thật + `cap[Dir]` ⇒ VS2**; `list` sắp xếp theo byte, **không** đệ quy. (3) **Bộ
   sem giữ hermetic**: không fixture nào cần FS ⇒ **338 ca không đổi**; test FS/JSON nằm trong `crates/vis-cli/tests/`.
+
+- **VD-67** **Pipe→stdin + `| complete` (ST-34)**: (1) `a | b` khi `b` là **chương trình ngoài** ⇒ stdout của `a` được
+  ghi vào **stdin** của `b`: `str` ⇒ **nguyên văn** (không thêm newline), `list[str]` ⇒ nối `\n` + **một** newline cuối;
+  stdin **đóng** ngay khi ghi xong. (2) **`MAX_STDIN` = 8 MiB** (byte UTF-8) mỗi stage — vượt ⇒ `VS0501` nêu **số byte
+  thật** + giới hạn, **trước khi spawn**; ghi stdin bằng thread riêng để tránh deadlock; `EPIPE` sau timeout được bỏ qua.
+  (3) **`| complete`** ⇒ record `{stdout: list[str], stderr: list[str], code: int}` — **chỉ** dùng sau stage **ngoài**
+  (Vis ⇒ `VS0602`); nhờ đó `grep` không khớp (`exit 1`) **không** còn là lỗi. (4) **Timeout 10 s/stage**, thông điệp
+  nêu **stage nào**; **không** cap tổng (chuỗi N stage ⇒ tối đa N×10 s) — ghi JOURNAL. (5) `complete` có kiểu tĩnh
+  **`Ty::Any`** (nợ kiểm tĩnh: `r.code` chưa kiểm được; pipeline chưa là biểu thức ở `.vish`).
