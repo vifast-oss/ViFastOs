@@ -113,6 +113,13 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **DONE** | bytecode hỏng bị từ chối; fuzz 10 phút |
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | **DONE** | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
+| ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **READY** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
+| ST-26 | `vis-std` lõi: `std.fs/path/time/str` tối thiểu + prelude | ST-25 | 3 h | BLOCKED | ≥ 60 ca; `use std.x` chạy |
+| ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | BLOCKED | chạy `ls`/`echo` thật; quyền tối thiểu |
+| ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | BLOCKED | ≥ 40 ca; differential vẫn 0 lệch |
+| ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | BLOCKED | ≥ 30 ca |
+| ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | BLOCKED | `sha2` duyệt allowlist; thay FNV |
+| ST-31 | báo cáo **R4** | ST-25..ST-30 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
 | ST-04 | lexer theo SPEC-lex (ST-02a đã DONE) | ST-02a | 3 h | **DONE** | **60 golden token đỏ trước**; fuzz 10 phút + NFC/NFD |
