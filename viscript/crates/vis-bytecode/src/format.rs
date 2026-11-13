@@ -6,7 +6,7 @@
 //! ```text
 //! magic      : 4 byte  = "VBC1"
 //! version    : u16     = 1
-//! hash nguồn : 32 byte = FNV-1a 64 bit lặp 4 lần với seed khác nhau (**KHÔNG** phải SHA-256 —
+//! hash nguồn : 32 byte = **SHA-256** (ST-30; trước đó là FNV-1a × 4 seed —
 //!                        xem cảnh báo dưới)
 //! n_const    : u32, rồi từng hằng: tag u8 + độ dài u32 + bytes (xem [`Const`])
 //! n_func     : u32, rồi từng hàm: tên (u32 + bytes), arity u16, nparams u16, nlocals u16,
@@ -404,22 +404,16 @@ impl Module {
     }
 }
 
-/// Hash nguồn 32 byte: **FNV-1a 64 bit × 4 seed** (xem cảnh báo ở đầu tệp — **không** phải SHA-256).
+/// Hash nguồn 32 byte = **SHA-256 thật** (ST-30, VD-54 (1)) — dùng cho `VBC1` **và** khoá cache.
+///
+/// Trước ST-30 là FNV-1a × 4 seed ("chỉ là khoá cache"); nay là hàm băm mật mã: đổi một byte nguồn
+/// ⇒ hash đổi, và có **kháng đụng độ** ở mức dùng cho consent/quyền (§11.3).
 pub fn source_hash(src: &str) -> [u8; HASH_LEN] {
-    const SEEDS: [u64; 4] = [
-        0xcbf2_9ce4_8422_2325,
-        0x9e37_79b9_7f4a_7c15,
-        0xff51_afd7_ed55_8ccd,
-        0xc4ce_b9fe_1a85_ec53,
-    ];
-    let mut out = [0u8; HASH_LEN];
-    for (i, seed) in SEEDS.iter().enumerate() {
-        let mut h = *seed;
-        for b in src.as_bytes() {
-            h ^= u64::from(*b);
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        out[i * 8..i * 8 + 8].copy_from_slice(&h.to_le_bytes());
-    }
-    out
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(src.as_bytes());
+    let out = h.finalize();
+    let mut buf = [0u8; HASH_LEN];
+    buf.copy_from_slice(&out);
+    buf
 }

@@ -7,6 +7,8 @@ license = "MIT OR Apache-2.0"
 description = "VBC1 — định dạng bytecode nội bộ của ViScript (ST-19, VD-52)"
 
 [dependencies]
+# ST-30: SHA-256 thật cho hash nguồn (VD-54 (1), QD §9.3 — `sha2` = MIT OR Apache-2.0, Agent 0 duyệt).
+sha2 = "0.10"
 vis-syntax = { path = "../vis-syntax" }
 vis-types = { path = "../vis-types" }
 vis-diag = { path = "../vis-diag" }
