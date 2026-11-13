@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use vis_diag::MODULE_CODES;
 use vis_syntax::{Diagnostic, Mode, NodeKind, Span};
 use vis_types::{
-    check, lower_into, HItem, HStmt, Hir, LowerOptions, ModInfo, NamePolicy, Symbols, Type,
-    TypeTable,
+    check, lower_into, HItem, HStmt, Hir, LowerOptions, ModInfo, NamePolicy, Symbols, TraitSig,
+    Type, TypeTable,
 };
 
 /// Một tệp đã nạp.
@@ -160,6 +160,8 @@ struct Nap {
     deps: Vec<(String, Vec<String>)>,
     mau: BTreeMap<String, Mau>,
     pub_types: BTreeMap<String, Vec<(String, Type)>>,
+    /// **ST-57 (VD-98 (1))**: `trait` `pub` của từng tệp — để tệp `use` nó kiểm `impl`/siêu trait.
+    pub_traits: BTreeMap<String, Vec<TraitSig>>,
     cho_ngoai: bool,
 }
 
@@ -374,9 +376,13 @@ impl Nap {
             .filter_map(|r| self.mod_cua_rel.get(r).copied())
             .collect();
         let mut imported_types: Vec<(String, Type)> = Vec::new();
+        let mut imported_traits: Vec<TraitSig> = Vec::new();
         for r in &con {
             if let Some(ds) = self.pub_types.get(r) {
                 imported_types.extend(ds.iter().cloned());
+            }
+            if let Some(ts) = self.pub_traits.get(r) {
+                imported_traits.extend(ts.iter().cloned());
             }
         }
         // Chính sách tên: tệp **không** `use` ai và không bị `use` thì giữ **Permissive** như trước
@@ -393,6 +399,7 @@ impl Nap {
             mod_id,
             imports,
             imported_types,
+            trait_ngoai: imported_traits,
             std_mods,
             cho_ngoai: self.cho_ngoai,
         };
@@ -407,9 +414,30 @@ impl Nap {
             self.diags.push((rel.clone(), d.clone()));
         }
         let mut pubt: Vec<(String, Type)> = Vec::new();
+        let mut pubt_trait: Vec<TraitSig> = Vec::new();
         for it in &out.hir.items {
             let la_pub =
                 |sym: u32, s: &Symbols| s.pub_of.get(sym as usize).copied().unwrap_or(false);
+            if let HItem::Trait(t) = it {
+                if la_pub(t.sym, &self.symbols) {
+                    pubt_trait.push(TraitSig {
+                        name: t.name.clone(),
+                        supertraits: t.supertraits.clone(),
+                        methods: t
+                            .methods
+                            .iter()
+                            .map(|m| {
+                                (
+                                    m.name.clone(),
+                                    m.params.len(),
+                                    m.ret.clone(),
+                                    m.params.iter().map(|p| p.ty.clone()).collect(),
+                                )
+                            })
+                            .collect(),
+                    });
+                }
+            }
             match it {
                 HItem::Rec(r) if la_pub(r.sym, &self.symbols) => {
                     pubt.push((r.name.clone(), Type::Record(r.id)));
@@ -424,6 +452,7 @@ impl Nap {
             }
         }
         self.pub_types.insert(rel.clone(), pubt);
+        self.pub_traits.insert(rel.clone(), pubt_trait);
         for it in out.hir.items {
             self.item_rel.push(rel.clone());
             self.items.push(it);
@@ -485,6 +514,7 @@ pub fn load_full(main: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<Loaded,
         deps: Vec::new(),
         mau: BTreeMap::new(),
         pub_types: BTreeMap::new(),
+        pub_traits: BTreeMap::new(),
         cho_ngoai,
     };
     n.tham(&main_path);

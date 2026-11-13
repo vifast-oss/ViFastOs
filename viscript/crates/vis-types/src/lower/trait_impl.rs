@@ -8,14 +8,23 @@
 use vis_diag::TYPE_CODES;
 use vis_syntax::{Node, NodeKind};
 
-use super::{Lowerer, SymKind};
-use crate::hir::{HExpr, HFn};
+use super::{FrameKind, Lowerer, SymKind};
+use crate::hir::{BinOp, HExpr, HFn, HImpl, HItem, HParam, HStmt, InterpPart};
 use crate::ty::Type;
 
 /// Chữ ký một phương thức trait: `(tên, số tham số, kiểu trả, kiểu từng tham số)` (ST-29).
-pub(crate) type PhuongThucTrait = (String, usize, Type, Vec<Type>);
-/// `trait T` → `(tên trait, danh sách phương thức)` (ST-29).
-pub(crate) type ChuKyTrait = (String, Vec<PhuongThucTrait>);
+pub type PhuongThucTrait = (String, usize, Type, Vec<Type>);
+
+/// **ST-57 (VD-98 (1))** — chữ ký **công khai** của `trait`: dùng để **xuất qua module**
+/// (`pub_traits`) và kiểm `impl`/siêu trait ở tệp khác. Thay tuple `ChuKyTrait` cũ (thêm
+/// `supertraits`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraitSig {
+    pub name: String,
+    /// Siêu trait khai `trait T: A, B:` — kiểm **một tầng** (VD-98 (2)).
+    pub supertraits: Vec<String>,
+    pub methods: Vec<PhuongThucTrait>,
+}
 
 impl<'a> Lowerer<'a> {
     // ----- ST-29: trait / impl (dispatch tĩnh) -----
@@ -59,11 +68,17 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Lượt 1b — thu thập `trait` (tên + chữ ký phương thức).
+    /// Lượt 1b — thu thập `trait` (tên + **siêu trait** + chữ ký phương thức).
     pub(crate) fn collect_trait(&mut self, node: &Node) {
         let Some(name) = self.decl_name(node) else {
             return;
         };
+        // **ST-57**: `trait T: A, B:` — các `DottedPath` trước dấu `:` cuối (parser đã sẵn).
+        let supertraits: Vec<String> = node
+            .children()
+            .filter(|n| n.kind == NodeKind::DottedPath)
+            .map(|p| self.dotted_text(p))
+            .collect();
         let mut methods = Vec::new();
         for m in node.children().filter(|n| n.kind == NodeKind::TraitItem) {
             let Some(mn) = self.decl_name(m) else {
@@ -88,7 +103,11 @@ impl<'a> Lowerer<'a> {
                 .unwrap_or(Type::Unit);
             methods.push((mn, params.len(), ret, params));
         }
-        self.traits.push((name, methods));
+        self.traits.push(TraitSig {
+            name,
+            supertraits,
+            methods,
+        });
     }
 
     /// Lượt 1b — thu thập `impl`: khai sym cho từng phương thức + ghi bảng `(kiểu, tên) → sym`.
@@ -97,6 +116,11 @@ impl<'a> Lowerer<'a> {
             .child(NodeKind::Type)
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Error);
+        // **ST-57 (VD-98 (2))**: ghi cặp `(kiểu, trait)` để kiểm **siêu trait** sau vòng 1b.
+        if let Some(p) = node.child(NodeKind::DottedPath) {
+            let tn = self.dotted_text(p);
+            self.impl_pairs.push((ty.clone(), tn, node.span));
+        }
         for m in node.children().filter(|n| n.kind == NodeKind::FnDecl) {
             let Some(mn) = self.decl_name(m) else {
                 continue;
@@ -118,6 +142,37 @@ impl<'a> Lowerer<'a> {
                     node.span,
                 );
                 continue;
+            }
+            // **ST-57 (VD-93 (3))**: chưa **sinh mã** derive cho kiểu **generic** (cần dispatch theo
+            // `T` — VS1b) ⇒ chẩn đoán **tĩnh**, không sinh.
+            if !self.generics_of(node).is_empty() {
+                self.diag(
+                    &TYPE_CODES[2],
+                    format!("derive `{d}` trên kiểu **generic** chưa hỗ trợ ở VS0 (không sinh mã — VD-98)"),
+                    node.span,
+                );
+                break;
+            }
+            // Trường `float`/`Fn` với `Eq`: `==` trên số thực là **không toàn phần** ⇒ `VS0403` **tĩnh**.
+            if d == "Eq" {
+                for t in field_tys {
+                    let xau = match t {
+                        Type::Float | Type::Fn(..) => true,
+                        Type::Opt(inner) => matches!(**inner, Type::Float | Type::Fn(..)),
+                        _ => false,
+                    };
+                    if xau {
+                        self.diag(
+                            &TYPE_CODES[2],
+                            format!(
+                                "derive `Eq` không dùng được: trường `{}` (số thực/hàm so sánh không toàn phần — VD-93)",
+                                t.name()
+                            ),
+                            node.span,
+                        );
+                        break;
+                    }
+                }
             }
             if d == "Json" {
                 for t in field_tys {
@@ -161,14 +216,35 @@ impl<'a> Lowerer<'a> {
                 }
             }
             Some(tn) => {
-                let Some((_, mong)) = self.traits.iter().find(|(n, _)| n == tn).cloned() else {
+                // **ST-57 (VD-98 (1))**: trait nội tệp **hoặc** trait `pub` nhập từ module khác.
+                let noi_tep = self.traits.iter().find(|t| &t.name == tn).cloned();
+                let nhap = self.traits_ngoai.iter().find(|t| &t.name == tn).cloned();
+                let Some(sig) = noi_tep.clone().or(nhap) else {
                     self.diag(
                         &TYPE_CODES[2],
-                        format!("không có trait `{tn}` trong tệp (mồ côi/VS1b: impl phải ở module khai trait hoặc kiểu)"),
+                        format!(
+                            "không có trait `{tn}` trong **chương trình** (mồ côi **thật** hoặc trait chưa khai `pub`/chưa `use`; VD-98)"
+                        ),
                         node.span,
                     );
                     return;
                 };
+                // Mồ côi **thật** = trait **nhập** *và* kiểu **nhập** ⇒ `impl` phải ở tệp khai một trong hai.
+                if noi_tep.is_none() {
+                    if let Some(tk) = self.ten_kieu(ty) {
+                        if self.kieu_ngoai.contains(&tk) {
+                            self.diag(
+                                &TYPE_CODES[2],
+                                format!(
+                                    "mồ côi: trait `{tn}` và kiểu `{tk}` đều ở module khác — `impl` phải ở tệp khai trait hoặc kiểu (VD-98)"
+                                ),
+                                node.span,
+                            );
+                            return;
+                        }
+                    }
+                }
+                let mong = sig.methods;
                 // Mồ côi: `Type` không khai trong tệp ⇒ phải có trait khai trong tệp (đã có).
                 let co: Vec<&str> = methods.iter().map(|m| m.name.as_str()).collect();
                 for (mn, _, _, _) in &mong {
@@ -244,6 +320,312 @@ impl<'a> Lowerer<'a> {
                             m.span,
                         );
                     }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ST-57 (VD-93/VD-98 (3)) — `derives` **sinh HIR** ở lượt 1c
+// ---------------------------------------------------------------------------
+
+impl<'a> Lowerer<'a> {
+    /// Lượt **1c** — sinh `impl` **thật** cho `derives Show`/`Eq` của mọi `type`/`enum` trong tệp.
+    ///
+    /// Chạy **sau** 1b và **trước** mọi lượt hạ thân ⇒ `p.show()` ở câu **trước** khai báo vẫn phân
+    /// giải được (chỉ số sym + bảng `impls` đã có). Item sinh ra **nối cuối** `items` (interp/VM
+    /// đăng ký hàm `impl` theo `sym` — không phân biệt sinh hay viết tay).
+    pub(crate) fn sinh_derives(&mut self) {
+        let mut ra: Vec<HItem> = Vec::new();
+        for child in self.cst.root.children() {
+            match child.kind {
+                NodeKind::TypeDecl => self.sinh_derive_rec(child, &mut ra),
+                NodeKind::EnumDecl => self.sinh_derive_enum(child, &mut ra),
+                _ => {}
+            }
+        }
+        self.derived.extend(ra);
+    }
+
+    fn sinh_derive_rec(&mut self, node: &Node, ra: &mut Vec<HItem>) {
+        let Some(name) = self.decl_name(node) else {
+            return;
+        };
+        let derives = self.derives_of(node);
+        // Kiểu **generic** ⇒ `kiem_derives` báo `VS0403`, ở đây **không sinh** (VD-98 (3)).
+        if derives.is_empty() || !self.generics_of(node).is_empty() {
+            return;
+        }
+        let Some((_, id)) = self.rec_names.iter().find(|(n, _)| *n == name).cloned() else {
+            return;
+        };
+        let truong: Vec<(String, Type)> = node
+            .children()
+            .filter(|n| n.kind == NodeKind::TypeField)
+            .filter_map(|f| {
+                Some((
+                    self.decl_name(f)?,
+                    f.child(NodeKind::Type)
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or(Type::Error),
+                ))
+            })
+            .collect();
+        self.sinh_derive(
+            DeriveNguon {
+                node,
+                ty: Type::Record(id),
+                ten: name,
+                derives,
+                truong,
+                la_enum: false,
+            },
+            ra,
+        );
+    }
+
+    fn sinh_derive_enum(&mut self, node: &Node, ra: &mut Vec<HItem>) {
+        let Some(name) = self.decl_name(node) else {
+            return;
+        };
+        let derives = self.derives_of(node);
+        if derives.is_empty() || !self.generics_of(node).is_empty() {
+            return;
+        }
+        let Some((_, id)) = self.enum_names.iter().find(|(n, _)| *n == name).cloned() else {
+            return;
+        };
+        // `enum show` **cắt** (nợ, VD-98 (3)); `enum eq` dùng `==` sẵn có.
+        self.sinh_derive(
+            DeriveNguon {
+                node,
+                ty: Type::Enum(id),
+                ten: name,
+                derives,
+                truong: Vec::new(),
+                la_enum: true,
+            },
+            ra,
+        );
+    }
+
+    fn sinh_derive(&mut self, src: DeriveNguon, ra: &mut Vec<HItem>) {
+        let mut methods: Vec<HFn> = Vec::new();
+        let span = src.node.span;
+        if !src.la_enum && src.derives.iter().any(|d| d == "Show") {
+            if let Some(f) = self.sinh_show(src.ty.clone(), &src.ten, &src.truong, span) {
+                methods.push(f);
+            }
+        }
+        if src.derives.iter().any(|d| d == "Eq") && !co_truong_khong_eq(&src.truong) {
+            if let Some(f) = self.sinh_eq(src.ty.clone(), &src.ten, span) {
+                methods.push(f);
+            }
+        }
+        if !methods.is_empty() {
+            ra.push(HItem::Impl(HImpl {
+                trait_name: None,
+                ty: src.ty,
+                span,
+                methods,
+            }));
+        }
+    }
+
+    /// Khai một phương thức sinh: sym + **khung riêng** + tham số; `dung(ids)` dựng **thân** từ chỉ
+    /// số sym của tham số (đúng thứ tự `tham`). `None` nếu **người dùng đã viết tay** cùng tên
+    /// (VD-93 (4): người dùng **thắng**, không sinh bản trùng).
+    fn sinh_pt(
+        &mut self,
+        ty: &Type,
+        m: PtSinh,
+        dung: impl FnOnce(&[u32]) -> Vec<HStmt>,
+    ) -> Option<HFn> {
+        let (ten, ten_pt, span) = (m.ten, m.ten_pt, m.span);
+        if self
+            .impls
+            .iter()
+            .any(|(t, n, _)| n == ten_pt && self.ten_kieu(t).as_deref() == Some(ten))
+        {
+            return None;
+        }
+        let sym = self.declare(&format!("{ten}.{ten_pt}"), SymKind::Item, span, None);
+        self.impls.push((ty.clone(), ten_pt.to_string(), sym));
+        self.push_frame(FrameKind::Fn, span);
+        let mut ids: Vec<u32> = Vec::with_capacity(m.tham.len());
+        let mut params: Vec<HParam> = Vec::with_capacity(m.tham.len());
+        for (n, t) in &m.tham {
+            let s = self.declare(n, SymKind::Param, span, Some(t.clone()));
+            ids.push(s);
+            params.push(HParam {
+                name: (*n).to_string(),
+                span,
+                sym: s,
+                ty: t.clone(),
+                named: false,
+                is_self: false,
+                is_var_self: false,
+                default: None,
+                variadic: false,
+            });
+        }
+        let body = dung(&ids);
+        self.pop_frame();
+        Some(HFn {
+            name: format!("{ten}.{ten_pt}"),
+            span,
+            sym,
+            kind: super::FnKind::ImplMethod,
+            is_pub: false,
+            is_async: false,
+            generics: Vec::new(),
+            params,
+            ret: m.ret,
+            body,
+        })
+    }
+
+    /// `fn show(self) -> str` — **đúng byte** `Value::show` của bản ghi (tên động rỗng):
+    /// `{x: 1, ten: a}`. Dựng bằng `Interp` (không `+` nối chuỗi — tyck không có `(Add, Str, Str)`).
+    fn sinh_show(
+        &mut self,
+        ty: Type,
+        ten: &str,
+        truong: &[(String, Type)],
+        span: vis_syntax::Span,
+    ) -> Option<HFn> {
+        let truong = truong.to_vec();
+        self.sinh_pt(
+            &ty,
+            PtSinh {
+                ten,
+                ten_pt: "show",
+                ret: Type::Str,
+                tham: vec![("self", ty.clone())],
+                span,
+            },
+            move |ids| {
+                let me = ids[0];
+                let mut parts: Vec<InterpPart> = Vec::new();
+                if truong.is_empty() {
+                    parts.push(InterpPart::Str("{}".into()));
+                } else {
+                    for (i, (fn_, _)) in truong.iter().enumerate() {
+                        if i > 0 {
+                            parts.push(InterpPart::Str(", ".into()));
+                        }
+                        parts.push(InterpPart::Str(format!("{fn_}: ")));
+                        parts.push(InterpPart::Expr(Box::new(HExpr::Field {
+                            base: Box::new(HExpr::Var {
+                                name: "self".into(),
+                                sym: Some(me),
+                                span,
+                            }),
+                            name: fn_.clone(),
+                            optional: false,
+                            span,
+                        })));
+                    }
+                    parts.insert(0, InterpPart::Str("{".into()));
+                    parts.push(InterpPart::Str("}".into()));
+                }
+                vec![HStmt::Return {
+                    value: Some(HExpr::Interp { parts, span }),
+                    span,
+                }]
+            },
+        )
+    }
+
+    /// `fn eq(self, other) -> bool` — `self == other` (hai đường gọi cùng `eq_value`).
+    fn sinh_eq(&mut self, ty: Type, ten: &str, span: vis_syntax::Span) -> Option<HFn> {
+        self.sinh_pt(
+            &ty,
+            PtSinh {
+                ten,
+                ten_pt: "eq",
+                ret: Type::Bool,
+                tham: vec![("self", ty.clone()), ("other", ty.clone())],
+                span,
+            },
+            |ids| {
+                vec![HStmt::Return {
+                    value: Some(HExpr::Bin {
+                        op: BinOp::Eq,
+                        lhs: Box::new(HExpr::Var {
+                            name: "self".into(),
+                            sym: Some(ids[0]),
+                            span,
+                        }),
+                        rhs: Box::new(HExpr::Var {
+                            name: "other".into(),
+                            sym: Some(ids[1]),
+                            span,
+                        }),
+                        span,
+                    }),
+                    span,
+                }]
+            },
+        )
+    }
+}
+
+/// Nguồn một lượt sinh `derives` (gói tham số cho [`Lowerer::sinh_derive`]).
+pub(super) struct DeriveNguon<'n> {
+    node: &'n Node,
+    ty: Type,
+    ten: String,
+    derives: Vec<String>,
+    truong: Vec<(String, Type)>,
+    la_enum: bool,
+}
+
+/// Tham số một phương thức **sinh** (gói cho [`Lowerer::sinh_pt`]).
+pub(super) struct PtSinh<'a> {
+    ten: &'a str,
+    ten_pt: &'a str,
+    ret: Type,
+    tham: Vec<(&'a str, Type)>,
+    span: vis_syntax::Span,
+}
+
+/// Kiểu của một trường có **so sánh toàn phần** không (`float`/hàm ⇒ không — VD-93 (3)).
+fn co_truong_khong_eq(truong: &[(String, Type)]) -> bool {
+    truong.iter().any(|(_, t)| match t {
+        Type::Float | Type::Fn(..) => true,
+        Type::Opt(inner) => matches!(**inner, Type::Float | Type::Fn(..)),
+        _ => false,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// ST-57 (VD-98 (2)) — siêu trait
+// ---------------------------------------------------------------------------
+
+impl<'a> Lowerer<'a> {
+    /// **ST-57 (VD-98 (2))**: mỗi `impl Trait for Type`, mọi **siêu trait** của `Trait` phải có
+    /// `impl` cùng kiểu — kiểm **một tầng** (bắc cầu = nợ), `VS0403` (không cấp mã mới).
+    pub(crate) fn kiem_sieu_trait(&mut self) {
+        let pairs = self.impl_pairs.clone();
+        for (ty, tn, span) in &pairs {
+            let sieu: Vec<String> = self
+                .traits
+                .iter()
+                .find(|t| &t.name == tn)
+                .or_else(|| self.traits_ngoai.iter().find(|t| &t.name == tn))
+                .map(|t| t.supertraits.clone())
+                .unwrap_or_default();
+            for st in sieu {
+                if !pairs.iter().any(|(t2, n2, _)| n2 == &st && t2 == ty) {
+                    self.diag(
+                        &vis_diag::TYPE_CODES[2],
+                        format!(
+                            "`impl {tn} for …` thiếu `impl {st} for …` (siêu trait `{st}` — kiểm **một tầng**, VD-98)"
+                        ),
+                        *span,
+                    );
                 }
             }
         }

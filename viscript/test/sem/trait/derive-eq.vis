@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P derives Eq:
+    x: int
+
+let a: P = {x: 1}
+let b: P = {x: 1}
+let c: P = {x: 2}
+print(a.eq(b))
+print(a.eq(c))

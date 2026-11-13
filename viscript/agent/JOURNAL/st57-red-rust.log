@@ -1,0 +1,154 @@
+# ST-57 — log ĐỎ (Rust) lúc 2026-11-13T22:32:28Z, HEAD 53417d9
+
+   Compiling vis-types v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-types)
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+warning: constant `IMPL_A` is never used
+   --> crates/vis-types/tests/trait.rs:249:7
+    |
+249 | const IMPL_A: &str = "impl A for P:\n    fn mo(self) -> int:\n        self.x\n";
+    |       ^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vis-types` (test "trait") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.38s
+     Running tests/modules.rs (target/debug/deps/modules-68a6b789ec8cb522)
+
+running 18 tests
+test pkg_bao_vs2 ... ok
+test loi_trong_tep_phu_bao_dung_ten_tep ... ok
+test mo_coi_trait_module_va_kieu_noi_tep ... FAILED
+test mo_coi_that_bao_vs0403 ... ok
+test khong_pub_thi_khong_thay ... ok
+test check_bao_dung_tep_va_dong_cot ... ok
+test hai_tang_noi_dung_dung ... ok
+test dump_deps_in_cay ... ok
+test co_ban_pub_fn_va_pub_type ... ok
+test tep_chinh_khong_ton_tai ... ok
+test thieu_tep_la_vs0701 ... ok
+test use_trung_hai_duong_dan_la_vs0703 ... ok
+test std_fs_bao_st27 ... ok
+test vong_ba_tep_la_vs0702 ... ok
+test vong_hai_tep_la_vs0702 ... ok
+test cache_hong_thi_bien_dich_lai ... ok
+test vm_va_interp_cung_ket_qua ... ok
+test cache_doi_khi_sua_phu_thuoc ... ok
+
+failures:
+
+---- mo_coi_trait_module_va_kieu_noi_tep stdout ----
+
+thread 'mo_coi_trait_module_va_kieu_noi_tep' (42962931) panicked at crates/vis-cli/tests/modules.rs:281:5:
+assertion `left == right` failed: stderr: main.vis:7:1: error VS0403: không có trait `Hien` trong tệp (mồ côi/VS1b: impl phải ở module khai trait hoặc kiểu)
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    mo_coi_trait_module_va_kieu_noi_tep
+
+test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+error: test failed, to rerun pass `-p vis-cli --test modules`
+     Running tests/trait.rs (target/debug/deps/trait-0e7bbf91f25ed1bc)
+
+running 29 tests
+test derives_json_hop_le_voi_list_int ... ok
+test derives_la_bao_vs0403 ... ok
+test derives_json_tren_truong_ham_bao_vs0403 ... ok
+test goi_phuong_thuc_impl_thanh_call_truc_tiep ... ok
+test derives_eq_show_json_tren_record ... ok
+test derives_tren_enum ... ok
+test enum_goi_phuong_thuc_duoc ... ok
+test derives_show_tren_kieu_generic_bao_vs0403 ... FAILED
+test derives_enum_eq_sinh_phuong_thuc_that ... FAILED
+test derives_eq_truong_float_bao_vs0403 ... FAILED
+test derives_show_sinh_phuong_thuc_that ... FAILED
+test derives_eq_sinh_phuong_thuc_that ... FAILED
+test impl_dung_chu_ky_sach ... ok
+test impl_inherent_khong_trait_sach ... ok
+test impl_sai_kieu_tra_bao_vs0412 ... ok
+test goi_phuong_thuc_inherent_thanh_call_truc_tiep ... ok
+test impl_thieu_phuong_thuc_bao_vs0403 ... ok
+test impl_trait_khong_ton_tai_bao_vs0403 ... ok
+test khong_co_phuong_thuc_giu_nguyen_loi_cu ... ok
+test impl_thua_phuong_thuc_bao_vs0403 ... ok
+test kieu_khong_tinh_bao_vs0403 ... ok
+test no_i_tai_thang_impl_cung_ten ... ok
+test phuong_thuc_khong_ton_tai_bao_vs0403 ... ok
+test nhieu_dong_truoc_voi_let ... ok
+test mo_ho_giua_hai_impl_bao_vs0403 ... ok
+test trait_khai_bao_sach ... ok
+test sieu_trait_du_sach ... ok
+test sieu_trait_thieu_bao_vs0403 ... FAILED
+test tham_so_co_kieu_goi_duoc_phuong_thuc ... ok
+
+failures:
+
+---- derives_show_tren_kieu_generic_bao_vs0403 stdout ----
+
+thread 'derives_show_tren_kieu_generic_bao_vs0403' (42963058) panicked at crates/vis-types/tests/trait.rs:45:5:
+phải có `VS0403`, được [] cho:
+type Hop[T] derives Show:
+    gia_tri: T
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- derives_enum_eq_sinh_phuong_thuc_that stdout ----
+
+thread 'derives_enum_eq_sinh_phuong_thuc_that' (42963050) panicked at crates/vis-types/tests/trait.rs:59:5:
+phải hạ thành call trực tiếp tới `Or.eq`: Hir { items: [Enum(HEnum { id: EnumId(0), name: "Or", span: Span { start: 45, end: 78 }, sym: 11, generics: [], variants: [HVariant { name: "A", span: Span { start: 69, end: 70 }, fields: [] }, HVariant { name: "B", span: Span { start: 75, end: 76 }, fields: [] }], derives: ["Eq"] })], stmts: [Let { pat: Bind { name: "a", span: Span { start: 82, end: 83 }, sym: 12 }, ty: Some(Enum(EnumId(0))), init: Field { base: Var { name: "Or", sym: Some(11), span: Span { start: 90, end: 92 } }, name: "A", optional: false, span: Span { start: 90, end: 94 } }, else_: None, span: Span { start: 78, end: 94 } }, Expr(Call { callee: Var { name: "print", sym: Some(0), span: Span { start: 95, end: 100 } }, args: [Error { span: Span { start: 101, end: 111 } }], named: [], span: Span { start: 95, end: 112 } })], span: Span { start: 45, end: 113 } }
+
+---- derives_eq_truong_float_bao_vs0403 stdout ----
+
+thread 'derives_eq_truong_float_bao_vs0403' (42963053) panicked at crates/vis-types/tests/trait.rs:45:5:
+phải có `VS0403`, được [] cho:
+type F derives Eq:
+    x: float
+
+
+---- derives_show_sinh_phuong_thuc_that stdout ----
+
+thread 'derives_show_sinh_phuong_thuc_that' (42963057) panicked at crates/vis-types/tests/trait.rs:59:5:
+phải hạ thành call trực tiếp tới `Hop.show`: Hir { items: [Rec(HRec { id: RecId(0), name: "Hop", span: Span { start: 45, end: 86 }, sym: 11, generics: [], fields: [HField { name: "gia_tri", span: Span { start: 72, end: 84 }, ty: Int, default: None, has_default: false }], derives: ["Show"] })], stmts: [Let { pat: Bind { name: "h", span: Span { start: 90, end: 91 }, sym: 12 }, ty: Some(Record(RecId(0))), init: Record { fields: [("gia_tri", Lit { lit: Lit { kind: Int, text: "1" }, ty: Int, span: Span { start: 109, end: 110 } })], ty: Record(RecId(1)), span: Span { start: 99, end: 111 } }, else_: None, span: Span { start: 86, end: 111 } }, Expr(Call { callee: Var { name: "print", sym: Some(0), span: Span { start: 112, end: 117 } }, args: [Error { span: Span { start: 118, end: 126 } }], named: [], span: Span { start: 112, end: 127 } })], span: Span { start: 45, end: 128 } }
+
+---- derives_eq_sinh_phuong_thuc_that stdout ----
+
+thread 'derives_eq_sinh_phuong_thuc_that' (42963052) panicked at crates/vis-types/tests/trait.rs:59:5:
+phải hạ thành call trực tiếp tới `Hop.eq`: Hir { items: [Rec(HRec { id: RecId(0), name: "Hop", span: Span { start: 45, end: 84 }, sym: 11, generics: [], fields: [HField { name: "gia_tri", span: Span { start: 70, end: 82 }, ty: Int, default: None, has_default: false }], derives: ["Eq"] })], stmts: [Let { pat: Bind { name: "a", span: Span { start: 88, end: 89 }, sym: 12 }, ty: Some(Record(RecId(0))), init: Record { fields: [("gia_tri", Lit { lit: Lit { kind: Int, text: "1" }, ty: Int, span: Span { start: 107, end: 108 } })], ty: Record(RecId(1)), span: Span { start: 97, end: 109 } }, else_: None, span: Span { start: 84, end: 109 } }, Let { pat: Bind { name: "b", span: Span { start: 114, end: 115 }, sym: 13 }, ty: Some(Record(RecId(0))), init: Record { fields: [("gia_tri", Lit { lit: Lit { kind: Int, text: "1" }, ty: Int, span: Span { start: 133, end: 134 } })], ty: Record(RecId(2)), span: Span { start: 123, end: 135 } }, else_: None, span: Span { start: 110, end: 135 } }, Expr(Call { callee: Var { name: "print", sym: Some(0), span: Span { start: 136, end: 141 } }, args: [Error { span: Span { start: 142, end: 149 } }], named: [], span: Span { start: 136, end: 150 } })], span: Span { start: 45, end: 151 } }
+
+---- sieu_trait_thieu_bao_vs0403 stdout ----
+
+thread 'sieu_trait_thieu_bao_vs0403' (42963076) panicked at crates/vis-types/tests/trait.rs:45:5:
+phải có `VS0403`, được [] cho:
+trait A:
+    fn mo(self) -> int
+
+trait B: A:
+    fn hai(self) -> int
+
+type P:
+    x: int
+
+impl B for P:
+    fn hai(self) -> int:
+        self.x
+
+
+
+failures:
+    derives_enum_eq_sinh_phuong_thuc_that
+    derives_eq_sinh_phuong_thuc_that
+    derives_eq_truong_float_bao_vs0403
+    derives_show_sinh_phuong_thuc_that
+    derives_show_tren_kieu_generic_bao_vs0403
+    sieu_trait_thieu_bao_vs0403
+
+test result: FAILED. 23 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vis-types --test trait`
+error: 2 targets failed:
+    `-p vis-cli --test modules`
+    `-p vis-types --test trait`

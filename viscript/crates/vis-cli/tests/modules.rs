@@ -272,3 +272,25 @@ fn cache_hong_thi_bien_dich_lai() {
     assert_eq!(k.out, "2\n");
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn mo_coi_trait_module_va_kieu_noi_tep() {
+    // **ST-57 (VD-98)**: trait ở module `pub`, kiểu **nội tệp**, `impl` ở main ⇒ **hợp lệ**
+    // (mồ côi chỉ khi **cả** trait lẫn kiểu đều ngoài tệp).
+    let k = run("mo-coi/main.vis");
+    assert_eq!(k.code, 0, "stderr: {}", k.err);
+    assert_eq!(k.out, "3\n");
+}
+
+#[test]
+fn mo_coi_that_bao_vs0403() {
+    // Trait `a.vis` + kiểu `b.vis` đều **nhập** ⇒ mồ côi **thật** ⇒ `VS0403` + thông điệp riêng.
+    let k = run("mo-coi-that/main.vis");
+    assert_eq!(k.code, 2, "stderr: {}", k.err);
+    assert!(k.err.contains("VS0403"), "stderr: {}", k.err);
+    assert!(
+        k.err.contains("mồ côi"),
+        "phải nêu rõ **mồ côi**: {}",
+        k.err
+    );
+}

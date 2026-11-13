@@ -239,3 +239,61 @@ fn khong_co_phuong_thuc_giu_nguyen_loi_cu() {
     // Kiểu không phải record/enum (`int`) vẫn báo lỗi như trước (không đổi ngữ nghĩa cũ).
     co("let x: int = 1\nprint(x.khong_co())\n", "VS0403");
 }
+
+// ---------------------------------------------------------------------------
+// 4) ST-57 — siêu trait (một tầng) + `derives` **sinh phương thức thật**
+// ---------------------------------------------------------------------------
+
+const TRAIT_A: &str = "trait A:\n    fn mo(self) -> int\n";
+const TRAIT_B: &str = "trait B: A:\n    fn hai(self) -> int\n";
+const IMPL_B: &str = "impl B for P:\n    fn hai(self) -> int:\n        self.x\n";
+
+#[test]
+fn sieu_trait_du_sach() {
+    // **ST-57 (VD-98 (2))**: `impl B` khai **trước** `impl A` vẫn xanh (kiểm **sau** vòng 1b).
+    sach(&format!(
+        "{TRAIT_A}\n{TRAIT_B}\ntype P:\n    x: int\n\n{IMPL_B}impl A for P:\n    fn mo(self) -> int:\n        self.x\n"
+    ));
+}
+
+#[test]
+fn sieu_trait_thieu_bao_vs0403() {
+    co(
+        &format!("{TRAIT_A}\n{TRAIT_B}\ntype P:\n    x: int\n\n{IMPL_B}"),
+        "VS0403",
+    );
+}
+
+#[test]
+fn derives_show_sinh_phuong_thuc_that() {
+    ha_thanh_call_voi(
+        "type Hop derives Show:\n    gia_tri: int\n\nlet h: Hop = {gia_tri: 1}\nprint(h.show())\n",
+        "Hop.show",
+    );
+}
+
+#[test]
+fn derives_eq_sinh_phuong_thuc_that() {
+    ha_thanh_call_voi(
+        "type Hop derives Eq:\n    gia_tri: int\n\nlet a: Hop = {gia_tri: 1}\nlet b: Hop = {gia_tri: 1}\nprint(a.eq(b))\n",
+        "Hop.eq",
+    );
+}
+
+#[test]
+fn derives_eq_truong_float_bao_vs0403() {
+    co("type F derives Eq:\n    x: float\n", "VS0403");
+}
+
+#[test]
+fn derives_show_tren_kieu_generic_bao_vs0403() {
+    co("type Hop[T] derives Show:\n    gia_tri: T\n", "VS0403");
+}
+
+#[test]
+fn derives_enum_eq_sinh_phuong_thuc_that() {
+    ha_thanh_call_voi(
+        "enum Or derives Eq:\n    A\n    B\n\nlet a: Or = Or.A\nprint(a.eq(Or.A))\n",
+        "Or.eq",
+    );
+}

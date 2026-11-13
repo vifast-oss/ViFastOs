@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use ./a
+
+type P:
+    x: int
+
+impl Hien for P:
+    fn hien(self) -> int:
+        self.x + 1
+
+let p: P = {x: 2}
+print(p.hien())

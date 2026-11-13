@@ -6,16 +6,17 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-56b** (hotfix **một ngữ nghĩa cho phép gán** + exit codegen — VD-97) — xong,
-                **chưa commit**.
-Bước          : 8/8 (kế hoạch → 2 log đỏ → tyck `impl` chặn `self` bất biến → codegen ghi lại ô →
-                interp `with`/`Set` cùng byte → CLI exit codegen → cổng → differential → STATE/JOURNAL).
+Task          : **ST-57** (nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives`
+                sinh mã** `Show`/`Eq` — VD-93 + VD-98) — xong, **chưa commit**.
+Bước          : 8/8 (kế hoạch/khảo sát file:line → 2 log đỏ → A1 mồ côi đa tệp → A2 siêu trait →
+                A3 derives sinh HIR → khoá số + tách `lower/options.rs` (R1) → cổng → differential →
+                STATE/JOURNAL → commit + push).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T22:17:37Z**; **756** test / sem
-                **382** / `vis test` **382 ok** (+`--vm` **382 ok/6 SKIP**) / parity **352/352** /
-                differential **100.000 chương trình 0 lệch** (194,7 s) / **7 sổ-29 mã** (không mã mới) /
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T22:57:45Z**; **765** test / sem
+                **388** / `vis test` **388 ok** (+`--vm` **388 ok/6 SKIP**) / parity **356/356** /
+                differential **100.000 chương trình 0 lệch** (198,5 s) / **7 sổ-29 mã** (không mã mới) /
                 allowlist **6**
-Việc dở       : commit `[ST-56b]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-57]` + push (đã được uỷ quyền)
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -47,6 +48,21 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-57 — mồ côi **đa tệp** + **siêu trait** + `derives` **sinh mã** (VD-93/VD-98), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **A1 — mồ côi đa tệp** | `TraitSig{name, supertraits, methods}` **công khai**; `LowerOptions.trait_ngoai`; `modules.rs` xuất `pub_traits` (trait `pub` của từng tệp) và nhập cho tệp `use`; `kiem_impl_khop` tra **trait nội tệp ∪ trait nhập**; **mồ côi thật** (trait **nhập** *và* kiểu **nhập**) ⇒ `VS0403` thông điệp riêng ("mồ côi: trait `X` và kiểu `Y` đều ở module khác"); trait nội tệp **hoặc** kiểu nội tệp ⇒ **hợp lệ** |
+| 2 | **A2 — siêu trait** | `collect_trait` gom `supertraits` (cú pháp **`trait B: A:`** — parser đã sẵn); `collect_impl` ghi `impl_pairs (kiểu, trait)`; `kiem_sieu_trait` chạy **sau** vòng 1b ⇒ thứ tự `impl` tự do; thiếu ⇒ **`VS0403`** ("`impl B for …` thiếu `impl A for …`"); kiểm **một tầng** (bắc cầu = nợ) |
+| 3 | **A3 — `derives` sinh mã** | Lượt **1c** (`sinh_derives`) **trước** mọi lượt hạ thân ⇒ `p.show()` ở câu **trước** khai báo vẫn phân giải; sinh `HImpl` **inherent** (`trait_name: None`) nối **cuối** `items`; tên nội bộ `<Kiểu>.show`/`<Kiểu>.eq` (không `VS0302`); người dùng viết tay **thắng** (kiểm `impls` trước khi sinh) |
+| 4 | **`show` đúng byte** | Body `HExpr::Interp` dựng **đúng** `Value::show` của giá trị bản ghi **lúc chạy** — tên động **rỗng** ⇒ `{x: 1, ten: a}` (khớp **từng byte** `print(p)`; **không** phải `P(...)`); **không** dùng `+` nối chuỗi (tyck không có `(Add, Str, Str)`) |
+| 5 | **`eq`** | Body `self == other` (hai đường gọi cùng `eq_value`); record **và** enum |
+| 6 | **Không sinh mã** (`VS0403` **tĩnh**) | kiểu **generic**; `Eq` với trường `float`/`Fn` (số thực so sánh **không toàn phần**); `Json` giữ **kiểm-only**; **`enum show` cắt** (nợ — `enum eq` có) |
+| 7 | **Ca** | **6 ca sem** (`trait/sieu-trait-du`, `sieu-trait-thieu` VS0403, `derive-show`, `derive-eq`, `derive-eq-float` VS0403, `derive-nguoi-dung-thang`) + **9 ca Rust** (7 `vis-types/tests/trait.rs`: siêu trait ×2, derives ×5; 2 `vis-cli/tests/modules.rs`: `mo-coi` xanh, `mo-coi-that` VS0403) — interp ↔ `--vm` **cùng byte** |
+| 8 | **Đỏ trước** | `JOURNAL/st57-red-sem.log` sha256 `98461b07…` (6 ca: 4 đỏ đúng lý do; `sieu-trait-du` + `derive-nguoi-dung-thang` **đã xanh từ trước** — giữ làm ca khoá); `JOURNAL/st57-red-rust.log` sha256 `1a66594e…` (7/9 đỏ; `mo-coi-that` + `sieu-trait-du` xanh-already, `mo-coi-that` khoá **thông điệp**) |
+| 9 | **Đo** | **765** test (21+96+18+**150**+24+62+9+**385**); sem **388/19 nhóm** (345 `.vis` + 43 `.vish`, 59 `.err`); `vis test` **388 ok**; `--vm` **388 ok + 6 SKIP**; parity **356/356** (32 ca lỗi biên dịch); differential **100.000/0 lệch** (198,5 s, 504/s, seed 3523158054); `VBC1` **53** tag (không bump); **7 sổ/29 mã**; allowlist **6** |
+| 10 | **Bất ngờ / nợ** | (a) `enum show` **cắt**; (b) `derives Json` **chỉ kiểm**, không sinh; (c) siêu trait **bắc cầu** = nợ; (d) dispatch `impl` **xuyên tệp** vẫn per-tệp (bảng `impls` per-tệp); (e) tyck **chưa** kiểm kiểu trả phương thức `impl` (nợ ST-56b); (f) tên động bản ghi **rỗng** ở runtime (do literal) ⇒ `show` sinh theo dạng **ẩn danh**; (g) R1: tách `LowerOptions`/`NamePolicy` sang `lower/options.rs` (60 dòng) — `lower.rs` 1467 dòng |
 
 ## ST-56b — một ngữ nghĩa cho **phép gán** + exit codegen (VD-97), 2026-11-14
 

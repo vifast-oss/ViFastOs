@@ -10,7 +10,8 @@ use std::process::Command;
 /// Số ca mà harness `sem.rs` đang khoá — `vis test` **phải** khớp, không tự bịa.
 /// **SỬA KÈM LÝ DO (ST-56)**: 370 → **376** (+6 ca nợ lõi A).
 /// **SỬA KÈM LÝ DO (ST-56b)**: 376 → **382** (+6 ca phép gán).
-const SO_CA: usize = 382;
+/// **SỬA KÈM LÝ DO (ST-57)**: 382 → **388** (+6 ca `trait/`: siêu trait ×2, `derives` ×4).
+const SO_CA: usize = 388;
 
 fn vis(args: &[&str]) -> (i32, String, String) {
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))

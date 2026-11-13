@@ -1,0 +1,69 @@
+# ST-57 — log ĐỎ (sem) lúc 2026-11-13T22:32:28Z, HEAD 53417d9
+vis: run: No such file or directory
+bash: run: command not found
+# 6 ca mới ở test/sem/trait/ — chạy bằng binary hiện tại ( + ).
+
+== test/sem/trait/derive-eq-float.vis
+-- interp:
+   [exit=0]
+-- vm:
+   [exit=0]
+
+== test/sem/trait/derive-eq.vis
+-- interp:
+   derive-eq.vis:8:7: error VS0403: không có phương thức `eq` cho `P` (VS0403)
+   derive-eq.vis:9:7: error VS0403: không có phương thức `eq` cho `P` (VS0403)
+   [exit=2]
+-- vm:
+   derive-eq.vis:8:7: error VS0403: không có phương thức `eq` cho `P` (VS0403)
+   derive-eq.vis:9:7: error VS0403: không có phương thức `eq` cho `P` (VS0403)
+   [exit=2]
+
+== test/sem/trait/derive-nguoi-dung-thang.vis
+-- interp:
+   tay
+   [exit=0]
+-- vm:
+   tay
+   [exit=0]
+
+== test/sem/trait/derive-show.vis
+-- interp:
+   derive-show.vis:7:7: error VS0403: không có phương thức `show` cho `P` (VS0403)
+   [exit=2]
+-- vm:
+   derive-show.vis:7:7: error VS0403: không có phương thức `show` cho `P` (VS0403)
+   [exit=2]
+
+== test/sem/trait/sieu-trait-du.vis
+-- interp:
+   42
+   41
+   [exit=0]
+-- vm:
+   42
+   41
+   [exit=0]
+
+== test/sem/trait/sieu-trait-thieu.vis
+-- interp:
+   [exit=0]
+-- vm:
+   [exit=0]
+
+== kỳ vọng (đỏ ⇒ lệch):
+test/sem/trait/derive-eq-float.vis → .err:
+   VS0403
+test/sem/trait/derive-eq.vis → .out:
+   true
+   false
+test/sem/trait/derive-nguoi-dung-thang.vis → .out:
+   tay
+test/sem/trait/derive-show.vis → .out:
+   {x: 1, ten: a}
+   {x: 1, ten: a}
+test/sem/trait/sieu-trait-du.vis → .out:
+   42
+   41
+test/sem/trait/sieu-trait-thieu.vis → .err:
+   VS0403

@@ -633,8 +633,9 @@ impl<'a> Lowerer<'a> {
                 let co_trait = self
                     .traits
                     .iter()
-                    .find(|(_, ms)| ms.iter().any(|(mn, _, _, _)| mn == name))
-                    .map(|(tn, _)| tn.clone());
+                    .chain(self.traits_ngoai.iter())
+                    .find(|t| t.methods.iter().any(|(mn, _, _, _)| mn == name))
+                    .map(|t| t.name.clone());
                 let msg = match co_trait {
                     Some(tn) => format!(
                         "trait `{tn}` có phương thức `{name}` nhưng `{ten}` chưa cài (`impl {tn} for {ten}`)"

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use ./a
+use ./b
+
+impl Hien for P:
+    fn hien(self) -> int:
+        self.x
+
+print(1)

@@ -24,9 +24,12 @@ use std::process::Command;
 /// `std.list.sort_by` ở `test/std/` — harness `test/sem` chạy **in-process**, không nạp `use std.*`.)
 /// **SỬA KÈM LÝ DO (ST-56b)**: 376 → **382** — +4 ca xanh + 2 ca lỗi **biên dịch**
 /// (`ban-ghi/self-gan-truong` VS0412, `list/let-chi-so-gan` VS0412).
-const TONG: usize = 382;
-const XANH: usize = 325;
-const LOI_BIEN_DICH: usize = 30;
+/// **SỬA KÈM LÝ DO (ST-57)**: 382 → **388** — +4 ca xanh (`trait/sieu-trait-du`, `derive-show`,
+/// `derive-eq`, `derive-nguoi-dung-thang`) + 2 ca lỗi **biên dịch** (`sieu-trait-thieu`,
+/// `derive-eq-float` — `VS0403` từ **hạ**, không phải tyck).
+const TONG: usize = 388;
+const XANH: usize = 329;
+const LOI_BIEN_DICH: usize = 32;
 const LOI_LUC_CHAY: usize = 27;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
 const XANH_CAN_HOST: usize = 4;

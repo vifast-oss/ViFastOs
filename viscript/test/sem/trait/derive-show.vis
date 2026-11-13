@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P derives Show:
+    x: int
+    ten: str
+
+let p: P = {x: 1, ten: "a"}
+print(p.show())
+print(p)

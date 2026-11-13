@@ -123,16 +123,19 @@ fn sem_323_ca_qua_binary() {
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca phép gán (`ban-ghi/self-gan-truong`, `var-self-gan`,
     // `var-truong-gan`; `list/var-chi-so-gan`, `list/let-chi-so-gan`; `map/var-khoa-gan`)
     // ⇒ **382 ca / 18 nhóm** (339 `.vis` + 43 `.vish`, **57** `.err`).
+    // **SỬA KÈM LÝ DO (ST-57)**: +6 ca nhóm **`trait/`** (siêu trait ×2, `derives` ×4) ⇒ **388 ca /
+    // **19 nhóm** (345 `.vis` + 43 `.vish`, **59** `.err`).
     assert_eq!(
         ds.len(),
-        382,
-        "phải đúng 382 ca (339 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        388,
+        "phải đúng 388 ca (345 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
+    // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.
     assert_eq!(
         theo_nhom.len(),
-        18,
-        "phải đúng 18 nhóm (ST-28 thêm `generic`), thật {theo_nhom:?}"
+        19,
+        "phải đúng 19 nhóm (ST-28 `generic`; ST-57 `trait`), thật {theo_nhom:?}"
     );
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())

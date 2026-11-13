@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+
+trait A:
+    fn mo(self) -> int
+
+trait B: A:
+    fn hai(self) -> int
+
+impl B for P:
+    fn hai(self) -> int:
+        self.x

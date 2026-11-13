@@ -102,7 +102,8 @@ fn than_chay() {
     // **SỬA KÈM LÝ DO (ST-35)**: +8 ca `generic/*` (instantiation thật) ⇒ 346 ca (327 `.vis` + 19 `.vish`).
     // **SỬA KÈM LÝ DO (ST-56)**: +6 ca nợ lõi A ⇒ **376 ca** (333 `.vis` + 43 `.vish`).
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca phép gán ⇒ **382 ca** (339 `.vis` + 43 `.vish`).
-    assert_eq!(tat_ca.len(), 382, "phải đủ 382 ca");
+    // **SỬA KÈM LÝ DO (ST-57)**: +6 ca `trait/` ⇒ **388 ca** (345 `.vis` + 43 `.vish`).
+    assert_eq!(tat_ca.len(), 388, "phải đủ 388 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bien_dich = 0;
@@ -169,17 +170,18 @@ fn than_chay() {
     );
     // **SỬA KÈM LÝ DO (ST-35)**: **0 ca bỏ qua** — 320 ca **chạy được** so interp ↔ VM, **26** ca lỗi
     // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **346**.
+    // **SỬA KÈM LÝ DO (ST-57)**: **388** ca; **356** ca chạy được khớp + **32** ca lỗi biên dịch.
     // **SỬA KÈM LÝ DO (ST-56)**: +6 ca ⇒ **376**; **348** ca chạy được khớp + **28** ca lỗi biên dịch.
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca ⇒ **382**; **352** ca chạy được khớp + **30** ca lỗi biên dịch.
     assert_eq!(
         khop + so_biet + bien_dich,
-        382,
-        "382 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
+        388,
+        "388 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     assert_eq!(
         (khop, bien_dich),
-        (352, 30),
-        "352 ca chạy được khớp + 30 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
+        (356, 32),
+        "356 ca chạy được khớp + 32 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
     );
 }
 
@@ -231,7 +233,7 @@ fn hai_duong_cung_so_chan_doan() {
             // chạy (+`ban-ghi/self-amp-thieu-truong` VS0501).
             // **SỬA KÈM LÝ DO (ST-56b)**: **352** ca chạy được (+4 ca xanh); chẩn đoán lúc chạy
             // vẫn **31** (2 ca `.err` mới là lỗi **biên dịch**, không tới lúc chạy).
-            assert_eq!(so_ca, 352, "phải so đủ 352 ca chạy được");
+            assert_eq!(so_ca, 356, "phải so đủ 356 ca chạy được");
             assert_eq!(
                 so_ca_co_chan_doan, 31,
                 "31 ca có chẩn đoán lúc chạy (hai đường cùng số)"

@@ -65,7 +65,7 @@ pub use hir::{
 };
 pub use lower::{
     is_builtin_value, lower, lower_into, lower_with, FrameKind, HFrame, HSym, HirOutput,
-    LowerError, LowerOptions, ModInfo, NamePolicy, SymKind, Symbols, BUILTIN_VALUE_NAMES,
+    LowerError, LowerOptions, ModInfo, NamePolicy, SymKind, Symbols, TraitSig, BUILTIN_VALUE_NAMES,
 };
 pub use ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
 pub use tyck::{check, CheckOutput};

@@ -32,7 +32,7 @@ use crate::hir::{
 mod generic;
 mod trait_impl;
 use crate::ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
-pub(crate) use trait_impl::ChuKyTrait;
+pub use trait_impl::TraitSig;
 
 mod chieu;
 mod cmd;
@@ -51,56 +51,8 @@ pub const BUILTIN_VALUE_NAMES: [&str; 11] = [
     "print", "len", "str", "echo", "lines", "take", "Ok", "Err", "Some", "None", "ref",
 ];
 
-/// Chính sách báo `VS0301` cho **tên giá trị** chưa khai.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum NamePolicy {
-    /// **Mặc định ST-11 (VD-45)**: tên tự do được phép (giữ `sym = None`). Vẫn báo `VS0301` khi
-    /// **gán** cho tên chưa khai — chỗ chắc chắn sai. `Strict` là mặc định từ ST-13/14.
-    #[default]
-    Permissive,
-    /// Báo `VS0301` cho **mọi** tên giá trị chưa phân giải (mặc định từ ST-13/14 khi có prelude).
-    Strict,
-}
-
-/// Tuỳ chọn hạ.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LowerOptions {
-    pub names: NamePolicy,
-    /// Module của tệp đang hạ (ST-25); `0` = biên dịch một tệp.
-    pub mod_id: u16,
-    /// Module mà tệp này `use` (ST-25) — được phép thấy item `pub` của chúng.
-    pub imports: Vec<u16>,
-    /// Kiểu **công khai** nhập từ module khác (ST-25): tên → kiểu đã hạ.
-    pub imported_types: Vec<(String, Type)>,
-    /// Module `std.*` đã `use` (ST-26) — bật dạng gọi `str.split(…)` trong tệp này.
-    pub std_mods: Vec<String>,
-    /// Cho phép **chương trình ngoài** (ST-27). `false` (vd `vis check --no-extern`) ⇒ lệnh lạ báo
-    /// `VS0601` như trước.
-    pub cho_ngoai: bool,
-}
-
-impl Default for LowerOptions {
-    fn default() -> Self {
-        Self {
-            names: NamePolicy::Permissive,
-            mod_id: 0,
-            imports: Vec::new(),
-            imported_types: Vec::new(),
-            std_mods: Vec::new(),
-            cho_ngoai: true,
-        }
-    }
-}
-
-impl LowerOptions {
-    /// Chế độ **chặt**: mọi tên giá trị chưa khai đều `VS0301`.
-    pub fn strict() -> Self {
-        Self {
-            names: NamePolicy::Strict,
-            ..Self::default()
-        }
-    }
-}
+mod options;
+pub use options::{LowerOptions, NamePolicy};
 
 /// Lỗi **cấp API** (không phải chẩn đoán ngôn ngữ): đầu vào ngoài phạm vi `lower`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,8 +266,16 @@ struct Lowerer<'a> {
     /// Tham số kiểu đang có hiệu lực (`type Hop[T]`, `enum Or[A, B]`) — ST-28: xoá kiểu.
     generic_scope: Vec<String>,
     impls: Vec<(Type, String, u32)>,
-    /// ST-29: trait `name → [(method, params_len, ret)]` để kiểm impl khớp trait.
-    traits: Vec<ChuKyTrait>,
+    /// ST-29: trait nội tệp để kiểm `impl` khớp trait; **ST-57**: kèm **siêu trait**.
+    traits: Vec<TraitSig>,
+    /// **ST-57**: trait `pub` nhập từ module khác (mồ côi đa tệp + siêu trait).
+    traits_ngoai: Vec<TraitSig>,
+    /// **ST-57**: `(kiểu, trait)` của mọi `impl Trait for Type` trong tệp (kiểm siêu trait **một tầng**).
+    impl_pairs: Vec<(Type, String, Span)>,
+    /// **ST-57**: tên kiểu **nhập** từ module khác — mồ côi **thật** = trait nhập *và* kiểu nhập.
+    kieu_ngoai: Vec<String>,
+    /// **ST-57**: `impl` **sinh** từ `derives` (nối cuối `items` ở cuối `run()`).
+    derived: Vec<HItem>,
     /// ST-29: kiểu tĩnh của biến (chỉ từ **chú thích** tường minh: tham số + `let`/`var`).
     type_env: std::collections::HashMap<u32, Type>,
     /// ST-29: tên kiểu của `impl` đang hạ (để tái dùng sym đã khai ở lượt thu thập).
@@ -378,6 +338,10 @@ impl<'a> Lowerer<'a> {
             generic_scope: Vec::new(),
             impls: Vec::new(),
             traits: Vec::new(),
+            traits_ngoai: opts.trait_ngoai.clone(),
+            impl_pairs: Vec::new(),
+            kieu_ngoai: opts.imported_types.iter().map(|(n, _)| n.clone()).collect(),
+            derived: Vec::new(),
             rec_tmpl: Vec::new(),
             enum_tmpl: Vec::new(),
             inst_cache: Vec::new(),
@@ -464,6 +428,11 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
+        // **ST-57 (VD-98 (2))**: siêu trait kiểm **một tầng**, **sau** 1b ⇒ thứ tự `impl` tự do.
+        self.kiem_sieu_trait();
+        // **ST-57 (VD-93/VD-98 (3))**: lượt **1c** — `derives Show/Eq` sinh `impl` **thật** **trước**
+        // mọi lượt hạ thân (câu `p.show()` trước khai báo vẫn phân giải).
+        self.sinh_derives();
         // Lượt 2 — thân item + câu lệnh cấp tệp, **theo đúng thứ tự nguồn**.
         for child in self.cst.root.children() {
             if is_item(child.kind) {
@@ -474,6 +443,8 @@ impl<'a> Lowerer<'a> {
                 self.stmts.push(s);
             }
         }
+        // **ST-57**: `impl` sinh từ `derives` nối **cuối** (sym/bảng `impls` đã có từ lượt 1c).
+        self.items.append(&mut self.derived);
     }
 
     fn finish(self) -> HirOutput {
