@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-51`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-52`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-51: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-52: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -85,6 +85,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-49** Chốt K1b (Q1–Q8, `review/agent0/K1B-PLAN.md`): (a) **1 hart**; **hoãn push migration sang K1c** (nơi có `smp 1/2/4/8`), K1b đạt 3/4 tiêu chí + hộp thư; K1c kế thừa. (b) Gắn `SchedContext` vào TCB bằng **model API** `set_sched_params(tcb, sc)`, không sửa `spec/`/ABI ở K1b. (c) Donation **tự động** qua Call/Reply; server có SC riêng giữ SC riêng; các method chưa có chữ ký chỉ cài model API, không tuyên bố ABI. (d) Bảng `ALLOWED` 11×11 đặt ở `v2/docs/k1b-tcb-transition.md` (model-only `[TK]`), Agent 0 review; không phải spec. (e) Budget kiểm **chu kỳ thẳng hàng**; cửa sổ trượt/sporadic refill hoãn sau K6 (D2-16). (f) K1b chỉ **MCS donation**, không MCS lock/lock-free; hộp thư mô hình tất định; `vifast-sync`/loom để K1c/SMP. (g) Không mở rộng `vifast-model` cho TCB/scheduler; parity 10k chỉ là hồi quy. (h) Preempt/budget dùng **tick ảo**, không timer HW/QEMU.
 - **D2-50** K1b/objmem: **TCB không có `SchedContext` hoặc SC chưa `Configure` KHÔNG được chạy** — không phải "không giới hạn". `tcb_has_budget` trả `false`; `dispatch/pick` bỏ qua; SC-less chỉ chạy khi được **donation** (KT-21, passive server). Rig test KT-19/20 được phép gắn SC mặc định **test-only**, không đổi production; KT-21 phải có test SC-less server chỉ chạy khi được donate.
 - **D2-51** KT-21 MCP: K1b dùng **kẹp** `p_eff = min(client.priority, client.mcp, server.mcp)` (**model-only `[TK]`**), không strict-reject; K1c chốt strict nếu cần. `reply` chỉ trả donation khi `caller == donor`; Reply sai object giữ donation, không đánh thức nhầm. 13 test + 14.609 bước donation/64.000; strict ownership/ReplyRecv/4 cap để K1c.
+- **D2-52** KT-23 được phép sửa **duy nhất một dòng** của `v2/test/scn/12-suspend-abort-while-reply-wait.scn` (`Defer => ok` → `Defer => InvalidArgument`) để khớp thiết kế §4.4 `:282`; các `.scn` khác giữ nguyên, không đổi ABI. Đây là ngoại lệ có ghi cho K1B-PLAN KT-23 DoD 8 (vốn cấm sửa `.scn`).
 
 ---
 
