@@ -147,7 +147,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **DONE** | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-56 | nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`/`&expr` (hết `Unsupported` ở codegen); `Hop[Hop[int]]` đóng nốt | ST-55 | 3 h | **DONE** | 3 nợ đóng, mỗi nợ ≥2 ca; interp ↔ `--vm` cùng byte |
 | ST-56b | chốt **gán** một ngữ nghĩa hai đường: `self.x = v` khi `self` bất biến ⇒ `VS0412`; `var self`/`var xs` gán được ở **interp** (VM đã làm); `run --vm` lỗi codegen ⇒ exit ≠ 0 | ST-56 | 2,5 h | **DONE** | ≥6 ca; interp = `--vm` cùng byte; không nới ngưỡng |
-| ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **READY** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
+| ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **DONE** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
 | ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **READY** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **READY** | ≥6 ca; `x \| take 1` chạy 2 đường |
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **READY** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
@@ -874,3 +874,18 @@ APPROVED 2026-11-14 Agent 0
 > codegen nay **exit 1** (+ `not ok` ở `--tap`). Đo: **756 test** · sem **382/18** · `vis test` **382 ok** · parity
 > **352/352** · differential **100k/0 lệch** (194,7 s) · allowlist **6**. Nợ ghi `R10` §5: **tyck toàn bộ thân phương
 > thức** (mới chỉ kiểm đích gán), `p.x += 1` là lỗi cú pháp (giữ), base `{error}` chỉ chẩn đoán lúc chạy.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-57 DONE** — commit `57ea7212` (**Agent 2 tự commit, đã push**). Ba nợ đóng: **mồ côi đa tệp** (`TraitSig` +
+> `LowerOptions.trait_ngoai`, `modules.rs` xuất `pub_traits`; mồ côi thật = **cả** trait lẫn kiểu ngoài chương trình ⇒
+> `VS0403`), **siêu trait** (`trait B: A:` kiểm **một tầng** sau 1b, thứ tự `impl` tự do, `VS0403`), **`derives` sinh
+> mã** ở lượt **1c** (`show` = `HExpr::Interp`, `eq` = `==`; tên nội bộ có tiền tố; người dùng thắng; generic/`float`/
+> `Fn` ⇒ `VS0403` tĩnh). Đo: **765 test** · sem **388/19 nhóm** · `vis test` **388 ok** · parity **356/356** ·
+> differential **100k/0 lệch** (198,5 s) · allowlist **6**. Tách `lower/options.rs` để giữ R1 (`lower.rs` 1467).
+> **Ba chỗ lệch gợi ý, đã xác minh**: (1) `print(p)` in **dạng ẩn danh** `{x: 1, ten: a}` (ghi chú của tôi "P(x: 1, …)"
+> là **sai**) — `show` sinh khớp `Value::show`; (2) cú pháp siêu trait là `trait B: A:` (không phải `trait B(A):`);
+> (3) `hir.rs` doc-block `(4,0,4) → (5,0,9)` có lý do.
+> Nợ ghi `R10` §5: `enum show`, `derives Json` sinh mã, siêu trait **bắc cầu**, dispatch `impl` **xuyên tệp**, tyck kiểu
+> trả phương thức `impl`, `trait_ngoai` chỉ thấy module `use` trực tiếp.
+> **ST-58 mở** (`Ty::Any` → biến kiểu; VD-99).
