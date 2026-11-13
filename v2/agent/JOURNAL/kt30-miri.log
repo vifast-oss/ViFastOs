@@ -1,0 +1,46 @@
+   Compiling vifast-sync v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-sync)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/4f5ce7a28db69354/out/vifast_sync-4f5ce7a28db69354)
+
+running 4 tests
+test mcs::tests::fifo_theo_thu_tu_xep_hang ... ok
+test mcs::tests::free_mask_khong_tran ... ok
+test mcs::tests::khong_reentrant ... ok
+test mcs::tests::pool_can_muoi_sau_slot_thi_try_lock_none_va_khong_panic ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running tests/kt30_stress.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/51b5058ffab6c032/out/kt30_stress-51b5058ffab6c032)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/kt30_sync.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/6c7abb43a5b62b64/out/kt30_sync-6c7abb43a5b62b64)
+
+running 10 tests
+test mailbox_backpressure_1000_vong ... ok
+test mailbox_day_tra_busy_khong_mat_message_dau ... ok
+test mailbox_du_7_loai_fifo ... ok
+test mailbox_generation_khong_tang_khi_busy ... ok
+test mailbox_len_rong_va_capacity ... ok
+test mailbox_the_he_ack_pending ... ok
+test mcs_capacity_va_hang_cho_mac_dinh ... ok
+test mcs_lock_unlock_mutates_value ... ok
+test mcs_ticket_tang_theo_lan_xep_hang ... ok
+test mcs_try_lock_khi_dang_giu_tra_none ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s
+
+   Doc-tests vifast_sync
+
+running 2 tests
+test lib/vifast-sync/src/mailbox.rs - mailbox::Mailbox (line 134) ... ok
+test lib/vifast-sync/src/mcs.rs - mcs::McsLock (line 86) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+
+real	0m13.531s
+user	0m10.848s
+sys	0m0.788s

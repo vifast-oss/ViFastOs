@@ -1,0 +1,25 @@
+== KT-30 test đỏ trước (D2-05): crate vifast-sync mới chỉ có khung rỗng ==
+== $(cargo test -p vifast-sync --test kt30_sync) ==
+   Compiling vifast-sync v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-sync)
+error[E0432]: unresolved imports `vifast_sync::Busy`, `vifast_sync::Mailbox`, `vifast_sync::McsLock`, `vifast_sync::Msg`, `vifast_sync::MsgKind`, `vifast_sync::PowerState`
+  --> lib/vifast-sync/tests/kt30_sync.rs:13:19
+   |
+13 | use vifast_sync::{Busy, Mailbox, McsLock, Msg, MsgKind, PowerState};
+   |                   ^^^^  ^^^^^^^  ^^^^^^^  ^^^  ^^^^^^^  ^^^^^^^^^^ no `PowerState` in the root
+   |                   |     |        |        |    |
+   |                   |     |        |        |    no `MsgKind` in the root
+   |                   |     |        |        no `Msg` in the root
+   |                   |     |        no `McsLock` in the root
+   |                   |     no `Mailbox` in the root
+   |                   no `Busy` in the root
+
+error[E0425]: cannot find value `MAX_WAITERS` in crate `vifast_sync`
+   --> lib/vifast-sync/tests/kt30_sync.rs:130:54
+    |
+130 |     assert_eq!(default_lock.capacity(), vifast_sync::MAX_WAITERS);
+    |                                                      ^^^^^^^^^^^ not found in `vifast_sync`
+
+Some errors have detailed explanations: E0425, E0432.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `vifast-sync` (test "kt30_sync") due to 2 previous errors
+EXIT=101

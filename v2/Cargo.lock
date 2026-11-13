@@ -49,6 +49,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vifast-sync"
+version = "0.1.0"
+
+[[package]]
 name = "vifast-traceformat"
 version = "0.1.0"
 dependencies = [

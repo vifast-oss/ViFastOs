@@ -6,13 +6,49 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-29 **xong mã + test** (**SMP mô hình tất định 1/2/4/8 + push migration**: `with_harts`, `Published { idle, cur_prio }` + guard luật 3, push **cuối hàng** mức Ready cao nhất **≤1 TCB/hart/bước** chỉ khi `published.idle`/đúng affinity, qua `Mailbox::Migrate`, `migrate_count`, wake chéo hart qua `Wake` + ngưỡng `cur_prio`, `check_smp`/`check_harts`, driver L1 theo `VIFAST_SMP`; model-only D2-53 Q1/Q2). KT-28 DONE (`dd4761e` lật), KT-27 DONE, KT-26 DONE, KT-25 DONE, KT-24 DONE
-Bước          : 0/8 — **DONE mã**, commit `0ab2267` đã push `origin/main`; reviewer-kt29 verdict **DRIFT** đã sửa 5/5 (drain FIFO, debug_assert publish, ≤1 Migrate/TCB, "≤1/hart nguồn", guard n>1); chờ Agent 0 lật KT-29
+Task          : KT-30 **xong mã + test** (**`vifast-sync`**: MCS queue lock FIFO (pool node cố định, liên kết chỉ số slot, `Guard` Drop mở khoá) + `Mailbox<N>` MPSC cố định 7 loại message, ack theo bộ đếm thế hệ, đầy ⇒ `Busy` (backpressure); `no_std`, 0 dependency, stress 4×500 + Miri; **không** loom theo D2-53 Q9(a)). KT-29 xong mã (`0ab2267`) + follow-up `e091708`, KT-24..28 DONE
+Bước          : 8/8 — **xong mã + cổng + Miri + stress**, commit `[KT-30]` đã push `origin/main`; verdict `reviewer-kt30` **DRIFT** (2 lỗi chặn) đã sửa **2/2** (assertion stress `try_lock`; hook test `pub` → `pub(crate)` + `cfg(test)`) + 4 việc làm luôn; **chờ Agent 0 lật KT-30**
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 442 test/58 suite** (baseline 427/56 ⇒ +15 = 13 `kt29_smp` + 1 unit `check_smp` + 1 driver `l1_k1c`), L1 1.000 seed/999 trace **767 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt29-gate-fast.log`)
-Miri          : `./v2/bin/v2 miri test --test kt29_smp` — **PASS 13/13** (`JOURNAL/kt29-miri.log`, 261,03 s; fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing)
-Việc dở       : chờ verdict `reviewer-kt29` (đã báo lead); sau verdict: commit `[KT-29]` + push, không lật QUEUE. Task kế: **KT-30** (`vifast-sync` MCS lock + Mailbox MPSC) sau khi Agent 0 lật KT-29
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 461 test/62 suite** (baseline 442/58 ⇒ +19 = 4 unit lib + 10 integration + 3 stress + 2 doctest), L1 1.000 seed/999 trace **750 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, R1..R5 OK, gen-check ON, `scn: OK` (`JOURNAL/kt30-gate-fast.log`). **T-INFRA**: wall **199,3 s** > 60 s (QD §5.2) do tải máy — baseline cùng máy đã 159,5 s tổng thời gian test; test mới **1,42 s** cả crate / **≈2,6 ms** thân stress; **không** nới ngưỡng, **không** gọi là đạt 60 s
+Miri          : `./v2/bin/v2 miri -p vifast-sync` — **PASS 4 unit + 10 integration + 2 doctest** (`JOURNAL/kt30-miri.log`, 13,5 s); stress đa luồng **không** chạy Miri (`#![cfg(not(miri))]`, lý do ghi đầu tệp)
+Việc dở       : chờ Agent 0 lật KT-30 (+ dòng D2 nếu muốn chuẩn hoá ngữ nghĩa ack `[TK]`/`MAX_WAITERS`). Cổng cuối K1c (§7.1: 100.000 seed × smp 1/2/4/8 + mutation tay + Miri + bảng DoD) là **task riêng**, chưa phải KT-30
 ```
+
+## KT-30 — `vifast-sync`: MCS lock + Mailbox MPSC cố định (K1c, D2-53 Q9)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-30) · HEAD `27f9a8d` · `rev-list --count
+HEAD..origin/main` = 0 · working tree có thay đổi `viscript/` của tab khác — **không chạm**, chỉ
+stage `v2/`.
+
+**Mục tiêu**: crate mới `v2/lib/vifast-sync` (`no_std`, 0 dependency, `unsafe` trong danh sách
+đóng D2-17 + Miri sạch): **MCS queue lock** (BKL, FIFO) + **hộp thư MPSC cố định** (7 loại
+message, ack theo bộ đếm thế hệ `AtomicU32`, đầy ⇒ `Busy`); kiểm bằng **stress host có biên +
+Miri** (D2-53 Q9(a): **không** loom, **không** explorer).
+
+**Không** làm: loom/explorer/dependency mới; thread trong kernel/sim; sửa IPC/Notification/
+WaitAddr/SMP sim; `vifast-model`, `spec/`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không
+`#[allow]`/`#[ignore]`.
+
+**Quyết định model-only `[TK]`** (ghi trong `docs/k1c-sync.md`):
+1. MCS dùng **pool node cố định trong khoá** (`[Node; MAX_WAITERS=16]`, liên kết bằng chỉ số
+   slot+1, **không** con trỏ thô) — vì `Guard` trả theo giá trị sẽ **di chuyển** node đã công bố
+   cho node trước ⇒ con trỏ treo/UB (đúng rủi ro (a) của KT-30); `Guard` chỉ giữ `usize`.
+2. `Ordering::SeqCst` cho `tail/head/next/locked` (K1c không có mục tiêu hiệu năng; hạ bậc để
+   sau, có điều kiện kèm test/loom).
+3. Ack `[TK]`: `generation` = số `send` Ok; `ack(gen)` = `fetch_max` (không lùi, kẹp về
+   `generation`); `pending(gen)` = `min(gen, generation) - acked`; `Busy` **không** tiêu thế hệ.
+4. `Mailbox<N>` đòi `N ≥ 2` (seq của slot mã hoá cả `pos+1` và `pos+N`).
+5. Hook test (`test_enqueue`/`test_woken`/`test_release`/`Guard::slot`) là **`pub(crate)` +
+   `cfg(test)`** — `pub` sẽ cho code ngoài crate mở khoá hộ slot ⇒ hai `Guard` cùng lúc = UB.
+
+**Kết quả**: đỏ trước E0432+E0425 (`kt30-red-compile.log`); `gate --fast` **PASS 461 test**
+(L1 750 ms; wall 199,3 s — **T-INFRA** tải máy); Miri **16/16** (13,5 s); stress **4 luồng ×
+500 op** ≈2,6 ms (send Ok 1978–1984 + Busy = 2000, `drain` == `send Ok` từng hart, bộ đếm ME =
+2000), **200 lần lặp / 0 fail**; FIFO có điều khiển `[B, C]`; `try_lock` tranh chấp không 2 chủ;
+pool cạn 16 slot ⇒ `try_lock()==None` (unit test). Verdict `reviewer-kt30` **DRIFT** đã sửa 2/2
+(assertion stress `try_lock` sai bất biến; hook test `pub` → `pub(crate)`+`cfg(test)`) + 4 việc
+làm luôn (pool cạn, `free_mask` không tràn, doc `acked ≠ delivered` + `release` quay vòng chờ
+`next`, `gate_wall` + T-INFRA). **Chờ Agent 0 lật sổ.**
 
 ## KT-29 — SMP mô hình tất định 1/2/4/8 + push migration (K1c, D2-53 Q1/Q2)
 
@@ -1206,6 +1242,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
+| 2026-11-13 | **KT-30** | 8/8 | `[KT-30]` | — | `gate --fast` PASS (**461 test/62 suite**, L1 1000 seed/999 trace, 750 ms; wall 199,3 s — **T-INFRA** tải máy) | **xong mã — chờ Agent 0 lật sổ**; `vifast-sync` `no_std` **1.346 dòng** (src 845, test 501), **0 dependency**, 8 khối `unsafe` có `SAFETY`; MCS lock FIFO qua **pool node cố định 16 slot** (không con trỏ thô, `Guard` giữ chỉ số slot), **không reentrant**; `Mailbox<N>` MPSC **7 loại** (`Wake/TlbFlush/Reschedule/Migrate/Stop/VmKick/PowerReq`), đầy ⇒ `Busy` (không mất message đầu), **ack thế hệ** `AtomicU32`; stress 4×500 (≈2,6 ms) + **200 lần / 0 fail**; Miri **16/16**; **reviewer-kt30 DRIFT đã sửa 2/2 chặn** (assertion stress; hook test `pub`→`pub(crate)`+`cfg(test)`); **không** loom/explorer (D2-53 Q9(a)) |
 | 2026-11-13 | **KT-28** | 10/10 | `ff94538` | — | `gate --fast` PASS (**427 test/56 suite**, L1 1000 seed/999 trace, 704 ms) | **commit `ff94538` đã push**; WaitOnAddress bảng băm `(frame, offset)` 64 bucket hằng model `[TK]` (không tạo `spec/kernel.toml`), `wait_addr` đọc giá trị + xếp hàng một lần (expected lệch ⇒ `InvalidArgument` không xếp hàng), **không timeout** (D2-53 Q4), `wake_addr(n)` FIFO tối đa n, `check_waitaddr` sau mỗi op, API K1b giữ nguyên; 12 test + fuzz **1.000 seed × 64 op**, Miri **12/12** + lib **2/2**; đột biến "xếp hàng trước rồi so" bị bắt; **reviewer-kt28 APPROVE**; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-23** | 7/8 | `67aa8bc` | — | `gate --fast` PASS (**321 test/47 suite**, L1 1000 seed/999 trace, 687 ms) | **xong mã — chờ review độc lập rồi mới commit**; coverage **46/46** (bảng 48/48) + **73/73** cặp cấm (`forbidden_attempts=73`), fuzz 1.000×64 = **256.000** kiểm 4 miền/0 vi phạm; **bug fuzz tìm ra đã sửa** (Exit fault giao thẳng Recv waiter); Miri **12/12** (2.608 s); parity 10.000 seed/0 lệch (chỉ Untyped/CNode); `.scn` 21 tệp/11 nhóm, fixture 12 sửa **1 dòng** (D2-52); DoD K1b: 3/4 ĐẠT, push migration **hoãn K1c** (D2-49(a)) |
 | 2026-11-13 | **KT-21** | 8/8 | `d547bbf` | — | `gate --fast` PASS (**298 test/45 suite**, L1 1000 seed/999 trace, 550 ms) | donation tự động Call/Reply + passive server + MCP (model-only `[TK]`); **13 test** (invariant **1.000 seed × 64 op**, **14.609** bước có donation), Miri **13/13** (129 s); commit `eae876b` + follow-up `[KT-21]` (3 điều kiện `reviewer-kt21`) đã push; **chờ Agent 0 ghi D2-51 + lật sổ** |
