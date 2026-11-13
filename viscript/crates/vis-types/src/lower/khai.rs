@@ -53,12 +53,20 @@ pub(crate) fn let_la_khai(d: &str) -> bool {
         return false;
     }
     let rhs = phai.trim();
-    !rhs.is_empty()
-        && !rhs.contains('|')
-        && !rhs.contains(';')
-        && !rhs.contains('>')
-        && !rhs.contains('<')
-        && !rhs.contains('&')
+    if rhs.is_empty()
+        || rhs.contains('|')
+        || rhs.contains(';')
+        || rhs.contains('>')
+        || rhs.contains('<')
+        || rhs.contains('&')
+    {
+        return false;
+    }
+    // RHS phải parse được như **biểu thức script** — `ls ./photos` thì không (⇒ shell-let ST-44).
+    let thu = format!("let __x = {rhs}");
+    vis_syntax::parse(&thu, vis_syntax::lex::Mode::Script)
+        .diagnostics
+        .is_empty()
 }
 
 /// Mốc byte bắt đầu **vùng stage**; `None` nếu cả tệp là khai báo (không có stage).

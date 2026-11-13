@@ -3,7 +3,9 @@
 //! `.vis` của người dùng), đăng ký **chỉ** khi hạ `.vish`:
 //!
 //! - `FileEntry { name: str, size: size, modified: duration, is_file: bool }` — cho `walk`/`ls` (ST-42);
-//! - `ProcEntry { pid: int, name: str, cpu: percent, mem: size }` — cho `ps` (ST-42).
+//! - `ProcEntry { pid: int, name: str, cpu: percent, mem: size }` — cho `ps` (ST-42);
+//! - `FileEntryLong` (ST-46) — **bản ghi riêng** cho `ls --long`: thêm `mode: str`, `modified_time: str`
+//!   để bảng mặc định 4 cột **không đổi**.
 //!
 //! Nhờ vậy `it.size`/`it.cpu` trong vị từ `where`/khoá `sort_by` có **kiểu thật** (`size`, `percent`) thay
 //! vì `{error}` ⇒ kiểm tĩnh được. `.vis` **không** thấy hai tên này (khai trùng trong `.vish` ⇒ `VS0302`).
@@ -27,7 +29,7 @@ fn truong(ten: &'static str, ty: Type) -> Truong {
     Truong { ten, ty }
 }
 
-/// Hai bản ghi prelude của `.vish` (ST-40a).
+/// Các bản ghi prelude của `.vish` (ST-40a; `FileEntryLong` ST-46).
 pub fn bang_ghi() -> Vec<BanGhi> {
     vec![
         BanGhi {
@@ -37,6 +39,17 @@ pub fn bang_ghi() -> Vec<BanGhi> {
                 truong("size", Type::Size),
                 truong("modified", Type::Duration),
                 truong("is_file", Type::Bool),
+            ],
+        },
+        BanGhi {
+            ten: "FileEntryLong",
+            truong: vec![
+                truong("name", Type::Str),
+                truong("size", Type::Size),
+                truong("modified", Type::Duration),
+                truong("is_file", Type::Bool),
+                truong("mode", Type::Str),
+                truong("modified_time", Type::Str),
             ],
         },
         BanGhi {

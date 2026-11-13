@@ -1,0 +1,47 @@
+=== ST-46 D2-05: 3 nợ VSH1b (`--long`, nhóm-đối-số, chẩn đoán tuyệt đối) — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T13:05:09Z
+
+## 1. Đỏ **thật** ở HEAD `09e648b` (worktree `/tmp/vis-red46`, chỉ thêm tệp test + fixture)
+
+```
+$ cargo test -p vis-cli --test vsh1b
+test result: FAILED. **4 passed; 11 failed**
+```
+
+4 ca xanh: `.vis` thuần, `nhom_lam_doi_so_echo` (`echo ( "a" )` đã chạy từ trước), `nhom_long_nhau`,
+`shell_let_st44_khong_doi`.
+
+## 2. Sau khi sửa — đo được
+
+### (a) `ls --long` thật
+
+- `MucFs` thêm `mode: u32` (default `0` ⇒ `-`); `FileEntryLong` là **bản ghi riêng** (6 trường) ⇒
+  `ls --long` trả `list[FileEntryLong]`, **bảng mặc định vẫn 4 cột**.
+- `mode` = `rw-r--r--`; `modified_time` = **UTC** `YYYY-MM-DD HH:MM` (civil-from-days, **không** thêm crate);
+  Runner thật đọc `permissions.mode()`; mock nhận `mode`/`mtime`; ca **thư mục thật** `/tmp`: `mode` khác `-`
+  và `modified_time` khớp `mtime` tệp vừa tạo (≤ 1 phút).
+
+### (b) `( … )` làm **đối số** = biểu thức
+
+- Bỏ `VS0603` cho nhóm-đối-số; `take ( 1 + 1 )` ⇒ `[1, 2]`; `echo ( "a" )`; sai kiểu tĩnh ⇒ **`VS0412`**;
+  nhóm rỗng vẫn là **lời gọi 0 đối số** (`f()`); shell-let ST-44 **không** đổi (RHS lệnh ⇒ shell-let).
+- `( … )` làm **stage** vẫn chạy: biểu thức (`( (1+1)*3 )` ⇒ `6`) **và** một lệnh (`( ls ./photos )` ⇒ bảng).
+
+### (c) Chẩn đoán **tuyệt đối** trong `( … )`
+
+- `lower_vach` đệm **dấu cách** (không `\n` ⇒ **không** sinh `Indent`/`Dedent` giả) theo offset byte tuyệt đối;
+  `( 1 / 0 )` ở dòng 3 ⇒ báo **`3:3`** (trước: vị trí tương đối trong ngoặc).
+
+## 3. Số ca
+
+- test workspace **636 → 651** (+**15** `vsh1b.rs`); sem **370 không đổi**; 4 fixture `test/cmd/long/**`;
+- parity **344/344**; differential **100.000 / 0 lệch**; allowlist **6**.
+
+## 4. sha256 bản commit
+  sha256 crates/vis-interp/src/builtin.rs=a12ddcab8eba4de1d36d10f26525ff45447d1ffda000071f5c188289ac49e025
+  sha256 crates/vis-cli/src/ngoai.rs=a473b2304f13e36848363402914a3df3fc91569fe4708f1d1ec2e3f604074e05
+  sha256 crates/vis-cli/src/fsmock.rs=f5026e7a1fcf0a409a304033caa28aa58e1ca359545560d90618eb1a4892bdac
+  sha256 crates/vis-types/src/prelude.rs=bbb3ec064d3e567447a48575519c55165220b846d40a21df2340c77916afbffd
+  sha256 crates/vis-types/src/lower/cmd.rs=24b4f5a96b4736ff3d06a07dd6d3dee96db0d78e71ecf249a2bfd172b1d02192
+  sha256 crates/vis-types/src/lower/sugar.rs=8833e099e7aea8f6cb2d62ce798a4de8a8e541cf3871f78be45d8056adeef0f8
+  sha256 crates/vis-cli/tests/vsh1b.rs=424d1747bb2e8a8128289b3c70c845b8aae618ddd4c4318ffa130490cd4a6031

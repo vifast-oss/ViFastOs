@@ -100,14 +100,21 @@ fn ls_all_gom_ten_cham() {
 }
 
 #[test]
-fn ls_long_la_co_hop_le_va_no_op() {
+fn ls_long_them_cot_mode_va_modified_time() {
+    // **SỬA KÈM LÝ DO (ST-46)**: `--long` **không còn no-op** (nợ ST-42 đã đóng) — thêm **hai cột**
+    // `mode` + `modified_time` (bản ghi riêng `FileEntryLong`); bảng **mặc định vẫn 4 cột**.
     let d = tam("long");
     let m = mock(&d);
     let (c1, o1, e1) = chay(&d, "k", "ls ./photos\n", Some(&m), false);
     let (c2, o2, e2) = chay(&d, "l", "ls ./photos --long\n", Some(&m), false);
     assert_eq!(c1, 0, "{e1}");
     assert_eq!(c2, 0, "{e2}");
-    assert_eq!(o1, o2, "`--long` chưa đổi hành vi (nợ ghi JOURNAL)");
+    assert_eq!(o1, BANG_LS);
+    assert!(
+        o2.starts_with("name   size  modified  is_file  mode"),
+        "{o2}"
+    );
+    assert_eq!(o2.lines().count(), 3, "2 dòng dữ liệu: {o2}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

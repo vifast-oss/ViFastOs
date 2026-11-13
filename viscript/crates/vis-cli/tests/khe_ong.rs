@@ -160,11 +160,12 @@ fn nhom_khong_phai_list_thi_bao_loi_luc_chay() {
 
 #[test]
 fn nhom_lam_doi_so_chua_ho_tro() {
-    // Hiện trạng: `( … )` làm **đối số** ⇒ `VS0603` (nợ VSH1b — ST-44 giữ nguyên; `f()` rỗng đã
-    // được nhận là **lời gọi không đối số**, còn nhóm có nội dung làm đối số vẫn chưa có kiểu riêng).
+    // **SỬA KÈM LÝ DO (ST-46)**: `( … )` làm **đối số** nay là **biểu thức** (bỏ `VS0603`) ⇒ ca này
+    // thành **lệch kiểu tĩnh**: `take` nhận `n: int`, nhóm là `list[int]` ⇒ **`VS0412`** (nêu kiểu thật).
+    // Bất biến giữ: vẫn **đỏ** (exit 2) và **có** mã lỗi, không lặng lẽ chạy.
     let d = tam("arg");
     let (c, _, e) = chay(&d, "arg", "( [1, 2] ) | take ([9, 9]) 1\n");
     assert_eq!(c, 2, "stderr: {e}");
-    assert!(e.contains("VS0603"), "stderr: {e}");
+    assert!(e.contains("VS0412"), "stderr: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }

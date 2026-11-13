@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-45** (`where` kiểm tĩnh + `each` không kiểm kiểu trả) — xong, **chưa commit**.
-Bước          : 4/4 (đo trước → nới `each` → 14 ca + 3 fixture → gate)
+Task          : **ST-46** (3 nợ VSH1b: `ls --long`, nhóm-đối-số, chẩn đoán tuyệt đối) — xong, **chưa commit**.
+Bước          : 5/5 (`MucFs.mode`+`FileEntryLong` → nhóm-đối-số=biểu thức → đệm `lower_vach` → 15 ca + 4 fixture → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T12:27:12Z**; **636** test / sem **370** / parity **344/344** / diff 100k **0 lệch**
-Việc dở       : commit `[ST-45]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T13:04:53Z**; **651** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (224,8 s)
+Việc dở       : commit `[ST-46]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-45 — `where` kiểm tĩnh, `each` không kiểm kiểu trả (2026-11-13)
+## ST-46 — 3 nợ VSH1b (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`ls --long` thật** | `MucFs.mode: u32`; **`FileEntryLong`** (6 trường: thêm `mode`, `modified_time`); `mode` = `rw-r--r--`, `modified_time` = **UTC** `YYYY-MM-DD HH:MM` (civil-from-days, không thêm crate); bảng mặc định **4 cột không đổi** |
+| 2 | **`( … )` đối số** | bỏ `VS0603`; nhóm-đối-số = **biểu thức** (`take ( 1 + 1 )`, `echo ( "a" )`), sai kiểu tĩnh ⇒ `VS0412`; nhóm rỗng = lời gọi 0 đối số; **stage** nhóm vẫn chạy (biểu thức **và** một lệnh `( ls ./photos )`) |
+| 3 | **Chẩn đoán tuyệt đối** | `lower_vach` đệm **dấu cách** theo offset byte (không `\n` ⇒ không `Indent`/`Dedent` giả): `( 1 / 0 )` ở dòng 3 ⇒ `3:3` |
+| 4 | **Đo** | **636 → 651** test (+15 `vsh1b.rs`); sem **370** không đổi; **4 fixture** `test/cmd/long/**`; parity 344/344; diff 100k 0 lệch; allowlist **6** |
+| 5 | **Nợ** | `( ls … --long )` (nhóm-lệnh có cờ) chưa hạ; nhóm **nhiều dòng** chưa hỗ trợ; `where (x=>x)` kiểm **động** (chưa mở `kiem_builtin` cho `where`) |
+
+, `each` không kiểm kiểu trả (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

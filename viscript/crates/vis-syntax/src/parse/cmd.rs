@@ -151,6 +151,12 @@ impl<'a> Parser<'a> {
                             && !rhs.contains('>')
                             && !rhs.contains('<')
                             && !rhs.contains('&')
+                            && crate::parse::parse(
+                                &format!("let __x = {rhs}"),
+                                crate::lex::Mode::Script,
+                            )
+                            .diagnostics
+                            .is_empty()
                     }
                 }
             };
@@ -451,7 +457,16 @@ impl<'a> Parser<'a> {
         let slice = slice.trim();
         let sub = crate::parse::parse(slice, crate::lex::Mode::Script);
         if let Some(d) = sub.diagnostics.first() {
-            return Err(self.err_here(format!("trong `( … )`: {}", d.message)));
+            // ST-46: nhóm có thể là **một lệnh** (`( ls ./photos )`) — parser **không** từ chối;
+            // tầng hạ quyết định biểu thức hay lệnh. Nhóm nhiều stage (`( a | b )`) **vẫn** lỗi.
+            if slice.contains('|') || slice.contains(';') || slice.contains('&') {
+                return Err(self.err_here(format!("trong `( … )`: {}", d.message)));
+            }
+            let node = self.node(NodeKind::CmdGroup, elems);
+            return Ok((
+                Elem::Node(Box::new(node)),
+                format!("(group raw {})", slice.replace(' ', "_")),
+            ));
         }
         // ST-44: `()` **rỗng** hợp lệ làm dấu **lời gọi không đối số** (`f() | where …`); tầng hạ
         // quyết định nghĩa (bỏ qua như đối số rỗng). Nhóm rỗng **đứng một mình** vẫn bị hạ báo lỗi.

@@ -65,6 +65,56 @@ pub struct MucFs {
     pub size: u64,
     pub modified_ns: i64,
     pub is_file: bool,
+    /// ST-46: bit quyền kiểu POSIX (0 = chưa biết ⇒ in `-` trong `ls --long`).
+    pub mode: u32,
+}
+
+/// `ls --long` (ST-46): quyền `rw-r--r--` từ bit POSIX; `0` ⇒ `-`.
+pub fn chuoi_quyen(mode: u32) -> String {
+    if mode == 0 {
+        return "-".to_string();
+    }
+    let mut s = String::with_capacity(9);
+    for (bit, ch) in [
+        (0o400, 'r'),
+        (0o200, 'w'),
+        (0o100, 'x'),
+        (0o040, 'r'),
+        (0o020, 'w'),
+        (0o010, 'x'),
+        (0o004, 'r'),
+        (0o002, 'w'),
+        (0o001, 'x'),
+    ] {
+        s.push(if mode & bit != 0 { ch } else { '-' });
+    }
+    s
+}
+
+/// `ls --long` (ST-46): `YYYY-MM-DD HH:MM` theo **UTC** (civil-from-days, không thêm crate).
+pub fn thoi_gian_utc(ns: i64) -> String {
+    if ns == 0 {
+        return "-".to_string();
+    }
+    let mut giay = ns.div_euclid(1_000_000_000);
+    let ngay = giay.div_euclid(86_400);
+    giay = giay.rem_euclid(86_400);
+    // Howard Hinnant: days since 1970-01-01 → (y, m, d).
+    let z = ngay + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+        giay / 3600,
+        (giay % 3600) / 60
+    )
 }
 
 pub trait FsHost {
@@ -705,18 +755,27 @@ pub fn call(
                 .collect();
             // **Sắp theo tên (byte)** — ổn định giữa hệ tệp.
             ds.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+            let long = matches!(args.get(2), Some(Value::Bool(true)));
             Ok(Value::List(
                 ds.into_iter()
                     .map(|m| {
-                        Value::Record(
-                            "FileEntry".to_string(),
-                            vec![
-                                ("name".to_string(), Value::Str(m.name)),
-                                ("size".to_string(), Value::Size(m.size as i64)),
-                                ("modified".to_string(), Value::Duration(m.modified_ns)),
-                                ("is_file".to_string(), Value::Bool(m.is_file)),
-                            ],
-                        )
+                        let mut truong = vec![
+                            ("name".to_string(), Value::Str(m.name)),
+                            ("size".to_string(), Value::Size(m.size as i64)),
+                            ("modified".to_string(), Value::Duration(m.modified_ns)),
+                            ("is_file".to_string(), Value::Bool(m.is_file)),
+                        ];
+                        let ten = if long {
+                            truong.push(("mode".to_string(), Value::Str(chuoi_quyen(m.mode))));
+                            truong.push((
+                                "modified_time".to_string(),
+                                Value::Str(thoi_gian_utc(m.modified_ns)),
+                            ));
+                            "FileEntryLong"
+                        } else {
+                            "FileEntry"
+                        };
+                        Value::Record(ten.to_string(), truong)
                     })
                     .collect(),
             ))

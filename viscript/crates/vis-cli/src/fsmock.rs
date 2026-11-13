@@ -39,6 +39,27 @@ fn chuoi(v: &Value) -> Option<String> {
     }
 }
 
+/// `rw-r--r--`/`-rw-r--r--` (hoặc `755` hệ 8) → bit POSIX; `-`/rỗng ⇒ `0`.
+fn mode_tu_chuoi(s: &str) -> u32 {
+    let t = s.trim().trim_start_matches('-');
+    if t.is_empty() || t == "-" {
+        return 0;
+    }
+    if t.chars().all(|c| ('0'..='7').contains(&c)) {
+        return u32::from_str_radix(t, 8).unwrap_or(0);
+    }
+    let mut mode = 0u32;
+    let bits = [
+        0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001,
+    ];
+    for (i, c) in t.chars().take(9).enumerate() {
+        if c != '-' {
+            mode |= bits[i];
+        }
+    }
+    mode
+}
+
 impl FsMock {
     /// Nạp kịch bản từ chuỗi JSON. `Err` nêu rõ lỗi định dạng.
     pub fn tu_json(s: &str) -> Result<Self, String> {
@@ -80,11 +101,28 @@ impl FsMock {
                         _ => 0,
                     };
                     let is_file = matches!(lay(&it, "is_file"), Some(Value::Bool(true)));
+                    // ST-46: `mode` = chuỗi `rw-r--r--` (hoặc số), `mtime` = duration từ epoch.
+                    let mode = match lay(&it, "mode") {
+                        Some(Value::Int(n)) => n.max(0) as u32,
+                        Some(Value::Str(s)) => mode_tu_chuoi(&s),
+                        _ => 0,
+                    };
+                    let modified_ns = match lay(&it, "mtime") {
+                        Some(Value::Duration(d)) => d,
+                        Some(Value::Int(n)) => n,
+                        Some(Value::Str(s)) => {
+                            vis_interp::value::parse_duration(&s).ok_or_else(|| {
+                                format!("`--fs-mock`: `mtime` của `{ten}` không hợp lệ: {s}")
+                            })?
+                        }
+                        _ => modified,
+                    };
                     muc.push(MucFs {
                         name: ten,
                         size: size.max(0) as u64,
-                        modified_ns: modified,
+                        modified_ns,
                         is_file,
+                        mode,
                     });
                 }
                 muc.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));

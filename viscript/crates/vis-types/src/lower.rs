@@ -335,6 +335,8 @@ struct Lowerer<'a> {
     cmd_sigs: Vec<crate::cmdsig::CmdSig>,
     /// ST-38: bộ đếm tên tạm cho **sugar `it`** (tránh trùng `__c` giữa nhiều vị từ trong tệp).
     tam_n: u32,
+    /// ST-46: `RecId` của `FileEntryLong` (prelude) — `ls --long` trả `list` kiểu này.
+    file_long: Option<RecId>,
     /// ST-41: kiểu (tĩnh) của **stage cuối** vừa hạ — để `boc_render` biết phần tử có phải **bản ghi**
     /// (⇒ bảng / `(rỗng)`) hay không (`list[str]`/`list[int]` rỗng giữ `[]`).
     last_stage_ty: Type,
@@ -384,6 +386,7 @@ impl<'a> Lowerer<'a> {
             sym_generic: false,
             cmd_sigs: crate::cmdsig::BuiltinSigs::mac_dinh().sigs().to_vec(),
             tam_n: 0,
+            file_long: None,
             prelude_recs: Vec::new(),
             last_stage_ty: Type::Error,
             type_env: std::collections::HashMap::new(),

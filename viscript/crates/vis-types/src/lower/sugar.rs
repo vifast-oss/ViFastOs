@@ -40,6 +40,9 @@ impl<'a> super::Lowerer<'a> {
             if ten == "FileEntry" {
                 file_id = Some(id);
             }
+            if ten == "FileEntryLong" {
+                self.file_long = Some(id);
+            }
             self.rec_names.push((ten.clone(), id));
             self.prelude_recs.push((ten.clone(), id));
             ds.push((ten, id));
