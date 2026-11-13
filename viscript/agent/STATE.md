@@ -6,11 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-36** (báo cáo `R5-viscript`, chốt VS1c) — xong, **chưa commit**.
-Bước          : 3/3 (đo lại toàn bộ → `R5-viscript.{md,json,license}` → `report-check --all` PASS)
+Task          : **ST-37** (`CmdSig` generic + khe ống hợp nhất) — xong, **chưa commit**.
+Bước          : 4/4 (`cmdsig` seam → hợp nhất khe → `( … )` hạ lại → 14 ca + 3 sem)
 Nhánh         : main
-Cổng gần nhất : (chạy sau khi ghi mục này) — **507** test / sem **346** / parity **320/320**
-Việc dở       : chờ gate rồi commit `[ST-36]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T08:37:26Z** (không retry);
+                **521** test / sem **349** / parity **323/323** / diff 100k **0 lệch** (197,8 s); `vis test` 349 ok
+Việc dở       : chờ gate rồi commit `[ST-37]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -43,6 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-37 — `CmdSig` generic + khe ống hợp nhất (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Seam `SigSource`** | `vis-types/src/cmdsig.rs`: `CmdSig { name, sym, generics, params, ret }` + `trait SigSource` + `BuiltinSigs` (3 builtin) + `lower_with_sigs(...)` cho ST-40/41 cắm nguồn khác **không** sửa `lower` |
+| 2 | **`take` generic** | `take[T](xs: list[T], n: int) -> list[T]`; `echo`/`lines` giữ nguyên; **không** thêm `first`/`count` (ST-38) |
+| 3 | **Khe ống hợp nhất** | chọn tham số vị trí **đầu tiên nhận được** (hợp nhất một chiều `hop_nhat_cmd`, buộc `T`), **không** đặt vào `--cờ`, **không** đè bind tường minh; `up_ty = {error}` ⇒ chọn **vị trí đầu**; không khớp ⇒ **`VS0603`** (mã cũ, không đổi) |
+| 4 | **Stage `( … )`** | parser chỉ giữ token ⇒ hạ lại **văn bản trong ngoặc** (script, bọc `let`) ⇒ `kieu_stage` suy kiểu literal ⇒ `( [1,2] ) | take 1` chạy; **nhóm làm đối số**/không ngoặc vẫn lỗi — khoá + ghi nợ **VSH1b** |
+| 5 | **Đo** | **521** test (507 + **14** `khe_ong.rs`); sem **346 → 349** (+3 `vish/khe-*.vish`); parity **320/320 → 323/323**; `fuzz_mutate` 294 → **297**; `diag_cmp` 294/346 → **297/349** |
 
 ## ST-36 — báo cáo **R5** chốt VS1c (2026-11-13)
 

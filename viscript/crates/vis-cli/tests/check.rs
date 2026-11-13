@@ -239,23 +239,17 @@ fn hai_khoi_vish_session_qua_cli_deu_ok() {
         std::fs::write(&p, b).expect("ghi khối");
         files.push(p.to_string_lossy().into_owned());
     }
-    // **SỬA KÈM LÝ DO (ST-18)**: 2 khối ```vish-session của tài liệu dùng lệnh **VS1** (`ls`,
-    // `where`, `sort_by`, `each`, …) — chúng **không** có trong bảng chữ ký VS0, nên từ khi `.vish`
-    // hạ thật thì đúng là `not ok` với **đúng một** chẩn đoán `VS0601` mỗi tệp (không Bail out,
-    // không im lặng). Bất biến cũ "parse được" vẫn giữ: `vis check` chạy hết, TAP đủ 2 dòng.
+    // **SỬA KÈM LÝ DO (ST-37)**: hai khối ```vish-session của tài liệu dùng lệnh **VS1** (`ls`,
+    // `where`, `sort_by`, `each`, …). Từ VS1c các lệnh **lạ** là **chương trình ngoài** (§9.3) và khe
+    // ống nay chọn theo **khả năng nhận** (VD-69) ⇒ `vis check` **không còn** chẩn đoán cho hai khối
+    // này: TAP đủ 2 dòng, **2 ok**, exit 0. Bất biến giữ nguyên: `vis check` chạy **hết** hai tệp,
+    // không Bail out, không im lặng bỏ tệp.
     let o = run(&files);
     let out = stdout(&o);
-    assert_eq!(o.status.code(), Some(1), "khối dùng lệnh ngoài VS0: {out}");
+    assert_eq!(o.status.code(), Some(0), "khối dùng lệnh ngoài VS0: {out}");
     assert_eq!(lines(&o)[1], "1..2");
-    assert_eq!(out.matches("not ok ").count(), 2, "{out}");
-    // **SỬA KÈM LÝ DO (ST-27)**: lệnh **lạ** nay là **chương trình ngoài** (§9.3) ⇒ chẩn đoán đổi
-    // từ `VS0601` (không có lệnh) sang `VS0603` (pipeline `take` không nối được) — bất biến giữ
-    // nguyên: mỗi tệp **đúng một** chẩn đoán thuộc nhóm `06xx`, không Bail out, TAP đủ 2 dòng.
-    assert_eq!(
-        out.matches("VS06").count(),
-        2,
-        "mỗi khối đúng một chẩn đoán `06xx`: {out}"
-    );
+    assert_eq!(out.matches("ok ").count(), 2, "{out}");
+    assert_eq!(out.matches("not ok ").count(), 0, "{out}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

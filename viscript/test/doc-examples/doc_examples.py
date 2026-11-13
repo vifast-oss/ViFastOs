@@ -36,8 +36,12 @@ FENCE = re.compile(r"^```(vis|vish-session)\s*$")
 # Số do Agent 0 chốt cho VT09/QD §7.4 — ĐỔI là thay đổi ngưỡng, phải xin Agent 0.
 # **8 mục (ST-27, Agent 0 APPROVED): khối 662 `extern cmd git(…, ...rest: str)` đã XANH** vì variadic
 # có mặt (đúng §9.5) ⇒ bỏ khỏi allowlist; đây là **chặt hơn**, không nới ngưỡng (xem VD-60).
-# Mỗi mục còn lại vẫn phải **thật đỏ** khi `vis check`, không phải để né cổng.
-ALLOW_COUNT = 8
+# **6 mục (ST-37, Agent 0 APPROVED `59a407c` + `260fe8a`, VD-70): HAI khối `vish-session` §9.7 nay XANH**
+# — 1451 (`walk`/`where`/`sort_by`/`to json`/`save`) **và** 672 (`ls ./photos | where size > 5mb |
+# sort_by modified --desc | take 10`, `VS0603 "take không có khe nhận error"` cũ) — vì lệnh lạ =
+# **chương trình ngoài** (§9.3) và khe ống **hợp nhất** theo khả năng nhận (VD-69) ⇒ bỏ khỏi allowlist;
+# **chặt hơn**, không nới ngưỡng. Mỗi mục còn lại vẫn phải **thật đỏ** khi `vis check`.
+ALLOW_COUNT = 6
 BLOCK_COUNT = 24
 VISH_COUNT = 2
 QD_COUNT = 12

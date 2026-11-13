@@ -1,0 +1,53 @@
+=== ST-37 D2-05: khe ống hợp nhất + CmdSig generic — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T08:27:56Z
+
+## 1. Đỏ **thật** ở HEAD `77324aa` (worktree `/tmp/vis-red37`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test khe_ong
+test result: FAILED. **7 passed; 7 failed**; 0 ignored
+```
+
+7 ca đỏ vì khe chọn **so bằng** kiểu (`take` khai `list[str]`): `( [1,2] ) | take 1`, `( ["x","y"] ) |
+take 1`, `( [true,false] ) | take 1`, `( [1,2,3] ) | take 2`, `( [1,2] ) | take 0`, … đều `VS0603`
+("không có khe nhận `error`") — đúng VD-69. Các ca xanh là ca **không** phụ thuộc khe (VS0602/VS0201/VS0603
+ở nhánh khác).
+
+## 2. Hiện trạng trước khi sửa (đo tay trên HEAD)
+
+```
+$ vis run a.vish          # ( [1, 2] ) | take 1
+a.vish:2:??: error VS0603: pipeline không nối được: `take` không có khe nhận `error`
+$ vis run b.vish          # echo x | take 1
+b.vish:2:10: error VS0603: pipeline không nối được: `take` không có khe nhận `str`
+```
+
+## 3. Sau khi sửa — đo được
+
+- `( [1, 2] ) | take 1` ⇒ **`[1]`**; `( ["x","y"] ) | take 1` ⇒ **`[x]`**; `( [true,false] ) | take 1` ⇒
+  **`[true]`**; `( [1,2,3] ) | take 2` ⇒ **`[1, 2]`**; `( [1,2] ) | take 0` ⇒ **`[]`**;
+- `echo "a b" | lines | take 1` ⇒ `[a b]` (giữ); `echo x | take 1` ⇒ **`VS0603`** (đúng: `str`);
+- `echo x | echo --upper` ⇒ `X` (khe **không** rơi vào `--cờ`); `echo a | echo "y"` ⇒ `a y` (khe giữ chỗ trước);
+- `take 1` (không pipe) ⇒ **`VS0602`** (giữ, đúng VD-53 (4));
+- `[1, 2] | take 1` (không ngoặc) ⇒ **`VS0201`** — **nợ VSH1b** (stage đầu là biểu thức);
+- `echo a | ( [1] )` ⇒ `VS0603` (nhóm không nhận pipe); `( [1,2] ) | take ([9,9]) 1` ⇒ `VS0603` (nhóm làm đối
+  số chưa hỗ trợ — nợ VSH1b); `( 1 + 1 ) | take 1` ⇒ **`VS0501`** lúc chạy (khoá hành vi, không đẹp).
+
+## 4. Số ca
+
+- test workspace **521** (507 + **14** `khe_ong.rs`); sem **346 → 349** (+3 `test/sem/vish/khe-*.vish`);
+- parity **320/320 → 323/323**; `fuzz_mutate` 294 → **297**; `diag_cmp` 294/346 → **297/349**;
+- `vis test` **349 ok**.
+
+**Sửa test cũ kèm lý do**: `vis-cli/tests/check.rs::hai_khoi_vish_session_qua_cli_deu_ok` — hai khối
+`vish-session` của tài liệu nay **ok** (lệnh lạ = chương trình ngoài + khe hợp nhất) ⇒ `vis check` exit 0, 2 ok.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-types/src/cmdsig.rs=42b1bcfc409388ad59cbe7a126594107c5c3361d9db3ecae9eb248040aa7eb38
+  sha256 crates/vis-types/src/lib.rs=5e8a714b3fd044516f66b351cd89bd2adce796bb65dbcd999785e2a6a01284d9
+  sha256 crates/vis-types/src/lower.rs=9dcd9f9c039e2efe162032c082db1fbde8f216095ab24ac4179f5e97249e6248
+  sha256 crates/vis-types/src/lower/cmd.rs=b04f370f98b2567f249c2b8bc3fcbecaa4f61bee8e93a5d17c555c740b9c4fd7
+  sha256 crates/vis-cli/tests/khe_ong.rs=dbe0bbd514d04c382696d0b45c8cf0cfdda04cab3d8be3de5a437488007b61c2
+  sha256 crates/vis-cli/tests/check.rs=26b138adb016a7d9ff06b046f2cb58516d46ff6f352f8a7af890657c7a0e988d
+  sha256 test/doc-examples/doc_examples.py=b9b9fe7d8371e598299a7db1ea7ba8fc801740681b75cd06f44a816cdf647015
+  sha256 test/fixtures/run_fixtures.sh=7e1fecf9e9cdde76635145e1055d52697d54d86788ea00bf4ca0ad0a9c6e5259

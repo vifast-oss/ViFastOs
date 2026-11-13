@@ -50,6 +50,7 @@
 //! assert_eq!(h.codes(), ["VS0302"]);
 //! ```
 
+pub mod cmdsig;
 pub mod hir;
 pub mod lower;
 pub mod stdlib;

@@ -4,29 +4,9 @@
 //! sẵn có; ở đây chỉ thêm **bảng chữ ký** + **khe ống** + 4 mã `06xx`.
 
 use super::*;
+use crate::cmdsig::{hop_nhat_cmd, CmdSig};
 use crate::hir::Lit;
 use vis_diag::COMMAND_CODES;
-
-fn tham(ten: &str, ty: Type, mac_dinh: Option<HExpr>) -> HParam {
-    HParam {
-        name: ten.to_string(),
-        span: Span::new(0, 0),
-        sym: 0,
-        ty,
-        named: false,
-        is_self: false,
-        is_var_self: false,
-        default: mac_dinh,
-        variadic: false,
-    }
-}
-
-fn co(ten: &str, ty: Type, mac_dinh: Option<HExpr>) -> HParam {
-    HParam {
-        named: true,
-        ..tham(ten, ty, mac_dinh)
-    }
-}
 
 /// Tách **từ** của một stage lệnh, tôn trọng nháy đơn/nháy kép (ST-27).
 fn tach_tu(s: &str) -> Vec<String> {
@@ -76,45 +56,64 @@ fn lit(kind: LitKind, text: &str) -> HExpr {
     }
 }
 
-/// Bảng chữ ký **builtin** (VS0): 3 lệnh, không variadic (hạn chế đã biết — `echo` tối đa 3 phần).
-fn sig_builtin() -> Vec<CmdSig> {
-    let danh_sach: Vec<(&str, Vec<HParam>, Type)> = vec![
-        (
-            "echo",
-            vec![
-                tham("a", Type::Str, None),
-                tham("b", Type::Str, Some(lit(LitKind::Str, "\"\""))),
-                tham("c", Type::Str, Some(lit(LitKind::Str, "\"\""))),
-                co("upper", Type::Bool, Some(lit(LitKind::Bool, "false"))),
-            ],
-            Type::Str,
-        ),
-        (
-            "lines",
-            vec![tham("s", Type::Str, None)],
-            Type::List(Box::new(Type::Str)),
-        ),
-        (
-            "take",
-            vec![
-                tham("xs", Type::List(Box::new(Type::Str)), None),
-                tham("n", Type::Int, None),
-            ],
-            Type::List(Box::new(Type::Str)),
-        ),
-    ];
-    danh_sach
-        .into_iter()
-        .map(|(n, p, r)| CmdSig {
-            name: n.to_string(),
-            sym: None,
-            params: p,
-            ret: r,
-        })
-        .collect()
+/// Tên kiểu ngắn để đưa vào thông điệp `VS0602`/`VS0603`.
+impl<'a> Lowerer<'a> {
+    /// ST-37: hạ **nội dung** stage `( … )` — parser chỉ giữ token nên hạ lại văn bản trong ngoặc
+    /// ở chế độ script. Chỉ dùng cho **biểu thức thuần** (literal/phép toán); biến trong nhóm chưa hỗ trợ.
+    fn vach_text(&self, g: &Node) -> Option<String> {
+        let first = g.elems.first().and_then(|e| match e {
+            Elem::Token(i) => self.tok(*i).map(|t| t.span),
+            _ => None,
+        })?;
+        let last = g.elems.last().and_then(|e| match e {
+            Elem::Token(i) => self.tok(*i).map(|t| t.span),
+            _ => None,
+        })?;
+        self.text.get(first.end..last.start).map(|s| s.to_string())
+    }
+
+    fn lower_vach(&mut self, g: &Node) -> Option<HExpr> {
+        let txt = self.vach_text(g)?;
+        // Bọc `let` để **giữ** biểu thức (câu lệnh trần bị bỏ ở cấp tệp) — không chạy tyck ở đây.
+        let src = format!("let __vach = {}", txt.trim());
+        let lexed = vis_syntax::lex(&src, vis_syntax::Mode::Script);
+        let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
+        let h = crate::lower(&parsed.cst, &lexed);
+        match h.hir.stmts.first().cloned()? {
+            HStmt::Let { init, .. } => Some(init),
+            HStmt::Expr(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    /// ST-37: kiểu **literal** suy từ văn bản (`[1, 2]` ⇒ `list[int]`, `"x"` ⇒ `str`, …).
+    /// Chỉ để chọn khe ống / buộc `T`; `{error}` nếu không chắc (tyck/lúc chạy kiểm sau).
+    fn kieu_text(&self, raw: &str) -> Type {
+        let t = raw.trim();
+        if let Some(tron) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
+            let dau = tron.split(',').next().unwrap_or("").trim();
+            return Type::List(Box::new(if dau.is_empty() {
+                Type::Error
+            } else {
+                self.kieu_text(dau)
+            }));
+        }
+        if t.starts_with('"') {
+            return Type::Str;
+        }
+        if t == "true" || t == "false" {
+            return Type::Bool;
+        }
+        if t.parse::<i64>().is_ok() {
+            return Type::Int;
+        }
+        if t.parse::<f64>().is_ok() {
+            return Type::Float;
+        }
+        Type::Error
+    }
 }
 
-/// Tên kiểu ngắn để đưa vào thông điệp `VS0602`/`VS0603`.
 fn ten_kieu(t: &Type) -> String {
     match t {
         Type::Int => "int".into(),
@@ -137,14 +136,6 @@ fn ten_kieu(t: &Type) -> String {
 }
 
 /// Một chữ ký lệnh dùng lúc hạ: tên, `sym` (cmd trong tệp) hoặc `None` (builtin), tham số, kiểu ra.
-#[derive(Clone)]
-pub(crate) struct CmdSig {
-    pub name: String,
-    pub sym: Option<u32>,
-    pub params: Vec<HParam>,
-    pub ret: Type,
-}
-
 impl<'a> Lowerer<'a> {
     /// Dựng call **chương trình ngoài** `exec.<tên>` (ST-27): từ thô của stage, bỏ tên lệnh; cờ
     /// `--raw` của Vis ⇒ trả `str` thay vì `list[str]`.
@@ -221,13 +212,14 @@ impl<'a> Lowerer<'a> {
                 HItem::Fn(f) if f.kind == FnKind::Cmd => Some(CmdSig {
                     name: f.name.clone(),
                     sym: Some(f.sym),
+                    generics: f.generics.clone(),
                     params: f.params.clone(),
                     ret: f.ret.clone(),
                 }),
                 _ => None,
             })
             .collect();
-        sigs.extend(sig_builtin());
+        sigs.extend(self.cmd_sigs.clone());
         for child in &kids {
             match child.kind {
                 NodeKind::CmdItems => self.ha_dong(child, &sigs),
@@ -305,6 +297,16 @@ impl<'a> Lowerer<'a> {
     }
 
     fn kieu_stage(&self, node: &Node, sigs: &[CmdSig]) -> Type {
+        // ST-37: stage `( expr )` — suy kiểu **literal** (list/str/int/bool) thay vì `{error}`.
+        let head_group = node
+            .children()
+            .next()
+            .filter(|c| c.kind == NodeKind::CmdGroup);
+        if let Some(g) = head_group {
+            if let Some(txt) = self.vach_text(g) {
+                return self.kieu_text(&txt);
+            }
+        }
         let Some(ten) = self.ten_lenh(node) else {
             return Type::Error;
         };
@@ -381,8 +383,25 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         }
-        if let Some(g) = node.child(NodeKind::CmdGroup) {
-            if let Some(inner) = g.children().next() {
+        if std::env::var("VIS_DBG_KHE").is_ok() {
+            eprintln!(
+                "ha_stage kind={:?} kids={:?}",
+                node.kind,
+                node.children().map(|c| c.kind).collect::<Vec<_>>()
+            );
+        }
+        let head_group = node
+            .children()
+            .next()
+            .filter(|c| c.kind == NodeKind::CmdGroup);
+        if let Some(g) = head_group {
+            // ST-37: parser **không** gắn node biểu thức vào `CmdGroup` (chỉ giữ token) ⇒ hạ lại
+            // **văn bản trong ngoặc** ở chế độ script (biểu thức thuần: literal/phép toán).
+            let v = self.lower_vach(g);
+            if std::env::var("VIS_DBG_KHE").is_ok() {
+                eprintln!("group lowered: {:?}", v.is_some());
+            }
+            if let Some(e) = v {
                 if truoc.is_some() {
                     // Stage `( expr )` không có khe ống ⇒ giá trị trước không đi đâu được.
                     self.diag(
@@ -391,7 +410,7 @@ impl<'a> Lowerer<'a> {
                         node.span,
                     );
                 }
-                return Some(self.lower_expr(inner));
+                return Some(e);
             }
         }
         let Some(ten) = self.ten_lenh(node) else {
@@ -421,14 +440,29 @@ impl<'a> Lowerer<'a> {
         // **giữ chỗ trước**, để đối số vị trí còn lại không chiếm mất (`take 1` ⇒ `take(xs=pipe, 1)`).
         let mut vi_tri: Vec<Option<HExpr>> = vec![None; sig.params.len()];
         let mut khe: Option<usize> = None;
+        let mut bang: Vec<(String, Type)> = Vec::new();
         if let Some((up, up_ty)) = &truoc {
-            match sig
-                .params
-                .iter()
-                .enumerate()
-                .find(|(_, p)| !p.named && p.ty == *up_ty)
-            {
-                Some((i, _)) => {
+            // ST-37 (§9.5): khe chọn theo **khả năng nhận** — hợp nhất một chiều để buộc `T`.
+            // - `up_ty = {error}` (stage nhóm không suy được) ⇒ chọn **vị trí đầu** (an toàn).
+            // - KHÔNG đặt khe vào tham số `--cờ`; không đè bind tường minh (khe giữ chỗ trước).
+            let mut chon: Option<usize> = None;
+            if matches!(up_ty, Type::Error) {
+                chon = sig.params.iter().position(|p| !p.named);
+            } else {
+                for (i, p) in sig.params.iter().enumerate() {
+                    if p.named {
+                        continue;
+                    }
+                    let mut b = bang.clone();
+                    if hop_nhat_cmd(&p.ty, up_ty, &sig.generics, &mut b) {
+                        chon = Some(i);
+                        bang = b;
+                        break;
+                    }
+                }
+            }
+            match chon {
+                Some(i) => {
                     vi_tri[i] = Some(up.clone());
                     khe = Some(i);
                 }
@@ -601,8 +635,19 @@ impl<'a> Lowerer<'a> {
                 self.diag(&COMMAND_CODES[1], format!("`{ten}` thừa đối số"), con_span);
                 return None;
             }
-            let ty = sig.params[i_vi_tri].ty.clone();
+            // ST-37: thay tham số kiểu đã suy (từ khe hoặc từ đối số trước) trước khi kiểm đối số.
+            let ty = super::generic::thay(&sig.params[i_vi_tri].ty, &bang);
+            // ST-37: buộc `T` từ **kiểu suy được của đối số** (literal) trước khi chuyển.
+            let suy = match gt.as_ref() {
+                Some(g) if g.kind == NodeKind::CmdGroup => self
+                    .vach_text(g)
+                    .map(|t| self.kieu_text(&t))
+                    .unwrap_or(Type::Error),
+                _ => self.kieu_text(&text),
+            };
+            let _ = hop_nhat_cmd(&ty, &suy, &sig.generics, &mut bang);
             let expr = match gt {
+                Some(g) if g.kind == NodeKind::CmdGroup => self.lower_vach(&g),
                 Some(g) => {
                     let inner = g.children().next().cloned();
                     match inner {

@@ -23,6 +23,7 @@
 use vis_diag::NAME_CODES;
 use vis_syntax::{Cst, Diagnostic, Elem, Kind, LexOutput, Node, NodeKind, Span, Token};
 
+use crate::cmdsig::SigSource;
 use crate::hir::{
     BinOp, FnKind, HAlias, HConst, HEnum, HExpr, HField, HFn, HImpl, HItem, HParam, HRec, HSig,
     HStmt, HTrait, HUse, HVariant, Hir, LitKind, UnOp,
@@ -256,6 +257,22 @@ pub fn lower_with(cst: &Cst, lex: &LexOutput, opts: LowerOptions) -> HirOutput {
     lower_into(&mut symbols, &mut types, cst, lex, opts)
 }
 
+/// Hạ với **nguồn chữ ký lệnh** tự chọn (ST-37): `vis-std`/prelude (ST-40/41) cắm `SigSource`
+/// riêng mà **không** phải sửa `lower`/`tyck`. Nguồn mặc định là 3 builtin (`BuiltinSigs`).
+pub fn lower_with_sigs(
+    cst: &Cst,
+    lex: &LexOutput,
+    opts: LowerOptions,
+    src: &dyn SigSource,
+) -> HirOutput {
+    let mut symbols = Symbols::default();
+    let mut types = TypeTable::new();
+    let mut l = Lowerer::new(cst, lex, opts, &mut symbols, &mut types);
+    l.cmd_sigs = src.sigs().to_vec();
+    l.run();
+    l.finish()
+}
+
 /// Hạ một tệp **vào bảng chung** (ST-25): ký hiệu và kiểu được **append** ⇒ id ổn định giữa các tệp.
 ///
 /// `symbols.mods` do nơi gọi khai bằng [`Symbols::add_mod`] trước khi hạ tệp tương ứng; tên item
@@ -311,6 +328,8 @@ struct Lowerer<'a> {
     inst_cache: Vec<((String, Vec<Type>), u32)>,
     /// ST-35: `true` khi đang dựng **template** ⇒ tham số kiểu giữ dạng `TypeRef{"T"}`.
     sym_generic: bool,
+    /// ST-37: chữ ký lệnh chế độ shell (builtin + `cmd`) — **một** nguồn cho khe ống và kiểm gọi.
+    cmd_sigs: Vec<crate::cmdsig::CmdSig>,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -352,6 +371,7 @@ impl<'a> Lowerer<'a> {
             enum_tmpl: Vec::new(),
             inst_cache: Vec::new(),
             sym_generic: false,
+            cmd_sigs: crate::cmdsig::BuiltinSigs::mac_dinh().sigs().to_vec(),
             type_env: std::collections::HashMap::new(),
             cur_impl: None,
             cst,
