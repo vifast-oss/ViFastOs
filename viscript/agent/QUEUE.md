@@ -124,7 +124,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-33 | `json.decode` + `std.fs` tối thiểu (qua `Host`) | ST-32 | 3 h | **DONE** | đối xứng encode; interp/vm không chạm OS |
 | ST-34 | `\| complete` + pipe→stdin cho chương trình ngoài | ST-33 | 3 h | **DONE** | `grep` exit 1 hết là lỗi; 2 tiến trình nối |
 | ST-35 | generic **thật**: `Hop[int] ≠ Hop[str]` | ST-34 | 3 h | **DONE** | sai kiểu ⇒ VS0412; differential 0 lệch |
-| ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **READY** | MD+JSON, số liệu tái lập |
+| ST-36 | báo cáo **R5** | ST-32..ST-35 | 1 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-37 | `CmdSig` **generic** + khe ống **hợp nhất** (bỏ `==`); `take`/`lines` generic; seam `SigSource` | ST-36 | 3 h | BLOCKED | `( [1,2] ) \| take 1` xanh; 338 ca sem không đổi; differential 0 lệch |
 | ST-38 | hạ **closure-arg** (`CmdClosure` → `Lambda`, cộng offset span) + `where`/`each`/`first`/`count` | ST-37 | 3 h | BLOCKED | 8 ca dương + 4 âm; lỗi trong thân closure đúng `dòng:cột`; `VS0412` cho thân sai kiểu |
 | ST-39 | `sort_by` + `--desc` (mở `list.sort_by` cho khoá `int/size/duration/str`, giữ ổn định) | ST-38 | 3 h | BLOCKED | 6 ca; ca cũ `list.sort_by` vẫn xanh; khoá `bool` ⇒ `VS0412` |
@@ -489,6 +489,17 @@ APPROVED 2026-11-13 Agent 0
 > trong). **Không** đụng `codegen`/`VBC1` ⇒ differential **100.000 chương trình 0 lệch** (228,6 s). **507** test;
 > **sem 338 → 346** (+8) với bảng cũ→mới ở **đủ 6 chỗ khoá số**; parity **320/320**; `vis test` **346 ok**.
 > **ST-36 mở** (R5 — chốt VS1c).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-36 DONE — VÒNG 5 (VS1c) CHỐT.** `reports/R5-viscript.{md,json,license}` (`97d3dd4`, `head` 58080a9) —
+> `report-check` **PASS (5 báo cáo, 49 hàng QUEUE phủ đủ)**. Số đo **chạy lại**: **507 test** (21 diag · 96 syntax ·
+> 18 fmt · **143** types · 24 interp · 50 bytecode · 9 vm · **146** cli) · **346 ca sem/18 nhóm** (327 `.vis` + 19 `.vish`,
+> 52 `.err`) · `vis test` **346 ok** / `--vm` **346 ok + 6 SKIP** · **parity 320/320** · **differential 100.000 chương trình
+> 0 lệch** (200,4 s, 499/s) · fuzz parser 60 s **3.035.575 ca/0 vi phạm** · `VBC1` 53 tag · **7 sổ/28 mã** · khởi động ấm
+> 11,2–11,7 ms (debug) · `gate --fast` + `nightly --fuzz-minutes 1` PASS. **5 lỗ hổng đóng/nới** trong vòng (26 ca biên
+> dịch đã so; `grep exit 1` hết là lỗi; `json.decode`; `std.fs`; `Hop[int] ≠ Hop[str]`), **15 nợ còn lại** ghi rõ.
+> **VS2** (async/kênh/net/Landlock/LSP/gói/4 nền tảng) là vòng sau. QUEUE: **41/41 hàng DONE**.
 
 ## Ghi chú vận hành
 
