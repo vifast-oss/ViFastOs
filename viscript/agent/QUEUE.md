@@ -141,7 +141,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **DONE** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
 | ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **DONE** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
-| ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
+| ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **READY** | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -694,6 +694,17 @@ APPROVED 2026-11-13 Agent 0
 > differential 100k **0 lệch**; allowlist **6**. Tách `tyck/truong.rs` (R1). Nợ: `VS0403` còn nghĩa rộng; `where` chưa kiểm
 > kiểu tham số khi lambda không chú thích.
 > **ST-51 mở** (stage đầu là biểu thức).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-51 DONE** — commit `e721858` (**Agent 2 tự commit**): **stage đầu là biểu thức** (không cần ngoặc) — nhận **hẹp
+> nhất**: chỉ `[`, `{`, string literal ở **đầu dòng**, có `|` độ sâu 0, tiền tố parse Script **0 chẩn đoán** ⇒
+> `[1,2] | take 1` ⇒ **`[1]`**, `{size: 6mb, …} | where size > 1mb` **chạy thật** (bọc `HExpr::List` một phần tử ⇒
+> mọi stage hạ nguồn hiểu như một dòng); **không** nhận số/biến/tên lệnh (giữ §9.5). **704** test (+12); sem 370;
+> `vis test` **370 ok** / `--vm` 370 ok+6 SKIP; parity 344/344; differential 100k **0 lệch** (212,9 s); allowlist **6**;
+> golden ca 24 + ca `ls | (a | b)` xác nhận xanh. Sửa kèm lý do: `khe_ong::khong_ngoac_van_la_loi_parse` →
+> `bieu_thuc_dau_khong_ngoac_chay`. Nợ: biến không nhận; bọc-list chỉ cho stage **đầu**; `[1,2]` trần vẫn `VS0201`.
+> **ST-52 mở** (R8 — chốt VSH1c).
 
 ## Ghi chú vận hành
 

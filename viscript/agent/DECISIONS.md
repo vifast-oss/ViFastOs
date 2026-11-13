@@ -635,3 +635,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   kiểm **tĩnh** (nhánh `"where"` trong `kiem_builtin`; thân phải `bool` ⇒ `VS0412`; `{error}` ⇒ kiểm động); ở hạ, lambda
   trong ngoặc được gán kiểu tham số = **kiểu phần tử**. (5) Nợ: `VS0403` còn nghĩa rộng; chưa kiểm kiểu tham số khi lambda
   không chú thích.
+
+- **VD-85** **Stage đầu là biểu thức (ST-51)**: (1) Nhận **hẹp nhất** trong chế độ lệnh: token **đầu dòng** là `[`, `{`, hoặc
+  **string literal**; có `|` ở **độ sâu 0**; văn bản tiền tố parse **`Mode::Script` phải 0 chẩn đoán**. (2) CST = `CmdStage`
+  bọc `CmdGroup` **không ngoặc** ⇒ **tái dùng** đường hạ `( … )` (không thêm đường mới). (3) `{…}` được **bọc
+  `HExpr::List` một phần tử** ⇒ stage hạ nguồn (`where`/`take`/`select`/bảng) hiểu như một dòng. (4) **KHÔNG** nhận:
+  số (`1 | …` vốn là lệnh ngoài), **biến** (`x | …` nhập nhằng §9.5), **tên lệnh**; không `|` ⇒ giữ **`VS0201`**.
+  (5) Nợ: bọc-list chỉ cho stage **đầu**; biến ⇒ **VSH1c-2**.
