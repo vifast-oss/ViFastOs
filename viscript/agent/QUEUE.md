@@ -113,8 +113,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **DONE** | bytecode hỏng bị từ chối; fuzz 10 phút |
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | **DONE** | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
-| ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **READY** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
-| ST-26 | `vis-std` lõi: `std.fs/path/time/str` tối thiểu + prelude | ST-25 | 3 h | BLOCKED | ≥ 60 ca; `use std.x` chạy |
+| ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **DONE** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
+| ST-26 | `vis-std` lõi: `std.fs/path/time/str` tối thiểu + prelude | ST-25 | 3 h | **READY** | ≥ 60 ca; `use std.x` chạy |
 | ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | BLOCKED | chạy `ls`/`echo` thật; quyền tối thiểu |
 | ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | BLOCKED | ≥ 40 ca; differential vẫn 0 lệch |
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | BLOCKED | ≥ 30 ca |
@@ -351,6 +351,18 @@ APPROVED 2026-11-13 Agent 0
 > `vis-std`/`vis-host-posix`/`vis run|check|fmt|test` đầy đủ ⇒ **VS1b** (15 mục liệt kê ở §5 báo cáo).
 > Dòng ViScript **hết task trong QUEUE**; vòng 4 (đề xuất): VS1b (generic/trait/module, `vis-std`, host posix,
 > `cmd` variadic/tham chiếu theo tên, SHA-256 cho consent, đổi mặc định sang VM có đo lại).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-25 DONE** — commit `4a03c6d` (đã push): `vis-cli/src/modules.rs` (giải `use ./x`, `./x` ≡ `./x.vis`, `..` +
+> `canonicalize`, `std.*` ⇒ `VS0701` "ST-26", `pkg.*` ⇒ `VS0701` "VS2", DFS hậu duyệt, **cấm vòng**, `--dump-deps`);
+> `lower_into` **append** vào `Symbols`/`TypeTable` chung ⇒ id **ổn định**; **tầm nhìn `pub` kiểm ở `lower::resolve`**
+> (không kéo `tyck`): tên từ module khác cần `pub` **và** `use`, sai ⇒ `VS0301`; parser nhận `use ./x`; `khoa_multi`
+> FNV-1a×4 trên compiler+VBC1+mode+Σ(rel+text) ⇒ sửa phụ thuộc **đổi khoá cache**; sổ thứ bảy `MODULE_CODES` `07xx`
+> ⇒ `BOOKS` 7, `all_codes()` 28, `next_block()` **801**. **335** test; 323 ca + 272/272 differential xanh; gate PASS.
+> Hoãn có ghi: `pub` cho `let`/`const`; `dòng:cột` runtime của hàm trong tệp phụ vẫn theo văn bản tệp chính (HIR chưa
+> mang `file`); `use` không re-export; biên `..`.
+> **ST-26 mở** (`vis-std` lõi).
 
 ## Ghi chú vận hành
 
