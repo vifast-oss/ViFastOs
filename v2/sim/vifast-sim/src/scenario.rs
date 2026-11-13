@@ -19,8 +19,36 @@
 use std::collections::VecDeque;
 use std::fmt;
 
+use crate::ipc::{Message, MessageInfo, MAX_WORDS};
 use crate::kobj::{KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
 use crate::Lcg;
+
+/// **KT-24** — message đầy đủ cho bước kịch bản `Send`/`NBSend` (model-only `[TK]`):
+/// `MessageInfo` 35 bit + **64 MR** (`spec/abi.toml:31-49`). Cap/badge thuộc KT-25 nên `Msg`
+/// của KT-24 không mang cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Msg {
+    pub info: MessageInfo,
+    pub mr: [u64; MAX_WORDS],
+}
+
+impl Msg {
+    /// Dựng `Msg` từ `info` + `words`; `words.len()` phải bằng `info.length()` (không tự sửa
+    /// `info`, không cắt bớt MR).
+    pub fn new(info: MessageInfo, words: &[u64]) -> Result<Self, KError> {
+        if words.len() != info.length() as usize || words.len() > MAX_WORDS {
+            return Err(KError::InvalidArgument);
+        }
+        let mut mr = [0u64; MAX_WORDS];
+        mr[..words.len()].copy_from_slice(words);
+        Ok(Self { info, mr })
+    }
+
+    /// `Message` tương ứng (chưa có `msg_id` — kernel cấp khi nhận vào đường IPC).
+    pub fn to_message(self) -> Result<Message, KError> {
+        Message::new(self.info, &self.mr[..self.info.length() as usize])
+    }
+}
 
 /// Một bước kịch bản — chiếu tối giản của `enum Step` thiết kế §9.3 sang ABI v2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +107,24 @@ pub enum Step {
         tcb: ObjId,
         code: u64,
     },
+    // ------------------------------------------- KT-24: IPC message 64 MR (model-only `[TK]`)
+    /// `Send` trên Endpoint/Reply (`Step::Call` cũ vẫn là wrapper 1 MR của `kt09_e2e`).
+    Send {
+        tcb: ObjId,
+        cap: SlotRef,
+        msg: Msg,
+    },
+    /// `NBSend` — gửi **không chặn** (hàng gửi của Endpoint hoặc giao thẳng cho waiter).
+    NBSend {
+        tcb: ObjId,
+        cap: SlotRef,
+        msg: Msg,
+    },
+    /// `NBRecv` — poll Endpoint; rỗng ⇒ `Busy`, không chặn.
+    NBRecv {
+        tcb: ObjId,
+        cap: SlotRef,
+    },
     TcbReadState {
         tcb: SlotRef,
     },
@@ -127,6 +173,9 @@ impl Step {
             Step::Recv { .. } => "recv",
             Step::Reply { .. } => "reply",
             Step::Exit { .. } => "exit",
+            Step::Send { .. } => "send",
+            Step::NBSend { .. } => "nb_send",
+            Step::NBRecv { .. } => "nb_recv",
             Step::TcbReadState { .. } => "tcb_read_state",
             Step::TcbSuspend { .. } => "tcb_suspend",
             Step::TcbResume { .. } => "tcb_resume",
@@ -148,7 +197,10 @@ impl Step {
             Step::Call { tcb, .. }
             | Step::Recv { tcb, .. }
             | Step::Reply { tcb, .. }
-            | Step::Exit { tcb, .. } => Some(tcb),
+            | Step::Exit { tcb, .. }
+            | Step::Send { tcb, .. }
+            | Step::NBSend { tcb, .. }
+            | Step::NBRecv { tcb, .. } => Some(tcb),
             _ => None,
         }
     }
@@ -293,6 +345,9 @@ pub fn execute(m: &mut Machine, step: &Step) -> Result<(), KError> {
         Step::Recv { tcb, ep, reply } => m.recv(tcb, ep, reply),
         Step::Reply { tcb, reply } => m.reply(tcb, reply),
         Step::Exit { tcb, code } => m.exit(tcb, code),
+        Step::Send { tcb, cap, msg } => m.send(tcb, cap, msg.to_message()?),
+        Step::NBSend { tcb, cap, msg } => m.nb_send(tcb, cap, msg.to_message()?),
+        Step::NBRecv { tcb, cap } => m.nb_recv(tcb, cap).map(|_| ()),
         Step::TcbReadState { tcb } => m.tcb_read_state(tcb).map(|_| ()),
         Step::TcbSuspend { tcb, mode } => m.tcb_suspend(tcb, mode),
         Step::TcbResume { tcb } => m.tcb_resume(tcb),
@@ -309,7 +364,13 @@ impl Step {
     pub fn is_tcb_syscall(self) -> bool {
         matches!(
             self,
-            Step::Call { .. } | Step::Recv { .. } | Step::Reply { .. } | Step::Exit { .. }
+            Step::Call { .. }
+                | Step::Recv { .. }
+                | Step::Reply { .. }
+                | Step::Exit { .. }
+                | Step::Send { .. }
+                | Step::NBSend { .. }
+                | Step::NBRecv { .. }
         )
     }
 

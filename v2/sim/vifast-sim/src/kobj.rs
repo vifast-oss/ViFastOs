@@ -38,6 +38,7 @@
 //! cha/con trong mô hình là quan hệ **logic** (offset/cỡ trong `object_bytes`), không phải
 //! containment vật lý; chi tiết của harness sim, không phải ABI.
 
+use crate::ipc::{self, IpcArea, Message, MessageInfo};
 use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
 use crate::sched::HartSched;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
@@ -278,12 +279,32 @@ pub use crate::tcb::{
 // KT-20: ngân sách MCS (`SchedContext`) — model-only `[TK]`, không phải ABI (D2-49(b,e)).
 pub use crate::mcs::{ScBudget, ScInfo};
 
+/// Một message đang chờ trong hàng gửi của Endpoint — **KT-24** (trước KT-24 hàng chỉ giữ
+/// `(sender, fault)`; message thật nằm trong `TcbData`/`last_mr` **một** word).
+///
+/// - `msg: Some` = message **người dùng** (Send/NBSend/Call) đã được kernel cấp `msg_id`;
+///   `msg: None` = **fault** `Exit` (mô hình K1b, D2-25) — không phải message IPC nên
+///   **không** tính vào bộ đếm `ipc_sent/delivered/pending` (KT-24 giữ nguyên đường fault
+///   của KT-18/23; fault khác Exit thuộc KT-26).
+/// - `call` = message từ `Call` đang chờ `Reply` (người gửi `BlockedOnSend{call:true}`);
+///   `false` = `Send`/`NBSend`/`Call` có `no_reply` (D2-53 Q7).
+/// - `blocking` = người gửi đang `BlockedOnSend` chờ giao (`send`/`call` chặn); `false` =
+///   gửi **không chặn** (`nb_send`, `call no_reply=1`) nên người gửi vẫn `Ready`/`Running`.
+#[derive(Debug)]
+struct QueuedMessage {
+    msg: Option<Box<Message>>,
+    sender: ObjId,
+    call: bool,
+    fault: Option<FaultKind>,
+    blocking: bool,
+}
+
 #[derive(Debug, Default)]
 struct EndpointState {
     recv: Option<(ObjId, Option<CapId>)>,
-    /// KT-22: hàng gửi **FIFO cố định** ([`MAILBOX_CAP`] message); đầy ⇒ `call`/`exit` trả
-    /// `Busy` (backpressure) — không còn `VecDeque` không giới hạn.
-    send: Mailbox<(ObjId, Option<FaultKind>)>,
+    /// KT-22: hàng gửi **FIFO cố định** ([`MAILBOX_CAP`] message); đầy ⇒ `call`/`send`/`exit`
+    /// trả `Busy` (backpressure) — không còn `VecDeque` không giới hạn.
+    send: Mailbox<QueuedMessage>,
     last_mr: Option<u64>,
 }
 
@@ -329,6 +350,14 @@ struct TcbData {
     /// Bất biến: `donated_sc.is_some()` ⇒ `sched_context.is_none()` (một SC một TCB một lúc).
     donated_sc: Option<ObjId>,
     bound_notification: Option<ObjId>,
+    /// **KT-24** — vùng nhận IPC của TCB (4 MR "thanh ghi" + 60 MR "IPC buffer model",
+    /// hai field riêng trong [`IpcArea`], không gộp). Ghi **chỉ** qua `crate::ipc::transfer`.
+    ipc: IpcArea,
+    /// **KT-24** — lỗi IPC mà kernel gán cho TCB này ở lần giao message gần nhất (model-only
+    /// `[TK]`): `Cancelled` khi `Call` gặp bên nhận `Recv` **không** kèm Reply (D2-53 Q7 nhánh
+    /// (b)). Cần trường này vì mô hình gọi syscall **đồng bộ**: nhánh caller đã xếp hàng nhận
+    /// kết quả lúc message được giao, không phải lúc `call` trả về.
+    last_ipc_error: Option<KError>,
 }
 
 impl TcbData {
@@ -506,6 +535,20 @@ pub struct Machine {
     /// **KT-23**: số lần một `SchedContext` được nạp lại (`consumed = 0` ở biên `period`) —
     /// `k1b_report().budget.refills`.
     budget_refills: u64,
+    /// **KT-24** — số message **người dùng** đã được nhận vào đường IPC (`send`/`nb_send`/
+    /// `call`, kể cả `call no_reply`); message fault `Exit` **không** tính (không phải IPC
+    /// message). `msg_id` cấp từ bộ đếm này nên **không bao giờ tái dùng**.
+    ipc_sent: u64,
+    /// **KT-24** — số message đã **giao** vào vùng nhận của TCB (mỗi lần giao đúng **một**
+    /// lần qua `crate::ipc::transfer`). Bất biến `transfer_calls == ipc_delivered`.
+    ipc_delivered: u64,
+    /// **KT-24** — số message bị **huỷ** khi TCB chết/treo hoặc Endpoint bị finalise
+    /// (D2-25: hàng chờ cũ bị huỷ). Bất biến bảo toàn message:
+    /// `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped`.
+    ipc_dropped: u64,
+    /// **KT-24** — **test-only** đếm số lần gọi `crate::ipc::transfer`; bằng chứng "chỉ có
+    /// **một** đường copy MR" (K1C-PLAN §5 KT-24 DoD 3). Luôn bằng `ipc_delivered`.
+    transfer_calls: u64,
     /// Log finalise TCB (KT-18 DoD 9), ghi trước khi body bị destroy trong objmem.
     finalise_log: Vec<FinaliseEntry>,
     /// Hàng chờ WaitOnAddress mô hình hoá (thiết kế §4.7: bucket theo `(frame, offset)`).
@@ -645,6 +688,10 @@ impl Machine {
             forbidden_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
             budget_sleeps: 0,
             budget_refills: 0,
+            ipc_sent: 0,
+            ipc_delivered: 0,
+            ipc_dropped: 0,
+            transfer_calls: 0,
             finalise_log: Vec::new(),
             address_waiters: Vec::new(),
             sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
@@ -2209,6 +2256,12 @@ impl Machine {
         if let Err(e) = self.check_mailboxes() {
             debug_assert!(false, "bất biến mailbox vỡ sau public op: {e}");
         }
+        if let Err(e) = self.check_ipc() {
+            debug_assert!(
+                false,
+                "bất biến IPC (bảo toàn message) vỡ sau public op: {e}"
+            );
+        }
     }
 
     /// KT-22 — kiểm **toàn bộ** bất biến hộp thư (chạy sau **mỗi** public op qua
@@ -2217,13 +2270,14 @@ impl Machine {
     /// 1. mỗi hộp thư hart: `pushed == popped + removed + len`, `len ≤ cap`;
     /// 2. mỗi Endpoint: sức chứa **cố định** [`MAILBOX_CAP`], cùng bất biến trên, và "có message
     ///    ⇒ không có Recv waiter";
-    /// 3. mọi message trong hàng gửi có sender **còn sống** và ở đúng
-    ///    `BlockedOnSend{ep, call/fault}` (bất biến liên kết mailbox ↔ trạng thái TCB).
+    /// 3. mọi message trong hàng gửi có sender **còn sống**; message **chặn** (`Send`/`Call`
+    ///    phải xếp hàng) có sender đúng `BlockedOnSend{ep, call, fault}`; message **không chặn**
+    ///    (`NBSend`/`Call no_reply=1` — KT-24) chỉ cần sender còn sống vì người gửi vẫn
+    ///    `Ready`/`Running`; fault `Exit` không có `msg_id`, không bao giờ `call = true`.
     ///
-    /// **K1c**: bất biến (3) đang mã hoá `call == fault.is_none()` vì K1b chỉ có `Call`
-    /// (`call: true`, `fault: None`) và message fault `Exit` (`call: false`, `fault: Some`) —
-    /// chưa có `Send` thường (`call: false, fault: None`). Khi K1c thêm `Send`/4 cap/badge,
-    /// phải nới thành "message không-fault ⇒ `call` theo loại message" thay vì suy từ `fault`.
+    /// **KT-24** đã nới bất biến (3) của KT-22 (trước đây mã hoá `call == fault.is_none()` vì
+    /// K1b chỉ có `Call` + fault `Exit`): nay `call` là trường của **message** (`Call` chờ Reply)
+    /// và `blocking` là trường của **đường gửi** (chặn/không chặn), không suy từ `fault`.
     ///
     /// Không dùng `HashMap`/`format!` trên đường nóng trừ khi **có** vi phạm (thông điệp lỗi).
     pub fn check_mailboxes(&self) -> Result<(), String> {
@@ -2252,7 +2306,18 @@ impl Machine {
                         e.send.pushed(),
                         e.send.popped(),
                         e.send.removed(),
-                        e.send.iter().copied().collect::<Vec<_>>(),
+                        e.send
+                            .iter()
+                            .map(|q| {
+                                (
+                                    q.sender,
+                                    q.call,
+                                    q.fault,
+                                    q.blocking,
+                                    q.msg.as_ref().map(|m| (m.msg_id, m.info.length())),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
                         e.recv.map(|(t, _)| t),
                     )),
                     _ => Err(KError::WrongObjectType),
@@ -2274,33 +2339,259 @@ impl Machine {
                     "Endpoint {ep}: có {len} message mà vẫn có Recv waiter"
                 ));
             }
-            for (sender, fault) in items {
+            for (sender, call, fault, blocking, msg) in items {
                 if !song.get(sender as usize).copied().unwrap_or(false) {
                     return Err(format!(
                         "Endpoint {ep}: sender {sender} đã chết nhưng còn trong hàng"
                     ));
                 }
-                match self.tcb_state(sender) {
-                    Ok(TcbState::BlockedOnSend {
-                        ep: hang_ep,
-                        call,
-                        fault: hang_fault,
-                    }) => {
-                        if hang_ep != ep || call != fault.is_none() || hang_fault != fault {
+                match msg {
+                    Some((msg_id, _len)) => {
+                        if msg_id == 0 {
                             return Err(format!(
-                                "Endpoint {ep}: sender {sender} ở trạng thái chặn không khớp message"
+                                "Endpoint {ep}: message người dùng chưa được cấp msg_id"
                             ));
                         }
                     }
-                    other => {
-                        return Err(format!(
-                            "Endpoint {ep}: sender {sender} ở {other:?} nhưng còn trong hàng"
-                        ));
+                    None => {
+                        if fault.is_none() {
+                            return Err(format!(
+                                "Endpoint {ep}: message không có nội dung và không phải fault"
+                            ));
+                        }
+                    }
+                }
+                // Fault `Exit` không bao giờ là `Call` (D2-25: đi qua hàng gửi, không Reply).
+                if fault.is_some() && call {
+                    return Err(format!("Endpoint {ep}: fault {fault:?} nhưng cờ call=true"));
+                }
+                // Người gửi **chặn** ⇒ phải đang `BlockedOnSend` khớp đúng hàng/cờ/fault.
+                // Người gửi **không chặn** (`NBSend`/`Call no_reply=1`) ⇒ chỉ cần còn sống.
+                if blocking {
+                    match self.tcb_state(sender) {
+                        Ok(TcbState::BlockedOnSend {
+                            ep: hang_ep,
+                            call: hang_call,
+                            fault: hang_fault,
+                        }) => {
+                            if hang_ep != ep || hang_call != call || hang_fault != fault {
+                                return Err(format!(
+                                    "Endpoint {ep}: sender {sender} ở trạng thái chặn không khớp message"
+                                ));
+                            }
+                        }
+                        other => {
+                            return Err(format!(
+                                "Endpoint {ep}: sender {sender} ở {other:?} nhưng còn trong hàng"
+                            ));
+                        }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// **KT-24** — kiểm bất biến **bảo toàn message** (K1C-PLAN §1.1 C1) sau mỗi public op:
+    ///
+    /// 1. mỗi message **người dùng** còn trong mô hình có `msg_id` khác 0, `<= ipc_sent`, và
+    ///    **không trùng** (một `msg_id` xuất hiện đúng một nơi: hàng gửi **hoặc** vùng nhận TCB);
+    /// 2. message fault `Exit` không có `msg_id` (không phải message IPC) và không có message nào
+    ///    vừa không có nội dung vừa không phải fault;
+    /// 3. `transfer_calls == ipc_delivered` — **mọi** lần giao đi qua `crate::ipc::transfer`
+    ///    (một đường copy MR duy nhất, DoD 3);
+    /// 4. `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped`; `ipc_pending` đếm lại từ hàng
+    ///    thật (không tin bộ đếm), `ipc_dropped` chỉ tăng khi huỷ message (D2-25).
+    pub fn check_ipc(&self) -> Result<(), String> {
+        // Đường nhanh cho mô hình **chưa từng** dùng IPC (L1 của KT-08..KT-23, hầu hết unit
+        // test object): không có message ⇒ mọi bất biến đều đúng khi 3 bộ đếm còn 0. Giữ
+        // `check_ipc` sau **mỗi** public op mà không làm chậm L1 1.000 seed (QD §5.2).
+        if self.ipc_sent == 0 {
+            if self.ipc_delivered == 0 && self.ipc_dropped == 0 && self.transfer_calls == 0 {
+                return Ok(());
+            }
+            return Err("ipc_sent = 0 nhưng bộ đếm giao/huỷ/transfer khác 0".to_string());
+        }
+        let mut ids: Vec<u64> = Vec::new();
+        let mut pending = 0u64;
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Endpoint {
+                continue;
+            }
+            let ep = (i + 1) as ObjId;
+            let items = self
+                .body(ep, |k| match k {
+                    Kind::Endpoint(e) => Ok(e
+                        .send
+                        .iter()
+                        .map(|q| (q.msg.as_ref().map(|m| m.msg_id), q.fault.is_some()))
+                        .collect::<Vec<_>>()),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("Endpoint {ep}: không đọc được hàng gửi: {e:?}"))?;
+            for (id, is_fault) in items {
+                match id {
+                    Some(0) => {
+                        return Err(format!("Endpoint {ep}: message chưa được cấp msg_id"));
+                    }
+                    Some(id) => {
+                        if id > self.ipc_sent {
+                            return Err(format!(
+                                "Endpoint {ep}: msg_id {id} > ipc_sent {}",
+                                self.ipc_sent
+                            ));
+                        }
+                        if ids.contains(&id) {
+                            return Err(format!("msg_id {id} xuất hiện nhiều hơn một nơi"));
+                        }
+                        ids.push(id);
+                        pending += 1;
+                    }
+                    None => {
+                        if !is_fault {
+                            return Err(format!(
+                                "Endpoint {ep}: message không có nội dung và không phải fault"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i + 1) as ObjId;
+            let id = self
+                .body(tcb, |k| match k {
+                    Kind::Tcb(t) => Ok(t.ipc.msg_id),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("TCB {tcb}: không đọc được vùng IPC: {e:?}"))?;
+            let Some(id) = id else { continue };
+            if id == 0 || id > self.ipc_sent {
+                return Err(format!(
+                    "TCB {tcb}: msg_id {id} không nằm trong dải 1..=ipc_sent"
+                ));
+            }
+            if ids.contains(&id) {
+                return Err(format!(
+                    "TCB {tcb}: msg_id {id} vừa ở vùng nhận vừa còn trong hàng gửi"
+                ));
+            }
+        }
+        if self.transfer_calls != self.ipc_delivered {
+            return Err(format!(
+                "transfer_calls {} != ipc_delivered {}",
+                self.transfer_calls, self.ipc_delivered
+            ));
+        }
+        if self.ipc_delivered > self.ipc_sent {
+            return Err(format!(
+                "ipc_delivered {} > ipc_sent {}",
+                self.ipc_delivered, self.ipc_sent
+            ));
+        }
+        if self.ipc_sent != self.ipc_delivered + pending + self.ipc_dropped {
+            return Err(format!(
+                "message mất/thêm: ipc_sent={} != delivered={} + pending={pan} + dropped={}",
+                self.ipc_sent,
+                self.ipc_delivered,
+                self.ipc_dropped,
+                pan = pending
+            ));
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- KT-24: bộ đếm/đọc vùng nhận IPC
+
+    /// Số message **người dùng** đã nhận vào đường IPC (message fault `Exit` không tính).
+    pub fn ipc_sent(&self) -> u64 {
+        self.ipc_sent
+    }
+
+    /// Số message đã giao vào vùng nhận của TCB (mỗi lần giao đúng một `ipc::transfer`).
+    pub fn ipc_delivered(&self) -> u64 {
+        self.ipc_delivered
+    }
+
+    /// Số message bị huỷ khi TCB/Endpoint chết hoặc bị `Suspend(Abort)` (D2-25).
+    pub fn ipc_dropped(&self) -> u64 {
+        self.ipc_dropped
+    }
+
+    /// Số lần gọi `crate::ipc::transfer` — **test-only**, luôn bằng [`Machine::ipc_delivered`].
+    pub fn transfer_calls(&self) -> u64 {
+        self.transfer_calls
+    }
+
+    /// Số message **người dùng** đang nằm trong các hàng gửi Endpoint (đếm lại từ hàng thật).
+    pub fn ipc_pending(&self) -> u64 {
+        let mut n = 0u64;
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Endpoint {
+                continue;
+            }
+            let ep = (i + 1) as ObjId;
+            if let Ok(v) = self.body(ep, |k| match k {
+                Kind::Endpoint(e) => Ok(e.send.iter().filter(|q| q.msg.is_some()).count() as u64),
+                _ => Err(KError::WrongObjectType),
+            }) {
+                n += v;
+            }
+        }
+        n
+    }
+
+    /// `MessageInfo` của message **vừa nhận** ở vùng nhận của TCB (`None` = chưa nhận).
+    pub fn tcb_ipc_info(&self, tcb: ObjId) -> Result<Option<MessageInfo>, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.ipc.info),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// 4 MR "thanh ghi" (MR0..MR3) của message vừa nhận ở TCB.
+    pub fn tcb_ipc_regs(&self, tcb: ObjId) -> Result<[u64; ipc::WORDS_IN_REGISTERS], KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.ipc.regs),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// 60 MR "IPC buffer model" (MR4..MR63) của message vừa nhận ở TCB — **vùng riêng**, không
+    /// gộp với thanh ghi (KT-24 DoD 2).
+    pub fn tcb_ipc_buffer(&self, tcb: ObjId) -> Result<[u64; ipc::WORDS_IN_IPC_BUFFER], KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.ipc.buffer),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// `msg_id` của message vừa nhận ở TCB (kernel cấp; `None` = chưa nhận).
+    pub fn tcb_ipc_msg_id(&self, tcb: ObjId) -> Result<Option<u64>, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.ipc.msg_id),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Badge của message vừa nhận ở TCB (KT-25 sẽ chuyển badge thật; KT-24 giữ 0).
+    pub fn tcb_ipc_badge(&self, tcb: ObjId) -> Result<u64, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.ipc.badge),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Lỗi IPC kernel gán cho TCB ở lần giao gần nhất (`Cancelled` cho nhánh `no_reply` (b) —
+    /// D2-53 Q7); `None` nếu không có.
+    pub fn tcb_last_ipc_error(&self, tcb: ObjId) -> Result<Option<KError>, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t.last_ipc_error),
+            _ => Err(KError::WrongObjectType),
+        })
     }
 
     /// Kiểm **toàn bộ** bất biến scheduler (DoD 3):
@@ -3375,14 +3666,28 @@ impl Machine {
         })
     }
 
-    /// Hàng gửi của Endpoint theo đúng **thứ tự FIFO** (clone để test kiểm thứ tự/loại message
-    /// mà không lộ cấu trúc body).
+    /// Hàng gửi của Endpoint theo đúng **thứ tự FIFO** — API K1b (KT-22) giữ nguyên: trả
+    /// `(sender, fault)` để `kt22_mailbox`/`kt23_k1b` không phải đổi. Nội dung message đọc qua
+    /// [`Machine::endpoint_msg_ids`] (KT-24).
     pub fn endpoint_send_items(
         &self,
         ep: ObjId,
     ) -> Result<Vec<(ObjId, Option<FaultKind>)>, KError> {
         self.body(ep, |k| match k {
-            Kind::Endpoint(e) => Ok(e.send.iter().copied().collect()),
+            Kind::Endpoint(e) => Ok(e.send.iter().map(|q| (q.sender, q.fault)).collect()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-24** — `msg_id` của các message **người dùng** trong hàng gửi, đúng thứ tự FIFO
+    /// (message fault `Exit` không có `msg_id` nên **không** xuất hiện).
+    pub fn endpoint_msg_ids(&self, ep: ObjId) -> Result<Vec<u64>, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e
+                .send
+                .iter()
+                .filter_map(|q| q.msg.as_ref().map(|m| m.msg_id))
+                .collect()),
             _ => Err(KError::WrongObjectType),
         })
     }
@@ -3426,89 +3731,357 @@ impl Machine {
         self.address_waiters.len()
     }
 
-    // ---------------------------------------------------------------- IPC
+    // ---------------------------------------------------------------- IPC (KT-24)
 
-    /// `Call` trên Endpoint: chặn chờ reply; nếu có server đang `Recv` thì giao ngay.
+    /// Resolve cap cho entry IPC: `SlotEmpty` quy về `InvalidCapability` đúng nghĩa ABI
+    /// ("cap không hợp lệ" cho tham số syscall — `SlotEmpty` là mã của thao tác CNode, không
+    /// phải của `Call`/`Send`; `.scn` 06 `call cap=c1 => InvalidCapability`).
+    fn ipc_slot_cap(&self, slot: SlotRef) -> Result<CapId, KError> {
+        self.cap_at(slot.cnode, slot.slot).map_err(|e| match e {
+            KError::SlotEmpty => KError::InvalidCapability,
+            other => other,
+        })
+    }
+
+    /// Endpoint đích của `Call`. Object **không** phải Endpoint = invocation chưa cài ⇒
+    /// `NotSupported`, **không** chặn, **không** Reply, `TcbState` không đổi (D2-53 Q11).
+    fn ipc_call_endpoint(&self, slot: SlotRef) -> Result<ObjId, KError> {
+        let cap = self.ipc_slot_cap(slot)?;
+        let c = self.cap(cap)?;
+        if c.ty != ObjType::Endpoint {
+            return Err(KError::NotSupported);
+        }
+        Ok(c.obj)
+    }
+
+    /// Loại object của cap cho `Send` (dispatch `Endpoint`/`Reply`/`Notification`).
+    fn ipc_cap_type(&self, slot: SlotRef) -> Result<ObjType, KError> {
+        let cap = self.ipc_slot_cap(slot)?;
+        Ok(self.cap(cap)?.ty)
+    }
+
+    /// Peek waiter `Recv` của Endpoint: `(có waiter, Reply cap người nhận đã cấp)`.
+    fn endpoint_recv_slot(&self, ep: ObjId) -> Result<(bool, Option<CapId>), KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok((e.recv.is_some(), e.recv.as_ref().and_then(|(_, cap)| *cap))),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Lấy (và gỡ) TCB đang chờ `Recv` trên Endpoint — **sau khi** đã peek/kiểm Reply cap.
+    fn endpoint_take_waiter(&mut self, ep: ObjId) -> Result<Option<ObjId>, KError> {
+        self.body_mut(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.recv.take().map(|(t, _)| t)),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Hàng gửi đầy? (chỉ kiểm khi **không** có waiter — có waiter thì giao thẳng, không dùng hàng.)
+    fn endpoint_full(&self, ep: ObjId) -> Result<bool, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.send.is_full()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    fn endpoint_pop(&mut self, ep: ObjId) -> Result<Option<QueuedMessage>, KError> {
+        self.body_mut(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.send.pop_front()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    fn endpoint_enqueue(&mut self, ep: ObjId, q: QueuedMessage) -> Result<(), KError> {
+        self.body_mut(ep, |k| match k {
+            Kind::Endpoint(e) => e.send.try_push(q).map_err(|_| KError::Busy),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    fn set_endpoint_last_mr(&mut self, ep: ObjId, mr: u64) -> Result<(), KError> {
+        self.body_mut(ep, |k| match k {
+            Kind::Endpoint(e) => {
+                e.last_mr = Some(mr);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Nhận message vào đường IPC: kiểm cap (KT-25 chưa chuyển ⇒ `NotSupported`, **không** im
+    /// lặng bỏ cap) rồi **cấp `msg_id`** từ bộ đếm `ipc_sent` (không bao giờ tái dùng).
+    fn admit_message(&mut self, mut msg: Message) -> Result<Message, KError> {
+        if !msg.caps.is_empty() || msg.info.caps() != 0 {
+            return Err(KError::NotSupported);
+        }
+        self.ipc_sent += 1;
+        msg.msg_id = self.ipc_sent;
+        Ok(msg)
+    }
+
+    /// Giao message vào vùng nhận của TCB qua **`crate::ipc::transfer`** (đường copy **duy nhất**);
+    /// cộng `ipc_delivered` + `transfer_calls` (hai bộ đếm phải luôn bằng nhau).
+    fn deliver_to(&mut self, receiver: ObjId, msg: &Message) -> Result<(), KError> {
+        self.body_mut(receiver, |k| match k {
+            Kind::Tcb(t) => {
+                ipc::transfer(msg, &mut t.ipc);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.ipc_delivered += 1;
+        self.transfer_calls += 1;
+        Ok(())
+    }
+
+    fn reset_ipc_error(&mut self, tcb: ObjId) -> Result<(), KError> {
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.last_ipc_error = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    fn set_last_ipc_error(&mut self, tcb: ObjId, e: KError) -> Result<(), KError> {
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.last_ipc_error = Some(e);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Giao một message **đã xếp hàng** cho TCB nhận (`recv`/`nb_recv`): chép qua `transfer`,
+    /// xử lý người gửi (`Send` ⇒ `Ready`; `Call` + Reply ⇒ `BlockedOnReply` + donation;
+    /// fault `Exit` ⇒ `Inactive`), và **nhánh (b)** của `no_reply`: thiếu Reply ⇒ kernel bật cờ
+    /// trên message + người gọi `Cancelled` (D2-53 Q7). Trả message đã giao (nếu là message
+    /// người dùng) để `nb_recv` trả lại cho test.
+    fn deliver_queued(
+        &mut self,
+        receiver: ObjId,
+        q: QueuedMessage,
+        reply_obj: Option<ObjId>,
+    ) -> Result<Option<Message>, KError> {
+        let mut out = q.msg.map(|m| *m);
+        let mut kernel_no_reply = false;
+        if let Some(m) = out.as_mut() {
+            if q.call && q.blocking && reply_obj.is_none() && !m.info.no_reply() {
+                // Kernel thiếu Reply: message **vẫn** giao, cờ bật phía nhận (thiết kế `:322`).
+                m.info = m.info.with_no_reply(true);
+                kernel_no_reply = true;
+            }
+            self.deliver_to(receiver, m)?;
+        }
+        match q.fault {
+            // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
+            Some(FaultKind::Exit { .. }) => {
+                self.transition_tcb(q.sender, TcbState::Inactive)?;
+            }
+            None => match (q.call, reply_obj) {
+                (true, Some(rep)) if q.blocking => {
+                    self.reply_set_caller(rep, Some(q.sender))?;
+                    self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                    // KT-21: `Call` xếp hàng nay mới giao được ⇒ SC của client đi theo.
+                    self.donate_sc(q.sender, receiver)?;
+                }
+                _ => {
+                    if q.blocking {
+                        self.transition_tcb(q.sender, TcbState::Ready)?;
+                    }
+                }
+            },
+        }
+        if kernel_no_reply {
+            self.set_last_ipc_error(q.sender, KError::Cancelled)?;
+        }
+        Ok(out)
+    }
+
+    /// `Call` trên Endpoint — bản **message đầy đủ** (KT-24). Ngữ nghĩa:
     ///
-    /// Mọi chuyển trạng thái đi qua [`Machine::transition_tcb`]: `Inactive → Ready` (kích hoạt
-    /// ngầm của mô hình), `Ready → BlockedOnSend`, server `BlockedOnRecv → Ready`,
-    /// `Ready → BlockedOnReply`.
-    pub fn call(&mut self, tcb: ObjId, ep: SlotRef, mr: u64) -> Result<(), KError> {
+    /// - Đích **không** phải Endpoint ⇒ `NotSupported`, không chặn/không Reply (D2-53 Q11).
+    /// - Có waiter + Reply cap ⇒ giao thẳng, caller `BlockedOnReply` (như K1b).
+    /// - Có waiter nhưng **không** Reply cap ⇒ giao thẳng, kernel bật `no_reply`, caller
+    ///   `Cancelled` (D2-53 Q7 nhánh (b)).
+    /// - Caller đặt `no_reply=1` ⇒ **Call = Send**, `Ok` ngay, **không** sinh Reply (Q7 nhánh (a)).
+    /// - Không có waiter ⇒ xếp hàng + `BlockedOnSend{call:true}` (Call thường) hoặc xếp hàng
+    ///   không chặn (no_reply).
+    pub fn call_msg(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
+        let ep_obj = self.ipc_call_endpoint(ep)?;
         let state = self.ensure_started(tcb)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);
         }
-        let ep_obj = self.require_type(ep, ObjType::Endpoint)?;
-        // Peek trước khi lấy waiter: `Recv` của server **không** kèm Reply cap ⇒ `Call` lỗi mà
-        // hàng nhận vẫn còn (trước KT-18 lấy rồi mới lỗi ⇒ waiter mồ côi).
-        let (has_waiter, reply_cap) = self.body(ep_obj, |k| match k {
-            Kind::Endpoint(e) => Ok((e.recv.is_some(), e.recv.as_ref().and_then(|(_, cap)| *cap))),
-            _ => Err(KError::WrongObjectType),
-        })?;
-        if has_waiter && reply_cap.is_none() {
-            return Err(KError::IllegalOperation);
-        }
+        self.reset_ipc_error(tcb)?;
+        let (has_waiter, reply_cap) = self.endpoint_recv_slot(ep_obj)?;
+        // Reply cap của người nhận phải hợp lệ **trước** khi nhận message (không mất message).
         let reply_obj = match reply_cap {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Reply)?),
             None => None,
         };
-        let waiter = self.body_mut(ep_obj, |k| match k {
-            Kind::Endpoint(e) => {
-                // KT-22: hàng gửi **cố định** — chỉ kiểm khi message thật sự phải xếp hàng
-                // (server đang `Recv` thì giao thẳng, không dùng hàng). Đầy ⇒ `Busy` **trước
-                // các thay đổi trạng thái của đường IPC** (không ghi `last_mr`, không
-                // `BlockedOnSend`): người gọi xử lý hộp thư rồi thử lại. Lưu ý: `ensure_started`
-                // (kích hoạt ngầm `Inactive → Ready`, pre-existing từ KT-18) đã chạy trước như
-                // **mọi** syscall — `Busy` không hoàn nguyên bước kích hoạt đó.
-                if e.recv.is_none() && e.send.is_full() {
-                    return Err(KError::Busy);
-                }
-                e.last_mr = Some(mr);
-                Ok(e.recv.take())
+        // Hàng gửi cố định: đầy ⇒ `Busy` **trước** mọi thay đổi (không cấp `msg_id`, không
+        // `last_mr`, không đổi trạng thái) — người gọi xử lý hộp thư rồi thử lại (KT-22 §4.17).
+        if !has_waiter && self.endpoint_full(ep_obj)? {
+            return Err(KError::Busy);
+        }
+        let msg = self.admit_message(msg)?;
+        self.set_endpoint_last_mr(ep_obj, msg.mr[0])?;
+        let user_no_reply = msg.info.no_reply();
+        if has_waiter {
+            let waiter = self
+                .endpoint_take_waiter(ep_obj)?
+                .expect("has_waiter vừa kiểm");
+            let kernel_no_reply = !user_no_reply && reply_obj.is_none();
+            let mut msg = msg;
+            if kernel_no_reply {
+                msg.info = msg.info.with_no_reply(true);
             }
-            _ => Err(KError::WrongObjectType),
-        })?;
-        if let Some((server, _)) = waiter {
-            let reply_obj = reply_obj.ok_or(KError::IllegalOperation)?;
-            self.transition_tcb(server, TcbState::Ready)?;
-            self.reply_set_caller(reply_obj, Some(tcb))?;
-            self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: reply_obj })?;
-            // KT-21 (D2-49(c)): SC của client **đi theo** `Call` sang server **passive**. Không
-            // đủ điều kiện (server có SC riêng/SC client chưa `Configure`) ⇒ no-op: server vẫn
-            // `Ready` nhưng không có ngân sách nên `pick` bỏ qua (D2-50) — **không** lỗi IPC.
-            self.donate_sc(tcb, server)?;
-        } else {
-            self.body_mut(ep_obj, |k| match k {
-                Kind::Endpoint(e) => {
-                    // KT-22: chỗ đã được kiểm ở closure phía trên (server không `Recv` và hàng
-                    // còn chỗ) ⇒ về lý thuyết luôn thắng; map về `Busy` thay vì `expect` để
-                    // mô hình không panic nếu bất biến đổi.
-                    e.send.try_push((tcb, None)).map_err(|_| KError::Busy)
+            self.deliver_to(waiter, &msg)?;
+            self.transition_tcb(waiter, TcbState::Ready)?;
+            if user_no_reply {
+                // (a) Caller đặt cờ: Call = Send, **không** sinh Reply.
+                self.sched_after_op(true);
+                return Ok(());
+            }
+            match reply_obj {
+                Some(rep) => {
+                    self.reply_set_caller(rep, Some(tcb))?;
+                    self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: rep })?;
+                    // KT-21 (D2-49(c)): SC của client đi theo `Call` sang server passive.
+                    self.donate_sc(tcb, waiter)?;
                 }
-                _ => Err(KError::WrongObjectType),
-            })?;
-            self.transition_tcb(
-                tcb,
-                TcbState::BlockedOnSend {
-                    ep: ep_obj,
-                    call: true,
+                None => {
+                    // (b) Kernel thiếu Reply: message vẫn giao, caller `Cancelled`.
+                    self.set_last_ipc_error(tcb, KError::Cancelled)?;
+                    self.sched_after_op(true);
+                    return Err(KError::Cancelled);
+                }
+            }
+        } else {
+            let blocking = !user_no_reply;
+            self.endpoint_enqueue(
+                ep_obj,
+                QueuedMessage {
+                    msg: Some(Box::new(msg)),
+                    sender: tcb,
+                    call: blocking,
                     fault: None,
+                    blocking,
                 },
             )?;
+            if blocking {
+                self.transition_tcb(
+                    tcb,
+                    TcbState::BlockedOnSend {
+                        ep: ep_obj,
+                        call: true,
+                        fault: None,
+                    },
+                )?;
+            }
         }
         self.sched_after_op(true);
         Ok(())
     }
 
-    /// `Recv` trên Endpoint: lấy message đang chờ, hoặc chặn `BlockedOnRecv{ep, reply}`.
-    ///
-    /// `BlockedOnRecv` mang `reply: Option<ObjId>` — sửa drift D2-33 (trước KT-18 thiếu trường).
+    /// `Call` bản **một MR** của K1b (giữ API cũ cho `kt09_e2e`/`kt18_tcb`/`kt21_donation`) —
+    /// wrapper mỏng của [`Machine::call_msg`] với `Message` 1 word, `label = 0`.
+    pub fn call(&mut self, tcb: ObjId, ep: SlotRef, mr: u64) -> Result<(), KError> {
+        let info = MessageInfo::new(0, 0, false, 0, 1)?;
+        let msg = Message::new(info, &[mr])?;
+        self.call_msg(tcb, ep, msg)
+    }
+
+    /// `Send` trên Endpoint/Reply: dispatch theo loại cap đúng ABI (`spec/abi.toml:107`):
+    /// `Endpoint` ⇒ gửi message (chặn: `BlockedOnSend` khi phải xếp hàng), `Reply` ⇒ trả lời,
+    /// `Notification` ⇒ KT-27 (`NotSupported`), loại khác ⇒ `WrongObjectType`.
+    pub fn send(&mut self, tcb: ObjId, cap: SlotRef, msg: Message) -> Result<(), KError> {
+        match self.ipc_cap_type(cap)? {
+            ObjType::Endpoint => self.endpoint_send(tcb, cap, msg, true),
+            ObjType::Reply => self.reply_msg(tcb, cap, msg),
+            ObjType::Notification => Err(KError::NotSupported),
+            _ => Err(KError::WrongObjectType),
+        }
+    }
+
+    /// `NBSend` — **không chặn**: bên nhận đang `Recv` ⇒ giao ngay; không ⇒ vào hàng gửi của
+    /// Endpoint và người gửi **vẫn** `Ready`/`Running` (`spec/abi.toml:108` "không chờ").
+    pub fn nb_send(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
+        match self.ipc_cap_type(ep)? {
+            ObjType::Endpoint => self.endpoint_send(tcb, ep, msg, false),
+            // `NBSend` lên Notification/Reply không có nghĩa trong 16 syscall K1c hiện tại.
+            ObjType::Notification => Err(KError::NotSupported),
+            _ => Err(KError::WrongObjectType),
+        }
+    }
+
+    /// Đường gửi chung của `Send` (blocking) / `NBSend` (non-blocking) trên Endpoint.
+    fn endpoint_send(
+        &mut self,
+        tcb: ObjId,
+        ep: SlotRef,
+        msg: Message,
+        blocking: bool,
+    ) -> Result<(), KError> {
+        let cap = self.ipc_slot_cap(ep)?;
+        let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
+        let state = self.ensure_started(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        self.reset_ipc_error(tcb)?;
+        let (has_waiter, _) = self.endpoint_recv_slot(ep_obj)?;
+        if !has_waiter && self.endpoint_full(ep_obj)? {
+            return Err(KError::Busy);
+        }
+        let msg = self.admit_message(msg)?;
+        self.set_endpoint_last_mr(ep_obj, msg.mr[0])?;
+        if has_waiter {
+            let waiter = self
+                .endpoint_take_waiter(ep_obj)?
+                .expect("has_waiter vừa kiểm");
+            self.deliver_to(waiter, &msg)?;
+            self.transition_tcb(waiter, TcbState::Ready)?;
+        } else {
+            self.endpoint_enqueue(
+                ep_obj,
+                QueuedMessage {
+                    msg: Some(Box::new(msg)),
+                    sender: tcb,
+                    call: false,
+                    fault: None,
+                    blocking,
+                },
+            )?;
+            if blocking {
+                self.transition_tcb(
+                    tcb,
+                    TcbState::BlockedOnSend {
+                        ep: ep_obj,
+                        call: false,
+                        fault: None,
+                    },
+                )?;
+            }
+        }
+        self.sched_after_op(true);
+        Ok(())
+    }
+
+    /// `Recv` trên Endpoint: lấy message đang chờ (chép qua `ipc::transfer`), hoặc chặn
+    /// `BlockedOnRecv{ep, reply}`. `reply` là Reply cap của **người nhận** (nếu cấp); thiếu nó
+    /// khi nhận `Call` ⇒ kernel bật `no_reply` + caller `Cancelled` (D2-53 Q7).
     pub fn recv(&mut self, tcb: ObjId, ep: SlotRef, reply: Option<SlotRef>) -> Result<(), KError> {
         let state = self.ensure_started(tcb)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);
         }
-        let ep_obj = self.require_type(ep, ObjType::Endpoint)?;
+        let cap = self.ipc_slot_cap(ep)?;
+        let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
+        self.reset_ipc_error(tcb)?;
         let reply_cap = match reply {
             Some(r) => Some(self.cap_at(r.cnode, r.slot)?),
             None => None,
@@ -3517,40 +4090,9 @@ impl Machine {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Reply)?),
             None => None,
         };
-        let sender = self.body_mut(ep_obj, |k| match k {
-            Kind::Endpoint(e) => Ok(e.send.pop_front()),
-            _ => Err(KError::WrongObjectType),
-        })?;
-        match sender {
-            Some((sender, fault)) => {
-                let sender_state = self.tcb_state(sender)?;
-                match fault {
-                    // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
-                    Some(FaultKind::Exit { .. }) => {
-                        self.transition_tcb(sender, TcbState::Inactive)?;
-                    }
-                    None => {
-                        let is_call =
-                            matches!(sender_state, TcbState::BlockedOnSend { call: true, .. });
-                        match (is_call, reply_obj) {
-                            (true, Some(reply_obj)) => {
-                                self.reply_set_caller(reply_obj, Some(sender))?;
-                                self.transition_tcb(
-                                    sender,
-                                    TcbState::BlockedOnReply { reply: reply_obj },
-                                )?;
-                                // KT-21: `Call` đã xếp hàng gửi nay mới giao được cho server ⇒
-                                // SC của client đi theo message (donation tự động, D2-49(c)).
-                                self.donate_sc(sender, tcb)?;
-                            }
-                            // `Send` (không Call) hoặc `Call` mà server không đưa Reply cap.
-                            _ => self.transition_tcb(sender, TcbState::Ready)?,
-                        }
-                    }
-                }
-                if state != TcbState::Ready {
-                    self.transition_tcb(tcb, TcbState::Ready)?;
-                }
+        match self.endpoint_pop(ep_obj)? {
+            Some(q) => {
+                let _ = self.deliver_queued(tcb, q, reply_obj)?;
             }
             None => {
                 self.body_mut(ep_obj, |k| match k {
@@ -3573,11 +4115,50 @@ impl Machine {
         Ok(())
     }
 
+    /// `NBRecv` — **Poll**: `Busy` khi hàng rỗng (`spec/abi.toml:110`), không chặn. Trả message
+    /// vừa nhận (đã chép vào `TcbData.ipc`) để test kiểm 64 MR/label/len.
+    pub fn nb_recv(&mut self, tcb: ObjId, ep: SlotRef) -> Result<Option<Message>, KError> {
+        let state = self.ensure_started(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        let cap = self.ipc_slot_cap(ep)?;
+        let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
+        self.reset_ipc_error(tcb)?;
+        match self.endpoint_pop(ep_obj)? {
+            Some(q) => {
+                let got = self.deliver_queued(tcb, q, None)?;
+                self.sched_after_op(true);
+                Ok(got)
+            }
+            None => Err(KError::Busy),
+        }
+    }
+
     /// `Send` trên Reply: đánh thức người gọi `BlockedOnReply → Ready` (qua một cửa).
     ///
     /// Nếu `Reply.caller` đã bị `Suspend(Abort)` tách ra: thiết kế §4.4 `:281` — Send **thành
     /// công nhưng reply bị bỏ** (không lỗi, không đánh thức ai).
     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
+        // API K1b không có tham số message ⇒ reply mang message **rỗng** (0 MR) — tương đương
+        // `Send(reply)` với `length = 0` của ABI (`spec/abi.toml:107`).
+        self.reply_with(tcb, reply, None)
+    }
+
+    /// `Send` trên **Reply** với message đầy đủ (ABI `Send` trên Reply = trả lời) — message đi
+    /// qua `ipc::transfer` tới **caller** trước khi caller `Ready` (thiết kế §4.6 `:324`).
+    pub fn reply_msg(&mut self, tcb: ObjId, reply: SlotRef, msg: Message) -> Result<(), KError> {
+        self.reply_with(tcb, reply, Some(msg))
+    }
+
+    /// Thân chung của `reply`: trả donation (KT-21), giao message (nếu có) cho caller, rồi đánh
+    /// thức caller `BlockedOnReply → Ready` qua **một** cửa `transition_tcb`.
+    fn reply_with(
+        &mut self,
+        tcb: ObjId,
+        reply: SlotRef,
+        msg: Option<Message>,
+    ) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);
@@ -3595,6 +4176,16 @@ impl Machine {
         if let Some(donor) = self.donation_donor_of(tcb) {
             if caller == Some(donor) {
                 self.return_donation(tcb)?;
+            }
+        }
+        if let Some(m) = msg {
+            // Message của Reply cũng đi qua **cùng** `admit_message` + `ipc::transfer`; không có
+            // caller (reply đã bị bỏ — thiết kế §4.4 `:281`) ⇒ đếm `ipc_dropped` để bất biến
+            // bảo toàn message vẫn đúng, không im lặng "mất" message.
+            let m = self.admit_message(m)?;
+            match caller {
+                Some(c) => self.deliver_to(c, &m)?,
+                None => self.ipc_dropped += 1,
             }
         }
         if let Some(caller) = caller {
@@ -3690,8 +4281,16 @@ impl Machine {
                     Kind::Endpoint(e) => {
                         // Đã kiểm chỗ phía trên ⇒ chỉ có thể thành công; map về `Busy` để
                         // không `panic` nếu bất biến đổi (không dùng `expect` trong mô hình).
+                        // KT-24: fault `Exit` là **message fault** (không phải IPC message) nên
+                        // không có `msg_id`, không tính vào `ipc_sent/delivered/pending`.
                         e.send
-                            .try_push((tcb, Some(FaultKind::Exit { code })))
+                            .try_push(QueuedMessage {
+                                msg: None,
+                                sender: tcb,
+                                call: false,
+                                fault: Some(FaultKind::Exit { code }),
+                                blocking: true,
+                            })
                             .map_err(|_| KError::Busy)
                     }
                     _ => Err(KError::WrongObjectType),
@@ -3794,6 +4393,8 @@ impl Machine {
                 sched_context: None,
                 donated_sc: None,
                 bound_notification: None,
+                ipc: IpcArea::new(),
+                last_ipc_error: None,
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
@@ -3973,6 +4574,9 @@ impl Machine {
             .map(|(i, m)| ((i as u32) + 1, m.ty))
             .collect();
         let mut removed = 0usize;
+        // KT-24: message **người dùng** bị huỷ theo TCB (D2-25) phải đếm vào `ipc_dropped`
+        // để bất biến `ipc_sent == ipc_delivered + ipc_pending + ipc_dropped` giữ nguyên.
+        let mut msg_dropped = 0usize;
         for (obj, ty) in live {
             match ty {
                 ObjType::Endpoint => {
@@ -3987,7 +4591,15 @@ impl Machine {
                             // KT-22: gỡ message của TCB khỏi **mailbox cố định**; `retain`
                             // đếm `removed` nên bất biến `pushed == popped + removed + len`
                             // vẫn đúng sau khi huỷ message (D2-25).
-                            removed += e.send.retain(|(t, _)| *t != tcb);
+                            removed += e.send.retain(|q| {
+                                if q.sender != tcb {
+                                    return true;
+                                }
+                                if q.msg.is_some() {
+                                    msg_dropped += 1;
+                                }
+                                false
+                            });
                             Ok(())
                         }
                         _ => Err(KError::WrongObjectType),
@@ -4023,6 +4635,7 @@ impl Machine {
         let before = self.address_waiters.len();
         self.address_waiters.retain(|(_, _, t)| *t != tcb);
         removed += before - self.address_waiters.len();
+        self.ipc_dropped += msg_dropped as u64;
         removed
     }
 
@@ -4119,6 +4732,24 @@ impl Machine {
                     let _ = self.finalise_tcb(*id);
                 }
             }
+            // KT-24: message **người dùng** còn trong Endpoint sắp bị finalise phải đếm
+            // `ipc_dropped` — nếu không, bất biến bảo toàn message thấy "mất" message khi
+            // Revoke Untyped chứa Endpoint (D2-25: message bị huỷ là hợp lệ).
+            let mut dropped_msgs = 0u64;
+            for id in &dead_objs {
+                if self.objects[*id as usize - 1].ty != ObjType::Endpoint {
+                    continue;
+                }
+                if let Ok(n) = self.body(*id, |k| match k {
+                    Kind::Endpoint(e) => {
+                        Ok(e.send.iter().filter(|q| q.msg.is_some()).count() as u64)
+                    }
+                    _ => Err(KError::WrongObjectType),
+                }) {
+                    dropped_msgs += n;
+                }
+            }
+            self.ipc_dropped += dropped_msgs;
             // Đánh dấu chết + **finalise body trong objmem** (KT-16; `free` guard `pa`).
             for id in &dead_objs {
                 let (loc, body) = {
@@ -4208,11 +4839,14 @@ impl Machine {
         let cap_alive = |cap: CapId| -> bool {
             cap > 0 && (cap as usize) <= n_caps && alive_caps[cap as usize - 1]
         };
+        let mut tong_dropped = 0u64;
         for (i, alive) in alive_objs.iter().enumerate() {
             if !*alive {
                 continue;
             }
             let obj = (i + 1) as ObjId;
+            // KT-24: message người dùng bị gỡ ở đây (sender đã chết) cũng phải đếm `ipc_dropped`.
+            let mut dropped = 0u64;
             let _ = self.body_mut(obj, |k| {
                 match k {
                     Kind::Endpoint(e) => {
@@ -4221,7 +4855,15 @@ impl Machine {
                                 e.recv = None;
                             }
                         }
-                        e.send.retain(|(tcb, _)| is_alive(*tcb));
+                        e.send.retain(|q| {
+                            if is_alive(q.sender) {
+                                return true;
+                            }
+                            if q.msg.is_some() {
+                                dropped += 1;
+                            }
+                            false
+                        });
                     }
                     Kind::Reply(r) => {
                         if let Some(c) = r.caller {
@@ -4280,7 +4922,9 @@ impl Machine {
                 }
                 Ok(())
             });
+            tong_dropped += dropped;
         }
+        self.ipc_dropped += tong_dropped;
         // Bucket WaitOnAddress: bỏ waiter/nút có frame hoặc TCB đã chết (§4.7).
         self.address_waiters
             .retain(|(frame, _, tcb)| is_alive(*frame) && is_alive(*tcb));

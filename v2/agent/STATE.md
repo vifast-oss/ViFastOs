@@ -6,12 +6,96 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-23 (xong mã — **tích hợp K1b: scenario + coverage 46/46 + 73/73 cặp cấm + Miri + parity + chốt DoD**); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
-Bước          : 7/8 (đỏ → mã → 9 test + bug fuzz sửa → invariant 1.000 seed → gate → Miri → **chờ review độc lập**; chưa commit/push, chưa đề xuất DONE)
+Task          : KT-24 (xong mã — **IPC core 1: `MessageInfo` 35 bit + `Message` 64 MR + `ipc::transfer` + `Send/NBSend/Recv/NBRecv` + `no_reply` 2 chiều + Call non-Endpoint `NotSupported`**); KT-23 DONE (65702fa), KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b), KT-22 DONE (67aa8bc)
+Bước          : 7/8 (đỏ → mã → 15 test mới → invariant 1.000 seed → gate → Miri → **chờ review độc lập**; chưa commit/push, chưa đề xuất DONE)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**321 test/47 suite**, 0 failed; KT-22 là 311/46 ⇒ **+10 test** = 9 integration `kt23_k1b` + 1 unit `tcb`; **L1 1.000 seed/999 trace** 687 ms; gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK). Lần chạy **trước** FAIL clippy (`doc_lazy_continuation` + `unused_variables`) → **sửa code** (không retry cùng trạng thái) rồi PASS
-Việc dở       : commit `[KT-23]` + push origin/main sau verdict reviewer; Miri PASS **12/12 (2.608 giây, ~43 phút)**; parity 10.000 seed/0 lệch; **chưa lật QUEUE** (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**336 test/49 suite**, 0 failed, 1 doc-test ignored pre-existing; KT-23 là 321/47 ⇒ **+15 test** = 13 `kt24_ipc` + 2 `kt24_scn`; **L1 1.000 seed/999 trace** 674 ms (đo bởi cổng); gen-check ON, `scn: OK` 21 tệp/11 nhóm, R1..R5 OK, clippy `-D warnings` sạch)
+Việc dở       : commit `[KT-24]` + push origin/main sau verdict reviewer; Miri `-p vifast-sim --test kt24_ipc`; **chưa lật QUEUE** (Agent 0)
 ```
+
+## KT-24 — IPC core 1 (K1c, D2-53 Q7/Q11)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-24) · HEAD `4bcdf81` (K1b DONE, K1c mở) ·
+baseline `gate --fast` PASS **321 test/47 suite** ([`JOURNAL/kt24-baseline-gate-fast.log`](JOURNAL/kt24-baseline-gate-fast.log)).
+**Phạm vi**: `MessageInfo` 35 bit đúng `spec/abi.toml:40-49`; `Message` **64 MR** + IPC buffer model;
+**một** hàm `ipc::transfer` copy MR; `Send/NBSend/Recv/NBRecv`; `no_reply` **hai chiều** (D2-53 Q7);
+`Call` trên object không phải Endpoint **không** chặn/không Reply, `NotSupported` (Q11).
+**Không** làm: 4 cap/GRANT/badge unwrap/`ReplyRecv`/Notification/WaitAddr/Fault (KT-25..KT-28),
+SMP/push (KT-29), `vifast-sync` (KT-30); không sửa `spec/`, `vifast-model`, `.scn`, QUEUE,
+DECISIONS, AGENTS, `viscript/`; không dependency/`unsafe`/`#[allow]`/`#[ignore]`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt24-red-compile.log`](JOURNAL/kt24-red-compile.log) — `tests/kt24_ipc.rs` **không biên
+  dịch**: **56 lỗi** = 51×`E0599` (method `call_msg`/`send`/`nb_send`/`nb_recv`/`check_ipc`/
+  `ipc_sent`/`ipc_delivered`/`ipc_pending`/`ipc_dropped`/`transfer_calls`/`tcb_ipc_*`/
+  `endpoint_msg_ids` chưa có) + 1×`E0432` (`vifast_sim::ipc`) + 4×`E0433`.
+- [`JOURNAL/kt24-red-semantics.log`](JOURNAL/kt24-red-semantics.log) — probe **tạm (đã xoá)** dùng
+  API cũ: (1) server `Recv` không Reply cap + client `Call` ⇒ hiện `IllegalOperation` (cần
+  `Cancelled` + message vẫn giao); (2) `EndpointState.last_mr` chỉ giữ **một** word, bị message sau
+  đè (`Ok(Some(8738))`) ⇒ 64 MR/message chưa biểu diễn được.
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/ipc.rs` (**mới**, 354 dòng): `MessageInfo` (35 bit, `new`/`unpack` kiểm
+  biên `label<2^20`, `caps≤4`, `extra≤0xF`, `length≤64`; `pack`/`bits`), `Message` (`info`,
+  `mr:[u64;64]`, `caps`, `badge`, `msg_id`), `IpcArea` (**hai field riêng** `regs:[u64;4]` +
+  `buffer:[u64;60]`), `transfer()` — đường copy **duy nhất**, xoá vùng nhận trước khi chép.
+- `v2/sim/vifast-sim/src/kobj.rs`: `TcbData.ipc` + `last_ipc_error`; `EndpointState.send` thành
+  `Mailbox<QueuedMessage>` (`msg: Option<Box<Message>>`, `sender`, `call`, `fault`, `blocking`);
+  `call_msg` + `call` (wrapper 1 MR) + `send` (dispatch Endpoint/Reply/Notification) + `nb_send` +
+  `recv` (chép qua `transfer`, bind Reply, nhánh thiếu Reply) + `nb_recv`; `exit` dùng
+  `QueuedMessage` fault; `check_mailboxes` nới cho `blocking`/`no_reply`; **`check_ipc()`** (msg_id
+  đúng một nơi, `transfer_calls == delivered`, `sent == delivered + pending + dropped`) gọi trong
+  `sched_after_op` sau **mỗi** public op (đường nhanh khi `ipc_sent == 0` để L1 không chậm);
+  `ipc_dropped` cộng khi `Suspend(Abort)`/finalise TCB/Revoke Untyped chứa Endpoint; accessor
+  `ipc_*`, `tcb_ipc_*`, `endpoint_msg_ids`.
+- `v2/sim/vifast-sim/src/scenario.rs`: `Msg` (MessageInfo + 64 MR) + `Step::{Send, NBSend, NBRecv}`
+  (đủ `name`/`actor`/`execute`/`is_tcb_syscall`).
+- `v2/sim/vifast-sim/tests/kt24_ipc.rs` (**mới, 13 test**): layout 35 bit + round-trip 1.000 giá
+  trị LCG + biên; 64 MR byte-for-byte + `mr[4]` **chỉ** ở buffer; `transfer` xoá dữ liệu cũ;
+  `send` chặn/`nb_send` không chặn/FIFO/`nb_recv` Busy; `recv` chặn + giao thẳng; Call/Reply +
+  `send` trên Reply; `no_reply` caller (a1/a2) + kernel thiếu Reply (b1/b2) ⇒ `Cancelled`;
+  Call non-Endpoint `NotSupported` (CNode/Tcb/Reply/Untyped) + `Send` sai kiểu; hàng đầy `Busy`;
+  fuzz **1.000 seed × 64 op** (Miri giảm `cfg(miri)` 3×8), cùng seed cùng trace; bảo toàn
+  message không abort (`dropped == 0`, `sent == delivered + pending`).
+- `v2/sim/vifast-sim/tests/kt24_scn.rs` (**mới, 2 test**): runner **đọc tệp** `.scn` 04/06/17 và
+  chạy đúng chuỗi bước, 0 lệch; scenario `Step::{Send,NBSend,NBRecv}` qua `run_sequential`.
+- `v2/docs/k1c-ipc-semantics.md` (**mới**, model-only `[TK]`): bảng ngữ nghĩa, `no_reply` hai chiều,
+  quy ước runner `.scn`, bất biến bảo toàn message, giới hạn KT-24.
+- `v2/bin/v2`: thêm `kt24_ipc` vào `nightly --only-miri` (kt24_scn đọc tệp nên **không** đưa vào).
+
+### Đo
+
+| Việc | Số | Log |
+|---|---|---|
+| Gate | `gate --fast` **336 test/49 suite**, 0 failed; **L1 1.000 seed/999 trace 674 ms** (đo bởi cổng) | [`JOURNAL/kt24-gate-fast.log`](JOURNAL/kt24-gate-fast.log) |
+| Test mới | **15** = 13 `kt24_ipc` + 2 `kt24_scn` | cùng log |
+| Fuzz IPC | **1.000 seed × 64 op**, `check_sched`+`check_mailboxes`+`check_ipc` sau **mỗi** op, 0 vi phạm; cùng seed ⇒ cùng trace | `cargo test -p vifast-sim --test kt24_ipc` |
+| `no_reply` | 4 ca: caller bật cờ (có/không waiter) ⇒ `Ok` ngay không Reply; kernel thiếu Reply (giao thẳng/xếp hàng) ⇒ `Cancelled` + message vẫn giao + cờ bật | cùng log |
+| Miri | `v2 miri -p vifast-sim --test kt24_ipc` — **PASS 13/13 (37,77 s)**; 2 warning "integer-to-pointer cast" là của `vifast-objmem` (có từ trước, không do KT-24) | [`JOURNAL/kt24-miri.log`](JOURNAL/kt24-miri.log) |
+
+### DoD KT-24 (K1C-PLAN §5) — trung thực
+
+| # | Tiêu chí | Kết quả |
+|---|---|---|
+| 1 | `MessageInfo` 35 bit đúng layout + round-trip 1.000 + biên `caps>4`/`len>64` | **ĐẠT** (`message_info_dung_layout_35_bit`, `message_info_roundtrip_1000_va_bien`) |
+| 2 | `Message` 64 MR + 4 MR thanh ghi/60 MR IPC buffer **hai vùng riêng**, `mr[4]` chỉ ở buffer | **ĐẠT** (`message_64_mr_hai_vung...`, `transfer_mot_duong...`) |
+| 3 | `ipc::transfer` là đường copy **duy nhất** (`transfer_calls == ipc_delivered`) | **ĐẠT** — grep chỉ `kobj::deliver_to` gọi `ipc::transfer`; `check_ipc` kiểm sau mỗi op |
+| 4 | `Send`/`NBSend`/`Recv`/`NBRecv` + FIFO + không mất message + hàng đầy `Busy` | **ĐẠT** (`send_nb_send_fifo_va_nb_recv_busy`, `hang_gui_day...`) — **ghi rõ**: K1C-PLAN ghi "hàng gửi không giới hạn" nhưng KT-22 DONE đã chốt `MAILBOX_CAP = 8` + `Busy`; KT-24 **giữ nguyên** KT-22 (không nới/hạ), đã ghi trong `v2/docs/k1c-ipc-semantics.md` §4 |
+| 5 | `no_reply` **hai chiều** (Q7) + `.scn` 17 | **ĐẠT** (`no_reply_caller_dat_co...`, `no_reply_kernel_thieu_reply_tra_cancelled`, `kt24_scn`) |
+| 6 | Call non-Endpoint **không chặn/không Reply**, `NotSupported`, `TcbState` không đổi | **ĐẠT** (`call_non_endpoint_not_supported...`) |
+| 7 | Bảo toàn message `check_ipc` sau **mỗi** op; 1.000 seed × 64 op; cùng seed cùng trace | **ĐẠT** — `ipc_sent == ipc_delivered + ipc_pending` khi không abort (thêm `ipc_dropped` cho đường huỷ hợp lệ D2-25) |
+| 8 | `scenario.rs` có `Step::{Send,NBSend,NBRecv}` + `Msg`; runner `.scn` 04/06/17 đọc tệp, 0 lệch | **ĐẠT** (`kt24_scn`) |
+| 9 | `gate --fast` PASS không retry; Miri `--test kt24_ipc` PASS; 0 unsafe; `spec/`/`vifast-model`/`.scn` không đổi | **ĐẠT** (gate PASS; `git diff --stat spec/ v2/lib/vifast-model v2/test/scn` rỗng) |
+
+### Giới hạn còn lại (KT-25..KT-30)
+
+Chưa chuyển **cap** (`MessageInfo.caps > 0`/`Message.caps` ⇒ `NotSupported` tới KT-25 — không im
+lặng bỏ), chưa GRANT/unwrap badge/receive window/`ReplyRecv`/`NBSendRecv`/`NBSendWait`/vòng đời
+`Reply` (KT-25); fault ngoài `Exit` (KT-26); Notification signal/wait (KT-27); WaitAddr/WakeAddr
+(KT-28); SMP/push (KT-29); `vifast-sync` (KT-30). IPC buffer model chỉ giữ **word** + metadata,
+chưa cấp 4 KiB/căn 16 thật (K2/K3).
 
 ## KT-23 — Tích hợp scenario, coverage 100%, Miri, parity, chốt DoD K1b (K1b, D2-49..D2-52)
 

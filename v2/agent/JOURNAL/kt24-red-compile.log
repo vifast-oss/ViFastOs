@@ -1,0 +1,25 @@
+# KT-24 — test đỏ trước (D2-05): tests/kt24_ipc.rs chưa biên dịch (API chưa có)
+# 2026-11-13T03:34:18Z HEAD 4bcdf81
+# lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt24_ipc
+#
+  10 error[E0599]: no method named `ipc_sent` found for struct `Machine` in the current scope
+   8 error[E0599]: no method named `ipc_pending` found for struct `Machine` in the current scope
+   7 error[E0599]: no method named `ipc_delivered` found for struct `Machine` in the current scope
+   5 error[E0599]: no method named `send` found for struct `Machine` in the current scope
+   4 error[E0599]: no method named `ipc_dropped` found for struct `Machine` in the current scope
+   4 error[E0433]: cannot find `ipc` in `vifast_sim`
+   3 error[E0599]: no method named `transfer_calls` found for struct `Machine` in the current scope
+   3 error[E0599]: no method named `tcb_last_ipc_error` found for struct `Machine` in the current scope
+   3 error[E0599]: no method named `call_msg` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `tcb_ipc_regs` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `tcb_ipc_msg_id` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `tcb_ipc_info` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `tcb_ipc_buffer` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `nb_send` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `nb_recv` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `endpoint_msg_ids` found for struct `Machine` in the current scope
+   1 error[E0599]: no method named `check_ipc` found for struct `Machine` in the current scope
+   1 error[E0432]: unresolved import `vifast_sim::ipc`
+   1 error: could not compile `vifast-sim` (test "kt24_ipc") due to 56 previous errors
+#
+# tổng: 51 E0599 + 1 E0432 + 4 E0433
