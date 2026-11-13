@@ -49,6 +49,8 @@ struct Frame {
     pc: usize,
     locals: Vec<Value>,
     captured: Vec<Value>,
+    /// Ngăn xếp **của khung gọi** được cất khi gọi hàm (mỗi khung một ngăn xếp riêng).
+    st_cu: Vec<Value>,
 }
 
 /// Máy ảo: giữ module + văn bản nguồn + `stdout` + số bước.
@@ -58,6 +60,8 @@ pub struct Vm<'a> {
     out: String,
     steps: usize,
     depth: usize,
+    /// Độ sâu ngăn xếp giá trị **lớn nhất đã dùng** (bất biến của fuzz ST-21).
+    dinh: usize,
 }
 
 impl<'a> Vm<'a> {
@@ -69,7 +73,13 @@ impl<'a> Vm<'a> {
             out: String::new(),
             steps: 0,
             depth: 0,
+            dinh: 0,
         }
+    }
+
+    /// Độ sâu ngăn xếp **lớn nhất** đã dùng trong lần chạy.
+    pub fn max_stack_used(&self) -> usize {
+        self.dinh
     }
 
     /// Lấy `stdout` đã in.
@@ -79,6 +89,22 @@ impl<'a> Vm<'a> {
 
     /// Chạy `main` của module.
     pub fn run(&mut self, args: &[String]) -> RunOutput {
+        // **Bắt buộc** xác minh trước khi chạy (VD-52 #3): bytecode có thể đến từ cache.
+        if let Err(e) = vis_bytecode::verify(self.m) {
+            return RunOutput {
+                stdout: String::new(),
+                diagnostics: vec![vis_syntax::Diagnostic {
+                    code: &vis_diag::RUNTIME_CODES[0],
+                    message: format!("bytecode hỏng: {e}"),
+                    span: Span::new(0, 0),
+                    line: 1,
+                    col: 1,
+                }],
+                value: None,
+                exit: 1,
+                steps: 0,
+            };
+        }
         let argv = Value::List(args.iter().map(|s| Value::Str(s.clone())).collect());
         match self.chay_chuong_trinh(&argv) {
             Ok(v) => {
@@ -220,6 +246,7 @@ impl<'m> Th<'m> {
                 pc: 0,
                 locals,
                 captured,
+                st_cu: Vec::new(),
             }],
             st: Vec::new(),
             iters: Vec::new(),
@@ -260,6 +287,10 @@ impl<'m> Th<'m> {
 
     fn exec(&mut self, vm: &mut Vm<'_>) -> R<Value> {
         loop {
+            // Ghi nhận độ sâu ngăn xếp **lớn nhất** (bất biến fuzz ST-21: `dinh ≤ need`).
+            if self.st.len() > vm.dinh {
+                vm.dinh = self.st.len();
+            }
             let Some(fr) = self.frames.last() else {
                 return Ok(Value::Unit);
             };
@@ -270,7 +301,10 @@ impl<'m> Th<'m> {
                 self.frames.pop();
                 match self.frames.last_mut() {
                     None => return Ok(v),
-                    Some(_) => self.st.push(v),
+                    Some(f) => {
+                        self.st = std::mem::take(&mut f.st_cu);
+                        self.st.push(v);
+                    }
                 }
                 continue;
             }
@@ -352,11 +386,17 @@ impl<'m> Th<'m> {
                             span,
                         )));
                     }
+                    // Mỗi khung một ngăn xếp: cất ngăn xếp khung gọi, mở ngăn xếp mới.
+                    let cu = std::mem::take(&mut self.st);
+                    if let Some(f) = self.frames.last_mut() {
+                        f.st_cu = cu;
+                    }
                     self.frames.push(Frame {
                         fi,
                         pc: 0,
                         locals,
                         captured: Vec::new(),
+                        st_cu: Vec::new(),
                     });
                 }
                 Instr::CallBuiltin(i, n) => {
@@ -446,7 +486,11 @@ impl<'m> Th<'m> {
                     self.frames.pop();
                     match self.frames.last_mut() {
                         None => return Ok(v),
-                        Some(_) => self.st.push(v),
+                        Some(f) => {
+                            // Khôi phục ngăn xếp khung gọi rồi đẩy giá trị trả.
+                            self.st = std::mem::take(&mut f.st_cu);
+                            self.st.push(v);
+                        }
                     }
                 }
                 Instr::MakeList(n) | Instr::MakeTuple(n) | Instr::MakeSet(n) => {
@@ -682,7 +726,10 @@ impl<'m> Th<'m> {
                             self.frames.pop();
                             match self.frames.last_mut() {
                                 None => return Ok(v),
-                                Some(_) => self.st.push(v),
+                                Some(f) => {
+                                    self.st = std::mem::take(&mut f.st_cu);
+                                    self.st.push(v);
+                                }
                             }
                         }
                         Value::Opt(Some(x)) => {

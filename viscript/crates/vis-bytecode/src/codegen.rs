@@ -30,6 +30,8 @@ pub enum CodegenError {
     TooMany(u16),
     /// Module không có hàm `main`.
     NoEntry,
+    /// Mã vừa sinh **không qua** verifier (bug codegen — báo, không nới).
+    KhongHopLe(crate::verify::VerifyError),
 }
 
 impl core::fmt::Display for CodegenError {
@@ -44,6 +46,7 @@ impl core::fmt::Display for CodegenError {
             }
             CodegenError::TooMany(n) => write!(f, "quá nhiều ô cục bộ/đối số: {n}"),
             CodegenError::NoEntry => write!(f, "không có hàm `main`"),
+            CodegenError::KhongHopLe(e) => write!(f, "mã sinh ra không hợp lệ: {e}"),
         }
     }
 }
@@ -127,16 +130,23 @@ impl F {
         }
     }
 
-    fn finish(self) -> Func {
-        Func {
+    /// Chốt hàm: `max_stack` lấy từ **chính** hàm mô phỏng của verifier (một nguồn sự thật).
+    fn finish(self) -> Result<Func, CodegenError> {
+        if std::env::var("VBC_DBG").is_ok() {
+            for (i, ins) in self.code.iter().enumerate() {
+                eprintln!("{i:3} {ins:?}");
+            }
+        }
+        let need = crate::verify::need_stack(&self.code, 0).map_err(CodegenError::KhongHopLe)?;
+        Ok(Func {
             name: self.name,
             arity: self.arity,
             nparams: self.nparams,
             nlocals: self.nlocals.max(1),
-            max_stack: self.max.max(1) as u16,
+            max_stack: need,
             code: self.code,
             spans: self.spans,
-        }
+        })
     }
 }
 
@@ -256,7 +266,7 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
             }
             st.than(&HBody::Stmts(f.body.clone()), f.params.len() as u16, f.span)?;
             st.f.push(Instr::Halt, f.span, 0);
-            let done = st.f.finish();
+            let done = st.f.finish()?;
             g.funcs[idx] = done;
         }
     }
@@ -284,7 +294,7 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
             }
             None => st.f.push(Instr::Halt, hir.span, 0),
         }
-        let done = st.f.finish();
+        let done = st.f.finish()?;
         g.funcs[main_idx as usize] = done;
     }
     // Closure đã gom trong lúc phát.
@@ -309,7 +319,7 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         let base = c.params.len() as u16;
         st.than(&c.body, base, Span::new(0, 0))?;
         st.f.push(Instr::Return, Span::new(0, 0), 0);
-        let done = st.f.finish();
+        let done = st.f.finish()?;
         let i = c.idx as usize;
         if i < g.funcs.len() {
             g.funcs[i] = done;
@@ -604,7 +614,7 @@ impl<'g> Emit<'g> {
                 self.expr(subject)?;
                 let mut jend = Vec::new();
                 let mut guardas: Vec<usize> = Vec::new();
-                for arm in arms {
+                for arm in arms.iter() {
                     self.f.push(Instr::Dup, *span, 1);
                     let jf = self.test(&arm.pat, *span)?;
                     let br = self.f.here();
@@ -614,9 +624,6 @@ impl<'g> Emit<'g> {
                     }
                     // Bind **trước** guard (interp bind rồi mới xét guard); giữ subject để `Pop`.
                     self.bind(&arm.pat, *span, false)?;
-                    // Kiểm **lồng** (`some(some(x))`, `Ok((a,b))`): không khớp ⇒ nhảy arm kế.
-                    self.f.push(Instr::Dup, *span, 1);
-                    self.kiem_mot(&arm.pat, *span, &mut guardas)?;
                     if let Some(gd) = &arm.guard {
                         self.expr(gd)?;
                         let g = self.f.here();
@@ -915,6 +922,7 @@ impl<'g> Emit<'g> {
                     self.f.push(Instr::Jump(0), *span, 0);
                     let lnone = self.f.here();
                     self.f.patch(jn, lnone);
+                    self.f.push(Instr::Pop, *span, -1);
                     self.f.push(Instr::MakeNone, *span, 1);
                     let end = self.f.here();
                     self.f.patch(jend, end);
@@ -1089,7 +1097,8 @@ impl<'g> Emit<'g> {
                 self.expr(subject)?;
                 let mut jend = Vec::new();
                 let mut guardas: Vec<usize> = Vec::new();
-                for arm in arms {
+                let mut cuoi: Vec<(usize, Vec<usize>)> = Vec::new();
+                for (i, arm) in arms.iter().enumerate() {
                     self.f.push(Instr::Dup, *span, 1);
                     let jf = self.test(&arm.pat, *span)?;
                     let br = self.f.here();
@@ -1110,9 +1119,22 @@ impl<'g> Emit<'g> {
                     jend.push(self.f.here());
                     self.f.push(Instr::Jump(0), *span, 0);
                     let next = self.f.here();
-                    self.f.patch(br, next);
-                    for g in guardas.drain(..) {
-                        self.f.patch(g, next);
+                    if i + 1 == arms.len() {
+                        // Nhánh **cuối** trượt ⇒ phải `Pop` subject trước khi đẩy giá trị dự phòng.
+                        cuoi.push((br, guardas.clone()));
+                    } else {
+                        self.f.patch(br, next);
+                        for g in guardas.drain(..) {
+                            self.f.patch(g, next);
+                        }
+                    }
+                }
+                let lpop = self.f.here();
+                self.f.push(Instr::Pop, *span, -1);
+                for (br, gs) in cuoi {
+                    self.f.patch(br, lpop);
+                    for g in gs {
+                        self.f.patch(g, lpop);
                     }
                 }
                 {
@@ -1254,7 +1276,8 @@ impl<'g> Emit<'g> {
                 self.expr(subject)?;
                 let mut jend = Vec::new();
                 let mut guardas: Vec<usize> = Vec::new();
-                for arm in arms {
+                let mut cuoi: Vec<(usize, Vec<usize>)> = Vec::new();
+                for (i, arm) in arms.iter().enumerate() {
                     self.f.push(Instr::Dup, *span, 1);
                     let jf = self.test(&arm.pat, *span)?;
                     let br = self.f.here();
@@ -1275,9 +1298,22 @@ impl<'g> Emit<'g> {
                     jend.push(self.f.here());
                     self.f.push(Instr::Jump(0), *span, 0);
                     let next = self.f.here();
-                    self.f.patch(br, next);
-                    for g in guardas.drain(..) {
-                        self.f.patch(g, next);
+                    if i + 1 == arms.len() {
+                        // Nhánh **cuối** trượt ⇒ `Pop` subject trước khi đẩy giá trị dự phòng.
+                        cuoi.push((br, guardas.clone()));
+                    } else {
+                        self.f.patch(br, next);
+                        for g in guardas.drain(..) {
+                            self.f.patch(g, next);
+                        }
+                    }
+                }
+                let lpop = self.f.here();
+                self.f.push(Instr::Pop, *span, -1);
+                for (br, gs) in cuoi {
+                    self.f.patch(br, lpop);
+                    for g in gs {
+                        self.f.patch(g, lpop);
                     }
                 }
                 let c = self.unit_cst_x();

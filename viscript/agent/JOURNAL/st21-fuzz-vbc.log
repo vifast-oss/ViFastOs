@@ -1,0 +1,32 @@
+=== ST-21: fuzz đột biến bytecode VBC1 — 10 phút ===
+thời điểm chạy: 2026-11-13T02:51:34Z
+
+Lệnh: `VBC_FUZZ_PHUT=10 cargo test -p vis-vm --test fuzz_mutate -- --nocapture`
+Nguồn: **272 module** sinh từ 272 ca sem (cùng bộ với differential).
+Đột biến mỗi vòng: bit-flip / byte-flip / cắt cụt / chèn 1–8 byte (seed cố định `0x5EED_2026_1121`).
+
+Kết quả (dòng `FUZZ` thật của lần chạy):
+  FUZZ phut=10 tong=2289260 decode_tu_choi=1483621 verify_tu_choi=66388 chay_duoc=739251 vi_pham=0 giay=602.6
+
+| Số | Giá trị |
+|---|---|
+| tổng vòng | **2.289.260** |
+| `decode` từ chối (bytes hỏng) | **1.483.621** |
+| `verify` từ chối (giải mã được nhưng không hợp lệ) | **66.388** |
+| chạy được (verify OK) | **739.251** |
+| **vi phạm** | **0** |
+| tốc độ | ~**3.799 vòng/giây** (602,6 s) |
+
+Bất biến kiểm mỗi vòng (đều 0 vi phạm):
+  1. `decode` **không panic**;
+  2. `verify` **không panic**;
+  3. `verify` OK ⇒ VM chạy **không panic** (`catch_unwind`), **kết thúc** (cap 10^7 lệnh),
+     và **độ sâu ngăn xếp ≤ `need`** mà verifier tính.
+     (`need` = **max theo hàm** — VM cho **mỗi khung một** ngăn xếp giá trị, sửa ở ST-21:
+     bản đầu dùng chung ngăn xếp nên đệ quy làm `st.len()` vượt `need`; fuzz **bắt được**
+     đúng chỗ này ⇒ đổi VM sang ngăn xếp theo khung, không nới bất biến.)
+
+sha256 (bản commit):
+  sha256 crates/vis-bytecode/src/verify.rs=ef2da6594a9bb6252e5ed0f4d2411f052ac403e3a780ad0e8adf773287f5ea54
+  sha256 crates/vis-vm/src/vm.rs=9524be64c9ce858a3a5d10db28d956a50f52a5aff89870da08a28c0e4ebeb572
+  sha256 crates/vis-vm/tests/fuzz_mutate.rs=9149d6165c7b774e1c240dc8993095c2aebe5b52a61f1a0d6253527845181b5e

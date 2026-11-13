@@ -6,13 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-20b** (đưa differential interp ↔ VM về **0 lệch**) — xong 2026-11-13,
-                **chưa commit** (chờ Agent 0 OK). **272/272 khớp**, `KNOWN_LECH` **rỗng**.
-Bước          : 3/3 (đo lại từng nhóm → sửa → khoá 272)
+Task          : **ST-21** (verifier bytecode + fuzz không panic) — xong 2026-11-13,
+                **chưa commit** (chờ Agent 0 OK). 13 biến thể `VerifyError`, fuzz 10 phút 0 vi phạm.
+Bước          : 4/4 (verify → cắm codegen/VM → test → fuzz)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T02:27:07Z = 2026-11-13 11:27 JST; không retry) — **289** test
-Việc dở       : chờ duyệt rồi commit `[ST-20b]`
+                (2026-11-13T02:41:20Z = 2026-11-13 11:41 JST; không retry) — **316** test
+Việc dở       : chờ duyệt rồi commit `[ST-21]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +45,21 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-21 — verifier VBC1 + fuzz không panic (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | `crates/vis-bytecode/src/verify.rs` | `verify(&Module)`, `need_stack(&[Instr], func)` (**một** hàm mô phỏng dùng chung codegen + verifier), `captured_used`, `load_verified(&[u8]) -> Result<Module, LoadError>` (ST-23 dùng thẳng), `LoadError{Decode,Verify}` |
+| 2 | **13 biến thể** `VerifyError` | `BadVersion`, `BadEntry`, `BadConstIdx{func,pc,idx}`, `BadFuncIdx{…}`, `BadJump{func,pc,off}`, `StackUnderflow{func,pc}`, `StackMismatch{func,pc,a,b}`, `NeedStack{func,declared,need}`, `EmptyCode`, `FallsOffEnd`, `SpanMismatch`, `BadArity`, `ClosureFree{func,pc,nfree,used}`, `LocalOverflow{func,pc,slot,nlocals}` |
+| 3 | **`max_stack`**: giữ trường, verifier **tính lại** (`need`) và **từ chối nếu khai nhỏ hơn** | Codegen ghi `max_stack` bằng **chính** `need_stack` ⇒ hết khoảng chênh; lệch = bug codegen (báo, không nới) |
+| 4 | **Bắt buộc trên mọi đường nạp** | `Vm::run` **verify trước** (sai ⇒ `VS0501` "bytecode hỏng", không chạy); `vis run --vm` đi qua đó; cache ST-23 dùng `load_verified` |
+| 5 | **Fuzz** | `crates/vis-vm/tests/fuzz_mutate.rs`: 272 module nguồn × (bit-flip/byte-flip/cắt cụt/chèn), `catch_unwind`, bất biến *không panic · kết thúc · độ sâu ≤ `need`* |
+| 6 | Test | `tests/verify.rs` **26** ca (hợp lệ + từng biến thể + `load_verified` + `need_stack`); workspace **316** test; differential **272/272**; sem **323** ca xanh |
+
+**Verifier bắt 4 bug thật của codegen** (đã sửa, không nới): `?.` nhánh `none` thiếu `Pop`; `IterInit`
+khai 1→1 nhưng thực 1→0; `match` biểu thức nhánh cuối thiếu `Pop` subject; `test` cho `Wild`/`Bind`
+không tiêu thụ giá trị. Ghi trong `JOURNAL/st21-red-verify.log`.
 
 ## ST-20b — differential interp ↔ VM về **0 lệch** (2026-11-13)
 

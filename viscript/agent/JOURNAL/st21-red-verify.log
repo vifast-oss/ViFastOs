@@ -1,0 +1,35 @@
+=== ST-21 D2-05: verifier VBC1 + fuzz đột biến — ĐỎ TRƯỚC (và cái verifier bắt được) ===
+
+Thứ tự thật: viết `verify.rs` (13 biến thể) → cắm vào codegen (`max_stack` lấy từ **chính**
+`need_stack` của verifier) → chạy bộ cũ: **verifier bắt 4 bug thật của codegen ST-19/20**.
+Đây là bằng chứng mạnh nhất: verifier không phải hình thức, nó chặn mã sai.
+
+ẢNH 1 — `roundtrip_tren_toan_bo_323_ca` đỏ vì mã sinh ra không hợp lệ (16 ca cùng loại):
+  …/enum/empty-branch.vis: mã sinh ra không hợp lệ: hàm 0 pc 40: hai đường tới với độ sâu 0 và 1
+  …/match-nang-cao/guard-sai.vis: mã sinh ra không hợp lệ: hàm 0 pc 28: hai đường tới với độ sâu 1 và 2
+  …/optional/match-some.vis: mã sinh ra không hợp lệ: hàm 0 pc 43: hai đường tới với độ sâu 0 và 1
+
+Bốn bug codegen (đã sửa, **không** nới verifier):
+  1. `?.` nhánh `none` không `Pop` giá trị gốc ⇒ sâu 2 thay vì 1.
+  2. `IterInit` khai hiệu ứng (1→1) nhưng VM **bỏ** iterable khỏi ngăn xếp giá trị ⇒ (1→0).
+  3. `match` (biểu thức) nhánh **cuối** trượt ⇒ nhảy tới giá trị dự phòng mà **chưa** `Pop` subject.
+  4. `test` cho `Wild`/`Bind` **không** tiêu thụ giá trị (hợp đồng 1→1) ⇒ thừa một bản sao ở mỗi nhánh.
+
+ẢNH 2 — ca xanh cố ý (khai rõ):
+  • `tests/verify.rs::module_hop_le_qua`, `max_stack_du_thi_qua`, `load_verified_nhan_module_hop_le`
+    — viết **sau** khi `verify` đã có; xanh ngay từ lần đầu (không tính đỏ).
+  • `tests/fuzz_mutate.rs` — xanh ngay (bất biến), chạy 10 phút cho log.
+
+ẢNH 3 — chốt:
+  • `tests/verify.rs`: **26** ca (hợp lệ + 13 biến thể + `load_verified` + `need_stack`).
+  • `cargo test --workspace`: **316** test xanh; differential vẫn **272/272**; sem 323 ca xanh.
+
+sha256 (bản commit):
+  sha256 crates/vis-bytecode/src/verify.rs=ef2da6594a9bb6252e5ed0f4d2411f052ac403e3a780ad0e8adf773287f5ea54
+  sha256 crates/vis-bytecode/src/codegen.rs=bb5a2d950cff383fb91c5b9f0a60acb9f93c5e40e75fe1946ff73e4a8f7f17ac
+  sha256 crates/vis-bytecode/src/codegen/pattern.rs=84b4a9abf5aca4f8eb4f9996f8737c182792bb7a6f926db6f7c460d21af3f9ab
+  sha256 crates/vis-bytecode/src/lib.rs=1e207e54fa17abd686719e0881111c2eeb905e67e851359327090428f70e5dc1
+  sha256 crates/vis-bytecode/tests/verify.rs=799f60a26f1d0a464666609429278a776917e75579a3524b779fc38b549092b2
+  sha256 crates/vis-vm/src/vm.rs=9524be64c9ce858a3a5d10db28d956a50f52a5aff89870da08a28c0e4ebeb572
+  sha256 crates/vis-vm/tests/fuzz_mutate.rs=9149d6165c7b774e1c240dc8993095c2aebe5b52a61f1a0d6253527845181b5e
+  sha256 Cargo.toml=2e7e06f36d15c156d6a987f7882d047c76974bbf399cd9f2b8cb9bd2ddc79ffd
