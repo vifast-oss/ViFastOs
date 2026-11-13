@@ -206,6 +206,32 @@ impl vis_interp::builtin::FsHost for Runner {
         std::path::Path::new(p).exists()
     }
 
+    fn list_entries(&mut self, p: &str) -> Result<Vec<vis_interp::builtin::MucFs>, String> {
+        self.nhat_ky("list_entries", p);
+        let rd = std::fs::read_dir(p).map_err(|e| format!("không đọc được thư mục `{p}`: {e}"))?;
+        let mut muc: Vec<vis_interp::builtin::MucFs> = Vec::new();
+        for e in rd {
+            let e = e.map_err(|x| format!("lỗi đọc mục trong `{p}`: {x}"))?;
+            let md = e
+                .metadata()
+                .map_err(|x| format!("lỗi đọc metadata của mục trong `{p}`: {x}"))?;
+            let modified_ns = md
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos() as i64)
+                .unwrap_or(0);
+            muc.push(vis_interp::builtin::MucFs {
+                name: e.file_name().to_string_lossy().to_string(),
+                size: md.len(),
+                modified_ns,
+                is_file: md.is_file(),
+            });
+        }
+        muc.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+        Ok(muc)
+    }
+
     fn list(&mut self, p: &str) -> Result<Vec<String>, String> {
         self.nhat_ky("list", p);
         let rd = std::fs::read_dir(p).map_err(|e| format!("không đọc được thư mục `{p}`: {e}"))?;

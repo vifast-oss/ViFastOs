@@ -1312,6 +1312,8 @@ fn builtin_name(name: &str) -> Option<&'static str> {
         // ST-38: closure-arg của chế độ lệnh.
         "sort_by" => Some("sort_by"),
         "render" => Some("render"),
+        "ls" => Some("ls"),
+        "open" => Some("open"),
         "get" => Some("get"),
         "select" => Some("select"),
         "where" => Some("where"),

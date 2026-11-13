@@ -81,9 +81,22 @@ impl<'a> Lowerer<'a> {
 
     /// ST-40a: đăng ký `FileEntry`/`ProcEntry` vào bảng kiểu của tệp `.vish` **và** bảng tên.
     pub(crate) fn dang_ky_prelude(&mut self) {
+        let mut file_id = None;
         for (ten, id) in crate::prelude::dang_ky_vish(self.tbl) {
+            if ten == "FileEntry" {
+                file_id = Some(id);
+            }
             self.rec_names.push((ten.clone(), id));
             self.prelude_recs.push((ten, id));
+        }
+        // ST-42: `ls` trả `list[FileEntry]` — `RecId` cấp **theo tệp** nên phải **vá** ret của chữ ký
+        // (bảng `BuiltinSigs` là tĩnh, không biết id).
+        if let Some(id) = file_id {
+            for s in self.cmd_sigs.iter_mut() {
+                if s.name == "ls" {
+                    s.ret = Type::List(Box::new(Type::Record(id)));
+                }
+            }
         }
     }
 
@@ -1311,6 +1324,13 @@ impl<'a> Lowerer<'a> {
                 }
             }
             theo_ten.clear();
+            // ST-42: điền default cho **mọi** ô còn trống (kể cả ô **sau** cờ, vd `long` sau `--all`),
+            // nếu không `day_du` sai ⇒ cờ bị **bỏ** khỏi call.
+            for (j, o) in vi_tri.iter_mut().enumerate() {
+                if o.is_none() {
+                    *o = sig.params[j].default.clone();
+                }
+            }
             let day_du = vi_tri.iter().all(|x| x.is_some());
             if day_du {
                 let args: Vec<HExpr> = vi_tri.into_iter().flatten().collect();

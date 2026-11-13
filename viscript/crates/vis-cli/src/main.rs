@@ -4,6 +4,7 @@
 use std::process::ExitCode;
 
 mod cache;
+mod fsmock;
 mod modules;
 mod ngoai;
 mod vistest;
@@ -15,6 +16,57 @@ fn usage() -> ExitCode {
         "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
     );
     ExitCode::from(2)
+}
+
+/// **FsHost** của CLI (ST-42): `--fs-mock` ⇒ mock tất định, ngược lại ⇒ hệ tệp thật.
+enum HostFs {
+    That(ngoai::Runner),
+    Mock(fsmock::FsMock),
+}
+
+impl vis_interp::builtin::FsHost for HostFs {
+    fn read(&mut self, p: &str) -> Result<String, String> {
+        match self {
+            HostFs::That(r) => r.read(p),
+            HostFs::Mock(m) => m.read(p),
+        }
+    }
+    fn write(&mut self, p: &str, s: &str) -> Result<(), String> {
+        match self {
+            HostFs::That(r) => r.write(p, s),
+            HostFs::Mock(m) => m.write(p, s),
+        }
+    }
+    fn exists(&mut self, p: &str) -> bool {
+        match self {
+            HostFs::That(r) => r.exists(p),
+            HostFs::Mock(m) => m.exists(p),
+        }
+    }
+    fn list(&mut self, p: &str) -> Result<Vec<String>, String> {
+        match self {
+            HostFs::That(r) => r.list(p),
+            HostFs::Mock(m) => m.list(p),
+        }
+    }
+    fn list_entries(&mut self, p: &str) -> Result<Vec<vis_interp::builtin::MucFs>, String> {
+        match self {
+            HostFs::That(r) => r.list_entries(p),
+            HostFs::Mock(m) => m.list_entries(p),
+        }
+    }
+}
+
+impl HostFs {
+    fn tao(giai_thich: bool, mock: Option<&fsmock::FsMock>) -> Self {
+        match mock {
+            Some(m) => HostFs::Mock(m.clone()),
+            None => HostFs::That(ngoai::Runner {
+                giai_thich,
+                ..ngoai::Runner::default()
+            }),
+        }
+    }
 }
 
 /// Ghi ra stdout **một lần**; `BrokenPipe` (vd `vis fmt … | head`) ⇒ im lặng thoát 0, không panic.
@@ -279,6 +331,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut co_no_extern = false;
     let mut tep: Option<String> = None;
     let mut prog_args: Vec<String> = Vec::new();
+    let mut mock_tep: Option<String> = None;
     let mut i = 0;
     while i < rest.len() {
         match rest[i].as_str() {
@@ -294,6 +347,15 @@ fn run_run(rest: &[String]) -> ExitCode {
             "--explain-perms" => explain_perms = true,
             // ST-27: tắt chương trình ngoài ⇒ lệnh lạ `VS0601`.
             "--no-extern" => co_no_extern = true,
+            // ST-42: `FsHost` **mock tất định** từ kịch bản JSON (test hermetic).
+            "--fs-mock" => {
+                if i + 1 >= rest.len() {
+                    eprintln!("vis run: `--fs-mock` cần đường dẫn tệp kịch bản");
+                    return ExitCode::from(2);
+                }
+                i += 1;
+                mock_tep = Some(rest[i].clone());
+            }
             "--" => {
                 prog_args = rest[i + 1..].to_vec();
                 break;
@@ -319,6 +381,22 @@ fn run_run(rest: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
     // ST-18: `.vish` chạy được (parse → `cmd_lower` → tyck → interp), không còn `Bail out!`.
+    let fs_mock: Option<fsmock::FsMock> = match &mock_tep {
+        None => None,
+        Some(p) => match std::fs::read_to_string(p) {
+            Ok(s) => match fsmock::FsMock::tu_json(&s) {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    eprintln!("vis run: {e}");
+                    return ExitCode::from(2);
+                }
+            },
+            Err(e) => {
+                eprintln!("vis run: không đọc được kịch bản `--fs-mock` `{p}`: {e}");
+                return ExitCode::from(2);
+            }
+        },
+    };
     let che_do = if tep.ends_with(".vish") {
         vis_syntax::Mode::Command
     } else {
@@ -351,10 +429,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     .name("vis-run".into())
                     .stack_size(256 * 1024 * 1024)
                     .spawn_scoped(scope, || {
-                        let mut fs = ngoai::Runner {
-                            giai_thich: explain_perms,
-                            ..ngoai::Runner::default()
-                        };
+                        let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
                         let out = vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs));
                         let d: Vec<(String, u32, u32, String)> = out
                             .diagnostics
@@ -452,10 +527,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
                     // ST-33: `std.fs` đi qua host hệ thống tệp (chỉ CLI biết OS).
-                    let mut fs = ngoai::Runner {
-                        giai_thich: explain_perms,
-                        ..ngoai::Runner::default()
-                    };
+                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
                     vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs))
                 } else if che_do == vis_syntax::Mode::Command && !co_no_extern {
                     // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
@@ -463,10 +535,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                         giai_thich: explain_perms,
                         ..ngoai::Runner::default()
                     };
-                    let mut fs = ngoai::Runner {
-                        giai_thich: explain_perms,
-                        ..ngoai::Runner::default()
-                    };
+                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
                     vis_interp::run_with_hosts(
                         &text,
                         &h.hir,
@@ -478,10 +547,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     )
                 } else {
                     // ST-33: `.vis` cũng có `std.fs` (không có chương trình ngoài).
-                    let mut fs = ngoai::Runner {
-                        giai_thich: explain_perms,
-                        ..ngoai::Runner::default()
-                    };
+                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
                     vis_interp::run_with_hosts(
                         &text,
                         &h.hir,

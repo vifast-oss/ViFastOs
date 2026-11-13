@@ -58,6 +58,15 @@ pub trait Ngoai {
 
 /// **Host hệ thống tệp** (ST-33) — `vis-interp`/`vis-vm` **không** biết `std::fs`; `vis-cli` cài bằng
 /// `std::fs`. Thiếu host ⇒ `VS0604` "chưa hỗ trợ ở môi trường này" (cùng mẫu `Ngoai`, VD-60 (2)).
+/// Một mục thư mục **kèm metadata** (ST-42) — cho `ls`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MucFs {
+    pub name: String,
+    pub size: u64,
+    pub modified_ns: i64,
+    pub is_file: bool,
+}
+
 pub trait FsHost {
     /// Đọc cả tệp thành chuỗi (UTF-8).
     fn read(&mut self, p: &str) -> Result<String, String>;
@@ -67,6 +76,11 @@ pub trait FsHost {
     fn exists(&mut self, p: &str) -> bool;
     /// Tên các mục trong thư mục, **đã sắp xếp**, **không** đệ quy.
     fn list(&mut self, p: &str) -> Result<Vec<String>, String>;
+
+    /// ST-42: mục thư mục **kèm metadata** (`ls`). Default: **chưa hỗ trợ** ⇒ impl cũ vẫn biên dịch.
+    fn list_entries(&mut self, _p: &str) -> Result<Vec<MucFs>, String> {
+        Err("môi trường này không cung cấp metadata thư mục".to_string())
+    }
 }
 
 pub trait Host {
@@ -117,7 +131,7 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 19] = [
+pub const SIGS: [BuiltinSig; 21] = [
     BuiltinSig {
         name: "print",
         min: 1,
@@ -147,6 +161,16 @@ pub const SIGS: [BuiltinSig; 19] = [
         name: "take",
         min: 2,
         max: 2,
+    },
+    BuiltinSig {
+        name: "ls",
+        min: 0,
+        max: 3,
+    },
+    BuiltinSig {
+        name: "open",
+        min: 1,
+        max: 1,
     },
     BuiltinSig {
         name: "render",
@@ -650,6 +674,68 @@ pub fn call(
             };
             let n = (*n).max(0) as usize;
             Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        // ST-42: `ls`/`open` qua `FsHost` (thật hoặc `--fs-mock`).
+        "ls" => {
+            let p = match args.first() {
+                Some(Value::Str(s)) => s.clone(),
+                None => ".".to_string(),
+                Some(other) => {
+                    return Err(trap(
+                        RT,
+                        format!("`ls`: đường dẫn cần `str`, được `{}`", other.show()),
+                        span,
+                    ))
+                }
+            };
+            let all = matches!(args.get(1), Some(Value::Bool(true)));
+            let host = host.fs().ok_or_else(|| {
+                trap(
+                    RT,
+                    "`ls` chưa hỗ trợ ở môi trường này (không có host hệ tệp)",
+                    span,
+                )
+            })?;
+            let muc = host
+                .list_entries(&p)
+                .map_err(|e| trap(RT, format!("`ls {p}`: {e}"), span))?;
+            let mut ds: Vec<MucFs> = muc
+                .into_iter()
+                .filter(|m| all || !m.name.starts_with('.'))
+                .collect();
+            // **Sắp theo tên (byte)** — ổn định giữa hệ tệp.
+            ds.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+            Ok(Value::List(
+                ds.into_iter()
+                    .map(|m| {
+                        Value::Record(
+                            "FileEntry".to_string(),
+                            vec![
+                                ("name".to_string(), Value::Str(m.name)),
+                                ("size".to_string(), Value::Size(m.size as i64)),
+                                ("modified".to_string(), Value::Duration(m.modified_ns)),
+                                ("is_file".to_string(), Value::Bool(m.is_file)),
+                            ],
+                        )
+                    })
+                    .collect(),
+            ))
+        }
+        "open" => {
+            let Value::Str(p) = &args[0] else {
+                return Err(trap(RT, "`open` cần `str`", span));
+            };
+            let host = host.fs().ok_or_else(|| {
+                trap(
+                    RT,
+                    "`open` chưa hỗ trợ ở môi trường này (không có host hệ tệp)",
+                    span,
+                )
+            })?;
+            let s = host
+                .read(p)
+                .map_err(|e| trap(RT, format!("`open {p}`: {e}"), span))?;
+            Ok(Value::Str(s))
         }
         // ST-41: `Render` — **chỉ** cho giá trị cuối pipeline (`boc_render`); `print` giữ nguyên.
         "render" => {

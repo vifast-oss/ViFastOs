@@ -1,0 +1,41 @@
+=== ST-42 D2-05: `ls`/`open` + `--fs-mock` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T10:50:34Z
+
+## 1. Đỏ **thật** ở HEAD `f15b5d0` (worktree `/tmp/vis-red42`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test ls_open
+test result: FAILED. **0 passed; 14 failed**
+```
+
+Lý do: `ls`/`open` **chưa** có (lệnh lạ ⇒ chương trình ngoài), `--fs-mock` chưa có, `FsHost` chưa có
+`list_entries` (không đọc được size/mtime), khối 672 chưa chạy được.
+
+## 2. Sau khi sửa — đo được
+
+- `ls ./photos` (mock) ⇒ **bảng** `list[FileEntry]`, **sắp theo tên byte**; `--all` gồm `.hidden`;
+  `--long` **no-op** (cùng output); không đối số ⇒ `"."`;
+- `size` = **byte** theo bảng lexer: `2mb` = **2 000 000**, `2mib` = **2 097 152** (khoá bằng truy vấn
+  `where size > 1999999b` / `where size > 2000000b`); `modified` = **duration** (`3h`/`2h`);
+- `open ./notes.txt` ⇒ `"xin chào"`; `open`/`ls` đường dẫn sai ⇒ **`VS0501`** nêu **đường dẫn + lỗi**;
+- **khối 672 end-to-end**: `ls ./photos | where size > 5mb | sort_by modified --desc | take 10` ⇒ **bảng**,
+  **interp và `--vm` cùng byte**;
+- **không** `--fs-mock` ⇒ `FsHost` **thật** (thư mục trong `/tmp`, `ls` bảng + `open` đọc đúng);
+- 4 fixture `.vish` trong `test/cmd/fs/**` chạy với `--fs-mock`.
+
+## 3. Số ca
+
+- test workspace **606** (592 + **14** `ls_open.rs`); sem **370 không đổi** (4 ca `.vish` là **fixture**
+  `test/cmd/fs/**` vì `vis test` không có `--fs-mock`); parity **344/344**, `fuzz_mutate` **318**,
+  `diag_cmp` **318/370** — không đổi (không thêm ca sem).
+
+## 4. sha256 bản commit
+  sha256 crates/vis-interp/src/builtin.rs=c32c1be52266629a4eb3865927d55cee8dd100babadee170a37a576f3f298a40
+  sha256 crates/vis-interp/src/interp.rs=13624ca1f464419cf798e861c9eb6b0d2fea1e63b0332d5b14c9fd70572dd1cd
+  sha256 crates/vis-types/src/cmdsig.rs=aa42744ffb7d0e69a832a7870a42846ee7f18aaccc9a9c1902221c515317b2b1
+  sha256 crates/vis-types/src/lower/cmd.rs=51bd64bb509ef6b8cea1db8d2d45f211225022a0ad6787bbc13329aa800a941e
+  sha256 crates/vis-types/src/tyck/expr.rs=1c1e5012fb565b6f99ddaddacd68fcf89b0ab7b83303340667b9c766cae6d34a
+  sha256 crates/vis-cli/src/fsmock.rs=c9a8a0275b11fbb417549179b521da93eea7bf778883d5427a7fec798420abda
+  sha256 crates/vis-cli/src/main.rs=f719e4696560ffe6d7f55a67ed7aeea9c6a79eeaf42288d2135d7e23b549ddbe
+  sha256 crates/vis-cli/src/ngoai.rs=cd886fba65dbf96fd37105d4fb38f3f4d9f881576e81617f3102c98a7aedfaaf
+  sha256 crates/vis-cli/tests/ls_open.rs=f701c051510a15f903f652b15081e97c2ee1208cab1d943358021eda6de9456b

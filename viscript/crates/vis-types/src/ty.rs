@@ -313,6 +313,14 @@ impl TypeTable {
         })
     }
 
+    /// ST-42: tra bản ghi **theo tên** (prelude `FileEntry`/`ProcEntry`).
+    pub fn rec_by_name(&self, ten: &str) -> Option<RecId> {
+        self.recs
+            .iter()
+            .position(|r| r.name.as_deref() == Some(ten))
+            .map(|i| RecId(i as u32))
+    }
+
     pub fn rec(&self, id: RecId) -> Option<&RecDef> {
         self.recs.get(id.0 as usize)
     }

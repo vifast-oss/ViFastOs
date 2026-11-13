@@ -107,6 +107,25 @@ impl BuiltinSigs {
         let ds = |t: &Type| Type::List(Box::new(t.clone()));
         let fn_bool = Type::Fn(vec![t.clone()].into(), Box::new(Type::Bool));
         let fn_unit = Type::Fn(vec![t.clone()].into(), Box::new(Type::Unit));
+        // ST-42: `ls`/`open` — `ls` ret **vá** trong `dang_ky_prelude` thành `list[Record(FileEntry)]`.
+        let mut all = tham("all", Type::Bool, lit_b(false));
+        all.named = true;
+        let mut long = tham("long", Type::Bool, lit_b(false));
+        long.named = true;
+        let ls = CmdSig {
+            name: "ls".into(),
+            sym: None,
+            generics: Vec::new(),
+            params: vec![tham("p", Type::Str, lit_s(".")), all, long],
+            ret: Type::List(Box::new(Type::Error)),
+        };
+        let open = CmdSig {
+            name: "open".into(),
+            sym: None,
+            generics: Vec::new(),
+            params: vec![tham("p", Type::Str, None)],
+            ret: Type::Str,
+        };
         // ST-40b: `get`/`select` — chiếu trường; sugar tên trường ⇒ lambda (VD-71/73).
         let k_ty2 = Type::TypeRef {
             name: "K".into(),
@@ -209,6 +228,8 @@ impl BuiltinSigs {
                 sort_by,
                 get,
                 select,
+                ls,
+                open,
                 where_,
                 each,
                 first,

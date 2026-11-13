@@ -996,6 +996,35 @@ impl<'a> Checker<'a> {
 
     /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.
     fn kiem_builtin(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
+        // ST-42: `ls` ⇒ `list[FileEntry]` (tra bản ghi **theo tên** trong bảng kiểu); `open` ⇒ `str`.
+        if name == "ls" || name == "open" {
+            let mut tys: Vec<Type> = Vec::new();
+            for a in args {
+                tys.push(self.kiem_expr(a));
+            }
+            if name == "open" {
+                if tys.len() != 1 {
+                    self.diag(
+                        ARG_COUNT,
+                        format!("`open` cần 1 đối số, được {}", tys.len()),
+                        span,
+                    );
+                }
+                return Some(Type::Str);
+            }
+            if tys.len() > 3 {
+                self.diag(
+                    ARG_COUNT,
+                    format!("`ls` cần 0–3 đối số, được {}", tys.len()),
+                    span,
+                );
+            }
+            let el = match self.types.rec_by_name("FileEntry") {
+                Some(id) => Type::Record(id),
+                None => Type::Error,
+            };
+            return Some(Type::List(Box::new(el)));
+        }
         // ST-40b: `get`/`select` — kiểu ra = `list[<kiểu thân lambda>]` (một lần kiểm thân).
         if name == "get" || name == "select" {
             let xs_ty = args

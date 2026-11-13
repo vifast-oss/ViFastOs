@@ -1,0 +1,5 @@
+{ "dirs": { "./photos": [
+  {"name": "b.jpg", "size": "6mb", "modified": "2h", "is_file": true},
+  {"name": "a.jpg", "size": "1mb", "modified": "3h", "is_file": true},
+  {"name": ".hidden", "size": "1kb", "modified": "1h", "is_file": true} ] },
+  "files": { "./notes.txt": "xin chào" } }

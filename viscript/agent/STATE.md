@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-41** (`Render`: bảng/khối cho giá trị cuối pipeline) — xong, **chưa commit**.
-Bước          : 5/5 (`render` builtin + NFC → `boc_render` + hint phần tử bản ghi → 16 snapshot → cập nhật 7 `.out` + ~20 assertion → gate PASS)
+Task          : **ST-42** (`ls`/`open` + `--fs-mock`) — xong, **chưa commit**.
+Bước          : 5/5 (`FsHost::list_entries` → `ls`/`open` + vá ret theo prelude → `--fs-mock` → 14 ca + 4 fixture → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:31:47Z**; **592** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (206,4 s)
-Việc dở       : commit `[ST-41]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:49:20Z**; **606** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (207,2 s)
+Việc dở       : commit `[ST-42]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-41 — `Render` (2026-11-13)
+## ST-42 — `ls`/`open` + `--fs-mock` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`FsHost` metadata** | thêm `MucFs` + `list_entries` **default `Err`**; `Runner` thật dùng `std::fs::metadata` |
+| 2 | **`ls`** | `list[FileEntry]` (prelude), **sắp theo tên byte**; `--all` gồm `.`; **không đối số ⇒ `"."`**; `--long` **no-op** |
+| 3 | **`open`** | ⇒ `str`; lỗi ⇒ **`VS0501`** nêu đường dẫn + lỗi |
+| 4 | **`--fs-mock`** | JSON `dirs`/`files` tất định; `size` theo bảng lexer, `modified` = duration từ epoch; `FsMock` trong `vis-cli/src/fsmock.rs` |
+| 5 | **Đo** | **606** test (592 + **14**); sem **370** không đổi; 4 fixture `test/cmd/fs/**`; **khối 672 end-to-end**, interp ↔ `--vm` cùng byte; **allowlist vẫn 6** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
