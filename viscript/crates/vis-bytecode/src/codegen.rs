@@ -30,6 +30,13 @@ pub enum CodegenError {
     TooMany(u16),
     /// Module không có hàm `main`.
     NoEntry,
+    /// **ST-54**: front end đã báo lỗi ⇒ codegen **từ chối** (mã + dòng:cột + thông điệp).
+    ChanDoan {
+        short: &'static str,
+        dong: u32,
+        cot: u32,
+        msg: String,
+    },
     /// Mã vừa sinh **không qua** verifier (bug codegen — báo, không nới).
     KhongHopLe(crate::verify::VerifyError),
 }
@@ -46,6 +53,12 @@ impl core::fmt::Display for CodegenError {
             }
             CodegenError::TooMany(n) => write!(f, "quá nhiều ô cục bộ/đối số: {n}"),
             CodegenError::NoEntry => write!(f, "không có hàm `main`"),
+            CodegenError::ChanDoan {
+                short,
+                dong,
+                cot,
+                msg,
+            } => write!(f, "{short} tại {dong}:{cot}: {msg}"),
             CodegenError::KhongHopLe(e) => write!(f, "mã sinh ra không hợp lệ: {e}"),
         }
     }
@@ -205,7 +218,33 @@ impl Gen {
     }
 }
 
-/// Hạ một chương trình HIR xuống module VBC1.
+/// **ST-54**: cửa codegen **duy nhất** — từ chối khi front end đã có lỗi.
+///
+/// HIR do bộ hạ sinh **không** mang dấu `Type::Error` (đo 370 ca: 0 nút `Error`), nên codegen
+/// **không thể** tự suy ra lỗi tyck; phải nhận **chẩn đoán front end** (parse/hạ/tyck) ở cửa này.
+/// Chỉ chẩn đoán **`Severity::Error`** chặn; cảnh báo (nếu có) vẫn cho compile.
+pub fn compile_kiem(
+    hir: &Hir,
+    symbols: &Symbols,
+    text: &str,
+    chan_doan: &[vis_syntax::Diagnostic],
+) -> Result<Module, CodegenError> {
+    if let Some(d) = chan_doan
+        .iter()
+        .find(|d| d.code.severity == vis_diag::Severity::Error)
+    {
+        return Err(CodegenError::ChanDoan {
+            short: d.code.short,
+            dong: d.line,
+            cot: d.col,
+            msg: d.message.clone(),
+        });
+    }
+    compile(hir, symbols, text)
+}
+
+/// Hạ một chương trình HIR xuống module VBC1 (API cũ — **không** kèm chẩn đoán; xem
+/// [`compile_kiem`] cho đường có cổng front end).
 pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, CodegenError> {
     let mut g = Gen {
         consts: Vec::new(),
@@ -1214,9 +1253,8 @@ impl<'g> Emit<'g> {
                 self.net_stack(*span)
             }
             HExpr::Error { span } => {
-                let c = self.g.cst(LitKind::Str, "\"\"");
-                self.f.push(Instr::Const(c), *span, 1);
-                Ok(())
+                // ST-54: HIR còn nút **lỗi** ⇒ từ chối, không phát chuỗi rỗng cho VM chạy "sạch".
+                Err(CodegenError::Unsupported("error-expr", *span))
             }
             HExpr::Ref { span, .. } => Err(CodegenError::Unsupported("ref", *span)),
             HExpr::Await { span, .. } => Err(CodegenError::Unsupported("await", *span)),

@@ -25,9 +25,11 @@ const LOI_LUC_CHAY: usize = 26;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
 const XANH_CAN_HOST: usize = 4;
 const LUC_CHAY_CAN_HOST: usize = 2;
-/// Số ca (đã đo) mà `compile()` vẫn ra module **chạy sạch** dù HIR sai kiểu — codegen **tin** tyck
-/// (đo được **21/26**; cổng chặn là front end, `vis run` dừng trước khi chạy bytecode).
-const CODEGEN_TIN_TYCK: usize = 21;
+/// **SỬA KÈM LÝ DO (ST-54, Agent 0 duyệt)**: trước là **21** — số ca `compile()` vẫn ra module
+/// chạy "sạch" dù HIR sai (codegen **tin** tyck). Nay `compile_kiem` nhận **chẩn đoán front end**
+/// và **từ chối** ⇒ **0** ca lọt. HIR không mang dấu `Type::Error` (đo 370 ca: 0 nút) nên đây là
+/// cửa duy nhất đúng.
+const CODEGEN_TIN_TYCK: usize = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ChanDoan {
@@ -287,7 +289,8 @@ fn ca_bien_dich_hai_duong_cung_chan_doan() {
 #[test]
 fn ca_bien_dich_di_qua_bytecode_khong_panic() {
     let mut so = 0;
-    // Số ca mà `compile()` vẫn ra module **chạy sạch** dù HIR sai kiểu (codegen tin tyck — nợ ST-32).
+    // ST-54: `compile_kiem` phải **từ chối** đủ 26 ca; số ca còn ra module "sạch" = 0.
+    let mut so_bi_tu_choi = 0usize;
     let mut codegen_khong_kiem = 0usize;
     for p in tep_sem() {
         if tang(&p) != Tang::BienDich {
@@ -313,37 +316,60 @@ fn ca_bien_dich_di_qua_bytecode_khong_panic() {
             "{}: ca lỗi biên dịch phải có chẩn đoán ở **một** tầng front end",
             p.display()
         );
-        // Gọi **đường bytecode** in-process: **không panic**. Codegen **tin** tyck (không tự kiểm
-        // kiểu) nên có thể vẫn ra module — điều phải khoá là: (i) không panic, (ii) **không** module
-        // nào được `vis run` chạy tới (nó dừng ở front end, exit 2 — test 3), (iii) nếu module chạy
-        // được thì **không** được trông như chương trình đúng (phải có chẩn đoán hoặc exit ≠ 0).
+        // ST-54: gom **đủ 3 tầng** chẩn đoán rồi đưa vào **cửa codegen** (`compile_kiem`).
+        let mut chan: Vec<vis_syntax::Diagnostic> = Vec::new();
+        chan.extend(parsed.diagnostics.iter().cloned());
+        chan.extend(h.diagnostics.iter().cloned());
+        chan.extend(kq.diags.iter().cloned());
+        let dau = chan
+            .iter()
+            .find(|d| d.code.severity == vis_diag::Severity::Error)
+            .expect("ca lỗi biên dịch phải có chẩn đoán Error");
+        // Gọi **đường bytecode** in-process: **không panic**, và phải **từ chối** với **đủ**
+        // `mã + dòng:cột + thông điệp` của chẩn đoán đầu tiên.
         let kq_compile = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            vis_bytecode::compile(&h.hir, &h.symbols, &text)
+            vis_bytecode::compile_kiem(&h.hir, &h.symbols, &text, &chan)
         }));
         assert!(
             kq_compile.is_ok(),
-            "{}: `compile()` **panic** trên HIR lỗi",
+            "{}: `compile_kiem()` **panic** trên HIR lỗi",
             p.display()
         );
-        if let Ok(Ok(m)) = kq_compile {
-            let o = vis_vm::run(&m, &text, &[]);
-            if o.exit == 0 && o.diagnostics.is_empty() {
-                // Ghi nhận: codegen **không** kiểm kiểu ⇒ module "sạch" dù HIR sai. Đây là **nợ đã biết**
-                // (codegen tin tyck); cổng chặn là front end (`vis check`/`vis run` dừng trước khi chạy).
-                codegen_khong_kiem += 1;
+        match kq_compile {
+            Ok(Err(vis_bytecode::CodegenError::ChanDoan {
+                short,
+                dong,
+                cot,
+                msg,
+            })) => {
+                assert_eq!(short, dau.code.short, "{}: mã chẩn đoán", p.display());
+                assert_eq!(dong, dau.line, "{}: dòng chẩn đoán", p.display());
+                assert_eq!(cot, dau.col, "{}: cột chẩn đoán", p.display());
+                assert_eq!(msg, dau.message, "{}: thông điệp chẩn đoán", p.display());
+                so_bi_tu_choi += 1;
             }
+            Ok(Ok(m)) => {
+                let o = vis_vm::run(&m, &text, &[]);
+                if o.exit == 0 && o.diagnostics.is_empty() {
+                    codegen_khong_kiem += 1;
+                }
+            }
+            Ok(Err(khac)) => panic!("{}: lỗi codegen lạ: {khac}", p.display()),
+            Err(_) => panic!("{}: `compile_kiem()` panic", p.display()),
         }
     }
     assert_eq!(
         so, LOI_BIEN_DICH,
         "phải chạm đường bytecode đủ {LOI_BIEN_DICH} ca"
     );
-    // Khoá **sự thật đã đo**: codegen hiện **không** kiểm kiểu ⇒ với 26 ca lỗi biên dịch nó vẫn ra
-    // module, và VM chạy "sạch" ở một số ca. Khoá con số để ai sửa codegen (thêm kiểm) thì test đỏ
-    // và phải cập nhật **có ý thức**.
+    // ST-54: **mọi** ca lỗi biên dịch bị cửa codegen từ chối; **không** ca nào ra module "sạch".
+    assert_eq!(
+        so_bi_tu_choi, LOI_BIEN_DICH,
+        "compile_kiem phải từ chối đủ {LOI_BIEN_DICH} ca"
+    );
     assert_eq!(
         codegen_khong_kiem, CODEGEN_TIN_TYCK,
-        "số ca codegen ra module chạy sạch dù HIR sai (nợ đã biết) phải khoá = {CODEGEN_TIN_TYCK}"
+        "số ca codegen ra module chạy sạch dù HIR sai phải khoá = {CODEGEN_TIN_TYCK}"
     );
 }
 

@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-53** (`select`→`to json` + hợp nhất hai `sort_by`) — xong, **chưa commit**.
-Bước          : 5/5 (lõi so sánh chung → stage `to json` → 14 ca + 3 fixture → gate → số liệu)
+Task          : **ST-54** (`CODEGEN_TIN_TYCK` 21 → **0**) — xong, **chưa commit**.
+Bước          : 5/5 (đo HIR → `compile_kiem` + `ChanDoan` → CLI/`diag_cmp` → 12 ca → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:44:39Z**; **718** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
-Việc dở       : commit `[ST-53]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T17:03:53Z**; **730** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
+Việc dở       : commit `[ST-54]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-53 — `to json` + hợp nhất `sort_by` (2026-11-14)
+## ST-54 — codegen từ chối HIR lỗi (2026-11-14)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Dữ kiện** | Walker HIR 370 ca: **0 nút `HExpr::Error`** / **0 kiểu `{error}`** (cả 318 ca hợp lệ) ⇒ không thể chặn bằng soi kiểu |
+| 2 | **Cửa duy nhất** | `compile_kiem(hir, symbols, text, chan_doan)`: lỗi `Severity::Error` đầu tiên ⇒ `Err(ChanDoan{short,dong,cot,msg})`; cảnh báo không chặn; `compile()` cũ = `compile_kiem(...,&[])` |
+| 3 | **Phòng thủ** | `HExpr::Error` ⇒ `Err(Unsupported("error-expr"))` (trước phát chuỗi rỗng) |
+| 4 | **Hằng số** | `CODEGEN_TIN_TYCK` **21 → 0**; `diag_cmp` dùng `compile_kiem` + đủ 3 tầng, **26/26 bị từ chối**, so đủ mã/dòng/cột/message |
+| 5 | **Đo** | **718 → 730** test (+12 `tin_tyck.rs`); `vis test` **370 ok**; allowlist **6** |
+
+ + hợp nhất `sort_by` (2026-11-14)
 
 | # | Việc | Kết quả |
 |---|---|---|

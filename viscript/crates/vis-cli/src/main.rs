@@ -495,6 +495,9 @@ fn run_run(rest: &[String]) -> ExitCode {
         types: loaded.types,
         error: None,
     };
+    // ST-54: chẩn đoán front end (parse/hạ/tyck) cho **cửa codegen** — defense-in-depth.
+    let chan_doan: Vec<vis_syntax::Diagnostic> =
+        loaded.diags.iter().map(|(_, d)| d.clone()).collect();
     // 4) chạy — **trong luồng có stack lớn** (ST-15): đệ quy sâu (đến cap `MAX_CALL_DEPTH` = 10^4)
     //    không được làm tràn stack process; cap vượt ⇒ `VS0501` bình thường.
     let (stdout, diags, steps) = std::thread::scope(|scope| {
@@ -510,18 +513,21 @@ fn run_run(rest: &[String]) -> ExitCode {
                     let tu_cache = if dung_cache { cache::nap(&khoa) } else { None };
                     let m = match tu_cache {
                         Some(m) => m,
-                        None => match vis_bytecode::compile(&h.hir, &h.symbols, &text) {
-                            Ok(m) => {
-                                if dung_cache {
-                                    let _ = cache::luu(&khoa, &m);
+                        None => {
+                            match vis_bytecode::compile_kiem(&h.hir, &h.symbols, &text, &chan_doan)
+                            {
+                                Ok(m) => {
+                                    if dung_cache {
+                                        let _ = cache::luu(&khoa, &m);
+                                    }
+                                    m
                                 }
-                                m
+                                Err(e) => {
+                                    eprintln!("vis run --vm: codegen lỗi: {e}");
+                                    return (String::new(), Vec::new(), 0);
+                                }
                             }
-                            Err(e) => {
-                                eprintln!("vis run --vm: codegen lỗi: {e}");
-                                return (String::new(), Vec::new(), 0);
-                            }
-                        },
+                        }
                     };
                     if dump {
                         eprintln!("{}", vis_vm::dump::dump(&m));

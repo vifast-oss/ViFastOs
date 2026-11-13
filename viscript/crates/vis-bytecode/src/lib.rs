@@ -18,7 +18,7 @@ pub mod format;
 pub mod util;
 pub mod verify;
 
-pub use codegen::{compile, CodegenError};
+pub use codegen::{compile, compile_kiem, CodegenError};
 pub use decode::{decode, DecodeError};
 pub use encode::encode;
 pub use format::{source_hash, Const, Func, Instr, Module, Span, HASH_LEN, MAGIC, VERSION};
