@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use vifast_objmem::OwnedArena;
 
 pub mod kobj;
+pub mod mailbox;
 pub mod mcs;
 pub mod scenario;
 pub mod sched;

@@ -6,12 +6,80 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-21 (xong mã — **MCS donation/passive server/MCP**; chờ review độc lập); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39)
-Bước          : 8/8 (đỏ → mã → 13 test → invariant 1.000 seed → **review APPROVE mã + 3 điều kiện đã xử lý** → gate → Miri → tài liệu; chờ Agent 0 lật sổ)
+Task          : KT-22 (xong mã — **hộp thư FIFO cố định + backpressure**, 1 hart); KT-18 DONE (5cccb72), KT-19 DONE (07c2e0b), KT-20 DONE (ae92d39), KT-21 DONE (eae876b)
+Bước          : 7/8 (đỏ → mã → 13 test → invariant 1.000 seed → gate → Miri → **review APPROVE + 3 điểm sửa xong**; chờ commit/push; chưa đề xuất DONE)
 Nhánh         : main
-Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**298 test/45 suite**, 0 failed; KT-20 là 284/44 ⇒ **+14 test** = 13 integration + 1 unit `mcs`; **L1 1.000 seed/999 trace** 550 ms; gen-check ON, `scn: OK`) — không retry
-Việc dở       : commit `eae876b` **đã push** origin/main; **review độc lập** (lead spawn `reviewer-kt21`); **KT-22..KT-23 chờ**; không lật QUEUE (Agent 0)
+Cổng gần nhất : ./v2/bin/v2 gate --fast — PASS (**311 test/46 suite**, 0 failed; KT-21 là 298/45 ⇒ **+13 test** = 10 integration `kt22_mailbox` + 3 unit `mailbox`; **L1 1.000 seed/999 trace** 631 ms; gen-check ON, `scn: OK`, R1..R5 OK) — không retry
+Việc dở       : commit `[KT-22]` + push origin/main (hash: `git log -1`); Miri PASS 10/10 (123 s); **KT-23 chờ**; không lật QUEUE (Agent 0)
 ```
+
+## KT-22 — Hộp thư FIFO cố định: backpressure `Busy`, nhiều endpoint, 1 hart (K1b, D2-49(a,f), D2-50)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-22) · HEAD `cde7fcc` · KT-18..KT-21 DONE · baseline
+`gate --fast` PASS **298 test/45 suite** ([`JOURNAL/kt22-baseline-gate-fast.log`](JOURNAL/kt22-baseline-gate-fast.log)).
+**Phạm vi**: **chỉ mô hình tất định** (D2-49(f)) — không atomic/thread/loom/stress; **1 hart**
+(D2-49(a): push migration hoãn K1c ⇒ `Migrate` trả `NotSupported`); không IPC 4 cap/badge/`ReplyRecv`
+(K1c), không Notification đầy đủ; không `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS,
+`viscript/`; không dependency/`unsafe`/`#[allow]`/`#[ignore]`. Working tree có thay đổi `viscript/`
+của tab khác — **không chạm**, chỉ stage `v2/`.
+
+### Đỏ trước (D2-05)
+
+- [`JOURNAL/kt22-red-compile.log`](JOURNAL/kt22-red-compile.log) — `tests/kt22_mailbox.rs` **không
+  biên dịch**: **40 lỗi** (39 × `E0599` cho `post_mail`/`process_mail`/`send_mail`/`mail_len`/
+  `mail_log`/`hart_stopped`/`endpoint_info`/`endpoint_send_items`, 2 × `E0432` cho
+  `vifast_sim::mailbox` + `EndpointInfo`).
+- [`JOURNAL/kt22-red-unbounded.log`](JOURNAL/kt22-red-unbounded.log) — probe **tạm (đã xoá)** dùng
+  API cũ: 9 `Call` cùng một endpoint đều `Ok`, `endpoint_send_len == 9 > 8` ⇒ hàng gửi `VecDeque`
+  **không** có sức chứa, **không** backpressure.
+
+### Sản phẩm
+
+- `v2/sim/vifast-sim/src/mailbox.rs` (**mới**): `MAILBOX_CAP = 8` `[TK]`; `Mailbox<T>` FIFO cố định
+  — `try_push` đầy ⇒ **trả lại** message (không ghi đè/panic/mất), `pop_front`, `retain` (cộng
+  `removed`), bộ đếm `pushed/popped/removed` + bất biến `pushed == popped + removed + len`;
+  `MailboxMsg { Wake, Reschedule, Migrate, Stop }` (§4.17, phần K1b); `HartMailbox` (hàng + nhật ký
+  message **đã xử lý** + cờ `stopped`); 3 unit test.
+- `v2/sim/vifast-sim/src/kobj.rs`:
+  - `EndpointState.send: VecDeque` → `Mailbox<(ObjId, Option<FaultKind>)>` **cố định 8**; `call` đầy
+    (và không có server `Recv`) ⇒ `KError::Busy` **trước** khi ghi `last_mr`/đổi trạng thái;
+    `exit` có `fault_ep` đầy ⇒ `Busy` **trước** mọi thay đổi (không `exit_code`, không trả donation);
+    `unlink_tcb_queues` dùng `retain` (đếm `removed`), `purge_dead_refs` giữ nguyên nghĩa.
+  - Model API `[TK]`: `endpoint_info` + `EndpointInfo {capacity,len,pushed,popped,removed,recv_waiter}`,
+    `endpoint_send_items` (thứ tự FIFO), `post_mail` (Busy/NotSupported), `process_mail` (drain FIFO
+    áp dụng đúng một lần, log theo thứ tự), `send_mail` (= post + process **một** bước — DoD 6),
+    `mail_len`, `mail_log`, `hart_stopped`.
+  - `check_mailboxes` (bất biến `pushed/popped/removed/len`, `len ≤ cap`, "có message ⇒ không Recv
+    waiter", mọi sender ở đúng `BlockedOnSend{ep, call/fault}`) chạy trong `sched_after_op` — sau
+    **mỗi** public op, cùng chỗ `check_sched`.
+  - `wake` tách `wake_step` (không tự kiểm bất biến) để `process_mail` chỉ kiểm một lần/bước.
+- `v2/sim/vifast-sim/src/lib.rs`: `pub mod mailbox`.
+- `v2/sim/vifast-sim/tests/kt22_mailbox.rs` (**mới**, 10 test): FIFO + đầy trả lại message; backpressure
+  1.000 lần; `retain` đếm `removed`; `Migrate` ⇒ `NotSupported` trên 1 hart; hộp thư hart FIFO +
+  đầy `Busy` + `Wake` đánh thức + `Stop` đặt cờ + `send_mail` không lộ trạng thái giữa; endpoint
+  đầy ⇒ `Call` `Busy` (TCB vẫn `Ready`) rồi `Recv` giải phóng; nhiều endpoint độc lập; `Exit` fault
+  đầy ⇒ `Busy` không đổi gì, có chỗ ⇒ fault vào **cuối** hàng; FIFO bắc cầu Call/fault Exit; invariant
+  **1.000 seed × 64 op** (stable; Miri 3 seed × 8 op bằng `cfg(miri)`) — không mất/thêm message,
+  `check_sched` xanh sau mỗi op, cùng seed cùng trace.
+
+### Review độc lập (verdict APPROVE — `reviewer-kt22`)
+
+Reviewer tự chạy `kt22_mailbox` **10/10** + `gate --fast` **311 test/46 suite** (L1 1000/999), xác
+nhận: `Exit` `Busy` không ghi một phần; bất biến `pushed == popped + removed + len` phủ mọi đường
+gỡ; `process_mail` không lấn K1c; scope sạch. Ba điểm nhỏ đã sửa trước commit: (1) xoá re-export
+không dùng ở `kobj.rs`; (2) ghi rõ `Busy` của `Call` không hoàn nguyên `ensure_started` (kích hoạt
+ngầm pre-existing); (3) ghi chú **K1c**: `check_mailboxes` đang mã hoá `call == fault.is_none()`, sẽ
+gãy khi có `Send` thường. Ghi chú **KT-23**: ca `Exit` `Busy` nên snapshot thêm donation/SC +
+`Reply.caller`.
+
+### Giới hạn mô hình (ghi rõ, để K1c)
+
+- **Không** phải MPSC lock-free thật: 1 luồng, không `std::sync`/atomic/loom/stress (D2-49(f));
+  ack thế hệ chưa có — bất biến chỉ dựa bộ đếm `pushed/popped/removed`.
+- **Không** push migration/2 hart (D2-49(a)): `Migrate` bị từ chối ở **cạnh gửi** (`NotSupported`),
+  không im lặng bỏ; `Stop` chỉ đặt cờ mô hình (chưa có quy trình dừng hart).
+- Message `TlbFlush`/`VmKick`/`PowerReq` (cần TLB/VCpu/Power) để K1c.
+- Hàng gửi Endpoint **không** phân biệt 4 cap/badge/`ReplyRecv` — K1c.
 
 ## KT-21 — MCS donation: passive server, `Call`/`Reply`, MCP (K1b, D2-49(c), D2-50, D2-16)
 

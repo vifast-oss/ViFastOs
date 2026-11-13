@@ -38,8 +38,7 @@
 //! cha/con trong mô hình là quan hệ **logic** (offset/cỡ trong `object_bytes`), không phải
 //! containment vật lý; chi tiết của harness sim, không phải ABI.
 
-use std::collections::VecDeque;
-
+use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
 use crate::sched::HartSched;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 
@@ -253,6 +252,22 @@ pub struct CapInfo {
     pub alive: bool,
 }
 
+/// KT-22 — ảnh chụp **hộp thư của Endpoint** (model-only `[TK]`, không phải ABI).
+///
+/// `pushed == popped + removed + len` là bất biến "không mất/thêm message"; `capacity` là sức
+/// chứa **cố định** [`MAILBOX_CAP`] (K1B-PLAN §5 KT-22 DoD 1). `removed` đếm message bị huỷ khi
+/// TCB chết/treo (D2-25) — đường duy nhất làm giảm hàng mà **không** qua `recv`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndpointInfo {
+    pub capacity: usize,
+    pub len: usize,
+    pub pushed: u64,
+    pub popped: u64,
+    pub removed: u64,
+    /// TCB đang chặn `Recv` chờ message (tối đa một; bất biến: chỉ khi hàng rỗng).
+    pub recv_waiter: Option<ObjId>,
+}
+
 // KT-18: `TcbState` + bảng `ALLOWED` 11×11 nằm ở `crate::tcb` (D2-49(d)) để mọi đường đổi
 // trạng thái đi qua **một** cửa `Machine::transition_tcb`. Re-export để đường dẫn cũ
 // (`vifast_sim::kobj::TcbState`, `::FaultKind`, `::SleepReason`) không đổi.
@@ -266,7 +281,9 @@ pub use crate::mcs::{ScBudget, ScInfo};
 #[derive(Debug, Default)]
 struct EndpointState {
     recv: Option<(ObjId, Option<CapId>)>,
-    send: VecDeque<(ObjId, Option<FaultKind>)>,
+    /// KT-22: hàng gửi **FIFO cố định** ([`MAILBOX_CAP`] message); đầy ⇒ `call`/`exit` trả
+    /// `Busy` (backpressure) — không còn `VecDeque` không giới hạn.
+    send: Mailbox<(ObjId, Option<FaultKind>)>,
     last_mr: Option<u64>,
 }
 
@@ -487,6 +504,9 @@ pub struct Machine {
     /// Scheduler theo hart (KT-19): KT-19 dựng **1** hart (D2-49(a)); mỗi hart một
     /// [`HartSched`] (256 mức + bitmap) để K1c thêm hart/push migration mà không đổi API.
     sched: Vec<HartSched>,
+    /// KT-22: hộp thư **theo hart** (thiết kế §4.17) — `HART_COUNT` = 1 ở K1b (D2-49(a)),
+    /// mô hình tất định: `post_mail`/`process_mail`/`send_mail` (không atomic/thread/loom).
+    mail: Vec<HartMailbox>,
     /// Preempt **ép tại mọi public op** (thiết kế §4.13) — mặc định **tắt** để không đổi
     /// ngữ nghĩa KT-18; test KT-19 bật bằng [`Machine::set_preempt_every_step`].
     preempt_every_step: bool,
@@ -552,6 +572,7 @@ impl Machine {
             finalise_log: Vec::new(),
             address_waiters: Vec::new(),
             sched: (0..HART_COUNT).map(|_| HartSched::new()).collect(),
+            mail: (0..HART_COUNT).map(|_| HartMailbox::new()).collect(),
             preempt_every_step: false,
             now: 0,
         }
@@ -1870,18 +1891,24 @@ impl Machine {
     /// **Không** phát lại Call/Send/Recv (như `Resume`). TCB `suspended` ⇒ vẫn `Ready` nhưng
     /// **không** vào ready queue (D2-33: `Ready + suspended`). TCB đã `Ready` ⇒ no-op.
     pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
+        self.wake_step(tcb)?;
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// Thân của [`Machine::wake`] **không** tự kiểm bất biến — dùng cho đường xử lý hộp thư
+    /// (KT-22, [`Machine::process_mail`]) để **một** bước chỉ kiểm bất biến một lần; `wake`
+    /// công khai kiểm sau khi xong. Idempotent: TCB đã `Ready` ⇒ no-op.
+    fn wake_step(&mut self, tcb: ObjId) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Ready {
-            self.sched_after_op(false);
             return Ok(());
         }
         if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
             return Err(KError::IllegalOperation);
         }
         self.unlink_tcb_queues(tcb);
-        self.transition_tcb(tcb, TcbState::Ready)?;
-        self.sched_after_op(false);
-        Ok(())
+        self.transition_tcb(tcb, TcbState::Ready)
     }
 
     /// `yield_current(hart)` — model API `[TK]` (DoD 5): TCB đang chạy nhường CPU
@@ -1898,6 +1925,117 @@ impl Machine {
         let next = self.dispatch(hart)?;
         self.sched_after_op(false);
         Ok(next)
+    }
+
+    // ------------------------------------------- hộp thư theo hart (KT-22) `[TK]`
+    //
+    // Model-only `[TK]`, **không** phải spec/ABI (D2-49(f)): mô hình **1 luồng tất định**, không
+    // atomic/thread/loom. `post_mail` là **cạnh gửi** (kiểm sức chứa ⇒ `Busy`/`NotSupported`);
+    // `process_mail` là **cuối bước** (drain FIFO, mỗi message áp dụng đúng một lần);
+    // `send_mail` = gửi + xử lý trong một bước (DoD 6: không có "đã pop chưa áp dụng").
+
+    /// Gửi một message vào hộp thư của hart (không chờ).
+    ///
+    /// - hart không tồn tại ⇒ `InvalidArgument`; `HART_COUNT == 1` (K1b, D2-49(a)) và message
+    ///   `Migrate` ⇒ `NotSupported` — **không** im lặng bỏ (push migration thuộc K1c);
+    /// - hộp thư đầy ⇒ `Busy` (backpressure §4.17) — message **không** bị ghi đè/mất, người gửi
+    ///   xử lý hộp thư (hoặc gọi [`Machine::process_mail`]) rồi thử lại.
+    pub fn post_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
+        if hart as usize >= self.mail.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if matches!(msg, MailboxMsg::Migrate { .. }) && self.mail.len() == 1 {
+            return Err(KError::NotSupported);
+        }
+        let posted = match self.mail[hart as usize].try_push(msg) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(KError::Busy),
+        };
+        self.sched_after_op(false);
+        posted
+    }
+
+    /// Xử lý (drain) hộp thư của hart theo **FIFO**; mỗi message áp dụng **đúng một lần**:
+    ///
+    /// - `Wake(tcb)` — đánh thức TCB đang chặn/ngủ (idempotent: TCB khác `Ready` ⇒ no-op);
+    /// - `Reschedule` — `dispatch` hart một lượt;
+    /// - `Stop` — bật cờ `stopped` của hart (mô hình; không đổi hàng chờ);
+    /// - `Migrate` — không thể có trong hàng ở K1b (đã bị `post_mail` từ chối); di trú thật K1c.
+    ///
+    /// Trả số message đã xử lý. Hộp thư rỗng sau khi xong (drain tới cạn) ⇒ không có trạng thái
+    /// trung gian "message đã pop nhưng chưa áp dụng".
+    pub fn process_mail(&mut self, hart: u16) -> Result<usize, KError> {
+        if hart as usize >= self.mail.len() {
+            return Err(KError::InvalidArgument);
+        }
+        let mut n = 0usize;
+        while let Some(msg) = self.mail[hart as usize].pop() {
+            self.apply_mail(hart, msg);
+            self.mail[hart as usize].record(msg);
+            n += 1;
+        }
+        self.sched_after_op(false);
+        Ok(n)
+    }
+
+    /// `send_mail` = [`Machine::post_mail`] + [`Machine::process_mail`] trong **một** bước:
+    /// qua được backpressure thì message được xử lý ngay, không quan sát được hàng đợi giữa
+    /// chừng (DoD 6). Lỗi `Busy`/`NotSupported` của `post_mail` giữ nguyên, **không** drain.
+    pub fn send_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
+        self.post_mail(hart, msg)?;
+        self.process_mail(hart)?;
+        Ok(())
+    }
+
+    /// Số message đang nằm trong hộp thư của hart (bất biến: `≤ MAILBOX_CAP`).
+    pub fn mail_len(&self, hart: u16) -> Result<usize, KError> {
+        if hart as usize >= self.mail.len() {
+            return Err(KError::InvalidArgument);
+        }
+        Ok(self.mail[hart as usize].len())
+    }
+
+    /// Nhật ký message **đã xử lý** của hộp thư hart, đúng thứ tự drain (nguồn kiểm FIFO).
+    pub fn mail_log(&self, hart: u16) -> Result<&[MailboxMsg], KError> {
+        if hart as usize >= self.mail.len() {
+            return Err(KError::InvalidArgument);
+        }
+        Ok(self.mail[hart as usize].log())
+    }
+
+    /// Hart đã nhận message `Stop` chưa (mô hình `[TK]`; không tắt scheduler — K1b chưa có
+    /// quy trình dừng hart).
+    pub fn hart_stopped(&self, hart: u16) -> Result<bool, KError> {
+        if hart as usize >= self.mail.len() {
+            return Err(KError::InvalidArgument);
+        }
+        Ok(self.mail[hart as usize].stopped())
+    }
+
+    /// Áp dụng **một** message lên mô hình — infallible (message không hợp lệ là **no-op** hoặc
+    /// `debug_assert`), để drain không để lại trạng thái nửa vời.
+    fn apply_mail(&mut self, hart: u16, msg: MailboxMsg) {
+        match msg {
+            MailboxMsg::Wake(tcb) => {
+                let state = match self.tcb_state(tcb) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                if state.is_blocked() || matches!(state, TcbState::Sleeping { .. }) {
+                    let _ = self.wake_step(tcb);
+                }
+            }
+            MailboxMsg::Reschedule => {
+                if self.dispatch_step(hart).is_err() {
+                    debug_assert!(false, "Reschedule: dispatch lỗi (bất biến scheduler vỡ)");
+                }
+            }
+            MailboxMsg::Stop => self.mail[hart as usize].set_stopped(),
+            MailboxMsg::Migrate { .. } => {
+                // K1b: `post_mail` đã từ chối `Migrate` trên 1 hart ⇒ không thể ở đây.
+                debug_assert!(false, "Migrate không được nhận trên 1 hart (K1c)");
+            }
+        }
     }
 
     /// Đồng bộ **một** TCB với ready queue sau khi `state`/`suspended`/`priority`/`home`/
@@ -1967,6 +2105,101 @@ impl Machine {
         if let Err(e) = self.check_sched() {
             debug_assert!(false, "bất biến scheduler vỡ sau public op: {e}");
         }
+        if let Err(e) = self.check_mailboxes() {
+            debug_assert!(false, "bất biến mailbox vỡ sau public op: {e}");
+        }
+    }
+
+    /// KT-22 — kiểm **toàn bộ** bất biến hộp thư (chạy sau **mỗi** public op qua
+    /// [`Machine::sched_after_op`], cùng chỗ với `check_sched`):
+    ///
+    /// 1. mỗi hộp thư hart: `pushed == popped + removed + len`, `len ≤ cap`;
+    /// 2. mỗi Endpoint: sức chứa **cố định** [`MAILBOX_CAP`], cùng bất biến trên, và "có message
+    ///    ⇒ không có Recv waiter";
+    /// 3. mọi message trong hàng gửi có sender **còn sống** và ở đúng
+    ///    `BlockedOnSend{ep, call/fault}` (bất biến liên kết mailbox ↔ trạng thái TCB).
+    ///
+    /// **K1c**: bất biến (3) đang mã hoá `call == fault.is_none()` vì K1b chỉ có `Call`
+    /// (`call: true`, `fault: None`) và message fault `Exit` (`call: false`, `fault: Some`) —
+    /// chưa có `Send` thường (`call: false, fault: None`). Khi K1c thêm `Send`/4 cap/badge,
+    /// phải nới thành "message không-fault ⇒ `call` theo loại message" thay vì suy từ `fault`.
+    ///
+    /// Không dùng `HashMap`/`format!` trên đường nóng trừ khi **có** vi phạm (thông điệp lỗi).
+    pub fn check_mailboxes(&self) -> Result<(), String> {
+        for (h, hb) in self.mail.iter().enumerate() {
+            if !hb.invariant() {
+                return Err(format!(
+                    "hộp thư hart {h}: bất biến pushed/popped/removed vỡ"
+                ));
+            }
+        }
+        // Bảng sống theo `ObjId` để tra sender O(1) thay vì quét object (giống `check_sched`).
+        let mut song: Vec<bool> = vec![false; self.objects.len() + 1];
+        for (i, m) in self.objects.iter().enumerate() {
+            song[i + 1] = m.alive;
+        }
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Endpoint {
+                continue;
+            }
+            let ep = (i + 1) as ObjId;
+            let (cap, len, pushed, popped, removed, items, waiter) = self
+                .body(ep, |k| match k {
+                    Kind::Endpoint(e) => Ok((
+                        e.send.capacity(),
+                        e.send.len(),
+                        e.send.pushed(),
+                        e.send.popped(),
+                        e.send.removed(),
+                        e.send.iter().copied().collect::<Vec<_>>(),
+                        e.recv.map(|(t, _)| t),
+                    )),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("Endpoint {ep}: không đọc được body: {e:?}"))?;
+            if cap != MAILBOX_CAP {
+                return Err(format!("Endpoint {ep}: sức chứa {cap} != {MAILBOX_CAP}"));
+            }
+            if len > cap {
+                return Err(format!("Endpoint {ep}: len {len} > cap {cap}"));
+            }
+            if pushed != popped + removed + len as u64 {
+                return Err(format!(
+                    "Endpoint {ep}: message mất/thêm (pushed={pushed} popped={popped} removed={removed} len={len})"
+                ));
+            }
+            if len > 0 && waiter.is_some() {
+                return Err(format!(
+                    "Endpoint {ep}: có {len} message mà vẫn có Recv waiter"
+                ));
+            }
+            for (sender, fault) in items {
+                if !song.get(sender as usize).copied().unwrap_or(false) {
+                    return Err(format!(
+                        "Endpoint {ep}: sender {sender} đã chết nhưng còn trong hàng"
+                    ));
+                }
+                match self.tcb_state(sender) {
+                    Ok(TcbState::BlockedOnSend {
+                        ep: hang_ep,
+                        call,
+                        fault: hang_fault,
+                    }) => {
+                        if hang_ep != ep || call != fault.is_none() || hang_fault != fault {
+                            return Err(format!(
+                                "Endpoint {ep}: sender {sender} ở trạng thái chặn không khớp message"
+                            ));
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Endpoint {ep}: sender {sender} ở {other:?} nhưng còn trong hàng"
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Kiểm **toàn bộ** bất biến scheduler (DoD 3):
@@ -2793,6 +3026,34 @@ impl Machine {
         })
     }
 
+    /// KT-22 — ảnh chụp hộp thư (mailbox) của Endpoint: sức chứa, số đang chờ, bộ đếm
+    /// `pushed/popped/removed` (bất biến `pushed == popped + removed + len`) + Recv waiter.
+    pub fn endpoint_info(&self, ep: ObjId) -> Result<EndpointInfo, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(EndpointInfo {
+                capacity: e.send.capacity(),
+                len: e.send.len(),
+                pushed: e.send.pushed(),
+                popped: e.send.popped(),
+                removed: e.send.removed(),
+                recv_waiter: e.recv.map(|(tcb, _)| tcb),
+            }),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// Hàng gửi của Endpoint theo đúng **thứ tự FIFO** (clone để test kiểm thứ tự/loại message
+    /// mà không lộ cấu trúc body).
+    pub fn endpoint_send_items(
+        &self,
+        ep: ObjId,
+    ) -> Result<Vec<(ObjId, Option<FaultKind>)>, KError> {
+        self.body(ep, |k| match k {
+            Kind::Endpoint(e) => Ok(e.send.iter().copied().collect()),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
     pub fn endpoint_recv_waiter(&self, ep: ObjId) -> Result<Option<ObjId>, KError> {
         self.body(ep, |k| match k {
             Kind::Endpoint(e) => Ok(e.recv.map(|(tcb, _)| tcb)),
@@ -2860,6 +3121,15 @@ impl Machine {
         };
         let waiter = self.body_mut(ep_obj, |k| match k {
             Kind::Endpoint(e) => {
+                // KT-22: hàng gửi **cố định** — chỉ kiểm khi message thật sự phải xếp hàng
+                // (server đang `Recv` thì giao thẳng, không dùng hàng). Đầy ⇒ `Busy` **trước
+                // các thay đổi trạng thái của đường IPC** (không ghi `last_mr`, không
+                // `BlockedOnSend`): người gọi xử lý hộp thư rồi thử lại. Lưu ý: `ensure_started`
+                // (kích hoạt ngầm `Inactive → Ready`, pre-existing từ KT-18) đã chạy trước như
+                // **mọi** syscall — `Busy` không hoàn nguyên bước kích hoạt đó.
+                if e.recv.is_none() && e.send.is_full() {
+                    return Err(KError::Busy);
+                }
                 e.last_mr = Some(mr);
                 Ok(e.recv.take())
             }
@@ -2877,8 +3147,10 @@ impl Machine {
         } else {
             self.body_mut(ep_obj, |k| match k {
                 Kind::Endpoint(e) => {
-                    e.send.push_back((tcb, None));
-                    Ok(())
+                    // KT-22: chỗ đã được kiểm ở closure phía trên (server không `Recv` và hàng
+                    // còn chỗ) ⇒ về lý thuyết luôn thắng; map về `Busy` thay vì `expect` để
+                    // mô hình không panic nếu bất biến đổi.
+                    e.send.try_push((tcb, None)).map_err(|_| KError::Busy)
                 }
                 _ => Err(KError::WrongObjectType),
             })?;
@@ -3021,6 +3293,19 @@ impl Machine {
             Some(cap) => Some(self.require_cap_type(cap, ObjType::Endpoint)?),
             None => None,
         };
+        // KT-22: hộp thư của `fault_ep` **cố định** — đầy ⇒ `Busy` **trước** mọi thay đổi
+        // (không ghi `exit_code`, không đổi trạng thái, không trả donation): message fault là
+        // message quan trọng, không được "mất nửa chừng". Người gọi thử lại sau khi hộp thư
+        // được xử lý (procsrv `Recv`) — cùng ngữ nghĩa backpressure §4.17.
+        if let Some(ep_obj) = fault_ep_obj {
+            let con_cho = self.body(ep_obj, |k| match k {
+                Kind::Endpoint(e) => Ok(!e.send.is_full()),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if !con_cho {
+                return Err(KError::Busy);
+            }
+        }
         // KT-21 DoD 5: `Exit` khi đang donate ⇒ trả SC (server chết) / thu hồi SC (client chết)
         // trước khi ghi `exit_code` + đổi trạng thái; không rò SC/không bỏ treo client.
         self.release_donation_of(tcb)?;
@@ -3036,8 +3321,11 @@ impl Machine {
                 self.unlink_tcb_queues(tcb);
                 self.body_mut(ep_obj, |k| match k {
                     Kind::Endpoint(e) => {
-                        e.send.push_back((tcb, Some(FaultKind::Exit { code })));
-                        Ok(())
+                        // Đã kiểm chỗ phía trên ⇒ chỉ có thể thành công; map về `Busy` để
+                        // không `panic` nếu bất biến đổi (không dùng `expect` trong mô hình).
+                        e.send
+                            .try_push((tcb, Some(FaultKind::Exit { code })))
+                            .map_err(|_| KError::Busy)
                     }
                     _ => Err(KError::WrongObjectType),
                 })?;
@@ -3329,9 +3617,10 @@ impl Machine {
                                     removed += 1;
                                 }
                             }
-                            let before = e.send.len();
-                            e.send.retain(|(t, _)| *t != tcb);
-                            removed += before - e.send.len();
+                            // KT-22: gỡ message của TCB khỏi **mailbox cố định**; `retain`
+                            // đếm `removed` nên bất biến `pushed == popped + removed + len`
+                            // vẫn đúng sau khi huỷ message (D2-25).
+                            removed += e.send.retain(|(t, _)| *t != tcb);
                             Ok(())
                         }
                         _ => Err(KError::WrongObjectType),
