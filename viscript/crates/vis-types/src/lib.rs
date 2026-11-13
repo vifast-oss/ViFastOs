@@ -53,6 +53,7 @@
 pub mod cmdsig;
 pub mod hir;
 pub mod lower;
+pub mod prelude;
 pub mod stdlib;
 pub mod ty;
 pub mod tyck;

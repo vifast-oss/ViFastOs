@@ -1,0 +1,51 @@
+=== ST-40a D2-05: prelude `FileEntry`/`ProcEntry` + `it` có kiểu thật + `VS0605` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T09:49:32Z
+
+## 1. Đỏ **thật** ở HEAD `fe54074` (worktree `/tmp/vis-red40`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test prelude
+test result: FAILED. **9 passed; 4 failed**
+```
+
+Lý do: chưa có prelude ⇒ `it` trong `where`/`sort_by` là `{error}` ⇒ **không** kiểm tĩnh được
+(`where khong_co > 1` không có `VS0605`, `where size > "x"` chỉ báo lúc chạy), và `.vish` kiểu danh sách
+bản ghi là `list[{error}]`.
+
+## 2. Hiện trạng trước khi sửa (đo tay trên `fe54074`)
+
+```
+$ vis run a.vish          # ( [{name:"a", size:6mb, …}] ) | where khong_co > 1
+a.vish:…: error VS0501: bản ghi không có trường `khong_co`   (lúc CHẠY)
+
+
+$ vis run b.vish          # ( [{name:"a", size:6mb, …}] ) | where size > "x"
+b.vish:…: error VS0501: không so sánh được `6mb` và `x`       (lúc CHẠY)
+```
+
+## 3. Sau khi sửa — đo được
+
+- `( [{name:"a", size:6mb, modified:1m, is_file:true}, …] ) | where size > 5mb` ⇒ **`[{name: a, size: 6mb, …}]`**
+  chạy **thật**, **interp và `--vm` cùng stdout**; `where it.size > 5mb` **tương đương**;
+- `where size > 5kb` (cùng đơn vị) ⇒ ok; `where modified > 90s` (duration) ⇒ lọc đúng;
+- `ProcEntry`: `where cpu > 50pct` ok (**percent**), `where cpu > 50` (int) ⇒ **`VS0412`**;
+- `where khong_co > 1` ⇒ **`VS0605`** ("`it` không có trường `khong_co`"); `where size > "x"` ⇒ **`VS0412`**;
+- `sort_by size --desc` chạy đúng; `sort_by khong_co` ⇒ **`VS0605`**;
+- list **không suy được kiểu** (`[1,2]`) ⇒ **kiểm động** như cũ, **không** báo oan;
+- `.vis` **không** thấy prelude: `type FileEntry` của người dùng vẫn chạy;
+- khối **672**/**1451** §9.7 vẫn `ok`; **allowlist vẫn 6**;
+- **khởi động** (A/B xen kẽ, 120 lần mỗi bên, `vis run` tệp `.vish` rỗng): OLD **10,06 ms** → NEW **10,14 ms** ⇒ **+0,08 ms** (~0,8 %).
+
+## 4. Số ca
+
+- test workspace **563** (550 + **13** `prelude.rs`); sem **359 → 363** (+4 `test/sem/vish/pl-*.vish`);
+- parity **333 → 337**; `fuzz_mutate` 307 → **311**; `diag_cmp` 307/359 → **311/363**; `vis test` **363 ok**;
+- mã: `COMMAND_CODES` **4 → 5** (`VS0605`), `all_codes()` **28 → 29**, `BOOKS` 7, `next_block()` **801** (không đổi).
+
+## 5. sha256 bản commit
+  sha256 crates/vis-types/src/prelude.rs=b8555fc479d6003ac20767a96c5a81bc68c486a7f56c3998f677cbad3237d78c
+  sha256 crates/vis-types/src/lower.rs=77ac4a3713ca5b0f80b004814109483c4cc7a8364ac716114588ae4d3a6d0727
+  sha256 crates/vis-types/src/lower/cmd.rs=a65ae98bffde0deb3bea8798d59897db606d2aed17c907fa15c5366ca2d20f01
+  sha256 crates/vis-diag/src/lib.rs=89154bd6721a204c12ec47857b58f25cc0b723081b826046717a245de5249e3e
+  sha256 crates/vis-cli/tests/prelude.rs=c48264da3508c3590c46f8f9bb89cc15da2779121c98ca0153806713d2772931
+  sha256 crates/vis-diag/tests/messages.rs=9bed41c215caa26e70e48ad90903ba161d4997086ef3db35e5203634c7dabc78

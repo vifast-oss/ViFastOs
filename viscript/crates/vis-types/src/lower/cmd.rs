@@ -79,6 +79,14 @@ impl<'a> Lowerer<'a> {
             .any(|s| s.name == name && s.kind != SymKind::Generic)
     }
 
+    /// ST-40a: đăng ký `FileEntry`/`ProcEntry` vào bảng kiểu của tệp `.vish` **và** bảng tên.
+    pub(crate) fn dang_ky_prelude(&mut self) {
+        for (ten, id) in crate::prelude::dang_ky_vish(self.tbl) {
+            self.rec_names.push((ten.clone(), id));
+            self.prelude_recs.push((ten, id));
+        }
+    }
+
     /// Kết thúc stage (gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng) — dùng cho sugar `sort_by`.
     fn stage_end(&self, start: usize) -> usize {
         let bytes = self.text.as_bytes();
@@ -94,6 +102,62 @@ impl<'a> Lowerer<'a> {
             i += 1;
         }
         bytes.len()
+    }
+
+    /// ST-40a: kiểm **tĩnh** thân vị từ khi `it` có kiểu bản ghi **thật** (prelude):
+    /// - `it.<trường>` không tồn tại ⇒ **`VS0605`**;
+    /// - `it.<trường> <op> <literal>` mà kiểu trường ≠ kiểu literal ⇒ **`VS0412`**.
+    ///
+    /// Span **tuyệt đối** (văn bản thân bắt đầu ở `base`). Không kiểu được ⇒ bỏ qua (kiểm động như cũ).
+    fn kiem_it(&mut self, body: &str, base: usize, it_ty: &Type) {
+        let Type::Record(id) = it_ty else { return };
+        let Some(rec) = self.tbl.rec(*id).cloned() else {
+            return;
+        };
+        let lexed = vis_syntax::lex(body, vis_syntax::Mode::Script);
+        let toks: Vec<(String, usize, usize)> = lexed
+            .tokens
+            .iter()
+            .map(|t| (t.text.clone(), t.span.start, t.span.end))
+            .collect();
+        let mut i = 0usize;
+        while i < toks.len() {
+            if toks[i].0 == "it" && toks.get(i + 1).map(|t| t.0 == ".").unwrap_or(false) {
+                if let Some(f) = toks.get(i + 2) {
+                    let span = Span::new(base + f.1, base + f.2);
+                    match rec.fields.iter().find(|x| x.name == f.0) {
+                        None => self.diag(
+                            &COMMAND_CODES[4],
+                            format!("`it` không có trường `{}`", f.0),
+                            span,
+                        ),
+                        Some(fd) => {
+                            let op = toks.get(i + 3).map(|t| t.0.as_str()).unwrap_or("");
+                            if matches!(op, ">" | "<" | ">=" | "<=" | "==" | "!=") {
+                                if let Some(lit) = toks.get(i + 4) {
+                                    let lt = self.kieu_text(&lit.0);
+                                    if !matches!(lt, Type::Error) && lt != fd.ty {
+                                        self.diag(
+                                            &TYPE_CODES[3],
+                                            format!(
+                                                "so sánh `it.{}` (`{}`) với `{}`",
+                                                f.0,
+                                                ten_kieu(&fd.ty),
+                                                ten_kieu(&lt)
+                                            ),
+                                            Span::new(base + lit.1, base + lit.2),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                i += 1;
+                continue;
+            }
+            i += 1;
+        }
     }
 
     /// ST-38: **vị từ ngầm `it`** — `where size > 5mb` ⇒ `it => it.size > 5mb`.
@@ -188,15 +252,15 @@ impl<'a> Lowerer<'a> {
         }
         src_body.push_str(&text[last..]);
         self.tam_n += 1;
+        if matches!(&pty, Type::Record(_)) {
+            self.kiem_it(&src_body, start, &pty);
+        }
         let prefix = format!("let _c{} = it => ", self.tam_n);
         if start < prefix.len() {
             return None;
         }
         let pad = start - prefix.len();
         let src = format!("{prefix}{}{src_body}", " ".repeat(pad));
-        if std::env::var("VIS_DBG_SUGAR").is_ok() {
-            eprintln!("sugar src={src:?}");
-        }
         let lexed2 = vis_syntax::lex(&src, vis_syntax::Mode::Script);
         let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
         self.push_frame(FrameKind::Fn, Span::new(start, end));
@@ -370,7 +434,7 @@ impl<'a> Lowerer<'a> {
     fn kieu_text(&self, raw: &str) -> Type {
         let t = raw.trim();
         if let Some(tron) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
-            let dau = tron.split(',').next().unwrap_or("").trim();
+            let dau = tach_phay(tron).first().copied().unwrap_or("").trim();
             return Type::List(Box::new(if dau.is_empty() {
                 Type::Error
             } else {
@@ -389,8 +453,102 @@ impl<'a> Lowerer<'a> {
         if t.parse::<f64>().is_ok() {
             return Type::Float;
         }
+        // ST-40a: literal có **đơn vị** — `5mb`/`2kb` (size), `3ms`/`1s`/`2m` (duration), `50pct` (percent).
+        let so = t.trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == '%');
+        if let Ok(_n) = so.parse::<f64>() {
+            if t.ends_with('%') || t.ends_with("pct") {
+                return Type::Percent;
+            }
+            let duoi = &t[so.len()..];
+            match duoi {
+                "b" | "kb" | "mb" | "gb" | "tb" => return Type::Size,
+                "ms" | "s" | "m" | "h" | "d" => return Type::Duration,
+                _ => {}
+            }
+        }
+        // ST-40a: literal bản ghi `{…}` khớp **đúng bộ trường** của một bản ghi prelude ⇒ kiểu đó
+        // (cho `it` có kiểu thật khi pipeline bắt đầu bằng list literal bản ghi).
+        if t.starts_with('{') && t.ends_with('}') {
+            let trong = &t[1..t.len() - 1];
+            let mut ten_truong: Vec<String> = Vec::new();
+            let mut duoc = true;
+            for f in tach_phay(trong) {
+                match f.split_once(':') {
+                    Some((k, _)) if !k.trim().is_empty() => {
+                        ten_truong.push(k.trim().trim_matches('"').to_string())
+                    }
+                    _ => {
+                        duoc = false;
+                        break;
+                    }
+                }
+            }
+            if duoc {
+                for (_, id) in &self.prelude_recs {
+                    if let Some(rec) = self.tbl.rec(*id) {
+                        let mut a: Vec<String> =
+                            rec.fields.iter().map(|f| f.name.clone()).collect();
+                        let mut b = ten_truong.clone();
+                        a.sort();
+                        b.sort();
+                        if a == b {
+                            return Type::Record(*id);
+                        }
+                    }
+                }
+            }
+        }
+        // ST-40a: `ten(...)` gọi lệnh `cmd` đã khai ⇒ kiểu ra của chữ ký (generic chưa suy ⇒ `{error}`).
+        if let Some(goi) = t.strip_suffix(')') {
+            if let Some((ten, _)) = goi.split_once('(') {
+                let ten = ten.trim();
+                if !ten.is_empty() {
+                    if let Some(sig) = self.cmd_sigs.iter().find(|s| s.name == ten) {
+                        return if sig.generics.is_empty() {
+                            sig.ret.clone()
+                        } else {
+                            Type::Error
+                        };
+                    }
+                }
+            }
+        }
+        // ST-40a: tên biến/tham số **đã khai** với kiểu tường minh.
+        if let Some(sym) = self.symbols.syms.iter().find(|x| x.name == t) {
+            if let Some(ty) = &sym.ty {
+                return ty.clone();
+            }
+        }
         Type::Error
     }
+}
+
+/// Tách theo dấu `,` ở **độ sâu 0** (bỏ qua `,` trong `{}`/`[]`/`()` và chuỗi) — ST-40a.
+fn tach_phay(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut sau = 0usize;
+    let mut depth = 0i32;
+    let mut trong_chuoi = false;
+    let mut thoat = false;
+    for (i, c) in s.char_indices() {
+        if thoat {
+            thoat = false;
+            continue;
+        }
+        match c {
+            '"' if !trong_chuoi || depth >= 0 => trong_chuoi = !trong_chuoi,
+            '\\' if trong_chuoi => thoat = true,
+            '{' | '[' | '(' if !trong_chuoi => depth += 1,
+            '}' | ']' | ')' if !trong_chuoi => depth -= 1,
+            ',' if !trong_chuoi && depth == 0 => {
+                out.push(s[sau..i].trim());
+                sau = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(s[sau..].trim());
+    out
 }
 
 fn ten_kieu(t: &Type) -> String {
@@ -662,13 +820,6 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         }
-        if std::env::var("VIS_DBG_KHE").is_ok() {
-            eprintln!(
-                "ha_stage kind={:?} kids={:?}",
-                node.kind,
-                node.children().map(|c| c.kind).collect::<Vec<_>>()
-            );
-        }
         let head_group = node
             .children()
             .next()
@@ -677,9 +828,6 @@ impl<'a> Lowerer<'a> {
             // ST-37: parser **không** gắn node biểu thức vào `CmdGroup` (chỉ giữ token) ⇒ hạ lại
             // **văn bản trong ngoặc** ở chế độ script (biểu thức thuần: literal/phép toán).
             let v = self.lower_vach(g);
-            if std::env::var("VIS_DBG_KHE").is_ok() {
-                eprintln!("group lowered: {:?}", v.is_some());
-            }
             if let Some(e) = v {
                 if truoc.is_some() {
                     // Stage `( expr )` không có khe ống ⇒ giá trị trước không đi đâu được.
@@ -734,15 +882,6 @@ impl<'a> Lowerer<'a> {
                         rty = Type::Error;
                     }
                     if let Some(dau) = self.arg_start(node) {
-                        if std::env::var("VIS_DBG_SX").is_ok() {
-                            eprintln!(
-                                "sort_by kids={:?} toks={:?}",
-                                node.children().map(|c| c.kind).collect::<Vec<_>>(),
-                                node.tokens(&self.cst.tokens)
-                                    .map(|t| t.text.clone())
-                                    .collect::<Vec<_>>()
-                            );
-                        }
                         let het_stage = self.stage_end(dau);
                         let vung = self.text.get(dau..het_stage).unwrap_or("").to_string();
                         let body_end = dau + vung.find("--").unwrap_or(vung.len());
@@ -804,12 +943,6 @@ impl<'a> Lowerer<'a> {
                     .children()
                     .filter(|c| c.kind != NodeKind::CmdWord)
                     .any(|c| c.kind == NodeKind::CmdClosure);
-                if std::env::var("VIS_DBG_SUGAR").is_ok() {
-                    eprintln!(
-                        "hook where la_closure={la_closure} kids={:?}",
-                        node.children().map(|c| c.kind).collect::<Vec<_>>()
-                    );
-                }
                 if !la_closure {
                     let mut bang = Vec::new();
                     let _ = hop_nhat_cmd(&sig.params[0].ty, up_ty, &sig.generics, &mut bang);
@@ -829,9 +962,6 @@ impl<'a> Lowerer<'a> {
                     // Vùng văn bản của đối số: từ token đầu **sau tên lệnh** tới hết stage.
                     if let Some(dau) = self.arg_start(node) {
                         let lam = self.ha_sugar(dau, None, pty, rty);
-                        if std::env::var("VIS_DBG_SUGAR").is_ok() {
-                            eprintln!("sugar at {dau} -> {:?}", lam.is_some());
-                        }
                         if let Some(lam) = lam {
                             return Some(HExpr::Call {
                                 callee: Box::new(HExpr::Var {

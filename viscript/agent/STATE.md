@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-39** (`sort_by` + `--desc`) — xong, **chưa commit**.
-Bước          : 5/5 (`sort_by` runtime + tyck/runtime chốt khoá → cờ `--desc` qua khe ống → sugar khoá ngầm → 12 ca + 4 sem → gate PASS)
+Task          : **ST-40a** (prelude `FileEntry`/`ProcEntry`, `it` kiểu thật, `VS0605`) — xong, **chưa commit**.
+Bước          : 5/5 (prelude → `kieu_text` kiểu bản ghi/đơn vị → kiểm `it` tĩnh → `VS0605` → 13 ca + 4 sem → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:25:34Z**; **550** test / sem **359** / parity **333/333** / diff 100k **0 lệch** (202,8 s); `vis test` 359 ok
-Việc dở       : commit `[ST-39]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:50:38Z**; **563** test / sem **363** / parity **337/337** / diff 100k **0 lệch** (204,2 s); khởi động +0,08 ms
+Việc dở       : commit `[ST-40a]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,20 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-39 — `sort_by` + `--desc` (2026-11-13)
+## ST-40a — prelude bản ghi + `it` kiểu thật + `VS0605` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Prelude** | `vis-types/src/prelude.rs`: `FileEntry { name, size, modified, is_file }`, `ProcEntry { pid, name, cpu, mem }`; đăng ký **chỉ** `.vish` (`dang_ky_prelude` trước khi hạ item); `.vis` **không** thấy |
+| 2 | **`it` kiểu thật** | `kieu_text` nhận literal bản ghi khớp prelude (tách `,` độ sâu 0), literal đơn vị (`5mb`/`90s`/`50pct`), `ten(...)` theo `cmd_sigs`, tên biến có kiểu ⇒ `where`/`sort_by` **kiểm tĩnh** |
+| 3 | **`VS0605`** | `COMMAND_CODES` **4 → 5**; `BOOKS` 7, `all_codes()` **28 → 29**, `next_block()` **801**; test sửa kèm lý do |
+| 4 | **Không đỏ oan** | Không suy được kiểu ⇒ giữ **kiểm động**; khối 672/1451 vẫn `ok`; allowlist **vẫn 6** |
+| 5 | **Đo** | **563** test (550 + **13**); sem **359 → 363** (+4 `vish/pl-*.vish`); parity **333 → 337**; `fuzz_mutate` 307 → **311**; `diag_cmp` 307/359 → **311/363**; khởi động A/B: **10,06 → 10,14 ms** (+0,08 ms) |
+
+**Ghi chú**: `.vish` **chưa** có cú pháp khai `type` ⇒ chưa thể có `VS0302` trùng prelude; ca `.vis` chứng minh
+prelude **không** lộ sang `.vis` (người dùng khai `type FileEntry` riêng vẫn chạy). Nợ khi `.vish` có item khai kiểu.
+
+ + `--desc` (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

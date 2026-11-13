@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+( [{pid: 1, name: "a", cpu: 60pct, mem: 10mb}, {pid: 2, name: "b", cpu: 20pct, mem: 5mb}] ) | where cpu > 50pct

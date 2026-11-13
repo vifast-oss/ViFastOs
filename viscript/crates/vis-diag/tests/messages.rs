@@ -399,6 +399,8 @@ fn snapshot_9_ca_so_module_07xx() {
     }
     assert_eq!(vis_diag::MODULE_CODES.len(), 3);
     assert_eq!(vis_diag::BOOKS.len(), 7, "ST-25: bảy sổ mã");
-    assert_eq!(vis_diag::all_codes().count(), 28);
+    // **SỬA KÈM LÝ DO (ST-40a)**: thêm **VS0605** (`06xx`, trường không có trên `it`) ⇒ 28 → **29**.
+    // `BOOKS` vẫn 7 (VS0605 thuộc sổ `06xx` đã có); `next_block()` vẫn **801**.
+    assert_eq!(vis_diag::all_codes().count(), 29);
     assert_eq!(vis_diag::next_block(), 801, "khối kế tiếp là 08xx");
 }

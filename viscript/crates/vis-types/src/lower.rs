@@ -332,6 +332,9 @@ struct Lowerer<'a> {
     cmd_sigs: Vec<crate::cmdsig::CmdSig>,
     /// ST-38: bộ đếm tên tạm cho **sugar `it`** (tránh trùng `__c` giữa nhiều vị từ trong tệp).
     tam_n: u32,
+    /// ST-40a: bản ghi **prelude** của `.vish` (`FileEntry`, `ProcEntry`) — để `kieu_text` nhận literal
+    /// bản ghi có đúng bộ trường và cho `it` **kiểu thật**.
+    prelude_recs: Vec<(String, RecId)>,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -375,6 +378,7 @@ impl<'a> Lowerer<'a> {
             sym_generic: false,
             cmd_sigs: crate::cmdsig::BuiltinSigs::mac_dinh().sigs().to_vec(),
             tam_n: 0,
+            prelude_recs: Vec::new(),
             type_env: std::collections::HashMap::new(),
             cur_impl: None,
             cst,
@@ -410,6 +414,9 @@ impl<'a> Lowerer<'a> {
         self.scope.push(0);
         if self.command_mode() {
             // ST-18 (VD-22 pha 2): `.vish`/`cmd { … }` hạ xuống **cùng HIR** — `cmd_lower`.
+            // ST-40a: prelude bản ghi **chỉ** cho chế độ lệnh, đăng ký **trước** khi hạ item để
+            // `type FileEntry` của người dùng trùng tên bị `VS0302`.
+            self.dang_ky_prelude();
             self.run_shell();
             return;
         }
