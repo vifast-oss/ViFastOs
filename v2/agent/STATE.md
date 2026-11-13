@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-29 **xong mã + test** (**SMP mô hình tất định 1/2/4/8 + push migration**: `with_harts`, `Published { idle, cur_prio }` + guard luật 3, push **cuối hàng** mức Ready cao nhất **≤1 TCB/hart/bước** chỉ khi `published.idle`/đúng affinity, qua `Mailbox::Migrate`, `migrate_count`, wake chéo hart qua `Wake` + ngưỡng `cur_prio`, `check_smp`/`check_harts`, driver L1 theo `VIFAST_SMP`; model-only D2-53 Q1/Q2). KT-28 DONE (`dd4761e` lật), KT-27 DONE, KT-26 DONE, KT-25 DONE, KT-24 DONE
-Bước          : 0/8 — **DONE mã**, chờ review độc lập (`reviewer-kt29`); chưa commit/push
+Bước          : 0/8 — **DONE mã**, commit `0ab2267` đã push `origin/main`; reviewer-kt29 verdict **DRIFT** đã sửa 5/5 (drain FIFO, debug_assert publish, ≤1 Migrate/TCB, "≤1/hart nguồn", guard n>1); chờ Agent 0 lật KT-29
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 441 test/58 suite** (baseline 427/56 ⇒ +14 = 12 `kt29_smp` + 1 unit `check_smp` + 1 driver `l1_k1c`), L1 1.000 seed/999 trace **756 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt29-gate-fast.log`)
 Miri          : `./v2/bin/v2 miri test --test kt29_smp` — **PASS 12/12** (`JOURNAL/kt29-miri.log`, 257,92 s; fuzz `cfg(miri)` 3 seed × 8 op × smp 1/2/4/8; 2 warning integer-to-pointer của `vifast-objmem` là pre-existing)

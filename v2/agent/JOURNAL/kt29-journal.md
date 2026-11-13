@@ -98,6 +98,13 @@ Sau sửa: chạy lại `kt29_smp` (12 test) + `l1_k1c` + `gate --fast` + Miri (
   §7.1, **không** chạy trong vòng task (Q13). (Log sau verdict được chạy lại; log trước verdict
   cùng lệnh vẫn PASS.)
 
+## 4b. Commit + push
+
+- Commit **`0ab2267`** `[KT-29] SMP mô hình tất định 1/2/4/8 + push migration (441 test, Miri
+  12/12)` — chỉ stage `v2/` (18 tệp); `viscript/` của tab khác **không** chạm. `git push origin
+  main` ff `1c3f1d3..0ab2267`; `HEAD..origin/main` = 0 trước/sau push. `dd4761e` ([KT-28]) là
+  tổ tiên của `0ab2267`.
+
 ## 5. Đề xuất
 
 **REVIEW** (không tự DONE): chờ reviewer độc lập (depth 1/1 — đã báo lead spawn reviewer). Các
