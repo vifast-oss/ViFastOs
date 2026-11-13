@@ -115,8 +115,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | **DONE** | đo thật, không ước lượng |
 | ST-25 | module: `use ./util`, đa tệp, cấm vòng, hash closure gồm phụ thuộc | ST-24 | 3 h | **DONE** | đa tệp chạy được; `VS07xx` cho vòng/không thấy |
 | ST-26 | `vis-std` lõi: `std.str/list/map/path/time/json` | ST-25 | 3 h | **DONE** | ≥ 60 ca; `use std.x` chạy |
-| ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **READY** | chạy `ls`/`echo` thật; quyền tối thiểu |
-| ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | BLOCKED | ≥ 40 ca; differential vẫn 0 lệch |
+| ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **DONE** | chạy `ls`/`echo` thật; quyền tối thiểu |
+| ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | **READY** | ≥ 40 ca; differential vẫn 0 lệch |
 | ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | BLOCKED | ≥ 30 ca |
 | ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | BLOCKED | `sha2` duyệt allowlist; thay FNV |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
@@ -375,6 +375,17 @@ APPROVED 2026-11-13 Agent 0
 > "ST-27". **344** test, **70** fixture std (18/20/9/12/2/10) + 6 ca lỗi; 323 ca + 272/272 differential gốc xanh;
 > gate PASS. Hai lỗi của bộ sinh/kỳ vọng được khai trong log, sửa bộ sinh/kỳ vọng **không nới test**.
 > **ST-27 mở** (`vis-host-posix`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-27 DONE** — commit `a98d0e8` (đã push): **chương trình ngoài** (§9.3) chạy thật qua `std::process::Command`
+> (không shell, đối số mảng, env kế thừa); stdout ⇒ `list[str]` hoặc `--raw` ⇒ `str`; stderr ⇒ **chẩn đoán**;
+> `exit != 0` ⇒ `VS0501` (§9.4); **ranh giới OS giữ đúng**: `vis-interp` chỉ biết `trait Ngoai`, CLI cài runner,
+> **không host** ⇒ `VS0604` (differential 4 ca `.vish` khớp hai đường); `--no-extern` ⇒ `VS0601`; **variadic
+> `...rest`** + **`--x=v`**; timeout 10 s, chạy tuần tự, `--explain-perms`. **357** test; **328 ca sem/17 nhóm**;
+> differential **276/276**; gate PASS. **Allowlist doc-examples 9 → 8** (`APPROVED e009411`) vì khối 662 dạng
+> `extern cmd … ...rest` nay **hợp lệ** — chặt hơn, không nới. Hoãn: `| complete`, pipe→stdin, consent thật/cap[Proc].
+> **ST-28 mở** (generic).
 
 ## Ghi chú vận hành
 
