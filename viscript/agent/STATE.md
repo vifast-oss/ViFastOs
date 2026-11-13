@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-46** (3 nợ VSH1b: `ls --long`, nhóm-đối-số, chẩn đoán tuyệt đối) — xong, **chưa commit**.
-Bước          : 5/5 (`MucFs.mode`+`FileEntryLong` → nhóm-đối-số=biểu thức → đệm `lower_vach` → 15 ca + 4 fixture → gate)
+Task          : **ST-47** (báo cáo R7 — chốt VSH1b) — xong, **chưa commit**.
+Bước          : 5/5 (đo lại toàn bộ → `R7-viscript.{md,json,json.license}` → report-check PASS → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T13:04:53Z**; **651** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (224,8 s)
-Việc dở       : commit `[ST-46]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T13:14:52Z**; nightly (fuzz 1 phút) **PASS** 13:10:35Z; report-check **PASS** (7 báo cáo, 53 hàng QUEUE)
+Việc dở       : commit `[ST-47]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,15 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-46 — 3 nợ VSH1b (2026-11-13)
+## ST-47 — báo cáo R7 (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Report** | `agent/reports/R7-viscript.{md,json,json.license}`; `round = 7`, `head = 426eb91`, đúng **11 khoá**; `report-check --all` ⇒ **PASS** (7 báo cáo, **53** hàng QUEUE) |
+| 2 | **Số đo** | **651** test (21+96+18+143+24+50+9+**290**); sem **370/18** (327 `.vis` + 43 `.vish`, 52 `.err`); `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**; parity **344/344**; diff **100k / 0 lệch** (212,2 s); fuzz **3.003.112 ca / 0 vi phạm**; `VBC1` **53 tag**; **7 sổ / 29 mã**; khởi động **11,1–11,3 ms**; allowlist **6** |
+| 3 | **Nội dung** | bảng vòng 7 (ST-44..ST-47) + **§19 VSH1b** (nêu rõ **chưa hoàn thiện toàn bộ ViScript** + đường còn lại: VSH1b-2, nợ lõi, VS2) + **14 nợ còn mở** + VD-77..80 + đề xuất (AGENTS §8, `viscript/AGENTS.md`, QUEUE vòng 8) |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
