@@ -144,7 +144,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-53 | `select` (bản ghi ẩn danh) đi `to json` + **hợp nhất hai `sort_by`** | ST-52 | 3 h | **DONE** | một hiện thực; `std.list.sort_by` cũ không phá; ổn định + `--desc` |
 | ST-54 | `CODEGEN_TIN_TYCK`: codegen **từ chối** khi HIR còn kiểu `Error` | ST-53 | 3 h | **DONE** | chẩn đoán rõ; hằng số 21 phải **giảm**; diff 0 lệch |
-| ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **READY** | MD+JSON; nêu rõ khoảng cách VS2 |
+| ST-55 | báo cáo **R9** + kế hoạch **VS2** có tiêu chí đo | ST-53..ST-54 | 1,5 h | **DONE** | MD+JSON; nêu rõ khoảng cách VS2 |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -746,6 +746,18 @@ APPROVED 2026-11-14 Agent 0
 > cửa **chỉ chặn `error`** (cảnh báo vẫn compile — có ca). **730** test (+12); sem 370; `vis test` **370 ok**; parity 344/344;
 > differential 100k **0 lệch** (203,0 s); allowlist **6**.
 > **ST-55 mở** (R9 — chốt VSH2).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-55 DONE — VÒNG 9 (VSH2) CHỐT.** `reports/R9-viscript.{md,json,license}` (`af00658`, head 8c8c36a) —
+> `report-check` **PASS (9 báo cáo, 61 hàng QUEUE phủ đủ)**. Số đo **chạy lại**: **730 test** (357 cli · 62 bytecode) ·
+> **370 ca sem/18 nhóm** · `vis test` **370 ok** / `--vm` **370 ok + 6 SKIP** · **parity 344/344** · **differential 100.000
+> chương trình 0 lệch** (213,2 s) · fuzz parser 60 s **2.996.353 ca/0 vi phạm** · `VBC1` 53 tag · **7 sổ/29 mã** ·
+> **`CODEGEN_TIN_TYCK = 0`** · khởi động ấm 11,1–11,3 ms · **allowlist 6** · `gate --fast` + `nightly` PASS.
+> **Đóng 3 nợ lõi**: `to json` (ST-53), hợp nhất comparator hai `sort_by` (ST-53), **codegen từ chối HIR có chẩn đoán**
+> + `CODEGEN_TIN_TYCK` **21 → 0** (ST-54). **Còn 10 nợ có chủ đích** + **VS2** (bảng 8 hạng mục có **tiêu chí đo** và
+> `[ƯL]` trong `R9` §4). **ViScript chưa hoàn thiện toàn bộ.**
+> **Vòng 10 (mở sau)**: ST-56 (nợ lõi còn lại) · ST-57 (miếng VS2 đầu tiên: async + kênh) · ST-58 (R10).
 
 ## Ghi chú vận hành
 
