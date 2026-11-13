@@ -108,8 +108,9 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-16 | fuzz parser **1 giờ** + `vis-dev nightly` chạy được (bỏ exit 2) | ST-14 | 2 h | **DONE** | không panic; nightly PASS |
 | ST-18 | `cmd_lower`: chế độ lệnh `.vish` hạ xuống HIR + chạy được | ST-17 | 3 h | **DONE** | bảng chữ ký tối thiểu; `vis run t.vsh` chạy; `VS06xx`? (hỏi A0) |
 | ST-19 | `vis-bytecode`: định dạng VBC1 + sinh mã từ HIR | ST-18 | 3 h | **DONE** | magic/phiên bản; sinh mã cho subset VS0; test khứ hồi |
-| ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | **READY** | chạy 309 ca sem qua VM = interp |
-| ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | BLOCKED | bytecode hỏng bị từ chối; fuzz 10 phút |
+| ST-20b | differential về **0 lệch** (sửa 19 ca) | ST-20 | 2 h | **DONE** |
+| ST-20 | `vis-vm`: máy ảo thực thi bytecode, ngữ nghĩa trùng interp | ST-19 | 3 h | **DONE** | chạy 309 ca sem qua VM = interp |
+| ST-21 | verifier bytecode + fuzz không panic | ST-20 | 2 h | **READY** | bytecode hỏng bị từ chối; fuzz 10 phút |
 | ST-22 | differential interp vs VM **≥ 100.000 chương trình, 0 lệch** | ST-21 | 3 h | BLOCKED | sinh chương trình có seed; so stdout+mã lỗi |
 | ST-23 | cache bytecode theo hash closure + khởi động ấm < 20 ms | ST-22 | 2 h | BLOCKED | đo thật, không ước lượng |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
@@ -304,6 +305,18 @@ APPROVED 2026-11-13 Agent 0
 > không panic với dữ liệu hỏng. Sinh mã **272/323** ca sem (51 ca lỗi tĩnh), **0 Unsupported**, 3.827 lệnh, 36/45 tag;
 > round-trip xanh trên 272 ca + 27 golden. **284 test**, `gate --fast` PASS.
 > **ST-20 mở** (`vis-vm`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-20 DONE** — `65cb63b`: `crates/vis-vm` (fetch–decode–execute, ngăn xếp `Vec<Value>` động — **không** tin
+> `max_stack`, cap khung 2.000 + cap 10^7 lệnh, bytecode hỏng ⇒ `VS0501` không panic) + **refactor `vis-interp`**
+> để mọi ngữ nghĩa (toán tử/builtin/`Show`/`eq`/`iter`) **dùng chung** (284 test + 323 ca xanh y nguyên trước khi
+> thêm VM); codegen sửa theo differential (bind pattern, thứ tự bind→guard, `MakeEnum`, closure, `CallValue`);
+> **`vis run --vm`** + `--dump-bytecode`. 289 test; differential 253/272 (19 ca lệch khoá trong `KNOWN_LECH`).
+> **ST-20b DONE** — `516f668`: sửa **đúng 19 ca** (pattern lồng nhiều tầng, `some/none/ok/err`, `()` vs tuple rỗng,
+> `?.` phẳng, `JumpIfNone` luôn pop, `LoadCaptured` trong closure, named-arg theo thứ tự tham số, `T?` tự nâng,
+> một quy ước đích nhảy duy nhất) ⇒ **272/272 khớp 0 lệch**, `KNOWN_LECH` **rỗng** + test khoá **hai chiều**.
+> **ST-21 mở** (verifier).
 
 ## Ghi chú vận hành
 
