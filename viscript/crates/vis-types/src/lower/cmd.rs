@@ -6,7 +6,7 @@
 use super::*;
 use crate::cmdsig::{hop_nhat_cmd, CmdSig};
 use crate::hir::Lit;
-use vis_diag::COMMAND_CODES;
+use vis_diag::{COMMAND_CODES, TYPE_CODES};
 
 /// Tách **từ** của một stage lệnh, tôn trọng nháy đơn/nháy kép (ST-27).
 fn tach_tu(s: &str) -> Vec<String> {
@@ -79,18 +79,41 @@ impl<'a> Lowerer<'a> {
             .any(|s| s.name == name && s.kind != SymKind::Generic)
     }
 
+    /// Kết thúc stage (gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng) — dùng cho sugar `sort_by`.
+    fn stage_end(&self, start: usize) -> usize {
+        let bytes = self.text.as_bytes();
+        let mut depth = 0i32;
+        let mut i = start;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b'|' | b';' | b'&' | b'\n' if depth <= 0 => return i,
+                _ => {}
+            }
+            i += 1;
+        }
+        bytes.len()
+    }
+
     /// ST-38: **vị từ ngầm `it`** — `where size > 5mb` ⇒ `it => it.size > 5mb`.
     ///
     /// Luật (Agent 0 chốt): chỉ đổi **định danh trần chưa khai báo**, không đổi `it` viết tường minh,
     /// không đổi tên đã khai; không đổi luật nào khác. `where 1` vẫn là **lỗi kiểm tĩnh** (`VS0602`
     /// "đối số sai kiểu" vì `1` không phải hàm) — ghi JOURNAL.
-    fn ha_sugar(&mut self, start: usize, pty: Type, rty: Type) -> Option<HExpr> {
+    fn ha_sugar(
+        &mut self,
+        start: usize,
+        end_co: Option<usize>,
+        pty: Type,
+        rty: Type,
+    ) -> Option<HExpr> {
         // Kết thúc **stage**: gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng.
         let mut depth = 0i32;
         let mut end = self.text.len();
         let bytes = self.text.as_bytes();
         let mut i = start;
-        while i < bytes.len() {
+        while end == self.text.len() && i < bytes.len() {
             let c = bytes[i];
             match c {
                 b'(' | b'[' | b'{' => depth += 1,
@@ -107,7 +130,12 @@ impl<'a> Lowerer<'a> {
             }
             i += 1;
         }
-        let text = self.text.get(start..end)?.trim().to_string();
+        let end = end_co.unwrap_or(end);
+        let text = self
+            .text
+            .get(start..end.min(self.text.len()))?
+            .trim()
+            .to_string();
         if text.is_empty() {
             return None;
         }
@@ -220,6 +248,10 @@ impl<'a> Lowerer<'a> {
         };
         if matches!(&pty, Type::TypeRef { args, .. } if args.is_empty()) {
             pty = Type::Error;
+        }
+        let mut rty = rty;
+        if matches!(&rty, Type::TypeRef { args, .. } if args.is_empty()) {
+            rty = Type::Error;
         }
         // Tên tham số: token đầu; có thể viết liền `x=>`.
         let mut toks: Vec<Span> = Vec::new();
@@ -683,6 +715,87 @@ impl<'a> Lowerer<'a> {
             }
             return Some(self.ngoai_call(&ten, node, truoc.map(|(e, _)| e)));
         };
+        // ST-39: khoá ngầm cho `sort_by` (§9.7): `sort_by modified --desc` ⇒ `it => it.modified`, `desc=true`.
+        if sig.name == "sort_by" {
+            if let Some((up, up_ty)) = &truoc {
+                let la_closure = node.children().any(|c| c.kind == NodeKind::CmdClosure);
+                if !la_closure {
+                    let mut bang = Vec::new();
+                    let _ = hop_nhat_cmd(&sig.params[0].ty, up_ty, &sig.generics, &mut bang);
+                    let fty = super::generic::thay(&sig.params[1].ty, &bang);
+                    let (mut pty, mut rty) = match &fty {
+                        Type::Fn(ps, r) if ps.len() == 1 => (ps[0].clone(), (**r).clone()),
+                        _ => (Type::Error, Type::Error),
+                    };
+                    if matches!(&pty, Type::TypeRef { args, .. } if args.is_empty()) {
+                        pty = Type::Error;
+                    }
+                    if matches!(&rty, Type::TypeRef { args, .. } if args.is_empty()) {
+                        rty = Type::Error;
+                    }
+                    if let Some(dau) = self.arg_start(node) {
+                        if std::env::var("VIS_DBG_SX").is_ok() {
+                            eprintln!(
+                                "sort_by kids={:?} toks={:?}",
+                                node.children().map(|c| c.kind).collect::<Vec<_>>(),
+                                node.tokens(&self.cst.tokens)
+                                    .map(|t| t.text.clone())
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                        let het_stage = self.stage_end(dau);
+                        let vung = self.text.get(dau..het_stage).unwrap_or("").to_string();
+                        let body_end = dau + vung.find("--").unwrap_or(vung.len());
+                        let co_text = &vung[vung.find("--").unwrap_or(vung.len())..];
+                        if let Some(lam) = self.ha_sugar(dau, Some(body_end), pty, rty) {
+                            let mut args = vec![up.clone(), lam];
+                            let mut loi = false;
+                            for raw in co_text.split_whitespace() {
+                                if !raw.starts_with("--") {
+                                    continue;
+                                }
+                                let (ten, gt) = raw
+                                    .trim_start_matches('-')
+                                    .split_once('=')
+                                    .map(|(a, b)| (a.to_string(), Some(b.to_string())))
+                                    .unwrap_or((raw.trim_start_matches('-').to_string(), None));
+                                if ten != "desc" {
+                                    self.diag(
+                                        &COMMAND_CODES[1],
+                                        format!("`sort_by` không có cờ `--{ten}`"),
+                                        node.span,
+                                    );
+                                    loi = true;
+                                    continue;
+                                }
+                                let b = gt.map(|v| v == "true").unwrap_or(true);
+                                args.push(HExpr::Lit {
+                                    ty: Type::Bool,
+                                    lit: Lit {
+                                        kind: LitKind::Bool,
+                                        text: b.to_string(),
+                                    },
+                                    span: node.span,
+                                });
+                            }
+                            if !loi {
+                                return Some(HExpr::Call {
+                                    callee: Box::new(HExpr::Var {
+                                        name: sig.name.clone(),
+                                        sym: sig.sym,
+                                        span: node.span,
+                                    }),
+                                    args,
+                                    named: Vec::new(),
+                                    span: node.span,
+                                });
+                            }
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
         // ST-38: **vị từ ngầm `it`** cho `where` (§9.7): `where size > 5mb` ⇒ `it => it.size > 5mb`.
         // Chỉ áp khi có pipe vào và đối số **không** phải closure; luật đổi tên ở [`Self::ha_sugar`].
         if sig.name == "where" {
@@ -701,7 +814,7 @@ impl<'a> Lowerer<'a> {
                     let mut bang = Vec::new();
                     let _ = hop_nhat_cmd(&sig.params[0].ty, up_ty, &sig.generics, &mut bang);
                     let fty = super::generic::thay(&sig.params[1].ty, &bang);
-                    let (mut pty, rty) = match &fty {
+                    let (mut pty, mut rty) = match &fty {
                         Type::Fn(ps, r) if ps.len() == 1 => (ps[0].clone(), (**r).clone()),
                         _ => (Type::Error, Type::Error),
                     };
@@ -710,9 +823,12 @@ impl<'a> Lowerer<'a> {
                     if matches!(&pty, Type::TypeRef { args, .. } if args.is_empty()) {
                         pty = Type::Error;
                     }
+                    if matches!(&rty, Type::TypeRef { args, .. } if args.is_empty()) {
+                        rty = Type::Error;
+                    }
                     // Vùng văn bản của đối số: từ token đầu **sau tên lệnh** tới hết stage.
                     if let Some(dau) = self.arg_start(node) {
-                        let lam = self.ha_sugar(dau, pty, rty);
+                        let lam = self.ha_sugar(dau, None, pty, rty);
                         if std::env::var("VIS_DBG_SUGAR").is_ok() {
                             eprintln!("sugar at {dau} -> {:?}", lam.is_some());
                         }
@@ -945,7 +1061,40 @@ impl<'a> Lowerer<'a> {
             };
             let _ = hop_nhat_cmd(&ty, &suy, &sig.generics, &mut bang);
             let expr = match gt {
-                Some(g) if g.kind == NodeKind::CmdClosure => self.ha_closure(&g, &ty),
+                Some(g) if g.kind == NodeKind::CmdClosure => {
+                    let lam = self.ha_closure(&g, &ty);
+                    // ST-39: `.vish` **không** qua tyck ⇒ kiểm khoá ở đây khi biết kiểu: thân chỉ là
+                    // chính tham số (`x => x`) ⇒ khoá = kiểu tham số; `bool`/`map`/`record`/`list`
+                    // không so được ⇒ `VS0412`.
+                    if sig.name == "sort_by" {
+                        if let (Some(HExpr::Lambda { params, body, .. }), Type::Fn(_, _)) =
+                            (lam.as_ref(), &ty)
+                        {
+                            let khoa = match (body, params.first()) {
+                                (crate::hir::HBody::Expr(e), Some(p)) => match e.as_ref() {
+                                    HExpr::Var { name, .. } if *name == p.name => {
+                                        Some(p.ty.clone())
+                                    }
+                                    _ => None,
+                                },
+                                _ => None,
+                            };
+                            if let Some(k) = khoa {
+                                if matches!(
+                                    &k,
+                                    Type::Bool | Type::Map(..) | Type::Record(..) | Type::List(..)
+                                ) {
+                                    self.diag(
+                                        &TYPE_CODES[3],
+                                        format!("`sort_by`: khoá không so được: `{}`", k.name()),
+                                        g.span,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    lam
+                }
                 Some(g) if g.kind == NodeKind::CmdGroup => self.lower_vach(&g),
                 Some(g) => {
                     let inner = g.children().next().cloned();

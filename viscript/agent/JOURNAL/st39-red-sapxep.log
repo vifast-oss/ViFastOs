@@ -1,0 +1,47 @@
+=== ST-39 D2-05: `sort_by` + `--desc` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T09:26:06Z
+
+## 1. Đỏ **thật** ở HEAD `868c1e4` (worktree `/tmp/vis-red39`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test sap_xep
+test result: FAILED. **0 passed; 12 failed**; 0 ignored
+```
+
+Cả 12 ca đỏ: `sort_by` **chưa** là lệnh → bị coi là **chương trình ngoài** (`VS0501` "không chạy được
+chương trình ngoài `sort_by`"), `--desc` chưa có, sugar khoá ngầm chưa có.
+
+## 2. Hiện trạng trước khi sửa (đo tay trên `868c1e4`)
+
+```
+$ vis run a.vish          # ( [3,1,2] ) | sort_by it => it
+a.vish:2:14: error VS0501: không chạy được chương trình ngoài `sort_by`
+
+$ vis run b.vish          # ( [{size:6mb}] ) | sort_by size --desc
+b.vish:2:14: error VS0501: không chạy được chương trình ngoài `sort_by`
+```
+
+## 3. Sau khi sửa — đo được
+
+- `( [3, 1, 2] ) | sort_by it => it` ⇒ **`[1, 2, 3]`**; `--desc` ⇒ **`[3, 2, 1]`**; `--desc=false` ⇒ `[1, 2, 3]`;
+- `( [{size: 6mb, ten: "b"}, {size: 1mb, ten: "s"}] ) | sort_by size --desc` ⇒ **6mb trước 1mb** (byte);
+- `duration` sắp theo **ns** (`1s` trước `5m`); `str` sắp theo **byte UTF-8** (`a` trước `bb`);
+- **ổn định cả hai chiều**: `[{1mb,a},{1mb,b}]` với `--desc` ⇒ `a` trước `b`; `[{1mb,b},{1mb,a}]` không cờ ⇒ `b` trước `a`;
+- khoá **`bool`** ⇒ **`VS0412`** ("`sort_by`: khoá không so được: `bool`");
+- `sort_by` không đối số ⇒ **`VS0602`** ("thiếu đối số `f`"); cờ lạ `--sai` ⇒ **`VS0602`**;
+- **`--desc` không bị nuốt vào khoá**: `sort_by size --desc` ⇒ thân `it.size`, cờ riêng (đã sửa parser: thân
+  closure dừng ở `--cờ`); khối **672**/**1451** §9.7 vẫn `ok` (`vis check`), **allowlist vẫn 6**.
+
+## 4. Số ca
+
+- test workspace **550** (538 + **12** `sap_xep.rs`); sem **355 → 359** (+4 `test/sem/vish/sx-*.vish`);
+- parity **329 → 333**; `fuzz_mutate` 303 → **307**; `diag_cmp` 303/355 → **307/359**; `vis test` **359 ok**.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-types/src/cmdsig.rs=8d3e1cae4f3619bbdeb2f1f565b67fd72bb77e6d7f05e8f760fc81b96cb7abb2
+  sha256 crates/vis-types/src/lower/cmd.rs=9b1463fa0b0259aefe5971a11d568a374d3130649db71917a257d96acfd27222
+  sha256 crates/vis-types/src/tyck/expr.rs=344573c5d8535899be7bcbb2654de514b731a00c66f92679beccc3fe2228a37f
+  sha256 crates/vis-interp/src/builtin.rs=c47fa4cdfcc523721e7d6cec22504d60088852dc6b65e0f766ab1b7db03e35d9
+  sha256 crates/vis-interp/src/interp.rs=917937b70e39a177e668b74cba4c3ecd7dd42a294c9a6b4e07f81f9d18f24591
+  sha256 crates/vis-syntax/src/parse/cmd.rs=b9067fbbac83f72e7430c9225a88b03f26c70ecdda3d92bfcb7ac9928cef9f8c
+  sha256 crates/vis-cli/tests/sap_xep.rs=c0b4e3200db3e1b95c9fc1cecbbc5d2c7e8a1719ffd253d743799bad784af978

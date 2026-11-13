@@ -502,6 +502,11 @@ impl<'a> Parser<'a> {
             if depth == 0 && (t.is_punct("|") || t.is_punct(";") || t.is_punct("&")) {
                 break;
             }
+            // ST-39: cờ `--x` **không** thuộc thân closure: `sort_by x => x --desc` ⇒ thân `x`,
+            // cờ `--desc` ở stage (nếu nuốt vào thân, bộ hạ đọc `x --desc` thành `-(-desc)`).
+            if depth == 0 && t.text.starts_with("--") {
+                break;
+            }
             if t.is_punct("(") || t.is_punct("[") || t.is_punct("{") {
                 depth += 1;
             } else if t.is_punct(")") || t.is_punct("]") || t.is_punct("}") {

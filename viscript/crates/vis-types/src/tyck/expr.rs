@@ -996,6 +996,55 @@ impl<'a> Checker<'a> {
 
     /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.
     fn kiem_builtin(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
+        // ST-39: `sort_by` (chế độ shell) — kiểm **khoá** **một lần** trên thân lambda (không kiểm lại
+        // qua `tys`), từ chối khoá không so được (`bool`, `map`, `record`, `list`) ⇒ `VS0412`.
+        // Runtime có chốt thứ hai (`VS0501`). **Chỉ** khi có ≥ 2 đối số: pipeline `.vis` cũ dùng
+        // `sort_by` như **chương trình ngoài** 1 đối số phải giữ nguyên hành vi (không báo arity).
+        if name == "sort_by" && args.len() >= 2 {
+            let xs_ty = args
+                .first()
+                .map(|a| self.kiem_expr(a))
+                .unwrap_or(Type::Error);
+            if let Some(f) = args.get(1) {
+                let kt = match f {
+                    HExpr::Lambda { body, .. } => match body {
+                        crate::hir::HBody::Expr(e) => self.kiem_expr(e),
+                        crate::hir::HBody::Stmts(_) => Type::Unit,
+                    },
+                    other => self.kiem_expr(other),
+                };
+                let khong_so = matches!(&kt, Type::Bool | Type::Unit)
+                    || matches!(&kt, Type::Map(..) | Type::Record(..) | Type::List(..));
+                if khong_so {
+                    self.diag(
+                        super::MISMATCH,
+                        format!("`sort_by`: khoá không so được: `{}`", self.show(&kt)),
+                        span,
+                    );
+                }
+            }
+            if let Some(d) = args.get(2) {
+                let dt = self.kiem_expr(d);
+                if !matches!(dt, Type::Bool | Type::Error) {
+                    self.diag(
+                        super::MISMATCH,
+                        format!("`sort_by`: `--desc` cần `bool`, được `{}`", self.show(&dt)),
+                        span,
+                    );
+                }
+            }
+            if args.len() > 3 {
+                self.diag(
+                    ARG_COUNT,
+                    format!("`sort_by` cần 2–3 đối số, được {}", args.len()),
+                    span,
+                );
+            }
+            return Some(match xs_ty {
+                Type::List(e) => Type::List(e),
+                other => Type::List(Box::new(other)),
+            });
+        }
         let tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
         let arity = |n: usize| args.len() == n;
         let sai_so = format!("`{name}` cần {} đối số, được {}", 0, args.len());
@@ -1331,6 +1380,6 @@ fn is_percent_float(a: &Type, b: &Type) -> bool {
 fn builtin_is_value(name: &str) -> bool {
     matches!(
         name,
-        "print" | "len" | "str" | "Ok" | "Err" | "Some" | "None" | "ref"
+        "print" | "len" | "str" | "Ok" | "Err" | "Some" | "None" | "ref" | "sort_by"
     )
 }

@@ -107,6 +107,24 @@ impl BuiltinSigs {
         let ds = |t: &Type| Type::List(Box::new(t.clone()));
         let fn_bool = Type::Fn(vec![t.clone()].into(), Box::new(Type::Bool));
         let fn_unit = Type::Fn(vec![t.clone()].into(), Box::new(Type::Unit));
+        // ST-39: `sort_by(xs, f, --desc)` — lệnh **shell** (khác `std.list.sort_by` khoá `fn(int)->int`).
+        let k_ty = Type::TypeRef {
+            name: "K".into(),
+            args: Vec::new(),
+        };
+        let mut desc = tham("desc", Type::Bool, None);
+        desc.named = true;
+        let sort_by = CmdSig {
+            name: "sort_by".into(),
+            sym: None,
+            generics: vec!["T".into(), "K".into()],
+            params: vec![
+                tham("xs", ds(&t), None),
+                tham("f", Type::Fn(vec![t.clone()].into(), Box::new(k_ty)), None),
+                desc,
+            ],
+            ret: ds(&t),
+        };
         let where_ = CmdSig {
             name: "where".into(),
             sym: None,
@@ -153,6 +171,7 @@ impl BuiltinSigs {
                     Type::List(Box::new(Type::Str)),
                 ),
                 take,
+                sort_by,
                 where_,
                 each,
                 first,

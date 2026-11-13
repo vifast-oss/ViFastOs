@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// Tổng số ca `test/sem/**` — khoá cứng (ai thêm ca phải cập nhật **có ý thức**).
-const TONG: usize = 355;
-const XANH: usize = 303;
+const TONG: usize = 359;
+const XANH: usize = 307;
 const LOI_BIEN_DICH: usize = 26;
 const LOI_LUC_CHAY: usize = 26;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.

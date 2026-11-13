@@ -117,7 +117,7 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 15] = [
+pub const SIGS: [BuiltinSig; 16] = [
     BuiltinSig {
         name: "print",
         min: 1,
@@ -147,6 +147,11 @@ pub const SIGS: [BuiltinSig; 15] = [
         name: "take",
         min: 2,
         max: 2,
+    },
+    BuiltinSig {
+        name: "sort_by",
+        min: 2,
+        max: 3,
     },
     BuiltinSig {
         name: "where",
@@ -630,6 +635,47 @@ pub fn call(
             };
             let n = (*n).max(0) as usize;
             Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        // ST-39: `sort_by` — khoá `int/size/duration/percent/str`; **ổn định** cả hai chiều (đảo
+        // comparator, `sort_by` của Rust ổn định), `--desc` mặc định `false`.
+        "sort_by" => {
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, "`sort_by` cần `list`", span));
+            };
+            let desc = match args.get(2) {
+                None => false,
+                Some(Value::Bool(b)) => *b,
+                Some(other) => {
+                    return Err(trap(
+                        RT,
+                        format!("`sort_by`: `--desc` cần `bool`, được `{}`", other.show()),
+                        span,
+                    ))
+                }
+            };
+            let f = args[1].clone();
+            // Tính khoá **một lần**; giữ chỉ số gốc để **ổn định** khi khoá bằng nhau.
+            let mut cap: Vec<(Value, Value)> = Vec::with_capacity(xs.len());
+            for x in xs.clone() {
+                let k = host.call(&f, vec![x.clone()], span)?;
+                if matches!(k, Value::Bool(_)) || k.cmp_value(&k).is_none() {
+                    return Err(trap(
+                        RT,
+                        format!("`sort_by`: khoá không so được: `{}`", k.show()),
+                        span,
+                    ));
+                }
+                cap.push((k, x));
+            }
+            cap.sort_by(|a, b| {
+                let o = a.0.cmp_value(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+                if desc {
+                    o.reverse()
+                } else {
+                    o
+                }
+            });
+            Ok(Value::List(cap.into_iter().map(|(_, v)| v).collect()))
         }
         // ST-38: `where`/`each` — closure-arg; **một** hiện thực cho cả hai đường (`Host::call`).
         "where" => {

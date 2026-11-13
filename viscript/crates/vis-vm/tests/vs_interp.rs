@@ -100,7 +100,7 @@ fn vm_khop_interp_tren_320_ca() {
 fn than_chay() {
     let tat_ca = tep_sem();
     // **SỬA KÈM LÝ DO (ST-35)**: +8 ca `generic/*` (instantiation thật) ⇒ 346 ca (327 `.vis` + 19 `.vish`).
-    assert_eq!(tat_ca.len(), 355, "phải đủ 355 ca");
+    assert_eq!(tat_ca.len(), 359, "phải đủ 355 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bien_dich = 0;
@@ -169,12 +169,12 @@ fn than_chay() {
     // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **346**.
     assert_eq!(
         khop + so_biet + bien_dich,
-        355,
-        "355 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
+        359,
+        "359 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     assert_eq!(
         (khop, bien_dich),
-        (329, 26),
+        (333, 26),
         "320 ca chạy được khớp + 26 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
     );
 }
@@ -223,7 +223,7 @@ fn hai_duong_cung_so_chan_doan() {
             // **SỬA KÈM LÝ DO (ST-35)**: 320 ca chạy được (26 ca lỗi biên dịch bị bỏ qua), trong đó
             // **30** ca có chẩn đoán lúc chạy (6 ca chỉ số/map + `.vish` không host + phạm vi) — mỗi ca
             // đúng **1** chẩn đoán ở **cả hai** đường.
-            assert_eq!(so_ca, 329, "phải so đủ 329 ca chạy được");
+            assert_eq!(so_ca, 333, "phải so đủ 329 ca chạy được");
             assert_eq!(
                 so_ca_co_chan_doan, 30,
                 "30 ca có chẩn đoán lúc chạy (hai đường cùng số)"

@@ -1310,6 +1310,7 @@ fn builtin_name(name: &str) -> Option<&'static str> {
         "lines" => Some("lines"),
         "take" => Some("take"),
         // ST-38: closure-arg của chế độ lệnh.
+        "sort_by" => Some("sort_by"),
         "where" => Some("where"),
         "each" => Some("each"),
         "first" => Some("first"),

@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-38** (closure-arg + `where`/`each`/`first`/`count` + sugar `it`) — xong, **chưa commit**.
-Bước          : 5/5 (closure ⇒ Lambda + span tuyệt đối → 4 builtin → sugar `it` → 17 ca + 6 sem → gate PASS)
+Task          : **ST-39** (`sort_by` + `--desc`) — xong, **chưa commit**.
+Bước          : 5/5 (`sort_by` runtime + tyck/runtime chốt khoá → cờ `--desc` qua khe ống → sugar khoá ngầm → 12 ca + 4 sem → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:05:00Z**; **538** test / sem **355** / parity **329/329** / diff 100k **0 lệch** (229,5 s)
-Việc dở       : commit `[ST-38]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:25:34Z**; **550** test / sem **359** / parity **333/333** / diff 100k **0 lệch** (202,8 s); `vis test` 359 ok
+Việc dở       : commit `[ST-39]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,20 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-38 — closure-arg + `where`/`each`/`first`/`count` + sugar `it` (2026-11-13)
+## ST-39 — `sort_by` + `--desc` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`sort_by` lệnh shell** | `sort_by[T](xs, f: fn(T) -> K, --desc: bool = false) -> list[T]`; khoá `int`/`size`(byte)/`duration`(ns)/`percent`/`str`(byte UTF-8); **một** hiện thực `builtin::call` qua `Host::call` (interp + VM) |
+| 2 | **Ổn định hai chiều** | đảo **comparator**, không đảo mảng (`sort_by` Rust ổn định) ⇒ khoá bằng nhau giữ thứ tự gốc **cả** `asc` và `desc` — có ca riêng trên khoá **`size`** |
+| 3 | **`--desc` là cờ** | không bị khe ống chiếm; `--desc=false` hợp lệ; parser sửa: **thân closure dừng ở `--cờ`** (nếu nuốt, `x => x --desc` thành `-(-desc)`) |
+| 4 | **Khoá lỗi** | `bool`/`map`/`record`/`list` ⇒ **`VS0412`** (kiểm ở lowering khi biết kiểu + `kiem_builtin` khi có ≥ 2 đối số); runtime chốt thứ hai `VS0501` |
+| 5 | **Đo** | **550** test (538 + **12**); sem **355 → 359** (+4 `vish/sx-*.vish`); parity **329 → 333**; `fuzz_mutate` 303 → **307**; `diag_cmp` 303/355 → **307/359**; **allowlist vẫn 6** |
+
+**Nợ VS2 (ghi JOURNAL)**: **hai** `sort_by` — shell (khoá nhiều kiểu + `--desc`) và `std.list.sort_by`
+(khoá `fn(int)->int`); hợp nhất khi có generic + trait. Khối 672 chạy **thật** (cần `ls`) ⇒ **ST-42**.
+
+ + `where`/`each`/`first`/`count` + sugar `it` (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
