@@ -2660,6 +2660,12 @@ impl Machine {
         Ok(Some(sc))
     }
 
+    /// Donor của SC đang donate cho `donee` (`None` nếu `donee` không nhận donation).
+    fn donation_donor_of(&self, donee: ObjId) -> Option<ObjId> {
+        let sc = self.tcb_info_obj(donee).ok()?.donated_sc?;
+        self.donation_of(sc).ok()?.1
+    }
+
     /// Huỷ reply đang chờ của `donor`: gỡ `Reply.caller` rồi đánh thức về `Ready`.
     ///
     /// Model-only `[TK]` (KT-21 DoD 5): server chết/treo khi đang được donate thì reply **không
@@ -2972,13 +2978,20 @@ impl Machine {
             return Err(KError::IllegalOperation);
         }
         let reply_obj = self.require_type(reply, ObjType::Reply)?;
-        // KT-21 (D2-49(c)): server trả SC về client **trước** khi đổi trạng thái — bucket của
-        // server quay về priority gốc, client giữ nguyên `consumed` của chu kỳ (DoD 2).
-        self.return_donation(tcb)?;
         let caller = self.body_mut(reply_obj, |k| match k {
             Kind::Reply(r) => Ok(r.caller.take()),
             _ => Err(KError::WrongObjectType),
         })?;
+        // KT-21 (D2-49(c)): **chỉ** trả SC donation khi Reply đúng Reply của **donor** (người
+        // cho mượn SC). Reply nhầm Reply object (`caller = None` hoặc người khác) **không** trả
+        // SC và không đánh thức nhầm ai — xem `JOURNAL/kt21-reply-owner.md` (kiểm chủ sở hữu
+        // cap/`ReplyRecv`/4 cap đầy đủ thuộc K1c). Khi trả: bucket server về priority gốc,
+        // client giữ nguyên `consumed` của chu kỳ (DoD 2).
+        if let Some(donor) = self.donation_donor_of(tcb) {
+            if caller == Some(donor) {
+                self.return_donation(tcb)?;
+            }
+        }
         if let Some(caller) = caller {
             self.transition_tcb(caller, TcbState::Ready)?;
         }

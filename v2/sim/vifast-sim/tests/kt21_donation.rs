@@ -81,8 +81,10 @@ fn sleep_budget() -> TcbState {
 const S_CTL: usize = 0;
 const S_UNTYPED: usize = 1;
 const S_EP: usize = 2;
+const S_REP2: usize = 3;
 const S_REP: [usize; 2] = [4, 5];
 const S_NTFN: usize = 6;
+const S_EP2: usize = 7;
 const S_SC: [usize; 3] = [8, 9, 10];
 const S_TCB: [usize; 4] = [16, 17, 18, 19];
 
@@ -90,8 +92,11 @@ struct Rig {
     m: Machine,
     ctl: SlotRef,
     ep: SlotRef,
+    ep2: SlotRef,
     rep: [SlotRef; 2],
     rep_obj: [ObjId; 2],
+    rep2: SlotRef,
+    rep2_obj: ObjId,
     ntfn: SlotRef,
     sc: [SlotRef; 3],
     sc_obj: [ObjId; 3],
@@ -108,6 +113,8 @@ fn rig() -> Rig {
     let rep0 = m.add_kernel_object(ObjType::Reply);
     let rep1 = m.add_kernel_object(ObjType::Reply);
     let ntfn = m.add_kernel_object(ObjType::Notification);
+    let ep2 = m.add_kernel_object(ObjType::Endpoint);
+    let rep2 = m.add_kernel_object(ObjType::Reply);
     for (s, obj) in [
         (S_CTL, ctl),
         (S_UNTYPED, u0),
@@ -115,6 +122,8 @@ fn rig() -> Rig {
         (S_REP[0], rep0),
         (S_REP[1], rep1),
         (S_NTFN, ntfn),
+        (S_EP2, ep2),
+        (S_REP2, rep2),
     ] {
         let cap = m.root_cap(obj);
         m.put_cap(c0, s, cap).expect("cap object vào CNode");
@@ -141,8 +150,11 @@ fn rig() -> Rig {
         m,
         ctl: slot(c0, S_CTL),
         ep: slot(c0, S_EP),
+        ep2: slot(c0, S_EP2),
         rep: [slot(c0, S_REP[0]), slot(c0, S_REP[1])],
         rep_obj: [rep0, rep1],
+        rep2: slot(c0, S_REP2),
+        rep2_obj: rep2,
         ntfn: slot(c0, S_NTFN),
         sc,
         sc_obj,
@@ -709,7 +721,169 @@ fn donation_can_sc_configure_va_khong_chuoi_hai_tang() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Invariant: 1.000 seed × 64 op (stable; Miri giảm seed/bước bằng `cfg(miri)`):
+// 9. SC **dùng chung** cho >1 TCB (mô hình KT-20 chưa cấm chia SC) ⇒ **không** donate: nếu
+//    donate, TCB kia đang `Running` sẽ mất ngân sách giữa chừng (vỡ "Running ⇒ còn budget").
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sc_dung_chung_nhieu_tcb_khong_donate() {
+    let mut r = rig();
+    r.configure(0, 4, 8);
+    r.attach(0, 0);
+    r.attach(3, 0); // t[3] cùng dùng SC0 ⇒ SC gắn 2 TCB
+    r.prio(0, 100, 255);
+    r.prio(1, 10, 200);
+    r.prio(3, 90, 255);
+    r.ready(3);
+    r.m.recv(r.t[1], r.ep, Some(r.rep[0])).expect("Recv");
+    r.m.call(r.t[0], r.ep, 1).expect("Call");
+    kiem(&r.m, "Call khi SC dùng chung");
+    assert_eq!(
+        r.m.sched_donated_to(r.sc[0]),
+        Ok(None),
+        "SC gắn >1 TCB KHÔNG được donate"
+    );
+    assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    assert_eq!(r.m.sc_of(r.t[1]), Ok(None));
+    assert!(!r.m.tcb_has_budget(r.t[1]));
+    assert_eq!(
+        r.m.sc_of(r.t[0]),
+        Ok(Some(r.sc_obj[0])),
+        "client giữ SC riêng"
+    );
+    // Chỉ t[3] (cùng SC, đang `Ready`) còn ngân sách ⇒ được pick; server passive vẫn không chạy.
+    assert!(r.m.tcb_has_budget(r.t[3]));
+    assert_eq!(r.m.sched_pick(), Some(r.t[3]));
+    assert_eq!(r.dispatch(), Some(r.t[3]));
+    r.tick(1);
+    assert_eq!(r.info(0).consumed, 1);
+}
+
+// ---------------------------------------------------------------------------
+// 10. Không chuỗi donation >1 tầng: donee đang giữ SC của client mà `Call` tiếp vào endpoint có
+//     server đang `Recv` ⇒ đi qua **guard** `dinfo.donated_sc.is_some()` của `donate_sc`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn khong_donate_chuoi_hai_tang_qua_donee() {
+    let mut r = rig();
+    r.configure(0, 4, 8);
+    r.attach(0, 0);
+    r.prio(0, 100, 255);
+    r.prio(1, 10, 200);
+    r.prio(2, 30, 200);
+    r.m.recv(r.t[1], r.ep, Some(r.rep[0])).expect("Recv");
+    r.m.call(r.t[0], r.ep, 1).expect("Call");
+    assert_eq!(r.m.donated_sc(r.t[1]), Ok(Some(r.sc_obj[0])));
+
+    // Tầng 2: t[1] (donee) `Call` vào endpoint có t[2] đang `Recv` — không được donate tiếp vì
+    // donor đang là donee (chuỗi >1 thuộc K1c, K1B-PLAN §5 KT-21 rủi ro (a)).
+    r.m.recv(r.t[2], r.ep2, Some(r.rep2)).expect("Recv tầng 2");
+    kiem(&r.m, "Recv tầng 2");
+    r.m.call(r.t[1], r.ep2, 2).expect("Call lồng");
+    kiem(&r.m, "Call lồng tầng 2");
+    assert_eq!(
+        r.m.sched_donated_to(r.sc[0]),
+        Ok(Some(r.t[1])),
+        "SC vẫn chỉ donate cho tầng 1"
+    );
+    assert_eq!(r.m.donated_sc(r.t[2]), Ok(None), "không donate chuỗi >1");
+    assert_eq!(r.m.sc_of(r.t[2]), Ok(None));
+    assert!(!r.m.tcb_has_budget(r.t[2]));
+    assert!(matches!(r.state(1), TcbState::BlockedOnReply { .. }));
+    assert_eq!(r.state(2), TcbState::Ready);
+    assert_eq!(r.m.reply_caller(r.rep2_obj), Ok(Some(r.t[1])));
+    assert_eq!(
+        r.m.sched_pick(),
+        None,
+        "không TCB nào có ngân sách để chạy lúc này"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 11. `Tcb.SetPriority` từ chối **donor** đang donate (sẽ đổi priority hiệu lực của donee giữa
+//     chừng) nhưng chấp nhận **donee** đổi MCP — priority hiệu lực/bucket đổi theo.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tcb_set_priority_tu_choi_donor_chap_nhan_donee() {
+    let mut r = rig();
+    r.configure(0, 4, 8);
+    r.attach(0, 0);
+    r.prio(0, 100, 255);
+    r.prio(1, 10, 200);
+    r.m.recv(r.t[1], r.ep, Some(r.rep[0])).expect("Recv");
+    r.m.call(r.t[0], r.ep, 1).expect("Call");
+    kiem(&r.m, "Call");
+    assert_eq!(r.eff(1), 100);
+    assert_eq!(
+        r.m.tcb_set_priority(r.ts[0], 50, 255),
+        Err(KError::IllegalOperation),
+        "donor đang donate không đổi được priority"
+    );
+    kiem(&r.m, "SetPriority donor bị từ chối");
+    assert_eq!(r.eff(1), 100, "bị từ chối ⇒ không đổi gì");
+    assert_eq!(r.m.ready_len_at(0, 100), 1);
+
+    // Donee đổi MCP 200 → 40: priority hiệu lực kẹp xuống 40, bucket phải đổi theo.
+    r.m.tcb_set_priority(r.ts[1], 10, 40)
+        .expect("donee đổi MCP");
+    kiem(&r.m, "donee đổi MCP");
+    assert_eq!(r.eff(1), 40);
+    assert_eq!(r.m.ready_len_at(0, 40), 1);
+    assert_eq!(r.m.ready_len_at(0, 100), 0);
+    assert_eq!(r.dispatch(), Some(r.t[1]));
+    assert_eq!(r.m.sched_cur_prio(0), 40);
+}
+
+// ---------------------------------------------------------------------------
+// 12. Reply **nhầm** Reply object (caller = None): **không** trả donation, không đánh thức nhầm
+//     — donor chỉ được trả SC khi server Reply đúng Reply của mình (xem
+//     `JOURNAL/kt21-reply-owner.md`; kiểm chủ sở hữu cap đầy đủ thuộc K1c).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn reply_nham_reply_object_khong_tra_donation() {
+    let mut r = rig();
+    r.configure(0, 4, 8);
+    r.attach(0, 0);
+    r.prio(0, 100, 255);
+    r.prio(1, 10, 200);
+    r.m.recv(r.t[1], r.ep, Some(r.rep[0])).expect("Recv");
+    r.m.call(r.t[0], r.ep, 1).expect("Call");
+    assert_eq!(r.dispatch(), Some(r.t[1]));
+
+    r.m.reply(r.t[1], r.rep[1]).expect("Reply nhầm");
+    kiem(&r.m, "Reply nhầm");
+    assert_eq!(
+        r.m.sched_donated_to(r.sc[0]),
+        Ok(Some(r.t[1])),
+        "Reply nhầm ⇒ giữ donation"
+    );
+    assert_eq!(r.m.donated_sc(r.t[1]), Ok(Some(r.sc_obj[0])));
+    assert!(r.m.tcb_has_budget(r.t[1]), "server vẫn được cấp ngân sách");
+    assert_eq!(
+        r.state(0),
+        TcbState::BlockedOnReply {
+            reply: r.rep_obj[0]
+        },
+        "donor vẫn chờ đúng Reply của mình"
+    );
+    assert_eq!(r.m.reply_caller(r.rep_obj[1]), Ok(None));
+    assert_eq!(r.m.reply_caller(r.rep_obj[0]), Ok(Some(r.t[0])));
+
+    // Reply đúng ⇒ trả SC + đánh thức donor.
+    r.m.reply(r.t[1], r.rep[0]).expect("Reply đúng");
+    kiem(&r.m, "Reply đúng");
+    assert_eq!(r.m.sched_donated_to(r.sc[0]), Ok(None));
+    assert_eq!(r.m.donated_sc(r.t[1]), Ok(None));
+    assert_eq!(r.state(0), TcbState::Ready);
+    assert_eq!(r.m.reply_caller(r.rep_obj[0]), Ok(None));
+    assert_eq!(r.m.sc_of(r.t[0]), Ok(Some(r.sc_obj[0])));
+}
+
+// ---------------------------------------------------------------------------
+// 13. Invariant: 1.000 seed × 64 op (stable; Miri giảm seed/bước bằng `cfg(miri)`):
 //    không TCB nào chạy mà không có SC cấp (own/donation); budget không âm/không vượt;
 //    donation hai chiều khớp; SC trả đúng; cùng seed cùng trace (DoD 7).
 // ---------------------------------------------------------------------------
@@ -964,6 +1138,20 @@ fn invariant_1000_seed_64_op_donation() {
         let (_, d) = run_seed(seed);
         tong_buoc_donate += d;
     }
+    // Số bước **có donation** là tất định (đo trên stable: **12.551** / 64.000 bước). In ra để
+    // tái lập (`cargo test … -- --nocapture > JOURNAL/kt21-invariant-donation.log`) và chặn hồi
+    // quy làm mất đường donation; đây là **số đo của test**, không phải số viết tay trong tài
+    // liệu (QD §9 Q12).
+    eprintln!(
+        "KT-21 invariant: {tong_buoc_donate} bước có donation / {} bước ({N_SEED} seed × {N_STEP} op)",
+        N_SEED * N_STEP
+    );
+    #[cfg(not(miri))]
+    assert!(
+        tong_buoc_donate >= 12_000,
+        "kịch bản invariant phải đi qua donation ≥ 12.000 bước, thực tế {tong_buoc_donate}"
+    );
+    #[cfg(miri)]
     assert!(
         tong_buoc_donate > 0,
         "kịch bản invariant phải đi qua đường donation ít nhất một lần"

@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running tests/kt21_donation.rs (target/debug/deps/kt21_donation-6f7cab718b6bbd99)
+
+running 1 test
+KT-21 invariant: 14609 bước có donation / 64000 bước (1000 seed × 64 op)
+test invariant_1000_seed_64_op_donation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 4.10s
+
