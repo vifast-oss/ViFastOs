@@ -757,3 +757,24 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   timeout ≤ 400 ms; coi `WouldBlock` **và** `TimedOut` là hết giờ. (5) **Không mã lỗi mới**: lỗi mạng = `Err(str)`,
   không host = `VS0604`, sai kiểu/arity = `VS04xx`/`VS0501`. (6) R1: `interp.rs` sát 1.500 dòng ⇒ **tách `impl Host`**
   hoặc phần net ra tệp riêng **trước** khi thêm. (7) Ca: ≥13 ca e2e (≥2 lỗi) + `--vm` **có cache và `--no-cache`**.
+
+- **VD-101** **Gói + registry local (VS2 #6, ST-6x)**: (1) **Không mạng**: registry là **thư mục local** (mặc định `./registry`,
+  `--registry`/`VIS_REGISTRY`); **không** crate mới, **không** semver range — phụ thuộc ghi **phiên bản chính xác**. (2) Giữ
+  tiền tố **`pkg.`**: `use pkg.<tên>[.<mod>]`; tên gói `[a-z][a-z0-9_-]{0,31}` (không chứa `.`); cài vào
+  `.vis/pkg/<tên>/<phiên bản>/`. (3) Manifest + lockfile = **JSON** (dùng `vis_interp::json`, không thêm dep); `files[]`
+  **tường minh** (không glob), mỗi tệp có `sha256`; `tree_sha` = SHA-256 trên danh sách `(path, file_sha)` **sắp theo byte**,
+  chuẩn hoá BOM/CRLF/đúng một LF cuối; **không** timestamp, **không** đường dẫn tuyệt đối trong lock. (4) Cài **tất định**:
+  kiểm hết rồi mới ghi; thư mục đích tạo lại từ đầu; ghi tmp + rename. `install` chỉ đọc lock (không cần registry).
+  (5) `vis run` kiểm `file_sha` của tệp gói khi nạp ⇒ lệch = **`VS0701`** "gói bị sửa". (6) **Không mã lỗi mới**; lỗi CLI
+  `vis pkg` = exit 2 + `vis pkg: …`. (7) Mọi `manifest.json` commit kèm `.license` (R3); `.gitignore` thêm `.vis/`.
+
+- **VD-102** **LSP `vis lsp` (VS2 #5, ST-6x)**: (1) **Tự viết framing** `Content-Length` trên `stdin/stdout` nhị phân; **không**
+  `println!`, **không** dùng `xuat_stdout`; thoát khi `exit` **hoặc EOF**. (2) JSON dùng lại `vis_interp::json` (decode) +
+  `vis_interp::stdlib::json` (encode) — **không** thêm crate. (3) Nguồn chẩn đoán = `parse`+`lex`+`lower_into`+`check`
+  (đúng đường `vis check`), gộp 3 danh sách, sắp `(span.start, code)`; severity Error=1/Warning=2; `source:"vis"`.
+  (4) **Vị trí LSP = 0-based, UTF-16, tab=1** — tự viết `vi_tri_utf16`/`byte_tu_vi_tri`, **không** dùng `modules::vi_tri`
+  (1-based, scalar, tab=4); tính trên văn bản đã chuẩn hoá NFC/CRLF→LF của `LexOutput::text`, ghi rõ giả định.
+  (5) v1 **một tệp**: completion = từ khoá + item + symbol + builtin (khử trùng, sắp byte, cap 200); hover = chữ ký khai
+  báo/từ khoá/symbol; **không** module-aware, **không** suy kiểu biểu thức (nợ). (6) Method lạ ⇒ `-32601`; JSON hỏng ⇒
+  `-32700` (id `null`); trước `initialize` ⇒ `-32002`; `shutdown` ⇒ `null`; `exit` sau shutdown ⇒ 0, trước ⇒ 1.
+  (7) ≥13 frame snapshot tất định (`file:///t.vis`, không timestamp/path tuyệt đối).
