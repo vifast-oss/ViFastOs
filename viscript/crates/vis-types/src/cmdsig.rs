@@ -107,6 +107,41 @@ impl BuiltinSigs {
         let ds = |t: &Type| Type::List(Box::new(t.clone()));
         let fn_bool = Type::Fn(vec![t.clone()].into(), Box::new(Type::Bool));
         let fn_unit = Type::Fn(vec![t.clone()].into(), Box::new(Type::Unit));
+        // ST-40b: `get`/`select` — chiếu trường; sugar tên trường ⇒ lambda (VD-71/73).
+        let k_ty2 = Type::TypeRef {
+            name: "K".into(),
+            args: Vec::new(),
+        };
+        let m_ty = Type::TypeRef {
+            name: "M".into(),
+            args: Vec::new(),
+        };
+        let get = CmdSig {
+            name: "get".into(),
+            sym: None,
+            generics: vec!["T".into(), "K".into()],
+            params: vec![
+                tham("xs", ds(&t), None),
+                tham("f", Type::Fn(vec![t.clone()].into(), Box::new(k_ty2)), None),
+            ],
+            ret: Type::List(Box::new(Type::TypeRef {
+                name: "K".into(),
+                args: Vec::new(),
+            })),
+        };
+        let select = CmdSig {
+            name: "select".into(),
+            sym: None,
+            generics: vec!["T".into(), "M".into()],
+            params: vec![
+                tham("xs", ds(&t), None),
+                tham("f", Type::Fn(vec![t.clone()].into(), Box::new(m_ty)), None),
+            ],
+            ret: Type::List(Box::new(Type::TypeRef {
+                name: "M".into(),
+                args: Vec::new(),
+            })),
+        };
         // ST-39: `sort_by(xs, f, --desc)` — lệnh **shell** (khác `std.list.sort_by` khoá `fn(int)->int`).
         let k_ty = Type::TypeRef {
             name: "K".into(),
@@ -172,6 +207,8 @@ impl BuiltinSigs {
                 ),
                 take,
                 sort_by,
+                get,
+                select,
                 where_,
                 each,
                 first,

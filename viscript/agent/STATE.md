@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-40a** (prelude `FileEntry`/`ProcEntry`, `it` kiểu thật, `VS0605`) — xong, **chưa commit**.
-Bước          : 5/5 (prelude → `kieu_text` kiểu bản ghi/đơn vị → kiểm `it` tĩnh → `VS0605` → 13 ca + 4 sem → gate PASS)
+Task          : **ST-40b** (`get`/`select`) — xong, **chưa commit**.
+Bước          : 5/5 (sig+runtime → sugar chiếu + bản ghi ẩn danh → tyck tính kiểu thân → 13 ca + 4 sem → tách `lower/chieu.rs` cho R1 → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:50:38Z**; **563** test / sem **363** / parity **337/337** / diff 100k **0 lệch** (204,2 s); khởi động +0,08 ms
-Việc dở       : commit `[ST-40a]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:07:12Z**; **576** test / sem **367** / parity **341/341** / diff 100k **0 lệch** (225,9 s)
+Việc dở       : commit `[ST-40b]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,19 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-40a — prelude bản ghi + `it` kiểu thật + `VS0605` (2026-11-13)
+## ST-40b — `get`/`select` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`get[T, K]`** | `get name` ⇒ `it => it.name`; `get it.name` tương đương; `get size` ⇒ `list[size]`; nối tiếp `get name | count` |
+| 2 | **`select[T, M]`** | `select pid, name` ⇒ lambda trả **bản ghi ẩn danh**, kiểu `list[record#N]`; **giữ đúng thứ tự đối số** (`select name, pid` đảo) |
+| 3 | **Một hiện thực** | `builtin::call` (`"get" | "select"` = map qua closure, `Host::call`) ⇒ interp **và** VM cùng mã; tyck tính `list[<kiểu thân>]` để không lộ `TypeRef K/M` |
+| 4 | **Lỗi** | trường lạ (bản ghi thật) ⇒ **`VS0605`**; `get` không đối số ⇒ **`VS0602`**; `it` không phải bản ghi ⇒ **kiểm động** (không đỏ oan); list rỗng ⇒ `[]` |
+| 5 | **Đo** | **576** test (563 + **13**); sem **363 → 367** (+4 `vish/gs-*.vish`); parity **337 → 341**; `fuzz_mutate` 311 → **315**; `diag_cmp` 311/363 → **315/367**; tách `lower/chieu.rs` (cmd.rs 1.390 dòng) |
+
+**Nợ VS2**: `select` trả bản ghi ẩn danh ⇒ chưa in/ghi như `map` khi `to json`; muốn `map[str, Any]` cần `Type::Any`.
+
+ bản ghi + `it` kiểu thật + `VS0605` (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

@@ -996,6 +996,32 @@ impl<'a> Checker<'a> {
 
     /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.
     fn kiem_builtin(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
+        // ST-40b: `get`/`select` — kiểu ra = `list[<kiểu thân lambda>]` (một lần kiểm thân).
+        if name == "get" || name == "select" {
+            let xs_ty = args
+                .first()
+                .map(|a| self.kiem_expr(a))
+                .unwrap_or(Type::Error);
+            let mut body_ty = Type::Error;
+            if let Some(f) = args.get(1) {
+                body_ty = match f {
+                    HExpr::Lambda { body, .. } => match body {
+                        crate::hir::HBody::Expr(e) => self.kiem_expr(e),
+                        crate::hir::HBody::Stmts(_) => Type::Unit,
+                    },
+                    other => self.kiem_expr(other),
+                };
+            }
+            if args.len() != 2 {
+                self.diag(
+                    ARG_COUNT,
+                    format!("`{name}` cần 2 đối số, được {}", args.len()),
+                    span,
+                );
+            }
+            let _ = xs_ty;
+            return Some(Type::List(Box::new(body_ty)));
+        }
         // ST-39: `sort_by` (chế độ shell) — kiểm **khoá** **một lần** trên thân lambda (không kiểm lại
         // qua `tys`), từ chối khoá không so được (`bool`, `map`, `record`, `list`) ⇒ `VS0412`.
         // Runtime có chốt thứ hai (`VS0501`). **Chỉ** khi có ≥ 2 đối số: pipeline `.vis` cũ dùng
@@ -1380,6 +1406,16 @@ fn is_percent_float(a: &Type, b: &Type) -> bool {
 fn builtin_is_value(name: &str) -> bool {
     matches!(
         name,
-        "print" | "len" | "str" | "Ok" | "Err" | "Some" | "None" | "ref" | "sort_by"
+        "print"
+            | "len"
+            | "str"
+            | "Ok"
+            | "Err"
+            | "Some"
+            | "None"
+            | "ref"
+            | "sort_by"
+            | "get"
+            | "select"
     )
 }

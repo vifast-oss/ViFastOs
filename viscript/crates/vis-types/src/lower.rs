@@ -34,6 +34,7 @@ mod trait_impl;
 use crate::ty::{EnumDef, EnumId, FieldDef, RecDef, RecId, Type, TypeTable, VariantDef};
 pub(crate) use trait_impl::ChuKyTrait;
 
+mod chieu;
 mod cmd;
 mod expr;
 mod pat;

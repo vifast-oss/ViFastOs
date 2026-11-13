@@ -117,7 +117,7 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 16] = [
+pub const SIGS: [BuiltinSig; 18] = [
     BuiltinSig {
         name: "print",
         min: 1,
@@ -145,6 +145,16 @@ pub const SIGS: [BuiltinSig; 16] = [
     },
     BuiltinSig {
         name: "take",
+        min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "get",
+        min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "select",
         min: 2,
         max: 2,
     },
@@ -635,6 +645,18 @@ pub fn call(
             };
             let n = (*n).max(0) as usize;
             Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        // ST-40b: `get`/`select` — chiếu từng phần tử qua closure (cùng một hiện thực cho hai đường).
+        "get" | "select" => {
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, format!("`{name}` cần `list`"), span));
+            };
+            let f = args[1].clone();
+            let mut out: Vec<Value> = Vec::with_capacity(xs.len());
+            for x in xs.clone() {
+                out.push(host.call(&f, vec![x], span)?);
+            }
+            Ok(Value::List(out))
         }
         // ST-39: `sort_by` — khoá `int/size/duration/percent/str`; **ổn định** cả hai chiều (đảo
         // comparator, `sort_by` của Rust ổn định), `--desc` mặc định `false`.

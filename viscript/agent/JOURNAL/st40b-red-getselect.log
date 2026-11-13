@@ -1,0 +1,50 @@
+=== ST-40b D2-05: `get`/`select` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T10:02:44Z
+
+## 1. Đỏ **thật** ở HEAD `d4c273f` (worktree `/tmp/vis-red40b`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test get_select
+test result: FAILED. **1 passed; 12 failed**
+```
+
+Lý do: `get`/`select` **chưa** có ⇒ bị coi là chương trình ngoài (`VS0501`), sugar tên trường chưa có,
+`VS0605` cho trường lạ chưa có. Ca xanh duy nhất là `get` trên list rỗng (`[]`) vì lệnh lạ trả rỗng ở một số
+đường — 12 ca còn lại đỏ.
+
+## 2. Hiện trạng trước khi sửa (đo tay trên `d4c273f`)
+
+```
+$ vis run a.vish          # ( [FileEntry…] ) | get name
+a.vish:2:…: error VS0501: không chạy được chương trình ngoài `get`
+
+
+$ vis run b.vish          # ( [ProcEntry…] ) | select pid, name
+b.vish:2:…: error VS0501: không chạy được chương trình ngoài `select`
+```
+
+## 3. Sau khi sửa — đo được
+
+- `( [FileEntry…] ) | get name` ⇒ **`[a, b]`**; `get it.name` **tương đương**; `get size` ⇒ `[6mb, 1mb]`;
+  `get name | count` ⇒ `2` (nối tiếp được);
+- `( [ProcEntry…] ) | select pid, name` ⇒ **`[{pid: 1, name: a}, {pid: 2, name: b}]`**, `select name, pid` ⇒
+  **đảo đúng thứ tự đối số**; `select pid, cpu, mem` ⇒ 3 trường;
+- `get khong_co` / `select size, khong_co` ⇒ **`VS0605`**; `get` (không đối số) ⇒ **`VS0602`**;
+- `( [1,2] ) | select a` (`it` **không** phải bản ghi) ⇒ **kiểm động**, **không** `VS0605` oan;
+- `( [] ) | get name` ⇒ **`[]`** (không lỗi);
+- **cả hai đường** interp + `--vm` **cùng stdout** (get + select trong cùng tệp);
+- khối **672**/**1451** §9.7 vẫn `ok`; **allowlist vẫn 6**.
+
+## 4. Số ca
+
+- test workspace **576** (563 + **13** `get_select.rs`); sem **363 → 367** (+4 `test/sem/vish/gs-*.vish`);
+- parity **337 → 341**; `fuzz_mutate` 311 → **315**; `diag_cmp` 311/363 → **315/367**; `vis test` **367 ok**.
+
+## 5. sha256 bản commit (sau khi tách `lower/chieu.rs` giữ R1 ≤ 1.500 dòng)
+  sha256 crates/vis-types/src/cmdsig.rs=8a27799776682b9812a2096312e442dc0c9ad7be3147ef27a6c8e40aab359f3e
+  sha256 crates/vis-types/src/lower/cmd.rs=d460e159cec67de44ff6cbbebfbc49bf93389f9cc17bee1799a52ca87c248d9a
+  sha256 crates/vis-types/src/lower/chieu.rs=9aa26fefb137520bc069e336379105bbd9262e3f04177499ac7ec6cc038a3f4a
+  sha256 crates/vis-types/src/tyck/expr.rs=a57711172c0696eb6c52571c6b12d14e219c153e926ce64c7ae1578ecf657df7
+  sha256 crates/vis-interp/src/builtin.rs=800f77d02a8c026f9ef8480d72df4def20f5944d1190077e00e5e324fe1c170c
+  sha256 crates/vis-interp/src/interp.rs=caca5c84a0efa9752f1b5d829a7af4f37c39f825510788c174209142ec289f7f
+  sha256 crates/vis-cli/tests/get_select.rs=734096eb8a41fbbeff83243490451d7d84d3b11a18163023509526648b54784e

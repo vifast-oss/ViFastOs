@@ -434,7 +434,11 @@ impl<'a> Lowerer<'a> {
     fn kieu_text(&self, raw: &str) -> Type {
         let t = raw.trim();
         if let Some(tron) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
-            let dau = tach_phay(tron).first().copied().unwrap_or("").trim();
+            let dau = super::chieu::tach_phay(tron)
+                .first()
+                .copied()
+                .unwrap_or("")
+                .trim();
             return Type::List(Box::new(if dau.is_empty() {
                 Type::Error
             } else {
@@ -472,7 +476,7 @@ impl<'a> Lowerer<'a> {
             let trong = &t[1..t.len() - 1];
             let mut ten_truong: Vec<String> = Vec::new();
             let mut duoc = true;
-            for f in tach_phay(trong) {
+            for f in super::chieu::tach_phay(trong) {
                 match f.split_once(':') {
                     Some((k, _)) if !k.trim().is_empty() => {
                         ten_truong.push(k.trim().trim_matches('"').to_string())
@@ -521,34 +525,6 @@ impl<'a> Lowerer<'a> {
         }
         Type::Error
     }
-}
-
-/// Tách theo dấu `,` ở **độ sâu 0** (bỏ qua `,` trong `{}`/`[]`/`()` và chuỗi) — ST-40a.
-fn tach_phay(s: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut sau = 0usize;
-    let mut depth = 0i32;
-    let mut trong_chuoi = false;
-    let mut thoat = false;
-    for (i, c) in s.char_indices() {
-        if thoat {
-            thoat = false;
-            continue;
-        }
-        match c {
-            '"' if !trong_chuoi || depth >= 0 => trong_chuoi = !trong_chuoi,
-            '\\' if trong_chuoi => thoat = true,
-            '{' | '[' | '(' if !trong_chuoi => depth += 1,
-            '}' | ']' | ')' if !trong_chuoi => depth -= 1,
-            ',' if !trong_chuoi && depth == 0 => {
-                out.push(s[sau..i].trim());
-                sau = i + 1;
-            }
-            _ => {}
-        }
-    }
-    out.push(s[sau..].trim());
-    out
 }
 
 fn ten_kieu(t: &Type) -> String {
@@ -863,6 +839,38 @@ impl<'a> Lowerer<'a> {
             }
             return Some(self.ngoai_call(&ten, node, truoc.map(|(e, _)| e)));
         };
+        // ST-40b: `get name` / `select pid, name` — chiếu trường của `it` (VD-71/73).
+        if sig.name == "get" || sig.name == "select" {
+            if let Some((up, up_ty)) = &truoc {
+                let la_closure = node.children().any(|c| c.kind == NodeKind::CmdClosure);
+                if !la_closure {
+                    let mut bang = Vec::new();
+                    let _ = hop_nhat_cmd(&sig.params[0].ty, up_ty, &sig.generics, &mut bang);
+                    let elem = super::generic::thay(
+                        &Type::TypeRef {
+                            name: "T".into(),
+                            args: Vec::new(),
+                        },
+                        &bang,
+                    );
+                    if let Some(dau) = self.arg_start(node) {
+                        let het = self.stage_end(dau);
+                        if let Some(lam) = self.ha_chieu(&sig.name, dau, het, &elem, node.span) {
+                            return Some(HExpr::Call {
+                                callee: Box::new(HExpr::Var {
+                                    name: sig.name.clone(),
+                                    sym: sig.sym,
+                                    span: node.span,
+                                }),
+                                args: vec![up.clone(), lam],
+                                named: Vec::new(),
+                                span: node.span,
+                            });
+                        }
+                    }
+                }
+            }
+        }
         // ST-39: khoá ngầm cho `sort_by` (§9.7): `sort_by modified --desc` ⇒ `it => it.modified`, `desc=true`.
         if sig.name == "sort_by" {
             if let Some((up, up_ty)) = &truoc {
