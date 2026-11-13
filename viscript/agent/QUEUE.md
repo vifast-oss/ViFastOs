@@ -137,6 +137,11 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **DONE** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
 | ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | **DONE** | 3 nợ VSH1b hết; allowlist không tăng |
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
+| ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **READY** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
+| ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | BLOCKED | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
+| ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | BLOCKED | một mã duy nhất; snapshot vi/en/ja kèm lý do |
+| ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
+| ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |

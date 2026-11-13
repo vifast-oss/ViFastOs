@@ -605,3 +605,12 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   0 đối số**; shell-let (VD-78(5)) **không** đổi. (3) **Chẩn đoán tuyệt đối** trong `( … )` bằng **đệm dấu cách**
   (không `\n` ⇒ không sinh `Indent`/`Dedent` giả). (4) Nợ: **nhóm-lệnh có cờ** (`( ls … --long )`), nhóm **nhiều dòng**,
   `where ( x => x )` kiểm **động** (tyck chưa kiểm call `where`).
+
+- **VD-81** **Phạm vi vòng 8 (VSH1c)**: (1) **thân `cmd` bằng pipeline lệnh**: khối thụt sau `cmd f(...) -> T:` parse ở
+  **chế độ lệnh** (Indent/Dedent + stage), hạ thành thân hàm trả giá trị cuối pipeline; chạy **cả hai đường**.
+  (2) **Nhóm-lệnh có cờ** (`( ls … --long )`) được hạ như stage (không rơi về lệnh ngoài `(`); **nhóm nhiều dòng**
+  hợp lệ trong ngoặc. (3) **Thống nhất mã field-access**: một mã duy nhất cho "không có trường" giữa **tyck** và **hạ**
+  (hiện `VS0403` vs `VS0605`) — chọn **`VS0605`** (chuyên biệt, đã có vi/en/ja từ ST-40a), đổi phía tyck; snapshot +
+  test cũ sửa **kèm lý do**. (4) **`where ( x => x )`** kiểm **tĩnh** (mở rộng `kiem_builtin` cho `where`).
+  (5) **Stage đầu là biểu thức** (`[1,2] | take 1`) nếu **không** phá văn phạm §9.5; nếu phá ⇒ **giữ `VS0201`** + ghi nợ.
+  (6) Mỗi task ≤ 3 h; VS2 vẫn ngoài phạm vi và **phải** được nêu trong R8.
