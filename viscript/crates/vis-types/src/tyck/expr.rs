@@ -542,7 +542,13 @@ impl<'a> Checker<'a> {
                 None => builtin_is_value(name),
                 Some(id) => self.symbols.kind_of(*id) == Some(crate::lower::SymKind::Builtin),
             };
-            if la_builtin {
+            // ST-50: **lệnh shell** dựng bởi bộ hạ cũng kiểm chữ ký (`where`/`each`/`select`/
+            // `get`/`sort_by` không nằm trong 8 tên giá trị dựng sẵn nhưng là Call có tên).
+            let la_lenh = matches!(
+                name.as_str(),
+                "where" | "each" | "select" | "get" | "sort_by"
+            );
+            if la_builtin || la_lenh {
                 if let Some(t) = self.kiem_builtin(name, args, span) {
                     return t;
                 }
@@ -1100,6 +1106,47 @@ impl<'a> Checker<'a> {
                 other => Type::List(Box::new(other)),
             });
         }
+        // ST-50: `where` — kiểm **thân vị từ** ra `bool` **kể cả** lambda trong ngoặc
+        // (`where ( x => 1 )` ⇒ `VS0412`); `{error}` ⇒ kiểm động (không đỏ oan).
+        if name == "where" && args.len() >= 2 {
+            let xs_ty = args
+                .first()
+                .map(|a| self.kiem_expr(a))
+                .unwrap_or(Type::Error);
+            let el = match xs_ty {
+                Type::List(e) => *e,
+                Type::Error => Type::Error,
+                _ => Type::Error,
+            };
+            let kt = match &args[1] {
+                HExpr::Lambda { body, params, .. } => {
+                    for p in params {
+                        let t = self.resolve_ann(&p.ty, p.span);
+                        self.set_ty(p.sym, t);
+                    }
+                    match body {
+                        crate::hir::HBody::Expr(e) => self.kiem_expr(e),
+                        crate::hir::HBody::Stmts(_) => Type::Unit,
+                    }
+                }
+                f => self.kiem_expr(f),
+            };
+            if !matches!(kt, Type::Bool | Type::Error | Type::Fn(..)) {
+                self.diag(
+                    super::MISMATCH,
+                    format!("`where`: thân vị từ phải `bool`, được `{}`", self.show(&kt)),
+                    args[1].span(),
+                );
+            }
+            if args.len() != 2 {
+                self.diag(
+                    ARG_COUNT,
+                    format!("`where` cần 2 đối số, được {}", args.len()),
+                    span,
+                );
+            }
+            return Some(Type::List(Box::new(el)));
+        }
         let tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
         let arity = |n: usize| args.len() == n;
         let sai_so = format!("`{name}` cần {} đối số, được {}", 0, args.len());
@@ -1272,144 +1319,6 @@ impl<'a> Checker<'a> {
         }
         Type::Enum(id)
     }
-
-    fn kiem_field(
-        &mut self,
-        base: &HExpr,
-        name: &str,
-        optional: bool,
-        span: vis_syntax::Span,
-    ) -> Type {
-        let bt = self.kiem_expr(base);
-        match &bt {
-            Type::Error => Type::Error,
-            Type::Record(id) => match self.types.field(*id, name) {
-                Some(f) => f.ty.clone(),
-                None => {
-                    self.diag(
-                        NO_FIELD,
-                        format!("bản ghi không có trường `{name}` (VD-43 #6)"),
-                        span,
-                    );
-                    Type::Error
-                }
-            },
-            Type::Enum(id) => {
-                if self.types.variant(*id, name).is_some() {
-                    bt.clone()
-                } else {
-                    self.diag(NO_FIELD, format!("enum không có biến thể `{name}`"), span);
-                    Type::Error
-                }
-            }
-            Type::Opt(inner) => {
-                if !optional {
-                    self.diag(
-                        MISMATCH,
-                        format!(
-                            "`{}` là optional — dùng `?.` để truy cập trường (§4.4)",
-                            self.show(&bt)
-                        ),
-                        span,
-                    );
-                    return Type::Error;
-                }
-                match &**inner {
-                    Type::Record(id) => match self.types.field(*id, name) {
-                        Some(f) => {
-                            let t = f.ty.clone();
-                            Type::Opt(Box::new(t))
-                        }
-                        None => {
-                            self.diag(NO_FIELD, format!("bản ghi không có trường `{name}`"), span);
-                            Type::Error
-                        }
-                    },
-                    Type::Error => Type::Error,
-                    other => {
-                        self.diag(
-                            NO_FIELD,
-                            format!("`{}` không có trường `{name}`", self.show(other)),
-                            span,
-                        );
-                        Type::Error
-                    }
-                }
-            }
-            other => {
-                self.diag(
-                    NO_FIELD,
-                    format!("`{}` không có trường `{name}`", self.show(other)),
-                    span,
-                );
-                Type::Error
-            }
-        }
-    }
-
-    pub(crate) fn kiem_index(
-        &mut self,
-        base: &HExpr,
-        index: &HExpr,
-        _span: vis_syntax::Span,
-    ) -> Type {
-        let bt = self.kiem_expr(base);
-        let it = self.kiem_expr(index);
-        match &bt {
-            Type::List(t) => {
-                let want = Type::Int;
-                self.coerce(&it, &want, index.span(), "chỉ số `list`");
-                (**t).clone()
-            }
-            Type::Map(k, v) => {
-                let kk = (**k).clone();
-                self.coerce(&it, &kk, index.span(), "khoá `map`");
-                (**v).clone()
-            }
-            Type::Str => {
-                self.diag(
-                    MISMATCH,
-                    "`str` không có `s[i]` — dùng `.chars()`, `.graphemes()`, `.byte_at(i)?` (VD-18)",
-                    base.span(),
-                );
-                Type::Error
-            }
-            Type::Error => Type::Error,
-            other => {
-                self.diag(
-                    MISMATCH,
-                    format!("không chỉ số được kiểu `{}`", self.show(other)),
-                    base.span(),
-                );
-                Type::Error
-            }
-        }
-    }
-}
-
-/// Kiểu của 8 tên giá trị dựng sẵn (không phải hàm) — `None`/`Some`… không có kiểu riêng ở đây.
-fn builtin_value_ty(name: &str) -> Type {
-    match name {
-        "None" => Type::Opt(Box::new(Type::Error)),
-        _ => Type::Error,
-    }
-}
-
-/// Chữ ký một hàm **khai trong tệp** (giữ tên tham số + có giá trị mặc định hay không).
-#[derive(Debug, Clone)]
-pub(crate) struct FnSig {
-    pub name: String,
-    /// `(tên, kiểu, có_mặc_định, khai `--`)` — kiểu đã **xoá generic** (ST-28), dùng cho thân hàm.
-    pub params: Vec<(String, Type, bool, bool)>,
-    pub ret: Type,
-    /// Tham số cuối là `...rest` ⇒ nhận **thêm** đối số vị trí (ST-27).
-    pub variadic: bool,
-    /// Tham số kiểu của hàm (`fn f[T]`) — ST-28.
-    pub generics: Vec<String>,
-    /// Kiểu tham số **nguyên bản** (còn `TypeRef{"T"}`) để **hợp nhất** ở call-site.
-    pub raw_params: Vec<Type>,
-    /// Kiểu trả **nguyên bản** (còn `T`) — thay bằng kiểu đã suy sau khi hợp nhất.
-    pub raw_ret: Type,
 }
 
 impl FnSig {
@@ -1447,4 +1356,29 @@ fn builtin_is_value(name: &str) -> bool {
             | "get"
             | "select"
     )
+}
+
+/// Kiểu của 8 tên giá trị dựng sẵn (không phải hàm) — `None`/`Some`… không có kiểu riêng ở đây.
+fn builtin_value_ty(name: &str) -> Type {
+    match name {
+        "None" => Type::Opt(Box::new(Type::Error)),
+        _ => Type::Error,
+    }
+}
+
+/// Chữ ký một hàm **khai trong tệp** (giữ tên tham số + có giá trị mặc định hay không).
+#[derive(Debug, Clone)]
+pub(crate) struct FnSig {
+    pub name: String,
+    /// `(tên, kiểu, có_mặc_định, khai `--`)` — kiểu đã **xoá generic** (ST-28), dùng cho thân hàm.
+    pub params: Vec<(String, Type, bool, bool)>,
+    pub ret: Type,
+    /// Tham số cuối là `...rest` ⇒ nhận **thêm** đối số vị trí (ST-27).
+    pub variadic: bool,
+    /// Tham số kiểu của hàm (`fn f[T]`) — ST-28.
+    pub generics: Vec<String>,
+    /// Kiểu tham số **nguyên bản** (còn `TypeRef{"T"}`) để **hợp nhất** ở call-site.
+    pub raw_params: Vec<Type>,
+    /// Kiểu trả **nguyên bản** (còn `T`) — thay bằng kiểu đã suy sau khi hợp nhất.
+    pub raw_ret: Type,
 }

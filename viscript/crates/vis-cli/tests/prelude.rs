@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **ST-40a** — prelude bản ghi `FileEntry`/`ProcEntry` cho `.vish`: `it` có **kiểu thật** nên
-//! `where`/`sort_by` kiểm tĩnh được (`VS0605` trường lạ, `VS0412` sai kiểu), vẫn chạy **thật** trên
+//! `where`/`sort_by` kiểm tĩnh được (`VS0405` trường lạ, `VS0412` sai kiểu), vẫn chạy **thật** trên
 //! cả interp và VM. `.vis` **không** thấy hai tên này.
 
+/// **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: mã trường
+/// không có nay là **VS0405** (sổ `04xx`); hành vi/ngữ nghĩa không đổi.
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -89,7 +91,7 @@ fn it_viet_tuong_minh_tuong_duong() {
 
 #[test]
 fn truong_la_la_vs0605() {
-    loi("khong", &format!("{FE} | where khong_co > 1\n"), "VS0605");
+    loi("khong", &format!("{FE} | where khong_co > 1\n"), "VS0405");
 }
 
 #[test]
@@ -140,7 +142,7 @@ fn sort_by_khoa_co_kieu_that() {
 
 #[test]
 fn sort_by_khoa_la_la_vs0605() {
-    loi("sort2", &format!("{FE} | sort_by khong_co\n"), "VS0605");
+    loi("sort2", &format!("{FE} | sort_by khong_co\n"), "VS0405");
 }
 
 /// Không suy được kiểu (`list[int]`) ⇒ **kiểm động**, không báo oan.

@@ -399,8 +399,15 @@ fn snapshot_9_ca_so_module_07xx() {
     }
     assert_eq!(vis_diag::MODULE_CODES.len(), 3);
     assert_eq!(vis_diag::BOOKS.len(), 7, "ST-25: bảy sổ mã");
-    // **SỬA KÈM LÝ DO (ST-40a)**: thêm **VS0605** (`06xx`, trường không có trên `it`) ⇒ 28 → **29**.
-    // `BOOKS` vẫn 7 (VS0605 thuộc sổ `06xx` đã có); `next_block()` vẫn **801**.
+    // **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: `VS0605` đổi tên
+    // thành **VS0405**, chuyển sang sổ `04xx` ⇒ `06xx` **4**, `04xx` **5**; `all_codes()` **vẫn 29**
+    // (đổi tên, không thêm mã); `BOOKS` vẫn 7; `next_block()` vẫn **801**.
+    assert_eq!(vis_diag::COMMAND_CODES.len(), 4, "ST-50: 06xx còn 4 mã");
+    assert_eq!(
+        vis_diag::TYPE_CODES.len(),
+        5,
+        "ST-50: 04xx có 5 mã (thêm VS0405)"
+    );
     assert_eq!(vis_diag::all_codes().count(), 29);
     assert_eq!(vis_diag::next_block(), 801, "khối kế tiếp là 08xx");
 }

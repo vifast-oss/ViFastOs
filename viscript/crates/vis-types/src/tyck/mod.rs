@@ -19,6 +19,7 @@
 mod expr;
 mod num;
 mod pat;
+mod truong;
 
 use expr::FnSig;
 
@@ -35,8 +36,8 @@ pub(crate) const ARG_COUNT: &vis_diag::Code = &TYPE_CODES[0];
 pub(crate) const NON_EXHAUSTIVE: &vis_diag::Code = &TYPE_CODES[1];
 /// Mã `VS0403` — trường/kiểu không tồn tại.
 pub(crate) const NO_FIELD: &vis_diag::Code = &TYPE_CODES[2];
-/// Mã `VS0412` — kiểu không khớp.
-pub(crate) const MISMATCH: &vis_diag::Code = &TYPE_CODES[3];
+/// Mã `VS0412` — kiểu không khớp (ST-50: `04xx` có **5** mã, 0412 ở **index 4**).
+pub(crate) const MISMATCH: &vis_diag::Code = &TYPE_CODES[4];
 /// Mã `VS0301` — tên **kiểu** không tồn tại (ST-12; ST-11 không báo).
 pub(crate) const NO_TYPE: &vis_diag::Code = &NAME_CODES[0];
 

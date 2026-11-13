@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **ST-40b** — `get`/`select`: chiếu trường bằng **sugar tên** (VD-71/73), `it` kiểu thật từ prelude.
 //! `get` ⇒ `list[K]`; `select` ⇒ `list[bản ghi ẩn danh]` giữ **đúng thứ tự đối số**; trường lạ ⇒
-//! **`VS0605`**; `it` không phải bản ghi ⇒ **kiểm động**; chạy **cả hai đường** interp + `--vm`.
+//! **`VS0405`**; `it` không phải bản ghi ⇒ **kiểm động**; chạy **cả hai đường** interp + `--vm`.
 
+/// **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: mã trường
+/// không có nay là **VS0405** (sổ `04xx`); hành vi/ngữ nghĩa không đổi.
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -96,7 +98,7 @@ fn get_truong_la_la_vs0605() {
     let d = tam("bad");
     let (c, _, e) = chay(&d, "bad", &format!("{FE} | get khong_co\n"), false);
     assert_ne!(c, 0, "phải lỗi");
-    assert!(e.contains("VS0605"), "stderr: {e}");
+    assert!(e.contains("VS0405"), "stderr: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -110,7 +112,7 @@ fn select_truong_la_la_vs0605() {
         false,
     );
     assert_ne!(c, 0, "phải lỗi");
-    assert!(e.contains("VS0605"), "stderr: {e}");
+    assert!(e.contains("VS0405"), "stderr: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -123,13 +125,13 @@ fn get_khong_doi_so_la_vs0602() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// `it` **không** phải bản ghi ⇒ **kiểm động**: không `VS0605` oan (Agent 0 chốt).
+/// `it` **không** phải bản ghi ⇒ **kiểm động**: không `VS0405` oan (Agent 0 chốt).
 #[test]
 fn kieu_khong_phai_ban_ghi_thi_kiem_dong() {
     let d = tam("dyn");
     let (c, _, e) = chay(&d, "dyn", "( [1, 2] ) | select a\n", false);
     assert_ne!(c, 0, "vẫn lỗi (lúc chạy)");
-    assert!(!e.contains("VS0605"), "không được VS0605 oan: {e}");
+    assert!(!e.contains("VS0405"), "không được VS0405 oan: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

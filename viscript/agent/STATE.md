@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-49** (nhóm `( … )`: lệnh có cờ + pipeline + nhiều dòng) — xong, **chưa commit**.
-Bước          : 5/5 (parser nhóm đa dòng + bỏ chặn `|` → một đường hạ `lower_nhom` → kiểu tĩnh nhóm → 14 ca + 3 fixture → gate)
+Task          : **ST-50** (một mã trường `VS0405` + `where` kiểm tĩnh) — xong, **chưa commit**.
+Bước          : 5/5 (đổi tên/đổi sổ → tyck `kiem_field` → nhánh `where` + gán kiểu lambda → 12 ca → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T14:55:01Z**; **680** test / sem **370** / `vis test` **370 ok**, `--vm` **370 ok/6 SKIP** / parity **344/344** / diff 100k **0 lệch** (210,4 s) / allowlist **6**
-Việc dở       : commit `[ST-49]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T15:42:25Z**; **692** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
+Việc dở       : commit `[ST-50]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-49 — nhóm `( … )` lệnh/nhiều dòng (2026-11-13)
+## ST-50 — một mã trường + `where` tĩnh (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Một mã** | `VS0605` **đổi tên** thành **`VS0405`**, chuyển sang **`TYPE_CODES`** (trường là lỗi kiểu): `06xx` 5→**4**, `04xx` 4→**5**, `all_codes()` **vẫn 29**, `BOOKS` 7, `next_block()` 801 |
+| 2 | **Ngữ nghĩa** | `kiem_field` phát **VS0405** cho bản ghi/enum; kiểu không phải bản ghi giữ **`VS0403`** (phương thức/khai báo); câu vi/en/ja trung tính, ngữ cảnh trong câu |
+| 3 | **`where` tĩnh** | nhánh **`kiem_builtin("where")`** kiểm thân lambda (kể cả **trong ngoặc**) ra `bool` ⇒ **VS0412**; lambda trong ngoặc được gán kiểu tham số = pty ⇒ `x.khong_co` ra **VS0405** |
+| 4 | **Dispatch** | tyck gọi `kiem_builtin` cho cả **lệnh shell** (`where`/`each`/`select`/`get`/`sort_by`) |
+| 5 | **Đo** | **680 → 692** test (+12 `ma_truong.rs`); `vis test` **370 ok**; parity 344/344; diff 100k 0 lệch; tách `tyck/truong.rs` (R1); allowlist **6** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

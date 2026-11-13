@@ -5,6 +5,8 @@
 //! không đổi; lẫn script+lệnh / thân rỗng / nhiều pipeline ⇒ **`VS0201`**; `--fs-mock` + interp ↔
 //! `--vm` **cùng byte**; item **sau** thân lệnh vẫn đúng `dòng:cột`.
 
+/// **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: mã trường
+/// không có nay là **VS0405** (sổ `04xx`); hành vi/ngữ nghĩa không đổi.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -136,7 +138,7 @@ fn chou_ky_cmd_kiem_tinh_where() {
         false,
     );
     assert_eq!(c2, 2, "stderr: {e2}");
-    assert!(e2.contains("VS0605"), "stderr: {e2}");
+    assert!(e2.contains("VS0405"), "stderr: {e2}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

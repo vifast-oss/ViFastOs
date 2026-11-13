@@ -3,7 +3,7 @@
 //!
 //! Tách khỏi `cmd.rs` (ST-45) để giữ **R1 ≤ 1.500 dòng/tệp** — cùng khuôn `chieu.rs` (ST-40b).
 
-use vis_diag::{COMMAND_CODES, TYPE_CODES};
+use vis_diag::TYPE_CODES;
 use vis_syntax::{Node, Span};
 
 use super::cmd::ten_kieu;
@@ -77,7 +77,7 @@ impl<'a> super::Lowerer<'a> {
     }
 
     /// ST-40a: kiểm **tĩnh** thân vị từ khi `it` có kiểu bản ghi **thật** (prelude):
-    /// - `it.<trường>` không tồn tại ⇒ **`VS0605`**;
+    /// - `it.<trường>` không tồn tại ⇒ **`VS0405`**;
     /// - `it.<trường> <op> <literal>` mà kiểu trường ≠ kiểu literal ⇒ **`VS0412`**.
     ///
     /// Span **tuyệt đối** (văn bản thân bắt đầu ở `base`). Không kiểu được ⇒ bỏ qua (kiểm động như cũ).
@@ -99,7 +99,7 @@ impl<'a> super::Lowerer<'a> {
                     let span = Span::new(base + f.1, base + f.2);
                     match rec.fields.iter().find(|x| x.name == f.0) {
                         None => self.diag(
-                            &COMMAND_CODES[4],
+                            vis_diag::ma_truong(),
                             format!("`it` không có trường `{}`", f.0),
                             span,
                         ),
@@ -110,7 +110,7 @@ impl<'a> super::Lowerer<'a> {
                                     let lt = self.kieu_text(&lit.0);
                                     if !matches!(lt, Type::Error) && lt != fd.ty {
                                         self.diag(
-                                            &TYPE_CODES[3],
+                                            &TYPE_CODES[4],
                                             format!(
                                                 "so sánh `it.{}` (`{}`) với `{}`",
                                                 f.0,

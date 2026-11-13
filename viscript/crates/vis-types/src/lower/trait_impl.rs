@@ -215,7 +215,7 @@ impl<'a> Lowerer<'a> {
                             && p.ty != *mong
                         {
                             self.diag(
-                                &TYPE_CODES[3],
+                                &TYPE_CODES[4],
                                 format!(
                                     "`{}.{}` đối số {} sai kiểu: trait cần `{:?}`, impl có `{:?}`",
                                     ten_kieu.clone().unwrap_or_default(),
@@ -233,7 +233,7 @@ impl<'a> Lowerer<'a> {
                         && m.ret != ret_mong.clone()
                     {
                         self.diag(
-                            &TYPE_CODES[3],
+                            &TYPE_CODES[4],
                             format!(
                                 "`{}.{}` sai kiểu trả: trait cần `{:?}`, impl có `{:?}`",
                                 ten_kieu.clone().unwrap_or_default(),

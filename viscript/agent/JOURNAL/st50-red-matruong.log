@@ -1,0 +1,33 @@
+=== ST-50 D2-05: mã trường thống nhất (VS0405) + `where` kiểm tĩnh — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T15:43:45Z
+
+## 1. Đỏ **thật** ở HEAD `e7870af` (worktree `/tmp/vis-red50`, chỉ thêm tệp test)
+
+```
+$ cargo test -p vis-cli --test ma_truong
+test result: FAILED. **4 passed; 8 failed**
+```
+
+8 ca đỏ: `u.khong_co` (VS0405), `where khong_co`, `where ( x => x.khong_co )`, `where ( x => 1 )` (VS0412),
+`select khong_co`, `each x => x.khong_co`, `explain VS0405`, `VS0605` không còn. 4 ca xanh **có lý do**:
+trường có chạy, `where` đúng, `where` lambda đúng, `VS0403` cho phương thức `int` (giữ nghĩa cũ).
+
+## 2. Sau khi sửa
+
+- **Một mã**: `VS0605` → **`VS0405`**, chuyển sang **`TYPE_CODES`** (trường là lỗi **kiểu**):
+  `06xx` 5 → **4**, `04xx` 4 → **5**; `all_codes()` **vẫn 29**; `BOOKS` 7; `next_block()` 801.
+- `kiem_field` (tyck) phát **VS0405** cho bản ghi/enum; kiểu **không phải bản ghi** giữ `VS0403`.
+- `where` có nhánh **`kiem_builtin`** riêng: lambda (kể cả trong ngoặc) kiểm ra `bool` ⇒ **VS0412**;
+  ở hạ, lambda trong ngoặc được gán **kiểu tham số = pty** ⇒ `x.khong_co` ra **VS0405** tĩnh.
+- `messages.rs` + test/`.err` cũ đổi **kèm lý do**; tách `tyck/truong.rs` (R1).
+
+- Đo: **680 → 692** test (+**12** `ma_truong.rs`); `vis test` **370 ok**; parity 344/344.
+
+## 3. sha256 bản commit:
+  sha256 crates/vis-diag/src/lib.rs=8ed6d49676881f7967e3e3b6caa9f1c941c8370f5b132518ba29a917c284b61d
+  sha256 crates/vis-diag/tests/messages.rs=2a0b0eec7b8e3d730fb6ae732664002c57d14360379ba2f9c4304bafa3459268
+  sha256 crates/vis-types/src/tyck/expr.rs=fcad4ac3e31b6e8ce3c0dee31e5b0212b3bc546a070b0ba3b1f888151ab3fdff
+  sha256 crates/vis-types/src/tyck/truong.rs=8593fbd850bbd787fd8a729759e70b53f28228410128740854f2af2e5f5a90b1
+  sha256 crates/vis-types/src/tyck/mod.rs=ff45f735e6ed4d0ee86bace8560535ed4352ebf79e4969a4fb5ef516d58cae2c
+  sha256 crates/vis-types/src/lower/cmd.rs=605ff39f97f6b35c620f0917543e7fe7d510eab13601124f97936d40d381adcc
+  sha256 crates/vis-cli/tests/ma_truong.rs=e0a0e50126fb324c780843de7a2737018b9d6cc71eb2e4516fd8b08374f300f8

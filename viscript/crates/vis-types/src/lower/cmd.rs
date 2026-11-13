@@ -895,7 +895,16 @@ impl<'a> Lowerer<'a> {
                     if let Some(g) = node.children().find(|c| c.kind == NodeKind::CmdGroup) {
                         let txt = self.vach_text(g).unwrap_or_default();
                         if txt.contains("=>") {
-                            if let Some(lam) = self.lower_vach(g) {
+                            if let Some(mut lam) = self.lower_vach(g) {
+                                // ST-50: gán **kiểu tham số** lambda = phần tử pty (nếu đang
+                                // `{error}`) ⇒ `where ( x => x.khong_co )` báo **VS0405** tĩnh.
+                                if let HExpr::Lambda { params, .. } = &mut lam {
+                                    if let Some(p) = params.first_mut() {
+                                        if p.ty.is_error() {
+                                            p.ty = pty.clone();
+                                        }
+                                    }
+                                }
                                 self.last_stage_ty = Type::List(Box::new(pty));
                                 return Some(HExpr::Call {
                                     callee: Box::new(HExpr::Var {
@@ -1191,7 +1200,7 @@ impl<'a> Lowerer<'a> {
                                     Type::Bool | Type::Map(..) | Type::Record(..) | Type::List(..)
                                 ) {
                                     self.diag(
-                                        &TYPE_CODES[3],
+                                        &TYPE_CODES[4],
                                         format!("`sort_by`: khoá không so được: `{}`", k.name()),
                                         g.span,
                                     );
@@ -1209,7 +1218,7 @@ impl<'a> Lowerer<'a> {
                     let khop = matches!(suy, Type::Error) || matches!(ty, Type::Error) || suy == ty;
                     if !khop {
                         self.diag(
-                            &TYPE_CODES[3],
+                            &TYPE_CODES[4],
                             format!(
                                 "`( … )` làm đối số: cần `{}`, được `{}`",
                                 ten_kieu(&ty),

@@ -207,7 +207,7 @@ pub const NAME_CODES: [Code; 2] = [
 /// Sổ **mã kiểu** `04xx` (VD-42, ST-12) — sổ thứ tư. `VS0412` giữ đúng nghĩa "kiểu không khớp"
 /// của thiết kế §9; `VS0401` sai số/thứ tự đối số; `VS0402` `match` không xét hết; `VS0403`
 /// trường/kiểu không tồn tại.
-pub const TYPE_CODES: [Code; 4] = [
+pub const TYPE_CODES: [Code; 5] = [
     Code {
         id: 401,
         short: "VS0401",
@@ -235,6 +235,16 @@ pub const TYPE_CODES: [Code; 4] = [
         severity: Severity::Error,
     },
     Code {
+        // **ST-50 (Agent 0)**: trường không có **là lỗi KIỂU** ⇒ về sổ `04xx`, **đổi tên**
+        // `VS0605` → `VS0405` (không thêm mã); câu gốc **trung tính** cho cả tyck + hạ.
+        id: 405,
+        short: "VS0405",
+        message_vi: "không có trường này trên kiểu bản ghi (trường không tồn tại)",
+        message_en: "no such field on this record type (field does not exist)",
+        message_ja: "このレコード型にそのフィールドはありません（フィールドが存在しません）",
+        severity: Severity::Error,
+    },
+    Code {
         id: 412,
         short: "VS0412",
         message_vi: "kiểu không khớp",
@@ -244,11 +254,20 @@ pub const TYPE_CODES: [Code; 4] = [
     },
 ];
 
+/// Mã **`VS0405`** — "không có trường này trên kiểu bản ghi" (ST-50: trường là lỗi **kiểu**).
+/// Dùng hàm thay chỉ số mảng để **đổi thứ tự/khối** không làm lệch mã.
+pub fn ma_truong() -> &'static Code {
+    TYPE_CODES
+        .iter()
+        .find(|c| c.id == 405)
+        .expect("VS0405 phải có trong TYPE_CODES")
+}
+
 /// Sổ **mã runtime** `05xx` (VD-42, ST-13) — sổ thứ năm: `VS0501` lỗi runtime chung (tràn `i64`,
 /// phép chưa hỗ trợ ở VS0), `VS0502` chia/lấy dư cho 0, `VS0503` chỉ số ngoài phạm vi.
 /// Khối `06xx` — **chế độ lệnh** (ST-18, VD-52). Bốn mã, đúng phạm vi VS0:
 /// lệnh không có trong bảng chữ ký, sai đối số, pipeline không nối được, tính năng chưa hỗ trợ.
-pub const COMMAND_CODES: [Code; 5] = [
+pub const COMMAND_CODES: [Code; 4] = [
     Code {
         id: 601,
         short: "VS0601",
@@ -279,15 +298,6 @@ pub const COMMAND_CODES: [Code; 5] = [
         message_vi: "tính năng chưa hỗ trợ ở VS0 (ví dụ chạy nền `&`)",
         message_en: "feature not supported in VS0 (e.g. background `&`)",
         message_ja: "VS0 では未対応の機能です（例: バックグラウンド `&`）",
-        severity: Severity::Error,
-    },
-    // ST-40a: trường không có trên `it` (prelude `.vish` — kiểm tĩnh ở bộ hạ chế độ lệnh).
-    Code {
-        id: 605,
-        short: "VS0605",
-        message_vi: "`it` không có trường này: trường không tồn tại trên kiểu bản ghi của `it`",
-        message_en: "no such field on `it`: the field does not exist on the record type of `it`",
-        message_ja: "`it` にそのフィールドはありません: `it` のレコード型に存在しません",
         severity: Severity::Error,
     },
 ];
@@ -554,12 +564,20 @@ mod tests {
         let ids: Vec<u16> = TYPE_CODES.iter().map(|c| c.id).collect();
         assert_eq!(
             ids,
-            vec![401, 402, 403, 412],
-            "sổ kiểu đúng thứ tự tăng dần"
+            vec![401, 402, 403, 405, 412],
+            "sổ kiểu đúng thứ tự tăng dần (ST-50: thêm VS0405 trước VS0412)"
         );
-        assert_eq!(TYPE_CODES[3].short, "VS0412");
+        // **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: VS0605 đổi tên
+        // thành **VS0405** và chuyển sang sổ này ⇒ 0412 **dời xuống index 4**.
+        assert_eq!(TYPE_CODES[3].short, "VS0405");
         assert_eq!(
-            TYPE_CODES[3].message_vi, "kiểu không khớp",
+            TYPE_CODES[3].message_vi,
+            "không có trường này trên kiểu bản ghi (trường không tồn tại)",
+            "VS0405 nói rõ trường không có"
+        );
+        assert_eq!(TYPE_CODES[4].short, "VS0412");
+        assert_eq!(
+            TYPE_CODES[4].message_vi, "kiểu không khớp",
             "VS0412 giữ đúng nghĩa thiết kế §9"
         );
         for c in TYPE_CODES.iter() {
@@ -585,11 +603,13 @@ mod tests {
         // 10 + 2 + 2 + 4 + 3 + 4 = **25** mã, **6** sổ; `lookup(601)` nay **có**, mã chưa cấp là `701`.
         // **SỬA KÈM LÝ DO (ST-25)**: sổ thứ bảy `07xx` (module) đã cấp ⇒ 25 + 3 = **28** mã,
         // `BOOKS` = **7**; khối kế tiếp là `801` (xem `next_block` bên dưới).
-        // **SỬA KÈM LÝ DO (ST-40a)**: thêm **VS0605** (`06xx`: trường không có trên `it`) ⇒
-        // 28 + 1 = **29** mã; `BOOKS` vẫn **7**; khối kế vẫn `801`.
+        // **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: VS0605 đổi tên
+        // thành **VS0405** và **chuyển sang `TYPE_CODES`** ⇒ `06xx` 5 → **4**, `04xx` 4 → **5**,
+        // `all_codes()` **vẫn 29**; `next_block()` vẫn **801**.
+        // (ST-40a cũ: thêm VS0605 `06xx` trường không có trên `it` ⇒ 28 + 1 = **29** mã.)
         assert_eq!(all_codes().count(), 29);
         assert_eq!(BOOKS.len(), 7);
-        for id in [601u16, 602, 603, 604, 605] {
+        for id in [601u16, 602, 603, 604] {
             assert!(
                 lookup(id).is_some(),
                 "mã {id} phải có ở ST-18 (khối `06xx`)"

@@ -267,10 +267,11 @@ const KIEN_TRUC: &[(&str, &str)] = &[
         "type User:\n    name: str\nlet u: User = {name: \"A\"}\nu.name",
         "ok(str)",
     ),
-    // kỳ vọng: !VS0403 — trường không tồn tại
+    // **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: truy cập trường
+    // không có trên **bản ghi** ⇒ **`VS0405`** (một mã duy nhất); trước là `VS0403`.
     (
         "type User:\n    name: str\nlet u: User = {name: \"A\"}\nu.age",
-        "!VS0403",
+        "!VS0405",
     ),
     // kỳ vọng: !VS0412 — `.` trên `T?` phải dùng `?.`
     ("let x: int? = 5\nx.foo", "!VS0412"),

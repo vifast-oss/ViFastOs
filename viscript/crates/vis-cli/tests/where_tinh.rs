@@ -3,9 +3,11 @@
 //!
 //! Khoá: `where size` / `where it.size` / `where 1` / `where x => x` trên `list[FileEntry]` ⇒ **`VS0412`**
 //! nêu **kiểu thật**; `where size > 5mb` sạch; `each` trả `int`/bản ghi ⇒ sạch nhưng **không nuốt** lỗi
-//! trường (`VS0403`/`VS0605`); `it` **không biết kiểu** ⇒ **không** lỗi tĩnh (giữ `VS0501` lúc chạy);
+//! trường (`VS0403`/`VS0405`); `it` **không biết kiểu** ⇒ **không** lỗi tĩnh (giữ `VS0501` lúc chạy);
 //! `.vish` **khai báo** (ST-44) + `cmd` trả `list[FileEntry]` cũng kiểm tĩnh.
 
+/// **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: mã trường
+/// không có nay là **VS0405** (sổ `04xx`); hành vi/ngữ nghĩa không đổi.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -132,17 +134,18 @@ fn each_van_bao_truong_khong_co() {
     let d = tam("efield");
     let (c, _, e) = chay(&d, "w", &format!("{FE} | each x => x.khong_co\n"), false);
     assert_eq!(c, 2, "stderr: {e}");
-    // Đường **script** (closure tường minh) ⇒ `VS0403`; đường **viết tắt `it`** ⇒ `VS0605`.
-    assert!(e.contains("VS0403"), "stderr: {e}");
+    // **SỬA KÈM LÝ DO (ST-50, Agent 0: VS0605 sai sổ — trường là lỗi kiểu)**: closure tường minh
+    // nay cũng ra **`VS0405`** (một mã duy nhất cho "không có trường"); trước là `VS0403`.
+    assert!(e.contains("VS0405"), "stderr: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
 #[test]
-fn where_viet_tat_truong_khong_co_la_vs0605() {
+fn where_viet_tat_truong_khong_co_la_vs0405() {
     let d = tam("sugar");
     let (c, _, e) = chay(&d, "w", &format!("{FE} | where khong_co\n"), false);
     assert_eq!(c, 2, "stderr: {e}");
-    assert!(e.contains("VS0605"), "stderr: {e}");
+    assert!(e.contains("VS0405"), "stderr: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -114,7 +114,9 @@ fn than_sai_kieu_la_vs0412() {
     let (c, _, e) = chay(&d, "body", "( [1, 2] ) | where x => x + 1\n");
     assert_eq!(c, 2, "stderr: {e}");
     assert!(e.contains("VS0412"), "stderr: {e}");
-    assert!(e.contains("thân lambda"), "phải nói rõ thân: {e}");
+    // **SỬA KÈM LÝ DO (ST-50)**: `where` giờ có nhánh `kiem_builtin` riêng ⇒ câu nói
+    // "thân **vị từ**" (rõ hơn "thân lambda"), cùng mã `VS0412`.
+    assert!(e.contains("thân vị từ"), "phải nói rõ thân: {e}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

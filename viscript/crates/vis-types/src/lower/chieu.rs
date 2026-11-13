@@ -36,7 +36,7 @@ pub(super) fn tach_phay(s: &str) -> Vec<&str> {
 /// ST-40b: hạ `get <trường>` / `select <t1>, <t2>, …` thành lambda chiếu.
 ///
 /// `get` ⇒ `it => it.<trường>` (một trường); `select` ⇒ `it => {<t1>: it.<t1>, …}` (bản ghi **ẩn
-/// danh**, giữ **đúng thứ tự đối số**). Trường không có trên `it` ⇒ `VS0605`; `it` kiểu `{error}`
+/// danh**, giữ **đúng thứ tự đối số**). Trường không có trên `it` ⇒ `VS0405`; `it` kiểu `{error}`
 /// ⇒ để **kiểm động** (không báo oan). Trả `None` khi danh sách tên rỗng/sai (để đường thường báo
 /// `VS0602` thiếu đối số).
 impl<'a> Lowerer<'a> {
@@ -94,7 +94,7 @@ impl<'a> Lowerer<'a> {
                     Some(f) => f.ty.clone(),
                     None => {
                         self.diag(
-                            &COMMAND_CODES[4],
+                            vis_diag::ma_truong(),
                             format!("`it` không có trường `{ten}`"),
                             *tspan,
                         );
@@ -102,7 +102,7 @@ impl<'a> Lowerer<'a> {
                     }
                 },
                 // Không phải bản ghi (kể cả `{error}`) ⇒ **kiểm động**: giữ nguyên hành vi cũ,
-                // không báo `VS0605` oan (Agent 0 chốt: `( [1,2] ) | select a` phải chạy động).
+                // không báo `VS0405` oan (Agent 0 chốt: `( [1,2] ) | select a` phải chạy động).
                 None => Type::Error,
             };
             truong.push((
