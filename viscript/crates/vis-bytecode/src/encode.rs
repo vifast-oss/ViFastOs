@@ -84,7 +84,7 @@ pub fn encode_instr(out: &mut Vec<u8>, i: Instr) {
         Instr::Unwrap(i) => u16b(out, i),
         Instr::CallValue(n) => u16b(out, n),
         Instr::UnwrapOpt => {}
-        Instr::IsUnit | Instr::BoolOr | Instr::BoolAnd => {}
+        Instr::IsUnit | Instr::BoolOr | Instr::BoolAnd | Instr::Swap | Instr::PushUnit => {}
     }
 }
 

@@ -10,6 +10,8 @@
 //! - `max_stack`: đếm **bảo thủ** trong lúc phát (upper bound ≥ độ sâu thật). **ST-21 kiểm lại
 //!   độc lập từ byte stream** — không tin giá trị này.
 
+mod pattern;
+
 use std::collections::HashMap;
 
 use vis_syntax::Span;
@@ -109,6 +111,7 @@ impl F {
     }
 
     fn patch(&mut self, at: usize, target: usize) {
+        // Quy ước: `đích = chỉ_số_lệnh_nhảy + offset` (VM: `pc_sau_khi_đọc - 1 + off`).
         let off = target as i64 - at as i64;
         let off = off as i32;
         if let Some(ins) = self.code.get_mut(at) {
@@ -147,6 +150,8 @@ struct Gen {
     enums: HashMap<u32, String>,
     /// Tên hàm → chỉ số (dự phòng khi `sym` của lời gọi là `None`).
     fmap_ten: HashMap<String, u32>,
+    /// Tên hàm → danh sách `(tên tham số, là named)` để xếp đối số theo **tên**.
+    fparams: HashMap<String, Vec<(String, bool)>>,
     /// Closure chờ phát: (chỉ số hàm, thân, tham số, snapshot locals của cha).
     cho: Vec<Cho>,
     hash: [u8; HASH_LEN],
@@ -198,6 +203,7 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         fmap: HashMap::new(),
         enums: HashMap::new(),
         fmap_ten: HashMap::new(),
+        fparams: HashMap::new(),
         cho: Vec::new(),
         hash: crate::format::source_hash(text),
     };
@@ -209,6 +215,10 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         if let HItem::Fn(f) = it {
             g.fmap.insert(f.sym, g.funcs.len() as u32);
             g.fmap_ten.insert(f.name.clone(), g.funcs.len() as u32);
+            g.fparams.insert(
+                f.name.clone(),
+                f.params.iter().map(|p| (p.name.clone(), p.named)).collect(),
+            );
             g.funcs.push(Func::default());
         }
     }
@@ -338,9 +348,18 @@ impl<'g> Emit<'g> {
     fn cau(&mut self, s: &HStmt) -> Result<(), CodegenError> {
         match s {
             HStmt::Let {
-                pat, init, span, ..
+                pat,
+                ty,
+                init,
+                span,
+                ..
             } => {
                 self.expr(init)?;
+                // Tự nâng `T → T?` theo **kiểu khai** (§4.4) — interp làm ở `let`.
+                if matches!(ty, Some(vis_types::Type::Opt(_))) && !matches!(init, HExpr::Opt { .. })
+                {
+                    self.f.push(Instr::MakeSome, *span, 0);
+                }
                 self.bind(pat, *span, true)?;
                 Ok(())
             }
@@ -670,225 +689,6 @@ impl<'g> Emit<'g> {
         }
     }
 
-    /// Gán pattern từ **đỉnh** ngăn xếp. `pop = true` ⇒ **tiêu thụ** giá trị; `pop = false` ⇒
-    /// giữ nguyên giá trị đỉnh (dùng khi cần giữ subject của `match`).
-    fn bind(&mut self, p: &HPat, span: Span, pop: bool) -> Result<(), CodegenError> {
-        if !pop {
-            self.f.push(Instr::Dup, span, 1);
-        }
-        self.gan_tu_dinh(p, span)
-    }
-
-    /// Gán biến của pattern và **tiêu thụ** giá trị đỉnh (mọi nhánh đều kết thúc bằng `Pop` hoặc
-    /// `StoreLocal`).
-    fn gan_tu_dinh(&mut self, p: &HPat, span: Span) -> Result<(), CodegenError> {
-        match p {
-            HPat::Wild { .. } | HPat::Lit { .. } | HPat::Range { .. } => {
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Bind { sym, .. } => {
-                let slot = self.slot_cua(*sym)?;
-                self.f.push(Instr::StoreLocal(slot), span, -1);
-                Ok(())
-            }
-            HPat::Tuple { items, .. } | HPat::List { items, .. } => {
-                for (i, it) in items.iter().enumerate() {
-                    self.f.push(Instr::Dup, span, 1);
-                    let c = self.g.cst(LitKind::Int, &i.to_string());
-                    self.f.push(Instr::Const(c), span, 1);
-                    self.f.push(Instr::Index, span, -1);
-                    self.gan_tu_dinh(it, span)?;
-                }
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Ctor { args, .. } => {
-                for (i, it) in args.iter().enumerate() {
-                    self.f.push(Instr::Dup, span, 1);
-                    self.f.push(Instr::Unwrap(i as u16), span, 0);
-                    self.gan_tu_dinh(it, span)?;
-                }
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Record { fields, .. } => {
-                for (name, sub) in fields {
-                    let c = self.g.cst_str(name);
-                    self.f.push(Instr::Dup, span, 1);
-                    self.f.push(Instr::Field(c), span, 0);
-                    match sub {
-                        Some(it) => self.gan_tu_dinh(it, span)?,
-                        None => {
-                            self.f.push(Instr::Pop, span, -1);
-                        }
-                    }
-                }
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Or { alts, .. } => {
-                if let Some(first) = alts.first() {
-                    self.gan_tu_dinh(first, span)?;
-                } else {
-                    self.f.push(Instr::Pop, span, -1);
-                }
-                Ok(())
-            }
-            HPat::Rest { .. } => Err(CodegenError::Unsupported("rest-pattern", span)),
-        }
-    }
-
-    /// Hằng của một đầu mút khoảng (`None` ⇒ biên mở, dùng `0`).
-    fn cst_pat(&mut self, p: Option<&HPat>) -> u32 {
-        match p {
-            Some(HPat::Lit { lit, .. }) => self.g.cst(lit.kind, &lit.text),
-            _ => self.g.cst(LitKind::Int, "0"),
-        }
-    }
-
-    /// **Kiểm lồng**: giả định giá trị đỉnh, **tiêu thụ** nó, nhảy tới `fails` nếu không khớp.
-    /// Dùng cho pattern con (`some(some(x))`, `Ok((a, b))`, `A(1)`…).
-    fn kiem_mot(
-        &mut self,
-        p: &HPat,
-        span: Span,
-        fails: &mut Vec<usize>,
-    ) -> Result<(), CodegenError> {
-        match p {
-            HPat::Wild { .. } | HPat::Bind { .. } => {
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Lit { .. } | HPat::Range { .. } => {
-                let _ = self.test(p, span)?;
-                let at = self.f.here();
-                self.f.push(Instr::JumpIfFalse(0), span, -1);
-                fails.push(at);
-                Ok(())
-            }
-            HPat::Ctor { path, args, .. } => {
-                let ten = path.last().cloned().unwrap_or_default();
-                let n = self.g.cst_str(&ten);
-                self.f.push(Instr::Dup, span, 1);
-                self.f.push(Instr::TestCtor(n, args.len() as u16), span, 0);
-                let at = self.f.here();
-                self.f.push(Instr::JumpIfFalse(0), span, -1);
-                fails.push(at);
-                for (i, sub) in args.iter().enumerate() {
-                    self.f.push(Instr::Dup, span, 1);
-                    self.f.push(Instr::Unwrap(i as u16), span, 0);
-                    self.kiem_mot(sub, span, fails)?;
-                }
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Tuple { items, .. } | HPat::List { items, .. } => {
-                self.f.push(Instr::Dup, span, 1);
-                self.f.push(Instr::TestTuple(items.len() as u16), span, 0);
-                let at = self.f.here();
-                self.f.push(Instr::JumpIfFalse(0), span, -1);
-                fails.push(at);
-                for (i, sub) in items.iter().enumerate() {
-                    self.f.push(Instr::Dup, span, 1);
-                    let c = self.g.cst(LitKind::Int, &i.to_string());
-                    self.f.push(Instr::Const(c), span, 1);
-                    self.f.push(Instr::Index, span, -1);
-                    self.kiem_mot(sub, span, fails)?;
-                }
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-            HPat::Record { .. } | HPat::Or { .. } | HPat::Rest { .. } => {
-                self.f.push(Instr::Pop, span, -1);
-                Ok(())
-            }
-        }
-    }
-
-    /// Phát **test** cho pattern: 1→1 (bool). Trả **vị trí lệnh nhảy** chưa vá (nếu có) — với
-    /// `Or`/`Ctor` phức tạp, test dùng lệnh `Test*` tuần tự.
-    fn test(&mut self, p: &HPat, span: Span) -> Result<Option<usize>, CodegenError> {
-        match p {
-            HPat::Wild { .. } | HPat::Bind { .. } => {
-                let c = self.g.cst(LitKind::Bool, "true");
-                self.f.push(Instr::Const(c), span, 1);
-                Ok(None)
-            }
-            HPat::Lit { lit, .. } => {
-                let c = self.g.cst(lit.kind, &lit.text);
-                self.f.push(Instr::TestLit(c), span, 0);
-                Ok(None)
-            }
-            HPat::Ctor { path, args, .. } => {
-                let ten = path.last().cloned().unwrap_or_default();
-                let n = self.g.cst_str(&ten);
-                self.f.push(Instr::TestCtor(n, args.len() as u16), span, 0);
-                // Test **lồng** cho pattern con (vd `some(some(x))`, `Ok((a, b))`).
-                for (i, sub) in args.iter().enumerate() {
-                    if !can_test(sub) {
-                        continue;
-                    }
-                    self.f.push(Instr::Dup, span, 1);
-                    self.f.push(Instr::Unwrap(i as u16), span, 0);
-                    let _ = self.test(sub, span)?;
-                    self.f.push(Instr::BoolAnd, span, -1);
-                }
-                Ok(None)
-            }
-            HPat::Tuple { items, .. } => {
-                self.f.push(Instr::TestTuple(items.len() as u16), span, 0);
-                Ok(None)
-            }
-            HPat::List { items, rest, .. } => {
-                if rest.is_some() {
-                    return Err(CodegenError::Unsupported("list-rest-pattern", span));
-                }
-                self.f.push(Instr::TestList(items.len() as u16), span, 0);
-                Ok(None)
-            }
-            HPat::Record { fields, open, .. } => {
-                let t = self.g.cst_str("");
-                let names: Vec<u32> = fields
-                    .iter()
-                    .map(|(n, _)| {
-                        let s = n.clone();
-                        self.g.cst_str(&s)
-                    })
-                    .collect();
-                let _ = names;
-                self.f.push(
-                    Instr::TestRecord(t, fields.len() as u16, u8::from(*open)),
-                    span,
-                    0,
-                );
-                Ok(None)
-            }
-            HPat::Range {
-                lo, hi, inclusive, ..
-            } => {
-                let a = self.cst_pat(lo.as_deref());
-                let b = self.cst_pat(hi.as_deref());
-                self.f
-                    .push(Instr::TestRange(a, b, u8::from(*inclusive)), span, 0);
-                Ok(None)
-            }
-            HPat::Or { alts, .. } => {
-                let mut first = true;
-                for alt in alts {
-                    self.f.push(Instr::Dup, span, 1);
-                    let _ = self.test(alt, span)?;
-                    if !first {
-                        self.f.push(Instr::BoolOr, span, -1);
-                    }
-                    first = false;
-                }
-                Ok(None)
-            }
-            HPat::Rest { .. } => Err(CodegenError::Unsupported("rest-pattern", span)),
-        }
-    }
-
     // ----- biểu thức -----
 
     fn expr(&mut self, e: &HExpr) -> Result<(), CodegenError> {
@@ -959,6 +759,7 @@ impl<'g> Emit<'g> {
                         self.f.push(Instr::Jump(0), *span, 0);
                         let lnone = self.f.here();
                         self.f.patch(jn, lnone);
+                        self.f.push(Instr::Pop, *span, -1);
                         self.expr(rhs)?;
                         let end = self.f.here();
                         self.f.patch(jend, end);
@@ -992,10 +793,61 @@ impl<'g> Emit<'g> {
                             _ => self.g.fmap_ten.get(name).copied(),
                         };
                         let dong = fi.is_none() && !la_builtin(name);
+                        // Gọi bằng **`--tên`**: xếp lại đối số theo **thứ tự tham số** của hàm.
+                        if !named.is_empty() {
+                            if let Some(ds) = self.g.fparams.get(name).cloned() {
+                                let mut vt = 0usize;
+                                for (pname, la_named) in ds.iter() {
+                                    if !*la_named {
+                                        if let Some(a) = args.get(vt) {
+                                            self.expr(a)?;
+                                            vt += 1;
+                                        } else {
+                                            self.f.push(Instr::PushUnit, *span, 1);
+                                        }
+                                    } else if let Some((_, a)) =
+                                        named.iter().find(|(n, _)| n == pname)
+                                    {
+                                        self.expr(a)?;
+                                    } else {
+                                        self.f.push(Instr::PushUnit, *span, 1);
+                                    }
+                                }
+                                let fi =
+                                    self.g.fmap_ten.get(name).copied().or_else(|| {
+                                        sym.and_then(|id| self.g.fmap.get(&id).copied())
+                                    });
+                                match fi {
+                                    Some(fi) => {
+                                        let tong = ds.len() as u16;
+                                        self.f.push(
+                                            Instr::Call(fi, tong),
+                                            *span,
+                                            1 - i32::from(tong),
+                                        );
+                                        return self.net_stack(*span);
+                                    }
+                                    None => {
+                                        let c = self.g.cst_str(name);
+                                        let tong = ds.len() as u16;
+                                        self.f.push(
+                                            Instr::CallBuiltin(c, tong),
+                                            *span,
+                                            1 - i32::from(tong),
+                                        );
+                                        return self.net_stack(*span);
+                                    }
+                                }
+                            }
+                        }
                         if dong {
                             if let Some(id) = sym {
-                                let slot = self.slot_cua(*id)?;
-                                self.f.push(Instr::LoadLocal(slot), *span, 1);
+                                if let Some(c) = self.captured.get(id).copied() {
+                                    self.f.push(Instr::LoadCaptured(c), *span, 1);
+                                } else {
+                                    let slot = self.slot_cua(*id)?;
+                                    self.f.push(Instr::LoadLocal(slot), *span, 1);
+                                }
                             }
                         }
                         for a in args {
@@ -1436,6 +1288,7 @@ impl<'g> Emit<'g> {
                 }
                 Ok(())
             }
+            HStmt::Scope { body, .. } | HStmt::Block { body, .. } => self.nhanh_gia_tri(body),
             other => {
                 self.cau(other)?;
                 let c = self.unit_cst();

@@ -174,6 +174,8 @@ fn decode_instr(d: &mut Doc<'_>, n_code: u32) -> Result<Instr, DecodeError> {
         48 => Instr::IsUnit,
         49 => Instr::BoolOr,
         50 => Instr::BoolAnd,
+        51 => Instr::Swap,
+        52 => Instr::PushUnit,
         t => return Err(DecodeError::BadTag(t)),
     })
 }
@@ -198,7 +200,8 @@ fn decode_func(d: &mut Doc<'_>) -> Result<Func, DecodeError> {
         });
     }
     // Đích nhảy phải nằm trong `code` (kiểm sớm; verifier ST-21 kiểm đầy đủ hơn).
-    // Đích = `pc_sau_lệnh + offset`, phải thuộc `[0, len]` — offset **âm** là hợp lệ (nhảy lùi).
+    // Đích = `chỉ_số_lệnh + offset` (cùng quy ước với VM/codegen), phải thuộc `[0, len]` —
+    // offset **âm** là hợp lệ (nhảy lùi).
     let len = code.len() as i64;
     for (pc, ins) in code.iter().enumerate() {
         let d_ = match ins {
@@ -211,7 +214,7 @@ fn decode_func(d: &mut Doc<'_>) -> Result<Func, DecodeError> {
             _ => None,
         };
         if let Some(off) = d_ {
-            let dich = pc as i64 + 1 + off;
+            let dich = pc as i64 + off;
             if dich < 0 || dich > len {
                 return Err(DecodeError::BadJump(off as i32));
             }

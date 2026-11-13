@@ -411,9 +411,9 @@ impl<'m> Th<'m> {
                     }
                 }
                 Instr::JumpIfNone(d) => {
-                    let v = self.st.last().cloned();
-                    if matches!(v, Some(Value::Opt(None))) {
-                        self.pop(vm, span)?;
+                    // Luôn **pop** (1→0); nhảy khi đúng điều kiện.
+                    let v = self.pop(vm, span)?;
+                    if matches!(v, Value::Opt(None)) {
                         let pc = {
                             let fr = self.frames.last().expect("khung");
                             let pc = fr.pc as i64 - 1 + d as i64;
@@ -424,9 +424,9 @@ impl<'m> Th<'m> {
                     }
                 }
                 Instr::JumpIfSome(d) => {
-                    let v = self.st.last().cloned();
-                    if matches!(v, Some(Value::Opt(Some(_)))) {
-                        self.pop(vm, span)?;
+                    // Luôn **pop** (1→0); nhảy khi đúng điều kiện.
+                    let v = self.pop(vm, span)?;
+                    if matches!(v, Value::Opt(Some(_))) {
                         let pc = {
                             let fr = self.frames.last().expect("khung");
                             let pc = fr.pc as i64 - 1 + d as i64;
@@ -483,7 +483,11 @@ impl<'m> Th<'m> {
                 }
                 Instr::MakeSome => {
                     let v = self.pop(vm, span)?;
-                    self.st.push(Value::Opt(Some(Box::new(v))));
+                    // **Không** bọc hai lớp: `T?` → `T?` (giữ phẳng như interp).
+                    match v {
+                        Value::Opt(_) => self.st.push(v),
+                        other => self.st.push(Value::Opt(Some(Box::new(other)))),
+                    }
                 }
                 Instr::MakeNone => self.st.push(Value::Opt(None)),
                 Instr::MakeOk => {
@@ -572,12 +576,26 @@ impl<'m> Th<'m> {
                     let ten = vm.ten(i, span)?;
                     let v = self.pop(vm, span)?;
                     let var_muon = ten.rsplit('.').next().unwrap_or(&ten).to_string();
-                    let ok = matches!(&v, Value::Enum(_, var, args) if *var == var_muon && args.len() == n as usize);
+                    // `some`/`none`/`ok`/`err` là **biến thể dựng sẵn** của `Value::Opt`/`Value::Res`.
+                    let thap = var_muon.to_lowercase();
+                    let ok = match &v {
+                        Value::Enum(_, var, args) => *var == var_muon && args.len() == n as usize,
+                        Value::Opt(Some(_)) => thap == "some" && n == 1,
+                        Value::Opt(None) => thap == "none" && n == 0,
+                        Value::Res(Ok(_)) => thap == "ok" && n == 1,
+                        Value::Res(Err(_)) => thap == "err" && n == 1,
+                        _ => false,
+                    };
                     self.st.push(Value::Bool(ok));
                 }
                 Instr::TestTuple(n) | Instr::TestList(n) => {
                     let v = self.pop(vm, span)?;
-                    let ok = matches!(&v, Value::List(xs) if xs.len() == n as usize);
+                    let ok = match &v {
+                        Value::List(xs) => xs.len() == n as usize,
+                        // `()` khớp mẫu tuple rỗng.
+                        Value::Unit => n == 0,
+                        _ => false,
+                    };
                     self.st.push(Value::Bool(ok));
                 }
                 Instr::TestRecord(_, n, open) => {
@@ -611,6 +629,13 @@ impl<'m> Th<'m> {
                 Instr::IsUnit => {
                     let v = self.pop(vm, span)?;
                     self.st.push(Value::Bool(v.is_unit()));
+                }
+                Instr::PushUnit => self.st.push(Value::Unit),
+                Instr::Swap => {
+                    let b = self.pop(vm, span)?;
+                    let a = self.pop(vm, span)?;
+                    self.st.push(b);
+                    self.st.push(a);
                 }
                 Instr::BoolAnd => {
                     let b = self.pop(vm, span)?;

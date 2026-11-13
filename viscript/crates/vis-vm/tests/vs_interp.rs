@@ -82,35 +82,9 @@ fn mo_ta(o: &RunOutput) -> String {
     format!("stdout={:?} exit={} diag={:?}", o.stdout, o.exit, d)
 }
 
-/// **19 ca chưa khớp** — đã ghi sổ, chờ task sau (ST-20b). Test **khoá đúng danh sách**:
-/// lệch thêm ⇒ đỏ; sửa được ca nào mà không cập nhật danh sách ⇒ cũng đỏ.
-///
-/// Nguyên nhân (xem JOURNAL/2026-11-12.md §ST-20):
-/// - pattern **lồng** (`some(some(x))`, `Ok((a, b))`, `A(1..3)`) — chuỗi test lồng chưa đúng;
-/// - tham số `--tên` (named) **đổi thứ tự** khi gọi (default tính sai 1);
-/// - `?`/`none` trong nội suy (`Show` của `none`) và `?.` trên `none` lồng;
-/// - `push` trên `var` qua **hai** lớp (CoW) và `match` trả `()`.
-const KNOWN_LECH: [&str; 19] = [
-    "ham/closure-long.vis",
-    "ham/mac-dinh-hai.vis",
-    "match-nang-cao/guard-or.vis",
-    "match-nang-cao/match-unit-tra.vis",
-    "match-nang-cao/opt-nested.vis",
-    "match-nang-cao/or-hai.vis",
-    "match-nang-cao/res-nested.vis",
-    "optional/hoi-cham-co.vis",
-    "optional/long-match.vis",
-    "optional/match-luoi.vis",
-    "optional/match-none.vis",
-    "optional/match-some.vis",
-    "optional/noi-suy-none.vis",
-    "pham-vi/scope-gia-tri.vis",
-    "result/err.vis",
-    "result/match-guard.vis",
-    "result/match-het.vis",
-    "result/match-in.vis",
-    "result/ok.vis",
-];
+/// **Danh sách ca lệch phải LUÔN RỖNG** (ST-20b): differential 272/272. Nếu ai thêm ca vào đây,
+/// test sẽ đỏ ngay (`so_biet == 0`) — mục đích là **không** cho nợ kỹ thuật quay lại.
+const KNOWN_LECH: [&str; 0] = [];
 
 #[test]
 fn vm_khop_interp_tren_272_ca() {
@@ -172,15 +146,14 @@ fn than_chay() {
         moi.join("\n")
     );
     assert_eq!(
-        so_biet,
-        KNOWN_LECH.len(),
-        "số ca lệch đã biết phải đúng {}, thật {}",
-        KNOWN_LECH.len(),
+        so_biet, 0,
+        "**không** còn ca lệch nào (danh sách phải rỗng, thật {})",
         so_biet
     );
     assert_eq!(
         khop + so_biet + bo_qua,
         272,
-        "272 ca (khớp {khop} + lệch đã biết {so_biet} + bỏ qua {bo_qua})"
+        "272 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
     );
+    assert_eq!(khop, 272, "phải khớp **đủ** 272 ca, thật {khop}");
 }

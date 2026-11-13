@@ -182,6 +182,10 @@ pub enum Instr {
     BoolOr,
     /// Và logic **không đoản mạch** trên hai `bool` — 2→1 (gộp test pattern lồng).
     BoolAnd,
+    /// Đổi chỗ hai giá trị đỉnh — 2→2 (gộp pattern `|`).
+    Swap,
+    /// Đẩy `()` — 0→1 (chỗ trống cho tham số có default khi gọi bằng `--tên`).
+    PushUnit,
 }
 
 impl Instr {
@@ -239,6 +243,8 @@ impl Instr {
             Instr::IsUnit => 48,
             Instr::BoolOr => 49,
             Instr::BoolAnd => 50,
+            Instr::Swap => 51,
+            Instr::PushUnit => 52,
         }
     }
 
@@ -290,7 +296,7 @@ impl Instr {
             Instr::Unwrap(_) => 2,
             Instr::CallValue(_) => 2,
             Instr::UnwrapOpt => 0,
-            Instr::IsUnit | Instr::BoolOr | Instr::BoolAnd => 0,
+            Instr::IsUnit | Instr::BoolOr | Instr::BoolAnd | Instr::Swap | Instr::PushUnit => 0,
         }
     }
 }

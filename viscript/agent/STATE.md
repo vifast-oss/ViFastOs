@@ -6,13 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-20** (`vis-vm`: máy ảo VBC1, ngữ nghĩa **trùng** interp) — xong 2026-11-13,
-                **chưa commit** (chờ Agent 0 OK). **253/272 ca khớp**, 19 ca lệch đã khoá danh sách.
-Bước          : 4/4 (refactor API dùng chung → VM → differential → cổng)
+Task          : **ST-20b** (đưa differential interp ↔ VM về **0 lệch**) — xong 2026-11-13,
+                **chưa commit** (chờ Agent 0 OK). **272/272 khớp**, `KNOWN_LECH` **rỗng**.
+Bước          : 3/3 (đo lại từng nhóm → sửa → khoá 272)
 Nhánh         : main
 Cổng gần nhất : `./vis-dev gate --fast` → `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`
-                (2026-11-13T02:16:21Z = 2026-11-13 11:16 JST; không retry) — **289** test
-Việc dở       : 19 ca `KNOWN_LECH` (pattern lồng, named-arg, Show none, match ()) ⇒ đề nghị **ST-20b**
+                (2026-11-13T02:27:07Z = 2026-11-13 11:27 JST; không retry) — **289** test
+Việc dở       : chờ duyệt rồi commit `[ST-20b]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +45,26 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-20b — differential interp ↔ VM về **0 lệch** (2026-11-13)
+
+Sửa **đúng 19 ca** trong `KNOWN_LECH`, không cắt ca, không nới ngưỡng:
+
+| # | Sửa gì | Ca |
+|---|---|---|
+| 1 | `test` pattern **lồng**: test con trước (mỗi con một `Dup`), test ngoài sau, gộp `BoolAnd` | 10 ca (`opt-nested`, `res-nested`, `result/*`, `match-*`) |
+| 2 | `TestCtor` hiểu biến thể **dựng sẵn**: `some/none/ok/err` trên `Value::Opt`/`Res` (không phân biệt hoa/thường) | `match-some/none`, `result/*` |
+| 3 | `TestTuple/TestList` nhận `()` là tuple rỗng | `match-unit-tra` |
+| 4 | `?.` phẳng: `MakeSome` **không** bọc hai lớp `T?` | `hoi-cham-co` |
+| 5 | `JumpIfNone/JumpIfSome` **luôn pop** (1→0) — trước đây chỉ pop khi nhảy ⇒ lệch ngăn xếp | `?.`/`??` + nhiều ca |
+| 6 | gọi động trong closure: biến **bắt** phải `LoadCaptured` (không `LoadLocal`) | `closure-long` |
+| 7 | tham số `--tên`: xếp đối số theo **thứ tự tham số**, chỗ trống `PushUnit` (52) | `mac-dinh-hai` |
+| 8 | `let` có kiểu `T?`: tự nâng `T → T?` (`MakeSome`) khi init chưa phải `Opt` | `match-some` |
+| 9 | quy ước nhảy **thống nhất**: đích = `chỉ_số_lệnh + offset` (sửa `decode` cho khớp VM/codegen) | toàn bộ |
+| 10 | tách `codegen/pattern.rs` (module con) để giữ R1 ≤ 1.500 dòng | — |
+
+**Kết quả**: **272/272 khớp** (`stdout` + `exit` + `(mã, dòng, cột)`); `KNOWN_LECH` = **rỗng** và test
+khoá `so_biet == 0` + `khop == 272` ⇒ không ai thêm nợ lại được. **289** test xanh; gate PASS.
 
 ## ST-20 — `vis-vm`: máy ảo VBC1, ngữ nghĩa trùng interp (2026-11-13)
 
