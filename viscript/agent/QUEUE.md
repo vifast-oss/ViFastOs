@@ -148,7 +148,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-56 | nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`/`&expr` (hết `Unsupported` ở codegen); `Hop[Hop[int]]` đóng nốt | ST-55 | 3 h | **DONE** | 3 nợ đóng, mỗi nợ ≥2 ca; interp ↔ `--vm` cùng byte |
 | ST-56b | chốt **gán** một ngữ nghĩa hai đường: `self.x = v` khi `self` bất biến ⇒ `VS0412`; `var self`/`var xs` gán được ở **interp** (VM đã làm); `run --vm` lỗi codegen ⇒ exit ≠ 0 | ST-56 | 2,5 h | **DONE** | ≥6 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **DONE** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
-| ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **READY** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
+| ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **DONE** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **READY** | ≥6 ca; `x \| take 1` chạy 2 đường |
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **READY** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
@@ -889,3 +889,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ ghi `R10` §5: `enum show`, `derives Json` sinh mã, siêu trait **bắc cầu**, dispatch `impl` **xuyên tệp**, tyck kiểu
 > trả phương thức `impl`, `trait_ngoai` chỉ thấy module `use` trực tiếp.
 > **ST-58 mở** (`Ty::Any` → biến kiểu; VD-99).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-58 DONE** — commit `abdc253` (**Agent 2 tự commit, đã push**): **`Ty::Any` xoá hẳn**, thay bằng `Var(u8)` +
+> `List(&'static Ty)` + `Map(…)` (const-friendly, promotion trong `const FUNCS`); `sang_type()` **tổng** (`Var` →
+> `TypeRef T/K/V`); `kiem_std` **hợp nhất** bằng `hop_nhat`+`thay_gen` (biến lặp phải `same`, `{error}` không gán, sai
+> hình dạng ⇒ `VS0412`, số đối số ⇒ `VS0401`). **16/38** chữ ký đổi (list 8, map 5, json 3); ngoại lệ **có ghi duy nhất**
+> `list.sort_by[1] = Ty::FnKhoa`. Đo: **770 test** · sem **388/19** (không đổi) · `test/std` **73** · `vis test` **388 ok**
+> · parity **356/356** · differential **100k/0 lệch** (193,2 s) · **7 sổ/29 mã**. Ba ca cũ dựa `Any` đã lật thành lỗi
+> **tĩnh** (mạnh hơn), ghi "SỬA KÈM LÝ DO"; ca **TRON** của `sort_by` vẫn runtime `VS0501` nhờ `json.decode` không kiểu.
+> Nợ: `Ty::Fn` thật cho `sort_by`; map khoá không-`str`; thứ tự khoá map.
+> **ST-59 mở** (nợ shell — biến làm stage đầu, `let` không chú thích, thân `cmd` vừa script vừa lệnh).
