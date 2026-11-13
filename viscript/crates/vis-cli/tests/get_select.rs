@@ -69,7 +69,7 @@ fn select_giu_thu_tu_doi_so() {
     ok(
         "sel",
         &format!("{PS} | select pid, name\n"),
-        "[{pid: 1, name: a}, {pid: 2, name: b}]\n",
+        "pid  name\n  1  a\n  2  b\n",
     );
 }
 
@@ -78,7 +78,7 @@ fn select_dao_thu_tu_doi_so() {
     ok(
         "sel2",
         &format!("{PS} | select name, pid\n"),
-        "[{name: a, pid: 1}, {name: b, pid: 2}]\n",
+        "name  pid\na       1\nb       2\n",
     );
 }
 
@@ -87,7 +87,7 @@ fn select_ba_truong() {
     ok(
         "sel3",
         &format!("{PS} | select pid, cpu, mem\n"),
-        "[{pid: 1, cpu: 60pct, mem: 10mb}, {pid: 2, cpu: 20pct, mem: 5mb}]\n",
+        "pid    cpu   mem\n  1  60pct  10mb\n  2  20pct   5mb\n",
     );
 }
 
@@ -147,7 +147,9 @@ fn get_select_chay_ca_hai_duong() {
     let (c2, o2, e2) = chay(&d, "v", &src, true);
     assert_eq!(c1, 0, "interp: {e1}");
     assert_eq!(c2, 0, "vm: {e2}");
-    assert_eq!(o1, "[a, b]\n[{pid: 1, name: a}, {pid: 2, name: b}]\n");
+    // **SỬA KÈM LÝ DO (ST-41)**: `select` trả `list[bản ghi]` ⇒ giá trị cuối pipeline in **bảng**
+    // (`Render`, §9.6), không còn `Show` `[{pid: 1, …}]`.
+    assert_eq!(o1, "[a, b]\npid  name\n  1  a\n  2  b\n");
     assert_eq!(o1, o2, "interp và VM phải cùng stdout");
     let _ = std::fs::remove_dir_all(&d);
 }

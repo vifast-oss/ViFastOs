@@ -1,1 +1,2 @@
-[{name: a, size: 6mb, modified: 1m, is_file: true}]
+name  size  modified  is_file
+a      6mb        1m  true

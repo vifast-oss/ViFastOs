@@ -1,1 +1,2 @@
-[{pid: 1, name: a, cpu: 60pct, mem: 10mb}]
+pid  name    cpu   mem
+  1  a     60pct  10mb

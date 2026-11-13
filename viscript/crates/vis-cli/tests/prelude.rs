@@ -57,7 +57,7 @@ fn where_size_tren_file_entry_chay_that() {
     ok(
         "wsize",
         &format!("{FE} | where size > 5mb\n"),
-        "[{name: a, size: 6mb, modified: 1m, is_file: true}]\n",
+        "name  size  modified  is_file\na      6mb        1m  true\n",
     );
 }
 
@@ -71,7 +71,10 @@ fn where_size_chay_that_ca_hai_duong() {
     assert_eq!(c1, 0, "interp stderr: {e1}");
     assert_eq!(c2, 0, "vm stderr: {e2}");
     assert_eq!(o1, o2, "interp và VM phải cùng stdout");
-    assert_eq!(o1, "[{name: a, size: 6mb, modified: 1m, is_file: true}]\n");
+    assert_eq!(
+        o1,
+        "name  size  modified  is_file\na      6mb        1m  true\n"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -80,7 +83,7 @@ fn it_viet_tuong_minh_tuong_duong() {
     ok(
         "wexpl",
         &format!("{FE} | where it.size > 5mb\n"),
-        "[{name: a, size: 6mb, modified: 1m, is_file: true}]\n",
+        "name  size  modified  is_file\na      6mb        1m  true\n",
     );
 }
 
@@ -99,7 +102,7 @@ fn so_sanh_cung_don_vi_size_thi_ok() {
     ok(
         "donvi",
         &format!("{FE} | where size > 5kb\n"),
-        "[{name: a, size: 6mb, modified: 1m, is_file: true}, {name: b, size: 1mb, modified: 2m, is_file: true}]\n",
+        "name  size  modified  is_file\na      6mb        1m  true\nb      1mb        2m  true\n",
     );
 }
 
@@ -108,7 +111,7 @@ fn duration_so_sanh_duoc() {
     ok(
         "dur",
         &format!("{FE} | where modified > 90s\n"),
-        "[{name: b, size: 1mb, modified: 2m, is_file: true}]\n",
+        "name  size  modified  is_file\nb      1mb        2m  true\n",
     );
 }
 
@@ -117,7 +120,7 @@ fn proc_cpu_la_percent() {
     ok(
         "cpu",
         &format!("{PS} | where cpu > 50pct\n"),
-        "[{pid: 1, name: a, cpu: 60pct, mem: 10mb}]\n",
+        "pid  name    cpu   mem\n  1  a     60pct  10mb\n",
     );
 }
 
@@ -131,7 +134,7 @@ fn sort_by_khoa_co_kieu_that() {
     ok(
         "sort",
         &format!("{FE} | sort_by size --desc\n"),
-        "[{name: a, size: 6mb, modified: 1m, is_file: true}, {name: b, size: 1mb, modified: 2m, is_file: true}]\n",
+        "name  size  modified  is_file\na      6mb        1m  true\nb      1mb        2m  true\n",
     );
 }
 

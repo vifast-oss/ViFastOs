@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! ST-21 — **fuzz đột biến bytecode** (VD-52 #3, §17).
 //!
-//! Nguồn: **315 module** sinh từ ca sem không lỗi (ST-38: 355 ca − 52 `.err`); mỗi vòng: bit-flip / byte-flip / cắt cụt / chèn.
+//! Nguồn: **318 module** sinh từ ca sem không lỗi (ST-38: 355 ca − 52 `.err`); mỗi vòng: bit-flip / byte-flip / cắt cụt / chèn.
 //! Bất biến (mọi vòng):
 //! 1. `decode` **không panic**;
 //! 2. `verify` **không panic**;
@@ -46,7 +46,7 @@ fn goc() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../")
 }
 
-/// 315 module sinh từ ca sem không `.err` (đúng bộ với differential; ST-40b: 367 − 52).
+/// 318 module sinh từ ca sem không `.err` (đúng bộ với differential; ST-41: 370 − 52).
 fn module_goc() -> Vec<(String, Vec<u8>)> {
     let mut ds = Vec::new();
     let dir = goc().join("test/sem");
@@ -141,8 +141,8 @@ fn than_fuzz() {
     let goc = module_goc();
     assert_eq!(
         goc.len(),
-        315,
-        "phải đủ 315 module nguồn (ST-40b: 367 ca − 52 `.err`)"
+        318,
+        "phải đủ 318 module nguồn (ST-41: 370 ca − 52 `.err`)"
     );
     let phut = so_phut();
     let bat_dau = std::time::Instant::now();

@@ -144,6 +144,7 @@ dependencies = [
 name = "vis-interp"
 version = "0.1.0"
 dependencies = [
+ "unicode-normalization",
  "vis-diag",
  "vis-syntax",
  "vis-types",

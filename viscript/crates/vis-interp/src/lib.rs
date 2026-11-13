@@ -45,6 +45,7 @@
 //! ```
 
 pub mod json;
+pub mod render;
 pub mod stdlib;
 pub mod value;
 

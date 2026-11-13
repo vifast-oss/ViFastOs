@@ -78,7 +78,7 @@ fn size_la_khoa_byte() {
     ok(
         "size",
         "( [{size: 6mb, ten: \"b\"}, {size: 1mb, ten: \"s\"}] ) | sort_by size --desc\n",
-        "[{size: 6mb, ten: b}, {size: 1mb, ten: s}]\n",
+        "size  ten\n 6mb  b\n 1mb  s\n",
     );
 }
 
@@ -87,7 +87,7 @@ fn duration_la_khoa_ns() {
     ok(
         "dur",
         "( [{d: 5m, ten: \"x\"}, {d: 1s, ten: \"y\"}] ) | sort_by d\n",
-        "[{d: 1s, ten: y}, {d: 5m, ten: x}]\n",
+        " d  ten\n1s  y\n5m  x\n",
     );
 }
 
@@ -106,7 +106,7 @@ fn on_dinh_khi_khoa_bang_nhau_tang() {
     ok(
         "stab1",
         "( [{size: 1mb, ten: \"b\"}, {size: 1mb, ten: \"a\"}] ) | sort_by size\n",
-        "[{size: 1mb, ten: b}, {size: 1mb, ten: a}]\n",
+        "size  ten\n 1mb  b\n 1mb  a\n",
     );
 }
 
@@ -116,7 +116,7 @@ fn on_dinh_khi_khoa_bang_nhau_desc_tren_size() {
     ok(
         "stab2",
         "( [{size: 1mb, ten: \"a\"}, {size: 1mb, ten: \"b\"}] ) | sort_by size --desc\n",
-        "[{size: 1mb, ten: a}, {size: 1mb, ten: b}]\n",
+        "size  ten\n 1mb  a\n 1mb  b\n",
     );
 }
 
@@ -126,7 +126,7 @@ fn desc_khong_bi_nuot_vao_khoa() {
     ok(
         "flag",
         "( [{size: 6mb}, {size: 1mb}] ) | sort_by size --desc\n",
-        "[{size: 6mb}, {size: 1mb}]\n",
+        "size\n 6mb\n 1mb\n",
     );
 }
 

@@ -120,8 +120,8 @@ fn sem_323_ca_qua_binary() {
     // **SỬA KÈM LÝ DO (ST-38)**: +6 ca `vish/khe-*` (closure-arg: `where`/`each`/`first`/`count`) ⇒ **355 ca / 18 nhóm**.
     assert_eq!(
         ds.len(),
-        367,
-        "phải đúng 367 ca (336 `.vis` + 40 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        370,
+        "phải đúng 370 ca (336 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     assert_eq!(

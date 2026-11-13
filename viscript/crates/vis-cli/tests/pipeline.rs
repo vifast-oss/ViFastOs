@@ -102,7 +102,8 @@ fn complete_grep_khong_khop_het_la_loi() {
     let d = tam("cmp");
     let (c, o, e) = chay(&d, "cmp", "/bin/echo x | /usr/bin/grep z | complete\n", &[]);
     assert_eq!(c, 0, "complete ⇒ **không** còn VS0501: {e}");
-    assert_eq!(o, "{stdout: [], stderr: [], code: 1}\n");
+    // **SỬA KÈM LÝ DO (ST-41)**: `complete` trả **một bản ghi** ⇒ khối khoá–giá trị (Render, §9.6).
+    assert_eq!(o, "stdout  []\nstderr  []\ncode    1\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -116,7 +117,8 @@ fn complete_grep_khop_code_0() {
         &[],
     );
     assert_eq!(c, 0);
-    assert_eq!(o, "{stdout: [x], stderr: [], code: 0}\n");
+    // **SỬA KÈM LÝ DO (ST-41)**: `complete` trả **một bản ghi** ⇒ khối khoá–giá trị (Render, §9.6).
+    assert_eq!(o, "stdout  [x]\nstderr  []\ncode    0\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -126,11 +128,13 @@ fn complete_giu_stderr_va_code_khac_0() {
     // `grep` với cờ lạ ⇒ exit 2 + stderr; `complete` giữ **cả hai**, không thành VS0501.
     let (c, o, e) = chay(&d, "cmp3", "/usr/bin/grep --khong-co | complete\n", &[]);
     assert_eq!(c, 0, "stderr: {e}");
+    // **SỬA KÈM LÝ DO (ST-41)**: `complete` trả **một bản ghi** ⇒ giá trị cuối pipeline in **khối
+    // khoá–giá trị** (`Render`, §9.6): `stderr  […]` (hai dấu cách), không còn `stderr: […]`.
     assert!(
-        o.contains("stderr: [grep:"),
+        o.contains("stderr  [grep:"),
         "stderr phải có trong record: {o}"
     );
-    assert!(o.contains("code: 2"), "code 2: {o}");
+    assert!(o.contains("code    2"), "code 2: {o}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -229,7 +233,8 @@ fn fixture_vish_trong_test_cmd_pipe() {
         ("cat", "[a]\n"),
         ("grep", "[a]\n"),
         ("printf", "[x]\n"),
-        ("complete", "{stdout: [], stderr: [], code: 1}\n"),
+        // **SỬA KÈM LÝ DO (ST-41)**: `complete` trả **một bản ghi** ⇒ khối khoá–giá trị (Render, §9.6).
+        ("complete", "stdout  []\nstderr  []\ncode    1\n"),
     ] {
         let p = goc().join("test/cmd/pipe").join(format!("{ten}.vish"));
         let o = Command::new(env!("CARGO_BIN_EXE_vis"))

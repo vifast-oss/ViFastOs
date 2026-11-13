@@ -183,7 +183,7 @@ fn sugar_vi_tu_ngam_it() {
     let d = tam("sugar");
     let (c, o, e) = chay(&d, "sugar", &format!("{HOP} | where size > 5mb\n"));
     assert_eq!(c, 0, "stderr: {e}");
-    assert_eq!(o, "[{size: 6mb}]\n");
+    assert_eq!(o, "size\n 6mb\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -192,7 +192,7 @@ fn sugar_va_it_viet_tuong_minh_tuong_duong() {
     let d = tam("sugar2");
     let (c, o, e) = chay(&d, "sugar2", &format!("{HOP} | where it.size > 5mb\n"));
     assert_eq!(c, 0, "stderr: {e}");
-    assert_eq!(o, "[{size: 6mb}]\n");
+    assert_eq!(o, "size\n 6mb\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -202,12 +202,12 @@ fn sugar_cac_dang_so_co_don_vi() {
         (
             "age",
             "( [{age: 20}, {age: 10}] ) | where age >= 18\n",
-            "[{age: 20}]\n",
+            "age\n 20\n",
         ),
         (
             "cpu",
             "( [{cpu: 60pct}, {cpu: 20pct}] ) | where cpu > 50pct\n",
-            "[{cpu: 60pct}]\n",
+            "  cpu\n60pct\n",
         ),
     ] {
         let d = tam(tag);

@@ -1,1 +1,3 @@
-[{size: 6mb, name: a}, {size: 1mb, name: b}]
+size  name
+ 6mb  a
+ 1mb  b

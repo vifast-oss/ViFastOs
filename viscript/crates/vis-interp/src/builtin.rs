@@ -117,7 +117,7 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 18] = [
+pub const SIGS: [BuiltinSig; 19] = [
     BuiltinSig {
         name: "print",
         min: 1,
@@ -146,6 +146,11 @@ pub const SIGS: [BuiltinSig; 18] = [
     BuiltinSig {
         name: "take",
         min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "render",
+        min: 1,
         max: 2,
     },
     BuiltinSig {
@@ -645,6 +650,21 @@ pub fn call(
             };
             let n = (*n).max(0) as usize;
             Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        // ST-41: `Render` — **chỉ** cho giá trị cuối pipeline (`boc_render`); `print` giữ nguyên.
+        "render" => {
+            let co_ban_ghi = matches!(args.get(1), Some(Value::Bool(true)));
+            match crate::render::in_gia_tri(&args[0], co_ban_ghi) {
+                Some(s) => {
+                    host.out().push_str(&s);
+                    Ok(Value::Unit)
+                }
+                None => {
+                    host.out().push_str(&args[0].show());
+                    host.out().push('\n');
+                    Ok(Value::Unit)
+                }
+            }
         }
         // ST-40b: `get`/`select` — chiếu từng phần tử qua closure (cùng một hiện thực cho hai đường).
         "get" | "select" => {

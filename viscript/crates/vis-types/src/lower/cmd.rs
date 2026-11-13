@@ -646,7 +646,7 @@ impl<'a> Lowerer<'a> {
                 k if !is_item(k) => {
                     let mut out = Vec::new();
                     if let Some(e) = self.ha_pipeline(child, &sigs) {
-                        let e = self.boc_print(e, child.span);
+                        let e = self.boc_render(e, child.span);
                         out.push(HStmt::Expr(e));
                     }
                     self.stmts.extend(out);
@@ -656,15 +656,28 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// `print(<expr>)` — §9.6: giá trị **cuối pipeline** được hiển thị qua `Render`/`Show`.
-    fn boc_print(&mut self, e: HExpr, span: Span) -> HExpr {
+    /// `render(<expr>)` (ST-41) — §9.6: giá trị **cuối pipeline** hiển thị qua **`Render`**; `print`
+    /// của người dùng **không** đổi (tên builtin riêng, chỉ dùng cho giá trị cuối).
+    fn boc_render(&mut self, e: HExpr, span: Span) -> HExpr {
+        let co_ban_ghi =
+            matches!(&self.last_stage_ty, Type::List(el) if matches!(el.as_ref(), Type::Record(_)));
         HExpr::Call {
             callee: Box::new(HExpr::Var {
-                name: "print".to_string(),
+                name: "render".to_string(),
                 sym: None,
                 span,
             }),
-            args: vec![e],
+            args: vec![
+                e,
+                HExpr::Lit {
+                    ty: Type::Bool,
+                    lit: Lit {
+                        kind: LitKind::Bool,
+                        text: co_ban_ghi.to_string(),
+                    },
+                    span,
+                },
+            ],
             named: Vec::new(),
             span,
         }
@@ -683,7 +696,7 @@ impl<'a> Lowerer<'a> {
                 continue;
             }
             if let Some(e) = self.ha_pipeline(con, sigs) {
-                let e = self.boc_print(e, con.span);
+                let e = self.boc_render(e, con.span);
                 self.stmts.push(HStmt::Expr(e));
             }
         }
@@ -700,11 +713,19 @@ impl<'a> Lowerer<'a> {
         }
         let mut truoc: Option<(HExpr, Type)> = None;
         let mut ket: Option<(HExpr, Type)> = None;
+        self.last_stage_ty = Type::Error;
         for st in &stage {
             let e = self.ha_stage(st, truoc.take(), sigs)?;
             let ty = self.kieu_stage(st, sigs);
             truoc = Some((e, ty));
             ket = truoc.clone();
+        }
+        // ST-41: hook `where`/`sort_by`/`get`/`select` đã đặt kiểu **chính xác** (giữ nguyên); nếu chưa
+        // (stage thường/group) ⇒ dùng `kieu_stage` (literal bản ghi ⇒ `list[record#N]`).
+        if matches!(self.last_stage_ty, Type::Error) {
+            if let Some(last) = stage.last() {
+                self.last_stage_ty = self.kieu_stage(last, sigs);
+            }
         }
         ket.map(|(e, _)| e)
     }
@@ -856,6 +877,11 @@ impl<'a> Lowerer<'a> {
                     if let Some(dau) = self.arg_start(node) {
                         let het = self.stage_end(dau);
                         if let Some(lam) = self.ha_chieu(&sig.name, dau, het, &elem, node.span) {
+                            let kieu_ra = match &lam {
+                                HExpr::Lambda { ret, .. } => ret.clone(),
+                                _ => Type::Error,
+                            };
+                            self.last_stage_ty = Type::List(Box::new(kieu_ra));
                             return Some(HExpr::Call {
                                 callee: Box::new(HExpr::Var {
                                     name: sig.name.clone(),
@@ -894,7 +920,8 @@ impl<'a> Lowerer<'a> {
                         let vung = self.text.get(dau..het_stage).unwrap_or("").to_string();
                         let body_end = dau + vung.find("--").unwrap_or(vung.len());
                         let co_text = &vung[vung.find("--").unwrap_or(vung.len())..];
-                        if let Some(lam) = self.ha_sugar(dau, Some(body_end), pty, rty) {
+                        if let Some(lam) = self.ha_sugar(dau, Some(body_end), pty.clone(), rty) {
+                            self.last_stage_ty = Type::List(Box::new(pty.clone()));
                             let mut args = vec![up.clone(), lam];
                             let mut loi = false;
                             for raw in co_text.split_whitespace() {
@@ -969,8 +996,10 @@ impl<'a> Lowerer<'a> {
                     }
                     // Vùng văn bản của đối số: từ token đầu **sau tên lệnh** tới hết stage.
                     if let Some(dau) = self.arg_start(node) {
+                        let pty_hint = pty.clone();
                         let lam = self.ha_sugar(dau, None, pty, rty);
                         if let Some(lam) = lam {
+                            self.last_stage_ty = Type::List(Box::new(pty_hint));
                             return Some(HExpr::Call {
                                 callee: Box::new(HExpr::Var {
                                     name: sig.name.clone(),

@@ -1,1 +1,3 @@
-[{pid: 1, name: a}, {pid: 2, name: b}]
+pid  name
+  1  a
+  2  b

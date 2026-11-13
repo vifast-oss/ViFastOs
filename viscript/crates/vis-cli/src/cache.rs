@@ -10,7 +10,9 @@
 use std::path::PathBuf;
 
 /// Phiên bản compiler dùng trong hash (đổi ⇒ cache cũ tự vô hiệu).
-pub const PHIEN_BAN: &str = env!("CARGO_PKG_VERSION");
+// **SỬA KÈM LÝ DO (ST-41)**: `Render` đổi **cách hiển thị** giá trị cuối pipeline ⇒ module đã cache
+// bằng bản cũ phải **hết hiệu lực**; gắn nhãn logic vào khoá (không đổi `CARGO_PKG_VERSION`).
+pub const PHIEN_BAN: &str = concat!(env!("CARGO_PKG_VERSION"), "+render-st41");
 
 /// Thư mục cache: `$XDG_CACHE_HOME/vifast/vis` hoặc `~/.cache/vifast/vis`.
 pub fn thu_muc() -> Option<PathBuf> {

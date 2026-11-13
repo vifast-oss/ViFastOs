@@ -1,0 +1,49 @@
+=== ST-41 D2-05: `Render` (bảng/khối) — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T10:30:26Z
+
+## 1. Đỏ **thật** ở HEAD `69a76cb` (worktree `/tmp/vis-red41`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test render
+test result: FAILED. **3 passed; 13 failed**
+```
+
+Lý do: giá trị cuối pipeline đang in `Show` (`[{…}]`) chứ chưa có `Render` (bảng / khối khoá–giá trị),
+3 ca xanh là các ca **không** phụ thuộc `Render` (print giữ nguyên, `list[str]`/`list[int]` không thành bảng,
+list rỗng vô kiểu `[]`) — 13 ca còn lại đỏ vì chưa có bảng/khối/NFC.
+
+## 2. Sau khi sửa — đo được
+
+- `list[bản ghi]` cuối pipeline ⇒ **bảng**: tiêu đề = tên trường, `str` căn **trái**, `int`/`size`/
+  `duration`/`percent` căn **phải**; 2 dấu cách giữa cột; giữ thứ tự cột của bản ghi đầu;
+- bản ghi **đơn** ⇒ **khối** `khoá  giá trị` (căn khoá theo tên dài nhất);
+- `list[bản ghi]` **rỗng** ⇒ `(rỗng)`; `list[str]`/`list[int]` rỗng **giữ `[]`**;
+- độ rộng = **số `char` sau NFC** ⇒ NFD và NFC của cùng chữ Việt cho **cùng** bảng; emoji/CJK = 1 char;
+- **`print` giữ nguyên từng byte** (snapshot cũ: `print([1,2])` ⇒ `[1, 2]`);
+- **interp và `--vm` cùng byte** cho bảng (test riêng `bang_ca_hai_duong_giong_nhau_tung_byte`).
+
+## 3. `.out` đổi (thay đổi **hành vi có chủ ý**, 7 ca — `ngoai-true` **không** đổi)
+
+| Ca | Cũ | Mới |
+|---|---|---|
+| `pl-where-size`, `pl-where-explicit` | `[{name: a, …}]` | bảng `name  size  modified  is_file` |
+| `pl-sort-size` | 2 dòng `[{…}, {…}]` | bảng 2 dòng |
+| `pl-proc-cpu` | `[{pid: 1, …}]` | bảng `pid  name    cpu   mem` |
+| `gs-select` | `[{pid: 1, name: a}, …]` | bảng `pid  name` |
+| `gs-select-order` | `[{size: 6mb, name: a}, …]` | bảng `size  name` |
+| `sx-size-desc` | `[{size: 6mb, ten: b}, …]` | bảng `size  ten` |
+
+Cùng luật `Render` ⇒ cập nhật ~20 assertion trong `closure_cmd.rs`, `prelude.rs`, `get_select.rs`,
+`sap_xep.rs`, `pipeline.rs` (complete ⇒ khối) **kèm lý do**; `khe_ong.rs`/`extern.rs` **không** đổi
+
+## 4. Số ca
+
+- test workspace **592** (576 + **16** `render.rs`); sem **367 → 370** (+3 `vish/rt-*.vish`);
+- parity **341 → 344**; `fuzz_mutate` 315 → **318**; `diag_cmp` 315/367 → **318/370**; `vis test` **370 ok**.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-interp/src/render.rs=4c1a05ea63a19bf799c3d482f8e27a86a3c4aea8c36004f026164bb57474c824
+  sha256 crates/vis-interp/src/builtin.rs=6ae962e1190707b3de90d1b3f508584c6b8894afaa87e3cb0f49e09a40545ad6
+  sha256 crates/vis-types/src/lower/cmd.rs=c458803ac7979e4b1cde14c78f13b96127deaded18980bc1b10d96acd147a2e4
+  sha256 crates/vis-cli/src/cache.rs=8f57becb303cb250b988800f8474060509c04a885367f13abb45ea1a2d2c907b
+  sha256 crates/vis-cli/tests/render.rs=e5b58b7efa3847da49fdfcbe58be8144f466ec3fced85545c95879037540b277

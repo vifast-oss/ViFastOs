@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-40b** (`get`/`select`) — xong, **chưa commit**.
-Bước          : 5/5 (sig+runtime → sugar chiếu + bản ghi ẩn danh → tyck tính kiểu thân → 13 ca + 4 sem → tách `lower/chieu.rs` cho R1 → gate PASS)
+Task          : **ST-41** (`Render`: bảng/khối cho giá trị cuối pipeline) — xong, **chưa commit**.
+Bước          : 5/5 (`render` builtin + NFC → `boc_render` + hint phần tử bản ghi → 16 snapshot → cập nhật 7 `.out` + ~20 assertion → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:07:12Z**; **576** test / sem **367** / parity **341/341** / diff 100k **0 lệch** (225,9 s)
-Việc dở       : commit `[ST-40b]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:31:47Z**; **592** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (206,4 s)
+Việc dở       : commit `[ST-41]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-40b — `get`/`select` (2026-11-13)
+## ST-41 — `Render` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Bảng** | `list[bản ghi]` cuối pipeline ⇒ tiêu đề = tên trường, `str` căn **trái**, số/`size`/`duration`/`percent` căn **phải**, 2 dấu cách giữa cột, giữ thứ tự cột của bản ghi đầu |
+| 2 | **Khối + rỗng** | bản ghi **đơn** ⇒ khối `khoá  giá trị`; `list[bản ghi]` rỗng ⇒ `(rỗng)`; `list[str]`/`list[int]` rỗng **giữ `[]`** (hint từ bộ hạ) |
+| 3 | **NFC, `print` không đổi** | độ rộng = **số `char` sau NFC** (`unicode-normalization` có sẵn) ⇒ NFD/NFC cùng bảng; `print` giữ nguyên từng byte (`boc_render` gọi builtin `render`) |
+| 4 | **Cache** | `cache::PHIEN_BAN` thêm nhãn `+render-st41` để module cache cũ hết hiệu lực |
+| 5 | **Đo** | **592** test (576 + **16**); sem **367 → 370** (+3 `vish/rt-*.vish`); parity **341 → 344**; `fuzz_mutate` 315 → **318**; `diag_cmp` 315/367 → **318/370**; **7 `.out`** đổi cùng lý do |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
