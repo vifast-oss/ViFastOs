@@ -148,7 +148,7 @@ pub(crate) struct CmdSig {
 impl<'a> Lowerer<'a> {
     /// Dựng call **chương trình ngoài** `exec.<tên>` (ST-27): từ thô của stage, bỏ tên lệnh; cờ
     /// `--raw` của Vis ⇒ trả `str` thay vì `list[str]`.
-    fn ngoai_call(&mut self, ten: &str, node: &Node) -> HExpr {
+    fn ngoai_call(&mut self, ten: &str, node: &Node, stdin: Option<HExpr>) -> HExpr {
         let raw = self
             .text
             .get(node.span.start..node.span.end)
@@ -178,13 +178,21 @@ impl<'a> Lowerer<'a> {
         } else {
             format!("exec.{ten}")
         };
+        // ST-34: đối số thứ 2 = **stdin** (giá trị từ pipe) — `builtin::call` quy đổi (một quy tắc).
+        let vao = stdin.unwrap_or_else(|| {
+            let mut rong = lit(LitKind::Str, "\"\"");
+            if let HExpr::Lit { span, .. } = &mut rong {
+                *span = node.span;
+            }
+            rong
+        });
         HExpr::Call {
             callee: Box::new(HExpr::Var {
                 name,
                 sym: None,
                 span: node.span,
             }),
-            args: vec![ds],
+            args: vec![ds, vao],
             named: Vec::new(),
             span: node.span,
         }
@@ -328,6 +336,51 @@ impl<'a> Lowerer<'a> {
         truoc: Option<(HExpr, Type)>,
         sigs: &[CmdSig],
     ) -> Option<HExpr> {
+        // ST-34: `| complete` — stage **giả**, chỉ dùng sau chương trình ngoài; nó **đổi tên** callee
+        // của stage trước thành `exec.complete.<ten>` (không thêm biến thể HIR ⇒ codegen không đổi).
+        if self.ten_lenh(node).as_deref() == Some("complete") {
+            if node.child(NodeKind::CmdGroup).is_some() || node.elems.len() > 1 {
+                // `complete` không nhận đối số.
+                self.diag(&COMMAND_CODES[1], "`complete` không nhận đối số", node.span);
+                return None;
+            }
+            let Some((up, _)) = truoc else {
+                self.diag(
+                    &COMMAND_CODES[1],
+                    "complete chỉ dùng sau chương trình ngoài",
+                    node.span,
+                );
+                return None;
+            };
+            if let HExpr::Call {
+                callee,
+                args,
+                named,
+                span,
+            } = up
+            {
+                if let HExpr::Var { name, sym, .. } = *callee {
+                    if let Some(con) = name.strip_prefix("exec.") {
+                        return Some(HExpr::Call {
+                            callee: Box::new(HExpr::Var {
+                                name: format!("exec.complete.{con}"),
+                                sym,
+                                span,
+                            }),
+                            args,
+                            named,
+                            span,
+                        });
+                    }
+                }
+            }
+            self.diag(
+                &COMMAND_CODES[1],
+                "complete chỉ dùng sau chương trình ngoài",
+                node.span,
+            );
+            return None;
+        }
         if let Some(g) = node.child(NodeKind::CmdGroup) {
             if let Some(inner) = g.children().next() {
                 if truoc.is_some() {
@@ -362,7 +415,7 @@ impl<'a> Lowerer<'a> {
                 );
                 return None;
             }
-            return Some(self.ngoai_call(&ten, node));
+            return Some(self.ngoai_call(&ten, node, truoc.map(|(e, _)| e)));
         };
         // Khe ống (§9.5, ST-18 (a)1): tham số vị trí **đầu tiên** khớp kiểu với giá trị vào —
         // **giữ chỗ trước**, để đối số vị trí còn lại không chiếm mất (`take 1` ⇒ `take(xs=pipe, 1)`).

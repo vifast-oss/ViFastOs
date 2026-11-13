@@ -36,21 +36,45 @@ fn loi(ma: &'static vis_diag::Code, msg: impl Into<String>, span: Span) -> Abort
     Abort::Trap(Trap::new(ma, msg, span))
 }
 
-impl vis_interp::builtin::Ngoai for Runner {
-    fn chay(&mut self, ten: &str, args: &[String], raw: bool, span: Span) -> vis_interp::R<Value> {
-        // Ở VS0/VS1 lệnh ngoài **chỉ** trong chế độ lệnh (`.vish`); ở script là lỗi rõ ràng.
+/// Cap **stdin** mỗi stage ngoài (ST-34): 8 MiB. Vượt ⇒ `VS0501` **trước khi spawn**.
+pub const MAX_STDIN: usize = 8 * 1024 * 1024;
+
+impl Runner {
+    /// Chạy một chương trình ngoài, ghi `stdin` (thread riêng, đóng khi xong), có timeout.
+    ///
+    /// **Không** deadlock: writer chạy song song, `wait_with_output()` đọc stdout/stderr.
+    /// Timeout **10 s/stage** (VD-60); thông điệp nêu **stage nào** (ST-34).
+    fn chay_raw(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        stdin: &str,
+        span: Span,
+    ) -> Result<vis_interp::builtin::KetQua, Abort> {
+        if stdin.len() > MAX_STDIN {
+            return Err(loi(
+                &RUNTIME_CODES[0],
+                format!(
+                    "stdin của stage `{ten}` quá lớn: {} byte (giới hạn {MAX_STDIN} byte = 8 MiB)",
+                    stdin.len()
+                ),
+                span,
+            ));
+        }
         if self.giai_thich {
             eprintln!("EXEC {ten} {args:?}");
+            if !stdin.is_empty() {
+                eprintln!("PIPE stdin {ten} ({} byte)", stdin.len());
+            }
         }
         let mut cmd = Command::new(ten);
         cmd.args(args)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut con = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                // Lỗi **lúc chạy** (không tìm thấy/không chạy được) ⇒ `VS0501` như mọi lỗi runtime.
                 return Err(loi(
                     &RUNTIME_CODES[0],
                     format!("không chạy được chương trình ngoài `{ten}`: {e}"),
@@ -58,7 +82,16 @@ impl vis_interp::builtin::Ngoai for Runner {
                 ));
             }
         };
-        // Chờ **có timeout** — cap đồng thời = 1 nên chỉ một tiến trình tại một thời điểm.
+        // Ghi stdin ở **thread riêng** rồi **đóng** (drop) — nếu không `cat`/`grep` treo.
+        if let Some(mut si) = con.stdin.take() {
+            let du_lieu = stdin.as_bytes().to_vec();
+            std::thread::spawn(move || {
+                use std::io::Write;
+                // Lỗi `EPIPE` sau khi tiến trình bị giết (timeout) — **bỏ qua**.
+                let _ = si.write_all(&du_lieu);
+                let _ = si.flush();
+            });
+        }
         let han = Instant::now() + Duration::from_millis(self.timeout_ms);
         loop {
             match con.try_wait() {
@@ -69,10 +102,7 @@ impl vis_interp::builtin::Ngoai for Runner {
                         let _ = con.wait();
                         return Err(loi(
                             &RUNTIME_CODES[0],
-                            format!(
-                                "chương trình ngoài `{ten}` quá thời gian ({} ms)",
-                                self.timeout_ms
-                            ),
+                            format!("stage `{ten}` quá thời gian ({} ms)", self.timeout_ms),
                             span,
                         ));
                     }
@@ -94,37 +124,66 @@ impl vis_interp::builtin::Ngoai for Runner {
                 span,
             ))
         })?;
-        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        let code = out.status.code().unwrap_or(-1);
-        if code != 0 {
-            let gon = stderr.trim();
+        Ok(vis_interp::builtin::KetQua {
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+            code: out.status.code().unwrap_or(-1),
+        })
+    }
+}
+
+impl vis_interp::builtin::Ngoai for Runner {
+    fn chay(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        raw: bool,
+        stdin: &str,
+        span: Span,
+    ) -> vis_interp::R<Value> {
+        let kq = self.chay_raw(ten, args, stdin, span)?;
+        if kq.code != 0 {
+            let gon = kq.stderr.trim();
             return Err(loi(
                 &RUNTIME_CODES[0],
                 if gon.is_empty() {
-                    format!("chương trình ngoài `{ten}` thoát mã {code}")
+                    format!("chương trình ngoài `{ten}` thoát mã {}", kq.code)
                 } else {
-                    format!("chương trình ngoài `{ten}` thoát mã {code}: {gon}")
+                    format!("chương trình ngoài `{ten}` thoát mã {}: {gon}", kq.code)
                 },
                 span,
             ));
         }
         if raw {
-            return Ok(Value::Str(stdout));
+            return Ok(Value::Str(kq.stdout));
         }
-        // Mặc định: tách dòng, **bỏ** newline cuối.
-        let mut dong: Vec<Value> = Vec::new();
-        let mut t = stdout.as_str();
-        if let Some(x) = t.strip_suffix('\n') {
-            t = x;
-        }
-        if !t.is_empty() {
-            for d in t.split('\n') {
-                dong.push(Value::Str(d.to_string()));
-            }
-        }
-        Ok(Value::List(dong))
+        Ok(tach_dong(&kq.stdout))
     }
+
+    fn chay_day_du(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        stdin: &str,
+        span: Span,
+    ) -> Result<vis_interp::builtin::KetQua, Abort> {
+        self.chay_raw(ten, args, stdin, span)
+    }
+}
+
+/// Tách `stdout` thành `list[str]` — **bỏ** newline cuối, không sinh dòng rỗng thừa.
+fn tach_dong(s: &str) -> Value {
+    let mut t = s;
+    if let Some(x) = t.strip_suffix('\n') {
+        t = x;
+    }
+    let mut dong: Vec<Value> = Vec::new();
+    if !t.is_empty() {
+        for d in t.split('\n') {
+            dong.push(Value::Str(d.to_string()));
+        }
+    }
+    Value::List(dong)
 }
 
 /// **Host hệ thống tệp** (ST-33) — `std::fs` **chỉ** ở đây; `vis-interp`/`vis-vm` chỉ thấy trait.

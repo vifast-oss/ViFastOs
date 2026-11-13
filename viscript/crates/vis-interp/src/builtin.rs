@@ -18,15 +18,42 @@ use crate::value::Value;
 /// **Chương trình ngoài** (ST-27): `vis-interp` **không** biết OS — chỉ biết trait này.
 ///
 /// `vis-cli` cài bằng `std::process::Command`; test/không host ⇒ `None` ⇒ `VS0604`.
+/// Kết quả **đầy đủ** của một chương trình ngoài (ST-34, cho `| complete`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KetQua {
+    pub stdout: String,
+    pub stderr: String,
+    pub code: i32,
+}
+
 pub trait Ngoai {
-    /// Chạy `ten` với `args`; `raw` ⇒ trả `str` (nguyên văn) thay vì `list[str]`.
+    /// Chạy `ten` với `args`; `stdin` (ST-34) ghi vào stdin rồi **đóng**;
+    /// `raw` ⇒ trả `str` (nguyên văn) thay vì `list[str]`.
     fn chay(
         &mut self,
         ten: &str,
         args: &[String],
         raw: bool,
+        stdin: &str,
         span: Span,
     ) -> crate::interp::R<Value>;
+
+    /// Chạy và trả **đủ** `stdout/stderr/code` (ST-34) — cho stage `| complete`; exit≠0 **không** là lỗi.
+    /// Mặc định: chưa hỗ trợ (host tự cài).
+    fn chay_day_du(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        stdin: &str,
+        span: Span,
+    ) -> Result<KetQua, crate::interp::Abort> {
+        let _ = (ten, args, stdin);
+        Err(trap(
+            &vis_diag::COMMAND_CODES[3],
+            "`complete` chưa hỗ trợ ở host này",
+            span,
+        ))
+    }
 }
 
 /// **Host hệ thống tệp** (ST-33) — `vis-interp`/`vis-vm` **không** biết `std::fs`; `vis-cli` cài bằng
@@ -58,8 +85,20 @@ pub trait Host {
         _ten: &str,
         _args: &[String],
         _raw: bool,
+        _stdin: &str,
         _span: Span,
     ) -> Option<crate::interp::R<Value>> {
+        None
+    }
+
+    /// Như [`Host::ngoai`] nhưng trả **đủ** `stdout/stderr/code` (ST-34, cho `| complete`).
+    fn ngoai_day_du(
+        &mut self,
+        _ten: &str,
+        _args: &[String],
+        _stdin: &str,
+        _span: Span,
+    ) -> Option<Result<KetQua, crate::interp::Abort>> {
         None
     }
 }
@@ -402,14 +441,48 @@ pub fn un(op: vis_types::hir::UnOp, v: Value, span: Span) -> crate::interp::R<Va
     }
 }
 
+/// Tách `stdout` thành `list[str]` — **bỏ** newline cuối, không sinh dòng rỗng thừa (ST-34).
+fn dong_cua(s: &str) -> Value {
+    let mut t = s;
+    if let Some(x) = t.strip_suffix('\n') {
+        t = x;
+    }
+    let mut dong: Vec<Value> = Vec::new();
+    if !t.is_empty() {
+        for d in t.split('\n') {
+            dong.push(Value::Str(d.to_string()));
+        }
+    }
+    Value::List(dong)
+}
+
+/// Record `{stdout: list[str], stderr: list[str], code: int}` cho `| complete` (ST-34).
+fn nha_ket_qua(kq: KetQua) -> Value {
+    Value::Record(
+        String::new(),
+        vec![
+            ("stdout".into(), dong_cua(&kq.stdout)),
+            ("stderr".into(), dong_cua(&kq.stderr)),
+            ("code".into(), Value::Int(kq.code as i64)),
+        ],
+    )
+}
+
 pub fn call(
     host: &mut dyn Host,
     name: &str,
     args: Vec<Value>,
     span: Span,
 ) -> crate::interp::R<Value> {
-    // ST-27: `exec.<ten>` — chương trình ngoài, do **host** chạy (interp không biết OS).
+    // ST-27/ST-34: `exec.[complete.][raw.]<ten>` — chương trình ngoài, do **host** chạy.
+    // - đối số 0: `argv` (`list[str]`); đối số 1 (ST-34): **stdin** (`str` hoặc `list[str]`);
+    // - tiền tố `complete.` ⇒ trả **record** `{stdout, stderr, code}`, exit≠0 **không** là lỗi.
     if let Some(mut ten) = name.strip_prefix("exec.") {
+        let mut complete = false;
+        if let Some(t) = ten.strip_prefix("complete.") {
+            ten = t;
+            complete = true;
+        }
         let mut raw = false;
         if let Some(t) = ten.strip_prefix("raw.") {
             ten = t;
@@ -425,7 +498,41 @@ pub fn call(
                 .collect(),
             _ => Vec::new(),
         };
-        return match host.ngoai(ten, &ds, raw, span) {
+        // **Một** quy tắc cho cả hai đường (ST-34): `list[str]` ⇒ nối `\n` **+ newline cuối**;
+        // `str` ⇒ **nguyên văn** (không thêm newline); khác ⇒ `show()`.
+        let stdin = match args.get(1) {
+            Some(Value::Str(s)) => s.clone(),
+            Some(Value::List(xs)) => {
+                let mut t = xs
+                    .iter()
+                    .map(|v| match v {
+                        Value::Str(s) => s.clone(),
+                        other => other.show(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !t.is_empty() {
+                    t.push('\n');
+                }
+                t
+            }
+            Some(other) => other.show(),
+            None => String::new(),
+        };
+        if complete {
+            return match host.ngoai_day_du(ten, &ds, &stdin, span) {
+                Some(Ok(kq)) => Ok(nha_ket_qua(kq)),
+                Some(Err(e)) => Err(e),
+                None => Err(trap(
+                    &vis_diag::COMMAND_CODES[3],
+                    format!(
+                        "chương trình ngoài `{ten}` chưa hỗ trợ ở môi trường này (không có host)"
+                    ),
+                    span,
+                )),
+            };
+        }
+        return match host.ngoai(ten, &ds, raw, &stdin, span) {
             Some(kq) => kq,
             None => Err(trap(
                 &vis_diag::COMMAND_CODES[3],

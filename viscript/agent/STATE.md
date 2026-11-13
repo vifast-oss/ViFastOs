@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-33** (`json.decode` + `std.fs` tối thiểu qua `Host`) — xong, **chưa commit**.
-Bước          : 4/4 (FsHost trên Host → parser JSON → std.fs CLI → 23 ca test)
+Task          : **ST-34** (`| complete` + pipe→stdin cho chương trình ngoài) — xong, **chưa commit**.
+Bước          : 4/4 (traits stdin/complete → lowering → Runner → 16 ca + 4 fixture)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:08:04Z** (16:08 JST, không retry);
-                **466** test / diff 100k **0 lệch** (201,9 s) / `vis test` 338 ok
-Việc dở       : chờ gate rồi commit `[ST-33]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T07:20:36Z** (16:20 JST, không retry);
+                **482** test / diff 100k **0 lệch** (206,2 s) / `vis test` 338 ok
+Việc dở       : chờ gate rồi commit `[ST-34]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-34 — `| complete` + pipe→stdin (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **pipe→stdin** | `a \| b` (b ngoài) ⇒ đối số vị trí **thứ 2** của `exec.<ten>` là **stdin**: `list[str]` ⇒ nối `\n` **+ newline cuối** (chỉ khi nối list); `str` (`--raw`) ⇒ **nguyên văn**; `drop` để đóng stdin ⇒ `cat`/`grep` không treo |
+| 2 | **`\| complete`** | Stage **giả**, chỉ sau chương trình ngoài ⇒ **đổi tên** callee `exec.[complete.][raw.]<ten>` (**không** đổi HIR/codegen); trả record `{stdout: list[str], stderr: list[str], code: int}`; exit≠0 **hết** là `VS0501`; trên stage Vis/`complete` có đối số ⇒ **`VS0602`** |
+| 3 | **An toàn** | `MAX_STDIN` **8 MiB** (vượt ⇒ `VS0501` nêu **số byte thật** + giới hạn, **trước khi spawn**); ghi stdin bằng **thread riêng** + `wait_with_output` ⇒ không deadlock; `EPIPE` sau timeout bỏ qua; timeout 10 s/**stage**, thông điệp nêu **stage nào** |
+| 4 | **Một nguồn ngữ nghĩa** | Toàn bộ quyết định ở `builtin::call` (nhánh `exec.`) mà **cả** interp **và** VM gọi ⇒ pipe vẫn là **giá trị**, codegen không đổi |
+| 5 | **Đo** | **482** test (466 + **16** `pipeline.rs`); **4** fixture `.vish` trong `test/cmd/pipe/**`; VM không host ⇒ `VS0604` |
 
 ## ST-33 — `json.decode` + `std.fs` tối thiểu (qua `Host`), 2026-11-13
 

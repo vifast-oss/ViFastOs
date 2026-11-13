@@ -1344,8 +1344,26 @@ impl crate::builtin::Host for Interp<'_> {
             .map(|f| &mut **f as &mut dyn crate::builtin::FsHost)
     }
 
-    fn ngoai(&mut self, ten: &str, args: &[String], raw: bool, span: Span) -> Option<R<Value>> {
+    fn ngoai(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        raw: bool,
+        stdin: &str,
+        span: Span,
+    ) -> Option<R<Value>> {
         let n = self.ngoai.as_mut()?;
-        Some(n.chay(ten, args, raw, span))
+        Some(n.chay(ten, args, raw, stdin, span))
+    }
+
+    fn ngoai_day_du(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        stdin: &str,
+        span: Span,
+    ) -> Option<Result<crate::builtin::KetQua, Abort>> {
+        let n = self.ngoai.as_mut()?;
+        Some(n.chay_day_du(ten, args, stdin, span))
     }
 }
