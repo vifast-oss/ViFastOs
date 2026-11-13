@@ -140,8 +140,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **DONE** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
 | ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **DONE** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
 | ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **DONE** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
-| ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
-| ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **READY** | MD+JSON, số liệu tái lập |
+| ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | **DONE** | không phá văn phạm §9.5; `( … )` vẫn chạy |
+| ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -705,6 +705,19 @@ APPROVED 2026-11-13 Agent 0
 > golden ca 24 + ca `ls | (a | b)` xác nhận xanh. Sửa kèm lý do: `khe_ong::khong_ngoac_van_la_loi_parse` →
 > `bieu_thuc_dau_khong_ngoac_chay`. Nợ: biến không nhận; bọc-list chỉ cho stage **đầu**; `[1,2]` trần vẫn `VS0201`.
 > **ST-52 mở** (R8 — chốt VSH1c).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-52 DONE — VÒNG 8 (VSH1c) CHỐT.** `reports/R8-viscript.{md,json,license}` (`a0cbe79`, head a44c357) —
+> `report-check` **PASS (8 báo cáo, 58 hàng QUEUE phủ đủ)**. Số đo **chạy lại**: **704 test** (343 cli) · **370 ca
+> sem/18 nhóm** · `vis test` **370 ok** / `--vm` **370 ok + 6 SKIP** · **parity 344/344** · **differential 100.000
+> chương trình 0 lệch** (211,5 s, 473/s) · fuzz parser 60 s **3.023.954 ca/0 vi phạm** · `VBC1` 53 tag · **7 sổ/29 mã**
+> (`VS0405` ở **sổ kiểu**) · khởi động ấm 10,7–11,0 ms · **allowlist 6** · `gate --fast` + `nightly` PASS.
+> **Đóng 5 nợ**: thân `cmd` pipeline · nhóm-lệnh có cờ + nhiều dòng + **một** đường hạ nhóm · một mã field-access đúng
+> sổ · `where ( x => x )` tĩnh · stage đầu là biểu thức. **Còn 9 nợ lõi + VS2**, ghi trong `R8` §5.
+> **Sửa sổ**: hàng ST-51 trước còn `BLOCKED` (lỗi mẫu regex của tôi khi lật) ⇒ nay `**DONE**` cùng ST-52; `report-check`
+> vẫn PASS cả trước và sau (máy kiểm đọc `blocked[]` theo `queue`).
+> **Vòng 9 (mở sau)**: ST-53.. (nợ lõi) + khung VS2 có tiêu chí đo.
 
 ## Ghi chú vận hành
 

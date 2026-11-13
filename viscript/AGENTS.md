@@ -7,7 +7,7 @@ Nguồn sự thật của vòng vá: [`../docs/QUYET-DINH-sau-review.md`](../doc
 
 1. **Code + test** trong `viscript/`: crate biên dịch được, golden, fuzz, TAP.
 2. **`SPEC`** — [`../docs/viscript/SPEC-lex.md`](../docs/viscript/SPEC-lex.md) (từ vựng + EBNF tự chứa) và `SPEC.md` (do ST-02a/ST-02b sinh); sửa **chỉ** qua Agent 0.
-3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — VD-01..VD-10 + VD-11..VD-80 (QD §7, các câu Q1..Q5 của SPEC-lex, và các chỗ văn phạm chế độ lệnh/vis-fmt/vis-diag cần chốt).
+3. [`agent/DECISIONS.md`](agent/DECISIONS.md) — VD-01..VD-10 + VD-11..VD-85 (QD §7, các câu Q1..Q5 của SPEC-lex, và các chỗ văn phạm chế độ lệnh/vis-fmt/vis-diag cần chốt).
 4. Tài liệu thiết kế [`../docs/viscript/ViScript-thiet-ke.md`](../docs/viscript/ViScript-thiet-ke.md) — tham chiếu.
 
 QD thắng tài liệu thiết kế.
@@ -18,8 +18,8 @@ QD thắng tài liệu thiết kế.
 |---|---|
 | [`../docs/viscript/ViScript-thiet-ke.md`](../docs/viscript/ViScript-thiet-ke.md) | thiết kế đầy đủ (9.4 bảng xung đột chế độ lệnh, 14 cấu trúc crate, 20 quy trình, 22 quyết định) |
 | [`../docs/viscript/SPEC-lex.md`](../docs/viscript/SPEC-lex.md) | đặc tả từ vựng + EBNF tự chứa — sản phẩm của **ST-02a** |
-| [`agent/QUEUE.md`](agent/QUEUE.md) | vòng 1 ST-01..ST-10 + vòng 2 VS0 + vòng 3 khung VS1 (kèm 12b/13b/15b/20b) + vòng 4 VS1b ST-25..ST-31 (kèm 30b) + vòng 5 VS1c ST-32..ST-36 + vòng 6 VSH1a ST-37..ST-43 + vòng 7 VSH1b ST-44..ST-47 — **53/53 `DONE`** |
-| [`agent/DECISIONS.md`](agent/DECISIONS.md) | VD-01..VD-10 + Q1..Q8 + VD-11..VD-80 |
+| [`agent/QUEUE.md`](agent/QUEUE.md) | vòng 1 ST-01..ST-10 + vòng 2 VS0 + vòng 3 khung VS1 (kèm 12b/13b/15b/20b) + vòng 4 VS1b ST-25..ST-31 (kèm 30b) + vòng 5 VS1c ST-32..ST-36 + vòng 6 VSH1a ST-37..ST-43 + vòng 7 VSH1b ST-44..ST-47 + vòng 8 VSH1c ST-48..ST-52 — **58/58 `DONE`** |
+| [`agent/DECISIONS.md`](agent/DECISIONS.md) | VD-01..VD-10 + Q1..Q8 + VD-11..VD-85 |
 | [`agent/STATE.md`](agent/STATE.md), [`agent/BLOCKED.md`](agent/BLOCKED.md) | trạng thái + chặn (Agent 2 ghi) |
 | `agent/JOURNAL/`, `agent/reports/` | nhật ký ngày, `R<n>-viscript.md` + `.json` |
 
@@ -28,6 +28,7 @@ QD thắng tài liệu thiết kế.
 - **ST-02a = APPROVED 2026-11-12 Agent 0 / DONE**: `SPEC-lex.md` + EBNF + bảng ưu tiên + 60 golden token + 30 golden biểu thức (bộ 30 nay ở `viscript/test/expr/golden.expr`, VD-34).
 - **ST-04 = DONE** (`663eacb`): lexer `crates/vis-syntax` — 60/60 golden token (đỏ trước), fuzz 10 phút, NFC/NFD.
 - **VÒNG 1 XONG (2026-11-12/13, 7 task trong 1 đêm)**: **ST-05** parser + CST lossless (`49f2539`; 30 golden biểu thức, 15/15 khối tài liệu), **ST-08** `vis check` TAP (`2971a72`), **ST-07** `vis-fmt` lossless/idempotent (`b149fe9`), **ST-06** CmdCST + `.vish` vào `vis check` (`590e9f7`; 33 golden chế độ lệnh), **ST-09** cổng `doc-examples` (`ba777e9`; 24 khối/17 xanh + allowlist 7 + 12 fixture QD), **ST-03** `vis-diag` scalar/render/vi-en-ja (`ada1ebc`; 20 snapshot render). **157** test, `gate --fast` PASS, không `#[ignore]`, mọi log đỏ có sha256 khớp. Quyết định: **VD-28..VD-41** (Q1..Q5 SPEC-lex, Unicode, 30 golden biểu thức, sổ cú pháp 02xx, fixture tài liệu, Phụ lục A, vis-fmt vòng 1, chế độ lệnh vòng 1, lỗ hổng đã biết).
+- **VÒNG 8 — VSH1c ĐÃ CHỐT (2026-11-14)**: **thân `cmd` bằng pipeline lệnh** (thử-script-trước, filler giữ byte), **nhóm-lệnh có cờ** + **nhóm nhiều dòng** + **một** đường hạ nhóm, **`VS0405`** (một mã field-access, **đúng sổ kiểu**), **`where ( x => x )` kiểm tĩnh**, **stage đầu là biểu thức** (`[1,2] | take 1`). Đo: **704 test**, **370 ca/18 nhóm**, `vis test` 370 ok, parity **344/344**, differential **100k 0 lệch**, allowlist **6**; **VD-81..VD-85**; **R8**. Còn **9 nợ lõi** + **VS2**.
 - **VÒNG 7 — VSH1b ĐÃ CHỐT (2026-11-13)**: `.vish` **khai báo kiểu** (`type`/`enum`/`let x: T`/`cmd f(...) -> T`, tách **vùng item/stage**), **`where` kiểm tĩnh đầy đủ** (`VS0412` nêu kiểu thật) + `each` **không** kiểm kiểu trả, **`ls --long` thật** (`FileEntryLong`, `mode`, `modified_time` UTC), **nhóm là đối số** (`take ( 1 + 1 )`), **chẩn đoán tuyệt đối** trong `( … )`. Đo: **651 test**, **370 ca/18 nhóm**, `vis test` 370 ok, parity **344/344**, differential **100k 0 lệch**, allowlist **6**; **VD-77..VD-80**; **R7**. Còn **VSH1b-2** + 14 nợ + **VS2**.
 - **VÒNG 6 — VSH1a ĐÃ CHỐT (2026-11-13)**: chế độ shell **dùng được** theo §9.5–§9.7 — **khe ống hợp nhất** (bỏ so `==`, hợp nhất một chiều) ⇒ `( [1,2] ) | take 1`; **closure-arg** + `where`/`each`/`first`/`count` + **sugar vị từ ngầm `it`**; `sort_by --desc` **ổn định**; **prelude** `FileEntry`/`ProcEntry` + `it` kiểu thật + **`VS0605`**; `get`/`select`; **`Render`** (bảng `list[bản ghi]`, khối khoá–giá trị, NFC, `(rỗng)` chỉ cho bản ghi); `ls`/`open` qua `FsHost` + **`--fs-mock`** ⇒ **§9.7 khối 672 chạy thật**. Đo: **606 test**, **370 ca/18 nhóm**, `vis test` 370 ok, parity **344/344**, differential **100k 0 lệch**, **allowlist doc-examples 8 → 6**; **VD-69..VD-76**; **R6**. Còn **VSH1b** + **VS2** + 17 nợ trong `R6` §5.
 - **VÒNG 5 — VS1c ĐÃ CHỐT (2026-11-13)**: **harness chẩn đoán 3 đường** (so cả 26 ca **lỗi biên dịch**, 0 lệch), **`json.decode`** + **`std.fs`** qua `FsHost` (interp/vm **không** chạm OS; không host ⇒ `VS0604` cả 2 đường), **pipe→stdin** + **`| complete`** (`grep` exit 1 hết là lỗi; `MAX_STDIN` 8 MiB), **generic thật** (`Hop[int] ≠ Hop[str]`, `RecId` interned theo tổ hợp, payload xoá kiểu ⇒ không bump `VBC1`). Đo: **507 test**, **346 ca/18 nhóm**, `vis test` 346 ok, parity **320/320**, differential **100k 0 lệch**; **VD-64..VD-68**; **R5**. Còn **VS2** + 15 nợ trong `R5` §4.
