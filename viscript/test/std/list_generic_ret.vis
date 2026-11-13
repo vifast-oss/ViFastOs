@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use std.list
+
+let ys: list[int] = list.sort([3, 1, 2])
+print(ys)
+let zs: list[list[int]] = list.chunk(ys, 2)
+print(zs)
+print(list.take(list.reverse(ys), 2))

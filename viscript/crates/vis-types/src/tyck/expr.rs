@@ -4,7 +4,7 @@
 use crate::hir::{BinOp, HCond, HExpr, HPat, HStmt, UnOp};
 use crate::ty::{EnumId, Type};
 
-use super::{num, Checker, ARG_COUNT, MISMATCH, NO_FIELD};
+use super::{num, thay_gen, Checker, ARG_COUNT, MISMATCH, NO_FIELD};
 
 impl<'a> Checker<'a> {
     /// Kiểu một biểu thức (ghi vào `types_of_expr`).
@@ -970,6 +970,11 @@ impl<'a> Checker<'a> {
     }
 
     /// Chữ ký `std.*` (ST-26): `None` nếu `name` không phải `std.*`.
+    ///
+    /// **ST-58 (VD-94/VD-99)**: **hợp nhất** đối số thật với **biến kiểu** của chữ ký (trái→phải),
+    /// rồi **thay** biến vào kiểu trả. `Ty::FnKhoa` là **ngoại lệ có ghi** duy nhất: lambda chưa chú
+    /// thích là `{error}` và `Type` không có union `int|str` ⇒ tầng chạy kiểm (ST-56). Biến **không
+    /// gán** ⇒ `{error}` (giữ `json.decode`, VD-66). Không mã mới: `VS0401` (số đối số) / `VS0412`.
     fn kiem_std(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
         let ngan = name.strip_prefix("std.")?;
         let sig = crate::stdlib::sig_of(ngan)?;
@@ -981,22 +986,25 @@ impl<'a> Checker<'a> {
                 span,
             );
         }
-        for (i, (t, mong)) in tys.iter().zip(sig.params.iter()).enumerate() {
-            let Some(mong) = mong.kieu() else { continue };
-            if !matches!(t, Type::Error) && *t != mong {
-                self.diag(
-                    MISMATCH,
-                    format!(
-                        "`{ngan}`: đối số {} cần `{}`, được `{}`",
-                        i + 1,
-                        mong.name(),
-                        t.name()
-                    ),
-                    span,
-                );
+        let gens: Vec<String> = (0..3)
+            .map(|i| crate::stdlib::ten_bien(i as u8).to_string())
+            .collect();
+        let mut bang: Vec<(String, Type)> = Vec::new();
+        for (i, (that, mong)) in tys.iter().zip(sig.params.iter()).enumerate() {
+            // Ngoại lệ **có ghi**: khoá `sort_by` (lambda chưa chú thích) — tầng chạy kiểm (ST-56).
+            if matches!(mong, crate::stdlib::Ty::FnKhoa) {
+                continue;
             }
+            self.hop_nhat(
+                &mong.sang_type(),
+                that,
+                &gens,
+                &mut bang,
+                &format!("std.{ngan} (đối số {})", i + 1),
+                span,
+            );
         }
-        sig.ret.kieu().or(Some(Type::Error))
+        Some(thay_gen(&sig.ret.sang_type(), &bang))
     }
 
     /// Chữ ký 8 tên dựng sẵn (VD-44 #3): đối số đúng số lượng + đúng kiểu.

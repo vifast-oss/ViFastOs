@@ -1,0 +1,48 @@
+# ST-58 — log ĐỎ (sem) lúc 2026-11-13T23:06:59Z, HEAD f67bd47
+# 3 ca âm **tĩnh** mới (kỳ vọng VS0412) + 2 ca xanh mới ở test/std (khoá kiểu trả generic).
+
+== test/sem/list/concat-tron.vis → kỳ vọng .err: VS0412
+-- interp:
+   [1, a]
+   [exit=0]
+-- vm:
+   [1, a]
+   [exit=0]
+
+== test/sem/list/sort-sai-kieu.vis → kỳ vọng .err: VS0412
+-- interp:
+   test/sem/list/sort-sai-kieu.vis:4:7: error VS0501: `list.sort`: đối số 1 cần `list`, được `khong phai list`
+   [exit=1]
+-- vm:
+   test/sem/list/sort-sai-kieu.vis:4:7: error VS0501: `list.sort`: đối số 1 cần `list`, được `khong phai list`
+   [exit=1]
+
+== test/sem/map/get-or-sai-kieu.vis → kỳ vọng .err: VS0412
+-- interp:
+   1
+   [exit=0]
+-- vm:
+   1
+   [exit=0]
+
+bash: Ty::Any: command not found
+== test/std/list_generic_ret.vis (xanh — đã chạy được nhờ , ca **khoá** kiểu trả generic)
+   [1, 2, 3]
+   [[1, 2], [3]]
+   [3, 2]
+   [exit=0]  kỳ vọng:
+   [1, 2, 3]
+   [[1, 2], [3]]
+   [3, 2]
+
+bash: Ty::Any: command not found
+== test/std/map_generic_ret.vis (xanh — đã chạy được nhờ , ca **khoá** kiểu trả generic)
+   0
+   [a, b]
+   [7]
+   {"a": 1, "b": 2}
+   [exit=0]  kỳ vọng:
+   0
+   ["a", "b"]
+   [7]
+   {"a": 1, "b": 2}

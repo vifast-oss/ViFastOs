@@ -111,10 +111,11 @@ fn khoa_int_cu_khong_doi() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Dựng danh sách **lẫn `int` và `str`** mà front end **không** chẩn đoán: `list.concat` có chữ ký
-/// `(Any, Any) -> Any` (nợ `Ty::Any`, ST-58) ⇒ kiểu phần tử bị xoá, ca âm chạy tới **lúc chạy**.
-const TRON: &str =
-    "use std.list\nfn main():\n    print(list.sort_by(list.concat([1, 2], [\"a\"]), x => x))\n";
+/// **SỬA KÈM LÝ DO (ST-58)**: `list.concat` nay là `(list[T], list[T]) -> list[T]` ⇒ `[1] + ["a"]`
+/// bị **tyck bắt tĩnh** (`VS0412`), không còn dựng được danh sách trộn. Ca **runtime** vẫn phải khoá:
+/// dựng danh sách trộn từ **dữ liệu không kiểu** `json.decode` (`Var` không gán ⇒ `{error}`) ⇒ front
+/// end **sạch**, lỗi vẫn ở **lúc chạy** `VS0501` (nêu cả `int` và `str`).
+const TRON: &str = "use std.json\nuse std.list\nfn main():\n    match json.decode(\"[1, \\\"a\\\"]\"):\n        Ok(xs):\n            print(list.sort_by(xs, x => x))\n        Err(e):\n            print(e)\n";
 
 #[test]
 fn tron_int_va_str_la_vs0501_neu_kieu_that() {

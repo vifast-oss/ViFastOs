@@ -6,17 +6,17 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-57** (nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives`
-                sinh mã** `Show`/`Eq` — VD-93 + VD-98) — xong, **chưa commit**.
-Bước          : 8/8 (kế hoạch/khảo sát file:line → 2 log đỏ → A1 mồ côi đa tệp → A2 siêu trait →
-                A3 derives sinh HIR → khoá số + tách `lower/options.rs` (R1) → cổng → differential →
-                STATE/JOURNAL → commit + push).
+Task          : **ST-58** (nợ lõi **C**: `Ty::Any` → **biến kiểu thật** `Var/List/Map` cho
+                `std.list.*`/`std.map.*`/`std.json.*` — VD-94 + VD-99) — xong, **chưa commit**.
+Bước          : 7/7 (khảo sát file:line → 2 log đỏ → `Ty` mới + 16 chữ ký → `kiem_std` hợp nhất →
+                interp nhánh biến kiểu → 3 ca cũ dựa `Any` đổi đúng lý do → cổng → differential →
+                STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T22:57:45Z**; **765** test / sem
-                **388** / `vis test` **388 ok** (+`--vm` **388 ok/6 SKIP**) / parity **356/356** /
-                differential **100.000 chương trình 0 lệch** (198,5 s) / **7 sổ-29 mã** (không mã mới) /
-                allowlist **6**
-Việc dở       : commit `[ST-57]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T23:20:54Z**; **770** test / sem
+                **388** / `test/std` **73** / `vis test` **388 ok** (+`--vm` **388 ok/6 SKIP**) / parity
+                **356/356** / differential **100.000 chương trình 0 lệch** (193,2 s) / **7 sổ-29 mã**
+                (không mã mới) / allowlist **6**
+Việc dở       : commit `[ST-58]` + push (đã được uỷ quyền)
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -48,6 +48,21 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-58 — `Ty::Any` **xoá hẳn**: biến kiểu thật cho `std.*` (VD-94/VD-99), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`Ty` mới** | `Ty::{Var(u8), List(&'static Ty), Map(&'static Ty, &'static Ty)}` thay `Any` (xoá **hẳn**); `const FUNCS` dùng **promotion** (`Ty::List(&Ty::Var(0))`) — không cần `static` có tên; bỏ `Ty::kieu()` (chỗ `else { continue }` im lặng) → `sang_type()` **tổng**: `Var(i)` ⇒ `TypeRef` tên `T`/`K`/`V` (tái dùng `TypeRef`, **không** thêm `Type::Param`) |
+| 2 | **`kiem_std`** | hợp nhất **trái→phải** bằng `hop_nhat` + `thay_gen` sẵn có: biến xuất hiện 2 lần phải `same`, `{error}` không gán, sai hình dạng ⇒ `VS0412`, số đối số ⇒ `VS0401` (giữ); biến **không gán** ⇒ `{error}` (giữ `json.decode`, VD-66); **không mã mới** |
+| 3 | **Ngoại lệ có ghi** | `list.sort_by[1]` = `Ty::FnKhoa` (lambda chưa chú thích ⇒ `{error}`; `Type` không có union `int|str`) ⇒ `continue` trong hợp nhất, **tầng chạy** kiểm (ST-56 giữ `ChiIntHoacStr`) — ca trộn `int`/`str` vẫn là `VS0501` **lúc chạy** |
+| 4 | **16/38 chữ ký đổi** | `std.list` 8 (`list[T]`; `chunk -> list[list[T]]`), `std.map` 5 (`map[K,V]`, `keys/values`, `get_or`, `merge`, `remove`), `std.json` 3 (`encode/encode_pretty (T) -> str`, `decode (str) -> Var(2)`); `std.str/path/time/fs` **không đụng** |
+| 5 | **Phía interp** | `kiem()` (`vis-interp/src/stdlib.rs`) thêm nhánh `Var/List/Map => true` (thân hàm tự kiểm như trước với `Any`) ⇒ **73** ca `test/std` + differential **không đổi hành vi** |
+| 6 | **Ca** | +2 ca xanh `test/std/{list_generic_ret,map_generic_ret}.vis` (**khoá kiểu trả**: `list.sort([3,1,2]) -> list[int]`, `list.chunk -> list[list[int]]`, `map.get_or -> V`, `map.keys -> list[K]`); **3 ca âm tĩnh** (`list.concat` trộn kiểu, `list.sort("x")`, `map.get_or` sai `V`) khoá bằng **Rust** (`vis-cli/tests/stdlib.rs`) — `test/sem` **không nạp** `use std.*` (hạn chế đã biết từ ST-56, ghi JOURNAL); **4 ca Rust mới** `vis-types/tests/stdlib_ty.rs` (tổng `sang_type`, `Var` ∈ 0..3, đúng hình dạng 16 chữ ký, `sort_by` giữ `FnKhoa`) |
+| 7 | **3 ca cũ dựa `Any`** | `vis-cli/tests/stdlib.rs`: `list.sort("x")` từ lỗi **chạy** `VS0501` → **tĩnh** `VS0412` (mạnh hơn; `check`=1 ↔ `run`/`--vm`=2); `sort_by_str.rs` ca **TRON** dựng danh sách trộn bằng `json.decode` từ dữ liệu **không kiểu** ⇒ vẫn là `VS0501` **lúc chạy** nêu cả `int`/`str`; `gan_hai_duong.rs` ca "kiểu không rõ" đổi sang **tham số generic** `fn gan[T](x: T)` (T bị xoá ⇒ `{error}`) — vẫn khoá hai đường **cùng** chẩn đoán lúc chạy |
+| 8 | **Đỏ trước** | `JOURNAL/st58-red-sem.log` sha256 `fca3d833…` (3 ca âm: **1 chạy được**, **1 lỗi chạy `VS0501` thay vì tĩnh**, **1 in 1**; 2 ca xanh đã xanh — khoá kiểu trả); `JOURNAL/st58-red-rust.log` sha256 `b75a7728…` (target `stdlib_ty` **không biên dịch** vì thiếu `Ty::Var/List/Map` + `sang_type`; `sai_kieu_bi_tyck_bat_tinh` FAILED: `check` exit 0 ≠ 2) |
+| 9 | **Đo** | **770** test (21+96+18+**154**+24+62+9+**386**); sem **388/19 nhóm** (345 `.vis` + 43 `.vish`, 59 `.err` — **không đổi**); `test/std` **73**; `vis test` **388 ok**; `--vm` **388 ok + 6 SKIP**; parity **356/356** (32 ca lỗi biên dịch); differential **100.000/0 lệch** (193,2 s, 518/s, seed 3523158054); `VBC1` **53** tag; **7 sổ/29 mã**; allowlist **6** |
+| 10 | **Nợ / bất ngờ** | (a) `Ty::Fn` thật cho `sort_by` (nay `FnKhoa` = ngoại lệ); (b) map khoá **không-`str`** (tyck literal map vẫn đòi `str`); (c) thứ tự khoá map (nợ cũ); (d) 3 ca âm tĩnh nằm ở **Rust** thay vì `test/sem` vì harness sem chạy **in-process** không nạp `use std.*`; (e) **không** đổi `all_codes()` |
 
 ## ST-57 — mồ côi **đa tệp** + **siêu trait** + `derives` **sinh mã** (VD-93/VD-98), 2026-11-14
 

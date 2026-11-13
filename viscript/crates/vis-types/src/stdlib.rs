@@ -4,48 +4,62 @@
 //! Tên đầy đủ có tiền tố module (`str.split`, `list.sort`, `time.now_ms`) — nhờ vậy `std.str.join` và
 //! `std.path.join` không đụng nhau, và không có tên trần nào bị nhập vào phạm vi người dùng.
 //!
-//! Kiểu tham số: `Ty::Any` = **không kiểm kiểu tĩnh** (chỉ kiểm **số đối số**), ngữ nghĩa kiểm lúc chạy
-//! với `VS0501`. Đây là bắc cầu cho tới khi có generic (`list[T]`/`map[K,V]`) — nợ VS1c ghi JOURNAL.
+//! **ST-58 (VD-94/VD-99)**: chữ ký dùng **biến kiểu** (`Ty::Var`, `Ty::List`, `Ty::Map`) — `Ty::Any`
+//! đã **xoá hẳn** (chính nó là lỗ "bỏ kiểm kiểu im lặng"). `tyck` **hợp nhất** đối số thật với biến
+//! (trái→phải) rồi thay biến vào kiểu trả; biến **không gán** ⇒ `{error}` (giữ `json.decode`, VD-66).
 
 use crate::ty::Type;
 
-/// Một chỗ trong chữ ký: hoặc kiểu cụ thể, hoặc "nhận mọi kiểu".
+/// Một chỗ trong chữ ký `std.*` — **const-friendly** (`Copy` + `&'static Ty`, dùng được trực tiếp
+/// trong `const FUNCS` nhờ promotion), **không** còn "nhận mọi kiểu" (VD-99 (1)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ty {
     Int,
     Str,
     Bool,
     ListStr,
-    /// Khoá của `list.sort_by`: `fn(T) -> int` **hoặc** `fn(T) -> str` (ST-56).
+    /// Khoá của `list.sort_by`: `fn(T) -> int` **hoặc** `fn(T) -> str` (ST-56) — **ngoại lệ có ghi**
+    /// duy nhất (VD-94 (3)/VD-99 (5)): lambda chưa chú thích là `{error}`, `Type` không có union.
     FnKhoa,
-    /// **Không** kiểm kiểu tĩnh (chỉ số đối số).
-    Any,
     /// `Result[str, str]` — ST-33 (`std.fs.read`, `std.fs.list` lỗi trả `str`).
     ResultStrStr,
     /// `Result[(), str]` — ST-33 (`std.fs.write`).
     ResultUnitStr,
     /// `Result[list[str], str]` — ST-33 (`std.fs.list`).
     ResultListStrStr,
+    /// **Biến kiểu** (VD-99 (1)): `0=T`, `1=K`, `2=V` — **thay** `Ty::Any` (đã xoá).
+    Var(u8),
+    /// `list[T]` — phần tử là biến kiểu (hoặc kiểu lồng, vd `list[list[T]]`).
+    List(&'static Ty),
+    /// `map[K, V]`.
+    Map(&'static Ty, &'static Ty),
 }
 
 impl Ty {
-    /// Kiểu tĩnh tương ứng; `None` = [`Ty::Any`] (bỏ kiểm kiểu).
-    pub fn kieu(self) -> Option<Type> {
+    /// Kiểu tĩnh **tương ứng** — **tổng** (không `Option`; thay `kieu()` cũ). `Var(i)` hạ thành
+    /// `Type::TypeRef` tên `T`/`K`/`V` (tái dùng `TypeRef` — `hop_nhat` đã coi tên trong `gens` là
+    /// biến kiểu; **không** thêm `Type::Param`).
+    pub fn sang_type(self) -> Type {
         match self {
-            Ty::Int => Some(Type::Int),
-            Ty::Str => Some(Type::Str),
-            Ty::Bool => Some(Type::Bool),
-            Ty::ListStr => Some(Type::List(Box::new(Type::Str))),
-            Ty::ResultStrStr => Some(Type::Result(Box::new(Type::Str), Box::new(Type::Str))),
-            Ty::ResultUnitStr => Some(Type::Result(Box::new(Type::Unit), Box::new(Type::Str))),
-            Ty::ResultListStrStr => Some(Type::Result(
+            Ty::Int => Type::Int,
+            Ty::Str => Type::Str,
+            Ty::Bool => Type::Bool,
+            Ty::ListStr => Type::List(Box::new(Type::Str)),
+            Ty::ResultStrStr => Type::Result(Box::new(Type::Str), Box::new(Type::Str)),
+            Ty::ResultUnitStr => Type::Result(Box::new(Type::Unit), Box::new(Type::Str)),
+            Ty::ResultListStrStr => Type::Result(
                 Box::new(Type::List(Box::new(Type::Str))),
                 Box::new(Type::Str),
-            )),
-            // Closure chưa suy kiểu hai chiều (VS0 nợ, xem JOURNAL ST-26) ⇒ **không** kiểm tĩnh;
-            // tầng chạy kiểm "gọi được" và "khoá trả `int` **hoặc** `str`" (VS0501, ST-56).
-            Ty::FnKhoa => None,
-            Ty::Any => None,
+            ),
+            Ty::Var(i) => Type::TypeRef {
+                name: ten_bien(i).to_string(),
+                args: Vec::new(),
+            },
+            Ty::List(t) => Type::List(Box::new(t.sang_type())),
+            Ty::Map(k, v) => Type::Map(Box::new(k.sang_type()), Box::new(v.sang_type())),
+            // Closure chưa suy kiểu hai chiều (VS0 nợ, xem JOURNAL ST-26) ⇒ vẫn **không** kiểm tĩnh
+            // ở tyck; tầng chạy kiểm "gọi được" và "khoá trả `int` **hoặc** `str`" (VS0501, ST-56).
+            Ty::FnKhoa => Type::Error,
         }
     }
 
@@ -58,11 +72,22 @@ impl Ty {
             Ty::ListStr => "list[str]",
             // ST-56: khoá nhận **cả** `str` ⇒ tên hiển thị nói đúng hợp đồng mới.
             Ty::FnKhoa => "fn(T) -> int | str",
-            Ty::Any => "bất kỳ",
             Ty::ResultStrStr => "Result[str, str]",
             Ty::ResultUnitStr => "Result[(), str]",
             Ty::ResultListStrStr => "Result[list[str], str]",
+            Ty::Var(_) => "biến kiểu",
+            Ty::List(_) => "list",
+            Ty::Map(..) => "map",
         }
+    }
+}
+
+/// Tên biến kiểu theo chỉ số: `0=T`, `1=K`, `2=V` (VD-99 (1)); ngoài phạm vi ⇒ `T` (không panic).
+pub fn ten_bien(i: u8) -> &'static str {
+    match i {
+        1 => "K",
+        2 => "V",
+        _ => "T",
     }
 }
 
@@ -140,72 +165,75 @@ pub const FUNCS: [StdFn; 38] = [
         params: &[Ty::Str, Ty::Str, Ty::Str],
         ret: Ty::Str,
     },
-    // ----- std.list (phần tử là `Any` — nợ generic VS1c) -----
+    // ----- std.list — **ST-58 (VD-99 (4))**: `list[T]` thật (8 chữ ký đổi) -----
     StdFn {
         name: "list.sort",
-        params: &[Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0))],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.sort_by",
-        params: &[Ty::Any, Ty::FnKhoa],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0)), Ty::FnKhoa],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.reverse",
-        params: &[Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0))],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.unique",
-        params: &[Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0))],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.concat",
-        params: &[Ty::Any, Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0)), Ty::List(&Ty::Var(0))],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.chunk",
-        params: &[Ty::Any, Ty::Int],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0)), Ty::Int],
+        ret: Ty::List(&Ty::List(&Ty::Var(0))),
     },
     StdFn {
         name: "list.take",
-        params: &[Ty::Any, Ty::Int],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0)), Ty::Int],
+        ret: Ty::List(&Ty::Var(0)),
     },
     StdFn {
         name: "list.drop",
-        params: &[Ty::Any, Ty::Int],
-        ret: Ty::Any,
+        params: &[Ty::List(&Ty::Var(0)), Ty::Int],
+        ret: Ty::List(&Ty::Var(0)),
     },
-    // ----- std.map -----
+    // ----- std.map — **ST-58**: `map[K, V]` thật (5 chữ ký đổi) -----
     StdFn {
         name: "map.keys",
-        params: &[Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::Map(&Ty::Var(1), &Ty::Var(2))],
+        ret: Ty::List(&Ty::Var(1)),
     },
     StdFn {
         name: "map.values",
-        params: &[Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::Map(&Ty::Var(1), &Ty::Var(2))],
+        ret: Ty::List(&Ty::Var(2)),
     },
     StdFn {
         name: "map.merge",
-        params: &[Ty::Any, Ty::Any],
-        ret: Ty::Any,
+        params: &[
+            Ty::Map(&Ty::Var(1), &Ty::Var(2)),
+            Ty::Map(&Ty::Var(1), &Ty::Var(2)),
+        ],
+        ret: Ty::Map(&Ty::Var(1), &Ty::Var(2)),
     },
     StdFn {
         name: "map.get_or",
-        params: &[Ty::Any, Ty::Str, Ty::Any],
-        ret: Ty::Any,
+        params: &[Ty::Map(&Ty::Var(1), &Ty::Var(2)), Ty::Str, Ty::Var(2)],
+        ret: Ty::Var(2),
     },
     StdFn {
         name: "map.remove",
-        params: &[Ty::Any, Ty::Str],
-        ret: Ty::Any,
+        params: &[Ty::Map(&Ty::Var(1), &Ty::Var(2)), Ty::Str],
+        ret: Ty::Map(&Ty::Var(1), &Ty::Var(2)),
     },
     // ----- std.path (thuần chuỗi) -----
     StdFn {
@@ -252,20 +280,20 @@ pub const FUNCS: [StdFn; 38] = [
     // ----- std.json (chỉ encode; decode hoãn — xem `HA_CHUA_HO_TRO`) -----
     StdFn {
         name: "json.encode",
-        params: &[Ty::Any],
+        params: &[Ty::Var(0)],
         ret: Ty::Str,
     },
     StdFn {
         name: "json.encode_pretty",
-        params: &[Ty::Any],
+        params: &[Ty::Var(0)],
         ret: Ty::Str,
     },
-    // ST-33: `json.decode` — trả `Result[Any, str]` nhưng `Type` **không** có `Any` ⇒ `Ty::Any`
-    // (bỏ kiểm tĩnh như `list.*`/`map.*`, VD-59 (3)); giá trị thật là `Result` lúc chạy.
+    // ST-33/ST-58: `json.decode` trả `Result[<đã giải mã>, str]` — biến `V` **không** có trong
+    // tham số ⇒ `thay_gen` cho `{error}` (giữ VD-66: dữ liệu không kiểu vẫn phải `match`).
     StdFn {
         name: "json.decode",
         params: &[Ty::Str],
-        ret: Ty::Any,
+        ret: Ty::Var(2),
     },
     // ----- std.fs (ST-33) — **đi qua `Host`**, không OS trong crate này -----
     StdFn {

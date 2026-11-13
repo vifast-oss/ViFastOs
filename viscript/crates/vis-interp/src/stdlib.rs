@@ -55,7 +55,9 @@ fn kiem(name: &str, args: &[Value], span: Span) -> Result<(), Abort> {
     }
     for (i, (a, t)) in args.iter().zip(sig.params.iter()).enumerate() {
         let ok = match t {
-            Ty::Any => true,
+            // **ST-58 (VD-94/VD-99)**: biến kiểu / `list[T]` / `map[K,V]` — thân hàm tự kiểm như
+            // trước với `Any` (tyck đã chặn **tĩnh** phần lớn; dữ liệu không kiểu vẫn tới đây).
+            Ty::Var(_) | Ty::List(_) | Ty::Map(..) => true,
             Ty::Int => matches!(a, Value::Int(_)),
             Ty::Str => matches!(a, Value::Str(_)),
             Ty::Bool => matches!(a, Value::Bool(_)),

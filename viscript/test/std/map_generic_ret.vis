@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+use std.map
+
+let m: map[str, int] = {"a": 1, "b": 2}
+print(map.get_or(m, "z", 0))
+print(map.keys(m))
+print(map.values({"a": 7}))
+print(map.merge({"a": 1}, {"b": 2}))

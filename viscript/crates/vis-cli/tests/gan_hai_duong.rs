@@ -186,10 +186,12 @@ fn dich_gan_khong_ho_tro_la_vs0412() {
 
 #[test]
 fn gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau() {
-    // Base có kiểu tĩnh **không rõ** (`Ty::Any` của `list.concat`) ⇒ tyck không chặn được;
-    // **lúc chạy** hai đường phải cho **cùng** `(mã, dòng, cột, thông điệp)`.
+    // **SỬA KÈM LÝ DO (ST-58)**: `list.concat` nay **có kiểu** (`list[T]`) ⇒ không còn là nguồn
+    // "kiểu tĩnh không rõ". Dùng **tham số generic** `T` (bị **xoá kiểu** ở VS0 ⇒ `{error}`) trong
+    // một biến **`var`**: tyck **không** chặn (Error), **lúc chạy** hai đường phải cho **cùng**
+    // `(mã, dòng, cột, thông điệp)`.
     let d = tam("khong-ro");
-    let src = "use std.list\n\nfn main():\n    var x = list.concat([1], [2])\n    x.f = 3\n    print(x)\n";
+    let src = "fn gan[T](x: T) -> int:\n    var y = x\n    y.f = 3\n    return 0\n\nfn main():\n    print(gan(1))\n";
     let (c, _, e) = hai_duong(&d, "khong-ro", src);
     assert_eq!(c, 1, "phải là lỗi **lúc chạy**: {e}");
     assert!(e.contains("VS0501"), "stderr: {e}");

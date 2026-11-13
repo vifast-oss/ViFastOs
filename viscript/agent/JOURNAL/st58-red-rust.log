@@ -1,0 +1,227 @@
+# ST-58 — log ĐỎ (Rust) lúc 2026-11-13T23:07:00Z, HEAD f67bd47
+
+   Compiling vis-types v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-types)
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:17:16
+   |
+17 |     if let Ty::Var(i) = t {
+   |                ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:21:13
+   |
+21 |         Ty::List(x) => kiem_var(*x),
+   |             ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Map` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:22:13
+   |
+22 |         Ty::Map(k, v) => {
+   |             ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no method named `sang_type` found for reference `&Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:35:23
+   |
+35 |             let t = p.sang_type();
+   |                       ^^^^^^^^^ method not found in `&Ty`
+
+error[E0599]: no method named `sang_type` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:39:26
+   |
+39 |         assert_ne!(f.ret.sang_type(), Type::Unit, "{}: ret hạ thành unit", f.name);
+   |                          ^^^^^^^^^ method not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:47:13
+   |
+47 |         Ty::Var(0).sang_type(),
+   |             ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:54:13
+   |
+54 |         Ty::List(&Ty::Var(1)).sang_type(),
+   |             ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:54:23
+   |
+54 |         Ty::List(&Ty::Var(1)).sang_type(),
+   |                       ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:62:13
+   |
+62 |         Ty::List(&Ty::List(&Ty::Var(0))).sang_type(),
+   |             ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:62:23
+   |
+62 |         Ty::List(&Ty::List(&Ty::Var(0))).sang_type(),
+   |                       ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:62:33
+   |
+62 |         Ty::List(&Ty::List(&Ty::Var(0))).sang_type(),
+   |                                 ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Map` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:69:13
+   |
+69 |         Ty::Map(&Ty::Var(1), &Ty::Var(2)).sang_type(),
+   |             ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:69:22
+   |
+69 |         Ty::Map(&Ty::Var(1), &Ty::Var(2)).sang_type(),
+   |                      ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:69:35
+   |
+69 |         Ty::Map(&Ty::Var(1), &Ty::Var(2)).sang_type(),
+   |                                   ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:86:17
+   |
+86 |     let t = Ty::Var(0);
+   |                 ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:87:22
+   |
+87 |     let list_t = Ty::List(&Ty::Var(0));
+   |                      ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:87:32
+   |
+87 |     let list_t = Ty::List(&Ty::Var(0));
+   |                                ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:88:17
+   |
+88 |     let k = Ty::Var(1);
+   |                 ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:89:17
+   |
+89 |     let v = Ty::Var(2);
+   |                 ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Map` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:90:22
+   |
+90 |     let map_kv = Ty::Map(&Ty::Var(1), &Ty::Var(2));
+   |                      ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:90:31
+   |
+90 |     let map_kv = Ty::Map(&Ty::Var(1), &Ty::Var(2));
+   |                               ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+  --> crates/vis-types/tests/stdlib_ty.rs:90:44
+   |
+90 |     let map_kv = Ty::Map(&Ty::Var(1), &Ty::Var(2));
+   |                                            ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:100:17
+    |
+100 |             Ty::List(&Ty::List(&Ty::Var(0))),
+    |                 ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:100:27
+    |
+100 |             Ty::List(&Ty::List(&Ty::Var(0))),
+    |                           ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:100:37
+    |
+100 |             Ty::List(&Ty::List(&Ty::Var(0))),
+    |                                     ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:104:37
+    |
+104 |         ("map.keys", &[map_kv], Ty::List(&Ty::Var(1))),
+    |                                     ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:104:47
+    |
+104 |         ("map.keys", &[map_kv], Ty::List(&Ty::Var(1))),
+    |                                               ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:105:39
+    |
+105 |         ("map.values", &[map_kv], Ty::List(&Ty::Var(2))),
+    |                                       ^^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:105:49
+    |
+105 |         ("map.values", &[map_kv], Ty::List(&Ty::Var(2))),
+    |                                                 ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `Var` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:111:41
+    |
+111 |         ("json.decode", &[Ty::Str], Ty::Var(2)),
+    |                                         ^^^ variant, associated function, or constant not found in `Ty`
+
+error[E0599]: no variant, associated function, or constant named `List` found for enum `Ty` in the current scope
+   --> crates/vis-types/tests/stdlib_ty.rs:128:35
+    |
+128 |         matches!(f.params[0], Ty::List(_)),
+    |                                   ^^^^ variant, associated function, or constant not found in `Ty`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vis-types` (test "stdlib_ty") due to 31 previous errors
+warning: build failed, waiting for other jobs to finish...
+
+bash: stdlib_ty: command not found
+bash: --test: command not found
+== (riêng, vì target  chưa biên dịch được nên cargo dừng) :
+test var_list_chi_so_va_cow_hai_duong ... ok
+test gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau ... ok
+test var_map_khoa_hai_duong ... ok
+test var_truong_gan_hai_duong ... ok
+test var_self_gan_truong_hai_duong ... ok
+test gan_ghep_tren_truong_bi_chan_truoc_hai_duong ... ok
+test self_bat_bien_la_vs0412_hai_duong ... ok
+test dich_gan_khong_ho_tro_la_vs0412 ... ok
+test codegen_loi_vm_phai_exit_khac_0 ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+test khoa_khong_goi_duoc_neu_ten_hien_thi_moi ... ok
+test khoa_int_cu_khong_doi ... ok
+test khoa_str_chay_hai_duong_cung_byte ... ok
+test khoa_bool_bao_vs0501_va_neu_kieu_that ... ok
+test tron_int_va_str_la_vs0501_neu_kieu_that ... ok
+test khoa_str_nhat_quan_voi_shell_sort_by ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test std_la_bao_vs0701 ... ok
+test sai_so_doi_so_bi_tyck_bat ... ok
+test sai_kieu_bi_tyck_bat_tinh ... FAILED
+test json_decode_da_co ... ok
+test khong_use_thi_khong_goi_duoc_std ... ok
+test str_repeat_am_la_vs0501 ... ok
+test std_fs_bao_st27 ... ok
+test std_70_ca_qua_binary ... FAILED
+test std_differential_interp_va_vm ... ok
+thread 'sai_kieu_bi_tyck_bat_tinh' (43121388) panicked at crates/vis-cli/tests/stdlib.rs:174:9:
+assertion `left == right` failed: ["check", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-std-sai-67093.vis"] ⇒ exit 2, stderr: 
+  left: 0
+ right: 2

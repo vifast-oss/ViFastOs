@@ -59,7 +59,9 @@ fn ds_ca() -> Vec<PathBuf> {
 fn std_70_ca_qua_binary() {
     let ds = ds_ca();
     // **SỬA KÈM LÝ DO (ST-56)**: 70 → **71** (+`list_sort_by_str.vis` — khoá `str`).
-    assert_eq!(ds.len(), 71, "phải đủ 71 ca `test/std`");
+    // **SỬA KÈM LÝ DO (ST-58)**: 71 → **73** (+`list_generic_ret.vis`, `map_generic_ret.vis` — khoá
+    // **kiểu trả generic** của `std.list.*`/`std.map.*`).
+    assert_eq!(ds.len(), 73, "phải đủ 73 ca `test/std`");
     let mut sai = Vec::new();
     for p in &ds {
         let k = chay(&["run", p.to_str().unwrap()]);
@@ -158,20 +160,70 @@ fn json_decode_da_co() {
     assert!(k.out.contains("1"), "stdout: {}", k.out);
 }
 
-/// Sai kiểu **lúc chạy** (tham số `Any`) ⇒ `VS0501` nêu hàm + kiểu nhận được.
+/// **SỬA KÈM LÝ DO (ST-58)**: `list.sort` có chữ ký **`(list[T]) -> list[T]`** (hết `Ty::Any`) ⇒
+/// sai kiểu bị **tyck bắt TĨNH** (`VS0412`, exit **2** ở cả `run` và `run --vm`), **mạnh hơn** lỗi
+/// chạy `VS0501` cũ. Ca khoá **cả hai đường** + `check` (đỏ hẳn từ front end).
 #[test]
-fn sai_kieu_luc_chay_la_vs0501() {
+fn sai_kieu_bi_tyck_bat_tinh() {
     let tmp = std::env::temp_dir().join(format!("vis-std-sai-{}.vis", std::process::id()));
-    std::fs::write(
-        &tmp,
-        "use std.list\nprint(list.sort(\"khong phai list\"))\n",
-    )
-    .expect("ghi");
-    let k = chay(&["run", tmp.to_str().unwrap()]);
+    let src = "use std.list\nprint(list.sort(\"khong phai list\"))\n";
+    std::fs::write(&tmp, src).expect("ghi");
+    let p = tmp.to_str().unwrap();
+    // `check` = **1** ↔ `run`/`run --vm` = **2** (ánh xạ exit đã khoá ở diag_cmp, ST-54).
+    // `vis check` in TAP ra **stdout**; `run` in chẩn đoán ra **stderr**.
+    for (args, ma, tap) in [
+        (vec!["check", p], 1, true),
+        (vec!["run", p], 2, false),
+        (vec!["run", "--vm", p], 2, false),
+    ] {
+        let k = chay(&args);
+        let cd = if tap { &k.out } else { &k.err };
+        assert_eq!(k.code, ma, "{args:?} ⇒ exit {ma}, chẩn đoán: {cd}");
+        assert!(cd.contains("VS0412"), "{args:?}: {cd}");
+        assert!(cd.contains("list.sort"), "phải nêu hàm: {cd}");
+        assert!(
+            cd.contains("list[T]") || cd.contains("`list`"),
+            "thông điệp nêu kiểu mong đợi: {cd}"
+        );
+    }
     let _ = std::fs::remove_file(&tmp);
-    assert_eq!(k.code, 1, "stderr: {}", k.err);
-    assert!(k.err.contains("VS0501"), "stderr: {}", k.err);
-    assert!(k.err.contains("list.sort"), "phải nêu hàm: {}", k.err);
+}
+
+/// **ST-58 (VD-99)** — 3 ca âm **tĩnh** của chữ ký generic: `list.concat` trộn kiểu, `list.sort`
+/// không phải list, `map.get_or` sai kiểu giá trị. Trước ST-58 (`Ty::Any`) cả ba **chạy được**;
+/// nay **tyck chặn** (`VS0412`, exit **2** ở `run`) — khoá **cả hai đường cùng chẩn đoán**.
+#[test]
+fn ba_ca_am_tinh_cua_chu_ky_generic() {
+    let ca = [
+        (
+            "concat-tron",
+            "use std.list\nlet xs: list[int] = list.concat([1], [\"a\"])\nprint(xs)\n",
+            "list.concat",
+        ),
+        (
+            "sort-sai-kieu",
+            "use std.list\nprint(list.sort(\"khong phai list\"))\n",
+            "list.sort",
+        ),
+        (
+            "get-or-sai-kieu",
+            "use std.map\nprint(map.get_or({\"a\": 1}, \"a\", \"x\"))\n",
+            "map.get_or",
+        ),
+    ];
+    for (tag, src, ten) in ca {
+        let tmp = std::env::temp_dir().join(format!("vis-std-am-{tag}-{}.vis", std::process::id()));
+        std::fs::write(&tmp, src).expect("ghi");
+        let p = tmp.to_str().unwrap();
+        let a = chay(&["run", p]);
+        let b = chay(&["run", "--vm", p]);
+        assert_eq!(a.code, 2, "{tag}: interp phải exit 2, stderr: {}", a.err);
+        assert_eq!(b.code, 2, "{tag}: vm phải exit 2, stderr: {}", b.err);
+        assert!(a.err.contains("VS0412"), "{tag}: stderr: {}", a.err);
+        assert!(a.err.contains(ten), "{tag}: phải nêu `{ten}`: {}", a.err);
+        assert_eq!(a.err, b.err, "{tag}: hai đường phải **cùng** chẩn đoán");
+        let _ = std::fs::remove_file(&tmp);
+    }
 }
 
 /// `tyck` kiểm **số đối số** của `std.*` (VD-43).
