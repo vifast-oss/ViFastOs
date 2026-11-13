@@ -137,8 +137,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-45 | **`where` kiểm tĩnh đầy đủ** (vị từ không `bool` ⇒ lỗi tĩnh) | ST-44 | 2 h | **DONE** | hết nợ `VS0501` lúc chạy; kiểu `{error}` ⇒ vẫn kiểm động |
 | ST-46 | `ls --long` thật + `( … )` làm **đối số** + chẩn đoán **tuyệt đối** trong ngoặc | ST-45 | 3 h | **DONE** | 3 nợ VSH1b hết; allowlist không tăng |
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
-| ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **READY** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
-| ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | BLOCKED | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
+| ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **DONE** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
+| ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **READY** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
 | ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | BLOCKED | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
@@ -657,6 +657,18 @@ APPROVED 2026-11-13 Agent 0
 > **7 sổ/29 mã** · khởi động ấm 11,1–11,3 ms · **allowlist 6** · `gate --fast` + `nightly` PASS.
 > **§19 VSH1b: 8/8 hạng mục đạt.** **14 nợ còn mở** + **VSH1b-2** + **VS2** (async/kênh/net/Landlock thật/LSP/gói/
 > registry/4 nền tảng) ghi trong `R7` §5 — **ViScript chưa hoàn thiện toàn bộ**, khoảng cách đã liệt kê chính xác.
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-48 DONE** — commit `739fc3e` (**Agent 2 tự commit**): **thân `cmd` bằng pipeline lệnh** (VSH1b-2) theo chiến lược
+> **thử-script-trước, lỗi-thì-lệnh** trong parser; **filler `()` giữ nguyên byte** cho tiền tố ⇒ **offset tuyệt đối không
+> đổi** (ca: `type` **sau** `cmd` thân-lệnh báo lỗi cố ý ⇒ **`5:5`** đúng); hạ bằng `ha_pipeline` ⇒ `HItem::Fn.body =
+> [giá trị cuối pipeline]`, **không** tạo `HExpr::Pipeline`; thân = **đúng một pipeline** (rỗng/>1/`let`+lệnh ⇒ `VS0201`).
+> **666** test (+15); sem 370; `vis test` **370 ok** / `--vm` 370 ok+6 SKIP; parity 344/344; differential 100k **0 lệch**
+> (174,0 s, 575/s); allowlist **6**. Chống hồi quy đủ 4 điểm (sem, `cmd` script cũ, `--fs-mock` interp↔`--vm` cùng byte,
+> item sau thân đúng dòng:cột). Tách `lower/than.rs` khi R1 đỏ.
+> Nợ: thân lệnh **chưa dùng tham số `cmd`**; body "vừa script vừa lệnh" ⇒ `VS0201` (bảo thủ).
+> **ST-49 mở** (nhóm-lệnh có cờ + nhóm nhiều dòng).
 
 ## Ghi chú vận hành
 
