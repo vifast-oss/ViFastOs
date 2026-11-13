@@ -164,7 +164,10 @@ def vis_check(files: list[Path], vis_bin: str | None) -> dict[str, tuple[bool, s
             "--",
         ]
     proc = subprocess.run(
-        [*cmd, "check", *[str(f) for f in files]],
+        # **ST-28**: `--syntax` — cổng này kiểm khối mã **parse** được (QD §7.4), không đòi
+        # chúng là chương trình VS0 hợp kiểu; `vis check` mặc định nay kiểm **cả kiểu** (đồng bộ
+        # với `vis run`, bug hai đường lệch nhau sửa ở ST-28).
+        [*cmd, "check", "--syntax", *[str(f) for f in files]],
         capture_output=True,
         text=True,
     )

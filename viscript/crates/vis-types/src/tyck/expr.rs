@@ -568,7 +568,21 @@ impl<'a> Checker<'a> {
         };
         if let Some(sig) = sig {
             self.kiem_args(&sig, args, named, span);
-            return sig.ret;
+            if sig.generics.is_empty() {
+                return sig.ret;
+            }
+            // ST-28: **hợp nhất** kiểu khai báo (còn `T`) với kiểu đối số thật ⇒ suy `T`; mâu thuẫn
+            // ⇒ `VS0412`. Kiểu trả sau khi thay `T` ⇒ giữ được kiểm tĩnh ở ngữ cảnh
+            // (`let n: int = lay("x")` ⇒ `VS0412`).
+            let arg_tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
+            let mut bang: Vec<(String, Type)> = Vec::new();
+            for (i, t) in arg_tys.iter().enumerate() {
+                if let Some(raw) = sig.raw_params.get(i) {
+                    let raw = raw.clone();
+                    self.hop_nhat(&raw, t, &sig.generics, &mut bang, &sig.name, args[i].span());
+                }
+            }
+            return crate::tyck::thay_gen(&sig.ret_raw(), &bang);
         }
         let ct = self.kiem_expr(callee);
         let arg_tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
@@ -1281,11 +1295,24 @@ fn builtin_value_ty(name: &str) -> Type {
 #[derive(Debug, Clone)]
 pub(crate) struct FnSig {
     pub name: String,
-    /// `(tên, kiểu, có_mặc_định, khai `--`)`
+    /// `(tên, kiểu, có_mặc_định, khai `--`)` — kiểu đã **xoá generic** (ST-28), dùng cho thân hàm.
     pub params: Vec<(String, Type, bool, bool)>,
     pub ret: Type,
     /// Tham số cuối là `...rest` ⇒ nhận **thêm** đối số vị trí (ST-27).
     pub variadic: bool,
+    /// Tham số kiểu của hàm (`fn f[T]`) — ST-28.
+    pub generics: Vec<String>,
+    /// Kiểu tham số **nguyên bản** (còn `TypeRef{"T"}`) để **hợp nhất** ở call-site.
+    pub raw_params: Vec<Type>,
+    /// Kiểu trả **nguyên bản** (còn `T`) — thay bằng kiểu đã suy sau khi hợp nhất.
+    pub raw_ret: Type,
+}
+
+impl FnSig {
+    /// Kiểu trả đã suy (dùng sau `hop_nhat`).
+    pub(crate) fn ret_raw(&self) -> Type {
+        self.raw_ret.clone()
+    }
 }
 
 /// Giữ chỗ: `HPat`/`HStmt` dùng ở module khác (tránh import thừa).

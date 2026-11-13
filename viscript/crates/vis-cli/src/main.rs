@@ -44,7 +44,7 @@ fn dong_chan_doan(code: &str, line: u32, col: u32, message: &str) -> String {
 }
 
 fn usage_check() -> ExitCode {
-    eprintln!("dùng: vis check <tệp…>");
+    eprintln!("dùng: vis check [--syntax] [--no-extern] <tệp…>");
     ExitCode::from(2)
 }
 
@@ -60,7 +60,13 @@ struct ChanDoanCheck {
     phu: String,
 }
 
+#[allow(dead_code)] // giữ API cũ (mặc định kiểm kiểu) cho người đọc/tests.
 fn check_one_co(path: &str, cho_ngoai: bool) -> Result<(), ChanDoanCheck> {
+    check_mode(path, cho_ngoai, true)
+}
+
+/// `kiem_kieu = false` ⇒ `--syntax`: chỉ cú pháp/hạ (bỏ `tyck`).
+fn check_mode(path: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<(), ChanDoanCheck> {
     if let Err(e) = std::fs::read_to_string(path) {
         return Err(ChanDoanCheck {
             ma: "VS0201",
@@ -70,7 +76,7 @@ fn check_one_co(path: &str, cho_ngoai: bool) -> Result<(), ChanDoanCheck> {
             phu: String::new(),
         });
     }
-    let loaded = modules::load_with(path, cho_ngoai).map_err(|e| ChanDoanCheck {
+    let loaded = modules::load_full(path, cho_ngoai, kiem_kieu).map_err(|e| ChanDoanCheck {
         ma: "VS0201",
         line: 1,
         col: 1,
@@ -88,15 +94,20 @@ fn check_one_co(path: &str, cho_ngoai: bool) -> Result<(), ChanDoanCheck> {
     } else {
         rel.clone()
     };
-    // Chế độ script: tệp **chính** chỉ cần đúng cú pháp (+ module), như trước; nhưng chẩn đoán ở
-    // **tệp phụ** (ST-25) luôn đáng báo — module phải hợp lệ toàn bộ.
-    let giu = la_vish
-        || !phu.is_empty()
-        || ma.starts_with("VS01")
-        || ma.starts_with("VS02")
-        || ma.starts_with("VS07");
-    if !giu {
-        return Ok(());
+    // **SỬA KÈM LÝ DO (ST-28)**: `vis check` **mặc định** báo **đúng chẩn đoán đầu** như `vis run`
+    // (bỏ bộ lọc `01xx/02xx/07xx` của ST-25 — nó làm hai đường **lệch kết luận**: check xanh trong
+    // khi run `VS0412`/`VS0301`). Bộ lọc chỉ còn ở chế độ **`--syntax`** (chỉ parse + cấu trúc
+    // module), dùng cho cổng "khối mã trong tài liệu parse được" (QD §7.4).
+    if !kiem_kieu {
+        let giu = la_vish
+            || !phu.is_empty()
+            || ma.starts_with("VS01")
+            || ma.starts_with("VS02")
+            || ma.starts_with("VS06")
+            || ma.starts_with("VS07");
+        if !giu {
+            return Ok(());
+        }
     }
     Err(ChanDoanCheck {
         ma,
@@ -208,9 +219,12 @@ fn run_check(args: &[String]) -> ExitCode {
     }
     // ST-27: `--no-extern` — lệnh lạ báo `VS0601` (không cho chương trình ngoài).
     let cho_ngoai = !args.iter().any(|a| a == "--no-extern");
+    // ST-28: `--syntax` — chỉ cú pháp/hạ (bỏ `tyck`), dùng cho cổng "khối mã trong tài liệu
+    // **parse** được" (QD §7.4).
+    let kiem_kieu = !args.iter().any(|a| a == "--syntax");
     let args: Vec<&String> = args
         .iter()
-        .filter(|a| a.as_str() != "--no-extern")
+        .filter(|a| a.as_str() != "--no-extern" && a.as_str() != "--syntax")
         .collect();
     if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
         eprintln!("vis check: không hỗ trợ cờ `{bad}`");
@@ -222,7 +236,7 @@ fn run_check(args: &[String]) -> ExitCode {
     let mut failed = false;
     for (i, path) in args.iter().enumerate() {
         let n = i + 1;
-        match check_one_co(path, cho_ngoai) {
+        match check_mode(path, cho_ngoai, kiem_kieu) {
             Ok(()) => tap.push_str(&format!("ok {n} - {path}\n")),
             Err(d) => {
                 failed = true;

@@ -286,6 +286,8 @@ struct Lowerer<'a> {
     scope: Vec<u32>,
     items: Vec<HItem>,
     stmts: Vec<HStmt>,
+    /// Tham số kiểu đang có hiệu lực (`type Hop[T]`, `enum Or[A, B]`) — ST-28: xoá kiểu.
+    generic_scope: Vec<String>,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -320,6 +322,7 @@ impl<'a> Lowerer<'a> {
             }
         }
         Self {
+            generic_scope: Vec::new(),
             cst,
             text: &lex.text,
             opts,
@@ -864,6 +867,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_rec(&mut self, node: &Node) -> Option<HRec> {
+        let luu_generic = std::mem::take(&mut self.generic_scope);
+        self.generic_scope = self.generics_of(node);
         let name = self.decl_name(node)?;
         let sym = self.item_sym(&name);
         let derives = self.derives_of(node);
@@ -888,17 +893,21 @@ impl<'a> Lowerer<'a> {
                 })
                 .collect();
         }
+        self.generic_scope = luu_generic;
         Some(HRec {
             id,
             name,
             span: node.span,
             sym,
+            generics: self.generics_of(node),
             fields,
             derives,
         })
     }
 
     fn lower_enum(&mut self, node: &Node) -> Option<HEnum> {
+        let luu_generic = std::mem::take(&mut self.generic_scope);
+        self.generic_scope = self.generics_of(node);
         let name = self.decl_name(node)?;
         let sym = self.item_sym(&name);
         let derives = self.derives_of(node);
@@ -940,11 +949,13 @@ impl<'a> Lowerer<'a> {
                 })
                 .collect();
         }
+        self.generic_scope = luu_generic;
         Some(HEnum {
             id,
             name,
             span: node.span,
             sym,
+            generics: self.generics_of(node),
             variants,
             derives,
         })
@@ -1161,6 +1172,11 @@ impl<'a> Lowerer<'a> {
     }
 
     fn named_type(&mut self, name: &str, args: Vec<Type>) -> Type {
+        // ST-28: tham số kiểu của `type`/`enum` đang khai ⇒ **xoá kiểu** (`{error}`) —
+        // chưa có instantiation thật (nợ VS1b), nhờ vậy trường/biến thể generic không bị `VS0301`.
+        if args.is_empty() && self.generic_scope.iter().any(|g| g == name) {
+            return Type::Error;
+        }
         match (name, args.len()) {
             ("list", 1) => {
                 let mut it = args.into_iter();
@@ -1180,10 +1196,18 @@ impl<'a> Lowerer<'a> {
             }
             (_, 0) => {}
             _ => {
+                // ST-28: `Or[str, int]` / `Hop[T]` — enum/record **generic** đã khai ⇒ bỏ đối số
+                // kiểu (chưa có instantiation thật, nợ VS1b) và trả thẳng `Enum`/`Record`.
+                if let Some((_, id)) = self.enum_names.iter().find(|(n, _)| n == name) {
+                    return Type::Enum(*id);
+                }
+                if let Some((_, id)) = self.rec_names.iter().find(|(n, _)| n == name) {
+                    return Type::Record(*id);
+                }
                 return Type::TypeRef {
                     name: name.to_string(),
                     args,
-                }
+                };
             }
         }
         if let Some(t) = Type::builtin(name) {

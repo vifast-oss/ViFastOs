@@ -1,0 +1,70 @@
+=== ST-28 D2-05: generic hàm + kiểu `[T]` (erase + hợp nhất call-site) — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T05:14:50Z
+
+## 1. Đỏ **thật** ở HEAD `ad72b44` (worktree `/tmp/vis-red`, cùng mã nguồn, chỉ thêm test mới)
+
+Chép `crates/vis-types/tests/generic.rs` (31 ca) + `test/sem/generic/*` vào worktree tại `ad72b44` rồi chạy:
+
+  cd /tmp/vis-red/viscript && cargo test -p vis-types --test generic
+  test result: FAILED. **7 passed; 24 failed**; 0 ignored
+
+⇒ 24 ca đỏ vì `T` chưa được biết (VS0301) và call-site chưa hợp nhất; 7 ca xanh sẵn (ca không dùng `T`
+thật sự — khai báo `fn`/`type` **không** generic, hoặc chỉ kiểm arity). **Khai minh bạch** đây là các ca
+“xanh cố ý” duy nhất.
+
+## 2. Hai đường **lệch kết luận** (bug thật, cùng HEAD)
+
+```
+$ vis check sai.vis        # `fn cong[T](a,b) -> T: a + b` gọi `cong(1, "a")`
+ok 1 - …/sai.vis           # ← XANH (sai!)
+$ vis run sai.vis
+sai.vis:1:18: error VS0301: tên không tồn tại: kiểu `T` không có trong VS0 (VD-43) …
+```
+
+Nguyên nhân: `check_one_co` (ST-25) lọc chẩn đoán tệp chính chỉ giữ `01xx/02xx/07xx` ⇒ `VS04xx`/`VS03xx`
+của tyck bị bỏ. **Sửa ở ST-28**: `vis check` mặc định báo **đúng chẩn đoán đầu** như `vis run`; bộ lọc
+chỉ còn ở chế độ **`--syntax`** (cổng “khối mã trong tài liệu **parse** được”, QD §7.4).
+
+## 3. Bug thứ hai phát hiện khi làm generic: **VM bỏ qua `fn main`**
+
+```
+$ vis run --vm --no-cache f.vis     # f.vis = `fn main() -> (): print(7)`
+(không in gì) ; exit 0
+```
+
+Codegen dựng entry từ **thân cấp tệp**, không gọi `fn main` người dùng; interp thì gọi. Sửa: entry phát
+`Call(main, 0)` khi tệp có khai `fn main`, không thì giữ hành vi cũ. 276 ca differential cũ **không** ca nào
+khai `fn main` nên không hồi quy (đã chạy lại toàn bộ).
+
+## 4. Sau khi sửa — đo được
+
+- **392** test workspace (357 + **31** `crates/vis-types/tests/generic.rs` + **4** `crates/vis-cli/tests/generic_cli.rs`)
+- **338** ca sem / 18 nhóm (+10 `test/sem/generic/*`: cong-int, danh-tinh-hai-kieu, danh-tinh-optional,
+  ghi-generic, enum-generic, list-t, hai-generic, main-fn, goi-long, ba-generic)
+- differential interp↔VM **286/286**; fuzz đột biến 286 module
+- 5 ca khoá theo yêu cầu Agent 0 (§(d)): mâu thuẫn `T`, cùng chương trình 2 kiểu, `T?`, record generic,
+  enum generic **hai biến thể cùng chương trình**; ca phụ `+` trên `str` ⇒ mã hiện có của `+`
+
+## 5. Giới hạn VS1b (ghi JOURNAL)
+
+- `Hop[int]` ≡ `Hop[str]` — chưa có instantiation thật (xoá kiểu ở hạ).
+- Phép toán trên `T` kiểm **lúc chạy**; sai ⇒ mã **hiện có** của phép toán (`+` ⇒ `VS0501` nêu giá trị),
+  **không** bịa mã mới.
+- Constraint/trait (`T: Show`) ⇒ **ST-29**.
+
+## 6. sha256 bản commit
+  sha256 crates/vis-types/src/hir.rs=effef175639991c439f3a740098a62c11522cbab5ce318b670a9e208dfce1b65
+  sha256 crates/vis-types/src/lower.rs=6ee53bbf12a73b78f062faea3d31e128b13868e539dddd7dd4a3e9d9f5f7700e
+  sha256 crates/vis-types/src/tyck/mod.rs=ea072c020c0256d58ddfd24bf10240c74c85f7378ac6586fcb22d2935da8098f
+  sha256 crates/vis-types/src/tyck/expr.rs=df9ee08b3bc3bc3aa18b606041e2ef68b4e6a56b863be499d41801aca2d5dffa
+  sha256 crates/vis-types/tests/generic.rs=8be6380d07a70d7cf8e1ba44392641f951e98f1be4f28296565aaab1a8aa87a8
+  sha256 crates/vis-cli/tests/generic_cli.rs=adb7734582aed408ed07d855da1934a6f5474230bd1901718d6def879e60ac14
+  sha256 crates/vis-cli/src/main.rs=581e5cfcc8beef165df90c88af400f4c628665c1f49e2fa80236cdd1d9b6570b
+  sha256 crates/vis-cli/src/modules.rs=b048c0cf1cfd623a35eae81d4cbe94c43306883b1c5df655ef8be05e0349782d
+  sha256 crates/vis-bytecode/src/codegen.rs=4d08a4ca0cb4f2112675a315961140ba17a9bc9c7ab67d98363a384ba43205ca
+  sha256 crates/vis-cli/tests/check.rs=904d3bc03bf62acc0dc08e3015a963b374903ef33f20539dce265900d9beba8e
+  sha256 crates/vis-cli/tests/sem.rs=fc91bab3ed452e47fef01e3eb99ba1c3ace1b1ada30b21425085357d2902153c
+  sha256 crates/vis-bytecode/tests/roundtrip.rs=50d0edbe72e91c738fd8677665189218aef144641eabcd35aa7bb6c52679731b
+  sha256 crates/vis-vm/tests/vs_interp.rs=e112bda712a33347949e3a9893adabbdd997187a4d22a1e4d47fb0d1b3278000
+  sha256 crates/vis-vm/tests/fuzz_mutate.rs=aed725e2c031bbe205805f0337d99218cf7a3620645fc25135182aca59e48c1c
+  sha256 test/doc-examples/doc_examples.py=121a18513bae9b254e6298c93887a205e8487274c6105fcc671088e442fce44d

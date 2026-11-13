@@ -113,14 +113,18 @@ fn sem_323_ca_qua_binary() {
     }
     // ST-15: khoá **ca / nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
     // ST-18: 309 `.vis` + 14 `.vish` (nhóm `vish`, chế độ lệnh) ⇒ **323 ca / 17 nhóm**.
-    // **SỬA KÈM LÝ DO (ST-27)**: +5 ca `.vish` chương trình ngoài (`ngoai-*`) ⇒ **328 ca / 17 nhóm**.
+    // **SỬA KÈM LÝ DO (ST-28)**: +10 ca `generic/*` (nhóm mới `generic`) ⇒ **338 ca / 18 nhóm**.
     assert_eq!(
         ds.len(),
-        328,
-        "phải đúng 328 ca (309 `.vis` + 19 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        338,
+        "phải đúng 338 ca (319 `.vis` + 19 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
-    assert_eq!(theo_nhom.len(), 17, "phải đúng 17 nhóm, thật {theo_nhom:?}");
+    assert_eq!(
+        theo_nhom.len(),
+        18,
+        "phải đúng 18 nhóm (ST-28 thêm `generic`), thật {theo_nhom:?}"
+    );
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())
         .expect("đọc test/sem")

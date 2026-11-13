@@ -99,8 +99,8 @@ fn vm_khop_interp_tren_272_ca() {
 
 fn than_chay() {
     let tat_ca = tep_sem();
-    // **SỬA KÈM LÝ DO (ST-27)**: 328 ca sem (309 `.vis` + 19 `.vish`, +5 ngoài).
-    assert_eq!(tat_ca.len(), 328, "phải đủ 328 ca");
+    // **SỬA KÈM LÝ DO (ST-28)**: 338 ca sem (319 `.vis` + 19 `.vish`, +10 `generic`).
+    assert_eq!(tat_ca.len(), 338, "phải đủ 338 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bo_qua = 0;
@@ -151,12 +151,11 @@ fn than_chay() {
         "**không** còn ca lệch nào (danh sách phải rỗng, thật {})",
         so_biet
     );
-    // **SỬA KÈM LÝ DO (ST-27)**: +4 ca `.vish` chương trình ngoài **không có host** (interp và VM
-    // đều `VS0604`) ⇒ khớp; ca `.err` (`ngoai-thoat-ma`) không vào bộ này.
+    // **SỬA KÈM LÝ DO (ST-28)**: +10 ca `generic/*` (đều khớp vì xoá kiểu ⇒ một hiện thực) ⇒ 286.
     assert_eq!(
         khop + so_biet + bo_qua,
-        276,
-        "276 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
+        286,
+        "286 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
     );
-    assert_eq!(khop, 276, "phải khớp **đủ** 276 ca, thật {khop}");
+    assert_eq!(khop, 286, "phải khớp **đủ** 286 ca, thật {khop}");
 }

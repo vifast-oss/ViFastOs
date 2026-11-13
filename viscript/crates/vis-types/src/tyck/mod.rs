@@ -69,6 +69,64 @@ impl CheckOutput {
     }
 }
 
+/// ST-28 — **xoá kiểu**: thay mọi `TypeRef` trỏ tới tham số kiểu bằng `{error}` (không còn thông tin
+/// tĩnh), đệ quy vào list/map/optional/Result/hàm. Dùng cho thân hàm generic và mọi chỗ khác.
+pub(crate) fn erase_gen(ty: &Type, gens: &[String]) -> Type {
+    match ty {
+        Type::TypeRef { name, args } if args.is_empty() && gens.iter().any(|g| g == name) => {
+            Type::Error
+        }
+        Type::TypeRef { name, args } => Type::TypeRef {
+            name: name.clone(),
+            args: args.iter().map(|a| erase_gen(a, gens)).collect(),
+        },
+        Type::List(t) => Type::List(Box::new(erase_gen(t, gens))),
+        Type::Map(k, v) => Type::Map(Box::new(erase_gen(k, gens)), Box::new(erase_gen(v, gens))),
+        Type::Opt(t) => Type::Opt(Box::new(erase_gen(t, gens))),
+        Type::Result(a, b) => {
+            Type::Result(Box::new(erase_gen(a, gens)), Box::new(erase_gen(b, gens)))
+        }
+        Type::Fn(ps, r) => Type::Fn(
+            ps.iter()
+                .map(|p| erase_gen(p, gens))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            Box::new(erase_gen(r, gens)),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// ST-28 — **thay** tham số kiểu bằng kiểu đã suy: `T` → `int`; chưa suy ⇒ `{error}`.
+pub(crate) fn thay_gen(ty: &Type, bang: &[(String, Type)]) -> Type {
+    match ty {
+        Type::TypeRef { name, args } if args.is_empty() => {
+            match bang.iter().find(|(n, _)| n == name) {
+                Some((_, t)) => t.clone(),
+                None => Type::Error,
+            }
+        }
+        Type::TypeRef { name, args } => Type::TypeRef {
+            name: name.clone(),
+            args: args.iter().map(|a| thay_gen(a, bang)).collect(),
+        },
+        Type::List(t) => Type::List(Box::new(thay_gen(t, bang))),
+        Type::Map(k, v) => Type::Map(Box::new(thay_gen(k, bang)), Box::new(thay_gen(v, bang))),
+        Type::Opt(t) => Type::Opt(Box::new(thay_gen(t, bang))),
+        Type::Result(a, b) => {
+            Type::Result(Box::new(thay_gen(a, bang)), Box::new(thay_gen(b, bang)))
+        }
+        Type::Fn(ps, r) => Type::Fn(
+            ps.iter()
+                .map(|p| thay_gen(p, bang))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            Box::new(thay_gen(r, bang)),
+        ),
+        other => other.clone(),
+    }
+}
+
 /// Kiểm kiểu một chương trình đã hạ.
 pub fn check(hir: &Hir, symbols: &Symbols, types: &TypeTable) -> CheckOutput {
     let mut c = Checker::new(symbols, types);
@@ -98,12 +156,15 @@ pub(crate) struct Checker<'a> {
     quiet: u32,
     /// Chữ ký đầy đủ của hàm **khai trong tệp** (tên tham số + có mặc định), theo `sym`.
     sigs: Vec<Option<FnSig>>,
+    /// Tham số kiểu đang có hiệu lực (ST-28) — `resolve_ann` giữ `TypeRef{"T"}` thay vì `VS0301`.
+    generic_scope: Vec<String>,
 }
 
 impl<'a> Checker<'a> {
     fn new(symbols: &'a Symbols, types: &'a TypeTable) -> Self {
         let n = symbols.syms.len();
         Self {
+            generic_scope: Vec::new(),
             symbols,
             types,
             diags: Vec::new(),
@@ -182,6 +243,84 @@ impl<'a> Checker<'a> {
     }
 
     // ----- kiểu: so khớp, tự nâng, tên kiểu -----
+
+    /// ST-28 — **hợp nhất** kiểu khai báo generic với kiểu đối số thật; trả `false` (và báo
+    /// `VS0412`) khi mâu thuẫn. `bang` giữ `T → int` đã suy.
+    pub(crate) fn hop_nhat(
+        &mut self,
+        mau: &Type,
+        that: &Type,
+        gens: &[String],
+        bang: &mut Vec<(String, Type)>,
+        ten: &str,
+        span: Span,
+    ) -> bool {
+        if matches!(that, Type::Error) {
+            return true;
+        }
+        match mau {
+            Type::TypeRef { name, args } if args.is_empty() && gens.iter().any(|g| g == name) => {
+                match bang.iter().find(|(n, _)| n == name) {
+                    Some((_, da)) => {
+                        if self.same(da, that) {
+                            true
+                        } else {
+                            let msg = format!(
+                                "`{ten}`: tham số kiểu `{name}` đã suy là `{}`, đối số này có `{}`",
+                                self.types.show(da),
+                                self.types.show(that)
+                            );
+                            self.diag(MISMATCH, msg, span);
+                            false
+                        }
+                    }
+                    None => {
+                        bang.push((name.clone(), that.clone()));
+                        true
+                    }
+                }
+            }
+            Type::List(a) => match that {
+                Type::List(b) => self.hop_nhat(a, b, gens, bang, ten, span),
+                _ => self.hop_nhat_loi(mau, that, ten, span),
+            },
+            Type::Opt(a) => match that {
+                Type::Opt(b) => self.hop_nhat(a, b, gens, bang, ten, span),
+                _ => true, // tự nâng `T → T?` (§4.4)
+            },
+            Type::Map(k1, v1) => match that {
+                Type::Map(k2, v2) => {
+                    self.hop_nhat(k1, k2, gens, bang, ten, span)
+                        && self.hop_nhat(v1, v2, gens, bang, ten, span)
+                }
+                _ => self.hop_nhat_loi(mau, that, ten, span),
+            },
+            Type::Result(a1, b1) => match that {
+                Type::Result(a2, b2) => {
+                    self.hop_nhat(a1, a2, gens, bang, ten, span)
+                        && self.hop_nhat(b1, b2, gens, bang, ten, span)
+                }
+                _ => self.hop_nhat_loi(mau, that, ten, span),
+            },
+            _ => {
+                if self.same(mau, that) {
+                    true
+                } else {
+                    self.hop_nhat_loi(mau, that, ten, span)
+                }
+            }
+        }
+    }
+
+    fn hop_nhat_loi(&mut self, mau: &Type, that: &Type, ten: &str, span: Span) -> bool {
+        let msg = format!(
+            "`{ten}`: cần `{}`, được `{}`",
+            self.types.show(mau),
+            self.types.show(that)
+        );
+        self.diag(MISMATCH, msg, span);
+        false
+    }
 
     /// So khớp **cấu trúc**; `{error}` tương thích mọi kiểu (lan truyền im lặng).
     pub(crate) fn same(&self, a: &Type, b: &Type) -> bool {
@@ -314,7 +453,17 @@ impl<'a> Checker<'a> {
                     .into_boxed_slice(),
                 Box::new(self.resolve_ann(ret, span)),
             ),
-            Type::TypeRef { name, args } => self.resolve_named(name, args, span),
+            Type::TypeRef { name, args } => {
+                // ST-28: `T` là **tham số kiểu** đang có hiệu lực ⇒ giữ nguyên làm **dấu** để
+                // hợp nhất ở call-site; nơi dùng cho thân hàm sẽ được `erase_gen` xoá thành `{error}`.
+                if args.is_empty() && self.generic_scope.iter().any(|g| g == name) {
+                    return Type::TypeRef {
+                        name: name.clone(),
+                        args: Vec::new(),
+                    };
+                }
+                self.resolve_named(name, args, span)
+            }
         }
     }
 
@@ -380,12 +529,22 @@ impl<'a> Checker<'a> {
         for item in &hir.items {
             match item {
                 HItem::Fn(f) => {
-                    let params: Vec<Type> = f
+                    // ST-28: chữ ký giữ `TypeRef{"T"}` để hợp nhất ở call-site…
+                    let luu = std::mem::take(&mut self.generic_scope);
+                    self.generic_scope = f.generics.clone();
+                    let raw_params: Vec<Type> = f
                         .params
                         .iter()
                         .map(|p| self.resolve_ann(&p.ty, p.span))
                         .collect();
-                    let ret = self.resolve_ann(&f.ret, f.span);
+                    let raw_ret = self.resolve_ann(&f.ret, f.span);
+                    self.generic_scope = luu;
+                    // …nhưng thân hàm và mọi chỗ khác dùng bản **đã xoá kiểu** (`{error}`).
+                    let params: Vec<Type> = raw_params
+                        .iter()
+                        .map(|t| erase_gen(t, &f.generics))
+                        .collect();
+                    let ret = erase_gen(&raw_ret, &f.generics);
                     let ty = Type::Fn(params.clone().into_boxed_slice(), Box::new(ret.clone()));
                     self.set_ty(f.sym, ty.clone());
                     self.item_types.push((f.name.clone(), ty));
@@ -402,6 +561,9 @@ impl<'a> Checker<'a> {
                                 .collect(),
                             ret,
                             variadic: f.params.last().map(|p| p.variadic).unwrap_or(false),
+                            generics: f.generics.clone(),
+                            raw_params,
+                            raw_ret,
                         });
                     }
                 }
@@ -442,20 +604,25 @@ impl<'a> Checker<'a> {
     fn kiem_item(&mut self, item: &HItem) {
         match item {
             HItem::Fn(f) => {
+                // ST-28: trong thân hàm, tham số kiểu `T` là **đã xoá** (`{error}`) ⇒ phép toán trên
+                // `T` được phép tĩnh, sai kiểu thật bắt **lúc chạy** (`VS0501`, nợ VS1b).
+                let luu = std::mem::take(&mut self.generic_scope);
+                self.generic_scope = f.generics.clone();
                 for p in &f.params {
-                    let ty = self.resolve_ann(&p.ty, p.span);
-                    self.set_ty(p.sym, ty);
+                    let raw = self.resolve_ann(&p.ty, p.span);
+                    let ty = erase_gen(&raw, &f.generics);
+                    self.set_ty(p.sym, ty.clone());
                     if p.is_var_self {
                         self.set_mutable(p.sym);
                     }
                     if let Some(d) = &p.default {
                         let dty = self.kiem_expr(d);
-                        let want = p.ty.clone();
-                        let want = self.resolve_ann(&want, p.span);
-                        self.coerce_e(d, &dty, &want, "giá trị mặc định");
+                        self.coerce_e(d, &dty, &ty, "giá trị mặc định");
                     }
                 }
-                let ret = self.resolve_ann(&f.ret, f.span);
+                let raw_ret = self.resolve_ann(&f.ret, f.span);
+                let ret = erase_gen(&raw_ret, &f.generics);
+                self.generic_scope = luu;
                 let saved = self.cur_ret.replace(ret.clone());
                 self.kiem_than(&f.body, &ret, f.span);
                 self.cur_ret = saved;

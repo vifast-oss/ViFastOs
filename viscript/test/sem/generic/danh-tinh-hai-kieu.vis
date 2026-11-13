@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn giu[T](x: T) -> T:
+    x
+
+print(giu(1))
+print(giu("a"))

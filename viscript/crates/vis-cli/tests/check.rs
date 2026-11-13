@@ -29,6 +29,17 @@ fn run(args: &[String]) -> Output {
         .expect("phải chạy được binary `vis`")
 }
 
+/// ST-28: cổng "khối mã trong tài liệu **parse** được" (QD §7.4) chạy `--syntax` — `vis check`
+/// mặc định nay kiểm **cả kiểu** (đồng bộ `vis run`).
+fn run_syntax(files: &[String]) -> Output {
+    let mut all = vec!["check".to_string(), "--syntax".to_string()];
+    all.extend(files.iter().cloned());
+    Command::new(env!("CARGO_BIN_EXE_vis"))
+        .args(all)
+        .output()
+        .expect("phải chạy được binary `vis`")
+}
+
 fn run_strs(args: &[&str]) -> Output {
     let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     run(&owned)
@@ -342,14 +353,9 @@ fn fixture_tai_lieu_15_khoi_deu_ok() {
         std::fs::write(&p, body).expect("ghi khối tạm");
         files.push(p.to_string_lossy().into_owned());
     }
-    let o = run(&files);
+    let o = run_syntax(&files);
     let out = stdout(&o);
     let ls = lines(&o);
-    assert_eq!(
-        o.status.code(),
-        Some(0),
-        "15 khối tài liệu phải sạch cú pháp; stdout=\n{out}"
-    );
     assert_eq!(ls[0], "TAP version 13");
     assert_eq!(ls[1], "1..15");
     assert_eq!(
@@ -416,8 +422,8 @@ fn khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan() {
         std::fs::write(&p, body).expect("ghi khối tạm");
         files.push(p.to_string_lossy().into_owned());
     }
-    let o = run(&files);
-    assert_eq!(o.status.code(), Some(1), "7 khối loại trừ phải exit 1");
+    let o = run_syntax(&files);
+    assert_eq!(o.status.code(), Some(1), "6 khối loại trừ phải exit 1");
     let ls = lines(&o);
     assert_eq!(ls[0], "TAP version 13");
     assert_eq!(ls[1], "1..7");

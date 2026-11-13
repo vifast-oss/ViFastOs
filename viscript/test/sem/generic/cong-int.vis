@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn cong[T](a: T, b: T) -> T:
+    a + b
+
+print(cong(1, 2))

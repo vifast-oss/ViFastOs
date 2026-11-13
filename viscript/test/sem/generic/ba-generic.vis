@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn ba[A, B, C](a: A, b: B, c: C) -> A:
+    a
+
+print(ba(1, "x", true))

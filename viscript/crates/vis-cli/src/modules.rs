@@ -449,6 +449,12 @@ pub fn load(main: &str) -> Result<Loaded, LoadError> {
 
 /// Như [`load`] nhưng `cho_ngoai = false` ⇒ lệnh lạ báo `VS0601` (`vis check --no-extern`).
 pub fn load_with(main: &str, cho_ngoai: bool) -> Result<Loaded, LoadError> {
+    load_full(main, cho_ngoai, true)
+}
+
+/// Như [`load_with`] nhưng `kiem_kieu = false` ⇒ **chỉ cú pháp/hạ**, bỏ chẩn đoán `tyck`
+/// (`vis check --syntax`, dùng cho cổng "khối mã trong tài liệu **parse** được" — QD §7.4).
+pub fn load_full(main: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<Loaded, LoadError> {
     let main_path = PathBuf::from(main);
     if !main_path.is_file() {
         return Err(LoadError::NotFile(main.to_string()));
@@ -489,7 +495,16 @@ pub fn load_with(main: &str, cho_ngoai: bool) -> Result<Loaded, LoadError> {
         span: n.span,
     };
     // `check` **một** lần trên HIR hợp nhất; quy chẩn đoán về tệp có item chứa span.
-    let kq = check(&hir, &n.symbols, &n.types);
+    let kq = if kiem_kieu {
+        check(&hir, &n.symbols, &n.types)
+    } else {
+        vis_types::tyck::CheckOutput {
+            diags: Vec::new(),
+            types_of_expr: Vec::new(),
+            file_expr_types: Vec::new(),
+            item_types: Vec::new(),
+        }
+    };
     let item_rel = n.item_rel.clone();
     for d in &kq.diags {
         let rel = hir

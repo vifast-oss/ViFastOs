@@ -6,12 +6,13 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-27** (chương trình ngoài + variadic + `--x=v`) — xong, **chưa commit** (chờ Agent 0).
-Bước          : 4/4 (hook `Ngoai` → hạ `exec.*` → runner CLI → 13 ca extern + 5 ca sem)
+Task          : **ST-28** (generic hàm + kiểu `[T]`, xoá kiểu + hợp nhất call-site) — xong,
+                **chưa commit** (chờ Agent 0).
+Bước          : 4/4 (xoá kiểu ở lower → `FnSig` raw/erased → `hop_nhat` call-site → 31+4 ca + 10 sem)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:55:41Z** (13:55 JST, không retry);
-                **357** test workspace; doc-examples allowlist **8** mục (Agent 0 APPROVED)
-Việc dở       : chờ duyệt rồi commit `[ST-27]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:16:59Z** (14:16 JST, không retry);
+                **392** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-28]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +45,20 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-28 — generic hàm + kiểu `[T]` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Parser** | **Không sửa** — `generics()` đã có cho `fn`/`cmd`/`type`/`enum`/`trait`/`impl` (kiểm bằng 5 tệp thử). Văn phạm đúng: `type Hop[T]:` + trường thụt; `enum Or[A, B]:` + biến thể **trường tên**, **không** phẩy giữa biến thể; dựng bản ghi bằng **literal** `{gia_tri: 1}` + chú thích `let a: Hop[int]` |
+| 2 | **Chiến lược** | **xoá kiểu (erase)** — một hiện thực cho interp **và** VM ⇒ differential 0 lệch **theo cấu trúc**; **không** đơn hình hoá (tránh bảng instantiation + nguy cơ hai đường lệch) |
+| 3 | **Hạ** | `HRec`/`HEnum` thêm `generics`; `Lowerer.generic_scope`; trong `type`/`enum`, tham số kiểu ⇒ `{error}`; chú thích `Or[str,int]`/`Hop[T]` bỏ đối số ⇒ `Enum`/`Record` |
+| 4 | **Tyck** | `FnSig` thêm `generics`/`raw_params`/`raw_ret`; `resolve_ann` giữ `TypeRef{"T"}` làm **dấu**; `erase_gen` dùng cho thân hàm; **`hop_nhat`** hợp nhất ở call-site ⇒ `T=int`; mâu thuẫn ⇒ `VS0412` nêu `T` + hai kiểu; kiểu trả thay `T` ⇒ giữ kiểm tĩnh ở ngữ cảnh |
+| 5 | **Bug phát hiện** | (a) `vis check` **xanh** trong khi `vis run` `VS0412`/`VS0301` — bộ lọc `01xx/02xx/07xx` của ST-25; nay `check` mặc định báo **đúng chẩn đoán đầu** như `run`, lọc chỉ còn ở `--syntax` (cổng tài liệu, QD §7.4). (b) **VM bỏ qua `fn main`** (codegen trỏ entry vào thân cấp tệp) — nay entry gọi `main` nếu có, như interp |
+| 6 | **Đo** | **392** test (357 + **31** `generic.rs` + **4** `generic_cli.rs`); **338** ca sem/18 nhóm (+10 `generic/*`); differential **286/286**; fuzz 286 module; gate PASS |
+
+**Giới hạn VS1b (JOURNAL)**: `Hop[int]` ≡ `Hop[str]` (chưa có instantiation thật); phép toán trên `T` kiểm
+**động** (mã hiện có của `+`); constraint/trait ⇒ **ST-29**.
 
 ## ST-27 — chương trình ngoài + variadic + `--x=v` (2026-11-13)
 

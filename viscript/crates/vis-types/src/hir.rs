@@ -184,6 +184,8 @@ pub struct HRec {
     pub name: String,
     pub span: Span,
     pub sym: u32,
+    /// Tham số kiểu (`type Hop[T]`) — **xoá kiểu** ở VS0 (ST-28), chưa instantiation thật.
+    pub generics: Vec<String>,
     pub fields: Vec<HField>,
     pub derives: Vec<String>,
 }
@@ -195,6 +197,8 @@ pub struct HEnum {
     pub name: String,
     pub span: Span,
     pub sym: u32,
+    /// Tham số kiểu (`enum Or[A, B]`) — xoá kiểu ở VS0 (ST-28).
+    pub generics: Vec<String>,
     pub variants: Vec<HVariant>,
     pub derives: Vec<String>,
 }

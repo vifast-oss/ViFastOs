@@ -278,21 +278,28 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
             loops: Vec::new(),
             captured: HashMap::new(),
         };
-        // Giá trị chương trình: interp trả giá trị **câu lệnh cuối nếu là biểu thức**, còn lại `()`.
-        match hir.stmts.split_last() {
-            Some((last, rest)) => {
-                for s in rest {
-                    st.cau(s)?;
+        // ST-28: **cùng** ngữ nghĩa với interp — nếu tệp khai `fn main` thì chạy **hàm đó**
+        // (trước đây VM bỏ qua `main` ⇒ lệch interp; phát hiện khi làm generic).
+        if let Some(fi) = st.g.fmap_ten.get("main").copied() {
+            st.f.push(Instr::Call(fi, 0), hir.span, 1);
+            st.f.push(Instr::Halt, hir.span, 0);
+        } else {
+            // Giá trị chương trình: interp trả giá trị **câu lệnh cuối nếu là biểu thức**, còn lại `()`.
+            match hir.stmts.split_last() {
+                Some((last, rest)) => {
+                    for s in rest {
+                        st.cau(s)?;
+                    }
+                    if let HStmt::Expr(e) = last {
+                        st.expr(e)?;
+                        st.f.push(Instr::Return, e.span(), 0);
+                    } else {
+                        st.cau(last)?;
+                        st.f.push(Instr::Halt, hir.span, 0);
+                    }
                 }
-                if let HStmt::Expr(e) = last {
-                    st.expr(e)?;
-                    st.f.push(Instr::Return, e.span(), 0);
-                } else {
-                    st.cau(last)?;
-                    st.f.push(Instr::Halt, hir.span, 0);
-                }
+                None => st.f.push(Instr::Halt, hir.span, 0),
             }
-            None => st.f.push(Instr::Halt, hir.span, 0),
         }
         let done = st.f.finish()?;
         g.funcs[main_idx as usize] = done;
