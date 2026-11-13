@@ -368,3 +368,15 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   cùng chẩn đoán đầu như `vis run`** (không lọc theo lô); lọc `01xx/02xx/07xx` chỉ còn ở **`--syntax`** — dùng cho
   cổng "khối mã tài liệu **parse được**" (QD §7.4). (6) **VM entry**: tệp có `fn main` ⇒ entry phát `Call(main, 0)`
   (trước đó VM chạy thân cấp tệp và bỏ qua `main` — bug thật, đã khoá bằng test).
+
+- **VD-62** **Trait/impl VS1b (ST-29)**: (1) **dispatch TĨNH ở tầng hạ** — `x.m(…)` với `x` có kiểu **tĩnh**
+  `Record`/`Enum` (biến/tham số/trường/`let` có chú thích) và `m` **không** nội tại ⇒ hạ thẳng `Call(impl_fn)` +
+  chèn `self` **theo giá trị** đầu tiên ⇒ interp và VM dùng **cùng HIR** (không bảng `impls`, không bump VBC1).
+  (2) Thứ tự phân giải: **nội tại** (list/str/map/`std.*`) → **impl tĩnh** → `VS0403`; kiểu nhận **không tĩnh**
+  (generic `T`, `{error}`, `Any`) ⇒ `VS0403` "không phân giải được … (VS1b — thêm chú thích kiểu)".
+  (3) `VS0403` **mở rộng nghĩa** thành "trường, kiểu hoặc **phương thức** không tồn tại" và dùng cho: không có
+  phương thức, **mơ hồ** (≥2 impl cùng tên), impl **thiếu/thừa** so với trait, trait lạ, `derives` lạ, `Json` trên
+  kiểu chứa closure — **không** cấp `VS0404`; `TYPE_CODES` vẫn 4, `all_codes()` 28. (4) `derives Eq/Show/Json`
+  **dùng ngữ nghĩa có sẵn** (so sánh cấu trúc, `show`, `json.encode`) — **chưa** sinh phương thức riêng (nợ VS1b).
+  (5) `self` **theo giá trị**; `&self`/`&mut self` = **nợ VS1**. (6) Mồ côi (§5.4) **mới kiểm trong một tệp**;
+  siêu trait chưa kiểm — nợ VS1b.

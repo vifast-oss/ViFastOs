@@ -117,8 +117,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-26 | `vis-std` lõi: `std.str/list/map/path/time/json` | ST-25 | 3 h | **DONE** | ≥ 60 ca; `use std.x` chạy |
 | ST-27 | `vis-host-posix`: chương trình ngoài (§9.3), variadic, `--x=v` | ST-26 | 3 h | **DONE** | chạy `ls`/`echo` thật; quyền tối thiểu |
 | ST-28 | generic hàm + kiểu `[T]` | ST-27 | 3 h | **DONE** | ≥ 40 ca; differential vẫn 0 lệch |
-| ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **READY** | ≥ 30 ca |
-| ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | BLOCKED | `sha2` duyệt allowlist; thay FNV |
+| ST-29 | trait + `derives` (Eq/Show/Json) | ST-28 | 3 h | **DONE** | ≥ 30 ca |
+| ST-30 | `vis test` + SHA-256 cho hash closure/consent | ST-29 | 2 h | **READY** | `sha2` duyệt allowlist; thay FNV |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -399,6 +399,19 @@ APPROVED 2026-11-13 Agent 0
 > **392** test; **338 ca sem/18 nhóm**; differential **286/286**; gate PASS.
 > Hoãn (VS1b): instantiation thật (`Hop[int] ≠ Hop[str]`), phép toán trên `T` kiểm động, constraint/trait ⇒ ST-29.
 > **ST-29 mở** (trait + `derives`).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-29 DONE** — commit `7633a56` (đã push): **dispatch TĨNH ở tầng hạ** (VD-62) — `x.m(…)` với `x` kiểu tĩnh
+> `Record`/`Enum` hạ thẳng `Call(impl_fn)` + `self` theo giá trị ⇒ **cùng HIR** cho interp **và** VM, **không** bảng
+> `impls`, **không** bump VBC1 (ca dispatch in `hop`/`7` khớp hai đường); 3 tầng phân giải (nội tại → impl tĩnh →
+> `VS0403`); impl↔trait (thiếu/thừa/mơ hồ/mồ côi/`derives` lạ/`Json` trên closure) ⇒ `VS0403` **mở rộng nghĩa**
+> (vi/en/ja + snapshot, `TYPE_CODES` vẫn 4, `all_codes()` 28); **`derives` chạy thật** (Eq/Show/Json dùng ngữ nghĩa
+> sẵn có); đăng ký hàm `impl` ở interp + codegen; tách `lower/trait_impl.rs` khi R1 đỏ. **421** test; sem 338 +
+> differential 286 **giữ nguyên**; gate PASS.
+> **Sự cố của tôi (Agent 0)**: commit `520c2fe` (thông điệp `[ST-29]`) đã **cuốn theo 3 tệp đầu của ST-30** (`sha2`
+> + hash SHA-256) — cây vẫn xanh, không mất gì, không rewrite lịch sử; đã yêu cầu Agent 2 ghi rõ trong `[ST-30]`.
+> **ST-30 mở** (`sha2` + `vis test`).
 
 ## Ghi chú vận hành
 
