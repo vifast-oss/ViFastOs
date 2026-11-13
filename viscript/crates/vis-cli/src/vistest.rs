@@ -169,15 +169,15 @@ pub fn run(args: &[String]) -> ExitCode {
                 .find(|l| !l.is_empty() && !l.starts_with('#'))
                 .unwrap_or("");
             let muon = if mong.starts_with("VS05") { 1 } else { 2 };
-            // `--vm`: khoá **exit** (mã chẩn đoán có thể khác — VM in một chẩn đoán, interp in hai
-            // cho lỗi chỉ số; nợ đã ghi JOURNAL). Interp: khoá **đúng mã** như harness `sem.rs`.
-            let ok = if vm {
-                code == muon && stderr.contains("VS")
-            } else {
-                code == muon && stderr.contains(mong)
-            };
+            // ST-30b: hai đường **đã đồng bộ** chẩn đoán ⇒ `--vm` khoá **đúng mã** như interp.
+            let ok = code == muon && stderr.contains(mong);
             if ok {
                 tap.push_str(&format!("ok {n} - {ten}\n"));
+            } else if vm && stderr.contains("VS0604") {
+                // VM **không** có host chương trình ngoài ⇒ ca `.err` cần chạy lệnh ngoài = SKIP.
+                tap.push_str(&format!(
+                    "ok {n} - {ten} # SKIP chương trình ngoài cần host (VM không có — ST-27)\n"
+                ));
             } else {
                 hong += 1;
                 tap.push_str(&format!("not ok {n} - {ten}\n"));

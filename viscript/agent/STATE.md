@@ -6,12 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-30** (`sha2`/SHA-256 cho hash nguồn + `vis test`) — xong, **chưa commit**.
-Bước          : 3/3 (sha2 → `vis test` TAP → 5+9 ca)
+Task          : **ST-30b** (đồng bộ chẩn đoán hai đường + siết differential) — xong, **chưa commit**.
+Bước          : 3/3 (đo đỏ 9 ca lệch → sửa engine → siết test 312/312)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:46:44Z** (14:46 JST, không retry);
-                **435** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-30]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T05:59:15Z** (14:59 JST, không retry);
+                **436** test workspace
+Việc dở       : chờ duyệt rồi commit `[ST-30b]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-30b — đồng bộ chẩn đoán interp ↔ VM (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Đo đỏ** | Thêm ca `.err` vào `vs_interp` (bỏ `continue`) + `diff_100k` so thêm `thông điệp` ⇒ HEAD lộ **9 ca lệch / 3 nhóm**: (a) chỉ số/khoá map: VM `VS0501`+câu ngắn ↔ interp `VS0503`+câu đầy đủ; (b) đệ quy sâu: VM thiếu vế "— đệ quy không có điểm dừng?"; (c) tên lạ: VM "hàm" ↔ interp "tên" |
+| 2 | **Sửa bên sai** | `vm.rs::index` dùng `IDX` (`VS0503`) + **đúng câu** interp (âm/ngoài phạm vi kèm `độ dài`/khoá map), thêm nhánh `Bytes`; `vm.rs` thêm vế đệ quy; `builtin.rs` "hàm" → "**tên**"; **không** nới test |
+| 3 | **Siết differential** | `vs_interp`: so **đủ 338** ca (312 khớp / **0 lệch** / 26 bỏ qua vì lỗi **biên dịch**); ca mới `hai_duong_cung_so_chan_doan` khoá **cùng số** chẩn đoán (30 ca có chẩn đoán lúc chạy); `diff_100k` so `(mã, dòng, cột, **thông điệp**)` |
+| 4 | **`vis test --vm`** | Bỏ khoá nới "chỉ exit" ⇒ so **đúng mã** như interp; chỉ còn SKIP ca cần **host chương trình ngoài** (6 ca, có lý do) |
+| 5 | **Đo** | **436** test; `vis test` = **338 ok/0 đỏ**, `--vm` = **338 ok/6 SKIP/0 đỏ**; sem **338** giữ nguyên |
 
 ## ST-30 — SHA-256 thật + `vis test` (2026-11-13)
 

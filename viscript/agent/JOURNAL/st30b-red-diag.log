@@ -1,0 +1,56 @@
+=== ST-30b D2-05: đồng bộ chẩn đoán interp ↔ VM + siết differential — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T05:57:51Z
+
+## 1. Đỏ **thật** trên HEAD `02b97ad` (chỉ sửa **test**, chưa sửa engine)
+
+`crates/vis-vm/tests/vs_interp.rs`: bỏ dòng `if …with_extension("err").exists() { continue; }` ⇒ so **đủ** 338 ca
+(trước chỉ 286), so **toàn bộ** `(mã, dòng, cột, thông điệp)`; `diff_100k.rs`: thêm `message` vào phép so.
+
+```
+$ cargo test -p vis-vm --test vs_interp
+test result: FAILED. 0 passed; 1 failed
+9 lệch **mới** (ngoài danh sách đã biết):
+  test/sem/ham/de-quy-vo-han.vis: interp[VS0501:3:5 gọi hàm quá sâu (>2000 khung) — đệ quy không có điểm dừng?]
+                                   vm    [VS0501:3:5 gọi hàm quá sâu (>2000 khung)]
+  test/sem/list/ngoai-pham-vi.vis: interp[VS0503:3:7 chỉ số 5 ngoài phạm vi (độ dài 1)]
+                                   vm    [VS0501:3:7 chỉ số 5 ngoài phạm vi]
+  test/sem/loi/chi-so-am.vis:      interp[VS0503:3:7 chỉ số âm `-1` (dùng `.last()` hoặc `xs[i]?`)]
+                                   vm    [VS0501:3:7 chỉ số -1 ngoài phạm vi]
+  test/sem/loi/chi-so-list.vis:    interp[VS0503:3:7 chỉ số 2 ngoài phạm vi (độ dài 2)]  vm[VS0501:3:7 chỉ số 2 ngoài phạm vi]
+  test/sem/loi/chi-so-lon.vis:     interp[VS0503:3:7 chỉ số 9 ngoài phạm vi (độ dài 1)]  vm[VS0501:3:7 chỉ số 9 ngoài phạm vi]
+  test/sem/loi/chi-so-map.vis:     interp[VS0503:3:7 khoá `b` không có trong map]        vm[VS0501:3:7 khoá `b` không có trong map]
+  test/sem/map/khoa-la.vis:        interp[VS0503:3:7 khoá `z` không có trong map]        vm[VS0501:3:7 khoá `z` không có trong map]
+  test/sem/loi/ten-la.vis:         interp[VS0501:2:9 tên `y` chưa hỗ trợ ở VS0]         vm[VS0501:2:9 hàm `y` chưa hỗ trợ ở VS0]
+  test/sem/pham-vi/ten-la.vis:     interp[VS0501:2:7 tên `y` chưa hỗ trợ ở VS0]         vm[VS0501:2:7 hàm `y` chưa hỗ trợ ở VS0]
+```
+
+⇒ **9 ca lệch / 3 nhóm**: (1) chỉ số & khoá map: VM dùng `VS0501` + câu ngắn thay vì `VS0503` + câu đầy đủ;
+(2) đệ quy sâu: VM thiếu vế "— đệ quy không có điểm dừng?"; (3) tên lạ: VM in "hàm" thay vì "tên".
+**Nguyên nhân lọt lưới**: differential cũ **bỏ qua** ca `.err` và `diff_100k` chỉ so `(mã, dòng, cột)` —
+thiếu `thông điệp`.
+
+## 2. Sửa **bên sai** (giữ nguyên ngữ nghĩa §3.6/§4.4, không nới test)
+
+- `crates/vis-vm/src/vm.rs::index`: dùng `IDX` (`VS0503`) + **đúng câu** của interp cho âm / ngoài phạm vi
+  (kèm `độ dài`) / khoá map; thêm nhánh `Bytes`; nhánh lạ dùng "không chỉ số được `…` bằng `…`".
+- `vm.rs`: thông điệp đệ quy sâu thêm vế "— đệ quy không có điểm dừng?" (2 chỗ).
+- `crates/vis-interp/src/builtin.rs`: "hàm `{tên}` chưa hỗ trợ" ⇒ "**tên** `{tên}` chưa hỗ trợ" (khớp interp
+  và cách gọi trong `VS0501`).
+- `crates/vis-cli/src/vistest.rs`: `--vm` **bỏ** khoá nới "chỉ exit" ⇒ so **đúng mã** như interp (chỉ còn SKIP
+  cho ca cần host chương trình ngoài, có lý do).
+
+## 3. Sau khi sửa — đo được
+
+- `vs_interp`: **312 khớp / 0 lệch / 26 bỏ qua** (26 ca lỗi **biên dịch**, hai đường chung front end) ⇒
+  so **đủ 338** ca (trước 286); ca mới `hai_duong_cung_so_chan_doan` khoá **cùng số** chẩn đoán (30 ca có
+  chẩn đoán lúc chạy, mỗi ca đúng 1 ở cả hai đường).
+- `diff_100k`: so thêm `message` ⇒ vẫn **0 lệch**.
+- `vis test`: **338 ok**, exit 0. `vis test --vm`: **338 ok** (**6 SKIP** chương trình ngoài), **0 đỏ**, exit 0.
+- test workspace: **436** (435 + ca parity mới); sem **338** giữ nguyên.
+
+## 4. sha256 bản commit
+  sha256 crates/vis-vm/src/vm.rs=e00c2cf86c4a021dc980a0589f68ec126911f9702b2b6507536382bd8069566e
+  sha256 crates/vis-vm/tests/vs_interp.rs=0afc6bbf44d5fbf4e82723c06eca34b38080e7a670edd142e2c8622ed9a3c4c5
+  sha256 crates/vis-vm/tests/diff_100k.rs=6303e0643812ece4b160a96badab129bc28de4ae3b251e373c6128609eb6b2ba
+  sha256 crates/vis-interp/src/builtin.rs=2491e42f266ccbb047d9a72c0adf047eba41f1914e2056a790ebeb4f36866c87
+  sha256 crates/vis-cli/src/vistest.rs=3af3341c2c11199254930e179aedc7824e7955b45375393e960dd17f1565e718

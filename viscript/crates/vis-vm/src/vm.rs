@@ -7,7 +7,7 @@
 
 use vis_bytecode::{Func, Instr, Module};
 use vis_interp::builtin::{self, Host};
-use vis_interp::interp::{Abort, Trap, R, RT};
+use vis_interp::interp::{Abort, Trap, IDX, R, RT};
 use vis_interp::value::{self, Value, VmFunc};
 use vis_interp::RunOutput;
 use vis_syntax::Span;
@@ -210,7 +210,7 @@ impl Vm<'_> {
         if self.depth + 1 >= MAX_FRAMES {
             return Err(Abort::Trap(Trap::new(
                 RT,
-                format!("gọi hàm quá sâu (>{MAX_FRAMES} khung)"),
+                format!("gọi hàm quá sâu (>{MAX_FRAMES} khung) — đệ quy không có điểm dừng?"),
                 span,
             )));
         }
@@ -382,7 +382,7 @@ impl<'m> Th<'m> {
                     if self.frames.len() + vm.depth + 1 >= MAX_FRAMES {
                         return Err(Abort::Trap(Trap::new(
                             RT,
-                            format!("gọi hàm quá sâu (>{MAX_FRAMES} khung)"),
+                            format!("gọi hàm quá sâu (>{MAX_FRAMES} khung) — đệ quy không có điểm dừng?"),
                             span,
                         )));
                     }
@@ -799,30 +799,51 @@ fn field(v: &Value, name: &str, span: Span) -> R<Value> {
 }
 
 fn index(base: &Value, idx: &Value, span: Span) -> R<Value> {
+    // ST-30b: **trùng đúng** chẩn đoán của interp (cùng mã `VS0503`, cùng thông điệp) — hai đường
+    // phải cho **cùng** danh sách `(mã, dòng, cột, thông điệp)`; trước đây VM dùng `VS0501` + câu ngắn.
     match (base, idx) {
-        (Value::List(xs), Value::Int(i)) => xs
-            .get(*i as usize)
-            .cloned()
-            .ok_or_else(|| Abort::Trap(Trap::new(RT, format!("chỉ số {i} ngoài phạm vi"), span))),
+        (Value::List(xs), Value::Int(i)) => {
+            let len = xs.len() as i64;
+            if *i < 0 {
+                return Err(Abort::Trap(Trap::new(
+                    IDX,
+                    format!("chỉ số âm `{i}` (dùng `.last()` hoặc `xs[i]?`)"),
+                    span,
+                )));
+            }
+            xs.get(*i as usize).cloned().ok_or_else(|| {
+                Abort::Trap(Trap::new(
+                    IDX,
+                    format!("chỉ số {i} ngoài phạm vi (độ dài {len})"),
+                    span,
+                ))
+            })
+        }
+        (Value::Bytes(bs), Value::Int(i)) => {
+            let len = bs.len() as i64;
+            if *i < 0 || *i >= len {
+                return Err(Abort::Trap(Trap::new(
+                    IDX,
+                    format!("chỉ số {i} ngoài phạm vi (độ dài {len})"),
+                    span,
+                )));
+            }
+            Ok(Value::Int(bs[*i as usize] as i64))
+        }
         (Value::Map(kv), k) => kv
             .iter()
             .find(|(kk, _)| value::eq(kk, k))
             .map(|(_, v)| v.clone())
             .ok_or_else(|| {
                 Abort::Trap(Trap::new(
-                    RT,
+                    IDX,
                     format!("khoá `{}` không có trong map", k.show()),
                     span,
                 ))
             }),
-        (Value::Str(s), Value::Int(i)) => s
-            .chars()
-            .nth(*i as usize)
-            .map(|c| Value::Str(c.to_string()))
-            .ok_or_else(|| Abort::Trap(Trap::new(RT, format!("chỉ số {i} ngoài phạm vi"), span))),
-        _ => Err(Abort::Trap(Trap::new(
+        (other, idx) => Err(Abort::Trap(Trap::new(
             RT,
-            "chỉ số không hợp lệ".to_string(),
+            format!("không chỉ số được `{}` bằng `{}`", other.show(), idx.show()),
             span,
         ))),
     }

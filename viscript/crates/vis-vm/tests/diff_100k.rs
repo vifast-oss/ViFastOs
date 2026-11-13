@@ -316,7 +316,8 @@ fn than_chay() {
             a.exit,
             a.diagnostics
                 .iter()
-                .map(|d| (d.code_str(), d.line, d.col))
+                // ST-30b: so **đủ** `(mã, dòng, cột, thông điệp)` — không chỉ vị trí.
+                .map(|d| (d.code_str(), d.line, d.col, d.message.clone()))
                 .collect::<Vec<_>>()
         );
         let tb = format!(
@@ -325,7 +326,8 @@ fn than_chay() {
             b.exit,
             b.diagnostics
                 .iter()
-                .map(|d| (d.code_str(), d.line, d.col))
+                // ST-30b: so **đủ** `(mã, dòng, cột, thông điệp)` — không chỉ vị trí.
+                .map(|d| (d.code_str(), d.line, d.col, d.message.clone()))
                 .collect::<Vec<_>>()
         );
         if ta != tb {

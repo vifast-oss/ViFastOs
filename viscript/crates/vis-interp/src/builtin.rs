@@ -528,7 +528,7 @@ pub fn call(
             Ok(Value::Res(Err(Box::new(v))))
         }
         "ref" => Err(trap(RT, "`ref(x)` là VS1 — chưa hỗ trợ ở VS0", span)),
-        other => Err(trap(RT, format!("hàm `{other}` chưa hỗ trợ ở VS0"), span)),
+        other => Err(trap(RT, format!("tên `{other}` chưa hỗ trợ ở VS0"), span)),
     }
 }
 
