@@ -3,7 +3,7 @@
 //! `Symbols`/`TypeTable`; tách khỏi `lower.rs`/`cmd.rs` cho luật R1 (≤1.500 dòng/tệp).
 
 use crate::cmdsig::CmdSig;
-use crate::hir::{FnKind, HExpr, HItem, HStmt, Lit, LitKind};
+use crate::hir::{FnKind, HExpr, HItem, HStmt};
 use crate::lower::{FrameKind, HFrame, LowerOptions, Lowerer, Symbols};
 use crate::ty::{RecId, Type, TypeTable};
 use vis_syntax::{Cst, Diagnostic, Elem, LexOutput, Node, NodeKind, Span};
@@ -11,6 +11,7 @@ use vis_syntax::{Cst, Diagnostic, Elem, LexOutput, Node, NodeKind, Span};
 /// **ST-48**: kết quả hạ **thân `cmd` lệnh**.
 pub(crate) struct ThanOut {
     pub expr: Option<HExpr>,
+    pub ty: Type,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -19,7 +20,23 @@ pub(crate) struct ThanOut {
 pub(crate) struct ThanCtx {
     pub sigs: Vec<crate::cmdsig::CmdSig>,
     pub file_long: Option<RecId>,
+    /// Bản ghi đã biết ở Lowerer cha (prelude + item) — để sugar `where`/`it` thấy **trường**.
+    pub recs: Vec<(String, RecId)>,
     pub span: Span,
+    /// `true` = thân `cmd` (báo "thân cmd…"); `false` = nhóm `( … )`.
+    pub la_than: bool,
+}
+
+/// **ST-49**: như [`lower_than`] nhưng cho **nhóm** `( … )` — dùng chung một đường hạ.
+pub(crate) fn lower_nhom(
+    symbols: &mut Symbols,
+    types: &mut TypeTable,
+    cst: &Cst,
+    lex: &LexOutput,
+    opts: LowerOptions,
+    ctx: ThanCtx,
+) -> ThanOut {
+    lower_than(symbols, types, cst, lex, opts, ctx)
 }
 
 pub(crate) fn lower_than(
@@ -33,7 +50,9 @@ pub(crate) fn lower_than(
     let ThanCtx {
         sigs,
         file_long,
+        recs,
         span,
+        la_than,
     } = ctx;
     let mut l = Lowerer::new(cst, lex, opts, symbols, types);
     if l.symbols.frames.is_empty() {
@@ -53,6 +72,8 @@ pub(crate) fn lower_than(
     l.declare_builtins();
     l.cmd_sigs.extend(sigs.clone());
     l.file_long = file_long;
+    l.rec_names = recs.clone();
+    l.prelude_recs = recs;
     // Đúng **một** pipeline: `cmd_file` trả mỗi dòng một node `CmdPipe`/`CmdStage` (không bọc
     // `CmdItems`), còn `.vish` bọc trong `CmdItems` — nhận cả hai dạng.
     let mut pipes: Vec<Node> = cst
@@ -80,30 +101,36 @@ pub(crate) fn lower_than(
         .max(if dong.is_empty() { 0 } else { dong.len() });
     let node = pipes.first().cloned();
     if so > 1 {
-        l.diag(
-            &vis_diag::SYNTAX_CODES[0],
-            "thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)",
-            span,
-        );
+        let msg = if la_than {
+            "thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)"
+        } else {
+            "trong `( … )`: nhóm chỉ hạ được **một** pipeline lệnh"
+        };
+        l.diag(&vis_diag::SYNTAX_CODES[0], msg, span);
         return ThanOut {
             expr: None,
+            ty: Type::Error,
             diagnostics: l.diags,
         };
     }
     let Some(node) = node else {
-        l.diag(
-            &vis_diag::SYNTAX_CODES[0],
-            "thân `cmd`: không thấy pipeline lệnh",
-            span,
-        );
+        let msg = if la_than {
+            "thân `cmd`: không thấy pipeline lệnh"
+        } else {
+            "trong `( … )`: không phải biểu thức hay pipeline lệnh"
+        };
+        l.diag(&vis_diag::SYNTAX_CODES[0], msg, span);
         return ThanOut {
             expr: None,
+            ty: Type::Error,
             diagnostics: l.diags,
         };
     };
     let expr = l.ha_pipeline(&node, &sigs);
+    let ty = l.last_stage_ty.clone();
     ThanOut {
         expr,
+        ty,
         diagnostics: l.diags,
     }
 }
@@ -202,7 +229,9 @@ impl<'a> super::Lowerer<'a> {
                 crate::lower::ThanCtx {
                     sigs: sigs.clone(),
                     file_long: self.file_long,
+                    recs: self.rec_names.clone(),
                     span,
+                    la_than: true,
                 },
             );
             self.diags.extend(out.diagnostics);
@@ -217,121 +246,84 @@ impl<'a> super::Lowerer<'a> {
         }
     }
 
-    /// ST-46: `( <lệnh> … )` — nhóm làm **stage** nhưng nội dung là **một lệnh** (không `|`/`;`).
-    /// Parse nội dung bằng `Mode::Command` **không đệm** rồi cộng bù `at` cho span (chẩn đoán tuyệt đối).
-    pub(super) fn lower_nhom_lenh(&mut self, g: &Node, sigs: &[CmdSig]) -> Option<HExpr> {
+    /// **ST-49**: hạ nội dung nhóm `( … )` như **một pipeline lệnh** (xoá đường tự-dựng-Call cũ).
+    /// Newline trong ngoặc đổi thành **dấu cách** (1 byte → 1 byte) ⇒ offset tuyệt đối không đổi.
+    pub(super) fn lower_nhom(&mut self, g: &Node, sigs: &[CmdSig]) -> Option<(HExpr, Type)> {
         let text = self.vach_text(g)?;
         let bat_dau = match g.elems.first() {
             Some(Elem::Token(i)) => self.tok(*i).map(|t| t.span.end).unwrap_or(0),
             _ => 0,
         };
-        let sau = &self.text[bat_dau.min(self.text.len())..];
-        let lead = sau.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let phang = text.replace(['\n', '\r'], " ");
+        let lead = phang.len() - phang.trim_start().len();
+        let trim = phang.trim();
         let at = bat_dau + lead;
-        let inner = text.trim();
-        let parsed = vis_syntax::parse(inner, vis_syntax::lex::Mode::Command);
-        if !parsed.diagnostics.is_empty() {
+        let lexed = vis_syntax::lex(trim, vis_syntax::lex::Mode::Command);
+        if !lexed.diagnostics.is_empty() {
             return None;
         }
-        // Tệp **một dòng** ⇒ root KHÔNG có `CmdItems` (VD-40 #1): pipeline nằm thẳng ở root.
-        let dong = parsed
+        let mut toks = lexed.tokens.clone();
+        for tk in &mut toks {
+            tk.span = Span::new(tk.span.start + at, tk.span.end + at);
+        }
+        let parsed = vis_syntax::parse_voi(self.text, toks, vis_syntax::lex::Mode::Command);
+        let out = crate::lower::lower_nhom(
+            self.symbols,
+            self.tbl,
+            &parsed.cst,
+            &vis_syntax::LexOutput {
+                text: self.text.to_string(),
+                tokens: parsed.cst.tokens.clone(),
+                diagnostics: Vec::new(),
+            },
+            self.opts.clone(),
+            crate::lower::ThanCtx {
+                sigs: sigs.to_vec(),
+                file_long: self.file_long,
+                recs: self.rec_names.clone(),
+                span: g.span,
+                la_than: false,
+            },
+        );
+        self.diags.extend(out.diagnostics);
+        out.expr.map(|e| (e, out.ty))
+    }
+
+    /// **ST-49**: kiểu tĩnh của nhóm-lệnh (cho `kieu_stage`): stage **đầu** của pipeline.
+    pub(super) fn kieu_nhom(&self, g: &Node, sigs: &[CmdSig]) -> Type {
+        let Some(text) = self.vach_text(g) else {
+            return Type::Error;
+        };
+        let phang = text.replace(['\n', '\r'], " ");
+        let trim = phang.trim();
+        let parsed = vis_syntax::parse(trim, vis_syntax::lex::Mode::Command);
+        let Some(pipe) = parsed
             .cst
             .root
             .children()
-            .find(|n| n.kind == NodeKind::CmdItems)
-            .cloned()
-            .or_else(|| {
-                parsed
-                    .cst
-                    .root
-                    .children()
-                    .find(|n| n.kind == NodeKind::CmdPipe)
-                    .cloned()
-            })?;
-        let stage = dong.children().find(|n| n.kind == NodeKind::CmdStage)?;
-        let doan = |sp: Span| inner.get(sp.start..sp.end).unwrap_or("").to_string();
-        let ten = match stage.elems.first()? {
-            Elem::Token(i) => parsed.cst.tokens.get(*i as usize)?.text.clone(),
-            Elem::Node(n) => n.tokens(&parsed.cst.tokens).next()?.text.clone(),
+            .find(|n| n.kind == NodeKind::CmdPipe)
+        else {
+            return Type::Error;
         };
-        let sig = sigs.iter().find(|s| s.name == ten)?.clone();
-        if !sig.generics.is_empty() {
-            return None;
+        let Some(stage) = pipe.children().find(|n| n.kind == NodeKind::CmdStage) else {
+            return Type::Error;
+        };
+        let Some(ten) = stage.elems.first().and_then(|e| match e {
+            Elem::Token(i) => parsed.cst.tokens.get(*i as usize).map(|t| t.text.clone()),
+            Elem::Node(n) => n.tokens(&parsed.cst.tokens).next().map(|t| t.text.clone()),
+        }) else {
+            return Type::Error;
+        };
+        let Some(sig) = sigs.iter().find(|s| s.name == ten) else {
+            return Type::Error;
+        };
+        let mut ret = sig.ret.clone();
+        // `ls --long` ⇒ bản ghi 6 trường (cùng luật với `kieu_stage` của stage thường).
+        if ten == "ls" && trim.contains("--long") {
+            if let Some(id) = self.file_long {
+                ret = Type::List(Box::new(Type::Record(id)));
+            }
         }
-        let mut args: Vec<Option<HExpr>> = sig.params.iter().map(|p| p.default.clone()).collect();
-        let mut vi_tri = 0usize;
-        for e in &stage.elems[1..] {
-            if let Elem::Node(n) = e {
-                if n.kind == NodeKind::CmdGroup {
-                    let raw = doan(n.span);
-                    let inner_nhom = raw.strip_prefix('(')?.strip_suffix(')')?;
-                    while vi_tri < sig.params.len() && sig.params[vi_tri].named {
-                        vi_tri += 1;
-                    }
-                    if vi_tri >= sig.params.len() {
-                        return None;
-                    }
-                    let rel = n.span.start + 1 + (raw.len() - raw.trim_start().len());
-                    let e = self.lower_bieu_thuc_tai(inner_nhom, at + rel)?;
-                    args[vi_tri] = Some(e);
-                    vi_tri += 1;
-                    continue;
-                }
-            }
-            let (la_co, raw, sp) = match e {
-                Elem::Token(i) => {
-                    let t = parsed.cst.tokens.get(*i as usize)?;
-                    (
-                        t.text.starts_with('-') && t.text != "-",
-                        t.text.clone(),
-                        t.span,
-                    )
-                }
-                Elem::Node(n) if n.kind == NodeKind::CmdFlag => {
-                    let t = n.tokens(&parsed.cst.tokens).next()?;
-                    (true, t.text.clone(), n.span)
-                }
-                Elem::Node(n) => (false, doan(n.span), n.span),
-            };
-            let sp = Span::new(sp.start + at, sp.end + at);
-            if la_co {
-                let ten_co = raw.trim_start_matches('-');
-                if let Some(i) = sig.params.iter().position(|p| p.named && p.name == ten_co) {
-                    args[i] = Some(HExpr::Lit {
-                        ty: Type::Bool,
-                        lit: Lit {
-                            kind: LitKind::Bool,
-                            text: "true".into(),
-                        },
-                        span: sp,
-                    });
-                }
-                continue;
-            }
-            while vi_tri < sig.params.len() && sig.params[vi_tri].named {
-                vi_tri += 1;
-            }
-            if vi_tri >= sig.params.len() {
-                return None;
-            }
-            let ty = sig.params[vi_tri].ty.clone();
-            let e = self.chuyen_doi_text(&raw, &ty, sp)?;
-            args[vi_tri] = Some(e);
-            vi_tri += 1;
-        }
-        let mut ds = Vec::new();
-        for a in args {
-            ds.push(a?);
-        }
-        Some(HExpr::Call {
-            callee: Box::new(HExpr::Var {
-                name: ten,
-                sym: None,
-                span: g.span,
-            }),
-            args: ds,
-            named: Vec::new(),
-            span: g.span,
-        })
+        ret
     }
 }

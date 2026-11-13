@@ -1,0 +1,33 @@
+=== ST-49 D2-05: nhóm `( … )` — lệnh có cờ, pipeline, nhiều dòng — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T14:56:28Z
+
+## 1. Đỏ **thật** ở HEAD `efa787f` (worktree `/tmp/vis-red49`, chỉ thêm test + fixture)
+
+```
+$ cargo test -p vis-cli --test nhom
+test result: FAILED. **5 passed; 9 failed**
+```
+
+9 ca đỏ: nhóm-lệnh có cờ (`--long`); pipeline 2 stage; pipeline nhiều dòng; biểu thức nhiều dòng;
+chẩn đoán tuyệt đối trong nhóm nhiều dòng; nhóm lồng lệnh; `( ls --long ) | select mode` (kiểu tĩnh);
+`interp↔--vm`; 3 fixture. 5 ca xanh **có lý do**: đối số ST-46, shell-let ST-44, `( )` rỗng (`VS0201`),
+nhóm lồng biểu thức, `( ls ) | where` (không cờ).
+
+## 2. Sau khi sửa — đo được
+
+- Parser: bỏ điều kiện "thân group có `|` ⇒ lỗi"; newline **không** kết thúc nhóm (quét tới `)` cùng độ sâu).
+- Hạ: một đường duy nhất — nội dung nhóm đổi **newline → dấu cách** (1 byte → 1 byte), parse lại bằng
+  `parse_voi` (**span tuyệt đối**) rồi hạ **cả pipeline** bằng Lowerer **con**; **xoá** `lower_nhom_lenh`
+  tự-dựng-Call (không còn hai đường). `kieu_stage` trả kiểu stage **đầu** (`( ls --long )` ⇒
+  `list[FileEntryLong]`). Sugar `where` kết thúc theo **span stage** (trong nhóm không nuốt `)`).
+
+- Đo: **666 → 680** test (+**14** `nhom.rs`); `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**;
+  3 fixture `test/cmd/nhom/**`; golden ca `ls | (a | b)` đổi kỳ vọng **APPROVED** (kèm lý do).
+
+## 3. sha256 bản commit:
+  sha256 crates/vis-syntax/src/parse/cmd.rs=d2cd96f4abd8a84c59b50b6a39bacbb0586cee602907ac2bcbab5a6b2acde7db
+  sha256 crates/vis-types/src/lower/cmd.rs=7360ee90a65752db4e788c9be24df1368960866b7c75246e45e0b104204adc41
+  sha256 crates/vis-types/src/lower/than.rs=bc89df1c7ef02828f378623a6d36101014d071350e319cef270f02b4abf930a0
+  sha256 crates/vis-types/src/lower.rs=3d7a19106f970c5ff6969295ba81fd4bea249687669c20ff5ed4088ed96e3bab
+  sha256 crates/vis-cli/tests/nhom.rs=8c7518f0c743ca2063b9841ead17f43405992d5984b99943ea3241c9608b2216
+  sha256 test/cmd/golden.cmd=208308486bb3a78850eaab907b107a0ba2d94b763a4cd5b170492e7cd93314c3

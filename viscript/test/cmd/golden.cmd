@@ -111,9 +111,11 @@ ls -5 => (pipe (stage (cmd ls) (word -5)))
 ls [ab] => (pipe (stage (cmd ls) (word [ab])))
 
 // #18 Mơ hồ: `|` trong ngoặc là pipe hay or-pattern? · Thiết kế: §9.4 hàng 1 + §A.7 ghi chú 5 —
-//     `|` chỉ là pipe ở **độ sâu 0**; biểu thức **không** có `|` · Chọn: **lỗi** tại `|` trong
-//     ngoặc (1 lỗi, không ở token đầu).
-ls | (a | b) => !ERR
+//     `|` chỉ là pipe ở **độ sâu 0**; biểu thức **không** có `|`.
+//     **SỬA KÈM LÝ DO (ST-49, Agent 0 APPROVED)**: nhóm chứa `|` nay **hợp lệ về cú pháp** (VD-83):
+//     nội dung nhóm được hạ ở tầng hạ (biểu thức **hoặc** pipeline lệnh); lỗi nội dung — nếu có —
+//     báo `VS0201`/`VS060x` ở tầng hạ, không phải lỗi parse. Giữ **đúng** một ca, không đổi ca khác.
+ls | (a | b) => (pipe (stage (cmd ls)) (stage (group raw a_|_b)))
 
 // #19 Mơ hồ: closure-arg kéo tới đâu? · Thiết kế: §A.7 — `closure_body` kéo tới `|`/`;`/`&`/NEWLINE
 //     ở **độ sâu 0**; ở đây hết dòng · Chọn: thân closure là `x.size > 1`; `>` trong thân là so

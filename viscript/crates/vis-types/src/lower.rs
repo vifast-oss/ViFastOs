@@ -43,7 +43,7 @@ mod stmt;
 mod sugar;
 mod than;
 pub use than::is_builtin_value;
-pub(crate) use than::{lower_than, ThanCtx};
+pub(crate) use than::{lower_nhom, lower_than, ThanCtx};
 
 /// **8 tên giá trị dựng sẵn** của VS0 — danh sách **khoá bằng test** (VD-44 #3: thêm/bớt phải
 /// qua Agent 0). `true`/`false`/`none` là **literal**, không phải tên.

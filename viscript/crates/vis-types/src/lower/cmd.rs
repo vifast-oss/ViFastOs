@@ -188,7 +188,9 @@ impl<'a> Lowerer<'a> {
     /// Hạ **văn bản biểu thức** ở vị trí tuyệt đối `bat_dau` (ST-46) — dùng chung cho `( … )`
     /// (stage, đối số, lồng nhau).
     pub(super) fn lower_bieu_thuc_tai(&mut self, txt: &str, bat_dau: usize) -> Option<HExpr> {
-        let txt = txt.to_string();
+        // ST-49: newline trong `( … )` **không** kết thúc biểu thức — đổi thành **dấu cách**
+        // (1 byte → 1 byte) để span tuyệt đối không đổi.
+        let txt = txt.replace(['\n', '\r'], " ");
         // ST-46: **đệm byte** để span của biểu thức là **tuyệt đối** trong tệp (chẩn đoán lúc chạy
         // báo đúng `dòng:cột`); đệm bằng **dấu cách** trong cùng dòng ⇒ không sinh `Indent`/`Dedent`.
         let dau = "let __vach = ";
@@ -544,8 +546,19 @@ impl<'a> Lowerer<'a> {
         };
         if let Some(g) = head_group {
             if let Some(txt) = self.vach_text(g) {
-                if !txt.trim().is_empty() {
-                    return self.kieu_text(&txt);
+                // ST-49: newline thành dấu cách (1 byte → 1 byte) trước khi suy kiểu biểu thức.
+                let phang = txt.replace(['\n', '\r'], " ");
+                if !phang.trim().is_empty() {
+                    let t = self.kieu_text(phang.trim());
+                    if !matches!(t, Type::Error) {
+                        return t;
+                    }
+                    // Nhóm-lệnh (`( ls --long )`, `( ls | where … )`) ⇒ kiểu stage **đầu**.
+                    let t2 = self.kieu_nhom(g, sigs);
+                    if !matches!(t2, Type::Error) {
+                        return t2;
+                    }
+                    return t;
                 }
             }
         }
@@ -661,13 +674,11 @@ impl<'a> Lowerer<'a> {
             // ST-37: parser **không** gắn node biểu thức vào `CmdGroup` (chỉ giữ token) ⇒ hạ lại
             // **văn bản trong ngoặc** ở chế độ script (biểu thức thuần: literal/phép toán).
             // ST-46: không phải biểu thức ⇒ thử **một lệnh** trong ngoặc (`( ls ./photos )`).
-            let v = self.lower_vach(g).or_else(|| {
-                if truoc.is_none() {
-                    self.lower_nhom_lenh(g, sigs)
-                } else {
-                    None
-                }
-            });
+            // ST-49: biểu thức script (kể cả **nhiều dòng**) → pipeline lệnh (cờ, nhiều stage).
+            let v = self
+                .lower_vach(g)
+                .map(|e| (e, Type::Error))
+                .or_else(|| self.lower_nhom(g, sigs));
             if v.is_none() {
                 if let Some(e) = truoc.as_ref() {
                     let _ = e;
@@ -678,7 +689,7 @@ impl<'a> Lowerer<'a> {
                     );
                 }
             }
-            if let Some(e) = v {
+            if let Some((e, _ty)) = v {
                 if truoc.is_some() {
                     // Stage `( expr )` không có khe ống ⇒ giá trị trước không đi đâu được.
                     self.diag(
@@ -902,7 +913,8 @@ impl<'a> Lowerer<'a> {
                     // Vùng văn bản của đối số: từ token đầu **sau tên lệnh** tới hết stage.
                     if let Some(dau) = self.arg_start(node) {
                         let pty_hint = pty.clone();
-                        let lam = self.ha_sugar(dau, None, pty, rty);
+                        // ST-49: kết thúc **theo span stage** (trong nhóm, `)` không thuộc stage)
+                        let lam = self.ha_sugar(dau, Some(node.span.end), pty, rty);
                         if let Some(lam) = lam {
                             self.last_stage_ty = Type::List(Box::new(pty_hint));
                             return Some(HExpr::Call {

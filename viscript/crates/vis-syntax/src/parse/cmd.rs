@@ -538,7 +538,9 @@ impl<'a> Parser<'a> {
         let mut depth = 1usize;
         loop {
             let t = self.tok_at(k);
-            if t.kind == Kind::Eof || t.kind == Kind::Newline {
+            // **ST-49**: newline **không** kết thúc nhóm — `( 1 +\n 1 )` và
+            // `( ls … |\n where … )` là **một** nhóm (tầng hạ đổi newline thành dấu cách).
+            if t.kind == Kind::Eof {
                 return Err(self.err_here("thiếu `)` đóng nhóm"));
             }
             if t.is_punct("(") {
@@ -561,11 +563,9 @@ impl<'a> Parser<'a> {
         let slice = slice.trim();
         let sub = crate::parse::parse(slice, crate::lex::Mode::Script);
         if let Some(d) = sub.diagnostics.first() {
-            // ST-46: nhóm có thể là **một lệnh** (`( ls ./photos )`) — parser **không** từ chối;
-            // tầng hạ quyết định biểu thức hay lệnh. Nhóm nhiều stage (`( a | b )`) **vẫn** lỗi.
-            if slice.contains('|') || slice.contains(';') || slice.contains('&') {
-                return Err(self.err_here(format!("trong `( … )`: {}", d.message)));
-            }
+            // ST-46/ST-49: nhóm có thể là **biểu thức**, **một lệnh**, hay **pipeline lệnh**; parser
+            // **không** từ chối nội dung — tầng hạ quyết định (báo `VS0201` nếu không hạ được).
+            let _ = d;
             let node = self.node(NodeKind::CmdGroup, elems);
             return Ok((
                 Elem::Node(Box::new(node)),

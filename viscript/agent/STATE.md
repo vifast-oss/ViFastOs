@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-48** (thân `cmd` bằng pipeline lệnh — VSH1b-2) — xong, **chưa commit**.
-Bước          : 5/5 (parser thân script/lệnh → filler giữ byte → Lowerer con hạ pipeline → 15 ca + 3 fixture → gate)
+Task          : **ST-49** (nhóm `( … )`: lệnh có cờ + pipeline + nhiều dòng) — xong, **chưa commit**.
+Bước          : 5/5 (parser nhóm đa dòng + bỏ chặn `|` → một đường hạ `lower_nhom` → kiểu tĩnh nhóm → 14 ca + 3 fixture → gate)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T14:19:16Z**; **666** test / sem **370** / `vis test` **370 ok**, `--vm` **370 ok/6 SKIP** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
-Việc dở       : commit `[ST-48]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T14:55:01Z**; **680** test / sem **370** / `vis test` **370 ok**, `--vm` **370 ok/6 SKIP** / parity **344/344** / diff 100k **0 lệch** (210,4 s) / allowlist **6**
+Việc dở       : commit `[ST-49]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,19 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-48 — thân `cmd` pipeline (2026-11-13)
+## ST-49 — nhóm `( … )` lệnh/nhiều dòng (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Parser** | nhóm chứa `|` **hợp lệ** (bỏ chặn parse; lỗi nội dung ở tầng hạ); newline **không** kết thúc nhóm — quét tới `)` cùng độ sâu ⇒ `( 1 +
+ 1 )`, `( ls … |
+ where … )` là **một** nhóm. Golden ca `ls \| (a \| b)` đổi `!ERR` → sexp hợp lệ **kèm lý do (APPROVED)** |
+| 2 | **Hạ một đường** | **xoá** `lower_nhom_lenh` tự-dựng-Call; `lower_nhom` = newline→dấu cách (1 byte→1 byte), `parse_voi` span tuyệt đối, hạ **cả pipeline** bằng Lowerer con chung bảng (có `recs`/`file_long` của cha) ⇒ `( ls ./photos --long )` 6 cột, `( ls | where )` chạy, nhóm lồng chạy |
+| 3 | **Kiểu tĩnh** | `kieu_stage` nhóm: biểu thức script phẳng hoá → kiểu stage **đầu** của pipeline ⇒ `( ls --long ) \| select mode` kiểm tĩnh; `( ls ) \| where` đúng |
+| 4 | **Sugar** | `where` kết thúc vùng văn bản theo **span stage** (trong nhóm không nuốt `)`) |
+| 5 | **Đo** | **666 → 680** test (+14 `nhom.rs`); 3 fixture `test/cmd/nhom/**`; interp ↔ `--vm` cùng byte; diff 100k 0 lệch; allowlist **6** |
+
+ (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|
