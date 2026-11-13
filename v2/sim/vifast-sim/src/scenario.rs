@@ -190,6 +190,24 @@ pub enum Step {
         reply: SlotRef,
         msg: Msg,
     },
+    // ------------------------------------------- KT-27: Notification (model-only `[TK]`)
+    /// `Signal` trên Notification (model API [`Machine::notification_signal`]) — badge tường
+    /// minh, **không** cần TCB actor (người điều khiển phát).
+    Signal {
+        ntfn: ObjId,
+        badge: u64,
+    },
+    /// `Wait` trên cap Notification (ABI `Recv`, spec `:109`): word ≠ 0 ⇒ trả ngay, rỗng ⇒
+    /// `BlockedOnNotification` (một waiter).
+    WaitNotification {
+        tcb: ObjId,
+        ntfn: SlotRef,
+    },
+    /// `Poll` trên cap Notification (ABI `NBRecv`): word ≠ 0 ⇒ `Ok`, rỗng ⇒ `Busy`.
+    PollNotification {
+        tcb: ObjId,
+        ntfn: SlotRef,
+    },
     // ------------------------------------------- KT-23: bước TCB/scheduler của K1b
     //
     // Các bước dưới gọi **model API** của K1b (D2-49): `Tcb.Suspend/Resume` (KT-18),
@@ -246,6 +264,9 @@ impl Step {
             Step::Fault { .. } => "fault",
             Step::ResumeWithRegs { .. } => "resume_with_regs",
             Step::ReplyFault { .. } => "reply_fault",
+            Step::Signal { .. } => "signal",
+            Step::WaitNotification { .. } => "wait_notification",
+            Step::PollNotification { .. } => "poll_notification",
             Step::TcbSuspend { .. } => "tcb_suspend",
             Step::TcbResume { .. } => "tcb_resume",
             Step::TcbSetSchedParams { .. } => "tcb_set_sched_params",
@@ -276,7 +297,9 @@ impl Step {
             | Step::NBSendWait { tcb, .. }
             | Step::SendCaps { tcb, .. }
             | Step::Fault { tcb, .. }
-            | Step::ReplyFault { tcb, .. } => Some(tcb),
+            | Step::ReplyFault { tcb, .. }
+            | Step::WaitNotification { tcb, .. }
+            | Step::PollNotification { tcb, .. } => Some(tcb),
             _ => None,
         }
     }
@@ -466,6 +489,9 @@ pub fn execute(m: &mut Machine, step: &Step) -> Result<(), KError> {
         Step::Fault { tcb, kind } => m.inject_fault(tcb, kind),
         Step::ResumeWithRegs { tcb, msg } => m.tcb_resume_with_regs(tcb, msg.to_message()?),
         Step::ReplyFault { tcb, reply, msg } => m.reply_msg(tcb, reply, msg.to_message()?),
+        Step::Signal { ntfn, badge } => m.notification_signal(ntfn, badge),
+        Step::WaitNotification { tcb, ntfn } => m.recv(tcb, ntfn, None),
+        Step::PollNotification { tcb, ntfn } => m.nb_recv(tcb, ntfn).map(|_| ()),
         Step::TcbSuspend { tcb, mode } => m.tcb_suspend(tcb, mode),
         Step::TcbResume { tcb } => m.tcb_resume(tcb),
         Step::TcbSetSchedParams { tcb, sched } => m.set_sched_params(tcb, sched),
@@ -494,6 +520,8 @@ impl Step {
                 | Step::SendCaps { .. }
                 | Step::Fault { .. }
                 | Step::ReplyFault { .. }
+                | Step::WaitNotification { .. }
+                | Step::PollNotification { .. }
         )
     }
 

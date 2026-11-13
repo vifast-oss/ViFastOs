@@ -282,6 +282,27 @@ pub struct EndpointInfo {
     pub recv_waiter: Option<ObjId>,
 }
 
+/// **KT-27** — giá trị `Wait`/`Poll` trên Notification: **word 64 bit** + **badge** (thiết kế
+/// §4.7 `:328`). Model-only `[TK]`, **không** phải ABI.
+///
+/// `Signal` OR badge vào word **và** badge (seL4: word = OR badge của các cap đã signal;
+/// `Wait` trả word làm badge), nên hai trường bằng nhau — `check_notifications` kiểm bất biến
+/// `word == badge`. `Wait`/`Poll` lấy giá trị xong **xoá** cả hai.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NotificationValue {
+    pub word: u64,
+    pub badge: u64,
+}
+
+/// **KT-27** — `Message` trả cho `NBRecv` trên Notification (model-only `[TK]`): `MR0 = word`,
+/// `badge = badge`, `label = 0`, `len = 1` (ABI `NBRecv` trả `value` + `MessageInfo` + `MR*`).
+fn notification_message(v: NotificationValue) -> Message {
+    let info = MessageInfo::new(0, 0, false, 0, 1).expect("MessageInfo hằng số hợp lệ");
+    let mut msg = Message::new(info, &[v.word]).expect("Message 1 MR hợp lệ");
+    msg.badge = v.badge;
+    msg
+}
+
 // KT-18: `TcbState` + bảng `ALLOWED` 11×11 nằm ở `crate::tcb` (D2-49(d)) để mọi đường đổi
 // trạng thái đi qua **một** cửa `Machine::transition_tcb`. Re-export để đường dẫn cũ
 // (`vifast_sim::kobj::TcbState`, `::FaultKind`, `::SleepReason`) không đổi.
@@ -384,6 +405,11 @@ struct TcbData {
     /// procsrv cần biết sender + loại fault để `recv_exit`/`wait`; `take_last_fault` tiêu thụ.
     /// Ghi **một chỗ** trong [`Machine::deliver_queued`] (và đường nhanh của `exit`/`inject_fault`).
     last_fault: Option<(ObjId, FaultKind)>,
+    /// **KT-27** — `(word, badge)` của lần `Wait`/`Poll` Notification gần nhất giao cho TCB này.
+    /// Model-only `[TK]`: ABI `Recv` trả `value` (word) + badge qua thanh ghi, nhưng mô hình
+    /// gọi syscall **đồng bộ** nên nhánh "signal đánh thức waiter" cần chỗ ghi để test/procsrv
+    /// đọc (`tcb_notification`/`take_tcb_notification`). `None` = chưa nhận lần nào.
+    notif: Option<(u64, u64)>,
 }
 
 impl TcbData {
@@ -406,12 +432,24 @@ impl TcbData {
     }
 }
 
-/// Notification tối giản của K1b: **một** waiter (thiết kế §4.7: `Signal` đánh thức một
-/// người chờ). Word/badge/signal thuộc K1c (D2-49(a)) — KT-18 chỉ cần chỗ ghi waiter để
-/// `Suspend(Abort)`/finalise chứng minh "gỡ khỏi hàng chờ notification".
+/// **KT-27** — Notification đúng ngữ nghĩa thiết kế §4.7 `:328` (QD §3.11): **word 64 bit**,
+/// `Signal` **OR** badge + đánh thức **một** waiter + giao word rồi **xoá word**, `Wait`/`Poll`,
+/// bound notification với TCB **và** `SchedContext`. Model-only `[TK]`, **không** phải ABI.
+///
+/// - `word`: OR của mọi badge đã `Signal` mà **chưa** được `Wait`/`Poll` lấy. Chỉ bị xoá khi
+///   giao cho người nhận (bất biến `check_notifications`).
+/// - `badge`: OR badge song song với `word` — mô hình giữ **cả hai** vì ABI `Recv` trả
+///   `value` (word) **và** badge; theo seL4 hai giá trị này bằng nhau (`Signal` OR badge của
+///   cap vào word, `Wait` trả word làm badge) nên bất biến `badge == word` được kiểm.
+/// - `waiter`: **một** waiter (khác v1 "đánh thức tất cả" — QD §3.11); TCB chờ thứ hai ⇒ `Busy`.
+/// - `bound_sc`: `SchedContext.Bind(sc, notification)` ghi quan hệ **1:1** (D2-53 Q6: model
+///   API, **không** thêm chữ ký TCB vào ABI).
 #[derive(Debug, Default)]
 struct NotificationState {
+    word: u64,
+    badge: u64,
     waiter: Option<ObjId>,
+    bound_sc: Option<ObjId>,
 }
 
 #[derive(Debug)]
@@ -1473,7 +1511,43 @@ impl Machine {
         if ty == ObjType::Reply {
             self.clear_dead_reply_in_waiters();
         }
+        // **KT-27** — cap Notification bị xoá ⇒ gỡ binding SC↔Notification đang trỏ **cap này**
+        // (không để `SchedData.bound` trỏ cap chết, `Notification.bound_sc` mồ côi).
+        if ty == ObjType::Notification {
+            self.drop_sched_binding_to_cap(cap, obj)?;
+        }
         self.sched_after_op(true);
+        Ok(())
+    }
+
+    /// **KT-27** — gỡ binding `SchedContext.bound` đang trỏ `cap` (Notification vừa chết):
+    /// SC về `bound = None`; `Notification.bound_sc` trỏ SC đó cũng xoá (1:1 hai chiều).
+    fn drop_sched_binding_to_cap(&mut self, cap: CapId, obj: ObjId) -> Result<(), KError> {
+        for sc in self.live_sched_contexts() {
+            let bound = self.body(sc, |k| match k {
+                Kind::SchedContext(s) => Ok(s.bound),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if bound != Some(cap) {
+                continue;
+            }
+            self.body_mut(sc, |k| match k {
+                Kind::SchedContext(s) => {
+                    s.bound = None;
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+            self.body_mut(obj, |k| match k {
+                Kind::Notification(n) => {
+                    if n.bound_sc == Some(sc) {
+                        n.bound_sc = None;
+                    }
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+        }
         Ok(())
     }
 
@@ -1575,14 +1649,52 @@ impl Machine {
 
     /// `SchedContext.Bind(sc, reply|notification)` — chỉ **gắn/kiểm** quan hệ cấu trúc
     /// (chữ ký đã duyệt, D2-33). **KT-21 DoD 3**: `Bind` **không** tạo/xoá donation (donation tự
-    /// động qua `Call`/`Reply`, D2-49(c)); `Bind` Notification chỉ kiểm cấu trúc (thức dậy thật ở
-    /// K1c). `Bind` không đổi ngân sách.
+    /// động qua `Call`/`Reply`, D2-49(c)). `Bind` không đổi ngân sách.
+    ///
+    /// **KT-27** — khi `target` là **Notification**: ghi quan hệ **1:1** vào
+    /// [`NotificationState::bound_sc`] (model-only `[TK]`, D2-53 Q6 — không thêm chữ ký TCB):
+    /// notification đã bind **SC khác** ⇒ `IllegalOperation`; `SC` đổi target ⇒ binding cũ trên
+    /// notification được gỡ (không để `bound_sc` mồ côi).
     pub fn sched_context_bind(&mut self, sched: SlotRef, target: SlotRef) -> Result<(), KError> {
         let sched_obj = self.require_type(sched, ObjType::SchedContext)?;
         let target_cap = self.cap_at(target.cnode, target.slot)?;
         let target_ty = self.cap(target_cap)?.ty;
         if !matches!(target_ty, ObjType::Reply | ObjType::Notification) {
             return Err(KError::WrongObjectType);
+        }
+        // **KT-27**: kiểm 1:1 phía notification **trước** khi đổi bất cứ trạng thái nào.
+        if target_ty == ObjType::Notification {
+            let ntfn_obj = self.cap(target_cap)?.obj;
+            let bound = self.body(ntfn_obj, |k| match k {
+                Kind::Notification(n) => Ok(n.bound_sc),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if let Some(other) = bound {
+                if other != sched_obj {
+                    return Err(KError::IllegalOperation);
+                }
+            }
+        }
+        // Gỡ binding cũ của SC (nếu đang trỏ một Notification khác) — giữ 1:1 hai chiều.
+        let old_bound = self.body(sched_obj, |k| match k {
+            Kind::SchedContext(s) => Ok(s.bound),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if let Some(old_cap) = old_bound {
+            if old_cap != target_cap {
+                let old = self.cap(old_cap).ok().map(|c| (c.obj, c.ty, c.alive));
+                if let Some((old_obj, ObjType::Notification, true)) = old {
+                    self.body_mut(old_obj, |k| match k {
+                        Kind::Notification(n) => {
+                            if n.bound_sc == Some(sched_obj) {
+                                n.bound_sc = None;
+                            }
+                            Ok(())
+                        }
+                        _ => Err(KError::WrongObjectType),
+                    })?;
+                }
+            }
         }
         self.body_mut(sched_obj, |k| match k {
             Kind::SchedContext(s) => {
@@ -1591,8 +1703,34 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
+        if target_ty == ObjType::Notification {
+            let ntfn_obj = self.cap(target_cap)?.obj;
+            self.body_mut(ntfn_obj, |k| match k {
+                Kind::Notification(n) => {
+                    n.bound_sc = Some(sched_obj);
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+        }
         self.sched_after_op(false);
         Ok(())
+    }
+
+    /// **KT-27** — Notification mà `SchedContext` đang bind (nếu `SchedData.bound` là cap
+    /// Notification còn sống); `None` khi chưa bind hoặc đang bind Reply. Model API `[TK]`.
+    pub fn sched_bound_notification(&self, sched: SlotRef) -> Result<Option<ObjId>, KError> {
+        let sched_obj = self.require_type(sched, ObjType::SchedContext)?;
+        let bound = self.body(sched_obj, |k| match k {
+            Kind::SchedContext(s) => Ok(s.bound),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let Some(cap) = bound else { return Ok(None) };
+        let c = self.cap(cap)?;
+        if !c.alive || c.ty != ObjType::Notification {
+            return Ok(None);
+        }
+        Ok(Some(c.obj))
     }
 
     // ------------------------------------------- trường TCB qua model API `[TK]` (KT-18 DoD 1)
@@ -1716,13 +1854,61 @@ impl Machine {
         Ok(())
     }
 
-    /// Bind notification vào TCB (thiết kế §4.7): model API `[TK]`, chưa có chữ ký ABI.
+    /// Bind notification vào TCB (thiết kế §4.7): model API `[TK]`, **chưa** có chữ ký ABI
+    /// (D2-53 Q6: **không** thêm `Tcb.BindNotification` vào `spec/`).
+    ///
+    /// **KT-27 — 1:1**: một TCB chỉ có **một** bound notification (bind notification **khác** ⇒
+    /// `IllegalOperation`) và một notification chỉ bind **một** TCB (TCB khác đã bind ⇒ `Busy`).
+    /// Bind lại **cùng** notification là no-op `Ok`.
     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
         let ntfn_obj = self.require_type(ntfn, ObjType::Notification)?;
+        let current = self.body(tcb_obj, |k| match k {
+            Kind::Tcb(t) => Ok(t.bound_notification),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if let Some(cur) = current {
+            if cur == ntfn_obj {
+                return Ok(());
+            }
+            return Err(KError::IllegalOperation);
+        }
+        // 1:1 phía notification: không cho hai TCB cùng bind một notification.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let other = (i as u32) + 1;
+            if other == tcb_obj {
+                continue;
+            }
+            let bound = self.body(other, |k| match k {
+                Kind::Tcb(t) => Ok(t.bound_notification),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if bound == Some(ntfn_obj) {
+                return Err(KError::Busy);
+            }
+        }
         self.body_mut(tcb_obj, |k| match k {
             Kind::Tcb(t) => {
                 t.bound_notification = Some(ntfn_obj);
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-27** — `Tcb.UnbindNotification` (method 14 trong danh sách `spec/abi.toml:143`,
+    /// **chưa** có chữ ký nên đây là **model API** `[TK]`, D2-53 Q6). Idempotent: chưa bind ⇒
+    /// `Ok`. TCB chết cũng unbind qua [`Machine::finalise_tcb`].
+    pub fn tcb_unbind_notification(&mut self, tcb: SlotRef) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        self.body_mut(tcb_obj, |k| match k {
+            Kind::Tcb(t) => {
+                t.bound_notification = None;
                 Ok(())
             }
             _ => Err(KError::WrongObjectType),
@@ -2172,9 +2358,11 @@ impl Machine {
     /// sang trạng thái chặn/ngủ `to` qua [`Machine::transition_tcb`] và rời `current`.
     /// Chỉ nhận trạng thái `BlockedOn*`/`Sleeping` (không dùng để đổi sang `Ready`).
     ///
-    /// Đây là **primitive scheduler** cho test, không công bố wait trên object nào: các
-    /// đường IPC thật (`call`/`recv`/`tcb_wait_*`) mới ghi hàng chờ của Endpoint/Reply/
-    /// Notification; [`Machine::wake`] gỡ mọi tham chiếu còn lại trước khi `→ Ready`.
+    /// Đây là **primitive scheduler** cho test, không công bố wait trên object nào — trừ
+    /// **KT-27**: `BlockedOnNotification{ntfn}` ghi `waiter` lên Notification để bất biến
+    /// "waiter ⇔ `TcbState`" luôn đúng. Các đường IPC thật (`call`/`recv`/`tcb_wait_*`) mới ghi
+    /// hàng chờ của Endpoint/Reply/Notification; [`Machine::wake`] gỡ mọi tham chiếu còn lại
+    /// trước khi `→ Ready`.
     pub fn block_current(&mut self, hart: u16, to: TcbState) -> Result<ObjId, KError> {
         if hart as usize >= self.sched.len() {
             return Err(KError::InvalidArgument);
@@ -2185,8 +2373,30 @@ impl Machine {
         let cur = self.sched[hart as usize]
             .current()
             .ok_or(KError::IllegalOperation)?;
+        // **KT-27** — `BlockedOnNotification` phải ghi waiter trên object (bất biến
+        // `check_notifications`: `waiter` ⇔ `TcbState`); kiểm **trước** khi gỡ hàng chờ.
+        if let TcbState::BlockedOnNotification { ntfn } = to {
+            let waiter = self.body(ntfn, |k| match k {
+                Kind::Notification(n) => Ok(n.waiter),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if let Some(w) = waiter {
+                if w != cur {
+                    return Err(KError::Busy);
+                }
+            }
+        }
         self.unlink_tcb_queues(cur);
         self.transition_tcb(cur, to)?;
+        if let TcbState::BlockedOnNotification { ntfn } = to {
+            self.body_mut(ntfn, |k| match k {
+                Kind::Notification(n) => {
+                    n.waiter = Some(cur);
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+        }
         self.sched_after_op(false);
         Ok(cur)
     }
@@ -2418,6 +2628,9 @@ impl Machine {
                 false,
                 "bất biến IPC (bảo toàn message) vỡ sau public op: {e}"
             );
+        }
+        if let Err(e) = self.check_notifications() {
+            debug_assert!(false, "bất biến Notification vỡ sau public op: {e}");
         }
     }
 
@@ -2669,6 +2882,153 @@ impl Machine {
                 self.ipc_dropped,
                 pan = pending
             ));
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- KT-27: bất biến Notification
+
+    /// **KT-27** — bất biến Notification (chạy sau **mỗi** public op qua
+    /// [`Machine::sched_after_op`], cùng chỗ với `check_sched`/`check_ipc`):
+    ///
+    /// 1. `waiter == Some(t)` ⇒ `t` là TCB sống đang `BlockedOnNotification{ntfn}` (một waiter,
+    ///    khớp trạng thái — bắt đường "đổi trạng thái trực tiếp" không qua `unlink`). Chiều
+    ///    ngược (`TcbState ⇒ waiter`) **không** kiểm ở đây: `transition_tcb` là cổng thấp được
+    ///    phép dựng trạng thái cho ma trận 11×11 (KT-23) mà không cần object thật; mọi đường
+    ///    IPC thật (`notification_wait`/`signal`/`block_current`) đều ghi waiter.
+    /// 2. `badge == word` (mô hình: `Signal` OR badge vào **cả hai**, `Wait`/`Poll` xoá **cả
+    ///    hai** — bắt lệch xoá/giao);
+    /// 3. `bound_sc == Some(sc)` ⇔ `sc` sống, là `SchedContext`, và `SchedData.bound` của nó là
+    ///    cap Notification còn sống trỏ **đúng** notification này (bind 1:1 **hai chiều**);
+    /// 4. `Tcb.bound_notification` trỏ Notification sống; mỗi notification bind **một** TCB.
+    pub fn check_notifications(&self) -> Result<(), String> {
+        let n_objs = self.objects.len();
+        let obj_alive = |id: ObjId| -> bool {
+            id > 0 && (id as usize) <= n_objs && self.objects[id as usize - 1].alive
+        };
+        let cap_alive = |cap: CapId| -> bool {
+            cap > 0 && (cap as usize) <= self.caps.len() && self.caps[cap as usize - 1].alive
+        };
+        // `sc_bind[sc]` = Notification mà SC đang bind (cap còn sống, đúng kiểu).
+        let mut sc_bind: Vec<Option<ObjId>> = vec![None; n_objs + 1];
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::SchedContext {
+                continue;
+            }
+            let sc = (i + 1) as ObjId;
+            let bound = self
+                .body(sc, |k| match k {
+                    Kind::SchedContext(s) => Ok(s.bound),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("SC {sc}: bound không đọc được: {e:?}"))?;
+            if let Some(cap) = bound {
+                if cap_alive(cap) {
+                    let c = self
+                        .cap(cap)
+                        .map_err(|e| format!("SC {sc}: bound cap {cap} lỗi: {e:?}"))?;
+                    if c.ty == ObjType::Notification {
+                        sc_bind[sc as usize] = Some(c.obj);
+                    }
+                }
+            }
+        }
+        // 1 + 4: mọi TCB sống.
+        let mut bound_by: Vec<Option<ObjId>> = vec![None; n_objs + 1];
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i + 1) as ObjId;
+            let info = self
+                .tcb_info_obj(tcb)
+                .map_err(|e| format!("TCB {tcb} không đọc được: {e:?}"))?;
+            if let Some(ntfn) = info.bound_notification {
+                if !obj_alive(ntfn) {
+                    return Err(format!("TCB {tcb}: bound_notification {ntfn} đã chết"));
+                }
+                if self.objects[ntfn as usize - 1].ty != ObjType::Notification {
+                    return Err(format!(
+                        "TCB {tcb}: bound_notification {ntfn} không phải Notification"
+                    ));
+                }
+                if let Some(other) = bound_by[ntfn as usize] {
+                    return Err(format!(
+                        "Notification {ntfn} bind hai TCB: {other} và {tcb} (1:1)"
+                    ));
+                }
+                bound_by[ntfn as usize] = Some(tcb);
+            }
+        }
+        // 2 + 3: mọi Notification sống.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Notification {
+                continue;
+            }
+            let ntfn = (i + 1) as ObjId;
+            let (word, badge, waiter, bound_sc) = self
+                .body(ntfn, |k| match k {
+                    Kind::Notification(n) => Ok((n.word, n.badge, n.waiter, n.bound_sc)),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("Notification {ntfn} không đọc được: {e:?}"))?;
+            if badge != word {
+                return Err(format!(
+                    "Notification {ntfn}: badge {badge:#x} != word {word:#x}"
+                ));
+            }
+            if let Some(t) = waiter {
+                if !obj_alive(t) {
+                    return Err(format!("Notification {ntfn}: waiter {t} đã chết"));
+                }
+                if self.objects[t as usize - 1].ty != ObjType::Tcb {
+                    return Err(format!("Notification {ntfn}: waiter {t} không phải TCB"));
+                }
+                let info = self
+                    .tcb_info_obj(t)
+                    .map_err(|e| format!("Notification {ntfn}: waiter {t} lỗi: {e:?}"))?;
+                if info.state != (TcbState::BlockedOnNotification { ntfn }) {
+                    return Err(format!(
+                        "Notification {ntfn}: waiter {t} ở trạng thái {} thay vì BlockedOnNotification",
+                        info.state.name()
+                    ));
+                }
+            }
+            if let Some(sc) = bound_sc {
+                if !obj_alive(sc) {
+                    return Err(format!("Notification {ntfn}: bound_sc {sc} đã chết"));
+                }
+                if self.objects[sc as usize - 1].ty != ObjType::SchedContext {
+                    return Err(format!(
+                        "Notification {ntfn}: bound_sc {sc} không phải SchedContext"
+                    ));
+                }
+                if sc_bind[sc as usize] != Some(ntfn) {
+                    return Err(format!(
+                        "Notification {ntfn}: bound_sc {sc} nhưng SC không bind notification này"
+                    ));
+                }
+            }
+        }
+        // 3 (chiều ngược): SC bind Notification ⇒ notification.bound_sc == SC.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::SchedContext {
+                continue;
+            }
+            let sc = (i + 1) as ObjId;
+            if let Some(ntfn) = sc_bind[sc as usize] {
+                let bsc = self
+                    .body(ntfn, |k| match k {
+                        Kind::Notification(n) => Ok(n.bound_sc),
+                        _ => Err(KError::WrongObjectType),
+                    })
+                    .map_err(|e| format!("Notification {ntfn}: bound_sc lỗi: {e:?}"))?;
+                if bsc != Some(sc) {
+                    return Err(format!(
+                        "SC {sc} bind Notification {ntfn} nhưng notification.bound_sc = {bsc:?}"
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -3880,26 +4240,51 @@ impl Machine {
 
     // ------------------------------------------- hàng chờ phụ của mô hình K1b `[TK]`
 
-    /// `Wait` trên Notification — **mô hình K1b** `[TK]` (D2-49(a): tín hiệu/word là K1c):
-    /// đặt TCB vào `BlockedOnNotification` và ghi **một** waiter trên object Notification.
-    /// Notification đã có waiter ⇒ `Busy` (thiết kế §4.7: `Signal` đánh thức một người chờ).
+    /// `Wait` trên Notification — model API `[TK]` (KT-18, hoàn thiện ở **KT-27**): word ≠ 0 ⇒
+    /// giao ngay; word = 0 ⇒ `BlockedOnNotification` với **một** waiter. Xem
+    /// [`Machine::notification_wait`].
     pub fn tcb_wait_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
         let ntfn_obj = self.require_type(ntfn, ObjType::Notification)?;
-        self.wait_notification_obj(tcb_obj, ntfn_obj)
+        self.notification_wait(tcb_obj, ntfn_obj)
     }
 
     /// Thân của `Wait` trên Notification theo `ObjId` — dùng chung cho `tcb_wait_notification`
     /// (model API K1b) và **`NBSendWait`** của KT-25.
     fn wait_notification_obj(&mut self, tcb_obj: ObjId, ntfn_obj: ObjId) -> Result<(), KError> {
+        self.notification_wait(tcb_obj, ntfn_obj)
+    }
+
+    /// **KT-27** — `Wait` trên Notification theo `ObjId` (model API `[TK]`; `recv` trên cap
+    /// Notification và `NBSendWait` dùng chung):
+    ///
+    /// - `word != 0` ⇒ **trả ngay**: giao `(word, badge)` cho TCB (đọc bằng
+    ///   [`Machine::tcb_notification`]), rồi **xoá** word + badge trên object; TCB giữ nguyên
+    ///   `Ready`/`Running`.
+    /// - `word == 0` ⇒ TCB `BlockedOnNotification`; notification đã có waiter ⇒ `Busy`
+    ///   (thiết kế §4.7: **một** waiter — khác v1 "đánh thức tất cả", QD §3.11).
+    pub fn notification_wait(&mut self, tcb_obj: ObjId, ntfn_obj: ObjId) -> Result<(), KError> {
         let state = self.ensure_started(tcb_obj)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);
         }
-        let busy = self.body(ntfn_obj, |k| match k {
-            Kind::Notification(n) => Ok(n.waiter.is_some()),
+        let (word, badge, busy) = self.body(ntfn_obj, |k| match k {
+            Kind::Notification(n) => Ok((n.word, n.badge, n.waiter.is_some())),
             _ => Err(KError::WrongObjectType),
         })?;
+        if word != 0 {
+            self.body_mut(ntfn_obj, |k| match k {
+                Kind::Notification(n) => {
+                    n.word = 0;
+                    n.badge = 0;
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+            self.deliver_notification(tcb_obj, word, badge)?;
+            self.sched_after_op(false);
+            return Ok(());
+        }
         if busy {
             return Err(KError::Busy);
         }
@@ -3913,6 +4298,19 @@ impl Machine {
         self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })?;
         self.sched_after_op(true);
         Ok(())
+    }
+
+    /// Ghi `(word, badge)` vừa giao cho TCB (model-only `[TK]`, KT-27) — **không** đi qua
+    /// `ipc::transfer`: Notification không phải message IPC nên `check_ipc`/`transfer_calls`
+    /// không bị ảnh hưởng.
+    fn deliver_notification(&mut self, tcb: ObjId, word: u64, badge: u64) -> Result<(), KError> {
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => {
+                t.notif = Some((word, badge));
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
     }
 
     /// `WaitAddr` — **mô hình K1b** `[TK]` (thiết kế §4.7; object Frame thuộc K2): xếp TCB vào
@@ -4009,6 +4407,166 @@ impl Machine {
     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
         self.body(ntfn, |k| match k {
             Kind::Notification(n) => Ok(n.waiter),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    // ------------------------------------------- KT-27: Notification word/badge/Signal/Poll
+
+    /// **KT-27** — `Send`/`NBSend` trên Notification = **Signal** (thiết kế §4.7 `:328`):
+    /// `word |= badge` và `badge |= badge`; nếu có **một** waiter (hoặc TCB **bound** đang
+    /// `BlockedOnRecv`) ⇒ đánh thức **đúng một** người, giao `(word, badge)` rồi **xoá** cả
+    /// hai; không có ai chờ ⇒ giữ word cho lần `Wait` sau (không mất tín hiệu, C2).
+    ///
+    /// Badge **0 hợp lệ**: có waiter thì vẫn đánh thức (giao `(0,0)`); không dùng 0 làm
+    /// "chưa có tín hiệu" (K1C-PLAN §5 KT-27 rủi ro (b)).
+    pub fn notification_signal(&mut self, ntfn: ObjId, badge: u64) -> Result<(), KError> {
+        let (word, acc_badge, waiter) = self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok((n.word, n.badge, n.waiter)),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        let new_word = word | badge;
+        let new_badge = acc_badge | badge;
+        // Chọn **một** người được đánh thức: waiter của notification trước, rồi TCB **bound**
+        // đang `BlockedOnRecv` (model-only `[TK]`, K1C-PLAN §5 KT-27 DoD 5).
+        let target = match waiter {
+            Some(t) => {
+                if self.tcb_state(t)? != (TcbState::BlockedOnNotification { ntfn }) {
+                    return Err(KError::IllegalOperation);
+                }
+                Some(t)
+            }
+            None => self.bound_tcb_blocked_on_recv(ntfn)?,
+        };
+        let Some(target) = target else {
+            // Không ai chờ: word giữ nguyên cho `Wait` sau.
+            self.body_mut(ntfn, |k| match k {
+                Kind::Notification(n) => {
+                    n.word = new_word;
+                    n.badge = new_badge;
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })?;
+            self.sched_after_op(false);
+            return Ok(());
+        };
+        self.body_mut(ntfn, |k| match k {
+            Kind::Notification(n) => {
+                n.word = new_word;
+                n.badge = new_badge;
+                n.waiter = None;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.deliver_notification(target, new_word, new_badge)?;
+        // Gỡ TCB khỏi **mọi** hàng chờ (waiter notification hoặc `Recv` của Endpoint) trước
+        // khi `→ Ready` — cùng cửa với `Suspend(Abort)`/finalise.
+        self.unlink_tcb_queues(target);
+        self.transition_tcb(target, TcbState::Ready)?;
+        self.body_mut(ntfn, |k| match k {
+            Kind::Notification(n) => {
+                n.word = 0;
+                n.badge = 0;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.sched_after_op(true);
+        Ok(())
+    }
+
+    /// TCB **bound** với `ntfn` đang `BlockedOnRecv` (nếu có) — nhánh đánh thức thứ hai của
+    /// `Signal` (K1C-PLAN §5 KT-27 DoD 5). Quét theo `ObjId` tăng dần ⇒ **tất định**.
+    fn bound_tcb_blocked_on_recv(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i as u32) + 1;
+            let (bound, state) = self.body(tcb, |k| match k {
+                Kind::Tcb(t) => Ok((t.bound_notification, t.state)),
+                _ => Err(KError::WrongObjectType),
+            })?;
+            if bound == Some(ntfn) && matches!(state, TcbState::BlockedOnRecv { .. }) {
+                return Ok(Some(tcb));
+            }
+        }
+        Ok(None)
+    }
+
+    /// **KT-27** — `Poll` trên Notification (model API `[TK]`): word ≠ 0 ⇒ trả `(word, badge)`
+    /// và **xoá**; rỗng ⇒ `None` (`NBRecv` trên cap Notification trả `Busy`).
+    pub fn notification_poll(&mut self, ntfn: ObjId) -> Result<Option<NotificationValue>, KError> {
+        let (word, badge) = self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok((n.word, n.badge)),
+            _ => Err(KError::WrongObjectType),
+        })?;
+        if word == 0 {
+            return Ok(None);
+        }
+        self.body_mut(ntfn, |k| match k {
+            Kind::Notification(n) => {
+                n.word = 0;
+                n.badge = 0;
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })?;
+        self.sched_after_op(false);
+        Ok(Some(NotificationValue { word, badge }))
+    }
+
+    /// **KT-27** — word 64 bit hiện tại của Notification (model API `[TK]`).
+    pub fn notification_word(&self, ntfn: ObjId) -> Result<u64, KError> {
+        self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok(n.word),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-27** — badge OR hiện tại của Notification (model API `[TK]`; bất biến
+    /// `badge == word`).
+    pub fn notification_badge(&self, ntfn: ObjId) -> Result<u64, KError> {
+        self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok(n.badge),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-27** — `SchedContext` đang bind notification (model API `[TK]`, 1:1); `None` nếu
+    /// chưa bind.
+    pub fn notification_bound_sc(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+        self.body(ntfn, |k| match k {
+            Kind::Notification(n) => Ok(n.bound_sc),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-27** — `(word, badge)` của lần `Wait`/`Poll` gần nhất giao cho TCB (model API
+    /// `[TK]`); `None` nếu chưa nhận lần nào. Đọc không tiêu thụ — dùng
+    /// [`Machine::take_tcb_notification`] nếu cần "lấy rồi xoá".
+    pub fn tcb_notification(&self, tcb: ObjId) -> Result<Option<NotificationValue>, KError> {
+        self.body(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t
+                .notif
+                .map(|(word, badge)| NotificationValue { word, badge })),
+            _ => Err(KError::WrongObjectType),
+        })
+    }
+
+    /// **KT-27** — như [`Machine::tcb_notification`] nhưng **tiêu thụ** bản ghi (`None` sau khi
+    /// lấy) — tránh đọc hai lần cùng một tín hiệu.
+    pub fn take_tcb_notification(
+        &mut self,
+        tcb: ObjId,
+    ) -> Result<Option<NotificationValue>, KError> {
+        self.body_mut(tcb, |k| match k {
+            Kind::Tcb(t) => Ok(t
+                .notif
+                .take()
+                .map(|(word, badge)| NotificationValue { word, badge })),
             _ => Err(KError::WrongObjectType),
         })
     }
@@ -4488,18 +5046,43 @@ impl Machine {
         match self.ipc_cap_type(cap)? {
             ObjType::Endpoint => self.endpoint_send(tcb, cap, msg, true),
             ObjType::Reply => self.reply_msg(tcb, cap, msg),
-            ObjType::Notification => Err(KError::NotSupported),
+            // **KT-27** — spec `:107`: `Send` trên Notification = **Signal** (nội dung message
+            // không dùng; badge lấy từ cap, seL4).
+            ObjType::Notification => self.notification_signal_via_cap(tcb, cap),
             _ => Err(KError::WrongObjectType),
         }
     }
 
+    /// **KT-27** — `Send`/`NBSend` trên **Notification** = **Signal** với badge của cap
+    /// (seL4: badge của cap signal được OR vào word; `None` = 0 — **hợp lệ**). Kiểm TCB chạy
+    /// được + `reset_ipc_error` như mọi syscall IPC khác; nội dung `Message` **không** dùng.
+    fn notification_signal_via_cap(&mut self, tcb: ObjId, cap: SlotRef) -> Result<(), KError> {
+        let cap_id = self.ipc_slot_cap(cap)?;
+        let (ntfn_obj, badge) = {
+            let c = self.cap(cap_id)?;
+            if !c.alive {
+                return Err(KError::InvalidCapability);
+            }
+            if c.ty != ObjType::Notification {
+                return Err(KError::WrongObjectType);
+            }
+            (c.obj, c.badge.unwrap_or(0))
+        };
+        let state = self.ensure_started(tcb)?;
+        if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+            return Err(KError::IllegalOperation);
+        }
+        self.reset_ipc_error(tcb)?;
+        self.notification_signal(ntfn_obj, badge)
+    }
+
     /// `NBSend` — **không chặn**: bên nhận đang `Recv` ⇒ giao ngay; không ⇒ vào hàng gửi của
     /// Endpoint và người gửi **vẫn** `Ready`/`Running` (`spec/abi.toml:108` "không chờ").
+    /// **KT-27** — trên Notification, `NBSend` cũng là **Signal** (không chặn theo bản chất).
     pub fn nb_send(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
         match self.ipc_cap_type(ep)? {
             ObjType::Endpoint => self.endpoint_send(tcb, ep, msg, false),
-            // `NBSend` lên Notification/Reply không có nghĩa trong 16 syscall K1c hiện tại.
-            ObjType::Notification => Err(KError::NotSupported),
+            ObjType::Notification => self.notification_signal_via_cap(tcb, ep),
             _ => Err(KError::WrongObjectType),
         }
     }
@@ -4573,6 +5156,23 @@ impl Machine {
             return Err(KError::IllegalOperation);
         }
         let cap = self.ipc_slot_cap(ep)?;
+        // **KT-27** — cap Notification ⇒ `Recv` = **Wait** (spec `:109` "Endpoint hoặc
+        // Notification"), phân nhánh theo `ObjType` của cap, không nhầm
+        // `BlockedOnRecv`/`BlockedOnNotification`.
+        match self.cap(cap)?.ty {
+            ObjType::Notification => {
+                if reply.is_some() {
+                    return Err(KError::InvalidArgument);
+                }
+                let ntfn_obj = self.require_cap_type(cap, ObjType::Notification)?;
+                // Cùng hợp đồng KT-26 với nhánh Endpoint/`nb_recv`: một op IPC mới **xoá**
+                // `last_ipc_error`/`last_fault` cũ trước khi Wait/Poll chạy.
+                self.reset_ipc_error(tcb)?;
+                return self.notification_wait(tcb, ntfn_obj);
+            }
+            ObjType::Endpoint => {}
+            _ => return Err(KError::WrongObjectType),
+        }
         let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
         self.reset_ipc_error(tcb)?;
         let reply_cap = match reply {
@@ -4627,6 +5227,17 @@ impl Machine {
             return Err(KError::Busy);
         }
         let cap = self.ipc_slot_cap(ep)?;
+        // **KT-27** — cap Notification ⇒ `NBRecv` = **Poll**: word ≠ 0 trả `(word, badge)` và
+        // xoá; rỗng ⇒ `Busy` (spec `:110` "Poll: Busy khi không có message").
+        if self.cap(cap)?.ty == ObjType::Notification {
+            let ntfn_obj = self.require_cap_type(cap, ObjType::Notification)?;
+            self.reset_ipc_error(tcb)?;
+            let Some(v) = self.notification_poll(ntfn_obj)? else {
+                return Err(KError::Busy);
+            };
+            self.deliver_notification(tcb, v.word, v.badge)?;
+            return Ok(Some(notification_message(v)));
+        }
         let ep_obj = self.require_cap_type(cap, ObjType::Endpoint)?;
         self.reset_ipc_error(tcb)?;
         // **KT-25**: như `recv` — kiểm receive window trước khi pop.
@@ -5113,6 +5724,7 @@ impl Machine {
                 recv_window: None,
                 last_ipc_error: None,
                 last_fault: None,
+                notif: None,
             })),
             ObjType::SchedContext => Kind::SchedContext(Box::new(SchedData {
                 bound: None,
@@ -5576,6 +6188,35 @@ impl Machine {
         let cap_alive = |cap: CapId| -> bool {
             cap > 0 && (cap as usize) <= n_caps && alive_caps[cap as usize - 1]
         };
+        // **KT-27** — binding SC↔Notification còn hiệu lực: `sc_bind[sc]` = Notification mà SC
+        // đang bind (cap Notification còn sống). Tính **trước** vòng `body_mut` để dọn
+        // `Notification.bound_sc` mồ côi trong cùng lượt purge.
+        let mut sc_bind: Vec<Option<ObjId>> = vec![None; n + 1];
+        for (i, alive) in alive_objs.iter().enumerate() {
+            if !*alive {
+                continue;
+            }
+            let obj = (i + 1) as ObjId;
+            let is_sc = self.objects[i].ty == ObjType::SchedContext;
+            if !is_sc {
+                continue;
+            }
+            let bound = self
+                .body(obj, |k| match k {
+                    Kind::SchedContext(s) => Ok(s.bound),
+                    _ => Err(KError::WrongObjectType),
+                })
+                .ok()
+                .flatten();
+            if let Some(cap) = bound {
+                if cap_alive(cap) {
+                    let c = &self.caps[cap as usize - 1];
+                    if c.ty == ObjType::Notification {
+                        sc_bind[obj as usize] = Some(c.obj);
+                    }
+                }
+            }
+        }
         let mut tong_dropped = 0u64;
         for (i, alive) in alive_objs.iter().enumerate() {
             if !*alive {
@@ -5621,6 +6262,13 @@ impl Machine {
                                 n.waiter = None;
                             }
                         }
+                        // **KT-27**: binding SC mồ côi (SC chết/không còn bind notification
+                        // này) phải gỡ — giữ bất biến 1:1 hai chiều của `check_notifications`.
+                        if let Some(sc) = n.bound_sc {
+                            if sc_bind.get(sc as usize).copied().flatten() != Some(obj) {
+                                n.bound_sc = None;
+                            }
+                        }
                     }
                     Kind::Tcb(t) => {
                         if let Some(cap) = t.fault_ep {
@@ -5659,6 +6307,14 @@ impl Machine {
                         if !con {
                             sd.donated_to = None;
                             sd.donor = None;
+                        }
+                        // **KT-27**: `SchedData.bound` trỏ cap đã chết ⇒ gỡ (bất biến
+                        // `check_sc_refs` "bound cap còn sống"; Notification chết theo Untyped
+                        // cũng đi qua đây).
+                        if let Some(cap) = sd.bound {
+                            if !cap_alive(cap) {
+                                sd.bound = None;
+                            }
                         }
                     }
                     _ => {}

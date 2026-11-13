@@ -6,13 +6,44 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-26 **xong mã + commit/push `56e8209`** (**Fault + Exit + mô hình procsrv**: `FaultKind` VM/unknown/user **model-only** D2-53 Q5, fault qua **Call + Reply** có thanh ghi chống r319, `Exit` D2-25, procsrv `{code, how}` Q10; reviewer APPROVE); chờ Agent 0 lật DONE. KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
-Bước          : 8/8 — **DONE mã**, commit `56e8209` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
+Task          : KT-27 **xong mã + test** (**Notification**: word 64 bit + badge, `Signal` OR + **một** waiter + xoá word, `Wait`/`Poll`, bound TCB + `SchedContext.Bind` 1:1, unbind khi TCB chết; model-only D2-53 Q6, không thêm chữ ký ABI). KT-26 DONE (`e5350f0` lật), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
+Bước          : 8/8 — mã + gate + Miri xong; reviewer-kt27 **APPROVE** + 1 yêu cầu đã sửa; **đang commit `[KT-27]`** + push (hash cập nhật ở mục KT-27)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 386 test/53 suite** (baseline 361/51 ⇒ +25 = 24 `kt26_fault` + 1 `kt26_scn`), L1 1.000 seed/999 trace **713 ms** (đo bởi cổng), clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt26-gate-fast.log`)
-Miri          : `./v2/bin/v2 miri test -p vifast-sim --test kt26_fault` — **PASS 24/24** (`JOURNAL/kt26-miri.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
-Việc dở       : không. Task kế: **KT-27** (Notification) chờ Agent 0 lật KT-26 DONE; KT-28 (WaitAddr) độc lập KT-26 nhưng cùng hàng chờ Agent 0
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 413 test/55 suite** (baseline 386/53 ⇒ +27 = 26 `kt27_notification` + 1 `kt27_scn`), L1 1.000 seed/999 trace **738 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt27-gate-fast.log`)
+Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt27_notification` — **PASS 26/26** (`JOURNAL/kt27-miri.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
+Việc dở       : reviewer-kt27 verdict (lead đã spawn). Task kế: **KT-28** (WaitAddr) sau khi KT-27 DONE
 ```
+
+## KT-27 — Notification: word 64 + badge, Signal OR, một waiter, Wait/Poll, bind 1:1 (K1c, D2-53 Q6)
+
+**Vào**: READY (agentctl `next --project v2` trả KT-27) · HEAD `e5350f0` ([KT-00] lật KT-26 DONE) ·
+baseline `gate --fast` PASS **386 test/53 suite** ([`JOURNAL/kt27-baseline-gate-fast.log`](JOURNAL/kt27-baseline-gate-fast.log)).
+**Phạm vi**: `NotificationState { word: u64, badge: u64, waiter, bound_sc }` (`[TK]`); `Signal`
+(`Send`/`NBSend` trên cap Notification, badge của cap) OR word + badge, đánh thức **một** waiter
+(giao word/badge rồi xoá); `Wait` (`recv`) / `Poll` (`nb_recv`) trên cap Notification; word ≠ 0 ⇒
+trả ngay, word = 0 ⇒ `BlockedOnNotification`/`Busy`; **một** waiter (waiter thứ hai `Busy`, khác v1
+"đánh thức tất cả"); bound notification với TCB (`tcb_bind_notification` 1:1, unbind) + `SchedContext.Bind`
+1:1; `signal` đánh thức TCB bound đang `BlockedOnRecv` (model-only theo K1C-PLAN DoD 5);
+`check_notifications` sau mỗi op; `.scn` 21 qua runner (đọc tệp, không sửa).
+**Không** làm: WaitAddr (KT-28), SMP/push (KT-29), `vifast-sync` (KT-30), IPC cap/Reply mới;
+không sửa `spec/`, `vifast-model`, `.scn`, QUEUE, DECISIONS, AGENTS, `viscript/`; không
+dependency/`unsafe`/`#[allow]`/`#[ignore]`; không đổi ABI.
+**Bước**: (1) test đỏ `tests/kt27_notification.rs` + `tests/kt27_scn.rs` (E0432/E0599) + probe
+ngữ nghĩa; (2) `NotificationState`/`TcbData.notif`/`NotificationValue`; (3) `notification_signal`/
+`wait`/`poll`/`word`/`badge`/`bound_sc`; (4) `recv`/`nb_recv`/`send`/`nb_send` nhánh Notification;
+(5) bind TCB 1:1 + `SchedContext.Bind` 1:1 + dọn khi cap/SC chết; (6) `check_notifications` +
+`block_current` ghi waiter; (7) `scenario.rs` `Step::{Signal, WaitNotification, PollNotification}`;
+(8) `kt27_scn.rs` đọc 21; (9) fuzz 1.000 seed × 64 op; (10) gate + Miri + docs + STATE/JOURNAL.
+
+**Kết quả**: test đỏ [`JOURNAL/kt27-red-compile.log`](JOURNAL/kt27-red-compile.log) (44 lỗi:
+1×E0432 + 43×E0599) + [`JOURNAL/kt27-red-semantics.log`](JOURNAL/kt27-red-semantics.log) (probe
+tạm); `gate --fast` **PASS 413 test/55 suite**, L1 738 ms ([`JOURNAL/kt27-gate-fast.log`](JOURNAL/kt27-gate-fast.log));
+Miri `kt27_notification` **PASS 26/26** ([`JOURNAL/kt27-miri.log`](JOURNAL/kt27-miri.log)); reviewer-kt27 **APPROVE**
+(1 yêu cầu `reset_ipc_error` đã sửa + test); fuzz
+**1.000 seed × 64 op** bất biến `check_sched`/`check_ipc`/`check_notifications`/`check_caps`/
+`check_all_bytes` sau mỗi bước + cùng seed cùng trace; `.scn` 21 chạy qua runner. Chi tiết DoD 1..8
++ 8 quyết định mô hình + giới hạn K3: [`JOURNAL/kt27-journal.md`](JOURNAL/kt27-journal.md), docs
+[`../docs/k1c-notification.md`](../docs/k1c-notification.md).
 
 ## KT-26 — Fault + Exit + mô hình procsrv (K1c, D2-53 Q5/Q10, D2-25)
 

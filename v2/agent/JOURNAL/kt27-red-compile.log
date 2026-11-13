@@ -1,0 +1,519 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::NotificationValue`
+  --> sim/vifast-sim/tests/kt27_notification.rs:28:22
+   |
+28 |     KError, Machine, NotificationValue, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL,
+   |                      ^^^^^^^^^^^^^^^^^ no `NotificationValue` in `kobj`
+   |
+help: a similar name exists in the module
+   |
+28 -     KError, Machine, NotificationValue, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL,
+28 +     KError, Machine, NotificationState, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL,
+   |
+
+error[E0599]: no method named `check_notifications` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_scn.rs:131:27
+    |
+131 |         if let Err(e) = m.check_notifications() {
+    |                           ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+131 -         if let Err(e) = m.check_notifications() {
+131 +         if let Err(e) = m.check_caps() {
+    |
+
+error[E0599]: no method named `notification_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_scn.rs:141:18
+    |
+141 |     assert_eq!(m.notification_word(ntfn), Ok(0));
+    |                  ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+141 -     assert_eq!(m.notification_word(ntfn), Ok(0));
+141 +     assert_eq!(m.notification_waiter(ntfn), Ok(0));
+    |
+
+error[E0599]: no method named `tcb_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_scn.rs:148:18
+     |
+ 148 |     assert_eq!(m.tcb_notification(tcb), Ok(None), "chưa giao gì");
+     |                  ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_notifications` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:166:32
+    |
+166 |         if let Err(e) = self.m.check_notifications() {
+    |                                ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+166 -         if let Err(e) = self.m.check_notifications() {
+166 +         if let Err(e) = self.m.check_caps() {
+    |
+
+error[E0599]: no method named `notification_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:182:16
+    |
+182 |         self.m.notification_word(self.ntfn[i]).expect("notification_word")
+    |                ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+182 -         self.m.notification_word(self.ntfn[i]).expect("notification_word")
+182 +         self.m.notification_waiter(self.ntfn[i]).expect("notification_word")
+    |
+
+For more information about this error, try `rustc --explain E0599`.
+error[E0599]: no method named `notification_badge` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:187:14
+    |
+186 | /         self.m
+187 | |             .notification_badge(self.ntfn[i])
+    | |_____________-^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+187 -             .notification_badge(self.ntfn[i])
+187 +             .notification_waiter(self.ntfn[i])
+    |
+
+error: could not compile `vifast-sim` (test "kt27_scn") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0599]: no method named `tcb_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:192:16
+     |
+ 192 |         self.m.tcb_notification(self.t[i]).expect("tcb_notification")
+     |                ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:220:9
+     |
+ 220 |     r.m.notification_signal(r.ntfn[0], 1)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:225:9
+     |
+ 225 |     r.m.notification_signal(r.ntfn[0], hi)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_poll` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:232:10
+    |
+230 |       let got = r
+    |  _______________-
+231 | |         .m
+232 | |         .notification_poll(r.ntfn[0])
+    | |_________-^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+232 -         .notification_poll(r.ntfn[0])
+232 +         .notification_waiter(r.ntfn[0])
+    |
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:245:13
+     |
+ 245 |         r.m.notification_signal(r.ntfn[0], b).expect("signal OR");
+     |             ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:271:9
+     |
+ 271 |     r.m.notification_signal(r.ntfn[0], 0)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:286:13
+     |
+ 286 |         r.m.notification_signal(r.ntfn[0], b).expect("signal badge");
+     |             ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:289:9
+     |
+ 289 |     r.m.notification_signal(r.ntfn[0], 0x0F)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:330:9
+     |
+ 330 |     r.m.notification_signal(r.ntfn[0], 0xA5)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:346:9
+     |
+ 346 |     r.m.notification_signal(r.ntfn[0], 0xAA)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:350:9
+     |
+ 350 |     r.m.notification_signal(r.ntfn[0], 0x55)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_poll` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:362:20
+    |
+362 |     assert_eq!(r.m.notification_poll(r.ntfn[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+362 -     assert_eq!(r.m.notification_poll(r.ntfn[0]), Ok(None));
+362 +     assert_eq!(r.m.notification_waiter(r.ntfn[0]), Ok(None));
+    |
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:372:9
+     |
+ 372 |     r.m.notification_signal(r.ntfn[0], w).expect("signal");
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_unbind_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:478:9
+     |
+ 478 |     r.m.tcb_unbind_notification(r.t_s[0])
+     |         ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_bound_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:495:20
+    |
+495 |     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(Some(r.sc[0])));
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+495 -     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(Some(r.sc[0])));
+495 +     assert_eq!(r.m.notification_waiter(r.ntfn[0]), Ok(Some(r.sc[0])));
+    |
+
+error[E0599]: no method named `sched_bound_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:497:13
+     |
+ 497 |         r.m.sched_bound_notification(r.sc_s[0]),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_bound_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:510:20
+    |
+510 |     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+510 -     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(None));
+510 +     assert_eq!(r.m.notification_waiter(r.ntfn[0]), Ok(None));
+    |
+
+error[E0599]: no method named `notification_bound_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:511:20
+    |
+511 |     assert_eq!(r.m.notification_bound_sc(r.ntfn[1]), Ok(Some(r.sc[0])));
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+511 -     assert_eq!(r.m.notification_bound_sc(r.ntfn[1]), Ok(Some(r.sc[0])));
+511 +     assert_eq!(r.m.notification_waiter(r.ntfn[1]), Ok(Some(r.sc[0])));
+    |
+
+error[E0599]: no method named `notification_bound_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:516:20
+    |
+516 |     assert_eq!(r.m.notification_bound_sc(r.ntfn[1]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+516 -     assert_eq!(r.m.notification_bound_sc(r.ntfn[1]), Ok(None));
+516 +     assert_eq!(r.m.notification_waiter(r.ntfn[1]), Ok(None));
+    |
+
+error[E0599]: no method named `sched_bound_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:517:20
+     |
+ 517 |     assert_eq!(r.m.sched_bound_notification(r.sc_s[0]), Ok(None));
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:535:9
+     |
+ 535 |     r.m.notification_signal(r.ntfn[0], 0xBEEF)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:565:9
+     |
+ 565 |     r.m.notification_signal(r.ntfn[1], 0x22)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:580:9
+     |
+ 580 |     r.m.notification_signal(r.ntfn[0], 0x11)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:606:9
+     |
+ 606 |     r.m.notification_signal(r.ntfn[0], 0x77)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_bound_sc` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:614:20
+    |
+614 |     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(None));
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+614 -     assert_eq!(r.m.notification_bound_sc(r.ntfn[0]), Ok(None));
+614 +     assert_eq!(r.m.notification_waiter(r.ntfn[0]), Ok(None));
+    |
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:615:9
+     |
+ 615 |     r.m.notification_signal(r.ntfn[0], 0x31)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:630:9
+     |
+ 630 |     r.m.notification_signal(r.ntfn[0], 0x1234)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:644:10
+     |
+ 644 |     r2.m.notification_signal(r2.ntfn[0], 0x5678)
+     |          ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:655:9
+     |
+ 655 |     r.m.notification_signal(r.ntfn[0], 0x99)
+     |         ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_notifications` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:683:10
+    |
+681 |       let e = r
+    |  _____________-
+682 | |         .m
+683 | |         .check_notifications()
+    | |_________-^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+683 -         .check_notifications()
+683 +         .check_caps()
+    |
+
+error[E0599]: no variant named `WaitNotification` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt27_notification.rs:701:25
+    |
+701 |             step: Step::WaitNotification {
+    |                         ^^^^^^^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `Signal` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt27_notification.rs:710:25
+    |
+710 |             step: Step::Signal {
+    |                         ^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `PollNotification` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt27_notification.rs:719:25
+    |
+719 |             step: Step::PollNotification {
+    |                         ^^^^^^^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `PollNotification` found for enum `vifast_sim::scenario::Step`
+   --> sim/vifast-sim/tests/kt27_notification.rs:728:25
+    |
+728 |             step: Step::PollNotification {
+    |                         ^^^^^^^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no method named `notification_signal` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:767:18
+     |
+ 767 |         0 => r.m.notification_signal(r.ntfn[ni], badge),
+     |                  ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification_waiter` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4009:5
+     |
+4009 |     pub fn notification_waiter(&self, ntfn: ObjId) -> Result<Option<ObjId>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_unbind_notification` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt27_notification.rs:779:18
+     |
+ 779 |         6 => r.m.tcb_unbind_notification(r.t_s[ti]),
+     |                  ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_bind_notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1720:5
+     |
+1720 |     pub fn tcb_bind_notification(&mut self, tcb: SlotRef, ntfn: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `notification_poll` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt27_notification.rs:783:18
+    |
+783 |         8 => r.m.notification_poll(r.ntfn[ni]).map(|_| ()),
+    |                  ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+783 -         8 => r.m.notification_poll(r.ntfn[ni]).map(|_| ()),
+783 +         8 => r.m.notification_waiter(r.ntfn[ni]).map(|_| ()),
+    |
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt27_notification") due to 41 previous errors
+EXIT:101

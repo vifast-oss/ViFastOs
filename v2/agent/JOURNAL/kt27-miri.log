@@ -1,0 +1,90 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.87s
+     Running tests/kt27_notification.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/8d2ff098d8fce47a/out/kt27_notification-8d2ff098d8fce47a)
+
+running 26 tests
+test badge_0_hop_le_va_van_danh_thuc_waiter ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `badge_0_hop_le_va_van_danh_thuc_waiter`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:5677:20: 5679:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:812:9: 819:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt27_notification.rs:80:18: 80:34
+          6: badge_0_hop_le_va_van_danh_thuc_waiter
+              at sim/vifast-sim/tests/kt27_notification.rs:260:17: 260:28
+          7: badge_0_hop_le_va_van_danh_thuc_waiter::{closure#0}
+              at sim/vifast-sim/tests/kt27_notification.rs:258:44: 258:44
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `badge_0_hop_le_va_van_danh_thuc_waiter`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:5677:20: 5679:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:812:9: 819:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt27_notification.rs:80:18: 80:34
+          6: badge_0_hop_le_va_van_danh_thuc_waiter
+              at sim/vifast-sim/tests/kt27_notification.rs:260:17: 260:28
+          7: badge_0_hop_le_va_van_danh_thuc_waiter::{closure#0}
+              at sim/vifast-sim/tests/kt27_notification.rs:258:44: 258:44
+
+ok
+test badge_or_nhieu_signal_va_wait_tra_badge ... ok
+test bind_sched_context_notification_1_1 ... ok
+test bind_tcb_notification_1_1 ... ok
+test check_notifications_bat_waiter_lech ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test khong_mat_danh_thuc_signal_truoc_va_sau_wait ... ok
+test mot_waiter_duy_nhat_ba_tcb ... ok
+test nb_recv_tra_word_badge_va_xoa ... ok
+test nb_send_tren_notification_cung_la_signal ... ok
+test nbsend_wait_voi_word_co_san_khong_chan ... ok
+test notification_khong_bind_sc_van_chay ... ok
+test poll_rong_model_api_va_nb_recv_busy ... ok
+test poll_tren_notification_cap_khi_tcb_khong_chay_busy ... ok
+test recv_notification_co_reply_cap_loi ... ok
+test recv_notification_xoa_last_ipc_error_cu ... ok
+test scenario_buoc_signal_wait_poll ... ok
+test send_notification_khi_tcb_khong_chay_loi ... ok
+test send_tren_notification_la_signal_theo_badge_cap ... ok
+test signal_bound_khong_danh_thuc_tcb_bound_khac ... ok
+test signal_danh_thuc_bound_tcb_dang_blocked_on_recv ... ok
+test signal_or_ba_lan_truoc_khi_wait ... ok
+test tcb_chet_go_binding_va_waiter ... ok
+test wait_tren_rong_blocked_on_notification ... ok
+test word_64_bit_cao_va_thap ... ok
+test word_chi_xoa_khi_giao_cho_waiter ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.61s
+
+warning: 2 warnings emitted
+
+EXIT:0

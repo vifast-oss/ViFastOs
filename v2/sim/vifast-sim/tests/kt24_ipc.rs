@@ -632,11 +632,17 @@ fn call_non_endpoint_not_supported_khong_doi_trang_thai() {
     );
     assert_eq!(r.st(0), TcbState::Ready);
     assert_eq!(r.m.ipc_sent(), 0);
-    // Notification: KT-27 mới cài Signal ⇒ `NotSupported` (không im lặng bỏ).
+    // Notification: **KT-27** đã cài `Send` = **Signal** (badge của cap, cap gốc ⇒ 0) —
+    // không còn `NotSupported`; Signal **không** sinh message IPC (`ipc_sent` giữ 0).
     assert_eq!(
         r.m.send(r.t[0], slot(r.c0, 43), msg(52, &[3])),
-        Err(KError::NotSupported)
+        Ok(()),
+        "Send trên Notification = Signal (KT-27)"
     );
+    assert_eq!(r.m.notification_word(ntfn), Ok(0), "badge cap = 0 ⇒ word 0");
+    assert_eq!(r.m.notification_badge(ntfn), Ok(0));
+    assert_eq!(r.st(0), TcbState::Ready);
+    assert_eq!(r.m.ipc_sent(), 0, "Signal không sinh message IPC");
     r.kiem("send sai kiểu");
 }
 
