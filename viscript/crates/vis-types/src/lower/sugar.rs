@@ -3,7 +3,7 @@
 //!
 //! Tách khỏi `cmd.rs` (ST-45) để giữ **R1 ≤ 1.500 dòng/tệp** — cùng khuôn `chieu.rs` (ST-40b).
 
-use vis_diag::TYPE_CODES;
+use vis_diag::{COMMAND_CODES, TYPE_CODES};
 use vis_syntax::{Node, Span};
 
 use super::cmd::ten_kieu;
@@ -12,6 +12,67 @@ use crate::hir::HExpr;
 use crate::ty::Type;
 
 impl<'a> super::Lowerer<'a> {
+    /// **ST-53**: stage `to json` (`--pretty`) — hạ thành `std.json.encode[_pretty]`
+    /// (**không** cần `use std.json`: shell sugar tự phân giải), kiểu `str`.
+    pub(super) fn la_to_json(&self, node: &Node) -> bool {
+        let Some(txt) = self.text.get(node.span.start..node.span.end) else {
+            return false;
+        };
+        let mut it = txt.split_whitespace();
+        it.next() == Some("to") && it.next() == Some("json")
+    }
+
+    pub(super) fn ha_to_json(
+        &mut self,
+        node: &Node,
+        truoc: Option<(HExpr, Type)>,
+    ) -> Option<HExpr> {
+        let txt = self.text.get(node.span.start..node.span.end).unwrap_or("");
+        let mut its = txt.split_whitespace();
+        let _ = its.next();
+        let _ = its.next();
+        let mut pretty = false;
+        let mut loi_co = false;
+        for raw in its {
+            if raw == "--pretty" {
+                pretty = true;
+            } else {
+                self.diag(
+                    &COMMAND_CODES[1],
+                    format!("`to json` không có cờ `{raw}`"),
+                    node.span,
+                );
+                loi_co = true;
+            }
+        }
+        if loi_co {
+            return None;
+        }
+        let Some((up, _)) = truoc else {
+            self.diag(
+                &COMMAND_CODES[1],
+                "`to json` cần giá trị từ pipe (ví dụ `… | to json`)",
+                node.span,
+            );
+            return None;
+        };
+        self.last_stage_ty = Type::Str;
+        Some(HExpr::Call {
+            callee: Box::new(HExpr::Var {
+                name: if pretty {
+                    "std.json.encode_pretty".to_string()
+                } else {
+                    "std.json.encode".to_string()
+                },
+                sym: None,
+                span: node.span,
+            }),
+            args: vec![up],
+            named: Vec::new(),
+            span: node.span,
+        })
+    }
+
     pub(super) fn arg_start(&self, node: &Node) -> Option<usize> {
         // Parser có thể **không** sinh token cho mọi từ (vd `size > 5mb` thành redirect) ⇒ quét
         // thẳng văn bản: hết **tên lệnh**, bỏ khoảng trắng ⇒ đó là đầu vùng đối số.

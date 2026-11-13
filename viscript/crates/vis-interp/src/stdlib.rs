@@ -225,26 +225,19 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             ds.sort_by(|a, b| a.cmp_value(b).unwrap_or(std::cmp::Ordering::Equal));
             Ok(Value::List(ds))
         }
+        // ST-53: **cùng lõi** `sap_xep_theo_khoa` với shell `sort_by`; hợp đồng tĩnh cũ
+        // `fn(int) -> int` **giữ nguyên** (chế độ `ChiInt`).
         "list.sort_by" => {
             let xs = danh_sach(name, &args[0], 0, span)?.to_vec();
-            let f = args[1].clone();
-            // Khoá tính **một lần** cho mỗi phần tử (ổn định, không gọi lại trong lúc so sánh).
-            let mut cap: Vec<(i64, Value)> = Vec::with_capacity(xs.len());
-            for x in xs {
-                let k = host.call(&f, vec![x.clone()], span)?;
-                let k = match k {
-                    Value::Int(n) => n,
-                    other => {
-                        return Err(loi(
-                            format!("`{name}`: khoá phải là `int`, được `{}`", other.show()),
-                            span,
-                        ))
-                    }
-                };
-                cap.push((k, x));
-            }
-            cap.sort_by_key(|(k, _)| *k); // `sort_by_key` của Rust **ổn định**
-            Ok(Value::List(cap.into_iter().map(|(_, v)| v).collect()))
+            crate::builtin::sap_xep_theo_khoa(
+                host,
+                &xs,
+                &args[1],
+                false,
+                crate::builtin::KieuKhoa::ChiInt,
+                name,
+                span,
+            )
         }
         "list.reverse" => {
             let mut xs = danh_sach(name, &args[0], 0, span)?.to_vec();

@@ -582,6 +582,61 @@ fn nha_ket_qua(kq: KetQua) -> Value {
     )
 }
 
+/// **ST-53**: lõi **so sánh khoá dùng chung** cho shell `sort_by` và `std.list.sort_by`.
+/// Khoá tính **một lần**/phần tử; sắp xếp **ổn định**; `desc` chỉ đảo comparator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KieuKhoa {
+    /// `std.list.sort_by`: hợp đồng cũ `fn(int)->int` (giữ nguyên thông điệp lỗi).
+    ChiInt,
+    /// Shell `sort_by`: `int/float/size/duration/percent/str` (bool/không so được ⇒ lỗi).
+    Moi,
+}
+
+pub(crate) fn sap_xep_theo_khoa(
+    host: &mut dyn Host,
+    xs: &[Value],
+    f: &Value,
+    desc: bool,
+    kieu: KieuKhoa,
+    ten: &str,
+    span: Span,
+) -> crate::interp::R<Value> {
+    let mut cap: Vec<(Value, Value)> = Vec::with_capacity(xs.len());
+    for x in xs.iter().cloned() {
+        let k = host.call(f, vec![x.clone()], span)?;
+        match kieu {
+            KieuKhoa::ChiInt => {
+                if !matches!(k, Value::Int(_)) {
+                    return Err(trap(
+                        RT,
+                        format!("`{ten}`: khoá phải là `int`, được `{}`", k.show()),
+                        span,
+                    ));
+                }
+            }
+            KieuKhoa::Moi => {
+                if matches!(k, Value::Bool(_)) || k.cmp_value(&k).is_none() {
+                    return Err(trap(
+                        RT,
+                        format!("`{ten}`: khoá không so được: `{}`", k.show()),
+                        span,
+                    ));
+                }
+            }
+        }
+        cap.push((k, x));
+    }
+    cap.sort_by(|a, b| {
+        let o = a.0.cmp_value(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+        if desc {
+            o.reverse()
+        } else {
+            o
+        }
+    });
+    Ok(Value::List(cap.into_iter().map(|(_, v)| v).collect()))
+}
+
 pub fn call(
     host: &mut dyn Host,
     name: &str,
@@ -840,29 +895,8 @@ pub fn call(
                     ))
                 }
             };
-            let f = args[1].clone();
-            // Tính khoá **một lần**; giữ chỉ số gốc để **ổn định** khi khoá bằng nhau.
-            let mut cap: Vec<(Value, Value)> = Vec::with_capacity(xs.len());
-            for x in xs.clone() {
-                let k = host.call(&f, vec![x.clone()], span)?;
-                if matches!(k, Value::Bool(_)) || k.cmp_value(&k).is_none() {
-                    return Err(trap(
-                        RT,
-                        format!("`sort_by`: khoá không so được: `{}`", k.show()),
-                        span,
-                    ));
-                }
-                cap.push((k, x));
-            }
-            cap.sort_by(|a, b| {
-                let o = a.0.cmp_value(&b.0).unwrap_or(std::cmp::Ordering::Equal);
-                if desc {
-                    o.reverse()
-                } else {
-                    o
-                }
-            });
-            Ok(Value::List(cap.into_iter().map(|(_, v)| v).collect()))
+            // ST-53: cùng lõi với `std.list.sort_by` (khoá rộng hơn, `--desc`).
+            sap_xep_theo_khoa(host, xs, &args[1], desc, KieuKhoa::Moi, "sort_by", span)
         }
         // ST-38: `where`/`each` — closure-arg; **một** hiện thực cho cả hai đường (`Host::call`).
         "where" => {

@@ -1,0 +1,33 @@
+=== ST-53 D2-05: `to json` + hợp nhất `sort_by` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T16:45:04Z
+
+## 1. Đỏ **thật** ở HEAD `9563744` (worktree `/tmp/vis-red53`)
+
+```
+$ cargo test -p vis-cli --test json_sort
+test result: FAILED. **6 passed; 8 failed**
+```
+
+8 ca đỏ (to json chưa tồn tại ⇒ `to` chạy như chương trình ngoài): fixture pipeline dài, pretty,
+select ẩn danh, literal object, không cần `use`, thiếu pipe, cờ lạ, interp↔vm. 6 ca xanh **có lý do**:
+sort shell (ST-39 có), `bool`⇒VS0412 (ST-39), std.list.sort_by cũ, round-trip, encode bản ghi.
+
+## 2. Sau khi sửa
+
+- **`to json`** = stage lệnh: hạ thành `Call(std.json.encode, [prev])`, `--pretty` ⇒ `encode_pretty`;
+  **không** cần `use std.json`; thiếu pipe/cờ lạ ⇒ **VS0602** rõ dòng:cột. Chi tiết ở `lower/sugar.rs` (R1).
+- **Một lõi so sánh** `sap_xep_theo_khoa` (khoá tính 1 lần, sort ổn định, `desc` đảo comparator):
+  shell `sort_by` (`KieuKhoa::Moi`) và `std.list.sort_by` (`KieuKhoa::ChiInt`, hợp đồng cũ giữ nguyên).
+
+- Đo: **704 → 718** test (+14 `json_sort.rs`) + **2–3 fixture** `test/cmd/json/*.vish`; `vis test` **370 ok**;
+  allowlist **6**; parity 344/344.
+
+## 3. sha256 bản commit:
+  sha256 crates/vis-interp/src/builtin.rs=34bd7d8dfbe6e9d08f556813cc00003f40a4f0b0c5a91bdd2f63cf9203897be7
+  sha256 crates/vis-interp/src/stdlib.rs=e34e2b1b6b90e654ceac18271b60052d4e30da7e37f9c2cacc64ee6cd00bbf93
+  sha256 crates/vis-types/src/lower/sugar.rs=634a1d318b47ffe6fb9e7bd67e09423da18303f7d2c4d7dd599594e4324816ad
+  sha256 crates/vis-types/src/lower/cmd.rs=016949309ec57239c78f6a1435086393c5218e471cbffe6d8aa1380ea3385ed1
+  sha256 crates/vis-cli/tests/json_sort.rs=794d66e4f3730defd36b1f40269370aa4cb86a84f8cc935df362d821c4775f21
+  sha256 test/cmd/json/json-pipe.vish=e5dc38c0237eb35611d8f91209d6989ccb65d0bbb43ce0dd829db83c22b616b6
+  sha256 test/cmd/json/json-pretty.vish=3f4b003ae2b7b30193a385499af0cfb9ead7dd5cb8d3400a1ad999008935ea4d
+  sha256 test/cmd/json/sort-shell.vish=6ee29ad1d0ef85716dd55944a7cc83c3fcf2873b0151e0ca896b37755b9fb289

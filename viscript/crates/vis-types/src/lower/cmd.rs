@@ -564,6 +564,10 @@ impl<'a> Lowerer<'a> {
     }
 
     fn kieu_stage(&self, node: &Node, sigs: &[CmdSig]) -> Type {
+        // ST-53: `to json` ⇒ `str` (shell sugar tự phân giải, **không** cần `use std.json`).
+        if self.la_to_json(node) {
+            return Type::Str;
+        }
         // ST-37: stage `( expr )` — suy kiểu **literal** (list/str/int/bool) thay vì `{error}`.
         // ST-46: **chỉ** khi phần tử **đầu** của stage là nhóm thì mới là stage-biểu-thức;
         // `take ( … )`/`f()` có nhóm là **đối số** nên không rơi vào nhánh này.
@@ -776,6 +780,10 @@ impl<'a> Lowerer<'a> {
                     });
                 }
             }
+        }
+        // ST-53: `to json` (`--pretty`) — chi tiết ở `sugar.rs` (R1).
+        if self.la_to_json(node) {
+            return self.ha_to_json(node, truoc);
         }
         let Some(ten) = self.ten_lenh(node) else {
             // Chương trình ngoài (`^git`) — VS0 chưa có tiến trình ⇒ VS0604, không hạ no-op.

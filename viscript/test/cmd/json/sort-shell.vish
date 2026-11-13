@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+( [ {ten: "b", n: 1}, {ten: "a", n: 2} ] ) | sort_by ten --desc

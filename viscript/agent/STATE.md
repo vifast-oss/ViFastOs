@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-52** (báo cáo **R8**, chốt **VSH1c**) — xong, **chưa commit**.
-Bước          : 5/5 (đo lại → R8 `.md/.json/.json.license` → `report-check --all` PASS → gate → STATE/JOURNAL)
+Task          : **ST-53** (`select`→`to json` + hợp nhất hai `sort_by`) — xong, **chưa commit**.
+Bước          : 5/5 (lõi so sánh chung → stage `to json` → 14 ca + 3 fixture → gate → số liệu)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:18:21Z** (đo lại sau khi ghi báo cáo); **704** test / sem **370** / `vis test` **370 ok** / parity **344/344** / differential 100k **0 lệch** / allowlist **6**; `nightly` **PASS** `2026-11-13T16:14:11Z`
-Việc dở       : commit `[ST-52]` + push (đã được uỷ quyền); **đề nghị Agent 0 lật hàng ST-51 `BLOCKED`→`DONE`** khi mở vòng 9
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T16:44:39Z**; **718** test / sem **370** / `vis test` **370 ok** / parity **344/344** / diff 100k **0 lệch** / allowlist **6**
+Việc dở       : commit `[ST-53]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,17 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-52 — báo cáo R8 (chốt VSH1c), 2026-11-14
+## ST-53 — `to json` + hợp nhất `sort_by` (2026-11-14)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **`to json`** | stage lệnh ⇒ `Call(std.json.encode, [prev])`, `--pretty` ⇒ `encode_pretty`; **không** cần `use std.json`; thiếu pipe/cờ lạ ⇒ `VS0602`; bản ghi **ẩn danh** đúng khoá/thứ tự |
+| 2 | **Một lõi so sánh** | `sap_xep_theo_khoa` dùng chung: shell `sort_by` (`Moi`) + `std.list.sort_by` (`ChiInt`, giữ `FnIntInt`); ổn định, `--desc` đảo comparator |
+| 3 | **R1** | chi tiết `to json` đặt trong `lower/sugar.rs` (`ha_to_json`), `cmd.rs` 1508 → **1454** dòng |
+| 4 | **Đo** | **704 → 718** test (+14 `json_sort.rs`) + 3 `.vish` + `mock.json`; `vis test` **370 ok**; allowlist **6**; parity 344/344 |
+| 5 | **Nợ** | khoá `str` cho `std.list.sort_by` (hợp đồng cũ `FnIntInt` giữ nguyên) |
+
+ (chốt VSH1c), 2026-11-14
 
 | # | Việc | Kết quả |
 |---|---|---|
