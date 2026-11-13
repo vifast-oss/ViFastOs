@@ -132,8 +132,8 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-25 | IPC core 2: Call/Reply/ReplyRecv/NBSendRecv/NBSendWait + 4 cap (GRANT/unwrap badge/receive window) + vòng đời Reply, donation không rò SC | KT-24 | 3 h | DONE | 361 test; Miri 24/24; 4 cap mềm Q6; Reply lifecycle/Cancelled Q8; NB* Q15; donation sạch; `.scn` 05/07/08/15/16 0 lệch; reviewer OK |
 | KT-26 | Fault + Exit: `FaultKind` VM/unknown/user model-only, fault qua Call+Reply, resume có thanh ghi, procsrv `{code,how}` | KT-25 | 3 h | DONE | 386 test; Miri 24/24; 4 FaultKind; resume regs trước Ready; Exit D2-25; procsrv 4 nhánh; `.scn` 13/14/20; reviewer APPROVE |
 | KT-27 | Notification: word 64 + badge, Signal OR + 1 waiter + xoá word, Wait/Poll, bound TCB + `SchedContext.Bind` | KT-24 | 2,5 h | DONE | 413 test; Miri 26/26; word64/OR/badge; 1 waiter; bind 1:1; bound BlockedOnRecv; recv reset error; reviewer APPROVE |
-| KT-28 | WaitOnAddress: bảng băm `(frame,offset)`, đọc + xếp hàng một lần, `WakeAddr(n)`, không timeout | KT-23 | 2 h | READY | WaitAddr bảng băm `(frame,offset)`, đọc giá trị + xếp hàng một lần, `WakeAddr(n)`, **không timeout** (Q4); bucket `[TK]` docs; không mất đánh thức; test red; gate/Miri |
-| KT-29 | SMP 1/2/4/8 + push migration: `with_harts`, `published.idle`/`cur_prio`, `Migrate`, tất định, không work stealing | KT-28 | 3 h | BLOCKED | 1/2/4/8; push cuối hàng ≤1/bước; guard luật 3; test red; gate/Miri |
+| KT-28 | WaitOnAddress: bảng băm `(frame,offset)`, đọc + xếp hàng một lần, `WakeAddr(n)`, không timeout | KT-23 | 2 h | DONE | 427 test; Miri 12/12; bucket 64; expected lệch trả ngay; WakeAddr FIFO n=0/1/2/MAX; không timeout; reviewer APPROVE |
+| KT-29 | SMP 1/2/4/8 + push migration: `with_harts`, `published.idle`/`cur_prio`, `Migrate`, tất định, không work stealing | KT-28 | 3 h | READY | SMP 1/2/4/8 mô hình tất định; `with_harts`; published `idle`/`cur_prio`; `Migrate`; push cuối hàng ≤1/bước, chỉ idle, cùng mức Ready cao nhất; không work stealing; test red; gate/Miri |
 | KT-30 | `vifast-sync`: MCS lock + Mailbox MPSC cố định, ack thế hệ, đầy backpressure; stress+Miri (không loom) | KT-24 | 3 h | BLOCKED | 7 loại; ack; stress biên; Miri phần không atomic; test red |
 
 
@@ -153,8 +153,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K1c**: KT-24/25/26/27 DONE; **KT-28 READY**; KT-29/30 chờ; D2-53 + D2-54..57.
-3. Thứ tự: KT-28 → KT-29 → KT-30; mỗi task ≤3 h.
+2. **K1c**: KT-24..28 DONE; **KT-29 READY**; KT-30 chờ; D2-53 + D2-54..58.
+3. Thứ tự: KT-29 → KT-30; mỗi task ≤3 h.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.

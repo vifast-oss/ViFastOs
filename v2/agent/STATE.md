@@ -7,7 +7,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
 Task          : KT-28 **xong mã + test** (**WaitOnAddress**: bảng băm `(frame, offset)` `WAITADDR_BUCKETS = 64` hằng model `[TK]`, `WaitAddr` đọc giá trị + xếp hàng **một lần**, **không timeout** (D2-53 Q4), `WakeAddr(n)` tối đa n theo FIFO, không mất đánh thức; model-only D2-53 Q3). KT-27 DONE (`093b986` lật), KT-26 DONE (`e5350f0`), KT-25 DONE (`dd0e30c`), KT-24 DONE (`217b7d1`)
-Bước          : 10/10 — **DONE mã**, commit `ff94538` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
+Bước          : 0/8 — **DONE mã**, commit `ff94538` đã push `origin/main`; chờ Agent 0 lật QUEUE (Agent 2 không sửa QUEUE)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 427 test/56 suite** (baseline 413/55 ⇒ +14 = 12 `kt28_waitaddr` + 2 unit `check_waitaddr`), L1 1.000 seed/999 trace **704 ms** (đo bởi cổng), fmt/clippy `-D warnings` sạch, gen-check ON, `scn: OK`, R1..R5 OK (`JOURNAL/kt28-gate-fast.log`)
 Miri          : `./v2/bin/v2 miri -p vifast-sim --test kt28_waitaddr` — **PASS 12/12** (`JOURNAL/kt28-miri.log`, 105 s) + `--lib check_waitaddr` **2/2** (`JOURNAL/kt28-miri-lib.log`); fuzz `cfg(miri)` 3 seed × 8 op, stable 1.000 × 64
@@ -939,7 +939,7 @@ bằng objmem (API closure) + Miri*; các ca Untyped/CNode của KT-04c chạy t
 
 > **Cập nhật 18:20 bởi người điều phối** theo `review/agent0/DUYET-YC-02-05.md`: YC-04/05 **đã đóng** (D2-32/D2-33), xem **Khối F** trong `QUEUE.md`. Không mở lại YC-04/05.
 
-> **Cập nhật 16:20 bởi Agent 0**: KT-27 DONE (093b986, 413 test, Miri 26/26, D2-57); KT-28 READY.
+> **Cập nhật 17:15 bởi Agent 0**: KT-28 DONE (ff94538, 427 test, Miri 12/12, D2-58); KT-29 READY.
 
 > **Cập nhật 03:35 bởi Agent 2**: **KT-13 xong mã** — thêm `v2 miri` (D2-47(a): lệnh rời, **không** trong
 > `gate --fast`); Miri PoC 13 test PASS; `check` + `gate --fast` PASS (184 test, không retry). Chờ review
