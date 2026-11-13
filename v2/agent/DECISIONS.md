@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-63`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-64`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-63: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-64: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -97,6 +97,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-61** KT-31 là **gate run một phần**, được lật DONE như task thi hành nhưng **K1c vẫn REVIEW**: C1-100k **chưa đạt** (driver `l1_k1c` không sinh IPC/Notification/WaitAddr; `check_ipc` rỗng), C3 **3/12 §7.2**, Miri all thiếu `kt25_ipc2`. Ba nợ này đóng bởi **KT-32** (driver L1 trộn + 100k×4) và **KT-33** (đủ 12 mutation + thêm kt25 vào Miri + chạy lại + báo cáo). Không tuyên bố K1c DONE trước KT-33.
 - **D2-62** KT-32 đóng **C1-100k**: 400.000 lượt, `ipc_sent 5.786.297`, `delivered 1.123.586`, `dropped 3.748.540`, `pending 914.171`, 0 vi phạm, cùng seed/trace; `dropped` là huỷ hợp lệ (wake/Reply không caller) — **không** claim C2. K1c vẫn REVIEW; **KT-33** đóng C3 **12/12 §7.2**, thêm `kt25_ipc2` vào Miri all, siết `ipc_sent>1`, cập nhật DoD.
 - **D2-63** KT-33 DONE (C3 12/12, Miri 300/kt25 24, driver 10k, gate 461) nhưng **K1c vẫn REVIEW** vì C2 chưa đạt: `recv`/`call` dùng lại cap Reply đang giữ `caller` có thể ghi đè, làm caller cũ mất đường Reply. **KT-34** đóng C2: reject Reply cap đang `caller=Some` (test), bất biến `BlockedOnReply ⇒ Reply.caller == tcb`, fuzz Signal/WakeAddr sau xếp hàng, 10k×4 rồi 100k×4, Miri các test ảnh hưởng; chỉ sau đó mới lật K1c DONE.
+- **D2-64** **K1c DONE (phase-level)**: KT-34 đóng C2 — `recv`/`call_msg`/`reply_recv`/`nb_send_recv` từ chối cap Reply đang `caller=Some` bằng `Busy` **trước** mọi thay đổi; `check_reply_links` hai chiều sau mỗi op; 100k×4 **400.000 lượt**, sent **5.786.296**, delivered 1.123.598, pending 914.525, dropped 3.748.173, 0 vi phạm; gate **468 test/62 suite**; Miri 300 + 8 tập ảnh hưởng/123 test. C1/C2/C3/C4 ĐẠT. Nợ **model-only 1 luồng**, `Busy` model-only, K2/K3 (D2-56..60) — **không** phải toàn bộ v2 DONE. Tiếp theo K2.
 
 ---
 
