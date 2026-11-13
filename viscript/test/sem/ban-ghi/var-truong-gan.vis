@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+    ten: str
+
+fn sua(p: P) -> int:
+    var q = p
+    q.x = 9
+    q.ten = "sau"
+    return q.x
+
+fn main():
+    var a: P = {x: 1, ten: "truoc"}
+    print(sua(a))
+    print(a.x)
+    a.x = 7
+    print(a.x)

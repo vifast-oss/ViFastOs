@@ -1,0 +1,38 @@
+# ST-56b — log ĐỎ (6 ca sem mới) — 2026-11-13T21:51:32Z — HEAD d1af69d
+===== test/sem/ban-ghi/self-gan-truong.vis =====
+--- interp:
+  test/sem/ban-ghi/self-gan-truong.vis:7:9: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)
+--- vm:
+  2
+===== test/sem/ban-ghi/var-self-gan.vis =====
+--- interp:
+  test/sem/ban-ghi/var-self-gan.vis:7:9: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)
+--- vm:
+  42
+  41
+===== test/sem/ban-ghi/var-truong-gan.vis =====
+--- interp:
+  var-truong-gan.vis:8:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+  var-truong-gan.vis:9:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+  var-truong-gan.vis:16:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+--- vm:
+  var-truong-gan.vis:8:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+  var-truong-gan.vis:9:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+  var-truong-gan.vis:16:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+===== test/sem/list/var-chi-so-gan.vis =====
+--- interp:
+  test/sem/list/var-chi-so-gan.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)
+--- vm:
+  [1, 2, 3]
+  [1, 2, 3]
+  [1, 2, 3]
+===== test/sem/list/let-chi-so-gan.vis =====
+--- interp:
+  let-chi-so-gan.vis:3:1: error VS0412: chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)
+--- vm:
+  let-chi-so-gan.vis:3:1: error VS0412: chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)
+===== test/sem/map/var-khoa-gan.vis =====
+--- interp:
+  test/sem/map/var-khoa-gan.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)
+--- vm:
+  {"a": 1}

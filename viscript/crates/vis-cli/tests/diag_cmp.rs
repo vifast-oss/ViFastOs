@@ -2,12 +2,12 @@
 //! **ST-32** — harness so **chẩn đoán BIÊN DỊCH** giữa hai đường, đóng nợ `R4` §5 (26 ca lỗi biên dịch
 //! trước đây **không** được so).
 //!
-//! Ba tầng **khoá cứng** (tổng **376**, **0 ca bỏ qua** — ST-56 thêm 6 ca):
-//! - **321 xanh** — `check` không chẩn đoán, `run` và `run --vm --no-cache` cùng stdout + exit 0.
-//!   (ST-35: 346 ca − 52 `.err` = 294; ST-56: +3 ca xanh ⇒ 321.)
-//! - **28 lỗi BIÊN DỊCH** (`VS01/02/03/04/06/07`) — `check` và `run --vm --no-cache` phải cho **cùng**
+//! Ba tầng **khoá cứng** (tổng **382**, **0 ca bỏ qua** — ST-56b thêm 6 ca):
+//! - **325 xanh** — `check` không chẩn đoán, `run` và `run --vm --no-cache` cùng stdout + exit 0.
+//!   (ST-35: 346 ca − 52 `.err` = 294; ST-56: +3 ca xanh ⇒ 321; ST-56b: +4 ⇒ 325.)
+//! - **30 lỗi BIÊN DỊCH** (`VS01/02/03/04/06/07`) — `check` và `run --vm --no-cache` phải cho **cùng**
 //!   `(mã, dòng, cột, thông điệp)` sau [`chuan_hoa`]; **exit KHÔNG bằng nhau** theo thiết kế:
-//!   `check` = **1** ↔ `run` = **2** (khoá **ánh xạ**, không đòi bằng). (ST-56: +2.)
+//!   `check` = **1** ↔ `run` = **2** (khoá **ánh xạ**, không đòi bằng). (ST-56: +2; ST-56b: +2.)
 //! - **27 lỗi LÚC CHẠY** (`VS05`) — `check` **rỗng** (đúng: lỗi động), `run` = `run --vm` **y hệt**.
 //!   (ST-56: +1.)
 //!
@@ -22,9 +22,11 @@ use std::process::Command;
 /// **SỬA KÈM LÝ DO (ST-56)**: 370 → **376** — thêm 6 ca (`ham/ref-*`, `ban-ghi/self-amp*`,
 /// `generic/hop-long-*`): 3 xanh + 2 lỗi biên dịch + 1 lỗi lúc chạy. (Ca `str` của
 /// `std.list.sort_by` ở `test/std/` — harness `test/sem` chạy **in-process**, không nạp `use std.*`.)
-const TONG: usize = 376;
-const XANH: usize = 321;
-const LOI_BIEN_DICH: usize = 28;
+/// **SỬA KÈM LÝ DO (ST-56b)**: 376 → **382** — +4 ca xanh + 2 ca lỗi **biên dịch**
+/// (`ban-ghi/self-gan-truong` VS0412, `list/let-chi-so-gan` VS0412).
+const TONG: usize = 382;
+const XANH: usize = 325;
+const LOI_BIEN_DICH: usize = 30;
 const LOI_LUC_CHAY: usize = 27;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
 const XANH_CAN_HOST: usize = 4;

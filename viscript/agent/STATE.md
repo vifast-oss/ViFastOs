@@ -6,16 +6,16 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-56** (nợ lõi **A**: khoá `str` cho `std.list.sort_by`; `&self`; `ref(expr)` identity;
-                `Hop[Hop[int]]` khoá) — xong, **chưa commit**.
-Bước          : 8/8 (kế hoạch → 2 log đỏ → 3 nợ sửa từng bước (`check` sau mỗi bước) → cổng `gate --fast`
-                → differential 100k → STATE/JOURNAL → commit + push).
+Task          : **ST-56b** (hotfix **một ngữ nghĩa cho phép gán** + exit codegen — VD-97) — xong,
+                **chưa commit**.
+Bước          : 8/8 (kế hoạch → 2 log đỏ → tyck `impl` chặn `self` bất biến → codegen ghi lại ô →
+                interp `with`/`Set` cùng byte → CLI exit codegen → cổng → differential → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T21:29Z**; **747** test / sem
-                **376** / `vis test` **376 ok** (+`--vm` **376 ok/6 SKIP**) / parity **348/348** /
-                differential **100.000 chương trình 0 lệch** (202,7 s) / **7 sổ-29 mã** (không mã mới) /
-                allowlist **6**; fuzz đột biến **3 × 0 vi phạm**
-Việc dở       : commit `[ST-56]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T22:17:37Z**; **756** test / sem
+                **382** / `vis test` **382 ok** (+`--vm` **382 ok/6 SKIP**) / parity **352/352** /
+                differential **100.000 chương trình 0 lệch** (194,7 s) / **7 sổ-29 mã** (không mã mới) /
+                allowlist **6**
+Việc dở       : commit `[ST-56b]` + push (đã được uỷ quyền)
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -47,6 +47,19 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-56b — một ngữ nghĩa cho **phép gán** + exit codegen (VD-97), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Tyck — `self` bất biến** | thân phương thức `impl` **chưa** được tyck đầy đủ (khung VS1) ⇒ thêm `kiem_impl`/`kiem_gan_than`: chỉ kiểm **đích gán**; `self` **không** `var` là **tham số bất biến** ⇒ `self.x = v` / `self[i] = v` ⇒ **`VS0412`** tại **phép gán** (giữ nhánh `kiem_dich` cho thân hàm thường); `var self` **được**; `let`/tham số thường giữ `VS0412`; `+=` trên trường/phần tử ⇒ `VS0412` (defense; hiện cú pháp đã chặn `VS0201`) |
+| 2 | **Codegen — `x[i] = v`** | trước: `Set` + **`Pop`** ⇒ VM **im lặng** bỏ kết quả (`xs[0] = 5` không có tác dụng!). Nay: `LoadLocal` + index + value + `Set` + **`Assign(slot)`** ⇒ sửa **tại chỗ** (list theo chỉ số, map thay/thêm khoá); `x.f = v` giữ `With` + `Assign` (rebind, **giá trị**); base không phải biến `var`/gán ghép ⇒ `Unsupported("assign-index"/"assign-op")` (tyck đã chặn trước) |
+| 3 | **Interp — cùng byte** | `gan_truong` (đúng `Instr::With`, **cùng** thông điệp "bản ghi `T` không có trường `f`"/"`with` không dùng được cho …") và `gan_chi_so` (đúng `Instr::Set`: list OOB ⇒ "chỉ số N ngoài phạm vi", map thay **hoặc thêm**, khác ⇒ "gán chỉ số không hợp lệ"); thứ tự đánh giá **giống codegen** (nạp ô → chỉ số → giá trị); ghi lại ô qua `ghi_o` (chốt 2 mutability) |
+| 4 | **CLI — exit codegen** | `run --vm` gặp lỗi codegen: in `vis run --vm: codegen lỗi: …` **và** **exit 1** (trước: exit 0 — im lặng); `--tap` thêm `not ok 1 - <tệp> (codegen)`. Không ca sem nào dựa vào exit 0 (quét **0** ca có "codegen lỗi") |
+| 5 | **Ca** | **6 ca sem** (`ban-ghi/self-gan-truong` VS0412, `ban-ghi/var-self-gan`, `ban-ghi/var-truong-gan`, `list/var-chi-so-gan`, `list/let-chi-so-gan` VS0412, `map/var-khoa-gan`) + **9 ca Rust** `crates/vis-cli/tests/gan_hai_duong.rs` (gồm **exit codegen**); interp ↔ `--vm` **cùng byte** ở mọi ca chạy được |
+| 6 | **Đỏ trước** | `JOURNAL/st56b-red-sem.log` sha256 `75e9ba9238b76631b59256e680e5153ee81fc1546606078038a53a3b09adc67f` — 6 ca: **4 đỏ đúng lý do**, `list/let-chi-so-gan` **đã xanh từ trước** (giữ làm ca khoá); `JOURNAL/st56b-red-rust.log` sha256 `7e00290364340ec52ed1fd5d979bb974f47b63efd111a4f2a0cccfd99d920c7d` — **9/9 đỏ** |
+| 7 | **Đo** | **756** test (21+96+18+143+24+62+9+**383**); sem **382/18 nhóm** (339 `.vis` + 43 `.vish`, 57 `.err`); `vis test` **382 ok**; `--vm` **382 ok + 6 SKIP**; parity **352/352** (30 ca lỗi biên dịch); differential **100.000/0 lệch** (194,7 s, 514/s, seed 3523158054); `VBC1` 53 tag; **7 sổ/29 mã**; allowlist **6**; `gate --fast` **PASS** `2026-11-13T22:17:37Z` |
+| 8 | **Bất ngờ / nợ** | (a) **Thân `impl` chưa tyck** — chỉ đích gán được kiểm; kiểm kiểu **đầy đủ** cần **dispatch phương thức** trong tyck ⇒ **nợ riêng**. (b) `p.x += 1` là **lỗi cú pháp `VS0201`** (front end chặn **trước** tyck) — parity giữ. (c) `vis test`/`--vm` **0 ca** dựa vào exit-0 codegen |
 
 ## ST-56 — nợ lõi A: khoá `str` cho `std.list.sort_by` + `&self` + `ref` identity + `Hop[Hop[int]]` (2026-11-14)
 

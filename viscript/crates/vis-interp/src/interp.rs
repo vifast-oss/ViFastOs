@@ -253,6 +253,34 @@ impl<'a> Interp<'a> {
                 value,
                 span,
             } => {
+                // **ST-56b (VD-97)**: gán **trường/phần tử** của biến `var` — **cùng** ngữ nghĩa
+                // codegen (xem `gan_truong`/`gan_chi_so`): thứ tự đánh giá **giống** codegen
+                // (nạp ô → chỉ số → giá trị) và kết quả **ghi lại ô** (giá trị, không aliasing).
+                // Chỉ `=`; gán ghép trên trường/phần tử đã bị tyck chặn trước.
+                if matches!(op, AssignOp::Set) {
+                    match target {
+                        HExpr::Field { base, name, .. } => {
+                            if let HExpr::Var { sym: Some(id), .. } = &**base {
+                                let cu = self.doc_o(*id, target.span())?;
+                                let rhs = self.eval(value)?;
+                                let moi = gan_truong(cu, name, rhs, *span)?;
+                                self.ghi_o(*id, moi, *span)?;
+                                return Ok(Ctrl::Normal);
+                            }
+                        }
+                        HExpr::Index { base, index, .. } => {
+                            if let HExpr::Var { sym: Some(id), .. } = &**base {
+                                let cu = self.doc_o(*id, target.span())?;
+                                let i = self.eval(index)?;
+                                let rhs = self.eval(value)?;
+                                let moi = gan_chi_so(cu, i, rhs, *span)?;
+                                self.ghi_o(*id, moi, *span)?;
+                                return Ok(Ctrl::Normal);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 let cur = self.lvalue_get(target)?;
                 let rhs = self.eval(value)?;
                 let new = match op {
@@ -1045,6 +1073,28 @@ impl<'a> Interp<'a> {
     // Lấy/đặt giá trị (lvalue), trường, chỉ số, vòng lặp
     // ---------------------------------------------------------------------
 
+    /// **ST-56b** — nạp **giá trị ô** của biến (dùng cho gán trường/phần tử; đúng thứ tự codegen).
+    fn doc_o(&mut self, id: u32, span: Span) -> R<Value> {
+        self.env
+            .borrow()
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| Abort::Trap(Trap::new(RT, "tên chưa có giá trị", span)))
+    }
+
+    /// **ST-56b** — ghi lại **ô** của biến; chỉ `var`/`var self` (tyck đã chặn trước, đây là chốt 2).
+    fn ghi_o(&mut self, id: u32, v: Value, span: Span) -> R<()> {
+        if !self.mutable.contains(&id) {
+            return Err(Abort::Trap(Trap::new(
+                MISMATCH,
+                "không gán được trường của `let`/tham số — chỉ `var` mới gán được (§4.1)",
+                span,
+            )));
+        }
+        self.env.borrow_mut().insert(id, v);
+        Ok(())
+    }
+
     fn lvalue_get(&mut self, target: &HExpr) -> R<Value> {
         match target {
             HExpr::Var { sym: Some(id), .. } => self
@@ -1374,5 +1424,56 @@ impl crate::builtin::Host for Interp<'_> {
     ) -> Option<Result<crate::builtin::KetQua, Abort>> {
         let n = self.ngoai.as_mut()?;
         Some(n.chay_day_du(ten, args, stdin, span))
+    }
+}
+
+/// **ST-56b (VD-97)**: `x.f = v` ⇒ `x = x with f: v` — **đúng** ngữ nghĩa `Instr::With` của VM
+/// (cùng thông điệp để interp ↔ `--vm` **cùng byte**); thiếu trường/không phải bản ghi ⇒ `VS0501`.
+fn gan_truong(base: Value, name: &str, v: Value, span: Span) -> R<Value> {
+    match base {
+        Value::Record(ten, mut fs) => match fs.iter_mut().find(|(k, _)| k == name) {
+            Some(slot) => {
+                slot.1 = v;
+                Ok(Value::Record(ten, fs))
+            }
+            None => Err(Abort::Trap(Trap::new(
+                RT,
+                format!("bản ghi `{ten}` không có trường `{name}`"),
+                span,
+            ))),
+        },
+        other => Err(Abort::Trap(Trap::new(
+            RT,
+            format!("`with` không dùng được cho `{}`", other.show()),
+            span,
+        ))),
+    }
+}
+
+/// **ST-56b (VD-97)**: `x[i] = v` — **đúng** ngữ nghĩa `Instr::Set` của VM (list: tại chỗ theo chỉ
+/// số, ngoài phạm vi ⇒ `VS0501`; map: thay khoá **hoặc thêm** khoá mới).
+fn gan_chi_so(base: Value, idx: Value, v: Value, span: Span) -> R<Value> {
+    match (base, idx) {
+        (Value::List(mut xs), Value::Int(i)) => {
+            if (i as usize) < xs.len() {
+                xs[i as usize] = v;
+                Ok(Value::List(xs))
+            } else {
+                Err(Abort::Trap(Trap::new(
+                    RT,
+                    format!("chỉ số {i} ngoài phạm vi"),
+                    span,
+                )))
+            }
+        }
+        (Value::Map(mut kv), k) => {
+            if let Some(e) = kv.iter_mut().find(|(kk, _)| eq(kk, &k)) {
+                e.1 = v;
+            } else {
+                kv.push((k, v));
+            }
+            Ok(Value::Map(kv))
+        }
+        _ => Err(Abort::Trap(Trap::new(RT, "gán chỉ số không hợp lệ", span))),
     }
 }

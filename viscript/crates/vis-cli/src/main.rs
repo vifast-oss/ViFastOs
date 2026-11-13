@@ -500,7 +500,8 @@ fn run_run(rest: &[String]) -> ExitCode {
         loaded.diags.iter().map(|(_, d)| d.clone()).collect();
     // 4) chạy — **trong luồng có stack lớn** (ST-15): đệ quy sâu (đến cap `MAX_CALL_DEPTH` = 10^4)
     //    không được làm tràn stack process; cap vượt ⇒ `VS0501` bình thường.
-    let (stdout, diags, steps) = std::thread::scope(|scope| {
+    // **ST-56b (VD-97 (5))**: phần tử thứ 4 = **lỗi codegen** (đường `--vm`) ⇒ exit ≠ 0.
+    let (stdout, diags, steps, loi_codegen) = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("vis-run".into())
             // 256 MiB: đo được ~8 KiB/khung ⇒ 10^4 khung ≈ 80 MiB, còn dư.
@@ -523,8 +524,10 @@ fn run_run(rest: &[String]) -> ExitCode {
                                     m
                                 }
                                 Err(e) => {
+                                    // **ST-56b (VD-97 (5))**: in chẩn đoán **và** báo hiệu
+                                    // lỗi để CLI **exit ≠ 0** (trước: in rồi exit 0 — im lặng).
                                     eprintln!("vis run --vm: codegen lỗi: {e}");
-                                    return (String::new(), Vec::new(), 0);
+                                    return (String::new(), Vec::new(), 0, true);
                                 }
                             }
                         }
@@ -569,12 +572,18 @@ fn run_run(rest: &[String]) -> ExitCode {
                     .iter()
                     .map(|x| (x.code.short.to_string(), x.line, x.col, x.message.clone()))
                     .collect();
-                (out.stdout, d, out.steps)
+                (out.stdout, d, out.steps, false)
             })
             .expect("không tạo được luồng chạy")
             .join()
             .expect("luồng chạy lỗi")
     });
+    if loi_codegen {
+        if tap {
+            eprintln!("not ok 1 - {tep} (codegen)");
+        }
+        return ExitCode::from(1);
+    }
     if !xuat_stdout(&stdout) {
         return ExitCode::from(2);
     }

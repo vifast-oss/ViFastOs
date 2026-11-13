@@ -140,10 +140,11 @@ fn fuzz_dot_bien_bytecode() {
 fn than_fuzz() {
     let goc = module_goc();
     // **SỬA KÈM LÝ DO (ST-56)**: 318 → **321** module nguồn (376 ca − 55 `.err`).
+    // **SỬA KÈM LÝ DO (ST-56b)**: **325** module nguồn (382 ca − 57 `.err`).
     assert_eq!(
         goc.len(),
-        321,
-        "phải đủ 321 module nguồn (ST-41: 376 ca − 55 `.err`)"
+        325,
+        "phải đủ 325 module nguồn (ST-41: 382 ca − 57 `.err`)"
     );
     let phut = so_phut();
     let bat_dau = std::time::Instant::now();

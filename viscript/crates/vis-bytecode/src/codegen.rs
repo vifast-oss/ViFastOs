@@ -459,14 +459,24 @@ impl<'g> Emit<'g> {
                     self.f.push(Instr::Assign(slot), *span, -1);
                     return self.net_stack(*span);
                 }
-                // `a[i] = v` / `a.f = v` ⇒ `Set` (3→1) rồi `Pop`.
+                // **ST-56b (VD-97)**: gán **trường/phần tử** chỉ hợp lệ khi đích gốc là biến
+                // `var` (tyck đã chặn trước); gán ghép trên trường/phần tử **chưa** hỗ trợ.
+                if !matches!(op, vis_types::AssignOp::Set) {
+                    return Err(CodegenError::Unsupported("assign-op", *span));
+                }
+                // `a[i] = v` ⇒ `Set` (3→1) rồi **ghi lại ô** (`Assign`) — trước chỉ `Pop` nên VM
+                // **im lặng** bỏ kết quả (interp ↔ VM lệch); VD-97 (2) đòi sửa **tại chỗ**.
                 match target {
                     HExpr::Index { base, index, .. } => {
-                        self.expr(base)?;
+                        let HExpr::Var { sym: Some(id), .. } = &**base else {
+                            return Err(CodegenError::Unsupported("assign-index", *span));
+                        };
+                        let slot = self.slot_cua(*id)?;
+                        self.f.push(Instr::LoadLocal(slot), *span, 1);
                         self.expr(index)?;
                         self.expr(value)?;
                         self.f.push(Instr::Set, *span, -2);
-                        self.f.push(Instr::Pop, *span, -1);
+                        self.f.push(Instr::Assign(slot), *span, -1);
                         self.net_stack(*span)
                     }
                     HExpr::Field { base, name, .. } => {

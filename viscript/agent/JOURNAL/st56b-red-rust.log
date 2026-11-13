@@ -1,0 +1,105 @@
+# ST-56b — log ĐỎ trước khi sửa — 2026-11-13T21:51:22Z — HEAD d1af69d
+# (A) 9 ca Rust mới: cargo test -p vis-cli --no-fail-fast --test gan_hai_duong
+     Running tests/gan_hai_duong.rs (target/debug/deps/gan_hai_duong-21fab793dbaa6a2d)
+
+running 9 tests
+test gan_ghep_tren_truong_la_vs0412 ... FAILED
+test dich_gan_khong_ho_tro_la_vs0412 ... FAILED
+test self_bat_bien_la_vs0412_hai_duong ... FAILED
+test var_truong_gan_hai_duong ... FAILED
+test var_map_khoa_hai_duong ... FAILED
+test var_list_chi_so_va_cow_hai_duong ... FAILED
+test var_self_gan_truong_hai_duong ... FAILED
+test codegen_loi_vm_phai_exit_khac_0 ... FAILED
+test gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau ... FAILED
+
+failures:
+
+---- gan_ghep_tren_truong_la_vs0412 stdout ----
+
+thread 'gan_ghep_tren_truong_la_vs0412' (42810823) panicked at crates/vis-cli/tests/gan_hai_duong.rs:158:5:
+check stderr: 
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- dich_gan_khong_ho_tro_la_vs0412 stdout ----
+
+thread 'dich_gan_khong_ho_tro_la_vs0412' (42810822) panicked at crates/vis-cli/tests/gan_hai_duong.rs:176:5:
+check stderr: 
+
+---- self_bat_bien_la_vs0412_hai_duong stdout ----
+
+thread 'self_bat_bien_la_vs0412_hai_duong' (42810825) panicked at crates/vis-cli/tests/gan_hai_duong.rs:84:5:
+assertion `left == right` failed: `check` phải đỏ: 
+  left: 0
+ right: 1
+
+---- var_truong_gan_hai_duong stdout ----
+
+thread 'var_truong_gan_hai_duong' (42810829) panicked at crates/vis-cli/tests/gan_hai_duong.rs:120:5:
+assertion `left == right` failed: stderr: var-truong.vis:8:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+var-truong.vis:9:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+var-truong.vis:16:5: error VS0412: bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)
+
+  left: 2
+ right: 0
+
+---- var_map_khoa_hai_duong stdout ----
+
+thread 'var_map_khoa_hai_duong' (42810827) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-map-61940/var-map.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+  vm: (0, "{\"a\": 1}\n", "")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-map-61940/var-map.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+ right: (0, "{\"a\": 1}\n", "")
+
+---- var_list_chi_so_va_cow_hai_duong stdout ----
+
+thread 'var_list_chi_so_va_cow_hai_duong' (42810826) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-list-61940/var-list.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+  vm: (0, "[1, 2, 3]\n[1, 2, 3]\n[1, 2, 3]\n", "")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-list-61940/var-list.vis:4:5: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+ right: (0, "[1, 2, 3]\n[1, 2, 3]\n[1, 2, 3]\n", "")
+
+---- var_self_gan_truong_hai_duong stdout ----
+
+thread 'var_self_gan_truong_hai_duong' (42810828) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-self-61940/var-self.vis:7:9: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+  vm: (0, "42\n41\n", "")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-var-self-61940/var-self.vis:7:9: error VS0501: gán vào trường/phần tử chưa hỗ trợ ở VS0 (dùng `with` cho bản ghi)\n")
+ right: (0, "42\n41\n", "")
+
+---- codegen_loi_vm_phai_exit_khac_0 stdout ----
+
+thread 'codegen_loi_vm_phai_exit_khac_0' (42810821) panicked at crates/vis-cli/tests/gan_hai_duong.rs:205:5:
+assertion `left != right` failed: codegen lỗi **không** được exit 0; stdout: ""
+  left: 0
+ right: 0
+
+---- gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau stdout ----
+
+thread 'gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau' (42810824) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-khong-ro-61940/khong-ro.vis:6:5: error VS0501: `[1, 2]` không có trường `f`\n")
+  vm: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-khong-ro-61940/khong-ro.vis:6:5: error VS0501: `with` không dùng được cho `[1, 2]`\n")
+  left: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-khong-ro-61940/khong-ro.vis:6:5: error VS0501: `[1, 2]` không có trường `f`\n")
+ right: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-khong-ro-61940/khong-ro.vis:6:5: error VS0501: `with` không dùng được cho `[1, 2]`\n")
+
+
+failures:
+    codegen_loi_vm_phai_exit_khac_0
+    dich_gan_khong_ho_tro_la_vs0412
+    gan_ghep_tren_truong_la_vs0412
+    gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau
+    self_bat_bien_la_vs0412_hai_duong
+    var_list_chi_so_va_cow_hai_duong
+    var_map_khoa_hai_duong
+    var_self_gan_truong_hai_duong
+    var_truong_gan_hai_duong
+
+test result: FAILED. 0 passed; 9 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+error: test failed, to rerun pass `-p vis-cli --test gan_hai_duong`
+error: 1 target failed:
+    `-p vis-cli --test gan_hai_duong`

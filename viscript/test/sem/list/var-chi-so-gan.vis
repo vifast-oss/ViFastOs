@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn main():
+    var xs = [1, 2, 3]
+    xs[1] = 9
+    print(xs)
+    var ys = xs
+    ys[0] = 5
+    print(xs)
+    print(ys)
