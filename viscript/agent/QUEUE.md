@@ -139,7 +139,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-47 | báo cáo **R7** | ST-44..ST-46 | 1,5 h | **DONE** | MD+JSON, số liệu tái lập |
 | ST-48 | thân `cmd` trong `.vish` bằng **pipeline lệnh** (VSH1b-2) | ST-47 | 3 h | **DONE** | `cmd f() -> list[FileEntry]:` + khối `ls \| where …` chạy 2 đường |
 | ST-49 | **nhóm-lệnh có cờ** `( ls … --long )` + **nhóm nhiều dòng** | ST-48 | 2,5 h | **DONE** | 2 nợ VSH1b hết; `( ls … )` không còn rơi về lệnh ngoài |
-| ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **READY** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
+| ST-50 | **thống nhất mã field-access** + `where ( x => x )` kiểm **tĩnh** | ST-49 | 2,5 h | **DONE** | một mã duy nhất; snapshot vi/en/ja kèm lý do |
 | ST-51 | **stage đầu là biểu thức** (`[1,2] \| take 1` không ngoặc) | ST-50 | 2 h | BLOCKED | không phá văn phạm §9.5; `( … )` vẫn chạy |
 | ST-52 | báo cáo **R8** | ST-48..ST-51 | 1,5 h | BLOCKED | MD+JSON, số liệu tái lập |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -682,6 +682,18 @@ APPROVED 2026-11-13 Agent 0
 > **APPROVED** đổi golden `ls | (a | b)` từ `!ERR` → hợp lệ (có dòng lý do), ca 24 không đụng.
 > Nợ: trong nhóm chỉ hạ **một** pipeline; kiểu tĩnh lấy **stage đầu**.
 > **ST-50 mở** (thống nhất mã field-access + `where ( x => x )` kiểm tĩnh).
+
+APPROVED 2026-11-13 Agent 0
+
+> **ST-50 DONE** — commit `da50f28` (**Agent 2 tự commit**): **`VS0605` → `VS0405`** (chuyển từ sổ **lệnh** `06xx` sang sổ
+> **kiểu** `04xx` — trường là **lỗi kiểu**, VD-27; `COMMAND_CODES` 5→**4**, `TYPE_CODES` 4→**5**, `all_codes()` **29**,
+> `BOOKS` 7, `next_block()` 801 **không đổi**); `kiem_field` ⇒ `VS0405`, **`VS0403` giữ 6 chỗ khai báo**; hạ dùng `ma_truong()`
+> tra theo **id** (không theo chỉ số mảng). **`where ( x => … )` kiểm tĩnh**: nhánh `"where"` trong `kiem_builtin` (thân
+> phải `bool` ⇒ `VS0412`; `{error}` ⇒ kiểm động) + hạ gán kiểu tham số lambda = phần tử ⇒ `where ( x => x.khong_co )`
+> ra `VS0405` **tĩnh**. **692** test (+12); sem 370; `vis test` **370 ok** / `--vm` 370 ok+6 SKIP; parity 344/344;
+> differential 100k **0 lệch**; allowlist **6**. Tách `tyck/truong.rs` (R1). Nợ: `VS0403` còn nghĩa rộng; `where` chưa kiểm
+> kiểu tham số khi lambda không chú thích.
+> **ST-51 mở** (stage đầu là biểu thức).
 
 ## Ghi chú vận hành
 

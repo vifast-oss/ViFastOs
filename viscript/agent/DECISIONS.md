@@ -627,3 +627,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   lại (`parse_voi`), hạ **cả pipeline** bằng Lowerer **con** chung `Symbols`/`TypeTable`. (2) Parser **không** còn chặn `|`
   trong nhóm; newline **không** kết thúc nhóm. (3) `kieu_stage` trả kiểu **đúng** của nhóm ⇒ `( ls --long ) | select mode`
   kiểm tĩnh được. (4) Nợ: trong nhóm chỉ **một** pipeline (nhiều pipeline/`;` ⇒ `VS0201`); kiểu tĩnh lấy **stage đầu**.
+
+- **VD-84** **Trường là lỗi kiểu ⇒ `VS0405` (ST-50)**: (1) mã "không có trường" nằm ở sổ **`04xx`** (**`VS0405`**), không ở
+  `06xx`; `COMMAND_CODES` **4**, `TYPE_CODES` **5**, `all_codes()` **29**, `BOOKS` 7, `next_block()` **801**. (2) `VS0403`
+  giữ nghĩa **khai báo** (literal bản ghi, `with`, pattern, literal enum, phương thức, impl/derive trait). (3) **Tra mã
+  theo `id`, không theo chỉ số mảng** (`ma_truong()`) — đổi thứ tự sổ không được làm lệch mã. (4) **`where ( x => … )`**
+  kiểm **tĩnh** (nhánh `"where"` trong `kiem_builtin`; thân phải `bool` ⇒ `VS0412`; `{error}` ⇒ kiểm động); ở hạ, lambda
+  trong ngoặc được gán kiểu tham số = **kiểu phần tử**. (5) Nợ: `VS0403` còn nghĩa rộng; chưa kiểm kiểu tham số khi lambda
+  không chú thích.
