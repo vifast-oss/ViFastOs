@@ -6,11 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-42** (`ls`/`open` + `--fs-mock`) — xong, **chưa commit**.
-Bước          : 5/5 (`FsHost::list_entries` → `ls`/`open` + vá ret theo prelude → `--fs-mock` → 14 ca + 4 fixture → gate PASS)
+Task          : **ST-43** (báo cáo R6 — chốt VSH1a) — xong, **chưa commit**.
+Bước          : 5/5 (đo lại toàn bộ → `R6-viscript.{md,json,json.license}` → `check_report.py --all` PASS → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T10:49:20Z**; **606** test / sem **370** / parity **344/344** / diff 100k **0 lệch** (207,2 s)
-Việc dở       : commit `[ST-42]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T11:01:17Z**; nightly (fuzz 1 phút) **PASS** 10:55:40Z; report-check **PASS** (6 báo cáo, 49 hàng QUEUE)
+Việc dở       : commit `[ST-43]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,7 +44,16 @@ trên harness cuối, rồi `stash pop`.
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
 
-## ST-42 — `ls`/`open` + `--fs-mock` (2026-11-13)
+## ST-43 — báo cáo R6 (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Report** | `agent/reports/R6-viscript.{md,json,json.license}`; `round = 6`, `head = 654accb`, đúng **11 khoá**; `python3 test/report/check_report.py --all` → **PASS** (49 hàng QUEUE phủ đủ) |
+| 2 | **Số đo** | **606** test (21+96+18+143+24+50+9+**245**); sem **370/18** (327 `.vis` + 43 `.vish`, 52 `.err`); `vis test` **370 ok**, `--vm` **370 ok/6 SKIP**; parity **344/344**; diff **100k / 0 lệch** (208,0 s); fuzz **2.853.740 ca / 0 vi phạm**; `VBC1` **53 tag**; **7 sổ / 29 mã**; khởi động ấm **11,4–11,6 ms** (+prelude **+0,08 ms**); allowlist **8 → 6** |
+| 3 | **Nội dung** | bảng vòng 6 (ST-37..ST-43) + §19 (VSH1a đạt tới đâu) + **17 lỗ hổng còn mở** + VD-69..76 mỗi cái một dòng + đề xuất (AGENTS §8, QUEUE, BLOCKED) |
+| 4 | **Sửa kèm lý do** | `sem.rs` sửa **chuỗi** "336 `.vis`" → **327 `.vis`** (chỉ là thông điệp; tổng 370 không đổi) |
+
+ + `--fs-mock` (2026-11-13)
 
 | # | Việc | Kết quả |
 |---|---|---|

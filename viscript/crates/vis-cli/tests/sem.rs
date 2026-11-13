@@ -121,7 +121,7 @@ fn sem_323_ca_qua_binary() {
     assert_eq!(
         ds.len(),
         370,
-        "phải đúng 370 ca (336 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        "phải đúng 370 ca (327 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     assert_eq!(
