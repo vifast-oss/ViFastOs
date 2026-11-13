@@ -34,9 +34,10 @@ FIXTURES = REPO / "viscript" / "test" / "doc-examples"
 SPDX = "# SPDX-License-Identifier: MIT OR Apache-2.0"
 FENCE = re.compile(r"^```(vis|vish-session)\s*$")
 # Số do Agent 0 chốt cho VT09/QD §7.4 — ĐỔI là thay đổi ngưỡng, phải xin Agent 0.
-# 9 mục: 2 mục thêm ở **ST-18** cho §9.7 (`vish-session` dùng lệnh shell VS1 — ngoài bảng chữ ký VS0);
-# mỗi mục vẫn phải **thật đỏ** khi `vis check` (đỏ bằng `VS0601`), không phải để né cổng.
-ALLOW_COUNT = 9
+# **8 mục (ST-27, Agent 0 APPROVED): khối 662 `extern cmd git(…, ...rest: str)` đã XANH** vì variadic
+# có mặt (đúng §9.5) ⇒ bỏ khỏi allowlist; đây là **chặt hơn**, không nới ngưỡng (xem VD-60).
+# Mỗi mục còn lại vẫn phải **thật đỏ** khi `vis check`, không phải để né cổng.
+ALLOW_COUNT = 8
 BLOCK_COUNT = 24
 VISH_COUNT = 2
 QD_COUNT = 12

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # QD 7.2: `-5` là số khi tham số kiểu số, ngược lại là cờ; CmdCST giữ chưa định kiểu
-# kỳ vọng: VS0601
-# ST-18 (sửa kèm lý do): `.vish` nay hạ thật (`cmd_lower`) ⇒ lệnh ngoài bảng chữ ký VS0 cho VS0601;
-# `&` ⇒ VS0604. Phần **lex/CmdCST** của ca QD §7.2 không đổi.
+# kỳ vọng: ok   (ST-27: lệnh **lạ** nay là **chương trình ngoài** ⇒ `vis check` xanh)
+# ST-18 (sửa kèm lý do): `.vish` nay hạ thật (`cmd_lower`); `&` ⇒ VS0604.
+# `--no-extern` mới là đường báo `VS0601` (ca riêng ở `vis-cli/tests/extern.rs`).
 ls -5

@@ -113,10 +113,11 @@ fn sem_323_ca_qua_binary() {
     }
     // ST-15: khoá **ca / nhóm**, mỗi nhóm ≥ 6 — thiếu/thừa/thiếu nhóm là ĐỎ.
     // ST-18: 309 `.vis` + 14 `.vish` (nhóm `vish`, chế độ lệnh) ⇒ **323 ca / 17 nhóm**.
+    // **SỬA KÈM LÝ DO (ST-27)**: +5 ca `.vish` chương trình ngoài (`ngoai-*`) ⇒ **328 ca / 17 nhóm**.
     assert_eq!(
         ds.len(),
-        323,
-        "phải đúng 323 ca (309 `.vis` + 14 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        328,
+        "phải đúng 328 ca (309 `.vis` + 19 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     assert_eq!(theo_nhom.len(), 17, "phải đúng 17 nhóm, thật {theo_nhom:?}");

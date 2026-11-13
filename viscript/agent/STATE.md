@@ -6,13 +6,12 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-26** (`std.*` lõi: str/list/map/path/time/json) — xong 2026-11-13,
-                **chưa commit** (chờ Agent 0 OK).
-Bước          : 4/4 (bảng chữ ký → ngữ nghĩa dùng chung → nối interp/VM/tyck/codegen → 68 fixture)
+Task          : **ST-27** (chương trình ngoài + variadic + `--x=v`) — xong, **chưa commit** (chờ Agent 0).
+Bước          : 4/4 (hook `Ngoai` → hạ `exec.*` → runner CLI → 13 ca extern + 5 ca sem)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:24:02Z** (13:24 JST, không retry);
-                **344** test workspace
-Việc dở       : chờ duyệt rồi commit `[ST-26]`
+Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T04:55:41Z** (13:55 JST, không retry);
+                **357** test workspace; doc-examples allowlist **8** mục (Agent 0 APPROVED)
+Việc dở       : chờ duyệt rồi commit `[ST-27]`
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -45,6 +44,22 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-27 — chương trình ngoài + variadic + `--x=v` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Host hook** | `trait Ngoai` + `Host::ngoai` (mặc định `None`) + `Interp.ngoai` + `run_with_ngoai` ⇒ **`vis-interp`/`vis-vm` không biết OS** (§14); không host ⇒ `VS0604` (có test riêng) |
+| 2 | **Hạ `exec.*`** | lệnh **lạ** trong `.vish` ⇒ `HExpr::Call{Var "exec.<tên>"}` với `list[str]` từ thô; `--raw` ⇒ `exec.raw.<tên>` (trả `str`); `cho_ngoai=false` (`--no-extern`) ⇒ `VS0601` |
+| 3 | **Runner CLI** | `vis-cli/src/ngoai.rs`: `std::process::Command` (mảng đối số, **không** `sh -c`), env kế thừa, stdin null, **timeout** 10 s (đổi `VIS_CMD_TIMEOUT_MS`), cap đồng thời **1**; `exit != 0` ⇒ `VS0501` kèm stderr; `--explain-perms` in `EXEC …` |
+| 4 | **Variadic** | `...rest: str` (lexer: `..` + `.`) ⇒ `HParam.variadic`, kiểu `list[str]`, `FnSig.variadic` (arity tĩnh + chạy đều cho thêm đối số), interp gom phần còn lại ⇒ `x "a" "b" "c"` cho `rest = ["b","c"]` |
+| 5 | **`--x=v`** | `echo --upper=true xin_chao` ⇒ `XIN_CHAO` (giá trị đổi theo kiểu cờ, không lấy khoảng trắng) |
+| 6 | **Đo** | **357** test (344 + **13** `extern.rs`); **5** ca sem `.vish` mới (`ngoai-*`) ⇒ **328 ca / 17 nhóm**; differential **276/276**; fuzz 276 module; gate PASS 2026-11-13T04:55:41Z |
+| 7 | **allowlist tài liệu** | **8** mục (Agent 0 APPROVED, chặt hơn): khối 662 `extern cmd git(…, ...rest: str)` nay hợp lệ nhờ variadic (VD-60) |
+
+**Hermetic**: `/bin/echo`, `/usr/bin/printf`, `/usr/bin/true`, `/usr/bin/false`, `/bin/cat` — **`/bin/true|false` KHÔNG có trên macOS**, dùng `/usr/bin/*`; mỗi đường dẫn `assert!(exists)` trước khi dùng.
+
+**Nợ**: `| complete` (VS1b — `grep` không khớp exit 1 hiện là lỗi), pipe→stdin của tiến trình kế (VS1b), consent thật + `cap[Proc]` (VS2).
 
 ## ST-26 — `std.*` lõi: str/list/map/path/time/json (2026-11-13)
 

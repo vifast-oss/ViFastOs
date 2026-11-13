@@ -632,8 +632,13 @@ impl<'a> Checker<'a> {
         span: vis_syntax::Span,
     ) {
         let total = args.len() + named.len();
-        let required = sig.params.iter().filter(|p| !p.2).count();
-        if total > sig.params.len() || total < required {
+        let required = sig.params.iter().filter(|p| !p.2 && !sig.variadic).count();
+        let toi_da = if sig.variadic {
+            usize::MAX
+        } else {
+            sig.params.len()
+        };
+        if total > toi_da || total < required {
             self.diag(
                 ARG_COUNT,
                 format!(
@@ -647,8 +652,20 @@ impl<'a> Checker<'a> {
         let arg_tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
         for (i, t) in arg_tys.iter().enumerate() {
             if let Some(p) = sig.params.get(i) {
-                let want = p.1.clone();
+                // ST-27: ô `...rest` — mọi đối số từ đây trở đi là **phần tử**, không phải list.
+                let want = match (&p.1, sig.variadic && i + 1 == sig.params.len()) {
+                    (Type::List(elem), true) => (**elem).clone(),
+                    _ => p.1.clone(),
+                };
                 self.coerce_e(&args[i], t, &want, "đối số");
+            } else if sig.variadic {
+                // ST-27: đối số **thừa** rơi vào `...rest` — kiểm theo **kiểu phần tử** của nó.
+                if let Some(p) = sig.params.last() {
+                    if let Type::List(elem) = &p.1 {
+                        let want = (**elem).clone();
+                        self.coerce_e(&args[i], t, &want, "đối số");
+                    }
+                }
             }
         }
         let mut da_gap: Vec<&str> = Vec::new();
@@ -1267,6 +1284,8 @@ pub(crate) struct FnSig {
     /// `(tên, kiểu, có_mặc_định, khai `--`)`
     pub params: Vec<(String, Type, bool, bool)>,
     pub ret: Type,
+    /// Tham số cuối là `...rest` ⇒ nhận **thêm** đối số vị trí (ST-27).
+    pub variadic: bool,
 }
 
 /// Giữ chỗ: `HPat`/`HStmt` dùng ở module khác (tránh import thừa).

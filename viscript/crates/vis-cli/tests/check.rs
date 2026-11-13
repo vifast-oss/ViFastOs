@@ -237,10 +237,13 @@ fn hai_khoi_vish_session_qua_cli_deu_ok() {
     assert_eq!(o.status.code(), Some(1), "khối dùng lệnh ngoài VS0: {out}");
     assert_eq!(lines(&o)[1], "1..2");
     assert_eq!(out.matches("not ok ").count(), 2, "{out}");
+    // **SỬA KÈM LÝ DO (ST-27)**: lệnh **lạ** nay là **chương trình ngoài** (§9.3) ⇒ chẩn đoán đổi
+    // từ `VS0601` (không có lệnh) sang `VS0603` (pipeline `take` không nối được) — bất biến giữ
+    // nguyên: mỗi tệp **đúng một** chẩn đoán thuộc nhóm `06xx`, không Bail out, TAP đủ 2 dòng.
     assert_eq!(
-        out.matches("VS0601").count(),
+        out.matches("VS06").count(),
         2,
-        "mỗi khối đúng một VS0601 (lệnh ngoài bảng VS0): {out}"
+        "mỗi khối đúng một chẩn đoán `06xx`: {out}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -426,14 +429,25 @@ fn khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan() {
             assert_chan_doan(&ls[i + 1]);
             i += 2;
         } else {
-            panic!("khối loại trừ không được `ok`: {:?}", ls[i]);
+            // **SỬA KÈM LÝ DO (ST-27)**: khối loại trừ thứ 5 (`extern cmd git(…, ...rest: str)`,
+            // tài liệu dòng 662) nay **hợp lệ** vì variadic `...rest` đã có — đúng như tài liệu
+            // §9.5 khai. Sáu khối còn lại vẫn phải `not ok` với đúng một chẩn đoán.
+            assert!(
+                ls[i].contains("loai_04.vis"),
+                "chỉ khối `extern cmd git(…, ...rest)` được ok (ST-27), thấy: {:?}",
+                ls[i]
+            );
+            i += 1;
         }
     }
-    assert_eq!(not_ok, 7);
+    assert_eq!(
+        not_ok, 6,
+        "6 khối còn lại phải `not ok` (khối variadic đã hợp lệ từ ST-27)"
+    );
     assert_eq!(
         ls.iter().filter(|l| l.starts_with("# VS")).count(),
-        7,
-        "mỗi khối đúng 1 chẩn đoán"
+        6,
+        "6 khối `not ok` — mỗi khối đúng 1 chẩn đoán (khối variadic đã hợp lệ, ST-27)"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -15,11 +15,35 @@ use crate::interp::{Abort, Trap, DIV0, RT};
 use crate::value::Value;
 
 /// **Chủ nhà** cho các hàm ngữ nghĩa cần tác dụng phụ.
+/// **Chương trình ngoài** (ST-27): `vis-interp` **không** biết OS — chỉ biết trait này.
+///
+/// `vis-cli` cài bằng `std::process::Command`; test/không host ⇒ `None` ⇒ `VS0604`.
+pub trait Ngoai {
+    /// Chạy `ten` với `args`; `raw` ⇒ trả `str` (nguyên văn) thay vì `list[str]`.
+    fn chay(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        raw: bool,
+        span: Span,
+    ) -> crate::interp::R<Value>;
+}
+
 pub trait Host {
     /// Bộ đệm `stdout` của chương trình.
     fn out(&mut self) -> &mut String;
     /// Gọi một giá trị hàm (closure/builtin) với đối số đã đánh giá.
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> crate::interp::R<Value>;
+    /// Chương trình **ngoài** (ST-27). Mặc định: `None` ⇒ môi trường không có host ⇒ `VS0604`.
+    fn ngoai(
+        &mut self,
+        _ten: &str,
+        _args: &[String],
+        _raw: bool,
+        _span: Span,
+    ) -> Option<crate::interp::R<Value>> {
+        None
+    }
 }
 
 /// Lỗi runtime kèm `span` (cùng cấu trúc với `Interp::trap`).
@@ -366,6 +390,32 @@ pub fn call(
     args: Vec<Value>,
     span: Span,
 ) -> crate::interp::R<Value> {
+    // ST-27: `exec.<ten>` — chương trình ngoài, do **host** chạy (interp không biết OS).
+    if let Some(mut ten) = name.strip_prefix("exec.") {
+        let mut raw = false;
+        if let Some(t) = ten.strip_prefix("raw.") {
+            ten = t;
+            raw = true;
+        }
+        let ds: Vec<String> = match args.first() {
+            Some(Value::List(xs)) => xs
+                .iter()
+                .map(|v| match v {
+                    Value::Str(s) => s.clone(),
+                    other => other.show(),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        return match host.ngoai(ten, &ds, raw, span) {
+            Some(kq) => kq,
+            None => Err(trap(
+                &vis_diag::COMMAND_CODES[3],
+                format!("chương trình ngoài `{ten}` chưa hỗ trợ ở môi trường này (không có host)"),
+                span,
+            )),
+        };
+    }
     // ST-26: `std.*` — một hiện thực dùng chung cho interp và VM (VD-55).
     if name.starts_with("std.") {
         return crate::stdlib::call(host, name.trim_start_matches("std."), args, span);

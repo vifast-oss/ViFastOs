@@ -96,6 +96,8 @@ pub(crate) struct Interp<'a> {
     types: &'a TypeTable,
     #[allow(dead_code)]
     symbols: &'a Symbols,
+    /// Host chương trình ngoài (ST-27); `None` ⇒ `VS0604` — interp **không** biết OS.
+    ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
 }
 
 impl<'a> Interp<'a> {
@@ -125,6 +127,7 @@ impl<'a> Interp<'a> {
             }
         }
         Self {
+            ngoai: None,
             fns,
             consts,
             tags,
@@ -141,6 +144,12 @@ impl<'a> Interp<'a> {
             types,
             symbols,
         }
+    }
+
+    /// Gắn host chương trình ngoài (ST-27) — chỉ dùng trong crate (`run_with_ngoai`).
+    #[allow(dead_code)]
+    pub(crate) fn set_ngoai(&mut self, n: &'a mut dyn crate::builtin::Ngoai) {
+        self.ngoai = Some(n);
     }
 
     pub(crate) fn take_stdout(&mut self) -> String {
@@ -952,7 +961,9 @@ impl<'a> Interp<'a> {
         named: Vec<(String, Value)>,
         span: Span,
     ) -> R<Value> {
-        if pos.len() + named.len() > f.params.len() {
+        // ST-27: hàm có `...rest` nhận **thêm** đối số vị trí.
+        let bien_di = f.params.last().map(|p| p.variadic).unwrap_or(false);
+        if !bien_di && pos.len() + named.len() > f.params.len() {
             return Err(Abort::Trap(Trap::new(
                 RT,
                 format!(
@@ -967,6 +978,12 @@ impl<'a> Interp<'a> {
         let mut old = Vec::with_capacity(f.params.len());
         for (i, p) in f.params.iter().enumerate() {
             old.push((p.sym, self.env.borrow().get(&p.sym).cloned()));
+            // ST-27: `...rest` gom **mọi** đối số vị trí còn lại thành `list[str]`.
+            if p.variadic {
+                let con: Vec<Value> = pos.iter().skip(i).cloned().collect();
+                self.env.borrow_mut().insert(p.sym, Value::List(con));
+                continue;
+            }
             let v = if let Some(v) = pos.get(i) {
                 Some(v.clone())
             } else {
@@ -1253,6 +1270,10 @@ pub fn pos(text: &str, span: Span) -> (u32, u32) {
 pub(crate) const MAX_CALL_DEPTH: u32 = 2_000;
 
 fn builtin_name(name: &str) -> Option<&'static str> {
+    // ST-27: chương trình ngoài — `builtin::call` sẽ hỏi **host** (`None` ⇒ `VS0604`).
+    if name.starts_with("exec.") {
+        return Some("exec");
+    }
     // ST-26: `std.<module>.<fn>` gọi qua bảng `stdlib` (dùng chung với VM, VD-55).
     if name.starts_with("std.") {
         return name
@@ -1300,5 +1321,10 @@ impl crate::builtin::Host for Interp<'_> {
 
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
         self.call_value(f.clone(), args, Vec::new(), span)
+    }
+
+    fn ngoai(&mut self, ten: &str, args: &[String], raw: bool, span: Span) -> Option<R<Value>> {
+        let n = self.ngoai.as_mut()?;
+        Some(n.chay(ten, args, raw, span))
     }
 }

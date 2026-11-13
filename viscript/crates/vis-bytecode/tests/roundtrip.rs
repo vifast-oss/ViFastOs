@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! ST-19 — **round-trip** VBC1 trên **toàn bộ** bộ ngữ nghĩa (323 ca) + 30 golden biểu thức.
+//! ST-19 — **round-trip** VBC1 trên **toàn bộ** bộ ngữ nghĩa (328 ca, ST-27 +5 `.vish` ngoài) + 30 golden biểu thức.
 //!
 //! Bất biến mỗi ca:
 //! 1. codegen thành công (không `Unsupported`);
@@ -80,7 +80,8 @@ fn bien_dich(p: &Path) -> Result<vis_bytecode::Module, String> {
 #[test]
 fn roundtrip_tren_toan_bo_323_ca() {
     let tat_ca = tep_sem();
-    assert_eq!(tat_ca.len(), 323, "phải đủ 323 ca (309 .vis + 14 .vish)");
+    // **SỬA KÈM LÝ DO (ST-27)**: +5 ca `.vish` chương trình ngoài ⇒ 328 ca (309 `.vis` + 19 `.vish`).
+    assert_eq!(tat_ca.len(), 328, "phải đủ 328 ca (309 .vis + 19 .vish)");
     // Ca **cố ý lỗi tĩnh** (có `.err`) không sinh mã — `sem.rs` kiểm chúng bằng chẩn đoán.
     let so_loi = so_ca_loi(&tat_ca);
     let ds: Vec<PathBuf> = tat_ca
@@ -88,7 +89,7 @@ fn roundtrip_tren_toan_bo_323_ca() {
         .filter(|p| !p.with_extension("err").exists())
         .cloned()
         .collect();
-    assert_eq!(ds.len() + so_loi, 323);
+    assert_eq!(ds.len() + so_loi, 328);
     let mut loi = Vec::new();
     let mut tong_lenh = 0usize;
     for p in &ds {

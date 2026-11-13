@@ -52,7 +52,7 @@ pub enum NamePolicy {
 }
 
 /// Tuỳ chọn hạ.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LowerOptions {
     pub names: NamePolicy,
     /// Module của tệp đang hạ (ST-25); `0` = biên dịch một tệp.
@@ -63,6 +63,22 @@ pub struct LowerOptions {
     pub imported_types: Vec<(String, Type)>,
     /// Module `std.*` đã `use` (ST-26) — bật dạng gọi `str.split(…)` trong tệp này.
     pub std_mods: Vec<String>,
+    /// Cho phép **chương trình ngoài** (ST-27). `false` (vd `vis check --no-extern`) ⇒ lệnh lạ báo
+    /// `VS0601` như trước.
+    pub cho_ngoai: bool,
+}
+
+impl Default for LowerOptions {
+    fn default() -> Self {
+        Self {
+            names: NamePolicy::Permissive,
+            mod_id: 0,
+            imports: Vec::new(),
+            imported_types: Vec::new(),
+            std_mods: Vec::new(),
+            cho_ngoai: true,
+        }
+    }
 }
 
 impl LowerOptions {
@@ -772,6 +788,14 @@ impl<'a> Lowerer<'a> {
                 None if is_self => "self".to_string(),
                 None => continue,
             };
+            // ST-27: `...rest: str` — lexer không có `...` ⇒ ba token `..` `.` `rest`.
+            let variadic = p
+                .tokens(&self.cst.tokens)
+                .take(2)
+                .filter(|t| t.is_punct("..") || t.is_punct("."))
+                .count()
+                >= 2
+                && p.tokens(&self.cst.tokens).any(|t| t.is_punct(".."));
             let ty = match p.child(NodeKind::Type) {
                 Some(t) => self.resolve_type(t),
                 None => Type::Error,
@@ -782,6 +806,12 @@ impl<'a> Lowerer<'a> {
                 .filter(|c| c.kind != NodeKind::Type && c.kind != NodeKind::GrantList)
                 .last()
                 .map(|c| self.lower_expr(c));
+            // ST-27: tham số variadic nhận **list** phần tử (vd `...rest: str` ⇒ `list[str]`).
+            let ty = if variadic {
+                Type::List(Box::new(ty))
+            } else {
+                ty
+            };
             let sym = self.declare(&name, SymKind::Param, p.span, Some(ty.clone()));
             out.push(HParam {
                 name,
@@ -792,6 +822,7 @@ impl<'a> Lowerer<'a> {
                 is_self,
                 is_var_self,
                 default,
+                variadic,
             });
         }
         out

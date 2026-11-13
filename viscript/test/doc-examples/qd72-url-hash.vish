@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# QD 7.2: `#` chỉ là chú thích khi đứng đầu từ; `https://…/y#frag` giữ nguyên
-# kỳ vọng: VS0601
-# ST-18 (sửa kèm lý do): `.vish` nay hạ thật (`cmd_lower`) ⇒ lệnh ngoài bảng chữ ký VS0 cho VS0601;
-# `&` ⇒ VS0604. Phần **lex/CmdCST** của ca QD §7.2 không đổi.
-curl https://x/y#frag
+# QD 7.2: `#` trong URL không bị coi là chú thích khi ở giữa từ (lex/CmdCST)
+# kỳ vọng: ok   (ST-27: lệnh **lạ** nay là **chương trình ngoài** ⇒ `vis check` xanh)
+curl https://example.com/a#b

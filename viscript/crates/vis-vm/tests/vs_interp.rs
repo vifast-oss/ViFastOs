@@ -82,7 +82,7 @@ fn mo_ta(o: &RunOutput) -> String {
     format!("stdout={:?} exit={} diag={:?}", o.stdout, o.exit, d)
 }
 
-/// **Danh sách ca lệch phải LUÔN RỖNG** (ST-20b): differential 272/272. Nếu ai thêm ca vào đây,
+/// **Danh sách ca lệch phải LUÔN RỖNG** (ST-20b): differential 276/276 (ST-27: +4 ngoài). Nếu ai thêm ca vào đây,
 /// test sẽ đỏ ngay (`so_biet == 0`) — mục đích là **không** cho nợ kỹ thuật quay lại.
 const KNOWN_LECH: [&str; 0] = [];
 
@@ -99,7 +99,8 @@ fn vm_khop_interp_tren_272_ca() {
 
 fn than_chay() {
     let tat_ca = tep_sem();
-    assert_eq!(tat_ca.len(), 323, "phải đủ 323 ca");
+    // **SỬA KÈM LÝ DO (ST-27)**: 328 ca sem (309 `.vis` + 19 `.vish`, +5 ngoài).
+    assert_eq!(tat_ca.len(), 328, "phải đủ 328 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bo_qua = 0;
@@ -150,10 +151,12 @@ fn than_chay() {
         "**không** còn ca lệch nào (danh sách phải rỗng, thật {})",
         so_biet
     );
+    // **SỬA KÈM LÝ DO (ST-27)**: +4 ca `.vish` chương trình ngoài **không có host** (interp và VM
+    // đều `VS0604`) ⇒ khớp; ca `.err` (`ngoai-thoat-ma`) không vào bộ này.
     assert_eq!(
         khop + so_biet + bo_qua,
-        272,
-        "272 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
+        276,
+        "276 ca (khớp {khop} + lệch {so_biet} + bỏ qua {bo_qua})"
     );
-    assert_eq!(khop, 272, "phải khớp **đủ** 272 ca, thật {khop}");
+    assert_eq!(khop, 276, "phải khớp **đủ** 276 ca, thật {khop}");
 }

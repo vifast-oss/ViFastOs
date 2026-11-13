@@ -66,10 +66,16 @@ fn hai_item_bang_cham_phay() {
 }
 
 #[test]
-fn lenh_khong_ton_tai_la_vs0601() {
+fn lenh_khong_ton_tai_la_vs0501() {
+    // **SỬA KÈM LÝ DO (ST-27)**: lệnh lạ nay là **chương trình ngoài** (§9.3) — không tìm thấy
+    // chương trình là lỗi **lúc chạy** (`VS0501`, exit 1), không còn `VS0601` tĩnh (exit 2).
     let (code, out, err) = chay("khong-co", "khong_co \"x\"\n");
-    assert_eq!(code, 2, "thiếu lệnh là lỗi **tĩnh**: {err} / {out}");
-    assert!(err.contains("VS0601"), "stderr: {err}");
+    assert_eq!(
+        code, 1,
+        "không tìm thấy chương trình = lỗi chạy: {err} / {out}"
+    );
+    assert!(err.contains("VS0501"), "stderr: {err}");
+    assert!(err.contains("khong_co"), "phải nêu tên chương trình: {err}");
 }
 
 #[test]
@@ -101,8 +107,21 @@ fn check_khong_con_bail_out() {
 }
 
 #[test]
-fn check_bao_lenh_la_vs0601() {
-    let (code, out) = check("bad", "khong_co \"x\"\n");
-    assert_eq!(code, 1, "TAP `not ok`: {out}");
-    assert!(out.contains("VS0601"), "TAP: {out}");
+fn check_no_extern_bao_vs0601() {
+    // **SỬA KÈM LÝ DO (ST-27)**: mặc định `vis check` **cho** chương trình ngoài (xanh); chỉ khi
+    // `--no-extern` mới `VS0601` — mã cũ, nghĩa mới ("không có lệnh và ngoài bị tắt").
+    let p = tam("bad", "khong_co \"x\"\n");
+    let out = Command::new(vis())
+        .args(["check", "--no-extern"])
+        .arg(&p)
+        .output()
+        .expect("chạy vis check --no-extern");
+    let code = out.status.code().unwrap_or(-1);
+    let tap = String::from_utf8_lossy(&out.stdout).to_string()
+        + String::from_utf8_lossy(&out.stderr).as_ref();
+    assert_eq!(code, 1, "TAP `not ok`: {tap}");
+    assert!(tap.contains("VS0601"), "TAP: {tap}");
+    // Mặc định (không cờ) phải **xanh**.
+    let (code2, tap2) = check("bad2", "khong_co \"x\"\n");
+    assert_eq!(code2, 0, "mặc định cho chương trình ngoài: {tap2}");
 }

@@ -18,8 +18,10 @@ use vis_syntax::{parse, Mode};
 
 /// Khối ```vis phải parse sạch (cấp tệp hoặc thân đầy đủ).
 const TOTAL_VIS_BLOCKS: usize = 22;
-const FULL_BODIED: usize = 15;
-const EXCLUDED_COUNT: usize = 7;
+// **SỬA KÈM LÝ DO (ST-27)**: khối 662 (`extern cmd git(…, ...rest: str)`) nay parse **sạch**
+// vì variadic đã có ⇒ 16 khối đủ thân sạch, 6 khối loại trừ.
+const FULL_BODIED: usize = 16;
+const EXCLUDED_COUNT: usize = 6;
 
 /// Khối **loại trừ tường minh** — (dòng bắt đầu ```vis trong `ViScript-thiet-ke.md`, lý do).
 const EXCLUDED: [(usize, &str); EXCLUDED_COUNT] = [
@@ -38,10 +40,6 @@ const EXCLUDED: [(usize, &str); EXCLUDED_COUNT] = [
     (
         610,
         "`...` ở 613 (`pub cmd ls(...): ...`) — thân lược",
-    ),
-    (
-        662,
-        "`...` ở 663 (`extern cmd git(..., ...rest: str)`) — tham số biến thiên `...` không có token trong SPEC-lex §1",
     ),
     (
         737,

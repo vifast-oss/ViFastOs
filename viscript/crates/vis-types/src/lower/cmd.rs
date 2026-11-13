@@ -17,6 +17,7 @@ fn tham(ten: &str, ty: Type, mac_dinh: Option<HExpr>) -> HParam {
         is_self: false,
         is_var_self: false,
         default: mac_dinh,
+        variadic: false,
     }
 }
 
@@ -25,6 +26,42 @@ fn co(ten: &str, ty: Type, mac_dinh: Option<HExpr>) -> HParam {
         named: true,
         ..tham(ten, ty, mac_dinh)
     }
+}
+
+/// Tách **từ** của một stage lệnh, tôn trọng nháy đơn/nháy kép (ST-27).
+fn tach_tu(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut trong: Option<char> = None;
+    let mut co = false;
+    for c in s.chars() {
+        match trong {
+            Some(q) => {
+                if c == q {
+                    trong = None;
+                } else {
+                    cur.push(c);
+                }
+            }
+            None => match c {
+                '\'' | '"' => {
+                    trong = Some(c);
+                    co = true;
+                }
+                c if c.is_whitespace() => {
+                    if co || !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                        co = false;
+                    }
+                }
+                _ => cur.push(c),
+            },
+        }
+    }
+    if co || !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 fn lit(kind: LitKind, text: &str) -> HExpr {
@@ -109,6 +146,50 @@ pub(crate) struct CmdSig {
 }
 
 impl<'a> Lowerer<'a> {
+    /// Dựng call **chương trình ngoài** `exec.<tên>` (ST-27): từ thô của stage, bỏ tên lệnh; cờ
+    /// `--raw` của Vis ⇒ trả `str` thay vì `list[str]`.
+    fn ngoai_call(&mut self, ten: &str, node: &Node) -> HExpr {
+        let raw = self
+            .text
+            .get(node.span.start..node.span.end)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let mut tu = tach_tu(&raw);
+        if !tu.is_empty() {
+            tu.remove(0);
+        }
+        let mut co_raw = false;
+        if tu.last().map(|s| s.as_str()) == Some("--raw") {
+            tu.pop();
+            co_raw = true;
+        }
+        let items: Vec<HExpr> = tu
+            .iter()
+            .map(|w| lit(LitKind::Str, &format!("{w:?}")))
+            .collect();
+        let ds = HExpr::List {
+            items,
+            elem: Type::Str,
+            span: node.span,
+        };
+        let name = if co_raw {
+            format!("exec.raw.{ten}")
+        } else {
+            format!("exec.{ten}")
+        };
+        HExpr::Call {
+            callee: Box::new(HExpr::Var {
+                name,
+                sym: None,
+                span: node.span,
+            }),
+            args: vec![ds],
+            named: Vec::new(),
+            span: node.span,
+        }
+    }
+
     /// Chạy hạ chế độ lệnh: item (`cmd`/`fn`/`extern`) trước, rồi từng dòng lệnh thành `HStmt`.
     pub(crate) fn run_shell(&mut self) {
         self.declare_builtins();
@@ -270,12 +351,18 @@ impl<'a> Lowerer<'a> {
             return None;
         };
         let Some(sig) = sigs.iter().find(|s| s.name == ten).cloned() else {
-            self.diag(
-                &COMMAND_CODES[0],
-                format!("không có lệnh `{ten}` (không có trong bảng chữ ký)"),
-                node.span,
-            );
-            return None;
+            // ST-27: lệnh **lạ** ⇒ chương trình ngoài (§9.3) — trừ khi host tắt (`--no-extern`).
+            if !self.opts.cho_ngoai {
+                self.diag(
+                    &COMMAND_CODES[0],
+                    format!(
+                        "không có lệnh `{ten}` trong bảng chữ ký và chương trình ngoài đang tắt (`--no-extern`)"
+                    ),
+                    node.span,
+                );
+                return None;
+            }
+            return Some(self.ngoai_call(&ten, node));
         };
         // Khe ống (§9.5, ST-18 (a)1): tham số vị trí **đầu tiên** khớp kiểu với giá trị vào —
         // **giữ chỗ trước**, để đối số vị trí còn lại không chiếm mất (`take 1` ⇒ `take(xs=pipe, 1)`).
@@ -376,7 +463,11 @@ impl<'a> Lowerer<'a> {
                             | Some(Type::Duration)
                     ));
             if la_co {
-                let ten_sach = text.trim_start_matches('-').to_string();
+                // ST-27: `--x=v` — tên cờ và giá trị tách bằng `=`, **không** lấy khoảng trắng.
+                let (ten_sach, gt_bang) = match text.trim_start_matches('-').split_once('=') {
+                    Some((n, v)) => (n.to_string(), Some(v.to_string())),
+                    None => (text.trim_start_matches('-').to_string(), None),
+                };
                 if text == "--" {
                     continue; // `--` kết thúc cờ (VD-40 #4)
                 }
@@ -393,37 +484,55 @@ impl<'a> Lowerer<'a> {
                     );
                     return None;
                 };
-                let gt = match gt {
-                    Some(v) if v.kind == NodeKind::CmdGroup => match v.children().next() {
-                        Some(x) => self.lower_expr(x),
-                        None => continue,
-                    },
-                    Some(v) => match self.chuyen_doi(&v, &p.ty) {
-                        Some(x) => x,
+                let gt = if let Some(v) = gt_bang {
+                    // `--x=v` ⇒ giá trị `v` (đã bỏ khoảng trắng quanh `=`), đổi theo kiểu cờ.
+                    match self.chuyen_doi_text(&v, &p.ty, con_span) {
+                        Some(e) => e,
                         None => {
                             self.diag(
                                 &COMMAND_CODES[1],
-                                format!("cờ `{text}` sai kiểu (cần `{}`)", ten_kieu(&p.ty)),
+                                format!(
+                                    "cờ `--{ten_sach}={v}` sai kiểu (cần `{}`)",
+                                    ten_kieu(&p.ty)
+                                ),
                                 con_span,
                             );
                             return None;
                         }
-                    },
-                    None if p.ty == Type::Bool => HExpr::Lit {
-                        lit: Lit {
-                            kind: LitKind::Bool,
-                            text: "true".into(),
+                    }
+                } else {
+                    match gt {
+                        Some(v) if v.kind == NodeKind::CmdGroup => match v.children().next() {
+                            Some(x) => self.lower_expr(x),
+                            None => continue,
                         },
-                        ty: Type::Bool,
-                        span: con_span,
-                    },
-                    None => {
-                        self.diag(
-                            &COMMAND_CODES[1],
-                            format!("cờ `{text}` cần giá trị nhưng chưa hỗ trợ ở VS0"),
-                            con_span,
-                        );
-                        return None;
+                        Some(v) => match self.chuyen_doi(&v, &p.ty) {
+                            Some(x) => x,
+                            None => {
+                                self.diag(
+                                    &COMMAND_CODES[1],
+                                    format!("cờ `{text}` sai kiểu (cần `{}`)", ten_kieu(&p.ty)),
+                                    con_span,
+                                );
+                                return None;
+                            }
+                        },
+                        None if p.ty == Type::Bool => HExpr::Lit {
+                            lit: Lit {
+                                kind: LitKind::Bool,
+                                text: "true".into(),
+                            },
+                            ty: Type::Bool,
+                            span: con_span,
+                        },
+                        None => {
+                            self.diag(
+                                &COMMAND_CODES[1],
+                                format!("cờ `{text}` cần giá trị nhưng chưa hỗ trợ ở VS0"),
+                                con_span,
+                            );
+                            return None;
+                        }
                     }
                 };
                 theo_ten.push((ten_sach, gt));

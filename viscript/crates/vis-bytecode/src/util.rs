@@ -23,6 +23,9 @@ pub fn can_test(p: &HPat) -> bool {
 /// Tên **dựng sẵn** (phải khớp `vis_interp::builtin::SIGS`; test `codegen` khoá lại).
 pub fn la_builtin(name: &str) -> bool {
     // ST-26: `std.<module>.<fn>` (tên đầy đủ trong HIR) — bảng chữ ký ở `vis_types::stdlib`.
+    if name.starts_with("exec.") {
+        return true;
+    }
     if name.starts_with("std.") {
         return vis_types::stdlib::la_std(name.trim_start_matches("std."));
     }

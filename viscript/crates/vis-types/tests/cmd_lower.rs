@@ -65,9 +65,18 @@ fn flag_bool_dung_default() {
 }
 
 #[test]
-fn lenh_la_la_vs0601() {
-    let (ma, _) = ha("khong_co \"x\"\n");
-    assert!(ma.contains(&"VS0601".to_string()), "được: {ma:?}");
+fn lenh_la_thanh_chuong_trinh_ngoai() {
+    // **SỬA KÈM LÝ DO (ST-27)**: lệnh lạ ⇒ **chương trình ngoài** (§9.3) — hạ **không** báo lỗi;
+    // lỗi chỉ đến lúc chạy nếu không tìm thấy chương trình (`VS0501`). Mã `VS0601` giữ cho
+    // `--no-extern` (xem `check_no_extern_bao_vs0601` ở `vis-cli/tests/cmd_run.rs`).
+    let (ma, dong) = ha("khong_co \"x\"\n");
+    assert_eq!(
+        ma.len(),
+        1,
+        "không được có chẩn đoán (chỉ `stmts=`): {ma:?}"
+    );
+    assert_eq!(ma[0], "stmts=1", "đúng một câu lệnh");
+    assert!(dong.is_empty(), "không có chẩn đoán nào: {dong:?}");
 }
 
 #[test]
@@ -99,8 +108,10 @@ fn chuong_trinh_ngoai_la_vs0604() {
 
 #[test]
 fn chan_doan_co_dong_cot_that() {
-    let lexed = lex("khong_co \"x\"\n", Mode::Command);
-    let out = parse("khong_co \"x\"\n", Mode::Command);
+    // ST-27: dùng **thừa đối số** (`VS0602`) thay cho lệnh lạ (nay hợp lệ) để kiểm vị trí.
+    let src = "echo \"a\" \"b\" \"c\" \"d\"\n";
+    let lexed = lex(src, Mode::Command);
+    let out = parse(src, Mode::Command);
     let h = lower(&out.cst, &lexed);
     let d = h.diagnostics.first().expect("phải có chẩn đoán");
     assert_eq!(d.line, 1, "chẩn đoán phải ở dòng 1, được {}", d.line);

@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod cache;
 mod modules;
+mod ngoai;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
 
@@ -59,7 +60,7 @@ struct ChanDoanCheck {
     phu: String,
 }
 
-fn check_one(path: &str) -> Result<(), ChanDoanCheck> {
+fn check_one_co(path: &str, cho_ngoai: bool) -> Result<(), ChanDoanCheck> {
     if let Err(e) = std::fs::read_to_string(path) {
         return Err(ChanDoanCheck {
             ma: "VS0201",
@@ -69,7 +70,7 @@ fn check_one(path: &str) -> Result<(), ChanDoanCheck> {
             phu: String::new(),
         });
     }
-    let loaded = modules::load(path).map_err(|e| ChanDoanCheck {
+    let loaded = modules::load_with(path, cho_ngoai).map_err(|e| ChanDoanCheck {
         ma: "VS0201",
         line: 1,
         col: 1,
@@ -205,6 +206,12 @@ fn run_check(args: &[String]) -> ExitCode {
     if args.is_empty() {
         return usage_check();
     }
+    // ST-27: `--no-extern` — lệnh lạ báo `VS0601` (không cho chương trình ngoài).
+    let cho_ngoai = !args.iter().any(|a| a == "--no-extern");
+    let args: Vec<&String> = args
+        .iter()
+        .filter(|a| a.as_str() != "--no-extern")
+        .collect();
     if let Some(bad) = args.iter().find(|a| a.starts_with('-')) {
         eprintln!("vis check: không hỗ trợ cờ `{bad}`");
         return usage_check();
@@ -215,7 +222,7 @@ fn run_check(args: &[String]) -> ExitCode {
     let mut failed = false;
     for (i, path) in args.iter().enumerate() {
         let n = i + 1;
-        match check_one(path) {
+        match check_one_co(path, cho_ngoai) {
             Ok(()) => tap.push_str(&format!("ok {n} - {path}\n")),
             Err(d) => {
                 failed = true;
@@ -252,6 +259,9 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut dump = false;
     let mut dung_cache = true;
     let mut dump_deps = false;
+    let mut explain_perms = false;
+    // `vis run --no-extern`: tắt chương trình ngoài (lệnh lạ ⇒ `VS0601`).
+    let mut co_no_extern = false;
     let mut tep: Option<String> = None;
     let mut prog_args: Vec<String> = Vec::new();
     let mut i = 0;
@@ -265,6 +275,10 @@ fn run_run(rest: &[String]) -> ExitCode {
             "--no-cache" => dung_cache = false,
             // ST-25: in cây phụ thuộc của module.
             "--dump-deps" => dump_deps = true,
+            // ST-27: in nhật ký quyền trước mỗi lần chạy chương trình ngoài.
+            "--explain-perms" => explain_perms = true,
+            // ST-27: tắt chương trình ngoài ⇒ lệnh lạ `VS0601`.
+            "--no-extern" => co_no_extern = true,
             "--" => {
                 prog_args = rest[i + 1..].to_vec();
                 break;
@@ -353,7 +367,7 @@ fn run_run(rest: &[String]) -> ExitCode {
         }
     }
     // 1–3) nạp **module** (ST-25): đa tệp, `use`, cấm vòng, chẩn đoán đúng tên tệp.
-    let loaded = match modules::load(&tep) {
+    let loaded = match modules::load_with(&tep, !co_no_extern) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("vis run: {e}");
@@ -419,6 +433,20 @@ fn run_run(rest: &[String]) -> ExitCode {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
                     vis_vm::run(&m, &text, &prog_args)
+                } else if che_do == vis_syntax::Mode::Command && !co_no_extern {
+                    // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
+                    let mut runner = ngoai::Runner {
+                        giai_thich: explain_perms,
+                        ..ngoai::Runner::default()
+                    };
+                    vis_interp::run_with_ngoai(
+                        &text,
+                        &h.hir,
+                        &h.symbols,
+                        &h.types,
+                        &prog_args,
+                        Some(&mut runner),
+                    )
                 } else {
                     vis_interp::run(&text, &h.hir, &h.symbols, &h.types, &prog_args)
                 };

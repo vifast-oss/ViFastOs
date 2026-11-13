@@ -720,6 +720,7 @@ impl<'a> Lowerer<'a> {
                     is_self: false,
                     is_var_self: false,
                     default: None,
+                    variadic: false,
                 });
             }
         }

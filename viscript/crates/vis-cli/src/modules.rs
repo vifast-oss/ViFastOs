@@ -160,6 +160,7 @@ struct Nap {
     deps: Vec<(String, Vec<String>)>,
     mau: BTreeMap<String, Mau>,
     pub_types: BTreeMap<String, Vec<(String, Type)>>,
+    cho_ngoai: bool,
 }
 
 impl Nap {
@@ -393,6 +394,7 @@ impl Nap {
             imports,
             imported_types,
             std_mods,
+            cho_ngoai: self.cho_ngoai,
         };
         let out = lower_into(
             &mut self.symbols,
@@ -440,7 +442,13 @@ impl Nap {
 }
 
 /// Nạp `main` + toàn bộ phụ thuộc (ST-25).
+#[allow(dead_code)] // giữ API `load` (không cờ) cho test/đọc; sản phẩm dùng `load_with`.
 pub fn load(main: &str) -> Result<Loaded, LoadError> {
+    load_with(main, true)
+}
+
+/// Như [`load`] nhưng `cho_ngoai = false` ⇒ lệnh lạ báo `VS0601` (`vis check --no-extern`).
+pub fn load_with(main: &str, cho_ngoai: bool) -> Result<Loaded, LoadError> {
     let main_path = PathBuf::from(main);
     if !main_path.is_file() {
         return Err(LoadError::NotFile(main.to_string()));
@@ -471,6 +479,7 @@ pub fn load(main: &str) -> Result<Loaded, LoadError> {
         deps: Vec::new(),
         mau: BTreeMap::new(),
         pub_types: BTreeMap::new(),
+        cho_ngoai,
     };
     n.tham(&main_path);
     let rel_chinh = rel_cua(&main_dir, &n.main);

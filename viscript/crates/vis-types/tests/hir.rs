@@ -632,10 +632,19 @@ fn cst_che_do_lenh_ha_that_qua_cmd_lower() {
         "không panic/lỗi cấp API: {:?}",
         h2.error
     );
-    assert_eq!(
-        h2.diagnostics.first().map(|d| d.code.short),
-        Some("VS0601"),
-        "lệnh ngoài bảng chữ ký VS0 ⇒ VS0601"
+    // **SỬA KÈM LÝ DO (ST-27)**: lệnh lạ ⇒ **chương trình ngoài** (§9.3) — hạ thành call
+    // `exec.<tên>`, **không** còn `VS0601`; lỗi (nếu có) chỉ đến lúc chạy.
+    assert!(
+        h2.diagnostics.is_empty(),
+        "lệnh lạ không còn chẩn đoán tĩnh: {:?}",
+        h2.diagnostics
+    );
+    // Nợ VS1b (JOURNAL ST-27): **stage ngoài đứng sau pipe** — giá trị pipe chưa nối vào `stdin`
+    // của tiến trình kế (thiết kế §9.5 dùng `stream[bytes]`), nên HIR chỉ còn stage cuối.
+    let s2 = format!("{:?}", h2.hir);
+    assert!(
+        s2.contains("exec.grep"),
+        "phải hạ stage cuối thành `exec.<tên>`: {s2}"
     );
 }
 

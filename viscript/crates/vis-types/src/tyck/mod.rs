@@ -401,6 +401,7 @@ impl<'a> Checker<'a> {
                                 })
                                 .collect(),
                             ret,
+                            variadic: f.params.last().map(|p| p.variadic).unwrap_or(false),
                         });
                     }
                 }

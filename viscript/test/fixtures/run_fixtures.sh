@@ -81,7 +81,9 @@ expect_fail_dev "doc-examples: ngoại lệ cũ đã xanh" "ngoại lệ cũ" \
 # 8) allowlist sai số 7 (--root KHÔNG kèm --temp-root vẫn đủ luật) ⇒ đỏ
 # **SỬA KÈM LÝ DO (ST-18)**: allowlist 7 → **9** mục (hai `vish-session` §9.7 dùng lệnh shell VS1),
 # nên câu "sai số mục" phải khoá theo con số **hiện tại** — máy kiểm vẫn bắt đúng lỗi.
-expect_fail_dev "doc-examples: allowlist sai số mục" "phải đúng 9 mục" \
+# **SỬA KÈM LÝ DO (ST-27, Agent 0 APPROVED)**: khối 662 (`extern cmd git(…, ...rest: str)`) nay
+# **xanh** (variadic đã có) ⇒ allowlist còn **8** mục; câu "sai số mục" khoá theo con số hiện tại.
+expect_fail_dev "doc-examples: allowlist sai số mục" "phải đúng 8 mục" \
     bash "$DEV" doc-examples --root "$tmp/7"
 # 9) fixture lệch byte so với tài liệu ⇒ đỏ
 mkdir -p "$tmp/9/docs/viscript" "$tmp/9/viscript/test/doc-examples"

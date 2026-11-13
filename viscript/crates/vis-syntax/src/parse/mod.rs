@@ -709,6 +709,13 @@ impl<'a> Parser<'a> {
 
     fn param(&mut self) -> PResult<Node> {
         let mut elems = Vec::new();
+        // ST-27: `...rest: str` — lexer không có token `...` (`..` rồi `.`), nhận cả hai.
+        if self.at_punct("..") {
+            elems.push(self.bump());
+            if self.at_punct(".") {
+                elems.push(self.bump());
+            }
+        }
         if self.at_kw("var") && self.peek_kw(1, "self") {
             elems.push(self.bump());
             elems.push(self.bump());

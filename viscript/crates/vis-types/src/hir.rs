@@ -154,6 +154,8 @@ pub struct HParam {
     pub is_self: bool,
     pub is_var_self: bool,
     pub default: Option<HExpr>,
+    /// `...rest: str` — gom **mọi** đối số vị trí còn lại thành `list[str]` (ST-27).
+    pub variadic: bool,
 }
 
 /// `extern cmd name(params)` — chưa có thân.

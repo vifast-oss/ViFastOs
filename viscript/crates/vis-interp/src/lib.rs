@@ -100,7 +100,22 @@ pub fn run(
     types: &TypeTable,
     args: &[String],
 ) -> RunOutput {
+    run_with_ngoai(text, hir, symbols, types, args, None)
+}
+
+/// Như [`run`] nhưng gắn **host chương trình ngoài** (ST-27). `None` ⇒ lệnh ngoài ⇒ `VS0604`.
+pub fn run_with_ngoai<'a>(
+    text: &str,
+    hir: &'a Hir,
+    symbols: &'a Symbols,
+    types: &'a TypeTable,
+    args: &[String],
+    ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
+) -> RunOutput {
     let mut it = interp::Interp::new(hir, symbols, types);
+    if let Some(n) = ngoai {
+        it.set_ngoai(n);
+    }
     let res = it.run_program(args);
     let stdout = it.take_stdout();
     let steps = it.steps;

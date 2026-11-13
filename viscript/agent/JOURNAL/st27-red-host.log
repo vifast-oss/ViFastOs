@@ -1,0 +1,67 @@
+=== ST-27 D2-05: chương trình ngoài + variadic + `--x=v` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T04:48:10Z
+
+## 1. Trước ST-27 (đỏ thật)
+
+`/bin/echo hi` trong `.vish` (ST-18..ST-26):
+  error VS0601: không có lệnh `/bin/echo` (không có trong bảng chữ ký)
+`cmd x(a: str, ...rest: str)` ⇒ `VS0201: mong định danh, thật `..`` (variadic chưa có).
+`echo --upper=true x` ⇒ `VS0601: `echo` không có cờ `--upper=true`` (`--x=v` chưa có).
+
+## 2. Đỏ của tầng chạy (sau khi hạ đã cho lệnh lạ, **chưa** nối host)
+
+  /tmp/e1.vish:1:1: error VS0604: chương trình ngoài `/bin/echo` chưa hỗ trợ ở môi trường này (không có host)
+⇒ `interp` **không** biết OS (đúng §14) — thiếu `Host::ngoai` + `Runner` ở CLI.
+
+## 3. Đo được (sau khi nối)
+
+- **357** test workspace (344 + **13** `crates/vis-cli/tests/extern.rs`)
+- **13 ca extern** (≥ 12): echo/printf/true/false/cat, raw, stderr không trộn stdout,
+  `--no-extern` ⇒ `VS0601`, `--explain-perms`, timeout, variadic, `echo` nội bộ không đổi nghĩa;
+  đường dẫn **kiểm tồn tại** trước khi dùng (`/bin/true`,`/bin/false` **không có** trên macOS ⇒ dùng `/usr/bin/true|false`)
+- **5 ca sem `.vish`** mới (`test/sem/vish/ngoai-*`) ⇒ 328 ca / 17 nhóm
+- differential interp↔VM: **276/276** (ST-27 +4 `.vish` ngoài, cả hai đều `VS0604` khi không host)
+- `vis check` mặc định **xanh** cho lệnh lạ; `--no-extern` ⇒ `VS0601` (mã cũ, nghĩa mới)
+
+**Kỳ vọng cũ sửa kèm lý do**: `cmd_lower::lenh_la_la_vs0601` → `lenh_la_thanh_chuong_trinh_ngoai`;
+`cmd_run::lenh_khong_ton_tai_la_vs0601` → `..._vs0501`; `check_bao_lenh_la_vs0601` → `check_no_extern_bao_vs0601`;
+`check::hai_khoi_vish_session` (`VS0601`→`06xx`), `check::khoi_loai_tru` (6/7 khối — khối variadic hợp lệ),
+`doc_fixtures` (16 đủ thân, 6 loại trừ), `sem` 323→328, `roundtrip` 323→328, `vs_interp` 272→276, `fuzz_mutate` 272→276.
+
+## 4. Nợ đã biết (ghi JOURNAL)
+
+- `| complete` (`{stdout,stderr,code}`) = VS1b — hệ quả: `grep` không khớp (exit 1) hiện là **lỗi**;
+  VS1 cần `| complete` để `grep` không khớp không phá pipeline.
+- Nối **pipe → stdin** của tiến trình kế (design §9.5 `stream[bytes]`) = VS1b: hiện stage ngoài đứng sau
+  pipe chỉ nhận **đối số từ**, không nhận dữ liệu pipe.
+- **Consent thật** (hỏi người dùng) + `cap[Proc]` = VS2; `--explain-perms` chỉ là nhật ký.
+- Cap đồng thời = 1 (đúng VS0/VS1 chưa có job).
+
+## 5. sha256 bản commit (allowlist 8 mục — Agent 0 APPROVED, commit `e009411` đã xoá dòng 662)
+  sha256 crates/vis-cli/src/ngoai.rs=29e79142f49f3ee63743bcfba4123c11f250931c5964628f097f5105057ddbd4
+  sha256 crates/vis-cli/src/main.rs=781621c9d1815bafd1318cdc03830be69367192f5f489fbd476f99527adedc3c
+  sha256 crates/vis-cli/src/modules.rs=6d65fdb82c35608134921ef4a45fc8590e14208358e017e77b701a69e7ff16a9
+  sha256 crates/vis-cli/tests/extern.rs=a4663af0d8bdcfd3468ab1e99b2f8b209737084a53dd8795224beb504573122f
+  sha256 crates/vis-cli/tests/cmd_run.rs=d7f6ac569521b574598d66a0d77179b131dacd82ffaac16cdc26b73411a4896e
+  sha256 crates/vis-cli/tests/check.rs=1a84f30ac5ab05c9627784a812e59c5c125a04ee9d7c560a887a0bf0ab2b47e2
+  sha256 crates/vis-interp/src/builtin.rs=5a335d352a8eebd3d2db3c9396777735151928fa97e0ae65b98e5d7a3c3de917
+  sha256 crates/vis-interp/src/interp.rs=5e6425e8644bc04bb39f989825be5603854b9b7d2738668ca2906262acb99cb3
+  sha256 crates/vis-interp/src/lib.rs=f449e8c6d52851d660c6da586bfa7d24aacbe1015a3e823929bd42faaa815a8e
+  sha256 crates/vis-types/src/lower.rs=d94dafe9f27440cf5fb790665f5502ddcc577e8dd5c3c05a97ad69d74a6986d7
+  sha256 crates/vis-types/src/lower/cmd.rs=b238e847f4fa59c7a908e7aa8d1984ecb33106f7207a9920b12febb78bffb2a6
+  sha256 crates/vis-types/src/tyck/expr.rs=1cc16cffa8f39f44ef5412bf7167bccf49e51e459b0d73f6ae718d831a53e405
+  sha256 crates/vis-types/src/tyck/mod.rs=08ccf6a4029d08875465b66882d4e9dffff695de37ffae15a7a2de5863fa9b6a
+  sha256 crates/vis-types/src/hir.rs=2a5c24c95fdc9f29e93b5677bce6902556a07efd81f3b5aa925229613ff04638
+  sha256 crates/vis-types/tests/cmd_lower.rs=5cc64f75e53fbc185c0a5fbc5047318e76b26fef09371830c276a031f7cf5fdc
+  sha256 crates/vis-types/tests/hir.rs=18d6d1f14030c383ff2af471ee19291c2176a9158126fa14b2e73d6eb4955cd4
+  sha256 crates/vis-syntax/src/parse/mod.rs=e2b2e08ea74073003c4506965ea5a59d061aa8fd637704d9a5e28d75488be31b
+  sha256 crates/vis-syntax/tests/doc_fixtures.rs=beb44f8b890025c188084136237d5a2dc6616dab2bef11205b3d5f7e71573e1a
+  sha256 crates/vis-bytecode/src/util.rs=d643685a3b460a5eee80e316f8325af966be66717e50d99fd78e4ab413f3391d
+  sha256 crates/vis-bytecode/tests/roundtrip.rs=0d2916edb872bccb5f3ad25c1a9a4377a8ae8298143138bd381bbee80cdc3e48
+  sha256 crates/vis-vm/tests/vs_interp.rs=0be1519df7f064c5fdea0e45924aef4e1dac736bf326a70b15fa17f23990d6e5
+  sha256 crates/vis-vm/tests/fuzz_mutate.rs=da357aed5e60b3b23e3e4dac6b81dcbdc7fe9df736cb8c10aa5224f52e6f0598
+  sha256 crates/vis-cli/tests/sem.rs=be3ef41f47220298a011e9b0089089aa3c9ee92df10394b6f6d6acd0410f65c1
+  sha256 test/doc-examples/doc_examples.py=19e06b51c1f4ae6b7996b46253067d225ea4f7f475f0162b47122f42b1674d18
+  sha256 test/fixtures/run_fixtures.sh=312a7cb504171abb7dbefa9850763c3a1dd653ab08a40eaadae616fa06ccb652
+  sha256 test/doc-examples/qd72-flag-number.vish=f5e71902f265bf8e9fe699752eb3896f5e5efc16d4057c04694e4b27c7dad01b
+  sha256 test/doc-examples/qd72-url-hash.vish=a33cd6cbad8a3c4305794422407125cf3c1b06a926b4e82a6c85e5913952a678
