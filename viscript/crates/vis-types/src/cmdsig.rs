@@ -100,9 +100,41 @@ impl BuiltinSigs {
                 tham("xs", Type::List(Box::new(t.clone())), None),
                 tham("n", Type::Int, None),
             ],
-            ret: Type::List(Box::new(t)),
+            ret: Type::List(Box::new(t.clone())),
         };
 
+        // ST-38: `where`/`each`/`first`/`count` — closure-arg; `each` **chỉ** tác dụng phụ (trả `()`).
+        let ds = |t: &Type| Type::List(Box::new(t.clone()));
+        let fn_bool = Type::Fn(vec![t.clone()].into(), Box::new(Type::Bool));
+        let fn_unit = Type::Fn(vec![t.clone()].into(), Box::new(Type::Unit));
+        let where_ = CmdSig {
+            name: "where".into(),
+            sym: None,
+            generics: vec!["T".into()],
+            params: vec![tham("xs", ds(&t), None), tham("f", fn_bool, None)],
+            ret: ds(&t),
+        };
+        let each = CmdSig {
+            name: "each".into(),
+            sym: None,
+            generics: vec!["T".into()],
+            params: vec![tham("xs", ds(&t), None), tham("f", fn_unit, None)],
+            ret: Type::Unit,
+        };
+        let first = CmdSig {
+            name: "first".into(),
+            sym: None,
+            generics: vec!["T".into()],
+            params: vec![tham("xs", ds(&t), None)],
+            ret: Type::Opt(Box::new(t.clone())),
+        };
+        let count = CmdSig {
+            name: "count".into(),
+            sym: None,
+            generics: vec!["T".into()],
+            params: vec![tham("xs", ds(&t), None)],
+            ret: Type::Int,
+        };
         Self {
             sigs: vec![
                 CmdSig::thuong(
@@ -121,6 +153,10 @@ impl BuiltinSigs {
                     Type::List(Box::new(Type::Str)),
                 ),
                 take,
+                where_,
+                each,
+                first,
+                count,
             ],
         }
     }

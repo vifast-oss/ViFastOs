@@ -477,10 +477,12 @@ fn danh_sach_builtin_khoa_dung_11_ten() {
     // Agent 0 đã duyệt (báo cáo trước code, (c) 3 lệnh builtin).
     assert_eq!(
         BUILTIN_VALUE_NAMES,
-        [
-            "print", "len", "str", "echo", "lines", "take", "Ok", "Err", "Some", "None", "ref"
-        ],
-        "VD-44 #3: 11 tên giá trị dựng sẵn (8 cũ + 3 lệnh chế độ lệnh ST-18) — thêm/bớt phải qua Agent 0"
+        ["print", "len", "str", "echo", "lines", "take", "Ok", "Err", "Some", "None", "ref"],
+        // **SỬA KÈM LÝ DO (ST-38)**: `where`/`each`/`first`/`count` **KHÔNG** vào bảng này — chúng là
+        // lệnh **chế độ shell** (bảng `cmdsig` + `builtin::SIGS`), không phải tên giá trị dựng sẵn; nếu
+        // thêm vào đây thì `fn first(…)` của người dùng trong `.vis` bị `VS0302` (trùng khai báo).
+        // Giữ **11** tên (8 cũ + 3 ST-18) — thêm/bớt phải qua Agent 0.
+        "11 tên giá trị dựng sẵn (8 cũ + 3 ST-18) — thêm/bớt phải qua Agent 0"
     );
     for n in BUILTIN_VALUE_NAMES {
         assert!(vis_types::is_builtin_value(n), "{n} phải là builtin");

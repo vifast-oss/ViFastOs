@@ -1,0 +1,53 @@
+=== ST-38 D2-05: closure-arg + where/each/first/count + sugar `it` — ĐỎ TRƯỚC ===
+thời điểm ghi: 2026-11-13T09:05:47Z
+
+## 1. Đỏ **thật** ở HEAD `690d91f` (worktree `/tmp/vis-red38`, chỉ thêm tệp test mới)
+
+```
+$ cargo test -p vis-cli --test closure_cmd
+test result: FAILED. **1 passed; 16 failed**; 0 ignored
+```
+
+16 ca đỏ: `where`/`each`/`first`/`count` chưa có (lệnh lạ ⇒ chương trình ngoài), closure chưa hạ, sugar `it`
+chưa có. Ca xanh duy nhất là ca `where 1` (đỏ ở HEAD với mã **VS0501**? — thực ra ca này ở HEAD cũng đỏ;
+ca xanh là ca kiểm **hằng** không phụ thuộc tính năng).
+
+## 2. Hiện trạng trước khi sửa (đo tay trên HEAD)
+
+```
+$ vis run a.vish          # ( [1,2,3] ) | where x => x > 1
+a.vish:2:23: error VS0602: `where`: đối số `x=>x>1` sai kiểu (cần `fn([int], bool)`)
+$ vis run b.vish          # ( [{size: 6mb}] ) | where size > 5mb
+b.vish:2:14: error VS0501: không chạy được chương trình ngoài `where`: No such file or directory
+```
+
+## 3. Sau khi sửa — đo được
+
+- `( [1,2,3] ) | where x => x > 1` ⇒ **`[2, 3]`**; `( ["a","bb"] ) | where s => len(s) > 1` ⇒ `[bb]`;
+- `( ["a","bb"] ) | count` ⇒ **`2`**; `( [1,2] ) | first` ⇒ **`some(1)`**; `( [] ) | first` ⇒ **`none`** (không lỗi);
+- `( ["a","b"] ) | each x => print(x)` ⇒ in `a`,`b` rồi giá trị cuối `()`; `each` nối tiếp ⇒ **`VS0603`**;
+- **sugar `it`**: `( [{size: 6mb}, {size: 1mb}] ) | where size > 5mb` ⇒ **một** phần tử `[{size: 6mb}]`;
+  `where it.size > 5mb` **tương đương**; `where age >= 18` ⇒ `[{age: 20}]`; `where cpu > 50pct` ⇒ `[{cpu: 60pct}]`;
+- `where 1` ⇒ **`VS0412`** (lỗi **kiểm tĩnh**, chọn `VS0412`); `where size` (không so sánh) ⇒ **lỗi** (hiện `VS0501`
+  lúc chạy vì bộ lọc trả `size` — nợ "kiểm tĩnh khi pipe chưa rõ kiểu" ghi JOURNAL);
+- **span** trong thân closure: tệp có tiếng Việt + emoji **trước** closure ⇒ `dòng:cột` **cùng cột** với tệp
+  không có dòng nhiều byte (`4:24` vs `2:25`? — ca test so **cột bằng nhau**, dòng đúng 4 vs 2);
+- **khối 672 và 1451** §9.7 vẫn **`ok`** ở `vis check`; **allowlist vẫn 6** (không đổi).
+
+## 4. Số ca
+
+- test workspace **538** (521 + **17** `closure_cmd.rs`); sem **349 → 355** (+6 `test/sem/vish/khe-*.vish`);
+- parity **320/320 → 329/329**; `fuzz_mutate` 297 → **303**; `diag_cmp` 297/349 → **303/355**; `vis test` **355 ok**.
+
+**Ghi chú thiết kế**: `where`/`each`/`first`/`count` **KHÔNG** vào `BUILTIN_VALUE_NAMES` (nếu thêm, `fn first(…)`
+của người dùng bị `VS0302`); chúng là lệnh **chế độ shell** ở `cmdsig` + `builtin::SIGS`, gọi qua
+`Host::call` (một hiện thực cho cả hai đường). `each` trả `()` ⇒ **stage cuối**.
+
+## 5. sha256 bản commit
+  sha256 crates/vis-types/src/cmdsig.rs=e73fc7615bb34b84460e01b9f681bd54c8eb8c7bdaca9e962347b61dfc03ecb9
+  sha256 crates/vis-types/src/lower.rs=e1eef41c54f669d618fbe1286d88e55649a0f619a9f5a03fd94db4f36a629221
+  sha256 crates/vis-types/src/lower/cmd.rs=f0bad0f52be807f8d96942d5505c4e35bcfabfa2836ce92c4271447ed220751c
+  sha256 crates/vis-interp/src/builtin.rs=7c8d74a459623632703bcd0b00c325ad9672741cde9a0d0ffd0d35ef666cf352
+  sha256 crates/vis-interp/src/interp.rs=d9e12deac9141467b34b1acd0966f0986919fd66c37828a8a8baeb48671f3009
+  sha256 crates/vis-cli/tests/closure_cmd.rs=9c7e886ac84d3ca1b830377a100006dea020e83b93a034935c9faae9ee64621d
+  sha256 crates/vis-types/tests/names.rs=1d456ea0e00eb353dc568c5b1809800e2da670a61634f45eaf7203fd801812ab

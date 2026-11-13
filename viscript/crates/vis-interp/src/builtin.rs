@@ -117,7 +117,7 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 11] = [
+pub const SIGS: [BuiltinSig; 15] = [
     BuiltinSig {
         name: "print",
         min: 1,
@@ -147,6 +147,26 @@ pub const SIGS: [BuiltinSig; 11] = [
         name: "take",
         min: 2,
         max: 2,
+    },
+    BuiltinSig {
+        name: "where",
+        min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "each",
+        min: 2,
+        max: 2,
+    },
+    BuiltinSig {
+        name: "first",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "count",
+        min: 1,
+        max: 1,
     },
     BuiltinSig {
         name: "Ok",
@@ -610,6 +630,62 @@ pub fn call(
             };
             let n = (*n).max(0) as usize;
             Ok(Value::List(xs.iter().take(n).cloned().collect()))
+        }
+        // ST-38: `where`/`each` — closure-arg; **một** hiện thực cho cả hai đường (`Host::call`).
+        "where" => {
+            if args.len() != 2 {
+                return Err(trap(RT, "`where` cần 2 đối số", span));
+            }
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, "`where` cần `list`", span));
+            };
+            let f = args[1].clone();
+            let mut out: Vec<Value> = Vec::new();
+            for x in xs.clone() {
+                match host.call(&f, vec![x.clone()], span)? {
+                    Value::Bool(true) => out.push(x),
+                    Value::Bool(false) => {}
+                    other => {
+                        return Err(trap(
+                            RT,
+                            format!("`where`: hàm lọc phải trả `bool`, được `{}`", other.show()),
+                            span,
+                        ))
+                    }
+                }
+            }
+            Ok(Value::List(out))
+        }
+        "each" => {
+            if args.len() != 2 {
+                return Err(trap(RT, "`each` cần 2 đối số", span));
+            }
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, "`each` cần `list`", span));
+            };
+            let f = args[1].clone();
+            for x in xs.clone() {
+                host.call(&f, vec![x], span)?;
+            }
+            Ok(Value::Unit)
+        }
+        "first" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`first` cần 1 đối số", span));
+            }
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, "`first` cần `list`", span));
+            };
+            Ok(Value::Opt(xs.first().cloned().map(Box::new)))
+        }
+        "count" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`count` cần 1 đối số", span));
+            }
+            let Value::List(xs) = &args[0] else {
+                return Err(trap(RT, "`count` cần `list`", span));
+            };
+            Ok(Value::Int(xs.len() as i64))
         }
         "len" => {
             if args.len() != 1 {

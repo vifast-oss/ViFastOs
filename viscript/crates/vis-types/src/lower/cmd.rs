@@ -58,6 +58,245 @@ fn lit(kind: LitKind, text: &str) -> HExpr {
 
 /// Tên kiểu ngắn để đưa vào thông điệp `VS0602`/`VS0603`.
 impl<'a> Lowerer<'a> {
+    /// Vị trí **bắt đầu** vùng đối số của stage (token đầu sau tên lệnh).
+    fn arg_start(&self, node: &Node) -> Option<usize> {
+        // Parser có thể **không** sinh token cho mọi từ (vd `size > 5mb` thành redirect) ⇒ quét
+        // thẳng văn bản: hết **tên lệnh**, bỏ khoảng trắng ⇒ đó là đầu vùng đối số.
+        let ten = node.tokens(&self.cst.tokens).next()?;
+        let mut i = ten.span.end;
+        let bytes = self.text.as_bytes();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        Some(i)
+    }
+
+    /// `true` nếu `name` đã **khai** trong phạm vi hiện tại (biến/hàm/const/dựng sẵn).
+    fn da_khai(&self, name: &str) -> bool {
+        self.symbols
+            .syms
+            .iter()
+            .any(|s| s.name == name && s.kind != SymKind::Generic)
+    }
+
+    /// ST-38: **vị từ ngầm `it`** — `where size > 5mb` ⇒ `it => it.size > 5mb`.
+    ///
+    /// Luật (Agent 0 chốt): chỉ đổi **định danh trần chưa khai báo**, không đổi `it` viết tường minh,
+    /// không đổi tên đã khai; không đổi luật nào khác. `where 1` vẫn là **lỗi kiểm tĩnh** (`VS0602`
+    /// "đối số sai kiểu" vì `1` không phải hàm) — ghi JOURNAL.
+    fn ha_sugar(&mut self, start: usize, pty: Type, rty: Type) -> Option<HExpr> {
+        // Kết thúc **stage**: gặp `|`/`;`/`&` ở độ sâu 0, hoặc xuống dòng.
+        let mut depth = 0i32;
+        let mut end = self.text.len();
+        let bytes = self.text.as_bytes();
+        let mut i = start;
+        while i < bytes.len() {
+            let c = bytes[i];
+            match c {
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b'|' | b';' | b'&' if depth <= 0 => {
+                    end = i;
+                    break;
+                }
+                b'\n' if depth <= 0 => {
+                    end = i;
+                    break;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        let text = self.text.get(start..end)?.trim().to_string();
+        if text.is_empty() {
+            return None;
+        }
+        let lexed = vis_syntax::lex(&text, vis_syntax::Mode::Script);
+        let mut chen: Vec<usize> = Vec::new();
+        let toks: Vec<(usize, String)> = lexed
+            .tokens
+            .iter()
+            .map(|t| (t.span.start, t.text.clone()))
+            .collect();
+        for (i, (off, txt)) in toks.iter().enumerate() {
+            if txt != "it" && self.da_khai(txt) {
+                continue;
+            }
+            if txt == "it"
+                || txt.is_empty()
+                || !txt.starts_with(|c: char| c.is_alphabetic() || c == '_')
+            {
+                continue;
+            }
+            if matches!(txt.as_str(), "and" | "or" | "not" | "true" | "false") {
+                continue;
+            }
+            if toks
+                .get(i.wrapping_sub(1))
+                .map(|(_, p)| p == ".")
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if txt == "it" || self.da_khai(txt) {
+                continue;
+            }
+            // `it` tường minh: `it.x` — không đổi; `f(` là lời gọi hàm — không đổi.
+            if toks.get(i + 1).map(|(_, p)| p == "(").unwrap_or(false) {
+                continue;
+            }
+            // `time.now()`, `it.is_file()` — tên **module/trường** (theo sau là `.`) ⇒ không đổi.
+            if toks.get(i + 1).map(|(_, p)| p == ".").unwrap_or(false) {
+                continue;
+            }
+            chen.push(*off);
+        }
+        let mut src_body = String::new();
+        let mut last = 0usize;
+        for off in &chen {
+            src_body.push_str(&text[last..*off]);
+            src_body.push_str("it.");
+            last = *off;
+        }
+        src_body.push_str(&text[last..]);
+        self.tam_n += 1;
+        let prefix = format!("let _c{} = it => ", self.tam_n);
+        if start < prefix.len() {
+            return None;
+        }
+        let pad = start - prefix.len();
+        let src = format!("{prefix}{}{src_body}", " ".repeat(pad));
+        if std::env::var("VIS_DBG_SUGAR").is_ok() {
+            eprintln!("sugar src={src:?}");
+        }
+        let lexed2 = vis_syntax::lex(&src, vis_syntax::Mode::Script);
+        let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
+        self.push_frame(FrameKind::Fn, Span::new(start, end));
+        let scope = self.scope.clone();
+        let mut sub = super::Lowerer::new(
+            &parsed.cst,
+            &lexed2,
+            self.opts.clone(),
+            self.symbols,
+            self.tbl,
+        );
+        sub.scope = scope;
+        sub.run();
+        let out = sub.finish();
+        self.pop_frame();
+        self.diags.extend(out.diagnostics);
+        let init = match out.hir.stmts.first() {
+            Some(crate::hir::HStmt::Let { init, .. }) => init.clone(),
+            _ => return None,
+        };
+        match init {
+            HExpr::Lambda {
+                params, body, span, ..
+            } => {
+                let mut params = params;
+                if let Some(p) = params.first_mut() {
+                    p.ty = pty;
+                }
+                Some(HExpr::Lambda {
+                    params,
+                    ret: rty,
+                    body,
+                    span,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// ST-38: hạ **thân closure** `x => <biểu thức>` thành `HExpr::Lambda`.
+    ///
+    /// Span: parser re-parse thân từ **slice** (span tương đối) ⇒ ở đây lex/parse lại văn bản thân
+    /// nhưng **đệm trước bằng đúng số byte** của vị trí thân trong tệp (prefix `let …=` cố định) ⇒
+    /// mọi `Span` là **tuyệt đối** (đúng `dòng:cột`, kể cả khi tệp có ký tự nhiều byte trước đó).
+    fn ha_closure(&mut self, g: &Node, want: &Type) -> Option<HExpr> {
+        let (mut pty, rty) = match want {
+            Type::Fn(ps, r) if ps.len() == 1 => (ps[0].clone(), (**r).clone()),
+            _ => (Type::Error, Type::Error),
+        };
+        if matches!(&pty, Type::TypeRef { args, .. } if args.is_empty()) {
+            pty = Type::Error;
+        }
+        // Tên tham số: token đầu; có thể viết liền `x=>`.
+        let mut toks: Vec<Span> = Vec::new();
+        for e in &g.elems {
+            if let Elem::Token(i) = e {
+                if let Some(t) = self.tok(*i) {
+                    toks.push(t.span);
+                }
+            }
+        }
+        let (Some(dau), Some(cuoi)) = (toks.first().copied(), toks.last().copied()) else {
+            return None;
+        };
+        let raw = self.text.get(dau.start..dau.end)?.to_string();
+        let ten = raw.trim_end_matches('=').to_string();
+        // Vị trí thân: sau token `>`.
+        let gt = toks.iter().position(|sp| {
+            self.text
+                .get(sp.start..sp.end)
+                .map(|x| x == ">")
+                .unwrap_or(false)
+        })?;
+        let body_start = toks.get(gt + 1).map(|sp| sp.start)?;
+        let body_end = cuoi.end;
+        if body_end <= body_start {
+            return None;
+        }
+        let body = self.text.get(body_start..body_end)?.to_string();
+        // Tên biến tạm **không** trùng người dùng: bộ hạ con dùng bảng ký hiệu **chung**.
+        self.tam_n += 1;
+        let prefix = format!("let _c{} = ", self.tam_n);
+        if body_start < prefix.len() {
+            return None;
+        }
+        let pad = body_start - prefix.len();
+        let src = format!("{prefix}{}{body}", " ".repeat(pad));
+        let lexed = vis_syntax::lex(&src, vis_syntax::Mode::Script);
+        let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
+        // Khung riêng cho tham số + bảng **chung** (symbols/types) ⇒ tyck thấy đúng `sym`.
+        self.push_frame(FrameKind::Fn, g.span);
+        let psym = self.declare(&ten, SymKind::Param, dau, Some(pty.clone()));
+        let scope = self.scope.clone();
+        let mut sub = super::Lowerer::new(
+            &parsed.cst,
+            &lexed,
+            self.opts.clone(),
+            self.symbols,
+            self.tbl,
+        );
+        sub.scope = scope;
+        sub.run();
+        let out = sub.finish();
+        self.pop_frame();
+        self.diags.extend(out.diagnostics);
+        let init = match out.hir.stmts.first() {
+            Some(crate::hir::HStmt::Let { init, .. }) => init.clone(),
+            Some(crate::hir::HStmt::Expr(e)) => e.clone(),
+            _ => return None,
+        };
+        Some(HExpr::Lambda {
+            params: vec![HParam {
+                name: ten,
+                span: dau,
+                sym: psym,
+                ty: pty,
+                named: false,
+                is_self: false,
+                is_var_self: false,
+                variadic: false,
+                default: None,
+            }],
+            ret: rty,
+            body: crate::hir::HBody::Expr(Box::new(init)),
+            span: g.span,
+        })
+    }
+
     /// ST-37: hạ **nội dung** stage `( … )` — parser chỉ giữ token nên hạ lại văn bản trong ngoặc
     /// ở chế độ script. Chỉ dùng cho **biểu thức thuần** (literal/phép toán); biến trong nhóm chưa hỗ trợ.
     fn vach_text(&self, g: &Node) -> Option<String> {
@@ -78,7 +317,15 @@ impl<'a> Lowerer<'a> {
         let src = format!("let __vach = {}", txt.trim());
         let lexed = vis_syntax::lex(&src, vis_syntax::Mode::Script);
         let parsed = vis_syntax::parse(&src, vis_syntax::Mode::Script);
-        let h = crate::lower(&parsed.cst, &lexed);
+        // ST-38: hạ **vào bảng chung** (ST-25) — nếu hạ bằng bảng mới, `RecId` của bản ghi ẩn danh
+        // trong nhóm không tồn tại ở bảng chính ⇒ tyck báo sai kiểu (`record#0` vs `record#1`).
+        let h = crate::lower_into(
+            self.symbols,
+            self.tbl,
+            &parsed.cst,
+            &lexed,
+            self.opts.clone(),
+        );
         match h.hir.stmts.first().cloned()? {
             HStmt::Let { init, .. } => Some(init),
             HStmt::Expr(e) => Some(e),
@@ -436,6 +683,55 @@ impl<'a> Lowerer<'a> {
             }
             return Some(self.ngoai_call(&ten, node, truoc.map(|(e, _)| e)));
         };
+        // ST-38: **vị từ ngầm `it`** cho `where` (§9.7): `where size > 5mb` ⇒ `it => it.size > 5mb`.
+        // Chỉ áp khi có pipe vào và đối số **không** phải closure; luật đổi tên ở [`Self::ha_sugar`].
+        if sig.name == "where" {
+            if let Some((up, up_ty)) = &truoc {
+                let la_closure = node
+                    .children()
+                    .filter(|c| c.kind != NodeKind::CmdWord)
+                    .any(|c| c.kind == NodeKind::CmdClosure);
+                if std::env::var("VIS_DBG_SUGAR").is_ok() {
+                    eprintln!(
+                        "hook where la_closure={la_closure} kids={:?}",
+                        node.children().map(|c| c.kind).collect::<Vec<_>>()
+                    );
+                }
+                if !la_closure {
+                    let mut bang = Vec::new();
+                    let _ = hop_nhat_cmd(&sig.params[0].ty, up_ty, &sig.generics, &mut bang);
+                    let fty = super::generic::thay(&sig.params[1].ty, &bang);
+                    let (mut pty, rty) = match &fty {
+                        Type::Fn(ps, r) if ps.len() == 1 => (ps[0].clone(), (**r).clone()),
+                        _ => (Type::Error, Type::Error),
+                    };
+                    // Chưa suy được `T` (stage trước kiểu `{error}`) ⇒ dùng `{error}` **im lặng**:
+                    // để `TypeRef{"T"}` lọt xuống tyck sẽ thành `VS0301` (không có kiểu `T`).
+                    if matches!(&pty, Type::TypeRef { args, .. } if args.is_empty()) {
+                        pty = Type::Error;
+                    }
+                    // Vùng văn bản của đối số: từ token đầu **sau tên lệnh** tới hết stage.
+                    if let Some(dau) = self.arg_start(node) {
+                        let lam = self.ha_sugar(dau, pty, rty);
+                        if std::env::var("VIS_DBG_SUGAR").is_ok() {
+                            eprintln!("sugar at {dau} -> {:?}", lam.is_some());
+                        }
+                        if let Some(lam) = lam {
+                            return Some(HExpr::Call {
+                                callee: Box::new(HExpr::Var {
+                                    name: sig.name.clone(),
+                                    sym: sig.sym,
+                                    span: node.span,
+                                }),
+                                args: vec![up.clone(), lam],
+                                named: Vec::new(),
+                                span: node.span,
+                            });
+                        }
+                    }
+                }
+            }
+        }
         // Khe ống (§9.5, ST-18 (a)1): tham số vị trí **đầu tiên** khớp kiểu với giá trị vào —
         // **giữ chỗ trước**, để đối số vị trí còn lại không chiếm mất (`take 1` ⇒ `take(xs=pipe, 1)`).
         let mut vi_tri: Vec<Option<HExpr>> = vec![None; sig.params.len()];
@@ -506,7 +802,9 @@ impl<'a> Lowerer<'a> {
                             .unwrap_or_default();
                         (true, ten_co, n.span, n.children().next().cloned())
                     }
-                    NodeKind::CmdGroup => (false, String::new(), n.span, Some((**n).clone())),
+                    NodeKind::CmdGroup | NodeKind::CmdClosure => {
+                        (false, String::new(), n.span, Some((**n).clone()))
+                    }
                     NodeKind::CmdVar | NodeKind::CmdEnv => {
                         self.diag(
                             &COMMAND_CODES[3],
@@ -647,6 +945,7 @@ impl<'a> Lowerer<'a> {
             };
             let _ = hop_nhat_cmd(&ty, &suy, &sig.generics, &mut bang);
             let expr = match gt {
+                Some(g) if g.kind == NodeKind::CmdClosure => self.ha_closure(&g, &ty),
                 Some(g) if g.kind == NodeKind::CmdGroup => self.lower_vach(&g),
                 Some(g) => {
                     let inner = g.children().next().cloned();

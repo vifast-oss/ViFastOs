@@ -117,10 +117,11 @@ fn sem_323_ca_qua_binary() {
     // `Or[int, str]`, hàm liên kết) ⇒ **346 ca / 18 nhóm** (ST-28 trước: 338).
     // **SỬA KÈM LÝ DO (ST-37)**: +3 ca `vish/khe-*.vish` (khe ống hợp nhất: `( [1,2,3] ) | take 2`,
     // …) ⇒ **349 ca / 18 nhóm** — xếp vào nhóm `vish` để **không** tạo nhóm < 6 ca.
+    // **SỬA KÈM LÝ DO (ST-38)**: +6 ca `vish/khe-*` (closure-arg: `where`/`each`/`first`/`count`) ⇒ **355 ca / 18 nhóm**.
     assert_eq!(
         ds.len(),
-        349,
-        "phải đúng 349 ca (330 `.vis` + 22 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        355,
+        "phải đúng 355 ca (336 `.vis` + 28 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     assert_eq!(

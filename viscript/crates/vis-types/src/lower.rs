@@ -330,6 +330,8 @@ struct Lowerer<'a> {
     sym_generic: bool,
     /// ST-37: chữ ký lệnh chế độ shell (builtin + `cmd`) — **một** nguồn cho khe ống và kiểm gọi.
     cmd_sigs: Vec<crate::cmdsig::CmdSig>,
+    /// ST-38: bộ đếm tên tạm cho **sugar `it`** (tránh trùng `__c` giữa nhiều vị từ trong tệp).
+    tam_n: u32,
     rec_names: Vec<(String, RecId)>,
     enum_names: Vec<(String, EnumId)>,
     /// Tên biến thể trần → (enum, chỉ số biến thể).
@@ -372,6 +374,7 @@ impl<'a> Lowerer<'a> {
             inst_cache: Vec::new(),
             sym_generic: false,
             cmd_sigs: crate::cmdsig::BuiltinSigs::mac_dinh().sigs().to_vec(),
+            tam_n: 0,
             type_env: std::collections::HashMap::new(),
             cur_impl: None,
             cst,

@@ -1309,6 +1309,11 @@ fn builtin_name(name: &str) -> Option<&'static str> {
         "echo" => Some("echo"),
         "lines" => Some("lines"),
         "take" => Some("take"),
+        // ST-38: closure-arg của chế độ lệnh.
+        "where" => Some("where"),
+        "each" => Some("each"),
+        "first" => Some("first"),
+        "count" => Some("count"),
         _ => None,
     }
 }

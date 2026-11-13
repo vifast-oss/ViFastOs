@@ -6,12 +6,11 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-37** (`CmdSig` generic + khe ống hợp nhất) — xong, **chưa commit**.
-Bước          : 4/4 (`cmdsig` seam → hợp nhất khe → `( … )` hạ lại → 14 ca + 3 sem)
+Task          : **ST-38** (closure-arg + `where`/`each`/`first`/`count` + sugar `it`) — xong, **chưa commit**.
+Bước          : 5/5 (closure ⇒ Lambda + span tuyệt đối → 4 builtin → sugar `it` → 17 ca + 6 sem → gate PASS)
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → PASS lúc **2026-11-13T08:37:26Z** (không retry);
-                **521** test / sem **349** / parity **323/323** / diff 100k **0 lệch** (197,8 s); `vis test` 349 ok
-Việc dở       : chờ gate rồi commit `[ST-37]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T09:05:00Z**; **538** test / sem **355** / parity **329/329** / diff 100k **0 lệch** (229,5 s)
+Việc dở       : commit `[ST-38]` + push (đã được uỷ quyền)
                 chờ Agent 0 cho commit `[ST-14]`.
 ```
 
@@ -44,6 +43,16 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-38 — closure-arg + `where`/`each`/`first`/`count` + sugar `it` (2026-11-13)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Hạ `CmdClosure`** | ⇒ `HExpr::Lambda`; **span tuyệt đối** bằng cách lex/parse lại thân với **đệm `" ".repeat(offset)`** (byte) ⇒ lỗi trong thân báo đúng `dòng:cột`, kể cả khi tệp có tiếng Việt + emoji trước closure |
+| 2 | **4 lệnh mới** | `where(xs, f) -> list[T]` · `each(xs, f) -> ()` (**chỉ tác dụng phụ, stage cuối**) · `first(xs) -> T?` (rỗng ⇒ `none`) · `count(xs) -> int`; một nguồn `cmdsig` + một hiện thực `builtin::call` qua `Host::call` (cả hai đường) |
+| 3 | **Sugar `it`** | `where size > 5mb` ⇒ `it => it.size > 5mb`; chỉ đổi **định danh trần chưa khai báo**, giữ `it` tường minh, giữ tên đã khai; `where 1` ⇒ **`VS0412`** (lỗi kiểm tĩnh) |
+| 4 | **Sửa nhỏ** | `BUILTIN_VALUE_NAMES` **giữ 11** (thêm 4 tên làm `fn first(…)` bị `VS0302` — ghi JOURNAL); `lower_vach` hạ **vào bảng chung** để `RecId` bản ghi ẩn danh của nhóm không lệch bảng |
+| 5 | **Đo** | **538** test (521 + **17**); sem **349 → 355** (+6 `vish/khe-*.vish`); parity **320 → 329**; `fuzz_mutate` 297 → **303**; `diag_cmp` 297/349 → **303/355**; **allowlist vẫn 6** (khối 672/1451 vẫn xanh) |
 
 ## ST-37 — `CmdSig` generic + khe ống hợp nhất (2026-11-13)
 
