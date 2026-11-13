@@ -10,7 +10,7 @@ Task          : KT-34 (đóng C2 cuối K1c: cap Reply active + bất biến + 1
 Bước          : 6/6 (baseline → test đỏ → code+test → 10k×4 → gate → Miri → 100k×4 → report/commit)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 468 test/62 suite** (461 + 5 `kt25_ipc2` + 1 `kt27_notification` + 1 `kt28_waitaddr`), L1 1.000 seed **275 ms**, fmt/clippy `-D warnings` sạch, gen-check ON; wall **239,32 s** là **wall host** (không phải ngưỡng: QD §5.2 đặt 60 s cho L1 1.000 seed = **275 ms** ⇒ đạt; baseline cùng ngày 236,86 s; không nới ngưỡng/không retry) (`JOURNAL/kt34-gate-fast.log`). **KT-34**: 10k×4 PASS **661 s** (`kt34-l1-10k.log`), 100k×4 PASS **6306,38 s (105m06,38)** (`kt34-l1-100k.log`), Miri 3 tập ảnh hưởng PASS (`kt34-miri-kt25/27/28.log`), test đỏ trước `kt34-red-reply-reuse.log`. Baseline KT-34: gate PASS 461 test, wall 236,86 s (`kt34-baseline-gate-fast.log`).
-Miri          : KT-34 — **PASS 3 tập ảnh hưởng**: `kt25_ipc2` **29** test (111,28 s; wall 3m51), `kt27_notification` **27** test (66,02 s; wall 2m13), `kt28_waitaddr` **13** test (115,91 s; wall 3m49). KT-33 (lịch sử): `nightly --only-miri` 19 tập/**300 test**, 0 failed, 4141,74 s.
+Miri          : KT-34 — **PASS 8 tập / 123 test** (0 failed): `kt25_ipc2` 29 (111,28 s), `kt27_notification` 27 (66,02 s), `kt28_waitaddr` 13 (115,91 s) — §4c; **follow-up F1** (reviewer-kt34b): `kt22_mailbox` **10** (240,93 s; wall 7m07), `kt21_donation` 13 (245,40 s), `kt24_ipc` 13 (45,79 s), `kt26_fault` 24 (90,99 s), `kt29_smp` 13 (264,62 s) — §4d. KT-33 (lịch sử): `nightly --only-miri` 19 tập/**300 test**, 0 failed, 4141,74 s.
 Việc dở       : **KT-34 REVIEW — chờ Agent 0 lật**; reviewer độc lập `reviewer-kt34`: **APPROVE code** (Call/Recv thường không bị chặn; kt22 1→3 Reply hợp lý one-shot; .scn 04/05/07/08 + KT-21/23/26 xanh; vị trí kiểm đúng). **C2 ĐÃ ĐÓNG (ĐẠT) — §2d/§7 K1C-DOD**; **K1c DONE (đề xuất)**: C1/C2/C3/C4 + Miri + gate ĐẠT, nợ còn lại là **model-only / K2 / K3** (K1C-DOD §9.1/§9.3/§9.4) — không thuộc K1c. Không tự lật QUEUE.
 ```
 
@@ -60,6 +60,19 @@ không dùng lại cap Reply active trong driver; không "sửa test cho xanh".
 - **Review độc lập**: `reviewer-kt34` **APPROVE code** — "normal Call/Recv không bị chặn (Recv đầu
   thấy caller=None; chỉ cap đang active mới `Busy`); kt22 1→3 Reply hợp lý one-shot, không phải
   sửa test cho xanh; `.scn` 04/05/07/08 + KT-21/23/26 xanh; vị trí kiểm đúng".
+
+**Follow-up `reviewer-kt34b`** (CHANGES nhỏ, 5 điểm — đã sửa, commit follow-up):
+- **F1 (chặn)**: Miri **bổ sung** tệp bị sửa trong KT-34 — `kt22_mailbox` **PASS 10/240,93 s**
+  + khuyến nghị `kt21_donation` 13/245,40 s, `kt24_ipc` 13/45,79 s, `kt26_fault` 24/90,99 s,
+  `kt29_smp` 13/264,62 s ⇒ **8 tập / 123 test** Miri của đường K1c cho KT-34, 0 failed
+  ([`JOURNAL/kt34-miri-kt22_mailbox.log`](JOURNAL/kt34-miri-kt22_mailbox.log), …).
+- **F2**: bảng §8 K1C-DOD sửa **29/27/13, tổng 138** (khớp gate 468).
+- **F3**: §7 C2 ghi rõ **1 ca đỏ trước + 5 test** (`kt34-red-reply-reuse.log`: `1 failed; 26 filtered out`).
+- **F4**: bảng 100k thêm `ipc_pending` cuối lượt (suy ra từ bất biến): 218.449/229.074/232.012/234.990,
+  **tổng 914.525** ⇒ 5.786.296 = 1.123.598 + 914.525 + 3.748.173.
+- **F5**: ghi chú **HEAD của log gate**: `kt34-gate-fast.log` chạy ở `43c2e3c` + cây KT-34 chưa
+  commit (**nội dung `v2/` == `40a8e5a`**); reviewer-kt34b đã chạy lại `gate --fast` tại `40a8e5a`
+  — **PASS 468 test**, khớp.
 
 **Đề xuất**: **KT-34 DONE**; **K1c DONE (đề xuất)** — C1/C2/C3/C4 + Miri + gate ĐẠT; nợ **model-only
 / K2 / K3** vẫn mở nhưng **không thuộc K1c** (K1C-DOD §9.1/§9.3/§9.4). Không tự lật QUEUE.

@@ -1,0 +1,95 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.27s
+     Running tests/kt26_fault.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/79c2f4f7e3b8e76e/out/kt26_fault-79c2f4f7e3b8e76e)
+
+running 24 tests
+test exit_co_fault_ep_thanh_blocked_on_send_call_false ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `exit_co_fault_ep_thanh_blocked_on_send_call_false`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new_variant
+              at sim/vifast-sim/tests/kt26_fault.rs:75:18: 75:33
+          6: Rig::new
+              at sim/vifast-sim/tests/kt26_fault.rs:68:9: 68:32
+          7: exit_co_fault_ep_thanh_blocked_on_send_call_false
+              at sim/vifast-sim/tests/kt26_fault.rs:415:17: 415:27
+          8: exit_co_fault_ep_thanh_blocked_on_send_call_false::{closure#0}
+              at sim/vifast-sim/tests/kt26_fault.rs:414:55: 414:55
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `exit_co_fault_ep_thanh_blocked_on_send_call_false`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new_variant
+              at sim/vifast-sim/tests/kt26_fault.rs:75:18: 75:33
+          6: Rig::new
+              at sim/vifast-sim/tests/kt26_fault.rs:68:9: 68:32
+          7: exit_co_fault_ep_thanh_blocked_on_send_call_false
+              at sim/vifast-sim/tests/kt26_fault.rs:415:17: 415:27
+          8: exit_co_fault_ep_thanh_blocked_on_send_call_false::{closure#0}
+              at sim/vifast-sim/tests/kt26_fault.rs:414:55: 414:55
+
+ok
+test exit_khong_fault_ep_inactive_ngay ... ok
+test exit_procsrv_recv_xong_moi_inactive ... ok
+test exit_suspend_abort_huy_message_giu_code ... ok
+test fault_call_gap_recv_khong_co_reply_bi_cancelled ... ok
+test fault_donation_di_theo_call_va_tra_lai_khi_reply ... ok
+test fault_ep_chet_invalid_capability_khong_doi_trang_thai ... ok
+test fault_khi_hang_gui_day_busy_khong_doi_gi ... ok
+test fault_khong_co_fault_ep_bi_tu_choi ... ok
+test fault_kind_bon_bien_the_model_only ... ok
+test fault_unknown_syscall_qua_call_roi_reply_ghi_thanh_ghi ... ok
+test fault_vm_va_user_exception_cung_duong_call_reply ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+test msg_rong_khong_dung_duoc_cho_resume_thanh_ghi ... ok
+test procsrv_kill_la_suspend_abort_cong_revoke_cap ... ok
+test procsrv_kill_revoke_xoa_cap_dan_xuat ... ok
+test procsrv_wait_cancelled_khi_abort_truoc_khi_giao ... ok
+test procsrv_wait_exited_khi_exit_co_va_khong_fault_ep ... ok
+test procsrv_wait_faulted_va_resume_fault ... ok
+test resume_with_regs_giu_exit_code_va_khong_phat_lai ... ok
+test resume_with_regs_giu_sleeping_va_ghi_thanh_ghi ... ok
+test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... ok
+test resume_with_regs_khi_fault_chua_giao_huy_message ... ok
+test scenario_step_fault_replyfault_resumewithregs ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 90.99s
+
+warning: 2 warnings emitted
+
+
+real	3m15.619s
+user	3m6.054s
+sys	0m0.783s

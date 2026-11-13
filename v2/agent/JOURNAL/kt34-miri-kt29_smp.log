@@ -1,0 +1,80 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests/kt29_smp.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/58073a53be1bf891/out/kt29_smp-58073a53be1bf891)
+
+running 13 tests
+test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `check_harts_chay_moi_cau_hinh_va_publish_trung_thuc`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
+          6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
+          7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `check_harts_chay_moi_cau_hinh_va_publish_trung_thuc`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt29_smp.rs:72:18: 72:33
+          6: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc
+              at sim/vifast-sim/tests/kt29_smp.rs:898:17: 898:31
+          7: check_harts_chay_moi_cau_hinh_va_publish_trung_thuc::{closure#0}
+              at sim/vifast-sim/tests/kt29_smp.rs:892:57: 892:57
+
+ok
+test fuzz_smp_tat_dinh_bat_bien ... ok
+test post_hai_migrate_cung_tcb_bi_tu_choi ... ok
+test post_migrate_qua_hop_thu_di_tru_that ... ok
+test published_idle_cur_prio_va_guard_luat_3 ... ok
+test push_chi_khi_dich_idle_va_trong_affinity ... ok
+test push_drain_fifo_va_mot_tcb_moi_hart_nguon ... ok
+test push_dung_mot_tcb_cuoi_hang_qua_migrate ... ok
+test push_khong_day_tcb_running_va_dung_muc_cao_nhat ... ok
+test push_tu_dong_khi_preempt_moi_buoc ... ok
+test push_vao_cuoi_hang_cua_dich ... ok
+test wake_cheo_hart_qua_hop_thu_va_nguong_preempt ... ok
+test with_harts_1_2_4_8_va_mac_dinh_mot_hart ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 264.62s
+
+warning: 2 warnings emitted
+
+
+real	8m31.336s
+user	8m10.126s
+sys	0m1.653s

@@ -1,0 +1,80 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests/kt21_donation.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/8ad98f15234ae739/out/kt21_donation-8ad98f15234ae739)
+
+running 13 tests
+test abort_client_dang_donate_thu_hoi_sc_khong_ro ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `abort_client_dang_donate_thu_hoi_sc_khong_ro`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt21_donation.rs:109:14: 109:29
+          6: abort_client_dang_donate_thu_hoi_sc_khong_ro
+              at sim/vifast-sim/tests/kt21_donation.rs:566:17: 566:22
+          7: abort_client_dang_donate_thu_hoi_sc_khong_ro::{closure#0}
+              at sim/vifast-sim/tests/kt21_donation.rs:565:50: 565:50
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `abort_client_dang_donate_thu_hoi_sc_khong_ro`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:6644:20: 6646:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:883:9: 890:10
+          5: rig
+              at sim/vifast-sim/tests/kt21_donation.rs:109:14: 109:29
+          6: abort_client_dang_donate_thu_hoi_sc_khong_ro
+              at sim/vifast-sim/tests/kt21_donation.rs:566:17: 566:22
+          7: abort_client_dang_donate_thu_hoi_sc_khong_ro::{closure#0}
+              at sim/vifast-sim/tests/kt21_donation.rs:565:50: 565:50
+
+ok
+test charge_budget_het_can_refill_va_reply_khong_mat ... ok
+test donation_can_sc_configure_va_khong_chuoi_hai_tang ... ok
+test invariant_1000_seed_64_op_donation ... ok
+test khong_donate_chuoi_hai_tang_qua_donee ... ok
+test mcp_kep_priority_khi_duoc_donate ... ok
+test reply_nham_reply_object_khong_tra_donation ... ok
+test sc_dung_chung_nhieu_tcb_khong_donate ... ok
+test sched_context_bind_khong_tao_donation ... ok
+test server_co_sc_rieng_giu_sc_rieng ... ok
+test server_passive_chi_chay_khi_duoc_donate ... ok
+test suspend_abort_server_dang_donate_tra_sc_va_danh_thuc_client ... ok
+test tcb_set_priority_tu_choi_donor_chap_nhan_donee ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 245.40s
+
+warning: 2 warnings emitted
+
+
+real	9m9.588s
+user	8m34.985s
+sys	0m2.641s
