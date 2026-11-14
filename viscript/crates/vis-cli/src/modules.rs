@@ -12,13 +12,13 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use vis_diag::MODULE_CODES;
+use vis_diag::{MODULE_CODES, SYNTAX_CODES};
 
 use crate::pkg::{bam as bam_noi_dung, chuan_hoa as chuan_hoa_noi_dung, doc_khoa_cua, GoiKhoa};
 use vis_syntax::{Diagnostic, Mode, NodeKind, Span};
 use vis_types::{
-    check, lower_into, HItem, HStmt, Hir, LowerOptions, ModInfo, NamePolicy, Symbols, TraitSig,
-    Type, TypeTable,
+    check, lower_into, HExpr, HItem, HStmt, Hir, LowerOptions, ModInfo, NamePolicy, Symbols,
+    TraitSig, Type, TypeTable,
 };
 
 /// Một tệp đã nạp.
@@ -570,6 +570,36 @@ impl Nap {
         );
         for d in &out.diagnostics {
             self.diags.push((rel.clone(), d.clone()));
+        }
+        // **ST-93b (VD-111)**: trong `.vish`, `fn main` **chỉ** để khai `cap`; thân có câu lệnh sẽ
+        // **không** được chạy (trước đây im lặng: có pipeline thì bị bỏ, không pipeline thì chạy
+        // main) ⇒ báo `VS0201` tại **câu lệnh đầu**, chặn cả `check` lẫn `run` (hai đường).
+        if mode == Mode::Command {
+            if let Some(HItem::Fn(f)) = out
+                .hir
+                .items
+                .iter()
+                .find(|it| matches!(it, HItem::Fn(f) if f.name == "main"))
+            {
+                // `pass` không phải câu lệnh thật; thân chỉ có `pass` (hoặc rỗng) ⇒ **hợp lệ**.
+                let co_that = f.body.iter().find(
+                    |st| !matches!(st, HStmt::Expr(HExpr::Var { name, .. }) if name == "pass"),
+                );
+                if let Some(st) = co_that {
+                    let span = st.span();
+                    let (line, col) = vi_tri(&text, span);
+                    self.diags.push((
+                        rel.clone(),
+                        Diagnostic {
+                            code: &SYNTAX_CODES[0],
+                            message: "trong `.vish`, `fn main` chỉ dùng để khai `cap`; thân `main` không được chạy — chuyển câu lệnh ra cấp tệp hoặc dùng `.vis`".to_string(),
+                            span,
+                            line,
+                            col,
+                        },
+                    ));
+                }
+            }
         }
         let mut pubt: Vec<(String, Type)> = Vec::new();
         let mut pubt_trait: Vec<TraitSig> = Vec::new();

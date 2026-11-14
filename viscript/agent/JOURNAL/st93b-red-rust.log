@@ -1,0 +1,46 @@
+# ST-93b — log ĐỎ (Rust) lúc 2026-11-14T18:49:17Z, HEAD 3c9be07e — chưa có VS0201 cho thân main.
+# lệnh: cargo test -p vis-cli --test vish_main (5 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/vish_main.rs (target/debug/deps/vish_main-ac2e538ef70d9ab7)
+
+running 5 tests
+test vis_main_binh_thuong_khong_doi ... ok
+test main_co_lenh_bao_vs0201 ... FAILED
+test main_co_assert_bao_vs0201 ... FAILED
+test main_rong_va_pipeline_hop_le ... ok
+test main_co_let_bao_vs0201 ... FAILED
+
+failures:
+
+---- main_co_lenh_bao_vs0201 stdout ----
+
+thread 'main_co_lenh_bao_vs0201' (48771525) panicked at crates/vis-cli/tests/vish_main.rs:78:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- main_co_assert_bao_vs0201 stdout ----
+
+thread 'main_co_assert_bao_vs0201' (48771524) panicked at crates/vis-cli/tests/vish_main.rs:126:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- main_co_let_bao_vs0201 stdout ----
+
+thread 'main_co_let_bao_vs0201' (48771526) panicked at crates/vis-cli/tests/vish_main.rs:96:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+
+failures:
+    main_co_assert_bao_vs0201
+    main_co_lenh_bao_vs0201
+    main_co_let_bao_vs0201
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+error: test failed, to rerun pass `-p vis-cli --test vish_main`

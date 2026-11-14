@@ -1,0 +1,18 @@
+# ST-93b — ĐO TRƯỚC, 2026-11-14T18:47:31Z, HEAD 3c9be07e
+
+## (a) /tmp/st93b/a.vish
+fn main(p: cap[Proc]):
+    pass
+
+/bin/echo a
+run: exit=0 stdout=[[a]] stderr=[]
+## (b) /tmp/st93b/b.vish
+fn main():
+    print("x")
+
+/bin/echo a
+run: exit=0 stdout=[[a]] stderr=[]
+## (c) /tmp/st93b/c.vish
+fn main():
+    print("x")
+run: exit=0 stdout=[x] stderr=[]

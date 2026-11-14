@@ -6,15 +6,26 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-93 — `cap[Proc]` dưới `--strict-caps`** (biên host, cả interp + VM) — xong,
-                đã đo + cổng + differential; **chưa commit**.
-Bước          : 3/3 (đo đỏ 5/6 → `cho_phep_proc` + `Runner` trap + đọc cap `.vish` → 6 ca → 984 test
-                → diff 100k → cổng).
+Task          : **ST-93b — đóng chỗ im lặng thân `fn main` trong `.vish`** — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 3/3 (đo 3 dạng → `VS0201` tại câu lệnh đầu, bỏ qua `pass` → 5 ca → 989 test → diff
+                100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:45:19Z**; **984** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:58:42Z**; **989** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49** / differential **100.000 / 0 lệch** (154,7 s) / **7 sổ-32 mã**
-Việc dở       : commit `[ST-93]` + push (đã được uỷ quyền)
+                parity **398/398 + 49** / differential **100.000 / 0 lệch** (154,3 s) / **7 sổ-32 mã**
+Việc dở       : commit `[ST-93b]` + push (đã được uỷ quyền)
+
+## ST-93b — chẩn đoán thân `fn main` trong `.vish`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước** | (a) `main(p: cap[Proc])` + `pass` + pipeline ⇒ chạy `[a]` (hợp lệ, giữ); (b) `main` có `print` + pipeline ⇒ **chỉ in `[a]`**, `print` **không chạy**, **không chẩn đoán**; (c) `main` có `print`, **không** pipeline ⇒ in `x` exit 0 (thực đo; đề dự kiến “không in gì”). Log `JOURNAL/st93b-red.log` sha256 `016ad103…`; Rust `st93b-red-rust.log` sha256 `2a903ff2…` (**3/5 ca đỏ**). |
+| 1 | **Sửa** | `modules.rs`: sau hạ, nếu `Mode::Command` + `HItem::Fn main` có **câu lệnh thật** (bỏ qua `HStmt::Expr(Var("pass"))`) ⇒ **`VS0201`** tại `span` **câu lệnh đầu**, thông điệp “trong `.vish`, `fn main` chỉ dùng để khai `cap`; thân `main` không được chạy — chuyển câu lệnh ra cấp tệp hoặc dùng `.vis`”; chặn **cả** `check` + `run` (interp + VM cùng HIR). Thân rỗng/chỉ `pass` + pipeline ⇒ **hợp lệ**, pipeline chạy. |
+| 2 | **5 ca** | `vish_main.rs`: (a) `pass` + pipeline ⇒ `[a]`, hai đường cùng byte; (b) `print` + pipeline ⇒ `VS0201` **2:5**, exit 2, stdout rỗng, không chạy; (c) `let` ⇒ VS0201; (d) `.vis` `fn main` bình thường ⇒ in `x`, không đổi; (e) `assert` ⇒ VS0201. **Hai đường cùng byte**. |
+| 3 | **Fixture** | Không có fixture `.vish` nào chứa `fn main` (grep `test/**/*.vish` = 0) ⇒ **không phải sửa** fixture; `test/cmd/**` + host 54/54 + sem 447 giữ xanh. **Không** đổi hành vi `.vis`. |
+| 4 | **Đo** | **989** test = 984 + **5** (21+96+27+154+26+62+9+**594**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; parity **398/398 + 49**; `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=154.3 toc_do=648/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 5 | **Nợ** | `pass` được nhận diện bằng **tên** `HStmt::Expr(Var("pass"))` (nếu sau này `pass` thành câu lệnh thật phải sửa); thân chỉ có **docstring** là comment (không thành stmt) nên đã hợp lệ; **không** có kiểm “khai báo kiểu trong thân main” vì cú pháp không cho; thông điệp nêu `.vis` nhưng chưa gợi ý sửa tự động; `.vish` `main` + pipeline vẫn **bỏ main** (ST-93) — nay chỉ khi thân rỗng/pass. |
 
 ## ST-93 — `cap[Proc]` + `--strict-caps`, 2026-11-14
 
