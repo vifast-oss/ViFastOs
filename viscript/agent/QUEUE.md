@@ -150,7 +150,9 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **DONE** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
 | ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **DONE** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **DONE** | ≥6 ca; `x \| take 1` chạy 2 đường |
-| ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **READY** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
+| ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **DONE** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
+| ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **READY** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
+| ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **READY** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -914,3 +916,15 @@ APPROVED 2026-11-14 Agent 0
 > lệch** ở ca nhiều pipeline (đã cho body `{error}`). Nợ: shell-let thật (`let out = ls | wc -l`), nhóm nhiều pipeline +
 > kiểu tĩnh lấy stage đầu, lambda `where` không chú thích, `lower/cmd.rs` **1491** dòng (sát R1).
 > **ST-60 mở** (VS2 #1 — async; **VD-90/VD-95**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-60 DONE — VS2 #1 (async) CÓ MẶT.** Commit `2542421` (**Agent 2 tự commit, đã push**). **Không thêm tag `VBC1`**
+> (vẫn 53): hạ `async fn`/`spawn`/`await` thành builtin nội bộ `$tac_vu`/`$spawn`/`$await` + **một** runtime
+> `vis-interp/src/rt.rs` dùng chung hai đường; `Task[T]` = `TypeRef`; lập lịch **FIFO, một luồng, chạy tới hoàn tất**;
+> join cuối theo **thứ tự tạo**; lỗi thân ⇒ **`VS0506`** (mã mới, sổ **30**). Tách `host.rs`/`gan.rs` để giữ R1
+> (`interp.rs` 1452). Đo: **774 test** · sem **416/20 nhóm** · `vis test` **416 ok** · parity **377/377** · differential
+> **100k/0 lệch** (208,7 s) · **10.000 task: interp 309 ms, VM 166 ms, cùng byte, 10.001 dòng stdout, không tràn**.
+> **Lệch có ghi**: parser chưa nhận `async` sau `impl`/`cmd` ⇒ hiện ra **`VS0201`** (luật `VS0412` trong tyck giữ làm
+> phòng thủ); `async fn` không nhận `--tên`; **chưa** song song thật/không GC (nợ `R10` §5).
+> **ST-60b mở** (hotfix review độc lập — xem dưới) và **ST-60c** (derives/siêu trait + SPDX).
