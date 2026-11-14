@@ -6,17 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-85 — thụt lề `.vish` có ngữ nghĩa?** (6 phép đo; **nhánh B**: KHÔNG chuẩn hoá,
-                thêm `fmt --indent-report` đếm + cảnh báo `--check` không đỏ) — xong, đã đo + cổng +
+Task          : **ST-85b — `.vish` cấp tệp thụt lề bị BỎ IM LẶNG** (đóng lỗi phép đo 5 của ST-85;
+                chọn **nhánh A**: `VS0201` rõ, không còn nuốt dòng) — xong, đã đo + cổng +
                 differential; **chưa commit**.
-Bước          : 4/4 (đo 6 phép → kết luận cấp tệp **có** ngữ nghĩa → nhánh B: đếm/cảnh báo, 0 fixture
-                đổi → 6 ca → 932 test → cổng → diff 100k → STATE/JOURNAL).
+Bước          : 4/4 (3 dạng đỏ → tìm chỗ nuốt: `khai::tach` coi dòng thụt là vùng khai báo + chạy shell
+                từ `moc=EOF` → thêm `khai::dong_thut_sai` + `VS0201` → 7 ca → 939 test → cổng → diff
+                100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:23:01Z**; **932** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (212,2 s) / **7 sổ-32 mã** / `VBC1` **53** /
-                allowlist **6**
-Việc dở       : commit `[ST-85]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:57:45Z**; **939** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
+                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
+                (218,7 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-85b]` + push (đã được uỷ quyền)
+
+## ST-85b — `.vish`: dòng cấp tệp thụt lề báo `VS0201`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Tái hiện 3 dạng** | (a) cả tệp thụt 1 ⇒ **in rỗng, exit 0**; (b) `topmix` (dòng 1 thụt, dòng 2 cột 1) ⇒ chỉ in `y`; (c) `topmix2` (dòng 2 thụt) ⇒ in `y` rồi `x`. Log `JOURNAL/st85b-red.log` sha256 `c48c9919…`; Rust `st85b-red-rust.log` sha256 `71979a2c…` (**3/6 đỏ** — đúng 3 dạng; 3 ca hợp lệ xanh sẵn). |
+| 1 | **Chỗ sinh im lặng** | `crates/vis-types/src/lower/khai.rs:28-30` (`la_khai_bao_voi`: mọi dòng bắt đầu bằng space/tab ⇒ **true**) làm `khai::tach` (dòng 79-104) coi **toàn bộ** dòng thụt là “vùng khai báo” ⇒ `moc` = hết tệp; `crates/vis-types/src/lower.rs:390-412` (nhánh `command_mode`) gọi `run_shell_tu(moc)` và `crates/vis-types/src/lower/cmd.rs:426-430` **bỏ** mọi node có `span.start < tu` ⇒ không stage nào được hạ. `topmix`: dòng 1 nằm trong tiền tố `[0,moc)` bị bỏ; `topmix2`: `moc=0` nên dòng thụt được hạ như **lệnh** (`print` = stage ngoài) ⇒ chạy. |
+| 2 | **Quyết định (A)** | `.vish` **không có block cấp tệp** (§9.5, đọc không sửa) ⇒ dòng cấp tệp thụt lề là **lỗi** `VS0201`: “câu lệnh cấp tệp không được thụt lề (`.vish` không có block cấp tệp)”, `tuỳ dòng:cột`. Thêm `khai::dong_thut_sai` (text-level: bỏ qua khối `cmd`/`fn`/`type`/`impl`/`enum`/`trait`/`extern`/`alias`/`newtype` mở bằng dòng cột 1 kết thúc `:`, và **ngoặc chưa đóng** cho nhóm nhiều dòng); gọi trong `lower.rs` nhánh command trước `tach`. `.vis` script **không** đi nhánh này. |
+| 3 | **7 ca** | `crates/vis-cli/tests/vish_indent.rs`: (a) cả tệp thụt ⇒ exit 2, `VS0201` dòng 1+2, stdout rỗng; (b) topmix ⇒ `VS0201` dòng 1, **không** in `y`; (c) topmix2 ⇒ `VS0201` dòng 2, **không** in `y/x`; (d) `.vis` `fn main():` thân thụt vẫn in `ok`; (e) `cmd` thân 2 dấu cách vẫn in `5`; (f) nhóm `( 1 +\n  1 )` vẫn in `2`; (g) khai báo `fn` + thân thụt trong `.vish` vẫn in `5`. Mọi ca chạy **cả interp lẫn VM**, so exit/stdout. |
+| 4 | **Không phá** | `vis test` **447 ok**, `--vm` **447 ok + 7 SKIP**, host suite **54/54**, `test/cmd/**` goldens xanh; **0 golden phải sửa** (không có golden nào dựa vào “im lặng bỏ dòng”). `test/cmd/golden.cmd` là **golden parser CmdCST** (33 ca, không qua lower) nên **không liên quan** — vẫn xanh. |
+| 5 | **Đo** | **939** test = 932 + **7** (21+96+27+154+26+62+9+**544**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; host **54/54**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=218.7 toc_do=457/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498** (`lower.rs` **1.482**, `khai.rs` 484, `main.rs` 1.083). |
+| 6 | **Nợ** | `dong_thut_sai` là **heuristic văn bản** (chưa dùng CST): dòng cột 1 kết thúc `:` trong chuỗi/comment có thể bị coi mở khối; khối một dòng `cmd f(): x` không mở khối; dòng nối bằng `\` ngoài ngoặc chưa hỗ trợ. `khai::tach` vẫn coi dòng thụt là tiền tố khai báo — nay có chẩn đoán chặn nhưng chưa dọn gốc. `topmix2` trước đây **chạy** dòng thụt như lệnh ngoài — nay báo lỗi (đúng §9.5 nhưng là **thay đổi hành vi** với tệp sai thiết kế). `.cmd` golden không đi qua lower. |
 
 ## ST-85 — thụt lề `.vish`, 2026-11-14
 

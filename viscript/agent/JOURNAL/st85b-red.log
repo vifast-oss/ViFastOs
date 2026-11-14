@@ -1,0 +1,11 @@
+# ST-85b — log ĐỎ (trước khi sửa) lúc 2026-11-14T15:30:51Z, HEAD c6037b24
+# 3 dạng im lặng
+== top1
+[exit=0]
+== topmix
+y
+[exit=0]
+== topmix2
+y
+x
+[exit=0]

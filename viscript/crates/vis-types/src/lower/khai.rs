@@ -104,6 +104,67 @@ pub(crate) fn tach(text: &str) -> (usize, bool) {
     (off, co)
 }
 
+/// **ST-85b (VD-109)**: dòng **cấp tệp bị thụt lề** trong `.vish` — `.vish` **không có** block cấp
+/// tệp (§9.5), nên dòng thụt ngoài khối `cmd`/`fn`/`type`/`impl`/… và ngoài **ngoặc chưa đóng** là lỗi
+/// (trước ST-85b chúng bị **bỏ im lặng**). Trả `(dòng 1-based, cột 1-based)`.
+pub(crate) fn dong_thut_sai(text: &str) -> Vec<(u32, u32)> {
+    fn mo_khoi(code: &str) -> bool {
+        let tu = code
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .next()
+            .unwrap_or("");
+        matches!(
+            tu,
+            "cmd" | "fn" | "impl" | "type" | "enum" | "trait" | "extern" | "alias" | "newtype"
+        )
+    }
+    let mut out = Vec::new();
+    let mut trong = false;
+    let mut sau = 0i32;
+    let mut line = 1u32;
+    for d in text.split_inclusive('\n') {
+        let t = d.trim_end_matches(['\n', '\r']);
+        let trim = t.trim_start();
+        if trim.is_empty() || trim.starts_with('#') || trim.starts_with("//") {
+            line += 1;
+            continue;
+        }
+        let thut = t.starts_with([' ', '\t']);
+        if !thut {
+            let code = t.split('#').next().unwrap_or(t).trim_end();
+            trong = code.ends_with(':') && mo_khoi(code);
+        } else if !trong && sau == 0 {
+            out.push((line, (t.len() - trim.len() + 1) as u32));
+        }
+        // Độ sâu ngoặc **ngoài chuỗi** (dòng tiếp nối của nhóm `( … )` được phép thụt).
+        let mut q: Option<char> = None;
+        let mut esc = false;
+        for c in t.chars() {
+            if let Some(qc) = q {
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == qc {
+                    q = None;
+                }
+                continue;
+            }
+            match c {
+                '\'' | '"' => q = Some(c),
+                '(' | '[' | '{' => sau += 1,
+                ')' | ']' | '}' => sau -= 1,
+                _ => {}
+            }
+        }
+        if sau < 0 {
+            sau = 0;
+        }
+        line += 1;
+    }
+    out
+}
+
 /// Tìm **khai báo đứng sau stage**: dòng cột 1 trong hậu tố mở đầu bằng từ khoá item ⇒ `(line, col)`.
 pub(crate) fn khai_sau_stage(text: &str, tu: usize) -> Option<(u32, u32)> {
     let mut dong = 1u32;

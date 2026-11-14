@@ -1,0 +1,48 @@
+# ST-85b — log ĐỎ (Rust) lúc 2026-11-14T15:30:57Z, HEAD c6037b24 — trước khi báo VS0201.
+# lệnh: cargo test -p vis-cli --test vish_indent (6 ca)
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.55s
+     Running tests/vish_indent.rs (target/debug/deps/vish_indent-7f47c4807dfdcf4e)
+
+running 6 tests
+test dong_thut_sau_bao_loi ... FAILED
+test ca_tep_thut_bao_loi ... FAILED
+test dong_thut_dau_bao_loi ... FAILED
+test nhom_nhieu_dong_van_hop_le ... ok
+test vis_script_van_hop_le ... ok
+test than_cmd_thut_van_chay ... ok
+
+failures:
+
+---- dong_thut_sau_bao_loi stdout ----
+
+thread 'dong_thut_sau_bao_loi' (47904208) panicked at crates/vis-cli/tests/vish_indent.rs:45:5:
+assertion `left == right` failed: exit: 
+  left: 0
+ right: 2
+
+---- ca_tep_thut_bao_loi stdout ----
+
+thread 'ca_tep_thut_bao_loi' (47904206) panicked at crates/vis-cli/tests/vish_indent.rs:45:5:
+assertion `left == right` failed: exit: 
+  left: 0
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- dong_thut_dau_bao_loi stdout ----
+
+thread 'dong_thut_dau_bao_loi' (47904207) panicked at crates/vis-cli/tests/vish_indent.rs:45:5:
+assertion `left == right` failed: exit: 
+  left: 0
+ right: 2
+
+
+failures:
+    ca_tep_thut_bao_loi
+    dong_thut_dau_bao_loi
+    dong_thut_sau_bao_loi
+
+test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+error: test failed, to rerun pass `-p vis-cli --test vish_indent`

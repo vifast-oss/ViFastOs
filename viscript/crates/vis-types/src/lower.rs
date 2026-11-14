@@ -390,6 +390,16 @@ impl<'a> Lowerer<'a> {
             // ST-40a: prelude bản ghi **chỉ** cho chế độ lệnh, đăng ký **trước** khi hạ item để
             // `type FileEntry` của người dùng trùng tên bị `VS0302`.
             let prelude = self.dang_ky_prelude();
+            // **ST-85b (VD-109)**: dòng cấp tệp thụt lề **không** thuộc khối nào ⇒ `VS0201` rõ
+            // (trước đây bị `khai::tach` nuốt im lặng). `.vis` (script) không đi nhánh này.
+            for (line, col) in khai::dong_thut_sai(self.text) {
+                let sp = Lowerer::span_dong_cot(self.text, line, col);
+                self.diag(
+                    &vis_diag::SYNTAX_CODES[0],
+                    "câu lệnh cấp tệp không được thụt lề (`.vish` không có block cấp tệp)",
+                    sp,
+                );
+            }
             // ST-44: **vùng khai báo** ở đầu tệp (type/enum/cmd/let…) hạ trước, vào **cùng**
             // bảng ký hiệu/kiểu; stage chạy sau với mốc tách để **bỏ** các dòng đã hạ.
             let (moc, co_khai) = khai::tach(self.text);
