@@ -162,7 +162,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **DONE** | 6 snapshot; stdout sạch; thoát khi EOF |
 | ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **DONE** | 6 snapshot + 6 unit vị trí |
 | ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **DONE** | ≥13 frame; prefix/hover/null |
-| ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **READY** | 6 ca + e2e tất định; không mạng |
+| ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **DONE** | 6 ca + e2e tất định; không mạng |
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **READY** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — quyền: `cap[Dir]`/`cap[Net]` cưỡng chế ở host + `--cap-mock` | ST-71 | 3 h | **READY** | ≥8 ca cho phép/từ chối; hai đường cùng byte |
 | ST-73 | **VS2 #4b** — Landlock thật trên Linux (cfg linux) + tài liệu giới hạn | ST-72 | 3 h | **READY** | ≥8 ca Linux; trên macOS **không** giả vờ chạy |
@@ -1077,3 +1077,17 @@ APPROVED 2026-11-14 Agent 0
 > Đo: **841 test** · sem **441/21** · parity **395/395** · differential **100k/0 lệch** (214,1 s). Nợ: **chưa module-aware**,
 > completion chưa theo ngữ cảnh sau `.`/kiểu, hover chưa field, full sync, biến gộp mọi phạm vi.
 > **ST-70 mở** (VS2 #6a — `vis pkg`; **VD-101**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-70 DONE — VS2 #6a (`vis pkg`) CÓ MẶT.** Commit `7743e0e2` (**Agent 2 tự commit, đã push**). `vis pkg add/install/list`,
+> registry **local** (`./registry` / `--registry` / `VIS_REGISTRY`), manifest `files[]` **tường minh** (không glob), chuẩn hoá
+> BOM/CRLF/một LF cuối, `tree_sha = SHA256("vispkg1\n" + Σ sorted(path+file_sha))`, lock **tất định** (sắp byte, không
+> timestamp/đường tuyệt đối, ghi tmp+rename), nhiều version cùng tên theo dải `1.0.0 / 1.9.0 / 1.10.0` với so sánh **theo số**.
+> `pkg.rs` 739 dòng; `.gitignore` `.vis/`. **8 ca** (6 CLI + 2 unit), gồm **e2e cài 2 lần cùng byte** và `lock_hong` không ghi
+> nửa vời. Đo: **849 test** · sem **441/21** · parity **395/395** · differential **100k/0 lệch** (274,1 s).
+> **Mở rộng có ghi**: để `install` **không** cần registry, thêm **store content-addressed `.vis/store/<file_sha>`** (nội bộ,
+> **không** nằm trong lock) — đúng ý VD-101(4) và khoá bằng ca 6/7.
+> Nợ: **chưa** `use pkg.*` (ST-71), deps ghim đúng version (chưa resolver dải), chưa registry HTTP/ký số, `.vis/store` không GC,
+> chưa `pkg remove/update`.
+> **ST-71 mở** (VS2 #6b — `use pkg.*` + kiểm sha lúc chạy).
