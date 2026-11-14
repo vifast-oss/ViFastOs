@@ -195,3 +195,99 @@ TLB-safety) là cổng của KT-43; KT-35 không tự thêm ngưỡng nào.
   crate mới có khung rỗng (log `v2/agent/JOURNAL/kt35-red-compile.log`).
 - Không `#[ignore]`, không `#[should_panic]`, không `unsafe`, không dependency, không sửa
   `spec/`, `.scn`, `vifast-model`, QUEUE/DECISIONS/AGENTS, `viscript/`.
+
+## 10. KT-36 — `Frame` 3 cỡ, ownership/Untyped, `GetAddress`, bộ đếm W^X
+
+Mục này là **ngữ nghĩa model-only `[TK]`** của Frame trong K2 (K2-PLAN §1.1 mục 1 + §3 KT-36,
+D2-65 Q2/Q3/Q7). Không thêm method/chữ ký/mã lỗi vào `spec/`: `Frame id=11` vẫn `reserved`,
+`unsupported=true`, `install_at="K2"`; K2 cài ngữ nghĩa **sau model API** của sim.
+
+### 10.1 `FrameMeta` — 6 trường DoD
+
+| Trường | Kiểu | Nghĩa |
+|---|---|---|
+| `pa` | `u64` | địa chỉ vật lý **của mô hình** = `base` (cửa sổ PA của Untyped) + watermark; **không** phải vùng nhớ thật |
+| `size_bits` | `u8` | `12` / `21` / `30` — cùng nguồn `vifast_pte::FrameSize::{K4,M2,G1}` (không chép tay) |
+| `live` | `bool` | Frame còn sống; `false` sau khi Untyped sở hữu bị `CNode.Revoke` |
+| `maps` | `u32` | tổng số mapping **sống** của Frame này (mọi VSpace; KT-37 mới map thật) |
+| `mapped_w` | `u32` | số mapping sống có quyền `WRITE` |
+| `mapped_x` | `u32` | số mapping sống có thuộc tính `EXEC` |
+
+Bất biến KT-36: `mapped_w ≤ maps`, `mapped_x ≤ maps`; Frame **đã chết** ⇒ cả ba bằng **0**
+("frame chết ⇒ không còn mapping"). Bất biến chặt hơn `mapped_w + mapped_x ≤ maps` và
+`!(w > 0 && x > 0)` chỉ đúng **sau khi** KT-39 áp luật W^X — KT-36 **cố ý chưa** áp (Q3: "KT-39
+toàn bộ luật"). Bộ đếm chỉ đổi qua hai cửa `frame_note_map`/`frame_note_unmap` (model API);
+KT-37/KT-39 gọi từ `map`/`unmap` thật.
+
+### 10.2 Cửa sổ PA của Untyped (vì sao `pa` là ảo) — `UNTYPED_PA_WINDOW`
+
+**K2 không cấp byte thật cho Frame.** 1 GiB Frame phải retype được mà **không** ăn RSS (KT-36
+rủi ro (a): cấm mọi test dựa trên `Vec` 1 GiB), nên Frame không chứa trong arena host của Untyped
+mà cấp từ **cửa sổ PA ảo** của nó:
+
+| Hằng số `[TK]` | Giá trị | Nghĩa |
+|---|---|---|
+| `UNTYPED_PA_WINDOW` | `1 << 30` (1 GiB) | số byte PA ảo mà **mỗi** Untyped cấp cho Frame; đúng bằng cỡ Frame lớn nhất |
+
+- **Đáy cửa sổ** = tham số `base` của `Machine::add_untyped(base, size)` (trước KT-36 tham số này
+  bị bỏ qua; nay là đáy cửa sổ PA). Untyped con (retype `Untyped`) thừa hưởng
+  `base_cha + offset_con` — quan hệ **logic** của mô hình, không phải containment.
+- **Watermark** cửa sổ tiến theo từng Frame đã cấp; `Revoke` Untyped (hoặc cha của nó) đưa
+  watermark về 0 **song song** với watermark arena (KT-09).
+- Arena host của Untyped **không đổi** khi cấp Frame: `untyped_used`/`check_bytes` giữ nguyên
+  (Frame không tiêu byte nào). Frame chỉ tốn vài chục byte metadata (`FrameMeta` + body mốc
+  `Kind::Frame` trong arena kernel).
+- Vì `pa` là nhãn ảo, bất biến **không phải** "hai Untyped không được chồng cửa sổ" mà là
+  "**Frame sống** không được chồng `pa`" (D2-66): Frame mới chồng `[pa, pa + cỡ)` với Frame
+  **sống** khác — kể cả của Untyped khác — ⇒ `AlreadyMapped`; `check_frames` kiểm lại toàn cục.
+  Hệ quả thực dụng: Untyped dùng để retype Frame nên khai `base` căn theo cỡ Frame và **rời nhau**
+  (hai cửa sổ chồng nhau vẫn hợp lệ nếu không Frame sống nào chồng `pa`). `add_untyped` từ chối
+  ngay khi `base + 1 GiB` tràn `u64`.
+
+### 10.3 `Untyped.Retype(Untyped, Frame, size_bits)` — thứ tự kiểm (mọi lỗi **atomic**)
+
+1. `size_bits ∉ {12, 21, 30}` ⇒ **`InvalidArgument`** (không còn `NotSupported` như thời reserved).
+2. `pa = base + watermark` **chưa** căn đúng `1 << size_bits` ⇒ **`Alignment`**. Mô hình
+   **không** căn lề ngầm: đệm ngầm sẽ làm `pa` phụ thuộc thứ tự cấp một cách khó kiểm, và DoD
+   KT-36 yêu cầu đúng ca "pa lệch 1 ⇒ Alignment". Muốn trộn cỡ trong một cửa sổ thì cấp theo thứ
+   tự **giảm dần** (1 GiB → 2 MiB → 4 KiB luôn đúng căn; tăng dần thì không).
+3. `pa + cỡ` ra ngoài cửa sổ 1 GiB ⇒ **`NotEnoughMemory`** (vd một Frame 1 GiB chiếm trọn cửa sổ).
+4. `[pa, pa + cỡ)` chồng Frame **sống** của Untyped khác ⇒ **`AlreadyMapped`**.
+5. Thiếu byte metadata trong arena kernel ⇒ `NotEnoughMemory` (không phải "hết bộ nhớ Frame").
+
+Frame do retype tạo là **con của cap Untyped nguồn** (kế thừa quyền cap nguồn, không nới ngược)
+và **thuộc Untyped** đó: `Revoke` Untyped finalise mọi Frame trong cây, kể cả Untyped con lồng
+nhau (KT-09).
+
+### 10.4 `Frame.GetAddress` (method 2)
+
+- Qua cap: `Machine::frame_get_address(cap)` — cap phải **sống** + trỏ `Frame`
+  (`WrongObjectType`); Frame đã chết ⇒ `InvalidCapability`; slot rỗng ⇒ `SlotEmpty`; ngoài dải ⇒
+  `RangeError`. Trả `pa`.
+- Theo `ObjId` (model API cho KT-37/KT-39): `Machine::frame_address(frame)`.
+
+### 10.5 Finalise Frame — "frame chết ⇒ không còn mapping"
+
+- `Revoke` Untyped có Frame đang `maps > 0` ⇒ **`HasChildren`** và **không đổi gì** (atomic):
+  mô hình **không** im lặng bỏ mapping, cũng không tự unmap (unmap thật là KT-39). Phải
+  `frame_note_unmap` hết rồi mới revoke được.
+- Frame chết: `live = false`, ba bộ đếm **đã** bằng 0 từ trước; `frame_meta` vẫn đọc được sau
+  chết (DoD "frame chết sạch").
+- `check_frames()` (mở ở KT-36, KT-42 gộp vào `check_vm`) kiểm **bảy nhóm** (khớp D2-66):
+  1. **kiểu** — `ty == Frame` ⇔ có `FrameMeta`; 2. **trạng thái** — `FrameMeta.live == Meta.alive`;
+  3. **cỡ** — `size_bits ∈ {12,21,30}`, `len == 1 << size_bits`; 4. **cửa sổ PA + chủ sở hữu** —
+  `pa == base + offset`, `pa` căn cỡ, `[pa, pa + cỡ)` trong cửa sổ, Frame sống ⇒ Untyped sở hữu
+  sống (không mồ côi); 5. **bộ đếm cấu trúc** — `mapped_w ≤ maps`, `mapped_x ≤ maps`; 6. **frame
+  chết sạch** — đã chết ⇒ cả ba bộ đếm 0; 7. **toàn cục** — không hai Frame sống chồng `pa` và
+  watermark cửa sổ = `max(offset + len)` của Frame sống. Chạy **sau mỗi public op** (qua
+  `sched_after_op`, có cửa sổ nhanh `frame_objects == 0` nên mô hình chưa từng có Frame không tốn
+  chi phí).
+
+### 10.6 Không làm ở KT-36 (ranh giới)
+
+- **Không** map/unmap Frame vào PageTable/VSpace, không rights/attrs khi map, không
+  `MissingPageTable`/`NotMapped`/`HasChildren` của lá — **KT-37**; không luật W^X
+  (`WxViolation`) — **KT-39**; không PageTable/VSpace/ASID/TLB/shootdown — KT-37..KT-41.
+- **Không** Device Frame/`MapIo`/`MapUnmapIo` (D3), không pager/COW (K3), không PTE/MMU thật.
+- **Không** đổi `spec/`: `Frame` vẫn `reserved` + `unsupported=true`; ngữ nghĩa trên là model API
+  của sim, conformance "reserved ⇒ `NotSupported`" của `vifast-model`/`.scn` không đổi.

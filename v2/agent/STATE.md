@@ -6,13 +6,73 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-35 (mở K2: crate `vifast-pte` + `v2/docs/k2-vm.md` — hình 3 cấp, 7 hằng số) — REVIEW (đề xuất DONE; commit `[KT-35]`, hash xem `git log -1`); KT-34 REVIEW (D2-64); K1c DONE (D2-64)
-Bước          : 6/6 (baseline → test đỏ E0432 → code+test → gate → Miri → review/commit)
+Task          : KT-36 (K2: **Frame 3 cỡ** 4 KiB/2 MiB/1 GiB + ownership/Untyped + `Frame.GetAddress` + bộ đếm W^X) — chờ verdict `reviewer-kt36` rồi commit `[KT-36]`; KT-35 REVIEW (đề xuất DONE); KT-34 REVIEW (D2-64); K1c DONE (D2-64)
+Bước          : 7/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch → code+test → check/gate → Miri → **review độc lập** → commit/push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 477 test/65 suite** (baseline 468 + 9 `kt35_pte`), L1 1.000 seed **607 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt35-gate-fast.log`, chạy **sau** fix reviewer B1/B2). Hai lần đỏ trước đó: (a) luật **R2** bắt **chữ** `cfg(target_arch)` trong doc-comment (grep thô) — sửa chú thích, log `kt35-gate-fast-fail-r2-doc.log`; (b) reviewer B1 thiếu inner attribute — sửa rồi chạy lại; bản PASS trước review giữ `kt35-gate-fast-pre-review.log`. Baseline KT-35: PASS **468 test**, L1 **711 ms** (`kt35-baseline-gate-fast.log`). KT-34 (lịch sử): gate PASS 468 test/62 suite, 10k×4 661 s, 100k×4 6306,38 s.
-Miri          : KT-35 — **PASS 9 test** `vifast-pte` (0 failed, 3,98 s): `./v2/bin/v2 miri -p vifast-pte` (`JOURNAL/kt35-miri.log`); property 10.000 vòng ở test thường, **256** dưới Miri bằng `cfg!(miri)` (giữ nguyên 10.000 của test thường — D2-47(a)). Không thêm `vifast-pte` vào `nightly --only-miri` (không unsafe/alloc/IO; lệnh rời đã kiểm; KT-43 quyết khi chốt cổng K2) — không sửa `v2/bin/v2`. KT-34 (lịch sử): Miri 8 tập/123 test.
-Việc dở       : **KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật**; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 494 test/65 suite** (baseline KT-36 477 + 12 `kt36_frame` + 5 unit test âm `check_frames`), L1 1.000 seed **769 ms** (baseline 832 ms — không hồi quy), fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt36-gate-fast.log`). Đã tự bắt **một hồi quy cổng** trong lúc làm: `check_frames` không có cửa sổ nhanh ⇒ L1 1.000 seed **54.513 ms** (sát trần 60 s, QD §5.2); sửa bằng `frame_objects`/`return Ok(())` khi mô hình chưa từng có Frame ⇒ **769 ms**. KT-35 (lịch sử): PASS 477 test, L1 607 ms; baseline KT-36: PASS 477, L1 832 ms (`kt36-baseline-gate-fast.log`).
+Miri          : KT-36 — **PASS 12/12** `--test kt36_frame` (35,99 s) + **PASS 5/5** `--lib frame` (2,59 s) qua `./v2/bin/v2 miri` (`JOURNAL/kt36-miri.log`); 10.000 → **2×32** Frame và property 10.000 → **5×4** seed dưới `cfg(miri)` (giữ nguyên 10.000 ngoài Miri — D2-47(a)); 2 warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17), không phải KT-36. **Không** thêm `kt36_frame` vào `nightly --only-miri` (không sửa `v2/bin/v2`; KT-43 chốt tập Miri của K2). KT-35 (lịch sử): Miri 9/9 `vifast-pte`.
+Việc dở       : **KT-36 — xong mã + gate + Miri, đang chờ verdict `reviewer-kt36` trước khi commit** (đã báo lead spawn; quá 10 phút sẽ tự soát + đề xuất REVIEW). KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
 ```
+
+## KT-36 — K2: `Frame` 3 cỡ (4 KiB/2 MiB/1 GiB) + ownership/Untyped + `GetAddress` + bộ đếm W^X
+
+**Vào**: READY (`agentctl next --project v2` trả KT-36) · HEAD `c987fe1` ([KT-00], 477 test) ·
+`git rev-list --count HEAD..origin/main` = 0 · working tree có `viscript/` của tab khác (**không
+chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 477 test**, L1 **832 ms**
+([`JOURNAL/kt36-baseline-gate-fast.log`](JOURNAL/kt36-baseline-gate-fast.log)).
+
+**Mục tiêu** (K2-PLAN §3 KT-36, D2-65 Q2/Q3/Q7): `FrameMeta { pa, size_bits, live, mapped_w,
+mapped_x, maps }`; `Retype(Untyped, Frame, size_bits)` chỉ nhận `{12,21,30}`, kiểm `pa` căn lề +
+nằm trong cửa sổ PA của Untyped (lệch ⇒ `Alignment`, cỡ lạ ⇒ `InvalidArgument`); `Frame.GetAddress`;
+frame **không cấp byte thật** (1 GiB vẫn 0 byte arena); frame chết ⇒ **không còn mapping** (bộ đếm
+0, nếu không ⇒ lỗi bất biến, không im lặng); `check_frames` sớm; **chưa** map vào VSpace/PageTable.
+
+**Không** làm: map/unmap PageTable/VSpace (KT-37/38), rights/attrs khi map, TLB (KT-40), luật W^X
+(`WxViolation`, KT-39), `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`,
+`v2/bin/v2`; không `unsafe`, không dependency ngoài workspace, không `#[ignore]`.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`kt36-red-semantics.log`](JOURNAL/kt36-red-semantics.log) (API cũ:
+  `retype Frame` trả `NotSupported` cho cả `size_bits=13` lẫn 3 cỡ ⇒ 0/2) và
+  [`kt36-red-compile.log`](JOURNAL/kt36-red-compile.log) (**E0432** `FrameMeta`/`UNTYPED_PA_WINDOW`
+  + **E0599** 9 method mới ⇒ 78 lỗi).
+- **Code**: `v2/sim/vifast-sim/src/frame.rs` **(mới)** `FrameMeta`/`FrameArea`/`carve`/
+  `UNTYPED_PA_WINDOW = 1 << 30`; `kobj.rs`: `Kind::Frame` (mốc body), `Meta.frame`/`Meta.frame_area`,
+  `frame_windows`/`frame_objects`, `add_untyped(base, size)` **nay dùng `base`** (đáy cửa sổ PA),
+  `retype` rẽ nhánh `Frame` → `retype_frame` (4 lỗi **atomic**), `frame_pa_overlap` (chặn chồng
+  `pa`), `frame_get_address`/`frame_address`/`frame_meta`/`frame_count`/`untyped_frames`/
+  `untyped_pa_window`/`frame_note_map`/`frame_note_unmap`, `check_frames` (**7 nhóm** bất biến — khớp D2-66 — chạy cả trong `sched_after_op`
+  với cửa sổ nhanh `frame_objects == 0`), `finalise_frame`,
+  `revoke_children` từ chối `HasChildren` khi Frame còn mapping + reset watermark cửa sổ;
+  `check_bytes`/`untyped_allocated` **bỏ qua** Frame (không tiêu byte arena).
+- **Test**: `tests/kt36_frame.rs` **12 test** (cỡ lạ; 3 cỡ × GetAddress/meta/bộ đếm; biên
+  `0/2^12/2^21/2^30`; pa lệch 1 ⇒ `Alignment`; 1 GiB không ăn byte; trộn cỡ giảm dần; frame chết
+  sạch; revoke ⇒ `HasChildren` atomic; bất biến bộ đếm; ownership/chồng `pa`; **10.000 retype +
+  huỷ**; property **10.000 seed**) + **5 unit test âm** `check_frames` + 1 test `FrameArea::carve`.
+- **Docs**: `v2/docs/k2-vm.md` **§10** (6 trường, cửa sổ PA 1 GiB, thứ tự kiểm `Retype`,
+  `GetAddress`, finalise/`check_frames`, ranh giới không làm).
+- **Cổng**: [`kt36-gate-fast.log`](JOURNAL/kt36-gate-fast.log) **PASS 494 test/65 suite**, L1
+  **769 ms**; [`kt36-check.log`](JOURNAL/kt36-check.log) PASS; [`kt36-miri.log`](JOURNAL/kt36-miri.log)
+  Miri **12/12** (36,10 s) + **5/5** (2,50 s). Hồi quy cổng tự bắt (L1 54.513 ms khi `check_frames` chưa có cửa sổ
+  nhanh) đã sửa — xem `JOURNAL/kt36-journal.md` §4.1.
+
+**Quyết định có thể gây tranh luận** (chi tiết `JOURNAL/kt36-journal.md` §3 + `k2-vm.md` §10):
+1. `pa` là **nhãn ảo** cấp từ cửa sổ PA 1 GiB của Untyped (`[TK]`), Frame **không** tiêu byte arena
+   ⇒ 1 GiB Frame không ăn RSS; hệ quả `base` của `add_untyped` thành đáy cửa sổ và Untyped chồng
+   cửa sổ ⇒ `AlreadyMapped`.
+2. **Không căn lề ngầm**: `pa = base + watermark` lệch căn ⇒ `Alignment`; trộn cỡ phải cấp **giảm
+   dần** (1 GiB → 2 MiB → 4 KiB).
+3. `Revoke` Untyped khi Frame còn mapping ⇒ **`HasChildren` atomic** (K2 chưa có ngược
+   Frame→PageTable để tự unmap; unmap thật là KT-39).
+4. Bất biến bộ đếm KT-36 là `w ≤ maps && x ≤ maps` — **chưa** `w + x ≤ maps` (luật W^X là KT-39).
+5. Test 10.000 retype+huỷ = **100 vòng × 100 Frame** (mỗi vòng một `Machine`): bất biến per-op của
+   mô hình là O(#object đã từng cấp) nên dồn 10k object vào một mô hình là O(n²) ~56 s mà không
+   kiểm thêm gì; vẫn là **10.000** lần retype + 10.000 lần huỷ thật.
+
+**Việc dở**: `reviewer-kt36` verdict **APPROVE code**; **D2-66** (Agent 0) đã push (`9b70618`) —
+chốt `UNTYPED_PA_WINDOW` 1 GiB/`add_untyped(base)`/nhãn PA ảo/bất biến bộ đếm; 3 nit của reviewer đã
+sửa (assert tràn `base+1 GiB` ở `add_untyped`, câu "Frame sống không chồng `pa`" ở `k2-vm.md` §10.2,
+thống nhất **7 nhóm** bất biến). Còn: gate lại + Miri lại rồi commit `[KT-36]` + push. Không lật QUEUE.
 
 ## KT-35 — mở K2: crate `vifast-pte` (hình 3 cấp + PTE array) và `v2/docs/k2-vm.md` (D2-65 Q1/Q2/Q8)
 

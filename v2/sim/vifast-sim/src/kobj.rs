@@ -50,7 +50,29 @@
 //! - **`ReplyRecv`/`NBSendRecv`/`NBSendWait`** (Q15a): reply trước rồi `Recv`; NBSend không giao
 //!   được ⇒ **vẫn** `Recv`/`Wait` (message chưa vào IPC nên không bị coi là mất). `NBRecv` là
 //!   **poll** ⇒ TCB không chạy được trả `Busy` (không đổi trạng thái).
+//!
+//! **KT-36 — Frame 3 cỡ, ownership + `GetAddress` + bộ đếm W^X** (K2-PLAN §3, D2-65 Q2/Q3/Q7;
+//! `v2/docs/k2-vm.md` §10; thiết kế §4.10 `:353-356`):
+//! - `Retype(Untyped, Frame, size_bits)` chỉ nhận `size_bits ∈ {12, 21, 30}` (cỡ lấy từ
+//!   `vifast_pte::FrameSize`, không chép tay); cỡ khác ⇒ `InvalidArgument` (không còn
+//!   `NotSupported` như thời reserved).
+//! - Frame **không tiêu byte arena** ("không cấp byte thật", rủi ro (a) của KT-36): nó cấp từ
+//!   **cửa sổ PA ảo** [`UNTYPED_PA_WINDOW`] của Untyped sở hữu, `pa = base + watermark`; lệch
+//!   căn ⇒ `Alignment` (không đệm ngầm), đầy cửa sổ ⇒ `NotEnoughMemory`, chồng `pa` với Frame
+//!   sống khác ⇒ `AlreadyMapped`. Body của Frame chỉ là mốc [`Kind::Frame`] trong arena kernel
+//!   (vài chục byte metadata), **không** phải vùng nhớ của Frame.
+//! - `Frame.GetAddress` (method 2) = [`Machine::frame_get_address`] (qua cap) /
+//!   [`Machine::frame_address`] (theo `ObjId`).
+//! - Bộ đếm `maps/mapped_w/mapped_x` nằm trong [`FrameMeta`]; KT-36 chỉ mở hai cửa
+//!   [`Machine::frame_note_map`]/[`Machine::frame_note_unmap`] (map thật là KT-37/KT-39).
+//! - Frame chết ⇒ **không còn mapping**: `Revoke` Untyped còn Frame đang map bị từ chối
+//!   `HasChildren` (atomic, "lỗi bất biến, không im lặng"); [`Machine::check_frames`] kiểm lại
+//!   sau mỗi op (KT-42 mở rộng thành `check_vm`).
 
+use crate::frame::FrameArea;
+/// **KT-36** — metadata Frame + cửa sổ PA của Untyped (định nghĩa ở [`crate::frame`];
+/// re-export để test/harness dùng `vifast_sim::kobj::{FrameMeta, UNTYPED_PA_WINDOW}`).
+pub use crate::frame::{FrameMeta, UNTYPED_PA_WINDOW};
 use crate::ipc::{self, IpcArea, Message, MessageInfo};
 use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
 use crate::sched::HartSched;
@@ -58,6 +80,7 @@ use crate::sched::HartSched;
 /// re-export để test dùng `vifast_sim::kobj::Published`).
 pub use crate::sched::Published;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
+use vifast_pte::FrameSize;
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
 pub const FLAG_GUEST: u32 = 1;
@@ -381,12 +404,18 @@ struct EndpointState {
 #[derive(Debug)]
 enum Kind {
     Untyped,
-    CNode { slots: Vec<Option<CapId>> },
+    CNode {
+        slots: Vec<Option<CapId>>,
+    },
     Tcb(Box<TcbData>),
     SchedContext(Box<SchedData>),
     Endpoint(Box<EndpointState>),
     Reply(Box<ReplyData>),
     Notification(Box<NotificationState>),
+    /// **KT-36** — mốc body của `Frame`: chỉ để `Meta.body` có chỗ (objmem cấp metadata vài
+    /// chục byte), **không** mang vùng nhớ của Frame. Dữ liệu thật nằm ở [`Meta::frame`]
+    /// (`FrameMeta`) vì nó phải đọc được **sau khi** object chết (DoD "frame chết sạch").
+    Frame,
     Plain,
 }
 
@@ -546,6 +575,7 @@ impl KObj for Kind {
             Kind::Plain => 6,
             Kind::Reply(_) => 7,
             Kind::Notification(_) => 8,
+            Kind::Frame => 9,
         }
     }
 }
@@ -581,6 +611,15 @@ struct Meta {
     /// Với CNode: số slot (giữ để `cap_at`/`cnode_slot_count` của CNode **đã finalise**
     /// vẫn trả `SlotEmpty` như API cũ — body đã bị `drop_in_place` nên không đọc ngược được).
     slots: Option<usize>,
+    /// **KT-36** — metadata Frame (sống **sau** khi object chết: DoD "frame chết sạch" đọc lại
+    /// bộ đếm). `Some` **đúng khi** `ty == ObjType::Frame` (bất biến `check_frames`).
+    ///
+    /// Với Frame, `offset`/`len` ở trên là **offset trong cửa sổ PA** và **cỡ Frame theo
+    /// byte** (không phải byte arena — Frame không tiêu byte arena).
+    frame: Option<FrameMeta>,
+    /// **KT-36** — với object Untyped: cửa sổ PA ảo cấp cho Frame (`base` + watermark).
+    /// Untyped con thừa hưởng `base_cha + offset_con`; `Revoke` Untyped đưa watermark về 0.
+    frame_area: Option<FrameArea>,
 }
 
 #[derive(Debug)]
@@ -680,6 +719,15 @@ pub struct Machine {
     preempt_every_step: bool,
     /// KT-20: thời gian ảo (tick), **không** đọc `Instant`/wall clock (D2-49(h)).
     now: u64,
+    /// **KT-36** — chỉ số (0-based) của các Untyped có cửa sổ PA, để `retype_frame` kiểm chồng
+    /// `pa` mà **không** quét toàn bộ `objects` (10.000 Frame trong một Untyped ⇒ O(1)/lần).
+    /// Phần tử có thể trỏ Untyped đã chết — nơi dùng phải kiểm `alive`/`ty`.
+    frame_windows: Vec<usize>,
+    /// **KT-36** — số object `Frame` **đã từng** tạo. Dùng làm cửa sổ nhanh cho
+    /// [`Machine::check_frames`] (chạy sau **mỗi** public op): mô hình chưa từng có Frame ⇒ trả
+    /// `Ok` ngay, giữ chi phí per-op của L1/property K1a..K1c như trước KT-36 (đo được: L1 1.000
+    /// seed 54,5 s → về mức baseline sau khi thêm cửa sổ này).
+    frame_objects: usize,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -690,6 +738,10 @@ struct ChoDat {
     len: usize,
     region: Option<usize>,
     slots: Option<usize>,
+    /// **KT-36** — metadata Frame (chỉ Frame mới có).
+    frame: Option<FrameMeta>,
+    /// **KT-36** — cửa sổ PA cấp Frame (chỉ Untyped mới có).
+    frame_area: Option<FrameArea>,
 }
 
 /// Ảnh chụp **bộ đếm chuyển trạng thái** (KT-18) + **cặp cấm bị thử** (KT-23).
@@ -845,6 +897,8 @@ impl Machine {
             migrate_count: 0,
             preempt_every_step: false,
             now: 0,
+            frame_windows: Vec::new(),
+            frame_objects: 0,
         }
     }
 
@@ -860,21 +914,36 @@ impl Machine {
 
     // ---------------------------------------------------------------- dựng cảnh
 
-    /// Thêm một Untyped gốc. `base` chỉ để kịch bản ghi nhớ; mô hình tính offset từ 0.
+    /// Thêm một Untyped gốc. Vùng nhớ thật của Untyped (arena của nó) do objmem cấp với cỡ
+    /// `size`; mô hình tính offset arena từ 0.
     ///
-    /// Vùng nhớ thật của Untyped (arena của nó) do objmem cấp với cỡ `size`.
+    /// **KT-36**: `base` **nay có nghĩa** — nó là đáy cửa sổ PA ảo mà Untyped cấp cho Frame
+    /// (`FrameArea`, 1 GiB; `v2/docs/k2-vm.md` §10). Trước KT-36 tham số này bị bỏ qua
+    /// ("chỉ để kịch bản ghi nhớ"); object không phải Frame **không** đổi hành vi. Frame lấy
+    /// `pa = base + watermark` nên Untyped dùng để retype Frame phải khai `base` **căn theo cỡ
+    /// Frame** và **phân biệt** giữa các Untyped (chồng `pa` ⇒ `AlreadyMapped`).
     pub fn add_untyped(&mut self, base: u64, size: usize) -> ObjId {
-        let _ = base;
         assert!(size > 0, "Untyped phải có cỡ dương");
+        // **KT-36** — cửa sổ PA của Untyped phải biểu diễn được: `base + 1 GiB` không tràn
+        // `u64`. Từ chối **ngay ở constructor** (fail rõ, như `size > 0`) thay vì để mọi lần
+        // retype Frame sau đó trả `InvalidArgument`; `FrameArea::carve` vẫn giữ kiểm tra đó như
+        // lớp thứ hai cho `FrameArea` dựng trực tiếp.
+        assert!(
+            base.checked_add(UNTYPED_PA_WINDOW).is_some(),
+            "Untyped: base {base:#x} + cửa sổ PA {UNTYPED_PA_WINDOW} tràn u64 (KT-36)"
+        );
         let region = self.push_region(size);
-        self.push_kernel(
+        let obj = self.push_kernel(
             ObjType::Untyped,
             Kind::Untyped,
             ChoDat {
                 region: Some(region),
+                frame_area: Some(FrameArea::new(base)),
                 ..ChoDat::default()
             },
-        )
+        );
+        self.frame_windows.push(obj as usize - 1);
+        obj
     }
 
     /// Thêm CNode do harness cấp (init giữ CNode gốc — không cần Retype CNode ở KT-09).
@@ -1025,6 +1094,10 @@ impl Machine {
     }
 
     /// `(offset, len)` trong Untyped; `None` với object không cấp từ Untyped.
+    ///
+    /// **KT-36** — với `Frame`, hai giá trị này là **offset/cỡ trong cửa sổ PA** của Untyped
+    /// (`len` = cỡ Frame theo byte), **không** phải byte arena: Frame không tiêu byte arena nên
+    /// `check_bytes`/`untyped_allocated` bỏ qua nó (xem `check_frames`).
     pub fn object_bytes(&self, obj: ObjId) -> Option<(usize, usize)> {
         let m = self.objects.get(obj as usize - 1)?;
         m.untyped.map(|_| (m.offset, m.len))
@@ -1033,6 +1106,139 @@ impl Machine {
     /// Địa chỉ **thật** của body trong arena objmem (KT-16).
     pub fn object_addr(&self, obj: ObjId) -> Option<u64> {
         self.objects.get(obj as usize - 1).map(|m| m.body.pa())
+    }
+
+    // ------------------------------------------------------- Frame (KT-36)
+
+    /// **KT-36** — `Frame.GetAddress` qua **cap** (method 2 của `spec/abi.toml`, vẫn `reserved`
+    /// nên đây là semantic **sau model API**, không đổi spec).
+    ///
+    /// Cap phải **sống** và trỏ `Frame` (`WrongObjectType`); Frame đã chết ⇒ `InvalidCapability`.
+    /// Trả `pa` của mô hình (địa chỉ vật lý **ảo** — Frame không có vùng nhớ thật ở K2).
+    pub fn frame_get_address(&self, cap: SlotRef) -> Result<u64, KError> {
+        let obj = self.require_type(cap, ObjType::Frame)?;
+        self.frame_address(obj)
+    }
+
+    /// **KT-36** — `pa` của Frame theo `ObjId` (model API cho KT-37/KT-39; `GetAddress` qua cap
+    /// là [`Machine::frame_get_address`]).
+    pub fn frame_address(&self, frame: ObjId) -> Result<u64, KError> {
+        let m = self.meta(frame)?;
+        if m.ty != ObjType::Frame {
+            return Err(KError::WrongObjectType);
+        }
+        if !m.alive {
+            return Err(KError::InvalidCapability);
+        }
+        m.frame.map(|f| f.pa).ok_or(KError::WrongObjectType)
+    }
+
+    /// **KT-36** — ảnh chụp [`FrameMeta`] của Frame, **kể cả** Frame đã chết (`live = false` +
+    /// bộ đếm 0 — DoD "frame chết sạch" phải đọc lại được). Object không phải Frame ⇒
+    /// `WrongObjectType`.
+    pub fn frame_meta(&self, frame: ObjId) -> Result<FrameMeta, KError> {
+        let m = self.meta(frame)?;
+        if m.ty != ObjType::Frame {
+            return Err(KError::WrongObjectType);
+        }
+        m.frame.ok_or(KError::WrongObjectType)
+    }
+
+    /// **KT-36** — số Frame **còn sống** (không đếm Frame đã chết trong `objects`).
+    pub fn frame_count(&self) -> usize {
+        self.objects
+            .iter()
+            .filter(|m| m.alive && m.ty == ObjType::Frame)
+            .count()
+    }
+
+    /// **KT-36** — Frame **còn sống** thuộc Untyped `untyped`, theo thứ tự cấp phát. Không phải
+    /// Untyped ⇒ `vec![]`.
+    pub fn untyped_frames(&self, untyped: ObjId) -> Vec<ObjId> {
+        let Ok(idx) = self.object_index(untyped) else {
+            return Vec::new();
+        };
+        if self.objects[idx].ty != ObjType::Untyped {
+            return Vec::new();
+        }
+        self.objects
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive && m.ty == ObjType::Frame && m.untyped == Some(idx))
+            .map(|(i, _)| (i as u32) + 1)
+            .collect()
+    }
+
+    /// **KT-36** — `(đáy, đỉnh)` cửa sổ PA mà Untyped cấp cho Frame; `None` nếu không phải
+    /// Untyped (hoặc Untyped đã chết).
+    pub fn untyped_pa_window(&self, untyped: ObjId) -> Option<(u64, u64)> {
+        let idx = self.object_index(untyped).ok()?;
+        let m = &self.objects[idx];
+        if !m.alive || m.ty != ObjType::Untyped {
+            return None;
+        }
+        m.frame_area.and_then(|a| a.window())
+    }
+
+    /// **KT-36** — ghi nhận **một mapping sống** mới của Frame (`write` = có quyền WRITE,
+    /// `exec` = có thuộc tính EXEC). Đây là cửa duy nhất đổi `maps/mapped_w/mapped_x`; KT-37/
+    /// KT-39 sẽ gọi từ `map` thật. **Luật** W^X (`WxViolation`) là KT-39 — KT-36 chỉ giữ bộ đếm
+    /// đúng cấu trúc (`mapped_w ≤ maps`, `mapped_x ≤ maps`).
+    ///
+    /// Frame chết ⇒ `InvalidCapability`; không phải Frame ⇒ `WrongObjectType`; tràn `u32` ⇒
+    /// `InvalidArgument`.
+    pub fn frame_note_map(&mut self, frame: ObjId, write: bool, exec: bool) -> Result<(), KError> {
+        let f = self.frame_meta_live_mut(frame)?;
+        let maps = f.maps.checked_add(1).ok_or(KError::InvalidArgument)?;
+        let mapped_w = f
+            .mapped_w
+            .checked_add(u32::from(write))
+            .ok_or(KError::InvalidArgument)?;
+        let mapped_x = f
+            .mapped_x
+            .checked_add(u32::from(exec))
+            .ok_or(KError::InvalidArgument)?;
+        f.maps = maps;
+        f.mapped_w = mapped_w;
+        f.mapped_x = mapped_x;
+        Ok(())
+    }
+
+    /// **KT-36** — gỡ **một mapping sống** của Frame (đối ứng [`Machine::frame_note_map`]).
+    ///
+    /// Không có mapping / `mapped_w == 0` khi `write` / `mapped_x == 0` khi `exec` ⇒
+    /// `IllegalOperation` (không trừ âm, không im lặng); atomic.
+    pub fn frame_note_unmap(
+        &mut self,
+        frame: ObjId,
+        write: bool,
+        exec: bool,
+    ) -> Result<(), KError> {
+        let f = self.frame_meta_live_mut(frame)?;
+        if f.maps == 0 || (write && f.mapped_w == 0) || (exec && f.mapped_x == 0) {
+            return Err(KError::IllegalOperation);
+        }
+        f.maps -= 1;
+        if write {
+            f.mapped_w -= 1;
+        }
+        if exec {
+            f.mapped_x -= 1;
+        }
+        Ok(())
+    }
+
+    /// Frame **sống** + cho ghi metadata (nội bộ; giữ một cửa để hai hàm đếm không lệch lỗi).
+    fn frame_meta_live_mut(&mut self, frame: ObjId) -> Result<&mut FrameMeta, KError> {
+        let idx = self.object_index(frame)?;
+        let m = &mut self.objects[idx];
+        if m.ty != ObjType::Frame {
+            return Err(KError::WrongObjectType);
+        }
+        if !m.alive {
+            return Err(KError::InvalidCapability);
+        }
+        m.frame.as_mut().ok_or(KError::WrongObjectType)
     }
 
     /// `(base, capacity)` của vùng nhớ thật của một Untyped (KT-16); `None` nếu không phải
@@ -1089,7 +1295,10 @@ impl Machine {
         };
         self.objects
             .iter()
-            .filter(|m| m.alive && m.untyped == Some(idx))
+            // **KT-36** — Frame không tiêu byte arena ("không cấp byte thật"), nên `len` của nó
+            // (cỡ Frame) **không** vào tổng byte đã cấp của Untyped; vùng PA của Frame do
+            // `check_frames` kiểm riêng.
+            .filter(|m| m.alive && m.untyped == Some(idx) && m.ty != ObjType::Frame)
             .map(|m| m.len)
             .sum()
     }
@@ -1133,6 +1342,14 @@ impl Machine {
         let mut allocated = 0usize;
         for (i, o) in self.objects.iter().enumerate() {
             if !o.alive || o.untyped != Some(u_idx) {
+                continue;
+            }
+            // **KT-36** — Frame cấp từ **cửa sổ PA**, không tiêu byte arena: `offset`/`len` của
+            // nó là offset/cỡ trong cửa sổ PA chứ không phải trong arena, nên **không** vào
+            // `allocated`/`ranges` của bất biến byte. Vùng PA do `check_frames` kiểm
+            // (không chồng, trong cửa sổ, `pa` căn cỡ). Bỏ qua ở đây **không** nới bất biến
+            // byte: Frame không chiếm byte nào của arena.
+            if o.ty == ObjType::Frame {
                 continue;
             }
             let end = o.offset + o.len;
@@ -1181,6 +1398,161 @@ impl Machine {
         for (i, m) in self.objects.iter().enumerate() {
             if m.alive && m.ty == ObjType::Untyped {
                 self.check_bytes((i as u32) + 1)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// **KT-36** — bất biến của **toàn bộ Frame** + cửa sổ PA của Untyped ("check_frames sớm";
+    /// KT-42 sẽ gộp vào `check_vm` cùng VSpace/PageTable/TLB).
+    ///
+    /// **Bảy nhóm** bất biến (khớp D2-66):
+    /// 1. **kiểu**: `ty == Frame` ⇔ có [`FrameMeta`] (và ngược lại);
+    /// 2. **trạng thái**: `FrameMeta.live == Meta.alive`;
+    /// 3. **cỡ**: `size_bits ∈ {12, 21, 30}`, `len == 1 << size_bits`;
+    /// 4. **cửa sổ PA + chủ sở hữu**: `pa == base + offset`, `pa` căn đúng cỡ, `[pa, pa + cỡ)`
+    ///    nằm trong cửa sổ, chủ sở hữu là Untyped và **sống** nếu Frame sống (không mồ côi);
+    /// 5. **bộ đếm cấu trúc**: `mapped_w ≤ maps`, `mapped_x ≤ maps` (luật W^X chặt hơn là KT-39);
+    /// 6. **frame chết sạch**: Frame đã chết ⇒ cả ba bộ đếm bằng **0** ("frame chết ⇒ không còn
+    ///    mapping" — DoD KT-36);
+    /// 7. **toàn cục**: không hai Frame **sống** chồng `pa` (mọi Untyped; O(n log n) bằng sort)
+    ///    và watermark cửa sổ của mỗi Untyped sống = `max(offset + len)` của Frame sống của nó
+    ///    (bắt rò watermark/không reset sau `Revoke`), ≤ [`UNTYPED_PA_WINDOW`].
+    pub fn check_frames(&self) -> Result<(), String> {
+        // Cửa sổ nhanh: mô hình **chưa từng** có Frame (mọi test K1a..K1c, L1 1.000 seed) thì
+        // bất biến Frame là rỗng — không quét/không cấp phát gì trên đường nóng của mỗi op.
+        if self.frame_objects == 0 {
+            return Ok(());
+        }
+        let mut ranges: Vec<(u64, u64, ObjId)> = Vec::new();
+        // `max_end[i]` = `max(offset + len)` của Frame **sống** thuộc Untyped chỉ số `i` — gom
+        // trong cùng vòng quét để bước 6 không phải quét chéo O(số Untyped × số object).
+        let mut max_end: Vec<u64> = vec![0; self.objects.len()];
+        for (i, m) in self.objects.iter().enumerate() {
+            let obj = (i as u32) + 1;
+            match (m.ty == ObjType::Frame, m.frame) {
+                (true, None) => {
+                    return Err(format!("object {obj} là Frame nhưng thiếu metadata Frame"))
+                }
+                (false, Some(_)) => {
+                    return Err(format!(
+                        "object {obj} ({}) không phải Frame nhưng có metadata Frame",
+                        m.ty.name()
+                    ))
+                }
+                _ => {}
+            }
+            let Some(f) = m.frame else { continue };
+            if f.live != m.alive {
+                return Err(format!(
+                    "Frame {obj}: live {} ≠ alive {} của sổ cái",
+                    f.live, m.alive
+                ));
+            }
+            let size = FrameSize::from_size_bits(f.size_bits)
+                .map_err(|_| format!("Frame {obj}: size_bits {} lạ", f.size_bits))?;
+            let need = size.size_bytes();
+            if m.len as u64 != need {
+                return Err(format!("Frame {obj}: len {} ≠ cỡ {need}", m.len));
+            }
+            if f.pa % need != 0 {
+                return Err(format!("Frame {obj}: pa {:#x} lệch căn {need}", f.pa));
+            }
+            let Some(u_idx) = m.untyped else {
+                return Err(format!("Frame {obj}: mồ côi (không thuộc Untyped nào)"));
+            };
+            let Some(owner) = self.objects.get(u_idx) else {
+                return Err(format!("Frame {obj}: Untyped #{} không tồn tại", u_idx + 1));
+            };
+            if owner.ty != ObjType::Untyped {
+                return Err(format!(
+                    "Frame {obj}: chủ sở hữu #{} không phải Untyped",
+                    u_idx + 1
+                ));
+            }
+            if m.alive && !owner.alive {
+                return Err(format!(
+                    "Frame {obj}: mồ côi — Untyped #{} đã chết",
+                    u_idx + 1
+                ));
+            }
+            let Some(area) = owner.frame_area else {
+                return Err(format!(
+                    "Untyped #{}: Frame {obj} nhưng thiếu cửa sổ PA",
+                    u_idx + 1
+                ));
+            };
+            let Some((base, win_end)) = area.window() else {
+                return Err(format!("Untyped #{}: cửa sổ PA tràn u64", u_idx + 1));
+            };
+            if f.pa != base.saturating_add(m.offset as u64) {
+                return Err(format!(
+                    "Frame {obj}: pa {:#x} ≠ base {base:#x} + offset {}",
+                    f.pa, m.offset
+                ));
+            }
+            let end =
+                f.pa.checked_add(need)
+                    .ok_or_else(|| format!("Frame {obj}: pa + cỡ tràn u64"))?;
+            if end > win_end {
+                return Err(format!(
+                    "Frame {obj}: [{:#x}, {end:#x}) ra ngoài cửa sổ [{base:#x}, {win_end:#x})",
+                    f.pa
+                ));
+            }
+            // KT-36 chỉ giữ bộ đếm **đúng cấu trúc**: mỗi bộ đếm ≤ tổng số mapping. Bất biến
+            // chặt hơn `mapped_w + mapped_x ≤ maps` chỉ đúng **sau** khi KT-39 áp W^X (một
+            // mapping không thể vừa W vừa X); KT-36 cố ý chưa áp luật đó.
+            if f.mapped_w > f.maps || f.mapped_x > f.maps {
+                return Err(format!(
+                    "Frame {obj}: mapped_w {} / mapped_x {} > maps {}",
+                    f.mapped_w, f.mapped_x, f.maps
+                ));
+            }
+            if !m.alive && !f.counters_zero() {
+                return Err(format!(
+                    "Frame {obj}: đã chết nhưng còn mapping (maps {}, w {}, x {})",
+                    f.maps, f.mapped_w, f.mapped_x
+                ));
+            }
+            if m.alive {
+                ranges.push((f.pa, end, obj));
+                let e = m.offset as u64 + m.len as u64;
+                if e > max_end[u_idx] {
+                    max_end[u_idx] = e;
+                }
+            }
+        }
+        // 5) Không hai Frame sống chồng pa (mọi Untyped).
+        ranges.sort_unstable();
+        for pair in ranges.windows(2) {
+            if pair[0].1 > pair[1].0 {
+                return Err(format!(
+                    "Frame {} [{:#x}, {:#x}) chồng Frame {} [{:#x}, {:#x})",
+                    pair[0].2, pair[0].0, pair[0].1, pair[1].2, pair[1].0, pair[1].1
+                ));
+            }
+        }
+        // 6) watermark cửa sổ = max(offset + len) của Frame sống của Untyped đó.
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::Untyped {
+                continue;
+            }
+            let obj = (i as u32) + 1;
+            let Some(area) = m.frame_area else {
+                return Err(format!("Untyped {obj}: thiếu cửa sổ PA"));
+            };
+            if area.watermark > UNTYPED_PA_WINDOW {
+                return Err(format!(
+                    "Untyped {obj}: watermark {} > cửa sổ {UNTYPED_PA_WINDOW}",
+                    area.watermark
+                ));
+            }
+            if area.watermark != max_end[i] {
+                return Err(format!(
+                    "Untyped {obj}: watermark {} ≠ max(offset+len) {} của Frame sống",
+                    area.watermark, max_end[i]
+                ));
             }
         }
         Ok(())
@@ -1365,6 +1737,12 @@ impl Machine {
                 KError::InvalidArgument
             });
         }
+        // **KT-36** — Frame có đường riêng: metadata thuần, cấp từ **cửa sổ PA** của Untyped
+        // (`FrameArea`), **không** tiêu byte arena (K2-PLAN §1.1, D2-65 Q2/Q3/Q7). Đi trước
+        // cổng `is_core` (Frame vẫn là object `reserved` của `spec/` tới K3).
+        if ty == ObjType::Frame {
+            return self.retype_frame(src_cap, u_idx, size_bits, src_rights);
+        }
         if !ty.is_core() {
             return Err(KError::NotSupported);
         }
@@ -1431,6 +1809,15 @@ impl Machine {
         } else {
             None
         };
+        // **KT-36** — Untyped con có cửa sổ PA riêng cho Frame, đáy = `base_cha + offset_con`
+        // (đơn vị offset arena/PA của mô hình là byte, cùng một hệ). Chồng `pa` thật giữa cha
+        // và con vẫn bị `AlreadyMapped` chặn: xem [`Machine::retype_frame`].
+        let frame_area = if ty == ObjType::Untyped {
+            let base_cha = self.objects[u_idx].frame_area.map(|a| a.base).unwrap_or(0);
+            Some(FrameArea::new(base_cha.saturating_add(offset as u64)))
+        } else {
+            None
+        };
         let obj = self.push_meta(
             ty,
             Loc::Untyped(u_region as u32),
@@ -1445,12 +1832,108 @@ impl Machine {
                 } else {
                     None
                 },
+                frame_area,
+                ..ChoDat::default()
             },
         );
+        if ty == ObjType::Untyped {
+            self.frame_windows.push(obj as usize - 1);
+        }
         // KT-19 DoD 3: Retê có thể tạo TCB `Inactive` (không vào hàng) — kiểm lại bất biến
         // sau mỗi public op như các op TCB khác.
         self.sched_after_op(false);
         Ok(self.push_cap(obj, ty, Some(src_cap), src_rights, None))
+    }
+
+    /// **KT-36** — `Untyped.Retype(Untyped, Frame, size_bits)`: cấp một Frame **metadata
+    /// thuần** từ cửa sổ PA của Untyped `u_idx` (xem [`crate::frame`], `k2-vm.md` §10).
+    ///
+    /// Thứ tự kiểm — **mọi** lỗi đều **không** đổi trạng thái (atomic):
+    /// 1. `size_bits ∉ {12, 21, 30}` ⇒ `InvalidArgument` (cỡ đọc từ `vifast_pte::FrameSize`,
+    ///    không chép tay giá trị);
+    /// 2. `pa = base + watermark` **chưa** căn đúng cỡ ⇒ `Alignment` — mô hình **không** đệm
+    ///    căn lề ngầm (DoD KT-36 "pa lệch 1 ⇒ Alignment"); muốn trộn cỡ thì cấp **giảm dần**;
+    /// 3. `pa + cỡ` ra ngoài cửa sổ [`UNTYPED_PA_WINDOW`] ⇒ `NotEnoughMemory`;
+    /// 4. `[pa, pa + cỡ)` chồng Frame **sống** của Untyped khác ⇒ `AlreadyMapped`.
+    ///
+    /// Frame **không** tiêu byte arena: `untyped_used`/`check_bytes` không đổi (K2-PLAN §1.1,
+    /// "không cấp byte thật"). Body trong arena kernel chỉ là mốc [`Kind::Frame`] vài chục byte
+    /// metadata, không phải vùng nhớ của Frame.
+    fn retype_frame(
+        &mut self,
+        src_cap: CapId,
+        u_idx: usize,
+        size_bits: u32,
+        src_rights: u8,
+    ) -> Result<CapId, KError> {
+        let size = u8::try_from(size_bits)
+            .map_err(|_| KError::InvalidArgument)
+            .and_then(|bits| {
+                FrameSize::from_size_bits(bits).map_err(|_| KError::InvalidArgument)
+            })?;
+        // `area` là **bản sao**: watermark chỉ ghi lại khi mọi bước sau thành công (atomic).
+        let mut area = self.objects[u_idx]
+            .frame_area
+            .ok_or(KError::WrongObjectType)?;
+        let pa = area.carve(size)?;
+        if self.frame_pa_overlap(u_idx, pa, size.size_bytes()) {
+            return Err(KError::AlreadyMapped);
+        }
+        let body = self
+            .kernel
+            .alloc_place(Kind::Frame)
+            .ok_or(KError::NotEnoughMemory)?;
+        let obj = self.push_meta(
+            ObjType::Frame,
+            Loc::Kernel,
+            body,
+            ChoDat {
+                untyped: Some(u_idx),
+                offset: (pa - area.base) as usize,
+                len: size.size_bytes() as usize,
+                frame: Some(FrameMeta::new(pa, size)),
+                ..ChoDat::default()
+            },
+        );
+        self.objects[u_idx].frame_area = Some(area);
+        self.sched_after_op(false);
+        Ok(self.push_cap(obj, ObjType::Frame, Some(src_cap), src_rights, None))
+    }
+
+    /// Có Frame **sống** nào thuộc Untyped khác chồng `[pa, pa + len)` không.
+    ///
+    /// Chỉ quét Untyped có cửa sổ PA **giao** với khoảng cần cấp — số Untyped nhỏ; 10.000 Frame
+    /// trong **một** Untyped thì watermark bảo đảm không chồng theo cấu trúc nên không quét.
+    /// `check_frames` kiểm lại bất biến này **toàn cục** (O(n log n), sau mỗi op ở test).
+    fn frame_pa_overlap(&self, u_idx: usize, pa: u64, len: u64) -> bool {
+        let end = pa.saturating_add(len);
+        for &i in &self.frame_windows {
+            if i == u_idx {
+                continue;
+            }
+            let m = &self.objects[i];
+            if !m.alive || m.ty != ObjType::Untyped {
+                continue;
+            }
+            let Some(area) = m.frame_area else { continue };
+            let Some((win_base, win_end)) = area.window() else {
+                continue;
+            };
+            if win_end <= pa || end <= win_base {
+                continue;
+            }
+            for o in self.objects.iter() {
+                if !o.alive || o.ty != ObjType::Frame || o.untyped != Some(i) {
+                    continue;
+                }
+                let Some(f) = o.frame else { continue };
+                let fe = f.pa.saturating_add(o.len as u64);
+                if f.pa < end && pa < fe {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     // ---------------------------------------------------------------- CSpace
@@ -2322,6 +2805,29 @@ impl Machine {
     ///
     /// `revoke_children` gọi hàm này **trước** `destroy` trong objmem. Gỡ ready queue/refill
     /// queue là hook của KT-19/KT-20 (K1b **chưa có** scheduler).
+    /// **KT-36** — finalise một Frame: đánh dấu `live = false` **chỉ khi** bộ đếm mapping đã
+    /// bằng 0.
+    ///
+    /// Bất biến "frame chết ⇒ không còn mapping" (DoD KT-36) được cưỡng chế **ở đây**: còn
+    /// mapping sống ⇒ [`KError::HasChildren`] và **không** đổi gì (không im lặng xoá mapping).
+    /// Revoke Untyped đã kiểm trước để cả op là atomic; hàm này là cửa thứ hai (defence in
+    /// depth) nếu có đường finalise khác trong tương lai.
+    fn finalise_frame(&mut self, frame: ObjId) -> Result<(), KError> {
+        let idx = self.object_index(frame)?;
+        let m = &mut self.objects[idx];
+        if m.ty != ObjType::Frame {
+            return Err(KError::WrongObjectType);
+        }
+        let Some(f) = m.frame.as_mut() else {
+            return Err(KError::WrongObjectType);
+        };
+        if !f.counters_zero() {
+            return Err(KError::HasChildren);
+        }
+        f.live = false;
+        Ok(())
+    }
+
     pub fn finalise_tcb(&mut self, tcb: ObjId) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Dead {
@@ -3076,6 +3582,12 @@ impl Machine {
         }
         if let Err(e) = self.check_waitaddr() {
             debug_assert!(false, "bất biến WaitOnAddress vỡ sau public op: {e}");
+        }
+        // **KT-36** — bất biến Frame/cửa sổ PA cũng chạy sau **mỗi** public op ("check_frames
+        // sớm"): Frame mồ côi, `pa` lệch căn/ngoài cửa sổ, frame chết còn mapping, watermark
+        // sai đều bị bắt ngay tại op gây ra, không đợi test gọi tay.
+        if let Err(e) = self.check_frames() {
+            debug_assert!(false, "bất biến Frame vỡ sau public op: {e}");
         }
     }
 
@@ -6625,6 +7137,9 @@ impl Machine {
     }
 
     fn push_meta(&mut self, ty: ObjType, loc: Loc, body: ObjRef<Kind>, cho: ChoDat) -> ObjId {
+        if ty == ObjType::Frame {
+            self.frame_objects += 1;
+        }
         self.objects.push(Meta {
             ty,
             alive: true,
@@ -6635,6 +7150,8 @@ impl Machine {
             body,
             region: cho.region,
             slots: cho.slots,
+            frame: cho.frame,
+            frame_area: cho.frame_area,
         });
         self.objects.len() as ObjId
     }
@@ -6671,6 +7188,8 @@ impl Machine {
     fn fresh_kind(ty: ObjType, child_slots: usize) -> Kind {
         match ty {
             ObjType::Untyped => Kind::Untyped,
+            // KT-36: Frame chỉ có mốc body — dữ liệu thật ở `Meta::frame`, không cấp vùng nhớ.
+            ObjType::Frame => Kind::Frame,
             ObjType::CNode => Kind::CNode {
                 slots: vec![None; child_slots.max(1)],
             },
@@ -7009,6 +7528,16 @@ impl Machine {
             // Untyped lồng nhau: finalise **cả cây con** (object của Untyped con cũng chết,
             // không để cap trỏ tới object mồ côi — review Agent 0 mục 3).
             self.collect_untyped_tree(u_idx, &mut dead_objs);
+            // **KT-36** — Frame còn mapping sống thì **không** được chết. Kiểm **trước** mọi
+            // thay đổi để `Revoke` là atomic: trả `HasChildren` và để nguyên cả cây (không im
+            // lặng bỏ mapping — bất biến "frame chết ⇒ `maps = mapped_w = mapped_x = 0`").
+            // `check_frames` giữ cùng bất biến này như lưới an toàn thứ hai.
+            for id in &dead_objs {
+                let m = &self.objects[*id as usize - 1];
+                if m.ty == ObjType::Frame && m.frame.is_some_and(|f| !f.counters_zero()) {
+                    return Err(KError::HasChildren);
+                }
+            }
             // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải chết
             // theo **cả cây con của nó**, kể cả khi object đích còn sống (object ngoài Untyped).
             let mut cnode_caps: Vec<CapId> = Vec::new();
@@ -7069,6 +7598,13 @@ impl Machine {
                     self.cancel_reply(*id)?;
                 }
             }
+            // **KT-36** — finalise Frame trước khi object chết (bộ đếm đã kiểm bằng 0 ở trên;
+            // đánh dấu `live = false` để `frame_meta` sau chết đọc được trạng thái đúng).
+            for id in &dead_objs {
+                if self.objects[*id as usize - 1].ty == ObjType::Frame {
+                    self.finalise_frame(*id)?;
+                }
+            }
             // Đánh dấu chết + **finalise body trong objmem** (KT-16; `free` guard `pa`).
             for id in &dead_objs {
                 let (loc, body) = {
@@ -7091,6 +7627,16 @@ impl Machine {
             }
             for r in regions {
                 self.regions[r].reset();
+            }
+            // **KT-36** — cửa sổ PA của Untyped (và Untyped con) về watermark 0, song song với
+            // watermark arena ở trên: Frame trong vùng đã finalise, cấp lại bắt đầu ở `base`.
+            for id in &dead_objs {
+                if let Some(area) = self.objects[*id as usize - 1].frame_area {
+                    self.objects[*id as usize - 1].frame_area = Some(FrameArea::new(area.base));
+                }
+            }
+            if let Some(area) = self.objects[u_idx].frame_area {
+                self.objects[u_idx].frame_area = Some(FrameArea::new(area.base));
             }
             for i in 1..=self.caps.len() as CapId {
                 if self.caps[i as usize - 1].alive
@@ -7571,5 +8117,184 @@ mod tests {
         assert!(e.contains("home == to_hart"), "{e}");
         assert!(matches!(m.mail[0].pop(), Some(MailboxMsg::Migrate { .. })));
         m.check_smp().expect("gỡ yêu cầu sai thì sạch");
+    }
+
+    // ------------------------------------------------ KT-36: check_frames phải **bắt** lỗi
+
+    /// Dựng rig `(machine, cnode, untyped, src)` như test tích hợp: Untyped 4096 B, `base = 0`.
+    fn rig_frame() -> (Machine, ObjId, ObjId, SlotRef) {
+        let mut m = Machine::new();
+        let c = m.add_cnode(8);
+        let u = m.add_untyped(0, 4096);
+        let cap = m.root_cap(u);
+        m.put_cap(c, 0, cap).expect("cap Untyped");
+        (m, c, u, SlotRef::new(c, 0))
+    }
+
+    /// `check_frames` không được là checker rỗng: Frame mồ côi (Untyped sở hữu chết) bị bắt.
+    #[test]
+    fn check_frames_bat_frame_mo_coi() {
+        let (mut m, c, u, src) = rig_frame();
+        let cap = m.retype(src, ObjType::Frame, 12, 0).expect("Frame 4 KiB");
+        m.put_cap(c, 1, cap).expect("đặt cap Frame");
+        m.check_frames().expect("mô hình sạch");
+        // Chủ sở hữu chết mà Frame còn sống ⇒ mồ côi (đường duy nhất tạo ra được là gieo hỏng
+        // sổ cái, vì `Revoke` Untyped luôn finalise Frame trong cây).
+        m.objects[u as usize - 1].alive = false;
+        let e = m.check_frames().expect_err("phải bắt Frame mồ côi");
+        assert!(e.contains("mồ côi"), "{e}");
+        m.objects[u as usize - 1].alive = true;
+        m.check_frames().expect("khôi phục thì sạch");
+    }
+
+    /// Frame **đã chết** còn bộ đếm mapping khác 0 ⇒ bất biến "frame chết sạch" bị bắt.
+    #[test]
+    fn check_frames_bat_frame_chet_con_mapping() {
+        let (mut m, c, _u, src) = rig_frame();
+        let cap = m.retype(src, ObjType::Frame, 12, 0).expect("Frame");
+        let f = m.cap_info(cap).expect("cap").obj;
+        m.put_cap(c, 1, cap).expect("đặt cap");
+        m.revoke(c, Some(0)).expect("revoke Untyped");
+        m.check_frames().expect("Frame chết sạch");
+        // Gieo hỏng: Frame đã chết mà còn 1 mapping (đúng lỗi mà KT-43 sẽ đột biến).
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").maps = 1;
+        let e = m
+            .check_frames()
+            .expect_err("phải bắt frame chết còn mapping");
+        assert!(e.contains("còn mapping"), "{e}");
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").maps = 0;
+        m.check_frames().expect("khôi phục thì sạch");
+    }
+
+    /// `pa` sai căn / `pa` ngoài cửa sổ / watermark sai đều bị bắt.
+    #[test]
+    fn check_frames_bat_pa_va_watermark_sai() {
+        let (mut m, _c, u, src) = rig_frame();
+        let cap = m.retype(src, ObjType::Frame, 12, 0).expect("Frame");
+        let f = m.cap_info(cap).expect("cap").obj;
+        m.check_frames().expect("mô hình sạch");
+
+        // (a) pa lệch căn.
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").pa = 1;
+        let e = m.check_frames().expect_err("phải bắt pa lệch căn");
+        assert!(e.contains("lệch căn"), "{e}");
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").pa = 0;
+        m.check_frames().expect("khôi phục thì sạch");
+
+        // (b) pa ra ngoài cửa sổ 1 GiB (`pa` căn đúng nhưng `offset`/watermark vẫn khớp
+        //     ⇒ lỗi phải là "ra ngoài cửa sổ", không phải lỗi khác).
+        let out = 2 * UNTYPED_PA_WINDOW;
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").pa = out;
+        m.objects[f as usize - 1].offset = out as usize;
+        m.objects[u as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ")
+            .watermark = out;
+        let e = m.check_frames().expect_err("phải bắt pa ngoài cửa sổ");
+        assert!(e.contains("cửa sổ"), "{e}");
+        m.objects[f as usize - 1].frame.as_mut().expect("meta").pa = 0;
+        m.objects[f as usize - 1].offset = 0;
+        m.objects[u as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ")
+            .watermark = 4096;
+        m.check_frames().expect("khôi phục thì sạch");
+
+        // (c) watermark cửa sổ của Untyped không khớp Frame sống.
+        m.objects[u as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ")
+            .watermark = 8192;
+        let e = m.check_frames().expect_err("phải bắt watermark sai");
+        assert!(e.contains("watermark"), "{e}");
+        m.objects[u as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ")
+            .watermark = 4096;
+        m.check_frames().expect("khôi phục thì sạch");
+    }
+
+    /// Hai Frame sống chồng `pa` (khác Untyped) bị bắt; metadata Frame trên object không phải
+    /// Frame cũng bị bắt.
+    #[test]
+    fn check_frames_bat_chong_pa_va_metadata_thua() {
+        let (mut m, c, _u, src) = rig_frame();
+        let cap = m.retype(src, ObjType::Frame, 12, 0).expect("Frame 4 KiB");
+        let f = m.cap_info(cap).expect("cap").obj;
+        m.put_cap(c, 1, cap).expect("đặt cap");
+        // Untyped thứ hai ở **cửa sổ kế** (base = 1 GiB) ⇒ cấp được; rồi gieo `pa` chồng nhau.
+        let u2 = m.add_untyped(UNTYPED_PA_WINDOW, 4096);
+        let cap2 = m.root_cap(u2);
+        m.put_cap(c, 2, cap2).expect("cap Untyped 2");
+        let cap2 = m
+            .retype(SlotRef::new(c, 2), ObjType::Frame, 12, 0)
+            .expect("Frame #2");
+        let g = m.cap_info(cap2).expect("cap").obj;
+        m.put_cap(c, 3, cap2).expect("đặt cap Frame 2");
+        m.check_frames().expect("hai cửa sổ rời nhau ⇒ sạch");
+        // Gieo hỏng: kéo **cả cửa sổ** của Untyped 2 về `base = 0` (khớp `pa = base + offset`
+        // để lỗi phải là "chồng pa", không phải lỗi khác) ⇒ Frame #2 chồng Frame #1.
+        let area2 = m.objects[u2 as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ");
+        area2.base = 0;
+        area2.watermark = 4096;
+        m.objects[g as usize - 1].frame.as_mut().expect("meta").pa = 0;
+        m.objects[g as usize - 1].offset = 0;
+        let e = m.check_frames().expect_err("phải bắt hai Frame chồng pa");
+        assert!(e.contains("chồng"), "{e}");
+        let _ = f;
+        // Khôi phục: Frame #2 về đúng cửa sổ của nó.
+        let area2 = m.objects[u2 as usize - 1]
+            .frame_area
+            .as_mut()
+            .expect("cửa sổ");
+        area2.base = UNTYPED_PA_WINDOW;
+        area2.watermark = 4096;
+        m.objects[g as usize - 1].frame.as_mut().expect("meta").pa = UNTYPED_PA_WINDOW;
+        m.objects[g as usize - 1].offset = 0;
+        m.check_frames().expect("khôi phục thì sạch");
+
+        // Metadata Frame gắn nhầm vào object không phải Frame.
+        let cn = m.add_cnode(2);
+        m.objects[cn as usize - 1].frame = Some(FrameMeta::new(0, FrameSize::K4));
+        let e = m
+            .check_frames()
+            .expect_err("phải bắt metadata Frame trên CNode");
+        assert!(e.contains("không phải Frame"), "{e}");
+        m.objects[cn as usize - 1].frame = None;
+        m.check_frames().expect("gỡ metadata thừa thì sạch");
+    }
+
+    /// `FrameArea::carve` — đơn vị căn lề: lệch căn ⇒ `Alignment` **không** đổi watermark; cửa
+    /// sổ đầy ⇒ `NotEnoughMemory`; cấp giảm dần (2 MiB → 4 KiB) thì đúng căn tự nhiên.
+    #[test]
+    fn frame_area_carve_bien_can_le_va_day_cua_so() {
+        let mut a = FrameArea::new(1);
+        assert_eq!(a.carve(FrameSize::K4), Err(KError::Alignment));
+        assert_eq!(a.watermark, 0, "Alignment không đổi watermark");
+
+        let mut a = FrameArea::new(0);
+        assert_eq!(a.carve(FrameSize::G1), Ok(0));
+        assert_eq!(a.carve(FrameSize::M2), Err(KError::NotEnoughMemory));
+        assert_eq!(a.watermark, UNTYPED_PA_WINDOW, "cửa sổ đã đầy");
+
+        let mut a = FrameArea::new(0);
+        assert_eq!(a.carve(FrameSize::M2), Ok(0));
+        assert_eq!(a.carve(FrameSize::K4), Ok(1 << 21));
+        assert_eq!(a.carve(FrameSize::K4), Ok((1 << 21) + (1 << 12)));
+        assert_eq!(a.window(), Some((0, UNTYPED_PA_WINDOW)));
+
+        // Cửa sổ gần trần `u64`: `pa + cỡ` tràn ⇒ `NotEnoughMemory`.
+        let mut a = FrameArea::new(u64::MAX - 4095);
+        assert_eq!(a.carve(FrameSize::K4), Err(KError::NotEnoughMemory));
+        // `base + UNTYPED_PA_WINDOW` tràn ⇒ cửa sổ không hợp lệ ⇒ `InvalidArgument`.
+        let mut a = FrameArea::new(u64::MAX - 8191);
+        assert_eq!(a.carve(FrameSize::K4), Err(KError::InvalidArgument));
     }
 }

@@ -1,0 +1,88 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.67s
+     Running tests/kt36_frame.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/1bb3e468a8790edc/out/kt36_frame-1bb3e468a8790edc)
+
+running 12 tests
+test ba_co_retype_get_address_va_meta ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `ba_co_retype_get_address_va_meta`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7161:20: 7163:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:952:9: 959:10
+          5: Rig::new_with
+              at sim/vifast-sim/tests/kt36_frame.rs:57:17: 57:39
+          6: Rig::new
+              at sim/vifast-sim/tests/kt36_frame.rs:52:9: 52:32
+          7: ba_co_retype_get_address_va_meta
+              at sim/vifast-sim/tests/kt36_frame.rs:132:21: 132:35
+          8: ba_co_retype_get_address_va_meta::{closure#0}
+              at sim/vifast-sim/tests/kt36_frame.rs:130:38: 130:38
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `ba_co_retype_get_address_va_meta`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7161:20: 7163:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:952:9: 959:10
+          5: Rig::new_with
+              at sim/vifast-sim/tests/kt36_frame.rs:57:17: 57:39
+          6: Rig::new
+              at sim/vifast-sim/tests/kt36_frame.rs:52:9: 52:32
+          7: ba_co_retype_get_address_va_meta
+              at sim/vifast-sim/tests/kt36_frame.rs:132:21: 132:35
+          8: ba_co_retype_get_address_va_meta::{closure#0}
+              at sim/vifast-sim/tests/kt36_frame.rs:130:38: 130:38
+
+ok
+test bat_bien_bo_dem_map ... ok
+test bien_pa_0_2mu12_2mu21_2mu30 ... ok
+test check_frames_khong_mo_coi_10k_seed ... ok
+test frame_chet_sach_sau_revoke ... ok
+test frame_thuoc_untyped_va_khong_chong_pa ... ok
+test mot_gib_khong_an_byte_that ... ok
+test muoi_nghin_frame_retype_va_huy ... ok
+test pa_lech_1_la_alignment ... ok
+test retype_frame_size_bits_la_invalid_argument ... ok
+test revoke_bi_tu_choi_khi_con_mapping ... ok
+test tron_co_giam_dan_trong_mot_cua_so ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 36.10s
+
+warning: 2 warnings emitted
+
+EXIT=0
+
+=== Miri 5 unit test KT-36 (--lib frame) — chạy sau bản chính (cùng cây cuối) ===
+test kobj::tests::check_frames_bat_chong_pa_va_metadata_thua ... warning: integer-to-pointer cast
+test kobj::tests::check_frames_bat_frame_chet_con_mapping ... ok
+test kobj::tests::check_frames_bat_frame_mo_coi ... ok
+test kobj::tests::check_frames_bat_pa_va_watermark_sai ... ok
+test kobj::tests::frame_area_carve_bien_can_le_va_day_cua_so ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 2.50s

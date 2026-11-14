@@ -1,0 +1,31 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt36_frame.rs (v2/target/debug/deps/kt36_frame-528b829ba94f8631)
+
+running 2 tests
+test retype_frame_3_co_duoc_nhan ... FAILED
+test retype_frame_size_bits_13_la_invalid_argument ... FAILED
+
+failures:
+
+---- retype_frame_3_co_duoc_nhan stdout ----
+
+thread 'retype_frame_3_co_duoc_nhan' (43211067) panicked at sim/vifast-sim/tests/kt36_frame.rs:42:9:
+Frame size_bits=12 phải retype được (hiện trả NotSupported — reserved)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- retype_frame_size_bits_13_la_invalid_argument stdout ----
+
+thread 'retype_frame_size_bits_13_la_invalid_argument' (43211068) panicked at sim/vifast-sim/tests/kt36_frame.rs:31:5:
+assertion `left == right` failed: size_bits=13 không thuộc {12,21,30} ⇒ InvalidArgument
+  left: Err(NotSupported)
+ right: Err(InvalidArgument)
+
+
+failures:
+    retype_frame_3_co_duoc_nhan
+    retype_frame_size_bits_13_la_invalid_argument
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt36_frame`
+EXIT=101
