@@ -1,0 +1,61 @@
+# ST-73 — log ĐỎ (Rust) lúc 2026-11-14T10:35:18Z, HEAD 053f127c — CHƯA có --sandbox-check.
+# lệnh: cargo test -p vis-cli --test sandbox (harness CUỐI; macOS: ca 1–6 + ca Linux cfg chỉ chạy trên Linux).
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.51s
+     Running tests/sandbox.rs (target/debug/deps/sandbox-2097167384417d3e)
+
+running 6 tests
+test sandbox_check_co_la ... FAILED
+test sandbox_check_voi_cap ... FAILED
+test sandbox_check_luon_in_cuong_che ... FAILED
+test sandbox_check_khong_chay ... ok
+test sandbox_check_khong_cap ... FAILED
+test sandbox_check_macos ... FAILED
+
+failures:
+
+---- sandbox_check_co_la stdout ----
+
+thread 'sandbox_check_co_la' (46397108) panicked at crates/vis-cli/tests/sandbox.rs:105:5:
+stderr: vis run: không hỗ trợ cờ `--sandbox-check`
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- sandbox_check_voi_cap stdout ----
+
+thread 'sandbox_check_voi_cap' (46397113) panicked at crates/vis-cli/tests/sandbox.rs:84:5:
+stdout: 
+
+---- sandbox_check_luon_in_cuong_che stdout ----
+
+thread 'sandbox_check_luon_in_cuong_che' (46397111) panicked at crates/vis-cli/tests/sandbox.rs:59:5:
+assertion `left == right` failed: macOS: vis run: không hỗ trợ cờ `--sandbox-check`
+
+  left: 2
+ right: 3
+
+---- sandbox_check_khong_cap stdout ----
+
+thread 'sandbox_check_khong_cap' (46397109) panicked at crates/vis-cli/tests/sandbox.rs:94:5:
+stdout: 
+
+---- sandbox_check_macos stdout ----
+
+thread 'sandbox_check_macos' (46397112) panicked at crates/vis-cli/tests/sandbox.rs:45:5:
+assertion `left == right` failed: stderr: vis run: không hỗ trợ cờ `--sandbox-check`
+
+  left: 2
+ right: 3
+
+
+failures:
+    sandbox_check_co_la
+    sandbox_check_khong_cap
+    sandbox_check_luon_in_cuong_che
+    sandbox_check_macos
+    sandbox_check_voi_cap
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p vis-cli --test sandbox`

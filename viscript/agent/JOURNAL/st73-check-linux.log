@@ -1,0 +1,7 @@
+# ST-73 — bằng chứng biên dịch chéo vis-host-linux (2026-11-14T10:41:15Z), HEAD 053f127c
+# lệnh: cargo check --manifest-path vis-host-linux/Cargo.toml --target x86_64-unknown-linux-gnu
+# CHỈ biên dịch chéo — **chưa chạy** trên Linux (máy phát triển macOS).
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.00s
+
+[exit=0]

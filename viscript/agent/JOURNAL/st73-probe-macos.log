@@ -1,0 +1,8 @@
+# ST-73 — probe thật trên macOS (2026-11-14T10:41:15Z), HEAD 053f127c
+# lệnh: target/debug/vis run --sandbox-check f.vis
+
+landlock: không hỗ trợ trên macos
+cưỡng chế runtime: bật
+cap điều kiện: fs
+
+[exit=3]

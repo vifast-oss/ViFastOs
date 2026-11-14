@@ -338,6 +338,8 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut dump_deps = false;
     // **ST-72 (VD-106 (2))**: in quyền khai báo của `main` rồi exit 0, **không** chạy.
     let mut dry = false;
+    // **ST-73 (VD-107)**: probe Landlock (chỉ đọc) + mức cưỡng chế runtime; **không** chạy chương trình.
+    let mut sandbox_check = false;
     // **ST-72b (VD-103)**: `--grant <tên>=<path>` thay root của cap đã khai (không thêm quyền mới).
     let mut grants: Vec<(String, String)> = Vec::new();
     let mut explain_perms = false;
@@ -358,6 +360,7 @@ fn run_run(rest: &[String]) -> ExitCode {
             // ST-25: in cây phụ thuộc của module.
             "--dump-deps" => dump_deps = true,
             "--dry" => dry = true,
+            "--sandbox-check" => sandbox_check = true,
             "--grant" => {
                 i += 1;
                 let Some(v) = rest.get(i) else {
@@ -403,7 +406,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--sandbox-check] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]"
         );
         return ExitCode::from(2);
     };
@@ -436,6 +439,12 @@ fn run_run(rest: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // **ST-73 (VD-107)**: `--sandbox-check` — probe Landlock **chỉ đọc** + mức cưỡng chế runtime;
+    // in **stdout**, exit 0/3/4, **không** chạy chương trình.
+    if sandbox_check {
+        let caps = quyen::ds_cap(&text, che_do);
+        return in_sandbox_check(&caps);
+    }
     // **ST-72 (VD-106 (2))**: `--dry` — chỉ in quyền từ CST của `main`, exit 0, **không** chạy.
     if dry {
         return run_dry(&tep, &text, che_do);
@@ -707,6 +716,61 @@ fn ma_thoat_khi_loi(diags: &[(String, u32, u32, String)]) -> u8 {
     } else {
         1
     }
+}
+
+/// **ST-73 (VD-107)**: probe Landlock **chỉ đọc tệp** (không syscall, không `unsafe`).
+/// Trả `(dòng in, mã thoát)`: Linux có ⇒ 0, không ⇒ 3, không đọc được ⇒ 4; nền khác ⇒ 3.
+fn probe_landlock() -> (String, u8) {
+    let os = std::env::consts::OS;
+    if os != "linux" {
+        return (format!("landlock: không hỗ trợ trên {os}"), 3);
+    }
+    match std::fs::read_to_string("/sys/kernel/security/lsm") {
+        Ok(raw) => {
+            let lsm: Vec<String> = raw
+                .trim()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let co = lsm.iter().any(|x| x == "landlock");
+            (
+                format!(
+                    "landlock: {} (LSM: {})",
+                    if co { "có" } else { "không" },
+                    lsm.join(",")
+                ),
+                if co { 0 } else { 3 },
+            )
+        }
+        Err(e) => (format!("landlock: không rõ ({e})"), 4),
+    }
+}
+
+/// `vis run --sandbox-check`: in **stdout** 3 dòng chẩn đoán, exit theo probe, **không** chạy.
+fn in_sandbox_check(caps: &[quyen::CapKhai]) -> ExitCode {
+    let (dong_landlock, ma) = probe_landlock();
+    println!("{dong_landlock}");
+    println!(
+        "cưỡng chế runtime: {}",
+        if caps.is_empty() { "tắt" } else { "bật" }
+    );
+    let mut dk: Vec<&str> = Vec::new();
+    if caps.iter().any(|c| c.kind == "Dir" || c.kind == "File") {
+        dk.push("fs");
+    }
+    if caps.iter().any(|c| c.kind == "Net") {
+        dk.push("net");
+    }
+    println!(
+        "cap điều kiện: {}",
+        if dk.is_empty() {
+            "không".to_string()
+        } else {
+            dk.join(",")
+        }
+    );
+    ExitCode::from(ma)
 }
 
 fn main() -> ExitCode {

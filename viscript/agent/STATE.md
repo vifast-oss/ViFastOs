@@ -6,18 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-72b — VS2 #4b: cưỡng chế quyền ở biên host + `--grant`** (`Value::Cap`, bind tham
-                số cap của `main` từ CST, `FsGuard`/`NetGuard`, `VS0604` không bắt được, exit 2;
-                8 ca Rust interp+VM) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 8 ca (3 pass/5 đỏ) → `Value::Cap` + bind interp/VM + `quyen.rs` +
-                sentinel trap + `--grant` + exit marker → 8/8 + 866 xanh → cổng → differential 100k →
-                STATE/JOURNAL).
+Task          : **ST-73 — VS2 #4c: `--sandbox-check` + khung `vis-host-linux` + tài liệu mức bảo đảm**
+                (probe Landlock **chỉ đọc**, **không** cưỡng chế bằng kernel; 6 ca Rust + crate ngoài
+                `viscript/` + `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 6 ca (5 đỏ) → `--sandbox-check` (exit 0/3/4, stdout) → crate
+                `vis-host-linux` (workspace riêng) + `cargo check --target x86_64-unknown-linux-gnu`
+                xanh → `HOST-BAO-DAM.md` → 872 xanh → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:30:50Z**; **866** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:42:47Z**; **872** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (196,0 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (101,5 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-72b]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-73]` + push (đã được uỷ quyền)
+
+## ST-73 — VS2 #4c: probe Landlock + khung host Linux + mức bảo đảm, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **`vis run --sandbox-check`** | Cờ mới (không chạy chương trình); đọc `cap` của `main` từ CST chỉ để in **mức cưỡng chế runtime**. In **stdout** 3 dòng: `landlock: …`, `cưỡng chế runtime: bật|tắt`, `cap điều kiện: fs,net|không`. Exit: Linux có landlock **0**, không **3**, không đọc được **4**; macOS/khác **3**. Cập nhật `usage()` của `vis run`. |
+| 1 | **Probe thật (macOS)** | `landlock: không hỗ trợ trên macos` / `cưỡng chế runtime: bật` / `cap điều kiện: fs` ⇒ **exit 3** (chương trình `main(d: cap[Dir] @ p".")`); `main()` ⇒ `tắt` / `không`, exit 3. Log `JOURNAL/st73-probe-macos.log` sha256 `d92665c1…`. **Không** syscall, **không** `unsafe`. |
+| 2 | **Crate `vis-host-linux`** | Ở **gốc repo** (ngoài `viscript/` — đúng R4), **workspace riêng** (`[workspace]` trong Cargo.toml) ⇒ root workspace OS vẫn **25 member**, `cargo metadata` xanh. `src/lib.rs`: `#![cfg(target_os = "linux")]`, **chỉ đọc** `/sys/kernel/security/lsm`, `pub fn probe() -> Probe` (`Co`/`Khong`/`KhongRo` + `dong()`/`ma()`), SPDX, **không** dependency, **không** `unsafe`. |
+| 3 | **Bằng chứng biên dịch chéo** | `cargo check --manifest-path vis-host-linux/Cargo.toml --target x86_64-unknown-linux-gnu` ⇒ **xanh** (`Finished`, exit 0); log `JOURNAL/st73-check-linux.log` sha256 `e03b68b9…`. Ghi rõ: **chỉ check chéo, chưa chạy trên Linux**. |
+| 4 | **Tài liệu** | `viscript/agent/HOST-BAO-DAM.md` (**38** dòng): bảng macOS/Linux/Windows-wasm ↔ runtime/Landlock/bằng chứng; mã thoát; **cấm ngôn từ** "đã cưỡng chế bằng Landlock" (đúng: "cưỡng chế runtime + **probe** Landlock"); điều kiện Landlock thật (VD-107 (4)): crate `landlock` vào allowlist **hoặc** `unsafe` đóng trong crate + runner Linux. **Không** sửa `docs/`. |
+| 5 | **6 ca `tests/sandbox.rs`** | `sandbox_check_macos` (cfg macOS: exit 3 + "không hỗ trợ trên macos"), `sandbox_check_luon_in_cuong_che`, `sandbox_check_khong_chay` (không in `DA-CHAY`), `sandbox_check_voi_cap` (`bật`), `sandbox_check_khong_cap` (`tắt`), `sandbox_check_co_la` (cờ lạ exit 2); thêm `sandbox_check_linux_doc_lsm` `#[cfg(target_os="linux")]` (không `#[ignore]`), chưa chạy trên macOS. |
+| 6 | **Red-first** | `JOURNAL/st73-red-rust.log` sha256 `6818086b…` — harness cuối trên mã **chưa có** cờ: **1 passed / 5 failed** (ca `khong_chay` xanh "rỗng" vì chưa có cờ ⇒ không chạy gì; trung thực, không giả vờ đỏ đủ 6). |
+| 7 | **Đo** | **872** test = 866 + **6** CLI (21+96+18+154+26+62+9+**486**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; `diag_cmp` **447** (364/49/34); differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=101.5 toc_do=985/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`main.rs` mới ~898, `tests/sandbox.rs` 153, `vis-host-linux/src/lib.rs` 77). |
+| 8 | **Nợ** | **Chưa cưỡng chế bằng Landlock** trên bất kỳ nền nào (chỉ **probe**); Linux **chưa chạy thật** (chỉ check chéo); `vis-host-linux` chưa được `vis-cli` dùng (logic probe **lặp** ở CLI); cần Agent 0 duyệt **một** trong hai: crate `landlock` vào allowlist **hoặc** `unsafe` đóng trong `vis-host-linux` + runner Linux để đo (VD-107 (4)); Windows/wasm chưa có host (ST-74). |
 
 ## ST-72b — VS2 #4b: cưỡng chế quyền ở biên host + `--grant`, 2026-11-14
 
