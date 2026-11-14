@@ -154,7 +154,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **DONE** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **DONE** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **DONE** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
-| ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
+| ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **DONE** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **READY** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
 | ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **READY** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
 | ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **READY** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
@@ -980,3 +980,14 @@ APPROVED 2026-11-14 Agent 0
 > dù còn Task; `close` không đánh thức ai; **không** `select`/timeout; `Chan` không qua biên host; `cap=0` không dùng được;
 > dung lượng âm là lỗi **lúc chạy**; `Chan` in `<kênh>`.
 > **ST-62 mở** (R10 — chốt vòng 10).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-62 DONE — VÒNG 10 CHỐT.** `reports/R10-viscript.{md,json,license}` (`2b28f10`, head `6192bbd`) — `report-check`
+> **PASS (10 báo cáo, 85 hàng QUEUE phủ đủ)**. Số liệu **chạy lại**: **787 test** · sem **441/21 nhóm** · `vis test` **441 ok**
+> · `--vm` **441 ok + 7 SKIP** · parity **395/395** · differential **100k/0 lệch** (208,5 s) · fuzz parser 60 s
+> **2.661.866 ca / 0 vi phạm** · **7 sổ/32 mã** · `VBC1` **53** · allowlist **6** · 10k task async **319/168 ms**.
+> Vòng 10 đóng **5 nợ lõi** (khoá `str` sort_by, `&self`/`ref`, `Hop[Hop]`, mồ côi đa tệp, siêu trait, derives sinh mã,
+> `Ty::Any`) **và mở VS2**: **#1 async** + **#2 kênh** chạy thật hai đường. **Còn**: net/http, Landlock, LSP, gói/registry,
+> windows/wasm, hợp chuẩn 4 nền — đã có hàng **ST-63..ST-76** (vòng 11).
+> **ST-63 mở** (VS2 #3a — `NetHost` + TCP client; **VD-105**: **R1 trước, code sau**).
