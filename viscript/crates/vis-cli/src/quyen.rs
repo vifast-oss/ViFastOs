@@ -300,11 +300,13 @@ impl FsHost for FsGuard<'_> {
         self.quyen.kiem_fs(p, true)?;
         self.trong.write(p, s)
     }
+    /// **ST-83**: ngoài quyền ⇒ **trap `VS0604`** (không còn `false` im lặng).
     fn exists(&mut self, p: &str) -> bool {
-        if self.quyen.kiem_fs(p, false).is_err() {
-            return false;
-        }
-        self.trong.exists(p)
+        self.exists_quyen(p).unwrap_or(false)
+    }
+    fn exists_quyen(&mut self, p: &str) -> Result<bool, String> {
+        self.quyen.kiem_fs(p, false)?;
+        Ok(self.trong.exists(p))
     }
     fn list(&mut self, p: &str) -> Result<Vec<String>, String> {
         self.quyen.kiem_fs(p, false)?;

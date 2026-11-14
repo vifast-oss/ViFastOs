@@ -822,8 +822,9 @@ fn lsp_ba_tep_bang_vis_check() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Hiệu năng: 5 tệp nhỏ, mỗi tệp `didOpen` (module-aware) — **min 5 vòng < 100 ms** (đo cô lập
-/// ~8 ms; harness chạy song song nên median có thể nhiễu, lấy vòng nhanh nhất làm bằng chứng).
+/// Hiệu năng: 5 tệp nhỏ, mỗi tệp `didOpen` + `didChange` (module-aware) — **phần phân tích thêm
+/// < 100 ms** so với **nền** (cùng tiến trình, không `didOpen`). Đo cô lập tổng ~9 ms; harness chạy
+/// // 29 test LSP nên lấy **hiệu** để loại chi phí khởi động tiến trình. (ST-83.)
 #[test]
 fn lsp_module_hieu_nang_5_tep() {
     let d = thu_muc("perf");
@@ -834,18 +835,19 @@ fn lsp_module_hieu_nang_5_tep() {
         vao.push_str(&khung(&did_open(&uri, STD_OK)));
         vao.push_str(&khung(&did_change(&uri, STD_OK)));
     }
-    let mut ms: Vec<u128> = Vec::new();
-    for _ in 0..5 {
-        let t = Instant::now();
-        let (code, _out, err) = chay(&vao);
-        ms.push(t.elapsed().as_millis());
-        assert_eq!(code, 0, "LSP exit: {err}");
-    }
-    ms.sort();
-    let nhanh = ms[0];
+    // Nền: cùng tiến trình LSP, chỉ `initialize` (không phân tích tệp nào).
+    let t = Instant::now();
+    let (code, _out, err) = chay(&khung(&init()));
+    let nen = t.elapsed().as_millis();
+    assert_eq!(code, 0, "LSP exit: {err}");
+    let t = Instant::now();
+    let (code, _out, err) = chay(&vao);
+    let tong = t.elapsed().as_millis();
+    assert_eq!(code, 0, "LSP exit: {err}");
+    let them = tong.saturating_sub(nen);
     assert!(
-        nhanh < 100,
-        "5 tệp (min) mất {nhanh} ms (≥ 100 ms); các vòng: {ms:?}"
+        them < 100,
+        "phân tích 5 tệp thêm {them} ms (tổng {tong}, nền {nen}; ngưỡng 100)"
     );
     let _ = std::fs::remove_dir_all(&d);
 }

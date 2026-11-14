@@ -67,6 +67,8 @@ pub enum NodeKind {
     MatchStmt,
     MatchArm,
     ExprStmt,
+    /// **ST-83 (VD-109)**: `assert <expr>` dạng **câu lệnh** (soft keyword đầu câu).
+    AssertStmt,
     // Chế độ lệnh (A.7) — CmdCST chưa định kiểu (ST-06)
     CmdShell,
     CmdItems,
@@ -166,6 +168,7 @@ impl NodeKind {
             NodeKind::MatchStmt => "match",
             NodeKind::MatchArm => "arm",
             NodeKind::ExprStmt => "expr_stmt",
+            NodeKind::AssertStmt => "assert_stmt",
             NodeKind::Type => "type",
             NodeKind::Pattern => "pat",
             NodeKind::BinOp => "binop",

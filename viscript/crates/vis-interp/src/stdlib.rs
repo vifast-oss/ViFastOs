@@ -406,7 +406,19 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
         "fs.exists" => {
             let p = chuoi(name, &args[0], 0, span)?;
             let host = host.fs().ok_or_else(|| khong_host(name, span))?;
-            Ok(Value::Bool(host.exists(p)))
+            // **ST-83**: `exists` trả **bool** (không phải Result) nhưng vẫn **trap `VS0604`** khi
+            // ngoài quyền — không còn `false` im lặng.
+            match host.exists_quyen(p) {
+                Ok(b) => Ok(Value::Bool(b)),
+                Err(e) => match e.strip_prefix(DAU_QUYEN) {
+                    Some(msg) => Err(Abort::Trap(Trap::new(
+                        &COMMAND_CODES[3],
+                        msg.to_string(),
+                        span,
+                    ))),
+                    None => Ok(Value::Bool(false)),
+                },
+            }
         }
         "fs.list" => {
             let p = chuoi(name, &args[0], 0, span)?;

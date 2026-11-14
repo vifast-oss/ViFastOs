@@ -1148,10 +1148,48 @@ impl<'a> Parser<'a> {
                 "continue" => self.continue_stmt(),
                 "let" => self.let_stmt(),
                 "var" => self.var_stmt(),
-                _ => self.expr_stmt(),
+                _ => self.expr_or_assert(),
             },
-            _ => self.expr_stmt(),
+            _ => self.expr_or_assert(),
         }
+    }
+
+    /// **ST-83 (VD-109)**: `assert` là **từ khoá mềm** ở **đầu câu lệnh**; `assert(đk)` vẫn là call.
+    fn expr_or_assert(&mut self) -> PResult<Node> {
+        if self.at_assert() {
+            self.assert_stmt()
+        } else {
+            self.expr_stmt()
+        }
+    }
+
+    fn at_assert(&self) -> bool {
+        if self.tok().kind != Kind::Ident || self.tok().text != "assert" {
+            return false;
+        }
+        let n = self.tok_at(1);
+        if matches!(n.kind, Kind::Newline | Kind::Eof) {
+            return false;
+        }
+        // `assert(...)`/`assert.x`/`assert[i]`/`assert = …` giữ đường **biểu thức** cũ.
+        if matches!(n.text.as_str(), "(" | "." | "[" | "=") {
+            return false;
+        }
+        // `assert += …` (gán ghép) cũng là biểu thức.
+        if matches!(n.text.as_str(), "+" | "-" | "*" | "/" | "%") {
+            let eq = self.tok_at(2);
+            if eq.is_punct("=") && n.span.end == eq.span.start {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn assert_stmt(&mut self) -> PResult<Node> {
+        let mut elems = vec![self.bump()];
+        let e = self.expr()?;
+        Self::push_node(&mut elems, e);
+        Ok(self.node(NodeKind::AssertStmt, elems))
     }
 
     fn stmt(&mut self) -> PResult<Node> {
@@ -1168,9 +1206,9 @@ impl<'a> Parser<'a> {
                 "scope" => self.scope_stmt(),
                 "if" => self.if_stmt(),
                 "match" => self.match_stmt(),
-                _ => self.expr_stmt(),
+                _ => self.expr_or_assert(),
             },
-            _ => self.expr_stmt(),
+            _ => self.expr_or_assert(),
         }
     }
 

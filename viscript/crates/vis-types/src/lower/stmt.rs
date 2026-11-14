@@ -127,6 +127,24 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or(HExpr::Error { span: node.span });
                 Some(HStmt::Expr(e))
             }
+            // **ST-83 (VD-109)**: `assert <expr>` ⇒ `Call(assert, [expr])` (giữ `assert(expr)` cũ).
+            NodeKind::AssertStmt => {
+                let e = node
+                    .children()
+                    .next()
+                    .map(|c| self.lower_expr(c))
+                    .unwrap_or(HExpr::Error { span: node.span });
+                Some(HStmt::Expr(HExpr::Call {
+                    callee: Box::new(HExpr::Var {
+                        name: "assert".to_string(),
+                        sym: None,
+                        span: node.span,
+                    }),
+                    args: vec![e],
+                    named: Vec::new(),
+                    span: node.span,
+                }))
+            }
             NodeKind::Suite => Some(HStmt::Block {
                 body: self.lower_suite(node),
                 span: node.span,

@@ -1,0 +1,21 @@
+# ST-83 — log ĐỎ (trước khi sửa) lúc 2026-11-14T14:13:26Z, HEAD faba5cb8
+
+== exists ngoài cap (in 'false', exit 0 — đáng lẽ VS0604)
+true
+false
+false
+[exit=0]
+
+== assert dạng câu lệnh (VS0201)
+assert_stmt.vis:2:12: error VS0201: mong xuống dòng sau câu lệnh, thật `1`
+[exit=2]
+assert_false.vis:2:12: error VS0201: mong xuống dòng sau câu lệnh, thật `1`
+[vm exit=2]
+
+== explain --lang en/ja (không mã) — vẫn tiếng Việt
+dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]
+sổ mã: 7 khối, 32 mã — `vis explain --list` in toàn bộ (mã + câu ngắn)
+[exit=2]
+dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]
+sổ mã: 7 khối, 32 mã — `vis explain --list` in toàn bộ (mã + câu ngắn)
+[exit=2]

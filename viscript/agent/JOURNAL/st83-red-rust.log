@@ -1,0 +1,67 @@
+# ST-83 — log ĐỎ (Rust) lúc 2026-11-14T14:16:36Z, HEAD faba5cb8 — trước khi đóng 3 nợ.
+# lệnh: cargo test -p vis-cli --test st83_no_nho (6 ca)
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.59s
+     Running tests/st83_no_nho.rs (target/debug/deps/st83_no_nho-ada74b23bdb66dc2)
+
+running 6 tests
+test explain_help_theo_lang ... FAILED
+test assert_cau_lenh_va_sai ... FAILED
+test exists_strict_khong_cap_trap ... FAILED
+test exists_ngoai_quyen_trap ... FAILED
+test exists_trong_quyen_tra_bool ... ok
+test assert_trong_test_fn_not_ok ... FAILED
+
+failures:
+
+---- explain_help_theo_lang stdout ----
+
+thread 'explain_help_theo_lang' (47606504) panicked at crates/vis-cli/tests/st83_no_nho.rs:183:5:
+assertion `left == right` failed
+  left: "dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]\nsổ mã: 7 khối, 32 mã — `vis explain --list` in toàn bộ (mã + câu ngắn)\n"
+ right: "usage: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]\ncode book: 7 blocks, 32 codes — `vis explain --list` prints all (code + short text)\n"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- assert_cau_lenh_va_sai stdout ----
+
+thread 'assert_cau_lenh_va_sai' (47606499) panicked at crates/vis-cli/tests/st83_no_nho.rs:132:5:
+assertion `left == right` failed: stderr: f.vis:2:12: error VS0201: mong xuống dòng sau câu lệnh, thật `1`
+
+  left: 2
+ right: 0
+
+---- exists_strict_khong_cap_trap stdout ----
+
+thread 'exists_strict_khong_cap_trap' (47606502) panicked at crates/vis-cli/tests/st83_no_nho.rs:113:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- exists_ngoai_quyen_trap stdout ----
+
+thread 'exists_ngoai_quyen_trap' (47606501) panicked at crates/vis-cli/tests/st83_no_nho.rs:71:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- assert_trong_test_fn_not_ok stdout ----
+
+thread 'assert_trong_test_fn_not_ok' (47606500) panicked at crates/vis-cli/tests/st83_no_nho.rs:155:5:
+TAP version 13
+1..1
+not ok 1 - 
+# :12:1: VS0201 mong xuống dòng sau câu lệnh, thật `1`
+
+
+
+failures:
+    assert_cau_lenh_va_sai
+    assert_trong_test_fn_not_ok
+    exists_ngoai_quyen_trap
+    exists_strict_khong_cap_trap
+    explain_help_theo_lang
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+error: test failed, to rerun pass `-p vis-cli --test st83_no_nho`

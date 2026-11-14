@@ -18,19 +18,22 @@ fn diags(src: &str) -> Vec<(String, usize, String)> {
 fn moi_tep_loi_dung_mot_loi_dau() {
     // Nguồn hỏng do parser (lexer sạch): mỗi tệp đúng **1** chẩn đoán, không panic.
     let bad = [
-        "let x =\n",                // thiếu vế phải
-        "fn f(:\n    x\n",          // tham số hỏng
-        "if :\n",                   // thiếu điều kiện
-        "1 +\n",                    // thiếu toán hạng
-        "a .. b .. c",              // khoảng không kết hợp
-        "1 < x < 10",               // so sánh không kết hợp
-        "match s:\n    A(:\n",      // pattern hỏng
-        "let m = {\"a\" 1}\n",      // map thiếu ':'
-        "xs[0\n",                   // thiếu ']'
-        "f(1, --\n",                // tham số có tên thiếu tên
-        "1 2\n",                    // thiếu NEWLINE sau câu lệnh (§A.2)
-        "let x = 1 let y = 2\n",    // thiếu NEWLINE giữa hai câu lệnh
-        "assert xs == [3, 2, 1]\n", // `assert` không có trong §A.1/A.2 (lỗ hổng tài liệu)
+        "let x =\n",             // thiếu vế phải
+        "fn f(:\n    x\n",       // tham số hỏng
+        "if :\n",                // thiếu điều kiện
+        "1 +\n",                 // thiếu toán hạng
+        "a .. b .. c",           // khoảng không kết hợp
+        "1 < x < 10",            // so sánh không kết hợp
+        "match s:\n    A(:\n",   // pattern hỏng
+        "let m = {\"a\" 1}\n",   // map thiếu ':'
+        "xs[0\n",                // thiếu ']'
+        "f(1, --\n",             // tham số có tên thiếu tên
+        "1 2\n",                 // thiếu NEWLINE sau câu lệnh (§A.2)
+        "let x = 1 let y = 2\n", // thiếu NEWLINE giữa hai câu lệnh
+        // **SỬA KÈM LÝ DO (ST-83, VD-109)**: `assert <expr>` là cú pháp **hợp lệ** (soft keyword đầu
+        // câu lệnh) ⇒ ca cũ `assert xs == [...]` nay **0 lỗi**; thay bằng ca vẫn hỏng cú pháp: thiếu
+        // xuống dòng giữa `assert` và toán hạng thứ hai.
+        "assert 1 2\n",
     ];
     for src in bad {
         let d = diags(src);

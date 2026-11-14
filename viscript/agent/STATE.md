@@ -6,18 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-82 — báo cáo R12** (`reports/R12-viscript.{md,json,json.license}`; `round=12`,
-                `head=e392be7c`, **92** hàng QUEUE, `blocked[]` rỗng; số liệu chạy lại đầy đủ) — xong,
-                `report-check --all` PASS + cổng PASS; **chưa commit**.
-Bước          : 4/4 (đọc QUEUE/R11 → sinh JSON 92 task → viết MD 8 mục → `report-check --all` PASS →
-                gate PASS → STATE/JOURNAL/commit).
+Task          : **ST-83 — đóng 3 nợ nhỏ** (`fs.exists` ngoài quyền ⇒ **`VS0604`**; `assert <đk>`
+                dạng **câu lệnh**; trợ giúp `vis explain` **theo `--lang`**) — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 4/4 (red-first 5/6 → `exists_quyen` + parser `AssertStmt` + 3 câu help → 6 ca mới →
+                920 test (ổn định lại 1 ca hiệu năng LSP) → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T14:10:30Z**; report-check **PASS
-                (12 báo cáo, 92 hàng QUEUE phủ đủ)**; **914** test / sem **447/22 nhóm** / `vis test`
-                **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** / differential **100.000
-                chương trình 0 lệch** (226,4 s) / fuzz 60 s **2.585.181 ca, 0 vi phạm** / **7 sổ-32 mã** /
-                `VBC1` **53** / allowlist **6** / `fmt --check test/` **497 tệp**
-Việc dở       : commit `[ST-82]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T14:46:38Z**; **920** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
+                differential **100.000 chương trình 0 lệch** (231,4 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                allowlist **6**
+Việc dở       : commit `[ST-83]` + push (đã được uỷ quyền)
+
+## ST-83 — 3 nợ nhỏ, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | `fs.exists` ngoài root in **`false`** exit 0 (đáng lẽ `VS0604`); `assert 1 == 1` ⇒ **`VS0201`** “mong xuống dòng…, thật `1`”; `explain --lang en/ja` (không mã) vẫn in **tiếng Việt**. Log `JOURNAL/st83-red.log` sha256 `ab84d7ce…`; Rust `JOURNAL/st83-red-rust.log` sha256 `173f7c51…` (**1/6 xanh** — ca “trong root trả bool” xanh sẵn, đúng thiết kế). |
+| 1 | **`fs.exists` ngoài quyền** | `FsHost::exists_quyen` (default gọi `exists` — **không** đổi chữ ký cũ); `FsGuard` override ⇒ `kiem_fs` lỗi thì trả `Err(DAU_QUYEN…)`; `stdlib` `fs.exists` bắt marker ⇒ **trap `VS0604`** với **cùng câu** như `read` (“thiếu `cap[Dir]` cho `{p}`” / strict không cap “cần khai…”), exit **2**. Trong root vẫn trả `true`/`false`. |
+| 2 | **`assert <đk>` câu lệnh** | `assert` là **soft keyword** ở đầu câu lệnh (sau `let`/`var`/`return`…): parser nhận `NodeKind::AssertStmt`, hạ thành `Call(assert, [expr])`; **giữ** `assert(expr)` cũ. Sai ⇒ `VS0501` “assert thất bại”, exit 1; trong `test fn` ⇒ TAP `not ok` + lý do. |
+| 3 | **Trợ giúp theo `--lang`** | `usage_explain(lang)` với 3 cặp câu **vi/en/ja** (số khối/mã vẫn **đếm động**); `vis explain --lang en/ja` (không mã) in đúng ngôn ngữ, exit 2; dùng cho cả no-arg và cờ lạ. |
+| 4 | **6 ca** | `crates/vis-cli/tests/st83_no_nho.rs`: (a) exists ngoài root ⇒ `VS0604` + path, exit 2; (b) trong root ⇒ `true`/`false`; (c) strict không cap ⇒ `VS0604` “cần khai `cap[Dir]`”; (d) assert câu lệnh đúng/sai; (e) assert trong `test fn` ⇒ TAP `not ok`; (f) help **nguyên văn** 3 ngôn ngữ. Mỗi ca interp + `--vm --no-cache`. |
+| 5 | **Ổn định test** | 2 test cũ **SỬA KÈM LÝ DO**: (i) `vis-syntax/tests/errors.rs` — `assert xs == [3,2,1]` nay **hợp lệ** (ST-83) nên thay ca âm bằng `assert 1 2`; (ii) `lsp_module_hieu_nang_5_tep` — harness // 29 test LSP làm wall-clock nhiễu (min 184 ms dù cô lập ~9 ms) ⇒ đo **phần thêm** so với nền `initialize` (cùng tiến trình), ngưỡng **100 ms** giữ nguyên; không nới ngưỡng. |
+| 6 | **Đo** | **920** test = 914 + **6** (21+96+27+154+26+62+9+**525**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=231.4 toc_do=432/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498** (`main.rs` 973, `parse/mod.rs` 1.412, `builtin.rs` 1.412). |
+| 7 | **Nợ** | `assert` câu lệnh chỉ nhận **một biểu thức** (không có message kèm giá trị); soft keyword khiến **biến tên `assert`** đứng đầu câu lệnh + theo sau là biểu thức bị hiểu thành assert (trade-off đã chọn, `assert(...)` vẫn là call); `FsHost::exists` (bool) vẫn tồn tại cho host cũ — chỉ đường `fs.exists` trap; help dịch **vi/en/ja** nhưng chưa có cơ chế i18n chung. |
 
 ## ST-82 — báo cáo R12, 2026-11-14
 

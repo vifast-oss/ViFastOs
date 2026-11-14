@@ -26,17 +26,37 @@ fn usage() -> ExitCode {
     ExitCode::from(2)
 }
 
-/// **ST-78**: trợ giúp riêng của `vis explain` — nêu **đúng** số khối/số mã của sổ hiện tại
-/// (đếm từ `all_codes()`/`BLOCKS_RESERVED`, không viết cứng).
-fn usage_explain() -> ExitCode {
-    eprintln!(
-        "dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]"
-    );
-    eprintln!(
-        "sổ mã: {} khối, {} mã — `vis explain --list` in toàn bộ (mã + câu ngắn)",
-        vis_diag::BLOCKS_RESERVED.len(),
-        vis_diag::all_codes().count()
-    );
+/// **ST-78/ST-83**: trợ giúp riêng của `vis explain` — đúng số khối/số mã (đếm động) và **theo
+/// `--lang`** (vi/en/ja); không viết cứng số.
+fn usage_explain(lang: Lang) -> ExitCode {
+    let khoi = vis_diag::BLOCKS_RESERVED.len();
+    let ma = vis_diag::all_codes().count();
+    match lang {
+        Lang::Vi => {
+            eprintln!(
+                "dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]"
+            );
+            eprintln!(
+                "sổ mã: {khoi} khối, {ma} mã — `vis explain --list` in toàn bộ (mã + câu ngắn)"
+            );
+        }
+        Lang::En => {
+            eprintln!(
+                "usage: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]"
+            );
+            eprintln!(
+                "code book: {khoi} blocks, {ma} codes — `vis explain --list` prints all (code + short text)"
+            );
+        }
+        Lang::Ja => {
+            eprintln!(
+                "使い方: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]"
+            );
+            eprintln!(
+                "コード帳: {khoi} ブロック、{ma} コード — `vis explain --list` で全件表示（コード + 短い説明）"
+            );
+        }
+    }
     ExitCode::from(2)
 }
 
@@ -879,7 +899,7 @@ fn main() -> ExitCode {
                     },
                     a if a.starts_with('-') => {
                         eprintln!("vis explain: không hỗ trợ cờ `{a}`");
-                        return usage_explain();
+                        return usage_explain(lang);
                     }
                     a => ma = Some(a.to_string()),
                 }
@@ -898,7 +918,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             match ma {
-                None => usage_explain(),
+                None => usage_explain(lang),
                 Some(code) => match lookup_str(&code) {
                     Some(c) => {
                         println!(

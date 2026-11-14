@@ -124,6 +124,13 @@ pub trait FsHost {
     fn write(&mut self, p: &str, s: &str) -> Result<(), String>;
     /// Tệp/thư mục có tồn tại.
     fn exists(&mut self, p: &str) -> bool;
+
+    /// **ST-83 (VD-109)**: như [`exists`](Self::exists) nhưng **có thể báo vượt quyền** (chuỗi bắt
+    /// đầu bằng [`DAU_QUYEN`](crate::stdlib::DAU_QUYEN)) ⇒ `VS0604`. Default: gọi `exists` (host cũ
+    /// không đổi chữ ký).
+    fn exists_quyen(&mut self, p: &str) -> Result<bool, String> {
+        Ok(self.exists(p))
+    }
     /// Tên các mục trong thư mục, **đã sắp xếp**, **không** đệ quy.
     fn list(&mut self, p: &str) -> Result<Vec<String>, String>;
 
