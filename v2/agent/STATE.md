@@ -4,16 +4,81 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `32b8ca78` ([KT-47] timer SBI — commit chỉ `v2/`; parent `7a2e12d6` của Agent 0 (D2-74 đính chính `-icount shift=6`), không chạm)
-BUILD_ID      : — (ảnh K3 KT-47: `vifast-kbin-riscv64` 54.272 B, `vifast-kbin-ktest` 68.064 B, `vifast-kbin-ktest-guard` 50.880 B — `JOURNAL/kt47-build.log`)
-Task          : **KT-47 (Timer SBI)** — **DONE (`reviewer-kt47` APPROVE; 8 mục tài liệu/bằng chứng đã vá)**: SBI TIME (EID `0x54494D45`) + `sie.STIE` + `sstatus.SIE`; tick **100 Hz**, timebase **10 MHz** (`rdtime`); deadline **tuyệt đối**/hart, `missed = late_by / TICK_TICKS` (mất tick), đếm `ticks/late/missed/non_monotonic/max_delta/min_delta`; `scause=(1<<63)|5` ⇒ `Event::Timer` (**không** exception) — handler nạp deadline kế rồi **resume** (P2a: trap entry/handler **không** ghi `sstatus`); API `Platform::{now_ticks,now_ns,timebase_hz,set_timer_deadline,enable_timer,disable_timer}`; TAP **8..11 timer** + nested thành **12**; product arm timer + **≥1 tick không icount**; host test **34/34**; ktest **12/12 + 3/3**; product **50/50**; gate **569/73**; budget **272/280/272 B**; **D2-74** (`-icount shift=6` cố định **chỉ** `ktest.sh`)
-Bước          : 8/8 xong (baseline gate 569 → đỏ trước: `ktest.sh` đòi 4 TAP timer → `plat-common::timer` + `Event::Timer` + `Platform` API → arch `timer` SBI/CSR + `trap_dispatch` nhánh Timer → ảnh test 12 TAP + product arm/1 tick → host 12 test timer + 1 API → phát hiện QEMU **không icount** phục vụ timer ảo thưa ⇒ lead chốt D2-74 → ktest icount xanh 12/12 + 3/3 → product 50/50 (không icount) → budget → `k3-riscv64.md` §2/§4..§7/§9/§10 + `JOURNAL/kt47-*` → gate 569) — **đã commit `[KT-47]`; `[KT-47b]` cập nhật HEAD + verdict + push**
+HEAD          : `b0e9f91b` ([KT-00] mở KT-48) → `5db8eaae` ([KT-00] **D2-75** của Agent 0: `probe_ndev` không phá trạng thái) — commit `[KT-48]` nằm trên `5db8eaae`, chỉ `v2/`
+BUILD_ID      : — (ảnh K3 KT-48: `vifast-kbin-riscv64` 55.560 B, `vifast-kbin-ktest` 74.264 B, `vifast-kbin-ktest-guard` 51.000 B — `JOURNAL/kt48-budget.log`/`kt48-ktest.log`)
+Task          : **KT-48 (PLIC + UART IRQ)** — **DONE (`reviewer-kt48` DRIFT nhẹ: code/DoD đạt, **không** UNSAFE; 4 mục đã vá + D2-75)**: PLIC cổ điển `0x0c00_0000` map **2×2 MiB Device RW NX** (priority/pending/enable + context), context S-mode **`2*hart+1`** (M-mode `2*hart` không bật), `ndev` **probe register** (write-1 → read-back → khôi phục 0 → read-back 0, panic nếu sai — D2-75), threshold **0**, priority IRQ 10 **1**; UART0 IRQ 10 bật `IER.TX-empty`, handler `claim → đọc IIR → complete → re-arm IER 0→2` (level-triggered có gateway), tắt `IER` + enable sau **N=8** ngắt; `scause=(1<<63)|9` ⇒ `Event::Interrupt{code:9}` → PLIC (line lạ đếm + complete, **0 IRQ giả**); `Platform::enable_irq/disable_irq` **PLIC thật** (TAP gọi wrapper); TAP **8..10 PLIC/UART** + timer **11..14** (chạy **sau** PLIC — hồi quy cùng boot) + nested **15**; product cũng bật PLIC+UART IRQ (**không icount**); host test **46/46**; ktest **15/15 + 3/3**; product **50/50**; gate **569**; budget **344/352/344 B**
+Bước          : 8/8 xong (baseline gate 569 → đỏ trước: `ktest.sh` đòi 3 TAP PLIC/UART + `plan-1..15` → `plat-common::plic` (layout/context/stats/host test) + `trap` mã 9 → arch `plic` (probe ndev/init/claim/complete/IER/gate) + MMU 2×2 MiB + `trap_dispatch` nhánh 9 + `Platform` IRQ thật → ảnh test 15 TAP + product PLIC → host 12 test PLIC (tổng 46) → reviewer DRIFT nhẹ: vá `interrupts_delta` thành hiệu thật, thêm TAP `Platform::enable_irq/disable_irq`, quiet 1 ms khớp docs, probe khôi phục 0 + đọc lại (D2-75), sửa comment TAP → ktest 15/15+3/3 ×2, product 50/50, gate 569) — **đã commit `[KT-48]`; `[KT-48b]` cập nhật HEAD + verdict + push**
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite, 0 failed** (`JOURNAL/kt47-gate-fast.log`); baseline cùng số (`JOURNAL/kt47-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng build 3 ảnh + `ktest.sh` (**icount**, D2-74) + `run.sh` (**không icount**, D2-72 Q2) + host test **34/34** (`JOURNAL/kt47-{host-tests,build,icount-ktest,boot50,budget}.log`).
-Miri          : KT-47 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim. Phần **logic** timer chạy host: `cargo test -p vifast-plat-common` **34/34** = 13 trap KT-45 + 1 API `Platform` KT-47 + 8 MMU KT-46 + **12 timer KT-47** (hằng số/quy đổi tick↔ns, `classify` đúng hẹn/mất tick/ngắt sớm/saturate, 1.000 tick + jitter không mất, tự căn deadline tuyệt đối, monotonic, bằng chứng `sstatus.SPIE/SIE`, arm/reset).
-Việc dở       : **`reviewer-kt47` APPROVE**, 8 mục tài liệu/bằng chứng đã vá; đã commit `[KT-47]`; `[KT-47b]` cập nhật HEAD + push. Kế tiếp Agent 0 lật KT-47 → KT-48 PLIC / KT-49 SMP. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite, 0 failed** (`JOURNAL/kt48-gate-fast.log`); baseline cùng số (`JOURNAL/kt48-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng build 3 ảnh + `ktest.sh` (**icount shift=6**, D2-74) + `run.sh` (**không icount**, D2-72 Q2) + host test **46/46** (`JOURNAL/kt48-{host-tests,ktest,ktest-2rounds,ktest-main-raw,ktest-guard-raw,boot50,budget,product-boot-nographic-raw}.log`).
+Miri          : KT-48 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim. Phần **logic** PLIC chạy host: `cargo test -p vifast-plat-common` **46/46** = 13 trap KT-45 + 1 API `Platform` KT-47 + 8 MMU KT-46 + 12 timer KT-47 + **12 PLIC KT-48** (hình học đăng ký, context `2*hart+1` cho hart 0..3, word/bit enable, offset threshold/claim, hai cửa sổ phủ `MAX_HARTS=8`, phân loại claim 3 nhánh, claim/complete cân bằng + 0 IRQ giả, limit tắt sau N, `ndev` không giả định 95, priority > threshold).
+Việc dở       : **`reviewer-kt48` DRIFT nhẹ (code/DoD đạt, không UNSAFE)**, 4 mục đã vá + D2-75; đã commit `[KT-48]`; `[KT-48b]` cập nhật HEAD + push. Kế tiếp Agent 0 lật KT-48 → KT-49 SMP. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
 ```
 
+
+
+## KT-48 — PLIC + UART IRQ (claim/complete, context `2*hart+1`, 0 IRQ giả)
+
+**Vào**: READY; HEAD `b0e9f91b`; `HEAD..origin/main = 0`; working tree có `viscript/` của tab khác —
+**không chạm**; baseline `gate --fast` **569 PASS** ([`kt48-baseline-gate-fast.log`](JOURNAL/kt48-baseline-gate-fast.log)); baseline ktest KT-47 **12/12 + 3/3**
+([`kt48-baseline-ktest.log`](JOURNAL/kt48-baseline-ktest.log)).
+
+**Mục tiêu** (K3-PLAN §4.1 KT-48 + D2-72 Q7/Q8): PLIC cổ điển thật — priority/enable/claim/complete,
+context `2*hart+1`, threshold 0, `ndev` đọc từ register; UART0 IRQ 10 bật `IER.TX-empty`, handler
+`claim → xử lý → complete`, đếm và tắt sau N; `scause` bit 63 + mã 9 ⇒ `Event::Interrupt` đi vào
+PLIC (không nhầm timer 5 / exception); line ngoài dự kiến đếm + complete (không treo); TAP `uart irq >= 1`,
+claim/complete cân bằng, context đúng hart, 0 IRQ giả, plic threshold, timer vẫn chạy sau PLIC cùng
+boot; 50 boot; gate 569; budget.
+
+**Đỏ trước** ([`kt48-red-ktest.log`](JOURNAL/kt48-red-ktest.log)): `ktest.sh` đòi `1..15` + 3 TAP
+PLIC/UART + 4 dòng bằng chứng; ảnh KT-47 chỉ có `1..12` ⇒ `not ok 1 … thiếu plan-1..15
+ok8-plic-window ok9-uart-irq ok10-plic-no-fake-irq ok11-timer-monotonic ok12-timer-no-lost-tick
+ok13-timer-irq ok14-timer-drift ok15-nested plic-window-evidence plic-map-evidence uart-irq-evidence
+plic-quiet-evidence`, `EXIT=1`.
+
+**Kết quả**:
+- **`vifast-plat-common::plic`** (mới, `forbid(unsafe_code)`): priority `0x0`, pending `0x1000`,
+  enable `0x2000+0x80*ctx`, context `0x20_0000+0x1000*ctx` (threshold `+0`, claim `+4`), max source
+  **1023**; `context_of_hart=2*h+1`/`machine_context_of_hart=2*h`; `classify_claim`
+  (Uart/Spurious/Unexpected); `UART_IRQ_LIMIT=8`; `PlicStats`/`PLIC_STATS` (traps/claims/
+  completions/uart_irqs/spurious/unexpected/last_irq/last_iir(normalize `IIR&0x0f`)/uart_ier_off,
+  `balanced()`, `fake_irqs()`).
+- **`trap`**: `INTERRUPT_SUPERVISOR_EXTERNAL = 9`; doc phân biệt 5 timer / 9 external / khác fatal.
+  **`Platform::enable_irq/disable_irq`** = PLIC thật (set/clear bit context `2*hart+1` + đọc lại).
+- **`vifast-plat-riscv64::plic`** (mới, `unsafe` thuộc D2-17): `probe_ndev` (write-1/read-back/
+  restore-0/read-back-0, panic nếu sai — **D2-75**), `init` (threshold 0, priority[10]=1, enable
+  ctx S-mode, kiểm ctx M-mode=0 + claim rỗng), `claim`/`complete`, `enable_external` (`sie.SEIE`
+  rồi `sstatus.SIE`), `IER.TX-empty`/`IIR`, `on_external_interrupt` (claim → IIR → complete →
+  re-arm `IER 0→2`; đủ N tắt `IER`+enable; line lạ đếm+complete; không in).
+- **`trap_dispatch`**: `Event::Interrupt{code:9}` → PLIC + `TRAP_STATS.record_interrupt(9)` (không
+  fatal); mã khác 5/9 vẫn fatal. **`mmu`**: PLIC **2×2 MiB Device RW NX** (`0x0c00_0000` +
+  `0x0c20_0000`), UART vẫn 4 KiB.
+- **Ảnh test 15 TAP** (8..10 PLIC/UART, 11..14 timer **sau** PLIC, 15 nested); **ảnh product**
+  bật PLIC+UART IRQ (không icount), in `# plic:`/`# uart irq:`, sai ⇒ PANIC. `ktest.sh` đòi
+  `1..15` + 4 bằng chứng (`# plic:` có `plat_off=1 plat_on=1`, `# plic map:`, `# uart irq:`,
+  `# plic quiet:`); `interrupts_delta` là **hiệu thật** từ trước `plic::init`.
+- **Host tests**: `tests/plic.rs` mới **12 test**; tổng plat-common **46/46**.
+- **Docs**: `k3-riscv64.md` §2/§4/§6/§7/§8.1/§9/§10.6 + **§11 mới** (PLIC register map, D2-75
+  probe không phá huỷ, đường ngắt level/gateway/re-arm, TAP + bằng chứng, giới hạn).
+
+**Số đo** (do script in — [`kt48-ktest.log`](JOURNAL/kt48-ktest.log),
+[`kt48-boot50.log`](JOURNAL/kt48-boot50.log)): ktest **15/15** + guard **3/3** × **2 vòng**;
+`# plic: … ndev=95 ctx=1 plat_off=1 plat_on=1 threshold=0 priority_uart=1 enable_ctx=1
+enable_mmode=0 claim_idle=0`; `# uart irq: irqs=8 claims=8 completes=8 traps_delta=8 balanced=1
+spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0`; `# plic quiet: …
+external_traps=8 interrupts_delta=8 spurious=0 unexpected=0`; timer `ok 11..14`
+`ticks=1000 late=missed=0`, `scause=0x8000000000000005`, `in_range=1`; product **50/50** (không
+icount); host **46/46**; budget **344/352/344 B**/262.144; gate **569**.
+
+**Review độc lập**: `reviewer-kt48` **DRIFT nhẹ** — code/DoD đạt, **không UNSAFE**; tự chạy host
+46/46, ktest 15/15+3/3, product 50/50, gate 569; 4 mục vá trước commit: `interrupts_delta` thành
+**hiệu thật**; TAP 8 **gọi thật** `Platform::enable_irq/disable_irq` (bằng chứng `plat_off=1
+plat_on=1`); cửa sổ quiet **1 ms** khớp docs; `probe_ndev` khôi phục 0 + đọc lại 0, panic nếu sai
+(**D2-75**) + nit comment TAP. Sau vá chạy lại đủ (46/46, 15+3 ×2, 50/50, gate 569).
+
+**Không làm (đúng phạm vi)**: SMP/PerHart (KT-49), IPI (KT-50), ASID/shootdown (KT-51), object
+layer (KT-52), U-mode (KT-53), harness matrix (KT-54), conformance (KT-55), `FaultKind`/W^X
+(KT-56), soak/K3-DOD (KT-57), port core (K3b), AIA/MSI; `spec/`, sim, `.scn`, QUEUE/DECISIONS/
+AGENTS, `viscript/`, `review/` **không chạm**.
 
 ## KT-47 — Timer SBI (`SBI TIME`, tick 100 Hz, deadline tuyệt đối, D2-72 Q6 + D2-74)
 

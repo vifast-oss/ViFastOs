@@ -10,7 +10,8 @@
 //!  kernel nửa cao              0xFFFF_FFC0_4000_0000 + Δ    = 0x8020_0000 + Δ     RWX image / RW NX stack
 //!  physmap RAM                 0xFFFF_FFC0_0000_0000 + PA    = PA                 V|R|W|A|D, **NX**, 2 MiB
 //!  UART0                       0x0000_0000_1000_0000        = UART0               V|R|W|A|D, Device 4 KiB
-//!  PLIC                        0x0000_0000_0c00_0000        = PLIC                V|R|W|A|D, Device 4 KiB
+//!  PLIC (2 cửa sổ 2 MiB)       0x0000_0000_0c00_0000        = PLIC                V|R|W|A|D, Device 2 MiB ×2
+//!                              0x0000_0000_0c20_0000        (KT-48: priority/enable | context)
 //!  guard page                  0x0000_0000_8020_4000        (không map)           **NONE** (fault thật)
 //! ```
 //!
@@ -45,6 +46,7 @@ use vifast_plat_common::mmu::{
     align_up, satp_sv39, walk_with, MapError, PageTableBuilder, PteFlags, PteMemory, Walk,
     PAGE_BYTES,
 };
+use vifast_plat_common::plic::PLIC_LOW_WINDOW_BYTES;
 #[cfg(feature = "ktest")]
 use vifast_plat_common::trap::EXC_LOAD_PAGE_FAULT;
 use vifast_plat_common::trap::{Exception, ExceptionKind, TrapFrame};
@@ -70,6 +72,13 @@ pub const RAM_BYTES: u64 = 128 << 20;
 pub const ARENA_BYTES: usize = 64 * 1024;
 /// Cỡ một leaf lớn 2 MiB (physmap).
 const LARGE_2M: u64 = 1 << 21;
+/// Cửa sổ PLIC thứ nhất (KT-48): priority (`0x0`) + pending (`0x1000`) + enable
+/// (`0x2000 + 0x80*ctx`) — leaf 2 MiB Device phủ tới context 15 của `MAX_HARTS = 8`.
+pub const PLIC_WINDOW_LOW_BASE: u64 = PLIC_BASE as u64;
+/// Cửa sổ PLIC thứ hai (KT-48): threshold/claim `0x20_0000 + 0x1000*ctx` — leaf 2 MiB Device.
+pub const PLIC_WINDOW_HIGH_BASE: u64 = PLIC_BASE as u64 + PLIC_LOW_WINDOW_BYTES;
+/// Cỡ mỗi cửa sổ PLIC (2 MiB) — dùng cho TAP/log.
+pub const PLIC_WINDOW_BYTES: u64 = PLIC_LOW_WINDOW_BYTES;
 /// Số VA lấy mẫu PTE trước/sau khi bật `satp`.
 pub const WALK_SAMPLES: usize = 8;
 
@@ -353,7 +362,9 @@ fn map_kernel(builder: &mut PageTableBuilder<'_>, layout: &Layout) -> Result<(),
     Ok(())
 }
 
-/// MMIO 4 KiB, Device: UART0 + PLIC (D2-72 Q7). Không map CLINT (timer qua SBI — KT-47).
+/// MMIO Device: UART0 **4 KiB** + **hai cửa sổ PLIC 2 MiB** (KT-48 — priority/pending/enable ở
+/// cửa sổ thấp, threshold/claim ở cửa sổ cao; đủ context 15 của `MAX_HARTS = 8`). Không map CLINT
+/// (timer qua SBI — KT-47).
 fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
     builder.map(
         UART0_BASE as u64,
@@ -361,7 +372,18 @@ fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
         0,
         PteFlags::device_rw(),
     )?;
-    builder.map(PLIC_BASE as u64, PLIC_BASE as u64, 0, PteFlags::device_rw())?;
+    builder.map(
+        PLIC_WINDOW_LOW_BASE,
+        PLIC_WINDOW_LOW_BASE,
+        1,
+        PteFlags::device_rw(),
+    )?;
+    builder.map(
+        PLIC_WINDOW_HIGH_BASE,
+        PLIC_WINDOW_HIGH_BASE,
+        1,
+        PteFlags::device_rw(),
+    )?;
     Ok(())
 }
 

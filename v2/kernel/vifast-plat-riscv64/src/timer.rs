@@ -17,8 +17,10 @@
 //!
 //! Hardware khi trap: `SPIE ← SIE`, `SIE ← 0`, `SPP ← 1`. `sret`: `SIE ← SPIE`. Vì vậy:
 //!
-//! - [`enable_timer`] là chỗ **duy nhất** bật cổng: `sie.STIE = 1` **trước** rồi `sstatus.SIE = 1`
-//!   (bật nguồn trước, mở cổng sau — không có cửa sổ ngắt khi nguồn chưa sẵn sàng).
+//! - [`enable_timer`] là chỗ **duy nhất** bật cổng **timer**: `sie.STIE = 1` **trước** rồi
+//!   `sstatus.SIE = 1` (bật nguồn trước, mở cổng sau — không có cửa sổ ngắt khi nguồn chưa sẵn
+//!   sàng). KT-48 thêm `plic::enable_external` cùng hợp đồng cho ngắt external (`sie.SEIE` trước
+//!   rồi `sstatus.SIE`); cả hai đều **không** bị trap entry/handler ghi đè.
 //! - `trap_entry`/handler **không** ghi `sstatus` (KT-45 P2a); trong handler `SIE = 0` (hardware
 //!   xoá) nên **không** có trap lồng; `sret` tự khôi phục `SIE` từ `SPIE` ⇒ sau trap SIE = 1 trở
 //!   lại. Handler chỉ *đếm* bằng chứng (`trap_spie_on`, `handler_sie_off`) chứ không sửa.

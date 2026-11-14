@@ -3,11 +3,13 @@
 # KT-44/45/46/47 — boot ảnh **TEST** riscv64 K3 (crate `vifast-kbin-riscv64`, feature `ktest`).
 #
 # D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm — cùng crate nhưng bin + feature riêng.
-# KT-47: **hai** ảnh test vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích:
-#   - `vifast-kbin-ktest`       : 12 TAP — KT-45 (image + 3 trap) + KT-46 (mmu on, map layout,
-#                                 walk khop) + KT-47 (4 TAP timer SBI: 100 tick đơn điệu, 1.000
-#                                 tick không mất, irq thật qua `stvec`, drift Δ ∈ [9,11] ms)
-#                                 trước trap lồng fatal cuối cùng (`ok 12`).
+# KT-48: **hai** ảnh test vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích:
+#   - `vifast-kbin-ktest`       : 15 TAP — KT-45 (image + 3 trap) + KT-46 (mmu on, map layout,
+#                                 walk khop) + KT-48 (3 TAP PLIC + UART IRQ thật: cửa sổ PLIC
+#                                 mapped, IRQ 10 claim/complete cân bằng, 0 IRQ giả) + KT-47
+#                                 (4 TAP timer SBI chạy **sau** PLIC ⇒ hồi quy timer trong cùng
+#                                 boot: 100 tick đơn điệu, 1.000 tick không mất, irq thật qua
+#                                 `stvec`, drift Δ ∈ [9,11] ms) trước trap lồng fatal (`ok 15`).
 #   - `vifast-kbin-ktest-guard` : 3 TAP — guard page fault **thật**: load `scause=13` (resume
 #                                 probe) rồi store `scause=15` fatal `PANIC: guard page fault`.
 #
@@ -139,11 +141,12 @@ while [ "$i" -le "$N_BOOT" ]; do
         i=$((i + 1))
         continue
     fi
-    # TAP 1..4 là KT-45; 5..7 là KT-46 (MMU); 8..11 là KT-47 (timer SBI); 12 là trap lồng fatal
+    # TAP 1..4 là KT-45; 5..7 là KT-46 (MMU); 8..10 là KT-48 (PLIC + UART IRQ thật); 11..14 là
+    # KT-47 (timer SBI, chạy **sau** PLIC ⇒ hồi quy timer trong cùng boot); 15 là trap lồng fatal
     # có chủ đích. Runner đòi đúng dòng PANIC lồng và **chỉ** dòng đó.
     missing=""
     grep -q '^TAP version 13$' "$out" || missing="$missing TAP-version"
-    grep -q '^1\.\.12$' "$out" || missing="$missing plan-1..12"
+    grep -q '^1\.\.15$' "$out" || missing="$missing plan-1..15"
     grep -q '^ok 1 - ktest image$' "$out" || missing="$missing ok1-image"
     grep -q '^ok 2 - trap breakpoint$' "$out" || missing="$missing ok2-breakpoint"
     grep -q '^ok 3 - trap ecall sbi$' "$out" || missing="$missing ok3-ecall-sbi"
@@ -151,11 +154,14 @@ while [ "$i" -le "$N_BOOT" ]; do
     grep -q '^ok 5 - mmu on$' "$out" || missing="$missing ok5-mmu-on"
     grep -q '^ok 6 - map layout$' "$out" || missing="$missing ok6-map-layout"
     grep -q '^ok 7 - walk khop$' "$out" || missing="$missing ok7-walk-khop"
-    grep -q '^ok 8 - timer 100 ticks monotonic$' "$out" || missing="$missing ok8-timer-monotonic"
-    grep -q '^ok 9 - timer no lost tick$' "$out" || missing="$missing ok9-timer-no-lost-tick"
-    grep -q '^ok 10 - timer irq$' "$out" || missing="$missing ok10-timer-irq"
-    grep -q '^ok 11 - timer deadline drift$' "$out" || missing="$missing ok11-timer-drift"
-    grep -q '^ok 12 - trap nested panic$' "$out" || missing="$missing ok12-nested"
+    grep -q '^ok 8 - plic window$' "$out" || missing="$missing ok8-plic-window"
+    grep -q '^ok 9 - uart irq$' "$out" || missing="$missing ok9-uart-irq"
+    grep -q '^ok 10 - plic no fake irq$' "$out" || missing="$missing ok10-plic-no-fake-irq"
+    grep -q '^ok 11 - timer 100 ticks monotonic$' "$out" || missing="$missing ok11-timer-monotonic"
+    grep -q '^ok 12 - timer no lost tick$' "$out" || missing="$missing ok12-timer-no-lost-tick"
+    grep -q '^ok 13 - timer irq$' "$out" || missing="$missing ok13-timer-irq"
+    grep -q '^ok 14 - timer deadline drift$' "$out" || missing="$missing ok14-timer-drift"
+    grep -q '^ok 15 - trap nested panic$' "$out" || missing="$missing ok15-nested"
     grep -q '^# mmu: .*mode=8' "$out" || missing="$missing mmu-evidence"
     grep -q '^# mmu on: .*alias=1 .*kernel_low=1 kernel_high=1' "$out" ||
         missing="$missing mmu-on-evidence"
@@ -165,6 +171,19 @@ while [ "$i" -le "$N_BOOT" ]; do
         missing="$missing device/physmap-evidence"
     grep -q '^# walk khop: pre=post=1 software=8/8' "$out" ||
         missing="$missing walk-khop-evidence"
+    # KT-48: PLIC mapped đủ cửa sổ (2 MiB Device RW NX cho priority/enable và cho context),
+    # `ndev` đọc từ register (không giả định 95), context `2*hart+1`, threshold=0, priority IRQ 10
+    # = 1, enable đúng context của hart và **không** bật context M-mode của cùng hart; UART
+    # TX-empty IRQ **thật**: claim/complete cân bằng, chỉ line 10 (IIR = THRE), tắt sau N; và
+    # "0 IRQ giả": claim rỗng, số trap external = số external trap, không spurious/unexpected.
+    grep -q '^# plic: .*threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0$' "$out" ||
+        missing="$missing plic-window-evidence"
+    grep -q '^# plic map: .* low_dev=1 high_dev=1 low_2m=1 high_2m=1 low_nx=1 high_nx=1$' "$out" ||
+        missing="$missing plic-map-evidence"
+    grep -q '^# uart irq: irqs=[1-9][0-9]* claims=[1-9][0-9]* completes=[1-9][0-9]* traps_delta=[1-9][0-9]* balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0$' "$out" ||
+        missing="$missing uart-irq-evidence"
+    grep -q '^# plic quiet: claim_idle=0 quiet=1 stats_unchanged=1 external_traps=[1-9][0-9]* interrupts_delta=[1-9][0-9]* spurious=0 unexpected=0$' "$out" ||
+        missing="$missing plic-quiet-evidence"
     # KT-47: bằng chứng timer — SBI TIME (tick 100 Hz, timebase 10 MHz), tick đơn điệu/không mất,
     # scause ngắt S-mode timer thật (bit 63 + code 5), drift Δ trong [9,11] ms, và SIE đúng
     # (bị ngắt khi SIE=1, trong handler SIE=0, `sret` trả SIE=1, disable về 0).

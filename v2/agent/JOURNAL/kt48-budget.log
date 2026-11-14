@@ -1,0 +1,9 @@
+# image=product path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=55560 data+bss=344 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=11262 .rodata=2992 .bss=344 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=344 
+# image=ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=74264 data+bss=352 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=18100 .rodata=5592 .bss=352 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=352 
+# image=ktest-guard path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=51000 data+bss=344 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=10094 .rodata=2688 .bss=344 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=344 

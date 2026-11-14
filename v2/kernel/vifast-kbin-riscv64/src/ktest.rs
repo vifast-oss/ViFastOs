@@ -2,7 +2,7 @@
 //! Ảnh **test** riscv64 cho K3 (KT-44, KT-45, KT-46) — bin riêng, feature `ktest`, nạp qua
 //! OpenSBI. D2-08: ảnh test **không** nằm trong ảnh sản phẩm.
 //!
-//! KT-46/47 mở rộng ảnh này lên **12 TAP**:
+//! KT-48 mở rộng ảnh này lên **15 TAP**:
 //!
 //! 1. `ok 1 - ktest image` — marker tách ảnh của KT-44.
 //! 2. `ok 2 - trap breakpoint` — **trap phần cứng thật** (`ebreak` → `scause=3`, resume đúng
@@ -12,18 +12,24 @@
 //! 5. `ok 5 - mmu on` — `satp` mode 8, root từ arena RAM, đọc lại `satp`, walk phần mềm khớp
 //!    phần cứng (UART/kernel identity + nửa cao), alias ghi/đọc.
 //! 6. `ok 6 - map layout` — guard NONE ở cả 3 alias; `.stack`/`.trap_stack`/arena RW NX; physmap
-//!    2 MiB **NX**; UART/PLIC Device 4 KiB; kernel nửa cao X.
+//!    2 MiB **NX**; UART **4 KiB** + PLIC **2×2 MiB** Device RW NX; kernel nửa cao X.
 //! 7. `ok 7 - walk khop` — PTE đọc lại **sau** khi bật `satp` bằng PTE trước; walk phần mềm trả
 //!    đúng PTE; alias identity ↔ nửa cao ↔ physmap ghi/đọc khớp (hardware walk thật).
-//! 8. `ok 8 - timer 100 ticks monotonic` — SBI TIME + `sie.STIE`: 100 ngắt timer **thật**, mỗi
-//!    tick `rdtime` tăng (monotonic), không có tick nào `now <= last` (KT-47).
-//! 9. `ok 9 - timer no lost tick` — 1.000 tick liên tiếp, `late = missed = 0` (không mất tick;
-//!    "trễ > 1 tick" là định nghĩa mất tick của KT-47).
-//! 10. `ok 10 - timer irq` — ngắt **thật** qua `stvec`: `scause = (1<<63) | 5`,
-//!     `TRAP_STATS.interrupts ≥ 1.000`, 0 exception phát sinh; `sstatus.SIE` đúng (SIE=1 lúc trap,
-//!     SIE=0 trong handler, `sret` trả SIE=1).
-//! 11. `ok 11 - timer deadline drift` — Δ tick đo được ∈ [9,11] ms (DoD KT-47), in min/max ns.
-//! 12. `ok 12 - trap nested panic` — trap **lồng** vẫn fatal (P2b); boot kết thúc bằng `PANIC:
+//! 8. `ok 8 - plic window` — KT-48: hai cửa sổ PLIC 2 MiB Device RW NX đã map; `ndev` **đọc từ
+//!    register** (probe priority, không giả định 95) phủ IRQ 10; context `2*hart+1`; threshold 0;
+//!    priority IRQ 10 = 1; enable đúng context S-mode và **không** context M-mode; claim rỗng.
+//! 9. `ok 9 - uart irq` — UART `IER.TX-empty` + `sie.SEIE`: IRQ **thật** qua `stvec`
+//!    (`scause=(1<<63)|9`), `uart_irqs ≥ 1`, claim/complete **cân bằng**, đúng line 10 (IIR =
+//!    TX-empty), handler tự tắt `IER` + enable sau [`UART_IRQ_LIMIT`] ngắt (không ngập).
+//! 10. `ok 10 - plic no fake irq` — **0 IRQ giả**: `spurious = unexpected = 0`, claim sau khi tắt
+//!     trả 0, số trap external = số claim, và cổng external tắt **im lặng** (không trap mới).
+//! 11. `ok 11 - timer 100 ticks monotonic` — SBI TIME + `sie.STIE`: 100 ngắt timer **thật** (chạy
+//!     **sau** PLIC ⇒ hồi quy timer trong cùng boot), mỗi tick `rdtime` tăng.
+//! 12. `ok 12 - timer no lost tick` — 1.000 tick liên tiếp, `late = missed = 0` (KT-47).
+//! 13. `ok 13 - timer irq` — ngắt **thật** qua `stvec`: `scause = (1<<63) | 5`,
+//!     `TRAP_STATS.interrupts ≥ 1.000`, 0 exception phát sinh; `sstatus.SIE` đúng.
+//! 14. `ok 14 - timer deadline drift` — Δ tick đo được ∈ [9,11] ms (DoD KT-47), in min/max ns.
+//! 15. `ok 15 - trap nested panic` — trap **lồng** vẫn fatal (P2b); boot kết thúc bằng `PANIC:
 //!     nested trap …` + `DebugHalt(1)`, không treo/không resume. Runner chấp nhận đúng dòng PANIC
 //!     này và **chỉ** dòng này.
 //!
@@ -37,19 +43,22 @@ use core::fmt::Write;
 use core::sync::atomic::AtomicU64;
 
 use vifast_plat_common::mmu::{satp_mode, satp_root, PTE_EXEC, PTE_READ, PTE_WRITE};
+use vifast_plat_common::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_common::timer::{
     ticks_to_ns, TICK_DELTA_MAX_NS, TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
     TIMER_STATS,
 };
 use vifast_plat_common::trap::{
-    INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE, TRAP_STATS,
+    INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE,
+    TRAP_STATS,
 };
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
+use vifast_plat_riscv64::plic;
 use vifast_plat_riscv64::timer;
 use vifast_plat_riscv64::{
     probe_breakpoint, probe_ecall_sbi, probe_injected_trap, probe_nested_trap, read_trap_vector,
-    trap_vector, Riscv64Virt, PLIC_BASE, UART0_BASE,
+    trap_vector, Riscv64Virt, UART0_BASE, UART0_IRQ,
 };
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
@@ -67,12 +76,22 @@ fn device_leaf(walk: vifast_plat_common::mmu::Walk, pa: u64) -> bool {
         && walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE)
 }
 
+/// Leaf Device **2 MiB** RW NX tại đúng PA `pa` — cửa sổ PLIC của KT-48 (leaf level 1).
+fn device_2m(walk: vifast_plat_common::mmu::Walk, pa: u64) -> bool {
+    walk.valid
+        && walk.leaf
+        && walk.level == 1
+        && walk.phys == pa
+        && walk.raw() & PTE_EXEC == 0
+        && walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE)
+}
+
 /// `SBI_ERR_NOT_SUPPORTED` (SBI spec: -2) — OpenSBI trả cho EID không tồn tại.
 const SBI_ERR_NOT_SUPPORTED: u64 = u64::MAX - 1;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..12\n");
+    PLATFORM.put_str("TAP version 13\n1..15\n");
     // KT-45: vector direct-mode trước mọi test trap.
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -306,7 +325,12 @@ pub extern "C" fn rust_main() -> ! {
             && physmap_ram.raw() & PTE_EXEC == 0
             && physmap_ram.raw() & PTE_WRITE != 0;
         let uart = mmu::walk_sw(UART0_BASE as u64);
-        let plic = mmu::walk_sw(PLIC_BASE as u64);
+        // KT-48: PLIC map **hai cửa sổ 2 MiB** Device RW NX (priority/enable + context), không
+        // còn 4 KiB như KT-46 — mọi đăng ký PLIC đã dùng phải walk thấy leaf 2 MiB đúng PA.
+        let plic_low = mmu::walk_sw(mmu::PLIC_WINDOW_LOW_BASE);
+        let plic_high = mmu::walk_sw(mmu::PLIC_WINDOW_HIGH_BASE);
+        let plic_low_ok = device_2m(plic_low, mmu::PLIC_WINDOW_LOW_BASE);
+        let plic_high_ok = device_2m(plic_high, mmu::PLIC_WINDOW_HIGH_BASE);
         // Image nửa cao phải là **leaf 2 MiB** (level 1, X=1) — yêu cầu "kernel nửa cao 2 MiB";
         // vùng NOLOAD phía sau mới là 4 KiB (guard NONE, stack/trap/arena RW NX).
         let kernel_low_walk = mmu::walk_sw(mmu::KERNEL_PHYS_BASE);
@@ -328,13 +352,14 @@ pub extern "C" fn rust_main() -> ! {
             && alias_low
             && physmap_ok
             && device_leaf(uart, UART0_BASE as u64)
-            && device_leaf(plic, PLIC_BASE as u64)
+            && plic_low_ok
+            && plic_high_ok
             && kernel_high_2m;
         {
             let mut w = PlatformWriter(&PLATFORM);
             let _ = writeln!(
                 w,
-                "# mmu layout: guard=0x{:x}-0x{:x} none_low={} none_high={} none_physmap={} stack=0x{:x}-0x{:x} rw_nx={} trap=0x{:x}-0x{:x} rw_nx={} arena=0x{:x}-0x{:x} arena_alias={} physmap_2m_nx={} uart_dev={} plic_dev={} kernel_high_2m={}",
+                "# mmu layout: guard=0x{:x}-0x{:x} none_low={} none_high={} none_physmap={} stack=0x{:x}-0x{:x} rw_nx={} trap=0x{:x}-0x{:x} rw_nx={} arena=0x{:x}-0x{:x} arena_alias={} plic_low_2m={} plic_high_2m={} physmap_2m_nx={} uart_dev={} plic_dev={} kernel_high_2m={}",
                 guard_start,
                 guard_end,
                 guard_none_low as u8,
@@ -349,9 +374,11 @@ pub extern "C" fn rust_main() -> ! {
                 arena_start,
                 arena_end,
                 arena_ok as u8,
+                plic_low_ok as u8,
+                plic_high_ok as u8,
                 physmap_ok as u8,
                 device_leaf(uart, UART0_BASE as u64) as u8,
-                device_leaf(plic, PLIC_BASE as u64) as u8,
+                (plic_low_ok && plic_high_ok) as u8,
                 kernel_high_2m as u8
             );
         }
@@ -370,7 +397,7 @@ pub extern "C" fn rust_main() -> ! {
             mmu::KERNEL_HIGH_BASE,
             mmu::PHYSMAP_BASE + mmu::RAM_PHYS_BASE,
             UART0_BASE as u64,
-            PLIC_BASE as u64,
+            mmu::PLIC_WINDOW_LOW_BASE,
             mmu.stack_start,
             mmu.trap_stack_start,
             mmu.arena_start,
@@ -420,7 +447,190 @@ pub extern "C" fn rust_main() -> ! {
         }
     }
 
-    // -------------------------------------------------- 8..11) Timer SBI (KT-47)
+    // -------------------------------------------------- 8..10) PLIC + UART IRQ thật (KT-48)
+    // D2-72 Q7/Q8: PLIC cổ điển `0x0c00_0000`, context S-mode `2*hart+1`, threshold 0, priority
+    // UART0 (IRQ 10) = 1. `ndev` **đọc từ register** (probe priority) — không giả định 95.
+    // UART0 bật `IER.TX-empty` để có ngắt **thật**; handler `claim → xử lý → complete`, đếm và
+    // tắt `IER` + enable sau `UART_IRQ_LIMIT` ngắt để không ngập (K3-PLAN §4.1 KT-48).
+    let traps_before_plic = TRAP_STATS.snapshot();
+    let exceptions_before_plic = traps_before_plic.exceptions;
+    let interrupts_before_plic = traps_before_plic.interrupts;
+    let plic = plic::init();
+    let plic_low = mmu::walk_sw(mmu::PLIC_WINDOW_LOW_BASE);
+    let plic_high = mmu::walk_sw(mmu::PLIC_WINDOW_HIGH_BASE);
+    let plic_low_2m = plic_low.valid && plic_low.leaf && plic_low.level == 1;
+    let plic_high_2m = plic_high.valid && plic_high.leaf && plic_high.level == 1;
+    let plic_low_nx = plic_low.raw() & PTE_EXEC == 0;
+    let plic_high_nx = plic_high.raw() & PTE_EXEC == 0;
+    let plic_low_dev = device_2m(plic_low, mmu::PLIC_WINDOW_LOW_BASE);
+    let plic_high_dev = device_2m(plic_high, mmu::PLIC_WINDOW_HIGH_BASE);
+    // Wrapper `Platform::enable_irq`/`disable_irq` (không chỉ helper nội bộ) phải chạy thật trên
+    // `stvec`/PLIC: tắt → đọc lại thấy tắt; bật lại → đọc lại thấy bật (để bật cho TAP 9).
+    let platform_irq_off = PLATFORM.disable_irq(UART0_IRQ) && !plic::irq_enabled(UART0_IRQ);
+    let platform_irq_on = PLATFORM.enable_irq(UART0_IRQ) && plic::irq_enabled(UART0_IRQ);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# plic: base=0x{:x} ndev={} hart={} ctx={} plat_off={} plat_on={} threshold={} priority_uart={} enable_ctx={} enable_mmode={} claim_idle={}",
+            plic.base,
+            plic.ndev,
+            plic.hart,
+            plic.context,
+            platform_irq_off as u8,
+            platform_irq_on as u8,
+            plic.threshold,
+            plic.priority_uart,
+            plic.enable_ctx as u8,
+            plic.enable_mmode as u8,
+            plic.claim_idle
+        );
+        let _ = writeln!(
+            w,
+            "# plic map: low=0x{:x}-0x{:x} high=0x{:x}-0x{:x} low_dev={} high_dev={} low_2m={} high_2m={} low_nx={} high_nx={}",
+            plic.low_window.0,
+            plic.low_window.1,
+            plic.high_window.0,
+            plic.high_window.1,
+            plic_low_dev as u8,
+            plic_high_dev as u8,
+            plic_low_2m as u8,
+            plic_high_2m as u8,
+            plic_low_nx as u8,
+            plic_high_nx as u8
+        );
+    }
+
+    // TAP 8: cửa sổ PLIC + cấu hình (ndev/context/threshold/priority/enable) đọc lại từ register.
+    let ok_plic_window = plic.is_configured()
+        && plic.ndev > UART0_IRQ as u32
+        && plic.context == plic::current_context()
+        && plic.enable_address == plic.base + 0x2000 + 0x80 * plic.context as u64
+        && plic.context_address == plic.base + 0x20_0000 + 0x1000 * plic.context as u64 + 4
+        && plic_low_dev
+        && plic_high_dev
+        && plic_low_2m
+        && plic_high_2m
+        && plic_low_nx
+        && plic_high_nx
+        && platform_irq_off
+        && platform_irq_on
+        && plic::irq_enabled(UART0_IRQ);
+    if ok_plic_window {
+        PLATFORM.put_str("ok 8 - plic window\n");
+    } else {
+        PLATFORM
+            .put_str("not ok 8 - plic window: map/ndev/context/threshold/priority khong dung\n");
+        fails += 1;
+    }
+
+    // TAP 9: UART TX-empty IRQ **thật** qua PLIC + `stvec`: claim/complete cân bằng, đúng line
+    // 10, IIR = TX-empty, handler tự tắt IER + enable sau N.
+    // Snapshot **trước** khi mở cổng: ngắt đầu tiên có thể được hardware nhận ngay giữa các
+    // instruction của `enable_external` (SIE bật là trap ngay) nên đo sau khi mở cổng sẽ hụt.
+    let traps_before_uart = TRAP_STATS.snapshot();
+    let uart_ier_on = plic::uart_enable_tx_irq();
+    let external_gate_on = plic::enable_external();
+    let uart_wait_ok = wait_uart_irqs(UART_IRQ_LIMIT, 2 * TIMEBASE_HZ);
+    let uart_snap = PLIC_STATS.snapshot();
+    let traps_after_uart = TRAP_STATS.snapshot();
+    plic::disable_external();
+    let uart_ier_off = plic::uart_disable_tx_irq();
+    let plic_enable_off = !plic::irq_enabled(UART0_IRQ);
+    let traps_delta = traps_after_uart
+        .interrupts
+        .saturating_sub(traps_before_uart.interrupts);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# uart irq: irqs={} claims={} completes={} traps_delta={} balanced={} spurious={} unexpected={} last_irq={} last_iir=0x{:x} ier_off={} plic_enable={}",
+            uart_snap.uart_irqs,
+            uart_snap.claims,
+            uart_snap.completions,
+            traps_delta,
+            uart_snap.balanced() as u8,
+            uart_snap.spurious,
+            uart_snap.unexpected,
+            uart_snap.last_irq,
+            uart_snap.last_iir,
+            uart_ier_off as u8,
+            plic::irq_enabled(UART0_IRQ) as u8
+        );
+    }
+    let ok_uart_irq = uart_ier_on
+        && external_gate_on
+        && uart_wait_ok
+        && uart_snap.uart_irqs >= 1
+        && uart_snap.uart_irqs == UART_IRQ_LIMIT
+        && uart_snap.claims == uart_snap.completions
+        && uart_snap.spurious == 0
+        && uart_snap.unexpected == 0
+        && uart_snap.last_irq == UART0_IRQ as u64
+        && uart_snap.last_iir == 0x2
+        && uart_snap.uart_ier_off == 1
+        && uart_ier_off
+        && plic_enable_off
+        && traps_delta == uart_snap.claims
+        && traps_after_uart.exceptions == traps_before_uart.exceptions
+        && traps_after_uart.last_code == INTERRUPT_SUPERVISOR_EXTERNAL
+        && traps_after_uart.last_scause == (SCAUSE_INTERRUPT | INTERRUPT_SUPERVISOR_EXTERNAL);
+    if ok_uart_irq {
+        PLATFORM.put_str("ok 9 - uart irq\n");
+    } else {
+        PLATFORM.put_str("not ok 9 - uart irq: irq/claim/complete/IIR/context khong dung\n");
+        fails += 1;
+    }
+
+    // TAP 10: **0 IRQ giả** — spurious/line lạ = 0, claim sau khi tắt trả 0, số trap external =
+    // số claim, và cổng external tắt **im lặng** (không trap mới trong ~1 ms thời gian ảo).
+    let claim_idle_after = plic::claim();
+    let quiet_before = PLIC_STATS.snapshot();
+    let traps_quiet_before = TRAP_STATS.snapshot();
+    let quiet_start = PLATFORM.now_ticks();
+    while PLATFORM.now_ticks().wrapping_sub(quiet_start) < TICK_TICKS / 10 {
+        core::hint::spin_loop();
+    }
+    let quiet_after = PLIC_STATS.snapshot();
+    let traps_quiet_after = TRAP_STATS.snapshot();
+    let stats_unchanged = quiet_after == quiet_before;
+    let traps_unchanged = traps_quiet_after.traps == traps_quiet_before.traps;
+    let external_traps = quiet_after.traps;
+    let interrupts_delta = traps_quiet_after
+        .interrupts
+        .saturating_sub(interrupts_before_plic);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# plic quiet: claim_idle={} quiet={} stats_unchanged={} external_traps={} interrupts_delta={} spurious={} unexpected={}",
+            claim_idle_after,
+            (stats_unchanged && traps_unchanged) as u8,
+            stats_unchanged as u8,
+            external_traps,
+            interrupts_delta,
+            quiet_after.spurious,
+            quiet_after.unexpected
+        );
+    }
+    let ok_plic_quiet = claim_idle_after == 0
+        && stats_unchanged
+        && traps_unchanged
+        && quiet_after.spurious == 0
+        && quiet_after.unexpected == 0
+        && external_traps >= UART_IRQ_LIMIT
+        && external_traps == quiet_after.claims + quiet_after.spurious
+        && interrupts_delta == external_traps
+        && traps_quiet_after.exceptions == exceptions_before_plic
+        && !plic::external_gate_enabled();
+    if ok_plic_quiet {
+        PLATFORM.put_str("ok 10 - plic no fake irq\n");
+    } else {
+        PLATFORM.put_str("not ok 10 - plic no fake irq: spurious/line la/claim con treo\n");
+        fails += 1;
+    }
+
+    // -------------------------------------------------- 11..14) Timer SBI (KT-47)
     // SBI TIME (EID 0x54494D45) + `sie.STIE`: deadline tuyệt đối mỗi hart, tick 100 Hz trên
     // timebase 10 MHz (D2-72 Q6). `timer::init` arm deadline đầu + bật SIE **sau** khi deadline
     // đã nạp (P2a: trap entry/handler không ghi `sstatus`; `sret` khôi phục SIE từ SPIE).
@@ -441,7 +651,7 @@ pub extern "C" fn rust_main() -> ! {
     }
     let exceptions_before = TRAP_STATS.snapshot().exceptions;
 
-    // TAP 8: 100 tick, mỗi tick `rdtime` tăng (monotonic) — chờ tối đa 3 s.
+    // TAP 11: 100 tick, mỗi tick `rdtime` tăng (monotonic) — chờ tối đa 3 s.
     let ok100 = wait_ticks(100, 3 * TIMEBASE_HZ);
     let snap100 = TIMER_STATS.snapshot();
     {
@@ -466,14 +676,14 @@ pub extern "C" fn rust_main() -> ! {
         && snap100.non_monotonic == 0
         && PLATFORM.now_ticks() > snap100.last;
     if ok8 {
-        PLATFORM.put_str("ok 8 - timer 100 ticks monotonic\n");
+        PLATFORM.put_str("ok 11 - timer 100 ticks monotonic\n");
     } else {
         PLATFORM
-            .put_str("not ok 8 - timer 100 ticks monotonic: khong du 100 tick/khong don dieu\n");
+            .put_str("not ok 11 - timer 100 ticks monotonic: khong du 100 tick/khong don dieu\n");
         fails += 1;
     }
 
-    // TAP 9: 1.000 tick liên tiếp, KHÔNG mất tick (`late = missed = 0`; "trễ > 1 tick" = mất
+    // TAP 12: 1.000 tick liên tiếp, KHÔNG mất tick (`late = missed = 0`; "trễ > 1 tick" = mất
     // tick). Chờ tối đa thêm 12 s (1.000 tick = 10 s ở 100 Hz).
     let ok1000 = ok100 && wait_ticks(1000, 12 * TIMEBASE_HZ);
     let snap = TIMER_STATS.snapshot();
@@ -500,13 +710,13 @@ pub extern "C" fn rust_main() -> ! {
         && snap.missed == 0
         && snap.non_monotonic == 0;
     if ok9 {
-        PLATFORM.put_str("ok 9 - timer no lost tick\n");
+        PLATFORM.put_str("ok 12 - timer no lost tick\n");
     } else {
-        PLATFORM.put_str("not ok 9 - timer no lost tick: co tick tre/mat tick\n");
+        PLATFORM.put_str("not ok 12 - timer no lost tick: co tick tre/mat tick\n");
         fails += 1;
     }
 
-    // TAP 10: ngắt **thật** qua `stvec` — `scause = (1<<63) | 5`, đếm trong TRAP_STATS; không
+    // TAP 13: ngắt **thật** qua `stvec` — `scause = (1<<63) | 5`, đếm trong TRAP_STATS; không
     // phát sinh exception nào trong lúc timer chạy; `sstatus.SIE` đúng (trap SIE=1, handler SIE=0,
     // `sret` trả SIE=1).
     let traps = TRAP_STATS.snapshot();
@@ -539,13 +749,13 @@ pub extern "C" fn rust_main() -> ! {
         && snap.trap_spie_on == snap.ticks
         && snap.handler_sie_off == snap.ticks;
     if ok10 {
-        PLATFORM.put_str("ok 10 - timer irq\n");
+        PLATFORM.put_str("ok 13 - timer irq\n");
     } else {
-        PLATFORM.put_str("not ok 10 - timer irq: scause/SIE/exception khong dung\n");
+        PLATFORM.put_str("not ok 13 - timer irq: scause/SIE/exception khong dung\n");
         fails += 1;
     }
 
-    // TAP 11: drift Δ tick ∈ [9,11] ms (DoD KT-47) — min/max delta giữa hai tick liên tiếp.
+    // TAP 14: drift Δ tick ∈ [9,11] ms (DoD KT-47) — min/max delta giữa hai tick liên tiếp.
     let min_ns = ticks_to_ns(snap.min_delta);
     let max_ns = ticks_to_ns(snap.max_delta);
     let drift_in_range = min_ns >= TICK_DELTA_MIN_NS && max_ns <= TICK_DELTA_MAX_NS;
@@ -566,9 +776,9 @@ pub extern "C" fn rust_main() -> ! {
     }
     let ok11 = ok9 && drift_in_range && snap.late == 0;
     if ok11 {
-        PLATFORM.put_str("ok 11 - timer deadline drift\n");
+        PLATFORM.put_str("ok 14 - timer deadline drift\n");
     } else {
-        PLATFORM.put_str("not ok 11 - timer deadline drift: delta ngoai [9,11] ms\n");
+        PLATFORM.put_str("not ok 14 - timer deadline drift: delta ngoai [9,11] ms\n");
         fails += 1;
     }
 
@@ -611,7 +821,7 @@ pub extern "C" fn rust_main() -> ! {
     // ------------------------------------------------ 12) trap LỒNG (fatal, có chủ đích)
     // In `ok 12` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
     // không có `# ktest halt`. ktest.sh đòi đúng dòng PANIC này và **không** có PANIC nào khác.
-    PLATFORM.put_str("ok 12 - trap nested panic\n");
+    PLATFORM.put_str("ok 15 - trap nested panic\n");
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -620,6 +830,23 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
     probe_nested_trap()
+}
+
+/// Chờ tới khi bộ đếm UART IRQ đạt `target` — `false` nếu quá `timeout_ticks` (timebase).
+///
+/// Busy-spin (không `wfi`): dưới `-icount` thời gian ảo tiến theo lệnh; ngắt PLIC đến giữa các
+/// vòng lặp vì handler re-arm `IER` tạo level transition cho ngắt kế.
+fn wait_uart_irqs(target: u64, timeout_ticks: u64) -> bool {
+    let start = PLATFORM.now_ticks();
+    loop {
+        if PLIC_STATS.snapshot().uart_irqs >= target {
+            return true;
+        }
+        if PLATFORM.now_ticks().wrapping_sub(start) > timeout_ticks {
+            return false;
+        }
+        core::hint::spin_loop();
+    }
 }
 
 /// Chờ tới khi bộ đếm timer đạt `target` tick — `false` nếu quá `timeout_ticks` (timebase).

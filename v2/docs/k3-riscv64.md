@@ -1,15 +1,16 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # K3 — kernel riscv64 thật trên QEMU `virt` (mốc mở bằng KT-44)
 
-Trạng thái: **KT-47** — **timer SBI TIME** (tick 100 Hz, timebase 10 MHz, deadline tuyệt đối/hart,
-phát hiện mất tick, drift đo bằng `rdtime`) trên nền trap KT-45 + MMU Sv39 KT-46; tài liệu hằng số
-nền tảng + quy trình build/boot/trap/MMU/timer của K3.
+Trạng thái: **KT-48** — **PLIC cổ điển + UART IRQ thật** (context `2*hart+1`, `ndev` đọc từ
+register, threshold 0/priority 1, `IER.TX-empty`, handler `claim → xử lý → complete`, tắt sau N
+ngắt) trên nền trap KT-45 + MMU Sv39 KT-46 + timer SBI KT-47; tài liệu hằng số nền tảng + quy
+trình build/boot/trap/MMU/timer/PLIC của K3.
 Nguồn quyết định: **D2-72** (`v2/agent/DECISIONS.md`) chốt Q1..Q13 của
 [`review/agent0/K3-PLAN.md`](../../review/agent0/K3-PLAN.md) §3; chi tiết task ở §4/§4.1 cùng tệp.
 Nhãn số liệu theo QD §2.2: `[TK]` thiết kế mới, `[GT]` giả thuyết nền tảng, `[ĐO]` chỉ trong log
 do lệnh sinh ra. **Tài liệu này không chứa số đo viết tay** (QD §9 Q12): mọi số đo nằm ở
-`v2/agent/JOURNAL/kt45-*.log`, `kt46-*.log`, `kt47-*.log` và do `v2/test/boot/*.sh` / `cargo test`
-in ra.
+`v2/agent/JOURNAL/kt45-*.log`, `kt46-*.log`, `kt47-*.log`, `kt48-*.log` và do
+`v2/test/boot/*.sh` / `cargo test` in ra.
 
 ## 1. K3 mới là kernel thật
 
@@ -32,7 +33,7 @@ in ra.
 | Firmware | OpenSBI `fw_dynamic` nạp **trực tiếp** qua `-bios`, không U-Boot/EDK2; bản đi kèm QEMU `v1.8.1` | `[GT]` | D2-72 Q3 |
 | Nạp kernel | S-mode tại `0x8020_0000`, `a0 = hartid`, `a1 = địa chỉ DTB` | `[GT]` | K0.5 (KT-07) |
 | UART0 | `0x1000_0000` (16550A), IRQ **10** | `[GT]` | D2-72 Q7 |
-| PLIC | `0x0c00_0000`, cửa sổ `0x60_0000`; `ndev` **đọc từ register**, không giả định; context S-mode `2*hart+1` | `[GT]` | D2-72 Q7 |
+| PLIC | `0x0c00_0000` (cổ điển), cửa sổ `0x60_0000`; **KT-48 map 2×2 MiB** (`0x0c00_0000` + `0x0c20_0000`); `ndev` **probe từ register** (ghi 1/đọc lại priority), không giả định 95; context S-mode `2*hart+1` | `[GT]` / `[TK]` | D2-72 Q7/Q8, KT-48 §11 |
 | CLINT/ACLINT | `0x0200_0000` (`aclint=on` ⇒ IPI/timer qua ACLINT) | `[GT]` | D2-72 Q7 |
 | Trang test | `0x0010_0000` (`test@100000`) | `[GT]` | D2-72 Q7 |
 | Timer | **SBI TIME** `set_timer` (EID `0x5449_4D45`) + `sie.STIE`, timebase **10 MHz** (`rdtime`), tick **100 Hz** = 100.000 tick timebase = 10 ms; Sstc hoãn. **KT-47 đã cài** — xem §10 | `[TK]` | D2-72 Q6 |
@@ -43,16 +44,18 @@ in ra.
 | DTB | chỉ kiểm magic nếu OpenSBI truyền ở `a1` (log/cảnh báo, **không** parse đầy đủ) | `[TK]` | D2-72 Q7 |
 | Soak | `1000 boot × 3 luồng` trên máy `ps`, timeout **20 s/boot**, `0/1000`, không retry | `[TK]` | D2-72 Q10 |
 | Trap | `stvec` **direct mode** (một vector, `MODE=0`); trap stack riêng **16 KiB**; trapframe **288 B** = 32×8 (x0..x31) + 4×8 (`sepc/sstatus/scause/stval`) | `[TK]` | D2-73, KT-45 |
-| MMU | **Sv39** (`satp.MODE=8`), 3 cấp × 512 entry, bảng 4 KiB; `VA_BITS=39` từ `vifast-pte`; kernel **identity** + **nửa cao** 2 MiB (image), NOLOAD 4 KiB; physmap RAM **2 MiB NX**; MMIO UART/PLIC **4 KiB Device**; guard page **NONE** | `[TK]` | KT-46 |
+| MMU | **Sv39** (`satp.MODE=8`), 3 cấp × 512 entry, bảng 4 KiB; `VA_BITS=39` từ `vifast-pte`; kernel **identity** + **nửa cao** 2 MiB (image), NOLOAD 4 KiB; physmap RAM **2 MiB NX**; MMIO UART **4 KiB** + PLIC **2×2 MiB Device** (KT-48); guard page **NONE** | `[TK]` | KT-46/48 |
 | Địa chỉ map | kernel identity `0x8020_0000`; kernel nửa cao `0xFFFF_FFC0_4000_0000`; physmap `0xFFFF_FFC0_0000_0000 + PA`; guard ở `0x8040_0000` (linker `ALIGN(2M)`) | `[TK]` | KT-46 |
 | Arena page table | **64 KiB** RAM sau `__kernel_end`, bump allocator trong builder; root + bảng trung gian **không** `static`, không cộng trần `.data+.bss` | `[TK]` | KT-46, D2-72 Q5 |
-| IRQ | `Platform::enable_irq`/`disable_irq` **stub** (KT-46/47 vẫn trả `false`); PLIC thật ở KT-48 | `[TK]` | D2-72 Q7/Q8, KT-45/46/47 |
+| IRQ | `Platform::enable_irq`/`disable_irq` = **PLIC thật** (KT-48): set/clear bit enable của context `2*hart+1` + đọc lại; cổng CPU `sie.SEIE` + `sstatus.SIE` do `plic::enable_external` (đối xứng `timer::enable_timer`) | `[TK]` | D2-72 Q7/Q8, KT-48 §11 |
+| UART IRQ | UART0 **IRQ 10**; `IER.TX-empty` (mức cao khi THR rỗng); handler `claim → đọc IIR → complete → re-arm`; tự tắt `IER` + enable sau **N = 8** ngắt (`UART_IRQ_LIMIT`) | `[TK]` | KT-48 §11 |
 
 Ghi chú kiểm chứng: `run.sh`/`ktest.sh` in `# qemu <version>` và `# opensbi <version>` **từ log
 boot thật**; QEMU dưới sàn **9.2** (so cả major.minor) ⇒ **FAIL**, không tự hạ (D2-72 Q2). OpenSBI banner
 (`Platform Timer Device : aclint-mtimer @ …Hz`, `Platform IPI Device : aclint-mswi`) là log
 `[ĐO]`, dùng để đối chiếu timebase ở KT-47 (§10.1). Cửa sổ PLIC `0x60_0000` theo K3-PLAN §1; OpenSBI
-domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` từ register, không giả định.
+domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 map **2×2 MiB** trong cửa sổ đó (đủ
+context 15 của `MAX_HARTS = 8`) và đọc `ndev` từ register, không giả định 95 (§11).
 
 ## 3. Bản đồ ảnh và linker script
 
@@ -90,8 +93,8 @@ domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` t
 
 | Ảnh | Bin | Feature | TAP | Runner |
 |---|---|---|---|---|
-| **Sản phẩm** | `vifast-kbin-riscv64` | — (mặc định) | `ok 1 - k3 boot` + `# k3 halt`, kèm bằng chứng `# timer arm:`/`# timer:` (arm timer 100 Hz + ≥1 tick **không icount**) | `v2/test/boot/run.sh` |
-| **Test chính** | `vifast-kbin-ktest` | `ktest` | **12** — 4 TAP trap KT-45 + 3 TAP MMU KT-46 + **4 TAP timer KT-47** + trap lồng fatal cuối | `v2/test/boot/ktest.sh` |
+| **Sản phẩm** | `vifast-kbin-riscv64` | — (mặc định) | `ok 1 - k3 boot` + `# k3 halt`, kèm bằng chứng `# plic:`/`# uart irq:`/`# timer arm:`/`# timer:` (PLIC + UART IRQ thật, timer 100 Hz + ≥1 tick **không icount**) | `v2/test/boot/run.sh` |
+| **Test chính** | `vifast-kbin-ktest` | `ktest` | **15** — 4 TAP trap KT-45 + 3 TAP MMU KT-46 + **3 TAP PLIC/UART IRQ KT-48** + **4 TAP timer KT-47** (chạy **sau** PLIC) + trap lồng fatal cuối | `v2/test/boot/ktest.sh` |
 | **Test guard** | `vifast-kbin-ktest-guard` | `ktest` | **3** — guard image + load `scause=13` (resume probe) + store `scause=15` fatal | `v2/test/boot/ktest.sh` |
 
 - Cùng crate `v2/kernel/vifast-kbin-riscv64`, cùng `linker.ld`; các bin test khai
@@ -113,13 +116,16 @@ domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` t
 - KT-47: ảnh **sản phẩm** arm timer + chờ **≥1 tick** (timeout 1 s) rồi in `# timer: ticks=…` —
   bằng chứng **boot thật, không icount** (D2-74 điều kiện (b)); ảnh test đo drift **tất định** dưới
   `-icount shift=6` (D2-74, §10.5).
+- KT-48: **cả hai** ảnh bật PLIC + UART IRQ thật (product **không icount** ⇒ bằng chứng PLIC trên
+  đường boot thật; test thêm `# plic:`/`# uart irq:`/`# plic quiet:` và TAP 8..10); handler tự tắt
+  `IER` + enable sau N ngắt nên log/TAP không bị ngập (§11).
 
 ## 5. Build / boot / đo
 
 ```bash
 bash v2/test/boot/run.sh 1        # ảnh sản phẩm, 1 boot, 1 hart (D2-72 Q2, KHÔNG icount)
 bash v2/test/boot/run.sh 50       # 50 boot 0 lỗi (DoD KT-46/47)
-bash v2/test/boot/ktest.sh 1 1    # 2 ảnh test: 12 TAP chính + 3 TAP guard (`-icount shift=6`)
+bash v2/test/boot/ktest.sh 1 1    # 2 ảnh test: 15 TAP chính + 3 TAP guard (`-icount shift=6`)
 bash v2/test/boot/ktest.sh 1 2    # matrix smp bắt đầu từ KT-49; KT-46/47 chỉ 1 hart
 
 bash v2/test/boot/budget.sh \
@@ -179,6 +185,10 @@ Cổng đo (do script thực thi, không phải người):
     4 KiB/2 MiB/1 GiB, walk phần mềm), `satp_sv39`/`satp_mode`/`satp_root`; dùng lại
     `vifast_pte::{walk_shape, Pte, VA_BITS=39, PTE_LEVELS=3, PAGE_SIZE_BITS}` — crate nội bộ,
     `no_std`, không dependency ngoài.
+  - module **`plic`** (KT-48): hình học PLIC cổ điển (priority `0x0`, pending `0x1000`, enable
+    `0x2000 + 0x80*ctx`, context `0x20_0000 + 0x1000*ctx`, threshold `+0`, claim `+4`), context
+    `2*hart+1`, `ndev` probe/limit, phân loại claim (UART/spurious/line lạ), `PlicStats` +
+    `PLIC_STATS` (traps/claims/completions/uart_irqs/spurious/unexpected/last_irq/last_iir).
   - module **`timer`** (KT-47): hằng số `[TK]` `TIMEBASE_HZ=10_000_000`, `TICK_HZ=100`,
     `TICK_TICKS=100_000`, `TICK_NS=10_000_000`, `TICK_DELTA_MIN_NS/MAX_NS` = 9/11 ms;
     `ticks_to_ns`/`ns_to_ticks`; `classify(last, deadline, now) -> TickSample` (delta, late_by,
@@ -192,12 +202,20 @@ Cổng đo (do script thực thi, không phải người):
   **Module `timer`** (KT-47): `now_ticks` (`rdtime`), `set_timer_deadline` (SBI TIME ecall),
   `enable_timer`/`disable_timer` (`sie.STIE`/`sstatus.SIE`), `read_sie`/`read_sstatus`, `init`
   (arm + bật), `on_timer_interrupt` (đếm tick + trả deadline kế cho `trap_dispatch`).
+  **Module `plic`** (KT-48): MMIO `plic_read`/`plic_write`, `probe_ndev`, `init` (threshold 0,
+  priority 1, enable context `2*hart+1`), `claim`/`complete`, `enable_irq`/`disable_irq` +
+  `irq_enabled`, `enable_external`/`disable_external` (`sie.SEIE` + `sstatus.SIE`), UART
+  `IER`/`IIR` (`uart_enable_tx_irq`/`uart_disable_tx_irq`), và `on_external_interrupt`
+  (claim → IIR → complete → re-arm / tắt sau N).
 - Phần **logic** chạy host (D2-72 Q12): `cargo test --manifest-path v2/kernel/Cargo.toml
   -p vifast-plat-common` — 13 test trap KT-45 + **1 test API `Platform` KT-47** (`now_ns`/
   `timebase_hz`/ba method timer) + **8 test MMU KT-46** (map/walk 4K-2M-1G, từ chối mapping sai,
   VA canonical, guard NONE/physmap NX, `satp` mode 8, guard stats + dump) + **12 test timer KT-47**
   (hằng số/đổi đơn vị, `classify` đúng hẹn/trễ/mất tick/ngắt sớm/saturate, 1.000 tick không mất,
-  phát hiện mất tick + tự căn deadline, monotonic, bằng chứng `sstatus`, arm/reset) = **34 test**.
+  phát hiện mất tick + tự căn deadline, monotonic, bằng chứng `sstatus`, arm/reset) + **12 test
+  PLIC KT-48** (hình học đăng ký, context `2*hart+1` cho hart 0..3, word/bit enable, offset
+  threshold/claim, hai cửa sổ phủ `MAX_HARTS = 8`, phân loại claim, claim/complete cân bằng +
+  0 IRQ giả, limit tắt sau N, `ndev` không giả định 95, priority > threshold) = **46 test**.
   Miri **không** áp ảnh kernel `no_std`/asm/MMIO; Miri vẫn áp `lib/` + sim.
 
 ## 7. Trap khung (KT-45) + guard page-fault (KT-46, theo D2-73)
@@ -216,7 +234,9 @@ Cổng đo (do script thực thi, không phải người):
   và `Unknown(mã)` (host test đủ bảng). Chính sách: `breakpoint`/`illegal`/`ecall` resume đúng cỡ
   instruction (2/4 byte); page fault/access fault/misaligned/`Unknown` **fatal**.
   **KT-47**: `scause = (1<<63) | 5` ⇒ `Event::Timer` (**không** phải exception) — handler đếm tick,
-  nạp deadline kế rồi **resume** bằng `sret`; ngắt mã **khác** vẫn fatal (PLIC là KT-48).
+  nạp deadline kế rồi **resume** bằng `sret`. **KT-48**: `scause = (1<<63) | 9` ⇒
+  `Event::Interrupt { code: 9 }` đi vào PLIC **claim → xử lý → complete** (không fatal); ngắt mã
+  khác 5/9 (vd IPI 1 — KT-50) vẫn fatal.
 - **`sstatus.SIE` (P2a, KT-47)**: `trap_entry`/handler **không** ghi `sstatus`. Hardware khi trap:
   `SPIE ← SIE`, `SIE ← 0`, `SPP ← 1` ⇒ trapframe có `SPIE=1` (bị ngắt khi đang bật ngắt) và
   `SIE=0`; handler chạy với `SIE=0` nên **không** trap lồng; `sret` khôi phục `SIE ← SPIE`.
@@ -257,7 +277,8 @@ QEMU `virt`, RAM vật lý `0x8000_0000..0x8800_0000` (`-m 128M`); `Δ = VA − 
 | kernel nửa cao — NOLOAD | `0xFFFF_FFC0_4000_0000 + Δ`, `Δ ≥ 0x20_0000` | `= 0x8040_0000 + …` | **4 KiB**; guard **NONE**; RW NX |
 | physmap RAM | `0xFFFF_FFC0_0000_0000 + PA` | `PA` | **2 MiB NX** (`V|R|W|A|D`); chunk chứa guard tách 4 KiB và **khoét** guard |
 | UART0 (Device) | `0x0000_0000_1000_0000` | `= VA` | **4 KiB** `V|R|W|A|D`, X=0 |
-| PLIC (Device) | `0x0000_0000_0c00_0000` | `= VA` | **4 KiB** `V|R|W|A|D`, X=0 |
+| PLIC — cửa sổ thấp (Device) | `0x0000_0000_0c00_0000` | `= VA` | **2 MiB** `V|R|W|A|D`, X=0 (priority/pending/enable) |
+| PLIC — cửa sổ cao (Device) | `0x0000_0000_0c20_0000` | `= VA` | **2 MiB** `V|R|W|A|D`, X=0 (threshold/claim) |
 | guard page | `0x0000_0000_8040_0000..0x8040_1000` | — | **NONE** (không có PTE hợp lệ) ở **cả** identity, nửa cao, physmap |
 
 - Kernel **liên kết thấp** (`linker.ld` `0x8020_0000`) nên nó **chạy** ở identity mapping; nửa cao
@@ -270,8 +291,9 @@ QEMU `virt`, RAM vật lý `0x8000_0000..0x8800_0000` (`-m 128M`); `Δ = VA − 
 - `.trap_stack`/`.stack` là NOLOAD: **không nằm trong `filesz`** của LOAD (LOAD `memsz` vẫn phủ
   tới `__kernel_end`); KT-46 map **tường minh** cả hai (TAP 6 ghi/đọc qua nửa cao). Thiếu map ⇒
   trap đầu tiên sau `satp` sẽ fault vào trap stack.
-- MMIO map **4 KiB** UART/PLIC tại đúng PA (D2-72 Q7); PLIC window rộng hơn (enable/claim) thuộc
-  KT-48, sẽ mở rộng mapping khi cần. CLINT không map (timer qua SBI — KT-47).
+- MMIO map **4 KiB UART** + **2×2 MiB PLIC** tại đúng PA (D2-72 Q7; KT-48 mở rộng từ 4 KiB để phủ
+  enable `0x2000 + 0x80*ctx` và context `0x20_0000 + 0x1000*ctx` cho `MAX_HARTS = 8` — §11).
+  CLINT không map (timer qua SBI — KT-47).
 
 ### 8.2 Arena page table
 
@@ -314,13 +336,14 @@ QEMU `virt`, RAM vật lý `0x8000_0000..0x8800_0000` (`-m 128M`); `Δ = VA − 
 Xem bảng §9. KT-46 **không** timer, PLIC IRQ, SMP/PerHart, IPI, ASID/shootdown, object layer/
 Retype, U-mode, W^X đầy đủ, pager/COW, soak 1.000 — các task sau.
 
-## 9. Phạm vi: KT-47 **không** làm gì
+## 9. Phạm vi: KT-48 **không** làm gì
 
 | Không làm | Thuộc |
 |---|---|
-| PLIC enable/claim/complete, UART IRQ 10, mapping PLIC rộng hơn 4 KiB | KT-48 |
 | SBI HSM, stack/arena/PerHart theo hart, boot barrier, guard stack AP | KT-49 |
+| PLIC đa hart (mỗi hart context riêng), IPI/ACLINT MSWI | KT-49/50 |
 | IPI thật, hộp thư drain, `TlbFlush`/`VmKick` | KT-50 |
+| AIA (APLIC/IMSIC), MSI, EOI/priority động | K4'/K5' (D2-72 Q8) — task riêng |
 | ASID thật, `sfence.vma` theo ASID/VA, shootdown ack + timeout, mutation bỏ flush | KT-51 |
 | Object layer `no_std` + Retype nội bộ (VSpace/PageTable/Frame từ Untyped) | KT-52 |
 | U-mode, 3 syscall, nạp `init` ELF, user root copy entry nửa cao | KT-53 |
@@ -438,14 +461,14 @@ chạy host (D2-72 Q12).
   liên tiếp, có icount), `kt47-boot50.log` (product, không icount),
   `kt47-qemu-no-icount-vs-icount.log` (A/B cùng ảnh) — tài liệu **không** chép số tay (QD §9 Q12).
 
-### 10.6 TAP timer + bằng chứng (ảnh test chính, `1..12`)
+### 10.6 TAP timer + bằng chứng (ảnh test chính, `1..15` — timer `11..14`)
 
 | TAP | Điều kiện đo |
 |---|---|
-| `ok 8 - timer 100 ticks monotonic` | ≥100 ngắt timer **thật** qua `stvec`; `non_monotonic = 0` (mỗi tick `rdtime` tăng); `now > last` |
-| `ok 9 - timer no lost tick` | 1.000 tick liên tiếp, `late = missed = 0`, `non_monotonic = 0` |
-| `ok 10 - timer irq` | `TRAP_STATS.interrupts ≥ 1.000`, `last_scause = 0x8000000000000005`, `last_code = 5`, **0** exception phát sinh trong lúc chạy; `trap_spie_on = handler_sie_off = ticks`, `sie_stie=1`, `sret_sie=1` |
-| `ok 11 - timer deadline drift` | `ticks_to_ns(min_delta)` ≥ 9 ms và `ticks_to_ns(max_delta)` ≤ 11 ms, `late = 0` |
+| `ok 11 - timer 100 ticks monotonic` | ≥100 ngắt timer **thật** qua `stvec`; `non_monotonic = 0` (mỗi tick `rdtime` tăng); `now > last` |
+| `ok 12 - timer no lost tick` | 1.000 tick liên tiếp, `late = missed = 0`, `non_monotonic = 0` |
+| `ok 13 - timer irq` | `TRAP_STATS.interrupts ≥ 1.000`, `last_scause = 0x8000000000000005`, `last_code = 5`, **0** exception phát sinh trong lúc chạy; `trap_spie_on = handler_sie_off = ticks`, `sie_stie=1`, `sret_sie=1` |
+| `ok 14 - timer deadline drift` | `ticks_to_ns(min_delta)` ≥ 9 ms và `ticks_to_ns(max_delta)` ≤ 11 ms, `late = 0` |
 
 Bằng chứng in ra (runner `grep` đúng các dòng này, `ktest.sh`): `# timer arm: … tick_ticks=100000
 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1`, `# timer ticks: … non_monotonic=0
@@ -471,3 +494,102 @@ D2-74 (d)). Xem bảng §9.
    tải (timeout 20 s/boot vẫn còn dư).
 4. `smp > 1` + icount **chưa** kiểm (PerHart/deadline theo hart là KT-49; matrix 1/2/4 là KT-54).
 5. Đo **jitter thật** (không icount) là **task riêng** — D2-74 điều kiện (d); không đổi D2 này.
+
+## 11. PLIC + UART IRQ (KT-48) — claim/complete, context `2*hart+1`, 0 IRQ giả
+
+Nguồn quyết định: **D2-72 Q7/Q8** (địa chỉ hardcode, `ndev` đọc từ register, context `2*hart+1`;
+PLIC **cổ điển**, AIA hoãn K4'/K5'), task K3-PLAN §4.1 KT-48. Code: `vifast-plat-common::plic`
+(logic an toàn, test host) + `vifast-plat-riscv64::plic` (MMIO/CSR, `unsafe` thuộc danh sách đóng
+D2-17); `Platform::enable_irq`/`disable_irq` giờ là **PLIC thật**; `trap_dispatch` có nhánh
+`Event::Interrupt { code: 9 }`.
+
+### 11.1 Hằng số `[TK]` (PLIC cổ điển)
+
+| Hằng số | Giá trị | Nghĩa |
+|---|---|---|
+| `PLIC_BASE` | `0x0c00_0000` | dữ kiện nền tảng QEMU `virt` (D2-72 Q7) |
+| cửa sổ map | **2 × 2 MiB** | `0x0c00_0000..0x0c20_0000` (priority/pending/enable) + `0x0c20_0000..0x0c40_0000` (threshold/claim), Device RW NX; phủ context 15 của `MAX_HARTS = 8` |
+| `context_of_hart(h)` | `2*h+1` | context **S-mode**; M-mode `2*h` **không** bật (TAP kiểm `enable_mmode=0`) |
+| priority UART | **1** | `priority[10]` (PLIC chỉ forward nguồn priority > threshold) |
+| threshold | **0** | context S-mode |
+| IRQ UART0 | **10** | D2-72 Q7 |
+| `IER.TX-empty` | `0x02` | mức cao khi THR rỗng ⇒ nguồn **level** thật, không phải trap tiêm |
+| `UART_IRQ_LIMIT` | **8** | số ngắt thật thu rồi handler tự tắt (`IER` + enable) — không ngập |
+| `PLIC_MAX_SOURCES` | **1023** | trần probe `ndev` (id hợp lệ `1..=1023`) |
+
+### 11.2 Bản đồ đăng ký + cách đọc `ndev`
+
+```text
+0x0000 + 4*irq            priority[irq]          (IRQ 1..=ndev)
+0x1000 + 4*(irq/32)       pending                (chỉ đọc)
+0x2000 + 0x80*ctx + 4*w   enable word w của context
+0x20_0000 + 0x1000*ctx    +0 threshold, +4 claim (đọc = claim, ghi = complete)
+```
+
+PLIC spec **không** có thanh ghi `ndev`; QEMU chỉ hiện thực priority cho nguồn `1..=ndev` và trả 0
+cho nguồn không tồn tại ⇒ `probe_ndev` ghi 1, đọc lại, dừng ở nguồn đầu tiên không giữ giá trị
+(không giả định 95 — D2-72 Q7). Probe là **chẩn đoán không phá huỷ** theo **D2-75** (2026-11-15):
+mỗi nguồn `write-1 → read-back → ghi 0 → đọc lại 0`, panic nếu khôi phục thất bại; K3 **sở hữu**
+PLIC nên trả priority 0 là an toàn và `init` đặt lại `priority[10] = 1` sau probe. Probe được phép
+ở **cả ảnh sản phẩm**. Giá trị `ndev` của lần boot nằm trong log `# plic:`
+(`v2/agent/JOURNAL/kt48-*.log`), **không** chép tay vào tài liệu (QD §9 Q12).
+
+### 11.3 Đường ngắt UART (level → claim → complete → re-arm)
+
+1. `plic::init`: probe `ndev` (panic nếu không phủ IRQ 10), `threshold = 0`, `priority[10] = 1`,
+   **set** bit enable của context `2*hart+1`; đọc lại kiểm context S-mode bật, **context M-mode
+   cùng hart = 0**, claim lúc chưa bật nguồn = 0.
+2. Bật `IER.TX-empty` (ghi **đúng** 0x02 để RX/line khác không sinh IRQ) **rồi** `sie.SEIE` +
+   `sstatus.SIE` (`plic::enable_external` — nguồn trước, cổng sau, đối xứng
+   `timer::enable_timer`; P2a: trap entry/handler **không** ghi `sstatus`).
+3. Trap `scause = (1<<63)|9` → `trap_dispatch` → `plic::on_external_interrupt`:
+   **claim** context hiện tại → `PLIC_STATS.begin_claim` → line 10: đọc `IIR` (`0x2` = TX-empty),
+   đếm, **complete**, rồi **re-arm** `IER` `0 → 2`. PLIC cổ điển là **level-triggered có gateway**:
+   sau claim, nguồn còn mức cao **không** tự pending lại (gateway chờ nguồn xuống thấp) ⇒ nếu chỉ
+   claim/complete thì TX-empty chỉ cho **đúng một** ngắt; re-arm tạo **level transition** để có
+   ngắt kế. Đủ `UART_IRQ_LIMIT` ngắt: tắt `IER` + clear enable (không ngập) rồi complete.
+4. Line **lạ**: đếm `unexpected` + **complete** (không treo, K3-PLAN §4.1). Claim 0: spurious —
+   **không** complete (PLIC spec).
+5. Handler **không in** (in làm trễ/ngập log); TAP đọc `PLIC_STATS` sau. `trap_dispatch` ghi
+   `TRAP_STATS.record_interrupt(scause 9)` cho mỗi ngắt external; hardware đã xoá `sstatus.SIE`
+   khi vào trap nên không lồng.
+
+### 11.4 TAP (ảnh test chính, `1..15`) + bằng chứng
+
+| TAP | Điều kiện đo |
+|---|---|
+| `ok 8 - plic window` | 2 cửa sổ PLIC walk thấy leaf **2 MiB Device RW NX** đúng PA; `ndev` **đọc từ register** > 10; context = `2*hart+1`; threshold 0; priority[10] = 1; enable context S-mode = 1, **context M-mode = 0**; claim rỗng = 0; **`Platform::disable_irq(10)` → đọc lại tắt, `Platform::enable_irq(10)` → đọc lại bật** (wrapper thật trên HW) |
+| `ok 9 - uart irq` | `IER.TX-empty` + `sie.SEIE` bật; `uart_irqs = UART_IRQ_LIMIT (= 8 `[TK]`) ≥ 1`; `claims == completes`; `last_irq = 10`; `last_iir = 0x2` (TX-empty); handler đã tắt `IER` + enable; `traps_delta == claims`; 0 exception |
+| `ok 10 - plic no fake irq` | **0 IRQ giả**: `spurious = unexpected = 0`; claim sau khi tắt = 0; `external_traps == claims + spurious`; `interrupts_delta == external_traps`; cổng external tắt **im lặng** ~1 ms; 0 exception |
+| `ok 11..14 - timer …` | 4 TAP timer KT-47 chạy **sau** PLIC trong **cùng boot** ⇒ hồi quy timer sau khi bật PLIC (100 tick đơn điệu, 1.000 tick không mất, `scause=0x8…005`, drift [9,11] ms) |
+| `ok 15 - trap nested panic` | trap lồng fatal như KT-45 (boot kết thúc `PANIC` có chủ đích) |
+
+Bằng chứng in ra (runner `grep` đúng các dòng, `ktest.sh` — số đo thật nằm trong log, không chép
+tay): `# plic: … ndev=… ctx=… plat_off=1 plat_on=1 threshold=0 priority_uart=1 enable_ctx=1
+enable_mmode=0 claim_idle=0`; `# plic map: … low_dev=1 high_dev=1 low_2m=1 high_2m=1 low_nx=1 high_nx=1`;
+`# uart irq: irqs=… claims=… completes=… traps_delta=… balanced=1 spurious=0 unexpected=0
+last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0`; `# plic quiet: claim_idle=0 quiet=1
+stats_unchanged=1 external_traps=… interrupts_delta=… spurious=0 unexpected=0`. Ảnh **sản phẩm** cũng in `# plic:` + `# uart irq:` (boot thật, **không**
+icount) và `PANIC` nếu sai — cùng một handler/PLIC code với ảnh test.
+
+### 11.5 Vì sao "context đúng hart"
+
+- Context S-mode = `2*hart+1` (D2-72 Q7): hart 0..3 ⇒ 1/3/5/7 — phủ bằng **host test**
+  `tests/plic.rs`; lần boot hart 0 in `ctx=1`.
+- Init chỉ bật bit enable của **đúng context hiện tại** và kiểm **context M-mode cùng hart = 0**;
+  handler claim/complete trên **cùng** context. Sai context ⇒ claim trả 0 (spurious) và TAP 9/10
+  đỏ — không có đường "may mắn".
+- `smp > 1` **chưa** kiểm (KT-49): mỗi hart có context riêng nhưng PerHart/stack/IPI là task sau.
+
+### 11.6 Giới hạn phép đo
+
+1. Chỉ **1 hart** ở KT-48 (KT-49 mới boot nhiều hart): "context đúng hart 0..3" chứng minh bằng
+   công thức + host test + boot hart 0 (`ctx=1`), **không** phải 4 hart cùng lúc.
+2. Probe `ndev` dựa vào hành vi QEMU (priority read-back); phần cứng khác cần DTB/khác (chưa có
+   `vifast-dtb`, D2-72 Q7).
+3. Chỉ **UART0 line 10**; IPI (KT-50), AIA/MSI, EOI/priority động **chưa** làm.
+4. "0 IRQ giả" là bằng chứng **đếm** (`spurious`/`unexpected` = 0 + claim rỗng + im lặng sau khi
+   tắt cổng), không phải phép đo độc lập của phần cứng; claim sai context sẽ lộ ở `# plic:`/TAP 9
+   (claim 0 ⇒ spurious ⇒ đỏ).
+5. Timer sau PLIC đo dưới `-icount shift=6` (D2-74) — cùng giới hạn §10.7; ảnh sản phẩm **không**
+   icount chỉ đòi ≥1 tick (và PLIC/IRQ không phụ thuộc icount).

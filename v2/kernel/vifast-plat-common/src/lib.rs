@@ -16,7 +16,7 @@
 //! KT-45 mở rộng cùng crate: module [`trap`] (trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`,
 //! decode **mọi** `scause` 0/2/3/4/5/6/7/8/9/12/13/15/khác ⇒ [`trap::Event::Exception`], chính
 //! sách resume/fatal, bộ đếm trap) và ba method mới của [`Platform`]: `set_trap_vector` +
-//! `enable_irq`/`disable_irq` (stub, PLIC là KT-48).
+//! `enable_irq`/`disable_irq` (stub ở KT-45; **PLIC thật từ KT-48**).
 //!
 //! KT-46 mở module [`mmu`]: page table **Sv39 thật** dựng từ arena RAM (không `static`), map
 //! 4 KiB / 2 MiB / 1 GiB, walk phần mềm đối chiếu phần cứng, cờ PTE `V/R/W/X/A/D` và `satp` Sv39.
@@ -25,12 +25,19 @@
 //! KT-47 mở module [`timer`] (SBI TIME, tick 100 Hz, timebase 10 MHz — D2-72 Q6): hằng số `[TK]`,
 //! phân loại tick/deadline **tuyệt đối**, phát hiện mất tick ("trễ > 1 tick"), bộ đếm
 //! `ticks/late/max_delta` + bằng chứng `sstatus.SIE`; [`Platform`] thêm `now_ticks`/`now_ns`,
-//! `set_timer_deadline`, `enable_timer`/`disable_timer`. **Không** thuộc KT-47: PLIC (KT-48), SMP
-//! (KT-49), ASID/shootdown (KT-51), U-mode (KT-53) — xem `v2/docs/k3-riscv64.md` §10.
+//! `set_timer_deadline`, `enable_timer`/`disable_timer`.
+//!
+//! KT-48 mở module [`plic`] (PLIC cổ điển — D2-72 Q7/Q8): hình học đăng ký priority/pending/
+//! enable/context `0x20_0000 + 0x1000*ctx`, context S-mode `2*hart+1`, phân loại claim
+//! (UART / spurious / line lạ), bộ đếm claim/complete + ngắt UART cho TAP "0 IRQ giả"; `trap` thêm
+//! mã ngắt external **9** ⇒ `Event::Interrupt { code: 9 }` do `trap_dispatch` đưa vào
+//! claim/complete. **Không** thuộc KT-48: IPI (KT-50), SMP (KT-49), ASID/shootdown (KT-51),
+//! U-mode (KT-53), MSI/AIA — xem `v2/docs/k3-riscv64.md` §11.
 #![no_std]
 #![forbid(unsafe_code)]
 
 pub mod mmu;
+pub mod plic;
 pub mod timer;
 pub mod trap;
 
@@ -75,13 +82,15 @@ pub trait Platform {
     /// không bảng vector theo mã `scause` (K3-PLAN §4.1 KT-45).
     fn set_trap_vector(&self, vector: usize);
 
-    /// Bật một dòng IRQ — **stub** ở KT-45, chưa PLIC (KT-48).
+    /// Bật một dòng IRQ trên **PLIC** (KT-48): set bit enable của context S-mode `2*hart+1` cho
+    /// `irq`, đọc lại bit để trả kết quả **thật**.
     ///
-    /// Trả `true` nếu dòng đã được bật thật; K3 KT-45 luôn trả `false` (chưa có PLIC). Giữ chữ ký
-    /// ổn định để KT-48 chỉ thay phần thân, không đổi người gọi.
+    /// Đây chỉ là cổng **nguồn** của PLIC; cổng CPU (`sie.SEIE` + `sstatus.SIE`) do arch bật/tắt
+    /// riêng (`vifast-plat-riscv64::plic::enable_external`, đối xứng `timer::enable_timer`).
+    /// Priority/threshold do `plic::init` đặt trước (PLIC chỉ forward nguồn priority > threshold).
     fn enable_irq(&self, irq: u32) -> bool;
 
-    /// Tắt một dòng IRQ — **stub** ở KT-45, chưa PLIC (KT-48); cùng hợp đồng với [`Self::enable_irq`].
+    /// Tắt một dòng IRQ trên **PLIC** (KT-48): clear bit enable + đọc lại; `true` ⇔ bit đã về 0.
     fn disable_irq(&self, irq: u32) -> bool;
 
     /// Đặt **deadline tuyệt đối** cho ngắt timer kế (đơn vị timebase) — SBI TIME EID

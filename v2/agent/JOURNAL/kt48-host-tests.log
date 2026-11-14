@@ -1,0 +1,85 @@
+   Compiling vifast-plat-common v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-common)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.49s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_plat_common-d4ad355860347dac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/host.rs (v2/kernel/target/debug/deps/host-b3ee60b6153ffc8c)
+
+running 14 tests
+test handle_trap_breakpoint_va_illegal_resume_dung_sepc ... ok
+test decode_trap_lay_du_ngu_canh_trapframe ... ok
+test nested_trap_sp_nhan_dien_dung_bien ... ok
+test handle_trap_page_fault_va_fatal_giu_nguyen_sepc ... ok
+test decode_scause_du_15_ma_va_interrupt ... ok
+test platform_set_trap_vector_va_stub_irq ... ok
+test platform_writer_in_dung_thu_tu ... ok
+test platform_kt47_doi_dong_ho_tick_sang_ns_va_timer_api ... ok
+test report_interrupt_in_panic_va_halt_1 ... ok
+test panic_handler_khong_vi_tri_van_halt_1 ... ok
+test report_fatal_in_panic_kem_scause_va_thanh_ghi ... ok
+test panic_handler_in_vi_tri_va_halt_1 ... ok
+test trap_stats_dem_va_luu_trap_gan_nhat ... ok
+test trapframe_bo_cuc_khop_hang_so_asm ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/mmu.rs (v2/kernel/target/debug/deps/mmu-071e6ba0b1805f84)
+
+running 8 tests
+test guard_stats_dem_load_store_va_fatal ... ok
+test satp_sv39_mode_8_va_ppn_root ... ok
+test walk_with_va_khong_canonical_khong_doc_bo_nho ... ok
+test builder_tu_choi_mapping_sai ... ok
+test builder_map_walk_bon_cap_4k_2m_1g ... ok
+test report_guard_fault_panic_va_halt_1 ... ok
+test builder_map_kernel_2m_image_va_noload_4k ... ok
+test guard_none_o_ca_ba_alias_va_physmap_nx ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/plic.rs (v2/kernel/target/debug/deps/plic-7967b795fa4947af)
+
+running 12 tests
+test context_s_mode_la_hai_hart_cong_mot ... ok
+test hai_cua_so_phu_max_harts_8 ... ok
+test enable_word_va_bit_theo_irq ... ok
+test hang_so_hinh_ho_plic_dung_spec ... ok
+test offset_threshold_claim_theo_context ... ok
+test ndev_phai_phu_uart_chu_khong_gia_dinh_95 ... ok
+test phan_loai_claim_ba_nhanh ... ok
+test priority_lon_hon_threshold_moi_forward ... ok
+test priority_offset_cua_uart_va_nguon_cuoi ... ok
+test stats_claim_complete_can_bang ... ok
+test stats_dem_irq_gia_va_khong_treo ... ok
+test uart_limit_tat_sau_n_ngat ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/timer.rs (v2/kernel/target/debug/deps/timer-b36063453238ec72)
+
+running 12 tests
+test arm_lai_xoa_bo_dem_va_dat_moc_moi ... ok
+test classify_dung_hen_va_tre_nho_hon_mot_tick ... ok
+test classify_khong_tran_khi_moc_rat_lon ... ok
+test classify_ngat_som_giu_nguyen_deadline ... ok
+test classify_tre_hon_mot_tick_la_mat_tick ... ok
+test counters_bat_vi_pham_monotonic ... ok
+test counters_chua_arm_thi_record_tick_tra_none ... ok
+test counters_dem_bang_chung_sstatus_sie ... ok
+test doi_don_vi_tick_va_ns_chinh_xac ... ok
+test counters_phat_hien_mat_tick_va_tu_can_lai_deadline ... ok
+test hang_so_thiet_ke_dung_d2_72_q6 ... ok
+test counters_1000_tick_khong_mat_tick ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_plat_common
+
+running 1 test
+test vifast-plat-common/src/lib.rs - PanicHandler (line 186) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

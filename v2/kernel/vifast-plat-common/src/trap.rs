@@ -16,7 +16,11 @@
 //!
 //! KT-47 tách **ngắt** khỏi exception: `scause` bit 63 = 1 và mã **5** ⇒ [`Event::Timer`] (ngắt
 //! S-mode timer qua SBI TIME + `sie.STIE`) — không đi qua [`ExceptionKind`]. Ngắt mã khác vẫn là
-//! [`Event::Interrupt`] (PLIC/UART IRQ là KT-48).
+//! [`Event::Interrupt`].
+//!
+//! KT-48: ngắt **external** mã **9** ([`INTERRUPT_SUPERVISOR_EXTERNAL`]) ⇒ `Event::Interrupt
+//! { code: 9 }`; `vifast-plat-riscv64::trap_dispatch` đưa vào PLIC **claim → xử lý → complete**
+//! (không fatal — K3-PLAN §4.1 KT-48). Ngắt mã khác 5/9 (vd IPI 1 — KT-50) vẫn fatal.
 //!
 //! ## Bố cục trapframe (288 B, 8-byte aligned)
 //!
@@ -38,6 +42,12 @@ use crate::{Platform, PlatformWriter};
 
 /// Bit 63 của `scause`: 1 = interrupt, 0 = exception (RISC-V privileged spec).
 pub const SCAUSE_INTERRUPT: u64 = 1 << 63;
+
+/// Mã **ngắt external** S-mode (interrupt 9, bit 63 = 1) — PLIC cổ điển, KT-48, D2-72 Q7/Q8.
+///
+/// PLIC cổ điển (không AIA — D2-72 Q8) báo ngắt external bằng `scause = (1<<63) | 9`; handler
+/// đọc claim của context `2*hart+1`, xử lý nguồn (UART0 IRQ 10), rồi ghi complete.
+pub const INTERRUPT_SUPERVISOR_EXTERNAL: u64 = 9;
 
 /// Mã **ngắt** S-mode timer (interrupt 5, bit 63 = 1) — KT-47, D2-72 Q6.
 ///
@@ -324,7 +334,8 @@ pub enum Event {
     /// Ngắt **S-mode timer** (bit 63 = 1, mã 5) — KT-47: SBI TIME + `sie.STIE`; **không** phải
     /// exception (không có `Exception`/`ExceptionKind` nào ở đây).
     Timer,
-    /// Ngắt khác (bit 63 = 1, mã ≠ 5). PLIC/UART IRQ là KT-48; KT-45/46 log rồi halt.
+    /// Ngắt khác (bit 63 = 1, mã ≠ 5). Mã **9** = external/PLIC (KT-48: claim → xử lý →
+    /// complete); mã khác 5/9 (vd IPI 1 — KT-50) vẫn là bất thường ⇒ fatal.
     Interrupt {
         /// Mã interrupt (đã bỏ bit 63).
         code: u64,
@@ -721,8 +732,9 @@ pub fn report_guard_fault<P: Platform + ?Sized>(
 
 /// In dump ngắt bất ngờ (bắt đầu bằng `PANIC`) rồi `DebugHalt(1)`.
 ///
-/// KT-47 đã xử lý ngắt timer thật ([`Event::Timer`]); đường này chỉ dành cho ngắt **khác** mã 5 —
-/// PLIC/UART IRQ là KT-48, nên mọi mã khác ở KT-47 vẫn là bất thường.
+/// KT-47 xử lý ngắt timer thật ([`Event::Timer`]); KT-48 xử lý ngắt external mã 9 qua PLIC
+/// (`Event::Interrupt { code: 9 }` → claim/complete trong `trap_dispatch`). Đường này chỉ dành
+/// cho ngắt **khác** mã 5/9 (vd IPI 1 — KT-50) — vẫn là bất thường ở KT-48.
 pub fn report_interrupt<P: Platform + ?Sized>(platform: &P, code: u64, tf: &TrapFrame) -> ! {
     platform.put_str("PANIC: ");
     {

@@ -14,11 +14,18 @@
 //!   (bit 2 illegal và bit 9 ecall-S **không** delegate), nên hai loại đó không vào `stvec`.
 //!
 //! Trap/timer/PLIC/MMU/SMP **không** thuộc KT-45: MMU (KT-46), timer (KT-47, module [`timer`] —
-//! SBI TIME + `sie.STIE` + `rdtime`), PLIC (KT-48), SMP (KT-49), U-mode/syscall (KT-53).
+//! SBI TIME + `sie.STIE` + `rdtime`), PLIC (KT-48, module [`plic`]), SMP (KT-49), U-mode/syscall
+//! (KT-53).
 //!
 //! KT-47: `trap_dispatch` có nhánh [`Event::Timer`] (bit 63 + mã 5) — đếm tick, nạp deadline kế,
-//! **resume** bằng `sret`; `sstatus.SIE` chỉ được bật ở [`timer::enable_timer`] (P2a: không ghi
-//! `sstatus` trong trap entry/handler).
+//! **resume** bằng `sret`; `sstatus.SIE` chỉ được bật ở các hàm `enable_*` của arch
+//! ([`timer::enable_timer`], [`plic::enable_external`]) — P2a: không ghi `sstatus` trong trap
+//! entry/handler.
+//!
+//! KT-48: ngắt external (bit 63 + mã 9) đi vào PLIC **claim → xử lý → complete** trong
+//! [`trap_dispatch`] (module [`plic`]): UART0 IRQ 10 bật `IER.TX-empty`, handler đếm và tắt sau N
+//! ngắt; line lạ được đếm + complete để không treo; `Platform::enable_irq`/`disable_irq` giờ là
+//! PLIC thật (đọc lại bit enable).
 //!
 //! Địa chỉ UART/PLIC/CLINT là **dữ kiện nền tảng QEMU virt** (D2-72 Q7), không phải hằng số thiết
 //! kế `[TK]`; `spec/kernel.toml` **không** mở ở K3 (D2-72 Q1) nên chúng nằm ở đây và ở
@@ -36,12 +43,14 @@ use core::fmt::Write;
 
 use vifast_plat_common::trap::{
     decode_trap, handle_trap, report_fatal, report_guard_fault, report_interrupt, tf_reg_offset,
-    Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, INTERRUPT_SUPERVISOR_TIMER,
-    TF_SCAUSE_OFFSET, TF_SEPC_OFFSET, TF_SIZE, TF_SSTATUS_OFFSET, TF_STVAL_OFFSET, TRAP_STATS,
+    Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, INTERRUPT_SUPERVISOR_EXTERNAL,
+    INTERRUPT_SUPERVISOR_TIMER, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET, TF_SIZE, TF_SSTATUS_OFFSET,
+    TF_STVAL_OFFSET, TRAP_STATS,
 };
 use vifast_plat_common::{Platform, PlatformWriter};
 
 pub mod mmu;
+pub mod plic;
 pub mod timer;
 
 /// UART0 của QEMU `virt` (16550A) — dữ kiện nền tảng, D2-72 Q7.
@@ -332,6 +341,15 @@ pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
             timer::set_timer_deadline(sample.map(|s| s.next_deadline).unwrap_or(u64::MAX));
             TRAP_STATS.record_interrupt(&saved, INTERRUPT_SUPERVISOR_TIMER);
         }
+        // KT-48: ngắt **external** (mã 9) = PLIC — đường duy nhất không fatal. Handler claim
+        // của context `2*hart+1`, xử lý UART0 (claim → IIR → re-arm/ tắt sau N → complete) hoặc
+        // đếm line lạ rồi complete để không treo; mọi bộ đếm nằm ở `PLIC_STATS` (không in trong
+        // handler — in làm trễ/ngập log; TAP đọc sau). `sstatus.SIE` đã bị hardware xoá khi vào
+        // trap nên handler không bị lồng.
+        Event::Interrupt { code } if code == INTERRUPT_SUPERVISOR_EXTERNAL => {
+            let _ = plic::on_external_interrupt();
+            TRAP_STATS.record_interrupt(&saved, code);
+        }
         Event::Interrupt { code } => {
             TRAP_STATS.record_interrupt(&saved, code);
             report_interrupt(&Riscv64Virt, code, &saved)
@@ -398,14 +416,14 @@ impl Platform for Riscv64Virt {
         unsafe { asm!("csrw stvec, {}", in(reg) value, options(nomem, nostack)) };
     }
 
-    fn enable_irq(&self, _irq: u32) -> bool {
-        // KT-45 **stub**: PLIC/claim/complete là KT-48 (D2-72 Q7). Trả false = chưa bật thật.
-        false
+    fn enable_irq(&self, irq: u32) -> bool {
+        // KT-48: PLIC thật — set bit enable của context S-mode `2*hart+1` rồi đọc lại bit.
+        plic::enable_irq(irq)
     }
 
-    fn disable_irq(&self, _irq: u32) -> bool {
-        // KT-45 **stub**: PLIC là KT-48.
-        false
+    fn disable_irq(&self, irq: u32) -> bool {
+        // KT-48: PLIC thật — clear bit enable rồi đọc lại (bit đã về 0).
+        plic::disable_irq(irq)
     }
 
     fn set_timer_deadline(&self, deadline: u64) {
