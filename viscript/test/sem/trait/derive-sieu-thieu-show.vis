@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    x: int
+
+trait Hien: Show:
+    fn mo(self) -> int
+
+impl Hien for P:
+    fn mo(self) -> int:
+        self.x
+
+let p: P = {x: 1}
+print(p.mo())

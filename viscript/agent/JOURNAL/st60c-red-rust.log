@@ -1,0 +1,42 @@
+# ST-60c — log ĐỎ (Rust) lúc 2026-11-14T03:05:51Z, HEAD cc7b096 (đã tạm gỡ 2 tệp mã của ST-60c)
+
+test doc_va_golden_ton_tai ... ok
+test ba_ca_err_dung_o_parse_khong_lower ... ok
+test khoi_tai_lieu_22_15_7 ... ok
+test kieu_hien_thi_on_dinh_va_type_ref ... ok
+test cst_che_do_lenh_ha_that_qua_cmd_lower ... ok
+test ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao ... FAILED
+test kieu_cau_truc_va_option ... ok
+test literal_duoc_dien_kieu ... ok
+test golden_27_bieu_thuc_ha_ra_sexp_hir ... ok
+test khong_panic_tren_7_khoi_loai_tru_va_rac ... ok
+thread 'ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao' (44134653) panicked at crates/vis-types/tests/hir.rs:209:9:
+assertion `left == right` failed: khối 214: (item, câu lệnh, khai báo) sai
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test derives_enum_eq_sinh_phuong_thuc_that ... ok
+test derives_json_tren_truong_ham_bao_vs0403 ... ok
+test derives_tren_enum ... ok
+test enum_goi_phuong_thuc_duoc ... ok
+test derives_eq_show_json_tren_record ... ok
+test derives_show_tren_kieu_generic_bao_vs0403 ... ok
+test derives_json_hop_le_voi_list_int ... ok
+test derives_la_bao_vs0403 ... ok
+test derives_eq_truong_float_bao_vs0403 ... ok
+test derives_eq_sinh_phuong_thuc_that ... ok
+test derives_show_sinh_phuong_thuc_that ... ok
+test goi_phuong_thuc_impl_thanh_call_truc_tiep ... ok
+test impl_dung_chu_ky_sach ... ok
+test goi_phuong_thuc_inherent_thanh_call_truc_tiep ... ok
+test impl_inherent_khong_trait_sach ... ok
+test impl_sai_kieu_tra_bao_vs0412 ... ok
+test impl_thieu_phuong_thuc_bao_vs0403 ... ok
+test khong_co_phuong_thuc_giu_nguyen_loi_cu ... ok
+test impl_trait_khong_ton_tai_bao_vs0403 ... ok
+test impl_thua_phuong_thuc_bao_vs0403 ... ok
+test kieu_khong_tinh_bao_vs0403 ... ok
+test no_i_tai_thang_impl_cung_ten ... ok
+test nhieu_dong_truoc_voi_let ... ok
+test mo_ho_giua_hai_impl_bao_vs0403 ... ok
+test phuong_thuc_khong_ton_tai_bao_vs0403 ... ok
+test sieu_trait_thieu_bao_vs0403 ... ok
+test trait_khai_bao_sach ... ok

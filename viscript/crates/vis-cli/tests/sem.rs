@@ -135,8 +135,11 @@ fn sem_323_ca_qua_binary() {
         // gốc `let`; 1 xanh trong `vish/`: thân `cmd` khai báo dùng **biến** vừa khai) ⇒ **419 ca /
         // 20 nhóm** (367 `.vis` + 50 `.vish`, **71** `.err`). (`std.* --tên` khoá ở Rust
         // `gan_hai_duong::std_khong_nhan_tham_so_ten` — HIR `{error}` không sinh bytecode hỏng.)
-        419,
-        "phải đúng 419 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        // **SỬA KÈM LÝ DO (ST-60c)**: +**7** ca nhóm `trait/` (impl sinh từ `derives` vào
+        // `impl_pairs`; `derives Show` cho enum **sinh mã thật**; `Eq` chặn **sâu** list/map/opt) ⇒
+        // **426 ca / 20 nhóm** (367 `.vis` + 50 `.vish`, **75** `.err`).
+        426,
+        "phải đúng 426 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.

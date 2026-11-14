@@ -6,19 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-60b** (hotfix sau review độc lập: **gán trong closure** hồi quy parity từ
-                `dd04afb`; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `std.* --tên`
-                bị bỏ im lặng) — xong, **chưa commit**.
-Bước          : 8/8 (tái hiện C1/C2 → closure captured dùng **ô cục bộ + prologue** (không thêm tag)
-                → `()` thật thay `str("")` → gốc đích gán + thông điệp lồng → luật `let` **định danh
-                phải bind** → `std` từ chối `--tên` → 8 ca Rust + 3 ca sem → 2 log đỏ → cổng →
+Task          : **ST-60c** (3 lỗi derives/siêu trait reviewer tìm ra + số liệu: impl **sinh từ
+                `derives`** vào `impl_pairs`; `enum … derives Show` **sinh mã thật**; `Eq` chặn **sâu**
+                list/map/opt/generic) — xong, **chưa commit**.
+Bước          : 5/5 (tái hiện 3 lỗi → 1c **trước** kiểm siêu trait + ghi cặp khi **thật sự** sinh
+                → `sinh_show_enum` (một phần nội suy) → `co_float_sau` đệ quy dùng chung
+                `kiem_derives`/`co_truong_khong_eq` → 7 ca sem + số liệu + 2 log đỏ → cổng →
                 differential → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T02:34:19Z**; **782** test / sem
-                **419/20 nhóm** / `vis test` **419 ok** (+`--vm` **419 ok/7 SKIP**) / parity **378/378** /
-                differential **100.000 chương trình 0 lệch** (223,6 s) / **7 sổ-30 mã** (không mã mới) /
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T03:17:24Z**; **782** test / sem
+                **426/20 nhóm** / `vis test` **426 ok** (+`--vm` **426 ok/7 SKIP**) / parity **381/381** /
+                differential **100.000 chương trình 0 lệch** (248,0 s) / **7 sổ-30 mã** (không mã mới) /
                 allowlist **6**
-Việc dở       : commit `[ST-60b]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-60c]` + push (đã được uỷ quyền)
+
+## ST-60c — derives/siêu trait: impl sinh vào `impl_pairs`, enum Show sinh mã, Eq chặn sâu, 2026-11-14
+
+| # | Việc | Sửa gì | Ca |
+|---|---|---|---|
+| 1 | **B3 — `impl TraitCon for T` bị `VS0403` oan khi `T derives Show`** | `sinh_derives` (lượt 1c) chạy **trước** `kiem_sieu_trait`; `sinh_derive` ghi `(kiểu, "Show"/"Eq")` vào `impl_pairs` **chỉ khi thật sự sinh được** (Eq bị bỏ vì `float`/hàm ⇒ **không** ghi ⇒ thiếu thật vẫn đỏ) | `trait/derive-show-sieu-trait` (xanh: `trait Hien: Show:` + `type P derives Show:` + `impl Hien for P` ⇒ `1`/`{x: 1}` hai đường); `trait/derive-sieu-thieu-show` (âm: bỏ `derives Show` ⇒ `VS0403`) |
+| 2 | **B4 — `enum … derives Show` im lặng** | Chọn **sinh mã thật** (rẻ hơn lỗi tĩnh): `sinh_show_enum` — `fn show(self) -> str` trả **một** `InterpPart::Expr(self)` ⇒ đúng dạng `Value::Enum` lúc chạy (`A`, `B(2)`), **không** đệ quy vào phương thức; `derives Eq` cho enum **giữ nguyên** | `trait/derive-show-enum` (xanh: `m.show()`⇒`A`, `n.show()`/`print(n)`⇒`B(2)`); giữ xanh khối tài liệu **214** (`enum Shape derives Show`), `tests/trait.rs::derives_tren_enum`, `hir.rs` khối 214 (**6** item/**11** sym) |
+| 3 | **B5 — `Eq` chỉ chặn `float` nông** | `co_float_sau` **đệ quy** qua `List`/`Map`/`Opt`/`Result`/`TypeRef{args}` (generic) — dùng **chung** cho `kiem_derives` (chẩn đoán) và `co_truong_khong_eq` (quyết định sinh mã) | 3 âm: `trait/derive-eq-list-float`, `derive-eq-map-float`, `derive-eq-opt-list-float` (`VS0403` nêu đúng kiểu); 1 xanh: `derive-eq-list-int` ⇒ `true` |
+| 4 | **Số liệu MINOR** | Header `diag_cmp` **426/351/45/30**; `hir.rs` khối 214 ⇒ `(6, 0, 11)` (enum Show **sinh impl** thật: +1 item, +2 sym) | — |
+| 5 | **Đo** | **782** test (21+96+18+154+24+62+9+**398**); sem **426/20 nhóm** (367 `.vis` + 50 `.vish`, **75** `.err`); `vis test` **426 ok**; `--vm` **426 ok + 7 SKIP**; parity **381/381** (45 ca lỗi biên dịch); differential **100.000/0 lệch** (248,0 s, 403/s, seed 3523158054); `VBC1` **53**; 7 sổ/30 mã; allowlist 6 | — |
+| 6 | **Bất ngờ / nợ** | (a) `enum Show` **rẻ thật** — chỉ cần **một** phần nội suy (dùng `show` của **giá trị**), nên chọn sinh mã thay vì lỗi tĩnh: giữ được khối tài liệu 214 + `derives_tren_enum` xanh; (b) **`impl_pairs` là per-tệp** ⇒ siêu trait **bắc cầu** vẫn là nợ (`R10`), `impl` sinh từ derives ở **tệp khác** không thấy; (c) `co_float_sau` **không** soi **bản ghi lồng** (cần `TypeTable`, hàm thuần không có) — nợ; (d) `derives Json` vẫn **không** sinh mã (nợ cũ) | — |
 
 ## ST-60b — hotfix review độc lập: gán trong closure, đích lồng, shell-let, `std --tên`, 2026-11-14
 

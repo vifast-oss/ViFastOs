@@ -101,20 +101,21 @@ const EXCLUDED: [(usize, &str); EXCLUDED_COUNT] = [
 const DOC_BLOCKS: [(usize, usize, usize, usize); FULL_BODIED] = [
     // **SỬA KÈM LÝ DO (ST-57)**: `derives Eq, Show` **sinh** `impl` ⇒ +1 item (`HImpl`) và +5
     // khai báo (`User.show` + `self`, `User.eq` + `self` + `other`).
-    (214, 5, 0, 9), // type User derives Eq/Show + enum Shape + alias UserId + newtype Email
-    (238, 1, 0, 4), // fn total + R + rows + r (lambda)
-    (290, 0, 5, 6), // x, count, a, b, name, age
-    (325, 0, 1, 4), // r (arm1), r (arm2 = or-pattern dùng chung), w, h
-    (342, 0, 3, 3), // e, domain, mail (if let)
-    (406, 1, 0, 5), // greet + name + times + loud + s
-    (422, 0, 1, 3), // f + x (lambda) + y
-    (473, 1, 0, 4), // read_config + dir + text + cfg
-    (488, 0, 1, 2), // cfg + err (else)
-    (535, 0, 3, 2), // a, b
-    (549, 0, 2, 2), // counter, inc
-    (571, 0, 0, 0), // chỉ có `#!` + `#|` (chú thích)
-    (684, 1, 0, 5), // backup_big + ctx + dir + files + f
-    (698, 1, 0, 7), // fetch_all + net + urls + s (scope) + tasks + u + t
+    // **ST-60c**: `enum Shape derives Show` nay **sinh** `impl` thật ⇒ +1 item, +2 sym (show + self).
+    (214, 6, 0, 11), // type User derives Eq/Show + enum Shape derives Show + alias + newtype
+    (238, 1, 0, 4),  // fn total + R + rows + r (lambda)
+    (290, 0, 5, 6),  // x, count, a, b, name, age
+    (325, 0, 1, 4),  // r (arm1), r (arm2 = or-pattern dùng chung), w, h
+    (342, 0, 3, 3),  // e, domain, mail (if let)
+    (406, 1, 0, 5),  // greet + name + times + loud + s
+    (422, 0, 1, 3),  // f + x (lambda) + y
+    (473, 1, 0, 4),  // read_config + dir + text + cfg
+    (488, 0, 1, 2),  // cfg + err (else)
+    (535, 0, 3, 2),  // a, b
+    (549, 0, 2, 2),  // counter, inc
+    (571, 0, 0, 0),  // chỉ có `#!` + `#|` (chú thích)
+    (684, 1, 0, 5),  // backup_big + ctx + dir + files + f
+    (698, 1, 0, 7),  // fetch_all + net + urls + s (scope) + tasks + u + t
     (1459, 1, 0, 4), // tính_tổng + danh_sách + tổng + số
 ];
 

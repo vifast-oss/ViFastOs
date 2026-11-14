@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P derives Eq:
+    xs: list[int]
+
+let p: P = {xs: [1]}
+print(p == p)

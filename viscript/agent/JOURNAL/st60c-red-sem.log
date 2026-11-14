@@ -1,0 +1,115 @@
+# ST-60c — log ĐỎ (sem) lúc 2026-11-14T03:05:50Z, HEAD cc7b096 (đã tạm gỡ lower.rs + lower/trait_impl.rs của ST-60c)
+# 7 ca mới nhóm trait/ chạy bằng binary **trước** sửa.
+
+== derive-show-sieu-trait
+   kỳ vọng .out:
+     1
+     {x: 1}
+   -- interp:
+     TAP version 13
+     1..1
+     derive-show-sieu-trait.vis:8:1: error VS0403: `impl Hien for …` thiếu `impl Show for …` (siêu trait `Show` — kiểm **một tầng**, VD-98)
+     not ok 1 - test/sem/trait/derive-show-sieu-trait.vis (VS0403)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     derive-show-sieu-trait.vis:8:1: error VS0403: `impl Hien for …` thiếu `impl Show for …` (siêu trait `Show` — kiểm **một tầng**, VD-98)
+     not ok 1 - test/sem/trait/derive-show-sieu-trait.vis (VS0403)
+     [exit=2]
+
+== derive-sieu-thieu-show
+   kỳ vọng .err: VS0403
+   -- interp:
+     TAP version 13
+     1..1
+     derive-sieu-thieu-show.vis:8:1: error VS0403: `impl Hien for …` thiếu `impl Show for …` (siêu trait `Show` — kiểm **một tầng**, VD-98)
+     not ok 1 - test/sem/trait/derive-sieu-thieu-show.vis (VS0403)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     derive-sieu-thieu-show.vis:8:1: error VS0403: `impl Hien for …` thiếu `impl Show for …` (siêu trait `Show` — kiểm **một tầng**, VD-98)
+     not ok 1 - test/sem/trait/derive-sieu-thieu-show.vis (VS0403)
+     [exit=2]
+
+== derive-show-enum
+   kỳ vọng .out:
+     A
+     B(2)
+     B(2)
+   -- interp:
+     TAP version 13
+     1..1
+     derive-show-enum.vis:8:7: error VS0403: không có phương thức `show` cho `M` (VS0403)
+     derive-show-enum.vis:9:7: error VS0403: không có phương thức `show` cho `M` (VS0403)
+     not ok 1 - test/sem/trait/derive-show-enum.vis (VS0403)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     derive-show-enum.vis:8:7: error VS0403: không có phương thức `show` cho `M` (VS0403)
+     derive-show-enum.vis:9:7: error VS0403: không có phương thức `show` cho `M` (VS0403)
+     not ok 1 - test/sem/trait/derive-show-enum.vis (VS0403)
+     [exit=2]
+
+== derive-eq-list-float
+   kỳ vọng .err: VS0403
+   -- interp:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-list-float.vis (steps=10)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-list-float.vis (steps=10)
+     [exit=0]
+
+== derive-eq-map-float
+   kỳ vọng .err: VS0403
+   -- interp:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-map-float.vis (steps=9)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-map-float.vis (steps=9)
+     [exit=0]
+
+== derive-eq-opt-list-float
+   kỳ vọng .err: VS0403
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/trait/derive-eq-opt-list-float.vis:5:17: error VS0501: tên `some` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/trait/derive-eq-opt-list-float.vis (VS0501, steps=4)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/trait/derive-eq-opt-list-float.vis:5:17: error VS0501: tên `some` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/trait/derive-eq-opt-list-float.vis (VS0501, steps=4)
+     [exit=1]
+
+== derive-eq-list-int
+   kỳ vọng .out:
+     true
+   -- interp:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-list-int.vis (steps=10)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     true
+     ok 1 - test/sem/trait/derive-eq-list-int.vis (steps=10)
+     [exit=0]

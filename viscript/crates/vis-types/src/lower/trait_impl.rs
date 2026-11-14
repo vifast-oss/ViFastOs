@@ -156,12 +156,8 @@ impl<'a> Lowerer<'a> {
             // Trường `float`/`Fn` với `Eq`: `==` trên số thực là **không toàn phần** ⇒ `VS0403` **tĩnh**.
             if d == "Eq" {
                 for t in field_tys {
-                    let xau = match t {
-                        Type::Float | Type::Fn(..) => true,
-                        Type::Opt(inner) => matches!(**inner, Type::Float | Type::Fn(..)),
-                        _ => false,
-                    };
-                    if xau {
+                    // **ST-60c (B5)**: đệ quy **sâu** (list/map/opt/result/tuple/generic).
+                    if co_float_sau(t) {
                         self.diag(
                             &TYPE_CODES[2],
                             format!(
@@ -413,15 +409,38 @@ impl<'a> Lowerer<'a> {
     fn sinh_derive(&mut self, src: DeriveNguon, ra: &mut Vec<HItem>) {
         let mut methods: Vec<HFn> = Vec::new();
         let span = src.node.span;
-        if !src.la_enum && src.derives.iter().any(|d| d == "Show") {
-            if let Some(f) = self.sinh_show(src.ty.clone(), &src.ten, &src.truong, span) {
+        // **ST-60c (B3)**: `impl` **sinh từ `derives`** phải vào `impl_pairs` như impl viết tay —
+        // nếu không `impl TraitCon for T` (với `trait TraitCon: Show`) bị `VS0403` **oan**. Chỉ ghi
+        // cặp khi **thật sự** sinh được (Eq bị bỏ vì `float`/hàm ⇒ **không** ghi ⇒ thiếu thật vẫn đỏ).
+        let mut sinh_show = false;
+        let mut sinh_eq = false;
+        if src.derives.iter().any(|d| d == "Show") {
+            // **ST-60c (B4)**: `enum … derives Show` nay **sinh mã thật** (trước: im lặng ⇒
+            // `e.show()` ra `VS0403` khó hiểu). Thân: **một** phần nội suy ⇒ `show` của **giá trị**
+            // (`Value::Enum` in `BiénThể` hoặc `BiénThể(args…)`), không đệ quy vào phương thức.
+            let f = if src.la_enum {
+                self.sinh_show_enum(src.ty.clone(), &src.ten, span)
+            } else {
+                self.sinh_show(src.ty.clone(), &src.ten, &src.truong, span)
+            };
+            if let Some(f) = f {
                 methods.push(f);
+                sinh_show = true;
             }
         }
         if src.derives.iter().any(|d| d == "Eq") && !co_truong_khong_eq(&src.truong) {
             if let Some(f) = self.sinh_eq(src.ty.clone(), &src.ten, span) {
                 methods.push(f);
+                sinh_eq = true;
             }
+        }
+        if sinh_show {
+            self.impl_pairs
+                .push((src.ty.clone(), "Show".to_string(), span));
+        }
+        if sinh_eq {
+            self.impl_pairs
+                .push((src.ty.clone(), "Eq".to_string(), span));
         }
         if !methods.is_empty() {
             ra.push(HItem::Impl(HImpl {
@@ -488,6 +507,34 @@ impl<'a> Lowerer<'a> {
 
     /// `fn show(self) -> str` — **đúng byte** `Value::show` của bản ghi (tên động rỗng):
     /// `{x: 1, ten: a}`. Dựng bằng `Interp` (không `+` nối chuỗi — tyck không có `(Add, Str, Str)`).
+    /// **ST-60c (B4)**: `show` cho **enum** = **một** phần nội suy của `self` ⇒ in đúng dạng giá trị
+    /// (`A`, `B(1, 2)`) như `Value::show` lúc chạy; không gọi lại phương thức (không đệ quy).
+    fn sinh_show_enum(&mut self, ty: Type, ten: &str, span: vis_syntax::Span) -> Option<HFn> {
+        let ty2 = ty.clone();
+        self.sinh_pt(
+            &ty,
+            PtSinh {
+                ten,
+                ten_pt: "show",
+                ret: Type::Str,
+                tham: vec![("self", ty2)],
+                span,
+            },
+            move |ids| {
+                let me = ids[0];
+                let parts: Vec<InterpPart> = vec![InterpPart::Expr(Box::new(HExpr::Var {
+                    name: "self".into(),
+                    sym: Some(me),
+                    span,
+                }))];
+                vec![HStmt::Return {
+                    value: Some(HExpr::Interp { parts, span }),
+                    span,
+                }]
+            },
+        )
+    }
+
     fn sinh_show(
         &mut self,
         ty: Type,
@@ -591,13 +638,23 @@ pub(super) struct PtSinh<'a> {
     span: vis_syntax::Span,
 }
 
-/// Kiểu của một trường có **so sánh toàn phần** không (`float`/hàm ⇒ không — VD-93 (3)).
-fn co_truong_khong_eq(truong: &[(String, Type)]) -> bool {
-    truong.iter().any(|(_, t)| match t {
+/// **ST-60c (B5)**: kiểu có chứa **`float`/hàm** ở **bất kỳ độ sâu** không — `Eq` đòi so sánh
+/// **toàn phần** nên đệ quy qua `List`/`Map`/`Opt`/`Result`/`Tuple`/`TypeRef` (generic) (VD-93 (3)).
+fn co_float_sau(t: &Type) -> bool {
+    match t {
         Type::Float | Type::Fn(..) => true,
-        Type::Opt(inner) => matches!(**inner, Type::Float | Type::Fn(..)),
+        Type::List(x) | Type::Opt(x) => co_float_sau(x),
+        Type::Map(k, v) | Type::Result(k, v) => co_float_sau(k) || co_float_sau(v),
+        // `TypeRef` = `tuple` nhiều phần tử, `Task[T]`, generic chưa thay ⇒ soi **mọi** đối số.
+        Type::TypeRef { args, .. } => args.iter().any(co_float_sau),
+        // Bản ghi lồng: cần `TypeTable` ⇒ ngoài tầm hàm thuần (nợ, xem JOURNAL).
         _ => false,
-    })
+    }
+}
+
+/// Kiểu của một trường có **so sánh toàn phần** không (đệ quy **sâu** — ST-60c).
+fn co_truong_khong_eq(truong: &[(String, Type)]) -> bool {
+    truong.iter().any(|(_, t)| co_float_sau(t))
 }
 
 // ---------------------------------------------------------------------------

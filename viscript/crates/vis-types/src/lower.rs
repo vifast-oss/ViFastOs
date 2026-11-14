@@ -428,11 +428,13 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
-        // **ST-57 (VD-98 (2))**: siêu trait kiểm **một tầng**, **sau** 1b ⇒ thứ tự `impl` tự do.
-        self.kiem_sieu_trait();
         // **ST-57 (VD-93/VD-98 (3))**: lượt **1c** — `derives Show/Eq` sinh `impl` **thật** **trước**
         // mọi lượt hạ thân (câu `p.show()` trước khai báo vẫn phân giải).
+        // **ST-60c (B3)**: lượt 1c chạy **trước** khi kiểm siêu trait ⇒ `impl` **sinh từ `derives`**
+        // đã nằm trong `impl_pairs` (trước: `impl TraitCon for T` bị `VS0403` oan).
         self.sinh_derives();
+        // **ST-57 (VD-98 (2))**: siêu trait kiểm **một tầng**, **sau** 1b+1c ⇒ thứ tự `impl` tự do.
+        self.kiem_sieu_trait();
         // Lượt 2 — thân item + câu lệnh cấp tệp, **theo đúng thứ tự nguồn**.
         for child in self.cst.root.children() {
             if is_item(child.kind) {

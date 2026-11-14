@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+enum M derives Show:
+    A
+    B(x: int)
+
+let m: M = M.A
+let n: M = M.B(2)
+print(m.show())
+print(n.show())
+print(n)
