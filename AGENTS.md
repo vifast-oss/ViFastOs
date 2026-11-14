@@ -11,7 +11,7 @@ Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
 1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
 2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-72) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-88).
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-73) và **`viscript/agent/DECISIONS.md`** (VD-01..VD-88).
 4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
