@@ -180,7 +180,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **DONE** | ≥4 ca; vẫn tất định |
 | ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **DONE** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
 | ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **DONE** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
-| ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
+| ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **DONE** | 0 lệch; seed ghim; sinh được cả ca lỗi |
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -1297,3 +1297,16 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: heuristic **văn bản** (dấu `:` trong chuỗi/comment có thể bị coi mở khối; khối một dòng `cmd f(): x`; nối dòng `\`); gốc
 > `khai::tach` **chưa dọn**; `topmix2` **đổi hành vi** (trước chạy dòng thụt như lệnh ngoài — sai thiết kế, nay báo lỗi).
 > **ST-86 mở** (fuzz differential cho cú pháp mới).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-86 DONE — fuzz differential phủ cú pháp mới.** Commit `1d690869` (**Agent 2 tự commit, đã push**). Bộ sinh phủ **8 nhóm**
+> (async 100 · chan 100 · cap 100 · derives 100 · trait 100 · assert 100 · lỗi chạy 100 · lỗi tĩnh 100), hỗn hợp 50% cũ/mới; trên
+> 2.000 seed **chạm đủ 8 nhóm** `[252, 222, 172, 124, 124, 163, 33, 36]`; mọi chương trình **kết thúc** (deadlock có `VS0505`).
+> **20.000 chương trình seed `20261115`: `lech=0`** (31,8 s, 628/s) và **100.000: `lech=0`** (158,5 s, 631/s) — so **byte**
+> stdout/exit + đủ `(mã, dòng, cột, message)` hai đường. **5 ca Rust** (đếm mẫu nhóm, đủ 8 nhóm trên 2.000 seed, lỗi tĩnh, lỗi chạy
+> hai đường) + **7 ca CLI lỗi** (send sai kiểu, await không Task, thiếu cap, thiếu gói `VS0701`, deadlock, assert, send-sau-close).
+> Cổng giữ **1.000** mặc định; test chạy **2.000 trong 3,2 s**. Đo: **951 test** · sem **447/22** · host **54/54** · parity **398/398**.
+> Nợ: mẫu **cố định** (chưa ghép tổ hợp sâu); kênh chỉ cặp cân bằng; chưa sinh `use pkg.*` **thành công**; `@`/`(write)` mới ở mức
+> **cú pháp**.
+> **ST-87 mở** (cache không che lỗi — 3 chế độ).
