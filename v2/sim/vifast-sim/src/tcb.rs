@@ -34,21 +34,52 @@ impl FaultAccess {
     }
 }
 
+/// Nguyên nhân fault VM (`FaultKind::Vm.reason`) — **KT-41 · model-only `[TK]`**, không phải ABI
+/// (D2-65 Q6; D2-56(a) hoãn đưa `FaultKind` vào `spec/abi.toml` tới K3).
+///
+/// - `NotMapped`: `vspace_walk` không có lá phủ `va` (chưa map).
+/// - `Permission`: mapping thiếu quyền cần cho `access` (READ cho đọc, WRITE cho ghi, EXEC cho
+///   thực thi) và **không** phải ca W^X.
+/// - `Wx`: truy cập sẽ tạo thế **W+X** — exec một trang `WRITE`, hoặc ghi một trang `EXEC`
+///   (luật W^X toàn cục đã cấm map W+X từ KT-39/D2-67; đây là chặn ở **thời điểm dùng**).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmFaultReason {
+    NotMapped,
+    Permission,
+    Wx,
+}
+
+impl VmFaultReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            VmFaultReason::NotMapped => "NotMapped",
+            VmFaultReason::Permission => "Permission",
+            VmFaultReason::Wx => "Wx",
+        }
+    }
+}
+
 /// Nguyên nhân fault mang theo trạng thái chặn (D2-25: Exit mang mã thoát).
 ///
 /// **KT-26 — model-only `[TK]`, không phải spec/ABI.** `spec/abi.toml:268-271` **vẫn chỉ** khai
-/// `Exit`; ba biến thể `Vm`/`UnknownSyscall`/`UserException` là mô hình của K1c theo thiết kế
+/// `Exit`; các biến thể `Vm`/`UnknownSyscall`/`UserException` là mô hình K1c theo thiết kế
 /// §4.6 `:321`, chờ K3 chốt conformance (**D2-53 Q5** = (a): spec là **tập con** tới K3, KT-26
 /// **không** sửa `spec/`). Chỉ `Exit` đi đường `Send` không Reply (D2-25); ba loại còn lại đi
 /// **Call + Reply** tới `fault_ep` để procsrv trả lời và cho chạy tiếp.
+///
+/// **KT-41** — `Vm` mang đủ **bốn** trường theo **D2-65 Q6**: `vspace` (VSpace bị chạm), `va`
+/// (địa chỉ **yêu cầu**, không làm tròn về gốc mapping), `access`, `reason`
+/// ([`VmFaultReason`]). Model-only: `spec/` không đổi.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaultKind {
     Exit {
         code: u64,
     },
     Vm {
-        fault_addr: u64,
+        vspace: ObjId,
+        va: u64,
         access: FaultAccess,
+        reason: VmFaultReason,
     },
     UnknownSyscall {
         nr: u64,
@@ -87,9 +118,16 @@ impl FaultKind {
     pub fn render(self) -> String {
         match self {
             FaultKind::Exit { code } => format!("Exit{{{code}}}"),
-            FaultKind::Vm { fault_addr, access } => {
-                format!("Vm{{fault_addr={fault_addr}, access={}}}", access.name())
-            }
+            FaultKind::Vm {
+                vspace,
+                va,
+                access,
+                reason,
+            } => format!(
+                "Vm{{vspace={vspace}, va={va}, access={}, reason={}}}",
+                access.name(),
+                reason.name()
+            ),
             FaultKind::UnknownSyscall { nr } => format!("UnknownSyscall{{nr={nr}}}"),
             FaultKind::UserException { ip, kind } => {
                 format!("UserException{{ip={ip}, kind={kind}}}")

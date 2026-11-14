@@ -4,15 +4,64 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `1aeaf0d0` ([KT-40] TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock; gate 552, Miri 10/10, 5 mutation) — **đã push**; QUEUE chờ Agent 0 lật DONE
+HEAD          : `86079213` ([ST-00] tab ViScript lật ST-67 DONE — không chạm v2/); v2 hiệu lực `f3872df0` ([KT-00] lật KT-40 DONE, 552 test)
 BUILD_ID      : —
-Task          : KT-41 (READY — VM fault); KT-40 DONE (1aeaf0d0)
-Bước          : 8/8 **xong** (baseline 536 → đỏ E0432/E0599 → code+10 test → gate **552** → Miri 10/10 → DRIFT đã sửa: 5 mutation + 2 test AP→BSP + oracle `active_on` → **reviewer-kt40b CONFIRM 5/5** + 3 nit → gate lại **552** → commit `1aeaf0d0` + push)
+Task          : **KT-41 (VM fault)** — **DONE ở mức thi hành**: gate 562/71, Miri 9/9, reviewer APPROVE, commit `[KT-41]` + push (hash báo lead) — **chờ Agent 0 lật QUEUE**. KT-40 DONE (`1aeaf0d0`)
+Bước          : 8/8 **xong** (baseline 552 → test đỏ 20 lỗi → code+10 test → gate **562/71** → Miri 389,60 s 9/9 → reviewer APPROVE + 4 nit đã sửa → gate lại 562/71 → Miri lại 9/9 → commit `[KT-41]` + push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 552 test/70 suite**, L1 1.000 seed **793 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt40-gate-fast.log`). Baseline KT-40: PASS 536/68, L1 800 ms (`JOURNAL/kt40-baseline-gate-fast.log`); +10 `kt40_tlb` +5 unit `tlb` +1 unit `check_tlb`.
-Miri          : KT-40 — `--test kt40_tlb` **10/10** (324,35 s, MIRI1_EXIT=0) + `--lib tlb::tests` **5/5** (0,73 s) + `--lib 'kobj::tests::check_tlb'` **1/1** (1,98 s), `JOURNAL/kt40-miri.log`. `kt40_tlb` đã vào danh sách `v2 miri`.
-Việc dở       : **QUEUE chờ Agent 0 lật KT-40 DONE** (commit `1aeaf0d0`; reviewer-kt40b CONFIRM 5/5; D2-68 `258eeeeb` khớp code). Không còn việc code của KT-40; KT-41 (VM fault) mở sau khi lật. KT-39 DONE `bf6bb0f`; KT-38 `74145d0`.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 562 test/71 suite**, L1 1.000 seed **1.428 ms** (đợt 1)/**47.758 ms** (đợt 2 — host load do tab ViScript chạy 821 test: `T-INFRA`, **không** nới seed), fmt/clippy `-D warnings`, luật R1..R5, gen-check ON (`JOURNAL/kt41-gate-fast.log`). Baseline KT-41: 552/70, L1 **774 ms** (`JOURNAL/kt41-baseline-gate-fast.log`); +9 `kt41_vmfault` +1 unit `check_fault`.
+Miri          : KT-41 — `--test kt41_vmfault` **9/9** (**389,60 s**; property tự giảm còn **40 vòng** bằng `cfg(miri)`, stable/gate 10.000) + `--lib check_fault` **1/1** (0,84 s), `JOURNAL/kt41-miri.log` (**MIRI1_EXIT=0 / MIRI2_EXIT=0**). `kt41_vmfault` đã vào danh sách `v2 miri`/`nightly --only-miri`.
+Việc dở       : commit `[KT-41]` + push xong (chỉ `v2/`; hash báo lead); **không** lật QUEUE (D2-37) — chờ Agent 0. KT-39 DONE `bf6bb0f`; KT-40 DONE `1aeaf0d0`; KT-42 (4 `.scn` + `check_vm` + shared RO) READY sau lật.
 ```
+
+
+## KT-41 — K2: VM fault + `FaultKind::Vm` (model-only), `vm_touch`, `check_fault`
+
+**Vào**: READY (`agentctl next --project v2` trả KT-41) · HEAD `f3872df0` ([KT-00] lật KT-40 DONE,
+552 test) · `git rev-list --count HEAD..origin/main` = **0** · working tree có `viscript/` +
+`review/` của tab khác (**không chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 552
+test/70 suite**, L1 **774 ms** ([`JOURNAL/kt41-baseline-gate-fast.log`](JOURNAL/kt41-baseline-gate-fast.log)).
+
+**Mục tiêu** (K2-PLAN §3 KT-41 + §2 Q6, D2-65 Q6 + D2-56(a)/(c)): `FaultKind::Vm {vspace, va,
+access, reason}` **model-only** (không sửa `spec/`); `vm_touch` miss ⇒ `NotMapped`, thiếu quyền
+⇒ `Permission`, exec trang W/ghi trang X ⇒ `Wx`; giao fault qua **đường fault K1c** tới
+`fault_ep`; procsrv model **chỉ nhận + ghi log**, không cấp trang (không pager ở K2); không
+`fault_ep` ⇒ K1c `InvalidArgument`; fault không mất (C2); property 10k; `check_fault`; Miri.
+
+**Không** làm: pager/memory server/COW (K3); `.scn`/`check_vm`/shared read-only (KT-42);
+100k×4/mutation/soak (KT-43); `spec/`, QUEUE/DECISIONS/AGENTS/`viscript/`; không unsafe/
+dependency; không sửa test cũ ngoài cập nhật cơ học theo D2-65 Q6.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`kt41-red-compile.log`](JOURNAL/kt41-red-compile.log) — **20 lỗi**
+  (E0599 ×17 `vm_touch/check_fault`, E0559 ×4 `FaultKind::Vm` bốn trường, E0432 ×3
+  `VmFaultReason`), exit 101.
+- **Code**: `src/tcb.rs` (`VmFaultReason`, `FaultKind::Vm` bốn trường, `name`/`render`);
+  `src/kobj.rs` (`vm_touch` + `vm_touch_reason`, `check_fault` trong `sched_after_op`, field
+  `fault_events`, unit test dương tính); `src/procsrv_model.rs` (`fault_log`, doc "chỉ nhận +
+  ghi log"); `tests/kt41_vmfault.rs` **(mới, 9 test)**; `tests/kt26_fault.rs` **7 điểm dựng + 1
+  assertion `render`** cập nhật cơ học theo D2-65 Q6 (không nới); `v2/bin/v2` thêm `kt41_vmfault`
+  vào `nightly --only-miri`.
+- **Docs**: `v2/docs/k2-vm.md` **§15** (kiểu dữ liệu, `vm_touch`, bảng `Permission`/`Wx` gồm
+  `W+NX`, `va` không căn, `check_fault`, C2, 9 test/property, cập nhật test cũ, ranh giới).
+- **Cổng**: [`kt41-check.log`](JOURNAL/kt41-check.log) PASS; [`kt41-gate-fast.log`](JOURNAL/kt41-gate-fast.log)
+  **PASS 562 test/71 suite**, L1 1.428 ms (đợt 2 47.758 ms — host load `T-INFRA`); `kt41_vmfault`
+  9/9; lib 63/63; `git diff spec/` **rỗng**.
+- **Mutation tự kiểm** (nit reviewer): làm tròn `va` trong payload ⇒ test 1 **đỏ** đúng assertion
+  ([`kt41-red-va-khong-can.log`](JOURNAL/kt41-red-va-khong-can.log)), khôi phục `cp` + hash khớp,
+  9/9 xanh.
+- **Miri**: `--test kt41_vmfault` **9/9** (property 40 vòng) + `--lib check_fault` **1/1**
+  ([`kt41-miri.log`](JOURNAL/kt41-miri.log), MIRI1/2_EXIT=0).
+- **Review độc lập**: `reviewer-kt41` **APPROVE** (tự chạy gate 562/71, kt41 9/9, kt26 24/24,
+  spec rỗng; 3 reason không trộn; đúng `inject_fault` K1c; không `fault_ep` ⇒ `InvalidArgument`;
+  C2 checker hai chiều; kt26 cơ học không nới; procsrv không thành pager); 4 nit đã sửa trước
+  commit (đếm 7+1, suite 562/71, `va` không căn + test/mutation, hàng W+NX + assert). Nhật ký:
+  [`JOURNAL/kt41-journal.md`](JOURNAL/kt41-journal.md).
+
+**Đề xuất: REVIEW** (chờ Agent 0 xác nhận; không tự DONE, không lật QUEUE — D2-37).
+**YC/Follow-up**: (1) KT-42 gộp `check_fault` vào `check_vm` + 4 `.scn` (fault→procsrv) + shared
+read-only; (2) KT-43 100k×4 + mutation K2 + soak; (3) K3 mới đưa `FaultKind` vào `spec/` + pager
+thật (D2-56(a), Q6).
 
 ## KT-40 — K2: TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock
 

@@ -7,6 +7,11 @@
 //!   `(tcb, code)` của các fault `Exit`. Fault **khác** Exit cũng đi qua đây (cùng `fault_ep`,
 //!   nhưng là **Call + Reply**) — mô hình ghi lại để [`ProcsrvModel::wait`] trả `Faulted` và để
 //!   test gọi [`ProcsrvModel::resume_fault`] (trả lời kèm thanh ghi mới).
+//!
+//! **KT-41** — fault `Vm` (model-only) cũng đi đúng đường này: procsrv model **chỉ nhận + ghi
+//! log** ([`ProcsrvModel::fault_log`]) rồi `Reply`, **không** cấp trang — K2 **không** có
+//! pager/memory server (D2-65 Q6; COW/file mmap = K3). Chạm lại VA sau khi resume vẫn fault
+//! `NotMapped` cho tới khi có trang thật (test `kt41_vmfault`).
 //! - [`ProcsrvModel::wait`] — `{code, how}` với `how ∈ {Exited, Cancelled, Faulted, Killed}` đúng
 //!   nhánh: `Exited` khi `exit` (có hoặc không `fault_ep`), `Cancelled` khi `Suspend(Abort)` huỷ
 //!   message Exit **trước** khi giao (D2-25: `exit_code` vẫn đọc được), `Faulted` khi fault ≠ Exit
@@ -101,6 +106,13 @@ impl ProcsrvModel {
     /// Các cặp `(tcb, code)` đã gom được từ `recv_exit` (thứ tự nhận).
     pub fn exits(&self) -> &[(ObjId, u64)] {
         &self.exits
+    }
+
+    /// **KT-41** — nhật ký **mọi** fault đã nhận, theo thứ tự giao `(tcb, kind)`.
+    /// Model-only `[TK]`: procsrv model **chỉ nhận + ghi log** (không cấp trang, không sửa
+    /// page table — K2 không có pager, D2-65 Q6).
+    pub fn fault_log(&self) -> &[(ObjId, FaultKind)] {
+        &self.faults
     }
 
     /// Fault gần nhất đã nhận của `tcb` (model-only; dùng cho test/`wait`).

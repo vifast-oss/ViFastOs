@@ -21,6 +21,7 @@
 use vifast_sim::ipc::{Message, MessageInfo, WORDS_IN_REGISTERS};
 use vifast_sim::kobj::{
     FaultAccess, FaultKind, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+    VmFaultReason,
 };
 use vifast_sim::procsrv_model::{ProcsrvModel, WaitHow, WaitResult};
 use vifast_sim::Lcg;
@@ -193,9 +194,12 @@ impl Rig {
 #[test]
 fn fault_kind_bon_bien_the_model_only() {
     let exit = FaultKind::Exit { code: 9 };
+    // **KT-41/D2-65 Q6** — `Vm` mang `vspace`/`va`/`reason`; payload fault vẫn là model-only.
     let vm = FaultKind::Vm {
-        fault_addr: 0xDEAD_0000,
+        vspace: 1,
+        va: 0xDEAD_0000,
         access: FaultAccess::Write,
+        reason: VmFaultReason::NotMapped,
     };
     let unk = FaultKind::UnknownSyscall { nr: 77 };
     let usr = FaultKind::UserException {
@@ -215,8 +219,9 @@ fn fault_kind_bon_bien_the_model_only() {
 
     // `render` phải phân biệt được các biến thể (dùng cho `expect_states`/trace).
     assert_eq!(exit.render(), "Exit{9}");
-    assert!(vm.render().contains("fault_addr="));
+    assert!(vm.render().contains("va=3735879680"));
     assert!(vm.render().contains("access=Write"));
+    assert!(vm.render().contains("reason=NotMapped"));
     assert!(unk.render().contains("nr=77"));
     assert!(usr.render().contains("ip=16384"));
     assert!(usr.render().contains("kind=3"));
@@ -288,8 +293,10 @@ fn fault_unknown_syscall_qua_call_roi_reply_ghi_thanh_ghi() {
 fn fault_vm_va_user_exception_cung_duong_call_reply() {
     for (i, kind) in [
         FaultKind::Vm {
-            fault_addr: 0x1_0000,
+            vspace: 1,
+            va: 0x1_0000,
             access: FaultAccess::Execute,
+            reason: VmFaultReason::Permission,
         },
         FaultKind::UserException {
             ip: 0x8000,
@@ -328,8 +335,10 @@ fn fault_vm_va_user_exception_cung_duong_call_reply() {
 fn resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready() {
     let mut r = Rig::new();
     let kind = FaultKind::Vm {
-        fault_addr: 0x40,
+        vspace: 1,
+        va: 0x40,
         access: FaultAccess::Read,
+        reason: VmFaultReason::NotMapped,
     };
     r.cho_fault(0, kind, "inject Vm");
     r.recv_fault("procsrv Recv");
@@ -508,8 +517,10 @@ fn fault_ep_chet_invalid_capability_khong_doi_trang_thai() {
         r.m.inject_fault(
             r.t[0],
             FaultKind::Vm {
-                fault_addr: 1,
-                access: FaultAccess::Read
+                vspace: 1,
+                va: 1,
+                access: FaultAccess::Read,
+                reason: VmFaultReason::NotMapped,
             }
         ),
         Err(KError::InvalidCapability)
@@ -623,8 +634,10 @@ fn procsrv_wait_cancelled_khi_abort_truoc_khi_giao() {
 fn procsrv_wait_faulted_va_resume_fault() {
     let mut r = Rig::new();
     let kind = FaultKind::Vm {
-        fault_addr: 0x9000,
+        vspace: 1,
+        va: 0x9000,
         access: FaultAccess::Write,
+        reason: VmFaultReason::NotMapped,
     };
     r.cho_fault(0, kind, "inject Vm");
     assert_eq!(r.procsrv.recv_exit(&mut r.m).expect("recv"), None);
@@ -744,8 +757,10 @@ fn fault_donation_di_theo_call_va_tra_lai_khi_reply() {
     r.m.inject_fault(
         r.t[0],
         FaultKind::Vm {
-            fault_addr: 0x7777,
+            vspace: 1,
+            va: 0x7777,
             access: FaultAccess::Read,
+            reason: VmFaultReason::NotMapped,
         },
     )
     .expect("inject Vm");
@@ -787,12 +802,14 @@ fn mot_seed(seed: u64) -> Vec<String> {
             0 => {
                 let kind = match rng.below(3) {
                     0 => FaultKind::Vm {
-                        fault_addr: rng.next_u64() & 0xFFFF,
+                        vspace: 1,
+                        va: rng.next_u64() & 0xFFFF,
                         access: match rng.below(3) {
                             0 => FaultAccess::Read,
                             1 => FaultAccess::Write,
                             _ => FaultAccess::Execute,
                         },
+                        reason: VmFaultReason::NotMapped,
                     },
                     1 => FaultKind::UnknownSyscall { nr: rng.below(200) },
                     _ => FaultKind::UserException {

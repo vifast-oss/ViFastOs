@@ -806,3 +806,145 @@ Mỗi ca: mutant **một chỗ**, chạy `cargo test -p vifast-sim --test kt40_t
 - Khoá `usize`→hart, `Vec`/`u64` thường: **không** `unsafe`, **không** atomic/thread/loom —
   mô hình một luồng tất định (D2-49(f)); K3 thay "hộp thư + ack bộ đếm" bằng IPI/SBI thật nhưng
   **giao thức không đổi** (thiết kế §4.10 bước 4).
+
+## 15. KT-41 — VM fault `FaultKind::Vm` (model-only), `vm_touch`, `check_fault`
+
+Nguồn ngữ nghĩa: K2-PLAN §3 KT-41 + §2 **Q6**; **D2-65 Q6**; **D2-56(a)/(c)**; thiết kế §4.6
+`:321` ("Fault: Call tới fault endpoint **với Reply**; trả lời Reply để tiếp tục, có thể kèm
+thanh ghi mới" — loại fault: VM, unknown syscall, user exception, Exit…); `v2/docs/k1c-fault.md`
+(đường fault K1c mà KT-41 **tái dùng**, không mở đường thứ hai).
+
+**K2 không phải kernel thật, không có pager/memory server** (Q6): `vm_touch` **không** cấp
+trang, **không** sửa PTE, **không** copy-on-write. Fault đi đúng đường K1c tới `fault_ep` của
+TCB; `procsrv_model` **chỉ nhận + ghi log** rồi `Reply` (fault-resume). Pager/COW/file-mmap là
+**K3**. `spec/` **không** đổi: `FaultKind` vẫn model-only, `spec/abi.toml` vẫn chỉ có `Exit`
+(D2-56(a) hoãn K3).
+
+### 15.1 Kiểu dữ liệu (model-only `[TK]`)
+
+| Kiểu | Trường | Ghi chú |
+|---|---|---|
+| `FaultKind::Vm` | `vspace: ObjId`, `va: u64`, `access: FaultAccess`, `reason: VmFaultReason` | đúng **bốn** trường của D2-65 Q6; `va` là địa chỉ **yêu cầu** (không làm tròn về gốc mapping) |
+| `FaultAccess` | `Read`, `Write`, `Execute` | giữ nguyên từ KT-26 |
+| `VmFaultReason` | `NotMapped`, `Permission`, `Wx` | mới ở KT-41; `name()` ổn định cho trace |
+
+`FaultKind::Exit`/`UnknownSyscall`/`UserException` **không đổi**; `FaultKind::Vm` cũ (K1c:
+`fault_addr` + `access`) được **thay** bằng dạng bốn trường — **7 điểm dựng** + **1 assertion
+`render`** trong `tests/kt26_fault.rs` cập nhật cơ học theo D2-65 Q6, **assertion giữ nguyên**
+(§15.7).
+
+`render()` của `Vm`: `Vm{vspace=<id>, va=<va>, access=<Read|Write|Execute>,
+reason=<NotMapped|Permission|Wx>}`. **Không** phải tên/trường ABI.
+
+### 15.2 `vm_touch(vspace, va, access)` — một cửa duy nhất
+
+`Machine::vm_touch` là **model API** của phép "TCB đang chạy chạm bộ nhớ":
+
+1. Lấy TCB **đang chạy** trên hart hiện tại (`Machine::current(current_hart)`); hart rảnh ⇒
+   `IllegalOperation` (không fault bừa, không đoán TCB).
+2. `vspace_walk(vs, va)` (**đúng oracle** của KT-37/38 — không có bảng thứ hai):
+   - `Ok(mapping)` ⇒ tính `reason` theo bảng §15.3; `None` (quyền đủ) ⇒ `Ok(())`, trạng thái TCB
+     **không đổi**;
+   - `Err(NotMapped)` ⇒ `reason = NotMapped`;
+   - lỗi khác (VA ngoài 39 bit ⇒ `RangeError`, VSpace chết ⇒ `InvalidCapability`, …) ⇒ trả
+     **nguyên** lỗi, **không** đổi trạng thái.
+3. Có `reason` ⇒ giao **đúng** `FaultKind::Vm` qua [`Machine::inject_fault`] (đường fault K1c):
+   TCB `BlockedOnSend{ep: fault_ep, call: true, fault: Some(Vm ..)}`; procsrv `Recv` (có Reply
+   cap) ⇒ TCB `BlockedOnReply`; `Reply`/`tcb_resume_with_regs` ⇒ `Ready` — **không** phát lại
+   IPC cũ.
+4. **Không có `fault_ep`** ⇒ `InvalidArgument`, TCB **không** đổi trạng thái — giữ nguyên hành
+   vi K1c, chốt ở **D2-56(c)** (không kill, không "im lặng bỏ qua").
+5. **Không cấp trang**: test chạm lại đúng VA sau khi procsrv nhận + `Reply` vẫn
+   `NotMapped`; số `Frame`/`PageTable` không đổi (không pager ở K2).
+6. **`va` không cần căn trang**: touch là một **byte** trong trang; `vspace_walk` phủ `va` theo
+   mapping (kể cả mapping 2 MiB/1 GiB), payload fault giữ **đúng** `va` yêu cầu — **không** làm
+   tròn về gốc trang và **không** trả `Alignment` (chỉ map/unmap mới đòi căn — KT-37).
+7. `vs` là tham số **tường minh** vì TCB của K2 **chưa có** trường `vspace` (K3 mới có); mô hình
+   không kiểm `vs == vspace của TCB`.
+
+### 15.3 Bảng `reason` — `Permission` và `Wx` (luật W^X ở **thời điểm dùng**)
+
+KT-39/D2-67 đã cấm **map** W+X (một Frame không thể vừa `mapped_w` vừa `mapped_x`). Vì vậy
+`Wx` **không** thể phát hiện lúc map — nó là chặn ở **thời điểm dùng**: exec một trang `WRITE`,
+hoặc ghi một trang `EXEC`, tức truy cập sẽ tạo thế W+X. `Wx` **thắng** `Permission` khi cả hai
+cùng đúng (lý do mạnh hơn, và là lý do **duy nhất** khiến `Wx` quan sát được sau khi map).
+
+| Mapping (rights / attrs) | `Read` | `Write` | `Execute` |
+|---|---|---|---|
+| không có lá | `NotMapped` | `NotMapped` | `NotMapped` |
+| `READ` / `WB` | OK | `Permission` | `Permission` |
+| `WRITE` / `WB` | `Permission` | OK | `Wx` |
+| `READ｜WRITE` / `WB` | OK | OK | `Wx` |
+| `READ` / `WB｜EXEC` | OK | `Wx` | OK |
+| `WRITE｜EXEC` (không tồn tại: KT-39 chặn map) | — | — | — |
+
+Quy tắc gọn (một hàm thuần `Machine::vm_touch_reason`, property và `vm_touch` dùng **chung**):
+
+- đọc cần `READ`; ghi cần `WRITE`; exec cần `EXEC && !NX`;
+- exec trang `WRITE` ⇒ `Wx`; ghi trang `EXEC` ⇒ `Wx`;
+- còn thiếu quyền ⇒ `Permission`.
+
+`NX` **không** tự tạo `Wx`: exec trang `NX` không có `WRITE` ⇒ `Permission`.
+
+### 15.4 Bất biến "fault không mất" — `check_fault`
+
+`Machine::check_fault` chạy sau **mỗi** public op (cùng chỗ `check_ipc`/`check_reply_links`;
+cửa sổ nhanh `fault_events == 0` giữ chi phí per-op của test cũ):
+
+1. mỗi message **fault** trong hàng gửi của Endpoint phải khớp **đúng**
+   `BlockedOnSend{ep, call, fault: Some(kind)}` của sender, với `call = false` cho `Exit` và
+   `call = true` cho fault khác (D2-25);
+2. mỗi TCB `BlockedOnSend` mang fault phải có **đúng một** message fault khớp `(sender, kind)`
+   trong hàng của `ep` — chốt cho C2/D2-63 trên đường fault: `Reply` đang giữ `caller` không
+   được làm fault thứ hai biến mất.
+
+Ca **dương tính** (unit test `kobj::tests::check_fault_bat_fault_bi_mat_va_bi_nhan_ban`): gieo
+(1) TCB rời `BlockedOnSend` mà message còn trong hàng, (2) fault **nhân bản** — cả hai bị bắt;
+khôi phục thì `check_fault` sạch. Checker không rỗng.
+
+### 15.5 C2 — fault không mất khi TCB đang chờ
+
+`fault_khong_mat_khi_tcb_dang_cho_c2`: t0/t2 cùng fault (hai message trong hàng); procsrv `Recv`
+t0 ⇒ Reply đang giữ `caller = t0`; `Recv` lần hai bị **`Busy`** (D2-63) nhưng message của t2
+**còn nguyên** trong hàng và `check_fault` vẫn sạch; `Reply` cho t0 xong mới `Recv` được fault
+của t2, payload nguyên vẹn, rồi resume cả hai. Không có fault nào bị mất/ghi đè.
+
+### 15.6 Test, Miri, cổng
+
+`tests/kt41_vmfault.rs` (**9 test**):
+
+| Test | Kiểm |
+|---|---|
+| `notmapped_toi_dung_fault_ep_khong_cap_trang` | walk miss ⇒ `NotMapped` tới **đúng** `fault_ep`; `Frame`/`PageTable` không tăng; chạm lại sau resume vẫn `NotMapped` (không pager); **`va=0x7001` lệch căn**: payload giữ đúng `va`, không `Alignment` (mutation "làm tròn va" bị bắt — [`JOURNAL/kt41-red-va-khong-can.log`](../../agent/JOURNAL/kt41-red-va-khong-can.log)) |
+| `permission_ghi_trang_read_va_doc_trang_write_only` | ghi trang READ / đọc trang WRITE-only / exec trang không X ⇒ `Permission`; quyền đủ ⇒ `Ok` |
+| `wx_exec_trang_write_va_ghi_trang_exec` | exec trang W ⇒ `Wx`; ghi trang X ⇒ `Wx`; **W+NX exec ⇒ `Wx`** (thắng Permission/NX); exec trang X và ghi trang W hợp lệ; `check_wx` sạch |
+| `khong_fault_ep_giu_hanh_vi_k1c` | không `fault_ep` ⇒ `InvalidArgument`, TCB **không** đổi trạng thái, không message, fault cũ còn nguyên (D2-56(c)) |
+| `resume_sau_fault_tra_lai_dung_trang_thai` | resume một cửa ghi thanh ghi **trước** `Ready`; chạy lại chạm được; fault lần hai payload mới |
+| `fault_khong_mat_khi_tcb_dang_cho_c2` | C2/D2-63: `Recv` lần hai `Busy`, fault thứ hai không mất, nhận lại sau `Reply` |
+| `fault_exit_cu_khong_hoi_quy` | `Exit` vẫn Send không Reply + `Inactive` sau `Recv`; `inject_fault(Exit)` vẫn `InvalidArgument` |
+| `vm_touch_loi_bien` | không TCB đang chạy ⇒ `IllegalOperation`; VA ≥ 2^39 ⇒ `RangeError`; VSpace không có thật ⇒ `InvalidCapability` |
+| `property_10k_fault_resume` | 10.000 vòng tất định (Miri: 40) trên 6 mapping + 2 khoảng trống: kỳ vọng `reason` khớp **từng ca**, phủ đủ 3 reason, fault/resume, `check_fault`/`check_frames`/`check_pages`/`check_wx`/`check_vspace`/`check_asid`/`check_ipc`/`check_reply_links`/`check_caps`/`check_mailboxes`/`check_bytes` sau **mỗi** vòng, 0 rò Frame/PageTable, không fault tồn đọng |
+
+Unit test trong `src/kobj.rs` (1 ca dương tính `check_fault`). Miri: `kt41_vmfault` nằm trong
+danh sách `v2 miri`/`nightly --only-miri`; property tự giảm còn **40 vòng** bằng `cfg(miri)`
+(property nặng 11 checker/vòng; stable/gate vẫn 10.000) — không `#[ignore]`, không nới ngưỡng
+cổng.
+
+### 15.7 Cập nhật test cũ (D2-65 Q6 — cơ học, không nới)
+
+`FaultKind::Vm` đổi từ `{fault_addr, access}` (K1c) sang `{vspace, va, access, reason}`
+(D2-65 Q6) nên **7 điểm dựng** + **1 assertion `render`** trong `tests/kt26_fault.rs` được cập
+nhật cơ học: `fault_addr` → `va`, thêm `vspace: 1`, `reason: VmFaultReason::…`; assertion
+`render` đổi từ `fault_addr=` sang `va=` (thêm `reason=`). **Không** assertion nào bị nới/bỏ;
+payload fault trong các ca K1c là **opaque** (không test nào đọc `vspace`/`reason`).
+
+### 15.8 Không làm ở KT-41 (ranh giới)
+
+- **Không** pager/memory server/COW/cấp trang/sửa PTE: K2 **không** có pager (Q6, Q7); K3 mới
+  làm memory server.
+- **Không** đổi `spec/`: `FaultKind::Vm` **không** vào `spec/abi.toml` (D2-56(a) hoãn K3);
+  `abi.toml` không có kind/mã lỗi mới; `git diff spec/` rỗng.
+- **Không** `.scn` fault, **không** gộp `check_vm`, **không** shared read-only (KT-42); **không**
+  100k×4/mutation/soak của K2 (KT-43).
+- **Không** timeout fault/MCS, **không** trap/MMU thật — K3.
+- Không `unsafe`/dependency mới; mô hình một luồng tất định (D2-49(f)).

@@ -378,7 +378,7 @@ fn notification_message(v: NotificationValue) -> Message {
 // (`vifast_sim::kobj::TcbState`, `::FaultKind`, `::SleepReason`) không đổi.
 pub use crate::tcb::{
     BlockedOnKind, FaultAccess, FaultKind, SleepReason, SuspendMode, TcbSnapshot, TcbState,
-    ALLOWED, TCB_STATE_COUNT,
+    VmFaultReason, ALLOWED, TCB_STATE_COUNT,
 };
 // KT-20: ngân sách MCS (`SchedContext`) — model-only `[TK]`, không phải ABI (D2-49(b,e)).
 pub use crate::mcs::{ScBudget, ScInfo};
@@ -726,6 +726,10 @@ pub struct Machine {
     /// **KT-25** — số cap **unwrap** thành badge (cap trỏ chính Endpoint đang gọi + có badge;
     /// không chiếm receive window).
     cap_unwrapped: u64,
+    /// **KT-41** — số **sự kiện fault** đã đi vào đường fault (fault message tạo ra ở
+    /// `inject_fault`/`exit`), dùng làm cửa sổ nhanh cho [`Machine::check_fault`]: mô hình chưa
+    /// từng có fault ⇒ `Ok` ngay, giữ chi phí per-op của L1/test cũ. Không phải bộ đếm ABI.
+    fault_events: u64,
     /// Log finalise TCB (KT-18 DoD 9), ghi trước khi body bị destroy trong objmem.
     finalise_log: Vec<FinaliseEntry>,
     /// **KT-28** — bảng băm waiter WaitOnAddress (thiết kế §4.7 `:330-334`, QD §3.8):
@@ -1026,6 +1030,7 @@ impl Machine {
             cap_transfer_installed: 0,
             cap_transfer_failed: 0,
             cap_unwrapped: 0,
+            fault_events: 0,
             finalise_log: Vec::new(),
             address_waiters: std::array::from_fn(|_| Vec::new()),
             addr_words: Vec::new(),
@@ -2734,6 +2739,89 @@ impl Machine {
         self.tlb_shootdown_post(hart)?;
         self.tlb_shootdown_wait(hart)?;
         Ok(mapping)
+    }
+
+    // ------------------------------------------- VM fault (KT-41) `[TK]`
+    //
+    // **K2 không phải kernel thật, không có pager/memory server** (D2-65 Q6; COW/pager = K3):
+    // `vm_touch` là op **model** mô phỏng một truy cập bộ nhớ của TCB đang chạy. Nó **không**
+    // cấp trang, **không** sửa PTE — chỉ `vspace_walk` rồi, nếu miss/thiếu quyền, giao fault
+    // qua **đúng đường fault K1c** (`inject_fault`): TCB `BlockedOnSend{call:true,
+    // fault:Some(Vm{..})}` tới `fault_ep`. procsrv model chỉ nhận + ghi log; muốn chạy tiếp thì
+    // `Reply` (fault-resume) — trang **vẫn** chưa được cấp (test chạm lại vẫn fault).
+
+    /// **KT-41** — `Touch(vspace, va, access)` của mô hình VM (K2-PLAN §3 KT-41; D2-65 Q6):
+    /// TCB **đang chạy** trên hart hiện tại chạm `va` trong `vs`.
+    ///
+    /// - `vspace_walk` miss ⇒ `FaultKind::Vm { reason: NotMapped }`.
+    /// - Có lá nhưng thiếu quyền ⇒ `Permission` / `Wx` (xem [`Machine::vm_touch_reason`]).
+    /// - Fault giao qua [`Machine::inject_fault`] tới `fault_ep` của TCB: **không** có `fault_ep`
+    ///   ⇒ `InvalidArgument` (giữ nguyên K1c — D2-56(c)); TCB không `Ready`/`Running` ⇒
+    ///   `IllegalOperation`; lỗi walk khác `NotMapped` (VA ngoài dải, VSpace chết) trả nguyên.
+    /// - Không fault ⇒ `Ok(())`, trạng thái TCB **không đổi**.
+    ///
+    /// Model-only `[TK]`, **không** phải ABI: không sửa `spec/`; không cấp trang (không pager ở
+    /// K2). `vs` là tham số tường minh vì TCB của K2 **chưa có** trường `vspace` (K3 mới có).
+    pub fn vm_touch(&mut self, vs: ObjId, va: u64, access: FaultAccess) -> Result<(), KError> {
+        let tcb = self
+            .current(self.current_hart)
+            .ok_or(KError::IllegalOperation)?;
+        let reason = match self.vspace_walk(vs, va) {
+            Ok(m) => Self::vm_touch_reason(&m, access),
+            Err(KError::NotMapped) => Some(VmFaultReason::NotMapped),
+            Err(e) => return Err(e),
+        };
+        if let Some(reason) = reason {
+            self.inject_fault(
+                tcb,
+                FaultKind::Vm {
+                    vspace: vs,
+                    va,
+                    access,
+                    reason,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// **KT-41** — quyết định `reason` của một truy cập trên mapping **đã có** (hàm thuần, tách
+    /// để property/`vm_touch` dùng **cùng một** luật; `None` = truy cập hợp lệ).
+    ///
+    /// Thứ tự luật (ghi ở `k2-vm.md` §15):
+    /// 1. `Read` cần `READ`; `Write` cần `WRITE`; `Execute` cần `EXEC && !NX`.
+    /// 2. **W^X ở thời điểm dùng** (KT-39/D2-67 đã cấm *map* W+X): exec trang `WRITE`, hoặc ghi
+    ///    trang `EXEC` ⇒ `Wx` — kể cả khi trang cũng thiếu bit tương ứng (W^X là lý do mạnh
+    ///    hơn `Permission`, và là lý do **duy nhất** khiến `Wx` quan sát được sau khi map).
+    /// 3. Còn lại thiếu quyền ⇒ `Permission`.
+    pub fn vm_touch_reason(
+        m: &crate::pagetable::Mapping,
+        access: FaultAccess,
+    ) -> Option<VmFaultReason> {
+        let x = m.attrs.contains(MapAttrs::EXEC) && !m.attrs.contains(MapAttrs::NX);
+        match access {
+            FaultAccess::Read => {
+                (!m.rights.contains(MapRights::READ)).then_some(VmFaultReason::Permission)
+            }
+            FaultAccess::Write => {
+                if m.rights.contains(MapRights::WRITE) {
+                    None
+                } else if x {
+                    Some(VmFaultReason::Wx)
+                } else {
+                    Some(VmFaultReason::Permission)
+                }
+            }
+            FaultAccess::Execute => {
+                if x {
+                    None
+                } else if m.rights.contains(MapRights::WRITE) {
+                    Some(VmFaultReason::Wx)
+                } else {
+                    Some(VmFaultReason::Permission)
+                }
+            }
+        }
     }
 
     // ------------------------------------------- TLB + shootdown (KT-40) `[TK]`
@@ -6085,6 +6173,12 @@ impl Machine {
         if let Err(e) = self.check_tlb() {
             debug_assert!(false, "bất biến TLB vỡ sau public op: {e}");
         }
+        // **KT-41** — fault không mất/không nhân bản (Exit/Vm/UnknownSyscall/UserException đi
+        // **cùng một** đường fault); cửa sổ nhanh `fault_events == 0` giữ chi phí per-op của mọi
+        // test trước KT-41.
+        if let Err(e) = self.check_fault() {
+            debug_assert!(false, "bất biến fault vỡ sau public op: {e}");
+        }
         // **KT-38** — VSpace + `active_on`/hart online và ASID/free-list/thế hệ cũng chạy sau
         // **mỗi** public op ("check_vspace/check_asid sớm"); hai cửa sổ nhanh giữ chi phí per-op
         // của mọi test K1a..K1c như trước KT-38.
@@ -6440,6 +6534,109 @@ impl Machine {
             if caller != Some(tcb) {
                 return Err(format!(
                     "TCB {tcb}: BlockedOnReply{{reply {reply}}} nhưng Reply.caller = {caller:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------- KT-41: bất biến "fault không mất"
+
+    /// **KT-41** — bất biến **fault không mất/không nhân bản** (chạy sau **mỗi** public op qua
+    /// [`Machine::sched_after_op`], cùng chỗ với `check_ipc`/`check_reply_links`):
+    ///
+    /// 1. Mỗi message **fault** trong hàng gửi của Endpoint phải khớp **đúng** trạng thái người
+    ///    gửi: `BlockedOnSend{ep, call, fault: Some(kind)}` cùng `ep`/`call`/`kind`; `Exit` là
+    ///    Send không Reply (`call = false`), fault khác là Call (`call = true`, D2-25). Lệch ⇒
+    ///    fault đã bị mất/ghi đè giữa hàng và trạng thái.
+    /// 2. Mỗi TCB `BlockedOnSend` mang fault phải có **đúng một** message fault khớp
+    ///    `(sender, kind)` trong hàng của `ep` — đây là chốt của C2/D2-63 cho đường fault: Reply
+    ///    đang giữ caller không được làm fault thứ hai biến mất.
+    ///
+    /// Cửa sổ nhanh `fault_events == 0` giữ chi phí per-op của mọi test K1a..K1c/KT-36..40 như
+    /// trước KT-41. `Vm` là **model-only** nên bất biến kiểm cả `Exit`/`UnknownSyscall`/… (một
+    /// cửa fault duy nhất — không có đường riêng cho `Vm`).
+    pub fn check_fault(&self) -> Result<(), String> {
+        if self.fault_events == 0 {
+            return Ok(());
+        }
+        // 1. Hàng gửi của Endpoint ⇔ trạng thái sender.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Endpoint {
+                continue;
+            }
+            let ep = (i + 1) as ObjId;
+            let hang: Vec<(ObjId, bool, Option<FaultKind>)> = self
+                .body(ep, |k| match k {
+                    Kind::Endpoint(e) => {
+                        Ok(e.send.iter().map(|q| (q.sender, q.call, q.fault)).collect())
+                    }
+                    _ => Err(KError::WrongObjectType),
+                })
+                .map_err(|e| format!("Endpoint {ep}: không đọc được hàng gửi: {e:?}"))?;
+            for (sender, call, fault) in hang {
+                let Some(kind) = fault else { continue };
+                let dung_call = !kind.is_exit();
+                if call != dung_call {
+                    return Err(format!(
+                        "Endpoint {ep}: fault {kind:?} của TCB {sender} có call={call} (luật D2-25: Exit=false, fault khác=true)"
+                    ));
+                }
+                let st = self
+                    .tcb_state(sender)
+                    .map_err(|e| format!("Endpoint {ep}: sender {sender} không đọc được: {e:?}"))?;
+                match st {
+                    TcbState::BlockedOnSend {
+                        ep: ep2,
+                        call: call2,
+                        fault: Some(kind2),
+                    } if ep2 == ep && call2 == call && kind2 == kind => {}
+                    other => {
+                        return Err(format!(
+                            "Endpoint {ep}: fault {kind:?} của TCB {sender} nằm trong hàng nhưng trạng thái là {other:?} (fault có thể bị mất/ghi đè)"
+                        ));
+                    }
+                }
+            }
+        }
+        // 2. TCB `BlockedOnSend` mang fault ⇔ **đúng một** message fault trong hàng.
+        for (i, meta) in self.objects.iter().enumerate() {
+            if !meta.alive || meta.ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i + 1) as ObjId;
+            let st = self
+                .tcb_state(tcb)
+                .map_err(|e| format!("TCB {tcb}: không đọc được trạng thái: {e:?}"))?;
+            let TcbState::BlockedOnSend {
+                ep,
+                call,
+                fault: Some(kind),
+            } = st
+            else {
+                continue;
+            };
+            if !self.object_alive(ep) {
+                return Err(format!(
+                    "TCB {tcb}: BlockedOnSend mang fault {kind:?} trên Endpoint {ep} đã chết"
+                ));
+            }
+            let mut n = 0usize;
+            self.body(ep, |k| match k {
+                Kind::Endpoint(e) => {
+                    n = e
+                        .send
+                        .iter()
+                        .filter(|q| q.sender == tcb && q.call == call && q.fault == Some(kind))
+                        .count();
+                    Ok(())
+                }
+                _ => Err(KError::WrongObjectType),
+            })
+            .map_err(|e| format!("TCB {tcb}: Endpoint {ep} không đọc được: {e:?}"))?;
+            if n != 1 {
+                return Err(format!(
+                    "TCB {tcb}: BlockedOnSend mang fault {kind:?} nhưng có {n} message fault trong hàng Endpoint {ep} (phải đúng 1 — fault mất/nhân bản)"
                 ));
             }
         }
@@ -9463,6 +9660,10 @@ impl Machine {
             })?,
             None => false,
         };
+        // **KT-41** — cửa sổ nhanh cho `check_fault`: chỉ khi đã từng có fault mới quét.
+        if fault_ep_obj.is_some() {
+            self.fault_events += 1;
+        }
         if let Some(ep_obj) = fault_ep_obj {
             if !nguoi_nhan {
                 let con_cho = self.body(ep_obj, |k| match k {
@@ -9591,6 +9792,9 @@ impl Machine {
         if waiter.is_none() && self.endpoint_full(ep_obj)? {
             return Err(KError::Busy);
         }
+        // **KT-41** — cửa sổ nhanh cho `check_fault` (đếm **mọi** fault đi vào đường fault,
+        // kể cả `Vm`); đếm trước khi giao để `sched_after_op` bên dưới kiểm được ngay.
+        self.fault_events += 1;
         match waiter {
             Some((w, _)) => {
                 // Giao thẳng: đưa TCB vào trạng thái chặn **trước** (mọi chuyển trạng thái bên
@@ -11258,6 +11462,76 @@ mod tests {
         }
         let e = m.wx_recount().expect_err("phải bắt W∧X");
         assert!(e.contains("W^X") || e.contains("vừa"), "{e}");
+    }
+
+    // ------------------------------------------------ KT-41: check_fault phải **bắt** lỗi
+
+    /// `check_fault` không là checker rỗng: (1) TCB rời `BlockedOnSend` mà message fault còn
+    /// trong hàng, (2) fault bị **nhân bản** trong hàng — cả hai đều bị bắt (ca dương tính của
+    /// bất biến "fault không mất" — K2-PLAN KT-41).
+    #[test]
+    fn check_fault_bat_fault_bi_mat_va_bi_nhan_ban() {
+        let mut m = Machine::new();
+        let c = m.add_cnode(64);
+        let ep = m.add_kernel_object(ObjType::Endpoint);
+        let ep_cap = m.root_cap(ep);
+        m.put_cap(c, 0, ep_cap).expect("cap Endpoint");
+        let t = m.add_kernel_object(ObjType::Tcb);
+        let tcap = m.root_cap(t);
+        m.put_cap(c, 1, tcap).expect("cap TCB");
+        m.tcb_set_fault_ep(SlotRef::new(c, 1), SlotRef::new(c, 0))
+            .expect("fault_ep");
+        m.transition_tcb(t, TcbState::Ready).expect("Ready");
+        let kind = FaultKind::Vm {
+            vspace: 0,
+            va: 0x3000,
+            access: FaultAccess::Read,
+            reason: VmFaultReason::NotMapped,
+        };
+        m.inject_fault(t, kind).expect("inject Vm");
+        m.check_fault().expect("fault sạch ngay sau inject");
+        assert_eq!(m.endpoint_send_len(ep), Ok(1));
+
+        // (1) Trạng thái không còn khớp hàng (fault "mất" khỏi TCB).
+        m.transition_tcb(t, TcbState::Ready).expect("rời hàng trần");
+        let e = m
+            .check_fault()
+            .expect_err("phải bắt fault không khớp trạng thái");
+        assert!(e.contains("trạng thái") || e.contains("hàng"), "{e}");
+        m.transition_tcb(
+            t,
+            TcbState::BlockedOnSend {
+                ep,
+                call: true,
+                fault: Some(kind),
+            },
+        )
+        .expect("khôi phục trạng thái");
+        m.check_fault().expect("khôi phục thì sạch");
+
+        // (2) Fault **nhân bản** trong hàng (đúng một message cho mỗi TCB bị fault).
+        m.endpoint_enqueue(
+            ep,
+            QueuedMessage {
+                msg: None,
+                sender: t,
+                call: true,
+                fault: Some(kind),
+                blocking: true,
+                snaps: Vec::new(),
+            },
+        )
+        .expect("chèn fault trùng");
+        let e = m.check_fault().expect_err("phải bắt fault nhân bản");
+        assert!(e.contains("đúng 1"), "{e}");
+        m.body_mut(ep, |k| match k {
+            Kind::Endpoint(x) => {
+                while x.send.pop_front().is_some() {}
+                Ok(())
+            }
+            _ => Err(KError::WrongObjectType),
+        })
+        .expect("xoá hàng");
     }
 
     // ------------------------------------------------ KT-40: check_tlb phải **bắt** lỗi

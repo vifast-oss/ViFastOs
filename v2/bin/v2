@@ -489,6 +489,10 @@ do_nightly_only_miri() {
     # **KT-40** (K2-PLAN §3 KT-40): thêm `kt40_tlb` (TLB 16 entry/hart + shootdown/ack + deadlock;
     # property tự giảm còn 2 hart × 150 vòng và ca cạn 256 ASID tự bỏ bằng `cfg(miri)`).
     run_miri_test "vifast-sim kt40_tlb" -p vifast-sim --test kt40_tlb || return 1
+    # **KT-41** (K2-PLAN §3 KT-41; D2-65 Q6): thêm `kt41_vmfault` (FaultKind::Vm model-only, 3
+    # reason NotMapped/Permission/Wx, fault_ep/K1c, resume, C2; property tự giảm còn 150 vòng
+    # bằng `cfg(miri)`).
+    run_miri_test "vifast-sim kt41_vmfault" -p vifast-sim --test kt41_vmfault || return 1
     # **KT-30** (K1C-PLAN §5 KT-30 DoD 8): thêm `-p vifast-sync` (MCS lock + Mailbox MPSC; test
     # `kt30_stress` 4 luồng tự gạt bằng `#![cfg(not(miri))]` nên Miri chỉ chạy phần single-thread).
     run_miri_test "vifast-sync (lib + kt30_sync)" -p vifast-sync || return 1
