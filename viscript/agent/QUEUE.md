@@ -161,7 +161,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **DONE** | ≥13 ca tổng; `gate` xanh |
 | ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **DONE** | 6 snapshot; stdout sạch; thoát khi EOF |
 | ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **DONE** | 6 snapshot + 6 unit vị trí |
-| ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **READY** | ≥13 frame; prefix/hover/null |
+| ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **DONE** | ≥13 frame; prefix/hover/null |
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **READY** | 6 ca + e2e tất định; không mạng |
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **READY** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — quyền: `cap[Dir]`/`cap[Net]` cưỡng chế ở host + `--cap-mock` | ST-71 | 3 h | **READY** | ≥8 ca cho phép/từ chối; hai đường cùng byte |
@@ -1066,3 +1066,14 @@ APPROVED 2026-11-14 Agent 0
 > `needless_lifetimes`) ⇒ sửa **mã**, không nới lint. Nợ: chưa module-aware (`Use`/`std.*` có thể khác `vis check`), lower/tyck
 > vẫn chạy khi lex/parse lỗi (có thể thêm nhiễu), chỉ full sync, chưa completion/hover.
 > **ST-69 mở** (VS2 #5c — completion/hover; đích **≥13 phản hồi**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-69 DONE — VS2 #5 (LSP) ĐỦ TIÊU CHÍ.** Commit `40f32a40` (**Agent 2 tự commit, đã push**). **Tổng 22 phản hồi** LSP
+> (8 khung + 7 diagnostics + 7 completion/hover) ≥ yêu cầu 10. Completion: item cấp tệp (fn/record/enum/alias/const/trait/
+> extern) → biến & tham số (**kind 6**, đọc **HIR** vì `Symbols` không mang kiểu — phát hiện đúng) → builtin (11) → từ khoá
+> (40); khử trùng, sắp byte, lọc tiền tố, cap 200. Hover: markdown chữ ký/biến/builtin/từ khoá hoặc `null`, `range` **UTF-16**.
+> Capabilities **không đổi** (snapshot ST-67 vẫn xanh). Tách `vi_tri.rs`/`chan_doan.rs`/`goi_y.rs` ⇒ mọi tệp lsp **≤300** dòng.
+> Đo: **841 test** · sem **441/21** · parity **395/395** · differential **100k/0 lệch** (214,1 s). Nợ: **chưa module-aware**,
+> completion chưa theo ngữ cảnh sau `.`/kiểu, hover chưa field, full sync, biến gộp mọi phạm vi.
+> **ST-70 mở** (VS2 #6a — `vis pkg`; **VD-101**).
