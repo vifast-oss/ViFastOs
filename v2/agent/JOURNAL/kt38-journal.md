@@ -125,8 +125,10 @@ ngoài workspace, không `#[ignore]`/`#[should_panic]`, **không sửa test cũ*
 
 ## 6. Commit + push
 
-Commit chính `[KT-38]` (hash ở commit STATE/JOURNAL tiếp theo, như KT-37): chỉ stage **12 tệp
-`v2/`** — `src/vspace.rs`, `src/kobj.rs`, `src/lib.rs`, `tests/kt38_vspace.rs`, `docs/k2-vm.md`,
+- **Commit `74145d0`** — `[KT-38] VSpace + ASID 8 bit/256 + generation + active_on + lệnh flush
+  (model); gate 526 test, Miri 7+5+2+2`; **đã push** `origin/main` (`9483373..74145d0`; trước push
+  `git rev-list --count HEAD..origin/main` = **0**, sau push = **0**).
+- Chỉ stage **12 tệp `v2/`** — `src/vspace.rs`, `src/kobj.rs`, `src/lib.rs`, `tests/kt38_vspace.rs`, `docs/k2-vm.md`,
 `agent/STATE.md`, `agent/JOURNAL/kt38-{journal.md,baseline-gate-fast.log,check.log,gate-fast.log,
 miri.log,red-compile.log}`; **không** `viscript/`, **không** `git add -A`. Trước push:
 `git rev-list --count HEAD..origin/main`; nếu 0 push thẳng, nếu có commit mới thì `git pull

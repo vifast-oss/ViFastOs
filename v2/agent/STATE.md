@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `cc7b096` (tab ViScript; không đụng `v2/`) — commit KT-38 ghi ở mục KT-38 bên dưới
+HEAD          : `74145d0` ([KT-38], xem mục KT-38 bên dưới; các commit ViScript `f158085`/`cc7b096`/`b254f03` không đụng `v2/`)
 BUILD_ID      : —
-Task          : KT-37 DONE (4e16773); **KT-38 xong mã — REVIEW độc lập trước commit**
+Task          : KT-37 DONE (4e16773); **KT-38 xong mã, reviewer APPROVE, commit `74145d0` đã push — chờ Agent 0 lật sổ**
 Bước          : 8/8 (baseline → **đỏ biên dịch** → code+test → check/gate → Miri → review → commit/push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 526 test/68 suite** (baseline 512/67 + 7 `kt38_vspace` + 3 unit `vspace` + 4 unit `kobj`), L1 1.000 seed **1261 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt38-gate-fast.log`); `check` PASS (`JOURNAL/kt38-check.log`). Baseline KT-38: PASS 512/67, L1 1463 ms (`JOURNAL/kt38-baseline-gate-fast.log`). Reviewer chạy trước khi thêm unit test cạn ASID: 525/68 (chênh đúng +1 unit test).
 Miri          : KT-38 — **PASS** (exit 0 mọi mục, `JOURNAL/kt38-miri.log`): `--test kt38_vspace` **7/7** (61,29 s) + `--lib` lọc `vspace` **5/5** (3 unit `vspace` + 2 `check_vspace`) + `--lib 'kobj::tests::check_vspace'` **2/2** (1,61 s) + `--lib 'kobj::tests::check_asid'` **2/2** (3,27 s). Dưới `cfg(miri)`: test 257 → **8 ASID**, property 10.000 → **1×2** (D2-47(a)); warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17); `v2/sim/**` 0 unsafe. KT-37 (lịch sử): 10/10 + 4/4 + 3/3; KT-36: 12/12 + 5/5.
-Việc dở       : **KT-38 chờ verdict `reviewer-kt38` rồi commit `[KT-38]` + push** (chỉ stage `v2/`; `viscript/` không chạm). Quyết định chính: VSpace tạo bằng **model API `vspace_create`** (Retype(VSpace) **vẫn** `NotSupported` — spec reserved + không sửa test cũ; lead đã xác nhận hướng này); ASID **về hưu trong thế hệ**; teardown phát **một** lệnh flush `Asid` tới `active_on`; cạn ASID phát **một** lệnh `Generation` cho mọi hart online. KT-37: commit `4e16773` đã push, **chờ Agent 0 lật sổ**; KT-36 `9c54bcf` chờ lật; KT-35 DONE. Không tự lật QUEUE.
+Việc dở       : **KT-38: `reviewer-kt38` APPROVE; commit `74145d0` đã push `origin/main`** (12 tệp `v2/`; `viscript/` không chạm) — **chờ Agent 0 lật QUEUE**, không tự lật (D2-37). Quyết định chính: VSpace tạo bằng **model API `vspace_create`** (Retype(VSpace) **vẫn** `NotSupported` — spec reserved + không sửa test cũ; lead đã xác nhận hướng này); ASID **về hưu trong thế hệ**; teardown phát **một** lệnh flush `Asid` tới `active_on`; cạn ASID phát **một** lệnh `Generation` cho mọi hart online. KT-37: commit `4e16773` đã push, **chờ Agent 0 lật sổ**; KT-36 `9c54bcf` chờ lật; KT-35 DONE. Không tự lật QUEUE.
 ```
 
 ## KT-38 — K2: `VSpace` + ASID (8 bit/256/thế hệ) + `generation` + `active_on: HartMask`
