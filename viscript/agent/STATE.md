@@ -6,17 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-75 — VS2 #8: bộ hợp chuẩn host ≥50 ca chạy THẬT trên macOS** (54 ca TSV,
-                harness Rust so byte hai đường, script `bin/vis-host-suite`, cập nhật
-                `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first suite/harness/script chưa có (đỏ) → 54 ca + 3 mock + harness + script
-                → 54/54, 120 lần chạy 0 lệch → 874 xanh → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-76 — báo cáo R11** (`reports/R11-viscript.{md,json,json.license}`; phủ **86 hàng
+                QUEUE**; số liệu **chạy lại**; §19 VS2 8 hạng mục; §5 nợ đầy đủ; VD-100..107) — xong,
+                `report-check --all` PASS + cổng PASS; **chưa commit**.
+Bước          : 4/4 (đo lại toàn bộ số liệu → viết JSON + MD → `report-check --all` PASS → cổng PASS →
+                STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T11:16:06Z**; **874** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (196,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
-                allowlist **6**
-Việc dở       : commit `[ST-75]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T11:32:28Z**; **874** test / sem **447/22 nhóm** /
+                `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** / differential
+                **100.000 chương trình 0 lệch** (352,5 s) / fuzz parser 60 s **4.776.316 ca, 0 vi phạm** /
+                **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-76]` + push (đã được uỷ quyền)
+
+## ST-76 — báo cáo R11, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Phạm vi** | `reports/R11-viscript.md` (**195** dòng: tóm tắt 5 dòng, bảng ST-63..ST-75, số liệu chạy lại, §19 VS2, §5 nợ, VD-100..107, ghi chú) + `R11-viscript.json` (**86 task**, đúng **11 khoá**, `round=11`, `head=3b96011e`) + `.json.license`. **Không** sửa R1..R10. |
+| 1 | **Số liệu chạy lại** | **874 test** (21+96+18+154+26+62+9+**488**); sem **447/22** (397 `.vis` + 50 `.vish`, 83 `.err`); `vis test` **447 ok**, `--vm` **447 ok + 7 SKIP**; parity **398/398** + 49 lỗi biên dịch; `diag_cmp` **447 = 364/49/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=352.5 toc_do=284/s seed=3523158054`**; fuzz parser 60 s **4.776.316 ca, 108.586.410 token, 79.605 ca/s, 0 vi phạm**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; async 10k **328/182 ms**; host suite **54/120/0 lệch**; target **18/18 check**; `--sandbox-check` macOS exit 3. |
+| 2 | **§19 VS2** | 8 hạng mục: async **CÓ MẶT MỘT PHẦN** (chưa song song); kênh **CÓ MẶT MỘT PHẦN** (chưa `select`); net/HTTP **CÓ MẶT MỘT PHẦN** (loopback, chưa TLS); quyền **CÓ MẶT MỘT PHẦN** + Landlock **CHỈ PROBE**; LSP **CÓ MẶT MỘT PHẦN** (chưa module-aware); gói **CÓ MẶT MỘT PHẦN** (local, chưa ký số); windows/wasm **CHỈ CHECK**; hợp chuẩn **54 ca macOS**, 3 nền **chưa đo**. |
+| 3 | **§5 nợ** | Gộp **20** mục R10 + **17** mục vòng 11 (net, LSP, pkg, quyền/Landlock, đa nền, host suite) = **37** mục, không bỏ mục; nêu điều kiện Landlock thật (VD-107 (4)). |
+| 4 | **Máy kiểm** | `python3 test/report/check_report.py --all` → **PASS (11 báo cáo, 86 hàng QUEUE phủ đủ)**; cổng `gate --fast` **PASS** (không retry). |
 
 ## ST-75 — VS2 #8: bộ hợp chuẩn host, 2026-11-14
 
