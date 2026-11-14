@@ -1,0 +1,19 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [optimized + debuginfo] target(s) in 4.96s
+     Running tests/l1_k1c.rs (v2/target/debug/deps/l1_k1c-2a052847a5ea06fa)
+
+running 1 test
+# L1 OK: smp 1, 10000 seed × 64 op (10000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 12; ipc_sent 121325, ipc_delivered 22736, ipc_dropped 78236; vm map 25863, walk 7280, unmap 13430, fault 23625, shootdown 13430)
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 2, 10000 seed × 64 op (10000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 12; ipc_sent 116437, ipc_delivered 21481, ipc_dropped 73753; vm map 25881, walk 7037, unmap 13547, fault 23245, shootdown 13547)
+# L1 OK: smp 4, 10000 seed × 64 op (10000 seed đầu chạy 2 lần; ipc_min 1, ipc_median 11; ipc_sent 113486, ipc_delivered 21245, ipc_dropped 70340; vm map 25843, walk 7209, unmap 13597, fault 22712, shootdown 13597)
+# L1 OK: smp 8, 10000 seed × 64 op (10000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 11; ipc_sent 112542, ipc_delivered 21015, ipc_dropped 69307; vm map 25896, walk 7005, unmap 13650, fault 22571, shootdown 13650)
+# L1 OK: 40000 lượt (smp [1, 2, 4, 8], seeds 10000)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 166.45s
+
+real 172.62
+user 113.27
+sys 2.66
+EXIT=0

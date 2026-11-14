@@ -1,0 +1,353 @@
+
+==============================================================================
+# KT-43 — mutation tay 12 ca §7.2 cũ (K1C) + 5 ca VM K2 (gồm AP→BSP); log tự sinh
+# HEAD=016161b3 time=2026-11-14 19:45:56
+
+==============================================================================
+## M1 — ipc::transfer bỏ copy 1 trong 64 MR
+File : v2/sim/vifast-sim/src/ipc.rs
+Test : vifast-sim::kt24_ipc::message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer
+hash HEAD:v2/sim/vifast-sim/src/ipc.rs = 1d7d34b3d3d70982bd84bd03c01dc5b69f0f32836d584b2b0f840615979ed0bf
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt24_ipc -- --exact message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer
+    exit=0 wall=6.99s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt24_ipc -- --exact message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer
+    exit=101 wall=5.57s
+    test message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer ... FAILED
+    thread 'message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer' (46471693) panicked at sim/vifast-sim/tests/kt24_ipc.rs:339:9:
+    assertion `left == right` failed: MR 32 ở IPC buffer
+    left: 0
+    right: 4026531872
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M2 — Bỏ kiểm RIGHT_GRANT khi chuyển cap
+File : v2/sim/vifast-sim/src/ipc.rs
+Test : vifast-sim::kt25_ipc2::thieu_grant_that_bai_mem_message_van_giao
+hash HEAD:v2/sim/vifast-sim/src/ipc.rs = 1d7d34b3d3d70982bd84bd03c01dc5b69f0f32836d584b2b0f840615979ed0bf
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact thieu_grant_that_bai_mem_message_van_giao
+    exit=0 wall=5.69s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact thieu_grant_that_bai_mem_message_van_giao
+    exit=101 wall=5.47s
+    test thieu_grant_that_bai_mem_message_van_giao ... FAILED
+    thread 'thieu_grant_that_bai_mem_message_van_giao' (46472832) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:372:5:
+    assertion `left == right` failed: caps = số cap cài được
+    left: 4
+    right: 3
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M3 — Cap nhận giữ RIGHT_GRANT (không bỏ GRANT)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt25_ipc2::bon_cap_cai_du_bo_grant_giu_badge
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact bon_cap_cai_du_bo_grant_giu_badge
+    exit=0 wall=4.80s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact bon_cap_cai_du_bo_grant_giu_badge
+    exit=101 wall=5.83s
+    test bon_cap_cai_du_bo_grant_giu_badge ... FAILED
+    thread 'bon_cap_cai_du_bo_grant_giu_badge' (46473530) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:313:9:
+    assertion `left == right` failed: cap nhận được **bỏ** RIGHT_GRANT (thiết kế :319)
+    left: 4
+    right: 0
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M4 — Bỏ unwrap badge (cap badge vào receive window)
+File : v2/sim/vifast-sim/src/ipc.rs
+Test : vifast-sim::kt25_ipc2::unwrap_badge_khong_chiem_receive_window
+hash HEAD:v2/sim/vifast-sim/src/ipc.rs = 1d7d34b3d3d70982bd84bd03c01dc5b69f0f32836d584b2b0f840615979ed0bf
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact unwrap_badge_khong_chiem_receive_window
+    exit=0 wall=5.60s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact unwrap_badge_khong_chiem_receive_window
+    exit=101 wall=5.33s
+    test unwrap_badge_khong_chiem_receive_window ... FAILED
+    thread 'unwrap_badge_khong_chiem_receive_window' (46474225) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:486:5:
+    assertion `left == right` failed: chỉ cap thường được cài
+    left: 2
+    right: 1
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M5 — Signal không xoá word/badge sau khi giao
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt27_notification::mot_waiter_duy_nhat_ba_tcb
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt27_notification -- --exact mot_waiter_duy_nhat_ba_tcb
+    exit=0 wall=5.17s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt27_notification -- --exact mot_waiter_duy_nhat_ba_tcb
+    exit=101 wall=6.94s
+    test mot_waiter_duy_nhat_ba_tcb ... FAILED
+    thread 'mot_waiter_duy_nhat_ba_tcb' (46474998) panicked at sim/vifast-sim/tests/kt27_notification.rs:332:5:
+    assertion `left == right` failed: giao cho waiter xong word = 0
+    left: 165
+    right: 0
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M6 — Bỏ cổng 'một waiter' kiểu v1
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt27_notification::mot_waiter_duy_nhat_ba_tcb
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt27_notification -- --exact mot_waiter_duy_nhat_ba_tcb
+    exit=0 wall=6.18s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt27_notification -- --exact mot_waiter_duy_nhat_ba_tcb
+    exit=101 wall=6.63s
+    test mot_waiter_duy_nhat_ba_tcb ... FAILED
+    thread 'mot_waiter_duy_nhat_ba_tcb' (46475786) panicked at sim/vifast-sim/tests/kt27_notification.rs:314:5:
+    assertion `left == right` failed: waiter thứ hai ⇒ Busy
+    left: Ok(())
+    right: Err(Busy)
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M7 — WaitAddr xếp hàng trước rồi mới so expected
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt28_waitaddr::expected_lech_tra_ngay_khong_xep_hang
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt28_waitaddr -- --exact expected_lech_tra_ngay_khong_xep_hang
+    exit=0 wall=6.41s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt28_waitaddr -- --exact expected_lech_tra_ngay_khong_xep_hang
+    exit=101 wall=5.65s
+    test expected_lech_tra_ngay_khong_xep_hang ... FAILED
+    thread 'expected_lech_tra_ngay_khong_xep_hang' (46476541) panicked at sim/vifast-sim/tests/kt28_waitaddr.rs:246:5:
+    assertion `left == right` failed: TCB phải **giữ** Ready, không bị chặn
+    left: BlockedOnAddress { frame: 3, offset: 16 }
+    right: Ready
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M8 — WakeAddr bỏ kiểm khoá (wake mọi waiter trong bucket)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt28_waitaddr::va_cham_bucket_khong_anh_huong_tim_kiem
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt28_waitaddr -- --exact va_cham_bucket_khong_anh_huong_tim_kiem
+    exit=0 wall=6.40s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt28_waitaddr -- --exact va_cham_bucket_khong_anh_huong_tim_kiem
+    exit=101 wall=6.37s
+    test va_cham_bucket_khong_anh_huong_tim_kiem ... FAILED
+    thread 'va_cham_bucket_khong_anh_huong_tim_kiem' (46477327) panicked at sim/vifast-sim/tests/kt28_waitaddr.rs:208:5:
+    assertion `left == right` failed
+    left: 2
+    right: 1
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M9 — Push migration giữ home cũ (bỏ home = to)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt29_smp::push_dung_mot_tcb_cuoi_hang_qua_migrate
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt29_smp -- --exact push_dung_mot_tcb_cuoi_hang_qua_migrate
+    exit=0 wall=6.25s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt29_smp -- --exact push_dung_mot_tcb_cuoi_hang_qua_migrate
+    exit=101 wall=6.89s
+    test push_dung_mot_tcb_cuoi_hang_qua_migrate ... FAILED
+    thread 'push_dung_mot_tcb_cuoi_hang_qua_migrate' (46478027) panicked at sim/vifast-sim/tests/kt29_smp.rs:281:5:
+    assertion `left == right` failed
+    left: 0
+    right: 1
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M10 — Fault-resume không ghi MR trước Ready (đường r319)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt26_fault::resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt26_fault -- --exact resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+    exit=0 wall=6.55s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.12s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt26_fault -- --exact resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready
+    exit=101 wall=6.90s
+    test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... FAILED
+    thread 'resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready' (46478795) panicked at sim/vifast-sim/tests/kt26_fault.rs:350:5:
+    assertion `left == right` failed
+    left: [0, 0, 0, 0]
+    right: [7, 8, 9, 10]
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M11 — Hộp thư đầy ghi đè thay vì Err(Busy)
+File : v2/lib/vifast-sync/src/mailbox.rs
+Test : vifast-sync::kt30_sync::mailbox_day_tra_busy_khong_mat_message_dau
+hash HEAD:v2/lib/vifast-sync/src/mailbox.rs = a76d8f71c9310a34675011046705a22877bb329590c98e9fd6f6f7063112c173
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sync --test kt30_sync -- --exact mailbox_day_tra_busy_khong_mat_message_dau
+    exit=0 wall=4.91s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sync --test kt30_sync -- --exact mailbox_day_tra_busy_khong_mat_message_dau
+    exit=101 wall=4.06s
+    test mailbox_day_tra_busy_khong_mat_message_dau ... FAILED
+    thread 'mailbox_day_tra_busy_khong_mat_message_dau' (46479129) panicked at lib/vifast-sync/tests/kt30_sync.rs:130:5:
+    assertion `left == right` failed
+    left: Ok(())
+    right: Err(Busy)
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## M12 — Rời BlockedOnReply không gỡ Reply.caller (cổng transition_tcb; guard hiện hành sau KT-34)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt25_ipc2::cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller
+    exit=0 wall=7.61s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt25_ipc2 -- --exact cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller
+    exit=101 wall=7.38s
+    test cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller ... FAILED
+    thread 'cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller' (46480007) panicked at sim/vifast-sim/tests/kt25_ipc2.rs:1524:5:
+    assertion `left == right` failed: cổng rời BlockedOnReply phải gỡ caller
+    left: Ok(Some(14))
+    right: Ok(None)
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## V1 — Map đổi lá/thứ tự cấp (AP→BSP): level_for_size_bits đảo cấp
+File : v2/sim/vifast-sim/src/pagetable.rs
+Test : vifast-sim::kt37_pagetable::map_walk_unmap_du_ba_co
+hash HEAD:v2/sim/vifast-sim/src/pagetable.rs = e41c10eac3b6adca080ef6c474f654a6b554bdd054d3a15e7bd1d6bcac3548a5
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt37_pagetable -- --exact map_walk_unmap_du_ba_co
+    exit=0 wall=6.93s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt37_pagetable -- --exact map_walk_unmap_du_ba_co
+    exit=101 wall=5.32s
+    test map_walk_unmap_du_ba_co ... FAILED
+    thread 'map_walk_unmap_du_ba_co' (46480715) panicked at sim/vifast-sim/tests/kt37_pagetable.rs:169:10:
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## V2 — Bỏ kiểm ack khi unmap (trả Ok khi chưa đủ ack)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt40_tlb::shootdown_1_2_4_8_hart_ack_du
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact shootdown_1_2_4_8_hart_ack_du
+    exit=0 wall=5.26s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact shootdown_1_2_4_8_hart_ack_du
+    exit=101 wall=6.35s
+    test shootdown_1_2_4_8_hart_ack_du ... FAILED
+    thread 'shootdown_1_2_4_8_hart_ack_du' (46481428) panicked at sim/vifast-sim/tests/kt40_tlb.rs:245:36:
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## V3 — Bỏ W^X khi map W (cho W sau X)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt39_wx::map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt39_wx -- --exact map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam
+    exit=0 wall=6.00s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt39_wx -- --exact map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam
+    exit=101 wall=5.92s
+    test map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam ... FAILED
+    thread 'map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam' (46482144) panicked at sim/vifast-sim/src/kobj.rs:6168:13:
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## V4 — Bỏ flush TLB khi deactivate/teardown
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt40_tlb::flush_theo_trang_asid_va_gen
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact flush_theo_trang_asid_va_gen
+    exit=0 wall=6.69s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.66s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact flush_theo_trang_asid_va_gen
+    exit=101 wall=6.63s
+    test flush_theo_trang_asid_va_gen ... FAILED
+    thread 'flush_theo_trang_asid_va_gen' (46482829) panicked at sim/vifast-sim/src/kobj.rs:6175:13:
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+## V5 — Bỏ rút hộp thư khi chờ ack (AP→BSP deadlock)
+File : v2/sim/vifast-sim/src/kobj.rs
+Test : vifast-sim::kt40_tlb::deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu
+hash HEAD:v2/sim/vifast-sim/src/kobj.rs = 1f1b13a8743fd73507e34fc1abf8ffc4c50220c36e7ccc9dd622991fb993825d
+--- [xanh trước] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu
+    exit=0 wall=7.37s
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    xanh truoc: OK
+--- [đỏ] test --manifest-path /Users/mps/dvchd/ViFastOs/v2/Cargo.toml -p vifast-sim --test kt40_tlb -- --exact deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu
+    exit=101 wall=6.06s
+    test deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu ... FAILED
+    thread 'deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu' (46483631) panicked at sim/vifast-sim/tests/kt40_tlb.rs:662:5:
+    assertion `left == right` failed: hart 0 rút hộp thư của mình (ack hart 1) + đã được hart 1 ack ⇒ xong
+    left: Ok(false)
+    right: Ok(true)
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+    do dung test: OK
+    khôi phục: hash KHỚP; git sạch: OK
+
+==============================================================================
+TỔNG KẾT 17 CA:
+  M1: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M2: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M3: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M4: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M5: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M6: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M7: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M8: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M9: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M10: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M11: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  M12: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  V1: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  V2: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  V3: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  V4: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  V5: ĐỎ-ĐÚNG-TEST | restore/clean=True
+  → 17/17 ca đỏ đúng test + khôi phục hash == HEAD

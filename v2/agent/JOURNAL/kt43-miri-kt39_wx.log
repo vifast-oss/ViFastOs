@@ -1,0 +1,76 @@
+== Miri kt39_wx: ./v2/bin/v2 miri -p vifast-sim --test kt39_wx
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests/kt39_wx.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/fa29f077496a904c/out/kt39_wx-fa29f077496a904c)
+
+running 8 tests
+test attr_khong_hop_le_va_device_exec ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `attr_khong_hop_le_va_device_exec`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt39_wx.rs:64:17: 64:34
+          6: attr_khong_hop_le_va_device_exec
+              at sim/vifast-sim/tests/kt39_wx.rs:395:17: 395:40
+          7: attr_khong_hop_le_va_device_exec::{closure#0}
+              at sim/vifast-sim/tests/kt39_wx.rs:394:38: 394:38
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `attr_khong_hop_le_va_device_exec`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt39_wx.rs:64:17: 64:34
+          6: attr_khong_hop_le_va_device_exec
+              at sim/vifast-sim/tests/kt39_wx.rs:395:17: 395:40
+          7: attr_khong_hop_le_va_device_exec::{closure#0}
+              at sim/vifast-sim/tests/kt39_wx.rs:394:38: 394:38
+
+ok
+test ba_co_frame_wx_va_protect ... ok
+test map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam ... ok
+test map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh ... ok
+test property_10k_map_unmap_protect ... ok
+test protect_tinh_lai_dem_va_atomic ... ok
+test shared_read_only_hai_vspace_khong_ban_sao ... ok
+test vong_1000_tao_huy_khong_ro ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 119.95s
+
+warning: 2 warnings emitted
+
+real 224.14
+user 202.25
+sys 4.14
+EXIT=0

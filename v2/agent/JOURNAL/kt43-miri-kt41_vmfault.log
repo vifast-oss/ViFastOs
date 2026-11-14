@@ -1,0 +1,77 @@
+== Miri kt41_vmfault: ./v2/bin/v2 miri -p vifast-sim --test kt41_vmfault
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/kt41_vmfault.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/f7e436dfe08b4a7a/out/kt41_vmfault-f7e436dfe08b4a7a)
+
+running 9 tests
+test fault_exit_cu_khong_hoi_quy ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `fault_exit_cu_khong_hoi_quy`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt41_vmfault.rs:76:17: 76:34
+          6: fault_exit_cu_khong_hoi_quy
+              at sim/vifast-sim/tests/kt41_vmfault.rs:562:17: 562:27
+          7: fault_exit_cu_khong_hoi_quy::{closure#0}
+              at sim/vifast-sim/tests/kt41_vmfault.rs:561:33: 561:33
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `fault_exit_cu_khong_hoi_quy`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt41_vmfault.rs:76:17: 76:34
+          6: fault_exit_cu_khong_hoi_quy
+              at sim/vifast-sim/tests/kt41_vmfault.rs:562:17: 562:27
+          7: fault_exit_cu_khong_hoi_quy::{closure#0}
+              at sim/vifast-sim/tests/kt41_vmfault.rs:561:33: 561:33
+
+ok
+test fault_khong_mat_khi_tcb_dang_cho_c2 ... ok
+test khong_fault_ep_giu_hanh_vi_k1c ... ok
+test notmapped_toi_dung_fault_ep_khong_cap_trang ... ok
+test permission_ghi_trang_read_va_doc_trang_write_only ... ok
+test property_10k_fault_resume ... ok
+test resume_sau_fault_tra_lai_dung_trang_thai ... ok
+test vm_touch_loi_bien ... ok
+test wx_exec_trang_write_va_ghi_trang_exec ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 389.60s
+
+warning: 2 warnings emitted
+
+real 1010.09
+user 700.25
+sys 10.48
+EXIT=0

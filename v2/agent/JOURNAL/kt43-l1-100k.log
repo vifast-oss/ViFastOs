@@ -1,0 +1,248 @@
+== v2 nightly --l1 (KT-29): seeds=100000 smp=1,2,4,8; driver tests/l1_k1c.rs ==
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.30s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_sim-18fae8a36f4c65bf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 64 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (v2/target/debug/deps/vifast_sim-74459ac52d07cc76)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (v2/target/debug/deps/golden-6c268bdff1b2dbb4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt09_e2e.rs (v2/target/debug/deps/kt09_e2e-456aa30f99ee6180)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt09_preempt.rs (v2/target/debug/deps/kt09_preempt-537ebdb85e7e282d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt09_revoke.rs (v2/target/debug/deps/kt09_revoke-04c486fa66fcca2a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt09_untyped.rs (v2/target/debug/deps/kt09_untyped-1fd7f1d23d089e7f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/kt10_cnode.rs (v2/target/debug/deps/kt10_cnode-b82f440a6361107c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt10_property.rs (v2/target/debug/deps/kt10_property-43f5d01d6ccdf3ee)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt11_rights.rs (v2/target/debug/deps/kt11_rights-9ec662e0a99dc6ca)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt11_rights_sem.rs (v2/target/debug/deps/kt11_rights_sem-4312e875e1ce919b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt16_objmem.rs (v2/target/debug/deps/kt16_objmem-d8ae2904329bc27b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kt17_align.rs (v2/target/debug/deps/kt17_align-e370c06ff98a0181)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt18_tcb.rs (v2/target/debug/deps/kt18_tcb-c4c014968233aabf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+     Running tests/kt19_sched.rs (v2/target/debug/deps/kt19_sched-8f30edc9ff483127)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt20_budget.rs (v2/target/debug/deps/kt20_budget-5d7f212fa1995310)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/kt21_donation.rs (v2/target/debug/deps/kt21_donation-bc861c734d07fcc9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt22_mailbox.rs (v2/target/debug/deps/kt22_mailbox-dd0468e5fba30ea2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt23_k1b.rs (v2/target/debug/deps/kt23_k1b-9dd4c91539d7ed4d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/kt24_ipc.rs (v2/target/debug/deps/kt24_ipc-2a2195156c626845)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt24_scn.rs (v2/target/debug/deps/kt24_scn-6078b5272c2eafe7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/kt25_ipc2.rs (v2/target/debug/deps/kt25_ipc2-d4867e21ea027665)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 29 filtered out; finished in 0.00s
+
+     Running tests/kt25_scn.rs (v2/target/debug/deps/kt25_scn-67b17ed4de15e0cb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt26_fault.rs (v2/target/debug/deps/kt26_fault-bb68f13629a55a86)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+     Running tests/kt26_scn.rs (v2/target/debug/deps/kt26_scn-f18f8aa939fd1ba8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt27_notification.rs (v2/target/debug/deps/kt27_notification-aa2accd06be35a03)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
+
+     Running tests/kt27_scn.rs (v2/target/debug/deps/kt27_scn-710c86fc26cf0d5b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt28_waitaddr.rs (v2/target/debug/deps/kt28_waitaddr-96c91719307dc04f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt29_smp.rs (v2/target/debug/deps/kt29_smp-6831b5ec136e063a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt36_frame.rs (v2/target/debug/deps/kt36_frame-b47a62bc9c0e8ef4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/kt37_pagetable.rs (v2/target/debug/deps/kt37_pagetable-94b416758b7a534c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt38_vspace.rs (v2/target/debug/deps/kt38_vspace-e5955d2ae41c371a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt39_wx.rs (v2/target/debug/deps/kt39_wx-35bb6dad5daacc6a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/kt40_tlb.rs (v2/target/debug/deps/kt40_tlb-bfab0825fed167d3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt41_vmfault.rs (v2/target/debug/deps/kt41_vmfault-b896bbde45a3a202)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/kt42_scn.rs (v2/target/debug/deps/kt42_scn-66b232f24675bfe0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt42_vmcheck.rs (v2/target/debug/deps/kt42_vmcheck-4c4913a5593dfdb2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/l1.rs (v2/target/debug/deps/l1-4ed326b922a4f43b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/l1_k1c.rs (v2/target/debug/deps/l1_k1c-2a052847a5ea06fa)
+
+running 1 test
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 1, 100000 seed × 64 op (100000 seed đầu chạy 2 lần; ipc_sent 1212128, ipc_delivered 226334, ipc_dropped 782515; vm map 257149, walk 71791, unmap 135089, fault 237472, shootdown 135089)
+# L1 OK: smp 2, 100000 seed × 64 op (100000 seed đầu chạy 2 lần; ipc_sent 1165183, ipc_delivered 217375, ipc_dropped 734940; vm map 257080, walk 71601, unmap 135157, fault 232545, shootdown 135157)
+# L1 OK: smp 4, 100000 seed × 64 op (100000 seed đầu chạy 2 lần; ipc_sent 1137251, ipc_delivered 211851, ipc_dropped 707418; vm map 257644, walk 71499, unmap 135394, fault 228758, shootdown 135394)
+# L1 OK: smp 8, 100000 seed × 64 op (100000 seed đầu chạy 2 lần; ipc_sent 1125024, ipc_delivered 209918, ipc_dropped 693268; vm map 257069, walk 71693, unmap 135075, fault 226058, shootdown 135075)
+# L1 OK: 400000 lượt (smp [1, 2, 4, 8], seeds 100000)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 689.63s
+
+v2 nightly --l1: PASS (691 s; seeds=100000 smp=1,2,4,8)
+real 690.69
+user 469.73
+sys 6.44
+EXIT=0

@@ -1,0 +1,131 @@
+== Miri lib_vifast_sim: ./v2/bin/v2 miri -p vifast-sim --lib
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 64 tests
+test kobj::tests::can_le_va_can_duoi ... ok
+test kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:11270:17: 11270:32
+          6: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he
+              at sim/vifast-sim/src/kobj.rs:11325:37: 11325:49
+          7: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:11324:59: 11324:59
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:9935:20: 9937:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1123:9: 1130:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:11270:17: 11270:32
+          6: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he
+              at sim/vifast-sim/src/kobj.rs:11325:37: 11325:49
+          7: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:11324:59: 11324:59
+
+ok
+test kobj::tests::check_asid_can_asid_tang_the_he_mot_lan_va_flush_gen ... ok
+test kobj::tests::check_caps_bat_cap_mo_coi ... ok
+test kobj::tests::check_caps_bat_slot_khong_doi_xung ... ok
+test kobj::tests::check_fault_bat_fault_bi_mat_va_bi_nhan_ban ... ok
+test kobj::tests::check_frames_bat_chong_pa_va_metadata_thua ... ok
+test kobj::tests::check_frames_bat_frame_chet_con_mapping ... ok
+test kobj::tests::check_frames_bat_frame_mo_coi ... ok
+test kobj::tests::check_frames_bat_pa_va_watermark_sai ... ok
+test kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu ... ok
+test kobj::tests::check_pages_bat_dem_va_frame_counter_sai ... ok
+test kobj::tests::check_pages_bat_pte_sai_cap_hoac_tro_nham ... ok
+test kobj::tests::check_smp_bat_published_lech_va_migrate_sai ... ok
+test kobj::tests::check_tlb_bat_entry_mo_coi_va_entry_khong_con_map ... ok
+test kobj::tests::check_vm_bat_pte_bi_xoa_ngam_va_entry_tlb_mo_coi ... ok
+test kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech ... ok
+test kobj::tests::check_vspace_bat_vspace_chet_con_du_lieu_va_root_khong_phai_goc ... ok
+test kobj::tests::check_waitaddr_bat_sai_bucket ... ok
+test kobj::tests::check_waitaddr_bat_trung_va_tcb_chet ... ok
+test kobj::tests::check_wx_bat_frame_vua_w_vua_x_va_tong_lon_hon_maps ... ok
+test kobj::tests::frame_area_carve_bien_can_le_va_day_cua_so ... ok
+test kobj::tests::ma_loi_lay_dung_tu_spec ... ok
+test kobj::tests::map_bat_pa_lech_can_alignment ... ok
+test kobj::tests::tcb_state_du_11_ten_theo_spec ... ok
+test kobj::tests::ten_object_khop_spec ... ok
+test kobj::tests::wx_recount_bat_bo_dem_frame_lech ... ok
+test mailbox::tests::fifo_va_backpressure_tra_lai_message ... ok
+test mailbox::tests::hart_mailbox_log_dung_thu_tu_va_co_stopped ... ok
+test mailbox::tests::retain_giu_fifo_va_dem_removed ... ok
+test mcs::tests::bien_bao_hoa_o_tran_khong_wrap ... ok
+test mcs::tests::bien_thang_hang_toan_cuc ... ok
+test mcs::tests::charge_dung_bien_budget ... ok
+test mcs::tests::check_bat_budget_period_va_consumed_sai ... ok
+test mcs::tests::configure_dat_consumed_0_va_refill_toan_cuc ... ok
+test mcs::tests::donated_priority_khong_vuot_mcp_hai_ben ... ok
+test mcs::tests::refill_due_khi_now_o_tran_khong_lap ... ok
+test mcs::tests::refill_due_tai_bien_va_nhay_nhieu_bien ... ok
+test mcs::tests::sc_chua_cau_hinh_khong_co_budget ... ok
+test pagetable::tests::hang_so_va_hinh_ba_cap ... ok
+test pagetable::tests::page_table_data_moi_la_root_tinh_khiet ... ok
+test pagetable::tests::pte_lai_roundtrip_moi_to_hop ... ok
+test pagetable::tests::quyen_attrs_bit_va_contains ... ok
+test sched::tests::bitmap_phu_du_256_muc ... ok
+test sched::tests::pick_lay_muc_cao_nhat_va_fifo_cung_muc ... ok
+test sched::tests::pick_where_bo_qua_phan_tu_bi_loai_giu_thu_tu_uu_tien_fifo ... ok
+test tcb::tests::bang_allowed_khong_co_cap_danh_tinh_ngoai_blocked_on_send ... ok
+test tcb::tests::chi_so_trang_thai_khop_tcb_states ... ok
+test tcb::tests::kt23_coverage_design_46_va_73_cap_cam ... ok
+test tests::cung_seed_cung_trace ... ok
+test tests::hash_tai_lap_tu_trace ... ok
+test tests::khong_task_nao_bi_bo_doi ... ok
+test tests::kich_ban_rong_van_tat_dinh ... ok
+test tests::seed_khac_trace_khac ... ok
+test tests::store_can_le_va_het_cho ... ok
+test tests::store_tu_choi_align_sai ... ok
+test tlb::tests::ack_fetch_max_khong_lui_va_delivered_khac_acked ... ok
+test tlb::tests::clear_xoa_het_va_dem_invalidated ... ok
+test tlb::tests::flush_page_phu_entry_lon_asid_va_generation ... ok
+test tlb::tests::hit_miss_cong_don_va_peek_khong_doi_lru ... ok
+test tlb::tests::lru_tat_dinh_va_du_16_entry ... ok
+test vspace::tests::asid_count_bang_hai_mu_asid_bits ... ok
+test vspace::tests::hart_mask_bit_contains_subset ... ok
+test vspace::tests::vspace_info_va_flush_cmd_de_so_sanh ... ok
+
+test result: ok. 64 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 77.69s
+
+warning: 2 warnings emitted
+
+real 68.49
+user 60.21
+sys 0.84
+EXIT=0

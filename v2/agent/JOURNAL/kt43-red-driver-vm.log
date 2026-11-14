@@ -1,0 +1,27 @@
+# KT-43 — đỏ trước của driver L1: bỏ 4 nhánh VM (N_OP 23 → 19) — D2-05
+# HEAD 053f127c; Sat Nov 14 19:40:45 JST 2026
+# Hash trước: cea7814d4f3d605a2e292dffe01dc2cf5906c42ed50f223b87cf4c4e7328ce8e
+--- [xanh trước: driver HEAD có VM?] chạy 20 seed smp 1 với N_OP=19 (kỳ vọng: đỏ ở bất biến phủ VM)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.46s
+     Running tests/l1_k1c.rs (v2/target/debug/deps/l1_k1c-2a052847a5ea06fa)
+
+running 1 test
+
+thread 'driver_smp_cung_seed_cung_trace' (46422458) panicked at sim/vifast-sim/tests/l1_k1c.rs:893:9:
+smp 1: driver không phủ VM (VmDem { map: 0, walk: 0, unmap: 0, fault: 0, shootdown: 0 }) — K2 chưa thực sự được L1 chạy
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test driver_smp_cung_seed_cung_trace ... FAILED
+
+failures:
+
+failures:
+    driver_smp_cung_seed_cung_trace
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p vifast-sim --test l1_k1c`
+real 2.62
+user 1.03
+sys 0.41
+EXIT=101

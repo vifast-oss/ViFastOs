@@ -4,15 +4,64 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `dae06315` ([KT-00] D2-69 chốt `.scn` 22..26 + `check_vm` 8 checker ở cổng; sau `9bab6132` tab ViScript); v2 hiệu lực `dae06315`
+HEAD          : `66d51f89` ([KT-00] lật KT-42 DONE, 569 test — mở KT-43); v2 hiệu lực `66d51f89`
 BUILD_ID      : —
-Task          : **KT-42 (5 `.scn` VM + `check_vm` + shared read-only end-to-end)** — **DONE ở mức thi hành**: gate 569/73 (L1 2.635 ms; reviewer chạy lại 1.499 ms), Miri 2/2, `reviewer-kt42` **APPROVE** — chờ Agent 0 lật QUEUE. KT-41 DONE (`f933d74b`); D2-69 chốt `.scn` 22..26 (Agent 0)
-Bước          : 8/8 **xong** (baseline 562/71 → 6 log đỏ (harness + runner 5 ca) → 5 `.scn` + runner + `check_vm` + self-test 2 lỗi + `kt42_vmcheck` → gate **569/73**, L1 2.635 ms → Miri 1/1 + 1/1 → reviewer APPROVE + sửa 3 ghi chú → gate lại → commit `[KT-42]` + push)
+Task          : **KT-43 (cổng cuối K2: 100k×4 L1 phủ VM + 17 mutation + Miri + DoD K2)** — **DONE ở mức thi hành**: 100k×4 PASS 690,69 s/400.000 lượt/0 vi phạm TLB-safety trên 51,2 triệu op; mutation **17/17**; Miri **146 test/0 failed**; gate **569 test**, L1 **1.427 ms**; `K2-DOD.md` lập; **chờ reviewer độc lập + Agent 0 lật QUEUE** (không lật sổ)
+Bước          : 8/8 **xong** (baseline 569/73 → driver L1 phủ 4 op VM (test-only) + log đỏ → `nightly --l1 100k×4` PASS 690,69 s (2 lần/seed) → mutation 12 ca §7.2 + 5 ca VM **17/17** → Miri tập K2 + pte + sync → `gate --fast` PASS 569/0, L1 1.427 ms → K2-DOD + STATE → commit `[KT-43]` + push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite**, L1 1.000 seed **2.635 ms**, fmt/clippy `-D warnings`, luật R1..R5, gen-check ON, scn-check **26 tệp/16 nhóm** + fixtures âm PASS (`JOURNAL/kt42-gate-fast.log`). Baseline KT-42: 562/71, L1 885 ms (`JOURNAL/kt42-baseline-gate-fast.log`); +7 test = 5 scn runner + `kt42_vmcheck` + 1 unit `check_vm`. Một đợt gate L1 78.462 ms do tab khác chạy `vis-vm diff_100k` — `T-INFRA`, gate vẫn PASS, **không** nới seed.
-Miri          : KT-42 — `--test kt42_vmcheck` **1/1** (32,12 s) + `--lib check_vm_` **1/1** (3,37 s), `JOURNAL/kt42-miri.log` (**MIRI1_EXIT=0 / MIRI2_EXIT=0**); `kt42_vmcheck` đã vào `v2 miri`/`nightly --only-miri`; `kt42_scn` **không** chạy Miri (đọc tệp).
-Việc dở       : reviewer APPROVE (ghi ở [`JOURNAL/kt42-journal.md`](JOURNAL/kt42-journal.md) §5); đã sửa 3 ghi chú (đếm 21 op, verdict, lệch chữ per-op/check_vm); **gate lại + commit `[KT-42]` + push** (chỉ `v2/`, gồm D2-69 của Agent 0 nếu có trong cây), **không** lật QUEUE (D2-37).
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/0 failed**, L1 1.000 seed **1.427 ms**, fmt/clippy `-D warnings`, luật R1..R5, gen-check ON, scn-check **26 tệp/16 nhóm** + 5/5 fixture âm (`JOURNAL/kt43-gate-fast.log`). Wall **374,56 s** là wall host (L0 chạy thêm driver 1.000 seed + tải máy) — **T-INFRA**, L1 vẫn ≤ 60 s, không nới ngưỡng.
+Miri          : KT-43 — **146 test/0 failed**, mọi log `EXIT=0`: kt36 12, kt37 10, kt38 7, kt39 8, kt40 10, kt41 9, kt42 1, `vifast-sim --lib` 64, `vifast-pte` 9, `vifast-sync` 16 + driver l1_k1c mẫu nhỏ (`JOURNAL/kt43-miri-*`). Đã thêm 4 tệp K2 còn thiếu + `vifast-pte` vào danh sách `nightly --only-miri` (`v2/bin/v2`).
+Việc dở       : **review độc lập trước commit** (báo lead; nếu quá 20 phút: tự soát + đề xuất REVIEW); commit `[KT-43]` chỉ `v2/` + push; **không** lật QUEUE (D2-37). `viscript/` + `review/` của tab khác **không chạm**.
 ```
+
+## KT-43 — cổng cuối K2: 100k×4 L1 (driver phủ VM) + 17 mutation + Miri + DoD K2
+
+**Vào**: READY; KT-35..42 DONE; HEAD `66d51f89`; `git rev-list --count HEAD..origin/main` = **0**;
+`v2/` sạch (chỉ `viscript/`+`review/` của tab khác — không chạm); baseline = KT-42 **569/73**, L1
+2.635 ms.
+
+**Mục tiêu** (K2-PLAN §4 + D2-65 Q10): `nightly --l1` **100k seed × smp 1/2/4/8** (400.000 lượt)
+với driver L1 **phủ thêm VM** (map/unmap/walk/shootdown/fault; giữ 64 op/seed, cùng seed cùng
+trace); **mutation 12 ca §7.2 + 4+ ca VM** (gồm AP→BSP); **Miri** toàn bộ tập K2 + `vifast-pte` +
+`vifast-sync`; `gate --fast` ≥ 569 + `check_scn` 26/16 + fixtures âm; **K2-DOD** với số đo thật và
+nợ có chủ; câu "K2 không phải kernel thật".
+
+**Kết quả chính**:
+- **Driver L1 phủ VM** (`tests/l1_k1c.rs`, test-only): thêm op 19 `map` (Frame 1 GiB qua VSpace
+  active mọi hart), 20 `walk+TLB fill`, 21 `unmap+shootdown` (assert `Ok ⇒ acked == targets`,
+  mọi hart sạch entry), 22 `vm_touch` fault `NotMapped` → `fault_ep` → `wake`; sau mỗi op có
+  `tlb_violations()==0`, cuối mỗi lượt `check_vm()` (8 checker). **Đỏ trước**:
+  [`kt43-red-driver-vm.log`](JOURNAL/kt43-red-driver-vm.log) (bỏ 4 nhánh VM ⇒ panic đúng bất biến
+  phủ VM).
+- **100k×4 PASS**: [`kt43-l1-100k.log`](JOURNAL/kt43-l1-100k.log) — 400.000 lượt, **2 lần/seed**
+  (400.000 cặp trace khớp), **0 panic/0 vi phạm TLB-safety** trên **51,2 triệu** op, wall
+  **690,69 s**; counters: `ipc_sent` **4.639.586**, `ipc_delivered` 865.478, `ipc_dropped`
+  2.918.141; VM map **1.028.942**, walk 286.584, unmap/shootdown 540.715, fault 924.833. Bản chạy
+  100k **đầu** dừng ở guard per-seed KT-33 (`seed 67453/smp 2 ipc_sent=1`) — đã chỉnh **ngưỡng
+  phủ của driver** (per-seed giữ `sent ≥ 1` + bảo toàn; ngưỡng "không tautology" xuống tổng smp
+  `sent > 5×seeds`), **không** nới bất biến model/seed/op; bản hỏng giữ ở
+  [`kt43-l1-100k-attempt1-fail.log`](JOURNAL/kt43-l1-100k-attempt1-fail.log).
+- **Mutation 17/17** ([`kt43-mutation.log`](JOURNAL/kt43-mutation.log)): 12 ca §7.2 cũ + **V1**
+  đảo cấp lá AP→BSP, **V2** bỏ chờ ack khi unmap, **V3** bỏ W^X khi map W, **V4** bỏ flush khi
+  deactivate, **V5** bỏ drain hộp thư khi chờ ack (AP→BSP v1). Mỗi ca `exit 101` + `FAILED` đúng
+  test đích + khôi phục hash == HEAD. Harness lần đầu 13/17 (flush trễ + M12 cũ sống vì KT-34
+  thêm guard `transition_tcb`) — đã sửa harness + định nghĩa lại M12 theo guard hiện hành, chạy
+  lại **toàn bộ**; log đầu giữ ở `kt43-mutation-attempt1.log` (không dùng).
+- **Miri 146 test/0 failed**: 7 tệp K2 (57) + lib 64 + pte 9 + sync 16 + driver mẫu nhỏ; thêm
+  `kt36..kt39` + `vifast-pte` vào danh sách `nightly --only-miri`.
+- **Gate PASS 569/0**, L1 **1.427 ms** ([`kt43-gate-fast.log`](JOURNAL/kt43-gate-fast.log)); wall
+  505,76 s (wall host — T-INFRA); `.scn` 26 tệp/16 nhóm + 5/5 fixture âm; `git diff spec/` rỗng.
+- **K2-DOD** [`reports/K2-DOD.md`](reports/K2-DOD.md): D1..D11 ĐẠT, nợ có chủ (model-only 1 luồng,
+  TLB/PTE/IPI thật = K3, `Busy`/`FaultKind` model-only, pager/COW = K3), câu "K2 **không** phải
+  kernel thật".
+
+**Review độc lập**: `reviewer-kt43` **DRIFT** (4 mục) → đã vá: **D2-70** (lead) + `ipc_min`/
+`ipc_median` + log 10k; K2-DOD final (sửa Miri driver/kt41-42/AP→BSP/diff); lưu harness +
+`kt43-mutation-diff.md`; D8 honest (driver smoke không hoàn tất, không claim). Chạy lại
+`gate --fast` **569/0**, L1 **1.427 ms**. Đề xuất: reviewer-kt43 xác nhận ⇒ **K2 DONE (đề xuất)**;
+Agent 0 lật QUEUE. Không tự lật (D2-37).
+
+
 
 ## KT-42 — K2: 5 `.scn` VM + một cửa `check_vm` + shared read-only end-to-end
 

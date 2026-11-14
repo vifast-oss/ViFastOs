@@ -486,6 +486,16 @@ do_nightly_only_miri() {
     # tự giảm còn 3 seed × 8 op bằng `cfg(miri)`, stable vẫn 1.000 × 64 × 4). KHÔNG thêm
     # `l1_k1c` (1.000 seed — chạy ở gate/nightly --l1, không dưới Miri).
     run_miri_test "vifast-sim kt29_smp" -p vifast-sim --test kt29_smp || return 1
+    # **KT-43** (K2-PLAN §4.2 D8 — Miri **toàn bộ** tập ảnh hưởng K2): thêm 4 tệp còn thiếu của
+    # K2 (`kt36_frame`, `kt37_pagetable`, `kt38_vspace`, `kt39_wx`) + crate `vifast-pte` (KT-35).
+    # Các tệp tự giảm seed/property bằng `cfg(miri)` như KT-36..42 (D2-47(a)); **không** thêm
+    # `kt42_scn`/`kt43_scn` (đọc tệp) và **không** chạy `l1_k1c` 1.000 seed dưới Miri (lần chạy
+    # mẫu KT-43 có env riêng, log `JOURNAL/kt43-miri-l1.log`).
+    run_miri_test "vifast-sim kt36_frame" -p vifast-sim --test kt36_frame || return 1
+    run_miri_test "vifast-sim kt37_pagetable" -p vifast-sim --test kt37_pagetable || return 1
+    run_miri_test "vifast-sim kt38_vspace" -p vifast-sim --test kt38_vspace || return 1
+    run_miri_test "vifast-sim kt39_wx" -p vifast-sim --test kt39_wx || return 1
+    run_miri_test "vifast-pte (unit + doctest)" -p vifast-pte || return 1
     # **KT-40** (K2-PLAN §3 KT-40): thêm `kt40_tlb` (TLB 16 entry/hart + shootdown/ack + deadlock;
     # property tự giảm còn 2 hart × 150 vòng và ca cạn 256 ASID tự bỏ bằng `cfg(miri)`).
     run_miri_test "vifast-sim kt40_tlb" -p vifast-sim --test kt40_tlb || return 1
