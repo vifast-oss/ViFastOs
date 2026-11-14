@@ -186,7 +186,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
 | ST-89 | **parity cuối** — host `Ngoai` cho **VM** (chương trình ngoài trong `.vish` chạy cả hai đường) | ST-88 | 3 h | **DONE** | `--vm` SKIP 7 → **0**; parity 398 → **405**; suite ngoài chạy 2 đường cùng byte |
 | ST-90 | **pkg** — lưu `entry` trong `vis.lock` + `vis pkg remove` | ST-89 | 2,5 h | **DONE** | ≥5 ca; lock cũ vẫn đọc được (tương thích) |
-| ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **READY** | ≥5 ca; tất định; không phá 34 ca LSP |
+| ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **DONE** | ≥5 ca; tất định; không phá 34 ca LSP |
 | ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1362,3 +1362,16 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: lock cũ **không tự nâng cấp**; `entry` chưa kiểm đuôi; `remove` **không** dọn dep mồ côi (đúng "chỉ xoá tên được gọi");
 > store không GC; chưa `pkg update`; `--entry` chỉ áp gói đích.
 > **ST-91 mở** (LSP completion sau `.`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-91 DONE — LSP completion sau `.` theo kiểu (đo được: 50 → 2).** Commit `a2eb53e5` (**Agent 2 tự commit, đã push**). Trước:
+> `p.` trả **50 mục fallback** (không có `x`/`ten`). Sau: **2 mục** `ten: str`, `x: int` (kind 5); có `impl Show for P` ⇒ thêm `show`
+> (kind 2, chữ ký); `s: str` (kiểu biết, chưa có bảng thành viên) ⇒ **rỗng**; **không rõ kiểu** ⇒ fallback 50 như cũ. Tách
+> `lsp/thanh_vien.rs` (219 dòng) + `goi_y.rs` (239); `p.` dở ⇒ sentinel `__vis` parse **riêng** (không đổi chẩn đoán gốc).
+> **5 ca**, 39/39 LSP xanh, **5 lần cùng byte**. *(Đính chính cú pháp: `type P: x: int, ten: str` một dòng + `P(x:…)` **không** hợp lệ —
+> agent dùng `type P:` nhiều dòng + `let p: P = {…}`, đúng.)* Đo: **978 test** · sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** ·
+> differential **100k/0 lệch** (157,6 s).
+> Nợ: chỉ receiver **đơn giản** (`tên.`), chưa `a.b.`/`f().`; chưa generic/`list[P]`; chưa bảng `std.str`; `impl` cho alias/enum chưa gom;
+> parse sentinel chưa cache.
+> **ST-92 mở** (R14).
