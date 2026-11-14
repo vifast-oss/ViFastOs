@@ -6,17 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-76 — báo cáo R11** (`reports/R11-viscript.{md,json,json.license}`; phủ **86 hàng
-                QUEUE**; số liệu **chạy lại**; §19 VS2 8 hạng mục; §5 nợ đầy đủ; VD-100..107) — xong,
-                `report-check --all` PASS + cổng PASS; **chưa commit**.
-Bước          : 4/4 (đo lại toàn bộ số liệu → viết JSON + MD → `report-check --all` PASS → cổng PASS →
-                STATE/JOURNAL).
+Task          : **ST-77 — `vis fmt` cho cú pháp mới + `.vish` + `--check` thư mục** (`cap[...]`,
+                `async/spawn/await`, `chan`, `use pkg.*`, `derives/trait/impl`; 12 ca mới; `fmt --check
+                test/` xanh 497 tệp) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (red-first 3/12 đỏ → `format_mode` + render_command + đệ quy thư mục + allowlist
+                nhỏ nhất → 12/12 + `--check test/` 0 tệp lệch → 886 test → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T11:32:28Z**; **874** test / sem **447/22 nhóm** /
-                `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** / differential
-                **100.000 chương trình 0 lệch** (352,5 s) / fuzz parser 60 s **4.776.316 ca, 0 vi phạm** /
-                **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-76]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T12:03:55Z**; **886** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
+                differential **100.000 chương trình 0 lệch** (219,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                allowlist **6**
+Việc dở       : commit `[ST-77]` + push (đã được uỷ quyền)
+
+## ST-77 — `vis fmt` cho cú pháp mới, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Phạm vi** | `cap[Dir]`/`cap[Net]`/`@ p"…"`/`@ "host"`/`(write)`; `async fn`/`spawn`/`await`; `chan[T](n)` + method; `use pkg.*`; `derives`/`trait B: A:`/`impl` — **12 ca** mới (9 `vis-fmt/tests/moi.rs` + 3 `vis-cli/tests/fmt_moi.rs`). |
+| 1 | **Lỗi đo được (red, 3/12)** | (a) `vis fmt --check test` **không nhận thư mục** (`Is a directory`, exit 2); (b) `.vish` **bail out** exit 2 ("chưa có đặc tả"); (c) render script lên `.vish` **mất thụt lề khối `cmd`**; (d) phát hiện thêm: chỉ chặn chẩn đoán `01xx/02xx` ⇒ `.vish` sai **lệnh** (`VS0602`) cho ra **chuỗi rỗng** (mất token) — đã sửa. |
+| 2 | **Sửa fmt** | `vis_fmt::format_mode(text, Mode)` công khai; `.vish` dùng `Mode::Command` + `render_command` (**giữ thụt lề gốc**, tab→4 dấu cách, bỏ khoảng trắng cuối, đúng 1 newline); **chặn mọi chẩn đoán khác tab** (không chỉ 01xx/02xx) để không render CST dở dang; CLI nhận **thư mục** (đệ quy `.vis`/`.vish`, sắp byte); `--check` in tệp lệch, exit 1; `--write` sửa; giữ exit 2 cho tệp lỗi. |
+| 3 | **Allowlist nhỏ nhất** | Khi quét `test/`: bỏ `test/fmt/**` (fixture đầu vào của formatter), `test/check/**` + `test/doc-examples/**` (fixture **cố ý sai** theo thiết kế), và tệp có sibling `.err` (ca âm). **Không** sửa tệp test nào để qua; lý do ghi ngay trong mã. |
+| 4 | **`fmt --check test/`** | **XANH, 0 tệp lệch** trên **497 tệp** (429 `.vis` + 68 `.vish`); bỏ **136** input cố ý (theo allowlist trên). |
+| 5 | **Ca mới** | `vis-fmt/tests/moi.rs`: 8 snapshot (cap nhiều tham số, cap `(write)`+comment, cap Net host, async spawn/await, async+impl cùng tệp, chan+comment, use pkg cạnh std, derives/trait/impl) + 1 **lossless token** trên **35** fixture mới (cap/async/kenh/trait, bỏ ca `.err`) + idempotent. `vis-cli/tests/fmt_moi.rs`: `.vish` giữ thụt lề khối `cmd`; `--check` thư mục có `.vis`+`.vish` (exit 1 → `--write` → sạch); `--check test/` exit 0. **Sửa 1 test cũ** `vish_bail_out_exit_2` → `vish_format_duoc_khi_chi_sai_lenh` (**SỬA KÈM LÝ DO**: `.vish` nay định dạng được; fmt là tầng **cú pháp**, lỗi **lệnh** không chặn). |
+| 6 | **Đo** | **886** test = 874 + **12** (21+96+**27**+154+26+62+9+**491**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=219.3 toc_do=456/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`main.rs` 936, `vis-fmt/lib.rs` 254, `moi.rs` 134, `fmt_moi.rs` 76). |
+| 7 | **Nợ** | `.vish` giữ **thụt lề gốc** (không tự chuẩn hoá độ sâu khối `cmd` — muốn chuẩn hoá phải sửa 68 fixture, ngoài phạm vi); `fmt` **chỉ tầng cú pháp** (không bắt lỗi lệnh/ngữ nghĩa như `VS0602`); allowlist 3 thư mục fixture + `.err` là **có lý do**, không mở rộng; chưa định dạng lại biểu thức/ngắt dòng dài (nợ vòng 1); chưa canh `cap` nhiều dòng. |
 
 ## ST-76 — báo cáo R11, 2026-11-14
 

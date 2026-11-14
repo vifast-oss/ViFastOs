@@ -1,0 +1,42 @@
+# ST-77 — log ĐỎ (Rust) lúc 2026-11-14T11:38:44Z, HEAD 9d7b8019 — vis-fmt/vis-cli CHƯA có ST-77.
+# lệnh: cargo test -p vis-fmt --test moi; cargo test -p vis-cli --test fmt_moi
+
+== vis-fmt/tests/moi.rs
+test cap_co_write_va_comment ... ok
+test derives_trait_impl ... ok
+test lossless_token_fixture_moi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+== vis-cli/tests/fmt_moi.rs
+assertion `left == right` failed: stderr: 
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- fmt_check_toan_bo_test stdout ----
+
+thread 'fmt_check_toan_bo_test' (46707239) panicked at crates/vis-cli/tests/fmt_moi.rs:74:5:
+assertion `left == right` failed: stdout: 
+stderr: # không đọc được: Is a directory (os error 21)
+
+  left: 2
+ right: 0
+
+---- fmt_check_thu_muc_co_vish stdout ----
+
+thread 'fmt_check_thu_muc_co_vish' (46707238) panicked at crates/vis-cli/tests/fmt_moi.rs:57:5:
+assertion `left == right` failed: phải exit 1 khi có tệp lệch
+  left: 2
+ right: 1
+
+
+failures:
+    fmt_check_thu_muc_co_vish
+    fmt_check_toan_bo_test
+    fmt_vish_than_cmd_giu_thu_le
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+error: test failed, to rerun pass `-p vis-cli --test fmt_moi`

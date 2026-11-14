@@ -168,23 +168,18 @@ fn write_khong_ghi_tep_loi() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+// **SỬA KÈM LÝ DO (ST-77)**: `.vish` **đã** được định dạng (CmdCST, giữ thụt lề khối `cmd`) —
+// không còn "Bail out!". `test/check/cmd_mode.vish` **parse được** (chỉ sai **lệnh** `ls -la`, lỗi
+// ngữ nghĩa của chế độ lệnh); `fmt` là tầng **cú pháp** nên định dạng được — đúng phạm vi, ghi rõ.
 #[test]
-fn vish_bail_out_exit_2() {
+fn vish_format_duoc_khi_chi_sai_lenh() {
     let dir = tmp_dir("vish");
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test/check/cmd_mode.vish");
     let dst = dir.join("cmd_mode.vish");
     std::fs::copy(&src, &dst).expect("chép .vish");
     let o = run_strs(&["fmt", &s(&dst)]);
-    assert_eq!(o.status.code(), Some(2));
-    let out = stdout(&o);
-    assert!(
-        out.contains("Bail out! định dạng chế độ lệnh (.vish) chưa có đặc tả — chưa hỗ trợ"),
-        "thiếu `Bail out!`: {out}"
-    );
-    assert!(
-        !out.contains("đã sửa"),
-        "bail out không được coi là đã sửa: {out}"
-    );
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert!(stdout(&o).contains("ls -la"), "stdout: {}", stdout(&o));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

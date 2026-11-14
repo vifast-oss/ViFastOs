@@ -39,12 +39,17 @@ const VS0107: u16 = 107;
 /// Chọn lỗi "đầu tiên" theo **tầng** (VD-38 mục 8): lỗi từ vựng `01xx` (trừ tab `VS0107`) trước, rồi
 /// lỗi cú pháp `02xx`; tab không tính là lỗi ở đây vì chính `fmt` sửa nó.
 pub fn format(text: &str) -> Result<String, FmtError> {
-    let out = vis_syntax::parse(text, Mode::Script);
-    if let Some(d) = out
-        .diagnostics
-        .iter()
-        .find(|d| d.code.id / 100 == 1 && d.code.id != VS0107)
-    {
+    format_mode(text, Mode::Script)
+}
+
+/// **ST-77 (VD-108)**: như [`format`] nhưng nhận **chế độ** — `.vish` dùng [`Mode::Command`].
+/// Cùng một bộ luật lossless/idempotent, không đổi token; chỉ tái tạo thụt lề/CRLF/newline cuối.
+pub fn format_mode(text: &str, mode: Mode) -> Result<String, FmtError> {
+    let out = vis_syntax::parse(text, mode);
+    // **ST-77**: chế độ lệnh có thể phát mã **không** phải 01xx/02xx (vd `VS0602` cờ lệnh sai);
+    // mọi chẩn đoán **khác tab** đều chặn format — nếu không, render một CST dở dang sẽ **mất
+    // token** (đo được: `.vish` sai cú pháp từng cho ra chuỗi rỗng). Tab `VS0107` vẫn được sửa.
+    if let Some(d) = out.diagnostics.iter().find(|d| d.code.id != VS0107) {
         return Err(FmtError {
             code: d.code.short,
             line: d.line,
@@ -52,15 +57,44 @@ pub fn format(text: &str) -> Result<String, FmtError> {
             message: d.message.clone(),
         });
     }
-    if let Some(d) = out.diagnostics.iter().find(|d| d.code.id / 100 == 2) {
-        return Err(FmtError {
-            code: d.code.short,
-            line: d.line,
-            col: d.col,
-            message: d.message.clone(),
-        });
+    if mode == Mode::Command {
+        // **ST-77**: CmdCST **không** phát INDENT/DEDENT (khối `cmd` giữ thụt lề gốc trong CST),
+        // nên chế độ lệnh chỉ chuẩn hoá **an toàn**: NFC, CRLF→LF, tab ở phần thụt lề → 4 dấu
+        // cách, bỏ khoảng trắng cuối dòng, đúng một newline cuối — **không** tự đổi độ sâu khối
+        // (sẽ làm lệch 50 fixture `.vish` đang đúng). Vẫn lossless token + idempotent.
+        return Ok(render_command(&out));
     }
     Ok(render(&out))
+}
+
+/// Dựng lại `.vish` (chế độ lệnh) từ văn bản đã chuẩn hoá: giữ nguyên thụt lề gốc (chỉ tab → 4
+/// dấu cách ở phần đầu dòng), bỏ khoảng trắng cuối mỗi dòng, đúng một newline cuối tệp.
+fn render_command(out: &ParseOutput) -> String {
+    let src = &out.text;
+    let mut dst = String::with_capacity(src.len() + 1);
+    for line in src.split('\n') {
+        let mut ind = String::new();
+        let mut rest = line;
+        loop {
+            if let Some(r) = rest.strip_prefix('\t') {
+                ind.push_str("    ");
+                rest = r;
+            } else if let Some(r) = rest.strip_prefix(' ') {
+                ind.push(' ');
+                rest = r;
+            } else {
+                break;
+            }
+        }
+        dst.push_str(&ind);
+        dst.push_str(rest.trim_end());
+        dst.push('\n');
+    }
+    while dst.ends_with('\n') {
+        dst.pop();
+    }
+    dst.push('\n');
+    dst
 }
 
 /// Dựng lại văn bản từ token + độ sâu khối của CST.
