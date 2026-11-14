@@ -24,7 +24,7 @@ tiền lệ báo cáo [`K1C-DOD.md`](K1C-DOD.md).
 |---|---|---|---|
 | 1 | `nightly --l1 --seeds 100000 --smp 1,2,4,8` (**400.000 lượt**) | **ĐẠT** — **400.000 lượt** (100k seed × 4 smp, **2 lần/seed** = 800.000 lượt chạy), **0** panic/0 vi phạm TLB-safety trên **51,2 triệu** op, wall **690,69 s**; **0** vi phạm TLB-safety/checker trên **mỗi** op; cùng seed ⇒ cùng trace (2 lần/seed) | [`JOURNAL/kt43-l1-100k.log`](../JOURNAL/kt43-l1-100k.log) |
 | 2 | **Mutation 12 ca §7.2 cũ + 5 ca VM** (gồm **AP→BSP**, bỏ ack unmap, bỏ W^X, bỏ flush deactivate, bỏ drain hộp thư) | **ĐẠT — 17/17 bị giết** (exit 101 + `test result: FAILED` đúng test/assert, khôi phục hash == HEAD) | [`JOURNAL/kt43-mutation.log`](../JOURNAL/kt43-mutation.log) |
-| 3 | Miri **toàn bộ** tập ảnh hưởng K2 (kt36..kt42) + `vifast-pte` + `vifast-sync` + mẫu driver kt43 | **ĐẠT (tập K2+pte+sync)** — **146 test / 0 failed** (57 test K2 + 64 lib + 9 `vifast-pte` + 16 `vifast-sync`), mọi log `EXIT=0`; driver kt43 smoke **không hoàn tất** — **không** claim phủ driver (xem §4) | [`JOURNAL/kt43-miri-*.log`](../JOURNAL/) |
+| 3 | Miri **toàn bộ** tập ảnh hưởng K2 (kt36..kt42) + `vifast-pte` + `vifast-sync` + mẫu driver kt43 | **ĐẠT (tập K2+pte+sync)** — **146 test / 0 failed** (57 test K2 + 64 lib + 9 `vifast-pte` + 16 `vifast-sync`), **10 log của tập này** `EXIT=0`; driver kt43 smoke **`EXIT=101` (SIGTERM), không hoàn tất** — **không** claim phủ driver (xem §4) | [`JOURNAL/kt43-miri-*.log`](../JOURNAL/) |
 | 4 | `gate --fast` (≥ 569 test, không retry) + `check_scn` 26 tệp/16 nhóm + fixtures âm | **ĐẠT** — **PASS 569 test / 0 failed**, L1 1.000 seed **1.427 ms**; wall **374,56 s** (T-INFRA do tải máy); fmt/clippy `-D warnings`, 26 tệp `.scn`/16 nhóm, 5/5 fixture âm; `git diff spec/` rỗng | [`JOURNAL/kt43-gate-fast.log`](../JOURNAL/kt43-gate-fast.log) |
 | 5 | Bảng DoD K2 (§4.2 D1..D11) + nợ có chủ | **Đã lập** — §6/§8 | tệp này |
 
@@ -200,7 +200,8 @@ harness tái lập: [`JOURNAL/kt43-mutation-diff.md`](../JOURNAL/kt43-mutation-d
 ## 4. D8 — Miri (việc §4.1 #3)
 
 Lệnh rời `./v2/bin/v2 miri -p <crate> --test <tập>` (không chạy `l1_k1c` 1.000 seed dưới
-Miri — D2-47(a)); mỗi log có `EXIT=0`:
+Miri — D2-47(a)); **10 log của tập 146 test đều `EXIT=0`** (driver smoke bên dưới là ngoại lệ
+`EXIT=101`, **không** tính):
 
 | Tập | Test | Thời gian test | Log |
 |---|---|---|---|
@@ -216,16 +217,17 @@ Miri — D2-47(a)); mỗi log có `EXIT=0`:
 | `vifast-sync` | 16 (4 lib + 10 + 2 doctest) | 0,62 + 2,55 + 0,17 s | [`kt43-miri-vifast_sync.log`](../JOURNAL/kt43-miri-vifast_sync.log) |
 | **driver kt43 (smoke)** (`VIFAST_SEEDS=1`, `VIFAST_SMP=1`, `cfg(miri)` ⇒ `SO_OP=8`) | 1 | **không hoàn tất** (Miri quá chậm; job dừng — **không** có `EXIT=0`) | [`kt43-miri-l1_k1c.log`](../JOURNAL/kt43-miri-l1_k1c.log) |
 
-**Tổng K2 + pte + sync**: 146 test, **0 failed**, mọi log `EXIT=0`. Driver l1_k1c là **test-only mới của KT-43**, **không** nằm trong 146 test; smoke dưới Miri **không hoàn tất** trong ngân sách 3 h (64→8 op/seed vẫn quá chậm dưới trình thông dịch + tải máy) ⇒ **D8 KHÔNG claim** Miri phủ driver; D8 chỉ claim tập K2+pte+sync ở trên (log từng tệp).
+**Tổng K2 + pte + sync**: 146 test, **0 failed**, **10 log của tập này** đều `EXIT=0`. Driver l1_k1c là **test-only mới của KT-43**, **không** nằm trong 146 test; smoke dưới Miri **không hoàn tất** trong ngân sách 3 h (64→8 op/seed vẫn quá chậm dưới trình thông dịch + tải máy) ⇒ **D8 KHÔNG claim** Miri phủ driver; D8 chỉ claim tập K2+pte+sync ở trên (log từng tệp).
 
 - Tập Miri **K2**: `kt36_frame`, `kt37_pagetable`, `kt38_vspace`, `kt39_wx`, `kt40_tlb`,
   `kt41_vmfault`, `kt42_vmcheck` + unit `--lib` (`check_vm`, `check_*`) + `vifast-pte` +
   `vifast-sync`; thêm **4 tệp K2 còn thiếu** vào danh sách `nightly --only-miri` (`v2/bin/v2`)
   — D8 của K2-PLAN yêu cầu "Miri toàn bộ crate liên quan", không chỉ 3 tệp KT-40..42.
-- Driver kt43 dưới Miri: chạy **mẫu nhỏ** (`VIFAST_SEEDS=2`, `VIFAST_SMP=1,2`) để Miri kiểm
-  chính code driver mới (không chạy 1.000 seed/100k dưới Miri — D2-47(a)).
-- Mọi log **exit 0**; cảnh báo `integer-to-pointer cast` là của `vifast-objmem` (arena, có từ
-  trước), **không** phải UB mới.
+- Driver kt43 dưới Miri: chạy **mẫu nhỏ** (`VIFAST_SEEDS=1`, `VIFAST_SMP=1`, `cfg(miri)` ⇒
+  `SO_OP=8`) để Miri kiểm chính code driver mới (không chạy 1.000 seed/100k dưới Miri —
+  D2-47(a)); smoke **không hoàn tất** (`EXIT=101`, SIGTERM) ⇒ **không** claim.
+- **10 log của tập 146 test** đều `EXIT=0`; driver smoke là ngoại lệ `EXIT=101`. Cảnh báo
+  `integer-to-pointer cast` là của `vifast-objmem` (arena, có từ trước), **không** phải UB mới.
 
 ## 5. Cổng `--fast` + `.scn` (việc §4.1 #4)
 
@@ -260,7 +262,7 @@ real 374.56
 | D5 | W^X | bất biến `!(w>0 && x>0)` + `w+x ≤ maps` sau **mỗi** op (model hook + driver) | 0 vi phạm / 400k lượt | **ĐẠT** — `check_wx` sau mỗi op, 0 panic; V3 bị giết (§3) |
 | D6 | Frame leak | `check_vm` (gồm `check_frames` + `wx_recount`) cuối **mỗi** lượt | 0 frame mồ côi | **ĐẠT** — 800.000 lần `check_vm`, 0 lỗi (§2.2) |
 | D7 | ASID | không trùng trong thế hệ; cạn ⇒ `generation += 1` + flush `gen` | đúng 100% ca test | **ĐẠT** — `check_asid` sau mỗi op + `kt38_vspace`; V4 chứng minh flush deactivate bị test bắt |
-| D8 | Miri | `v2 miri`/`nightly --only-miri` trên tập K2 + pte + sync | 0 lỗi | **ĐẠT (K2+pte+sync)** — 146 test/0 failed, mọi log `EXIT=0`; **driver smoke không hoàn tất, không claim** (§4) |
+| D8 | Miri | `v2 miri`/`nightly --only-miri` trên tập K2 + pte + sync | 0 lỗi | **ĐẠT (K2+pte+sync)** — 146 test/0 failed, **10 log của tập này** `EXIT=0`; **driver smoke `EXIT=101`, không claim** (§4) |
 | D9 | ABI | `git diff --stat spec/` | **rỗng** | **ĐẠT** — `git status --porcelain -- spec/` rỗng (KT-43 không chạm spec) |
 | D10 | `.scn` | 5 kịch bản mới + toàn bộ cũ | xanh, có log đỏ trước | **ĐẠT** — `scn-check` 26 tệp/16 nhóm + 5/5 fixture âm trong gate KT-43; log đỏ trước từ KT-42 |
 | D11 | `gate --fast` | log cổng | ≥ 569 test; L1 1k ≤ 60 s | **ĐẠT** — 569 test/0 failed, L1 **1.427 ms** (§5) |

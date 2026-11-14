@@ -10,7 +10,7 @@ Task          : **KT-43 (cổng cuối K2: 100k×4 L1 phủ VM + 17 mutation + M
 Bước          : 8/8 **xong** (baseline 569/73 → driver L1 phủ 4 op VM (test-only) + log đỏ → `nightly --l1 100k×4` PASS 690,69 s (2 lần/seed) → mutation 12 ca §7.2 + 5 ca VM **17/17** → Miri tập K2 + pte + sync → `gate --fast` PASS 569/0, L1 1.427 ms → K2-DOD + STATE → commit `[KT-43]` + push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/0 failed**, L1 1.000 seed **1.427 ms**, fmt/clippy `-D warnings`, luật R1..R5, gen-check ON, scn-check **26 tệp/16 nhóm** + 5/5 fixture âm (`JOURNAL/kt43-gate-fast.log`). Wall **374,56 s** là wall host (L0 chạy thêm driver 1.000 seed + tải máy) — **T-INFRA**, L1 vẫn ≤ 60 s, không nới ngưỡng.
-Miri          : KT-43 — **146 test/0 failed**, mọi log `EXIT=0`: kt36 12, kt37 10, kt38 7, kt39 8, kt40 10, kt41 9, kt42 1, `vifast-sim --lib` 64, `vifast-pte` 9, `vifast-sync` 16 + driver l1_k1c mẫu nhỏ (`JOURNAL/kt43-miri-*`). Đã thêm 4 tệp K2 còn thiếu + `vifast-pte` vào danh sách `nightly --only-miri` (`v2/bin/v2`).
+Miri          : KT-43 — **146 test/0 failed**, **10 log** `EXIT=0`: kt36 12, kt37 10, kt38 7, kt39 8, kt40 10, kt41 9, kt42 1, `vifast-sim --lib` 64, `vifast-pte` 9, `vifast-sync` 16. Driver `l1_k1c` smoke dưới Miri **`EXIT=101` (SIGTERM), không hoàn tất ⇒ không claim** (`JOURNAL/kt43-miri-l1_k1c.log`). Đã thêm 4 tệp K2 còn thiếu + `vifast-pte` vào danh sách `nightly --only-miri` (`v2/bin/v2`).
 Việc dở       : **review độc lập trước commit** (báo lead; nếu quá 20 phút: tự soát + đề xuất REVIEW); commit `[KT-43]` chỉ `v2/` + push; **không** lật QUEUE (D2-37). `viscript/` + `review/` của tab khác **không chạm**.
 ```
 

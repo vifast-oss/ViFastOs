@@ -88,9 +88,10 @@ HEAD K2 + 5 ca VM (**V1** đảo cấp lá AP→BSP, **V2** bỏ chờ ack khi u
 
 Tập K2 đầy đủ: `kt36_frame`, `kt37_pagetable`, `kt38_vspace`, `kt39_wx`, `kt40_tlb`,
 `kt41_vmfault`, `kt42_vmcheck` + `--lib` + `vifast-pte` + `vifast-sync` + driver KT-43 mẫu nhỏ
-(`VIFAST_SEEDS=2`, `VIFAST_SMP=1,2`; không chạy 1k/100k dưới Miri — D2-47(a)). Thêm 4 tệp K2
-còn thiếu + `vifast-pte` vào danh sách `nightly --only-miri` (`v2/bin/v2`). Log `kt43-miri-*`,
-mọi exit 0.
+(`VIFAST_SEEDS=1`, `VIFAST_SMP=1`, `cfg(miri)` ⇒ `SO_OP=8`; không chạy 1k/100k dưới Miri —
+D2-47(a)). Thêm 4 tệp K2 còn thiếu + `vifast-pte` vào danh sách `nightly --only-miri`
+(`v2/bin/v2`). Log `kt43-miri-*`: **10 log của tập 146 test `exit 0`**; driver smoke
+`kt43-miri-l1_k1c` kết thúc **`EXIT=101` (SIGTERM), không hoàn tất** ⇒ không claim phủ driver.
 
 ## 5. Cổng
 
