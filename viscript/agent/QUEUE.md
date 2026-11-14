@@ -170,7 +170,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **DONE** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **DONE** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **DONE** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
-| ST-77 | **nhất quán #1** — `vis fmt` cho cú pháp mới: `cap[...]` + `@`/`(write)`, `async fn`, `spawn`, `chan[T]`, `use pkg.*` | ST-76 | 2,5 h | **READY** | ≥8 ca; lossless + idempotent; `fmt --check` trên toàn `test/` xanh |
+| ST-77 | **nhất quán #1** — `vis fmt` cho cú pháp mới: `cap[...]` + `@`/`(write)`, `async fn`, `spawn`, `chan[T]`, `use pkg.*` | ST-76 | 2,5 h | **DONE** | ≥8 ca; lossless + idempotent; `fmt --check` trên toàn `test/` xanh |
 | ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **READY** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
 | ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **READY** | ≥6 ca; TAP đúng; interp = `--vm` |
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **READY** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
@@ -1184,3 +1184,15 @@ APPROVED 2026-11-14 Agent 0
 > gói/registry (13 ca) — cộng 2 hạng mục **đúng mức bằng chứng** (Landlock: **probe** + check chéo; đa nền tảng: **check**),
 > và **bộ hợp chuẩn 54 ca trên macOS**. **Còn**: Landlock **thật**, runner **Windows/Linux/wasm**, và **37 mục nợ** (R11 §5).
 > **ViScript vẫn chưa hoàn thiện toàn bộ** — nhưng mọi hạng mục VS2 giờ đều có **bằng chứng đo** hoặc **lý do chặn** rõ ràng.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-77 DONE — nhất quán #1 (`vis fmt`).** Commit `920cb957` (**Agent 2 tự commit, đã push**). Đỏ trước **thật**: `--check` thư mục
+> không nhận thư mục (exit 2), `.vish` bail-out "chưa có đặc tả", render script lên `.vish` **mất thụt lề khối `cmd`**; **phát hiện
+> thêm** fmt chỉ chặn `01xx/02xx` ⇒ `.vish` sai **lệnh** (`VS0602`) cho ra **chuỗi rỗng** (mất token) ⇒ nay chặn **mọi** chẩn đoán
+> khác tab. Sửa: `format_mode` công khai, `.vish` = `Mode::Command` + **giữ thụt lề gốc**, CLI nhận **thư mục** (đệ quy, sắp byte),
+> `--check/--write` đúng mode. **9 snapshot + lossless trên 35 fixture + idempotent**, 3 ca CLI. `fmt --check test/` **xanh 497 tệp**
+> (bỏ **136** input cố ý: `test/fmt/**`, `test/check/**`, `test/doc-examples/**`, tệp có sibling `.err` — **có lý do trong mã**).
+> Đo: **886 test** (fmt 18→**27**) · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (219,3 s).
+> Nợ: `.vish` **không** chuẩn hoá độ sâu khối (giữ thụt lề gốc), fmt **chỉ tầng cú pháp**, chưa reflow dòng dài.
+> **ST-78 mở** (`explain` + sổ mã 3 ngôn ngữ).
