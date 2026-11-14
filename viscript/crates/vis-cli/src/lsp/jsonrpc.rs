@@ -88,3 +88,75 @@ pub fn chuoi(v: &Value) -> Option<&str> {
         _ => None,
     }
 }
+
+/// `params` của request.
+pub fn lay_params(kv: &[(Value, Value)]) -> Option<&Value> {
+    lay(kv, "params")
+}
+
+/// `params.textDocument` (object).
+pub fn text_doc(kv: &[(Value, Value)]) -> Option<&[(Value, Value)]> {
+    let p = lay_params(kv)?;
+    let Value::Map(p) = p else {
+        return None;
+    };
+    let td = lay(p, "textDocument")?;
+    let Value::Map(td) = td else {
+        return None;
+    };
+    Some(td)
+}
+
+/// `params.textDocument.uri`.
+pub fn uri_cua(kv: &[(Value, Value)]) -> Option<String> {
+    chuoi(lay(text_doc(kv)?, "uri")?).map(str::to_string)
+}
+
+/// `didOpen`: `(uri, text)`.
+pub fn van_ban_mo(kv: &[(Value, Value)]) -> Option<(String, String)> {
+    let td = text_doc(kv)?;
+    let uri = chuoi(lay(td, "uri")?)?.to_string();
+    let text = chuoi(lay(td, "text")?)?.to_string();
+    Some((uri, text))
+}
+
+/// `didChange` full sync: `(uri, contentChanges[last].text)`.
+pub fn van_ban_doi(kv: &[(Value, Value)]) -> Option<(String, String)> {
+    let uri = uri_cua(kv)?;
+    let p = lay_params(kv)?;
+    let Value::Map(p) = p else {
+        return None;
+    };
+    let Value::List(xs) = lay(p, "contentChanges")? else {
+        return None;
+    };
+    let Value::Map(last) = xs.last()? else {
+        return None;
+    };
+    let text = chuoi(lay(last, "text")?)?.to_string();
+    Some((uri, text))
+}
+
+fn so_nguyen(v: &Value) -> Option<u32> {
+    match v {
+        Value::Int(n) if *n >= 0 => Some(*n as u32),
+        _ => None,
+    }
+}
+
+/// `params.textDocument.uri` + `params.position.{line,character}` (0-based).
+pub fn vi_tri_van_ban(kv: &[(Value, Value)]) -> Option<(String, u32, u32)> {
+    let uri = uri_cua(kv)?;
+    let p = lay_params(kv)?;
+    let Value::Map(p) = p else {
+        return None;
+    };
+    let Value::Map(pos) = lay(p, "position")? else {
+        return None;
+    };
+    Some((
+        uri,
+        so_nguyen(lay(pos, "line")?)?,
+        so_nguyen(lay(pos, "character")?)?,
+    ))
+}

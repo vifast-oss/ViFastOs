@@ -1,0 +1,95 @@
+# ST-69 — log ĐỎ (Rust) lúc 2026-11-14T08:24:01Z, HEAD fc620dd4 — harness CUỐI trên mã **chưa có** completion/hover.
+# lệnh: cargo test -p vis-cli --test lsp
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 22 tests
+test lsp_co_la_2 ... ok
+test lsp_chan_doan_tab_mot_cot ... ok
+test lsp_chan_doan_did_open ... ok
+test lsp_completion_chua_mo ... FAILED
+test lsp_completion_tien_to_le ... FAILED
+test lsp_chan_doan_emoji_utf16 ... ok
+test lsp_chan_doan_did_change ... ok
+test lsp_chan_doan_did_close ... ok
+test lsp_chan_doan_sach ... ok
+test lsp_chan_doan_vish ... ok
+test lsp_hover_khong_ton_tai ... FAILED
+test lsp_completion_sau_cham ... FAILED
+test lsp_completion_tien_to_add ... FAILED
+test lsp_body_hong_32700 ... ok
+test lsp_initialized_khong_frame ... ok
+test lsp_hover_add ... FAILED
+test lsp_khoi_tao ... ok
+test lsp_exit_truoc_shutdown_1 ... ok
+test lsp_hover_bien_kieu ... FAILED
+test lsp_shutdown_exit_0 ... ok
+test lsp_method_la_32601 ... ok
+test lsp_truoc_initialize_32002 ... ok
+
+failures:
+
+---- lsp_completion_chua_mo stdout ----
+
+thread 'lsp_completion_chua_mo' (45447316) panicked at crates/vis-cli/tests/lsp.rs:622:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 119\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/completion\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 36\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":[]}"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_completion_tien_to_le stdout ----
+
+thread 'lsp_completion_tien_to_le' (45447356) panicked at crates/vis-cli/tests/lsp.rs:504:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 119\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/completion\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 86\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":[{\"label\":\"len\",\"kind\":3},{\"label\":\"let\",\"kind\":14}]}"
+
+---- lsp_hover_khong_ton_tai stdout ----
+
+thread 'lsp_hover_khong_ton_tai' (45447376) panicked at crates/vis-cli/tests/lsp.rs:589:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 114\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/hover\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}"
+
+---- lsp_completion_sau_cham stdout ----
+
+thread 'lsp_completion_sau_cham' (45447317) panicked at crates/vis-cli/tests/lsp.rs:529:9:
+thiếu result: {"jsonrpc":"2.0","id":2,"error":{"code":-32601,"message":"method không tồn tại","data":"textDocument/completion"}}
+
+---- lsp_completion_tien_to_add stdout ----
+
+thread 'lsp_completion_tien_to_add' (45447318) panicked at crates/vis-cli/tests/lsp.rs:480:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 119\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/completion\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 101\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":[{\"label\":\"add\",\"kind\":3,\"detail\":\"fn add(a: int, b: int) -> int\"}]}"
+
+---- lsp_hover_add stdout ----
+
+thread 'lsp_hover_add' (45447371) panicked at crates/vis-cli/tests/lsp.rs:570:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 114\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/hover\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 193\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```vis\\nfn add(a: int, b: int) -> int\\n```\"},\"range\":{\"start\":{\"line\":3,\"character\":0},\"end\":{\"line\":3,\"character\":3}}}}"
+
+---- lsp_hover_bien_kieu stdout ----
+
+thread 'lsp_hover_bien_kieu' (45447372) panicked at crates/vis-cli/tests/lsp.rs:608:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 114\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"method không tồn tại\",\"data\":\"textDocument/hover\"}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 177\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```vis\\nxs: list[int]\\n```\"},\"range\":{\"start\":{\"line\":2,\"character\":0},\"end\":{\"line\":2,\"character\":2}}}}"
+
+
+failures:
+    lsp_completion_chua_mo
+    lsp_completion_sau_cham
+    lsp_completion_tien_to_add
+    lsp_completion_tien_to_le
+    lsp_hover_add
+    lsp_hover_bien_kieu
+    lsp_hover_khong_ton_tai
+
+test result: FAILED. 15 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`
+
+[cargo exit=101]

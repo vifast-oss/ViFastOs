@@ -1,0 +1,15 @@
+# ST-69 — log ĐỎ (sem) lúc 2026-11-14T08:23:59Z, HEAD fc620dd4.
+# Red-first: LSP **chưa có** textDocument/completion + textDocument/hover ⇒ method lạ ⇒ -32601.
+# Harness CUỐI (tests/lsp.rs, 22 ca) đã viết. Không thêm ca test/sem (VD-105 (7)).
+
+== initialize + completion (id 2)
+   exit 0
+   stdout:
+   Content-Length: 199
+   
+   {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"positionEncoding":"utf-16","hoverProvider":true,"completionProvider":{"triggerCharacters":["."]}},"serverInfo":{"name":"vis"}}}Content-Length: 119
+   
+   {"jsonrpc":"2.0","id":2,"error":{"code":-32601,"message":"method không tồn tại","data":"textDocument/completion"}}
+   stderr: 
+
+== KẾT LUẬN: completion/hover rơi vào nhánh -32601 ⇒ 7 ca mới đỏ.

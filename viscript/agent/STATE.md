@@ -6,19 +6,33 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-68 — VS2 #5b: LSP diagnostics + vị trí UTF-16** (gộp lex+parse+lower+tyck,
-                `textDocument/didOpen|didChange|didClose` ⇒ `publishDiagnostics`; 7 snapshot + **6 unit**
-                vị trí; vị trí 0-based UTF-16, tab = 1) — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 5/5 (red-first 15 ca + probe → `lsp/phan_tich.rs` + handler + 6 unit → 15/15 + 6/6 xanh
-                → workspace **834** → cổng → differential 100k → STATE/JOURNAL). Cổng lần 1 **đỏ clippy**
-                (`if_same_then_else` + 2 `needless_lifetimes`) → sửa → lần 2 PASS (không nới gì).
+Task          : **ST-69 — VS2 #5c: LSP completion + hover** (item/biến/builtin/từ khoá, hover markdown +
+                `range` UTF-16; 7 ca mới; **tổng 22 phản hồi LSP** = 8 + 7 + 7) — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 5/5 (red-first 22 ca + probe (7 đỏ) → `lsp/goi_y.rs` + `vi_tri.rs` + `chan_doan.rs`
+                (tách để mỗi tệp ≤300) + handler → 22/22 + 6/6 xanh → workspace **841** → cổng →
+                differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:19:33Z**; **834** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:36:38Z**; **841** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (313,5 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (214,1 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-68]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-69]` + push (đã được uỷ quyền)
+
+## ST-69 — VS2 #5c: LSP completion + hover (tổng 22 phản hồi LSP), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **R1 — tách tệp** | `lsp/vi_tri.rs` **135** (vị trí UTF-16 + 6 unit — chuyển từ `phan_tich`), `lsp/chan_doan.rs` **44** (dựng `publishDiagnostics`), `lsp/goi_y.rs` **171** (completion/hover), `mod.rs` **265**, `phan_tich.rs` **246**, `jsonrpc.rs` **162**, `khung.rs` **72** — tất cả ≤300; R1 toàn cây max **1.491**. Không `unsafe`, không crate mới. |
+| 1 | **Nguồn gợi ý** | Item cấp tệp: fn **3**, record **22**, enum **13**, alias **25**, const **21**, trait **11**, extern **3** (detail None); biến/tham số **6** — **đọc HIR** (`HStmt::Let{ty}`/`Var{ty}` + tham số `HFn`), vì sym của `let` là `PatBind` **không mang kiểu**; `BUILTIN_VALUE_NAMES` (11) **3**; `KEYWORDS` (40) **14**. Khử trùng theo `label` (item > biến > builtin > từ khoá), sắp theo **byte** label, lọc **tiền tố** tại con trỏ, cap **200**. |
+| 2 | **Hover** | Từ tại con trỏ (`vi_tri::byte_tu_vi_tri` + quét ident) → item ⇒ markdown ```vis
+<chữ ký>
+``` (`fn add(a: int, b: int) -> int`); biến ⇒ `xs: list[int]`; builtin ⇒ `<builtin print>`; từ khoá ⇒ `từ khoá: let`; không có ⇒ `result:null`. `range` = **đúng từ** (0-based UTF-16, tab = 1). |
+| 3 | **Request** | `textDocument/completion` + `textDocument/hover` đọc `textDocument.uri` + `position`, dùng **văn bản đã lưu** từ `didOpen`/`didChange`; **chưa mở** ⇒ `[]` / `null` (không lỗi); trước `initialize` ⇒ `-32002`; capabilities **giữ nguyên** (snapshot ST-67 vẫn xanh). |
+| 4 | **Ca mới (7)** | `lsp_completion_tien_to_add` (đúng 1 item `add`, kind 3, detail chữ ký), `lsp_completion_tien_to_le` (`len` 3 rồi `let` 14), `lsp_completion_sau_cham` (tiền tố rỗng ⇒ **toàn bộ** 50 mục = 11 builtin + 40 keyword − `ref` trùng; lý do: client tự lọc, rỗng thì không gợi ý gì), `lsp_hover_add` (markdown + range), `lsp_hover_khong_ton_tai` (`null`), `lsp_hover_bien_kieu` (`xs: list[int]`), `lsp_completion_chua_mo` (`[]`). |
+| 5 | **Red-first** | `JOURNAL/st69-red-sem.log` sha256 `d4bc3de4…` (probe completion ⇒ **-32601**); `JOURNAL/st69-red-rust.log` sha256 `82d0923e…` (harness 22 ca: **15 passed / 7 failed**). Sau hiện thực: 22/22 + 6/6 xanh. |
+| 6 | **Đo** | **841** test = 834 + **7** integration (21+96+18+154+26+62+9+**455**); sem **441/21** giữ nguyên; `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=214.1 toc_do=467/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 7 | **Nợ** | **Chưa module-aware** (một tệp, `std_mods` tắt, chưa giải `use ./x` — như ST-68); completion **chưa theo ngữ cảnh sau `.`** (trả toàn bộ, không theo kiểu biến/thành viên); hover chưa field/member; chưa signature help/snippet/`documentation`; `didChange` full sync; builtin detail None; chưa lọc biến theo phạm vi con trỏ (gộp mọi biến). |
 
 ## ST-68 — VS2 #5b: LSP diagnostics + vị trí UTF-16, 2026-11-14
 

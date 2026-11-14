@@ -414,3 +414,210 @@ fn lsp_chan_doan_did_close() {
         format!("{}{}{}", khung(INIT), khung(&loi), khung(&publish(URI, "")))
     );
 }
+
+// ===== ST-69: completion + hover =====
+
+fn pos(line: i64, ch: i64) -> Value {
+    m(vec![
+        ("line", Value::Int(line)),
+        ("character", Value::Int(ch)),
+    ])
+}
+fn req_vi_tri(id: i64, method: &str, uri: &str, line: i64, ch: i64) -> String {
+    so(&m(vec![
+        ("jsonrpc", s("2.0")),
+        ("id", Value::Int(id)),
+        ("method", s(method)),
+        (
+            "params",
+            m(vec![
+                ("textDocument", m(vec![("uri", s(uri))])),
+                ("position", pos(line, ch)),
+            ]),
+        ),
+    ]))
+}
+fn completion(id: i64, uri: &str, line: i64, ch: i64) -> String {
+    req_vi_tri(id, "textDocument/completion", uri, line, ch)
+}
+fn hover(id: i64, uri: &str, line: i64, ch: i64) -> String {
+    req_vi_tri(id, "textDocument/hover", uri, line, ch)
+}
+
+/// Body `publishDiagnostics` rỗng (đã biết ST-68).
+fn publish_rong(uri: &str) -> String {
+    publish(uri, "")
+}
+
+/// Frame **cuối** trong stdout (bỏ header) — dùng khi không cần snapshot cả chuỗi.
+fn lay<'a>(kv: &'a [(Value, Value)], k: &str) -> Option<&'a Value> {
+    kv.iter().find_map(|(kk, v)| match kk {
+        Value::Str(s) if s == k => Some(v),
+        _ => None,
+    })
+}
+
+fn frame_cuoi(out: &str) -> String {
+    let i = out.rfind("Content-Length: ").expect("có frame");
+    let j = out[i..].find("\r\n\r\n").expect("header") + i + 4;
+    out[j..].to_string()
+}
+
+/// Ca 16 — completion tiền tố `ad` ⇒ **đúng 1** item `add` (fn, kind 3, detail chữ ký).
+#[test]
+fn lsp_completion_tien_to_add() {
+    let text = "fn add(a: int, b: int) -> int:\n    a + b\n\nad";
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&completion(2, URI, 3, 2))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let a = r#"{"label":"add","kind":3,"detail":"fn add(a: int, b: int) -> int"}"#.to_string();
+    let tra = format!(r#"{{"jsonrpc":"2.0","id":2,"result":[{a}]}}"#);
+    assert_eq!(
+        out,
+        format!(
+            "{}{}{}",
+            khung(INIT),
+            khung(&publish_rong(URI)),
+            khung(&tra)
+        )
+    );
+}
+
+/// Ca 17 — tiền tố `le` ⇒ `len` (builtin, 3) rồi `let` (keyword, 14), thứ tự byte.
+#[test]
+fn lsp_completion_tien_to_le() {
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "le")),
+        khung(&completion(2, URI, 0, 2))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let tra =
+        r#"{"jsonrpc":"2.0","id":2,"result":[{"label":"len","kind":3},{"label":"let","kind":14}]}"#;
+    assert_eq!(
+        out,
+        format!("{}{}{}", khung(INIT), khung(&publish_rong(URI)), khung(tra))
+    );
+}
+
+/// Ca 18 — sau `.` (tiền tố rỗng) ⇒ **toàn bộ** danh sách (chọn "tất cả", không `[]`): 50 mục
+/// = 11 builtin + 40 keyword − 1 trùng (`ref`), cap 200. Lý do: LSP client tự lọc tiếp; rỗng thì
+/// không có gì để gợi ý sau `.`.
+#[test]
+fn lsp_completion_sau_cham() {
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "add.")),
+        khung(&completion(2, URI, 0, 4))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = frame_cuoi(&out);
+    let v = vis_interp::json::decode(&body).expect("JSON frame cuối");
+    let Value::Map(kv) = &v else {
+        panic!("frame không phải object")
+    };
+    let Some(Value::List(items)) = lay(kv, "result") else {
+        panic!("thiếu result: {body}")
+    };
+    let labels: Vec<String> = items
+        .iter()
+        .map(|it| {
+            let Value::Map(k) = it else {
+                panic!("item không phải object")
+            };
+            match lay(k, "label") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => panic!("thiếu label"),
+            }
+        })
+        .collect();
+    assert_eq!(
+        labels.len(),
+        50,
+        "11 builtin + 40 keyword − ref: {labels:?}"
+    );
+    assert!(labels.contains(&"print".to_string()));
+    assert!(labels.contains(&"let".to_string()));
+    assert_eq!(
+        labels.iter().filter(|l| *l == "ref").count(),
+        1,
+        "khử trùng `ref`"
+    );
+}
+
+/// Ca 19 — hover `add` ⇒ markdown chữ ký + range đúng từ.
+#[test]
+fn lsp_hover_add() {
+    let text = "fn add(a: int, b: int) -> int:\n    a + b\n\nadd\n";
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&hover(2, URI, 3, 1))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let tra = "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```vis\\nfn add(a: int, b: int) -> int\\n```\"},\"range\":{\"start\":{\"line\":3,\"character\":0},\"end\":{\"line\":3,\"character\":3}}}}";
+    assert_eq!(
+        out,
+        format!("{}{}{}", khung(INIT), khung(&publish_rong(URI)), khung(tra))
+    );
+}
+
+/// Ca 20 — hover tên **không tồn tại** ⇒ `result:null`.
+#[test]
+fn lsp_hover_khong_ton_tai() {
+    let text = "let z = 1\n\nzzz\n";
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&hover(2, URI, 2, 1))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let tra = r#"{"jsonrpc":"2.0","id":2,"result":null}"#;
+    assert_eq!(
+        out,
+        format!("{}{}{}", khung(INIT), khung(&publish_rong(URI)), khung(tra))
+    );
+}
+
+/// Ca 21 — hover biến có kiểu suy ra: `xs: list[int]` ⇒ markdown chứa `list[int]`.
+#[test]
+fn lsp_hover_bien_kieu() {
+    let text = "let xs: list[int] = [1, 2]\n\nxs\n";
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&hover(2, URI, 2, 1))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let tra = "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```vis\\nxs: list[int]\\n```\"},\"range\":{\"start\":{\"line\":2,\"character\":0},\"end\":{\"line\":2,\"character\":2}}}}";
+    assert_eq!(
+        out,
+        format!("{}{}{}", khung(INIT), khung(&publish_rong(URI)), khung(tra))
+    );
+}
+
+/// Ca 22 — completion cho tệp **chưa mở** ⇒ `result:[]`, không lỗi (nội dung rỗng).
+#[test]
+fn lsp_completion_chua_mo() {
+    let uri = "file:///chua-mo.vis";
+    let vao = format!("{}{}", khung(&init()), khung(&completion(2, uri, 0, 0)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let tra = r#"{"jsonrpc":"2.0","id":2,"result":[]}"#;
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(tra)));
+}

@@ -11,7 +11,7 @@
 
 use vis_diag::Severity;
 use vis_syntax::{Diagnostic, Mode, Span};
-use vis_types::{check, lower_into, LowerOptions, Symbols, TypeTable};
+use vis_types::{check, lower_into, HItem, HPat, HStmt, LowerOptions, Symbols, TypeTable};
 
 /// Một chẩn đoán đã chuẩn hoá cho LSP.
 pub struct ChanDoan {
@@ -22,10 +22,74 @@ pub struct ChanDoan {
     pub message: String,
 }
 
-/// Kết quả: văn bản **đã chuẩn hoá** (mốc của span) + chẩn đoán **đã sắp**.
+/// Một gợi ý (completion) hoặc mục tra cứu (hover).
+pub struct GoiY {
+    pub label: String,
+    /// Mã `CompletionItemKind` của LSP (3 function, 6 variable, 11 interface, 13 enum, 14 keyword,
+    /// 21 constant, 22 struct, 25 type parameter).
+    pub kind: u8,
+    pub detail: Option<String>,
+}
+
+/// Kết quả: văn bản **đã chuẩn hoá** (mốc của span) + chẩn đoán **đã sắp** + dữ liệu hover/completion.
 pub struct KetQua {
     pub text: String,
     pub ds: Vec<ChanDoan>,
+    /// Item cấp tệp (fn/record/enum/alias/const/trait) — thứ tự khai.
+    pub items: Vec<GoiY>,
+    /// Biến/tham số có kiểu suy ra: `(tên, kiểu đã `show`)`.
+    pub bien: Vec<(String, String)>,
+}
+
+/// Chữ ký `fn` cho `detail`/hover: `fn add(a: int, b: int) -> int`.
+fn chu_ky_fn(f: &vis_types::HFn, tbl: &TypeTable) -> String {
+    let ps: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, tbl.show(&p.ty)))
+        .collect();
+    format!("fn {}({}) -> {}", f.name, ps.join(", "), tbl.show(&f.ret))
+}
+
+fn goi_y_item(it: &HItem, tbl: &TypeTable) -> Option<GoiY> {
+    match it {
+        HItem::Fn(f) => Some(GoiY {
+            label: f.name.clone(),
+            kind: 3,
+            detail: Some(chu_ky_fn(f, tbl)),
+        }),
+        HItem::Rec(r) => Some(GoiY {
+            label: r.name.clone(),
+            kind: 22,
+            detail: Some(format!("type {}", r.name)),
+        }),
+        HItem::Enum(e) => Some(GoiY {
+            label: e.name.clone(),
+            kind: 13,
+            detail: Some(format!("enum {}", e.name)),
+        }),
+        HItem::Alias(a) => Some(GoiY {
+            label: a.name.clone(),
+            kind: 25,
+            detail: Some(format!("type {}", a.name)),
+        }),
+        HItem::Const(c) => Some(GoiY {
+            label: c.name.clone(),
+            kind: 21,
+            detail: Some(format!("const {}: {}", c.name, tbl.show(&c.ty))),
+        }),
+        HItem::Trait(t) => Some(GoiY {
+            label: t.name.clone(),
+            kind: 11,
+            detail: Some(format!("trait {}", t.name)),
+        }),
+        HItem::Extern(x) => Some(GoiY {
+            label: x.name.clone(),
+            kind: 3,
+            detail: None,
+        }),
+        HItem::Impl(_) | HItem::Use(_) => None,
+    }
 }
 
 /// Làm phẳng `\n\r\t` thành `\\n`, `\\r`, `\\t` (cùng quy ước `main.rs::dong_chan_doan`).
@@ -75,136 +139,108 @@ pub fn phan_tich(text: &str, mode: Mode) -> KetQua {
         them(&mut ds, d);
     }
     ds.sort_by(|a, b| a.span.start.cmp(&b.span.start).then(a.ma.cmp(b.ma)));
+    let items: Vec<GoiY> = out
+        .hir
+        .items
+        .iter()
+        .filter_map(|it| goi_y_item(it, &tbl))
+        .collect();
+    let mut bien: Vec<(String, String)> = Vec::new();
+    for it in &out.hir.items {
+        if let HItem::Fn(f) = it {
+            for pr in &f.params {
+                bien.push((pr.name.clone(), tbl.show(&pr.ty)));
+            }
+        }
+    }
+    for st in &out.hir.stmts {
+        gom_bien(st, &tbl, &mut bien);
+    }
     KetQua {
         text: lexed.text.clone(),
         ds,
+        items,
+        bien,
     }
 }
 
-/// Byte offset → `(line0, char0)` với `char0` tính bằng **UTF-16 code unit** (tab = 1).
-pub fn vi_tri_utf16(text: &str, byte: usize) -> (u32, u32) {
-    let mut line = 0u32;
-    let mut ch = 0u32;
-    for (i, c) in text.char_indices() {
-        if i >= byte {
-            break;
-        }
-        if c == '\n' {
-            line += 1;
-            ch = 0;
-        } else {
-            ch += c.len_utf16() as u32;
-        }
-    }
-    (line, ch)
-}
-
-/// `(line0, char0)` UTF-16 → byte offset (đầu đơn vị UTF-16) — **ST-69** sẽ dùng (hiện mới có unit test).
-#[allow(dead_code)]
-/// Toạ độ vượt dòng ⇒ trả **byte cuối dòng** (hoặc `text.len()` nếu vượt tệp).
-pub fn byte_tu_vi_tri(text: &str, line: u32, character: u32) -> usize {
-    let mut l = 0u32;
-    let mut c = 0u32;
-    for (i, ch) in text.char_indices() {
-        if l == line && c >= character {
-            return i;
-        }
-        if ch == '\n' {
-            if l == line {
-                return i;
+fn ten_pat(pat: &HPat, ten: &mut Vec<String>) {
+    match pat {
+        HPat::Bind { name, .. } => ten.push(name.clone()),
+        HPat::Tuple { items, .. } | HPat::List { items, .. } => {
+            for p in items {
+                ten_pat(p, ten);
             }
-            l += 1;
-            c = 0;
-        } else if l == line {
-            c += ch.len_utf16() as u32;
         }
-    }
-    text.len()
-}
-
-/// Độ dài **UTF-16** của dòng (không tính `\n`) — dùng để kẹp `end`.
-fn do_dai_dong(text: &str, line: u32) -> u32 {
-    let mut l = 0u32;
-    let mut n = 0u32;
-    for ch in text.chars() {
-        if l == line {
-            if ch == '\n' {
-                break;
+        HPat::Ctor { args, .. } => {
+            for p in args {
+                ten_pat(p, ten);
             }
-            n += ch.len_utf16() as u32;
-        } else if ch == '\n' {
-            l += 1;
         }
+        HPat::Record { fields, .. } => {
+            for (_, p) in fields {
+                if let Some(p) = p {
+                    ten_pat(p, ten);
+                }
+            }
+        }
+        HPat::Or { alts, .. } => {
+            for p in alts {
+                ten_pat(p, ten);
+            }
+        }
+        _ => {}
     }
-    n
 }
 
-/// `span` (byte, trên văn bản **chuẩn hoá**) → cặp vị trí LSP 0-based UTF-16.
-///
-/// Span vắt dòng ⇒ kẹp `end = (line bắt đầu, min(char+1, độ dài dòng))`; span rỗng ⇒ rộng **1**
-/// code unit (trừ cuối dòng ⇒ giữ nguyên, range rỗng hợp lệ).
-pub fn khoang(text: &str, span: Span) -> ((u32, u32), (u32, u32)) {
-    let s = vi_tri_utf16(text, span.start);
-    let mut e = vi_tri_utf16(text, span.end);
-    // Span **vắt dòng** hoặc **rỗng/ngược** ⇒ cùng một cách kẹp về dòng bắt đầu.
-    if e.0 != s.0 || span.end <= span.start {
-        e = (s.0, (s.1 + 1).min(do_dai_dong(text, s.0)));
-    }
-    (s, e)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{byte_tu_vi_tri, khoang, vi_tri_utf16};
-    use vis_syntax::Span;
-
-    /// Emoji: 1 scalar nhưng **2** code unit UTF-16 ⇒ `character` đúng 13 (scalar sẽ 12).
-    #[test]
-    fn vi_tri_emoji_utf16() {
-        let t = "let s = \"😀\" 1\n";
-        assert_eq!(vi_tri_utf16(t, 15), (0, 13));
-        assert_eq!(byte_tu_vi_tri(t, 0, 13), 15);
-    }
-
-    /// Tab = **1** cột (không phải 4 như `modules::vi_tri`).
-    #[test]
-    fn vi_tri_tab_mot_cot() {
-        assert_eq!(vi_tri_utf16("\tx", 1), (0, 1));
-        assert_eq!(byte_tu_vi_tri("\tx", 0, 1), 1);
-    }
-
-    /// CRLF: `lex` chuẩn hoá CRLF→LF; mốc span là văn bản **đã chuẩn hoá**.
-    #[test]
-    fn vi_tri_crlf_da_chuan_hoa() {
-        let lexed = vis_syntax::lex("a\r\nb", vis_syntax::Mode::Script);
-        assert_eq!(lexed.text, "a\nb");
-        assert_eq!(vi_tri_utf16(&lexed.text, 3), (1, 1));
-        assert_eq!(byte_tu_vi_tri(&lexed.text, 1, 1), 3);
-    }
-
-    /// Span rỗng ở cuối dòng ⇒ kẹp `character` về độ dài dòng (không vượt `\n`).
-    #[test]
-    fn khop_cuoi_dong() {
-        let t = "let x = \n";
-        assert_eq!(khoang(t, Span::new(8, 8)), ((0, 8), (0, 8)));
-    }
-
-    /// Biên 0 và biên cuối tệp.
-    #[test]
-    fn bien_khong_va_cuoi() {
-        let t = "abc\n";
-        assert_eq!(vi_tri_utf16(t, 0), (0, 0));
-        assert_eq!(byte_tu_vi_tri(t, 0, 0), 0);
-        assert_eq!(vi_tri_utf16(t, t.len()), (1, 0));
-        assert_eq!(byte_tu_vi_tri(t, 9, 9), t.len());
-    }
-
-    /// Nhiều dòng: dòng 2 bắt đầu sau `\n`; `character` vượt dòng ⇒ byte cuối dòng.
-    #[test]
-    fn nhieu_dong() {
-        let t = "a\nbb\nc";
-        assert_eq!(vi_tri_utf16(t, 5), (2, 0));
-        assert_eq!(byte_tu_vi_tri(t, 2, 0), 5);
-        assert_eq!(byte_tu_vi_tri(t, 1, 9), 4);
+/// Gom biến/tham số **có kiểu** từ HIR (syms của `let` là `PatBind` và không mang kiểu).
+fn gom_bien(st: &HStmt, tbl: &TypeTable, out: &mut Vec<(String, String)>) {
+    match st {
+        HStmt::Let {
+            pat, ty: Some(ty), ..
+        } => {
+            let mut ten = Vec::new();
+            ten_pat(pat, &mut ten);
+            for t in ten {
+                out.push((t, tbl.show(ty)));
+            }
+        }
+        HStmt::Var {
+            name, ty: Some(ty), ..
+        } => out.push((name.clone(), tbl.show(ty))),
+        HStmt::If {
+            then, elifs, else_, ..
+        } => {
+            for s in then {
+                gom_bien(s, tbl, out);
+            }
+            for (_, b) in elifs {
+                for s in b {
+                    gom_bien(s, tbl, out);
+                }
+            }
+            if let Some(b) = else_ {
+                for s in b {
+                    gom_bien(s, tbl, out);
+                }
+            }
+        }
+        HStmt::For { body, .. }
+        | HStmt::While { body, .. }
+        | HStmt::Loop { body, .. }
+        | HStmt::Scope { body, .. }
+        | HStmt::Block { body, .. } => {
+            for s in body {
+                gom_bien(s, tbl, out);
+            }
+        }
+        HStmt::Match { arms, .. } => {
+            for a in arms {
+                for s in &a.body {
+                    gom_bien(s, tbl, out);
+                }
+            }
+        }
+        _ => {}
     }
 }

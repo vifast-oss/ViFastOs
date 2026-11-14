@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **ST-67 (VD-102)** — `vis lsp --stdio`: **khung LSP + JSON-RPC 2.0 + dispatch tối thiểu**.
+//! **ST-67/68/69 (VD-102)** — `vis lsp --stdio`: khung LSP + JSON-RPC 2.0 + dispatch.
 //!
-//! Phạm vi vòng này: `initialize` (capabilities cố định), `initialized` (notification, không frame),
-//! `shutdown` (`result:null`), `exit` (0 nếu đã shutdown, 1 nếu chưa), method lạ `-32601`, body JSON
-//! hỏng `-32700`, request trước `initialize` `-32002`, `exit`/EOF stdin ⇒ dừng.
-//! **Chưa** có diagnostics/completion/hover (ST-68/69) — `hoverProvider:true` là khai báo trước.
+//! `initialize` (capabilities cố định), `initialized` (notification, không frame), `shutdown`
+//! (`result:null`), `exit` (0 nếu đã shutdown, 1 nếu chưa), method lạ `-32601`, body JSON hỏng
+//! `-32700`, request trước `initialize` `-32002`; `didOpen/didChange/didClose` ⇒ publishDiagnostics
+//! (ST-68); `textDocument/completion` + `textDocument/hover` (ST-69, dùng văn bản đã lưu).
 //!
 //! stdout **tuyệt đối sạch**: chỉ frame; mọi lỗi giao thức ghi ra stderr.
 
+mod chan_doan;
+mod goi_y;
 mod jsonrpc;
 mod khung;
 mod phan_tich;
+mod vi_tri;
 
+use std::collections::HashMap;
 use std::io::{self, BufReader};
 use std::process::ExitCode;
 
 use vis_interp::json;
 use vis_interp::value::Value;
 use vis_syntax::Mode;
-
-use jsonrpc::{m, s};
 
 /// Chạy server LSP tới khi `exit` hoặc **EOF stdin**. Chỉ nhận `--stdio` (mặc định cũng là stdio).
 pub fn run(args: &[String]) -> ExitCode {
@@ -38,6 +40,8 @@ pub fn run(args: &[String]) -> ExitCode {
     let mut out = stdout.lock();
     let mut da_khoi_tao = false;
     let mut da_shutdown = false;
+    // **ST-69**: văn bản gần nhất theo URI (didOpen/didChange) — request completion/hover đọc lại.
+    let mut van_ban: HashMap<String, String> = HashMap::new();
 
     // Ghi frame; lỗi ghi (stdout đóng) ⇒ dừng với mã 1 (không panic).
     macro_rules! gui {
@@ -118,18 +122,65 @@ pub fn run(args: &[String]) -> ExitCode {
             "initialized" => {}
             // **ST-68**: văn bản mở/đổi (full sync) ⇒ tính lại chẩn đoán + `publishDiagnostics`.
             "textDocument/didOpen" => {
-                if let Some((uri, text)) = mo_van_ban(kv) {
-                    gui!(than_chan_doan(&uri, Some(&text)));
+                if let Some((uri, text)) = jsonrpc::van_ban_mo(kv) {
+                    van_ban.insert(uri.clone(), text.clone());
+                    gui!(chan_doan::than(&uri, Some(&text), mode_cua(&uri)));
                 }
             }
             "textDocument/didChange" => {
-                if let Some((uri, text)) = doi_van_ban(kv) {
-                    gui!(than_chan_doan(&uri, Some(&text)));
+                if let Some((uri, text)) = jsonrpc::van_ban_doi(kv) {
+                    van_ban.insert(uri.clone(), text.clone());
+                    gui!(chan_doan::than(&uri, Some(&text), mode_cua(&uri)));
                 }
             }
             "textDocument/didClose" => {
-                if let Some(uri) = mo_uri(kv) {
-                    gui!(than_chan_doan(&uri, None));
+                if let Some(uri) = jsonrpc::uri_cua(kv) {
+                    van_ban.remove(&uri);
+                    gui!(chan_doan::than(&uri, None, mode_cua(&uri)));
+                }
+            }
+            // **ST-69**: completion + hover (dùng văn bản đã lưu; chưa mở ⇒ rỗng).
+            "textDocument/completion" => {
+                if let Some(id) = id {
+                    if !da_khoi_tao {
+                        gui!(jsonrpc::loi(
+                            &id,
+                            -32002,
+                            "chưa `initialize`",
+                            Value::Opt(None)
+                        ));
+                    } else if let Some((uri, line, ch)) = jsonrpc::vi_tri_van_ban(kv) {
+                        match van_ban.get(&uri) {
+                            // Chưa mở ⇒ nội dung rỗng ⇒ `[]` (không lỗi).
+                            None => gui!(jsonrpc::phan_hoi(&id, Value::List(Vec::new()))),
+                            Some(text) => {
+                                let kq = phan_tich::phan_tich(text, mode_cua(&uri));
+                                let byte = vi_tri::byte_tu_vi_tri(&kq.text, line, ch);
+                                gui!(goi_y::tra_loi_completion(&kq, byte, &id));
+                            }
+                        }
+                    }
+                }
+            }
+            "textDocument/hover" => {
+                if let Some(id) = id {
+                    if !da_khoi_tao {
+                        gui!(jsonrpc::loi(
+                            &id,
+                            -32002,
+                            "chưa `initialize`",
+                            Value::Opt(None)
+                        ));
+                    } else if let Some((uri, line, ch)) = jsonrpc::vi_tri_van_ban(kv) {
+                        match van_ban.get(&uri) {
+                            None => gui!(jsonrpc::phan_hoi(&id, Value::Opt(None))),
+                            Some(text) => {
+                                let kq = phan_tich::phan_tich(text, mode_cua(&uri));
+                                let byte = vi_tri::byte_tu_vi_tri(&kq.text, line, ch);
+                                gui!(goi_y::tra_loi_hover(&kq, byte, &id));
+                            }
+                        }
+                    }
                 }
             }
             "shutdown" => {
@@ -200,92 +251,13 @@ fn ket_qua_khoi_tao() -> Value {
     ])
 }
 
-fn mo_params(kv: &[(Value, Value)]) -> Option<&Value> {
-    jsonrpc::lay(kv, "params")
-}
-
-fn mo_text_doc(kv: &[(Value, Value)]) -> Option<&[(Value, Value)]> {
-    let p = mo_params(kv)?;
-    let Value::Map(p) = p else {
-        return None;
-    };
-    let td = jsonrpc::lay(p, "textDocument")?;
-    let Value::Map(td) = td else {
-        return None;
-    };
-    Some(td)
-}
-
-fn mo_uri(kv: &[(Value, Value)]) -> Option<String> {
-    let td = mo_text_doc(kv)?;
-    jsonrpc::chuoi(jsonrpc::lay(td, "uri")?).map(str::to_string)
-}
-
 /// `didOpen`: `params.textDocument.{uri,text}`.
-fn mo_van_ban(kv: &[(Value, Value)]) -> Option<(String, String)> {
-    let td = mo_text_doc(kv)?;
-    let uri = jsonrpc::chuoi(jsonrpc::lay(td, "uri")?)?.to_string();
-    let text = jsonrpc::chuoi(jsonrpc::lay(td, "text")?)?.to_string();
-    Some((uri, text))
-}
-
 /// `didChange` full sync: lấy `contentChanges[last].text`.
-fn doi_van_ban(kv: &[(Value, Value)]) -> Option<(String, String)> {
-    let uri = mo_uri(kv)?;
-    let p = mo_params(kv)?;
-    let Value::Map(p) = p else {
-        return None;
-    };
-    let cc = jsonrpc::lay(p, "contentChanges")?;
-    let Value::List(xs) = cc else {
-        return None;
-    };
-    let Value::Map(last) = xs.last()? else {
-        return None;
-    };
-    let text = jsonrpc::chuoi(jsonrpc::lay(last, "text")?)?.to_string();
-    Some((uri, text))
-}
-
-/// Notification `textDocument/publishDiagnostics`; `text=None` ⇒ `diagnostics:[]` (đóng tệp).
-fn than_chan_doan(uri: &str, text: Option<&str>) -> Vec<u8> {
-    let ds = match text {
-        None => Vec::new(),
-        Some(t) => {
-            let mode = if uri.ends_with(".vish") {
-                Mode::Command
-            } else {
-                Mode::Script
-            };
-            let kq = phan_tich::phan_tich(t, mode);
-            kq.ds
-                .iter()
-                .map(|d| gia_tri_chan_doan(&kq.text, d))
-                .collect()
-        }
-    };
-    jsonrpc::thong_bao(
-        "textDocument/publishDiagnostics",
-        m(vec![("uri", s(uri)), ("diagnostics", Value::List(ds))]),
-    )
-}
-
-fn gia_tri_chan_doan(text: &str, d: &phan_tich::ChanDoan) -> Value {
-    let ((l0, c0), (l1, c1)) = phan_tich::khoang(text, d.span);
-    let pos = |line: u32, character: u32| {
-        m(vec![
-            ("line", Value::Int(line as i64)),
-            ("character", Value::Int(character as i64)),
-        ])
-    };
-    m(vec![
-        (
-            "range",
-            m(vec![("start", pos(l0, c0)), ("end", pos(l1, c1))]),
-        ),
-        ("severity", Value::Int(d.severity as i64)),
-        ("code", s(d.ma)),
-        ("source", s("vis")),
-        ("message", s(&d.message)),
-    ])
+/// Chế độ phân tích theo đuôi URI (`.vish` ⇒ Command).
+fn mode_cua(uri: &str) -> Mode {
+    if uri.ends_with(".vish") {
+        Mode::Command
+    } else {
+        Mode::Script
+    }
 }
