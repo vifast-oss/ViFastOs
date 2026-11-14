@@ -93,7 +93,13 @@ QUEUE/DECISIONS/AGENTS, `viscript/`; không `unsafe`, không dependency ngoài w
 - Test xanh: `cargo test -p vifast-sim --test kt37_pagetable` **10/10**; lib **47/47** (39 cũ +
   **4** unit `pagetable` + **4** unit KT-37: 3 âm `check_pages` + 1 `pa` lệch căn ⇒ `Alignment`).
 
-## 5. Không đổi
+## 5. Commit + push
+
+- **Commit `4e16773`** — `[KT-37] PageTable 3 cấp map/unmap + rights/attrs + 7 mã lỗi; gate 512
+  test, Miri 10/10`; **đã push** `origin/main` (trước push `git rev-list --count HEAD..origin/main
+  = 0`, sau push = 0). Chỉ stage `v2/` (13 tệp); `viscript/` của tab khác **không chạm**.
+
+## 6. Không đổi
 
 `spec/` (`PageTable` vẫn `reserved`/`unsupported`), `v2/lib/vifast-model` (oracle), `.scn`,
 QUEUE/DECISIONS/AGENTS, `viscript/`, `v2/bin/v2`; không `unsafe`, không dependency ngoài
