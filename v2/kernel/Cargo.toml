@@ -6,6 +6,7 @@
 resolver = "2"
 members = [
     "vifast-kbin-riscv64",
+    "vifast-plat-common",
     "vifast-plat-riscv64",
 ]
 

@@ -1,0 +1,66 @@
+# KT-44 — KIỂM CHỨNG cổng budget (D2-72 Q5): số 'data+bss = 0 B' là THẬT, không phải script đọc sai.
+# 2026-11-14T13:34:56Z HEAD=b0e1d123
+# Ảnh thật:  .bss tồn tại nhưng 0 B; KHÔNG có .data/.sdata/.sbss trong output (xem sections-seen).
+# Đối chứng: probe A (16 B .data + 1.024 B .bss) ⇒ 1.040 B, exit 0; probe B (.bss 300 KiB) ⇒ 307.216 B, exit 1.
+# Probe chạy trên BẢN SAO workspace ở /tmp/kt44-probe (cùng linker.ld), KHÔNG sửa repo.
+
+## 1. Tự kiểm phép cộng bằng fixture: bash v2/test/boot/budget.sh --selftest
+ok 1 - cộng .data+.bss = 1032
+ok 2 - cộng tên biến thể (.data.rel.ro/.sdata/.sbss) = 128
+ok 3 - .bss 300 KiB ⇒ 307200 > 262144 (cổng sẽ FAIL)
+# budget --selftest: PASS
+exit=0
+
+## 2. Ảnh THẬT trong repo (cả hai ảnh) — sections-seen + đúng section đã cộng:
+# image=product path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=19216 data+bss=0 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1712 .rodata=404 .bss=0 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .bss=0 
+exit=0
+# image=ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=19080 data+bss=0 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1682 .rodata=352 .bss=0 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .bss=0 
+exit=0
+# sha256 ảnh thật (BUILD_ID, D2-72 Q10):
+3e5da4a724d7cf8291c262ef9b7948e2a23819a239d037c6180f4b5ff20e890c  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+06055496db6ab247f597c30e0c5590328ba28d43dc398fc68d2ec1cfe11bcee3  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest
+
+## 3. Đối chứng DƯƠNG — probe A: thêm '#[no_mangle] #[used] pub static mut PROBE_DATA: [u8;16] = [1;16];'
+##    và 'PROBE_BSS: [u8;1024] = [0;1024]' vào main.rs của bản sao, build lại:
+   Compiling vifast-kbin-riscv64 v0.1.0 (/tmp/kt44-probe/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.19s
+# image=probe-a path=/tmp/kt44-probe/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=19424 data+bss=1040 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1712 .rodata=404 .data=16 .bss=1024 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .data=16 .bss=1024 
+exit=0
+# section của probe A:
+Sections:
+Idx Name              Size     VMA              Type
+  0                   00000000 0000000000000000 
+  1 .text             000006b0 0000000080200000 TEXT
+  2 .rodata           00000194 0000000080201000 DATA
+  3 .data             00000010 0000000080202000 DATA
+  4 .bss              00000400 0000000080203000 BSS
+  5 .stack_guard      00001000 0000000080204000 BSS
+  6 .stack            00010000 0000000080205000 BSS
+  7 .riscv.attributes 00000074 0000000000000000 
+
+## 4. Đối chứng ÂM — probe B: .bss 307.200 B (300 KiB) ⇒ PHẢI VƯỢT trần 262.144 B:
+   Compiling vifast-kbin-riscv64 v0.1.0 (/tmp/kt44-probe/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.18s
+# image=probe-b path=/tmp/kt44-probe/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=19424 data+bss=307216 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1712 .rodata=404 .data=16 .bss=307200 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .data=16 .bss=307200 
+budget: VƯỢT 307216 > 262144 byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)
+exit=1
+# section của probe B:
+Sections:
+Idx Name              Size     VMA              Type
+  0                   00000000 0000000000000000 
+  1 .text             000006b0 0000000080200000 TEXT
+  2 .rodata           00000194 0000000080201000 DATA
+  3 .data             00000010 0000000080202000 DATA
+  4 .bss              0004b000 0000000080203000 BSS
+  5 .stack_guard      00001000 000000008024e000 BSS
+  6 .stack            00010000 000000008024f000 BSS
+  7 .riscv.attributes 00000074 0000000000000000 
+LOG_EXIT=0

@@ -1,27 +1,43 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh boot riscv64 tối thiểu cho **K0.5** (KT-07).
+//! Ảnh **sản phẩm** riscv64 cho K3 (KT-44).
 //!
-//! Toàn bộ code trong crate này là **safe**: entry, MMIO UART và SBI nằm ở
-//! `vifast-plat-riscv64` (crate thuộc danh sách đóng `kernel/vifast-plat-*` của D2-17).
-//!
-//! Mục tiêu K0.5: boot qua OpenSBI, in TAP 1 test, halt sạch để QEMU tự thoát.
-//! Ảnh này **không** chứa test kernel nào được nhúng — D2-08 ("test kernel không nằm
-//! trong boot sản phẩm") sẽ được áp khi có ảnh sản phẩm tách khỏi ảnh `ktest` ở K3;
-//! ở K0.5 chỉ có đúng một ảnh kiểm boot, ghi rõ mốc tách ở K3.
+//! Không chứa chuỗi/đường dẫn `ktest` (D2-08); ảnh test là bin `vifast-kbin-ktest`
+//! (`src/ktest.rs`, feature `ktest`). KT-45..49 dựng trap/MMU/timer/PLIC/SMP trên cùng khung này.
 #![no_std]
 #![no_main]
 
-use vifast_plat_riscv64::{debug_halt, debug_put_str};
+use core::fmt::Write;
 
-/// Được `_start` (trong `vifast-plat-riscv64`) gọi sau khi đặt stack.
+use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_riscv64::Riscv64Virt;
+
+/// Nền tảng QEMU `virt` — zero-sized, dựng được trong `static`.
+static PLATFORM: Riscv64Virt = Riscv64Virt;
+/// Một handler panic dùng chung cho cả ảnh sản phẩm và ảnh test (`vifast-plat-common`).
+static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
+
+/// Được `_start` (trong `vifast-plat-riscv64`) gọi sau khi đặt `sp`/`tp`.
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    debug_put_str("TAP version 13\n1..1\nok 1 - k0.5 boot\n");
-    debug_halt(0)
+    PLATFORM.put_str("TAP version 13\n1..1\n");
+    PLATFORM.put_str("# k3 image=product (kernel thật trên QEMU virt, không phải model)\n");
+    // In hart/time để chứng minh `Platform` chạy trên phần cứng ảo; số tick thật là KT-47.
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = write!(
+            w,
+            "# hart={} tick_hz={} time={}\n",
+            PLATFORM.hart_id(),
+            PLATFORM.tick_hz(),
+            PLATFORM.now()
+        );
+    }
+    PLATFORM.put_str("ok 1 - k3 boot\n");
+    PLATFORM.put_str("# k3 halt\n");
+    PLATFORM.halt(0)
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    debug_put_str("PANIC\n");
-    debug_halt(1)
+fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    PANIC.handle(info)
 }

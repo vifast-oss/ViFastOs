@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Platform tối thiểu QEMU virt riscv64 cho K0.5: UART + SBI (có unsafe, D2-17)"
+description = "Platform QEMU virt riscv64 K3: entry, UART, SBI + cài Platform (có unsafe, D2-17)"
 
 [dependencies]
+vifast-plat-common = { path = "../vifast-plat-common" }

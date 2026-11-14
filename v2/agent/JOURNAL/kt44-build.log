@@ -1,0 +1,31 @@
+# KT-44 — build 2 ảnh từ cùng crate vifast-kbin-riscv64 (feature ktest), target riscv64gc-unknown-none-elf, release
+# 2026-11-14T13:29:41Z HEAD=b0e1d123
+
+# --- ảnh SẢN PHẨM: cargo build -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64
+   Compiling vifast-plat-common v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-common)
+   Compiling vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.33s
+EXIT=0
+
+# --- ảnh TEST: cargo build -p vifast-kbin-riscv64 --bin vifast-kbin-ktest --features ktest
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.20s
+EXIT=0
+
+# --- hai ảnh (bin khác nhau, cùng crate):
+-rwxr-xr-x@ 1 mps  staff  19080 Nov 14 22:29 v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest
+-rwxr-xr-x@ 1 mps  staff  19216 Nov 14 22:29 v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+
+# --- host test phần logic dùng chung (D2-72 Q12):
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 3 tests
+test platform_writer_in_dung_thu_tu ... ok
+test panic_handler_in_vi_tri_va_halt_1 ... ok
+test panic_handler_khong_vi_tri_van_halt_1 ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 1 test
+test vifast-plat-common/src/lib.rs - PanicHandler (line 90) ... ignored
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+EXIT=0

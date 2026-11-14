@@ -1,0 +1,6 @@
+# qemu 11.1.3 (sàn 9.x, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+error: the package 'vifast-kbin-riscv64' does not contain this feature: ktest
+ktest.sh: build ảnh test FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build.log)
+EXIT=1

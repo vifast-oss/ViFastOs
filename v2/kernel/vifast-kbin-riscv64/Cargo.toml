@@ -5,11 +5,23 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Ảnh boot riscv64 tối thiểu cho K0.5 (KT-07) — code safe, nạp qua OpenSBI"
+description = "Ảnh boot riscv64 K3 (KT-44): ảnh sản phẩm + ảnh ktest từ cùng crate, nạp qua OpenSBI"
+
+# D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm. Tách ảnh bằng **feature** (không dùng cfg theo
+# kiến trúc): bật `ktest` mới build bin `vifast-kbin-ktest`.
+[features]
+default = []
+ktest = []
 
 [[bin]]
 name = "vifast-kbin-riscv64"
 path = "src/main.rs"
 
+[[bin]]
+name = "vifast-kbin-ktest"
+path = "src/ktest.rs"
+required-features = ["ktest"]
+
 [dependencies]
+vifast-plat-common = { path = "../vifast-plat-common" }
 vifast-plat-riscv64 = { path = "../vifast-plat-riscv64" }

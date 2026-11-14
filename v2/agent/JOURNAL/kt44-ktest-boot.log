@@ -1,0 +1,13 @@
+# qemu 11.1.3 (sàn 9.x, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=19080 data+bss=0 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1682 .rodata=352 .bss=0 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .bss=0 
+# image=ktest ktest-strings=8
+# boot: n=1 smp=1 timeout=20s
+# opensbi v1.8.1
+ok 1 - ktest image
+# 1/1 boot ảnh test sạch (smp=1)
+# ktest.sh: PASS
+KTEST_EXIT=0

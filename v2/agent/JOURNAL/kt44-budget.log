@@ -1,0 +1,52 @@
+# KT-44 — budget 2 ảnh (D2-72 Q5): llvm-size -A, cộng .data+.sdata+.bss+.sbss (khớp tiền tố), trần 262144 B; .stack/.stack_guard báo riêng
+# 2026-11-14T13:35:10Z HEAD=b0e1d123
+# Tự kiểm phép cộng (fixture) + đối chứng dương/âm ở JOURNAL/kt44-budget-probe.log
+ok 1 - cộng .data+.bss = 1032
+ok 2 - cộng tên biến thể (.data.rel.ro/.sdata/.sbss) = 128
+ok 3 - .bss 300 KiB ⇒ 307200 > 262144 (cổng sẽ FAIL)
+# budget --selftest: PASS
+SELFTEST_EXIT=0
+
+# image=product path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=19216 data+bss=0 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1712 .rodata=404 .bss=0 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .bss=0 
+EXIT_PRODUCT=0
+# image=ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=19080 data+bss=0 budget=262144 stack=65536 guard=4096
+# sections-seen: .text=1682 .rodata=352 .bss=0 .stack_guard=4096 .stack=65536 .riscv.attributes=116 
+# data+bss-sections: .bss=0 
+EXIT_KTEST=0
+
+# --- chi tiết llvm-size -A (ảnh sản phẩm):
+v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64  :
+section                size         addr
+.text                  1712   2149580800
+.rodata                 404   2149584896
+.bss                      0   2149588992
+.stack_guard           4096   2149588992
+.stack                65536   2149593088
+.riscv.attributes       116            0
+Total                 71864
+
+
+
+# --- chi tiết llvm-size -A (ảnh test):
+v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest  :
+section                size         addr
+.text                  1682   2149580800
+.rodata                 352   2149584896
+.bss                      0   2149588992
+.stack_guard           4096   2149588992
+.stack                65536   2149593088
+.riscv.attributes       116            0
+Total                 71782
+
+
+
+# --- tách ảnh (D2-08): số chuỗi 'ktest'
+product ktest-strings=0
+ktest   ktest-strings=8
+
+# --- sha256 (BUILD_ID, D2-72 Q10)
+3e5da4a724d7cf8291c262ef9b7948e2a23819a239d037c6180f4b5ff20e890c  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+06055496db6ab247f597c30e0c5590328ba28d43dc398fc68d2ec1cfe11bcee3  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest
+EXIT=0
