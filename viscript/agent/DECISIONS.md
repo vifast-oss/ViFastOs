@@ -804,3 +804,13 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   runtime sang `interp/goi.rs` hoặc tương đương) rồi mới thêm net. (7) Ca net/http nằm ở `crates/vis-cli/tests/net.rs`
   + `http.rs` (server loopback thật trong test Rust), **không** đặt vào `test/sem` (sem không có host net) ⇒ con số
   sem **441** giữ nguyên; ghi rõ trong báo cáo.
+
+- **VD-106** **`cap[...]` là kiểu thật, cưỡng chế **chỉ khi khai báo** (ST-72/ST-72b)**: (1) `cap[Dir|File|Net|Proc|Env|Term]` là
+  kiểu **dựng sẵn** (`TypeRef{"cap",[X]}`), **không** người dùng tạo được giá trị — chỉ nhận qua **tham số `main`**; truyền
+  qua tham số hàm/record bình thường. (2) `@ p"…"`/`@ "host"` + `(write)` **giữ** ở CST; **`vis run --dry`** in danh sách
+  quyền khai báo (dạng `tên: cap[Dir] path (write)`) rồi thoát 0, **không** chạy chương trình. (3) **Cưỡng chế** nằm ở
+  `HostFs`/`HostNet` (CLI): thao tác ngoài tập quyền ⇒ **`VS0604`** nêu **quyền thiếu** + đường dẫn/host; `write` cần cờ
+  `(write)`. (4) **Chương trình KHÔNG khai `cap` ⇒ không hạn chế** (tương thích 854 test hiện có) — ghi rõ trong tài liệu và
+  báo cáo; siết mặc định là **nợ** (phải có `--strict-caps` + cập nhật toàn bộ fixture). (5) `--grant <tên>=<đường dẫn>`
+  **ghi đè** đường dẫn của quyền đã khai (không thêm quyền mới). (6) Landlock thật: **chỉ** Linux, crate ngoài `viscript/`;
+  trên macOS **không** giả vờ — test `cfg(target_os="linux")`, báo cáo ghi "chưa đo trên macOS".
