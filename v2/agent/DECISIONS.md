@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-73`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-74`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-73: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-74: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -115,7 +115,8 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-72** Chốt **K3 Q1–Q13** (`review/agent0/K3-PLAN.md`): Q1 **không** mở `spec/kernel.toml`; `spec/abi.toml` mở **một lần** ở KT-56 cho `FaultKind` (D2-56a); Q2 QEMU ≥9.2 `-machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1|2|4`; Q3 OpenSBI `fw_dynamic` nạp trực tiếp (không U-Boot/EDK2); Q4 hart theo DTB, `MAX_HARTS=8`, matrix 1/2/4; Q5 budget `llvm-size` cộng `.data+.sdata+.bss+.sbss ≤ 262.144 B` cho **cả hai ảnh**, `.stack` báo riêng; Q6 timer **SBI TIME**, 100 Hz, timebase 10 MHz, Sstc hoãn; Q7 địa chỉ hardcode (UART `0x1000_0000` IRQ 10, PLIC `0x0c00_0000`, CLINT `0x0200_0000`, context `2*hart+1`), DTB chỉ kiểm magic; Q8 **PLIC cổ điển**, AIA hoãn K4'/K5'; Q9 `ktest` **in-kernel** trong ảnh riêng (D2-08), `init` U-mode 3 syscall, ktest user-process hoãn K3.5; Q10 soak `1000 boot × 3 luồng` trên máy `ps`, timeout 20 s/boot, **0/1000**, không retry; Q11 conformance 5 `.scn` × sim/QEMU, kịch bản IPC đầy đủ hoãn K3.5; Q12 Miri **không** áp kernel `no_std`, giữ cho lib/sim; **Q13 chèn phase `K3b` "port core `no_std`"** giữa K3 và K3.5 vì hiện core (CNode/TCB/IPC/sched/VM) chỉ có **16.742 dòng std trong sim**, `v2/kernel` chỉ 107 dòng boot stub — K3 DoD (TAP/soak/budget) không đòi core đầy đủ, nhưng K3.5 (procsrv/shell) thì cần.- Mẫu: `APPROVED <YYYY-MM-DD> Agent 0`, ghi ngay dưới mục KT-04d trong `v2/agent/QUEUE.md`; nếu quyết định làm đổi nội dung ABI thì thêm một mục D2 mới ở tệp này. Không duyệt bằng chat. Không tự suy ra "coi như đã duyệt".
 
 - **D2-73** KT-45 — **điều chỉnh DoD trap theo ràng buộc firmware (đo được, không hạ chuẩn)**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG = 0xf4b509` ⇒ **bit 2 (illegal) và bit 9 (ecall-S) KHÔNG được delegate**, nên hai loại đó **không bao giờ** vào `stvec` S-mode (đo trên QEMU 11.1.3: `.4byte 0`/`ecall-S` ở lại M-mode; chỉ `ebreak` → `scause=3`). Do đó KT-45 **giữ đủ khung** (`stvec` direct, trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`, decode **mọi** `scause` 0/2/3/4/5/6/7/8/9/12/13/15/khác, unit test host), nhưng TAP **thật** chỉ gồm: (a) `breakpoint` → `scause=3`, resume đúng `sepc`; (b) `ecall-S` → SBI trả `SBI_ERR_NOT_SUPPORTED`, resume đúng `sepc` (chứng minh không treo, **không** giả là trap S-mode); (c) decode `illegal` kiểm bằng **host unit test + trap tiêm** ghi rõ "tiêm", **không** claim trap phần cứng. Trap **thật** cho page-fault (`scause` 13/15) chuyển sang **KT-46** (guard page). Cấm đổi firmware M-mode để lấy lại bit 2/9 (trái D2-72 Q3). Deviation phải ghi trong `v2/docs/k3-riscv64.md` + JOURNAL/STATE.- Agent 2 soạn nháp ở `REVIEW`, sau duyệt **chỉ Agent 0** sửa `spec/` (D2-22).
-- `ST-02a` (dòng ViScript) duyệt theo cùng mẫu trong `viscript/agent/QUEUE.md`; quyết định tương ứng ghi vào `viscript/agent/DECISIONS.md` (VD-).
+
+- **D2-74** KT-47 — **cho phép `-icount shift=auto` CHỈ trong `v2/test/boot/ktest.sh`** (ảnh test), `run.sh` + soak KT-57 **giữ nguyên** dòng D2-72 Q2 (không icount). Lý do đo được: QEMU TCG không icount phục vụ timer ảo trễ ~150–200 ms (main loop), nên "Δ tick ∈ [9,11] ms" đo **độ trễ main loop của QEMU**, không đo toán deadline của kernel; có icount thì 1.000 tick cho 9,98–10,02 ms, `late=missed=0`. Ngưỡng drift **giữ nguyên [9,11] ms** — không nới. Điều kiện: (a) ghi deviation trong `k3-riscv64.md` §10 + JOURNAL/STATE; (b) **giữ** bằng chứng không-icount (product arm timer + ≥1 tick, log riêng) để chứng minh boot thật vẫn chạy; (c) KT-57 soak **không** dùng icount; (d) nếu sau này cần đo jitter thật thì mở task riêng, không đổi D2 này.- `ST-02a` (dòng ViScript) duyệt theo cùng mẫu trong `viscript/agent/QUEUE.md`; quyết định tương ứng ghi vào `viscript/agent/DECISIONS.md` (VD-).
 
 ## Phần IV — Bảng nguồn cho các con số đang có hiệu lực
 
