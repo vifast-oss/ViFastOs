@@ -53,11 +53,13 @@ fn hai_duong(d: &Path, ten: &str, strict: bool) -> (Kq, Kq) {
     (chay(d, &a), chay(d, &b))
 }
 
+/// **SỬA KÈM LÝ DO (ST-93b)**: thân `main` chỉ được **rỗng/`pass`** (câu lệnh thật ⇒ `VS0201`);
+/// trước đây dùng `let __cap = 1` để giữ chỗ — nay `pass` mới hợp lệ.
 fn ca_main_proc(d: &Path) -> PathBuf {
     ghi(
         d,
         "main.vish",
-        "fn main(p: cap[Proc]):\n    let __cap = 1\n\n/bin/echo a\n",
+        "fn main(p: cap[Proc]):\n    pass\n\n/bin/echo a\n",
     )
 }
 
@@ -107,7 +109,7 @@ fn strict_cap_proc_sh_exit3() {
     ghi(
         &d,
         "d.vish",
-        "fn main(p: cap[Proc]):\n    let __cap = 1\n\n/bin/sh -c \"exit 3\" | complete\n",
+        "fn main(p: cap[Proc]):\n    pass\n\n/bin/sh -c \"exit 3\" | complete\n",
     );
     let (a, b) = hai_duong(&d, "d.vish", true);
     assert_eq!(a.0, 0, "stderr: {}", a.2);
@@ -125,7 +127,7 @@ fn strict_cap_proc_pipeline_hai_stage() {
     ghi(
         &d,
         "e.vish",
-        "fn main(p: cap[Proc]):\n    let __cap = 1\n\n/bin/echo a | /bin/cat\n",
+        "fn main(p: cap[Proc]):\n    pass\n\n/bin/echo a | /bin/cat\n",
     );
     let (a, b) = hai_duong(&d, "e.vish", true);
     assert_eq!(a.0, 0, "stderr: {}", a.2);
@@ -142,7 +144,7 @@ fn strict_cap_dir_khong_thay_the_proc() {
     ghi(
         &d,
         "f.vish",
-        "fn main(x: cap[Dir] @ p\"./\"):\n    let __cap = 1\n\n/bin/echo a\n",
+        "fn main(x: cap[Dir] @ p\"./\"):\n    pass\n\n/bin/echo a\n",
     );
     let ((ma, out, err), _) = hai_duong(&d, "f.vish", true);
     assert_eq!(ma, 2, "stderr: {err}");
