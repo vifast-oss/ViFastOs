@@ -151,7 +151,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **DONE** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **DONE** | ≥6 ca; `x \| take 1` chạy 2 đường |
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **DONE** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
-| ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **READY** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
+| ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **DONE** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **READY** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
@@ -928,3 +928,15 @@ APPROVED 2026-11-14 Agent 0
 > **Lệch có ghi**: parser chưa nhận `async` sau `impl`/`cmd` ⇒ hiện ra **`VS0201`** (luật `VS0412` trong tyck giữ làm
 > phòng thủ); `async fn` không nhận `--tên`; **chưa** song song thật/không GC (nợ `R10` §5).
 > **ST-60b mở** (hotfix review độc lập — xem dưới) và **ST-60c** (derives/siêu trait + SPDX).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-60b DONE** — commit `f158085` (**Agent 2 tự commit, đã push**). **Hồi quy parity thật đã đóng**: closure bắt theo
+> **giá trị** nay **cấp ô cục bộ riêng** + prologue `LoadCaptured`→`Assign` ⇒ đọc/ghi trong closure không đụng biến ngoài,
+> hai đường **cùng byte** (C1 `[1, 2]`, C2 `()\n0`). Phát hiện **cùng họ**: `()` từng bị mã hoá `Const("")` ⇒ VM in chuỗi
+> rỗng thay `()` — nay **`PushUnit`** thật. Tyck **lần xuống gốc** cho `self.xs[0]`/`p.xs[0]`; thông điệp **đích lồng** nêu
+> đúng gốc; `.vish` shell-let `let out = ls -l` phân loại lại đúng; `std.*` **từ chối** `--tên` (`VS0401`). Đo: **782 test**
+> · sem **419/20** · parity **378/378** · differential **100k/0 lệch** (223,6 s) · **VBC1 53** · **7 sổ/30 mã**.
+> Tách `tyck/sig.rs` + `bytecode/cerr.rs` để giữ R1. Nợ: shell-let **chưa hạ**; `match` không khớp ở ngữ cảnh giá trị còn
+> đẩy `false` (nghi lệch interp↔VM); gán lồng sâu hơn một tầng trường là `VS0412` có chủ đích.
+> **ST-60c mở** (derives/siêu trait + số liệu).
