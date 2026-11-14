@@ -1,0 +1,26 @@
+# ST-74 — ma trận cargo check --target (2026-11-14T10:52:20Z), HEAD 016161b3
+# lệnh: viscript/bin/vis-targets
+# Mức bằng chứng: CHỈ check biên dịch chéo; KHÔNG chạy trên Windows/wasm.
+
+crate            target                       result
+vis-diag         x86_64-pc-windows-msvc       PASS
+vis-syntax       x86_64-pc-windows-msvc       PASS
+vis-types        x86_64-pc-windows-msvc       PASS
+vis-bytecode     x86_64-pc-windows-msvc       PASS
+vis-fmt          x86_64-pc-windows-msvc       PASS
+vis-interp       x86_64-pc-windows-msvc       PASS
+vis-vm           x86_64-pc-windows-msvc       PASS
+vis-cli          x86_64-pc-windows-msvc       PASS
+vis-diag         wasm32-unknown-unknown       PASS
+vis-syntax       wasm32-unknown-unknown       PASS
+vis-types        wasm32-unknown-unknown       PASS
+vis-bytecode     wasm32-unknown-unknown       PASS
+vis-fmt          wasm32-unknown-unknown       PASS
+vis-interp       wasm32-unknown-unknown       PASS
+vis-vm           wasm32-unknown-unknown       PASS
+vis-cli          wasm32-unknown-unknown       PASS
+vis-host-wasm    wasm32-unknown-unknown       PASS
+vis-host-linux   x86_64-unknown-linux-gnu     PASS
+vis-targets: tất cả ô kỳ vọng xanh (chỉ CHECK, chưa chạy trên Windows/wasm)
+
+[exit=0]

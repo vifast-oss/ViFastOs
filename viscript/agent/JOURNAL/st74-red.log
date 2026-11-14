@@ -1,0 +1,17 @@
+# ST-74 — log ĐỎ (trước khi có script/khung) lúc 2026-11-14T10:51:38Z, HEAD 016161b3
+
+== bin/vis-targets (chưa tồn tại)
+ls: bin/vis-targets: No such file or directory
+[exit=1]
+
+== vis-host-wasm (chưa tồn tại)
+[exit=101]
+error: manifest path `../vis-host-wasm/Cargo.toml` does not exist
+
+== tests/targets.rs (chưa có)
+[exit=101]
+    vish_decl
+    vsh1b
+    where_tinh
+
+== KẾT LUẬN: script + crate + test chưa tồn tại ⇒ đỏ đúng lý do.

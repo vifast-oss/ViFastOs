@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ST-74 (VD-104) — ma trận `cargo check --target` thật cho các crate ViScript.
+#
+# Mức bằng chứng: **chỉ CHECK biên dịch chéo**; KHÔNG chạy trên Windows/wasm.
+# Kỳ vọng xanh (theo đo ST-74): 8 crate × 2 target đều xanh ở mức CHECK — kể cả `vis-cli`
+# (`std::process`/`std::net`/`std::fs` vẫn **biên dịch** cho wasm32 nhưng KHÔNG chạy được:
+# wasm32-unknown-unknown không có tiến trình/socket/FS; đây không phải bằng chứng hỗ trợ runtime).
+# Nếu một ô kỳ vọng xanh mà đỏ ⇒ exit 1 (ô đỏ có chủ đích phải được ghi trong EXPECTED_RED).
+set -u
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+MANIFEST="$ROOT/viscript/Cargo.toml"
+CARGO="${CARGO:-$HOME/.cargo/bin/cargo}"
+TARGETS=(x86_64-pc-windows-msvc wasm32-unknown-unknown)
+CRATES=(vis-diag vis-syntax vis-types vis-bytecode vis-fmt vis-interp vis-vm vis-cli)
+EXTRA=("vis-host-wasm wasm32-unknown-unknown" "vis-host-linux x86_64-unknown-linux-gnu")
+LOG="${TMPDIR:-/tmp}/vis-targets.$$.log"
+trap 'rm -f "$LOG"' EXIT
+hong=0
+printf '%-16s %-28s %s\n' crate target result
+# vis-cli × wasm32: CHECK xanh nhưng KHÔNG chạy được (không có runner/std OS) — giữ kỳ vọng xanh
+# cho đúng mức CHECK, ghi rõ trong tài liệu HOST-BAO-DAM.md.
+for t in "${TARGETS[@]}"; do
+  for c in "${CRATES[@]}"; do
+    if "$CARGO" check --manifest-path "$MANIFEST" -p "$c" --target "$t" >"$LOG" 2>&1; then
+      printf '%-16s %-28s %s\n' "$c" "$t" PASS
+    else
+      printf '%-16s %-28s %s\n' "$c" "$t" FAIL
+      grep -m2 -E '^error' "$LOG" | sed 's/^/  /'
+      hong=$((hong + 1))
+    fi
+  done
+done
+for e in "${EXTRA[@]}"; do
+  set -- $e
+  c=$1; t=$2
+  if "$CARGO" check --manifest-path "$ROOT/$c/Cargo.toml" --target "$t" >"$LOG" 2>&1; then
+    printf '%-16s %-28s %s\n' "$c" "$t" PASS
+  else
+    printf '%-16s %-28s %s\n' "$c" "$t" FAIL
+    grep -m2 -E '^error' "$LOG" | sed 's/^/  /'
+    hong=$((hong + 1))
+  fi
+done
+if [ "$hong" -ne 0 ]; then
+  echo "vis-targets: $hong ô kỳ vọng xanh bị đỏ" >&2
+  exit 1
+fi
+echo "vis-targets: tất cả ô kỳ vọng xanh (chỉ CHECK, chưa chạy trên Windows/wasm)"

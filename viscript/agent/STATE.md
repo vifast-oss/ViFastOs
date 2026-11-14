@@ -6,18 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-73 — VS2 #4c: `--sandbox-check` + khung `vis-host-linux` + tài liệu mức bảo đảm**
-                (probe Landlock **chỉ đọc**, **không** cưỡng chế bằng kernel; 6 ca Rust + crate ngoài
-                `viscript/` + `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 6 ca (5 đỏ) → `--sandbox-check` (exit 0/3/4, stdout) → crate
-                `vis-host-linux` (workspace riêng) + `cargo check --target x86_64-unknown-linux-gnu`
-                xanh → `HOST-BAO-DAM.md` → 872 xanh → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-74 — VS2 #7: đa nền tảng, bằng chứng theo mức** (ma trận `cargo check --target`
+                thật 8 crate × 2 target + `vis-host-wasm` + `vis-host-linux`; script `bin/vis-targets`;
+                1 smoke test; cập nhật `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 5/5 (red-first script/khung/test chưa có (đỏ) → đo ma trận thật → script + `vis-host-wasm`
+                + `tests/targets.rs` → 873 xanh → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:42:47Z**; **872** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:59:44Z**; **873** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (101,5 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (194,7 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-73]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-74]` + push (đã được uỷ quyền)
+
+## ST-74 — VS2 #7: đa nền tảng (bằng chứng theo mức), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Ma trận thật (18 ô)** | `cargo check` cho 8 crate `viscript/` × `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown`, thêm `vis-host-wasm`×wasm + `vis-host-linux`×linux ⇒ **18/18 PASS**. **Kết quả bất ngờ có đo**: `vis-cli` × wasm32 **CHECK xanh** (thậm chí `cargo build` xanh) — vì `std::process::Command`/`std::net`/`std::fs` vẫn **biên dịch** cho wasm32; chúng **không chạy được** (không OS/tiến trình/socket) ⇒ **không** phải bằng chứng hỗ trợ runtime. Không có ô "đỏ có chủ đích" nào ở mức check. |
+| 1 | **Script `bin/vis-targets`** | Bash **49** dòng, SPDX `#`, chạy đúng ma trận, in bảng `crate target result`, exit 1 nếu ô **kỳ vọng xanh** đỏ; chú thích rõ `vis-cli`/wasm check-xanh-nhưng-không-chạy. Kết quả ghi `JOURNAL/st74-matrix.log` sha256 `5e1eb71d…` (18 PASS). |
+| 2 | **Khung `vis-host-wasm/`** | Gốc repo, workspace riêng; `#![cfg(target_arch = "wasm32")]`; `MO_TA = "wasm: runtime kiểm, không có sandbox OS"`, `pub fn probe() -> &'static str`; SPDX, **không** dependency/`unsafe`; `cargo check --target wasm32-unknown-unknown` **xanh**. |
+| 3 | **Smoke test** | `tests/targets.rs::targets_wasm_vis_types` gọi `cargo check` **một ô** (`vis-types` × wasm32) ⇒ exit 0; đo **0,4 s** trong test (5,7 s cả cargo) — dưới hạn 30 s, giữ lại. |
+| 4 | **Tài liệu** | `agent/HOST-BAO-DAM.md` (**54** dòng): thêm mục đa nền tảng (bảng *nhóm crate × target × mức bằng chứng* = **check**; ghi rõ **chưa có runner**, **chưa chạy** Windows/wasm; cấm viết “chạy trên Windows/wasm”). |
+| 5 | **Không sửa lõi** | 7 crate lõi xanh trên **cả hai** target ⇒ **không** cần sửa `cfg`/API nào. Không thêm dependency, không `unsafe`. |
+| 6 | **Red-first** | `JOURNAL/st74-red.log` sha256 `934e61ae…`: `bin/vis-targets` chưa có (exit 1), `vis-host-wasm` chưa có (cargo exit 101), `tests/targets` chưa có (cargo exit 101) — đúng "trước khi có script/khung". Test Rust **không có đỏ thật** (cargo check đã chạy được trước task) — ghi rõ. |
+| 7 | **Đo** | **873** test = 872 + **1** (21+96+18+154+26+62+9+**487**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; `diag_cmp` **447** (364/49/34); differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=194.7 toc_do=514/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`bin/vis-targets` 49, `tests/targets.rs` 33, `vis-host-wasm/src/lib.rs` 17). |
+| 8 | **Nợ** | **Chưa có runner** trên Windows/wasm/Linux ⇒ mọi ô chỉ là **check biên dịch chéo**; `vis-cli` trên wasm **không chạy được** (process/net/fs/thread) — muốn hỗ trợ cần tách host + runner; `vis-host-wasm` mới là khung `probe()`; `vis-host-linux` vẫn chưa cưỡng chế Landlock (VD-107 (4)); chưa đo **link**/`cargo build` cho Windows (msvc cần linker), chỉ `check`. |
 
 ## ST-73 — VS2 #4c: probe Landlock + khung host Linux + mức bảo đảm, 2026-11-14
 
