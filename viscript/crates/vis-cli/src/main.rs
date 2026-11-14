@@ -651,69 +651,10 @@ fn run_run(rest: &[String]) -> ExitCode {
         eprintln!("TAP version 13");
         eprintln!("1..1");
     }
-    // ST-23 fast-path: **cache hit ⇒ bỏ qua frontend**, chạy bytecode đã xác minh.
-    let khoa_cache = cache::khoa(
-        &text,
-        if che_do == vis_syntax::Mode::Command {
-            "vish"
-        } else {
-            "vis"
-        },
-    );
-    if dung_vm && dung_cache {
-        if let Some(m) = cache::nap(&khoa_cache) {
-            let (stdout, diags, steps) = std::thread::scope(|scope| {
-                std::thread::Builder::new()
-                    .name("vis-run".into())
-                    .stack_size(256 * 1024 * 1024)
-                    .spawn_scoped(scope, || {
-                        let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
-                        let mut net_tho = HostNet::moi(explain_perms);
-                        let mut fs = quyen::FsGuard {
-                            trong: &mut fs_tho,
-                            quyen: &quyen,
-                        };
-                        let mut net = quyen::NetGuard {
-                            trong: &mut net_tho,
-                            quyen: &quyen,
-                        };
-                        let out = vis_vm::run_with_hosts_caps(
-                            &m,
-                            &text,
-                            &prog_args,
-                            Some(&mut fs),
-                            Some(&mut net),
-                            &quyen.gia_tri(),
-                        );
-                        let d: Vec<(String, u32, u32, String)> = out
-                            .diagnostics
-                            .iter()
-                            .map(|x| (x.code.short.to_string(), x.line, x.col, x.message.clone()))
-                            .collect();
-                        (out.stdout, d, out.steps)
-                    })
-                    .expect("không tạo được luồng chạy")
-                    .join()
-                    .expect("luồng chạy lỗi")
-            });
-            if !xuat_stdout(&stdout) {
-                return ExitCode::from(2);
-            }
-            if diags.is_empty() {
-                if tap {
-                    eprintln!("ok 1 - {} (steps={}, cache)", tep, steps);
-                }
-                return ExitCode::from(0);
-            }
-            for (ma, line, col, msg) in &diags {
-                eprintln!("{tep}:{line}:{col}: error {ma}: {msg}");
-            }
-            if tap {
-                eprintln!("not ok 1 - {} ({}, steps={})", tep, diags[0].0, steps);
-            }
-            return ExitCode::from(ma_thoat_khi_loi(&diags));
-        }
-    }
+    // **ST-87b (VD-109)**: **BỎ fast-path cache một tệp** — nó đọc khoá v1 (`cache::khoa`, không có
+    // `rel`/deps) trong khi mọi chỗ ghi dùng khoá v2 (`cache::khoa_multi`) ⇒ **hit = 0 lần**, chỉ là
+    // nhánh chết. Đường duy nhất: nạp module → frontend → `khoa_multi` (cache hit bỏ codegen). Đo:
+    // tệp nhỏ lần 2 **~12 ms** (frontend ~1 ms), không hồi quy.
     // 1–3) nạp **module** (ST-25): đa tệp, `use`, cấm vòng, chẩn đoán đúng tên tệp.
     let loaded = match modules::load_with(&tep, !co_no_extern) {
         Ok(l) => l,

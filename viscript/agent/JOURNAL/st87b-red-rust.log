@@ -1,0 +1,28 @@
+# ST-87b — log ĐỎ (Rust) lúc 2026-11-14T16:32:06Z, HEAD 8fcdb4f4 — trước khi bỏ fast-path.
+# lệnh: cargo test -p vis-cli --test cache_fastpath (5 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/cache_fastpath.rs (target/debug/deps/cache_fastpath-99be93e864bbf1b4)
+
+running 5 tests
+test khong_con_fast_path_khoa_v1 ... FAILED
+test sua_tep_chinh_cache_miss ... ok
+test module_cache_hit_khong_hoi_quy ... ok
+test mot_module_lan_hai_byte_y_het_va_nhanh ... ok
+test sua_tep_phu_cache_miss ... ok
+
+failures:
+
+---- khong_con_fast_path_khoa_v1 stdout ----
+
+thread 'khong_con_fast_path_khoa_v1' (48155434) panicked at crates/vis-cli/tests/cache_fastpath.rs:67:5:
+main.rs còn đọc khoá v1 (fast-path chết)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    khong_con_fast_path_khoa_v1
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+error: test failed, to rerun pass `-p vis-cli --test cache_fastpath`

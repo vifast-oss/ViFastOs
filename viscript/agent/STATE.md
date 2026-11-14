@@ -6,15 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-87 — cache không che lỗi** (520 tệp × 3 chế độ, so byte; khoá cache theo mode/
-                module/strict-caps) — xong, **0 lệch**, cổng PASS; **chưa commit**.
-Bước          : 4/4 (harness 520 tệp → 5 ca → 956 test → 100k diff → cổng → STATE/JOURNAL).
+Task          : **ST-87b — bỏ fast-path cache chết** (chọn **B**: xoá nhánh đọc khoá v1, xoá
+                `cache::khoa`; đường duy nhất `khoa_multi`) — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 4/4 (đo đỏ → xoá fast-path + hàm v1 → 5 ca → 961 test → 100k → cổng → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:28:19Z**; **956** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:40:52Z**; **961** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
                 **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
-                (158,1 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-87]` + push (đã được uỷ quyền)
+                (153,9 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-87b]` + push (đã được uỷ quyền)
+
+## ST-87b — bỏ fast-path cache chết, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo đỏ** | Tệp một module, hai lần `--vm --tap`: lần 1 **13,3 ms**, lần 2 **12,3 ms**, **không** lần nào có marker `(cache)`; `main.rs:655` đọc `cache::khoa` (v1) trong khi `main.rs:767` ghi `cache::khoa_multi` (v2 có `rel`/deps) ⇒ hit **0 lần**. Log `JOURNAL/st87b-red.log` sha256 `64e05398…`. |
+| 1 | **Chọn (B)** | Xoá **fast-path** đọc khoá v1 + xoá `cache::khoa`; đường duy nhất: nạp module → frontend → `khoa_multi` (hit ⇒ bỏ codegen). Lý do đo: fast-path **không bao giờ hit**, bỏ không hồi quy (sau: 13,4 / 12,1 / 11,7 ms); đơn giản hơn A, không để nhánh chết. `main.rs` **1.083 → 1.024** dòng, `cache.rs` 116. |
+| 2 | **Ca (a)** | Một module, `--vm --tap` hai lần: byte **y hệt**, không marker `(cache)` (đúng B), lần 2 **11,8 ms** (< 100 ms), `.vbc` ≥ 1. |
+| 3 | **Ca (b)** | `use ./x`: lần 2 byte y hệt, **1 khoá multi**, mtime `.vbc` **không đổi** (cache hit thật) — không hồi quy. |
+| 4 | **Ca (c)** | Sửa **tệp chính** ⇒ kết quả mới, `.vbc` 1 → **2** (khoá đổi, miss). |
+| 5 | **Ca (d)** | Sửa **tệp phụ** `./x` ⇒ kết quả mới, `.vbc` 1 → **2** (khoá multi đổi, miss). |
+| 6 | **Ca chống nhánh chết** | `khong_con_fast_path_khoa_v1`: `main.rs` **không** còn `cache::khoa(`, `cache.rs` **không** còn `pub fn khoa(`, vẫn dùng `khoa_multi`. **Đỏ trước sửa** (`st87b-red-rust.log` sha256 `5d33917d…`: 4/5 xanh, ca này FAILED). |
+| 7 | **Đo** | **961** test = 956 + **5** (21+96+27+154+26+62+9+**566**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; host **54/54**; parity **398/398**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=153.9 toc_do=650/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498**. |
+| 8 | **Nợ** | Frontend vẫn chạy mỗi lần (~1 ms) — không có fast-path bỏ frontend nữa; ca chống nhánh chết đọc **mã nguồn** (brittle nếu tách hàm); 7 ca `.vish` ngoài vẫn khác interp/VM có chủ đích (VM chưa host Ngoai); chưa kiểm cache ghi song song. |
 
 ## ST-87 — cache không che lỗi, 2026-11-14
 

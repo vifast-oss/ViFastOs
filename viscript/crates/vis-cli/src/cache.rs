@@ -22,20 +22,6 @@ pub fn thu_muc() -> Option<PathBuf> {
     Some(goc.join("vifast").join("vis"))
 }
 
-/// Khoá cache 32 byte: FNV-1a×4 trên (nguồn, phiên bản compiler, phiên bản VBC1, chế độ).
-pub fn khoa(nguon: &str, che_do: &str) -> [u8; 32] {
-    let mut s = String::with_capacity(nguon.len() + 64);
-    s.push_str("vifast-vis-cache-v1\n");
-    s.push_str(PHIEN_BAN);
-    s.push('\n');
-    s.push_str(&vis_bytecode::VERSION.to_string());
-    s.push('\n');
-    s.push_str(che_do);
-    s.push('\n');
-    s.push_str(nguon);
-    vis_bytecode::format::source_hash(&s)
-}
-
 /// Khoá cache cho **đơn vị biên dịch nhiều tệp** (ST-25): hash closure trên (phiên bản, mode, thứ tự
 /// tất định các tệp `(rel, nội dung)`). Vì `files` ở **hậu duyệt DFS** theo thứ tự `use` trong nguồn,
 /// kết quả **tất định**; sửa bất kỳ tệp phụ thuộc nào ⇒ khoá đổi.

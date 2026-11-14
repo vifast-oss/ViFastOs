@@ -1,0 +1,18 @@
+# ST-87b — ĐO ĐỎ trước sửa, 2026-11-14T16:30:56Z, HEAD 8fcdb4f4
+
+## 1) Hai lần 'vis run --vm --tap' tệp một module (không use), cache XDG cô lập
+lan 1: 13.3 ms, marker_(cache)=False, exit=0
+  stderr: TAP version 13 | 1..1 | ok 1 - a.vis (steps=5) |
+lan 2: 12.3 ms, marker_(cache)=False, exit=0
+  stderr: TAP version 13 | 1..1 | ok 1 - a.vis (steps=5) |
+
+## 2) File:line — đọc khoá v1 vs ghi khoá v2
+$ grep -n "khoa(" crates/vis-cli/src/main.rs
+655:    let khoa_cache = cache::khoa(
+$ grep -n "khoa_multi" crates/vis-cli/src/main.rs
+767:                    let khoa = cache::khoa_multi(&loaded.files, che_do);
+$ grep -n "pub fn khoa" crates/vis-cli/src/cache.rs
+26:pub fn khoa(nguon: &str, che_do: &str) -> [u8; 32] {
+42:pub fn khoa_multi(files: &[crate::modules::FileUnit], mode: vis_syntax::Mode) -> [u8; 32] {
+
+## 3) Kết luận: fast-path đọc khoá v1, mọi chỗ ghi dùng khoá v2 (có rel/deps) ⇒ hit = 0 lần; '(cache)' không bao giờ in.

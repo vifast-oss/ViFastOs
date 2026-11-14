@@ -1,0 +1,6 @@
+# ST-87b — differential 100.000 chương trình (sau khi bỏ fast-path), 2026-11-14T16:37:52Z, HEAD da0653b2
+# lệnh: VIS_DIFF_N=100000 VIS_DIFF_SEED=20261115 ./bin/vis-diff
+
+DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.2 toc_do=633/s seed=20261115
+DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=153.9 toc_do=650/s seed=20261115
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 153.87s
