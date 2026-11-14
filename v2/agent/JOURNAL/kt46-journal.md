@@ -135,3 +135,5 @@ product **50/50**, gate **569**; grep không còn vùng dùng mà chưa map; dis
   4. Sửa comment lỗi thời `lib.rs` ("K3 chưa bật MMU") + cập nhật HEAD/STATE.
 - **Sau vá**: host **21/21**, `ktest.sh` PASS (8+3), product **50/50**, budget **168/176/168 B**,
   gate **569/73 PASS** ([`kt46-gate-fast.log`](kt46-gate-fast.log)).
+- **Commit**: `[KT-46]` = `d5e7565d` (chỉ `v2/`), parent `8fcdb4f4` (tab ViScript); push cùng
+  `[KT-46b]` (STATE/JOURNAL cập nhật HEAD/verdict).

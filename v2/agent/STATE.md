@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `8fcdb4f4` ([ST-00] tab ViScript — parent của `[KT-46]`; commit `[KT-46]` chỉ `v2/`, sẽ ghi hash ở `[KT-46b]`)
+HEAD          : `d5e7565d` ([KT-46] Sv39 thật + guard page-fault — commit chỉ `v2/`; parent `8fcdb4f4` của tab ViScript, không chạm)
 BUILD_ID      : — (ảnh K3 KT-46: `vifast-kbin-riscv64` 53.176 B, `vifast-kbin-ktest` 61.336 B, `vifast-kbin-ktest-guard` 50.552 B — `JOURNAL/kt46-build.log`)
 Task          : **KT-46 (Sv39 thật + guard page-fault)** — **DONE (reviewer-kt46 APPROVE; 4 nit đã vá; chờ gate lại + commit/push)**: page table Sv39 cấp từ arena 64 KiB sau `__kernel_end` (không `static`); kernel image leaf **2 MiB** identity + nửa cao, physmap **2 MiB NX**, MMIO UART/PLIC **4 KiB Device**, `.stack`/`.trap_stack`/arena 4 KiB RW NX, **guard NONE cả 3 alias**; `satp` mode 8 + `sfence.vma` hai bước, PTE trước/sau khớp; guard fault **thật** `scause=13` (load, probe resume) + `scause=15` (store, `PANIC: guard page fault` + halt); TAP chính **8/8**, TAP guard **3/3**; product **50/50** boot; budget **168/168/176 B**; host test **21/21**; gate **569/73 PASS**; `reviewer-kt46` **APPROVE**, 4 nit đã vá (probe sau `cfg(feature="ktest")`, product 0 chuỗi test)
 Bước          : 8/8 **xong** (baseline gate 569 → đỏ trước `ktest.sh` thiếu TAP MMU → logic `mmu` builder host-test + `GuardStats`/`report_guard_fault` → arch arena/`satp`/guard + linker `ALIGN(2M)` → 2 ảnh test + product → host 21/21 → ktest 2 ảnh → product 50/50 → budget → `k3-riscv64.md` §2/§3..§9 + JOURNAL → gate 569 → reviewer APPROVE + vá 4 nit → chạy lại host/ktest/50 boot/gate) — **commit/push đang chờ**
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite, 0 failed** (`JOURNAL/kt46-gate-fast.log`); baseline cùng số (`JOURNAL/kt46-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng 3 build + `ktest.sh`/`run.sh` (`JOURNAL/kt46-{host-tests,build,ktest,boot,boot50,budget}.log`).
 Miri          : KT-46 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** MMU/trap chạy host: `cargo test -p vifast-plat-common` **21/21** (13 trap KT-45 + 8 MMU KT-46: map/walk 4K-2M-1G, từ chối mapping sai, canonical, guard NONE/physmap NX, `satp` mode 8, guard stats/dump).
-Việc dở       : **`reviewer-kt46` APPROVE, 4 nit đã vá**; chờ gate lại xanh rồi commit `[KT-46]` chỉ `v2/` + push; `[KT-46b]` cập nhật hash + verdict. Kế tiếp Agent 0 lật KT-46 rồi KT-47 timer / KT-48 PLIC / KT-49 SMP. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`); HEAD đã tiến do tab ViScript, không đụng `v2/`.
+Việc dở       : **`reviewer-kt46` APPROVE, 4 nit đã vá, gate lại 569**; đã commit `[KT-46]` = `d5e7565d`; `[KT-46b]` cập nhật HEAD + verdict + push. Kế tiếp Agent 0 lật KT-46 rồi KT-47 timer / KT-48 PLIC / KT-49 SMP. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
 ```
 
 ## KT-46 — Sv39 thật + guard page-fault (`scause` 13/15)
