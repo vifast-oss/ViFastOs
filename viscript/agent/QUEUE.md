@@ -179,7 +179,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **DONE** | ≥6 ca; không đổi hành vi đã khoá |
 | ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **DONE** | ≥4 ca; vẫn tất định |
 | ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **DONE** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
-| ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **READY** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
+| ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **DONE** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
@@ -1283,3 +1283,17 @@ APPROVED 2026-11-14 Agent 0
 > Đo: **932 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (212,2 s).
 > **Phát hiện lỗi thật (mở ST-85b ngay)**: dòng **cấp tệp thụt lề** bị **bỏ im lặng** — không chẩn đoán, không in. Đây là lỗi đúng
 > nghĩa "im lặng sai", phải đóng trước khi coi `.vish` là ổn định.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-85b DONE — lỗi "im lặng bỏ dòng" ĐÃ ĐÓNG.** Commit `9dacea49` (**Agent 2 tự commit, đã push**). Chuỗi im lặng được chỉ đúng
+> **file:line**: `lower/khai.rs:28-30` (`la_khai_bao_voi` coi **mọi** dòng thụt là "vùng khai báo") → `khai.rs:79-104` (`tach` nuốt
+> tiền tố, `moc` = EOF) → `lower.rs:390-412` → `lower/cmd.rs:426-430` (`run_shell_tu` **bỏ** mọi node `span.start < tu`) ⇒ **không**
+> stage nào được hạ ⇒ rỗng, exit 0. Chọn **nhánh (A)** có căn cứ **§9.5** (`.vish` **không** có block cấp tệp): `khai::dong_thut_sai`
+> (heuristic văn bản, bỏ qua thân khối mở bằng dòng cột 1 + ngoặc chưa đóng) ⇒ **`VS0201`** "câu lệnh cấp tệp không được thụt lề
+> (`.vish` không có block cấp tệp)" tại `dòng:cột`, exit 2; `.vis` script **không** đi nhánh này. **7 ca** (3 dạng lỗi + `.vis` +
+> `cmd` 2 dấu cách + nhóm nhiều dòng + `fn` khai báo), **0 golden phải sửa**. Đo: **939 test** · sem **447/22** · host **54/54** ·
+> parity **398/398** · differential **100k/0 lệch** (218,7 s).
+> Nợ: heuristic **văn bản** (dấu `:` trong chuỗi/comment có thể bị coi mở khối; khối một dòng `cmd f(): x`; nối dòng `\`); gốc
+> `khai::tach` **chưa dọn**; `topmix2` **đổi hành vi** (trước chạy dòng thụt như lệnh ngoài — sai thiết kế, nay báo lỗi).
+> **ST-86 mở** (fuzz differential cho cú pháp mới).
