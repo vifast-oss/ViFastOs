@@ -178,7 +178,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **DONE** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
 | ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **DONE** | ≥6 ca; không đổi hành vi đã khoá |
 | ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **DONE** | ≥4 ca; vẫn tất định |
-| ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **READY** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
+| ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **DONE** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
+| ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **READY** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
@@ -1272,3 +1273,13 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: `is_pub` mới cho `fn` (type/enum/const chưa); `detail` `std.*` dùng tên tham số giả; completion chưa theo ngữ cảnh sau `.`;
 > hover chưa field; nạp lại module mỗi request.
 > **ST-85 mở** (`vis fmt` chuẩn hoá thụt lề `.vish` — **có rào**: nếu thụt lề là ngữ nghĩa, **không** đổi, ghi lý do đo được).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-85 DONE — nhánh B, đúng luật (đo trước, không đổi khi ngữ nghĩa).** Commit `12c0231c` (**Agent 2 tự commit, đã push**).
+> 6 phép đo: thân `cmd` thụt lề **không** đổi nghĩa (2/4/tab — tab bị `VS0107`), **nhưng cấp tệp thì CÓ** (tệp thụt hết ⇒ **không in
+> gì**, exit 0; `topmix` bỏ dòng đầu). ⇒ **không** chuẩn hoá; **0 fixture đổi**; thêm `--indent-report` (đếm dòng lệch chuẩn 4×độ sâu;
+> `test/` = **8 tệp/10 dòng**) và `--check` **cảnh báo** stderr, **không đỏ**; lý do ghi `HOST-BAO-DAM.md`. **6 ca**.
+> Đo: **932 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (212,2 s).
+> **Phát hiện lỗi thật (mở ST-85b ngay)**: dòng **cấp tệp thụt lề** bị **bỏ im lặng** — không chẩn đoán, không in. Đây là lỗi đúng
+> nghĩa "im lặng sai", phải đóng trước khi coi `.vish` là ổn định.
