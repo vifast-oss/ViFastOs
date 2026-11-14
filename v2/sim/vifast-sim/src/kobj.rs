@@ -75,12 +75,19 @@ use crate::frame::FrameArea;
 pub use crate::frame::{FrameMeta, UNTYPED_PA_WINDOW};
 use crate::ipc::{self, IpcArea, Message, MessageInfo};
 use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
+use crate::pagetable::{
+    decode_pte, index_in_level, leaf_pte, level_for_size_bits, size_bits_for_level, table_pte,
+    table_span, DecodedPte, PageTableData, PT_BYTES, PT_ENTRY_COUNT, PT_ROOT_LEVEL, VA_LIMIT,
+};
+/// **KT-37** — kiểu quyền/attrs/mapping/ảnh chụp PageTable (định nghĩa ở [`crate::pagetable`];
+/// re-export để test dùng `vifast_sim::kobj::{MapRights, MapAttrs, Mapping, PageTableInfo}`).
+pub use crate::pagetable::{MapAttrs, MapRights, Mapping, PageTableInfo};
 use crate::sched::HartSched;
 /// **KT-29** — trường công bố `idle`/`cur_prio` của mỗi hart (định nghĩa ở [`crate::sched`];
 /// re-export để test dùng `vifast_sim::kobj::Published`).
 pub use crate::sched::Published;
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
-use vifast_pte::FrameSize;
+use vifast_pte::{FrameSize, Pte};
 
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
 pub const FLAG_GUEST: u32 = 1;
@@ -416,6 +423,10 @@ enum Kind {
     /// chục byte), **không** mang vùng nhớ của Frame. Dữ liệu thật nằm ở [`Meta::frame`]
     /// (`FrameMeta`) vì nó phải đọc được **sau khi** object chết (DoD "frame chết sạch").
     Frame,
+    /// **KT-37** — mốc body của `PageTable`: giống Frame, body chỉ là mốc vài chục byte; dữ
+    /// liệu thật (512 PTE + cấp + `attached` + `mapped`) nằm ở `Machine::page_tables`, để đọc
+    /// được sau khi object chết và không làm `size_of::<Kind>()` phình lên 4 KiB.
+    PageTable,
     Plain,
 }
 
@@ -576,6 +587,7 @@ impl KObj for Kind {
             Kind::Reply(_) => 7,
             Kind::Notification(_) => 8,
             Kind::Frame => 9,
+            Kind::PageTable => 10,
         }
     }
 }
@@ -620,6 +632,10 @@ struct Meta {
     /// **KT-36** — với object Untyped: cửa sổ PA ảo cấp cho Frame (`base` + watermark).
     /// Untyped con thừa hưởng `base_cha + offset_con`; `Revoke` Untyped đưa watermark về 0.
     frame_area: Option<FrameArea>,
+    /// **KT-37** — chỉ số vào `Machine::page_tables` cho object `PageTable`; `Some` **đúng khi**
+    /// `ty == ObjType::PageTable` (bất biến `check_pages`). Giống `Meta::frame`, dữ liệu PageTable
+    /// phải đọc được sau khi object chết (bất biến "bảng chết không còn PTE").
+    pt: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -728,6 +744,12 @@ pub struct Machine {
     /// `Ok` ngay, giữ chi phí per-op của L1/property K1a..K1c như trước KT-36 (đo được: L1 1.000
     /// seed 54,5 s → về mức baseline sau khi thêm cửa sổ này).
     frame_objects: usize,
+    /// **KT-37** — dữ liệu PageTable theo chỉ số trong [`Meta::pt`] (tombstone `None` khi object
+    /// chết); object PageTable **không** mang 4 KiB trong `Kind`.
+    page_tables: Vec<Option<PageTableData>>,
+    /// **KT-37** — số object `PageTable` **đã từng** tạo (cửa sổ nhanh cho `check_pages`, cùng
+    /// lý do `frame_objects` của KT-36).
+    page_table_objects: usize,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -742,6 +764,8 @@ struct ChoDat {
     frame: Option<FrameMeta>,
     /// **KT-36** — cửa sổ PA cấp Frame (chỉ Untyped mới có).
     frame_area: Option<FrameArea>,
+    /// **KT-37** — chỉ số `Machine::page_tables` (chỉ PageTable mới có).
+    pt: Option<usize>,
 }
 
 /// Ảnh chụp **bộ đếm chuyển trạng thái** (KT-18) + **cặp cấm bị thử** (KT-23).
@@ -899,6 +923,8 @@ impl Machine {
             now: 0,
             frame_windows: Vec::new(),
             frame_objects: 0,
+            page_tables: Vec::new(),
+            page_table_objects: 0,
         }
     }
 
@@ -1239,6 +1265,729 @@ impl Machine {
             return Err(KError::InvalidCapability);
         }
         m.frame.as_mut().ok_or(KError::WrongObjectType)
+    }
+
+    // ------------------------------------------------------- PageTable (KT-37)
+
+    /// Chỉ số `Machine::page_tables` của object PageTable **sống**; object lạ/chết/không phải
+    /// PageTable ⇒ lỗi tương ứng. Đây là **một cửa** để mọi hàm PageTable không lệch cách lấy.
+    fn page_table_slot_of(&self, pt: ObjId) -> Result<usize, KError> {
+        let idx = self.object_index(pt)?;
+        let m = &self.objects[idx];
+        if m.ty != ObjType::PageTable {
+            return Err(KError::WrongObjectType);
+        }
+        if !m.alive {
+            return Err(KError::InvalidCapability);
+        }
+        m.pt.ok_or(KError::WrongObjectType)
+    }
+
+    fn page_table_data(&self, pt: ObjId) -> Result<&PageTableData, KError> {
+        let slot = self.page_table_slot_of(pt)?;
+        self.page_tables
+            .get(slot)
+            .and_then(|d| d.as_ref())
+            .ok_or(KError::IllegalOperation)
+    }
+
+    fn page_table_data_mut(&mut self, pt: ObjId) -> Result<&mut PageTableData, KError> {
+        let slot = self.page_table_slot_of(pt)?;
+        self.page_tables
+            .get_mut(slot)
+            .and_then(|d| d.as_mut())
+            .ok_or(KError::IllegalOperation)
+    }
+
+    /// Bảng **gốc** của cây: chưa attach và ở cấp 2. Bảng đã attach (cấp 1/0) hoặc không phải
+    /// root ⇒ [`KError::MissingPageTable`] — `map`/`unmap`/`walk` **chỉ** nhận bảng gốc (KT-37
+    /// DoD: "phải có PageTable cấp trên đã map, thiếu ⇒ `MissingPageTable`").
+    fn page_table_root(&self, pt: ObjId) -> Result<&PageTableData, KError> {
+        let d = self.page_table_data(pt)?;
+        if d.attached.is_some() || d.level != PT_ROOT_LEVEL {
+            return Err(KError::MissingPageTable);
+        }
+        Ok(d)
+    }
+
+    /// **KT-37** — số object `PageTable` **còn sống**.
+    pub fn page_table_count(&self) -> usize {
+        self.objects
+            .iter()
+            .filter(|m| m.alive && m.ty == ObjType::PageTable)
+            .count()
+    }
+
+    /// **KT-37** — ảnh chụp một PageTable (cấp, bảng cha, số entry, số lá trong cây con).
+    pub fn page_table_info(&self, pt: ObjId) -> Result<PageTableInfo, KError> {
+        let d = self.page_table_data(pt)?;
+        Ok(PageTableInfo {
+            level: d.level,
+            attached: d.attached,
+            entries: d.entry_count(),
+            mapped: d.mapped,
+        })
+    }
+
+    /// **KT-37** — PTE thô tại `index` (test layout PTE; `index >= 512` ⇒ `RangeError`).
+    pub fn page_table_pte_raw(&self, pt: ObjId, index: usize) -> Result<u64, KError> {
+        if index >= PT_ENTRY_COUNT {
+            return Err(KError::RangeError);
+        }
+        let d = self.page_table_data(pt)?;
+        d.entries
+            .get(index)
+            .map(|p| p.raw())
+            .ok_or(KError::RangeError)
+    }
+
+    /// Dựng [`Mapping`] từ một PTE lá ở `level`; kiểm Frame còn sống + cỡ khớp cấp lá + `pa`
+    /// căn đúng cỡ (bất biến; lệch ⇒ `IllegalOperation`, `check_pages` bắt sớm hơn).
+    fn mapping_for_leaf(
+        &self,
+        va: u64,
+        level: u8,
+        frame: ObjId,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        let size_bits = size_bits_for_level(level).ok_or(KError::IllegalOperation)?;
+        let meta = self
+            .frame_meta(frame)
+            .map_err(|_| KError::IllegalOperation)?;
+        if !meta.live || meta.size_bits != size_bits {
+            return Err(KError::IllegalOperation);
+        }
+        let size = 1u64 << size_bits;
+        if !meta.pa.is_multiple_of(size) {
+            return Err(KError::IllegalOperation);
+        }
+        Ok(Mapping {
+            va: va & !(size - 1),
+            pa: meta.pa,
+            size_bits,
+            frame,
+            rights,
+            attrs,
+        })
+    }
+
+    /// **KT-37** — walk ngược VA→PA trong cây gốc `root` (model API; cũng là oracle cho KT-42).
+    ///
+    /// Lá ở **bất kỳ** cấp nào phủ `va` đều trả về; `va` lệch căn trong trang lớn vẫn trả mapping
+    /// của trang lớn (đúng ngữ nghĩa MMU). Chưa map ⇒ [`KError::NotMapped`]; `va` ngoài VA 39 bit
+    /// ⇒ [`KError::RangeError`]; `root` không phải bảng gốc ⇒ [`KError::MissingPageTable`].
+    pub fn page_table_walk(&self, root: ObjId, va: u64) -> Result<Mapping, KError> {
+        self.page_table_root(root)?;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        let mut cur = root;
+        let mut level = PT_ROOT_LEVEL;
+        loop {
+            let idx = index_in_level(va, level).ok_or(KError::IllegalOperation)?;
+            let d = self.page_table_data(cur)?;
+            let pte = d.entries.get(idx).ok_or(KError::IllegalOperation)?;
+            match decode_pte(pte) {
+                DecodedPte::Empty => return Err(KError::NotMapped),
+                DecodedPte::Table(child) => {
+                    if level == 0 {
+                        return Err(KError::IllegalOperation);
+                    }
+                    let cd = self.page_table_data(child)?;
+                    if cd.attached != Some((cur, idx as u16)) || cd.level + 1 != level {
+                        return Err(KError::IllegalOperation);
+                    }
+                    cur = child;
+                    level -= 1;
+                }
+                DecodedPte::Leaf {
+                    frame,
+                    rights,
+                    attrs,
+                } => return self.mapping_for_leaf(va, level, frame, rights, attrs),
+            }
+        }
+    }
+
+    /// **KT-37** — `PageTable.Map` qua **cap Frame** (method 0 của `PageTable` trong spec, vẫn
+    /// `reserved` nên đây là semantic model API, không đổi `spec/`). Quyền/attrs lấy từ **tham
+    /// số**, không suy từ quyền cap (DoD KT-37).
+    pub fn page_table_map(
+        &mut self,
+        root: ObjId,
+        va: u64,
+        frame_cap: SlotRef,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        let frame = self.require_type(frame_cap, ObjType::Frame)?;
+        self.page_table_map_obj(root, va, frame, rights, attrs)
+    }
+
+    /// **KT-37** — `map` theo `ObjId` Frame (model API cho property/oracle; cap chỉ là đường ABI).
+    ///
+    /// Thứ tự kiểm (mọi lỗi **atomic** — không đổi cây/PTE/bộ đếm):
+    /// 1. `root` phải là PageTable **gốc** (chưa attach, cấp 2), nếu không ⇒ `MissingPageTable`;
+    /// 2. Frame phải sống + cỡ hợp lệ; `size_bits` lạ ⇒ `InvalidArgument`;
+    /// 3. `va`/`va + cỡ` ngoài VA 39 bit ⇒ `RangeError`;
+    /// 4. `va` hoặc `pa` lệch căn cỡ Frame ⇒ `Alignment` (2M/1G phủ **đúng một** entry lá);
+    /// 5. thiếu bảng cấp trên (mid/leaf) ⇒ `MissingPageTable`;
+    /// 6. entry lá đã có (kể cả lá lớn phủ VA) ⇒ `AlreadyMapped`;
+    /// 7. vượt `MAX_FRAMES_PER_VSPACE` ⇒ `NotEnoughMemory`;
+    /// 8. cộng `maps/mapped_w/mapped_x` của Frame rồi mới ghi PTE (rollback nếu lỗi).
+    pub fn page_table_map_obj(
+        &mut self,
+        root: ObjId,
+        va: u64,
+        frame: ObjId,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        self.page_table_root(root)?;
+        let fmeta = self.frame_meta(frame)?;
+        if !fmeta.live {
+            return Err(KError::InvalidCapability);
+        }
+        let size_bits = fmeta.size_bits;
+        let leaf_level = level_for_size_bits(size_bits).ok_or(KError::InvalidArgument)?;
+        let size = 1u64 << size_bits;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        let end = va.checked_add(size).ok_or(KError::RangeError)?;
+        if end > VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        if !va.is_multiple_of(size) || !fmeta.pa.is_multiple_of(size) {
+            return Err(KError::Alignment);
+        }
+        // Đi từ root xuống **bảng giữ lá**, chỉ đọc; thiếu bảng con ⇒ MissingPageTable.
+        let mut path: Vec<ObjId> = Vec::with_capacity(3);
+        let mut cur = root;
+        let mut level = PT_ROOT_LEVEL;
+        path.push(root);
+        while level > leaf_level {
+            let idx = index_in_level(va, level).ok_or(KError::IllegalOperation)?;
+            let pte = self
+                .page_table_data(cur)?
+                .entries
+                .get(idx)
+                .ok_or(KError::IllegalOperation)?;
+            match decode_pte(pte) {
+                DecodedPte::Empty => return Err(KError::MissingPageTable),
+                DecodedPte::Leaf { .. } => return Err(KError::AlreadyMapped),
+                DecodedPte::Table(child) => {
+                    let cd = self.page_table_data(child)?;
+                    if cd.level + 1 != level {
+                        return Err(KError::IllegalOperation);
+                    }
+                    cur = child;
+                    level -= 1;
+                    path.push(cur);
+                }
+            }
+        }
+        let idx = index_in_level(va, level).ok_or(KError::IllegalOperation)?;
+        if !self
+            .page_table_data(cur)?
+            .entries
+            .get(idx)
+            .ok_or(KError::IllegalOperation)?
+            .is_empty()
+        {
+            return Err(KError::AlreadyMapped);
+        }
+        // Biên số lá của **cả cây** (đúng thứ tự trong `k2-vm.md` §11.4: sau
+        // `AlreadyMapped`, trước khi đổi bộ đếm).
+        if self.page_table_data(root)?.mapped as usize >= vifast_pte::MAX_FRAMES_PER_VSPACE {
+            return Err(KError::NotEnoughMemory);
+        }
+
+        let wants_w = rights.contains(MapRights::WRITE);
+        let wants_x = attrs.contains(MapAttrs::EXEC);
+        // Cộng bộ đếm Frame **trước** khi ghi PTE; lỗi ⇒ chưa có gì đổi.
+        self.frame_note_map(frame, wants_w, wants_x)?;
+        let pte = leaf_pte(frame, rights, attrs);
+        self.page_table_data_mut(cur)?
+            .entries
+            .set(idx, pte)
+            .ok_or(KError::IllegalOperation)?;
+        for t in path {
+            let d = self.page_table_data_mut(t)?;
+            d.mapped += 1;
+        }
+        let mapping = Mapping {
+            va,
+            pa: fmeta.pa,
+            size_bits,
+            frame,
+            rights,
+            attrs,
+        };
+        self.sched_after_op(false);
+        Ok(mapping)
+    }
+
+    /// **KT-37** — `PageTable.Unmap`: gỡ lá phủ `va` (method 1 của `PageTable`).
+    ///
+    /// Chỉ nhận `va` **đúng gốc** của mapping (lệch ⇒ [`KError::Alignment`] — không xoá ngầm
+    /// trang lớn khi người gọi chỉ định một địa chỉ bên trong). Chưa map ⇒
+    /// [`KError::NotMapped`]; trừ bộ đếm Frame + `mapped` của mọi bảng trên đường đi.
+    pub fn page_table_unmap(&mut self, root: ObjId, va: u64) -> Result<Mapping, KError> {
+        self.page_table_root(root)?;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        let mut path: Vec<ObjId> = Vec::with_capacity(3);
+        let mut cur = root;
+        let mut level = PT_ROOT_LEVEL;
+        path.push(root);
+        let (leaf_idx, mapping) = loop {
+            let idx = index_in_level(va, level).ok_or(KError::IllegalOperation)?;
+            let pte = self
+                .page_table_data(cur)?
+                .entries
+                .get(idx)
+                .ok_or(KError::IllegalOperation)?;
+            match decode_pte(pte) {
+                DecodedPte::Empty => return Err(KError::NotMapped),
+                DecodedPte::Table(child) => {
+                    if level == 0 {
+                        return Err(KError::IllegalOperation);
+                    }
+                    let cd = self.page_table_data(child)?;
+                    if cd.attached != Some((cur, idx as u16)) || cd.level + 1 != level {
+                        return Err(KError::IllegalOperation);
+                    }
+                    cur = child;
+                    level -= 1;
+                    path.push(cur);
+                }
+                DecodedPte::Leaf {
+                    frame,
+                    rights,
+                    attrs,
+                } => {
+                    let m = self.mapping_for_leaf(va, level, frame, rights, attrs)?;
+                    break (idx, m);
+                }
+            }
+        };
+        if mapping.va != va {
+            return Err(KError::Alignment);
+        }
+        // Bộ đếm `mapped` của mọi bảng trên đường đi phải dương — kiểm **trước** khi đổi cây
+        // để lỗi bất biến không để lại trạng thái nửa vời (thay cho `saturating_sub` cũ).
+        for t in &path {
+            if self.page_table_data(*t)?.mapped == 0 {
+                return Err(KError::IllegalOperation);
+            }
+        }
+        let wants_w = mapping.rights.contains(MapRights::WRITE);
+        let wants_x = mapping.attrs.contains(MapAttrs::EXEC);
+        // Trừ bộ đếm Frame **trước** khi xoá PTE; lỗi ⇒ PTE/cây còn nguyên.
+        self.frame_note_unmap(mapping.frame, wants_w, wants_x)?;
+        self.page_table_data_mut(cur)?
+            .entries
+            .set(leaf_idx, Pte::EMPTY)
+            .ok_or(KError::IllegalOperation)?;
+        for t in path {
+            let d = self.page_table_data_mut(t)?;
+            debug_assert!(d.mapped > 0);
+            d.mapped -= 1;
+        }
+        self.sched_after_op(false);
+        Ok(mapping)
+    }
+
+    /// **KT-37** — gắn một PageTable con (`child`, chưa attach, rỗng) vào `parent` tại `va`.
+    ///
+    /// Cấp của con do vị trí quyết định: cha cấp 2 ⇒ con cấp 1 (phủ 1 GiB), cha cấp 1 ⇒ con cấp 0
+    /// (phủ 2 MiB). `va` phải căn đúng **vùng con phủ** (`Alignment`), trong VA 39 bit
+    /// (`RangeError`), ô đích phải rỗng (`AlreadyMapped`), cha cấp 0 không có cấp dưới
+    /// (`InvalidArgument`), con đã attach/không rỗng (`AlreadyMapped`/`InvalidArgument`).
+    pub fn page_table_attach(
+        &mut self,
+        parent: ObjId,
+        va: u64,
+        child: ObjId,
+    ) -> Result<(), KError> {
+        let p_slot = self.page_table_slot_of(parent)?;
+        let c_slot = self.page_table_slot_of(child)?;
+        if parent == child {
+            return Err(KError::InvalidArgument);
+        }
+        let plevel = self.page_tables[p_slot]
+            .as_ref()
+            .ok_or(KError::IllegalOperation)?
+            .level;
+        if plevel == 0 {
+            return Err(KError::InvalidArgument);
+        }
+        let clevel = plevel - 1;
+        let span = table_span(clevel).ok_or(KError::InvalidArgument)?;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        let end = va.checked_add(span).ok_or(KError::RangeError)?;
+        if end > VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        if !va.is_multiple_of(span) {
+            return Err(KError::Alignment);
+        }
+        {
+            let cd = self.page_tables[c_slot]
+                .as_ref()
+                .ok_or(KError::IllegalOperation)?;
+            if cd.attached.is_some() {
+                return Err(KError::AlreadyMapped);
+            }
+            if cd.mapped != 0 || cd.entries.iter().any(|p| !p.is_empty()) {
+                return Err(KError::InvalidArgument);
+            }
+        }
+        let idx = index_in_level(va, plevel).ok_or(KError::InvalidArgument)?;
+        {
+            let pd = self.page_tables[p_slot]
+                .as_ref()
+                .ok_or(KError::IllegalOperation)?;
+            if !pd
+                .entries
+                .get(idx)
+                .ok_or(KError::IllegalOperation)?
+                .is_empty()
+            {
+                return Err(KError::AlreadyMapped);
+            }
+        }
+        {
+            let cd = self.page_tables[c_slot]
+                .as_mut()
+                .ok_or(KError::IllegalOperation)?;
+            cd.level = clevel;
+            cd.attached = Some((parent, idx as u16));
+        }
+        let pd = self.page_tables[p_slot]
+            .as_mut()
+            .ok_or(KError::IllegalOperation)?;
+        pd.entries
+            .set(idx, table_pte(child))
+            .ok_or(KError::IllegalOperation)?;
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-37** — gỡ PageTable con khỏi `parent` tại `va` (đối ứng [`Machine::page_table_attach`]).
+    ///
+    /// Con còn **bất kỳ** entry/lá nào ⇒ [`KError::HasChildren`] và **không đổi gì** (không im
+    /// lặng bỏ cây/mapping — KT-37 DoD). Con rỗng ⇒ gỡ, trả về làm bảng gốc cấp 2 (dùng lại được).
+    /// Ô không phải bảng (rỗng/lá) ⇒ `NotMapped`.
+    pub fn page_table_detach(&mut self, parent: ObjId, va: u64) -> Result<ObjId, KError> {
+        let p_slot = self.page_table_slot_of(parent)?;
+        let plevel = self.page_tables[p_slot]
+            .as_ref()
+            .ok_or(KError::IllegalOperation)?
+            .level;
+        if plevel == 0 {
+            return Err(KError::NotMapped);
+        }
+        // Cùng hợp đồng căn lề với `attach`: `va` phải đúng **gốc vùng** của bảng con
+        // (span của cấp `plevel - 1`), nếu không ⇒ `Alignment` (review N1).
+        let clevel = plevel - 1;
+        let span = table_span(clevel).ok_or(KError::InvalidArgument)?;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        let end = va.checked_add(span).ok_or(KError::RangeError)?;
+        if end > VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        if !va.is_multiple_of(span) {
+            return Err(KError::Alignment);
+        }
+        let idx = index_in_level(va, plevel).ok_or(KError::IllegalOperation)?;
+        let child = match decode_pte(
+            self.page_tables[p_slot]
+                .as_ref()
+                .ok_or(KError::IllegalOperation)?
+                .entries
+                .get(idx)
+                .ok_or(KError::IllegalOperation)?,
+        ) {
+            DecodedPte::Table(child) => child,
+            _ => return Err(KError::NotMapped),
+        };
+        let c_slot = self.page_table_slot_of(child)?;
+        {
+            let cd = self.page_tables[c_slot]
+                .as_ref()
+                .ok_or(KError::IllegalOperation)?;
+            if cd.mapped != 0 || cd.entries.iter().any(|p| !p.is_empty()) {
+                return Err(KError::HasChildren);
+            }
+        }
+        self.page_tables[p_slot]
+            .as_mut()
+            .ok_or(KError::IllegalOperation)?
+            .entries
+            .set(idx, Pte::EMPTY)
+            .ok_or(KError::IllegalOperation)?;
+        let cd = self.page_tables[c_slot]
+            .as_mut()
+            .ok_or(KError::IllegalOperation)?;
+        cd.level = PT_ROOT_LEVEL;
+        cd.attached = None;
+        cd.mapped = 0;
+        self.sched_after_op(false);
+        Ok(child)
+    }
+
+    /// **KT-37** — bất biến **cây PageTable + bộ đếm toàn cục** ("check_pages sớm"; KT-42 sẽ gộp
+    /// vào `check_vm`). Chạy sau **mỗi** public op qua [`Machine::sched_after_op`], với cửa sổ
+    /// nhanh `page_table_objects == 0` như `check_frames` của KT-36.
+    ///
+    /// Kiểm:
+    /// 1. **kiểu/dữ liệu**: `ty == PageTable` ⇔ có `Meta.pt` + dữ liệu; object chết ⇒ dữ liệu
+    ///    `None`; object sống ⇒ dữ liệu `Some`, `len == 4096`;
+    /// 2. **cấp/attach**: root ⇒ chưa attach + cấp 2; con ⇒ cấp = cha − 1, PTE của cha trỏ
+    ///    **đúng** con tại **đúng** chỉ số;
+    /// 3. **cây**: mọi bảng con được trỏ **đúng một lần**, không bảng mồ côi; mỗi lá cấp đúng cỡ
+    ///    Frame, Frame sống, `pa` căn cỡ;
+    /// 4. **bộ đếm**: `PageTableData.mapped` = số lá của cây con (đệ quy); với **mọi** Frame:
+    ///    `maps/mapped_w/mapped_x` = số lá trỏ tới Frame + quyền/EXEC tương ứng (bộ đếm toàn cục,
+    ///    mọi root);
+    /// 5. **biên**: `mapped ≤ MAX_FRAMES_PER_VSPACE` mỗi cây.
+    pub fn check_pages(&self) -> Result<(), String> {
+        if self.page_table_objects == 0 {
+            return Ok(());
+        }
+        // (1) kiểu + dữ liệu + cấp/attach.
+        for (i, m) in self.objects.iter().enumerate() {
+            let obj = (i as u32) + 1;
+            match (m.ty == ObjType::PageTable, m.pt) {
+                (true, None) => {
+                    return Err(format!("object {obj} là PageTable nhưng thiếu dữ liệu"))
+                }
+                (false, Some(_)) => {
+                    return Err(format!(
+                        "object {obj} ({}) không phải PageTable nhưng có dữ liệu PageTable",
+                        m.ty.name()
+                    ))
+                }
+                _ => {}
+            }
+            let Some(pt_idx) = m.pt else { continue };
+            let data = self.page_tables.get(pt_idx).and_then(|d| d.as_ref());
+            if !m.alive {
+                if data.is_some() {
+                    return Err(format!("PageTable {obj} đã chết nhưng còn dữ liệu"));
+                }
+                continue;
+            }
+            let Some(d) = data else {
+                return Err(format!("PageTable {obj} sống nhưng thiếu dữ liệu"));
+            };
+            if m.len != PT_BYTES {
+                return Err(format!("PageTable {obj}: len {} ≠ {PT_BYTES}", m.len));
+            }
+            if d.level > PT_ROOT_LEVEL {
+                return Err(format!("PageTable {obj}: cấp {} lạ", d.level));
+            }
+            match d.attached {
+                Some((parent, idx)) => {
+                    if d.level == PT_ROOT_LEVEL {
+                        return Err(format!("PageTable {obj}: root nhưng lại attach"));
+                    }
+                    let Some(pm) = self.objects.get(parent as usize - 1) else {
+                        return Err(format!("PageTable {obj}: cha {parent} không tồn tại"));
+                    };
+                    if !pm.alive || pm.ty != ObjType::PageTable {
+                        return Err(format!(
+                            "PageTable {obj}: cha {parent} không phải PageTable sống"
+                        ));
+                    }
+                    let Some(pd) = pm
+                        .pt
+                        .and_then(|p| self.page_tables.get(p))
+                        .and_then(|d| d.as_ref())
+                    else {
+                        return Err(format!("PageTable {obj}: cha {parent} thiếu dữ liệu"));
+                    };
+                    if pd.level != d.level + 1 {
+                        return Err(format!(
+                            "PageTable {obj}: cấp {} nhưng cha {parent} cấp {}",
+                            d.level, pd.level
+                        ));
+                    }
+                    let pte = pd
+                        .entries
+                        .get(idx as usize)
+                        .ok_or_else(|| format!("PageTable {obj}: chỉ số cha {idx} ngoài biên"))?;
+                    if decode_pte(pte) != DecodedPte::Table(obj) {
+                        return Err(format!(
+                            "PageTable {obj}: PTE cha {parent}[{idx}] không trỏ đúng con"
+                        ));
+                    }
+                }
+                None => {
+                    if d.level != PT_ROOT_LEVEL {
+                        return Err(format!(
+                            "PageTable {obj}: cấp {} chưa attach (không phải root cấp 2)",
+                            d.level
+                        ));
+                    }
+                }
+            }
+        }
+        // (2) DFS từ mọi root: bảng con trỏ 2 lần / lá sai cấp / Frame chết; đếm lá theo Frame.
+        let mut reached = vec![false; self.objects.len()];
+        let mut counts = vec![(0u32, 0u32, 0u32); self.objects.len()];
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::PageTable {
+                continue;
+            }
+            let Some(pt_idx) = m.pt else { continue };
+            let Some(d) = self.page_tables.get(pt_idx).and_then(|d| d.as_ref()) else {
+                continue;
+            };
+            if d.attached.is_some() {
+                continue;
+            }
+            let obj = (i as u32) + 1;
+            let total = self.check_page_subtree(obj, &mut reached, &mut counts)?;
+            if total != d.mapped {
+                return Err(format!(
+                    "PageTable {obj}: mapped {} ≠ đếm cây {total}",
+                    d.mapped
+                ));
+            }
+        }
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.alive && m.ty == ObjType::PageTable && !reached[i] {
+                let obj = (i as u32) + 1;
+                return Err(format!("PageTable {obj}: mồ côi (không root nào trỏ tới)"));
+            }
+        }
+        // (3) bộ đếm Frame toàn cục khớp số lá thật.
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::Frame {
+                continue;
+            }
+            let obj = (i as u32) + 1;
+            let f = m
+                .frame
+                .ok_or_else(|| format!("Frame {obj}: thiếu metadata"))?;
+            let (maps, w, x) = counts[i];
+            if f.maps != maps || f.mapped_w != w || f.mapped_x != x {
+                return Err(format!(
+                    "Frame {obj}: bộ đếm ({}, {}, {}) ≠ số lá ({maps}, {w}, {x})",
+                    f.maps, f.mapped_w, f.mapped_x
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Đệ quy một cây PageTable cho [`Machine::check_pages`]: trả số lá trong cây con, đánh dấu
+    /// bảng đã đi, cộng bộ đếm theo Frame. Không cấp phát ngoài hai `Vec` của caller.
+    fn check_page_subtree(
+        &self,
+        table: ObjId,
+        reached: &mut [bool],
+        counts: &mut [(u32, u32, u32)],
+    ) -> Result<u32, String> {
+        let ti = table as usize - 1;
+        if reached[ti] {
+            return Err(format!(
+                "PageTable {table}: bị trỏ nhiều lần (cây không phải cây)"
+            ));
+        }
+        reached[ti] = true;
+        let d = self
+            .page_table_data(table)
+            .map_err(|e| format!("PageTable {table}: {e:?}"))?;
+        let mut total = 0u32;
+        for (i, pte) in d.entries.iter().enumerate() {
+            match decode_pte(*pte) {
+                DecodedPte::Empty => {}
+                DecodedPte::Table(child) => {
+                    if d.level == 0 {
+                        return Err(format!("PageTable {table}: cấp 0 có bảng con ở [{i}]"));
+                    }
+                    let cd = self
+                        .page_table_data(child)
+                        .map_err(|e| format!("PageTable {table}[{i}]: {e:?}"))?;
+                    if cd.level + 1 != d.level {
+                        return Err(format!(
+                            "PageTable {table}[{i}]: con {child} cấp {} ≠ {}",
+                            cd.level, d.level
+                        ));
+                    }
+                    if cd.attached != Some((table, i as u16)) {
+                        return Err(format!(
+                            "PageTable {table}[{i}]: con {child} không attach đúng cha/chỉ số"
+                        ));
+                    }
+                    total = total
+                        .checked_add(self.check_page_subtree(child, reached, counts)?)
+                        .ok_or_else(|| format!("PageTable {table}: tràn bộ đếm cây"))?;
+                }
+                DecodedPte::Leaf {
+                    frame,
+                    rights,
+                    attrs,
+                } => {
+                    let meta = self
+                        .frame_meta(frame)
+                        .map_err(|e| format!("PageTable {table}[{i}]: {e:?}"))?;
+                    let want = size_bits_for_level(d.level).ok_or_else(|| {
+                        format!("PageTable {table}: cấp {} không có cỡ lá", d.level)
+                    })?;
+                    if !meta.live {
+                        return Err(format!("PageTable {table}[{i}]: Frame {frame} đã chết"));
+                    }
+                    if meta.size_bits != want {
+                        return Err(format!(
+                            "PageTable {table}[{i}]: lá cấp {} phải là Frame {want} bit, gặp {}",
+                            d.level, meta.size_bits
+                        ));
+                    }
+                    if !meta.pa.is_multiple_of(1u64 << want) {
+                        return Err(format!(
+                            "PageTable {table}[{i}]: pa {:#x} lệch căn {want} bit",
+                            meta.pa
+                        ));
+                    }
+                    let c = &mut counts[frame as usize - 1];
+                    c.0 =
+                        c.0.checked_add(1)
+                            .ok_or_else(|| "tràn bộ đếm maps".to_string())?;
+                    c.1 =
+                        c.1.checked_add(u32::from(rights.contains(MapRights::WRITE)))
+                            .ok_or_else(|| "tràn bộ đếm mapped_w".to_string())?;
+                    c.2 =
+                        c.2.checked_add(u32::from(attrs.contains(MapAttrs::EXEC)))
+                            .ok_or_else(|| "tràn bộ đếm mapped_x".to_string())?;
+                    total = total
+                        .checked_add(1)
+                        .ok_or_else(|| format!("PageTable {table}: tràn bộ đếm lá"))?;
+                }
+            }
+        }
+        if d.mapped != total {
+            return Err(format!(
+                "PageTable {table}: mapped {} ≠ đếm cây {total}",
+                d.mapped
+            ));
+        }
+        if total as usize > vifast_pte::MAX_FRAMES_PER_VSPACE {
+            return Err(format!(
+                "PageTable {table}: {total} lá > MAX_FRAMES_PER_VSPACE"
+            ));
+        }
+        Ok(total)
     }
 
     /// `(base, capacity)` của vùng nhớ thật của một Untyped (KT-16); `None` nếu không phải
@@ -1743,6 +2492,11 @@ impl Machine {
         if ty == ObjType::Frame {
             return self.retype_frame(src_cap, u_idx, size_bits, src_rights);
         }
+        // **KT-37** — PageTable cũng là object `reserved` (install_at K2 nhưng `is_core()` false):
+        // đường riêng, cấp 4 KiB arena + dữ liệu mô hình ở `Machine::page_tables`.
+        if ty == ObjType::PageTable {
+            return self.retype_page_table(src_cap, u_idx, size_bits, src_rights);
+        }
         if !ty.is_core() {
             return Err(KError::NotSupported);
         }
@@ -1898,6 +2652,52 @@ impl Machine {
         self.objects[u_idx].frame_area = Some(area);
         self.sched_after_op(false);
         Ok(self.push_cap(obj, ObjType::Frame, Some(src_cap), src_rights, None))
+    }
+
+    /// **KT-37** — `Untyped.Retype(Untyped, PageTable, size_bits)`: cấp một bảng trang **4 KiB**
+    /// từ arena của Untyped nguồn (PageTable **có** tiêu byte arena, khác Frame — một bảng thật
+    /// là 4096 B PTE) và tạo dữ liệu mô hình rỗng ở `Machine::page_tables`.
+    ///
+    /// `size_bits` nhận `0` (mặc định = 4096 B) hoặc `12` (= 4096 B); cỡ khác ⇒
+    /// [`KError::InvalidArgument`], **atomic** (không đốt byte, không tạo object). Bảng mới có
+    /// `level = 2` (root), chưa attach, rỗng; muốn map Frame 4 KiB/2 MiB phải `page_table_attach`
+    /// các bảng cấp dưới trước (thiếu ⇒ `MissingPageTable` — KT-37 DoD).
+    fn retype_page_table(
+        &mut self,
+        src_cap: CapId,
+        u_idx: usize,
+        size_bits: u32,
+        src_rights: u8,
+    ) -> Result<CapId, KError> {
+        // PageTable của mô hình đúng một trang 4096 B; `spec/abi.toml` `page_bytes = 4096`.
+        if size_bits != 0 && size_bits != 12 {
+            return Err(KError::InvalidArgument);
+        }
+        let region = self.objects[u_idx].region.ok_or(KError::WrongObjectType)?;
+        let len = PT_BYTES;
+        let align = PT_BYTES;
+        let kind = Kind::PageTable;
+        let (body, offset) = self.regions[region]
+            .alloc_place_span(kind, len, align)
+            .ok_or(KError::NotEnoughMemory)?;
+        // Dữ liệu trang: cấp **sau** khi chắc chắn arena còn chỗ (lỗi hết chỗ không để lại
+        // tombstone rỗng trong `page_tables`).
+        let pt_idx = self.page_tables.len();
+        self.page_tables.push(Some(PageTableData::new()));
+        let obj = self.push_meta(
+            ObjType::PageTable,
+            Loc::Untyped(region as u32),
+            body,
+            ChoDat {
+                untyped: Some(u_idx),
+                offset,
+                len,
+                pt: Some(pt_idx),
+                ..ChoDat::default()
+            },
+        );
+        self.sched_after_op(false);
+        Ok(self.push_cap(obj, ObjType::PageTable, Some(src_cap), src_rights, None))
     }
 
     /// Có Frame **sống** nào thuộc Untyped khác chồng `[pa, pa + len)` không.
@@ -2828,6 +3628,28 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-37** — finalise một PageTable: chỉ khi **tinh khiết** (chưa attach, `mapped == 0`,
+    /// mọi PTE rỗng). Còn con/mapping/đang attach ⇒ [`KError::HasChildren`] và **không** đổi gì
+    /// (không im lặng bỏ cây/mapping — cùng tinh thần `finalise_frame` của KT-36). Dữ liệu
+    /// `Machine::page_tables` chuyển `None` (tombstone) để không rò 4 KiB PTE và để `check_pages`
+    /// bắt được bảng chết còn dữ liệu.
+    fn finalise_page_table(&mut self, pt: ObjId) -> Result<(), KError> {
+        let idx = self.object_index(pt)?;
+        let m = &self.objects[idx];
+        if m.ty != ObjType::PageTable {
+            return Err(KError::WrongObjectType);
+        }
+        let pit = m.pt.ok_or(KError::WrongObjectType)?;
+        let Some(d) = self.page_tables.get(pit).and_then(|d| d.as_ref()) else {
+            return Err(KError::IllegalOperation);
+        };
+        if !d.is_pristine() {
+            return Err(KError::HasChildren);
+        }
+        self.page_tables[pit] = None;
+        Ok(())
+    }
+
     pub fn finalise_tcb(&mut self, tcb: ObjId) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Dead {
@@ -3588,6 +4410,12 @@ impl Machine {
         // sai đều bị bắt ngay tại op gây ra, không đợi test gọi tay.
         if let Err(e) = self.check_frames() {
             debug_assert!(false, "bất biến Frame vỡ sau public op: {e}");
+        }
+        // **KT-37** — cây PageTable + bộ đếm lá/Frame cũng chạy sau **mỗi** public op
+        // ("check_pages sớm"); cửa sổ nhanh `page_table_objects == 0` giữ chi phí per-op của
+        // mọi test K1a..K1c như trước KT-37.
+        if let Err(e) = self.check_pages() {
+            debug_assert!(false, "bất biến PageTable vỡ sau public op: {e}");
         }
     }
 
@@ -7140,6 +7968,9 @@ impl Machine {
         if ty == ObjType::Frame {
             self.frame_objects += 1;
         }
+        if ty == ObjType::PageTable {
+            self.page_table_objects += 1;
+        }
         self.objects.push(Meta {
             ty,
             alive: true,
@@ -7152,6 +7983,7 @@ impl Machine {
             slots: cho.slots,
             frame: cho.frame,
             frame_area: cho.frame_area,
+            pt: cho.pt,
         });
         self.objects.len() as ObjId
     }
@@ -7190,6 +8022,8 @@ impl Machine {
             ObjType::Untyped => Kind::Untyped,
             // KT-36: Frame chỉ có mốc body — dữ liệu thật ở `Meta::frame`, không cấp vùng nhớ.
             ObjType::Frame => Kind::Frame,
+            // KT-37: PageTable cũng chỉ có mốc body — 512 PTE nằm ở `Machine::page_tables`.
+            ObjType::PageTable => Kind::PageTable,
             ObjType::CNode => Kind::CNode {
                 slots: vec![None; child_slots.max(1)],
             },
@@ -7537,6 +8371,19 @@ impl Machine {
                 if m.ty == ObjType::Frame && m.frame.is_some_and(|f| !f.counters_zero()) {
                     return Err(KError::HasChildren);
                 }
+                // **KT-37** — PageTable còn PTE/đang attach cũng không được chết: "không im
+                // lặng bỏ cây/mapping" (KT-37 DoD); kiểm **trước** mọi thay đổi để atomic.
+                if m.ty == ObjType::PageTable {
+                    let Some(pit) = m.pt else {
+                        return Err(KError::IllegalOperation);
+                    };
+                    let Some(d) = self.page_tables.get(pit).and_then(|d| d.as_ref()) else {
+                        return Err(KError::IllegalOperation);
+                    };
+                    if !d.is_pristine() {
+                        return Err(KError::HasChildren);
+                    }
+                }
             }
             // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải chết
             // theo **cả cây con của nó**, kể cả khi object đích còn sống (object ngoài Untyped).
@@ -7603,6 +8450,13 @@ impl Machine {
             for id in &dead_objs {
                 if self.objects[*id as usize - 1].ty == ObjType::Frame {
                     self.finalise_frame(*id)?;
+                }
+            }
+            // **KT-37** — finalise PageTable trước khi object chết (đã kiểm tinh khiết ở trên):
+            // dữ liệu `page_tables` chuyển tombstone `None`, không rò 4 KiB PTE.
+            for id in &dead_objs {
+                if self.objects[*id as usize - 1].ty == ObjType::PageTable {
+                    self.finalise_page_table(*id)?;
                 }
             }
             // Đánh dấu chết + **finalise body trong objmem** (KT-16; `free` guard `pa`).
@@ -8296,5 +9150,139 @@ mod tests {
         // `base + UNTYPED_PA_WINDOW` tràn ⇒ cửa sổ không hợp lệ ⇒ `InvalidArgument`.
         let mut a = FrameArea::new(u64::MAX - 8191);
         assert_eq!(a.carve(FrameSize::K4), Err(KError::InvalidArgument));
+    }
+
+    // ------------------------------------------------ KT-37: check_pages phải **bắt** lỗi
+
+    /// Retype một PageTable từ cap Untyped ở `src`.
+    fn mk_page_table(m: &mut Machine, src: SlotRef) -> ObjId {
+        let cap = m
+            .retype(src, ObjType::PageTable, 0, 0)
+            .expect("retype PageTable");
+        m.cap_info(cap).expect("cap").obj
+    }
+
+    /// Rig PageTable tối thiểu: root → mid → leaf, một Frame 4 KiB map ở `0x1000`.
+    fn rig_pages() -> (Machine, ObjId, ObjId, ObjId, ObjId, ObjId, SlotRef) {
+        let mut m = Machine::new();
+        let c = m.add_cnode(16);
+        let u = m.add_untyped(0, 64 * 1024);
+        let uf = m.add_untyped(1 << 32, 4096);
+        let cap = m.root_cap(u);
+        m.put_cap(c, 0, cap).expect("cap Untyped PageTable");
+        let capf = m.root_cap(uf);
+        m.put_cap(c, 1, capf).expect("cap Untyped Frame");
+        let src = SlotRef::new(c, 0);
+        let root = mk_page_table(&mut m, src);
+        let mid = mk_page_table(&mut m, src);
+        m.page_table_attach(root, 0, mid).expect("attach mid");
+        let leaf = mk_page_table(&mut m, src);
+        m.page_table_attach(mid, 0, leaf).expect("attach leaf");
+        let capf = m
+            .retype(SlotRef::new(c, 1), ObjType::Frame, 12, 0)
+            .expect("retype Frame");
+        let frame = m.cap_info(capf).expect("cap").obj;
+        m.page_table_map_obj(root, 0x1000, frame, MapRights::READ, MapAttrs::WB)
+            .expect("map 4K");
+        m.check_pages().expect("mô hình sạch");
+        (m, c, root, mid, leaf, frame, src)
+    }
+
+    #[test]
+    fn check_pages_bat_dem_va_frame_counter_sai() {
+        let (mut m, _c, root, _mid, _leaf, frame, _src) = rig_pages();
+        let rslot = m.objects[root as usize - 1].pt.expect("pt root");
+        m.page_tables[rslot].as_mut().expect("dữ liệu").mapped += 1;
+        let e = m.check_pages().expect_err("phải bắt mapped sai");
+        assert!(e.contains("mapped"), "{e}");
+        m.page_tables[rslot].as_mut().expect("dữ liệu").mapped -= 1;
+        m.check_pages().expect("khôi phục thì sạch");
+
+        // Frame còn lá nhưng bộ đếm maps = 0 ⇒ bị bắt (check_pages là cửa thứ hai).
+        m.objects[frame as usize - 1]
+            .frame
+            .as_mut()
+            .expect("meta")
+            .maps = 0;
+        let e = m.check_pages().expect_err("phải bắt bộ đếm Frame sai");
+        assert!(e.contains("bộ đếm"), "{e}");
+        m.objects[frame as usize - 1]
+            .frame
+            .as_mut()
+            .expect("meta")
+            .maps = 1;
+        m.check_pages().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu() {
+        let (mut m, _c, _root, mid, leaf, _frame, _src) = rig_pages();
+        // Con trỏ `attached` sai chỉ số ⇒ bất biến cây bị bắt.
+        let lslot = m.objects[leaf as usize - 1].pt.expect("pt leaf");
+        m.page_tables[lslot].as_mut().expect("dữ liệu").attached = Some((mid, 1));
+        let e = m.check_pages().expect_err("phải bắt attached sai");
+        assert!(e.contains("attach") || e.contains("PTE"), "{e}");
+        m.page_tables[lslot].as_mut().expect("dữ liệu").attached = Some((mid, 0));
+        m.check_pages().expect("khôi phục thì sạch");
+
+        // Object PageTable đã chết nhưng dữ liệu còn ⇒ bị bắt (không rò 4 KiB PTE).
+        m.objects[leaf as usize - 1].alive = false;
+        let e = m
+            .check_pages()
+            .expect_err("phải bắt PageTable chết còn dữ liệu");
+        assert!(e.contains("đã chết"), "{e}");
+        m.objects[leaf as usize - 1].alive = true;
+        m.check_pages().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn check_pages_bat_pte_sai_cap_hoac_tro_nham() {
+        let (mut m, c, _root, mid, leaf, _frame, _src) = rig_pages();
+        let mslot = m.objects[mid as usize - 1].pt.expect("pt mid");
+        // Đổi PTE của mid[0] thành trỏ nhầm bảng leaf ở **sai** chỉ số (leaf ở [0]).
+        // Ghi đè PTE[mid][0] bằng một bảng khác chưa attach ⇒ bị bắt.
+        let cap = m
+            .retype(SlotRef::new(c, 0), ObjType::PageTable, 0, 0)
+            .expect("PageTable lạ");
+        let la = m.cap_info(cap).expect("cap").obj;
+        m.page_tables[mslot]
+            .as_mut()
+            .expect("dữ liệu")
+            .entries
+            .set(0, table_pte(la))
+            .expect("ghi PTE");
+        let e = m
+            .check_pages()
+            .expect_err("phải bắt PTE trỏ bảng chưa attach");
+        assert!(
+            e.contains("PTE") || e.contains("attach") || e.contains("mồ côi"),
+            "{e}"
+        );
+        // Khôi phục PTE đúng.
+        m.page_tables[mslot]
+            .as_mut()
+            .expect("dữ liệu")
+            .entries
+            .set(0, table_pte(leaf))
+            .expect("ghi PTE");
+        m.check_pages().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn map_bat_pa_lech_can_alignment() {
+        let (mut m, c, root, _mid, _leaf, _frame, _src) = rig_pages();
+        // Frame thứ hai, gieo `pa` lệch 1 ⇒ map phải Alignment, không đổi cây/bộ đếm.
+        let cap = m
+            .retype(SlotRef::new(c, 1), ObjType::Frame, 12, 0)
+            .expect("Frame 2");
+        let f2 = m.cap_info(cap).expect("cap").obj;
+        m.objects[f2 as usize - 1].frame.as_mut().expect("meta").pa += 1;
+        assert_eq!(
+            m.page_table_map_obj(root, 0x2000, f2, MapRights::READ, MapAttrs::WB),
+            Err(KError::Alignment)
+        );
+        assert_eq!(m.objects[f2 as usize - 1].frame.expect("meta").maps, 0);
+        m.objects[f2 as usize - 1].frame.as_mut().expect("meta").pa -= 1;
+        m.check_pages().expect("khôi phục thì sạch");
     }
 }

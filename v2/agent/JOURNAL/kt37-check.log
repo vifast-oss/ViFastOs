@@ -1,0 +1,70 @@
+== v2 check (HEAD c91e7eb) ==
+--- fmt
+--- fmt: OK
+--- clippy
+    Checking vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Checking vifast-traceformat v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-traceformat)
+    Checking vifast-model v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-model)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 18.47s
+--- clippy: OK
+--- luật cấu trúc R1..R5
+--- luật cấu trúc: OK
+--- self-test luật
+TAP version 13
+1..6
+ok 1 - R1 tệp > 1.500 dòng trong kernel/lib bị bắt
+ok 2 - R2 cfg(target_arch) trong lib bị bắt
+ok 3 - R3 tệp thiếu SPDX bị bắt
+ok 4 - R4 path-dependency sang crates/ bị bắt
+ok 5 - R5 unsafe ngoài danh sách đóng bị bắt
+ok 6 - case hợp lệ (đối chứng dương) thì PASS
+# 6/6 case đúng kỳ vọng
+--- self-test luật: OK
+--- spec/abi.toml
+abi-check: PASS (/Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi spec: OK
+--- golden trace (D2-43)
+gen_golden: PASS (6400 B, 200 bản ghi)
+--- golden trace: OK
+--- kịch bản .scn (KT-04c)
+scn-check: PASS (21 tệp, 0 blocked, 11 nhóm)
+--- scn: OK
+--- scn fixtures: OK (5 case âm, kiểm thông điệp)
+--- báo cáo R1-v2 (Khối E)
+report-check: PASS (1 báo cáo, 49 hàng QUEUE phủ đủ)
+--- báo cáo: OK
+--- fixture âm của máy kiểm báo cáo
+1..6
+ok 1 - fixture bad-head bị bắt
+ok 2 - fixture bad-commit bị bắt
+ok 3 - fixture bad-status bị bắt
+ok 4 - fixture missing-task bị bắt
+ok 5 - fixture bad-yc bị bắt
+ok 6 - fixture missing-blocked bị bắt
+# fixtures: PASS
+--- báo cáo fixtures: OK
+reserved-check: PASS (8 object reserved, /Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi reserved: OK
+--- fixture âm của máy kiểm ABI
+1..3
+ok 1 - thiếu syscall 13 bị bắt
+ok 2 - reserved syscall 15..31 bị bắt
+ok 3 - object reserved id 18 bị bắt
+# abi fixtures: PASS
+--- abi fixtures: OK
+--- gen-check (KT-05: code + docs sinh từ spec)
+gen-check: PASS (code + docs khớp spec/abi.toml)
+--- gen-check: OK
+--- fixture âm của gen-check
+1..4
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - sửa tay docs/abi.md bị bắt
+ok 3 - spec thiếu method_signature bị bắt
+ok 4 - abi_version đổi thì đầu ra đổi
+# gen fixtures: PASS
+--- gen fixtures: OK
+--- build (L0 compile)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
+--- build (L0 compile): OK
+v2 check: PASS (L1 chạy trong gate --fast)
+EXIT=0

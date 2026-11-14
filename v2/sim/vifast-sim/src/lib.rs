@@ -16,6 +16,7 @@ pub mod ipc;
 pub mod kobj;
 pub mod mailbox;
 pub mod mcs;
+pub mod pagetable;
 pub mod procsrv_model;
 pub mod scenario;
 pub mod sched;

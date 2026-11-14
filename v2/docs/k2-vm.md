@@ -291,3 +291,111 @@ nhau (KT-09).
 - **Không** Device Frame/`MapIo`/`MapUnmapIo` (D3), không pager/COW (K3), không PTE/MMU thật.
 - **Không** đổi `spec/`: `Frame` vẫn `reserved` + `unsupported=true`; ngữ nghĩa trên là model API
   của sim, conformance "reserved ⇒ `NotSupported`" của `vifast-model`/`.scn` không đổi.
+
+## 11. KT-37 — `PageTable` 3 cấp: map/unmap Frame, rights/attrs, 7 mã lỗi
+
+Mục này là **ngữ nghĩa model-only `[TK]`** của PageTable trong K2 (K2-PLAN §3 KT-37, D2-65
+Q2/Q3/Q7, thiết kế §4.10 `:353-366`). Không thêm method/chữ ký/mã lỗi vào `spec/`: `PageTable
+id=10` vẫn `reserved`, `unsupported=true`, `install_at="K2"`; K2 cài ngữ nghĩa **sau model API**
+của sim. **K2 không phải kernel thật**: không PTE phần cứng/MMU/TLB; **chưa** VSpace/ASID/TLB
+(KT-38/40), **chưa** W^X (KT-39), **chưa** VM fault (KT-41).
+
+### 11.1 Object `PageTable` và cây 3 cấp
+
+| Hạng mục | Nội dung |
+|---|---|
+| Tạo | `Untyped.Retype(Untyped, PageTable, size_bits)`; `size_bits ∈ {0, 12}` (4096 B), cỡ khác ⇒ `InvalidArgument`; tiêu **4096 B arena** của Untyped (khác Frame — bảng thật là một trang PTE) |
+| Dữ liệu | 512 PTE (`vifast_pte::Pte`, layout §11.2) + `level` + `attached: Option<(cha, chỉ số)>` + `mapped` (số lá trong cây con) — đặt ở `Machine`, body objmem chỉ là mốc `Kind::PageTable` |
+| Bảng mới | `level = 2` (gốc), chưa attach, rỗng; dùng làm **root** cho `map`/`unmap`/`walk` |
+| Chọn lá | `FrameSize::K4` → cấp 0; `M2` → cấp 1; `G1` → cấp 2 (bảng `§3.2`); `size_bits - 12) / 9` |
+| Bảng phủ | cấp 0 phủ 2 MiB, cấp 1 phủ 1 GiB, cấp 2 phủ toàn bộ VA 39 bit (`table_span`) |
+| Attach | `page_table_attach(parent, va, child)`: cha cấp 2 ⇒ con cấp 1, cha cấp 1 ⇒ con cấp 0; `va` phải căn **đúng vùng con phủ**, ô đích rỗng; con phải chưa attach + rỗng; cha cấp 0 không có cấp dưới |
+| Detach | `page_table_detach(parent, va)`: `va` phải đúng **gốc vùng** con phủ (`Alignment`), trong VA 39 bit (`RangeError`); con còn **bất kỳ** entry/lá nào ⇒ `HasChildren` (atomic); con rỗng ⇒ gỡ, trả thành bảng gốc cấp 2 dùng lại được |
+
+Thứ tự chỉ số lấy từ `vifast_pte::walk_shape` (`[cấp 2, cấp 1, cấp 0]`, VA `9/9/9/12`); biên
+vòng lặp `vifast_pte::MAX_MAP_DEPTH = 3`; một bảng `PteArray<512>` = 4096 B.
+
+### 11.2 Layout PTE của **mô hình** (KT-37 chốt)
+
+`vifast_pte::Pte` là `u64` thô; KT-37 gán nghĩa bit (K3 sẽ có PTE thật, không đọc layout này):
+
+```text
+bit 0     : valid
+bit 1     : 1 = bảng con (Table), 0 = lá (Leaf)
+bit 2..=3 : rights lá: bit 2 = READ, bit 3 = WRITE
+bit 4..=9 : attrs lá: WB, WC, UC, Device, NX, EXEC (mỗi thuộc tính một bit)
+bit 10..41: ObjId (u32) của Frame (lá) hoặc PageTable con (bảng)
+```
+
+Vì là **mô hình**, PTE **không** mang `pa`: `pa` đọc từ `FrameMeta` lúc walk (PTE thật của K3
+mang PPN). `map` **lưu** rights/attrs của **từng mapping** do tham số quyết định, **không** suy
+từ quyền của cap Frame. KT-37 **không** áp luật W^X, không kiểm "WB/WC/UC/Device đúng một giá
+trị", không từ chối `Device + EXEC` — KT-39.
+
+### 11.3 API model (không đổi `spec/`)
+
+| Hàm | Nghĩa |
+|---|---|
+| `page_table_map(root, va, frame_cap, rights, attrs)` | `PageTable.Map` qua **cap Frame** (method 0, vẫn reserved) |
+| `page_table_map_obj(root, va, frame, rights, attrs)` | model API theo `ObjId` (property/oracle) |
+| `page_table_unmap(root, va)` | `PageTable.Unmap` (method 1): gỡ lá phủ `va`, trả `Mapping` đã gỡ |
+| `page_table_walk(root, va)` | walk ngược VA→PA, trả `Mapping { va, pa, size_bits, frame, rights, attrs }` |
+| `page_table_attach` / `page_table_detach` | dựng/gỡ bảng cấp dưới (KT-37 thêm vì chưa có VSpace) |
+| `page_table_count` / `page_table_info` / `page_table_pte_raw` | nguồn test/harness (không phải ABI) |
+| `check_pages()` | bất biến cây + bộ đếm, chạy **sau mỗi public op** qua `sched_after_op` (cửa sổ nhanh `page_table_objects == 0`) |
+
+`map`/`unmap`/`walk` **chỉ** nhận PageTable **gốc** (chưa attach, cấp 2). Truyền bảng cấp 1/0
+(đã attach) ⇒ `MissingPageTable`: bảng gốc cấp trên không nằm trong lời gọi. Đây là cách KT-37
+có ca `MissingPageTable` cho **cả 1 GiB** (lá 1 GiB nằm ngay root nên không có bảng giữa).
+
+### 11.4 Thứ tự kiểm và 7 mã lỗi (mọi lỗi **atomic**)
+
+`map`:
+
+1. `root` phải là PageTable gốc ⇒ nếu không: `MissingPageTable` (sai loại/chết: `WrongObjectType`/`InvalidCapability`);
+2. Frame sống + `size_bits ∈ {12,21,30}`; cỡ lạ ⇒ `InvalidArgument`;
+3. `va >= 1 << 39` hoặc `va + cỡ > 1 << 39` ⇒ `RangeError`;
+4. `va`/`pa` lệch căn cỡ Frame ⇒ `Alignment` (2 MiB/1 GiB phủ **đúng một** entry lá);
+5. thiếu bảng cấp trên trên đường đi ⇒ `MissingPageTable`;
+6. entry lá đã có (kể cả lá lớn 2 MiB/1 GiB phủ VA) ⇒ `AlreadyMapped`;
+7. `root.mapped >= MAX_FRAMES_PER_VSPACE` (4096) ⇒ `NotEnoughMemory`;
+8. cộng `maps/mapped_w/mapped_x` qua `frame_note_map` **rồi** mới ghi PTE.
+
+`unmap`: `RangeError` ngoài VA 39 bit; `NotMapped` nếu không có lá phủ `va`; **chỉ** nhận `va`
+đúng **gốc** mapping — lệch ⇒ `Alignment` (không xoá ngầm trang lớn); trừ bộ đếm Frame trước khi
+xoá PTE (lỗi ⇒ cây còn nguyên).
+
+| Mã (ABI) | Ca KT-37 |
+|---|---|
+| `AlreadyMapped` (10) | map trùng VA; map 4K/2M vào vùng đã bị lá lớn phủ; attach vào ô đã có bảng/con đã attach |
+| `NotMapped` (11) | unmap VA chưa map; detach ô rỗng/ô chứa lá |
+| `MissingPageTable` (12) | thiếu bảng cấp 1 (map 4K/2M) hoặc cấp 0 (map 4K); truyền bảng cấp 1/0 làm root |
+| `HasChildren` (13) | detach bảng còn entry/lá; `Revoke` Untyped có PageTable còn entry/đang attach |
+| `Alignment` (6) | `va`/`pa` lệch căn; attach/detach `va` lệch vùng con phủ; unmap giữa trang lớn |
+| `RangeError` (19) | `va`/`va + cỡ` ngoài VA 39 bit (map/attach/unmap/walk) |
+| `InvalidArgument` (5) | `PageTable` retype `size_bits` lạ; attach cha cấp 0/tự attach/con không rỗng; Frame cỡ lạ |
+
+### 11.5 Bất biến `check_pages` (5 nhóm) và rò rỉ
+
+1. **kiểu/dữ liệu**: `ty == PageTable` ⇔ có `Meta.pt` + dữ liệu; object chết ⇒ dữ liệu `None`;
+   object sống ⇒ dữ liệu `Some`, `len == 4096`;
+2. **cấp/attach**: root ⇒ chưa attach + cấp 2; con ⇒ cấp = cha − 1 và PTE của cha trỏ **đúng**
+   con tại **đúng** chỉ số;
+3. **cây**: mọi bảng con được trỏ **đúng một lần**, không bảng mồ côi; mỗi lá cấp đúng cỡ Frame,
+   Frame sống, `pa` căn cỡ;
+4. **bộ đếm**: `PageTableData.mapped` = số lá cây con; với **mọi** Frame, `maps/mapped_w/mapped_x`
+   = số lá trỏ tới Frame + quyền `WRITE`/attr `EXEC` tương ứng (toàn cục, mọi root);
+5. **biên**: `mapped ≤ MAX_FRAMES_PER_VSPACE` mỗi cây.
+
+"Không rò PageTable/Frame": `Revoke` Untyped chỉ finalise PageTable **tinh khiết** (chưa attach,
+không PTE, `mapped = 0`); ngược lại ⇒ `HasChildren` atomic (cùng tinh thần `finalise_frame` của
+KT-36). Bảng bị finalise chuyển tombstone `None` (không giữ 4 KiB PTE); Frame chết vẫn phải có
+ba bộ đếm 0. `check_pages` là lưới an toàn thứ hai sau mỗi op.
+
+### 11.6 Không làm ở KT-37 (ranh giới)
+
+- **Không** VSpace/ASID/generation/`active_on` (KT-38), **không** TLB/shootdown (KT-40).
+- **Không** luật W^X (`WxViolation`), `protect`, ràng buộc kiểu bộ nhớ/Device (KT-39).
+- **Không** VM fault/`FaultKind::Vm` (KT-41), **không** `.scn`/`check_vm`/shared read-only chính
+  thức (KT-42; KT-37 có test map cùng Frame vào 2 root như bằng chứng bộ đếm toàn cục).
+- **Không** PTE/MMU/TLB thật, không QEMU — K3.

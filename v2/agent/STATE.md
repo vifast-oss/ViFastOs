@@ -6,13 +6,61 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-36 (K2: **Frame 3 cỡ** 4 KiB/2 MiB/1 GiB + ownership/Untyped + `Frame.GetAddress` + bộ đếm W^X) — chờ verdict `reviewer-kt36` rồi commit `[KT-36]`; KT-35 REVIEW (đề xuất DONE); KT-34 REVIEW (D2-64); K1c DONE (D2-64)
-Bước          : 7/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch → code+test → check/gate → Miri → **review độc lập** → commit/push)
+Task          : KT-37 (K2: **PageTable 3 cấp** map/unmap + rights/attrs + 7 mã lỗi) — code/test/gate **xong**, `reviewer-kt37` **APPROVE** (điều kiện: Miri 10/10 sạch + log); đang chạy Miri, chưa commit; KT-36 DONE (D2-66); KT-35 DONE; K1c DONE (D2-64)
+Bước          : 8/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch → code+test → check/gate → **Miri PASS** → review APPROVE → commit/push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 494 test/66 suite (65 suite cũ + `kt36_frame`)** (baseline KT-36 477 + 12 `kt36_frame` + 5 unit test âm `check_frames`), L1 1.000 seed **769 ms** (baseline 832 ms — không hồi quy), fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt36-gate-fast.log`). Đã tự bắt **một hồi quy cổng** trong lúc làm: `check_frames` không có cửa sổ nhanh ⇒ L1 1.000 seed **54.513 ms** (sát trần 60 s, QD §5.2); sửa bằng `frame_objects`/`return Ok(())` khi mô hình chưa từng có Frame ⇒ **769 ms**. KT-35 (lịch sử): PASS 477 test, L1 607 ms; baseline KT-36: PASS 477, L1 832 ms (`kt36-baseline-gate-fast.log`).
-Miri          : KT-36 — **PASS 12/12** `--test kt36_frame` (35,99 s) + **PASS 5/5** `--lib frame` (2,59 s) qua `./v2/bin/v2 miri` (`JOURNAL/kt36-miri.log`); 10.000 → **2×32** Frame và property 10.000 → **5×4** seed dưới `cfg(miri)` (giữ nguyên 10.000 ngoài Miri — D2-47(a)); 2 warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17), không phải KT-36. **Không** thêm `kt36_frame` vào `nightly --only-miri` (không sửa `v2/bin/v2`; KT-43 chốt tập Miri của K2). KT-35 (lịch sử): Miri 9/9 `vifast-pte`.
-Việc dở       : **KT-36 xong: commit `9c54bcf` đã push** (verdict `reviewer-kt36` **APPROVE code**; D2-66 của Agent 0 ở `9b70618`) — **chờ Agent 0 lật sổ**; KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 512 test/67 suite** (baseline 494/66 + 10 `kt37_pagetable` + 4 unit `pagetable` + 3 unit âm `check_pages` + 1 unit `pa` lệch căn), L1 1.000 seed **726 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt37-gate-fast.log`); `check` PASS (`JOURNAL/kt37-check.log`). Baseline KT-37: PASS 494/66, L1 985 ms (`JOURNAL/kt37-baseline-gate-fast.log`).
+Miri          : KT-37 — **PASS**: `--test kt37_pagetable` **10/10** (171,54 s, exit 0) + `--lib pagetable` **4/4** (1,09 s) + `--lib 'kobj::tests::check_pages'` **3/3** (12,86 s) qua `./v2/bin/v2 miri` (`JOURNAL/kt37-miri.log`); dưới `cfg(miri)` giảm property 10.000 → **20** op, vòng rò 100 → **1×2** (stable giữ 10.000/100 — D2-47(a)); 2 warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17), không phải KT-37; `v2/sim/**` 0 unsafe. KT-36 (lịch sử): Miri 12/12 + 5/5.
+Việc dở       : **KT-37 code/test/Miri xong, reviewer-kt37 APPROVE — commit `[KT-37]` + push**; các nit review đã xử lý: N1 detach kiểm căn lề (`Alignment`), N2 `MAX_FRAMES_PER_VSPACE` sau `AlreadyMapped` (khớp docs), N3 bỏ `saturating_sub` → kiểm `mapped > 0` trước khi sửa cây, N6 journal lib 39+8=47, N7 STATE (mục này). KT-36: commit `9c54bcf` đã push, **chờ Agent 0 lật sổ**; KT-35 DONE. Không tự lật QUEUE.
 ```
+
+## KT-37 — K2: `PageTable` 3 cấp (root/cấp 1/cấp 0) + map/unmap + rights/attrs + 7 mã lỗi
+
+**Vào**: READY (`agentctl next --project v2` trả KT-37) · HEAD `eaf30c1` ([KT-00] lật KT-36 DONE,
+494 test) · `git rev-list --count HEAD..origin/main` = **0** · working tree có `viscript/` của tab
+khác (**không chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 494 test/66 suite**, L1
+**985 ms** ([`JOURNAL/kt37-baseline-gate-fast.log`](JOURNAL/kt37-baseline-gate-fast.log)).
+
+**Mục tiêu** (K2-PLAN §3 KT-37, D2-65 Q2/Q3/Q7): `PageTable` object + cây 3 cấp dùng
+`vifast-pte` (VA 39 bit); `map` chọn lá theo **cỡ Frame** (4 KiB cấp 0, 2 MiB cấp 1, 1 GiB cấp
+2), thiếu bảng cấp trên ⇒ `MissingPageTable`; trùng ⇒ `AlreadyMapped`; lệch căn ⇒ `Alignment`;
+range ⇒ `RangeError`; unmap chưa map ⇒ `NotMapped`; unmap gỡ bảng còn con ⇒ `HasChildren`; lưu
+rights/attrs **từng mapping** (không suy từ cap); bộ đếm `maps/mapped_w/mapped_x` toàn cục;
+walk ngược VA→PA 100% sau 10.000 op; `check_pages` sau mỗi op; Miri; gate 494+.
+
+**Không** làm: VSpace/ASID/TLB (KT-38/40), W^X/protect (KT-39), VM fault (KT-41), `.scn`/
+`check_vm` (KT-42), `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`; không
+`unsafe`, không dependency ngoài workspace, không `#[ignore]`.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`kt37-red-semantics.log`](JOURNAL/kt37-red-semantics.log) (API cũ:
+  `Retype(Untyped, PageTable)` trả `NotSupported` ⇒ 0/1) + [`kt37-red-compile.log`](JOURNAL/kt37-red-compile.log)
+  (**E0432** `MapAttrs/MapRights/Mapping` + **E0599** 10 method PageTable ⇒ `could not compile`).
+- **Code**: `src/pagetable.rs` **(mới)** `MapRights`/`MapAttrs`/`Mapping`/`PageTableInfo`/
+  `PageTableData`/layout PTE mô hình + 4 unit test; `kobj.rs`: `Kind::PageTable`, `Meta.pt`,
+  `page_tables`/`page_table_objects` (cửa sổ nhanh), `retype_page_table` (4 KiB arena, atomic),
+  `page_table_{map,map_obj,unmap,walk,attach,detach,count,info,pte_raw}`, `check_pages` (5 nhóm
+  bất biến) trong `sched_after_op`, `finalise_page_table` + `revoke_children` kiểm `HasChildren`
+  atomic; `tests/kt37_pagetable.rs` **(mới, 10 test)** gồm bảng chân trị **7 mã lỗi × 3 cỡ**,
+  property **10.000 op** (walk ngược 100% + bộ đếm + `check_pages` mỗi op) và 100×10 vòng không
+  rò; 4 unit âm KT-37 (`check_pages` bắt `mapped`/Frame counter/`attached`/bảng chết còn dữ
+  liệu/PTE sai, `pa` lệch căn ⇒ `Alignment`).
+- **Docs**: `v2/docs/k2-vm.md` **§11** (object/cây, layout PTE, API, thứ tự kiểm + 7 mã lỗi, 5
+  nhóm bất biến, ranh giới).
+- **Cổng**: [`kt37-gate-fast.log`](JOURNAL/kt37-gate-fast.log) **PASS 512 test/67 suite**, L1
+  **726 ms**; [`kt37-check.log`](JOURNAL/kt37-check.log) PASS; [`kt37-miri.log`](JOURNAL/kt37-miri.log)
+  Miri **10/10** (171,54 s) + lib **4/4** + unit âm **3/3**.
+- **Review độc lập**: `reviewer-kt37` **APPROVE code/gate** (tự chạy 10/10 + gate 512/67, L1
+  782 ms; cây 3 cấp/7 mã lỗi/rollback/walk 10k/`check_pages`/scope đạt). Nit đã xử lý: **N1**
+  detach kiểm căn lề `Alignment`; **N2** `MAX_FRAMES_PER_VSPACE` sau `AlreadyMapped` (khớp
+  docs); **N3** bỏ `saturating_sub` → kiểm `mapped > 0` trước khi sửa cây; **N6** journal
+  39+8=47; **N7** mục STATE này.
+
+**Đề xuất: REVIEW → DONE sau khi Agent 0 lật** (reviewer APPROVE; không tự DONE, không lật QUEUE
+— D2-37). **YC/Follow-up**: (1) KT-38 VSpace/ASID dùng `page_table_walk` làm oracle; (2) KT-39
+W^X đặt trên hook `page_table_{map,unmap}` + bộ đếm Frame; (3) KT-42 gộp `check_pages` vào
+`check_vm`, thêm `.scn` + shared read-only chính thức; (4) KT-43 thêm `kt37_pagetable` vào
+`nightly --only-miri` (Miri đầy đủ).
 
 ## KT-36 — K2: `Frame` 3 cỡ (4 KiB/2 MiB/1 GiB) + ownership/Untyped + `GetAddress` + bộ đếm W^X
 

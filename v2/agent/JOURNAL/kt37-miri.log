@@ -1,0 +1,154 @@
+=== kt37_pagetable (cfg(miri): property 20 op, leak 1×2 vòng) ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt37_pagetable.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/0224234ffa7e76f0/out/kt37_pagetable-0224234ffa7e76f0)
+
+running 10 tests
+test attach_detach_va_has_children ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `attach_detach_va_has_children`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7993:20: 7995:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:978:9: 985:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt37_pagetable.rs:52:17: 52:33
+          6: attach_detach_va_has_children
+              at sim/vifast-sim/tests/kt37_pagetable.rs:542:17: 542:27
+          7: attach_detach_va_has_children::{closure#0}
+              at sim/vifast-sim/tests/kt37_pagetable.rs:541:35: 541:35
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `attach_detach_va_has_children`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7993:20: 7995:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:978:9: 985:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt37_pagetable.rs:52:17: 52:33
+          6: attach_detach_va_has_children
+              at sim/vifast-sim/tests/kt37_pagetable.rs:542:17: 542:27
+          7: attach_detach_va_has_children::{closure#0}
+              at sim/vifast-sim/tests/kt37_pagetable.rs:541:35: 541:35
+
+ok
+test bay_ma_loi_nhan_ba_co ... ok
+test khong_ro_pagetable_frame_1000_vong ... ok
+test map_qua_cap_loi_co_ban ... ok
+test map_walk_unmap_du_ba_co ... ok
+test property_10k_op_walk_nguoc_khop_100 ... ok
+test pte_layout_valid_table_quyen_attrs_frame ... ok
+test retype_page_table_size_bits_va_byte ... ok
+test rights_attrs_theo_mapping_va_chia_se_frame ... ok
+test unmap_dung_goc_va_alignment ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 171.54s
+
+warning: 2 warnings emitted
+
+MIRI1_EXIT=0
+=== lib pagetable ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 4 tests
+test pagetable::tests::hang_so_va_hinh_ba_cap ... ok
+test pagetable::tests::page_table_data_moi_la_root_tinh_khiet ... ok
+test pagetable::tests::pte_lai_roundtrip_moi_to_hop ... ok
+test pagetable::tests::quyen_attrs_bit_va_contains ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 1.09s
+
+MIRI2_EXIT=0
+=== lib check_pages ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 3 tests
+test kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7993:20: 7995:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:978:9: 985:10
+          5: kobj::tests::rig_pages
+              at sim/vifast-sim/src/kobj.rs:9168:17: 9168:32
+          6: kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu
+              at sim/vifast-sim/src/kobj.rs:9219:59: 9219:70
+          7: kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:9218:65: 9218:65
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:7993:20: 7995:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:978:9: 985:10
+          5: kobj::tests::rig_pages
+              at sim/vifast-sim/src/kobj.rs:9168:17: 9168:32
+          6: kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu
+              at sim/vifast-sim/src/kobj.rs:9219:59: 9219:70
+          7: kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:9218:65: 9218:65
+
+ok
+test kobj::tests::check_pages_bat_dem_va_frame_counter_sai ... ok
+test kobj::tests::check_pages_bat_pte_sai_cap_hoac_tro_nham ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out; finished in 12.86s
+
+warning: 2 warnings emitted
+
+MIRI3_EXIT=0
