@@ -172,7 +172,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **DONE** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
 | ST-77 | **nhất quán #1** — `vis fmt` cho cú pháp mới: `cap[...]` + `@`/`(write)`, `async fn`, `spawn`, `chan[T]`, `use pkg.*` | ST-76 | 2,5 h | **DONE** | ≥8 ca; lossless + idempotent; `fmt --check` trên toàn `test/` xanh |
 | ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **DONE** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
-| ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **READY** | ≥6 ca; TAP đúng; interp = `--vm` |
+| ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **DONE** | ≥6 ca; TAP đúng; interp = `--vm` |
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **READY** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **READY** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **READY** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
@@ -1207,3 +1207,16 @@ APPROVED 2026-11-14 Agent 0
 > **không trùng**) + snapshot `messages.rs` 20→**29 ca**. Đo: **892 test** · sem **447/22** · parity **398/398** · differential
 > **100k/0 lệch** (253,6 s). Nợ: `usage_explain` chỉ tiếng Việt; `--list` có cột severity.
 > **ST-79 mở** (`vis test` với async/kênh).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-79 DONE — nhất quán #3 (`vis test` với async/kênh).** Commit `2a62cace` (**Agent 2 tự commit, đã push**). Đo trước **đúng
+> như nghi ngờ**: `vis test` trước đây **không chạy** `test fn` (chỉ là fixture `.out/.err`), `async fn` trong thân `test` ⇒
+> `VS0201`, `assert` **chưa tồn tại**. Đã làm: runner `test fn` **thật** (CST → mỗi `TestDecl` một ca TAP; chạy bản sao tạm
+> `fn main`, giữ `async fn` cấp tệp) qua `vis run`/`--vm`; **join cuối** (task không await vẫn chạy, lỗi ⇒ `VS0506`); **`assert(bool)`**
+> dùng chung interp/VM (`SIGS` 21→22, false ⇒ `VS0501` "assert thất bại", **không** mã mới); deadlock kênh ⇒ `VS0505`, **không treo**.
+> **8 ca** chạy cả hai đường, so **byte** TAP. Đo: **900 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch**
+> (442,6 s — máy bận). Đỏ R1 lần 1 (`expr.rs` 1503) ⇒ **nén xuống 1.498**, không nới ngưỡng.
+> Nợ: `async fn` **trong** `test` chưa hỗ trợ; `assert` chỉ dạng **gọi hàm**; runner biến đổi **văn bản** (câu lệnh cấp tệp chạy lại
+> mỗi test); constructor là `Some` (không `some`).
+> **ST-80 mở** (LSP module-aware).
