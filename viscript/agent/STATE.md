@@ -6,16 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-91 — LSP completion sau `.` theo kiểu tĩnh** — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 3/3 (đo cũ 50 mục fallback → tách `lsp/thanh_vien.rs` + sentinel khi `p.` dở → 5 ca
-                LSP + tất định → 978 test → diff 100k → cổng).
+Task          : **ST-92 — báo cáo R14** (chốt ST-89..ST-91) — xong, `report-check --all` PASS, cổng
+                PASS; **chưa commit**.
+Bước          : 3/3 (JSON 104 hàng QUEUE@f4627621 + MD §1..§8/§19 + đo lại toàn bộ + gate).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:14:01Z**; **978** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49** / **LSP 39 ca** / differential **100.000 chương trình 0 lệch**
-                (157,6 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-91]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:27:47Z** (report-check PASS: **14
+                báo cáo, 104 hàng QUEUE**); **978** test / sem **447/22** / `vis test` **447 ok**
+                (`--vm` **447 ok + 0 SKIP**) / parity **398/398 + 49** / host **54/54 ×2** /
+                differential **100.000 / 0 lệch** (161,3 s) / fuzz parser **2.517.572 ca / 0 vi phạm** /
+                cache **520×4 / 0 lệch** / targets **18/18 check** / fmt **497 tệp**
+Việc dở       : commit `[ST-92]` + push (đã được uỷ quyền)
+
+## ST-92 — báo cáo R14, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **JSON** | `reports/R14-viscript.json` + `.license`: `round=14`, `head=f4627621`, **104 task** (đủ QUEUE@head: 103 DONE + ST-92 READY), `blocked[]` rỗng; đúng **11 khoá**; `report-check --all` **PASS (14 báo cáo, 104 hàng)**. |
+| 1 | **MD** | `R14-viscript.md` **144 dòng**, §1 tóm tắt 5 dòng; §2 bảng ST-89..ST-92 (hash + số đo); §3 **đo lại** đủ (978 test, 447 sem, 447 ok/`--vm` 0 SKIP, host 54/54×2, parity 398+49, diag 364/49/34, diff 100k/0, cache 520×4/0, fuzz parser 60 s, VBC1 53, 32 mã, allowlist 6, targets 18/18, fmt 497); §4 §19 **8 hạng mục VS2 mức thật** (khoảng lệch interp↔VM **đã đóng**, hàng “cả hai đường” đầy đủ); §5 nợ R13 58 (đóng #49 một phần, #56 hoàn toàn) + **9 nợ mới 59..67**; §6 **VD-110** (đính chính 405 → 398+49); §7 máy kiểm; §8 kết luận. |
+| 2 | **Trung thực** | “Parity 405” trong VD-110 là **đếm trùng**; báo cáo giữ **398/398 + 49**; 7 ca host đã nằm trong 398. Không nới ngưỡng, không `#[ignore]`, không sửa golden/allowlist; chỉ sửa `reports/R14-*` + STATE/JOURNAL. |
+| 3 | **Đo lại** | `cargo test --workspace` **978** = 21+96+27+154+26+62+9+**583**; sem **447/22**; `vis test` **447 ok** / `--vm` **447 ok + 0 SKIP**; parity **398/398 + 49**; diag **364/49/34**; host **54/54, 120 lần, VM 54/54**; diff **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=161.3 toc_do=620/s seed=20261115`**; cache **520×4 so 520, 0 lệch, 24,17 s**; fuzz parser **2.517.572 ca / 57.280.584 token / 0 vi phạm**; async 10k **383/168 ms**; targets **18/18 check**; fmt **497 (429+68)**; indent **8/10**; `VBC1` **53**; **32 mã**; allowlist **6**. |
+| 4 | **Cổng** | **PASS** `2026-11-14T18:27:47Z`; log `JOURNAL/st92-gate-fast.log` sha256 `18f2357b…`; 3 dòng cuối: `test result: ok. 0 passed; …` / `--- L0 test: OK` / `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`; report-check PASS trong cổng. |
+| 5 | **Nợ** | R13 còn **56 mục mở** + **9 mục mới (59..67)** = **65 mục**; nặng nhất: siết mặc định `cap`, `cap` cho lệnh ngoài, Landlock thật (Linux + duyệt crate/`unsafe`), runner 4 nền, TLS. |
 
 ## ST-91 — LSP completion sau `.` theo kiểu tĩnh, 2026-11-14
 

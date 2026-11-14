@@ -1,0 +1,32 @@
+== test
+SUM=978
+== sem
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.28s
+== vis test
+447
+== vis test vm
+447
+0
+== host
+vis-host-suite: 54/54 ca xanh (chạy thật trên macOS; 3 nền còn lại chưa đo)
+== parity
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+== diag
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.75s
+== cache
+CACHE_HAI_LAN lan1=142.14525ms lan2=10.867291ms vbc=1
+CACHE_KHONG_CHE ca=520 so=520 cache_dir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-cache-st87-all-15066-4
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.17s
+== targets
+vis-targets: tất cả ô kỳ vọng xanh (chỉ CHECK, chưa chạy trên Windows/wasm)
+== fmt
+fmt_exit=0
+       8
+== indent
+test/cmd/where/where-ok.vish: 1 dòng lệch
+indent-report: 8 tệp, 10 dòng lệch (chuẩn 4 × độ sâu khối)
+== codes
+      32
+== vbc
+0
+== allowlist
