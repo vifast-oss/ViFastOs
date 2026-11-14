@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `b0e1d123` ([ST-00] lật ST-79 DONE — tab ViScript; `HEAD..origin/main = 0`); v2 hiệu lực `4f7b65e2` + diff KT-44
+HEAD          : `efe128fb` ([KT-44] — đã push, `origin/main == HEAD`); commit gốc của task `4f7b65e2` (K3-PLAN/D2-72)
 BUILD_ID      : — (ảnh K3: `vifast-kbin-riscv64` 19.216 B, `vifast-kbin-ktest` 19.080 B — `JOURNAL/kt44-build.log`)
-Task          : **KT-44 (task đầu K3: `vifast-plat-common` + tách ảnh sản phẩm/ktest + đo budget)** — **DONE ở mức thi hành**: 2 ảnh build từ cùng crate bằng feature `ktest`; ảnh sản phẩm **0** chuỗi `ktest` (ảnh test 8); budget `data+bss = 0 B` **cả hai ảnh**/trần 262.144 B, `.stack` 65.536 B + guard 4.096 B báo riêng; TAP 1 boot xanh cả hai ảnh; host test `plat-common` 3/3; **chờ reviewer độc lập + Agent 0 lật QUEUE** (không lật sổ)
+Task          : **KT-44 (task đầu K3: `vifast-plat-common` + tách ảnh sản phẩm/ktest + đo budget)** — **DONE ở mức thi hành**: 2 ảnh build từ cùng crate bằng feature `ktest`; ảnh sản phẩm **0** chuỗi `ktest` (ảnh test 8); budget `data+bss = 0 B` **cả hai ảnh**/trần 262.144 B, `.stack` 65.536 B + guard 4.096 B báo riêng; TAP 1 boot xanh cả hai ảnh; host test `plat-common` 3/3; **reviewer độc lập APPROVE**; **chờ Agent 0 lật QUEUE** (không lật sổ)
 Bước          : 8/8 **xong** (baseline `gate --fast` 569/73 PASS → đỏ trước `ktest.sh` (chưa có ảnh test) → `vifast-plat-common` (no_std, forbid unsafe) + `Riscv64Virt: Platform` (`rdtime`/`tp`) + `.stack_guard` NOLOAD + 2 bin bằng feature `ktest` + `budget.sh`/`run.sh`/`ktest.sh` → `k3-riscv64.md` → log build/budget/boot + `gate --fast` 569/0 → STATE → commit `[KT-44]` + push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/0 failed** (`JOURNAL/kt44-gate-fast.log`); baseline cùng số (`JOURNAL/kt44-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng `cargo build --target riscv64gc-unknown-none-elf` + boot QEMU (`JOURNAL/kt44-build.log`, `JOURNAL/kt44-boot.log`, `JOURNAL/kt44-ktest-boot.log`).
 Miri          : KT-44 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12: miễn trừ có lý do); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** `vifast-plat-common` chạy host: `cargo test -p vifast-plat-common` **3/3**.
-Việc dở       : **review độc lập trước commit** (đã báo lead; nếu quá 12 phút: tự soát + đề xuất REVIEW); commit `[KT-44]` chỉ `v2/` + push; **không** lật QUEUE (D2-37). `viscript/` + `review/` của tab khác **không chạm**.
+Việc dở       : **review độc lập xong — `reviewer-kt44` APPROVE** (2 nit đã vá); commit `[KT-44]` `efe128fb` + push, commit vá review đẩy sau; **không** lật QUEUE (D2-37). `viscript/` + `review/` của tab khác **không chạm**.
 ```
 
 ## KT-44 — task đầu K3: `plat-common` + tách ảnh sản phẩm/ktest + đo budget
@@ -56,6 +56,16 @@ lỗi hạ tầng).
   `panic_handler_khong_vi_tri_van_halt_1`).
 - **Cổng**: `./v2/bin/v2 gate --fast` **PASS 569 test** ([`kt44-gate-fast.log`](JOURNAL/kt44-gate-fast.log))
   — kernel không nằm trong cổng này (`exclude = ["kernel"]`), sim không đỏ.
+
+**Review độc lập**: `reviewer-kt44` **APPROVE** (phạm vi + DoD) — tự chạy lại trên cây hiện tại:
+`gate --fast` 569, `run.sh 1 1` PASS, `ktest.sh 1 1` PASS, budget `data+bss=0 / stack=65536 /
+guard=4096`, strings **0/8**, `budget.sh --selftest` 3/3; xác nhận **0 B không che lỗi** (`.rodata`
+404 B nằm trong PT_LOAD, `.stack_guard/.stack` là `SHT_NOBITS`, chỉ 2 static zero-sized) và
+`__stack_guard_end = __stack_bottom = 0x80203000 < __stack_top = 0x80213000`. 2 nit **không chặn**
+đã vá trong commit review-fix: (a) sàn QEMU so **major.minor ≥ 9.2** (trước chỉ so major) + đòi chuỗi
+version có dấu chấm; (b) `k3-riscv64.md` §1 ghi đúng phạm vi từng task (KT-46..53) thay vì
+"KT-45..49". Ghi chú `kt44-budget.log` cũ hơn `budget.sh` là do lần đọc cũ: bản đã commit có mtime
+22:35:11 > `budget.sh` 22:33:49 và chứa `# sections-seen` + selftest.
 
 **Không làm (đúng phạm vi)**: trap/`stvec` (KT-45), MMU/guard fault (KT-46), timer tick (KT-47),
 PLIC (KT-48), SMP/HSM (KT-49), IPI/TLB thật (KT-50/51), core ABI (Q13 — K3 **không phải** ABI đầy
@@ -1933,7 +1943,7 @@ ca âm **mất ghi im lặng** đã đỏ khi đảo kỳ vọng) + `v2/docs/kt-
 
 | Ngày | Task | Bước | HEAD | BUILD_ID | Cổng | Ghi chú |
 |---|---|---|---|---|---|---|
-| 2026-11-14 | **KT-44** | 8/8 | `b0e1d123` | — | `gate --fast` PASS (**569 test/73 suite**, L1 1.000 seed; baseline cùng số) | **xong mã — chờ Agent 0 lật sổ**; `vifast-plat-common` no_std/`forbid(unsafe)` + trait `Platform`/`PanicHandler`; 2 ảnh bằng feature `ktest` (sản phẩm 0 chuỗi `ktest`, ảnh test 8); budget `data+bss 0 B`/262.144, `.stack` 65.536 + guard 4.096 báo riêng; TAP 1 boot ×2 ảnh; host test 3/3 |
+| 2026-11-14 | **KT-44** | 8/8 | `efe128fb` | — | `gate --fast` PASS (**569 test/73 suite**, L1 1.000 seed; baseline cùng số) | **xong mã — chờ Agent 0 lật sổ**; `vifast-plat-common` no_std/`forbid(unsafe)` + trait `Platform`/`PanicHandler`; 2 ảnh bằng feature `ktest` (sản phẩm 0 chuỗi `ktest`, ảnh test 8); budget `data+bss 0 B`/262.144, `.stack` 65.536 + guard 4.096 báo riêng; TAP 1 boot ×2 ảnh; host test 3/3 |
 | 2026-11-13 | **KT-30** | 8/8 | `29718a6` | — | `gate --fast` PASS (**461 test/62 suite**, L1 1000 seed/999 trace, 750 ms; wall 199,3 s — **T-INFRA** tải máy) | **xong mã — chờ Agent 0 lật sổ**; `vifast-sync` `no_std` **1.346 dòng** (src 845, test 501), **0 dependency**, 8 khối `unsafe` có `SAFETY`; MCS lock FIFO qua **pool node cố định 16 slot** (không con trỏ thô, `Guard` giữ chỉ số slot), **không reentrant**; `Mailbox<N>` MPSC **7 loại** (`Wake/TlbFlush/Reschedule/Migrate/Stop/VmKick/PowerReq`), đầy ⇒ `Busy` (không mất message đầu), **ack thế hệ** `AtomicU32`; stress 4×500 (≈2,6 ms) + **200 lần / 0 fail**; Miri **16/16**; **reviewer-kt30 DRIFT đã sửa 2/2 chặn** (assertion stress; hook test `pub`→`pub(crate)`+`cfg(test)`); **không** loom/explorer (D2-53 Q9(a)) |
 | 2026-11-13 | **KT-28** | 10/10 | `ff94538` | — | `gate --fast` PASS (**427 test/56 suite**, L1 1000 seed/999 trace, 704 ms) | **commit `ff94538` đã push**; WaitOnAddress bảng băm `(frame, offset)` 64 bucket hằng model `[TK]` (không tạo `spec/kernel.toml`), `wait_addr` đọc giá trị + xếp hàng một lần (expected lệch ⇒ `InvalidArgument` không xếp hàng), **không timeout** (D2-53 Q4), `wake_addr(n)` FIFO tối đa n, `check_waitaddr` sau mỗi op, API K1b giữ nguyên; 12 test + fuzz **1.000 seed × 64 op**, Miri **12/12** + lib **2/2**; đột biến "xếp hàng trước rồi so" bị bắt; **reviewer-kt28 APPROVE**; chờ Agent 0 lật sổ |
 | 2026-11-13 | **KT-23** | 7/8 | `67aa8bc` | — | `gate --fast` PASS (**321 test/47 suite**, L1 1000 seed/999 trace, 687 ms) | **xong mã — chờ review độc lập rồi mới commit**; coverage **46/46** (bảng 48/48) + **73/73** cặp cấm (`forbidden_attempts=73`), fuzz 1.000×64 = **256.000** kiểm 4 miền/0 vi phạm; **bug fuzz tìm ra đã sửa** (Exit fault giao thẳng Recv waiter); Miri **12/12** (2.608 s); parity 10.000 seed/0 lệch (chỉ Untyped/CNode); `.scn` 21 tệp/11 nhóm, fixture 12 sửa **1 dòng** (D2-52); DoD K1b: 3/4 ĐẠT, push migration **hoãn K1c** (D2-49(a)) |
