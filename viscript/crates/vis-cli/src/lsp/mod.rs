@@ -10,12 +10,16 @@
 
 mod jsonrpc;
 mod khung;
+mod phan_tich;
 
 use std::io::{self, BufReader};
 use std::process::ExitCode;
 
 use vis_interp::json;
 use vis_interp::value::Value;
+use vis_syntax::Mode;
+
+use jsonrpc::{m, s};
 
 /// Chạy server LSP tới khi `exit` hoặc **EOF stdin**. Chỉ nhận `--stdio` (mặc định cũng là stdio).
 pub fn run(args: &[String]) -> ExitCode {
@@ -112,6 +116,22 @@ pub fn run(args: &[String]) -> ExitCode {
             }
             // Notification: KHÔNG frame (kể cả trước initialize).
             "initialized" => {}
+            // **ST-68**: văn bản mở/đổi (full sync) ⇒ tính lại chẩn đoán + `publishDiagnostics`.
+            "textDocument/didOpen" => {
+                if let Some((uri, text)) = mo_van_ban(kv) {
+                    gui!(than_chan_doan(&uri, Some(&text)));
+                }
+            }
+            "textDocument/didChange" => {
+                if let Some((uri, text)) = doi_van_ban(kv) {
+                    gui!(than_chan_doan(&uri, Some(&text)));
+                }
+            }
+            "textDocument/didClose" => {
+                if let Some(uri) = mo_uri(kv) {
+                    gui!(than_chan_doan(&uri, None));
+                }
+            }
             "shutdown" => {
                 if !da_khoi_tao {
                     if let Some(id) = id {
@@ -177,5 +197,95 @@ fn ket_qua_khoi_tao() -> Value {
     Value::Map(vec![
         jsonrpc::kv("capabilities", capabilities),
         jsonrpc::kv("serverInfo", server_info),
+    ])
+}
+
+fn mo_params(kv: &[(Value, Value)]) -> Option<&Value> {
+    jsonrpc::lay(kv, "params")
+}
+
+fn mo_text_doc(kv: &[(Value, Value)]) -> Option<&[(Value, Value)]> {
+    let p = mo_params(kv)?;
+    let Value::Map(p) = p else {
+        return None;
+    };
+    let td = jsonrpc::lay(p, "textDocument")?;
+    let Value::Map(td) = td else {
+        return None;
+    };
+    Some(td)
+}
+
+fn mo_uri(kv: &[(Value, Value)]) -> Option<String> {
+    let td = mo_text_doc(kv)?;
+    jsonrpc::chuoi(jsonrpc::lay(td, "uri")?).map(str::to_string)
+}
+
+/// `didOpen`: `params.textDocument.{uri,text}`.
+fn mo_van_ban(kv: &[(Value, Value)]) -> Option<(String, String)> {
+    let td = mo_text_doc(kv)?;
+    let uri = jsonrpc::chuoi(jsonrpc::lay(td, "uri")?)?.to_string();
+    let text = jsonrpc::chuoi(jsonrpc::lay(td, "text")?)?.to_string();
+    Some((uri, text))
+}
+
+/// `didChange` full sync: lấy `contentChanges[last].text`.
+fn doi_van_ban(kv: &[(Value, Value)]) -> Option<(String, String)> {
+    let uri = mo_uri(kv)?;
+    let p = mo_params(kv)?;
+    let Value::Map(p) = p else {
+        return None;
+    };
+    let cc = jsonrpc::lay(p, "contentChanges")?;
+    let Value::List(xs) = cc else {
+        return None;
+    };
+    let Value::Map(last) = xs.last()? else {
+        return None;
+    };
+    let text = jsonrpc::chuoi(jsonrpc::lay(last, "text")?)?.to_string();
+    Some((uri, text))
+}
+
+/// Notification `textDocument/publishDiagnostics`; `text=None` ⇒ `diagnostics:[]` (đóng tệp).
+fn than_chan_doan(uri: &str, text: Option<&str>) -> Vec<u8> {
+    let ds = match text {
+        None => Vec::new(),
+        Some(t) => {
+            let mode = if uri.ends_with(".vish") {
+                Mode::Command
+            } else {
+                Mode::Script
+            };
+            let kq = phan_tich::phan_tich(t, mode);
+            kq.ds
+                .iter()
+                .map(|d| gia_tri_chan_doan(&kq.text, d))
+                .collect()
+        }
+    };
+    jsonrpc::thong_bao(
+        "textDocument/publishDiagnostics",
+        m(vec![("uri", s(uri)), ("diagnostics", Value::List(ds))]),
+    )
+}
+
+fn gia_tri_chan_doan(text: &str, d: &phan_tich::ChanDoan) -> Value {
+    let ((l0, c0), (l1, c1)) = phan_tich::khoang(text, d.span);
+    let pos = |line: u32, character: u32| {
+        m(vec![
+            ("line", Value::Int(line as i64)),
+            ("character", Value::Int(character as i64)),
+        ])
+    };
+    m(vec![
+        (
+            "range",
+            m(vec![("start", pos(l0, c0)), ("end", pos(l1, c1))]),
+        ),
+        ("severity", Value::Int(d.severity as i64)),
+        ("code", s(d.ma)),
+        ("source", s("vis")),
+        ("message", s(&d.message)),
     ])
 }

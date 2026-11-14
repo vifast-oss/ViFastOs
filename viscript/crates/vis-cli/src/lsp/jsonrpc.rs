@@ -7,6 +7,20 @@
 use vis_interp::stdlib::json;
 use vis_interp::value::Value;
 
+/// Dựng `Value::Map` từ danh sách khoá–giá trị (giữ thứ tự).
+pub fn m(kv: Vec<(&str, Value)>) -> Value {
+    Value::Map(
+        kv.into_iter()
+            .map(|(k, v)| (Value::Str(k.to_string()), v))
+            .collect(),
+    )
+}
+
+/// `Value::Str` ngắn gọn.
+pub fn s(x: &str) -> Value {
+    Value::Str(x.to_string())
+}
+
 /// Một cặp khoá–giá trị của `Value::Map` (giữ **thứ tự chèn** — encoder tôn trọng thứ tự này).
 pub fn kv(k: &str, v: Value) -> (Value, Value) {
     (Value::Str(k.to_string()), v)
@@ -45,6 +59,16 @@ pub fn loi(id: &Value, code: i64, message: &str, data: Value) -> Vec<u8> {
         kv("jsonrpc", Value::Str("2.0".to_string())),
         kv("id", id.clone()),
         kv("error", err),
+    ]);
+    so_json(&m).into_bytes()
+}
+
+/// Notification (không `id`): `{"jsonrpc":"2.0","method":…,"params":…}`.
+pub fn thong_bao(method: &str, params: Value) -> Vec<u8> {
+    let m = Value::Map(vec![
+        kv("jsonrpc", Value::Str("2.0".to_string())),
+        kv("method", Value::Str(method.to_string())),
+        kv("params", params),
     ]);
     so_json(&m).into_bytes()
 }

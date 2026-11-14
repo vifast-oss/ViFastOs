@@ -1,0 +1,13 @@
+# ST-68 — log ĐỎ (sem) lúc 2026-11-14T08:04:59Z, HEAD 86079213.
+# Red-first: LSP chưa có didOpen/didChange/didClose ⇒ **không** publishDiagnostics.
+# Harness CUỐI (tests/lsp.rs, 15 ca) đã viết. Không thêm ca test/sem (VD-105 (7)).
+
+== initialize + didOpen (lỗi kiểu)
+   exit 0
+   stdout:
+   Content-Length: 199
+   
+   {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"positionEncoding":"utf-16","hoverProvider":true,"completionProvider":{"triggerCharacters":["."]}},"serverInfo":{"name":"vis"}}}
+   stderr: 
+
+== KẾT LUẬN: chỉ frame initialize; KHÔNG có textDocument/publishDiagnostics ⇒ 7 ca mới đỏ.

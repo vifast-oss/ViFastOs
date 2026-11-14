@@ -6,17 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-67 — VS2 #5a: `vis lsp` khung** (khung `Content-Length`, JSON-RPC 2.0,
-                `initialize`/`initialized`/`shutdown`/`exit`, 7 snapshot + 1 ca cờ lạ; 3 tệp mới
-                ≤300 dòng) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 8 test + probe → `lsp/{khung,jsonrpc,mod}.rs` + nhánh `main` →
-                8/8 xanh → workspace **821** → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-68 — VS2 #5b: LSP diagnostics + vị trí UTF-16** (gộp lex+parse+lower+tyck,
+                `textDocument/didOpen|didChange|didClose` ⇒ `publishDiagnostics`; 7 snapshot + **6 unit**
+                vị trí; vị trí 0-based UTF-16, tab = 1) — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 5/5 (red-first 15 ca + probe → `lsp/phan_tich.rs` + handler + 6 unit → 15/15 + 6/6 xanh
+                → workspace **834** → cổng → differential 100k → STATE/JOURNAL). Cổng lần 1 **đỏ clippy**
+                (`if_same_then_else` + 2 `needless_lifetimes`) → sửa → lần 2 PASS (không nới gì).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:58:24Z**; **821** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:19:33Z**; **834** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (282,6 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (313,5 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-67]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-68]` + push (đã được uỷ quyền)
+
+## ST-68 — VS2 #5b: LSP diagnostics + vị trí UTF-16, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Phân tích một tệp** | `lsp/phan_tich.rs` (**210** dòng): `lex` → `parse_voi` → `lower_into` → `check`, gộp **lex + parse + lower + tyck**, sắp theo `(span.start, mã)`; `severity` Error⇒**1**, Warning⇒**2**; `code` = `Code::short`; message **làm phẳng** `\n \r \t` như `main.rs::dong_chan_doan`. Mode theo đuôi URI (`.vish` ⇒ Command). |
+| 2 | **Vị trí LSP** | `vi_tri_utf16(text_norm, byte)` (0-based, **UTF-16**, tab = **1**) + `byte_tu_vi_tri` (cho ST-69); **tính trên `lexed.text`** (đã NFC + CRLF→LF — ghi rõ doc-comment); span vắt dòng/rỗng ⇒ kẹp `end = (line, min(char+1, len dòng))`. |
+| 3 | **Handler** | `textDocument/didOpen` + `didChange` (**full sync**, `contentChanges[last].text`) + `didClose` ⇒ **notification** `textDocument/publishDiagnostics` (`{uri, diagnostics:[{range,severity,code,source,message}]}`), mảng **rỗng** khi sạch/đóng. Capabilities giữ `textDocumentSync:1` (đã khớp full sync). |
+| 4 | **R1** | `lsp/mod.rs` **291**, `phan_tich.rs` **210**, `jsonrpc.rs` **90**, `khung.rs` **72** — tất cả ≤300; R1 toàn cây max **1.491**. Không `unsafe`, không crate mới. |
+| 5 | **Ca (7 snapshot mới + 6 unit)** | `lsp_chan_doan_did_open` (VS0412 `0:13–0:16` sev1), `lsp_chan_doan_sach` (`[]`), `lsp_chan_doan_did_change` (VS0201 `0:8–0:8`), `lsp_chan_doan_emoji_utf16` (**`0:13–0:14`**), `lsp_chan_doan_tab_mot_cot` (VS0107 `1:0–1:1` sev2 + VS0412 `1:14–1:17`), `lsp_chan_doan_vish` (VS0201 `0:0–0:1` "mong lệnh"), `lsp_chan_doan_did_close` (`[]`). Unit: emoji, tab, CRLF, kẹp cuối dòng, biên 0/cuối tệp, nhiều dòng. |
+| 6 | **Red-first** | `JOURNAL/st68-red-sem.log` sha256 `701a0256…` (chỉ frame initialize, **không** publishDiagnostics); `JOURNAL/st68-red-rust.log` sha256 `d9ece3ec…` (**8 passed / 7 failed** trên harness 15 ca). |
+| 7 | **Đo** | **834** test = 821 + **7** integration + **6** unit (21+96+18+154+26+62+9+**448**); sem **441/21** giữ nguyên; `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=313.5 toc_do=319/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 8 | **Nợ** | **Chưa module-aware**: `LowerOptions::default()` (không bật `std_mods`, không giải `use ./x`) ⇒ tệp dùng `std.*`/module có thể báo chẩn đoán **khác** `vis check`; vẫn chạy lower/tyck khi lex/parse có lỗi ⇒ có thể thêm chẩn đoán nhiễu; `didChange` chỉ **full sync**; `byte_tu_vi_tri` mới dùng trong unit test (ST-69 dùng); chưa pull diagnostics/version; **chưa** completion/hover (ST-69). |
 
 ## ST-67 — VS2 #5a: `vis lsp --stdio` khung LSP + JSON-RPC 2.0, 2026-11-14
 

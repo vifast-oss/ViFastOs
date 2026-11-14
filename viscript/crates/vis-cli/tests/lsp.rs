@@ -160,3 +160,257 @@ fn lsp_co_la_2() {
     );
     assert_eq!(con.stdout, b"", "stdout phải sạch");
 }
+
+// ===== ST-68: diagnostics + vị trí UTF-16 =====
+
+use vis_interp::value::Value;
+
+fn s(x: &str) -> Value {
+    Value::Str(x.to_string())
+}
+fn m(kv: Vec<(&str, Value)>) -> Value {
+    Value::Map(
+        kv.into_iter()
+            .map(|(k, v)| (Value::Str(k.to_string()), v))
+            .collect(),
+    )
+}
+fn so(v: &Value) -> String {
+    let mut o = String::new();
+    vis_interp::stdlib::json(v, false, &mut o);
+    o
+}
+fn init() -> String {
+    so(&m(vec![
+        ("jsonrpc", s("2.0")),
+        ("id", Value::Int(1)),
+        ("method", s("initialize")),
+        ("params", m(vec![])),
+    ]))
+}
+fn did_open(uri: &str, text: &str) -> String {
+    so(&m(vec![
+        ("jsonrpc", s("2.0")),
+        ("method", s("textDocument/didOpen")),
+        (
+            "params",
+            m(vec![(
+                "textDocument",
+                m(vec![
+                    ("uri", s(uri)),
+                    ("languageId", s("viscript")),
+                    ("version", Value::Int(1)),
+                    ("text", s(text)),
+                ]),
+            )]),
+        ),
+    ]))
+}
+fn did_change(uri: &str, text: &str) -> String {
+    so(&m(vec![
+        ("jsonrpc", s("2.0")),
+        ("method", s("textDocument/didChange")),
+        (
+            "params",
+            m(vec![
+                (
+                    "textDocument",
+                    m(vec![("uri", s(uri)), ("version", Value::Int(2))]),
+                ),
+                (
+                    "contentChanges",
+                    Value::List(vec![m(vec![("text", s(text))])]),
+                ),
+            ]),
+        ),
+    ]))
+}
+fn did_close(uri: &str) -> String {
+    so(&m(vec![
+        ("jsonrpc", s("2.0")),
+        ("method", s("textDocument/didClose")),
+        (
+            "params",
+            m(vec![("textDocument", m(vec![("uri", s(uri))]))]),
+        ),
+    ]))
+}
+
+/// Một diagnostic LSP (thứ tự khoá cố định: range, severity, code, source, message).
+fn chan(l0: i64, c0: i64, l1: i64, c1: i64, sev: i64, ma: &str, msg: &str) -> String {
+    format!(
+        r#"{{"range":{{"start":{{"line":{l0},"character":{c0}}},"end":{{"line":{l1},"character":{c1}}}}},"severity":{sev},"code":"{ma}","source":"vis","message":"{msg}"}}"#
+    )
+}
+
+/// Body `textDocument/publishDiagnostics` (diagnostics đã ghép sẵn).
+fn publish(uri: &str, ds: &str) -> String {
+    format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{ds}]}}}}"#
+    )
+}
+
+const URI: &str = "file:///a.vis";
+
+/// Ca 9 — `didOpen` lỗi kiểu ⇒ publish VS0412 `0:13–0:16` sev 1.
+#[test]
+fn lsp_chan_doan_did_open() {
+    let vao = format!(
+        "{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "let x: int = \"a\"\n"))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = publish(
+        URI,
+        &chan(
+            0,
+            13,
+            0,
+            16,
+            1,
+            "VS0412",
+            "khai báo `let`: cần `int`, được `str`",
+        ),
+    );
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(&body)));
+}
+
+/// Ca 10 — `didOpen` **sạch** ⇒ publish với `diagnostics:[]`.
+#[test]
+fn lsp_chan_doan_sach() {
+    let vao = format!(
+        "{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "let x: int = 1\n"))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(&publish(URI, ""))));
+}
+
+/// Ca 11 — `didChange` (full sync) ⇒ publish VS0201 `0:8–0:8` "mong biểu thức".
+#[test]
+fn lsp_chan_doan_did_change() {
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "let x: int = 1\n")),
+        khung(&did_change(URI, "let x = \n"))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = publish(
+        URI,
+        &chan(
+            0,
+            8,
+            0,
+            8,
+            1,
+            "VS0201",
+            "mong biểu thức, thật `\\\\n` (NEWLINE)",
+        ),
+    );
+    assert_eq!(
+        out,
+        format!(
+            "{}{}{}",
+            khung(INIT),
+            khung(&publish(URI, "")),
+            khung(&body)
+        )
+    );
+}
+
+/// Ca 12 — emoji: span byte `15..16` ⇒ **UTF-16** `0:13–0:14` (scalar sẽ sai `0:12`).
+#[test]
+fn lsp_chan_doan_emoji_utf16() {
+    let vao = format!(
+        "{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "let s = \"😀\" 1\n"))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = publish(
+        URI,
+        &chan(
+            0,
+            13,
+            0,
+            14,
+            1,
+            "VS0201",
+            "mong xuống dòng sau câu lệnh, thật `1`",
+        ),
+    );
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(&body)));
+}
+
+/// Ca 13 — tab = **1 cột**: VS0107 `1:0–1:1` (sev 2) + VS0412 `1:14–1:17` (sev 1).
+#[test]
+fn lsp_chan_doan_tab_mot_cot() {
+    let vao = format!(
+        "{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "fn f():\n\tlet x: int = \"a\"\n"))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let ds = format!(
+        "{},{}",
+        chan(1, 0, 1, 1, 2, "VS0107", "tab (cảnh báo-lỗi; tab = 4)"),
+        chan(
+            1,
+            14,
+            1,
+            17,
+            1,
+            "VS0412",
+            "khai báo `let`: cần `int`, được `str`"
+        ),
+    );
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(&publish(URI, &ds))));
+}
+
+/// Ca 14 — URI `.vish` ⇒ chế độ Command ⇒ VS0201 "mong lệnh, thật `|`" `0:0–0:1`.
+#[test]
+fn lsp_chan_doan_vish() {
+    let uri = "file:///a.vish";
+    let vao = format!("{}{}", khung(&init()), khung(&did_open(uri, "|\n")));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = publish(uri, &chan(0, 0, 0, 1, 1, "VS0201", "mong lệnh, thật `|`"));
+    assert_eq!(out, format!("{}{}", khung(INIT), khung(&body)));
+}
+
+/// Ca 15 — `didClose` ⇒ publish `diagnostics:[]` (xoá chẩn đoán cũ).
+#[test]
+fn lsp_chan_doan_did_close() {
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, "let x: int = \"a\"\n")),
+        khung(&did_close(URI))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let loi = publish(
+        URI,
+        &chan(
+            0,
+            13,
+            0,
+            16,
+            1,
+            "VS0412",
+            "khai báo `let`: cần `int`, được `str`",
+        ),
+    );
+    assert_eq!(
+        out,
+        format!("{}{}{}", khung(INIT), khung(&loi), khung(&publish(URI, "")))
+    );
+}

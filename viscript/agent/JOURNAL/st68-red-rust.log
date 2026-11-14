@@ -1,0 +1,90 @@
+# ST-68 — log ĐỎ (Rust) lúc 2026-11-14T08:05:03Z, HEAD 86079213 — harness CUỐI trên mã **chưa có** diagnostics.
+# lệnh: cargo test -p vis-cli --test lsp
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 15 tests
+test lsp_co_la_2 ... ok
+test lsp_initialized_khong_frame ... ok
+test lsp_body_hong_32700 ... ok
+test lsp_chan_doan_vish ... FAILED
+test lsp_chan_doan_sach ... FAILED
+test lsp_khoi_tao ... ok
+test lsp_exit_truoc_shutdown_1 ... ok
+test lsp_chan_doan_emoji_utf16 ... FAILED
+test lsp_chan_doan_did_close ... FAILED
+test lsp_chan_doan_tab_mot_cot ... FAILED
+test lsp_chan_doan_did_open ... FAILED
+test lsp_chan_doan_did_change ... FAILED
+test lsp_shutdown_exit_0 ... ok
+test lsp_method_la_32601 ... ok
+test lsp_truoc_initialize_32002 ... ok
+
+failures:
+
+---- lsp_chan_doan_vish stdout ----
+
+thread 'lsp_chan_doan_vish' (45312300) panicked at crates/vis-cli/tests/lsp.rs:386:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 266\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vish\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":1}},\"severity\":1,\"code\":\"VS0201\",\"source\":\"vis\",\"message\":\"mong lệnh, thật `|`\"}]}}"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_chan_doan_sach stdout ----
+
+thread 'lsp_chan_doan_sach' (45312298) panicked at crates/vis-cli/tests/lsp.rs:290:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}"
+
+---- lsp_chan_doan_emoji_utf16 stdout ----
+
+thread 'lsp_chan_doan_emoji_utf16' (45312297) panicked at crates/vis-cli/tests/lsp.rs:349:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 290\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":0,\"character\":13},\"end\":{\"line\":0,\"character\":14}},\"severity\":1,\"code\":\"VS0201\",\"source\":\"vis\",\"message\":\"mong xuống dòng sau câu lệnh, thật `1`\"}]}}"
+
+---- lsp_chan_doan_did_close stdout ----
+
+thread 'lsp_chan_doan_did_close' (45312295) panicked at crates/vis-cli/tests/lsp.rs:412:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 288\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":0,\"character\":13},\"end\":{\"line\":0,\"character\":16}},\"severity\":1,\"code\":\"VS0412\",\"source\":\"vis\",\"message\":\"khai báo `let`: cần `int`, được `str`\"}]}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}"
+
+---- lsp_chan_doan_tab_mot_cot stdout ----
+
+thread 'lsp_chan_doan_tab_mot_cot' (45312299) panicked at crates/vis-cli/tests/lsp.rs:375:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 453\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":1,\"character\":0},\"end\":{\"line\":1,\"character\":1}},\"severity\":2,\"code\":\"VS0107\",\"source\":\"vis\",\"message\":\"tab (cảnh báo-lỗi; tab = 4)\"},{\"range\":{\"start\":{\"line\":1,\"character\":14},\"end\":{\"line\":1,\"character\":17}},\"severity\":1,\"code\":\"VS0412\",\"source\":\"vis\",\"message\":\"khai báo `let`: cần `int`, được `str`\"}]}}"
+
+---- lsp_chan_doan_did_open stdout ----
+
+thread 'lsp_chan_doan_did_open' (45312296) panicked at crates/vis-cli/tests/lsp.rs:277:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 288\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":0,\"character\":13},\"end\":{\"line\":0,\"character\":16}},\"severity\":1,\"code\":\"VS0412\",\"source\":\"vis\",\"message\":\"khai báo `let`: cần `int`, được `str`\"}]}}"
+
+---- lsp_chan_doan_did_change stdout ----
+
+thread 'lsp_chan_doan_did_change' (45312294) panicked at crates/vis-cli/tests/lsp.rs:316:5:
+assertion `left == right` failed
+  left: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}"
+ right: "Content-Length: 199\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}},\"serverInfo\":{\"name\":\"vis\"}}}Content-Length: 110\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[]}}Content-Length: 283\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file:///a.vis\",\"diagnostics\":[{\"range\":{\"start\":{\"line\":0,\"character\":8},\"end\":{\"line\":0,\"character\":8}},\"severity\":1,\"code\":\"VS0201\",\"source\":\"vis\",\"message\":\"mong biểu thức, thật `\\n` (NEWLINE)\"}]}}"
+
+
+failures:
+    lsp_chan_doan_did_change
+    lsp_chan_doan_did_close
+    lsp_chan_doan_did_open
+    lsp_chan_doan_emoji_utf16
+    lsp_chan_doan_sach
+    lsp_chan_doan_tab_mot_cot
+    lsp_chan_doan_vish
+
+test result: FAILED. 8 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`
+
+[cargo exit=101]
