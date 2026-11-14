@@ -1,0 +1,35 @@
+# ST-86 — log ĐỎ (Rust) lúc 2026-11-14T16:03:25Z, HEAD 1af01abd — bộ sinh CŨ (trước mở rộng).
+# lệnh: cargo test -p vis-vm --test diff_100k red_bo_sinh
+
+   Compiling vis-vm v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-vm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.46s
+     Running tests/diff_100k.rs (target/debug/deps/diff_100k-783ed1b01d50de81)
+
+running 1 test
+test red_bo_sinh_co_async_chan ... FAILED
+
+failures:
+
+---- red_bo_sinh_co_async_chan stdout ----
+
+thread 'red_bo_sinh_co_async_chan' (47993543) panicked at crates/vis-vm/tests/diff_100k.rs:369:5:
+bộ sinh cũ không có async: type D:
+    n: int
+fn fact(n: int) -> int:
+    let r = if n <= 1: 1 else: n * fact(n - 1)
+    r
+fn cong(a: int, b: int) -> int:
+    a + b
+print(none ?? 17)
+print("tong = {16}")
+let v1: str = "s2"
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    red_bo_sinh_co_async_chan
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-vm --test diff_100k`

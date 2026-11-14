@@ -1,0 +1,10 @@
+# ST-86 — log ĐỎ (đo bộ sinh CŨ trước mở rộng) lúc 2026-11-14T16:11:29Z, HEAD 1af01abd
+
+$ git show HEAD:viscript/crates/vis-vm/tests/diff_100k.rs | grep -c "async fn"
+0
+$ ... | grep -c "chan\["
+0
+$ ... | grep -c "cap\["
+0
+
+=> bộ sinh cũ KHÔNG có async/spawn/await, chan, cap, derives, trait, assert (0 mẫu/nhóm).

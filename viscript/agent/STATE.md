@@ -6,18 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-85b — `.vish` cấp tệp thụt lề bị BỎ IM LẶNG** (đóng lỗi phép đo 5 của ST-85;
-                chọn **nhánh A**: `VS0201` rõ, không còn nuốt dòng) — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 4/4 (3 dạng đỏ → tìm chỗ nuốt: `khai::tach` coi dòng thụt là vùng khai báo + chạy shell
-                từ `moc=EOF` → thêm `khai::dong_thut_sai` + `VS0201` → 7 ca → 939 test → cổng → diff
-                100k → STATE/JOURNAL).
+Task          : **ST-86 — fuzz differential mở rộng cú pháp mới** (async/await/spawn; chan +
+                send/recv/close; cap + @/(write); derives Show, Eq; trait/impl siêu một tầng; assert;
+                lỗi tĩnh/chạy) — xong, đã đo 20k + 100k, cổng PASS; **chưa commit**.
+Bước          : 4/4 (bộ sinh 8 nhóm → 5 ca Rust + 7 ca CLI lỗi → 20k seed 20261115 → 100k → 951 test →
+                cổng → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:57:45Z**; **939** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:14:13Z**; **951** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
-                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
-                (218,7 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-85b]` + push (đã được uỷ quyền)
+                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch** (158,5 s,
+                seed 20261115) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-86]` + push (đã được uỷ quyền)
+
+## ST-86 — fuzz differential mở rộng cú pháp mới, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đỏ trước** | Bộ sinh cũ **0** mẫu `async fn`/`chan[`/`cap[`/`derives`/`trait`/`assert`; ca đỏ `red_bo_sinh_co_async_chan` fail. Log `JOURNAL/st86-red.log` sha256 `c0427795…`, `st86-red-rust.log` sha256 `6cba5552…`. |
+| 1 | **Bộ sinh** | Thêm `Nhom` 8 nhóm vào `crates/vis-vm/tests/diff_100k.rs`, mẫu **cố định, kết thúc được, tất định** (mỗi nhóm 100 mẫu): Async (`async fn` + `await` + `spawn` + spawn lồng trong async), Chan (`chan[int]` + `.send`/`.recv`/`.close` + spawn sender cân bằng), Cap (`cap[Dir]` tham số `main` + `@ p"./x" (write)`), Derives (`derives Show, Eq` + `.show()`/`.eq`), Trait (`trait B: A` + `impl B for P` + `impl A for P`), Assert (`assert` đúng), LoiChay (deadlock `VS0505`, thiếu gói `VS0701`, `assert` sai `VS0501`, send-sau-close `VS0504`), LoiTinh (`send` sai kiểu `VS0412`, `await` không Task `VS0412`, thiếu cap `VS0401`). Hỗn hợp **50% cơ bản cũ / 50% nhóm mới**; 2.000 seed chạm đủ 8 nhóm: `[252, 222, 172, 124, 124, 163, 33, 36]` (async/chan/cap/derives/trait/assert/runtime/static). |
+| 2 | **20.000** | `VIS_DIFF_N=20000 VIS_DIFF_SEED=20261115 ./bin/vis-diff` ⇒ **`DIFF tong=20000 loi_tinh=1247 chay=18753 lech=0 giay=31.8 toc_do=628/s seed=20261115`**; cả interp lẫn VM, so **byte** stdout/exit + đủ `(mã,dòng,cột,message)`. Log `JOURNAL/st86-diff-20k.log` sha256 `c56279ba…`. |
+| 3 | **100.000** | Cùng seed: **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=158.5 toc_do=631/s seed=20261115`**. Log `JOURNAL/st86-diff-100k.log` sha256 `f77298eb…`. |
+| 4 | **5 ca Rust** | `bo_sinh_sinh_du_nhom_cu_phap_moi` (100 mẫu/nhóm, đếm marker); `bo_sinh_hon_hop_du_nhom` (2.000 seed, đủ 8 nhóm, mọi chương trình parse sạch); `loi_tinh_cu_phap_moi_cung_ma` (3 mã tĩnh); `loi_chay_cu_phap_moi_hai_duong_cung_ma` (interp = VM, đủ `VS0505/VS0501/VS0504`); `hai_nghin_chuong_trinh_khong_phai_20k` (chạy **2.000** trong 3,2 s < 60 s; cổng mặc định 1.000, 20k chỉ ngoài cổng). |
+| 5 | **7 ca CLI lỗi** | `crates/vis-cli/tests/diff_loi.rs`: `send` sai kiểu (`VS0412`), `await` không Task (`VS0412`), thiếu cap (`VS0401`), thiếu gói (`VS0701`), deadlock (`VS0505`), `assert` sai (`VS0501`), send-sau-close (`VS0504`) — chạy **`vis run`** và **`vis run --vm`** trên cùng tệp, so **byte** stdout/stderr/exit. |
+| 6 | **Đo** | **951** test = 939 + **12** (21+96+27+154+26+62+9+**556**: +5 `diff_100k`, +7 `diff_loi`); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; host **54/54**; parity **398/398**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498**. |
+| 7 | **Nợ** | Nhóm mới là **mẫu cố định** (chưa ghép tổ hợp sâu); kênh chỉ cặp cân bằng (không sinh ngẫu nhiên capacity/đan xen task); `use pkg.*` **thành công** chưa sinh (cần lock, bỏ theo cho phép); `@`/`(write)` mới ở mức **cú pháp**, chưa cấp quyền runtime; lỗi **tĩnh** trong harness in-process bị đếm `loi_tinh` (hai đường dùng chung frontend) — so hai đường thật ở 7 ca CLI; chưa fuzz `close`/`spawn` lồng sâu. |
 
 ## ST-85b — `.vish`: dòng cấp tệp thụt lề báo `VS0201`, 2026-11-14
 
