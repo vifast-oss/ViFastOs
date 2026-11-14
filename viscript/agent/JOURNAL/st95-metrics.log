@@ -1,0 +1,40 @@
+# ST-95/R15 — metrics 2026-11-14T20:09:57Z
+== test
+SUM=999
+== sem
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.78s
+== vis test
+447
+== vis test vm
+447
+0
+== host
+vis-host-suite: 54/54 ca xanh (chạy thật trên macOS; 3 nền còn lại chưa đo)
+== parity
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+== diag
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.91s
+== cache
+CACHE_KHONG_CHE ca=520 so=520 cache_dir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-cache-st87-all-92189-4
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.82s
+== targets
+vis-targets: tất cả ô kỳ vọng xanh (chỉ CHECK, chưa chạy trên Windows/wasm)
+== fmt
+fmt_exit=0
+== indent
+indent-report: 8 tệp, 10 dòng lệch (chuẩn 4 × độ sâu khối)
+== codes
+      32
+== vbc
+53
+== fmt files
+497 429 68
+
+# diff
+DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.4 toc_do=582/s seed=20261115
+DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=163.4 toc_do=612/s seed=20261115
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 163.39s
+
+# fuzz
+vis-parse-fuzz: 2462470 ca, 56028401 token, 41041 ca/s, 933807 token/s, 60.0 s, vi phạm 0
+vis-parse-fuzz: PASS (không vi phạm)
