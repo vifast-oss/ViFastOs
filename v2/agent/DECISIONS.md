@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-76`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-77`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-76: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-77: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -122,6 +122,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 - **D2-76** KT-50 — **nguồn sự thật cho IPI S-mode là `sip.SSIP`, KHÔNG map ACLINT MSWI**: đo được S-mode đọc `0x0200_0004` ⇒ `load access fault` (`scause=5`, `tval=0x0200_0004`; PMP firmware chặn) nên kernel **không** được phép đọc MSWI; theo privileged spec, software interrupt S-mode có hiệu lực qua `sip.SSIP` và được xoá bằng cách ghi `sip`. Đây **không** phải workaround mà là cách đúng: (a) gửi bằng SBI IPI EID `0x735049`; (b) nhận bằng `scause=(1<<63)|1`; (c) xoá pending bằng `csrc sip, SSIP`; (d) **cấm** map CLINT/MSWI vào MMIO của kernel (giữ nguyên D2-72 Q7). Điều kiện: ghi deviation vào `k3-riscv64.md` §13.4 + JOURNAL kèm log `-d int`/`kt50-aclint-pmp.log`; nếu sau này cần `mip` của hart khác thì phải qua SBI, không MMIO.## Phần IV — Bảng nguồn cho các con số đang có hiệu lực
 
+- **D2-77** KT-50 — **`post` tới hart CHƯA ONLINE phải TRẢ `Invalid`** (+ log `ipi: hart N chua online`, **không** gọi SBI, **không** giữ kind trong hộp thư): lý do — hart không chạy thì không có ai drain, kind nằm lại vô chủ và có thể bị giao nhầm sau khi hart start (hộp thư phải reset lúc start). Hành vi phải có **test**: post tới hart hợp lệ nhưng offline ⇒ `Invalid`, `sent` không tăng, hộp thư rỗng. Kèm: **lỗi SBI khi gửi ⇒ gỡ bit vừa post + `errors+=1`** (không để bit mồ côi).
 | Số | Giá trị | Nguồn |
 |---|---|---|
 | slot cap | **48 B** `[TK]` (sửa 32 B) | QD §3.9 |
