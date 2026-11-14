@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
 BUILD_ID      : —
-Task          : KT-37 (K2: **PageTable 3 cấp** map/unmap + rights/attrs + 7 mã lỗi) — code/test/gate **xong**, `reviewer-kt37` **APPROVE** (điều kiện: Miri 10/10 sạch + log); đang chạy Miri, chưa commit; KT-36 DONE (D2-66); KT-35 DONE; K1c DONE (D2-64)
+Task          : KT-38 (READY — VSpace/ASID); KT-37 DONE (4e16773)
 Bước          : 8/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch → code+test → check/gate → **Miri PASS** → review APPROVE → commit/push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 512 test/67 suite** (baseline 494/66 + 10 `kt37_pagetable` + 4 unit `pagetable` + 3 unit âm `check_pages` + 1 unit `pa` lệch căn), L1 1.000 seed **726 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt37-gate-fast.log`); `check` PASS (`JOURNAL/kt37-check.log`). Baseline KT-37: PASS 494/66, L1 985 ms (`JOURNAL/kt37-baseline-gate-fast.log`).
