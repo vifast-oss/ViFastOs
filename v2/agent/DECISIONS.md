@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-70`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-71`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-70: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-71: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -109,7 +109,8 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-69** KT-42: số hiệu `.scn` mới là **22..26** (5 tệp: map/unmap-walk, W^X, shootdown 2 hart, VM fault, shared read-only) — thay giả thuyết G5 "số trống đầu tiên ≥ 30" trong `K2-PLAN`; nhóm tag `vm-*` → `check_scn.py` 26 tệp/16 nhóm; op `vm_*` (21) là **model-only**, không vào `spec/`. `check_vm` gộp 8 checker chỉ chạy ở L0/`.scn`/cổng; per-op giữ nguyên bộ checker cũ (không có `wx_recount`) — tương đương phủ, không nới.## Phần III — Duyệt
 
 - **D2-70** KT-43 — **thay ngưỡng IPC của driver L1 (có chấp thuận, không giấu)**: KT-33 đặt `ipc_sent > 1` **mỗi lượt**; driver KT-43 thêm 4 op VM nên có seed chỉ 1 message ⇒ guard cũ đỏ ở seed 67453/smp2. Thay bằng **hai** guard: (a) **mỗi seed** `ipc_sent ≥ 1` (không lượt nào bỏ IPC), (b) **tổng mỗi smp** `ipc_sent > 5 × seeds` (mạnh hơn `> 1 × seeds` cũ về tổng) + `ipc_delivered > 0`; driver **phải in** `min/median ipc_sent` mỗi smp để chứng minh (a) không hình thức. Lý do: ngưỡng cũ gắn với hỗn hợp op cũ; giữ nguyên sẽ đỏ vì thay đổi phân phối, không vì hồi quy. **Cấm** dùng D2 này để hạ bất kỳ ngưỡng nào khác; K2-DOD phải ghi rõ thay đổi + số min/median.
-- **T04 cũ = KT-04d; APPROVED mở KT-05.**
+
+- **D2-71** **K2 DONE (phase-level)**: KT-35..43 chốt — Frame 3 cỡ/PA window, PageTable 3 cấp, VSpace/ASID 256+gen, W^X toàn cục, TLB 16/hart + shootdown `TlbFlush` ack, `FaultKind::Vm` model-only, 5 `.scn` VM, `check_vm` 8 checker. Bằng chứng: 100k×4 **400.000 lượt/51,2 triệu op**, 0 vi phạm TLB-safety; **17/17 mutation** (V5 = AP→BSP); Miri **146/0**; gate **569/0**; `.scn` 26 tệp/16 nhóm. D1..D11 ĐẠT. Nợ **K3**: TLB/PTE/IPI/`sfence.vma` thật, pager/COW, `Busy`/`FaultKind::Vm` vào spec, VSpace tạo qua Retype, driver Miri smoke chưa xong, model-only 1 luồng. **K2 không phải kernel thật**; tiếp theo lập kế hoạch K3.- **T04 cũ = KT-04d; APPROVED mở KT-05.**
 - Mẫu: `APPROVED <YYYY-MM-DD> Agent 0`, ghi ngay dưới mục KT-04d trong `v2/agent/QUEUE.md`; nếu quyết định làm đổi nội dung ABI thì thêm một mục D2 mới ở tệp này. Không duyệt bằng chat. Không tự suy ra "coi như đã duyệt".
 - Agent 2 soạn nháp ở `REVIEW`, sau duyệt **chỉ Agent 0** sửa `spec/` (D2-22).
 - `ST-02a` (dòng ViScript) duyệt theo cùng mẫu trong `viscript/agent/QUEUE.md`; quyết định tương ứng ghi vào `viscript/agent/DECISIONS.md` (VD-).

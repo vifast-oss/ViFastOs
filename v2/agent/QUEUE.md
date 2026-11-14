@@ -147,7 +147,7 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-40 | TLB model + `TlbFlush` + ack thế hệ + chống deadlock | KT-38, KT-39 | 3 h | DONE | 552 test; Miri 10/10; 5 mutation; ack đủ mới Ok; deadlock 2 hart; oracle active_on |
 | KT-41 | VM fault + `FaultKind::Vm` model-only | KT-38 | 2 h | DONE | 562/71; Miri 9/9; 3 reason; không fault_ep⇒InvalidArgument; C2; W+NX⇒Wx |
 | KT-42 | 4 `.scn` + `check_vm` + shared read-only frame | KT-39, KT-40, KT-41 | 2,5 h | DONE | 569/73; Miri 2/2; 5 .scn (22..26); check_vm 8 checker; shared RO; reviewer APPROVE |
-| KT-43 | Cổng cuối K2: 100k×4 + 16 mutation + Miri + DoD | KT-42 | 3 h | READY | 0 vi phạm TLB-safety; AP→BSP bắt; Miri; DoD; log |
+| KT-43 | Cổng cuối K2: 100k×4 + 16 mutation + Miri + DoD | KT-42 | 3 h | DONE | 100k×4 400k lượt/51,2 M op; 17/17 mutation (V5 = AP→BSP); Miri 146/0; gate 569; K2-DOD D1..D11 |
 
 
 APPROVED 2026-11-12 Agent 0
@@ -166,8 +166,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K2**: KT-35..42 DONE; **KT-43 READY** (cổng cuối K2); K1c DONE.
-3. KT-43 (100k×4 + 16 mutation + Miri + DoD) xong ⇒ chốt K2, sang K3.
+2. **K2 DONE** (D2-71): KT-35..43 DONE; 569 test; 100k×4; 17/17 mutation; Miri 146/0. K1c DONE.
+3. Tiếp: lập kế hoạch **K3** (plat-common/plat-riscv64, init, ktest, conformance) trước khi mở task; mỗi task ≤3 h.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.

@@ -254,7 +254,7 @@ real 374.56
 | # | Tiêu chí | Cách đo | Ngưỡng | Kết quả |
 |---|---|---|---|---|
 | D1 | TLB-safety | `tlb_violations()` **sau mỗi op** trên `nightly --l1` 100k × 4 smp | **0** | **ĐẠT** — 0/51,2 triệu op (§2.2) |
-| D2 | Mutation AP→BSP | V1 (đảo cấp lá) + V5 (bỏ drain hộp thư khi chờ ack) | **bị giết** | **ĐẠT** — V1 `kt37_pagetable::map_walk_unmap_du_ba_co` đỏ; V5 `kt40_tlb::deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` đỏ (§3) |
+| D2 | Mutation AP→BSP | **V5** (bỏ `drain_mail_fifo` khi chờ ack) — đúng lỗ AP→BSP v1; V1 (đảo cấp lá) là ca **phụ** theo câu chữ "đổi lá/thứ tự cấp", **không** tính là bằng chứng AP→BSP thứ hai | **bị giết** | **ĐẠT** — V5 `kt40_tlb::deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` đỏ (`Ok(false)` vs `Ok(true)`); V1 đỏ ở `kt37_pagetable::map_walk_unmap_du_ba_co` (§3) |
 | D3 | Mutation "bỏ xử lý hộp thư khi chờ ack" | V5 bỏ `drain_mail_fifo` trong `tlb_wait_round` | **bị giết** | **ĐẠT** — `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` đỏ: `left Ok(false)`, `right Ok(true)` (§3) |
 | D4 | Tổng mutation | 12 ca §7.2 cũ + 5 ca VM | 17/17 (≥ 16) bị giết | **ĐẠT — 17/17**, 17/17 khôi phục hash == HEAD (§3) |
 | D5 | W^X | bất biến `!(w>0 && x>0)` + `w+x ≤ maps` sau **mỗi** op (model hook + driver) | 0 vi phạm / 400k lượt | **ĐẠT** — `check_wx` sau mỗi op, 0 panic; V3 bị giết (§3) |
