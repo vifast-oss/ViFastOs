@@ -1,0 +1,52 @@
+# ST-78 — log ĐỎ (trước khi sửa) lúc 2026-11-14T12:05:58Z, HEAD 5f66b2a2
+
+== vis explain 3 mã × 3 ngôn ngữ
+--- VS0504 --lang vi
+VS0504 — lỗi: gửi vào kênh đã `close` (không nhận thêm phần tử)
+[exit=0]
+--- VS0504 --lang en
+VS0504 — error: send on a closed channel (no more elements accepted)
+[exit=0]
+--- VS0504 --lang ja
+VS0504 — エラー: 閉じたチャネルへの送信（これ以上受け付けません）
+[exit=0]
+--- VS0505 --lang vi
+VS0505 — lỗi: deadlock: kênh bị chặn và không còn tác vụ nào chạy được (khoá)
+[exit=0]
+--- VS0505 --lang en
+VS0505 — error: deadlock: the channel is blocked and no task is runnable
+[exit=0]
+--- VS0505 --lang ja
+VS0505 — エラー: デッドロック: チャネルがブロックされ、実行可能なタスクがありません
+[exit=0]
+--- VS0506 --lang vi
+VS0506 — lỗi: tác vụ (`async fn`) lỗi: thân tác vụ ném lỗi (message kèm mã gốc)
+[exit=0]
+--- VS0506 --lang en
+VS0506 — error: task (`async fn`) failed: the task body raised an error (message has the original code)
+[exit=0]
+--- VS0506 --lang ja
+VS0506 — エラー: タスク (`async fn`) でエラー: タスク本体がエラーを出しました（元のコード付き）
+[exit=0]
+
+== --list (đếm + 12 dòng đầu/cuối)
+      32
+VS0101  lỗi      chuỗi chưa đóng
+VS0102  lỗi      escape không hợp lệ
+VS0103  lỗi      ký tự lạ ngoài bảng token
+...
+VS0701  lỗi      không thấy tệp module (hoặc `std`/`pkg` chưa hỗ trợ)
+VS0702  lỗi      vòng phụ thuộc giữa các tệp module
+VS0703  lỗi      `use` trùng hoặc mơ hồ (hai đường dẫn cùng một module)
+thứ tự id:
+SORTED
+
+== lỗi
+vis: không có mã VS9999 trong sổ (SPEC-lex §7)
+[exit=2]
+vis explain: ngôn ngữ không hỗ trợ `xx` (vi|en|ja)
+[exit=2]
+
+== trợ giúp 'vis explain' (không tham số)
+dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list
+[exit=2]

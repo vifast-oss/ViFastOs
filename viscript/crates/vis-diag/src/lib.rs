@@ -352,9 +352,9 @@ pub const RUNTIME_CODES: [Code; 6] = [
     Code {
         id: 506,
         short: "VS0506",
-        message_vi: "tác vụ (`async fn`) lỗi: thân tác vụ ném lỗi (message kèm mã gốc)",
-        message_en: "task (`async fn`) failed: the task body raised an error (message has the original code)",
-        message_ja: "タスク (`async fn`) でエラー: タスク本体がエラーを出しました（元のコード付き）",
+        message_vi: "tác vụ (`async fn`) lỗi: lỗi phát sinh trong thân tác vụ (kèm mã gốc)",
+        message_en: "task (`async fn`) failed: an error occurred inside the task body (original code included)",
+        message_ja: "タスク (`async fn`) でエラー: タスク本体でエラーが発生しました（元のコード付き）",
         severity: Severity::Error,
     },
 ];

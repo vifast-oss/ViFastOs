@@ -1,0 +1,39 @@
+# ST-78 — log ĐỎ (Rust) lúc 2026-11-14T12:08:38Z, HEAD 5f66b2a2 — trước khi sửa.
+# lệnh: cargo test -p vis-cli --test explain_moi (6 ca mới)
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.59s
+     Running tests/explain_moi.rs (target/debug/deps/explain_moi-af539f201febe08e)
+
+running 6 tests
+test toan_bo_so_du_ba_ngon_ngu ... ok
+test list_du_32_dong_dung_thu_tu ... ok
+test ma_la_ro_rang_exit_2 ... ok
+test tro_giup_neu_du_so_ma ... FAILED
+test lang_sai_exit_2 ... ok
+test ba_ma_runtime_du_ba_ngon_ngu ... FAILED
+
+failures:
+
+---- tro_giup_neu_du_so_ma stdout ----
+
+thread 'tro_giup_neu_du_so_ma' (46819526) panicked at crates/vis-cli/tests/explain_moi.rs:87:5:
+phải nêu 32 mã: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ba_ma_runtime_du_ba_ngon_ngu stdout ----
+
+thread 'ba_ma_runtime_du_ba_ngon_ngu' (46819521) panicked at crates/vis-cli/tests/explain_moi.rs:36:9:
+assertion `left == right` failed: VS0506/vi
+  left: "VS0506 — lỗi: tác vụ (`async fn`) lỗi: thân tác vụ ném lỗi (message kèm mã gốc)\n"
+ right: "VS0506 — lỗi: tác vụ (`async fn`) lỗi: lỗi phát sinh trong thân tác vụ (kèm mã gốc)\n"
+
+
+failures:
+    ba_ma_runtime_du_ba_ngon_ngu
+    tro_giup_neu_du_so_ma
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+error: test failed, to rerun pass `-p vis-cli --test explain_moi`

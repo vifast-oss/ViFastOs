@@ -7,7 +7,10 @@
 use vis_diag::{all_codes, lookup, render, severity_label, DiagLine, Lang, Severity, NAME_CODES};
 
 /// 20 ca snapshot: (mã, ngôn ngữ, chuỗi đúng).
-const CASES: [(u16, Lang, &str); 20] = [
+// **SỬA KÈM LÝ DO (ST-78)**: +9 snapshot cho 3 mã runtime mới (`VS0504`/`VS0505`/`VS0506`) × 3
+// ngôn ngữ ⇒ **29 ca**; câu `VS0506` viết lại rõ nghĩa (bỏ meta "message kèm mã gốc"), id và thứ
+// tự khối `RUNTIME_CODES` không đổi.
+const CASES: [(u16, Lang, &str); 29] = [
     (101, Lang::Vi, "chuỗi chưa đóng"),
     (102, Lang::En, "invalid escape"),
     (103, Lang::Ja, "トークン表にない不正な文字です"),
@@ -48,6 +51,51 @@ const CASES: [(u16, Lang, &str); 20] = [
     ),
     (202, Lang::En, "`%` used as percent — write `50pct`"),
     (202, Lang::Vi, "`%` dùng như phần trăm — viết `50pct`"),
+    (
+        504,
+        Lang::Vi,
+        "gửi vào kênh đã `close` (không nhận thêm phần tử)",
+    ),
+    (
+        504,
+        Lang::En,
+        "send on a closed channel (no more elements accepted)",
+    ),
+    (
+        504,
+        Lang::Ja,
+        "閉じたチャネルへの送信（これ以上受け付けません）",
+    ),
+    (
+        505,
+        Lang::Vi,
+        "deadlock: kênh bị chặn và không còn tác vụ nào chạy được (khoá)",
+    ),
+    (
+        505,
+        Lang::En,
+        "deadlock: the channel is blocked and no task is runnable",
+    ),
+    (
+        505,
+        Lang::Ja,
+        "デッドロック: チャネルがブロックされ、実行可能なタスクがありません",
+    ),
+    (
+        506,
+        Lang::Vi,
+        "tác vụ (`async fn`) lỗi: lỗi phát sinh trong thân tác vụ (kèm mã gốc)",
+    ),
+    (
+        506,
+        Lang::En,
+        "task (`async fn`) failed: an error occurred inside the task body (original code included)",
+    ),
+    (
+        506,
+        Lang::Ja,
+        "タスク (`async fn`) でエラー: タスク本体でエラーが発生しました（元のコード付き）",
+    ),
 ];
 
 #[test]

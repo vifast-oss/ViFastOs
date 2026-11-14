@@ -6,17 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-77 — `vis fmt` cho cú pháp mới + `.vish` + `--check` thư mục** (`cap[...]`,
-                `async/spawn/await`, `chan`, `use pkg.*`, `derives/trait/impl`; 12 ca mới; `fmt --check
-                test/` xanh 497 tệp) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (red-first 3/12 đỏ → `format_mode` + render_command + đệ quy thư mục + allowlist
-                nhỏ nhất → 12/12 + `--check test/` 0 tệp lệch → 886 test → cổng → diff 100k → STATE/JOURNAL).
+Task          : **ST-78 — `vis explain` + sổ mã 3 mã runtime mới, đủ 3 ngôn ngữ** (`VS0504/0505/0506`
+                đúng nghĩa vi/en/ja; `--list` 32 mã đúng thứ tự; trợ giúp nêu **7 khối/32 mã**;
+                6 ca CLI + snapshot 29 ca) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (đo trước/red (2/6) → câu `VS0506` rõ nghĩa + `usage_explain` đếm động → snapshot
+                +9 → 892 test → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T12:03:55Z**; **886** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T12:35:50Z**; **892** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (219,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (253,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-77]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-78]` + push (đã được uỷ quyền)
+
+## ST-78 — `vis explain` + sổ mã 3 mã mới, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | `VS0504/0505/0506` **đã** có đủ vi/en/ja đúng nghĩa; `--list` **32 dòng**, đúng thứ tự id; mã/ngôn ngữ sai exit 2. **Chỉ một lỗ hổng thật**: `vis explain` không tham số rơi vào `usage()` chung, **không nêu số mã** ⇒ test `tro_giup_neu_du_so_ma` đỏ; thêm test so **nguyên văn** `VS0506` cũng đỏ vì chủ ý viết lại câu. Log `JOURNAL/st78-red-rust.log` sha256 `ec7fc9d8…` (**2 failed / 4 passed**); probe `JOURNAL/st78-red.log` sha256 `0c2407cb…`. |
+| 1 | **Sổ mã** | Giữ **id** + **thứ tự** `RUNTIME_CODES` (index 0..2: 501/502/503; 504/505/506 vẫn index 3/4/5). `VS0506` viết lại rõ nghĩa, bỏ meta: vi “tác vụ (`async fn`) lỗi: lỗi phát sinh trong thân tác vụ (kèm mã gốc)”, en “…an error occurred inside the task body (original code included)”, ja “…タスク本体でエラーが発生しました（元のコード付き）”. `VS0504`/`VS0505` **giữ nguyên** (đã đúng, không copy-paste). |
+| 2 | **`vis explain`** | Thêm `usage_explain()` — nêu `dùng:` + **số khối/số mã đếm động** (`BLOCKS_RESERVED.len()` = **7**, `all_codes().count()` = **32**), dùng cho cả no-arg và cờ lạ. `--list` giữ đúng **32 dòng** sắp theo id (đã kiểm bằng `all_codes()`), in `mã + severity + câu`. |
+| 3 | **Snapshot** | `crates/vis-diag/tests/messages.rs`: **20 → 29 ca** (+9 cho 3 mã × 3 ngôn ngữ), ghi **SỬA KÈM LÝ DO (ST-78)**; test cũ `moi_ma_du_ba_ngon_ngu` vẫn quét toàn sổ, test mới siết thêm **khác nhau giữa 3 ngôn ngữ**. |
+| 4 | **6 ca CLI mới** | `crates/vis-cli/tests/explain_moi.rs`: 9 lần gọi so **nguyên văn** (3 mã × 3 ngôn ngữ); `--list` đúng **32 dòng** + đúng thứ tự `all_codes()` + câu khác rỗng; VS9999 exit 2 + “không có mã”; `--lang` sai/thiếu exit 2 (3 biến thể); trợ giúp nêu **32** và **7 khối**; quét **toàn bộ 32 mã** 3 ngôn ngữ non-empty + **không trùng nhau**. |
+| 5 | **Đo** | **892** test = 886 + **6** (21+96+27+154+26+62+9+**497**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=253.6 toc_do=394/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`main.rs` 950, `vis-diag/lib.rs` 730, `explain_moi.rs` 110, `messages.rs` 463). |
+| 6 | **Nợ** | `usage_explain` chỉ in **tiếng Việt** (không theo `--lang`); `--list` in kèm cột severity (không thuần “mã + câu ngắn”); `VS0504/0505/0506` **không** thêm mã mới / `all_codes()` không đổi; docs/phụ lục **không** sửa (chỉ snapshot trong `viscript/`). |
 
 ## ST-77 — `vis fmt` cho cú pháp mới, 2026-11-14
 

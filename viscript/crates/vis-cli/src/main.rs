@@ -26,6 +26,20 @@ fn usage() -> ExitCode {
     ExitCode::from(2)
 }
 
+/// **ST-78**: trợ giúp riêng của `vis explain` — nêu **đúng** số khối/số mã của sổ hiện tại
+/// (đếm từ `all_codes()`/`BLOCKS_RESERVED`, không viết cứng).
+fn usage_explain() -> ExitCode {
+    eprintln!(
+        "dùng: vis explain <VSxxxx> [--lang vi|en|ja] | vis explain --list [--lang vi|en|ja]"
+    );
+    eprintln!(
+        "sổ mã: {} khối, {} mã — `vis explain --list` in toàn bộ (mã + câu ngắn)",
+        vis_diag::BLOCKS_RESERVED.len(),
+        vis_diag::all_codes().count()
+    );
+    ExitCode::from(2)
+}
+
 /// **FsHost** của CLI (ST-42): `--fs-mock` ⇒ mock tất định, ngược lại ⇒ hệ tệp thật.
 enum HostFs {
     That(ngoai::Runner),
@@ -862,7 +876,7 @@ fn main() -> ExitCode {
                     },
                     a if a.starts_with('-') => {
                         eprintln!("vis explain: không hỗ trợ cờ `{a}`");
-                        return usage();
+                        return usage_explain();
                     }
                     a => ma = Some(a.to_string()),
                 }
@@ -881,7 +895,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             match ma {
-                None => usage(),
+                None => usage_explain(),
                 Some(code) => match lookup_str(&code) {
                     Some(c) => {
                         println!(
