@@ -171,7 +171,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **DONE** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **DONE** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
 | ST-77 | **nhất quán #1** — `vis fmt` cho cú pháp mới: `cap[...]` + `@`/`(write)`, `async fn`, `spawn`, `chan[T]`, `use pkg.*` | ST-76 | 2,5 h | **DONE** | ≥8 ca; lossless + idempotent; `fmt --check` trên toàn `test/` xanh |
-| ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **READY** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
+| ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **DONE** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
 | ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **READY** | ≥6 ca; TAP đúng; interp = `--vm` |
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **READY** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **READY** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
@@ -1196,3 +1196,14 @@ APPROVED 2026-11-14 Agent 0
 > Đo: **886 test** (fmt 18→**27**) · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (219,3 s).
 > Nợ: `.vish` **không** chuẩn hoá độ sâu khối (giữ thụt lề gốc), fmt **chỉ tầng cú pháp**, chưa reflow dòng dài.
 > **ST-78 mở** (`explain` + sổ mã 3 ngôn ngữ).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-78 DONE — nhất quán #2 (`explain` + sổ mã).** Commit `3953f6bd` (**Agent 2 tự commit, đã push**). Đo trước cho thấy
+> `VS0504/0505/0506` **đã đủ** 3 ngôn ngữ và `--list` **đã 32 dòng** ⇒ **không** giả vờ có lỗi; lỗ hổng thật là `vis explain`
+> không tham số rơi vào usage chung (**không nêu số mã**) ⇒ thêm `usage_explain()` đếm **động** (`BLOCKS_RESERVED` + `all_codes()`);
+> `VS0506` viết lại **rõ nghĩa** ở cả 3 ngôn ngữ (bỏ meta "message kèm mã gốc"), id/thứ tự **không đổi**. **6 ca CLI** (9 lần gọi
+> so **nguyên văn**, `--list` 32 dòng đúng thứ tự `all_codes()`, VS9999/`--lang` sai exit 2, quét **toàn bộ 32 mã** non-empty +
+> **không trùng**) + snapshot `messages.rs` 20→**29 ca**. Đo: **892 test** · sem **447/22** · parity **398/398** · differential
+> **100k/0 lệch** (253,6 s). Nợ: `usage_explain` chỉ tiếng Việt; `--list` có cột severity.
+> **ST-79 mở** (`vis test` với async/kênh).
