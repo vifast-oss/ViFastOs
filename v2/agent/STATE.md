@@ -11,7 +11,7 @@ Bước          : 8/8 **xong** (baseline `gate --fast` 569/73 PASS → đỏ tr
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/0 failed** (`JOURNAL/kt44-gate-fast.log`); baseline cùng số (`JOURNAL/kt44-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng `cargo build --target riscv64gc-unknown-none-elf` + boot QEMU (`JOURNAL/kt44-build.log`, `JOURNAL/kt44-boot.log`, `JOURNAL/kt44-ktest-boot.log`).
 Miri          : KT-44 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12: miễn trừ có lý do); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** `vifast-plat-common` chạy host: `cargo test -p vifast-plat-common` **3/3**.
-Việc dở       : **review độc lập xong — `reviewer-kt44` APPROVE** (2 nit đã vá); commit `[KT-44]` `efe128fb` + push, commit vá review đẩy sau; **không** lật QUEUE (D2-37). `viscript/` + `review/` của tab khác **không chạm**.
+Việc dở       : **KT-44 DONE** (lead lật ở `43304e68`, QUEUE mở KT-45); **follow-up `[KT-44b]` vá 3 nit review** (sàn QEMU 9.2 theo major.minor; phạm vi KT-46..53 trong doc; STATE HEAD) — đã push. Bước kế: **KT-45 trap khung**. `viscript/` + `review/` của tab khác **không chạm**.
 ```
 
 ## KT-44 — task đầu K3: `plat-common` + tách ảnh sản phẩm/ktest + đo budget
@@ -62,9 +62,11 @@ lỗi hạ tầng).
 guard=4096`, strings **0/8**, `budget.sh --selftest` 3/3; xác nhận **0 B không che lỗi** (`.rodata`
 404 B nằm trong PT_LOAD, `.stack_guard/.stack` là `SHT_NOBITS`, chỉ 2 static zero-sized) và
 `__stack_guard_end = __stack_bottom = 0x80203000 < __stack_top = 0x80213000`. 2 nit **không chặn**
-đã vá trong commit review-fix: (a) sàn QEMU so **major.minor ≥ 9.2** (trước chỉ so major) + đòi chuỗi
-version có dấu chấm; (b) `k3-riscv64.md` §1 ghi đúng phạm vi từng task (KT-46..53) thay vì
-"KT-45..49". Ghi chú `kt44-budget.log` cũ hơn `budget.sh` là do lần đọc cũ: bản đã commit có mtime
+đã vá trong follow-up **`[KT-44b]`** (lead yêu cầu): (a) sàn QEMU so **major.minor ≥ 9.2**
+(trước chỉ so major) + đòi chuỗi version có dấu chấm; (b) `k3-riscv64.md` §1 ghi đúng phạm vi
+từng task (KT-46..53) thay vì "KT-45..49"; (c) STATE `HEAD`/việc dở. Bằng chứng cổng phiên bản:
+[`kt44-version-gate.log`](JOURNAL/kt44-version-gate.log) (9.1.0/9.1/8.2.0/9 ⇒ FAIL; 9.2/9.2.0/
+9.10.0/11.1.3 ⇒ PASS). Ghi chú `kt44-budget.log` cũ hơn `budget.sh` là do lần đọc cũ: bản đã commit có mtime
 22:35:11 > `budget.sh` 22:33:49 và chứa `# sections-seen` + selftest.
 
 **Không làm (đúng phạm vi)**: trap/`stvec` (KT-45), MMU/guard fault (KT-46), timer tick (KT-47),

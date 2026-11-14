@@ -21,7 +21,8 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest"
 N_BOOT="${1:-1}"
 SMP="${2:-1}"
 TIMEOUT_DS=200   # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
-QEMU_MIN_MAJOR=9 # sàn D2-72 Q2
+QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
+QEMU_MIN_MINOR=2
 
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -42,12 +43,20 @@ if [ -z "$SBI" ]; then
 fi
 [ -f "${SBI:-/nonexistent}" ] || die "không tìm thấy OpenSBI fw_dynamic (đặt OPENSBI=...)"
 
-# QEMU version: thiếu hoặc major dưới sàn ⇒ FAIL, không tự hạ (D2-72 Q2).
+# QEMU version: thiếu hoặc dưới sàn major.minor ⇒ FAIL, không tự hạ (D2-72 Q2).
 QEMU_VERSION="$("$QEMU" --version 2>/dev/null | sed -n '1s/.*version \([0-9][^ ]*\).*/\1/p')"
 [ -n "$QEMU_VERSION" ] || die "không đọc được phiên bản QEMU"
+case "$QEMU_VERSION" in *.*) ;; *) die "phiên bản QEMU '$QEMU_VERSION' không có dạng major.minor" ;; esac
 QEMU_MAJOR="${QEMU_VERSION%%.*}"
-[ "$QEMU_MAJOR" -ge "$QEMU_MIN_MAJOR" ] || die "QEMU $QEMU_VERSION < sàn $QEMU_MIN_MAJOR.x (D2-72 Q2) — không tự hạ"
-echo "# qemu $QEMU_VERSION (sàn $QEMU_MIN_MAJOR.x, D2-72 Q2)"
+QEMU_REST="${QEMU_VERSION#*.}"
+QEMU_MINOR="${QEMU_REST%%.*}"
+case "$QEMU_MAJOR" in '' | *[!0-9]*) die "không đọc được major của QEMU '$QEMU_VERSION'" ;; esac
+case "$QEMU_MINOR" in '' | *[!0-9]*) die "không đọc được minor của QEMU '$QEMU_VERSION'" ;; esac
+if [ "$QEMU_MAJOR" -lt "$QEMU_MIN_MAJOR" ] ||
+    { [ "$QEMU_MAJOR" -eq "$QEMU_MIN_MAJOR" ] && [ "$QEMU_MINOR" -lt "$QEMU_MIN_MINOR" ]; }; then
+    die "QEMU $QEMU_VERSION < sàn $QEMU_MIN_MAJOR.$QEMU_MIN_MINOR (D2-72 Q2) — không tự hạ"
+fi
+echo "# qemu $QEMU_VERSION (sàn $QEMU_MIN_MAJOR.$QEMU_MIN_MINOR, D2-72 Q2)"
 echo "# opensbi $SBI"
 
 echo "# build ảnh test ($TARGET, release, --features ktest)"

@@ -1,4 +1,4 @@
-# qemu 11.1.3 (sàn 9.x, D2-72 Q2)
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
 # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
 # build ảnh sản phẩm (riscv64gc-unknown-none-elf, release)
 # image=product path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=19216 data+bss=0 budget=262144 stack=65536 guard=4096

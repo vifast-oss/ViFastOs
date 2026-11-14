@@ -12,7 +12,8 @@ do lệnh sinh ra. **Tài liệu này không chứa số đo viết tay** (QD §
 
 - **K2** là mô hình (`vifast-sim` + `vifast-pte`), **không** phải kernel chạy trên phần cứng (D2-71).
 - **K3** (KT-44..57) là lần đầu kernel riscv64 chạy **thật** trên QEMU `virt` qua OpenSBI: trap,
-  MMU Sv39, timer SBI, PLIC/UART IRQ, SMP, IPI, TLB/shootdown, U-mode — KT-45..49.
+  MMU Sv39 (KT-46), timer SBI (KT-47), PLIC/UART IRQ (KT-48), SMP (KT-49), IPI (KT-50),
+  TLB/shootdown (KT-51), object layer (KT-52), U-mode (KT-53).
 - K3 **không** phải kernel ABI đầy đủ (D2-72 **Q13**): core CNode/TCB/IPC/scheduler vẫn model-only;
   port core `no_std` là phase **K3b**, mở bằng task port core đầu tiên (KT-58) trước `procsrv`/shell.
 - Cổng `.data + .bss ≤ 256 KiB` `[TK]` (QD §3.5) **giữ nguyên** ở K3, áp cho **cả hai** ảnh
@@ -37,7 +38,7 @@ do lệnh sinh ra. **Tài liệu này không chứa số đo viết tay** (QD §
 | Soak | `1000 boot × 3 luồng` trên máy `ps`, timeout **20 s/boot**, `0/1000`, không retry | `[TK]` | D2-72 Q10 |
 
 Ghi chú kiểm chứng: `run.sh`/`ktest.sh` in `# qemu <version>` và `# opensbi <version>` **từ log
-boot thật**; QEMU major dưới sàn ⇒ **FAIL**, không tự hạ (D2-72 Q2). OpenSBI banner
+boot thật**; QEMU dưới sàn **9.2** (so cả major.minor) ⇒ **FAIL**, không tự hạ (D2-72 Q2). OpenSBI banner
 (`Platform Timer Device : aclint-mtimer @ …Hz`, `Platform IPI Device : aclint-mswi`) là log
 `[ĐO]`, dùng để đối chiếu timebase ở KT-47. Cửa sổ PLIC `0x60_0000` theo K3-PLAN §1; OpenSBI
 domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` từ register, không giả định.
@@ -107,7 +108,7 @@ Cổng đo (do script thực thi, không phải người):
   K0.5/KT-07), trần **262.144 B** `[TK]` cho **cả hai** ảnh, in
   `# image=… data+bss=… stack=… guard=…`; **exit 1** nếu vượt (D2-72 Q5).
 - **Boot** — `run.sh`/`ktest.sh`: timeout **20 s**/boot `[TK]` (D2-72 Q10), chỉ `kill <pid>` do
-  chính script tạo (AGENTS §9 — cấm `pkill -f qemu-system`), đòi QEMU major ≥ sàn, đòi TAP đủ
+  chính script tạo (AGENTS §9 — cấm `pkill -f qemu-system`), đòi QEMU ≥ sàn **9.2**, đòi TAP đủ
   `TAP version 13` + `1..1` + marker `ok` + marker halt và **không** có dòng `PANIC`.
 - **Cổng repo** — `./v2/bin/v2 gate --fast` **không** build kernel
   (`v2/Cargo.toml` `exclude = ["kernel"]`); kernel kiểm bằng `cargo build --target
