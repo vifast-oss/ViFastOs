@@ -85,7 +85,7 @@ unit test âm cho `check_frames`. 6. `check` → `gate --fast`. 7. Miri `kt36_fr
   R1..R5, ABI/scn/gen/golden/report). Hai lần đỏ trong lúc làm: clippy `unnecessary_map_or`
   (`map_or(false, …)` → `is_some_and`) và `manual_is_multiple_of` trong test — sửa code, **không**
   `#[allow]`.
-- [`kt36-gate-fast.log`](kt36-gate-fast.log) — `./v2/bin/v2 gate --fast` **PASS 494 test/65 suite**
+- [`kt36-gate-fast.log`](kt36-gate-fast.log) — `./v2/bin/v2 gate --fast` **PASS 494 test/66 suite (65 suite cũ + `kt36_frame`)**
   (baseline 477 + 12 `kt36_frame` + 5 unit test âm), L1 1.000 seed **769 ms** (baseline 832 ms —
   không hồi quy), fmt/clippy/luật/gen-check OK.
 - [`kt36-miri.log`](kt36-miri.log) — Miri `--test kt36_frame` **PASS 12/12** (36,10 s; seed giảm
