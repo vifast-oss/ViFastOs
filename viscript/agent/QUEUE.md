@@ -163,7 +163,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **DONE** | 6 snapshot + 6 unit vị trí |
 | ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **DONE** | ≥13 frame; prefix/hover/null |
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **DONE** | 6 ca + e2e tất định; không mạng |
-| ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **READY** | 4 ca; lock không có đường tuyệt đối |
+| ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **DONE** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — quyền: `cap[Dir]`/`cap[Net]` cưỡng chế ở host + `--cap-mock` | ST-71 | 3 h | **READY** | ≥8 ca cho phép/từ chối; hai đường cùng byte |
 | ST-73 | **VS2 #4b** — Landlock thật trên Linux (cfg linux) + tài liệu giới hạn | ST-72 | 3 h | **READY** | ≥8 ca Linux; trên macOS **không** giả vờ chạy |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
@@ -1091,3 +1091,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: **chưa** `use pkg.*` (ST-71), deps ghim đúng version (chưa resolver dải), chưa registry HTTP/ký số, `.vis/store` không GC,
 > chưa `pkg remove/update`.
 > **ST-71 mở** (VS2 #6b — `use pkg.*` + kiểm sha lúc chạy).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-71 DONE — VS2 #6 (gói/registry) ĐỦ TIÊU CHÍ.** Commit `d85e9665` (**Agent 2 tự commit, đã push**). `use pkg.<tên>[.<mod>]`
+> đọc `vis.lock`, chỉ nạp tệp **có trong lock**, **chuẩn hoá + so `file_sha`** ⇒ lệch = **`VS0701` "gói bị sửa"** (exit 2, không
+> chạy mã sai); `rel` tổng hợp **`pkg/<tên>/<ver>/<path>`** (hai gói cùng `src/main.vis` **không** đụng khoá cache/chẩn đoán);
+> vòng qua gói ⇒ **`VS0702`**, không treo; `--dump-deps` in rel gói; chữ ký `load_full` **không đổi**. **5 ca** mới + **1 ca cũ
+> đổi kỳ vọng có lý do** (`pkg_bao_vs2` → `pkg_chua_cai_bao_vs0701`). Đo: **854 test** · sem **441/21** · parity **395/395** ·
+> differential **100k/0 lệch** (246,6 s) · R1 max 1.491 (`modules.rs` 726, `pkg.rs` 753).
+> Nợ: lock **chưa lưu `entry`** (dùng quy ước), chưa resolver dải, chưa ký số/registry HTTP, chưa `pkg remove/update`, lock chỉ tìm
+> ở `main_dir`, `.vis/store` không GC.
+> **ST-72 mở** (VS2 #4a — quyền `cap[Dir]`/`cap[Net]` cưỡng chế ở host; **VD-103**).
