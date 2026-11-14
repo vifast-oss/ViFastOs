@@ -156,7 +156,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **DONE** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **DONE** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **DONE** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
-| ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **READY** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
+| ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **DONE** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
 | ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **READY** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **READY** | ≥13 ca tổng; `gate` xanh |
 | ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **READY** | 6 snapshot; stdout sạch; thoát khi EOF |
@@ -1004,3 +1004,17 @@ APPROVED 2026-11-14 Agent 0
 > **Lệch có ghi**: `net.read` **3 đối số** `(tay, tối_đa, timeout_ms)`; `std.net.connect` dạng **đầy đủ** chưa hạ (dùng
 > dạng ngắn sau `use`, như `fs.*`/`json.*`); bỏ `is_open`; `read` trả `str` **lossy**; mặc định connect 1 s.
 > **ST-64 mở** (VS2 #3b — `http.get`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-64 DONE — VS2 #3b (`http.get`) CÓ MẶT.** Commit `609d313d` (**Agent 2 tự commit, đã push**). Giao thức HTTP nằm
+> trong `vis-interp/src/net.rs` (211 dòng) ⇒ interp ↔ VM **cùng byte**, **không** sửa codegen; URL chỉ `http://` + loopback,
+> `Connection: close`, đọc tới EOF/`Content-Length`, **cap body 8 MiB** + header 64 KiB, non-2xx ⇒ `Err("HTTP <mã>")`,
+> thiếu host ⇒ **`VS0604`**. `MODULES` 8→9, `FUNCS` 43→**45** (`http.get`, `http.get_timeout`; **bỏ** `body_len` — đúng
+> cho phép). **7 ca** Rust loopback thật (200 với body nhiều byte, 404, timeout ≤400 ms, refused, cap 8 MiB, CL>
+> body, sai kiểu tĩnh) + `--explain-perms` `NET http GET …` qua hook `nhat_ky` mới. Đo: **802 test** · sem **441/21** ·
+> parity **395/395** · differential **100k/0 lệch** (233,0 s) · R1 max 1.491 · `VBC1` 53 · 7 sổ/32 mã.
+> **Lệch có ghi (đo được)**: `vis check` lỗi chẩn đoán = **exit 1** (exit 2 = dùng sai CLI); thiếu `use std.http` ⇒
+> **`VS0501` lúc chạy** (không phải `VS0301`) — `vis check` permissive với tên cấp tệp là **nợ có sẵn**; `"chào 😀"` =
+> **10 byte** (không phải 9 — ghi chú của tôi sai).
+> **ST-65 mở** (VS2 #3c — server `listen/accept` + e2e 2 tiến trình).
