@@ -1,0 +1,59 @@
+# ST-87 — log ĐỎ lúc 2026-11-14T16:17:40Z, HEAD adde7ad5: harness cache_khong_che CHƯA có.
+# lệnh: cargo test -p vis-cli --test cache_khong_che
+
+error: no test target named `cache_khong_che` in `vis-cli` package
+help: available test targets:
+    async_10k
+    async_vis
+    cap
+    check
+    closure_cmd
+    cmd_run
+    diag_cmp
+    diff_loi
+    explain
+    explain_moi
+    extern
+    fmt
+    fmt_indent
+    fmt_moi
+    gan_hai_duong
+    generic_cli
+    get_select
+    host_conformance
+    http
+    json_sort
+    kenh
+    khe_ong
+    ls_open
+    lsp
+    ma_truong
+    modules
+    net
+    net_server
+    nhom
+    pipeline
+    pkg
+    prelude
+    quyen
+    ref_identity
+    render
+    sandbox
+    sap_xep
+    self_amp_hop_long
+    sem
+    sort_by_str
+    st83_no_nho
+    stage_dau
+    std_fs_json
+    stdlib
+    strict_caps
+    targets
+    trait_cli
+    vis_test
+    vish_cmd_body
+    vish_decl
+    vish_indent
+    vistest_async
+    vsh1b
+    where_tinh

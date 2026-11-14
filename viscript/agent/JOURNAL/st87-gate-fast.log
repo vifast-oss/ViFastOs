@@ -1,0 +1,1665 @@
+== vis-dev check ==
+--- fmt: OK
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.36s
+--- clippy: OK
+--- luật R1..R4: OK
+1..12
+ok 1 - thiếu SPDX bị bắt (R3)
+ok 2 - tệp 1.501 dòng bị bắt (R1)
+ok 3 - unsafe bị bắt (R2)
+ok 4 - vis-host-vifast trong viscript/ bị bắt (R4)
+ok 5 - thiếu cargo báo rõ (1)
+ok 6 - doc-examples: khối đỏ ngoài allowlist bị bắt (khối đỏ không khai báo)
+ok 7 - doc-examples: ngoại lệ cũ đã xanh bị bắt (ngoại lệ cũ)
+ok 8 - doc-examples: allowlist sai số mục bị bắt (phải đúng 6 mục)
+ok 9 - doc-examples: fixture lệch byte bị bắt (KHÔNG khớp khối)
+ok 10 - doc-examples: qd-* = 10 bị bắt (phải đúng 12 fixture qd)
+ok 11 - doc-examples: qd-* = 13 bị bắt (phải đúng 12 fixture qd)
+ok 12 - doc-examples: binary cũ bị từ chối bị bắt (cũ hơn mã nguồn)
+# fixtures: PASS (cây sạch phải xanh)
+--- self-test case âm: OK
+--- vis explain: OK
+--- báo cáo R*-viscript (Khối E)
+report-check: PASS (12 báo cáo, 99 hàng QUEUE phủ đủ)
+--- báo cáo: OK
+--- fixture âm của máy kiểm báo cáo
+1..5
+ok 1 - fixture bad-head bị bắt
+ok 2 - fixture bad-commit bị bắt
+ok 3 - fixture bad-status bị bắt
+ok 4 - fixture missing-task bị bắt
+ok 5 - fixture bad-project bị bắt
+# fixtures: PASS
+--- báo cáo fixtures: OK
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+--- build: OK
+--- doc-examples: OK (24 khối tài liệu: 18 xanh + 6 ngoại lệ đỏ đúng; 12 fixture QD §7.1..7.3)
+vis-dev check: PASS
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_bytecode-48882a38d9a8465c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/codegen.rs (viscript/target/debug/deps/codegen-d2e488171bb7a3c1)
+
+running 5 tests
+test bien_di_khong_ho_tro_bao_loi_ro_rang ... ok
+test vong_lap_co_nhay_lui ... ok
+test closure_co_make_closure_va_ham_con ... ok
+test ham_co_arity_va_max_stack_ghi_trong_module ... ok
+test match_ha_thanh_test_va_nhay_khong_co_lenh_match ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/decode_neg.rs (viscript/target/debug/deps/decode_neg-21006dabbdb0feaa)
+
+running 11 tests
+test chi_so_const_ngoai_pham_vi_bi_tu_choi ... ok
+test cat_cut_bi_tu_choi_khong_panic ... ok
+test chi_so_ham_ngoai_pham_vi_bi_tu_choi ... ok
+test dich_nhay_ngoai_code_bi_tu_choi ... ok
+test do_dai_khai_bao_qua_lon_bi_tu_choi ... ok
+test magic_sai_bi_tu_choi ... ok
+test khong_co_entry_hop_le_bi_tu_choi ... ok
+test module_mau_roundtrip_va_hop_le ... ok
+test tag_la_bi_tu_choi ... ok
+test utf8_hong_bi_tu_choi ... ok
+test version_sai_bi_tu_choi ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/hash.rs (viscript/target/debug/deps/hash-ec381fa5d2c80fc4)
+
+running 5 tests
+test khong_con_fnv_va_khop_vector_sha256 ... ok
+test sha256_chuoi_rong ... ok
+test hai_nguon_khac_nhau_hash_khac ... ok
+test hash_nguon_trong_bytecode_khop_sha256 ... ok
+test encode_decode_giu_hash ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/roundtrip.rs (viscript/target/debug/deps/roundtrip-19743d80d8b992af)
+
+running 3 tests
+test roundtrip_30_golden_bieu_thuc ... ok
+test code_len_khong_rong_va_co_span ... ok
+test roundtrip_tren_toan_bo_323_ca ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/tin_tyck.rs (viscript/target/debug/deps/tin_tyck-4000611bd4416a77)
+
+running 12 tests
+test canh_bao_truoc_loi_chon_loi ... ok
+test compile_cu_giu_nguyen_api ... ok
+test chan_rong_chuong_trinh_hop_le_compile_duoc ... ok
+test canh_bao_khong_chan ... ok
+test ma_dong_cot_thong_diep_duoc_giu_nguyen ... ok
+test hexpr_error_bi_tu_choi_khong_panic ... ok
+test nhieu_loi_chon_loi_dau_tien ... ok
+test hop_le_khong_bi_chan_boi_canh_bao ... ok
+test ca_that_truong_khong_co_bi_tu_choi ... ok
+test ca_that_sai_kieu_bi_tu_choi ... ok
+test ca_that_sai_doi_so_bi_tu_choi ... ok
+test moi_ca_loi_bien_dich_khong_panic_va_bi_tu_choi ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/verify.rs (viscript/target/debug/deps/verify-eb61171af367dd2a)
+
+running 26 tests
+test arity_lon_hon_nparams_bi_tu_choi ... ok
+test bang_span_lech_bi_tu_choi ... ok
+test call_method_can_dung_so_doi_so ... ok
+test chi_so_const_ngoai_pham_vi ... ok
+test chi_so_ham_ngoai_pham_vi ... ok
+test closure_thieu_bien_bat_bi_tu_choi ... ok
+test code_rong_bi_tu_choi ... ok
+test dicht_nhay_ngoai_code ... ok
+test entry_khi_khong_co_ham ... ok
+test entry_ngoai_pham_vi ... ok
+test hai_duong_toi_cung_pc_voi_do_sau_khac_nhau ... ok
+test load_verified_nhan_module_hop_le ... ok
+test load_verified_tu_choi_byte_hong ... ok
+test load_verified_tu_choi_module_khong_hop_le ... ok
+test max_stack_du_thi_qua ... ok
+test max_stack_khai_nho_hon_bi_tu_choi ... ok
+test module_hop_le_qua ... ok
+test need_stack_dung_cho_moi_nhanh ... ok
+test ngang_xep_am_bi_tu_choi ... ok
+test nlocals_nho_hon_nparams_bi_tu_choi ... ok
+test o_cuc_bo_ngoai_pham_vi_bi_tu_choi ... ok
+test roi_khoi_cuoi_ham_bi_tu_choi ... ok
+test test_lit_voi_hang_hop_le_qua ... ok
+test un_hop_le_va_khong_hop_le ... ok
+test version_sai ... ok
+test vong_lap_hop_le_qua_kiem ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (viscript/target/debug/deps/vis-cc58dadcdda5f7bd)
+
+running 9 tests
+test lsp::vi_tri::tests::bien_khong_va_cuoi ... ok
+test lsp::vi_tri::tests::khop_cuoi_dong ... ok
+test lsp::vi_tri::tests::nhieu_dong ... ok
+test lsp::vi_tri::tests::vi_tri_tab_mot_cot ... ok
+test lsp::vi_tri::tests::vi_tri_emoji_utf16 ... ok
+test lsp::vi_tri::tests::vi_tri_crlf_da_chuan_hoa ... ok
+test pkg::tests::so_phien_ban_theo_so ... ok
+test pkg::tests::bam_chuan_hoa_crlf_bom ... ok
+test lsp::module::tests::hieu_nang_nap_module_5_tep ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/async_10k.rs (viscript/target/debug/deps/async_10k-c9e258e797580a56)
+
+running 1 test
+test muoi_nghin_task_khong_tran_stack ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+     Running tests/async_vis.rs (viscript/target/debug/deps/async_vis-1712c4f46c6ca067)
+
+running 2 tests
+test async_tren_method_la_vs0201_va_ghi_no ... ok
+test async_tren_cmd_la_vs0201_va_ghi_no ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cache_khong_che.rs (viscript/target/debug/deps/cache_khong_che-100f6867d662b5ba)
+
+running 5 tests
+test hai_lan_vm_cache_byte_y_het ... ok
+test module_doi_cache_khong_dung_lai ... ok
+test strict_caps_khong_bi_cache_che ... ok
+test mode_vis_vish_khong_lan_cache ... ok
+test ba_che_do_520_tep_khong_lech ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.50s
+
+     Running tests/cap.rs (viscript/target/debug/deps/cap-5f589c0eef27c38b)
+
+running 4 tests
+test dry_khong_quyen ... ok
+test dry_in_danh_sach ... ok
+test cap_khong_in_duoc ... ok
+test dry_khong_chay ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/check.rs (viscript/target/debug/deps/check-57da25a2b5d635b0)
+
+running 13 tests
+test thieu_tham_so_la_dung_sai_thoat_2 ... ok
+test co_la_la_dung_sai_thoat_2 ... ok
+test duong_dan_tuong_doi_in_nguyen_van ... ok
+test thu_tu_tep_dung_theo_tham_so_truyen_vao ... ok
+test mixed_lex_va_syntax_phai_bao_vs0101 ... ok
+test khong_doc_duoc_tep_la_not_ok ... ok
+test not_ok_co_dung_mot_dong_chan_doan_moi_tep ... ok
+test tap_sach_cau_truc_va_exit_0 ... ok
+test thu_muc_tep_rong_va_non_utf8 ... ok
+test khoi_loai_tru_tai_lieu_bao_not_ok_dung_mot_chan_doan ... ok
+test hai_khoi_vish_session_qua_cli_deu_ok ... ok
+test vish_duoc_kiem_bang_cmdcst ... ok
+test fixture_tai_lieu_15_khoi_deu_ok ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/closure_cmd.rs (viscript/target/debug/deps/closure_cmd-f690eec38af85d1e)
+
+running 17 tests
+test each_noi_tiep_la_vs0603 ... ok
+test count_dem_phan_tu ... ok
+test each_in_tung_phan_tu ... ok
+test closure_hai_tham_so_la_vs0602 ... ok
+test than_sai_kieu_la_vs0412 ... ok
+test sugar_vi_tu_ngam_it ... ok
+test first_lay_dau ... ok
+test sugar_va_it_viet_tuong_minh_tuong_duong ... ok
+test first_tren_list_rong_la_none ... ok
+test where_hang_so_la_loi_kiem_tinh ... ok
+test where_loc_theo_closure ... ok
+test where_khong_phai_closure_la_loi_kiem_tinh ... ok
+test where_list_rong_van_rong ... ok
+test where_ten_tran_khong_so_sanh_la_loi ... ok
+test where_voi_list_str_va_len ... ok
+test span_than_dung_khi_truoc_do_co_ky_tu_nhieu_byte ... ok
+test sugar_cac_dang_so_co_don_vi ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/cmd_run.rs (viscript/target/debug/deps/cmd_run-3f689ea5926d1e42)
+
+running 9 tests
+test chay_nen_la_vs0604 ... ok
+test check_khong_con_bail_out ... ok
+test pipeline_ba_stage_chay ... ok
+test noi_khong_duoc_la_vs0603 ... ok
+test hai_item_bang_cham_phay ... ok
+test sai_doi_so_la_vs0602 ... ok
+test flag_co_default ... ok
+test lenh_khong_ton_tai_la_vs0501 ... ok
+test check_no_extern_bao_vs0601 ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/diag_cmp.rs (viscript/target/debug/deps/diag_cmp-c3aa6b4bba2d18f2)
+
+running 6 tests
+test chuan_hoa_escape ... ok
+test phan_loai_ba_tang_khoa_cung ... ok
+test ca_bien_dich_di_qua_bytecode_khong_panic ... ok
+test ca_bien_dich_hai_duong_cung_chan_doan ... ok
+test ca_luc_chay_check_rong_hai_duong_giong ... ok
+test ca_xanh_ba_duong_khop_stdout ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.99s
+
+     Running tests/diff_loi.rs (viscript/target/debug/deps/diff_loi-f5af6c5a0c8dc3d8)
+
+running 7 tests
+test thieu_cap_hai_duong ... ok
+test send_sai_kieu_hai_duong ... ok
+test deadlock_hai_duong ... ok
+test assert_sai_hai_duong ... ok
+test thieu_pkg_hai_duong ... ok
+test await_khong_phai_task_hai_duong ... ok
+test send_sau_close_hai_duong ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/explain.rs (viscript/target/debug/deps/explain-46e9539343cda93e)
+
+running 10 tests
+test explain_ma_la_thi_do ... ok
+test explain_mot_ma_co_nghia ... ok
+test list_in_du_10_ma_cua_spec_lex ... ok
+test explain_khong_tham_so_thi_doi_cach_dung ... ok
+test explain_lang_en_va_ja ... ok
+test explain_lang_sai_hoac_thieu_gia_tri_la_loi_dung ... ok
+test explain_so_runtime_05xx ... ok
+test explain_so_ten_03xx ... ok
+test list_lang_in_du_ba_ngon_ngu_tung_ma ... ok
+test explain_so_kieu_04xx ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/explain_moi.rs (viscript/target/debug/deps/explain_moi-af539f201febe08e)
+
+running 6 tests
+test toan_bo_so_du_ba_ngon_ngu ... ok
+test ma_la_ro_rang_exit_2 ... ok
+test tro_giup_neu_du_so_ma ... ok
+test list_du_32_dong_dung_thu_tu ... ok
+test lang_sai_exit_2 ... ok
+test ba_ma_runtime_du_ba_ngon_ngu ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/extern.rs (viscript/target/debug/deps/extern-d7ce6aed33d8bb1d)
+
+running 13 tests
+test duong_dan_hermetic_co_that ... ok
+test echo_trong_vish_van_chay ... ok
+test variadic_gom_da_so_con_lai ... ok
+test no_extern_la_vs0601 ... ok
+test cat_doc_stdin_rong_la_rong ... ok
+test echo_raw_giu_newline ... ok
+test false_thoat_ma_1_la_vs0501 ... ok
+test printf_nhieu_dong_bo_newline_cuoi ... ok
+test stderr_khong_tron_stdout ... ok
+test timeout_la_vs0501 ... ok
+test echo_ra_list_str ... ok
+test true_khong_in_gi ... ok
+test explain_perms_in_nhat_ky ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/fmt.rs (viscript/target/debug/deps/fmt-2ac67c6eb9bbc0e2)
+
+running 9 tests
+test vish_format_duoc_khi_chi_sai_lenh ... ok
+test loi_cu_phap_ra_stderr_exit_2 ... ok
+test check_nhieu_tep_va_tep_loi ... ok
+test mot_tep_in_ra_stdout_giu_nguyen_tep ... ok
+test write_khong_ghi_tep_loi ... ok
+test thieu_tham_so_va_co_la_la_usage ... ok
+test write_sua_roi_giu_nguyen ... ok
+test check_ma_thoat_0_1_2 ... ok
+test khong_panic_khi_pipe_dong ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running tests/fmt_indent.rs (viscript/target/debug/deps/fmt_indent-69be25eb266a18c7)
+
+running 6 tests
+test report_hon_hop ... ok
+test report_bon_dau_cach_sach ... ok
+test report_hai_dau_cach ... ok
+test fmt_mac_dinh_giu_nguyen ... ok
+test check_canh_bao_khong_do ... ok
+test report_thu_muc ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/fmt_moi.rs (viscript/target/debug/deps/fmt_moi-9cc3bc9b053fda72)
+
+running 3 tests
+test fmt_vish_than_cmd_giu_thu_le ... ok
+test fmt_check_thu_muc_co_vish ... ok
+test fmt_check_toan_bo_test ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/gan_hai_duong.rs (viscript/target/debug/deps/gan_hai_duong-21fab793dbaa6a2d)
+
+running 17 tests
+test gan_long_goc_var_bao_long_hai_duong ... ok
+test std_khong_nhan_tham_so_ten ... ok
+test closure_gan_phan_tu_bien_bat_hai_duong ... ok
+test closure_gan_truong_bien_bat_hai_duong ... ok
+test closure_gan_bien_bat_co_tham_so_hai_duong ... ok
+test gan_long_goc_let_bao_bat_bien_hai_duong ... ok
+test closure_long_hai_tang_hai_duong ... ok
+test gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau ... ok
+test dich_gan_khong_ho_tro_la_vs0412 ... ok
+test gan_ghep_tren_truong_bi_chan_truoc_hai_duong ... ok
+test codegen_loi_vm_phai_exit_khac_0 ... ok
+test self_bat_bien_la_vs0412_hai_duong ... ok
+test var_list_chi_so_va_cow_hai_duong ... ok
+test var_map_khoa_hai_duong ... ok
+test var_self_gan_truong_hai_duong ... ok
+test vish_shell_let_khong_thanh_khai_bao ... ok
+test var_truong_gan_hai_duong ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/generic_cli.rs (viscript/target/debug/deps/generic_cli-40af71f64d317868)
+
+running 4 tests
+test check_va_run_cung_ket_luan_mau_thuan ... ok
+test check_va_run_cung_ket_luan_hop_le ... ok
+test vm_chay_ham_main_nhu_interp ... ok
+test generic_hai_kieu_cung_chuong_trinh_hai_duong ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/get_select.rs (viscript/target/debug/deps/get_select-9241eed8c4dc5006)
+
+running 13 tests
+test kieu_khong_phai_ban_ghi_thi_kiem_dong ... ok
+test get_it_tuong_minh_tuong_duong ... ok
+test get_khong_doi_so_la_vs0602 ... ok
+test get_noi_tiep_duoc ... ok
+test get_truong_la_la_vs0605 ... ok
+test get_gia_tri_co_don_vi ... ok
+test get_tren_list_rong_la_rong ... ok
+test get_ten_truong ... ok
+test select_dao_thu_tu_doi_so ... ok
+test select_giu_thu_tu_doi_so ... ok
+test select_ba_truong ... ok
+test select_truong_la_la_vs0605 ... ok
+test get_select_chay_ca_hai_duong ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/host_conformance.rs (viscript/target/debug/deps/host_conformance-5433013d15c8113e)
+
+running 1 test
+test host_conformance_suite ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.55s
+
+     Running tests/http.rs (viscript/target/debug/deps/http-ff8770577d7628ce)
+
+running 9 tests
+test http_200_byte ... ok
+test http_404 ... ok
+test http_body_rong ... ok
+test http_duong_mac_dinh ... ok
+test http_gioi_han ... ok
+test http_het_gio ... ok
+test http_path_query ... ok
+test http_sai_kieu ... ok
+test http_tu_choi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+     Running tests/json_sort.rs (viscript/target/debug/deps/json_sort-59a409179e122c8c)
+
+running 14 tests
+test std_list_sort_by_cu_van_chay ... ok
+test fixture_to_json_pretty ... ok
+test to_json_co_khong_hop_le_bao_vs0602 ... ok
+test literal_ban_ghi_an_danh_ra_object ... ok
+test json_encode_list_ban_ghi_co_ten_va_an_danh ... ok
+test fixture_sort_shell_khoa_str_desc ... ok
+test sort_by_khoa_bool_la_vs0412 ... ok
+test select_ban_ghi_an_danh_ra_json_dung_khoa_thu_tu ... ok
+test to_json_thieu_pipe_bao_vs0602_ro ... ok
+test to_json_khong_can_use_std_json ... ok
+test fixture_pipeline_dai_to_json ... ok
+test sort_by_khoa_size_va_duration_on_dinh ... ok
+test round_trip_encode_decode_map_list_int_str ... ok
+test interp_va_vm_cung_byte_cho_sort_va_json ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/kenh.rs (viscript/target/debug/deps/kenh-0ba3c74385cba6c1)
+
+running 5 tests
+test send_sau_close_la_vs0504 ... ok
+test tao_send_recv_va_fifo_hai_duong ... ok
+test spawn_producer_voi_dem_du_hai_duong ... ok
+test close_idempotent_va_nhan_not_hang ... ok
+test deadlock_khong_treo_va_bao_vs0505 ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/khe_ong.rs (viscript/target/debug/deps/khe_ong-2ef31860739376fe)
+
+running 14 tests
+test str_khong_vao_duoc_take ... ok
+test co_khong_bi_chiem_lam_khe ... ok
+test lines_roi_take_giu_nguyen ... ok
+test nhom_lam_doi_so_chua_ho_tro ... ok
+test khe_giu_cho_truoc_khong_de_bind ... ok
+test bieu_thuc_dau_khong_ngoac_chay ... ok
+test nhom_list_str_vao_take ... ok
+test nhom_khong_nhan_pipe ... ok
+test nhom_khong_phai_list_thi_bao_loi_luc_chay ... ok
+test nhom_ba_phan_tu_take_hai ... ok
+test nhom_list_bool_vao_take ... ok
+test nhom_list_int_vao_take ... ok
+test take_khong_pipe_van_vs0602 ... ok
+test take_khong_lay_gi ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/ls_open.rs (viscript/target/debug/deps/ls_open-4ea5e273d1351eeb)
+
+running 14 tests
+test ls_mock_ra_bang ... ok
+test modified_la_duration ... ok
+test khoi_672_end_to_end ... ok
+test ls_all_gom_ten_cham ... ok
+test open_mock_doc_noi_dung ... ok
+test ls_khong_doi_so_dung_cham ... ok
+test ls_thu_muc_khong_ton_tai_la_vs0501 ... ok
+test ls_sap_theo_ten_byte ... ok
+test khong_mock_thi_dung_fs_that ... ok
+test ls_long_them_cot_mode_va_modified_time ... ok
+test open_thieu_tep_la_vs0501 ... ok
+test khoi_672_interp_va_vm_cung_byte ... ok
+test size_la_byte_theo_bang_lexer ... ok
+test fixture_cmd_fs ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/lsp.rs (viscript/target/debug/deps/lsp-fe524547d531ce9f)
+
+running 34 tests
+test lsp_co_la_2 ... ok
+test lsp_chan_doan_did_change ... ok
+test lsp_chan_doan_sach ... ok
+test lsp_completion_chua_mo ... ok
+test lsp_chan_doan_emoji_utf16 ... ok
+test lsp_completion_tien_to_add ... ok
+test lsp_completion_khu_trung_uu_tien_tep_chinh ... ok
+test lsp_completion_thay_ham_module ... ok
+test lsp_chan_doan_vish ... ok
+test lsp_chan_doan_did_open ... ok
+test lsp_chan_doan_did_close ... ok
+test lsp_completion_khong_co_dia_khong_bia_module ... ok
+test lsp_chan_doan_tab_mot_cot ... ok
+test lsp_body_hong_32700 ... ok
+test lsp_exit_truoc_shutdown_1 ... ok
+test lsp_completion_tien_to_le ... ok
+test lsp_completion_sau_cham ... ok
+test lsp_completion_thay_std_da_use ... ok
+test lsp_hover_add ... ok
+test lsp_method_la_32601 ... ok
+test lsp_hover_khong_ton_tai ... ok
+test lsp_khoi_tao ... ok
+test lsp_hover_bien_kieu ... ok
+test lsp_hover_ham_module ... ok
+test lsp_initialized_khong_frame ... ok
+test lsp_khong_co_tren_dia_khong_bia_loi_module ... ok
+test lsp_module_std_hop_le_khong_bao_gia ... ok
+test lsp_module_thieu_giong_vis_check ... ok
+test lsp_module_std_sai_giong_vis_check ... ok
+test lsp_module_util_hop_le_sach ... ok
+test lsp_nam_tep_module_hoat_dong ... ok
+test lsp_shutdown_exit_0 ... ok
+test lsp_truoc_initialize_32002 ... ok
+test lsp_ba_tep_bang_vis_check ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/ma_truong.rs (viscript/target/debug/deps/ma_truong-5b818888ec1ef4dc)
+
+running 12 tests
+test explain_vs0405_thuoc_so_kieu ... ok
+test truong_co_thi_chay_binh_thuong ... ok
+test truong_khong_co_tren_ban_ghi_la_vs0405 ... ok
+test each_truong_khong_co_la_vs0405 ... ok
+test select_truong_khong_co_la_vs0405 ... ok
+test phuong_thuc_tren_kieu_khong_phai_ban_ghi_giu_vs0403 ... ok
+test where_sugar_dung_thi_chay ... ok
+test where_lambda_trong_ngoac_dung_thi_chay ... ok
+test where_lambda_tra_int_la_vs0412 ... ok
+test where_lambda_trong_ngoac_truong_khong_co_la_vs0405 ... ok
+test where_sugar_truong_khong_co_la_vs0405 ... ok
+test ma_cu_vs0605_khong_con ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/modules.rs (viscript/target/debug/deps/modules-68a6b789ec8cb522)
+
+running 18 tests
+test pkg_chua_cai_bao_vs0701 ... ok
+test khong_pub_thi_khong_thay ... ok
+test loi_trong_tep_phu_bao_dung_ten_tep ... ok
+test check_bao_dung_tep_va_dong_cot ... ok
+test mo_coi_trait_module_va_kieu_noi_tep ... ok
+test co_ban_pub_fn_va_pub_type ... ok
+test hai_tang_noi_dung_dung ... ok
+test mo_coi_that_bao_vs0403 ... ok
+test dump_deps_in_cay ... ok
+test tep_chinh_khong_ton_tai ... ok
+test std_fs_bao_st27 ... ok
+test thieu_tep_la_vs0701 ... ok
+test use_trung_hai_duong_dan_la_vs0703 ... ok
+test cache_hong_thi_bien_dich_lai ... ok
+test vong_ba_tep_la_vs0702 ... ok
+test vong_hai_tep_la_vs0702 ... ok
+test vm_va_interp_cung_ket_qua ... ok
+test cache_doi_khi_sua_phu_thuoc ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/net.rs (viscript/target/debug/deps/net-09ba3da5155a130b)
+
+running 9 tests
+test tcp_doc_ghi_sau_close ... ok
+test tcp_explain_perms ... ok
+test tcp_explain_tong ... ok
+test tcp_het_gio_doc ... ok
+test tcp_khong_host ... ok
+test tcp_noi_va_doc ... ok
+test tcp_read_cap_64 ... ok
+test tcp_tay_la ... ok
+test tcp_tu_choi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+
+     Running tests/net_server.rs (viscript/target/debug/deps/net_server-35f35308287c62f9)
+
+running 6 tests
+test accept_het_gio ... ok
+test cong_ban ... ok
+xong
+xong
+test server_hai_ket_noi_lien_tiep ... ok
+xong
+xong
+xong
+test server_hai_tien_trinh ... ok
+test server_khong_host ... ok
+xong
+xong
+xong
+xong
+test server_mot_lan ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.49s
+
+     Running tests/nhom.rs (viscript/target/debug/deps/nhom-834c2582f00dd7fa)
+
+running 14 tests
+test nhom_bieu_thuc_nhieu_dong ... ok
+test chan_doan_tuyet_doi_trong_nhom_nhieu_dong ... ok
+test nhom_long_nhau_lenh ... ok
+test kieu_nhom_kiem_tinh_where ... ok
+test nhom_lam_doi_so_st46_khong_doi ... ok
+test nhom_long_nhau_bieu_thuc ... ok
+test nhom_co_pipeline_hai_stage ... ok
+test kieu_nhom_long_kiem_tinh_select ... ok
+test nhom_pipeline_nhieu_dong ... ok
+test nhom_lenh_co_co_long ... ok
+test shell_let_st44_khong_doi ... ok
+test nhom_rong_la_vs0201 ... ok
+test interp_va_vm_cung_byte ... ok
+test fixture_cmd_nhom ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/pipeline.rs (viscript/target/debug/deps/pipeline-a28fed990368f8c9)
+
+running 16 tests
+test chuong_trinh_ngoai_co_that ... ok
+test complete_tren_stage_vis_la_vs0602 ... ok
+test complete_co_doi_so_la_vs0602 ... ok
+test list_nhieu_dong_qua_grep_loc_dung_dong ... ok
+test complete_giu_stderr_va_code_khac_0 ... ok
+test vm_khong_host_bao_vs0604 ... ok
+test printf_khong_newline_qua_cat_khong_them_dong_rong ... ok
+test timeout_neu_ro_stage ... ok
+test raw_str_di_nguyen_van_khong_them_newline ... ok
+test echo_qua_grep_tim_thay ... ok
+test complete_grep_khong_khop_het_la_loi ... ok
+test echo_qua_cat_nhan_stdin ... ok
+test complete_grep_khop_code_0 ... ok
+test grep_khong_khop_van_la_loi_khi_khong_complete ... ok
+test printf_hai_dong_qua_cat_ra_hai_dong ... ok
+test fixture_vish_trong_test_cmd_pipe ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.10s
+
+     Running tests/pkg.rs (viscript/target/debug/deps/pkg-3ee16521c0d7fc20)
+
+running 11 tests
+test manifest_thieu_truong ... ok
+test pkg_bi_sua_bao_vs0701 ... ok
+test pkg_chua_cai ... ok
+test pkg_vong_lap ... ok
+test use_pkg_chay_that ... ok
+test add_keo_phu_thuoc ... ok
+test hai_goi_cung_ten_tep ... ok
+test lock_hong ... ok
+test install_khong_can_registry ... ok
+test add_roi_list ... ok
+test cai_hai_lan_cung_byte ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/prelude.rs (viscript/target/debug/deps/prelude-272d8eda2a49fe08)
+
+running 13 tests
+test khong_suy_duoc_kieu_thi_khong_bao_oan ... ok
+test truong_la_la_vs0605 ... ok
+test so_sanh_sai_kieu_la_vs0412 ... ok
+test proc_cpu_sai_don_vi_la_vs0412 ... ok
+test so_sanh_cung_don_vi_size_thi_ok ... ok
+test it_viet_tuong_minh_tuong_duong ... ok
+test duration_so_sanh_duoc ... ok
+test vis_khong_thay_prelude ... ok
+test sort_by_khoa_co_kieu_that ... ok
+test proc_cpu_la_percent ... ok
+test sort_by_khoa_la_la_vs0605 ... ok
+test where_size_tren_file_entry_chay_that ... ok
+test where_size_chay_that_ca_hai_duong ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/quyen.rs (viscript/target/debug/deps/quyen-f2383eef48c5868a)
+
+running 8 tests
+test khong_khai_cap_thi_khong_han_che ... ok
+test net_thieu_cap ... ok
+test ghi_thieu_co ... ok
+test doc_trong_quyen ... ok
+test doc_ngoai_quyen ... ok
+test grant_doi_duong_dan ... ok
+test ghi_co_co ... ok
+test hai_cap_dir ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/ref_identity.rs (viscript/target/debug/deps/ref_identity-c26d66ded9c32ac0)
+
+running 4 tests
+test ref_hai_doi_so_van_la_vs0201 ... ok
+test ref_khong_muon_that_chi_la_identity ... ok
+test ref_giu_kieu_va_identity_hai_duong ... ok
+test ref_khong_con_chan_doan_khi_chay ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/render.rs (viscript/target/debug/deps/render-a65d7cc0daddbced)
+
+running 16 tests
+test cot_str_can_trai ... ok
+test ban_ghi_don_la_khoi_khoa_gia_tri ... ok
+test list_str_cuoi_pipeline_khong_thanh_bang ... ok
+test list_int_cuoi_pipeline_khong_thanh_bang ... ok
+test cjk_mot_char ... ok
+test khoi_can_khoa_theo_ten_dai_nhat ... ok
+test emoji_mot_char ... ok
+test bang_co_tieu_de_va_can_phai_so ... ok
+test bang_mot_phan_tu_van_la_bang ... ok
+test bang_giu_thu_tu_cot_cua_ban_ghi_dau ... ok
+test list_rong_la_rong ... ok
+test bang_ca_hai_duong_giong_nhau_tung_byte ... ok
+test tien_viet_nfc_dung_do_rong ... ok
+test size_duration_percent_can_phai ... ok
+test print_khong_doi ... ok
+test nfd_va_nfc_cung_do_rong ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/sandbox.rs (viscript/target/debug/deps/sandbox-2097167384417d3e)
+
+running 6 tests
+test sandbox_check_khong_chay ... ok
+test sandbox_check_voi_cap ... ok
+test sandbox_check_co_la ... ok
+test sandbox_check_luon_in_cuong_che ... ok
+test sandbox_check_khong_cap ... ok
+test sandbox_check_macos ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/sap_xep.rs (viscript/target/debug/deps/sap_xep-b8e6f213b535cf75)
+
+running 12 tests
+test co_la_la_vs0602 ... ok
+test on_dinh_khi_khoa_bang_nhau_desc_tren_size ... ok
+test int_giam_dan_bang_co_desc ... ok
+test desc_khong_bi_nuot_vao_khoa ... ok
+test khoa_bool_la_vs0412 ... ok
+test desc_bang_false_la_tang_dan ... ok
+test duration_la_khoa_ns ... ok
+test on_dinh_khi_khoa_bang_nhau_tang ... ok
+test str_la_khoa_byte_utf8 ... ok
+test int_tang_dan ... ok
+test thieu_doi_so_la_vs0602 ... ok
+test size_la_khoa_byte ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/self_amp_hop_long.rs (viscript/target/debug/deps/self_amp_hop_long-c1a24367acc6afa9)
+
+running 7 tests
+test self_amp_khong_nhan_chu_thich_kieu ... ok
+test hop_long_sai_kieu_la_vs0412 ... ok
+test self_amp_gan_ket_thuc_vao_receiver_that ... ok
+test self_thuong_van_nhu_cu ... ok
+test self_amp_trong_trait_va_impl ... ok
+test self_amp_va_self_khoang_trang_chay_hai_duong ... ok
+test hop_long_bon_bien_the_chay_hai_duong ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/sem.rs (viscript/target/debug/deps/sem-d400f22881433996)
+
+running 1 test
+test sem_323_ca_qua_binary ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.23s
+
+     Running tests/sort_by_str.rs (viscript/target/debug/deps/sort_by_str-85478a971007cd43)
+
+running 6 tests
+test khoa_khong_goi_duoc_neu_ten_hien_thi_moi ... ok
+test khoa_bool_bao_vs0501_va_neu_kieu_that ... ok
+test khoa_int_cu_khong_doi ... ok
+test khoa_str_chay_hai_duong_cung_byte ... ok
+test tron_int_va_str_la_vs0501_neu_kieu_that ... ok
+test khoa_str_nhat_quan_voi_shell_sort_by ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/st83_no_nho.rs (viscript/target/debug/deps/st83_no_nho-ada74b23bdb66dc2)
+
+running 6 tests
+test exists_strict_khong_cap_trap ... ok
+test explain_help_theo_lang ... ok
+test exists_ngoai_quyen_trap ... ok
+test exists_trong_quyen_tra_bool ... ok
+test assert_trong_test_fn_not_ok ... ok
+test assert_cau_lenh_va_sai ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/stage_dau.rs (viscript/target/debug/deps/stage_dau-50967f8f600228f4)
+
+running 12 tests
+test list_literal_dau_pipeline ... ok
+test list_literal_khong_co_pipe_van_vs0201 ... ok
+test record_literal_dau_where_chay_that ... ok
+test string_literal_dau_lines ... ok
+test list_literal_nhieu_stage ... ok
+test lenh_thuong_khong_doi ... ok
+test nhom_ngoac_cu_khong_doi ... ok
+test record_literal_where_loc_sach ... ok
+test golden_ca24_va_ca_a_or_b_khong_doi ... ok
+test bien_va_so_khong_duoc_nhan ... ok
+test record_literal_select_va_take ... ok
+test interp_va_vm_cung_byte ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/std_fs_json.rs (viscript/target/debug/deps/std_fs_json-c7b28908249fe955)
+
+running 23 tests
+test explain_perms_in_fs_nhat_ky ... ok
+test decode_van_la_result_that ... ok
+test float_tran_la_loi ... ok
+test escape_co_ban ... ok
+test fs_write_read_round_trip ... ok
+test json_hong_co_byte_offset ... ok
+test fs_duong_dan_tuyet_doi_duoc_phep ... ok
+test fs_ghi_vao_duong_dan_sai_la_err ... ok
+test khong_host_bao_vs0604_ca_interp_va_vm ... ok
+test fs_exists_va_read_thieu_la_err ... ok
+test fs_list_sap_xep_khong_de_quy ... ok
+test json_hong_utf8_nhieu_byte_offset_van_dung ... ok
+test khong_host_json_van_chay_vi_thuan ... ok
+test escape_surrogate_pair ... ok
+test differential_fs_va_json_khop_hai_duong ... ok
+test round_trip_ban_ghi_thanh_map ... ok
+test round_trip_chuoi_va_unicode ... ok
+test so_tran_i64_la_loi ... ok
+test round_trip_long_nhau_va_trung_khoa ... ok
+test surrogate_don_la_loi ... ok
+test json_hong_thieu_ngoac_va_literal_sai ... ok
+test round_trip_list_va_map_giu_thu_tu ... ok
+test round_trip_so_va_bool_va_none ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/stdlib.rs (viscript/target/debug/deps/stdlib-820a6577dae7d2a3)
+
+running 10 tests
+test std_la_bao_vs0701 ... ok
+test sai_so_doi_so_bi_tyck_bat ... ok
+test khong_use_thi_khong_goi_duoc_std ... ok
+test str_repeat_am_la_vs0501 ... ok
+test json_decode_da_co ... ok
+test std_fs_bao_st27 ... ok
+test sai_kieu_bi_tyck_bat_tinh ... ok
+test ba_ca_am_tinh_cua_chu_ky_generic ... ok
+test std_70_ca_qua_binary ... ok
+test std_differential_interp_va_vm ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+     Running tests/strict_caps.rs (viscript/target/debug/deps/strict_caps-2843abcf91a19034)
+
+running 7 tests
+test strict_khong_cap_net_thi_vs0604 ... ok
+test strict_van_kiem_tren_fs_mock ... ok
+test strict_khong_cap_doc_thi_vs0604 ... ok
+test strict_cap_dir_trong_root ... ok
+test mac_dinh_khong_siet ... ok
+test strict_cap_dir_ngoai_root ... ok
+test vis_test_strict_caps_truyen_co ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/targets.rs (viscript/target/debug/deps/targets-4d9b16b58e097bef)
+
+running 1 test
+test targets_wasm_vis_types ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+     Running tests/trait_cli.rs (viscript/target/debug/deps/trait_cli-b617b67b2cc36a64)
+
+running 7 tests
+test derives_la_bao_vs0403 ... ok
+test thieu_phuong_thuc_la_vs0403_va_noi_phuong_thuc ... ok
+test impl_thieu_phuong_thuc_trait_la_vs0403 ... ok
+test check_va_run_cung_ket_luan_phuong_thuc ... ok
+test dispatch_inherent_hai_duong ... ok
+test derives_eq_show_json_chay_that ... ok
+test dispatch_impl_show_chay_ca_hai_duong ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/vis_test.rs (viscript/target/debug/deps/vis_test-eb5672fa0deb0090)
+
+running 10 tests
+test duong_dan_khong_ton_tai_thoat_2 ... ok
+test co_la_la_dung_sai_thoat_2 ... ok
+test ca_loi_dung_ma_thi_ok ... ok
+test ca_do_thoat_1_va_co_dong_chi_vi_tri ... ok
+test mot_tep_chay_duoc ... ok
+test tap_moi_not_ok_deu_co_dong_chan_doan ... ok
+test err_bien_dich_ra_cung_ma_o_vm ... ok
+test vm_khop_interp_va_co_skip_hop_le ... ok
+test cac_dong_ok_dung_thu_tu_khong_lap ... ok
+test tap_hop_le_va_du_so_ca ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.46s
+
+     Running tests/vish_cmd_body.rs (viscript/target/debug/deps/vish_cmd_body-d8ba3d7f9628fbdf)
+
+running 16 tests
+test than_hai_pipeline_la_vs0201 ... ok
+test than_lan_lenh_va_bieu_thuc_la_vs0201 ... ok
+test item_sau_than_lenh_van_dung_dong_cot ... ok
+test than_khai_bao_sau_lenh_van_la_vs0201 ... ok
+test than_dung_nhu_stage_khac ... ok
+test than_long_tra_file_entry_long ... ok
+test than_goi_cmd_khac_trong_pipeline ... ok
+test than_lenh_tren_thu_muc_that ... ok
+test than_rong_la_vs0201 ... ok
+test than_mot_stage_tra_bang ... ok
+test chou_ky_cmd_kiem_tinh_where ... ok
+test than_khai_bao_roi_lenh_chay_duoc ... ok
+test than_nhieu_stage_where_va_sort_by ... ok
+test interp_va_vm_cung_byte ... ok
+test fixture_cmd_body ... ok
+test than_script_st44_khong_doi ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/vish_decl.rs (viscript/target/debug/deps/vish_decl-c00b48128b4a89ff)
+
+running 16 tests
+test khai_bao_sau_stage_la_vs0201 ... ok
+test let_shell_van_la_stage ... ok
+test nhom_rong_dung_mot_minh_la_vs0201 ... ok
+test cmd_rong_ra_rong_dung_render ... ok
+test let_co_kieu_dung_script ... ok
+test enum_trong_vish ... ok
+test cmd_co_tham_so_va_let_trong_than ... ok
+test cmd_tra_record_list_kiem_tinh_qua_khe_ong ... ok
+test type_trung_ten_trong_tep_la_vs0302 ... ok
+test type_trung_prelude_la_vs0302 ... ok
+test vis_khong_bi_anh_huong ... ok
+test type_va_let_dung_duoc_truong ... ok
+test vish_khong_khai_bao_giu_nguyen_vung_6 ... ok
+test in_va_vm_cung_byte ... ok
+test fixture_st42_van_xanh ... ok
+test fixture_cmd_decl ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/vish_indent.rs (viscript/target/debug/deps/vish_indent-7f47c4807dfdcf4e)
+
+running 7 tests
+test ca_tep_thut_bao_loi ... ok
+test dong_thut_sau_bao_loi ... ok
+test dong_thut_dau_bao_loi ... ok
+test nhom_nhieu_dong_van_hop_le ... ok
+test vis_script_van_hop_le ... ok
+test khai_bao_fn_trong_vish_van_hop_le ... ok
+test than_cmd_thut_van_chay ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/vistest_async.rs (viscript/target/debug/deps/vistest_async-619943b90cd467d6)
+
+running 8 tests
+test kenh_deadlock_not_ok_khong_treo ... ok
+test await_fn_cap_tep ... ok
+test khong_await_van_join_va_loi ... ok
+test task_roi_await ... ok
+test kenh_send_recv ... ok
+test spawn_ba_task_dung_thu_tu ... ok
+test task_loi_not_ok_vs0506 ... ok
+test hon_test_thuong_va_async ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/vsh1b.rs (viscript/target/debug/deps/vsh1b-2a3728dddd87f1f9)
+
+running 15 tests
+test long_modified_time_utc ... ok
+test long_co_du_sau_cot ... ok
+test chan_doan_tuyet_doi_trong_nhom ... ok
+test long_mode_dung_quyen ... ok
+test khong_long_giu_bang_4_cot ... ok
+test nhom_lam_doi_so_take ... ok
+test nhom_lam_doi_so_echo ... ok
+test nhom_lam_doi_so_sai_kieu_la_vs0412 ... ok
+test long_tren_thu_muc_that ... ok
+test long_where_va_sort_by_van_chay ... ok
+test shell_let_st44_khong_doi ... ok
+test nhom_lam_stage_van_chay ... ok
+test long_va_khong_long_cung_byte_interp_vm ... ok
+test nhom_long_nhau ... ok
+test fixture_cmd_long ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/where_tinh.rs (viscript/target/debug/deps/where_tinh-27257b266e74350c)
+
+running 14 tests
+test where_it_size_la_vs0412 ... ok
+test khai_bao_cmd_where_size_la_vs0412 ... ok
+test where_size_la_vs0412 ... ok
+test where_1_la_vs0412 ... ok
+test where_closure_khong_it_la_vs0412 ... ok
+test where_so_sanh_bool_thi_sach ... ok
+test each_van_bao_truong_khong_co ... ok
+test each_tra_int_sach ... ok
+test each_tra_ban_ghi_sach ... ok
+test khai_bao_cmd_where_bool_thi_chay_duoc ... ok
+test where_tren_kieu_khong_biet_khong_loi_tinh ... ok
+test where_viet_tat_truong_khong_co_la_vs0405 ... ok
+test where_interp_va_vm_cung_byte ... ok
+test fixture_cmd_where ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_diag-852c604ef7599049)
+
+running 10 tests
+test tests::chan_doan_giu_vi_tri ... ok
+test tests::ma_co_bon_chu_so ... ok
+test tests::khoi_ke_tiep_khong_tai_dung ... ok
+test tests::so_cu_phap_02xx_khoa_theo_vd35 ... ok
+test tests::so_kieu_04xx_khoa_theo_vd42 ... ok
+test tests::so_ma_lien_mach_va_dung_spec_lex ... ok
+test tests::so_runtime_05xx_khoa_theo_vd42 ... ok
+test tests::so_ten_03xx_khoa_theo_vd42 ... ok
+test tests::tra_ma_va_ma_la ... ok
+test tests::so_khop_spec_lex_that ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/messages.rs (viscript/target/debug/deps/messages-86405df88b19dbb9)
+
+running 11 tests
+test lang_parse_va_nhan_muc ... ok
+test moi_ma_du_ba_ngon_ngu ... ok
+test render_canh_theo_emoji_va_tab ... ok
+test render_dong_tieu_de_va_nguon ... ok
+test render_khong_nguon_chi_mot_dong ... ok
+test snapshot_12_ca_so_kieu_04xx ... ok
+test snapshot_20_ca_vi_en_ja ... ok
+test snapshot_6_ca_so_ten_03xx ... ok
+test snapshot_9_ca_so_runtime_05xx ... ok
+test snapshot_9_ca_so_module_07xx ... ok
+test snapshot_20_render ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_fmt-af1b1ba92dc8e7e8)
+
+running 5 tests
+test tests::tep_rong_ra_mot_newline ... ok
+test tests::loi_tra_ve_ma ... ok
+test tests::trong_dong_giu_nguyen ... ok
+test tests::tab_mot_cap_thanh_bon ... ok
+test tests::idempotent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fmt.rs (viscript/target/debug/deps/fmt-77035e4848c0bb53)
+
+running 13 tests
+test diem_bat_dong_mau_chuan ... ok
+test dau_ra_nfc ... ok
+test crlf_chuan_hoa_va_giu_nguyen_trong_dong ... ok
+test dong_noi_giu_thut_le_goc_sau_chu_thich ... ok
+test dong_chi_chu_thich_va_dong_noi_giu_nguyen ... ok
+test loi_cu_phap_khong_duoc_sua ... ok
+test khoang_trang_cuoi_dong_va_mot_newline_cuoi ... ok
+test sai_thut_le_duoc_sua_ve_bon ... ok
+test tab_trong_dong_va_trong_chu_thich_duoc_giu ... ok
+test tab_duoc_sua_thanh_bon_dau_cach ... ok
+test diem_bat_dong_tai_lieu_15_khoi ... ok
+test idempotent_tren_moi_nguon ... ok
+test token_khong_doi ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/moi.rs (viscript/target/debug/deps/moi-b559d70f50720dfa)
+
+running 9 tests
+test cap_net_host ... ok
+test cap_co_write_va_comment ... ok
+test async_va_impl_cung_tep ... ok
+test async_spawn_await ... ok
+test chan_co_comment ... ok
+test cap_nhieu_tham_so ... ok
+test use_pkg_canh_std ... ok
+test derives_trait_impl ... ok
+test lossless_token_fixture_moi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_interp-cd88887c36426468)
+
+running 3 tests
+test value::tests_show_char::show_char_escape_ky_tu_dieu_khien ... ok
+test net::tests::doc_header_doc_status_va_content_length ... ok
+test net::tests::tach_url_dung_va_chan_ngoai_loopback ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/interp_v2.rs (viscript/target/debug/deps/interp_v2-7a303df9b2020dc2)
+
+running 7 tests
+test than_vong_lap_bo_gia_tri ... ok
+test break_continue_va_try_ngoai_ngu_canh ... ok
+test show_don_vi_va_char ... ok
+test range_khong_tran_so ... ok
+test phuong_thuc_kiem_kieu_va_has ... ok
+test vi_tri_tab_va_utf8 ... ok
+test so_hoc_doi_xung_voi_don_vi ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/run.rs (viscript/target/debug/deps/run-132916825d0ba5d2)
+
+running 9 tests
+test du_60_ca ... ok
+test phuong_thuc_ngoai_tap_bao_vs0501 ... ok
+test chan_doan_runtime_co_dong_cot_that ... ok
+test gia_tri_cua_khoi_theo_vd47 ... ok
+test dieu_khien_va_khai_bao ... ok
+test so_hoc_va_don_vi ... ok
+test ham_closure_va_tham_so ... ok
+test tap_hop_va_phuong_thuc ... ok
+test kieu_du_lieu_va_match ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/show.rs (viscript/target/debug/deps/show-5ad4f11416566d73)
+
+running 5 tests
+test snapshot_show_duration ... ok
+test snapshot_show_percent ... ok
+test snapshot_show_scalar ... ok
+test snapshot_show_hop_va_kieu_nguoi_dung ... ok
+test snapshot_show_size ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_syntax-0e23ef2a57704421)
+
+running 27 tests
+test lex::lit::tests::bytes_chi_ascii_va_chi_escape_xnn ... ok
+test cst::tests::sexp_literal_va_nhi_phan ... ok
+test lex::lit::tests::char_dung_mot_scalar ... ok
+test cst::tests::comment_duoc_gan_vao_cay ... ok
+test lex::lit::tests::chuoi_escape_va_noi_suy ... ok
+test lex::lit::tests::chuoi_tho_giu_nguyen ... ok
+test lex::lit::tests::size_parts_tach_dung ... ok
+test lex::lit::tests::so_nguyen_moi_co_so ... ok
+test cst::tests::render_tra_nguyen_van ... ok
+test lex::lit::tests::so_nguyen_sai_va_tran ... ok
+test lex::tests::bytes_chi_nhan_escape_xnn ... ok
+test lex::tests::che_do_lenh_tach_tu_tran ... ok
+test lex::tests::cr_don_doc_la_ky_tu_la ... ok
+test lex::tests::cr_dung_truoc_crlf_van_la_ky_tu_la ... ok
+test lex::tests::crlf_duoc_chuan_hoa_thanh_lf_truoc_khi_lex ... ok
+test lex::tests::dedent_sinh_o_eof ... ok
+test lex::tests::dong_trong_va_chu_thich_khong_sinh_token_ket_thuc_dong ... ok
+test lex::tests::duration_va_size_khong_nham_nhau ... ok
+test lex::tests::gach_duoi_trong_phan_le_cua_float_phai_giua_hai_chu_so ... ok
+test lex::tests::nfc_duoc_ap_truoc_khi_lex ... ok
+test lex::tests::ngoac_nuot_newline_va_indent ... ok
+test lex::tests::noi_dong_bang_pipe_arrow ... ok
+test lex::tests::span_tro_dung_van_ban_da_nfc ... ok
+test lex::tests::tab_sinh_vs0107_va_van_lex_tiep ... ok
+test lex::tests::the_khong_dau_stage_la_vs0110 ... ok
+test lex::tests::thut_le_sai_don_vi_la_vs0109 ... ok
+test lex::token::tests::ten_kind_khong_trung_va_du_bang_spec ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/vis_lex_fuzz.rs (viscript/target/debug/deps/vis_lex_fuzz-2df53abf8a669199)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/vis_parse_fuzz.rs (viscript/target/debug/deps/vis_parse_fuzz-147809e0482d436c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cmd.rs (viscript/target/debug/deps/cmd-2dccaf30cf64a2d8)
+
+running 35 tests
+test ca04 ... ok
+test ca01 ... ok
+test ca05 ... ok
+test ca03 ... ok
+test ca02 ... ok
+test ca06 ... ok
+test ca07 ... ok
+test ca08 ... ok
+test ca10 ... ok
+test ca09 ... ok
+test ca11 ... ok
+test ca12 ... ok
+test ca13 ... ok
+test ca14 ... ok
+test ca15 ... ok
+test ca16 ... ok
+test ca17 ... ok
+test ca18 ... ok
+test ca21 ... ok
+test ca20 ... ok
+test ca19 ... ok
+test ca22 ... ok
+test ca25 ... ok
+test ca23 ... ok
+test ca24 ... ok
+test ca26 ... ok
+test ca27 ... ok
+test ca28 ... ok
+test ca29 ... ok
+test ca30 ... ok
+test ca31 ... ok
+test ca32 ... ok
+test ca33 ... ok
+test dung_22_ca_va_12_hang_bang_9_4 ... ok
+test lossless_moi_ca ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/col_scalar.rs (viscript/target/debug/deps/col_scalar-de40d3ad91b0fec3)
+
+running 5 tests
+test tab_bon_cot_va_vi_tri_sau_tab ... ok
+test dong_theo_scalar_khong_phai_byte ... ok
+test emoji_astral_la_mot_scalar ... ok
+test emoji_gia_dinh_nhieu_scalar_va_zwj ... ok
+test tieng_viet_dung_san_va_to_hop ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/doc_cmd.rs (viscript/target/debug/deps/doc_cmd-dabe1846314db216)
+
+running 1 test
+test hai_khoi_vish_session_parse_sach_va_lossless ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/doc_fixtures.rs (viscript/target/debug/deps/doc_fixtures-43d57dad00f8ecc3)
+
+running 3 tests
+test fixture_tai_lieu_dung_22_khoi_vis ... ok
+test khoi_loai_tru_dung_mot_loi_dau ... ok
+test fixture_tai_lieu_15_khoi_du_than_parse_sach ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/errors.rs (viscript/target/debug/deps/errors-8c62a925d4c20f28)
+
+running 3 tests
+test ba_ca_err_cua_golden_dung_ma_va_vi_tri ... ok
+test moi_tep_loi_dung_mot_loi_dau ... ok
+test tep_sach_khong_co_chan_doan ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/expr.rs (viscript/target/debug/deps/expr-8e3afc3e00e445bd)
+
+running 1 test
+test golden_30_bieu_thuc_theo_vd34 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (viscript/target/debug/deps/golden-cc5a10518d56dfb8)
+
+running 1 test
+test golden_token_theo_spec_lex_8 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/invariants.rs (viscript/target/debug/deps/invariants-b913f06ca845cee6)
+
+running 4 tests
+test span_phu_kin_vung_khong_trong ... ok
+test moi_ma_loi_tu_vung_deu_phat_duoc ... ok
+test nfc_va_nfd_cho_cung_ket_qua_tren_corpus ... ok
+test corpus_giu_bat_bien_o_ca_hai_che_do ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/nfc.rs (viscript/target/debug/deps/nfc-e32662a98ec8dc7e)
+
+running 8 tests
+test char_literal_nfd_la_mot_scalar ... ok
+test bang_chu_viet_sinh_nfc_khi_in ... ok
+test chuoi_va_noi_suy_dong_nhat_nfc_nfd ... ok
+test dinh_danh_viet_nfc_va_nfd_la_mot_ten ... ok
+test ky_tu_to_hop_ngoai_chuoi_la_ky_tu_la ... ok
+test hieu_ung_phu_tro_cua_nfd_len_vuot_dong_hoan_toan ... ok
+test hai_che_do_cung_nhan_nfc ... ok
+test moi_chu_viet_deu_dong_nhat_nfc_nfd ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/regress.rs (viscript/target/debug/deps/regress-eaf367f8b6292cff)
+
+running 2 tests
+test r01b_chuoi_tho_nhieu_dong ... ok
+test r01_dong_dem_sau_newline_trong_chuoi_va_noi_suy ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vd37.rs (viscript/target/debug/deps/vd37-d921737b244c44e5)
+
+running 5 tests
+test vd37_5_khong_them_cu_phap_ba_cham ... ok
+test vd37_1_cau_lenh_o_cap_te ... ok
+test vd37_3_with_khong_nuot_pipe ... ok
+test vd37_4_ghep_toan_tu_gan_hai_chieu ... ok
+test vd37_2_khoi_mot_dong_dung_o_else ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_types-fd79cd4b88ba84f7)
+
+running 5 tests
+test hir::tests::literal_dien_kieu ... ok
+test hir::tests::toan_tu_va_pattern_co_chu_viet ... ok
+test ty::tests::kieu_dung_san_va_bang_kieu ... ok
+test hir::tests::sexp_theo_quy_uoc_vd34_khong_paren ... ok
+test ty::tests::ten_hien_thi_on_dinh ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cmd_lower.rs (viscript/target/debug/deps/cmd_lower-d6a445b0cec48650)
+
+running 9 tests
+test chay_nen_la_vs0604 ... ok
+test chuong_trinh_ngoai_la_vs0604 ... ok
+test chan_doan_co_dong_cot_that ... ok
+test flag_bool_dung_default ... ok
+test cham_phay_thanh_hai_cau_lenh_tuan_tu ... ok
+test lenh_la_thanh_chuong_trinh_ngoai ... ok
+test noi_khong_duoc_la_vs0603 ... ok
+test pipeline_ba_stage_ha_thanh_ba_call_long_nhau ... ok
+test sai_doi_so_la_vs0602 ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/exhaustive.rs (viscript/target/debug/deps/exhaustive-7875ee5df0eaaf29)
+
+running 2 tests
+test du_20_ca_match ... ok
+test match_phai_xet_het ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/generic.rs (viscript/target/debug/deps/generic-c7eaba6f0f5c1f0c)
+
+running 31 tests
+test enum_generic_hai_bien_the ... ok
+test ba_generic_cung_luc ... ok
+test cong_int_va_str_cung_chuong_trinh ... ok
+test cong_mau_thuan_int_str_la_vs0412 ... ok
+test cong_mau_thuan_str_int_la_vs0412 ... ok
+test fn_generic_khai_bao_sach ... ok
+test fn_hai_tham_so_kieu_sach ... ok
+test enum_generic_payload_khong_bi_khoa_kieu ... ok
+test enum_generic_match_hai_nhanh ... ok
+test generic_khong_dung_trong_than_van_sach ... ok
+test generic_voi_mac_dinh_khong_dung ... ok
+test goi_long_generic ... ok
+test hai_generic_kieu_tra_rieng ... ok
+test kieu_generic_record_sach ... ok
+test kieu_generic_enum_sach ... ok
+test kieu_tham_so_la_van_la_vs0301 ... ok
+test kiem_va_chay_cung_ket_luan_tren_cung_tep ... ok
+test list_t_voi_int_la_vs0412 ... ok
+test list_t_long_nhau_hop_nhat_duoc ... ok
+test optional_t_voi_int_optional_sach ... ok
+test optional_t_voi_int_thuong_duoc_nang ... ok
+test record_generic_hai_kieu_cung_luc ... ok
+test record_generic_truong_doc_ra_dung_kieu_dong ... ok
+test sai_so_doi_so_generic_la_vs0401 ... ok
+test tham_so_long_list_t_sach ... ok
+test thong_diep_mau_thuan_neu_ten_t_va_hai_kieu ... ok
+test tham_so_map_str_t_sach ... ok
+test thua_doi_so_generic_la_vs0401 ... ok
+test tra_t_dung_duoc_o_ngu_canh ... ok
+test tra_t_sai_ngu_canh_la_vs0412 ... ok
+test tra_t_optional_voi_match ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/generic_that.rs (viscript/target/debug/deps/generic_that-5366644ce8f6fa0a)
+
+running 25 tests
+test generic_long_trong_generic ... ok
+test gan_cung_instantiation_sach ... ok
+test generic_long_sai_phan_tu_la_vs0412 ... ok
+test gan_cheo_hai_instantiation_la_vs0412 ... ok
+test ham_hai_tham_so_cung_t_lech_la_vs0412 ... ok
+test hai_instantiation_cung_ton_tai ... ok
+test ham_lien_ket_lech_la_vs0412 ... ok
+test ham_lien_ket_sach ... ok
+test ham_lien_ket_t_la_str_sach ... ok
+test hop_bool_khac_hop_int ... ok
+test ham_tra_ve_t_sai_ngu_canh_la_vs0412 ... ok
+test ham_tra_ve_t_giu_kieu_sach ... ok
+test hop_int_nhan_chuoi_la_vs0412 ... ok
+test hop_int_sach ... ok
+test hop_str_sach ... ok
+test or_cung_hai_dau_sach ... ok
+test or_int_str_literal_sach ... ok
+test or_list_sai_phan_tu_la_vs0412 ... ok
+test or_gan_cheo_instantiation_la_vs0412 ... ok
+test or_sai_dau_bien_the_la_vs0412 ... ok
+test truong_hop_int_khong_phai_str ... ok
+test or_match_du_nhanh_sach ... ok
+test or_match_thieu_nhanh_van_vs0402 ... ok
+test tham_so_hop_lech_instantiation_la_vs0412 ... ok
+test truong_hop_int_la_int ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/hir.rs (viscript/target/debug/deps/hir-c72a17b8a8a1c08c)
+
+running 10 tests
+test doc_va_golden_ton_tai ... ok
+test ba_ca_err_dung_o_parse_khong_lower ... ok
+test cst_che_do_lenh_ha_that_qua_cmd_lower ... ok
+test khoi_tai_lieu_22_15_7 ... ok
+test kieu_hien_thi_on_dinh_va_type_ref ... ok
+test kieu_cau_truc_va_option ... ok
+test literal_duoc_dien_kieu ... ok
+test golden_27_bieu_thuc_ha_ra_sexp_hir ... ok
+test khong_panic_tren_7_khoi_loai_tru_va_rac ... ok
+test ha_15_khoi_tai_lieu_0_chan_doan_va_dung_so_khai_bao ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/names.rs (viscript/target/debug/deps/names-4181e0051216f834)
+
+running 17 tests
+test danh_sach_builtin_khoa_dung_11_ten ... ok
+test bong_ten_trong_khoi_hop_le_va_phan_giai_dung ... ok
+test builtin_phan_giai_duoc_o_moi_che_do ... ok
+test gan_cho_ten_chua_khai_bao_vs0301_mac_dinh ... ok
+test for_bind_if_let_match_arm_va_lambda ... ok
+test ham_goi_truoc_va_sau_khai_bao ... ok
+test nhan_scope_la_khai_bao ... ok
+test let_ha_gia_tri_truoc_khi_khai_ten ... ok
+test let_trong_khoi_khong_ro_ra_ngoai ... ok
+test ten_la_bao_vs0301_o_che_do_chat ... ok
+test strict_bao_ca_ten_tu_do_khi_doc ... ok
+test ten_kieu_chua_khai_khong_bao_o_st11 ... ok
+test gan_ten_la_chi_mot_vs0301_moi_dang ... ok
+test tham_so_thay_trong_than_ham ... ok
+test permissive_van_bao_vs0301_khi_gan_ten_la ... ok
+test vs0302_let_trung_cung_khung ... ok
+test vs0302_tham_so_trung_va_item_trung ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/stdlib_ty.rs (viscript/target/debug/deps/stdlib_ty-91518f57a9bd489c)
+
+running 4 tests
+test muoi_sau_chu_ky_generic_dung_hinh_dang ... ok
+test sang_type_dung_ten_bien_kieu ... ok
+test moi_chu_ky_ha_duoc_va_bien_kieu_trong_0_3 ... ok
+test sort_by_giu_ngoai_le_fn_khoa ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/trait.rs (viscript/target/debug/deps/trait-0e7bbf91f25ed1bc)
+
+running 29 tests
+test derives_eq_truong_float_bao_vs0403 ... ok
+test derives_enum_eq_sinh_phuong_thuc_that ... ok
+test derives_eq_show_json_tren_record ... ok
+test derives_eq_sinh_phuong_thuc_that ... ok
+test derives_json_tren_truong_ham_bao_vs0403 ... ok
+test derives_json_hop_le_voi_list_int ... ok
+test derives_la_bao_vs0403 ... ok
+test derives_show_sinh_phuong_thuc_that ... ok
+test derives_show_tren_kieu_generic_bao_vs0403 ... ok
+test derives_tren_enum ... ok
+test enum_goi_phuong_thuc_duoc ... ok
+test goi_phuong_thuc_inherent_thanh_call_truc_tiep ... ok
+test goi_phuong_thuc_impl_thanh_call_truc_tiep ... ok
+test impl_dung_chu_ky_sach ... ok
+test impl_inherent_khong_trait_sach ... ok
+test impl_sai_kieu_tra_bao_vs0412 ... ok
+test impl_thieu_phuong_thuc_bao_vs0403 ... ok
+test khong_co_phuong_thuc_giu_nguyen_loi_cu ... ok
+test impl_thua_phuong_thuc_bao_vs0403 ... ok
+test impl_trait_khong_ton_tai_bao_vs0403 ... ok
+test kieu_khong_tinh_bao_vs0403 ... ok
+test no_i_tai_thang_impl_cung_ten ... ok
+test phuong_thuc_khong_ton_tai_bao_vs0403 ... ok
+test mo_ho_giua_hai_impl_bao_vs0403 ... ok
+test nhieu_dong_truoc_voi_let ... ok
+test sieu_trait_thieu_bao_vs0403 ... ok
+test trait_khai_bao_sach ... ok
+test sieu_trait_du_sach ... ok
+test tham_so_co_kieu_goi_duoc_phuong_thuc ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/tyck.rs (viscript/target/debug/deps/tyck-e6644eb3f71a1687)
+
+running 6 tests
+test du_80_ca ... ok
+test literal_va_chu_thich_kieu ... ok
+test so_hoc_theo_don_vi ... ok
+test so_sanh_logic_va_coalesce ... ok
+test kien_truc_list_map_record_enum ... ok
+test ham_doi_so_va_optional ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/tyck_methods.rs (viscript/target/debug/deps/tyck_methods-75176835f3677c77)
+
+running 3 tests
+test du_5_ca_phuong_thuc ... ok
+test gia_tri_cau_lenh_cuoi_vd47 ... ok
+test bang_phuong_thuc_loi ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tyck_v2.rs (viscript/target/debug/deps/tyck_v2-af1444e3e3ebd6be)
+
+running 11 tests
+test kieu_ngoai_vs0_bao_vs0301_ro_rang ... ok
+test gan_field_index_kiem_bat_bien ... ok
+test builtin_co_kiem_chu_ky ... ok
+test percent_so_sanh_float_theo_ti_le ... ok
+test match_unit_tuple_la_huu_han ... ok
+test phep_cua_vs0_theo_vd48 ... ok
+test nang_int_float_chi_cho_literal ... ok
+test ten_tham_so_phai_khai_dau_hai_gach ... ok
+test phu_them_bieu_thuc_va_kieu ... ok
+test never_vong_lap_va_for_theo_vs0 ... ok
+test try_chi_dung_khi_ham_tra_optional_hoac_result ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (viscript/target/debug/deps/vis_vm-73c6c460b701333c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/diff_100k.rs (viscript/target/debug/deps/diff_100k-783ed1b01d50de81)
+
+running 7 tests
+test goc_ton_tai ... ok
+test bo_sinh_sinh_du_nhom_cu_phap_moi ... ok
+test loi_tinh_cu_phap_moi_cung_ma ... ok
+test loi_chay_cu_phap_moi_hai_duong_cung_ma ... ok
+test bo_sinh_hon_hop_du_nhom ... ok
+test diff_chuong_trinh_sinh_tu_dong ... ok
+test hai_nghin_chuong_trinh_khong_phai_20k ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.60s
+
+     Running tests/fuzz_mutate.rs (viscript/target/debug/deps/fuzz_mutate-a617ccd852e21a62)
+
+running 1 test
+test fuzz_dot_bien_bytecode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s
+
+     Running tests/vm_neg.rs (viscript/target/debug/deps/vm_neg-3cf9c142857c19b2)
+
+running 4 tests
+test const_ngoai_pham_vi_bi_tu_choi ... ok
+test chuong_trinh_rong_tra_unit ... ok
+test pop_rong_bi_tu_choi_khong_panic ... ok
+test dich_nhay_ngoai_code_bi_tu_choi ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vs_interp.rs (viscript/target/debug/deps/vs_interp-7d13eddf3c5f5870)
+
+running 2 tests
+test hai_duong_cung_so_chan_doan ... ok
+test vm_khop_interp_tren_320_ca ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+   Doc-tests vis_bytecode
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vis_diag
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vis_fmt
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vis_interp
+
+running 2 tests
+test crates/vis-interp/src/lib.rs - (line 35) ... ok
+test crates/vis-interp/src/lib.rs - (line 19) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.99s
+
+   Doc-tests vis_syntax
+
+running 1 test
+test crates/vis-syntax/src/lib.rs - (line 20) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.00s
+
+   Doc-tests vis_types
+
+running 2 tests
+test crates/vis-types/src/lib.rs - (line 44) ... ok
+test crates/vis-types/src/lib.rs - (line 19) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.01s
+
+   Doc-tests vis_vm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- L0 test: OK
+vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)

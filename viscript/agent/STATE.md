@@ -6,17 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-86 — fuzz differential mở rộng cú pháp mới** (async/await/spawn; chan +
-                send/recv/close; cap + @/(write); derives Show, Eq; trait/impl siêu một tầng; assert;
-                lỗi tĩnh/chạy) — xong, đã đo 20k + 100k, cổng PASS; **chưa commit**.
-Bước          : 4/4 (bộ sinh 8 nhóm → 5 ca Rust + 7 ca CLI lỗi → 20k seed 20261115 → 100k → 951 test →
-                cổng → STATE/JOURNAL).
+Task          : **ST-87 — cache không che lỗi** (520 tệp × 3 chế độ, so byte; khoá cache theo mode/
+                module/strict-caps) — xong, **0 lệch**, cổng PASS; **chưa commit**.
+Bước          : 4/4 (harness 520 tệp → 5 ca → 956 test → 100k diff → cổng → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:14:13Z**; **951** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:28:19Z**; **956** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
-                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch** (158,5 s,
-                seed 20261115) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-86]` + push (đã được uỷ quyền)
+                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
+                (158,1 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-87]` + push (đã được uỷ quyền)
+
+## ST-87 — cache không che lỗi, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Harness** | `crates/vis-cli/tests/cache_khong_che.rs`: **520 tệp** (`test/sem/**` 447 + `test/std/**` 73; gồm **83** ca `.err`) chạy **4 lần**: A `run` (interp), B1/B2 `run --vm` (B2 cache), C `run --vm --no-cache`; so **byte** `(exit, stdout, stderr)`, riêng `.err` **bỏ stdout** đúng yêu cầu. Cache cô lập qua `XDG_CACHE_HOME` tạm. Kết quả: **513 ca so đủ 4 đường – 0 lệch**; **7 ca `.vish` chương trình ngoài** loại khỏi so interp vì VM **chưa có host Ngoai** (VS0604, đã biết ST-27/ST-75) — với 7 ca này vẫn kiểm **B1 = B2 = C** và `A ≠ B1`. Chạy **24,9 s** (< 30 s). Host suite **54** do `host_conformance` phủ riêng (không lặp trong harness byte). |
+| 1 | **Ca (a)** | Hai lần `--vm` cùng tệp: byte y hệt; **lần 1 141 ms → lần 2 12 ms**, cache `.vbc` có 1 tệp — lần 2 nhanh hơn. |
+| 2 | **Ca (b)** | Cùng nội dung `let x = 1` ở `.vis` và `.vish`: **2 tệp `.vbc` khác nhau** ⇒ **mode nằm trong khoá cache**. Thêm quan sát ngữ nghĩa khác: `echo "a"` chạy ở `.vish` (`a
+`), lỗi ở `.vis` (exit 2), chạy lại `.vish` vẫn `a
+` — **không lẫn cache**. |
+| 3 | **Ca (c)** | `use ./x` (x trả 1) chạy cache; sửa x trả 2 ⇒ lần sau ra **2** (không dùng cache cũ); `--no-cache` cũng 2. |
+| 4 | **Ca strict-caps** | Cùng bytecode cache: không strict ⇒ `false` exit 0; `--strict-caps` **hai lần** đều `VS0604` exit 2 ⇒ **cache không che quyền**; kết luận **dùng chung cache an toàn** vì quyền kiểm ở runtime (khoá không cần `strict_caps`/`grant`). |
+| 5 | **Đo** | **956** test = 951 + **5** (21+96+27+154+26+62+9+**561**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; host **54/54**; parity **398/398**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=158.1 toc_do=632/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498**. |
+| 6 | **Phát hiện** | **Fast-path cache một tệp là dead code**: `main.rs:655` đọc `cache::khoa(text,mode)` (khoá v1), nhưng mọi chỗ ghi đều dùng `khoa_multi` (v2, có `rel`/deps) ⇒ TAP lần 2 **không** in `(cache)`, frontend vẫn chạy; cache đa tệp vẫn hoạt động (141→12 ms nhờ bỏ codegen). Không phải lỗi che lỗi; ghi nợ (dọn fast-path hoặc dùng khoá multi khi tệp không có `use`). |
+| 7 | **Nợ** | 7 ca ngoài (VS0604) là **khác interp/VM có chủ đích** (VM chưa có host Ngoai), chưa sửa; fast-path cache dead; harness chưa kiểm ghi cache **song song**/hỏng tệp (đã có `load_verified`); `host suite` không lặp trong harness byte; `.err` bỏ stdout theo yêu cầu. |
 
 ## ST-86 — fuzz differential mở rộng cú pháp mới, 2026-11-14
 
