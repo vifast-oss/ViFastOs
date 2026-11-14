@@ -155,6 +155,20 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **DONE** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
+| ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **READY** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
+| ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **READY** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
+| ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **READY** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
+| ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **READY** | ≥13 ca tổng; `gate` xanh |
+| ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **READY** | 6 snapshot; stdout sạch; thoát khi EOF |
+| ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **READY** | 6 snapshot + 6 unit vị trí |
+| ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **READY** | ≥13 frame; prefix/hover/null |
+| ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **READY** | 6 ca + e2e tất định; không mạng |
+| ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **READY** | 4 ca; lock không có đường tuyệt đối |
+| ST-72 | **VS2 #4a** — quyền: `cap[Dir]`/`cap[Net]` cưỡng chế ở host + `--cap-mock` | ST-71 | 3 h | **READY** | ≥8 ca cho phép/từ chối; hai đường cùng byte |
+| ST-73 | **VS2 #4b** — Landlock thật trên Linux (cfg linux) + tài liệu giới hạn | ST-72 | 3 h | **READY** | ≥8 ca Linux; trên macOS **không** giả vờ chạy |
+| ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
+| ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **READY** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
+| ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **READY** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |

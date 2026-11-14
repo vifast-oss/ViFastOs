@@ -778,3 +778,18 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   báo/từ khoá/symbol; **không** module-aware, **không** suy kiểu biểu thức (nợ). (6) Method lạ ⇒ `-32601`; JSON hỏng ⇒
   `-32700` (id `null`); trước `initialize` ⇒ `-32002`; `shutdown` ⇒ `null`; `exit` sau shutdown ⇒ 0, trước ⇒ 1.
   (7) ≥13 frame snapshot tất định (`file:///t.vis`, không timestamp/path tuyệt đối).
+
+- **VD-103** **Quyền: `cap[Dir]`/`cap[Proc]`/`cap[Net]` cưỡng chế ở **biên host** (ST-72, ST-73)**: (1) Ngôn ngữ **đã** có cú
+  pháp `@ path` + `(write)` trên tham số và `--explain-perms`; vòng này **cưỡng chế** thay vì chỉ in. (2) Cưỡng chế nằm ở
+  **host** (`FsHost`/`NetHost` nhận **tập quyền của phiên**), **không** ở interp/VM ⇒ hai đường vẫn cùng byte và
+  `viscript/` không chạm OS. (3) Vi phạm ⇒ **`VS0604`** (chưa hỗ trợ/chưa cấp quyền) với thông điệp nêu **quyền thiếu** +
+  đường dẫn; **không** mã mới. (4) `--cap-mock <json>` cho test tất định (giống `--fs-mock`), **không** phải cờ thật để
+  "xin quyền". (5) **Landlock thật** chỉ trên Linux ≥6.x: crate `vis-host-linux` (ngoài `viscript/`) `cfg(target_os =
+  "linux")`; test chỉ biên dịch/chạy trên Linux và **ghi rõ** trên macOS là **chưa đo** — cấm mô tả là "đã có Landlock".
+
+- **VD-104** **Đa nền tảng: bằng chứng theo **mức** (ST-74, ST-75)**: (1) `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown`
+  chỉ đòi **`cargo check` xanh** (biên dịch chéo), **không** tuyên bố "chạy trên Windows/wasm" khi chưa có CI/runner —
+  báo cáo phải ghi **mức** (check/biên dịch/chạy). (2) `vis-host-windows`/`vis-host-wasm` là **crate khung** trong
+  workspace, **không** nằm trong `viscript/`; phần lõi ngôn ngữ **không** được `cfg(target_os)`. (3) Bộ
+  `host-conformance` ≥50 ca chạy **thật** trên macOS trong `viscript/test/host/` + harness Rust; 3 nền còn lại ghi rõ
+  "chưa đo" cho tới khi có runner. (4) Không thêm dependency mới cho cross-check.
