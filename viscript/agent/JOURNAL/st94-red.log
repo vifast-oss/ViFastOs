@@ -1,0 +1,77 @@
+# ST-94 — ĐO TRƯỚC, 2026-11-14T19:10:01Z, HEAD 18c21de4
+## lit
+exit=1 out=[] err=[/tmp/st94/lit.vis:3:13: error VS0505: deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được
+real 0.30
+user 0.00
+sys 0.01]
+## cl
+exit=0 out=[none] err=[real 0.01
+user 0.00
+sys 0.00]
+
+# Rust: cargo test -p vis-cli --test kenh_cap0
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.99s
+     Running tests/kenh_cap0.rs (target/debug/deps/kenh_cap0-08bfd4e8a3300a5a)
+
+running 10 tests
+test chan_0_trong_ham_cung_chan ... ok
+test chan_0_literal_bi_tu_choi ... FAILED
+test recv_sau_close_none ... ok
+test chan_0_dong_runtime_vs0505 ... FAILED
+test chan_0_do_thoi_gian_khong_treo ... ok
+test recv_rong_khong_task_vs0505 ... ok
+test drain_task_loi_vs0506 ... ok
+test send_sau_close_vs0504 ... ok
+test drain_task_in_khong_await ... ok
+test drain_100_task_thu_tu_tat_dinh ... ok
+
+failures:
+
+---- chan_0_literal_bi_tu_choi stdout ----
+
+thread 'chan_0_literal_bi_tu_choi' (48875413) panicked at crates/vis-cli/tests/kenh_cap0.rs:66:5:
+assertion `left == right` failed: (1, [], "c0.vis:4:13: error VS0505: deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được\n")
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- chan_0_dong_runtime_vs0505 stdout ----
+
+thread 'chan_0_dong_runtime_vs0505' (48875412) panicked at crates/vis-cli/tests/kenh_cap0.rs:84:5:
+cd.vis:5:13: error VS0505: deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được
+
+
+
+failures:
+    chan_0_dong_runtime_vs0505
+    chan_0_literal_bi_tu_choi
+
+test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p vis-cli --test kenh_cap0`
+
+# (sau khi sửa ca 3 để tránh VS0412 trả về)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/kenh_cap0.rs (target/debug/deps/kenh_cap0-08bfd4e8a3300a5a)
+
+running 1 test
+test chan_0_trong_ham_cung_chan ... FAILED
+
+failures:
+
+---- chan_0_trong_ham_cung_chan stdout ----
+
+thread 'chan_0_trong_ham_cung_chan' (48876024) panicked at crates/vis-cli/tests/kenh_cap0.rs:98:5:
+assertion `left == right` failed: (0, [48, 10], "")
+  left: 0
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    chan_0_trong_ham_cung_chan
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p vis-cli --test kenh_cap0`

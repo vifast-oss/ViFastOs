@@ -76,12 +76,12 @@ fn thieu_pkg_hai_duong() {
     so_hai_duong("pkg", "use pkg.khong_co\n\nprint(1)\n", "VS0701");
 }
 
-/// **ST-86**: deadlock kênh — `VS0505`, **không treo** (lệnh tự kết thúc).
+/// **ST-86/ST-94**: deadlock kênh **động** — `VS0505`, **không treo** (literal `0` đã bị tyck).
 #[test]
 fn deadlock_hai_duong() {
     so_hai_duong(
         "deadlock",
-        "fn main():\n    let c = chan[int](0)\n    let _ = c.send(1)\n",
+        "fn main():\n    let n = 0\n    let c = chan[int](n)\n    let _ = c.send(1)\n",
         "VS0505",
     );
 }

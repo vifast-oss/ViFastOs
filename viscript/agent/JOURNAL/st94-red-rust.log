@@ -1,0 +1,50 @@
+# ST-94 — log ĐỎ (Rust) lúc 2026-11-14T19:43:20Z, HEAD 18c21de4 — chưa từ chối chan(0) khi tạo.
+# lệnh: cargo test -p vis-cli --test kenh_cap0 (10 ca)
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.26s
+     Running tests/kenh_cap0.rs (target/debug/deps/kenh_cap0-08bfd4e8a3300a5a)
+
+running 10 tests
+test drain_task_loi_vs0506 ... ok
+test chan_0_dong_runtime_vs0505 ... FAILED
+test chan_0_trong_ham_cung_chan ... FAILED
+test chan_0_literal_bi_tu_choi ... FAILED
+test recv_sau_close_none ... ok
+test chan_0_do_thoi_gian_khong_treo ... ok
+test drain_task_in_khong_await ... ok
+test recv_rong_khong_task_vs0505 ... ok
+test send_sau_close_vs0504 ... ok
+test drain_100_task_thu_tu_tat_dinh ... ok
+
+failures:
+
+---- chan_0_dong_runtime_vs0505 stdout ----
+
+thread 'chan_0_dong_runtime_vs0505' (49019351) panicked at crates/vis-cli/tests/kenh_cap0.rs:84:5:
+cd.vis:5:13: error VS0505: deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- chan_0_trong_ham_cung_chan stdout ----
+
+thread 'chan_0_trong_ham_cung_chan' (49019353) panicked at crates/vis-cli/tests/kenh_cap0.rs:98:5:
+assertion `left == right` failed: (0, [48, 10], "")
+  left: 0
+ right: 1
+
+---- chan_0_literal_bi_tu_choi stdout ----
+
+thread 'chan_0_literal_bi_tu_choi' (49019352) panicked at crates/vis-cli/tests/kenh_cap0.rs:68:5:
+c0.vis:4:13: error VS0505: deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được
+
+
+
+failures:
+    chan_0_dong_runtime_vs0505
+    chan_0_literal_bi_tu_choi
+    chan_0_trong_ham_cung_chan
+
+test result: FAILED. 7 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `-p vis-cli --test kenh_cap0`

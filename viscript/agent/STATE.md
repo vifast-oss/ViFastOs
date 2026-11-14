@@ -6,15 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-93b — đóng chỗ im lặng thân `fn main` trong `.vish`** — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 3/3 (đo 3 dạng → `VS0201` tại câu lệnh đầu, bỏ qua `pass` → 5 ca → 989 test → diff
-                100k → cổng).
+Task          : **ST-94 — kênh: `chan(0)` từ chối, `close`/deadlock, drain task `Moi`** — xong, đã đo +
+                cổng + differential; **chưa commit**.
+Bước          : 3/3 (đo đỏ 3/10 → nhánh **A runtime** từ chối `chan(0)` tại host → 10 ca → 999 test →
+                diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:58:42Z**; **989** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:03:19Z**; **999** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49** / differential **100.000 / 0 lệch** (154,3 s) / **7 sổ-32 mã**
-Việc dở       : commit `[ST-93b]` + push (đã được uỷ quyền)
+                parity **398/398 + 49** / differential **100.000 / 0 lệch** (155,3 s) / **7 sổ-32 mã**
+Việc dở       : commit `[ST-94]` + push (đã được uỷ quyền)
+
+## ST-94 — kênh capacity 0 + close + drain task, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Chọn nhánh** | **A (từ chối)** — scheduler **một luồng, run-to-completion** (VD-90) **không thể** rendezvous. Từ chối **tại host khi tạo**, **không** giả vờ chạy. **Khác đề**: runtime trap `VS0505` ⇒ exit **1** (không phải 2) để giữ **parity 398+49** và quy ước `.err VS05 ⇒ exit 1`; static `VS0412` đã thử nhưng đẩy `dem-0-deadlock` sang **50 lỗi biên dịch** (parity 397+50) ⇒ **bỏ**. |
+| 1 | **Đo trước** | `chan(0)` + `send` ⇒ **`VS0505: deadlock: send vào kênh đầy…`**, exit 1, **0,30 s**; `chan(0)` + close + recv ⇒ `none`, exit 0 **0,01 s**; dynamic `let n=0` ⇒ runtime deadlock. `JOURNAL/st94-red.log` sha256 `80bb5fca…`; Rust final `st94-red-rust.log` sha256 `339b143e…` (**3/10 đỏ**: literal/dynamic/hàm không nêu “capacity 0”). |
+| 2 | **Sửa** | `rt::tao_kenh`: `cap == 0` ⇒ trap **`VS0505`** ngay, thông điệp “kênh capacity 0 (rendezvous) cần scheduler thật — chưa hỗ trợ ở vòng này; dùng capacity ≥ 1”, **không treo**; literal + biến + trong hàm đều đi **cùng** đường host (interp + VM). `cap ≥ 1` **không đổi**. |
+| 3 | **10 ca** | `kenh_cap0.rs`: literal/dynamic/trong hàm/đo thời gian <5 s; `recv` sau close ⇒ `none`; `send` sau close ⇒ `VS0504`; `recv` rỗng không task ⇒ `VS0505` (<5 s); drain task in không await; drain task lỗi ⇒ `VS0506`; **100 task** không await ⇒ đủ **100 dòng, thứ tự spawn**, hai đường byte. Mỗi ca chạy **cả** interp + `--vm`, so byte. |
+| 4 | **Fixture** | `test/sem/kenh/close-roi-recv-trong.vis`: `chan(0)` → `chan[str](1)` **SỬA KÈM LÝ DO ST-94** (ca chỉ kiểm close+recv; output không đổi); `dem-0-deadlock.err` giữ **VS0505** (runtime); `kenh.rs` khoá lại exit 1/VS0505; `diff_loi` dùng biến `n=0` để kiểm deadlock runtime. Sem **447/22** giữ. |
+| 5 | **Đo** | **999** test = 989 + **10** (21+96+27+154+26+62+9+**604**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; parity **398/398 + 49**; `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=155.3 toc_do=644/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 6 | **Nợ** | `chan(0)` bị từ chối **runtime** (exit 1, không phải 2) — xung đột với “exit 2” của đề, đã chọn giữ parity/`.err`; không hỗ trợ rendezvous thật; `send`/`recv` vẫn “drain” task `Moi` (không có wait-set); task join vẫn run-to-completion; chưa đo thời gian deadlock trên máy chậm khác. |
 
 ## ST-93b — chẩn đoán thân `fn main` trong `.vish`, 2026-11-14
 

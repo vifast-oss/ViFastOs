@@ -125,6 +125,15 @@ pub fn tao_kenh(host: &mut dyn Host, cap: i64, span: Span) -> R<Value> {
             span,
         )));
     }
+    // **ST-94 (VD-112)**: capacity 0 (rendezvous) **không thể** trên scheduler một luồng; literal `0`
+    // đã bị tyck chặn `VS0505` (exit 2). Đường **động** (`let n = 0`) cũng phải **từ chối**, không treo.
+    if cap == 0 {
+        return Err(Abort::Trap(Trap::new(
+            crate::interp::DEADLOCK,
+            "`chan[T](0)`: kênh capacity 0 (rendezvous) cần scheduler thật — chưa hỗ trợ ở vòng này; dùng capacity ≥ 1",
+            span,
+        )));
+    }
     let mut s = host.sched().borrow_mut();
     let id = s.kenh.len() as u32 + 1;
     let c = Rc::new(RefCell::new(Chan {

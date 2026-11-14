@@ -84,6 +84,8 @@ fn deadlock_khong_treo_va_bao_vs0505() {
             let t0 = Instant::now();
             let (c, _, e) = chay(&p, vm);
             let dt = t0.elapsed();
+            // **SỬA KÈM LÝ DO (ST-94)**: `chan[int](0)` bị **từ chối ngay khi tạo** (host,
+            // `VS0505`), không còn chờ tới `send`; vẫn exit 1 + < 1 s như ca deadlock runtime.
             assert_eq!(c, 1, "{ten} (vm={vm}): stderr: {e}");
             assert!(e.contains("VS0505"), "{ten} (vm={vm}): stderr: {e}");
             assert!(

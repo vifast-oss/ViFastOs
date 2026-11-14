@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 fn main():
-    let c = chan[str](0)
+    # SỬA KÈM LÝ DO (ST-94): `chan(0)` bị từ chối `VS0505`; ca này chỉ kiểm `close`+`recv` ⇒ cap 1.
+    let c = chan[str](1)
     c.close()
     print(c.recv())
     print(c.recv())
