@@ -181,7 +181,8 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **DONE** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
 | ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **DONE** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **DONE** | 0 lệch; seed ghim; sinh được cả ca lỗi |
-| ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
+| ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **DONE** | 0 lệch trên ≥500 ca; sửa nếu lệch |
+| ST-87b | **lỗi thật phát hiện ở ST-87**: fast-path cache **dead code** (`main.rs` đọc khoá v1 `khoa`, ghi khoá v2 `khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit | ST-87 | 2 h | **READY** | ≥4 ca: TAP lần 2 có `(cache)`, một tệp 2 lần chạy nhanh hơn, đa tệp không đổi |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1310,3 +1311,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: mẫu **cố định** (chưa ghép tổ hợp sâu); kênh chỉ cặp cân bằng; chưa sinh `use pkg.*` **thành công**; `@`/`(write)` mới ở mức
 > **cú pháp**.
 > **ST-87 mở** (cache không che lỗi — 3 chế độ).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-87 DONE — cache không che lỗi (đo được).** Commit `0c23dad3` (**Agent 2 tự commit, đã push**). Harness `cache_khong_che.rs`:
+> **520 tệp** (`test/sem` 447 + `test/std` 73, gồm 83 ca `.err`) × **4 lần chạy** (interp · `--vm` lần 1 · `--vm` cache hit ·
+> `--vm --no-cache`) so **byte** `(exit, stdout, stderr)` ⇒ **513 ca 0 lệch**; **7 ca `.vish` dùng chương trình ngoài** bị loại khỏi so
+> interp vì VM **chưa có host `Ngoai`** (**cùng** `VS0604`) — với chúng vẫn kiểm `B1 = B2 = C`. 5 ca: cache hit **141 → 12 ms**;
+> `.vis`/`.vish` **khác khoá** (2 tệp `.vbc`); module phụ đổi ⇒ **không** dùng cache cũ; `--strict-caps` **hai lần** đều `VS0604`
+> (**cache không che quyền**). Harness **24,9 s**. Đo: **956 test** · sem **447/22** · host **54/54** · parity **398/398** ·
+> differential **100k/0 lệch** (158,1 s).
+> **Phát hiện lỗi thật (mở ST-87b)**: **fast-path cache là dead code** — `main.rs` đọc **khoá v1** (`khoa`) trong khi mọi chỗ ghi dùng
+> **khoá v2** (`khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit (chỉ đa tệp mới hit).
