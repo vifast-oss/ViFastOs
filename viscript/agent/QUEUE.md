@@ -152,7 +152,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **DONE** | ≥6 ca; `x \| take 1` chạy 2 đường |
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **DONE** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
 | ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **DONE** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
-| ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **READY** | ≥4 ca; gate xanh |
+| ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **DONE** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -940,3 +940,14 @@ APPROVED 2026-11-14 Agent 0
 > Tách `tyck/sig.rs` + `bytecode/cerr.rs` để giữ R1. Nợ: shell-let **chưa hạ**; `match` không khớp ở ngữ cảnh giá trị còn
 > đẩy `false` (nghi lệch interp↔VM); gán lồng sâu hơn một tầng trường là `VS0412` có chủ đích.
 > **ST-60c mở** (derives/siêu trait + số liệu).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-60c DONE** — commit `b254f03` (**Agent 2 tự commit, đã push**). **B3**: `sinh_derives` chạy **trước** kiểm siêu trait và
+> ghi `(kiểu, Show/Eq)` vào `impl_pairs` — **chỉ khi thật sự sinh được** ⇒ `impl Hien for P` hết `VS0403` oan, thiếu thật vẫn
+> đỏ. **B4**: chọn **sinh mã `Show` cho enum** (`InterpPart::Expr(self)` ⇒ `Value::show`) thay vì lỗi tĩnh — rẻ hơn và giữ
+> khối tài liệu 214 xanh; lý do ghi STATE/JOURNAL. **B5**: `Eq` chặn **sâu** đệ quy `List/Map/Opt/Result/TypeRef` ⇒
+> `list[float]`/`map[str,float]`/`Opt[list[float]]` là `VS0403`. Đo: **782 test** · sem **426/20** · `vis test` **426 ok** ·
+> parity **381/381** · differential **100k/0 lệch** (248,0 s) · **7 sổ/30 mã**. Nợ: siêu trait **bắc cầu**, `impl_pairs`
+> per-tệp, `co_float_sau` chưa soi bản ghi lồng, `derives Json` chưa sinh mã.
+> **ST-61 mở** (VS2 #2 — kênh; **VD-91/VD-96**).
