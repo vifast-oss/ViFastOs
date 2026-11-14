@@ -129,9 +129,10 @@ SIZES="$("$LLVM_SIZE" -A "$IMAGE" 2>/dev/null)" || die "llvm-size lỗi trên $I
 MB="$(printf '%s\n' "$SIZES" | sum_data_bss)"
 STACK="$(printf '%s\n' "$SIZES" | awk '$1==".stack" {s+=$2} END {print s+0}')"
 GUARD="$(printf '%s\n' "$SIZES" | awk '$1==".stack_guard" {s+=$2} END {print s+0}')"
+TRAP_STACK="$(printf '%s\n' "$SIZES" | awk '$1==".trap_stack" {s+=$2} END {print s+0}')"
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
-echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES data+bss=$MB budget=$BUDGET_BYTES stack=$STACK guard=$GUARD"
+echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES data+bss=$MB budget=$BUDGET_BYTES stack=$STACK guard=$GUARD trap_stack=$TRAP_STACK"
 echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
 echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then

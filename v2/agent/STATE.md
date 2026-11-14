@@ -4,15 +4,86 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `efe128fb` ([KT-44] — đã push, `origin/main == HEAD`); commit gốc của task `4f7b65e2` (K3-PLAN/D2-72)
-BUILD_ID      : — (ảnh K3: `vifast-kbin-riscv64` 19.216 B, `vifast-kbin-ktest` 19.080 B — `JOURNAL/kt44-build.log`)
-Task          : **KT-44 (task đầu K3: `vifast-plat-common` + tách ảnh sản phẩm/ktest + đo budget)** — **DONE ở mức thi hành**: 2 ảnh build từ cùng crate bằng feature `ktest`; ảnh sản phẩm **0** chuỗi `ktest` (ảnh test 8); budget `data+bss = 0 B` **cả hai ảnh**/trần 262.144 B, `.stack` 65.536 B + guard 4.096 B báo riêng; TAP 1 boot xanh cả hai ảnh; host test `plat-common` 3/3; **reviewer độc lập APPROVE**; **chờ Agent 0 lật QUEUE** (không lật sổ)
-Bước          : 8/8 **xong** (baseline `gate --fast` 569/73 PASS → đỏ trước `ktest.sh` (chưa có ảnh test) → `vifast-plat-common` (no_std, forbid unsafe) + `Riscv64Virt: Platform` (`rdtime`/`tp`) + `.stack_guard` NOLOAD + 2 bin bằng feature `ktest` + `budget.sh`/`run.sh`/`ktest.sh` → `k3-riscv64.md` → log build/budget/boot + `gate --fast` 569/0 → STATE → commit `[KT-44]` + push)
+HEAD          : `faba5cb8` ([KT-00] D2-73 — đã push, `origin/main == HEAD`); commit `[KT-45]` tạo sau verdict reviewer (STATE này ghi trước commit)
+BUILD_ID      : — (ảnh K3 KT-45: `vifast-kbin-riscv64` 40.992 B, `vifast-kbin-ktest` 42.800 B — `JOURNAL/kt45-build.log`)
+Task          : **KT-45 (trap khung riscv64: `stvec` direct, trapframe, decode, panic dump)** — **DONE ở mức thi hành**: trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`; decode **mọi** `scause` (host test 13/13); TAP 5/5 (breakpoint thật + ecall-S qua SBI + illegal **tiêm** + trap lồng fatal theo D2-73/P2b); product 50/50 boot sạch; budget 80 B/262.144 cả hai ảnh; gate 569/73 PASS; **vòng review P1..P4 đã vá, chờ reviewer xác nhận + commit**
+Bước          : 9/9 **xong** (baseline gate 569/73 → đỏ trước `ktest.sh` (ảnh KT-44 chỉ có 1 TAP) → `trap.rs` + `Platform::set_trap_vector`/IRQ stub + asm trap_entry/trap stack + 2 ảnh + `.trap_stack` + `budget.sh`/`ktest.sh` → host test 13/13 → TAP 5/5 → boot 1 + **50/50** → budget 80 B → `k3-riscv64.md` §7 + JOURNAL → gate --fast 569/0 → **vá P1..P4 của reviewer** (frame `sp-=288`, bỏ ghi sstatus, chặn trap lồng fatal + TAP 5, zero bss, SBI clobber a1) → chạy lại toàn bộ)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/0 failed** (`JOURNAL/kt44-gate-fast.log`); baseline cùng số (`JOURNAL/kt44-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng `cargo build --target riscv64gc-unknown-none-elf` + boot QEMU (`JOURNAL/kt44-build.log`, `JOURNAL/kt44-boot.log`, `JOURNAL/kt44-ktest-boot.log`).
-Miri          : KT-44 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12: miễn trừ có lý do); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** `vifast-plat-common` chạy host: `cargo test -p vifast-plat-common` **3/3**.
-Việc dở       : **KT-44 DONE** (lead lật ở `43304e68`, QUEUE mở KT-45); **follow-up `[KT-44b]` vá 3 nit review** (sàn QEMU 9.2 theo major.minor; phạm vi KT-46..53 trong doc; STATE HEAD) — đã push. Bước kế: **KT-45 trap khung**. `viscript/` + `review/` của tab khác **không chạm**.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite, 0 failed** (`JOURNAL/kt45-gate-fast.log`); baseline cùng số (`JOURNAL/kt45-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng 2 build + `ktest.sh`/`run.sh` (`JOURNAL/kt45-{build,ktest,boot,boot50,budget}.log`).
+Miri          : KT-45 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** trap chạy host: `cargo test -p vifast-plat-common` **13/13** (bố cục trapframe, decode 0..15, resume/fatal, dump, stats, predicate trap lồng).
+Việc dở       : **KT-45 code + vá P1..P4 xong, chờ reviewer xác nhận**; commit `[KT-45]` + `[KT-45b]` (STATE HEAD/verdict) sau verdict. **Deviation D2-73**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG` bit 2/9 = 0 ⇒ illegal/ecall-S **không** vào `stvec`; TAP illegal là **tiêm**, ecall-S là SBI (không claim trap S-mode); page fault thật → KT-46. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
 ```
+
+## KT-45 — trap khung riscv64 (`stvec` direct, trapframe, decode, panic dump)
+
+**Vào**: READY; HEAD `faba5cb8` ([KT-00] D2-73 — Agent 0 điều chỉnh DoD sau báo cáo chặn của
+Agent 2); `HEAD..origin/main = 0`; working tree có `viscript/` + `review/` của tab khác — **không
+chạm**; baseline `gate --fast` **569/73 PASS** (`JOURNAL/kt45-baseline-gate-fast.log`).
+
+**Mục tiêu** (K3-PLAN §4.1 KT-45 + **D2-73**): `stvec` direct-mode một vector; trapframe 32 thanh
+ghi + `sepc/sstatus/scause/stval`; `sp` đổi sang **trap stack** qua `sscratch`; decode `scause`
+(mọi mã 0/1/2/3/4/5/6/7/8/9/12/13/15/Unknown) ⇒ `Event::Exception`; panic dump
+`scause/sepc/stval` + thanh ghi chính, `DebugHalt` sạch; `Platform` + `set_trap_vector` +
+`enable_irq`/`disable_irq` (stub, KT-48); TAP trap + 50 boot; gate 569; docs/JOURNAL/STATE.
+
+**Đỏ trước** ([`kt45-red-ktest.log`](JOURNAL/kt45-red-ktest.log)): `ktest.sh` siết đòi `1..4` +
+`ok 2 - trap breakpoint` + `ok 3 - trap ecall sbi` + `ok 4 - trap illegal inject`; ảnh KT-44 chỉ
+có `1..1`/`ok 1 - ktest image` ⇒ `not ok 1 - ktest boot 1: thiếu plan-1..4 …`, `EXIT=1` — đỏ đúng
+lý do, không phải hạ tầng.
+
+**Phát hiện chặn DoD (D2-73)**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG = 0xf4b509`
+(chỉ cause 0/3/8 + page fault 12/13/15) ⇒ **bit 2 illegal = 0, bit 9 ecall-S = 0**. Probe QEMU
+11.1.3 (D2-72 Q2/Q3): `ebreak` → `scause=3`; `.4byte` illegal **không** vào `stvec` (ở lại M-mode);
+`ecall` S-mode trả `SBI_ERR_NOT_SUPPORTED` và resume `sepc+4` (M-mode, không qua `stvec`) —
+[`kt45-probe-medeleg.log`](JOURNAL/kt45-probe-medeleg.log),
+[`kt45-probe-illegal-mmode.log`](JOURNAL/kt45-probe-illegal-mmode.log). Agent 0 ghi **D2-73**:
+giữ đủ khung + decode mọi `scause` (host test), TAP thật chỉ `breakpoint` + `ecall-S` (SBI, không
+claim trap S-mode), `illegal` = host test + **trap tiêm** (ghi rõ "inject"), page fault thật →
+**KT-46**, cấm đổi firmware M-mode. Deviation ghi ở `k3-riscv64.md` §7 + JOURNAL + đây.
+
+**Kết quả**:
+- `vifast-plat-common::trap` (mới, `forbid(unsafe_code)`): `TrapFrame` `#[repr(C)]` **288 B**
+  (32×8 + 4×8) + offset hằng số + `const` assert `offset_of!`; `ExceptionKind`/`Exception`/`Event`;
+  `decode_scause`/`decode_trap`; `handle_trap` (resume 2/4 byte, fatal); `TrapStats`/`TRAP_STATS`;
+  `report_fatal`/`report_interrupt` (PANIC + `scause/sepc/stval/sstatus` + `ra/sp/gp/tp` + `a0..a7`);
+  `is_nested_trap_sp` (predicate trap lồng, host test biên).
+- `vifast-plat-riscv64`: `_start` zero `.bss` rồi đặt `sscratch = __trap_stack_top`;
+  `trap_entry` direct-mode: `csrrw` + **`addi sp, sp, -288`** (frame nằm trọn trong `.trap_stack`
+  — P1), lưu/khôi phục 32 thanh ghi + 4 CSR (offset là `const` operand từ `plat-common`), **không**
+  ghi `sstatus` khi ra (sret tự khôi phục — P2a), phát hiện **trap lồng** từ `sp` bị ngắt trong
+  frame ⇒ `nested_trap_halt` PANIC + halt (P2b); `trap_dispatch`; `trap_vector`/
+  `install_trap_vector`/`read_trap_vector`; `Platform` impl `set_trap_vector` +
+  `enable_irq`/`disable_irq` (luôn `false` — PLIC KT-48); probe `probe_breakpoint`/
+  `probe_ecall_sbi` (SBI clobber a0/a1 — P3)/`probe_injected_trap`/`probe_nested_trap` (API an
+  toàn để kbin **không** thêm `unsafe` — R5/D2-17).
+- 2 ảnh: product cài `stvec`, in `stvec=… direct=true`, TAP giữ `ok 1 - k3 boot`;
+  test **5 TAP** — `ok 2 - trap breakpoint` (scause 3, `last_sepc+4` = địa chỉ resume,
+  `frame=0x80218ee0` trong `.trap_stack`), `ok 3 - trap ecall sbi` (`a0=SBI_ERR_NOT_SUPPORTED`,
+  resume `sepc+4`, `stvec-traps+0`), `ok 4 - trap illegal inject` (scause 2, **tiêm**),
+  `ok 5 - trap nested panic` (trap lồng ⇒ `PANIC: nested trap …` + halt, có chủ đích; runner chỉ
+  chấp nhận đúng dòng PANIC này).
+- Ảnh sản phẩm [`kt45-boot.log`](JOURNAL/kt45-boot.log) `ok 1 - boot 1`, strings `ktest=0`;
+  **50 boot** [`kt45-boot50.log`](JOURNAL/kt45-boot50.log) `# 50/50 boot sạch (smp=1)`.
+  Ảnh test [`kt45-ktest.log`](JOURNAL/kt45-ktest.log) PASS.
+- Budget [`kt45-budget.log`](JOURNAL/kt45-budget.log): `data+bss=80 B`/262.144 **cả hai** ảnh;
+  `.stack=65536`, `.stack_guard=4096`, **`.trap_stack=16384`** báo riêng (NOLOAD).
+- Fatal path trên QEMU (tạm tiêm `scause=13`, không commit;
+  [`kt45-fatal-trap.log`](JOURNAL/kt45-fatal-trap.log)): `PANIC: trap LoadPageFault scause=0xd …`
+  + `# regs …`, rồi halt — dump + `DebugHalt` sạch, không treo.
+- Trap lồng [`kt45-nested-trap.log`](JOURNAL/kt45-nested-trap.log): `PANIC: nested trap …` +
+  halt, không treo/không resume (P2b sau review).
+- **Cổng**: `gate --fast` **PASS 569 test/73 suite, 0 failed**
+  ([`kt45-gate-fast.log`](JOURNAL/kt45-gate-fast.log)); `git diff spec/` **rỗng**.
+
+**Review độc lập**: `reviewer-kt45` verdict **DRIFT** (không UNSAFE) — P1 (frame ngoài
+`.trap_stack`), P2a (`csrw sstatus` sớm), P2b (trap lồng), P3 (SBI clobber a1), P4 (zero `.bss`):
+**đã vá hết** trước commit; chờ reviewer xác nhận; kết quả ghi vào `[KT-45b]`.
+
+**Không làm (đúng phạm vi)**: MMU/`satp`/guard page (KT-46), timer (KT-47), PLIC (KT-48), SMP/
+PerHart trap stack (KT-49), IPI/TLB (KT-50/51), object layer (KT-52), U-mode/syscall (KT-53);
+nested-trap guard (trap lồng ghi đè trap stack) để KT-46/49; `spec/`, sim, `.scn`, QUEUE/
+DECISIONS/AGENTS, `viscript/` **không chạm**; `unsafe` chỉ thêm trong `vifast-plat-riscv64`
+(D2-17), không `cfg(target_arch)`.
 
 ## KT-44 — task đầu K3: `plat-common` + tách ảnh sản phẩm/ktest + đo budget
 

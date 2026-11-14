@@ -1,12 +1,13 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # K3 — kernel riscv64 thật trên QEMU `virt` (mốc mở bằng KT-44)
 
-Trạng thái: **KT-44** (task đầu của K3) — tài liệu hằng số nền tảng + quy trình build/boot của K3.
+Trạng thái: **KT-45** — khung trap riscv64 (`stvec` direct, trapframe, decode `scause`, panic dump)
+trên nền KT-44; tài liệu hằng số nền tảng + quy trình build/boot/trap của K3.
 Nguồn quyết định: **D2-72** (`v2/agent/DECISIONS.md`) chốt Q1..Q13 của
 [`review/agent0/K3-PLAN.md`](../../review/agent0/K3-PLAN.md) §3; chi tiết task ở §4/§4.1 cùng tệp.
 Nhãn số liệu theo QD §2.2: `[TK]` thiết kế mới, `[GT]` giả thuyết nền tảng, `[ĐO]` chỉ trong log
 do lệnh sinh ra. **Tài liệu này không chứa số đo viết tay** (QD §9 Q12): mọi số đo nằm ở
-`v2/agent/JOURNAL/kt44-{budget,boot}.log` và do `v2/test/boot/*.sh` in ra.
+`v2/agent/JOURNAL/kt45-{budget,boot,boot50,ktest,gate-fast}.log` và do `v2/test/boot/*.sh` in ra.
 
 ## 1. K3 mới là kernel thật
 
@@ -36,6 +37,8 @@ do lệnh sinh ra. **Tài liệu này không chứa số đo viết tay** (QD §
 | Ngắt | **PLIC cổ điển**, AIA (APLIC/IMSIC) hoãn K4'/K5' | `[TK]` | D2-72 Q8 |
 | DTB | chỉ kiểm magic nếu OpenSBI truyền ở `a1` (log/cảnh báo, **không** parse đầy đủ) | `[TK]` | D2-72 Q7 |
 | Soak | `1000 boot × 3 luồng` trên máy `ps`, timeout **20 s/boot**, `0/1000`, không retry | `[TK]` | D2-72 Q10 |
+| Trap | `stvec` **direct mode** (một vector, `MODE=0`); trap stack riêng **16 KiB**; trapframe **288 B** = 32×8 (x0..x31) + 4×8 (`sepc/sstatus/scause/stval`) | `[TK]` | D2-73, KT-45 |
+| IRQ | `Platform::enable_irq`/`disable_irq` **stub** (KT-45 luôn trả `false`); PLIC thật ở KT-48 | `[TK]` | D2-72 Q7/Q8, KT-45 |
 
 Ghi chú kiểm chứng: `run.sh`/`ktest.sh` in `# qemu <version>` và `# opensbi <version>` **từ log
 boot thật**; QEMU dưới sàn **9.2** (so cả major.minor) ⇒ **FAIL**, không tự hạ (D2-72 Q2). OpenSBI banner
@@ -52,15 +55,19 @@ domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` t
              .bss / .sbss / COMMON
              .stack_guard (NOLOAD, 4 KiB)   ← trang bảo vệ, MMU của KT-46 mới cưỡng chế
              .stack       (NOLOAD, 64 KiB)  ← `sp = __stack_top`, mọc xuống đáy
+             .trap_stack  (NOLOAD, 16 KiB)  ← `sscratch = __trap_stack_top`; mọi trap đổi sang đây
              __kernel_end
 ```
 
 - `.stack` + `.stack_guard` là **NOLOAD**: chỉ chiếm địa chỉ, không chiếm file ảnh, và **báo
   riêng** — không cộng vào trần budget (D2-72 Q5).
 - `_start` nhận `a0 = hartid` của OpenSBI, chép vào `tp` (`mv tp, a0`), đặt `sp = __stack_top` rồi
-  `call rust_main`. `Riscv64Virt::hart_id` đọc lại `tp`, `now` đọc `rdtime` — không cần `static mut`.
-- Trang bảo vệ 4 KiB nằm **ngay dưới** `__stack_bottom` (`__stack_guard_end`). Ở KT-44 mới chỉ
-  dành chỗ + đặt symbol; ánh xạ quyền `NONE` và fault thật thuộc **KT-46**.
+  `call rust_main`, và đặt `sscratch = __trap_stack_top` (KT-45). `Riscv64Virt::hart_id` đọc lại
+  `tp`, `now` đọc `rdtime` — không cần `static mut`.
+- Trang bảo vệ 4 KiB nằm **ngay dưới** `__stack_bottom` (`__stack_guard_end`). KT-44 mới chỉ dành
+  chỗ + đặt symbol; ánh xạ quyền `NONE` và fault thật thuộc **KT-46**.
+- `.stack`/`.stack_guard`/`.trap_stack` đều `NOLOAD`: `budget.sh` báo **riêng** cả ba
+  (`# image=… stack=… guard=… trap_stack=…`), không cộng vào trần `data+bss` (D2-72 Q5).
 
 ## 4. Hai ảnh: sản phẩm và test (D2-08) — tách bằng feature, không `cfg(target_arch)`
 
@@ -83,7 +90,7 @@ domain region phủ `0x0c00_0000–0x0c3f_ffff` `[GT]` — KT-48 đọc `ndev` t
 ```bash
 bash v2/test/boot/run.sh 1        # ảnh sản phẩm, 1 boot, 1 hart (DoD của KT-44)
 bash v2/test/boot/run.sh 1 2      # 1 boot, 2 hart (matrix 1/2/4 dùng từ KT-49)
-bash v2/test/boot/ktest.sh 1      # ảnh test
+bash v2/test/boot/ktest.sh 1 1    # ảnh test: KT-45 đòi 5 TAP (image + 3 trap + nested)
 
 bash v2/test/boot/budget.sh \
   v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 product
@@ -117,8 +124,13 @@ Cổng đo (do script thực thi, không phải người):
 ## 6. `vifast-plat-common` (KT-44)
 
 - `no_std` + `#![forbid(unsafe_code)]`; trait **`Platform`**: `put_str`, `halt`, `now`, `tick_hz`,
-  `hart_id`; **`PanicHandler`** dùng chung; **`PlatformWriter`** = `core::fmt::Write` trên
-  `put_str` (in số không cần `alloc`).
+  `hart_id`, và từ KT-45: `set_trap_vector`, `enable_irq`/`disable_irq` (stub, KT-48);
+  **`PanicHandler`** dùng chung; **`PlatformWriter`** = `core::fmt::Write` trên `put_str` (in số
+  không cần `alloc`).
+- Module **`trap`** (KT-45, thuần logic — test host): `TrapFrame` `#[repr(C)]` + offset hằng số
+  (asm dùng làm `const` operand, `const` assert chặn lệch bố cục), `ExceptionKind`/`Exception`/
+  `Event`, `decode_scause`/`decode_trap`, `handle_trap` (resume/fatal), `TrapStats` +
+  `TRAP_STATS`, `report_fatal`/`report_interrupt`.
 - `now`/`tick_hz` ở K3 là **stub đồng hồ monotonic** (`rdtime`, 10 MHz); timer thật (tick 100 Hz,
   deadline mỗi hart) là **KT-47**. `halt` không in marker — từng ảnh tự in dòng halt của mình.
 - Phần asm/MMIO ở `vifast-plat-riscv64` (danh sách đóng `kernel/vifast-plat-*`, D2-17); mọi phần
@@ -126,12 +138,61 @@ Cổng đo (do script thực thi, không phải người):
 - Logic đó chạy được **trên host** (D2-72 Q12): `cargo test --manifest-path v2/kernel/Cargo.toml
   -p vifast-plat-common`. Miri **không** áp ảnh kernel `no_std`/asm/MMIO; Miri vẫn áp `lib/` + sim.
 
-## 7. Phạm vi: KT-44 **không** làm gì
+## 7. Trap khung (KT-45, theo D2-73)
+
+- **`stvec` direct mode**: một vector duy nhất `trap_entry` (`.balign 4`, `MODE=0`), cài bằng
+  `Platform::set_trap_vector`; `read_trap_vector` đọc lại để ảnh in bằng chứng.
+- **Trap stack riêng**: `_start` đặt `sscratch = __trap_stack_top`. `trap_entry` làm
+  `csrrw sp, sscratch, sp` (sp = đỉnh trap stack, sscratch = `sp` bị ngắt) rồi
+  `addi sp, sp, -288` — trapframe 288 B nằm **trọn trong** `.trap_stack`, không ghi ra ngoài
+  vùng stack (bẫy P1 của review KT-45). Sau khi lưu `x0..x31` + `sepc/sstatus/scause/stval`,
+  gọi `trap_dispatch`; khôi phục **chỉ** `sepc` + thanh ghi, `sp` **cuối cùng**, rồi `sret`.
+  **Không** ghi `sstatus`: `sret` tự khôi phục `SIE` từ `SPIE` và privilege từ `SPP`; ghi sớm có
+  thể bật interrupt khi frame chưa thoát (chuẩn bị KT-47). Kiểm chứng: `grep -n 'csrw sstatus'`
+  trong đoạn `trap_entry` = **0**; lần xuất hiện duy nhất còn lại trong `vifast-plat-riscv64` là
+  restore `sstatus` của **probe tiêm** sau khi trap tiêm quay lại — không phải đường trap thật.
+  Không hardcode offset trong asm:
+  offset là `const` operand lấy từ `vifast-plat-common::trap`; `const` assert + host test đối
+  chiếu `offset_of!`.
+- **Trap lồng (P2b)**: sau khi lưu frame, asm đọc `sp` bị ngắt từ frame; nếu nằm trong
+  `[__trap_stack_bottom, __trap_stack_top)` thì đó là trap xảy ra **trong handler** ⇒ gọi
+  `nested_trap_halt` in `PANIC: nested trap …` + `DebugHalt(1)`, **không** khôi phục/resume frame
+  cũ. Bố cục: `sscratch` đã reset về `__trap_stack_top` trước khi phát hiện, nên frame lồng ở
+  **đúng slot** `top-288` và **đè** frame ngoài — vô hại vì halt ngay. Host test
+  `is_nested_trap_sp` kiểm predicate; TAP 5 trên QEMU kiểm hành vi thật (boot dừng có chủ đích).
+- **Decode**: bit 63 = interrupt (`Event::Interrupt { code }`); còn lại `Event::Exception` với
+  `ExceptionKind` cho **0/1/2/3/4/5/6/7/8/9/12/13/15** và `Unknown(mã)` (host test đủ bảng).
+  `stval` của `illegal` là instruction lỗi; `breakpoint`/page fault giữ `stval` phần cứng.
+- **Chính sách KT-45**: `breakpoint`/`illegal`/`ecall` ⇒ resume (cộng `sepc` đúng **2 hay 4**
+  byte; `ecall` luôn 4, `breakpoint`/`illegal` đọc halfword tại `sepc` vì instruction đã fetch
+  được); page fault/access fault/misaligned/`Unknown` ⇒ **fatal**: `report_fatal` in
+  `PANIC: trap <Kind> scause=… sepc=… stval=… sstatus=…` + `ra/sp/gp/tp` + `a0..a7`, rồi
+  `DebugHalt(1)`; interrupt bất ngờ ⇒ `PANIC: unexpected interrupt …` + halt (timer/PLIC là
+  KT-47/48). `TRAP_STATS` giữ `scause/sepc/stval/sstatus` **tại thời điểm trap** (không phải sepc
+  sau resume) để TAP kiểm được.
+- **TAP (D2-73)**: `ktest.sh` đòi **5 TAP** — `ok 1 - ktest image`,
+  `ok 2 - trap breakpoint` (trap thật, `scause=3`, resume đúng `sepc`),
+  `ok 3 - trap ecall sbi` (`ecall` **từ S-mode**: OpenSBI xử lý ở M-mode, trả
+  `SBI_ERR_NOT_SUPPORTED`, resume đúng `sepc` — **không** claim trap S-mode),
+  `ok 4 - trap illegal inject` (**tiêm**: đặt `scause=2`/`stval`/`sepc` bằng CSR rồi nhảy
+  `trap_entry`; **không** claim phần cứng), và `ok 5 - trap nested panic` (**trap lồng** có chủ
+  đích: `PANIC: nested trap …` + halt, không treo/không resume; runner chỉ chấp nhận **đúng**
+  dòng PANIC này).
+- **Vì sao phải tiêm (bằng chứng)**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG` chỉ gồm
+  cause 0/3/8 (+ page fault 12/13/15 khi platform có `mfaults_delegation`); **bit 2 (illegal) và
+  bit 9 (ecall-S) = 0**. Probe QEMU thật: `ebreak` → `scause=3`; `.4byte` illegal không vào
+  `stvec` (ở lại M-mode); `ecall` S-mode trả `SBI_ERR_NOT_SUPPORTED`. Log:
+  `v2/agent/JOURNAL/kt45-probe-medeleg.log`, `kt45-probe-illegal-mmode.log`. D2-73 chốt giữ đủ
+  khung + TAP thật (a)/(b) và illegal bằng host test + trap tiêm; **cấm** đổi firmware M-mode
+  (trái D2-72 Q3). Page-fault thật (`scause` 13/15) chuyển **KT-46** (guard page).
+- **Đo**: `kt45-{red-ktest,ktest,boot,boot50,budget,gate-fast,fatal-trap,nested-trap}.log` trong
+  `v2/agent/JOURNAL/` (số đo do script in, không chép tay).
+
+## 8. Phạm vi: KT-45 **không** làm gì
 
 | Không làm | Thuộc |
 |---|---|
-| `stvec`, trapframe, decode exception, panic dump `scause/sepc` | KT-45 |
-| Sv39 thật, nửa cao, physmap, `satp`, **guard page fault** | KT-46 |
+| Page-fault thật (`scause` 13/15), guard page fault | KT-46 |
 | Timer `set_timer`, tick 100 Hz, deadline/hart, đo drift | KT-47 |
 | PLIC enable/claim/complete, UART IRQ 10 | KT-48 |
 | SBI HSM, stack/arena/PerHart theo hart, barrier | KT-49 |

@@ -46,6 +46,18 @@ SECTIONS
         __stack_bottom = .;
         . += 0x10000;
         __stack_top = .;
+    }
+
+    /* KT-45: trap stack RIÊNG, NOLOAD — `trap_entry` làm `csrrw sp, sscratch, sp` (sp = đỉnh
+       vùng này) rồi `addi sp, sp, -288` để trapframe 288 B nằm TRỌN trong vùng, nên trap không
+       bao giờ ghi đè stack của code bị ngắt. Một hart ở KT-45; stack theo hart là KT-49.
+       LƯU Ý KT-46: `.trap_stack`/`.stack` là NOLOAD nên KHÔNG thuộc PT_LOAD của ảnh — page table
+       kernel của KT-46 phải map cả hai vùng (và arena bắt đầu từ `__kernel_end`, sau vùng này).
+       NOLOAD nên KHÔNG cộng vào trần `.data+.bss` (D2-72 Q5); `budget.sh` in riêng như `.stack`. */
+    .trap_stack (NOLOAD) : ALIGN(16) {
+        __trap_stack_bottom = .;
+        . += 0x4000; /* 16 KiB: trapframe 288 B + handler Rust + in log */
+        __trap_stack_top = .;
         __kernel_end = .;
     }
 

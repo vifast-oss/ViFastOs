@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# KT-44 — boot ảnh **TEST** riscv64 K3 (bin `vifast-kbin-ktest`, feature `ktest`).
+# KT-44/45 — boot ảnh **TEST** riscv64 K3 (bin `vifast-kbin-ktest`, feature `ktest`).
 #
-# Đây là phép **đỏ trước** của KT-44: script đòi dòng TAP `ok 1 - ktest image`; khi chưa có
-# ảnh test (chưa có `src/ktest.rs`/feature) nó ĐỎ. Sau khi tách ảnh thì xanh.
+# KT-44: đây là phép **đỏ trước** của việc tách ảnh — script đòi `ok 1 - ktest image`; khi chưa có
+# ảnh test (chưa có `src/ktest.rs`/feature) nó ĐỎ. KT-45: script đòi **5 TAP** (image + breakpoint
+# thật + ecall-S qua SBI + illegal **tiêm** theo D2-73 + trap lồng fatal) — ảnh KT-44 chỉ có 1 TAP
+# nên ĐỎ trước.
 #
 # D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm — cùng crate nhưng bin + feature riêng.
 # D2-72 Q2/Q5/Q10: `-machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp N`, budget riêng
@@ -104,12 +106,29 @@ while [ "$i" -le "$N_BOOT" ]; do
     if grep -q '^OpenSBI v' "$out"; then
         echo "# opensbi $(sed -n 's/^OpenSBI \(v[0-9][0-9.]*\).*/\1/p' "$out" | head -1)"
     fi
-    if grep -q '^TAP version 13$' "$out" && grep -q '^1\.\.1$' "$out" &&
-        grep -q '^ok 1 - ktest image$' "$out" && grep -q '^# ktest halt$' "$out" &&
-        ! grep -q '^PANIC' "$out"; then
-        echo "ok $i - ktest image"
+    # KT-45 (D2-73): ảnh test phải có 5 TAP — 1 ảnh + 3 trap + 1 trap lồng (P2b). Hai TAP trap
+    # thật: `breakpoint` (scause 3) và `ecall sbi` (ecall-S do M-mode/OpenSBI xử lý, resume đúng
+    # sepc); `illegal` là trap **tiêm** (MEDELEG bit 2 không delegate — xem D2-73); TAP 5 là trap
+    # **lồng** có chủ đích: boot kết thúc bằng `PANIC: nested trap …` + SBI SRST (không có
+    # `# ktest halt`). Runner chấp nhận **đúng** dòng PANIC đó và **chỉ** dòng đó.
+    missing=""
+    grep -q '^TAP version 13$' "$out" || missing="$missing TAP-version"
+    grep -q '^1\.\.5$' "$out" || missing="$missing plan-1..5"
+    grep -q '^ok 1 - ktest image$' "$out" || missing="$missing ok1-image"
+    grep -q '^ok 2 - trap breakpoint$' "$out" || missing="$missing ok2-breakpoint"
+    grep -q '^ok 3 - trap ecall sbi$' "$out" || missing="$missing ok3-ecall-sbi"
+    grep -q '^ok 4 - trap illegal inject$' "$out" || missing="$missing ok4-illegal-inject"
+    grep -q '^ok 5 - trap nested panic$' "$out" || missing="$missing ok5-nested"
+    grep -q '^PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)$' "$out" ||
+        missing="$missing nested-panic"
+    # Chỉ dòng PANIC lồng dự kiến được phép; PANIC khác = đỏ.
+    others="$(grep '^PANIC' "$out" |
+        grep -vc '^PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)$' || true)"
+    [ "${others:-0}" -eq 0 ] || missing="$missing PANIC-khác"
+    if [ -z "$missing" ]; then
+        echo "ok $i - ktest image + trap + nested"
     else
-        echo "not ok $i - ktest boot $i: thiếu 'ok 1 - ktest image' hoặc có PANIC, log $out"
+        echo "not ok $i - ktest boot $i: thiếu$missing, log $out"
         fails=$((fails + 1))
     fi
     i=$((i + 1))

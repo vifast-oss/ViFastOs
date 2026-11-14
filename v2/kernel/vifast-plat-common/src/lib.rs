@@ -12,10 +12,15 @@
 //!   hai ảnh khác nhau nhưng cùng một handler, không chép đôi);
 //! - [`PlatformWriter`]: `core::fmt::Write` trên [`Platform::put_str`], để in số không cần `alloc`.
 //!
-//! **Không** thuộc phạm vi KT-44: trap/`stvec` (KT-45), MMU (KT-46), timer tick (KT-47), PLIC
-//! (KT-48), SMP (KT-49) — xem `v2/docs/k3-riscv64.md` §7.
+//! KT-45 mở rộng cùng crate: module [`trap`] (trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`,
+//! decode **mọi** `scause` 0/2/3/4/5/6/7/8/9/12/13/15/khác ⇒ [`trap::Event::Exception`], chính
+//! sách resume/fatal, bộ đếm trap) và ba method mới của [`Platform`]: `set_trap_vector` +
+//! `enable_irq`/`disable_irq` (stub, PLIC là KT-48). **Không** thuộc KT-45: MMU/satp (KT-46), timer
+//! (KT-47), PLIC (KT-48), SMP (KT-49), U-mode/syscall (KT-53) — xem `v2/docs/k3-riscv64.md`.
 #![no_std]
 #![forbid(unsafe_code)]
+
+pub mod trap;
 
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
@@ -41,6 +46,21 @@ pub trait Platform {
 
     /// Hart đang chạy (Boot HART id OpenSBI truyền ở `a0`).
     fn hart_id(&self) -> usize;
+
+    /// Cài vector trap **direct mode** (`stvec.MODE = 0`), địa chỉ phải 4-byte aligned.
+    ///
+    /// KT-45 dùng **một** vector duy nhất: asm lưu trapframe rồi gọi handler chung; không vectored,
+    /// không bảng vector theo mã `scause` (K3-PLAN §4.1 KT-45).
+    fn set_trap_vector(&self, vector: usize);
+
+    /// Bật một dòng IRQ — **stub** ở KT-45, chưa PLIC (KT-48).
+    ///
+    /// Trả `true` nếu dòng đã được bật thật; K3 KT-45 luôn trả `false` (chưa có PLIC). Giữ chữ ký
+    /// ổn định để KT-48 chỉ thay phần thân, không đổi người gọi.
+    fn enable_irq(&self, irq: u32) -> bool;
+
+    /// Tắt một dòng IRQ — **stub** ở KT-45, chưa PLIC (KT-48); cùng hợp đồng với [`Self::enable_irq`].
+    fn disable_irq(&self, irq: u32) -> bool;
 }
 
 /// Triển khai [`Platform`] cho tham chiếu — để `PanicHandler::new(&plat)` dùng được mà không
@@ -64,6 +84,18 @@ impl<P: Platform + ?Sized> Platform for &P {
 
     fn hart_id(&self) -> usize {
         (**self).hart_id()
+    }
+
+    fn set_trap_vector(&self, vector: usize) {
+        (**self).set_trap_vector(vector);
+    }
+
+    fn enable_irq(&self, irq: u32) -> bool {
+        (**self).enable_irq(irq)
+    }
+
+    fn disable_irq(&self, irq: u32) -> bool {
+        (**self).disable_irq(irq)
     }
 }
 

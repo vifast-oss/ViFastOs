@@ -1,0 +1,6 @@
+# KT-45 build 2 ảnh cuối (2026-11-14T15:25:02Z)
+# product:
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.82s
+# ktest:
+    Finished `release` profile [optimized] target(s) in 0.01s
