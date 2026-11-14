@@ -159,7 +159,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **DONE** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
 | ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **DONE** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **DONE** | ≥13 ca tổng; `gate` xanh |
-| ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **READY** | 6 snapshot; stdout sạch; thoát khi EOF |
+| ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **DONE** | 6 snapshot; stdout sạch; thoát khi EOF |
 | ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **READY** | 6 snapshot + 6 unit vị trí |
 | ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **READY** | ≥13 frame; prefix/hover/null |
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **READY** | 6 ca + e2e tất định; không mạng |
@@ -1042,3 +1042,15 @@ APPROVED 2026-11-14 Agent 0
 > **không có log đỏ thật** (không đổi mã sản phẩm) — ghi rõ trong JOURNAL thay vì dựng đỏ giả.
 > Nợ giữ nguyên (một luồng, không TLS/redirect/keep-alive/chunked, chỉ loopback, handle per-process, cap 8 MiB).
 > **ST-67 mở** (VS2 #5a — LSP khung JSON-RPC; **VD-102**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-67 DONE — VS2 #5a (khung LSP) CÓ MẶT.** Commit `c35a0c00` (**Agent 2 tự commit, đã push**). `vis lsp --stdio`:
+> framing `Content-Length` (bắt buộc header, `read_exact` N **byte**, cap body 16 MiB, flush từng frame), JSON-RPC 2.0 dựng
+> trên `Value::Map` với **JSON của `vis_interp`** (không crate mới); `initialize` (capabilities + `positionEncoding:
+> "utf-16"`) / `initialized` (không frame) / `shutdown` / `exit` (0 sau shutdown, 1 trước) / `-32601` / `-32700` (id null) /
+> `-32002` / `-32600`; **stdout tuyệt đối sạch**, thoát khi `exit` **hoặc EOF**. **8 ca** snapshot nguyên văn, deadline 5 s
+> chống treo. Đo: **821 test** · sem **441/21** · parity **395/395** · differential **100k/0 lệch** (282,6 s) · tệp LSP
+> 181/72/66 dòng. Nợ: **chưa** diagnostics/completion/hover thật (ST-68/69), chưa đọc `params`, EOF ⇒ exit 0 (khác spec
+> LSP — cần cho test/CI), một luồng.
+> **ST-68 mở** (VS2 #5b — diagnostics + vị trí **UTF-16**).
