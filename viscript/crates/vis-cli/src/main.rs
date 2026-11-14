@@ -21,7 +21,7 @@ use net::Net as HostNet;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] [--strict-caps] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list"
     );
     ExitCode::from(2)
 }
@@ -398,6 +398,8 @@ fn run_run(rest: &[String]) -> ExitCode {
     // **ST-72b (VD-103)**: `--grant <tên>=<path>` thay root của cap đã khai (không thêm quyền mới).
     let mut grants: Vec<(String, String)> = Vec::new();
     let mut explain_perms = false;
+    // **ST-81 (VD-108)**: mọi truy cập fs/net phải nằm trong `cap` đã khai (mặc định: không siết).
+    let mut strict_caps = false;
     // `vis run --no-extern`: tắt chương trình ngoài (lệnh lạ ⇒ `VS0601`).
     let mut co_no_extern = false;
     let mut tep: Option<String> = None;
@@ -415,6 +417,7 @@ fn run_run(rest: &[String]) -> ExitCode {
             // ST-25: in cây phụ thuộc của module.
             "--dump-deps" => dump_deps = true,
             "--dry" => dry = true,
+            "--strict-caps" => strict_caps = true,
             "--sandbox-check" => sandbox_check = true,
             "--grant" => {
                 i += 1;
@@ -461,7 +464,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--sandbox-check] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--sandbox-check] [--strict-caps] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]\n  --strict-caps: mọi truy cập `std.fs`/`net` phải nằm trong `cap` đã khai (mặc định: không siết)"
         );
         return ExitCode::from(2);
     };
@@ -507,7 +510,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     // **ST-72b (VD-103/VD-106)**: quyền theo `cap` của `main` + `--grant`.
     let ds_cap = quyen::ds_cap(&text, che_do);
     let goc = std::env::current_dir().unwrap_or_default();
-    let quyen = match quyen::tao(&ds_cap, &grants, &goc) {
+    let quyen = match quyen::tao(&ds_cap, &grants, &goc, strict_caps) {
         Ok(q) => q,
         Err(e) => {
             eprintln!("vis run: {e}");

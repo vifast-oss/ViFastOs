@@ -14,7 +14,7 @@ use std::process::{Command, ExitCode};
 use vis_syntax::{Kind, Mode, NodeKind, Span};
 
 fn usage() -> ExitCode {
-    eprintln!("dùng: vis test [--vm] [thư mục|tệp]");
+    eprintln!("dùng: vis test [--vm] [--strict-caps] [thư mục|tệp]");
     ExitCode::from(2)
 }
 
@@ -91,9 +91,12 @@ fn thanh_main(text: &str, test_span: Span, name_span: Span) -> String {
     s
 }
 
-fn chay(ca: &Path, vm: bool) -> (i32, String, String) {
+fn chay(ca: &Path, vm: bool, strict: bool) -> (i32, String, String) {
     let mut c = Command::new(std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vis")));
     c.arg("run").arg("--tap");
+    if strict {
+        c.arg("--strict-caps");
+    }
     if vm {
         c.arg("--vm").arg("--no-cache");
     }
@@ -142,10 +145,12 @@ fn chan_doan(stderr: &str) -> Option<(String, u32, u32, String)> {
 
 pub fn run(args: &[String]) -> ExitCode {
     let mut vm = false;
+    let mut strict = false;
     let mut duong: Option<PathBuf> = None;
     for a in args {
         match a.as_str() {
             "--vm" => vm = true,
+            "--strict-caps" => strict = true,
             "-h" | "--help" => return usage(),
             s if s.starts_with('-') => {
                 eprintln!("vis test: không hỗ trợ cờ `{s}`");
@@ -220,6 +225,9 @@ pub fn run(args: &[String]) -> ExitCode {
             let mut c =
                 Command::new(std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vis")));
             c.arg("run");
+            if strict {
+                c.arg("--strict-caps");
+            }
             if vm {
                 c.arg("--vm").arg("--no-cache");
             }
@@ -245,7 +253,7 @@ pub fn run(args: &[String]) -> ExitCode {
             continue;
         }
         let err = p.with_extension("err");
-        let (code, out, stderr) = chay(p, vm);
+        let (code, out, stderr) = chay(p, vm, strict);
         if err.exists() {
             let mong = std::fs::read_to_string(&err).unwrap_or_default();
             // `.err` có thể có header SPDX: lấy **dòng đầu không phải chú thích**.

@@ -1,0 +1,46 @@
+fatal: not a git repository (or any of the parent directories): .git
+# ST-81 — log ĐỎ (trước khi có --strict-caps) lúc 2026-11-14T13:41:43Z, HEAD 
+
+== vis run <không cờ> f.vis
+xin chào
+
+[exit=0]
+== vis run --vm --no-cache <không cờ> f.vis
+xin chào
+
+[exit=0]
+
+== vis run --strict-caps f.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]
+== vis run --vm --no-cache --strict-caps f.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]
+
+== vis run <không cờ> net.vis
+net.vis:4:11: error VS0401: `net.connect` cần 1 đối số, được 2
+[exit=2]
+== vis run --vm --no-cache <không cờ> net.vis
+net.vis:4:11: error VS0401: `net.connect` cần 1 đối số, được 2
+[exit=2]
+
+== vis run --strict-caps net.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]
+== vis run --vm --no-cache --strict-caps net.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]
+
+== (sửa) net.connect 1 đối số — trước khi có cờ
+-- vis run <không cờ> net.vis
+ERR
+[exit=0]
+-- vis run --vm --no-cache <không cờ> net.vis
+ERR
+[exit=0]
+-- vis run --strict-caps net.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]
+-- vis run --vm --no-cache --strict-caps net.vis
+vis run: không hỗ trợ cờ `--strict-caps`
+[exit=2]

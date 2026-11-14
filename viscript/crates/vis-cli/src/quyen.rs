@@ -39,6 +39,9 @@ pub struct QuyenCap {
 pub struct Quyen {
     pub moc: Vec<QuyenCap>,
     pub bat: bool,
+    /// **ST-81 (VD-108)**: `--strict-caps` — mọi truy cập fs/net phải nằm trong `cap` đã khai;
+    /// **không** khai `cap` nào mà chạm fs/net ⇒ `VS0604`. Mặc định `false` (tương thích).
+    pub siet: bool,
     pub goc: PathBuf,
 }
 
@@ -136,7 +139,12 @@ pub fn ds_cap(text: &str, mode: Mode) -> Vec<CapKhai> {
 }
 
 /// Tính `Quyen` từ `cap` khai + `--grant`; lỗi (grant lạ) ⇒ `Err` cho CLI exit 2.
-pub fn tao(ds: &[CapKhai], grants: &[(String, String)], goc: &Path) -> Result<Quyen, String> {
+pub fn tao(
+    ds: &[CapKhai],
+    grants: &[(String, String)],
+    goc: &Path,
+    siet: bool,
+) -> Result<Quyen, String> {
     for (ten, _) in grants {
         if !ds.iter().any(|c| &c.name == ten) {
             return Err(format!(
@@ -174,7 +182,8 @@ pub fn tao(ds: &[CapKhai], grants: &[(String, String)], goc: &Path) -> Result<Qu
     }
     Ok(Quyen {
         moc,
-        bat: !ds.is_empty(),
+        bat: siet || !ds.is_empty(),
+        siet,
         goc: goc.to_path_buf(),
     })
 }
@@ -238,7 +247,11 @@ impl Quyen {
                 }
             }
         }
-        let msg = if trong_root {
+        let co_fs = self.moc.iter().any(|q| q.kind == "Dir" || q.kind == "File");
+        let msg = if self.siet && !co_fs {
+            // **ST-81**: strict + **không** khai cap fs ⇒ nêu rõ **cần khai** gì.
+            format!("[quyền] cần khai `cap[Dir]` cho `{p}`")
+        } else if trong_root {
             format!("[quyền] thiếu `(write)` trên `cap[Dir]` cho `{p}`")
         } else {
             format!("[quyền] thiếu `cap[Dir]` cho `{p}`")
@@ -259,6 +272,11 @@ impl Quyen {
         let loopback = host == "127.0.0.1" || host == "localhost";
         if khop || (loopback && co_net) {
             Ok(())
+        } else if self.siet && !co_net {
+            // **ST-81**: strict + không khai `cap[Net]` ⇒ nêu rõ cần khai.
+            Err(format!(
+                "{DAU_QUYEN}[quyền] cần khai `cap[Net]` cho `{dia_chi}`"
+            ))
         } else {
             Err(format!(
                 "{DAU_QUYEN}[quyền] thiếu `cap[Net]` cho `{dia_chi}` (không khai host này)"

@@ -1,0 +1,86 @@
+# ST-81 — log ĐỎ (Rust) lúc 2026-11-14T13:43:43Z, HEAD e6f190da — trước khi có --strict-caps.
+# lệnh: cargo test -p vis-cli --test strict_caps (7 ca)
+
+warning: unused variable: `c2`
+   --> crates/vis-cli/tests/strict_caps.rs:172:10
+    |
+172 |     let (c2, o2, e2) = chay(&d, &["test", "--strict-caps", "--vm", "t.vis"]);
+    |          ^^ help: if this is intentional, prefix it with an underscore: `_c2`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `e2`
+   --> crates/vis-cli/tests/strict_caps.rs:172:18
+    |
+172 |     let (c2, o2, e2) = chay(&d, &["test", "--strict-caps", "--vm", "t.vis"]);
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_e2`
+
+warning: `vis-cli` (test "strict_caps") generated 2 warnings (run `cargo fix --test "strict_caps" -p vis-cli` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/strict_caps.rs (target/debug/deps/strict_caps-2843abcf91a19034)
+
+running 7 tests
+test vis_test_strict_caps_truyen_co ... FAILED
+test strict_cap_dir_ngoai_root ... FAILED
+test strict_khong_cap_net_thi_vs0604 ... FAILED
+test strict_cap_dir_trong_root ... FAILED
+test strict_van_kiem_tren_fs_mock ... FAILED
+test strict_khong_cap_doc_thi_vs0604 ... FAILED
+test mac_dinh_khong_siet ... ok
+
+failures:
+
+---- vis_test_strict_caps_truyen_co stdout ----
+
+thread 'vis_test_strict_caps_truyen_co' (47462230) panicked at crates/vis-cli/tests/strict_caps.rs:174:5:
+assertion `left == right` failed: vis test: không hỗ trợ cờ `--strict-caps`
+dùng: vis test [--vm] [thư mục|tệp]
+
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- strict_cap_dir_ngoai_root stdout ----
+
+thread 'strict_cap_dir_ngoai_root' (47462225) panicked at crates/vis-cli/tests/strict_caps.rs:122:5:
+vis run: không hỗ trợ cờ `--strict-caps`
+
+
+---- strict_khong_cap_net_thi_vs0604 stdout ----
+
+thread 'strict_khong_cap_net_thi_vs0604' (47462228) panicked at crates/vis-cli/tests/strict_caps.rs:137:5:
+vis run: không hỗ trợ cờ `--strict-caps`
+
+
+---- strict_cap_dir_trong_root stdout ----
+
+thread 'strict_cap_dir_trong_root' (47462226) panicked at crates/vis-cli/tests/strict_caps.rs:99:5:
+assertion `left == right` failed: stderr: vis run: không hỗ trợ cờ `--strict-caps`
+
+  left: 2
+ right: 0
+
+---- strict_van_kiem_tren_fs_mock stdout ----
+
+thread 'strict_van_kiem_tren_fs_mock' (47462229) panicked at crates/vis-cli/tests/strict_caps.rs:157:5:
+vis run: không hỗ trợ cờ `--strict-caps`
+
+
+---- strict_khong_cap_doc_thi_vs0604 stdout ----
+
+thread 'strict_khong_cap_doc_thi_vs0604' (47462227) panicked at crates/vis-cli/tests/strict_caps.rs:76:5:
+stderr: vis run: không hỗ trợ cờ `--strict-caps`
+
+
+
+failures:
+    strict_cap_dir_ngoai_root
+    strict_cap_dir_trong_root
+    strict_khong_cap_doc_thi_vs0604
+    strict_khong_cap_net_thi_vs0604
+    strict_van_kiem_tren_fs_mock
+    vis_test_strict_caps_truyen_co
+
+test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `-p vis-cli --test strict_caps`

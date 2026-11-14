@@ -6,18 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-80 — LSP module-aware** (hết **bỏ sót** chẩn đoán `std.*`/`use ./x`; `vis check`
-                cùng tệp là chuẩn; tệp không có trên đĩa giữ đường một tệp) — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 4/4 (đo trước: LSP **thiếu** VS0301/VS0701 so với `vis check` → `load_full_voi_text`
-                + URI→path + chọn chẩn đoán tệp chính → 7 ca mới (6 + hiệu năng) → 907 test → cổng →
-                diff 100k → STATE/JOURNAL).
+Task          : **ST-81 — `--strict-caps`** (mọi truy cập `std.fs`/`net` phải nằm trong `cap` đã khai;
+                không cap ⇒ `VS0604` “cần khai `cap[Dir]`/`cap[Net]`” + đường dẫn; mặc định **không**
+                đổi; có ở `vis run` + `vis test`) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (red-first: không cờ ⇒ đọc được, cờ chưa có ⇒ “cờ lạ” → `Quyen.siet` + parse cờ →
+                7 ca (6 tình huống + `vis test`) → 914 test → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:39:13Z**; **907** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:52:28Z**; **914** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (96,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (217,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-80]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-81]` + push (đã được uỷ quyền)
+
+## ST-81 — `--strict-caps`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | `main()` không cap đọc `fs.read("in.txt")` ⇒ **chạy** (exit 0, in nội dung), cả interp và `--vm`; `--strict-caps` ⇒ **“không hỗ trợ cờ” exit 2** (chưa tồn tại). `net.connect` loopback không cap ⇒ chạy (in `ERR` do cổng 9 đóng). Log `JOURNAL/st81-red.log` sha256 `d2d3597c…`; Rust `JOURNAL/st81-red-rust.log` sha256 `bc33fbde…` (**1/7 xanh** — ca “mặc định không siết” xanh sẵn, đúng thiết kế). |
+| 1 | **Cờ** | `vis run --strict-caps`; `vis test --strict-caps` truyền xuống `vis run` (cả nhánh fixture và nhánh `test fn`). `usage()` và usage `vis run`/`vis test` đều nêu cờ + nghĩa “mặc định: không siết”. |
+| 2 | **Cưỡng chế** | `Quyen` thêm `siet`; `tao(..., siet)` ⇒ `bat = siet || !ds.is_empty()`. Không cap + strict: fs ⇒ **`[quyền] cần khai `cap[Dir]` cho `{p}``, net ⇒ **`[quyền] cần khai `cap[Net]` cho `{địa_chỉ}``; cả hai thành trap **`VS0604`**, exit **2**. Có `cap[Dir]` root: trong root chạy, ngoài root `VS0604`; câu **ST-72b cũ** giữ nguyên khi không strict/không phải ca thiếu cap. |
+| 3 | **`--fs-mock`** | **Vẫn kiểm quyền** (khoá lựa chọn): strict + không cap + `--fs-mock` ⇒ `VS0604`, **không** miễn mock. |
+| 4 | **7 ca** | `crates/vis-cli/tests/strict_caps.rs`: (a) mặc định không siết (khoá tương thích); (b) strict + không cap đọc ⇒ `VS0604` + “cần khai `cap[Dir]`” + `in.txt`; (c) `cap[Dir]` root + đọc trong ⇒ chạy; (d) `cap[Dir]` root + đọc ngoài (qua `../`) ⇒ `VS0604`; (e) strict + không cap + `net.connect` loopback ⇒ `VS0604` + “cần khai `cap[Net]`”; (f) strict + `--fs-mock` ⇒ `VS0604`; (g) `vis test --strict-caps` ⇒ TAP `not ok` + `VS0604`. **Mỗi ca cả interp + `--vm --no-cache`**, so exit/stdout/TAP. |
+| 5 | **Đo** | **914** test = 907 + **7** (21+96+27+154+26+62+9+**519**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=217.6 toc_do=459/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; ST-72b **8 ca `quyen.rs` vẫn xanh** (không đổi câu mặc định); R1 max **1.498**. |
+| 6 | **Nợ** | **Mặc định vẫn không siết** — “siết mặc định” cần chuyển toàn bộ fixture/host suite sang khai `cap` (nợ lớn, chưa làm); `fs.exists` ngoài quyền vẫn trả `false` (im lặng) thay vì `VS0604` như `read`; `--strict-caps` không áp cho `--sandbox-check`/`--dry` (chỉ in/không chạy); chỉ cấp `Dir/File/Net` — chưa có loại cap khác. |
 
 ## ST-80 — LSP module-aware, 2026-11-14
 
