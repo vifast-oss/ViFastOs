@@ -1,0 +1,940 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::AsidState`, `vifast_sim::kobj::FlushScope`, `vifast_sim::kobj::HartMask`, `vifast_sim::kobj::VSpaceInfo`, `vifast_sim::kobj::ASID_COUNT`
+  --> sim/vifast-sim/tests/kt38_vspace.rs:26:5
+   |
+26 |     AsidState, FlushScope, HartMask, KError, Machine, MapAttrs, MapRights, ObjId, ObjType, SlotRef,
+   |     ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^ no `HartMask` in `kobj`
+   |     |          |
+   |     |          no `FlushScope` in `kobj`
+   |     no `AsidState` in `kobj`
+27 |     VSpaceInfo, ASID_COUNT, FLAG_GUEST,
+   |     ^^^^^^^^^^  ^^^^^^^^^^ no `ASID_COUNT` in `kobj`
+   |     |
+   |     no `VSpaceInfo` in `kobj`
+
+error[E0599]: no method named `vspace_create` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:102:26
+    |
+102 |         let cap = self.m.vspace_create(self.sva).expect("vspace_create");
+    |                          ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_create` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:110:26
+    |
+110 |         let cap = self.m.vspace_create(self.sva).expect("vspace_create");
+    |                          ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_vspace` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:143:14
+    |
+142 | /         self.m
+143 | |             .check_vspace()
+    | |_____________-^^^^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+143 -             .check_vspace()
+143 +             .check_ipc()
+    |
+
+error[E0599]: no method named `check_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:146:14
+    |
+145 | /         self.m
+146 | |             .check_asid()
+    | |_____________-^^^^^^^^^^
+    |
+help: there is a method `check_smp` with a similar name
+    |
+146 -             .check_asid()
+146 +             .check_smp()
+    |
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:180:20
+    |
+180 |     let root = r.m.vspace_root(vs).expect("root VSpace");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:195:20
+    |
+195 |     assert_eq!(r.m.vspace_count(), 0);
+    |                    ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+195 -     assert_eq!(r.m.vspace_count(), 0);
+195 +     assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:197:13
+    |
+197 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:206:20
+    |
+206 |     assert_eq!(r.m.hart_online(), HartMask::from_bits(0b1));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:217:20
+    |
+217 |     assert_eq!(r.m.vspace_count(), 2);
+    |                    ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+217 -     assert_eq!(r.m.vspace_count(), 2);
+217 +     assert_eq!(r.m.frame_count(), 2);
+    |
+
+error[E0599]: no method named `vspace_get_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:226:20
+    |
+226 |     assert_eq!(r.m.vspace_get_asid(vs0), Ok(0));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_get_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:227:20
+    |
+227 |     assert_eq!(r.m.vspace_get_asid(vs12), Ok(1));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:228:21
+    |
+228 |     let info0 = r.m.vspace_info(vs0).expect("info vs0");
+    |                     ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:231:22
+    |
+231 |     let info12 = r.m.vspace_info(vs12).expect("info vs12");
+    |                      ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:234:13
+    |
+234 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:242:20
+    |
+242 |     assert_eq!(r.m.flush_count(), 0, "chưa teardown/cạn ASID ⇒ chưa có lệnh flush");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:245:20
+    |
+245 |     let root = r.m.vspace_root(vs0).expect("root");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:256:20
+    |
+256 |     assert_eq!(r.m.vspace_walk(vs0, 0), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:264:10
+    |
+262 |       let map4 = r
+    |  ________________-
+263 | |         .m
+264 | |         .vspace_map(vs0, K4, sf, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:271:17
+    |
+271 |             r.m.vspace_walk(vs0, va),
+    |                 ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:276:20
+    |
+276 |     assert_eq!(r.m.vspace_walk(vs0, 0), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:279:22
+    |
+279 |     let root12 = r.m.vspace_root(vs12).expect("root vs12");
+    |                      ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:285:10
+    |
+283 |       let map2 = r
+    |  ________________-
+284 | |         .m
+285 | |         .vspace_map(vs12, M2, sf2, MapRights::READ | MapRights::WRITE, MapAttrs::WB)
+    | |         -^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:290:24
+    |
+290 |         assert_eq!(r.m.vspace_walk(vs12, va), r.m.page_table_walk(root12, va));
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:297:10
+    |
+295 |       let map1 = r
+    |  ________________-
+296 | |         .m
+297 | |         .vspace_map(vs12, G1, sf1, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:301:24
+    |
+301 |         assert_eq!(r.m.vspace_walk(vs12, va), r.m.page_table_walk(root12, va));
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:307:13
+    |
+307 |         r.m.vspace_unmap(vs0, K4).map(|m| m.frame),
+    |             ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:311:20
+    |
+311 |     assert_eq!(r.m.vspace_walk(vs0, K4), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_create` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:319:22
+    |
+319 |     let cap_vs = r.m.vspace_create(s_tiny).expect("VSpace từ Untyped 4 KiB");
+    |                      ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:323:13
+    |
+323 |         r.m.vspace_count(),
+    |             ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+323 -         r.m.vspace_count(),
+323 +         r.m.frame_count(),
+    |
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:325:13
+    |
+325 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:327:13
+    |
+327 |         r.m.flush_count(),
+    |             ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_create` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:330:13
+    |
+330 |         r.m.vspace_create(s_tiny),
+    |             ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:336:17
+    |
+336 |             r.m.vspace_count(),
+    |                 ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+336 -             r.m.vspace_count(),
+336 +             r.m.frame_count(),
+    |
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:338:17
+    |
+338 |             r.m.asid_state(),
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:340:17
+    |
+340 |             r.m.flush_count(),
+    |                 ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:345:25
+    |
+345 |     let info_tiny = r.m.vspace_info(vs_tiny).expect("info tiny");
+    |                         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:371:24
+    |
+371 |         let info = r.m.vspace_info(vs).expect("info");
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_get_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:374:24
+    |
+374 |         assert_eq!(r.m.vspace_get_asid(vs), Ok(i as u16));
+    |                        ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:376:24
+    |
+376 |         assert_eq!(r.m.asid_state().free, ASID_COUNT - (i + 1));
+    |                        ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:377:24
+    |
+377 |         assert_eq!(r.m.asid_state().issued, (i + 1) as u32);
+    |                        ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:383:13
+    |
+383 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:392:13
+    |
+392 |         r.m.flush_count(),
+    |             ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:399:20
+    |
+399 |     let info = r.m.vspace_info(vs257).expect("info 257");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:404:13
+    |
+404 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:412:20
+    |
+412 |     assert_eq!(r.m.flush_count(), 1, "flush toàn bộ **một lần** theo gen");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:413:17
+    |
+413 |     let f = r.m.last_flush().expect("lệnh flush gen");
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:425:20
+    |
+425 |     assert_eq!(r.m.vspace_info(first_vs).expect("first").asid, 0);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:426:20
+    |
+426 |     assert_eq!(r.m.vspace_info(first_vs).expect("first").generation, 0);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:438:20
+    |
+438 |     assert_eq!(r.m.vspace_count(), 0);
+    |                    ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+438 -     assert_eq!(r.m.vspace_count(), 0);
+438 +     assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:442:13
+    |
+442 |         r.m.flush_count(),
+    |             ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:447:13
+    |
+447 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:456:20
+    |
+456 |     let last = r.m.last_flush().expect("flush cuối");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:465:20
+    |
+465 |     let info = r.m.vspace_info(vs_new).expect("info mới");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:477:20
+    |
+477 |     assert_eq!(r.m.asid_state().issued, 2);
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:478:20
+    |
+478 |     assert_eq!(r.m.asid_state().free, ASID_COUNT - 2);
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:493:24
+    |
+493 |         let info = r.m.vspace_info(vs).expect("info");
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:500:24
+    |
+500 |         assert_eq!(r.m.vspace_count(), 0);
+    |                        ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+500 -         assert_eq!(r.m.vspace_count(), 0);
+500 +         assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:503:21
+    |
+503 |         let f = r.m.last_flush().expect("flush teardown");
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:516:13
+    |
+516 |         r.m.asid_state(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:524:20
+    |
+524 |     assert_eq!(r.m.flush_count(), 6);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:536:20
+    |
+536 |     assert_eq!(r.m.hart_online(), HartMask::from_bits(0b1111));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:538:9
+    |
+538 |     r.m.vspace_activate(a, 0).expect("activate a@0");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:539:20
+    |
+539 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::from_bits(0b0001)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:540:9
+    |
+540 |     r.m.vspace_activate(a, 0).expect("activate lặp là no-op");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:541:20
+    |
+541 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::from_bits(0b0001)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:542:9
+    |
+542 |     r.m.vspace_activate(a, 2).expect("activate a@2");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:543:20
+    |
+543 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::from_bits(0b0101)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:547:9
+    |
+547 |     r.m.vspace_activate(b, 0).expect("activate b@0");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:548:20
+    |
+548 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::from_bits(0b0100)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:549:20
+    |
+549 |     assert_eq!(r.m.vspace_active_on(b), Ok(HartMask::from_bits(0b0001)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_deactivate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:552:9
+    |
+552 |     r.m.vspace_deactivate(a, 2).expect("deactivate a@2");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:553:20
+    |
+553 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::EMPTY));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_deactivate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:555:13
+    |
+555 |         r.m.vspace_deactivate(a, 2),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_deactivate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:560:13
+    |
+560 |         r.m.vspace_deactivate(b, 1),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:567:20
+    |
+567 |     assert_eq!(r.m.vspace_activate(a, 4), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:568:20
+    |
+568 |     assert_eq!(r.m.vspace_activate(a, 99), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:570:13
+    |
+570 |         r.m.set_hart_online(4, false),
+    |             ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:573:9
+    |
+573 |     r.m.set_hart_online(3, false).expect("hart 3 offline");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:574:20
+    |
+574 |     assert_eq!(r.m.hart_online(), HartMask::from_bits(0b0111));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:576:13
+    |
+576 |         r.m.vspace_activate(a, 3),
+    |             ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:580:9
+    |
+580 |     r.m.set_hart_online(3, true).expect("hart 3 online lại");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:581:20
+    |
+581 |     assert_eq!(r.m.hart_online(), HartMask::from_bits(0b1111));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:582:9
+    |
+582 |     r.m.vspace_activate(a, 3).expect("activate sau khi online lại");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:583:20
+    |
+583 |     assert_eq!(r.m.vspace_active_on(a), Ok(HartMask::from_bits(0b1000)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:595:9
+    |
+595 |     r.m.vspace_activate(vs, 0).expect("activate @0");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:596:9
+    |
+596 |     r.m.vspace_activate(vs, 2).expect("activate @2");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:597:20
+    |
+597 |     assert_eq!(r.m.vspace_active_on(vs), Ok(HartMask::from_bits(0b0101)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:601:9
+    |
+601 |     r.m.set_hart_online(2, false).expect("hart 2 offline");
+    |         ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:602:20
+    |
+602 |     assert_eq!(r.m.vspace_active_on(vs), Ok(HartMask::from_bits(0b0001)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_online` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:603:20
+    |
+603 |     assert_eq!(r.m.hart_online(), HartMask::from_bits(0b1011));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:608:20
+    |
+608 |     assert_eq!(r.m.vspace_count(), 0);
+    |                    ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+608 -     assert_eq!(r.m.vspace_count(), 0);
+608 +     assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:609:17
+    |
+609 |     let f = r.m.last_flush().expect("flush teardown");
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:616:18
+    |
+616 |     for c in r.m.flush_log() {
+    |                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:633:20
+    |
+633 |     let root = r.m.vspace_root(vs).expect("root");
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:642:20
+    |
+642 |     assert_eq!(r.m.vspace_info(tbl), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:643:20
+    |
+643 |     assert_eq!(r.m.vspace_root(tbl), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_get_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:644:20
+    |
+644 |     assert_eq!(r.m.vspace_get_asid(tbl), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:645:20
+    |
+645 |     assert_eq!(r.m.vspace_active_on(tbl), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:646:20
+    |
+646 |     assert_eq!(r.m.vspace_walk(tbl, 0), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:647:20
+    |
+647 |     assert_eq!(r.m.vspace_activate(tbl, 0), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_deactivate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:648:20
+    |
+648 |     assert_eq!(r.m.vspace_deactivate(tbl, 0), Err(KError::WrongObjectType));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:650:13
+    |
+650 |         r.m.vspace_map(
+    |         ----^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:672:9
+    |
+672 |     r.m.vspace_map(vs, K4, sf, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:674:23
+    |
+674 |     let before = (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count());
+    |                       ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+674 -     let before = (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count());
+674 +     let before = (r.m.frame_count(), r.m.asid_state(), r.m.flush_count());
+    |
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:674:43
+    |
+674 |     let before = (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count());
+    |                                           ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:674:61
+    |
+674 |     let before = (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count());
+    |                                                             ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:681:14
+    |
+681 |         (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count()),
+    |              ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+681 -         (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count()),
+681 +         (r.m.frame_count(), r.m.asid_state(), r.m.flush_count()),
+    |
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:681:34
+    |
+681 |         (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count()),
+    |                                  ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:681:52
+    |
+681 |         (r.m.vspace_count(), r.m.asid_state(), r.m.flush_count()),
+    |                                                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:685:20
+    |
+685 |     assert_eq!(r.m.vspace_walk(vs, K4).map(|m| m.frame), Ok(f4));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:689:9
+    |
+689 |     r.m.vspace_unmap(vs, K4).expect("unmap");
+    |         ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:697:20
+    |
+697 |     assert_eq!(r.m.vspace_count(), 0);
+    |                    ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+697 -     assert_eq!(r.m.vspace_count(), 0);
+697 +     assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:699:17
+    |
+699 |     let f = r.m.last_flush().expect("flush teardown");
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:702:20
+    |
+702 |     assert_eq!(r.m.flush_count(), 1);
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:704:20
+    |
+704 |     assert_eq!(r.m.vspace_info(vs), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_root` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:705:20
+    |
+705 |     assert_eq!(r.m.vspace_root(vs), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_get_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:706:20
+    |
+706 |     assert_eq!(r.m.vspace_get_asid(vs), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_walk` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:707:20
+    |
+707 |     assert_eq!(r.m.vspace_walk(vs, 0), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:709:13
+    |
+709 |         r.m.vspace_map(
+    |         ----^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:750:28
+    |
+750 |             let info = r.m.vspace_info(vs).expect("info");
+    |                            ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_vspace` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:756:17
+    |
+756 |             r.m.check_vspace().expect("check_vspace sau tạo");
+    |                 ^^^^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+756 -             r.m.check_vspace().expect("check_vspace sau tạo");
+756 +             r.m.check_ipc().expect("check_vspace sau tạo");
+    |
+
+error[E0599]: no method named `check_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:757:17
+    |
+757 |             r.m.check_asid().expect("check_asid sau tạo");
+    |                 ^^^^^^^^^^
+    |
+help: there is a method `check_smp` with a similar name
+    |
+757 -             r.m.check_asid().expect("check_asid sau tạo");
+757 +             r.m.check_smp().expect("check_asid sau tạo");
+    |
+
+error[E0599]: no method named `vspace_activate` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:759:17
+    |
+759 |             r.m.vspace_activate(vs, 0).expect("activate");
+    |                 ^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_active_on` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:760:28
+    |
+760 |             assert_eq!(r.m.vspace_active_on(vs), Ok(HartMask::from_bits(0b1)));
+    |                            ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_vspace` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:761:17
+    |
+761 |             r.m.check_vspace().expect("check_vspace sau activate");
+    |                 ^^^^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+761 -             r.m.check_vspace().expect("check_vspace sau activate");
+761 +             r.m.check_ipc().expect("check_vspace sau activate");
+    |
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:763:28
+    |
+763 |             assert_eq!(r.m.vspace_count(), 0);
+    |                            ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+763 -             assert_eq!(r.m.vspace_count(), 0);
+763 +             assert_eq!(r.m.frame_count(), 0);
+    |
+
+error[E0599]: no method named `check_vspace` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:765:17
+    |
+765 |             r.m.check_vspace().expect("check_vspace sau huỷ");
+    |                 ^^^^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+765 -             r.m.check_vspace().expect("check_vspace sau huỷ");
+765 +             r.m.check_ipc().expect("check_vspace sau huỷ");
+    |
+
+error[E0599]: no method named `check_asid` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:766:17
+    |
+766 |             r.m.check_asid().expect("check_asid sau huỷ");
+    |                 ^^^^^^^^^^
+    |
+help: there is a method `check_smp` with a similar name
+    |
+766 -             r.m.check_asid().expect("check_asid sau huỷ");
+766 +             r.m.check_smp().expect("check_asid sau huỷ");
+    |
+
+error[E0599]: no method named `last_flush` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:768:21
+    |
+768 |                 r.m.last_flush().map(|c| (c.scope, c.asid, c.harts)),
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `asid_state` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:776:17
+    |
+776 |             r.m.asid_state(),
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `flush_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:785:24
+    |
+785 |         assert_eq!(r.m.flush_count(), MOI_EPOCH as u64);
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vspace_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt38_vspace.rs:787:24
+    |
+787 |         assert_eq!(r.m.vspace_count(), 0);
+    |                        ^^^^^^^^^^^^
+    |
+help: there is a method `frame_count` with a similar name
+    |
+787 -         assert_eq!(r.m.vspace_count(), 0);
+787 +         assert_eq!(r.m.frame_count(), 0);
+    |
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt38_vspace") due to 133 previous errors

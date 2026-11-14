@@ -399,3 +399,139 @@ ba bộ đếm 0. `check_pages` là lưới an toàn thứ hai sau mỗi op.
 - **Không** VM fault/`FaultKind::Vm` (KT-41), **không** `.scn`/`check_vm`/shared read-only chính
   thức (KT-42; KT-37 có test map cùng Frame vào 2 root như bằng chứng bộ đếm toàn cục).
 - **Không** PTE/MMU/TLB thật, không QEMU — K3.
+
+## 12. KT-38 — `VSpace`, ASID (8 bit = 256/thế hệ), `generation`, `active_on: HartMask`
+
+Nguồn ngữ nghĩa: `review/agent0/K2-PLAN.md` §3 KT-38 + §2 Q4/Q9; **D2-65** (Q4/Q9); thiết kế
+§4.10 (`:353-366`: "Object: VSpace, PageTable, Frame"; "ASID có generation (hết ASID thì tăng
+generation và flush toàn bộ)"; "VSpace giữ `active_on: HartMask`"). Hằng số ASID **đọc từ crate**
+`vifast_pte` (`ASID_BITS`), **không** chép tay `256`.
+
+`VSpace` **vẫn `reserved`** trong `spec/abi.toml` (`id = 9`, `stability="reserved"`,
+`unsupported = true`, method 0 `GetAsid` chỉ là debug): KT-38 cài ngữ nghĩa **sau model API**
+trong sim, **không** đổi ABI/conformance "reserved ⇒ `NotSupported`". VSpace + `GUEST` vẫn
+`NotSupported` (D2-32).
+
+### 12.1 Object `VSpace` + **một** root PageTable
+
+**Tạo bằng model API `vspace_create(src)`**, không qua ABI: `Untyped.Retype(VSpace)` **vẫn**
+`NotSupported` (spec giữ `reserved`/`unsupported`; conformance + test cũ `kt09_untyped` giữ
+nguyên; K2-PLAN §3 KT-38 ghi rõ "tạo VSpace root (model API)"). `vspace_create` nhận cap Untyped
+nguồn (cần `WRITE`, như `Retype`) và trả `CapId` cho harness đặt vào CNode (quy ước D2-35); cap
+là **con của cap Untyped** nên `Revoke` Untyped finalise VSpace + root theo đúng cây. Nó tạo ra:
+
+| Phần | Vị trí | Tiêu arena | Ghi chú |
+|---|---|---|---|
+| metadata `VSpaceData` | `Machine::vspaces` (chỉ số `Meta.space`) | **0 byte** | `{ root, asid, generation, active_on }` |
+| body `Kind::VSpace` | arena kernel | 0 byte | chỉ là mốc cho objmem, như `Kind::Frame`/`Kind::PageTable` |
+| root PageTable | arena của Untyped nguồn | **4096 B** | `PageTableData` rỗng, cấp 2, chưa attach; object **nội bộ, không cap** |
+
+Mọi lỗi (Untyped sai/không `WRITE`, hết arena) **atomic**: không đốt byte, **không cấp ASID**,
+không tăng thế hệ (arena được cấp **trước** ASID).
+
+Root là bảng gốc **thật** của hình 3 cấp: `PageTable.Map/Unmap` (KT-37) làm việc trên nó như mọi
+bảng gốc; `page_table_walk(root, va)` là **oracle** của `vspace_walk(vs, va)` (một đường walk
+duy nhất, không có bảng riêng để hai đường lệch nhau). Root **không được** `page_table_attach`
+làm bảng con (`IllegalOperation`) — giữ bất biến "root = bảng gốc"; muốn dựng cây 4 KiB/2 MiB thì
+attach các PageTable cấp dưới **vào** root như KT-37.
+
+API model (không đổi `spec/`):
+
+| Hàm | Nghĩa |
+|---|---|
+| `vspace_create(src)` | **model API** tạo VSpace + root 4 KiB + ASID (không mở ABI) |
+| `vspace_count()` | số VSpace sống |
+| `vspace_info(vs)` / `vspace_root(vs)` / `vspace_get_asid(vs)` / `vspace_active_on(vs)` | ảnh chụp / root / `GetAsid` (debug) / `active_on` |
+| `vspace_walk(vs, va)` | `page_table_walk(root, va)` — oracle |
+| `vspace_map(vs, va, cap_frame, rights, attrs)` / `vspace_unmap(vs, va)` | `Frame.Map`/`Frame.Unmap` model API (§4.10), uỷ quyền nguyên KT-37 (**không** áp W^X — KT-39) |
+| `vspace_activate(vs, hart)` / `vspace_deactivate(vs, hart)` | hart **chạy**/**nghỉ** trên VSpace (`active_on`) |
+| `set_hart_online(hart, online)` / `hart_online()` | mask hart online của mô hình |
+| `asid_state()` | `{ generation, free, issued, exhaustions }` |
+| `flush_log()` / `flush_count()` / `last_flush()` | log **lệnh flush** cho KT-40 |
+| `check_vspace()` / `check_asid()` | bất biến, chạy sau **mỗi** public op |
+
+### 12.2 ASID: 8 bit, 256/thế hệ, free-list, **không tái dùng trong cùng thế hệ**
+
+- `ASID_COUNT = 1 << ASID_BITS` = **256** (`vifast_pte::ASID_BITS = 8`, Q4).
+- Free-list của thế hệ hiện tại là dãy **giảm dần** `255, 254, …, 0`; cấp = `pop()` ⇒ ASID thấp
+  nhất trước ⇒ chuỗi cấp trong một thế hệ là `0, 1, 2, …` (tất định, dễ đọc trong log/test).
+- **ASID đã cấp thì "về hưu" cho hết thế hệ**: teardown VSpace **không** trả ASID về free-list
+  hiện tại. Lý do (K2-PLAN §3 KT-38 "rủi ro: tái dùng ASID sớm ⇒ lỗi stale TLB giả"): hart đã
+  rời VSpace vẫn có thể còn entry TLB mang `(gen, asid)`; nếu ASID được phát lại trong cùng thế
+  hệ thì entry đó sẽ khớp nhầm VSpace mới. Vì vậy teardown = **thôi sở hữu** + flush theo `asid`
+  + **về hưu**, không phải "trả về free-list".
+- **Cạn** (free-list rỗng) ⇒ `generation += 1` **đúng một lần**, free-list nạp lại đủ 256, phát
+  **đúng một** lệnh `FlushScope::Generation` cho **mọi hart online** (Q4: "flush toàn bộ `active_on`
+  một lần theo `gen`", **không** flush từng ASID). VSpace cũ giữ nguyên `(asid, generation)` cũ;
+  ASID của thế hệ mới có thể **trùng số** với thế hệ cũ — chỉ `(gen, asid)` là danh tính.
+- Bất biến: `free-list + issued == 256`; free-list giảm dần nghiêm ngặt; **không** hai VSpace sống
+  cùng `(generation, asid)`; VSpace thuộc thế hệ hiện tại giữ ASID **không** nằm trong free-list;
+  số VSpace sống của thế hệ hiện tại `≤ issued`.
+
+### 12.3 `active_on: HartMask`
+
+`HartMask` (kiểu riêng của mô hình, **≤ 64 bit**, `D2-59` tinh thần `HartMask`): `contains/insert/
+remove/union/intersection/is_subset_of/for_harts(harts)`. `hart_online` khởi tạo =
+`for_harts(hart_count)`.
+
+- `vspace_activate(vs, hart)`: bật bit; hart đang chạy VSpace **khác** ⇒ bỏ bit ở VSpace cũ trước
+  (một hart chỉ nạp **một** ASID hiện hành, như thanh ghi ASID của MMU); gọi lại trên đúng VSpace
+  ⇒ no-op. Hart **offline**/không có thật ⇒ `InvalidArgument`.
+- `vspace_deactivate(vs, hart)`: tắt bit; hart không chạy đúng VSpace ⇒ `IllegalOperation`.
+- `set_hart_online(hart, false)`: bỏ hart khỏi **mọi** `active_on` + khỏi `hart_vspace`; bật lại
+  **không** tự gắn vào VSpace nào.
+- Bất biến: `active_on ⊆ hart_online`; `hart_vspace[h] == Some(vs)` ⇔ bit `h` bật trong `active_on`
+  của `vs`; mỗi hart tối đa **một** VSpace; `hart_vspace` chỉ trỏ VSpace sống.
+
+### 12.4 **Lệnh flush** (mô hình — KT-40 tiêu thụ)
+
+KT-38 **không** có TLB/shootdown thật; nó ghi **lệnh** vào `Machine::flush_log`:
+
+| Trường | Nghĩa |
+|---|---|
+| `seq` | 1-based, tăng đơn điệu (= `flush_log.len()`) |
+| `scope` | `Asid` (teardown VSpace) hoặc `Generation` (cạn ASID) |
+| `generation` | thế hệ áp dụng: của VSpace bị teardown, hoặc thế hệ **mới** khi cạn |
+| `asid` | `Some(asid)` với `Asid`, `None` với `Generation` |
+| `harts` | `HartMask` mục tiêu — **đã lọc hart online** (hart offline không bao giờ nhận lệnh) |
+
+- Teardown VSpace ⇒ **một** `Asid` với `harts = active_on` tại thời điểm teardown (có thể rỗng:
+  chưa hart nào chạy ⇒ không shootdown hart nào).
+- Cạn ASID ⇒ **một** `Generation` với `harts = hart_online` (mọi hart online — kể cả hart đã rời
+  mọi VSpace, vì entry TLB cũ của thế hệ cũ có thể còn).
+- Kind `(asid, va)` cho unmap/protect một trang (Q4) là **KT-40**; KT-38 cố ý **không** phát nó.
+
+### 12.5 `check_vspace` (5 nhóm) và `check_asid` (3 nhóm)
+
+`check_vspace`: (1) `ty == VSpace` ⇔ `Meta.space` + dữ liệu, chết ⇒ tombstone, số dữ liệu = số
+VSpace sống; (2) root là PageTable **sống**, **bảng gốc** (cấp 2, chưa attach), không VSpace nào
+dùng chung; (3) `asid < 256`, `generation ≤ asid_generation`; (4) `active_on ⊆ hart_online` và đối
+xứng với `hart_vspace` từng hart; (5) `hart_vspace` chỉ trỏ VSpace sống.
+
+`check_asid`: (1) `free + issued == 256`, phần tử `< 256`, giảm dần nghiêm ngặt; (2) không hai
+VSpace sống cùng `(generation, asid)`; (3) VSpace của thế hệ hiện tại không giữ ASID còn trong
+free-list, và số VSpace sống của thế hệ hiện tại `≤ issued`.
+
+Cả hai chạy trong `sched_after_op` sau **mỗi** public op, có **cửa sổ nhanh** (chưa từng có
+VSpace / trạng thái ASID nguyên thủy) để L1/test K1a..K1c giữ nguyên chi phí. Unit test âm chứng
+minh `check_vspace`/`check_asid` **bắt** được: `active_on` ngoài hart online, lệch
+`active_on`/`hart_vspace`, VSpace chết còn dữ liệu, root bị attach, free-list trùng, ASID trùng
+trong thế hệ, ASID còn trong free-list.
+
+### 12.6 Teardown: `HasChildren` khi còn mapping; thứ tự finalise
+
+`Revoke` Untyped chứa VSpace ⇒ kiểm **trước** mọi thay đổi (atomic): root còn PTE/bảng con/đang
+attach ⇒ `HasChildren`; muốn xoá: unmap lá → detach bảng con → revoke (như KT-37). Thứ tự finalise
+trong `revoke_children`: Frame → **VSpace** → PageTable (root tombstone sau VSpace để bước kiểm
+"root tinh khiết" còn dữ liệu). VSpace chết: phát lệnh `Asid`, gỡ `hart_vspace`, tombstone dữ liệu
+⇒ `check_vspace`/`check_asid` thấy "VSpace chết không còn asid/active_on".
+
+### 12.7 Không làm ở KT-38 (ranh giới)
+
+- **Không** TLB model/`TlbFlush` vào hộp thư/IPI/ack thế hệ/chống deadlock (KT-40) — KT-38 chỉ
+  có **lệnh flush**; DoD "flush theo `gen` làm mọi entry TLB cũ mất hiệu lực" được kiểm bằng
+  oracle của KT-40.
+- **Không** W^X/`protect`/`WxViolation` (KT-39); **không** VM fault/`FaultKind::Vm` (KT-41);
+  **không** `.scn`/`check_vm`/shared read-only (KT-42).
+- **Không** đổi `spec/` (VSpace vẫn `reserved`/`unsupported`), **không** tạo `spec/kernel.toml`.
+- **Không** PTE/MMU/TLB/`sfence.vma` thật, không QEMU — **K3**.

@@ -86,6 +86,12 @@ use crate::sched::HartSched;
 /// **KT-29** — trường công bố `idle`/`cur_prio` của mỗi hart (định nghĩa ở [`crate::sched`];
 /// re-export để test dùng `vifast_sim::kobj::Published`).
 pub use crate::sched::Published;
+use crate::vspace::{fresh_asid_free, VSpaceData};
+/// **KT-38** — `VSpace` + ASID + thế hệ + `active_on: HartMask` (định nghĩa ở [`crate::vspace`];
+/// re-export để test dùng `vifast_sim::kobj::{HartMask, AsidState, FlushCmd, FlushScope,
+/// VSpaceInfo, ASID_COUNT}`). `ASID_COUNT` = `1 << vifast_pte::ASID_BITS` — đọc từ crate hình
+/// PTE, không chép tay `256`.
+pub use crate::vspace::{AsidState, FlushCmd, FlushScope, HartMask, VSpaceInfo, ASID_COUNT};
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 use vifast_pte::{FrameSize, Pte};
 
@@ -427,6 +433,10 @@ enum Kind {
     /// liệu thật (512 PTE + cấp + `attached` + `mapped`) nằm ở `Machine::page_tables`, để đọc
     /// được sau khi object chết và không làm `size_of::<Kind>()` phình lên 4 KiB.
     PageTable,
+    /// **KT-38** — mốc body của `VSpace`: metadata (asid/thế hệ/`active_on`) nằm ở
+    /// `Machine::vspaces`; body chỉ là mốc vài chục byte trong arena kernel (VSpace **không**
+    /// tiêu byte arena; root PageTable của nó mới tiêu một trang 4 KiB).
+    VSpace,
     Plain,
 }
 
@@ -588,6 +598,7 @@ impl KObj for Kind {
             Kind::Notification(_) => 8,
             Kind::Frame => 9,
             Kind::PageTable => 10,
+            Kind::VSpace => 11,
         }
     }
 }
@@ -636,6 +647,10 @@ struct Meta {
     /// `ty == ObjType::PageTable` (bất biến `check_pages`). Giống `Meta::frame`, dữ liệu PageTable
     /// phải đọc được sau khi object chết (bất biến "bảng chết không còn PTE").
     pt: Option<usize>,
+    /// **KT-38** — chỉ số vào `Machine::vspaces` cho object `VSpace`; `Some` **đúng khi**
+    /// `ty == ObjType::VSpace` (bất biến `check_vspace`). Giống `pt`, dữ liệu VSpace phải đọc
+    /// được sau khi object chết (bất biến "VSpace chết không còn asid/active_on").
+    space: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -750,6 +765,34 @@ pub struct Machine {
     /// **KT-37** — số object `PageTable` **đã từng** tạo (cửa sổ nhanh cho `check_pages`, cùng
     /// lý do `frame_objects` của KT-36).
     page_table_objects: usize,
+    /// **KT-38** — dữ liệu VSpace theo chỉ số trong [`Meta::space`] (tombstone `None` khi object
+    /// chết): `(root PageTable, asid, generation, active_on)`.
+    vspaces: Vec<Option<VSpaceData>>,
+    /// **KT-38** — số object `VSpace` **đã từng** tạo (cửa sổ nhanh cho `check_vspace`).
+    vspace_objects: usize,
+    /// **KT-38** — thế hệ ASID **toàn cục** của mô hình (Q4): `+1` mỗi lần cạn ASID; mọi ASID cũ
+    /// của thế hệ trước thành vô hiệu sau lệnh flush theo `gen` (KT-40 tiêu thụ).
+    asid_generation: u64,
+    /// **KT-38** — free-list của **thế hệ hiện tại**: các ASID **chưa từng** được cấp trong thế
+    /// hệ này, giảm dần (`pop` ⇒ ASID thấp nhất). ASID đã cấp **không** quay lại free-list cho
+    /// tới khi `generation += 1` ("không tái dùng trong cùng thế hệ" — `k2-vm.md` §12).
+    asid_free: Vec<u16>,
+    /// **KT-38** — số ASID **đã cấp** trong thế hệ hiện tại (cộng dồn; teardown **không** trả
+    /// lại). Bất biến: `asid_free.len() + asid_issued == ASID_COUNT`.
+    asid_issued: u32,
+    /// **KT-38** — số lần cạn ASID (⇒ `generation += 1`) từ lúc mở `Machine`.
+    asid_exhaustions: u64,
+    /// **KT-38** — tập hart **online** (`⊆` `HartMask::for_harts(hart_count)`); `active_on` của
+    /// mọi VSpace phải là tập con của mask này. Hart offline bị bỏ khỏi mọi `active_on`.
+    hart_online: HartMask,
+    /// **KT-38** — VSpace mỗi hart đang chạy (`None` = hart không nạp ASID nào). Bất biến:
+    /// `hart_vspace[h] == Some(vs)` ⇔ bit `h` bật trong `active_on` của `vs`; mỗi hart tối đa
+    /// một VSpace (một ASID hiện hành — như thanh ghi ASID của MMU).
+    hart_vspace: Vec<Option<ObjId>>,
+    /// **KT-38** — **lệnh flush** mà KT-40 sẽ tiêu thụ: teardown VSpace ⇒ một lệnh
+    /// [`FlushScope::Asid`]; cạn ASID ⇒ một lệnh [`FlushScope::Generation`] cho mọi hart online.
+    /// KT-38 **không** có TLB — đây là mô hình lệnh, không phải hiệu ứng phần cứng.
+    flush_log: Vec<FlushCmd>,
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -766,6 +809,8 @@ struct ChoDat {
     frame_area: Option<FrameArea>,
     /// **KT-37** — chỉ số `Machine::page_tables` (chỉ PageTable mới có).
     pt: Option<usize>,
+    /// **KT-38** — chỉ số `Machine::vspaces` (chỉ VSpace mới có).
+    space: Option<usize>,
 }
 
 /// Ảnh chụp **bộ đếm chuyển trạng thái** (KT-18) + **cặp cấm bị thử** (KT-23).
@@ -925,6 +970,16 @@ impl Machine {
             frame_objects: 0,
             page_tables: Vec::new(),
             page_table_objects: 0,
+            vspaces: Vec::new(),
+            vspace_objects: 0,
+            // **KT-38** — thế hệ 0 với free-list đủ 256; mọi hart của mô hình **online**.
+            asid_generation: 0,
+            asid_free: fresh_asid_free(),
+            asid_issued: 0,
+            asid_exhaustions: 0,
+            hart_online: HartMask::for_harts(harts),
+            hart_vspace: (0..harts).map(|_| None).collect(),
+            flush_log: Vec::new(),
         }
     }
 
@@ -1618,6 +1673,11 @@ impl Machine {
         if parent == child {
             return Err(KError::InvalidArgument);
         }
+        // **KT-38** — root PageTable của một VSpace là object **nội bộ** (không cap) và phải luôn
+        // là **bảng gốc**; gắn nó làm bảng con sẽ phá bất biến `check_vspace` ⇒ từ chối rõ.
+        if self.vspaces.iter().flatten().any(|d| d.root == child) {
+            return Err(KError::IllegalOperation);
+        }
         let plevel = self.page_tables[p_slot]
             .as_ref()
             .ok_or(KError::IllegalOperation)?
@@ -1988,6 +2048,450 @@ impl Machine {
             ));
         }
         Ok(total)
+    }
+
+    // ------------------------------------------------------- VSpace (KT-38)
+    //
+    // Model-only `[TK]`, **không** phải spec/ABI (D2-65 Q4/Q9; `v2/docs/k2-vm.md` §12). VSpace
+    // là **object `reserved` id 9**: metadata (asid/thế hệ/`active_on`) + **một** root PageTable
+    // thật của mô hình (object nội bộ, không cap). Không có TLB/shootdown thật — KT-38 chỉ ghi
+    // **lệnh flush** cho KT-40; `page_table_walk(root)` là **oracle** cho `vspace_walk`.
+
+    /// Chỉ số `Machine::vspaces` của object VSpace **sống**; object lạ/chết/không phải VSpace ⇒
+    /// lỗi tương ứng (một cửa để mọi hàm VSpace không lệch cách lấy).
+    fn vspace_slot_of(&self, vs: ObjId) -> Result<usize, KError> {
+        let idx = self.object_index(vs)?;
+        let m = &self.objects[idx];
+        if m.ty != ObjType::VSpace {
+            return Err(KError::WrongObjectType);
+        }
+        if !m.alive {
+            return Err(KError::InvalidCapability);
+        }
+        m.space.ok_or(KError::WrongObjectType)
+    }
+
+    fn vspace_data(&self, vs: ObjId) -> Result<&VSpaceData, KError> {
+        let slot = self.vspace_slot_of(vs)?;
+        self.vspaces
+            .get(slot)
+            .and_then(|d| d.as_ref())
+            .ok_or(KError::IllegalOperation)
+    }
+
+    fn vspace_data_mut(&mut self, vs: ObjId) -> Result<&mut VSpaceData, KError> {
+        let slot = self.vspace_slot_of(vs)?;
+        self.vspaces
+            .get_mut(slot)
+            .and_then(|d| d.as_mut())
+            .ok_or(KError::IllegalOperation)
+    }
+
+    /// **KT-38** — số object `VSpace` **còn sống**.
+    pub fn vspace_count(&self) -> usize {
+        self.objects
+            .iter()
+            .filter(|m| m.alive && m.ty == ObjType::VSpace)
+            .count()
+    }
+
+    /// **KT-38** — ảnh chụp một VSpace: root PageTable, asid, thế hệ lúc cấp, `active_on`.
+    pub fn vspace_info(&self, vs: ObjId) -> Result<VSpaceInfo, KError> {
+        let d = self.vspace_data(vs)?;
+        Ok(VSpaceInfo {
+            root: d.root,
+            asid: d.asid,
+            generation: d.generation,
+            active_on: d.active_on,
+        })
+    }
+
+    /// **KT-38** — root PageTable của VSpace (dùng được ngay với
+    /// [`Machine::page_table_walk`] — oracle của KT-38).
+    pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+        Ok(self.vspace_data(vs)?.root)
+    }
+
+    /// **KT-38** — `VSpace.GetAsid` (method 0 của spec, **debug**; `unsupported` tới K3 tức
+    /// đây là model API): ASID đã cấp cho VSpace.
+    pub fn vspace_get_asid(&self, vs: ObjId) -> Result<u16, KError> {
+        Ok(self.vspace_data(vs)?.asid)
+    }
+
+    /// **KT-38** — tập hart đang nạp ASID của VSpace (`active_on ⊆ hart online`).
+    pub fn vspace_active_on(&self, vs: ObjId) -> Result<HartMask, KError> {
+        Ok(self.vspace_data(vs)?.active_on)
+    }
+
+    /// **KT-38** — mask hart **online** của mô hình (khởi tạo = `for_harts(hart_count)`).
+    pub fn hart_online(&self) -> HartMask {
+        self.hart_online
+    }
+
+    /// **KT-38** — bật/tắt một hart **online**. Hart offline bị bỏ khỏi **mọi** `active_on`
+    /// (không còn chạy VSpace nào) nên **không** nhận shootdown sau đó; bất biến
+    /// `active_on ⊆ hart_online` được giữ ở đây, không để caller tự sửa mask.
+    ///
+    /// `hart >= hart_count()` ⇒ [`KError::InvalidArgument`] (không panic). Bật lại hart **không**
+    /// tự gắn nó vào VSpace nào (phải `vspace_activate`).
+    pub fn set_hart_online(&mut self, hart: u16, online: bool) -> Result<(), KError> {
+        if hart as usize >= self.hart_vspace.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if online {
+            self.hart_online = self.hart_online.insert(hart);
+        } else {
+            self.hart_online = self.hart_online.remove(hart);
+            self.hart_vspace[hart as usize] = None;
+            for d in self.vspaces.iter_mut().flatten() {
+                d.active_on = d.active_on.remove(hart);
+            }
+        }
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-38** — hart `hart` **chạy** trên VSpace `vs`: bật bit trong `active_on`.
+    ///
+    /// Một hart chỉ nạp **một** ASID hiện hành ⇒ nếu hart đang chạy VSpace khác thì bit bị bỏ ở
+    /// VSpace cũ trước (không cần flush: ASID của VSpace cũ **không** được phát lại trong cùng
+    /// thế hệ, nên entry TLB cũ không thể khớp nhầm — xem `k2-vm.md` §12). Gọi lại trên đúng
+    /// VSpace đang chạy ⇒ **no-op** (idempotent). Hart offline/không có thật ⇒
+    /// [`KError::InvalidArgument`].
+    pub fn vspace_activate(&mut self, vs: ObjId, hart: u16) -> Result<(), KError> {
+        self.vspace_slot_of(vs)?;
+        if hart as usize >= self.hart_vspace.len() || !self.hart_online.contains(hart) {
+            return Err(KError::InvalidArgument);
+        }
+        if self.hart_vspace[hart as usize] == Some(vs) {
+            return Ok(());
+        }
+        if let Some(old) = self.hart_vspace[hart as usize] {
+            let old_data = self.vspace_data_mut(old)?;
+            old_data.active_on = old_data.active_on.remove(hart);
+        }
+        {
+            let d = self.vspace_data_mut(vs)?;
+            d.active_on = d.active_on.insert(hart);
+        }
+        self.hart_vspace[hart as usize] = Some(vs);
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-38** — hart `hart` **nghỉ** (rời) VSpace `vs`: tắt bit `active_on`.
+    ///
+    /// Hart không chạy đúng VSpace này ⇒ [`KError::IllegalOperation`] (không im lặng bỏ qua —
+    /// bắt lỗi gọi sai thứ tự). Không phát lệnh flush: ASID chưa bị phát lại.
+    pub fn vspace_deactivate(&mut self, vs: ObjId, hart: u16) -> Result<(), KError> {
+        self.vspace_slot_of(vs)?;
+        if hart as usize >= self.hart_vspace.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if self.hart_vspace[hart as usize] != Some(vs) {
+            return Err(KError::IllegalOperation);
+        }
+        {
+            let d = self.vspace_data_mut(vs)?;
+            d.active_on = d.active_on.remove(hart);
+        }
+        self.hart_vspace[hart as usize] = None;
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-38** — trạng thái ASID toàn cục (thế hệ, free-list còn lại, đã cấp, số lần cạn).
+    pub fn asid_state(&self) -> AsidState {
+        AsidState {
+            generation: self.asid_generation,
+            free: self.asid_free.len(),
+            issued: self.asid_issued,
+            exhaustions: self.asid_exhaustions,
+        }
+    }
+
+    /// **KT-38** — log **lệnh flush** (mô hình; KT-40 tiêu thụ). KT-38 chỉ phát
+    /// [`FlushScope::Asid`] (teardown) và [`FlushScope::Generation`] (cạn ASID).
+    pub fn flush_log(&self) -> &[FlushCmd] {
+        &self.flush_log
+    }
+
+    /// **KT-38** — số lệnh flush đã phát (= `flush_log().len()`).
+    pub fn flush_count(&self) -> u64 {
+        self.flush_log.len() as u64
+    }
+
+    /// **KT-38** — lệnh flush gần nhất (test "không gửi shootdown cho hart offline").
+    pub fn last_flush(&self) -> Option<FlushCmd> {
+        self.flush_log.last().copied()
+    }
+
+    /// **KT-38** — walk VA→PA **qua VSpace** = [`Machine::page_table_walk`] trên root của nó
+    /// (**oracle**; không có bảng riêng để hai đường lệch nhau).
+    pub fn vspace_walk(&self, vs: ObjId, va: u64) -> Result<Mapping, KError> {
+        let root = self.vspace_root(vs)?;
+        self.page_table_walk(root, va)
+    }
+
+    /// **KT-38** — `Frame.Map(vspace, va, rights, attrs)` của thiết kế §4.10, model API: map qua
+    /// **cap Frame** vào root của VSpace (uỷ quyền nguyên [`Machine::page_table_map`]). Luật
+    /// W^X/kiểu bộ nhớ là KT-39 — ở đây **không** áp.
+    pub fn vspace_map(
+        &mut self,
+        vs: ObjId,
+        va: u64,
+        frame_cap: SlotRef,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        let root = self.vspace_root(vs)?;
+        self.page_table_map(root, va, frame_cap, rights, attrs)
+    }
+
+    /// **KT-38** — như [`Machine::vspace_map`] nhưng nhận `ObjId` Frame (không qua cap), dùng cho
+    /// unit test/đường nội bộ — cùng cửa [`Machine::page_table_map_obj`].
+    pub fn vspace_map_obj(
+        &mut self,
+        vs: ObjId,
+        va: u64,
+        frame: ObjId,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        let root = self.vspace_root(vs)?;
+        self.page_table_map_obj(root, va, frame, rights, attrs)
+    }
+
+    /// **KT-38** — `Frame.Unmap` của thiết kế §4.10, model API: unmap qua root của VSpace
+    /// (uỷ quyền nguyên [`Machine::page_table_unmap`]).
+    pub fn vspace_unmap(&mut self, vs: ObjId, va: u64) -> Result<Mapping, KError> {
+        let root = self.vspace_root(vs)?;
+        self.page_table_unmap(root, va)
+    }
+
+    /// **KT-38** — bất biến **VSpace + `active_on`** ("check_vspace sớm"; KT-42 gộp vào
+    /// `check_vm`). Chạy sau **mỗi** public op qua [`Machine::sched_after_op`], cửa sổ nhanh
+    /// `vspace_objects == 0 && hart_vspace rỗng`.
+    ///
+    /// Kiểm:
+    /// 1. **kiểu/dữ liệu**: `ty == VSpace` ⇔ có `Meta.space` + dữ liệu; object chết ⇒ dữ liệu
+    ///    `None`; object sống ⇒ dữ liệu `Some`; số dữ liệu `Some` = số VSpace sống;
+    /// 2. **root**: là PageTable **sống**, **bảng gốc** (cấp 2, chưa attach), không VSpace nào
+    ///    dùng chung root;
+    /// 3. **ASID**: `asid < ASID_COUNT`, `generation <= asid_generation` (thế hệ của VSpace không
+    ///    đi trước thế hệ toàn cục);
+    /// 4. **`active_on`**: `active_on ⊆ hart_online` và `hart_vspace[h] == Some(vs)` ⇔ bit `h`
+    ///    bật — mỗi hart tối đa **một** VSpace (một ASID hiện hành);
+    /// 5. **không tham chiếu chết**: `hart_vspace[h]` chỉ trỏ VSpace **sống**.
+    pub fn check_vspace(&self) -> Result<(), String> {
+        if self.vspace_objects == 0 && self.hart_vspace.iter().all(|v| v.is_none()) {
+            return Ok(());
+        }
+        // Chỉ cần bảng "root đã dùng" khi có **≥ 2** VSpace sống; đường nóng (1 VSpace: vòng
+        // tạo/huỷ 10.000) không cấp phát gì.
+        let data_live = self.vspaces.iter().filter(|d| d.is_some()).count();
+        let mut root_taken = if data_live > 1 {
+            vec![false; self.objects.len()]
+        } else {
+            Vec::new()
+        };
+        let mut live = 0usize;
+        for (i, m) in self.objects.iter().enumerate() {
+            let obj = (i as u32) + 1;
+            match (m.ty == ObjType::VSpace, m.space) {
+                (true, None) => return Err(format!("object {obj} là VSpace nhưng thiếu dữ liệu")),
+                (false, Some(_)) => {
+                    return Err(format!(
+                        "object {obj} ({}) không phải VSpace nhưng có dữ liệu VSpace",
+                        m.ty.name()
+                    ))
+                }
+                _ => {}
+            }
+            let Some(sidx) = m.space else { continue };
+            let data = self.vspaces.get(sidx).and_then(|d| d.as_ref());
+            if !m.alive {
+                if data.is_some() {
+                    return Err(format!("VSpace {obj} đã chết nhưng còn dữ liệu"));
+                }
+                continue;
+            }
+            live += 1;
+            let Some(d) = data else {
+                return Err(format!("VSpace {obj} sống nhưng thiếu dữ liệu"));
+            };
+            // (2) root: PageTable sống + bảng gốc + không dùng chung.
+            let ridx = self
+                .object_index(d.root)
+                .map_err(|e| format!("VSpace {obj}: root {} lỗi {e:?}", d.root))?;
+            let rm = &self.objects[ridx];
+            if !rm.alive || rm.ty != ObjType::PageTable {
+                return Err(format!(
+                    "VSpace {obj}: root {} không phải PageTable sống",
+                    d.root
+                ));
+            }
+            let Some(rd) = rm
+                .pt
+                .and_then(|p| self.page_tables.get(p))
+                .and_then(|d| d.as_ref())
+            else {
+                return Err(format!("VSpace {obj}: root {} thiếu dữ liệu", d.root));
+            };
+            if rd.attached.is_some() || rd.level != PT_ROOT_LEVEL {
+                return Err(format!(
+                    "VSpace {obj}: root {} không phải bảng gốc (cấp {}, attach {:?})",
+                    d.root, rd.level, rd.attached
+                ));
+            }
+            if data_live > 1 {
+                if root_taken[ridx] {
+                    return Err(format!(
+                        "VSpace {obj}: root {} dùng chung với VSpace khác",
+                        d.root
+                    ));
+                }
+                root_taken[ridx] = true;
+            }
+            // (3) ASID/thế hệ.
+            if (d.asid as usize) >= ASID_COUNT {
+                return Err(format!("VSpace {obj}: asid {} ngoài dải", d.asid));
+            }
+            if d.generation > self.asid_generation {
+                return Err(format!(
+                    "VSpace {obj}: thế hệ {} > thế hệ toàn cục {}",
+                    d.generation, self.asid_generation
+                ));
+            }
+            // (4) active_on ⊆ hart online + đối xứng với hart_vspace.
+            if !d.active_on.is_subset_of(self.hart_online) {
+                return Err(format!(
+                    "VSpace {obj}: active_on {:?} ⊄ hart online {:?}",
+                    d.active_on, self.hart_online
+                ));
+            }
+            for hart in 0..self.hart_vspace.len() {
+                let bit = d.active_on.contains(hart as u16);
+                let cur = self.hart_vspace[hart] == Some(obj);
+                if bit != cur {
+                    return Err(format!(
+                        "VSpace {obj}: active_on và hart_vspace lệch ở hart {hart}"
+                    ));
+                }
+            }
+        }
+        let data_some = self.vspaces.iter().filter(|d| d.is_some()).count();
+        if live != data_some {
+            return Err(format!(
+                "số VSpace sống {live} ≠ số dữ liệu VSpace {data_some} (rò/tombstone sai)"
+            ));
+        }
+        // (5) hart_vspace chỉ trỏ VSpace sống.
+        for (hart, cur) in self.hart_vspace.iter().enumerate() {
+            let Some(vs) = cur else { continue };
+            let idx = self
+                .object_index(*vs)
+                .map_err(|e| format!("hart {hart}: hart_vspace lỗi {e:?}"))?;
+            let m = &self.objects[idx];
+            if !m.alive || m.ty != ObjType::VSpace {
+                return Err(format!(
+                    "hart {hart}: hart_vspace trỏ object {} không phải VSpace sống",
+                    vs
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// **KT-38** — bất biến **ASID/free-list/thế hệ** ("check_asid sớm"; KT-42 gộp vào
+    /// `check_vm`). Chạy sau **mỗi** public op qua [`Machine::sched_after_op`], cửa sổ nhanh:
+    /// chưa từng có VSpace và trạng thái ASID còn nguyên thủy.
+    ///
+    /// Kiểm:
+    /// 1. **free-list**: `len + issued == ASID_COUNT`, mọi ASID `< ASID_COUNT`, **giảm dần
+    ///    nghiêm ngặt** (không phần tử trùng — bắt "trả ASID về free-list" sai);
+    /// 2. **không trùng trong một thế hệ**: không hai VSpace sống cùng `(generation, asid)`
+    ///    (ASID chỉ tái dùng ở **thế hệ khác** — DoD KT-38);
+    /// 3. **nhất quán với free-list**: VSpace **thuộc thế hệ hiện tại** giữ ASID **không** nằm
+    ///    trong free-list, và số VSpace sống của thế hệ hiện tại `≤ issued`.
+    pub fn check_asid(&self) -> Result<(), String> {
+        if self.vspace_objects == 0
+            && self.asid_generation == 0
+            && self.asid_exhaustions == 0
+            && self.asid_issued == 0
+            && self.asid_free.len() == ASID_COUNT
+        {
+            return Ok(());
+        }
+        if self.asid_free.len() + self.asid_issued as usize != ASID_COUNT {
+            return Err(format!(
+                "free-list {} + issued {} ≠ {ASID_COUNT}",
+                self.asid_free.len(),
+                self.asid_issued
+            ));
+        }
+        let mut prev: Option<u16> = None;
+        for &a in &self.asid_free {
+            if (a as usize) >= ASID_COUNT {
+                return Err(format!("free-list có ASID ngoài dải: {a}"));
+            }
+            if let Some(p) = prev {
+                if a >= p {
+                    return Err(format!(
+                        "free-list không giảm dần nghiêm ngặt ({p} rồi {a})"
+                    ));
+                }
+            }
+            prev = Some(a);
+        }
+        // Mask 256 bit của free-list để kiểm "ASID còn trong free-list" O(1)/VSpace (check chạy
+        // sau **mỗi** op; 257 VSpace là ca thật của KT-38 — `Vec::contains` sẽ là O(n·256)).
+        let mut free_mask = [0u64; ASID_COUNT / 64];
+        for &a in &self.asid_free {
+            free_mask[(a as usize) / 64] |= 1u64 << (a % 64);
+        }
+        let in_free = |a: u16| free_mask[(a as usize) / 64] & (1u64 << (a % 64)) != 0;
+        // Thu thập `(generation, asid, object)` của VSpace sống rồi **sort** để bắt trùng trong
+        // một thế hệ bằng O(n log n), không phải `contains` O(n²).
+        let mut seen: Vec<(u64, u16, ObjId)> = Vec::new();
+        let mut cur_live: u32 = 0;
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::VSpace {
+                continue;
+            }
+            let Some(sidx) = m.space else { continue };
+            let Some(d) = self.vspaces.get(sidx).and_then(|d| d.as_ref()) else {
+                continue;
+            };
+            seen.push((d.generation, d.asid, (i as u32) + 1));
+            if d.generation == self.asid_generation {
+                cur_live += 1;
+                if in_free(d.asid) {
+                    return Err(format!(
+                        "VSpace {} giữ ASID {} nhưng ASID còn trong free-list thế hệ {}",
+                        i + 1,
+                        d.asid,
+                        self.asid_generation
+                    ));
+                }
+            }
+        }
+        seen.sort_unstable();
+        for w in seen.windows(2) {
+            if w[0].0 == w[1].0 && w[0].1 == w[1].1 {
+                return Err(format!(
+                    "ASID {} trùng trong thế hệ {} (VSpace {} và {})",
+                    w[1].1, w[1].0, w[0].2, w[1].2
+                ));
+            }
+        }
+        if cur_live > self.asid_issued {
+            return Err(format!(
+                "VSpace sống của thế hệ hiện tại {cur_live} > issued {}",
+                self.asid_issued
+            ));
+        }
+        Ok(())
     }
 
     /// `(base, capacity)` của vùng nhớ thật của một Untyped (KT-16); `None` nếu không phải
@@ -2497,6 +3001,14 @@ impl Machine {
         if ty == ObjType::PageTable {
             return self.retype_page_table(src_cap, u_idx, size_bits, src_rights);
         }
+        // **KT-38** — VSpace **không** đi qua ABI `Retype`: `spec/abi.toml` giữ `VSpace`
+        // `reserved`/`unsupported` nên `Retype(VSpace)` **vẫn** `NotSupported` (conformance
+        // reserved, và test cũ `kt09_untyped` giữ nguyên). VSpace được tạo bằng **model API**
+        // [`Machine::vspace_create`] (K2-PLAN §3 KT-38 "tạo VSpace root (model API)"): cùng
+        // arena/revoke với Untyped nguồn, nhưng không mở chữ ký ABI.
+        if ty == ObjType::VSpace {
+            return Err(KError::NotSupported);
+        }
         if !ty.is_core() {
             return Err(KError::NotSupported);
         }
@@ -2698,6 +3210,148 @@ impl Machine {
         );
         self.sched_after_op(false);
         Ok(self.push_cap(obj, ObjType::PageTable, Some(src_cap), src_rights, None))
+    }
+
+    /// **KT-38** — **model API** tạo một `VSpace`: `VSpace` = **metadata** (asid + thế hệ +
+    /// `active_on`, nằm ở `Machine::vspaces`, body chỉ là mốc [`Kind::VSpace`] trong arena kernel)
+    /// **+ một root PageTable thật** 4 KiB trong arena của Untyped `src`.
+    ///
+    /// **Vì sao không qua `Retype`:** `spec/abi.toml` giữ `VSpace` `reserved`/`unsupported`
+    /// (D2-65 Q1/Q9; K2-PLAN §1.2) ⇒ `Untyped.Retype(VSpace)` **vẫn** `NotSupported` (conformance
+    /// reserved + test cũ `kt09_untyped` giữ nguyên). Đây **không** phải ABI mới: model API của
+    /// sim, cùng khuôn [`Machine::retype`] (cap con của cap Untyped nguồn ⇒ `Revoke` Untyped
+    /// finalise VSpace + root).
+    ///
+    /// Root **không mang cap** (object nội bộ của VSpace): người dùng đi qua
+    /// [`Machine::vspace_root`]/[`Machine::vspace_walk`] (oracle = [`Machine::page_table_walk`]),
+    /// không qua cap. Root bị `page_table_attach` từ chối làm **bảng con** (giữ bất biến
+    /// "root = bảng gốc").
+    ///
+    /// ASID lấy từ free-list của thế hệ hiện tại; cạn ⇒ `generation += 1` + **một** lệnh
+    /// [`FlushScope::Generation`] cho mọi hart online ([`Machine::asid_alloc`]). Lỗi arena xảy
+    /// ra **trước** khi cấp ASID nên một lần tạo hỏng không làm tăng thế hệ (atomic).
+    pub fn vspace_create(&mut self, src: SlotRef) -> Result<CapId, KError> {
+        let src_cap = self.cap_at(src.cnode, src.slot)?;
+        let (u_idx, src_rights) = {
+            let c = self.cap(src_cap)?;
+            if !c.alive {
+                return Err(KError::InvalidCapability);
+            }
+            if c.ty != ObjType::Untyped {
+                return Err(KError::WrongObjectType);
+            }
+            let idx = self.object_index(c.obj)?;
+            if self.objects[idx].ty != ObjType::Untyped {
+                return Err(KError::WrongObjectType);
+            }
+            (idx, c.rights)
+        };
+        // Như `Retype`: cấp phát trên Untyped cần quyền WRITE; cap con kế thừa quyền nguồn.
+        if src_rights & RIGHT_WRITE == 0 {
+            return Err(KError::InsufficientRights);
+        }
+        self.create_vspace(src_cap, u_idx, src_rights)
+    }
+
+    /// Thân của [`Machine::vspace_create`] (một cửa cấp phát duy nhất, như
+    /// `retype_frame`/`retype_page_table`) — mọi lỗi **atomic**.
+    fn create_vspace(
+        &mut self,
+        src_cap: CapId,
+        u_idx: usize,
+        src_rights: u8,
+    ) -> Result<CapId, KError> {
+        let region = self.objects[u_idx].region.ok_or(KError::WrongObjectType)?;
+        // 1. Root PageTable: **một trang** arena của Untyped (nó *là* bảng gốc thật của mô hình).
+        let (root_body, root_offset) = self.regions[region]
+            .alloc_place_span(Kind::PageTable, PT_BYTES, PT_BYTES)
+            .ok_or(KError::NotEnoughMemory)?;
+        // 2. Body VSpace (mốc metadata) trong arena kernel — VSpace **không** tiêu byte arena.
+        //    Hết chỗ ⇒ trả byte arena vừa cấp (không để lại lỗ hổng) rồi báo lỗi.
+        let Some(vs_body) = self.kernel.alloc_place(Kind::VSpace) else {
+            self.regions[region].free(root_body);
+            return Err(KError::NotEnoughMemory);
+        };
+        // 3. ASID — cửa duy nhất đổi free-list/thế hệ; cạn ⇒ `gen += 1` + một lệnh flush `gen`.
+        //    Không bao giờ lỗi (thế hệ mới luôn đủ 256 ASID).
+        let (asid, generation) = self.asid_alloc();
+        // 4. Ghi dữ liệu mô hình + object. Root **không** có cap (object nội bộ).
+        let pt_idx = self.page_tables.len();
+        self.page_tables.push(Some(PageTableData::new()));
+        let root = self.push_meta(
+            ObjType::PageTable,
+            Loc::Untyped(region as u32),
+            root_body,
+            ChoDat {
+                untyped: Some(u_idx),
+                offset: root_offset,
+                len: PT_BYTES,
+                pt: Some(pt_idx),
+                ..ChoDat::default()
+            },
+        );
+        let space_idx = self.vspaces.len();
+        self.vspaces.push(Some(VSpaceData {
+            root,
+            asid,
+            generation,
+            active_on: HartMask::EMPTY,
+        }));
+        let obj = self.push_meta(
+            ObjType::VSpace,
+            Loc::Kernel,
+            vs_body,
+            ChoDat {
+                untyped: Some(u_idx),
+                // VSpace không chiếm byte arena (offset/len = 0); root ở trên mới chiếm 4 KiB.
+                space: Some(space_idx),
+                ..ChoDat::default()
+            },
+        );
+        self.sched_after_op(false);
+        Ok(self.push_cap(obj, ObjType::VSpace, Some(src_cap), src_rights, None))
+    }
+
+    /// **KT-38** — cấp một ASID của thế hệ hiện tại; **cạn** ⇒ `generation += 1`, nạp lại
+    /// free-list đủ [`ASID_COUNT`] và phát **đúng một** lệnh [`FlushScope::Generation`] cho
+    /// **mọi hart online** (Q4: "flush toàn bộ một lần theo `gen`", không flush từng ASID).
+    ///
+    /// Trả `(asid, generation)`. ASID **không** quay lại free-list khi teardown (chỉ thế hệ mới
+    /// tái lập free-list) — xem `k2-vm.md` §12.
+    fn asid_alloc(&mut self) -> (u16, u64) {
+        if self.asid_free.is_empty() {
+            self.asid_generation += 1;
+            self.asid_exhaustions += 1;
+            self.asid_issued = 0;
+            self.asid_free = fresh_asid_free();
+            let generation = self.asid_generation;
+            let harts = self.hart_online;
+            self.push_flush(FlushScope::Generation, generation, None, harts);
+        }
+        let asid = self
+            .asid_free
+            .pop()
+            .expect("free-list vừa được nạp lại ASID_COUNT phần tử");
+        self.asid_issued += 1;
+        (asid, self.asid_generation)
+    }
+
+    /// **KT-38** — ghi một lệnh flush TLB vào [`Machine::flush_log`] (số thứ tự 1-based).
+    fn push_flush(
+        &mut self,
+        scope: FlushScope,
+        generation: u64,
+        asid: Option<u16>,
+        harts: HartMask,
+    ) {
+        let seq = self.flush_log.len() as u64 + 1;
+        self.flush_log.push(FlushCmd {
+            seq,
+            scope,
+            generation,
+            asid,
+            harts,
+        });
     }
 
     /// Có Frame **sống** nào thuộc Untyped khác chồng `[pa, pa + len)` không.
@@ -3650,6 +4304,49 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-38** — finalise một VSpace: root **còn sống** phải **tinh khiết** (còn mapping/bảng
+    /// con ⇒ [`KError::HasChildren`] và **không** đổi gì — cùng tinh thần `finalise_page_table`);
+    /// sau đó phát **một** lệnh [`FlushScope::Asid`] tới `active_on` (đã `⊆` hart online), gỡ
+    /// hart khỏi `hart_vspace`, và chuyển dữ liệu `Machine::vspaces` thành tombstone `None`.
+    ///
+    /// **ASID không quay lại free-list** của thế hệ hiện tại ("không tái dùng trong cùng thế
+    /// hệ"): nó chỉ được phát lại khi `generation += 1`. Vì vậy teardown là "giải phóng ASID"
+    /// theo nghĩa **thôi sở hữu** + flush theo asid, không phải "trả về free-list".
+    fn finalise_vspace(&mut self, vs: ObjId) -> Result<(), KError> {
+        let idx = self.object_index(vs)?;
+        let m = &self.objects[idx];
+        if m.ty != ObjType::VSpace {
+            return Err(KError::WrongObjectType);
+        }
+        let sidx = m.space.ok_or(KError::WrongObjectType)?;
+        let Some(d) = self.vspaces.get(sidx).and_then(|d| d.as_ref()).copied() else {
+            return Err(KError::IllegalOperation);
+        };
+        // Cửa thứ hai (revoke đã kiểm trước để atomic): không im lặng bỏ cây/mapping.
+        if let Ok(ridx) = self.object_index(d.root) {
+            let rm = &self.objects[ridx];
+            if rm.alive && rm.ty == ObjType::PageTable {
+                if let Some(rd) = rm
+                    .pt
+                    .and_then(|p| self.page_tables.get(p))
+                    .and_then(|x| x.as_ref())
+                {
+                    if !rd.is_pristine() {
+                        return Err(KError::HasChildren);
+                    }
+                }
+            }
+        }
+        self.push_flush(FlushScope::Asid, d.generation, Some(d.asid), d.active_on);
+        for hart in 0..self.hart_vspace.len() {
+            if self.hart_vspace[hart] == Some(vs) {
+                self.hart_vspace[hart] = None;
+            }
+        }
+        self.vspaces[sidx] = None;
+        Ok(())
+    }
+
     pub fn finalise_tcb(&mut self, tcb: ObjId) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Dead {
@@ -4416,6 +5113,15 @@ impl Machine {
         // mọi test K1a..K1c như trước KT-37.
         if let Err(e) = self.check_pages() {
             debug_assert!(false, "bất biến PageTable vỡ sau public op: {e}");
+        }
+        // **KT-38** — VSpace + `active_on`/hart online và ASID/free-list/thế hệ cũng chạy sau
+        // **mỗi** public op ("check_vspace/check_asid sớm"); hai cửa sổ nhanh giữ chi phí per-op
+        // của mọi test K1a..K1c như trước KT-38.
+        if let Err(e) = self.check_vspace() {
+            debug_assert!(false, "bất biến VSpace vỡ sau public op: {e}");
+        }
+        if let Err(e) = self.check_asid() {
+            debug_assert!(false, "bất biến ASID vỡ sau public op: {e}");
         }
     }
 
@@ -7971,6 +8677,9 @@ impl Machine {
         if ty == ObjType::PageTable {
             self.page_table_objects += 1;
         }
+        if ty == ObjType::VSpace {
+            self.vspace_objects += 1;
+        }
         self.objects.push(Meta {
             ty,
             alive: true,
@@ -7984,6 +8693,7 @@ impl Machine {
             frame: cho.frame,
             frame_area: cho.frame_area,
             pt: cho.pt,
+            space: cho.space,
         });
         self.objects.len() as ObjId
     }
@@ -8024,6 +8734,8 @@ impl Machine {
             ObjType::Frame => Kind::Frame,
             // KT-37: PageTable cũng chỉ có mốc body — 512 PTE nằm ở `Machine::page_tables`.
             ObjType::PageTable => Kind::PageTable,
+            // KT-38: VSpace chỉ có mốc body — metadata (asid/gen/active_on) ở `Machine::vspaces`.
+            ObjType::VSpace => Kind::VSpace,
             ObjType::CNode => Kind::CNode {
                 slots: vec![None; child_slots.max(1)],
             },
@@ -8384,6 +9096,31 @@ impl Machine {
                         return Err(KError::HasChildren);
                     }
                 }
+                // **KT-38** — VSpace còn root chưa tinh khiết cũng không được chết (cùng luật
+                // "không im lặng bỏ mapping"); root của nó cũng nằm trong `dead_objs` nên đã bị
+                // kiểm ở trên, đây là lưới thứ hai nếu root ở Untyped khác trong tương lai.
+                if m.ty == ObjType::VSpace {
+                    let Some(sidx) = m.space else {
+                        return Err(KError::IllegalOperation);
+                    };
+                    let Some(d) = self.vspaces.get(sidx).and_then(|d| d.as_ref()) else {
+                        return Err(KError::IllegalOperation);
+                    };
+                    if let Ok(ridx) = self.object_index(d.root) {
+                        let rm = &self.objects[ridx];
+                        if rm.alive && rm.ty == ObjType::PageTable {
+                            if let Some(rd) = rm
+                                .pt
+                                .and_then(|p| self.page_tables.get(p))
+                                .and_then(|x| x.as_ref())
+                            {
+                                if !rd.is_pristine() {
+                                    return Err(KError::HasChildren);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải chết
             // theo **cả cây con của nó**, kể cả khi object đích còn sống (object ngoài Untyped).
@@ -8450,6 +9187,13 @@ impl Machine {
             for id in &dead_objs {
                 if self.objects[*id as usize - 1].ty == ObjType::Frame {
                     self.finalise_frame(*id)?;
+                }
+            }
+            // **KT-38** — finalise VSpace **trước** PageTable root: phát lệnh flush theo asid,
+            // gỡ hart khỏi `hart_vspace`, tombstone dữ liệu VSpace (ASID về hưu cho hết thế hệ).
+            for id in &dead_objs {
+                if self.objects[*id as usize - 1].ty == ObjType::VSpace {
+                    self.finalise_vspace(*id)?;
                 }
             }
             // **KT-37** — finalise PageTable trước khi object chết (đã kiểm tinh khiết ở trên):
@@ -9284,5 +10028,143 @@ mod tests {
         assert_eq!(m.objects[f2 as usize - 1].frame.expect("meta").maps, 0);
         m.objects[f2 as usize - 1].frame.as_mut().expect("meta").pa -= 1;
         m.check_pages().expect("khôi phục thì sạch");
+    }
+
+    // ------------------------------------------------ KT-38: check_vspace/check_asid phải **bắt** lỗi
+
+    /// Rig VSpace tối thiểu: CNode 16 + Untyped 64 KiB + **một** VSpace (root + ASID 0).
+    fn rig_vspace() -> (Machine, ObjId, ObjId, ObjId) {
+        let mut m = Machine::new();
+        let c = m.add_cnode(16);
+        let u = m.add_untyped(0, 64 * 1024);
+        let cap = m.root_cap(u);
+        m.put_cap(c, 0, cap).expect("cap Untyped");
+        // KT-38: VSpace tạo bằng **model API** (`Retype(VSpace)` vẫn NotSupported/reserved).
+        let cap = m.vspace_create(SlotRef::new(c, 0)).expect("vspace_create");
+        let vs = m.cap_info(cap).expect("cap").obj;
+        let root = m.vspace_root(vs).expect("root");
+        (m, c, vs, root)
+    }
+
+    #[test]
+    fn check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech() {
+        let (mut m, _c, vs, _root) = rig_vspace();
+        let slot = m.objects[vs as usize - 1].space.expect("space");
+        // (1) `active_on` có bit hart không online (1 hart ⇒ chỉ bit 0 hợp lệ).
+        m.vspaces[slot].as_mut().expect("dữ liệu").active_on = HartMask::from_bits(0b10);
+        let e = m.check_vspace().expect_err("phải bắt active_on ⊄ online");
+        assert!(e.contains("online"), "{e}");
+        m.vspaces[slot].as_mut().expect("dữ liệu").active_on = HartMask::EMPTY;
+        m.check_vspace().expect("khôi phục thì sạch");
+
+        // (2) `hart_vspace[h] == Some(vs)` nhưng bit `active_on` **tắt** ⇒ lệch.
+        m.hart_vspace[0] = Some(vs);
+        let e = m
+            .check_vspace()
+            .expect_err("phải bắt lệch active_on/hart_vspace");
+        assert!(e.contains("lệch") || e.contains("online"), "{e}");
+        m.hart_vspace[0] = None;
+        m.check_vspace().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn check_vspace_bat_vspace_chet_con_du_lieu_va_root_khong_phai_goc() {
+        let (mut m, _c, vs, root) = rig_vspace();
+        // (1) Object chết nhưng dữ liệu VSpace còn (rò metadata/asid/active_on).
+        m.objects[vs as usize - 1].alive = false;
+        let e = m
+            .check_vspace()
+            .expect_err("phải bắt VSpace chết còn dữ liệu");
+        assert!(e.contains("đã chết") || e.contains("sống"), "{e}");
+        m.objects[vs as usize - 1].alive = true;
+        m.check_vspace().expect("khôi phục thì sạch");
+
+        // (2) Root không còn là bảng gốc (bị attach) ⇒ bất biến "root = bảng gốc".
+        let rslot = m.objects[root as usize - 1].pt.expect("pt root");
+        m.page_tables[rslot].as_mut().expect("dữ liệu").attached = Some((vs, 0));
+        let e = m.check_vspace().expect_err("phải bắt root đã attach");
+        assert!(e.contains("bảng gốc") || e.contains("attach"), "{e}");
+        m.page_tables[rslot].as_mut().expect("dữ liệu").attached = None;
+        m.check_vspace().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn check_asid_bat_free_list_sai_va_asid_trung_the_he() {
+        let (mut m, c, vs, _root) = rig_vspace();
+        // (1) Free-list mất tính giảm dần nghiêm ngặt (ASID bị "trả lại" sai ⇒ trùng).
+        let dup = *m.asid_free.last().expect("free-list còn ASID");
+        m.asid_free.push(dup);
+        let e = m.check_asid().expect_err("phải bắt free-list trùng");
+        assert!(e.contains("giảm dần") || e.contains("≠"), "{e}");
+        m.asid_free.pop();
+        m.check_asid().expect("khôi phục thì sạch");
+
+        // (2) Hai VSpace cùng `(generation, asid)` ⇒ trùng trong một thế hệ.
+        let cap = m.vspace_create(SlotRef::new(c, 0)).expect("VSpace 2");
+        let vs2 = m.cap_info(cap).expect("cap").obj;
+        let s1 = m.objects[vs as usize - 1].space.expect("space 1");
+        let s2 = m.objects[vs2 as usize - 1].space.expect("space 2");
+        m.vspaces[s2].as_mut().expect("dữ liệu").asid =
+            m.vspaces[s1].as_ref().expect("dữ liệu").asid;
+        let e = m.check_asid().expect_err("phải bắt ASID trùng");
+        assert!(e.contains("trùng"), "{e}");
+        m.vspaces[s2].as_mut().expect("dữ liệu").asid = 1;
+        m.check_asid().expect("khôi phục thì sạch");
+
+        // (3) ASID của VSpace thế hệ hiện tại còn nằm trong free-list ⇒ bị bắt.
+        let free_asid = *m.asid_free.last().expect("free-list còn ASID");
+        m.vspaces[s1].as_mut().expect("dữ liệu").asid = free_asid;
+        let e = m
+            .check_asid()
+            .expect_err("phải bắt ASID còn trong free-list");
+        assert!(e.contains("free-list"), "{e}");
+        m.vspaces[s1].as_mut().expect("dữ liệu").asid = 0;
+        m.check_asid().expect("khôi phục thì sạch");
+    }
+
+    #[test]
+    fn check_asid_can_asid_tang_the_he_mot_lan_va_flush_gen() {
+        // Ca cạn ASID **rẻ** cho Miri: gieo free-list còn đúng 1 slot (thay vì tạo 256 VSpace),
+        // rồi kiểm `generation += 1` **một lần** + **một** lệnh flush `Generation`.
+        let (mut m, c, _vs, _root) = rig_vspace();
+        m.asid_free = vec![255];
+        m.asid_issued = ASID_COUNT as u32 - 1;
+        m.check_asid().expect("trạng thái gieo hợp lệ");
+        let cap = m
+            .vspace_create(SlotRef::new(c, 0))
+            .expect("VSpace cuối thế hệ 0");
+        let vs = m.cap_info(cap).expect("cap").obj;
+        let info = m.vspace_info(vs).expect("info");
+        assert_eq!((info.asid, info.generation), (255, 0));
+        assert_eq!(m.asid_state().free, 0);
+        assert_eq!(m.flush_count(), 0);
+
+        let cap = m
+            .vspace_create(SlotRef::new(c, 0))
+            .expect("VSpace thế hệ 1");
+        let vs2 = m.cap_info(cap).expect("cap").obj;
+        let info = m.vspace_info(vs2).expect("info");
+        assert_eq!(
+            (info.asid, info.generation),
+            (0, 1),
+            "cạn ASID ⇒ generation + 1, free-list nạp lại từ 0"
+        );
+        assert_eq!(
+            m.asid_state(),
+            AsidState {
+                generation: 1,
+                free: ASID_COUNT - 1,
+                issued: 1,
+                exhaustions: 1,
+            }
+        );
+        assert_eq!(m.flush_count(), 1, "flush toàn bộ **một lần** theo gen");
+        let f = m.last_flush().expect("flush gen");
+        assert_eq!(f.scope, FlushScope::Generation);
+        assert_eq!(f.generation, 1);
+        assert_eq!(f.asid, None);
+        assert_eq!(f.harts, HartMask::from_bits(0b1));
+        m.check_asid().expect("sau cạn");
+        m.check_vspace().expect("sau cạn");
     }
 }

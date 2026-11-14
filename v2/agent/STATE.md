@@ -4,15 +4,63 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : (không ghi hash ở đây để khỏi lệch sau commit — xem `git log -1`; lịch sử dưới ghi hash từng task)
+HEAD          : `cc7b096` (tab ViScript; không đụng `v2/`) — commit KT-38 ghi ở mục KT-38 bên dưới
 BUILD_ID      : —
-Task          : KT-38 (READY — VSpace/ASID); KT-37 DONE (4e16773)
-Bước          : 8/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch → code+test → check/gate → **Miri PASS** → review APPROVE → commit/push)
+Task          : KT-37 DONE (4e16773); **KT-38 xong mã — REVIEW độc lập trước commit**
+Bước          : 8/8 (baseline → **đỏ biên dịch** → code+test → check/gate → Miri → review → commit/push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 512 test/67 suite** (baseline 494/66 + 10 `kt37_pagetable` + 4 unit `pagetable` + 3 unit âm `check_pages` + 1 unit `pa` lệch căn), L1 1.000 seed **726 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt37-gate-fast.log`); `check` PASS (`JOURNAL/kt37-check.log`). Baseline KT-37: PASS 494/66, L1 985 ms (`JOURNAL/kt37-baseline-gate-fast.log`).
-Miri          : KT-37 — **PASS**: `--test kt37_pagetable` **10/10** (171,54 s, exit 0) + `--lib pagetable` **4/4** (1,09 s) + `--lib 'kobj::tests::check_pages'` **3/3** (12,86 s) qua `./v2/bin/v2 miri` (`JOURNAL/kt37-miri.log`); dưới `cfg(miri)` giảm property 10.000 → **20** op, vòng rò 100 → **1×2** (stable giữ 10.000/100 — D2-47(a)); 2 warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17), không phải KT-37; `v2/sim/**` 0 unsafe. KT-36 (lịch sử): Miri 12/12 + 5/5.
-Việc dở       : **KT-37 xong: commit `4e16773` đã push** (reviewer-kt37 APPROVE, gate 512/67, Miri 10/10) — **chờ Agent 0 lật sổ**; các nit review đã xử lý: N1 detach kiểm căn lề (`Alignment`), N2 `MAX_FRAMES_PER_VSPACE` sau `AlreadyMapped` (khớp docs), N3 bỏ `saturating_sub` → kiểm `mapped > 0` trước khi sửa cây, N6 journal lib 39+8=47, N7 STATE (mục này). KT-36: commit `9c54bcf` đã push, **chờ Agent 0 lật sổ**; KT-35 DONE. Không tự lật QUEUE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 526 test/68 suite** (baseline 512/67 + 7 `kt38_vspace` + 3 unit `vspace` + 4 unit `kobj`), L1 1.000 seed **1261 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt38-gate-fast.log`); `check` PASS (`JOURNAL/kt38-check.log`). Baseline KT-38: PASS 512/67, L1 1463 ms (`JOURNAL/kt38-baseline-gate-fast.log`). Reviewer chạy trước khi thêm unit test cạn ASID: 525/68 (chênh đúng +1 unit test).
+Miri          : KT-38 — **PASS** (exit 0 mọi mục, `JOURNAL/kt38-miri.log`): `--test kt38_vspace` **7/7** (61,29 s) + `--lib` lọc `vspace` **5/5** (3 unit `vspace` + 2 `check_vspace`) + `--lib 'kobj::tests::check_vspace'` **2/2** (1,61 s) + `--lib 'kobj::tests::check_asid'` **2/2** (3,27 s). Dưới `cfg(miri)`: test 257 → **8 ASID**, property 10.000 → **1×2** (D2-47(a)); warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17); `v2/sim/**` 0 unsafe. KT-37 (lịch sử): 10/10 + 4/4 + 3/3; KT-36: 12/12 + 5/5.
+Việc dở       : **KT-38 chờ verdict `reviewer-kt38` rồi commit `[KT-38]` + push** (chỉ stage `v2/`; `viscript/` không chạm). Quyết định chính: VSpace tạo bằng **model API `vspace_create`** (Retype(VSpace) **vẫn** `NotSupported` — spec reserved + không sửa test cũ; lead đã xác nhận hướng này); ASID **về hưu trong thế hệ**; teardown phát **một** lệnh flush `Asid` tới `active_on`; cạn ASID phát **một** lệnh `Generation` cho mọi hart online. KT-37: commit `4e16773` đã push, **chờ Agent 0 lật sổ**; KT-36 `9c54bcf` chờ lật; KT-35 DONE. Không tự lật QUEUE.
 ```
+
+## KT-38 — K2: `VSpace` + ASID (8 bit/256/thế hệ) + `generation` + `active_on: HartMask`
+
+**Vào**: READY (`agentctl next --project v2` trả KT-38) · HEAD `d240026` ([KT-00] lật KT-37 DONE,
+512 test) · `git rev-list --count HEAD..origin/main` = **0** · working tree có `viscript/` của tab
+khác (**không chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 512 test/67 suite**, L1
+1.000 seed **1463 ms** ([`JOURNAL/kt38-baseline-gate-fast.log`](JOURNAL/kt38-baseline-gate-fast.log)).
+Trong lúc làm, tab ViScript commit `f158085`/`cc7b096` lên `main` (không đụng `v2/`).
+
+**Mục tiêu** (K2-PLAN §3 KT-38 + §2 Q4/Q9, D2-65/66): `VSpace` object + **một** root PageTable
+(model API; spec vẫn `reserved`), `page_table_walk` làm oracle; ASID **8 bit = 256/thế hệ**,
+free-list, **không tái dùng trong cùng thế hệ**, cạn ⇒ `generation += 1` + **flush toàn bộ một
+lần theo `gen`** (`GetAsid` debug); `active_on: HartMask` cập nhật khi hart chạy/nghỉ,
+`active_on ⊆ hart online`, teardown giải phóng ASID + flush theo asid; 10k tạo/huỷ;
+`check_vspace`/`check_asid` sau mỗi op; Miri; gate 512+.
+
+**Không** làm: TLB/shootdown/ack/chống deadlock (KT-40), W^X/protect (KT-39), VM fault (KT-41),
+`.scn`/`check_vm` (KT-42), `spec/`, `vifast-model`, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`;
+không `unsafe`, không dependency ngoài workspace, không `#[ignore]`, **không sửa test cũ**.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`kt38-red-compile.log`](JOURNAL/kt38-red-compile.log) — **E0432**
+  (`AsidState/FlushScope/HartMask/VSpaceInfo/ASID_COUNT`) + **E0599** (`vspace_create`,
+  `vspace_*`, `check_vspace`, `check_asid`), 135 dòng, `could not compile` exit 101 (tái lập bằng
+  `git stash` **chỉ** `src/` về KT-37 với test đã viết; đã pop, md5 khôi phục). **Không có đỏ
+  ngữ nghĩa** vì KT-38 không đổi API cũ (`Retype(VSpace)` vẫn `NotSupported`).
+- **Code**: `src/vspace.rs` **(mới)** (`HartMask` ≤64 bit, `VSpaceData/Info`, `AsidState`,
+  `FlushScope/FlushCmd`, `ASID_COUNT = 1<<ASID_BITS`, `fresh_asid_free`, 3 unit test) +
+  `kobj.rs` (`Kind::VSpace`, `Meta.space`, 9 trường mới, `vspace_create`/`create_vspace`,
+  `asid_alloc`/`push_flush`, 13 API VSpace, `check_vspace` 5 nhóm + `check_asid` 3 nhóm trong
+  `sched_after_op`, `finalise_vspace` + `revoke_children` atomic/`HasChildren`, `page_table_attach`
+  chặn root VSpace, 3 unit test âm) + `tests/kt38_vspace.rs` **(mới, 7 test)**.
+- **Docs**: `v2/docs/k2-vm.md` **§12** (object/root + model API, ASID free-list/về hưu, `active_on`,
+  lệnh flush cho KT-40, 5+3 nhóm bất biến, `HasChildren`, ranh giới).
+- **Cổng**: [`kt38-check.log`](JOURNAL/kt38-check.log) PASS; [`kt38-gate-fast.log`](JOURNAL/kt38-gate-fast.log)
+  **PASS 526 test/68 suite**, L1 **1261 ms**; `kt38_vspace` **7/7** (9,34 s), lib **54/54**,
+  L0 **526/0**.
+- **Miri**: [`kt38-miri.log`](JOURNAL/kt38-miri.log) — **PASS**: `kt38_vspace` 7/7 (61,29 s) +
+  `--lib` lọc `vspace` 5/5 + `check_vspace` 2/2 + `check_asid` 2/2 (3,27 s).
+- **Review độc lập**: nhờ lead spawn `reviewer-kt38` (read-only); chờ verdict trước commit.
+
+**Đề xuất: REVIEW** (chờ verdict reviewer; không tự DONE, không lật QUEUE — D2-37).
+**YC/Follow-up**: (1) KT-39 W^X đặt trên hook `page_table_map/unmap` + bộ đếm Frame (VSpace đã
+uỷ quyền nguyên đường này); (2) KT-40 tiêu thụ `flush_log` (`Asid`/`Generation`) + thêm kind
+`(asid, va)` + TLB 16 entry/hart + ack thế hệ; (3) KT-41 dùng `vspace_root`/`vspace_info` cho
+`FaultKind::Vm`; (4) KT-42 gộp `check_vspace`/`check_asid` vào `check_vm`; (5) K3: thống nhất
+đường tạo VSpace với Frame/PageTable (Retype) khi `spec` mở `VSpace`, hoặc giữ model API.
+
 
 ## KT-37 — K2: `PageTable` 3 cấp (root/cấp 1/cấp 0) + map/unmap + rights/attrs + 7 mã lỗi
 

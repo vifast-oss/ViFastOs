@@ -1,0 +1,444 @@
+=== kt38_vspace (integration, 7 test; cfg(miri): test 257 → 8 ASID, property 10k → 1×2) ===
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.95s
+     Running tests/kt38_vspace.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/da540dafc3f821e2/out/kt38_vspace-da540dafc3f821e2)
+
+running 7 tests
+test active_on_hart_activate_deactivate ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `active_on_hart_activate_deactivate`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt38_vspace.rs:60:17: 60:34
+          6: active_on_hart_activate_deactivate
+              at sim/vifast-sim/tests/kt38_vspace.rs:565:17: 565:39
+          7: active_on_hart_activate_deactivate::{closure#0}
+              at sim/vifast-sim/tests/kt38_vspace.rs:564:40: 564:40
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `active_on_hart_activate_deactivate`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: Rig::new
+              at sim/vifast-sim/tests/kt38_vspace.rs:60:17: 60:34
+          6: active_on_hart_activate_deactivate
+              at sim/vifast-sim/tests/kt38_vspace.rs:565:17: 565:39
+          7: active_on_hart_activate_deactivate::{closure#0}
+              at sim/vifast-sim/tests/kt38_vspace.rs:564:40: 564:40
+
+ok
+test active_on_hart_offline_khong_shootdown ... ok
+test asid_khong_tai_dung_trong_cung_the_he ... ok
+test cap_257_asid_generation_va_flush_theo_gen ... ok
+test property_10k_tao_huy_vspace ... ok
+test retype_vspace_root_asid_va_walk_oracle ... ok
+test vspace_loi_va_bien ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.29s
+
+warning: 2 warnings emitted
+
+EXIT=0
+
+=== lib: vspace (HartMask/ASID unit) ===
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+   Compiling vifast-traceformat v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-traceformat)
+   Compiling vifast-model v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-model)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-abi/d1dd9ed59580ebd7/out/vifast_abi-d1dd9ed59580ebd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-agentctl/5bad14781032d923/out/vifast_agentctl-5bad14781032d923)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-elf/7742a21a82446645/out/vifast_elf-7742a21a82446645)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-fs/094112bd6aca8a96/out/vifast_fs-094112bd6aca8a96)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-model/38ed69b8b22ad1db/out/vifast_model-38ed69b8b22ad1db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/f2fcdb661545c8e0/out/vifast_objmem-f2fcdb661545c8e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-pte/f70abd7668b1a369/out/vifast_pte-f70abd7668b1a369)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 5 tests
+test kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vs`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech
+              at sim/vifast-sim/src/kobj.rs:10051:38: 10051:50
+          7: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10050:69: 10050:69
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vs`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech
+              at sim/vifast-sim/src/kobj.rs:10051:38: 10051:50
+          7: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10050:69: 10050:69
+
+ok
+test kobj::tests::check_vspace_bat_vspace_chet_con_du_lieu_va_root_khong_phai_goc ... ok
+test vspace::tests::asid_count_bang_hai_mu_asid_bits ... ok
+test vspace::tests::hart_mask_bit_contains_subset ... ok
+test vspace::tests::vspace_info_va_flush_cmd_de_so_sanh ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 2.10s
+
+warning: 2 warnings emitted
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/4f5ce7a28db69354/out/vifast_sync-4f5ce7a28db69354)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-traceformat/972166c7bc0995d7/out/vifast_traceformat-972166c7bc0995d7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+EXIT=0
+
+=== lib: kobj::tests::check_vspace ===
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+   Compiling vifast-traceformat v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-traceformat)
+   Compiling vifast-model v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-model)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.62s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-abi/d1dd9ed59580ebd7/out/vifast_abi-d1dd9ed59580ebd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-agentctl/5bad14781032d923/out/vifast_agentctl-5bad14781032d923)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-elf/7742a21a82446645/out/vifast_elf-7742a21a82446645)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-fs/094112bd6aca8a96/out/vifast_fs-094112bd6aca8a96)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-model/38ed69b8b22ad1db/out/vifast_model-38ed69b8b22ad1db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/f2fcdb661545c8e0/out/vifast_objmem-f2fcdb661545c8e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-pte/f70abd7668b1a369/out/vifast_pte-f70abd7668b1a369)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 2 tests
+test kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vs`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech
+              at sim/vifast-sim/src/kobj.rs:10051:38: 10051:50
+          7: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10050:69: 10050:69
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vs`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech
+              at sim/vifast-sim/src/kobj.rs:10051:38: 10051:50
+          7: kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10050:69: 10050:69
+
+ok
+test kobj::tests::check_vspace_bat_vspace_chet_con_du_lieu_va_root_khong_phai_goc ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 1.61s
+
+warning: 2 warnings emitted
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/4f5ce7a28db69354/out/vifast_sync-4f5ce7a28db69354)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-traceformat/972166c7bc0995d7/out/vifast_traceformat-972166c7bc0995d7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+EXIT=0
+
+=== lib: kobj::tests::check_asid ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-abi/d1dd9ed59580ebd7/out/vifast_abi-d1dd9ed59580ebd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-agentctl/5bad14781032d923/out/vifast_agentctl-5bad14781032d923)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-elf/7742a21a82446645/out/vifast_elf-7742a21a82446645)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-fs/094112bd6aca8a96/out/vifast_fs-094112bd6aca8a96)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-model/38ed69b8b22ad1db/out/vifast_model-38ed69b8b22ad1db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-objmem/f2fcdb661545c8e0/out/vifast_objmem-f2fcdb661545c8e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-pte/f70abd7668b1a369/out/vifast_pte-f70abd7668b1a369)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/40eb495adb795508/out/vifast_sim-40eb495adb795508)
+
+running 2 tests
+test kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he
+              at sim/vifast-sim/src/kobj.rs:10093:37: 10093:49
+          7: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10092:59: 10092:59
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::ObjMem as vifast_objmem::ObjStore>::place::<kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::OwnedMem::alloc_place::<kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:8703:20: 8705:31
+          4: kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:1033:9: 1040:10
+          5: kobj::tests::rig_vspace
+              at sim/vifast-sim/src/kobj.rs:10038:17: 10038:32
+          6: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he
+              at sim/vifast-sim/src/kobj.rs:10093:37: 10093:49
+          7: kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he::{closure#0}
+              at sim/vifast-sim/src/kobj.rs:10092:59: 10092:59
+
+ok
+test kobj::tests::check_asid_can_asid_tang_the_he_mot_lan_va_flush_gen ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 3.27s
+
+warning: 2 warnings emitted
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sync/4f5ce7a28db69354/out/vifast_sync-4f5ce7a28db69354)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-traceformat/972166c7bc0995d7/out/vifast_traceformat-972166c7bc0995d7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+
+EXIT=0
