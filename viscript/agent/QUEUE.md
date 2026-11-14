@@ -164,7 +164,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **DONE** | ≥13 frame; prefix/hover/null |
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **DONE** | 6 ca + e2e tất định; không mạng |
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **DONE** | 4 ca; lock không có đường tuyệt đối |
-| ST-72 | **VS2 #4a** — kiểu `cap[Dir/File/Net/Proc]` trong tyck + `vis run --dry` liệt kê quyền khai báo | ST-71 | 3 h | **READY** | `cap[Dir] @ p"./x" (write)` parse+check được; ≥5 ca sem; `--dry` in |
+| ST-72 | **VS2 #4a** — kiểu `cap[Dir/File/Net/Proc]` trong tyck + `vis run --dry` liệt kê quyền khai báo | ST-71 | 3 h | **DONE** | `cap[Dir] @ p"./x" (write)` parse+check được; ≥5 ca sem; `--dry` in |
 | ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **READY** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
 | ST-73 | **VS2 #4c** — Landlock thật trên Linux (cfg linux) + tài liệu giới hạn | ST-72b | 3 h | **READY** | ≥8 ca Linux; trên macOS **không** giả vờ chạy |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
@@ -1104,3 +1104,14 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: lock **chưa lưu `entry`** (dùng quy ước), chưa resolver dải, chưa ký số/registry HTTP, chưa `pkg remove/update`, lock chỉ tìm
 > ở `main_dir`, `.vis/store` không GC.
 > **ST-72 mở** (VS2 #4a — quyền `cap[Dir]`/`cap[Net]` cưỡng chế ở host; **VD-103**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-72 DONE — VS2 #4a (`cap[...]` là kiểu thật) CÓ MẶT.** Commit `4094a8d0` (**Agent 2 tự commit, đã push**). `cap[Dir|File|
+> Net|Proc|Env|Term]` = `TypeRef{"cap",[…]}` (không thêm biến thể `Type`), `resolve_named` xử `cap` **trước** đối số ⇒ `Dir`
+> ngoài `cap` vẫn `VS0301`; `@ p"…"`/`@ "host"` + `(write)` kiểm ở `lower/quyen.rs` (83 dòng) ⇒ sai = **`VS0412`**; bất biến
+> "cap **không** so sánh/không in/không literal" khoá bằng ca; `vis run --dry` in quyền từ **CST** của `main` ra **stderr**
+> (stdout rỗng ⇒ chứng minh **không chạy**). **6 ca sem** nhóm mới `cap/` ⇒ **447 ca / 22 nhóm** + **4 ca Rust**. Đo: **858 test**
+> · `vis test` **447 ok** · parity **398/398** · differential **100k/0 lệch** (286,7 s) · R1 max 1.491.
+> **Nợ rõ**: **chưa** cưỡng chế (ST-72b), **chưa** có giá trị runtime cho `cap` (ca sem mới kiểm tyck), chưa Landlock.
+> **ST-72b mở** (cưỡng chế ở host + `--grant`).
