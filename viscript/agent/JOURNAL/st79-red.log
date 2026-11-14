@@ -1,0 +1,37 @@
+fatal: not a git repository (or any of the parent directories): .git
+# ST-79 — log ĐỎ (trước khi sửa) lúc 2026-11-14T12:43:18Z, HEAD 
+
+== vis test t_await.vis
+TAP version 13
+1..1
+not ok 1 - 
+# :5:1: VS0201 mong biểu thức, thật `async` (KW)
+[exit=1]
+== vis test --vm t_await.vis
+TAP version 13
+1..1
+not ok 1 - 
+# :5:1: VS0201 mong biểu thức, thật `async` (KW)
+[exit=1]
+== vis test t_task.vis
+TAP version 13
+1..1
+not ok 1 - 
+# :5:1: VS0201 mong biểu thức, thật `async` (KW)
+[exit=1]
+== vis test --vm t_task.vis
+TAP version 13
+1..1
+not ok 1 - 
+# :5:1: VS0201 mong biểu thức, thật `async` (KW)
+[exit=1]
+== vis test t_kenh.vis
+TAP version 13
+1..1
+ok 1 - 
+[exit=0]
+== vis test --vm t_kenh.vis
+TAP version 13
+1..1
+ok 1 - 
+[exit=0]

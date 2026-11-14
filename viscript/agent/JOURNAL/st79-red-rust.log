@@ -1,0 +1,103 @@
+# ST-79 — log ĐỎ (Rust) lúc 2026-11-14T12:43:26Z, HEAD 4fc274e6 — trước khi có runner test/assert.
+# lệnh: cargo test -p vis-cli --test vistest_async (8 ca)
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.45s
+     Running tests/vistest_async.rs (target/debug/deps/vistest_async-619943b90cd467d6)
+
+running 8 tests
+test hon_test_thuong_va_async ... FAILED
+test task_loi_not_ok_vs0506 ... FAILED
+test kenh_send_recv ... FAILED
+test spawn_ba_task_dung_thu_tu ... FAILED
+test await_fn_cap_tep ... FAILED
+test khong_await_van_join_va_loi ... FAILED
+test task_roi_await ... FAILED
+test kenh_deadlock_not_ok_khong_treo ... FAILED
+
+failures:
+
+---- hon_test_thuong_va_async stdout ----
+
+thread 'hon_test_thuong_va_async' (47066940) panicked at crates/vis-cli/tests/vistest_async.rs:136:5:
+assertion `left == right` failed: TAP version 13
+1..1
+not ok 1 - 
+# :1:1: VS0302 khai báo trùng `test` trong cùng phạm vi (đã khai ở 1:1)
+
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- task_loi_not_ok_vs0506 stdout ----
+
+thread 'task_loi_not_ok_vs0506' (47066945) panicked at crates/vis-cli/tests/vistest_async.rs:111:5:
+assertion `left == right` failed: TAP version 13
+1..1
+ok 1 - 
+
+  left: 0
+ right: 1
+
+---- kenh_send_recv stdout ----
+
+thread 'kenh_send_recv' (47066942) panicked at crates/vis-cli/tests/vistest_async.rs:92:5:
+assertion `left == right` failed
+  left: "TAP version 13\n1..1\nok 1 - \n"
+ right: "TAP version 13\n1..1\nok 1 - t_kenh\n"
+
+---- spawn_ba_task_dung_thu_tu stdout ----
+
+thread 'spawn_ba_task_dung_thu_tu' (47066944) panicked at crates/vis-cli/tests/vistest_async.rs:102:5:
+assertion `left == right` failed
+  left: "TAP version 13\n1..1\nok 1 - \n"
+ right: "TAP version 13\n1..1\nok 1 - t_spawn\n"
+
+---- await_fn_cap_tep stdout ----
+
+thread 'await_fn_cap_tep' (47066939) panicked at crates/vis-cli/tests/vistest_async.rs:72:5:
+assertion `left == right` failed
+  left: "TAP version 13\n1..1\nok 1 - \n"
+ right: "TAP version 13\n1..1\nok 1 - t_await\n"
+
+---- khong_await_van_join_va_loi stdout ----
+
+thread 'khong_await_van_join_va_loi' (47066943) panicked at crates/vis-cli/tests/vistest_async.rs:150:5:
+assertion `left == right` failed: TAP version 13
+1..1
+ok 1 - 
+
+  left: 0
+ right: 1
+
+---- task_roi_await stdout ----
+
+thread 'task_roi_await' (47066946) panicked at crates/vis-cli/tests/vistest_async.rs:82:5:
+assertion `left == right` failed
+  left: "TAP version 13\n1..1\nok 1 - \n"
+ right: "TAP version 13\n1..1\nok 1 - t_task\n"
+
+---- kenh_deadlock_not_ok_khong_treo stdout ----
+
+thread 'kenh_deadlock_not_ok_khong_treo' (47066941) panicked at crates/vis-cli/tests/vistest_async.rs:125:5:
+assertion `left == right` failed: TAP version 13
+1..1
+ok 1 - 
+
+  left: 0
+ right: 1
+
+
+failures:
+    await_fn_cap_tep
+    hon_test_thuong_va_async
+    kenh_deadlock_not_ok_khong_treo
+    kenh_send_recv
+    khong_await_van_join_va_loi
+    spawn_ba_task_dung_thu_tu
+    task_loi_not_ok_vs0506
+    task_roi_await
+
+test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+error: test failed, to rerun pass `-p vis-cli --test vistest_async`

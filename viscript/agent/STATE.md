@@ -6,17 +6,31 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-78 — `vis explain` + sổ mã 3 mã runtime mới, đủ 3 ngôn ngữ** (`VS0504/0505/0506`
-                đúng nghĩa vi/en/ja; `--list` 32 mã đúng thứ tự; trợ giúp nêu **7 khối/32 mã**;
-                6 ca CLI + snapshot 29 ca) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (đo trước/red (2/6) → câu `VS0506` rõ nghĩa + `usage_explain` đếm động → snapshot
-                +9 → 892 test → cổng → diff 100k → STATE/JOURNAL).
+Task          : **ST-79 — `vis test` chạy `test fn` có async/await/spawn/chan** (runner theo `test fn`,
+                TAP mỗi test, join cuối, task lỗi `VS0506`, deadlock `VS0505`; builtin `assert(bool)`;
+                8 ca CLI, interp = VM cùng byte) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (red-first 8/8 đỏ + 3 mẫu lead → runner test + `assert` → 8/8 xanh → 900 test →
+                cổng (R1 1503→1498) → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T12:35:50Z**; **892** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:26:03Z** (lần 1 FAIL R1
+                `expr.rs` 1503 > 1500 ⇒ nén xuống **1498**, không nới ngưỡng); **900** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (253,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (442,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-78]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-79]` + push (đã được uỷ quyền)
+
+## ST-79 — `vis test` với async/await/chan, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | 3 mẫu lead: `t_await`/`t_task` ⇒ **`VS0201`** (`async fn` trong thân `test` — thân là chuỗi câu lệnh, không phải vùng item); `t_kenh` ⇒ `ok 1 -` **nhưng không chạy gì** (TAP theo **tệp**, mọi `test fn` bị bỏ qua; `vis test` chỉ là harness fixture `.out/.err`). `assert` **chưa tồn tại**. Log `JOURNAL/st79-red.log` sha256 `46315363…`; log Rust **8/8 đỏ** `JOURNAL/st79-red-rust.log` sha256 `8e0b5278…`. |
+| 1 | **Runner `test fn`** | `vis test` đọc **CST**, mỗi `TestDecl` = **một ca TAP**; chạy bản sao tạm đổi `test fn <tên>` → `fn main` (giữ `async fn` **cấp tệp**), rồi `vis run` / `--vm --no-cache`; TAP `1..N`, `ok/not ok N - tên`; tệp **không** có `test fn` giữ nguyên hành vi fixture ⇒ sem 447 không đổi. |
+| 2 | **Join cuối khối** | Nhờ chạy qua `vis run`, `join_all` cuối chương trình chạy mọi task **kể cả không await**: task lỗi ⇒ `not ok` + **`VS0506`** (ca `khong_await_van_join_va_loi`). |
+| 3 | **Builtin `assert`** | `assert(bool) -> ()` cho cả hai đường; false ⇒ trap **`VS0501` “assert thất bại”** (**không** thêm mã mới); tyck sai kiểu/đối số ⇒ `VS0412`/`VS0401`; `SIGS` 21→**22**; thêm tên vào `builtin_name` của interp + tyck. |
+| 4 | **TAP + VM** | `test --vm` cho **cùng byte** TAP với interp (helper `hai_duong` so bytes + exit); task lỗi `VS0506`; deadlock kênh `VS0505` **không treo** (đo < 5 s); test lẫn thường + async đúng thứ tự khai. |
+| 5 | **8 ca** | `crates/vis-cli/tests/vistest_async.rs`: await fn cấp tệp, task-rồi-await, kênh send/recv, 3 task đúng thứ tự, task lỗi `VS0506`, deadlock `VS0505`, hỗn hợp thường+async, **không await vẫn join + lỗi**. |
+| 6 | **Đo** | **900** test = 892 + **8** (21+96+27+154+26+62+9+**505**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=442.6 toc_do=226/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498** (`vistest.rs` 308, `builtin.rs` 1.405, `expr.rs` 1.498, `vistest_async.rs` 154). |
+| 7 | **Nợ** | `async fn` **trong** thân `test` **không** hỗ trợ (dùng `async fn` cấp tệp — đúng phạm vi cho phép); `assert` chỉ dạng **gọi hàm** `assert(đk)`, chưa hỗ trợ `assert đk` như tài liệu; runner biến đổi **văn bản** (không phải hạ HIR) — nếu tệp test có **câu lệnh cấp tệp**, chúng chạy lại cho **mỗi** test (nợ); mẫu lead dùng `some(5)` (chữ thường) **không** chạy — constructor là `Some`; `--vm` vẫn `--no-cache` (không cache tệp test tạm). |
 
 ## ST-78 — `vis explain` + sổ mã 3 mã mới, 2026-11-14
 

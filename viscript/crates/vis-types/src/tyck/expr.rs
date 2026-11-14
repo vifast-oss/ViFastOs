@@ -1328,6 +1328,18 @@ impl<'a> Checker<'a> {
                 }
                 Some(Type::Str)
             }
+            "assert" => {
+                if !arity(1) {
+                    self.diag(ARG_COUNT, "`assert` cần 1 đối số", span);
+                } else if !matches!(t0(), Type::Bool | Type::Error) {
+                    self.diag(
+                        MISMATCH,
+                        format!("`assert` cần `bool`, được `{}`", self.show(&t0())),
+                        span,
+                    );
+                }
+                Some(Type::Unit)
+            }
             // ST-18: 3 lệnh builtin chế độ lệnh — chữ ký như `sig_builtin()` ở `lower/cmd.rs`.
             "echo" => {
                 if tys.len() > 4 {

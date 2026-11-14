@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use vis_syntax::Mode;
+use vis_syntax::{Kind, Mode, NodeKind, Span};
 
 fn usage() -> ExitCode {
     eprintln!("dùng: vis test [--vm] [thư mục|tệp]");
@@ -58,6 +58,37 @@ fn gom(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(p);
         }
     }
+}
+
+/// **ST-79 (VD-108)**: tên + span của mọi `test fn` trong tệp, theo thứ tự khai báo (CST).
+fn ds_test(text: &str) -> Vec<(String, Span, Span)> {
+    let out = vis_syntax::parse(text, Mode::Script);
+    let cst = &out.cst;
+    let mut ds = Vec::new();
+    for n in cst.root.children() {
+        if n.kind != NodeKind::TestDecl {
+            continue;
+        }
+        let toks: Vec<&vis_syntax::Token> = n.tokens(&cst.tokens).collect();
+        let mut idents = toks.iter().filter(|t| t.kind == Kind::Ident);
+        let Some(test_tok) = idents.next() else {
+            continue;
+        };
+        let Some(name_tok) = idents.next() else {
+            continue;
+        };
+        ds.push((name_tok.text.clone(), test_tok.span, name_tok.span));
+    }
+    ds
+}
+
+/// Đổi `test fn <tên>` thành `fn main` (chỉ tên đang chọn); giữ nguyên phần còn lại.
+fn thanh_main(text: &str, test_span: Span, name_span: Span) -> String {
+    let mut s = String::with_capacity(text.len());
+    s.push_str(&text[..test_span.start]);
+    s.push_str("fn main");
+    s.push_str(&text[name_span.end..]);
+    s
 }
 
 fn chay(ca: &Path, vm: bool) -> (i32, String, String) {
@@ -141,23 +172,78 @@ pub fn run(args: &[String]) -> ExitCode {
             }
         }
     };
-    let mut ca: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
     if goc.is_dir() {
-        gom(&goc, &mut ca);
+        gom(&goc, &mut files);
     } else {
-        ca.push(goc.clone());
+        files.push(goc.clone());
+    }
+    // **ST-79 (VD-108)**: tệp có `test fn` ⇒ **mỗi test một ca TAP** (chạy bằng bản sao đổi
+    // `test fn <tên>` → `fn main`); tệp thường giữ nguyên hành vi fixture `.out`/`.err`.
+    let mut ca: Vec<(PathBuf, Option<(String, String)>)> = Vec::new();
+    for p in files {
+        let text = std::fs::read_to_string(&p).unwrap_or_default();
+        let tests = ds_test(&text);
+        if tests.is_empty() {
+            ca.push((p, None));
+        } else {
+            for (ten, test_span, name_span) in tests {
+                let src = thanh_main(&text, test_span, name_span);
+                ca.push((p.clone(), Some((ten, src))));
+            }
+        }
     }
     let mut tap = String::new();
     tap.push_str("TAP version 13\n");
     tap.push_str(&format!("1..{}\n", ca.len()));
     let mut hong = 0usize;
-    for (i, p) in ca.iter().enumerate() {
+    for (i, (p, bai_test)) in ca.iter().enumerate() {
         let n = i + 1;
         let ten = p
             .strip_prefix(&goc)
             .unwrap_or(p)
             .to_string_lossy()
             .to_string();
+        if let Some((ten_test, src)) = bai_test {
+            // Ghi bản sao tạm, chạy `vis run` (interp hoặc VM), TAP theo **tên test**.
+            let d = std::env::temp_dir().join(format!("vis-test-{}-{}", std::process::id(), i));
+            let _ = std::fs::remove_dir_all(&d);
+            let _ = std::fs::create_dir_all(&d);
+            let tep = d.join("t.vis");
+            if let Err(e) = std::fs::write(&tep, src) {
+                hong += 1;
+                tap.push_str(&format!(
+                    "not ok {n} - {ten_test}\n# không ghi được bản sao: {e}\n"
+                ));
+                continue;
+            }
+            let mut c =
+                Command::new(std::env::current_exe().unwrap_or_else(|_| PathBuf::from("vis")));
+            c.arg("run");
+            if vm {
+                c.arg("--vm").arg("--no-cache");
+            }
+            c.arg(&tep);
+            let (code, _out, stderr) = match c.output() {
+                Ok(o) => (
+                    o.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&o.stdout).to_string(),
+                    String::from_utf8_lossy(&o.stderr).to_string(),
+                ),
+                Err(e) => (-1, String::new(), format!("không chạy được: {e}")),
+            };
+            let _ = std::fs::remove_dir_all(&d);
+            if code == 0 {
+                tap.push_str(&format!("ok {n} - {ten_test}\n"));
+            } else {
+                hong += 1;
+                tap.push_str(&format!("not ok {n} - {ten_test}\n"));
+                let (ma, dong, cot, msg) =
+                    chan_doan(&stderr).unwrap_or(("VS?".into(), 1, 1, String::new()));
+                tap.push_str(&format!("# {ten_test}:{dong}:{cot}: {ma} {msg}\n"));
+            }
+            continue;
+        }
         let err = p.with_extension("err");
         let (code, out, stderr) = chay(p, vm);
         if err.exists() {

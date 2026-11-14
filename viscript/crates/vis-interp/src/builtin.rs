@@ -223,9 +223,15 @@ pub struct BuiltinSig {
 }
 
 /// Bảng chữ ký: **8 tên dựng sẵn** cũ + **3 lệnh chế độ lệnh** (ST-18).
-pub const SIGS: [BuiltinSig; 21] = [
+// **ST-79**: `assert` (dùng cho `test fn`) — 22 mục.
+pub const SIGS: [BuiltinSig; 22] = [
     BuiltinSig {
         name: "print",
+        min: 1,
+        max: 1,
+    },
+    BuiltinSig {
+        name: "assert",
         min: 1,
         max: 1,
     },
@@ -852,6 +858,22 @@ pub fn call(
                 return Err(trap(RT, "`str` cần 1 đối số", span));
             }
             Ok(Value::Str(args[0].show()))
+        }
+        // **ST-79 (VD-108)**: `assert(điều_kiện)` cho `test fn`; sai ⇒ trap `VS0501` để
+        // `vis test` in `not ok` (không thêm mã mới — yêu cầu ST-79).
+        "assert" => {
+            if args.len() != 1 {
+                return Err(trap(RT, "`assert` cần 1 đối số", span));
+            }
+            match &args[0] {
+                Value::Bool(true) => Ok(Value::Unit),
+                Value::Bool(false) => Err(trap(RT, "assert thất bại", span)),
+                v => Err(trap(
+                    RT,
+                    format!("`assert` cần `bool`, được `{}`", v.show()),
+                    span,
+                )),
+            }
         }
         // ST-18 — 3 lệnh builtin chế độ lệnh (`echo`/`lines`/`take`), thuần, không FS.
         "echo" => {
