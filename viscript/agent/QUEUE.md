@@ -153,7 +153,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **DONE** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
 | ST-60b | hotfix sau review độc lập: gán trong **closure** (captured/param) hồi quy parity; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `sort_by --desc` bị bỏ im lặng | ST-60 | 2,5 h | **DONE** | ≥8 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **DONE** | ≥4 ca; gate xanh |
-| ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
+| ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **DONE** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **READY** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
 | ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **READY** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
@@ -965,3 +965,18 @@ APPROVED 2026-11-14 Agent 0
 > parity **381/381** · differential **100k/0 lệch** (248,0 s) · **7 sổ/30 mã**. Nợ: siêu trait **bắc cầu**, `impl_pairs`
 > per-tệp, `co_float_sau` chưa soi bản ghi lồng, `derives Json` chưa sinh mã.
 > **ST-61 mở** (VS2 #2 — kênh; **VD-91/VD-96**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-61 DONE — VS2 #2 (kênh) CÓ MẶT.** Commit `782f1b9` (**Agent 2 tự commit, đã push**; agent2c code, agent2d kiểm chứng + đóng).
+> `chan[T](n)` + `send`/`recv`/`close`; **một** runtime `rt.rs` cho hai đường (`$kenh` builtin, không thêm tag `VBC1` — vẫn 53);
+> chặn ⇒ **drain** hàng đợi FIFO rồi thử lại; hết queue ⇒ **`VS0505` deadlock** (đo **0,085–0,104 s**, không treo); gửi sau
+> `close` ⇒ **`VS0504`**; `close` **idempotent**; `recv` sau close trả nốt hàng rồi `none`; `send` sai kiểu ⇒ **`VS0412` tĩnh**.
+> Đo: **787 test** · sem **441/21 nhóm** · `vis test` **441 ok** · `--vm` **441 ok + 7 SKIP** · parity **396/396** ·
+> differential **100k/0 lệch** (213,4 s, seed 3523158054) · **7 sổ/32 mã** (`all_codes()` 29→32 qua ST-60/61) · gate PASS.
+> Log đỏ trung thực: `st61-red-sem.log` (14/15 đỏ đúng lý do; 1 ca **đã xanh sẵn** — `chan` là soft keyword) + `st61-red-rust.log`
+> (0/5). Tách `tyck/expr/{kenh,phu}.rs` để giữ R1 (`expr.rs` 1.464).
+> **Nợ (R10 §5)**: drain chỉ chạy task `ready` (`spawn`) — task `Moi` do gọi `async fn` chưa được chạy ⇒ `recv` có thể `VS0505`
+> dù còn Task; `close` không đánh thức ai; **không** `select`/timeout; `Chan` không qua biên host; `cap=0` không dùng được;
+> dung lượng âm là lỗi **lúc chạy**; `Chan` in `<kênh>`.
+> **ST-62 mở** (R10 — chốt vòng 10).
