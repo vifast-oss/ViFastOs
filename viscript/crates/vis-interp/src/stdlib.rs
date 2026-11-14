@@ -442,6 +442,35 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
             Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
         }
+        // **ST-65 (VD-100/VD-105)**: server TCP — `listen`/`local_addr`/`accept(_timeout)`/
+        // `close_listen`; host giữ listener thật; thiếu host ⇒ `VS0604`; `accept` không timeout = chặn.
+        "net.listen" => {
+            let dia_chi = chuoi(name, &args[0], 0, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.listen(dia_chi).map(Value::Str)))
+        }
+        "net.local_addr" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.local_addr(tay).map(Value::Str)))
+        }
+        "net.accept" | "net.accept_timeout" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let timeout = if args.len() == 2 {
+                so(name, &args[1], 1, span)?
+            } else {
+                0
+            };
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(
+                host.accept(tay, timeout.max(0) as u64).map(Value::Str),
+            ))
+        }
+        "net.close_listen" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
+        }
         // **ST-64 (VD-100/VD-105)**: giao thức HTTP **trong crate này** (`net.rs`), socket qua host.
         // Lỗi HTTP/mạng là `Err(str)` (dữ liệu); thiếu host ⇒ `VS0604`. Mặc định 5000 ms.
         "http.get" | "http.get_timeout" => {

@@ -1,0 +1,72 @@
+# ST-65 — log ĐỎ (Rust) lúc 2026-11-14T07:05:46Z, HEAD 5661f2c4 — harness CUỐI trên mã **chưa có server**.
+# lệnh: cargo test -p vis-cli --test net_server
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.26s
+     Running tests/net_server.rs (target/debug/deps/net_server-35f35308287c62f9)
+
+running 5 tests
+test accept_het_gio ... FAILED
+test cong_ban ... FAILED
+a-0.vis:6:13: error VS0301: module `std.net` không có hàm `listen`
+a-0.vis:7:13: error VS0301: module `std.net` không có hàm `local_addr`
+a-0.vis:9:13: error VS0301: module `std.net` không có hàm `accept`
+a-0.vis:12:5: error VS0301: module `std.net` không có hàm `close_listen`
+test server_hai_tien_trinh ... FAILED
+test server_khong_host ... FAILED
+server-false.vis:6:13: error VS0301: module `std.net` không có hàm `listen`
+server-false.vis:7:13: error VS0301: module `std.net` không có hàm `local_addr`
+server-false.vis:9:13: error VS0301: module `std.net` không có hàm `accept`
+server-false.vis:12:5: error VS0301: module `std.net` không có hàm `close_listen`
+test server_mot_lan ... FAILED
+
+failures:
+
+---- accept_het_gio stdout ----
+
+thread 'accept_het_gio' (44990803) panicked at crates/vis-cli/tests/net_server.rs:234:9:
+assertion `left == right` failed: vm=false: stderr: timeout.vis:5:13: error VS0301: module `std.net` không có hàm `listen`
+timeout.vis:6:5: error VS0301: module `std.net` không có hàm `accept_timeout`
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cong_ban stdout ----
+
+thread 'cong_ban' (44990804) panicked at crates/vis-cli/tests/net_server.rs:266:9:
+assertion `left == right` failed: vm=false: stderr: ban-false.vis:3:7: error VS0301: module `std.net` không có hàm `listen`
+
+  left: 2
+ right: 0
+
+---- server_hai_tien_trinh stdout ----
+
+thread 'server_hai_tien_trinh' (44990805) panicked at crates/vis-cli/tests/net_server.rs:67:9:
+quá 5 s chưa thấy địa chỉ trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-srv-hai-7969/addr-0.txt
+
+---- server_khong_host stdout ----
+
+thread 'server_khong_host' (44990806) panicked at crates/vis-cli/tests/net_server.rs:306:5:
+assertion `left == right` failed: interp: ["VS0501"]
+  left: ["VS0501"]
+ right: ["VS0604"]
+
+---- server_mot_lan stdout ----
+
+thread 'server_mot_lan' (44990807) panicked at crates/vis-cli/tests/net_server.rs:67:9:
+quá 5 s chưa thấy địa chỉ trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-srv-mot-7969/addr-false.txt
+
+
+failures:
+    accept_het_gio
+    cong_ban
+    server_hai_tien_trinh
+    server_khong_host
+    server_mot_lan
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.28s
+
+error: test failed, to rerun pass `-p vis-cli --test net_server`
+
+[cargo exit=101]

@@ -115,7 +115,7 @@ pub const MODULES: [&str; 9] = [
 pub const MODULES_HOAN: [&str; 1] = ["io"];
 
 /// Toàn bộ hàm `std.*` của ST-26.
-pub const FUNCS: [StdFn; 45] = [
+pub const FUNCS: [StdFn; 50] = [
     // ----- std.str -----
     StdFn {
         name: "str.split",
@@ -345,6 +345,32 @@ pub const FUNCS: [StdFn; 45] = [
         ret: Ty::ResultUnitStr,
     },
     // ----- std.http (ST-64, VD-100/VD-105) — giao thức ở `vis-interp/src/net.rs`, socket qua `NetHost`.
+    // ----- net server (ST-65) — `listen`/`accept` qua `NetHost`, chỉ loopback.
+    StdFn {
+        name: "net.listen",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.local_addr",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.accept",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.accept_timeout",
+        params: &[Ty::Str, Ty::Int],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.close_listen",
+        params: &[Ty::Str],
+        ret: Ty::ResultUnitStr,
+    },
     StdFn {
         name: "http.get",
         params: &[Ty::Str],

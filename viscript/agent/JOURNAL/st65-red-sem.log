@@ -1,0 +1,16 @@
+# ST-65 — log ĐỎ (sem) lúc 2026-11-14T07:05:31Z, HEAD 5661f2c4.
+# Red-first: harness CUỐI (crates/vis-cli/tests/net_server.rs, đã tuần tự hoá chống flake) có mặt;
+# **tạm gỡ đúng 3 tệp mã** (vis-types/stdlib.rs, vis-interp/stdlib.rs, vis-cli/net.rs) + khoá đếm.
+# Không thêm ca test/sem (VD-105 (7)); probe: use std.net + net.listen/local_addr.
+
+== probe /tmp/st65-probe.vis
+   -- interp:
+     st65-probe.vis:5:11: error VS0301: module `std.net` không có hàm `listen`
+     st65-probe.vis:6:22: error VS0301: module `std.net` không có hàm `local_addr`
+     [exit=2]
+   -- vm:
+     st65-probe.vis:5:11: error VS0301: module `std.net` không có hàm `listen`
+     st65-probe.vis:6:22: error VS0301: module `std.net` không có hàm `local_addr`
+     [exit=2]
+
+== KẾT LUẬN: đỏ đúng lý do — `std.net` chưa có hàm server (VS0301); host listen/accept chưa cài.

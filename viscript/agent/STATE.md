@@ -6,20 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-64 — VS2 #3b: `http.get`/`get_timeout`** (giao thức HTTP **trong `vis-interp`**
-                ⇒ interp ↔ VM cùng byte, codegen không sửa; chỉ `http://` + loopback; cap 8 MiB; mặc
-                định 5000 ms; 7 test Rust loopback thật) — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 7/7 (red-first 7 test + probe → `vis-interp/src/net.rs` + bảng 45 hàm + nhánh
-                `std.http.*` + hook `--explain-perms` → 7/7 xanh → workspace **802** → cổng → differential
-                100k → STATE/JOURNAL). Cổng lần 1 **đỏ clippy** (`assertions_on_constants` trong unit
-                test `net.rs`) → bỏ `assert!` hằng số → clippy sạch → gate lần 2 PASS (không nới gì).
+Task          : **ST-65 — VS2 #3c: server TCP** (`net.listen/local_addr/accept/accept_timeout/
+                close_listen`, handle `L<n>`; bàn giao cổng qua **tệp**; e2e **2 tiến trình `vis`**;
+                5 test Rust) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 7/7 (red-first 5 test + probe → listener thật trong CLI `net.rs` + 5 hàm bảng + nhánh
+                `std.net.*` → 5/5 xanh → workspace **807** → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T06:54:46Z**; **802** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:26:01Z**; **807** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (233,0 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (257,7 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-64]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-65]` + push (đã được uỷ quyền)
+
+## ST-65 — VS2 #3c: server TCP (`std.net.listen/local_addr/accept(_timeout)/close_listen`), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **R1/headroom** | `vis-cli/src/net.rs` **157 → 235** dòng (≤400, không cần tách `net/listen.rs`); `builtin.rs` **1.383**, `interp.rs` 1.226; R1 toàn cây max **1.491** (`lower/cmd.rs`). Không có bước tách tệp. |
+| 1 | **Host thật (CLI)** | `Net` thêm `nghe: Vec<(String, TcpListener)>` + `tiep_nghe` (handle `"L<n>"`, tách `"C<n>"`). `listen` bind loopback (`:0` cho phép), cổng bận (`AddrInUse`) ⇒ `Err` rõ "đang bận". `local_addr` ưu tiên listener rồi kết nối. `accept`: `timeout=0` ⇒ **chặn**; `>0` ⇒ `set_nonblocking(true)` + poll **5 ms** tới hạn, coi **cả** `WouldBlock` (macOS) **và** `TimedOut` là hết giờ; kết nối nhận được đăng ký `"C<n>"`. `close` đóng được **cả** `C…` lẫn `L…` (nên `close_listen` đi chung). |
+| 2 | **Bảng chữ ký** | `FUNCS` **45 → 50** (+5): `net.listen`, `net.local_addr`, `net.accept`, `net.accept_timeout`, `net.close_listen`; `MODULES` giữ **9**. **Bỏ** `net.is_listening` — 5 hàm vừa đủ (đề bài cho phép "hoặc 4 hàm nếu không cần"; ở đây cần `accept_timeout` cho ca 3 nên vẫn 5). |
+| 3 | **Thực thi** | Nhánh `std.net.*` server trong `vis-interp/src/stdlib.rs` qua `host.net()`; thiếu host ⇒ **`VS0604`**; `net.accept` không có timeout ⇒ `timeout=0` (chặn); lỗi mạng = `Err(str)` (dữ liệu, không trap); `close_listen` = `host.close`. VM dùng cùng nhánh ⇒ cùng byte. |
+| 4 | **Ca (5 test Rust)** | `crates/vis-cli/tests/net_server.rs`: `server_mot_lan` (một tiến trình `vis` `listen(:0)` → `local_addr` → thread Rust nối → `accept` → `write("pong")`; chạy cả `run` và `--vm --no-cache`), `server_hai_tien_trinh` (A `vis run` server ghi cổng vào **tệp**; cha chờ tệp deadline 5 s/poll 10 ms; B `vis run` nối+đọc `pong`; **3 vòng**, mỗi vòng ≤3 s), `accept_het_gio` (`accept_timeout(L,80)` không ai nối ⇒ "quá thời gian", ≤400 ms), `cong_ban` (bind sẵn cổng ⇒ `Err`, exit 0), `server_khong_host` (in-process cả interp+VM ⇒ **`VS0604`**, cùng byte). |
+| 5 | **Chống flake** | Cổng luôn `:0`; tệp handshake/PID dọn cuối test; `dung(child)` chờ ≤5 s rồi kill; **tuần tự hoá** các ca trong test binary bằng `Mutex` (chỉ giảm nhiễu tiến trình, **không** nới ngưỡng nào). |
+| 6 | **Red-first (harness cuối)** | Tạm gỡ **3 tệp mã** (vis-types/stdlib.rs, vis-interp/stdlib.rs, vis-cli/net.rs) + khoá đếm: `JOURNAL/st65-red-sem.log` sha256 `a24acea4…` (probe `use std.net` + `net.listen` ⇒ **VS0301** "module `std.net` không có hàm `listen`" cả hai đường); `JOURNAL/st65-red-rust.log` sha256 `dcb7592c…` (`cargo test -p vis-cli --test net_server` ⇒ **0 passed / 5 failed**, exit 101). Khôi phục **5/5 sha256 khớp**, build lại, 5/5 xanh (3 lần liên tiếp). |
+| 7 | **Đo** | **807** test = 802 + **5** `net_server.rs` (21+96+18+154+26+62+9+**421**); sem **441/21** (391 `.vis` + 50 `.vish`, 80 `.err` — không đổi); `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=257.7 toc_do=388/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491**. |
+| 8 | **Thời gian e2e (đo, tuần tự)** | `server_mot_lan`: **103 ms** (interp) / **320 ms** (vm); `server_hai_tien_trinh` 3 vòng: **93 / 72 / 357 ms** (đều ≤3 s); `accept_het_gio`: **320 ms** (interp) / **201 ms** (vm), đều ≤400 ms. Máy đang bận (agent khác chạy cổng) nên số cao hơn lý thuyết — **giữ nguyên ngưỡng**, không nới. |
+| 9 | **Nợ** | Mô hình **một luồng**: không `select`/epoll, không phục vụ **nhiều kết nối đồng thời** (accept tuần tự, mỗi lúc một client); không thread/task; chỉ loopback; handle per-process; không TLS; `is_listening` bỏ; backlog mặc định của `TcpListener::bind`; `accept_timeout` poll 5 ms (sai số ≤5 ms); `close`/`close_listen` dùng chung một đường. |
 
 ## ST-64 — VS2 #3b: `std.http.get`/`get_timeout` (giao thức trong `vis-interp`), 2026-11-14
 

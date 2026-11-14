@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **ST-63 (VD-100/VD-105)** — `NetHost` của CLI: **TCP thật**, chỉ **loopback** trong vòng 11.
+//! **ST-63/ST-65 (VD-100/VD-105)** — `NetHost` của CLI: **TCP thật**, chỉ **loopback** trong vòng 11.
 //!
-//! Handle là chuỗi **mờ** (`"C<n>"`) — chương trình ngôn ngữ không thấy địa chỉ/socket. Coi **cả**
-//! `WouldBlock` (macOS trả os error 35 cho `set_read_timeout`) **và** `TimedOut` là **hết giờ**.
-//! `listen`/`accept` để **ST-65** (ở đây trả `Err` rõ ràng, không giả vờ đã có server).
+//! Handle là chuỗi **mờ**: `"C<n>"` cho kết nối, `"L<n>"` cho listener — chương trình ngôn ngữ không
+//! thấy địa chỉ/socket. Coi **cả** `WouldBlock` (macOS trả os error 35 cho `set_read_timeout`) **và**
+//! `TimedOut` là **hết giờ**. `accept` timeout 0 ⇒ **chặn**; ngược lại poll non-blocking tới hạn.
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::time::{Duration, Instant};
 
 use vis_interp::builtin::NetHost;
 
@@ -16,6 +16,9 @@ pub struct Net {
     giai_thich: bool,
     tay: Vec<(String, TcpStream)>,
     tiep: u32,
+    /// **ST-65**: listener đang mở — handle `"L<n>"` (tách khỏi `"C<n>"` của kết nối).
+    nghe: Vec<(String, TcpListener)>,
+    tiep_nghe: u32,
 }
 
 impl Net {
@@ -24,6 +27,8 @@ impl Net {
             giai_thich,
             tay: Vec::new(),
             tiep: 0,
+            nghe: Vec::new(),
+            tiep_nghe: 0,
         }
     }
 
@@ -77,6 +82,40 @@ fn la_het_gio(e: &std::io::Error) -> bool {
     )
 }
 
+/// **ST-65**: `accept` trên listener; `timeout_ms = 0` ⇒ **chặn** tới khi có kết nối; ngược lại
+/// poll **non-blocking** mỗi 5 ms tới hạn (macOS trả `WouldBlock` — cùng logic ST-63).
+fn accept_tren(l: &TcpListener, timeout_ms: u64) -> Result<TcpStream, String> {
+    if timeout_ms == 0 {
+        let _ = l.set_nonblocking(false);
+        let (s, _) = l.accept().map_err(|e| format!("lỗi `accept`: {e}"))?;
+        let _ = s.set_nonblocking(false);
+        return Ok(s);
+    }
+    let han = Instant::now() + Duration::from_millis(timeout_ms);
+    l.set_nonblocking(true)
+        .map_err(|e| format!("lỗi đặt non-blocking cho listener: {e}"))?;
+    loop {
+        match l.accept() {
+            Ok((s, _)) => {
+                let _ = l.set_nonblocking(false);
+                let _ = s.set_nonblocking(false);
+                return Ok(s);
+            }
+            Err(e) if la_het_gio(&e) => {
+                if Instant::now() >= han {
+                    let _ = l.set_nonblocking(false);
+                    return Err(format!("quá thời gian chờ kết nối sau {timeout_ms} ms"));
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(e) => {
+                let _ = l.set_nonblocking(false);
+                return Err(format!("lỗi `accept`: {e}"));
+            }
+        }
+    }
+}
+
 impl NetHost for Net {
     fn connect(&mut self, dia_chi: &str, timeout_ms: u64) -> Result<String, String> {
         self.nhat_ky("connect", dia_chi);
@@ -95,11 +134,30 @@ impl NetHost for Net {
         Ok(self.giu(s))
     }
 
-    fn listen(&mut self, _dia_chi: &str) -> Result<String, String> {
-        Err("`net.listen` chưa hỗ trợ ở ST-63 (để ST-65: server loopback)".to_string())
+    fn listen(&mut self, dia_chi: &str) -> Result<String, String> {
+        let addr = chi_loopback(dia_chi)?;
+        self.nhat_ky("listen", dia_chi);
+        let l = TcpListener::bind(addr).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AddrInUse {
+                format!("cổng `{dia_chi}` đang bận (đã có tiến trình listen)")
+            } else {
+                format!("lỗi `listen` trên `{dia_chi}`: {e}")
+            }
+        })?;
+        self.tiep_nghe += 1;
+        let tay = format!("L{}", self.tiep_nghe);
+        self.nghe.push((tay.clone(), l));
+        Ok(tay)
     }
 
     fn local_addr(&mut self, tay: &str) -> Result<String, String> {
+        // Ưu tiên listener (ST-65), sau đó kết nối (ST-63) — cùng một tên hàm ngôn ngữ.
+        if let Some((_, l)) = self.nghe.iter().find(|(t, _)| t == tay) {
+            return l
+                .local_addr()
+                .map(|a| a.to_string())
+                .map_err(|e| format!("không lấy được địa chỉ local của `{tay}`: {e}"));
+        }
         let s = self.tim(tay)?;
         let a = s
             .local_addr()
@@ -107,8 +165,21 @@ impl NetHost for Net {
         Ok(a.to_string())
     }
 
-    fn accept(&mut self, _tay: &str, _timeout_ms: u64) -> Result<String, String> {
-        Err("`net.accept` chưa hỗ trợ ở ST-63 (để ST-65: server loopback)".to_string())
+    fn accept(&mut self, tay: &str, timeout_ms: u64) -> Result<String, String> {
+        let i = self
+            .nghe
+            .iter()
+            .position(|(t, _)| t == tay)
+            .ok_or_else(|| {
+                format!("tay listener `{tay}` không tồn tại (đã close hoặc chưa listen)")
+            })?;
+        self.nhat_ky("accept", tay);
+        // Lách borrow: tạm rút listener ra, chờ, rồi trả lại (không đổi thứ tự handle).
+        let (ten, l) = self.nghe.remove(i);
+        let kq = accept_tren(&l, timeout_ms);
+        self.nghe.push((ten, l));
+        let s = kq?;
+        Ok(self.giu(s))
     }
 
     fn read(&mut self, tay: &str, toi_da: usize, timeout_ms: u64) -> Result<Vec<u8>, String> {
@@ -140,12 +211,19 @@ impl NetHost for Net {
     }
 
     fn close(&mut self, tay: &str) -> Result<(), String> {
-        let i =
-            self.tay.iter().position(|(t, _)| t == tay).ok_or_else(|| {
-                format!("tay mạng `{tay}` không tồn tại (chưa nối hoặc đã `close`)")
-            })?;
-        self.tay.remove(i);
-        Ok(())
+        // **ST-65**: `close` đóng được **cả** kết nối (`C…`) lẫn listener (`L…`); `close_listen`
+        // của ngôn ngữ cũng đi qua đây.
+        if let Some(i) = self.tay.iter().position(|(t, _)| t == tay) {
+            self.tay.remove(i);
+            return Ok(());
+        }
+        if let Some(i) = self.nghe.iter().position(|(t, _)| t == tay) {
+            self.nghe.remove(i);
+            return Ok(());
+        }
+        Err(format!(
+            "tay mạng `{tay}` không tồn tại (chưa nối/listen hoặc đã `close`)"
+        ))
     }
 
     /// **ST-64**: nhật ký tầng giao thức (HTTP) khi `--explain-perms`.
