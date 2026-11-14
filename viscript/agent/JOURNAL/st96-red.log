@@ -1,0 +1,19 @@
+# ST-96 — ĐO TRƯỚC, 2026-11-14T20:16:59Z, HEAD 86d7be3e
+# A (literal VS0ddd trong crates/*/src) = 33; B (all_codes) = 32
+# A \ B = ["VS0001"]  ← chỉ là ví dụ định dạng trong unit test vis-diag, KHÔNG phải mã chẩn đoán
+# B \ A = []
+
+bash: cargo: command not found
+
+# (chạy lại với PATH đầy đủ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/so_ma.rs (target/debug/deps/so_ma-dcbb3a1aaf93ced5)
+
+running 4 tests
+test du_phong_rong_va_co_ly_do ... ok
+test moi_ma_du_ba_ngon_ngu ... ok
+test b_tru_a_dung_du_phong ... ok
+test a_la_tap_con_cua_b ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+

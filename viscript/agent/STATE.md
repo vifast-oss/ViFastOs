@@ -6,16 +6,26 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-95 — báo cáo R15** (chốt ST-93/93b/94) — xong, `report-check --all` PASS, cổng
-                PASS; **chưa commit**.
-Bước          : 3/3 (JSON 108 hàng QUEUE@dc754a6b + MD §1..§8/§19 + đo lại + gate).
+Task          : **ST-96 — bất biến sổ mã ↔ mã thực dùng** — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 3/3 (quét A/B → A\B = **VS0001** (ví dụ định dạng trong unit test) → bỏ literal →
+                A=B=32, B\A rỗng; 4 ca `so_ma` → 1003 test → diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:14:25Z** (report-check PASS: **15
-                báo cáo, 108 hàng QUEUE**); **999** test / sem **447/22** / `vis test` **447 ok**
-                (`--vm` **447 ok + 0 SKIP**) / parity **398/398 + 49** / host **54/54 ×2** /
-                differential **100.000 / 0 lệch** (163,4 s) / fuzz parser **2.462.470 ca / 0 vi phạm** /
-                cache **520×4 / 0 lệch** / targets **18/18 check** / fmt **497 tệp**
-Việc dở       : commit `[ST-95]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:47:06Z**; **1003** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
+                parity **398/398 + 49** / differential **100.000 / 0 lệch** (153,2 s) / sổ mã **32**
+Việc dở       : commit `[ST-96]` + push (đã được uỷ quyền)
+
+## ST-96 — sổ mã ↔ mã thực dùng, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước** | Quét `crates/*/src/**/*.rs`: **A = 33** (32 mã thật + **VS0001**), `all_codes` **B = 32** ⇒ **A\B = [`VS0001`]**, **B\A = []**. `VS0001` chỉ là **ví dụ định dạng** trong unit test `vis-diag::ma_co_bon_chu_so`, **không** phải mã chẩn đoán; các literal test khác (`VS0000/0605/0801/0999`) **nằm ngoài** phạm vi quét (test, không phải `src`). Log `JOURNAL/st96-red.log` (đỏ: `mã dùng nhưng KHÔNG có trong sổ: ["VS0001"]`). |
+| 1 | **Sửa** | `vis-diag/src/lib.rs`: `assert_eq!(code(1), "VS0001")` → `format!("VS{:04}", 1)` (**SỬA KÈM LÝ DO ST-96**: literal này không phải mã chẩn đoán, làm nhiễu phép quét; **không** thêm/đổi mã, `all_codes()` vẫn **32**). |
+| 2 | **Test** | `crates/vis-cli/tests/so_ma.rs` **4 ca**: (a) **A ⊆ B** — quét nguồn thật `crates/*/src`, không hardcode; (b) **B\A == `DU_PHONG`** đúng thứ tự (hiện **rỗng**); (c) mọi mã B có `message_vi/en/ja` không rỗng; (d) `DU_PHONG` rỗng + tài liệu lý do trong `const` (khi thêm mã dự phòng phải khai, test sẽ đỏ). |
+| 3 | **Không thêm mã** | B giữ **32**, `vis explain --list` **32 dòng**, ST-78 không đổi; sem **447/22** giữ. |
+| 4 | **Đo** | **1003** test = 999 + **4** (21+96+27+154+26+62+9+**608**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; parity **398/398 + 49**; `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=153.2 toc_do=653/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 5 | **Nợ** | Phép quét chỉ phủ **`crates/*/src/**/*.rs`** (không test/script/build.rs) — cố ý để không bắt literal giả trong test; `DU_PHONG` **rỗng** nên chưa có mã dự phòng; `VS0000/VS0001` vẫn là literal trong test/format, ngoài phạm vi; chưa kiểm “mã trong tài liệu/spec” (ngoài quyền hạn). |
 
 ## ST-95 — báo cáo R15, 2026-11-14
 

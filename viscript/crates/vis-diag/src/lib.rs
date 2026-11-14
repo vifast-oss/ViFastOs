@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn ma_co_bon_chu_so() {
-        assert_eq!(code(1), "VS0001");
+        assert_eq!(code(1), format!("VS{:04}", 1));
         assert_eq!(code(9999), "VS9999");
     }
 
