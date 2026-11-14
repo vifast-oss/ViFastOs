@@ -6,17 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-61** (VS2 #2 — kênh: `chan[T](n)`, `send`/`recv`/`close`, deadlock `VS0505`
-                **không treo**, `send` sau `close` ⇒ `VS0504`, sai kiểu ⇒ `VS0412`; `Chan[T]` là kiểu
-                dựng sẵn) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 6/6 (kiểm chứng 787 test + 15 ca hai đường bằng tay → log đỏ sem/Rust bằng `git stash`
-                chỉ 4 thư mục mã → tách `tyck/expr/{kenh,phu}.rs` khi R1 đỏ → `gate --fast` → differential
-                100k → STATE/JOURNAL).
+Task          : **ST-62 — báo cáo R10** (chốt vòng 10: 5 nợ lõi + VS2 #1 async + VS2 #2 kênh;
+                `R10-viscript.{md,json,license}`, phủ **85 hàng** QUEUE) — xong, report-check + cổng
+                **PASS**; **chưa commit**.
+Bước          : 6/6 (đọc khuôn R9 + Khối E → chạy lại **đủ** số đo → JSON 85 task + `head` → MD
+                §1..§7 → `report-check --all` PASS → `gate --fast` PASS → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T05:12:52Z**; **787** test / sem
-                **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (213,4 s) / **7 sổ-32 mã** / allowlist **6**
-Việc dở       : commit `[ST-61]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T05:33:50Z** (sau khi R10 có mặt:
+                report-check trong cổng **PASS, 10 báo cáo/85 hàng**); **787** test / sem **441/21 nhóm** /
+                `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
+                differential **100.000 chương trình 0 lệch** (208,5 s) / fuzz 60 s **2.661.866 ca/0 vi
+                phạm** / `VBC1` **53** / **7 sổ-32 mã** / allowlist **6**
+Việc dở       : commit `[ST-62]` + push (đã được uỷ quyền)
+
+## ST-62 — báo cáo **R10** (chốt vòng 10: nợ lõi A/B/C + async + kênh), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Khuôn + phủ hàng** | Theo `R9-viscript.{md,json}` (Khối E); `QUEUE@head` **85 hàng** (**70 DONE + 15 READY**), 6 cột; `head` = **`6192bbd`** (commit nền — theo tiền lệ R9: `head` = cha commit báo cáo; commit `[ST-62]` là commit kế tiếp). `tasks[]` phủ **đủ 85**, `blocked[] = []` (không hàng BLOCKED/REVIEW). |
+| 2 | **Đo lại toàn bộ (không chép)** | `cargo test --workspace` **787** (21+96+18+154+24+62+9+403); sem **441/21** (391 `.vis` + 50 `.vish`, **80** `.err`); `vis test` **441 ok**; `--vm` **441 ok/7 SKIP**; parity **395/395** (46 lỗi biên dịch; `diag_cmp` 361/46/34); differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=208.5 toc_do=480/s seed=3523158054`**; fuzz parser 60 s **2.661.866 ca / 60.522.399 token / 44.364 ca/s / 1.008.706 token/s / 0 vi phạm**; `VBC1` **53** tag; **7 sổ/32 mã**; allowlist **6**; 10k async **319/168 ms** (10.001 dòng, cùng byte). |
+| 3 | **JSON** | đúng **11 khoá**, `round=10`, `head=6192bbd`, `project="viscript"`, 85 task; `perf` ghi async 10k + differential; `coverage.fixtures=441`; `gates.fast=PASS`. |
+| 4 | **MD** | §1 tóm tắt 5 dòng; §2 bảng ST-56..ST-62 (hash + số đo); §3 bảng số liệu + **lệnh tái lập**; §4 **§19 đối chiếu VS2**: **2/8 có mặt một phần** (async — chưa song song thật; kênh — chưa `select`), **6/8 chưa** (net/http, quyền+Landlock, LSP, gói/registry, windows/wasm, hợp chuẩn 4 nền) + kế hoạch vòng 11 **ST-63..ST-76**; §5 **20 mục nợ** gộp ST-56..ST-61 (không bỏ mục nào); §6 **VD-89..VD-100** mỗi cái một dòng; §7 đề xuất. |
+| 5 | **Máy kiểm** | `python3 test/report/check_report.py --all` ⇒ **PASS (10 báo cáo, 85 hàng QUEUE phủ đủ)**; không sửa `R1..R9`, `QUEUE.md`, `DECISIONS.md`. |
+| 6 | **Cổng** | `./vis-dev gate --fast` ⇒ **PASS** `2026-11-14T05:33:50Z` (không retry), trong đó report-check **PASS 10 báo cáo/85 hàng**; 3 dòng cuối: `test result: ok. 0 passed; …` / `--- L0 test: OK` / `vis-dev gate --fast: PASS …`. |
 
 ## ST-61 — VS2 #2: kênh `chan[T]` (`send`/`recv`/`close`), deadlock `VS0505` không treo, 2026-11-14
 
