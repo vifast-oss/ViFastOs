@@ -853,3 +853,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   người nhận; người nhận chờ tới khi có người gửi) **không treo** khi lập trình đúng; `recv` sau `close` ⇒ `None`; `send` sau
   `close` ⇒ **`VS0504`**; task `Moi` còn sống khi chương trình kết thúc ⇒ **không** bị bỏ im lặng (chạy hết hoặc báo lỗi rõ).
   (3) **Không** thêm cú pháp mới; không nới ngưỡng.
+
+- **VD-112** **Vòng 16 — nhất quán sổ mã + allowlist `cap[Proc]` + soak + bàn giao (ST-96..ST-99)**: (1) **Bất biến sổ mã**: mọi chuỗi
+  `VS0xxx` trong `viscript/crates/**` phải **có** trong `all_codes()`; mọi mã trong sổ phải **được dùng** hoặc được khai là **dự
+  phòng** trong danh sách có lý do (test tự động, không quét tay). (2) `--grant <tên>=<lệnh>` cho `cap[Proc]` = **allowlist** lệnh
+  (so **đường dẫn tuyệt đối** hoặc **tên**), áp **chỉ** khi cờ được dùng; mặc định **không** đổi. (3) **Soak 30 phút** chạy **tuần
+  tự** (không song song với build/cổng khác theo AGENTS §6): cổng `--fast` ×2, diff 100k ×2, host suite ×2, cache ×2 — ghi log
+  từng lần; flake ⇒ `T-INFRA` + log, **không** retry để lấy xanh. (4) `ROADMAP.md` là **bàn giao**: 8 hạng mục VS2 × **mức thật**
+  × **điều kiện đóng** + **cách chạy tiếp**; **cấm** ngôn từ vượt mức đã đo.

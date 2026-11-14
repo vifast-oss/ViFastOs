@@ -191,7 +191,11 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-93 | **`cap[Proc]`** — chương trình ngoài phải có quyền `cap[Proc]`; `--strict-caps` cưỡng chế | ST-92 | 2,5 h | **DONE** | ≥6 ca; hai đường cùng byte; `VS0604` nêu `cap[Proc]` |
 | ST-93b | **im lặng mới phát sinh ở ST-93**: `.vish` có `fn main` **có thân** ⇒ thân `main` **không chạy** (trước đây cũng vậy nhưng im lặng) — phải **chẩn đoán** | ST-93 | 1,5 h | **DONE** | ≥4 ca; `main` chỉ khai `cap` (thân rỗng) vẫn hợp lệ |
 | ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **DONE** | ≥8 ca; không treo; interp = VM |
-| ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **READY** | MD+JSON; nợ đánh số |
+| ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **DONE** | MD+JSON; nợ đánh số |
+| ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **READY** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
+| ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **READY** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
+| ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **READY** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
+| ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **READY** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
