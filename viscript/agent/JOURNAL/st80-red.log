@@ -1,0 +1,42 @@
+fatal: not a git repository (or any of the parent directories): .git
+# ST-80 — log ĐỎ (trước khi sửa) lúc 2026-11-14T13:33:51Z, HEAD 
+# LSP didOpen vs vis check (cùng tệp trên đĩa)
+
+######## a.vis — vis check
+TAP version 13
+1..1
+ok 1 - a.vis
+[exit=0]
+-- LSP:
+==  /tmp/st80/a.vis
+diagnostics: []
+
+######## a2.vis — vis check
+TAP version 13
+1..1
+not ok 1 - a2.vis
+# VS0301 4:14 module `std.str` không có hàm `khong_co`
+[exit=1]
+-- LSP:
+==  /tmp/st80/a2.vis
+diagnostics: []
+
+######## b.vis — vis check
+TAP version 13
+1..1
+not ok 1 - b.vis
+# VS0301 4:11 tên không tồn tại: `util`
+[exit=1]
+-- LSP:
+==  /tmp/st80/b.vis
+diagnostics: []
+
+######## c_missing.vis — vis check
+TAP version 13
+1..1
+not ok 1 - c_missing.vis
+# VS0701 1:1 không thấy tệp module `./khong_co` (đã thử .vis/.vish)
+[exit=1]
+-- LSP:
+==  /tmp/st80/c_missing.vis
+diagnostics: []

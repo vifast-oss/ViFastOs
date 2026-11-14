@@ -270,6 +270,8 @@ struct Nap {
     /// **ST-57 (VD-98 (1))**: `trait` `pub` của từng tệp — để tệp `use` nó kiểm `impl`/siêu trait.
     pub_traits: BTreeMap<String, Vec<TraitSig>>,
     cho_ngoai: bool,
+    /// **ST-80**: văn bản tệp chính từ buffer LSP (`None` ⇒ đọc đĩa).
+    main_text: Option<String>,
 }
 
 impl Nap {
@@ -366,7 +368,10 @@ impl Nap {
                     return;
                 }
             },
-            None => match std::fs::read_to_string(&path) {
+            None => match match (&self.main_text, path == self.main) {
+                (Some(t), true) => Ok(t.clone()),
+                _ => std::fs::read_to_string(&path),
+            } {
                 Ok(t) => t,
                 Err(e) => {
                     self.diags.push((
@@ -624,6 +629,26 @@ pub fn load_with(main: &str, cho_ngoai: bool) -> Result<Loaded, LoadError> {
 /// Như [`load_with`] nhưng `kiem_kieu = false` ⇒ **chỉ cú pháp/hạ**, bỏ chẩn đoán `tyck`
 /// (`vis check --syntax`, dùng cho cổng "khối mã trong tài liệu **parse** được" — QD §7.4).
 pub fn load_full(main: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<Loaded, LoadError> {
+    load_full_voi(main, None, cho_ngoai, kiem_kieu)
+}
+
+/// **ST-80 (VD-108)**: như [`load_full`] nhưng **văn bản tệp chính** lấy từ `text` (buffer LSP)
+/// thay vì đọc đĩa; tệp phụ vẫn đọc đĩa. **Không** đổi chữ ký `load_full`/`load_with`.
+pub fn load_full_voi_text(
+    main: &str,
+    text: &str,
+    cho_ngoai: bool,
+    kiem_kieu: bool,
+) -> Result<Loaded, LoadError> {
+    load_full_voi(main, Some(text), cho_ngoai, kiem_kieu)
+}
+
+fn load_full_voi(
+    main: &str,
+    text_chinh: Option<&str>,
+    cho_ngoai: bool,
+    kiem_kieu: bool,
+) -> Result<Loaded, LoadError> {
     let main_path = PathBuf::from(main);
     if !main_path.is_file() {
         return Err(LoadError::NotFile(main.to_string()));
@@ -656,6 +681,7 @@ pub fn load_full(main: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<Loaded,
         pub_types: BTreeMap::new(),
         pub_traits: BTreeMap::new(),
         cho_ngoai,
+        main_text: text_chinh.map(str::to_string),
     };
     n.tham(&main_path);
     let rel_chinh = rel_cua(&main_dir, &n.main);

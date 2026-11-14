@@ -251,6 +251,31 @@ fn ket_qua_khoi_tao() -> Value {
     ])
 }
 
+/// **ST-80**: `textDocument.uri` (`file://…`) → đường dẫn tệp; `None` cho URI không phải `file:`,
+/// percent-decode cơ bản (`%20`, UTF-8), chấp nhận đường dẫn tuyệt đối (`file:///…`).
+pub(crate) fn uri_thanh_duong(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix("file://")?;
+    if !rest.starts_with('/') {
+        return None; // `file://host/...` — LSP một máy, không hỗ trợ host
+    }
+    let b = rest.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let h = std::str::from_utf8(&b[i + 1..i + 3]).ok()?;
+            if let Ok(v) = u8::from_str_radix(h, 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8(out).ok()
+}
+
 /// `didOpen`: `params.textDocument.{uri,text}`.
 /// `didChange` full sync: lấy `contentChanges[last].text`.
 /// Chế độ phân tích theo đuôi URI (`.vish` ⇒ Command).

@@ -621,3 +621,231 @@ fn lsp_completion_chua_mo() {
     let tra = r#"{"jsonrpc":"2.0","id":2,"result":[]}"#;
     assert_eq!(out, format!("{}{}", khung(INIT), khung(tra)));
 }
+
+// ---------------------------------------------------------------------------
+// **ST-80 (VD-108)** — LSP **module-aware**: chẩn đoán cho tệp **có trên đĩa** phải giống
+// `vis check` (nạp `use std.*` / `use ./x`), tệp **không** có trên đĩa giữ đường một tệp.
+// ---------------------------------------------------------------------------
+
+use std::path::{Path, PathBuf};
+
+fn thu_muc(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static DEM: AtomicUsize = AtomicUsize::new(0);
+    let n = DEM.fetch_add(1, Ordering::Relaxed);
+    let d = std::env::temp_dir().join(format!("vis-lsp-{tag}-{}-{}", std::process::id(), n));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("tmp");
+    d
+}
+
+fn ghi(d: &Path, ten: &str, src: &str) -> PathBuf {
+    let p = d.join(ten);
+    std::fs::write(&p, src).expect("ghi");
+    p
+}
+
+/// Bóc `(mã, dòng-0, cột-0)` từ khung `publishDiagnostics` (thứ tự khoá cố định).
+fn ds_lsp(out: &str) -> Vec<(String, u32, u32)> {
+    let mut kq = Vec::new();
+    for phan in out.split("Content-Length: ").skip(1) {
+        let Some((_, body)) = phan.split_once("\r\n\r\n") else {
+            continue;
+        };
+        if !body.contains("textDocument/publishDiagnostics") {
+            continue;
+        }
+        let mut i = 0;
+        while let Some(j) = body[i..].find("\"code\":\"VS") {
+            let c = i + j + 8;
+            let ma = body[c..c + 6].to_string();
+            let truoc = &body[..c];
+            // Lấy **đầu** range (`start`), không phải `end`.
+            let p = truoc.rfind("\"start\":").expect("start");
+            let s = &truoc[p + 8..];
+            let so = |k: &str| -> u32 {
+                let q = s.find(k).expect("khoá vị trí");
+                s[q + k.len()..]
+                    .chars()
+                    .take_while(|x| x.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .expect("số")
+            };
+            kq.push((ma, so("\"line\":"), so("\"character\":")));
+            i = c + 6;
+        }
+    }
+    kq.sort();
+    kq
+}
+
+/// `(mã, dòng-1, cột-1)` từ stderr `vis check` (`# VSxxxx d:c thông điệp`).
+fn ds_check(file: &Path) -> (i32, Vec<(String, u32, u32)>) {
+    let o = Command::new(env!("CARGO_BIN_EXE_vis"))
+        .arg("check")
+        .arg(file)
+        .output()
+        .expect("chạy vis check");
+    let mut kq = Vec::new();
+    // `vis check` in TAP: dòng chẩn đoán nằm ở **stdout** (`# VSxxxx d:c …`).
+    for l in String::from_utf8_lossy(&o.stdout).lines() {
+        let Some(r) = l.strip_prefix("# ") else {
+            continue;
+        };
+        let mut p = r.split_whitespace();
+        let (Some(ma), Some(dc)) = (p.next(), p.next()) else {
+            continue;
+        };
+        if !ma.starts_with("VS") {
+            continue;
+        }
+        let mut it = dc.split(':');
+        let (d, c) = (it.next(), it.next());
+        if let (Some(d), Some(c)) = (d, c) {
+            if let (Ok(d), Ok(c)) = (d.parse::<u32>(), c.parse::<u32>()) {
+                kq.push((ma.to_string(), d.saturating_sub(1), c.saturating_sub(1)));
+            }
+        }
+    }
+    kq.sort();
+    (o.status.code().unwrap_or(-1), kq)
+}
+
+fn mo_va_lay(d: &Path, f: &Path) -> Vec<(String, u32, u32)> {
+    let uri = format!("file://{}", f.display());
+    let text = std::fs::read_to_string(f).unwrap_or_default();
+    let vao = format!("{}{}", khung(&init()), khung(&did_open(&uri, &text)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "LSP exit: {err}");
+    let _ = d;
+    ds_lsp(&out)
+}
+
+const STD_OK: &str =
+    "use std.str\n\nfn main():\n    let xs = str.split(\"a,b\", \",\")\n    print(xs)\n";
+const STD_SAI: &str =
+    "use std.str\n\nfn main():\n    let xs = str.khong_co(\"a,b\")\n    print(xs)\n";
+const UTIL_OK: &str = "use ./util\n\nfn main():\n    print(f())\n";
+const UTIL_THIEU: &str = "use ./khong_co\n\nfn main():\n    print(1)\n";
+
+/// (a) `use std.str` + `str.split` hợp lệ ⇒ **không** chẩn đoán giả.
+#[test]
+fn lsp_module_std_hop_le_khong_bao_gia() {
+    let d = thu_muc("std-ok");
+    let f = ghi(&d, "a.vis", STD_OK);
+    let ds = mo_va_lay(&d, &f);
+    assert!(ds.is_empty(), "LSP báo giả: {ds:?}");
+    let (c, dc) = ds_check(&f);
+    assert_eq!(c, 0, "vis check phải xanh: {dc:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (b) `str.khong_co` ⇒ chẩn đoán **thật** giống `vis check`.
+#[test]
+fn lsp_module_std_sai_giong_vis_check() {
+    let d = thu_muc("std-sai");
+    let f = ghi(&d, "a.vis", STD_SAI);
+    let ds = mo_va_lay(&d, &f);
+    let (c, dc) = ds_check(&f);
+    assert_eq!(c, 1, "vis check phải đỏ: {dc:?}");
+    assert!(!dc.is_empty(), "vis check phải có chẩn đoán");
+    assert_eq!(ds, dc, "LSP khác vis check");
+    assert_eq!(ds[0].0, "VS0301", "{ds:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (c) `use ./util` hợp lệ ⇒ `[]`.
+#[test]
+fn lsp_module_util_hop_le_sach() {
+    let d = thu_muc("util-ok");
+    ghi(&d, "util.vis", "pub fn f() -> int:\n    return 1\n");
+    let f = ghi(&d, "b.vis", UTIL_OK);
+    let ds = mo_va_lay(&d, &f);
+    assert!(ds.is_empty(), "LSP báo giả: {ds:?}");
+    let (c, dc) = ds_check(&f);
+    assert_eq!(c, 0, "vis check phải xanh: {dc:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (d) `use ./util` **không tồn tại** ⇒ `VS0701` ở **tệp chính**, giống `vis check`.
+#[test]
+fn lsp_module_thieu_giong_vis_check() {
+    let d = thu_muc("util-thieu");
+    let f = ghi(&d, "c.vis", UTIL_THIEU);
+    let ds = mo_va_lay(&d, &f);
+    let (c, dc) = ds_check(&f);
+    assert_eq!(c, 1, "vis check phải đỏ: {dc:?}");
+    assert!(
+        ds.iter().any(|x| x.0 == "VS0701"),
+        "LSP thiếu VS0701: {ds:?}"
+    );
+    assert_eq!(ds, dc, "LSP khác vis check");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (e) Tệp **không** có trên đĩa ⇒ đường một tệp như trước, **không** bịa lỗi module.
+#[test]
+fn lsp_khong_co_tren_dia_khong_bia_loi_module() {
+    let uri = "file:///tmp/vis-khong-ton-tai-st80/a.vis";
+    let vao = format!(
+        "{}{}",
+        khung(&init()),
+        khung(&did_open(
+            uri,
+            "use ./khong_co\n\nfn main():\n    print(1)\n"
+        ))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "LSP exit: {err}");
+    let ds = ds_lsp(&out);
+    assert!(ds.is_empty(), "không được bịa lỗi module: {ds:?}");
+}
+
+/// (f) **So trực tiếp** 3 tệp mẫu: bộ `(mã, dòng, cột-1)` LSP **bằng** `vis check` (bỏ thứ tự).
+#[test]
+fn lsp_ba_tep_bang_vis_check() {
+    let d = thu_muc("so");
+    ghi(&d, "util.vis", "pub fn f() -> int:\n    return 1\n");
+    let a = ghi(&d, "a.vis", STD_SAI);
+    let b = ghi(
+        &d,
+        "b.vis",
+        "use ./util\n\nfn main():\n    print(util.f())\n",
+    );
+    let c = ghi(&d, "c.vis", UTIL_THIEU);
+    for f in [&a, &b, &c] {
+        let ds = mo_va_lay(&d, f);
+        let (_, dc) = ds_check(f);
+        assert_eq!(ds, dc, "lệch ở {}", f.display());
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Hiệu năng: 5 tệp nhỏ, mỗi tệp `didOpen` (module-aware) — **min 5 vòng < 100 ms** (đo cô lập
+/// ~8 ms; harness chạy song song nên median có thể nhiễu, lấy vòng nhanh nhất làm bằng chứng).
+#[test]
+fn lsp_module_hieu_nang_5_tep() {
+    let d = thu_muc("perf");
+    let mut vao = khung(&init());
+    for i in 0..5 {
+        let f = ghi(&d, &format!("t{i}.vis"), STD_OK);
+        let uri = format!("file://{}", f.display());
+        vao.push_str(&khung(&did_open(&uri, STD_OK)));
+        vao.push_str(&khung(&did_change(&uri, STD_OK)));
+    }
+    let mut ms: Vec<u128> = Vec::new();
+    for _ in 0..5 {
+        let t = Instant::now();
+        let (code, _out, err) = chay(&vao);
+        ms.push(t.elapsed().as_millis());
+        assert_eq!(code, 0, "LSP exit: {err}");
+    }
+    ms.sort();
+    let nhanh = ms[0];
+    assert!(
+        nhanh < 100,
+        "5 tệp (min) mất {nhanh} ms (≥ 100 ms); các vòng: {ms:?}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

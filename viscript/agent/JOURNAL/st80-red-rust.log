@@ -1,0 +1,74 @@
+# ST-80 — log ĐỎ (Rust) lúc 2026-11-14T13:33:53Z, HEAD b0e1d123 — trước khi có LSP module-aware.
+# lệnh: cargo test -p vis-cli --test lsp (29 ca; 7 ca ST-80)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 29 tests
+test lsp_co_la_2 ... ok
+test lsp_completion_chua_mo ... ok
+test lsp_body_hong_32700 ... ok
+test lsp_chan_doan_vish ... ok
+test lsp_chan_doan_did_change ... ok
+test lsp_chan_doan_tab_mot_cot ... ok
+test lsp_ba_tep_bang_vis_check ... FAILED
+test lsp_hover_add ... ok
+test lsp_initialized_khong_frame ... ok
+test lsp_exit_truoc_shutdown_1 ... ok
+test lsp_hover_khong_ton_tai ... ok
+test lsp_method_la_32601 ... ok
+test lsp_module_std_hop_le_khong_bao_gia ... ok
+test lsp_chan_doan_did_close ... ok
+test lsp_chan_doan_did_open ... ok
+test lsp_chan_doan_emoji_utf16 ... ok
+test lsp_completion_sau_cham ... ok
+test lsp_chan_doan_sach ... ok
+test lsp_completion_tien_to_add ... ok
+test lsp_completion_tien_to_le ... ok
+test lsp_hover_bien_kieu ... ok
+test lsp_khoi_tao ... ok
+test lsp_khong_co_tren_dia_khong_bia_loi_module ... ok
+test lsp_module_std_sai_giong_vis_check ... FAILED
+test lsp_module_util_hop_le_sach ... ok
+test lsp_module_thieu_giong_vis_check ... FAILED
+test lsp_shutdown_exit_0 ... ok
+test lsp_truoc_initialize_32002 ... ok
+test lsp_module_hieu_nang_5_tep ... FAILED
+
+failures:
+
+---- lsp_ba_tep_bang_vis_check stdout ----
+
+thread 'lsp_ba_tep_bang_vis_check' (47382716) panicked at crates/vis-cli/tests/lsp.rs:820:9:
+assertion `left == right` failed: lệch ở /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-lsp-so-67028-0/a.vis
+  left: []
+ right: [("VS0301", 3, 13)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_module_std_sai_giong_vis_check stdout ----
+
+thread 'lsp_module_std_sai_giong_vis_check' (47382794) panicked at crates/vis-cli/tests/lsp.rs:753:5:
+assertion `left == right` failed: LSP khác vis check
+  left: []
+ right: [("VS0301", 3, 13)]
+
+---- lsp_module_thieu_giong_vis_check stdout ----
+
+thread 'lsp_module_thieu_giong_vis_check' (47382796) panicked at crates/vis-cli/tests/lsp.rs:779:5:
+LSP thiếu VS0701: []
+
+---- lsp_module_hieu_nang_5_tep stdout ----
+
+thread 'lsp_module_hieu_nang_5_tep' (47382789) panicked at crates/vis-cli/tests/lsp.rs:845:5:
+5 tệp (median) mất 123 ms (≥ 100 ms); các vòng: [67, 123, 170]
+
+
+failures:
+    lsp_ba_tep_bang_vis_check
+    lsp_module_hieu_nang_5_tep
+    lsp_module_std_sai_giong_vis_check
+    lsp_module_thieu_giong_vis_check
+
+test result: FAILED. 25 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`

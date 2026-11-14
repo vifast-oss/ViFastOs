@@ -6,18 +6,31 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-79 — `vis test` chạy `test fn` có async/await/spawn/chan** (runner theo `test fn`,
-                TAP mỗi test, join cuối, task lỗi `VS0506`, deadlock `VS0505`; builtin `assert(bool)`;
-                8 ca CLI, interp = VM cùng byte) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (red-first 8/8 đỏ + 3 mẫu lead → runner test + `assert` → 8/8 xanh → 900 test →
-                cổng (R1 1503→1498) → diff 100k → STATE/JOURNAL).
+Task          : **ST-80 — LSP module-aware** (hết **bỏ sót** chẩn đoán `std.*`/`use ./x`; `vis check`
+                cùng tệp là chuẩn; tệp không có trên đĩa giữ đường một tệp) — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 4/4 (đo trước: LSP **thiếu** VS0301/VS0701 so với `vis check` → `load_full_voi_text`
+                + URI→path + chọn chẩn đoán tệp chính → 7 ca mới (6 + hiệu năng) → 907 test → cổng →
+                diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:26:03Z** (lần 1 FAIL R1
-                `expr.rs` 1503 > 1500 ⇒ nén xuống **1498**, không nới ngưỡng); **900** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:39:13Z**; **907** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (442,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (96,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-79]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-80]` + push (đã được uỷ quyền)
+
+## ST-80 — LSP module-aware, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | `use std.str` + `str.split` hợp lệ: LSP `[]` = `vis check` xanh (**không** có chẩn đoán giả như dự đoán). **Lệch thật là bỏ sót**: `str.khong_co` ⇒ `vis check` **VS0301 4:14** vs LSP **[]**; `use ./util` + `util.f()` ⇒ check **VS0301 4:11** vs LSP **[]**; `use ./khong_co` ⇒ check **VS0701 1:1** vs LSP **[]**; `use ./util` + `f()` hợp lệ ⇒ cả hai `[]`. Log `JOURNAL/st80-red.log` sha256 `2355401f…`; log Rust **4/29 đỏ** `JOURNAL/st80-red-rust.log` sha256 `78a1c61b…`. |
+| 1 | **API** | `modules::load_full_voi_text(path, text, cho_ngoai, kiem_kieu)` — tệp chính lấy **văn bản buffer**, tệp phụ đọc đĩa; `load_full`/`load_with`/`load` **giữ nguyên chữ ký** (uỷ quyền qua `load_full_voi`). |
+| 2 | **URI → đường dẫn** | `lsp::uri_thanh_duong`: bỏ `file://`, **percent-decode** (`%20`, UTF-8), chỉ nhận `file:///…` (host ⇒ `None`). Chỉ đi đường module khi đường dẫn **là tệp có thật**; không có ⇒ đường một tệp như trước. |
+| 3 | **Chọn chẩn đoán** | Nạp module-aware với **văn bản buffer**; **chỉ publish** chẩn đoán có `rel` == **tên tệp chính** (LSP một tài liệu). Chẩn đoán tệp phụ **không** đẩy sang tệp chính; lỗi thiếu module được loader gán cho tệp chính nên **vẫn** hiện. Lỗi nạp ⇒ fallback một tệp. |
+| 4 | **6 ca + hiệu năng** | `tests/lsp.rs`: (a) `std.str` hợp lệ ⇒ `[]`; (b) `str.khong_co` ⇒ **bằng** `vis check`; (c) `use ./util` hợp lệ ⇒ `[]`; (d) thiếu util ⇒ **VS0701 bằng** `vis check`; (e) URI không có trên đĩa ⇒ không bịa lỗi module; (f) **3 tệp mẫu**, bộ `(mã, dòng, cột-1)` LSP **bằng** `vis check`; (g) hiệu năng 5 tệp. Tổng LSP **29 ca**. |
+| 5 | **Hiệu năng** | Đo cô lập: **5 didOpen 8,01 ms**, **5 open+change 8,82 ms** (< 100 ms). Trong harness chạy song song, median nhiễu (55–210 ms/vòng) nên test lấy **min 5 vòng < 100 ms** (đã ghi lý do trong test). |
+| 6 | **Đo** | **907** test = 900 + **7** (21+96+27+154+26+62+9+**512**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=96.3 toc_do=1039/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; `crates/vis-cli/src/lsp/*` ≤ **288** dòng; R1 max **1.498**. |
+| 7 | **Nợ** | Chẩn đoán tệp **phụ** không publish (chủ ý — LSP một tài liệu); completion/hover vẫn dùng `phan_tich` một tệp (**chưa** module-aware); `util.f()` (namespace) là **lỗi ngôn ngữ** VS0 (phải `f()`), ca (c) dùng `f()`; tệp chưa lưu (buffer mới) **không** có chẩn đoán module cho tới khi lưu; không cache kết quả nạp giữa các `didChange`. |
 
 ## ST-79 — `vis test` với async/await/chan, 2026-11-14
 
