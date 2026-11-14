@@ -31,11 +31,13 @@ use core::arch::{asm, global_asm};
 use core::fmt::Write;
 
 use vifast_plat_common::trap::{
-    decode_trap, handle_trap, report_fatal, report_interrupt, tf_reg_offset, Event, ExceptionKind,
-    TrapAction, TrapFrame, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET, TF_SIZE, TF_SSTATUS_OFFSET,
-    TF_STVAL_OFFSET, TRAP_STATS,
+    decode_trap, handle_trap, report_fatal, report_guard_fault, report_interrupt, tf_reg_offset,
+    Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET,
+    TF_SIZE, TF_SSTATUS_OFFSET, TF_STVAL_OFFSET, TRAP_STATS,
 };
 use vifast_plat_common::{Platform, PlatformWriter};
+
+pub mod mmu;
 
 /// UART0 của QEMU `virt` (16550A) — dữ kiện nền tảng, D2-72 Q7.
 pub const UART0_BASE: usize = 0x1000_0000;
@@ -84,7 +86,7 @@ global_asm!(
     "trap_entry:",
     // sp = trap stack top, sscratch = sp bị ngắt. Cấp phát trapframe 288 B NGAY TRONG
     // `.trap_stack` (`addi sp, sp, -TF_SIZE`; 288 chia hết 16 nên ABI vẫn aligned) — thiếu bước
-    // này thì frame ghi NGOÀI vùng stack (và ngoài PT_LOAD của ảnh) dù QEMU RAM phẳng che mất.
+    // này thì frame ghi NGOÀI vùng stack (và ngoài `filesz` của LOAD) dù QEMU RAM phẳng che mất.
     // Lưu x5 (t0) TRƯỚC khi dùng nó.
     "csrrw sp, sscratch, sp",
     "addi sp, sp, -{tf_size}",
@@ -262,6 +264,23 @@ pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
     let saved = *tf;
     match decode_trap(&saved) {
         Event::Exception(exc) => {
+            // KT-46: guard page fault là page fault **thật** (scause 12/13/15, stval trong guard
+            // page). Chính sách mặc định fatal dump+halt; probe test load-guard được resume một
+            // lần để kiểm cả scause 13 và 15 trong một boot (xem `mmu::handle_guard_fault`).
+            if mmu::is_guard_fault(&exc) {
+                match mmu::handle_guard_fault(tf) {
+                    mmu::GuardOutcome::Recovered => {
+                        TRAP_STATS.record_exception(&saved, exc.kind, true);
+                        GUARD_STATS.record(&saved, true);
+                    }
+                    mmu::GuardOutcome::Fatal => {
+                        TRAP_STATS.record_exception(&saved, exc.kind, false);
+                        GUARD_STATS.record(&saved, false);
+                        report_guard_fault(&Riscv64Virt, &exc, &saved)
+                    }
+                }
+                return;
+            }
             let insn_len = if exc.kind.is_recoverable() {
                 instruction_len(exc.kind, saved.sepc as usize)
             } else {
@@ -304,12 +323,13 @@ pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
 /// (`breakpoint`, `illegal`), nên đọc bộ nhớ tại `sepc` an toàn.
 ///
 /// `ecall` theo spec RISC-V luôn 4 byte (không có dạng nén), nên không cần đọc.
-fn instruction_len(kind: ExceptionKind, pc: usize) -> usize {
+pub(crate) fn instruction_len(kind: ExceptionKind, pc: usize) -> usize {
     match kind {
         ExceptionKind::EnvironmentCallFromU | ExceptionKind::EnvironmentCallFromS => 4,
         _ => {
-            // SAFETY: `pc` là địa chỉ instruction vừa gây exception (đã fetch được); K3 chưa bật
-            // MMU nên đọc trực tiếp được. Chỉ đọc 2 byte, không ghi.
+            // SAFETY: `pc` là địa chỉ instruction vừa gây exception (đã fetch được). Trước KT-46
+            // PA == VA; sau KT-46 image được identity-map RWX nên vẫn đọc trực tiếp được. Chỉ
+            // đọc 2 byte, không ghi.
             let half = unsafe { core::ptr::read_volatile(pc as *const u16) };
             if half & 0b11 == 0b11 {
                 4

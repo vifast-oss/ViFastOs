@@ -13,6 +13,9 @@ dependencies = [
 [[package]]
 name = "vifast-plat-common"
 version = "0.1.0"
+dependencies = [
+ "vifast-pte",
+]
 
 [[package]]
 name = "vifast-plat-riscv64"
@@ -20,3 +23,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-plat-common",
 ]
+
+[[package]]
+name = "vifast-pte"
+version = "0.1.0"

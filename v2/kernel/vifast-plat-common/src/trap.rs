@@ -517,6 +517,141 @@ impl Default for TrapStats {
 /// Bộ đếm trap toàn cục của ảnh kernel (một hart ở KT-45; PerHart là KT-49).
 pub static TRAP_STATS: TrapStats = TrapStats::new();
 
+/// Ảnh chụp bộ đếm **guard page fault** (KT-46) — `Copy` để TAP đọc nhất quán.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GuardSnapshot {
+    /// Tổng số page fault trúng trang bảo vệ.
+    pub faults: u64,
+    /// Số fault là load page fault (`scause=13`).
+    pub load_faults: u64,
+    /// Số fault là store page fault (`scause=15`).
+    pub store_faults: u64,
+    /// Số fault được resume (chỉ probe test của KT-46).
+    pub recovered: u64,
+    /// Số fault fatal (dump + halt) — chính sách mặc định.
+    pub fatal: u64,
+    /// `scause` gần nhất.
+    pub last_scause: u64,
+    /// `stval` gần nhất (địa chỉ trong guard page).
+    pub last_stval: u64,
+    /// `sepc` gần nhất (instruction chạm guard).
+    pub last_sepc: u64,
+}
+
+/// Bộ đếm guard page fault toàn cục — TAP KT-46 đọc để chứng minh fault **thật**.
+#[derive(Debug)]
+pub struct GuardStats {
+    faults: AtomicU64,
+    load_faults: AtomicU64,
+    store_faults: AtomicU64,
+    recovered: AtomicU64,
+    fatal: AtomicU64,
+    last_scause: AtomicU64,
+    last_stval: AtomicU64,
+    last_sepc: AtomicU64,
+}
+
+impl GuardStats {
+    /// Bộ đếm rỗng — `const` để đặt trong `static`.
+    pub const fn new() -> Self {
+        Self {
+            faults: AtomicU64::new(0),
+            load_faults: AtomicU64::new(0),
+            store_faults: AtomicU64::new(0),
+            recovered: AtomicU64::new(0),
+            fatal: AtomicU64::new(0),
+            last_scause: AtomicU64::new(0),
+            last_stval: AtomicU64::new(0),
+            last_sepc: AtomicU64::new(0),
+        }
+    }
+
+    /// Ghi một guard fault; `tf` là trapframe **tại thời điểm trap** (trước khi resume).
+    pub fn record(&self, tf: &TrapFrame, recovered: bool) {
+        self.faults.fetch_add(1, Ordering::Relaxed);
+        match tf.scause {
+            EXC_LOAD_PAGE_FAULT => {
+                self.load_faults.fetch_add(1, Ordering::Relaxed);
+            }
+            EXC_STORE_PAGE_FAULT => {
+                self.store_faults.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+        if recovered {
+            self.recovered.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.fatal.fetch_add(1, Ordering::Relaxed);
+        }
+        self.last_scause.store(tf.scause, Ordering::Relaxed);
+        self.last_stval.store(tf.stval, Ordering::Relaxed);
+        self.last_sepc.store(tf.sepc, Ordering::Relaxed);
+    }
+
+    /// Đọc nhất quán (một hart, KT-46).
+    pub fn snapshot(&self) -> GuardSnapshot {
+        GuardSnapshot {
+            faults: self.faults.load(Ordering::Relaxed),
+            load_faults: self.load_faults.load(Ordering::Relaxed),
+            store_faults: self.store_faults.load(Ordering::Relaxed),
+            recovered: self.recovered.load(Ordering::Relaxed),
+            fatal: self.fatal.load(Ordering::Relaxed),
+            last_scause: self.last_scause.load(Ordering::Relaxed),
+            last_stval: self.last_stval.load(Ordering::Relaxed),
+            last_sepc: self.last_sepc.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Xoá bộ đếm — chỉ dùng trong test host.
+    pub fn reset(&self) {
+        for field in [
+            &self.faults,
+            &self.load_faults,
+            &self.store_faults,
+            &self.recovered,
+            &self.fatal,
+            &self.last_scause,
+            &self.last_stval,
+            &self.last_sepc,
+        ] {
+            field.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Default for GuardStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Bộ đếm guard page fault của ảnh kernel (một hart ở KT-46).
+pub static GUARD_STATS: GuardStats = GuardStats::new();
+
+/// In các thanh ghi chính của trapframe (dùng chung cho dump fatal/guard/interrupt).
+fn dump_regs<P: Platform + ?Sized>(w: &mut PlatformWriter<'_, P>, tf: &TrapFrame) {
+    let _ = writeln!(
+        w,
+        "# regs ra=0x{:x} sp=0x{:x} gp=0x{:x} tp=0x{:x}",
+        tf.reg(REG_RA),
+        tf.reg(REG_SP),
+        tf.reg(REG_GP),
+        tf.reg(REG_TP)
+    );
+    let _ = writeln!(
+        w,
+        "# regs a0=0x{:x} a1=0x{:x} a2=0x{:x} a3=0x{:x} a4=0x{:x} a5=0x{:x} a6=0x{:x} a7=0x{:x}",
+        tf.arg(0),
+        tf.arg(1),
+        tf.arg(2),
+        tf.arg(3),
+        tf.arg(4),
+        tf.arg(5),
+        tf.arg(6),
+        tf.arg(7)
+    );
+}
+
 /// In dump fatal (bắt đầu bằng `PANIC`) rồi `DebugHalt(1)`.
 ///
 /// Runner coi dòng bắt đầu `PANIC` là đỏ (D2-08). Dump gồm `scause/sepc/stval/sstatus` và các
@@ -534,26 +669,31 @@ pub fn report_fatal<P: Platform + ?Sized>(platform: &P, exc: &Exception, tf: &Tr
             exc.stval,
             tf.sstatus
         );
+        dump_regs(&mut w, tf);
+    }
+    platform.halt(1)
+}
+
+/// In **guard page fault** (bắt đầu bằng `PANIC: guard page fault`) rồi `DebugHalt(1)` — KT-46.
+///
+/// Chính sách mặc định của guard page là fatal: dump `scause/stval/sepc/sstatus` + thanh ghi rồi
+/// halt sạch, không treo/im lặng. TAP của ảnh `vifast-kbin-ktest-guard` đòi **đúng** tiền tố này
+/// cho store fault `scause=0xf` (load fault `scause=0xd` được probe có cờ resume để kiểm cả hai
+/// loại fault trong một boot — xem `vifast-plat-riscv64::mmu`).
+pub fn report_guard_fault<P: Platform + ?Sized>(
+    platform: &P,
+    exc: &Exception,
+    tf: &TrapFrame,
+) -> ! {
+    platform.put_str("PANIC: ");
+    {
+        let mut w = PlatformWriter(platform);
         let _ = writeln!(
             w,
-            "# regs ra=0x{:x} sp=0x{:x} gp=0x{:x} tp=0x{:x}",
-            tf.reg(REG_RA),
-            tf.reg(REG_SP),
-            tf.reg(REG_GP),
-            tf.reg(REG_TP)
+            "guard page fault scause=0x{:x} stval=0x{:x} sepc=0x{:x} sstatus=0x{:x}",
+            exc.scause, exc.stval, exc.sepc, tf.sstatus
         );
-        let _ = writeln!(
-            w,
-            "# regs a0=0x{:x} a1=0x{:x} a2=0x{:x} a3=0x{:x} a4=0x{:x} a5=0x{:x} a6=0x{:x} a7=0x{:x}",
-            tf.arg(0),
-            tf.arg(1),
-            tf.arg(2),
-            tf.arg(3),
-            tf.arg(4),
-            tf.arg(5),
-            tf.arg(6),
-            tf.arg(7)
-        );
+        dump_regs(&mut w, tf);
     }
     platform.halt(1)
 }

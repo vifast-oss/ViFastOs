@@ -7,5 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 description = "Platform QEMU virt riscv64 K3: entry, UART, SBI + cài Platform (có unsafe, D2-17)"
 
+[features]
+default = []
+# Chỉ ảnh test (`vifast-kbin-ktest*`, feature `ktest`) bật: probe guard load resume-một-lần.
+# Ảnh sản phẩm **không** có probe/chuỗi test; chính sách guard fault của nó luôn fatal.
+ktest = []
+
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }

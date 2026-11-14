@@ -11,7 +11,8 @@ description = "Ảnh boot riscv64 K3 (KT-44): ảnh sản phẩm + ảnh ktest t
 # kiến trúc): bật `ktest` mới build bin `vifast-kbin-ktest`.
 [features]
 default = []
-ktest = []
+# D2-08: ảnh test tách bằng feature; đồng thời bật probe guard test-only ở crate arch.
+ktest = ["vifast-plat-riscv64/ktest"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
@@ -20,6 +21,14 @@ path = "src/main.rs"
 [[bin]]
 name = "vifast-kbin-ktest"
 path = "src/ktest.rs"
+required-features = ["ktest"]
+
+# KT-46: boot riêng cho guard page fault **thật** (scause 13/15) — mỗi boot chỉ kết thúc được một
+# lần bằng PANIC có chủ đích (ảnh `ktest` đã dùng cho trap lồng KT-45). Vẫn là ảnh **test**: đòi
+# feature `ktest`, không nằm trong ảnh sản phẩm (D2-08), chịu cùng trần budget (D2-72 Q5).
+[[bin]]
+name = "vifast-kbin-ktest-guard"
+path = "src/ktest_guard.rs"
 required-features = ["ktest"]
 
 [dependencies]

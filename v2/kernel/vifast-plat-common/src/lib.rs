@@ -15,11 +15,17 @@
 //! KT-45 mở rộng cùng crate: module [`trap`] (trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`,
 //! decode **mọi** `scause` 0/2/3/4/5/6/7/8/9/12/13/15/khác ⇒ [`trap::Event::Exception`], chính
 //! sách resume/fatal, bộ đếm trap) và ba method mới của [`Platform`]: `set_trap_vector` +
-//! `enable_irq`/`disable_irq` (stub, PLIC là KT-48). **Không** thuộc KT-45: MMU/satp (KT-46), timer
-//! (KT-47), PLIC (KT-48), SMP (KT-49), U-mode/syscall (KT-53) — xem `v2/docs/k3-riscv64.md`.
+//! `enable_irq`/`disable_irq` (stub, PLIC là KT-48).
+//!
+//! KT-46 mở module [`mmu`]: page table **Sv39 thật** dựng từ arena RAM (không `static`), map
+//! 4 KiB / 2 MiB / 1 GiB, walk phần mềm đối chiếu phần cứng, cờ PTE `V/R/W/X/A/D` và `satp` Sv39.
+//! Phần asm/CSR/MMIO/`satp` nằm ở arch (`kernel/vifast-plat-riscv64`) theo D2-17. **Không** thuộc
+//! KT-46: timer (KT-47), PLIC (KT-48), SMP (KT-49), ASID/shootdown (KT-51), U-mode (KT-53) — xem
+//! `v2/docs/k3-riscv64.md` §8.
 #![no_std]
 #![forbid(unsafe_code)]
 
+pub mod mmu;
 pub mod trap;
 
 use core::fmt::{self, Write};
