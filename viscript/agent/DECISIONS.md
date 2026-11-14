@@ -793,3 +793,14 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   workspace, **không** nằm trong `viscript/`; phần lõi ngôn ngữ **không** được `cfg(target_os)`. (3) Bộ
   `host-conformance` ≥50 ca chạy **thật** trên macOS trong `viscript/test/host/` + harness Rust; 3 nền còn lại ghi rõ
   "chưa đo" cho tới khi có runner. (4) Không thêm dependency mới cho cross-check.
+
+- **VD-105** **`Host` mở rộng: `NetHost` + quyền của phiên (ST-63..ST-66)**: (1) Thêm `NetHost` cạnh `FsHost` trong
+  `vis-interp/src/builtin.rs` (handle = `str` mờ; `connect/listen/local_addr/accept/read/write/close`), `Host::net()`
+  default `None` ⇒ **`VS0604`** cả hai đường. (2) **Giao thức HTTP nằm trong `vis-interp`** (`net.rs`) ⇒ interp ↔ VM cùng
+  byte, codegen **không** sửa (`std.*` hạ theo tên). (3) **Chỉ loopback** trong vòng này; host khác ⇒ `Err`. (4) **Không**
+  mã lỗi mới: lỗi mạng = `Err(str)`, không host = `VS0604`, sai kiểu = `VS04xx`. (5) Tham số tuỳ chọn **tách tên hàm**
+  (`connect_timeout`, `get_timeout`) vì builtin **bỏ** đối số có tên. (6) **R1 trước, code sau**: `interp.rs` đang
+  **1.486** dòng ⇒ task **ST-63 bắt đầu** bằng việc **tách** (`impl Host` đã ở `host.rs`; tách tiếp `eval_call`/phần
+  runtime sang `interp/goi.rs` hoặc tương đương) rồi mới thêm net. (7) Ca net/http nằm ở `crates/vis-cli/tests/net.rs`
+  + `http.rs` (server loopback thật trong test Rust), **không** đặt vào `test/sem` (sem không có host net) ⇒ con số
+  sem **441** giữ nguyên; ghi rõ trong báo cáo.
