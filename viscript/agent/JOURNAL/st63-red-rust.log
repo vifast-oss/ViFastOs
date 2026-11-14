@@ -1,0 +1,79 @@
+# ST-63 — log ĐỎ (Rust) lúc 2026-11-14T06:03:36Z, HEAD 0d3e1eb — **harness CUỐI** (net.rs) chạy trên mã **chưa có net**.
+# lệnh: cargo test -p vis-cli --test net
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.29s
+     Running tests/net.rs (target/debug/deps/net-09ba3da5155a130b)
+
+running 6 tests
+test tcp_khong_host ... FAILED
+test tcp_explain_perms ... FAILED
+test tcp_het_gio_doc ... FAILED
+test tcp_tay_la ... FAILED
+test tcp_tu_choi ... FAILED
+test tcp_noi_va_doc ... FAILED
+
+failures:
+
+---- tcp_khong_host stdout ----
+
+thread 'tcp_khong_host' (44773782) panicked at crates/vis-cli/tests/net.rs:229:5:
+assertion `left == right` failed: interp phải `VS0604` khi không có host, được ["VS0501"]
+  left: ["VS0501"]
+ right: ["VS0604"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tcp_explain_perms stdout ----
+
+thread 'tcp_explain_perms' (44773780) panicked at crates/vis-cli/tests/net.rs:275:9:
+assertion `left == right` failed: vm=false: stderr: perms.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+
+  left: 2
+ right: 0
+
+---- tcp_het_gio_doc stdout ----
+
+thread 'tcp_het_gio_doc' (44773781) panicked at crates/vis-cli/tests/net.rs:163:9:
+assertion `left == right` failed: vm=false: stderr: timeout.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+
+  left: 2
+ right: 0
+
+---- tcp_tay_la stdout ----
+
+thread 'tcp_tay_la' (44773784) panicked at crates/vis-cli/tests/net.rs:187:5:
+assertion `left == right` failed: stderr: tay-la.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+
+  left: 2
+ right: 0
+
+---- tcp_tu_choi stdout ----
+
+thread 'tcp_tu_choi' (44773785) panicked at crates/vis-cli/tests/net.rs:124:5:
+assertion `left == right` failed: exit phải 0 (lỗi mạng là Err, không trap); stderr: refused.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+
+  left: 2
+ right: 0
+
+---- tcp_noi_va_doc stdout ----
+
+thread 'tcp_noi_va_doc' (44773783) panicked at crates/vis-cli/tests/net.rs:97:5:
+assertion `left == right` failed: stderr: doc.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+
+  left: 2
+ right: 0
+
+
+failures:
+    tcp_explain_perms
+    tcp_het_gio_doc
+    tcp_khong_host
+    tcp_noi_va_doc
+    tcp_tay_la
+    tcp_tu_choi
+
+test result: FAILED. 0 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p vis-cli --test net`
+
+[cargo exit=101]

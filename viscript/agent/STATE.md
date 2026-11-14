@@ -6,18 +6,34 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-62 — báo cáo R10** (chốt vòng 10: 5 nợ lõi + VS2 #1 async + VS2 #2 kênh;
-                `R10-viscript.{md,json,license}`, phủ **85 hàng** QUEUE) — xong, report-check + cổng
-                **PASS**; **chưa commit**.
-Bước          : 6/6 (đọc khuôn R9 + Khối E → chạy lại **đủ** số đo → JSON 85 task + `head` → MD
-                §1..§7 → `report-check --all` PASS → `gate --fast` PASS → STATE/JOURNAL).
+Task          : **ST-63 — VS2 #3a: `NetHost` + TCP client** (`std.net.connect/connect_timeout/read/
+                write/close`, chỉ **loopback**, handle `str` mờ, thiếu host ⇒ `VS0604`; 6 test Rust
+                e2e server loopback thật) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 6/6 (bước 0 tách `interp/goi.rs` cho R1 → gate xanh → red-first (probe + 6 test) →
+                hiện thực `NetHost`/`std.net`/VM/CLI **đủ 4 điểm truyền host** → 6/6 ca xanh → cổng →
+                differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T05:33:50Z** (sau khi R10 có mặt:
-                report-check trong cổng **PASS, 10 báo cáo/85 hàng**); **787** test / sem **441/21 nhóm** /
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T06:21:10Z** (sau bước 0: PASS
+                **2026-11-14T05:47:22Z**); **793** test (=787+6 `net.rs`) / sem **441/21 nhóm** /
                 `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (208,5 s) / fuzz 60 s **2.661.866 ca/0 vi
-                phạm** / `VBC1` **53** / **7 sổ-32 mã** / allowlist **6**
-Việc dở       : commit `[ST-62]` + push (đã được uỷ quyền)
+                differential **100.000 chương trình 0 lệch** (215,3 s) / **7 sổ-32 mã** (không mã mới) /
+                `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-63]` + push (đã được uỷ quyền)
+
+## ST-63 — VS2 #3a: `NetHost` + TCP client (`std.net.*`), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **R1 trước, code sau (bắt buộc)** | `crates/vis-interp/src/interp.rs` **1.486 → 1.217** dòng: chuyển **nguyên văn** khối gọi hàm (`eval_call`, `eval_args`, `call_value`, `call_closure(_trong)`, `call_hfn(_trong)`) sang mô-đun con mới `interp/goi.rs` (**287** dòng, `mod goi;`). Chỉ đổi **1 chữ** ngoài di chuyển: `eval_call` `fn` → `pub(crate) fn` (interp.rs còn gọi). `cargo fmt` + `gate --fast` **PASS** `2026-11-14T05:47:22Z` **trước** khi thêm net. |
+| 1 | **`NetHost` + `Host::net`** | `vis-interp/src/builtin.rs`: trait `NetHost` cạnh `FsHost` (`connect/listen/local_addr/accept/read/write/close`; `read -> Result<Vec<u8>,String>` **byte**, `Ok(vec![])` = EOF); `Host::net()` mặc định `None` ⇒ `VS0604`. `Interp` thêm field `net` + `set_net`; `Vm` thêm field `net` + `set_net`; `impl Host::net` cho cả hai. `run_with_hosts` của interp nhận **3 host**; `vis_vm::run_with_hosts` mới (giữ `run_with_fs` làm wrapper). |
+| 2 | **Bảng chữ ký `std.net`** | `vis-types/src/stdlib.rs`: `MODULES` **7 → 8** (thêm `net`); `FUNCS` **38 → 43**: `net.connect(str)`, `net.connect_timeout(str,int)`, `net.read(str,int,int)`, `net.write(str,str)`, `net.close(str)` (2 lỗi trả `Result[(),str]`). **Không** thêm variant `Ty` (handle = `str` mờ). Bỏ `is_open` (được phép "nếu rẻ; không thì thôi" — cần thêm method host mà trait đã duyệt không có). |
+| 3 | **Thực thi chung** | `vis-interp/src/stdlib.rs` nhánh `net.*` (một hiện thực, VM dùng chung): `kiem` arity/kiểu tự động; `host.net()` thiếu ⇒ **`VS0604`** ("không có host"); lỗi mạng ⇒ `Err(str)` (dữ liệu, **không** trap); `read` giải mã **lossy** từ byte (nợ: chưa có API byte trong ngôn ngữ), EOF ⇒ `""`. **Không** sửa codegen (`std.*` hạ theo tên). |
+| 4 | **CLI host mạng** | `vis-cli/src/net.rs` (**150** dòng): TCP thật bằng `std::net` (không `unsafe`, không crate mới); **chỉ loopback** (`127.0.0.1`/`localhost`, host khác ⇒ `Err`); `connect_timeout`; `set_read_timeout`; **cả** `WouldBlock` (macOS os error 35) **và** `TimedOut` ⇒ "quá thời gian"; handle `"C<n>"` mờ; `close` tay lạ ⇒ `Err`; `--explain-perms` in `NET connect 127.0.0.1:…` ra stderr. `listen`/`accept` trả `Err` rõ "để ST-65" (không giả vờ có server). |
+| 5 | **Nối đủ 4 điểm truyền host** | `main.rs`: `mod net` + `use net::Net as HostNet`; truyền net ở **cả 4** chỗ: (a) nhánh **fast-path cache hit** (`--vm` + cache), (b) nhánh VM thường, (c) interp `.vish` (runner+fs), (d) interp `.vis` (fs). `modules.rs`: `use std.net` đi qua `MODULES`; thông điệp lỗi module nêu thêm `fs/net`. |
+| 6 | **Ca (6 test Rust, không ca sem)** | `crates/vis-cli/tests/net.rs`: `tcp_noi_va_doc` (server gửi `hi`; + nhánh **cache hit** lần 2), `tcp_tu_choi` (listener đóng ⇒ `Err "bị từ chối"`, **exit 0**), `tcp_het_gio_doc` (server ngủ 300 ms, `read(t,64,80)` ⇒ "quá thời gian", **≤ 400 ms** cả hai đường), `tcp_tay_la` (`read/write/close` tay `C99` ⇒ `Err`, không panic), `tcp_khong_host` (in-process interp+VM ⇒ **`VS0604` cùng byte**), `tcp_explain_perms` (`--explain-perms` ⇒ stderr có `NET connect 127.0.0.1`). Mọi ca chạy `run` ↔ `run --vm --no-cache` **so byte**. Sem **441 giữ nguyên** (VD-105 (7)). |
+| 7 | **Red-first** | `JOURNAL/st63-red-sem.log` sha256 `878056b1…` (14 dòng): tạm gỡ đúng 10 tệp mã net (giữ **harness cuối**) ⇒ probe `use std.net` **`VS0701`** cả hai đường; `JOURNAL/st63-red-rust.log` sha256 `cf8363ae…` (79 dòng): `cargo test -p vis-cli --test net` ⇒ **0 passed / 6 failed**, exit 101. Khôi phục 10 tệp từ bản lưu **sha256 khớp 10/10**, build lại, 6/6 xanh (chạy 3 lần liên tiếp 6/6). |
+| 8 | **Đo** | **793** test (21+96+18+154+24+62+9+**409**; +6 `net.rs`); sem **441/21** (391 `.vis` + 50 `.vish`, 80 `.err` — không đổi); `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=215.3 toc_do=464/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã** (không mã mới); allowlist **6**; R1 max **1.491** (`lower/cmd.rs`). |
+| 9 | **Nợ** | (a) `listen/local_addr/accept` = khung **ST-65** (hiện `Err` rõ); (b) **chỉ loopback**, chưa DNS/TLS/HTTP (ST-64..66); (c) `net.read` trả `str` **lossy** — chưa có kiểu byte trong ngôn ngữ; (d) `is_open` **bỏ** (không có trong trait duyệt); (e) `connect` mặc định timeout **1 s**; (f) handle **per-process**, không truyền qua tệp/tiến trình; (g) chưa có `--net-mock` (ca dựng server thật). |
 
 ## ST-62 — báo cáo **R10** (chốt vòng 10: nợ lõi A/B/C + async + kênh), 2026-11-14
 

@@ -6,10 +6,14 @@ use std::process::ExitCode;
 mod cache;
 mod fsmock;
 mod modules;
+mod net;
 mod ngoai;
 mod vistest;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
+
+/// **ST-63 (VD-105)**: host mạng của CLI (TCP thật, chỉ loopback) — tên cục bộ cho rõ điểm nối.
+use net::Net as HostNet;
 
 fn usage() -> ExitCode {
     eprintln!(
@@ -430,7 +434,14 @@ fn run_run(rest: &[String]) -> ExitCode {
                     .stack_size(256 * 1024 * 1024)
                     .spawn_scoped(scope, || {
                         let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                        let out = vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs));
+                        let mut net = HostNet::moi(explain_perms);
+                        let out = vis_vm::run_with_hosts(
+                            &m,
+                            &text,
+                            &prog_args,
+                            Some(&mut fs),
+                            Some(&mut net),
+                        );
                         let d: Vec<(String, u32, u32, String)> = out
                             .diagnostics
                             .iter()
@@ -535,9 +546,10 @@ fn run_run(rest: &[String]) -> ExitCode {
                     if dump {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
-                    // ST-33: `std.fs` đi qua host hệ thống tệp (chỉ CLI biết OS).
+                    // ST-33/ST-63: `std.fs`/`std.net` đi qua host (chỉ CLI biết OS).
                     let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                    vis_vm::run_with_fs(&m, &text, &prog_args, Some(&mut fs))
+                    let mut net = HostNet::moi(explain_perms);
+                    vis_vm::run_with_hosts(&m, &text, &prog_args, Some(&mut fs), Some(&mut net))
                 } else if che_do == vis_syntax::Mode::Command && !co_no_extern {
                     // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
                     let mut runner = ngoai::Runner {
@@ -545,6 +557,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                         ..ngoai::Runner::default()
                     };
                     let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
+                    let mut net = HostNet::moi(explain_perms);
                     vis_interp::run_with_hosts(
                         &text,
                         &h.hir,
@@ -553,10 +566,12 @@ fn run_run(rest: &[String]) -> ExitCode {
                         &prog_args,
                         Some(&mut runner),
                         Some(&mut fs),
+                        Some(&mut net),
                     )
                 } else {
                     // ST-33: `.vis` cũng có `std.fs` (không có chương trình ngoài).
                     let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
+                    let mut net = HostNet::moi(explain_perms);
                     vis_interp::run_with_hosts(
                         &text,
                         &h.hir,
@@ -565,6 +580,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                         &prog_args,
                         None,
                         Some(&mut fs),
+                        Some(&mut net),
                     )
                 };
                 let d: Vec<(String, u32, u32, String)> = out

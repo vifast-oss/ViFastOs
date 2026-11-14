@@ -133,6 +133,26 @@ pub trait FsHost {
     }
 }
 
+/// **Host mạng** (ST-63, VD-100/VD-105) — `vis-interp`/`vis-vm` **không** biết `std::net`; `vis-cli`
+/// cài TCP thật. Thiếu host ⇒ `VS0604` (cùng mẫu [`FsHost`], VD-60 (2)). Handle là **chuỗi mờ** —
+/// chương trình không thấy địa chỉ/socket; body **nhị phân** (`Vec<u8>`) để không cắt sai UTF-8.
+pub trait NetHost {
+    /// Nối TCP tới `dia_chi` (`host:port`), chờ tối đa `timeout_ms`. Trả **handle mờ**.
+    fn connect(&mut self, dia_chi: &str, timeout_ms: u64) -> Result<String, String>;
+    /// **ST-65**: lắng nghe trên `dia_chi`. Trả **handle mờ**.
+    fn listen(&mut self, dia_chi: &str) -> Result<String, String>;
+    /// **ST-65**: địa chỉ local của tay.
+    fn local_addr(&mut self, tay: &str) -> Result<String, String>;
+    /// **ST-65**: nhận một kết nối, chờ tối đa `timeout_ms`. Trả **handle mờ**.
+    fn accept(&mut self, tay: &str, timeout_ms: u64) -> Result<String, String>;
+    /// Đọc tối đa `toi_da` **byte**; `Ok(vec![])` = **EOF** (không phải lỗi). Hết giờ ⇒ `Err`.
+    fn read(&mut self, tay: &str, toi_da: usize, timeout_ms: u64) -> Result<Vec<u8>, String>;
+    /// Ghi cả `du_lieu` (body nhị phân).
+    fn write(&mut self, tay: &str, du_lieu: &[u8]) -> Result<(), String>;
+    /// Đóng tay; tay lạ ⇒ `Err`.
+    fn close(&mut self, tay: &str) -> Result<(), String>;
+}
+
 pub trait Host {
     /// Bộ đệm `stdout` của chương trình.
     fn out(&mut self) -> &mut String;
@@ -140,6 +160,11 @@ pub trait Host {
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> crate::interp::R<Value>;
     /// Hệ thống tệp (ST-33). Mặc định: `None` ⇒ môi trường không có host ⇒ `VS0604`.
     fn fs(&mut self) -> Option<&mut dyn FsHost> {
+        None
+    }
+
+    /// **ST-63 (VD-105)**: host mạng (TCP). Mặc định: `None` ⇒ `VS0604`.
+    fn net(&mut self) -> Option<&mut dyn NetHost> {
         None
     }
 

@@ -117,11 +117,12 @@ pub fn run_with_ngoai<'a>(
     args: &[String],
     ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
 ) -> RunOutput {
-    run_with_hosts(text, hir, symbols, types, args, ngoai, None)
+    run_with_hosts(text, hir, symbols, types, args, ngoai, None, None)
 }
 
-/// Như [`run`] nhưng gắn **cả hai** host: chương trình ngoài (ST-27) và hệ thống tệp (ST-33).
-/// `None` ở host nào ⇒ tính năng đó ⇒ `VS0604`.
+/// Như [`run`] nhưng gắn **cả ba** host: chương trình ngoài (ST-27), hệ thống tệp (ST-33) và mạng
+/// (ST-63, VD-105). `None` ở host nào ⇒ tính năng đó ⇒ `VS0604`.
+#[allow(clippy::too_many_arguments)]
 pub fn run_with_hosts<'a>(
     text: &str,
     hir: &'a Hir,
@@ -130,6 +131,7 @@ pub fn run_with_hosts<'a>(
     args: &[String],
     ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
     fs: Option<&'a mut dyn crate::builtin::FsHost>,
+    net: Option<&'a mut dyn crate::builtin::NetHost>,
 ) -> RunOutput {
     let mut it = interp::Interp::new(hir, symbols, types);
     if let Some(n) = ngoai {
@@ -137,6 +139,9 @@ pub fn run_with_hosts<'a>(
     }
     if let Some(f) = fs {
         it.set_fs(f);
+    }
+    if let Some(g) = net {
+        it.set_net(g);
     }
     let res = it.run_program(args);
     let stdout = it.take_stdout();

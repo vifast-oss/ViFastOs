@@ -107,13 +107,13 @@ impl StdFn {
 }
 
 /// Module `std` được hỗ trợ ở ST-26 (mỗi phần tử là tên ngắn).
-pub const MODULES: [&str; 7] = ["str", "list", "map", "path", "time", "json", "fs"];
+pub const MODULES: [&str; 8] = ["str", "list", "map", "path", "time", "json", "fs", "net"];
 
 /// `std.io` **chưa** làm — giữ tên để thông điệp rõ (ST-33: `std.fs` **đã có**).
 pub const MODULES_HOAN: [&str; 1] = ["io"];
 
 /// Toàn bộ hàm `std.*` của ST-26.
-pub const FUNCS: [StdFn; 38] = [
+pub const FUNCS: [StdFn; 43] = [
     // ----- std.str -----
     StdFn {
         name: "str.split",
@@ -315,6 +315,32 @@ pub const FUNCS: [StdFn; 38] = [
         name: "fs.list",
         params: &[Ty::Str],
         ret: Ty::ResultListStrStr,
+    },
+    // ----- std.net (ST-63, VD-100/VD-105) — **đi qua `Host::net`**, không OS trong crate này -----
+    StdFn {
+        name: "net.connect",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.connect_timeout",
+        params: &[Ty::Str, Ty::Int],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.read",
+        params: &[Ty::Str, Ty::Int, Ty::Int],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "net.write",
+        params: &[Ty::Str, Ty::Str],
+        ret: Ty::ResultUnitStr,
+    },
+    StdFn {
+        name: "net.close",
+        params: &[Ty::Str],
+        ret: Ty::ResultUnitStr,
     },
 ];
 

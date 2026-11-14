@@ -25,9 +25,24 @@ pub fn run_with_fs<'a>(
     args: &[String],
     fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
 ) -> RunOutput {
+    run_with_hosts(m, text, args, fs, None)
+}
+
+/// **ST-63 (VD-105)**: như [`run_with_fs`] nhưng gắn **cả host mạng** (`std.net.*`); `None` ở host
+/// nào ⇒ `VS0604`. Đây là cửa CLI dùng để hai đường (interp/VM) nhận **cùng** host.
+pub fn run_with_hosts<'a>(
+    m: &'a Module,
+    text: &'a str,
+    args: &[String],
+    fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+    net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
+) -> RunOutput {
     let mut vm = Vm::new(m, text);
     if let Some(f) = fs {
         vm.set_fs(f);
+    }
+    if let Some(g) = net {
+        vm.set_net(g);
     }
     vm.run(args)
 }
@@ -78,6 +93,8 @@ pub struct Vm<'a> {
     dinh: usize,
     /// Host hệ thống tệp (ST-33); `None` ⇒ `VS0604` — VM **không** biết `std::fs`.
     fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+    /// **ST-63 (VD-105)**: host mạng; `None` ⇒ `VS0604` — VM **không** biết `std::net`.
+    net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
     /// **ST-60**: hàng đợi tác vụ `async` — cùng runtime với interp (`vis_interp::rt`).
     sched: std::cell::RefCell<vis_interp::rt::Scheduler>,
 }
@@ -93,6 +110,7 @@ impl<'a> Vm<'a> {
             depth: 0,
             dinh: 0,
             fs: None,
+            net: None,
             sched: std::cell::RefCell::new(vis_interp::rt::Scheduler::new()),
         }
     }
@@ -221,6 +239,11 @@ impl<'a> Vm<'a> {
     pub fn set_fs(&mut self, f: &'a mut dyn vis_interp::builtin::FsHost) {
         self.fs = Some(f);
     }
+
+    /// **ST-63 (VD-105)**: gắn host mạng — chỉ dùng qua [`crate::run_with_hosts`].
+    pub fn set_net(&mut self, n: &'a mut dyn vis_interp::builtin::NetHost) {
+        self.net = Some(n);
+    }
 }
 
 impl Host for Vm<'_> {
@@ -232,6 +255,13 @@ impl Host for Vm<'_> {
         self.fs
             .as_mut()
             .map(|f| &mut **f as &mut dyn vis_interp::builtin::FsHost)
+    }
+
+    /// **ST-63 (VD-105)**: host mạng; `None` ⇒ `std.net.*` ⇒ `VS0604`.
+    fn net(&mut self) -> Option<&mut dyn vis_interp::builtin::NetHost> {
+        self.net
+            .as_mut()
+            .map(|n| &mut **n as &mut dyn vis_interp::builtin::NetHost)
     }
 
     fn sched(&self) -> &std::cell::RefCell<vis_interp::rt::Scheduler> {

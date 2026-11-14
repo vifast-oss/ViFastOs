@@ -1,0 +1,14 @@
+# ST-63 — log ĐỎ (sem) lúc 2026-11-14T06:03:31Z, HEAD 0d3e1eb.
+# Red-first: **tạm gỡ đúng các tệp mã của net** (vis-types/stdlib.rs, vis-interp/{builtin,host,interp,stdlib,lib}.rs,
+# vis-vm/{lib,vm}.rs, vis-cli/{main,modules}.rs) — giữ nguyên **test cuối** crates/vis-cli/tests/net.rs.
+# Không thêm ca vào test/sem (VD-105 (7)); probe: use std.net + net.connect.
+
+== probe /tmp/st63-probe.vis (bản cuối)
+   -- interp:
+     st63-probe.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+     [exit=2]
+   -- vm:
+     st63-probe.vis:2:1: error VS0701: không có module `std.net` (ST-26 có: str/list/map/path/time/json)
+     [exit=2]
+
+== KẾT LUẬN: đỏ đúng lý do — chưa có module `std.net` (VS0701) / `net.*` chưa có chữ ký + host.

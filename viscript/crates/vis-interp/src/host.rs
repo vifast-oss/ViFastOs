@@ -47,6 +47,13 @@ impl crate::builtin::Host for Interp<'_> {
             .map(|f| &mut **f as &mut dyn crate::builtin::FsHost)
     }
 
+    /// **ST-63 (VD-105)**: host mạng (TCP) của CLI; `None` ⇒ `std.net.*` ⇒ `VS0604`.
+    fn net(&mut self) -> Option<&mut dyn crate::builtin::NetHost> {
+        self.net
+            .as_mut()
+            .map(|n| &mut **n as &mut dyn crate::builtin::NetHost)
+    }
+
     fn ngoai(
         &mut self,
         ten: &str,

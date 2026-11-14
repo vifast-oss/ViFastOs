@@ -403,6 +403,45 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
                 Value::List(xs.into_iter().map(Value::Str).collect())
             })))
         }
+        // ----- std.net (ST-63, VD-100/VD-105) — **chỉ qua `Host::net`**, không OS trong crate này.
+        // Thiếu host ⇒ `VS0604`; lỗi mạng ⇒ `Err(str)` (dữ liệu, **không** trap). -----
+        "net.connect" | "net.connect_timeout" => {
+            let dia_chi = chuoi(name, &args[0], 0, span)?;
+            let timeout = if args.len() == 2 {
+                so(name, &args[1], 1, span)?
+            } else {
+                // Mặc định 1 s — đủ rộng cho loopback, không treo chương trình.
+                1_000
+            };
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            let r = host.connect(dia_chi, timeout.max(0) as u64);
+            Ok(hop_nhat_fs(r.map(Value::Str)))
+        }
+        "net.read" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let toi_da = so(name, &args[1], 1, span)?;
+            let timeout = so(name, &args[2], 2, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            let r = host.read(tay, toi_da.max(0) as usize, timeout.max(0) as u64);
+            // Body là **byte**; ngôn ngữ chỉ có `str` ⇒ giải mã **lossy** (không cắt giữa ký tự).
+            // `Ok(vec![])` = EOF ⇒ `""` (không phải lỗi). Nợ: API byte thật cho tới khi có `buf`.
+            Ok(hop_nhat_fs(r.map(|b| {
+                Value::Str(String::from_utf8_lossy(&b).into_owned())
+            })))
+        }
+        "net.write" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let du = chuoi(name, &args[1], 1, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(
+                host.write(tay, du.as_bytes()).map(|()| Value::Unit),
+            ))
+        }
+        "net.close" => {
+            let tay = chuoi(name, &args[0], 0, span)?;
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
+        }
         other => Err(loi(
             format!("`std.{other}` chưa cài (bảng chữ ký có nhưng tầng chạy thiếu)"),
             span,

@@ -1,0 +1,5 @@
+# ST-63 — differential 100.000 chương trình (interp vs VM), 2026-11-14T06:17:16Z, HEAD 0d3e1eb
+# lệnh: ./bin/vis-diff (= VIS_DIFF_N=100000 cargo test -p vis-vm --test diff_100k -- --nocapture)
+
+DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=215.3 toc_do=464/s seed=3523158054
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 215.30s
