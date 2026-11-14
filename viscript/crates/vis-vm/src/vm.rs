@@ -41,6 +41,8 @@ pub fn run_with_hosts<'a>(
 }
 
 /// **ST-72b (VD-103/VD-106)**: như [`run_with_hosts`] nhưng gắn giá trị quyền `cap` cho `main`.
+/// **ST-89**: giữ **nguyên chữ ký cũ** — không có host `Ngoai` (wrapper của
+/// [`run_with_full_hosts_caps`]).
 pub fn run_with_hosts_caps<'a>(
     m: &'a Module,
     text: &'a str,
@@ -49,7 +51,25 @@ pub fn run_with_hosts_caps<'a>(
     net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
     caps: &[(u32, Value)],
 ) -> RunOutput {
+    run_with_full_hosts_caps(m, text, args, None, fs, net, caps)
+}
+
+/// **ST-89 (VD-110)**: như [`run_with_hosts_caps`] nhưng nhận **cả** host chương trình ngoài — cùng
+/// trait `vis_interp::builtin::Ngoai` mà interp dùng; VM **không** gọi `std::process`.
+#[allow(clippy::too_many_arguments)]
+pub fn run_with_full_hosts_caps<'a>(
+    m: &'a Module,
+    text: &'a str,
+    args: &[String],
+    ngoai: Option<&'a mut dyn vis_interp::builtin::Ngoai>,
+    fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+    net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
+    caps: &[(u32, Value)],
+) -> RunOutput {
     let mut vm = Vm::new(m, text);
+    if let Some(n) = ngoai {
+        vm.set_ngoai(n);
+    }
     if let Some(f) = fs {
         vm.set_fs(f);
     }
@@ -110,6 +130,9 @@ pub struct Vm<'a> {
     fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
     /// **ST-63 (VD-105)**: host mạng; `None` ⇒ `VS0604` — VM **không** biết `std::net`.
     net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
+    /// **ST-89 (VD-110)**: host **chương trình ngoài** — VM **không** gọi `std::process`, chỉ qua
+    /// trait của `vis-interp`; `None` ⇒ `exec.*` ⇒ `VS0604`.
+    ngoai: Option<&'a mut dyn vis_interp::builtin::Ngoai>,
     /// **ST-60**: hàng đợi tác vụ `async` — cùng runtime với interp (`vis_interp::rt`).
     sched: std::cell::RefCell<vis_interp::rt::Scheduler>,
     /// **ST-72b (VD-103/VD-106)**: quyền `main` — `(chỉ số tham số, giá trị)`.
@@ -128,6 +151,7 @@ impl<'a> Vm<'a> {
             dinh: 0,
             fs: None,
             net: None,
+            ngoai: None,
             sched: std::cell::RefCell::new(vis_interp::rt::Scheduler::new()),
             caps: Vec::new(),
         }
@@ -268,6 +292,11 @@ impl<'a> Vm<'a> {
     pub fn set_net(&mut self, n: &'a mut dyn vis_interp::builtin::NetHost) {
         self.net = Some(n);
     }
+
+    /// **ST-89 (VD-110)**: gắn host chương trình ngoài — VM chỉ gọi qua trait, không chạm OS.
+    pub fn set_ngoai(&mut self, n: &'a mut dyn vis_interp::builtin::Ngoai) {
+        self.ngoai = Some(n);
+    }
 }
 
 impl Host for Vm<'_> {
@@ -286,6 +315,33 @@ impl Host for Vm<'_> {
         self.net
             .as_mut()
             .map(|n| &mut **n as &mut dyn vis_interp::builtin::NetHost)
+    }
+
+    /// **ST-89 (VD-110)**: chương trình ngoài; `None` ⇒ `VS0604`.
+    fn ngoai(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        raw: bool,
+        stdin: &str,
+        span: Span,
+    ) -> Option<R<Value>> {
+        self.ngoai
+            .as_mut()
+            .map(|n| (**n).chay(ten, args, raw, stdin, span))
+    }
+
+    /// **ST-89 (VD-110)**: `| complete` — đủ `stdout/stderr/code` từ host.
+    fn ngoai_day_du(
+        &mut self,
+        ten: &str,
+        args: &[String],
+        stdin: &str,
+        span: Span,
+    ) -> Option<Result<vis_interp::builtin::KetQua, vis_interp::interp::Abort>> {
+        self.ngoai
+            .as_mut()
+            .map(|n| (**n).chay_day_du(ten, args, stdin, span))
     }
 
     fn sched(&self) -> &std::cell::RefCell<vis_interp::rt::Scheduler> {

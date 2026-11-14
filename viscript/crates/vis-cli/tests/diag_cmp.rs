@@ -37,11 +37,11 @@ const TONG: usize = 447;
 const XANH: usize = 364;
 const LOI_BIEN_DICH: usize = 49;
 const LOI_LUC_CHAY: usize = 34;
-/// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
-const XANH_CAN_HOST: usize = 4;
-/// **SỬA KÈM LÝ DO (ST-59)**: 2 → **3** — thêm `vish/stage-dau-chua-bind` (định danh **chưa** bind
-/// vẫn là chương trình ngoài ⇒ `VS0501` cần host).
-const LUC_CHAY_CAN_HOST: usize = 3;
+/// **SỬA KÈM LÝ DO (ST-89)**: VM **đã có host `Ngoai`** ⇒ **0** ca xanh cần host bị `VS0604`.
+const XANH_CAN_HOST: usize = 0;
+/// **SỬA KÈM LÝ DO (ST-89)**: 3 → **0** — VM có host `Ngoai`, cả 3 ca lỗi-chạy cần host nay so
+/// **bình thường** (cùng chẩn đoán), không còn `VS0604`.
+const LUC_CHAY_CAN_HOST: usize = 0;
 /// **SỬA KÈM LÝ DO (ST-54, Agent 0 duyệt)**: trước là **21** — số ca `compile()` vẫn ra module
 /// chạy "sạch" dù HIR sai (codegen **tin** tyck). Nay `compile_kiem` nhận **chẩn đoán front end**
 /// và **từ chối** ⇒ **0** ca lọt. HIR không mang dấu `Type::Error` (đo 370 ca: 0 nút) nên đây là

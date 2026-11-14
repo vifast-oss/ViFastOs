@@ -254,10 +254,13 @@ fn fixture_vish_trong_test_cmd_pipe() {
     assert_eq!(ca, 4, "phải chạy đủ 4 fixture `.vish`");
 }
 
-// ---------- VM: không host ⇒ VS0604 (đường bytecode) ----------
+// ---------- VM: **ST-89** có host Ngoai ⇒ chạy như interp ----------
 
+/// **SỬA KÈM LÝ DO (ST-89, VD-110)**: trước đây test khoá “VM không host ⇒ `VS0604`”; nay VM
+/// **đã có host `Ngoai`** (cùng trait với interp) nên lệnh ngoài phải chạy **cùng byte** — test
+/// đổi thành khẳng định **hai đường cùng stdout/exit**, không còn kỳ vọng `VS0604`.
 #[test]
-fn vm_khong_host_bao_vs0604() {
+fn vm_co_host_chay_cung_interp() {
     let d = tam("vm");
     let p = d.join("vm.vish");
     std::fs::write(
@@ -265,16 +268,24 @@ fn vm_khong_host_bao_vs0604() {
         "# SPDX-License-Identifier: MIT OR Apache-2.0\n/bin/echo a | /bin/cat\n",
     )
     .expect("ghi");
-    let o = Command::new(env!("CARGO_BIN_EXE_vis"))
+    let interp = Command::new(env!("CARGO_BIN_EXE_vis"))
+        .arg("run")
+        .arg(&p)
+        .output()
+        .expect("chạy interp");
+    let vm = Command::new(env!("CARGO_BIN_EXE_vis"))
         .args(["run", "--vm", "--no-cache"])
         .arg(&p)
         .output()
         .expect("chạy --vm");
-    let e = String::from_utf8_lossy(&o.stderr).to_string();
-    assert_eq!(o.status.code().unwrap_or(-1), 1, "stderr: {e}");
-    assert!(
-        e.contains("VS0604") && e.contains("không có host"),
-        "stderr: {e}"
+    assert_eq!(
+        (interp.status.code(), &interp.stdout),
+        (vm.status.code(), &vm.stdout),
+        "hai đường phải cùng byte: interp {:?} / vm {:?}",
+        String::from_utf8_lossy(&interp.stderr),
+        String::from_utf8_lossy(&vm.stderr)
     );
+    assert_eq!(interp.status.code().unwrap_or(-1), 0);
+    assert_eq!(String::from_utf8_lossy(&interp.stdout), "[a]\n");
     let _ = std::fs::remove_dir_all(&d);
 }

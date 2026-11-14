@@ -6,16 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-88 — báo cáo R13** (chốt vòng 13: ST-83..ST-87b) — xong, `report-check --all`
-                PASS, cổng PASS; **chưa commit**.
-Bước          : 4/4 (JSON 100 hàng QUEUE → MD 8 mục + §19 + nợ 45..58 + VD-109 → 13 báo cáo PASS →
-                cổng → STATE/JOURNAL).
+Task          : **ST-89 — host `Ngoai` cho VM** (đóng khoảng lệch cuối: `--vm` SKIP 7 → 0, host suite
+                VM 54/54) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (đo đỏ 7 SKIP/VS0604 → trait `Ngoai` trong VM + CLI truyền host → bỏ SKIP/`vm:vs0604`
+                → 5 ca CLI + host 54/54 VM → 966 test → diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:54:59Z**; **961** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
-                **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
-                (152,9 s, seed 20261115) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-88] báo cáo R13 …` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T17:40:40Z**; **966** test / sem
+                **447/22 nhóm** / `vis test` **447 ok**, `--vm` **447 ok + 0 SKIP** / host **54/54 (VM
+                54/54)** / parity **398/398 + 49 lỗi biên dịch** / differential **100.000 chương trình
+                0 lệch** (148,4 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-89]` + push (đã được uỷ quyền)
+
+## ST-89 — host `Ngoai` cho VM, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo đỏ** | `vis run --vm` `.vish` có `/bin/echo` ⇒ **`VS0604`** “chưa hỗ trợ ở môi trường này (không có host)”, exit 1; interp cùng tệp in `[hi]`, exit 0; `vis test --vm test/sem` = **447 ok + 7 SKIP** (0 `not ok`). Log `JOURNAL/st89-red.log` sha256 `c22db3f9…`; Rust `st89-red-rust.log` sha256 `d258d8fa…` (**4/5 ca đỏ**). |
+| 1 | **Trait host** | `vis-vm` thêm `ngoai: Option<&mut dyn vis_interp::builtin::Ngoai>`; `Host for Vm` override `ngoai` + `ngoai_day_du` (delegate), **không** gọi `std::process`. API mới `run_with_full_hosts_caps(m,text,args,ngoai,fs,net,caps)`; `run_with_hosts_caps`/`run_with_hosts` **giữ chữ ký cũ** làm wrapper (`None` cho Ngoai). |
+| 2 | **CLI** | Nhánh `--vm` dựng **cùng** `ngoai::Runner` như interp; chỉ truyền khi `che_do == Command && !co_no_extern` (đúng điều kiện interp) ⇒ `.vish` lệnh ngoài chạy cả hai đường; `.vis`/`--no-extern` giữ `None`. |
+| 3 | **Bỏ SKIP** | `vistest.rs`: xoá **hai** nhánh SKIP `VS0604`; `vis_test.rs`: khoá **`skip == 0`**; `diag_cmp`: `XANH_CAN_HOST 4→0`, `LUC_CHAY_CAN_HOST 3→0`; `pipeline::vm_khong_host_bao_vs0604` đổi thành **`vm_co_host_chay_cung_interp`** (cùng byte); `host_conformance`: bỏ `vm:vs0604`, xoá token ở **13 ca** suite, khoá **VM 54/54**; mỗi chỗ ghi **SỬA KÈM LÝ DO (ST-89)**. |
+| 4 | **Ca (5+)** | `crates/vis-cli/tests/ngoai_vm.rs`: (a) `echo`; (b) `/bin/echo a | /bin/cat`; (c) `/usr/bin/false | complete` (code 1); (d) lệnh không tồn tại (`VS0501`, exit 1); (e) `/bin/sh -c "exit 3" | complete` (code 3) — **cả 5** chạy hai đường, so **byte** `(exit, stdout, stderr)`. **Ca (f)**: `host_conformance` chạy **54/54 ca × 2 đường**, in `VM 54/54`. |
+| 5 | **Đo** | **966** test = 961 + **5** (21+96+27+154+26+62+9+**571**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54, 120 lần chạy, 0 lệch, VM 54/54**; `diag_cmp` **364/49/34** (host 0/0); `vs_interp` **398/398 khớp + 49 lỗi biên dịch**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=148.4 toc_do=674/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 6 | **Parity 405** | **Không tồn tại trong phân hoạch**: 447 = **398 chạy được** + **49 lỗi biên dịch**; 7 ca host **đã nằm trong 398** (trước là “khớp `VS0604`”, nay khớp **thật**). 398 + 7 = **405** là **đếm trùng** — báo cáo giữ **398/398**, kèm 7 ca host đã khớp thật (đo bằng `ngoai_vm` + host suite). |
+| 7 | **Nợ** | 7 ca host trước đây “khác có chủ đích” **đã đóng**; còn: `--vm` vẫn **một luồng**, host `Ngoai` **không** qua `cap` (chạy lệnh ngoài không cần khai quyền — như interp hiện tại); `vis test` vẫn dùng `--no-cache` cho tệp tạm; VM **vẫn không** gọi process trực tiếp (đúng thiết kế). |
 
 ## ST-88 — báo cáo R13, 2026-11-14
 

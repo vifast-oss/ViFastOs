@@ -35,19 +35,19 @@ fs_mock_read	use std.fs\nfn main():\n    match fs.read("./notes.txt"):\n        
 fs_mock_list	use std.fs\nfn main():\n    match fs.list("./photos"):\n        ok(xs):\n            for x in xs:\n                print(x)\n        err(e):\n            print("err")	--fs-mock {host}/mock.json	.hidden\na.jpg\nb.jpg\n	0
 fs_mock_exists	use std.fs\nfn main():\n    print(fs.exists("./notes.txt"))\n    print(fs.exists("./khong.txt"))	--fs-mock {host}/mock.json	true\nfalse\n	0
 fs_mock_write	use std.fs\nfn main():\n    match fs.write("./notes.txt", "mới"):\n        ok(_):\n            match fs.read("./notes.txt"):\n                ok(s):\n                    print(s)\n                err(e):\n                    print("err")\n        err(e):\n            print("err")	--fs-mock {host}/mock.json	mới\n	0
-ngoai_echo	vish:/bin/echo xin chào	vm:vs0604	[xin chào]\n	0
-ngoai_cat	vish:/bin/echo a | /bin/cat	vm:vs0604	[a]\n	0
-ngoai_grep_match	vish:/bin/echo a | /usr/bin/grep a	vm:vs0604	[a]\n	0
-ngoai_grep_no	vish:/bin/echo x | /usr/bin/grep z	vm:vs0604		1	VS0501
-ngoai_complete_code1	vish:/bin/echo x | /usr/bin/grep z | complete	vm:vs0604	stdout  []\nstderr  []\ncode    1\n	0
-ngoai_complete_code0	vish:/bin/echo a | complete	vm:vs0604	stdout  [a]\nstderr  []\ncode    0\n	0
-ngoai_false	vish:/usr/bin/false	vm:vs0604		1	VS0501
-ngoai_sh_exit3	vish:/bin/sh -c "exit 3"	vm:vs0604		1	VS0501
-ngoai_khong_ton_tai	vish:/khong/co/lenh	vm:vs0604		1	VS0501
-ngoai_dashdash	vish:/bin/echo -- -n	vm:vs0604	[-- -n]\n	0
-ngoai_dau_cach	vish:/bin/echo "a b"	vm:vs0604	[a b]\n	0
-ngoai_nhieu_stage	vish:/bin/echo a | /bin/cat | /bin/cat	vm:vs0604	[a]\n	0
-ngoai_printf	vish:/usr/bin/printf abc	vm:vs0604	[abc]\n	0
+ngoai_echo	vish:/bin/echo xin chào		[xin chào]\n	0
+ngoai_cat	vish:/bin/echo a | /bin/cat		[a]\n	0
+ngoai_grep_match	vish:/bin/echo a | /usr/bin/grep a		[a]\n	0
+ngoai_grep_no	vish:/bin/echo x | /usr/bin/grep z			1	VS0501
+ngoai_complete_code1	vish:/bin/echo x | /usr/bin/grep z | complete		stdout  []\nstderr  []\ncode    1\n	0
+ngoai_complete_code0	vish:/bin/echo a | complete		stdout  [a]\nstderr  []\ncode    0\n	0
+ngoai_false	vish:/usr/bin/false			1	VS0501
+ngoai_sh_exit3	vish:/bin/sh -c "exit 3"			1	VS0501
+ngoai_khong_ton_tai	vish:/khong/co/lenh			1	VS0501
+ngoai_dashdash	vish:/bin/echo -- -n		[-- -n]\n	0
+ngoai_dau_cach	vish:/bin/echo "a b"		[a b]\n	0
+ngoai_nhieu_stage	vish:/bin/echo a | /bin/cat | /bin/cat		[a]\n	0
+ngoai_printf	vish:/usr/bin/printf abc		[abc]\n	0
 ls_mock_bang	vish:ls ./photos	--fs-mock {host}/mock.json	name   size  modified  is_file\na.jpg   1mb        3h  true\nb.jpg   6mb        2h  true\n	0
 ls_mock_all	vish:ls ./photos --all	--fs-mock {host}/mock.json	name     size  modified  is_file\n.hidden   1kb        1h  true\na.jpg     1mb        3h  true\nb.jpg     6mb        2h  true\n	0
 ls_long	vish:ls ./photos --long	--fs-mock {host}/mock-long.json	name   size     modified  is_file  mode       modified_time\na.jpg   2mb  1700000000s  true     rw-r--r--  2023-11-14 22:13\nb.jpg   6mb  1700086400s  true     rw-------  2023-11-15 22:13\n	0

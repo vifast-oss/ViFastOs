@@ -731,6 +731,13 @@ fn run_run(rest: &[String]) -> ExitCode {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
                     // ST-33/ST-63: `std.fs`/`std.net` đi qua host (chỉ CLI biết OS).
+                    // **ST-89 (VD-110)**: `.vish` (trừ `--no-extern`) truyền **cùng** runner Ngoai mà
+                    // interp dùng — VM chỉ gọi qua trait, không chạm OS.
+                    let mut runner = ngoai::Runner {
+                        giai_thich: explain_perms,
+                        ..ngoai::Runner::default()
+                    };
+                    let co_ngoai = che_do == vis_syntax::Mode::Command && !co_no_extern;
                     let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
                     let mut net_tho = HostNet::moi(explain_perms);
                     let mut fs = quyen::FsGuard {
@@ -741,10 +748,13 @@ fn run_run(rest: &[String]) -> ExitCode {
                         trong: &mut net_tho,
                         quyen: &quyen,
                     };
-                    vis_vm::run_with_hosts_caps(
+                    let ngoai_host: Option<&mut dyn vis_interp::builtin::Ngoai> =
+                        if co_ngoai { Some(&mut runner) } else { None };
+                    vis_vm::run_with_full_hosts_caps(
                         &m,
                         &text,
                         &prog_args,
+                        ngoai_host,
                         Some(&mut fs),
                         Some(&mut net),
                         &quyen.gia_tri(),

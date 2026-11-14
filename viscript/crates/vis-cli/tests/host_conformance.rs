@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **ST-75 (VD-104(3))** — bộ hợp chuẩn host: **≥50 ca chạy THẬT trên macOS**, mỗi ca chạy **cả**
 //! `vis run` và `vis run --vm --no-cache`, so **byte** stdout + mã thoát (+ stderr chứa nếu khai).
+//! **SỬA KÈM LÝ DO (ST-89)**: VM **đã có host `Ngoai`** (VD-110) ⇒ **không còn** `vm:vs0604`; 13 ca
+//! Ngoai chạy **cùng kỳ vọng** ở cả hai đường, tổng **54/54 × 2**.
 //!
 //! Dữ liệu: `test/host/suite.txt` (TSV 5–6 cột, xem header tệp). Mức bằng chứng: **chạy thật trên
 //! macOS**; Windows/Linux/wasm **chưa đo**. Không có ca "xanh vì không kiểm gì": mỗi ca phải có
@@ -64,7 +66,9 @@ fn giai(s: &str) -> String {
 }
 
 /// Trả `(chương trình, đuôi, flags, repeat)`.
-fn tach(prog: &str, args: &str) -> (String, &'static str, Vec<String>, usize, bool) {
+/// **SỬA KÈM LÝ DO (ST-89)**: bỏ cờ `vm:vs0604`/`vm_chet` — VM **đã có host `Ngoai`**, mọi ca chạy
+/// **cả hai** đường với cùng kỳ vọng; không còn ngoại lệ.
+fn tach(prog: &str, args: &str) -> (String, &'static str, Vec<String>, usize) {
     let (src, duoi) = match prog.split_once(':') {
         Some(("vish", r)) => (r, "vish"),
         Some(("vis", r)) => (r, "vis"),
@@ -72,20 +76,14 @@ fn tach(prog: &str, args: &str) -> (String, &'static str, Vec<String>, usize, bo
     };
     let mut flags = Vec::new();
     let mut repeat = 1usize;
-    let mut vm_chet = false;
     for t in args.split_whitespace() {
         if let Some(n) = t.strip_prefix("repeat=") {
             repeat = n.parse().unwrap_or(1).max(1);
-        } else if t == "vm:vs0604" {
-            // Phần lớn ca chạy cả hai đường; riêng **Ngoai** (`std.vish` gọi chương trình ngoài)
-            // đường `--vm` **không có host Ngoai** ⇒ đúng thiết kế là `VS0604`, exit 1 (ST-27/ST-33).
-            // Token này khai kỳ vọng đó để ca vẫn chạy **cả hai** đường thay vì bỏ VM.
-            vm_chet = true;
         } else {
             flags.push(t.to_string());
         }
     }
-    (giai(src), duoi, flags, repeat, vm_chet)
+    (giai(src), duoi, flags, repeat)
 }
 
 fn chay_mot(d: &Path, src: &str, duoi: &str, flags: &[String], vm: bool) -> (i32, Vec<u8>, String) {
@@ -117,6 +115,7 @@ fn host_conformance_suite() {
     let dem = AtomicUsize::new(0);
     let mut tong = 0usize;
     let mut so_lan = 0usize;
+    let mut so_vm = 0usize;
     let mut hong: Vec<String> = Vec::new();
 
     for dong in text.lines() {
@@ -130,7 +129,7 @@ fn host_conformance_suite() {
             "dòng suite phải 5–6 cột: {dong:?}"
         );
         let ten = cot[0];
-        let (src0, duoi, flags0, repeat, vm_vs0604) = tach(cot[1], cot[2]);
+        let (src0, duoi, flags0, repeat) = tach(cot[1], cot[2]);
         let muon_out = giai(cot[3]);
         let muon_ma: i32 = cot[4].parse().unwrap_or_else(|_| panic!("mã thoát: {ten}"));
         let muon_err = cot.get(5).map(|s| giai(s)).unwrap_or_default();
@@ -156,12 +155,11 @@ fn host_conformance_suite() {
             for lan in 0..repeat {
                 let (ma, out, err) = chay_mot(&d, &src, duoi, &flags, vm);
                 so_lan += 1;
+                if vm && lan == 0 {
+                    so_vm += 1;
+                }
                 let duong = if vm { "vm" } else { "interp" };
-                let (ma_muon, out_muon, err_muon) = if vm && vm_vs0604 {
-                    (1, String::new(), "VS0604")
-                } else {
-                    (muon_ma, muon_out.clone(), muon_err.as_str())
-                };
+                let (ma_muon, out_muon, err_muon) = (muon_ma, muon_out.clone(), muon_err.as_str());
                 let ok = ma == ma_muon && out == out_muon.as_bytes();
                 let ok_err = err_muon.is_empty() || err.contains(err_muon);
                 if !ok || !ok_err {
@@ -183,6 +181,8 @@ fn host_conformance_suite() {
         let _ = std::fs::remove_dir_all(&d);
     }
     assert!(tong >= 50, "bộ hợp chuẩn host cần ≥50 ca, hiện {tong}");
+    // **ST-89**: đường `--vm` phải chạy **đủ** số ca (không còn `vm:vs0604`).
+    assert_eq!(so_vm, tong, "VM phải chạy đủ {tong} ca, thật {so_vm}");
     assert!(
         hong.is_empty(),
         "{} lỗi / {tong} ca ({so_lan} lần chạy):\n{}",
@@ -190,5 +190,5 @@ fn host_conformance_suite() {
         hong.join("\n")
     );
     println!("1..{tong}");
-    println!("# {tong} ca, {so_lan} lần chạy (interp + vm), 0 lệch");
+    println!("# {tong} ca, {so_lan} lần chạy (interp + vm), 0 lệch; VM {so_vm}/{tong}");
 }

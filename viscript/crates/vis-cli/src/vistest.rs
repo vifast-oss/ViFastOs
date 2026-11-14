@@ -267,11 +267,6 @@ pub fn run(args: &[String]) -> ExitCode {
             let ok = code == muon && stderr.contains(mong);
             if ok {
                 tap.push_str(&format!("ok {n} - {ten}\n"));
-            } else if vm && stderr.contains("VS0604") {
-                // VM **không** có host chương trình ngoài ⇒ ca `.err` cần chạy lệnh ngoài = SKIP.
-                tap.push_str(&format!(
-                    "ok {n} - {ten} # SKIP chương trình ngoài cần host (VM không có — ST-27)\n"
-                ));
             } else {
                 hong += 1;
                 tap.push_str(&format!("not ok {n} - {ten}\n"));
@@ -286,11 +281,6 @@ pub fn run(args: &[String]) -> ExitCode {
         let want = bo_spdx(&want);
         if code == 0 && out == want {
             tap.push_str(&format!("ok {n} - {ten}\n"));
-        } else if vm && stderr.contains("VS0604") {
-            // VM **không** có host chương trình ngoài (ST-27: chỉ `vis-cli` biết OS) ⇒ SKIP đúng nghĩa.
-            tap.push_str(&format!(
-                "ok {n} - {ten} # SKIP chương trình ngoài cần host (VM không có — ST-27)\n"
-            ));
         } else {
             hong += 1;
             tap.push_str(&format!("not ok {n} - {ten}\n"));

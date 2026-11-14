@@ -1,0 +1,14 @@
+# ST-89 — ĐO ĐỎ trước sửa, 2026-11-14T17:05:23Z, HEAD 5885d429
+
+## (1) vis run --vm .vish có echo (VM chưa host Ngoai)
+test/sem/vish/ngoai-echo.vish:2:1: error VS0604: chương trình ngoài `/bin/echo` chưa hỗ trợ ở môi trường này (không có host)
+[vm_exit=1]
+## (2) vis run cùng tệp (interp)
+[hi]
+[interp_exit=0]
+
+## (3) đếm SKIP trong vis test --vm
+ok=447 skip=7 not_ok=0
+ok 418 - vish/lenh-la.vish # SKIP chương trình ngoài cần host (VM không có — ST-27)
+ok 423 - vish/ngoai-echo.vish # SKIP chương trình ngoài cần host (VM không có — ST-27)
+ok 424 - vish/ngoai-printf.vish # SKIP chương trình ngoài cần host (VM không có — ST-27)

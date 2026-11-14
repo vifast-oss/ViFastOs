@@ -2,7 +2,7 @@
 //! ST-30 — **`vis test`**: chạy bộ `test/sem/**` in **TAP**, đếm khớp harness (346), `--vm` khớp interp.
 //!
 //! Khoá: `1..N` đúng số ca; ca đỏ ⇒ exit 1 + `not ok` + dòng `# <tệp>:<dòng>:<cột>: <mã>`; `--vm`
-//! chạy đường VM (SKIP ca cần host chương trình ngoài — VM không có, ST-27).
+//! chạy đường VM — **ST-89**: VM có host chương trình ngoài, **không còn SKIP**.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -67,8 +67,10 @@ fn cac_dong_ok_dung_thu_tu_khong_lap() {
     }
 }
 
+/// **SỬA KÈM LÝ DO (ST-89)**: trước đây `--vm` SKIP 7 ca `.vish` dùng chương trình ngoài (VM không
+/// có host `Ngoai`); nay VM nhận **cùng** host ⇒ **0 SKIP**, mọi ca phải `ok` như interp.
 #[test]
-fn vm_khop_interp_va_co_skip_hop_le() {
+fn vm_khop_interp_va_khong_con_skip() {
     let (c, o, e) = vis(&["test", "--vm"]);
     let ls = dong(&o);
     assert_eq!(c, 0, "VM: exit phải 0 (ca cần host thì SKIP): {e}");
@@ -79,9 +81,9 @@ fn vm_khop_interp_va_co_skip_hop_le() {
         "--vm không được có ca đỏ"
     );
     let skip = ls.iter().filter(|l| l.contains("# SKIP")).count();
-    assert!(
-        skip >= 4,
-        "phải có ít nhất 4 ca SKIP (chương trình ngoài cần host), thật {skip}"
+    assert_eq!(
+        skip, 0,
+        "VM có host Ngoai ⇒ không được còn SKIP, thật {skip}"
     );
 }
 

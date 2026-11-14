@@ -1,25 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **ST-87 (VD-109)** — cache **không che lỗi**: chạy toàn bộ `test/sem/**` + `test/std/**` ở **3 chế
 //! độ** (`run` interp; `run --vm` hai lần, lần 2 là cache; `run --vm --no-cache`), so **byte**
-//! `(exit, stdout, stderr)`. 520 tệp (≥500); 7 ca `.vish` dùng **chương trình ngoài** bị loại khỏi so
-//! interp vì VM **chưa có host Ngoai** (đã biết từ ST-27/ST-75 — VM báo `VS0604`, không phải cache);
-//! với 7 ca đó vẫn so **B1 = B2 = C**.
+//! `(exit, stdout, stderr)`. 520 tệp (≥500). **SỬA KÈM LÝ DO (ST-89)**: VM **đã có host `Ngoai`** ⇒
+//! **bỏ danh sách 7 ca loại trừ**; nay so **cả 520 ca × 4 lần**, không còn `VS0604` có chủ đích.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
-
-/// Ca `.vish` chạy **chương trình ngoài**: interp chạy thật, VM báo `VS0604` (không có host Ngoai).
-/// Không phải lỗi cache; vẫn kiểm `B1 = B2 = C` và `A != B1`.
-const VM_KHONG_NGOAI: &[&str] = &[
-    "test/sem/vish/lenh-la.vish",
-    "test/sem/vish/ngoai-echo.vish",
-    "test/sem/vish/ngoai-printf.vish",
-    "test/sem/vish/ngoai-raw.vish",
-    "test/sem/vish/ngoai-thoat-ma.vish",
-    "test/sem/vish/ngoai-true.vish",
-    "test/sem/vish/stage-dau-chua-bind.vish",
-];
 
 fn goc() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -102,7 +89,6 @@ fn ba_che_do_520_tep_khong_lech() {
     let cache = thu_muc_cache("all");
     let goc = goc();
     let mut so = 0usize;
-    let mut bo_qua = 0usize;
     let mut lech: Vec<String> = Vec::new();
     for p in &ds {
         let rel = p
@@ -115,7 +101,6 @@ fn ba_che_do_520_tep_khong_lech() {
         let b1 = chay(&cache, &rel, &["--vm"]);
         let b2 = chay(&cache, &rel, &["--vm"]);
         let c = chay(&cache, &rel, &["--vm", "--no-cache"]);
-        let la_ngoai = VM_KHONG_NGOAI.contains(&rel.as_str());
         // Cache: B1 = B2 = C **luôn**.
         if khac(&b1, &b2, la_loi) || khac(&b1, &c, la_loi) {
             lech.push(format!(
@@ -123,42 +108,22 @@ fn ba_che_do_520_tep_khong_lech() {
             ));
             continue;
         }
-        if la_ngoai {
-            bo_qua += 1;
-            if !(a.0 != b1.0 || a.2 != b1.2) {
-                lech.push(format!(
-                    "{rel}: ca ngoài phải khác interp (VS0604), thật A={a:?} B1={b1:?}"
-                ));
-            }
-            if !String::from_utf8_lossy(&b1.2).contains("VS0604") {
-                lech.push(format!("{rel}: VM phải báo VS0604, thật {b1:?}"));
-            }
-            continue;
-        }
         if khac(&a, &b1, la_loi) {
             lech.push(format!("{rel}: interp≠VM\n A ={a:?}\n B1={b1:?}"));
         }
         so += 1;
     }
-    assert_eq!(
-        bo_qua,
-        VM_KHONG_NGOAI.len(),
-        "phải gặp đủ ca ngoài đã biết: {bo_qua}/{}",
-        VM_KHONG_NGOAI.len()
-    );
     assert!(
         lech.is_empty(),
-        "{} lệch / {} ca so ({} ca ngoài bỏ qua):\n{}",
+        "{} lệch / {} ca so:\n{}",
         lech.len(),
         so,
-        bo_qua,
         lech.join("\n")
     );
     println!(
-        "CACHE_KHONG_CHE ca={} so={} ngoai={} cache_dir={}",
+        "CACHE_KHONG_CHE ca={} so={} cache_dir={}",
         ds.len(),
         so,
-        bo_qua,
         cache.display()
     );
     let _ = std::fs::remove_dir_all(&cache);

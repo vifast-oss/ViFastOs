@@ -173,6 +173,7 @@ fn than_chay() {
     );
     // **SỬA KÈM LÝ DO (ST-35)**: **0 ca bỏ qua** — 320 ca **chạy được** so interp ↔ VM, **26** ca lỗi
     // **biên dịch** đi qua **đường bytecode** (`compile()` không panic). Tổng **346**.
+    // **SỬA KÈM LÝ DO (ST-89)**: 7 ca host nay khớp thật nhưng vẫn trong **398** — không đổi tổng.
     // **SỬA KÈM LÝ DO (ST-57)**: **388** ca; **356** ca chạy được khớp + **32** ca lỗi biên dịch.
     // **SỬA KÈM LÝ DO (ST-56)**: +6 ca ⇒ **376**; **348** ca chạy được khớp + **28** ca lỗi biên dịch.
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca ⇒ **382**; **352** ca chạy được khớp + **30** ca lỗi biên dịch.
@@ -182,6 +183,10 @@ fn than_chay() {
         "447 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     // **SỬA KÈM LÝ DO (ST-72)**: +3 ca cap xanh, +3 ca cap lỗi biên dịch ⇒ (395,46) → (398,49).
+    // **ST-89 (VD-110)**: VM **đã có host `Ngoai`** ⇒ 7 ca `.vish` chương trình ngoài (4 xanh + 3
+    // lỗi-chạy) nay khớp **thật** ở cả hai đường thay vì cùng `VS0604`; chúng **đã nằm trong 398**
+    // từ trước (447 = 398 chạy được + 49 lỗi biên dịch), nên phân hoạch **không đổi**: 398 + 49.
+    // Con số "405" không tồn tại trong phân hoạch này; 7 ca host là **tập con** của 398, không cộng thêm.
     assert_eq!(
         (khop, bien_dich),
         (398, 49),
@@ -237,6 +242,7 @@ fn hai_duong_cung_so_chan_doan() {
             // chạy (+`ban-ghi/self-amp-thieu-truong` VS0501).
             // **SỬA KÈM LÝ DO (ST-56b)**: **352** ca chạy được (+4 ca xanh); chẩn đoán lúc chạy
             // vẫn **31** (2 ca `.err` mới là lỗi **biên dịch**, không tới lúc chạy).
+            // **ST-89**: 398 ca chạy được **gồm 7 ca host** (nay khớp thật); tổng vẫn 398 + 49 lỗi biên dịch.
             assert_eq!(so_ca, 398, "phải so đủ 398 ca chạy được");
             assert_eq!(
                 // **SỬA KÈM LÝ DO (ST-60)**: 32 → **34** (+2 ca `VS0506` lúc chạy).
