@@ -839,3 +839,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   (3) **Kiểm chứng sâu**: fuzz **differential** mở rộng cho cú pháp mới (20.000 chương trình, **0 lệch**, seed ghim) và **cache không
   che lỗi** — chạy ≥500 ca ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so **byte**; lệch ⇒ sửa, không ghi nợ.
   (4) Không thêm hạng mục VS2 mới trong vòng này.
+
+- **VD-110** **Vòng 14 — đóng khoảng lệch cuối (ST-89..ST-92)**: (1) **`Ngoai` cho VM**: đây là **khoảng lệch interp ↔ VM duy nhất
+  còn lại** (7 ca `.vish` dùng chương trình ngoài: VM trả `VS0604`) ⇒ phải chạy được ở **cả hai** đường, `--vm` SKIP **7 → 0**,
+  parity **398 → 405**. Host vẫn là **CLI** (VM không chạm OS; `vis-vm` chỉ nhận trait). (2) `vis pkg`: lock **lưu `entry`** (bỏ
+  quy ước dò tệp) + `vis pkg remove`; **lock cũ vẫn đọc được** (thiếu `entry` ⇒ fallback quy ước, ghi rõ). (3) LSP completion
+  **sau `.`** theo **kiểu tĩnh** của biểu thức trước dấu chấm (field bản ghi + phương thức `impl`); không phá 34 ca LSP hiện có.
+  (4) Không thêm hạng mục VS2 mới; **không** nới ngưỡng.
