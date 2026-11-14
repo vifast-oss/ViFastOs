@@ -174,7 +174,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **DONE** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
 | ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **DONE** | ≥6 ca; TAP đúng; interp = `--vm` |
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **DONE** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
-| ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **READY** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
+| ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **DONE** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **READY** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1232,3 +1232,15 @@ APPROVED 2026-11-14 Agent 0
 > **447/22** · parity **398/398** · differential **100k/0 lệch** (96,3 s). Nợ: chẩn đoán tệp **phụ** không publish (chủ ý);
 > completion/hover **chưa** module-aware; buffer chưa lưu chưa có chẩn đoán module; không cache giữa các `didChange`.
 > **ST-81 mở** (`--strict-caps`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-81 DONE — nhất quán #5 (`--strict-caps`).** Commit `8aca7f7b` (**Agent 2 tự commit, đã push**). Cờ mới cho `run` **và** `test`
+> (`Quyen.siet`; `bat = siet || !ds.is_empty()`): chạm `std.fs`/`net` mà **không** khai `cap` ⇒ **`VS0604`** nêu "cần khai
+> `cap[Dir]`/`cap[Net]`" + **đường dẫn**, exit 2; có `cap` thì luật ST-72b giữ nguyên; `--fs-mock` **vẫn** kiểm quyền (khoá lựa
+> chọn). **Mặc định không đổi** (khoá bằng ca (a) + 8 ca `quyen.rs` cũ vẫn xanh). **7 ca** chạy **cả** interp và `--vm --no-cache`.
+> Đo: **914 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (217,6 s). Đỏ trước **thật**: cờ chưa tồn tại
+> ⇒ "không hỗ trợ cờ" exit 2; 6/7 ca đỏ.
+> Nợ: **siết mặc định** vẫn là nợ lớn (phải chuyển toàn fixture), `fs.exists` ngoài quyền vẫn trả `false` im lặng, cờ chỉ áp cho
+> `run`/`test`.
+> **ST-82 mở** (R12 — chốt vòng 12).
