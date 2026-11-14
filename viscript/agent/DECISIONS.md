@@ -814,3 +814,13 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   báo cáo; siết mặc định là **nợ** (phải có `--strict-caps` + cập nhật toàn bộ fixture). (5) `--grant <tên>=<đường dẫn>`
   **ghi đè** đường dẫn của quyền đã khai (không thêm quyền mới). (6) Landlock thật: **chỉ** Linux, crate ngoài `viscript/`;
   trên macOS **không** giả vờ — test `cfg(target_os="linux")`, báo cáo ghi "chưa đo trên macOS".
+
+- **VD-107** **Landlock: chỉ **probe** + khung, **không** giả vờ (ST-73)**: (1) Máy phát triển là macOS ⇒ **không** có Landlock để
+  đo; luật hiện hành **cấm `unsafe`** (R2, danh sách crate đóng **rỗng**) và **cấm thêm crate ngoài allowlist** ⇒ **không** thể
+  gọi syscall Landlock trong vòng này. (2) Vì vậy ST-73 làm: **`vis run --sandbox-check`** — probe **chỉ đọc**
+  (`/sys/kernel/security/lsm` trên Linux; macOS/khác ⇒ "không có"), in kết quả + exit 0, và khung crate `vis-host-linux`
+  **ngoài** `viscript/` với `#[cfg(target_os = "linux")]` **chỉ đọc tệp** (không syscall), bằng chứng là
+  `cargo check --target x86_64-unknown-linux-gnu` **xanh**. (3) **Cấm** viết trong báo cáo/tài liệu rằng "đã cưỡng chế bằng
+  Landlock" — chỉ được nói "**cưỡng chế ở tầng runtime** (ST-72b) + **probe** Landlock (ST-73)". (4) Muốn Landlock thật: cần
+  Agent 0 duyệt **một** trong hai: (a) cho phép crate `landlock` (MIT/Apache) trong allowlist, hoặc (b) cho phép `unsafe`
+  **đóng** trong `vis-host-linux` + case âm; cả hai phải kèm runner Linux để **đo** — ghi thành **nợ có điều kiện**.

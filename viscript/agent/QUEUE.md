@@ -166,7 +166,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **DONE** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — kiểu `cap[Dir/File/Net/Proc]` trong tyck + `vis run --dry` liệt kê quyền khai báo | ST-71 | 3 h | **DONE** | `cap[Dir] @ p"./x" (write)` parse+check được; ≥5 ca sem; `--dry` in |
 | ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **READY** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
-| ST-73 | **VS2 #4c** — Landlock thật trên Linux (cfg linux) + tài liệu giới hạn | ST-72b | 3 h | **READY** | ≥8 ca Linux; trên macOS **không** giả vờ chạy |
+| ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **READY** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **READY** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **READY** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
