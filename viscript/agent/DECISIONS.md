@@ -846,3 +846,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   quy ước dò tệp) + `vis pkg remove`; **lock cũ vẫn đọc được** (thiếu `entry` ⇒ fallback quy ước, ghi rõ). (3) LSP completion
   **sau `.`** theo **kiểu tĩnh** của biểu thức trước dấu chấm (field bản ghi + phương thức `impl`); không phá 34 ca LSP hiện có.
   (4) Không thêm hạng mục VS2 mới; **không** nới ngưỡng.
+
+- **VD-111** **Vòng 15 — đóng nốt mô hình quyền + ngữ nghĩa kênh (ST-93..ST-95)**: (1) **`cap[Proc]`**: chương trình ngoài (`^cmd`,
+  `sh`) chỉ chạy khi chương trình khai `cap[Proc]`; `--strict-caps` ⇒ **`VS0604`** nêu `cap[Proc]` + tên lệnh; **mặc định không
+  đổi** (tương thích) — cùng chính sách với `cap[Dir]/cap[Net]`. (2) **Kênh**: `chan[T](0)` = **rendezvous** (gửi chờ tới khi có
+  người nhận; người nhận chờ tới khi có người gửi) **không treo** khi lập trình đúng; `recv` sau `close` ⇒ `None`; `send` sau
+  `close` ⇒ **`VS0504`**; task `Moi` còn sống khi chương trình kết thúc ⇒ **không** bị bỏ im lặng (chạy hết hoặc báo lỗi rõ).
+  (3) **Không** thêm cú pháp mới; không nới ngưỡng.

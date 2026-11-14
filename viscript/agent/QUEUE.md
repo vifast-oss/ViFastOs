@@ -187,7 +187,10 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-89 | **parity cuối** — host `Ngoai` cho **VM** (chương trình ngoài trong `.vish` chạy cả hai đường) | ST-88 | 3 h | **DONE** | `--vm` SKIP 7 → **0**; parity 398 → **405**; suite ngoài chạy 2 đường cùng byte |
 | ST-90 | **pkg** — lưu `entry` trong `vis.lock` + `vis pkg remove` | ST-89 | 2,5 h | **DONE** | ≥5 ca; lock cũ vẫn đọc được (tương thích) |
 | ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **DONE** | ≥5 ca; tất định; không phá 34 ca LSP |
-| ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
+| ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
+| ST-93 | **`cap[Proc]`** — chương trình ngoài phải có quyền `cap[Proc]`; `--strict-caps` cưỡng chế | ST-92 | 2,5 h | **READY** | ≥6 ca; hai đường cùng byte; `VS0604` nêu `cap[Proc]` |
+| ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **READY** | ≥8 ca; không treo; interp = VM |
+| ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **READY** | MD+JSON; nợ đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
