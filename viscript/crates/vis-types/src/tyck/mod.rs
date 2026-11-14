@@ -579,6 +579,12 @@ impl<'a> Checker<'a> {
     }
 
     fn resolve_named(&mut self, name: &str, args: &[Type], span: Span) -> Type {
+        // **ST-72 (VD-106 (1))**: `cap[Dir|File|Net|Proc|Env|Term]` — kiểu quyền **dựng sẵn**.
+        // Đối số **không** resolve như kiểu thường: `Dir/File/…` **không** có nghĩa ngoài `cap`
+        // (tránh biến chúng thành kiểu toàn cục).
+        if name == "cap" || name == "Cap" {
+            return self.resolve_cap(args, span);
+        }
         let resolved: Vec<Type> = args.iter().map(|a| self.resolve_ann(a, span)).collect();
         match (name, resolved.len()) {
             ("list", 1) => return Type::List(Box::new(resolved[0].clone())),
@@ -660,6 +666,51 @@ impl<'a> Checker<'a> {
         };
         self.diag(NO_TYPE, msg, span);
         Type::Error
+    }
+
+    /// `cap[X]`: đúng 1 đối số, `X` ∈ {Dir, File, Net, Proc, Env, Term}; biểu diễn
+    /// `TypeRef{"cap", [TypeRef{X}]}` (rẻ: dùng lại `TypeRef`, không thêm biến thể `Type`).
+    fn resolve_cap(&mut self, args: &[Type], span: Span) -> Type {
+        const KINDS: [&str; 6] = ["Dir", "File", "Net", "Proc", "Env", "Term"];
+        if args.len() != 1 {
+            self.diag(
+                NO_TYPE,
+                format!(
+                    "`cap` cần đúng 1 tham số (Dir/File/Net/Proc/Env/Term), được {}",
+                    args.len()
+                ),
+                span,
+            );
+            return Type::Error;
+        }
+        let kind = match &args[0] {
+            Type::TypeRef { name, args } if args.is_empty() => name.clone(),
+            _ => {
+                self.diag(
+                    NO_TYPE,
+                    "tham số `cap[...]` phải là một trong Dir/File/Net/Proc/Env/Term".to_string(),
+                    span,
+                );
+                return Type::Error;
+            }
+        };
+        if !KINDS.contains(&kind.as_str()) {
+            self.diag(
+                NO_TYPE,
+                format!(
+                    "kiểu quyền `{kind}` không hợp lệ — chỉ Dir/File/Net/Proc/Env/Term (VD-106)"
+                ),
+                span,
+            );
+            return Type::Error;
+        }
+        Type::TypeRef {
+            name: "cap".into(),
+            args: vec![Type::TypeRef {
+                name: kind,
+                args: Vec::new(),
+            }],
+        }
     }
 
     // ----- duyệt chương trình -----

@@ -6,18 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-71 — VS2 #6b: `use pkg.*`** (nạp gói đã cài theo `vis.lock`, `rel` tổng hợp
-                `pkg/<tên>/<ver>/…`, kiểm **sha** lúc chạy ⇒ `VS0701`; vòng qua gói ⇒ `VS0702`;
-                5 ca CLI mới + cập nhật 1 ca cũ) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 6 ca + probe (5+1 đỏ) → `modules.rs`: `giai_pkg`/`tach_pkg`/`chon_tep_pkg`/
-                `doc_tep_goi` + `rel_cua` pkg + `pkg.rs` mở `pub(crate)` → 11/11 + 18/18 xanh →
-                workspace **854** → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-72 — VS2 #4a: kiểu `cap[...]` + `vis run --dry`** (`cap[Dir/File/Net/Proc/Env/Term]`
+                là kiểu thật; `@ p"…"`/`@ "host"` + `(write)`; bất biến cấm so sánh/in; `--dry` in quyền
+                từ CST, không chạy; 6 ca sem + 4 ca Rust) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 6 sem + 4 Rust (đỏ 6/0) → tyck `resolve_cap` + lower `quyen.rs` + `--dry`
+                → 447/447 + 858 xanh → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T09:10:18Z**; **854** test / sem
-                **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (246,6 s) / **7 sổ-32 mã** (không mã mới) /
-                `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-71]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:03:42Z**; **858** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398**
+                (398 ca chạy được khớp + 49 lỗi biên dịch) / differential **100.000 chương trình 0 lệch**
+                (286,7 s) / **7 sổ-32 mã** (không mã mới) / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-72]` + push (đã được uỷ quyền)
+
+## ST-72 — VS2 #4a: kiểu `cap[...]` + `--dry`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Biểu diễn `cap`** | Chọn **rẻ nhất**: dùng lại `Type::TypeRef` ⇒ `TypeRef{"cap",[TypeRef{"Dir"}]}` (không thêm biến thể `Type`, không interned `RecId`, `TypeTable::show` in đúng `cap[Dir]`). Sáu tên `Dir/File/Net/Proc/Env/Term` **không** thành kiểu toàn cục: tyck xử `cap` **trước** khi resolve đối số ⇒ `Dir` ngoài `cap` vẫn `VS0301`; đối số lạ ⇒ `VS0301` nêu tên quyền; thiếu/thừa đối số ⇒ `VS0301`. |
+| 1 | **`@` + `(write)`** | Lower đã parse `cap` sẵn (`TypeRef`); thêm kiểm trong `lower/quyen.rs` (tách khỏi `lower.rs` để R1): `@` chỉ hợp lệ `cap[Dir]`/`cap[File]` + **path literal**, `cap[Net]` + **str literal**; `(write)` chỉ `cap[Dir]`/`cap[File]` và chỉ quyền `write`; sai ⇒ **VS0412** nêu quyền. Parser **tiêu** token `@` (không vào CST) nên nhận diện bằng literal ngay sau (ghi rõ). |
+| 2 | **Bất biến** | `cap` **không so sánh** (`==`/`!=` ⇒ VS0412), **không in** (`print`/`str` ⇒ VS0412); không có constructor/literal ⇒ chỉ đến từ **tham số**; truyền qua tham số hàm khác bình thường (tyck). |
+| 3 | **`--dry`** | `vis run --dry <tệp>`: parse **CST** tệp chính → `FnDecl` `main` → `Params`/`Param`, lấy `Type` + literal `@` + `GrantList`; in **stderr** `tên: cap[Dir] ./x (write)` (stdout **rỗng** để chứng minh **không chạy**; cùng quy ước `--dump-deps`), không quyền ⇒ `(không khai báo quyền)`; exit 0. |
+| 4 | **6 ca sem `test/sem/cap/`** | `cap-dir-chuyen` (cap[Dir] truyền hàm khác; `.out 0`), `cap-net-host` (`@ "api.example.com"`; 1), `cap-dir-write` (`@ p"./x" (write)`; 2), `sai-at-int` (`@` trên `int` ⇒ VS0412), `sai-write-net` (`(write)` trên Net ⇒ VS0412), `sai-so-sanh-in` (`d == d` ⇒ VS0412). Nhóm **mới** ⇒ **22 nhóm**. |
+| 5 | **4 ca Rust** (`tests/cap.rs`) | `dry_in_danh_sach` (3 dòng đúng thứ tự, stdout rỗng), `dry_khong_quyen`, `dry_khong_chay` (chạy thật in `KHONG`, `--dry` stdout rỗng), `cap_khong_in_duoc` (`vis check` VS0412 "không in được"). |
+| 6 | **Cập nhật khoá đếm** | sem 441→**447**/21→**22 nhóm** (`sem.rs`), `vis_test` 447, `diag_cmp` TONG 447/XANH 364/LOI_BIEN_DICH 49, `roundtrip` 447 ×2, `vs_interp` 447 + (398,49) + so_ca 398, `fuzz_mutate` 361→364, `tin_tyck` 46→49; **SỬA KÈM LÝ DO** bỏ ca `cap[Dir]` khỏi danh sách "kiểu ngoài VS0" ở `tyck_v2.rs` (hành vi đổi có chủ đích). |
+| 7 | **Red-first** | `JOURNAL/st72-red-sem.log` sha256 `969d29c2…` (`vis test`: **6 not ok**); `JOURNAL/st72-red-rust.log` sha256 `da4a369a…` (cap **0/4**, sem harness **0/1**, vs_interp **0/2** — đo trên mã đã tạm hoàn nguyên, harness cuối). |
+| 8 | **Đo** | **858** test (21+96+18+154+26+62+9+**472**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; `diag_cmp` **447** (364 xanh / 49 lỗi biên dịch / 34 lỗi chạy); differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=286.7 toc_do=349/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`lower.rs` **1.472**, `lower/quyen.rs` **83**, `tyck/mod.rs` **1.404**, `tyck/expr.rs` **1.486**, `main.rs` **830**). |
+| 9 | **Nợ** | **Chưa cưỡng chế** (ST-72b — `HostFs`/`HostNet`, `VS0604`, `--grant`); **chưa Landlock** (ST-73, chỉ Linux); **chưa có giá trị runtime cho `cap`** ⇒ ca sem xanh chỉ kiểm **tyck** (hàm cap không được gọi vì không có giá trị để truyền); không khai `cap` ⇒ **không hạn chế** (ghi rõ); `--dry` chỉ đọc `main` cấp tệp; chưa in quyền của hàm khác; `cap` chưa mang metadata (path/write) vào HIR — dữ liệu quyền mới ở CST cho `--dry`. |
 
 ## ST-71 — VS2 #6b: `use pkg.*` + kiểm sha lúc chạy, 2026-11-14
 

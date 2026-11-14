@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# (ST-72) `(write)` trên `cap[Net]` ⇒ chẩn đoán VS0412 (chỉ Dir/File mới ghi được).
+
+fn f(n: cap[Net] @ "h" (write)) -> int:
+    0
+
+fn main():
+    print(0)

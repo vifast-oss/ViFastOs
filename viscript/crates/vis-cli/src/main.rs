@@ -13,6 +13,7 @@ mod pkg;
 mod vistest;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
+use vis_syntax::{Kind, Mode, NodeKind};
 
 /// **ST-63 (VD-105)**: host mạng của CLI (TCP thật, chỉ loopback) — tên cục bộ cho rõ điểm nối.
 use net::Net as HostNet;
@@ -334,6 +335,8 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut dump = false;
     let mut dung_cache = true;
     let mut dump_deps = false;
+    // **ST-72 (VD-106 (2))**: in quyền khai báo của `main` rồi exit 0, **không** chạy.
+    let mut dry = false;
     let mut explain_perms = false;
     // `vis run --no-extern`: tắt chương trình ngoài (lệnh lạ ⇒ `VS0601`).
     let mut co_no_extern = false;
@@ -351,6 +354,7 @@ fn run_run(rest: &[String]) -> ExitCode {
             "--no-cache" => dung_cache = false,
             // ST-25: in cây phụ thuộc của module.
             "--dump-deps" => dump_deps = true,
+            "--dry" => dry = true,
             // ST-27: in nhật ký quyền trước mỗi lần chạy chương trình ngoài.
             "--explain-perms" => explain_perms = true,
             // ST-27: tắt chương trình ngoài ⇒ lệnh lạ `VS0601`.
@@ -384,7 +388,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--no-cache] <tệp.vis> [-- args…]"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--no-cache] <tệp.vis> [-- args…]"
         );
         return ExitCode::from(2);
     };
@@ -417,6 +421,10 @@ fn run_run(rest: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // **ST-72 (VD-106 (2))**: `--dry` — chỉ in quyền từ CST của `main`, exit 0, **không** chạy.
+    if dry {
+        return run_dry(&tep, &text, che_do);
+    }
     if tap {
         eprintln!("TAP version 13");
         eprintln!("1..1");
@@ -720,4 +728,103 @@ fn main() -> ExitCode {
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),
     }
+}
+
+/// **ST-72 (VD-106 (2))**: in danh sách quyền khai báo của `main` (từ **CST**), exit 0, không chạy.
+///
+/// Định dạng cố định (stdout **rỗng**; danh sách ra **stderr** như `--dump-deps`):
+/// `tên: cap[Loại] đường-dẫn (write)`. Không có quyền ⇒ `(không khai báo quyền)`.
+fn run_dry(tep: &str, text: &str, mode: Mode) -> ExitCode {
+    let parsed = vis_syntax::parse(text, mode);
+    let cst = &parsed.cst;
+    let _ = tep;
+    let mut ds: Vec<String> = Vec::new();
+    for n in cst.root.children() {
+        if n.kind != NodeKind::FnDecl {
+            continue;
+        }
+        let ten = n
+            .tokens(&cst.tokens)
+            .find(|t| t.kind == Kind::Ident)
+            .map(|t| t.text.clone());
+        if ten.as_deref() != Some("main") {
+            continue;
+        }
+        let Some(ps) = n.child(NodeKind::Params) else {
+            continue;
+        };
+        for p in ps.children().filter(|x| x.kind == NodeKind::Param) {
+            let Some(tyn) = p.child(NodeKind::Type) else {
+                continue;
+            };
+            let ty = text
+                .get(tyn.span.start..tyn.span.end)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if !ty.starts_with("cap[") {
+                continue;
+            }
+            let toks: Vec<&vis_syntax::Token> = p.tokens(&cst.tokens).collect();
+            let mut ten_p = String::new();
+            for t in &toks {
+                if t.kind == Kind::Ident {
+                    ten_p = t.text.clone();
+                }
+                if t.is_punct(":") {
+                    break;
+                }
+            }
+            // Parser tiêu token `@` (không vào CST) nhưng giữ literal ngay sau ⇒ tìm token
+            // `Path`/`Str` **trực tiếp** của `Param`.
+            let duong = toks
+                .iter()
+                .find(|t| matches!(t.kind, Kind::Path | Kind::Str))
+                .map(|t| bo_lit(&t.text))
+                .unwrap_or_default();
+            let mut quyen = String::new();
+            if let Some(g) = p.child(NodeKind::GrantList) {
+                let gs: Vec<String> = g
+                    .children()
+                    .filter(|x| x.kind == NodeKind::DottedPath)
+                    .map(|x| {
+                        text.get(x.span.start..x.span.end)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
+                    })
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !gs.is_empty() {
+                    quyen = format!(" ({})", gs.join(", "));
+                }
+            }
+            if duong.is_empty() {
+                ds.push(format!("{ten_p}: {ty}{quyen}"));
+            } else {
+                ds.push(format!("{ten_p}: {ty} {duong}{quyen}"));
+            }
+        }
+    }
+    if ds.is_empty() {
+        eprintln!("(không khai báo quyền)");
+    } else {
+        for d in ds {
+            eprintln!("{d}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// Bỏ `p"…"`/`"…"` để in đường dẫn/host **không** kèm cú pháp literal.
+fn bo_lit(s: &str) -> String {
+    let s = s.trim();
+    let inner = if let Some(r) = s.strip_prefix("p\"") {
+        r
+    } else if let Some(r) = s.strip_prefix('"') {
+        r
+    } else {
+        return s.to_string();
+    };
+    inner.strip_suffix('"').unwrap_or(inner).to_string()
 }

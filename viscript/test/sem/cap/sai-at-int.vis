@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# (ST-72) `@` trên tham số `int` ⇒ chẩn đoán VS0412 (không phải cap).
+
+fn f(x: int @ p"./x") -> int:
+    0
+
+fn main():
+    print(0)

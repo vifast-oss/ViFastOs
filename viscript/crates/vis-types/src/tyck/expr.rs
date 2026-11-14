@@ -525,6 +525,15 @@ impl<'a> Checker<'a> {
                 inner
             }
             BinOp::Eq | BinOp::Ne => {
+                // **ST-72 (VD-106 (1))**: `cap` là quyền — **không** so sánh được.
+                if la_cap(l) || la_cap(r) {
+                    self.diag(
+                        MISMATCH,
+                        format!("`cap` không so sánh được (`{}`)", self.show(l)),
+                        span,
+                    );
+                    return Type::Bool;
+                }
                 if matches!(l, Type::Fn(..)) || matches!(r, Type::Fn(..)) {
                     self.diag(MISMATCH, "không so sánh được hàm (VD-43 #4)", span);
                     return Type::Bool;
@@ -1292,6 +1301,14 @@ impl<'a> Checker<'a> {
         let t0 = || tys.first().cloned().unwrap_or(Type::Error);
         match name {
             "print" => {
+                // **ST-72 (VD-106 (1))**: `cap` chỉ dùng làm tham số — không in được.
+                if la_cap(&t0()) {
+                    self.diag(
+                        MISMATCH,
+                        format!("`cap` không in được (`{}`)", self.show(&t0())),
+                        span,
+                    );
+                }
                 if !arity(1) {
                     self.diag(
                         ARG_COUNT,
@@ -1462,3 +1479,8 @@ impl<'a> Checker<'a> {
 /// Giữ chỗ: `HPat`/`HStmt` dùng ở module khác (tránh import thừa).
 #[allow(dead_code)]
 fn _giu(_: &HPat, _: &HStmt) {}
+
+/// **ST-72 (VD-106)**: kiểu quyền `cap[...]`.
+fn la_cap(t: &Type) -> bool {
+    matches!(t, Type::TypeRef { name, .. } if name == "cap")
+}

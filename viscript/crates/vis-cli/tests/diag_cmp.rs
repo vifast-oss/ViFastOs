@@ -32,9 +32,10 @@ use std::process::Command;
 /// (VS0412 ×4: `await` không phải `Task`, `async fn` làm giá trị, `spawn` `--tên`, `spawn` không
 /// async; VS0201: `async` trong `impl`) + 2 ca lỗi **lúc chạy** (`VS0506` ×2: thân tác vụ lỗi ở
 /// `await` và ở join cuối).
-const TONG: usize = 441;
-const XANH: usize = 361;
-const LOI_BIEN_DICH: usize = 46;
+// **SỬA KÈM LÝ DO (ST-72)**: 441 → **447** (+6 ca `cap/`: 3 xanh, 3 lỗi biên dịch).
+const TONG: usize = 447;
+const XANH: usize = 364;
+const LOI_BIEN_DICH: usize = 49;
 const LOI_LUC_CHAY: usize = 34;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
 const XANH_CAN_HOST: usize = 4;

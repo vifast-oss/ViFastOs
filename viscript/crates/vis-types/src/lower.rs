@@ -39,6 +39,7 @@ mod cmd;
 mod expr;
 mod khai;
 mod pat;
+mod quyen;
 mod stmt;
 mod sugar;
 mod than;
@@ -897,6 +898,8 @@ impl<'a> Lowerer<'a> {
                 .filter(|c| c.kind != NodeKind::Type && c.kind != NodeKind::GrantList)
                 .last()
                 .map(|c| self.lower_expr(c));
+            // **ST-72 (VD-106 (2))**: `@ p"…"`/`@ "host"` + `(write)` chỉ hợp lệ trên `cap[...]`.
+            self.kiem_cap_param(p, &ty);
             // ST-27: tham số variadic nhận **list** phần tử (vd `...rest: str` ⇒ `list[str]`).
             let ty = if variadic {
                 Type::List(Box::new(ty))

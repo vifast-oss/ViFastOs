@@ -238,13 +238,13 @@ fn phep_cua_vs0_theo_vd48() {
 }
 
 /// VD-48(a): kiểu ngoài VS0 vẫn `VS0301` **nhưng** thông điệp nêu "VS0/vis-std".
+///
+/// **SỬA KÈM LÝ DO (ST-72)**: bỏ ca `cap[Dir]` khỏi danh sách "kiểu ngoài VS0" — từ **VD-106**
+/// `cap[...]` là **kiểu thật** (nên `f(1)` báo `VS0412` sai kiểu, không phải `VS0301`). Hành vi đổi
+/// có chủ đích; không xoá ca (AnyError/Json vẫn khoá đường `VS0301`).
 #[test]
 fn kieu_ngoai_vs0_bao_vs0301_ro_rang() {
-    for src in [
-        "let x: AnyError = none\nx",
-        "fn f(c: cap[Dir]) -> int:\n    1\nf(1)",
-        "let j: Json = none\nj",
-    ] {
+    for src in ["let x: AnyError = none\nx", "let j: Json = none\nj"] {
         let (out, _) = run(src);
         assert!(
             !out.codes().is_empty() && out.codes().iter().all(|c| *c == "VS0301"),

@@ -141,17 +141,21 @@ fn sem_323_ca_qua_binary() {
         // **SỬA KÈM LÝ DO (ST-60c)**: +**7** ca nhóm `trait/` (impl sinh từ `derives` vào
         // `impl_pairs`; `derives Show` cho enum **sinh mã thật**; `Eq` chặn **sâu** list/map/opt) ⇒
         // **441 ca / 21 nhóm** (367 `.vis` + 50 `.vish`, **80** `.err`).
-        441,
-        "phải đúng 441 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        // **SỬA KÈM LÝ DO (ST-72)**: +**6** ca nhóm **mới `cap/`** (cap[Dir]/cap[Net]/`@`/`(write)`
+        // hợp lệ ×3; sai `@` trên int, `(write)` trên Net, so sánh/in cap ×3) ⇒ **447 ca / 22 nhóm**
+        // (397 `.vis` + 50 `.vish`, **83** `.err`).
+        447,
+        "phải đúng 447 ca (397 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.
     // **SỬA KÈM LÝ DO (ST-60)**: nhóm mới **`async/`** ⇒ **20 nhóm**.
     // **SỬA KÈM LÝ DO (ST-61)**: nhóm mới **`kenh/`** ⇒ **21 nhóm**.
+    // **SỬA KÈM LÝ DO (ST-72)**: nhóm mới **`cap/`** ⇒ **22 nhóm**.
     assert_eq!(
         theo_nhom.len(),
-        21,
-        "phải đúng 21 nhóm (ST-28 `generic`; ST-57 `trait`; ST-60 `async`; ST-61 `kenh`), thật {theo_nhom:?}"
+        22,
+        "phải đúng 22 nhóm (ST-28 `generic`; ST-57 `trait`; ST-60 `async`; ST-61 `kenh`; ST-72 `cap`), thật {theo_nhom:?}"
     );
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())

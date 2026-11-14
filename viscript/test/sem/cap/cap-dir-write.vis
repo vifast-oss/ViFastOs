@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# (ST-72) cap[Dir] + `@ p"./x"` + `(write)` hợp lệ.
+
+fn ghi(d: cap[Dir] @ p"./x" (write)) -> int:
+    0
+
+fn main():
+    print(2)

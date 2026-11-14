@@ -1,0 +1,114 @@
+# ST-72 — log ĐỎ (Rust) lúc 2026-11-14T09:36:26Z, HEAD dae06315 — CHƯA có cap/--dry; harness CUỐI.
+# lệnh: cargo test -p vis-cli --test cap; cargo test -p vis-cli --test sem; cargo test -p vis-vm --test vs_interp
+
+## tests/cap.rs
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.80s
+     Running tests/cap.rs (target/debug/deps/cap-5f589c0eef27c38b)
+
+running 4 tests
+test dry_in_danh_sach ... FAILED
+test dry_khong_quyen ... FAILED
+test cap_khong_in_duoc ... FAILED
+test dry_khong_chay ... FAILED
+
+failures:
+
+---- dry_in_danh_sach stdout ----
+
+thread 'dry_in_danh_sach' (45944553) panicked at crates/vis-cli/tests/cap.rs:44:5:
+assertion `left == right` failed: stderr: vis run: không hỗ trợ cờ `--dry`
+
+  left: 2
+ right: 0
+
+---- dry_khong_quyen stdout ----
+
+thread 'dry_khong_quyen' (45944555) panicked at crates/vis-cli/tests/cap.rs:59:5:
+assertion `left == right` failed: stderr: vis run: không hỗ trợ cờ `--dry`
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cap_khong_in_duoc stdout ----
+
+thread 'cap_khong_in_duoc' (45944552) panicked at crates/vis-cli/tests/cap.rs:90:5:
+stdout: TAP version 13
+1..1
+not ok 1 - f.vis
+# VS0301 1:6 tên không tồn tại: kiểu `Dir` không có trong VS0 (VD-43) và không được khai trong tệp
+
+
+---- dry_khong_chay stdout ----
+
+thread 'dry_khong_chay' (45944554) panicked at crates/vis-cli/tests/cap.rs:74:5:
+assertion `left == right` failed: stderr: vis run: không hỗ trợ cờ `--dry`
+
+  left: 2
+ right: 0
+
+
+failures:
+    cap_khong_in_duoc
+    dry_in_danh_sach
+    dry_khong_chay
+    dry_khong_quyen
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p vis-cli --test cap`
+
+## tests/sem.rs (khoá đếm 447/22 nhóm)
+1..1
+sai-so-sanh-in.vis:4:6: error VS0301: tên không tồn tại: kiểu `Dir` không có trong VS0 (VD-43) và không được khai trong tệp
+sai-so-sanh-in.vis:4:6: error VS0301: kiểu `cap` không có ở VS0 — thuộc vis-std/vòng 2; ở VS0 dùng kiểu khác hoặc bỏ chú thích
+sai-so-sanh-in.vis:4:6: error VS0301: tên không tồn tại: kiểu `Dir` không có trong VS0 (VD-43) và không được khai trong tệp
+sai-so-sanh-in.vis:4:6: error VS0301: kiểu `cap` không có ở VS0 — thuộc vis-std/vòng 2; ở VS0 dùng kiểu khác hoặc bỏ chú thích
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/cap/sai-so-sanh-in.vis (VS0301)
+
+cap/sai-write-net: muốn exit 2 + stderr chứa `VS0412`, được exit 2
+  stderr: TAP version 13
+1..1
+sai-write-net.vis:4:6: error VS0301: tên không tồn tại: kiểu `Net` không có trong VS0 (VD-43) và không được khai trong tệp
+sai-write-net.vis:4:6: error VS0301: kiểu `cap` không có ở VS0 — thuộc vis-std/vòng 2; ở VS0 dùng kiểu khác hoặc bỏ chú thích
+sai-write-net.vis:4:6: error VS0301: tên không tồn tại: kiểu `Net` không có trong VS0 (VD-43) và không được khai trong tệp
+sai-write-net.vis:4:6: error VS0301: kiểu `cap` không có ở VS0 — thuộc vis-std/vòng 2; ở VS0 dùng kiểu khác hoặc bỏ chú thích
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/cap/sai-write-net.vis (VS0301)
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sem_323_ca_qua_binary
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.70s
+
+error: test failed, to rerun pass `-p vis-cli --test sem`
+
+## vis-vm/tests/vs_interp.rs (khoá 447/398/49)
+  left: 396
+ right: 398
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'hai_duong_cung_so_chan_doan' (45949172) panicked at crates/vis-vm/tests/vs_interp.rs:251:10:
+luồng lỗi: Any { .. }
+
+---- vm_khop_interp_tren_320_ca stdout ----
+
+thread '<unnamed>' (45949175) panicked at crates/vis-vm/tests/vs_interp.rs:185:5:
+assertion `left == right` failed: 398 ca chạy được khớp + 49 ca lỗi biên dịch chạm bytecode, thật 396/51
+  left: (396, 51)
+ right: (398, 49)
+
+thread 'vm_khop_interp_tren_320_ca' (45949173) panicked at crates/vis-vm/tests/vs_interp.rs:97:10:
+luồng lỗi: Any { .. }
+
+
+failures:
+    hai_duong_cung_so_chan_doan
+    vm_khop_interp_tren_320_ca
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+error: test failed, to rerun pass `-p vis-vm --test vs_interp`

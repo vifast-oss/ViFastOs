@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# (ST-72) cap[Dir] làm tham số + truyền cho hàm khác (kiểm tĩnh); chương trình chạy được.
+
+fn nhan(c: cap[Dir]) -> int:
+    7
+
+fn chuyen(c: cap[Dir]) -> int:
+    nhan(c)
+
+fn main():
+    print(0)
