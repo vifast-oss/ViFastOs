@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-75`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-76`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-75: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-76: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -119,7 +119,8 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-74** KT-47 — **cho phép `-icount shift=6` (cố định, 64 ns/lệnh) CHỈ trong `v2/test/boot/ktest.sh` — đính chính 2026-11-15: bản đầu ghi `shift=auto`, nhưng `auto` tự đổi shift giữa chừng làm Δ nhảy (3,4 ms và 16,6 ms) ⇒ TAP drift đỏ ngẫu nhiên; `shift=6` cho Δ 10,0000–10,0192 ms, 2 lần chạy liên tiếp PASS** (ảnh test), `run.sh` + soak KT-57 **giữ nguyên** dòng D2-72 Q2 (không icount). Lý do đo được: QEMU TCG không icount phục vụ timer ảo trễ ~150–200 ms (main loop), nên "Δ tick ∈ [9,11] ms" đo **độ trễ main loop của QEMU**, không đo toán deadline của kernel; có icount thì 1.000 tick cho 9,98–10,02 ms, `late=missed=0`. Ngưỡng drift **giữ nguyên [9,11] ms** — không nới. Điều kiện: (a) ghi deviation trong `k3-riscv64.md` §10 + JOURNAL/STATE; (b) **giữ** bằng chứng không-icount (product arm timer + ≥1 tick, log riêng) để chứng minh boot thật vẫn chạy; (c) KT-57 soak **không** dùng icount; (d) nếu sau này cần đo jitter thật thì mở task riêng, không đổi D2 này.- `ST-02a` (dòng ViScript) duyệt theo cùng mẫu trong `viscript/agent/QUEUE.md`; quyết định tương ứng ghi vào `viscript/agent/DECISIONS.md` (VD-).
 
 - **D2-75** KT-48 — **`probe_ndev` ĐƯỢC phép ở ảnh sản phẩm** với điều kiện **không phá trạng thái**: write-1 → read-back → **khôi phục 0** cho id dò, chỉ dùng để in/kiểm `ndev`, ghi rõ trong docs là chẩn đoán không phá huỷ (PLIC spec không có thanh ghi `ndev`; QEMU trả 95). Ngoài ra: `Platform::enable_irq/disable_irq` **phải có TAP gọi thật** (không chỉ `plic::irq_enabled`); `interrupts_delta` phải là **hiệu** trước/sau (hoặc đổi tên `interrupts_total`) — không được đặt tên sai bản chất; cửa sổ quiet phải khớp docs (100 µs hoặc 1 ms, chốt một con số).
-## Phần IV — Bảng nguồn cho các con số đang có hiệu lực
+
+- **D2-76** KT-50 — **nguồn sự thật cho IPI S-mode là `sip.SSIP`, KHÔNG map ACLINT MSWI**: đo được S-mode đọc `0x0200_0004` ⇒ `load access fault` (`scause=5`, `tval=0x0200_0004`; PMP firmware chặn) nên kernel **không** được phép đọc MSWI; theo privileged spec, software interrupt S-mode có hiệu lực qua `sip.SSIP` và được xoá bằng cách ghi `sip`. Đây **không** phải workaround mà là cách đúng: (a) gửi bằng SBI IPI EID `0x735049`; (b) nhận bằng `scause=(1<<63)|1`; (c) xoá pending bằng `csrc sip, SSIP`; (d) **cấm** map CLINT/MSWI vào MMIO của kernel (giữ nguyên D2-72 Q7). Điều kiện: ghi deviation vào `k3-riscv64.md` §13.4 + JOURNAL kèm log `-d int`/`kt50-aclint-pmp.log`; nếu sau này cần `mip` của hart khác thì phải qua SBI, không MMIO.## Phần IV — Bảng nguồn cho các con số đang có hiệu lực
 
 | Số | Giá trị | Nguồn |
 |---|---|---|
