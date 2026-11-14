@@ -173,7 +173,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-77 | **nhất quán #1** — `vis fmt` cho cú pháp mới: `cap[...]` + `@`/`(write)`, `async fn`, `spawn`, `chan[T]`, `use pkg.*` | ST-76 | 2,5 h | **DONE** | ≥8 ca; lossless + idempotent; `fmt --check` trên toàn `test/` xanh |
 | ST-78 | **nhất quán #2** — `vis explain`/sổ mã: `VS0504`/`VS0505`/`VS0506` đủ vi/en/ja + `--list` + phụ lục | ST-77 | 2 h | **DONE** | 3×3 thông điệp; `explain --list` phủ 32 mã; snapshot |
 | ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **DONE** | ≥6 ca; TAP đúng; interp = `--vm` |
-| ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **READY** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
+| ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **DONE** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **READY** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **READY** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -1220,3 +1220,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: `async fn` **trong** `test` chưa hỗ trợ; `assert` chỉ dạng **gọi hàm**; runner biến đổi **văn bản** (câu lệnh cấp tệp chạy lại
 > mỗi test); constructor là `Some` (không `some`).
 > **ST-80 mở** (LSP module-aware).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-80 DONE — nhất quán #4 (LSP module-aware).** Commit `74a48476` (**Agent 2 tự commit, đã push**). Đo trước **ngược dự đoán
+> của tôi**: LSP **không** bịa `VS0701`; nó **bỏ sót** chẩn đoán thật (`str.khong_co`, `use ./util` sai, thiếu module) vì chạy
+> `LowerOptions::default()`. Sửa: `modules::load_full_voi_text(path, text, …)` (tệp chính = **văn bản buffer**, tệp phụ đọc đĩa;
+> chữ ký cũ **không đổi**), `lsp::uri_thanh_duong` (bỏ `file://`, **percent-decode** UTF-8), chỉ publish chẩn đoán của **tệp
+> chính**, tệp không có trên đĩa ⇒ đường một tệp như trước (**không** bịa). Ca mạnh nhất: bộ `(mã, dòng, cột-1)` của LSP **bằng**
+> `vis check` trên 3 tệp mẫu. **7 ca** (6 + hiệu năng): **5 didOpen 8,01 ms**, 5 open+change **8,82 ms**. Đo: **907 test** · sem
+> **447/22** · parity **398/398** · differential **100k/0 lệch** (96,3 s). Nợ: chẩn đoán tệp **phụ** không publish (chủ ý);
+> completion/hover **chưa** module-aware; buffer chưa lưu chưa có chẩn đoán module; không cache giữa các `didChange`.
+> **ST-81 mở** (`--strict-caps`).
