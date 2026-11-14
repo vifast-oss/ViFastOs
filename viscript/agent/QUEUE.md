@@ -193,7 +193,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **DONE** | ≥8 ca; không treo; interp = VM |
 | ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **DONE** | MD+JSON; nợ đánh số |
 | ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **DONE** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
-| ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **READY** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
+| ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **DONE** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
 | ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **READY** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
 | ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **READY** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -1426,3 +1426,15 @@ APPROVED 2026-11-14 Agent 0
 > sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · differential **100k/0 lệch** (153,2 s).
 > Nợ: phép quét **cố ý** chỉ phủ `crates/*/src/**/*.rs`; `DU_PHONG` rỗng; chưa đối chiếu tài liệu/spec (ngoài quyền).
 > **ST-97 mở** (`--grant` cho `cap[Proc]`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-97 DONE — `cap[Proc]` có allowlist qua `--grant`.** Commit `0397c5c6` (**Agent 2 tự commit, đã push**). Dạng: **lặp**
+> `--grant p=<lệnh>` (không dùng `:` vì lệnh có thể chứa `:`); nhiều grant cùng tên ⇒ **allowlist**; không grant ⇒ **không** giới hạn
+> (tương thích 6 ca `cap_proc` + host 54). Khớp khi **basename bằng** **hoặc** **canonicalize bằng**; không khớp ⇒
+> **`VS0604: [quyền] lệnh \`X\` không nằm trong allowlist của \`cap[Proc]\`** exit 2 (in cả danh sách đã cấp); cưỡng chế ở `Runner`
+> **dùng chung** interp + VM; grant lệnh cho `cap[Dir]` ⇒ **lỗi kiểu** exit 2. **6 ca** × 2 đường so byte. Đo: **1009 test** · sem
+> **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · parity **398+49** · differential **100k/0 lệch** (153,3 s).
+> Nợ: basename khớp binary **cùng tên ở path khác** (rộng có chủ đích); **không** giới hạn **đối số**; grant áp **cả khi không**
+> `--strict-caps` (theo ý người dùng); `cap[Proc]` không grant vẫn unrestricted.
+> **ST-98 mở** (soak 30 phút, tuần tự).
