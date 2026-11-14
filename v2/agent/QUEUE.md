@@ -144,8 +144,8 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-37 | PageTable 3 cấp map/unmap + rights/attrs + 7 mã lỗi | KT-35, KT-36 | 3 h | DONE | 512 test; Miri 10+7; 7 mã lỗi/3 cỡ; walk 10k; 0 rò; reviewer APPROVE |
 | KT-38 | VSpace + ASID + generation + `active_on` | KT-37 | 2,5 h | DONE | 526 test; Miri 7+5+2+2; 257 ASID⇒gen+1; active_on; 10k; reviewer APPROVE |
 | KT-39 | W^X counters + protect/unmap + bất biến | KT-37 | 2,5 h | DONE | 536 test; Miri 8/8; W+X atomic; protect; shared RO; reviewer APPROVE sau DRIFT |
-| KT-40 | TLB model + `TlbFlush` + ack thế hệ + chống deadlock | KT-38, KT-39 | 3 h | READY | 16 entry/hart; ack đủ mới Ok; rút hộp thư; 4 mutation; 100k×4 |
-| KT-41 | VM fault + `FaultKind::Vm` model-only | KT-38 | 2 h | BLOCKED | NotMapped/Permission/Wx; fault_ep; spec không đổi; gate/Miri |
+| KT-40 | TLB model + `TlbFlush` + ack thế hệ + chống deadlock | KT-38, KT-39 | 3 h | DONE | 552 test; Miri 10/10; 5 mutation; ack đủ mới Ok; deadlock 2 hart; oracle active_on |
+| KT-41 | VM fault + `FaultKind::Vm` model-only | KT-38 | 2 h | READY | NotMapped/Permission/Wx; fault_ep; spec không đổi; gate/Miri |
 | KT-42 | 4 `.scn` + `check_vm` + shared read-only frame | KT-39, KT-40, KT-41 | 2,5 h | BLOCKED | 4 scn đỏ trước; self-test check_vm; shared RO; gate |
 | KT-43 | Cổng cuối K2: 100k×4 + 16 mutation + Miri + DoD | KT-42 | 3 h | BLOCKED | 0 vi phạm TLB-safety; AP→BSP bắt; Miri; DoD; log |
 
@@ -166,8 +166,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K2**: KT-35..39 DONE; **KT-40 READY** (TLB/shootdown); K1c DONE.
-3. Thứ tự K2: 40 ∥ 41 → 42 → 43; mỗi task ≤3 h.
+2. **K2**: KT-35..40 DONE; **KT-41 READY** (VM fault); K1c DONE.
+3. Thứ tự K2: 41 → 42 → 43; mỗi task ≤3 h.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.

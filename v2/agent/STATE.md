@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : `1aeaf0d0` ([KT-40] TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock; gate 552, Miri 10/10, 5 mutation) — **đã push**; QUEUE chờ Agent 0 lật DONE
 BUILD_ID      : —
-Task          : KT-40 — TLB + shootdown + ack + chống deadlock (**REVIEW** — commit `1aeaf0d0`; chờ Agent 0 lật `DONE`, KT-41 mở sau đó)
+Task          : KT-41 (READY — VM fault); KT-40 DONE (1aeaf0d0)
 Bước          : 8/8 **xong** (baseline 536 → đỏ E0432/E0599 → code+10 test → gate **552** → Miri 10/10 → DRIFT đã sửa: 5 mutation + 2 test AP→BSP + oracle `active_on` → **reviewer-kt40b CONFIRM 5/5** + 3 nit → gate lại **552** → commit `1aeaf0d0` + push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 552 test/70 suite**, L1 1.000 seed **793 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt40-gate-fast.log`). Baseline KT-40: PASS 536/68, L1 800 ms (`JOURNAL/kt40-baseline-gate-fast.log`); +10 `kt40_tlb` +5 unit `tlb` +1 unit `check_tlb`.
