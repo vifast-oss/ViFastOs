@@ -9,6 +9,7 @@ mod lsp;
 mod modules;
 mod net;
 mod ngoai;
+mod pkg;
 mod vistest;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
@@ -18,7 +19,7 @@ use net::Net as HostNet;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list"
     );
     ExitCode::from(2)
 }
@@ -178,7 +179,7 @@ fn check_mode(path: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<(), ChanDo
 
 fn usage_fmt() -> ExitCode {
     eprintln!(
-        "dùng: vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio"
+        "dùng: vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list"
     );
     ExitCode::from(2)
 }
@@ -714,6 +715,8 @@ fn main() -> ExitCode {
         Some("test") => vistest::run(&args[1..]),
         // ST-67 (VD-102): server LSP tối thiểu trên stdio (khung + JSON-RPC).
         Some("lsp") => lsp::run(&args[1..]),
+        // ST-70 (VD-101): registry **local** cho gói ViScript.
+        Some("pkg") => pkg::run(&args[1..]),
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),
     }

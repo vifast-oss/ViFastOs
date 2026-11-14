@@ -6,18 +6,36 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-69 — VS2 #5c: LSP completion + hover** (item/biến/builtin/từ khoá, hover markdown +
-                `range` UTF-16; 7 ca mới; **tổng 22 phản hồi LSP** = 8 + 7 + 7) — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 5/5 (red-first 22 ca + probe (7 đỏ) → `lsp/goi_y.rs` + `vi_tri.rs` + `chan_doan.rs`
-                (tách để mỗi tệp ≤300) + handler → 22/22 + 6/6 xanh → workspace **841** → cổng →
-                differential 100k → STATE/JOURNAL).
+Task          : **ST-70 — VS2 #6a: `vis pkg`** (registry **local**, không mạng: `add`/`install`/`list`,
+                manifest tường minh `files[]`, `vis.lock` tất định, `.vis/store` content-addressed;
+                6 ca CLI + 2 unit) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 8 ca + probe (6 đỏ) → `vis-cli/src/pkg.rs` + nhánh `main` + fixture
+                registry + `.gitignore` → 8/8 xanh → workspace **849** → cổng → differential 100k →
+                STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:36:38Z**; **841** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:54:44Z**; **849** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (214,1 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (274,1 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-69]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-70]` + push (đã được uỷ quyền)
+
+## ST-70 — VS2 #6a: `vis pkg` (registry local, không mạng), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Lệnh mới** | `main.rs`: `mod pkg;` + `Some("pkg") => pkg::run(&args[1..])` + `usage()` thêm `vis pkg add|install|list`; **không** đụng `cache/run/check/test/fmt/lsp`. `vis-cli/src/pkg.rs` **739** dòng (≤1.500). |
+| 1 | **Registry + manifest** | Fixture `viscript/test/pkg/registry/{util@0.1.0, http@1.0.0/1.9.0/1.10.0}` (mỗi `manifest.json` kèm `.license`, mỗi `.vis` có SPDX). Manifest = `{name,version,entry,deps,files[{path,sha256}]}` — **tường minh**, không glob/`read_dir` khi cài; thiếu trường ⇒ lỗi **nêu tên trường** (`entry`/`files`/`name`/`version`); path chỉ component thường (không `..`/tuyệt đối/`\`), từ chối **symlink** + non-UTF-8; `entry` phải nằm trong `files`. |
+| 2 | **Chuẩn hoá + băm** | Bỏ BOM, CRLF→LF, đúng **một** LF cuối **khi ingest**; `file_sha = SHA256(nội dung chuẩn hoá)`; `tree_sha = SHA256("vispkg1
+" + Σ sorted(path+"
+"+file_sha+"
+"))`; dùng `vis_bytecode::source_hash` (SHA-256 thật, **không** thêm crate). |
+| 3 | **Lock + store** | `vis.lock` JSON compact + LF: `{lock:1,packages:[{name,version,sha256,files:[{path,sha256}]}]}`, packages/files **sắp theo byte**, **không** timestamp/đường dẫn tuyệt đối. Nội dung file lưu `.vis/store/<file_sha>` (content-addressed) ⇒ **`install` chỉ đọc `vis.lock` + store, không mở registry**. Ghi lock **cuối** bằng tmp + rename (mẫu `cache.rs`). |
+| 4 | **Tất định** | Validate **toàn bộ** manifest/hash + blob trước khi ghi gì; lệch hash ⇒ dừng **chưa ghi**; xoá đích rồi ghi từng tệp theo thứ tự sort (không tệp thừa); `add` merge lock theo tên (gói mới thắng); lock hỏng ⇒ exit 2, `.vis/pkg` **giữ nguyên**. |
+| 5 | **Phiên bản** | So **theo số** (`1.10.0 > 1.9.0`, `1.0 = 1.0.0`); không ghi `@ver` ⇒ chọn **cao nhất** trong registry; `@ver` ⇒ đúng version; `deps` ghim version chính xác (đệ quy, chống vòng bằng `BTreeSet`). |
+| 6 | **Ca (6 CLI + 2 unit)** | CLI `tests/pkg.rs`: `manifest_thieu_truong` (nêu `entry`, không tạo `vis.lock`/`.vis`), `add_roi_list` (1.10.0 cao nhất, `@1.0.0` đúng, `list` `tên ver sha[:12]` sắp tên), `add_keo_phu_thuoc` (http+util), `install_khong_can_registry` (xoá registry + pkg ⇒ install dựng lại), `cai_hai_lan_cung_byte` (add → hash cây → rm `.vis/pkg` → install ⇒ hash bằng, lock không đổi, không chứa tmpdir), `lock_hong` (exit 2, cây nguyên). Unit: `bam_chuan_hoa_crlf_bom` (CRLF/BOM cùng hash, đổi byte đổi hash, **ghim** `file 73cb3858…`/`tree 510fb9cc…`), `so_phien_ban_theo_so`. |
+| 7 | **Red-first** | `JOURNAL/st70-red-sem.log` sha256 `0c402bd2…` (`vis pkg list` ⇒ usage + exit 2); `JOURNAL/st70-red-rust.log` sha256 `8d85f966…` (harness 6 ca: **0 passed / 6 failed**). |
+| 8 | **Đo** | **849** test = 841 + **6** CLI + **2** unit (21+96+18+154+26+62+9+**463**); sem **441/21** giữ nguyên; `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=274.1 toc_do=365/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491**. |
+| 9 | **Nợ** | **Chưa** `use pkg.*` (ST-71) — gói cài xong chưa được ngôn ngữ nhập; deps ghim **đúng** version (chưa resolver dải/`^`/`~`, chưa nhiều version cùng tên); chưa registry HTTP/ký số/`sha256` của manifest; `.vis/store` **không GC**; chưa `pkg remove/update`; `add` không dọn version cũ trong `.vis/pkg`; `VIS_REGISTRY` tương đối theo cwd; lock chỉ một version/tên. |
 
 ## ST-69 — VS2 #5c: LSP completion + hover (tổng 22 phản hồi LSP), 2026-11-14
 

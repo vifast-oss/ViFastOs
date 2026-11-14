@@ -1,0 +1,77 @@
+# ST-70 — log ĐỎ (Rust) lúc 2026-11-14T08:44:41Z, HEAD f933d74b — harness CUỐI trên CLI **chưa có** `pkg`.
+# lệnh: cargo test -p vis-cli --test pkg
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running tests/pkg.rs (target/debug/deps/pkg-3ee16521c0d7fc20)
+
+running 6 tests
+test add_roi_list ... FAILED
+test cai_hai_lan_cung_byte ... FAILED
+test install_khong_can_registry ... FAILED
+test lock_hong ... FAILED
+test add_keo_phu_thuoc ... FAILED
+test manifest_thieu_truong ... FAILED
+
+failures:
+
+---- add_roi_list stdout ----
+
+thread 'add_roi_list' (45586869) panicked at crates/vis-cli/tests/pkg.rs:136:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+  left: 2
+ right: 0
+
+---- cai_hai_lan_cung_byte stdout ----
+
+thread 'cai_hai_lan_cung_byte' (45586870) panicked at crates/vis-cli/tests/pkg.rs:249:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- install_khong_can_registry stdout ----
+
+thread 'install_khong_can_registry' (45586871) panicked at crates/vis-cli/tests/pkg.rs:222:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+  left: 2
+ right: 0
+
+---- lock_hong stdout ----
+
+thread 'lock_hong' (45586872) panicked at crates/vis-cli/tests/pkg.rs:281:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+  left: 2
+ right: 0
+
+---- add_keo_phu_thuoc stdout ----
+
+thread 'add_keo_phu_thuoc' (45586868) panicked at crates/vis-cli/tests/pkg.rs:191:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+  left: 2
+ right: 0
+
+---- manifest_thieu_truong stdout ----
+
+thread 'manifest_thieu_truong' (45586873) panicked at crates/vis-cli/tests/pkg.rs:115:5:
+phải nêu trường thiếu: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio
+
+
+
+failures:
+    add_keo_phu_thuoc
+    add_roi_list
+    cai_hai_lan_cung_byte
+    install_khong_can_registry
+    lock_hong
+    manifest_thieu_truong
+
+test result: FAILED. 0 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+error: test failed, to rerun pass `-p vis-cli --test pkg`
+
+[cargo exit=101]
