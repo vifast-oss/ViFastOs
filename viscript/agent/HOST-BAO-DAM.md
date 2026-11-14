@@ -69,3 +69,14 @@ Cần **một** trong hai, kèm runner Linux để **đo**:
 2. Agent 0 duyệt `unsafe` **đóng** trong `vis-host-linux` + ca âm.
 
 Hiện cả hai đều **chưa** được duyệt (R2 cấm `unsafe`, allowlist crate đóng).
+
+## Thụt lề `.vish` — **có ngữ nghĩa ở cấp tệp** (ST-85, VD-109)
+
+Đo ngày 2026-11-14 (log `agent/JOURNAL/st85-do.log`): trong **thân `cmd`**, 2 vs 4 dấu cách cho **cùng**
+stdout/exit (interp = VM); TAB bị lexer từ chối (`VS0107`). Nhưng ở **cấp tệp**, thụt lề **đổi hành vi**:
+tệp mà **mọi** dòng thụt lề ⇒ chương trình **không in gì**, exit 0; dòng cấp tệp thụt 1 dấu cách đứng
+**đầu** bị bỏ (`topmix` chỉ in `y`); đứng **sau** lại được chạy (`topmix2` in `y` rồi `x`).
+
+⇒ **Không** chuẩn hoá thụt lề trong `vis fmt` (giữ nguyên văn). `vis fmt --check` chỉ **cảnh báo**
+(không đỏ) và `vis fmt --indent-report` **đếm** dòng lệch chuẩn `4 × độ sâu khối` (ước lượng theo dòng
+khi thân `cmd` chỉ là lệnh). Tại thời điểm ST-85: **8 tệp / 10 dòng** trong `test/` lệch (không sửa).

@@ -1,0 +1,70 @@
+# ST-85 — ĐO ngữ nghĩa thụt lề .vish lúc 2026-11-14T15:10:46Z, HEAD 66b41a3a
+
+## Đo 1 — thân cmd 2 dấu cách vs 4 dấu cách (cùng nội dung)
+$ vis run cmd2.vish
+[1, 2]
+[exit=0]
+$ vis run --vm --no-cache cmd2.vish
+[1, 2]
+[exit=0]
+$ vis run cmd4.vish
+[1, 2]
+[exit=0]
+$ vis run --vm --no-cache cmd4.vish
+[1, 2]
+[exit=0]
+
+## Đo 2 — thân cmd dùng TAB
+cmdtab.vish:2:1: error VS0107: tab (cảnh báo-lỗi; tab = 4)
+cmdtab.vish:3:1: error VS0107: tab (cảnh báo-lỗi; tab = 4)
+cmdtab.vish:4:1: error VS0107: tab (cảnh báo-lỗi; tab = 4)
+[exit=2]
+
+## Đo 3 — lệnh ngoài trong thân cmd (printf ' a')
+[ext2: 2 dấu cách]
+ext2.vish:2:3: error VS0201: thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)
+[exit=2]
+[ext4: 4 dấu cách]
+ext4.vish:2:5: error VS0201: thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)
+[exit=2]
+
+## Đo 4 — pipeline nhiều dòng trong thân cmd
+[multi2: 2 dấu cách]
+2
+3
+()
+[exit=0]
+[multi4: 4 dấu cách]
+2
+3
+()
+[exit=0]
+
+## Đo 5 — câu lệnh cấp tệp thụt 1 dấu cách (bị coi là block?)
+-- top1.vish
+[exit=0]
+-- top4.vish
+[exit=0]
+-- topmix.vish
+y
+[exit=0]
+-- topmix2.vish
+y
+x
+[exit=0]
+
+## Đo 6 — trộn cmd + câu lệnh cấp tệp, thân 2 vs 4
+[mix2]
+5
+sau
+[exit=0]
+[mix4]
+5
+sau
+[exit=0]
+
+## KẾT LUẬN
+- Trong thân cmd: 2 vs 4 dấu cách cho CÙNG stdout/exit (interp = VM); TAB bị lexer từ chối VS0107.
+- Lệnh ngoài: body cmd chỉ nhận **một** pipeline (ext2/ext4 đều VS0201) nên không đo được khoảng trắng đầu lệnh; pipeline trong thân không đổi kết quả theo 2/4.
+- **CẤP TỆP: thụt lề CÓ ngữ nghĩa đo được**: top1/top4 (cả tệp thụt) ⇒ KHÔNG in gì, exit 0; topmix (dòng đầu thụt 1) ⇒ bỏ dòng đó, in 'y'; topmix2 ⇒ in 'y' rồi 'x'. Tức dòng cấp tệp thụt lề bị parser lệnh xử lý khác (bỏ/đổi thứ tự).
+- ⇒ CHỌN NHÁNH B: KHÔNG chuẩn hoá thụt lề; chỉ đếm/cảnh báo.

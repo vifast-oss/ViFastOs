@@ -21,7 +21,7 @@ use net::Net as HostNet;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] [--strict-caps] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio | vis pkg add|install|list"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] [--strict-caps] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis fmt --indent-report <tệp…> | vis lsp --stdio | vis pkg add|install|list"
     );
     ExitCode::from(2)
 }
@@ -213,15 +213,86 @@ fn check_mode(path: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<(), ChanDo
     })
 }
 
+/// **ST-85**: đếm dòng lệch thụt lề của `.vish` theo chuẩn **4 × độ sâu khối**; `None` nếu tệp
+/// không parse được (tab cũng là lỗi lexer `VS0107`).
+fn dem_lech_thut_le(text: &str) -> Option<usize> {
+    use vis_syntax::{Mode, Node, NodeKind};
+    let out = vis_syntax::parse(text, Mode::Script);
+    if out.diagnostics.is_empty() {
+        fn walk(n: &Node, depth: u32, out: &mut Vec<(usize, usize, u32)>) {
+            for c in n.children() {
+                let d = if matches!(c.kind, NodeKind::Suite | NodeKind::CmdBlock) {
+                    out.push((c.span.start, c.span.end, depth + 1));
+                    depth + 1
+                } else {
+                    depth
+                };
+                walk(c, d, out);
+            }
+        }
+        let mut suites: Vec<(usize, usize, u32)> = Vec::new();
+        walk(&out.cst.root, 0, &mut suites);
+        let mut lech = 0;
+        let mut off = 0;
+        for line in text.split_inclusive('\n') {
+            let noi_dung = line.trim_end_matches(['\n', '\r']);
+            if !noi_dung.trim().is_empty() {
+                let indent = noi_dung.len() - noi_dung.trim_start_matches([' ', '\t']).len();
+                let mut depth = 0;
+                for (s, e, d) in &suites {
+                    if *s <= off && off < *e {
+                        depth = depth.max(*d);
+                    }
+                }
+                if indent != (depth * 4) as usize {
+                    lech += 1;
+                }
+            }
+            off += line.len();
+        }
+        return Some(lech);
+    }
+    // Thân `cmd` chỉ là **lệnh** (script parse không qua) ⇒ ước lượng khối theo dòng: dòng cột 1
+    // mở/đóng khối `cmd`/`impl`/`type`; dòng thụt trong khối chuẩn **4**. Đây là **đếm** cho báo
+    // cáo, không dùng để sửa.
+    let mut trong = false;
+    let mut lech = 0;
+    let mut co_noi_dung = false;
+    for line in text.lines() {
+        let noi_dung = line.trim_end();
+        if noi_dung.trim().is_empty() {
+            continue;
+        }
+        co_noi_dung = true;
+        let indent = noi_dung.len() - noi_dung.trim_start_matches([' ', '\t']).len();
+        if indent == 0 {
+            let t = noi_dung.trim_start();
+            trong = t.ends_with(':')
+                && (t.starts_with("cmd ") || t.starts_with("impl ") || t.starts_with("type "));
+        }
+        let mong = if trong && indent != 0 { 4 } else { 0 };
+        if indent != mong {
+            lech += 1;
+        }
+    }
+    if co_noi_dung {
+        Some(lech)
+    } else {
+        Some(0)
+    }
+}
+
 fn usage_fmt() -> ExitCode {
     eprintln!(
-        "dùng: vis fmt <tệp|thư-mục> | vis fmt --write <tệp|thư-mục…> | vis fmt --check <tệp|thư-mục…> | vis lsp --stdio | vis pkg add|install|list"
+        "dùng: vis fmt <tệp|thư-mục> | vis fmt --write <tệp|thư-mục…> | vis fmt --check <tệp|thư-mục…> | vis fmt --indent-report <tệp|thư-mục…> | vis lsp --stdio | vis pkg add|install|list"
     );
     ExitCode::from(2)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FmtMode {
+    /// **ST-85**: chỉ **đếm** dòng lệch thụt lề của `.vish` (không sửa, không đỏ).
+    IndentReport,
     Stdout,
     Write,
     Check,
@@ -253,6 +324,7 @@ fn run_fmt(args: &[String]) -> ExitCode {
         None => return usage_fmt(),
         Some("--write") => (FmtMode::Write, &args[1..]),
         Some("--check") => (FmtMode::Check, &args[1..]),
+        Some("--indent-report") => (FmtMode::IndentReport, &args[1..]),
         Some(f) if f.starts_with('-') => {
             eprintln!("vis fmt: không hỗ trợ cờ `{f}`");
             return usage_fmt();
@@ -291,6 +363,27 @@ fn run_fmt(args: &[String]) -> ExitCode {
         !la_fixture && !p.with_extension("err").exists()
     });
     ds.sort();
+    if mode == FmtMode::IndentReport {
+        let mut tong_dong = 0usize;
+        let mut so_tep = 0usize;
+        for path in &ds {
+            if path.extension().map(|x| x != "vish").unwrap_or(true) {
+                continue;
+            }
+            let Ok(src) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            if let Some(n) = dem_lech_thut_le(&src) {
+                if n > 0 {
+                    so_tep += 1;
+                    tong_dong += n;
+                    println!("{}: {n} dòng lệch", path.display());
+                }
+            }
+        }
+        println!("indent-report: {so_tep} tệp, {tong_dong} dòng lệch (chuẩn 4 × độ sâu khối)");
+        return ExitCode::SUCCESS;
+    }
     let mut ra = String::new();
     let mut can_sua = false;
     let mut co_loi = false;
@@ -317,6 +410,23 @@ fn run_fmt(args: &[String]) -> ExitCode {
                 co_loi = true;
             }
             Ok(moi) => match mode {
+                // **ST-85**: thụt lề `.vish` **có** ngữ nghĩa ở cấp tệp (đo được) ⇒ **không** sửa;
+                // `--check` chỉ **cảnh báo** (không đỏ), `--indent-report` đếm.
+                FmtMode::IndentReport => {}
+                FmtMode::Check if che_do == Mode::Command => {
+                    if let Some(n) = dem_lech_thut_le(&src) {
+                        if n > 0 {
+                            eprintln!(
+                                "# cảnh báo: {}: {n} dòng thụt lề khác chuẩn 4×độ sâu — KHÔNG tự sửa (thụt lề .vish có ngữ nghĩa; xem agent/HOST-BAO-DAM.md)",
+                                path.display()
+                            );
+                        }
+                    }
+                    if moi != src {
+                        can_sua = true;
+                        ra.push_str(&format!("{}\n", path.display()));
+                    }
+                }
                 FmtMode::Stdout => ra.push_str(&moi),
                 FmtMode::Write => {
                     if moi == src {

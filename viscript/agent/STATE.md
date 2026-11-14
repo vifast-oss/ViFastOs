@@ -6,17 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-84 — LSP completion/hover module-aware** (tệp chính có trên đĩa: item `pub` của
-                `use ./x` + hàm `std.*` đã `use` vào gợi ý/hover; tệp không có trên đĩa giữ như cũ) —
-                xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (red-first 3/5 → `Loaded.item_rel` + `lsp/module.rs` + dispatch → 5 ca + 1 unit
-                hiệu năng → 926 test → cổng → diff 100k → STATE/JOURNAL).
+Task          : **ST-85 — thụt lề `.vish` có ngữ nghĩa?** (6 phép đo; **nhánh B**: KHÔNG chuẩn hoá,
+                thêm `fmt --indent-report` đếm + cảnh báo `--check` không đỏ) — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 4/4 (đo 6 phép → kết luận cấp tệp **có** ngữ nghĩa → nhánh B: đếm/cảnh báo, 0 fixture
+                đổi → 6 ca → 932 test → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:04:59Z**; **926** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:23:01Z**; **932** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (219,9 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (212,2 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-84]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-85]` + push (đã được uỷ quyền)
+
+## ST-85 — thụt lề `.vish`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo (6 phép)** | (1) thân `cmd` 2 vs 4 dấu cách ⇒ **cùng** stdout/exit, interp = VM; (2) TAB ⇒ lexer **`VS0107`**, exit 2; (3) lệnh ngoài trong thân: `cmd` chỉ nhận **một** pipeline ⇒ 2/4 đều `VS0201` (không đo được khoảng trắng đầu lệnh); (4) pipeline trong thân 2 vs 4 ⇒ cùng `2,3`; (5) **cấp tệp**: cả tệp thụt lề ⇒ **không in gì**, exit 0; dòng cấp tệp thụt 1 đứng **đầu** bị bỏ (`topmix` chỉ in `y`), đứng **sau** lại chạy (`topmix2` in `y` rồi `x`); (6) trộn `cmd` + câu lệnh cấp tệp 2 vs 4 ⇒ cùng `5/sau`. Log `JOURNAL/st85-do.log` sha256 `3c114693…`. |
+| 1 | **Quyết định** | Thụt lề **có ngữ nghĩa ở cấp tệp** ⇒ **NHÁNH B**: **không** đổi `vis fmt` (giữ nguyên văn); **0 fixture** thay đổi; ghi lý do vào `agent/HOST-BAO-DAM.md` + JOURNAL. |
+| 2 | **`--indent-report`** | Đếm dòng lệch chuẩn **4 × độ sâu khối** (CST script; fallback theo dòng khi thân `cmd` chỉ là lệnh), chỉ `.vish`, exit **0**, in `tệp: N dòng lệch` + tổng. Trên `test/`: **8 tệp / 10 dòng** lệch (`test/cmd/body/body{1,-long,-multi}.vish`, `decl/cmd-empty|cmd-where|type-let`, `nhom/nhieu-dong`, `where/where-ok`) — **không sửa**. Usage `vis fmt` nêu cờ. |
+| 3 | **Cảnh báo `--check`** | Tệp `.vish` lệch thụt lề ⇒ stderr `# cảnh báo: <tệp>: N dòng thụt lề khác chuẩn 4×độ sâu — KHÔNG tự sửa (thụt lề .vish có ngữ nghĩa; xem agent/HOST-BAO-DAM.md)`, **exit 0**, stdout rỗng. `fmt --check test` vẫn xanh, **8 cảnh báo**. |
+| 4 | **6 ca** | `crates/vis-cli/tests/fmt_indent.rs`: (a) 2 dấu cách ⇒ 3 dòng, không sửa; (b) 4 dấu cách ⇒ 0; (c) hỗn hợp 2/4 + cấp tệp 1 ⇒ 2 dòng; (d) `--check` cảnh báo, exit 0, stdout rỗng; (e) thư mục 2 tệp; (f) `fmt` mặc định **giữ nguyên văn** `.vish`. |
+| 5 | **Đo** | **932** test = 926 + **6** (21+96+27+154+26+62+9+**537**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=212.2 toc_do=471/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.498** (`main.rs` 1.083). |
+| 6 | **Nợ** | Ngữ nghĩa cấp tệp của thụt lề **có thể là lỗi parser** (dòng thụt bị bỏ/đổi thứ tự) — chưa sửa, chỉ ghi nhận; `--indent-report` fallback theo dòng là **ước lượng** (không phải CST đầy đủ cho thân lệnh); tệp có TAB bị bỏ qua (lexer `VS0107`); chưa có chuẩn hoá nào (đúng nhánh B). |
 
 ## ST-84 — LSP completion/hover module-aware, 2026-11-14
 

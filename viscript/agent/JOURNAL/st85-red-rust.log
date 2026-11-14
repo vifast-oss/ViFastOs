@@ -1,0 +1,63 @@
+# ST-85 — log ĐỎ (Rust) lúc 2026-11-14T15:11:09Z, HEAD 66b41a3a — trước khi có --indent-report/cảnh báo.
+# lệnh: cargo test -p vis-cli --test fmt_indent (6 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/fmt_indent.rs (target/debug/deps/fmt_indent-69be25eb266a18c7)
+
+running 6 tests
+test report_thu_muc ... FAILED
+test report_hon_hop ... FAILED
+test report_hai_dau_cach ... FAILED
+test report_bon_dau_cach_sach ... FAILED
+test check_canh_bao_khong_do ... FAILED
+test fmt_mac_dinh_giu_nguyen ... ok
+
+failures:
+
+---- report_thu_muc stdout ----
+
+thread 'report_thu_muc' (47811069) panicked at crates/vis-cli/tests/fmt_indent.rs:102:5:
+assertion `left == right` failed
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- report_hon_hop stdout ----
+
+thread 'report_hon_hop' (47811068) panicked at crates/vis-cli/tests/fmt_indent.rs:74:5:
+assertion `left == right` failed
+  left: 2
+ right: 0
+
+---- report_hai_dau_cach stdout ----
+
+thread 'report_hai_dau_cach' (47811067) panicked at crates/vis-cli/tests/fmt_indent.rs:45:5:
+assertion `left == right` failed: vis fmt: không hỗ trợ cờ `--indent-report`
+dùng: vis fmt <tệp|thư-mục> | vis fmt --write <tệp|thư-mục…> | vis fmt --check <tệp|thư-mục…> | vis lsp --stdio | vis pkg add|install|list
+
+  left: 2
+ right: 0
+
+---- report_bon_dau_cach_sach stdout ----
+
+thread 'report_bon_dau_cach_sach' (47811066) panicked at crates/vis-cli/tests/fmt_indent.rs:62:5:
+assertion `left == right` failed
+  left: 2
+ right: 0
+
+---- check_canh_bao_khong_do stdout ----
+
+thread 'check_canh_bao_khong_do' (47811064) panicked at crates/vis-cli/tests/fmt_indent.rs:88:5:
+
+
+
+failures:
+    check_canh_bao_khong_do
+    report_bon_dau_cach_sach
+    report_hai_dau_cach
+    report_hon_hop
+    report_thu_muc
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+error: test failed, to rerun pass `-p vis-cli --test fmt_indent`
