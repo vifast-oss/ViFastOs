@@ -1,0 +1,115 @@
+# ST-71 — log ĐỎ (Rust) lúc 2026-11-14T09:00:30Z, HEAD bc6919c5 — CLI **chưa** hỗ trợ  (còn từ chối 'gói ngoài chưa hỗ trợ').
+# lệnh: cargo test -p vis-cli --test pkg; cargo test -p vis-cli --test modules
+
+## tests/pkg.rs (ST-71: ca 7..11)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/pkg.rs (target/debug/deps/pkg-3ee16521c0d7fc20)
+
+running 11 tests
+test manifest_thieu_truong ... ok
+test pkg_chua_cai ... FAILED
+test pkg_vong_lap ... FAILED
+test pkg_bi_sua_bao_vs0701 ... FAILED
+test use_pkg_chay_that ... FAILED
+test add_keo_phu_thuoc ... ok
+test lock_hong ... ok
+test install_khong_can_registry ... ok
+test hai_goi_cung_ten_tep ... FAILED
+test cai_hai_lan_cung_byte ... ok
+test add_roi_list ... ok
+
+failures:
+
+---- pkg_chua_cai stdout ----
+
+thread 'pkg_chua_cai' (45685618) panicked at crates/vis-cli/tests/pkg.rs:374:5:
+stderr: app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- pkg_vong_lap stdout ----
+
+thread 'pkg_vong_lap' (45685619) panicked at crates/vis-cli/tests/pkg.rs:439:5:
+stderr: app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+
+---- pkg_bi_sua_bao_vs0701 stdout ----
+
+thread 'pkg_bi_sua_bao_vs0701' (45685617) panicked at crates/vis-cli/tests/pkg.rs:362:5:
+phải nói gói bị sửa: app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+
+---- use_pkg_chay_that stdout ----
+
+thread 'use_pkg_chay_that' (45685620) panicked at crates/vis-cli/tests/pkg.rs:341:9:
+assertion `left == right` failed: ["run", "app.vis"] stderr: app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+  left: 2
+ right: 0
+
+---- hai_goi_cung_ten_tep stdout ----
+
+thread 'hai_goi_cung_ten_tep' (45685613) panicked at crates/vis-cli/tests/pkg.rs:411:5:
+assertion `left == right` failed: stderr: app.vis
+app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+app.vis:2:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+  left: 2
+ right: 0
+
+
+failures:
+    hai_goi_cung_ten_tep
+    pkg_bi_sua_bao_vs0701
+    pkg_chua_cai
+    pkg_vong_lap
+    use_pkg_chay_that
+
+test result: FAILED. 6 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+error: test failed, to rerun pass `-p vis-cli --test pkg`
+
+[cargo exit=101]
+
+## tests/modules.rs (ca cũ  → )
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/modules.rs (target/debug/deps/modules-68a6b789ec8cb522)
+
+running 18 tests
+test pkg_chua_cai_bao_vs0701 ... FAILED
+test loi_trong_tep_phu_bao_dung_ten_tep ... ok
+test khong_pub_thi_khong_thay ... ok
+test check_bao_dung_tep_va_dong_cot ... ok
+test hai_tang_noi_dung_dung ... ok
+test co_ban_pub_fn_va_pub_type ... ok
+test dump_deps_in_cay ... ok
+test mo_coi_that_bao_vs0403 ... ok
+test mo_coi_trait_module_va_kieu_noi_tep ... ok
+test tep_chinh_khong_ton_tai ... ok
+test std_fs_bao_st27 ... ok
+test use_trung_hai_duong_dan_la_vs0703 ... ok
+test thieu_tep_la_vs0701 ... ok
+test cache_hong_thi_bien_dich_lai ... ok
+test vong_ba_tep_la_vs0702 ... ok
+test vong_hai_tep_la_vs0702 ... ok
+test vm_va_interp_cung_ket_qua ... ok
+test cache_doi_khi_sua_phu_thuoc ... ok
+
+failures:
+
+---- pkg_chua_cai_bao_vs0701 stdout ----
+
+thread 'pkg_chua_cai_bao_vs0701' (45685760) panicked at crates/vis-cli/tests/modules.rs:117:5:
+stderr: main.vis:2:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    pkg_chua_cai_bao_vs0701
+
+test result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+error: test failed, to rerun pass `-p vis-cli --test modules`
+
+[cargo exit=101]

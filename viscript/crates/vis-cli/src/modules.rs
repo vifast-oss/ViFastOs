@@ -2,7 +2,8 @@
 //! Nạp **đa tệp** (ST-25, §7.10): giải `use`, cấm vòng, hợp nhất HIR, giữ `dòng:cột` theo **tệp thật**.
 //!
 //! Mô hình: mỗi tệp là **một module**; `use ./util` nhập item `pub` của `util.vis` cùng thư mục;
-//! `use std.x` ⇒ `VS0701` ("std chưa có — ST-26"), `use pkg.x` ⇒ `VS0701` ("gói ngoài chưa hỗ trợ").
+//! `use std.x` ⇒ `VS0701` ("std chưa có — ST-26"); `use pkg.<tên>[.<module>]` (ST-71) đọc gói đã cài
+//! từ `.vis/pkg/` **theo `vis.lock`**, kiểm **sha** nội dung lúc nạp — lệch ⇒ `VS0701` "gói bị sửa".
 //!
 //! Thứ tự **tất định**: hậu duyệt DFS theo thứ tự `use` trong nguồn (không phụ thuộc `read_dir`), mỗi
 //! tệp một lần, tệp chính **cuối**. Hậu duyệt ⇒ khi hạ một tệp, mọi kiểu `pub` của phụ thuộc đã nằm
@@ -12,6 +13,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use vis_diag::MODULE_CODES;
+
+use crate::pkg::{bam as bam_noi_dung, chuan_hoa as chuan_hoa_noi_dung, doc_khoa_cua, GoiKhoa};
 use vis_syntax::{Diagnostic, Mode, NodeKind, Span};
 use vis_types::{
     check, lower_into, HItem, HStmt, Hir, LowerOptions, ModInfo, NamePolicy, Symbols, TraitSig,
@@ -87,6 +90,11 @@ fn chuan_hoa(p: &Path) -> PathBuf {
 fn rel_cua(main_dir: &Path, p: &Path) -> String {
     let c = chuan_hoa(p);
     let goc = chuan_hoa(main_dir);
+    // **ST-71**: tệp trong gói cài (`.vis/pkg/<tên>/<ver>/…`) ⇒ rel tổng hợp `pkg/<tên>/<ver>/…`
+    // (không dùng `file_name` trần: hai gói cùng `src/main.vis` phải khác khoá cache + chẩn đoán).
+    if let Ok(r) = c.strip_prefix(goc.join(".vis").join("pkg")) {
+        return format!("pkg/{}", r.to_string_lossy().replace('\\', "/"));
+    }
     match c.strip_prefix(&goc) {
         Ok(r) => r.to_string_lossy().replace('\\', "/"),
         Err(_) => c
@@ -94,6 +102,105 @@ fn rel_cua(main_dir: &Path, p: &Path) -> String {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default(),
     }
+}
+
+/// Thông điệp "chưa cài gói" (ST-71) — nêu **tên** + gợi ý lệnh.
+fn chua_cai(ten: &str) -> String {
+    format!("chưa cài gói `{ten}` — chạy `vis pkg add {ten}`")
+}
+
+/// Tách đường dẫn dưới `.vis/pkg/<tên>/<ver>/` ⇒ `(tên, ver, path trong gói)`.
+fn tach_pkg(main_dir: &Path, path: &Path) -> Option<(String, String, String)> {
+    let c = chuan_hoa(path);
+    let goc = chuan_hoa(main_dir).join(".vis").join("pkg");
+    let r = c.strip_prefix(&goc).ok()?;
+    let mut it = r.components();
+    let ten = it.next()?.as_os_str().to_str()?.to_string();
+    let ver = it.next()?.as_os_str().to_str()?.to_string();
+    let con: PathBuf = it.collect();
+    Some((ten, ver, con.to_string_lossy().replace('\\', "/")))
+}
+
+/// Chọn tệp module trong gói: không có module ⇒ entry quy ước (`src/main.vis` → `main.vis` → tệp
+/// `.vis` đầu theo byte); có module ⇒ `<m>.vis` hoặc `src/<m>.vis` (kể cả `.vish`).
+fn chon_tep_pkg(goi: &GoiKhoa, duoi: &[String]) -> Result<String, String> {
+    let co = |p: &str| goi.files.iter().any(|f| f.path == p);
+    let mut ung: Vec<String> = Vec::new();
+    if duoi.is_empty() {
+        for c in ["src/main.vis", "main.vis"] {
+            if co(c) {
+                ung.push(c.to_string());
+            }
+        }
+        if ung.is_empty() {
+            let mut ds: Vec<&str> = goi
+                .files
+                .iter()
+                .map(|f| f.path.as_str())
+                .filter(|p| p.ends_with(".vis"))
+                .collect();
+            ds.sort();
+            if let Some(p) = ds.first() {
+                ung.push((*p).to_string());
+            }
+        }
+    } else {
+        let m = duoi.join("/");
+        for c in [
+            format!("{m}.vis"),
+            format!("src/{m}.vis"),
+            format!("{m}.vish"),
+            format!("src/{m}.vish"),
+        ] {
+            if co(&c) && !ung.contains(&c) {
+                ung.push(c);
+            }
+        }
+    }
+    match ung.len() {
+        1 => Ok(ung.remove(0)),
+        0 => Err(format!(
+            "gói `{}@{}` không có tệp module `{}`",
+            goi.name,
+            goi.version,
+            duoi.join(".")
+        )),
+        _ => Err(format!(
+            "gói `{}@{}`: module `{}` mơ hồ (nhiều tệp khớp)",
+            goi.name,
+            goi.version,
+            duoi.join(".")
+        )),
+    }
+}
+
+/// Đọc + **kiểm sha** một tệp của gói theo `vis.lock`; trả nội dung **đã chuẩn hoá**.
+fn doc_tep_goi(main_dir: &Path, ten: &str, ver: &str, relpath: &str) -> Result<String, String> {
+    let khoa = doc_khoa_cua(main_dir)?;
+    let goi = khoa
+        .iter()
+        .find(|g| g.name == ten && g.version == ver)
+        .ok_or_else(|| format!("gói `{ten}@{ver}` không có trong `vis.lock` (VS0701)"))?;
+    let tep = goi
+        .files
+        .iter()
+        .find(|f| f.path == relpath)
+        .ok_or_else(|| format!("tệp `{relpath}` không có trong lock của `{ten}@{ver}` (VS0701)"))?;
+    let full = main_dir
+        .join(".vis")
+        .join("pkg")
+        .join(ten)
+        .join(ver)
+        .join(relpath);
+    let bytes = std::fs::read(&full)
+        .map_err(|e| format!("không đọc được `{relpath}` của gói `{ten}@{ver}`: {e}"))?;
+    let text = chuan_hoa_noi_dung(&bytes)?;
+    if bam_noi_dung(&text) != tep.sha256 {
+        return Err(format!(
+            "gói `{ten}@{ver}` bị sửa: `{relpath}` — băm lệch `vis.lock` (VS0701)"
+        ));
+    }
+    Ok(text)
 }
 
 /// Ứng viên tệp theo chế độ: `.vish` trước ở chế độ lệnh, `.vis` trước ở chế độ script.
@@ -204,10 +311,7 @@ impl Nap {
             return Err((&MODULE_CODES[0], "`std` chưa có — ST-26".to_string()));
         }
         if dau == "pkg" {
-            return Err((
-                &MODULE_CODES[0],
-                "gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn".to_string(),
-            ));
+            return self.giai_pkg(seg);
         }
         let ten = seg.join("/");
         for c in ung_vien(tu_dir, &ten, self.mode) {
@@ -221,27 +325,63 @@ impl Nap {
         ))
     }
 
+    /// **ST-71 (VD-101 (5))**: `use pkg.<tên>[.<module>]` — đọc `vis.lock` + chọn tệp trong gói.
+    fn giai_pkg(&self, seg: &[String]) -> Result<PathBuf, (&'static vis_diag::Code, String)> {
+        let Some(ten) = seg.get(1).filter(|s| !s.is_empty()) else {
+            return Err((
+                &MODULE_CODES[0],
+                "`use pkg.<tên>` thiếu tên gói".to_string(),
+            ));
+        };
+        if !self.main_dir.join("vis.lock").is_file() {
+            return Err((&MODULE_CODES[0], chua_cai(ten)));
+        }
+        let khoa = doc_khoa_cua(&self.main_dir).map_err(|e| (&MODULE_CODES[0], e))?;
+        let Some(goi) = khoa.iter().find(|g| &g.name == ten) else {
+            return Err((&MODULE_CODES[0], chua_cai(ten)));
+        };
+        let relpath = chon_tep_pkg(goi, &seg[2..]).map_err(|e| (&MODULE_CODES[0], e))?;
+        Ok(self
+            .main_dir
+            .join(".vis")
+            .join("pkg")
+            .join(&goi.name)
+            .join(&goi.version)
+            .join(relpath))
+    }
+
     fn tham(&mut self, path: &Path) {
         let path = chuan_hoa(path);
         let rel = rel_cua(&self.main_dir, &path);
         if self.mau.contains_key(&rel) {
             return;
         }
-        let text = match std::fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) => {
-                self.diags.push((
-                    rel.clone(),
-                    Diagnostic {
-                        code: &MODULE_CODES[0],
-                        message: format!("không đọc được tệp: {e}"),
-                        span: Span::new(0, 0),
-                        line: 1,
-                        col: 1,
-                    },
-                ));
-                return;
-            }
+        let text = match tach_pkg(&self.main_dir, &path) {
+            // **ST-71**: tệp gói — đọc **nội dung đã chuẩn hoá** rồi so `file_sha` với lock.
+            Some((ten, ver, relpath)) => match doc_tep_goi(&self.main_dir, &ten, &ver, &relpath) {
+                Ok(t) => t,
+                Err(msg) => {
+                    self.bao(&rel, &MODULE_CODES[0], msg, Span::new(0, 0));
+                    self.mau.insert(rel, Mau::Xong);
+                    return;
+                }
+            },
+            None => match std::fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.diags.push((
+                        rel.clone(),
+                        Diagnostic {
+                            code: &MODULE_CODES[0],
+                            message: format!("không đọc được tệp: {e}"),
+                            span: Span::new(0, 0),
+                            line: 1,
+                            col: 1,
+                        },
+                    ));
+                    return;
+                }
+            },
         };
         let mode = if path.extension().map(|x| x == "vish").unwrap_or(false) {
             Mode::Command

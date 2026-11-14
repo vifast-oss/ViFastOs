@@ -46,7 +46,7 @@ fn chay(args: &[String]) -> Result<(), String> {
 }
 
 /// Băm hex của một chuỗi (SHA-256 thật, qua `vis-bytecode`).
-fn bam(s: &str) -> String {
+pub(crate) fn bam(s: &str) -> String {
     let h = vis_bytecode::source_hash(s);
     let mut out = String::with_capacity(64);
     for b in h {
@@ -56,7 +56,7 @@ fn bam(s: &str) -> String {
 }
 
 /// Chuẩn hoá **khi ingest**: bỏ BOM, CRLF→LF, đúng **một** LF cuối; từ chối non-UTF-8.
-fn chuan_hoa(bytes: &[u8]) -> Result<String, String> {
+pub(crate) fn chuan_hoa(bytes: &[u8]) -> Result<String, String> {
     let s = std::str::from_utf8(bytes).map_err(|e| format!("tệp không phải UTF-8: {e}"))?;
     let s = s.strip_prefix('\u{feff}').unwrap_or(s);
     let s = s.replace("\r\n", "\n");
@@ -384,16 +384,16 @@ fn gom_goi(
 
 // ----- vis.lock -----
 
-struct TepKhoa {
-    path: String,
-    sha256: String,
+pub(crate) struct TepKhoa {
+    pub(crate) path: String,
+    pub(crate) sha256: String,
 }
 
-struct GoiKhoa {
-    name: String,
-    version: String,
-    sha256: String,
-    files: Vec<TepKhoa>,
+pub(crate) struct GoiKhoa {
+    pub(crate) name: String,
+    pub(crate) version: String,
+    pub(crate) sha256: String,
+    pub(crate) files: Vec<TepKhoa>,
 }
 
 fn doc_khoa(duong: &Path, bat_buoc: bool) -> Result<Vec<GoiKhoa>, String> {
@@ -461,6 +461,11 @@ fn doc_khoa(duong: &Path, bat_buoc: bool) -> Result<Vec<GoiKhoa>, String> {
     }
     out.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
     Ok(out)
+}
+
+/// Đọc + validate `vis.lock` trong `dir` — dùng cho `use pkg.*` (ST-71).
+pub(crate) fn doc_khoa_cua(dir: &Path) -> Result<Vec<GoiKhoa>, String> {
+    doc_khoa(&dir.join("vis.lock"), true)
 }
 
 fn gia_tri_khoa(goi: &[GoiKhoa]) -> Value {

@@ -291,3 +291,152 @@ fn lock_hong() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ===== ST-71 (VD-101 (5)): `use pkg.*` + kiểm sha lúc chạy =====
+
+/// Cài `http@ver` từ fixture vào `d` (cwd = `d`).
+fn cai_http(d: &Path, ver: &str) {
+    let reg = fixture();
+    let (code, _o, err) = vis(
+        d,
+        &[
+            "pkg",
+            "add",
+            &format!("http@{ver}"),
+            "--registry",
+            reg.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "cài http@{ver}: {err}");
+}
+
+/// Ghi một gói tối giản vào registry tạm (nội dung đã chuẩn hoá — một LF cuối).
+fn ghi_goi_vong(reg: &Path, ten: &str, dep: &str) {
+    let src = format!(
+        "# SPDX-License-Identifier: MIT OR Apache-2.0\n\nuse pkg.{dep}\n\npub fn f{ten}() -> int:\n    1\n"
+    );
+    let sha = hex(&vis_bytecode::source_hash(&src));
+    let goc = reg.join(ten).join("1.0.0");
+    ghi(&goc.join("src/main.vis"), &src);
+    let man = format!(
+        r#"{{"name":"{ten}","version":"1.0.0","entry":"src/main.vis","deps":{{"{dep}":"1.0.0"}},"files":[{{"path":"src/main.vis","sha256":"{sha}"}}]}}"#
+    );
+    ghi(&goc.join("manifest.json"), &man);
+}
+
+/// Ca 7 (CLI) — `use pkg.http` chạy thật; interp và VM (`--no-cache`) cùng byte.
+#[test]
+fn use_pkg_chay_that() {
+    let d = tmp_dir("use-chay");
+    cai_http(&d, "1.0.0");
+    ghi(
+        &d.join("app.vis"),
+        "use pkg.http\n\nprint(http_version())\n",
+    );
+    for args in [
+        vec!["run", "app.vis"],
+        vec!["run", "--vm", "--no-cache", "app.vis"],
+    ] {
+        let (code, out, err) = vis(&d, &args);
+        assert_eq!(code, 0, "{args:?} stderr: {err}");
+        assert_eq!(out, "100\n", "{args:?}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 8 (CLI) — sửa tay tệp trong `.vis/pkg` ⇒ `VS0701`, exit 2, không in kết quả.
+#[test]
+fn pkg_bi_sua_bao_vs0701() {
+    let d = tmp_dir("use-sua");
+    cai_http(&d, "1.0.0");
+    ghi(
+        &d.join("app.vis"),
+        "use pkg.http\n\nprint(http_version())\n",
+    );
+    let tep = d.join(".vis/pkg/http/1.0.0/src/main.vis");
+    let cu = doc(&tep);
+    std::fs::write(&tep, format!("{cu}\n# sửa tay\n")).expect("sửa tệp gói");
+    let (code, out, err) = vis(&d, &["run", "app.vis"]);
+    assert_eq!(code, 2, "stderr: {err}");
+    assert!(err.contains("VS0701"), "stderr: {err}");
+    assert!(err.contains("bị sửa"), "phải nói gói bị sửa: {err}");
+    assert_eq!(out, "", "không được in kết quả");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 9 (CLI) — chưa cài gói ⇒ lỗi rõ **nêu tên** + gợi ý `vis pkg add`; cả khi lock có gói khác.
+#[test]
+fn pkg_chua_cai() {
+    let d = tmp_dir("use-chua-cai");
+    ghi(&d.join("app.vis"), "use pkg.http\n\nprint(1)\n");
+    let (code, _out, err) = vis(&d, &["run", "app.vis"]);
+    assert_eq!(code, 2, "stderr: {err}");
+    assert!(err.contains("chưa cài gói `http`"), "stderr: {err}");
+    assert!(err.contains("vis pkg add http"), "stderr: {err}");
+    // Lock **có** gói khác nhưng thiếu `http` ⇒ cùng thông điệp.
+    let reg = fixture();
+    let (c0, _o0, e0) = vis(
+        &d,
+        &["pkg", "add", "util", "--registry", reg.to_str().unwrap()],
+    );
+    assert_eq!(c0, 0, "cài util: {e0}");
+    let (code2, _o2, err2) = vis(&d, &["run", "app.vis"]);
+    assert_eq!(code2, 2, "stderr: {err2}");
+    assert!(err2.contains("chưa cài gói `http`"), "stderr: {err2}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 10 (CLI) — hai gói cùng `src/main.vis` ⇒ `rel` khác nhau (`pkg/<tên>/<ver>/…`), `--dump-deps`
+/// in cả hai, chạy đúng.
+#[test]
+fn hai_goi_cung_ten_tep() {
+    let d = tmp_dir("use-hai-goi");
+    cai_http(&d, "1.10.0");
+    let (c, _o, e) = vis(
+        &d,
+        &[
+            "pkg",
+            "add",
+            "util",
+            "--registry",
+            fixture().to_str().unwrap(),
+        ],
+    );
+    assert_eq!(c, 0, "cài util: {e}");
+    ghi(
+        &d.join("app.vis"),
+        "use pkg.http\nuse pkg.util\n\nprint(http_version() + util_version())\n",
+    );
+    let (code, out, err) = vis(&d, &["run", "--dump-deps", "app.vis"]);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "1101\n");
+    assert!(
+        err.contains("pkg/http/1.10.0/src/main.vis"),
+        "dump-deps thiếu rel http: {err}"
+    );
+    assert!(
+        err.contains("pkg/util/0.1.0/src/main.vis"),
+        "dump-deps thiếu rel util: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 11 (CLI) — vòng qua gói A↔B ⇒ `VS0702`, không treo.
+#[test]
+fn pkg_vong_lap() {
+    let d = tmp_dir("use-vong");
+    let reg = d.join("registry");
+    ghi_goi_vong(&reg, "a", "b");
+    ghi_goi_vong(&reg, "b", "a");
+    let (code, _o, err) = vis(
+        &d,
+        &["pkg", "add", "a@1.0.0", "--registry", reg.to_str().unwrap()],
+    );
+    assert_eq!(code, 0, "cài a: {err}");
+    ghi(&d.join("app.vis"), "use pkg.a\n\nprint(fa())\n");
+    let (code2, _out, err2) = vis(&d, &["run", "app.vis"]);
+    assert_eq!(code2, 2, "stderr: {err2}");
+    assert!(err2.contains("VS0702"), "stderr: {err2}");
+    assert!(err2.contains("vòng phụ thuộc"), "stderr: {err2}");
+    let _ = std::fs::remove_dir_all(&d);
+}

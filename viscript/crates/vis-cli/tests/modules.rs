@@ -106,15 +106,16 @@ fn std_fs_bao_st27() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+// **SỬA KÈM LÝ DO (ST-71, VD-101 (5))**: `use pkg.*` **không còn hoãn** — đây là hành vi đổi có
+// chủ đích. Không có `vis.lock`/gói ⇒ `VS0701` nêu tên gói + gợi ý `vis pkg add`. Ca cũ khoá
+// thông điệp "hoãn/VS2" nên cập nhật kỳ vọng; **không** xoá ca.
 #[test]
-fn pkg_bao_vs2() {
+fn pkg_chua_cai_bao_vs0701() {
     let k = run("pkg/main.vis");
     assert_eq!(k.code, 2);
-    assert!(
-        k.err.contains("VS0701") && k.err.contains("VS2"),
-        "stderr: {}",
-        k.err
-    );
+    assert!(k.err.contains("VS0701"), "stderr: {}", k.err);
+    assert!(k.err.contains("chưa cài gói `http`"), "stderr: {}", k.err);
+    assert!(k.err.contains("vis pkg add http"), "stderr: {}", k.err);
 }
 
 #[test]

@@ -6,18 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-70 — VS2 #6a: `vis pkg`** (registry **local**, không mạng: `add`/`install`/`list`,
-                manifest tường minh `files[]`, `vis.lock` tất định, `.vis/store` content-addressed;
-                6 ca CLI + 2 unit) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 8 ca + probe (6 đỏ) → `vis-cli/src/pkg.rs` + nhánh `main` + fixture
-                registry + `.gitignore` → 8/8 xanh → workspace **849** → cổng → differential 100k →
-                STATE/JOURNAL).
+Task          : **ST-71 — VS2 #6b: `use pkg.*`** (nạp gói đã cài theo `vis.lock`, `rel` tổng hợp
+                `pkg/<tên>/<ver>/…`, kiểm **sha** lúc chạy ⇒ `VS0701`; vòng qua gói ⇒ `VS0702`;
+                5 ca CLI mới + cập nhật 1 ca cũ) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 6 ca + probe (5+1 đỏ) → `modules.rs`: `giai_pkg`/`tach_pkg`/`chon_tep_pkg`/
+                `doc_tep_goi` + `rel_cua` pkg + `pkg.rs` mở `pub(crate)` → 11/11 + 18/18 xanh →
+                workspace **854** → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T08:54:44Z**; **849** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T09:10:18Z**; **854** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (274,1 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (246,6 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-70]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-71]` + push (đã được uỷ quyền)
+
+## ST-71 — VS2 #6b: `use pkg.*` + kiểm sha lúc chạy, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Nạp gói** | `modules.rs`: `use pkg.<tên>[.<module>]` — đọc `vis.lock` trong `main_dir`; thiếu lock/gói ⇒ `VS0701` **nêu tên** + gợi ý `vis pkg add <tên>`; `seg[1]` = tên gói, `seg[2..]` = module trong gói. **Không** sửa `vis-syntax`/SPEC-lex (DottedPath sẵn có). |
+| 1 | **Kiểm sha** | Chỉ nhận tệp **có trong lock**; đọc bytes → **chuẩn hoá** (dùng lại `pkg::chuan_hoa`) → `file_sha` so `files[].sha256`; lệch ⇒ **`VS0701` "gói `x@v` bị sửa"**, exit 2, **không** chạy mã sai; thiếu tệp trong lock cũng `VS0701`. |
+| 2 | **`rel` tổng hợp** | `rel_cua`: tệp dưới `<main_dir>/.vis/pkg/` ⇒ `pkg/<tên>/<ver>/<path>` (không `file_name` trần) ⇒ hai gói cùng `src/main.vis` khác khoá cache (`khoa_multi` băm `rel`+text) và chẩn đoán đúng tệp; `--dump-deps` in đúng rel này. |
+| 3 | **Vòng qua gói** | Giữ cơ chế `mau` (`DangTham`) ⇒ A↔B báo **`VS0702`**, không treo; chữ ký `load_full` **không đổi** (2 call site `main.rs:132,464` không sửa). |
+| 4 | **Chọn tệp** | Không có module ⇒ entry quy ước: `src/main.vis` → `main.vis` → tệp `.vis` đầu theo byte (lock **không** lưu `entry` — nợ); có module ⇒ `<m>.vis` hoặc `src/<m>.vis` (kể cả `.vish`), mơ hồ ⇒ lỗi. |
+| 5 | **Ca (5 mới + 1 cập nhật)** | `use_pkg_chay_that` (interp + `--vm --no-cache`, cùng `100\n`), `pkg_bi_sua_bao_vs0701` (VS0701 "bị sửa", stdout rỗng), `pkg_chua_cai` (nêu `http` + `vis pkg add http`, cả khi lock có gói khác), `hai_goi_cung_ten_tep` (`--dump-deps` in `pkg/http/1.10.0/src/main.vis` + `pkg/util/0.1.0/src/main.vis`, kết quả 1101), `pkg_vong_lap` (A↔B ⇒ VS0702). **Cập nhật** `tests/modules.rs`: `pkg_bao_vs2` → `pkg_chua_cai_bao_vs0701` (SỬA KÈM LÝ DO, không xoá ca). |
+| 6 | **Red-first** | `JOURNAL/st71-red-rust.log` sha256 `a29ba63a…` (pkg: **6 passed / 5 failed**; modules: **17 passed / 1 failed**); `JOURNAL/st71-red-sem.log` sha256 `f4fca55e…` (`vis run` app `use pkg.http` ⇒ "gói ngoài chưa hỗ trợ", exit 2). |
+| 7 | **Đo** | **854** test = 849 + **5** CLI (21+96+18+154+26+62+9+**468**); sem **441/21** giữ nguyên; `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=246.6 toc_do=406/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`modules.rs` **726**, `pkg.rs` **753**). |
+| 8 | **Nợ** | Lock **không lưu `entry`** ⇒ `use pkg.<tên>` dùng quy ước `src/main.vis`/`main.vis`/tệp `.vis` đầu (nên bổ sung `entry` vào lock sau); chưa resolver **dải** version (`^`/`~`) — deps ghim đúng version; chưa **ký số**/registry HTTP; chưa `pkg remove`/`update`; lock tìm ở `main_dir` (không dò ngược); module con chỉ `<m>.vis`/`src/<m>.vis`; `.vis/store` không GC. |
 
 ## ST-70 — VS2 #6a: `vis pkg` (registry local, không mạng), 2026-11-14
 

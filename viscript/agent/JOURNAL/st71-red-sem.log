@@ -1,0 +1,12 @@
+# ST-71 — log ĐỎ (sem) lúc 2026-11-14T09:00:37Z, HEAD bc6919c5.
+# Red-first: `use pkg.http` hiện bị từ chối 'gói ngoài chưa hỗ trợ (VS2)' ⇒ VS0701, exit 2.
+# Harness CUỐI (tests/pkg.rs ca 7..11 + tests/modules.rs) đã viết. Không thêm ca test/sem.
+
+== vis run app.vis (app: `use pkg.http` + `print(1)`)
+   exit 2
+   stdout: ''
+   stderr:
+   app.vis:1:1: error VS0701: gói ngoài chưa hỗ trợ (VS2): `pkg.*` hoãn
+   
+
+== KẾT LUẬN: đỏ đúng lý do — pkg chưa được nạp.
