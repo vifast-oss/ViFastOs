@@ -184,7 +184,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **DONE** | 0 lệch trên ≥500 ca; sửa nếu lệch |
 | ST-87b | **lỗi thật phát hiện ở ST-87**: fast-path cache **dead code** (`main.rs` đọc khoá v1 `khoa`, ghi khoá v2 `khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit | ST-87 | 2 h | **DONE** | ≥4 ca: TAP lần 2 có `(cache)`, một tệp 2 lần chạy nhanh hơn, đa tệp không đổi |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
-| ST-89 | **parity cuối** — host `Ngoai` cho **VM** (chương trình ngoài trong `.vish` chạy cả hai đường) | ST-88 | 3 h | **READY** | `--vm` SKIP 7 → **0**; parity 398 → **405**; suite ngoài chạy 2 đường cùng byte |
+| ST-89 | **parity cuối** — host `Ngoai` cho **VM** (chương trình ngoài trong `.vish` chạy cả hai đường) | ST-88 | 3 h | **DONE** | `--vm` SKIP 7 → **0**; parity 398 → **405**; suite ngoài chạy 2 đường cùng byte |
 | ST-90 | **pkg** — lưu `entry` trong `vis.lock` + `vis pkg remove` | ST-89 | 2,5 h | **READY** | ≥5 ca; lock cũ vẫn đọc được (tương thích) |
 | ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **READY** | ≥5 ca; tất định; không phá 34 ca LSP |
 | ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
@@ -1337,3 +1337,16 @@ APPROVED 2026-11-14 Agent 0
 > Đo: **961 test** · sem **447/22** · host **54/54** · parity **398/398** · differential **100k/0 lệch** (153,9 s).
 > Nợ: frontend vẫn chạy mỗi lần (~1 ms) vì không còn fast-path bỏ frontend; ca chống nhánh chết **đọc mã nguồn** (brittle).
 > **ST-88 mở** (R13 — chốt vòng 13).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-89 DONE — khoảng lệch interp ↔ VM CUỐI CÙNG đã đóng.** Commit `865342a8` (**Agent 2 tự commit, đã push**). VM nhận
+> `Option<&mut dyn vis_interp::builtin::Ngoai>` (**cùng trait** với interp; VM **không** gọi `std::process`), CLI truyền **cùng**
+> `ngoai::Runner` ⇒ `vis test --vm` **447 ok / 0 SKIP** (từ **7 SKIP**), host suite **54/54 × 2 đường** (120 lần chạy), 13 token
+> `vm:vs0604` trong `suite.txt` **bỏ có lý do**. 5 ca mới so **byte** hai đường. Đo: **966 test** · sem **447/22** · `diag_cmp`
+> **364/49/34** · differential **100k/0 lệch** (148,4 s) · cache **520×4 0 lệch**.
+> **ĐÍNH CHÍNH CHỈ ĐẠO CỦA TÔI**: tôi yêu cầu "parity 398 → **405**" — **sai**. 7 ca đó **đã nằm trong 398** (trước khớp bằng `VS0604`);
+> nay khớp **thật**. Phân hoạch đúng: **447 = 398 chạy được + 49 lỗi biên dịch**; `398 + 7` là **đếm trùng**. Agent **giữ số đo thật**
+> và ghi chú — đúng luật "số đo thắng chỉ đạo". Từ nay **không** dùng 405.
+> Nợ: `--vm` vẫn **một luồng**; lệnh ngoài **chưa qua `cap`** (cả hai đường); `vis test` vẫn `--no-cache` cho tệp tạm.
+> **ST-90 mở** (pkg `entry` + `pkg remove`).
