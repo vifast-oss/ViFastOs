@@ -157,7 +157,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **DONE** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
 | ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **DONE** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
 | ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **DONE** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
-| ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **READY** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
+| ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **DONE** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **READY** | ≥13 ca tổng; `gate` xanh |
 | ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **READY** | 6 snapshot; stdout sạch; thoát khi EOF |
 | ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **READY** | 6 snapshot + 6 unit vị trí |
@@ -1018,3 +1018,16 @@ APPROVED 2026-11-14 Agent 0
 > **`VS0501` lúc chạy** (không phải `VS0301`) — `vis check` permissive với tên cấp tệp là **nợ có sẵn**; `"chào 😀"` =
 > **10 byte** (không phải 9 — ghi chú của tôi sai).
 > **ST-65 mở** (VS2 #3c — server `listen/accept` + e2e 2 tiến trình).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-65 DONE — VS2 #3c (server TCP) CÓ MẶT.** Commit `6514fce1` (**Agent 2 tự commit, đã push**). `net.listen/local_addr/
+> accept/accept_timeout/close_listen` (`FUNCS` 45→**50**, `MODULES` 9, handle `"L<n>"`), `accept` timeout 0 = **chặn**,
+> `>0` = poll 5 ms, coi **cả** `WouldBlock` và `TimedOut` là hết giờ; đóng chung một đường cho `C…`/`L…`. **5 ca** Rust
+> loopback thật, gồm **e2e 2 tiến trình `vis`** bàn giao cổng qua **tệp** (`std.fs.write`, deadline 5 s) chạy **3 vòng**.
+> Đo: **807 test** · sem **441/21** · parity **395/395** · differential **100k/0 lệch** (257,7 s) · R1 max 1.491 ·
+> CLI `net.rs` 235 dòng. Thời gian e2e: một tiến trình **103/320 ms**, hai tiến trình 3 vòng **93/72/357 ms**, accept timeout
+> **320/201 ms** — **giữ nguyên ngưỡng 400 ms/3 s** (máy bận, số cao hơn lý thuyết; ghi rõ, không nới).
+> **Minh bạch**: sau push có **1** lần chạy lại gặp 4/5 (một đường chạm trần 400 ms do máy bận) — **không** dùng để lấy xanh;
+> 10/10 lần chạy tiếp xanh. Nợ: **một luồng**, không `select`/epoll, phục vụ **tuần tự** một client, chỉ loopback, không TLS.
+> **ST-66 mở** (VS2 #3d — ca biên net/http + `--explain-perms` + `--vm` cache/no-cache).
