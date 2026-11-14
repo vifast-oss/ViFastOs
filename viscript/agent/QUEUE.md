@@ -189,7 +189,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **DONE** | ≥5 ca; tất định; không phá 34 ca LSP |
 | ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
 | ST-93 | **`cap[Proc]`** — chương trình ngoài phải có quyền `cap[Proc]`; `--strict-caps` cưỡng chế | ST-92 | 2,5 h | **DONE** | ≥6 ca; hai đường cùng byte; `VS0604` nêu `cap[Proc]` |
-| ST-93b | **im lặng mới phát sinh ở ST-93**: `.vish` có `fn main` **có thân** ⇒ thân `main` **không chạy** (trước đây cũng vậy nhưng im lặng) — phải **chẩn đoán** | ST-93 | 1,5 h | **READY** | ≥4 ca; `main` chỉ khai `cap` (thân rỗng) vẫn hợp lệ |
+| ST-93b | **im lặng mới phát sinh ở ST-93**: `.vish` có `fn main` **có thân** ⇒ thân `main` **không chạy** (trước đây cũng vậy nhưng im lặng) — phải **chẩn đoán** | ST-93 | 1,5 h | **DONE** | ≥4 ca; `main` chỉ khai `cap` (thân rỗng) vẫn hợp lệ |
 | ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **READY** | ≥8 ca; không treo; interp = VM |
 | ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **READY** | MD+JSON; nợ đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -1389,3 +1389,13 @@ APPROVED 2026-11-14 Agent 0
 > · `--vm` **447 ok/0 SKIP** · host **54/54** · parity **398/398+49** · differential **100k/0 lệch** (154,7 s).
 > **Phát hiện**: `.vish` có `fn main` từng **nuốt** pipeline cấp tệp; nay pipeline là **entry** (thay đổi **có chủ đích**, đã ghi nợ).
 > **Nhưng** thân `main` trong `.vish` **không chạy** mà **không** có chẩn đoán ⇒ im lặng ⇒ **mở ST-93b** để báo lỗi rõ.
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-93b DONE — im lặng mới đã đóng.** Commit `f79589ee` + `fc8717b4` (**Agent 2 tự commit, đã push**). `.vish` `fn main` có **câu
+> lệnh thật** ⇒ **`VS0201` tại câu lệnh đầu** ("`fn main` chỉ dùng để khai `cap`…"), exit 2, **không chạy gì**; thân `pass`/rỗng ⇒
+> **hợp lệ** (pipeline vẫn là entry). Chặn **cả** `vis check` và `vis run` (cùng HIR) ⇒ **hai đường** không lệch. **5 ca**; 4 chỗ
+> trong `cap_proc.rs` đổi `let` → `pass` **kèm lý do**. Đo: **989 test** · sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** ·
+> differential **100k/0 lệch** (154,3 s).
+> Nợ: `pass` nhận diện **theo tên**; `.vish` `main` + pipeline vẫn **bỏ main** khi thân rỗng (ST-93, nay chỉ khi không có câu lệnh thật).
+> **ST-94 mở** (kênh: capacity 0 + `close`/drain).
