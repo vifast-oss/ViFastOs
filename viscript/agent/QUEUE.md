@@ -182,7 +182,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-85b | **lỗi thật phát hiện ở ST-85**: dòng cấp tệp **thụt lề** trong `.vish` bị **bỏ im lặng** (in ra rỗng, exit 0) — phải **chẩn đoán** hoặc xử lý đúng | ST-85 | 2,5 h | **DONE** | ≥6 ca; không còn "im lặng bỏ dòng"; hành vi cũ hợp lệ không đổi |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **DONE** | 0 lệch; seed ghim; sinh được cả ca lỗi |
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **DONE** | 0 lệch trên ≥500 ca; sửa nếu lệch |
-| ST-87b | **lỗi thật phát hiện ở ST-87**: fast-path cache **dead code** (`main.rs` đọc khoá v1 `khoa`, ghi khoá v2 `khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit | ST-87 | 2 h | **READY** | ≥4 ca: TAP lần 2 có `(cache)`, một tệp 2 lần chạy nhanh hơn, đa tệp không đổi |
+| ST-87b | **lỗi thật phát hiện ở ST-87**: fast-path cache **dead code** (`main.rs` đọc khoá v1 `khoa`, ghi khoá v2 `khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit | ST-87 | 2 h | **DONE** | ≥4 ca: TAP lần 2 có `(cache)`, một tệp 2 lần chạy nhanh hơn, đa tệp không đổi |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1323,3 +1323,13 @@ APPROVED 2026-11-14 Agent 0
 > differential **100k/0 lệch** (158,1 s).
 > **Phát hiện lỗi thật (mở ST-87b)**: **fast-path cache là dead code** — `main.rs` đọc **khoá v1** (`khoa`) trong khi mọi chỗ ghi dùng
 > **khoá v2** (`khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit (chỉ đa tệp mới hit).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-87b DONE — nhánh (B): xoá fast-path chết.** Commit `32e9bebd` (**Agent 2 tự commit, đã push**). Xác nhận: tệp một module
+> **không bao giờ** hit (đọc khoá v1 `cache::khoa` ↔ ghi khoá v2 `khoa_multi`) ⇒ **xoá** fast-path + `cache::khoa`, đường duy nhất
+> `khoa_multi` (`main.rs` 1.083 → **1.024** dòng). Sau sửa: **13,4 / 12,1 / 11,7 ms**, byte y hệt ⇒ **không hồi quy**; `use ./x`
+> vẫn hit (**mtime `.vbc` không đổi**); sửa tệp chính/phụ đều **miss** (`.vbc` 1 → 2). **5 ca**, gồm ca chống nhánh chết (đỏ trước).
+> Đo: **961 test** · sem **447/22** · host **54/54** · parity **398/398** · differential **100k/0 lệch** (153,9 s).
+> Nợ: frontend vẫn chạy mỗi lần (~1 ms) vì không còn fast-path bỏ frontend; ca chống nhánh chết **đọc mã nguồn** (brittle).
+> **ST-88 mở** (R13 — chốt vòng 13).
