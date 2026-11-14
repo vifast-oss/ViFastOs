@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ST-75 (VD-104(3)) — bộ hợp chuẩn host, chạy THẬT trên macOS; mỗi ca chạy cả interp và `--vm --no-cache`.
+#
+# Định dạng TSV, 5–6 cột:
+#   tên <TAB> chương trình <TAB> đối-số CLI <TAB> stdout kỳ vọng <TAB> mã thoát [<TAB> stderr chứa]
+#
+# - Chương trình: `vis:<nguồn>` (.vis) hoặc `vish:<nguồn>` (.vish); nguồn dùng escape \n, \t, \r, \\.
+#   `{tmp}` = thư mục tạm riêng của ca (cwd khi chạy); `{host}` = thư mục test/host.
+# - Đối số CLI: tách bằng khoảng trắng; `repeat=N` = chạy N lần **mỗi** đường (determinism), không truyền cho `vis`.
+# - Harness luôn tạo fixture: in.txt, empty.txt, utf8.txt, crlf.txt, space name.txt, tệp-việt.txt,
+#   big.txt (64 KiB), sub/long.txt, list/{a,b,c}.txt, list/sub/, root/in.txt, ngoai.txt, a/a.txt, b/b.txt.
+# - Mỗi ca PHẢI có stdout khác rỗng hoặc mã thoát khác 0 (không có ca 'xanh vì không kiểm gì').
+#
+# mức bằng chứng: CHẠY THẬT trên macOS; Windows/Linux/wasm chưa đo (xem HOST-BAO-DAM.md).
+
+fs_read_thuong	use std.fs\nfn main():\n    match fs.read("in.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		xin chào\n	0
+fs_read_rong	use std.fs\nfn main():\n    match fs.read("empty.txt"):\n        ok(s):\n            print("[{s}]")\n        err(e):\n            print("err")		[]\n	0
+fs_read_utf8	use std.fs\nfn main():\n    match fs.read("utf8.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		Xin chào 👋\n	0
+fs_read_crlf	use std.fs\nfn main():\n    match fs.read("crlf.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		a\r\nb\r\n\n	0
+fs_write_roi_doc	use std.fs\nfn main():\n    match fs.write("moi.txt", "nội dung"):\n        ok(_):\n            match fs.read("moi.txt"):\n                ok(s):\n                    print(s)\n                err(e):\n                    print("err")\n        err(e):\n            print("err")		nội dung\n	0
+fs_exists	use std.fs\nfn main():\n    print(fs.exists("in.txt"))\n    print(fs.exists("khong.txt"))		true\nfalse\n	0
+fs_list_sap_xep	use std.fs\nfn main():\n    match fs.list("list"):\n        ok(xs):\n            for x in xs:\n                print(x)\n        err(e):\n            print("err")		a.txt\nb.txt\nc.txt\nsub\n	0
+fs_read_thieu_err	use std.fs\nfn main():\n    match fs.read("khong-co.txt"):\n        ok(s):\n            print("ok")\n        err(e):\n            print("err")		err\n	0
+fs_read_thu_muc_err	use std.fs\nfn main():\n    match fs.read("sub"):\n        ok(s):\n            print("ok")\n        err(e):\n            print("err")		err\n	0
+fs_list_tep_err	use std.fs\nfn main():\n    match fs.list("in.txt"):\n        ok(xs):\n            print("ok")\n        err(e):\n            print("err")		err\n	0
+fs_ghi_thieu_thu_muc_err	use std.fs\nfn main():\n    match fs.write("khong-co-thu-muc/x.txt", "x"):\n        ok(_):\n            print("ok")\n        err(e):\n            print("err")		err\n	0
+fs_duong_dan_tuong_doi	use std.fs\nfn main():\n    match fs.read("./in.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		xin chào\n	0
+fs_duong_dan_tuyet_doi	use std.fs\nfn main():\n    match fs.read("{tmp}/in.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		xin chào\n	0
+fs_ten_co_dau_cach	use std.fs\nfn main():\n    match fs.read("space name.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		có dấu cách\n	0
+fs_ten_unicode	use std.fs\nfn main():\n    match fs.read("tệp-việt.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		việt\n	0
+fs_thu_muc_long	use std.fs\nfn main():\n    match fs.read("sub/long.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		long\n	0
+fs_big_64k	use std.fs\nfn main():\n    match fs.read("big.txt"):\n        ok(s):\n            print(s.len())\n        err(e):\n            print("err")		65536\n	0
+fs_ghi_de_len	use std.fs\nfn main():\n    match fs.write("in.txt", "mới"):\n        ok(_):\n            match fs.read("in.txt"):\n                ok(s):\n                    print(s)\n                err(e):\n                    print("err")\n        err(e):\n            print("err")		mới\n	0
+fs_mock_read	use std.fs\nfn main():\n    match fs.read("./notes.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")	--fs-mock {host}/mock.json	xin chào\n	0
+fs_mock_list	use std.fs\nfn main():\n    match fs.list("./photos"):\n        ok(xs):\n            for x in xs:\n                print(x)\n        err(e):\n            print("err")	--fs-mock {host}/mock.json	.hidden\na.jpg\nb.jpg\n	0
+fs_mock_exists	use std.fs\nfn main():\n    print(fs.exists("./notes.txt"))\n    print(fs.exists("./khong.txt"))	--fs-mock {host}/mock.json	true\nfalse\n	0
+fs_mock_write	use std.fs\nfn main():\n    match fs.write("./notes.txt", "mới"):\n        ok(_):\n            match fs.read("./notes.txt"):\n                ok(s):\n                    print(s)\n                err(e):\n                    print("err")\n        err(e):\n            print("err")	--fs-mock {host}/mock.json	mới\n	0
+ngoai_echo	vish:/bin/echo xin chào	vm:vs0604	[xin chào]\n	0
+ngoai_cat	vish:/bin/echo a | /bin/cat	vm:vs0604	[a]\n	0
+ngoai_grep_match	vish:/bin/echo a | /usr/bin/grep a	vm:vs0604	[a]\n	0
+ngoai_grep_no	vish:/bin/echo x | /usr/bin/grep z	vm:vs0604		1	VS0501
+ngoai_complete_code1	vish:/bin/echo x | /usr/bin/grep z | complete	vm:vs0604	stdout  []\nstderr  []\ncode    1\n	0
+ngoai_complete_code0	vish:/bin/echo a | complete	vm:vs0604	stdout  [a]\nstderr  []\ncode    0\n	0
+ngoai_false	vish:/usr/bin/false	vm:vs0604		1	VS0501
+ngoai_sh_exit3	vish:/bin/sh -c "exit 3"	vm:vs0604		1	VS0501
+ngoai_khong_ton_tai	vish:/khong/co/lenh	vm:vs0604		1	VS0501
+ngoai_dashdash	vish:/bin/echo -- -n	vm:vs0604	[-- -n]\n	0
+ngoai_dau_cach	vish:/bin/echo "a b"	vm:vs0604	[a b]\n	0
+ngoai_nhieu_stage	vish:/bin/echo a | /bin/cat | /bin/cat	vm:vs0604	[a]\n	0
+ngoai_printf	vish:/usr/bin/printf abc	vm:vs0604	[abc]\n	0
+ls_mock_bang	vish:ls ./photos	--fs-mock {host}/mock.json	name   size  modified  is_file\na.jpg   1mb        3h  true\nb.jpg   6mb        2h  true\n	0
+ls_mock_all	vish:ls ./photos --all	--fs-mock {host}/mock.json	name     size  modified  is_file\n.hidden   1kb        1h  true\na.jpg     1mb        3h  true\nb.jpg     6mb        2h  true\n	0
+ls_long	vish:ls ./photos --long	--fs-mock {host}/mock-long.json	name   size     modified  is_file  mode       modified_time\na.jpg   2mb  1700000000s  true     rw-r--r--  2023-11-14 22:13\nb.jpg   6mb  1700086400s  true     rw-------  2023-11-15 22:13\n	0
+ls_open_mock	vish:open ./notes.txt	--fs-mock {host}/mock.json	xin chào\n	0
+ls_where_size	vish:ls ./photos | where size > 5mb	--fs-mock {host}/mock.json	name   size  modified  is_file\nb.jpg   6mb        2h  true\n	0
+ls_sort_take	vish:ls ./photos | where size > 5mb | sort_by modified --desc | take 10	--fs-mock {host}/mock.json	name   size  modified  is_file\nb.jpg   6mb        2h  true\n	0
+ls_to_json	vish:ls ./photos | to json	--fs-mock {host}/mock.json	[{"name":"a.jpg","size":1000000,"modified":10800000000000,"is_file":true},{"name":"b.jpg","size":6000000,"modified":7200000000000,"is_file":true}]\n	0
+shell_take	vish:([3, 1, 2]) | sort_by it | take 2		[1, 2]\n	0
+shell_first	vish:([3, 1, 2]) | sort_by it | first		some(1)\n	0
+shell_count	vish:([3, 1, 2]) | count		3\n	0
+shell_select	vish:([ {ten: "b", n: 1}, {ten: "a", n: 2} ]) | sort_by ten | select ten		ten\na\nb\n	0
+cap_trong	use std.fs\nfn main(r: cap[Dir] @ p"{tmp}"):\n    match fs.read("{tmp}/in.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		xin chào\n	0
+cap_ngoai	use std.fs\nfn main(r: cap[Dir] @ p"{tmp}/root"):\n    match fs.read("{tmp}/ngoai.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")			2	VS0604
+cap_thieu_write	use std.fs\nfn main(r: cap[Dir] @ p"{tmp}/root"):\n    match fs.write("{tmp}/root/x.txt", "x"):\n        ok(_):\n            print("ok")\n        err(e):\n            print("err")			2	(write)
+cap_grant	use std.fs\nfn main(d: cap[Dir] @ p"{tmp}/a"):\n    match fs.read("{tmp}/b/b.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")	--grant d={tmp}/b	B\n	0
+cap_khong_khai	use std.fs\nfn main():\n    match fs.read("{tmp}/ngoai.txt"):\n        ok(s):\n            print(s)\n        err(e):\n            print("err")		ngoai\n	0
+det_list	fn main():\n    print([3, 1, 2])	repeat=3	[3, 1, 2]\n	0
+det_map	fn main():\n    print({b: 1, a: 2})	repeat=3	{b: 1, a: 2}\n	0
+det_for	fn main():\n    for x in [3, 1, 2]:\n        print(x)	repeat=3	3\n1\n2\n	0

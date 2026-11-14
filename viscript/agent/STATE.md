@@ -6,18 +6,31 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-74 — VS2 #7: đa nền tảng, bằng chứng theo mức** (ma trận `cargo check --target`
-                thật 8 crate × 2 target + `vis-host-wasm` + `vis-host-linux`; script `bin/vis-targets`;
-                1 smoke test; cập nhật `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 5/5 (red-first script/khung/test chưa có (đỏ) → đo ma trận thật → script + `vis-host-wasm`
-                + `tests/targets.rs` → 873 xanh → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-75 — VS2 #8: bộ hợp chuẩn host ≥50 ca chạy THẬT trên macOS** (54 ca TSV,
+                harness Rust so byte hai đường, script `bin/vis-host-suite`, cập nhật
+                `HOST-BAO-DAM.md`) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first suite/harness/script chưa có (đỏ) → 54 ca + 3 mock + harness + script
+                → 54/54, 120 lần chạy 0 lệch → 874 xanh → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:59:44Z**; **873** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T11:16:06Z**; **874** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (194,7 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (196,3 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-74]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-75]` + push (đã được uỷ quyền)
+
+## ST-75 — VS2 #8: bộ hợp chuẩn host, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Suite dữ liệu** | `test/host/suite.txt` (**68** dòng, TSV 5–6 cột, comment `#`): `tên → chương trình → đối-số CLI → stdout kỳ vọng (escape `\n`/`\r`/`\t`) → mã thoát [→ stderr chứa]`. Chương trình `vis:`/`vish:`; placeholder `{tmp}` (thư mục tạm riêng mỗi ca) và `{host}`; token `vm:vs0604` khai kỳ vọng VM cho ca Ngoai. Mock: `test/host/mock.json` + `mock-long.json` (+ `.license`). |
+| 1 | **Phân bổ 54 ca** | **FsHost 22** (đọc thường/rỗng/UTF-8+emoji/CRLF, ghi-rồi-đọc, exists, list sắp xếp, 4 ca âm `Err`, tương đối/tuyệt đối, tên dấu cách/Unicode, thư mục lồng, **64 KiB**, ghi đè, `--fs-mock` read/list/exists/write), **Ngoai 13** (echo/cat/grep khớp-không, `complete` mã 0/1, `false`, `sh -c "exit 3"`, lệnh không tồn tại, `--`, đối số dấu cách, 3 stage, printf), **Shell 11** (`ls` bảng/`--all`/`--long`, `open`, `where`, `sort_by|take`, `to json`, `take/first/count/select`), **Quyền 5** (trong root, ngoài root `VS0604`, thiếu `(write)`, `--grant`, không cap), **Determinism 3** (`repeat=3`). |
+| 2 | **Harness** | `crates/vis-cli/tests/host_conformance.rs` (**194** dòng): đọc suite, tạo fixture riêng mỗi ca, chạy **cả** `vis run` và `vis run --vm --no-cache`, so **byte** stdout + exit + stderr chứa; in TAP `ok/not ok`; assert **≥50 ca** và 0 lỗi. Không có ca "xanh vì không kiểm gì" (assert stdout ≠ rỗng hoặc exit ≠ 0). |
+| 3 | **Kết quả đo** | **54/54 ca xanh, 120 lần chạy (54 interp + 54 vm + 12 determinism), 0 lệch**; thời gian harness **3,9 s** (`JOURNAL/st75-suite.log` sha256 `ed6f681c…`). 13 ca Ngoai: VM **không có host Ngoai** ⇒ kỳ vọng `VS0604`/exit 1 (đúng thiết kế ST-27/ST-33), vẫn **chạy** đường VM chứ không bỏ. |
+| 4 | **Script** | `bin/vis-host-suite` (**40** dòng, SPDX `#`, +x): kiểm suite tồn tại, chạy harness `--nocapture`, in bảng `ca → PASS/FAIL`, in `54/54`, exit 1 nếu thiếu/đỏ. |
+| 5 | **Tài liệu** | `agent/HOST-BAO-DAM.md` (**71** dòng): thêm mục "bộ hợp chuẩn host: **54 ca chạy thật trên macOS**, 0 lệch"; bảng nhóm; ghi rõ **Windows/Linux/wasm chưa đo** (chỉ check ST-74). |
+| 6 | **Red-first** | `JOURNAL/st75-red.log` sha256 `bc310dd6…`: `test/host/suite.txt` chưa có (exit 1), harness `host_conformance` chưa có (cargo 101), `bin/vis-host-suite` chưa có (exit 1). |
+| 7 | **Đo** | **874** test = 873 + **1** (21+96+18+154+26+62+9+**488**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; `diag_cmp` **447**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=196.3 toc_do=509/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491**. |
+| 8 | **Nợ** | **Net không có trong suite** (đã có 24 ca `net*.rs`; server loopback cần dựng động — ghi rõ thay bằng 3 ca determinism); 13 ca Ngoai **VM không hỗ trợ** (chỉ interp; kỳ vọng `VS0604`); Windows/Linux/wasm **chưa chạy** bộ này (chưa có runner); `fs_mock_list` thấy `.hidden` (hành vi thật của `fs.list`, không phải lỗi); suite phụ thuộc `/bin/echo`, `/bin/cat`, `/usr/bin/grep`, `/bin/sh`, `/usr/bin/false`, `/usr/bin/printf` của macOS. |
 
 ## ST-74 — VS2 #7: đa nền tảng (bằng chứng theo mức), 2026-11-14
 

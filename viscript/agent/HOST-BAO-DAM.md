@@ -38,6 +38,23 @@ Mã thoát: `0` = Linux có `landlock`; `3` = không có / nền khác; `4` = Li
 Bảng đầy đủ (18 ô) + log: `agent/JOURNAL/st74-matrix.log`. **Cấm** viết “chạy trên Windows/wasm”;
 đúng là “**check** biên dịch chéo xanh, **chưa chạy**”.
 
+## Bộ hợp chuẩn host — chạy THẬT trên macOS (ST-75)
+
+**54 ca**, mỗi ca chạy **cả** `vis run` và `vis run --vm --no-cache` (**120 lần chạy**), so **byte**
+stdout + mã thoát (+ stderr chứa khi khai): **0 lệch**.
+
+| Nhóm | Số ca | Ghi chú |
+|---|---|---|
+| FsHost (`std.fs`, `--fs-mock`) | 22 | đọc/ghi/exists/list, UTF-8/emoji/CRLF, tên có dấu cách/Unicode, 64 KiB, ca âm |
+| Ngoai (chương trình ngoài) | 13 | echo/cat/grep/`complete`/mã thoát/`--`/nhiều stage; VM **không có host Ngoai** ⇒ 13 ca khai `vm:vs0604` (kỳ vọng `VS0604`, exit 1 — đúng thiết kế) |
+| Shell/`ls`/`open` | 11 | bảng `ls`, `--all`, `--long`, `where`, `sort_by`, `to json`, `take/first/count/select` |
+| Quyền `cap` | 5 | trong root, ngoài root `VS0604`, thiếu `(write)`, `--grant`, không khai cap |
+| Determinism | 3 | mỗi ca chạy **3 lần** mỗi đường, cùng stdout |
+
+Lệnh: `viscript/bin/vis-host-suite` (in bảng `ca → PASS/FAIL`, exit 1 nếu thiếu/đỏ). Log:
+`agent/JOURNAL/st75-suite.log`. **Windows/Linux/wasm: CHƯA ĐO** — mới chỉ **check** biên dịch chéo
+(ST-74); không có runner.
+
 ## Cấm ngôn từ
 
 - **Sai**: “đã cưỡng chế bằng Landlock”, “Landlock đã bảo vệ chương trình”, “cách ly kernel đã bật”.

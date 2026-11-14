@@ -1,0 +1,68 @@
+# ST-75 — bộ hợp chuẩn host (harness, --nocapture), 2026-11-14T11:07:52Z, HEAD 0e47afc4
+# lệnh: cargo test -p vis-cli --test host_conformance -- --nocapture
+# Mức bằng chứng: CHẠY THẬT trên macOS; Windows/Linux/wasm chưa đo.
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/host_conformance.rs (target/debug/deps/host_conformance-5433013d15c8113e)
+
+running 1 test
+ok 1 - fs_read_thuong
+ok 2 - fs_read_rong
+ok 3 - fs_read_utf8
+ok 4 - fs_read_crlf
+ok 5 - fs_write_roi_doc
+ok 6 - fs_exists
+ok 7 - fs_list_sap_xep
+ok 8 - fs_read_thieu_err
+ok 9 - fs_read_thu_muc_err
+ok 10 - fs_list_tep_err
+ok 11 - fs_ghi_thieu_thu_muc_err
+ok 12 - fs_duong_dan_tuong_doi
+ok 13 - fs_duong_dan_tuyet_doi
+ok 14 - fs_ten_co_dau_cach
+ok 15 - fs_ten_unicode
+ok 16 - fs_thu_muc_long
+ok 17 - fs_big_64k
+ok 18 - fs_ghi_de_len
+ok 19 - fs_mock_read
+ok 20 - fs_mock_list
+ok 21 - fs_mock_exists
+ok 22 - fs_mock_write
+ok 23 - ngoai_echo
+ok 24 - ngoai_cat
+ok 25 - ngoai_grep_match
+ok 26 - ngoai_grep_no
+ok 27 - ngoai_complete_code1
+ok 28 - ngoai_complete_code0
+ok 29 - ngoai_false
+ok 30 - ngoai_sh_exit3
+ok 31 - ngoai_khong_ton_tai
+ok 32 - ngoai_dashdash
+ok 33 - ngoai_dau_cach
+ok 34 - ngoai_nhieu_stage
+ok 35 - ngoai_printf
+ok 36 - ls_mock_bang
+ok 37 - ls_mock_all
+ok 38 - ls_long
+ok 39 - ls_open_mock
+ok 40 - ls_where_size
+ok 41 - ls_sort_take
+ok 42 - ls_to_json
+ok 43 - shell_take
+ok 44 - shell_first
+ok 45 - shell_count
+ok 46 - shell_select
+ok 47 - cap_trong
+ok 48 - cap_ngoai
+ok 49 - cap_thieu_write
+ok 50 - cap_grant
+ok 51 - cap_khong_khai
+ok 52 - det_list
+ok 53 - det_map
+ok 54 - det_for
+1..54
+# 54 ca, 120 lần chạy (interp + vm), 0 lệch
+test host_conformance_suite ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.92s
+

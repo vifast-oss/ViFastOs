@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ST-75 (VD-104(3)) — chạy bộ hợp chuẩn host (`test/host/suite.txt`) qua harness Rust và in bảng.
+#
+# Mỗi ca chạy **cả** `vis run` và `vis run --vm --no-cache` (trừ khi ca khai `vm:vs0604` = kỳ vọng
+# VS0604 ở VM vì VM không có host Ngoai). Mức bằng chứng: CHẠY THẬT trên macOS; nền khác chưa đo.
+# Exit 1 nếu suite/harness thiếu hoặc có ca đỏ; in số ca.
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SUITE="$ROOT/test/host/suite.txt"
+CARGO="${CARGO:-$HOME/.cargo/bin/cargo}"
+LOG="${TMPDIR:-/tmp}/vis-host-suite.$$.log"
+trap 'rm -f "$LOG"' EXIT
+if [ ! -f "$SUITE" ]; then
+  echo "vis-host-suite: thiếu $SUITE" >&2
+  exit 1
+fi
+so_ca=$(grep -c -v -E '^#|^$' "$SUITE")
+if ! "$CARGO" test --manifest-path "$ROOT/Cargo.toml" -p vis-cli --test host_conformance -- --nocapture >"$LOG" 2>&1; then
+  grep -E '^not ok' "$LOG" | sed 's/^/  /' >&2
+  echo "vis-host-suite: HỎNG (log: $LOG)" >&2
+  cp "$LOG" "${TMPDIR:-/tmp}/vis-host-suite-last.log" 2>/dev/null || true
+  exit 1
+fi
+printf '%-28s %s\n' ca ket-qua
+grep -E '^(ok|not ok) [0-9]+ - ' "$LOG" | while IFS= read -r dong; do
+  trang_thai=${dong%% *}
+  ten=${dong#* - }
+  if [ "$trang_thai" = ok ]; then
+    printf '%-28s %s\n' "$ten" PASS
+  else
+    printf '%-28s %s\n' "$ten" FAIL
+  fi
+done
+so_ok=$(grep -c -E '^ok [0-9]+ - ' "$LOG" || true)
+echo "vis-host-suite: $so_ok/$so_ca ca xanh (chạy thật trên macOS; 3 nền còn lại chưa đo)"
+if [ "$so_ok" -ne "$so_ca" ]; then
+  echo "vis-host-suite: số ca không khớp suite" >&2
+  exit 1
+fi

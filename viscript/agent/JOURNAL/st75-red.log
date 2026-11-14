@@ -1,0 +1,16 @@
+# ST-75 — log ĐỎ (trước khi có suite/harness/script) lúc 2026-11-14T11:04:36Z, HEAD 0e47afc4
+
+== test/host/suite.txt (chưa có)
+ls: test/host/suite.txt: No such file or directory
+[exit=1]
+
+== harness host_conformance (chưa có)
+[exit=101]
+    vsh1b
+    where_tinh
+
+== bin/vis-host-suite (chưa có)
+ls: bin/vis-host-suite: No such file or directory
+[exit=1]
+
+== KẾT LUẬN: suite + harness + script chưa tồn tại ⇒ đỏ đúng lý do.
