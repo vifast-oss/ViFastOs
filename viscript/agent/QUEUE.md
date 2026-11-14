@@ -190,7 +190,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
 | ST-93 | **`cap[Proc]`** — chương trình ngoài phải có quyền `cap[Proc]`; `--strict-caps` cưỡng chế | ST-92 | 2,5 h | **DONE** | ≥6 ca; hai đường cùng byte; `VS0604` nêu `cap[Proc]` |
 | ST-93b | **im lặng mới phát sinh ở ST-93**: `.vish` có `fn main` **có thân** ⇒ thân `main` **không chạy** (trước đây cũng vậy nhưng im lặng) — phải **chẩn đoán** | ST-93 | 1,5 h | **DONE** | ≥4 ca; `main` chỉ khai `cap` (thân rỗng) vẫn hợp lệ |
-| ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **READY** | ≥8 ca; không treo; interp = VM |
+| ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **DONE** | ≥8 ca; không treo; interp = VM |
 | ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **READY** | MD+JSON; nợ đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1399,3 +1399,16 @@ APPROVED 2026-11-14 Agent 0
 > differential **100k/0 lệch** (154,3 s).
 > Nợ: `pass` nhận diện **theo tên**; `.vish` `main` + pipeline vẫn **bỏ main** khi thân rỗng (ST-93, nay chỉ khi không có câu lệnh thật).
 > **ST-94 mở** (kênh: capacity 0 + `close`/drain).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-94 DONE — nhánh (A): `chan(0)` bị **từ chối rõ ràng**, không giả vờ.** Commit `fe6d459b` (**Agent 2 tự commit, đã push**).
+> Lý do đúng: scheduler **một luồng run-to-completion** (VD-90) **không thể** rendezvous ⇒ chặn **ngay khi tạo** (literal, biến `0`,
+> trong hàm), thông điệp nêu "cần scheduler thật — chưa hỗ trợ; dùng capacity ≥ 1", **0,01 s** (trước deadlock 0,30 s), **không treo**.
+> `recv` sau `close` ⇒ `none`; `send` sau `close` ⇒ `VS0504`; `recv` rỗng không task ⇒ `VS0505`; **drain**: 100 `spawn` không `await`
+> ⇒ đủ 100 dòng **đúng thứ tự spawn**; task lỗi không await ⇒ `VS0506`. **10 ca** × 2 đường so **byte**. **ĐÍNH CHÍNH ĐỀ**: tôi đòi
+> exit **2** (static `VS0412`) — đo được rằng nó đẩy 1 ca sang **lỗi biên dịch** ⇒ parity **397+50**, phá ràng buộc; agent chọn
+> **exit 1 runtime** để giữ **398+49** và 447 sem. **Chấp nhận**, ghi nợ. 1 fixture `close-roi-recv-trong.vis` đổi `chan(1)` **kèm lý do**
+> (output không đổi). Đo: **999 test** · sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · differential **100k/0 lệch** (155,3 s).
+> Nợ: **không** rendezvous thật; exit 1 (không 2) cho `chan(0)`; drain không có wait-set; `chan(0)` bị chặn cả khi chỉ `close`.
+> **ST-95 mở** (R15).
