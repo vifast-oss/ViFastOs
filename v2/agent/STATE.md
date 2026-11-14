@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `faba5cb8` ([KT-00] D2-73 — đã push, `origin/main == HEAD`); commit `[KT-45]` tạo sau verdict reviewer (STATE này ghi trước commit)
+HEAD          : `c6037b24` ([KT-45] — commit chỉ `v2/`, sẽ push cùng `[KT-45b]`; parent `88c1c75d` của tab ViScript, không chạm)
 BUILD_ID      : — (ảnh K3 KT-45: `vifast-kbin-riscv64` 40.992 B, `vifast-kbin-ktest` 42.800 B — `JOURNAL/kt45-build.log`)
-Task          : **KT-45 (trap khung riscv64: `stvec` direct, trapframe, decode, panic dump)** — **DONE ở mức thi hành**: trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`; decode **mọi** `scause` (host test 13/13); TAP 5/5 (breakpoint thật + ecall-S qua SBI + illegal **tiêm** + trap lồng fatal theo D2-73/P2b); product 50/50 boot sạch; budget 80 B/262.144 cả hai ảnh; gate 569/73 PASS; **vòng review P1..P4 đã vá, chờ reviewer xác nhận + commit**
+Task          : **KT-45 (trap khung riscv64: `stvec` direct, trapframe, decode, panic dump)** — **DONE ở mức thi hành**: trapframe 32 thanh ghi + `sepc/sstatus/scause/stval`; decode **mọi** `scause` (host test 13/13); TAP 5/5 (breakpoint thật + ecall-S qua SBI + illegal **tiêm** + trap lồng fatal theo D2-73/P2b); product 50/50 boot sạch; budget 80 B/262.144 cả hai ảnh; gate 569/73 PASS; `reviewer-kt45` DRIFT (P1..P4) → **đã vá** → `reviewer-kt45b` **CONFIRM**; commit `c6037b24`
 Bước          : 9/9 **xong** (baseline gate 569/73 → đỏ trước `ktest.sh` (ảnh KT-44 chỉ có 1 TAP) → `trap.rs` + `Platform::set_trap_vector`/IRQ stub + asm trap_entry/trap stack + 2 ảnh + `.trap_stack` + `budget.sh`/`ktest.sh` → host test 13/13 → TAP 5/5 → boot 1 + **50/50** → budget 80 B → `k3-riscv64.md` §7 + JOURNAL → gate --fast 569/0 → **vá P1..P4 của reviewer** (frame `sp-=288`, bỏ ghi sstatus, chặn trap lồng fatal + TAP 5, zero bss, SBI clobber a1) → chạy lại toàn bộ)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite, 0 failed** (`JOURNAL/kt45-gate-fast.log`); baseline cùng số (`JOURNAL/kt45-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml` `exclude = ["kernel"]`) — kernel kiểm bằng 2 build + `ktest.sh`/`run.sh` (`JOURNAL/kt45-{build,ktest,boot,boot50,budget}.log`).
 Miri          : KT-45 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim như KT-43. Phần **logic** trap chạy host: `cargo test -p vifast-plat-common` **13/13** (bố cục trapframe, decode 0..15, resume/fatal, dump, stats, predicate trap lồng).
-Việc dở       : **KT-45 code + vá P1..P4 xong, chờ reviewer xác nhận**; commit `[KT-45]` + `[KT-45b]` (STATE HEAD/verdict) sau verdict. **Deviation D2-73**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG` bit 2/9 = 0 ⇒ illegal/ecall-S **không** vào `stvec`; TAP illegal là **tiêm**, ecall-S là SBI (không claim trap S-mode); page fault thật → KT-46. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
+Việc dở       : **KT-45 code + vá P1..P4 xong, `reviewer-kt45b` CONFIRM**; đã commit `[KT-45]` = `c6037b24`; `[KT-45b]` cập nhật STATE + push. Kế tiếp: Agent 0 lật KT-45 rồi **KT-46 (Sv39 + page-fault thật 13/15 theo D2-73)**. **Deviation D2-73**: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG` bit 2/9 = 0 ⇒ illegal/ecall-S **không** vào `stvec`; TAP illegal là **tiêm**, ecall-S là SBI (không claim trap S-mode); page fault thật → KT-46. `viscript/` + `review/` của tab khác **không chạm** (chỉ stage `v2/`).
 ```
 
 ## KT-45 — trap khung riscv64 (`stvec` direct, trapframe, decode, panic dump)
@@ -77,7 +77,10 @@ claim trap S-mode), `illegal` = host test + **trap tiêm** (ghi rõ "inject"), p
 
 **Review độc lập**: `reviewer-kt45` verdict **DRIFT** (không UNSAFE) — P1 (frame ngoài
 `.trap_stack`), P2a (`csrw sstatus` sớm), P2b (trap lồng), P3 (SBI clobber a1), P4 (zero `.bss`):
-**đã vá hết** trước commit; chờ reviewer xác nhận; kết quả ghi vào `[KT-45b]`.
+**đã vá hết** trước commit; `reviewer-kt45b` **CONFIRM** (tự verify QEMU `-d in_asm`, `frame`
+trong trap stack, 13/13 host, 5 TAP + đúng 1 PANIC, 50/50, gate 569, spec rỗng, unsafe chỉ
+`plat-riscv64`); 4 nit còn lại (comment bố cục frame lồng, serial log, "5 TAP", grep sstatus)
+đã vá trong `[KT-45b]`.
 
 **Không làm (đúng phạm vi)**: MMU/`satp`/guard page (KT-46), timer (KT-47), PLIC (KT-48), SMP/
 PerHart trap stack (KT-49), IPI/TLB (KT-50/51), object layer (KT-52), U-mode/syscall (KT-53);
