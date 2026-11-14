@@ -185,7 +185,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-87b | **lỗi thật phát hiện ở ST-87**: fast-path cache **dead code** (`main.rs` đọc khoá v1 `khoa`, ghi khoá v2 `khoa_multi`) ⇒ tệp một-module **không bao giờ** cache hit | ST-87 | 2 h | **DONE** | ≥4 ca: TAP lần 2 có `(cache)`, một tệp 2 lần chạy nhanh hơn, đa tệp không đổi |
 | ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **DONE** | MD+JSON; nợ còn lại đánh số |
 | ST-89 | **parity cuối** — host `Ngoai` cho **VM** (chương trình ngoài trong `.vish` chạy cả hai đường) | ST-88 | 3 h | **DONE** | `--vm` SKIP 7 → **0**; parity 398 → **405**; suite ngoài chạy 2 đường cùng byte |
-| ST-90 | **pkg** — lưu `entry` trong `vis.lock` + `vis pkg remove` | ST-89 | 2,5 h | **READY** | ≥5 ca; lock cũ vẫn đọc được (tương thích) |
+| ST-90 | **pkg** — lưu `entry` trong `vis.lock` + `vis pkg remove` | ST-89 | 2,5 h | **DONE** | ≥5 ca; lock cũ vẫn đọc được (tương thích) |
 | ST-91 | **LSP** — completion **sau `.`** theo kiểu (field bản ghi + phương thức `impl`) | ST-90 | 2,5 h | **READY** | ≥5 ca; tất định; không phá 34 ca LSP |
 | ST-92 | báo cáo **R14** | ST-89..ST-91 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
@@ -1350,3 +1350,15 @@ APPROVED 2026-11-14 Agent 0
 > và ghi chú — đúng luật "số đo thắng chỉ đạo". Từ nay **không** dùng 405.
 > Nợ: `--vm` vẫn **một luồng**; lệnh ngoài **chưa qua `cap`** (cả hai đường); `vis test` vẫn `--no-cache` cho tệp tạm.
 > **ST-90 mở** (pkg `entry` + `pkg remove`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-90 DONE — pkg `entry` + `pkg remove`.** Commit `bdfd122b` (**Agent 2 tự commit, đã push**). Lock ghi **`entry`** khi cài
+> (`--entry` để override khi manifest thiếu — manifest **đã có** `entry` từ ST-70, *đính chính đề bài của tôi*); **lock cũ** thiếu
+> `entry` ⇒ **fallback quy ước, không cảnh báo** (tương thích); `entry` sai ⇒ **`VS0701` nêu đúng tệp**. `vis pkg remove` xoá
+> mục lock + link `.vis/pkg` + blob **chỉ khi không còn gói nào dùng** (so sha — store content-addressed), **không** sửa `vis.toml`
+> (khoá bằng ca), tên lạ ⇒ exit **2**, lock **byte-identical**. **7 ca** (gồm ca hai gói cùng nội dung). Đo: **973 test** · sem
+> **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · differential **100k/0 lệch** (155,3 s).
+> Nợ: lock cũ **không tự nâng cấp**; `entry` chưa kiểm đuôi; `remove` **không** dọn dep mồ côi (đúng "chỉ xoá tên được gọi");
+> store không GC; chưa `pkg update`; `--entry` chỉ áp gói đích.
+> **ST-91 mở** (LSP completion sau `.`).
