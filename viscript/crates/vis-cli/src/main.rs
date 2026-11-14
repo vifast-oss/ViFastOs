@@ -750,6 +750,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
                         cho_phep_proc: quyen.cho_phep_proc(),
+                        allow_proc: quyen.allow_proc(),
                         ..ngoai::Runner::default()
                     };
                     let co_ngoai = che_do == vis_syntax::Mode::Command && !co_no_extern;
@@ -779,6 +780,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
                         cho_phep_proc: quyen.cho_phep_proc(),
+                        allow_proc: quyen.allow_proc(),
                         ..ngoai::Runner::default()
                     };
                     let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());

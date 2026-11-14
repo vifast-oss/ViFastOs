@@ -32,6 +32,8 @@ pub struct QuyenCap {
     pub kind: String,
     pub root: String,
     pub write: bool,
+    /// **ST-97 (VD-112)**: allowlist lệnh cho `cap[Proc]` (rỗng = không giới hạn).
+    pub allow: Vec<String>,
 }
 
 /// Tập quyền của lần chạy.
@@ -43,6 +45,8 @@ pub struct Quyen {
     /// **không** khai `cap` nào mà chạm fs/net ⇒ `VS0604`. Mặc định `false` (tương thích).
     pub siet: bool,
     pub goc: PathBuf,
+    /// **ST-97**: `Some(ds)` = có ≥1 `--grant` cho cap `Proc` ⇒ chỉ chạy lệnh khớp `ds`.
+    pub allow_proc: Option<Vec<String>>,
 }
 
 /// Bỏ `p"…"`/`"…"` để lấy đường dẫn/host **thuần**.
@@ -195,7 +199,30 @@ pub fn tao(
         }
     }
     let mut moc = Vec::new();
+    let mut allow_proc: Vec<String> = Vec::new();
     for c in ds {
+        // **ST-97 (VD-112)**: `cap[Proc]` nhận **nhiều** `--grant` cùng tên = allowlist lệnh.
+        if c.kind == "Proc" {
+            let ds_grant: Vec<String> = grants
+                .iter()
+                .filter(|(n, _)| n == &c.name)
+                .map(|(_, v)| v.clone())
+                .collect();
+            let root = if ds_grant.is_empty() {
+                c.path.clone()
+            } else {
+                ds_grant.join(":")
+            };
+            allow_proc.extend(ds_grant.iter().cloned());
+            moc.push(QuyenCap {
+                pos: c.pos,
+                kind: c.kind.clone(),
+                root,
+                write: false,
+                allow: ds_grant,
+            });
+            continue;
+        }
         let duong = grants
             .iter()
             .find(|(n, _)| n == &c.name)
@@ -208,10 +235,16 @@ pub fn tao(
                 } else {
                     goc.join(&duong)
                 };
-                std::fs::canonicalize(&p)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .to_string()
+                let canon = std::fs::canonicalize(&p).unwrap_or(p.clone());
+                // **ST-97**: `--grant` cho `cap[Dir]` mà trỏ **tệp thực thi** ⇒ nhiều khả năng nhầm với
+                // `cap[Proc]`; từ chối rõ (exit 2), không âm thầm nhận làm thư mục.
+                if c.kind == "Dir" && la_tep_thuc_thi(&canon) {
+                    return Err(format!(
+                        "`--grant {}={duong}`: **kiểu không khớp** — `cap[Dir]` nhận **thư mục**, không nhận tệp thực thi; `cap[Proc]` mới nhận lệnh",
+                        c.name
+                    ));
+                }
+                canon.to_string_lossy().to_string()
             }
             _ => duong,
         };
@@ -220,6 +253,7 @@ pub fn tao(
             kind: c.kind.clone(),
             root,
             write: c.write && matches!(c.kind.as_str(), "Dir" | "File"),
+            allow: Vec::new(),
         });
     }
     Ok(Quyen {
@@ -227,10 +261,34 @@ pub fn tao(
         bat: siet || !ds.is_empty(),
         siet,
         goc: goc.to_path_buf(),
+        allow_proc: if allow_proc.is_empty() {
+            None
+        } else {
+            Some(allow_proc)
+        },
     })
 }
 
+/// **ST-97**: tệp thực thi (Unix) — dùng để bắt `--grant` Proc gán nhầm cho `cap[Dir]`.
+#[cfg(unix)]
+fn la_tep_thuc_thi(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p)
+        .map(|m| m.is_file() && (m.permissions().mode() & 0o111) != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn la_tep_thuc_thi(_p: &Path) -> bool {
+    false
+}
+
 impl Quyen {
+    /// **ST-97**: allowlist `cap[Proc]` (nếu người dùng đã `--grant`).
+    pub fn allow_proc(&self) -> Option<Vec<String>> {
+        self.allow_proc.clone()
+    }
+
     /// Giá trị `Value::Cap` cho từng tham số (đưa vào interp/VM).
     pub fn gia_tri(&self) -> Vec<(u32, Value)> {
         self.moc

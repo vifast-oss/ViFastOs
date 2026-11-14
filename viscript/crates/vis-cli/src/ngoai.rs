@@ -20,6 +20,8 @@ pub struct Runner {
     pub timeout_ms: u64,
     /// **ST-93 (VD-111)**: `--strict-caps` ⇒ chỉ chạy khi `main` khai `cap[Proc]`; `true` ngoài strict.
     pub cho_phep_proc: bool,
+    /// **ST-97 (VD-112)**: `Some(ds)` ⇒ chỉ chạy lệnh khớp allowlist `--grant` của `cap[Proc]`.
+    pub allow_proc: Option<Vec<String>>,
 }
 
 impl Default for Runner {
@@ -31,12 +33,36 @@ impl Default for Runner {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10_000),
             cho_phep_proc: true,
+            allow_proc: None,
         }
     }
 }
 
 fn loi(ma: &'static vis_diag::Code, msg: impl Into<String>, span: Span) -> Abort {
     Abort::Trap(Trap::new(ma, msg, span))
+}
+
+/// **ST-97**: lệnh `ten` khớp grant `g` nếu **basename** bằng nhau hoặc **đường dẫn canonicalize**
+/// bằng nhau (`echo` khớp `/bin/echo`; `/bin/echo` khớp grant `echo`).
+fn khop_lenh(ten: &str, g: &str) -> bool {
+    if ten == g {
+        return true;
+    }
+    let base = |s: &str| {
+        std::path::Path::new(s)
+            .file_name()
+            .map(|x| x.to_string_lossy().to_string())
+            .unwrap_or_else(|| s.to_string())
+    };
+    if base(ten) == base(g) {
+        return true;
+    }
+    let canon = |s: &str| {
+        std::fs::canonicalize(s)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| s.to_string())
+    };
+    canon(ten) == canon(g)
 }
 
 /// Cap **stdin** mỗi stage ngoài (ST-34): 8 MiB. Vượt ⇒ `VS0501` **trước khi spawn**.
@@ -63,6 +89,20 @@ impl Runner {
                 format!("[quyền] cần khai `cap[Proc]` cho `{ten}`"),
                 span,
             ));
+        }
+        // **ST-97 (VD-112)**: allowlist chỉ áp khi người dùng đã `--grant` cho `cap[Proc]`; không grant
+        // ⇒ không giới hạn (tương thích). So **basename** HOẶC **đường dẫn canonicalize**.
+        if let Some(ds) = &self.allow_proc {
+            if !ds.iter().any(|g| khop_lenh(ten, g)) {
+                return Err(loi(
+                    &COMMAND_CODES[3],
+                    format!(
+                        "[quyền] lệnh `{ten}` không nằm trong allowlist của `cap[Proc]` (đã cấp: {})",
+                        ds.join(", ")
+                    ),
+                    span,
+                ));
+            }
         }
         if stdin.len() > MAX_STDIN {
             return Err(loi(

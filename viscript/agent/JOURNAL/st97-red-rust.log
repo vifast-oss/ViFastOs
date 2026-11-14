@@ -1,0 +1,39 @@
+# ST-97 — log ĐỎ (Rust) lúc 2026-11-14T20:50:07Z, HEAD 2b2ef35c — chưa có allowlist Proc.
+# lệnh: cargo test -p vis-cli --test cap_proc_grant (6 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/cap_proc_grant.rs (target/debug/deps/cap_proc_grant-9e5fdf743d69db2a)
+
+running 6 tests
+test grant_proc_cho_cap_dir_la_loi_kieu ... FAILED
+test grant_tuyet_doi_echo_chay ... ok
+test khong_grant_khong_gioi_han ... ok
+test grant_basename_echo_chay ... ok
+test grant_echo_chan_grep ... FAILED
+test hai_grant_pipeline_hai_stage ... ok
+
+failures:
+
+---- grant_proc_cho_cap_dir_la_loi_kieu stdout ----
+
+thread 'grant_proc_cho_cap_dir_la_loi_kieu' (49286256) panicked at crates/vis-cli/tests/cap_proc_grant.rs:151:5:
+assertion `left == right` failed: (0, [49, 10], "")
+  left: 0
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- grant_echo_chan_grep stdout ----
+
+thread 'grant_echo_chan_grep' (49286255) panicked at crates/vis-cli/tests/cap_proc_grant.rs:79:5:
+assertion `left == right` failed: (0, [91, 35, 35, 44, 32, 35, 32, 72, 111, 115, 116, 32, 68, 97, 116, 97, 98, 97, 115, 101, 44, 32, 35, 44, 32, 35, 32, 108, 111, 99, 97, 108, 104, 111, 115, 116, 32, 105, 115, 32, 117, 115, 101, 100, 32, 116, 111, 32, 99, 111, 110, 102, 105, 103, 117, 114, 101, 32, 116, 104, 101, 32, 108, 111, 111, 112, 98, 97, 99, 107, 32, 105, 110, 116, 101, 114, 102, 97, 99, 101, 44, 32, 35, 32, 119, 104, 101, 110, 32, 116, 104, 101, 32, 115, 121, 115, 116, 101, 109, 32, 105, 115, 32, 98, 111, 111, 116, 105, 110, 103, 46, 32, 32, 68, 111, 32, 110, 111, 116, 32, 99, 104, 97, 110, 103, 101, 32, 116, 104, 105, 115, 32, 101, 110, 116, 114, 121, 46, 44, 32, 35, 35, 44, 32, 49, 50, 55, 46, 48, 46, 48, 46, 49, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 44, 32, 50, 53, 53, 46, 50, 53, 53, 46, 50, 53, 53, 46, 50, 53, 53, 9, 98, 114, 111, 97, 100, 99, 97, 115, 116, 104, 111, 115, 116, 44, 32, 58, 58, 49, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 108, 111, 99, 97, 108, 104, 111, 115, 116, 93, 10], "")
+  left: 0
+ right: 2
+
+
+failures:
+    grant_echo_chan_grep
+    grant_proc_cho_cap_dir_la_loi_kieu
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+
+error: test failed, to rerun pass `-p vis-cli --test cap_proc_grant`

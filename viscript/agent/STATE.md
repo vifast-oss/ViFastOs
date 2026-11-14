@@ -6,15 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-96 — bất biến sổ mã ↔ mã thực dùng** — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 3/3 (quét A/B → A\B = **VS0001** (ví dụ định dạng trong unit test) → bỏ literal →
-                A=B=32, B\A rỗng; 4 ca `so_ma` → 1003 test → diff 100k → cổng).
+Task          : **ST-97 — `--grant` cho `cap[Proc]` (allowlist lệnh)** — xong, đã đo + cổng +
+                differential; **chưa commit**.
+Bước          : 3/3 (đo đỏ 2/6 → allowlist lặp `--grant`, khớp basename/canonical → 6 ca → 1009 test →
+                diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:47:06Z**; **1003** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:59:47Z**; **1009** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49** / differential **100.000 / 0 lệch** (153,2 s) / sổ mã **32**
-Việc dở       : commit `[ST-96]` + push (đã được uỷ quyền)
+                parity **398/398 + 49** / differential **100.000 / 0 lệch** (153,3 s) / sổ mã **32**
+Việc dở       : commit `[ST-97]` + push (đã được uỷ quyền)
+
+## ST-97 — `--grant` cho `cap[Proc]`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Dạng chọn** | **Lặp `--grant p=<lệnh>`** (không dùng `:` vì lệnh có thể chứa `:`); nhiều grant cùng tên ⇒ **allowlist**. Chỉ áp khi có **≥1** grant cho cap `Proc`; **không grant ⇒ không giới hạn** (tương thích 6 ca `cap_proc` + host 54). |
+| 1 | **So khớp** | Khớp nếu **basename** bằng nhau **HOẶC** **đường dẫn canonicalize** bằng nhau: `echo` khớp `/bin/echo`, `/bin/echo` khớp grant `echo`; grant `/bin/echo` **không** khớp `/usr/bin/grep`. Không khớp ⇒ **`VS0604: [quyền] lệnh X không nằm trong allowlist của cap[Proc]`**, exit 2, không chạy. |
+| 2 | **Cưỡng chế** | Tại **biên host** `Runner::chay_raw` (dùng chung interp + VM), trước spawn; **cả** hai đường byte y hệt; `--dry`/`--sandbox-check` không bị ảnh hưởng. `--grant` cho cap **Dir** trỏ tệp thực thi ⇒ lỗi **“kiểu không khớp”** exit 2 (không âm thầm nhận). |
+| 3 | **6 ca** | `cap_proc_grant.rs`: (a) grant `/bin/echo` + echo ⇒ chạy; (b) grant echo + grep ⇒ `VS0604` allowlist; (c) grant basename `echo` + `/bin/echo` ⇒ chạy (khoá quyết định so cả hai); (d) không grant ⇒ grep chạy; (e) hai grant + pipeline 2 stage ⇒ chạy; (f) grant `/bin/echo` cho `cap[Dir]` ⇒ lỗi kiểu exit 2. Mỗi ca hai đường, so byte. |
+| 4 | **Sửa** | `quyen.rs`: `QuyenCap.allow`, `Quyen.allow_proc`, gom **nhiều** grant cùng tên, chặn grant lệnh cho `cap[Dir]`; `ngoai.rs`: `Runner.allow_proc` + `khop_lenh` (basename/canonical) + trap `VS0604`; `main.rs`: truyền allowlist + cập nhật `usage()` (“Dir/File/Net = đường dẫn · Proc = lệnh (allowlist)”). |
+| 5 | **Đo** | **1009** test = 1003 + **6** (21+96+27+154+26+62+9+**614**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; parity **398/398 + 49**; `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=153.3 toc_do=653/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 6 | **Nợ** | So **basename** cho phép binary cùng tên ở đường dẫn khác (khoá rộng có chủ đích); **không** giới hạn đối số/`args`; không hỗ trợ dạng `:`; grant áp **cả khi không** `--strict-caps` (ý người dùng); `cap[Proc]` không grant vẫn **không** giới hạn; heuristic “tệp thực thi cho cap[Dir]” có thể từ chối grant thư mục trỏ tệp-exec hợp lệ hiếm; non-Unix bỏ heuristic. |
 
 ## ST-96 — sổ mã ↔ mã thực dùng, 2026-11-14
 
