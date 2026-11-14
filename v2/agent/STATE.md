@@ -11,7 +11,7 @@ Bước          : 7/8 (baseline → đỏ ngữ nghĩa → đỏ biên dịch �
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 494 test/65 suite** (baseline KT-36 477 + 12 `kt36_frame` + 5 unit test âm `check_frames`), L1 1.000 seed **769 ms** (baseline 832 ms — không hồi quy), fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt36-gate-fast.log`). Đã tự bắt **một hồi quy cổng** trong lúc làm: `check_frames` không có cửa sổ nhanh ⇒ L1 1.000 seed **54.513 ms** (sát trần 60 s, QD §5.2); sửa bằng `frame_objects`/`return Ok(())` khi mô hình chưa từng có Frame ⇒ **769 ms**. KT-35 (lịch sử): PASS 477 test, L1 607 ms; baseline KT-36: PASS 477, L1 832 ms (`kt36-baseline-gate-fast.log`).
 Miri          : KT-36 — **PASS 12/12** `--test kt36_frame` (35,99 s) + **PASS 5/5** `--lib frame` (2,59 s) qua `./v2/bin/v2 miri` (`JOURNAL/kt36-miri.log`); 10.000 → **2×32** Frame và property 10.000 → **5×4** seed dưới `cfg(miri)` (giữ nguyên 10.000 ngoài Miri — D2-47(a)); 2 warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17), không phải KT-36. **Không** thêm `kt36_frame` vào `nightly --only-miri` (không sửa `v2/bin/v2`; KT-43 chốt tập Miri của K2). KT-35 (lịch sử): Miri 9/9 `vifast-pte`.
-Việc dở       : **KT-36 — xong mã + gate + Miri, đang chờ verdict `reviewer-kt36` trước khi commit** (đã báo lead spawn; quá 10 phút sẽ tự soát + đề xuất REVIEW). KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
+Việc dở       : **KT-36 xong: commit `9c54bcf` đã push** (verdict `reviewer-kt36` **APPROVE code**; D2-66 của Agent 0 ở `9b70618`) — **chờ Agent 0 lật sổ**; KT-35 REVIEW (đề xuất DONE) — chờ Agent 0 lật; `reviewer-kt35` verdict **DRIFT** 2 mục chặn **đã sửa**: B1 thiếu `#![no_std]`/`#![forbid(unsafe_code)]` thật ở crate root (đã thêm 2 dòng), B2 bảng lá M2/G1 sai trong `k2-vm.md` (đã sửa) + nit `SHIFT_L0` suy từ `PAGE_SIZE_BITS[0]`, nguồn design `:353-366`; sau sửa test 9/9, Miri 9/9, gate 477 PASS. Test đỏ trước `kt35-red-compile.log` (E0432, crate mới khung rỗng); không chạm `spec/`/`vifast-model`/`.scn`/`QUEUE`/`DECISIONS`/`viscript/`; `spec/kernel.toml` **chưa tạo** (D2-65 Q1). KT-34 (lịch sử): REVIEW chờ Agent 0 lật; K1c DONE (D2-64). Không tự lật QUEUE.
 ```
 
 ## KT-36 — K2: `Frame` 3 cỡ (4 KiB/2 MiB/1 GiB) + ownership/Untyped + `GetAddress` + bộ đếm W^X
@@ -69,10 +69,15 @@ frame **không cấp byte thật** (1 GiB vẫn 0 byte arena); frame chết ⇒ 
    mô hình là O(#object đã từng cấp) nên dồn 10k object vào một mô hình là O(n²) ~56 s mà không
    kiểm thêm gì; vẫn là **10.000** lần retype + 10.000 lần huỷ thật.
 
-**Việc dở**: `reviewer-kt36` verdict **APPROVE code**; **D2-66** (Agent 0) đã push (`9b70618`) —
-chốt `UNTYPED_PA_WINDOW` 1 GiB/`add_untyped(base)`/nhãn PA ảo/bất biến bộ đếm; 3 nit của reviewer đã
-sửa (assert tràn `base+1 GiB` ở `add_untyped`, câu "Frame sống không chồng `pa`" ở `k2-vm.md` §10.2,
-thống nhất **7 nhóm** bất biến). Còn: gate lại + Miri lại rồi commit `[KT-36]` + push. Không lật QUEUE.
+**Commit**: `9c54bcf` `[KT-36]`, đã push (`ba3ae01..9c54bcf main -> main`) — **DONE-mã, chờ Agent 0
+lật sổ**; `git rev-list --count HEAD..origin/main` = 0 sau push. Gate/Miri chạy lại trên **cây cuối**
+(sau 3 nit của reviewer): gate **PASS 494 test**, L1 **769 ms**; Miri **12/12** (36,10 s) + **5/5**
+(2,50 s).
+
+**Review trước commit**: `reviewer-kt36` verdict **APPROVE code**; **D2-66** (Agent 0) đã push
+(`9b70618`) — chốt `UNTYPED_PA_WINDOW` 1 GiB/`add_untyped(base)`/nhãn PA ảo/bất biến bộ đếm; 3 nit
+của reviewer đã sửa **trước** commit: assert tràn `base+1 GiB` ở `add_untyped`, câu "Frame sống
+không chồng `pa`" ở `k2-vm.md` §10.2, thống nhất **7 nhóm** bất biến (D2-66). Không lật QUEUE.
 
 ## KT-35 — mở K2: crate `vifast-pte` (hình 3 cấp + PTE array) và `v2/docs/k2-vm.md` (D2-65 Q1/Q2/Q8)
 
