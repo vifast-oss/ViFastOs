@@ -408,6 +408,7 @@ fn snapshot_9_ca_so_module_07xx() {
         5,
         "ST-50: 04xx có 5 mã (thêm VS0405)"
     );
-    assert_eq!(vis_diag::all_codes().count(), 29);
+    // **SỬA KÈM LÝ DO (ST-60)**: +**VS0506** (lỗi thân tác vụ `async`) ⇒ **30** mã.
+    assert_eq!(vis_diag::all_codes().count(), 30);
     assert_eq!(vis_diag::next_block(), 801, "khối kế tiếp là 08xx");
 }

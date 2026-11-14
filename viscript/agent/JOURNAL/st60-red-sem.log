@@ -1,0 +1,365 @@
+# ST-60 — log ĐỎ (sem) lúc 2026-11-14T00:44:29Z, HEAD eaf30c1 (đã tạm gỡ 13 tệp mã của ST-60)
+# 22 ca test/sem/async/ chạy bằng binary **trước** sửa (vis run + vis run --vm --no-cache).
+
+== async-goi-async
+   kỳ vọng .out:
+     8
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/async-goi-async.vis:9:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/async-goi-async.vis (VS0501, steps=4)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 130..144
+     not ok 1 - test/sem/async/async-goi-async.vis (codegen)
+     [exit=1]
+
+== async-khong-goi-khong-chay
+   kỳ vọng .out:
+     ok
+   -- interp:
+     TAP version 13
+     1..1
+     ok
+     ok 1 - test/sem/async/async-khong-goi-khong-chay.vis (steps=4)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     ok
+     ok 1 - test/sem/async/async-khong-goi-khong-chay.vis (steps=3)
+     [exit=0]
+
+== async-lam-gia-tri
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     1
+     ok 1 - test/sem/async/async-lam-gia-tri.vis (steps=6)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     1
+     ok 1 - test/sem/async/async-lam-gia-tri.vis (steps=5)
+     [exit=0]
+
+== await-co-ban
+   kỳ vọng .out:
+     3
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/await-co-ban.vis:6:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/await-co-ban.vis (VS0501, steps=12)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 119..126
+     not ok 1 - test/sem/async/await-co-ban.vis (codegen)
+     [exit=1]
+
+== await-hai-lan-cache
+   kỳ vọng .out:
+     chay
+     7
+     7
+   -- interp:
+     TAP version 13
+     1..1
+     chay
+     test/sem/async/await-hai-lan-cache.vis:7:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/await-hai-lan-cache.vis (VS0501, steps=12)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 113..120
+     not ok 1 - test/sem/async/await-hai-lan-cache.vis (codegen)
+     [exit=1]
+
+== await-khong-phai-task
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/await-khong-phai-task.vis:2:9: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/await-khong-phai-task.vis (VS0501, steps=2)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 53..60
+     not ok 1 - test/sem/async/await-khong-phai-task.vis (codegen)
+     [exit=1]
+
+== await-trong-vong-lap
+   kỳ vọng .out:
+     14
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/await-trong-vong-lap.vis:8:19: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/await-trong-vong-lap.vis (VS0501, steps=18)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 157..164
+     not ok 1 - test/sem/async/await-trong-vong-lap.vis (codegen)
+     [exit=1]
+
+== de-quy-async
+   kỳ vọng .out:
+     24
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/de-quy-async.vis:8:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/de-quy-async.vis (VS0501, steps=4)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 127..149
+     not ok 1 - test/sem/async/de-quy-async.vis (codegen)
+     [exit=1]
+
+== hai-task-thu-tu
+   kỳ vọng .out:
+     1
+     2
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/hai-task-thu-tu.vis:7:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/hai-task-thu-tu.vis (VS0501, steps=14)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 111..118
+     not ok 1 - test/sem/async/hai-task-thu-tu.vis (codegen)
+     [exit=1]
+
+== print-trong-task-thu-tu
+   kỳ vọng .out:
+     f1
+     f2
+   -- interp:
+     TAP version 13
+     1..1
+     print-trong-task-thu-tu.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+     not ok 1 - test/sem/async/print-trong-task-thu-tu.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     print-trong-task-thu-tu.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+     not ok 1 - test/sem/async/print-trong-task-thu-tu.vis (VS0201)
+     [exit=2]
+
+== spawn-co-ten
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     spawn-co-ten.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+     not ok 1 - test/sem/async/spawn-co-ten.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     spawn-co-ten.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+     not ok 1 - test/sem/async/spawn-co-ten.vis (VS0201)
+     [exit=2]
+
+== spawn-khong-async
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     spawn-khong-async.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `thuong`
+     not ok 1 - test/sem/async/spawn-khong-async.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     spawn-khong-async.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `thuong`
+     not ok 1 - test/sem/async/spawn-khong-async.vis (VS0201)
+     [exit=2]
+
+== spawn-nhieu-join-cuoi
+   kỳ vọng .out:
+     main
+     1
+     2
+     3
+   -- interp:
+     TAP version 13
+     1..1
+     spawn-nhieu-join-cuoi.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+     not ok 1 - test/sem/async/spawn-nhieu-join-cuoi.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     spawn-nhieu-join-cuoi.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+     not ok 1 - test/sem/async/spawn-nhieu-join-cuoi.vis (VS0201)
+     [exit=2]
+
+== spawn-trong-ham
+   kỳ vọng .out:
+     xong dat
+     viec 9
+   -- interp:
+     TAP version 13
+     1..1
+     spawn-trong-ham.vis:7:19: error VS0201: mong xuống dòng sau câu lệnh, thật `viec`
+     not ok 1 - test/sem/async/spawn-trong-ham.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     spawn-trong-ham.vis:7:19: error VS0201: mong xuống dòng sau câu lệnh, thật `viec`
+     not ok 1 - test/sem/async/spawn-trong-ham.vis (VS0201)
+     [exit=2]
+
+== task-in-trong-than
+   kỳ vọng .out:
+     truoc
+     trong 1
+     1
+     sau
+   -- interp:
+     TAP version 13
+     1..1
+     trong 1
+     truoc
+     test/sem/async/task-in-trong-than.vis:8:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/task-in-trong-than.vis (VS0501, steps=18)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 146..153
+     not ok 1 - test/sem/async/task-in-trong-than.vis (codegen)
+     [exit=1]
+
+== task-khong-await-van-chay
+   kỳ vọng .out:
+     main
+     chay 1
+     chay 2
+   -- interp:
+     TAP version 13
+     1..1
+     task-khong-await-van-chay.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+     not ok 1 - test/sem/async/task-khong-await-van-chay.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     task-khong-await-van-chay.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+     not ok 1 - test/sem/async/task-khong-await-van-chay.vis (VS0201)
+     [exit=2]
+
+== task-khong-phai-int
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     1
+     ok 1 - test/sem/async/task-khong-phai-int.vis (steps=8)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     1
+     ok 1 - test/sem/async/task-khong-phai-int.vis (steps=7)
+     [exit=0]
+
+== task-tra-list
+   kỳ vọng .out:
+     [1, 2, 3]
+     3
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/task-tra-list.vis:5:10: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/task-tra-list.vis (VS0501, steps=2)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 97..107
+     not ok 1 - test/sem/async/task-tra-list.vis (codegen)
+     [exit=1]
+
+== task-tra-record
+   kỳ vọng .out:
+     1
+     2
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/task-tra-record.vis:9:9: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/task-tra-record.vis (VS0501, steps=2)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 129..140
+     not ok 1 - test/sem/async/task-tra-record.vis (codegen)
+     [exit=1]
+
+== task-tra-str
+   kỳ vọng .out:
+     xin chao A
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/task-tra-str.vis:5:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/async/task-tra-str.vis (VS0501, steps=4)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 105..120
+     not ok 1 - test/sem/async/task-tra-str.vis (codegen)
+     [exit=1]
+
+== than-task-loi-await
+   kỳ vọng .err: VS0506
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/async/than-task-loi-await.vis:3:5: error VS0502: chia cho 0 (`/0`)
+     not ok 1 - test/sem/async/than-task-loi-await.vis (VS0502, steps=6)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     vis run --vm: codegen lỗi: chưa biểu diễn được `await` tại byte 101..108
+     not ok 1 - test/sem/async/than-task-loi-await.vis (codegen)
+     [exit=1]
+
+== than-task-loi-join
+   kỳ vọng .err: VS0506
+   -- interp:
+     TAP version 13
+     1..1
+     than-task-loi-join.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `hong`
+     not ok 1 - test/sem/async/than-task-loi-join.vis (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     than-task-loi-join.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `hong`
+     not ok 1 - test/sem/async/than-task-loi-join.vis (VS0201)
+     [exit=2]

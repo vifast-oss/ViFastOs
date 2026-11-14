@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn ds() -> list[int]:
+    [1, 2, 3]
+
+let xs = await ds()
+print(xs)
+print(len(xs))

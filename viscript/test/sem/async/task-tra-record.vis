@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type Diem:
+    x: int
+    y: int
+
+async fn tao() -> Diem:
+    {x: 1, y: 2}
+
+let d = await tao()
+print(d.x)
+print(d.y)

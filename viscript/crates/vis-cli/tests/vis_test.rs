@@ -12,7 +12,8 @@ use std::process::Command;
 /// **SỬA KÈM LÝ DO (ST-56b)**: 376 → **382** (+6 ca phép gán).
 /// **SỬA KÈM LÝ DO (ST-57)**: 382 → **388** (+6 ca `trait/`: siêu trait ×2, `derives` ×4).
 /// **SỬA KÈM LÝ DO (ST-59)**: 388 → **394** (+6 ca `vish/`: shell `let`/biến stage đầu/thân `cmd`).
-const SO_CA: usize = 394;
+/// **SỬA KÈM LÝ DO (ST-60)**: 394 → **416** (+22 ca `async/` — chốt VD-90/VD-95).
+const SO_CA: usize = 416;
 
 fn vis(args: &[&str]) -> (i32, String, String) {
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))

@@ -6,48 +6,33 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-59** (nợ shell: `let` không chú thích **bind** ở vùng item; **biến làm stage
-                đầu**; thân `cmd` **khai báo + một pipeline** — R9 nợ 8/9/10) — xong, **chưa commit**.
-Bước          : 8/8 (khảo sát file:line + đo 3 lỗ → 2 log đỏ → A `let` suy kiểu (một nguồn luật) →
-                B biến stage đầu + kiểu tĩnh → C thân `cmd` khai-lệnh (hai Lowerer con) → khoá số →
-                cổng → differential → STATE/JOURNAL).
+Task          : **ST-60** (VS2 #1 — **async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định
+                một luồng**, chốt VD-90/VD-95) — xong, **chưa commit**.
+Bước          : 9/9 (khảo sát file:line → runtime `rt.rs` → builtin `$…` + Host → interp → parser/HIR
+                → tyck `Task[T]` → codegen/VM → 22 ca sem + 10k → 2 log đỏ → cổng/differential →
+                STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T00:08:54Z**; **771** test / sem
-                **394** / `vis test` **394 ok** (+`--vm` **394 ok/7 SKIP**) / parity **360/360** /
-                differential **100.000 chương trình 0 lệch** (202,8 s) / **7 sổ-29 mã** (không mã mới) /
-                allowlist **6**
-Việc dở       : commit `[ST-59]` + push (đã được uỷ quyền)
-```
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T01:14:39Z**; **774** test / sem
+                **416/20 nhóm** / `vis test` **416 ok** (+`--vm` **416 ok/7 SKIP**) / parity **377/377** /
+                differential **100.000 chương trình 0 lệch** (208,7 s) / **7 sổ-30 mã** (+`VS0506`) /
+                allowlist **6**; 10k task: interp **309 ms**, VM **166 ms**
+Việc dở       : commit `[ST-60]` + push (đã được uỷ quyền)
 
-## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
+## ST-60 — VS2 #1: async (`async fn`/`await`/`spawn`), bộ lập lịch tất định một luồng, 2026-11-14
 
-| # | Mục review | Sửa | Khoá bằng |
-|---|---|---|---|
-| 1 | **BLOCKER** `Never`/return-tail | thêm `Type::Never`: `return` ⇒ `never`; `if`/`match` toàn nhánh phân kỳ ⇒ `never`; `unify_branch`/`coerce` bỏ qua `never` | `tyck_v2::never_vong_lap_va_for_theo_vs0` (4 ca) |
-| 2 | **BLOCKER** panic tràn range | `iter_items`: `checked_add`, chạm `i64::MAX` ⇒ **dừng dải** (không lỗi, không panic) | `interp_v2::range_khong_tran_so` (3 ca) |
-| 3 | **MAJOR** thân vòng lặp bị ép `unit` | `kiem_than_bo` (bỏ giá trị cuối) cho `for`/`while`/`loop`; `scope` **cho giá trị khối** (thống nhất interp) | `interp_v2::than_vong_lap_bo_gia_tri`, `tyck_v2` (3 ca) |
-| 4 | **MAJOR** `elem_of_iter` lệch | `Str ⇒ char`; range VS0 **chỉ `int`** (`size`/`duration`/`char` ⇒ `VS0412`), span thật | `tyck_v2` (3 ca) + `interp_v2` |
-| 5 | **MAJOR** số học bất đối xứng | runtime thêm `size/duration * percent`, `percent / percent ⇒ float`, `size%size`, `duration%duration`, `percent%percent`; tyck thêm 3 phép `%` | `interp_v2::so_hoc_doi_xung_voi_don_vi` (6 ca) |
-| 6 | **MAJOR** bảng phương thức không kiểm kiểu | `filter`/`each` đòi **hàm 1 tham số** (filter trả `bool`), `sum` chỉ list số; **parser cho từ khoá sau `.`** ⇒ `m.has(..)` gọi được | `interp_v2::phuong_thuc_kiem_kieu_va_has` (4 ca) |
-| 7 | **MAJOR** vị trí sai | `pos`: **tab = 4 cột**; lỗi `iter_items`/range dùng **span thật** (không còn `0,0`) | `interp_v2::vi_tri_tab_va_utf8` (tab giữa dòng = 4 cột; tiếng Việt/emoji theo scalar) |
-| 8 | **MAJOR** `break`/`continue`/`?` ngoài ngữ cảnh | `loop_depth`/`fn_depth`: ngoài vòng/hàm ⇒ **`VS0501`** (chọn runtime, ghi JOURNAL) | `interp_v2::break_continue_va_try_ngoai_ngu_canh` |
-| 9 | **MAJOR** `Show` | `DUR_UNITS` thêm **`w`**; `char` điều khiển **escape** (`'\n'`); đơn vị decimal trước binary (`1024kb`); bỏ mục trùng | `show_char` unit-test + `interp_v2::show_don_vi_va_char` |
-| 10 | **Coverage + số liệu** | 9 test mới (7 `interp_v2` + 1 unit `show_char` + 1 nhóm `tyck_v2`); đính chính STATE/JOURNAL (4 test cũ; 227 = 32+18+96+20+45+16; 74→79 ca) | chính các tệp trên |
-
-**Đỏ trước**: `JOURNAL/st13b-red-run.log` — `interp_v2` **6/7 test đỏ** (mục 2,3,5,6,7,9), `tyck_v2` **1/11**
-(nhóm `SINH_TU_DONG`). Xanh sẵn: `break_continue_va_try_ngoai_ngu_canh` (đã ra mã lỗi ở đường khác) —
-**khai rõ**, không giả vờ đỏ. Chụp bằng `git stash push -- crates/{vis-types,vis-interp,vis-syntax}/src`
-trên harness cuối, rồi `stash pop`.
-
-**Đo được**: **247** test (gồm 1 test `sem` của ST-14 đang dở **trong cây, chưa commit**);
-`vis-dev gate --fast` PASS — 2026-11-12T23:14:55Z; fmt/clippy sạch.
-
-**Lỗ hổng đã biết (mục C, chưa làm)**: `None(1)` không kiểm đối số; map literal trùng khoá (giữ cả hai,
-`get` lấy bản đầu); `str.chars()` trả `list[str]` (nên **chưa** tạo được `char` từ chuỗi ⇒ test `Show` của
-`char` điều khiển chỉ chạy qua unit-test); thứ tự đơn vị `size` (decimal trước binary — đã chốt);
-`unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
-`10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
-(**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Không thêm tag `VBC1`** | Hạ async thành **builtin nội bộ** `$tac_vu`/`$spawn`/`$await` (tên có `$` ⇒ người dùng **không** viết được, `VBC1` **vẫn 53** tag, verifier/cache **không đổi**) + **một** runtime `vis-interp/src/rt.rs` dùng **chung** interp+VM. `Int` của ba builtin là **handle của host** (interp: `sym`; VM: chỉ số hàm bytecode) — **không** lộ ra chương trình |
+| 2 | **Runtime `rt.rs`** | `Task{id, than, args, ten, span, trang_thai: Cell<Moi|DangChay|Xong>, kq: RefCell<Option<Result<Value, Trap>>>}`, `Scheduler{tasks: Vec<Rc<Task>>, ready: VecDeque, tiep, sau}`, `MAX_TASK_NEST = 256`; `await_task` (cache + chặn `await` chính nó ⇒ `VS0501` + chặn lồng), `join_all` **theo thứ tự tạo**, `wrap_task_error` ⇒ **`VS0506`** (message `tác vụ \`f\` lỗi: <mã gốc>: <msg>`, span = **lúc tạo**) |
+| 3 | **Host** | `builtin::Host` thêm `sched(&self) -> &RefCell<Scheduler>`, `goi_than(fi, args, span)` (required), `ten_than(fi)` (default rỗng) — **2** hiện thực (interp/VM); `builtin::call` thêm nhánh `$…` kiểm **`Int` handle** phòng thủ (bytecode đột biến ⇒ `VS0501`, **không** panic); `$await` nhận `Value::Task` |
+| 4 | **Kiểu** | `Task[T]` = `TypeRef{name:"Task",args:[T]}` (thêm `("Task",1)` ở `resolve_named`, **bỏ** `Task` khỏi `la_kieu_ngoai_vs0`); `FnSig.is_async`; gọi `async fn` ⇒ `Task[ret]`; `Await` đòi **đúng** `Task[T]` ⇒ `T`, sai ⇒ `VS0412`; `Spawn` chỉ **tên** hàm async cấp tệp, đối số **vị trí**; `async fn` làm **giá trị** ⇒ `VS0412`; luật `async` trên method/`cmd` ⇒ `VS0412` (**phòng thủ** — parser chưa nhận hai dạng này, xem #7) |
+| 5 | **HIR/parser** | `HExpr::Spawn{callee,args,named,span}` (**một** nút mới + `span()`/`sexp()`); `spawn` = **soft keyword** (`Ident "spawn"` + token kế **Ident** ⇒ `NodeKind::SpawnExpr`; `s.spawn(1)` vẫn là **phương thức** — nhánh đặt **trước** nhánh `Ident` chung) |
+| 6 | **Codegen/VM** | `Gen.async_fns: HashSet<u32>` (điền lúc cấp chỉ số hàm); call-site async ⇒ `Const(Int fi)` + args + `CallBuiltin($tac_vu, n+1)`; `Spawn` ⇒ `$spawn`; `Await` ⇒ `$await`; span = span nút. VM: `sched` + `goi_than` ⇒ `goi_ham_bytecode(VmFunc{idx,captured:vec![]})` + **join trước `take_stdout`**; interp: join trong `run_program` (**chỉ khi main thành công**) |
+| 7 | **Ngữ nghĩa chốt** | gọi `async fn` **không** chạy thân ⇒ `Task`; `spawn` = tạo + `ready`; `await` `Moi` ⇒ chạy ngay, `DangChay` ⇒ `VS0501`, `Xong` ⇒ **cache**; cuối chương trình join **mọi** task theo **thứ tự tạo**; thân lỗi ⇒ `VS0506` áp **cả** `await` lẫn join; lồng > 256 ⇒ `VS0501` |
+| 8 | **Sổ mã** | **`VS0506`** thêm **cuối** `RUNTIME_CODES` (3 → **4**, index 0..2 giữ nguyên) ⇒ `all_codes()` **29 → 30**; sửa đủ khoá sổ (`vis-diag` unit ×2, `messages.rs`) |
+| 9 | **Ca** | nhóm **mới `test/sem/async/`** ⇒ **20 nhóm**, **22 ca** (15 xanh + 7 âm: `VS0412` ×4, `VS0201` ×1, `VS0506` ×2); **`async_10k.rs`** (10k task **thật**, không `#[ignore]`: interp **309 ms** / VM **166 ms**, hai đường **cùng byte**, đủ 10.001 dòng); **`async_vis.rs`** (2 ca khoá nợ: `async` trong `impl`/`cmd` ⇒ **`VS0201`**) |
+| 10 | **Đo** | **774** test (21+96+18+154+24+62+9+**390**); sem **416/20** (367 `.vis` + 49 `.vish`, 69 `.err`); `vis test` **416 ok**; `--vm` **416 ok + 7 SKIP**; parity **377/377** (39 ca lỗi biên dịch); differential **100.000/0 lệch** (208,7 s); `VBC1` **53**; **7 sổ/30 mã**; allowlist **6** |
+| 11 | **Bất ngờ / nợ** | (a) VD-95 (4) nói `async` trên method/`cmd` ⇒ `VS0412`, **đo thật**: parser chưa nhận ⇒ ra **`VS0201`** (cú pháp) **trước** tầng kiểu; luật `VS0412` giữ làm **phòng thủ**, ca khoá là `async_vis.rs` — **phải đổi kỳ vọng sang `VS0412`** khi parser mở hai dạng này; (b) `async fn` **không** nhận `--tên` (nợ); (c) **không** nhường giữa thân ⇒ **chưa** song song thật (chốt VD-90 (2)); (d) **không** GC (chu trình `Rc`); (e) `await` lồng sát 256 tầng sẽ chạm ngưỡng khung gọi; (f) 10k task trong **một** vòng lặp với `spawn` phẳng: 309/166 ms |
 
 ## ST-59 — nợ shell: `let` suy kiểu, biến làm **stage đầu**, thân `cmd` khai báo + lệnh, 2026-11-14
 

@@ -30,10 +30,14 @@ use std::process::Command;
 /// **SỬA KÈM LÝ DO (ST-59)**: 388 → **394** — +3 ca xanh (`vish/let-suy-kieu`,
 /// `vish/stage-dau-bien`, `vish/than-khai-lenh`) + 2 ca lỗi **biên dịch** (`vish/let-ngoai-vung-khai`
 /// VS0201, `vish/than-hai-pipeline` VS0201) + 1 ca lỗi **lúc chạy** (`vish/stage-dau-chua-bind` VS0501).
-const TONG: usize = 394;
-const XANH: usize = 332;
-const LOI_BIEN_DICH: usize = 34;
-const LOI_LUC_CHAY: usize = 28;
+/// **SỬA KÈM LÝ DO (ST-60)**: 394 → **416** — +15 ca xanh `async/` + 5 ca lỗi **biên dịch**
+/// (VS0412 ×4: `await` không phải `Task`, `async fn` làm giá trị, `spawn` `--tên`, `spawn` không
+/// async; VS0201: `async` trong `impl`) + 2 ca lỗi **lúc chạy** (`VS0506` ×2: thân tác vụ lỗi ở
+/// `await` và ở join cuối).
+const TONG: usize = 416;
+const XANH: usize = 347;
+const LOI_BIEN_DICH: usize = 39;
+const LOI_LUC_CHAY: usize = 30;
 /// Ca **cần host chương trình ngoài** (VM không có host — ST-27): đã đo 4 ca xanh + 2 ca lỗi chạy.
 const XANH_CAN_HOST: usize = 4;
 /// **SỬA KÈM LÝ DO (ST-59)**: 2 → **3** — thêm `vish/stage-dau-chua-bind` (định danh **chưa** bind

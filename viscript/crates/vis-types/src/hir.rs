@@ -677,6 +677,14 @@ pub enum HExpr {
     Ref { expr: Box<HExpr>, span: Span },
     /// `await postfix` — async là VS1.
     Await { expr: Box<HExpr>, span: Span },
+    /// **ST-60**: `spawn f(args)` — tạo tác vụ + đưa vào **hàng đợi FIFO**; callee phải là **tên**
+    /// hàm `async` cấp tệp (tyck `VS0412` nếu không).
+    Spawn {
+        callee: Box<HExpr>,
+        args: Vec<HExpr>,
+        named: Vec<(String, HExpr)>,
+        span: Span,
+    },
     /// `cmd { … }` — **chưa định kiểu** (VD-22: `cmd_lower` là VS1); giữ nguyên văn.
     CmdBlock { raw: String, span: Span },
     /// Chuỗi **có nội suy** `{expr}` (ST-14, VD-47(a)): các mảnh chữ + biểu thức đã hạ **trong cùng
@@ -719,6 +727,7 @@ impl HExpr {
             | HExpr::Tuple { span, .. }
             | HExpr::Ref { span, .. }
             | HExpr::Await { span, .. }
+            | HExpr::Spawn { span, .. }
             | HExpr::Interp { span, .. }
             | HExpr::CmdBlock { span, .. }
             | HExpr::Error { span } => *span,
@@ -824,6 +833,21 @@ impl HExpr {
             HExpr::Tuple { items, .. } => tagged_items("tuple", items),
             HExpr::Ref { expr, .. } => format!("(ref {})", expr.sexp()),
             HExpr::Await { expr, .. } => format!("(await {})", expr.sexp()),
+            HExpr::Spawn {
+                callee, args, span, ..
+            } => {
+                let _ = span;
+                let a: Vec<String> = args.iter().map(HExpr::sexp).collect();
+                format!(
+                    "(spawn {}{})",
+                    callee.sexp(),
+                    if a.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", a.join(" "))
+                    }
+                )
+            }
             HExpr::CmdBlock { raw, .. } => format!("(cmd-block {})", raw.trim()),
             HExpr::Interp { parts, .. } => {
                 let mut out = String::from("(interp");

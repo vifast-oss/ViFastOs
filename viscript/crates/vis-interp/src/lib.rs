@@ -44,8 +44,11 @@
 //! assert_eq!(out.exit, 1);
 //! ```
 
+mod gan;
+mod host;
 pub mod json;
 pub mod render;
+pub mod rt;
 pub mod stdlib;
 pub mod value;
 

@@ -115,6 +115,9 @@ pub enum NodeKind {
     MatchExpr,
     RefExpr,
     AwaitExpr,
+    /// **ST-60**: `spawn f(args)` — tạo tác vụ + đưa vào hàng đợi FIFO (`spawn` là **soft keyword**:
+    /// chỉ khi token kế là định danh, nên `s.spawn(1)` vẫn là **phương thức**).
+    SpawnExpr,
     CmdBlock,
 }
 
@@ -193,6 +196,7 @@ impl NodeKind {
             NodeKind::MatchExpr => "match_expr",
             NodeKind::RefExpr => "ref",
             NodeKind::AwaitExpr => "await",
+            NodeKind::SpawnExpr => "spawn",
             NodeKind::CmdBlock => "cmd_block",
             NodeKind::CmdShell => "shell",
             NodeKind::CmdItems => "items",

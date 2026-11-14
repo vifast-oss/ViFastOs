@@ -64,6 +64,8 @@ pub enum Value {
     /// **Chỉ VM tạo** (ST-20): hàm bytecode + biến bắt (snapshot, VD-51). `interp` không bao giờ
     /// sinh biến thể này; `Show` in `<hàm>`.
     Vm(Rc<VmFunc>),
+    /// **ST-60**: tác vụ `async` — chỉ `await`/join dùng; `Show` in `<tác vụ>` (không lộ handle).
+    Task(Rc<crate::rt::Task>),
 }
 
 /// Hàm bytecode (ST-20): chỉ số hàm trong `Module` + biến bắt **snapshot**.
@@ -139,6 +141,7 @@ impl Value {
                 }
             }
             Value::Vm(_) => "<hàm>".to_string(),
+            Value::Task(_) => "<tác vụ>".to_string(),
         }
     }
 

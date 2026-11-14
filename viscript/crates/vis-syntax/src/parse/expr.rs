@@ -464,6 +464,16 @@ impl<'a> Parser<'a> {
                 elems.push(self.expect_punct("}")?);
                 return Ok(self.node(NodeKind::SetLit, elems));
             }
+            // **ST-60**: `spawn f(args)` — **soft keyword**: `spawn` + token kế là **định danh**.
+            // `s.spawn(1)` giữ nguyên là **phương thức** (sau `.` là Ident, không vào nhánh này).
+            Kind::Ident if t.text == "spawn" && self.tok_at(1).kind == Kind::Ident => {
+                let mut elems = vec![self.bump()];
+                let ten = self.bump();
+                elems.push(Elem::Node(Box::new(self.node(NodeKind::Ident, vec![ten]))));
+                let a = self.args()?;
+                elems.push(Elem::Node(Box::new(a)));
+                return Ok(self.node(NodeKind::SpawnExpr, elems));
+            }
             Kind::Ident => {
                 let e = self.bump();
                 return Ok(self.node(NodeKind::Ident, vec![e]));

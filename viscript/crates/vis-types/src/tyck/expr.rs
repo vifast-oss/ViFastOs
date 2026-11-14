@@ -16,8 +16,21 @@ impl<'a> Checker<'a> {
     fn kiem_expr_trong(&mut self, e: &HExpr) -> Type {
         match e {
             HExpr::Lit { ty, .. } => ty.clone(),
-            HExpr::Var { name, sym, .. } => match sym {
-                Some(id) => self.ty_of(*id),
+            HExpr::Var { name, sym, span } => match sym {
+                Some(id) => {
+                    // **ST-60 (VD-95 (4))**: `async fn` **không** dùng làm giá trị (chưa có
+                    // `Task` như hàm hạng nhất) — gọi `f(…)` vẫn được vì `kiem_call` bắt trước.
+                    if self.sig_of(*id).map(|s| s.is_async).unwrap_or(false) {
+                        self.diag(
+                            MISMATCH,
+                            format!("`{name}` là `async fn` — không dùng làm **giá trị** (nợ R10)"),
+                            *span,
+                        );
+                        Type::Error
+                    } else {
+                        self.ty_of(*id)
+                    }
+                }
                 None => builtin_value_ty(name),
             },
             HExpr::Bin { op, lhs, rhs, span } => {
@@ -307,9 +320,76 @@ impl<'a> Checker<'a> {
             // **ST-56 (VD-92)**: `ref(x)` **giữ nguyên kiểu** của `x` — hạ **identity** ở cả hai
             // đường (interp/codegen). **Chưa có mượn thật**: `&T`, kiểm vòng đời là nợ **VS2+**.
             HExpr::Ref { expr, .. } => self.kiem_expr(expr),
-            HExpr::Await { expr, .. } => {
-                let _ = self.kiem_expr(expr);
-                Type::Error
+            // **ST-60 (VD-90/VD-95)**: `await` bỏ **một** lớp `Task[T]` ⇒ `T`; không phải `Task`
+            // ⇒ `VS0412` (một quy tắc cho cả hai đường).
+            HExpr::Await { expr, span } => {
+                let t = self.kiem_expr(expr);
+                match t {
+                    Type::TypeRef { name, args } if name == "Task" && args.len() == 1 => {
+                        args[0].clone()
+                    }
+                    Type::Error => Type::Error,
+                    other => {
+                        self.diag(
+                            MISMATCH,
+                            format!("`await` cần `Task[T]`, được `{}`", self.show(&other)),
+                            *span,
+                        );
+                        Type::Error
+                    }
+                }
+            }
+            // **ST-60**: `spawn f(args)` — chỉ **tên** hàm `async` cấp tệp, đối số **vị trí**.
+            HExpr::Spawn {
+                callee,
+                args,
+                named,
+                span,
+            } => {
+                let sig = match &**callee {
+                    HExpr::Var { sym: Some(id), .. } => self.sig_of(*id).cloned(),
+                    _ => None,
+                };
+                match sig {
+                    Some(sig) if sig.is_async => {
+                        if !named.is_empty() {
+                            self.diag(
+                                MISMATCH,
+                                "`spawn` chỉ nhận đối số **vị trí** (không `--tên`) — VD-95 (4)",
+                                *span,
+                            );
+                        }
+                        // Vẫn kiểm **đủ** đối số (kể cả `--tên` đã báo lỗi ở trên) để không sinh
+                        // thêm `VS0401` nhiễu.
+                        self.kiem_args(&sig, args, named, *span);
+                        Type::TypeRef {
+                            name: "Task".into(),
+                            args: vec![sig.ret],
+                        }
+                    }
+                    Some(_) => {
+                        for a in args {
+                            self.kiem_expr(a);
+                        }
+                        self.diag(
+                            MISMATCH,
+                            "`spawn` chỉ nhận hàm `async` (hàm này không `async`)",
+                            *span,
+                        );
+                        Type::Error
+                    }
+                    None => {
+                        for a in args {
+                            self.kiem_expr(a);
+                        }
+                        self.diag(
+                            MISMATCH,
+                            "`spawn` cần **tên** hàm `async` cấp tệp (không nhận biểu thức)",
+                            *span,
+                        );
+                        Type::Error
+                    }
+                }
             }
             // ST-14: chuỗi nội suy — kiểm **từng** phần biểu thức, kiểu của cả chuỗi là `str`.
             HExpr::Interp { parts, .. } => {
@@ -573,6 +653,20 @@ impl<'a> Checker<'a> {
         };
         if let Some(sig) = sig {
             self.kiem_args(&sig, args, named, span);
+            // **ST-60 (VD-90)**: gọi `async fn` ⇒ `Task[ret]`; `--tên` chưa hỗ trợ cho async.
+            if sig.is_async {
+                if !named.is_empty() {
+                    self.diag(
+                        MISMATCH,
+                        "gọi `async fn` chỉ nhận đối số **vị trí** (không `--tên`) — nợ R10",
+                        span,
+                    );
+                }
+                return Type::TypeRef {
+                    name: "Task".into(),
+                    args: vec![sig.ret],
+                };
+            }
             if sig.generics.is_empty() {
                 return sig.ret;
             }
@@ -1377,6 +1471,8 @@ fn builtin_value_ty(name: &str) -> Type {
 #[derive(Debug, Clone)]
 pub(crate) struct FnSig {
     pub name: String,
+    /// **ST-60**: `async fn` — gọi **không** chạy thân, trả `Task[ret]`.
+    pub is_async: bool,
     /// `(tên, kiểu, có_mặc_định, khai `--`)` — kiểu đã **xoá generic** (ST-28), dùng cho thân hàm.
     pub params: Vec<(String, Type, bool, bool)>,
     pub ret: Type,

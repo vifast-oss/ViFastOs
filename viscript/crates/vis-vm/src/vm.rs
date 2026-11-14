@@ -78,6 +78,8 @@ pub struct Vm<'a> {
     dinh: usize,
     /// Host hệ thống tệp (ST-33); `None` ⇒ `VS0604` — VM **không** biết `std::fs`.
     fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+    /// **ST-60**: hàng đợi tác vụ `async` — cùng runtime với interp (`vis_interp::rt`).
+    sched: std::cell::RefCell<vis_interp::rt::Scheduler>,
 }
 
 impl<'a> Vm<'a> {
@@ -91,6 +93,7 @@ impl<'a> Vm<'a> {
             depth: 0,
             dinh: 0,
             fs: None,
+            sched: std::cell::RefCell::new(vis_interp::rt::Scheduler::new()),
         }
     }
 
@@ -123,7 +126,16 @@ impl<'a> Vm<'a> {
             };
         }
         let argv = Value::List(args.iter().map(|s| Value::Str(s.clone())).collect());
-        match self.chay_chuong_trinh(&argv) {
+        // **ST-60 (VD-90/VD-95)**: join mọi tác vụ **theo thứ tự tạo**, **chỉ khi main thành công**
+        // (và **trước** `take_stdout` ⇒ thân tác vụ in vẫn vào stdout, đúng thứ tự).
+        let kq = match self.chay_chuong_trinh(&argv) {
+            Ok(v) => match vis_interp::rt::join_all(self) {
+                Ok(()) => Ok(v),
+                Err(e) => Err(e),
+            },
+            Err(e) => Err(e),
+        };
+        match kq {
             Ok(v) => {
                 let exit = value::exit_code(&v);
                 RunOutput {
@@ -220,6 +232,27 @@ impl Host for Vm<'_> {
         self.fs
             .as_mut()
             .map(|f| &mut **f as &mut dyn vis_interp::builtin::FsHost)
+    }
+
+    fn sched(&self) -> &std::cell::RefCell<vis_interp::rt::Scheduler> {
+        &self.sched
+    }
+
+    /// **ST-60**: handle của VM là **chỉ số hàm bytecode** — chạy bằng `goi_ham_bytecode`.
+    fn goi_than(&mut self, fi: u32, args: Vec<Value>, span: Span) -> R<Value> {
+        let f = VmFunc {
+            idx: fi,
+            captured: Vec::new(),
+        };
+        self.goi_ham_bytecode(&f, args, span)
+    }
+
+    fn ten_than(&self, fi: u32) -> String {
+        self.m
+            .funcs
+            .get(fi as usize)
+            .map(|f| f.name.clone())
+            .unwrap_or_default()
     }
 
     fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {

@@ -584,6 +584,13 @@ impl<'a> Checker<'a> {
             ("map", 2) => {
                 return Type::Map(Box::new(resolved[0].clone()), Box::new(resolved[1].clone()))
             }
+            // **ST-60 (VD-95 (3))**: `Task[T]` — kiểu dựng sẵn của tác vụ `async`.
+            ("Task" | "task", 1) => {
+                return Type::TypeRef {
+                    name: "Task".into(),
+                    args: vec![resolved[0].clone()],
+                }
+            }
             ("Result" | "result", 2) => {
                 return Type::Result(Box::new(resolved[0].clone()), Box::new(resolved[1].clone()))
             }
@@ -693,6 +700,7 @@ impl<'a> Checker<'a> {
                     if let Some(slot) = self.sigs.get_mut(f.sym as usize) {
                         *slot = Some(FnSig {
                             name: f.name.clone(),
+                            is_async: f.is_async,
                             params: f
                                 .params
                                 .iter()
@@ -748,6 +756,14 @@ impl<'a> Checker<'a> {
     fn kiem_item(&mut self, item: &HItem) {
         match item {
             HItem::Fn(f) => {
+                // **ST-60 (VD-95 (4))**: `async` chỉ cho hàm cấp tệp — method/`cmd` ⇒ `VS0412` (nợ R10).
+                if f.is_async && f.kind != crate::hir::FnKind::Fn {
+                    self.diag(
+                        MISMATCH,
+                        "`async` chỉ cho hàm cấp tệp (`async fn`) — method/`cmd` chưa hỗ trợ (nợ R10)",
+                        f.span,
+                    );
+                }
                 // ST-28: trong thân hàm, tham số kiểu `T` là **đã xoá** (`{error}`) ⇒ phép toán trên
                 // `T` được phép tĩnh, sai kiểu thật bắt **lúc chạy** (`VS0501`, nợ VS1b).
                 let luu = std::mem::take(&mut self.generic_scope);
@@ -1262,7 +1278,6 @@ fn la_kieu_ngoai_vs0(name: &str) -> bool {
             | "set"
             | "stream"
             | "Future"
-            | "Task"
             | "datetime"
             | "bigint"
             | "decimal"

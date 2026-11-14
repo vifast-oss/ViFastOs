@@ -302,6 +302,24 @@ impl<'a> Lowerer<'a> {
                     span,
                 }
             }
+            // **ST-60**: `spawn f(args)` — callee là **tên hàm** (tyck đòi `async` cấp tệp).
+            NodeKind::SpawnExpr => {
+                let callee = node
+                    .children()
+                    .next()
+                    .map(|c| self.lower_expr(c))
+                    .unwrap_or(HExpr::Error { span });
+                let (args, named) = node
+                    .child(NodeKind::Args)
+                    .map(|a| self.lower_args(a))
+                    .unwrap_or_default();
+                HExpr::Spawn {
+                    callee: Box::new(callee),
+                    args,
+                    named,
+                    span,
+                }
+            }
             NodeKind::CmdBlock => HExpr::CmdBlock {
                 raw: self.text_of(span).to_string(),
                 span,

@@ -10,6 +10,7 @@ use vis_types::hir::*;
 use vis_types::lower::Symbols;
 use vis_types::TypeTable;
 
+use crate::gan::{gan_chi_so, gan_truong};
 use crate::value::*;
 
 /// `VS0501` — lỗi runtime chung.
@@ -18,6 +19,8 @@ pub const RT: &Code = &RUNTIME_CODES[0];
 pub const DIV0: &Code = &RUNTIME_CODES[1];
 /// `VS0503` — chỉ số ngoài phạm vi.
 pub const IDX: &Code = &RUNTIME_CODES[2];
+/// **ST-60** — `VS0506`: lỗi trong **thân tác vụ** `async` (message kèm mã gốc).
+pub const TASK_ERR: &Code = &RUNTIME_CODES[3];
 /// `VS0412` — gán cho `let`/tham số (phòng thủ: tyck đã chặn trước).
 pub(crate) const MISMATCH: &Code = &TYPE_CODES[3];
 
@@ -75,7 +78,7 @@ pub(crate) enum Ctrl {
 }
 
 pub(crate) struct Interp<'a> {
-    fns: HashMap<u32, &'a HFn>,
+    pub(crate) fns: HashMap<u32, &'a HFn>,
     consts: HashMap<u32, &'a HExpr>,
     /// `enum`/`type` khai trong tệp: `sym → (tên, là_enum)` để `E.A`/`User(...)` có "thẻ kiểu".
     tags: HashMap<u32, (String, bool)>,
@@ -97,9 +100,11 @@ pub(crate) struct Interp<'a> {
     #[allow(dead_code)]
     symbols: &'a Symbols,
     /// Host chương trình ngoài (ST-27); `None` ⇒ `VS0604` — interp **không** biết OS.
-    ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
+    pub(crate) ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
     /// Host hệ thống tệp (ST-33); `None` ⇒ `VS0604` — interp **không** biết `std::fs`.
-    fs: Option<&'a mut dyn crate::builtin::FsHost>,
+    pub(crate) fs: Option<&'a mut dyn crate::builtin::FsHost>,
+    /// **ST-60**: hàng đợi tác vụ `async` (một `Scheduler` cho mỗi lần chạy).
+    pub(crate) sched: std::cell::RefCell<crate::rt::Scheduler>,
 }
 
 impl<'a> Interp<'a> {
@@ -152,6 +157,7 @@ impl<'a> Interp<'a> {
             symbols,
             ngoai: None,
             fs: None,
+            sched: std::cell::RefCell::new(crate::rt::Scheduler::new()),
         }
     }
 
@@ -172,6 +178,14 @@ impl<'a> Interp<'a> {
     }
 
     pub(crate) fn run_program(&mut self, args: &[String]) -> R<Option<Value>> {
+        let v = self.run_program_than(args)?;
+        // **ST-60 (VD-90/VD-95)**: join mọi tác vụ **theo thứ tự tạo** — chỉ khi main **thành công**
+        // (`?` ở trên đã chặn đường lỗi).
+        crate::rt::join_all(self)?;
+        Ok(v)
+    }
+
+    fn run_program_than(&mut self, args: &[String]) -> R<Option<Value>> {
         // Hằng cấp tệp trước (mọi khai báo item là "hoisted").
         let consts: Vec<(u32, &'a HExpr)> = self.consts.iter().map(|(k, v)| (*k, *v)).collect();
         for (sym, e) in consts {
@@ -759,11 +773,54 @@ impl<'a> Interp<'a> {
             // **ST-56 (VD-92)**: `ref(expr)` giữ **nguyên kiểu trong**, hạ **identity** — **không**
             // tạo giá trị mới, **không** mượn thật (borrow/vòng đời là nợ **VS2+**).
             HExpr::Ref { expr, .. } => self.eval(expr),
-            HExpr::Await { span, .. } => Err(Abort::Trap(Trap::new(
-                RT,
-                "`await` là VS1 — chưa hỗ trợ ở VS0",
-                *span,
-            ))),
+            // **ST-60 (VD-90)**: `await t` chạy tác vụ **tới hoàn tất** (hoặc trả cache).
+            HExpr::Await { expr, span } => {
+                let v = self.eval(expr)?;
+                match v {
+                    Value::Task(t) => crate::rt::await_task(self, &t, *span),
+                    _ => Err(Abort::Trap(Trap::new(
+                        RT,
+                        "`await` cần một `Task[T]`",
+                        *span,
+                    ))),
+                }
+            }
+            // **ST-60**: `spawn f(args)` = tạo tác vụ + đưa vào hàng đợi FIFO.
+            HExpr::Spawn {
+                callee,
+                args,
+                named,
+                span,
+            } => {
+                let _ = named;
+                let id = match &**callee {
+                    HExpr::Var { sym: Some(id), .. } => Some(*id),
+                    _ => None,
+                };
+                let Some(id) = id else {
+                    return Err(Abort::Trap(Trap::new(
+                        RT,
+                        "`spawn` cần **tên** hàm `async` cấp tệp",
+                        *span,
+                    )));
+                };
+                let Some(f) = self.fns.get(&id).copied() else {
+                    return Err(Abort::Trap(Trap::new(
+                        RT,
+                        "`spawn` cần **tên** hàm `async` cấp tệp",
+                        *span,
+                    )));
+                };
+                let mut pos = Vec::with_capacity(args.len());
+                for a in args {
+                    pos.push(self.eval(a)?);
+                }
+                let t = self
+                    .sched
+                    .get_mut()
+                    .spawn(f.sym, pos, f.name.clone(), *span);
+                Ok(Value::Task(t))
+            }
             // ST-14: chuỗi nội suy — đánh giá từng mảnh rồi ghép (không parse lại lúc chạy).
             HExpr::Interp { parts, .. } => {
                 let mut out = String::new();
@@ -850,6 +907,12 @@ impl<'a> Interp<'a> {
         if let HExpr::Var { sym: Some(id), .. } = callee {
             if let Some(f) = self.fns.get(id).copied() {
                 let (pos, nm) = self.eval_args(args, named)?;
+                // **ST-60 (VD-90)**: gọi `async fn` **không** chạy thân — trả `Task[T]` (cùng một
+                // đường với codegen: `$tac_vu` + handle, ở đây handle = `sym`).
+                if f.is_async {
+                    let t = self.sched.get_mut().tao(f.sym, pos, f.name.clone(), span);
+                    return Ok(Value::Task(t));
+                }
                 return self.call_hfn(f, pos, nm, span);
             }
         }
@@ -881,7 +944,7 @@ impl<'a> Interp<'a> {
         Ok((pos, nm))
     }
 
-    fn call_value(
+    pub(crate) fn call_value(
         &mut self,
         f: Value,
         pos: Vec<Value>,
@@ -969,7 +1032,7 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn call_hfn(
+    pub(crate) fn call_hfn(
         &mut self,
         f: &'a HFn,
         pos: Vec<Value>,
@@ -1385,95 +1448,5 @@ impl Value {
                 span,
             ))),
         }
-    }
-}
-
-impl crate::builtin::Host for Interp<'_> {
-    fn out(&mut self) -> &mut String {
-        &mut self.out
-    }
-
-    fn call(&mut self, f: &Value, args: Vec<Value>, span: Span) -> R<Value> {
-        self.call_value(f.clone(), args, Vec::new(), span)
-    }
-
-    fn fs(&mut self) -> Option<&mut dyn crate::builtin::FsHost> {
-        self.fs
-            .as_mut()
-            .map(|f| &mut **f as &mut dyn crate::builtin::FsHost)
-    }
-
-    fn ngoai(
-        &mut self,
-        ten: &str,
-        args: &[String],
-        raw: bool,
-        stdin: &str,
-        span: Span,
-    ) -> Option<R<Value>> {
-        let n = self.ngoai.as_mut()?;
-        Some(n.chay(ten, args, raw, stdin, span))
-    }
-
-    fn ngoai_day_du(
-        &mut self,
-        ten: &str,
-        args: &[String],
-        stdin: &str,
-        span: Span,
-    ) -> Option<Result<crate::builtin::KetQua, Abort>> {
-        let n = self.ngoai.as_mut()?;
-        Some(n.chay_day_du(ten, args, stdin, span))
-    }
-}
-
-/// **ST-56b (VD-97)**: `x.f = v` ⇒ `x = x with f: v` — **đúng** ngữ nghĩa `Instr::With` của VM
-/// (cùng thông điệp để interp ↔ `--vm` **cùng byte**); thiếu trường/không phải bản ghi ⇒ `VS0501`.
-fn gan_truong(base: Value, name: &str, v: Value, span: Span) -> R<Value> {
-    match base {
-        Value::Record(ten, mut fs) => match fs.iter_mut().find(|(k, _)| k == name) {
-            Some(slot) => {
-                slot.1 = v;
-                Ok(Value::Record(ten, fs))
-            }
-            None => Err(Abort::Trap(Trap::new(
-                RT,
-                format!("bản ghi `{ten}` không có trường `{name}`"),
-                span,
-            ))),
-        },
-        other => Err(Abort::Trap(Trap::new(
-            RT,
-            format!("`with` không dùng được cho `{}`", other.show()),
-            span,
-        ))),
-    }
-}
-
-/// **ST-56b (VD-97)**: `x[i] = v` — **đúng** ngữ nghĩa `Instr::Set` của VM (list: tại chỗ theo chỉ
-/// số, ngoài phạm vi ⇒ `VS0501`; map: thay khoá **hoặc thêm** khoá mới).
-fn gan_chi_so(base: Value, idx: Value, v: Value, span: Span) -> R<Value> {
-    match (base, idx) {
-        (Value::List(mut xs), Value::Int(i)) => {
-            if (i as usize) < xs.len() {
-                xs[i as usize] = v;
-                Ok(Value::List(xs))
-            } else {
-                Err(Abort::Trap(Trap::new(
-                    RT,
-                    format!("chỉ số {i} ngoài phạm vi"),
-                    span,
-                )))
-            }
-        }
-        (Value::Map(mut kv), k) => {
-            if let Some(e) = kv.iter_mut().find(|(kk, _)| eq(kk, &k)) {
-                e.1 = v;
-            } else {
-                kv.push((k, v));
-            }
-            Ok(Value::Map(kv))
-        }
-        _ => Err(Abort::Trap(Trap::new(RT, "gán chỉ số không hợp lệ", span))),
     }
 }

@@ -177,6 +177,8 @@ struct Gen {
     fparams: HashMap<String, Vec<(String, bool)>>,
     /// Closure chờ phát: (chỉ số hàm, thân, tham số, snapshot locals của cha).
     cho: Vec<Cho>,
+    /// **ST-60**: chỉ số hàm của các `async fn` — call-site async hạ thành `$tac_vu`.
+    async_fns: std::collections::HashSet<u32>,
     hash: [u8; HASH_LEN],
 }
 
@@ -255,6 +257,7 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         fparams: HashMap::new(),
         cho: Vec::new(),
         hash: crate::format::source_hash(text),
+        async_fns: std::collections::HashSet::new(),
     };
     // Lượt 1: cấp chỉ số cho mọi hàm cấp tệp + ghi tên enum.
     for it in &hir.items {
@@ -270,6 +273,9 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
         for f in ham {
             g.fmap.insert(f.sym, g.funcs.len() as u32);
             g.fmap_ten.insert(f.name.clone(), g.funcs.len() as u32);
+            if f.is_async {
+                g.async_fns.insert(g.funcs.len() as u32);
+            }
             g.fparams.insert(
                 f.name.clone(),
                 f.params.iter().map(|p| (p.name.clone(), p.named)).collect(),
@@ -915,6 +921,22 @@ impl<'g> Emit<'g> {
                                 }
                             }
                         }
+                        // **ST-60 (VD-95 (2))**: callee là `async fn` ⇒ `$tac_vu(handle, args…)`;
+                        // **không** thêm tag `VBC1`, verifier/cache **không** đổi.
+                        if let Some(fi) = fi {
+                            if named.is_empty() && self.g.async_fns.contains(&fi) {
+                                let c = self.g.cst(LitKind::Int, &fi.to_string());
+                                self.f.push(Instr::Const(c), *span, 1);
+                                for a in args {
+                                    self.expr(a)?;
+                                }
+                                let n = (args.len() + 1) as u16;
+                                let b = self.g.cst_str("$tac_vu");
+                                self.f
+                                    .push(Instr::CallBuiltin(b, n), *span, 1 - i32::from(n));
+                                return self.net_stack(*span);
+                            }
+                        }
                         if dong {
                             if let Some(id) = sym {
                                 if let Some(c) = self.captured.get(id).copied() {
@@ -1269,7 +1291,44 @@ impl<'g> Emit<'g> {
             // **ST-56 (VD-92)**: `ref(expr)` hạ **identity** (không sinh lệnh) — hết
             // `Unsupported("ref")`; **chưa** có mượn thật (nợ VS2+).
             HExpr::Ref { expr, .. } => self.expr(expr),
-            HExpr::Await { span, .. } => Err(CodegenError::Unsupported("await", *span)),
+            // **ST-60 (VD-95 (2))**: `await` = `$await(<task>)` — **không** thêm tag `VBC1`.
+            HExpr::Await { expr, span } => {
+                self.expr(expr)?;
+                let c = self.g.cst_str("$await");
+                self.f.push(Instr::CallBuiltin(c, 1), *span, 0);
+                self.net_stack(*span)
+            }
+            // **ST-60**: `spawn f(args)` = `$spawn(handle, args…)`.
+            HExpr::Spawn {
+                callee,
+                args,
+                named,
+                span,
+            } => {
+                let fi = match &**callee {
+                    HExpr::Var { name, sym, .. } => match sym {
+                        Some(id) if self.g.fmap.contains_key(id) => Some(self.g.fmap[id]),
+                        _ => self.g.fmap_ten.get(name).copied(),
+                    },
+                    _ => None,
+                };
+                let Some(fi) = fi else {
+                    return Err(CodegenError::Unsupported("spawn-khong-ten", *span));
+                };
+                let c = self.g.cst(LitKind::Int, &fi.to_string());
+                self.f.push(Instr::Const(c), *span, 1);
+                for a in args {
+                    self.expr(a)?;
+                }
+                for (_, a) in named {
+                    self.expr(a)?;
+                }
+                let n = (args.len() + named.len() + 1) as u16;
+                let b = self.g.cst_str("$spawn");
+                self.f
+                    .push(Instr::CallBuiltin(b, n), *span, 1 - i32::from(n));
+                self.net_stack(*span)
+            }
             HExpr::CmdBlock { span, .. } => Err(CodegenError::Unsupported("cmd-block", *span)),
         }
     }

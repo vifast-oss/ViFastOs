@@ -155,6 +155,19 @@ pub trait Host {
         None
     }
 
+    /// **ST-60 (VD-95)**: hàng đợi **tác vụ** của môi trường (`$tac_vu`/`$spawn`/`$await` dùng).
+    /// Một `RefCell` để hai lời gọi lồng nhau (`await` trong thân tác vụ) **không** mượn chồng.
+    fn sched(&self) -> &std::cell::RefCell<crate::rt::Scheduler>;
+
+    /// **ST-60**: chạy **thân** tác vụ theo **handle của host** — interp: `sym` của `HFn`; VM: chỉ
+    /// số hàm bytecode. Handle **không** bao giờ lộ ra chương trình.
+    fn goi_than(&mut self, fi: u32, args: Vec<Value>, span: Span) -> crate::interp::R<Value>;
+
+    /// **ST-60**: tên hàm theo handle (cho thông điệp `VS0506`); mặc định rỗng.
+    fn ten_than(&self, _fi: u32) -> String {
+        String::new()
+    }
+
     /// Như [`Host::ngoai`] nhưng trả **đủ** `stdout/stderr/code` (ST-34, cho `| complete`).
     fn ngoai_day_du(
         &mut self,
@@ -667,6 +680,49 @@ pub fn call(
     args: Vec<Value>,
     span: Span,
 ) -> crate::interp::R<Value> {
+    // **ST-60 (VD-95)**: ba builtin **nội bộ** của async — tên có `$` ⇒ người dùng **không** viết
+    // được. `Int` của chúng là **handle của host** (interp: `sym`; VM: chỉ số hàm bytecode),
+    // **không** phải giá trị chương trình. Phòng thủ: bytecode đột biến ⇒ `VS0501`, **không** panic.
+    if let Some(kieu) = name.strip_prefix('$') {
+        if kieu == "await" {
+            return match args.into_iter().next() {
+                Some(Value::Task(t)) => crate::rt::await_task(host, &t, span),
+                _ => Err(trap(crate::interp::RT, "`await` cần một `Task[T]`", span)),
+            };
+        }
+        let fi = match args.first() {
+            Some(Value::Int(i)) if *i >= 0 && *i <= u32::MAX as i64 => *i as u32,
+            _ => {
+                return Err(trap(
+                    crate::interp::RT,
+                    format!("`{name}`: handle tác vụ không hợp lệ"),
+                    span,
+                ))
+            }
+        };
+        let con: Vec<Value> = args.into_iter().skip(1).collect();
+        return match kieu {
+            "tac_vu" => {
+                let t = host
+                    .sched()
+                    .borrow_mut()
+                    .tao(fi, con, host.ten_than(fi), span);
+                Ok(Value::Task(t))
+            }
+            "spawn" => {
+                let t = host
+                    .sched()
+                    .borrow_mut()
+                    .spawn(fi, con, host.ten_than(fi), span);
+                Ok(Value::Task(t))
+            }
+            _ => Err(trap(
+                crate::interp::RT,
+                format!("builtin nội bộ `{name}` chưa hỗ trợ"),
+                span,
+            )),
+        };
+    }
     // ST-27/ST-34: `exec.[complete.][raw.]<ten>` — chương trình ngoài, do **host** chạy.
     // - đối số 0: `argv` (`list[str]`); đối số 1 (ST-34): **stdin** (`str` hoặc `list[str]`);
     // - tiền tố `complete.` ⇒ trả **record** `{stdout, stderr, code}`, exit≠0 **không** là lỗi.

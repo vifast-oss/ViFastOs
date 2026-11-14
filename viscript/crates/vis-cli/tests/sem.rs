@@ -127,15 +127,20 @@ fn sem_323_ca_qua_binary() {
     // **19 nhóm** (345 `.vis` + 43 `.vish`, **59** `.err`).
     assert_eq!(
         ds.len(),
-        394,
-        "phải đúng 394 ca (345 `.vis` + 49 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        // **SỬA KÈM LÝ DO (ST-60)**: +**22** ca nhóm **mới `async/`** ⇒ **416 ca / 20 nhóm** (367
+        // `.vis` + 49 `.vish`, **69** `.err`): await cơ bản/thứ tự/cache, task in, spawn + join cuối,
+        // task trả record/list/str, đệ quy async, async gọi async, và 7 ca **âm** (VS0412 ×4, VS0201,
+        // VS0506 ×2).
+        416,
+        "phải đúng 416 ca (367 `.vis` + 49 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.
+    // **SỬA KÈM LÝ DO (ST-60)**: nhóm mới **`async/`** ⇒ **20 nhóm**.
     assert_eq!(
         theo_nhom.len(),
-        19,
-        "phải đúng 19 nhóm (ST-28 `generic`; ST-57 `trait`), thật {theo_nhom:?}"
+        20,
+        "phải đúng 20 nhóm (ST-28 `generic`; ST-57 `trait`; ST-60 `async`), thật {theo_nhom:?}"
     );
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())

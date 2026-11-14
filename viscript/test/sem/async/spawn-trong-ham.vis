@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn viec(n: int) -> int:
+    print("viec {n}")
+    n
+
+fn dat_hang() -> int:
+    let t = spawn viec(9)
+    let _ = t
+    0
+
+let z = dat_hang()
+print("xong dat")

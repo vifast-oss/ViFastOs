@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn f(n: int) -> int:
+    print("f{n}")
+    n
+
+let a = spawn f(1)
+let b = spawn f(2)
+let _ = await a
+let _ = await b

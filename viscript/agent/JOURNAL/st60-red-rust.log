@@ -1,0 +1,185 @@
+# ST-60 — log ĐỎ (Rust) lúc 2026-11-14T00:46:03Z, HEAD eaf30c1 (đã tạm gỡ 13 tệp mã của ST-60)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/async_10k.rs (target/debug/deps/async_10k-c9e258e797580a56)
+
+running 1 test
+test muoi_nghin_task_khong_tran_stack ... FAILED
+
+failures:
+
+---- muoi_nghin_task_khong_tran_stack stdout ----
+
+thread 'muoi_nghin_task_khong_tran_stack' (43576113) panicked at crates/vis-cli/tests/async_10k.rs:64:5:
+assertion `left == right` failed: interp: k10.vis:8:19: error VS0201: mong xuống dòng sau câu lệnh, thật `viec`
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    muoi_nghin_task_khong_tran_stack
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p vis-cli --test async_10k`
+     Running tests/async_vis.rs (target/debug/deps/async_vis-1712c4f46c6ca067)
+
+running 2 tests
+test async_tren_method_la_vs0201_va_ghi_no ... ok
+test async_tren_cmd_la_vs0201_va_ghi_no ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: 1 target failed:
+    `-p vis-cli --test async_10k`
+
+=== sem (harness 22 ca mới) ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/sem.rs (target/debug/deps/sem-d400f22881433996)
+
+running 1 test
+test sem_323_ca_qua_binary ... FAILED
+
+failures:
+
+---- sem_323_ca_qua_binary stdout ----
+
+thread 'sem_323_ca_qua_binary' (43576154) panicked at crates/vis-cli/tests/sem.rs:215:5:
+21/416 ca sai:
+async/async-goi-async: muốn exit 0 + stdout "8\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/async-goi-async.vis:9:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/async-goi-async.vis (VS0501, steps=4)
+
+async/async-lam-gia-tri: muốn exit 2 + stderr chứa `VS0412`, được exit 0
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/async-lam-gia-tri.vis (steps=6)
+
+async/await-co-ban: muốn exit 0 + stdout "3\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-co-ban.vis:6:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-co-ban.vis (VS0501, steps=12)
+
+async/await-hai-lan-cache: muốn exit 0 + stdout "chay\n7\n7\n", được exit 1 + stdout "chay\n"
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-hai-lan-cache.vis:7:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-hai-lan-cache.vis (VS0501, steps=12)
+
+async/await-khong-phai-task: muốn exit 2 + stderr chứa `VS0412`, được exit 1
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-khong-phai-task.vis:2:9: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-khong-phai-task.vis (VS0501, steps=2)
+
+async/await-trong-vong-lap: muốn exit 0 + stdout "14\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-trong-vong-lap.vis:8:19: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/await-trong-vong-lap.vis (VS0501, steps=18)
+
+async/de-quy-async: muốn exit 0 + stdout "24\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/de-quy-async.vis:8:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/de-quy-async.vis (VS0501, steps=4)
+
+async/hai-task-thu-tu: muốn exit 0 + stdout "1\n2\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/hai-task-thu-tu.vis:7:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/hai-task-thu-tu.vis (VS0501, steps=14)
+
+async/print-trong-task-thu-tu: muốn exit 0 + stdout "f1\nf2\n", được exit 2 + stdout ""
+  stderr: TAP version 13
+1..1
+print-trong-task-thu-tu.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/print-trong-task-thu-tu.vis (VS0201)
+
+async/spawn-co-ten: muốn exit 2 + stderr chứa `VS0412`, được exit 2
+  stderr: TAP version 13
+1..1
+spawn-co-ten.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `f`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/spawn-co-ten.vis (VS0201)
+
+async/spawn-khong-async: muốn exit 2 + stderr chứa `VS0412`, được exit 2
+  stderr: TAP version 13
+1..1
+spawn-khong-async.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `thuong`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/spawn-khong-async.vis (VS0201)
+
+async/spawn-nhieu-join-cuoi: muốn exit 0 + stdout "main\n1\n2\n3\n", được exit 2 + stdout ""
+  stderr: TAP version 13
+1..1
+spawn-nhieu-join-cuoi.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/spawn-nhieu-join-cuoi.vis (VS0201)
+
+async/spawn-trong-ham: muốn exit 0 + stdout "xong dat\nviec 9\n", được exit 2 + stdout ""
+  stderr: TAP version 13
+1..1
+spawn-trong-ham.vis:7:19: error VS0201: mong xuống dòng sau câu lệnh, thật `viec`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/spawn-trong-ham.vis (VS0201)
+
+async/task-in-trong-than: muốn exit 0 + stdout "truoc\ntrong 1\n1\nsau\n", được exit 1 + stdout "trong 1\ntruoc\n"
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-in-trong-than.vis:8:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-in-trong-than.vis (VS0501, steps=18)
+
+async/task-khong-await-van-chay: muốn exit 0 + stdout "main\nchay 1\nchay 2\n", được exit 2 + stdout ""
+  stderr: TAP version 13
+1..1
+task-khong-await-van-chay.vis:6:15: error VS0201: mong xuống dòng sau câu lệnh, thật `in_so`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-khong-await-van-chay.vis (VS0201)
+
+async/task-khong-phai-int: muốn exit 2 + stderr chứa `VS0412`, được exit 0
+  stderr: TAP version 13
+1..1
+ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-khong-phai-int.vis (steps=8)
+
+async/task-tra-list: muốn exit 0 + stdout "[1, 2, 3]\n3\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-list.vis:5:10: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-list.vis (VS0501, steps=2)
+
+async/task-tra-record: muốn exit 0 + stdout "1\n2\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-record.vis:9:9: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-record.vis (VS0501, steps=2)
+
+async/task-tra-str: muốn exit 0 + stdout "xin chao A\n", được exit 1 + stdout ""
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-str.vis:5:7: error VS0501: `await` là VS1 — chưa hỗ trợ ở VS0
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/task-tra-str.vis (VS0501, steps=4)
+
+async/than-task-loi-await: muốn exit 1 + stderr chứa `VS0506`, được exit 1
+  stderr: TAP version 13
+1..1
+/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/than-task-loi-await.vis:3:5: error VS0502: chia cho 0 (`/0`)
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/than-task-loi-await.vis (VS0502, steps=6)
+
+async/than-task-loi-join: muốn exit 1 + stderr chứa `VS0506`, được exit 2
+  stderr: TAP version 13
+1..1
+than-task-loi-join.vis:5:15: error VS0201: mong xuống dòng sau câu lệnh, thật `hong`
+not ok 1 - /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../test/sem/async/than-task-loi-join.vis (VS0201)
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sem_323_ca_qua_binary
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.87s
+
+error: test failed, to rerun pass `-p vis-cli --test sem`
+error: 1 target failed:
+    `-p vis-cli --test sem`

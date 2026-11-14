@@ -201,10 +201,12 @@ fn gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau() {
 #[test]
 fn codegen_loi_vm_phai_exit_khac_0() {
     // VD-97 (5): codegen không biểu diễn được ⇒ **exit ≠ 0** + chẩn đoán stderr (không im lặng).
+    // **SỬA KÈM LÝ DO (ST-60)**: `await` **đã** hạ thật (`$await`, VD-95) ⇒ ca này dùng khối
+    // `cmd { … }` (vẫn `Unsupported("cmd-block")` ở codegen, `check` vẫn sạch).
     let d = tam("codegen");
-    let src = "async fn f() -> int:\n    return 1\n\nfn main():\n    print(await f())\n";
+    let src = "fn main():\n    let x = cmd { ls . }\n    print(x)\n";
     let p = ghi(&d, "codegen", src);
-    // `check` **sạch** (async/await là lỗi **động** ở VS0) ⇒ không đường nào bị tyck chặn trước.
+    // `check` **sạch** (`cmd { … }` là lỗi **động** ở VS0) ⇒ không đường nào bị tyck chặn trước.
     let (cc, _, _) = check(&p);
     assert_eq!(cc, 0, "`check` phải sạch (lỗi động)");
     let (c, o, e) = chay(&p, true);
@@ -213,7 +215,7 @@ fn codegen_loi_vm_phai_exit_khac_0() {
         e.contains("codegen lỗi"),
         "stderr phải nêu lỗi codegen: {e}"
     );
-    assert!(e.contains("await"), "stderr phải nêu biến thể: {e}");
+    assert!(e.contains("cmd-block"), "stderr phải nêu biến thể: {e}");
     // Interp: cùng chương trình ⇒ **lỗi động** `VS0501`, cũng exit ≠ 0.
     let (ci, _, ei) = chay(&p, false);
     assert_eq!(ci, 1, "interp: {ei}");

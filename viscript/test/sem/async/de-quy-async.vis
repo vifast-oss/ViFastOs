@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn giai_thua(n: int) -> int:
+    if n <= 1:
+        1
+    else:
+        n * await giai_thua(n - 1)
+
+print(await giai_thua(4))

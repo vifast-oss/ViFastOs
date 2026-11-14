@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+async fn in_so(n: int) -> int:
+    print("chay {n}")
+    n
+
+let a = spawn in_so(1)
+let b = spawn in_so(2)
+print("main")

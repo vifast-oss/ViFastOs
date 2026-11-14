@@ -302,7 +302,7 @@ pub const COMMAND_CODES: [Code; 4] = [
     },
 ];
 
-pub const RUNTIME_CODES: [Code; 3] = [
+pub const RUNTIME_CODES: [Code; 4] = [
     Code {
         id: 501,
         short: "VS0501",
@@ -325,6 +325,16 @@ pub const RUNTIME_CODES: [Code; 3] = [
         message_vi: "chỉ số ngoài phạm vi",
         message_en: "index out of range",
         message_ja: "インデックスが範囲外です",
+        severity: Severity::Error,
+    },
+    // **ST-60 (VD-90/VD-95)**: lỗi trong **thân tác vụ** (`async fn`) — bọc **mọi** lỗi, message
+    // kèm **mã gốc**, `span` = lúc **tạo** task; một quy tắc cho cả `await` lẫn join cuối.
+    Code {
+        id: 506,
+        short: "VS0506",
+        message_vi: "tác vụ (`async fn`) lỗi: thân tác vụ ném lỗi (message kèm mã gốc)",
+        message_en: "task (`async fn`) failed: the task body raised an error (message has the original code)",
+        message_ja: "タスク (`async fn`) でエラー: タスク本体がエラーを出しました（元のコード付き）",
         severity: Severity::Error,
     },
 ];
@@ -545,7 +555,13 @@ mod tests {
     #[test]
     fn so_runtime_05xx_khoa_theo_vd42() {
         let ids: Vec<u16> = RUNTIME_CODES.iter().map(|c| c.id).collect();
-        assert_eq!(ids, vec![501, 502, 503], "sổ runtime đúng thứ tự tăng dần");
+        // **SỬA KÈM LÝ DO (ST-60)**: thêm **VS0506** ở **cuối** (index 0..2 giữ nguyên) cho lỗi
+        // trong thân tác vụ `async`.
+        assert_eq!(
+            ids,
+            vec![501, 502, 503, 506],
+            "sổ runtime đúng thứ tự tăng dần"
+        );
         for c in RUNTIME_CODES.iter() {
             assert_eq!(lookup(c.id).map(|x| x.short), Some(c.short));
             assert_eq!(lookup_str(c.short).map(|x| x.id), Some(c.id));
@@ -607,7 +623,8 @@ mod tests {
         // thành **VS0405** và **chuyển sang `TYPE_CODES`** ⇒ `06xx` 5 → **4**, `04xx` 4 → **5**,
         // `all_codes()` **vẫn 29**; `next_block()` vẫn **801**.
         // (ST-40a cũ: thêm VS0605 `06xx` trường không có trên `it` ⇒ 28 + 1 = **29** mã.)
-        assert_eq!(all_codes().count(), 29);
+        // **SỬA KÈM LÝ DO (ST-60)**: +**VS0506** ⇒ **30** mã (sổ runtime 3 → 4).
+        assert_eq!(all_codes().count(), 30);
         assert_eq!(BOOKS.len(), 7);
         for id in [601u16, 602, 603, 604] {
             assert!(
