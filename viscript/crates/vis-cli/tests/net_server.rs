@@ -136,40 +136,42 @@ fn nhan_pong(addr: &str) -> String {
 }
 
 /// Ca 1 — **một** tiến trình `vis` phục vụ một client Rust: `listen(:0)` → `local_addr` →
-/// `accept` → `write("pong")`; client Rust nhận `pong`. Chạy cả `run` và `run --vm --no-cache`.
+/// `accept` → `write("pong")`; client Rust nhận `pong`. Chạy **4 lượt**: `run`, `run --vm --no-cache`,
+/// và `run --vm` **có cache** **hai lần** (lượt 2 là **cache hit** — host mạng vẫn phải được truyền).
 #[test]
 fn server_mot_lan() {
     let _k = kho();
     let d = tam("mot");
-    for vm in [false, true] {
-        let duong = d.join(format!("addr-{vm}.txt"));
-        let p = ghi(
-            &d,
-            &format!("server-{vm}"),
-            &chuong_trinh_server(duong.to_str().unwrap()),
-        );
+    let duong = d.join("addr.txt");
+    let p = ghi(&d, "server", &chuong_trinh_server(duong.to_str().unwrap()));
+    for (nhan, vm, no_cache) in [
+        ("interp", false, false),
+        ("vm-nocache", true, true),
+        ("vm-cache-1", true, false),
+        ("vm-cache-2", true, false),
+    ] {
+        let _ = std::fs::remove_file(&duong); // mỗi lượt phải thấy địa chỉ **mới**
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_vis"));
+        cmd.arg("run");
+        if vm {
+            cmd.arg("--vm");
+            if no_cache {
+                cmd.arg("--no-cache");
+            }
+        }
         let t0 = Instant::now();
-        let con = Command::new(env!("CARGO_BIN_EXE_vis"))
-            .arg("run")
-            .args(if vm {
-                vec!["--vm", "--no-cache"]
-            } else {
-                vec![]
-            })
-            .arg(&p)
-            .spawn()
-            .expect("spawn `vis run`");
+        let con = cmd.arg(&p).spawn().expect("spawn `vis run`");
         let addr = cho_dia_chi(&duong);
         let pong = nhan_pong(&addr);
         let code = dung(con);
         let dt = t0.elapsed();
         assert_eq!(
             pong, "pong",
-            "vm={vm}: client Rust phải nhận `pong`, được {pong:?}"
+            "{nhan}: client Rust phải nhận `pong`, được {pong:?}"
         );
-        assert_eq!(code, 0, "vm={vm}: server phải exit 0");
-        assert!(dt.as_secs_f64() <= 3.0, "vm={vm}: e2e {dt:?} > 3 s");
-        eprintln!("server_mot_lan vm={vm}: {} ms", dt.as_millis());
+        assert_eq!(code, 0, "{nhan}: server phải exit 0");
+        assert!(dt.as_secs_f64() <= 3.0, "{nhan}: e2e {dt:?} > 3 s");
+        eprintln!("server_mot_lan {nhan}: {} ms", dt.as_millis());
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -207,6 +209,68 @@ fn server_hai_tien_trinh() {
             dt.as_secs_f64() * 1000.0
         );
         eprintln!("server_hai_tien_trinh vòng {vong}: {} ms", dt.as_millis());
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 2b — **hai kết nối liên tiếp** tới **cùng** listener: `accept` lần 1 phục vụ `mot`, lần 2
+/// phục vụ `hai`; hai client Rust (tuần tự) đọc đúng dữ liệu của mình.
+#[test]
+fn server_hai_ket_noi_lien_tiep() {
+    let _k = kho();
+    let d = tam("hai-ket-noi");
+    let src = |duong: &str| {
+        format!(
+            "use std.net\n\
+             use std.fs\n\
+             \n\
+             fn phuc_vu(duong: str) -> Result[(), str]:\n\
+             \x20   let l = net.listen(\"127.0.0.1:0\")?\n\
+             \x20   let a = net.local_addr(l)?\n\
+             \x20   fs.write(duong, a)?\n\
+             \x20   let c1 = net.accept(l)?\n\
+             \x20   net.write(c1, \"mot\")?\n\
+             \x20   net.close(c1)?\n\
+             \x20   let c2 = net.accept(l)?\n\
+             \x20   net.write(c2, \"hai\")?\n\
+             \x20   net.close(c2)?\n\
+             \x20   net.close_listen(l)\n\
+             \n\
+             fn main():\n\
+             \x20   match phuc_vu(\"{duong}\"):\n\
+             \x20       Ok(_): print(\"xong\")\n\
+             \x20       Err(e): print(\"lỗi: {{e}}\")\n"
+        )
+    };
+    for vm in [false, true] {
+        let duong = d.join(format!("addr-{vm}.txt"));
+        let p = ghi(&d, &format!("hai-kn-{vm}"), &src(duong.to_str().unwrap()));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_vis"));
+        cmd.arg("run");
+        if vm {
+            cmd.arg("--vm").arg("--no-cache");
+        }
+        let t0 = Instant::now();
+        let con = cmd.arg(&p).spawn().expect("spawn server");
+        let addr = cho_dia_chi(&duong);
+        assert_eq!(
+            nhan_pong(&addr),
+            "mot",
+            "vm={vm}: kết nối 1 phải nhận `mot`"
+        );
+        assert_eq!(
+            nhan_pong(&addr),
+            "hai",
+            "vm={vm}: kết nối 2 phải nhận `hai`"
+        );
+        let code = dung(con);
+        let dt = t0.elapsed();
+        assert_eq!(code, 0, "vm={vm}: server phải exit 0");
+        assert!(dt.as_secs_f64() <= 3.0, "vm={vm}: e2e {dt:?} > 3 s");
+        eprintln!(
+            "server_hai_ket_noi_lien_tiep vm={vm}: {} ms",
+            dt.as_millis()
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }

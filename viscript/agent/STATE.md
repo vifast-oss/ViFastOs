@@ -6,17 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-65 — VS2 #3c: server TCP** (`net.listen/local_addr/accept/accept_timeout/
-                close_listen`, handle `L<n>`; bàn giao cổng qua **tệp**; e2e **2 tiến trình `vis`**;
-                5 test Rust) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 7/7 (red-first 5 test + probe → listener thật trong CLI `net.rs` + 5 hàm bảng + nhánh
-                `std.net.*` → 5/5 xanh → workspace **807** → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-66 — VS2 #3d: ca biên net/http** (6 ca mới + mở rộng cache cho server; tổng
+                **24** ca net/http/server; `--explain-perms` đủ **4 dòng**; **KHÔNG** mã sản phẩm mới
+                — chỉ test + docs) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (viết 6 ca + mở rộng 1 ca → **24/24 xanh** ngay trên HEAD ST-65 (không có đỏ) →
+                workspace **813** → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:26:01Z**; **807** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:42:34Z**; **813** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (257,7 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (217,0 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-65]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-66]` + push (đã được uỷ quyền)
+
+## ST-66 — VS2 #3d: ca biên net/http (24 ca, chốt hạng mục VS2 #3), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **R1** | Không chạm mã sản phẩm; R1 toàn cây max **1.491** (`lower/cmd.rs`). Test: `net.rs` **452**, `http.rs` **343**, `net_server.rs` **384** dòng (<1.500). |
+| 1 | **`--vm` cache cho server** | `server_mot_lan` chạy **4 lượt** trên **cùng** tệp chương trình: `interp`, `--vm --no-cache`, `--vm` (cache lần 1), `--vm` (cache lần 2 = **cache hit**); mỗi lượt xoá tệp handshake, client Rust nhận `pong`; cả 4 exit 0, byte y hệt. Đo: **206 / 85 / 129 / 178 ms**. |
+| 2 | **6 ca mới** | `tcp_doc_ghi_sau_close` (read/write sau `close` ⇒ `Err` "không tồn tại", exit 0), `tcp_read_cap_64` (server 1 MiB, `read(t,64,…)` lần 1/2 ⇒ đúng 64 byte 'A' mỗi lần), `server_hai_ket_noi_lien_tiep` (`accept` **2 lần** cùng listener ⇒ client 1 `mot`, client 2 `hai`), `http_path_query` (`GET /a/b?x=1&y=2` đúng target), `http_body_rong` (`204` + `CL=0` ⇒ `Ok("")` → stdout `()`), `tcp_explain_tong` (**≥4** dòng `NET listen/accept/connect/http GET`, stdout sạch, 2 đường cùng byte). |
+| 3 | **`--explain-perms`** | **Không cần thêm mã**: `NET connect` (ST-63), `NET listen`/`NET accept` (ST-65), `NET http GET` (ST-64) đã in ra stderr. Ca tổng khoá lại **đủ 4 dòng** + stdout sạch + hai đường **cùng byte** (kể cả stderr). |
+| 4 | **Bảng ca ≥13** | **24 ca** net/http/server (xem bảng đầy đủ ở `JOURNAL/2026-11-14.md` §ST-66 + báo cáo); **không** đặt ca vào `test/sem` (sem **441**). |
+| 5 | **Chống flake** | Tuần tự hoá **cả 3** test binary (`net`, `http`, `net_server`) bằng `Mutex` — chỉ giảm nhiễu tiến trình/đo thời gian, **không** nới ngưỡng (vẫn 400 ms/3 s). |
+| 6 | **Red-first — trung thực** | **Không có mã sản phẩm mới** ⇒ 6 ca mới chạy **xanh ngay** trên HEAD ST-65 (`6514fce1`); **không dựng đỏ giả**. `JOURNAL/st66-red-sem.log` sha256 `6b5590ba…` (13 dòng, ghi rõ 0 đỏ), `JOURNAL/st66-red-rust.log` sha256 `479c210f…` (`24/24 xanh`, `[cargo exit=0]`). |
+| 7 | **Đo** | **813** test = 807 + **6** (21+96+18+154+26+62+9+**427**); sem **441/21** (391 `.vis` + 50 `.vish`, 80 `.err` — không đổi); `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=217.0 toc_do=461/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 8 | **Thời gian e2e (đo, tuần tự)** | `server_mot_lan`: **206 / 85 / 129 / 178 ms** (interp/vm-nocache/cache-1/cache-2); `server_hai_ket_noi_lien_tiep`: **66 / 173 ms**; `server_hai_tien_trinh`: **94 / 93 / 163 ms**; `accept_het_gio`: **267 / 160 ms** (≤400); `http_het_gio` + toàn bộ `http.rs` **~0,5 s**. |
+| 9 | **Nợ** | Giữ nguyên nợ ST-63/64/65 (một luồng, không TLS/redirect/keep-alive/chunked, chỉ loopback, handle per-process, cap 8 MiB, bỏ `is_listening`). Thêm: **ST-66 không có "đỏ thật"** vì không thay đổi mã — vòng sau muốn red-first thật phải kèm thay đổi mã; tuần tự hoá test làm thời gian chạy tăng nhẹ. |
 
 ## ST-65 — VS2 #3c: server TCP (`std.net.listen/local_addr/accept(_timeout)/close_listen`), 2026-11-14
 

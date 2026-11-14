@@ -13,6 +13,13 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// **Chống flake**: ca timeout đo thời gian nên các ca trong binary này chạy **tuần tự** (chỉ giảm
+/// nhiễu tài nguyên; **không** nới ngưỡng nào).
+fn kho() -> std::sync::MutexGuard<'static, ()> {
+    static KHO: Mutex<()> = Mutex::new(());
+    KHO.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn tam(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("vis-http-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
@@ -116,6 +123,7 @@ fn chuong_trinh(url: &str) -> String {
 /// Ca 1 — HTTP 200: body UTF-8 **đúng từng byte**; thêm nhánh `--vm` **cache hit**.
 #[test]
 fn http_200_byte() {
+    let _k = kho();
     let d = tam("200");
     let body = "chào 😀".as_bytes().to_vec();
     let cl = body.len();
@@ -136,6 +144,7 @@ fn http_200_byte() {
 /// Ca 2 — HTTP 404 ⇒ `Err` chứa `404`, **exit 0** (lỗi HTTP là dữ liệu `Err`).
 #[test]
 fn http_404() {
+    let _k = kho();
     let d = tam("404");
     let (addr, _log) = server(dap_ung("404 Not Found", b"", 0), 2, 0);
     let (code, out, err) = ca(&d, "nf", &chuong_trinh(&format!("http://{addr}/khong")));
@@ -147,6 +156,7 @@ fn http_404() {
 /// Ca 3 — `get_timeout(url, 80)` với server ngủ 300 ms ⇒ `Err` "quá thời gian", **≤ 400 ms**/đường.
 #[test]
 fn http_het_gio() {
+    let _k = kho();
     let d = tam("timeout");
     let (addr, _log) = server(dap_ung("200 OK", b"muon", 4), 2, 300);
     let src = format!(
@@ -176,6 +186,7 @@ fn http_het_gio() {
 /// Ca 4 — cổng đóng ⇒ `Err` "bị từ chối", exit 0.
 #[test]
 fn http_tu_choi() {
+    let _k = kho();
     let d = tam("refused");
     let l = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = l.local_addr().expect("addr").to_string();
@@ -190,6 +201,7 @@ fn http_tu_choi() {
 /// ⇒ `Err` (không treo).
 #[test]
 fn http_gioi_han() {
+    let _k = kho();
     let d = tam("cap");
     // 5a: `Content-Length` 8 MiB + 1 ⇒ server **không cần** gửi hết body; client phải từ chối sớm.
     let cl = 8 * 1024 * 1024 + 1;
@@ -218,6 +230,7 @@ fn http_gioi_han() {
 /// (Thực tế harness: `vis check` in TAP + **exit 1**; tên cấp tệp **chưa** kiểm tĩnh — nợ có sẵn.)
 #[test]
 fn http_sai_kieu() {
+    let _k = kho();
     let d = tam("type");
     let p = ghi(&d, "sai-kieu", "use std.http\nprint(http.get(42))\n");
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))
@@ -251,6 +264,7 @@ fn http_sai_kieu() {
 /// in `NET http GET 127.0.0.1:…`.
 #[test]
 fn http_duong_mac_dinh() {
+    let _k = kho();
     let d = tam("path");
     let (addr, log) = server(dap_ung("200 OK", b"ok", 2), 2, 0);
     let src = format!(
@@ -284,5 +298,46 @@ fn http_duong_mac_dinh() {
         req.contains("Connection: close\r\n"),
         "thiếu Connection: close: {req:?}"
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 8 — **path + query**: `http://host/a/b?x=1&y=2` ⇒ request line đúng
+/// `GET /a/b?x=1&y=2 HTTP/1.1`; body server trả về nguyên vẹn.
+#[test]
+fn http_path_query() {
+    let _k = kho();
+    let d = tam("path-query");
+    let (addr, log) = server(dap_ung("200 OK", b"ok", 2), 2, 0);
+    let (code, out, err) = ca(
+        &d,
+        "path-query",
+        &chuong_trinh(&format!("http://{addr}/a/b?x=1&y=2")),
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "ok\n", "stdout: {out:?}");
+    let req = String::from_utf8_lossy(&log.lock().expect("log")).to_string();
+    assert!(
+        req.starts_with("GET /a/b?x=1&y=2 HTTP/1.1\r\n"),
+        "request line: {:?}",
+        req.lines().next()
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Ca 9 — body **rỗng**: `204 No Content` + `Content-Length: 0` ⇒ `Ok("")`, không lỗi.
+#[test]
+fn http_body_rong() {
+    let _k = kho();
+    let d = tam("rong");
+    let (addr, _log) = server(dap_ung("204 No Content", b"", 0), 2, 0);
+    let src = format!(
+        "use std.http\n\
+         match http.get(\"http://{addr}/rong\"):\n\
+         \x20   Ok(s): print(\"({{s}})\")\n\
+         \x20   Err(e): print(e)\n"
+    );
+    let (code, out, err) = ca(&d, "rong", &src);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "()\n", "body rỗng phải `Ok(\"\")`, stdout: {out:?}");
     let _ = std::fs::remove_dir_all(&d);
 }

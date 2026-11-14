@@ -1,0 +1,11 @@
+# ST-66 — log 'ĐỎ' (sem) lúc 2026-11-14T07:35:13Z, HEAD dbd18c66.
+# Phạm vi ST-66 = **khoá hành vi/biên** — KHÔNG có mã sản phẩm mới, chỉ thêm test Rust.
+# Vì vậy **không có ca đỏ**: 6 ca mới + 18 ca cũ (net/http/server) chạy trên HEAD ST-65
+# (6514fce1) đều XANH. Không dựng 'đỏ giả'; ghi nhận trung thực.
+# Sem KHÔNG đổi: 441 ca (VD-105 (7)).
+
+== Các hành vi ca kiểm (đều đã có từ ST-63/64/65):
+   - read/write sau close ⇒ Err rõ; accept 2 lần cùng listener; read cap 64 byte.
+   - http path+query đúng target; body rỗng (204/CL=0) ⇒ Ok(""); cap 8 MiB.
+   - --explain-perms: NET listen/accept/connect/http GET (≥4 dòng).
+   - server_mot_lan chạy thêm --vm có cache 2 lần (lượt 2 cache hit).

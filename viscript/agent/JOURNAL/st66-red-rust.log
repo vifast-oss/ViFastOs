@@ -1,0 +1,58 @@
+# ST-66 — log 'ĐỎ' (Rust) lúc 2026-11-14T07:35:15Z, HEAD dbd18c66.
+# KHÔNG có mã sản phẩm mới trong ST-66 (chỉ test + docs) ⇒ ca mới chạy XANH trên HEAD ST-65;
+# ghi nhận trung thực, không dựng đỏ giả. lệnh: cargo test -p vis-cli --test net --test http --test net_server
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/http.rs (target/debug/deps/http-ff8770577d7628ce)
+
+running 9 tests
+test http_200_byte ... ok
+test http_404 ... ok
+test http_body_rong ... ok
+test http_duong_mac_dinh ... ok
+test http_gioi_han ... ok
+test http_het_gio ... ok
+test http_path_query ... ok
+test http_sai_kieu ... ok
+test http_tu_choi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running tests/net.rs (target/debug/deps/net-09ba3da5155a130b)
+
+running 9 tests
+test tcp_doc_ghi_sau_close ... ok
+test tcp_explain_perms ... ok
+test tcp_explain_tong ... ok
+test tcp_het_gio_doc ... ok
+test tcp_khong_host ... ok
+test tcp_noi_va_doc ... ok
+test tcp_read_cap_64 ... ok
+test tcp_tay_la ... ok
+test tcp_tu_choi ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests/net_server.rs (target/debug/deps/net_server-35f35308287c62f9)
+
+running 6 tests
+test accept_het_gio ... ok
+test cong_ban ... ok
+xong
+xong
+test server_hai_ket_noi_lien_tiep ... ok
+xong
+xong
+xong
+test server_hai_tien_trinh ... ok
+test server_khong_host ... ok
+xong
+xong
+xong
+xong
+test server_mot_lan ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+
+[cargo exit=0]
