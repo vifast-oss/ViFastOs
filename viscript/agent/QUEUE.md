@@ -169,7 +169,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **DONE** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **DONE** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **DONE** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
-| ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **READY** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
+| ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **DONE** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
@@ -1166,3 +1166,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: net **không** trong suite (đã có 24 ca riêng, thay bằng 3 ca determinism — ghi rõ); **13 ca Ngoai** khai kỳ vọng `vm:VS0604`
 > (VM **không** có host `Ngoai` — đúng thiết kế ST-27); suite phụ thuộc lệnh macOS.
 > **ST-76 mở** (báo cáo R11).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-76 DONE — VÒNG 11 CHỐT.** `reports/R11-viscript.{md,json,license}` (`c2c31e45`, head `3b96011e`) — `report-check`
+> **PASS (11 báo cáo, 86 hàng QUEUE phủ đủ)**. Số liệu **chạy lại**: **874 test** (488 cli) · sem **447/22 nhóm** · `vis test`
+> **447 ok** · `--vm` **447 ok + 7 SKIP** · parity **398/398** (+49 lỗi biên dịch) · differential **100k/0 lệch** (352,5 s) ·
+> fuzz parser 60 s **4.776.316 ca / 0 vi phạm** · `VBC1` **53** · **7 sổ/32 mã** · allowlist **6** · async 10k **328/182 ms** ·
+> host suite **54 ca / 120 lần chạy / 0 lệch** · ma trận target **18/18** · `--sandbox-check` macOS exit 3 (**không hỗ trợ**).
+> **Vòng 11 đóng trọn 6 hạng mục VS2 ở mức đo được**: async, kênh, net/HTTP (24 ca), quyền runtime (8 ca), LSP (22 phản hồi),
+> gói/registry (13 ca) — cộng 2 hạng mục **đúng mức bằng chứng** (Landlock: **probe** + check chéo; đa nền tảng: **check**),
+> và **bộ hợp chuẩn 54 ca trên macOS**. **Còn**: Landlock **thật**, runner **Windows/Linux/wasm**, và **37 mục nợ** (R11 §5).
+> **ViScript vẫn chưa hoàn thiện toàn bộ** — nhưng mọi hạng mục VS2 giờ đều có **bằng chứng đo** hoặc **lý do chặn** rõ ràng.
