@@ -6643,6 +6643,42 @@ impl Machine {
         Ok(())
     }
 
+    // ------------------------------------------- KT-42: một cửa kiểm VM ở cổng
+
+    /// **KT-42** — **một cửa kiểm VM** cho cổng (L0): gộp toàn bộ bất biến của K2 VM —
+    /// [`Machine::check_frames`] + [`Machine::check_pages`] + [`Machine::check_wx`] +
+    /// [`Machine::wx_recount`] (đếm lại **độc lập** từ cây) + [`Machine::check_vspace`] +
+    /// [`Machine::check_asid`] + [`Machine::check_tlb`] + [`Machine::check_fault`].
+    ///
+    /// **Không thay hook per-op** (`sched_after_op` vẫn gọi từng checker như trước): đây là
+    /// lưới **đầy đủ ở cổng**, nơi đắt hơn nhưng chạy một lần; L0 chạy nó sau mỗi kịch bản
+    /// `.scn` và trong `tests/kt42_vmcheck.rs`.
+    ///
+    /// **Chi phí** (đo trên mô hình, không phải ABI): `O(F log F)` sắp xếp cửa sổ PA của
+    /// `check_frames` + **hai** lần đi toàn bộ cây PageTable (`check_pages` và `wx_recount`) +
+    /// `O(F + V + H)` cho W^X/VSpace/ASID + `O(TLB entries × walk)` cho `check_tlb` +
+    /// `O(endpoint × hàng)` cho `check_fault`; mỗi checker tự có cửa sổ nhanh (`*_objects == 0`
+    /// / `tlb_fill_total == 0` / `fault_events == 0`) nên trạng thái **không có VM** gần như
+    /// miễn phí. Không cấp phát thêm ngoài các `Vec` mà từng checker đã dùng.
+    ///
+    /// Trả lỗi **có tiền tố** tên checker (`check_pages: …`) để log cổng chỉ đúng lưới vỡ;
+    /// dừng ở lỗi đầu tiên (không có nhiều lỗi đồng thời trong mô hình đúng).
+    pub fn check_vm(&self) -> Result<(), String> {
+        self.check_frames()
+            .map_err(|e| format!("check_frames: {e}"))?;
+        self.check_pages()
+            .map_err(|e| format!("check_pages: {e}"))?;
+        self.check_wx().map_err(|e| format!("check_wx: {e}"))?;
+        self.wx_recount().map_err(|e| format!("wx_recount: {e}"))?;
+        self.check_vspace()
+            .map_err(|e| format!("check_vspace: {e}"))?;
+        self.check_asid().map_err(|e| format!("check_asid: {e}"))?;
+        self.check_tlb().map_err(|e| format!("check_tlb: {e}"))?;
+        self.check_fault()
+            .map_err(|e| format!("check_fault: {e}"))?;
+        Ok(())
+    }
+
     // ------------------------------------------- KT-27: bất biến Notification
 
     /// **KT-27** — bất biến Notification (chạy sau **mỗi** public op qua
@@ -11600,5 +11636,86 @@ mod tests {
         assert!(loi.contains("walk trả"), "{loi}");
         m.tlbs[0].entries_mut_for_test().pop();
         m.check_tlb().expect("khôi phục thì sạch");
+    }
+
+    // ------------------------------------------------ KT-42: check_vm phải **bắt** lỗi
+
+    /// `check_vm` **không rỗng** (ca dương tính của cổng KT-42): hai lỗi cố ý tiêm vào bản
+    /// sao trạng thái qua **cùng** ảnh chụp `Machine` (không thêm đường API nào) —
+    /// (1) **xoá PTE ngầm** (cây mất lá nhưng `PageTableData.mapped`/`FrameMeta.maps` còn 1) và
+    /// (2) **entry TLB mồ côi** (VA không còn map) — đều bị [`Machine::check_vm`] bắt; khôi
+    /// phục thì sạch. Đây là chứng minh `check_vm` không phải checker rỗng (K2-PLAN KT-42
+    /// "rủi ro: `.scn` chỉ kiểm đường vàng").
+    #[test]
+    fn check_vm_bat_pte_bi_xoa_ngam_va_entry_tlb_mo_coi() {
+        let (mut m, c, vs, root) = rig_vspace();
+        let uf = m.add_untyped(1 << 32, 4096);
+        let capu = m.root_cap(uf);
+        m.put_cap(c, 1, capu).expect("cap Untyped Frame");
+        let capf = m
+            .retype(SlotRef::new(c, 1), ObjType::Frame, 30, 0)
+            .expect("Frame 1G");
+        let f = m.cap_info(capf).expect("cap").obj;
+        m.put_cap(c, 2, capf).expect("cap Frame");
+        m.vspace_activate(vs, 0).expect("activate");
+        m.vspace_map_obj(vs, 1 << 30, f, MapRights::READ, MapAttrs::WB)
+            .expect("map 1G");
+        assert!(
+            !m.tlb_translate(vs, 1 << 30).expect("fill").from_tlb,
+            "lần đầu phải miss"
+        );
+        m.check_vm()
+            .expect("check_vm sạch trên trạng thái VM đầy đủ");
+
+        // (1) Xoá PTE ngầm: bảng vẫn `mapped = 1`, FrameMeta vẫn `maps = 1` — chỉ cây đổi.
+        let rslot = m.objects[root as usize - 1].pt.expect("pt root");
+        let pte = m.page_tables[rslot]
+            .as_ref()
+            .expect("dữ liệu root")
+            .entries
+            .get(1)
+            .expect("PTE root[1]");
+        m.page_tables[rslot]
+            .as_mut()
+            .expect("dữ liệu root")
+            .entries
+            .set(1, Pte::EMPTY)
+            .expect("xoá PTE root[1]");
+        let e = m.check_vm().expect_err("check_vm phải bắt PTE bị xoá ngầm");
+        assert!(
+            e.contains("check_pages") || e.contains("bộ đếm") || e.contains("mapped"),
+            "{e}"
+        );
+        m.page_tables[rslot]
+            .as_mut()
+            .expect("dữ liệu root")
+            .entries
+            .set(1, pte)
+            .expect("khôi phục PTE root[1]");
+        m.check_vm().expect("khôi phục PTE thì check_vm sạch");
+
+        // (2) Entry TLB mồ côi: `(gen, asid)` đúng VSpace sống nhưng VA `0x6000` không map.
+        let info = m.vspace_info(vs).expect("info VSpace");
+        let mut gia = HartTlb::new();
+        let entry = gia.fill_keyed(
+            info.generation,
+            info.asid,
+            Mapping {
+                va: 0x6000,
+                pa: 0x9000,
+                size_bits: 12,
+                frame: f,
+                rights: MapRights::READ,
+                attrs: MapAttrs::WB,
+            },
+        );
+        m.tlbs[0].seed_entry_for_test(entry);
+        let e = m
+            .check_vm()
+            .expect_err("check_vm phải bắt entry TLB mồ côi");
+        assert!(e.contains("check_tlb"), "{e}");
+        assert!(e.contains("walk trả") || e.contains("VSpace"), "{e}");
+        m.tlbs[0].entries_mut_for_test().pop();
+        m.check_vm().expect("khôi phục TLB thì check_vm sạch");
     }
 }

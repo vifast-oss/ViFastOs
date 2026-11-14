@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-42 — VM fault: chạm VA chưa map ⇒ FaultKind::Vm{NotMapped} qua fault_ep, procsrv model
+# nhận + Reply (không cấp trang), resume về Ready (k2-vm.md §16).
+version = 1
+name = "25-vm-fault-notmapped-resume"
+tags = ["vm-fault"]
+harts = 1
+caps = { c0 = "CNode", t0 = "Tcb", t1 = "Tcb", ep0 = "Endpoint", rep0 = "Reply" }
+thread = [
+  { name = "t0", steps = [
+    "vm_map vs=vs0 va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok",
+    "vm_dispatch hart=0 tcb=t0 => ok",
+    "vm_touch hart=0 vs=vs0 va=0x200040 access=Read => ok",
+    "vm_expect_fault tcb=t0 vs=vs0 va=0x200040 access=Read reason=NotMapped => ok",
+    "vm_expect_frames n=3 => ok",
+    "vm_procsrv_recv => ok",
+    "vm_expect_state tcb=t0 state=BlockedOnReply => ok",
+    "vm_procsrv_resume tcb=t0 => ok",
+    "vm_expect_state tcb=t0 state=Ready => ok",
+    "vm_dispatch hart=0 tcb=t0 => ok",
+    "vm_touch hart=0 vs=vs0 va=0x200040 access=Write => ok",
+    "vm_expect_fault tcb=t0 vs=vs0 va=0x200040 access=Write reason=NotMapped => ok",
+    "vm_walk vs=vs0 va=0x200040 => NotMapped",
+    "vm_procsrv_recv => ok",
+    "vm_procsrv_resume tcb=t0 => ok",
+    "vm_expect_frames n=3 => ok",
+    "vm_check => ok",
+  ] },
+]

@@ -4,15 +4,61 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `86079213` ([ST-00] tab ViScript lật ST-67 DONE — không chạm v2/); v2 hiệu lực `f3872df0` ([KT-00] lật KT-40 DONE, 552 test)
+HEAD          : `dae06315` ([KT-00] D2-69 chốt `.scn` 22..26 + `check_vm` 8 checker ở cổng; sau `9bab6132` tab ViScript); v2 hiệu lực `dae06315`
 BUILD_ID      : —
-Task          : **KT-41 (VM fault)** — **DONE ở mức thi hành**: gate 562/71, Miri 9/9, reviewer APPROVE, commit `[KT-41]` + push (hash báo lead) — **chờ Agent 0 lật QUEUE**. KT-40 DONE (`1aeaf0d0`)
-Bước          : 8/8 **xong** (baseline 552 → test đỏ 20 lỗi → code+10 test → gate **562/71** → Miri 389,60 s 9/9 → reviewer APPROVE + 4 nit đã sửa → gate lại 562/71 → Miri lại 9/9 → commit `[KT-41]` + push)
+Task          : **KT-42 (5 `.scn` VM + `check_vm` + shared read-only end-to-end)** — **DONE ở mức thi hành**: gate 569/73 (L1 2.635 ms; reviewer chạy lại 1.499 ms), Miri 2/2, `reviewer-kt42` **APPROVE** — chờ Agent 0 lật QUEUE. KT-41 DONE (`f933d74b`); D2-69 chốt `.scn` 22..26 (Agent 0)
+Bước          : 8/8 **xong** (baseline 562/71 → 6 log đỏ (harness + runner 5 ca) → 5 `.scn` + runner + `check_vm` + self-test 2 lỗi + `kt42_vmcheck` → gate **569/73**, L1 2.635 ms → Miri 1/1 + 1/1 → reviewer APPROVE + sửa 3 ghi chú → gate lại → commit `[KT-42]` + push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 562 test/71 suite**, L1 1.000 seed **1.428 ms** (đợt 1)/**47.758 ms** (đợt 2 — host load do tab ViScript chạy 821 test: `T-INFRA`, **không** nới seed), fmt/clippy `-D warnings`, luật R1..R5, gen-check ON (`JOURNAL/kt41-gate-fast.log`). Baseline KT-41: 552/70, L1 **774 ms** (`JOURNAL/kt41-baseline-gate-fast.log`); +9 `kt41_vmfault` +1 unit `check_fault`.
-Miri          : KT-41 — `--test kt41_vmfault` **9/9** (**389,60 s**; property tự giảm còn **40 vòng** bằng `cfg(miri)`, stable/gate 10.000) + `--lib check_fault` **1/1** (0,84 s), `JOURNAL/kt41-miri.log` (**MIRI1_EXIT=0 / MIRI2_EXIT=0**). `kt41_vmfault` đã vào danh sách `v2 miri`/`nightly --only-miri`.
-Việc dở       : commit `[KT-41]` + push xong (chỉ `v2/`; hash báo lead); **không** lật QUEUE (D2-37) — chờ Agent 0. KT-39 DONE `bf6bb0f`; KT-40 DONE `1aeaf0d0`; KT-42 (4 `.scn` + `check_vm` + shared RO) READY sau lật.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test/73 suite**, L1 1.000 seed **2.635 ms**, fmt/clippy `-D warnings`, luật R1..R5, gen-check ON, scn-check **26 tệp/16 nhóm** + fixtures âm PASS (`JOURNAL/kt42-gate-fast.log`). Baseline KT-42: 562/71, L1 885 ms (`JOURNAL/kt42-baseline-gate-fast.log`); +7 test = 5 scn runner + `kt42_vmcheck` + 1 unit `check_vm`. Một đợt gate L1 78.462 ms do tab khác chạy `vis-vm diff_100k` — `T-INFRA`, gate vẫn PASS, **không** nới seed.
+Miri          : KT-42 — `--test kt42_vmcheck` **1/1** (32,12 s) + `--lib check_vm_` **1/1** (3,37 s), `JOURNAL/kt42-miri.log` (**MIRI1_EXIT=0 / MIRI2_EXIT=0**); `kt42_vmcheck` đã vào `v2 miri`/`nightly --only-miri`; `kt42_scn` **không** chạy Miri (đọc tệp).
+Việc dở       : reviewer APPROVE (ghi ở [`JOURNAL/kt42-journal.md`](JOURNAL/kt42-journal.md) §5); đã sửa 3 ghi chú (đếm 21 op, verdict, lệch chữ per-op/check_vm); **gate lại + commit `[KT-42]` + push** (chỉ `v2/`, gồm D2-69 của Agent 0 nếu có trong cây), **không** lật QUEUE (D2-37).
 ```
+
+## KT-42 — K2: 5 `.scn` VM + một cửa `check_vm` + shared read-only end-to-end
+
+**Vào**: READY (`agentctl next --project v2` trả KT-42) · HEAD `6a9e3ccf` ([KT-00] lật KT-41
+DONE, 562 test) · `git rev-list --count HEAD..origin/main` = **0** · working tree có `viscript/`
++ `review/` của tab khác (**không chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 562
+test/71 suite**, L1 **885 ms** ([`JOURNAL/kt42-baseline-gate-fast.log`](JOURNAL/kt42-baseline-gate-fast.log)).
+
+**Mục tiêu** (K2-PLAN §3 KT-42 + §2 Q7/Q10; D2-65, D2-67, D2-68): 5 `.scn` VM (map/unmap
+4K+2M+1G + walk; W^X `WxViolation` + bộ đếm nguyên; shootdown 2 hart ack đủ mới `Ok`; VM fault
+`NotMapped` + resume; shared read-only 2 VSpace); **một cửa** `check_vm` ở cổng (L0) gộp 8
+checker — **không** thay hook per-op; self-test `check_vm` không rỗng (2 lỗi cố ý); docs §16;
+Miri; **không** sửa `spec/`/test cũ/21 `.scn` cũ, không unsafe/dependency, không nới ngưỡng.
+
+**Kết quả**:
+- **Đỏ trước** (D2-05): [`kt42-red-scn-check.log`](JOURNAL/kt42-red-scn-check.log) (21 vs 26
+  tệp, tag/op `vm_*` lạ) + [`kt42-red-scn-runner.log`](JOURNAL/kt42-red-scn-runner.log) và
+  `kt42-red-scn-{22..26}.log` (5/5 ca "runner chưa cài op", panic đúng op đầu; kịch bản 24 đỏ
+  ở `vm_activate`).
+- **5 `.scn` mới** `v2/test/scn/{22-frame-map-unmap-walk,23-wx-violation-counters,
+  24-shootdown-2-hart,25-vm-fault-notmapped-resume,26-shared-readonly-frame}.scn` — tag
+  `vm-map/vm-wx/vm-tlb/vm-fault/vm-shared`; số 22..26 = số trống tiếp theo, **không** đụng 21
+  tệp cũ. `check_scn.py`: 21→26 tệp, 11→16 nhóm, bảng đóng `VM_OPS` cho op model-only (op ABI
+  vẫn theo `spec/method_signature`; fixtures âm vẫn bắt đúng thông điệp).
+- **Runner** `tests/kt42_scn.rs` (**5 test**): đọc `.scn` (không sửa), rig `harts`/caps (3 cỡ
+  Frame, 2 VSpace, `t0` fault_ep/`t1` procsrv), **21** op `vm_*`, so từng bước.
+- **`Machine::check_vm`** (`src/kobj.rs`): gộp `check_frames`+`check_pages`+`check_wx`+
+  `wx_recount`+`check_vspace`+`check_asid`+`check_tlb`+`check_fault`, tiền tố lỗi theo checker;
+  **per-op hook không đổi**; chi phí `O(F log F)` + 2 lần đi cây + `O(entries×walk)` … ghi ở
+  §16.2. Unit test dương tính tiêm **2 lỗi** (xoá PTE ngầm; entry TLB mồ côi) — bắt cả hai,
+  khôi phục thì sạch.
+- **`tests/kt42_vmcheck.rs`** (L0/cổng): đường vàng đầy đủ (3 cỡ Frame, shared read-only 2
+  VSpace, TLB 2 hart, shootdown) + `wx_recount` khớp; `vm_check` ở cuối cả 5 kịch bản.
+- **Docs** `v2/docs/k2-vm.md` **§16** (kịch bản/nhóm, quy ước runner, `check_vm` + chi phí,
+  self-test, shared read-only, log đỏ, cổng/Miri, ranh giới).
+- **Cổng**: [`kt42-gate-fast.log`](JOURNAL/kt42-gate-fast.log) **PASS 569/73**, L1 2.635 ms;
+  baseline 562/71. `git diff spec/` **rỗng**; không `#[ignore]`/unsafe/dep; 21 `.scn` cũ nguyên.
+- **Miri**: `kt42_vmcheck` 1/1 (32,12 s) + `--lib check_vm_` 1/1 (3,37 s)
+  ([`kt42-miri.log`](JOURNAL/kt42-miri.log), MIRI1/2_EXIT=0).
+
+**Reviewer `reviewer-kt42`: APPROVE** (tự chạy 5/5 + 1/1, gate 569/73 L1 1.499 ms, scn-check 26/16, fixtures 5/5, spec rỗng; `check_vm` đủ 8 checker, per-op nguyên vẹn +117/−0, self-test 2 lỗi thật; 5 `.scn` 23/27/22/17/18 bước, runner 21 nhánh thật). Đã sửa 3 ghi chú P3 trước commit (đếm 21 op; verdict; lệch chữ per-op dùng bộ checker cũ không `wx_recount` — `check_vm` đầy đủ ở L0/`.scn`/cổng, tương đương phủ, **không nới**); mục số `.scn` 22..26 do Agent 0 chốt **D2-69** (thay G5 "≥30").
+
+**Đề xuất: REVIEW** (chờ Agent 0 xác nhận; không tự DONE, không lật QUEUE — D2-37).
+**YC/Follow-up**: (1) KT-43 cổng cuối K2 — 100k×4 + mutation (4 còn lại) + soak + DoD; (2) K3
+mới có TLB thật/pager/COW + đưa `FaultKind::Vm`/VM method vào `spec/`; (3) giữ 5 `.scn` VM là
+hồi quy cho mọi thay đổi K2 VM sau này.
 
 
 ## KT-41 — K2: VM fault + `FaultKind::Vm` (model-only), `vm_touch`, `check_fault`

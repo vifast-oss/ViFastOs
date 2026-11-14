@@ -948,3 +948,117 @@ payload fault trong các ca K1c là **opaque** (không test nào đọc `vspace`
   100k×4/mutation/soak của K2 (KT-43).
 - **Không** timeout fault/MCS, **không** trap/MMU thật — K3.
 - Không `unsafe`/dependency mới; mô hình một luồng tất định (D2-49(f)).
+
+## 16. KT-42 — 5 `.scn` VM, **một cửa** `check_vm`, shared read-only end-to-end
+
+Nguồn ngữ nghĩa: `review/agent0/K2-PLAN.md` §3 **KT-42** + §2 **Q7/Q10**; **D2-65** (Q7 shared
+read-only **có**, COW **không**; Q10 cổng `.scn` + bất biến), **D2-67** (W^X toàn cục),
+**D2-68** (`TlbFlush`/ack), `k2-vm.md` §13/§14/§15 (hành vi được kiểm). KT-42 **không** đổi
+`spec/`: mọi bước `vm_*` là **model API** của K2 — `spec/abi.toml` vẫn chỉ có `Exit`/16 syscall
+(D2-56(a), D2-65 Q6).
+
+### 16.1 Năm kịch bản `.scn` (số 22..26, 5 nhóm mới)
+
+`v2/test/scn/` có 21 tệp ABI (KT-04c); KT-42 thêm **5 tệp VM**, đánh số **tiếp theo** 22..26
+(theo quy ước hiện có; K2-PLAN ghi "số trống đầu tiên ≥ 30" là `[GT]` trước khi có danh sách
+thật — 22..26 là số trống thực tế, không đụng tệp cũ). `check_scn.py` nâng kỳ vọng **21 → 26
+tệp**, thêm **5 nhóm** `vm-map/vm-wx/vm-tlb/vm-fault/vm-shared` (tổng **16 nhóm**) và một bảng
+đóng `VM_OPS` để kiểm tên/tham số của op model-only (op ABI vẫn đi đúng `spec/method_signature`;
+**không** nới kiểm cũ).
+
+| Tệp | Nhóm | Kịch bản |
+|---|---|---|
+| `22-frame-map-unmap-walk.scn` | `vm-map` | map 4 KiB (`0x1000`) + 2 MiB (`0x40000000`) + 1 GiB (`0x80000000`) rồi walk cả ba (PA/cỡ/frame), unmap ngược và walk lại `NotMapped`; bộ đếm Frame về 0 |
+| `23-wx-violation-counters.scn` | `vm-wx` | map W rồi map X **cùng Frame** (cùng/khác VSpace) ⇒ `WxViolation`; W+X trong **một** lời gọi ⇒ `WxViolation`; `protect` W→X hợp lệ nhưng W+X ⇒ `WxViolation`; **bộ đếm nguyên** sau mọi lần bị từ chối |
+| `24-shootdown-2-hart.scn` | `vm-tlb` | `active_on = {0,1}`; nạp TLB cả hai hart; `begin` thấy `acked=1 < targets=3` (`completed=false`), `wait` đủ ack ⇒ `Ok`; `unmap` chỉ `Ok` khi `acked == targets`; entry trang bị unmap mất trên **cả hai** hart |
+| `25-vm-fault-notmapped-resume.scn` | `vm-fault` | chạm VA chưa map (`0x200040`, lệch căn) ⇒ `FaultKind::Vm{NotMapped}` tới `fault_ep`; procsrv chỉ nhận + `Reply`, resume `Ready`; chạm lại vẫn `NotMapped` (không pager), số Frame không đổi |
+| `26-shared-readonly-frame.scn` | `vm-shared` | **một** Frame map `READ` vào **hai** VSpace; đọc được từ cả hai; ghi ⇒ `Permission`; `maps=2 → 1 → 0`, không cấp bản sao Frame |
+
+**Quy ước runner** (`v2/sim/vifast-sim/tests/kt42_scn.rs`): `harts` top-level; rig chuẩn dựng
+CNode 1024 + Untyped cửa sổ PA cho Frame 4 KiB/2 MiB/1 GiB + **hai** VSpace (`vs0`,`vs1`, mỗi
+cái root → mid → leaf 4 KiB và mid 2 MiB ở `root[1]`) + `ep0`/`rep0` + `t0` (có `fault_ep`)/
+`t1` procsrv; `caps` trong tệp là **khai báo tên/kiểu** cho máy kiểm tĩnh (cùng quy ước
+kt24/kt25/kt26 — runner không đọc `caps`). Bước `vm_expect_*`/`vm_check` là bước **kiểm**,
+không đổi trạng thái; sai ⇒ panic. Runner **đọc đĩa** nên **không** chạy dưới Miri (cùng quy
+ước `kt24_scn.rs`).
+
+### 16.2 `check_vm` — một cửa kiểm ở cổng (L0), **không** thay hook per-op
+
+`Machine::check_vm` gộp **tám** checker theo thứ tự:
+
+1. `check_frames` (kiểu/live/cỡ/cửa sổ PA/chủ sở hữu/bộ đếm cấu trúc/frame chết sạch/không
+   chồng PA/watermark); 2. `check_pages` (cây + mapped + bộ đếm Frame toàn cục); 3. `check_wx`
+   (rẻ: `!(w>0 ∧ x>0)`, `w+x ≤ maps`); 4. `wx_recount` (đếm lại **độc lập** từ cây, so
+   `FrameMeta`); 5. `check_vspace` (`active_on ⊆ hart online`, root/ASID/thế hệ); 6.
+   `check_asid` (free-list/thế hệ/không tái dùng); 7. `check_tlb` (mọi entry khớp cây, đúng
+   `active_on`, pending-aware); 8. `check_fault` (fault không mất/không nhân bản).
+
+- **Per-op không đổi**: `sched_after_op` vẫn gọi từng checker như trước KT-42 (KT-36..41 giữ
+  nguyên cửa sổ nhanh). `check_vm` chỉ là lưới **đầy đủ ở cổng**. **Lệch chữ có chủ đích** so
+  với câu K2-PLAN "`check_vm` chạy sau mỗi op ở mức L1 (rẻ)": per-op dùng **nguyên bộ** checker
+  cũ (KHÔNG có `wx_recount` — đếm lại cây là bản đắt, chỉ hợp ở cổng), còn `check_vm` đầy đủ
+  (8 checker, có `wx_recount`) chạy ở **L0/`.scn`/cổng**. Phủ bất biến **tương đương** (mọi
+  checker cũ vẫn ở per-op; checker đắt ở cổng), **không nới** ngưỡng/ca kiểm.
+- **Nơi chạy**: test L0 `v2/sim/vifast-sim/tests/kt42_vmcheck.rs` (đường vàng đầy đủ: 3 cỡ
+  Frame, 2 VSpace shared read-only, TLB hai hart, shootdown) — L0 nằm trong `gate --fast`; và
+  unit test dương tính trong `kobj::tests` (chạy trong `--lib`, kể cả Miri). `kt42_scn` gọi
+  `vm_check` ở cuối **cả năm** kịch bản.
+- **Chi phí** (`[TK]`, mô hình — không phải ngưỡng cổng): `O(F log F)` cho cửa sổ PA + **hai**
+  lần đi toàn bộ cây PageTable (`check_pages` + `wx_recount`) + `O(F + V + H)` cho W^X/VSpace/
+  ASID + `O(entries_TLB × walk)` cho TLB + `O(hàng Endpoint)` cho fault; mỗi checker giữ cửa sổ
+  nhanh (`frame_objects == 0`, `page_table_objects == 0`, `tlb_fill_total == 0`,
+  `fault_events == 0`) nên trạng thái **không có VM** gần như miễn phí. `check_vm` **không**
+  thêm cấp phát ngoài các `Vec` của từng checker và **không** chạy trên đường nóng per-op.
+
+### 16.3 Self-test `check_vm` — không rỗng (2 lỗi cố ý tiêm)
+
+Unit test `kobj::tests::check_vm_bat_pte_bi_xoa_ngam_va_entry_tlb_mo_coi` dựng VSpace + lá 1 GiB
++ TLB entry, `check_vm` sạch, rồi tiêm **hai** lỗi vào ảnh chụp mô hình (cùng cửa sổ `Machine`,
+không thêm API):
+
+1. **xoá PTE ngầm** (`root[1] = Pte::EMPTY`) trong khi `PageTableData.mapped` và
+   `FrameMeta.maps` vẫn 1 ⇒ `check_vm` trả lỗi có tiền tố `check_pages`/`wx_recount` (bộ đếm ≠
+   cây); khôi phục PTE ⇒ sạch;
+2. **entry TLB mồ côi**: gieo `(generation, asid)` đúng VSpace sống nhưng VA `0x6000` không còn
+   map ⇒ `check_vm` trả lỗi `check_tlb: … walk trả NotMapped`; bỏ entry ⇒ sạch.
+
+Hai lỗi **độc lập** (một ở cây, một ở TLB) chứng minh `check_vm` gộp đúng cả hai lưới; nếu
+`check_vm` rỗng/bỏ checker, test đỏ ngay.
+
+### 16.4 Shared read-only end-to-end (Q7)
+
+`26-shared-readonly-frame.scn` + `kt42_vmcheck.rs` chứng minh Q7 (D2-65): **cùng** một Frame
+map `READ` vào **hai** VSpace ⇒ `maps = 2`, `mapped_w = mapped_x = 0`, `pa` **giống nhau**,
+`frame_count` không tăng (không bản sao); `vm_touch` đọc từ cả hai VSpace `Ok`; ghi ⇒ fault
+`Permission` (đúng luật quyền); unmap một bên ⇒ `maps = 1` (Frame còn sống, bên kia vẫn đọc
+được); unmap nốt ⇒ `maps = 0`. **COW không làm** (Q7: cần write-fault + cấp trang + copy = pager
+thật của K3).
+
+### 16.5 Test đỏ trước (D2-05) và log
+
+| Log | Nội dung |
+|---|---|
+| [`JOURNAL/kt42-red-scn-check.log`](../../agent/JOURNAL/kt42-red-scn-check.log) | `check_scn.py` **chưa cập nhật**: 26 tệp ≠ 21, tag/op `vm_*` lạ ⇒ đỏ |
+| [`JOURNAL/kt42-red-scn-runner.log`](../../agent/JOURNAL/kt42-red-scn-runner.log) | runner VM **chưa cài op**: 5/5 ca đỏ, panic đúng op đầu |
+| [`JOURNAL/kt42-red-scn-22.log`](../../agent/JOURNAL/kt42-red-scn-22.log) … `-26.log` | đỏ riêng từng kịch bản (`vm_map`/`vm_activate` chưa cài) |
+
+Sau khi cài: `cargo test -p vifast-sim --test kt42_scn` **5/5 xanh**, `kt42_vmcheck` xanh,
+`check_scn.py` PASS **26 tệp/16 nhóm**, fixtures âm vẫn bắt đúng thông điệp.
+
+### 16.6 Cổng, Miri, bằng chứng
+
+- `gate --fast`: PASS — log [`JOURNAL/kt42-gate-fast.log`](../../agent/JOURNAL/kt42-gate-fast.log)
+  (L0 + L1 1.000 seed; số test trong log, không viết tay ở đây).
+- Miri: thêm `kt42_vmcheck` vào `v2 nightly --only-miri`; unit test `check_vm` nằm trong
+  `--lib`. Log [`JOURNAL/kt42-miri.log`](../../agent/JOURNAL/kt42-miri.log).
+- Không `#[ignore]`, không `unsafe`, không dependency mới, không nới seed/ngưỡng; `spec/`
+  không đổi (`git diff spec/` rỗng).
+
+### 16.7 Không làm ở KT-42 (ranh giới)
+
+- **Không** TLB thật/`sfence.vma`/IPI thật/MMU/pager/COW — K3 (Q7); mô hình vẫn một luồng tất
+  định (D2-49(f)).
+- **Không** đổi hook per-op hay thay checker cũ; **không** đổi format `.scn` ABI (chỉ thêm op
+  `vm_*` model-only qua bảng đóng của máy kiểm).
+- **Không** thêm nhóm phủ ABI mới, không sửa 21 tệp `.scn` cũ; **không** đụng `spec/`,
+  `QUEUE`/`DECISIONS` (Agent 0).

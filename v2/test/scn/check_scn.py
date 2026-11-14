@@ -46,6 +46,39 @@ TAG_GROUPS = {
     "no-reply",
     "donation",
     "notification",
+    # KT-42 — 5 nhóm VM model-only (k2-vm.md §16; spec/ không đổi)
+    "vm-map",
+    "vm-wx",
+    "vm-tlb",
+    "vm-fault",
+    "vm-shared",
+}
+
+# KT-42 — op VM **model-only** của K2 (Frame/PageTable/VSpace/TLB/fault): KHÔNG có trong
+# `spec/abi.toml` (D2-65 Q6 — `FaultKind::Vm`/VM model API là model-only, K3 mới vào ABI), nên
+# kiểm theo bảng đóng dưới đây thay vì `method_signature`. Mọi op khác vẫn đi đúng đường spec.
+VM_OPS = {
+    "vm_activate": {"vs", "hart"},
+    "vm_map": {"vs", "va", "frame", "rights", "attrs"},
+    "vm_unmap": {"hart", "vs", "va"},
+    "vm_protect": {"hart", "vs", "va", "rights", "attrs"},
+    "vm_walk": {"vs", "va"},
+    "vm_expect_map": {"vs", "va", "frame", "size"},
+    "vm_expect_counters": {"frame", "maps", "w", "x"},
+    "vm_expect_frames": {"n"},
+    "vm_tlb_fill": {"hart", "vs", "va"},
+    "vm_tlb_expect": {"hart", "vs", "va", "present"},
+    "vm_shootdown_begin": {"hart", "vs", "va"},
+    "vm_shootdown_wait": {"hart"},
+    "vm_expect_pending": {"hart", "targets", "acked", "messages", "completed"},
+    "vm_expect_shootdown": {"targets", "acked", "messages", "completed"},
+    "vm_dispatch": {"hart", "tcb"},
+    "vm_touch": {"hart", "vs", "va", "access"},
+    "vm_expect_fault": {"tcb", "vs", "va", "access", "reason"},
+    "vm_expect_state": {"tcb", "state"},
+    "vm_procsrv_recv": set(),
+    "vm_procsrv_resume": {"tcb"},
+    "vm_check": set(),
 }
 
 CAP_KEYS = {"cap", "src", "dst", "cnode", "ep", "reply", "notif", "tcb", "u", "sched", "sched_control"}
@@ -248,7 +281,7 @@ def main():
                    for m in obj.get("method", {}).values())
 
     files = sorted(scn_dir.glob("*.scn")) if scn_dir.exists() else []
-    check(len(files) == 21, f"phải có đúng 21 tệp .scn, đang có {len(files)}")
+    check(len(files) == 26, f"phải có đúng 26 tệp .scn, đang có {len(files)}")
 
     names, tags_seen, blocked, has_exit_case = set(), set(), [], False
 
@@ -291,7 +324,15 @@ def main():
             except ValueError as exc:
                 fails.append(f"{path.name}: bước {line!r}: {exc}")
                 continue
-            if kind == "syscall":
+            if kind == "syscall" and op in VM_OPS:
+                # KT-42: op VM model-only (không có trong spec/ABI); kiểm tham số theo bảng
+                # đóng — không thay kiểm `method_signature` của ABI.
+                allowed = VM_OPS[op]
+                missing = sorted(allowed - set(params))
+                unknown = sorted(set(params) - allowed)
+                check(not missing, f"{path.name}: {op} thiếu tham số {missing}")
+                check(not unknown, f"{path.name}: {op} có tham số lạ {unknown}")
+            elif kind == "syscall":
                 want = SYSCALL_NAMES.get(op)
                 check(want is not None, f"{path.name}: syscall lạ {op!r}")
                 if want is not None:
@@ -318,7 +359,7 @@ def main():
     missing = TAG_GROUPS - tags_seen
     check(not missing, f"thiếu nhóm phủ: {sorted(missing)}")
 
-    check(not blocked, f"DoD KT-04c: phải 21/21 tệp không blocked, còn {len(blocked)}")
+    check(not blocked, f"DoD KT-04c/KT-42: phải 26/26 tệp không blocked, còn {len(blocked)}")
     for name, reason in blocked:
         print(f"# blocked: {name} — {reason}")
 

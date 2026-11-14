@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-42 — W^X toàn cục: map W rồi map X (cùng Frame, cùng/khác VSpace) ⇒ WxViolation;
+# bộ đếm Frame phải **nguyên** (atomic). Protect cũng theo cùng bất biến (k2-vm.md §16).
+version = 1
+name = "23-wx-violation-counters"
+tags = ["vm-wx"]
+harts = 1
+caps = { c0 = "CNode", t0 = "Tcb", t1 = "Tcb", ep0 = "Endpoint", rep0 = "Reply" }
+thread = [
+  { name = "t0", steps = [
+    "vm_map vs=vs0 va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok",
+    "vm_expect_counters frame=f4 maps=1 w=1 x=0 => ok",
+    "vm_map vs=vs0 va=0x2000 frame=f4 rights=READ attrs=WB|EXEC => WxViolation",
+    "vm_expect_counters frame=f4 maps=1 w=1 x=0 => ok",
+    "vm_map vs=vs1 va=0x1000 frame=f4 rights=READ attrs=WB|EXEC => WxViolation",
+    "vm_expect_counters frame=f4 maps=1 w=1 x=0 => ok",
+    "vm_map vs=vs0 va=0x40000000 frame=f2 rights=READ|WRITE attrs=WB|EXEC => WxViolation",
+    "vm_expect_counters frame=f2 maps=0 w=0 x=0 => ok",
+    "vm_map vs=vs0 va=0x40000000 frame=f2 rights=READ attrs=WB|EXEC => ok",
+    "vm_expect_counters frame=f2 maps=1 w=0 x=1 => ok",
+    "vm_map vs=vs1 va=0x40000000 frame=f2 rights=READ|WRITE attrs=WB => WxViolation",
+    "vm_expect_counters frame=f2 maps=1 w=0 x=1 => ok",
+    "vm_map vs=vs0 va=0x80000000 frame=f1 rights=READ attrs=WB => ok",
+    "vm_protect hart=0 vs=vs0 va=0x80000000 rights=READ|WRITE attrs=WB|EXEC => WxViolation",
+    "vm_expect_counters frame=f1 maps=1 w=0 x=0 => ok",
+    "vm_protect hart=0 vs=vs0 va=0x80000000 rights=READ|WRITE attrs=WB => ok",
+    "vm_expect_counters frame=f1 maps=1 w=1 x=0 => ok",
+    "vm_protect hart=0 vs=vs0 va=0x80000000 rights=READ attrs=WB|EXEC => ok",
+    "vm_expect_counters frame=f1 maps=1 w=0 x=1 => ok",
+    "vm_unmap hart=0 vs=vs0 va=0x80000000 => ok",
+    "vm_unmap hart=0 vs=vs0 va=0x40000000 => ok",
+    "vm_unmap hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_expect_counters frame=f4 maps=0 w=0 x=0 => ok",
+    "vm_map vs=vs0 va=0x1000 frame=f4 rights=READ attrs=WB|EXEC => ok",
+    "vm_expect_counters frame=f4 maps=1 w=0 x=1 => ok",
+    "vm_map vs=vs0 va=0x2000 frame=f4 rights=READ|WRITE attrs=WB => WxViolation",
+    "vm_check => ok",
+  ] },
+]

@@ -1,0 +1,55 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.23s
+     Running tests/kt42_scn.rs (v2/target/debug/deps/kt42_scn-bc6ef71afdd55745)
+
+running 5 tests
+test scn22_map_unmap_walk_bo_cuc ... FAILED
+test scn23_wx_violation ... FAILED
+test scn25_vm_fault_resume ... FAILED
+test scn24_shootdown_2_hart ... FAILED
+test scn26_shared_readonly ... FAILED
+
+failures:
+
+---- scn22_map_unmap_walk_bo_cuc stdout ----
+# SCN 22-frame-map-unmap-walk.scn: harts=1, 23 bước
+
+thread 'scn22_map_unmap_walk_bo_cuc' (45685180) panicked at sim/vifast-sim/tests/kt42_scn.rs:97:5:
+KT-42: runner chưa cài op 'vm_map'
+
+---- scn23_wx_violation stdout ----
+# SCN 23-wx-violation-counters.scn: harts=1, 27 bước
+
+thread 'scn23_wx_violation' (45685181) panicked at sim/vifast-sim/tests/kt42_scn.rs:97:5:
+KT-42: runner chưa cài op 'vm_map'
+
+---- scn25_vm_fault_resume stdout ----
+# SCN 25-vm-fault-notmapped-resume.scn: harts=1, 17 bước
+
+thread 'scn25_vm_fault_resume' (45685183) panicked at sim/vifast-sim/tests/kt42_scn.rs:97:5:
+KT-42: runner chưa cài op 'vm_map'
+
+---- scn24_shootdown_2_hart stdout ----
+# SCN 24-shootdown-2-hart.scn: harts=2, 22 bước
+
+thread 'scn24_shootdown_2_hart' (45685182) panicked at sim/vifast-sim/tests/kt42_scn.rs:97:5:
+KT-42: runner chưa cài op 'vm_activate'
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- scn26_shared_readonly stdout ----
+# SCN 26-shared-readonly-frame.scn: harts=1, 18 bước
+
+thread 'scn26_shared_readonly' (45685184) panicked at sim/vifast-sim/tests/kt42_scn.rs:97:5:
+KT-42: runner chưa cài op 'vm_map'
+
+
+failures:
+    scn22_map_unmap_walk_bo_cuc
+    scn23_wx_violation
+    scn24_shootdown_2_hart
+    scn25_vm_fault_resume
+    scn26_shared_readonly
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt42_scn`

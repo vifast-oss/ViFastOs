@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-42 — map/unmap 4 KiB + 2 MiB + 1 GiB rồi walk lại (k2-vm.md §16).
+# Rig do runner dựng: vs0 root → mid → leaf (4 KiB), mid 2 MiB ở root[1], 1 GiB lá ở root[2].
+version = 1
+name = "22-frame-map-unmap-walk"
+tags = ["vm-map"]
+harts = 1
+caps = { c0 = "CNode", t0 = "Tcb", t1 = "Tcb", ep0 = "Endpoint", rep0 = "Reply" }
+thread = [
+  { name = "t0", steps = [
+    "vm_map vs=vs0 va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok",
+    "vm_expect_map vs=vs0 va=0x1000 frame=f4 size=12 => ok",
+    "vm_map vs=vs0 va=0x40000000 frame=f2 rights=READ attrs=WB => ok",
+    "vm_expect_map vs=vs0 va=0x40000000 frame=f2 size=21 => ok",
+    "vm_map vs=vs0 va=0x80000000 frame=f1 rights=READ attrs=WB|EXEC => ok",
+    "vm_expect_map vs=vs0 va=0x80000000 frame=f1 size=30 => ok",
+    "vm_expect_counters frame=f4 maps=1 w=1 x=0 => ok",
+    "vm_expect_counters frame=f2 maps=1 w=0 x=0 => ok",
+    "vm_expect_counters frame=f1 maps=1 w=0 x=1 => ok",
+    "vm_walk vs=vs0 va=0x1000 => ok",
+    "vm_walk vs=vs0 va=0x40000000 => ok",
+    "vm_walk vs=vs0 va=0x80000000 => ok",
+    "vm_unmap hart=0 vs=vs0 va=0x80000000 => ok",
+    "vm_walk vs=vs0 va=0x80000000 => NotMapped",
+    "vm_unmap hart=0 vs=vs0 va=0x40000000 => ok",
+    "vm_walk vs=vs0 va=0x40000000 => NotMapped",
+    "vm_unmap hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_walk vs=vs0 va=0x1000 => NotMapped",
+    "vm_expect_counters frame=f4 maps=0 w=0 x=0 => ok",
+    "vm_expect_counters frame=f2 maps=0 w=0 x=0 => ok",
+    "vm_expect_counters frame=f1 maps=0 w=0 x=0 => ok",
+    "vm_expect_frames n=3 => ok",
+    "vm_check => ok",
+  ] },
+]

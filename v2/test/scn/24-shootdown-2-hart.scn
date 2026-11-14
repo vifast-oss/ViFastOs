@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-42 — shootdown 2 hart: `active_on` = {0,1}; unmap chỉ `Ok` khi ack đủ; entry trang bị
+# unmap mất trên **cả hai** hart; begin/wait hai pha thấy ack thiếu rồi đủ (k2-vm.md §16).
+version = 1
+name = "24-shootdown-2-hart"
+tags = ["vm-tlb"]
+harts = 2
+caps = { c0 = "CNode", t0 = "Tcb", t1 = "Tcb", ep0 = "Endpoint", rep0 = "Reply" }
+thread = [
+  { name = "t0", steps = [
+    "vm_activate vs=vs0 hart=0 => ok",
+    "vm_activate vs=vs0 hart=1 => ok",
+    "vm_map vs=vs0 va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok",
+    "vm_tlb_fill hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_tlb_fill hart=1 vs=vs0 va=0x1000 => ok",
+    "vm_tlb_expect hart=0 vs=vs0 va=0x1000 present=true => ok",
+    "vm_tlb_expect hart=1 vs=vs0 va=0x1000 present=true => ok",
+    "vm_shootdown_begin hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_expect_pending hart=0 targets=3 acked=1 messages=1 completed=false => ok",
+    "vm_tlb_expect hart=1 vs=vs0 va=0x1000 present=true => ok",
+    "vm_shootdown_wait hart=0 => ok",
+    "vm_expect_shootdown targets=3 acked=3 messages=1 completed=true => ok",
+    "vm_tlb_expect hart=0 vs=vs0 va=0x1000 present=false => ok",
+    "vm_tlb_expect hart=1 vs=vs0 va=0x1000 present=false => ok",
+    "vm_tlb_fill hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_tlb_fill hart=1 vs=vs0 va=0x1000 => ok",
+    "vm_unmap hart=0 vs=vs0 va=0x1000 => ok",
+    "vm_expect_shootdown targets=3 acked=3 messages=1 completed=true => ok",
+    "vm_tlb_expect hart=0 vs=vs0 va=0x1000 present=false => ok",
+    "vm_tlb_expect hart=1 vs=vs0 va=0x1000 present=false => ok",
+    "vm_expect_counters frame=f4 maps=0 w=0 x=0 => ok",
+    "vm_check => ok",
+  ] },
+]
