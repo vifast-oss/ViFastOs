@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `258eeeeb` ([KT-00] D2-68 đính chính: hart gọi flush cục bộ + ack ngầm); KT-40 **chưa commit** — reviewer-kt40b **CONFIRM 5/5**, chờ commit/push
+HEAD          : `1aeaf0d0` ([KT-40] TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock; gate 552, Miri 10/10, 5 mutation) — **đã push**; QUEUE chờ Agent 0 lật DONE
 BUILD_ID      : —
-Task          : KT-40 — TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock (READY → REVIEW)
-Bước          : 8/8 (baseline 536 → đỏ E0432/E0599 → code+10 test → gate **552** → Miri 10/10 → DRIFT đã sửa: 5 mutation + 2 test AP→BSP + oracle `active_on` → **reviewer-kt40b CONFIRM 5/5** + sửa 3 nit docstring/docs → gate lại → commit/push)
+Task          : KT-40 — TLB + shootdown + ack + chống deadlock (**REVIEW** — commit `1aeaf0d0`; chờ Agent 0 lật `DONE`, KT-41 mở sau đó)
+Bước          : 8/8 **xong** (baseline 536 → đỏ E0432/E0599 → code+10 test → gate **552** → Miri 10/10 → DRIFT đã sửa: 5 mutation + 2 test AP→BSP + oracle `active_on` → **reviewer-kt40b CONFIRM 5/5** + 3 nit → gate lại **552** → commit `1aeaf0d0` + push)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 552 test/70 suite**, L1 1.000 seed **793 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt40-gate-fast.log`). Baseline KT-40: PASS 536/68, L1 800 ms (`JOURNAL/kt40-baseline-gate-fast.log`); +10 `kt40_tlb` +5 unit `tlb` +1 unit `check_tlb`.
 Miri          : KT-40 — `--test kt40_tlb` **10/10** (324,35 s, MIRI1_EXIT=0) + `--lib tlb::tests` **5/5** (0,73 s) + `--lib 'kobj::tests::check_tlb'` **1/1** (1,98 s), `JOURNAL/kt40-miri.log`. `kt40_tlb` đã vào danh sách `v2 miri`.
-Việc dở       : KT-40 **REVIEW → commit `[KT-40]` + push** (reviewer-kt40b CONFIRM 5/5; D2-68 `258eeeeb` khớp code: hart gọi flush cục bộ + ack ngầm, không self-target; 3 nit docstring `vspace_activate/deactivate` + hàng M3 + tiền tố `v2/agent/JOURNAL/` đã sửa). QUEUE chờ Agent 0 lật. KT-39 DONE `bf6bb0f`; KT-38 `74145d0`.
+Việc dở       : **QUEUE chờ Agent 0 lật KT-40 DONE** (commit `1aeaf0d0`; reviewer-kt40b CONFIRM 5/5; D2-68 `258eeeeb` khớp code). Không còn việc code của KT-40; KT-41 (VM fault) mở sau khi lật. KT-39 DONE `bf6bb0f`; KT-38 `74145d0`.
 ```
 
 ## KT-40 — K2: TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock
