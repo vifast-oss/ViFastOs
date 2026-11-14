@@ -1,0 +1,30 @@
+# KT-40 — mutation M3: ack sai seq (+1 khi ghi acks trong post)
+# (D2-05 / K2-PLAN §3 KT-40 + §2 Q5; K2-PLAN KT-40 "mutation phải bị bắt")
+#
+## 1. Trạng thái trước (xanh) — gate --fast PASS 552 test (JOURNAL/kt40-gate-fast.log);
+#    kt40_tlb 10/10; lib 62/62. Hash kobj.rs trước mutation: e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe
+## 2. Đột biến (một chỗ)
+Tệp: v2/sim/vifast-sim/src/kobj.rs
+Trước: let ack = self.tlbs[t].delivered;
+Sau : let ack = self.tlbs[t].delivered + 1;
+## 3. Kết quả đỏ (kỳ vọng)
+test ack_thieu_ok_chua_tra ... FAILED
+test hart_goi_ngoai_active_on_van_shootdown_dung ... FAILED
+test protect_cap_nhat_quyen_tren_moi_hart ... FAILED
+test deadlock_ack_tu_hart_dang_cho ... FAILED
+test deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu ... FAILED
+test shootdown_1_2_4_8_hart_ack_du ... FAILED
+test property_10k_tlb_shootdown ... FAILED
+thread 'ack_thieu_ok_chua_tra' (44841989) panicked at sim/vifast-sim/tests/kt40_tlb.rs:318:31:
+thread 'hart_goi_ngoai_active_on_van_shootdown_dung' (44841993) panicked at sim/vifast-sim/tests/kt40_tlb.rs:615:14:
+thread 'protect_cap_nhat_quyen_tren_moi_hart' (44841996) panicked at sim/vifast-sim/tests/kt40_tlb.rs:436:14:
+thread 'deadlock_ack_tu_hart_dang_cho' (44841990) panicked at sim/vifast-sim/tests/kt40_tlb.rs:482:42:
+thread 'deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu' (44841991) panicked at sim/vifast-sim/tests/kt40_tlb.rs:662:5:
+thread 'shootdown_1_2_4_8_hart_ack_du' (44841997) panicked at sim/vifast-sim/tests/kt40_tlb.rs:240:47:
+thread 'property_10k_tlb_shootdown' (44841995) panicked at sim/vifast-sim/tests/kt40_tlb.rs:771:26:
+test result: FAILED. 3 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+## 4. Khôi phục
+$ cp /tmp/kobj.kt40.bak v2/sim/vifast-sim/src/kobj.rs
+shasum: e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe  v2/sim/vifast-sim/src/kobj.rs => e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe (khớp: CÓ)
+## 5. Sau khôi phục
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.71s

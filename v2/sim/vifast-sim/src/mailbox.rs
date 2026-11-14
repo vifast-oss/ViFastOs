@@ -28,8 +28,9 @@ use crate::kobj::ObjId;
 pub const MAILBOX_CAP: usize = 8;
 
 /// Loại message của hộp thư **theo hart** (thiết kế §4.17: `Wake`, `TlbFlush`, `Reschedule`,
-/// `Migrate`, `Stop`, `VmKick`, `PowerReq`). K1b chỉ có phần không phụ thuộc TLB/VCpu/Power:
-/// `Wake`, `Reschedule`, `Migrate`, `Stop` (`TlbFlush`/`VmKick`/`PowerReq` để K1c).
+/// `Migrate`, `Stop`, `VmKick`, `PowerReq`). K1b có phần không phụ thuộc TLB/VCpu/Power:
+/// `Wake`, `Reschedule`, `Migrate`, `Stop`; **KT-40** thêm **đúng một** kind `TlbFlush` (nới
+/// D2-59 theo D2-65 Q5) — `VmKick`/`PowerReq` vẫn để K3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MailboxMsg {
     /// Đánh thức TCB đang chặn/ngủ (`Machine::wake`, idempotent).
@@ -40,6 +41,9 @@ pub enum MailboxMsg {
     Migrate { tcb: ObjId, to_hart: u16 },
     /// Dừng hart (mô hình: đặt cờ `stopped`, không đổi hàng chờ).
     Stop,
+    /// **KT-40** — shootdown TLB: hart đích xả entry `(generation, asid)` phủ `va` rồi **ack**
+    /// thế hệ `flush.ack` của hộp thư mình (mô hình của "IPI + `sfence.vma`"; D2-65 Q5).
+    TlbFlush(crate::tlb::TlbFlush),
 }
 
 /// Hàng FIFO **cố định** `cap` phần tử.

@@ -1,0 +1,18 @@
+# KT-40 — mutation M4: bỏ rút hộp thư của hart đang chờ ack (AP→BSP)
+# (D2-05 / K2-PLAN §3 KT-40 + §2 Q5; K2-PLAN KT-40 "mutation phải bị bắt")
+#
+## 1. Trạng thái trước (xanh) — gate --fast PASS 552 test (JOURNAL/kt40-gate-fast.log);
+#    kt40_tlb 10/10; lib 62/62. Hash kobj.rs trước mutation: e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe
+## 2. Đột biến (một chỗ)
+Tệp: v2/sim/vifast-sim/src/kobj.rs
+Trước: let _ = self.drain_mail_fifo(hart);
+Sau : // MUTATION M4: bỏ drain hộp thư khi chờ
+## 3. Kết quả đỏ (kỳ vọng)
+test deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu ... FAILED
+thread 'deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu' (44842684) panicked at sim/vifast-sim/tests/kt40_tlb.rs:662:5:
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.79s
+## 4. Khôi phục
+$ cp /tmp/kobj.kt40.bak v2/sim/vifast-sim/src/kobj.rs
+shasum: e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe  v2/sim/vifast-sim/src/kobj.rs => e0bfbe6914ab0ff3a8dfc9852df4d547e4b89c2cd6b0500869409dc78470c7fe (khớp: CÓ)
+## 5. Sau khôi phục
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.71s

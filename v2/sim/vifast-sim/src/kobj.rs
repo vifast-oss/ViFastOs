@@ -87,6 +87,14 @@ use crate::sched::HartSched;
 /// **KT-29** — trường công bố `idle`/`cur_prio` của mỗi hart (định nghĩa ở [`crate::sched`];
 /// re-export để test dùng `vifast_sim::kobj::Published`).
 pub use crate::sched::Published;
+use crate::tlb::{HartTlb, TlbEntry};
+/// **KT-40** — TLB + shootdown + ack (định nghĩa ở [`crate::tlb`]; re-export để test dùng
+/// `vifast_sim::kobj::{TlbFlush, TlbFlushScope, TlbHartInfo, TlbShootdownInfo, TlbTranslation,
+/// TLB_ENTRIES_PER_HART}`). Message `TlbFlush` nằm trong [`MailboxMsg::TlbFlush`] (D2-65 Q5).
+pub use crate::tlb::{
+    TlbEntry as TlbEntryInfo, TlbFlush, TlbFlushScope, TlbHartInfo, TlbKey, TlbShootdownInfo,
+    TlbTranslation, TLB_ENTRIES_PER_HART,
+};
 use crate::vspace::{fresh_asid_free, VSpaceData};
 /// **KT-38** — `VSpace` + ASID + thế hệ + `active_on: HartMask` (định nghĩa ở [`crate::vspace`];
 /// re-export để test dùng `vifast_sim::kobj::{HartMask, AsidState, FlushCmd, FlushScope,
@@ -790,10 +798,76 @@ pub struct Machine {
     /// `hart_vspace[h] == Some(vs)` ⇔ bit `h` bật trong `active_on` của `vs`; mỗi hart tối đa
     /// một VSpace (một ASID hiện hành — như thanh ghi ASID của MMU).
     hart_vspace: Vec<Option<ObjId>>,
-    /// **KT-38** — **lệnh flush** mà KT-40 sẽ tiêu thụ: teardown VSpace ⇒ một lệnh
-    /// [`FlushScope::Asid`]; cạn ASID ⇒ một lệnh [`FlushScope::Generation`] cho mọi hart online.
-    /// KT-38 **không** có TLB — đây là mô hình lệnh, không phải hiệu ứng phần cứng.
+    /// **KT-38** — **lệnh flush**: teardown VSpace ⇒ một lệnh [`FlushScope::Asid`]; cạn ASID ⇒
+    /// một lệnh [`FlushScope::Generation`] cho mọi hart online. **KT-40** tiêu thụ log này:
+    /// mỗi lệnh cũng là một lần xoá entry TLB thật trên các hart liên quan.
     flush_log: Vec<FlushCmd>,
+    /// **KT-40** — TLB của từng hart (16 entry, LRU tất định) — `k2-vm.md` §14.
+    tlbs: Vec<HartTlb>,
+    /// **KT-40** — shootdown **đang chờ ack** của mỗi hart (tối đa một; `tlb_shootdown_begin`).
+    tlb_pending: Vec<Option<PendingShootdown>>,
+    /// **KT-40** — shootdown gần nhất đã kết thúc (thành công hoặc quá hạn) — nguồn của bất biến
+    /// "`unmap`/`protect` trả `Ok` ⇒ `acked == targets`".
+    last_tlb_shootdown: Option<TlbShootdownInfo>,
+    /// **KT-40** — số hiệu shootdown toàn cục (1-based, tăng đơn điệu).
+    tlb_shootdown_seq: u64,
+    /// **KT-40** — số lệnh shootdown đã phát (kể cả `active_on` rỗng: lệnh vẫn tồn tại).
+    tlb_shootdown_count: u64,
+    /// **KT-40** — tổng số `TlbFlush` đã giao thành công vào các hộp thư.
+    tlb_msg_total: u64,
+    /// **KT-40** — tổng số ack **mới** ghi nhận (`fetch_max` delta).
+    tlb_ack_total: u64,
+    /// **KT-40** — tổng số entry đã nạp từ walk (cửa sổ nhanh cho [`Machine::check_tlb`]).
+    tlb_fill_total: u64,
+    /// **KT-40** — số lần vòng chờ ack hết hạn (chẩn đoán; >0 nghĩa là ack không tới).
+    tlb_wait_timeouts: u64,
+}
+
+/// **KT-40** — một shootdown **đang chờ ack** của một hart (model-only `[TK]`).
+///
+/// `acks` giữ `(hart, ack_seq)` của từng message đã giao: `ack_seq` = `delivered` của hart
+/// đích **sau** khi giao (Q5: "`seq` = số send Ok"). Ack đủ ⇔ mọi hart đích có `acked >=
+/// ack_seq`; khi đó `acked_mask == targets` (bất biến của `unmap`/`protect`).
+#[derive(Debug, Clone)]
+struct PendingShootdown {
+    /// Số hiệu toàn cục (gán lúc post).
+    seq: u64,
+    /// Thế hệ ASID của VSpace lúc phát.
+    generation: u64,
+    /// ASID của VSpace lúc phát.
+    asid: u16,
+    /// VA gốc bị đổi PTE.
+    va: u64,
+    /// Mask hart **phải** ack (`= active_on` lúc phát, đã `⊆` hart online).
+    targets: HartMask,
+    /// Mask hart **ack ngầm** vì không cần message: hart **gọi** (nếu nó thuộc `active_on`) —
+    /// nó flush cục bộ đồng bộ nên không IPI cho chính mình (D2-68; xem `k2-vm.md` §14.3).
+    implicit: HartMask,
+    /// `(hart đích, thế hệ ack đã giao)` — thứ tự tăng dần theo hart.
+    acks: Vec<(u16, u64)>,
+    /// Số `TlbFlush` đã giao.
+    messages: u32,
+    /// Số vòng chờ đã chạy (chẩn đoán deadlock).
+    rounds: u64,
+    /// Đã post message chưa (`false` trong cửa sổ "pending trước khi đổi PTE").
+    posted: bool,
+}
+
+impl PendingShootdown {
+    /// Ảnh chụp cho [`TlbShootdownInfo`] — nguồn của bất biến `Ok ⇒ acked == targets`.
+    fn info(&self, acked: HartMask, completed: bool) -> TlbShootdownInfo {
+        TlbShootdownInfo {
+            seq: self.seq,
+            generation: self.generation,
+            asid: self.asid,
+            va: self.va,
+            targets: self.targets,
+            acked,
+            messages: self.messages,
+            rounds: self.rounds,
+            completed,
+        }
+    }
 }
 
 /// Vị trí/cỡ của object trong mô hình — gom tham số `push_meta`/`push_kernel`.
@@ -981,6 +1055,16 @@ impl Machine {
             hart_online: HartMask::for_harts(harts),
             hart_vspace: (0..harts).map(|_| None).collect(),
             flush_log: Vec::new(),
+            // **KT-40** — TLB rỗng từng hart; chưa có shootdown/ack nào.
+            tlbs: (0..harts).map(|_| HartTlb::new()).collect(),
+            tlb_pending: (0..harts).map(|_| None).collect(),
+            last_tlb_shootdown: None,
+            tlb_shootdown_seq: 0,
+            tlb_shootdown_count: 0,
+            tlb_msg_total: 0,
+            tlb_ack_total: 0,
+            tlb_fill_total: 0,
+            tlb_wait_timeouts: 0,
         }
     }
 
@@ -2443,6 +2527,10 @@ impl Machine {
             for d in self.vspaces.iter_mut().flatten() {
                 d.active_on = d.active_on.remove(hart);
             }
+            // **KT-40** — hart offline không giữ TLB (không thể dịch khi đã tắt); xoá sạch để
+            // oracle không thấy entry mồ côi và hart đã tắt không nhận shootdown.
+            self.tlbs[hart as usize].clear();
+            self.tlb_pending[hart as usize] = None;
         }
         self.sched_after_op(false);
         Ok(())
@@ -2451,10 +2539,11 @@ impl Machine {
     /// **KT-38** — hart `hart` **chạy** trên VSpace `vs`: bật bit trong `active_on`.
     ///
     /// Một hart chỉ nạp **một** ASID hiện hành ⇒ nếu hart đang chạy VSpace khác thì bit bị bỏ ở
-    /// VSpace cũ trước (không cần flush: ASID của VSpace cũ **không** được phát lại trong cùng
-    /// thế hệ, nên entry TLB cũ không thể khớp nhầm — xem `k2-vm.md` §12). Gọi lại trên đúng
-    /// VSpace đang chạy ⇒ **no-op** (idempotent). Hart offline/không có thật ⇒
-    /// [`KError::InvalidArgument`].
+    /// VSpace cũ trước. **KT-40**: hart **rời** VSpace cũ nên TLB của chính hart này **flush cục
+    /// bộ** mọi entry của ASID cũ (thanh ghi ASID đổi) — không phát shootdown vì ASID của VSpace
+    /// cũ **không** được phát lại trong cùng thế hệ, nên entry TLB cũ không thể khớp nhầm (xem
+    /// `k2-vm.md` §12/§14). Gọi lại trên đúng VSpace đang chạy ⇒ **no-op** (idempotent). Hart
+    /// offline/không có thật ⇒ [`KError::InvalidArgument`].
     pub fn vspace_activate(&mut self, vs: ObjId, hart: u16) -> Result<(), KError> {
         self.vspace_slot_of(vs)?;
         if hart as usize >= self.hart_vspace.len() || !self.hart_online.contains(hart) {
@@ -2464,6 +2553,13 @@ impl Machine {
             return Ok(());
         }
         if let Some(old) = self.hart_vspace[hart as usize] {
+            // **KT-40** — hart **rời** VSpace cũ (chuyển ASID): TLB của chính hart này xoá mọi
+            // entry của ASID cũ (một hart chỉ nạp một ASID hiện hành, như thanh ghi ASID).
+            let (old_gen, old_asid) = {
+                let d = self.vspace_data(old)?;
+                (d.generation, d.asid)
+            };
+            self.tlb_flush_hart_only(hart, old_gen, old_asid, TlbFlushScope::Asid);
             let old_data = self.vspace_data_mut(old)?;
             old_data.active_on = old_data.active_on.remove(hart);
         }
@@ -2479,7 +2575,9 @@ impl Machine {
     /// **KT-38** — hart `hart` **nghỉ** (rời) VSpace `vs`: tắt bit `active_on`.
     ///
     /// Hart không chạy đúng VSpace này ⇒ [`KError::IllegalOperation`] (không im lặng bỏ qua —
-    /// bắt lỗi gọi sai thứ tự). Không phát lệnh flush: ASID chưa bị phát lại.
+    /// bắt lỗi gọi sai thứ tự). **KT-40**: hart rời VSpace nên TLB của chính nó **flush cục bộ**
+    /// mọi entry của ASID (flush theo `asid`, không phát shootdown — ASID chưa bị phát lại);
+    /// oracle `check_tlb` **bắt buộc** bước này (entry trên hart ngoài `active_on` là vi phạm).
     pub fn vspace_deactivate(&mut self, vs: ObjId, hart: u16) -> Result<(), KError> {
         self.vspace_slot_of(vs)?;
         if hart as usize >= self.hart_vspace.len() {
@@ -2487,6 +2585,15 @@ impl Machine {
         }
         if self.hart_vspace[hart as usize] != Some(vs) {
             return Err(KError::IllegalOperation);
+        }
+        {
+            // **KT-40** — hart rời VSpace ⇒ TLB của chính nó xoá entry ASID đó (flush theo
+            // `asid` cục bộ); hart khác không bị đụng.
+            let (generation, asid) = {
+                let d = self.vspace_data(vs)?;
+                (d.generation, d.asid)
+            };
+            self.tlb_flush_hart_only(hart, generation, asid, TlbFlushScope::Asid);
         }
         {
             let d = self.vspace_data_mut(vs)?;
@@ -2559,16 +2666,45 @@ impl Machine {
         self.page_table_map_obj(root, va, frame, rights, attrs)
     }
 
-    /// **KT-38** — `Frame.Unmap` của thiết kế §4.10, model API: unmap qua root của VSpace
-    /// (uỷ quyền nguyên [`Machine::page_table_unmap`]).
+    /// **KT-38/KT-40** — `Frame.Unmap` của thiết kế §4.10, model API: sửa PTE qua root của
+    /// VSpace rồi **shootdown** (flush cục bộ + `TlbFlush` tới `active_on` + chờ **đủ** ack).
+    ///
+    /// Bất biến (Q5): `unmap` trả `Ok` ⇒ mọi hart trong `active_on` đã xử lý `TlbFlush`
+    /// (`acked_mask == active_on`) ⇒ không hart nào còn entry cũ cho `va`. Lỗi của
+    /// [`Machine::page_table_unmap`] (chưa map/lệch căn/…) trả **nguyên**, không gửi message.
     pub fn vspace_unmap(&mut self, vs: ObjId, va: u64) -> Result<Mapping, KError> {
-        let root = self.vspace_root(vs)?;
-        self.page_table_unmap(root, va)
+        let info = self.vspace_info(vs)?;
+        if info.active_on.is_empty() {
+            // Không hart nào chạy VSpace ⇒ không entry nào tồn tại (deactivate/offline đã xoá);
+            // vẫn flush cục bộ cho chắc rồi sửa PTE (DoD: "active_on rỗng ⇒ không gửi gì").
+            let _ = self.tlb_flush_hart_only(
+                self.current_hart,
+                info.generation,
+                info.asid,
+                TlbFlushScope::Page { va },
+            );
+            return self.page_table_unmap(info.root, va);
+        }
+        let hart = self.current_hart;
+        self.tlb_shootdown_prepare(hart, info, va)?;
+        let mapping = match self.page_table_unmap(info.root, va) {
+            Ok(m) => m,
+            Err(e) => {
+                self.tlb_pending[hart as usize] = None;
+                return Err(e);
+            }
+        };
+        self.tlb_shootdown_post(hart)?;
+        self.tlb_shootdown_wait(hart)?;
+        Ok(mapping)
     }
 
-    /// **KT-39** — `Frame.Protect`/hạ quyền của design §4.10, model API qua VSpace: uỷ quyền
-    /// nguyên [`Machine::page_table_protect`] trên root của VSpace (cùng luật `validate_attrs`
-    /// + W^X theo bộ đếm Frame toàn cục).
+    /// **KT-39/KT-40** — `Frame.Protect`/hạ quyền của design §4.10, model API qua VSpace: đổi
+    /// quyền/attrs của một lá (uỷ quyền nguyên [`Machine::page_table_protect`] — cùng luật
+    /// `validate_attrs` + W^X theo bộ đếm Frame toàn cục) rồi **shootdown** như `unmap`.
+    ///
+    /// Entry TLB mang quyền/attrs **cũ** phải bị vô hiệu trước khi `protect` trả `Ok`; nếu
+    /// không, hart khác có thể dùng translation cũ (mạnh hơn?) — vi phạm TLB-safety.
     pub fn vspace_protect(
         &mut self,
         vs: ObjId,
@@ -2576,8 +2712,472 @@ impl Machine {
         rights: MapRights,
         attrs: MapAttrs,
     ) -> Result<Mapping, KError> {
-        let root = self.vspace_root(vs)?;
-        self.page_table_protect(root, va, rights, attrs)
+        let info = self.vspace_info(vs)?;
+        if info.active_on.is_empty() {
+            let _ = self.tlb_flush_hart_only(
+                self.current_hart,
+                info.generation,
+                info.asid,
+                TlbFlushScope::Page { va },
+            );
+            return self.page_table_protect(info.root, va, rights, attrs);
+        }
+        let hart = self.current_hart;
+        self.tlb_shootdown_prepare(hart, info, va)?;
+        let mapping = match self.page_table_protect(info.root, va, rights, attrs) {
+            Ok(m) => m,
+            Err(e) => {
+                self.tlb_pending[hart as usize] = None;
+                return Err(e);
+            }
+        };
+        self.tlb_shootdown_post(hart)?;
+        self.tlb_shootdown_wait(hart)?;
+        Ok(mapping)
+    }
+
+    // ------------------------------------------- TLB + shootdown (KT-40) `[TK]`
+    //
+    // **K2 không phải kernel thật**: "IPI" = đẩy `MailboxMsg::TlbFlush` vào hộp thư hart đích;
+    // "ack" = bộ đếm thế hệ `delivered`/`acked` của hart (D2-65 Q5, D2-60). Vòng chờ ack của
+    // hart hiện tại rút **hộp thư của chính nó** (luật chống deadlock, thiết kế §4.10.3) rồi
+    // cho các hart đích "chạy" handler — cả hai đều cần thiết; xem `k2-vm.md` §14.
+
+    /// TLB của một hart (lỗi `InvalidArgument` nếu hart không có thật).
+    fn tlb_at(&self, hart: u16) -> Result<&HartTlb, KError> {
+        self.tlbs.get(hart as usize).ok_or(KError::InvalidArgument)
+    }
+
+    fn tlb_at_mut(&mut self, hart: u16) -> Result<&mut HartTlb, KError> {
+        self.tlbs
+            .get_mut(hart as usize)
+            .ok_or(KError::InvalidArgument)
+    }
+
+    /// Số entry TLB đang sống của hart (`<= TLB_ENTRIES_PER_HART`).
+    pub fn tlb_entries(&self, hart: u16) -> Result<usize, KError> {
+        Ok(self.tlb_at(hart)?.len())
+    }
+
+    /// Ảnh chụp TLB một hart: entry + hit/miss/fill/evict/flush + `delivered`/`acked`.
+    pub fn tlb_info(&self, hart: u16) -> Result<TlbHartInfo, KError> {
+        Ok(self.tlb_at(hart)?.info(hart))
+    }
+
+    /// **`translate(vspace, va)`** của mô hình (K2-PLAN §3 KT-40): dùng entry nếu
+    /// `(generation, asid)` khớp và entry phủ `va`; ngược lại **miss** rồi walk PageTable →
+    /// nạp entry (LRU) → trả translation.
+    ///
+    /// Hart hiện tại phải **đang chạy** VSpace (`active_on`), nếu không ⇒
+    /// [`KError::IllegalOperation`] (Touch chỉ có nghĩa khi hart nạp ASID). Walk lỗi (chưa map,
+    /// ngoài dải) ⇒ trả nguyên lỗi, **không** nạp entry rác.
+    pub fn tlb_translate(&mut self, vs: ObjId, va: u64) -> Result<TlbTranslation, KError> {
+        let hart = self.current_hart;
+        let info = self.vspace_info(vs)?;
+        if !info.active_on.contains(hart) {
+            return Err(KError::IllegalOperation);
+        }
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        if let Some(e) = self
+            .tlb_at_mut(hart)?
+            .lookup(info.generation, info.asid, va)
+        {
+            return Ok(e.translation(true));
+        }
+        let m = self.vspace_walk(vs, va)?;
+        let e = self
+            .tlb_at_mut(hart)?
+            .fill_keyed(info.generation, info.asid, m);
+        self.tlb_fill_total += 1;
+        self.sched_after_op(false);
+        Ok(e.translation(false))
+    }
+
+    /// Tra TLB **không** nạp/không đổi LRU (test/oracle): `Some` ⇔ có entry của `vs` phủ `va`.
+    pub fn tlb_lookup(
+        &self,
+        hart: u16,
+        vs: ObjId,
+        va: u64,
+    ) -> Result<Option<TlbTranslation>, KError> {
+        let t = self.tlb_at(hart)?;
+        let info = self.vspace_info(vs)?;
+        Ok(t.peek(info.generation, info.asid, va)
+            .map(|e| e.translation(true)))
+    }
+
+    /// **Flush cục bộ** một hart theo phạm vi Q4 (`Page { va }` / `Asid` / `Generation`) — model
+    /// API, không qua hộp thư/ack. `Generation` dùng `generation` của `vs` làm mốc: xoá mọi
+    /// entry **cũ hơn** (cạn ASID). Trả số entry bị vô hiệu.
+    pub fn tlb_flush_local(
+        &mut self,
+        hart: u16,
+        vs: ObjId,
+        scope: TlbFlushScope,
+    ) -> Result<usize, KError> {
+        let info = self.vspace_info(vs)?;
+        let n = self
+            .tlb_at_mut(hart)?
+            .flush(info.generation, info.asid, scope);
+        self.sched_after_op(false);
+        Ok(n)
+    }
+
+    /// **Bắt đầu** một shootdown (model API): flush cục bộ hart `hart` + giao `TlbFlush` cho
+    /// **mọi hart khác** trong `active_on` (không tự IPI mình — D2-68; hart gọi ack ngầm sau
+    /// flush cục bộ); **không** chờ (xem [`Machine::tlb_shootdown_wait`]). Trả số hiệu shootdown
+    /// toàn cục (1-based). Đã có shootdown đang chờ ⇒ [`KError::Busy`].
+    pub fn tlb_shootdown_begin(&mut self, hart: u16, vs: ObjId, va: u64) -> Result<u64, KError> {
+        let info = self.vspace_info(vs)?;
+        self.tlb_shootdown_prepare(hart, info, va)?;
+        let seq = self.tlb_shootdown_post(hart)?;
+        self.sched_after_op(false);
+        Ok(seq)
+    }
+
+    /// **Chờ đủ ack** (`acked_mask == targets`) — `Ok` chỉ khi mọi hart đích đã xử lý
+    /// `TlbFlush`; không có gì chờ ⇒ `Ok` (idempotent). Hết số vòng an toàn ⇒
+    /// [`KError::Busy`] (không bao giờ treo — mutation "bỏ xử lý hộp thư khi chờ ack" bị bắt).
+    pub fn tlb_shootdown_wait(&mut self, hart: u16) -> Result<(), KError> {
+        self.tlb_at(hart)?;
+        let Some(mut p) = self.tlb_pending[hart as usize].take() else {
+            return Ok(());
+        };
+        if !p.posted {
+            self.tlb_pending[hart as usize] = Some(p);
+            return Err(KError::IllegalOperation);
+        }
+        // Mỗi vòng rút cạn hộp thư của hart chờ + các hart đích; bình thường xong ở vòng 1.
+        let max_rounds = MAILBOX_CAP as u64 + 2;
+        loop {
+            // (1) **Luật chống deadlock** (thiết kế §4.10.3): hart chờ ack **phải rút hộp thư
+            //     của mình** — ack của hart khác có thể đang nằm đó (AP→BSP của v1). Đột biến
+            //     "bỏ xử lý hộp thư khi chờ ack" xoá đúng dòng trong `tlb_wait_round`.
+            if self.tlb_wait_round(hart, &mut p) {
+                let acked = self.tlb_acked_mask(&p);
+                self.last_tlb_shootdown = Some(p.info(acked, true));
+                self.sched_after_op(false);
+                return Ok(());
+            }
+            // (2) Mô phỏng IPI: hart đích còn thiếu ack được "chạy" handler của nó.
+            for &(t, ack) in &p.acks {
+                if t != hart && self.tlbs[t as usize].acked < ack {
+                    let _ = self.drain_mail_fifo(t);
+                }
+            }
+            if self.tlb_acked_mask(&p) == p.targets {
+                let acked = self.tlb_acked_mask(&p);
+                self.last_tlb_shootdown = Some(p.info(acked, true));
+                self.sched_after_op(false);
+                return Ok(());
+            }
+            if p.rounds >= max_rounds {
+                self.tlb_wait_timeouts += 1;
+                let acked = self.tlb_acked_mask(&p);
+                self.last_tlb_shootdown = Some(p.info(acked, false));
+                // Không im lặng: `Ok` **không** được trả; `check_tlb` sau op sẽ thấy entry còn
+                // stale (nếu có) và bắt lỗi bất biến.
+                self.sched_after_op(false);
+                return Err(KError::Busy);
+            }
+        }
+    }
+
+    /// **Một vòng chờ ack của chính hart** (model API, test interleaving AP→BSP): rút hộp thư
+    /// **của hart này** (luật §4.10.3) rồi kiểm `acked_mask == targets`; **không** cho hart
+    /// khác "chạy" — đúng nghĩa "hart đang chờ tự phục vụ hộp thư của mình". Trả `true` ⇔ xong.
+    ///
+    /// Không có shootdown đang chờ ⇒ `Ok(true)`. Dùng cho test 2 hart **chờ nhau**: mỗi hart
+    /// chỉ tiến được khi tự rút hộp thư của mình; thiếu bước đó là deadlock (AP→BSP).
+    pub fn tlb_shootdown_poll(&mut self, hart: u16) -> Result<bool, KError> {
+        self.tlb_at(hart)?;
+        let Some(mut p) = self.tlb_pending[hart as usize].take() else {
+            return Ok(true);
+        };
+        if !p.posted {
+            self.tlb_pending[hart as usize] = Some(p);
+            return Err(KError::IllegalOperation);
+        }
+        let done = self.tlb_wait_round(hart, &mut p);
+        if done {
+            let acked = self.tlb_acked_mask(&p);
+            self.last_tlb_shootdown = Some(p.info(acked, true));
+        } else {
+            self.tlb_pending[hart as usize] = Some(p);
+        }
+        self.sched_after_op(false);
+        Ok(done)
+    }
+
+    /// Một vòng **tự phục vụ** của vòng chờ: rút hộp thư của chính hart (chống deadlock) rồi
+    /// kiểm ack. Dùng chung cho [`Machine::tlb_shootdown_wait`] và
+    /// [`Machine::tlb_shootdown_poll`]; đột biến "bỏ xử lý hộp thư khi chờ ack" xoá đúng
+    /// `drain_mail_fifo` ở đây.
+    fn tlb_wait_round(&mut self, hart: u16, p: &mut PendingShootdown) -> bool {
+        let _ = self.drain_mail_fifo(hart);
+        p.rounds += 1;
+        self.tlb_acked_mask(p) == p.targets
+    }
+
+    /// Ảnh chụp shootdown **đang chờ** của hart (`None` nếu không chờ gì).
+    pub fn tlb_pending(&self, hart: u16) -> Result<Option<TlbShootdownInfo>, KError> {
+        self.tlb_at(hart)?;
+        Ok(self.tlb_pending[hart as usize]
+            .as_ref()
+            .map(|p| p.info(self.tlb_acked_mask(p), false)))
+    }
+
+    /// Shootdown gần nhất đã kết thúc (thành công ⇒ `completed`, `acked == targets`).
+    pub fn last_tlb_shootdown(&self) -> Option<TlbShootdownInfo> {
+        self.last_tlb_shootdown
+    }
+
+    /// Số lệnh shootdown đã phát (kể cả `active_on` rỗng).
+    pub fn tlb_shootdown_count(&self) -> u64 {
+        self.tlb_shootdown_count
+    }
+
+    /// Tổng số `TlbFlush` đã giao vào hộp thư (`= số send Ok`).
+    pub fn tlb_message_count(&self) -> u64 {
+        self.tlb_msg_total
+    }
+
+    /// Tổng số ack **mới** đã ghi nhận (`fetch_max` delta).
+    pub fn tlb_ack_count(&self) -> u64 {
+        self.tlb_ack_total
+    }
+
+    /// Số lần vòng chờ ack hết hạn (chẩn đoán; phải bằng 0 ở mô hình đúng).
+    pub fn tlb_timeouts(&self) -> u64 {
+        self.tlb_wait_timeouts
+    }
+
+    /// Mask hart **đã** ack đủ shootdown `p` (so `acked` của từng hart với `ack_seq` đã giao).
+    fn tlb_acked_mask(&self, p: &PendingShootdown) -> HartMask {
+        // Hart gọi (nếu thuộc `active_on`) ack **ngầm** sau flush cục bộ — không có message.
+        let mut m = p.implicit;
+        for &(t, ack) in &p.acks {
+            if self.tlbs[t as usize].acked >= ack {
+                m = m.insert(t);
+            }
+        }
+        m
+    }
+
+    /// Chuẩn bị shootdown: đăng ký pending + **flush cục bộ** hart `hart` (trước khi đổi PTE để
+    /// `check_tlb` cho phép trạng thái chuyển tiếp trên chính hart đó). Chưa giao message.
+    fn tlb_shootdown_prepare(
+        &mut self,
+        hart: u16,
+        info: VSpaceInfo,
+        va: u64,
+    ) -> Result<(), KError> {
+        if hart as usize >= self.tlbs.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if self.tlb_pending[hart as usize].is_some() {
+            return Err(KError::Busy);
+        }
+        self.tlbs[hart as usize].flush(info.generation, info.asid, TlbFlushScope::Page { va });
+        // **Không IPI cho chính mình**: hart gọi flush cục bộ đồng bộ (dòng trên) và **ack
+        // ngầm**; chỉ gửi `TlbFlush` cho các hart **khác** trong `active_on` (D2-68).
+        let implicit = if info.active_on.contains(hart) {
+            HartMask::EMPTY.insert(hart)
+        } else {
+            HartMask::EMPTY
+        };
+        self.tlb_pending[hart as usize] = Some(PendingShootdown {
+            seq: 0,
+            generation: info.generation,
+            asid: info.asid,
+            va,
+            targets: info.active_on,
+            implicit,
+            acks: Vec::new(),
+            messages: 0,
+            rounds: 0,
+            posted: false,
+        });
+        Ok(())
+    }
+
+    /// Giao `TlbFlush` cho **mọi** hart trong `targets` (thứ tự hart tăng dần ⇒ tất định). Mỗi
+    /// message được kernel gán `ack = delivered` của hart đích (`= số send Ok` của Q5).
+    fn tlb_shootdown_post(&mut self, hart: u16) -> Result<u64, KError> {
+        let mut p = self.tlb_pending[hart as usize]
+            .take()
+            .ok_or(KError::IllegalOperation)?;
+        if p.posted {
+            self.tlb_pending[hart as usize] = Some(p);
+            return Err(KError::IllegalOperation);
+        }
+        self.tlb_shootdown_seq += 1;
+        let seq = self.tlb_shootdown_seq;
+        p.seq = seq;
+        for t in 0..self.hart_vspace.len() as u16 {
+            // Không gửi cho hart **gọi** (nó đã flush cục bộ + ack ngầm — D2-68).
+            if t == hart || !p.targets.contains(t) {
+                continue;
+            }
+            // Hộp thư đầy ⇒ cho hart đích "chạy" một vòng để có chỗ (backpressure §4.17); sau
+            // đó còn slot nên `TlbFlush` vào hàng được.
+            if self.mail[t as usize].is_full() {
+                let _ = self.drain_mail_fifo(t);
+            }
+            let msg = MailboxMsg::TlbFlush(TlbFlush {
+                seq,
+                // Kernel gán lại (= `delivered` sau khi tăng) — người gọi không tự đặt.
+                ack: 0,
+                generation: p.generation,
+                asid: p.asid,
+                va: p.va,
+            });
+            if let Err(e) = self.push_mail(t, msg) {
+                // Không để pending nửa vời: xoá trạng thái chờ rồi trả lỗi (PTE đã đổi).
+                self.tlb_pending[hart as usize] = None;
+                return Err(e);
+            }
+            let ack = self.tlbs[t as usize].delivered;
+            p.acks.push((t, ack));
+            p.messages += 1;
+        }
+        self.tlb_msg_total += p.messages as u64;
+        self.tlb_shootdown_count += 1;
+        p.posted = true;
+        self.tlb_pending[hart as usize] = Some(p);
+        Ok(seq)
+    }
+
+    /// Flush TLB một hart **không** chạy `sched_after_op` — dùng bên trong op khác.
+    fn tlb_flush_hart_only(
+        &mut self,
+        hart: u16,
+        generation: u64,
+        asid: u16,
+        scope: TlbFlushScope,
+    ) -> usize {
+        self.tlbs
+            .get_mut(hart as usize)
+            .map(|t| t.flush(generation, asid, scope))
+            .unwrap_or(0)
+    }
+
+    /// Entry `e` có đang nằm dưới một shootdown **chưa xong** không — oracle bỏ qua trạng thái
+    /// chuyển tiếp "PTE đã đổi, `TlbFlush` chưa được xử lý".
+    fn tlb_pending_covers(&self, e: &TlbEntry) -> bool {
+        self.tlb_pending
+            .iter()
+            .flatten()
+            .any(|p| p.generation == e.key.generation && p.asid == e.key.asid && e.covers(p.va))
+    }
+
+    /// Lý do entry `e` của hart **không** nhất quán với PageTable hiện tại (oracle TLB-safety).
+    fn tlb_entry_violation(&self, hart: u16, e: &TlbEntry) -> Option<String> {
+        // Tìm VSpace **sống** có cùng danh tính `(generation, asid)`.
+        let mut vs = None;
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::VSpace {
+                continue;
+            }
+            let Some(sidx) = m.space else { continue };
+            let Some(d) = self.vspaces.get(sidx).and_then(|x| x.as_ref()) else {
+                continue;
+            };
+            if d.generation == e.key.generation && d.asid == e.key.asid {
+                vs = Some(((i as ObjId) + 1, d.active_on));
+                break;
+            }
+        }
+        let Some((vs, active_on)) = vs else {
+            return Some(format!(
+                "TLB hart {hart}: entry (gen {}, asid {}, va {:#x}) không còn VSpace sống",
+                e.key.generation, e.key.asid, e.key.va
+            ));
+        };
+        // (1b) **KT-40** — entry chỉ được tồn tại trên hart **đang chạy** VSpace: hart rời
+        // VSpace (`deactivate`/đổi VSpace/offline) phải flush; entry trên hart ngoài `active_on`
+        // là rò rỉ TLB (mutation "bỏ flush khi deactivate" bị bắt ở đây).
+        if !active_on.contains(hart) {
+            return Some(format!(
+                "TLB hart {hart}: entry (asid {}, va {:#x}) của VSpace nhưng hart **không** \
+                 thuộc active_on",
+                e.key.asid, e.key.va
+            ));
+        }
+        match self.vspace_walk(vs, e.key.va) {
+            Ok(m) => {
+                if m.va == e.key.va
+                    && m.pa == e.pa
+                    && m.size_bits == e.size_bits
+                    && m.frame == e.frame
+                    && m.rights == e.rights
+                    && m.attrs == e.attrs
+                {
+                    None
+                } else {
+                    Some(format!(
+                        "TLB hart {hart}: entry (asid {}, va {:#x}) không khớp cây                          (pa/cỡ/frame/quyền/attrs)",
+                        e.key.asid, e.key.va
+                    ))
+                }
+            }
+            Err(err) => Some(format!(
+                "TLB hart {hart}: entry (asid {}, va {:#x}) nhưng walk trả {err:?}",
+                e.key.asid, e.key.va
+            )),
+        }
+    }
+
+    /// **KT-40** — bất biến **TLB-safety** (thiết kế §9.6 mục 7, dòng DoD 876): mọi entry còn
+    /// sống phải khớp **cây PageTable hiện tại** — đúng `(generation, asid)` của một VSpace sống,
+    /// VA còn map, cùng `pa`/cỡ/frame/quyền/attrs. Entry đang dưới một shootdown chưa xong được
+    /// bỏ qua (trạng thái chuyển tiếp có chủ đích).
+    ///
+    /// Chạy sau **mỗi** public op qua [`Machine::sched_after_op`], cửa sổ nhanh
+    /// `tlb_fill_total == 0 && tlb_msg_total == 0` (mọi test K1a..K1c/ KT-36..39 giữ nguyên chi
+    /// phí). Ca **dương tính** (checker không rỗng) ở unit test `kobj::tests::check_tlb_*`.
+    pub fn check_tlb(&self) -> Result<(), String> {
+        if self.tlb_fill_total == 0 && self.tlb_msg_total == 0 {
+            return Ok(());
+        }
+        for (h, t) in self.tlbs.iter().enumerate() {
+            if !t.invariant() {
+                return Err(format!(
+                    "TLB hart {h}: bất biến vỡ (entries {} > {}, acked {} > delivered {})",
+                    t.len(),
+                    TLB_ENTRIES_PER_HART,
+                    t.acked,
+                    t.delivered
+                ));
+            }
+            for e in t.entries() {
+                if self.tlb_pending_covers(e) {
+                    continue;
+                }
+                if let Some(msg) = self.tlb_entry_violation(h as u16, e) {
+                    return Err(msg);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Số entry TLB **không** nhất quán với cây (0 ⇔ TLB-safety đúng). Dùng cho test/đo.
+    pub fn tlb_violations(&self) -> u64 {
+        let mut n = 0u64;
+        for (h, t) in self.tlbs.iter().enumerate() {
+            for e in t.entries() {
+                if self.tlb_pending_covers(e) {
+                    continue;
+                }
+                if self.tlb_entry_violation(h as u16, e).is_some() {
+                    n += 1;
+                }
+            }
+        }
+        n
     }
 
     /// **KT-38** — bất biến **VSpace + `active_on`** ("check_vspace sớm"; KT-42 gộp vào
@@ -3638,6 +4238,11 @@ impl Machine {
             let generation = self.asid_generation;
             let harts = self.hart_online;
             self.push_flush(FlushScope::Generation, generation, None, harts);
+            // **KT-40** — cạn ASID ⇒ **flush theo `gen`** một lần cho mọi hart: mọi entry của
+            // thế hệ cũ mất hiệu lực (Q4; không flush từng ASID).
+            for hart in 0..self.tlbs.len() {
+                self.tlb_flush_hart_only(hart as u16, generation, 0, TlbFlushScope::Generation);
+            }
         }
         let asid = self
             .asid_free
@@ -4649,6 +5254,11 @@ impl Machine {
             }
         }
         self.push_flush(FlushScope::Asid, d.generation, Some(d.asid), d.active_on);
+        // **KT-40** — teardown VSpace: xoá mọi entry của `(generation, asid)` trên **mọi** hart
+        // (broadcast của mô hình). Sau đây không hart nào được dùng translation của VSpace chết.
+        for hart in 0..self.tlbs.len() {
+            self.tlb_flush_hart_only(hart as u16, d.generation, d.asid, TlbFlushScope::Asid);
+        }
         for hart in 0..self.hart_vspace.len() {
             if self.hart_vspace[hart] == Some(vs) {
                 self.hart_vspace[hart] = None;
@@ -5020,6 +5630,18 @@ impl Machine {
     /// - hộp thư đầy ⇒ `Busy` (backpressure §4.17) — message **không** bị ghi đè/mất, người gửi
     ///   xử lý hộp thư (hoặc gọi [`Machine::process_mail`]) rồi thử lại.
     pub fn post_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
+        let posted = self.push_mail(hart, msg);
+        self.sched_after_op(false);
+        posted
+    }
+
+    /// Thân của [`Machine::post_mail`] **không** tự kiểm bất biến — dùng cho đường nội bộ
+    /// (shootdown của KT-40) để **một** bước chỉ kiểm bất biến một lần.
+    ///
+    /// **KT-40**: message `TlbFlush` được **kernel** gán `ack` tại đây (= `delivered` của hart
+    /// đích sau khi tăng — Q5 "`seq` = số send Ok"); người gọi không tự đặt. Hộp thư đầy ⇒
+    /// `Busy`, **không** tăng `delivered` (bất biến `delivered = acked + số message trong hàng`).
+    fn push_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
         if hart as usize >= self.mail.len() {
             return Err(KError::InvalidArgument);
         }
@@ -5033,12 +5655,26 @@ impl Machine {
             }
             self.check_migrate_request(tcb, to_hart)?;
         }
-        let posted = match self.mail[hart as usize].try_push(msg) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(KError::Busy),
+        if self.mail[hart as usize].is_full() {
+            return Err(KError::Busy);
+        }
+        let msg = match msg {
+            MailboxMsg::TlbFlush(mut f) => {
+                let ack = self.tlbs[hart as usize].deliver();
+                f.ack = ack;
+                MailboxMsg::TlbFlush(f)
+            }
+            other => other,
         };
-        self.sched_after_op(false);
-        posted
+        match self.mail[hart as usize].try_push(msg) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                // `is_full` đã kiểm ở trên và mô hình một luồng ⇒ không thể xảy ra; nếu xảy ra
+                // thì đó là lỗi mô hình, không im lặng.
+                debug_assert!(false, "hộp thư hart {hart} đầy dù vừa kiểm");
+                Err(KError::Busy)
+            }
+        }
     }
 
     /// **KT-29** — kiểm một yêu cầu `Migrate` **trước** khi vào hộp thư (cửa của `post_mail`):
@@ -5077,6 +5713,9 @@ impl Machine {
     ///   `Ready` ⇒ no-op); **KT-29**: preempt nếu ưu tiên > `cur_prio` công bố;
     /// - `Reschedule` — `dispatch` hart một lượt;
     /// - `Stop` — bật cờ `stopped` của hart (mô hình; không đổi hàng chờ);
+    /// - **KT-40** `TlbFlush(f)` — xả entry `(f.generation, f.asid)` phủ `f.va` của hart này rồi
+    ///   `ack(f.ack)` theo kiểu **fetch_max** (mô hình của "IPI + `sfence.vma`"); xem
+    ///   [`Machine::tlb_shootdown_begin`];
     /// - **KT-29** `Migrate { tcb, to_hart }` — di trú thật nếu TCB còn `Ready`/trong affinity;
     ///   `n = 1` thì `post_mail` đã từ chối (`NotSupported`).
     ///
@@ -5163,6 +5802,15 @@ impl Machine {
                 }
             }
             MailboxMsg::Stop => self.mail[hart as usize].set_stopped(),
+            MailboxMsg::TlbFlush(f) => {
+                // **KT-40** — handler "IPI": xả entry `(generation, asid)` phủ `va` rồi **ack**
+                // thế hệ `f.ack` của hộp thư này (`fetch_max`, không lùi).
+                let _ = self
+                    .tlb_at_mut(hart)
+                    .map(|t| t.flush(f.generation, f.asid, TlbFlushScope::Page { va: f.va }));
+                let newly = self.tlb_at_mut(hart).map(|t| t.ack(f.ack)).unwrap_or(0);
+                self.tlb_ack_total += newly;
+            }
             MailboxMsg::Migrate { tcb, to_hart } => {
                 if to_hart != hart {
                     debug_assert!(false, "Migrate nằm sai hộp thư hart đích");
@@ -5431,6 +6079,12 @@ impl Machine {
         if let Err(e) = self.check_wx() {
             debug_assert!(false, "bất biến W^X vỡ sau public op: {e}");
         }
+        // **KT-40** — TLB-safety (mọi entry còn sống khớp cây PageTable) chạy sau **mỗi**
+        // public op; cửa sổ nhanh `tlb_fill_total == 0 && tlb_msg_total == 0` giữ chi phí của
+        // mọi test K1a..K1c/KT-36..39 như trước KT-40.
+        if let Err(e) = self.check_tlb() {
+            debug_assert!(false, "bất biến TLB vỡ sau public op: {e}");
+        }
         // **KT-38** — VSpace + `active_on`/hart online và ASID/free-list/thế hệ cũng chạy sau
         // **mỗi** public op ("check_vspace/check_asid sớm"); hai cửa sổ nhanh giữ chi phí per-op
         // của mọi test K1a..K1c như trước KT-38.
@@ -5463,6 +6117,27 @@ impl Machine {
             if !hb.invariant() {
                 return Err(format!(
                     "hộp thư hart {h}: bất biến pushed/popped/removed vỡ"
+                ));
+            }
+            // **KT-40** — ack theo thế hệ của `TlbFlush` (D2-60 semantics): `delivered` = số
+            // message đã giao (tăng ở `push_mail`, **chỉ khi** có slot), `acked` = fetch_max đã
+            // xử lý. Hàng FIFO + ack cấp tăng dần ⇒ `delivered - acked` **phải bằng** số
+            // `TlbFlush` còn trong hàng (không mất, không ack khống, không ack lùi).
+            let trong_hang = hb
+                .iter()
+                .filter(|m| matches!(m, MailboxMsg::TlbFlush(_)))
+                .count() as u64;
+            let t = &self.tlbs[h];
+            if t.acked > t.delivered {
+                return Err(format!(
+                    "hộp thư hart {h}: acked {} > delivered {} (ack khống)",
+                    t.acked, t.delivered
+                ));
+            }
+            if t.delivered - t.acked != trong_hang {
+                return Err(format!(
+                    "hộp thư hart {h}: delivered={} acked={} nhưng có {trong_hang} TlbFlush trong hàng",
+                    t.delivered, t.acked
                 ));
             }
         }
@@ -10583,5 +11258,73 @@ mod tests {
         }
         let e = m.wx_recount().expect_err("phải bắt W∧X");
         assert!(e.contains("W^X") || e.contains("vừa"), "{e}");
+    }
+
+    // ------------------------------------------------ KT-40: check_tlb phải **bắt** lỗi
+
+    /// `check_tlb` không là checker rỗng: entry của VSpace **không còn sống** và entry của VA
+    /// **không còn map** đều bị bắt (ca dương tính của oracle TLB-safety — K2-PLAN KT-40
+    /// "oracle quá dễ dãi ⇒ 0 vi phạm vô nghĩa").
+    #[test]
+    fn check_tlb_bat_entry_mo_coi_va_entry_khong_con_map() {
+        let (mut m, c, vs, _root) = rig_vspace();
+        // Frame 1 GiB (lá ngay root) từ Untyped riêng ⇒ không cần bảng con.
+        let uf = m.add_untyped(1 << 32, 4096);
+        let capu = m.root_cap(uf);
+        m.put_cap(c, 1, capu).expect("cap Untyped Frame");
+        let capf = m
+            .retype(SlotRef::new(c, 1), ObjType::Frame, 30, 0)
+            .expect("Frame 1G");
+        let f = m.cap_info(capf).expect("cap").obj;
+        m.put_cap(c, 2, capf).expect("cap Frame");
+        m.vspace_activate(vs, 0).expect("activate");
+        m.vspace_map_obj(vs, 1 << 30, f, MapRights::READ, MapAttrs::WB)
+            .expect("map 1G");
+        let t = m.tlb_translate(vs, 1 << 30).expect("fill");
+        assert!(!t.from_tlb);
+        assert_eq!(m.tlb_entries(0), Ok(1));
+        m.check_tlb().expect("TLB sạch sau fill");
+        assert_eq!(m.tlb_violations(), 0);
+
+        // (1) Gieo entry của `(gen, asid)` **không còn VSpace sống**.
+        let info = m.vspace_info(vs).expect("info");
+        let mut gia = HartTlb::new();
+        let e = gia.fill_keyed(
+            info.generation,
+            info.asid + 7,
+            Mapping {
+                va: 0x5000,
+                pa: 0x9000,
+                size_bits: 12,
+                frame: 1,
+                rights: MapRights::READ,
+                attrs: MapAttrs::WB,
+            },
+        );
+        m.tlbs[0].seed_entry_for_test(e);
+        let loi = m.check_tlb().expect_err("phải bắt entry mồ côi");
+        assert!(loi.contains("không còn VSpace sống"), "{loi}");
+        assert_eq!(m.tlb_violations(), 1);
+        m.tlbs[0].entries_mut_for_test().pop();
+
+        // (2) Gieo entry **đúng** `(gen, asid)` của VSpace sống nhưng VA không còn map.
+        let mut gia = HartTlb::new();
+        let e = gia.fill_keyed(
+            info.generation,
+            info.asid,
+            Mapping {
+                va: 0x5000,
+                pa: 0x9000,
+                size_bits: 12,
+                frame: 1,
+                rights: MapRights::READ,
+                attrs: MapAttrs::WB,
+            },
+        );
+        m.tlbs[0].seed_entry_for_test(e);
+        let loi = m.check_tlb().expect_err("phải bắt entry của VA đã hết map");
+        assert!(loi.contains("walk trả"), "{loi}");
+        m.tlbs[0].entries_mut_for_test().pop();
+        m.check_tlb().expect("khôi phục thì sạch");
     }
 }

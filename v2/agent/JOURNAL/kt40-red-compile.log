@@ -1,0 +1,970 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::TlbFlushScope`, `vifast_sim::kobj::TLB_ENTRIES_PER_HART`
+  --> sim/vifast-sim/tests/kt40_tlb.rs:27:68
+   |
+27 |     KError, Machine, MapAttrs, MapRights, ObjId, ObjType, SlotRef, TlbFlushScope,
+   |                                                                    ^^^^^^^^^^^^^ no `TlbFlushScope` in `kobj`
+28 |     TLB_ENTRIES_PER_HART,
+   |     ^^^^^^^^^^^^^^^^^^^^ no `TLB_ENTRIES_PER_HART` in `kobj`
+   |
+help: a similar name exists in the module
+   |
+27 -     KError, Machine, MapAttrs, MapRights, ObjId, ObjType, SlotRef, TlbFlushScope,
+27 +     KError, Machine, MapAttrs, MapRights, ObjId, ObjType, SlotRef, FlushScope,
+   |
+
+error[E0599]: no method named `check_tlb` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:136:34
+    |
+136 |             ("check_tlb", self.m.check_tlb()),
+    |                                  ^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+136 -             ("check_tlb", self.m.check_tlb()),
+136 +             ("check_tlb", self.m.check_ipc()),
+    |
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:171:21
+     |
+ 171 |         let t = r.m.tlb_translate(vs, va(i)).expect("translate trang đã map");
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:175:20
+    |
+175 |     let info = r.m.tlb_info(0).expect("tlb_info 0");
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+175 -     let info = r.m.tlb_info(0).expect("tlb_info 0");
+175 +     let info = r.m.tcb_info(0).expect("tlb_info 0");
+    |
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:181:20
+    |
+181 |     assert_eq!(r.m.tlb_entries(0), Ok(TLB_ENTRIES_PER_HART));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:184:17
+     |
+ 184 |     let t = r.m.tlb_translate(vs, va(0)).expect("hit");
+     |                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:186:20
+    |
+186 |     assert_eq!(r.m.tlb_info(0).expect("info").hits, 1);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+186 -     assert_eq!(r.m.tlb_info(0).expect("info").hits, 1);
+186 +     assert_eq!(r.m.tcb_info(0).expect("info").hits, 1);
+    |
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:190:17
+     |
+ 190 |     let t = r.m.tlb_translate(vs, va(16)).expect("trang 17");
+     |                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:192:20
+    |
+192 |     let info = r.m.tlb_info(0).expect("info");
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+192 -     let info = r.m.tlb_info(0).expect("info");
+192 +     let info = r.m.tcb_info(0).expect("info");
+    |
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:196:13
+    |
+196 |         r.m.tlb_lookup(0, vs, va(1)).expect("lookup").is_none(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:199:17
+    |
+199 |     assert!(r.m.tlb_lookup(0, vs, va(0)).expect("lookup").is_some());
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:200:17
+    |
+200 |     assert!(r.m.tlb_lookup(0, vs, va(16)).expect("lookup").is_some());
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:203:20
+    |
+203 |     assert_eq!(r.m.tlb_entries(1), Ok(0));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:205:17
+     |
+ 205 |     let t = r.m.tlb_translate(vs, va(0)).expect("miss trên hart 1");
+     |                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:207:20
+    |
+207 |     assert_eq!(r.m.tlb_entries(1), Ok(1));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:208:20
+    |
+208 |     assert_eq!(r.m.tlb_info(1).expect("info").misses, 1);
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+208 -     assert_eq!(r.m.tlb_info(1).expect("info").misses, 1);
+208 +     assert_eq!(r.m.tcb_info(1).expect("info").misses, 1);
+    |
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:231:25
+     |
+ 231 |             assert!(r.m.tlb_translate(vs, va(0)).is_ok());
+     |                         ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:232:25
+     |
+ 232 |             assert!(r.m.tlb_translate(vs, va(1)).is_ok());
+     |                         ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:233:28
+    |
+233 |             assert_eq!(r.m.tlb_entries(h), Ok(2));
+    |                            ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:241:14
+    |
+240 |           let s = r.m
+    |  _________________-
+241 | |             .last_tlb_shootdown()
+    | |_____________-^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+241 -             .last_tlb_shootdown()
+241 +             .last_flush()
+    |
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:254:21
+    |
+254 |                 r.m.tlb_lookup(h, vs, va(0)).expect("lookup").is_none(),
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:258:21
+    |
+258 |                 r.m.tlb_lookup(h, vs, va(1)).expect("lookup").is_some(),
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:262:28
+    |
+262 |             let info = r.m.tlb_info(h).expect("info");
+    |                            ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+262 -             let info = r.m.tlb_info(h).expect("info");
+262 +             let info = r.m.tcb_info(h).expect("info");
+    |
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:270:17
+     |
+ 270 |             r.m.tlb_translate(vs, va(0)),
+     |                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:293:13
+     |
+ 293 |         r.m.tlb_translate(vs, va(0)).expect("fill");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_shootdown_begin` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:296:19
+    |
+296 |     let seq = r.m.tlb_shootdown_begin(0, vs, va(0)).expect("begin");
+    |                   ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_pending` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:300:10
+     |
+ 298 |       let p = r
+     |  _____________-
+ 299 | |         .m
+ 300 | |         .tlb_pending(0)
+     | |_________-^^^^^^^^^^^
+     |
+help: there is a method `ipc_pending` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:6043:5
+     |
+6043 |     pub fn ipc_pending(&self) -> u64 {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:312:9
+     |
+ 312 |     r.m.tlb_shootdown_wait(0).expect("wait đủ ack");
+     |         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `tlb_pending` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:313:17
+     |
+ 313 |     assert!(r.m.tlb_pending(0).expect("pending").is_none());
+     |                 ^^^^^^^^^^^
+     |
+help: there is a method `ipc_pending` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:6043:5
+     |
+6043 |     pub fn ipc_pending(&self) -> u64 {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:314:17
+    |
+314 |     let s = r.m.last_tlb_shootdown().expect("shootdown");
+    |                 ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+314 -     let s = r.m.last_tlb_shootdown().expect("shootdown");
+314 +     let s = r.m.last_flush().expect("shootdown");
+    |
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:321:9
+     |
+ 321 |     r.m.tlb_shootdown_wait(0).expect("wait lặp là no-op");
+     |         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:322:9
+     |
+ 322 |     r.m.tlb_shootdown_wait(1).expect("hart 1 không có gì phải chờ");
+     |         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:342:13
+     |
+ 342 |         r.m.tlb_translate(vs, va(0)).expect("fill 0");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:343:13
+     |
+ 343 |         r.m.tlb_translate(vs, va(1)).expect("fill 1");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_flush_local` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:348:10
+     |
+ 346 |       let n = r
+     |  _____________-
+ 347 | |         .m
+ 348 | |         .tlb_flush_local(0, vs, TlbFlushScope::Page { va: va(0) })
+     | |_________-^^^^^^^^^^^^^^^
+     |
+help: there is a method `flush_log` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2512:5
+     |
+2512 |     pub fn flush_log(&self) -> &[FlushCmd] {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:351:17
+    |
+351 |     assert!(r.m.tlb_lookup(0, vs, va(0)).expect("lookup").is_none());
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:352:17
+    |
+352 |     assert!(r.m.tlb_lookup(0, vs, va(1)).expect("lookup").is_some());
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:353:17
+    |
+353 |     assert!(r.m.tlb_lookup(1, vs, va(0)).expect("lookup").is_some());
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_flush_local` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:357:10
+     |
+ 355 |       let n = r
+     |  _____________-
+ 356 | |         .m
+ 357 | |         .tlb_flush_local(0, vs, TlbFlushScope::Asid)
+     | |_________-^^^^^^^^^^^^^^^
+     |
+help: there is a method `flush_log` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2512:5
+     |
+2512 |     pub fn flush_log(&self) -> &[FlushCmd] {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:360:20
+    |
+360 |     assert_eq!(r.m.tlb_entries(0), Ok(0));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:361:20
+    |
+361 |     assert_eq!(r.m.tlb_entries(1), Ok(2));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:365:20
+    |
+365 |     assert_eq!(r.m.tlb_entries(1), Ok(0));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:366:20
+    |
+366 |     assert_eq!(r.m.tlb_entries(0), Ok(0));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:383:13
+     |
+ 383 |         r.m.tlb_translate(vs_old, va(0)).expect("fill thế hệ 0");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:384:24
+    |
+384 |         assert_eq!(r.m.tlb_entries(0), Ok(1));
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:392:17
+    |
+392 |             r.m.tlb_entries(0),
+    |                 ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:397:17
+    |
+397 |             r.m.tlb_lookup(0, vs_old, va(0)).expect("lookup").is_none(),
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:401:21
+     |
+ 401 |         let t = r.m.tlb_translate(vs_old, va(0)).expect("translate lại");
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:403:24
+    |
+403 |         assert_eq!(r.m.tlb_entries(0), Ok(1));
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:425:21
+     |
+ 425 |         let t = r.m.tlb_translate(vs, va(0)).expect("fill");
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:434:17
+    |
+434 |     let s = r.m.last_tlb_shootdown().expect("shootdown protect");
+    |                 ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+434 -     let s = r.m.last_tlb_shootdown().expect("shootdown protect");
+434 +     let s = r.m.last_flush().expect("shootdown protect");
+    |
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:440:17
+    |
+440 |             r.m.tlb_lookup(h, vs, va(0)).expect("lookup").is_none(),
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:445:17
+     |
+ 445 |     let t = r.m.tlb_translate(vs, va(0)).expect("translate");
+     |                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:468:13
+     |
+ 468 |         r.m.tlb_translate(vs, va(0)).expect("fill 0");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:469:13
+     |
+ 469 |         r.m.tlb_translate(vs, va(1)).expect("fill 1");
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_shootdown_begin` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:473:20
+    |
+473 |     let seq1 = r.m.tlb_shootdown_begin(1, vs, va(0)).expect("begin hart 1");
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_pending` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:474:17
+     |
+ 474 |     assert!(r.m.tlb_pending(1).expect("pending").is_some());
+     |                 ^^^^^^^^^^^
+     |
+help: there is a method `ipc_pending` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:6043:5
+     |
+6043 |     pub fn ipc_pending(&self) -> u64 {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:480:20
+    |
+480 |     let last = r.m.last_tlb_shootdown().expect("shootdown hart 0");
+    |                    ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+480 -     let last = r.m.last_tlb_shootdown().expect("shootdown hart 0");
+480 +     let last = r.m.last_flush().expect("shootdown hart 0");
+    |
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:484:9
+     |
+ 484 |     r.m.tlb_shootdown_wait(1).expect("hart 1 hết chờ");
+     |         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `tlb_pending` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:485:17
+     |
+ 485 |     assert!(r.m.tlb_pending(1).expect("pending").is_none());
+     |                 ^^^^^^^^^^^
+     |
+help: there is a method `ipc_pending` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:6043:5
+     |
+6043 |     pub fn ipc_pending(&self) -> u64 {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:486:18
+    |
+486 |     let s1 = r.m.last_tlb_shootdown().expect("shootdown hart 1");
+    |                  ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+486 -     let s1 = r.m.last_tlb_shootdown().expect("shootdown hart 1");
+486 +     let s1 = r.m.last_flush().expect("shootdown hart 1");
+    |
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:492:21
+    |
+492 |         assert!(r.m.tlb_lookup(h, vs, va(0)).expect("lookup").is_none());
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:493:21
+    |
+493 |         assert!(r.m.tlb_lookup(h, vs, va(1)).expect("lookup").is_some());
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:494:24
+    |
+494 |         let info = r.m.tlb_info(h).expect("info");
+    |                        ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+494 -         let info = r.m.tlb_info(h).expect("info");
+494 +         let info = r.m.tcb_info(h).expect("info");
+    |
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:516:13
+     |
+ 516 |         r.m.tlb_translate(vs, va(0)),
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:522:20
+     |
+ 522 |     assert_eq!(r.m.tlb_translate(vs, va(7)), Err(KError::NotMapped));
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:523:20
+    |
+523 |     let info = r.m.tlb_info(0).expect("info");
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+523 -     let info = r.m.tlb_info(0).expect("info");
+523 +     let info = r.m.tcb_info(0).expect("info");
+    |
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:527:20
+    |
+527 |     assert_eq!(r.m.tlb_info(2), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+527 -     assert_eq!(r.m.tlb_info(2), Err(KError::InvalidArgument));
+527 +     assert_eq!(r.m.tcb_info(2), Err(KError::InvalidArgument));
+    |
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:528:20
+    |
+528 |     assert_eq!(r.m.tlb_entries(99), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:530:13
+    |
+530 |         r.m.tlb_lookup(2, vs, va(0)),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:534:13
+     |
+ 534 |         r.m.tlb_translate(999, va(0)),
+     |             ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_flush_local` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:538:13
+     |
+ 538 |         r.m.tlb_flush_local(2, vs, TlbFlushScope::Asid),
+     |             ^^^^^^^^^^^^^^^
+     |
+help: there is a method `flush_log` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2512:5
+     |
+2512 |     pub fn flush_log(&self) -> &[FlushCmd] {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_shootdown_begin` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:542:13
+    |
+542 |         r.m.tlb_shootdown_begin(2, vs, va(0)),
+    |             ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_shootdown_begin` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:548:10
+    |
+546 |       let seq = r
+    |  _______________-
+547 | |         .m
+548 | |         .tlb_shootdown_begin(0, vs2, va(0))
+    | |         -^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `tlb_shootdown_begin` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:554:13
+    |
+554 |         r.m.tlb_shootdown_begin(0, vs2, va(0)),
+    |             ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:557:9
+     |
+ 557 |     r.m.tlb_shootdown_wait(0).expect("wait shootdown rỗng");
+     |         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `last_tlb_shootdown` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:558:17
+    |
+558 |     let s = r.m.last_tlb_shootdown().expect("shootdown rỗng");
+    |                 ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `last_flush` with a similar name
+    |
+558 -     let s = r.m.last_tlb_shootdown().expect("shootdown rỗng");
+558 +     let s = r.m.last_flush().expect("shootdown rỗng");
+    |
+
+error[E0599]: no method named `tlb_flush_local` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:568:13
+     |
+ 568 |         r.m.tlb_flush_local(0, vs3, TlbFlushScope::Asid),
+     |             ^^^^^^^^^^^^^^^
+     |
+help: there is a method `flush_log` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2512:5
+     |
+2512 |     pub fn flush_log(&self) -> &[FlushCmd] {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:572:20
+     |
+ 572 |     assert_eq!(r.m.tlb_translate(vs3, va(0)), Err(KError::InvalidArgument));
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_shootdown_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:573:20
+     |
+ 573 |     assert_eq!(r.m.tlb_shootdown_wait(1), Ok(()), "không có gì chờ ⇒ no-op");
+     |                    ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `nb_send_wait` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:8741:5
+     |
+8741 | /     pub fn nb_send_wait(
+8742 | |         &mut self,
+8743 | |         tcb: ObjId,
+8744 | |         send_ep: SlotRef,
+8745 | |         msg: Message,
+8746 | |         ntfn: SlotRef,
+8747 | |     ) -> Result<Option<KError>, KError> {
+     | |_______________________________________^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:611:31
+     |
+ 611 |                 let got = r.m.tlb_translate(vs, va(i));
+     |                               ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_lookup` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:634:33
+    |
+634 | ...                   r.m.tlb_lookup(hh, vs, va(i)).expect("lookup").is_none(),
+    |                           ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:667:33
+     |
+ 667 |                     let t = r.m.tlb_translate(vs, va(i)).expect("translate sau protect");
+     |                                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_flush_local` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:676:21
+     |
+ 676 |                 r.m.tlb_flush_local(h, vs, TlbFlushScope::Asid)
+     |                     ^^^^^^^^^^^^^^^
+     |
+help: there is a method `flush_log` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2512:5
+     |
+2512 |     pub fn flush_log(&self) -> &[FlushCmd] {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_translate` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:682:33
+     |
+ 682 |                     let _ = r.m.tlb_translate(vs, va(i));
+     |                                 ^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4441:5
+     |
+4441 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_tlb` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:686:13
+    |
+686 |         r.m.check_tlb()
+    |             ^^^^^^^^^
+    |
+help: there is a method `check_ipc` with a similar name
+    |
+686 -         r.m.check_tlb()
+686 +         r.m.check_ipc()
+    |
+
+error[E0599]: no method named `tlb_violations` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:689:17
+    |
+689 |             r.m.tlb_violations(),
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:693:24
+    |
+693 |         let info = r.m.tlb_info(h).expect("info");
+    |                        ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+693 -         let info = r.m.tlb_info(h).expect("info");
+693 +         let info = r.m.tcb_info(h).expect("info");
+    |
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:696:21
+    |
+696 |         assert!(r.m.tlb_entries(h).expect("entries") <= TLB_ENTRIES_PER_HART);
+    |                     ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tlb_shootdown_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:702:13
+    |
+702 |         r.m.tlb_shootdown_count() >= unmaps,
+    |             ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `flush_count` with a similar name
+    |
+702 -         r.m.tlb_shootdown_count() >= unmaps,
+702 +         r.m.flush_count() >= unmaps,
+    |
+
+error[E0599]: no method named `tlb_pending` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt40_tlb.rs:707:21
+     |
+ 707 |         assert!(r.m.tlb_pending(h).expect("pending").is_none());
+     |                     ^^^^^^^^^^^
+     |
+help: there is a method `ipc_pending` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:6043:5
+     |
+6043 |     pub fn ipc_pending(&self) -> u64 {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tlb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:708:24
+    |
+708 |         let info = r.m.tlb_info(h).expect("info");
+    |                        ^^^^^^^^
+    |
+help: there is a method `tcb_info` with a similar name
+    |
+708 -         let info = r.m.tlb_info(h).expect("info");
+708 +         let info = r.m.tcb_info(h).expect("info");
+    |
+
+error[E0599]: no method named `tlb_entries` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt40_tlb.rs:718:24
+    |
+718 |         assert_eq!(r.m.tlb_entries(h), Ok(0), "hart {h} còn entry sau khi dọn");
+    |                        ^^^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt40_tlb") due to 93 previous errors

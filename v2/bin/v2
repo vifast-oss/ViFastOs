@@ -486,6 +486,9 @@ do_nightly_only_miri() {
     # tự giảm còn 3 seed × 8 op bằng `cfg(miri)`, stable vẫn 1.000 × 64 × 4). KHÔNG thêm
     # `l1_k1c` (1.000 seed — chạy ở gate/nightly --l1, không dưới Miri).
     run_miri_test "vifast-sim kt29_smp" -p vifast-sim --test kt29_smp || return 1
+    # **KT-40** (K2-PLAN §3 KT-40): thêm `kt40_tlb` (TLB 16 entry/hart + shootdown/ack + deadlock;
+    # property tự giảm còn 2 hart × 150 vòng và ca cạn 256 ASID tự bỏ bằng `cfg(miri)`).
+    run_miri_test "vifast-sim kt40_tlb" -p vifast-sim --test kt40_tlb || return 1
     # **KT-30** (K1C-PLAN §5 KT-30 DoD 8): thêm `-p vifast-sync` (MCS lock + Mailbox MPSC; test
     # `kt30_stress` 4 luồng tự gạt bằng `#![cfg(not(miri))]` nên Miri chỉ chạy phần single-thread).
     run_miri_test "vifast-sync (lib + kt30_sync)" -p vifast-sync || return 1

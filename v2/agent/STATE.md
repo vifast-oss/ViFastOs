@@ -4,15 +4,70 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `f2e7762` ([KT-00] D2-67); KT-39 **chưa commit** — agent2-kt39 chết giữa lúc làm, **lead hoàn tất** (fix clippy, cập nhật 3 ca KT-36, viết docs §13)
+HEAD          : `258eeeeb` ([KT-00] D2-68 đính chính: hart gọi flush cục bộ + ack ngầm); KT-40 **chưa commit** — reviewer-kt40b **CONFIRM 5/5**, chờ commit/push
 BUILD_ID      : —
-Task          : KT-40 (READY — TLB + shootdown); KT-39 DONE (bf6bb0f)
-Bước          : 7/8 (baseline → đỏ → code+test → gate 536 → Miri 8/8 → **review DRIFT đã sửa + mutation M2** → commit)
+Task          : KT-40 — TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock (READY → REVIEW)
+Bước          : 8/8 (baseline 536 → đỏ E0432/E0599 → code+10 test → gate **552** → Miri 10/10 → DRIFT đã sửa: 5 mutation + 2 test AP→BSP + oracle `active_on` → **reviewer-kt40b CONFIRM 5/5** + sửa 3 nit docstring/docs → gate lại → commit/push)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 536 test/68 suite**, L1 1.000 seed **811 ms** (sau khi sửa DRIFT), fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt39-gate-fast.log`). Baseline KT-39: PASS 526/68 (`JOURNAL/kt39-baseline-gate-fast.log`); +8 `kt39_wx` +2 unit `check_wx`.
-Miri          : KT-39 — `--test kt39_wx` **8/8** (119,62 s, MIRI1_EXIT=0) + `--lib 'kobj::tests::check_wx'` **1/1** (MIRI2_EXIT=0), `JOURNAL/kt39-miri.log`. KT-38: 7/7 + 5/5 + 2/2 + 2/2; KT-37: 10/10 + 4/4 + 3/3; KT-36: 12/12 + 5/5.
-Việc dở       : KT-39 cần **review độc lập** trước commit (`reviewer-kt39` đang chạy). Luật mới D2-67 làm 3 ca KT-36 + 2 ca KT-37 phải **cập nhật kỳ vọng** (W+X ⇒ `WxViolation`) — **làm chặt**, không nới; docs `k2-vm.md` §13 ghi rõ. KT-38 `74145d0` DONE (D2-66); KT-35/36/37 DONE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 552 test/70 suite**, L1 1.000 seed **793 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt40-gate-fast.log`). Baseline KT-40: PASS 536/68, L1 800 ms (`JOURNAL/kt40-baseline-gate-fast.log`); +10 `kt40_tlb` +5 unit `tlb` +1 unit `check_tlb`.
+Miri          : KT-40 — `--test kt40_tlb` **10/10** (324,35 s, MIRI1_EXIT=0) + `--lib tlb::tests` **5/5** (0,73 s) + `--lib 'kobj::tests::check_tlb'` **1/1** (1,98 s), `JOURNAL/kt40-miri.log`. `kt40_tlb` đã vào danh sách `v2 miri`.
+Việc dở       : KT-40 **REVIEW → commit `[KT-40]` + push** (reviewer-kt40b CONFIRM 5/5; D2-68 `258eeeeb` khớp code: hart gọi flush cục bộ + ack ngầm, không self-target; 3 nit docstring `vspace_activate/deactivate` + hàng M3 + tiền tố `v2/agent/JOURNAL/` đã sửa). QUEUE chờ Agent 0 lật. KT-39 DONE `bf6bb0f`; KT-38 `74145d0`.
 ```
+
+## KT-40 — K2: TLB 16 entry/hart + shootdown `TlbFlush` + ack thế hệ + chống deadlock
+
+**Vào**: READY (`agentctl next --project v2` trả KT-40) · HEAD `4ae932e` ([KT-00] lật KT-39 DONE,
+536 test) · `git rev-list --count HEAD..origin/main` = **0** · working tree có `viscript/` +
+`review/` của tab khác (**không chạm**, chỉ stage `v2/`) · baseline `gate --fast` **PASS 536
+test/68 suite**, L1 **800 ms** ([`JOURNAL/kt40-baseline-gate-fast.log`](JOURNAL/kt40-baseline-gate-fast.log)).
+
+**Mục tiêu** (K2-PLAN §3 KT-40 + §2 Q4/Q5, D2-65 Q4/Q5 + D2-60): TLB **16 entry/hart** khoá
+`(gen, asid, va)`, LRU tất định, hit/miss đếm được, `gen` vô hiệu toàn bộ; **một** kind
+`TlbFlush{asid, va, gen, seq}` (nới D2-59, `VmKick`/`PowerReq` vẫn K3); unmap/protect sửa PTE ⇒
+flush cục bộ + gửi tới `active_on` + **chờ đủ ack** (`acked_mask == active_on`), ack `fetch_max`
+(`acked ≠ delivered`); hart chờ ack **phải rút hộp thư của mình** (AP→BSP); oracle TLB-safety;
+property 10k; Miri; mutation phải bị bắt.
+
+**Không** làm: VM fault (KT-41), `.scn`/`check_vm` (KT-42), 100k×4 + 4 mutation còn lại (KT-43),
+`spec/`, `viscript/`, QUEUE/DECISIONS/AGENTS; không unsafe/dependency/`#[ignore]`; không sửa
+test cũ.
+
+**Kết quả**:
+- **Test đỏ trước** (D2-05): [`kt40-red-compile.log`](JOURNAL/kt40-red-compile.log) — **E0432**
+  (`TlbFlushScope/TLB_ENTRIES_PER_HART`) + **E0599** (`tlb_translate/lookup/info/…`,
+  `tlb_shootdown_*`, `check_tlb`, `tlb_violations`), `could not compile` exit 101.
+- **Code**: `src/tlb.rs` **(mới)** (16 entry/hart, LRU, 3 scope flush, ack `fetch_max` bằng
+  `u64` thường — không unsafe/atomic, 5 unit test) + `src/mailbox.rs` (**đúng một** kind
+  `TlbFlush`) + `src/kobj.rs` (9 field, 16 API, `push_mail` gán ack, `apply_mail(TlbFlush)`,
+  hook `vspace_unmap/protect` (prepare→PTE→post→wait), flush cục bộ khi đổi/rời VSpace/offline,
+  teardown Asid + cạn ASID Generation broadcast, `check_tlb` trong `sched_after_op`,
+  `check_mailboxes` thêm `delivered-acked == số TlbFlush trong hàng`, 1 unit test dương tính
+  oracle) + `tests/kt40_tlb.rs` **(mới, 10 test)** + `v2/bin/v2` (kt40_tlb vào `nightly --only-miri`).
+- **Docs**: `v2/docs/k2-vm.md` **§14** (hình TLB, 3 scope, shootdown/ack, **deviation D2-68**
+  không IPI hart gọi + ack ngầm, chống deadlock + `poll`, oracle 4 nhóm, 10 test, **5 mutation**,
+  ranh giới).
+- **Cổng**: [`kt40-check.log`](JOURNAL/kt40-check.log) PASS; [`kt40-gate-fast.log`](JOURNAL/kt40-gate-fast.log)
+  **PASS 552 test/70 suite**, L1 **793 ms**; `kt40_tlb` **10/10**, lib **62/62**, L0 552/0.
+- **Miri**: [`kt40-miri.log`](JOURNAL/kt40-miri.log) — `--test kt40_tlb` **10/10** (324,35 s) +
+  `--lib tlb::tests` **5/5** + `--lib check_tlb` **1/1**.
+- **Mutation** (5 ca, hash khớp, log thật): M1 bỏ wait (`kt40-mutation-bo-wait.log`), M2 bỏ flush
+  cục bộ (`kt40-mutation-bo-flush-cuc-bo.log`), M3 ack sai seq (`kt40-mutation-ack-sai-seq.log`),
+  M4 bỏ rút hộp thư (`kt40-mutation-bo-rut-hop-thu.log` — đỏ ở AP→BSP tương hỗ, không
+  self-target), M5 bỏ flush `deactivate` (`kt40-mutation-bo-flush-deactivate.log`).
+- **Review độc lập**: `reviewer-kt40` verdict **DRIFT (không UNSAFE)** — đã xử lý đủ 5 việc
+  (4 mutation + log, test hart ngoài `active_on` + AP→BSP tương hỗ, oracle `active_on` + M5,
+  Miri + miri list, docs/D2-68); `reviewer-kt40b` **CONFIRM 5/5** (tự chạy 10+5+1+62, gate
+  552/70, M2 đỏ thật, M4 đỏ đúng 1 ca deadlock, oracle bắt M5, docs khớp). Sửa nốt 3 nit:
+  docstring `vspace_activate/deactivate` hết mâu thuẫn, hàng M3 thêm
+  `hart_goi_ngoai_active_on_van_shootdown_dung`, tiền tố `v2/agent/JOURNAL/`. Nhật ký đầy đủ:
+  [`JOURNAL/kt40-journal.md`](JOURNAL/kt40-journal.md).
+
+**Đề xuất: REVIEW** (chờ reviewer xác nhận sau DRIFT; không tự DONE, không lật QUEUE — D2-37).
+**YC/Follow-up**: (1) KT-41 dùng `vspace_walk`/`tlb_lookup` cho `FaultKind::Vm`; (2) KT-42 gộp
+`check_tlb` vào `check_vm` + `.scn` shootdown 2 hart; (3) KT-43 `nightly --l1` 100k×4 + 4 mutation
+còn lại của K2-PLAN + soak; (4) K3 thay hộp thư/ack bằng IPI/SBI thật, giao thức không đổi.
+
+
 
 ## KT-38 — K2: `VSpace` + ASID (8 bit/256/thế hệ) + `generation` + `active_on: HartMask`
 

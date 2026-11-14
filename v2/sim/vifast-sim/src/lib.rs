@@ -21,6 +21,7 @@ pub mod procsrv_model;
 pub mod scenario;
 pub mod sched;
 pub mod tcb;
+pub mod tlb;
 pub mod vspace;
 
 /// Bộ sinh tất định — không dùng thời gian, không dùng bộ nhớ chưa khởi tạo.

@@ -624,3 +624,185 @@ cập nhật **kỳ vọng**, giữ nguyên mục đích kiểm và mọi assert
   COW (Q7: COW cần pager thật = K3).
 - **Không** đổi `spec/` (VSpace/PageTable/Frame vẫn `reserved`), **không** tạo `spec/kernel.toml`.
 - **Không** PTE/MMU/TLB/`sfence.vma` thật, không QEMU — **K3**.
+
+## 14. KT-40 — TLB 16 entry/hart, shootdown `TlbFlush`, ack thế hệ, chống deadlock
+
+Nguồn ngữ nghĩa: `review/agent0/K2-PLAN.md` §3 KT-40 + §2 **Q4/Q5**; **D2-65** (Q4/Q5 — nới
+D2-59: K2 **thêm đúng một** kind `TlbFlush` vào hộp thư model, `VmKick`/`PowerReq` vẫn K3);
+**D2-60** (ack `fetch_max` của `vifast-sync`); thiết kế §4.10 `:353-366` ("mô hình TLB theo
+hart": cache `(asid, va) -> (pa, rights)`; shootdown: "sửa PTE, flush cục bộ, gửi
+`TlbFlush{asid, va, gen}` vào hộp thư các hart trong mask, IPI, chờ ack"; luật chống deadlock
+§4.10.3) và §9.5 `:799`, dòng DoD K2 `:876`.
+
+**K2 không phải kernel thật**: đây là **mô hình** TLB trong sim — không `sfence.vma`, không
+IPI/TLB phần cứng, không MMU. "IPI" là một [`MailboxMsg::TlbFlush`] trong hộp thư mô hình;
+"ack" là bộ đếm thế hệ trong mô hình. `spec/` **không** đổi; VSpace/PageTable/Frame vẫn
+`reserved`.
+
+### 14.1 Hình TLB (`v2/sim/vifast-sim/src/tlb.rs`)
+
+| Thành phần | Giá trị | Nguồn |
+|---|---|---|
+| `TLB_ENTRIES_PER_HART` | **16** `[TK]` | K2-PLAN §3 KT-40; đổi là đổi ngưỡng mô hình ⇒ cần D2 mới |
+| Khoá entry | `(generation, asid, va)` | Q4: `(asid, va)` là danh tính, `gen` để vô hiệu toàn bộ |
+| `va` của khoá | **VA gốc** của mapping (`Mapping::va`) | entry 2 MiB phủ 2 MiB; tra cứu/`flush` theo VA **trong** khoảng đều khớp |
+| Thay trang | **LRU tất định theo chỉ số** | K2-PLAN KT-40; `used` nhỏ nhất, hoà ⇒ chỉ số nhỏ nhất |
+| Bộ đếm | `hits/misses/fills/evictions/flushes/invalidated` + `delivered/acked` | `TlbHartInfo` |
+
+- `hit` ⇔ có entry **cùng `(generation, asid)`** và `va` **trong** `[key.va, key.va + 2^size_bits)`;
+  khác danh tính ⇒ **miss** (không dùng nhầm translation của thế hệ/ASID khác).
+- `translate(vspace, va)`: hit ⇒ trả ngay (`from_tlb = true`); miss ⇒ walk PageTable (KT-37) →
+  **fill** entry (`from_tlb = false`); walk lỗi (chưa map) ⇒ trả nguyên lỗi, **không** nạp entry
+  rác. Hart hiện tại phải **đang chạy** VSpace (`active_on`) — Touch chỉ có nghĩa khi hart nạp
+  ASID — nếu không ⇒ `IllegalOperation`.
+- `tlb_lookup` là tra **không** nạp/không đổi LRU (test/oracle).
+
+### 14.2 Ba phạm vi flush (Q4) — một hàm, ba mức
+
+`tlb_flush_local(hart, vs, scope)` và `HartTlb::flush` xử lý:
+
+| Scope | Xoá entry | Dùng ở |
+|---|---|---|
+| `Page { va }` | `(gen, asid)` khớp **và** entry **phủ** `va` (kể cả entry lớn chứa `va`) | `unmap`/`protect` (qua shootdown) |
+| `Asid` | mọi entry `(gen, asid)` | teardown VSpace; hart rời VSpace (`deactivate`/`activate` sang VSpace khác — flush cục bộ trên chính hart đó) |
+| `Generation` | mọi entry có `generation` **cũ hơn** mốc | cạn ASID: `generation += 1` ⇒ **một lần** flush mọi hart (Q4) |
+
+- Teardown VSpace (`finalise_vspace`) và cạn ASID là **broadcast của mô hình**: xoá thẳng TLB
+  của **mọi** hart (không qua hộp thư/ack), vì (a) chúng xảy ra bên trong `Revoke`/tạo VSpace,
+  không được phép chờ message; (b) teardown là lúc VSpace **không còn mapping** nào (root tinh
+  khiết) nên chỉ còn entry "kỷ niệm" — xoá đồng bộ là an toàn và mạnh hơn yêu cầu.
+- Hart **offline** (`set_hart_online(h, false)`) bị `clear()` toàn bộ TLB: hart đã tắt không
+  thể dịch, và không được nhận shootdown (đã bị bỏ khỏi mọi `active_on`).
+- `hart` rời VSpace (deactivate/chuyển VSpace) luôn flush **cục bộ trên hart đó** — mô hình
+  "thanh ghi ASID": một hart chỉ nạp một ASID hiện hành. Nhờ vậy `active_on` là **đúng** tập
+  hart có thể còn entry của VSpace; oracle ở §14.5 không thấy entry mồ côi.
+
+### 14.3 Shootdown + ack thế hệ (`unmap`/`protect`)
+
+`vspace_unmap` và `vspace_protect` đi theo đúng thứ tự thiết kế §4.10:
+
+1. `active_on` rỗng ⇒ **không gửi gì** (DoD); flush cục bộ + sửa PTE, trả như KT-38/KT-39.
+2. `active_on ≠ ∅`:
+   - **prepare**: đăng ký pending + **flush cục bộ** hart hiện tại (trước khi sửa PTE để
+     `check_tlb` cho phép trạng thái chuyển tiếp trên chính hart đó);
+   - sửa PTE (`page_table_unmap`/`page_table_protect`) — lỗi ⇒ xoá pending, trả nguyên lỗi;
+   - **post**: giao `TlbFlush { seq, ack, generation, asid, va }` cho **mọi hart khác** trong
+     `active_on`, theo hart **tăng dần** (tất định). **Không** IPI cho hart **gọi** — nó đã
+     flush cục bộ đồng bộ ở bước prepare và **ack ngầm** (D2-68). `ack` do **kernel** gán trong
+     `push_mail`: `ack = delivered` của hart đích sau khi tăng — đúng Q5 "`seq` = số **send Ok**";
+   - **wait**: chờ tới `acked_mask == targets`; chỉ khi đó mới trả `Ok`. Quá số vòng an toàn ⇒
+     `Busy` (không bao giờ treo) và `check_tlb` sau op bắt entry stale nếu có.
+
+**Deviation D2-68** (nhỏ hơn self-target, để local flush là đường tải **thật**): message
+`TlbFlush` **không** gửi cho hart gọi; `acked_mask` để so bất biến được định nghĩa
+`acked_mask = {hart gọi nếu hart gọi ∈ active_on} ∪ {hart đích đã ack message}`. Vì vậy bất biến
+Q5 `ack_mask == active_on` vẫn giữ **nguyên vẹn**, trong khi hart gọi không tự IPI mình. Đột biến
+"bỏ flush cục bộ" (M2, §14.6) vì thế **bị bắt** — không còn đường phụ nào khác xoá entry của
+hart gọi.
+
+Bất biến (Q5, dòng DoD "0 vi phạm TLB-safety"): **`unmap`/`protect` trả `Ok` ⇒ TLB của mọi hart
+trong `active_on` nhất quán với page table**. `last_tlb_shootdown()` trả ảnh chụp
+(`targets`, `acked`, `messages`, `rounds`, `completed`) để test khẳng định; `messages` = số
+`TlbFlush` đã giao (**trừ** hart gọi).
+
+Ack dùng đúng ngữ nghĩa **D2-60** (`vifast-sync`), không phải "giao = xong":
+
+- `delivered` = số `TlbFlush` đã giao **thành công** vào hộp thư hart (`= số send Ok`);
+- `acked` = `fetch_max` của các `ack` đã xử lý — **đơn điệu, không lùi** (`ack(3)` rồi `ack(1)`
+  vẫn 3); mô hình một luồng nên là `if seq > acked { acked = seq }`, **không** atomic/unsafe;
+- `acked ≠ delivered`: `delivered - acked` **phải bằng** số `TlbFlush` còn trong hộp thư
+  (`check_mailboxes` kiểm đẳng thức này). Hàng FIFO + `ack` cấp tăng dần ⇒ `acked` là **tiền tố
+  liên tục**: ack một message ngụ ý mọi message trước nó đã xử lý.
+
+### 14.4 Chống deadlock — hart chờ ack **phải rút hộp thư của mình**
+
+Luật thiết kế §4.10.3: "hart quay chờ khoá hoặc chờ ack phải xử lý hộp thư của mình" — v1 vi
+phạm đúng luật này ở lỗ **AP→BSP**. Vòng chờ ack của mô hình (mỗi vòng, `tlb_wait_round`):
+
+1. **rút hộp thư của hart đang chờ** (`drain_mail_fifo(hart)`) — đây là chỗ ack của hart khác
+   (và `TlbFlush` của hart khác gửi cho mình) được xử lý;
+2. `tlb_shootdown_wait` cho các hart đích **còn thiếu ack** "chạy" handler của họ (mô phỏng IPI
+   được phục vụ); `tlb_shootdown_poll` **không** làm hộ — đúng nghĩa "hart đang chờ tự phục vụ";
+3. kiểm `acked_mask == targets`; chưa đủ ⇒ vòng kế; quá `MAILBOX_CAP + 2` vòng ⇒ `Busy`.
+
+Hai ca **dương tính**:
+
+- `deadlock_ack_tu_hart_dang_cho` — hart 1 **đang chờ** ack của shootdown riêng; hart 0 `unmap`
+  buộc phải vừa trả ack cho hart 1 (rút hộp thư **của mình**) vừa nhận ack từ hart 1 (cho hart 1
+  chạy handler), cả hai hoàn tất, không treo.
+- `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` — **2 hart chờ nhau** (không self-target: hart 0
+  chờ ack hart 1, hart 1 chờ ack hart 0); mỗi hart chỉ tiến khi **tự** rút hộp thư của mình
+  (`tlb_shootdown_poll`), không hart nào chạy hộ **cho** hart kia. Vòng 1: hart 1 vẫn chờ; vòng
+  2: hart 0 xong; vòng 3: hart 1 xong. Thiếu bước tự phục vụ ⇒ cả hai không bao giờ xong.
+
+**Đột biến** "bỏ xử lý hộp thư khi chờ ack" (xoá `drain_mail_fifo` trong `tlb_wait_round`) bị
+bắt bởi `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu`: ack chéo không bao giờ xuất hiện vì mỗi
+hart không tự rút hộp thư của mình (không dựa self-target); log
+`v2/agent/JOURNAL/kt40-mutation-bo-rut-hop-thu.log`.
+
+### 14.5 Oracle TLB-safety — `check_tlb` / `tlb_violations`
+
+Sau **mỗi** public op (`sched_after_op`, cửa sổ nhanh `tlb_fill_total == 0 && tlb_msg_total == 0`):
+
+1. bất biến rẻ: `entries ≤ 16`, `acked ≤ delivered`;
+2. mọi entry còn sống phải khớp **cây PageTable hiện tại**: tồn tại VSpace **sống** cùng
+   `(generation, asid)`, `va` còn map, và `pa`/`size_bits`/`frame`/`rights`/`attrs` **bằng**
+   mapping hiện tại; entry của VSpace đã chết hoặc VA đã hết map ⇒ vi phạm;
+3. **entry chỉ được nằm trên hart thuộc `active_on`** của VSpace đó — hart rời VSpace
+   (`deactivate`/đổi VSpace/offline) hoặc VSpace bị teardown phải xoá entry. Entry trên hart
+   **ngoài** `active_on` ⇒ vi phạm (đột biến "bỏ flush khi `deactivate`" bị bắt ở đây);
+4. entry nằm dưới một shootdown **chưa xong** (pending của bất kỳ hart) được **bỏ qua** — trạng
+   thái chuyển tiếp có chủ đích "PTE đã đổi, `TlbFlush` chưa xử lý"; pending xong thì oracle
+   **chặt** trở lại.
+
+`tlb_violations()` đếm số entry vi phạm (0 ⇔ TLB-safety đúng). Ca **dương tính** chứng minh
+oracle không rỗng: unit test `kobj::tests::check_tlb_bat_entry_mo_coi_va_entry_khong_con_map`
+gieo entry của `(gen, asid)` không còn VSpace và entry của VA đã hết map — cả hai bị bắt.
+
+### 14.6 Test, mutation, cổng
+
+`v2/sim/vifast-sim/tests/kt40_tlb.rs` (**10 test**):
+
+| Test | Kiểm |
+|---|---|
+| `tlb_16_entry_moi_hart_lru_tat_dinh_hit_miss` | 16 entry/hart, hit/miss/fill/evict, LRU tất định, TLB **theo hart** |
+| `shootdown_1_2_4_8_hart_ack_du` | shootdown 1/2/4/8 hart: `Ok ⇒ acked == active_on`; entry trang bị unmap mất trên **mọi** hart; `delivered == acked`; dùng entry cũ ⇒ miss/`NotMapped` |
+| `ack_thieu_ok_chua_tra` | `begin` chỉ giao message (acked ≠ targets, message còn trong hộp thư); `wait` đủ ack mới `Ok` |
+| `flush_theo_trang_asid_va_gen` | flush theo `(asid, va)`, `asid` (kể cả `deactivate`), `gen` (cạn 256 ASID ⇒ thế hệ mới xoá **mọi** entry cũ) |
+| `protect_cap_nhat_quyen_tren_moi_hart` | entry quyền **cũ** bị vô hiệu trên mọi hart; dịch lại ra quyền mới |
+| `deadlock_ack_tu_hart_dang_cho` | hart đang chờ vẫn trả ack cho hart khác, không treo |
+| `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` | 2 hart chờ nhau, **không** self-target: chỉ drain hộp thư của mình mới tiến (AP→BSP) |
+| `hart_goi_ngoai_active_on_van_shootdown_dung` | unmap từ hart **ngoài** `active_on`: local flush + chỉ gửi cho hart trong mask, ack đủ |
+| `loi_bien_hart_va_vspace` | hart không chạy VSpace ⇒ `IllegalOperation`; hart/VSpace không có thật; `active_on` rỗng ⇒ **không gửi**; begin thứ hai khi đang chờ ⇒ `Busy`; VSpace đã chết ⇒ `InvalidCapability` |
+| `property_10k_tlb_shootdown` | 10.000 vòng 4 hart ngẫu nhiên tất định: `check_tlb`/`tlb_violations() == 0` sau mỗi vòng, `acked ≤ delivered`, không pending/message tồn dư |
+
+Unit test trong `src/tlb.rs` (5) + `src/kobj.rs` (1 ca dương tính oracle). Miri: chạy
+`--test kt40_tlb` (property tự giảm còn 2 hart × 150 vòng, ca cạn 256 ASID tự bỏ qua bằng
+`cfg(miri)` — không `#[ignore]`); `kt40_tlb` nằm trong danh sách `v2 miri`/`nightly --only-miri`.
+
+**Năm đột biến, mỗi ca một chỗ, log thật** (khôi phục bằng bản sao + hash khớp; K2-PLAN KT-40
++ Q5 chặn KT-43):
+
+| Mã | Đột biến | Ca đỏ kỳ vọng | Log |
+|---|---|---|---|
+| M1 | bỏ `tlb_shootdown_wait` trong `vspace_unmap` (trả `Ok` khi thiếu ack) | `shootdown_1_2_4_8_hart_ack_du`, `hart_goi_ngoai_active_on_van_shootdown_dung`, `deadlock_ack_tu_hart_dang_cho`, `property_10k_tlb_shootdown` | `v2/agent/JOURNAL/kt40-mutation-bo-wait.log` |
+| M2 | bỏ **flush cục bộ** trong `tlb_shootdown_prepare` | `protect_cap_nhat_quyen_tren_moi_hart`, `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu`, `shootdown_1_2_4_8_hart_ack_du`, `property_10k_tlb_shootdown` | `v2/agent/JOURNAL/kt40-mutation-bo-flush-cuc-bo.log` |
+| M3 | ack **sai seq** (+1 khi ghi `acks` trong `tlb_shootdown_post`) | `ack_thieu_ok_chua_tra`, `shootdown_1_2_4_8_hart_ack_du`, `hart_goi_ngoai_active_on_van_shootdown_dung`, `protect_...`, `deadlock_*`, `property_10k_tlb_shootdown` | `v2/agent/JOURNAL/kt40-mutation-ack-sai-seq.log` |
+| M4 | **bỏ rút hộp thư** trong `tlb_wait_round` | `deadlock_hai_hart_cho_nhau_poll_tu_phuc_vu` (AP→BSP, không self-target) | `v2/agent/JOURNAL/kt40-mutation-bo-rut-hop-thu.log` |
+| M5 | bỏ flush khi `vspace_deactivate` | `flush_theo_trang_asid_va_gen`, `property_10k_tlb_shootdown` | `v2/agent/JOURNAL/kt40-mutation-bo-flush-deactivate.log` |
+
+Mỗi ca: mutant **một chỗ**, chạy `cargo test -p vifast-sim --test kt40_tlb`, log đỏ đúng tên ca
+ở trên, khôi phục bằng `cp` bản sao + `shasum -a 256` **khớp** trước/sau, chạy lại 10/10 xanh
+(xem từng log).
+
+### 14.7 Không làm ở KT-40 (ranh giới)
+
+- **Không** `sfence.vma`/TLB phần cứng/IPI thật/shot IPI; không MMU — **K3**.
+- **Không** thêm kind nào khác vào hộp thư: `VmKick`/`PowerReq` vẫn **K3** (D2-65 Q5 chỉ nới
+  D2-59 cho đúng `TlbFlush`).
+- **Không** VM fault/`FaultKind::Vm` (KT-41); **không** `.scn`/`check_vm` gộp/shared read-only
+  (KT-42); **không** 4 đột biến còn lại + 100k×4 (KT-43).
+- **Không** đổi `spec/`; `abi.toml` không có kind/mã mới.
+- Khoá `usize`→hart, `Vec`/`u64` thường: **không** `unsafe`, **không** atomic/thread/loom —
+  mô hình một luồng tất định (D2-49(f)); K3 thay "hộp thư + ack bộ đếm" bằng IPI/SBI thật nhưng
+  **giao thức không đổi** (thiết kế §4.10 bước 4).
