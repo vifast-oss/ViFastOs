@@ -6,14 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-98 — soak 30 phút (8 vòng tuần tự)** — xong, soak **8/8 OK**, cổng PASS;
+Task          : **ST-99 — R16 + ROADMAP bàn giao** — xong, `report-check --all` PASS, cổng PASS;
                 **chưa commit**.
-Bước          : 3/3 (test đỏ → script + test → soak 8 vòng: 2 gate, 2 diff, 2 host, 2 cache → gate cuối).
+Bước          : 3/3 (ROADMAP 55 dòng + JSON 112 hàng QUEUE@a9892676 + MD §1..§8/§19 + đo lại + gate).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T21:34:27Z**; **1010** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54 ×2** /
-                parity **398/398 + 49** / soak **8/8** (818 s) / differential **0 lệch** (2 vòng)
-Việc dở       : commit `[ST-98]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T21:46:42Z** (report-check PASS: **16
+                báo cáo, 112 hàng QUEUE**); **1010** test / sem **447/22** / `vis test` **447 ok**
+                (`--vm` **447 ok + 0 SKIP**) / parity **398/398 + 49** / host **54/54 ×2** / soak
+                **8/8** (818 s) / differential **100.000 / 0 lệch** (164,9 s) / cache **520×4 / 0 lệch** /
+                fuzz parser **2.453.833 ca / 0 vi phạm** / targets **18/18 check** / fmt **497 tệp**
+Việc dở       : commit `[ST-99]` + push (đã được uỷ quyền)
+
+## ST-99 — R16 + ROADMAP bàn giao, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **ROADMAP** | `agent/ROADMAP.md` **55 dòng** (≤120): bảng 8 hạng mục VS2 × mức thật/bằng chứng/điều kiện đóng 100%; B1 lệnh cổng+soak; B2 5 việc trước (Landlock thật + runner Linux; runner wasm; TLS; siết mặc định caps; async song song); B3 nơi đọc (`QUEUE`, `DECISIONS` VD-01..VD-112, `reports/R1..R16`, `HOST-BAO-DAM.md`, `STATE.md`). Không vượt mức: async một luồng; kênh `chan(0)` bị từ chối; net loopback không TLS; quyền chưa mặc định/chưa Landlock; LSP thiếu hover; gói chưa semver/HTTP/ký; đa nền tảng chỉ check; host 54 ca macOS. |
+| 1 | **JSON** | `R16-viscript.json` + `.license`: `round=16`, `head=a9892676`, **112 task** (111 DONE + ST-99 READY), `blocked=[]`, đúng **11 khoá**; `report-check --all` **PASS (16 báo cáo, 112 hàng)**. |
+| 2 | **MD** | `R16-viscript.md` **129 dòng**: tóm tắt 5 dòng; bảng ST-96/97/98/99; §3 đo lại (1010 test, sem 447/22, 447 ok/`--vm` 0 SKIP, host 54/54×2, parity 398+49, diff 100k/0, cache 520×4/0, fuzz parser 2.453.833 ca/0, soak 8/8 818 s, VBC1 53, 32 mã, allowlist 6, targets 18/18, fmt 497); §4 §19 đúng mức; §5 nợ **75..77** (tổng 77 mục); §6 **VD-112**; §7 **bàn giao** trỏ ROADMAP; §8 kết luận. |
+| 3 | **Đo lại** | **1010** test = 21+96+27+154+26+62+9+**615**; sem **447/22**; `vis test` **447 ok** / `--vm` **447 ok + 0 SKIP**; parity **398/398 + 49**; diag **364/49/34**; host **54/54, 120 lần, VM 54/54**; soak **8/8 818 s**; diff **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=164.9 toc_do=606/s seed=20261115`**; cache **520×4 so 520, 0 lệch, 24,28 s**; fuzz parser **2.453.833 ca / 55.832.883 token / 0 vi phạm**; targets **18/18 check**; fmt **497 (429+68)**; indent **8/10**; `VBC1` **53**; **32 mã**; allowlist **6**. |
+| 4 | **Cổng** | **PASS** `2026-11-14T21:46:42Z`; log `JOURNAL/st99-gate-fast.log`; 3 dòng cuối: `test result: ok. 0 passed; …` / `--- L0 test: OK` / `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`; report-check PASS trong cổng. |
+| 5 | **Nợ** | Tổng **77 mục** (R14 67 + R15 68..74 + mới 75..77): quét sổ mã chỉ `src`; allowlist Proc còn rộng (basename/args); soak 818 s chưa đủ 30 phút + phụ thuộc PATH; cộng nợ cũ: Landlock thật, runner 4 nền, TLS, async song song, quyền mặc định/sandbox con. |
 
 ## ST-98 — soak 30 phút, 2026-11-14
 

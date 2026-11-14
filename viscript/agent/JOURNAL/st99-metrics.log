@@ -1,0 +1,43 @@
+== test
+SUM=1010
+== sem
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.25s
+== vis test
+447
+== vis test vm
+447
+0
+== host
+vis-host-suite: 54/54 ca xanh (chạy thật trên macOS; 3 nền còn lại chưa đo)
+== parity
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+== diag
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.02s
+== cache
+CACHE_KHONG_CHE ca=520 so=520 cache_dir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-cache-st87-all-51236-4
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.28s
+== targets
+18
+== fmt
+fmt_exit=0
+== indent
+indent-report: 8 tệp, 10 dòng lệch (chuẩn 4 × độ sâu khối)
+== codes
+      32
+== vbc
+53
+== fmt files
+497 429 68
+== soak log
+=== TỔNG | 818s | 8/8 vòng OK | load sau:  6:30  up 26 days, 19:05, 1 user, load averages: 4.31 4.68 4.73
+== soak lines
+8
+
+# diff
+DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.6 toc_do=560/s seed=20261115
+DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=164.9 toc_do=606/s seed=20261115
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 164.88s
+
+# fuzz
+vis-parse-fuzz: 2453833 ca, 55832883 token, 40897 ca/s, 930548 token/s, 60.0 s, vi phạm 0
+vis-parse-fuzz: PASS (không vi phạm)
