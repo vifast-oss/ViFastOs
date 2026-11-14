@@ -1,0 +1,32 @@
+# ST-98 — log ĐỎ (Rust) lúc 2026-11-14T21:01:23Z, HEAD 1eeb1b23 — chưa có bin/vis-soak.
+# lệnh: cargo test -p vis-cli --test soak_script
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.27s
+     Running tests/soak_script.rs (target/debug/deps/soak_script-76b73931a0e5b712)
+
+running 2 tests
+test vis_soak_co_spdx_va_khong_ne ... FAILED
+test dry_run_in_dung_8_vong ... FAILED
+
+failures:
+
+---- vis_soak_co_spdx_va_khong_ne stdout ----
+
+thread 'vis_soak_co_spdx_va_khong_ne' (49346650) panicked at crates/vis-cli/tests/soak_script.rs:20:5:
+thiếu /Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli/../../bin/vis-soak
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- dry_run_in_dung_8_vong stdout ----
+
+thread 'dry_run_in_dung_8_vong' (49346649) panicked at crates/vis-cli/tests/soak_script.rs:50:10:
+chạy --dry-run: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+
+failures:
+    dry_run_in_dung_8_vong
+    vis_soak_co_spdx_va_khong_ne
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vis-cli --test soak_script`

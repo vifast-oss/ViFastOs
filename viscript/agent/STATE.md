@@ -6,15 +6,25 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-97 — `--grant` cho `cap[Proc]` (allowlist lệnh)** — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 3/3 (đo đỏ 2/6 → allowlist lặp `--grant`, khớp basename/canonical → 6 ca → 1009 test →
-                diff 100k → cổng).
+Task          : **ST-98 — soak 30 phút (8 vòng tuần tự)** — xong, soak **8/8 OK**, cổng PASS;
+                **chưa commit**.
+Bước          : 3/3 (test đỏ → script + test → soak 8 vòng: 2 gate, 2 diff, 2 host, 2 cache → gate cuối).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T20:59:47Z**; **1009** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49** / differential **100.000 / 0 lệch** (153,3 s) / sổ mã **32**
-Việc dở       : commit `[ST-97]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T21:34:27Z**; **1010** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54 ×2** /
+                parity **398/398 + 49** / soak **8/8** (818 s) / differential **0 lệch** (2 vòng)
+Việc dở       : commit `[ST-98]` + push (đã được uỷ quyền)
+
+## ST-98 — soak 30 phút, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Script** | `bin/vis-soak` **61 dòng**, SPDX `#`, `set -u`, `+x`, `--dry-run` in **đúng 8 tên vòng**; tuần tự, ghi từng vòng (tên/giờ/giây/exit/kết luận) ra stdout + `JOURNAL/st98-soak.log`; **không** retry; vòng đỏ ⇒ dừng + ghi load. Có `PATH` tường minh (background job không có `~/.cargo/bin`). |
+| 1 | **Ca** | `soak_script.rs` **1 test** (+1 = **1010**): tồn tại + `+x` + SPDX + `set -u` + **không** `--ignore`/`|| true` + `--dry-run` đúng 8 tên. **Không** chạy soak trong test. Red `st98-red-rust.log`. |
+| 2 | **Soak** | **8/8 OK**, tổng **818 s** (13m38s): gate-1 **224 s**, gate-2 **211 s**, diff-1 **160 s**, diff-2 **158 s**, host-1 **9 s**, host-2 **7 s**, cache-1 **24 s**, cache-2 **25 s**; exit **0** mọi vòng; **0 flaky sản phẩm**. Load trước **7,48/5,90/4,64**, sau **4,31/4,68/4,73** (máy bận nhưng không ảnh hưởng kết quả). |
+| 3 | **Sự cố hạ tầng** | Lần chạy đầu dừng ở **cache-1 exit 127** vì `cargo: command not found` (PATH của background job) — **không** phải lỗi sản phẩm/không phải flaky; đã sửa script thêm PATH, **chạy lại toàn bộ** 8 vòng hợp lệ. Log lần đầu giữ `st98-soak-attempt1-infra.log`; **không** retry để che đỏ. |
+| 4 | **Đo** | **1010** test = 1009 + **1** (21+96+27+154+26+62+9+**615**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54 ×2**; parity **398/398 + 49**; differential 2 vòng 100k **0 lệch** (160/158 s); `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 5 | **Nợ** | Soak chỉ 8 vòng/13m38s (chưa đủ 30 phút thực; đúng danh sách 8 vòng theo đề) — muốn đủ 30 phút phải tăng vòng/seed, **không** tự nới; `bin/vis-soak` phụ thuộc `~/.cargo/bin` (đã thêm PATH nhưng vẫn giả định vị trí cargo); lần đầu lỗi PATH là **T-INFRA** đã ghi; chưa soak trên Linux/Windows; test chỉ kiểm tĩnh script, không đo thời gian. |
 
 ## ST-97 — `--grant` cho `cap[Proc]`, 2026-11-14
 

@@ -1,0 +1,61 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ST-98/VD-112 — soak tuần tự 8 vòng (KHÔNG chạy song song build/cổng khác — AGENTS §6).
+# Không retry: vòng đỏ ⇒ ghi rõ + dừng (T-INFRA nếu do tải máy).
+set -u
+# `cargo` không nằm trong PATH của shell không đăng nhập (background job) — bổ sung tường minh.
+PATH="${HOME}/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export PATH
+cd "$(dirname "$0")/.." || exit 2
+LOG=agent/JOURNAL/st98-soak.log
+
+if [ "${1:-}" = "--dry-run" ]; then
+    printf '%s\n' gate-1 gate-2 diff-1 diff-2 host-1 host-2 cache-1 cache-2
+    exit 0
+fi
+
+mkdir -p agent/JOURNAL
+: > "$LOG"
+tong=0
+truoc=$(uptime)
+head=$(git rev-parse --short HEAD 2>/dev/null)
+{
+    echo "# ST-98 — soak 8 vòng, bắt đầu $(date -u +%Y-%m-%dT%H:%M:%SZ), HEAD ${head:-?}"
+    echo "# load trước: $truoc"
+} | tee -a "$LOG"
+
+chay() {
+    ten=$1
+    shift
+    bat=$(date +%s)
+    bat_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    echo "=== $ten | bắt đầu $bat_iso" | tee -a "$LOG"
+    "$@" >>"$LOG" 2>&1
+    ma=$?
+    het=$(date +%s)
+    het_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    giay=$((het - bat))
+    tong=$((tong + giay))
+    if [ "$ma" -eq 0 ]; then
+        cl="OK"
+    else
+        cl="ĐỎ (exit $ma)"
+    fi
+    echo "=== $ten | kết thúc $het_iso | ${giay}s | exit=$ma | KẾT LUẬN: $cl" | tee -a "$LOG"
+    if [ "$ma" -ne 0 ]; then
+        echo "soak: DỪNG ở $ten — KHÔNG retry; nếu do tải máy ghi T-INFRA (load: $(uptime))" | tee -a "$LOG"
+        exit "$ma"
+    fi
+}
+
+chay gate-1 ../vis-dev gate --fast
+chay gate-2 ../vis-dev gate --fast
+chay diff-1 env VIS_DIFF_N=100000 VIS_DIFF_SEED=20261115 ./bin/vis-diff
+chay diff-2 env VIS_DIFF_N=100000 VIS_DIFF_SEED=20261115 ./bin/vis-diff
+chay host-1 ./bin/vis-host-suite
+chay host-2 ./bin/vis-host-suite
+chay cache-1 cargo test -p vis-cli --test cache_khong_che
+chay cache-2 cargo test -p vis-cli --test cache_khong_che
+
+sau=$(uptime)
+echo "=== TỔNG | ${tong}s | 8/8 vòng OK | load sau: $sau" | tee -a "$LOG"
