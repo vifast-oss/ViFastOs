@@ -1,0 +1,9 @@
+# ST-67 — log ĐỎ (sem) lúc 2026-11-14T07:46:54Z, HEAD c3e76c06.
+# Red-first: `vis lsp` **chưa tồn tại** ⇒ mọi frame LSP không thể sinh; harness CUỐI (tests/lsp.rs) đã viết.
+# Không thêm ca test/sem (VD-105 (7)).
+
+== vis lsp --stdio (stdin rỗng)
+   dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+   [exit=2]
+
+== KẾT LUẬN: đỏ đúng lý do — CLI chưa có nhánh `lsp`, in usage và thoát 2 thay vì frame JSON-RPC.

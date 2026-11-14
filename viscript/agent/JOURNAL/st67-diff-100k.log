@@ -1,0 +1,5 @@
+# ST-67 — differential 100.000 chương trình (interp vs VM), 2026-11-14T07:55:33Z, HEAD c3e76c06
+# lệnh: ./bin/vis-diff
+
+DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=282.6 toc_do=354/s seed=3523158054
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 282.63s

@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod cache;
 mod fsmock;
+mod lsp;
 mod modules;
 mod net;
 mod ngoai;
@@ -17,7 +18,7 @@ use net::Net as HostNet;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>"
+        "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio"
     );
     ExitCode::from(2)
 }
@@ -176,7 +177,9 @@ fn check_mode(path: &str, cho_ngoai: bool, kiem_kieu: bool) -> Result<(), ChanDo
 }
 
 fn usage_fmt() -> ExitCode {
-    eprintln!("dùng: vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>");
+    eprintln!(
+        "dùng: vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…> | vis lsp --stdio"
+    );
     ExitCode::from(2)
 }
 
@@ -709,6 +712,8 @@ fn main() -> ExitCode {
         Some("check") => run_check(&args[1..]),
         // ST-30: chạy bộ ca `test/sem/**` in TAP.
         Some("test") => vistest::run(&args[1..]),
+        // ST-67 (VD-102): server LSP tối thiểu trên stdio (khung + JSON-RPC).
+        Some("lsp") => lsp::run(&args[1..]),
         Some("fmt") => run_fmt(&args[1..]),
         _ => usage(),
     }

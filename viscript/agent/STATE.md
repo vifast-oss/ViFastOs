@@ -6,17 +6,36 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-66 — VS2 #3d: ca biên net/http** (6 ca mới + mở rộng cache cho server; tổng
-                **24** ca net/http/server; `--explain-perms` đủ **4 dòng**; **KHÔNG** mã sản phẩm mới
-                — chỉ test + docs) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (viết 6 ca + mở rộng 1 ca → **24/24 xanh** ngay trên HEAD ST-65 (không có đỏ) →
-                workspace **813** → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-67 — VS2 #5a: `vis lsp` khung** (khung `Content-Length`, JSON-RPC 2.0,
+                `initialize`/`initialized`/`shutdown`/`exit`, 7 snapshot + 1 ca cờ lạ; 3 tệp mới
+                ≤300 dòng) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 8 test + probe → `lsp/{khung,jsonrpc,mod}.rs` + nhánh `main` →
+                8/8 xanh → workspace **821** → cổng → differential 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:42:34Z**; **813** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T07:58:24Z**; **821** test / sem
                 **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (217,0 s) / **7 sổ-32 mã** (không mã mới) /
+                differential **100.000 chương trình 0 lệch** (282,6 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-66]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-67]` + push (đã được uỷ quyền)
+
+## ST-67 — VS2 #5a: `vis lsp --stdio` khung LSP + JSON-RPC 2.0, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **R1** | 3 tệp mới: `lsp/mod.rs` **181**, `lsp/khung.rs` **72**, `lsp/jsonrpc.rs` **66** dòng (đều ≤300); `main.rs` **720** (<1.500). Không `unsafe`, không crate mới. |
+| 1 | **Khung** | `khung::Doc<BufReader<StdinLock>>`: đọc header tới dòng trống, **bắt buộc** `Content-Length`, bỏ qua `Content-Type`/header lạ, `read_exact` đúng **N byte**, cap body **16 MiB**; ghi `Content-Length: {len}
+
+{body}` + **flush**. EOF sạch ⇒ `Ok(None)`; header cụt ⇒ lỗi (stderr, exit 1). |
+| 2 | **JSON-RPC** | `jsonrpc.rs` dựng `Value::Map` (giữ thứ tự) rồi mã hoá bằng `vis_interp::stdlib::json`; giải mã bằng `vis_interp::json::decode` — **không** serde/crate mới (tiền lệ `fsmock.rs:66`). Response `{jsonrpc,id,result}`, error `{jsonrpc,id,error{code,message,data}}`. |
+| 3 | **Dispatch** | `initialize` ⇒ `capabilities{textDocumentSync:1, positionEncoding:"utf-16", hoverProvider:true, completionProvider{triggerCharacters:["."]}}` + `serverInfo{name:"vis"}` (**không** version/rootUri ⇒ snapshot tất định); `initialized` = notification **không frame**; `shutdown` ⇒ `result:null`; `exit` ⇒ **0** nếu đã shutdown, **1** nếu chưa; method lạ ⇒ **-32601**; body JSON hỏng ⇒ **-32700** (`id:null`, `data` = lỗi decode); trước `initialize` ⇒ **-32002**; object thiếu `method`/không phải object ⇒ **-32600** (thêm rẻ); EOF stdin ⇒ exit 0. |
+| 4 | **Nối CLI** | `main.rs`: `mod lsp;`, nhánh `Some("lsp") => lsp::run(&args[1..])`, `usage()` thêm `vis lsp --stdio`; cờ lạ ⇒ stderr + **exit 2**. Nhánh LSP **không** `println!`/`xuat_stdout` — stdout chỉ có frame. |
+| 5 | **Ca (8 test)** | `crates/vis-cli/tests/lsp.rs`: `lsp_khoi_tao`, `lsp_initialized_khong_frame`, `lsp_shutdown_exit_0`, `lsp_exit_truoc_shutdown_1`, `lsp_method_la_32601`, `lsp_body_hong_32700`, `lsp_truoc_initialize_32002`, `lsp_co_la_2`. Helper `khung(body)` + `chay(input)` bơm stdin, đọc hết stdout, **deadline 5 s** rồi kill. Snapshot **nguyên văn** từng frame (không parse lại); `Content-Length` khớp `body.len()` theo cấu tạo. |
+| 6 | **Red-first** | `vis lsp` **chưa tồn tại**: `JOURNAL/st67-red-sem.log` sha256 `29887e3a…` (probe `vis lsp --stdio` ⇒ usage + **exit 2**); `JOURNAL/st67-red-rust.log` sha256 `588808c2…` (`cargo test -p vis-cli --test lsp` ⇒ **0 passed / 8 failed**, exit 101). |
+| 7 | **Đo** | **821** test = 813 + **8** (21+96+18+154+26+62+9+**435**); sem **441/21** giữ nguyên; `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=282.6 toc_do=354/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491**. |
+| 8 | **Khung byte mẫu (initialize)** | body **199 byte**: `{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"positionEncoding":"utf-16","hoverProvider":true,"completionProvider":{"triggerCharacters":["."]}},"serverInfo":{"name":"vis"}}}`; frame = `Content-Length: 199
+
+` + body. |
+| 9 | **Nợ** | **Chưa** có diagnostics/completion/hover thật (ST-68/69 — `hoverProvider:true` mới là khai báo trước); chưa đọc `params`; `positionEncoding` cố định `utf-16` (chưa thương lượng); chưa xử lý notification khác (vd `textDocument/didOpen`); `-32600` ngoài danh sách đề bài (thêm rẻ); EOF stdin ⇒ exit 0 (không theo spec LSP "chỉ exit khi có `exit`" — cần cho CI/test); một luồng; cap body 16 MiB. |
 
 ## ST-66 — VS2 #3d: ca biên net/http (24 ca, chốt hạng mục VS2 #3), 2026-11-14
 

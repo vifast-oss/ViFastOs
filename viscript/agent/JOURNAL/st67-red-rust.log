@@ -1,0 +1,97 @@
+# ST-67 — log ĐỎ (Rust) lúc 2026-11-14T07:47:04Z, HEAD c3e76c06 — harness CUỐI chạy trên CLI **chưa có** `vis lsp`.
+# lệnh: cargo test -p vis-cli --test lsp
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.67s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 8 tests
+test lsp_co_la_2 ... FAILED
+test lsp_initialized_khong_frame ... FAILED
+test lsp_exit_truoc_shutdown_1 ... FAILED
+test lsp_khoi_tao ... FAILED
+test lsp_body_hong_32700 ... FAILED
+test lsp_truoc_initialize_32002 ... FAILED
+test lsp_shutdown_exit_0 ... FAILED
+test lsp_method_la_32601 ... FAILED
+
+failures:
+
+---- lsp_co_la_2 stdout ----
+
+thread 'lsp_co_la_2' (45180234) panicked at crates/vis-cli/tests/lsp.rs:155:5:
+stderr phải nêu cờ lạ: "dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>\n"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_initialized_khong_frame stdout ----
+
+thread 'lsp_initialized_khong_frame' (45180236) panicked at crates/vis-cli/tests/lsp.rs:80:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+---- lsp_exit_truoc_shutdown_1 stdout ----
+
+thread 'lsp_exit_truoc_shutdown_1' (45180235) panicked at crates/vis-cli/tests/lsp.rs:112:5:
+assertion `left == right` failed: exit trước shutdown phải 1; stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 1
+
+---- lsp_khoi_tao stdout ----
+
+thread 'lsp_khoi_tao' (45180240) panicked at crates/vis-cli/tests/lsp.rs:64:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+---- lsp_body_hong_32700 stdout ----
+
+thread 'lsp_body_hong_32700' (45180233) panicked at crates/vis-cli/tests/lsp.rs:133:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+---- lsp_truoc_initialize_32002 stdout ----
+
+thread 'lsp_truoc_initialize_32002' (45180245) panicked at crates/vis-cli/tests/lsp.rs:142:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+---- lsp_shutdown_exit_0 stdout ----
+
+thread 'lsp_shutdown_exit_0' (45180244) panicked at crates/vis-cli/tests/lsp.rs:99:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+---- lsp_method_la_32601 stdout ----
+
+thread 'lsp_method_la_32601' (45180241) panicked at crates/vis-cli/tests/lsp.rs:125:5:
+assertion `left == right` failed: stderr: dùng: vis explain [--lang vi|en|ja] <VSxxxx> | vis explain --list [--lang vi|en|ja] | vis run [--tap] <tệp.vis> [-- args…] | vis check <tệp…> | vis fmt <tệp> | vis fmt --write <tệp…> | vis fmt --check <tệp…>
+
+  left: 2
+ right: 0
+
+
+failures:
+    lsp_body_hong_32700
+    lsp_co_la_2
+    lsp_exit_truoc_shutdown_1
+    lsp_initialized_khong_frame
+    lsp_khoi_tao
+    lsp_method_la_32601
+    lsp_shutdown_exit_0
+    lsp_truoc_initialize_32002
+
+test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`
+
+[cargo exit=101]
