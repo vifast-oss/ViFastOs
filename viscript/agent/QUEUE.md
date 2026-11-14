@@ -192,7 +192,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-93b | **im lặng mới phát sinh ở ST-93**: `.vish` có `fn main` **có thân** ⇒ thân `main` **không chạy** (trước đây cũng vậy nhưng im lặng) — phải **chẩn đoán** | ST-93 | 1,5 h | **DONE** | ≥4 ca; `main` chỉ khai `cap` (thân rỗng) vẫn hợp lệ |
 | ST-94 | **kênh** — `chan[T](0)` rendezvous + ngữ nghĩa `close` (recv sau close, send sau close) + drain `Moi` | ST-93 | 3 h | **DONE** | ≥8 ca; không treo; interp = VM |
 | ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **DONE** | MD+JSON; nợ đánh số |
-| ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **READY** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
+| ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **DONE** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
 | ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **READY** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
 | ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **READY** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
 | ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **READY** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
@@ -1416,3 +1416,13 @@ APPROVED 2026-11-14 Agent 0
 > (output không đổi). Đo: **999 test** · sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · differential **100k/0 lệch** (155,3 s).
 > Nợ: **không** rendezvous thật; exit 1 (không 2) cho `chan(0)`; drain không có wait-set; `chan(0)` bị chặn cả khi chỉ `close`.
 > **ST-95 mở** (R15).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-96 DONE — bất biến sổ mã đã khoá (đo được: A=33, B=32, `A\B={VS0001}`, `B\A=∅`).** Commit `d442721b` (**Agent 2 tự commit,
+> đã push**). `A\B` chỉ là **literal ví dụ định dạng** trong unit test `vis-diag` (không phải mã chẩn đoán) ⇒ đổi sang
+> `format!("VS{:04}", 1)` **kèm lý do**; **không** thêm/đổi mã (`all_codes()` vẫn **32**, `--list` 32). `DU_PHONG = &[]` (rỗng) có
+> tài liệu lý do; **4 ca** gồm (b) khẳng định `B\A == DU_PHONG` ⇒ thêm mã vào sổ mà **không dùng** sẽ **làm đỏ**. Đo: **1003 test** ·
+> sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54** · differential **100k/0 lệch** (153,2 s).
+> Nợ: phép quét **cố ý** chỉ phủ `crates/*/src/**/*.rs`; `DU_PHONG` rỗng; chưa đối chiếu tài liệu/spec (ngoài quyền).
+> **ST-97 mở** (`--grant` cho `cap[Proc]`).
