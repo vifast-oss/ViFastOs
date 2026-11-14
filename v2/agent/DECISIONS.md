@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-67`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-68`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-67: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-68: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -104,6 +104,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 - **D2-67** KT-39: W^X áp **toàn cục** trên `page_table_map_obj`/mọi Frame có mapping, **không** miễn trừ PageTable thuần; map W khi `mapped_x>0` hoặc map EXEC khi `mapped_w>0` ⇒ `WxViolation` atomic; `Device+EXEC` cũng vậy. đính chính: **3 ca KT-36 + 2 ca KT-37** cũ (W+X hợp lệ) được **cập nhật kỳ vọng** sang `WxViolation` — làm chặt, không nới; các assertion khác giữ nguyên. `check_wx`/`check_vm` recount toàn bộ.---
 
+- **D2-68** KT-40: `TlbFlush` là **một** kind mới trong hộp thư model (nới D2-59, chỉ kind này); shootdown `unmap`/`protect` **gửi cho mọi hart trong `active_on`, kể cả hart gọi** (self-target) — chặt hơn câu chữ K2-PLAN "các hart còn lại", chấp nhận; `Ok` chỉ khi `acked_mask == active_on`; ack `fetch_max`; teardown/cạn ASID flush **broadcast trực tiếp** (đồng bộ, không qua hộp thư). Yêu cầu bằng chứng: **4 mutation** (bỏ chờ ack, bỏ flush cục bộ, ack sai seq, bỏ drain hộp thư) + test hart gọi **ngoài** `active_on` + test AP→BSP tương hỗ không dựa self-target + oracle "entry trên hart ngoài `active_on` là vi phạm". Không tự hạ số mutation trong tài liệu.
 ## Phần III — Duyệt
 
 - **T04 cũ = KT-04d; APPROVED mở KT-05.**
