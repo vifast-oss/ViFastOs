@@ -832,3 +832,10 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   module-aware** (giải `use ./x` + `std.*` để **hết chẩn đoán giả**); **`--strict-caps`** (tuỳ chọn, **mặc định không đổi**).
   (2) **Không** đụng ngữ nghĩa đã khoá; mỗi task ≥6 ca, giữ **874 test/447 sem/parity 398/398/diff 0 lệch** (số sẽ tăng).
   (3) Vòng 12 **không** hứa: Landlock thật, runner Windows/Linux/wasm, TLS — đó là **điều kiện môi trường**, ghi ở R12 §5.
+
+- **VD-109** **Vòng 13 — đóng nợ nhỏ + kiểm chứng sâu (ST-83..ST-88)**: (1) Ba nợ nhỏ phải đóng: `fs.exists` ngoài quyền **không**
+  được trả `false` im lặng (⇒ `VS0604` như `read`), `assert <đk>` dạng **câu lệnh** (tài liệu dùng dạng này), `usage_explain`
+  theo `--lang`. (2) `vis fmt` chuẩn hoá **thụt lề khối `cmd`** trong `.vish` (đổi 68 fixture **có lý do**, không nới luật).
+  (3) **Kiểm chứng sâu**: fuzz **differential** mở rộng cho cú pháp mới (20.000 chương trình, **0 lệch**, seed ghim) và **cache không
+  che lỗi** — chạy ≥500 ca ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so **byte**; lệch ⇒ sửa, không ghi nợ.
+  (4) Không thêm hạng mục VS2 mới trong vòng này.

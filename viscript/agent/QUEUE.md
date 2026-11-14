@@ -175,7 +175,13 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-79 | **nhất quán #3** — `vis test` với `async`/`await`/`chan` (khối `test` chờ task) | ST-78 | 2,5 h | **DONE** | ≥6 ca; TAP đúng; interp = `--vm` |
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **DONE** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **DONE** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
-| ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **READY** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
+| ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **DONE** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
+| ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **READY** | ≥6 ca; không đổi hành vi đã khoá |
+| ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **READY** | ≥4 ca; vẫn tất định |
+| ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **READY** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
+| ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
+| ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
+| ST-88 | báo cáo **R13** | ST-83..ST-87 | 1,5 h | **READY** | MD+JSON; nợ còn lại đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
