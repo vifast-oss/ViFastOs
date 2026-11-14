@@ -149,7 +149,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-56b | chốt **gán** một ngữ nghĩa hai đường: `self.x = v` khi `self` bất biến ⇒ `VS0412`; `var self`/`var xs` gán được ở **interp** (VM đã làm); `run --vm` lỗi codegen ⇒ exit ≠ 0 | ST-56 | 2,5 h | **DONE** | ≥6 ca; interp = `--vm` cùng byte; không nới ngưỡng |
 | ST-57 | nợ lõi **B**: mồ côi **đa tệp**, **siêu trait** kiểm được, **`derives` sinh mã** (`Show`/`Eq`) | ST-56 | 3 h | **DONE** | mỗi mục ≥2 ca đỏ→xanh; derives sinh phương thức **chạy được** |
 | ST-58 | nợ lõi **C**: `Ty::Any` → chữ ký **generic thật** cho `std.list.*`/`std.map.*` | ST-57 | 3 h | **DONE** | không còn `Ty::Any`; sai kiểu ⇒ `VS04xx` **tĩnh** |
-| ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **READY** | ≥6 ca; `x \| take 1` chạy 2 đường |
+| ST-59 | nợ shell: thân `cmd` dùng **tham số**; body "vừa script vừa lệnh" có luật rõ; **biến** làm stage đầu | ST-58 | 3 h | **DONE** | ≥6 ca; `x \| take 1` chạy 2 đường |
 | ST-60 | **VS2 #1 — async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định một luồng** | ST-59 | 3 h | **READY** | ≥20 ca sem interp = `--vm` cùng byte; 10.000 task không tràn |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **READY** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **READY** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
@@ -901,3 +901,16 @@ APPROVED 2026-11-14 Agent 0
 > **tĩnh** (mạnh hơn), ghi "SỬA KÈM LÝ DO"; ca **TRON** của `sort_by` vẫn runtime `VS0501` nhờ `json.decode` không kiểu.
 > Nợ: `Ty::Fn` thật cho `sort_by`; map khoá không-`str`; thứ tự khoá map.
 > **ST-59 mở** (nợ shell — biến làm stage đầu, `let` không chú thích, thân `cmd` vừa script vừa lệnh).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-59 DONE** — commit `3e2a3cd` (**Agent 2 tự commit, đã push**): **một nguồn luật `let`** (`vis_syntax::let_la_khai`,
+> trước có **hai bản sao lệch** ở parser và tầng hạ) ⇒ `let x = 1` / `let xs = [1,2,3]` **bind** ở vùng item; **biến làm
+> stage đầu** (`Var/Param/PatBind` đã bind ⇒ stage biểu thức + **kiểu tĩnh** cho `where/get/select`; chưa bind ⇒ giữ đường
+> lệnh); **thân `cmd` khai báo + một pipeline** (`KieuThan::KhaiLenh`, một nguồn ở `vis-syntax`, hai Lowerer con lồng khung);
+> khai báo sau pipeline / nhiều pipeline ⇒ **`VS0201`**. Đo: **771 test** · sem **394/19** (49 `.vish`, 62 `.err`) ·
+> `vis test` **394 ok** · `--vm` **394 ok + 7 SKIP** · parity **360/360** · differential **100k/0 lệch** (202,8 s) ·
+> **7 sổ/29 mã**. Hai phát hiện: **luật `let` hai bản sao** (nếu sửa một chỗ thì `check` ↔ `run` lệch) và **parity suýt
+> lệch** ở ca nhiều pipeline (đã cho body `{error}`). Nợ: shell-let thật (`let out = ls | wc -l`), nhóm nhiều pipeline +
+> kiểu tĩnh lấy stage đầu, lambda `where` không chú thích, `lower/cmd.rs` **1491** dòng (sát R1).
+> **ST-60 mở** (VS2 #1 — async; **VD-90/VD-95**).
