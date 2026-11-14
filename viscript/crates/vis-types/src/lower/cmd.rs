@@ -564,6 +564,17 @@ impl<'a> Lowerer<'a> {
     }
 
     fn kieu_stage(&self, node: &Node, sigs: &[CmdSig]) -> Type {
+        // **ST-59**: stage là **biến đã bind** ⇒ kiểu tĩnh của nó (nếu có chú thích) — nhờ vậy hook
+        // hạ nguồn (`where`/`get`/`select`/`sort_by`) kiểm **tĩnh** theo kiểu biến.
+        if node.children().count() == 0 && node.elems.len() == 1 {
+            if let Some(ten) = self.ten_lenh(node) {
+                if let Some(sym) = self.bien_gia_tri(&ten) {
+                    if let Some(t) = self.type_env.get(&sym) {
+                        return t.clone();
+                    }
+                }
+            }
+        }
         // ST-53: `to json` ⇒ `str` (shell sugar tự phân giải, **không** cần `use std.json`).
         if self.la_to_json(node) {
             return Type::Str;
@@ -613,6 +624,18 @@ impl<'a> Lowerer<'a> {
             }
         }
         r
+    }
+
+    /// **ST-59**: ký hiệu **biến giá trị** đã bind cho `ten` (let/var/tham số/pattern) — **không**
+    /// tính tên dựng sẵn, item cấp tệp, hay tham số kiểu; `None` ⇒ giữ đường lệnh như cũ.
+    fn bien_gia_tri(&self, ten: &str) -> Option<u32> {
+        let sym = self.resolve(ten)?;
+        let kind = self.symbols.syms.get(sym as usize).map(|s| s.kind)?;
+        matches!(
+            kind,
+            SymKind::Var | SymKind::Param | SymKind::PatBind | SymKind::ElseBind
+        )
+        .then_some(sym)
     }
 
     /// Tên lệnh = **phần tử đầu** của stage (token `Word` hoặc node `CmdWord`).
@@ -754,6 +777,20 @@ impl<'a> Lowerer<'a> {
                     );
                 }
                 return Some(e);
+            }
+        }
+        // **ST-59**: token đầu stage là **biến đã bind** (let/var/tham số) ⇒ **stage biểu thức**:
+        // `xs | take 1` nhận **giá trị** `xs`; `a` đứng một mình in giá trị biến. Định danh **chưa**
+        // bind (và mọi tên dựng sẵn/item) giữ nguyên đường **lệnh**/chương trình ngoài (§9.5).
+        if node.children().count() == 0 && node.elems.len() == 1 {
+            if let Some(ten) = self.ten_lenh(node) {
+                if let Some(sym) = self.bien_gia_tri(&ten) {
+                    return Some(HExpr::Var {
+                        name: ten,
+                        sym: Some(sym),
+                        span: node.span,
+                    });
+                }
             }
         }
         if let Some(ten) = self.ten_lenh(node) {

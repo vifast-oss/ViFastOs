@@ -176,13 +176,41 @@ fn than_rong_la_vs0201() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// **SỬA KÈM LÝ DO (ST-59)**: thân `cmd` = **vùng khai báo** (`let …`) + **một** pipeline cuối nay
+/// **hợp lệ** (trước: `VS0201` "lẫn"). Khoá **hành vi mới**: chạy được, in bảng của `ls .`.
 #[test]
-fn than_lan_let_va_lenh_la_vs0201() {
+fn than_khai_bao_roi_lenh_chay_duoc() {
     let d = tam("lan");
+    let m = mock(&d);
+    let (c, o, e) = chay(
+        &d,
+        "l",
+        "cmd a() -> int:\n  let y = 1\n  ls ./photos\n\n( a() )\n",
+        Some(&m),
+        false,
+    );
+    assert_eq!(c, 0, "stderr: {e}");
+    assert_eq!(o, BANG, "khai báo + pipeline phải trả bảng `ls`");
+    // Cùng byte trên đường VM.
+    let (cv, ov, ev) = chay(
+        &d,
+        "l",
+        "cmd a() -> int:\n  let y = 1\n  ls ./photos\n\n( a() )\n",
+        Some(&m),
+        true,
+    );
+    assert_eq!((cv, ov.as_str()), (0, o.as_str()), "vm stderr: {ev}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// **ST-59**: khai báo **sau** pipeline vẫn `VS0201` (chỉ nhận vùng khai báo **đứng trước**).
+#[test]
+fn than_khai_bao_sau_lenh_van_la_vs0201() {
+    let d = tam("lan-sau");
     let (c, _, e) = chay(
         &d,
         "l",
-        "cmd a() -> int:\n  let y = 1\n  ls .\n\n( a() )\n",
+        "cmd a() -> int:\n  ls .\n  let y = 1\n\n( a() )\n",
         None,
         false,
     );

@@ -42,31 +42,15 @@ pub(crate) fn la_khai_bao(dong: &str) -> bool {
     false
 }
 
-/// `let` là **khai báo** khi có chú thích kiểu (`:` trước `=`) **và** RHS là **biểu thức script**
-/// (không `|`, không chuyển hướng `>`/`<`, không `;`). `let x: int = ls | grep foo` là shell-let
-/// (golden `test/cmd/golden.cmd` ca 24) ⇒ vẫn là stage.
+/// `let` là **khai báo** khi RHS là **biểu thức script** — **một nguồn sự thật** ở
+/// [`vis_syntax::let_la_khai`] (parser và tầng hạ dùng **cùng** luật; ST-59 bỏ đòi chú thích kiểu).
 pub(crate) fn let_la_khai(d: &str) -> bool {
-    let Some((trai, phai)) = d.split_once('=') else {
-        return false;
-    };
-    if !trai.contains(':') {
-        return false;
-    }
-    let rhs = phai.trim();
-    if rhs.is_empty()
-        || rhs.contains('|')
-        || rhs.contains(';')
-        || rhs.contains('>')
-        || rhs.contains('<')
-        || rhs.contains('&')
-    {
-        return false;
-    }
-    // RHS phải parse được như **biểu thức script** — `ls ./photos` thì không (⇒ shell-let ST-44).
-    let thu = format!("let __x = {rhs}");
-    vis_syntax::parse(&thu, vis_syntax::lex::Mode::Script)
-        .diagnostics
-        .is_empty()
+    vis_syntax::let_la_khai(d)
+}
+
+/// **ST-59**: thân `cmd` = khai báo + **một** pipeline (một nguồn: [`vis_syntax::than_khai_lenh`]).
+pub(crate) fn than_khai_lenh(dong: &[String]) -> bool {
+    vis_syntax::than_khai_lenh(dong)
 }
 
 /// Mốc byte bắt đầu **vùng stage**; `None` nếu cả tệp là khai báo (không có stage).
@@ -121,6 +105,8 @@ pub(crate) enum KieuThan {
     Script,
     Command,
     Mixed,
+    /// **ST-59**: **vùng khai báo** (`let …`) + **một** pipeline cuối.
+    KhaiLenh,
 }
 
 /// **ST-48**: một `cmd` có thân không phải script. `dedent` = văn bản thân đã bỏ thụt chung;
@@ -233,7 +219,11 @@ pub(crate) fn than_cmd(text: &str) -> Vec<ThanLenh> {
                     .diagnostics
                     .is_empty()
             });
-            if script && lenh {
+            if crate::lower::khai::than_khai_lenh(&dong_dedent) {
+                // **ST-59**: khai báo (`let …`) + **một** pipeline/biểu thức cuối ⇒ hạ **hai phần**
+                // (không còn `VS0201`); nhiều pipeline vẫn rơi xuống `Mixed`/lỗi như cũ.
+                KieuThan::KhaiLenh
+            } else if script && lenh {
                 if dong_dedent.len() == 1 || co_let {
                     KieuThan::Script
                 } else {

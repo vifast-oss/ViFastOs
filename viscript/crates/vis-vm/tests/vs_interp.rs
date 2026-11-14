@@ -103,7 +103,8 @@ fn than_chay() {
     // **SỬA KÈM LÝ DO (ST-56)**: +6 ca nợ lõi A ⇒ **376 ca** (333 `.vis` + 43 `.vish`).
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca phép gán ⇒ **382 ca** (339 `.vis` + 43 `.vish`).
     // **SỬA KÈM LÝ DO (ST-57)**: +6 ca `trait/` ⇒ **388 ca** (345 `.vis` + 43 `.vish`).
-    assert_eq!(tat_ca.len(), 388, "phải đủ 388 ca");
+    // **SỬA KÈM LÝ DO (ST-59)**: +6 ca `vish/` ⇒ **394 ca** (345 `.vis` + 49 `.vish`).
+    assert_eq!(tat_ca.len(), 394, "phải đủ 394 ca");
     let mut khop = 0;
     let mut lech: Vec<String> = Vec::new();
     let mut bien_dich = 0;
@@ -175,13 +176,13 @@ fn than_chay() {
     // **SỬA KÈM LÝ DO (ST-56b)**: +6 ca ⇒ **382**; **352** ca chạy được khớp + **30** ca lỗi biên dịch.
     assert_eq!(
         khop + so_biet + bien_dich,
-        388,
-        "388 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
+        394,
+        "394 ca (khớp {khop} + lệch {so_biet} + lỗi biên dịch {bien_dich})"
     );
     assert_eq!(
         (khop, bien_dich),
-        (356, 32),
-        "356 ca chạy được khớp + 32 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
+        (360, 34),
+        "360 ca chạy được khớp + 34 ca lỗi biên dịch chạm bytecode, thật {khop}/{bien_dich}"
     );
 }
 
@@ -233,10 +234,10 @@ fn hai_duong_cung_so_chan_doan() {
             // chạy (+`ban-ghi/self-amp-thieu-truong` VS0501).
             // **SỬA KÈM LÝ DO (ST-56b)**: **352** ca chạy được (+4 ca xanh); chẩn đoán lúc chạy
             // vẫn **31** (2 ca `.err` mới là lỗi **biên dịch**, không tới lúc chạy).
-            assert_eq!(so_ca, 356, "phải so đủ 356 ca chạy được");
+            assert_eq!(so_ca, 360, "phải so đủ 360 ca chạy được");
             assert_eq!(
-                so_ca_co_chan_doan, 31,
-                "31 ca có chẩn đoán lúc chạy (hai đường cùng số)"
+                so_ca_co_chan_doan, 32,
+                "32 ca có chẩn đoán lúc chạy (hai đường cùng số)"
             );
         })
         .expect("tạo luồng")

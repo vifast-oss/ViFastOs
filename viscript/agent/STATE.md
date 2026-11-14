@@ -6,17 +6,17 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-58** (nợ lõi **C**: `Ty::Any` → **biến kiểu thật** `Var/List/Map` cho
-                `std.list.*`/`std.map.*`/`std.json.*` — VD-94 + VD-99) — xong, **chưa commit**.
-Bước          : 7/7 (khảo sát file:line → 2 log đỏ → `Ty` mới + 16 chữ ký → `kiem_std` hợp nhất →
-                interp nhánh biến kiểu → 3 ca cũ dựa `Any` đổi đúng lý do → cổng → differential →
-                STATE/JOURNAL).
+Task          : **ST-59** (nợ shell: `let` không chú thích **bind** ở vùng item; **biến làm stage
+                đầu**; thân `cmd` **khai báo + một pipeline** — R9 nợ 8/9/10) — xong, **chưa commit**.
+Bước          : 8/8 (khảo sát file:line + đo 3 lỗ → 2 log đỏ → A `let` suy kiểu (một nguồn luật) →
+                B biến stage đầu + kiểu tĩnh → C thân `cmd` khai-lệnh (hai Lowerer con) → khoá số →
+                cổng → differential → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-13T23:20:54Z**; **770** test / sem
-                **388** / `test/std` **73** / `vis test` **388 ok** (+`--vm` **388 ok/6 SKIP**) / parity
-                **356/356** / differential **100.000 chương trình 0 lệch** (193,2 s) / **7 sổ-29 mã**
-                (không mã mới) / allowlist **6**
-Việc dở       : commit `[ST-58]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T00:08:54Z**; **771** test / sem
+                **394** / `vis test` **394 ok** (+`--vm` **394 ok/7 SKIP**) / parity **360/360** /
+                differential **100.000 chương trình 0 lệch** (202,8 s) / **7 sổ-29 mã** (không mã mới) /
+                allowlist **6**
+Việc dở       : commit `[ST-59]` + push (đã được uỷ quyền)
 ```
 
 ## ST-13b — sửa 10 mục review ST-13 (reviewer3), 2026-11-13
@@ -48,6 +48,19 @@ trên harness cuối, rồi `stash pop`.
 `unify_branch` bất đối xứng `T`/`T?`; `BinOp` bỏ qua khi một vế `{error}`; **range bị vật chất hoá** (cap
 `10^7` phần tử/lần — giữ nguyên, **không** nới); char literal có escape (`'\n'`) bị lexer từ chối
 (**VS0105**) — lỗi **mới phát hiện**, ghi để ST sau.
+
+## ST-59 — nợ shell: `let` suy kiểu, biến làm **stage đầu**, thân `cmd` khai báo + lệnh, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Luật `let` — một nguồn** | `let_la_khai` chuyển sang **`vis_syntax::let_la_khai`** (parser **và** tầng hạ dùng **cùng** luật; trước có **hai bản sao** lệch nhau): khai báo khi RHS **không** `\|`/`;`/`>`/`<`/`&`, **không** là **một từ trần** (trừ `true`/`false`/`none`), và parse được như **biểu thức script**; **bỏ** đòi chú thích kiểu ⇒ `let x = 1`, `let xs = [1, 2, 3]` ở vùng item **bind** |
+| 2 | **Biến làm stage đầu** | `ha_stage`/`kieu_stage`: token đầu stage là **biến giá trị đã bind** (`Var/Param/PatBind/ElseBind` — **không** Builtin/Item/Generic) ⇒ **stage biểu thức** `Var{sym}`; định danh **chưa** bind vẫn đi đường **lệnh**/chương trình ngoài (§9.5 giữ nguyên: `git status`, `ls .`). `kieu_stage` trả **kiểu tĩnh** của biến (nếu có chú thích) ⇒ hook `where`/`get`/`select`/`sort_by` kiểm **tĩnh** theo kiểu biến |
+| 3 | **Thân `cmd` khai báo + một pipeline** | `KieuThan::KhaiLenh` (mới) + `than_khai_lenh` **một nguồn** (`vis_syntax`): thân = **vùng `let …`** ở đầu + **đúng một** dòng cuối là pipeline/biểu thức; parser **gom raw** (không parse lệnh trên dòng khai báo ⇒ hết `VS0201: mong lệnh, thật [`) ; hạ bằng **hai Lowerer con** lồng khung (khai báo theo **Script**, cuối theo **Command**, `type_env` chia sẻ) ⇒ `ys \| take 1` thấy `ys`. Nhiều pipeline / khai báo **sau** pipeline ⇒ vẫn **`VS0201`** |
+| 4 | **Ca** | **6 ca `test/sem/vish/`** (nhóm `vish` 43 → **49**): `let-suy-kieu` (+`.out`), `stage-dau-bien` (+`.out`), `than-khai-lenh` (+`.out`), `let-ngoai-vung-khai`/`stage-dau-chua-bind`/`than-hai-pipeline` (+`.err` = VS0201/VS0501/VS0201); **Rust**: `vish_cmd_body` đổi ca `VS0201` cũ thành **chạy được** (+ca khai báo **sau** pipeline vẫn `VS0201`) ⇒ **16** test tệp đó |
+| 5 | **Đỏ trước** | `JOURNAL/st59-red-sem.log` sha256 `47d2dc32…` (chạy binary **trước** sửa: `let-suy-kieu` VS0201, `stage-dau-bien` VS0501 "chương trình ngoài `xs`", `than-khai-lenh` VS0201; 2 ca âm **đỏ sai mã**: `let-ngoai-vung-khai` VS0501 thay vì VS0201); `JOURNAL/st59-red-rust.log` sha256 `5a5bc6a8…` (`than_khai_bao_roi_lenh_chay_duoc` FAILED exit 2 ≠ 0; `sem` đỏ 4 ca `vish/`) |
+| 6 | **Hợp đồng giữ nguyên** | thân **pipeline-only** và thân **biểu thức trần** của `cmd` **không đổi**; `let out = ls` / `let x = git` (một **từ trần**) vẫn là **shell-let** stage; `let x: int = ls \| grep foo` (có `\|`) vẫn stage (golden `test/cmd` không đổi) |
+| 7 | **Đo** | **771** test (21+96+18+154+24+62+9+**387**); sem **394/19 nhóm** (345 `.vis` + **49** `.vish`, 62 `.err`); `vis test` **394 ok**; `--vm` **394 ok + 7 SKIP** (ca **định danh chưa bind** cần host ⇒ VM bỏ qua); parity **360/360** (34 ca lỗi biên dịch); differential **100.000/0 lệch** (202,8 s, 493/s, seed 3523158054); `VBC1` **53** tag; **7 sổ/29 mã** (không mã mới — dùng lại `VS0201`/`VS0501`); allowlist **6** |
+| 8 | **Bất ngờ / nợ** | (a) luật `let` trước đây có **hai bản sao** (parser `parse/cmd.rs` + `lower/khai.rs`) — đã hợp nhất về `vis_syntax`; (b) `let` **sau** stage nay là **lỗi rõ** `VS0201` ("khai báo phải đứng trước stage") thay vì bị **bỏ im lặng** rồi `VS0501` khó hiểu; (c) shell-let (`let out = … \| …`) vẫn **chưa** hạ (nợ cũ, không thuộc ST-59); (d) `where it > 1` với biến **có chú thích** kiểm tĩnh được, **không** chú thích thì `{error}` (như lead cho phép); (e) nhóm nhiều pipeline + kiểu tĩnh **lấy stage đầu** vẫn **cắt** (nợ R9-10 phần còn lại); (f) `lower/cmd.rs` **1491** dòng (sát R1) |
 
 ## ST-58 — `Ty::Any` **xoá hẳn**: biến kiểu thật cho `std.*` (VD-94/VD-99), 2026-11-14
 

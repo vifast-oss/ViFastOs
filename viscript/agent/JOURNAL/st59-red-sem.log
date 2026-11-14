@@ -1,0 +1,104 @@
+# ST-59 — log ĐỎ (sem) lúc 2026-11-13T23:55:11Z, HEAD 5c943f1 (đã tạm gỡ 5 tệp mã của ST-59)
+vis: run: No such file or directory
+# 6 ca mới ở test/sem/vish/ — chạy bằng binary **trước** sửa (`vis run` + `vis run --vm --no-cache`).
+# 6 ca mới ở test/sem/vish/ — chạy bằng binary **trước** sửa,  + .
+
+== test/sem/vish/let-suy-kieu.vish
+   kỳ vọng .out:
+     1
+     [1, 2, 3]
+     a
+   -- interp:
+     TAP version 13
+     1..1
+     let-suy-kieu.vish:3:10: error VS0201: mong lệnh, thật `[`
+     not ok 1 - test/sem/vish/let-suy-kieu.vish (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     let-suy-kieu.vish:3:10: error VS0201: mong lệnh, thật `[`
+     not ok 1 - test/sem/vish/let-suy-kieu.vish (VS0201)
+     [exit=2]
+
+== test/sem/vish/let-ngoai-vung-khai.vish
+   kỳ vọng .err: VS0201
+   -- interp:
+     TAP version 13
+     1..1
+     1
+     test/sem/vish/let-ngoai-vung-khai.vish:4:7: error VS0501: tên `z` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/vish/let-ngoai-vung-khai.vish (VS0501, steps=6)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     1
+     test/sem/vish/let-ngoai-vung-khai.vish:4:7: error VS0501: tên `z` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/vish/let-ngoai-vung-khai.vish (VS0501, steps=4)
+     [exit=1]
+
+== test/sem/vish/stage-dau-bien.vish
+   kỳ vọng .out:
+     [1]
+     [1, 2, 3]
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/vish/stage-dau-bien.vish:3:1: error VS0501: không chạy được chương trình ngoài `xs`: No such file or directory (os error 2)
+     not ok 1 - test/sem/vish/stage-dau-bien.vish (VS0501, steps=11)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/vish/stage-dau-bien.vish:3:1: error VS0604: chương trình ngoài `xs` chưa hỗ trợ ở môi trường này (không có host)
+     not ok 1 - test/sem/vish/stage-dau-bien.vish (VS0604, steps=8)
+     [exit=1]
+
+== test/sem/vish/stage-dau-chua-bind.vish
+   kỳ vọng .err: VS0501
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/vish/stage-dau-chua-bind.vish:2:1: error VS0501: không chạy được chương trình ngoài `khong_co_lenh_nay`: No such file or directory (os error 2)
+     not ok 1 - test/sem/vish/stage-dau-chua-bind.vish (VS0501, steps=6)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/vish/stage-dau-chua-bind.vish:2:1: error VS0604: chương trình ngoài `khong_co_lenh_nay` chưa hỗ trợ ở môi trường này (không có host)
+     not ok 1 - test/sem/vish/stage-dau-chua-bind.vish (VS0604, steps=3)
+     [exit=1]
+
+== test/sem/vish/than-khai-lenh.vish
+   kỳ vọng .out:
+     [1]
+   -- interp:
+     TAP version 13
+     1..1
+     than-khai-lenh.vish:3:25: error VS0201: mong lệnh, thật `[`
+     not ok 1 - test/sem/vish/than-khai-lenh.vish (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     than-khai-lenh.vish:3:25: error VS0201: mong lệnh, thật `[`
+     not ok 1 - test/sem/vish/than-khai-lenh.vish (VS0201)
+     [exit=2]
+
+== test/sem/vish/than-hai-pipeline.vish
+   kỳ vọng .err: VS0201
+   -- interp:
+     TAP version 13
+     1..1
+     than-hai-pipeline.vish:3:5: error VS0201: thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)
+     than-hai-pipeline.vish:3:5: error VS0412: giá trị trả về: cần `list[int]`, được `tuple`
+     not ok 1 - test/sem/vish/than-hai-pipeline.vish (VS0201)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     than-hai-pipeline.vish:3:5: error VS0201: thân `cmd`: đúng **một** pipeline lệnh (nhiều pipeline chưa hỗ trợ)
+     than-hai-pipeline.vish:3:5: error VS0412: giá trị trả về: cần `list[int]`, được `tuple`
+     not ok 1 - test/sem/vish/than-hai-pipeline.vish (VS0201)
+     [exit=2]

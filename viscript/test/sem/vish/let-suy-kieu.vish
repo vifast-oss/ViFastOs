@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+let x = 1
+let xs = [1, 2, 3]
+let ten = "a"
+print(x)
+print(xs)
+print(ten)

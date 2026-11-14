@@ -295,7 +295,8 @@ fn moi_ca_loi_bien_dich_khong_panic_va_bi_tu_choi() {
     // **SỬA KÈM LÝ DO (ST-56b)**: **30** ca (+`ban-ghi/self-gan-truong` VS0412,
     // +`list/let-chi-so-gan` VS0412).
     // **SỬA KÈM LÝ DO (ST-57)**: **32** ca (+`trait/sieu-trait-thieu` VS0403, +`trait/derive-eq-float` VS0403).
-    assert_eq!(ds.len(), 32, "phải đúng 32 ca lỗi biên dịch");
+    // **SỬA KÈM LÝ DO (ST-59)**: **34** ca (+`vish/let-ngoai-vung-khai` VS0201, +`vish/than-hai-pipeline` VS0201).
+    assert_eq!(ds.len(), 34, "phải đúng 34 ca lỗi biên dịch");
     for (src, ma) in ds {
         let (hir, syms, text, chan_doan) = phan_tich(&src);
         let kq = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

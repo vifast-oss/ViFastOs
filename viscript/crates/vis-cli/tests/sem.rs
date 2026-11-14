@@ -127,8 +127,8 @@ fn sem_323_ca_qua_binary() {
     // **19 nhóm** (345 `.vis` + 43 `.vish`, **59** `.err`).
     assert_eq!(
         ds.len(),
-        388,
-        "phải đúng 388 ca (345 `.vis` + 43 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        394,
+        "phải đúng 394 ca (345 `.vis` + 49 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.

@@ -35,4 +35,5 @@ pub use lex::lit;
 pub use lex::token::{is_keyword, Kind, Span, Token, KEYWORDS, PUNCTS};
 pub use lex::verify;
 pub use lex::{lex, Diagnostic, LexOutput, Mode};
+pub use parse::cmd::{let_la_khai, than_khai_lenh};
 pub use parse::{parse, parse_voi, ParseOutput};

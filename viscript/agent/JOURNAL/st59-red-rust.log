@@ -1,0 +1,31 @@
+# ST-59 — log ĐỎ (Rust) lúc 2026-11-13T23:55:12Z, HEAD 5c943f1 (đã tạm gỡ 5 tệp mã của ST-59)
+
+test sem_323_ca_qua_binary ... FAILED
+thread 'sem_323_ca_qua_binary' (43338966) panicked at crates/vis-cli/tests/sem.rs:210:5:
+4/394 ca sai:
+vish/let-ngoai-vung-khai: muốn exit 2 + stderr chứa `VS0201`, được exit 1
+vish/let-suy-kieu: muốn exit 0 + stdout "1\n[1, 2, 3]\na\n", được exit 2 + stdout ""
+vish/stage-dau-bien: muốn exit 0 + stdout "[1]\n[1, 2, 3]\n", được exit 1 + stdout ""
+vish/than-khai-lenh: muốn exit 0 + stdout "[1]\n", được exit 2 + stdout ""
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.30s
+test than_lan_lenh_va_bieu_thuc_la_vs0201 ... ok
+test item_sau_than_lenh_van_dung_dong_cot ... ok
+test than_khai_bao_roi_lenh_chay_duoc ... FAILED
+test than_khai_bao_sau_lenh_van_la_vs0201 ... ok
+test than_hai_pipeline_la_vs0201 ... ok
+test than_goi_cmd_khac_trong_pipeline ... ok
+test than_dung_nhu_stage_khac ... ok
+test than_long_tra_file_entry_long ... ok
+test than_lenh_tren_thu_muc_that ... ok
+test chou_ky_cmd_kiem_tinh_where ... ok
+test than_rong_la_vs0201 ... ok
+test than_mot_stage_tra_bang ... ok
+test interp_va_vm_cung_byte ... ok
+test than_nhieu_stage_where_va_sort_by ... ok
+test fixture_cmd_body ... ok
+test than_script_st44_khong_doi ... ok
+thread 'than_khai_bao_roi_lenh_chay_duoc' (43342059) panicked at crates/vis-cli/tests/vish_cmd_body.rs:192:5:
+assertion `left == right` failed: stderr: l.vish:3:3: error VS0201: thân `cmd`: lẫn biểu thức **script** và **lệnh** — chọn một kiểu (biểu thức, hoặc                      đúng một pipeline lệnh)
+  left: 2
+ right: 0
+test result: FAILED. 15 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s

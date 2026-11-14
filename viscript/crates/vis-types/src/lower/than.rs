@@ -135,6 +135,96 @@ pub(crate) fn lower_than(
     }
 }
 
+/// **ST-59**: hạ **khai báo (Script) + một pipeline (Command)** — trả `(câu lệnh, kiểu, chẩn đoán)`.
+///
+/// Hai [`Lowerer`] **con** (dùng chung `Symbols`/`TypeTable`) trong **hai khung lồng nhau**: khung
+/// khai báo, rồi khung lệnh có cha là khung khai báo ⇒ `resolve` thấy biến vừa khai.
+fn lower_than_khai_lenh(
+    symbols: &mut Symbols,
+    types: &mut TypeTable,
+    khai: (&Cst, &LexOutput),
+    lenh: (&Cst, &LexOutput),
+    opts: LowerOptions,
+    ctx: ThanCtx,
+) -> (Vec<HStmt>, Type, Vec<Diagnostic>) {
+    let ThanCtx {
+        sigs,
+        file_long,
+        recs,
+        span,
+        ..
+    } = ctx;
+    // (1) khai báo — Script
+    let mut l = Lowerer::new(khai.0, khai.1, opts.clone(), symbols, types);
+    if l.symbols.frames.is_empty() {
+        l.symbols.frames.push(HFrame {
+            parent: None,
+            span,
+            kind: FrameKind::File,
+        });
+    }
+    l.symbols.frames.push(HFrame {
+        parent: Some(0),
+        span,
+        kind: FrameKind::Fn,
+    });
+    let khung = (l.symbols.frames.len() - 1) as u32;
+    l.scope.push(khung);
+    l.declare_builtins();
+    l.cmd_sigs.extend(sigs.clone());
+    l.file_long = file_long;
+    l.rec_names = recs.clone();
+    l.prelude_recs = recs;
+    let mut stmts: Vec<HStmt> = Vec::new();
+    for ch in khai.0.root.children() {
+        if let Some(s) = l.lower_stmt(ch) {
+            stmts.push(s);
+        }
+    }
+    let mut diags = std::mem::take(&mut l.diags);
+    let type_env = l.type_env.clone();
+    drop(l);
+    // (2) pipeline — Command, khung lồng trong khung khai báo
+    let mut l2 = Lowerer::new(lenh.0, lenh.1, opts, symbols, types);
+    l2.symbols.frames.push(HFrame {
+        parent: Some(khung),
+        span,
+        kind: FrameKind::Fn,
+    });
+    let k2 = (l2.symbols.frames.len() - 1) as u32;
+    l2.scope.push(khung);
+    l2.scope.push(k2);
+    l2.type_env = type_env;
+    l2.declare_builtins();
+    l2.cmd_sigs.extend(sigs);
+    l2.file_long = file_long;
+    let sigs2 = l2.cmd_sigs.clone();
+    let node = lenh.0.root.children().find(|n| {
+        matches!(
+            n.kind,
+            NodeKind::CmdPipe | NodeKind::CmdStage | NodeKind::CmdItems
+        )
+    });
+    let node = node.and_then(|n| {
+        if n.kind == NodeKind::CmdItems {
+            n.children()
+                .find(|c| matches!(c.kind, NodeKind::CmdPipe | NodeKind::CmdStage))
+                .cloned()
+        } else {
+            Some(n.clone())
+        }
+    });
+    let mut ty = Type::Error;
+    if let Some(n) = node {
+        if let Some(e) = l2.ha_pipeline(&n, &sigs2) {
+            ty = l2.last_stage_ty.clone();
+            stmts.push(HStmt::Expr(e));
+        }
+    }
+    diags.extend(std::mem::take(&mut l2.diags));
+    (stmts, ty, diags)
+}
+
 /// `true` nếu tên là tên giá trị dựng sẵn (VD-44 #3).
 pub fn is_builtin_value(name: &str) -> bool {
     crate::lower::BUILTIN_VALUE_NAMES.contains(&name)
@@ -177,6 +267,11 @@ impl<'a> super::Lowerer<'a> {
                     })];
                 }
             };
+            // **ST-59**: khai báo + **một** pipeline ⇒ hạ **hai phần** (không còn `VS0201`).
+            if t.kieu == crate::lower::khai::KieuThan::KhaiLenh {
+                self.ha_than_khai_lenh(t, &sigs, span);
+                continue;
+            }
             if t.kieu == crate::lower::khai::KieuThan::Mixed {
                 self.diag(
                     &vis_diag::SYNTAX_CODES[0],
@@ -235,7 +330,12 @@ impl<'a> super::Lowerer<'a> {
                 },
             );
             self.diags.extend(out.diagnostics);
-            let Some(expr) = out.expr else { continue };
+            let Some(expr) = out.expr else {
+                // **ST-59**: thân không hạ được (nhiều pipeline/rỗng) ⇒ body **`{error}`** như
+                // đường `Mixed` — tránh tyck thêm `VS0412` khiến `check` ↔ `run` lệch **số** chẩn đoán.
+                dat_loi(self, t);
+                continue;
+            };
             if let Some(HItem::Fn(f)) = self
                 .items
                 .iter_mut()
@@ -244,6 +344,104 @@ impl<'a> super::Lowerer<'a> {
                 f.body = vec![HStmt::Expr(expr)];
             }
         }
+    }
+
+    /// **ST-59**: hạ thân `cmd` **khai báo + một pipeline** — hai Lowerer **con** dùng chung
+    /// `Symbols`/`TypeTable`: phần khai báo (`let …`) theo **Script**, phần cuối theo **Command**;
+    /// khung của phần lệnh **lồng** trong khung khai báo ⇒ tên đã khai thấy được (và
+    /// `bien_gia_tri` nhận nó làm stage biểu thức).
+    pub(crate) fn ha_than_khai_lenh(
+        &mut self,
+        t: &crate::lower::khai::ThanLenh,
+        sigs: &[CmdSig],
+        span: Span,
+    ) {
+        // Số dòng khai báo đầu (không có dòng trống trong `dong`).
+        let mut i = 0usize;
+        while i < t.dong.len() && crate::lower::khai::let_la_khai(t.dong[i].trim()) {
+            i += 1;
+        }
+        if i == 0 || i >= t.dong.len() {
+            self.diag(
+                &vis_diag::SYNTAX_CODES[0],
+                "thân `cmd`: không tách được vùng khai báo và pipeline cuối",
+                span,
+            );
+            return;
+        }
+        let off: usize = t.dong[..i].iter().map(|l| l.len() + 1).sum();
+        let off = off.min(t.dedent.len());
+        let (khai_txt, lenh_txt) = (&t.dedent[..off], &t.dedent[off..]);
+        let khai = self.than_parse(t, khai_txt, vis_syntax::Mode::Script);
+        let lenh = self.than_parse(t, lenh_txt, vis_syntax::Mode::Command);
+        let (khai, lenh) = match (khai, lenh) {
+            (Some(a), Some(b)) => (a, b),
+            _ => {
+                self.diag(
+                    &vis_diag::SYNTAX_CODES[0],
+                    "thân `cmd`: khai báo/pipeline cuối không parse được",
+                    span,
+                );
+                return;
+            }
+        };
+        let out = lower_than_khai_lenh(
+            self.symbols,
+            self.tbl,
+            (&khai.0, &khai.1),
+            (&lenh.0, &lenh.1),
+            self.opts.clone(),
+            ThanCtx {
+                sigs: sigs.to_vec(),
+                file_long: self.file_long,
+                recs: self.rec_names.clone(),
+                span,
+                la_than: true,
+            },
+        );
+        self.diags.extend(out.2);
+        if let Some(HItem::Fn(f)) = self
+            .items
+            .iter_mut()
+            .find(|it| matches!(it, HItem::Fn(g) if g.name == t.ten && g.kind == FnKind::Cmd))
+        {
+            f.body = out.0;
+        }
+    }
+
+    /// Lex + parse một mẩu thân với **span tuyệt đối** (dịch qua `t.map`), trả CST + LexOutput.
+    fn than_parse(
+        &self,
+        t: &crate::lower::khai::ThanLenh,
+        txt: &str,
+        mode: vis_syntax::Mode,
+    ) -> Option<(Cst, LexOutput)> {
+        let lexed = vis_syntax::lex(txt, mode);
+        let mut toks = lexed.tokens.clone();
+        let mut loi = lexed.diagnostics.clone();
+        for tk in &mut toks {
+            let a = t.map.get(tk.span.start).copied().unwrap_or(0);
+            let b = t
+                .map
+                .get(tk.span.end.saturating_sub(1))
+                .copied()
+                .map(|x| x + 1)
+                .unwrap_or(a);
+            tk.span = Span::new(a, b);
+        }
+        if !loi.is_empty() {
+            loi.clear();
+            return None;
+        }
+        let parsed = vis_syntax::parse_voi(self.text, toks, mode);
+        Some((
+            parsed.cst,
+            LexOutput {
+                text: self.text.to_string(),
+                tokens: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+        ))
     }
 
     /// **ST-49**: hạ nội dung nhóm `( … )` như **một pipeline lệnh** (xoá đường tự-dựng-Call cũ).

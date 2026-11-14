@@ -37,6 +37,69 @@ pub(crate) const KHAI: [&str; 13] = [
     "pub", "async",
 ];
 
+/// **ST-59** — `let` ở dòng cột 1 là **khai báo** (vùng item `.vish`) hay **shell-let** (stage)?
+///
+/// Luật **một nguồn sự thật** (dùng cả ở parser lẫn `vis-types::lower::khai`):
+/// - RHS **không** có `|`, `;`, chuyển hướng `>`/`<`, `&`;
+/// - RHS **không** là **một từ trần** (`let out = ls`/`let x = git` ⇒ shell-let) — trừ ba literal
+///   `true`/`false`/`none`;
+/// - RHS parse được như **biểu thức script** (`let x = 1`, `let xs = [1, 2, 3]` ⇒ khai báo).
+/// - **Không** đòi chú thích kiểu (ST-59): `let x = 1` ở vùng item **bind** như `let x: int = 1`.
+pub fn let_la_khai(d: &str) -> bool {
+    let Some((_trai, phai)) = d.split_once('=') else {
+        return false;
+    };
+    let rhs = phai.trim();
+    if rhs.is_empty()
+        || rhs.contains('|')
+        || rhs.contains(';')
+        || rhs.contains('>')
+        || rhs.contains('<')
+        || rhs.contains('&')
+    {
+        return false;
+    }
+    // **Một từ trần** = **định danh** đứng một mình (`ls`, `git`) — số/tham chiếu không tính.
+    let mot_tu = rhs
+        .chars()
+        .next()
+        .map(|c| c.is_alphabetic() || c == '_')
+        .unwrap_or(false)
+        && rhs
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        && !matches!(rhs, "true" | "false" | "none");
+    if mot_tu {
+        return false;
+    }
+    crate::parse::parse(&format!("let __x = {rhs}"), crate::lex::Mode::Script)
+        .diagnostics
+        .is_empty()
+}
+
+/// **ST-59** — thân `cmd` = **vùng khai báo** (`let …` ở đầu) + **đúng một** dòng cuối là
+/// pipeline/biểu thức lệnh? Dùng ở parser (gom raw, không parse lệnh) **và** tầng hạ (hạ hai phần).
+pub fn than_khai_lenh(dong: &[String]) -> bool {
+    let mut i = 0usize;
+    while i < dong.len() && dong[i].trim().is_empty() {
+        i += 1;
+    }
+    let dau = i;
+    while i < dong.len() && let_la_khai(dong[i].trim()) {
+        i += 1;
+    }
+    if i == dau {
+        return false;
+    }
+    let con: Vec<&String> = dong[i..].iter().filter(|l| !l.trim().is_empty()).collect();
+    if con.len() != 1 {
+        return false;
+    }
+    crate::parse::parse(con[0].trim(), crate::lex::Mode::Command)
+        .diagnostics
+        .is_empty()
+}
+
 impl<'a> Parser<'a> {
     fn tok_span(&self, e: &Elem) -> Span {
         match e {
@@ -141,6 +204,12 @@ impl<'a> Parser<'a> {
         let lenh = crate::parse::parse(&than, crate::lex::Mode::Command)
             .diagnostics
             .is_empty();
+        // **ST-59**: khai báo + **một** pipeline/biểu thức cuối ⇒ gom **raw** như Script (không
+        // parse lệnh); tầng hạ tự tách khai báo / phần cuối. (Đặt **trước** nhánh `(script, lenh)`
+        // để thân "let … + biến" không rơi vào `Mixed` ⇒ tránh parse lệnh trên dòng khai báo.)
+        if than_khai_lenh(&noi) {
+            return (KieuThan::Script, khac);
+        }
         let kieu = match (script, lenh) {
             (true, false) => KieuThan::Script,
             (false, _) => KieuThan::Command,
@@ -244,25 +313,7 @@ impl<'a> Parser<'a> {
             let w = self.tok().text.clone();
             let let_khai = w == "let" && {
                 let dong = self.cmd_dong_nay();
-                match dong.split_once('=') {
-                    None => false,
-                    Some((trai, phai)) => {
-                        let rhs = phai.trim();
-                        trai.contains(':')
-                            && !rhs.is_empty()
-                            && !rhs.contains('|')
-                            && !rhs.contains(';')
-                            && !rhs.contains('>')
-                            && !rhs.contains('<')
-                            && !rhs.contains('&')
-                            && crate::parse::parse(
-                                &format!("let __x = {rhs}"),
-                                crate::lex::Mode::Script,
-                            )
-                            .diagnostics
-                            .is_empty()
-                    }
-                }
+                let_la_khai(&dong)
             };
             if KHAI.contains(&w.as_str()) || let_khai {
                 return self.cmd_khai();
