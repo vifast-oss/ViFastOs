@@ -17,52 +17,10 @@ use std::collections::HashMap;
 use vis_syntax::Span;
 use vis_types::{HBody, HCond, HExpr, HFn, HItem, HPat, HStmt, Hir, InterpPart, LitKind, Symbols};
 
+pub use crate::cerr::CodegenError;
 use crate::format::{binop_tag, unop_tag};
 use crate::format::{Const, Func, Instr, Module, HASH_LEN};
 use crate::util::{assign_binop, can_test, la_builtin};
-
-/// Lỗi codegen — **không** panic; mỗi lỗi nêu biến thể HIR + span.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CodegenError {
-    /// Biến thể VS1 chưa biểu diễn được (kèm tên + span).
-    Unsupported(&'static str, Span),
-    /// Quá nhiều ô cục bộ / đối số cho `u16`.
-    TooMany(u16),
-    /// Module không có hàm `main`.
-    NoEntry,
-    /// **ST-54**: front end đã báo lỗi ⇒ codegen **từ chối** (mã + dòng:cột + thông điệp).
-    ChanDoan {
-        short: &'static str,
-        dong: u32,
-        cot: u32,
-        msg: String,
-    },
-    /// Mã vừa sinh **không qua** verifier (bug codegen — báo, không nới).
-    KhongHopLe(crate::verify::VerifyError),
-}
-
-impl core::fmt::Display for CodegenError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            CodegenError::Unsupported(k, s) => {
-                write!(
-                    f,
-                    "chưa biểu diễn được `{k}` tại byte {}..{}",
-                    s.start, s.end
-                )
-            }
-            CodegenError::TooMany(n) => write!(f, "quá nhiều ô cục bộ/đối số: {n}"),
-            CodegenError::NoEntry => write!(f, "không có hàm `main`"),
-            CodegenError::ChanDoan {
-                short,
-                dong,
-                cot,
-                msg,
-            } => write!(f, "{short} tại {dong}:{cot}: {msg}"),
-            CodegenError::KhongHopLe(e) => write!(f, "mã sinh ra không hợp lệ: {e}"),
-        }
-    }
-}
 
 /// Hàm đang phát.
 struct F {
@@ -376,8 +334,16 @@ pub fn compile(hir: &Hir, _symbols: &Symbols, text: &str) -> Result<Module, Code
             st.f.nlocals += 1;
             st.f.locals.insert(p.sym, s);
         }
+        // **ST-60b (hồi quy `dd04afb`)**: biến bắt **theo giá trị** ⇒ cấp **ô cục bộ riêng** cho
+        // từng biến bắt và **copy** ở đầu thân (`LoadCaptured(i)` + `Assign(slot)`). Nhờ vậy **đọc
+        // và ghi** trong closure đều đi ô cục bộ: ghi **không** đụng biến ngoài, đọc lại **thấy** giá
+        // trị vừa ghi (đúng interp) — không cần tag `VBC1` mới, verifier/cache không đổi.
         for (i, (sym, _s)) in c.captured.iter().enumerate() {
-            st.captured.insert(*sym, i as u16);
+            let slot = st.f.nlocals;
+            st.f.nlocals += 1;
+            st.f.locals.insert(*sym, slot);
+            st.f.push(Instr::LoadCaptured(i as u16), Span::new(0, 0), 1);
+            st.f.push(Instr::Assign(slot), Span::new(0, 0), -1);
         }
         let base = c.params.len() as u16;
         st.than(&c.body, base, Span::new(0, 0))?;
@@ -474,16 +440,41 @@ impl<'g> Emit<'g> {
                 // **im lặng** bỏ kết quả (interp ↔ VM lệch); VD-97 (2) đòi sửa **tại chỗ**.
                 match target {
                     HExpr::Index { base, index, .. } => {
-                        let HExpr::Var { sym: Some(id), .. } = &**base else {
-                            return Err(CodegenError::Unsupported("assign-index", *span));
-                        };
-                        let slot = self.slot_cua(*id)?;
-                        self.f.push(Instr::LoadLocal(slot), *span, 1);
-                        self.expr(index)?;
-                        self.expr(value)?;
-                        self.f.push(Instr::Set, *span, -2);
-                        self.f.push(Instr::Assign(slot), *span, -1);
-                        self.net_stack(*span)
+                        if let HExpr::Var { sym: Some(id), .. } = &**base {
+                            let slot = self.slot_cua(*id)?;
+                            self.f.push(Instr::LoadLocal(slot), *span, 1);
+                            self.expr(index)?;
+                            self.expr(value)?;
+                            self.f.push(Instr::Set, *span, -2);
+                            self.f.push(Instr::Assign(slot), *span, -1);
+                            return self.net_stack(*span);
+                        }
+                        // **ST-60b**: `x.f[i] = v` (một tầng trường, gốc `var`): đọc `x.f`, `Set`,
+                        // rồi **ghi lại trường** bằng `With` + `Assign` — cùng ngữ nghĩa
+                        // `x = x with f: <mới>` mà interp thi hành cho đích này.
+                        if let HExpr::Field {
+                            base: goc, name, ..
+                        } = &**base
+                        {
+                            let HExpr::Var { sym: Some(id), .. } = &**goc else {
+                                return Err(CodegenError::Unsupported("assign-index", *span));
+                            };
+                            let slot = self.slot_cua(*id)?;
+                            // [x, "f", x.f, i, v] ⇒ Set ⇒ [x, "f", list'] ⇒ With ⇒ [x'] ⇒ Assign.
+                            self.f.push(Instr::LoadLocal(slot), *span, 1);
+                            let nc = self.g.cst_str(name);
+                            self.f.push(Instr::Const(nc), *span, 1);
+                            self.f.push(Instr::LoadLocal(slot), *span, 1);
+                            let fc = self.g.cst_str(name);
+                            self.f.push(Instr::Field(fc), *span, 0);
+                            self.expr(index)?;
+                            self.expr(value)?;
+                            self.f.push(Instr::Set, *span, -2);
+                            self.f.push(Instr::With(1), *span, -2);
+                            self.f.push(Instr::Assign(slot), *span, -1);
+                            return self.net_stack(*span);
+                        }
+                        Err(CodegenError::Unsupported("assign-index", *span))
                     }
                     HExpr::Field { base, name, .. } => {
                         if let HExpr::Var { sym: Some(id), .. } = &**base {
@@ -651,10 +642,8 @@ impl<'g> Emit<'g> {
             HStmt::Return { value, span } => {
                 match value {
                     Some(v) => self.expr(v)?,
-                    None => {
-                        let c = self.unit_cst();
-                        self.f.push(Instr::Const(c), *span, 1);
-                    }
+                    // **ST-60b**: `return` trần ⇒ `()` **thật** (`PushUnit`), không phải `str("")`.
+                    None => self.f.push(Instr::PushUnit, *span, 1),
                 }
                 self.f.push(Instr::Return, *span, -1);
                 self.net_stack(*span)
@@ -722,10 +711,6 @@ impl<'g> Emit<'g> {
                 self.net_stack(*span)
             }
         }
-    }
-
-    fn unit_cst(&mut self) -> u32 {
-        self.g.cst(LitKind::Str, "\"\"")
     }
 
     fn slot_cua(&mut self, sym: u32) -> Result<u16, CodegenError> {
@@ -1345,8 +1330,7 @@ impl<'g> Emit<'g> {
             }
             self.tra_gia_tri(last)
         } else {
-            let c = self.unit_cst();
-            self.f.push(Instr::Const(c), Span::new(0, 0), 1);
+            self.f.push(Instr::PushUnit, Span::new(0, 0), 1);
             Ok(())
         }
     }
@@ -1385,10 +1369,8 @@ impl<'g> Emit<'g> {
                 }
                 match else_ {
                     Some(b) => self.nhanh_gia_tri(b)?,
-                    None => {
-                        let c = self.unit_cst();
-                        self.f.push(Instr::Const(c), *span, 1);
-                    }
+                    // **ST-60b**: `if` **không** `else` ⇒ giá trị `()` thật (trước: `str("")`).
+                    None => self.f.push(Instr::PushUnit, *span, 1),
                 }
                 let end = self.f.here();
                 for j in jend {
@@ -1454,9 +1436,10 @@ impl<'g> Emit<'g> {
             }
             HStmt::Scope { body, .. } | HStmt::Block { body, .. } => self.nhanh_gia_tri(body),
             other => {
+                // **ST-60b**: câu lệnh cuối **không** cho giá trị (vd `x = 5`) ⇒ `()` **thật** —
+                // trước đây mã hoá `()` thành `Const(str "")` nên VM in chuỗi rỗng còn interp in `()`.
                 self.cau(other)?;
-                let c = self.unit_cst();
-                self.f.push(Instr::Const(c), other.span(), 1);
+                self.f.push(Instr::PushUnit, other.span(), 1);
                 Ok(())
             }
         }

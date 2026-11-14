@@ -11,6 +11,7 @@
 //! **Chưa** có VM/verifier (ST-20/ST-21). Mọi bytecode nạp từ cache **phải** qua verifier khi nó
 //! tồn tại (VD-52 #3) — đó là hàng rào bù cho hash nguồn **không phải** SHA-256 (xem [`format`]).
 
+mod cerr;
 pub mod codegen;
 pub mod decode;
 pub mod encode;

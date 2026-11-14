@@ -291,6 +291,25 @@ impl<'a> Interp<'a> {
                                 self.ghi_o(*id, moi, *span)?;
                                 return Ok(Ctrl::Normal);
                             }
+                            // **ST-60b**: `p.xs[0] = v` (một tầng trường, gốc `var`) — đọc trường,
+                            // gán phần tử, rồi **ghi lại trường** rồi ghi lại biến: đúng chuỗi
+                            // `p = p with xs: (p.xs[i] = v)` mà codegen phát (`Field`/`Set`/`With`).
+                            if let HExpr::Field {
+                                base: goc, name, ..
+                            } = &**base
+                            {
+                                if let HExpr::Var { sym: Some(id), .. } = &**goc {
+                                    let cu = self.doc_o(*id, target.span())?;
+                                    let truong = self.field_of(cu, name, *span)?;
+                                    let i = self.eval(index)?;
+                                    let rhs = self.eval(value)?;
+                                    let moi_truong = gan_chi_so(truong, i, rhs, *span)?;
+                                    let cu2 = self.doc_o(*id, target.span())?;
+                                    let moi = gan_truong(cu2, name, moi_truong, *span)?;
+                                    self.ghi_o(*id, moi, *span)?;
+                                    return Ok(Ctrl::Normal);
+                                }
+                            }
                         }
                         _ => {}
                     }

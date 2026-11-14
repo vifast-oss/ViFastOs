@@ -4,6 +4,7 @@
 use crate::hir::{BinOp, HCond, HExpr, HPat, HStmt, UnOp};
 use crate::ty::{EnumId, Type};
 
+use super::sig::FnSig;
 use super::{num, thay_gen, Checker, ARG_COUNT, MISMATCH, NO_FIELD};
 
 impl<'a> Checker<'a> {
@@ -614,7 +615,7 @@ impl<'a> Checker<'a> {
         // trỏ tới ký hiệu `SymKind::Builtin` (ST-11 khai 8 tên dựng sẵn).
         if let HExpr::Var { name, sym, .. } = callee {
             // ST-26: `std.<module>.<fn>` — kiểm chữ ký theo bảng `vis_types::stdlib`.
-            if let Some(t) = self.kiem_std(name, args, span) {
+            if let Some(t) = self.kiem_std(name, args, named, span) {
                 return t;
             }
             let la_builtin = match sym {
@@ -1069,9 +1070,27 @@ impl<'a> Checker<'a> {
     /// rồi **thay** biến vào kiểu trả. `Ty::FnKhoa` là **ngoại lệ có ghi** duy nhất: lambda chưa chú
     /// thích là `{error}` và `Type` không có union `int|str` ⇒ tầng chạy kiểm (ST-56). Biến **không
     /// gán** ⇒ `{error}` (giữ `json.decode`, VD-66). Không mã mới: `VS0401` (số đối số) / `VS0412`.
-    fn kiem_std(&mut self, name: &str, args: &[HExpr], span: vis_syntax::Span) -> Option<Type> {
+    fn kiem_std(
+        &mut self,
+        name: &str,
+        args: &[HExpr],
+        named: &[(String, HExpr)],
+        span: vis_syntax::Span,
+    ) -> Option<Type> {
         let ngan = name.strip_prefix("std.")?;
         let sig = crate::stdlib::sig_of(ngan)?;
+        // **ST-60b**: `std.*` **chỉ** có đối số **vị trí** — `--desc` (hay bất kỳ `--tên` nào) trước
+        // đây bị **bỏ im lặng** (kết quả vẫn tăng dù xin giảm) ⇒ nay **từ chối** `VS0401`, nêu tên.
+        if let Some((ten, a)) = named.first() {
+            let sp = a.span();
+            self.diag(
+                ARG_COUNT,
+                format!(
+                    "`{ngan}` không nhận tham số **tên** `--{ten}` — `std.*` chỉ có đối số vị trí"
+                ),
+                sp,
+            );
+        }
         let tys: Vec<Type> = args.iter().map(|a| self.kiem_expr(a)).collect();
         if tys.len() != sig.so_doi() {
             self.diag(
@@ -1465,23 +1484,4 @@ fn builtin_value_ty(name: &str) -> Type {
         "None" => Type::Opt(Box::new(Type::Error)),
         _ => Type::Error,
     }
-}
-
-/// Chữ ký một hàm **khai trong tệp** (giữ tên tham số + có giá trị mặc định hay không).
-#[derive(Debug, Clone)]
-pub(crate) struct FnSig {
-    pub name: String,
-    /// **ST-60**: `async fn` — gọi **không** chạy thân, trả `Task[ret]`.
-    pub is_async: bool,
-    /// `(tên, kiểu, có_mặc_định, khai `--`)` — kiểu đã **xoá generic** (ST-28), dùng cho thân hàm.
-    pub params: Vec<(String, Type, bool, bool)>,
-    pub ret: Type,
-    /// Tham số cuối là `...rest` ⇒ nhận **thêm** đối số vị trí (ST-27).
-    pub variadic: bool,
-    /// Tham số kiểu của hàm (`fn f[T]`) — ST-28.
-    pub generics: Vec<String>,
-    /// Kiểu tham số **nguyên bản** (còn `TypeRef{"T"}`) để **hợp nhất** ở call-site.
-    pub raw_params: Vec<Type>,
-    /// Kiểu trả **nguyên bản** (còn `T`) — thay bằng kiểu đã suy sau khi hợp nhất.
-    pub raw_ret: Type,
 }

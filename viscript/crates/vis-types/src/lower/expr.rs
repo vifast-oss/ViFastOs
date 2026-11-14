@@ -206,7 +206,7 @@ impl<'a> Lowerer<'a> {
                 {
                     if let HExpr::Var { name: m, .. } = &**base {
                         if self.opts.std_mods.iter().any(|x| x == m) {
-                            return self.std_call_named(m.clone(), f.clone(), args, span);
+                            return self.std_call_named(m.clone(), f.clone(), args, named, span);
                         }
                     }
                 }
@@ -569,8 +569,28 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Gọi `std.<module>.<fn>(…)` khi `<module>` đã `use` (ST-26) — tên đầy đủ `std.m.f`.
-    fn std_call_named(&mut self, m: String, f: String, args: Vec<HExpr>, span: Span) -> HExpr {
+    fn std_call_named(
+        &mut self,
+        m: String,
+        f: String,
+        args: Vec<HExpr>,
+        named: Vec<(String, HExpr)>,
+        span: Span,
+    ) -> HExpr {
         let ngan = format!("{m}.{f}");
+        // **ST-60b**: `std.*` **chỉ** có đối số **vị trí** — trước đây `--desc` bị **bỏ im lặng**
+        // (`named: Vec::new()` dưới kia). Nay **từ chối** `VS0401`, nêu đúng tên.
+        if let Some((ten, a)) = named.first() {
+            let span_a = a.span();
+            self.diag(
+                &vis_diag::TYPE_CODES[0],
+                format!(
+                    "`std.{ngan}` không nhận tham số **tên** `--{ten}` — `std.*` chỉ có đối số vị trí"
+                ),
+                span_a,
+            );
+            return HExpr::Error { span };
+        }
         if vis_types_stdlib::hoan(&ngan) {
             self.diag(&NAME_CODES[0], format!("`{ngan}` chưa hỗ trợ (VS1b)"), span);
             return HExpr::Error { span };

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+type P:
+    xs: list[int]
+
+type Q:
+    p: P
+
+fn main():
+    let q: Q = {p: {xs: [1, 2]}}
+    q.p.xs[0] = 9
+    print(q)

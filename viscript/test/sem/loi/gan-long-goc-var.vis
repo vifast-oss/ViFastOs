@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn main():
+    var xs = [1, 2]
+    xs[0][1] = 9
+    print(xs)

@@ -1,0 +1,36 @@
+# ST-60b — log ĐỎ (Rust) lúc 2026-11-14T02:07:35Z, HEAD d240026 (đã tạm gỡ 10 tệp mã của ST-60b)
+
+test gan_long_goc_var_bao_long_hai_duong ... FAILED
+test gan_long_goc_let_bao_bat_bien_hai_duong ... ok
+test closure_gan_truong_bien_bat_hai_duong ... FAILED
+test closure_gan_phan_tu_bien_bat_hai_duong ... FAILED
+test closure_gan_bien_bat_co_tham_so_hai_duong ... FAILED
+test closure_long_hai_tang_hai_duong ... ok
+test std_khong_nhan_tham_so_ten ... FAILED
+test gan_truong_tren_kieu_khong_ro_cung_chan_doan_giong_nhau ... ok
+test gan_ghep_tren_truong_bi_chan_truoc_hai_duong ... ok
+test self_bat_bien_la_vs0412_hai_duong ... ok
+test dich_gan_khong_ho_tro_la_vs0412 ... ok
+test codegen_loi_vm_phai_exit_khac_0 ... ok
+test var_list_chi_so_va_cow_hai_duong ... ok
+test var_map_khoa_hai_duong ... ok
+test vish_shell_let_khong_thanh_khai_bao ... FAILED
+test var_truong_gan_hai_duong ... ok
+test var_self_gan_truong_hai_duong ... ok
+thread 'gan_long_goc_var_bao_long_hai_duong' (43865132) panicked at crates/vis-cli/tests/gan_hai_duong.rs:296:5:
+thread 'closure_gan_truong_bien_bat_hai_duong' (43865126) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (0, "5\n1\n", "")
+  vm: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-cl-truong-95410/truong.vis:8:9: error VS0501: `with` không dùng được cho `()`\n")
+thread 'closure_gan_phan_tu_bien_bat_hai_duong' (43865125) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (0, "[1, 2]\n", "")
+  vm: (1, "", "/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-st56b-cl-c1-95410/c1.vis:4:19: error VS0501: gán chỉ số không hợp lệ\n")
+thread 'closure_gan_bien_bat_co_tham_so_hai_duong' (43865124) panicked at crates/vis-cli/tests/gan_hai_duong.rs:64:5:
+assertion `left == right` failed: interp ≠ `--vm` (exit/stdout/stderr)
+  interp: (0, "()\n0\n", "")
+  vm: (0, "\n0\n", "")
+thread 'std_khong_nhan_tham_so_ten' (43865135) panicked at crates/vis-cli/tests/gan_hai_duong.rs:332:5:
+assertion `left == right` failed: stdout: "[3, 2, 1]\n" stderr: 
+thread 'vish_shell_let_khong_thanh_khai_bao' (43865191) panicked at crates/vis-cli/tests/gan_hai_duong.rs:356:5:
+test result: FAILED. 11 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s

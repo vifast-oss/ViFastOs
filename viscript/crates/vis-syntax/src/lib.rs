@@ -35,5 +35,8 @@ pub use lex::lit;
 pub use lex::token::{is_keyword, Kind, Span, Token, KEYWORDS, PUNCTS};
 pub use lex::verify;
 pub use lex::{lex, Diagnostic, LexOutput, Mode};
-pub use parse::cmd::{let_la_khai, than_khai_lenh};
+pub use parse::cmd::{
+    dinh_danh_chua_bind, let_la_khai, let_la_khai_voi, ten_khai_bao, ten_mac_dinh, tham_so_cua,
+    than_khai_lenh, than_khai_lenh_voi,
+};
 pub use parse::{parse, parse_voi, ParseOutput};

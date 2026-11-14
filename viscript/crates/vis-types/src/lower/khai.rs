@@ -18,8 +18,9 @@ pub(crate) const TU_KHOA_ITEM: [&str; 13] = [
     "pub", "async",
 ];
 
-/// Dòng cột 1 có phải **khai báo** không (`let` tính là khai báo cấp tệp).
-pub(crate) fn la_khai_bao(dong: &str) -> bool {
+/// **ST-60b**: dòng cột 1 có phải **khai báo** không — `let out = ls -l` (`l` chưa bind)
+/// là **shell-let**, không phải khai báo.
+pub(crate) fn la_khai_bao_voi(dong: &str, da_bind: &std::collections::HashSet<String>) -> bool {
     let d = dong.trim_end();
     if d.is_empty() || d.starts_with('#') || d.starts_with("//") {
         return true; // dòng trống/chú thích **giữ** trong vùng khai báo
@@ -34,23 +35,43 @@ pub(crate) fn la_khai_bao(dong: &str) -> bool {
     if TU_KHOA_ITEM.contains(&tu) {
         return true;
     }
-    // `let` **khai báo** chỉ khi có **chú thích kiểu** (`:` trước `=`); `let big = ls …` là
-    // `shell_let` (ST-18) ⇒ vẫn là stage.
+    // `let` **khai báo** khi RHS là **biểu thức script** và **mọi định danh đã bind**; `let out = ls -l`
+    // (ST-60b), `let big: str = ls | wc -l` (ST-18 `shell_let`) ⇒ vẫn là stage.
     if tu == "let" {
-        return let_la_khai(d);
+        return vis_syntax::let_la_khai_voi(d, da_bind);
     }
     false
 }
 
 /// `let` là **khai báo** khi RHS là **biểu thức script** — **một nguồn sự thật** ở
-/// [`vis_syntax::let_la_khai`] (parser và tầng hạ dùng **cùng** luật; ST-59 bỏ đòi chú thích kiểu).
+/// [`vis_syntax::let_la_khai`] (parser và tầng hạ dùng **cùng** luật; ST-59 bỏ đòi chú thích kiểu —
+/// **không** còn luật "phải có `:`", ST-60b thêm luật **định danh phải bind**).
 pub(crate) fn let_la_khai(d: &str) -> bool {
     vis_syntax::let_la_khai(d)
 }
 
 /// **ST-59**: thân `cmd` = khai báo + **một** pipeline (một nguồn: [`vis_syntax::than_khai_lenh`]).
-pub(crate) fn than_khai_lenh(dong: &[String]) -> bool {
-    vis_syntax::than_khai_lenh(dong)
+/// **ST-60b**: `da_bind` = tên đã bind **trước** thân (khai báo cấp tệp + tham số của `cmd`).
+pub(crate) fn than_khai_lenh(dong: &[String], da_bind: &std::collections::HashSet<String>) -> bool {
+    vis_syntax::than_khai_lenh_voi(dong, da_bind)
+}
+
+/// **ST-60b**: tên đã bind **trước** offset `den` của tệp (khai báo cấp tệp + tham số `cmd`/`fn`).
+pub(crate) fn ten_da_bind_toi(text: &str, den: usize) -> std::collections::HashSet<String> {
+    let mut s = vis_syntax::ten_mac_dinh();
+    let den = den.min(text.len());
+    for dong in text[..den].lines() {
+        if dong.starts_with([' ', '\t']) {
+            continue;
+        }
+        if let Some(ten) = vis_syntax::ten_khai_bao(dong) {
+            s.insert(ten);
+        }
+        for p in vis_syntax::tham_so_cua(dong) {
+            s.insert(p);
+        }
+    }
+    s
 }
 
 /// Mốc byte bắt đầu **vùng stage**; `None` nếu cả tệp là khai báo (không có stage).
@@ -58,10 +79,20 @@ pub(crate) fn than_khai_lenh(dong: &[String]) -> bool {
 pub(crate) fn tach(text: &str) -> (usize, bool) {
     let mut co = false;
     let mut off = 0usize;
+    let mut da_bind = vis_syntax::ten_mac_dinh();
     for dong in text.split_inclusive('\n') {
         let than = dong.trim_end_matches(['\n', '\r']);
-        if !la_khai_bao(than) {
+        if !la_khai_bao_voi(than, &da_bind) {
             return (off, co);
+        }
+        // **ST-60b**: tên khai ở dòng này (và tham số của `fn`/`cmd`) bind cho các dòng **sau**.
+        if !than.starts_with([' ', '\t']) {
+            if let Some(ten) = vis_syntax::ten_khai_bao(than) {
+                da_bind.insert(ten);
+            }
+            for p in vis_syntax::tham_so_cua(than) {
+                da_bind.insert(p);
+            }
         }
         // Chỉ dòng **cột 1** mới mở vùng khai báo; dòng thụt/trống **không** đổi `co`.
         let cot1 = !than.is_empty() && !than.starts_with([' ', '\t']) && !than.starts_with('#');
@@ -199,6 +230,8 @@ pub(crate) fn than_cmd(text: &str) -> Vec<ThanLenh> {
                 l[le.min(ind)..].to_string()
             })
             .collect();
+        // **ST-60b**: offset byte của dòng thân **đầu tiên** — tên bind **trước** đó mới thấy được.
+        let dau_than = raw.first().map(|(a, _)| *a).unwrap_or(het + 1);
         let kieu = if dong_dedent.is_empty() {
             KieuThan::Command
         } else {
@@ -219,7 +252,10 @@ pub(crate) fn than_cmd(text: &str) -> Vec<ThanLenh> {
                     .diagnostics
                     .is_empty()
             });
-            if crate::lower::khai::than_khai_lenh(&dong_dedent) {
+            if crate::lower::khai::than_khai_lenh(
+                &dong_dedent,
+                &crate::lower::khai::ten_da_bind_toi(text, dau_than),
+            ) {
                 // **ST-59**: khai báo (`let …`) + **một** pipeline/biểu thức cuối ⇒ hạ **hai phần**
                 // (không còn `VS0201`); nhiều pipeline vẫn rơi xuống `Mixed`/lỗi như cũ.
                 KieuThan::KhaiLenh

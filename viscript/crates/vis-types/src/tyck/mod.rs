@@ -19,11 +19,12 @@
 mod expr;
 mod num;
 mod pat;
+mod sig;
 mod truong;
 
 use std::collections::HashSet;
 
-use expr::FnSig;
+use sig::FnSig;
 
 use vis_diag::{NAME_CODES, TYPE_CODES};
 use vis_syntax::{Diagnostic, Span};
@@ -1066,10 +1067,22 @@ impl<'a> Checker<'a> {
                 // `self` **không** `var`) là **bất biến** ⇒ `VS0412` tại **phép gán**.
                 // Gán ghép `+=` trên trường **chưa** hỗ trợ ⇒ cũng `VS0412` (tyck chặn trước để
                 // hai đường không lệch — codegen/interp **không** phải đoán).
-                let mutable = match &**base {
-                    HExpr::Var { sym: Some(id), .. } => self.is_mutable(*id),
-                    _ => false,
-                };
+                // **ST-60b**: gốc đi **xuống** qua `Field`/`Index` (`p.xs`/`self.xs`) — bất biến là
+                // thuộc tính của **gốc**; đích **lồng** (gốc `var`) báo đúng là **lồng**, không báo
+                // oan "let/tham số".
+                let goc = goc_dich(target);
+                let mutable = goc.map(|id| self.is_mutable(id)).unwrap_or(false);
+                if !dich_ha_duoc(target) && !matches!(&**base, HExpr::Var { .. }) {
+                    let msg = match goc {
+                        Some(id) if !self.is_mutable(id) => GAN_TRUONG_LET,
+                        Some(_) => GAN_LONG,
+                        None => {
+                            "bản ghi là **bất biến** — dùng `with` để tạo bản sao rồi gán lại `var` (§3.2/§4.1)"
+                        }
+                    };
+                    self.diag(MISMATCH, msg, *span);
+                    return Type::Error;
+                }
                 let bt = self.kiem_expr(base);
                 if !matches!(op, crate::hir::AssignOp::Set) {
                     self.diag(
@@ -1149,18 +1162,24 @@ impl<'a> Checker<'a> {
                     );
                     return Type::Error;
                 }
-                let _ = self.kiem_expr(base); // vẫn kiểm chẩn đoán của biểu thức gốc
-                let mutable = match &**base {
-                    HExpr::Var { sym: Some(id), .. } => self.is_mutable(*id),
-                    _ => false,
-                };
-                if !mutable {
-                    self.diag(
-                        MISMATCH,
-                        "chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)",
-                        *span,
-                    );
+                // **ST-60b**: gốc đi xuống qua `Field` (`p.xs[0] = 9`, `self.xs[0] = 9`); đích **lồng**
+                // (`x[i][j]`, `x.f[0][1]`) báo **lồng** khi gốc **đã** là `var`.
+                let goc = goc_dich(target);
+                let mutable = goc.map(|id| self.is_mutable(id)).unwrap_or(false);
+                if !dich_ha_duoc(target) {
+                    let msg = match goc {
+                        Some(id) if !self.is_mutable(id) => GAN_PHAN_TU_LET,
+                        Some(_) => GAN_LONG,
+                        None => "chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)",
+                    };
+                    self.diag(MISMATCH, msg, *span);
+                    return Type::Error;
                 }
+                if !mutable {
+                    self.diag(MISMATCH, GAN_PHAN_TU_LET, *span);
+                    return Type::Error;
+                }
+                let _ = self.kiem_expr(base); // vẫn kiểm chẩn đoán của biểu thức gốc
                 self.kiem_index_expr(base, index, *span)
             }
             _ => Type::Error,
@@ -1198,9 +1217,11 @@ impl<'a> Checker<'a> {
                 HStmt::Assign {
                     target, op, span, ..
                 } => {
-                    let goc_la_var = |t: &HExpr| match t {
-                        HExpr::Var { sym: Some(id), .. } => duoc_gan.contains(id),
-                        _ => false,
+                    // **ST-60b**: gốc đi **xuống** qua `Field`/`Index` (không chỉ `Var` trực tiếp).
+                    let goc_la_var = |t: &HExpr| {
+                        goc_dich(t)
+                            .map(|id| duoc_gan.contains(&id))
+                            .unwrap_or(false)
                     };
                     let gan_ghep = !matches!(op, crate::hir::AssignOp::Set);
                     match target {
@@ -1213,17 +1234,29 @@ impl<'a> Checker<'a> {
                                 );
                             }
                         }
-                        HExpr::Field { base, .. } => {
+                        HExpr::Field { .. } => {
                             if gan_ghep {
                                 self.diag(MISMATCH, GAN_GHEP, *span);
-                            } else if !goc_la_var(base) {
+                            } else if !dich_ha_duoc(target) {
+                                if goc_la_var(target) {
+                                    self.diag(MISMATCH, GAN_LONG, *span);
+                                } else {
+                                    self.diag(MISMATCH, GAN_TRUONG_LET, *span);
+                                }
+                            } else if !goc_la_var(target) {
                                 self.diag(MISMATCH, GAN_TRUONG_LET, *span);
                             }
                         }
-                        HExpr::Index { base, .. } => {
+                        HExpr::Index { .. } => {
                             if gan_ghep {
                                 self.diag(MISMATCH, GAN_GHEP, *span);
-                            } else if !goc_la_var(base) {
+                            } else if !dich_ha_duoc(target) {
+                                if goc_la_var(target) {
+                                    self.diag(MISMATCH, GAN_LONG, *span);
+                                } else {
+                                    self.diag(MISMATCH, GAN_PHAN_TU_LET, *span);
+                                }
+                            } else if !goc_la_var(target) {
                                 self.diag(MISMATCH, GAN_PHAN_TU_LET, *span);
                             }
                         }
@@ -1265,6 +1298,34 @@ const GAN_TRUONG_LET: &str =
     "không gán được trường của `let`/tham số — chỉ `var` mới gán được (§4.1)";
 /// Thông điệp gán **phần tử** của `let`/tham số.
 const GAN_PHAN_TU_LET: &str = "chỉ gán được phần tử của `var` — `let`/tham số là bất biến (§4.1)";
+/// **ST-60b**: đích **lồng** (sâu hơn một tầng trường/chỉ số) — gốc **đã** là `var` nên lỗi là do
+/// **hình dạng đích**, không phải do bất biến; nêu đúng vậy thay vì báo oan "let/tham số".
+const GAN_LONG: &str =
+    "gán **lồng** (`x.f[i]`/`x[i][j]`/`x.f.g`) chưa hỗ trợ ở VS0 — gán lại cả biến `var` bằng `with`/giá trị mới (§4.1)";
+
+/// **ST-60b**: gốc của **đích gán** — đi xuống qua `Field`/`Index` tới `Var`.
+fn goc_dich(t: &HExpr) -> Option<u32> {
+    match t {
+        HExpr::Var { sym, .. } => *sym,
+        HExpr::Field { base, .. } | HExpr::Index { base, .. } => goc_dich(base),
+        _ => None,
+    }
+}
+
+/// **ST-60b**: đích mà **codegen** hạ được: biến; **một** tầng trường (`x.f`); **một** chỉ số trên
+/// biến (`x[i]`); hoặc **một** chỉ số trên **một** tầng trường (`x.f[i]`). Sâu hơn ⇒ `GAN_LONG`.
+fn dich_ha_duoc(t: &HExpr) -> bool {
+    match t {
+        HExpr::Var { sym: Some(_), .. } => true,
+        HExpr::Field { base, .. } => matches!(&**base, HExpr::Var { sym: Some(_), .. }),
+        HExpr::Index { base, .. } => match &**base {
+            HExpr::Var { sym: Some(_), .. } => true,
+            HExpr::Field { base: b2, .. } => matches!(&**b2, HExpr::Var { sym: Some(_), .. }),
+            _ => false,
+        },
+        _ => false,
+    }
+}
 
 /// Kiểu **không thuộc VS0** (VD-48(a)) — vẫn `VS0301` nhưng thông điệp nêu rõ vis-std/vòng 2.
 fn la_kieu_ngoai_vs0(name: &str) -> bool {

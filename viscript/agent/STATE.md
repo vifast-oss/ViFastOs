@@ -6,17 +6,32 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-60** (VS2 #1 — **async**: `async fn`/`await`/`spawn` + bộ lập lịch **tất định
-                một luồng**, chốt VD-90/VD-95) — xong, **chưa commit**.
-Bước          : 9/9 (khảo sát file:line → runtime `rt.rs` → builtin `$…` + Host → interp → parser/HIR
-                → tyck `Task[T]` → codegen/VM → 22 ca sem + 10k → 2 log đỏ → cổng/differential →
-                STATE/JOURNAL).
+Task          : **ST-60b** (hotfix sau review độc lập: **gán trong closure** hồi quy parity từ
+                `dd04afb`; đích lồng `self.xs[0]`; `.vish` shell-let `let out = ls -l`; `std.* --tên`
+                bị bỏ im lặng) — xong, **chưa commit**.
+Bước          : 8/8 (tái hiện C1/C2 → closure captured dùng **ô cục bộ + prologue** (không thêm tag)
+                → `()` thật thay `str("")` → gốc đích gán + thông điệp lồng → luật `let` **định danh
+                phải bind** → `std` từ chối `--tên` → 8 ca Rust + 3 ca sem → 2 log đỏ → cổng →
+                differential → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T01:14:39Z**; **774** test / sem
-                **416/20 nhóm** / `vis test` **416 ok** (+`--vm` **416 ok/7 SKIP**) / parity **377/377** /
-                differential **100.000 chương trình 0 lệch** (208,7 s) / **7 sổ-30 mã** (+`VS0506`) /
-                allowlist **6**; 10k task: interp **309 ms**, VM **166 ms**
-Việc dở       : commit `[ST-60]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T02:34:19Z**; **782** test / sem
+                **419/20 nhóm** / `vis test` **419 ok** (+`--vm` **419 ok/7 SKIP**) / parity **378/378** /
+                differential **100.000 chương trình 0 lệch** (223,6 s) / **7 sổ-30 mã** (không mã mới) /
+                allowlist **6**
+Việc dở       : commit `[ST-60b]` + push (đã được uỷ quyền)
+
+## ST-60b — hotfix review độc lập: gán trong closure, đích lồng, shell-let, `std --tên`, 2026-11-14
+
+| # | Việc | Sửa gì | Ca |
+|---|---|---|---|
+| 1 | **BLOCKER — gán trong closure** (hồi quy `dd04afb`) | Codegen: closure **bắt theo giá trị** nay **cấp ô cục bộ** cho từng biến bắt + **prologue** `LoadCaptured(i)` + `Assign(slot)` ⇒ **đọc và ghi** đều đi ô cục bộ (ghi không đụng biến ngoài, đọc lại thấy giá trị vừa ghi); **không** thêm tag `VBC1`, verifier/cache không đổi. Interp: đã đúng by-value — thêm nhánh `p.xs[0] = v` (một tầng trường) cho khớp codegen. Phụ: `()` trước đây mã hoá thành `Const(str "")` ⇒ VM in chuỗi rỗng còn interp in `()` — nay `PushUnit` **thật** (mọi chỗ giá trị đơn vị) | `gan_hai_duong`: `closure_gan_phan_tu_bien_bat` (**C1**), `closure_gan_bien_bat_co_tham_so` (**C2**), `closure_gan_truong_bien_bat`, `closure_long_hai_tang` (4 ca interp = `--vm` **byte-khớp**) |
+| 2 | **`self.xs[0] = 9` / `p.xs[0] = 9` bị `VS0412` oan** | Tyck: **gốc đích gán** đi xuống qua `Field`/`Index` (`goc_dich`) thay vì chỉ nhận `Var` trực tiếp; đích hạ được = biến / `x.f` / `x[i]` / `x.f[i]` (`dich_ha_duoc`); codegen thêm đường `x.f[i] = v` (`Field`+`Set`+`With`+`Assign`), interp thêm nhánh tương ứng | 2 xanh (trong 4 ca trên: `var self`, `var p`), 1 âm: `gan_long_goc_let_bao_bat_bien` |
+| 3 | **Đích lồng: thông điệp nêu đúng gốc** | `GAN_LONG` mới ("gán **lồng** … chưa hỗ trợ") khi **gốc đã là `var`**; gốc `let`/tham số vẫn nói **bất biến**; gốc không phải biến ⇒ "bản ghi bất biến". Áp cho cả thân `impl` (`kiem_gan_than`) | `gan_hai_duong`: `gan_long_goc_var_bao_long` (đòi chữ **lồng**, cấm câu let/tham số), `gan_long_goc_let_bao_bat_bien` (đòi let/tham số, cấm chữ lồng); sem `.err`: `loi/gan-long-goc-var`, `loi/gan-long-goc-let` |
+| 4 | **`.vish` shell-let** (hồi quy nhẹ ST-59) | Luật `let` khai báo **một nguồn** nay đòi thêm: **mọi định danh trong RHS đã bind** (`dinh_danh_chua_bind`, bỏ tên trường sau `.`/khoá bản ghi) — `da_bind` = dựng sẵn + khai báo **trước** + **tham số `cmd`**. Parser giữ tập `da_bind` tăng dần; `tach`/`than_khai_lenh` cũng vậy. `let out = ls -l` ⇒ **shell-let**; `let b = a` (a đã bind) ⇒ **khai báo** | `gan_hai_duong::vish_shell_let_khong_thanh_khai_bao` (check xanh, run báo `out` **không** báo `l`); sem `.out`: `vish/cmd-than-khai-bien` |
+| 5 | **`std.list.sort_by(…, --desc)` bỏ cờ im lặng** | `kiem_std` nhận `named` ⇒ **từ chối** mọi `--tên` (`VS0401`, nêu đúng tên); đường hạ `std_call_named` cũng **từ chối** (trước: `named: Vec::new()` nuốt cờ) — **không** thêm ngữ nghĩa `--desc` | `gan_hai_duong::std_khong_nhan_tham_so_ten` |
+| 6 | **MINOR** | Header `diag_cmp` cập nhật **419/348/41/30** (số cũ 382/325/30/27); comment `khai.rs` "chỉ khi có `:`" đã sửa; **không** thêm SPDX cho `.out/.err` (đúng R3) | — |
+| 7 | **Đo** | **782** test (21+96+18+154+24+62+9+**398**); sem **419/20 nhóm** (367 `.vis` + 50 `.vish`, 71 `.err`); `vis test` **419 ok**; `--vm` **419 ok + 7 SKIP**; parity **378/378** (41 ca lỗi biên dịch); differential **100.000/0 lệch**; `VBC1` **53** (không đổi); **7 sổ/30 mã** (không mã mới); allowlist **6** | — |
+| 8 | **Bất ngờ / nợ** | (a) hồi quy C1/C2 **thật** và **cùng gốc**: `slot_cua` trả **chỉ số captured** cho `Assign`/`LoadLocal` ⇒ nay biến bắt có ô cục bộ riêng; (b) phát hiện thêm lỗi **cũ**: `()` mã hoá `Str("")` ⇒ lệch in ấn mọi hàm có giá trị đơn vị **ngầm** (đã sửa, `PushUnit`); (c) `if` **không** `else` trong **ngữ cảnh giá trị** cũng đã đúng `()`; **còn** nợ: `match` **không** khớp nhánh ở ngữ cảnh giá trị vẫn đẩy `false` thay vì `VS0501` (ghi `R10`); (d) shell-let **vẫn chưa hạ** ⇒ `let out = ls -l` xanh `check` nhưng `run` báo `out` chưa bind (nợ cũ); (e) `R1` buộc tách `FnSig` → `tyck/sig.rs` và `CodegenError` → `bytecode/cerr.rs`; (f) ca `std --tên` khoá ở **Rust** (HIR `{error}` không sinh bytecode hỏng) | — |
 
 ## ST-60 — VS2 #1: async (`async fn`/`await`/`spawn`), bộ lập lịch tất định một luồng, 2026-11-14
 

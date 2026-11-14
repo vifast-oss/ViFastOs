@@ -127,6 +127,9 @@ pub struct Parser<'a> {
     /// Chỉ số token **không phải chú thích** (kể cả `EOF` ở cuối).
     sig: Vec<u32>,
     pos: usize,
+    /// **ST-60b**: tên **đã bind** ở vùng khai báo (dựng sẵn + dòng khai báo trước đó) — dùng để
+    /// phân loại `let` khai báo ↔ shell-let (`let out = ls -l` là shell-let vì `l` chưa bind).
+    da_bind: std::collections::HashSet<String>,
 }
 
 /// Lỗi cú pháp đầu tiên — chuyển thành [`Diagnostic`] ở [`parse`].
@@ -147,6 +150,7 @@ impl<'a> Parser<'a> {
             text,
             sig,
             pos: 0,
+            da_bind: crate::parse::cmd::ten_mac_dinh(),
         }
     }
 

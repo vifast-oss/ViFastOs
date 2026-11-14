@@ -131,8 +131,12 @@ fn sem_323_ca_qua_binary() {
         // `.vis` + 49 `.vish`, **69** `.err`): await cơ bản/thứ tự/cache, task in, spawn + join cuối,
         // task trả record/list/str, đệ quy async, async gọi async, và 7 ca **âm** (VS0412 ×4, VS0201,
         // VS0506 ×2).
-        416,
-        "phải đúng 416 ca (367 `.vis` + 49 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        // **SỬA KÈM LÝ DO (ST-60b)**: +**3** ca (2 `.err` trong `loi/`: gán lồng gốc `var`, gán lồng
+        // gốc `let`; 1 xanh trong `vish/`: thân `cmd` khai báo dùng **biến** vừa khai) ⇒ **419 ca /
+        // 20 nhóm** (367 `.vis` + 50 `.vish`, **71** `.err`). (`std.* --tên` khoá ở Rust
+        // `gan_hai_duong::std_khong_nhan_tham_so_ten` — HIR `{error}` không sinh bytecode hỏng.)
+        419,
+        "phải đúng 419 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.

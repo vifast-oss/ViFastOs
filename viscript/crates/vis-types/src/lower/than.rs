@@ -18,6 +18,8 @@ pub(crate) struct ThanOut {
 /// **ST-48**: hạ một thân `cmd` lệnh bằng Lowerer **con** (chung `Symbols`/`TypeTable`), không
 /// chạy prelude/khai báo lại; trả biểu thức của **pipeline duy nhất**.
 pub(crate) struct ThanCtx {
+    /// **ST-60b**: tham số của `cmd` (khai trong Lowerer con để thân `KhaiLenh` thấy chúng).
+    pub params: Vec<crate::hir::HParam>,
     pub sigs: Vec<crate::cmdsig::CmdSig>,
     pub file_long: Option<RecId>,
     /// Bản ghi đã biết ở Lowerer cha (prelude + item) — để sugar `where`/`it` thấy **trường**.
@@ -48,6 +50,7 @@ pub(crate) fn lower_than(
     ctx: ThanCtx,
 ) -> ThanOut {
     let ThanCtx {
+        params: _,
         sigs,
         file_long,
         recs,
@@ -148,6 +151,7 @@ fn lower_than_khai_lenh(
     ctx: ThanCtx,
 ) -> (Vec<HStmt>, Type, Vec<Diagnostic>) {
     let ThanCtx {
+        params,
         sigs,
         file_long,
         recs,
@@ -171,6 +175,17 @@ fn lower_than_khai_lenh(
     let khung = (l.symbols.frames.len() - 1) as u32;
     l.scope.push(khung);
     l.declare_builtins();
+    // **ST-60b**: tham số `cmd` **đã bind** trong thân (trước chỉ có ở đường thân-script). Dùng
+    // **đúng sym** của `HFn` (đổi `frame` sang khung con) — không `declare` lại, nếu không HIR trỏ
+    // sym mới còn lúc chạy lại bind sym cũ (`tên … chưa có giá trị`).
+    for p in &params {
+        if let Some(s) = l.symbols.syms.get_mut(p.sym as usize) {
+            s.frame = khung;
+        }
+        if !matches!(p.ty, Type::Error) {
+            l.type_env.insert(p.sym, p.ty.clone());
+        }
+    }
     l.cmd_sigs.extend(sigs.clone());
     l.file_long = file_long;
     l.rec_names = recs.clone();
@@ -196,6 +211,12 @@ fn lower_than_khai_lenh(
     l2.scope.push(k2);
     l2.type_env = type_env;
     l2.declare_builtins();
+    // Tham số đã remap sang khung khai báo (`khung`) và khung đó nằm trong `scope` của `l2`.
+    for p in &params {
+        if !matches!(p.ty, Type::Error) {
+            l2.type_env.insert(p.sym, p.ty.clone());
+        }
+    }
     l2.cmd_sigs.extend(sigs);
     l2.file_long = file_long;
     let sigs2 = l2.cmd_sigs.clone();
@@ -322,6 +343,7 @@ impl<'a> super::Lowerer<'a> {
                 },
                 self.opts.clone(),
                 crate::lower::ThanCtx {
+                    params: Vec::new(),
                     sigs: sigs.clone(),
                     file_long: self.file_long,
                     recs: self.rec_names.clone(),
@@ -356,9 +378,20 @@ impl<'a> super::Lowerer<'a> {
         sigs: &[CmdSig],
         span: Span,
     ) {
-        // Số dòng khai báo đầu (không có dòng trống trong `dong`).
+        // Số dòng khai báo đầu (không có dòng trống trong `dong`) — **ST-60b**: luật phải biết tên
+        // đã bind (khai báo cấp tệp + tham số `cmd` + dòng khai **trước** trong chính vùng này).
+        let mut bind = crate::lower::khai::ten_da_bind_toi(self.text, t.dau);
         let mut i = 0usize;
-        while i < t.dong.len() && crate::lower::khai::let_la_khai(t.dong[i].trim()) {
+        while i < t.dong.len() && crate::lower::khai::la_khai_bao_voi(t.dong[i].trim(), &bind) {
+            let dong = t.dong[i].trim();
+            if dong.starts_with("let ") && !vis_syntax::let_la_khai_voi(dong, &bind) {
+                break;
+            }
+            if let Some(ten) = vis_syntax::ten_khai_bao(dong) {
+                if dong.starts_with("let ") {
+                    bind.insert(ten);
+                }
+            }
             i += 1;
         }
         if i == 0 || i >= t.dong.len() {
@@ -385,6 +418,8 @@ impl<'a> super::Lowerer<'a> {
                 return;
             }
         };
+        // **ST-60b**: tham số của `cmd` — tra theo **tên** trong item đã hạ (để khai trong con).
+        let params = self.than_params(&t.ten);
         let out = lower_than_khai_lenh(
             self.symbols,
             self.tbl,
@@ -392,6 +427,7 @@ impl<'a> super::Lowerer<'a> {
             (&lenh.0, &lenh.1),
             self.opts.clone(),
             ThanCtx {
+                params,
                 sigs: sigs.to_vec(),
                 file_long: self.file_long,
                 recs: self.rec_names.clone(),
@@ -407,6 +443,17 @@ impl<'a> super::Lowerer<'a> {
         {
             f.body = out.0;
         }
+    }
+
+    /// **ST-60b**: tham số của `cmd` theo **tên** (item đã hạ) — khai trong Lowerer con.
+    fn than_params(&self, ten: &str) -> Vec<crate::hir::HParam> {
+        self.items
+            .iter()
+            .find_map(|it| match it {
+                HItem::Fn(g) if g.name == ten && g.kind == FnKind::Cmd => Some(g.params.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     /// Lex + parse một mẩu thân với **span tuyệt đối** (dịch qua `t.map`), trả CST + LexOutput.
@@ -476,6 +523,8 @@ impl<'a> super::Lowerer<'a> {
             },
             self.opts.clone(),
             crate::lower::ThanCtx {
+                // Nhóm `( … )` **không** có tham số — không khai gì thêm.
+                params: Vec::new(),
                 sigs: sigs.to_vec(),
                 file_long: self.file_long,
                 recs: self.rec_names.clone(),
