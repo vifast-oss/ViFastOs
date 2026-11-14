@@ -176,7 +176,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-80 | **nhất quán #4** — LSP **module-aware**: giải `use ./x` + `std.*` khi chẩn đoán | ST-79 | 3 h | **DONE** | ≥6 ca; hết chẩn đoán giả cho `std.*`; vẫn một tệp nếu không `use` |
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **DONE** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **DONE** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
-| ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **READY** | ≥6 ca; không đổi hành vi đã khoá |
+| ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **DONE** | ≥6 ca; không đổi hành vi đã khoá |
 | ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **READY** | ≥4 ca; vẫn tất định |
 | ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **READY** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
@@ -1250,3 +1250,14 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: **siết mặc định** vẫn là nợ lớn (phải chuyển toàn fixture), `fs.exists` ngoài quyền vẫn trả `false` im lặng, cờ chỉ áp cho
 > `run`/`test`.
 > **ST-82 mở** (R12 — chốt vòng 12).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-83 DONE — nợ nhỏ #1.** Commit `7bac3c70` (**Agent 2 tự commit, đã push**). Ba nợ đóng: **`fs.exists` ngoài quyền ⇒ trap
+> `VS0604`** (cùng câu với `read`, exit 2 — hết im lặng `false`), **`assert <đk>` dạng câu lệnh** (`assert` = **soft keyword**,
+> hạ `Call(assert,[expr])`, giữ `assert(x)`, trong `test fn` ⇒ TAP `not ok`), **help `explain` theo `--lang`** đủ **vi/en/ja**
+> (số khối/mã vẫn **đếm động**). **6 ca** chạy cả hai đường. Đo: **920 test** · sem **447/22** · parity **398/398** · differential
+> **100k/0 lệch** (231,4 s). Hai test cũ **SỬA KÈM LÝ DO** (ca âm `assert xs == [...]` nay **hợp lệ** ⇒ đổi sang `assert 1 2`;
+> đo hiệu năng LSP đổi sang **phần thêm** so với nền, **ngưỡng 100 ms giữ nguyên**).
+> Nợ: `assert` câu lệnh chỉ một biểu thức (không message); biến tên `assert` ở đầu câu lệnh bị hiểu thành assert; help dịch tay.
+> **ST-84 mở** (LSP completion/hover module-aware).
