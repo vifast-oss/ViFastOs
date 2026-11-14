@@ -134,7 +134,27 @@ pub fn run_with_hosts<'a>(
     fs: Option<&'a mut dyn crate::builtin::FsHost>,
     net: Option<&'a mut dyn crate::builtin::NetHost>,
 ) -> RunOutput {
+    run_with_hosts_caps(text, hir, symbols, types, args, ngoai, fs, net, &[])
+}
+
+/// **ST-72b (VD-103/VD-106)**: như [`run_with_hosts`] nhưng gắn **giá trị quyền** `cap` cho `main`
+/// (`(chỉ số tham số, giá trị)`); CLI tính từ CST. Đường cũ giữ nguyên chữ ký qua wrapper trên.
+#[allow(clippy::too_many_arguments)]
+pub fn run_with_hosts_caps<'a>(
+    text: &str,
+    hir: &'a Hir,
+    symbols: &'a Symbols,
+    types: &'a TypeTable,
+    args: &[String],
+    ngoai: Option<&'a mut dyn crate::builtin::Ngoai>,
+    fs: Option<&'a mut dyn crate::builtin::FsHost>,
+    net: Option<&'a mut dyn crate::builtin::NetHost>,
+    caps: &[(u32, Value)],
+) -> RunOutput {
     let mut it = interp::Interp::new(hir, symbols, types);
+    if !caps.is_empty() {
+        it.set_caps(caps.to_vec());
+    }
     if let Some(n) = ngoai {
         it.set_ngoai(n);
     }

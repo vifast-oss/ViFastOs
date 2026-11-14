@@ -1,0 +1,65 @@
+# ST-72b — log ĐỎ (Rust) lúc 2026-11-14T10:31:26Z, HEAD d0e52544 — CHƯA có Value::Cap/cưỡng chế/--grant (đã tạm hoàn nguyên 7 tệp mã, bỏ quyen.rs).
+# lệnh: cargo test -p vis-cli --test quyen (8 ca, harness CUỐI).
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.54s
+     Running tests/quyen.rs (target/debug/deps/quyen-f2383eef48c5868a)
+
+running 8 tests
+test grant_doi_duong_dan ... FAILED
+test net_thieu_cap ... FAILED
+test khong_khai_cap_thi_khong_han_che ... ok
+test doc_ngoai_quyen ... FAILED
+test ghi_co_co ... ok
+test ghi_thieu_co ... FAILED
+test hai_cap_dir ... FAILED
+test doc_trong_quyen ... ok
+
+failures:
+
+---- grant_doi_duong_dan stdout ----
+
+thread 'grant_doi_duong_dan' (46374141) panicked at crates/vis-cli/tests/quyen.rs:180:5:
+stderr: vis run: không hỗ trợ cờ `--grant`
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- net_thieu_cap stdout ----
+
+thread 'net_thieu_cap' (46374144) panicked at crates/vis-cli/tests/quyen.rs:199:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- doc_ngoai_quyen stdout ----
+
+thread 'doc_ngoai_quyen' (46374137) panicked at crates/vis-cli/tests/quyen.rs:91:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- ghi_thieu_co stdout ----
+
+thread 'ghi_thieu_co' (46374140) panicked at crates/vis-cli/tests/quyen.rs:113:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- hai_cap_dir stdout ----
+
+thread 'hai_cap_dir' (46374142) panicked at crates/vis-cli/tests/quyen.rs:50:5:
+assertion `left == right` failed: exit lệch: (1, "", "f.vis:3:1: error VS0501: thiếu đối số `b` của `main`\n") vs (0, "A\nB\nNGOAI\n", "")
+  left: 1
+ right: 0
+
+
+failures:
+    doc_ngoai_quyen
+    ghi_thieu_co
+    grant_doi_duong_dan
+    hai_cap_dir
+    net_thieu_cap
+
+test result: FAILED. 3 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+error: test failed, to rerun pass `-p vis-cli --test quyen`

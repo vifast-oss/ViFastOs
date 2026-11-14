@@ -10,10 +10,11 @@ mod modules;
 mod net;
 mod ngoai;
 mod pkg;
+mod quyen;
 mod vistest;
 
 use vis_diag::{all_codes, lookup_str, severity_label, Lang};
-use vis_syntax::{Kind, Mode, NodeKind};
+use vis_syntax::Mode;
 
 /// **ST-63 (VD-105)**: host mạng của CLI (TCP thật, chỉ loopback) — tên cục bộ cho rõ điểm nối.
 use net::Net as HostNet;
@@ -337,6 +338,8 @@ fn run_run(rest: &[String]) -> ExitCode {
     let mut dump_deps = false;
     // **ST-72 (VD-106 (2))**: in quyền khai báo của `main` rồi exit 0, **không** chạy.
     let mut dry = false;
+    // **ST-72b (VD-103)**: `--grant <tên>=<path>` thay root của cap đã khai (không thêm quyền mới).
+    let mut grants: Vec<(String, String)> = Vec::new();
     let mut explain_perms = false;
     // `vis run --no-extern`: tắt chương trình ngoài (lệnh lạ ⇒ `VS0601`).
     let mut co_no_extern = false;
@@ -355,6 +358,18 @@ fn run_run(rest: &[String]) -> ExitCode {
             // ST-25: in cây phụ thuộc của module.
             "--dump-deps" => dump_deps = true,
             "--dry" => dry = true,
+            "--grant" => {
+                i += 1;
+                let Some(v) = rest.get(i) else {
+                    eprintln!("vis run: `--grant` cần giá trị dạng <tên>=<đường-dẫn>");
+                    return ExitCode::from(2);
+                };
+                let Some((ten, duong)) = v.split_once('=') else {
+                    eprintln!("vis run: `--grant {v}` phải dạng <tên>=<đường-dẫn>");
+                    return ExitCode::from(2);
+                };
+                grants.push((ten.to_string(), duong.to_string()));
+            }
             // ST-27: in nhật ký quyền trước mỗi lần chạy chương trình ngoài.
             "--explain-perms" => explain_perms = true,
             // ST-27: tắt chương trình ngoài ⇒ lệnh lạ `VS0601`.
@@ -388,7 +403,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--no-cache] <tệp.vis> [-- args…]"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]"
         );
         return ExitCode::from(2);
     };
@@ -425,6 +440,16 @@ fn run_run(rest: &[String]) -> ExitCode {
     if dry {
         return run_dry(&tep, &text, che_do);
     }
+    // **ST-72b (VD-103/VD-106)**: quyền theo `cap` của `main` + `--grant`.
+    let ds_cap = quyen::ds_cap(&text, che_do);
+    let goc = std::env::current_dir().unwrap_or_default();
+    let quyen = match quyen::tao(&ds_cap, &grants, &goc) {
+        Ok(q) => q,
+        Err(e) => {
+            eprintln!("vis run: {e}");
+            return ExitCode::from(2);
+        }
+    };
     if tap {
         eprintln!("TAP version 13");
         eprintln!("1..1");
@@ -445,14 +470,23 @@ fn run_run(rest: &[String]) -> ExitCode {
                     .name("vis-run".into())
                     .stack_size(256 * 1024 * 1024)
                     .spawn_scoped(scope, || {
-                        let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                        let mut net = HostNet::moi(explain_perms);
-                        let out = vis_vm::run_with_hosts(
+                        let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
+                        let mut net_tho = HostNet::moi(explain_perms);
+                        let mut fs = quyen::FsGuard {
+                            trong: &mut fs_tho,
+                            quyen: &quyen,
+                        };
+                        let mut net = quyen::NetGuard {
+                            trong: &mut net_tho,
+                            quyen: &quyen,
+                        };
+                        let out = vis_vm::run_with_hosts_caps(
                             &m,
                             &text,
                             &prog_args,
                             Some(&mut fs),
                             Some(&mut net),
+                            &quyen.gia_tri(),
                         );
                         let d: Vec<(String, u32, u32, String)> = out
                             .diagnostics
@@ -480,7 +514,7 @@ fn run_run(rest: &[String]) -> ExitCode {
             if tap {
                 eprintln!("not ok 1 - {} ({}, steps={})", tep, diags[0].0, steps);
             }
-            return ExitCode::from(1);
+            return ExitCode::from(ma_thoat_khi_loi(&diags));
         }
     }
     // 1–3) nạp **module** (ST-25): đa tệp, `use`, cấm vòng, chẩn đoán đúng tên tệp.
@@ -559,18 +593,41 @@ fn run_run(rest: &[String]) -> ExitCode {
                         eprintln!("{}", vis_vm::dump::dump(&m));
                     }
                     // ST-33/ST-63: `std.fs`/`std.net` đi qua host (chỉ CLI biết OS).
-                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                    let mut net = HostNet::moi(explain_perms);
-                    vis_vm::run_with_hosts(&m, &text, &prog_args, Some(&mut fs), Some(&mut net))
+                    let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
+                    let mut net_tho = HostNet::moi(explain_perms);
+                    let mut fs = quyen::FsGuard {
+                        trong: &mut fs_tho,
+                        quyen: &quyen,
+                    };
+                    let mut net = quyen::NetGuard {
+                        trong: &mut net_tho,
+                        quyen: &quyen,
+                    };
+                    vis_vm::run_with_hosts_caps(
+                        &m,
+                        &text,
+                        &prog_args,
+                        Some(&mut fs),
+                        Some(&mut net),
+                        &quyen.gia_tri(),
+                    )
                 } else if che_do == vis_syntax::Mode::Command && !co_no_extern {
                     // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
                         ..ngoai::Runner::default()
                     };
-                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                    let mut net = HostNet::moi(explain_perms);
-                    vis_interp::run_with_hosts(
+                    let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
+                    let mut net_tho = HostNet::moi(explain_perms);
+                    let mut fs = quyen::FsGuard {
+                        trong: &mut fs_tho,
+                        quyen: &quyen,
+                    };
+                    let mut net = quyen::NetGuard {
+                        trong: &mut net_tho,
+                        quyen: &quyen,
+                    };
+                    vis_interp::run_with_hosts_caps(
                         &text,
                         &h.hir,
                         &h.symbols,
@@ -579,12 +636,21 @@ fn run_run(rest: &[String]) -> ExitCode {
                         Some(&mut runner),
                         Some(&mut fs),
                         Some(&mut net),
+                        &quyen.gia_tri(),
                     )
                 } else {
                     // ST-33: `.vis` cũng có `std.fs` (không có chương trình ngoài).
-                    let mut fs = HostFs::tao(explain_perms, fs_mock.as_ref());
-                    let mut net = HostNet::moi(explain_perms);
-                    vis_interp::run_with_hosts(
+                    let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());
+                    let mut net_tho = HostNet::moi(explain_perms);
+                    let mut fs = quyen::FsGuard {
+                        trong: &mut fs_tho,
+                        quyen: &quyen,
+                    };
+                    let mut net = quyen::NetGuard {
+                        trong: &mut net_tho,
+                        quyen: &quyen,
+                    };
+                    vis_interp::run_with_hosts_caps(
                         &text,
                         &h.hir,
                         &h.symbols,
@@ -593,6 +659,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                         None,
                         Some(&mut fs),
                         Some(&mut net),
+                        &quyen.gia_tri(),
                     )
                 };
                 let d: Vec<(String, u32, u32, String)> = out
@@ -627,7 +694,18 @@ fn run_run(rest: &[String]) -> ExitCode {
         if tap {
             eprintln!("not ok 1 - {} ({}, steps={})", tep, diags[0].0, steps);
         }
-        ExitCode::from(1)
+        ExitCode::from(ma_thoat_khi_loi(&diags))
+    }
+}
+
+/// **ST-72b**: lỗi **vượt quyền** (`VS0604`, message đánh dấu `[quyền]`) là lỗi **môi trường/dùng**
+/// ⇒ exit **2** (yêu cầu ST-72b); các lỗi runtime khác — kể cả `VS0604` **không do quyền** (thiếu
+/// host) — giữ exit **1** như trước (tương thích `pipeline::vm_khong_host_bao_vs0604`).
+fn ma_thoat_khi_loi(diags: &[(String, u32, u32, String)]) -> u8 {
+    if diags.iter().any(|d| d.3.starts_with("[quyền]")) {
+        2
+    } else {
+        1
     }
 }
 
@@ -735,96 +813,19 @@ fn main() -> ExitCode {
 /// Định dạng cố định (stdout **rỗng**; danh sách ra **stderr** như `--dump-deps`):
 /// `tên: cap[Loại] đường-dẫn (write)`. Không có quyền ⇒ `(không khai báo quyền)`.
 fn run_dry(tep: &str, text: &str, mode: Mode) -> ExitCode {
-    let parsed = vis_syntax::parse(text, mode);
-    let cst = &parsed.cst;
+    let caps = quyen::ds_cap(text, mode);
     let _ = tep;
-    let mut ds: Vec<String> = Vec::new();
-    for n in cst.root.children() {
-        if n.kind != NodeKind::FnDecl {
-            continue;
-        }
-        let ten = n
-            .tokens(&cst.tokens)
-            .find(|t| t.kind == Kind::Ident)
-            .map(|t| t.text.clone());
-        if ten.as_deref() != Some("main") {
-            continue;
-        }
-        let Some(ps) = n.child(NodeKind::Params) else {
-            continue;
-        };
-        for p in ps.children().filter(|x| x.kind == NodeKind::Param) {
-            let Some(tyn) = p.child(NodeKind::Type) else {
-                continue;
-            };
-            let ty = text
-                .get(tyn.span.start..tyn.span.end)
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            if !ty.starts_with("cap[") {
-                continue;
-            }
-            let toks: Vec<&vis_syntax::Token> = p.tokens(&cst.tokens).collect();
-            let mut ten_p = String::new();
-            for t in &toks {
-                if t.kind == Kind::Ident {
-                    ten_p = t.text.clone();
-                }
-                if t.is_punct(":") {
-                    break;
-                }
-            }
-            // Parser tiêu token `@` (không vào CST) nhưng giữ literal ngay sau ⇒ tìm token
-            // `Path`/`Str` **trực tiếp** của `Param`.
-            let duong = toks
-                .iter()
-                .find(|t| matches!(t.kind, Kind::Path | Kind::Str))
-                .map(|t| bo_lit(&t.text))
-                .unwrap_or_default();
-            let mut quyen = String::new();
-            if let Some(g) = p.child(NodeKind::GrantList) {
-                let gs: Vec<String> = g
-                    .children()
-                    .filter(|x| x.kind == NodeKind::DottedPath)
-                    .map(|x| {
-                        text.get(x.span.start..x.span.end)
-                            .unwrap_or("")
-                            .trim()
-                            .to_string()
-                    })
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if !gs.is_empty() {
-                    quyen = format!(" ({})", gs.join(", "));
-                }
-            }
-            if duong.is_empty() {
-                ds.push(format!("{ten_p}: {ty}{quyen}"));
-            } else {
-                ds.push(format!("{ten_p}: {ty} {duong}{quyen}"));
-            }
-        }
-    }
-    if ds.is_empty() {
+    if caps.is_empty() {
         eprintln!("(không khai báo quyền)");
-    } else {
-        for d in ds {
-            eprintln!("{d}");
+        return ExitCode::SUCCESS;
+    }
+    for c in &caps {
+        let quyen = if c.write { " (write)" } else { "" };
+        if c.path.is_empty() {
+            eprintln!("{}: cap[{}]{quyen}", c.name, c.kind);
+        } else {
+            eprintln!("{}: cap[{}] {}{quyen}", c.name, c.kind, c.path);
         }
     }
     ExitCode::SUCCESS
-}
-
-/// Bỏ `p"…"`/`"…"` để in đường dẫn/host **không** kèm cú pháp literal.
-fn bo_lit(s: &str) -> String {
-    let s = s.trim();
-    let inner = if let Some(r) = s.strip_prefix("p\"") {
-        r
-    } else if let Some(r) = s.strip_prefix('"') {
-        r
-    } else {
-        return s.to_string();
-    };
-    inner.strip_suffix('"').unwrap_or(inner).to_string()
 }

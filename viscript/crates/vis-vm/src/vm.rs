@@ -37,12 +37,27 @@ pub fn run_with_hosts<'a>(
     fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
     net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
 ) -> RunOutput {
+    run_with_hosts_caps(m, text, args, fs, net, &[])
+}
+
+/// **ST-72b (VD-103/VD-106)**: như [`run_with_hosts`] nhưng gắn giá trị quyền `cap` cho `main`.
+pub fn run_with_hosts_caps<'a>(
+    m: &'a Module,
+    text: &'a str,
+    args: &[String],
+    fs: Option<&'a mut dyn vis_interp::builtin::FsHost>,
+    net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
+    caps: &[(u32, Value)],
+) -> RunOutput {
     let mut vm = Vm::new(m, text);
     if let Some(f) = fs {
         vm.set_fs(f);
     }
     if let Some(g) = net {
         vm.set_net(g);
+    }
+    if !caps.is_empty() {
+        vm.caps = caps.to_vec();
     }
     vm.run(args)
 }
@@ -97,6 +112,8 @@ pub struct Vm<'a> {
     net: Option<&'a mut dyn vis_interp::builtin::NetHost>,
     /// **ST-60**: hàng đợi tác vụ `async` — cùng runtime với interp (`vis_interp::rt`).
     sched: std::cell::RefCell<vis_interp::rt::Scheduler>,
+    /// **ST-72b (VD-103/VD-106)**: quyền `main` — `(chỉ số tham số, giá trị)`.
+    caps: Vec<(u32, Value)>,
 }
 
 impl<'a> Vm<'a> {
@@ -112,6 +129,7 @@ impl<'a> Vm<'a> {
             fs: None,
             net: None,
             sched: std::cell::RefCell::new(vis_interp::rt::Scheduler::new()),
+            caps: Vec::new(),
         }
     }
 
@@ -185,7 +203,13 @@ impl<'a> Vm<'a> {
         let entry = self.m.entry;
         let f = self.func(entry)?;
         let mut locals = vec![Value::Unit; f.nlocals.max(1) as usize];
-        if f.nparams > 0 && f.arity == 0 {
+        // **ST-72b**: đặt `Value::Cap` đúng chỉ số tham số; còn lại nhận `argv` như cũ.
+        for (pos, v) in &self.caps {
+            if let Some(l) = locals.get_mut(*pos as usize) {
+                *l = v.clone();
+            }
+        }
+        if f.nparams > 0 && f.arity == 0 && self.caps.is_empty() {
             if let Some(l) = locals.first_mut() {
                 *l = argv.clone();
             }

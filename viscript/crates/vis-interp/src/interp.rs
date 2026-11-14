@@ -115,6 +115,8 @@ pub(crate) struct Interp<'a> {
     pub(crate) net: Option<&'a mut dyn crate::builtin::NetHost>,
     /// **ST-60**: hàng đợi tác vụ `async` (một `Scheduler` cho mỗi lần chạy).
     pub(crate) sched: std::cell::RefCell<crate::rt::Scheduler>,
+    /// **ST-72b (VD-103/VD-106)**: quyền `main` — `(chỉ số tham số, giá trị)` theo thứ tự khai.
+    caps: Vec<(u32, Value)>,
 }
 
 impl<'a> Interp<'a> {
@@ -169,6 +171,7 @@ impl<'a> Interp<'a> {
             fs: None,
             net: None,
             sched: std::cell::RefCell::new(crate::rt::Scheduler::new()),
+            caps: Vec::new(),
         }
     }
 
@@ -188,6 +191,11 @@ impl<'a> Interp<'a> {
     #[allow(dead_code)]
     pub(crate) fn set_net(&mut self, n: &'a mut dyn crate::builtin::NetHost) {
         self.net = Some(n);
+    }
+
+    /// **ST-72b**: gắn giá trị quyền cho các tham số `cap` của `main`.
+    pub(crate) fn set_caps(&mut self, caps: Vec<(u32, Value)>) {
+        self.caps = caps;
     }
 
     pub(crate) fn take_stdout(&mut self) -> String {
@@ -213,8 +221,20 @@ impl<'a> Interp<'a> {
             let argv = Value::List(args.iter().map(|s| Value::Str(s.clone())).collect());
             let v = if f.params.is_empty() {
                 self.call_hfn(f, Vec::new(), Vec::new(), f.span)?
-            } else {
+            } else if self.caps.is_empty() {
+                // Hành vi cũ: `main` có tham số không `cap` ⇒ nhận **list args** ở tham số 1.
                 self.call_hfn(f, vec![argv], Vec::new(), f.span)?
+            } else {
+                // **ST-72b**: đặt `Value::Cap` đúng **chỉ số tham số**; tham số khác giữ `argv`
+                // (tương thích đường cũ). `caps` do CLI tính từ CST `main`.
+                let mut gt: Vec<Value> = Vec::with_capacity(f.params.len());
+                for i in 0..f.params.len() {
+                    match self.caps.iter().find(|(pos, _)| *pos as usize == i) {
+                        Some((_, v)) => gt.push(v.clone()),
+                        None => gt.push(argv.clone()),
+                    }
+                }
+                self.call_hfn(f, gt, Vec::new(), f.span)?
             };
             return Ok(Some(v));
         }

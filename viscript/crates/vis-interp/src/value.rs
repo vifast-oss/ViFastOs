@@ -68,6 +68,13 @@ pub enum Value {
     Task(Rc<crate::rt::Task>),
     /// **ST-61 (VD-96)**: kênh — `send`/`recv`/`close`; `Show` in `<kênh>` (không lộ id/nội dung).
     Chan(Rc<std::cell::RefCell<crate::rt::Chan>>),
+    /// **ST-72b (VD-103/VD-106)**: quyền runtime — `main` nhận từ khai báo `cap[...]`.
+    /// `Show` in `<cap[Dir] ./x>` (không lộ chi tiết host); `eq` luôn **false** (tyck đã cấm).
+    Cap {
+        kind: String,
+        root: String,
+        write: bool,
+    },
 }
 
 /// Hàm bytecode (ST-20): chỉ số hàm trong `Module` + biến bắt **snapshot**.
@@ -145,6 +152,13 @@ impl Value {
             Value::Vm(_) => "<hàm>".to_string(),
             Value::Task(_) => "<tác vụ>".to_string(),
             Value::Chan(_) => "<kênh>".to_string(),
+            Value::Cap { kind, root, .. } => {
+                if root.is_empty() {
+                    format!("<cap[{kind}]>")
+                } else {
+                    format!("<cap[{kind}] {root}>")
+                }
+            }
         }
     }
 

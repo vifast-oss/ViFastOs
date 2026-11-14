@@ -6,17 +6,33 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-72 — VS2 #4a: kiểu `cap[...]` + `vis run --dry`** (`cap[Dir/File/Net/Proc/Env/Term]`
-                là kiểu thật; `@ p"…"`/`@ "host"` + `(write)`; bất biến cấm so sánh/in; `--dry` in quyền
-                từ CST, không chạy; 6 ca sem + 4 ca Rust) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 5/5 (red-first 6 sem + 4 Rust (đỏ 6/0) → tyck `resolve_cap` + lower `quyen.rs` + `--dry`
-                → 447/447 + 858 xanh → cổng → differential 100k → STATE/JOURNAL).
+Task          : **ST-72b — VS2 #4b: cưỡng chế quyền ở biên host + `--grant`** (`Value::Cap`, bind tham
+                số cap của `main` từ CST, `FsGuard`/`NetGuard`, `VS0604` không bắt được, exit 2;
+                8 ca Rust interp+VM) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 5/5 (red-first 8 ca (3 pass/5 đỏ) → `Value::Cap` + bind interp/VM + `quyen.rs` +
+                sentinel trap + `--grant` + exit marker → 8/8 + 866 xanh → cổng → differential 100k →
+                STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:03:42Z**; **858** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398**
-                (398 ca chạy được khớp + 49 lỗi biên dịch) / differential **100.000 chương trình 0 lệch**
-                (286,7 s) / **7 sổ-32 mã** (không mã mới) / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-72]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T10:30:50Z**; **866** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
+                differential **100.000 chương trình 0 lệch** (196,0 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                allowlist **6**
+Việc dở       : commit `[ST-72b]` + push (đã được uỷ quyền)
+
+## ST-72b — VS2 #4b: cưỡng chế quyền ở biên host + `--grant`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **`Value::Cap`** | `Value::Cap { kind, root, write }`; `show()` = `<cap[Dir] ./x>` (root rỗng ⇒ `<cap[Dir]>`); `eq_value` **false** (tyck đã cấm — phòng thủ). Thêm biến thể **không** vỡ match nào (mọi match đều có nhánh `_`). |
+| 1 | **Bind tham số `main`** | CLI đọc **CST** (`quyen::ds_cap`: tên/kind/path/`write`/chỉ số tham số) ⇒ `(u32, Value::Cap)`; interp `set_caps` đặt đúng chỉ số; VM `caps` đặt `locals[pos]`. **Không** `@` ⇒ `root=""`. Đường cũ (không cap) giữ nguyên: `main` tham số nhận **list argv** ở tham số 1. Xây `Value` **trong luồng chạy** (Value không `Sync` vì `Rc`). |
+| 2 | **`FsGuard`** | Bọc `HostFs`; kiểm `read`/`write`/`exists`/`list`/`list_entries`: canonicalize **đích** (hoặc thư mục cha nếu tệp chưa tồn tại) rồi `starts_with(root)`; `write` đòi root có `(write)`; ngoài root ⇒ `Err` có dấu `\u{1}VS0604:` → `hop_nhat_fs` đổi thành **trap `VS0604`** (không bắt được) nêu quyền thiếu + path; `exists` bị chặn ⇒ `false`. |
+| 3 | **`NetGuard`** | `connect`/`listen`: chỉ loopback **và** có `cap[Net]`; host khác phải khớp host đã khai; thiếu ⇒ trap `VS0604` "thiếu `cap[Net]`". |
+| 4 | **`--grant <tên>=<path>`** | Ghi đè `root` của cap **đã khai** (không thêm quyền); tên lạ ⇒ `vis run: …` exit 2. Áp cho `cap[Dir]/cap[File]` (root) và `cap[Net]` (host). |
+| 5 | **Exit code** | `[quyền]` trong message ⇒ exit **2**; `VS0604` **khác** (thiếu host) giữ exit **1** (tương thích `pipeline::vm_khong_host_bao_vs0604`). Ghi rõ lý do trong `ma_thoat_khi_loi`. |
+| 6 | **8 ca `tests/quyen.rs`** | `doc_trong_quyen` (đọc trong root ⇒ ok), `doc_ngoai_quyen` (`VS0604` nêu `cap[Dir]`, exit 2), `ghi_thieu_co` (`VS0604` nêu `(write)`), `ghi_co_co` (ghi rồi đọc lại đúng), `khong_khai_cap_thi_khong_han_che` (chạy — khoá tương thích), `grant_doi_duong_dan` (root mới đọc được, root cũ bị chặn), `net_thieu_cap` (`VS0604` "thiếu `cap[Net]`"), `hai_cap_dir` (hai root: trong mỗi root ok, ngoài **cả hai** bị chặn). **Mỗi ca chạy cả `run` và `run --vm --no-cache`**, so cùng exit/stdout. |
+| 7 | **Red-first** | `JOURNAL/st72b-red-rust.log` sha256 `da00ddab…` — đo trên mã **đã tạm hoàn nguyên**, harness cuối: **3 passed / 5 failed** (ca 1/4/5 vốn đã đúng trước khi cưỡng chế). |
+| 8 | **Đo** | **866** test = 858 + **8** CLI (21+96+18+154+26+62+9+**480**); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; `diag_cmp` **447** (364/49/34); differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=196.0 toc_do=510/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491** (`main.rs` **831**, `quyen.rs` **334**, `value.rs` **604**, `interp.rs` **1.246**, `stdlib.rs` **731**, `vm.rs` **1.020**). |
+| 9 | **Nợ** | **Siết mặc định** (không khai `cap` ⇒ không hạn chế) chưa làm — cần `--strict-caps` + cập nhật toàn fixture; **Landlock chưa** (ST-73, chỉ Linux; macOS không giả vờ); `cap[Net]` vẫn bị luật **loopback** ST-63 giới hạn (host ngoài loopback chưa mở); `fs.exists` bị chặn trả `false` (không trap); `main` trộn cap + tham số thường: tham số thường nhận **argv** (chưa có API giá trị riêng); ST-72 ca sem cap xanh vẫn chỉ kiểm **tyck** (không có giá trị để gọi hàm cap); chưa `--grant` cho nhiều cap cùng tên (tên duy nhất). |
 
 ## ST-72 — VS2 #4a: kiểu `cap[...]` + `--dry`, 2026-11-14
 

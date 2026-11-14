@@ -19,10 +19,22 @@ use crate::interp::{Abort, Trap, R};
 use crate::value::{eq, Value};
 
 /// `Err(String)` của host ⇒ `Result` của VS0 (`Err(msg)`), **không** phải trap.
-fn hop_nhat_fs(r: Result<Value, String>) -> Value {
+/// **ST-72b (VD-103/VD-106)**: dấu **cưỡng chế quyền** trong `Err` của host — `hop_nhat_fs` đổi
+/// thành **trap `VS0604`** (không bắt được), thay vì `Err(str)` dữ liệu (vượt quyền là lỗi **môi
+/// trường**, không phải dữ liệu chương trình).
+pub const DAU_QUYEN: &str = "\u{1}VS0604:";
+
+fn hop_nhat_fs(r: Result<Value, String>, span: Span) -> Result<Value, Abort> {
     match r {
-        Ok(v) => Value::Res(Ok(Box::new(v))),
-        Err(e) => Value::Res(Err(Box::new(Value::Str(e)))),
+        Ok(v) => Ok(Value::Res(Ok(Box::new(v)))),
+        Err(e) => match e.strip_prefix(DAU_QUYEN) {
+            Some(msg) => Err(Abort::Trap(Trap::new(
+                &COMMAND_CODES[3],
+                msg.to_string(),
+                span,
+            ))),
+            None => Ok(Value::Res(Err(Box::new(Value::Str(e))))),
+        },
     }
 }
 
@@ -383,13 +395,13 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
         "fs.read" => {
             let p = chuoi(name, &args[0], 0, span)?;
             let host = host.fs().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.read(p).map(Value::Str)))
+            hop_nhat_fs(host.read(p).map(Value::Str), span)
         }
         "fs.write" => {
             let p = chuoi(name, &args[0], 0, span)?;
             let v = chuoi(name, &args[1], 1, span)?;
             let host = host.fs().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.write(p, v).map(|()| Value::Unit)))
+            hop_nhat_fs(host.write(p, v).map(|()| Value::Unit), span)
         }
         "fs.exists" => {
             let p = chuoi(name, &args[0], 0, span)?;
@@ -399,9 +411,11 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
         "fs.list" => {
             let p = chuoi(name, &args[0], 0, span)?;
             let host = host.fs().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.list(p).map(|xs| {
-                Value::List(xs.into_iter().map(Value::Str).collect())
-            })))
+            hop_nhat_fs(
+                host.list(p)
+                    .map(|xs| Value::List(xs.into_iter().map(Value::Str).collect())),
+                span,
+            )
         }
         // ----- std.net (ST-63, VD-100/VD-105) — **chỉ qua `Host::net`**, không OS trong crate này.
         // Thiếu host ⇒ `VS0604`; lỗi mạng ⇒ `Err(str)` (dữ liệu, **không** trap). -----
@@ -415,7 +429,7 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             };
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
             let r = host.connect(dia_chi, timeout.max(0) as u64);
-            Ok(hop_nhat_fs(r.map(Value::Str)))
+            hop_nhat_fs(r.map(Value::Str), span)
         }
         "net.read" => {
             let tay = chuoi(name, &args[0], 0, span)?;
@@ -425,34 +439,33 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             let r = host.read(tay, toi_da.max(0) as usize, timeout.max(0) as u64);
             // Body là **byte**; ngôn ngữ chỉ có `str` ⇒ giải mã **lossy** (không cắt giữa ký tự).
             // `Ok(vec![])` = EOF ⇒ `""` (không phải lỗi). Nợ: API byte thật cho tới khi có `buf`.
-            Ok(hop_nhat_fs(r.map(|b| {
-                Value::Str(String::from_utf8_lossy(&b).into_owned())
-            })))
+            hop_nhat_fs(
+                r.map(|b| Value::Str(String::from_utf8_lossy(&b).into_owned())),
+                span,
+            )
         }
         "net.write" => {
             let tay = chuoi(name, &args[0], 0, span)?;
             let du = chuoi(name, &args[1], 1, span)?;
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(
-                host.write(tay, du.as_bytes()).map(|()| Value::Unit),
-            ))
+            hop_nhat_fs(host.write(tay, du.as_bytes()).map(|()| Value::Unit), span)
         }
         "net.close" => {
             let tay = chuoi(name, &args[0], 0, span)?;
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
+            hop_nhat_fs(host.close(tay).map(|()| Value::Unit), span)
         }
         // **ST-65 (VD-100/VD-105)**: server TCP — `listen`/`local_addr`/`accept(_timeout)`/
         // `close_listen`; host giữ listener thật; thiếu host ⇒ `VS0604`; `accept` không timeout = chặn.
         "net.listen" => {
             let dia_chi = chuoi(name, &args[0], 0, span)?;
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.listen(dia_chi).map(Value::Str)))
+            hop_nhat_fs(host.listen(dia_chi).map(Value::Str), span)
         }
         "net.local_addr" => {
             let tay = chuoi(name, &args[0], 0, span)?;
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.local_addr(tay).map(Value::Str)))
+            hop_nhat_fs(host.local_addr(tay).map(Value::Str), span)
         }
         "net.accept" | "net.accept_timeout" => {
             let tay = chuoi(name, &args[0], 0, span)?;
@@ -462,14 +475,15 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
                 0
             };
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(
+            hop_nhat_fs(
                 host.accept(tay, timeout.max(0) as u64).map(Value::Str),
-            ))
+                span,
+            )
         }
         "net.close_listen" => {
             let tay = chuoi(name, &args[0], 0, span)?;
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
+            hop_nhat_fs(host.close(tay).map(|()| Value::Unit), span)
         }
         // **ST-64 (VD-100/VD-105)**: giao thức HTTP **trong crate này** (`net.rs`), socket qua host.
         // Lỗi HTTP/mạng là `Err(str)` (dữ liệu); thiếu host ⇒ `VS0604`. Mặc định 5000 ms.
@@ -481,9 +495,10 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
                 5_000
             };
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
-            Ok(hop_nhat_fs(
+            hop_nhat_fs(
                 crate::net::http_get(host, url, timeout.max(0) as u64).map(Value::Str),
-            ))
+                span,
+            )
         }
         other => Err(loi(
             format!("`std.{other}` chưa cài (bảng chữ ký có nhưng tầng chạy thiếu)"),
