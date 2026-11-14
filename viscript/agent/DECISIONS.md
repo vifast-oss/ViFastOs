@@ -861,3 +861,9 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   tự** (không song song với build/cổng khác theo AGENTS §6): cổng `--fast` ×2, diff 100k ×2, host suite ×2, cache ×2 — ghi log
   từng lần; flake ⇒ `T-INFRA` + log, **không** retry để lấy xanh. (4) `ROADMAP.md` là **bàn giao**: 8 hạng mục VS2 × **mức thật**
   × **điều kiện đóng** + **cách chạy tiếp**; **cấm** ngôn từ vượt mức đã đo.
+
+- **VD-113** **Vòng 17 — đầu ra máy đọc + LSP hoàn thiện nhỏ + pkg update (ST-100..ST-103)**: (1) **`--json`** cho `vis check` và `vis test`:
+  JSON **ổn định** (khoá cố định: `file`, `diagnostics[{code,line,col,message}]`, `ok`; với `test`: `{total,ok,failed,cases[{name,ok,message}]}`), **chỉ**
+  in JSON ra **stdout**, log khác ra stderr; **không** cờ ⇒ TAP/định dạng hiện tại **không đổi**. (2) LSP: **hover trường** (record field),
+  `didClose` **dọn** cache, **cache** kết quả nạp module giữa `didChange` (đo < 2 ms sau lần đầu, có ca). (3) `vis pkg update` **không mạng**:
+  cài lại từ registry **cục bộ** nếu nguồn không đổi ⇒ **sha không đổi**; `pkg list --json`. (4) Vẫn **không** nới ngưỡng; **không** thêm crate.

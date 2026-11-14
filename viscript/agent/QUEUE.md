@@ -195,7 +195,11 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **DONE** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
 | ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **DONE** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
 | ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **DONE** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
-| ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **READY** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
+| ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **DONE** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
+| ST-100 | **LSP** — hover cho **trường** bản ghi + `didClose` dọn cache + cache nạp module giữa `didChange` | ST-99 | 2,5 h | **READY** | ≥5 ca; phân tích < 2 ms sau lần đầu; không phá 39 ca LSP |
+| ST-101 | **`vis check --json`** + `vis test --json` (đầu ra máy đọc) | ST-100 | 2,5 h | **READY** | ≥6 ca; JSON ổn định (khoá cố định); TAP giữ nguyên khi không cờ |
+| ST-102 | **`vis pkg update`** + `pkg list --json` (không mạng) | ST-101 | 2 h | **READY** | ≥5 ca; lock/store nhất quán; `update` không đổi sha nếu không đổi nguồn |
+| ST-103 | báo cáo **R17** | ST-100..ST-102 | 1,5 h | **READY** | MD+JSON; nợ đánh số |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
 | ST-17 | báo cáo **R2** (`reports/R2-viscript.*`) | ST-11..ST-16 | 1 h | **DONE** | MD+JSON, 20 hàng QUEUE, số liệu tái lập được |
