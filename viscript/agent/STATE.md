@@ -6,16 +6,26 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-87b — bỏ fast-path cache chết** (chọn **B**: xoá nhánh đọc khoá v1, xoá
-                `cache::khoa`; đường duy nhất `khoa_multi`) — xong, đã đo + cổng + differential;
-                **chưa commit**.
-Bước          : 4/4 (đo đỏ → xoá fast-path + hàm v1 → 5 ca → 961 test → 100k → cổng → STATE/JOURNAL).
+Task          : **ST-88 — báo cáo R13** (chốt vòng 13: ST-83..ST-87b) — xong, `report-check --all`
+                PASS, cổng PASS; **chưa commit**.
+Bước          : 4/4 (JSON 100 hàng QUEUE → MD 8 mục + §19 + nợ 45..58 + VD-109 → 13 báo cáo PASS →
+                cổng → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:40:52Z**; **961** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T16:54:59Z**; **961** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / host suite
                 **54/54** / parity **398/398** / differential **100.000 chương trình 0 lệch**
-                (153,9 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-87b]` + push (đã được uỷ quyền)
+                (152,9 s, seed 20261115) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-88] báo cáo R13 …` + push (đã được uỷ quyền)
+
+## ST-88 — báo cáo R13, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **JSON** | `agent/reports/R13-viscript.json` + `.license`: **đúng 11 khoá**, `round=13`, `head=5ee772f7` (tồn tại + tổ tiên HEAD), **100 task** phủ **100 hàng QUEUE@head** (99 DONE + ST-88 READY), `blocked=[]`; `report-check --all` **PASS (13 báo cáo, 100 hàng)**. |
+| 2 | **MD** | `R13-viscript.md` 8 mục: tóm tắt 5 dòng; bảng ST-83..ST-88 (hash + số đo); số liệu **chạy lại**; §19 8 hạng mục VS2 (LSP/quyền cập nhật bằng chứng ST-83/84); §5 nợ **45..58** (R12 1..44 giữ, **44 đã đóng**); VD-109; ghi chú máy kiểm; kết luận **3 dòng**. |
+| 3 | **Số liệu** | **961 test** (21+96+27+154+26+62+9+**566**); sem **447/22**; `vis test` **447 ok** / `--vm` **447 ok + 7 SKIP**; parity **398/398** (+49 lỗi biên dịch); `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=152.9 toc_do=654/s seed=20261115`**; fuzz 20k **0 lệch** (31,8 s); fuzz parser 60 s **2.687.590 ca / 61.141.145 token / 0 vi phạm**; cache **520 tệp × 4 lần, 513 so, 0 lệch** (24,9 s); host **54/54**; targets **18/18 `check`**; fmt **497 tệp**; indent-report **8 tệp/10 dòng**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 4 | **Cổng** | **PASS** `2026-11-14T16:54:59Z`; log `JOURNAL/r13-gate-fast.log` sha256 `daadae21…`; kèm `r13-diff-100k.log` sha256 `5052670d…`, `r13-fuzz-parser.log` sha256 `ebfbbf43…`. |
+| 5 | **Nợ ghi nhận** | 45 `assert` một biểu thức/không message; 46 biến tên `assert`; 47 help dịch tay; 48 `is_pub` chỉ `fn`; 49 completion chưa sau `.`; 50 hover chưa field; 51 `--indent-report` fallback; 52 `dong_thut_sai` heuristic; 53 `khai::tach` chưa dọn; 54 `topmix2` đổi hành vi; 55 fuzz mẫu cố định; 56 7 ca `.vish` khác hai đường (VM chưa `Ngoai`); 57 frontend chạy mỗi lần; 58 ca chống nhánh chết đọc mã nguồn. |
 
 ## ST-87b — bỏ fast-path cache chết, 2026-11-14
 

@@ -1,0 +1,4 @@
+# R13 — fuzz parser 60 s seed 20261115, 2026-11-14T16:55:04Z
+
+vis-parse-fuzz: 2687590 ca, 61141145 token, 44793 ca/s, 1019019 token/s, 60.0 s, vi phạm 0
+vis-parse-fuzz: PASS (không vi phạm)

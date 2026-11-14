@@ -1,0 +1,5 @@
+# R13 — differential 100k seed 20261115 (bộ sinh ST-86), 2026-11-14T16:55:04Z
+
+DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.1 toc_do=642/s seed=20261115
+DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=152.9 toc_do=654/s seed=20261115
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 152.90s
