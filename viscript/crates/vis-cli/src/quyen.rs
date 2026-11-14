@@ -58,8 +58,50 @@ pub fn bo_lit(s: &str) -> String {
     inner.strip_suffix('"').unwrap_or(inner).to_string()
 }
 
+/// **ST-93 (VD-111)**: tách **chữ ký `fn main`** trong `.vish` (khai báo ở cột 1) — CST chế độ
+/// Command không có `FnDecl`, nên `--dry`/quyền trước đây **không thấy** `main(p: cap[Proc])`.
+fn chu_ky_main_vish(text: &str) -> Option<String> {
+    let mut bat = false;
+    let mut sig = String::new();
+    let mut sau = 0i32;
+    for line in text.lines() {
+        if !bat {
+            if line.starts_with("fn main") {
+                bat = true;
+                sig.push_str(line);
+                sig.push('\n');
+            } else {
+                continue;
+            }
+        } else {
+            sig.push_str(line);
+            sig.push('\n');
+        }
+        for c in line.chars() {
+            match c {
+                '(' | '[' => sau += 1,
+                ')' | ']' => sau -= 1,
+                _ => {}
+            }
+        }
+        if sau == 0 && sig.contains(':') {
+            return Some(sig.trim_end().to_string());
+        }
+    }
+    None
+}
+
 /// Đọc danh sách `cap` của `main` từ **CST** (dùng cho cả `--dry` và cưỡng chế).
+/// **ST-93**: `.vish` khai báo `fn main` ở cột 1 nằm **ngoài** CST Command ⇒ dựng lại một chương
+/// trình Script tí hon từ chữ ký để dùng **cùng** bộ đọc `cap`.
 pub fn ds_cap(text: &str, mode: Mode) -> Vec<CapKhai> {
+    if mode == Mode::Command {
+        if let Some(sig) = chu_ky_main_vish(text) {
+            let synth = format!("{sig}\n    let __cap = 1\n");
+            return ds_cap(&synth, Mode::Script);
+        }
+        return Vec::new();
+    }
     let parsed = vis_syntax::parse(text, mode);
     let cst = &parsed.cst;
     let mut out = Vec::new();
@@ -257,6 +299,12 @@ impl Quyen {
             format!("[quyền] thiếu `cap[Dir]` cho `{p}`")
         };
         Err(format!("{DAU_QUYEN}{msg}"))
+    }
+
+    /// **ST-93 (VD-111)**: `--strict-caps` + **không** khai `cap[Proc]` ⇒ **không** cho chạy tiến
+    /// trình ngoài. Mặc định (`siet=false`) vẫn cho (tương thích).
+    pub fn cho_phep_proc(&self) -> bool {
+        !self.siet || self.moc.iter().any(|c| c.kind == "Proc")
     }
 
     /// Kiểm thao tác mạng: host khớp `cap[Net]` đã khai **hoặc** loopback khi có `cap[Net]`.

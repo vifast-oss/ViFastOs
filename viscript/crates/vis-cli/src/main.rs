@@ -594,7 +594,7 @@ fn run_run(rest: &[String]) -> ExitCode {
     }
     let Some(tep) = tep else {
         eprintln!(
-            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--sandbox-check] [--strict-caps] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]\n  --strict-caps: mọi truy cập `std.fs`/`net` phải nằm trong `cap` đã khai (mặc định: không siết)"
+            "dùng: vis run [--tap] [--vm] [--dump-bytecode] [--dump-deps] [--dry] [--sandbox-check] [--strict-caps] [--grant tên=path] [--no-cache] <tệp.vis> [-- args…]\n  --strict-caps: mọi truy cập `std.fs`/`net` và tiến trình ngoài (`cap[Proc]`) phải nằm trong `cap` đã khai (mặc định: không siết)"
         );
         return ExitCode::from(2);
     };
@@ -683,13 +683,27 @@ fn run_run(rest: &[String]) -> ExitCode {
         }
         return ExitCode::from(2);
     }
-    let h = vis_types::HirOutput {
+    let mut h = vis_types::HirOutput {
         hir: loaded.hir,
         diagnostics: Vec::new(),
         symbols: loaded.symbols,
         types: loaded.types,
         error: None,
     };
+    // **ST-93 (VD-111)**: trong `.vish`, **pipeline cấp tệp** là chương trình; `fn main` (nếu có)
+    // chỉ **khai `cap`** — không được "nuốt" pipeline. Chỉ bỏ `main` khi có **cả** câu lệnh cấp tệp;
+    // `.vish` chỉ có `main` vẫn chạy `main` như cũ. Cả interp + VM nhận **cùng** HIR đã lọc.
+    if che_do == vis_syntax::Mode::Command
+        && !h.hir.stmts.is_empty()
+        && h.hir
+            .items
+            .iter()
+            .any(|it| matches!(it, vis_types::HItem::Fn(f) if f.name == "main"))
+    {
+        h.hir
+            .items
+            .retain(|it| !matches!(it, vis_types::HItem::Fn(f) if f.name == "main"));
+    }
     // ST-54: chẩn đoán front end (parse/hạ/tyck) cho **cửa codegen** — defense-in-depth.
     let chan_doan: Vec<vis_syntax::Diagnostic> =
         loaded.diags.iter().map(|(_, d)| d.clone()).collect();
@@ -735,6 +749,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     // interp dùng — VM chỉ gọi qua trait, không chạm OS.
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
+                        cho_phep_proc: quyen.cho_phep_proc(),
                         ..ngoai::Runner::default()
                     };
                     let co_ngoai = che_do == vis_syntax::Mode::Command && !co_no_extern;
@@ -763,6 +778,7 @@ fn run_run(rest: &[String]) -> ExitCode {
                     // ST-27: `.vish` với runner chương trình ngoài (chỉ CLI biết OS).
                     let mut runner = ngoai::Runner {
                         giai_thich: explain_perms,
+                        cho_phep_proc: quyen.cho_phep_proc(),
                         ..ngoai::Runner::default()
                     };
                     let mut fs_tho = HostFs::tao(explain_perms, fs_mock.as_ref());

@@ -6,16 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-92 — báo cáo R14** (chốt ST-89..ST-91) — xong, `report-check --all` PASS, cổng
-                PASS; **chưa commit**.
-Bước          : 3/3 (JSON 104 hàng QUEUE@f4627621 + MD §1..§8/§19 + đo lại toàn bộ + gate).
+Task          : **ST-93 — `cap[Proc]` dưới `--strict-caps`** (biên host, cả interp + VM) — xong,
+                đã đo + cổng + differential; **chưa commit**.
+Bước          : 3/3 (đo đỏ 5/6 → `cho_phep_proc` + `Runner` trap + đọc cap `.vish` → 6 ca → 984 test
+                → diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:27:47Z** (report-check PASS: **14
-                báo cáo, 104 hàng QUEUE**); **978** test / sem **447/22** / `vis test` **447 ok**
-                (`--vm` **447 ok + 0 SKIP**) / parity **398/398 + 49** / host **54/54 ×2** /
-                differential **100.000 / 0 lệch** (161,3 s) / fuzz parser **2.517.572 ca / 0 vi phạm** /
-                cache **520×4 / 0 lệch** / targets **18/18 check** / fmt **497 tệp**
-Việc dở       : commit `[ST-92]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:45:19Z**; **984** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
+                parity **398/398 + 49** / differential **100.000 / 0 lệch** (154,7 s) / **7 sổ-32 mã**
+Việc dở       : commit `[ST-93]` + push (đã được uỷ quyền)
+
+## ST-93 — `cap[Proc]` + `--strict-caps`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo đỏ** | `.vish` `/bin/echo` + `--strict-caps` **vẫn chạy** (exit 0; `Runner` chưa kiểm); `--dry` `.vish` **không thấy** `main(p: cap[Proc])` (`(không khai báo quyền)`) — hai lỗ hổng thật. Rust `JOURNAL/st93-red-rust.log` sha256 `7149fac6…` (**5/6 ca mới đỏ**; ca “không strict” xanh). |
+| 1 | **Đọc cap `.vish`** | `quyen::ds_cap` chế độ Command **không có** `FnDecl` ⇒ thêm `chu_ky_main_vish` dựng lại chương trình Script tí hon từ chữ ký `fn main` cột 1 rồi dùng **cùng** bộ đọc; `.vish` `main(p: cap[Proc])` nay vào `Quyen`. |
+| 2 | **Cưỡng chế** | `Quyen::cho_phep_proc()` = `!siet` **hoặc** có `cap[Proc]`; `Ngoai::Runner` thêm `cho_phep_proc`, kiểm **trước spawn** (cùng host cho interp + VM), thiếu ⇒ trap **`VS0604: [quyền] cần khai \`cap[Proc]\` cho <lệnh>`**, exit 2. Có `cap[Proc]` ⇒ chạy **mọi** chương trình (quyết định: **không allowlist**, xem nợ 68). |
+| 3 | **`.vish` + `main`** | Đo được: `.vish` có `fn main` **nuốt** pipeline cấp tệp (không chạy). Quyết định ST-93: khi `.vish` có **cả** pipeline cấp tệp và `fn main`, bỏ `main` khỏi HIR (cả hai đường) ⇒ pipeline là chương trình, `main` chỉ **khai cap**; `.vish` **chỉ có** `main` vẫn chạy `main` như cũ. |
+| 4 | **6 ca** | `cap_proc.rs`: (a) strict không cap ⇒ `VS0604` cap[Proc]; (b) strict `main(p: cap[Proc])` + echo ⇒ chạy, hai đường cùng byte; (c) không strict + không cap ⇒ chạy (tương thích); (d) strict cap + `sh -c "exit 3" | complete` ⇒ `code 3`; (e) strict cap + pipeline 2 stage ⇒ `[a]`; (f) strict `cap[Dir]` + echo ⇒ `VS0604` **nêu Proc**, không nêu Dir. |
+| 5 | **Đo** | **984** test = 978 + **6** (21+96+27+154+26+62+9+**589**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; parity **398/398 + 49**; `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=154.7 toc_do=646/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 6 | **Nợ** | `cap[Proc]` **không allowlist** lệnh (quyền chạy tiến trình, chưa giới hạn danh sách); `.vish` có `fn main` + pipeline **đổi ngữ nghĩa** (bỏ main, chỉ khai cap — có thể ảnh hưởng tệp lạm dụng `main`); `--grant` không áp cho Proc; process con không bị sandbox/kernel; `--strict-caps` vẫn **không** siết mặc định. |
 
 ## ST-92 — báo cáo R14, 2026-11-14
 

@@ -1,0 +1,61 @@
+# ST-93 — log ĐỎ (Rust) lúc 2026-11-14T18:35:13Z, HEAD 5db8eaae — chưa cưỡng chế cap[Proc].
+# lệnh: cargo test -p vis-cli --test cap_proc (6 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/cap_proc.rs (target/debug/deps/cap_proc-1892b7af4157adbd)
+
+running 6 tests
+test strict_cap_dir_khong_thay_the_proc ... FAILED
+test strict_cap_proc_sh_exit3 ... FAILED
+test strict_co_cap_proc_thi_chay_hai_duong ... FAILED
+test strict_cap_proc_pipeline_hai_stage ... FAILED
+test khong_strict_khong_cap_van_chay ... ok
+test strict_khong_cap_thi_chan ... FAILED
+
+failures:
+
+---- strict_cap_dir_khong_thay_the_proc stdout ----
+
+thread 'strict_cap_dir_khong_thay_the_proc' (48701878) panicked at crates/vis-cli/tests/cap_proc.rs:150:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+---- strict_cap_proc_sh_exit3 stdout ----
+
+thread 'strict_cap_proc_sh_exit3' (48701880) panicked at crates/vis-cli/tests/cap_proc.rs:119:5:
+complete: ""
+
+---- strict_co_cap_proc_thi_chay_hai_duong stdout ----
+
+thread 'strict_co_cap_proc_thi_chay_hai_duong' (48701881) panicked at crates/vis-cli/tests/cap_proc.rs:87:5:
+assertion `left == right` failed: stdout interp
+  left: []
+ right: [91, 97, 93, 10]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- strict_cap_proc_pipeline_hai_stage stdout ----
+
+thread 'strict_cap_proc_pipeline_hai_stage' (48701879) panicked at crates/vis-cli/tests/cap_proc.rs:136:5:
+assertion `left == right` failed
+  left: []
+ right: [91, 97, 93, 10]
+
+---- strict_khong_cap_thi_chan stdout ----
+
+thread 'strict_khong_cap_thi_chan' (48701882) panicked at crates/vis-cli/tests/cap_proc.rs:72:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 2
+
+
+failures:
+    strict_cap_dir_khong_thay_the_proc
+    strict_cap_proc_pipeline_hai_stage
+    strict_cap_proc_sh_exit3
+    strict_co_cap_proc_thi_chay_hai_duong
+    strict_khong_cap_thi_chan
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+
+error: test failed, to rerun pass `-p vis-cli --test cap_proc`

@@ -8,7 +8,7 @@
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use vis_diag::RUNTIME_CODES;
+use vis_diag::{COMMAND_CODES, RUNTIME_CODES};
 use vis_interp::{Abort, Trap, Value};
 use vis_syntax::Span;
 
@@ -18,6 +18,8 @@ pub struct Runner {
     pub giai_thich: bool,
     /// Bao nhiêu mili-giây thì bỏ cuộc (mặc định 10 000).
     pub timeout_ms: u64,
+    /// **ST-93 (VD-111)**: `--strict-caps` ⇒ chỉ chạy khi `main` khai `cap[Proc]`; `true` ngoài strict.
+    pub cho_phep_proc: bool,
 }
 
 impl Default for Runner {
@@ -28,6 +30,7 @@ impl Default for Runner {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10_000),
+            cho_phep_proc: true,
         }
     }
 }
@@ -51,6 +54,16 @@ impl Runner {
         stdin: &str,
         span: Span,
     ) -> Result<vis_interp::builtin::KetQua, Abort> {
+        // **ST-93 (VD-111)**: cưỡng chế **ở biên host**, dùng chung cho interp + VM
+        // (`Ngoai::Runner` là host duy nhất); `cap[Proc]` là quyền chạy tiến trình, **không**
+        // allowlist danh sách lệnh.
+        if !self.cho_phep_proc {
+            return Err(loi(
+                &COMMAND_CODES[3],
+                format!("[quyền] cần khai `cap[Proc]` cho `{ten}`"),
+                span,
+            ));
+        }
         if stdin.len() > MAX_STDIN {
             return Err(loi(
                 &RUNTIME_CODES[0],
