@@ -194,7 +194,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-95 | báo cáo **R15** | ST-93..ST-94 | 1,5 h | **DONE** | MD+JSON; nợ đánh số |
 | ST-96 | **nhất quán sổ mã**: mọi `VS0xxx` xuất hiện trong mã nguồn đều **có** trong `all_codes()`, và mọi mã trong sổ **được dùng** (hoặc ghi rõ là dự phòng) | ST-95 | 2 h | **DONE** | test tự động quét `crates/`; ≥3 ca; sửa lệch nếu có |
 | ST-97 | **`--grant` cho `cap[Proc]`** (allowlist lệnh) — đóng nợ "cap[Proc] không allowlist" | ST-96 | 2,5 h | **DONE** | ≥5 ca; hai đường cùng byte; mặc định không đổi |
-| ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **READY** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
+| ST-98 | **soak 30 phút**: cổng ×2 + diff 100k ×2 + host ×2 + cache ×2 tuần tự, ghi log, phát hiện flake | ST-97 | 1,5 h | **DONE** | ≥8 lần chạy; mọi lần xanh hoặc ghi `T-INFRA` có log |
 | ST-99 | **R16 + ROADMAP bàn giao** (`agent/ROADMAP.md`: 8 hạng mục VS2 × mức × điều kiện để đóng + cách tiếp tục) | ST-98 | 2 h | **READY** | MD+JSON; `report-check` PASS; ROADMAP ≤120 dòng |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1438,3 +1438,15 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: basename khớp binary **cùng tên ở path khác** (rộng có chủ đích); **không** giới hạn **đối số**; grant áp **cả khi không**
 > `--strict-caps` (theo ý người dùng); `cap[Proc]` không grant vẫn unrestricted.
 > **ST-98 mở** (soak 30 phút, tuần tự).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-98 DONE — soak 8 vòng tuần tự, 8/8 OK.** Commit `3840d463` (**Agent 2 tự commit, đã push**). Bảng: **gate 224/211 s**,
+> **diff 160/158 s** (100k, 0 lệch), **host 9/7 s**, **cache 24/25 s**, tổng **818 s**, load trước 7,48 → sau 4,31 (máy bận, kết quả
+> không đổi). **0 flaky sản phẩm**. Một lần **`T-INFRA`** được ghi **trung thực** (`cargo: command not found` do PATH của background
+> job ⇒ exit 127 **ở `cache-1`**), log giữ riêng `st98-soak-attempt1-infra.log`, sửa script thêm PATH rồi **chạy lại toàn bộ 8 vòng**
+> — **không** retry để che đỏ. `bin/vis-soak` 61 dòng (SPDX, `set -u`, tuần tự, dừng khi đỏ, `--dry-run` 8 tên) + 1 test tĩnh.
+> Đo: **1010 test** · sem **447/22** · `--vm` **447 ok/0 SKIP** · host **54/54 ×2**.
+> Nợ: soak **818 s < 30 phút** (đúng 8 vòng theo đề — muốn 30 phút phải thêm vòng/seed, không tự nới); script giả định cargo ở
+> `~/.cargo/bin`; test chỉ kiểm tĩnh; chưa soak nền khác.
+> **ST-99 mở** (R16 + ROADMAP bàn giao).
