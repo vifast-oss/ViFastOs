@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-71`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-72`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-71: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-72: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -111,7 +111,8 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-70** KT-43 — **thay ngưỡng IPC của driver L1 (có chấp thuận, không giấu)**: KT-33 đặt `ipc_sent > 1` **mỗi lượt**; driver KT-43 thêm 4 op VM nên có seed chỉ 1 message ⇒ guard cũ đỏ ở seed 67453/smp2. Thay bằng **hai** guard: (a) **mỗi seed** `ipc_sent ≥ 1` (không lượt nào bỏ IPC), (b) **tổng mỗi smp** `ipc_sent > 5 × seeds` (mạnh hơn `> 1 × seeds` cũ về tổng) + `ipc_delivered > 0`; driver **phải in** `min/median ipc_sent` mỗi smp để chứng minh (a) không hình thức. Lý do: ngưỡng cũ gắn với hỗn hợp op cũ; giữ nguyên sẽ đỏ vì thay đổi phân phối, không vì hồi quy. **Cấm** dùng D2 này để hạ bất kỳ ngưỡng nào khác; K2-DOD phải ghi rõ thay đổi + số min/median.
 
 - **D2-71** **K2 DONE (phase-level)**: KT-35..43 chốt — Frame 3 cỡ/PA window, PageTable 3 cấp, VSpace/ASID 256+gen, W^X toàn cục, TLB 16/hart + shootdown `TlbFlush` ack, `FaultKind::Vm` model-only, 5 `.scn` VM, `check_vm` 8 checker. Bằng chứng: 100k×4 **400.000 lượt/51,2 triệu op**, 0 vi phạm TLB-safety; **17/17 mutation** (V5 = AP→BSP); Miri **146/0**; gate **569/0**; `.scn` 26 tệp/16 nhóm. D1..D11 ĐẠT. Nợ **K3**: TLB/PTE/IPI/`sfence.vma` thật, pager/COW, `Busy`/`FaultKind::Vm` vào spec, VSpace tạo qua Retype, driver Miri smoke chưa xong, model-only 1 luồng. **K2 không phải kernel thật**; tiếp theo lập kế hoạch K3.- **T04 cũ = KT-04d; APPROVED mở KT-05.**
-- Mẫu: `APPROVED <YYYY-MM-DD> Agent 0`, ghi ngay dưới mục KT-04d trong `v2/agent/QUEUE.md`; nếu quyết định làm đổi nội dung ABI thì thêm một mục D2 mới ở tệp này. Không duyệt bằng chat. Không tự suy ra "coi như đã duyệt".
+
+- **D2-72** Chốt **K3 Q1–Q13** (`review/agent0/K3-PLAN.md`): Q1 **không** mở `spec/kernel.toml`; `spec/abi.toml` mở **một lần** ở KT-56 cho `FaultKind` (D2-56a); Q2 QEMU ≥9.2 `-machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1|2|4`; Q3 OpenSBI `fw_dynamic` nạp trực tiếp (không U-Boot/EDK2); Q4 hart theo DTB, `MAX_HARTS=8`, matrix 1/2/4; Q5 budget `llvm-size` cộng `.data+.sdata+.bss+.sbss ≤ 262.144 B` cho **cả hai ảnh**, `.stack` báo riêng; Q6 timer **SBI TIME**, 100 Hz, timebase 10 MHz, Sstc hoãn; Q7 địa chỉ hardcode (UART `0x1000_0000` IRQ 10, PLIC `0x0c00_0000`, CLINT `0x0200_0000`, context `2*hart+1`), DTB chỉ kiểm magic; Q8 **PLIC cổ điển**, AIA hoãn K4'/K5'; Q9 `ktest` **in-kernel** trong ảnh riêng (D2-08), `init` U-mode 3 syscall, ktest user-process hoãn K3.5; Q10 soak `1000 boot × 3 luồng` trên máy `ps`, timeout 20 s/boot, **0/1000**, không retry; Q11 conformance 5 `.scn` × sim/QEMU, kịch bản IPC đầy đủ hoãn K3.5; Q12 Miri **không** áp kernel `no_std`, giữ cho lib/sim; **Q13 chèn phase `K3b` "port core `no_std`"** giữa K3 và K3.5 vì hiện core (CNode/TCB/IPC/sched/VM) chỉ có **16.742 dòng std trong sim**, `v2/kernel` chỉ 107 dòng boot stub — K3 DoD (TAP/soak/budget) không đòi core đầy đủ, nhưng K3.5 (procsrv/shell) thì cần.- Mẫu: `APPROVED <YYYY-MM-DD> Agent 0`, ghi ngay dưới mục KT-04d trong `v2/agent/QUEUE.md`; nếu quyết định làm đổi nội dung ABI thì thêm một mục D2 mới ở tệp này. Không duyệt bằng chat. Không tự suy ra "coi như đã duyệt".
 - Agent 2 soạn nháp ở `REVIEW`, sau duyệt **chỉ Agent 0** sửa `spec/` (D2-22).
 - `ST-02a` (dòng ViScript) duyệt theo cùng mẫu trong `viscript/agent/QUEUE.md`; quyết định tương ứng ghi vào `viscript/agent/DECISIONS.md` (VD-).
 

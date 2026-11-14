@@ -148,6 +148,24 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-41 | VM fault + `FaultKind::Vm` model-only | KT-38 | 2 h | DONE | 562/71; Miri 9/9; 3 reason; không fault_ep⇒InvalidArgument; C2; W+NX⇒Wx |
 | KT-42 | 4 `.scn` + `check_vm` + shared read-only frame | KT-39, KT-40, KT-41 | 2,5 h | DONE | 569/73; Miri 2/2; 5 .scn (22..26); check_vm 8 checker; shared RO; reviewer APPROVE |
 | KT-43 | Cổng cuối K2: 100k×4 + 16 mutation + Miri + DoD | KT-42 | 3 h | DONE | 100k×4 400k lượt/51,2 M op; 17/17 mutation (V5 = AP→BSP); Miri 146/0; gate 569; K2-DOD D1..D11 |
+| KT-44 | `plat-common` + tách ảnh sản phẩm/ktest + đo budget | KT-43 | 2,5 h | READY | 2 ảnh build; ảnh sản phẩm không chuỗi ktest; budget ≤ 262.144; TAP 1 boot |
+| KT-45 | Trap khung: `stvec`, trapframe, decode, panic/trace | KT-44 | 3 h | BLOCKED | TAP 3 exception (ecall/breakpoint/illegal); 50 boot 0 lỗi |
+| KT-46 | Sv39 thật + nửa cao + physmap + `satp` + guard | KT-45 | 3 h | BLOCKED | MMU bật; walk khớp; guard fault bắt; 50 boot |
+| KT-47 | Timer SBI: 100 Hz, monotonic, deadline/hart | KT-45 | 2,5 h | BLOCKED | 100 tick đơn điệu; drift ≤1 %; 1.000 tick không mất |
+| KT-48 | PLIC + UART IRQ: enable/claim/complete | KT-46 | 3 h | BLOCKED | IRQ UART ≥1; claim/complete cân; 0 IRQ giả; 50 boot |
+| KT-49 | SMP: SBI HSM, stack/arena/PerHart | KT-46 | 3 h | BLOCKED | N=1/2/4 đủ hart; barrier đúng; budget |
+| KT-50 | IPI thật + drain hộp thư + `VmKick`/`TlbFlush` | KT-49 | 2,5 h | BLOCKED | 100 IPI 2 hart không mất; drain khi chờ khoá |
+| KT-51 | ASID thật + `sfence.vma` + shootdown ack + timeout | KT-46 | 3 h | BLOCKED | 100 vòng shootdown Ok; mutation bỏ sfence đỏ; timeout |
+| KT-52 | Object layer `no_std` + Retype nội bộ (VSpace/PT/Frame) | KT-46 | 3 h | BLOCKED | 1 VSpace + ≥3 PT + ≥1 Frame; byte khớp; 0 rò; spec rỗng |
+| KT-53 | U-mode + 3 syscall + nạp `init` ELF | KT-46 | 3 h | BLOCKED | init in TAP; U-mode không đọc kernel; 50 boot |
+| KT-54 | ktest TAP + runner QEMU smp 1/2/4 + `expected.txt` | KT-45 | 2,5 h | BLOCKED | TAP 100 % ở 1/2/4; số test khớp; timeout 20 s |
+| KT-55 | Conformance 5 `.scn` × sim/QEMU, chuẩn hoá trace | KT-51 | 3 h | BLOCKED | 5/5 khớp; 0 khác ngoài trường cho phép |
+| KT-56 | `FaultKind` thật + W^X + `spec/abi.toml` **một lần** (D2-72 Q1) | KT-46 | 3 h | BLOCKED | cause→FaultKind 3/3; W^X fault; spec diff đúng 1 hunk |
+| KT-57 | Cổng K3: soak 0/1000, matrix, 100k L1, perf, K3-DOD | KT-54 | 3 h | BLOCKED | soak 0/1000 `ps`; TAP 100 % 1/2/4; budget; perf |
+| KT-58 | **K3b** port core `no_std`: CNode/MDB/Untyped | KT-57 | 3 h | BLOCKED | parity với sim trên bộ test port |
+| KT-59 | **K3b** port TCB/transition/sched + hộp thư | KT-58 | 3 h | BLOCKED | TAP parity; schedule đúng |
+| KT-60 | **K3b** port IPC/Reply/Notification/WaitAddr/fault | KT-59 | 3 h | BLOCKED | L1 driver chạy `no_std`; C1/C2 đạt |
+| KT-61 | **K3b** cổng: TAP + soak + conformance trên nhân thật | KT-60 | 3 h | BLOCKED | TAP 100 %; soak 0/1000; conformance 5/5 |
 
 
 APPROVED 2026-11-12 Agent 0
@@ -166,8 +184,8 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K2 DONE** (D2-71): KT-35..43 DONE; 569 test; 100k×4; 17/17 mutation; Miri 146/0. K1c DONE.
-3. Tiếp: lập kế hoạch **K3** (plat-common/plat-riscv64, init, ktest, conformance) trước khi mở task; mỗi task ≤3 h.
+2. **K3 mở** (D2-72): KT-44..57 (platform/boot), rồi **K3b** KT-58..61 (port core) trước K3.5. K2 DONE.
+3. Thứ tự K3: A(44→45→46→{47∥48∥49}→50→51) ∥ B(52→53) ∥ C(54); 55/56; 57 cuối, chạy một mình.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
 3. Q1–Q8 chốt tại **D2-49**: 1 hart, hoãn push migration K1c; model API; donation tự động; bảng ALLOWED model-only; budget chu kỳ thẳng hàng; không lock-free/loom.
