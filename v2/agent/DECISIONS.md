@@ -2,7 +2,7 @@
 
 Người ghi: **Agent 0**. Agent 2 **không** sửa tệp này; cần đổi thì ghi `BLOCKED.md` + đề xuất.
 Nguồn: `docs/QUYET-DINH-sau-review.md` (QD) §2.3, §4, §8 và `review/src/ViFastOs-dossier.md` §19.1.
-Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-68`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
+Không gian tên đã chốt (QD §2.1): quyết định v1 giữ `D-01..D-08` (**chỉ áp v1**); quyết định v2 là **`D2-01..D2-69`**. Số cũ `D-09..D-27` **hết hiệu lực**, không dùng lại.
 
 ---
 
@@ -25,7 +25,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 ---
 
-## Phần II — D2-01..D2-68: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
+## Phần II — D2-01..D2-69: quyết định v2 (D2-01..28 chép QD §8; D2-29..46 bổ sung 2026-11-12)
 
 - **D2-01** v1 lưu trữ ở `v1-archive`, sổ lỗi mang sang (mục 6).
 - **D2-02** không sửa mò (D11 cũ).
@@ -105,7 +105,8 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 - **D2-67** KT-39: W^X áp **toàn cục** trên `page_table_map_obj`/mọi Frame có mapping, **không** miễn trừ PageTable thuần; map W khi `mapped_x>0` hoặc map EXEC khi `mapped_w>0` ⇒ `WxViolation` atomic; `Device+EXEC` cũng vậy. đính chính: **3 ca KT-36 + 2 ca KT-37** cũ (W+X hợp lệ) được **cập nhật kỳ vọng** sang `WxViolation` — làm chặt, không nới; các assertion khác giữ nguyên. `check_wx`/`check_vm` recount toàn bộ.---
 
 - **D2-68** KT-40: `TlbFlush` là **một** kind mới trong hộp thư model (nới D2-59, chỉ kind này); shootdown `unmap`/`protect` **không gửi `TlbFlush` cho hart gọi** — hart gọi flush **cục bộ ngay** rồi tự tính vào `acked_mask` (đính chính 2026-11-14: bản đầu ghi "gửi cả hart gọi/self-target"; đổi sang **local flush + ack ngầm** vì self-target làm mutation "bỏ flush cục bộ" **sống**, tức che mất lỗi thật — bản không self-target **chặt hơn**, đã chứng minh bằng 5 mutation); `Ok` chỉ khi `acked_mask == active_on`; ack `fetch_max`; teardown/cạn ASID flush **broadcast trực tiếp** (đồng bộ, không qua hộp thư). Yêu cầu bằng chứng: **4 mutation** (bỏ chờ ack, bỏ flush cục bộ, ack sai seq, bỏ drain hộp thư) + test hart gọi **ngoài** `active_on` + test AP→BSP tương hỗ không dựa self-target + oracle "entry trên hart ngoài `active_on` là vi phạm". Không tự hạ số mutation trong tài liệu.
-## Phần III — Duyệt
+
+- **D2-69** KT-42: số hiệu `.scn` mới là **22..26** (5 tệp: map/unmap-walk, W^X, shootdown 2 hart, VM fault, shared read-only) — thay giả thuyết G5 "số trống đầu tiên ≥ 30" trong `K2-PLAN`; nhóm tag `vm-*` → `check_scn.py` 26 tệp/16 nhóm; op `vm_*` (21) là **model-only**, không vào `spec/`. `check_vm` gộp 8 checker chỉ chạy ở L0/`.scn`/cổng; per-op giữ nguyên bộ checker cũ (không có `wx_recount`) — tương đương phủ, không nới.## Phần III — Duyệt
 
 - **T04 cũ = KT-04d; APPROVED mở KT-05.**
 - Mẫu: `APPROVED <YYYY-MM-DD> Agent 0`, ghi ngay dưới mục KT-04d trong `v2/agent/QUEUE.md`; nếu quyết định làm đổi nội dung ABI thì thêm một mục D2 mới ở tệp này. Không duyệt bằng chat. Không tự suy ra "coi như đã duyệt".
