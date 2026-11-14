@@ -155,7 +155,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-60c | derives/siêu trait: impl **sinh** vào `impl_pairs`; `enum Show` phải **lỗi tĩnh**; `Eq` chặn **sâu** (list/map/opt của float); SPDX 19 tệp dữ liệu + header `diag_cmp` | ST-60b | 2 h | **DONE** | ≥4 ca; gate xanh |
 | ST-61 | **VS2 #2 — kênh**: `chan[T]`, `send/recv/close`, **deadlock có chẩn đoán** | ST-60 | 3 h | **DONE** | ≥15 ca; ca deadlock **không treo**, mã lỗi rõ |
 | ST-62 | báo cáo **R10** | ST-56..ST-61 | 1,5 h | **DONE** | MD+JSON; số liệu tái lập; nêu nợ còn lại |
-| ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **READY** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
+| ST-63 | **VS2 #3a** — `NetHost` + TCP client (`std.net.connect/read/write/close`, timeout) | ST-62 | 2,5 h | **DONE** | 5 ca e2e loopback hai đường; không host ⇒ `VS0604` |
 | ST-64 | **VS2 #3b** — `http.get`/`get_timeout` (giao thức trong `vis-interp`) | ST-63 | 2,5 h | **READY** | 6 ca e2e: 200/404/timeout/refused/8 MiB/sai kiểu |
 | ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **READY** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **READY** | ≥13 ca tổng; `gate` xanh |
@@ -991,3 +991,16 @@ APPROVED 2026-11-14 Agent 0
 > `Ty::Any`) **và mở VS2**: **#1 async** + **#2 kênh** chạy thật hai đường. **Còn**: net/http, Landlock, LSP, gói/registry,
 > windows/wasm, hợp chuẩn 4 nền — đã có hàng **ST-63..ST-76** (vòng 11).
 > **ST-63 mở** (VS2 #3a — `NetHost` + TCP client; **VD-105**: **R1 trước, code sau**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-63 DONE — VS2 #3a (NetHost + TCP client) CÓ MẶT.** Commit `29f236aa` (**Agent 2 tự commit, đã push**). Bước 0 đúng
+> luật: `interp.rs` **1.486 → 1.217** dòng (tách `interp/goi.rs` 287 dòng, **nguyên văn**, chỉ đổi `fn`→`pub(crate) fn`),
+> gate xanh **trước** khi thêm net. `NetHost` (7 method, handle `str` mờ, `read → Vec<u8>`), `Host::net()` default `None`
+> ⇒ `VS0604`; `MODULES` 7→8, `FUNCS` 38→43 (**+5** `net.*`), **không** variant `Ty` mới, **không** sửa codegen. CLI
+> `net.rs` TCP thật, **chỉ loopback**, coi **cả** `WouldBlock` (macOS 35) và `TimedOut` là hết giờ; nối **đủ 4** điểm
+> truyền host. **6 ca** Rust loopback thật, so `run` ↔ `--vm --no-cache` (+1 ca cache hit). Đo: **793 test** · sem
+> **441/21** giữ nguyên · parity **395/395** · differential **100k/0 lệch** (215,3 s) · **7 sổ/32 mã** · `VBC1` 53.
+> **Lệch có ghi**: `net.read` **3 đối số** `(tay, tối_đa, timeout_ms)`; `std.net.connect` dạng **đầy đủ** chưa hạ (dùng
+> dạng ngắn sau `use`, như `fs.*`/`json.*`); bỏ `is_open`; `read` trả `str` **lossy**; mặc định connect 1 s.
+> **ST-64 mở** (VS2 #3b — `http.get`).
