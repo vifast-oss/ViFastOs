@@ -6,17 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-81 — `--strict-caps`** (mọi truy cập `std.fs`/`net` phải nằm trong `cap` đã khai;
-                không cap ⇒ `VS0604` “cần khai `cap[Dir]`/`cap[Net]`” + đường dẫn; mặc định **không**
-                đổi; có ở `vis run` + `vis test`) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (red-first: không cờ ⇒ đọc được, cờ chưa có ⇒ “cờ lạ” → `Quyen.siet` + parse cờ →
-                7 ca (6 tình huống + `vis test`) → 914 test → cổng → diff 100k → STATE/JOURNAL).
+Task          : **ST-82 — báo cáo R12** (`reports/R12-viscript.{md,json,json.license}`; `round=12`,
+                `head=e392be7c`, **92** hàng QUEUE, `blocked[]` rỗng; số liệu chạy lại đầy đủ) — xong,
+                `report-check --all` PASS + cổng PASS; **chưa commit**.
+Bước          : 4/4 (đọc QUEUE/R11 → sinh JSON 92 task → viết MD 8 mục → `report-check --all` PASS →
+                gate PASS → STATE/JOURNAL/commit).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T13:52:28Z**; **914** test / sem
-                **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (217,6 s) / **7 sổ-32 mã** / `VBC1` **53** /
-                allowlist **6**
-Việc dở       : commit `[ST-81]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T14:10:30Z**; report-check **PASS
+                (12 báo cáo, 92 hàng QUEUE phủ đủ)**; **914** test / sem **447/22 nhóm** / `vis test`
+                **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** / differential **100.000
+                chương trình 0 lệch** (226,4 s) / fuzz 60 s **2.585.181 ca, 0 vi phạm** / **7 sổ-32 mã** /
+                `VBC1` **53** / allowlist **6** / `fmt --check test/` **497 tệp**
+Việc dở       : commit `[ST-82]` + push (đã được uỷ quyền)
+
+## ST-82 — báo cáo R12, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đọc nguồn** | `QUEUE@e392be7c` = **92 hàng** (91 `DONE` + ST-82 `READY`; **không** phải 93 — đếm bằng `check_report.split_row` để không vướng `\|` trong mô tả); `BLOCKED/REVIEW` = **0** ⇒ `blocked[]` rỗng. |
+| 1 | **JSON** | `R12-viscript.json`: đúng **11 khoá**, `project=viscript`, `round=12`, `head=e392be7c`, `tasks[92]` phủ đủ, status khớp QUEUE@head, `blocked=[]`, `gates.fast=PASS`, `coverage.fixtures=447`, `perf` = differential 226,4 s/442/s/seed 3523158054 · async 228/74 ms · host 54/120/0 · targets 18/18 `check` · fuzz 2.585.181 ca/58.775.039 token/0 vi phạm. `.license` copy từ R11. |
+| 2 | **MD** | `R12-viscript.md` **204 dòng**, 8 mục: tóm tắt 5 dòng; bảng ST-77..ST-81 + hash/số đo; **số liệu chạy lại** (914 test, sem 447/22, `vis test`/`--vm`, parity 398/398, `diag_cmp` 364/49/34, diff 100k, fuzz 60 s, VBC1 53, 32 mã, allowlist 6, async 10k, host 54/120/0, targets 18/18, `fmt --check` 497, sandbox exit 3, cổng); **§19 8 hạng mục VS2** đúng mức thật; **§5 đủ 37 nợ R11 + 7 nợ mới (38..44)**; **§6 VD-108** + ghi chú VD-100..107; §7 máy kiểm + đề xuất; §8 kết luận trung thực. |
+| 3 | **Kiểm** | `python3 viscript/test/report/check_report.py --all` ⇒ **PASS (12 báo cáo, 92 hàng QUEUE phủ đủ)**; `head` là tổ tiên HEAD; **không** sửa R1..R11. |
+| 4 | **Đo lại** | Workspace **914** = 21+96+**27**+154+26+62+9+**519**; sem **447/22**; `vis test` **447 ok** / `--vm` **447 ok + 7 SKIP**; parity **398/398** (+49 lỗi biên dịch); `diag_cmp` **364/49/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=226.4 toc_do=442/s seed=3523158054`**; fuzz 60 s **2.585.181 ca / 58.775.039 token / 0 vi phạm**; async 10k **228/74 ms**; host **54 ca/120 lần/0 lệch** (4,83 s); targets **18/18 check**; `fmt --check test/` **497 tệp** exit 0; `--sandbox-check` macOS **exit 3** (`landlock: không hỗ trợ`). |
+| 5 | **Cổng** | `./vis-dev gate --fast` **PASS** `2026-11-14T14:10:30Z` (không retry), trong đó report-check PASS; 3 dòng cuối: `test result: ok. 0 passed; …` / `--- L0 test: OK` / `vis-dev gate --fast: PASS (L1 chưa có tới khi có sim ViScript)`. |
+| 6 | **Nợ** | Báo cáo **không** sửa mã; các nợ đã đánh số 1..44 ở `R12-viscript.md` §5 (gồm **siết mặc định** 33/43, `fs.exists` 44, Landlock probe 34); không chạm `docs/`, `v2/`, `spec/`, QUEUE/DECISIONS/reports R1..R11. |
 
 ## ST-81 — `--strict-caps`, 2026-11-14
 
