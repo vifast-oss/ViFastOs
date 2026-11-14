@@ -824,3 +824,11 @@ Nguồn: `docs/viscript/ViScript-thiet-ke.md` §21–§22 và `docs/QUYET-DINH-s
   Landlock" — chỉ được nói "**cưỡng chế ở tầng runtime** (ST-72b) + **probe** Landlock (ST-73)". (4) Muốn Landlock thật: cần
   Agent 0 duyệt **một** trong hai: (a) cho phép crate `landlock` (MIT/Apache) trong allowlist, hoặc (b) cho phép `unsafe`
   **đóng** trong `vis-host-linux` + case âm; cả hai phải kèm runner Linux để **đo** — ghi thành **nợ có điều kiện**.
+
+- **VD-108** **Vòng 12 — "nhất quán hoá" tính năng mới (ST-77..ST-82)**: (1) Sau vòng 11, các tính năng VS2 **chạy được** nhưng chưa
+  **nhất quán** với phần còn lại của công cụ ⇒ vòng 12 đóng 5 lỗ: **`vis fmt`** cho cú pháp mới (`cap[...]`, `@`/`(write)`,
+  `async`, `spawn`, `chan[T]`, `use pkg.*`) — **lossless + idempotent**; **`vis explain`/sổ mã** đủ **3 ngôn ngữ** cho
+  `VS0504/0505/0506` + `--list` phủ **32 mã**; **`vis test`** chạy được khối `test` có `async`/`await`/`chan`; **LSP
+  module-aware** (giải `use ./x` + `std.*` để **hết chẩn đoán giả**); **`--strict-caps`** (tuỳ chọn, **mặc định không đổi**).
+  (2) **Không** đụng ngữ nghĩa đã khoá; mỗi task ≥6 ca, giữ **874 test/447 sem/parity 398/398/diff 0 lệch** (số sẽ tăng).
+  (3) Vòng 12 **không** hứa: Landlock thật, runner Windows/Linux/wasm, TLS — đó là **điều kiện môi trường**, ghi ở R12 §5.
