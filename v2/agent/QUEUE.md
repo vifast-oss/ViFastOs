@@ -149,8 +149,8 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-42 | 4 `.scn` + `check_vm` + shared read-only frame | KT-39, KT-40, KT-41 | 2,5 h | DONE | 569/73; Miri 2/2; 5 .scn (22..26); check_vm 8 checker; shared RO; reviewer APPROVE |
 | KT-43 | Cổng cuối K2: 100k×4 + 16 mutation + Miri + DoD | KT-42 | 3 h | DONE | 100k×4 400k lượt/51,2 M op; 17/17 mutation (V5 = AP→BSP); Miri 146/0; gate 569; K2-DOD D1..D11 |
 | KT-44 | `plat-common` + tách ảnh sản phẩm/ktest + đo budget | KT-43 | 2,5 h | DONE | efe128fb; 2 ảnh feature ktest; product 0 chuỗi; budget 0/262.144 + probe; TAP 1 boot; reviewer APPROVE |
-| KT-45 | Trap khung: `stvec`, trapframe, decode, panic/trace | KT-44 | 3 h | READY | TAP 3 exception (ecall/breakpoint/illegal); 50 boot 0 lỗi |
-| KT-46 | Sv39 thật + nửa cao + physmap + `satp` + guard | KT-45 | 3 h | BLOCKED | MMU bật; walk khớp; guard fault bắt; 50 boot |
+| KT-45 | Trap khung: `stvec`, trapframe, decode, panic/trace | KT-44 | 3 h | DONE | c6037b24; TAP 5 (bp thật/ecall-SBI/illegal tiêm/nested); 50 boot; 569 gate; reviewer CONFIRM |
+| KT-46 | Sv39 thật + nửa cao + physmap + `satp` + guard | KT-45 | 3 h | READY | MMU bật; walk khớp; guard fault bắt; 50 boot |
 | KT-47 | Timer SBI: 100 Hz, monotonic, deadline/hart | KT-45 | 2,5 h | BLOCKED | 100 tick đơn điệu; drift ≤1 %; 1.000 tick không mất |
 | KT-48 | PLIC + UART IRQ: enable/claim/complete | KT-46 | 3 h | BLOCKED | IRQ UART ≥1; claim/complete cân; 0 IRQ giả; 50 boot |
 | KT-49 | SMP: SBI HSM, stack/arena/PerHart | KT-46 | 3 h | BLOCKED | N=1/2/4 đủ hart; barrier đúng; budget |
@@ -184,7 +184,7 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K3**: KT-44 DONE; **KT-45 READY** (trap). Rồi K3b KT-58..61. K2 DONE.
+2. **K3**: KT-44/45 DONE; **KT-46 READY** (Sv39 thật + guard page-fault). Rồi K3b KT-58..61.
 3. Thứ tự K3: A(44→45→46→{47∥48∥49}→50→51) ∥ B(52→53) ∥ C(54); 55/56; 57 cuối, chạy một mình.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
