@@ -168,7 +168,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **DONE** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
 | ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **DONE** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **DONE** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
-| ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **READY** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
+| ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **DONE** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **READY** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
 | ST-31 | báo cáo **R4** | ST-25..ST-30 | 1,5 h | **DONE** | MD+JSON, 36 hàng, số liệu tái lập |
 | ST-24 | báo cáo **R3** | ST-18..ST-23 | 1 h | **DONE** | MD+JSON, 27 hàng, số liệu tái lập |
@@ -1153,3 +1153,16 @@ APPROVED 2026-11-14 Agent 0
 > Nợ: **chưa có runner** nền nào ngoài macOS ⇒ mọi ô chỉ là **check**; `vis-cli` trên wasm **không chạy được**; chưa `cargo build`
 > Windows (cần linker).
 > **ST-75 mở** (VS2 #8 — bộ hợp chuẩn host ≥50 ca chạy **thật** trên macOS).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-75 DONE — VS2 #8 (bộ hợp chuẩn host) ĐỦ TIÊU CHÍ TRÊN macOS.** Commit `2602333d` (**Agent 2 tự commit, đã push**).
+> `test/host/suite.txt` (TSV có comment) + harness `host_conformance.rs` (194 dòng) chạy **cả** interp và `--vm --no-cache`, so
+> **byte** stdout + exit + stderr: **54 ca / 54 xanh**, **120 lần chạy, 0 lệch**, harness **3,9 s** — phân bổ **FsHost 22 ·
+> Ngoai 13 · shell/ls/open 11 · quyền 5 · determinism 3** (`repeat=3`). Mỗi ca **có kiểm thật** (stdout ≠ rỗng hoặc exit cụ thể).
+> `bin/vis-host-suite` (40 dòng) in bảng + exit 1 nếu thiếu/đỏ; `HOST-BAO-DAM.md` 71 dòng ghi rõ **Windows/Linux/wasm chưa đo**.
+> Đo: **874 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (196,3 s). Đỏ R3 lần 1 (thiếu sidecar `.license`)
+> ⇒ thêm **3 sidecar**, không nới luật.
+> Nợ: net **không** trong suite (đã có 24 ca riêng, thay bằng 3 ca determinism — ghi rõ); **13 ca Ngoai** khai kỳ vọng `vm:VS0604`
+> (VM **không** có host `Ngoai` — đúng thiết kế ST-27); suite phụ thuộc lệnh macOS.
+> **ST-76 mở** (báo cáo R11).
