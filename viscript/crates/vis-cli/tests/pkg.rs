@@ -440,3 +440,199 @@ fn pkg_vong_lap() {
     assert!(err2.contains("vòng phụ thuộc"), "stderr: {err2}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---------------------------------------------------------------------------
+// **ST-90 (VD-110)** — `entry` trong `vis.lock` + `vis pkg remove`
+// ---------------------------------------------------------------------------
+
+fn add_fixture(d: &Path, spec: &str) -> (i32, String, String) {
+    vis(
+        d,
+        &[
+            "pkg",
+            "add",
+            spec,
+            "--registry",
+            fixture().to_str().unwrap(),
+        ],
+    )
+}
+
+fn chuong_trinh_use(d: &Path, ten: &str) -> PathBuf {
+    let p = d.join("main.vis");
+    ghi(&p, &format!("use pkg.{ten}\nprint(1)\n"));
+    p
+}
+
+/// (a) cài rồi ⇒ `vis.lock` có `entry` đúng đường dẫn trong gói.
+#[test]
+fn lock_co_entry_sau_khi_cai() {
+    let d = tmp_dir("entry-co");
+    let (c, _o, e) = add_fixture(&d, "http@1.0.0");
+    assert_eq!(c, 0, "stderr: {e}");
+    let lock = doc(&d.join("vis.lock"));
+    assert!(lock.contains("\"entry\":\"src/main.vis\""), "lock: {lock}");
+    assert_eq!(lock.matches("\"entry\"").count(), 2, "http + util: {lock}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (b) lock có `entry` **sai** ⇒ `VS0701` nêu **tên tệp**, không chạy.
+#[test]
+fn entry_sai_bao_vs0701_neu_ten() {
+    let d = tmp_dir("entry-sai");
+    let (c, _o, e) = add_fixture(&d, "http@1.0.0");
+    assert_eq!(c, 0, "stderr: {e}");
+    let p = d.join("vis.lock");
+    let lock = doc(&p).replace("\"entry\":\"src/main.vis\"", "\"entry\":\"src/khong.vis\"");
+    ghi(&p, &lock);
+    let f = chuong_trinh_use(&d, "http");
+    let (c2, o2, e2) = vis(&d, &["check", f.to_str().unwrap()]);
+    assert_eq!(c2, 1, "stderr: {e2}");
+    assert!(
+        o2.contains("VS0701") && o2.contains("src/khong.vis"),
+        "phải nêu entry sai: {o2}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (c) lock **cũ** (không `entry`) ⇒ fallback quy ước, vẫn chạy.
+#[test]
+fn lock_cu_khong_entry_van_chay() {
+    let d = tmp_dir("entry-cu");
+    let (c, _o, e) = add_fixture(&d, "http@1.0.0");
+    assert_eq!(c, 0, "stderr: {e}");
+    let p = d.join("vis.lock");
+    let lock = doc(&p).replace("\"entry\":\"src/main.vis\",", "");
+    ghi(&p, &lock);
+    assert!(!lock.contains("\"entry\""), "lock cũ: {lock}");
+    let f = chuong_trinh_use(&d, "http");
+    let (c2, _o2, e2) = vis(&d, &["check", f.to_str().unwrap()]);
+    assert_eq!(c2, 0, "fallback quy ước phải chạy: {e2}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (d) `pkg remove` xoá lock + `.vis/pkg` + blob **không còn dùng**; chạy lại `use pkg.x` ⇒ `VS0701`.
+#[test]
+fn remove_xoa_lock_store_va_bao_chua_cai() {
+    let d = tmp_dir("remove");
+    let (c, _o, e) = add_fixture(&d, "http@1.0.0");
+    assert_eq!(c, 0, "stderr: {e}");
+    let lock = doc(&d.join("vis.lock"));
+    let http_sha = {
+        // sha của tệp http trong lock
+        let i = lock.find("\"name\":\"http\"").expect("http");
+        let j = lock[i..].find("\"files\"").expect("files") + i;
+        let k = lock[j..].find("\"sha256\":\"").expect("sha") + j + 10;
+        lock[k..k + 64].to_string()
+    };
+    assert!(d.join(".vis/store").join(&http_sha).is_file());
+    let (c2, _o2, e2) = vis(&d, &["pkg", "remove", "http"]);
+    assert_eq!(c2, 0, "stderr: {e2}");
+    let lock2 = doc(&d.join("vis.lock"));
+    assert!(!lock2.contains("\"name\":\"http\""), "lock: {lock2}");
+    assert!(!d.join(".vis/pkg/http").exists());
+    assert!(
+        !d.join(".vis/store").join(&http_sha).exists(),
+        "blob http phải xoá"
+    );
+    let f = chuong_trinh_use(&d, "http");
+    let (c3, o3, e3) = vis(&d, &["check", f.to_str().unwrap()]);
+    assert_eq!(c3, 1, "{e3}");
+    assert!(o3.contains("chưa cài gói `http`"), "{o3}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (e) tên lạ ⇒ exit **2**, lock **không đổi**.
+#[test]
+fn remove_ten_la_exit_2_lock_khong_doi() {
+    let d = tmp_dir("remove-la");
+    let (c, _o, e) = add_fixture(&d, "http@1.0.0");
+    assert_eq!(c, 0, "stderr: {e}");
+    let truoc = doc(&d.join("vis.lock"));
+    let (c2, _o2, e2) = vis(&d, &["pkg", "remove", "khong_co_goi_nay"]);
+    assert_eq!(c2, 2, "stderr: {e2}");
+    assert!(e2.contains("chưa cài gói"), "{e2}");
+    assert_eq!(doc(&d.join("vis.lock")), truoc, "lock không được đổi");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (f) hai gói **cùng nội dung** (cùng blob store): remove một ⇒ blob còn, gói kia vẫn chạy.
+#[test]
+fn remove_khong_xoa_blob_con_dung() {
+    let d = tmp_dir("remove-chung");
+    let reg = d.join("registry");
+    let noi_dung = "print(\"chung\")\n";
+    let sha = hex(&vis_bytecode::source_hash(noi_dung));
+    for ten in ["alpha", "beta"] {
+        ghi(
+            &reg.join(ten).join("1.0.0").join("manifest.json"),
+            &format!(
+                r#"{{"name":"{ten}","version":"1.0.0","entry":"src/main.vis","files":[{{"path":"src/main.vis","sha256":"{sha}"}}]}}"#
+            ),
+        );
+        ghi(&reg.join(ten).join("1.0.0").join("src/main.vis"), noi_dung);
+    }
+    for ten in ["alpha", "beta"] {
+        let (c, _o, e) = vis(
+            &d,
+            &["pkg", "add", ten, "--registry", reg.to_str().unwrap()],
+        );
+        assert_eq!(c, 0, "add {ten}: {e}");
+    }
+    assert_eq!(
+        std::fs::read_dir(d.join(".vis/store")).unwrap().count(),
+        1,
+        "hai gói cùng nội dung ⇒ một blob"
+    );
+    let (c, _o, e) = vis(&d, &["pkg", "remove", "alpha"]);
+    assert_eq!(c, 0, "remove: {e}");
+    assert!(
+        d.join(".vis/store").join(&sha).is_file(),
+        "blob còn dùng bởi beta — không được xoá"
+    );
+    let f = chuong_trinh_use(&d, "beta");
+    let (c2, _o2, e2) = vis(&d, &["check", f.to_str().unwrap()]);
+    assert_eq!(c2, 0, "beta phải còn chạy: {e2}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (g) manifest **không** có `entry` ⇒ `--entry` chỉ định; không có `--entry` ⇒ lỗi nêu `entry`.
+#[test]
+fn entry_tuy_chon_khi_manifest_thieu() {
+    let d = tmp_dir("entry-tuy-chon");
+    let reg = d.join("registry");
+    let noi_dung = "print(\"noent\")\n";
+    let sha = hex(&vis_bytecode::source_hash(noi_dung));
+    ghi(
+        &reg.join("noent").join("1.0.0").join("manifest.json"),
+        &format!(
+            r#"{{"name":"noent","version":"1.0.0","files":[{{"path":"src/main.vis","sha256":"{sha}"}}]}}"#
+        ),
+    );
+    ghi(
+        &reg.join("noent").join("1.0.0").join("src/main.vis"),
+        noi_dung,
+    );
+    let (c0, _o0, e0) = vis(
+        &d,
+        &["pkg", "add", "noent", "--registry", reg.to_str().unwrap()],
+    );
+    assert_eq!(c0, 2, "thiếu entry phải lỗi: {e0}");
+    assert!(e0.contains("entry"), "{e0}");
+    let (c, _o, e) = vis(
+        &d,
+        &[
+            "pkg",
+            "add",
+            "noent",
+            "--entry",
+            "src/main.vis",
+            "--registry",
+            reg.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(c, 0, "có --entry phải cài được: {e}");
+    let lock = doc(&d.join("vis.lock"));
+    assert!(lock.contains("\"entry\":\"src/main.vis\""), "lock: {lock}");
+    let _ = std::fs::remove_dir_all(&d);
+}

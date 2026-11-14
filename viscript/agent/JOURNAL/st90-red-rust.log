@@ -1,0 +1,84 @@
+# ST-90 — log ĐỎ (Rust) lúc 2026-11-14T17:45:41Z, HEAD 1cc7a66d — lock CHƯA có entry, CHƯA có pkg remove.
+# lệnh: cargo test -p vis-cli --test pkg (18 ca)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/pkg.rs (target/debug/deps/pkg-3ee16521c0d7fc20)
+
+running 18 tests
+test manifest_thieu_truong ... ok
+test lock_co_entry_sau_khi_cai ... FAILED
+test entry_tuy_chon_khi_manifest_thieu ... FAILED
+test entry_sai_bao_vs0701_neu_ten ... FAILED
+test pkg_bi_sua_bao_vs0701 ... ok
+test lock_cu_khong_entry_van_chay ... ok
+test add_keo_phu_thuoc ... ok
+test install_khong_can_registry ... ok
+test lock_hong ... ok
+test hai_goi_cung_ten_tep ... ok
+test pkg_chua_cai ... ok
+test cai_hai_lan_cung_byte ... ok
+test remove_ten_la_exit_2_lock_khong_doi ... FAILED
+test remove_xoa_lock_store_va_bao_chua_cai ... FAILED
+test remove_khong_xoa_blob_con_dung ... FAILED
+test pkg_vong_lap ... ok
+test add_roi_list ... ok
+test use_pkg_chay_that ... ok
+
+failures:
+
+---- lock_co_entry_sau_khi_cai stdout ----
+
+thread 'lock_co_entry_sau_khi_cai' (48448755) panicked at crates/vis-cli/tests/pkg.rs:474:5:
+lock: {"lock":1,"packages":[{"name":"http","version":"1.0.0","sha256":"cf26fe5e14ddf8d0f5fa2480633ec9f50c5db3b304e5638bc4e889f90d65bd41","files":[{"path":"src/main.vis","sha256":"8c4dac3f643a32ba92a45494d4e20d82cbff6817e62e9353e1014f5b1ee4c4a1"}]},{"name":"util","version":"0.1.0","sha256":"3666feaa54498e4280d626e7e62cad3f1c65d3a7d6b1ae3c83d715a7e70ccf2e","files":[{"path":"src/main.vis","sha256":"b5d214aa9d5240406b84b428a2b855a679812a9ef936df24b09d24ae3731ee89"}]}]}
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- entry_tuy_chon_khi_manifest_thieu stdout ----
+
+thread 'entry_tuy_chon_khi_manifest_thieu' (48448752) panicked at crates/vis-cli/tests/pkg.rs:634:5:
+assertion `left == right` failed: có --entry phải cài được: vis pkg: cờ lạ `--entry`
+
+  left: 2
+ right: 0
+
+---- entry_sai_bao_vs0701_neu_ten stdout ----
+
+thread 'entry_sai_bao_vs0701_neu_ten' (48448751) panicked at crates/vis-cli/tests/pkg.rs:490:5:
+assertion `left == right` failed: stderr: 
+  left: 0
+ right: 1
+
+---- remove_ten_la_exit_2_lock_khong_doi stdout ----
+
+thread 'remove_ten_la_exit_2_lock_khong_doi' (48448799) panicked at crates/vis-cli/tests/pkg.rs:554:5:
+vis pkg: lệnh lạ `remove` — dùng: vis pkg add <tên>[@<ver>] [--registry <dir>] | vis pkg install | vis pkg list
+
+
+---- remove_xoa_lock_store_va_bao_chua_cai stdout ----
+
+thread 'remove_xoa_lock_store_va_bao_chua_cai' (48448800) panicked at crates/vis-cli/tests/pkg.rs:530:5:
+assertion `left == right` failed: stderr: vis pkg: lệnh lạ `remove` — dùng: vis pkg add <tên>[@<ver>] [--registry <dir>] | vis pkg install | vis pkg list
+
+  left: 2
+ right: 0
+
+---- remove_khong_xoa_blob_con_dung stdout ----
+
+thread 'remove_khong_xoa_blob_con_dung' (48448787) panicked at crates/vis-cli/tests/pkg.rs:588:5:
+assertion `left == right` failed: remove: vis pkg: lệnh lạ `remove` — dùng: vis pkg add <tên>[@<ver>] [--registry <dir>] | vis pkg install | vis pkg list
+
+  left: 2
+ right: 0
+
+
+failures:
+    entry_sai_bao_vs0701_neu_ten
+    entry_tuy_chon_khi_manifest_thieu
+    lock_co_entry_sau_khi_cai
+    remove_khong_xoa_blob_con_dung
+    remove_ten_la_exit_2_lock_khong_doi
+    remove_xoa_lock_store_va_bao_chua_cai
+
+test result: FAILED. 12 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+error: test failed, to rerun pass `-p vis-cli --test pkg`

@@ -129,6 +129,17 @@ fn chon_tep_pkg(goi: &GoiKhoa, duoi: &[String]) -> Result<String, String> {
     let co = |p: &str| goi.files.iter().any(|f| f.path == p);
     let mut ung: Vec<String> = Vec::new();
     if duoi.is_empty() {
+        // **ST-90 (VD-110)**: lock có `entry` ⇒ dùng **đúng** nó; thiếu tệp trong lock ⇒ lỗi nêu
+        // tên (đường gọi map thành `VS0701`). Lock cũ (không `entry`) ⇒ fallback quy ước bên dưới.
+        if let Some(e) = &goi.entry {
+            if co(e) {
+                return Ok(e.clone());
+            }
+            return Err(format!(
+                "gói `{}@{}`: `entry` `{e}` không có trong `vis.lock` (VS0701)",
+                goi.name, goi.version
+            ));
+        }
         for c in ["src/main.vis", "main.vis"] {
             if co(c) {
                 ung.push(c.to_string());

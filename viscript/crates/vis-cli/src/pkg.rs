@@ -30,7 +30,7 @@ pub fn run(args: &[String]) -> ExitCode {
 }
 
 fn dung() -> &'static str {
-    "dùng: vis pkg add <tên>[@<ver>] [--registry <dir>] | vis pkg install | vis pkg list"
+    "dùng: vis pkg add <tên>[@<ver>] [--entry <path>] [--registry <dir>] | vis pkg install | vis pkg list | vis pkg remove <tên>"
 }
 
 fn chay(args: &[String]) -> Result<(), String> {
@@ -41,6 +41,7 @@ fn chay(args: &[String]) -> Result<(), String> {
         "add" => lenh_add(&args[1..]),
         "install" => lenh_install(&args[1..]),
         "list" => lenh_list(&args[1..]),
+        "remove" => lenh_remove(&args[1..]),
         khac => Err(format!("lệnh lạ `{khac}` — {}", dung())),
     }
 }
@@ -135,11 +136,12 @@ struct TepManifest {
 struct Manifest {
     name: String,
     version: String,
+    entry: String,
     deps: Vec<(String, String)>,
     files: Vec<TepManifest>,
 }
 
-fn doc_manifest(duong: &Path) -> Result<Manifest, String> {
+fn doc_manifest(duong: &Path, entry_override: Option<&str>) -> Result<Manifest, String> {
     let bytes = std::fs::read(duong)
         .map_err(|e| format!("không đọc được manifest `{}`: {e}", duong.display()))?;
     let text = std::str::from_utf8(&bytes)
@@ -153,7 +155,10 @@ fn doc_manifest(duong: &Path) -> Result<Manifest, String> {
         .ok_or_else(|| format!("manifest `{}` thiếu trường `name`", duong.display()))?;
     let version = lay_chuoi(kv, "version")
         .ok_or_else(|| format!("manifest `{}` thiếu trường `version`", duong.display()))?;
+    // **ST-90**: `entry` của manifest vẫn là nguồn chính; `--entry` chỉ **đổi** khi manifest thiếu
+    // hoặc người dùng muốn chỉ định khác (vẫn phải nằm trong `files`).
     let entry = lay_chuoi(kv, "entry")
+        .or_else(|| entry_override.map(str::to_string))
         .ok_or_else(|| format!("manifest `{}` thiếu trường `entry`", duong.display()))?;
     kiem_path(&entry)?;
     let fs_v = lay(kv, "files")
@@ -232,6 +237,7 @@ fn doc_manifest(duong: &Path) -> Result<Manifest, String> {
     Ok(Manifest {
         name,
         version,
+        entry,
         deps,
         files,
     })
@@ -313,6 +319,7 @@ struct TepCai {
 struct GoiCai {
     name: String,
     version: String,
+    entry: String,
     sha256: String,
     files: Vec<TepCai>,
 }
@@ -321,6 +328,7 @@ fn gom_goi(
     reg: &Path,
     name: &str,
     version: &str,
+    entry_override: Option<&str>,
     ds: &mut Vec<GoiCai>,
     da: &mut BTreeSet<(String, String)>,
 ) -> Result<(), String> {
@@ -328,7 +336,7 @@ fn gom_goi(
         return Ok(());
     }
     let dir = reg.join(name).join(version);
-    let m = doc_manifest(&dir.join("manifest.json"))?;
+    let m = doc_manifest(&dir.join("manifest.json"), entry_override)?;
     if m.name != name || m.version != version {
         return Err(format!(
             "manifest `{}` khai `{}@{}` nhưng thư mục là `{name}@{version}`",
@@ -373,11 +381,13 @@ fn gom_goi(
     ds.push(GoiCai {
         name: m.name.clone(),
         version: m.version.clone(),
+        entry: m.entry.clone(),
         sha256,
         files,
     });
     for (dn, dv) in &m.deps {
-        gom_goi(reg, dn, dv, ds, da)?;
+        // Dep không nhận `--entry` của gói đích.
+        gom_goi(reg, dn, dv, None, ds, da)?;
     }
     Ok(())
 }
@@ -393,6 +403,8 @@ pub(crate) struct GoiKhoa {
     pub(crate) name: String,
     pub(crate) version: String,
     pub(crate) sha256: String,
+    /// **ST-90 (VD-110)**: entry của gói; `None` = lock **cũ** (fallback quy ước).
+    pub(crate) entry: Option<String>,
     pub(crate) files: Vec<TepKhoa>,
 }
 
@@ -452,10 +464,18 @@ fn doc_khoa(duong: &Path, bat_buoc: bool) -> Result<Vec<GoiKhoa>, String> {
             });
         }
         files.sort_by(|a, b| a.path.as_bytes().cmp(b.path.as_bytes()));
+        let entry = match lay_chuoi(p, "entry") {
+            Some(e) => {
+                kiem_path(&e)?;
+                Some(e)
+            }
+            None => None, // lock cũ: fallback quy ước (không cảnh báo)
+        };
         out.push(GoiKhoa {
             name,
             version,
             sha256: sha256.to_ascii_lowercase(),
+            entry,
             files,
         });
     }
@@ -482,12 +502,16 @@ fn gia_tri_khoa(goi: &[GoiKhoa]) -> Value {
                     ])
                 })
                 .collect();
-            Value::Map(vec![
+            let mut kv = vec![
                 (Value::Str("name".into()), Value::Str(p.name.clone())),
                 (Value::Str("version".into()), Value::Str(p.version.clone())),
-                (Value::Str("sha256".into()), Value::Str(p.sha256.clone())),
-                (Value::Str("files".into()), Value::List(fs)),
-            ])
+            ];
+            if let Some(e) = &p.entry {
+                kv.push((Value::Str("entry".into()), Value::Str(e.clone())));
+            }
+            kv.push((Value::Str("sha256".into()), Value::Str(p.sha256.clone())));
+            kv.push((Value::Str("files".into()), Value::List(fs)));
+            Value::Map(kv)
         })
         .collect();
     Value::Map(vec![
@@ -529,12 +553,13 @@ fn tach_ten(spec: &str) -> Result<(String, Option<String>), String> {
     }
 }
 
-fn tuy_chon(
-    args: &[String],
-    cho_registry: bool,
-) -> Result<(Option<String>, Option<PathBuf>), String> {
+/// `(tên, registry, entry)` từ đối số CLI.
+type TuyChon = (Option<String>, Option<PathBuf>, Option<String>);
+
+fn tuy_chon(args: &[String], cho_registry: bool) -> Result<TuyChon, String> {
     let mut ten = None;
     let mut reg = None;
+    let mut entry = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -544,6 +569,14 @@ fn tuy_chon(
                     return Err("thiếu giá trị sau `--registry`".to_string());
                 };
                 reg = Some(PathBuf::from(v));
+            }
+            "--entry" if cho_registry => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    return Err("thiếu giá trị sau `--entry`".to_string());
+                };
+                kiem_path(v)?;
+                entry = Some(v.clone());
             }
             a if a.starts_with('-') => return Err(format!("cờ lạ `{a}`")),
             a => {
@@ -555,7 +588,7 @@ fn tuy_chon(
         }
         i += 1;
     }
-    Ok((ten, reg))
+    Ok((ten, reg, entry))
 }
 
 fn thu_muc_registry(chon: Option<PathBuf>) -> PathBuf {
@@ -569,7 +602,7 @@ fn cwd() -> Result<PathBuf, String> {
 
 /// `vis pkg add <tên>[@<ver>] [--registry <dir>]`.
 fn lenh_add(args: &[String]) -> Result<(), String> {
-    let (ten, reg) = tuy_chon(args, true)?;
+    let (ten, reg, entry_override) = tuy_chon(args, true)?;
     let Some(spec) = ten else {
         return Err(format!("thiếu tên gói — {}", dung()));
     };
@@ -584,7 +617,14 @@ fn lenh_add(args: &[String]) -> Result<(), String> {
     let mut khoa = doc_khoa(&cwd.join("vis.lock"), false)?;
     let mut ds = Vec::new();
     let mut da = BTreeSet::new();
-    gom_goi(&reg, &ten, &ver, &mut ds, &mut da)?;
+    gom_goi(
+        &reg,
+        &ten,
+        &ver,
+        entry_override.as_deref(),
+        &mut ds,
+        &mut da,
+    )?;
     ds.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
     // 1) blob nội dung (content-addressed) — chỉ sau khi **mọi** manifest hợp lệ.
     for g in &ds {
@@ -616,6 +656,7 @@ fn lenh_add(args: &[String]) -> Result<(), String> {
             name: g.name,
             version: g.version,
             sha256: g.sha256,
+            entry: Some(g.entry),
             files: g
                 .files
                 .iter()
@@ -632,8 +673,8 @@ fn lenh_add(args: &[String]) -> Result<(), String> {
 
 /// `vis pkg install` — **chỉ** đọc `vis.lock` + `.vis/store`; không mở registry.
 fn lenh_install(args: &[String]) -> Result<(), String> {
-    let (ten, reg) = tuy_chon(args, false)?;
-    if ten.is_some() {
+    let (ten, reg, entry) = tuy_chon(args, false)?;
+    if ten.is_some() || entry.is_some() {
         return Err(format!("`install` không nhận đối số — {}", dung()));
     }
     if reg.is_some() {
@@ -689,8 +730,8 @@ fn lenh_install(args: &[String]) -> Result<(), String> {
 
 /// `vis pkg list` — `tên ver sha256[:12]`, sắp theo tên.
 fn lenh_list(args: &[String]) -> Result<(), String> {
-    let (ten, reg) = tuy_chon(args, false)?;
-    if ten.is_some() || reg.is_some() {
+    let (ten, reg, entry) = tuy_chon(args, false)?;
+    if ten.is_some() || reg.is_some() || entry.is_some() {
         return Err(format!("`list` không nhận đối số — {}", dung()));
     }
     let cwd = cwd()?;
@@ -704,6 +745,39 @@ fn lenh_list(args: &[String]) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// `vis pkg remove <tên>` — xoá mục trong `vis.lock` + cây `.vis/pkg/<tên>/<ver>`; blob trong
+/// `.vis/store` chỉ xoá khi **không** gói còn lại nào dùng. **Không** sửa `vis.toml`, không mạng.
+fn lenh_remove(args: &[String]) -> Result<(), String> {
+    if args.len() != 1 {
+        return Err(format!("`remove` cần đúng **một** tên gói — {}", dung()));
+    }
+    let ten = &args[0];
+    if ten.starts_with('-') {
+        return Err(format!("cờ lạ `{ten}` — {}", dung()));
+    }
+    let cwd = cwd()?;
+    let khoa_path = cwd.join("vis.lock");
+    let mut khoa = doc_khoa(&khoa_path, true)?;
+    let Some(pos) = khoa.iter().position(|g| g.name == *ten) else {
+        return Err(format!("chưa cài gói `{ten}` — không có trong `vis.lock`"));
+    };
+    let goi = khoa.remove(pos);
+    // Blob còn dùng bởi gói khác (so **sha**, không theo tên).
+    let con_dung: BTreeSet<String> = khoa
+        .iter()
+        .flat_map(|g| g.files.iter().map(|f| f.sha256.clone()))
+        .collect();
+    for f in &goi.files {
+        if !con_dung.contains(&f.sha256) {
+            let _ = std::fs::remove_file(cwd.join(".vis/store").join(&f.sha256));
+        }
+    }
+    let thu_muc = cwd.join(".vis/pkg").join(&goi.name);
+    let _ = std::fs::remove_dir_all(thu_muc.join(&goi.version));
+    let _ = std::fs::remove_dir(thu_muc);
+    ghi_lock(&khoa_path, &khoa)
 }
 
 #[cfg(test)]

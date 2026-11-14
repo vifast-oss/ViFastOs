@@ -6,16 +6,28 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-89 — host `Ngoai` cho VM** (đóng khoảng lệch cuối: `--vm` SKIP 7 → 0, host suite
-                VM 54/54) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 4/4 (đo đỏ 7 SKIP/VS0604 → trait `Ngoai` trong VM + CLI truyền host → bỏ SKIP/`vm:vs0604`
-                → 5 ca CLI + host 54/54 VM → 966 test → diff 100k → cổng).
+Task          : **ST-90 — pkg: `entry` trong lock + `pkg remove`** — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 4/4 (đo lock cũ/thiếu entry → thêm `entry` + `--entry` + loader dùng entry → `pkg remove`
+                xoá lock/store → 7 ca → 973 test → diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T17:40:40Z**; **966** test / sem
-                **447/22 nhóm** / `vis test` **447 ok**, `--vm` **447 ok + 0 SKIP** / host **54/54 (VM
-                54/54)** / parity **398/398 + 49 lỗi biên dịch** / differential **100.000 chương trình
-                0 lệch** (148,4 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-89]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T17:54:51Z**; **973** test / sem
+                **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
+                parity **398/398 + 49 lỗi biên dịch** / differential **100.000 chương trình 0 lệch**
+                (155,3 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-90]` + push (đã được uỷ quyền)
+
+## ST-90 — pkg `entry` trong lock + `pkg remove`, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước** | `vis.lock` cũ **không có** `entry`: `{"lock":1,"packages":[{"name":"http","version":"1.0.0","sha256":…,"files":[…]}]}`; loader chọn tệp bằng **quy ước** `src/main.vis` → `main.vis` → `.vis` byte-đầu (`modules.rs:126-151`, `chon_tep_pkg`). **Phát hiện**: manifest **đã** có/đòi `entry` từ ST-70 (`pkg.rs:171-173`, test `manifest_thieu_truong`) — không phải “manifest không có entry”. Log `JOURNAL/st90-red-rust.log` sha256 `51210082…` (**6/18 đỏ**). |
+| 1 | **Lock `entry`** | `GoiKhoa.entry: Option<String>`; `doc_khoa` đọc/validate, thiếu ⇒ `None` (lock cũ); `gia_tri_khoa` ghi `"entry"` khi có. `pkg add` lưu entry manifest/`--entry` vào lock. Loader: có `entry` ⇒ dùng **đúng**, thiếu tệp ⇒ **`VS0701` nêu tên**; `entry = None` ⇒ **fallback quy ước như cũ, không cảnh báo** (chọn để không phá test/log). |
+| 2 | **`--entry`** | `vis pkg add <tên> [--entry <path>] [--registry <dir>]`: manifest thiếu `entry` ⇒ dùng `--entry` (vẫn phải nằm trong `files`); manifest có entry vẫn có thể bị **đổi** bởi cờ. Manifest **không thêm trường mới**; `entry` vẫn là trường manifest sẵn có (đính chính quan trọng so đề bài). |
+| 3 | **`pkg remove`** | `vis pkg remove <tên>`: xoá mục lock + `.vis/pkg/<tên>/<ver>`; `.vis/store/<sha>` **content-addressed** (không phải `<tên>@<ver>`), chỉ xoá blob **không còn gói nào dùng** (so sha); tên lạ ⇒ **exit 2**, lock không đổi; **không** sửa `vis.toml` (chọn B, đã khoá bằng ca); không mạng; `usage()` nêu `pkg remove`. Không có `--json` sẵn nên không thêm. |
+| 4 | **7 ca** | `tests/pkg.rs`: (a) lock có `entry` đúng; (b) entry sai ⇒ `VS0701` nêu `src/khong.vis`; (c) lock cũ không entry ⇒ fallback chạy; (d) remove xoá lock+`pkg`+blob, `use pkg.http` ⇒ VS0701 “chưa cài”; (e) tên lạ ⇒ exit 2, lock byte-identical; (f) hai gói cùng nội dung ⇒ remove một **không** xoá blob còn dùng, gói kia vẫn chạy; (g) manifest thiếu entry + `--entry` ⇒ cài được (không cờ ⇒ lỗi nêu `entry`). |
+| 5 | **Đo** | **973** test = 966 + **7** (21+96+27+154+26+62+9+**578**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; `diag_cmp` **364/49/34**; `vs_interp` **398/398 + 49**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=155.3 toc_do=644/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; `pkg.rs` **827**, `modules.rs` 766. |
+| 6 | **Nợ** | Lock cũ **không** được nâng cấp tự động (vẫn `None` cho tới lần add/remove ghi lại); entry **không** được kiểm là tệp `.vis`; `remove` **không** dọn dependency mồ côi (util còn lại sau khi xoá http — đúng “chỉ xoá tên được gọi”); store không GC định kỳ; không có `pkg update`/`remove --json`; `--entry` chỉ áp cho gói đích, không cho dep. |
 
 ## ST-89 — host `Ngoai` cho VM, 2026-11-14
 
