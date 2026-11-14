@@ -166,7 +166,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **DONE** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — kiểu `cap[Dir/File/Net/Proc]` trong tyck + `vis run --dry` liệt kê quyền khai báo | ST-71 | 3 h | **DONE** | `cap[Dir] @ p"./x" (write)` parse+check được; ≥5 ca sem; `--dry` in |
 | ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **DONE** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
-| ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **READY** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
+| ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **DONE** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **READY** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
 | ST-76 | báo cáo **R11** | ST-63..ST-75 | 1,5 h | **READY** | MD+JSON; nêu rõ hạng mục VS2 nào **chưa** đo được |
@@ -1128,3 +1128,15 @@ APPROVED 2026-11-14 Agent 0
 > `fs.exists` bị chặn trả `false` (không trap); ca sem `cap/` mới kiểm **tyck**.
 > **ST-73 mở** — phạm vi **đổi** theo **VD-107**: `--sandbox-check` + khung `vis-host-linux` **không** `unsafe`/không crate mới,
 > **không** được tuyên bố "đã cưỡng chế bằng Landlock".
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-73 DONE — VS2 #4c (probe + khung Linux) ĐÚNG MỨC BẰNG CHỨNG.** Commit `f9c201ba` (**Agent 2 tự commit, đã push**).
+> `vis run --sandbox-check` (**không** chạy chương trình) in `landlock:` + `cưỡng chế runtime:` + `cap điều kiện:`, exit 0/3/4 theo
+> mức probe; trên macOS đo được `landlock: không hỗ trợ trên macos` (exit 3) — **không** giả vờ. Khung `vis-host-linux/` ở **gốc
+> repo** (workspace riêng, **ngoài** `viscript/`) `#![cfg(target_os = "linux")]`, chỉ **đọc** `/sys/kernel/security/lsm`, không
+> `unsafe`/dependency, bằng chứng `cargo check --target x86_64-unknown-linux-gnu` **xanh**. Tài liệu `agent/HOST-BAO-DAM.md`
+> (38 dòng) chốt **cấm ngôn từ** "đã cưỡng chế bằng Landlock". **6 ca** + 1 ca `cfg(linux)`. Đo: **872 test** · sem **447/22** ·
+> parity **398/398** · differential **100k/0 lệch** (101,5 s). Nợ: **chưa** cưỡng chế bằng kernel ở **bất kỳ** nền nào; Linux
+> **chưa chạy thật**; `vis-cli` **chưa** dùng crate khung (logic probe lặp).
+> **ST-74 mở** (VS2 #7 — đa nền tảng: `cargo check --target` windows + wasm; **VD-104**).
