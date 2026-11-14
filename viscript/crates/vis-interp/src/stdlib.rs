@@ -442,6 +442,20 @@ pub fn call(host: &mut dyn Host, name: &str, args: Vec<Value>, span: Span) -> R<
             let host = host.net().ok_or_else(|| khong_host(name, span))?;
             Ok(hop_nhat_fs(host.close(tay).map(|()| Value::Unit)))
         }
+        // **ST-64 (VD-100/VD-105)**: giao thức HTTP **trong crate này** (`net.rs`), socket qua host.
+        // Lỗi HTTP/mạng là `Err(str)` (dữ liệu); thiếu host ⇒ `VS0604`. Mặc định 5000 ms.
+        "http.get" | "http.get_timeout" => {
+            let url = chuoi(name, &args[0], 0, span)?;
+            let timeout = if args.len() == 2 {
+                so(name, &args[1], 1, span)?
+            } else {
+                5_000
+            };
+            let host = host.net().ok_or_else(|| khong_host(name, span))?;
+            Ok(hop_nhat_fs(
+                crate::net::http_get(host, url, timeout.max(0) as u64).map(Value::Str),
+            ))
+        }
         other => Err(loi(
             format!("`std.{other}` chưa cài (bảng chữ ký có nhưng tầng chạy thiếu)"),
             span,

@@ -1,0 +1,14 @@
+# ST-64 — log ĐỎ (sem) lúc 2026-11-14T06:55:38Z, HEAD 878b2e7d.
+# Red-first: **harness CUỐI** (crates/vis-cli/tests/http.rs) đã có; **tạm gỡ đúng 7 tệp mã http**
+# (vis-types/stdlib.rs; vis-interp/{net.rs,lib,builtin,stdlib}; vis-cli/{modules,net}.rs) — giữ test.
+# Không thêm ca test/sem (VD-105 (7)); probe: use std.http + http.get.
+
+== probe /tmp/st64-probe.vis (bản cuối)
+   -- interp:
+     st64-probe.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+     [exit=2]
+   -- vm:
+     st64-probe.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+     [exit=2]
+
+== KẾT LUẬN: đỏ đúng lý do — chưa có module `std.http` (VS0701), chưa có chữ ký/giao thức HTTP.

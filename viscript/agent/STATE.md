@@ -6,19 +6,42 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-63 — VS2 #3a: `NetHost` + TCP client** (`std.net.connect/connect_timeout/read/
-                write/close`, chỉ **loopback**, handle `str` mờ, thiếu host ⇒ `VS0604`; 6 test Rust
-                e2e server loopback thật) — xong, đã đo + cổng + differential; **chưa commit**.
-Bước          : 6/6 (bước 0 tách `interp/goi.rs` cho R1 → gate xanh → red-first (probe + 6 test) →
-                hiện thực `NetHost`/`std.net`/VM/CLI **đủ 4 điểm truyền host** → 6/6 ca xanh → cổng →
-                differential 100k → STATE/JOURNAL).
+Task          : **ST-64 — VS2 #3b: `http.get`/`get_timeout`** (giao thức HTTP **trong `vis-interp`**
+                ⇒ interp ↔ VM cùng byte, codegen không sửa; chỉ `http://` + loopback; cap 8 MiB; mặc
+                định 5000 ms; 7 test Rust loopback thật) — xong, đã đo + cổng + differential;
+                **chưa commit**.
+Bước          : 7/7 (red-first 7 test + probe → `vis-interp/src/net.rs` + bảng 45 hàm + nhánh
+                `std.http.*` + hook `--explain-perms` → 7/7 xanh → workspace **802** → cổng → differential
+                100k → STATE/JOURNAL). Cổng lần 1 **đỏ clippy** (`assertions_on_constants` trong unit
+                test `net.rs`) → bỏ `assert!` hằng số → clippy sạch → gate lần 2 PASS (không nới gì).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T06:21:10Z** (sau bước 0: PASS
-                **2026-11-14T05:47:22Z**); **793** test (=787+6 `net.rs`) / sem **441/21 nhóm** /
-                `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
-                differential **100.000 chương trình 0 lệch** (215,3 s) / **7 sổ-32 mã** (không mã mới) /
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T06:54:46Z**; **802** test / sem
+                **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
+                differential **100.000 chương trình 0 lệch** (233,0 s) / **7 sổ-32 mã** (không mã mới) /
                 `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-63]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-64]` + push (đã được uỷ quyền)
+
+## ST-64 — VS2 #3b: `std.http.get`/`get_timeout` (giao thức trong `vis-interp`), 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Giao thức HTTP (mới)** | `vis-interp/src/net.rs` (**211** dòng, ≤300): tách URL `http://host[:port][/path][?query]` (**chỉ** `http://`, **chỉ loopback**); dựng `GET <target> HTTP/1.1
+Host: <authority>
+Connection: close
+
+`; đọc tới **EOF** hoặc đủ `Content-Length`; cap **8 MiB** (mẫu `MAX_STDIN`) + cap header 64 KiB; tách header/body tại `
+
+`; status **non-2xx** ⇒ `Err("HTTP <mã>")`; EOF khi thiếu body theo `Content-Length` ⇒ `Err` (không treo); body **byte** → `str` **lossy** (như `net.read`). |
+| 2 | **Bảng chữ ký** | `MODULES` **8 → 9** (`http`); `FUNCS` **43 → 45** (+2): `http.get(str) -> Result[str,str]`, `http.get_timeout(str,int)`. **Không** thêm variant `Ty`; **bỏ** `http.body_len` — ca cap không cần, ghi rõ theo cho phép "2 hàm thôi và ghi rõ" của chỉ đạo. |
+| 3 | **Thực thi dùng chung** | `vis-interp/src/stdlib.rs` nhánh `http.get`/`http.get_timeout`: `kiem` arity/kiểu tự động; `host.net()` thiếu ⇒ **`VS0604`**; gọi `crate::net::http_get`; mặc định **5000 ms**; lỗi HTTP/mạng là **`Err(str)`** (dữ liệu, không trap). VM dùng **cùng** hàm ⇒ cùng byte; **không** sửa codegen. |
+| 4 | **`--explain-perms`** | Thêm **một** method **default no-op** `NetHost::ghi_nhat_ky(&mut self, dong: &str)` (không đổi impl cũ); `vis-interp/net.rs` gọi `ghi_nhat_ky("NET http GET <authority><target>")` trước khi đọc; CLI `Net` cài để in ra **stderr** khi `--explain-perms`. Đây là điểm thêm **ngoài** 7 method đã duyệt của trait — chỉ để tầng giao thức báo được dòng quyền. |
+| 5 | **`use std.http`** | Đi qua `MODULES` (hết `VS0701`); `modules.rs` cập nhật thông điệp danh sách module (`…/fs/net/http`). Không đổi CLI host mạng (ST-63 đã nối đủ 4 điểm truyền host; HTTP chỉ dùng `NetHost` sẵn có). |
+| 6 | **Ca (7 test Rust)** | `crates/vis-cli/tests/http.rs`: `http_200_byte` (body `"chào 😀"` đúng từng byte + **cache hit** của `--vm`), `http_404` (`Err` chứa 404, exit 0), `http_het_gio` (`get_timeout(…,80)` + server ngủ 300 ms ⇒ "quá thời gian", **≤400 ms**/đường), `http_tu_choi` (listener đóng ⇒ "bị từ chối"), `http_gioi_han` (CL = 8 MiB+1 ⇒ `Err` cap; CL=1000/body=3 + đóng ⇒ `Err`, không treo), `http_sai_kieu` (`http.get(42)` ⇒ **VS0412** tĩnh; thiếu `use` ⇒ **VS0501** lúc chạy), `http_duong_mac_dinh` (`GET / HTTP/1.1` + `Host` + `Connection: close`; `--explain-perms` in `NET http GET 127.0.0.1:…`). Mọi ca `run` ↔ `run --vm --no-cache` **so byte**; sem **441 giữ nguyên**. |
+| 7 | **Red-first (harness cuối)** | Tạm gỡ đúng **7 tệp mã http** (giữ test), build: `JOURNAL/st64-red-sem.log` sha256 `c230b57e…` (13 dòng, probe `use std.http` ⇒ **`VS0701`** cả hai đường); `JOURNAL/st64-red-rust.log` sha256 `8115d00a…` (88 dòng, `cargo test -p vis-cli --test http` ⇒ **0 passed / 7 failed**, exit 101). Khôi phục: **8/8 sha256 khớp** (7 tệp + `net.rs`), 7/7 xanh. |
+| 8 | **Đo** | **802** test = 793 + **7** `http.rs` + **2** unit `vis-interp::net` (21+96+18+154+**26**+62+9+**416**); sem **441/21** (391 `.vis` + 50 `.vish`, 80 `.err` — không đổi); `vis test` **441 ok**; `--vm` **441 ok + 7 SKIP**; parity **395/395**; `diag_cmp` **361/46/34**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=233.0 toc_do=429/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; R1 max **1.491**; `net.rs` **211** dòng (≤300). |
+| 9 | **Sai khác so với đề bài (đo được, ghi rõ)** | (a) `vis check` có chẩn đoán **exit 1** (không phải 2 — 2 là dùng sai CLI); (b) thiếu `use std.http` ⇒ **`VS0501` lúc chạy** ("tên `http` chưa hỗ trợ"), **không** phải `VS0301`; `vis check` hiện **permissive** với tên cấp tệp (nợ có sẵn, không sửa trong ST-64); (c) `"chào 😀"` là **10 byte** UTF-8 (không phải 9) — test tính `Content-Length` từ `body.len()` thật; (d) `FUNCS` **+2** (45) thay vì +3 vì bỏ `http.body_len`. |
+| 10 | **Nợ** | **Không** TLS, **không** redirect, **không** keep-alive, **không** chunked-transfer decoding, **không** header tuỳ biến/POST/HEAD; **chỉ** `http://` + loopback; body trả `str` **lossy** (chưa có kiểu byte); cap 8 MiB **cố định** (không cờ); `http.get` mặc định **5000 ms** (đổi bằng `get_timeout`); một request/lần gọi; `--explain-perms` đi qua hook `ghi_nhat_ky` (không nằm ở host). |
+
 
 ## ST-63 — VS2 #3a: `NetHost` + TCP client (`std.net.*`), 2026-11-14
 

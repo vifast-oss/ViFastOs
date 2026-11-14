@@ -107,13 +107,15 @@ impl StdFn {
 }
 
 /// Module `std` được hỗ trợ ở ST-26 (mỗi phần tử là tên ngắn).
-pub const MODULES: [&str; 8] = ["str", "list", "map", "path", "time", "json", "fs", "net"];
+pub const MODULES: [&str; 9] = [
+    "str", "list", "map", "path", "time", "json", "fs", "net", "http",
+];
 
 /// `std.io` **chưa** làm — giữ tên để thông điệp rõ (ST-33: `std.fs` **đã có**).
 pub const MODULES_HOAN: [&str; 1] = ["io"];
 
 /// Toàn bộ hàm `std.*` của ST-26.
-pub const FUNCS: [StdFn; 43] = [
+pub const FUNCS: [StdFn; 45] = [
     // ----- std.str -----
     StdFn {
         name: "str.split",
@@ -341,6 +343,17 @@ pub const FUNCS: [StdFn; 43] = [
         name: "net.close",
         params: &[Ty::Str],
         ret: Ty::ResultUnitStr,
+    },
+    // ----- std.http (ST-64, VD-100/VD-105) — giao thức ở `vis-interp/src/net.rs`, socket qua `NetHost`.
+    StdFn {
+        name: "http.get",
+        params: &[Ty::Str],
+        ret: Ty::ResultStrStr,
+    },
+    StdFn {
+        name: "http.get_timeout",
+        params: &[Ty::Str, Ty::Int],
+        ret: Ty::ResultStrStr,
     },
 ];
 

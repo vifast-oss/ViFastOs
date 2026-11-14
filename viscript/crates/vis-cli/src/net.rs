@@ -147,4 +147,11 @@ impl NetHost for Net {
         self.tay.remove(i);
         Ok(())
     }
+
+    /// **ST-64**: nhật ký tầng giao thức (HTTP) khi `--explain-perms`.
+    fn ghi_nhat_ky(&mut self, dong: &str) {
+        if self.giai_thich {
+            eprintln!("{dong}");
+        }
+    }
 }

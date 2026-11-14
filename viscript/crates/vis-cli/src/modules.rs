@@ -334,7 +334,7 @@ impl Nap {
                         &rel,
                         &MODULE_CODES[0],
                         format!(
-                            "không có module `std.{m2}` (có: str/list/map/path/time/json/fs/net)"
+                            "không có module `std.{m2}` (có: str/list/map/path/time/json/fs/net/http)"
                         ),
                         span,
                     );

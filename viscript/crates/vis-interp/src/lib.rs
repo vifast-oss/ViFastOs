@@ -47,6 +47,7 @@
 mod gan;
 mod host;
 pub mod json;
+pub mod net;
 pub mod render;
 pub mod rt;
 pub mod stdlib;

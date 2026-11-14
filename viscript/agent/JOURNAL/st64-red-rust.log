@@ -1,0 +1,90 @@
+# ST-64 — log ĐỎ (Rust) lúc 2026-11-14T06:55:43Z, HEAD 878b2e7d — **harness CUỐI** (http.rs) trên mã **chưa có http**.
+# lệnh: cargo test -p vis-cli --test http
+
+   Compiling vis-cli v0.1.0 (/Users/mps/dvchd/ViFastOs/viscript/crates/vis-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.19s
+     Running tests/http.rs (target/debug/deps/http-ff8770577d7628ce)
+
+running 7 tests
+test http_het_gio ... FAILED
+test http_sai_kieu ... FAILED
+test http_duong_mac_dinh ... FAILED
+test http_404 ... FAILED
+test http_200_byte ... FAILED
+test http_tu_choi ... FAILED
+test http_gioi_han ... FAILED
+
+failures:
+
+---- http_het_gio stdout ----
+
+thread 'http_het_gio' (44945202) panicked at crates/vis-cli/tests/http.rs:163:9:
+assertion `left == right` failed: vm=false: stderr: timeout.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- http_sai_kieu stdout ----
+
+thread 'http_sai_kieu' (44945203) panicked at crates/vis-cli/tests/http.rs:230:5:
+phải là lỗi **kiểu** VS0412: TAP version 13
+1..1
+not ok 1 - /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-http-type-5528/sai-kieu.vis
+# VS0701 2:1 không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+
+---- http_duong_mac_dinh stdout ----
+
+thread 'http_duong_mac_dinh' (44945200) panicked at crates/vis-cli/tests/http.rs:265:5:
+assertion `left == right` failed: interp: "mac-dinh.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)\n"
+  left: 2
+ right: 0
+
+---- http_404 stdout ----
+
+thread 'http_404' (44945199) panicked at crates/vis-cli/tests/http.rs:142:5:
+assertion `left == right` failed: stderr: nf.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+  left: 2
+ right: 0
+
+---- http_200_byte stdout ----
+
+thread 'http_200_byte' (44945198) panicked at crates/vis-cli/tests/http.rs:125:5:
+assertion `left == right` failed: stderr: ok.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+  left: 2
+ right: 0
+
+---- http_tu_choi stdout ----
+
+thread 'http_tu_choi' (44945204) panicked at crates/vis-cli/tests/http.rs:184:5:
+assertion `left == right` failed: exit phải 0; stderr: refused.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+  left: 2
+ right: 0
+
+---- http_gioi_han stdout ----
+
+thread 'http_gioi_han' (44945201) panicked at crates/vis-cli/tests/http.rs:198:5:
+assertion `left == right` failed: stderr: cap.vis:2:1: error VS0701: không có module `std.http` (có: str/list/map/path/time/json/fs/net)
+
+  left: 2
+ right: 0
+
+
+failures:
+    http_200_byte
+    http_404
+    http_duong_mac_dinh
+    http_gioi_han
+    http_het_gio
+    http_sai_kieu
+    http_tu_choi
+
+test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+error: test failed, to rerun pass `-p vis-cli --test http`
+
+[cargo exit=101]

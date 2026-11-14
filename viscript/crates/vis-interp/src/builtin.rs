@@ -151,6 +151,10 @@ pub trait NetHost {
     fn write(&mut self, tay: &str, du_lieu: &[u8]) -> Result<(), String>;
     /// Đóng tay; tay lạ ⇒ `Err`.
     fn close(&mut self, tay: &str) -> Result<(), String>;
+
+    /// **ST-64**: nhật ký cho **tầng giao thức** (HTTP) khi `--explain-perms`; mặc định **không in**.
+    /// CLI cài để in `NET http GET …` ra stderr; interp/VM không biết stderr.
+    fn ghi_nhat_ky(&mut self, _dong: &str) {}
 }
 
 pub trait Host {
