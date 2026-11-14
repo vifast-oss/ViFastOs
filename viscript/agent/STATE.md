@@ -6,17 +6,30 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-83 — đóng 3 nợ nhỏ** (`fs.exists` ngoài quyền ⇒ **`VS0604`**; `assert <đk>`
-                dạng **câu lệnh**; trợ giúp `vis explain` **theo `--lang`**) — xong, đã đo + cổng +
-                differential; **chưa commit**.
-Bước          : 4/4 (red-first 5/6 → `exists_quyen` + parser `AssertStmt` + 3 câu help → 6 ca mới →
-                920 test (ổn định lại 1 ca hiệu năng LSP) → cổng → diff 100k → STATE/JOURNAL).
+Task          : **ST-84 — LSP completion/hover module-aware** (tệp chính có trên đĩa: item `pub` của
+                `use ./x` + hàm `std.*` đã `use` vào gợi ý/hover; tệp không có trên đĩa giữ như cũ) —
+                xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 4/4 (red-first 3/5 → `Loaded.item_rel` + `lsp/module.rs` + dispatch → 5 ca + 1 unit
+                hiệu năng → 926 test → cổng → diff 100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T14:46:38Z**; **920** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T15:04:59Z**; **926** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (+`--vm` **447 ok/7 SKIP**) / parity **398/398** /
-                differential **100.000 chương trình 0 lệch** (231,4 s) / **7 sổ-32 mã** / `VBC1` **53** /
+                differential **100.000 chương trình 0 lệch** (219,9 s) / **7 sổ-32 mã** / `VBC1` **53** /
                 allowlist **6**
-Việc dở       : commit `[ST-83]` + push (đã được uỷ quyền)
+Việc dở       : commit `[ST-84]` + push (đã được uỷ quyền)
+
+## ST-84 — LSP completion/hover module-aware, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước (red)** | `main.vis` + `use ./util` (`pub fn tinh`) ⇒ completion `ti` **`[]`**, hover `tinh` **`null`**; `use std.str` + `sp` ⇒ **`[]`** (đường một tệp). Log `JOURNAL/st84-red.log` sha256 `ba6f4794…`; Rust `JOURNAL/st84-red-rust.log` sha256 `8c522920…` (**31/34 xanh, 3 đỏ** — ca a/b/c; ca d/e xanh sẵn, đúng thiết kế). |
+| 1 | **Dữ liệu** | `Loaded` thêm `pub item_rel: Vec<String>` (song song `hir.items`) — LSP biết item thuộc tệp nào; `phan_tich::chu_ky_fn`/`goi_y_item` thành `pub(crate)`. |
+| 2 | **Module-aware** | `lsp/module.rs` (157 dòng): tệp **có trên đĩa** ⇒ `load_full_voi_text`; item **không thuộc tệp chính** (fn phải `pub`) thêm vào `KetQua.items`, `detail` ghi **nguồn** (`util: fn tinh(x: int) -> int`); `use std.<m>` ⇒ hàm `stdlib::FUNCS` với detail `std.str: fn split(a: str, b: str) -> list[str]`. Khử trùng ưu tiên **tệp chính > module > builtin > từ khoá** (set theo label), sắp byte, cap 200 (ở `goi_y`). |
+| 3 | **Dispatch** | Completion + hover dùng `module::phan_tich_uri`; URI không có tệp trên đĩa ⇒ `phan_tich` **một tệp** như cũ (không bịa ký hiệu module). Diagnostics giữ nguyên đường ST-80. |
+| 4 | **5 ca** | `tests/lsp.rs`: (a) completion thấy `tinh` (1 item, kind 3, detail `util: …`); (b) hover `tinh` ⇒ markdown chữ ký có `util`; (c) `use std.str` + `sp` ⇒ `split`, detail `std.str:`; (d) tệp không có trên đĩa ⇒ **không** `tinh`; (e) khử trùng: `fn tinh` tệp chính + `./util` ⇒ **1** item, detail **không** `util:`. Ca cũ `ad`/`le`/sau `.` **vẫn xanh** (34/34). |
+| 5 | **Hiệu năng** | Tách đo khỏi wall-clock tiến trình: **unit test** `lsp::module::tests::hieu_nang_nap_module_5_tep` nạp 5 tệp module **trong tiến trình**, ngưỡng **100 ms** giữ nguyên (< 1 ms đo được); test tích hợp đổi thành `lsp_nam_tep_module_hoat_dong` (5 publish rỗng, đúng 5 frame) — bỏ phép đo wall-clock từng flake dưới tải // (không nới ngưỡng). |
+| 6 | **Đo** | **926** test = 920 + **6** (21+96+27+154+26+62+9+**531**: +5 integration +1 unit); sem **447/22** giữ nguyên; `vis test` **447 ok**; `--vm` **447 ok + 7 SKIP**; parity **398/398**; differential **`tong=100000 loi_tinh=0 chay=100000 lech=0 giay=219.9 toc_do=455/s seed=3523158054`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**; `src/lsp/*` ≤ **289** dòng; R1 max **1.498**. |
+| 7 | **Nợ** | HIR chỉ giữ `is_pub` cho `fn` ⇒ item type/enum/const của module vẫn được gợi ý dù **không** `pub` (nợ 42 mới); `std.*` detail dùng tên tham số giả `a, b` (bảng chỉ có kiểu); completion **chưa theo ngữ cảnh sau `.`** (chỉ lọc tiền tố); **hover chưa field**; mỗi request completion/hover **nạp lại** module (không cache); item module **không** vào hover của biến. |
 
 ## ST-83 — 3 nợ nhỏ, 2026-11-14
 

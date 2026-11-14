@@ -1,0 +1,71 @@
+# ST-84 — log ĐỎ (Rust) lúc 2026-11-14T14:52:59Z, HEAD 80c96bcc — trước khi completion/hover module-aware.
+# lệnh: cargo test -p vis-cli --test lsp (34 ca, trong đó 5 ca ST-84)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 34 tests
+test lsp_co_la_2 ... ok
+test lsp_chan_doan_sach ... ok
+test lsp_completion_khong_co_dia_khong_bia_module ... ok
+test lsp_chan_doan_emoji_utf16 ... ok
+test lsp_chan_doan_vish ... ok
+test lsp_chan_doan_tab_mot_cot ... ok
+test lsp_chan_doan_did_close ... ok
+test lsp_chan_doan_did_change ... ok
+test lsp_body_hong_32700 ... ok
+test lsp_completion_chua_mo ... ok
+test lsp_completion_tien_to_le ... ok
+test lsp_exit_truoc_shutdown_1 ... ok
+test lsp_completion_sau_cham ... ok
+test lsp_completion_thay_ham_module ... FAILED
+test lsp_completion_khu_trung_uu_tien_tep_chinh ... ok
+test lsp_hover_add ... ok
+test lsp_completion_tien_to_add ... ok
+test lsp_completion_thay_std_da_use ... FAILED
+test lsp_chan_doan_did_open ... ok
+test lsp_hover_khong_ton_tai ... ok
+test lsp_hover_bien_kieu ... ok
+test lsp_module_std_hop_le_khong_bao_gia ... ok
+test lsp_initialized_khong_frame ... ok
+test lsp_khong_co_tren_dia_khong_bia_loi_module ... ok
+test lsp_method_la_32601 ... ok
+test lsp_module_std_sai_giong_vis_check ... ok
+test lsp_module_thieu_giong_vis_check ... ok
+test lsp_hover_ham_module ... FAILED
+test lsp_khoi_tao ... ok
+test lsp_ba_tep_bang_vis_check ... ok
+test lsp_shutdown_exit_0 ... ok
+test lsp_module_util_hop_le_sach ... ok
+test lsp_truoc_initialize_32002 ... ok
+test lsp_module_hieu_nang_5_tep ... ok
+
+failures:
+
+---- lsp_completion_thay_ham_module stdout ----
+
+thread 'lsp_completion_thay_ham_module' (47732111) panicked at crates/vis-cli/tests/lsp.rs:882:5:
+assertion `left == right` failed: {"jsonrpc":"2.0","id":2,"result":[]}
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_completion_thay_std_da_use stdout ----
+
+thread 'lsp_completion_thay_std_da_use' (47732113) panicked at crates/vis-cli/tests/lsp.rs:921:5:
+{"jsonrpc":"2.0","id":2,"result":[]}
+
+---- lsp_hover_ham_module stdout ----
+
+thread 'lsp_hover_ham_module' (47732127) panicked at crates/vis-cli/tests/lsp.rs:902:5:
+{"jsonrpc":"2.0","id":2,"result":null}
+
+
+failures:
+    lsp_completion_thay_ham_module
+    lsp_completion_thay_std_da_use
+    lsp_hover_ham_module
+
+test result: FAILED. 31 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`

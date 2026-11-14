@@ -46,6 +46,8 @@ pub struct Loaded {
     pub diags: Vec<(String, Diagnostic)>,
     /// Cây phụ thuộc cho `--dump-deps`: `rel → [rel phụ thuộc trực tiếp]`.
     pub deps: Vec<(String, Vec<String>)>,
+    /// **ST-84**: `rel` của từng item trong `hir.items` (cùng thứ tự) — để LSP biết item thuộc tệp nào.
+    pub item_rel: Vec<String>,
 }
 
 impl Loaded {
@@ -735,6 +737,7 @@ fn load_full_voi(
         types: n.types,
         diags: n.diags,
         deps: n.deps,
+        item_rel,
     })
 }
 

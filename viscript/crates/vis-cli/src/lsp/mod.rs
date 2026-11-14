@@ -12,6 +12,7 @@ mod chan_doan;
 mod goi_y;
 mod jsonrpc;
 mod khung;
+mod module;
 mod phan_tich;
 mod vi_tri;
 
@@ -154,7 +155,7 @@ pub fn run(args: &[String]) -> ExitCode {
                             // Chưa mở ⇒ nội dung rỗng ⇒ `[]` (không lỗi).
                             None => gui!(jsonrpc::phan_hoi(&id, Value::List(Vec::new()))),
                             Some(text) => {
-                                let kq = phan_tich::phan_tich(text, mode_cua(&uri));
+                                let kq = module::phan_tich_uri(&uri, text, mode_cua(&uri));
                                 let byte = vi_tri::byte_tu_vi_tri(&kq.text, line, ch);
                                 gui!(goi_y::tra_loi_completion(&kq, byte, &id));
                             }
@@ -175,7 +176,7 @@ pub fn run(args: &[String]) -> ExitCode {
                         match van_ban.get(&uri) {
                             None => gui!(jsonrpc::phan_hoi(&id, Value::Opt(None))),
                             Some(text) => {
-                                let kq = phan_tich::phan_tich(text, mode_cua(&uri));
+                                let kq = module::phan_tich_uri(&uri, text, mode_cua(&uri));
                                 let byte = vi_tri::byte_tu_vi_tri(&kq.text, line, ch);
                                 gui!(goi_y::tra_loi_hover(&kq, byte, &id));
                             }

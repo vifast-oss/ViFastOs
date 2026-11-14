@@ -1,0 +1,7 @@
+fatal: not a git repository (or any of the parent directories): .git
+# ST-84 — log ĐỎ (trước khi sửa) lúc 2026-11-14T14:52:38Z, HEAD 
+
+== completion 'ti' với use ./util (absolute URI)
+/tmp/st84/main.vis textDocument/completion => {"jsonrpc":"2.0","id":2,"result":[]}
+/tmp/st84/stdmain.vis textDocument/completion => {"jsonrpc":"2.0","id":2,"result":[]}
+/tmp/st84/hover.vis textDocument/hover => {"jsonrpc":"2.0","id":2,"result":null}

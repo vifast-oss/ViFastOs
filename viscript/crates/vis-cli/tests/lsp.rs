@@ -822,32 +822,126 @@ fn lsp_ba_tep_bang_vis_check() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Hiệu năng: 5 tệp nhỏ, mỗi tệp `didOpen` + `didChange` (module-aware) — **phần phân tích thêm
-/// < 100 ms** so với **nền** (cùng tiến trình, không `didOpen`). Đo cô lập tổng ~9 ms; harness chạy
-/// // 29 test LSP nên lấy **hiệu** để loại chi phí khởi động tiến trình. (ST-83.)
+/// 5 tệp nhỏ, mỗi tệp `didOpen` (module-aware): mọi publish đều rỗng, exit 0, đủ **5** frame.
+/// (Đo thời gian nạp module nằm ở unit test `lsp::module::tests::hieu_nang_nap_module_5_tep` —
+/// không tính spawn tiến trình nên ổn định khi harness chạy //.)
 #[test]
-fn lsp_module_hieu_nang_5_tep() {
+fn lsp_nam_tep_module_hoat_dong() {
     let d = thu_muc("perf");
     let mut vao = khung(&init());
     for i in 0..5 {
         let f = ghi(&d, &format!("t{i}.vis"), STD_OK);
         let uri = format!("file://{}", f.display());
         vao.push_str(&khung(&did_open(&uri, STD_OK)));
-        vao.push_str(&khung(&did_change(&uri, STD_OK)));
     }
-    // Nền: cùng tiến trình LSP, chỉ `initialize` (không phân tích tệp nào).
-    let t = Instant::now();
-    let (code, _out, err) = chay(&khung(&init()));
-    let nen = t.elapsed().as_millis();
+    let (code, out, err) = chay(&vao);
     assert_eq!(code, 0, "LSP exit: {err}");
-    let t = Instant::now();
-    let (code, _out, err) = chay(&vao);
-    let tong = t.elapsed().as_millis();
-    assert_eq!(code, 0, "LSP exit: {err}");
-    let them = tong.saturating_sub(nen);
-    assert!(
-        them < 100,
-        "phân tích 5 tệp thêm {them} ms (tổng {tong}, nền {nen}; ngưỡng 100)"
+    assert_eq!(
+        out.matches("textDocument/publishDiagnostics").count(),
+        5,
+        "phải publish 5 lần"
     );
+    assert!(!out.contains("VS"), "không được có chẩn đoán: {out}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---------------------------------------------------------------------------
+// **ST-84 (VD-109)** — completion/hover **module-aware** (tệp chính có trên đĩa).
+// ---------------------------------------------------------------------------
+
+const UTIL: &str = "pub fn tinh(x: int) -> int:\n    return x + 1\n";
+const MAIN_USE: &str = "use ./util\n\nfn main():\n    ti\n";
+
+fn mo_uri(f: &Path, text: &str) -> String {
+    let uri = format!("file://{}", f.display());
+    format!("{}{}", khung(&init()), khung(&did_open(&uri, text)))
+}
+
+/// (a) Completion thấy `tinh` từ `./util` — đúng 1 item, kind 3, detail có `util`.
+#[test]
+fn lsp_completion_thay_ham_module() {
+    let d = thu_muc("mod-completion");
+    ghi(&d, "util.vis", UTIL);
+    let f = ghi(&d, "main.vis", MAIN_USE);
+    let uri = format!("file://{}", f.display());
+    let vao = format!(
+        "{}{}",
+        mo_uri(&f, MAIN_USE),
+        khung(&completion(2, &uri, 3, 6))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "{err}");
+    let body = frame_cuoi(&out);
+    assert_eq!(body.matches("\"label\":\"tinh\"").count(), 1, "{body}");
+    assert!(
+        body.contains("\"kind\":3") && body.contains("util: fn tinh(x: int) -> int"),
+        "{body}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (b) Hover `tinh` ⇒ markdown chữ ký (có nguồn `util`).
+#[test]
+fn lsp_hover_ham_module() {
+    let d = thu_muc("mod-hover");
+    ghi(&d, "util.vis", UTIL);
+    let src = "use ./util\n\nfn main():\n    print(tinh(1))\n";
+    let f = ghi(&d, "main.vis", src);
+    let uri = format!("file://{}", f.display());
+    let vao = format!("{}{}", mo_uri(&f, src), khung(&hover(2, &uri, 3, 10)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "{err}");
+    let body = frame_cuoi(&out);
+    assert!(body.contains("util: fn tinh(x: int) -> int"), "{body}");
+    assert!(body.contains("markdown"), "{body}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (c) `use std.str` ⇒ completion tiền tố `sp` thấy `split` (detail `std.str:`).
+#[test]
+fn lsp_completion_thay_std_da_use() {
+    let d = thu_muc("mod-std");
+    let src = "use std.str\n\nfn main():\n    sp\n";
+    let f = ghi(&d, "main.vis", src);
+    let uri = format!("file://{}", f.display());
+    let vao = format!("{}{}", mo_uri(&f, src), khung(&completion(2, &uri, 3, 6)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "{err}");
+    let body = frame_cuoi(&out);
+    assert!(body.contains("\"label\":\"split\""), "{body}");
+    assert!(body.contains("std.str: fn split"), "{body}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// (d) Tệp **không** có trên đĩa ⇒ như cũ: **không** bịa ký hiệu module.
+#[test]
+fn lsp_completion_khong_co_dia_khong_bia_module() {
+    let uri = "file:///tmp/vis-st84-khong-ton-tai/main.vis";
+    let vao = format!("{}{}", khung(&init()), khung(&did_open(uri, MAIN_USE)));
+    let vao = format!("{}{}", vao, khung(&completion(2, uri, 3, 6)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "{err}");
+    let body = frame_cuoi(&out);
+    assert!(!body.contains("tinh"), "không được bịa: {body}");
+}
+
+/// (e) Khử trùng: tệp chính có `fn tinh` + `./util` cũng có ⇒ **1** item (của tệp chính).
+#[test]
+fn lsp_completion_khu_trung_uu_tien_tep_chinh() {
+    let d = thu_muc("mod-dedup");
+    ghi(&d, "util.vis", UTIL);
+    let src = "use ./util\n\nfn tinh(x: int) -> int:\n    return x + 2\n\nfn main():\n    ti\n";
+    let f = ghi(&d, "main.vis", src);
+    let uri = format!("file://{}", f.display());
+    let vao = format!("{}{}", mo_uri(&f, src), khung(&completion(2, &uri, 6, 6)));
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "{err}");
+    let body = frame_cuoi(&out);
+    assert_eq!(body.matches("\"label\":\"tinh\"").count(), 1, "{body}");
+    assert!(
+        body.contains("\"detail\":\"fn tinh(x: int) -> int\""),
+        "{body}"
+    );
+    assert!(!body.contains("util:"), "phải ưu tiên tệp chính: {body}");
     let _ = std::fs::remove_dir_all(&d);
 }
