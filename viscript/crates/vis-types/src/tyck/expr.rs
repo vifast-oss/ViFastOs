@@ -7,6 +7,13 @@ use crate::ty::{EnumId, Type};
 use super::sig::FnSig;
 use super::{num, thay_gen, Checker, ARG_COUNT, MISMATCH, NO_FIELD};
 
+/// **ST-61**: phần kiểu của **kênh** — tách ra để `tyck/expr.rs` giữ **R1 ≤ 1.500 dòng** (tiền lệ
+/// ST-60 tách `tyck/sig.rs`). Mô-đun con của `expr` nên dùng chung `diag`/`coerce`/`arity`.
+mod kenh;
+/// **ST-61**: phụ trợ thuần (tách cùng lý do R1).
+mod phu;
+use phu::{builtin_is_value, builtin_value_ty, is_percent_float};
+
 impl<'a> Checker<'a> {
     /// Kiểu một biểu thức (ghi vào `types_of_expr`).
     pub(crate) fn kiem_expr(&mut self, e: &HExpr) -> Type {
@@ -323,6 +330,9 @@ impl<'a> Checker<'a> {
             HExpr::Ref { expr, .. } => self.kiem_expr(expr),
             // **ST-60 (VD-90/VD-95)**: `await` bỏ **một** lớp `Task[T]` ⇒ `T`; không phải `Task`
             // ⇒ `VS0412` (một quy tắc cho cả hai đường).
+            // **ST-61 (VD-96)**: `chan[T](n)` — phần kiểu ở `kenh.rs` (`n` phải `int`, kết quả
+            // `Chan[T]`); tách tệp để giữ R1.
+            HExpr::ChanNew { elem, cap, span } => self.kiem_chan_new(elem, cap, *span),
             HExpr::Await { expr, span } => {
                 let t = self.kiem_expr(expr);
                 match t {
@@ -827,6 +837,14 @@ impl<'a> Checker<'a> {
             _ => Type::Error,
         };
         let out = match recv {
+            // **ST-61 (VD-96)**: kênh — phần phương thức ở `kenh.rs` (`send`/`recv`/`close`), tách
+            // tệp để giữ R1.
+            Type::TypeRef {
+                name: k,
+                args: c_args,
+            } if k == "Chan" && c_args.len() == 1 => {
+                return self.kiem_chan_method(c_args, name, &arg_tys, args, span);
+            }
             Type::List(_) => {
                 let e = elem(recv);
                 match name {
@@ -1441,47 +1459,6 @@ impl<'a> Checker<'a> {
     }
 }
 
-impl FnSig {
-    /// Kiểu trả đã suy (dùng sau `hop_nhat`).
-    pub(crate) fn ret_raw(&self) -> Type {
-        self.raw_ret.clone()
-    }
-}
-
 /// Giữ chỗ: `HPat`/`HStmt` dùng ở module khác (tránh import thừa).
 #[allow(dead_code)]
 fn _giu(_: &HPat, _: &HStmt) {}
-
-/// `percent` và `float` so sánh được **theo tỉ lệ** (§3.1/§3.6) — đặc cách duy nhất.
-fn is_percent_float(a: &Type, b: &Type) -> bool {
-    matches!(
-        (a, b),
-        (Type::Percent, Type::Float) | (Type::Float, Type::Percent)
-    )
-}
-
-/// 8 tên dựng sẵn (VD-44 #3) — dùng khi `sym = None`.
-fn builtin_is_value(name: &str) -> bool {
-    matches!(
-        name,
-        "print"
-            | "len"
-            | "str"
-            | "Ok"
-            | "Err"
-            | "Some"
-            | "None"
-            | "ref"
-            | "sort_by"
-            | "get"
-            | "select"
-    )
-}
-
-/// Kiểu của 8 tên giá trị dựng sẵn (không phải hàm) — `None`/`Some`… không có kiểu riêng ở đây.
-fn builtin_value_ty(name: &str) -> Type {
-    match name {
-        "None" => Type::Opt(Box::new(Type::Error)),
-        _ => Type::Error,
-    }
-}

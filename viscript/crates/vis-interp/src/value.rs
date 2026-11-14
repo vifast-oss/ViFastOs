@@ -66,6 +66,8 @@ pub enum Value {
     Vm(Rc<VmFunc>),
     /// **ST-60**: tác vụ `async` — chỉ `await`/join dùng; `Show` in `<tác vụ>` (không lộ handle).
     Task(Rc<crate::rt::Task>),
+    /// **ST-61 (VD-96)**: kênh — `send`/`recv`/`close`; `Show` in `<kênh>` (không lộ id/nội dung).
+    Chan(Rc<std::cell::RefCell<crate::rt::Chan>>),
 }
 
 /// Hàm bytecode (ST-20): chỉ số hàm trong `Module` + biến bắt **snapshot**.
@@ -142,6 +144,7 @@ impl Value {
             }
             Value::Vm(_) => "<hàm>".to_string(),
             Value::Task(_) => "<tác vụ>".to_string(),
+            Value::Chan(_) => "<kênh>".to_string(),
         }
     }
 

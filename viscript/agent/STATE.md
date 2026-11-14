@@ -6,19 +6,29 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-60c** (3 lỗi derives/siêu trait reviewer tìm ra + số liệu: impl **sinh từ
-                `derives`** vào `impl_pairs`; `enum … derives Show` **sinh mã thật**; `Eq` chặn **sâu**
-                list/map/opt/generic) — xong, **chưa commit**.
-Bước          : 5/5 (tái hiện 3 lỗi → 1c **trước** kiểm siêu trait + ghi cặp khi **thật sự** sinh
-                → `sinh_show_enum` (một phần nội suy) → `co_float_sau` đệ quy dùng chung
-                `kiem_derives`/`co_truong_khong_eq` → 7 ca sem + số liệu + 2 log đỏ → cổng →
-                differential → STATE/JOURNAL).
+Task          : **ST-61** (VS2 #2 — kênh: `chan[T](n)`, `send`/`recv`/`close`, deadlock `VS0505`
+                **không treo**, `send` sau `close` ⇒ `VS0504`, sai kiểu ⇒ `VS0412`; `Chan[T]` là kiểu
+                dựng sẵn) — xong, đã đo + cổng + differential; **chưa commit**.
+Bước          : 6/6 (kiểm chứng 787 test + 15 ca hai đường bằng tay → log đỏ sem/Rust bằng `git stash`
+                chỉ 4 thư mục mã → tách `tyck/expr/{kenh,phu}.rs` khi R1 đỏ → `gate --fast` → differential
+                100k → STATE/JOURNAL).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T03:17:24Z**; **782** test / sem
-                **426/20 nhóm** / `vis test` **426 ok** (+`--vm` **426 ok/7 SKIP**) / parity **381/381** /
-                differential **100.000 chương trình 0 lệch** (248,0 s) / **7 sổ-30 mã** (không mã mới) /
-                allowlist **6**
-Việc dở       : commit `[ST-60c]` + push (đã được uỷ quyền)
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T05:12:52Z**; **787** test / sem
+                **441/21 nhóm** / `vis test` **441 ok** (+`--vm` **441 ok/7 SKIP**) / parity **395/395** /
+                differential **100.000 chương trình 0 lệch** (213,4 s) / **7 sổ-32 mã** / allowlist **6**
+Việc dở       : commit `[ST-61]` + push (đã được uỷ quyền)
+
+## ST-61 — VS2 #2: kênh `chan[T]` (`send`/`recv`/`close`), deadlock `VS0505` không treo, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | **Kiểm chứng lại (không viết lại)** | `cargo test --workspace` = **787** test, **0 failed** (21 diag + 96 syntax + 18 fmt + 154 types + 24 interp + 62 bytecode + 9 vm + **403 cli**; +5 so ST-60c = `vis-cli/tests/kenh.rs`). Chạy tay **15 ca** `test/sem/kenh/*.vis` bằng `vis run` và `vis run --vm --no-cache`: **15/15 khớp `.out`/`.err` từng byte**, hai đường **cùng byte**; 3 ca deadlock **0,085–0,104 s** (mốc < 1 s) ⇒ **không treo**. |
+| 2 | **Log đỏ (red-first) trung thực** | `git stash push` **chỉ 4 thư mục mã** (`vis-interp/src`, `vis-types/src`, `vis-bytecode/src`, `vis-diag/src`), giữ test + fixture; `JOURNAL/st61-red-sem.log` sha256 `fb268bc4…`: **14/15 ĐỎ** (`VS0301` "kiểu `Chan` không có trong VS0" / `VS0501` "tên `chan` chưa hỗ trợ ở VS0"), 1 ca **đã xanh sẵn** = `chan-ten-nguoi-dung` (khoá `chan` làm **tên hàm người dùng** vẫn chạy — ca bảo vệ soft keyword, ghi rõ **không** giả vờ đỏ); `JOURNAL/st61-red-rust.log` sha256 `f5ac414a…`: **5/5 `#[test]` FAILED**, `cargo exit=101`. Pop stash ⇒ 10/10 sha256 mã **khớp trước** khi stash. |
+| 3 | **R1 — buộc tách tệp (phát sinh)** | `tyck/expr.rs` **1.532** dòng > 1.500 ⇒ tách **2 mô-đun con**: `tyck/expr/kenh.rs` (63 dòng — `kiem_chan_new`, `kiem_chan_method`) và `tyck/expr/phu.rs` (39 dòng — 3 hàm thuần `is_percent_float`/`builtin_is_value`/`builtin_value_ty`); chuyển `impl FnSig { ret_raw }` sang `tyck/sig.rs`. Ngữ nghĩa **không đổi**, `expr.rs` còn **1.464** dòng. `gate --fast` **PASS**. |
+| 4 | **Cổng** | `./vis-dev gate --fast` từ `/Users/mps/dvchd/ViFastOs` **PASS** `2026-11-14T05:12:52Z` (không retry); 3 dòng cuối: `test result: ok. 0 passed; …` / `--- L0 test: OK` / `vis-dev gate --fast: PASS`; R1..R4 OK, clippy OK, doc-examples **18 xanh + 6 ngoại lệ**, report-check 9 báo cáo/85 hàng. |
+| 5 | **Differential** | `./bin/vis-diff` ⇒ `DIFF tong=100000 loi_tinh=0 chay=100000 lech=0 giay=213.4 toc_do=469/s seed=3523158054` (**0 lệch**). `JOURNAL/st61-diff-100k.log` sha256 `39091ef7…`. |
+| 6 | **Số đo** | **787** test · sem **441/21 nhóm** (391 `.vis` + 50 `.vish`, **80** `.err`) · `vis test` **441 ok** · `--vm` **441 ok / 7 SKIP** · parity **395/395** (46 ca lỗi biên dịch; `diag_cmp` 361 xanh/46/34) · `VBC1` **53** (không bump) · **7 sổ / 32 mã** (`VS0504`/`VS0505` mới; `VS0506` giữ index 5) · allowlist **6**. |
+| 7 | **Nợ (ghi `R10` §5)** | (a) **drain** chỉ chạy task ở hàng `ready` (**`spawn`**); task `Moi` do gọi `async fn` (chưa spawn/await) **không** được chạy ⇒ `recv` có thể `VS0505` dù còn Task; (b) `close` **idempotent** nhưng **không đánh thức** ai (không có wait-set — mô hình run-to-completion); (c) **không có `select`/timeout**; (d) `Chan` **không** truyền qua **biên host** (chỉ trong interp/VM); (e) `cap=0` thực tế **không dùng được** (cả hai phía chặn đều drain rồi `VS0505`); (f) dung lượng **âm** là lỗi **lúc chạy** `VS0501` (tyck chỉ đòi `int`); (g) `Chan` in `<kênh>` (không có `show` cấu trúc). |
 
 ## ST-60c — derives/siêu trait: impl sinh vào `impl_pairs`, enum Show sinh mã, Eq chặn sâu, 2026-11-14
 

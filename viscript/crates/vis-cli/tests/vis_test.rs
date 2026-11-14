@@ -15,7 +15,8 @@ use std::process::Command;
 /// **SỬA KÈM LÝ DO (ST-60)**: 394 → **416** (+22 ca `async/` — chốt VD-90/VD-95).
 /// **SỬA KÈM LÝ DO (ST-60b)**: 416 → **420** (+4 ca hotfix closure/đích lồng/`std --tên`).
 /// **SỬA KÈM LÝ DO (ST-60c)**: 419 → **426** (+7 ca `trait/`: derives↔siêu trait, enum Show, Eq sâu).
-const SO_CA: usize = 426;
+/// **SỬA KÈM LÝ DO (ST-61)**: 426 → **441** (+15 ca nhóm `kenh/`).
+const SO_CA: usize = 441;
 
 fn vis(args: &[&str]) -> (i32, String, String) {
     let o = Command::new(env!("CARGO_BIN_EXE_vis"))

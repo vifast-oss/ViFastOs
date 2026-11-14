@@ -1,0 +1,66 @@
+# ST-61 — log ĐỎ (Rust) lúc 2026-11-14T04:53:15Z, HEAD 5819601 (đã git stash mã 4 thư mục src; test kenh.rs giữ nguyên).
+# lệnh: cargo test -p vis-cli --test kenh
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/kenh.rs (target/debug/deps/kenh-0ba3c74385cba6c1)
+
+running 5 tests
+test deadlock_khong_treo_va_bao_vs0505 ... FAILED
+test spawn_producer_voi_dem_du_hai_duong ... FAILED
+test tao_send_recv_va_fifo_hai_duong ... FAILED
+test send_sau_close_la_vs0504 ... FAILED
+test close_idempotent_va_nhan_not_hang ... FAILED
+
+failures:
+
+---- deadlock_khong_treo_va_bao_vs0505 stdout ----
+
+thread 'deadlock_khong_treo_va_bao_vs0505' (44491328) panicked at crates/vis-cli/tests/kenh.rs:88:13:
+gui-day (vm=false): stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-kenh-dl-75554/gui-day.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- spawn_producer_voi_dem_du_hai_duong stdout ----
+
+thread 'spawn_producer_voi_dem_du_hai_duong' (44491330) panicked at crates/vis-cli/tests/kenh.rs:124:5:
+assertion `left == right` failed: stderr: spawn.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+spawn.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+
+  left: 2
+ right: 0
+
+---- tao_send_recv_va_fifo_hai_duong stdout ----
+
+thread 'tao_send_recv_va_fifo_hai_duong' (44491331) panicked at crates/vis-cli/tests/kenh.rs:59:5:
+assertion `left == right` failed: stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-kenh-fifo-75554/fifo.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+
+  left: 1
+ right: 0
+
+---- send_sau_close_la_vs0504 stdout ----
+
+thread 'send_sau_close_la_vs0504' (44491329) panicked at crates/vis-cli/tests/kenh.rs:114:5:
+stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-kenh-sau-close-75554/sauclose.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+
+
+---- close_idempotent_va_nhan_not_hang stdout ----
+
+thread 'close_idempotent_va_nhan_not_hang' (44491327) panicked at crates/vis-cli/tests/kenh.rs:103:5:
+assertion `left == right` failed: stderr: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vis-kenh-close-75554/close.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+
+  left: 1
+ right: 0
+
+
+failures:
+    close_idempotent_va_nhan_not_hang
+    deadlock_khong_treo_va_bao_vs0505
+    send_sau_close_la_vs0504
+    spawn_producer_voi_dem_du_hai_duong
+    tao_send_recv_va_fifo_hai_duong
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+error: test failed, to rerun pass `-p vis-cli --test kenh`
+
+[cargo exit=101]

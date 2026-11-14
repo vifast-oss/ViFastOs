@@ -684,6 +684,17 @@ pub fn call(
     // được. `Int` của chúng là **handle của host** (interp: `sym`; VM: chỉ số hàm bytecode),
     // **không** phải giá trị chương trình. Phòng thủ: bytecode đột biến ⇒ `VS0501`, **không** panic.
     if let Some(kieu) = name.strip_prefix('$') {
+        // **ST-61 (VD-96)**: `$kenh(n)` — tạo kênh đệm `n` (`n ≥ 0`; âm ⇒ `VS0501`).
+        if kieu == "kenh" {
+            return match args.into_iter().next() {
+                Some(Value::Int(cap)) => crate::rt::tao_kenh(host, cap, span),
+                _ => Err(trap(
+                    crate::interp::RT,
+                    "`chan[T](n)` cần dung lượng `int`",
+                    span,
+                )),
+            };
+        }
         if kieu == "await" {
             return match args.into_iter().next() {
                 Some(Value::Task(t)) => crate::rt::await_task(host, &t, span),
@@ -1104,9 +1115,81 @@ pub fn method(
         Value::List(xs) => list_method(host, xs, name, args, span),
         Value::Str(s) => str_method(host, s, name, args, span),
         Value::Map(kv) => map_method(host, kv, name, args, span),
+        // **ST-61 (VD-96)**: `send`/`recv`/`close` — **một** hiện thực cho cả interp lẫn VM.
+        Value::Chan(c) => chan_method(host, c, name, args, span),
         other => Err(trap(
             RT,
             format!("`{}` không có phương thức `{name}`", other.show()),
+            span,
+        )),
+    }
+}
+
+/// **ST-61 (VD-96)**: phương thức kênh. Chặn (`send` đầy, `recv` rỗng) ⇒ **drain** hàng đợi sẵn
+/// sàng ([`crate::rt::chay_mot`]) rồi thử lại; hết queue ⇒ **`VS0505`** (deadlock, **không** treo).
+/// `send` sau `close` ⇒ **`VS0504`**; `close` **idempotent**; `recv` sau close trả nốt hàng rồi `none`.
+fn chan_method(
+    host: &mut dyn Host,
+    c: std::rc::Rc<std::cell::RefCell<crate::rt::Chan>>,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> crate::interp::R<Value> {
+    match name {
+        "send" => {
+            let Some(v) = args.into_iter().next() else {
+                return Err(trap(RT, "`send` cần 1 đối số", span));
+            };
+            loop {
+                {
+                    let mut ch = c.borrow_mut();
+                    if ch.closed {
+                        return Err(trap(
+                            crate::interp::SEND_CLOSED,
+                            "`send` vào kênh đã `close` (không nhận thêm phần tử)",
+                            span,
+                        ));
+                    }
+                    if !ch.day() {
+                        ch.buf.push_back(v);
+                        return Ok(Value::Unit);
+                    }
+                }
+                if !crate::rt::chay_mot(host)? {
+                    return Err(trap(
+                        crate::interp::DEADLOCK,
+                        "deadlock: `send` vào kênh **đầy** và không còn tác vụ nào chạy được",
+                        span,
+                    ));
+                }
+            }
+        }
+        "recv" => loop {
+            {
+                let mut ch = c.borrow_mut();
+                if let Some(v) = ch.buf.pop_front() {
+                    return Ok(Value::Opt(Some(Box::new(v))));
+                }
+                if ch.closed {
+                    return Ok(Value::Opt(None));
+                }
+            }
+            if !crate::rt::chay_mot(host)? {
+                return Err(trap(
+                    crate::interp::DEADLOCK,
+                    "deadlock: `recv` trên kênh **rỗng** và không còn tác vụ nào chạy được",
+                    span,
+                ));
+            }
+        },
+        // `close` **idempotent** (VD-96 (3)): lần hai **không** lỗi.
+        "close" => {
+            c.borrow_mut().closed = true;
+            Ok(Value::Unit)
+        }
+        _ => Err(trap(
+            RT,
+            format!("kênh không có phương thức `{name}` (chỉ `send`, `recv`, `close`)"),
             span,
         )),
     }

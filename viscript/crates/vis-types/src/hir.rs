@@ -679,6 +679,12 @@ pub enum HExpr {
     Await { expr: Box<HExpr>, span: Span },
     /// **ST-60**: `spawn f(args)` — tạo tác vụ + đưa vào **hàng đợi FIFO**; callee phải là **tên**
     /// hàm `async` cấp tệp (tyck `VS0412` nếu không).
+    /// **ST-61 (VD-96)**: `chan[T](n)` — tạo kênh đệm `n` (`n ≥ 0`), phần tử kiểu `T`.
+    ChanNew {
+        elem: Type,
+        cap: Box<HExpr>,
+        span: Span,
+    },
     Spawn {
         callee: Box<HExpr>,
         args: Vec<HExpr>,
@@ -728,6 +734,7 @@ impl HExpr {
             | HExpr::Ref { span, .. }
             | HExpr::Await { span, .. }
             | HExpr::Spawn { span, .. }
+            | HExpr::ChanNew { span, .. }
             | HExpr::Interp { span, .. }
             | HExpr::CmdBlock { span, .. }
             | HExpr::Error { span } => *span,
@@ -833,6 +840,9 @@ impl HExpr {
             HExpr::Tuple { items, .. } => tagged_items("tuple", items),
             HExpr::Ref { expr, .. } => format!("(ref {})", expr.sexp()),
             HExpr::Await { expr, .. } => format!("(await {})", expr.sexp()),
+            HExpr::ChanNew { elem, cap, .. } => {
+                format!("(chan {} {})", elem.name(), cap.sexp())
+            }
             HExpr::Spawn {
                 callee, args, span, ..
             } => {

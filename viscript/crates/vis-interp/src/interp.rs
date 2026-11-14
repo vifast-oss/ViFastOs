@@ -20,7 +20,11 @@ pub const DIV0: &Code = &RUNTIME_CODES[1];
 /// `VS0503` — chỉ số ngoài phạm vi.
 pub const IDX: &Code = &RUNTIME_CODES[2];
 /// **ST-60** — `VS0506`: lỗi trong **thân tác vụ** `async` (message kèm mã gốc).
-pub const TASK_ERR: &Code = &RUNTIME_CODES[3];
+pub const TASK_ERR: &Code = &RUNTIME_CODES[5];
+/// **ST-61 (VD-96)** — `VS0504`: gửi vào kênh đã `close`.
+pub const SEND_CLOSED: &Code = &RUNTIME_CODES[3];
+/// **ST-61 (VD-96)** — `VS0505`: deadlock (kênh chặn, không còn tác vụ chạy được).
+pub const DEADLOCK: &Code = &RUNTIME_CODES[4];
 /// `VS0412` — gán cho `let`/tham số (phòng thủ: tyck đã chặn trước).
 pub(crate) const MISMATCH: &Code = &TYPE_CODES[3];
 
@@ -789,6 +793,12 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::List(vs))
             }
+            // **ST-61 (VD-96)**: `chan[T](n)` ⇒ `$kenh(n)` (một hiện thực ở `builtin`, dùng chung
+            // cho cả interp lẫn VM).
+            HExpr::ChanNew { cap, span, .. } => {
+                let c = self.eval(cap)?;
+                crate::builtin::call(self, "$kenh", vec![c], *span)
+            }
             // **ST-56 (VD-92)**: `ref(expr)` giữ **nguyên kiểu trong**, hạ **identity** — **không**
             // tạo giá trị mới, **không** mượn thật (borrow/vòng đời là nợ **VS2+**).
             HExpr::Ref { expr, .. } => self.eval(expr),
@@ -903,7 +913,12 @@ impl<'a> Interp<'a> {
         } = callee
         {
             let recv = self.eval(base)?;
-            if matches!(recv, Value::List(_) | Value::Str(_) | Value::Map(_)) {
+            // **ST-61 (VD-96)**: kênh cũng đi **một** nhánh `builtin::method` (như list/str/map) ⇒
+            // interp ↔ VM cùng một hiện thực `send`/`recv`/`close`.
+            if matches!(
+                recv,
+                Value::List(_) | Value::Str(_) | Value::Map(_) | Value::Chan(_)
+            ) {
                 let mut vs = Vec::with_capacity(args.len());
                 for a in args {
                     vs.push(self.eval(a)?);

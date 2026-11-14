@@ -180,6 +180,45 @@ impl<'a> Lowerer<'a> {
                 }
             }
             NodeKind::Call | NodeKind::GenericCall => {
+                // **ST-61 (VD-96)**: `chan` là **soft keyword** — trong `GenericCall` với callee
+                // `Var{name:"chan", sym:None}` + **đúng 1** đối số kiểu ⇒ `HExpr::ChanNew`. Người dùng
+                // khai `fn chan` (sym `Some`) ⇒ gọi hàm bình thường.
+                if node.kind == NodeKind::GenericCall {
+                    let callee = node
+                        .children()
+                        .next()
+                        .map(|c| self.lower_expr(c))
+                        .unwrap_or(HExpr::Error { span });
+                    let la_chan = matches!(
+                        &callee,
+                        HExpr::Var { name, sym: None, .. } if name == "chan"
+                    );
+                    if la_chan {
+                        let ty = node
+                            .child(NodeKind::Generics)
+                            .and_then(|g| g.children().next())
+                            .map(|t| self.resolve_type(t))
+                            .unwrap_or(Type::Error);
+                        let ds_node = node.child(NodeKind::Args);
+                        let mut ds = ds_node.map(|a| a.children()).into_iter().flatten();
+                        let cap = ds
+                            .next()
+                            .map(|c| self.lower_expr(c))
+                            .unwrap_or(HExpr::Error { span });
+                        if ds.next().is_some() {
+                            self.diag(
+                                &vis_diag::TYPE_CODES[0],
+                                "`chan[T](n)` cần **đúng một** đối số (dung lượng)",
+                                span,
+                            );
+                        }
+                        return HExpr::ChanNew {
+                            elem: ty,
+                            cap: Box::new(cap),
+                            span,
+                        };
+                    }
+                }
                 let callee = node
                     .children()
                     .next()

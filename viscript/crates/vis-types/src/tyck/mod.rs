@@ -585,6 +585,13 @@ impl<'a> Checker<'a> {
             ("map", 2) => {
                 return Type::Map(Box::new(resolved[0].clone()), Box::new(resolved[1].clone()))
             }
+            // **ST-61 (VD-96)**: `Chan[T]` — kênh đệm hữu hạn (kiểu dựng sẵn, như `Task`).
+            ("Chan" | "chan", 1) => {
+                return Type::TypeRef {
+                    name: "Chan".into(),
+                    args: vec![resolved[0].clone()],
+                }
+            }
             // **ST-60 (VD-95 (3))**: `Task[T]` — kiểu dựng sẵn của tác vụ `async`.
             ("Task" | "task", 1) => {
                 return Type::TypeRef {

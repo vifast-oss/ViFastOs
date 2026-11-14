@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+fn main():
+    let c = chan[int](1)
+    let _ = c.send(1)
+    print(c.recv())
+    let _ = c.send(2)
+    print(c.recv())

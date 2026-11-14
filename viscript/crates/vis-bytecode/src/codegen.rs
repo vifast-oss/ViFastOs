@@ -1276,6 +1276,13 @@ impl<'g> Emit<'g> {
             // **ST-56 (VD-92)**: `ref(expr)` hạ **identity** (không sinh lệnh) — hết
             // `Unsupported("ref")`; **chưa** có mượn thật (nợ VS2+).
             HExpr::Ref { expr, .. } => self.expr(expr),
+            // **ST-61 (VD-96)**: `chan[T](n)` ⇒ `$kenh(n)` — **không** thêm tag `VBC1` (như `$spawn`).
+            HExpr::ChanNew { cap, span, .. } => {
+                self.expr(cap)?;
+                let b = self.g.cst_str("$kenh");
+                self.f.push(Instr::CallBuiltin(b, 1), *span, 0);
+                self.net_stack(*span)
+            }
             // **ST-60 (VD-95 (2))**: `await` = `$await(<task>)` — **không** thêm tag `VBC1`.
             HExpr::Await { expr, span } => {
                 self.expr(expr)?;

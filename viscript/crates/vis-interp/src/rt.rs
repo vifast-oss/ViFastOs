@@ -51,6 +51,26 @@ pub struct Task {
     pub kq: RefCell<Option<Result<Value, Trap>>>,
 }
 
+/// **ST-61 (VD-96)**: một kênh đệm **hữu hạn** (FIFO). `cap = 0` ⇒ không đệm (gửi phải có
+/// người nhận **đã chạy** — mô hình run-to-completion, nợ như async).
+#[derive(Debug)]
+pub struct Chan {
+    /// Số thứ tự tạo (1, 2, …) — chỉ để chẩn đoán/tất định, chương trình **không** thấy.
+    pub id: u32,
+    pub cap: usize,
+    pub buf: VecDeque<Value>,
+    pub closed: bool,
+}
+
+impl Chan {
+    pub fn day(&self) -> bool {
+        self.buf.len() >= self.cap
+    }
+    pub fn rong(&self) -> bool {
+        self.buf.is_empty()
+    }
+}
+
 /// Bộ lập lịch **một luồng, tất định**: danh sách tác vụ **theo thứ tự tạo** + hàng đợi **FIFO**
 /// cho `spawn` (hàng phẳng `Vec` ⇒ 10.000 tác vụ **không** đệ quy, không tràn).
 #[derive(Debug, Default)]
@@ -61,6 +81,9 @@ pub struct Scheduler {
     pub tiep: u32,
     /// Độ sâu `await` đang mở (chặn lồng).
     pub sau: usize,
+    /// **ST-61**: các kênh đã tạo — đếm `id` (và giữ sống để chẩn đoán; chương trình cầm
+    /// `Rc<RefCell<Chan>>` riêng).
+    pub kenh: Vec<Rc<RefCell<Chan>>>,
 }
 
 impl Scheduler {
@@ -90,6 +113,53 @@ impl Scheduler {
         let t = self.tao(than, args, ten, span);
         self.ready.push_back(self.tasks.len() - 1);
         t
+    }
+}
+
+/// **ST-61 (VD-96)**: tạo kênh đệm `cap` (âm ⇒ `VS0501`, **không** panic).
+pub fn tao_kenh(host: &mut dyn Host, cap: i64, span: Span) -> R<Value> {
+    if cap < 0 {
+        return Err(Abort::Trap(Trap::new(
+            RT,
+            format!("`chan[T](n)`: dung lượng **âm** ({cap}) — cần `n ≥ 0`"),
+            span,
+        )));
+    }
+    let mut s = host.sched().borrow_mut();
+    let id = s.kenh.len() as u32 + 1;
+    let c = Rc::new(RefCell::new(Chan {
+        id,
+        cap: cap as usize,
+        buf: VecDeque::new(),
+        closed: false,
+    }));
+    s.kenh.push(Rc::clone(&c));
+    Ok(Value::Chan(c))
+}
+
+/// **ST-61 (VD-96)**: chạy **một** tác vụ sẵn sàng trong hàng đợi (FIFO) **tới hoàn tất** — dùng
+/// khi kênh **chặn** (`send` đầy, `recv` rỗng). `false` = **không còn** tác vụ nào chạy được.
+///
+/// Chỉ lấy task **`Moi`** (đã `spawn`, chưa chạy) — **không** chạy task `Moi` chưa `spawn` (đúng
+/// VD-91: "hàng đợi sẵn sàng"). Hệ quả (nợ, ghi rõ): producer/consumer chỉ chạy khi **đệm đủ**
+/// hoặc **thứ tự `await`** phù hợp — mô hình run-to-completion như async.
+pub fn chay_mot(host: &mut dyn Host) -> R<bool> {
+    loop {
+        let idx = host.sched().borrow_mut().ready.pop_front();
+        let Some(idx) = idx else { return Ok(false) };
+        let t = {
+            let s = host.sched().borrow();
+            let Some(t) = s.tasks.get(idx).cloned() else {
+                continue;
+            };
+            t
+        };
+        if t.trang_thai.get() != TrangThai::Moi {
+            continue;
+        }
+        let span = t.span;
+        await_task(host, &t, span)?;
+        return Ok(true);
     }
 }
 

@@ -1,0 +1,255 @@
+# ST-61 — log ĐỎ (sem) lúc 2026-11-14T04:52:52Z, HEAD 5819601 (đã tạm gỡ bằng git stash: crates/vis-interp/src, crates/vis-types/src,
+# crates/vis-bytecode/src, crates/vis-diag/src — giữ nguyên test + fixture). HEAD thật khi chạy: 5819601 [ST-00] mở vòng 11 — ST-63..ST-76 (net/http, LSP, pkg, quyền, đa nền tảng, R11); VD-103/VD-104
+# 15 ca test/sem/kenh/*.vis chạy bằng binary **trước** sửa; mỗi ca: kỳ vọng, interp (--tap, stdout+stderr gộp) và vm (--vm --no-cache --tap).
+
+== chan-qua-tham-so
+   kỳ vọng .out:
+     some(9)
+   -- interp:
+     TAP version 13
+     1..1
+     chan-qua-tham-so.vis:2:9: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     chan-qua-tham-so.vis:2:9: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     not ok 1 - test/sem/kenh/chan-qua-tham-so.vis (VS0301)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     chan-qua-tham-so.vis:2:9: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     chan-qua-tham-so.vis:2:9: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     not ok 1 - test/sem/kenh/chan-qua-tham-so.vis (VS0301)
+     [exit=2]
+
+== chan-ten-nguoi-dung
+   kỳ vọng .out:
+     3
+   -- interp:
+     TAP version 13
+     1..1
+     3
+     ok 1 - test/sem/kenh/chan-ten-nguoi-dung.vis (steps=9)
+     [exit=0]
+   -- vm:
+     TAP version 13
+     1..1
+     3
+     ok 1 - test/sem/kenh/chan-ten-nguoi-dung.vis (steps=10)
+     [exit=0]
+
+== close-hai-lan
+   kỳ vọng .out:
+     none
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/close-hai-lan.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/close-hai-lan.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/close-hai-lan.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/close-hai-lan.vis (VS0501, steps=3)
+     [exit=1]
+
+== close-roi-recv-trong
+   kỳ vọng .out:
+     none
+     none
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/close-roi-recv-trong.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/close-roi-recv-trong.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/close-roi-recv-trong.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/close-roi-recv-trong.vis (VS0501, steps=3)
+     [exit=1]
+
+== day-khong-task-deadlock
+   kỳ vọng .err: VS0505
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/day-khong-task-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/day-khong-task-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/day-khong-task-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/day-khong-task-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+
+== dem-0-deadlock
+   kỳ vọng .err: VS0505
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-0-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-0-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-0-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-0-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+
+== dem-day-roi-recv-het
+   kỳ vọng .out:
+     some(1)
+     some(2)
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-day-roi-recv-het.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-day-roi-recv-het.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-day-roi-recv-het.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-day-roi-recv-het.vis (VS0501, steps=3)
+     [exit=1]
+
+== dem-fifo
+   kỳ vọng .out:
+     some(1)
+     some(2)
+     some(3)
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-fifo.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-fifo.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/dem-fifo.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/dem-fifo.vis (VS0501, steps=3)
+     [exit=1]
+
+== hai-kenh-khac-kieu
+   kỳ vọng .out:
+     some(1)
+     some(x)
+     <kênh>
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/hai-kenh-khac-kieu.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/hai-kenh-khac-kieu.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/hai-kenh-khac-kieu.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/hai-kenh-khac-kieu.vis (VS0501, steps=3)
+     [exit=1]
+
+== recv-rong-deadlock
+   kỳ vọng .err: VS0505
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/recv-rong-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/recv-rong-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/recv-rong-deadlock.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/recv-rong-deadlock.vis (VS0501, steps=3)
+     [exit=1]
+
+== recv-sau-close-con-hang
+   kỳ vọng .out:
+     some(1)
+     some(2)
+     none
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/recv-sau-close-con-hang.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/recv-sau-close-con-hang.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/recv-sau-close-con-hang.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/recv-sau-close-con-hang.vis (VS0501, steps=3)
+     [exit=1]
+
+== send-sai-kieu
+   kỳ vọng .err: VS0412
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/send-sai-kieu.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/send-sai-kieu.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/send-sai-kieu.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/send-sai-kieu.vis (VS0501, steps=3)
+     [exit=1]
+
+== send-sau-close
+   kỳ vọng .err: VS0504
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/send-sau-close.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/send-sau-close.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/send-sau-close.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/send-sau-close.vis (VS0501, steps=3)
+     [exit=1]
+
+== spawn-day-du
+   kỳ vọng .out:
+     some(1)
+   -- interp:
+     TAP version 13
+     1..1
+     spawn-day-du.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     spawn-day-du.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     not ok 1 - test/sem/kenh/spawn-day-du.vis (VS0301)
+     [exit=2]
+   -- vm:
+     TAP version 13
+     1..1
+     spawn-day-du.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     spawn-day-du.vis:2:14: error VS0301: tên không tồn tại: kiểu `Chan` không có trong VS0 (VD-43) và không được khai trong tệp
+     not ok 1 - test/sem/kenh/spawn-day-du.vis (VS0301)
+     [exit=2]
+
+== tao-send-recv
+   kỳ vọng .out:
+     some(7)
+   -- interp:
+     TAP version 13
+     1..1
+     test/sem/kenh/tao-send-recv.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/tao-send-recv.vis (VS0501, steps=3)
+     [exit=1]
+   -- vm:
+     TAP version 13
+     1..1
+     test/sem/kenh/tao-send-recv.vis:3:13: error VS0501: tên `chan` chưa hỗ trợ ở VS0
+     not ok 1 - test/sem/kenh/tao-send-recv.vis (VS0501, steps=3)
+     [exit=1]
+
+== TỔNG
+   ca: 15 (10 .out + 5 .err); ĐỎ: 14; XANH (đã xanh trên mã cũ): 1 ⇒ chan-ten-nguoi-dung
+   mã lỗi trên mã cũ: chan-qua-tham-so:VS0301 close-hai-lan:VS0501 close-roi-recv-trong:VS0501 day-khong-task-deadlock:VS0501 dem-0-deadlock:VS0501 dem-day-roi-recv-het:VS0501 dem-fifo:VS0501 hai-kenh-khac-kieu:VS0501 recv-rong-deadlock:VS0501 recv-sau-close-con-hang:VS0501 send-sai-kieu:VS0501 send-sau-close:VS0501 spawn-day-du:VS0301 tao-send-recv:VS0501
+   đỏ vì lý do đúng (VS0301 "kiểu Chan không có trong VS0" / VS0501 "tên chan chưa hỗ trợ ở VS0" — chưa có kênh): 14/14; không thấy mã: 0

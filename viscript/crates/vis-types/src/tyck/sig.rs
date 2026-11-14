@@ -22,3 +22,10 @@ pub(crate) struct FnSig {
     /// Kiểu trả **nguyên bản** (còn `T`) — thay bằng kiểu đã suy sau khi hợp nhất.
     pub raw_ret: Type,
 }
+
+impl FnSig {
+    /// Kiểu trả đã suy (dùng sau `hop_nhat`) — chuyển từ `expr.rs` (ST-61, giữ R1).
+    pub(crate) fn ret_raw(&self) -> Type {
+        self.raw_ret.clone()
+    }
+}

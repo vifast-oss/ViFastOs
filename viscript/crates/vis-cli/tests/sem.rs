@@ -135,19 +135,23 @@ fn sem_323_ca_qua_binary() {
         // gốc `let`; 1 xanh trong `vish/`: thân `cmd` khai báo dùng **biến** vừa khai) ⇒ **419 ca /
         // 20 nhóm** (367 `.vis` + 50 `.vish`, **71** `.err`). (`std.* --tên` khoá ở Rust
         // `gan_hai_duong::std_khong_nhan_tham_so_ten` — HIR `{error}` không sinh bytecode hỏng.)
+        // **SỬA KÈM LÝ DO (ST-61)**: +**15** ca nhóm **mới** `kenh/` (tạo/send/recv/FIFO, deadlock
+        // `VS0505` không treo, gửi sau `close` `VS0504`, sai kiểu `VS0412`, spawn có đệm, `chan` làm
+        // tên người dùng) ⇒ **441 ca / 21 nhóm** (367 `.vis` + 50 `.vish`, **80** `.err`).
         // **SỬA KÈM LÝ DO (ST-60c)**: +**7** ca nhóm `trait/` (impl sinh từ `derives` vào
         // `impl_pairs`; `derives Show` cho enum **sinh mã thật**; `Eq` chặn **sâu** list/map/opt) ⇒
-        // **426 ca / 20 nhóm** (367 `.vis` + 50 `.vish`, **75** `.err`).
-        426,
-        "phải đúng 426 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
+        // **441 ca / 21 nhóm** (367 `.vis` + 50 `.vish`, **80** `.err`).
+        441,
+        "phải đúng 441 ca (367 `.vis` + 50 `.vish`), thật {} — nhóm: {theo_nhom:?}",
         ds.len()
     );
     // **SỬA KÈM LÝ DO (ST-57)**: nhóm mới **`trait/`** ⇒ **19 nhóm**.
     // **SỬA KÈM LÝ DO (ST-60)**: nhóm mới **`async/`** ⇒ **20 nhóm**.
+    // **SỬA KÈM LÝ DO (ST-61)**: nhóm mới **`kenh/`** ⇒ **21 nhóm**.
     assert_eq!(
         theo_nhom.len(),
-        20,
-        "phải đúng 20 nhóm (ST-28 `generic`; ST-57 `trait`; ST-60 `async`), thật {theo_nhom:?}"
+        21,
+        "phải đúng 21 nhóm (ST-28 `generic`; ST-57 `trait`; ST-60 `async`; ST-61 `kenh`), thật {theo_nhom:?}"
     );
     // **Chống bỏ ca**: số tệp `.vis` trên đĩa phải **bằng** số ca đã gom (không ca nào bị lọc mất).
     let tren_dia: usize = std::fs::read_dir(sem_dir())

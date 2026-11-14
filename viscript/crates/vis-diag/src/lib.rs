@@ -302,7 +302,7 @@ pub const COMMAND_CODES: [Code; 4] = [
     },
 ];
 
-pub const RUNTIME_CODES: [Code; 4] = [
+pub const RUNTIME_CODES: [Code; 6] = [
     Code {
         id: 501,
         short: "VS0501",
@@ -325,6 +325,26 @@ pub const RUNTIME_CODES: [Code; 4] = [
         message_vi: "chỉ số ngoài phạm vi",
         message_en: "index out of range",
         message_ja: "インデックスが範囲外です",
+        severity: Severity::Error,
+    },
+    // **ST-61 (VD-96)**: kênh — **gửi sau `close`**. Thứ tự **tăng dần**
+    // theo `id` (bất biến `so_runtime_05xx_khoa_theo_vd42`) ⇒ `VS0506` dịch index 3 → 5.
+    Code {
+        id: 504,
+        short: "VS0504",
+        message_vi: "gửi vào kênh đã `close` (không nhận thêm phần tử)",
+        message_en: "send on a closed channel (no more elements accepted)",
+        message_ja: "閉じたチャネルへの送信（これ以上受け付けません）",
+        severity: Severity::Error,
+    },
+    // **ST-61 (VD-96)**: **deadlock** — kênh chặn (đầy/rỗng) mà **không còn** tác vụ nào chạy
+    // được ⇒ lỗi có chẩn đoán, **không** treo chương trình.
+    Code {
+        id: 505,
+        short: "VS0505",
+        message_vi: "deadlock: kênh bị chặn và không còn tác vụ nào chạy được (khoá)",
+        message_en: "deadlock: the channel is blocked and no task is runnable",
+        message_ja: "デッドロック: チャネルがブロックされ、実行可能なタスクがありません",
         severity: Severity::Error,
     },
     // **ST-60 (VD-90/VD-95)**: lỗi trong **thân tác vụ** (`async fn`) — bọc **mọi** lỗi, message
@@ -556,10 +576,11 @@ mod tests {
     fn so_runtime_05xx_khoa_theo_vd42() {
         let ids: Vec<u16> = RUNTIME_CODES.iter().map(|c| c.id).collect();
         // **SỬA KÈM LÝ DO (ST-60)**: thêm **VS0506** ở **cuối** (index 0..2 giữ nguyên) cho lỗi
-        // trong thân tác vụ `async`.
+        // trong thân tác vụ `async`. **SỬA KÈM LÝ DO (ST-61)**: thêm **VS0504** (gửi sau `close`)
+        // và **VS0505** (deadlock/khoá) — vẫn ở cuối khối, index 0..2 giữ nguyên.
         assert_eq!(
             ids,
-            vec![501, 502, 503, 506],
+            vec![501, 502, 503, 504, 505, 506],
             "sổ runtime đúng thứ tự tăng dần"
         );
         for c in RUNTIME_CODES.iter() {
@@ -624,7 +645,9 @@ mod tests {
         // `all_codes()` **vẫn 29**; `next_block()` vẫn **801**.
         // (ST-40a cũ: thêm VS0605 `06xx` trường không có trên `it` ⇒ 28 + 1 = **29** mã.)
         // **SỬA KÈM LÝ DO (ST-60)**: +**VS0506** ⇒ **30** mã (sổ runtime 3 → 4).
-        assert_eq!(all_codes().count(), 30);
+        // **SỬA KÈM LÝ DO (ST-61)**: +**VS0504**/**VS0505** (kênh: gửi sau close, deadlock) ⇒ **32**
+        // mã (sổ runtime 4 → **6**, thêm **ở cuối** nên index 0..3 không đổi).
+        assert_eq!(all_codes().count(), 32);
         assert_eq!(BOOKS.len(), 7);
         for id in [601u16, 602, 603, 604] {
             assert!(
