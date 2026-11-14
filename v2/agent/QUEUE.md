@@ -153,8 +153,8 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-46 | Sv39 thật + nửa cao + physmap + `satp` + guard | KT-45 | 3 h | DONE | d5e7565d; TAP 8+3 (guard 0xd/0xf thật); satp 2 bước; 50 boot; gate 569; reviewer APPROVE |
 | KT-47 | Timer SBI: 100 Hz, monotonic, deadline/hart | KT-45 | 2,5 h | DONE | 32b8ca78; TAP 4/4 + 12/12; Δ 10,0000–10,0192 ms; 1000 tick late=missed=0; 50 boot; reviewer APPROVE |
 | KT-48 | PLIC + UART IRQ: enable/claim/complete | KT-46 | 3 h | DONE | aec27f73; TAP 15/15; 8 IRQ thật (IIR 0x2); delta thật; 50 boot; gate 569; reviewer DRIFT→vá |
-| KT-49 | SMP: SBI HSM, stack/arena/PerHart | KT-46 | 3 h | READY | N=1/2/4 đủ hart; barrier đúng; budget |
-| KT-50 | IPI thật + drain hộp thư + `VmKick`/`TlbFlush` | KT-49 | 2,5 h | BLOCKED | 100 IPI 2 hart không mất; drain khi chờ khoá |
+| KT-49 | SMP: SBI HSM, stack/arena/PerHart | KT-46 | 3 h | DONE | 1cc67908; TAP 20; 300/300 boot (100 mỗi N); guard boot-hart=3; 5 ms thật; gate 569; reviewer DRIFT→vá |
+| KT-50 | IPI thật + drain hộp thư + `VmKick`/`TlbFlush` | KT-49 | 2,5 h | READY | 100 IPI 2 hart không mất; drain khi chờ khoá |
 | KT-51 | ASID thật + `sfence.vma` + shootdown ack + timeout | KT-46 | 3 h | BLOCKED | 100 vòng shootdown Ok; mutation bỏ sfence đỏ; timeout |
 | KT-52 | Object layer `no_std` + Retype nội bộ (VSpace/PT/Frame) | KT-46 | 3 h | BLOCKED | 1 VSpace + ≥3 PT + ≥1 Frame; byte khớp; 0 rò; spec rỗng |
 | KT-53 | U-mode + 3 syscall + nạp `init` ELF | KT-46 | 3 h | BLOCKED | init in TAP; U-mode không đọc kernel; 50 boot |
@@ -184,7 +184,7 @@ APPROVED 2026-11-12 Agent 0
 
 **Thứ tự hiện tại — phase K1a' (vòng 2):**
 1. **K1b DONE** (KT-18..KT-23; 3/4 + push migration chuyển K1c theo D2-49a).
-2. **K3**: KT-44..48 DONE; **KT-49 READY** (SMP). Rồi K3b KT-58..61.
+2. **K3**: KT-44..49 DONE; **KT-50 READY** (IPI). Rồi K3b KT-58..61.
 3. Thứ tự K3: A(44→45→46→{47∥48∥49}→50→51) ∥ B(52→53) ∥ C(54); 55/56; 57 cuối, chạy một mình.
 4. Push migration + SMP 1/2/4/8 thuộc K1c (D2-53 Q1/Q2); `nightly --l1` 100k ở KT-29/KT-30.
 5. Không đụng `spec/`/`vifast-model`; parity 10k hồi quy; ViScript do tab riêng.
