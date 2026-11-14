@@ -177,7 +177,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-81 | **nhất quang #5** — `--strict-caps`: bắt buộc khai `cap` cho mọi truy cập fs/net | ST-80 | 2,5 h | **DONE** | ≥6 ca; mặc định **không đổi** (ghi rõ); fixture chuyển dần |
 | ST-82 | báo cáo **R12** | ST-77..ST-81 | 1,5 h | **DONE** | MD+JSON; nêu rõ phần chưa làm được và **vì sao** |
 | ST-83 | **nợ nhỏ** — `fs.exists` ngoài quyền ⇒ `VS0604` (hết im lặng), `assert <đk>` dạng **câu lệnh**, `usage_explain` theo `--lang` | ST-82 | 2,5 h | **DONE** | ≥6 ca; không đổi hành vi đã khoá |
-| ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **READY** | ≥4 ca; vẫn tất định |
+| ST-84 | **LSP** completion/hover **module-aware** (ký hiệu từ `use ./x` + `std.*`) | ST-83 | 2,5 h | **DONE** | ≥4 ca; vẫn tất định |
 | ST-85 | **`vis fmt`** chuẩn hoá **thụt lề khối `cmd`** trong `.vish` + cập nhật fixture | ST-84 | 3 h | **READY** | `--check test/` xanh; 68 fixture cập nhật **có lý do** |
 | ST-86 | **fuzz differential** mở rộng cho cú pháp mới (`async`/`chan`/`cap`/`derives`) — 20.000 chương trình | ST-85 | 3 h | **READY** | 0 lệch; seed ghim; sinh được cả ca lỗi |
 | ST-87 | **cache không che lỗi**: chạy toàn bộ suite ở 3 chế độ (`run`, `--vm`, `--vm --no-cache`) so byte | ST-86 | 2,5 h | **READY** | 0 lệch trên ≥500 ca; sửa nếu lệch |
@@ -1261,3 +1261,14 @@ APPROVED 2026-11-14 Agent 0
 > đo hiệu năng LSP đổi sang **phần thêm** so với nền, **ngưỡng 100 ms giữ nguyên**).
 > Nợ: `assert` câu lệnh chỉ một biểu thức (không message); biến tên `assert` ở đầu câu lệnh bị hiểu thành assert; help dịch tay.
 > **ST-84 mở** (LSP completion/hover module-aware).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-84 DONE — LSP completion/hover module-aware.** Commit `2d3032b7` (**Agent 2 tự commit, đã push**). `Loaded.item_rel` (biết item
+> thuộc tệp nào) + `lsp/module.rs` (157 dòng): item **`pub`** của `use ./x` và hàm `std.<m>` đã `use` vào completion (kind + `detail`
+> **nêu nguồn**) và hover markdown; khử trùng **tệp chính > module > builtin > từ khoá**, sắp byte, cap 200; tệp **không** có trên
+> đĩa ⇒ **không** bịa. **5 ca** + **unit** hiệu năng nạp 5 module (<1 ms; test tích hợp đổi sang đếm frame, **không** nới ngưỡng
+> 100 ms). Đo: **926 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (219,9 s); 34/34 ca LSP xanh.
+> Nợ: `is_pub` mới cho `fn` (type/enum/const chưa); `detail` `std.*` dùng tên tham số giả; completion chưa theo ngữ cảnh sau `.`;
+> hover chưa field; nạp lại module mỗi request.
+> **ST-85 mở** (`vis fmt` chuẩn hoá thụt lề `.vish` — **có rào**: nếu thụt lề là ngữ nghĩa, **không** đổi, ghi lý do đo được).
