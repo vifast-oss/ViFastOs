@@ -6,7 +6,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : `f2e7762` ([KT-00] D2-67); KT-39 **chưa commit** — agent2-kt39 chết giữa lúc làm, **lead hoàn tất** (fix clippy, cập nhật 3 ca KT-36, viết docs §13)
 BUILD_ID      : —
-Task          : KT-39 (W^X toàn cục `WxViolation` + `protect` + shared read-only) — code/test/docs xong, gate 536 PASS, Miri 8/8; **chờ reviewer-kt39**
+Task          : KT-40 (READY — TLB + shootdown); KT-39 DONE (bf6bb0f)
 Bước          : 7/8 (baseline → đỏ → code+test → gate 536 → Miri 8/8 → **review DRIFT đã sửa + mutation M2** → commit)
 Nhánh         : main
 Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 536 test/68 suite**, L1 1.000 seed **811 ms** (sau khi sửa DRIFT), fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt39-gate-fast.log`). Baseline KT-39: PASS 526/68 (`JOURNAL/kt39-baseline-gate-fast.log`); +8 `kt39_wx` +2 unit `check_wx`.
