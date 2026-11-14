@@ -102,7 +102,7 @@ Ghi chú: D11 (không sửa mò) → **D2-02**; D18 (hồi quy thì revert) → 
 
 - **D2-66** KT-36: `UNTYPED_PA_WINDOW = 1 GiB` `[TK]`; `FrameMeta.pa` là **nhãn PA ảo**, không tiêu byte arena; `add_untyped(base,size)` dùng `base` làm **đáy cửa sổ PA** (đổi nghĩa tham số cũ, chấp nhận); `Retype(Frame)` chỉ 12/21/30, căn lề + cửa sổ + chồng PA (`AlreadyMapped`) atomic; Frame còn mapping ⇒ `HasChildren` khi Revoke; `check_frames` 7 nhóm sau mỗi op, bất biến KT-36 chỉ `w≤maps && x≤maps` (W^X để KT-39).
 
-- **D2-67** KT-39: W^X áp **toàn cục** trên `page_table_map_obj`/mọi Frame có mapping, **không** miễn trừ PageTable thuần; map W khi `mapped_x>0` hoặc map EXEC khi `mapped_w>0` ⇒ `WxViolation` atomic; `Device+EXEC` cũng vậy. 3 ca KT-37 cũ (W+X hợp lệ) được **cập nhật kỳ vọng** sang `WxViolation` — làm chặt, không nới; các assertion khác giữ nguyên. `check_wx`/`check_vm` recount toàn bộ.---
+- **D2-67** KT-39: W^X áp **toàn cục** trên `page_table_map_obj`/mọi Frame có mapping, **không** miễn trừ PageTable thuần; map W khi `mapped_x>0` hoặc map EXEC khi `mapped_w>0` ⇒ `WxViolation` atomic; `Device+EXEC` cũng vậy. đính chính: **3 ca KT-36 + 2 ca KT-37** cũ (W+X hợp lệ) được **cập nhật kỳ vọng** sang `WxViolation` — làm chặt, không nới; các assertion khác giữ nguyên. `check_wx`/`check_vm` recount toàn bộ.---
 
 ## Phần III — Duyệt
 
