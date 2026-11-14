@@ -4,6 +4,120 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
+HEAD          : `1cc67908` ([KT-49] SMP: SBI HSM + PerHart — commit chỉ `v2/`; parent `808695a0` = [KT-00] Agent 0 mở KT-49, không chạm)
+BUILD_ID      : — (ảnh K3 KT-49: `vifast-kbin-riscv64` 64.400 B, `vifast-kbin-ktest` 98.872 B, `vifast-kbin-ktest-guard` 52.376 B — `JOURNAL/kt49-budget.log`/`kt49-ktest-*.log`)
+Task          : **KT-49 (SMP: SBI HSM + PerHart)** — **DONE (`reviewer-kt49` DRIFT, **không** UNSAFE; 4 mục đã vá)**:
+                SBI HSM EID `0x48534D` — hart **boot** (theo `a0`, không hardcode 0) start hart `1..N-1` bằng
+                `sbi_hart_start(h, _start_secondary, opaque="KT49")`, barrier online, `hart_start` lỗi/hart ngoài DTB
+                (`hart_get_status = -3`) **log + từ chối, KHÔNG panic cả máy**; `MAX_HARTS = 8` `[TK]`.
+                **PerHart**: 8 record NOLOAD `guard 4 KiB | stack 64 KiB | trap stack 16 KiB` (`HART_STRIDE = 0x1_5000`,
+                tổng `0xA_8000`); guard **riêng từng hart** NONE ở identity/nửa cao/physmap; `_start`/`_start_secondary`
+                tính `sp`/`sscratch` theo hart; `trap_entry` dùng trap stack **của hart đang chạy** (nested per-hart);
+                `TP`/`sscratch`/`stvec` per-hart; `TimerStats`/`PlicStats` thành **PerHart** (`get(hart)`), handler chỉ
+                cộng slot của hart mình; PLIC `init_hart` đặt threshold/enable **context `2*h+1`** của hart (M-mode
+                `2*h` **tắt**), enable round-trip; `HartMask` + barrier có timeout (`released` tăng đơn điệu — bug đua
+                đã sửa; hart chậm **5 ms** vẫn qua; vòng kỳ vọng hart **không tồn tại** timeout **200 ms** rồi đi tiếp).
+                Ảnh test **20 TAP** (15..19 SMP, 20 trap lồng; pha SMP tách `ktest_smp.rs` theo R1), `expected.txt` +
+                sidecar; `ktest.sh` **matrix `-smp 1|2|4`**, log riêng từng N, kiểm `Platform HART Count` của OpenSBI;
+                ảnh sản phẩm bring-up SMP (hart lỗi chỉ `# smp: WARN`, **không panic**; `run.sh` đỏ nếu `harts ≠ -smp N`);
+                ảnh guard dùng guard **của hart boot thật** (tái hiện `Domain0 Boot HART: 3` ở `-smp 4` không icount,
+                vẫn 3/3 TAP). Host **55/55**; ktest **20/20 + 3/3**, **50 boot mỗi N = 300/300 sạch**; post-drift
+                **60/60**; product **50/50 smp1 + 50/50 smp4** (không icount); gate **569**; budget **1752/2648/1600 B**
+                trên trần 262.144 (`.stack`/`.trap_stack`/`.hart_stacks` NOLOAD báo riêng).
+Bước          : 8/8 xong (baseline gate 569 + ktest 15/3 → **đỏ trước** runner mới trên ảnh KT-48 `0/2`
+                (`kt49-red-ktest.log`) → `plat-common::smp` + PerHart timer/plic + host test 9 (46→55) → linker per-hart
+                + `_start`/`_start_secondary` + trap entry/sscratch per-hart → `arch::smp` (HSM/barrier/report) + mmu
+                guard per-hart/adopt satp + plic init_hart → ảnh test 20 TAP (`ktest_smp.rs`) + product/guard + runner
+                matrix/expected.txt → 300/300 boot, product 50/50×2, gate 569 → reviewer **DRIFT**: 5 ms thật, guard
+                theo hart boot, docs giới hạn timer PerHart dưới icount, nit comment/boot hart → vá + 60/60 + gate 569
+                → commit `[KT-49]`; `[KT-49b]` cập nhật HEAD + verdict + push)
+Nhánh         : main
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 569 test, 0 failed** (`JOURNAL/kt49-gate-fast.log`); baseline cùng số
+                (`JOURNAL/kt49-baseline-gate-fast.log`). Kernel **không** nằm trong `gate --fast` (`v2/Cargo.toml`
+                `exclude = ["kernel"]`) — kernel kiểm bằng build 3 ảnh + `ktest.sh` (**icount shift=6**, D2-74) +
+                `run.sh` (**không icount**, D2-72 Q2) + host test **55/55**
+                (`JOURNAL/kt49-{host-tests,ktest-smp1,ktest-smp2,ktest-smp4,boot50-matrix,ktest-postdrift-10x3,
+                product-boot50-smp1,product-boot50-smp4,budget,guard-boothart3}.log`).
+Miri          : KT-49 — **không chạy Miri** trên ảnh `no_std`/asm/MMIO (D2-72 Q12); Miri vẫn áp `lib/` + sim. Phần **logic**
+                SMP chạy host: `cargo test -p vifast-plat-common` **55/55** = 14 host KT-45 + 8 MMU + 12 timer + 12 PLIC
+                + **9 SMP KT-49** (`tests/smp.rs`: bố cục record 8 hart không chồng/căn trang, guard owner, `HartMask` +
+                hart ngoài dải, phân loại HSM/`start_decision` (từ chối hart ngoài DTB, không panic), `PerHartTimerStats`/
+                `PerHartPlicStats` không lẫn).
+Việc dở       : **`reviewer-kt49` DRIFT (không UNSAFE)**, 4 mục đã vá trước commit; đã commit `[KT-49]` + push;
+                `[KT-49b]` cập nhật HEAD + verdict + push. Kế tiếp Agent 0 lật KT-49 DONE → mở KT-50 (IPI + drain hộp
+                thư). `viscript/` + `review/` + `out-b.log`… của tab khác **không chạm** (chỉ stage `v2/`); không sửa
+                QUEUE/DECISIONS/AGENTS/spec/sim/.scn; không thêm dependency; `unsafe` chỉ `kernel/vifast-plat-*`.
+```
+
+## KT-49 — SMP: SBI HSM + PerHart (stack/trap/guard riêng mỗi hart, barrier, PLIC/timer theo hart)
+
+**Vào**: READY; HEAD `808695a0` (parent code KT-48 `aec27f73`); `HEAD..origin/main = 0`; working tree có `viscript/` +
+`review/` của tab khác — **không chạm**; baseline gate **569** (`JOURNAL/kt49-baseline-gate-fast.log`), ktest KT-48
+15/15 + 3/3 (`JOURNAL/kt49-baseline-ktest.log`).
+
+**Mục tiêu** (K3-PLAN §4.1 KT-49 + D2-72 Q4/Q7): boot hart `0` (thực tế: hart OpenSBI chọn) start hart `1..N-1` bằng
+SBI HSM `hart_start` với `start_addr`/`opaque`; barrier khởi động; hart lỗi **log, không panic cả máy**; stack +
+`.trap_stack` + guard **riêng** mỗi hart; `TP`/`sscratch` per-hart; `TimerStats`/`PlicStats` PerHart; PLIC
+enable/context `2*h+1`; `hart_id()` thật; `HartMask` + barrier; `MAX_HARTS=8`; hart vượt DTB bị từ chối; TAP
+`N harts alive` N=1/2/4 + per-hart guard/timer/plic + barrier; matrix `-smp 1|2|4`, `expected.txt`; 50 boot/N; gate 569;
+budget ≤ 262.144.
+
+**Đỏ trước** (`JOURNAL/kt49-red-ktest.log`): runner mới (plan 1..20 + TAP 15..19 + bằng chứng per-hart) trên ảnh KT-48
+(chỉ 15 TAP) ⇒ `not ok - ktest smp=1 boot 1: thiếu plan-1..20 ok-set-1..20 ok-count=15/20 …` + guard `thiếu
+guard-load-real`; `# KTEST: 0/2`; exit 1. Red do **thiếu tính năng**, không nới ngưỡng.
+
+**Kết quả**:
+- **`vifast-plat-common::smp`** (mới, `forbid(unsafe_code)`): `MAX_HARTS=8`; hằng record per-hart
+  (`HART_GUARD_BYTES=0x1000`, `HART_STACK_BYTES=0x10000`, `HART_TRAP_STACK_BYTES=0x4000`, `HART_STRIDE=0x15000`,
+  `HART_AREA_BYTES=0xA8000`), offset/`guard_owner` thuần; `HartMask` (`AtomicU64`); SBI HSM EID `0x48534D`/FID 0/1/2,
+  `HartStatus`/`start_decision` (`-3 INVALID_PARAM` ⇒ `Reject`)/`hart_start_ok`; const assert bố cục. **`tests/smp.rs` 9 test**.
+- **PerHart counters**: `TIMER_STATS: PerHartTimerStats`, `PLIC_STATS: PerHartPlicStats` (`get(hart)`); arch timer/plic
+  handler cộng slot `hart_id()`; `TRAP_STATS`/`GUARD_STATS` vẫn gộp (phạm vi có chủ đích, docs §12.8.5).
+- **`vifast-plat-riscv64`**: `_start`/`_start_secondary` tính `sp`/`sscratch` theo record hart (dịch/cộng,
+  không cần M), `_start` lưu `a1` (DTB) vào `SMP_DTB` sau zero `.bss`; `trap_entry` dùng `sscratch` per-hart
+  (nested theo `trap_top − HART_TRAP_STACK_BYTES`), `trap_dispatch` ghi frame per-hart; `smp.rs` (HSM ecall, DTB magic
+  qua physmap, `init` probe/start/chờ online timeout 2 s, `secondary_setup` adopt satp/stvec/online, barrier
+  begin/join/wait/release timeout, ticket, `SmpReport`); `mmu` guard per-hart NONE 3 alias, `adopt_satp`,
+  `guard_owner`/`guard_range_of`/`stack_range_of`/`trap_stack_range_of`; `plic::init_hart` context `2*h+1`, M-mode
+  `2*h` tắt, enable round-trip, `PlicHartReport`.
+- **Linker**: `ALIGN(2M)` → 8 record per-hart (`__hart_area_base`, `.stack_guard`/`.stack`/`.trap_stack` = hart 0,
+  `.hart_stacks` = 7 × `0x1_5000`, `__kernel_end = base + 0xA8000`), tất cả NOLOAD; `mmu::init` panic nếu linker lệch hằng.
+- **Ảnh test 20 TAP**: 1..14 giữ nguyên + TAP 6 mở rộng `all_harts=1`; **15** harts alive N (ticket hoán vị, mỗi hart in
+  `# hart h alive`), **16** per-hart stack/guard (tự chạm guard mình ⇒ scause 13, frame_trap=1), **17** per-hart timer
+  (100 tick/hart, slot riêng), **18** PLIC ctx `2h+1` per hart + PerHart stats (hart boot giữ `uart_irqs=8`), **19**
+  barrier (hart 1 trễ 5 ms vẫn qua; vòng có hart không tồn tại timeout 200 ms) — **20** trap lồng fatal.
+- **Runner**: `expected.txt` (`ktest 20 20`, `ktest-guard 3 3`) + `.license`; `ktest.sh` matrix 1|2|4, log riêng
+  `/tmp/k3-ktest-{main,guard}-smp<N>-<i>.log`, kiểm plan/tập ok/số ok, OpenSBI `Platform HART Count`, TAP 15 `harts alive N`,
+  số dòng `# hart/#stack/#timer/#plic`, barrier; `run.sh` kiểm `# smp: … harts=N … timeout=0 … dtb_magic=1`.
+- **Ảnh guard**: `guard_range_of(hart_id())` + `# guard image: hart=N`; runner đọc hart đó (không ghim 0) — tái hiện
+  `Domain0 Boot HART: 3` (`-smp 4`, không icount) vẫn 3/3, fault `hart=3` (`kt49-guard-boothart3.log`).
+
+**Số đo** (`JOURNAL/kt49-*`): `ktest.sh 50 matrix` → **300/300** sạch (`smp=1/2/4` mỗi N `100/100`, gồm
+main+guard); post-drift `ktest.sh 10 matrix` → **60/60**; `run.sh 50 1` **50/50**, `run.sh 50 4` **50/50**
+(không icount; `-smp 4` có boot hart 2/3 tùy lượt); host **55/55**; budget product `data+bss=1752`/`file=64400`,
+ktest `2648`/`98872`, guard `1600`/`52376` / trần **262144**; gate **569** (`JOURNAL/kt49-gate-fast.log`).
+Bằng chứng N=1/2/4: `# smp: … harts=1/2/4 … timeout=0 dtb_magic=1 base=0x80400000 stride=0x15000 area=0xa8000`;
+`# harts alive: n=… tickets=1`; `# stack hart=h … owner=h frame_trap=1`; `# timer hart=h ticks=100`; `# plic hart=h
+ctx=1/3/5/7`; `# barrier: round=5 … timeout=0 slow_delayed=1` + `round=6 … timeout=1 … may khong treo`.
+
+**Review độc lập**: `reviewer-kt49` **DRIFT** (không UNSAFE; tự chạy host 55, ktest 6/6, run 2/2 N=4, gate 569, đọc
+lịch sử 300/300). 4 mục vá: (1) hart chậm **đúng 5 ms** (`TICK_TICKS/2`, trước là 0,5 ms — sai đơn vị); (2) ảnh
+guard theo **hart boot** thay vì hardcode 0 (+ runner đọc hart, tái hiện boot hart 3); (3) docs §12.8.4 ghi giới hạn
+timer PerHart dưới icount (N=4 hart phụ `late/missed > 0` — hạn chế chia lượt vCPU; TAP 17 không đòi drift per-hart,
+drift [9,11] ms chỉ đo BSP theo D2-74); (4) nit comment `main.rs` (WARN không PANIC) + §12.1 boot hart có thể ≠ 0.
+Sau vá: 60/60, gate 569, budget dưới trần; TAP 1..14 không hồi quy.
+
+**Bug/độ lệch đã ghi**: DTB QEMU ở cuối RAM (`0x87e00000`) ngoài identity ⇒ magic đọc qua physmap (D2-72 Q7 vẫn chỉ
+kiểm magic); barrier `released` phải **tăng đơn điệu** (bug đua làm AP chờ timeout ở smp=2/4); vòng barrier-6 timeout
+**200 ms** (icount chia lượt vCPU — không nới ngưỡng DoD); `TRAP_STATS`/`GUARD_STATS` vẫn gộp; `-smp 8` chưa chạy
+(matrix 1/2/4); TAP 17 không đòi drift per-hart.
+
+**Không làm (đúng phạm vi)**: IPI + drain hộp thư (KT-50), ASID/TLB shootdown (KT-51), object layer (KT-52), U-mode
+(KT-53), harness đầy đủ/conformance (KT-54/55), `FaultKind`/W^X (KT-56), soak 1.000/K3-DOD (KT-57), port core (K3b);
+hotplug/suspend/scheduler; `spec/`, sim, `.scn`, QUEUE/DECISIONS/AGENTS, `viscript/`, `review/` **không chạm**; không
+thêm dependency; không `cfg(target_arch)`; `unsafe` chỉ `kernel/vifast-plat-*`.
+
+
 HEAD          : `aec27f73` ([KT-48] PLIC + UART IRQ — commit chỉ `v2/`; parent `5db8eaae` = [KT-00] **D2-75** của Agent 0, không chạm)
 BUILD_ID      : — (ảnh K3 KT-48: `vifast-kbin-riscv64` 55.560 B, `vifast-kbin-ktest` 74.264 B, `vifast-kbin-ktest-guard` 51.000 B — `JOURNAL/kt48-budget.log`/`kt48-ktest.log`)
 Task          : **KT-48 (PLIC + UART IRQ)** — **DONE (`reviewer-kt48` DRIFT nhẹ: code/DoD đạt, **không** UNSAFE; 4 mục đã vá + D2-75)**: PLIC cổ điển `0x0c00_0000` map **2×2 MiB Device RW NX** (priority/pending/enable + context), context S-mode **`2*hart+1`** (M-mode `2*hart` không bật), `ndev` **probe register** (write-1 → read-back → khôi phục 0 → read-back 0, panic nếu sai — D2-75), threshold **0**, priority IRQ 10 **1**; UART0 IRQ 10 bật `IER.TX-empty`, handler `claim → đọc IIR → complete → re-arm IER 0→2` (level-triggered có gateway), tắt `IER` + enable sau **N=8** ngắt; `scause=(1<<63)|9` ⇒ `Event::Interrupt{code:9}` → PLIC (line lạ đếm + complete, **0 IRQ giả**); `Platform::enable_irq/disable_irq` **PLIC thật** (TAP gọi wrapper); TAP **8..10 PLIC/UART** + timer **11..14** (chạy **sau** PLIC — hồi quy cùng boot) + nested **15**; product cũng bật PLIC+UART IRQ (**không icount**); host test **46/46**; ktest **15/15 + 3/3**; product **50/50**; gate **569**; budget **344/352/344 B**
