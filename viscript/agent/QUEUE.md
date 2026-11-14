@@ -160,7 +160,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-65 | **VS2 #3c** — server: `net.listen/local_addr/accept(_timeout)` + e2e 2 tiến trình | ST-64 | 3 h | **DONE** | 4 ca; bàn giao cổng qua tệp; ≤3 s, không flake 3 lần |
 | ST-66 | **VS2 #3d** — ca biên net/http + `--explain-perms` NET + `--vm` cache/no-cache | ST-65 | 2 h | **DONE** | ≥13 ca tổng; `gate` xanh |
 | ST-67 | **VS2 #5a** — `vis lsp`: khung Content-Length + initialize/shutdown/exit + lỗi framing | ST-66 | 2,5 h | **DONE** | 6 snapshot; stdout sạch; thoát khi EOF |
-| ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **READY** | 6 snapshot + 6 unit vị trí |
+| ST-68 | **VS2 #5b** — LSP diagnostics + vị trí **UTF-16** (emoji, tab, CRLF) | ST-67 | 3 h | **DONE** | 6 snapshot + 6 unit vị trí |
 | ST-69 | **VS2 #5c** — LSP completion/hover + ≥13 phản hồi snapshot | ST-68 | 2,5 h | **READY** | ≥13 frame; prefix/hover/null |
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **READY** | 6 ca + e2e tất định; không mạng |
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **READY** | 4 ca; lock không có đường tuyệt đối |
@@ -1054,3 +1054,15 @@ APPROVED 2026-11-14 Agent 0
 > 181/72/66 dòng. Nợ: **chưa** diagnostics/completion/hover thật (ST-68/69), chưa đọc `params`, EOF ⇒ exit 0 (khác spec
 > LSP — cần cho test/CI), một luồng.
 > **ST-68 mở** (VS2 #5b — diagnostics + vị trí **UTF-16**).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-68 DONE — VS2 #5b (LSP diagnostics + UTF-16) CÓ MẶT.** Commit `ab1ed6c8` (**Agent 2 tự commit, đã push**).
+> `didOpen`/`didChange`(full sync)/`didClose` ⇒ `publishDiagnostics`, đường phân tích **đúng `vis check`** (lex+parse+lower+tyck,
+> gộp 4 nguồn, sắp `(span.start, mã)`, severity 1/2, message làm phẳng); vị trí **0-based, UTF-16, tab = 1** qua hai hàm mới
+> (không dùng `modules::vi_tri` 1-based/scalar/tab=4), tính trên `lexed.text` đã NFC/CRLF→LF. **7 snapshot** + **6 unit** vị trí
+> — trong đó ca emoji ra **`0:13–0:14`** (scalar sẽ sai `0:12`) và ca tab ra `1:0–1:1` + `1:14–1:17`. Đo: **834 test** · sem
+> **441/21** · parity **395/395** · differential **100k/0 lệch** (313,5 s). Clippy đỏ lần 1 (`if_same_then_else`, 2
+> `needless_lifetimes`) ⇒ sửa **mã**, không nới lint. Nợ: chưa module-aware (`Use`/`std.*` có thể khác `vis check`), lower/tyck
+> vẫn chạy khi lex/parse lỗi (có thể thêm nhiễu), chỉ full sync, chưa completion/hover.
+> **ST-69 mở** (VS2 #5c — completion/hover; đích **≥13 phản hồi**).
