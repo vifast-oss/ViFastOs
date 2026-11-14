@@ -36,38 +36,39 @@ SECTIONS
        kernel image `[0x8020_0000, 0x8040_0000)` map được bằng **một leaf 2 MiB** ở nửa cao
        (yêu cầu "kernel nửa cao 2 MiB"), còn guard page vẫn cưỡng chế được ở granularity 4 KiB
        trong vùng NOLOAD phía sau. Nếu bỏ ALIGN(2M) này, guard nằm trong chính leaf 2 MiB của
-       image ⇒ không thể set NONE riêng. */
+       image ⇒ không thể set NONE riêng.
+       KT-49: vùng này là **MAX_HARTS = 8** record per-hart, mỗi record
+         guard 4 KiB | stack 64 KiB | trap stack 16 KiB  (HART_STRIDE = 0x1_5000)
+       — khớp TUYỆT ĐỐI với `vifast_plat_common::smp` (mmu::init panic nếu lệch). */
     . = ALIGN(2M);
+    __hart_area_base = .;
 
-    /* Trang bảo vệ 4 KiB NGAY DƯỚI đáy stack. MMU (KT-46) cưỡng chế bằng entry **NONE**
-       (không map) ở cả identity, nửa cao và physmap. NOLOAD nên không tính vào budget. */
+    /* ---- hart 0: giữ tên symbol cũ (KT-46 dùng `__stack_*`/`__trap_stack_*` cho hart 0). */
     .stack_guard (NOLOAD) : ALIGN(4K) {
         __stack_guard_start = .;
         . += 0x1000;
         __stack_guard_end = .;
     }
 
-    /* Stack boot 64 KiB, NOLOAD — đo RIÊNG, không cộng vào trần 256 KiB (D2-72 Q5).
-       Stack mọc xuống (`sp = __stack_top`) nên chạm đáy = vào trang bảo vệ. */
     .stack (NOLOAD) : ALIGN(16) {
         __stack_bottom = .;
         . += 0x10000;
         __stack_top = .;
     }
 
-    /* KT-45: trap stack RIÊNG, NOLOAD — `trap_entry` làm `csrrw sp, sscratch, sp` (sp = đỉnh
-       vùng này) rồi `addi sp, sp, -288` để trapframe 288 B nằm TRỌN trong vùng, nên trap không
-       bao giờ ghi đè stack của code bị ngắt. Một hart ở KT-45; stack theo hart là KT-49.
-       LƯU Ý KT-46: `.trap_stack`/`.stack` là NOLOAD nên **không nằm trong `filesz`** của LOAD
-       (LOAD `memsz` vẫn phủ tới `__kernel_end`), nhưng page table kernel **vẫn phải map tường
-       minh** cả hai vùng (và arena bắt đầu từ `__kernel_end`, sau vùng này).
-       NOLOAD nên KHÔNG cộng vào trần `.data+.bss` (D2-72 Q5); `budget.sh` in riêng như `.stack`. */
     .trap_stack (NOLOAD) : ALIGN(16) {
         __trap_stack_bottom = .;
-        . += 0x4000; /* 16 KiB: trapframe 288 B + handler Rust + in log */
+        . += 0x4000;
         __trap_stack_top = .;
-        __kernel_end = .;
     }
+
+    /* ---- hart 1..7: cùng khuôn record, chỉ cấp địa chỉ (NOLOAD); guard/stack/trap stack của
+       từng hart tính bằng `__hart_area_base + hart*HART_STRIDE` trong Rust. */
+    .hart_stacks (NOLOAD) : ALIGN(16) {
+        . += 7 * 0x15000;
+    }
+
+    __kernel_end = .;
 
     /DISCARD/ : {
         *(.eh_frame)

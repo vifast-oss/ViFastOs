@@ -31,13 +31,22 @@
 //! enable/context `0x20_0000 + 0x1000*ctx`, context S-mode `2*hart+1`, phân loại claim
 //! (UART / spurious / line lạ), bộ đếm claim/complete + ngắt UART cho TAP "0 IRQ giả"; `trap` thêm
 //! mã ngắt external **9** ⇒ `Event::Interrupt { code: 9 }` do `trap_dispatch` đưa vào
-//! claim/complete. **Không** thuộc KT-48: IPI (KT-50), SMP (KT-49), ASID/shootdown (KT-51),
-//! U-mode (KT-53), MSI/AIA — xem `v2/docs/k3-riscv64.md` §11.
+//! claim/complete.
+//!
+//! KT-49 mở module [`smp`]: `MAX_HARTS = 8` `[TK]` (D2-72 Q4), **bố cục NOLOAD theo hart**
+//! (`guard | stack | trap stack`, [`smp::HART_STRIDE`]), [`smp::HartMask`] cho `hart_online` +
+//! barrier, và **SBI HSM** (`hart_start`/`hart_get_status` + phân loại trạng thái ⇒ hart ngoài
+//! DTB bị từ chối, không panic cả máy). [`timer`]/[`plic`] chuyển bộ đếm từ **một hart toàn cục**
+//! (KT-47/KT-48) sang **PerHart** (`TIMER_STATS.get(hart)`/`PLIC_STATS.get(hart)`).
+//!
+//! **Không** thuộc KT-49: IPI (KT-50), ASID/shootdown (KT-51), object layer (KT-52), U-mode
+//! (KT-53), preemption/hotplug — xem `v2/docs/k3-riscv64.md` §12.
 #![no_std]
 #![forbid(unsafe_code)]
 
 pub mod mmu;
 pub mod plic;
+pub mod smp;
 pub mod timer;
 pub mod trap;
 

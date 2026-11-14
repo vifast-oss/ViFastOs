@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# KT-44 — boot ảnh SẢN PHẨM riscv64 K3 (kế nhiệm run.sh K0.5 của KT-07).
+# KT-44/49 — boot ảnh SẢN PHẨM riscv64 K3 (kế nhiệm run.sh K0.5 của KT-07).
 #
 # Build ảnh sản phẩm, đo budget (D2-72 Q5: `.data+.sdata+.bss+.sbss` ≤ 262.144 B, `.stack` báo
 # riêng), đòi ảnh **không** chứa chuỗi `ktest` (D2-08), rồi boot QEMU N lần với
@@ -105,10 +105,12 @@ while [ "$i" -le "$N_BOOT" ]; do
     fi
     if grep -q '^TAP version 13$' "$out" && grep -q '^1\.\.1$' "$out" &&
         grep -q '^ok 1 - k3 boot$' "$out" && grep -q '^# k3 halt$' "$out" &&
+        grep -Eq "^# smp: boot=[0-9]+ harts=$SMP .* timeout=0 .* dtb_magic=1" "$out" &&
+        grep -q "^Platform HART Count *: *$SMP" "$out" &&
         ! grep -q '^PANIC' "$out"; then
-        echo "ok $i - boot $i"
+        echo "ok $i - boot $i (smp=$SMP)"
     else
-        echo "not ok $i - boot $i: thiếu marker TAP/halt hoặc có PANIC, log $out"
+        echo "not ok $i - boot $i: thiếu marker TAP/halt hoặc smp=$SMP không khớp, log $out"
         fails=$((fails + 1))
     fi
     i=$((i + 1))

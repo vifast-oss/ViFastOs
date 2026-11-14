@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# expected TAP — runner boot K3 (đọc bởi v2/test/boot/ktest.sh).
+#
+# KT-49: ảnh test chính 20 TAP (1..14 = KT-45/46/47/48; 15..19 = SMP KT-49; 20 = trap lồng
+# fatal có chủ đích), ảnh test guard 3 TAP (guard page fault thật của KT-46).
+#
+# Cú pháp: <nhãn> <kế hoạch TAP> <số dòng `ok` kỳ vọng>
+# Thêm ảnh test mới ⇒ thêm dòng ở đây; runner **fail** nếu số `ok`/kế hoạch không khớp.
+ktest 20 20
+ktest-guard 3 3

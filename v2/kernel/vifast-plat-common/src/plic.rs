@@ -47,9 +47,16 @@
 //! cách tắt rồi bật lại `IER.TX-empty` sau complete cho tới khi đủ [`UART_IRQ_LIMIT`] ngắt, rồi
 //! tắt hẳn (D2-72: "handler đếm, tắt sau N" — K3-PLAN §4.1 KT-48).
 //!
-//! **Không** thuộc KT-48: IPI (KT-50), MSI/AIA, PLIC theo hart khác (SMP — KT-49).
+//! **KT-49**: [`PLIC_STATS`] là **PerHart** ([`PerHartPlicStats`]): handler của hart nào cộng bộ
+//! đếm của hart đó (`PLIC_STATS.get(hart)`), nên TAP "plic ctx per hart" chứng minh context
+//! `2*hart+1` **không lẫn** — cùng một PLIC nhưng mỗi hart claim/complete trên context riêng.
+//! `PlicStats` vẫn có `reset()` cho test host.
+//!
+//! **Không** thuộc KT-48/49: IPI (KT-50), MSI/AIA, hotplug hart.
 
 use core::sync::atomic::{AtomicU64, Ordering};
+
+use crate::smp::MAX_HARTS;
 
 /// Offset khối priority trong cửa sổ PLIC (mỗi IRQ 4 B).
 pub const PLIC_PRIORITY_BASE: u64 = 0x0000;
@@ -313,8 +320,50 @@ impl Default for PlicStats {
     }
 }
 
-/// Bộ đếm PLIC của ảnh kernel (một hart ở KT-48).
-pub static PLIC_STATS: PlicStats = PlicStats::new();
+/// Bộ đếm PLIC **theo hart** (KT-49) — mỗi hart một [`PlicStats`] riêng.
+///
+/// Handler external chạy trên hart nào thì cộng bộ đếm của hart đó, nên `traps/claims/completions/
+/// uart_irqs` **không lẫn** giữa các hart; TAP "plic ctx per hart" đọc từng slot.
+#[derive(Debug)]
+pub struct PerHartPlicStats {
+    slots: [PlicStats; MAX_HARTS],
+}
+
+impl PerHartPlicStats {
+    /// Bộ đếm rỗng cho mọi hart — `const` để đặt trong `static`.
+    pub const fn new() -> Self {
+        Self {
+            slots: [const { PlicStats::new() }; MAX_HARTS],
+        }
+    }
+
+    /// Bộ đếm của `hart`; hart ngoài dải ⇒ slot 0 (không bao giờ xảy ra với trap thật).
+    pub fn get(&self, hart: usize) -> &PlicStats {
+        &self.slots[if hart < MAX_HARTS { hart } else { 0 }]
+    }
+
+    /// Tổng `claims` trên mọi hart (bằng chứng gộp cho log/TAP).
+    pub fn total_claims(&self) -> u64 {
+        self.slots.iter().map(|slot| slot.snapshot().claims).sum()
+    }
+
+    /// Tổng `uart_irqs` trên mọi hart.
+    pub fn total_uart_irqs(&self) -> u64 {
+        self.slots
+            .iter()
+            .map(|slot| slot.snapshot().uart_irqs)
+            .sum()
+    }
+}
+
+impl Default for PerHartPlicStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Bộ đếm PLIC **theo hart** của ảnh kernel (KT-49; KT-48 là một hart toàn cục).
+pub static PLIC_STATS: PerHartPlicStats = PerHartPlicStats::new();
 
 // Hai cửa sổ 2 MiB phải phủ hết context của `MAX_HARTS = 8`: enable của context 15 ở 0x2780
 // (cửa sổ thấp) và claim của context 15 ở 0x20f000 (cửa sổ cao). Nếu ai đổi cửa sổ/hart thì

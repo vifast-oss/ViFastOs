@@ -1,0 +1,110 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh sản phẩm (riscv64gc-unknown-none-elf, release)
+# image=product path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=63320 data+bss=1752 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=13174 .rodata=3384 .data=64 .bss=1688 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+# data+bss-sections: .data=64 .bss=1688 
+# image=product ktest-strings=0
+# boot: n=50 smp=1 timeout=20s
+# opensbi v1.8.1
+ok 1 - boot 1 (smp=1)
+# opensbi v1.8.1
+ok 2 - boot 2 (smp=1)
+# opensbi v1.8.1
+ok 3 - boot 3 (smp=1)
+# opensbi v1.8.1
+ok 4 - boot 4 (smp=1)
+# opensbi v1.8.1
+ok 5 - boot 5 (smp=1)
+# opensbi v1.8.1
+ok 6 - boot 6 (smp=1)
+# opensbi v1.8.1
+ok 7 - boot 7 (smp=1)
+# opensbi v1.8.1
+ok 8 - boot 8 (smp=1)
+# opensbi v1.8.1
+ok 9 - boot 9 (smp=1)
+# opensbi v1.8.1
+ok 10 - boot 10 (smp=1)
+# opensbi v1.8.1
+ok 11 - boot 11 (smp=1)
+# opensbi v1.8.1
+ok 12 - boot 12 (smp=1)
+# opensbi v1.8.1
+ok 13 - boot 13 (smp=1)
+# opensbi v1.8.1
+ok 14 - boot 14 (smp=1)
+# opensbi v1.8.1
+ok 15 - boot 15 (smp=1)
+# opensbi v1.8.1
+ok 16 - boot 16 (smp=1)
+# opensbi v1.8.1
+ok 17 - boot 17 (smp=1)
+# opensbi v1.8.1
+ok 18 - boot 18 (smp=1)
+# opensbi v1.8.1
+ok 19 - boot 19 (smp=1)
+# opensbi v1.8.1
+ok 20 - boot 20 (smp=1)
+# opensbi v1.8.1
+ok 21 - boot 21 (smp=1)
+# opensbi v1.8.1
+ok 22 - boot 22 (smp=1)
+# opensbi v1.8.1
+ok 23 - boot 23 (smp=1)
+# opensbi v1.8.1
+ok 24 - boot 24 (smp=1)
+# opensbi v1.8.1
+ok 25 - boot 25 (smp=1)
+# opensbi v1.8.1
+ok 26 - boot 26 (smp=1)
+# opensbi v1.8.1
+ok 27 - boot 27 (smp=1)
+# opensbi v1.8.1
+ok 28 - boot 28 (smp=1)
+# opensbi v1.8.1
+ok 29 - boot 29 (smp=1)
+# opensbi v1.8.1
+ok 30 - boot 30 (smp=1)
+# opensbi v1.8.1
+ok 31 - boot 31 (smp=1)
+# opensbi v1.8.1
+ok 32 - boot 32 (smp=1)
+# opensbi v1.8.1
+ok 33 - boot 33 (smp=1)
+# opensbi v1.8.1
+ok 34 - boot 34 (smp=1)
+# opensbi v1.8.1
+ok 35 - boot 35 (smp=1)
+# opensbi v1.8.1
+ok 36 - boot 36 (smp=1)
+# opensbi v1.8.1
+ok 37 - boot 37 (smp=1)
+# opensbi v1.8.1
+ok 38 - boot 38 (smp=1)
+# opensbi v1.8.1
+ok 39 - boot 39 (smp=1)
+# opensbi v1.8.1
+ok 40 - boot 40 (smp=1)
+# opensbi v1.8.1
+ok 41 - boot 41 (smp=1)
+# opensbi v1.8.1
+ok 42 - boot 42 (smp=1)
+# opensbi v1.8.1
+ok 43 - boot 43 (smp=1)
+# opensbi v1.8.1
+ok 44 - boot 44 (smp=1)
+# opensbi v1.8.1
+ok 45 - boot 45 (smp=1)
+# opensbi v1.8.1
+ok 46 - boot 46 (smp=1)
+# opensbi v1.8.1
+ok 47 - boot 47 (smp=1)
+# opensbi v1.8.1
+ok 48 - boot 48 (smp=1)
+# opensbi v1.8.1
+ok 49 - boot 49 (smp=1)
+# opensbi v1.8.1
+ok 50 - boot 50 (smp=1)
+# 50/50 boot sạch (smp=1)
+# run.sh: PASS

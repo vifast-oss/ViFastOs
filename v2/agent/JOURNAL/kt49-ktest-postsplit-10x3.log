@@ -1,0 +1,137 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected: ktest plan=20 ok=20; ktest-guard plan=3 ok=3
+# build 2 ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=98720 data+bss=2648 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=27712 .rodata=7704 .data=200 .bss=2448 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+# data+bss-sections: .data=200 .bss=2448 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=52416 data+bss=1600 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=10710 .rodata=2792 .bss=1600 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+# data+bss-sections: .bss=1600 
+# image=ktest ktest-strings=39
+# image=ktest-guard ktest-strings=6
+# opensbi v1.8.1
+ok - ktest smp=1 boot 1 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 1 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 2 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 2 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 3 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 3 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 4 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 4 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 5 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 5 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 6 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 6 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 7 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 7 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 8 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 8 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 9 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 9 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=1 boot 10 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=1 boot 10 (3 TAP: load 13 + store 15)
+# smp=1: 20/20 boot ảnh test sạch
+# opensbi v1.8.1
+ok - ktest smp=2 boot 1 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 1 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 2 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 2 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 3 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 3 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 4 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 4 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 5 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 5 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 6 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 6 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 7 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 7 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 8 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 8 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 9 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 9 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=2 boot 10 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=2 boot 10 (3 TAP: load 13 + store 15)
+# smp=2: 20/20 boot ảnh test sạch
+# opensbi v1.8.1
+ok - ktest smp=4 boot 1 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 1 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 2 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 2 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 3 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 3 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 4 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 4 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 5 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 5 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 6 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 6 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 7 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 7 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 8 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 8 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 9 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 9 (3 TAP: load 13 + store 15)
+# opensbi v1.8.1
+ok - ktest smp=4 boot 10 (20 TAP: trap+mmu+plic+timer+smp)
+# opensbi v1.8.1
+ok - guard smp=4 boot 10 (3 TAP: load 13 + store 15)
+# smp=4: 20/20 boot ảnh test sạch
+# KTEST: 60/60 boot sạch (smp=matrix, NBOOT=10)
+# ktest.sh: PASS

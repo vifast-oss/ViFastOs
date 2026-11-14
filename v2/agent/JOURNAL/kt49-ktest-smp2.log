@@ -1,0 +1,134 @@
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 2
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 333 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 77 KB
+Firmware Heap Offset        : 0x49000
+Firmware Heap Size          : 41 KB (total), 0 KB (reserved), 12 KB (used), 27 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*,1*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..20
+# ktest image: hart=0 timebase_hz=10000000 time=8477204 tick_hz=100 stvec=0x80200090 trap_vector=0x80200090 direct=true
+ok 1 - ktest image
+# trap Breakpoint scause=0x3 sepc=0x80200bc0 stval=0x80200bc0 insn=4 resume=0x80200bc4 frame=0x80414ee0
+# breakpoint: scause=0x3 kind=0x3 sepc=0x80200bc0 after=0x80200bc4 traps+1 recovered+1
+ok 2 - trap breakpoint
+# ecall sbi: a0=0xfffffffffffffffe (NOT_SUPPORTED=0xfffffffffffffffe) ecall=0x80200d1c after=0x80200d20 stvec-traps+0)
+ok 3 - trap ecall sbi
+# trap IllegalInstruction scause=0x2 sepc=0x80200e68 stval=0xffffffff insn=4 resume=0x80200e6c frame=0x80414ee0
+# illegal inject (KHÔNG phải trap phần cứng — MEDELEG bit 2 = 0, D2-73): scause=0x2 kind=0x2 sepc=0x80200e68 after=0x80200e6c
+ok 4 - trap illegal inject
+# mmu: satp=0x80000000000804a8 mode=8 root=0x804a8000 tables=9 used=36864 arena=0x804a8000-0x804b8000 kernel_end=0x804a8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# mmu on: satp=0x80000000000804a8 mode=8 readback=0x80000000000804a8 root=0x804a8000 arena=0x804a8000 alias=1 uart=1 kernel_low=1 kernel_high=1
+ok 5 - mmu on
+# mmu layout: guard=0x80400000-0x80401000 none_low=1 none_high=1 none_physmap=1 stack=0x80401000-0x80411000 rw_nx=1 trap=0x80411000-0x80415000 rw_nx=1 arena=0x804a8000-0x804b8000 arena_alias=1 plic_low_2m=1 plic_high_2m=1 physmap_2m_nx=1 uart_dev=1 plic_dev=1 kernel_high_2m=1 all_harts=1
+ok 6 - map layout
+# walk khop: pre=post=1 software=8/8 hardware_a=1 hardware_b=1 alias=1 satp_root=0x804a8000
+ok 7 - walk khop
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 plat_off=1 plat_on=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# plic map: low=0xc000000-0xc200000 high=0xc200000-0xc400000 low_dev=1 high_dev=1 low_2m=1 high_2m=1 low_nx=1 high_nx=1
+ok 8 - plic window
+# uart irq: irqs=8 claims=8 completes=8 traps_delta=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+ok 9 - uart irq
+# plic quiet: claim_idle=0 quiet=1 stats_unchanged=1 external_traps=8 interrupts_delta=8 spurious=0 unexpected=0
+ok 10 - plic no fake irq
+# timer arm: now=8720083 first_deadline=8820083 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer ticks: ticks=100 min_delta_ticks=100000 max_delta_ticks=100197 non_monotonic=0 late=0 missed=0 max_late_ticks=197 first=8720083 last=18720280 deadline=18820083
+ok 11 - timer 100 ticks monotonic
+# timer ticks: ticks=1000 min_delta_ticks=100000 max_delta_ticks=100197 non_monotonic=0 late=0 missed=0 max_late_ticks=197 first=8720083 last=108720280 deadline=108820083
+ok 12 - timer no lost tick
+# timer irq: interrupts=1008 scause=0x8000000000000005 code=5 exceptions=2 exceptions_before=2 sie_stie=1
+# timer sie: trap_spie_on=1000 handler_sie_off=1000 ticks=1000 sie_stie=1 sret_sie=1
+ok 13 - timer irq
+# timer drift: min_ns=10000000 max_ns=10019700 min_us=10000 max_us=10019 tick_ns=10000000 min_bound_ns=9000000 max_bound_ns=11000000 in_range=1
+ok 14 - timer deadline drift
+# timer disable: sie_stie=0 sstatus_sie=0
+# smp: boot=0 harts=2 present=0x3 online=0x3 started=0x2 absent=0xfc rejected=6 timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x15000 area=0xa8000
+# smp: hart 2 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 3 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 4 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 5 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 6 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 7 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# hart 0 alive ticket=0 tp=0 stack=0x80401000-0x80411000 trap=0x80411000-0x80415000 guard=0x80400000-0x80401000
+# hart 1 alive ticket=1 tp=1 stack=0x80416000-0x80426000 trap=0x80426000-0x8042a000 guard=0x80415000-0x80416000
+# harts alive: n=2 mask=0x3 alive=0x3 tickets=1 arrived=0x3 timeout=0
+ok 15 - harts alive 2
+# guard fault load scause=0xd stval=0x80400000 sepc=0x802007c0 len=2 recovered=1 hart=0
+# guard fault load scause=0xd stval=0x80415000 sepc=0x802007c0 len=2 recovered=1 hart=1
+# stack hart=0 stack=0x80401000-0x80411000 trap=0x80411000-0x80415000 guard=0x80400000-0x80401000 owner=0 frame=0x80414ee0 frame_trap=1 rw_nx=1 guard_none=1
+# stack hart=1 stack=0x80416000-0x80426000 trap=0x80426000-0x8042a000 guard=0x80415000-0x80416000 owner=1 frame=0x80429ee0 frame_trap=1 rw_nx=1 guard_none=1
+# per-hart stack/guard: stack_ok=0x3 guard_ok=0x3 distinct=1 owner_ok=true
+ok 16 - per-hart stack/guard
+# timer hart=0 ticks=100 first=110005230 late=0 missed=0 non_monotonic=0 ok=1
+# timer hart=1 ticks=100 first=110005420 late=0 missed=0 non_monotonic=0 ok=1
+# per-hart timer: ok=0x3 total_ticks=200 arrived=0x3 timeout=0
+ok 17 - per-hart timer
+# plic hart=0 ctx=1 mmode_ctx=0 threshold=0 priority_uart=1 enable_on=1 enable_off=1 mmode_off=1 ok=1
+# plic hart=1 ctx=3 mmode_ctx=2 threshold=0 priority_uart=1 enable_on=1 enable_off=1 mmode_off=1 ok=1
+# per-hart plic: ok=0x3 distinct=1 uart_irqs_hart0=8 stats_clean=1 arrived=0x3 timeout=0
+ok 18 - plic ctx per hart
+# barrier: round=5 arrived=0x3 missing=0x0 timeout=0 wait_ticks=745967 slow_hart=1 slow_delayed=1
+# barrier timeout: round=6 expected_missing=0x4 arrived=0x3 missing=0x4 timeout=1 wait_ticks=2000029 (may khong treo)
+ok 19 - barrier
+# ktest: fails=0 traps total=1212 recovered=4 fatal=0 interrupts=1208
+ok 20 - trap nested panic
+# nested trap: inject sp trong trap stack + jr trap_entry; kỳ vọng PANIC + halt (P2b)
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

@@ -27,6 +27,12 @@
 //! ngắt; line lạ được đếm + complete để không treo; `Platform::enable_irq`/`disable_irq` giờ là
 //! PLIC thật (đọc lại bit enable).
 //!
+//! KT-49 mở module [`smp`] (SBI HSM + PerHart): `_start` và `_start_secondary` tính `sp`/
+//! `sscratch` từ **record per-hart** (`__hart_area_base + hart*HART_STRIDE`), `trap_entry` đổi
+//! sang `.trap_stack` **của chính hart đang chạy** (tính từ `sp` frame, không dùng biến toàn cục
+//! một hart) và phát hiện trap lồng theo địa chỉ trap stack per-hart; `trap_dispatch` ghi
+//! `hart_id()`/trapframe vào bộ trạng thái SMP để TAP chứng minh `TP`/`sscratch` per-hart.
+//!
 //! Địa chỉ UART/PLIC/CLINT là **dữ kiện nền tảng QEMU virt** (D2-72 Q7), không phải hằng số thiết
 //! kế `[TK]`; `spec/kernel.toml` **không** mở ở K3 (D2-72 Q1) nên chúng nằm ở đây và ở
 //! `v2/docs/k3-riscv64.md`.
@@ -40,6 +46,7 @@
 
 use core::arch::{asm, global_asm};
 use core::fmt::Write;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use vifast_plat_common::trap::{
     decode_trap, handle_trap, report_fatal, report_guard_fault, report_interrupt, tf_reg_offset,
@@ -51,6 +58,7 @@ use vifast_plat_common::{Platform, PlatformWriter};
 
 pub mod mmu;
 pub mod plic;
+pub mod smp;
 pub mod timer;
 
 /// UART0 của QEMU `virt` (16550A) — dữ kiện nền tảng, D2-72 Q7.
@@ -80,9 +88,23 @@ global_asm!(
     ".globl _start",
     "_start:",
     "mv tp, a0", // hartid (a0) — OpenSBI truyền; `a1` là DTB (KT-45 trở đi mới dùng)
-    "la sp, __stack_top",
-    // KT-45 P4: zero `.bss` tường minh (không dựa vào "QEMU/RAM tình cờ bằng 0"). Chỉ dùng
-    // t0/t1, không đụng a0 (hartid)/a1 (DTB). `.bss` luôn 8-byte aligned theo linker script.
+    // KT-49: stack/sscratch tính từ **record per-hart** (không dùng __stack_top toàn cục): record
+    // của hart h ở `__hart_area_base + h*HART_STRIDE`, gồm guard | stack | trap stack. Dùng phép
+    // dịch/cộng (không cần M extension): h*0x15000 = h<<16 + h<<14 + h<<12.
+    "la t0, __hart_area_base",
+    "slli t2, a0, 16",
+    "slli t3, a0, 14",
+    "add t2, t2, t3",
+    "slli t3, a0, 12",
+    "add t2, t2, t3",
+    "add t0, t0, t2",
+    "li t1, 0x11000", // guard 4 KiB + stack 64 KiB
+    "add sp, t0, t1", // đỉnh stack của hart này
+    "li t1, 0x15000", // + trap stack 16 KiB
+    "add t0, t0, t1",
+    "csrw sscratch, t0", // đỉnh trap stack của hart này
+    // KT-45 P4: zero `.bss` tường minh (không dựa vào "QEMU/RAM tình cờ bằng 0"). Vòng zero chỉ
+    // dùng t0/t1, không đụng a0 (hartid)/a1 (DTB). `.bss` luôn 8-byte aligned theo linker script.
     "la t0, __bss_start",
     "la t1, __bss_end",
     "1:",
@@ -91,9 +113,32 @@ global_asm!(
     "addi t0, t0, 8",
     "j 1b",
     "2:",
-    "la t0, __trap_stack_top", // KT-45: trap stack riêng, đổi bằng sscratch
-    "csrw sscratch, t0",
+    // KT-49: giữ DTB (a1) cho `smp::init` kiểm magic (D2-72 Q7) — lưu SAU khi zero `.bss` để
+    // không bị xoá (SMP_DTB nằm trong `.bss`).
+    "la t0, SMP_DTB",
+    "sd a1, 0(t0)",
     "call rust_main",
+    "j .",
+    // ------------------------------------------------------- entry hart thứ cấp (KT-49, SBI HSM)
+    // SBI HSM gọi `start_addr` ở S-mode với `a0 = hartid`, `a1 = opaque` (SBI spec §8.1), satp=0.
+    // Không zero `.bss` (BSP đã làm), không đụng a0/a1 trước khi gọi Rust.
+    ".balign 4",
+    ".globl _start_secondary",
+    "_start_secondary:",
+    "mv tp, a0",
+    "la t0, __hart_area_base",
+    "slli t2, a0, 16",
+    "slli t3, a0, 14",
+    "add t2, t2, t3",
+    "slli t3, a0, 12",
+    "add t2, t2, t3",
+    "add t0, t0, t2",
+    "li t1, 0x11000",
+    "add sp, t0, t1",
+    "li t1, 0x15000",
+    "add t0, t0, t1",
+    "csrw sscratch, t0",
+    "call rust_secondary_main",
     "j .",
     // ------------------------------------------------------------------ trap entry (KT-45)
     ".balign 4",
@@ -112,7 +157,8 @@ global_asm!(
     "sd x5, {x5}(sp)",
     "csrr t0, sscratch",
     "sd t0, {x2}(sp)",
-    "la t0, __trap_stack_top",
+    // KT-49: sscratch = đỉnh trap stack của **hart này** = frame + TF_SIZE (không global).
+    "addi t0, sp, {tf_size}",
     "csrw sscratch, t0",
     "sd x6, {x6}(sp)",
     "sd x7, {x7}(sp)",
@@ -147,9 +193,13 @@ global_asm!(
     // đè đúng slot frame ngoài (`top-288`) — vô hại vì halt ngay, không resume. t0/t1 đã lưu ở
     // trên nên dùng tự do. Normal: sp bị ngắt ≤ __stack_top = __trap_stack_bottom.
     "ld t0, {x2}(sp)",
-    "la t1, __trap_stack_bottom",
-    "bgeu t1, t0, .Ltrap_normal", // old_sp <= bottom ⇒ trap từ boot stack, bình thường
-    "la t1, __trap_stack_top",
+    // KT-49: biên trap stack **per-hart** = trap_top - HART_TRAP_STACK_BYTES, với trap_top suy
+    // từ sp frame (`sp + TF_SIZE`) — không dùng symbol toàn cục của hart 0.
+    "addi t1, sp, {tf_size}",
+    "li t2, {trap_bytes}",
+    "sub t1, t1, t2",
+    "bgeu t1, t0, .Ltrap_normal", // old_sp <= bottom ⇒ trap từ stack thường, bình thường
+    "addi t1, sp, {tf_size}",
     "bltu t0, t1, .Ltrap_nested", // bottom < old_sp < top ⇒ trap lồng trong handler
     ".Ltrap_normal:",
     "csrr t0, sepc",
@@ -173,7 +223,7 @@ global_asm!(
     // sstatus cũng tránh làm hỏng trạng thái mà `sret` cần.
     "ld t0, {sepc}(sp)",
     "csrw sepc, t0",
-    "la t0, __trap_stack_top",
+    "addi t0, sp, {tf_size}", // KT-49: trả sscratch về đỉnh trap stack của hart này
     "csrw sscratch, t0",
     "ld x1, {x1}(sp)",
     "ld x3, {x3}(sp)",
@@ -244,6 +294,7 @@ global_asm!(
     scause = const TF_SCAUSE_OFFSET,
     stval = const TF_STVAL_OFFSET,
     tf_size = const TF_SIZE,
+    trap_bytes = const vifast_plat_common::smp::HART_TRAP_STACK_BYTES,
 );
 
 extern "C" {
@@ -278,6 +329,10 @@ pub fn read_trap_vector() -> usize {
 /// - Ngắt khác ⇒ ghi stats, dump `PANIC: unexpected interrupt` (PLIC/UART IRQ là KT-48), halt(1).
 #[no_mangle]
 pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
+    // KT-49: mỗi hart ghi trapframe gần nhất vào slot **của mình**; TAP `per-hart stack/guard`
+    // kiểm frame nằm trong `.trap_stack` của chính hart đã trap (chứng minh `sscratch` per-hart).
+    let hart = Riscv64Virt.hart_id();
+    smp::note_trap_frame(hart, tf as *const TrapFrame as usize);
     let saved = *tf;
     match decode_trap(&saved) {
         Event::Exception(exc) => {
@@ -446,6 +501,38 @@ fn read_hart_id() -> usize {
     // SAFETY: `tp` do chính `_start` đặt từ `a0`; kernel `no_std` chưa dùng TLS/`tp`.
     unsafe { asm!("mv {}, tp", out(reg) id, options(nomem, nostack, preserves_flags)) };
     id
+}
+
+/// Khoá in console cho SMP (KT-49): mỗi lần chỉ một hart ghi UART; hart khác spin.
+///
+/// Chỉ dùng cho **đường in chủ động** của test/product (vd `# hart h alive`). Handler trap **không**
+/// dùng khoá này (P2a: handler không được chờ khoá do hart khác giữ khi hart đó bị ngắt).
+static DEBUG_LOCK: AtomicBool = AtomicBool::new(false);
+
+/// Chạy `f` trong vùng **độc quyền UART** — dùng để in một dòng của từng hart mà không xen ký tự.
+pub fn debug_lock_do<R>(f: impl FnOnce() -> R) -> R {
+    while DEBUG_LOCK
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        core::hint::spin_loop();
+    }
+    let result = f();
+    DEBUG_LOCK.store(false, Ordering::Release);
+    result
+}
+
+/// In một chuỗi ra UART trong vùng khoá (một lần `put_str`, không xen ký tự giữa các hart).
+pub fn debug_put_str_atomic(s: &str) {
+    debug_lock_do(|| debug_put_str(s));
+}
+
+/// Park vô hạn (hart thứ cấp sau khi xong/không cần chạy) — spin nhẹ, không `wfi` (K3 chưa có IPI
+/// để đánh thức; KT-50).
+pub fn park_forever() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 /// In một byte ra UART — ghi thẳng THR; QEMU không cần chờ LSR.

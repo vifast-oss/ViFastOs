@@ -9,9 +9,9 @@
 //!   KT-46 chỉ map UART/PLIC), không Sstc (`-cpu rv64` không bảo đảm).
 //! - **Timebase 10 MHz** (`rdtime`), **tick 100 Hz** = [`TICK_TICKS`](vifast_plat_common::timer::TICK_TICKS)
 //!   = 100.000 đơn vị timebase = 10 ms.
-//! - **Mỗi hart một deadline** (một hart ở KT-47; PerHart là KT-49): deadline nằm trong
-//!   [`TIMER_STATS`], handler nạp deadline kế = bội số `TICK_TICKS` của deadline cũ
-//!   (tuyệt đối ⇒ không trôi).
+//! - **Mỗi hart một deadline**: deadline nằm trong slot **PerHart** [`TIMER_STATS`]
+//!   (`TIMER_STATS.get(hart)`, KT-49), handler nạp deadline kế = bội số `TICK_TICKS` của deadline
+//!   cũ (tuyệt đối ⇒ không trôi); `sbi_set_timer`/`sie.STIE` là CSR per-hart.
 //!
 //! # `sstatus.SIE` khi vào/ra trap (P2a — KT-45 đã bỏ `csrw sstatus`)
 //!
@@ -28,12 +28,16 @@
 //!
 //! `unsafe` nằm trong danh sách đóng `kernel/vifast-plat-*` của D2-17.
 //!
-//! **Không** thuộc KT-47: PLIC/UART IRQ (KT-48), SMP/PerHart (KT-49), IPI (KT-50), preemption
-//! (KT-49+).
+//! **Không** thuộc KT-47: PLIC/UART IRQ (KT-48), IPI (KT-50), preemption. KT-49 đã tách bộ đếm
+//! thành PerHart ([`stats`]).
 
 use core::arch::asm;
 
 use vifast_plat_common::timer::{TickSample, TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
+
+use vifast_plat_common::Platform;
+
+use crate::Riscv64Virt;
 
 /// EID SBI TIME (SBI v2.0 §4) — D2-72 Q6.
 pub const SBI_EXT_TIME: u64 = 0x5449_4D45;
@@ -138,7 +142,7 @@ pub fn disable_timer() {
 pub fn init() -> TimerArm {
     let now = now_ticks();
     let first_deadline = now.saturating_add(TICK_TICKS);
-    TIMER_STATS.arm(now, first_deadline);
+    stats().arm(now, first_deadline);
     set_timer_deadline(first_deadline);
     let _ = enable_timer();
     TimerArm {
@@ -157,9 +161,14 @@ pub fn init() -> TimerArm {
 /// nạp `u64::MAX` để dập ngắt thay vì bắn lại liên tục.
 pub fn on_timer_interrupt(trap_sstatus: u64, handler_sstatus: u64) -> Option<TickSample> {
     let now = now_ticks();
-    let sample: TickSample = TIMER_STATS.record_tick(now)?;
-    TIMER_STATS.record_sstatus(trap_sstatus, handler_sstatus);
+    let sample: TickSample = stats().record_tick(now)?;
+    stats().record_sstatus(trap_sstatus, handler_sstatus);
     Some(sample)
+}
+
+/// Slot timer **của hart đang chạy** (`tp`); handler timer trên hart nào cộng bộ đếm hart đó.
+pub fn stats() -> &'static vifast_plat_common::timer::TimerCounters {
+    TIMER_STATS.get(Riscv64Virt.hart_id())
 }
 
 /// Timebase của QEMU `virt` — TAP/log đối chiếu `TIMEBASE_HZ` (10 MHz, D2-72 Q6).

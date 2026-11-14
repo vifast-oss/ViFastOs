@@ -17,7 +17,12 @@
 //! - Cổng CPU external: `sie.SEIE` **trước** rồi `sstatus.SIE` (đối xứng `timer::enable_timer` —
 //!   P2a: trap entry/handler **không** ghi `sstatus`).
 //!
-//! Không thuộc KT-48: IPI (KT-50), SMP/context hart khác (KT-49), MSI/AIA, EOI khác.
+//! KT-49: mọi đăng ký enable/threshold/claim/complete dùng context **của hart đang chạy**
+//! (`2*hart+1`) — [`init_hart`] đặt threshold cho context đó và kiểm enable round-trip trên IRQ
+//! của hart (không đụng context hart khác); bộ đếm là **PerHart** (`stats()`), nên claim của hart
+//! này không làm bẩn số của hart kia.
+//!
+//! Không thuộc KT-48/49: IPI (KT-50), MSI/AIA, EOI khác.
 //!
 //! `unsafe` (MMIO/CSR) nằm trong danh sách đóng `kernel/vifast-plat-*` của D2-17.
 
@@ -92,6 +97,11 @@ fn current_hart() -> usize {
 /// Context S-mode `2*hart+1` của hart đang chạy (D2-72 Q7).
 pub fn current_context() -> u32 {
     context_of_hart(current_hart())
+}
+
+/// Bộ đếm PLIC **của hart đang chạy** (KT-49: PerHart — handler chỉ cộng slot của mình).
+pub fn stats() -> &'static vifast_plat_common::plic::PlicStats {
+    PLIC_STATS.get(current_hart())
 }
 
 /// Báo cáo PLIC của lần boot — mọi trường là giá trị **đọc lại** từ register.
@@ -355,31 +365,32 @@ fn uart_rearm_tx_irq() {
 pub fn on_external_interrupt() -> ClaimOutcome {
     let context = current_context();
     let claim = plic_read(claim_offset(context));
-    let outcome = PLIC_STATS.begin_claim(claim, UART0_IRQ);
+    let stats = stats();
+    let outcome = stats.begin_claim(claim, UART0_IRQ);
     match outcome {
         ClaimOutcome::Spurious => {}
         ClaimOutcome::Uart => {
             let iir = uart_read(UART_IIR) as u32;
             // `IIR & 0x0f` = mã nguồn (0x2 = TX-empty); bit 7:6 là trạng thái FIFO của firmware.
-            PLIC_STATS.note_iir(iir);
-            if uart_limit_reached(PLIC_STATS.snapshot().uart_irqs) {
+            stats.note_iir(iir);
+            if uart_limit_reached(stats.snapshot().uart_irqs) {
                 let _ = uart_disable_tx_irq();
                 let _ = disable_irq(UART0_IRQ);
-                PLIC_STATS.note_uart_ier_off();
+                stats.note_uart_ier_off();
                 plic_write(claim_offset(context), claim);
                 fence();
-                PLIC_STATS.note_complete();
+                stats.note_complete();
             } else {
                 plic_write(claim_offset(context), claim);
                 fence();
-                PLIC_STATS.note_complete();
+                stats.note_complete();
                 uart_rearm_tx_irq();
             }
         }
         ClaimOutcome::Unexpected(line) => {
             plic_write(claim_offset(context), line);
             fence();
-            PLIC_STATS.note_complete();
+            stats.note_complete();
         }
     }
     outcome
@@ -387,5 +398,85 @@ pub fn on_external_interrupt() -> ClaimOutcome {
 
 /// `true` ⇔ đủ [`UART_IRQ_LIMIT`] ngắt UART đã xử lý (TAP/product chờ mốc này).
 pub fn uart_irqs_done() -> bool {
-    PLIC_STATS.snapshot().uart_irqs >= UART_IRQ_LIMIT
+    stats().snapshot().uart_irqs >= UART_IRQ_LIMIT
+}
+
+/// `true` ⇔ bit enable của `irq` trong **context bất kỳ** đang bật (đọc register) — dùng để kiểm
+/// chéo context M-mode của chính hart (`2*hart`) **không** bị bật (KT-48/49).
+pub fn context_enabled(context: u32, irq: u32) -> bool {
+    if irq == 0 || irq > PLIC_MAX_SOURCES {
+        return false;
+    }
+    plic_read(enable_offset(context, irq)) & enable_bit(irq) != 0
+}
+
+/// Báo cáo PLIC **của một hart** — mọi trường **đọc lại** từ register (TAP "plic ctx per hart").
+#[derive(Clone, Copy, Debug)]
+pub struct PlicHartReport {
+    /// Hart đang chạy.
+    pub hart: usize,
+    /// Context S-mode của hart (`2*hart+1`).
+    pub context: u32,
+    /// Context M-mode của hart (`2*hart`) — phải **không** bật.
+    pub machine_context: u32,
+    /// `threshold` đọc lại của context S-mode (phải 0).
+    pub threshold: u32,
+    /// `priority[UART0_IRQ]` đọc lại (BSP đặt 1 trước khi start AP).
+    pub priority_uart: u32,
+    /// Enable IRQ UART trong context S-mode đọc lại **sau khi bật** (phải 1).
+    pub enable_on: bool,
+    /// Enable IRQ UART trong context S-mode đọc lại **sau khi tắt** (phải 0).
+    pub enable_off: bool,
+    /// Enable IRQ UART trong context **M-mode** của hart (phải 0 — không bật nhầm).
+    pub enabled_mmode: bool,
+    /// Claim đọc lúc chưa bật nguồn (phải 0).
+    pub claim_idle: u32,
+    /// Địa chỉ đăng ký enable đã dùng (bằng chứng offset `0x2000 + 0x80*ctx`).
+    pub enable_address: u64,
+}
+
+impl PlicHartReport {
+    /// `true` ⇔ context đúng hart, threshold 0, priority 1, enable round-trip đúng, M-mode tắt.
+    pub fn is_configured(&self) -> bool {
+        self.context == context_of_hart(self.hart)
+            && self.machine_context == machine_context_of_hart(self.hart)
+            && self.threshold == PLIC_THRESHOLD
+            && self.priority_uart == PLIC_UART_PRIORITY
+            && self.enable_on
+            && self.enable_off
+            && !self.enabled_mmode
+            && self.claim_idle == 0
+    }
+}
+
+/// Khởi tạo PLIC cho **hart hiện tại** (KT-49): threshold 0 cho context `2*hart+1`, đọc lại
+/// priority UART (BSP đã đặt 1), bật rồi tắt IRQ UART trong context của hart để chứng minh đăng ký
+/// enable **theo hart** (round-trip), và kiểm context **M-mode** của chính hart không bị bật.
+///
+/// **Không** probe `ndev` (đã probe một lần trên BSP — probe ghi priority nên không được chạy
+/// đồng thời trên nhiều hart). Không bật cổng CPU (`sie.SEIE`/`sstatus.SIE`).
+pub fn init_hart() -> PlicHartReport {
+    let hart = current_hart();
+    let context = context_of_hart(hart);
+    let machine_context = machine_context_of_hart(hart);
+    plic_write(threshold_offset(context), PLIC_THRESHOLD);
+    fence();
+    let threshold = plic_read(threshold_offset(context));
+    let priority_uart = plic_read(priority_offset(UART0_IRQ));
+    let enable_on = enable_irq(UART0_IRQ) && irq_enabled(UART0_IRQ);
+    let enabled_mmode = context_enabled(machine_context, UART0_IRQ);
+    let enable_off = disable_irq(UART0_IRQ) && !irq_enabled(UART0_IRQ);
+    let claim_idle = plic_read(claim_offset(context));
+    PlicHartReport {
+        hart,
+        context,
+        machine_context,
+        threshold,
+        priority_uart,
+        enable_on,
+        enable_off,
+        enabled_mmode,
+        claim_idle,
+        enable_address: PLIC_BASE as u64 + enable_offset(context, UART0_IRQ),
+    }
 }

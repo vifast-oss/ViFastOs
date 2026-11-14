@@ -12,8 +12,12 @@
 //! KT-48: ảnh sản phẩm cũng **bật PLIC + UART IRQ thật** (không chỉ ảnh test): `plic::init` đọc
 //! `ndev` từ register, context `2*hart+1`, threshold 0, priority IRQ 10 = 1; bật `IER.TX-empty`,
 //! mở cổng `sie.SEIE`/`sstatus.SIE`, chờ handler claim/complete đủ [`UART_IRQ_LIMIT`] ngắt rồi
-//! tắt nguồn (không ngập), in `# plic:`/`# uart irq:`; sai ⇒ `PANIC`. SMP (KT-49), IPI (KT-50),
-//! U-mode (KT-53) **không** thuộc ảnh này.
+//! tắt nguồn (không ngập), in `# plic:`/`# uart irq:`; sai ⇒ `PANIC`.
+//!
+//! KT-49: sau timer, ảnh sản phẩm **bring-up SMP thật** — `smp::init` probe `sbi_hart_get_status`,
+//! `hart_start` cho hart `STOPPED` (matrix `-smp 1|2|4`), chờ barrier online, in `# smp:`; hart
+//! ngoài DTB bị từ chối + log (không panic cả máy). Hart thứ cấp park (chưa có IPI — KT-50).
+//! IPI (KT-50), U-mode (KT-53) **không** thuộc ảnh này.
 #![no_std]
 #![no_main]
 
@@ -24,6 +28,7 @@ use vifast_plat_common::timer::{ticks_to_ns, TICK_HZ, TICK_TICKS, TIMEBASE_HZ, T
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::plic;
+use vifast_plat_riscv64::smp;
 use vifast_plat_riscv64::timer;
 use vifast_plat_riscv64::{read_trap_vector, Riscv64Virt, UART0_IRQ};
 
@@ -100,14 +105,14 @@ pub extern "C" fn rust_main() -> ! {
     let uart_ier_on = plic::uart_enable_tx_irq();
     let external_gate_on = plic::enable_external();
     let plic_start = PLATFORM.now_ticks();
-    let mut plic_snap = PLIC_STATS.snapshot();
+    let mut plic_snap = PLIC_STATS.get(PLATFORM.hart_id()).snapshot();
     while plic_snap.uart_irqs < UART_IRQ_LIMIT {
         if PLATFORM.now_ticks().wrapping_sub(plic_start) > PLATFORM.timebase_hz() {
             PLATFORM.put_str("PANIC: uart irq khong den trong 1 s\n");
             PLATFORM.halt(1)
         }
         core::hint::spin_loop();
-        plic_snap = PLIC_STATS.snapshot();
+        plic_snap = PLIC_STATS.get(PLATFORM.hart_id()).snapshot();
     }
     plic::disable_external();
     let uart_ier_off = plic::uart_disable_tx_irq();
@@ -167,14 +172,14 @@ pub extern "C" fn rust_main() -> ! {
     // Chờ **≥1 tick thật**; timeout 1 s (100 tick) để boot hỏng không treo im lặng. Busy-spin để
     // không phụ thuộc `wfi` (QEMU chỉ phục vụ timer ảo khi vCPU chạy — xem `ktest.sh` về icount).
     let start = PLATFORM.now_ticks();
-    let mut snap = TIMER_STATS.snapshot();
+    let mut snap = TIMER_STATS.get(PLATFORM.hart_id()).snapshot();
     while snap.ticks == 0 {
         if PLATFORM.now_ticks().wrapping_sub(start) > PLATFORM.timebase_hz() {
             PLATFORM.put_str("PANIC: timer khong tick trong 1 s\n");
             PLATFORM.halt(1)
         }
         core::hint::spin_loop();
-        snap = TIMER_STATS.snapshot();
+        snap = TIMER_STATS.get(PLATFORM.hart_id()).snapshot();
     }
     let sret_sie = timer::read_sstatus() & timer::SSTATUS_SIE != 0;
     {
@@ -213,9 +218,69 @@ pub extern "C" fn rust_main() -> ! {
         PLATFORM.put_str("PANIC: timer init product\n");
         PLATFORM.halt(1)
     }
+
+    // KT-49 SMP: probe hart theo SBI HSM, `hart_start` cho hart STOPPED (matrix `-smp 1|2|4`), chờ
+    // barrier online. Hart ngoài DTB/lỗi SBI bị log + bỏ qua trong `smp::init` — **hart lỗi không
+    // panic cả máy**; ảnh sản phẩm chỉ in `# smp: WARN` ở dưới, `run.sh` đỏ nếu `harts` khác
+    // `-smp N` nên cấu hình hỏng không bị che.
+    let smp = smp::init();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# smp: boot={} harts={} present=0x{:x} online=0x{:x} started=0x{:x} absent=0x{:x} timeout={} dtb=0x{:x} dtb_magic={} base=0x{:x} stride=0x{:x}",
+            smp.boot_hart,
+            smp.harts,
+            smp.present_mask,
+            smp.online_mask,
+            smp.started_mask,
+            smp.absent_mask,
+            smp.timed_out as u8,
+            smp.dtb,
+            smp.dtb_magic_ok as u8,
+            smp.hart_area_base,
+            smp.hart_stride
+        );
+    }
+    // KT-49: hart lỗi **không panic cả máy** — log WARN rồi tiếp tục; runner `run.sh` vẫn đỏ nếu
+    // `harts` khác `-smp N` (cấu hình hỏng không bị che). DTB magic chỉ là chẩn đoán (D2-72 Q7).
+    if !smp.dtb_magic_ok {
+        PLATFORM.put_str("# smp: WARN dtb magic khong hop le (chi chan doan, tiep tuc)\n");
+    }
+    if !smp.is_online() {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# smp: WARN thieu hart online present=0x{:x} online=0x{:x} missing=0x{:x} timeout={} (tiep tuc, khong panic ca may)",
+            smp.present_mask,
+            smp.online_mask,
+            smp.missing_mask(),
+            smp.timed_out as u8
+        );
+    }
+    for hart in 0..vifast_plat_common::smp::MAX_HARTS {
+        let present = smp.present_mask & (1u64 << hart) != 0;
+        let absent = smp.absent_mask & (1u64 << hart) != 0;
+        if !present && !absent && smp.status[hart] != -99 && smp.status[hart] < 0 {
+            let mut w = PlatformWriter(&PLATFORM);
+            let _ = writeln!(
+                w,
+                "# smp: WARN hart {} status={} loi SBI (bo qua, khong panic ca may)",
+                hart, smp.status[hart]
+            );
+        }
+    }
     PLATFORM.put_str("ok 1 - k3 boot\n");
     PLATFORM.put_str("# k3 halt\n");
     PLATFORM.halt(0)
+}
+
+/// Entry hart **thứ cấp** của ảnh sản phẩm (KT-49): adopt `satp`/`stvec` của BSP, báo online, rồi
+/// park (SMP chưa có việc cho AP ở ảnh sản phẩm; IPI/scheduler là KT-50/K3b).
+#[no_mangle]
+pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
+    let _ = smp::secondary_setup(opaque);
+    vifast_plat_riscv64::park_forever()
 }
 
 #[panic_handler]

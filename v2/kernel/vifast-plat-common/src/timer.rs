@@ -35,10 +35,15 @@
 //! max_late` và đếm bằng chứng `sstatus` (`trap_spie_on` — SIE trước trap thấy qua SPIE;
 //! `handler_sie_off` — SIE=0 trong handler) cho TAP KT-47.
 //!
-//! **Không** thuộc KT-47: PLIC/UART IRQ (KT-48), SMP/PerHart (KT-49), preemption thật (KT-49+).
+//! Bộ đếm timer **theo hart** (KT-49 — KT-47 là một hart toàn cục): [`TIMER_STATS`] là
+//! [`PerHartTimerStats`], handler trên hart nào cộng `ticks/late/missed` của hart đó
+//! (`TIMER_STATS.get(hart)`), nên TAP "per-hart timer" chứng minh **không lẫn** giữa các hart.
+//!
+//! **Không** thuộc KT-47/49: PLIC/UART IRQ (KT-48), IPI (KT-50), preemption thật.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::smp::MAX_HARTS;
 use crate::trap::{SSTATUS_SIE, SSTATUS_SPIE};
 
 /// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6) `[TK]`.
@@ -307,5 +312,49 @@ impl Default for TimerCounters {
     }
 }
 
-/// Bộ đếm timer của ảnh kernel (một hart ở KT-47; PerHart là KT-49).
-pub static TIMER_STATS: TimerCounters = TimerCounters::new();
+/// Bộ đếm timer **theo hart** (KT-49) — mỗi hart một [`TimerCounters`] riêng.
+///
+/// KT-47 dùng một bộ đếm toàn cục vì chỉ có hart 0; SMP buộc tách: handler timer trên hart nào
+/// cộng bộ đếm của hart đó, deadline/nhịp của hart này không làm bẩn số của hart khác.
+#[derive(Debug)]
+pub struct PerHartTimerStats {
+    slots: [TimerCounters; MAX_HARTS],
+}
+
+impl PerHartTimerStats {
+    /// Bộ đếm rỗng cho mọi hart — `const` để đặt trong `static`.
+    pub const fn new() -> Self {
+        Self {
+            slots: [const { TimerCounters::new() }; MAX_HARTS],
+        }
+    }
+
+    /// Bộ đếm của `hart`; hart ngoài dải ⇒ slot 0 (không bao giờ xảy ra với trap thật).
+    pub fn get(&self, hart: usize) -> &TimerCounters {
+        &self.slots[if hart < MAX_HARTS { hart } else { 0 }]
+    }
+
+    /// Bộ đếm của `hart` nếu hợp lệ (dùng cho TAP/kiểm tra chéo).
+    pub fn try_get(&self, hart: usize) -> Option<&TimerCounters> {
+        self.slots.get(hart)
+    }
+
+    /// Tổng số tick trên mọi hart — bằng chứng "không mất tick của hart nào" khi gộp.
+    pub fn total_ticks(&self) -> u64 {
+        self.slots.iter().map(|slot| slot.snapshot().ticks).sum()
+    }
+
+    /// Tổng số tick trễ trên mọi hart.
+    pub fn total_late(&self) -> u64 {
+        self.slots.iter().map(|slot| slot.snapshot().late).sum()
+    }
+}
+
+impl Default for PerHartTimerStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Bộ đếm timer **theo hart** của ảnh kernel (KT-49; KT-47 là một hart toàn cục).
+pub static TIMER_STATS: PerHartTimerStats = PerHartTimerStats::new();

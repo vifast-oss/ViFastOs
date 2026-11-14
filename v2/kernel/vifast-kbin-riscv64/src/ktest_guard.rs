@@ -38,11 +38,16 @@ pub extern "C" fn rust_main() -> ! {
     // Dựng bảng xong mới bật `satp` (hai bước — `mmu::init`), trap đã sống để fault lúc map được
     // dump thay vì treo.
     let report = mmu::init();
+    // KT-49: ảnh guard dùng guard **của hart boot thật** (`hart_id()`), không hardcode hart 0 —
+    // OpenSBI có thể chọn boot hart khác 0 (đo được ở ảnh sản phẩm `-smp 4` không icount:
+    // `Domain0 Boot HART: 2`). `handle_guard_fault` chỉ resume khi `guard_owner(stval)` = hart này.
+    let hart = PLATFORM.hart_id();
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# guard image: stvec=0x{:x} direct={} satp=0x{:x} mode={} root=0x{:x} tables={} used={} arena=0x{:x}-0x{:x}",
+            "# guard image: hart={} stvec=0x{:x} direct={} satp=0x{:x} mode={} root=0x{:x} tables={} used={} arena=0x{:x}-0x{:x}",
+            hart,
             stvec,
             (stvec & 0b11 == 0) as u8,
             report.satp,
@@ -65,7 +70,7 @@ pub extern "C" fn rust_main() -> ! {
     }
 
     // ---------------------------------------------------------------- 1) guard NONE cả 3 alias
-    let (guard_start, guard_end) = mmu::guard_range();
+    let (guard_start, guard_end) = mmu::guard_range_of(hart);
     let guard_none_low = !mmu::walk_sw(guard_start).valid;
     let guard_none_high = mmu::high_alias(guard_start)
         .map(|va| !mmu::walk_sw(va).valid)
@@ -78,6 +83,8 @@ pub extern "C" fn rust_main() -> ! {
         && report.root == report.arena_start
         && mmu::satp_now() == report.satp
         && report.alias_ok
+        && mmu::guard_owner(guard_start) == Some(hart)
+        && guard_end == guard_start + 0x1000
         && guard_none_low
         && guard_none_high
         && guard_none_physmap;
@@ -97,14 +104,15 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# guard load: cham 0x{:x} (guard 0x{:x}-0x{:x}) — kỳ vọng scause=0xd, handler in + resume 1 instruction",
-            guard_start, guard_start, guard_end
+            "# guard load: hart={} cham 0x{:x} (guard 0x{:x}-0x{:x}) — kỳ vọng scause=0xd, handler in + resume 1 instruction",
+            hart, guard_start, guard_start, guard_end
         );
     }
     let _ = mmu::probe_guard_load(guard_start);
     let after = GUARD_STATS.snapshot();
     let traps_after = TRAP_STATS.snapshot();
-    let load_ok = after.load_faults == before.load_faults + 1
+    let load_ok = mmu::guard_owner(guard_start) == Some(hart)
+        && after.load_faults == before.load_faults + 1
         && after.store_faults == before.store_faults
         && after.recovered == before.recovered + 1
         && after.fatal == before.fatal
@@ -141,7 +149,8 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# guard store: ghi 0x{:x} — kỳ vọng scause=0xf + PANIC guard page fault + halt",
+            "# guard store: hart={} ghi 0x{:x} — kỳ vọng scause=0xf + PANIC guard page fault + halt",
+            hart,
             guard_start + 8
         );
     }
@@ -150,6 +159,14 @@ pub extern "C" fn rust_main() -> ! {
     PLATFORM.put_str("not ok 3 - guard store fault: khong fault (guard bi map)\n");
     PLATFORM.put_str("# ktest halt\n");
     PLATFORM.halt(1)
+}
+
+/// Entry hart **thứ cấp** (KT-49): ảnh guard chỉ cần symbol để link; ảnh này **không** gọi
+/// `smp::init` nên không hart thứ cấp nào chạy (nếu có, vào đây rồi park — không panic).
+#[no_mangle]
+pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
+    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
+    vifast_plat_riscv64::park_forever()
 }
 
 #[panic_handler]

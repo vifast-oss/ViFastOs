@@ -35,6 +35,12 @@
 //! 2. `csrw satp` (mode 8) + `sfence.vma`, đọc lại `satp`, walk phần mềm lại và so PTE
 //!    trước/sau; kiểm alias ghi/đọc qua nửa cao + physmap.
 //!
+//! KT-49: vùng NOLOAD per-hart (`MAX_HARTS` record `guard | stack | trap stack`, xem
+//! [`vifast_plat_common::smp`]) thay cho **một** guard/stack/trap stack của KT-46. Mọi guard của
+//! **từng hart** là NONE ở cả ba alias (identity, nửa cao, physmap); stack/trap stack của mọi hart
+//! là leaf 4 KiB RW NX. Hart thứ cấp [`adopt_satp`] cùng root của BSP khi vào S-mode (SBI HSM đánh
+//! thức với `satp = 0`).
+//!
 //! Không timer/PLIC/ASID/U-mode ở KT-46 (KT-47/48/51/53).
 
 use core::arch::asm;
@@ -47,9 +53,14 @@ use vifast_plat_common::mmu::{
     PAGE_BYTES,
 };
 use vifast_plat_common::plic::PLIC_LOW_WINDOW_BYTES;
+use vifast_plat_common::smp::{
+    guard_offset as smp_guard_offset, stack_bottom_offset, stack_top_offset, trap_bottom_offset,
+    trap_top_offset, HART_AREA_BYTES, HART_GUARD_BYTES, HART_STRIDE, MAX_HARTS,
+};
 #[cfg(feature = "ktest")]
 use vifast_plat_common::trap::EXC_LOAD_PAGE_FAULT;
 use vifast_plat_common::trap::{Exception, ExceptionKind, TrapFrame};
+use vifast_plat_common::Platform;
 #[cfg(feature = "ktest")]
 use vifast_plat_common::PlatformWriter;
 
@@ -84,6 +95,7 @@ pub const WALK_SAMPLES: usize = 8;
 
 // Linker symbols (`linker.ld`). Chỉ lấy **địa chỉ**, không đọc nội dung.
 extern "C" {
+    static __hart_area_base: u8;
     static __kernel_end: u8;
     static __stack_guard_start: u8;
     static __stack_guard_end: u8;
@@ -101,6 +113,7 @@ fn sym(symbol: &u8) -> u64 {
 /// Bố cục runtime lấy từ linker symbol — dựng một lần trong [`init`].
 #[derive(Clone, Copy, Debug)]
 struct Layout {
+    hart_area_base: u64,
     kernel_end: u64,
     arena_start: u64,
     arena_end: u64,
@@ -115,6 +128,7 @@ struct Layout {
 impl Layout {
     fn detect() -> Self {
         // SAFETY: chỉ lấy địa chỉ symbol linker, không dereference.
+        let hart_area_base = unsafe { sym(&__hart_area_base) };
         let kernel_end = unsafe { sym(&__kernel_end) };
         let guard_start = unsafe { sym(&__stack_guard_start) };
         let guard_end = unsafe { sym(&__stack_guard_end) };
@@ -124,6 +138,7 @@ impl Layout {
         let trap_stack_end = unsafe { sym(&__trap_stack_top) };
         let arena_start = align_up(kernel_end, PAGE_BYTES);
         Self {
+            hart_area_base,
             kernel_end,
             arena_start,
             arena_end: arena_start + ARENA_BYTES as u64,
@@ -153,6 +168,10 @@ pub struct MmuReport {
     pub arena_end: u64,
     /// `__kernel_end` (trước khi căn lề arena).
     pub kernel_end: u64,
+    /// Base vùng NOLOAD per-hart (`__hart_area_base`) — guard/stack/trap stack của `MAX_HARTS`.
+    pub hart_area_base: u64,
+    /// Bước record per-hart (`HART_STRIDE`, đối chiếu linker ở [`init`]).
+    pub hart_stride: u64,
     /// Guard page `[start, end)` — NONE.
     pub guard_start: u64,
     pub guard_end: u64,
@@ -224,6 +243,18 @@ pub fn init() -> MmuReport {
     if layout.kernel_end > layout.arena_start {
         panic!("mmu: kernel_end > arena_start");
     }
+    // KT-49: linker phải đặt đúng vùng NOLOAD per-hart mà `plat-common::smp` mô tả — guard của
+    // hart 0 ở base, stack/trap stack theo offsets, và `__kernel_end` đúng cuối record hart 7.
+    // Sai ⇒ panic ngay (không chạy với stack hart này đè guard hart khác).
+    if layout.guard_start != layout.hart_area_base
+        || layout.stack_start != layout.hart_area_base + stack_bottom_offset(0)
+        || layout.stack_end != layout.hart_area_base + stack_top_offset(0)
+        || layout.trap_stack_start != layout.hart_area_base + trap_bottom_offset(0)
+        || layout.trap_stack_end != layout.hart_area_base + trap_top_offset(0)
+        || layout.kernel_end != layout.hart_area_base + HART_AREA_BYTES
+    {
+        panic!("mmu: bo cuc per-hart trong linker.ld khong khop plat-common::smp");
+    }
 
     // SAFETY: arena là vùng RAM sau `__kernel_end` (không thuộc ảnh, không ai dùng); trait
     // `PageTableBuilder` chỉ ghi trong `[arena_start, arena_end)`.
@@ -286,6 +317,8 @@ pub fn init() -> MmuReport {
         arena_start: layout.arena_start,
         arena_end: layout.arena_end,
         kernel_end: layout.kernel_end,
+        hart_area_base: layout.hart_area_base,
+        hart_stride: HART_STRIDE,
         guard_start: layout.guard_start,
         guard_end: layout.guard_end,
         stack_start: layout.stack_start,
@@ -351,7 +384,9 @@ fn map_kernel(builder: &mut PageTableBuilder<'_>, layout: &Layout) -> Result<(),
     )?;
     let mut va = layout.guard_start;
     while va < layout.arena_end {
-        if !(va >= layout.guard_start && va < layout.guard_end) {
+        // KT-49: guard **của từng hart** là NONE; mọi trang khác (stack/trap stack mọi hart +
+        // arena) là leaf 4 KiB RW NX ở cả identity và nửa cao.
+        if !is_guard_page(va) {
             let flags = PteFlags::kernel_rw_nx();
             builder.map(va, va, 0, flags)?;
             let high = KERNEL_HIGH_BASE + (va - KERNEL_PHYS_BASE);
@@ -398,7 +433,8 @@ fn map_physmap(builder: &mut PageTableBuilder<'_>, layout: &Layout) -> Result<()
         if pa == guard_chunk {
             let mut page = pa;
             while page < pa + LARGE_2M {
-                if !(page >= layout.guard_start && page < layout.guard_end) {
+                // KT-49: khoét **mọi** guard per-hart khỏi physmap (không có cửa sau qua physmap).
+                if !is_guard_page(page) {
                     builder.map(PHYSMAP_BASE + page, page, 0, PteFlags::kernel_rw_nx())?;
                 }
                 page += PAGE_BYTES;
@@ -450,6 +486,26 @@ pub fn satp_now() -> u64 {
     read_satp()
 }
 
+/// Hart **thứ cấp** adopt `satp` của BSP (SBI HSM đánh thức hart với `satp = 0`): ghi lại `satp`
+/// mode 8 + `sfence.vma`, đọc lại xác nhận. Trả `false` nếu MMU chưa bật (hart vào quá sớm).
+pub fn adopt_satp() -> bool {
+    let satp = SATP_VALUE.load(Ordering::SeqCst);
+    if satp == 0 || !MMU_ENABLED.load(Ordering::SeqCst) {
+        return false;
+    }
+    // SAFETY: bảng trang đã dựng xong ở BSP (mọi VA kernel đã map identity); hart này chỉ ghi
+    // `satp` của chính nó + `sfence.vma` TLB cục bộ.
+    unsafe {
+        asm!(
+            "csrw satp, {satp}",
+            "sfence.vma",
+            satp = in(reg) satp,
+            options(nostack, preserves_flags),
+        );
+    }
+    read_satp() == satp
+}
+
 /// PPN bảng gốc đã cấp (= `arena_start`).
 pub fn root_phys() -> u64 {
     ROOT_PHYS.load(Ordering::SeqCst)
@@ -465,22 +521,91 @@ pub fn walk_sw(va: u64) -> Walk {
     walk_with(&PhysMemory, ROOT_PHYS.load(Ordering::SeqCst), va)
 }
 
-/// Guard page `[start, end)` — NONE ở mọi alias.
+/// Guard page **của hart 0** `[start, end)` — NONE ở mọi alias (tương thích KT-46).
 pub fn guard_range() -> (u64, u64) {
-    let layout = Layout::detect();
-    (layout.guard_start, layout.guard_end)
+    guard_range_of(0)
 }
 
-/// `.stack` boot `[bottom, top)`.
+/// `.stack` boot **của hart 0** `[bottom, top)` (tương thích KT-46).
 pub fn stack_range() -> (u64, u64) {
-    let layout = Layout::detect();
-    (layout.stack_start, layout.stack_end)
+    stack_range_of(0)
 }
 
-/// `.trap_stack` `[bottom, top)`.
+/// `.trap_stack` **của hart 0** `[bottom, top)` (tương thích KT-46).
 pub fn trap_stack_range() -> (u64, u64) {
-    let layout = Layout::detect();
-    (layout.trap_stack_start, layout.trap_stack_end)
+    trap_stack_range_of(0)
+}
+
+/// Base vùng NOLOAD per-hart (`__hart_area_base`, linker thật).
+pub fn hart_area_base() -> u64 {
+    // SAFETY: chỉ lấy địa chỉ symbol linker, không dereference.
+    unsafe { sym(&__hart_area_base) }
+}
+
+/// Bước record per-hart (`HART_STRIDE = guard + stack + trap stack`).
+pub const fn hart_stride() -> u64 {
+    HART_STRIDE
+}
+
+/// Số hart mà vùng NOLOAD được đặt (`MAX_HARTS`).
+pub const fn harts() -> usize {
+    MAX_HARTS
+}
+
+/// Guard page `[start, end)` của `hart`.
+pub fn guard_range_of(hart: usize) -> (u64, u64) {
+    let base = hart_area_base() + smp_guard_offset(hart.min(MAX_HARTS - 1));
+    (base, base + HART_GUARD_BYTES)
+}
+
+/// Stack `[bottom, top)` của `hart`.
+pub fn stack_range_of(hart: usize) -> (u64, u64) {
+    let base = hart_area_base();
+    (
+        base + stack_bottom_offset(hart.min(MAX_HARTS - 1)),
+        base + stack_top_offset(hart.min(MAX_HARTS - 1)),
+    )
+}
+
+/// Trap stack `[bottom, top)` của `hart`.
+pub fn trap_stack_range_of(hart: usize) -> (u64, u64) {
+    let base = hart_area_base();
+    (
+        base + trap_bottom_offset(hart.min(MAX_HARTS - 1)),
+        base + trap_top_offset(hart.min(MAX_HARTS - 1)),
+    )
+}
+
+/// `true` ⇔ `pa` là **guard của một hart** (trong vùng NOLOAD per-hart).
+pub fn is_guard_page(pa: u64) -> bool {
+    guard_owner(pa).is_some()
+}
+
+/// Hart **sở hữu** guard chứa `pa` (`None` nếu `pa` không phải guard của hart nào).
+///
+/// Dùng để chứng minh "mỗi hart chạm guard riêng ⇒ fault đúng hart": handler so
+/// `guard_owner(stval)` với `hart_id()` hiện tại.
+pub fn guard_owner(pa: u64) -> Option<usize> {
+    let base = hart_area_base();
+    if pa < base || pa >= base + HART_AREA_BYTES {
+        return None;
+    }
+    let offset = pa - base;
+    if offset % HART_STRIDE < HART_GUARD_BYTES {
+        Some((offset / HART_STRIDE) as usize)
+    } else {
+        None
+    }
+}
+
+/// Đỉnh stack của `hart` (`sp` ban đầu) — bằng chứng per-hart.
+pub fn stack_top_of(hart: usize) -> u64 {
+    hart_area_base() + stack_top_offset(hart.min(MAX_HARTS - 1))
+}
+
+/// Đỉnh trap stack của `hart` (`sscratch` ban đầu) — bằng chứng per-hart.
+pub fn trap_top_of(hart: usize) -> u64 {
+    hart_area_base() + trap_top_offset(hart.min(MAX_HARTS - 1))
 }
 
 /// Arena page table `[start, end)`.
@@ -520,7 +645,9 @@ pub fn write_u64(va: u64, value: u64) {
     unsafe { core::ptr::write_volatile(va as *mut u64, value) };
 }
 
-/// Guard page fault **thật** (`scause` 12/13/15, `stval` trong guard page) — KT-46.
+/// Guard page fault **thật** (`scause` 12/13/15, `stval` trong guard page **của hart nào đó**)
+/// — KT-46/49. Guard per-hart nên kiểm theo **chủ sở hữu** ([`guard_owner`]), không chỉ guard
+/// của hart 0.
 pub fn is_guard_fault(exc: &Exception) -> bool {
     if !matches!(
         exc.kind,
@@ -530,8 +657,7 @@ pub fn is_guard_fault(exc: &Exception) -> bool {
     ) {
         return false;
     }
-    let (start, end) = guard_range();
-    exc.stval >= start && exc.stval < end
+    guard_owner(exc.stval).is_some()
 }
 
 /// Kết quả xử lý guard fault.
@@ -550,16 +676,21 @@ pub fn handle_guard_fault(tf: &mut TrapFrame) -> GuardOutcome {
     // ngoài ⇒ mọi guard fault luôn fatal, không có probe/chuỗi test trong ảnh sản phẩm.
     #[cfg(feature = "ktest")]
     if tf.scause == EXC_LOAD_PAGE_FAULT && GUARD_RECOVER_LOAD.swap(false, Ordering::SeqCst) {
-        let sepc = tf.sepc;
-        let length = instruction_len(ExceptionKind::LoadPageFault, sepc as usize);
-        tf.advance_pc(length);
-        let mut writer = PlatformWriter(&Riscv64Virt);
-        let _ = writeln!(
-            writer,
-            "# guard fault load scause=0xd stval=0x{:x} sepc=0x{:x} len={} recovered=1",
-            tf.stval, sepc, length
-        );
-        return GuardOutcome::Recovered;
+        // KT-49: chỉ resume khi `stval` nằm trong guard **của chính hart đang chạy** — nếu không,
+        // fault vẫn fatal (chạm guard của hart khác phải bị bắt, không được "chữa" hộ).
+        let hart = Riscv64Virt.hart_id();
+        if guard_owner(tf.stval) == Some(hart) {
+            let sepc = tf.sepc;
+            let length = instruction_len(ExceptionKind::LoadPageFault, sepc as usize);
+            tf.advance_pc(length);
+            let mut writer = PlatformWriter(&Riscv64Virt);
+            let _ = writeln!(
+                writer,
+                "# guard fault load scause=0xd stval=0x{:x} sepc=0x{:x} len={} recovered=1 hart={}",
+                tf.stval, sepc, length, hart
+            );
+            return GuardOutcome::Recovered;
+        }
     }
     let _ = tf;
     GuardOutcome::Fatal
