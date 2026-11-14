@@ -12,7 +12,11 @@
 //! `breakpoint` (scause 3) và `ecall-S` (do M-mode/OpenSBI xử lý, chỉ chứng minh resume đúng
 //! `sepc`); `illegal` (scause 2) kiểm bằng host test + trap **tiêm** vì OpenSBI v1.8.1
 //! `delegate_traps()` đặt `MEDELEG = 0xf4b509` (bit 2 = 0, bit 9 = 0). Page fault thật (13/15)
-//! thuộc KT-46. Không có U-mode/timer/PLIC ở KT-45.
+//! thuộc KT-46.
+//!
+//! KT-47 tách **ngắt** khỏi exception: `scause` bit 63 = 1 và mã **5** ⇒ [`Event::Timer`] (ngắt
+//! S-mode timer qua SBI TIME + `sie.STIE`) — không đi qua [`ExceptionKind`]. Ngắt mã khác vẫn là
+//! [`Event::Interrupt`] (PLIC/UART IRQ là KT-48).
 //!
 //! ## Bố cục trapframe (288 B, 8-byte aligned)
 //!
@@ -34,6 +38,12 @@ use crate::{Platform, PlatformWriter};
 
 /// Bit 63 của `scause`: 1 = interrupt, 0 = exception (RISC-V privileged spec).
 pub const SCAUSE_INTERRUPT: u64 = 1 << 63;
+
+/// Mã **ngắt** S-mode timer (interrupt 5, bit 63 = 1) — KT-47, D2-72 Q6.
+///
+/// SBI TIME (`sbi_set_timer`) + `sie.STIE` ⇒ ngắt vào `stvec` với `scause = (1<<63) | 5`; decode
+/// thành [`Event::Timer`] (**không** phải exception — [`ExceptionKind`] chỉ dành cho bit 63 = 0).
+pub const INTERRUPT_SUPERVISOR_TIMER: u64 = 5;
 
 /// `sstatus.SIE` — supervisor interrupt enable.
 pub const SSTATUS_SIE: u64 = 1 << 1;
@@ -311,7 +321,10 @@ impl Exception {
 pub enum Event {
     /// Trap đồng bộ (exception) — xem [`Exception`].
     Exception(Exception),
-    /// Trap ngắt (bit 63 = 1). Timer/PLIC là KT-47/48; KT-45 chỉ log rồi halt.
+    /// Ngắt **S-mode timer** (bit 63 = 1, mã 5) — KT-47: SBI TIME + `sie.STIE`; **không** phải
+    /// exception (không có `Exception`/`ExceptionKind` nào ở đây).
+    Timer,
+    /// Ngắt khác (bit 63 = 1, mã ≠ 5). PLIC/UART IRQ là KT-48; KT-45/46 log rồi halt.
     Interrupt {
         /// Mã interrupt (đã bỏ bit 63).
         code: u64,
@@ -321,8 +334,11 @@ pub enum Event {
 /// Decode `scause` **không** kèm ngữ cảnh (sepc/stval = 0) — dùng cho unit test và bảng mã.
 pub fn decode_scause(scause: u64) -> Event {
     if scause & SCAUSE_INTERRUPT != 0 {
-        Event::Interrupt {
-            code: scause & !SCAUSE_INTERRUPT,
+        let code = scause & !SCAUSE_INTERRUPT;
+        if code == INTERRUPT_SUPERVISOR_TIMER {
+            Event::Timer
+        } else {
+            Event::Interrupt { code }
         }
     } else {
         Event::Exception(Exception {
@@ -344,6 +360,7 @@ pub fn decode_trap(tf: &TrapFrame) -> Event {
             exc.from_supervisor = tf.from_supervisor();
             Event::Exception(exc)
         }
+        Event::Timer => Event::Timer,
         Event::Interrupt { code } => Event::Interrupt { code },
     }
 }
@@ -363,7 +380,9 @@ pub enum TrapAction {
     Resume,
     /// Exception không cứu được ở KT-45 — dump rồi `DebugHalt(1)`.
     Fatal(Exception),
-    /// Ngắt bất ngờ (chưa bật timer/PLIC) — dump rồi `DebugHalt(1)`.
+    /// Ngắt timer (mã 5, KT-47) — handler arch nạp deadline kế + đếm tick rồi `sret` (resume).
+    Timer,
+    /// Ngắt bất ngờ khác (PLIC là KT-48) — dump rồi `DebugHalt(1)`.
     Interrupt {
         /// Mã interrupt (đã bỏ bit 63).
         code: u64,
@@ -384,6 +403,7 @@ pub fn handle_trap(tf: &mut TrapFrame, insn_len: usize) -> TrapAction {
                 TrapAction::Fatal(exc)
             }
         }
+        Event::Timer => TrapAction::Timer,
         Event::Interrupt { code } => TrapAction::Interrupt { code },
     }
 }
@@ -461,7 +481,8 @@ impl TrapStats {
         self.last_code.store(kind.code(), Ordering::Relaxed);
     }
 
-    /// Ghi một trap interrupt (timer/PLIC là KT-47/48; KT-45 chỉ ghi nhận).
+    /// Ghi một trap interrupt: timer (mã 5, KT-47) hoặc PLIC (KT-48) — cộng `interrupts`, lưu
+    /// `last_scause = (1<<63) | code` để TAP `timer irq` thấy **ngắt thật** qua `stvec`.
     pub fn record_interrupt(&self, tf: &TrapFrame, code: u64) {
         self.traps.fetch_add(1, Ordering::Relaxed);
         self.interrupts.fetch_add(1, Ordering::Relaxed);
@@ -700,7 +721,8 @@ pub fn report_guard_fault<P: Platform + ?Sized>(
 
 /// In dump ngắt bất ngờ (bắt đầu bằng `PANIC`) rồi `DebugHalt(1)`.
 ///
-/// KT-45 chưa bật timer (KT-47) hay PLIC (KT-48), nên mọi interrupt vào `stvec` là bất thường.
+/// KT-47 đã xử lý ngắt timer thật ([`Event::Timer`]); đường này chỉ dành cho ngắt **khác** mã 5 —
+/// PLIC/UART IRQ là KT-48, nên mọi mã khác ở KT-47 vẫn là bất thường.
 pub fn report_interrupt<P: Platform + ?Sized>(platform: &P, code: u64, tf: &TrapFrame) -> ! {
     platform.put_str("PANIC: ");
     {

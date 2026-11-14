@@ -246,11 +246,11 @@ impl Platform for Recorder {
         panic!("halt({code})");
     }
 
-    fn now(&self) -> u64 {
+    fn now_ticks(&self) -> u64 {
         0
     }
 
-    fn tick_hz(&self) -> u64 {
+    fn timebase_hz(&self) -> u64 {
         10_000_000
     }
 
@@ -267,6 +267,14 @@ impl Platform for Recorder {
     fn disable_irq(&self, _irq: u32) -> bool {
         false
     }
+
+    fn set_timer_deadline(&self, _deadline: u64) {}
+
+    fn enable_timer(&self) -> bool {
+        false
+    }
+
+    fn disable_timer(&self) {}
 }
 
 #[test]

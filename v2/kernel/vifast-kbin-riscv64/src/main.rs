@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh **sản phẩm** riscv64 cho K3 (KT-44, KT-45).
+//! Ảnh **sản phẩm** riscv64 cho K3 (KT-44, KT-45, KT-46, KT-47).
 //!
 //! Không chứa chuỗi/đường dẫn `ktest` (D2-08); ảnh test là bin `vifast-kbin-ktest`
 //! (`src/ktest.rs`, feature `ktest`). KT-45 cài `stvec` **direct mode** ngay đầu boot và in lại
 //! `stvec` để chứng minh vector thật trên phần cứng; trap thật được kiểm trong ảnh test.
+//!
+//! KT-47: sau MMU, ảnh sản phẩm **arm timer 100 Hz** bằng SBI TIME (`sbi_set_timer`) + `sie.STIE`,
+//! chờ **≥1 tick** thật (timeout 1 s) rồi in `# timer …` bằng chứng. Timer hỏng ⇒ `PANIC` (runner
+//! đỏ), không giả xanh. PLIC/UART IRQ (KT-48), SMP (KT-49), U-mode (KT-53) **không** thuộc ảnh này.
 #![no_std]
 #![no_main]
 
 use core::fmt::Write;
 
+use vifast_plat_common::timer::{ticks_to_ns, TICK_HZ, TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
+use vifast_plat_riscv64::timer;
 use vifast_plat_riscv64::{read_trap_vector, Riscv64Virt};
 
 /// Nền tảng QEMU `virt` — zero-sized, dựng được trong `static`.
@@ -52,18 +58,80 @@ pub extern "C" fn rust_main() -> ! {
         );
         let _ = writeln!(
             w,
-            "# hart={} tick_hz={} time={} stvec=0x{:x} direct={}",
+            "# hart={} timebase_hz={} tick_hz={} time={} stvec=0x{:x} direct={}",
             PLATFORM.hart_id(),
-            PLATFORM.tick_hz(),
-            PLATFORM.now(),
+            PLATFORM.timebase_hz(),
+            TICK_HZ,
+            PLATFORM.now_ticks(),
             stvec,
             stvec & 0b11 == 0
         );
     }
-    // Ảnh sản phẩm chỉ TAP 1 dòng, nhưng MMU phải thật: satp mode 8, đọc lại được, alias ghi/đọc
-    // khớp. Sai ⇒ PANIC (run.sh coi là đỏ), không giả xanh.
+
+    // KT-47: **timer SBI** — arm deadline đầu (`now + TICK_TICKS`) rồi mới bật `sie.STIE` +
+    // `sstatus.SIE` (P2a: trap entry/handler không ghi `sstatus`; `sret` khôi phục SIE từ SPIE).
+    let timer_arm = timer::init();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer arm: now={} first_deadline={} tick_ticks={} tick_hz={} timebase_hz={} sie_stie={} sstatus_sie={}",
+            timer_arm.now,
+            timer_arm.first_deadline,
+            TICK_TICKS,
+            TICK_HZ,
+            TIMEBASE_HZ,
+            timer_arm.sie_stie as u8,
+            timer_arm.sstatus_sie as u8
+        );
+    }
+    // Chờ **≥1 tick thật**; timeout 1 s (100 tick) để boot hỏng không treo im lặng. Busy-spin để
+    // không phụ thuộc `wfi` (QEMU chỉ phục vụ timer ảo khi vCPU chạy — xem `ktest.sh` về icount).
+    let start = PLATFORM.now_ticks();
+    let mut snap = TIMER_STATS.snapshot();
+    while snap.ticks == 0 {
+        if PLATFORM.now_ticks().wrapping_sub(start) > PLATFORM.timebase_hz() {
+            PLATFORM.put_str("PANIC: timer khong tick trong 1 s\n");
+            PLATFORM.halt(1)
+        }
+        core::hint::spin_loop();
+        snap = TIMER_STATS.snapshot();
+    }
+    let sret_sie = timer::read_sstatus() & timer::SSTATUS_SIE != 0;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer: ticks={} delta_ns={} late={} missed={} non_monotonic={} last={} deadline={} sret_sie={}",
+            snap.ticks,
+            ticks_to_ns(snap.max_delta),
+            snap.late,
+            snap.missed,
+            snap.non_monotonic,
+            snap.last,
+            snap.deadline,
+            sret_sie as u8
+        );
+    }
+    // Dừng timer: deadline xa dập ngắt đang chờ rồi tắt cổng (sstatus.SIE → sie.STIE).
+    PLATFORM.set_timer_deadline(u64::MAX);
+    PLATFORM.disable_timer();
+    let timer_ok = timer_arm.sie_stie
+        && timer_arm.sstatus_sie
+        && sret_sie
+        && snap.ticks >= 1
+        && snap.non_monotonic == 0
+        && timer::read_sie() & timer::SIE_STIE == 0
+        && timer::read_sstatus() & timer::SSTATUS_SIE == 0;
+    // Ảnh sản phẩm chỉ TAP 1 dòng, nhưng MMU + timer phải thật: satp mode 8, đọc lại được, alias
+    // ghi/đọc khớp, timer nạp deadline + bật SIE + có ≥1 ngắt thật qua `stvec`. Sai ⇒ PANIC
+    // (run.sh coi là đỏ), không giả xanh.
     if mmu.satp >> 60 != 8 || !mmu::mmu_enabled() || !mmu.alias_ok {
         PLATFORM.put_str("PANIC: mmu init product\n");
+        PLATFORM.halt(1)
+    }
+    if !timer_ok {
+        PLATFORM.put_str("PANIC: timer init product\n");
         PLATFORM.halt(1)
     }
     PLATFORM.put_str("ok 1 - k3 boot\n");

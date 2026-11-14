@@ -13,8 +13,12 @@
 //!   **tiêm** cho `illegal` — D2-73: OpenSBI v1.8.1 `delegate_traps()` đặt `MEDELEG = 0xf4b509`
 //!   (bit 2 illegal và bit 9 ecall-S **không** delegate), nên hai loại đó không vào `stvec`.
 //!
-//! Trap/timer/PLIC/MMU/SMP **không** thuộc KT-45: MMU (KT-46), timer (KT-47), PLIC (KT-48), SMP
-//! (KT-49), U-mode/syscall (KT-53).
+//! Trap/timer/PLIC/MMU/SMP **không** thuộc KT-45: MMU (KT-46), timer (KT-47, module [`timer`] —
+//! SBI TIME + `sie.STIE` + `rdtime`), PLIC (KT-48), SMP (KT-49), U-mode/syscall (KT-53).
+//!
+//! KT-47: `trap_dispatch` có nhánh [`Event::Timer`] (bit 63 + mã 5) — đếm tick, nạp deadline kế,
+//! **resume** bằng `sret`; `sstatus.SIE` chỉ được bật ở [`timer::enable_timer`] (P2a: không ghi
+//! `sstatus` trong trap entry/handler).
 //!
 //! Địa chỉ UART/PLIC/CLINT là **dữ kiện nền tảng QEMU virt** (D2-72 Q7), không phải hằng số thiết
 //! kế `[TK]`; `spec/kernel.toml` **không** mở ở K3 (D2-72 Q1) nên chúng nằm ở đây và ở
@@ -32,12 +36,13 @@ use core::fmt::Write;
 
 use vifast_plat_common::trap::{
     decode_trap, handle_trap, report_fatal, report_guard_fault, report_interrupt, tf_reg_offset,
-    Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET,
-    TF_SIZE, TF_SSTATUS_OFFSET, TF_STVAL_OFFSET, TRAP_STATS,
+    Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, INTERRUPT_SUPERVISOR_TIMER,
+    TF_SCAUSE_OFFSET, TF_SEPC_OFFSET, TF_SIZE, TF_SSTATUS_OFFSET, TF_STVAL_OFFSET, TRAP_STATS,
 };
 use vifast_plat_common::{Platform, PlatformWriter};
 
 pub mod mmu;
+pub mod timer;
 
 /// UART0 của QEMU `virt` (16550A) — dữ kiện nền tảng, D2-72 Q7.
 pub const UART0_BASE: usize = 0x1000_0000;
@@ -49,8 +54,9 @@ pub const PLIC_BASE: usize = 0x0c00_0000;
 pub const CLINT_BASE: usize = 0x0200_0000;
 /// Trang test của `virt` (`test@100000`; D2-72 Q7).
 pub const TEST_PAGE_BASE: usize = 0x0010_0000;
-/// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6).
-pub const TIME_HZ: u64 = 10_000_000;
+/// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6) — nguồn duy nhất ở
+/// [`vifast_plat_common::timer::TIMEBASE_HZ`] (KT-47), đây chỉ là tên ngắn cho code arch.
+pub const TIME_HZ: u64 = vifast_plat_common::timer::TIMEBASE_HZ;
 
 // Entry point: OpenSBI nhảy vào S-mode với `a0 = hartid`, `a1 = địa chỉ DTB` (SBI spec).
 // Giữ hartid ở `tp` để `Riscv64Virt::hart_id` đọc lại mà không cần `static mut`; đặt `sp` từ
@@ -258,7 +264,9 @@ pub fn read_trap_vector() -> usize {
 /// - Exception recoverable (`breakpoint`, `illegal`, `ecall`) ⇒ cộng `sepc` đúng cỡ instruction,
 ///   ghi [`TRAP_STATS`], in một dòng `# trap …`, rồi asm `sret` về instruction kế.
 /// - Exception fatal ⇒ ghi stats, dump `PANIC` + `scause/sepc/stval` + thanh ghi chính, halt(1).
-/// - Interrupt ⇒ ghi stats, dump `PANIC: unexpected interrupt` (timer/PLIC là KT-47/48), halt(1).
+/// - **Ngắt timer** (`scause` bit 63 + mã 5, KT-47) ⇒ đếm tick + bằng chứng `sstatus.SIE`, nạp
+///   deadline kế qua SBI TIME rồi **resume** (`sret`) — **không** phải exception, không fatal.
+/// - Ngắt khác ⇒ ghi stats, dump `PANIC: unexpected interrupt` (PLIC/UART IRQ là KT-48), halt(1).
 #[no_mangle]
 pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
     let saved = *tf;
@@ -310,7 +318,19 @@ pub extern "C" fn trap_dispatch(tf: &mut TrapFrame) {
                     report_fatal(&Riscv64Virt, &fatal, &saved)
                 }
                 TrapAction::Interrupt { .. } => unreachable!("decode_trap đã trả Exception"),
+                TrapAction::Timer => unreachable!("decode_trap đã trả Exception"),
             }
+        }
+        // KT-47: ngắt **S-mode timer** thật (scause bit 63 + mã 5). Handler chạy với `SIE = 0`
+        // (hardware xoá khi vào trap) nên không có trap lồng; `trap_entry`/handler **không** ghi
+        // `sstatus` — `sret` khôi phục `SIE` từ `SPIE` (P2a của KT-45). Đếm tick rồi nạp deadline
+        // kế ngay trong handler (trước khi resume) để dập ngắt đang chờ; nếu chưa arm thì nạp
+        // `u64::MAX` để không bắn lại.
+        Event::Timer => {
+            let handler_sstatus = timer::read_sstatus();
+            let sample = timer::on_timer_interrupt(saved.sstatus, handler_sstatus);
+            timer::set_timer_deadline(sample.map(|s| s.next_deadline).unwrap_or(u64::MAX));
+            TRAP_STATS.record_interrupt(&saved, INTERRUPT_SUPERVISOR_TIMER);
         }
         Event::Interrupt { code } => {
             TRAP_STATS.record_interrupt(&saved, code);
@@ -353,11 +373,11 @@ impl Platform for Riscv64Virt {
         debug_halt(code)
     }
 
-    fn now(&self) -> u64 {
-        read_time()
+    fn now_ticks(&self) -> u64 {
+        timer::now_ticks()
     }
 
-    fn tick_hz(&self) -> u64 {
+    fn timebase_hz(&self) -> u64 {
         TIME_HZ
     }
 
@@ -387,15 +407,19 @@ impl Platform for Riscv64Virt {
         // KT-45 **stub**: PLIC là KT-48.
         false
     }
-}
 
-/// `rdtime` (Zicntr): S-mode đọc được vì OpenSBI đặt `mcounteren.TM`; tick 10 MHz.
-/// Đây là **stub** của K3 — timer thật (`set_timer`, tick 100 Hz) là KT-47 (D2-72 Q6).
-fn read_time() -> u64 {
-    let ticks: u64;
-    // SAFETY: `rdtime` chỉ đọc CSR `time`, không tác dụng phụ, không chạm bộ nhớ.
-    unsafe { asm!("rdtime {}", out(reg) ticks, options(nomem, nostack)) };
-    ticks
+    fn set_timer_deadline(&self, deadline: u64) {
+        // KT-47: SBI TIME (EID 0x54494D45) — deadline tuyệt đối, đơn vị timebase.
+        timer::set_timer_deadline(deadline);
+    }
+
+    fn enable_timer(&self) -> bool {
+        timer::enable_timer()
+    }
+
+    fn disable_timer(&self) {
+        timer::disable_timer();
+    }
 }
 
 /// Hart id đọc từ `tp` — `_start` đã chép `a0` (hartid OpenSBI truyền) vào đó.

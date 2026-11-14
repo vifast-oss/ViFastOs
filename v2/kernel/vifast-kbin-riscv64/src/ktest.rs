@@ -2,7 +2,7 @@
 //! Ảnh **test** riscv64 cho K3 (KT-44, KT-45, KT-46) — bin riêng, feature `ktest`, nạp qua
 //! OpenSBI. D2-08: ảnh test **không** nằm trong ảnh sản phẩm.
 //!
-//! KT-46 mở rộng ảnh này từ 5 lên **8 TAP**:
+//! KT-46/47 mở rộng ảnh này lên **12 TAP**:
 //!
 //! 1. `ok 1 - ktest image` — marker tách ảnh của KT-44.
 //! 2. `ok 2 - trap breakpoint` — **trap phần cứng thật** (`ebreak` → `scause=3`, resume đúng
@@ -15,9 +15,17 @@
 //!    2 MiB **NX**; UART/PLIC Device 4 KiB; kernel nửa cao X.
 //! 7. `ok 7 - walk khop` — PTE đọc lại **sau** khi bật `satp` bằng PTE trước; walk phần mềm trả
 //!    đúng PTE; alias identity ↔ nửa cao ↔ physmap ghi/đọc khớp (hardware walk thật).
-//! 8. `ok 8 - trap nested panic` — trap **lồng** vẫn fatal (P2b); boot kết thúc bằng `PANIC:
-//!    nested trap …` + `DebugHalt(1)`, không treo/không resume. Runner chấp nhận đúng dòng PANIC
-//!    này và **chỉ** dòng này.
+//! 8. `ok 8 - timer 100 ticks monotonic` — SBI TIME + `sie.STIE`: 100 ngắt timer **thật**, mỗi
+//!    tick `rdtime` tăng (monotonic), không có tick nào `now <= last` (KT-47).
+//! 9. `ok 9 - timer no lost tick` — 1.000 tick liên tiếp, `late = missed = 0` (không mất tick;
+//!    "trễ > 1 tick" là định nghĩa mất tick của KT-47).
+//! 10. `ok 10 - timer irq` — ngắt **thật** qua `stvec`: `scause = (1<<63) | 5`,
+//!     `TRAP_STATS.interrupts ≥ 1.000`, 0 exception phát sinh; `sstatus.SIE` đúng (SIE=1 lúc trap,
+//!     SIE=0 trong handler, `sret` trả SIE=1).
+//! 11. `ok 11 - timer deadline drift` — Δ tick đo được ∈ [9,11] ms (DoD KT-47), in min/max ns.
+//! 12. `ok 12 - trap nested panic` — trap **lồng** vẫn fatal (P2b); boot kết thúc bằng `PANIC:
+//!     nested trap …` + `DebugHalt(1)`, không treo/không resume. Runner chấp nhận đúng dòng PANIC
+//!     này và **chỉ** dòng này.
 //!
 //! Guard page fault **thật** (`scause=13` load, `scause=15` store) nằm ở ảnh riêng
 //! `vifast-kbin-ktest-guard` vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích; U-mode/
@@ -29,9 +37,16 @@ use core::fmt::Write;
 use core::sync::atomic::AtomicU64;
 
 use vifast_plat_common::mmu::{satp_mode, satp_root, PTE_EXEC, PTE_READ, PTE_WRITE};
-use vifast_plat_common::trap::TRAP_STATS;
+use vifast_plat_common::timer::{
+    ticks_to_ns, TICK_DELTA_MAX_NS, TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
+    TIMER_STATS,
+};
+use vifast_plat_common::trap::{
+    INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE, TRAP_STATS,
+};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
+use vifast_plat_riscv64::timer;
 use vifast_plat_riscv64::{
     probe_breakpoint, probe_ecall_sbi, probe_injected_trap, probe_nested_trap, read_trap_vector,
     trap_vector, Riscv64Virt, PLIC_BASE, UART0_BASE,
@@ -57,7 +72,7 @@ const SBI_ERR_NOT_SUPPORTED: u64 = u64::MAX - 1;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..8\n");
+    PLATFORM.put_str("TAP version 13\n1..12\n");
     // KT-45: vector direct-mode trước mọi test trap.
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -65,10 +80,11 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# ktest image: hart={} tick_hz={} time={} stvec=0x{:x} trap_vector=0x{:x} direct={}",
+            "# ktest image: hart={} timebase_hz={} time={} tick_hz={} stvec=0x{:x} trap_vector=0x{:x} direct={}",
             PLATFORM.hart_id(),
-            PLATFORM.tick_hz(),
-            PLATFORM.now(),
+            PLATFORM.timebase_hz(),
+            PLATFORM.now_ticks(),
+            TICK_HZ,
             stvec,
             trap_vector(),
             stvec & 0b11 == 0
@@ -404,6 +420,177 @@ pub extern "C" fn rust_main() -> ! {
         }
     }
 
+    // -------------------------------------------------- 8..11) Timer SBI (KT-47)
+    // SBI TIME (EID 0x54494D45) + `sie.STIE`: deadline tuyệt đối mỗi hart, tick 100 Hz trên
+    // timebase 10 MHz (D2-72 Q6). `timer::init` arm deadline đầu + bật SIE **sau** khi deadline
+    // đã nạp (P2a: trap entry/handler không ghi `sstatus`; `sret` khôi phục SIE từ SPIE).
+    let timer_arm = timer::init();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer arm: now={} first_deadline={} tick_ticks={} tick_hz={} timebase_hz={} sie_stie={} sstatus_sie={}",
+            timer_arm.now,
+            timer_arm.first_deadline,
+            TICK_TICKS,
+            TICK_HZ,
+            TIMEBASE_HZ,
+            timer_arm.sie_stie as u8,
+            timer_arm.sstatus_sie as u8
+        );
+    }
+    let exceptions_before = TRAP_STATS.snapshot().exceptions;
+
+    // TAP 8: 100 tick, mỗi tick `rdtime` tăng (monotonic) — chờ tối đa 3 s.
+    let ok100 = wait_ticks(100, 3 * TIMEBASE_HZ);
+    let snap100 = TIMER_STATS.snapshot();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer ticks: ticks={} min_delta_ticks={} max_delta_ticks={} non_monotonic={} late={} missed={} max_late_ticks={} first={} last={} deadline={}",
+            snap100.ticks,
+            snap100.min_delta,
+            snap100.max_delta,
+            snap100.non_monotonic,
+            snap100.late,
+            snap100.missed,
+            snap100.max_late,
+            snap100.first,
+            snap100.last,
+            snap100.deadline
+        );
+    }
+    let ok8 = ok100
+        && snap100.ticks >= 100
+        && snap100.non_monotonic == 0
+        && PLATFORM.now_ticks() > snap100.last;
+    if ok8 {
+        PLATFORM.put_str("ok 8 - timer 100 ticks monotonic\n");
+    } else {
+        PLATFORM
+            .put_str("not ok 8 - timer 100 ticks monotonic: khong du 100 tick/khong don dieu\n");
+        fails += 1;
+    }
+
+    // TAP 9: 1.000 tick liên tiếp, KHÔNG mất tick (`late = missed = 0`; "trễ > 1 tick" = mất
+    // tick). Chờ tối đa thêm 12 s (1.000 tick = 10 s ở 100 Hz).
+    let ok1000 = ok100 && wait_ticks(1000, 12 * TIMEBASE_HZ);
+    let snap = TIMER_STATS.snapshot();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer ticks: ticks={} min_delta_ticks={} max_delta_ticks={} non_monotonic={} late={} missed={} max_late_ticks={} first={} last={} deadline={}",
+            snap.ticks,
+            snap.min_delta,
+            snap.max_delta,
+            snap.non_monotonic,
+            snap.late,
+            snap.missed,
+            snap.max_late,
+            snap.first,
+            snap.last,
+            snap.deadline
+        );
+    }
+    let ok9 = ok1000
+        && snap.ticks >= 1000
+        && snap.late == 0
+        && snap.missed == 0
+        && snap.non_monotonic == 0;
+    if ok9 {
+        PLATFORM.put_str("ok 9 - timer no lost tick\n");
+    } else {
+        PLATFORM.put_str("not ok 9 - timer no lost tick: co tick tre/mat tick\n");
+        fails += 1;
+    }
+
+    // TAP 10: ngắt **thật** qua `stvec` — `scause = (1<<63) | 5`, đếm trong TRAP_STATS; không
+    // phát sinh exception nào trong lúc timer chạy; `sstatus.SIE` đúng (trap SIE=1, handler SIE=0,
+    // `sret` trả SIE=1).
+    let traps = TRAP_STATS.snapshot();
+    let sie_stie_after = timer::read_sie() & timer::SIE_STIE != 0;
+    let sret_sie = timer::read_sstatus() & SSTATUS_SIE != 0;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer irq: interrupts={} scause=0x{:x} code={} exceptions={} exceptions_before={} sie_stie={}",
+            traps.interrupts,
+            traps.last_scause,
+            traps.last_code,
+            traps.exceptions,
+            exceptions_before,
+            sie_stie_after as u8
+        );
+        let _ = writeln!(
+            w,
+            "# timer sie: trap_spie_on={} handler_sie_off={} ticks={} sie_stie=1 sret_sie={}",
+            snap.trap_spie_on, snap.handler_sie_off, snap.ticks, sret_sie as u8
+        );
+    }
+    let ok10 = traps.interrupts >= 1000
+        && traps.last_scause == (SCAUSE_INTERRUPT | INTERRUPT_SUPERVISOR_TIMER)
+        && traps.last_code == INTERRUPT_SUPERVISOR_TIMER
+        && traps.exceptions == exceptions_before
+        && sie_stie_after
+        && sret_sie
+        && snap.trap_spie_on == snap.ticks
+        && snap.handler_sie_off == snap.ticks;
+    if ok10 {
+        PLATFORM.put_str("ok 10 - timer irq\n");
+    } else {
+        PLATFORM.put_str("not ok 10 - timer irq: scause/SIE/exception khong dung\n");
+        fails += 1;
+    }
+
+    // TAP 11: drift Δ tick ∈ [9,11] ms (DoD KT-47) — min/max delta giữa hai tick liên tiếp.
+    let min_ns = ticks_to_ns(snap.min_delta);
+    let max_ns = ticks_to_ns(snap.max_delta);
+    let drift_in_range = min_ns >= TICK_DELTA_MIN_NS && max_ns <= TICK_DELTA_MAX_NS;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer drift: min_ns={} max_ns={} min_us={} max_us={} tick_ns={} min_bound_ns={} max_bound_ns={} in_range={}",
+            min_ns,
+            max_ns,
+            min_ns / 1000,
+            max_ns / 1000,
+            TICK_NS,
+            TICK_DELTA_MIN_NS,
+            TICK_DELTA_MAX_NS,
+            drift_in_range as u8
+        );
+    }
+    let ok11 = ok9 && drift_in_range && snap.late == 0;
+    if ok11 {
+        PLATFORM.put_str("ok 11 - timer deadline drift\n");
+    } else {
+        PLATFORM.put_str("not ok 11 - timer deadline drift: delta ngoai [9,11] ms\n");
+        fails += 1;
+    }
+
+    // Dừng timer trước TAP trap lồng: nạp deadline xa (dập ngắt đang chờ) rồi tắt SIE/STIE.
+    // `trap_entry`/handler không ghi `sstatus`; chỉ `disable_timer` tắt cổng (đảo thứ tự enable).
+    PLATFORM.set_timer_deadline(u64::MAX);
+    PLATFORM.disable_timer();
+    let disabled_stie = timer::read_sie() & timer::SIE_STIE == 0;
+    let disabled_sie = timer::read_sstatus() & SSTATUS_SIE == 0;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# timer disable: sie_stie={} sstatus_sie={}",
+            (!disabled_stie) as u8,
+            (!disabled_sie) as u8
+        );
+    }
+    if !(disabled_stie && disabled_sie) {
+        fails += 1;
+    }
+
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -421,10 +608,10 @@ pub extern "C" fn rust_main() -> ! {
         PLATFORM.halt(1)
     }
 
-    // ------------------------------------------------- 8) trap LỒNG (fatal, có chủ đích)
-    // In `ok 8` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
+    // ------------------------------------------------ 12) trap LỒNG (fatal, có chủ đích)
+    // In `ok 12` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
     // không có `# ktest halt`. ktest.sh đòi đúng dòng PANIC này và **không** có PANIC nào khác.
-    PLATFORM.put_str("ok 8 - trap nested panic\n");
+    PLATFORM.put_str("ok 12 - trap nested panic\n");
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -433,6 +620,25 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
     probe_nested_trap()
+}
+
+/// Chờ tới khi bộ đếm timer đạt `target` tick — `false` nếu quá `timeout_ticks` (timebase).
+///
+/// Vòng chờ đọc `rdtime` (asm, không bị hoist) và bộ đếm atomic; ngắt timer chen vào giữa các
+/// vòng lặp bình thường vì `sstatus.SIE = 1` sau `sret`.
+fn wait_ticks(target: u64, timeout_ticks: u64) -> bool {
+    let start = PLATFORM.now_ticks();
+    loop {
+        if TIMER_STATS.snapshot().ticks >= target {
+            return true;
+        }
+        if PLATFORM.now_ticks().wrapping_sub(start) > timeout_ticks {
+            return false;
+        }
+        // Busy-spin (không `wfi`): dưới `-icount shift=6` thời gian ảo tiến theo lệnh đã chạy,
+        // nên vCPU phải chạy để deadline tới hạn đúng hạn; `wfi` làm thời gian ảo đứng ⇒ tick trễ.
+        core::hint::spin_loop();
+    }
 }
 
 #[panic_handler]

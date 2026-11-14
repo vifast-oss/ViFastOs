@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# KT-44/45/46 — boot ảnh **TEST** riscv64 K3 (crate `vifast-kbin-riscv64`, feature `ktest`).
+# KT-44/45/46/47 — boot ảnh **TEST** riscv64 K3 (crate `vifast-kbin-riscv64`, feature `ktest`).
 #
 # D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm — cùng crate nhưng bin + feature riêng.
-# KT-46: **hai** ảnh test vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích:
-#   - `vifast-kbin-ktest`       : 8 TAP — KT-45 (image + 3 trap + nested) + KT-46 (mmu on, map
-#                                 layout, walk khop) trước trap lồng fatal cuối cùng.
+# KT-47: **hai** ảnh test vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích:
+#   - `vifast-kbin-ktest`       : 12 TAP — KT-45 (image + 3 trap) + KT-46 (mmu on, map layout,
+#                                 walk khop) + KT-47 (4 TAP timer SBI: 100 tick đơn điệu, 1.000
+#                                 tick không mất, irq thật qua `stvec`, drift Δ ∈ [9,11] ms)
+#                                 trước trap lồng fatal cuối cùng (`ok 12`).
 #   - `vifast-kbin-ktest-guard` : 3 TAP — guard page fault **thật**: load `scause=13` (resume
 #                                 probe) rồi store `scause=15` fatal `PANIC: guard page fault`.
 #
@@ -25,6 +27,15 @@ IMG_MAIN="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest"
 IMG_GUARD="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-guard"
 N_BOOT="${1:-1}"
 SMP="${2:-1}"
+# KT-47: `-icount` để QEMU phục vụ timer ảo (ACLINT/SBI TIME) **đúng hạn** — không icount, QEMU 11
+# TCG trên macOS chỉ chạy virtual timer mỗi ~200 ms (đo được: Δ tick 0.3–2.9 s), nên không thể đo
+# DoD "Δ tick ∈ [9,11] ms". Dòng lệnh QEMU của D2-72 Q2 (machine/cpu/ram/smp) **giữ nguyên**; chỉ
+# thêm icount cho **ảnh test** (đo định thời tất định); `run.sh`/soak giữ nguyên dòng D2-72 Q2.
+# **Shift CỐ ĐỊNH = 6** (64 ns/lệnh), KHÔNG dùng shift tự động (`auto`): `auto` tự đổi shift giữa chừng (bám thời
+# gian thật) ⇒ thời gian ảo nhảy, Δ tick lệch 3–17 ms (TAP drift đỏ ngẫu nhiên); shift cố định giữ
+# Δ = 10 ms ± quantization icount, vẫn trong [9,11] ms. Deviation ghi ở `v2/docs/k3-riscv64.md`
+# §10.5 + JOURNAL/STATE + D2-74.
+QEMU_ICOUNT="-icount shift=6"
 TIMEOUT_DS=200   # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
 QEMU_MIN_MINOR=2
@@ -96,7 +107,7 @@ done
 boot_once() {
     local tag="$1" image="$2" index="$3"
     local out="/tmp/k3-ktest-$tag-$index.log"
-    "$QEMU" -machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$image" -nographic \
+    "$QEMU" $QEMU_ICOUNT -machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$image" -nographic \
         -cpu rv64 -m 128M -smp "$SMP" -no-reboot >"$out" 2>&1 &
     local pid=$!
     local waited=0
@@ -121,18 +132,18 @@ boot_once() {
 fails=0
 i=1
 while [ "$i" -le "$N_BOOT" ]; do
-    # ---------------------------------------------------------------- ảnh chính: 8 TAP
+    # --------------------------------------------------------------- ảnh chính: 12 TAP
     if out="$(boot_once main "$IMG_MAIN" "$i")"; then :; else
         echo "not ok $i - ktest boot $i: quá $((TIMEOUT_DS / 10)) s (treo), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
         continue
     fi
-    # TAP 1..4 là KT-45; 5..7 là KT-46 (MMU); 8 là trap lồng fatal có chủ đích. Runner đòi
-    # đúng dòng PANIC lồng và **chỉ** dòng đó.
+    # TAP 1..4 là KT-45; 5..7 là KT-46 (MMU); 8..11 là KT-47 (timer SBI); 12 là trap lồng fatal
+    # có chủ đích. Runner đòi đúng dòng PANIC lồng và **chỉ** dòng đó.
     missing=""
     grep -q '^TAP version 13$' "$out" || missing="$missing TAP-version"
-    grep -q '^1\.\.8$' "$out" || missing="$missing plan-1..8"
+    grep -q '^1\.\.12$' "$out" || missing="$missing plan-1..12"
     grep -q '^ok 1 - ktest image$' "$out" || missing="$missing ok1-image"
     grep -q '^ok 2 - trap breakpoint$' "$out" || missing="$missing ok2-breakpoint"
     grep -q '^ok 3 - trap ecall sbi$' "$out" || missing="$missing ok3-ecall-sbi"
@@ -140,7 +151,11 @@ while [ "$i" -le "$N_BOOT" ]; do
     grep -q '^ok 5 - mmu on$' "$out" || missing="$missing ok5-mmu-on"
     grep -q '^ok 6 - map layout$' "$out" || missing="$missing ok6-map-layout"
     grep -q '^ok 7 - walk khop$' "$out" || missing="$missing ok7-walk-khop"
-    grep -q '^ok 8 - trap nested panic$' "$out" || missing="$missing ok8-nested"
+    grep -q '^ok 8 - timer 100 ticks monotonic$' "$out" || missing="$missing ok8-timer-monotonic"
+    grep -q '^ok 9 - timer no lost tick$' "$out" || missing="$missing ok9-timer-no-lost-tick"
+    grep -q '^ok 10 - timer irq$' "$out" || missing="$missing ok10-timer-irq"
+    grep -q '^ok 11 - timer deadline drift$' "$out" || missing="$missing ok11-timer-drift"
+    grep -q '^ok 12 - trap nested panic$' "$out" || missing="$missing ok12-nested"
     grep -q '^# mmu: .*mode=8' "$out" || missing="$missing mmu-evidence"
     grep -q '^# mmu on: .*alias=1 .*kernel_low=1 kernel_high=1' "$out" ||
         missing="$missing mmu-on-evidence"
@@ -150,13 +165,26 @@ while [ "$i" -le "$N_BOOT" ]; do
         missing="$missing device/physmap-evidence"
     grep -q '^# walk khop: pre=post=1 software=8/8' "$out" ||
         missing="$missing walk-khop-evidence"
+    # KT-47: bằng chứng timer — SBI TIME (tick 100 Hz, timebase 10 MHz), tick đơn điệu/không mất,
+    # scause ngắt S-mode timer thật (bit 63 + code 5), drift Δ trong [9,11] ms, và SIE đúng
+    # (bị ngắt khi SIE=1, trong handler SIE=0, `sret` trả SIE=1, disable về 0).
+    grep -q '^# timer arm: .*tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1$' "$out" ||
+        missing="$missing timer-arm-evidence"
+    grep -q '^# timer ticks: .*non_monotonic=0 late=0 missed=0' "$out" ||
+        missing="$missing timer-monotonic-evidence"
+    grep -q '^# timer drift: .*in_range=1' "$out" || missing="$missing timer-drift-evidence"
+    grep -q '^# timer irq: .*scause=0x8000000000000005 code=5' "$out" ||
+        missing="$missing timer-irq-evidence"
+    grep -q '^# timer sie: .*sret_sie=1$' "$out" || missing="$missing timer-sie-evidence"
+    grep -q '^# timer disable: sie_stie=0 sstatus_sie=0$' "$out" ||
+        missing="$missing timer-disable-evidence"
     grep -q '^PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)$' "$out" ||
         missing="$missing nested-panic"
     others="$(grep '^PANIC' "$out" |
         grep -vc '^PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)$' || true)"
     [ "${others:-0}" -eq 0 ] || missing="$missing PANIC-khác"
     if [ -z "$missing" ]; then
-        echo "ok $i - ktest image + trap + mmu + nested"
+        echo "ok $i - ktest image + trap + mmu + timer + nested"
     else
         echo "not ok $i - ktest boot $i: thiếu$missing, log $out"
         fails=$((fails + 1))

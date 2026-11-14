@@ -7,7 +7,8 @@
 //! khỏi phần không chạy được trên host.
 //!
 //! Phạm vi K3 (KT-44) đúng bằng cái vòng trap cần:
-//! - [`Platform`]: `put_str`/`halt`/`now`/`tick_hz`/`hart_id` — chữ ký ổn định, arch tự cài;
+//! - [`Platform`]: `put_str`/`halt`/`now_ticks`/`now_ns`/`timebase_hz`/`hart_id` — chữ ký ổn
+//!   định, arch tự cài;
 //! - [`PanicHandler`]: handler panic **dùng chung** cho ảnh sản phẩm và ảnh ktest (D2-08:
 //!   hai ảnh khác nhau nhưng cùng một handler, không chép đôi);
 //! - [`PlatformWriter`]: `core::fmt::Write` trên [`Platform::put_str`], để in số không cần `alloc`.
@@ -19,23 +20,31 @@
 //!
 //! KT-46 mở module [`mmu`]: page table **Sv39 thật** dựng từ arena RAM (không `static`), map
 //! 4 KiB / 2 MiB / 1 GiB, walk phần mềm đối chiếu phần cứng, cờ PTE `V/R/W/X/A/D` và `satp` Sv39.
-//! Phần asm/CSR/MMIO/`satp` nằm ở arch (`kernel/vifast-plat-riscv64`) theo D2-17. **Không** thuộc
-//! KT-46: timer (KT-47), PLIC (KT-48), SMP (KT-49), ASID/shootdown (KT-51), U-mode (KT-53) — xem
-//! `v2/docs/k3-riscv64.md` §8.
+//! Phần asm/CSR/MMIO/`satp` nằm ở arch (`kernel/vifast-plat-riscv64`) theo D2-17.
+//!
+//! KT-47 mở module [`timer`] (SBI TIME, tick 100 Hz, timebase 10 MHz — D2-72 Q6): hằng số `[TK]`,
+//! phân loại tick/deadline **tuyệt đối**, phát hiện mất tick ("trễ > 1 tick"), bộ đếm
+//! `ticks/late/max_delta` + bằng chứng `sstatus.SIE`; [`Platform`] thêm `now_ticks`/`now_ns`,
+//! `set_timer_deadline`, `enable_timer`/`disable_timer`. **Không** thuộc KT-47: PLIC (KT-48), SMP
+//! (KT-49), ASID/shootdown (KT-51), U-mode (KT-53) — xem `v2/docs/k3-riscv64.md` §10.
 #![no_std]
 #![forbid(unsafe_code)]
 
 pub mod mmu;
+pub mod timer;
 pub mod trap;
 
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
+use timer::ticks_to_ns;
+
 /// Nền tảng tối thiểu mà kernel cần từ arch (K3).
 ///
-/// `halt` trả `!` vì OpenSBI SRST không quay lại. `now`/`tick_hz` hiện là **stub đồng hồ
-/// monotonic** (đọc `time` CSR); timer thật (`set_timer`, tick 100 Hz, deadline mỗi hart) là
-/// KT-47 theo D2-72 Q6.
+/// `halt` trả `!` vì OpenSBI SRST không quay lại. KT-47: `now_ticks` là `rdtime` (timebase
+/// [`Self::timebase_hz`]); `set_timer_deadline`/`enable_timer`/`disable_timer` là SBI TIME +
+/// `sie.STIE`/`sstatus.SIE` (D2-72 Q6). Ngữ nghĩa tick/deadline ở module [`timer`] — phần arch chỉ
+/// là asm/CSR/SBI.
 pub trait Platform {
     /// In một chuỗi ra console debug (`DebugPutStr` dùng lại ở K3).
     fn put_str(&self, s: &str);
@@ -44,11 +53,18 @@ pub trait Platform {
     /// biệt đường sạch/đường panic bằng marker TAP và dòng `PANIC`.
     fn halt(&self, code: usize) -> !;
 
-    /// Đọc đồng hồ monotonic thô, đơn vị là tick của [`Self::tick_hz`].
-    fn now(&self) -> u64;
+    /// Đọc đồng hồ monotonic thô (`rdtime`), đơn vị là tick timebase của [`Self::timebase_hz`].
+    fn now_ticks(&self) -> u64;
 
-    /// Tần số timebase (tick/giây). QEMU `virt`: 10 MHz (D2-72 Q6).
-    fn tick_hz(&self) -> u64;
+    /// Đọc đồng hồ monotonic theo **ns** — quy đổi từ [`Self::now_ticks`] bằng
+    /// [`timer::ticks_to_ns`] (10 MHz ⇒ chính xác tuyệt đối).
+    fn now_ns(&self) -> u64 {
+        ticks_to_ns(self.now_ticks())
+    }
+
+    /// Tần số **timebase** (tick/giây): QEMU `virt` = 10 MHz (D2-72 Q6). Tick kernel là
+    /// [`timer::TICK_HZ`] = 100 Hz, **khác** tần số này.
+    fn timebase_hz(&self) -> u64;
 
     /// Hart đang chạy (Boot HART id OpenSBI truyền ở `a0`).
     fn hart_id(&self) -> usize;
@@ -67,6 +83,23 @@ pub trait Platform {
 
     /// Tắt một dòng IRQ — **stub** ở KT-45, chưa PLIC (KT-48); cùng hợp đồng với [`Self::enable_irq`].
     fn disable_irq(&self, irq: u32) -> bool;
+
+    /// Đặt **deadline tuyệt đối** cho ngắt timer kế (đơn vị timebase) — SBI TIME EID
+    /// `0x54494D45`, FID 0 (`sbi_set_timer`), D2-72 Q6.
+    ///
+    /// Deadline ở **tương lai** đồng thời xoá ngắt timer đang chờ; `u64::MAX` = tắt hữu hiệu
+    /// (dùng trước khi `disable_timer` hoặc khi kết thúc test).
+    fn set_timer_deadline(&self, deadline: u64);
+
+    /// Bật ngắt timer: `sie.STIE = 1` **rồi** `sstatus.SIE = 1` (nguồn trước, cổng sau).
+    ///
+    /// Trả `true` ⇔ đọc lại thấy **cả hai** bit đã bật. KT-47 (P2a): đây là chỗ **duy nhất** bật
+    /// `sstatus.SIE`; `trap_entry`/handler **không** ghi `sstatus` — vào trap hardware xoá SIE,
+    /// `sret` khôi phục SIE từ SPIE (không có trap lồng trong handler).
+    fn enable_timer(&self) -> bool;
+
+    /// Tắt ngắt timer: `sstatus.SIE = 0` **rồi** `sie.STIE = 0` (đảo thứ tự của [`Self::enable_timer`]).
+    fn disable_timer(&self);
 }
 
 /// Triển khai [`Platform`] cho tham chiếu — để `PanicHandler::new(&plat)` dùng được mà không
@@ -80,12 +113,16 @@ impl<P: Platform + ?Sized> Platform for &P {
         (**self).halt(code)
     }
 
-    fn now(&self) -> u64 {
-        (**self).now()
+    fn now_ticks(&self) -> u64 {
+        (**self).now_ticks()
     }
 
-    fn tick_hz(&self) -> u64 {
-        (**self).tick_hz()
+    fn now_ns(&self) -> u64 {
+        (**self).now_ns()
+    }
+
+    fn timebase_hz(&self) -> u64 {
+        (**self).timebase_hz()
     }
 
     fn hart_id(&self) -> usize {
@@ -102,6 +139,18 @@ impl<P: Platform + ?Sized> Platform for &P {
 
     fn disable_irq(&self, irq: u32) -> bool {
         (**self).disable_irq(irq)
+    }
+
+    fn set_timer_deadline(&self, deadline: u64) {
+        (**self).set_timer_deadline(deadline);
+    }
+
+    fn enable_timer(&self) -> bool {
+        (**self).enable_timer()
+    }
+
+    fn disable_timer(&self) {
+        (**self).disable_timer();
     }
 }
 

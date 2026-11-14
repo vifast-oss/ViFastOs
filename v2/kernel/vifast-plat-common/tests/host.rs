@@ -31,6 +31,8 @@ struct Recorder {
     halt_code: RefCell<Option<usize>>,
     trap_vector: RefCell<Option<usize>>,
     irq_log: RefCell<Vec<(u32, bool)>>,
+    timer_deadline: RefCell<Option<u64>>,
+    timer_enabled: std::cell::Cell<bool>,
 }
 
 impl Platform for Recorder {
@@ -44,11 +46,11 @@ impl Platform for Recorder {
         panic!("halt({code})");
     }
 
-    fn now(&self) -> u64 {
+    fn now_ticks(&self) -> u64 {
         42
     }
 
-    fn tick_hz(&self) -> u64 {
+    fn timebase_hz(&self) -> u64 {
         10_000_000
     }
 
@@ -69,14 +71,44 @@ impl Platform for Recorder {
         self.irq_log.borrow_mut().push((irq, false));
         false
     }
+
+    fn set_timer_deadline(&self, deadline: u64) {
+        *self.timer_deadline.borrow_mut() = Some(deadline);
+    }
+
+    fn enable_timer(&self) -> bool {
+        self.timer_enabled.set(true);
+        true
+    }
+
+    fn disable_timer(&self) {
+        self.timer_enabled.set(false);
+    }
 }
 
 #[test]
 fn platform_writer_in_dung_thu_tu() {
     let r = Recorder::default();
     let mut w = PlatformWriter(&r);
-    write!(w, "hart={} now={}", r.hart_id(), r.now()).unwrap();
+    write!(w, "hart={} now={}", r.hart_id(), r.now_ticks()).unwrap();
     assert_eq!(r.out.borrow().as_str(), "hart=3 now=42");
+}
+
+#[test]
+fn platform_kt47_doi_dong_ho_tick_sang_ns_va_timer_api() {
+    // KT-47: `now_ns` là method mặc định của trait — quy đổi từ `now_ticks` bằng `ticks_to_ns`
+    // (timebase 10 MHz ⇒ 42 tick = 4.200 ns); `timebase_hz` = 10 MHz; ba method timer uỷ quyền.
+    let r = Recorder::default();
+    assert_eq!(r.now_ticks(), 42);
+    assert_eq!(r.now_ns(), 4_200);
+    assert_eq!(r.timebase_hz(), 10_000_000);
+    assert!(!r.timer_enabled.get());
+    r.set_timer_deadline(123_456);
+    assert_eq!(*r.timer_deadline.borrow(), Some(123_456));
+    assert!(r.enable_timer());
+    assert!(r.timer_enabled.get());
+    r.disable_timer();
+    assert!(!r.timer_enabled.get());
 }
 
 #[test]
@@ -165,10 +197,11 @@ fn decode_scause_du_15_ma_va_interrupt() {
         Event::Interrupt { code } => assert_eq!(code, 1),
         other => panic!("scause interrupt phải là Interrupt, được {other:?}"),
     }
-    match decode_scause(SCAUSE_INTERRUPT | 5) {
-        Event::Interrupt { code } => assert_eq!(code, 5),
-        other => panic!("supervisor timer phải là Interrupt, được {other:?}"),
-    }
+    // KT-47: ngắt S-mode timer (mã 5) decode thành Event::Timer — KHÔNG phải Exception/Interrupt.
+    assert_eq!(decode_scause(SCAUSE_INTERRUPT | 5), Event::Timer);
+    assert_eq!(decode_scause(SCAUSE_INTERRUPT | 9), {
+        Event::Interrupt { code: 9 }
+    });
 }
 
 #[test]
