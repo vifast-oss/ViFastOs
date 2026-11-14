@@ -165,7 +165,7 @@ Agent 0 đọc **JSON trước**, MD sau. JSON thiếu `project` bị trả lạ
 | ST-70 | **VS2 #6a** — `vis pkg add/install/list`, manifest/lock/SHA-256, registry local | ST-69 | 3 h | **DONE** | 6 ca + e2e tất định; không mạng |
 | ST-71 | **VS2 #6b** — `use pkg.*` nạp gói + kiểm sha lúc chạy | ST-70 | 2,5 h | **DONE** | 4 ca; lock không có đường tuyệt đối |
 | ST-72 | **VS2 #4a** — kiểu `cap[Dir/File/Net/Proc]` trong tyck + `vis run --dry` liệt kê quyền khai báo | ST-71 | 3 h | **DONE** | `cap[Dir] @ p"./x" (write)` parse+check được; ≥5 ca sem; `--dry` in |
-| ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **READY** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
+| ST-72b | **VS2 #4b** — cưỡng chế quyền ở `HostFs`/`HostNet` + `--grant name=path` | ST-72 | 3 h | **DONE** | ≥8 ca cho phép/từ chối (`VS0604` nêu quyền thiếu); không khai ⇒ không hạn chế (ghi rõ) |
 | ST-73 | **VS2 #4c** — `vis run --sandbox-check` (probe Landlock Linux, không `unsafe`) + khung `vis-host-linux` **ngoài** `viscript/` + tài liệu **mức bảo đảm theo nền** | ST-72b | 2,5 h | **READY** | ≥6 ca probe; `cargo check --target x86_64-unknown-linux-gnu` xanh; **không** tuyên bố đã cưỡng chế bằng Landlock |
 | ST-74 | **VS2 #7** — `vis-host-windows`/`wasm`: check chéo `x86_64-pc-windows-msvc` + `wasm32-unknown-unknown` | ST-73 | 2,5 h | **READY** | cả hai target `check` xanh; nêu rõ mức bằng chứng |
 | ST-75 | **VS2 #8** — bộ hợp chuẩn host `host-conformance` ≥50 ca chạy **trên macOS** + khung 4 nền | ST-74 | 3 h | **READY** | ≥50 ca xanh; 3 nền còn lại ghi rõ chưa đo |
@@ -1115,3 +1115,16 @@ APPROVED 2026-11-14 Agent 0
 > · `vis test` **447 ok** · parity **398/398** · differential **100k/0 lệch** (286,7 s) · R1 max 1.491.
 > **Nợ rõ**: **chưa** cưỡng chế (ST-72b), **chưa** có giá trị runtime cho `cap` (ca sem mới kiểm tyck), chưa Landlock.
 > **ST-72b mở** (cưỡng chế ở host + `--grant`).
+
+APPROVED 2026-11-14 Agent 0
+
+> **ST-72b DONE — VS2 #4b (cưỡng chế quyền ở biên host) CÓ MẶT.** Commit `0d7e9dba` (**Agent 2 tự commit, đã push**).
+> `Value::Cap{kind,root,write}` (show `<cap[Dir] ./x>`, `eq` false), **bind tham số `cap` của `main` từ CST** (đúng chỉ số tham
+> số, cả interp lẫn VM), `FsGuard` canonicalize đích (hoặc thư mục cha nếu chưa tồn tại) rồi `starts_with(root)`; `write` đòi
+> `(write)`; ngoài root ⇒ **trap `VS0604`** nêu **quyền thiếu** + path, exit **2** (khác `VS0604` thiếu host giữ exit 1 — có ca
+> cũ khoá); `NetGuard` đòi `cap[Net]` + loopback/host khai; **`--grant tên=path`** ghi đè root (tên lạ ⇒ exit 2). **8 ca** chạy
+> **cả** interp và `--vm --no-cache`. Đo: **866 test** · sem **447/22** · parity **398/398** · differential **100k/0 lệch** (196,0 s).
+> **Nợ có ghi**: **siết mặc định** (không khai `cap` ⇒ không hạn chế) chưa làm; `cap[Net]` vẫn bị luật loopback ST-63;
+> `fs.exists` bị chặn trả `false` (không trap); ca sem `cap/` mới kiểm **tyck**.
+> **ST-73 mở** — phạm vi **đổi** theo **VD-107**: `--sandbox-check` + khung `vis-host-linux` **không** `unsafe`/không crate mới,
+> **không** được tuyên bố "đã cưỡng chế bằng Landlock".
