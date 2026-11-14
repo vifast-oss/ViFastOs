@@ -1,0 +1,6 @@
+# ST-91 — differential 100.000 chương trình (sau LSP completion theo kiểu), 2026-11-14T18:06:59Z, HEAD 57697c96
+# lệnh: VIS_DIFF_N=100000 VIS_DIFF_SEED=20261115 ./bin/vis-diff
+
+DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.5 toc_do=580/s seed=20261115
+DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=157.6 toc_do=634/s seed=20261115
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 157.62s

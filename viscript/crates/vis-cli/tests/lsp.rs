@@ -945,3 +945,118 @@ fn lsp_completion_khu_trung_uu_tien_tep_chinh() {
     assert!(!body.contains("util:"), "phải ưu tiên tệp chính: {body}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---------------------------------------------------------------------------
+// **ST-91 (VD-110)** — completion sau `.` theo kiểu tĩnh
+// ---------------------------------------------------------------------------
+
+/// Chạy một completion và trả `(label, kind, detail)` của `result`.
+fn goi_y(text: &str, line: i64, ch: i64) -> Vec<(String, u8, Option<String>)> {
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&completion(2, URI, line, ch))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = frame_cuoi(&out);
+    let v = vis_interp::json::decode(&body).expect("JSON frame cuối");
+    let Value::Map(kv) = &v else {
+        panic!("frame không phải object")
+    };
+    let Some(Value::List(items)) = lay(kv, "result") else {
+        panic!("thiếu result: {body}")
+    };
+    items
+        .iter()
+        .map(|it| {
+            let Value::Map(k) = it else {
+                panic!("item không phải object")
+            };
+            let label = match lay(k, "label") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => panic!("thiếu label"),
+            };
+            let kind = match lay(k, "kind") {
+                Some(Value::Int(n)) => *n as u8,
+                _ => panic!("thiếu kind"),
+            };
+            let detail = match lay(k, "detail") {
+                Some(Value::Str(s)) => Some(s.clone()),
+                _ => None,
+            };
+            (label, kind, detail)
+        })
+        .collect()
+}
+
+/// (a) `p.` với `p: P` ⇒ **đúng** trường `ten`, `x` (kind 5), không lẫn fn/từ khoá.
+#[test]
+fn lsp_completion_sau_cham_dung_truong() {
+    let text = "type P:\n    x: int\n    ten: str\nfn main():\n    let p: P = {x: 1, ten: \"a\"}\n    p.\n";
+    let ds = goi_y(text, 5, 6);
+    let labels: Vec<&str> = ds.iter().map(|(l, _, _)| l.as_str()).collect();
+    assert_eq!(labels, ["ten", "x"], "chỉ trường của P: {ds:?}");
+    assert!(ds.iter().all(|(_, k, _)| *k == 5), "kind field 5: {ds:?}");
+    assert!(
+        !labels
+            .iter()
+            .any(|l| ["print", "let", "fn", "match"].contains(l)),
+        "không lẫn từ khoá/hàm: {ds:?}"
+    );
+    assert!(
+        ds.iter()
+            .any(|(l, _, d)| l == "x" && d.as_deref() == Some("x: int")),
+        "detail kiểu trường: {ds:?}"
+    );
+}
+
+/// (b) `impl Show for P` ⇒ `p.` có thêm `show` (kind 2), vẫn có trường.
+#[test]
+fn lsp_completion_sau_cham_co_phuong_thuc() {
+    let text = "type P:\n    x: int\n    ten: str\nimpl Show for P:\n    fn show(self) -> str:\n        \"P\"\nfn main():\n    let p: P = {x: 1, ten: \"a\"}\n    p.\n";
+    let ds = goi_y(text, 8, 6);
+    assert!(
+        ds.iter().any(|(l, k, _)| l == "show" && *k == 2),
+        "phải có phương thức show kind 2: {ds:?}"
+    );
+    assert!(ds.iter().any(|(l, _, _)| l == "x"), "vẫn có trường: {ds:?}");
+}
+
+/// (c) `s: str` (kiểu biết nhưng **không** có bảng thành viên) ⇒ **rỗng**, không fallback.
+#[test]
+fn lsp_completion_sau_cham_kieu_khong_ho_tro() {
+    let text = "fn f(s: str):\n    s.\n";
+    let ds = goi_y(text, 1, 6);
+    assert!(ds.is_empty(), "str không có thành viên ⇒ rỗng: {ds:?}");
+}
+
+/// (d) biến **không rõ kiểu** (`foo()` chưa biết) ⇒ fallback **toàn bộ** như cũ (50 mục).
+#[test]
+fn lsp_completion_sau_cham_khong_ro_kieu_fallback() {
+    let text = "fn f():\n    let q = foo()\n    q.\n";
+    let ds = goi_y(text, 2, 6);
+    assert_eq!(ds.len(), 50, "fallback 50 mục: {:?}", ds.len());
+    assert!(ds.iter().any(|(l, _, _)| l == "print"));
+    assert!(ds.iter().any(|(l, _, _)| l == "let"));
+}
+
+/// (e) **tất định**: 5 lần cùng đầu vào ⇒ frame completion **byte y hệt**.
+#[test]
+fn lsp_completion_sau_cham_tat_dinh() {
+    let text = "type P:\n    x: int\n    ten: str\nfn main():\n    let p: P = {x: 1, ten: \"a\"}\n    p.\n";
+    let vao = format!(
+        "{}{}{}",
+        khung(&init()),
+        khung(&did_open(URI, text)),
+        khung(&completion(2, URI, 5, 6))
+    );
+    let (code, out, err) = chay(&vao);
+    assert_eq!(code, 0, "stderr: {err}");
+    let body = frame_cuoi(&out);
+    for _ in 0..4 {
+        let (_, out2, _) = chay(&vao);
+        assert_eq!(body, frame_cuoi(&out2), "5 lần phải cùng byte");
+    }
+}

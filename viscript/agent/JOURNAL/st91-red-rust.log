@@ -1,0 +1,44 @@
+# ST-91 — log ĐỎ (Rust) lúc 2026-11-14T18:01:02Z, HEAD 57697c96 — completion sau . CHƯA lọc theo kiểu.
+# Probe p. (p: P): N=50, 5 mục đầu: Err/None/Ok/Some/alias (không có ten,x).
+# lệnh: cargo test -p vis-cli --test lsp lsp_completion_sau_cham (5 ca mới)
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/lsp.rs (target/debug/deps/lsp-fe524547d531ce9f)
+
+running 6 tests
+test lsp_completion_sau_cham_khong_ro_kieu_fallback ... ok
+test lsp_completion_sau_cham_kieu_khong_ho_tro ... FAILED
+test lsp_completion_sau_cham_dung_truong ... FAILED
+test lsp_completion_sau_cham ... ok
+test lsp_completion_sau_cham_co_phuong_thuc ... FAILED
+test lsp_completion_sau_cham_tat_dinh ... ok
+
+failures:
+
+---- lsp_completion_sau_cham_kieu_khong_ho_tro stdout ----
+
+thread 'lsp_completion_sau_cham_kieu_khong_ho_tro' (48515609) panicked at crates/vis-cli/tests/lsp.rs:1032:5:
+str không có thành viên ⇒ rỗng: [("Err", 3, None), ("None", 3, None), ("Ok", 3, None), ("Some", 3, None), ("alias", 14, None), ("and", 14, None), ("async", 14, None), ("await", 14, None), ("break", 14, None), ("cmd", 14, None), ("const", 14, None), ("continue", 14, None), ("derives", 14, None), ("dyn", 14, None), ("echo", 3, None), ("elif", 14, None), ("else", 14, None), ("enum", 14, None), ("extern", 14, None), ("false", 14, None), ("fn", 14, None), ("for", 14, None), ("has", 14, None), ("if", 14, None), ("impl", 14, None), ("in", 14, None), ("len", 3, None), ("let", 14, None), ("lines", 3, None), ("loop", 14, None), ("match", 14, None), ("newtype", 14, None), ("none", 14, None), ("not", 14, None), ("or", 14, None), ("print", 3, None), ("pub", 14, None), ("ref", 3, None), ("return", 14, None), ("scope", 14, None), ("self", 14, None), ("str", 3, None), ("take", 3, None), ("trait", 14, None), ("true", 14, None), ("type", 14, None), ("use", 14, None), ("var", 14, None), ("while", 14, None), ("with", 14, None)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- lsp_completion_sau_cham_dung_truong stdout ----
+
+thread 'lsp_completion_sau_cham_dung_truong' (48515607) panicked at crates/vis-cli/tests/lsp.rs:1000:5:
+assertion `left == right` failed: chỉ trường của P: [("Err", 3, None), ("None", 3, None), ("Ok", 3, None), ("Some", 3, None), ("alias", 14, None), ("and", 14, None), ("async", 14, None), ("await", 14, None), ("break", 14, None), ("cmd", 14, None), ("const", 14, None), ("continue", 14, None), ("derives", 14, None), ("dyn", 14, None), ("echo", 3, None), ("elif", 14, None), ("else", 14, None), ("enum", 14, None), ("extern", 14, None), ("false", 14, None), ("fn", 14, None), ("for", 14, None), ("has", 14, None), ("if", 14, None), ("impl", 14, None), ("in", 14, None), ("len", 3, None), ("let", 14, None), ("lines", 3, None), ("loop", 14, None), ("match", 14, None), ("newtype", 14, None), ("none", 14, None), ("not", 14, None), ("or", 14, None), ("print", 3, None), ("pub", 14, None), ("ref", 3, None), ("return", 14, None), ("scope", 14, None), ("self", 14, None), ("str", 3, None), ("take", 3, None), ("trait", 14, None), ("true", 14, None), ("type", 14, None), ("use", 14, None), ("var", 14, None), ("while", 14, None), ("with", 14, None)]
+  left: ["Err", "None", "Ok", "Some", "alias", "and", "async", "await", "break", "cmd", "const", "continue", "derives", "dyn", "echo", "elif", "else", "enum", "extern", "false", "fn", "for", "has", "if", "impl", "in", "len", "let", "lines", "loop", "match", "newtype", "none", "not", "or", "print", "pub", "ref", "return", "scope", "self", "str", "take", "trait", "true", "type", "use", "var", "while", "with"]
+ right: ["ten", "x"]
+
+---- lsp_completion_sau_cham_co_phuong_thuc stdout ----
+
+thread 'lsp_completion_sau_cham_co_phuong_thuc' (48515606) panicked at crates/vis-cli/tests/lsp.rs:1020:5:
+phải có phương thức show kind 2: [("Err", 3, None), ("None", 3, None), ("Ok", 3, None), ("Some", 3, None), ("alias", 14, None), ("and", 14, None), ("async", 14, None), ("await", 14, None), ("break", 14, None), ("cmd", 14, None), ("const", 14, None), ("continue", 14, None), ("derives", 14, None), ("dyn", 14, None), ("echo", 3, None), ("elif", 14, None), ("else", 14, None), ("enum", 14, None), ("extern", 14, None), ("false", 14, None), ("fn", 14, None), ("for", 14, None), ("has", 14, None), ("if", 14, None), ("impl", 14, None), ("in", 14, None), ("len", 3, None), ("let", 14, None), ("lines", 3, None), ("loop", 14, None), ("match", 14, None), ("newtype", 14, None), ("none", 14, None), ("not", 14, None), ("or", 14, None), ("print", 3, None), ("pub", 14, None), ("ref", 3, None), ("return", 14, None), ("scope", 14, None), ("self", 14, None), ("str", 3, None), ("take", 3, None), ("trait", 14, None), ("true", 14, None), ("type", 14, None), ("use", 14, None), ("var", 14, None), ("while", 14, None), ("with", 14, None)]
+
+
+failures:
+    lsp_completion_sau_cham_co_phuong_thuc
+    lsp_completion_sau_cham_dung_truong
+    lsp_completion_sau_cham_kieu_khong_ho_tro
+
+test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.97s
+
+error: test failed, to rerun pass `-p vis-cli --test lsp`

@@ -59,9 +59,77 @@ fn tu_tai(text: &str, byte: usize) -> (usize, usize) {
     (start, end)
 }
 
+/// Tên biến **ngay trước dấu chấm** cuối cùng trước con trỏ (chỉ `a.` / `a.xy`, không biểu thức).
+/// `None` ⇒ không phải truy cập thành viên đơn giản ⇒ dùng fallback toàn bộ.
+fn nhan_sau_cham(text: &str, byte: usize) -> Option<String> {
+    let b = byte.min(text.len());
+    let before = &text[..b];
+    let dot = before.rfind('.')?;
+    let sau = &before[dot + 1..];
+    if !sau.chars().all(la_ident) {
+        return None;
+    }
+    if dot == 0 {
+        return None;
+    }
+    let mut start = dot;
+    for (i, c) in text[..dot].char_indices().rev() {
+        if la_ident(c) {
+            start = i;
+        } else {
+            break;
+        }
+    }
+    if start == dot {
+        return None;
+    }
+    Some(text[start..dot].to_string())
+}
+
+/// **ST-91**: gợi ý **thành viên** theo kiểu tĩnh của biến trước dấu chấm; `None` = không xác định
+/// kiểu ⇒ fallback. Kiểu xác định nhưng **không** có trường/phương thức (vd `str`) ⇒ trả **rỗng**.
+fn goi_y_thanh_vien(kq: &KetQua, byte: usize, tien_to: &str) -> Option<Vec<GoiY>> {
+    let ten = nhan_sau_cham(&kq.text, byte)?;
+    // `p.` một mình là cú pháp dở ⇒ HIR gốc có thể rỗng; phân tích lại với sentinel.
+    let tv = super::thanh_vien::tu_van_ban_sua(&kq.text, byte);
+    let kieu = tv
+        .kieu_bien
+        .iter()
+        .rev()
+        .find(|(n, _)| n == &ten)
+        .map(|(_, k)| k.clone())?;
+    let mut ds: Vec<GoiY> = tv
+        .truong
+        .iter()
+        .filter(|(k, _)| k == &kieu)
+        .map(|(_, g)| GoiY {
+            label: g.label.clone(),
+            kind: g.kind,
+            detail: g.detail.clone(),
+        })
+        .chain(
+            tv.phuong
+                .iter()
+                .filter(|(k, _)| k == &kieu)
+                .map(|(_, g)| GoiY {
+                    label: g.label.clone(),
+                    kind: g.kind,
+                    detail: g.detail.clone(),
+                }),
+        )
+        .collect();
+    ds.retain(|g| g.label.starts_with(tien_to));
+    ds.sort_by(|a, b| a.label.as_bytes().cmp(b.label.as_bytes()));
+    ds.truncate(200);
+    Some(ds)
+}
+
 /// Danh sách gợi ý tại `byte` — đã khử trùng, lọc tiền tố, sắp theo byte, cap 200.
 pub fn ds_goi_y(kq: &KetQua, byte: usize) -> Vec<GoiY> {
     let (_, tien_to) = tien_to(&kq.text, byte);
+    if let Some(ds) = goi_y_thanh_vien(kq, byte, &tien_to) {
+        return ds;
+    }
     let mut ds: Vec<GoiY> = Vec::new();
     let mut da_co: HashSet<String> = HashSet::new();
     for it in &kq.items {

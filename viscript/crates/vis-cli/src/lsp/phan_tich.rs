@@ -46,7 +46,15 @@ pub(crate) fn chu_ky_fn(f: &vis_types::HFn, tbl: &TypeTable) -> String {
     let ps: Vec<String> = f
         .params
         .iter()
-        .map(|p| format!("{}: {}", p.name, tbl.show(&p.ty)))
+        .map(|p| {
+            // `self` trong `impl` chưa có kiểu cụ thể (tyck để `{error}`) ⇒ in gọn `self`, không
+            // để `self: {error}` trong chữ ký gợi ý.
+            if p.name == "self" && p.ty.is_error() {
+                "self".to_string()
+            } else {
+                format!("{}: {}", p.name, tbl.show(&p.ty))
+            }
+        })
         .collect();
     format!("fn {}({}) -> {}", f.name, ps.join(", "), tbl.show(&f.ret))
 }

@@ -6,16 +6,27 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 ```
 HEAD          : xem `git log -1` (vòng 2 mở ở `aae08d4`)
 BUILD_ID      : —
-Task          : **ST-90 — pkg: `entry` trong lock + `pkg remove`** — xong, đã đo + cổng + differential;
+Task          : **ST-91 — LSP completion sau `.` theo kiểu tĩnh** — xong, đã đo + cổng + differential;
                 **chưa commit**.
-Bước          : 4/4 (đo lock cũ/thiếu entry → thêm `entry` + `--entry` + loader dùng entry → `pkg remove`
-                xoá lock/store → 7 ca → 973 test → diff 100k → cổng).
+Bước          : 3/3 (đo cũ 50 mục fallback → tách `lsp/thanh_vien.rs` + sentinel khi `p.` dở → 5 ca
+                LSP + tất định → 978 test → diff 100k → cổng).
 Nhánh         : main
-Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T17:54:51Z**; **973** test / sem
+Cổng gần nhất : `./vis-dev gate --fast` → **PASS** lúc **2026-11-14T18:14:01Z**; **978** test / sem
                 **447/22 nhóm** / `vis test` **447 ok** (`--vm` **447 ok + 0 SKIP**) / host **54/54** /
-                parity **398/398 + 49 lỗi biên dịch** / differential **100.000 chương trình 0 lệch**
-                (155,3 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
-Việc dở       : commit `[ST-90]` + push (đã được uỷ quyền)
+                parity **398/398 + 49** / **LSP 39 ca** / differential **100.000 chương trình 0 lệch**
+                (157,6 s) / **7 sổ-32 mã** / `VBC1` **53** / allowlist **6**
+Việc dở       : commit `[ST-91]` + push (đã được uỷ quyền)
+
+## ST-91 — LSP completion sau `.` theo kiểu tĩnh, 2026-11-14
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 0 | **Đo trước** | `p.` với `p: P` ⇒ **50 mục** (fallback toàn bộ), 5 đầu `Err/None/Ok/Some/alias`; **không** có `x`,`ten`. Probe + Rust `JOURNAL/st91-red-rust.log` sha256 `d7d65e23…` (**3/5 ca mới đỏ**). **Đính chính cú pháp**: mẫu `type P: x: int, ten: str` / `P(x:…, ten:…)` **không hợp lệ**; dùng `type P:` nhiều dòng + `let p: P = {x: 1, ten: "a"}`. |
+| 1 | **Tách tệp** | `lsp/thanh_vien.rs` (**219** dòng ≤300): gom `(biến→kiểu)` từ tham số, `let` có nhãn, `let` suy **rẻ** (constructor `{…}`? thực tế: `Lit`, `Var` có `sym.ty`, call constructor), trường `type` (kind 5, detail `x: int`), phương thức `impl` (kind 2, `fn show(self) -> str`). `phan_tich` **không đổi** dữ liệu; `goi_y.rs` 239 dòng, `mod.rs` 290. |
+| 2 | **Sentinel** | `p.` một mình là cú pháp **dở** ⇒ HIR rỗng; completion chèn `__vis` tại con trỏ rồi parse/lower **riêng** (không đổi chẩn đoán `KetQua`). Có receiver + kiểu ⇒ **chỉ** trường/phương thức; kiểu biết nhưng **không** có bảng (vd `str`) ⇒ **rỗng**; **không** xác định kiểu ⇒ **fallback 50 mục như cũ**. |
+| 3 | **5 ca** | `tests/lsp.rs`: (a) `p.` ⇒ `ten`,`x` kind 5, không lẫn keyword/fn, detail `x: int`; (b) `impl Show for P` ⇒ `show` kind 2 + trường; (c) `s: str` ⇒ **rỗng** (khoá fallback); (d) biến không rõ kiểu ⇒ **50 mục** fallback; (e) 5 lần cùng byte; (f) **34 ca LSP cũ vẫn xanh** (39/39). |
+| 4 | **Đo** | **978** test = 973 + **5** (21+96+27+154+26+62+9+**583**); sem **447/22**; `vis test` **447 ok**; `--vm` **447 ok + 0 SKIP**; host **54/54**; `diag_cmp` **364/49/34**; `vs_interp` **398/398 + 49**; differential **`tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=157.6 toc_do=634/s seed=20261115`**; `VBC1` **53**; **7 sổ/32 mã**; allowlist **6**. |
+| 5 | **Nợ** | Chỉ xử lý receiver **đơn giản** (`tên.`); `a.b.`/`(x).`/`f().` chưa suy; kiểu **generic**/`list[P]`/`Opt[P]` chưa mở thành viên; `std.str` chưa có bảng phương thức (trả rỗng); `impl` cho alias/enum chưa gom; `self` in gọn không kiểu; phân tích lại sentinel tốn ~1 lần parse mỗi completion (chưa cache). |
 
 ## ST-90 — pkg `entry` trong lock + `pkg remove`, 2026-11-14
 

@@ -14,6 +14,7 @@ mod jsonrpc;
 mod khung;
 mod module;
 mod phan_tich;
+mod thanh_vien;
 mod vi_tri;
 
 use std::collections::HashMap;
