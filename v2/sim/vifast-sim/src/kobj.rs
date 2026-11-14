@@ -72,12 +72,13 @@
 use crate::frame::FrameArea;
 /// **KT-36** — metadata Frame + cửa sổ PA của Untyped (định nghĩa ở [`crate::frame`];
 /// re-export để test/harness dùng `vifast_sim::kobj::{FrameMeta, UNTYPED_PA_WINDOW}`).
-pub use crate::frame::{FrameMeta, UNTYPED_PA_WINDOW};
+pub use crate::frame::{FrameMeta, WxRecount, UNTYPED_PA_WINDOW};
 use crate::ipc::{self, IpcArea, Message, MessageInfo};
 use crate::mailbox::{HartMailbox, Mailbox, MailboxMsg, MAILBOX_CAP};
 use crate::pagetable::{
     decode_pte, index_in_level, leaf_pte, level_for_size_bits, size_bits_for_level, table_pte,
-    table_span, DecodedPte, PageTableData, PT_BYTES, PT_ENTRY_COUNT, PT_ROOT_LEVEL, VA_LIMIT,
+    table_span, validate_attrs, DecodedPte, PageTableData, PT_BYTES, PT_ENTRY_COUNT, PT_ROOT_LEVEL,
+    VA_LIMIT,
 };
 /// **KT-37** — kiểu quyền/attrs/mapping/ảnh chụp PageTable (định nghĩa ở [`crate::pagetable`];
 /// re-export để test dùng `vifast_sim::kobj::{MapRights, MapAttrs, Mapping, PageTableInfo}`).
@@ -1261,15 +1262,31 @@ impl Machine {
         m.frame_area.and_then(|a| a.window())
     }
 
-    /// **KT-36** — ghi nhận **một mapping sống** mới của Frame (`write` = có quyền WRITE,
-    /// `exec` = có thuộc tính EXEC). Đây là cửa duy nhất đổi `maps/mapped_w/mapped_x`; KT-37/
-    /// KT-39 sẽ gọi từ `map` thật. **Luật** W^X (`WxViolation`) là KT-39 — KT-36 chỉ giữ bộ đếm
-    /// đúng cấu trúc (`mapped_w ≤ maps`, `mapped_x ≤ maps`).
+    /// **KT-36/KT-39** — ghi nhận **một mapping sống** mới của Frame (`write` = có quyền WRITE,
+    /// `exec` = có thuộc tính EXEC). Đây là cửa **duy nhất** của đường **map**; `protect` không
+    /// thêm mapping nên đi cửa **delta** riêng trong `frame.rs` — hai cửa, cùng bất biến W^X.
+    ///
+    /// **Luật W^X toàn cục (KT-39, D2-65 Q3 + D2-67)** — kiểm **trước** mọi thay đổi (atomic):
+    ///
+    /// - mapping mới là W mà Frame đang có mapping X (`mapped_x > 0`) ⇒ [`KError::WxViolation`];
+    /// - mapping mới là X mà Frame đang có mapping W (`mapped_w > 0`) ⇒ [`KError::WxViolation`];
+    /// - mapping mới **vừa W vừa X** (một lời gọi) ⇒ [`KError::WxViolation`] — tự nó tạo
+    ///   `mapped_w > 0 ∧ mapped_x > 0`.
+    ///
+    /// **Không** tự unmap/hạ quyền mapping cũ: JIT phải `unmap` W rồi `map` X. Bộ đếm là **toàn
+    /// cục theo Frame vật lý**, nên luật đúng cả khi Frame nằm trong nhiều VSpace/PageTable.
     ///
     /// Frame chết ⇒ `InvalidCapability`; không phải Frame ⇒ `WrongObjectType`; tràn `u32` ⇒
     /// `InvalidArgument`.
     pub fn frame_note_map(&mut self, frame: ObjId, write: bool, exec: bool) -> Result<(), KError> {
         let f = self.frame_meta_live_mut(frame)?;
+        // **KT-39** — W^X trước mọi thay đổi. Thứ tự đọc bộ đếm rồi mới quyết định, không ghi.
+        if write && (exec || f.mapped_x > 0) {
+            return Err(KError::WxViolation);
+        }
+        if exec && f.mapped_w > 0 {
+            return Err(KError::WxViolation);
+        }
         let maps = f.maps.checked_add(1).ok_or(KError::InvalidArgument)?;
         let mapped_w = f
             .mapped_w
@@ -1490,7 +1507,11 @@ impl Machine {
     /// 5. thiếu bảng cấp trên (mid/leaf) ⇒ `MissingPageTable`;
     /// 6. entry lá đã có (kể cả lá lớn phủ VA) ⇒ `AlreadyMapped`;
     /// 7. vượt `MAX_FRAMES_PER_VSPACE` ⇒ `NotEnoughMemory`;
-    /// 8. cộng `maps/mapped_w/mapped_x` của Frame rồi mới ghi PTE (rollback nếu lỗi).
+    /// 8. **KT-39** — `attrs` không hợp lệ ⇒ `InvalidArgument`/`WxViolation` (luật ở
+    ///    `pagetable::validate_attrs`);
+    /// 9. **KT-39** — W^X toàn cục theo Frame (`mapped_x/mapped_w`) ⇒ `WxViolation` **trước khi**
+    ///    cộng bộ đếm/ghi PTE;
+    /// 10. cộng `maps/mapped_w/mapped_x` của Frame rồi mới ghi PTE (rollback nếu lỗi).
     pub fn page_table_map_obj(
         &mut self,
         root: ObjId,
@@ -1559,9 +1580,14 @@ impl Machine {
             return Err(KError::NotEnoughMemory);
         }
 
+        // **KT-39** — luật `attrs` (một kiểu bộ nhớ, NX⊥EXEC, Device⊥EXEC) **trước** mọi thay
+        // đổi cây/bộ đếm; `Device+EXEC` trả `WxViolation` (D2-67).
+        validate_attrs(attrs)?;
         let wants_w = rights.contains(MapRights::WRITE);
         let wants_x = attrs.contains(MapAttrs::EXEC);
-        // Cộng bộ đếm Frame **trước** khi ghi PTE; lỗi ⇒ chưa có gì đổi.
+        // Cộng bộ đếm Frame **trước** khi ghi PTE; `frame_note_map` áp luật W^X toàn cục
+        // (map W khi `mapped_x > 0`, map X khi `mapped_w > 0`, W+X cùng lời gọi) — lỗi ⇒ chưa
+        // có gì đổi.
         self.frame_note_map(frame, wants_w, wants_x)?;
         let pte = leaf_pte(frame, rights, attrs);
         self.page_table_data_mut(cur)?
@@ -1654,6 +1680,107 @@ impl Machine {
         }
         self.sched_after_op(false);
         Ok(mapping)
+    }
+
+    /// **KT-39** — `PageTable.Protect` (model API; `Frame.Protect`/hạ quyền của design §4.10):
+    /// đổi `rights`/`attrs` của **một** lá đang sống, **tính lại** `mapped_w`/`mapped_x` của Frame
+    /// theo delta và áp luật W^X **trước** khi ghi.
+    ///
+    /// Ngữ nghĩa:
+    /// - `va` phải trỏ đúng **gốc** mapping (lệch trong trang lớn ⇒ [`KError::Alignment`]; chưa
+    ///   map ⇒ [`KError::NotMapped`]) — không sửa ngầm cả trang lớn;
+    /// - `attrs` theo luật [`validate_attrs`] (một kiểu bộ nhớ, NX⊥EXEC, Device⊥EXEC);
+    /// - nếu bộ đếm **kết quả** có `w > 0 && x > 0` ⇒ [`KError::WxViolation`] **atomic** (không
+    ///   đổi PTE/bộ đếm). Chuyển W→X hoặc X→W là **yêu cầu tường minh** của người gọi nên được
+    ///   phép khi kết quả thoả bất biến (khác `map`, không bao giờ tự hạ quyền mapping cũ);
+    /// - thành công: `maps` giữ nguyên, `mapped_w/mapped_x` đổi đúng hiệu, PTE đổi rights/attrs,
+    ///   trả [`Mapping`] mới.
+    pub fn page_table_protect(
+        &mut self,
+        root: ObjId,
+        va: u64,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        self.page_table_root(root)?;
+        if va >= VA_LIMIT {
+            return Err(KError::RangeError);
+        }
+        // Walk tới **lá phủ `va`** (chỉ đọc) — cùng đường với `unmap`, không tự xoá mapping.
+        let mut cur = root;
+        let mut level = PT_ROOT_LEVEL;
+        let (leaf_idx, mapping) = loop {
+            let idx = index_in_level(va, level).ok_or(KError::IllegalOperation)?;
+            let pte = self
+                .page_table_data(cur)?
+                .entries
+                .get(idx)
+                .ok_or(KError::IllegalOperation)?;
+            match decode_pte(pte) {
+                DecodedPte::Empty => return Err(KError::NotMapped),
+                DecodedPte::Table(child) => {
+                    if level == 0 {
+                        return Err(KError::IllegalOperation);
+                    }
+                    let cd = self.page_table_data(child)?;
+                    if cd.attached != Some((cur, idx as u16)) || cd.level + 1 != level {
+                        return Err(KError::IllegalOperation);
+                    }
+                    cur = child;
+                    level -= 1;
+                }
+                DecodedPte::Leaf {
+                    frame,
+                    rights,
+                    attrs,
+                } => {
+                    let m = self.mapping_for_leaf(va, level, frame, rights, attrs)?;
+                    break (idx, m);
+                }
+            }
+        };
+        if mapping.va != va {
+            return Err(KError::Alignment);
+        }
+        validate_attrs(attrs)?;
+        let frame = mapping.frame;
+        let meta = self.frame_meta(frame)?;
+        if !meta.live {
+            return Err(KError::InvalidCapability);
+        }
+        let old_w = u32::from(mapping.rights.contains(MapRights::WRITE));
+        let old_x = u32::from(mapping.attrs.contains(MapAttrs::EXEC));
+        let new_w = u32::from(rights.contains(MapRights::WRITE));
+        let new_x = u32::from(attrs.contains(MapAttrs::EXEC));
+        if meta.mapped_w < old_w || meta.mapped_x < old_x {
+            return Err(KError::IllegalOperation);
+        }
+        // **W^X trước mọi thay đổi**: kết quả `w>0 ∧ x>0` ⇒ từ chối, PTE/bộ đếm còn nguyên.
+        if meta.mapped_w - old_w + new_w > 0 && meta.mapped_x - old_x + new_x > 0 {
+            return Err(KError::WxViolation);
+        }
+        // Áp **một cửa** duy nhất vào bộ đếm Frame (kiểm lại để không trừ âm), rồi ghi PTE.
+        {
+            let f = self.frame_meta_live_mut(frame)?;
+            if f.mapped_w < old_w || f.mapped_x < old_x {
+                return Err(KError::IllegalOperation);
+            }
+            f.mapped_w = f.mapped_w - old_w + new_w;
+            f.mapped_x = f.mapped_x - old_x + new_x;
+        }
+        self.page_table_data_mut(cur)?
+            .entries
+            .set(leaf_idx, leaf_pte(frame, rights, attrs))
+            .ok_or(KError::IllegalOperation)?;
+        self.sched_after_op(false);
+        Ok(Mapping {
+            va: mapping.va,
+            pa: mapping.pa,
+            size_bits: mapping.size_bits,
+            frame,
+            rights,
+            attrs,
+        })
     }
 
     /// **KT-37** — gắn một PageTable con (`child`, chưa attach, rỗng) vào `parent` tại `va`.
@@ -1950,6 +2077,176 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-39** — bất biến **W^X toàn cục** trên **mọi** Frame có metadata (kể cả Frame chỉ
+    /// được map bởi PageTable thuần, không thuộc VSpace nào — D2-67 "không có primitive miễn
+    /// luật"). Chạy sau **mỗi** public op qua [`Machine::sched_after_op`]; cửa sổ nhanh
+    /// `frame_objects == 0` giữ chi phí per-op của mọi test K1a..K1c như trước.
+    ///
+    /// Kiểm (rẻ, không đếm lại cây — việc đếm lại là [`Machine::wx_recount`] ở cổng):
+    /// 1. **không** Frame nào vừa `mapped_w > 0` vừa `mapped_x > 0` (bất biến `!(w>0 && x>0)`);
+    /// 2. `mapped_w + mapped_x ≤ maps` (suy ra `w ≤ maps`, `x ≤ maps`; mọi bộ đếm là `u32` nên
+    ///    không âm).
+    ///
+    /// Frame chết + bộ đếm khác 0 do [`Machine::check_frames`] bắt (**chạy ngay trước** mỗi op);
+    /// `check_wx` cố ý **không** lặp kiểm đó (Frame chết `maps=1,w=1,x=0` vẫn thoả hai bất biến ở
+    /// đây) — khi gọi **một mình** phải coi `check_frames` là lưới đi kèm.
+    pub fn check_wx(&self) -> Result<(), String> {
+        if self.frame_objects == 0 {
+            return Ok(());
+        }
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.ty != ObjType::Frame {
+                continue;
+            }
+            let Some(f) = m.frame else {
+                // `check_frames` báo "thiếu metadata"; ở đây bỏ qua để hai checker không trùng
+                // thông điệp nhưng vẫn không panic.
+                continue;
+            };
+            let obj = (i as u32) + 1;
+            if f.mapped_w > 0 && f.mapped_x > 0 {
+                return Err(format!(
+                    "Frame {obj}: vừa WRITE ({}) vừa EXEC ({}) — vi phạm W^X",
+                    f.mapped_w, f.mapped_x
+                ));
+            }
+            match f.mapped_w.checked_add(f.mapped_x) {
+                Some(tong) if tong <= f.maps => {}
+                _ => {
+                    return Err(format!(
+                        "Frame {obj}: mapped_w {} + mapped_x {} > maps {}",
+                        f.mapped_w, f.mapped_x, f.maps
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// **KT-39** — **đếm lại từ cây PageTable** (mọi root, kể cả PageTable thuần) và so với bộ
+    /// đếm trong [`FrameMeta`]; trả tổng [`WxRecount`] cho test cổng. Đây là bản đếm **độc lập**
+    /// với `check_pages` (cùng bất biến nhưng đường đi riêng) — "recount từ cây ở cổng" của
+    /// K2-PLAN §3 KT-39.
+    ///
+    /// Lỗi (không im lặng): bảng bị trỏ nhiều lần/mồ côi; lá trỏ Frame chết; bộ đếm Frame khác
+    /// số lá; Frame vừa W vừa X (lưới thứ hai sau [`Machine::check_wx`]).
+    pub fn wx_recount(&self) -> Result<WxRecount, String> {
+        let n = self.objects.len();
+        let mut reached = vec![false; n];
+        let mut counts = vec![(0u32, 0u32, 0u32); n];
+        for (i, m) in self.objects.iter().enumerate() {
+            if !m.alive || m.ty != ObjType::PageTable {
+                continue;
+            }
+            let Some(pit) = m.pt else {
+                return Err(format!("PageTable {}: thiếu dữ liệu", i + 1));
+            };
+            let Some(d) = self.page_tables.get(pit).and_then(|d| d.as_ref()) else {
+                return Err(format!("PageTable {}: thiếu dữ liệu", i + 1));
+            };
+            if d.attached.is_some() {
+                continue;
+            }
+            self.recount_wx_subtree((i as u32) + 1, &mut reached, &mut counts)?;
+        }
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.alive && m.ty == ObjType::PageTable && !reached[i] {
+                return Err(format!(
+                    "PageTable {}: mồ côi (không root nào trỏ tới)",
+                    i + 1
+                ));
+            }
+        }
+        let mut out = WxRecount::default();
+        for (i, m) in self.objects.iter().enumerate() {
+            if m.ty != ObjType::Frame {
+                continue;
+            }
+            let Some(f) = m.frame else { continue };
+            let obj = (i as u32) + 1;
+            let (maps, w, x) = counts[i];
+            if f.maps != maps || f.mapped_w != w || f.mapped_x != x {
+                return Err(format!(
+                    "Frame {obj}: bộ đếm ({}, {}, {}) ≠ đếm lại từ cây ({maps}, {w}, {x})",
+                    f.maps, f.mapped_w, f.mapped_x
+                ));
+            }
+            if f.mapped_w > 0 && f.mapped_x > 0 {
+                return Err(format!(
+                    "Frame {obj}: vừa WRITE ({}) vừa EXEC ({}) — vi phạm W^X",
+                    f.mapped_w, f.mapped_x
+                ));
+            }
+            if maps > 0 {
+                out.frames += 1;
+                out.maps += u64::from(maps);
+                out.mapped_w += u64::from(w);
+                out.mapped_x += u64::from(x);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Đệ quy **một** cây PageTable cho [`Machine::wx_recount`]: cộng `(maps, w, x)` theo Frame
+    /// và đánh dấu bảng đã đi (bảng bị trỏ hai lần ⇒ lỗi, không đếm đôi).
+    fn recount_wx_subtree(
+        &self,
+        table: ObjId,
+        reached: &mut [bool],
+        counts: &mut [(u32, u32, u32)],
+    ) -> Result<(), String> {
+        let ti = table as usize - 1;
+        if reached[ti] {
+            return Err(format!("PageTable {table}: bị trỏ nhiều lần"));
+        }
+        reached[ti] = true;
+        let d = self
+            .page_table_data(table)
+            .map_err(|e| format!("PageTable {table}: {e:?}"))?;
+        for (i, pte) in d.entries.iter().enumerate() {
+            match decode_pte(*pte) {
+                DecodedPte::Empty => {}
+                DecodedPte::Table(child) => {
+                    if d.level == 0 {
+                        return Err(format!("PageTable {table}: cấp 0 có bảng con ở [{i}]"));
+                    }
+                    let cd = self
+                        .page_table_data(child)
+                        .map_err(|e| format!("PageTable {table}[{i}]: {e:?}"))?;
+                    if cd.attached != Some((table, i as u16)) {
+                        return Err(format!(
+                            "PageTable {table}[{i}]: con {child} không attach đúng cha/chỉ số"
+                        ));
+                    }
+                    self.recount_wx_subtree(child, reached, counts)?;
+                }
+                DecodedPte::Leaf {
+                    frame,
+                    rights,
+                    attrs,
+                } => {
+                    let meta = self
+                        .frame_meta(frame)
+                        .map_err(|e| format!("PageTable {table}[{i}]: {e:?}"))?;
+                    if !meta.live {
+                        return Err(format!("PageTable {table}[{i}]: Frame {frame} đã chết"));
+                    }
+                    let c = &mut counts[frame as usize - 1];
+                    c.0 =
+                        c.0.checked_add(1)
+                            .ok_or_else(|| "tràn bộ đếm maps".to_string())?;
+                    c.1 =
+                        c.1.checked_add(u32::from(rights.contains(MapRights::WRITE)))
+                            .ok_or_else(|| "tràn bộ đếm mapped_w".to_string())?;
+                    c.2 =
+                        c.2.checked_add(u32::from(attrs.contains(MapAttrs::EXEC)))
+                            .ok_or_else(|| "tràn bộ đếm mapped_x".to_string())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Đệ quy một cây PageTable cho [`Machine::check_pages`]: trả số lá trong cây con, đánh dấu
     /// bảng đã đi, cộng bộ đếm theo Frame. Không cấp phát ngoài hai `Vec` của caller.
     fn check_page_subtree(
@@ -2234,8 +2531,8 @@ impl Machine {
     }
 
     /// **KT-38** — `Frame.Map(vspace, va, rights, attrs)` của thiết kế §4.10, model API: map qua
-    /// **cap Frame** vào root của VSpace (uỷ quyền nguyên [`Machine::page_table_map`]). Luật
-    /// W^X/kiểu bộ nhớ là KT-39 — ở đây **không** áp.
+    /// **cap Frame** vào root của VSpace (uỷ quyền nguyên [`Machine::page_table_map`], nên **áp**
+    /// luật W^X/kiểu bộ nhớ của KT-39 — không có đường vòng).
     pub fn vspace_map(
         &mut self,
         vs: ObjId,
@@ -2267,6 +2564,20 @@ impl Machine {
     pub fn vspace_unmap(&mut self, vs: ObjId, va: u64) -> Result<Mapping, KError> {
         let root = self.vspace_root(vs)?;
         self.page_table_unmap(root, va)
+    }
+
+    /// **KT-39** — `Frame.Protect`/hạ quyền của design §4.10, model API qua VSpace: uỷ quyền
+    /// nguyên [`Machine::page_table_protect`] trên root của VSpace (cùng luật `validate_attrs`
+    /// + W^X theo bộ đếm Frame toàn cục).
+    pub fn vspace_protect(
+        &mut self,
+        vs: ObjId,
+        va: u64,
+        rights: MapRights,
+        attrs: MapAttrs,
+    ) -> Result<Mapping, KError> {
+        let root = self.vspace_root(vs)?;
+        self.page_table_protect(root, va, rights, attrs)
     }
 
     /// **KT-38** — bất biến **VSpace + `active_on`** ("check_vspace sớm"; KT-42 gộp vào
@@ -5113,6 +5424,12 @@ impl Machine {
         // mọi test K1a..K1c như trước KT-37.
         if let Err(e) = self.check_pages() {
             debug_assert!(false, "bất biến PageTable vỡ sau public op: {e}");
+        }
+        // **KT-39** — W^X toàn cục theo Frame (bất biến `!(w>0 && x>0)`, `w+x ≤ maps`) chạy
+        // sau **mỗi** public op ("check_wx sớm"); cửa sổ nhanh `frame_objects == 0` giữ chi phí
+        // per-op của mọi test K1a..K1c như trước KT-39.
+        if let Err(e) = self.check_wx() {
+            debug_assert!(false, "bất biến W^X vỡ sau public op: {e}");
         }
         // **KT-38** — VSpace + `active_on`/hart online và ASID/free-list/thế hệ cũng chạy sau
         // **mỗi** public op ("check_vspace/check_asid sớm"); hai cửa sổ nhanh giữ chi phí per-op
@@ -10166,5 +10483,105 @@ mod tests {
         assert_eq!(f.harts, HartMask::from_bits(0b1));
         m.check_asid().expect("sau cạn");
         m.check_vspace().expect("sau cạn");
+    }
+    // ------------------------------------------------ KT-39: check_wx/wx_recount phải **bắt** lỗi
+
+    /// `check_wx` không là checker rỗng: Frame vừa W vừa X, và `w + x > maps` đều bị bắt.
+    #[test]
+    fn check_wx_bat_frame_vua_w_vua_x_va_tong_lon_hon_maps() {
+        let (mut m, c, _u, src) = rig_frame();
+        let cap = m.retype(src, ObjType::Frame, 12, 0).expect("Frame");
+        let f = m.cap_info(cap).expect("cap").obj;
+        m.put_cap(c, 1, cap).expect("đặt cap");
+        m.check_wx().expect("Frame mới sạch");
+        // Gieo trạng thái **không thể** sinh qua public op: w=1, x=1, maps=2.
+        {
+            let fm = m.objects[f as usize - 1].frame.as_mut().expect("meta");
+            fm.maps = 2;
+            fm.mapped_w = 1;
+            fm.mapped_x = 1;
+        }
+        let e = m.check_wx().expect_err("phải bắt W∧X");
+        assert!(e.contains("W^X") || e.contains("vừa"), "{e}");
+        // Gieo `w + x > maps` (w=2, x=0, maps=1) — bộ đếm cộng vượt số mapping thật.
+        {
+            let fm = m.objects[f as usize - 1].frame.as_mut().expect("meta");
+            fm.maps = 1;
+            fm.mapped_w = 2;
+            fm.mapped_x = 0;
+        }
+        let e = m.check_wx().expect_err("phải bắt w+x > maps");
+        assert!(e.contains("maps"), "{e}");
+        {
+            let fm = m.objects[f as usize - 1].frame.as_mut().expect("meta");
+            fm.maps = 0;
+            fm.mapped_w = 0;
+            fm.mapped_x = 0;
+        }
+        m.check_wx().expect("khôi phục thì sạch");
+    }
+
+    /// `wx_recount` đếm lại **từ cây PageTable** và bắt bộ đếm Frame bị sửa tay (không lệch
+    /// âm thầm); trước khi sửa, recount khớp đúng bộ đếm thật.
+    #[test]
+    fn wx_recount_bat_bo_dem_frame_lech() {
+        let (mut m, c, _u, src) = rig_frame();
+        let ptcap = m.retype(src, ObjType::PageTable, 0, 0).expect("PageTable");
+        let root = m.cap_info(ptcap).expect("cap").obj;
+        m.put_cap(c, 1, ptcap).expect("cap PageTable");
+        // Frame 1 GiB lá ngay root (không cần bảng trung gian); body Frame ở kernel arena nên
+        // không đụng 4096 B arena của Untyped.
+        let fcap = m.retype(src, ObjType::Frame, 30, 0).expect("Frame 1G");
+        let f = m.cap_info(fcap).expect("cap").obj;
+        m.put_cap(c, 2, fcap).expect("cap Frame");
+        m.page_table_map_obj(
+            root,
+            1 << 30,
+            f,
+            MapRights::READ | MapRights::WRITE,
+            MapAttrs::WB,
+        )
+        .expect("map 1G");
+        assert_eq!(
+            m.wx_recount(),
+            Ok(WxRecount {
+                frames: 1,
+                maps: 1,
+                mapped_w: 1,
+                mapped_x: 0,
+            })
+        );
+        // Gieo hỏng: bộ đếm Frame không còn khớp số lá (đúng lỗi mutation "bỏ giảm bộ đếm").
+        m.objects[f as usize - 1]
+            .frame
+            .as_mut()
+            .expect("meta")
+            .mapped_w = 0;
+        let e = m.wx_recount().expect_err("phải bắt bộ đếm lệch cây");
+        assert!(e.contains("đếm lại"), "{e}");
+        m.objects[f as usize - 1]
+            .frame
+            .as_mut()
+            .expect("meta")
+            .mapped_w = 1;
+        m.wx_recount().expect("khôi phục thì khớp");
+        // Gieo W∧X **khớp cây** (đúng lỗi mà luật phải bắt, không phải lỗi đếm): thêm một lá X
+        // ở VA 2 GiB rồi đặt bộ đếm tương ứng — trạng thái này không thể sinh qua public op vì
+        // `frame_note_map` chặn map X khi `mapped_w > 0`.
+        let pte_x = leaf_pte(f, MapRights::READ, MapAttrs::WB | MapAttrs::EXEC);
+        m.page_table_data_mut(root)
+            .expect("dữ liệu root")
+            .entries
+            .set(2, pte_x)
+            .expect("ghi lá X");
+        m.page_table_data_mut(root).expect("dữ liệu root").mapped = 2;
+        {
+            let fm = m.objects[f as usize - 1].frame.as_mut().expect("meta");
+            fm.maps = 2;
+            fm.mapped_w = 1;
+            fm.mapped_x = 1;
+        }
+        let e = m.wx_recount().expect_err("phải bắt W∧X");
+        assert!(e.contains("W^X") || e.contains("vừa"), "{e}");
     }
 }

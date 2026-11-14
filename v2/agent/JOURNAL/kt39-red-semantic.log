@@ -1,0 +1,68 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+warning: unused variable: `root`
+   --> sim/vifast-sim/tests/kt39_wx.rs:227:9
+    |
+227 |     let root = r.m.vspace_root(vs).expect("root");
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_root`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-sim` (test "kt39_wx") generated 1 warning (run `cargo fix --test "kt39_wx" -p vifast-sim` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.53s
+     Running tests/kt39_wx.rs (target/debug/deps/kt39_wx-a46bf07ebda82468)
+
+running 8 tests
+test vong_1000_tao_huy_khong_ro ... FAILED
+test ba_co_frame_wx_va_protect ... FAILED
+test map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam ... FAILED
+test attr_khong_hop_le_va_device_exec ... ok
+test protect_tinh_lai_dem_va_atomic ... ok
+test map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh ... FAILED
+test shared_read_only_hai_vspace_khong_ban_sao ... FAILED
+test property_10k_map_unmap_protect ... FAILED
+
+failures:
+
+---- vong_1000_tao_huy_khong_ro stdout ----
+
+thread 'vong_1000_tao_huy_khong_ro' (44318732) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 8: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ba_co_frame_wx_va_protect stdout ----
+
+thread 'ba_co_frame_wx_va_protect' (44318726) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 10: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+
+---- map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam stdout ----
+
+thread 'map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam' (44318727) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 10: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+
+---- map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh stdout ----
+
+thread 'map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh' (44318728) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 10: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+
+---- shared_read_only_hai_vspace_khong_ban_sao stdout ----
+
+thread 'shared_read_only_hai_vspace_khong_ban_sao' (44318731) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 14: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+
+---- property_10k_map_unmap_protect stdout ----
+
+thread 'property_10k_map_unmap_protect' (44318729) panicked at sim/vifast-sim/src/kobj.rs:5429:13:
+bất biến W^X vỡ sau public op: Frame 11: vừa WRITE (1) vừa EXEC (1) — vi phạm W^X
+
+
+failures:
+    ba_co_frame_wx_va_protect
+    map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam
+    map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh
+    property_10k_map_unmap_protect
+    shared_read_only_hai_vspace_khong_ban_sao
+    vong_1000_tao_huy_khong_ro
+
+test result: FAILED. 2 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt39_wx`

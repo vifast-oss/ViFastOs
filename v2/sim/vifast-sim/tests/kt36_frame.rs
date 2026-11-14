@@ -147,11 +147,16 @@ fn ba_co_retype_get_address_va_meta() {
         assert!(meta.counters_zero());
 
         // "map được/huỷ được" của KT-36 = bộ đếm W^X tăng/giảm (map thật là KT-37/39).
+        // **KT-39/D2-67** — luật W^X toàn cục: một Frame **không** thể vừa W vừa X, nên ca
+        // này dùng **một** mapping W rồi gỡ (trước KT-39 nó map W và X trên cùng Frame).
         r.m.frame_note_map(f, true, false).expect("note_map W");
-        r.m.frame_note_map(f, false, true).expect("note_map X");
-        assert_eq!(r.m.frame_meta(f).expect("meta").maps, 2);
+        assert_eq!(r.m.frame_meta(f).expect("meta").maps, 1);
+        assert_eq!(
+            r.m.frame_note_map(f, false, true),
+            Err(KError::WxViolation),
+            "W^X: Frame đang W không nhận mapping X"
+        );
         r.m.frame_note_unmap(f, true, false).expect("unmap W");
-        r.m.frame_note_unmap(f, false, true).expect("unmap X");
 
         // Huỷ: revoke Untyped ⇒ Frame chết, bộ đếm sạch.
         r.m.revoke(r.c, Some(0)).expect("revoke Untyped");
@@ -320,8 +325,13 @@ fn frame_chet_sach_sau_revoke() {
 fn revoke_bi_tu_choi_khi_con_mapping() {
     let mut r = Rig::new(0);
     let (sf, f) = r.ok_frame(12);
+    // **KT-39/D2-67** — W^X toàn cục: chỉ W (trước KT-39 ca này map W và X cùng Frame).
     r.m.frame_note_map(f, true, false).expect("map W");
-    r.m.frame_note_map(f, false, true).expect("map X");
+    assert_eq!(
+        r.m.frame_note_map(f, false, true),
+        Err(KError::WxViolation),
+        "X trên Frame đang W ⇒ WxViolation (luật toàn cục)"
+    );
 
     let err =
         r.m.revoke(r.c, Some(0))
@@ -333,14 +343,13 @@ fn revoke_bi_tu_choi_khi_con_mapping() {
     );
     // Atomic: chưa có gì chết, bộ đếm còn nguyên, cap còn dùng được.
     assert!(r.m.frame_meta(f).expect("meta").live);
-    assert_eq!(r.m.frame_meta(f).expect("meta").maps, 2);
+    assert_eq!(r.m.frame_meta(f).expect("meta").maps, 1);
     assert_eq!(r.m.frame_count(), 1);
     assert_eq!(r.m.frame_get_address(sf).expect("cap còn sống"), 0);
     r.kiem("revoke bị từ chối");
 
     // Gỡ mapping rồi mới chết được.
     r.m.frame_note_unmap(f, true, false).expect("unmap W");
-    r.m.frame_note_unmap(f, false, true).expect("unmap X");
     r.m.revoke(r.c, Some(0))
         .expect("revoke sau khi sạch mapping");
     assert!(!r.m.frame_meta(f).expect("meta").live);
@@ -365,21 +374,40 @@ fn bat_bien_bo_dem_map() {
         r.m.frame_note_unmap(f, false, true),
         Err(KError::IllegalOperation)
     );
-    // Một mapping vừa W vừa X: **luật** W^X là KT-39 (KT-36 cố ý chưa áp), nên bất biến ở đây
-    // là **từng bộ đếm ≤ `maps`** — `w + x ≤ maps` chỉ đúng sau khi KT-39 cấm mapping W+X.
-    r.m.frame_note_map(f, true, true).expect("map W+X");
-    let meta = r.m.frame_meta(f).expect("meta");
-    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 1, 1));
-    assert!(meta.mapped_w <= meta.maps && meta.mapped_x <= meta.maps);
-    r.m.frame_note_map(f, true, false).expect("map W thứ hai");
-    r.m.frame_note_unmap(f, true, true).expect("unmap W+X");
+    // **KT-39/D2-67** — luật W^X toàn cục: mapping **vừa W vừa X** bị từ chối atomic (trước
+    // KT-39 ca này map W+X hợp lệ và chỉ kiểm `w, x ≤ maps`). Bất biến bây giờ mạnh hơn:
+    // `!(w > 0 && x > 0)` và `w + x ≤ maps`.
+    assert_eq!(
+        r.m.frame_note_map(f, true, true),
+        Err(KError::WxViolation),
+        "một lời gọi W+X ⇒ WxViolation"
+    );
+    assert!(
+        r.m.frame_meta(f).expect("meta").counters_zero(),
+        "bị từ chối ⇒ không đổi bộ đếm"
+    );
+    r.m.frame_note_map(f, true, false).expect("map W");
     let meta = r.m.frame_meta(f).expect("meta");
     assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 1, 0));
     assert_eq!(
-        r.m.frame_note_unmap(f, false, true),
-        Err(KError::IllegalOperation),
-        "mapped_x = 0 ⇒ không được trừ"
+        r.m.frame_note_map(f, false, true),
+        Err(KError::WxViolation),
+        "Frame đang W ⇒ không nhận X"
     );
+    assert_eq!(
+        r.m.frame_note_map(f, true, false),
+        Ok(()),
+        "nhiều mapping W cùng chiều vẫn hợp lệ"
+    );
+    assert_eq!(
+        r.m.frame_note_unmap(f, true, true),
+        Err(KError::IllegalOperation),
+        "mapped_x = 0 ⇒ không được trừ X"
+    );
+    r.m.frame_note_unmap(f, true, false).expect("unmap W #1");
+    r.m.frame_note_unmap(f, true, false).expect("unmap W #2");
+    let meta = r.m.frame_meta(f).expect("meta");
+    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (0, 0, 0));
 
     // Sai loại object ⇒ `WrongObjectType`; cap không phải Frame ⇒ `WrongObjectType`.
     let ep = r.m.add_kernel_object(ObjType::Endpoint);
@@ -403,8 +431,7 @@ fn bat_bien_bo_dem_map() {
         Err(KError::RangeError)
     );
 
-    // Gỡ mapping còn lại (W) rồi mới xoá được — "frame chết phải sạch mapping".
-    r.m.frame_note_unmap(f, true, false).expect("unmap W cuối");
+    // Đã gỡ hết mapping ở trên ⇒ Frame sạch, xoá được — "frame chết phải sạch mapping".
     assert!(r.m.frame_meta(f).expect("meta").counters_zero());
     // Frame chết rồi: op ghi/đọc ⇒ `InvalidCapability` (không dùng object chết).
     r.m.revoke(r.c, Some(0)).expect("revoke");

@@ -535,3 +535,92 @@ trong `revoke_children`: Frame → **VSpace** → PageTable (root tombstone sau 
   **không** `.scn`/`check_vm`/shared read-only (KT-42).
 - **Không** đổi `spec/` (VSpace vẫn `reserved`/`unsupported`), **không** tạo `spec/kernel.toml`.
 - **Không** PTE/MMU/TLB/`sfence.vma` thật, không QEMU — **K3**.
+
+## 13. KT-39 — luật W^X toàn cục, `protect`, shared read-only (D2-67)
+
+**W^X là luật của toàn bộ mô hình, không phải của riêng VSpace.** Bộ đếm `mapped_w`/`mapped_x`
+nằm trên **Frame vật lý** và là **toàn cục**: một Frame ở trong hai VSpace hay hai PageTable vẫn
+chịu **cùng** một luật. `PageTable.Map` của `spec/abi.toml` vẫn `reserved`; KT-39 chỉ áp luật cho
+các **model API** đã có (KT-37/38).
+
+### 13.1 Luật `attrs` — `pagetable::validate_attrs` (trước mọi thay đổi)
+
+| Kiểm | Lỗi |
+|---|---|
+| `WB/WC/UC/Device` phải **đúng một** giá trị | `InvalidArgument` |
+| `NX` và `EXEC` cùng lúc | `InvalidArgument` |
+| `Device` + `EXEC` | **`WxViolation`** (D2-67: dùng chung mã W^X cho "thiết bị không bao giờ thực thi") |
+
+`attrs` rỗng vẫn phải chọn một kiểu bộ nhớ: caller truyền `MapAttrs::WB` (mặc định "không thực
+thi") như mọi ca KT-37/38. Không kiểm `READ/WRITE` ở đây — luật W^X theo **bộ đếm** do
+`frame_note_map` áp.
+
+### 13.2 Áp luật trong `frame_note_map` (cửa duy nhất **của đường `map`**)
+
+`map` (`page_table_map*`, `vspace_map*`) đi qua **`frame_note_map(frame, write, exec)`**; `protect`
+(`page_table_protect`, `vspace_protect`) đi qua **cửa delta** riêng trong `frame.rs` vì nó **đổi**
+một mapping đã đếm chứ không thêm mapping. Hai cửa, **cùng một bất biến** (§13.5); cả hai kiểm
+**trước** khi ghi bất cứ thứ gì:
+
+- mapping mới là **W** mà Frame đang có `mapped_x > 0` ⇒ `WxViolation`;
+- mapping mới là **X** mà Frame đang có `mapped_w > 0` ⇒ `WxViolation`;
+- mapping mới **vừa W vừa X** (một lời gọi) ⇒ `WxViolation`.
+
+Không tự unmap, không tự hạ quyền: JIT phải `unmap` W rồi `map` X (design §4.10). Bộ đếm tràn
+`u32` ⇒ `InvalidArgument`; Frame chết ⇒ `InvalidCapability`; không phải Frame ⇒ `WrongObjectType`.
+
+`page_table_map` gọi `validate_attrs` **sau** các kiểm cấu trúc (`MissingPageTable`/`Alignment`/
+`AlreadyMapped`/`NotEnoughMemory`) và **trước** `frame_note_map` + ghi PTE — lỗi không đổi cây,
+không đổi bộ đếm (atomic).
+
+### 13.3 `PageTable.Protect` / `VSpace.Protect` (model API)
+
+`page_table_protect(root, va, rights, attrs)` và `vspace_protect(vs, …)` đổi `rights`/`attrs` của
+**một** lá đang sống:
+
+- `va` phải đúng **gốc** mapping (lệch trong trang lớn ⇒ `Alignment`; chưa map ⇒ `NotMapped`);
+- `validate_attrs` như 13.1;
+- tính **bộ đếm kết quả**; nếu `w > 0 && x > 0` ⇒ `WxViolation` **atomic** (không đổi PTE/bộ đếm);
+- thành công: `maps` giữ nguyên, `mapped_w/mapped_x` đổi đúng hiệu, PTE đổi, trả `Mapping` mới.
+
+Khác `map`: `protect` được phép **W→X hoặc X→W** khi kết quả thoả bất biến, vì đó là yêu cầu
+tường minh của người gọi (không phải tự hạ quyền mapping cũ).
+
+### 13.4 Shared read-only
+
+Cùng một Frame map `READ` (không W, không X) vào **hai** VSpace: `maps` = 2, `mapped_w` =
+`mapped_x` = 0, **không** cấp bản sao, `pa` giống nhau. Đây là lưới an toàn của bộ đếm toàn cục
+(Q7) và là tiền đề cho shared frame của KT-42.
+
+### 13.5 Bất biến và hai lưới đếm
+
+`check_wx` (rẻ, sau **mỗi** public op, cửa sổ nhanh `frame_objects == 0`):
+
+1. **không** Frame nào `mapped_w > 0 && mapped_x > 0`;
+2. `mapped_w + mapped_x ≤ maps` (suy ra từng bộ đếm `≤ maps`; `u32` nên không âm).
+
+`wx_recount` (**cổng**, đếm lại **độc lập** từ cây PageTable của **mọi** root — kể cả PageTable
+thuần, không chỉ root VSpace) và so với `FrameMeta`; bắt: bảng bị trỏ nhiều lần/mồ côi, lá trỏ
+Frame chết, bộ đếm khác số lá, Frame vừa W vừa X. `k2-vm.md` **§10.1** là **hợp đồng lịch sử của
+KT-36** (`w ≤ maps && x ≤ maps`, "W^X để KT-39"); **KT-39 nâng lên** `!(w>0 ∧ x>0)` + `w + x ≤ maps`
+cho mọi đường — §10 giữ nguyên làm mốc lịch sử, §13 là luật hiện hành.
+
+### 13.6 Cập nhật test cũ (D2-67 — làm chặt, không nới)
+
+Luật mới làm **3 ca KT-36** và **2 ca KT-37** trước đây cố ý map W+X cùng Frame trở nên sai. Đã
+cập nhật **kỳ vọng**, giữ nguyên mục đích kiểm và mọi assertion khác:
+
+- KT-36 `ba_co_retype_get_address_va_meta` và `bat_bien_bo_dem_map`: thêm assert `WxViolation` khi
+  cố map X trên Frame đang W; `bat_bien_bo_dem_map` kiểm thêm "bị từ chối ⇒ không đổi bộ đếm".
+- KT-36 `revoke_bi_tu_choi_khi_con_mapping`: chuyển sang **một** mapping W và thêm assert
+  `WxViolation` cho lần map X — mục đích "revoke bị từ chối khi còn mapping" giữ nguyên.
+- KT-37 `rights_attrs_theo_mapping_va_chia_se_frame` và property 10k: attrs hợp lệ (một kiểu bộ
+  nhớ, `NX`⊥`EXEC`) và kỳ vọng `WxViolation` khi W/X xung đột.
+
+### 13.7 Không làm ở KT-39 (ranh giới)
+
+- **Không** TLB/`TlbFlush`/IPI/ack thế hệ (KT-40) — KT-39 không phát lệnh flush nào.
+- **Không** VM fault/`FaultKind::Vm` (KT-41); **không** `.scn`/`check_vm` gộp (KT-42); **không**
+  COW (Q7: COW cần pager thật = K3).
+- **Không** đổi `spec/` (VSpace/PageTable/Frame vẫn `reserved`), **không** tạo `spec/kernel.toml`.
+- **Không** PTE/MMU/TLB/`sfence.vma` thật, không QEMU — **K3**.

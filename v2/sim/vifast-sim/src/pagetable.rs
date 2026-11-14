@@ -37,9 +37,11 @@
 //!
 //! [`MapRights`] (READ/WRITE) và [`MapAttrs`] (WB/WC/UC/Device/NX/EXEC) do **tham số** của
 //! `map` quyết định, **không** suy từ quyền của cap Frame (K2-PLAN KT-37: "lưu rights/attrs
-//! của từng mapping (không suy từ cap)"). KT-37 **không** áp luật W^X, không kiểm
-//! "WB/WC/UC/Device đúng một giá trị", không từ chối `Device + EXEC` — tất cả là KT-39.
+//! của từng mapping (không suy từ cap)"). KT-37 lưu nguyên giá trị; **KT-39** mới áp luật
+//! ([`validate_attrs`]): đúng **một** kiểu bộ nhớ, `NX` ⊥ `EXEC`, `Device + EXEC` ⇒
+//! `WxViolation` — đó là ngữ nghĩa VM, không phải của cây PageTable thuần.
 
+use crate::kobj::KError;
 use vifast_pte::{walk_shape, FrameSize, Pte, PteArray, VA_BITS};
 
 /// Số PTE của một bảng: `2^9 = 512` (một trang 4096 B; hình `9/9/9/12`).
@@ -134,8 +136,8 @@ impl core::fmt::Debug for MapRights {
 
 /// Thuộc tính của một mapping: `WB/WC/UC/Device` (kiểu bộ nhớ) + `NX/EXEC` (thực thi).
 ///
-/// KT-37 **không** áp ràng buộc "đúng một kiểu bộ nhớ" hay "Device ⇒ không EXEC"; đó là
-/// KT-39 (K2-PLAN §3 KT-39). Ở đây chỉ lưu/đọc lại **đúng** giá trị người gọi truyền.
+/// KT-37 lưu/đọc lại **đúng** giá trị người gọi truyền. **KT-39** áp ràng buộc ngữ nghĩa VM ở
+/// [`validate_attrs`] (một kiểu bộ nhớ, `NX`⊥`EXEC`, `Device + EXEC` ⇒ `WxViolation`).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct MapAttrs(u8);
 
@@ -283,6 +285,34 @@ impl PageTableData {
     pub(crate) fn is_pristine(&self) -> bool {
         self.attached.is_none() && self.mapped == 0 && self.entries.iter().all(|p| p.is_empty())
     }
+}
+
+/// Mặt nạ bit **kiểu bộ nhớ** trong [`MapAttrs`]: `WB|WC|UC|Device`.
+const MEMORY_TYPE_MASK: u8 = 0b1111;
+
+/// **KT-39** — luật `attrs` của **một mapping VM** (D2-67; `k2-vm.md` §13):
+///
+/// 1. `WB/WC/UC/Device` phải **đúng một** giá trị (0 hoặc > 1 ⇒ [`KError::InvalidArgument`]);
+/// 2. `NX` và `EXEC` **xung khắc** — cùng lúc ⇒ [`KError::InvalidArgument`] (không có = mặc
+///    định không thực thi, giữ tương thích KT-37/38 với `MapAttrs::WB`);
+/// 3. `Device + EXEC` ⇒ [`KError::WxViolation`] — thiết bị không bao giờ thực thi; D2-67 chốt
+///    dùng chung mã `WxViolation` cho mọi vi phạm W^X (nhất quán "Device không W+X").
+///
+/// Kiểm **trước** mọi thay đổi cây/bộ đếm (atomic). Không kiểm quyền `READ/WRITE` ở đây —
+/// luật W^X theo bộ đếm do [`crate::kobj::Machine::frame_note_map`] áp.
+pub(crate) fn validate_attrs(attrs: MapAttrs) -> Result<(), KError> {
+    if (attrs.bits() & MEMORY_TYPE_MASK).count_ones() != 1 {
+        return Err(KError::InvalidArgument);
+    }
+    let nx = attrs.contains(MapAttrs::NX);
+    let exec = attrs.contains(MapAttrs::EXEC);
+    if nx && exec {
+        return Err(KError::InvalidArgument);
+    }
+    if attrs.contains(MapAttrs::DEVICE) && exec {
+        return Err(KError::WxViolation);
+    }
+    Ok(())
 }
 
 /// Cấp lá tương ứng `size_bits` của Frame: `12 → 0`, `21 → 1`, `30 → 2`; cỡ khác ⇒ `None`.

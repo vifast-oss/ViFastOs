@@ -4,14 +4,14 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `74145d0` ([KT-38], xem mục KT-38 bên dưới; các commit ViScript `f158085`/`cc7b096`/`b254f03` không đụng `v2/`)
+HEAD          : `f2e7762` ([KT-00] D2-67); KT-39 **chưa commit** — agent2-kt39 chết giữa lúc làm, **lead hoàn tất** (fix clippy, cập nhật 3 ca KT-36, viết docs §13)
 BUILD_ID      : —
-Task          : KT-37 DONE (4e16773); **KT-38 xong mã, reviewer APPROVE, commit `74145d0` đã push — chờ Agent 0 lật sổ**
-Bước          : 8/8 (baseline → **đỏ biên dịch** → code+test → check/gate → Miri → review → commit/push)
+Task          : KT-39 (W^X toàn cục `WxViolation` + `protect` + shared read-only) — code/test/docs xong, gate 536 PASS, Miri 8/8; **chờ reviewer-kt39**
+Bước          : 7/8 (baseline → đỏ → code+test → gate 536 → Miri 8/8 → **review DRIFT đã sửa + mutation M2** → commit)
 Nhánh         : main
-Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 526 test/68 suite** (baseline 512/67 + 7 `kt38_vspace` + 3 unit `vspace` + 4 unit `kobj`), L1 1.000 seed **1261 ms**, fmt/clippy `-D warnings` sạch, luật R1..R5 OK, gen-check ON (`JOURNAL/kt38-gate-fast.log`); `check` PASS (`JOURNAL/kt38-check.log`). Baseline KT-38: PASS 512/67, L1 1463 ms (`JOURNAL/kt38-baseline-gate-fast.log`). Reviewer chạy trước khi thêm unit test cạn ASID: 525/68 (chênh đúng +1 unit test).
-Miri          : KT-38 — **PASS** (exit 0 mọi mục, `JOURNAL/kt38-miri.log`): `--test kt38_vspace` **7/7** (61,29 s) + `--lib` lọc `vspace` **5/5** (3 unit `vspace` + 2 `check_vspace`) + `--lib 'kobj::tests::check_vspace'` **2/2** (1,61 s) + `--lib 'kobj::tests::check_asid'` **2/2** (3,27 s). Dưới `cfg(miri)`: test 257 → **8 ASID**, property 10.000 → **1×2** (D2-47(a)); warning `integer-to-pointer cast` là của `vifast-objmem` (D2-17); `v2/sim/**` 0 unsafe. KT-37 (lịch sử): 10/10 + 4/4 + 3/3; KT-36: 12/12 + 5/5.
-Việc dở       : **KT-38: `reviewer-kt38` APPROVE; commit `74145d0` đã push `origin/main`** (12 tệp `v2/`; `viscript/` không chạm) — **chờ Agent 0 lật QUEUE**, không tự lật (D2-37). Quyết định chính: VSpace tạo bằng **model API `vspace_create`** (Retype(VSpace) **vẫn** `NotSupported` — spec reserved + không sửa test cũ; lead đã xác nhận hướng này); ASID **về hưu trong thế hệ**; teardown phát **một** lệnh flush `Asid` tới `active_on`; cạn ASID phát **một** lệnh `Generation` cho mọi hart online. KT-37: commit `4e16773` đã push, **chờ Agent 0 lật sổ**; KT-36 `9c54bcf` chờ lật; KT-35 DONE. Không tự lật QUEUE.
+Cổng gần nhất : `./v2/bin/v2 gate --fast` — **PASS 536 test/68 suite**, L1 1.000 seed **811 ms** (sau khi sửa DRIFT), fmt/clippy `-D warnings` sạch, luật R1..R5, gen-check ON (`JOURNAL/kt39-gate-fast.log`). Baseline KT-39: PASS 526/68 (`JOURNAL/kt39-baseline-gate-fast.log`); +8 `kt39_wx` +2 unit `check_wx`.
+Miri          : KT-39 — `--test kt39_wx` **8/8** (119,62 s, MIRI1_EXIT=0) + `--lib 'kobj::tests::check_wx'` **1/1** (MIRI2_EXIT=0), `JOURNAL/kt39-miri.log`. KT-38: 7/7 + 5/5 + 2/2 + 2/2; KT-37: 10/10 + 4/4 + 3/3; KT-36: 12/12 + 5/5.
+Việc dở       : KT-39 cần **review độc lập** trước commit (`reviewer-kt39` đang chạy). Luật mới D2-67 làm 3 ca KT-36 + 2 ca KT-37 phải **cập nhật kỳ vọng** (W+X ⇒ `WxViolation`) — **làm chặt**, không nới; docs `k2-vm.md` §13 ghi rõ. KT-38 `74145d0` DONE (D2-66); KT-35/36/37 DONE.
 ```
 
 ## KT-38 — K2: `VSpace` + ASID (8 bit/256/thế hệ) + `generation` + `active_on: HartMask`

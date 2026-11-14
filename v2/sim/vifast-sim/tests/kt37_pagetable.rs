@@ -3,8 +3,13 @@
 //! model-only `[TK]` (K2-PLAN §3 KT-37, D2-65 Q2/Q3/Q7, `v2/docs/k2-vm.md` §11, thiết kế
 //! §4.10 `:353-366`).
 //!
-//! **KT-37 KHÔNG có VSpace/ASID/TLB** (KT-38/40), **không** áp luật W^X (KT-39) và **không**
-//! có VM fault (KT-41). Ở đây chỉ có cây PageTable **theo mô hình**:
+//! **KT-37 KHÔNG có VSpace/ASID/TLB** (KT-38/40) và **không** có VM fault (KT-41). Ở đây chỉ
+//! có cây PageTable **theo mô hình**:
+//!
+//! **KT-39 cập nhật 2 ca** (D2-67): luật W^X toàn cục áp **mọi** Frame map qua PageTable/VSpace,
+//! nên ca W+X cùng Frame trước đây (`rights_attrs_theo_mapping_va_chia_se_frame`) nay kỳ vọng
+//! `WxViolation`, và property 10k chỉ dùng attrs hợp lệ (một kiểu bộ nhớ, `NX`⊥`EXEC`) + kỳ
+//! vọng `WxViolation` khi W/X xung đột. Không nới assertion nào khác.
 //! 1. `PageTable` là object (retype từ Untyped, 4 KiB) và cây 3 cấp dùng `vifast-pte`
 //!    (`walk_shape` 9/9/9/12, `MAX_MAP_DEPTH`).
 //! 2. Lá chọn theo **cỡ Frame**: 4 KiB ở cấp 0, 2 MiB ở cấp 1, 1 GiB ở cấp 2. Bảng cấp trên
@@ -638,38 +643,30 @@ fn rights_attrs_theo_mapping_va_chia_se_frame() {
     let (root_a, _ma, _la) = cay_4k(&mut r, 0);
     let (root_b, _mb, _lb) = cay_4k(&mut r, G1);
     let (fa, oa) = r.frame(12);
-    // Cap có RIGHTS_ALL — mapping chỉ xin WRITE + attrs UC|EXEC ⇒ phải giữ đúng yêu cầu.
+    // **KT-39/D2-67** — KT-37 trước đây map WRITE+UC|EXEC (W+X cùng Frame) vì chưa có luật
+    // W^X. Luật mới: mapping đầu tiên chỉ được W **hoặc** X. Ca này giữ nguyên mục đích
+    // "rights/attrs theo từng mapping, không suy từ cap": map W-only.
     let ma =
-        r.m.page_table_map(
-            root_a,
-            0x1000,
-            fa,
-            MapRights::WRITE,
-            MapAttrs::UC | MapAttrs::EXEC,
-        )
-        .expect("map WRITE/UC/EXEC");
+        r.m.page_table_map(root_a, 0x1000, fa, MapRights::WRITE, MapAttrs::UC)
+            .expect("map WRITE/UC");
     assert_eq!(ma.rights, MapRights::WRITE);
-    assert_eq!(ma.attrs, MapAttrs::UC | MapAttrs::EXEC);
+    assert_eq!(ma.attrs, MapAttrs::UC);
     let meta = r.m.frame_meta(oa).expect("meta");
-    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 1, 1));
+    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 1, 0));
 
-    // Cùng Frame map root B với READ, toàn bộ attrs: bộ đếm **toàn cục** cộng đúng.
+    // Cùng Frame map root B với READ + `WB|NX`: bộ đếm **toàn cục** cộng đúng, mapping thứ
+    // hai không phải W/X.
     let mb =
         r.m.page_table_map(
             root_b,
             G1 + 0x1000,
             fa,
             MapRights::READ,
-            MapAttrs::WB
-                | MapAttrs::WC
-                | MapAttrs::UC
-                | MapAttrs::DEVICE
-                | MapAttrs::NX
-                | MapAttrs::EXEC,
+            MapAttrs::WB | MapAttrs::NX,
         )
-        .expect("map READ/all-attrs");
+        .expect("map READ/WB|NX");
     let meta = r.m.frame_meta(oa).expect("meta");
-    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (2, 1, 2));
+    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (2, 1, 0));
     assert_eq!(r.m.page_table_walk(root_a, 0x1000).expect("walk A"), ma);
     assert_eq!(
         r.m.page_table_walk(root_b, G1 + 0x1000).expect("walk B"),
@@ -679,16 +676,62 @@ fn rights_attrs_theo_mapping_va_chia_se_frame() {
     assert_ne!(ma.attrs, mb.attrs);
     r.kiem("shared frame");
 
+    // **KT-39** — W^X toàn cục: Frame đang có mapping W ⇒ map X (attr EXEC) ở VSpace/root
+    // **khác** bị `WxViolation` atomic; mapping cũ + bộ đếm giữ nguyên.
+    assert_eq!(
+        r.m.page_table_map(
+            root_b,
+            G1 + 0x2000,
+            fa,
+            MapRights::READ,
+            MapAttrs::UC | MapAttrs::EXEC
+        ),
+        Err(KError::WxViolation)
+    );
+    let meta = r.m.frame_meta(oa).expect("meta");
+    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (2, 1, 0));
+    assert_eq!(
+        r.m.page_table_walk(root_b, G1 + 0x2000),
+        Err(KError::NotMapped)
+    );
+    assert_eq!(r.m.page_table_walk(root_a, 0x1000).expect("walk A"), ma);
+    assert_eq!(
+        r.m.page_table_walk(root_b, G1 + 0x1000).expect("walk B"),
+        mb
+    );
+    r.kiem("shared frame W^X");
+
+    // Frame **khác** mới được X-only: bộ đếm của nó độc lập với `fa`.
+    let (fb, ob) = r.frame(12);
+    let mx =
+        r.m.page_table_map(
+            root_b,
+            G1 + 0x3000,
+            fb,
+            MapRights::READ,
+            MapAttrs::UC | MapAttrs::EXEC,
+        )
+        .expect("map X frame khác");
+    assert_eq!(
+        (mx.rights, mx.attrs),
+        (MapRights::READ, MapAttrs::UC | MapAttrs::EXEC)
+    );
+    let meta_b = r.m.frame_meta(ob).expect("meta B");
+    assert_eq!((meta_b.maps, meta_b.mapped_w, meta_b.mapped_x), (1, 0, 1));
+
     // Unmap một root: bộ đếm còn đúng phần còn lại, root kia không đổi.
     r.m.page_table_unmap(root_a, 0x1000).expect("unmap A");
     let meta = r.m.frame_meta(oa).expect("meta");
-    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 0, 1));
+    assert_eq!((meta.maps, meta.mapped_w, meta.mapped_x), (1, 0, 0));
     assert_eq!(
         r.m.page_table_walk(root_b, G1 + 0x1000).expect("walk B"),
         mb
     );
     r.m.page_table_unmap(root_b, G1 + 0x1000).expect("unmap B");
+    r.m.page_table_unmap(root_b, G1 + 0x3000)
+        .expect("unmap B X");
     assert_eq!(r.m.frame_meta(oa).expect("meta").maps, 0);
+    assert_eq!(r.m.frame_meta(ob).expect("meta").maps, 0);
     r.kiem("shared frame xong");
 }
 
@@ -803,6 +846,7 @@ fn property_10k_op_walk_nguoc_khop_100() {
     let mut dem: BTreeMap<ObjId, (u32, u32, u32)> = BTreeMap::new();
     let mut rng = Lcg::new(37);
     let mut thong_ke = [0u32; 6]; // map ok / map err / unmap ok / unmap err / walk spot ok / walk full
+    let mut so_wx = 0u32; // KT-39: số ca W^X bị từ chối (kỳ vọng, không phải ngưỡng)
 
     for step in 0..N_OPS {
         let do_map = rng.below(2) == 0;
@@ -828,20 +872,26 @@ fn property_10k_op_walk_nguoc_khop_100() {
                 1 => MapRights::READ | MapRights::WRITE,
                 _ => MapRights::WRITE,
             };
-            let attrs = MapAttrs::WB
+            // **KT-39/D2-67** — attrs hợp lệ: **đúng một** kiểu bộ nhớ + `NX` hoặc `EXEC`
+            // (không cả hai). Trước KT-39 property này trộn hai kiểu (WB+WC/WB+UC) và W+X;
+            // luật mới từ chối cả hai. Ca W+X được **kỳ vọng** `WxViolation` ngay dưới đây.
+            let mem = match rng.below(3) {
+                0 => MapAttrs::WB,
+                1 => MapAttrs::WC,
+                _ => MapAttrs::UC,
+            };
+            let attrs = mem
                 | if rng.below(2) == 0 {
                     MapAttrs::NX
                 } else {
                     MapAttrs::EXEC
-                }
-                | if rng.below(2) == 0 {
-                    MapAttrs::WC
-                } else {
-                    MapAttrs::UC
                 };
             let chong = oracle
                 .values()
                 .any(|m| m.va < va + size && va < m.va + (1u64 << m.size_bits));
+            let (_, w_truoc, x_truoc) = dem.get(&obj).copied().unwrap_or((0, 0, 0));
+            let wx = w_truoc + u32::from(rights.contains(MapRights::WRITE)) > 0
+                && x_truoc + u32::from(attrs.contains(MapAttrs::EXEC)) > 0;
             let got = r.m.page_table_map(root, va, fs, rights, attrs);
             if chong {
                 assert_eq!(
@@ -849,6 +899,22 @@ fn property_10k_op_walk_nguoc_khop_100() {
                     Err(KError::AlreadyMapped),
                     "step {step}: chồng mapping phải AlreadyMapped"
                 );
+                thong_ke[1] += 1;
+            } else if wx {
+                // **KT-39** — W^X toàn cục: W sau X / X sau W (kể cả W+X cùng lời gọi) bị từ
+                // chối atomic; bộ đếm của Frame không đổi.
+                assert_eq!(
+                    got,
+                    Err(KError::WxViolation),
+                    "step {step}: W^X phải WxViolation"
+                );
+                let meta = r.m.frame_meta(obj).expect("meta");
+                assert_eq!(
+                    (meta.maps, meta.mapped_w, meta.mapped_x),
+                    (dem.get(&obj).map(|d| d.0).unwrap_or(0), w_truoc, x_truoc),
+                    "step {step}: WxViolation không đổi bộ đếm"
+                );
+                so_wx += 1;
                 thong_ke[1] += 1;
             } else {
                 let m = got.unwrap_or_else(|e| panic!("step {step}: map lỗi {e:?}"));
@@ -952,8 +1018,8 @@ fn property_10k_op_walk_nguoc_khop_100() {
 
     // In thống kê để log cổng có bằng chứng (không assert số cụ thể — chỉ cần đủ 6 loại).
     println!(
-        "KT-37 property: {N_OPS} op, map_ok {}, map_err {}, unmap_ok {}, unmap_err {}, spot {}, full {}",
-        thong_ke[0], thong_ke[1], thong_ke[2], thong_ke[3], thong_ke[4], thong_ke[5]
+        "KT-37 property: {N_OPS} op, map_ok {}, map_err {} (WxViolation {}), unmap_ok {}, unmap_err {}, spot {}, full {}",
+        thong_ke[0], thong_ke[1], so_wx, thong_ke[2], thong_ke[3], thong_ke[4], thong_ke[5]
     );
     assert!(thong_ke[0] > 0 && thong_ke[1] > 0 && thong_ke[2] > 0 && thong_ke[3] > 0);
 }

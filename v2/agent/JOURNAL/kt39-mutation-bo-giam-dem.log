@@ -1,0 +1,74 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+warning: unused variable: `root`
+   --> sim/vifast-sim/tests/kt39_wx.rs:227:9
+    |
+227 |     let root = r.m.vspace_root(vs).expect("root");
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_root`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-sim` (test "kt39_wx") generated 1 warning (run `cargo fix --test "kt39_wx" -p vifast-sim` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.56s
+     Running tests/kt39_wx.rs (target/debug/deps/kt39_wx-a46bf07ebda82468)
+
+running 8 tests
+test vong_1000_tao_huy_khong_ro ... FAILED
+test attr_khong_hop_le_va_device_exec ... FAILED
+test ba_co_frame_wx_va_protect ... FAILED
+test map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam ... FAILED
+test shared_read_only_hai_vspace_khong_ban_sao ... FAILED
+test protect_tinh_lai_dem_va_atomic ... ok
+test map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh ... FAILED
+test property_10k_map_unmap_protect ... FAILED
+
+failures:
+
+---- vong_1000_tao_huy_khong_ro stdout ----
+
+thread 'vong_1000_tao_huy_khong_ro' (44319264) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 8: bộ đếm (1, 1, 0) ≠ số lá (0, 0, 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- attr_khong_hop_le_va_device_exec stdout ----
+
+thread 'attr_khong_hop_le_va_device_exec' (44319257) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 10: bộ đếm (1, 0, 0) ≠ số lá (0, 0, 0)
+
+---- ba_co_frame_wx_va_protect stdout ----
+
+thread 'ba_co_frame_wx_va_protect' (44319258) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 10: bộ đếm (1, 1, 0) ≠ số lá (0, 0, 0)
+
+---- map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam stdout ----
+
+thread 'map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam' (44319259) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 10: bộ đếm (2, 0, 1) ≠ số lá (1, 0, 0)
+
+---- shared_read_only_hai_vspace_khong_ban_sao stdout ----
+
+thread 'shared_read_only_hai_vspace_khong_ban_sao' (44319263) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 14: bộ đếm (2, 0, 0) ≠ số lá (1, 0, 0)
+
+---- map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh stdout ----
+
+thread 'map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh' (44319260) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 10: bộ đếm (1, 1, 0) ≠ số lá (0, 0, 0)
+
+---- property_10k_map_unmap_protect stdout ----
+
+thread 'property_10k_map_unmap_protect' (44319261) panicked at sim/vifast-sim/src/kobj.rs:5423:13:
+bất biến PageTable vỡ sau public op: Frame 12: bộ đếm (1, 0, 0) ≠ số lá (0, 0, 0)
+
+
+failures:
+    attr_khong_hop_le_va_device_exec
+    ba_co_frame_wx_va_protect
+    map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam
+    map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh
+    property_10k_map_unmap_protect
+    shared_read_only_hai_vspace_khong_ban_sao
+    vong_1000_tao_huy_khong_ro
+
+test result: FAILED. 1 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt39_wx`

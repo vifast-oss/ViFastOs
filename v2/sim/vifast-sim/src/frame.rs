@@ -39,13 +39,11 @@ pub const UNTYPED_PA_WINDOW: u64 = 1 << 30;
 /// tính `EXEC` (thiết kế §4.10: "bộ đếm mapped_w/mapped_x, giữ từ v1"); `maps` là tổng số
 /// mapping sống.
 ///
-/// Bất biến của **KT-36**: `mapped_w ≤ maps`, `mapped_x ≤ maps`; frame chết ⇒ cả ba bằng 0.
-/// Bất biến chặt hơn `mapped_w + mapped_x ≤ maps` (và `!(w > 0 && x > 0)`) chỉ đúng **sau khi**
-/// KT-39 áp luật W^X — KT-36 cố ý **chưa** áp luật đó (K2-PLAN Q3: "KT-39 toàn bộ luật").
-///
-/// KT-36 **chưa** map Frame vào VSpace/PageTable nên ba bộ đếm chỉ đổi qua
-/// [`crate::kobj::Machine::frame_note_map`]/[`crate::kobj::Machine::frame_note_unmap`]; KT-37/
-/// KT-39 sẽ gọi đúng hai hàm đó từ `map`/`unmap` thật.
+/// Bất biến: `mapped_w + mapped_x ≤ maps` và `!(w > 0 && x > 0)` — **KT-39** áp ở
+/// [`crate::kobj::Machine::check_wx`] sau **mỗi** public op (D2-65 Q3, D2-67); Frame chết ⇒ cả
+/// ba bằng 0. Ba bộ đếm chỉ đổi qua [`crate::kobj::Machine::frame_note_map`]/
+/// [`crate::kobj::Machine::frame_note_unmap`] (map/unmap) và `page_table_protect` (delta), nhờ
+/// vậy mọi đường đều đi qua **một** chỗ kiểm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FrameMeta {
     /// Địa chỉ vật lý của mô hình = `base` của Untyped + watermark cửa sổ (căn đúng cỡ Frame).
@@ -93,6 +91,25 @@ impl FrameMeta {
     pub const fn has_mapping(&self) -> bool {
         self.maps != 0
     }
+}
+
+/// Kết quả **đếm lại từ cây PageTable** ở cổng (KT-39, `Machine::wx_recount`): tổng số mapping
+/// sống và hai bộ đếm W/X, quy về **các Frame đang còn mapping** (Frame không mapping không tính
+/// vào `frames`). Là nguồn test/harness — không phải ABI.
+///
+/// Bất biến cổng: `mapped_w + mapped_x ≤ maps` và `!(mapped_w > 0 && mapped_x > 0)` theo từng
+/// Frame; ở mức tổng, `wx_recount()` phải **bằng** tổng bộ đếm trong [`FrameMeta`] của mọi Frame
+/// (nếu lệch ⇒ bất biến W^X vỡ, không im lặng bỏ qua).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WxRecount {
+    /// Số Frame còn ít nhất một mapping sống.
+    pub frames: usize,
+    /// Tổng số mapping sống (mọi Frame, mọi VSpace/PageTable).
+    pub maps: u64,
+    /// Tổng số mapping sống có quyền `WRITE`.
+    pub mapped_w: u64,
+    /// Tổng số mapping sống có thuộc tính `EXEC`.
+    pub mapped_x: u64,
 }
 
 /// Cửa sổ PA ảo của **một** Untyped: đáy + watermark (byte đã cấp cho Frame).
