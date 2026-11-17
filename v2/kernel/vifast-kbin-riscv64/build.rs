@@ -437,6 +437,9 @@ fn build_identity(manifest_dir: &str) {
     // (đúng lớp lỗi KT-76). Mọi bất định chỉ dẫn tới **từ chối đo**, không dẫn tới nhận nhầm.
     println!("cargo:rerun-if-env-changed=VIFAST_BUILD_REV");
     println!("cargo:rerun-if-env-changed=VIFAST_BUILD_DIRTY");
+    // D2-127: dấu vân tay build-inputs cũng là **đầu vào** — thiếu dòng này thì cargo dùng lại
+    // build script cũ ⇒ ảnh mang dấu vân tay cũ (đúng lớp lỗi KT-76).
+    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_INPUTS");
     for path in identity_watch_paths(&root) {
         println!("cargo:rerun-if-changed={}", path.display());
     }
