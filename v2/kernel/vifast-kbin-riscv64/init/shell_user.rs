@@ -252,6 +252,13 @@ fn wait_reply(want: u64) -> (u64, [u64; 4]) {
 /// có**, `write` đang dùng). Không ghi dữ liệu, chỉ đổi cỡ.
 #[cfg(shell_fs)]
 fn cmd_truncate(path: &[u8], size: u64) {
+    // **KT-126** (review chéo): `head` chỉ dành **ba mươi hai** bit cho tham số (`arg = (head >> 8)
+    // & 0xffff_ffff` ở kernel), nên `size >= 2^32` bị **cắt âm thầm** — đo được: `truncate /README
+    // 4294967296` báo thành công nhưng tệp về **không** byte. Nay từ chối sớm thay vì nói dối.
+    if size > 0xFFFF_FFFF {
+        put(b"# shell: kich thuoc qua lon (toi da 4294967295)\n");
+        return;
+    }
     if fs_set_path(path).is_err() {
         no_fs();
         return;
