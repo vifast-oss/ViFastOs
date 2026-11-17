@@ -3864,4 +3864,46 @@ nhãn **CHỜ A0 XÁC NHẬN**.
 "khớp nhau" mà cả hai đều sai. Chỉ khi vá shell thì ma trận mới đỏ (mười tám trên hai mươi mốt) và lỗi
 mới lộ. Nếu chỉ sửa test cho xanh thì đã **che** lỗi.
 
-**Ảnh canonical mới nhất**: `34ee7a25…` (dấu vân tay `be9689a5c032cf69`, cây sạch).
+**Ảnh canonical mới nhất**: `503be0f9…` (dấu vân tay `3a2e6b095d6491b1`, cây sạch).
+
+## VÒNG 05:30–07:30 — phát triển tính năng + review toàn dự án
+
+Ba việc song song, rồi review chéo.
+
+### Tính năng: **sáu lệnh shell mới**
+
+| Lệnh | Nguồn | Task |
+|---|---|---|
+| `time`, `uptime` | `ClockRead` (mười một) — đã có | KT-114 |
+| `sync` | `OP_SYNC` — đã có | KT-114 |
+| `stat <path>` | `OP_STAT` — đã có nhưng **chưa ai gọi** | KT-114 |
+| `truncate <path> <size>` | `OP_TRUNC` — đã có | KT-125 |
+| `jobs` | cùng reply `PS_REQ` của `ps` | KT-125 |
+
+Tất cả trong nhánh `#[cfg(shell_fs)]` ⇒ ảnh **test** vẫn **sáu** lệnh, `proc_demo.rs`/`ktest.sh`
+**không** phải sửa. `CMDS` chín → **mười lăm**.
+
+**Sự cố đáng ghi**: lần đầu thêm `truncate`/`jobs` tôi quên `cfg` ở **chỗ dispatch** ⇒ `ktest-con`
+build **FAIL**. Ma trận bắt ngay. Bài học: thêm lệnh phải sửa **ba** chỗ cùng một `cfg` — hàm,
+`CMDS`/`help`/banner, **và** dispatch.
+
+### Review toàn dự án (KT-115): mười chín phát hiện
+
+**Hai nặng, cả hai đã vá:**
+
+- **PANIC kernel từ một request U-mode** (KT-118) — `proc_fs.rs` lấy độ dài tên từ phần cao của
+  `head` (tối đa hai trăm năm mươi lăm) rồi chỉ kẹp theo `MAX_PATH` (bốn mươi tám), trong khi ba MR
+  word chỉ chở hai mươi bốn byte ⇒ tràn mảng bốn phần tử. Dựng lại được, vá một dòng.
+- **TAP 4 `shell ps tu core` vẫn xanh giả** (KT-119) — test giải mã lại đúng công thức của shell nên
+  đột biến chỗ đóng gói vẫn xanh. Nay ghi trạng thái **thật** bằng `m.tcb_state(id)`.
+
+**Hai phát hiện về chính bản vá của tôi:**
+
+- **KT-120**: bản KT-112 trong `shell-edge.sh` là **kiểm rỗng** — hai vế cùng sinh từ một biến của
+  shell. Nay có sàn **độc lập** `PS_MIN_ROWS`.
+- **KT-122**: bất biến pager `reads == misses` chỉ **in** khi sai, không TAP nào đỏ. Nay là **TAP 36**.
+
+### Review chéo (KT-123): ba đính chính
+
+Bất biến `ktest_con` **không** độc lập (tắt đi vẫn đỏ nhờ `Ring::check`); ca 3b dùng lại `right.log`;
+và **ảnh có `product-fs` mà FS trống đứng năm mươi tư giây mỗi lệnh** — nay kernel trả `ST_NOFS` ngay.
