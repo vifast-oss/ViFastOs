@@ -1,0 +1,7 @@
+# KT-90 soak xong — 2026-11-17T10:50:33Z
+# wall=355s tổng=1000/1000 ok=1000 fail=0 (355s)
+# tốc độ=2 boot/s (3 lane nếu LANES=3)
+# timeout-shell=0 panic=0 help-response=1000/1000 rx_bytes_min=10
+# ảnh: sha256=291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353 (đầu 291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353) changed=0 bytes=205440
+# infra after: qemu_con_sot_total=0 qemu_ppid1=0 (trước: 0/0)
+# run=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt90-logs/run-soak-20261117-194438-78789
