@@ -10,6 +10,10 @@
 #   bash v2/tools/pre-measure.sh <ảnh>          # kiểm và in bảng trạng thái
 #   bash v2/tools/pre-measure.sh <ảnh> --quiet  # chỉ in dòng kết luận
 #   ... --allow-legacy   # chấp nhận ảnh định dạng CŨ (`rev=`, trước KT-89) — chỉ cho ảnh lịch sử
+#   bash v2/tools/pre-measure.sh --selftest     # tự kiểm 6 ca (dương + âm)
+#
+# Thư mục ảnh ghim đổi được bằng `PRE_MEASURE_ART_DIR` (mặc định `v2/artifacts`) — `--selftest`
+# dùng nó để không đụng ảnh thật. **Hành vi mặc định không đổi.**
 #
 # Exit: 0 = ĐO ĐƯỢC; 2 = dùng sai; 3 = ảnh không có dòng danh tính; 4 = dấu vân tay ảnh ≠ cây;
 #       5 = ảnh tự khai dirty; 6 = ảnh chưa ghim vào artifacts/; 7 = cây nguồn bẩn; 8 = QEMU sót.
@@ -20,7 +24,7 @@ export LC_ALL
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/.." && pwd)"
 ROOT="$(cd "$V2_ROOT/.." && pwd)"
-ART_DIR="$V2_ROOT/artifacts"
+ART_DIR="${PRE_MEASURE_ART_DIR:-$V2_ROOT/artifacts}"
 QUIET=0
 ALLOW_LEGACY=0
 
@@ -36,7 +40,101 @@ refuse() { # <mã> <lý do>
     exit "$1"
 }
 
-[ "$#" -ge 1 ] || die "dùng: pre-measure.sh <ảnh> [--quiet]"
+[ "$#" -ge 1 ] || die "dùng: pre-measure.sh <ảnh> [--quiet] [--allow-legacy] | --selftest"
+
+# --- chế độ --selftest: dựng ảnh giả trong thư mục tạm, kiểm cả nhánh nhận và nhánh từ chối ----
+# Mọi lần gọi con đều đặt `PRE_MEASURE_ART_DIR` vào thư mục tạm ⇒ **không** đụng `v2/artifacts/`.
+if [ "$1" = "--selftest" ]; then
+    TMP="$(mktemp -d "${TMPDIR:-/tmp}/pre-measure-selftest.XXXXXX")" || die "mktemp"
+    trap 'rm -rf "$TMP"' EXIT
+    rc=0
+    ART="$TMP/art" # ART_DIR giả (thay cho v2/artifacts)
+    mkdir -p "$ART" "$TMP/bin"
+    # Máy có thể đang chạy QEMU của task khác ⇒ phép kiểm QEMU (kiểm **môi trường**, không phải
+    # kiểm ảnh) được trung hoà bằng một `pgrep` giả **chỉ** trong PATH của các lần gọi dưới đây.
+    printf '#!/bin/sh\nexit 1\n' >"$TMP/bin/pgrep"
+    chmod +x "$TMP/bin/pgrep"
+
+    # Ảnh giả: vài KiB rác + dòng danh tính (đúng dạng kernel in).
+    mk_img() { # <path> <inputs> <dirty> [kích thước rác]
+        { head -c "${4:-4096}" /dev/zero; printf '# build: inputs=%s dirty=%s\n' "$2" "$3"; } >"$1"
+    }
+    mk_legacy() { # <path> <rev> <dirty>
+        { head -c 4096 /dev/zero; printf '# build: rev=%s dirty=%s\n' "$2" "$3"; } >"$1"
+    }
+    pin() { # <ảnh> — chép vào ART dưới tên sha256 (cùng quy ước pin-artifact.sh)
+        local sha
+        sha="$(shasum -a 256 "$1" | awk '{print $1}')"
+        cp "$1" "$ART/$sha.bin"
+    }
+    pm() { # <ảnh> [tham số...] -> PM_OUT, PM_RC
+        PM_OUT="$(PATH="$TMP/bin:$PATH" PRE_MEASURE_ART_DIR="$ART" bash "$0" "$@" 2>&1)"
+        PM_RC=$?
+    }
+    expect_refuse() { # <ca> <mã> <lý do> <ảnh> [tham số...]
+        local id="$1" want_rc="$2" want_reason="$3"
+        shift 3
+        pm "$@"
+        if [ "$PM_RC" -ne "$want_rc" ]; then
+            echo "# pre-measure-selftest ($id) FAIL: mã thoát $PM_RC (mong $want_rc)"
+            rc=1
+        elif ! printf '%s\n' "$PM_OUT" | grep -qF "REFUSE reason=$want_reason"; then
+            echo "# pre-measure-selftest ($id) FAIL: không thấy 'REFUSE reason=$want_reason'"
+            rc=1
+        fi
+    }
+    expect_ok() { # <ca> <ảnh> [tham số...]
+        local id="$1"
+        shift
+        pm "$@"
+        if [ "$PM_RC" -ne 0 ]; then
+            echo "# pre-measure-selftest ($id) FAIL: mã thoát $PM_RC (mong 0 = OK)"
+            rc=1
+        elif ! printf '%s\n' "$PM_OUT" | grep -qF 'PRE-MEASURE: OK'; then
+            echo "# pre-measure-selftest ($id) FAIL: không thấy 'PRE-MEASURE: OK'"
+            rc=1
+        fi
+    }
+
+    # Dấu vân tay **thật** của cây hiện tại — ca (a) phải khớp cây thật, không dùng giá trị giả.
+    CUR_FP=""
+    if [ -f "$V2_ROOT/test/boot/build-rev.sh" ]; then
+        # shellcheck disable=SC1091
+        . "$V2_ROOT/test/boot/build-rev.sh"
+        vbrev_inputs_calc "$ROOT" >/dev/null 2>&1 && CUR_FP="$VBREV_CALC_SHORT"
+    fi
+    if [ -z "$CUR_FP" ]; then
+        # Không tính được ⇒ ca (a) không thể đúng; báo đỏ ngay thay vì dùng giá trị giả để "cho qua".
+        echo "# pre-measure-selftest (a) FAIL: không tính được dấu vân tay cây hiện tại (fail-closed)"
+        echo "# pre-measure-selftest: FAIL"
+        exit 1
+    fi
+
+    mk_img "$TMP/good.bin" "$CUR_FP" 0
+    mk_img "$TMP/dirty.bin" "$CUR_FP" 1
+    mk_img "$TMP/stale.bin" "ffffffffffffffff" 0
+    mk_img "$TMP/unpinned.bin" "$CUR_FP" 0 8192 # khác byte với good.bin ⇒ chưa ghim
+    head -c 4096 /dev/zero >"$TMP/nobuild.bin"
+    mk_legacy "$TMP/legacy.bin" "cf96eb9b589d" 0
+    pin "$TMP/good.bin"
+    pin "$TMP/legacy.bin"
+
+    expect_ok a "$TMP/good.bin"                         # (a) khớp cây + đã ghim + cây sạch
+    expect_refuse b 4 inputs-mismatch "$TMP/stale.bin"  # (b) lệch dấu vân tay
+    expect_refuse c 5 image-dirty "$TMP/dirty.bin"      # (c) ảnh tự khai dirty=1
+    expect_refuse d 6 not-pinned "$TMP/unpinned.bin"    # (d) ảnh chưa ghim
+    expect_refuse e 3 no-build-line "$TMP/nobuild.bin"  # (e) ảnh không có dòng build
+    expect_refuse f 4 legacy-format "$TMP/legacy.bin"   # (f) định dạng cũ ⇒ từ chối
+    expect_ok f "$TMP/legacy.bin" --allow-legacy        # (f) --allow-legacy ⇒ OK
+
+    if [ "$rc" -eq 0 ]; then
+        echo "# pre-measure-selftest: PASS (a/b/c/d/e/f)"
+    else
+        echo "# pre-measure-selftest: FAIL"
+    fi
+    exit "$rc"
+fi
+
 IMAGE="$1"
 shift
 while [ "$#" -gt 0 ]; do
