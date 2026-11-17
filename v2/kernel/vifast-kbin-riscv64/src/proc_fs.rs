@@ -447,7 +447,11 @@ impl FsSvc {
             return [ST_OK, 0, 0, 0];
         }
         let room = MAX_PATH.saturating_sub(self.path_len);
-        let len = core::cmp::min(len, room);
+        // **KT-118** (review toàn dự án): `len` đến từ `head >> 40` của **request U-mode** (tối đa
+        // 255) và trước đây chỉ kẹp theo `room` (48) ⇒ `len = 25` làm `words[1 + 24/8] = words[4]`
+        // **tràn mảng** `[u64; 4]` ⇒ PANIC kernel (đã dựng lại: `PANIC: index out of bounds: the
+        // len is 4 but the index is 4`). Nay kẹp thêm theo số byte **thật** chở trong 3 MR word.
+        let len = core::cmp::min(len, core::cmp::min(room, REPLY_BYTES));
         let start = self.path_len;
         let mut index = 0usize;
         while index < len {
