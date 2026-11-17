@@ -18,6 +18,20 @@ dòng **in ra số** trong `v2/agent/JOURNAL/`.
 KT-92 (remap đường dẫn) và KT-93 (mở rộng build-inputs). Build lại từ HEAD hôm nay sẽ ra **sha khác**
 — đó là hệ quả có chủ ý, **không** phải hồi quy. Mọi phép đo mới phải dùng ảnh mới.
 
+### Ảnh canonical **mới nhất** (khớp HEAD)
+
+| Trường | Giá trị | Ở đâu |
+|---|---|---|
+| Ảnh | `9643311d…` | `kt100-journal.md` |
+| Dấu vân tay build-inputs | `95d919fb5b882d24`, cây sạch | `kt100-journal.md` |
+| Parity sáu lệnh | sáu trên sáu, `not_ok` bằng không | `kt100-journal.md` |
+| Soak một nghìn vòng | một nghìn trên một nghìn, ảnh không đổi | `kt99-journal.md` |
+| Ma trận + persist | hai mươi mốt trên hai mươi mốt, và PASS | `kt97-journal.md` |
+| Conformance | `trace-compare` sáu mươi mốt trên sáu mươi mốt dòng khớp | `kt101-journal.md` |
+
+⇒ Nếu Agent 0 chọn phương án (b) ở `K6-CLOSURE-DRAFT.md` §2, **bằng chứng đã sẵn trên ảnh khớp
+HEAD** — không phải đo lại.
+
 ## 2. Sáu tiêu chí
 
 | # | Tiêu chí | Bằng chứng (dòng in số) | Kết luận của người đo |
