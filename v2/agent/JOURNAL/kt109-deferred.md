@@ -7,6 +7,12 @@
 - **Câu hỏi**: 22 mục `deferred` hoãn vì cái gì **thật**, phân nhóm dứt khoát, ước lượng công +
   rủi ro **có căn cứ**, và xếp thứ tự làm cho K7.
 
+> **ĐÍNH CHÍNH (review chéo, 2026-11-18)**: §4 Đợt 2 ghi `2,0 h` cho sáu lệnh nhóm B rẻ, nhưng
+> sáu lệnh × 0,5 h = **3,0 h**; tổng các đợt vì thế là **14,5 h**, khớp §5 (bản trước ghi 13,5 h).
+> Ngoài ra `cd`/`pwd` xếp nhóm C là **căng**: chính §6.1 chứng minh mâu thuẫn spec **đã giải được**
+> và `cwd` là trạng thái **nội bộ shell**, không đổi ABI ⇒ thực chất là **A + cổng thủ tục G1**
+> (G1 áp cho cả 22 lệnh). Giữ ở C trong bảng để bảo thủ, nhưng khi lập kế hoạch nên đọc là A.
+
 ## §0. Cách làm
 
 1. Đọc `spec/v1-parity.toml` (396 dòng) và **đếm bằng máy** (script `python3` tách `[[command]]`).
@@ -128,7 +134,7 @@ trước** (D2-03: hồi quy thì revert trước, điều tra sau).
 |---|---|---|---|---|
 | **0** | Hai cổng A0: **G1** (quyền sửa `v1-parity.toml`) + **G2** (`cmds=`/transcript) | — | 0,5–1,0 h (chờ) | Không có G1/G2 thì **không lệnh nào** đóng được; làm song song với đợt 1 được |
 | **1** | **A — builtin thuần** (2,0 h, 8 lệnh) | `sync` → `stat` → `truncate` → `time` → `uptime` → `jobs` → `history` → `!!` | 2,0 | Opcode/syscall **đã có sẵn**; mỗi lệnh ~15 phút; đóng 8/22 = 36 % số mục |
-| **2** | **B rẻ — opcode FS** (2,0 h, 6 lệnh) | `df` → `fsck` → `mkdir` → `rm` → `mv` → `ln` | 2,0 | Hàm FS **đã có** (`usage`/`fsck`/`mkdir`/`unlink`/`rename`/`link`), chỉ thiếu đường dịch vụ; `df`/`fsck` trước vì **1 opcode/lệnh** và giá trị quan sát cao (sức khoẻ đĩa) |
+| **2** | **B rẻ — opcode FS** (3,0 h, 6 lệnh) | `df` → `fsck` → `mkdir` → `rm` → `mv` → `ln` | 3,0 | Hàm FS **đã có** (`usage`/`fsck`/`mkdir`/`unlink`/`rename`/`link`), chỉ thiếu đường dịch vụ; `df`/`fsck` trước vì **1 opcode/lệnh** và giá trị quan sát cao (sức khoẻ đĩa) |
 | **3** | **C — sau quyết định A0** (5,5 h, 5 lệnh) | `cd`+`pwd` (1,5) → `exec` (1,0) → `run` (1,5) → `runfs` (1,5) | 5,5 | `exec` trước vì nó **là cơ chế**; `run`/`runfs` dùng lại. `cd`/`pwd` rẻ nhưng phải chờ A0 chốt sự tồn tại |
 | **4** | **B đắt — rủi ro cao** (3,5 h, 2 lệnh) | `free` (1,0) → `loop` (2,5) | 3,5 | `loop` cần dịch vụ spawn/destroy trong **ảnh sản phẩm** ⇒ phải soak lại; để cuối để không chặn 20 lệnh kia |
 | **5** | **D** (0,5 h, 1 lệnh) | `uname` | 0,5 | Rẻ nhưng **chờ A0 chốt chuỗi**; nếu A0 chốt sớm thì **kéo lên đợt 1** |

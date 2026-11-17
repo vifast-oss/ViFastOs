@@ -176,7 +176,7 @@ Hai điều đáng chú ý:
 | # | Việc trùng | Bằng chứng `[ĐO KT-110]` | Giá |
 |---|---|---|---|
 | A | `l1_1000_seed_tat_dinh` chạy **hai lần** trong **một** lần `gate --fast` | L0 chạy nó (`kt110-gate-r1.log:1209`, `finished in 0.34s`), rồi bước L1 lọc `l1_` chạy **lại đúng test đó** (0,92 s) | ~1,2 s |
-| B | `driver_smp_cung_seed_cung_trace` (`l1_k1c`) **tưởng là không chạy trong gate** nhưng vẫn chạy | Chú thích tại `v2/sim/vifast-sim/tests/l1_k1c.rs:834-836` nói tên **cố ý không** bắt đầu bằng `l1_` để bộ lọc `l1_` của gate không chạy nó. Đúng — nhưng **L0 `cargo test --workspace` không lọc gì**, nên nó vẫn chạy với mặc định `1.000 seed × smp 1,2,4,8 × 2 lượt/seed` (`so_seed_hai_lan`, dòng 113-127) | **28,2–29,1 s** |
+| B | `driver_smp_cung_seed_cung_trace` (`l1_k1c`) **tưởng là không chạy trong gate** nhưng vẫn chạy | Chú thích tại `v2/sim/vifast-sim/tests/l1_k1c.rs:834-836` nói tên **cố ý không** bắt đầu bằng `l1_` để bộ lọc `l1_` của gate không chạy nó. Đúng — nhưng **L0 `cargo test --workspace` không lọc gì**, nên nó vẫn chạy với mặc định `1.000 seed × smp 1 × 2 lượt/seed` (`so_seed_hai_lan`, dòng 113-127). **ĐÍNH CHÍNH (review chéo)**: bản trước ghi `smp 1,2,4,8` — sai; `VIFAST_SMP` mặc định là `1` (`l1_k1c.rs:91`), còn `1,2,4,8` là mặc định của `v2 nightly --l1` (`v2/bin/v2:469`). Đo lại: mặc định **27,92 s**, `VIFAST_SMP=1,2,4,8` là **151,38 s** | **28,2–29,1 s** |
 | C | `cargo build --workspace` (bước 18) là **tập con** của `cargo test --workspace` | Sau khi `cargo test` xong, `cargo build --workspace` chỉ mất **0,29–0,68 s** ("Finished in 0.29s") ⇒ test đã build xong lib+bin. Khi nguội, `build` một mình tốn **8,19 s** | 0,4–0,7 s (ấm) / **8,2 s** (nguội) |
 | D | 6 fixture báo cáo **chạy lại toàn bộ** `check_report.py` 6 lần | `v2/test/report/run_fixtures.sh` gọi `check_report.py` 6 lần, mỗi lần đọc lại `QUEUE.md` (113 hàng) + git | 13,2–15,8 s |
 | E | 25 subprocess Python cho 21 ca phá của luật 8 | `verify-numbers.py:1358` `exit_code_of()` spawn `sys.executable` **mỗi ca**; log cổng ghi `law_wall_ms={8:12474}` | 12,5 s |
@@ -288,7 +288,14 @@ golden, scn + fixtures, báo cáo + fixtures, gen-check + fixtures, idl-gen-chec
 
 - **(a) Tiết kiệm `[ƯL]`: ~11 s mỗi `check`/`gate`.** 13,2–15,8 s → **~2,6–4,2 s**.
   *Bằng chứng*: tuần tự **22,86 s** → song song **4,20 s** (5,4×).
-- **(b) Mất phủ: KHÔNG.** **Bắt buộc** đổi `/tmp/repfx.out` → tệp riêng mỗi ca (xem P3(b)).
+- **(b) Mất phủ: KHÔNG.** **ĐÍNH CHÍNH (review chéo)**: điều kiện `/tmp/repfx.out` **không** thuộc
+  P3 — `v2/bin/v2` gọi **mỗi** script fixture đúng một lần, hai script ghi **hai tệp khác nhau** nên
+  P3 không va chạm. Điều kiện đó thuộc **P6** (song song sáu ca *bên trong* `run_fixtures.sh`).
+- **(c) Rủi ro phải ghi trước khi bật**: có **ba** chỗ phụ thuộc **đồng hồ thực** —
+  `v2/lib/vifast-sync/tests/kt30_stress.rs:21` (biên ba giây), `v2/lib/vifast-ring/tests/spsc.rs:218`
+  (hạn mười giây), `v2/lib/vifast-objmem/tests/compile_fail.rs:74` (tên tệp cố định trong `temp_dir`).
+  Đo ở mười hai lần quá tải: còn dư năm đến tám lần ⇒ rủi ro **thấp nhưng có thật**; cần chính sách
+  `T-INFRA` trước khi bật P1.
 - **(c) Đổi ngữ nghĩa cổng: KHÔNG.**
 
 ### P7 — Gộp R1/R3/R5 thành **một lượt** quét thay vì spawn mỗi tệp
