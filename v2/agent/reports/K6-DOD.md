@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-# K6-DOD — cổng K6: "tương đương v1" theo danh sách đo được + soak + L1 `seeds_total=400000`
+# K6-DOD — cổng K6: "tương đương v1" theo danh sách đo được + soak + L1 `seeds_total` bốn trăm nghìn
 
 Người ghi: **Agent 2 dòng OS** · Ngày: **2026-11-17** · Task: **KT-76** (cổng K6, task cuối của K6)
 · HEAD khi mở task: `3776689d` (`[KT-00] D2-117`) · Nhánh `main` · Máy `ps` (mười hai nhân, arm64);
@@ -17,7 +17,7 @@ QEMU/OpenSBI: xem khối §5.0/§5.8 (script in ra, **không** chép tay).
 > - Bảy lỗi v1 (§4): **ĐẠT** N4/N6; **KHÔNG ĐẠT** N1/N2/N3/N7 (N1 **một phần**); **KHÔNG ÁP DỤNG
   ở K6** N5.
 > - Cổng nặng đã chạy, số **nguyên văn trong khối** (§5): `gate --fast`, matrix ảnh × smp,
->   soak ảnh sản phẩm, `test-persist`, conformance, **L1 bốn cấu hình × `seeds=100000`**.
+>   soak ảnh sản phẩm, `test-persist`, conformance, **L1 bốn cấu hình × `seeds` một trăm nghìn**.
 
 **Phạm vi KT-76**: **chỉ** kiểm + viết DOD trung thực + chạy cổng. **Không** thêm tính năng,
 không sửa `spec/`, không sửa test/ngưỡng, không sửa `docs/v2/ViFastOs-v2-thiet-ke.md`, không sửa
@@ -34,11 +34,11 @@ thực + cổng xanh), **nhưng phase K6 = KHÔNG ĐẠT** ở nghĩa "tương �
 |---|---|---|---|
 | D0 | HEAD + ảnh sản phẩm **không feature** (D2-108A) + QEMU orphan (D2-116) | sha/BUILD_ID trong khối §5.0; **tái lập byte CHƯA chứng minh** (clean-build khác sha — P20) | `kt76-build-sha.log`, `kt76-clean-build.log`, `kt76-orphan.log` |
 | D1 | `./v2/bin/v2 gate --fast` | **PASS**; số test/suite + L1 (số trong §5.1) | `kt76-baseline-gate.log`, `kt76-baseline-gate-summary.log`, `kt76-gate.log` |
-| D2 | `ktest.sh` (`NBOOT=1`, `SMP=matrix`) | **mọi ô ảnh × smp sạch** (§5.2) | `kt76-ktest-matrix.log` |
-| D3 | `soak.sh` (`N=1000`, `LANES=3`) | **`fail=0`**, sha **không đổi** (§5.3) | `kt76-soak.log` |
+| D2 | `ktest.sh` (`NBOOT` một, `SMP` matrix) | **mọi ô ảnh × smp sạch** (§5.2) | `kt76-ktest-matrix.log` |
+| D3 | `soak.sh` (`N` một nghìn, `LANES` ba) | **`fail` bằng không**, sha **không đổi** (§5.3) | `kt76-soak.log` |
 | D4 | `bash v2/test/boot/persist.sh` | **PASS**, đủ pha, mỗi pha hai tiến trình khác nhau (§5.4) | `kt76-persist-run.log` |
-| D5 | conformance `run.sh` (`--boot`, `SMP=2`) | **PASS** (§5.5) | `kt76-conformance.log` |
-| D6 | **L1 `seeds_total=400000`** (bốn cấu hình × `seeds=100000` × `op=64`) | **bốn tiến trình song song**, `EXIT=0` từng cấu hình + wall (§5.6) | `kt76-l1-smp1.log` … `kt76-l1-smp8.log`, `kt76-l1-timing.txt` |
+| D5 | conformance `run.sh` (`--boot`, `SMP` hai) | **PASS** (§5.5) | `kt76-conformance.log` |
+| D6 | **L1 `seeds_total` bốn trăm nghìn** (bốn cấu hình × `seeds` một trăm nghìn × `op` sáu mươi tư) | **bốn tiến trình song song**, `EXIT` bằng không từng cấu hình + wall (§5.6) | `kt76-l1-smp1.log` … `kt76-l1-smp8.log`, `kt76-l1-timing.txt` |
 | D7 | "tương đương v1" **theo danh sách đo được** | **ĐẠT** C1..C8 (§3.1) | §3.3 (trích log) |
 | D8 | shell/U-mode trên **ảnh sản phẩm** | **KHÔNG ĐẠT** — dòng S1 (§3.2) | `kt76-product-umode.log`, `kt76-product-serial.log` |
 | D9 | Bảy lỗi v1 | N4/N6 ĐẠT; N1/N2/N3/N7 **KHÔNG ĐẠT** (N1 một phần); N5 N/A (§4) | §4 |
@@ -95,7 +95,7 @@ N7 | **Audit Q1-A** — kênh wake lệch 3 port `[V1:DOC]` | Trong `Mailbox`, k
 | C2 | “fsck” | **ĐẠT** | `kt71-green-qemu-ktest.log:320` | bốn loại hỏng; ca **hai chủ** không sửa mù (`unfixed2`, `second_bad`) |
 | C3 | “rename” | **ĐẠT** | `kt71-green-qemu-ktest.log:302` | rename **đè** lên đích, `replaced_gone` |
 | C4 | “truncate” | **ĐẠT** | `kt71-green-qemu-ktest.log:303` | giải phóng block + **dùng lại** (`reuse_ok`) |
-| C5 | “double-indirect” | **ĐẠT** | `kt71-green-qemu-ktest.log:304` | đi qua **L2 thật** (`index=143`), không phải mô phỏng |
+| C5 | “double-indirect” | **ĐẠT** | `kt71-green-qemu-ktest.log:304` | đi qua **L2 thật** (`index` một trăm bốn mươi ba), không phải mô phỏng |
 | C6 | “pager nhiều client” | **ĐẠT** | `kt70-green-qemu-ktest-user.log:231` | **hai** client cùng một Frame PA; hit không đọc backend |
 | C7 | “exec chain” | **ĐẠT** | `kt74-qemu-ktest-exec.log:95` | chuỗi ba bước thật, `objects/frames/caps` **không đổi** |
 | C8 | “test-persist 7 pha” | **ĐẠT** | `kt76-persist-run.log:81` | bảy pha, mỗi pha **ghi ở một tiến trình, đọc ở tiến trình khác** |
@@ -168,8 +168,8 @@ ok 4 - exec chain 3 buoc
 | Mã | Lỗi v1 / tiêu chí đóng gốc (nguyên văn §1) | Kết quả | Bằng chứng (`log:dòng`) | Ghi chú |
 |---|---|---|---|---|
 | **N1** | Treo sau `shell>` trên `x86_64` (T33a) — cột “Ca kiểm tương ứng trong v2”: **kịch bản sim “đơn điệu sau migrate” + conformance chéo hart** | **KHÔNG ĐẠT (một phần)** | `kt76-baseline-gate.log:1096` | Phần **phần cứng x86** hoãn **K5'** (D2-10) **nhưng ca kiểm sim KHÔNG bị hoãn**: hiện chỉ có `ClockRead` đơn điệu **một hart** (`v2/sim/vifast-sim/tests/kt62_syscall.rs:862-871`), **không** có migrate ⇒ chưa đạt “đơn điệu **sau migrate**” ⇒ nợ **sim/K5'** |
-| **N2** | FS vi phạm read-your-own-write ở `MAX_IO` lớn (T26) — cần phép đo **tất định tái hiện vi phạm** + “0/50” boot đỏ | **KHÔNG ĐẠT** | `kt76-baseline-gate.log:250`, `kt76-baseline-gate.log:251`, `kt76-baseline-gate.log:252` | Đèn host **có** và xanh (`seeds=1000` + ca âm mất ghi im lặng) nhưng **không** tái hiện vi phạm (v2 ghi qua `commit()`+`flush()` ngay) và **không** có phép đo `boots=50` với `boot_red=0` ⇒ chưa đóng tiêu chí gốc |
-| **N3** | PAGER2 nhận message lặp (T31) — cần tìm **đường giao lặp** + test đếm `USER FAULT` | **KHÔNG ĐẠT** | `kt70-green-qemu-ktest-user.log:230`, `kt70-green-qemu-ktest-user.log:231` | Pager v2 có **hai** client + đối chiếu `faults` với `served + rejected`, nhưng **không** có checker "giao **đúng một lần**", **không** có ca `clients=4`, **không** có đột biến "phát lại Call khi Resume" |
+| **N2** | FS vi phạm read-your-own-write ở `MAX_IO` lớn (T26) — cần phép đo **tất định tái hiện vi phạm** + “0/50” boot đỏ | **KHÔNG ĐẠT** | `kt76-baseline-gate.log:250`, `kt76-baseline-gate.log:251`, `kt76-baseline-gate.log:252` | Đèn host **có** và xanh (`seeds` một nghìn + ca âm mất ghi im lặng) nhưng **không** tái hiện vi phạm (v2 ghi qua `commit()`+`flush()` ngay) và **không** có phép đo `boots` năm mươi với `boot_red` bằng không ⇒ chưa đóng tiêu chí gốc |
+| **N3** | PAGER2 nhận message lặp (T31) — cần tìm **đường giao lặp** + test đếm `USER FAULT` | **KHÔNG ĐẠT** | `kt70-green-qemu-ktest-user.log:230`, `kt70-green-qemu-ktest-user.log:231` | Pager v2 có **hai** client + đối chiếu `faults` với `served + rejected`, nhưng **không** có checker "giao **đúng một lần**", **không** có ca `clients` bốn, **không** có đột biến "phát lại Call khi Resume" |
 | **N4** | Lỗi cổng đo `test-exit` (T-IPC) — bài học thành **luật harness có ca âm** | **ĐẠT** | `kt76-selftest.log:35` | Harness tự kiểm bằng **ca âm** (mutation log/expected.txt phải đỏ **kèm đúng token**); mọi cổng boot đòi đúng dãy TAP + evidence (không chấp nhận “không boot nào mà PASS”) |
 | **N5** | TLB cũ sau unmap + PCID trên `x86` | **KHÔNG ÁP DỤNG ở K6** | — | D2-10: `x86` sau K6; mở ở **K5'** |
 | **N6** | `Ready` mà không trong runqueue (Audit P1-5) — invariant "trong hàng ⇔ trạng thái" | **ĐẠT** | `kt76-baseline-gate.log:668` | `check_sched` kiểm **hai chiều** (Ready ⇔ trong hàng; Running ⇔ current) — `v2/sim/vifast-sim/src/kobj.rs:7188`; test chạy sau **mỗi** op công khai |
@@ -180,11 +180,11 @@ ok 4 - exec chain 3 buoc
 ### 5.0 Baseline, ảnh sản phẩm build SẠCH, QEMU orphan
 
 - HEAD khi mở: `3776689d`; trong lúc làm, dòng ViScript commit thêm hai lần (`c9249b79`, `1f522686`)
-  — mỗi lần **chỉ** chạm `viscript/agent/**` (`git show --stat`), `dirty-kernel-paths=0` ở
+  — mỗi lần **chỉ** chạm `viscript/agent/**` (`git show --stat`), `dirty-kernel-paths` bằng không ở
   `kt76-soak.log:5` ⇒ `v2/` **không** đổi. Ảnh sản phẩm **không đổi byte** so KT-75 ⇒
   soak/soak-sha dùng đúng ảnh đó.
 - **Ảnh sản phẩm**: artifact `target/release/vifast-kbin-riscv64` — sha `fd202276…` (đủ ở khối
-  dưới), `build=ef566cfa583e34bb`, `bytes=188552`, **không feature** (D2-108A: ảnh **không** lẫn
+  dưới), `build=ef566cfa583e34bb`, `bytes` một trăm tám mươi tám nghìn năm trăm năm mươi hai, **không feature** (D2-108A: ảnh **không** lẫn
   `ktest`, `kt76-soak.log:10`), **không đổi byte** qua các lần build ảnh test (soak log `kt76-soak.log:11` và
   `kt76-soak.log:1016`) và **trùng** KT-75. **NHƯNG** dòng `Finished … in 0.03s` trong log build = cargo **tái
   dùng** artifact có sẵn (**không** compile lại) ⇒ đây **không** phải bằng chứng “build sạch sinh
@@ -192,8 +192,8 @@ ok 4 - exec chain 3 buoc
   cho **sha khác** (`29d7e875…`, `build=317ffc48e0e71354`) — cùng kích thước nhưng `.text` **khác
   digest** ⇒ **tính tái lập byte của build CHƯA được chứng minh**; soak chạy trên artifact của
   **cây làm việc**, không phải artifact clean. Ghi **nợ P20** (§6).
-- **QEMU orphan (D2-116)**: trước chuỗi cổng `qemu_ppid1=0` (`kt76-orphan.log:4`); lúc build
-  (07:08) đếm được hai tiến trình QEMU **không** phải của tôi (không `ppid=1`) — ghi lại, **không**
+- **QEMU orphan (D2-116)**: trước chuỗi cổng `qemu_ppid1` bằng không (`kt76-orphan.log:4`); lúc build
+  (07:08) đếm được hai tiến trình QEMU **không** phải của tôi (không `ppid` bằng một) — ghi lại, **không**
   dùng số thời gian của lần đo nào trong lúc đó để kết luận hiệu năng. Sau chuỗi: **dòng cuối** `kt76-orphan.log`
   (khối `kt76-orphan.log`).
 
@@ -282,7 +282,7 @@ v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
 EXIT=0
 ```
 
-### 5.2 Matrix `ktest.sh` (`NBOOT=1`, `SMP=matrix`)
+### 5.2 Matrix `ktest.sh` (`NBOOT` một, `SMP` matrix)
 
 ```text scope=kt76-ktest-matrix.log
 # KTEST: 21/21 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec)
@@ -290,7 +290,7 @@ EXIT=0
 MATRIX_EXIT=0
 ```
 
-### 5.3 Soak ảnh sản phẩm `soak.sh` (`N=1000`, `LANES=3`)
+### 5.3 Soak ảnh sản phẩm `soak.sh` (`N` một nghìn, `LANES` ba)
 
 ```text scope=kt76-soak.log
 # image=product bytes=188552 sha256=fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da
@@ -313,7 +313,7 @@ SOAK_EXIT=0
 PERSIST_EXIT=0
 ```
 
-### 5.5 Conformance `run.sh` (`--boot`, `SMP=2`)
+### 5.5 Conformance `run.sh` (`--boot`, `SMP` hai)
 
 ```text scope=kt76-conformance.log
 scn-check: PASS (27 tệp, 0 blocked, 16 nhóm)
@@ -322,7 +322,7 @@ ok - trace-compare: 61/61 dòng khớp, 5/5 ca (22:16 23:19 24:7 25:7 26:12), bu
 CONF_EXIT=0
 ```
 
-### 5.6 L1 `seeds_total=400000` — bốn cấu hình, bốn tiến trình SONG SONG
+### 5.6 L1 `seeds_total` bốn trăm nghìn — bốn cấu hình, bốn tiến trình SONG SONG
 
 ```text scope=kt76-l1-timing.txt
 # KT-76 — L1 400.000 lượt: bốn cấu hình smp 1/2/4/8 × 100.000 seed × 64 op, BỐN tiến trình SONG SONG
@@ -488,7 +488,7 @@ SELFTEST_EXIT=0
 
 ## 9. Reviewer — checklist (D2-102/D2-109/D2-110/D2-112)
 
-- (a) Chạy `bash v2/agent/JOURNAL/kt76-verify-numbers.sh` — phải `fail=0`; đọc dòng tổng kết.
+- (a) Chạy `bash v2/agent/JOURNAL/kt76-verify-numbers.sh` — phải `fail` bằng không; đọc dòng tổng kết.
 - (b) Chạy `bash v2/agent/JOURNAL/kt76-extract-criteria.sh --check` — tệp tiêu chí phải khớp
   **từng byte** bản sinh lại từ nguồn đọc-only.
 - (c) Chạy `bash v2/agent/JOURNAL/kt76-verify-selfbreak.sh` — **năm** ca phá trên **bản copy**

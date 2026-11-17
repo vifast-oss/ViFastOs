@@ -200,13 +200,3 @@ date = "2026-11-17"
 # (hoặc K7) đưa số vào khối `scope=` thì xoá mục này. Sửa nội dung tệp ⇒ ĐỎ (phải xử lý lại),
 # nên nó không thể âm thầm thành "miễn trừ vĩnh viễn".
 
-[[legacy]]
-path = "v2/agent/reports/K6-DOD.md"
-sha256 = "44fe7848e37e04d6bb943d1f57fa3a627a4961fa3cbda56ecbe1ff64f852a900"
-kind = "pre_existing"
-expires_task = "KT-82"
-owner = "KT-76"
-debt = "26 số dạng key=value ở prose (siết luật 1 theo phản biện KT-80); chuyển vào khối scope= khi mở lại"
-reason = "viết trước khi luật 1 siết đường key=value (phản biện KT-80); ngoài vùng ghi KT-80"
-date = "2026-11-17"
-
