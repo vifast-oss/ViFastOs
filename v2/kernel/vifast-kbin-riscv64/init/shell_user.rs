@@ -393,6 +393,22 @@ fn fs_dispatch(line: &[u8]) -> bool {
     } else if starts_with(line, b"cat ") {
         cmd_cat(&line[4..]);
         true
+    } else if line == b"jobs" {
+        cmd_jobs();
+        true
+    } else if line == b"truncate" {
+        put(b"# shell: thieu duong dan\n");
+        true
+    } else if starts_with(line, b"truncate ") {
+        let (path, size) = split_space(&line[9..]);
+        if path.is_empty() {
+            put(b"# shell: thieu duong dan\n");
+        } else if let Some(size) = parse_u64(size) {
+            cmd_truncate(path, size);
+        } else {
+            put(b"# shell: thieu kich thuoc\n");
+        }
+        true
     } else if line == b"write" {
         put(b"# shell: thieu duong dan\n");
         true
@@ -767,19 +783,6 @@ fn run_line(line: &[u8]) {
         if let Some(pid) = parse_u64(&line[5..]) {
             cmd_kill(pid);
         }
-    } else if line == b"jobs" {
-        cmd_jobs();
-    } else if starts_with(line, b"truncate ") {
-        let (path, size) = split_space(&line[9..]);
-        if path.is_empty() {
-            put(b"# shell: thieu duong dan\n");
-        } else if let Some(size) = parse_u64(size) {
-            cmd_truncate(path, size);
-        } else {
-            put(b"# shell: thieu kich thuoc\n");
-        }
-    } else if line == b"truncate" {
-        put(b"# shell: thieu duong dan\n");
     } else if line == b"exit" {
         put(b"# shell: exit code=0\n");
         // Kernel ghi `FaultKind::Exit{0}` vào fault_ep của shell (procsrv nhận).
