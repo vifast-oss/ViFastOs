@@ -50,6 +50,10 @@ pub const SYS_RECV: u64 = 3;
 pub const SYS_NB_RECV: u64 = 4;
 /// Syscall `Yield`.
 pub const SYS_YIELD: u64 = 8;
+/// Syscall `ClockRead` — đồng hồ **đơn điệu** của nền tảng (`rdtime`, ns; D2-88(b)).
+/// **KT-114**: shell sản phẩm dùng cho `time`/`uptime`; số hiệu khớp
+/// `vifast-abi::generated::SYS_CLOCK_READ` (11) — không mở ABI mới.
+pub const SYS_CLOCK_READ: u64 = 11;
 /// Syscall `DebugPutStr` — kernel đọc vùng nhớ user và in ra UART.
 pub const SYS_DEBUG_PUT_STR: u64 = 12;
 /// Syscall `Exit` — core ghi `FaultKind::Exit{code}` vào `fault_ep` (QD §1 Q-A).

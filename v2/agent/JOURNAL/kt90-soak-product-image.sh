@@ -393,6 +393,14 @@ boot_one() {
         if wait_re '^# shell: help cmds=[0-9]+$' "$T_HELP_POLLS" "$P_SLOW" "$pid"; then
             help_polls=$POLLS
             help="$(sed -n 's/^# shell: help cmds=\([0-9]*\)$/\1/p' "$log" | head -1)"
+            # **KT-114**: `cmds` đổi theo ảnh (9 → 13). Không ghim số cứng: đếm **tập lệnh** trong
+            # banner `# shell: up cmds=help/...` của **chính log** rồi đối chiếu `help cmds=<n>` —
+            # lệch là lỗi thật (CMDS của shell không khớp danh sách), không phải "đỏ vì ảnh mới".
+            banner="$(sed -n 's/^# shell: up cmds=//p' "$log" | head -1)"
+            if [ -n "$banner" ]; then
+                want="$(printf '%s\n' "$banner" | tr '/' '\n' | grep -c .)"
+                [ "$want" = "$help" ] || why="$why,cmds-mismatch(help=$help,banner=$want)"
+            fi
         else
             help_polls=$POLLS
             why="$why,no-help-response"

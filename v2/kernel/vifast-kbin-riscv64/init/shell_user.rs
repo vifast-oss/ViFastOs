@@ -19,6 +19,10 @@
 //!   (`NBSend`/`NBRecv`), **không** mở ABI. `write` tự `fsync` (journal + `flush` thiết bị) nên
 //!   dữ liệu qua reboot; chờ reply có **hạn** (`FS_REPLY_BUDGET` lượt) để ảnh **không** FS/không
 //!   đĩa **không treo** — in `fs khong san sang` rồi trả prompt.
+//! - **KT-114** (cùng nhánh `#[cfg(shell_fs)]`, ảnh `product-fs`): `time`, `uptime`, `sync`,
+//!   `stat <path>` — **không** mở ABI mới: `time`/`uptime` gọi `ClockRead` (11) đã có,
+//!   `sync`/`stat` dùng `OP_SYNC`/`OP_STAT` của dịch vụ FS đã có. Ảnh test (không FS) giữ **6**
+//!   lệnh ⇒ kỳ vọng `# shell: help cmds=6` của harness không đổi.
 //! - `exit`  — `Exit(0)`.
 //!
 //! Vòng lặp polling + `Yield`: kernel là scheduler tuần tự của pha demo (không có scheduler
@@ -31,6 +35,10 @@ extern crate vifast_ring;
 extern crate vifast_user_abi;
 extern crate vifast_virtio;
 use vifast_ring::{Mem, Ring, ERR_EMPTY};
+/// **KT-114**: `ClockRead` (11) — chỉ nhánh `shell_fs` dùng (`time`/`uptime`); ảnh test không
+/// import để không sinh cảnh báo "unused import".
+#[cfg(shell_fs)]
+use vifast_user_abi::SYS_CLOCK_READ;
 use vifast_user_abi::{
     atomic_load_acquire, atomic_load_relaxed, atomic_store_release, atomic_store_relaxed, exit,
     put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD,
@@ -60,6 +68,9 @@ const OP_CAT: u64 = 0x12;
 const OP_WRITE: u64 = 0x13;
 #[cfg(shell_fs)]
 const OP_TRUNC: u64 = 0x14;
+/// **KT-114**: `OP_STAT` — `[ST_OK | kind<<8, size, ino, 0]` (khớp `proc_abi::OP_STAT`).
+#[cfg(shell_fs)]
+const OP_STAT: u64 = 0x15;
 #[cfg(shell_fs)]
 const OP_SYNC: u64 = 0x16;
 #[cfg(shell_fs)]
@@ -85,8 +96,10 @@ const MAX_LINE: usize = 32;
 /// **KT-77c** chỉ thêm ba lệnh FS vào ELF build với `--cfg shell_fs` (ảnh `product-fs`); ảnh test
 /// và ảnh ca âm "shell nhưng không FS" giữ **6** ⇒ kỳ vọng `# shell: help cmds=6` của harness
 /// (`proc_demo.rs`, `v2/test/boot/ktest.sh`) **không** phải sửa.
+/// **KT-114** thêm bốn lệnh nữa (`time`/`uptime`/`sync`/`stat`) **cũng chỉ** trong nhánh
+/// `shell_fs` ⇒ ảnh sản phẩm **9 → 13**, ảnh test vẫn **6**.
 #[cfg(shell_fs)]
-const CMDS: u64 = 9;
+const CMDS: u64 = 13;
 #[cfg(not(shell_fs))]
 const CMDS: u64 = 6;
 
@@ -290,6 +303,8 @@ fn cmd_kill(pid: u64) {
 
 // ---------------------------------------------------------------------------------------------
 // **KT-77c** — lệnh FS (`ls`/`cat`/`write`) qua dịch vụ FS **của kernel** (`EP_FS`).
+// **KT-114** thêm `time`/`uptime` (`ClockRead` 11) và `sync`/`stat` (`OP_SYNC`/`OP_STAT`) vào
+// **cùng** nhánh `#[cfg(shell_fs)]` — ảnh test (không FS) không thấy bốn lệnh này.
 //
 // Mỗi request là **một** reply 4 MR word (bố cục ở `src/proc_fs.rs`): tên/dữ liệu đi trong MR
 // (24 B/lần) chứ không phải Frame chia sẻ. Mọi lời gọi đều có **hạn** (`FS_REPLY_BUDGET` lượt
@@ -297,7 +312,8 @@ fn cmd_kill(pid: u64) {
 // dựng được volume RAM ⇒ in `fs khong san sang` rồi **trả prompt**, không treo.
 // ---------------------------------------------------------------------------------------------
 
-/// `true` ⇔ `line` là lệnh FS (`ls`/`cat`/`write`) và đã được thi hành.
+/// `true` ⇔ `line` là lệnh của nhánh `shell_fs` (`ls`/`cat`/`write` + **KT-114**
+/// `time`/`uptime`/`sync`/`stat`) và đã được thi hành.
 #[cfg(shell_fs)]
 fn fs_dispatch(line: &[u8]) -> bool {
     if line == b"ls" {
@@ -324,6 +340,22 @@ fn fs_dispatch(line: &[u8]) -> bool {
         } else {
             cmd_write(path, text);
         }
+        true
+    } else if line == b"time" {
+        cmd_time();
+        true
+    } else if line == b"uptime" {
+        cmd_uptime();
+        true
+    } else if line == b"sync" {
+        cmd_sync();
+        true
+    } else if line == b"stat" {
+        // Như `cat`/`write` (KT-104): thiếu tham số ⇒ báo đúng, không rơi xuống "lệnh lạ".
+        put(b"# shell: thieu duong dan\n");
+        true
+    } else if starts_with(line, b"stat ") {
+        cmd_stat(&line[5..]);
         true
     } else {
         false
@@ -561,6 +593,68 @@ fn cmd_write(path: &[u8], text: &[u8]) {
     send(EP_EVENTS, EV_ECHO, [text.len() as u64, 0, 0, 0]);
 }
 
+/// **KT-114** `time` — đọc đồng hồ **đơn điệu** của nền tảng bằng `ClockRead` (11) đã có trong
+/// ABI (`vifast-abi::generated::SYS_CLOCK_READ`), in `# shell: time ns=<n>`.
+/// Không dùng dịch vụ FS ⇒ **không** có hạn chờ nào để hết; syscall trả ngay.
+#[cfg(shell_fs)]
+fn cmd_time() {
+    // Façade `syscall7` trả `[error, value, info, MR0..MR3]` ⇒ ns ở `[1]` (error 0).
+    let r = syscall7(SYS_CLOCK_READ, 0, 0, 0, 0, 0, 0);
+    put(b"# shell: time ns=");
+    put_u64(r[1]);
+    put(b"\n");
+}
+
+/// **KT-114** `uptime` — cùng nguồn `ClockRead` (ns), in mili-giây: `# shell: uptime ms=<n>`.
+#[cfg(shell_fs)]
+fn cmd_uptime() {
+    let r = syscall7(SYS_CLOCK_READ, 0, 0, 0, 0, 0, 0);
+    put(b"# shell: uptime ms=");
+    put_u64(r[1] / 1_000_000);
+    put(b"\n");
+}
+
+/// **KT-114** `sync` — `OP_SYNC` (`Fs::fsync` + `flush` thiết bị, ranh giới bền KT-75).
+/// Cùng khuôn `cmd_write`: `fs_call` có **hạn** (`FS_REPLY_BUDGET`) ⇒ ảnh không FS trả prompt.
+/// In `# shell: sync ok`; lỗi FS in `# shell: fs loi code=<n>` (do `fs_status`).
+#[cfg(shell_fs)]
+fn cmd_sync() {
+    match fs_call([OP_SYNC, 0, 0, 0]) {
+        Some(reply) => {
+            if fs_status(reply) == Some(ST_OK) {
+                put(b"# shell: sync ok\n");
+            }
+        }
+        None => no_fs(),
+    }
+}
+
+/// **KT-114** `stat <path>` — `OP_STAT` trả `[ST_OK | kind<<8, size, ino, 0]` (`proc_fs::stat`).
+/// In `# shell: stat path=<p> kind=<k> size=<n> ino=<i>`; đường dẫn không có ⇒ `fs loi code=5`.
+#[cfg(shell_fs)]
+fn cmd_stat(path: &[u8]) {
+    if fs_set_path(path).is_err() {
+        no_fs();
+        return;
+    }
+    let Some(reply) = fs_call([OP_STAT, 0, 0, 0]) else {
+        no_fs();
+        return;
+    };
+    if fs_status(reply).is_none() {
+        return;
+    }
+    put(b"# shell: stat path=");
+    put(path);
+    put(b" kind=");
+    put_u64((reply[0] >> 8) & 0xff);
+    put(b" size=");
+    put_u64(reply[1]);
+    put(b" ino=");
+    put_u64(reply[2]);
+    put(b"\n");
+}
+
 /// Tách `line` theo dấu cách đầu tiên: `(đầu, phần còn lại sau dấu cách)`.
 #[cfg(shell_fs)]
 fn split_space(line: &[u8]) -> (&[u8], &[u8]) {
@@ -591,7 +685,7 @@ fn run_line(line: &[u8]) {
         put_u64(CMDS);
         put(b"\n");
         #[cfg(shell_fs)]
-        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cat <path> | write <path> <text> | exit\n");
+        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | exit\n");
         #[cfg(not(shell_fs))]
         put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | exit\n");
         send(EP_EVENTS, EV_HELP, [CMDS, 0, 0, 0]);
@@ -617,7 +711,7 @@ fn run_line(line: &[u8]) {
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     #[cfg(shell_fs)]
-    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/exit\n");
+    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/time/uptime/sync/stat/exit\n");
     #[cfg(not(shell_fs))]
     put(b"# shell: up cmds=help/echo/ps/wait/kill/exit\n");
     put(b"# shell: input=ring va=0x");

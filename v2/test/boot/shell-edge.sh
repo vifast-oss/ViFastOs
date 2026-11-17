@@ -598,8 +598,12 @@ mark_remaining_fail() {
 preflight_image() {
     [ -f "$IMAGE" ] || die "không thấy ảnh: $IMAGE"
     # Ảnh phải có shell (nếu không, mọi ca sẽ chờ `shell>` vô ích).
-    LC_ALL=C grep -a -q -m1 '# shell: up cmds=' "$IMAGE" 2>/dev/null ||
-        die "ảnh '$IMAGE' không có shell ('# shell: up cmds=') — không phải ảnh product-shell"
+    # **KT-114**: khớp **tập lệnh** (`help` rồi các tên `[a-z]+` ngăn bằng `/`) thay vì chuỗi cứng
+    # `help/echo/ps/wait/kill/ls/cat/write/exit` — shell sản phẩm thêm lệnh (9 → 13) thì script
+    # **không** phải sửa. Không neo `^`: chuỗi nằm trong `.rodata` của ELF nên byte trước nó không
+    # phải newline; neo `$` được vì literal kết thúc bằng `\n`.
+    LC_ALL=C grep -a -q -m1 -E '# shell: up cmds=help(/[a-z]+)+$' "$IMAGE" 2>/dev/null ||
+        die "ảnh '$IMAGE' không có shell ('# shell: up cmds=help/...') — không phải ảnh product-shell"
     # Ảnh phải có **bản vá** KT-103/KT-104; ảnh cũ sẽ đỏ vì lý do sai (thiếu chuỗi), nên từ chối sớm.
     LC_ALL=C grep -a -q -m1 '# shell: thieu duong dan' "$IMAGE" 2>/dev/null ||
         die "ảnh thiếu bản vá KT-104 ('# shell: thieu duong dan') — dùng ảnh đã ghim mới"
