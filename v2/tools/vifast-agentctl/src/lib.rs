@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn so_that_v2_va_viscript_deu_doc_duoc() {
+    fn so_that_v2_doc_duoc_va_viscript_da_tach() {
         let v2 = std::fs::read_to_string("../../agent/QUEUE.md").expect("v2 QUEUE");
         let q = parse_queue("v2/agent/QUEUE.md", &v2);
         assert!(
@@ -389,11 +389,18 @@ mod tests {
             "v2 phải có >=17 task, đang {}",
             q.tasks.len()
         );
-        let st =
-            std::fs::read_to_string("../../../viscript/agent/QUEUE.md").expect("viscript QUEUE");
-        let qs = parse_queue("viscript/agent/QUEUE.md", &st);
-        assert!(!qs.tasks.is_empty(), "viscript phải có task ST-, đang 0");
-        assert!(qs.tasks.iter().any(|t| t.id.starts_with("ST-")));
+        // Dòng ViScript đã **tách sang repo riêng**: repo này chỉ còn tệp trỏ `VISCRIPT.md`.
+        // Test cũ đọc `viscript/agent/QUEUE.md` nên đỏ sau khi tách — đây là cập nhật theo
+        // **thực tế mới**, không phải nới kỳ vọng để né lỗi.
+        let ptr = std::fs::read_to_string("../../../VISCRIPT.md").expect("VISCRIPT.md");
+        assert!(
+            ptr.contains("ViScript"),
+            "VISCRIPT.md phải trỏ sang repo ViScript"
+        );
+        assert!(
+            !std::path::Path::new("../../../viscript/agent/QUEUE.md").exists(),
+            "viscript/ phải đã được tách khỏi repo này"
+        );
     }
 
     #[test]
