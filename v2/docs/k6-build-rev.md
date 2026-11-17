@@ -45,15 +45,17 @@ Bốn lần artifact lệch mã nguồn mà **không** cổng nào bắt đượ
 
 Điểm chung: **ảnh không tự khai nguồn gốc**, nên "đo trên artifact lệch nguồn" chỉ bị phát hiện
 bằng mắt người. KT-86 đổi điều đó: ảnh **mang** `git rev` + cờ dirty của lúc build, và harness
-**từ chối đo** khi ảnh không khớp HEAD hoặc khi cây nguồn bẩn.
+**từ chối đo** khi dấu vân tay trong ảnh khác dấu vân tay hiện tại, hoặc khi cây nguồn bẩn.
 
 ## 2. Định nghĩa `dirty` (một nguồn sự thật)
 
-Nguồn sự thật duy nhất: `v2/test/boot/build-rev.sh` (biến `VBREV_SCOPE`). `build.rs` và
-`repro-build.sh` dùng **chính** định nghĩa đó (script `source` tệp này), không chép lại.
+Nguồn sự thật duy nhất: `v2/test/boot/build-rev.sh` (hàm `vbrev_dirty_scope` + `vbrev_dirty`).
+`build.rs` và `repro-build.sh` dùng **chính** định nghĩa đó (script `source` tệp này), không chép lại.
 
 `dirty` bằng **một** khi và chỉ khi `git status --porcelain --untracked-files=normal` trả ít nhất
-một dòng cho đường dẫn thuộc `v2/kernel` **hoặc** `v2/lib`. Diễn giải từng vế:
+một dòng cho đường dẫn thuộc **phạm vi build-inputs** (`v2/kernel`, `v2/lib`, `v2/bin`,
+`v2/Cargo.toml`, `v2/Cargo.lock`, `v2/rust-toolchain.toml`, và các thư mục gói do
+`cargo metadata` báo) — xem `vbrev_dirty_scope` trong `build-rev.sh`. Diễn giải từng vế:
 
 - **Có** tính tệp **chưa track**: một tệp nguồn mới trong `v2/kernel` cũng được biên dịch vào ảnh
   (KT-77c: `proc_fs.rs` chưa commit vẫn là mã của ảnh).
@@ -92,16 +94,19 @@ tự**, dừng ở lý do đầu tiên sai; mọi lý do đều in một dòng m
 |---|---|---|
 | `no-log` | không thấy tệp log | không có bằng chứng nào |
 | `no-build-line` | log **không** có dòng `# build:` | ảnh cũ/ảnh lạ ⇒ **không đo** (fail-closed) |
-| `malformed` | dòng sai định dạng (thiếu khoá, `rev` sai độ dài, cờ lạ, có rác) | không nhận bằng chứng méo |
+| `malformed` | dòng sai định dạng (thiếu khoá, `inputs` sai độ dài, cờ lạ, có rác) | không nhận bằng chứng méo |
 | `no-git` | không đọc được HEAD của cây | không chứng minh được "cùng nguồn" |
-| `rev-mismatch` | `rev` nhúng **không** là tiền tố của HEAD | ảnh build từ commit khác (KT-79/KT-77b) |
+| `no-inputs-fp` | không tính được dấu vân tay hiện tại (thiếu `cargo metadata`, thiếu git) | không có gì để so |
+| `inputs-mismatch` | dấu vân tay nhúng **khác** dấu vân tay hiện tại | ảnh build từ nội dung khác (KT-79/KT-77b/KT-89) |
 | `dirty` | ảnh tự khai `dirty` khác không | build từ cây bẩn (KT-71/KT-77b) |
 | `tree-dirty` | **harness tự** tính `dirty` khác không | ảnh "nói sạch" mà cây đang bẩn: ảnh không đại diện mã hiện tại |
+| `no-image` | **không** truyền ảnh cho cổng | không chứng minh được log thuộc ảnh nào (fail-closed) |
+| `image-missing` | tệp ảnh không tồn tại | không có ảnh để đối chiếu |
 | `image-mismatch` | byte của ảnh không chứa đúng chuỗi danh tính của log | log của **ảnh khác** bị đem làm bằng chứng |
 
 **Bất biến quan trọng** (vì sao cổng không thể "nhận nhầm là sạch"): giá trị nhúng có thể **cũ**
-(nếu cargo dùng lại build script), nhưng cổng **tự tính lại** `rev` và `dirty` từ cây. Một giá trị
-cũ chỉ có thể dẫn tới **TỪ CHỐI oan** (an toàn), hoặc bị chính bước `rev-mismatch`/`tree-dirty`
+(nếu cargo dùng lại build script), nhưng cổng **tự tính lại** `inputs` và `dirty` từ cây. Một giá trị
+cũ chỉ có thể dẫn tới **TỪ CHỐI oan** (an toàn), hoặc bị chính bước `inputs-mismatch`/`tree-dirty`
 bắt. Không có nhánh nào dẫn tới "chấp nhận ảnh lệch nguồn".
 
 ## 5. Cổng đặt ở đâu (bốn runner)
@@ -135,16 +140,19 @@ Log đầy đủ: `v2/agent/JOURNAL/kt86-*.log`; tóm tắt + mã thoát ở `kt
 
 - **(a) cây bẩn**: thêm **một** khoảng trắng vào một `const` của mã kernel, **không** commit,
   build lại ⇒ ảnh in cờ `dirty` khác không ⇒ cổng từ chối với `reason=dirty`.
-- **(b) rev khác HEAD**: build ảnh ở commit A, rồi `git checkout`/commit sang B ⇒ ảnh in `rev` của
-  A ⇒ cổng từ chối với `reason=rev-mismatch` (không cần build lại — chính điểm mạnh của việc nhúng
-  rev vào ảnh).
+- **(b) nội dung build-inputs khác**: build ảnh ở trạng thái A, rồi commit thay đổi trong
+  `v2/kernel` (hoặc `v2/lib`, hoặc `v2/rust-toolchain.toml`) mà **không** build lại ⇒ ảnh in dấu vân
+  tay của A ⇒ cổng từ chối với `reason=inputs-mismatch` (không cần build lại — chính điểm mạnh của
+  việc nhúng dấu vân tay vào ảnh).
 - **(c) ảnh không có dòng `# build:`**: log của ảnh build **trước** KT-86 (và log bị cắt dòng) ⇒
   cổng từ chối với `reason=no-build-line` — fail-closed, không có nhánh "thiếu bằng chứng thì bỏ qua".
 
 ## 7. Cùng commit ⇒ cùng sha, và nợ A1-184
 
 - **Hai `CARGO_TARGET_DIR` khác nhau, cùng cây nguồn** (điều kiện của `v2/tools/repro-build.sh`):
-  build hai lần, so sha — log ở journal. Từ KT-86, dòng `REPRO` của `repro-build.sh` mang thêm
+  build hai lần, so sha — log ở journal. Từ KT-89, dòng `REPRO` in `inputs=<16 hex>` (danh tính
+  **quyết định**) và `rev=<12 hex>` (chỉ để tra); `repro-build.sh` **dừng** nếu byte ảnh không chứa
+  đúng `inputs=… dirty=…` vừa tính. Trước KT-86, dòng `REPRO` của `repro-build.sh` mang thêm
   `rev=`/`dirty=`, và script **dừng** nếu byte của ảnh không chứa đúng danh tính vừa tính (chặn ca
   "cargo dùng lại build script ⇒ ảnh mang rev cũ" — đúng lớp lỗi KT-76).
 - **Nợ A1-184 (chưa sửa, không chặn)**: `build.rs` gọi `$RUSTC` trực tiếp cho các ELF U-mode nên
@@ -178,7 +186,7 @@ Log đầy đủ: `v2/agent/JOURNAL/kt86-*.log`; tóm tắt + mã thoát ở `kt
 
 | Tệp | Thay đổi |
 |---|---|
-| `v2/test/boot/build-rev.sh` | **mới** — nguồn sự thật duy nhất: định nghĩa `rev`/`dirty`, đọc/parse dòng bằng chứng, `vbrev_gate` |
+| `v2/test/boot/build-rev.sh` | **mới** — nguồn sự thật duy nhất: định nghĩa `inputs`/`dirty`, danh sách build-inputs từ `cargo metadata`, đọc/parse dòng bằng chứng, `vbrev_gate` (ảnh **bắt buộc**) |
 | `v2/kernel/vifast-kbin-riscv64/build.rs` | **thêm** khối `build_identity` (env + `rustc-env` + `rerun-if-*`) và các hàm phụ ở cuối tệp; **không** sửa thân hàm nào |
 | `v2/kernel/vifast-kbin-riscv64/src/main.rs` | **thêm** `const BUILD_LINE` + một dòng `put_str(BUILD_LINE)` đầu boot |
 | `v2/tools/repro-build.sh` | **thêm** đọc/`export` danh tính, in ở header + dòng `REPRO`, **dừng** nếu ảnh không mang đúng danh tính |
