@@ -3,16 +3,16 @@
 Cập nhật: 2026-11-12 (vòng vá sau review). Nguồn sự thật của vòng vá:
 [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md) (gọi tắt **QD**).
 Tệp này áp cho **mọi** agent làm việc trong repo. Hai dòng sản phẩm có bản rút gọn:
-[`v2/AGENTS.md`](v2/AGENTS.md) và [`viscript/AGENTS.md`](viscript/AGENTS.md).
+[`v2/AGENTS.md`](v2/AGENTS.md). **Dòng ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
 
 ## 1. Thứ tự nguồn sự thật
 
 Khi hai nguồn nói khác nhau, **nguồn đứng trước thắng**:
 
-1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, `viscript/`, sim, tệp `.scn`, TAP, log cổng.
-2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`, `docs/viscript/SPEC-lex.md`: một nguồn sự thật duy nhất cho ABI và ngữ nghĩa ngôn ngữ.
-3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-95) và **`viscript/agent/DECISIONS.md`** (VD-01 trở đi; số mới nhất: `grep -o 'VD-[0-9]\+' viscript/agent/DECISIONS.md | sort -t- -k2 -n | tail -1`).
-4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md), [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md).
+1. **Code + harness** — thứ chạy được và đo được: `crates/`, `v2/`, sim, tệp `.scn`, TAP, log cổng.
+2. **`spec/`** — `spec/abi.toml`, `spec/kernel.toml`: một nguồn sự thật duy nhất cho ABI. (Ngữ nghĩa ViScript: `docs/SPEC-lex.md` trong repo **ViScript**.)
+3. **`v2/agent/DECISIONS.md`** (D-01..D-08, D2-01..D2-95). (Quyết định ViScript VD-01…: `agent/DECISIONS.md` trong repo **ViScript**.)
+4. **Tài liệu thiết kế** — [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs-v2-thiet-ke.md). (Thiết kế ViScript: `docs/ViScript-thiet-ke.md` trong repo **ViScript**.)
 
 QD mạnh hơn hai tài liệu thiết kế. Không có nguồn nào cho phép **nới ngưỡng để qua cổng**.
 
@@ -24,20 +24,17 @@ Nhãn số liệu (bắt buộc, QD §2.2): `[V1:CODE]` `[V1:ĐO]` `[V1:DOC]` (t
 |---|---|---|
 | Quyết định vòng vá | `docs/QUYET-DINH-sau-review.md` | nguồn sự thật, **cấm sửa** |
 | Thiết kế v2 | `docs/v2/ViFastOs-v2-thiet-ke.md` | cấm sửa (chỉ Agent 0 / Agent 1 theo QD) |
-| Thiết kế ViScript | `docs/viscript/ViScript-thiet-ke.md`, `docs/viscript/SPEC-lex.md` | cấm sửa (chỉ Agent 0 / Agent 1 theo QD) |
 | Điều khiển OS | `v2/agent/{QUEUE,STATE,BLOCKED,DECISIONS}.md`, `JOURNAL/`, `reports/` | xem bảng chủ sở hữu §3 |
-| Điều khiển ViScript | `viscript/agent/{QUEUE,STATE,BLOCKED,DECISIONS}.md`, `JOURNAL/`, `reports/` | xem bảng chủ sở hữu §3 |
 | Lưu trữ v1 | `docs/v1/` (toàn bộ báo cáo `agent2-report-*`, `overnight-log.md`, `decisions/`, `KNOWN-ISSUES.md`) | **đọc-only** |
 
 ## 3. Ai ghi tệp nào
 
 | Tệp | Người ghi | Ghi chú |
 |---|---|---|
-| `v2/agent/QUEUE.md`, `v2/agent/DECISIONS.md`, `viscript/agent/QUEUE.md`, `viscript/agent/DECISIONS.md` | **Agent 0** (qua người điều phối) | Agent 2 **không** sửa; cần đổi thì BLOCKED + đề xuất |
+| `v2/agent/QUEUE.md`, `v2/agent/DECISIONS.md` | **Agent 0** (qua người điều phối) | Agent 2 **không** sửa; cần đổi thì BLOCKED + đề xuất |
 | `v2/agent/STATE.md`, `v2/agent/BLOCKED.md`, `v2/agent/JOURNAL/`, `v2/agent/reports/` | **Agent 2** dòng OS | STATE cập nhật **sau mỗi bước** |
-| `viscript/agent/STATE.md`, `viscript/agent/BLOCKED.md`, `viscript/agent/JOURNAL/`, `viscript/agent/reports/` | **Agent 2** dòng ViScript | như trên |
 | `spec/` | chỉ task được ghi rõ (KT-04a, KT-04b một lần theo D2-32, **KT-05** một lần theo D2-33/D2-35, ST-02a, ST-02b chỉ bảng mã lỗi) | xem §4 |
-| `v2/AGENTS.md`, `viscript/AGENTS.md`, `AGENTS.md` | người điều phối / Agent 0 | Agent 2 không sửa |
+| `v2/AGENTS.md`, `AGENTS.md` | người điều phối / Agent 0 | Agent 2 không sửa |
 
 Hai QUEUE **độc lập**: một task OS bị BLOCKED **không** chặn dòng ViScript và ngược lại (trừ cặp phụ thuộc ghi trong chính QUEUE).
 
@@ -45,12 +42,12 @@ Hai QUEUE **độc lập**: một task OS bị BLOCKED **không** chặn dòng V
 
 Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
-1. **Sửa `spec/`** trừ task được ghi rõ trong QUEUE (`KT-04a`: `spec/abi.toml`, `spec/kernel.toml`; `KT-04b`: một lần theo D2-32, chỉ chép draft reserved đã sửa + D2-29; `KT-05`: một lần, chỉ chép `[method_signature]` + `[debug_info].return_channel` theo D2-33/D2-35; `ST-02a`: `docs/viscript/SPEC-lex.md`; `ST-02b`: chỉ bảng mã lỗi trong SPEC/phụ lục, theo VD-27). Mọi thay đổi ABI/ngữ nghĩa khác phải qua Agent 0 (D2-04, D2-22).
+1. **Sửa `spec/`** trừ task được ghi rõ trong QUEUE (`KT-04a`: `spec/abi.toml`, `spec/kernel.toml`; `KT-04b`: một lần theo D2-32, chỉ chép draft reserved đã sửa + D2-29; `KT-05`: một lần, chỉ chép `[method_signature]` + `[debug_info].return_channel` theo D2-33/D2-35; `ST-02a`: `docs/SPEC-lex.md` (nay ở repo ViScript); `ST-02b`: chỉ bảng mã lỗi trong SPEC/phụ lục, theo VD-27). Mọi thay đổi ABI/ngữ nghĩa khác phải qua Agent 0 (D2-04, D2-22).
 2. Sửa `accept()` / kỳ vọng / snapshot của harness để test xanh.
 3. Thêm `#[ignore]`, `#[should_panic]` để né, tắt test, hoặc bỏ case khỏi danh sách chạy.
 4. **Nới ngưỡng** (thời gian, seed, số ca đỏ, `MAX_IO`, `MAX_TCBS`, `MAX_OBJECTS`, `KERNEL_STATIC_BUDGET`).
 5. **Retry** để qua cổng (D2-07). Flake ghi `T-INFRA` kèm log; chạy lại **tối đa một lần** chỉ để phân loại, không để lấy xanh.
-6. Sửa `docs/QUYET-DINH-sau-review.md`, `docs/v2/ViFastOs-v2-thiet-ke.md`, `docs/viscript/ViScript-thiet-ke.md`, `docs/viscript/SPEC-lex.md`.
+6. Sửa `docs/QUYET-DINH-sau-review.md`, `docs/v2/ViFastOs-v2-thiet-ke.md`.
 7. Sửa bất kỳ tệp nào trong `docs/v1/` (kho lưu trữ v1, tag `v1-archive`).
 8. Thêm `unsafe` ngoài danh sách crate đóng (D2-17); thêm `cfg(target_arch)` vào kernel/runtime.
 9. Thêm phụ thuộc crate ngoài allowlist giấy phép (D2-21, QD §9.3).
@@ -94,8 +91,8 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 ## 8. Duyệt
 
 - Duyệt **chỉ** bằng một dòng trong tệp, không bằng chat:
-  `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` hoặc `viscript/agent/QUEUE.md`, kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
-- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript**: không ghi ở tệp này. Đọc theo thứ tự: viscript/agent/ROADMAP.md (8 hạng mục × mức thật), báo cáo mới nhất `ls viscript/agent/reports/ | sort -V | tail -1`, rồi viscript/agent/QUEUE.md. Tệp luật không chứa số đếm (số vòng, số test, VD mới nhất) để không lỗi thời.
+  `APPROVED <YYYY-MM-DD> Agent 0` — ghi ngay dưới mục task trong `v2/agent/QUEUE.md` (ViScript: `agent/QUEUE.md` trong repo ViScript), kèm một mục D2/VD mới nếu quyết định thay đổi nội dung.
+- `KT-04d` = **APPROVED 2026-11-12 Agent 0** (gói bản 2 + D2-35..43); **KT-05 mở**. `ST-02a` = **DONE** (APPROVED 2026-11-12). **Dòng ViScript đã tách sang repo riêng** (`VISCRIPT.md`): đọc `agent/ROADMAP.md`, báo cáo mới nhất `ls agent/reports/ | sort -V | tail -1`, rồi `agent/QUEUE.md` **trong repo ViScript**. Tệp luật không chứa số đếm để không lỗi thời.
 **Quy trình hiện hành**: VD-119 (Agent 0 soạn, Agent 2 dán nguyên văn, commit `[ST-00]`).
 - Agent 2 soạn nháp spec ở trạng thái REVIEW; sau duyệt chỉ Agent 0 sửa (D2-22).
 - Không tự duyệt, không tự suy ra "coi như đã duyệt".
@@ -109,7 +106,7 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 ## 10. Trạng thái task
 
 `QUEUE.md` dùng đúng 4 trạng thái: `READY | BLOCKED | REVIEW | DONE`.
-`vifast-agentctl --project v2|viscript` : `next` (task kế có phụ thuộc đã DONE) **bỏ qua REVIEW**, `start <id>`, `done <id>`, `block <id> <lý do>`, `report`.
+`vifast-agentctl --project v2` : `next` (task kế có phụ thuộc đã DONE) **bỏ qua REVIEW**, `start <id>`, `done <id>`, `block <id> <lý do>`, `report`. (ViScript: dùng `agent/` trong repo ViScript.)
 Mỗi task ≤ 3 giờ; task lớn hơn phải tách (QD §5.1, §10.4).
 
 ## 11. Định nghĩa "bàn giao xong"
