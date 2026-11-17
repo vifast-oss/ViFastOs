@@ -1,6 +1,0 @@
-# [ST-148] check_report --all (sau khi sửa SO-NO, trước commit) · 2026-11-16T17:43:12Z UTC
-# máy: mps · Darwin arm64 · commit_do=b855caa361689587c3e21733c0058de2ee92c6f2
-# lệnh: python3 viscript/test/report/check_report.py --all
-# ---------------------------------------------------------------------------
-report-check: PASS (25 báo cáo, 170 hàng QUEUE phủ đủ)
-[exit=0]

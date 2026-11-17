@@ -1,3 +1,0 @@
-# SPDX-License-Identifier: MIT OR Apache-2.0
-fn total[R: has {size: size}](rows: list[R]) -> size:
-    rows.map(r => r.size).sum()

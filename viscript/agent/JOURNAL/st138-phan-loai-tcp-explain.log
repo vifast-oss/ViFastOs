@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
-     Running tests/net.rs (target/debug/deps/net-09ba3da5155a130b)
-
-running 1 test
-test tcp_explain_tong ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.59s
-

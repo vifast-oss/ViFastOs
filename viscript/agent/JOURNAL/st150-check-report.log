@@ -1,5 +1,0 @@
-=== ST-150 · check_report --all sau khi sửa tài liệu (QUEUE/STATE/SO-NO/JOURNAL) ===
-HEAD: 9eeb936b
-lenh: python3 viscript/test/report/check_report.py --all
-report-check: PASS (25 báo cáo, 171 hàng QUEUE phủ đủ)
-[exit=0]

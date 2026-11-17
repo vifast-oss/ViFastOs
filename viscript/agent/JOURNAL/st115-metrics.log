@@ -1,9 +1,0 @@
-# ST-115/R21 — metrics 2026-11-15T04:16:12Z, HEAD cfc68e8c
-test=1062
-sem=447/22 vis=447 vm=447/0 host=54/54x2 parity=398+49 cache=520x4
-diff:
-DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=163.5 toc_do=612/s seed=20261115
-fuzz:
-vis-parse-fuzz: 2503726 ca, 56966444 token, 41729 ca/s, 949441 token/s, 60.0 s, vi phạm 0
-R1 max=1452 parse/mod.rs; main=1254 cmd=1060 modules=866
-codes=32 funcs=52 vbc=53 targets=18/18 fmt=497

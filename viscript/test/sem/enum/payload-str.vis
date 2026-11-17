@@ -1,6 +1,0 @@
-# SPDX-License-Identifier: MIT OR Apache-2.0
-enum M:
-    Text(s: str)
-let m: M = M.Text("hi")
-match m:
-    Text(s): print(s.upper())

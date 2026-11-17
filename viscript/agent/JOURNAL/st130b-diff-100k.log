@@ -1,5 +1,0 @@
-# ST-130b · vis-diff 100k seed 20261115 · 2026-11-16 15:08:37
-DIFF tong=2000 loi_tinh=126 chay=1874 lech=0 giay=3.8 toc_do=519/s seed=20261115
-DIFF tong=100000 loi_tinh=6230 chay=93770 lech=0 giay=163.9 toc_do=610/s seed=20261115
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 163.91s
-exit=0

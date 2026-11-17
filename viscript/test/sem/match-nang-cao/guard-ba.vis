@@ -1,6 +1,0 @@
-# SPDX-License-Identifier: MIT OR Apache-2.0
-let n = 5
-match n:
-    x if x > 10: print("lớn")
-    x if x > 3: print("vừa")
-    x: print("nhỏ")

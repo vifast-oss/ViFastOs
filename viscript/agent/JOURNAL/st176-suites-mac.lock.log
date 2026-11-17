@@ -1,8 +1,0 @@
-# ST-176 vis-lock lock=yes pid=39748 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="python3 /tmp/st176-time-suites.py /tmp/st176-mac-binaries.tsv /tmp/st176-suites-mac.tsv mac" load_truoc="{ 2.87 4.54 3.25 }" thoi_diem="2026-11-17T10:51:37Z"
-# ST-176 vis-lock lock=yes pid=39748 (giu suot lenh) ma_ra=-15 giay=260.8 load_sau="{ 3.75 4.39 3.53 }" thoi_diem="2026-11-17T10:55:58Z"
-# ST-176 vis-lock lock=yes pid=44581 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="python3 /tmp/st176-time-suites.py /tmp/st176-mac-binaries-deps.tsv /tmp/st176-suites-mac.tsv mac" load_truoc="{ 3.34 4.25 3.50 }" thoi_diem="2026-11-17T10:56:22Z"
-# ST-176 vis-lock lock=yes pid=44581 (giu suot lenh) ma_ra=0 giay=131.7 load_sau="{ 3.32 4.13 3.57 }" thoi_diem="2026-11-17T10:58:34Z"
-# ST-176 vis-lock lock=yes pid=56976 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="python3 /tmp/st176-time-suites.py /tmp/st176-mac-binaries-deps.tsv /tmp/st176-suites-mac2.tsv mac-lan2" load_truoc="{ 4.46 4.28 3.68 }" thoi_diem="2026-11-17T10:59:55Z"
-# ST-176 vis-lock lock=yes pid=56976 (giu suot lenh) ma_ra=0 giay=111.4 load_sau="{ 5.98 5.19 4.12 }" thoi_diem="2026-11-17T11:01:46Z"
-# ST-176 vis-lock lock=yes pid=66503 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="/usr/bin/time -p ../vis-dev check" load_truoc="{ 4.08 4.76 4.04 }" thoi_diem="2026-11-17T11:02:51Z"
-# ST-176 vis-lock lock=yes pid=66503 (giu suot lenh) ma_ra=0 giay=190.0 load_sau="{ 3.88 4.44 4.04 }" thoi_diem="2026-11-17T11:06:01Z"

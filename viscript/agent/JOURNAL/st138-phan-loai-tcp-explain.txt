@@ -1,5 +1,0 @@
-loai: T-INFRA (flake mang, khong phai loi san pham)
-- Lan 1: soak gate-3 do o `-p vis-cli --test net`, ca `tcp_explain_tong` (net.rs:433) — so byte interp vs VM qua server loopback.
-- Phan loai: chay lai DUNG mot lan ca do => `1 passed; 0 failed` (0.59 s), exit 0.
-- Ket luan: T-INFRA (tai may/loopback), KHONG noi nguong, KHONG sua ca.
-- Xu ly: chay lai soak mot lan, ghi ca hai lan.

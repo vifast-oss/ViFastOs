@@ -1,7 +1,0 @@
-# ST-118/R22 — metrics 2026-11-15T06:17:55Z, HEAD 1be37e6c
-test=1066
-sem=447/22 vis=447 vm=447/0 host=54/54x2 parity=398+49 cache=520x4
-diff=155s 0 lệch; fuzz=0
-vis-parse-fuzz: 2506504 ca, 57029776 token, 41775 ca/s, 950496 token/s, 60.0 s, vi phạm 0
-soak=10/10 1297s; R1 max=1060 lower/cmd.rs; main=591 parse/mod=1069 parse/cmd=1007
-codes=32 funcs=52 vbc=53 targets=18/18 fmt=497 allowlist=6

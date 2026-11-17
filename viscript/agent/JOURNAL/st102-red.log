@@ -1,8 +1,0 @@
-# ST-102 — log ĐỎ lúc 2026-11-14T22:37:54Z, HEAD b868a503 — chưa có pkg update/list --json.
-test update_ten_khong_co_exit2 ... FAILED
-test update_khong_doi_lock_byte_identical ... FAILED
-test update_doi_noi_dung_cung_version ... FAILED
-test update_mot_ten_khong_dung_goi_khac ... FAILED
-test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.32s
-test list_json_parse_duoc_dung_thu_tu ... FAILED
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.15s

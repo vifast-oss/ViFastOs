@@ -1,3 +1,0 @@
-vis pkg: version `^1.0` không phải số (phần `^1`)
-EXIT=2
---stdout--

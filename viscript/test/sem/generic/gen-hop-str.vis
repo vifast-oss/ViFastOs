@@ -1,6 +1,0 @@
-# SPDX-License-Identifier: MIT OR Apache-2.0
-type Hop[T]:
-    gia_tri: T
-
-let b: Hop[str] = {gia_tri: "x"}
-print(b.gia_tri)

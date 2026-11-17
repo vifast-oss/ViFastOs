@@ -1,8 +1,0 @@
-# ST-156 — máy kiểm báo cáo: python3 viscript/test/report/check_report.py --all
-# chạy SAU khi lật ST-156 READY→DONE + dòng CHỜ DUYỆT trong QUEUE (không đổi báo cáo nào khác)
-# thoi_diem_utc=2026-11-16T22:10:06Z
-# head=3776689d
-# ghi_chu: check_report so status với QUEUE **tại head** (dd088322) nên ST-156 vẫn là READY trong báo cáo; 174 hàng
----
-report-check: PASS (27 báo cáo, 174 hàng QUEUE phủ đủ)
-[exit=0]

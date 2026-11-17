@@ -1,5 +1,0 @@
-# ST-163 — check_report.py --all (sau khi QUEUE: ST-163 READY→DONE, SO-NO #146 đã phân loại (b), BLOCKED.md §6)
-# thoi_diem=2026-11-17T02:42:34Z · may=mps · HEAD_do=6d01d8d3
-# lenh: python3 viscript/test/report/check_report.py --all
-report-check: PASS (28 báo cáo, 192 hàng QUEUE phủ đủ)
-[exit=0]

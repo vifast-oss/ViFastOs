@@ -1,7 +1,0 @@
-# ST-152 — python3 viscript/test/report/check_report.py --all (tại 2026-11-16T20:56:38Z, HEAD b1c07802)
-# cây: R26 + QUEUE ST-152 DONE + ROADMAP/STATE cập nhật (chưa commit)
-# ---
-report-check: PASS (26 báo cáo, 171 hàng QUEUE phủ đủ)
-rc=0
-# sha256(R26-viscript.json)=9d9095b6da571b8488e25e03829c48af783edb649c1748dfb3b0acbb1279628b
-# sha256(R26-viscript.md)=373da859dc6b4150c7571bc8dbebf23d66e1eef1e41461471d1d8938367de4f6

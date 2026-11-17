@@ -1,5 +1,0 @@
-# ST-162 — check_report.py --all (sau khi QUEUE: ST-162 READY→DONE)
-# thoi_diem=2026-11-17T01:04:15Z · may=mps · HEAD_do=6b843042
-# lenh: python3 viscript/test/report/check_report.py --all
-report-check: PASS (28 báo cáo, 188 hàng QUEUE phủ đủ)
-[exit=0]

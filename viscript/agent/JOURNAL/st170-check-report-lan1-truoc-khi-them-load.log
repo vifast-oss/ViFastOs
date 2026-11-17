@@ -1,9 +1,0 @@
-# ST-170 · máy kiểm báo cáo vòng (Khối E) — R29
-# Ngày: 2026-11-17T20:28:30+0900 · Agent 2 dòng ViScript · Máy: mac (mps)
-# HEAD=39041b3f1bdda8aa786bf785a1835293de20cf19
-# Lệnh: python3 viscript/test/report/check_report.py --all
-# (cùng lệnh đã chạy ngay trước đó trên cùng cây: PASS 29 báo cáo / 197 hàng — log này là lượt ghi bằng chứng)
-# ---------- ĐẦU RA ----------
-report-check: PASS (29 báo cáo, 197 hàng QUEUE phủ đủ)
-# ---------- KẾT ----------
-[exit=0]
