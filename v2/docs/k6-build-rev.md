@@ -10,6 +10,28 @@ cùng sha trên hai `CARGO_TARGET_DIR`); **nợ** A1-184 (remap cho `$RUSTC` l�
 > mã thoát, số dòng) nằm trong `v2/agent/JOURNAL/kt86-journal.md` + `kt86-*.log`; khi lead commit,
 > thêm khối `scope=` tương ứng vào đây.
 
+## 0. D2-127 — cổng so **nội dung build-inputs**, không so lịch sử git
+
+Bản KT-86 so `rev` trong ảnh với **mười hai** ký tự đầu của HEAD hiện tại. Cách đó đúng ý định
+("ảnh phải khớp mã đã commit") nhưng **sai phạm vi** khi hai dòng sản phẩm cùng commit vào một
+nhánh: một commit ở `viscript/` hay một tệp sổ sách cũng làm **mọi** ảnh bị từ chối, dù
+`git diff <rev-ảnh>..HEAD -- v2/kernel v2/lib` **rỗng** (bằng chứng: `BLOCKED-CHO-A0.md` B5).
+
+Từ D2-127, danh tính **quyết định** là **dấu vân tay nội dung build-inputs**:
+
+- **build-inputs** = bao đóng phụ thuộc theo `cargo metadata` của các crate kernel/plat/lib/kbin,
+  hợp với `v2/kernel`, `v2/lib`, `v2/bin`, `v2/Cargo.toml`, `v2/Cargo.lock`,
+  `v2/rust-toolchain.toml`; **trừ** `v2/agent/**`, `v2/docs/**`, `v2/target*/**`, `v2/artifacts/**`.
+- Danh sách do **script** sinh (`vbrev_inputs_list`), **không** viết tay; in ra log mỗi lần build.
+- **Dấu vân tay** = hash của các git tree/blob tương ứng ở HEAD (`git rev-parse HEAD:<đường-dẫn>`
+  cho từng mục, ghép theo thứ tự xác định, hash lại) — **mười sáu** ký tự hex.
+- Ảnh in `# build: inputs=<hex> dirty=<cờ>`; `rev` HEAD chỉ còn trong dòng `REV-GATE` **để tra**,
+  **không** dùng để quyết.
+- Phần **trừ** `v2/agent/**` và `v2/docs/**` là **quyết định tạm của Agent 1** (A1-188) **chờ
+  Agent 0** xác nhận (B6): harness **ghi log trong lúc đo** vào `v2/agent/JOURNAL/**`, nếu tính vào
+  build-inputs thì dấu vân tay đổi sau mỗi dòng log ⇒ mọi phép đo tự vô hiệu; và hai thư mục đó
+  **không** nằm trong `cargo metadata` của bất kỳ crate nào.
+
 ## 1. Vì sao (lần thứ tư của cùng một lớp lỗi)
 
 Bốn lần artifact lệch mã nguồn mà **không** cổng nào bắt được, đều phát hiện **sau** khi đo:
@@ -41,17 +63,17 @@ một dòng cho đường dẫn thuộc `v2/kernel` **hoặc** `v2/lib`. Diễn 
 - **Không** tính tệp bị `.gitignore` (`target/`, `artifacts/`): git đã lọc, build không làm bẩn.
 - Không có `git`, không phải repo, hoặc `git` lỗi ⇒ `dirty` bằng **một** (**fail-closed**).
 
-`rev` = **mười hai** ký tự hex đầu của `git rev-parse HEAD` (đủ để người đọc đối chiếu, ngắn để
-một dòng log không bị cắt). So khớp là **so tiền tố** của HEAD, không so chuỗi con.
+`inputs` = **mười sáu** ký tự hex của dấu vân tay build-inputs (§0). So khớp là **so bằng** với
+dấu vân tay tính lại từ cây hiện tại, **không** so với HEAD.
 
 ## 3. Dòng bằng chứng do kernel in
 
 In **ngay đầu boot** (trước mọi `PANIC` có thể xảy ra), từ **`const`** — không phải literal viết
 tay (D2-102):
 
-`# build: rev=<hex> dirty=<cờ>`
+`# build: inputs=<hex> dirty=<cờ>`
 
-- Giá trị do `build.rs` đặt qua `cargo:rustc-env` (`VIFAST_BUILD_REV`, `VIFAST_BUILD_DIRTY`), đọc
+- Giá trị do `build.rs` đặt qua `cargo:rustc-env` (`VIFAST_BUILD_INPUTS`, `VIFAST_BUILD_DIRTY`), đọc
   **tại thời điểm build**; `src/main.rs` khai `const BUILD_LINE: &str = concat!(…)` rồi
   `PLATFORM.put_str(BUILD_LINE)`.
 - Vì là `const`, chuỗi danh tính **nằm trong ảnh** (`.rodata`), nên harness còn kiểm được
@@ -64,7 +86,7 @@ tay (D2-102):
 
 `v2/test/boot/build-rev.sh` cài `vbrev_gate <log> <đường-dẫn-trong-repo> [<ảnh>]`. Kiểm **theo thứ
 tự**, dừng ở lý do đầu tiên sai; mọi lý do đều in một dòng máy grep được
-`REV-GATE: REFUSE reason=<mã> …`; cổng xanh in `REV-GATE: ACCEPT rev=… head=… log=…`.
+`REV-GATE: REFUSE reason=<mã> …`; cổng xanh in `REV-GATE: ACCEPT inputs=… current_inputs=… head_rev=… count=… log=…`.
 
 | Mã lý do | Khi nào | Ý nghĩa |
 |---|---|---|

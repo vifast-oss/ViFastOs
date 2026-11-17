@@ -1,0 +1,28 @@
+# KT-89 — 5 ca âm + 1 ca dương của cổng build-inputs (D2-127 mục 6)
+# Chạy trong clone /tmp/kt89-neg (không commit vào repo thật). Ảnh đo: /tmp/kt89-img.bin
+# (build từ HEAD 1a9173d8, cây sạch, `# build: inputs=f218e0fc65bbc971 dirty=0`).
+# Mỗi ca: dòng lệnh → dòng REV-GATE thật + mã thoát.
+
+=== (a) commit tệp NGOÀI build-inputs (v2/docs/k6-build-rev.md) => kỳ vọng ACCEPT
+REV-GATE: ACCEPT inputs=f218e0fc65bbc971 current_inputs=f218e0fc65bbc971 head_rev=a51193de32e7 count=260 log=/tmp/kt89-case.log
+rc=0
+
+=== (b) sửa 1 dòng v2/kernel/vifast-core/src/lib.rs, KHÔNG commit => kỳ vọng REFUSE (dirty)
+REV-GATE: REFUSE reason=dirty image_dirty=1 image_inputs=f218e0fc65bbc971 current_inputs=f218e0fc65bbc971 head_rev=a51193de32e7 log=/tmp/kt89-case.log
+rc=1
+
+=== (c) COMMIT thay đổi v2/kernel mà KHÔNG build lại => kỳ vọng REFUSE (dấu vân tay lệch)
+REV-GATE: REFUSE reason=image-mismatch image=/tmp/kt89-img.bin image_inputs=3d9985893fd7140a dirty=0 head_rev=ba4cee3ad7fd log=/tmp/kt89-case.log
+rc=1
+
+=== (d) sửa v2/lib/vifast-alloc (crate NGOÀI v2/kernel) rồi commit => kỳ vọng REFUSE
+REV-GATE: REFUSE reason=image-mismatch image=/tmp/kt89-img.bin image_inputs=b5c2336fe57a8d85 dirty=0 head_rev=9e4b4037805a log=/tmp/kt89-case.log
+rc=1
+
+=== (e) sửa v2/rust-toolchain.toml rồi commit => kỳ vọng REFUSE
+REV-GATE: REFUSE reason=image-mismatch image=/tmp/kt89-img.bin image_inputs=c8b50009adbf2f58 dirty=0 head_rev=299495e87610 log=/tmp/kt89-case.log
+rc=1
+
+# KẾT LUẬN: 5/5 ca âm ĐỎ đúng mã; ca (a) là ĐỐI CHỨNG DƯƠNG — commit ngoài build-inputs
+# KHÔNG làm cổng từ chối (chứng minh cổng không tự khoá, đúng yêu cầu D2-127.6a).
+# Thiếu ca (d) hoặc (e) thì cổng chưa tính là xong — cả hai đều có ở trên.
