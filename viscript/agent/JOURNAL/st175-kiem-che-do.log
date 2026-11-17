@@ -1,0 +1,134 @@
+# ST-175 · Phần 2 — kiểm chế độ CHẶN CÂY BẨN của `viscript/bin/vis-remote` (chạy trên mac)
+# Ngày: 2026-11-17 (JST) · Agent 2 dòng ViScript · ngân sách 1 h
+# Phạm vi: KHÔNG đụng cây `ps` (đã có log riêng st175-chan-cay-ban.log / st175-cho-phep-cay-ban.log),
+#          KHÔNG sửa/xoá gì trong cây thật của mac. Mọi log ở /tmp (ngoài repo).
+# Cây thử "sạch": clone tạm /tmp/st175-clean = `git clone --shared` từ repo (HEAD ffe75569),
+#   vì cây thật của mac đang bẩn bởi tệp untracked của agent (không dùng làm ca "sạch" được).
+# Cách chạy trên cây thử: VIS_REMOTE_MAC_REPO=/tmp/st175-clean  (vis-remote mac chạy ngay trên mac)
+# Ghi chú: log này được sinh lại MỘT lần trong cùng phiên ST-175 để sửa phép kiểm ở mục 4
+#   (bản đầu grep chuỗi lệnh trong header log nên khớp cả phần `# lenh:` ⇒ kết luận sai; bản này
+#    kiểm dòng đầu ra thật bằng `grep -qx`).
+
+
+## 1. --hosts: chính sách kiểm theo từng máy (ps/psvn = check, mac = skip)
+
+### --hosts
+$ viscript/bin/vis-remote --hosts
+mac   repo=/Users/mps/dvchd/ViFastOs            cargo=/Users/mps/.cargo/bin/cargo      log_dir=/vislogs   kiem_cay_ban=skip
+ps    repo=/root/vifast-linux                   cargo=/root/.cargo/bin/cargo           log_dir=/root/vislogs   kiem_cay_ban=check
+psvn  repo=/c/Users/ps/vifast-windows/repo      cargo=/c/Users/ps/.cargo/bin/cargo     log_dir=/c/Users/ps/vislogs   kiem_cay_ban=check
+[exit=0]
+
+## 2. Cây SẠCH + --require-clean  ⇒ ĐƯỢC CHẠY (xem dòng ST-175: cay SACH)
+$ VIS_REMOTE_MAC_REPO=/tmp/st175-clean viscript/bin/vis-remote mac --require-clean --log /tmp/st175-sach.log -- bash -lc "git rev-parse --short HEAD; echo CAY-SACH-CHAY-DUOC"
+# ST-175: cay SACH (git status --porcelain rong) — duoc phep chay/do
+ffe75569
+CAY-SACH-CHAY-DUOC
+vis-remote-exit=0
+vis-remote: [exit=0] host=mac log=/tmp/st175-sach.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T061811Z.log
+[exit=0]
+--- dòng kiểm ST-175 trong log /tmp/st175-sach.log: ---
+    27:# ST-175: cay SACH (git status --porcelain rong) — duoc phep chay/do
+
+## 3. Làm cây thử BẨN 1 mục (thêm 1 dòng vào README.md)
+git -C /tmp/st175-clean status --porcelain ⇒ 1 mục
+
+## 4. Cây BẨN + --require-clean  ⇒ TỪ CHỐI, mã thoát 6, lệnh KHÔNG chạy
+$ VIS_REMOTE_MAC_REPO=/tmp/st175-clean viscript/bin/vis-remote mac --require-clean --log /tmp/st175-ban.log -- bash -lc "echo LENH-DA-CHAY"
+# ---------- ST-175: TU CHOI CAY BAN ----------
+# may: mac · cay: /tmp/st175-clean
+# so_muc_ban=1 (git status --porcelain, da bo qua tep bi gitignore)
+# 5 muc dau:
+#    M README.md
+# => TU CHOI: cay khong sach, so do tren cay ban KHONG chung minh duoc ma khop commit.
+# goi y: git -C <repo> restore .  ·  git -C <repo> clean -fd  ·  hoac do tren clone/worktree sach
+# (chi chan doan moi dung --allow-dirty: co y bo kiem, KHONG dung cho phep do)
+# ma thoat=6 (BLOCKED-DIRTY)
+vis-remote-exit=6
+vis-remote: [exit=6] host=mac log=/tmp/st175-ban.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T061812Z.log
+[exit=6]
+--- kiểm: log /tmp/st175-ban.log có DÒNG ĐẦU RA "LENH-DA-CHAY" không (grep -qx)? ---
+    KHÔNG ⇒ ĐÚNG: lệnh bị chặn (chuỗi chỉ xuất hiện trong header `# lenh:` là bản ghi lệnh, không phải đầu ra)
+--- [exit=N] trong log /tmp/st175-ban.log: ---
+    36:vis-remote-exit=6
+    41:[exit=6]
+
+## 5. Cây BẨN, mac KHÔNG cờ  ⇒ chạy bình thường (mac mặc định KHÔNG kiểm: cây làm việc của agent)
+$ VIS_REMOTE_MAC_REPO=/tmp/st175-clean viscript/bin/vis-remote mac --log /tmp/st175-mac-skip.log -- bash -lc "echo MAC-VAN-CHAY-DUOC"
+MAC-VAN-CHAY-DUOC
+vis-remote-exit=0
+vis-remote: [exit=0] host=mac log=/tmp/st175-mac-skip.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T061813Z.log
+[exit=0]
+
+## 6. Hai cờ loại trừ nhau  ⇒ dùng sai, mã thoát 2
+
+### hai cờ
+$ viscript/bin/vis-remote mac --allow-dirty --require-clean -- true
+vis-remote: --allow-dirty và --require-clean loại trừ nhau
+[exit=2]
+
+## 7. Cây BẨN + --allow-dirty  ⇒ chạy được (chỉ để chẩn đoán), mã thoát 0
+$ VIS_REMOTE_MAC_REPO=/tmp/st175-clean viscript/bin/vis-remote mac --allow-dirty --log /tmp/st175-cho.log -- bash -lc "echo CHO-PHEP-CHAY"
+CHO-PHEP-CHAY
+vis-remote-exit=0
+vis-remote: [exit=0] host=mac log=/tmp/st175-cho.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T061814Z.log
+[exit=0]
+
+## 8. Hồi quy: --check (đọc .exit từ TỆP) vẫn nguyên hành vi, KHÔNG bị kiểm cây bẩn chặn
+
+### --check trên mac
+$ viscript/bin/vis-remote mac --check --log /tmp/st175-check.log
+== vis-remote --check · host=mac ==
+may: mps
+nhan: Darwin 27.0.0 arm64
+os: macOS 27.0.1
+nproc: 12
+shell: /bin/zsh (bash 3.2.57(1)-release)
+cargo: cargo 1.99.1 (5f94df478 2026-08-27)
+cargo_duong_dan: /Users/mps/.cargo/bin/cargo
+rustc: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+rustc_duong_dan: /Users/mps/.cargo/bin/rustc
+repo: /Users/mps/dvchd/ViFastOs
+head_full: ffe75569e0b200bf386433cbf98a2e1a359c99ef
+head_ngan: ffe75569
+git_nhanh: main
+git_untracked: 24
+git_status:  M viscript/bin/vis-remote|?? .agents/|?? BAN-GIAO-VS3-VA-CONG-THAI-HOC-2026-11-17.md|?? BAN-GIAO-ViScript-CHO-AGENT0.md|?? BAO-CAO-DEM-AGENT1-CHO-AGENT0-2026-11-17.md|?? CHEAT-SHEET-ViScript.md|
+-- .exit cua 'true' va 'false' (doc tu TEP, khong qua Powershell) --
+true  .exit=0 (cho 0)  OK
+false .exit=1 (cho 1)  OK
+log: /tmp/st175-check-true.log · /tmp/st175-check-false.log
+home_may_dich=/Users/mps
+vis-remote: --check OK
+[exit=0]
+
+## 9. Hồi quy: mã thoát thật của lệnh vẫn ra từ tệp .exit (ví dụ exit 7)
+
+### chạy thường
+$ viscript/bin/vis-remote mac --log /tmp/st175-thuong.log -- bash -lc echo THUONG-OK; exit 7
+THUONG-OK
+vis-remote-exit=7
+vis-remote: [exit=7] host=mac log=/tmp/st175-thuong.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T061817Z.log
+[exit=7]
+--- [exit=N] trong log /tmp/st175-thuong.log: ---
+    33:[exit=7]
+
+## 10. Dọn cây thử (khôi phục README rồi xoá clone tạm)
+git -C /tmp/st175-clean status --porcelain ⇒ 0 mục
+da xoa /tmp/st175-clean: KHONG
+[exit=0]
+
+## 11. Kiểm bổ sung: tệp BỊ GITIGNORE không làm cây bẩn (đúng yêu cầu "đã bỏ qua file bị gitignore")
+# clone mới /tmp/st175-clean, tạo viscript/target/rac.txt — git check-ignore xác nhận:
+#   .gitignore:1:target/  viscript/target/rac.txt
+git -C /tmp/st175-clean status --porcelain ⇒ 0 mục
+$ VIS_REMOTE_MAC_REPO=/tmp/st175-clean viscript/bin/vis-remote mac --require-clean --log /tmp/st175-ignore.log -- bash -lc "echo IGNORED-VAN-CHAY"
+# ST-175: cay SACH (git status --porcelain rong) — duoc phep chay/do
+IGNORED-VAN-CHAY
+vis-remote-exit=0
+vis-remote: [exit=0] host=mac log=/tmp/st175-ignore.log log_may_dich=/Users/mps/vislogs/vis-remote-20261117T062633Z.log
+[exit=0]
+--- dòng ST-175 trong /tmp/st175-ignore.log: ---
+    27:# ST-175: cay SACH (git status --porcelain rong) — duoc phep chay/do
+da xoa /tmp/st175-clean: KHONG
+[exit=0]

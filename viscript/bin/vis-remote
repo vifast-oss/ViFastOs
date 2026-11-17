@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# vis-remote — chạy **một lệnh bash** trên mac / ps / psvn với ba bảo đảm (ST-162).
+# vis-remote — chạy **một lệnh bash** trên mac / ps / psvn với năm bảo đảm (ST-162, +ST-175).
 #
 # Vì sao cần: sự cố R28 §5 #4/#5/#6 (đêm 16→17/11) làm mất bằng chứng cổng:
 #   #4 `ssh psvn '& "…bash.exe" -lc "…; echo EXIT=$?"'` ⇒ **PowerShell nội suy `$?`**
@@ -22,14 +22,25 @@
 #      chép bằng chứng vào `JOURNAL/`).
 #   4. **HEADER MÔI TRƯỜNG (VD-136)** — máy, OS/kernel, rustc/cargo, HEAD, git status, lệnh, UTC
 #      bắt đầu/kết thúc và `[exit=N]` lấy từ `.exit`.
+#   5. **TỪ CHỐI CÂY BẨN (ST-175, VD-177 §4)** — trước khi chạy lệnh trên `ps`/`psvn`, kiểm
+#      `git -C <repo> status --porcelain` (tệp bị `gitignore` không tính); **không rỗng ⇒ TỪ CHỐI**,
+#      in số mục bẩn + 5 mục đầu + gợi ý (`git restore`/`git clean` hoặc clone sạch), mã thoát 6.
+#      Lý do: `git rev-parse HEAD:viscript` chỉ là hash **của commit**, cây làm việc có thể đang mang
+#      thay đổi chưa commit (bằng chứng ST-175: `/root/vifast-linux` bẩn 2338 mục, `viscript/` khác HEAD).
+#      `mac` **không** kiểm theo mặc định (chính công cụ này ghi log vào repo; cây làm việc của agent
+#      bẩn là bình thường) — muốn kiểm trên mac thì `--require-clean`. `--check` không kiểm (chẩn đoán).
 #
 # Dùng:
-#   bin/vis-remote <host> [--log <tệp>] [--tag <nhãn>] -- <lệnh> [đối số…]
+#   bin/vis-remote <host> [--log <tệp>] [--tag <nhãn>] [--allow-dirty|--require-clean] -- <lệnh> [đối số…]
 #   bin/vis-remote <host> --check [--log <tệp>]   # in môi trường + `.exit` của `true`/`false`
-#   bin/vis-remote --hosts                        # in cấu hình từng máy
+#   bin/vis-remote --hosts                        # in cấu hình từng máy (kèm chế độ kiểm cây bẩn)
 #   bin/vis-remote -h | --help
 #
 #   <host>: mac | ps | psvn   (đồng nghĩa: local|macos ⇒ mac · linux ⇒ ps · windows ⇒ psvn)
+#
+#   --allow-dirty    BỎ kiểm cây bẩn — **CHỈ để chẩn đoán** (đo trên cây bẩn không chứng minh được mã
+#                    khớp commit); không dùng cho phép đo.
+#   --require-clean  BẬT kiểm cây bẩn cả trên `mac` (mặc định mac không kiểm — xem bảo đảm 5).
 #
 #   bin/vis-remote ps -- bash -lc 'cd viscript && bin/vis-dev check'
 #   bin/vis-remote psvn --log /tmp/psvn.log -- git log --oneline -1
@@ -52,7 +63,8 @@
 #
 # Mã thoát: 0..255 = **mã thật của lệnh, đọc từ tệp `.exit`** · 2 dùng sai · 3 BLOCKED-ENV
 #           (không ssh được / thiếu cây nguồn / không tạo được thư mục log) · 4 không đọc được `.exit`
-#           (`--check`: 0 khớp `true`=0 và `false`=1 · 5 lệch).
+#           (`--check`: 0 khớp `true`=0 và `false`=1 · 5 lệch) · 6 cây nguồn BẨN ⇒ từ chối chạy
+#           (`--allow-dirty` để bỏ kiểm; chỉ dùng để chẩn đoán).
 #
 # KHÔNG đồng bộ cây nguồn (khác `bin/vis-linux`): muốn đồng bộ thì chạy `bin/vis-linux sync` trước.
 set -u
@@ -188,6 +200,7 @@ emit_run_script() { # $1 tệp · $2 host · $3 cargo hint · $4 repo · $5 log 
         printf 'VIS_REPO=%s\n' "$(printf '%q' "$repo")"
         printf 'VIS_LOG=%s\n' "$(printf '%q' "$rlog")"
         printf 'VIS_HOST=%s\n' "$(printf '%q' "$host")"
+        printf 'VIS_DIRTY_POLICY=%s\n' "$(printf '%q' "$DIRTY_POLICY")"
         printf 'VIS_ARGV=%s\n' "$argv"
         printf '%s\n' "$COMMON_HEAD"
         cat <<'EOS'
@@ -195,6 +208,29 @@ cd "$VIS_REPO" || { echo "vis-remote: không vào được cây nguồn '$VIS_RE
 mkdir -p "$(dirname "$VIS_LOG")" || { echo "vis-remote: không tạo được thư mục log '$(dirname "$VIS_LOG")'" >&2; exit 3; }
 set -u
 set -o pipefail
+# ---------- ST-175 (VD-177 §4): TỪ CHỐI CÂY BẨN TRƯỚC KHI ĐO ----------
+# `git status --porcelain` đã bỏ qua tệp bị `.gitignore`; rỗng = cây khớp commit.
+if [ "${VIS_DIRTY_POLICY:-skip}" = check ]; then
+    _vr_dirty="$(git -C "$VIS_REPO" status --porcelain 2>/dev/null || true)"
+    if [ -n "$_vr_dirty" ]; then
+        _vr_n="$(printf '%s\n' "$_vr_dirty" | grep -c . || true)"
+        {
+            printf '# ---------- ST-175: TU CHOI CAY BAN ----------\n'
+            printf '# may: %s · cay: %s\n' "$VIS_HOST" "$VIS_REPO"
+            printf '# so_muc_ban=%s (git status --porcelain, da bo qua tep bi gitignore)\n' "$_vr_n"
+            printf '# 5 muc dau:\n'
+            printf '%s\n' "$_vr_dirty" | head -5 | sed 's/^/#   /'
+            printf '%s\n' '# => TU CHOI: cay khong sach, so do tren cay ban KHONG chung minh duoc ma khop commit.'
+            printf '%s\n' '# goi y: git -C <repo> restore .  ·  git -C <repo> clean -fd  ·  hoac do tren clone/worktree sach'
+            printf '%s\n' '# (chi chan doan moi dung --allow-dirty: co y bo kiem, KHONG dung cho phep do)'
+            printf '# ma thoat=6 (BLOCKED-DIRTY)\n'
+        } | tee -a "$VIS_LOG"
+        printf '%s\n' 6 >"$VIS_LOG.exit"
+        printf 'vis-remote-exit=6\n'
+        exit 6
+    fi
+    printf '%s\n' '# ST-175: cay SACH (git status --porcelain rong) — duoc phep chay/do'
+fi
 # stdin của lệnh = /dev/null: lệnh không ăn mất phần script còn lại đang đọc từ stdin (#4).
 { "${VIS_ARGV[@]}" ; } </dev/null 2>&1 | tee -a "$VIS_LOG"
 _vis_rc=${PIPESTATUS[0]}
@@ -324,12 +360,23 @@ in_repo() { # $1 = đường tuyệt đối
 cmd_hosts() {
     local h
     for h in mac ps psvn; do
-        printf '%-5s repo=%-36s cargo=%-32s log_dir=%s/vislogs\n' \
-            "$h" "$(repo_of "$h")" "$(cargo_hint_of "$h")" "$(home_hint_of "$h")"
+        printf '%-5s repo=%-36s cargo=%-32s log_dir=%s/vislogs   kiem_cay_ban=%s\n' \
+            "$h" "$(repo_of "$h")" "$(cargo_hint_of "$h")" "$(home_hint_of "$h")" \
+            "$(default_dirty_policy "$h")"
     done
 }
 
-usage() { sed -n '2,56p' "$0" | sed 's/^# \{0,1\}//'; }
+# Chính sách kiểm cây bẩn mặc định: `ps`/`psvn` = check (cây để đo); `mac` = skip.
+# `mac` là cây làm việc của agent, chính `vis-remote` ghi log vào repo ⇒ kiểm ở đây sẽ chặn mọi việc.
+# Muốn bật: `--require-clean`. Muốn tắt: `--allow-dirty` (chỉ để chẩn đoán).
+default_dirty_policy() {
+    case "$1" in
+        ps|psvn) echo check ;;
+        *) echo skip ;;
+    esac
+}
+
+usage() { awk 'NR > 1 { if ($0 ~ /^set -u$/) exit; sub(/^# ?/, ""); print }' "$0"; }
 
 main() {
     [ $# -gt 0 ] || { usage; exit 2; }
@@ -341,17 +388,27 @@ main() {
     local host_raw="$1"; shift
     local host; host="$(normalize_host "$host_raw")" || die 2 "host '$host_raw' lạ (mac|ps|psvn)"
 
-    local log="" tag="${VIS_REMOTE_TAG:-vis-remote}" check=0
+    local log="" tag="${VIS_REMOTE_TAG:-vis-remote}" check=0 allow_dirty=0 require_clean=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --log) log="${2:?--log cần tệp}"; shift 2 ;;
             --tag) tag="${2:?--tag cần nhãn}"; shift 2 ;;
             --check) check=1; shift ;;
+            --allow-dirty) allow_dirty=1; shift ;;
+            --require-clean) require_clean=1; shift ;;
             --) shift; break ;;
             -h|--help) usage; exit 0 ;;
             *) break ;;
         esac
     done
+    [ "$allow_dirty" = 1 ] && [ "$require_clean" = 1 ] &&
+        die 2 "--allow-dirty và --require-clean loại trừ nhau"
+
+    # ST-175 (VD-177 §4): mặc định kiểm cây bẩn trên máy ĐO (`ps`/`psvn`), không kiểm trên `mac`.
+    DIRTY_POLICY="$(default_dirty_policy "$host")"
+    [ "$allow_dirty" = 1 ] && DIRTY_POLICY=skip
+    [ "$require_clean" = 1 ] && DIRTY_POLICY=check
+    [ "$check" = 1 ] && DIRTY_POLICY=skip   # `--check` là chẩn đoán môi trường, không phải phép đo
 
     local stem; stem="$tag-$(utc_stem)"
     if [ -z "$log" ]; then
@@ -394,4 +451,5 @@ main() {
 }
 
 VR_EXIT=0
+DIRTY_POLICY="skip"   # ST-175: `check` = từ chối cây bẩn; `skip` = bỏ kiểm (xem default_dirty_policy)
 main "$@"
