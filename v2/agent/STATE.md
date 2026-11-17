@@ -3774,3 +3774,38 @@ Cây `v2/kernel` **sạch** là điều kiện của KT-86: ảnh chỉ được
 - **A1-179**: bốn tài liệu `pre_existing` (`K6-DOD`, `k6-exec`, `k6-persist`, `k6-parity`) có `expires_task = "KT-82"`
   ⇒ **phải** chuyển số vào khối `scope=` trước KT-82.
 - `pre-merge-commit` chưa có hook; GitHub branch protection chưa bật (hướng dẫn đã gửi người dùng).
+
+## TẠM DỪNG 2026-11-17 21:05 — chờ tách repo ViScript
+
+**Lý do**: người dùng báo dòng ViScript đang chuẩn bị **tách repo**. Dòng OS dừng mọi thay đổi để
+việc tách không vướng công việc đang dở.
+
+**Trạng thái bàn giao (đã kiểm)**:
+- HEAD `685da99f`, **0 commit chưa push**, `v2 check` **PASS** trong worktree sạch.
+- `git status -- v2 spec crates docs` = **rỗng** (dòng OS không còn thay đổi chưa commit).
+- `git status -- v2/kernel v2/lib` = **rỗng** (`dirty=0`).
+- **Không có mã nào đang viết dở**: KT-91 (3 builtin `time`/`uptime`/`jobs`) mới chỉ **đọc mã**,
+  chưa sửa tệp nào.
+
+**Việc còn lại của K6** (không việc nào đang chạy):
+| Việc | Trạng thái |
+|---|---|
+| KT-82 — văn bản đóng K6 | **chờ Agent 0** quyết tiêu chí 4 dùng số nào (KT-88 hay KT-90) |
+| KT-83 — bảng số | chờ KT-82 |
+| KT-84 — `target-task/<mã>` + `artifacts/<sha>.bin` | phần lớn đã bị KT-86/KT-89 phủ; còn phần `target-task` |
+| KT-91/92/93 — 3 builtin shell, remap `build.rs`, đưa `v2/test`+`v2/tools` vào build-inputs | **chưa bắt đầu** |
+| 5 task BLOCKED | chờ Agent 0 (B6, A1-179, A1-184, khe `v2/test`/`v2/tools`) |
+
+**Lưu ý cho việc tách repo**:
+1. **Hook git nằm ở `.git/hooks` (git-common-dir)** — sau khi tách, repo OS **phải** chạy lại
+   `bash v2/tools/git-guard/install.sh` (script đã commit, đi theo repo). Kiểm bằng
+   `install.sh --check` (phải PASS cả bốn hook).
+2. **Lịch sử `main` dùng chung** — nếu tách bằng cách tạo repo mới từ thư mục con, lịch sử OS
+   (`v2/`, `spec/`, `crates/`, `docs/`) phải giữ nguyên; **đừng** `git filter-branch` trên repo
+   đang có hook `reference-transaction` mà không tắt hook trước (hook chặn mọi cập nhật
+   `refs/heads/main` khi `VIFAST_ROLE != lead`).
+3. **`v2/artifacts/`** nằm trong `.gitignore` — ảnh phát hành `291502d2…` (205.440 B) **không** đi
+   theo repo. Nếu cần giữ, chép ra ngoài **trước** khi tách.
+4. **`v2/kernel/target/`** cũng gitignored; không cần giữ.
+5. Ba tệp ở gốc repo (`out-b.log`, `ViFastOs-dossier.md`, `TRA-LOI-AGENT1-…md`) **không** thuộc
+   dòng OS — không phải của Agent 1, để nguyên.
