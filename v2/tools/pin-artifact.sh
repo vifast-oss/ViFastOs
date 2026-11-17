@@ -10,6 +10,7 @@
 #   bash v2/tools/pin-artifact.sh <ảnh> --dir DIR  # ghim vào DIR
 #   ... --allow-stale   # cho phép ảnh có dấu vân tay KHÁC cây hiện tại (mặc định: TỪ CHỐI)
 #   ... --allow-dirty   # cho phép ảnh tự khai `dirty=1` (mặc định: TỪ CHỐI)
+#   bash v2/tools/pin-artifact.sh --verify [--dir DIR]   # kiểm **mọi** ảnh đã ghim
 #
 # **Vì sao kiểm dấu vân tay**: ghim một ảnh build từ cây khác là đúng lớp lỗi D2-108A (đo ảnh A,
 # trích số từ ảnh B). Mặc định script **từ chối** ảnh lệch cây hiện tại.
@@ -31,7 +32,48 @@ die() {
     exit 2
 }
 
-[ "$#" -ge 1 ] || die "dùng: pin-artifact.sh <ảnh> [--dir DIR]"
+[ "$#" -ge 1 ] || die "dùng: pin-artifact.sh <ảnh> [--dir DIR] | --verify [--dir DIR]"
+
+# --- chế độ --verify: mọi tệp trong DEST_DIR phải (a) tên = sha256 của nội dung, (b) có dòng build
+if [ "$1" = "--verify" ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --dir)
+                [ "$#" -ge 2 ] || die "--dir cần tham số"
+                DEST_DIR="$2"
+                shift 2
+                ;;
+            *) die "tham số lạ: $1" ;;
+        esac
+    done
+    [ -d "$DEST_DIR" ] || die "không thấy thư mục $DEST_DIR"
+    n_ok=0
+    n_bad=0
+    n_legacy=0
+    for f in "$DEST_DIR"/*.bin; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f" .bin)"
+        got="$(shasum -a 256 "$f" | awk '{print $1}')"
+        if [ "$base" != "$got" ]; then
+            echo "VERIFY: SAI TÊN $f (tên=$base, sha=$got)" >&2
+            n_bad=$((n_bad + 1))
+            continue
+        fi
+        # Chấp nhận **cả hai** định dạng danh tính: `inputs=` (từ KT-89) và `rev=` (trước KT-89).
+        # Ảnh **trước KT-86** không có dòng nào — đó là ảnh lịch sử, đếm riêng là `legacy`,
+        # **không** phải lỗi (tên tệp vẫn phải khớp sha, đó mới là lỗi).
+        if ! LC_ALL=C grep -a -q -m1 -e '# build: inputs=' -e '# build: rev=' "$f"; then
+            n_legacy=$((n_legacy + 1))
+            continue
+        fi
+        n_ok=$((n_ok + 1))
+    done
+    echo "VERIFY: ok=$n_ok bad=$n_bad legacy=$n_legacy dir=$DEST_DIR"
+    [ "$n_bad" -eq 0 ] || exit 7
+    exit 0
+fi
+
 IMAGE="$1"
 shift
 ALLOW_STALE=0

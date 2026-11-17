@@ -61,3 +61,22 @@ trỏ vào `target/…`. Báo cáo ghi **sha256 đầy đủ** + `size` + dòng 
   pháp đo, cần A0 duyệt.
 - **Ca âm "ghi đè target"** (D2-122 mục sáu): cần dựng hai task build song song rồi chứng minh ảnh
   của task này không bị task kia ghi đè. Chưa làm vì cần hai build song song (tốn CPU) — để task riêng.
+
+### 4. Kiểm lại toàn bộ ảnh đã ghim
+
+```bash
+bash v2/tools/pin-artifact.sh --verify
+# VERIFY: ok=<n> bad=<m> legacy=<k> dir=v2/artifacts
+```
+
+- **bad** = tên tệp **không** khớp sha256 của nội dung ⇒ lỗi thật (mã thoát bảy).
+- **legacy** = ảnh build **trước KT-86**, không có dòng `# build:` — đếm riêng, **không** phải lỗi.
+- **ok** = tên khớp **và** có dòng danh tính (`inputs=` từ KT-89, hoặc `rev=` trước đó).
+
+### 5. Ghim chỉ nhận ảnh **đúng cây hiện tại**
+
+`pin-artifact.sh` **từ chối** (mã thoát năm) khi dấu vân tay trong ảnh khác dấu vân tay cây hiện tại,
+và **từ chối** (mã thoát sáu) khi ảnh tự khai cờ `dirty` bật. Cờ `--allow-stale` / `--allow-dirty` để
+ghi nhận ngoại lệ **có chủ ý**.
+
+Lý do: ghim một ảnh build từ cây khác **chính là** lớp lỗi D2-108A (đo ảnh A, trích số từ ảnh B).
