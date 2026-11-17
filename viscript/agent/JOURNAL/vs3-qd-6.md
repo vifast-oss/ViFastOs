@@ -1,4 +1,11 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+> **CẬP NHẬT 17/11/2026 (VD-180 + VD-181) — thay QĐ-6 mục 1, 2 ở dưới.** Bản đầy đủ sẽ do **ST-178** viết lại. Chốt hiện hành:
+> - **Mô hình phi tập trung kiểu Go**, không kho tập trung: tên gói = **đường dẫn** `vifast.org/vis/<tên>` (hoặc `github.com/…`, domain riêng); `vis.toml`: `tên_ngắn = "đường_dẫn@semver"`; phiên bản = **tag git semver**, major ≥ 2 có `/v2`; **MVS**, không bộ giải ràng buộc; `pkg update X` chỉ X + phụ thuộc bắt buộc (#142).
+> - **Tin cậy**: `vis.lock` = **sha256 cây tệp chuẩn hoá**; **`sum.vifast.org`** = sổ hash chỉ ghi thêm (repo git commit ký, khoá ghim); lần đầu khớp sổ, sau khớp lock; **VS0707** = hash không khớp; **không** lệnh bỏ qua, chỉ `VIS_SUMDB=off` (cảnh báo); `VIS_PRIVATE` cho gói riêng.
+> - **Dịch vụ**: `sum.vifast.org`, `proxy.vifast.org` (ngang hàng, **không** `sum.vis.`); proxy **chỉ thiết kế**, `VIS_PROXY=direct` mặc định. `vis.vifast.org` **không** làm tiền tố module; `viscript.org` chỉ thương hiệu.
+> - **Traefik không phải hợp đồng**: nội dung meta tag ở `vifast.org/vis/<tên>` là hợp đồng; tên **bất biến** sau gói đầu tiên.
+> - **Ca đỏ-trước bắt buộc**: tag đổi nội dung ⇒ VS0707; MVS `v1.2`/`v1.4` ⇒ chọn `v1.4`; vanity `vifast.org/vis/…` ⇒ tải đúng; offline + cache ⇒ build chạy.
+
 # VS3-QĐ-6 · Gói: registry mạng + chữ ký + GC
 **Trạng thái**: CHỜ AGENT 0 DUYỆT (VD-148) · **Phụ thuộc**: QĐ-3 (TLS) · **Mở đường cho**: —
 
