@@ -1,0 +1,108 @@
+### KT-88 T3 ca am 2026-11-17T06:47:03Z
+### HEAD=cf96eb9b589d526b30d839e301e81bd0f8b1bd13 head12=cf96eb9b589d
+### dirty_scope_lines=0
+### qemu_con_sot_truoc=0
+
+===== BUILD ca am [noshell] extra=[] td=/tmp/kt88-frz-noshell 2026-11-17T06:47:03Z =====
+# repro-build: máy Darwin arm64, gốc=/Users/mps/dvchd/ViFastOs
+# repro-build: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27) | toolchain=1.99.1-aarch64-apple-darwin (overridden by environment variable RUSTUP_TOOLCHAIN) 
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/Users/mps/dvchd/ViFastOs=/vifast -C strip=symbols ] (remap /Users/mps/dvchd/ViFastOs -> /vifast)
+# repro-build: CARGO_TARGET_DIR=/private/tmp/kt88-frz-noshell
+# repro-build: build identity rev=cf96eb9b589d dirty=0 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
+REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6 size=82552 wall_s=7 rev=cf96eb9b589d dirty=0 build=5bed09c031a901fd text=49904 image=/private/tmp/kt88-frz-noshell/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+----- exit=0 label=noshell
+### BASELINE_MOI_KHONG_SHELL sha256=276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6 size=82552 build=5bed09c031a901fd text=49904
+### BASELINE_MOI_KHONG_SHELL build_line=# build: rev=cf96eb9b589d dirty=0
+### BASELINE_MOI_KHONG_SHELL artifact=v2/artifacts/276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6.bin sha_artifact=276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6
+### BASELINE_CU c1072d72 = 80.6K, TRUOC KT-86 (khong co dong '# build:') -> chi con gia tri lich su
+
+===== PARITY tren anh KHONG shell (ky vong exit=5 khong_co_shell) 2026-11-17T06:47:11Z =====
+# run.sh: task=KT-77a mode=serial image=custom smp=1 negative=none
+# run.sh: toml=/Users/mps/dvchd/ViFastOs/spec/v1-parity.toml
+# run.sh: image=v2/artifacts/276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6.bin qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/Users/mps/dvchd/ViFastOs/v2/test/boot/qemu_guard.sh (khong sua) boot_timeout=20s send_delay_ms=50
+# parity: image_path=v2/artifacts/276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6.bin image_sha256=276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6 image_bytes=82552
+# parity: artifacts_bin=artifacts/276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6.bin co=0 (dong bang artifacts/<sha>.bin thuoc KT-84)
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=1.92 loadavg_5m=3.18 loadavg_15m=3.59 ncpu=12 boot_done=0 verdict=OK
+# parity: spec_total=28 active=6 deferred=22 (nguon: /Users/mps/dvchd/ViFastOs/spec/v1-parity.toml)
+# parity: serial name=help payload_bytes=10 min_count=2 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-1-help-serial-custom-smp1.log
+not ok 1 - help: khong thay shell trong log (qemu_rc=0)
+# parity: serial name=echo payload_bytes=10 min_count=1 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-2-echo-serial-custom-smp1.log
+not ok 2 - echo: khong thay shell trong log (qemu_rc=0)
+# parity: serial name=ps payload_bytes=3 min_count=2 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-3-ps-serial-custom-smp1.log
+not ok 3 - ps: khong thay shell trong log (qemu_rc=0)
+# parity: serial name=kill payload_bytes=9 min_count=1 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-4-kill-serial-custom-smp1.log
+not ok 4 - kill: khong thay shell trong log (qemu_rc=0)
+# parity: serial name=ls payload_bytes=3 min_count=1 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-5-ls-serial-custom-smp1.log
+not ok 5 - ls: khong thay shell trong log (qemu_rc=0)
+# parity: serial name=cat payload_bytes=32 min_count=1 qemu_rc=0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-6-cat-serial-custom-smp1.log
+not ok 6 - cat: khong thay shell trong log (qemu_rc=0)
+# parity: total=28 ok=0 deferred=22 active=6 (active_da_chay=6)
+# parity: not_ok=6 timeout=0 khong_co_shell=6 qemu_rc=0
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=1.92 loadavg_5m=3.18 loadavg_15m=3.59 ncpu=12 boot_done=6 verdict=OK
+# parity: qemu_con_sot_total=0 qemu_cua_script=0
+# parity: KET_LUAN=khong_co_shell (exit 5)
+### NOSHELL_PARITY_EXIT=5 (5 = khong_co_shell theo run.sh)
+# run.sh: task=KT-77a mode=serial image=custom smp=1 negative=none
+# run.sh: toml=/Users/mps/dvchd/ViFastOs/spec/v1-parity.toml
+# run.sh: image=v2/artifacts/276e68c883147fed2f62a6814132e25fe79fd10ee22d8f73ba6d8349143ce5d6.bin qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/Users/mps/dvchd/ViFastOs/v2/test/boot/qemu_guard.sh (khong sua) boot_timeout=20s send_delay_ms=50
+not ok 1 - help: khong thay shell trong log (qemu_rc=0)
+not ok 2 - echo: khong thay shell trong log (qemu_rc=0)
+not ok 3 - ps: khong thay shell trong log (qemu_rc=0)
+not ok 4 - kill: khong thay shell trong log (qemu_rc=0)
+not ok 5 - ls: khong thay shell trong log (qemu_rc=0)
+not ok 6 - cat: khong thay shell trong log (qemu_rc=0)
+
+===== BUILD ca am [shellnofs] extra=[--features product-shell] td=/tmp/kt88-frz-shellnofs 2026-11-17T06:47:17Z =====
+# repro-build: máy Darwin arm64, gốc=/Users/mps/dvchd/ViFastOs
+# repro-build: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27) | toolchain=1.99.1-aarch64-apple-darwin (overridden by environment variable RUSTUP_TOOLCHAIN) 
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/Users/mps/dvchd/ViFastOs=/vifast -C strip=symbols ] (remap /Users/mps/dvchd/ViFastOs -> /vifast)
+# repro-build: CARGO_TARGET_DIR=/private/tmp/kt88-frz-shellnofs
+# repro-build: build identity rev=cf96eb9b589d dirty=0 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
+REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23 size=176768 wall_s=12 rev=cf96eb9b589d dirty=0 build=40084955930e6bd5 text=106922 image=/private/tmp/kt88-frz-shellnofs/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+----- exit=0 label=shellnofs
+### ANH_SHELL_KHONG_FS sha256=21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23 size=176768 build=40084955930e6bd5 text=106922 artifact=v2/artifacts/21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23.bin
+
+===== PARITY tren anh CO shell KHONG FS (ky vong ls/cat DO, 4 lenh kia XANH) 2026-11-17T06:47:29Z =====
+# run.sh: task=KT-77a mode=serial image=custom smp=1 negative=none
+# run.sh: toml=/Users/mps/dvchd/ViFastOs/spec/v1-parity.toml
+# run.sh: image=v2/artifacts/21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23.bin qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/Users/mps/dvchd/ViFastOs/v2/test/boot/qemu_guard.sh (khong sua) boot_timeout=20s send_delay_ms=50
+# parity: image_path=v2/artifacts/21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23.bin image_sha256=21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23 image_bytes=176768
+# parity: artifacts_bin=artifacts/21b08f7faf73de963efd30d06dc6533155128b3b4118257c874c0e14c8440d23.bin co=0 (dong bang artifacts/<sha>.bin thuoc KT-84)
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.02 loadavg_5m=3.14 loadavg_15m=3.57 ncpu=12 boot_done=0 verdict=OK
+# parity: spec_total=28 active=6 deferred=22 (nguon: /Users/mps/dvchd/ViFastOs/spec/v1-parity.toml)
+# parity: serial name=help payload_bytes=10 min_count=2 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-1-help-serial-custom-smp1-nofs.log
+ok 1 - help (khop=16 >= 2, waited_ms=0)
+# parity: serial name=echo payload_bytes=10 min_count=1 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-2-echo-serial-custom-smp1-nofs.log
+ok 2 - echo (khop=8 >= 1, waited_ms=0)
+# parity: serial name=ps payload_bytes=3 min_count=2 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-3-ps-serial-custom-smp1-nofs.log
+ok 3 - ps (khop=8 >= 2, waited_ms=0)
+# parity: serial name=kill payload_bytes=9 min_count=1 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-4-kill-serial-custom-smp1-nofs.log
+ok 4 - kill (khop=8 >= 1, waited_ms=0)
+# parity: serial name=ls payload_bytes=3 min_count=1 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-5-ls-serial-custom-smp1-nofs.log
+not ok 5 - ls: byte da vao shell (co 8 dong 'shell: ?') nhung expect khong khop sau 4000 ms (^# shell: ls n=[0-9]+ path=/)
+# parity: serial name=cat payload_bytes=32 min_count=1 qemu_rc=124 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-neg-frz/kt77a-serial-6-cat-serial-custom-smp1-nofs.log
+not ok 6 - cat: byte da vao shell (co 16 dong 'shell: ?') nhung expect khong khop sau 4000 ms (^# shell: cat ok bytes=7 first=hello77$)
+# parity: total=28 ok=4 deferred=22 active=6 (active_da_chay=6)
+# parity: not_ok=2 timeout=0 khong_co_shell=0 qemu_rc=124
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.53 loadavg_5m=3.41 loadavg_15m=3.59 ncpu=12 boot_done=6 verdict=OK
+# parity: qemu_con_sot_total=0 qemu_cua_script=0
+# parity: KET_LUAN=not_ok (exit 3)
+### SHELLNOFS_PARITY_EXIT=3
+ok 1 - k3 boot
+ok 1 - help (khop=16 >= 2, waited_ms=0)
+ok 1 - k3 boot
+ok 2 - echo (khop=8 >= 1, waited_ms=0)
+ok 1 - k3 boot
+ok 3 - ps (khop=8 >= 2, waited_ms=0)
+ok 1 - k3 boot
+ok 4 - kill (khop=8 >= 1, waited_ms=0)
+ok 1 - k3 boot
+not ok 5 - ls: byte da vao shell (co 8 dong 'shell: ?') nhung expect khong khop sau 4000 ms (^# shell: ls n=[0-9]+ path=/)
+ok 1 - k3 boot
+not ok 6 - cat: byte da vao shell (co 16 dong 'shell: ?') nhung expect khong khop sau 4000 ms (^# shell: cat ok bytes=7 first=hello77$)
+
+### qemu_con_sot_sau=0
+### ket thuc 2026-11-17T06:52:39Z

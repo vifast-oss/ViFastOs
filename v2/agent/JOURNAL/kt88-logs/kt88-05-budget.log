@@ -1,0 +1,9 @@
+### KT-88 T5 budget tren anh canonical artifacts/38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2.bin
+### HEAD=d40f1e63a61df006a61befb6ec39ab18483e23ce
+### image_sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2
+### image_bytes=205440
+### tran=262144
+# image=product path=v2/artifacts/38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2.bin file=205440 data+bss=223696 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=130062 .rodata=58872 .data=7832 .bss=215864 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7832 .bss=215864 
+### budget_exit=0

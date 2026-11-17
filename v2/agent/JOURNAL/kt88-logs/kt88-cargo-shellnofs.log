@@ -1,0 +1,77 @@
+   Compiling vifast-abi v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-abi)
+   Compiling vifast-pte v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-pte)
+   Compiling vifast-alloc v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-alloc)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+   Compiling vifast-fs v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-fs)
+   Compiling vifast-virtio v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-virtio)
+   Compiling vifast-ring v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-ring)
+   Compiling vifast-elf v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-elf)
+   Compiling vifast-traceformat v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-traceformat)
+   Compiling vifast-idl v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-idl)
+   Compiling vifast-scenario v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-scenario)
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-vfs v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-vfs)
+   Compiling vifast-plat-common v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-common)
+   Compiling vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+warning: unused import: `PteFacts`
+  --> vifast-plat-riscv64/src/user.rs:51:50
+   |
+51 | use vifast_plat_common::fault::{self, FaultKind, PteFacts, TrapFacts, FAULT_STATS};
+   |                                                  ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `ranges_save` is never used
+   --> vifast-plat-riscv64/src/user.rs:271:15
+    |
+271 | pub(crate) fn ranges_save() -> UserRanges {
+    |               ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `ranges_restore` is never used
+   --> vifast-plat-riscv64/src/user.rs:278:15
+    |
+278 | pub(crate) fn ranges_restore(saved: &UserRanges) {
+    |               ^^^^^^^^^^^^^^
+
+warning: method `snapshot_into` is never used
+  --> vifast-plat-riscv64/src/user_ranges.rs:38:19
+   |
+22 | impl UserRanges {
+   | --------------- method in this implementation
+...
+38 |     pub(crate) fn snapshot_into(&self, dst: &UserRanges) {
+   |                   ^^^^^^^^^^^^^
+
+warning: `vifast-plat-riscv64` (lib) generated 4 warnings (run `cargo fix --lib -p vifast-plat-riscv64` to apply 1 suggestion)
+warning: vifast-kbin-riscv64@0.1.0: KT-86 build identity rev=cf96eb9b589d dirty=0
+warning: vifast-kbin-riscv64@0.1.0: KT-65 init.elf 12648 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 procsrv.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 shell.elf 13768 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 child.elf 8504 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 inv.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 memsrv.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 client.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_server.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_client.elf 8568 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 ring_server.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 ring_client.elf 12720 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 con_client.elf 8928 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 exec_a.elf 8520 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 exec_b.elf 8496 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 exec_c.elf 8496 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 exec_d.elf 8496 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_server.elf 13928 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_client_a.elf 8528 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_client_b.elf 8528 B
+warning: unused variable: `fs`
+   --> vifast-kbin-riscv64/src/proc_rt.rs:213:55
+    |
+213 | fn service(m: &mut Machine, rig: &Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
+    |                                                       ^^ help: if this is intentional, prefix it with an underscore: `_fs`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-kbin-riscv64` (bin "vifast-kbin-riscv64") generated 1 warning (run `cargo fix --bin "vifast-kbin-riscv64" -p vifast-kbin-riscv64` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 11.70s

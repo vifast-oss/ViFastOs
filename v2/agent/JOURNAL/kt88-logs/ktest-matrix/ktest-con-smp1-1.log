@@ -1,0 +1,106 @@
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..5
+# con image: hart=0 stvec=0x802000a0 direct=1 satp=0x80000000000804e8 mode=8 root=0x804e8000 obj_arena=0x804f8000-0x80508000 untyped=2 tcb=5 elf=8928
+# con plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# con ring: pa=0x82000000 phys=0xffffffc082000000 va=0x43000000 const:slots=32 const:slot_bytes=32 head=0 tail=0 check=1 const:capacity=768
+# con uart: irqs=31 bytes=30 const:payload=30 chunks=30 const:chunks_want=2 head=30 const:head0=0 tail=0 used=30 seq=30 empty_polls=1 empty_bytes=0 drops=0 timeouts=0 inject_ok=1 inject_ticks=64 rx_begin=1 rx_end=1
+ok 1 - con uart irq ring
+# con: u up
+# sys: nr=12 err=0 value=12 tcb=5 state=Ready src=core
+# con: u bytes=# sys: nr=12 err=0 value=15 tcb=5 state=Ready src=core
+30# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ sum=# sys: nr=12 err=0 value=5 tcb=5 state=Ready src=core
+2363# sys: nr=12 err=0 value=4 tcb=5 state=Ready src=core
+ first=# sys: nr=12 err=0 value=7 tcb=5 state=Ready src=core
+99# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ last=# sys: nr=12 err=0 value=6 tcb=5 state=Ready src=core
+10# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ seq=# sys: nr=12 err=0 value=5 tcb=5 state=Ready src=core
+30# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ slots=# sys: nr=12 err=0 value=7 tcb=5 state=Ready src=core
+32# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ slot_bytes=# sys: nr=12 err=0 value=12 tcb=5 state=Ready src=core
+32# sys: nr=12 err=0 value=2 tcb=5 state=Ready src=core
+ check=# sys: nr=12 err=0 value=7 tcb=5 state=Ready src=core
+1# sys: nr=12 err=0 value=1 tcb=5 state=Ready src=core
+
+# sys: nr=12 err=0 value=1 tcb=5 state=Ready src=core
+# sys: nr=14 err=0 value=0 tcb=5 state=Inactive src=core
+# u-mode exit: code=0 faultkind=Exit{0} tcb=5 state=Inactive
+# con u: map=1 exit=0 match=1 head=30 tail=30 used=0 captured=48 prefix="# con: u up.# con: u bytes=30 sum=2363 first=99 "
+ok 2 - con u-mode doc ring
+# con pci: vendor=0x1af4 device=0x1003 bus=0 dev=1 func=0 bar=4 kind=mem64 size=0x4000 assigned=0x40200000 readback=0x40200000 command=0x6 ecam=0x30008000 other_bars=0 reserved=5 overlap=1 caps_in_bar=1 ecam_id=1 bar_id=1 const:assign=0x40200000
+# con queue: num_queues=64 rx_max=128 rx_size=8 rx_notify_off=0 tx_max=128 tx_size=8 tx_notify_off=1 notify_mul=4 device_features=0x10130000006 driver_features=0x100000000 const:version1=1 multiport=0 status=0xf generations=0/0 rx_buf=0x80254400 tx_buf=0x80254440 rx_desc=0x80254000 tx_desc=0x80254200
+ok 3 - con pci
+# con: rx armed
+# con tx: one=Ok(14) two=Ok(10) writes=2 write_bytes=24 const:tx_want=24 notifies=4 last_tx_used_len=0 const:tx_len_note=0..=24 driver_status=0xf
+# con rx: got=14 const:want=14 ok=1 busy=0 errors=0 timeouts=0 id_mismatch=0 last_rx_used_len=14 armed=1 head=2/2
+ok 4 - con ghi doc
+# con neg: busy=1 const:busy_code=14 read_try=Busy ring_slots_ok=32 const:slots_want=32 ring_bytes_ok=768 const:bytes_want=768 drops=2 const:drops_want=2 full_code=9 const:full_want=9 consumed=768 order_ok=1 head=62 tail=62 used=0 timeouts=0
+ok 5 - con ca am
+# con done: fails=0 const:plan=5 payload=2 const:payload_bytes=30 const:rx_bytes=14 const:fill=800 const:channel=const:slots*const:slot_bytes=768
+PANIC: KT-73 con xong (5 TAP, 0 fail)
