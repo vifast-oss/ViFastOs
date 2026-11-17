@@ -66,3 +66,26 @@ Ba dòng chứng cứ mẫu (mỗi vòng đều có):
   (A1-189).
 - Script nằm trong `JOURNAL/`, **không** phải harness chính thức; nếu A0 muốn thành cổng thường trực
   thì phải thành task riêng (sửa `soak.sh` = đổi phương pháp đo, cần A0 duyệt).
+
+## Vòng review độc lập (verify-kt90) — APPROVE + 3 ghi chú, đã vá 2
+
+Reviewer kiểm **6/6 mục** và kết luận **APPROVE**: log đúng **1.000** dòng `boot N/1000 ok`, không thiếu/trùng/lạ;
+**1000/1000** tệp `boot-N.log` đều có `shell>`, `# shell: help cmds=`, `# shell: exit code=0`, `# product halt:`,
+`# build: rev=cf96eb9b589d dirty=0`; sha ảnh **bây giờ** vẫn `291502d2…0353`; pilot tái lập **6/6 ok**;
+bản vá `-icount` của lead đúng **cả hai chiều** (dòng thật ⇒ PASS, dòng có `-icount` ⇒ REFUSE).
+
+**Đã vá theo review**:
+- **N1** — script **xoá** `kt90-preflight.log` mỗi lần chạy ⇒ pilot của reviewer ghi đè bằng chứng preflight của phép đo
+  (reviewer đã phục hồi byte-identical). Nay mỗi lần chạy ghi tệp **có dấu thời gian**; tệp đã commit được giữ nguyên.
+- **N2** — `QARGS` là **bản cứng**, không suy ra từ `soak.sh`; header/journal nói "lấy nguyên văn" là **quá lời**.
+  Nay sửa lời cho đúng, và thêm **đối chiếu từng cờ** với `soak.sh` (lệch ⇒ **TỪ CHỐI ĐO**).
+
+**Ghi nhận, không vá** (reviewer nêu, không chặn):
+- `qemu_con_sot` là **cảnh báo**, không phải cổng (đếm mọi QEMU trên máy nên không thể làm cổng cứng).
+- sha ảnh kiểm **đầu/cuối**; giữa chừng chỉ kiểm danh tính qua dòng `# build:` từng vòng.
+- Đếm **số lượng** vòng, không kiểm **duy nhất** (thực tế `lane_worker` bước nhảy `LANES` nên tất định; `results.txt` có 1000 id duy nhất).
+- Cửa sổ đọc `QEMU_ARGS` của `soak.sh` là **hai dòng**; nếu sau này trải ba dòng thì cờ ở dòng thứ ba sẽ lọt.
+
+**Phạm vi bằng chứng (reviewer xác nhận, giữ nguyên)**: KT-90 đủ cho câu *"1.000 boot trên đúng ảnh phát hành,
+mỗi vòng shell thật chạy `help`+`exit` và halt sạch"*; **không** đủ cho câu *"soak 1.000 phủ đường đĩa thật"* —
+đường đĩa mới có **hai boot + persist** (KT-88). Muốn bằng chứng đĩa 1.000 vòng thì phải task riêng (gắn `-drive`).

@@ -147,7 +147,9 @@ qemu_count() { # in "<total> <ppid1>" — mọi QEMU trên máy (đo, không ph�
 
 # ------------------------------------------------------------------ preflight
 mkdir -p "$LOGROOT" || die "không tạo được $LOGROOT"
-PRE="$LOGROOT/kt90-preflight.log"
+# N1 (reviewer KT-90): KHÔNG ghi đè preflight của phép đo trước — mỗi lần chạy một tệp riêng,
+# và giữ nguyên `kt90-preflight.log` đã commit làm bằng chứng của phép đo 1.000.
+PRE="$LOGROOT/kt90-preflight-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
 : >"$PRE"
 say() {
     printf '%s\n' "$*"
@@ -189,11 +191,23 @@ esac
 SOAK_ARGS_ONLY="${SOAK_ARGS_LINE%%#*}"
 case "$SOAK_ARGS_ONLY" in *icount*) refuse "soak.sh có icount (D2-74 c cấm) — dừng" ;; esac
 
-# Bộ cờ dùng để boot (ĐÚNG thứ tự như soak.sh QEMU_ARGS).
+# Bộ cờ dùng để boot: **bản cứng** trong script này (KHÔNG suy ra từ soak.sh — N2 của reviewer).
+# soak.sh được **đối chiếu** ở khối `case` phía trên; nếu hai bên lệch, script TỪ CHỐI ĐO.
 QARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$ART" -nographic \
     -cpu rv64 -m 128M -smp 1 -no-reboot)
 QARGS_TXT="-machine virt,aia=none,aclint=on -bios $SBI -kernel $ART -nographic -cpu rv64 -m 128M -smp 1 -no-reboot"
-say "# QEMU_ARGS (nguyên văn): $QARGS_TXT"
+say "# QEMU_ARGS (bản cứng của script; soak.sh chỉ đối chiếu): $QARGS_TXT"
+# N2b: đối chiếu **từng cờ** với phần cờ của soak.sh — lệch ⇒ TỪ CHỐI ĐO (không tự đoán).
+for _tok in -machine -bios -kernel -nographic -cpu -m -smp -no-reboot; do
+    case "$SOAK_ARGS_ONLY" in
+        *"$_tok"*) ;;
+        *) refuse "soak.sh thiếu cờ '$_tok' mà script dùng — không tự đoán" ;;
+    esac
+done
+case "$SOAK_ARGS_ONLY" in
+    *"virt,aia=none,aclint=on"*"rv64"*"128M"*"smp 1"*) ;;
+    *) refuse "giá trị cờ của soak.sh khác bản cứng — không tự đoán" ;;
+esac
 
 read -r Q_BEFORE Q1_BEFORE <<EOF
 $(qemu_count)
