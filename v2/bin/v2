@@ -88,6 +88,9 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
                                log đã commit; log commit trước báo cáo; bộ đếm "0" phải có ca âm;
                                bản trích tiêu chí đủ cột; ca phá cũ là ca hồi quy. Được
                                `v2 check` / `gate --fast` gọi tự động.
+  ./v2/bin/v2 status [--json]
+                               KT-102: một màn hình trạng thái (HEAD, dấu vân tay build-inputs,
+                               ảnh mới nhất, đếm task). Chỉ đọc, không build.
   ./v2/bin/v2 check-repro [--negative]
                                KT-79 / OD-K6-3: build ảnh sản phẩm ở **2 đường dẫn tuyệt đối
                                khác nhau** ⇒ phải CÙNG sha256. `--negative` = ca âm (tắt
@@ -587,6 +590,7 @@ case "$cmd" in
         fi
         ;;
     miri) do_miri "$@" ;;
+    status) exec bash "$V2_ROOT/tools/status.sh" "$@" ;;
     check-repro) exec bash "$V2_ROOT/tools/repro-check.sh" "$@" ;;
     check-rules) check_k6_rules "$@" ;;
     rules)
