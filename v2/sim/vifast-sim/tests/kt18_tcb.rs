@@ -303,6 +303,136 @@ fn tcb_state_khop_d2_33_va_render() {
 //    **không** đổi trạng thái; 100% cặp ALLOWED có hit (`pair_hits`/`transition_coverage`).
 // ---------------------------------------------------------------------------
 
+/// **KT-117** — bảng `ALLOWED` phải khớp **tài liệu** `v2/docs/k1b-tcb-transition.md` §2.
+///
+/// Vì sao cần: `bang_allowed_11x11_du_cap_va_cam` lặp **chính** `ALLOWED` để dựng kỳ vọng, nên nếu
+/// một ô trong bảng bị đảo thì test **vẫn xanh** (đã chứng minh bằng đột biến: hoán vị
+/// `BlockedOnRecv→Inactive` và `BlockedOnRecv→BlockedOnReply` ⇒ 18/18 vẫn PASS). Test này đọc
+/// **nguyên văn** bảng markdown trong tài liệu — nguồn **khác** với mã — rồi so từng ô.
+#[test]
+fn bang_allowed_khop_tai_lieu() {
+    let doc = include_str!("../../../docs/k1b-tcb-transition.md");
+    // Tìm bảng §2: các dòng bắt đầu bằng `| **Tên** |` hoặc `| **From \ To |`.
+    let mut rows: Vec<Vec<bool>> = Vec::new();
+    for line in doc.lines() {
+        let line = line.trim();
+        if !line.starts_with("| **") {
+            continue;
+        }
+        // Bỏ dòng tiêu đề.
+        if line.contains("From") {
+            continue;
+        }
+        let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+        // cells[0] rỗng (trước `|` đầu), cells[1] = tên trạng thái, cells[2..13] = 11 ô.
+        if cells.len() < 13 {
+            continue;
+        }
+        let mut row = Vec::with_capacity(N_STATES);
+        for cell in &cells[2..2 + N_STATES] {
+            row.push(match *cell {
+                "x" => true,
+                "." => false,
+                other => panic!("tài liệu: ô lạ {other:?} trong bảng ALLOWED"),
+            });
+        }
+        rows.push(row);
+    }
+    assert_eq!(
+        rows.len(),
+        N_STATES,
+        "tài liệu phải có đúng {N_STATES} hàng bảng ALLOWED, thấy {}",
+        rows.len()
+    );
+    for (from, row) in rows.iter().enumerate() {
+        for (to, expected) in row.iter().enumerate() {
+            assert_eq!(
+                ALLOWED[from][to], *expected,
+                "ô ({from}->{to}): mã nói {} nhưng tài liệu nói {}",
+                ALLOWED[from][to], expected
+            );
+        }
+    }
+}
+
+/// **KT-117** — bất biến **ngữ nghĩa** của bảng, viết từ thiết kế §4.4/§4.5 (không đọc bảng).
+///
+/// Bổ sung cho test khớp tài liệu: nếu ai sửa **cả** mã **và** tài liệu cùng lúc thì test kia vẫn
+/// xanh, còn các bất biến dưới đây thì không — chúng suy từ **lý do thiết kế**, không từ bảng.
+#[test]
+fn bang_allowed_bat_bien_thiet_ke() {
+    const INACTIVE: usize = 0;
+    const READY: usize = 1;
+    const RUNNING: usize = 2;
+    const BLOCKED_SEND: usize = 3;
+    const BLOCKED_REPLY: usize = 5;
+    const SLEEPING: usize = 8;
+    const STOPPING: usize = 9;
+    const DEAD: usize = 10;
+
+    // (1) `Dead` là trạng thái cuối — không ra được (§4.4 "Dead: không ra được").
+    for (to, allowed) in ALLOWED[DEAD].iter().enumerate() {
+        assert!(!allowed, "Dead -> {to} phải bị cấm");
+    }
+    // (2) Chỉ `Ready` mới vào `Running` — Running nghĩa là đã được scheduler chọn từ ready queue.
+    for (from, row) in ALLOWED.iter().enumerate() {
+        if from != READY {
+            assert!(!row[RUNNING], "{from} -> Running phải bị cấm");
+        }
+    }
+    // (3) Chỉ `Running` mới vào `Sleeping` — hết budget/timeout khi đang chạy (§4.5).
+    for (from, row) in ALLOWED.iter().enumerate() {
+        if from != RUNNING {
+            assert!(!row[SLEEPING], "{from} -> Sleeping phải bị cấm");
+        }
+    }
+    // (4) `Stopping` chỉ vào từ `Ready`/`Running`, và chỉ ra `Dead` (§4.4, K1c).
+    for (from, row) in ALLOWED.iter().enumerate() {
+        if from != READY && from != RUNNING {
+            assert!(!row[STOPPING], "{from} -> Stopping phải bị cấm");
+        }
+    }
+    for (to, allowed) in ALLOWED[STOPPING].iter().enumerate() {
+        if to != DEAD {
+            assert!(!allowed, "Stopping -> {to} phải bị cấm");
+        }
+    }
+    // (5) Mọi trạng thái trừ `Dead` đều phải finalise được ⇒ vào `Dead`.
+    for (from, row) in ALLOWED.iter().enumerate().take(DEAD) {
+        assert!(row[DEAD], "{from} -> Dead phải được phép (finalise)");
+    }
+    // (6) Mọi `BlockedOn*` phải **thức dậy** được (`-> Ready`) và **huỷ** được (`-> Inactive`).
+    for (from, row) in ALLOWED
+        .iter()
+        .enumerate()
+        .take(SLEEPING + 1)
+        .skip(BLOCKED_SEND)
+    {
+        assert!(row[READY], "{from} -> Ready phải được phép (wake)");
+        assert!(
+            row[INACTIVE],
+            "{from} -> Inactive phải được phép (cancel/exit)"
+        );
+    }
+    // (7) `BlockedOnReply` chỉ vào từ `Ready`/`Running`/`BlockedOnSend` — chỉ `Call` mới tạo Reply.
+    for (from, row) in ALLOWED.iter().enumerate() {
+        if from != READY && from != RUNNING && from != BLOCKED_SEND {
+            assert!(
+                !row[BLOCKED_REPLY],
+                "{from} -> BlockedOnReply phải bị cấm (chỉ Call mới tạo Reply)"
+            );
+        }
+    }
+    // (8) Không cặp danh tính nào **trừ** `BlockedOnSend -> BlockedOnSend` (fault khi đang chờ gửi).
+    for (state, row) in ALLOWED.iter().enumerate() {
+        if state == BLOCKED_SEND {
+            assert!(row[state], "BlockedOnSend -> chính nó phải được phép");
+        } else {
+            assert!(!row[state], "{state} -> chính nó phải bị cấm");
+        }
+    }
+}
+
 #[test]
 fn bang_allowed_11x11_du_cap_va_cam() {
     let ids = ids();
