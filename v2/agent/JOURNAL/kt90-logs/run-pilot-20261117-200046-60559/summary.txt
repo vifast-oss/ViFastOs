@@ -1,0 +1,7 @@
+# KT-90 pilot xong — 2026-11-17T11:00:48Z
+# wall=1s tổng=3/3 ok=3 fail=0 (1s)
+# tốc độ=3 boot/s (3 lane nếu LANES=3)
+# timeout-shell=0 panic=0 help-response=3/3 rx_bytes_min=10
+# ảnh: sha256=291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353 (đầu 291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353) changed=0 bytes=205440
+# infra after: qemu_con_sot_total=0 qemu_ppid1=0 (trước: 0/0)
+# run=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt90-logs/run-pilot-20261117-200046-60559
