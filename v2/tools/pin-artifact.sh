@@ -10,6 +10,7 @@
 #   bash v2/tools/pin-artifact.sh <ảnh> --dir DIR  # ghim vào DIR
 #   ... --allow-stale   # cho phép ảnh có dấu vân tay KHÁC cây hiện tại (mặc định: TỪ CHỐI)
 #   ... --allow-dirty   # cho phép ảnh tự khai `dirty=1` (mặc định: TỪ CHỐI)
+#   ... --allow-unverified  # cho phép ghim khi KHÔNG tính được dấu vân tay cây (mặc định: TỪ CHỐI)
 #   bash v2/tools/pin-artifact.sh --verify [--dir DIR]   # kiểm **mọi** ảnh đã ghim
 #   bash v2/tools/pin-artifact.sh --selftest              # tự kiểm 6 ca (dương + âm)
 #
@@ -130,6 +131,7 @@ IMAGE="$1"
 shift
 ALLOW_STALE=0
 ALLOW_DIRTY=0
+ALLOW_UNVERIFIED=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --dir)
@@ -139,6 +141,7 @@ while [ "$#" -gt 0 ]; do
             ;;
         --allow-stale) ALLOW_STALE=1; shift ;;
         --allow-dirty) ALLOW_DIRTY=1; shift ;;
+        --allow-unverified) ALLOW_UNVERIFIED=1; shift ;;
         *) die "tham số lạ: $1" ;;
     esac
 done
@@ -176,7 +179,13 @@ if [ -f "$V2_ROOT/test/boot/build-rev.sh" ]; then
             exit 5
         fi
     else
-        echo "pin-artifact: CẢNH BÁO không tính được dấu vân tay cây hiện tại — bỏ qua kiểm tươi" >&2
+        # KT-100 (review đêm 17/11): trước đây chỉ **cảnh báo** rồi vẫn ghim ⇒ ghim được ảnh của
+        # cây khác khi không tính được dấu vân tay (đúng lớp lỗi D2-108A). Nay **từ chối**.
+        if [ "$ALLOW_UNVERIFIED" -eq 0 ]; then
+            echo "pin-artifact: KHÔNG tính được dấu vân tay cây hiện tại — không ghim (dùng --allow-unverified nếu cố ý)" >&2
+            exit 5
+        fi
+        echo "pin-artifact: CẢNH BÁO không tính được dấu vân tay — ghim theo --allow-unverified" >&2
     fi
 fi
 

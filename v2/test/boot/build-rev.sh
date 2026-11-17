@@ -49,7 +49,7 @@ VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/bin"
 # vân tay mà dấu vân tay không đổi là khe tin-cậy. `build-rev.sh` định nghĩa dấu vân tay;
 # `repro-build.sh` đặt RUSTFLAGS (remap/strip) ảnh hưởng byte ảnh; `rustc-canon.rs` là wrapper
 # rustc canonical. Ba tệp này **phải** nằm trong dấu vân tay.
-VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/test/boot/build-rev.sh v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
+VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/test/boot/build-rev.sh v2/tools/repro-build.sh v2/tools/rustc-canon.rs v2/tools/pre-measure.sh v2/tools/task-target.sh"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
 # Độ dài `rev` HEAD chỉ để tra trong log (12 hex đầu của SHA-1).
@@ -184,6 +184,18 @@ vbrev_inputs_list() {
     tracked="$(git -C "$root" --no-optional-locks ls-tree -r --name-only HEAD -- $VBREV_INPUT_ROOTS 2>/dev/null)" || return 1
     # shellcheck disable=SC2086
     pins="$(git -C "$root" --no-optional-locks ls-tree --name-only HEAD -- $VBREV_INPUT_FILES 2>/dev/null)" || return 1
+    # **KT-100 (review đêm 17/11)**: `ls-tree` coi đường dẫn **không khớp** là rỗng **hợp lệ** ⇒ một
+    # tệp ghim bị `git rm --cached` + thêm vào `.gitignore` sẽ **âm thầm** rơi khỏi build-inputs:
+    # dấu vân tay không đổi, `dirty=0`, và sửa nội dung tệp đó **không** bị bắt. Đó đúng là khe
+    # KT-93 định đóng. Nay: **thiếu mặt** ⇒ lỗi (fail-closed), không im lặng.
+    local _f="" _missing=""
+    for _f in $VBREV_INPUT_FILES; do
+        printf '%s\n' "$pins" | LC_ALL=C grep -qxF -- "$_f" || _missing="$_missing $_f"
+    done
+    if [ -n "$_missing" ]; then
+        VBREV_CALC_ERROR="missing-input:$_missing"
+        return 1
+    fi
     {
         [ -n "$tracked" ] && printf '%s\n' "$tracked"
         [ -n "$pins" ] && printf '%s\n' "$pins"
@@ -251,7 +263,17 @@ vbrev_inputs_calc() {
         return 1
     }
     list="$(vbrev_inputs_list "$root")" || {
-        VBREV_CALC_ERROR="no-inputs-list"
+        # `vbrev_inputs_list` chạy trong subshell ⇒ lỗi cụ thể của nó không truyền ra; kiểm lại
+        # **đủ mặt** tệp ghim ở đây để báo đúng lý do (KT-100).
+        local _f="" _missing=""
+        for _f in $VBREV_INPUT_FILES; do
+            git -C "$root" --no-optional-locks cat-file -e "HEAD:$_f" 2>/dev/null || _missing="$_missing $_f"
+        done
+        if [ -n "$_missing" ]; then
+            VBREV_CALC_ERROR="missing-input:$_missing"
+        else
+            VBREV_CALC_ERROR="no-inputs-list"
+        fi
         return 1
     }
     if [ -z "$list" ]; then

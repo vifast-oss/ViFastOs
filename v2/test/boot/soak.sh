@@ -256,7 +256,10 @@ if ! qg_boot "$REV_GATE_LOG" "$TIMEOUT_DS" "$QEMU" \
     # KT-96: ảnh **có shell** không tự thoát ⇒ QEMU bị timeout giết ⇒ `qg_boot` trả != 0 dù boot
     # thành công. Với ảnh cho trước, chấp nhận nếu log **đã có** dòng `# build:` (mục đích của
     # lần dò này là đọc dòng đó); `vbrev_gate` ngay dưới vẫn kiểm byte ảnh.
-    if [ -n "$GIVEN_IMAGE" ] && LC_ALL=C grep -a -q -m1 '# build:' "$REV_GATE_LOG" 2>/dev/null; then
+    # KT-100: chỉ chấp nhận **timeout** (ảnh có shell không tự thoát), KHÔNG chấp nhận crash:
+    # log có `PANIC` hoặc `Fault` ⇒ vẫn là `probe-boot-failed`.
+    if [ -n "$GIVEN_IMAGE" ] && LC_ALL=C grep -a -q -m1 '# build:' "$REV_GATE_LOG" 2>/dev/null &&
+        ! LC_ALL=C grep -a -qE 'PANIC|FaultKind' "$REV_GATE_LOG" 2>/dev/null; then
         echo "# rev-gate: ảnh có shell không tự thoát (timeout) — đã có dòng '# build:', tiếp tục"
     else
         vbrev_refuse probe-boot-failed "log=$REV_GATE_LOG"

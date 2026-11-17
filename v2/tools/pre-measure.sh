@@ -191,6 +191,9 @@ say "# cây nguồn (build-inputs): dirty=$DIRTY"
 [ "$DIRTY" = "0" ] || refuse 7 tree-dirty
 
 # --- 5. QEMU sót -----------------------------------------------------------------------------
+# KT-100 (review đêm 17/11): thiếu `pgrep` thì pipeline ra 0 ⇒ bước này **im lặng PASS**.
+# Nay: không có `pgrep` ⇒ TỪ CHỐI (không chứng minh được "không có QEMU sót").
+command -v pgrep >/dev/null 2>&1 || refuse 8 no-pgrep
 QEMU_N="$(pgrep -f qemu-system 2>/dev/null | wc -l | tr -d ' ')"
 say "# qemu đang chạy: $QEMU_N"
 [ "$QEMU_N" -eq 0 ] || refuse 8 qemu-orphans
