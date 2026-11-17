@@ -56,7 +56,7 @@ Cần A0 chọn; KT-77b **không** phụ thuộc mục này (shell trên ảnh s
 
 ---
 
-## B5 · Cổng `# build: rev` quá chặt khi hai dòng cùng commit vào `main` (mở 2026-11-17, bằng chứng KT-88)
+## B5 · ~~Cổng `# build: rev` quá chặt~~ **ĐÓNG 2026-11-17 bởi D2-127** — cổng sẽ so nội dung build-inputs, không so lịch sử git. Ghi giữ làm bằng chứng. khi hai dòng cùng commit vào `main` (mở 2026-11-17, bằng chứng KT-88)
 
 **Hiện tượng (có log)**: KT-88 build ảnh `38714b79…` ở HEAD `d40f1e63a61d`; boot smp=1 **ACCEPT**; 4 phút sau dòng ViScript commit 3 lần (`7adcbf6e`, `4e903d94`, `ffe75569`) vào **cùng `main`** ⇒ smp=2 **`REFUSE reason=rev-mismatch`**, smp=4 cũng vậy. Toàn bộ ảnh bị từ chối.
 
@@ -74,3 +74,24 @@ Như vậy: ảnh cũ + mã kernel đã đổi ⇒ **vẫn bị từ chối** (�
 **Không tự sửa cổng**: Agent 1 giữ nguyên `build-rev.sh`; nếu A0 duyệt thì giao task riêng (kèm **ca hồi quy**: (i) sửa 1 dòng kernel ở HEAD sau ⇒ phải TỪ CHỐI; (ii) chỉ commit `docs/` ⇒ phải ACCEPT; (iii) ảnh không phải tổ tiên ⇒ TỪ CHỐI) và **cả hai dòng** phải ghi vào luật.
 
 **Tình trạng hiện tại**: người dùng đã đồng ý **đóng băng `main` cả hai dòng ~60 phút** để KT-88 đo đúng một lần ở HEAD `ffe75569e0b2` (D2-123.3). Biện pháp tạm, không phải giải pháp.
+
+---
+
+## B6 · build-inputs của D2-127 bao gồm `v2/agent/JOURNAL/**` ⇒ mọi phép đo tự vô hiệu (mở 2026-11-17, TRƯỚC KT-89)
+
+**Câu hỏi**: mục (3) của D2-127 định nghĩa build-inputs = “toàn bộ `v2/`”. Nhưng harness **ghi log trong lúc đo**, log nằm ở `v2/agent/JOURNAL/…`.
+
+**Hệ quả nếu giữ nguyên**: dòng log đầu tiên làm dấu vân tay đổi ⇒ lần đo kế tiếp **REFUSE** ⇒ **mọi phép đo tự vô hiệu chính nó**. Đây không phải giả thuyết: KT-86 đã phải định nghĩa `dirty` chỉ trong `v2/kernel` + `v2/lib` **vì đúng lý do này**, và đã kiểm bằng thực nghiệm rằng ghi log **không** làm `dirty=1`.
+
+**Vênh thứ hai**: mục (3) nói danh sách “do script sinh từ `cargo metadata`”, nhưng `v2/agent/**` và `v2/docs/**` **không** nằm trong `cargo metadata` của bất kỳ crate nào.
+
+**Đề nghị Agent 1** (không tự quyết — đổi định nghĩa cổng là quyền A0):
+```text
+build-inputs = (bao đóng phụ thuộc theo cargo metadata của kernel/plat/lib/kbin)
+             ∪ (tệp trong v2/ mà ảnh phụ thuộc: Cargo.lock, rust-toolchain.toml,
+                linker script, script build, v2/kernel/**, v2/lib/**)
+             TRỪ: v2/agent/**, v2/docs/**, v2/target*/**, v2/artifacts/**
+```
+kèm **ca hồi quy dương bắt buộc**: chỉ sửa `v2/docs` hoặc `v2/agent` ⇒ build 2 lần **cùng sha** (chứng minh phần trừ không ảnh hưởng byte ảnh), bổ sung cho 5 ca âm của mục (6).
+
+**Trạng thái**: KT-89 **chưa** bắt đầu; cần A0 chốt trước, nếu không KT-89 sẽ “xong” theo đúng chữ nhưng cổng tự khoá chính nó.
