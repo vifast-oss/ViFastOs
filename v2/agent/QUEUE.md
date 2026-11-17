@@ -201,6 +201,16 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-84 | **K6** đo trên ảnh ĐÓNG BĂNG (D2-122.6) | KT-86 | 3 h | DONE | `ae5f2048`: `task-target.sh` + `pin-artifact.sh` (fail-closed) + docs; **chưa** cưỡng chế bằng cổng (cần A0) |
 
 **APPROVED 2026-11-17 Agent 0** — **D2-122**: (1) **KT-79 CÔNG NHẬN đạt đủ OD-K6-3** (2 máy × 2 đường dẫn = `c1072d72`), đóng KT-79; (2) **B1 chọn (B)**: ảnh sản phẩm = pipeline canonical, áp dụng ngay, xuất **2 tệp cùng lần build** (ảnh phát hành strip + ELF đủ symbol), `fd202276` chỉ giữ làm log “trước canonical, không dùng làm bằng chứng v2.0”; (3) `check-repro` vào **mỗi** gate (2 đường dẫn) + định kỳ `ps@ps`; (4) host Windows → nợ **v2.1**; (5) công nhận A1-173/A1-174/A1-175; (6) **sửa cấu trúc**: `CARGO_TARGET_DIR=<repo>/target-task/<mã>` mỗi task + đo trên `artifacts/<sha256>.bin` (⇒ **KT-84**); (7) thứ tự KT-77b → soak/matrix/persist trên ảnh canonical có shell → KT-82.
+| KT-92 | **K6** đóng A1-184: `build.rs` truyền `--remap-path-prefix` cho cả ba chỗ gọi `$RUSTC` | KT-89 | 1 h | DONE | `4040e26d`; hai đường dẫn khác nhau ⇒ **cùng sha** `dd9f7050`; đối chứng âm (không vá) ⇒ khác sha; ảnh dương **không** còn chuỗi đường dẫn |
+| KT-93 | **K6** đóng khe tin-cậy: script đo/build vào build-inputs | KT-89 | 45 m | DONE | `5ac0765b`; 260→263 mục; sửa `build-rev.sh` ⇒ dấu vân tay **đổi** |
+| KT-94 | **K6** ảnh canonical mới sau KT-89/92/93 + kiểm nhanh | KT-92 | 30 m | DONE | `823b357e`; `dd9f7050…` 205.440 B, `inputs=3caf5e7d5f0a3321 dirty=0`; parity 6/6 |
+| KT-95 | **K6** `pre-measure.sh` — kiểm trước khi đo | KT-84 | 1 h | DONE | `11e7e789`; 6 phép kiểm; 6 ca kiểm đã chạy; **chưa** nối vào runner (cần A0) |
+| KT-96 | **K6** `soak.sh --image` — soak ảnh có sẵn | KT-95 | 45 m | DONE | `bffd0cd4`; **từ chối** ảnh có shell (0/N sẽ là giả); mặc định không đổi |
+| KT-97 | **K6** kiểm lại sau KT-92/93/96 | KT-96 | 30 m | DONE | `cb3d406a`; ma trận **21/21**, persist PASS, parity 6/6 |
+| KT-98 | **K6** `--selftest` cho `task-target.sh` + `pre-measure.sh` | KT-95 | 1,5 h | DONE | `f7527899`; 6/6 mỗi cái; **7 đột biến 7/7 bị bắt**; hành vi mặc định không đổi |
+| KT-99 | **K6** soak 1.000 trên ảnh canonical mới | KT-94 | 30 m | DONE | `ef39b39e`; **1000/1000**, wall 533 s, `changed=0`, `qemu_con_sot 0/0` |
+| KT-100 | **K6** vá 4 lỗ fail-open do review đêm | KT-93 | 1,5 h | DONE | `8d3310af`, `baf3b029`, `295f4414`; `missing-input`, `no-pgrep`, `--allow-unverified`, soak chỉ nhận timeout; ảnh mới `9643311d…` |
+| KT-101 | **K6** conformance trên HEAD | KT-100 | 30 m | DONE | `aa7803e7`; `trace-compare` **61/61** dòng khớp sim ↔ QEMU; `scn-check` PASS |
 | KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | BLOCKED | bắt lại 2 lỗi driver cũ ở mô hình |
 | KT-82 | **K6** văn bản đóng K6 (a hoặc b) + caveat P20 | KT-89 | 3 h | BLOCKED | ba trạng thái đóng/hoãn/mở; số từ bảng KT-83; **điều kiện tiên quyết (A1-179)**: 4 tài liệu `pre_existing` (`K6-DOD`, `k6-exec`, `k6-persist`, `k6-parity`) phải chuyển số vào khối `scope=` trước |
 | KT-83 | **K6** mở K7 "Đóng lỗi v1" + chốt bảng 7 lỗi | KT-82 | 3 h | BLOCKED | 2 đóng / 1 hoãn K5' / 4 mở; `file:dòng` từng lỗi; K7 **không** nhận N5 |
