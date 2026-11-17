@@ -1,0 +1,15 @@
+# ST-170 · CỔNG macOS: ./vis-dev gate --fast (số chuẩn R29)
+# Ngày: 2026-11-17T20:18:03+0900 · Agent 2 dòng ViScript · Máy: mac (mps)
+# Căn cứ: QUEUE ST-170 mục 1 · VD-179 §3 · VD-136 (header môi trường)
+# HEAD=39041b3f1bdda8aa786bf785a1835293de20cf19
+# HEAD ngan=39041b3f
+# load truoc: { 1.94 3.39 3.86 }
+# git status --porcelain (viscript crates Cargo.toml Cargo.lock): 2 muc
+# git status --porcelain (toan repo): 23 muc (untracked ngoai viscript/)
+# ---------- THÂN ĐO ----------
+bash: line 10: bin/vis-lock: No such file or directory
+
+# ---------- ST-170 ----------
+# Log NHÁP: lần gọi SAI đường dẫn (`bin/vis-lock` thay vì `viscript/bin/vis-lock`) — KHÔNG phải phép đo.
+# Giữ lại để không ghi đè log; phép đo thật ở st170-gate-macos.log.
+[exit=127]

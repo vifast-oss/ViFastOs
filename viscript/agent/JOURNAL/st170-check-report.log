@@ -1,0 +1,16 @@
+# ST-170 · máy kiểm báo cáo vòng (Khối E) — R29 (lượt CUỐI, trên tệp báo cáo cuối cùng)
+# Ngày: 2026-11-17T20:30:59+0900 · Agent 2 dòng ViScript · Máy: mac (mps)
+# HEAD=39041b3f1bdda8aa786bf785a1835293de20cf19
+# Lệnh: python3 viscript/test/report/check_report.py --all
+# Lượt trước (JSON chưa có 2 trường load của ps): PASS 29 báo cáo / 197 hàng —
+#   giữ ở st170-check-report-lan1-truoc-khi-them-load.log (không ghi đè).
+# ---------- ĐẦU RA ----------
+report-check: PASS (29 báo cáo, 197 hàng QUEUE phủ đủ)
+# ---------- KẾT ----------
+[exit=0]
+
+# ---------- LƯỢT CHỐT (sau khi sửa 2 trường số psvn trong JSON: 150→152 passed, thêm 16 suite) ----------
+# Ngày: 2026-11-17T20:33:23+0900 · HEAD=39041b3f1bdda8aa786bf785a1835293de20cf19
+# Lệnh: python3 viscript/test/report/check_report.py --all
+report-check: PASS (29 báo cáo, 197 hàng QUEUE phủ đủ)
+[exit=0]

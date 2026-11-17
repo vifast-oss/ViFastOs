@@ -1,0 +1,22 @@
+# ST-170 · gate --fast trên mac (số chuẩn R29)
+# bat dau UTC: 2026-11-17T11:17:36Z · JST: 2026-11-17T20:17:36+0900
+# HEAD=39041b3f1bdda8aa786bf785a1835293de20cf19
+# load truoc: { 2.25 3.59 3.94 }
+# git status --porcelain (viscript/crates/Cargo): [0 muc]
+vis-lock: lock=yes pid=2822 tep=/Users/mps/.vifast-measure.lock cho=0.0s
+# ST-176 vis-lock lock=yes pid=2822 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="bash -c 
+  echo "== bat dau $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+  ./vis-dev gate --fast
+  rc=$?
+  echo "== ket thuc $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+  echo "load sau: $(sysctl -n vm.loadavg)"
+  echo "[exit=$rc]"
+  exit $rc
+" load_truoc="{ 2.25 3.59 3.94 }" thoi_diem="2026-11-17T11:17:36Z"
+== bat dau 2026-11-17T11:17:36Z ==
+bash: line 2: ./vis-dev: No such file or directory
+== ket thuc 2026-11-17T11:17:36Z ==
+load sau: { 2.25 3.59 3.94 }
+[exit=127]
+vis-lock: lock=no pid=2822 ma_ra=127 giay=0.0s
+# ST-176 vis-lock lock=yes pid=2822 (giu suot lenh) ma_ra=127 giay=0.0 load_sau="{ 2.25 3.59 3.94 }" thoi_diem="2026-11-17T11:17:36Z"

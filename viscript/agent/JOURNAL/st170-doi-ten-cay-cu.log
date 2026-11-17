@@ -1,0 +1,54 @@
+# ST-170 · Đổi tên cây ps cũ theo VD-179 §3 (chỉ đổi tên, KHÔNG xoá/khôi phục)
+# Ngày: 2026-11-17T20:2x JST · Agent 2 dòng ViScript · Máy đích: ps (Ubuntu, user root)
+# Căn cứ: VD-179 §3 ("Cây cũ /root/vifast-linux: giữ nguyên, không xoá/khôi phục, đổi tên thành
+#         /root/vifast-linux-BAN-CU-KHONG-DUNG") · QUEUE ST-170 mục 2.
+# Lý do dùng user root (không phải ps): cây cũ do root sở hữu từ các đợt trước; đổi tên cần quyền
+#         ghi trên /root. Ghi rõ theo VD-179 §3 ("dùng root thì ghi lý do").
+
+# ---------- TRƯỚC ĐỔI TÊN ----------
+user=root host=ps
+/root/vifast-linux
+HEAD_cu=898c6de820f79190ab01544462de71facf62d76a
+so_tien_trinh_dung_cay=0        # lsof +D /root/vifast-linux | wc -l  ⇒ không tiến trình nào đang dùng
+
+# ---------- ĐỔI TÊN ----------
+$ mv /root/vifast-linux /root/vifast-linux-BAN-CU-KHONG-DUNG
+mv_exit=0
+
+# ---------- SAU ĐỔI TÊN ----------
+ls: cannot access '/root/vifast-linux': No such file or directory
+duong_dan_cu_KHONG_CON
+/root/vifast-linux-BAN-CU-KHONG-DUNG
+HEAD_moi=898c6de820f79190ab01544462de71facf62d76a
+HEAD_ngan_moi=898c6de8
+so_muc_ban=2338                  # git status --porcelain | wc -l  (khớp số ST-175 đã đo)
+so_tep_tracked=4575              # git ls-files | wc -l
+
+# ---------- CLONE SẠCH VẪN CÒN (dùng cho số ps chuẩn R29) ----------
+/root/viscript-sach
+clone_HEAD=39041b3f
+clone_status=0                   # git status --porcelain rỗng ⇒ SẠCH
+clone_origin=/root/vifast-linux  # ⇒ SAU khi đổi tên, đường này KHÔNG còn
+
+# ---------- HỆ QUẢ: origin của clone trỏ vào đường đã đổi tên ----------
+# Chỉ đổi URL remote (KHÔNG đụng cây cũ, KHÔNG xoá/khôi phục gì):
+$ git -C /root/viscript-sach remote set-url origin https://github.com/vifast-oss/ViFastOs.git
+seturl_exit=0
+truoc=/root/vifast-linux
+sau=https://github.com/vifast-oss/ViFastOs.git
+$ git -C /root/viscript-sach fetch --quiet origin
+fetch_exit=0
+HEAD=39041b3f
+status=0
+origin_main=39041b3f
+
+# ---------- KẾT LUẬN ----------
+# 1. Cây cũ đã đổi tên ĐÚNG như VD-179 §3; đường dẫn cũ không còn, đường mới tồn tại.
+# 2. HEAD của cây cũ KHÔNG đổi sau khi đổi tên: 898c6de8 (trước = sau).
+# 3. Không xoá tệp nào, không khôi phục tệp nào: 4575 tệp tracked + 2338 mục bẩn giữ nguyên.
+# 4. Clone sạch /root/viscript-sach vẫn ở 39041b3f, `git status --porcelain` rỗng.
+# 5. Ngoài phạm vi "chỉ đổi tên": đã đổi URL origin của clone sang GitHub (vì origin cũ trỏ vào
+#    đường vừa đổi tên ⇒ `git fetch` sẽ hỏng). Đây là thay đổi cấu hình remote, KHÔNG phải thao tác
+#    trên cây cũ. Ghi ở đây để Agent 1/A0 đối chiếu.
+
+[exit=0]
