@@ -80,3 +80,15 @@ và **từ chối** (mã thoát sáu) khi ảnh tự khai cờ `dirty` bật. C�
 ghi nhận ngoại lệ **có chủ ý**.
 
 Lý do: ghim một ảnh build từ cây khác **chính là** lớp lỗi D2-108A (đo ảnh A, trích số từ ảnh B).
+
+### 6. Tự kiểm
+
+```bash
+bash v2/tools/pin-artifact.sh --selftest
+# pin-selftest: PASS (a/b/c/d/e/f)
+```
+
+Sáu ca: (a) ảnh hợp lệ ghim được; (b) ghim lại ra `state=da-co`; (c) thiếu dòng build ⇒ mã thoát ba;
+(d) ảnh dirty ⇒ mã thoát sáu; (e) lệch dấu vân tay ⇒ mã thoát năm; (f) `--verify` bắt tên sai ⇒ mã
+thoát bảy. Ca dương dùng **dấu vân tay thật** của cây hiện tại, nên nếu cây không tính được dấu vân
+tay thì selftest **đỏ** — đúng fail-closed.

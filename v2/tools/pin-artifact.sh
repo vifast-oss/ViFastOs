@@ -11,6 +11,7 @@
 #   ... --allow-stale   # cho phép ảnh có dấu vân tay KHÁC cây hiện tại (mặc định: TỪ CHỐI)
 #   ... --allow-dirty   # cho phép ảnh tự khai `dirty=1` (mặc định: TỪ CHỐI)
 #   bash v2/tools/pin-artifact.sh --verify [--dir DIR]   # kiểm **mọi** ảnh đã ghim
+#   bash v2/tools/pin-artifact.sh --selftest              # tự kiểm 6 ca (dương + âm)
 #
 # **Vì sao kiểm dấu vân tay**: ghim một ảnh build từ cây khác là đúng lớp lỗi D2-108A (đo ảnh A,
 # trích số từ ảnh B). Mặc định script **từ chối** ảnh lệch cây hiện tại.
@@ -33,6 +34,57 @@ die() {
 }
 
 [ "$#" -ge 1 ] || die "dùng: pin-artifact.sh <ảnh> [--dir DIR] | --verify [--dir DIR]"
+
+# --- chế độ --selftest: dựng ảnh giả trong thư mục tạm, kiểm cả nhánh nhận và nhánh từ chối
+if [ "$1" = "--selftest" ]; then
+    TMP="$(mktemp -d "${TMPDIR:-/tmp}/pin-selftest.XXXXXX")" || die "mktemp"
+    trap 'rm -rf "$TMP"' EXIT
+    rc=0
+    # Ảnh giả: 4 KiB rác + dòng danh tính (đúng dạng kernel in).
+    mk_img() { # <path> <inputs> <dirty>
+        { head -c 4096 /dev/zero; printf '# build: inputs=%s dirty=%s\n' "$2" "$3"; } >"$1"
+    }
+    # Dấu vân tay **thật** của cây hiện tại (để ca dương khớp); nếu không tính được thì dùng
+    # giá trị cố định và ca dương sẽ bị từ chối — đúng fail-closed, và selftest báo FAIL.
+    CUR_FP="0123456789abcdef"
+    if [ -f "$V2_ROOT/test/boot/build-rev.sh" ]; then
+        # shellcheck disable=SC1091
+        . "$V2_ROOT/test/boot/build-rev.sh"
+        vbrev_inputs_calc "$ROOT" >/dev/null 2>&1 && CUR_FP="$VBREV_CALC_SHORT"
+    fi
+    mk_img "$TMP/good.bin" "$CUR_FP" 0
+    mk_img "$TMP/dirty.bin" "$CUR_FP" 1
+    mk_img "$TMP/stale.bin" "ffffffffffffffff" 0
+    head -c 4096 /dev/zero >"$TMP/nobuild.bin"
+
+    # (a) ảnh hợp lệ, khớp cây hiện tại ⇒ ghim được
+    if ! bash "$0" "$TMP/good.bin" --dir "$TMP/out" >/dev/null 2>&1; then
+        echo "# pin-selftest (a) FAIL: ảnh hợp lệ bị từ chối"; rc=1
+    fi
+    # (b) ghim lại ⇒ state=da-co
+    if ! bash "$0" "$TMP/good.bin" --dir "$TMP/out" 2>/dev/null | grep -q 'state=da-co'; then
+        echo "# pin-selftest (b) FAIL: ghim lại không ra state=da-co"; rc=1
+    fi
+    # (c) ảnh không có dòng build ⇒ mã thoát ba
+    bash "$0" "$TMP/nobuild.bin" --dir "$TMP/out" >/dev/null 2>&1
+    [ "$?" -eq 3 ] || { echo "# pin-selftest (c) FAIL: ảnh thiếu dòng build không trả mã ba"; rc=1; }
+    # (d) ảnh dirty ⇒ mã thoát sáu
+    bash "$0" "$TMP/dirty.bin" --dir "$TMP/out" >/dev/null 2>&1
+    [ "$?" -eq 6 ] || { echo "# pin-selftest (d) FAIL: ảnh dirty không trả mã sáu"; rc=1; }
+    # (e) ảnh lệch dấu vân tay ⇒ mã thoát năm
+    bash "$0" "$TMP/stale.bin" --dir "$TMP/out" >/dev/null 2>&1
+    [ "$?" -eq 5 ] || { echo "# pin-selftest (e) FAIL: ảnh lệch dấu vân tay không trả mã năm"; rc=1; }
+    # (f) --verify bắt tên sai ⇒ mã thoát bảy
+    cp "$TMP/good.bin" "$TMP/out/0000000000000000000000000000000000000000000000000000000000000000.bin"
+    bash "$0" --verify --dir "$TMP/out" >/dev/null 2>&1
+    [ "$?" -eq 7 ] || { echo "# pin-selftest (f) FAIL: --verify không bắt tên sai"; rc=1; }
+    if [ "$rc" -eq 0 ]; then
+        echo "# pin-selftest: PASS (a/b/c/d/e/f)"
+    else
+        echo "# pin-selftest: FAIL"
+    fi
+    exit "$rc"
+fi
 
 # --- chế độ --verify: mọi tệp trong DEST_DIR phải (a) tên = sha256 của nội dung, (b) có dòng build
 if [ "$1" = "--verify" ]; then
