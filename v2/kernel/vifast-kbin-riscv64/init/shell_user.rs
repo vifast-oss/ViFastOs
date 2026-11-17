@@ -251,7 +251,10 @@ fn cmd_ps() {
     put(b"\n");
     for entry in list.iter().take(count) {
         let pid = entry >> 5;
-        let state = (entry >> 1) & 0x1F;
+        // KT-105: kernel đóng gói `(id << 5) | (state.index() << 1) | suspended` ⇒ trạng thái
+        // chiếm **bốn** bit (1..4), pid bắt đầu ở bit 5. Bản cũ lấy `& 0x1F` (năm bit) nên
+        // `(entry >> 1) & 0x1F` = 16 + state ⇒ **mọi** tiến trình in `state=Unknown`.
+        let state = (entry >> 1) & 0x0F;
         put(b"  pid=");
         put_u64(pid);
         put(b" state=");
