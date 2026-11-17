@@ -3809,3 +3809,40 @@ việc tách không vướng công việc đang dở.
 4. **`v2/kernel/target/`** cũng gitignored; không cần giữ.
 5. Ba tệp ở gốc repo (`out-b.log`, `ViFastOs-dossier.md`, `TRA-LOI-AGENT1-…md`) **không** thuộc
    dòng OS — không phải của Agent 1, để nguyên.
+
+## ĐÊM 2026-11-17 (sau khi tách ViScript) — tiến độ
+
+**Bối cảnh**: dòng ViScript đã tách sang repo riêng (`VISCRIPT.md`). Repo này chỉ còn dòng OS.
+Agent 0 offline; Agent 1 làm trong phạm vi được giao (D2-121), mọi quyết định thay mặt ghi `A1-19x`
+nhãn **CHỜ A0 XÁC NHẬN**.
+
+### Đã xong trong đêm
+
+| Task | Kết quả | Commit |
+|---|---|---|
+| **KT-92** | Đóng **A1-184**: `build.rs` truyền `--remap-path-prefix` cho cả ba chỗ gọi `$RUSTC`; hai đường dẫn khác nhau ⇒ **cùng sha**; đối chứng âm (không vá) ⇒ khác sha | `4040e26d` |
+| **KT-93** | Đóng khe tin-cậy: `build-rev.sh` + `repro-build.sh` + `rustc-canon.rs` vào build-inputs (260→263); sửa `build-rev.sh` ⇒ dấu vân tay **đổi** | `5ac0765b` |
+| **KT-84** | `task-target.sh` + `pin-artifact.sh` (ghim, `--verify`, `--selftest` 6 ca, kiểm dấu vân tay + dirty) | `ae5f2048`, `9be5e074`, `75f57055` |
+| **KT-95** | `pre-measure.sh`: 6 phép kiểm trước khi đo (danh tính, dấu vân tay, dirty, đã ghim, cây sạch, QEMU sót) | `11e7e789` |
+| **KT-96** | `soak.sh --image`: soak ảnh có sẵn; **từ chối** ảnh có shell (0/N sẽ là giả) | `bffd0cd4` |
+| **KT-82a** | **A1-179 XONG**: 58 số của `k6-exec`/`k6-persist`/`K6-DOD` ra khỏi prose ⇒ `pre_existing=0` | `7f806dc5`, `7d34db5a` |
+| **KT-94** | Ảnh canonical mới `dd9f7050…` (205.440 B, `inputs=3caf5e7d5f0a3321 dirty=0`) + parity 6/6 | `823b357e` |
+| **KT-97** | Kiểm lại sau thay đổi: **ma trận 21/21**, **persist PASS**, parity 6/6 | `cb3d406a` |
+| **KT-82** | **Bản nháp** văn bản đóng K6 (hai phương án cho tiêu chí 4) | `fccc9242` |
+| — | Chỉ mục bằng chứng K6 (`K6-EVIDENCE-INDEX.md`) | `96cd7964` |
+| — | Sửa test đỏ do tách ViScript | `e678efa6` |
+
+### Đang chờ Agent 0
+
+| Việc | Cần gì |
+|---|---|
+| **KT-82** (chốt) | Chọn phương án (a) hay (b) cho tiêu chí 4 — xem `K6-CLOSURE-DRAFT.md` §2 |
+| **KT-91** (ba lệnh shell) | Duyệt đổi `# shell: help cmds=` (assert trong `proc_demo.rs:761`, `ktest.sh:709`) |
+| **B6** | Chốt build-inputs có gồm `v2/agent/**` không (A1-188 đang tạm loại trừ) |
+| **A1-192** | Xác nhận các quyết định thay mặt trong đêm |
+
+### Việc còn lại (không chờ A0)
+
+- KT-83 — bảng bảy lỗi v1 (đang làm).
+- Soak 1.000 trên ảnh mới `dd9f7050…` (đang chạy).
+- Conformance (`run.sh --boot`) chưa chạy lại trên HEAD.

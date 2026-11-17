@@ -42,11 +42,28 @@ export LC_ALL
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 LOGROOT="$HERE/kt90-logs"
+# KT-99: mặc định vẫn là ảnh của phép đo KT-88; `--image <path>` để soak ảnh khác (vd ảnh mới
+# `dd9f7050…`). Khi cho ảnh, sha/bytes/dòng build **suy ra từ chính ảnh** — không đoán.
 ART="$REPO/v2/artifacts/291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353.bin"
 WANT_SHA="291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353"
 WANT_BYTES=205440
 WANT_REV="cf96eb9b589d"
 WANT_BUILD_LINE="# build: rev=${WANT_REV} dirty=0"
+GIVEN_IMAGE=""
+for _arg in "$@"; do
+    case "$_arg" in
+        --image=*) GIVEN_IMAGE="${_arg#--image=}" ;;
+    esac
+done
+if [ -n "$GIVEN_IMAGE" ]; then
+    [ -f "$GIVEN_IMAGE" ] || { echo "kt90: không thấy ảnh $GIVEN_IMAGE" >&2; exit 2; }
+    ART="$GIVEN_IMAGE"
+    WANT_SHA="$(shasum -a 256 "$ART" | awk '{print $1}')"
+    WANT_BYTES="$(wc -c <"$ART" | tr -d ' ')"
+    WANT_BUILD_LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$ART" 2>/dev/null || true)"
+    WANT_REV="$(printf '%s' "$WANT_BUILD_LINE" | sed -n 's/.*rev=\([0-9a-f]*\).*/\1/p')"
+    [ -n "$WANT_BUILD_LINE" ] || { echo "kt90: ảnh không có dòng '# build:' — không đo" >&2; exit 3; }
+fi
 SOAK_SH="$REPO/v2/test/boot/soak.sh"
 
 # Ngưỡng thời gian (số vòng poll × bước poll), KHÔNG nới trong lúc đo.
@@ -236,8 +253,12 @@ say "# $MODE bắt đầu $(NOW)"
     echo "# qemu=$QEMU_VERSION opensbi=$SBI"
     echo "# timeouts: shell<=20s help<=5s halt<=5s gone<=4s (poll shell 30ms, khác 50ms)"
     echo "# git HEAD=$(command git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
-    echo "# git diff $WANT_REV..HEAD -- v2/kernel v2/lib:"
-    command git -C "$REPO" diff --stat "$WANT_REV"..HEAD -- v2/kernel v2/lib 2>/dev/null | sed 's/^/#   /'
+    if [ -n "$WANT_REV" ]; then
+        echo "# git diff $WANT_REV..HEAD -- v2/kernel v2/lib:"
+        command git -C "$REPO" diff --stat "$WANT_REV"..HEAD -- v2/kernel v2/lib 2>/dev/null | sed 's/^/#   /'
+    else
+        echo "# git diff: ảnh dùng định dạng inputs= (không có rev) — bỏ qua so lịch sử"
+    fi
     echo "# head-of-diff-end"
 } >"$RUN/config.txt"
 
