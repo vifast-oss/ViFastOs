@@ -165,6 +165,17 @@ ok 4 - exec chain 3 buoc
 
 ## 4. Bảy lỗi v1 (KNOWN-ISSUES) — trạng thái ở K6
 
+> **ĐÍNH CHÍNH (KT-83, 2026-11-17)** — ba chỗ sai trong bản gốc, giữ nguyên nội dung cũ để tra:
+>
+> - **N2**: dẫn `kt76-baseline-gate.log:250`, `kt76-baseline-gate.log:251`, `kt76-baseline-gate.log:252`
+>   — dòng cuối **trống**; ba test nằm ở `kt76-baseline-gate.log:249-251`.
+> - **N7**: dẫn `kt76-baseline-gate.log:1202` — đó là dòng `Running tests/kt30_sync.rs`; kết quả test
+>   ở `kt76-baseline-gate.log:1204-1215`.
+> - **N5**: bản gốc ghi "KHÔNG ÁP DỤNG ở K6" / "N/A". Theo **D2-119** và **D2-120**, trạng thái
+>   đúng là **HOÃN sang K5′** (x86_64 ngoài phạm vi v2.0), **không** phải N/A — và **K7 không nhận N5**.
+>
+> Bảng đầy đủ với `file:dòng` đã kiểm: `v2/agent/JOURNAL/kt83-table.md`.
+
 | Mã | Lỗi v1 / tiêu chí đóng gốc (nguyên văn §1) | Kết quả | Bằng chứng (`log:dòng`) | Ghi chú |
 |---|---|---|---|---|
 | **N1** | Treo sau `shell>` trên `x86_64` (T33a) — cột “Ca kiểm tương ứng trong v2”: **kịch bản sim “đơn điệu sau migrate” + conformance chéo hart** | **KHÔNG ĐẠT (một phần)** | `kt76-baseline-gate.log:1096` | Phần **phần cứng x86** hoãn **K5'** (D2-10) **nhưng ca kiểm sim KHÔNG bị hoãn**: hiện chỉ có `ClockRead` đơn điệu **một hart** (`v2/sim/vifast-sim/tests/kt62_syscall.rs:862-871`), **không** có migrate ⇒ chưa đạt “đơn điệu **sau migrate**” ⇒ nợ **sim/K5'** |
