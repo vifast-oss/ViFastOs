@@ -82,6 +82,10 @@ struct Demo {
     ps_replies: usize,
     ps_entries: usize,
     ps_words: [u64; 2],
+    /// **KT-119**: trạng thái **thật** của từng TCB tại lúc `PS_REQ` — `(id, state.index(), suspended)`.
+    /// Test TAP 4 dùng **nguồn này** để dựng dòng kỳ vọng, **không** giải mã lại `ps_words` (giải mã
+    /// lại là dùng chung công thức với shell ⇒ đột biến chỗ đóng gói vẫn xanh; reviewer đã dựng lại).
+    ps_real: [(u64, u8, bool); 4],
     ps_n: usize,
     wait_code: Option<u64>,
     wait_pid: Option<u64>,
@@ -113,6 +117,7 @@ impl Demo {
             ps_replies: 0,
             ps_entries: 0,
             ps_words: [0; 2],
+            ps_real: [(0, 0, false); 4],
             ps_n: 0,
             wait_code: None,
             wait_pid: None,
@@ -329,6 +334,7 @@ fn service(m: &mut Machine, rig: &Rig, demo: &mut Demo, script: &[([u8; 24], usi
                     (u64::from(id) << 5) | ((state.index() as u64) << 1) | u64::from(suspended);
                 if n < entries.len() {
                     entries[n] = entry;
+                    demo.ps_real[n] = (u64::from(id), state.index() as u8, suspended);
                     n += 1;
                 }
             }
@@ -773,30 +779,22 @@ pub fn run(
     // 18 — ps từ core: snapshot kernel lúc `PS_REQ` phải khớp **từng dòng** shell in.
     let mut snapshot_ok = demo.ps_n == 4;
     if snapshot_ok {
-        for word in demo.ps_words {
-            for half in 0..2 {
-                let entry = if half == 0 { word & 0xFFFF } else { word >> 16 };
-                if entry == 0 {
-                    continue;
-                }
-                let pid = entry >> 5;
-                // KT-105: kernel đóng gói `(id << 5) | (state.index() << 1) | suspended` ⇒ trạng
-                // thái chiếm **bốn** bit. Bản cũ dùng `& 0x1F` (năm bit) — **cùng lỗi** với shell,
-                // nên test và shell "khớp nhau" mà cả hai đều sai (`state=Unknown`). Nay cả hai
-                // dùng `& 0x0F`.
-                let state = ((entry >> 1) & 0x0F) as u8;
-                let suspended = entry & 1 != 0;
-                let mut line = FixedBuf::new();
-                line.push(b"  pid=");
-                line.num(pid);
-                line.push(b" state=");
-                line.push(state_label(state));
-                if suspended {
-                    line.push(b" suspended");
-                }
-                if !user::captured_contains(SLOT_SHELL, line.as_bytes()) {
-                    snapshot_ok = false;
-                }
+        // **KT-119**: dựng dòng kỳ vọng từ `ps_real` — trạng thái **thật** đọc bằng
+        // `m.tcb_state(id)` lúc `PS_REQ` — **không** giải mã lại `ps_words`. Trước đây test giải mã
+        // `(entry >> 1) & 0x0F` y như shell, nên đột biến chỗ **đóng gói** (`state << 1` →
+        // `state << 2`) làm shell in sai trạng thái mà test **vẫn xanh** (reviewer đã dựng lại:
+        // shell in `state=Running` cho TCB đang `Ready`, `snapshot_match=1`).
+        for (pid, state, suspended) in demo.ps_real[..demo.ps_n].iter() {
+            let mut line = FixedBuf::new();
+            line.push(b"  pid=");
+            line.num(*pid);
+            line.push(b" state=");
+            line.push(state_label(*state));
+            if *suspended {
+                line.push(b" suspended");
+            }
+            if !user::captured_contains(SLOT_SHELL, line.as_bytes()) {
+                snapshot_ok = false;
             }
         }
     }
