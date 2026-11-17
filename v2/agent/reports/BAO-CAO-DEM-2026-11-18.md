@@ -80,6 +80,62 @@ Bốn việc độc lập chạy song song, rồi **hai reviewer độc lập** 
   `spec/abi.toml`. Reviewer xác nhận **độc lập thật**: `gen_idl.py:173,175` **viết cứng** `20`/`28`,
   không đọc spec.
 
+## 4c. Vòng **phát triển tính năng + review toàn dự án** (05:30–07:00)
+
+Ba việc song song, rồi một reviewer độc lập kiểm chéo.
+
+### Tính năng: bốn lệnh shell mới (KT-114)
+
+`time`, `uptime`, `sync`, `stat <path>` — **chỉ** trong nhánh `#[cfg(shell_fs)]`:
+
+| Lệnh | Nguồn | Ghi chú |
+|---|---|---|
+| `time` / `uptime` | `ClockRead` (mười một) — **đã có** | không mở ABI |
+| `sync` | `OP_SYNC` — **đã có** | `write` đang dùng |
+| `stat` | `OP_STAT` — **đã có nhưng chưa ai gọi** | in `kind`, `size`, `ino` |
+
+`CMDS` chín → **mười ba** ở ảnh sản phẩm; ảnh test **vẫn sáu** ⇒ `proc_demo.rs` và `ktest.sh` **không** phải
+sửa. Đây là chỗ KT-91 tưởng bị chặn — thực ra KT-77c đã mở đường bằng `#[cfg(shell_fs)]`.
+
+### Review toàn dự án (KT-115): mười chín phát hiện
+
+| Mức | Số | Đã vá trong đêm |
+|---|---|---|
+| nặng | hai | **cả hai** |
+| vừa | tám | ba |
+| nhẹ | chín | một |
+
+**Hai phát hiện nặng, đều đã vá và có bằng chứng dựng lại:**
+
+- **PANIC kernel từ một request U-mode** (KT-118) — `proc_fs.rs` lấy độ dài tên từ **phần cao của
+   `head`** (tối đa hai trăm năm mươi lăm) rồi chỉ kẹp theo `MAX_PATH` (bốn mươi tám), trong khi ba
+   MR word chỉ chở **hai mươi bốn** byte ⇒ tên dài hai mươi lăm byte làm chỉ số vượt mảng bốn phần
+   tử. Dựng lại được: `PANIC: index out of bounds`. Vá một dòng.
+- **TAP bốn `shell ps tu core` vẫn là xanh giả** sau KT-105 (KT-119) — test **giải mã lại** đúng công
+   thức của shell, nên đột biến chỗ **đóng gói** (dịch trạng thái thêm một bit) vẫn xanh. Nay ghi
+   trạng thái **thật** bằng `m.tcb_state(id)` lúc `PS_REQ` và dựng kỳ vọng từ đó.
+
+**Một phát hiện về chính bản vá của tôi** (KT-120): bản KT-112 thêm vào `shell-edge.sh` là **kiểm
+rỗng** — `n_rows` và `n_declared` cùng sinh từ **một** biến `count` của shell nên luôn bằng nhau.
+Đã thêm sàn **độc lập** `PS_MIN_ROWS` bằng ba (procsrv + shell + victim) và ca selftest 3b.
+
+**Một phát hiện về bất biến pager** (KT-122): `reads == misses` trước chỉ **in** khi sai, không TAP
+nào đỏ. Nay thành **TAP ba mươi sáu**; `sectors_per_page` viết **literal tám** thay vì tính từ hằng của chính
+code.
+
+### Review chéo lô hai: ba đính chính (KT-123)
+
+| Phát hiện | Xử lý |
+|---|---|
+| Bất biến mới ở `ktest_con.rs` **không** phải thứ bắt đột biến (tắt đi vẫn đỏ nhờ `Ring::check`) | sửa comment cho đúng — nó là kiểm nhất quán, **không** độc lập |
+| Ca ba-b của `shell-edge.sh` dùng lại `right.log` của ca ba | cấp `right.log` riêng |
+| Ảnh có `product-fs` mà FS = `None`: mỗi lệnh đứng **~năm mươi tư giây** | kernel trả `ST_NOFS` **ngay**; shell in `fs khong san sang` thay vì `fs loi code=` kèm số không |
+
+### Ảnh canonical cuối đêm
+
+`64db17ea…` (dấu vân tay `8d5d423fb4cb7763`, cây sạch) — ma trận **hai mươi mốt trên hai mươi mốt**, parity ok, `shell-edge`
+tám trên tám, persist PASS.
+
 ## 5. Cần Agent 0 quyết
 
 | STT | Việc | Ghi chú |
