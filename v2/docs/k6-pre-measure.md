@@ -29,6 +29,7 @@ Chạy **trước** mọi phép đo (soak, ma trận, persist, parity). Nếu n�
 | sáu | `not-pinned` | ảnh **chưa** nằm trong `v2/artifacts/<sha256>.bin` |
 | bảy | `tree-dirty` | cây nguồn đang bẩn trong phạm vi build-inputs |
 | tám | `qemu-orphans` | còn QEMU đang chạy ⇒ số đo sẽ nhiễu |
+| tám | `no-pgrep` | không có `pgrep` ⇒ **không chứng minh được** "không có QEMU sót" (KT-100) |
 
 Ngoài ra: `no-git` (bảy) khi không đọc được HEAD, `no-current-fingerprint` (bốn) khi không tính được
 dấu vân tay cây hiện tại.

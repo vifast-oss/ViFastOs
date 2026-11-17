@@ -21,11 +21,14 @@ Từ D2-127, danh tính **quyết định** là **dấu vân tay nội dung buil
 
 - **build-inputs** = bao đóng phụ thuộc theo `cargo metadata` của các crate kernel/plat/lib/kbin,
   hợp với `v2/kernel`, `v2/lib`, `v2/bin`, `v2/Cargo.toml`, `v2/Cargo.lock`,
-  `v2/rust-toolchain.toml`, và **ba tệp script đo/build**: `v2/test/boot/build-rev.sh` (định nghĩa
+  `v2/rust-toolchain.toml`, và **năm tệp script đo/build**: `v2/test/boot/build-rev.sh` (định nghĩa
   dấu vân tay), `v2/tools/repro-build.sh` (đặt `RUSTFLAGS` remap/strip), `v2/tools/rustc-canon.rs`
-  (wrapper rustc canonical) — **trừ** `v2/agent/**`, `v2/docs/**`, `v2/target*/**`, `v2/artifacts/**`.
-  Ba tệp script nằm trong dấu vân tay vì đổi **định nghĩa** phép đo mà dấu vân tay không đổi là khe
-  tin-cậy (review KT-89 nêu; KT-93 đóng).
+  (wrapper rustc canonical), `v2/tools/pre-measure.sh` và `v2/tools/task-target.sh` (công cụ đo) —
+  **trừ** `v2/agent/**`, `v2/docs/**`, `v2/target*/**`, `v2/artifacts/**`.
+  Các tệp script nằm trong dấu vân tay vì đổi **định nghĩa** phép đo mà dấu vân tay không đổi là khe
+  tin-cậy (review KT-89 nêu; KT-93 đóng). **KT-100** đóng nốt nhánh còn hở: nếu một tệp ghim **không
+  có mặt** ở HEAD (bị `git rm --cached` rồi thêm vào `.gitignore`), `git ls-tree` trả rỗng **hợp lệ**
+  ⇒ tệp âm thầm rơi khỏi dấu vân tay. Nay thiếu mặt ⇒ `missing-input` và **từ chối đo**.
 - Danh sách do **script** sinh (`vbrev_inputs_list`), **không** viết tay; in ra log mỗi lần build.
 - **Dấu vân tay** = hash của các git tree/blob tương ứng ở HEAD (`git rev-parse HEAD:<đường-dẫn>`
   cho từng mục, ghép theo thứ tự xác định, hash lại) — **mười sáu** ký tự hex.
