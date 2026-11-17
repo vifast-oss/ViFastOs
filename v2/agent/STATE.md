@@ -3843,6 +3843,25 @@ nhãn **CHỜ A0 XÁC NHẬN**.
 
 ### Việc còn lại (không chờ A0)
 
-- KT-83 — bảng bảy lỗi v1 (đang làm).
-- Soak 1.000 trên ảnh mới `dd9f7050…` (đang chạy).
-- Conformance (`run.sh --boot`) chưa chạy lại trên HEAD.
+- ~~KT-83~~ **XONG** (`f14c6f40`): bảng bảy lỗi v1 với `file:dòng` + đính chính ba chỗ sai trong `K6-DOD.md`.
+- ~~Soak trên ảnh mới~~ **XONG** (`ef39b39e`): một nghìn trên một nghìn trên `dd9f7050…`.
+- ~~Conformance~~ **XONG** (`aa7803e7`): `trace-compare` sáu mươi mốt trên sáu mươi mốt dòng khớp.
+- KT-81 (thiết bị giả nghiêm ngặt) — theo D2-119 làm **sau** khi K6 đóng.
+
+### Bổ sung cuối đêm
+
+| Task | Kết quả |
+|---|---|
+| **KT-98** | `--selftest` cho `task-target.sh` + `pre-measure.sh`; **bảy đột biến, bảy trên bảy bị bắt** |
+| **KT-100** | Vá **bốn lỗ fail-open** do reviewer độc lập phát hiện (`missing-input`, `no-pgrep`, `--allow-unverified`, soak chỉ nhận timeout) |
+| **KT-101** | Conformance trên HEAD: `trace-compare` khớp từng dòng |
+| **KT-102** | `v2 status [--json]` — một màn hình trạng thái |
+| **KT-103** | Shell: cảnh báo "dòng quá dài" in **một lần** mỗi dòng (trước: mỗi byte) |
+| **KT-104** | Shell: `cat`/`write` không tham số báo "thiếu đường dẫn" thay vì `?` |
+| **KT-105** | **`ps` in `state=Unknown` cho mọi tiến trình** — và **test dùng chung lỗi với shell** |
+
+**Bài học KT-105**: `proc_demo.rs` dựng dòng kỳ vọng bằng **cùng** mask sai với shell ⇒ test và shell
+"khớp nhau" mà cả hai đều sai. Chỉ khi vá shell thì ma trận mới đỏ (mười tám trên hai mươi mốt) và lỗi
+mới lộ. Nếu chỉ sửa test cho xanh thì đã **che** lỗi.
+
+**Ảnh canonical mới nhất**: `34ee7a25…` (dấu vân tay `be9689a5c032cf69`, cây sạch).
