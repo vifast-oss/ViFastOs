@@ -28,6 +28,9 @@
 #   bash v2/test/boot/soak.sh [NBOOT] [LANES]        # mặc định 1000 3 (đúng cổng K3)
 #   bash v2/test/boot/soak.sh --smoke N [LANES]      # N < 1.000: chỉ để đỏ trước/kiểm marker;
 #                                                    # LUÔN exit 1 (không phải bằng chứng cổng)
+#   bash v2/test/boot/soak.sh --image <ảnh> [NBOOT] [LANES]
+#                                                    # soak **ảnh có sẵn** (vd ảnh phát hành đã ghim
+#                                                    # trong `v2/artifacts/`), KHÔNG build lại
 #   bash v2/test/boot/soak.sh --help
 #
 # Biến môi trường: `SOAK_LOGDIR` (mặc định `/tmp/k3-soak`), `OPENSBI` (đường dẫn fw_dynamic).
@@ -84,10 +87,23 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     usage
     exit 0
 fi
+# KT-96: soak **ảnh có sẵn** — không build lại. Mặc định (không cờ) giữ nguyên hành vi cũ.
+GIVEN_IMAGE=""
+if [ "${1:-}" = "--image" ]; then
+    [ "$#" -ge 2 ] || die "--image cần đường dẫn ảnh"
+    GIVEN_IMAGE="$2"
+    shift 2
+    [ -f "$GIVEN_IMAGE" ] || die "không thấy ảnh: $GIVEN_IMAGE"
+fi
 if [ "${1:-}" = "--smoke" ]; then
     SMOKE=1
     shift
     [ $# -ge 1 ] || die "--smoke cần N (ví dụ: --smoke 3 3)"
+fi
+# KT-96: ảnh cho trước phải được gán **trước** `QEMU_ARGS` (dòng dưới dùng `$IMAGE`).
+if [ -n "$GIVEN_IMAGE" ]; then
+    IMAGE="$GIVEN_IMAGE"
+    PRODUCT_IMAGE="$GIVEN_IMAGE"
 fi
 N="${1:-1000}"
 LANES="${2:-3}"
@@ -168,11 +184,22 @@ INFRA_LOG="$LOGDIR/kt78-infra.log"
 # KT-78/OD-K6-6: trạng thái hạ tầng **trước** phép đo (wall soak gồm cả build).
 qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 
-echo "# build ảnh sản phẩm ($TARGET, release)"
-if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
-    --target "$TARGET" --release >/tmp/kt57-soak-build.log 2>&1; then
-    tail -20 /tmp/kt57-soak-build.log >&2
-    die "build ảnh sản phẩm FAIL (xem /tmp/kt57-soak-build.log)"
+if [ -n "$GIVEN_IMAGE" ]; then
+    # KT-96: soak.sh đo "boot tới **halt**". Ảnh **có shell** không tự thoát ⇒ mọi boot sẽ
+    # `timeout` ⇒ 0/N là **giả**. Từ chối sớm thay vì để người đọc hiểu sai.
+    if LC_ALL=C grep -a -q -m1 '# product shell:' "$IMAGE" 2>/dev/null; then
+        echo "soak.sh: ảnh '$IMAGE' CÓ shell (không tự thoát) — soak.sh không đo được ảnh này." >&2
+        echo "soak.sh: dùng script gửi 'exit' qua UART (xem v2/agent/JOURNAL/kt90-soak-product-image.sh)" >&2
+        exit 2
+    fi
+    echo "# ảnh cho trước (không build): $IMAGE"
+else
+    echo "# build ảnh sản phẩm ($TARGET, release)"
+    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
+        --target "$TARGET" --release >/tmp/kt57-soak-build.log 2>&1; then
+        tail -20 /tmp/kt57-soak-build.log >&2
+        die "build ảnh sản phẩm FAIL (xem /tmp/kt57-soak-build.log)"
+    fi
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
 
@@ -226,9 +253,16 @@ fi
 if ! qg_boot "$REV_GATE_LOG" "$TIMEOUT_DS" "$QEMU" \
     -machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$PRODUCT_IMAGE" \
     -nographic -cpu rv64 -m 128M -smp 1 -no-reboot; then
-    vbrev_refuse probe-boot-failed "log=$REV_GATE_LOG"
-    echo "# soak.sh: TỪ CHỐI ĐO (KT-86/D2-125.3)"
-    exit 3
+    # KT-96: ảnh **có shell** không tự thoát ⇒ QEMU bị timeout giết ⇒ `qg_boot` trả != 0 dù boot
+    # thành công. Với ảnh cho trước, chấp nhận nếu log **đã có** dòng `# build:` (mục đích của
+    # lần dò này là đọc dòng đó); `vbrev_gate` ngay dưới vẫn kiểm byte ảnh.
+    if [ -n "$GIVEN_IMAGE" ] && LC_ALL=C grep -a -q -m1 '# build:' "$REV_GATE_LOG" 2>/dev/null; then
+        echo "# rev-gate: ảnh có shell không tự thoát (timeout) — đã có dòng '# build:', tiếp tục"
+    else
+        vbrev_refuse probe-boot-failed "log=$REV_GATE_LOG"
+        echo "# soak.sh: TỪ CHỐI ĐO (KT-86/D2-125.3)"
+        exit 3
+    fi
 fi
 if ! vbrev_gate "$REV_GATE_LOG" "$REPO_ROOT" "$PRODUCT_IMAGE"; then
     echo "# soak.sh: TỪ CHỐI ĐO (KT-86/D2-125.3) — không đếm một boot soak nào"
