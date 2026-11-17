@@ -211,6 +211,18 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-99 | **K6** soak 1.000 trên ảnh canonical mới | KT-94 | 30 m | DONE | `ef39b39e`; **1000/1000**, wall 533 s, `changed=0`, `qemu_con_sot 0/0` |
 | KT-100 | **K6** vá 4 lỗ fail-open do review đêm | KT-93 | 1,5 h | DONE | `8d3310af`, `baf3b029`, `295f4414`; `missing-input`, `no-pgrep`, `--allow-unverified`, soak chỉ nhận timeout; ảnh mới `9643311d…` |
 | KT-101 | **K6** conformance trên HEAD | KT-100 | 30 m | DONE | `aa7803e7`; `trace-compare` **61/61** dòng khớp sim ↔ QEMU; `scn-check` PASS |
+| KT-114 | **K6** bốn lệnh shell mới (`time`/`uptime`/`sync`/`stat`) | KT-109 | 2 h | DONE | `11550366`; chỉ nhánh `cfg(shell_fs)` ⇒ ảnh test vẫn sáu lệnh; `CMDS` chín→mười ba |
+| KT-115 | **K6** review **toàn dự án** | — | 3 h | DONE | `fd22dffc`; mười chín phát hiện (hai nặng, tám vừa, chín nhẹ) |
+| KT-116 | **K6** vá hai test xanh giả (`ktest_con` seq, `ktest_core` nhãn WaitAddr) | KT-107 | 2,5 h | DONE | `c5071d32` (patch); mỗi mục có đột biến phía code làm test đỏ |
+| KT-117 | **K6** `kt18_tcb`: bảng `ALLOWED` hết tự chứng minh vòng tròn | KT-107 | 1 h | DONE | `9ddffa0f`; so với bảng markdown trong tài liệu + tám bất biến suy từ thiết kế |
+| KT-118 | **K6** vá PANIC kernel từ request U-mode (`proc_fs` tràn mảng) | KT-115 | 45 m | DONE | `82788a06`; dựng lại được `PANIC: index out of bounds`, vá một dòng |
+| KT-119 | **K6** TAP 4 `ps` dùng trạng thái **thật** thay vì giải mã lại | KT-115 | 45 m | DONE | `5d271bc0`; đột biến chỗ đóng gói giờ làm TAP 4 đỏ |
+| KT-120 | **K6** vá bản KT-112 của chính tôi (kiểm rỗng) + áp patch KT-116 | KT-115 | 30 m | DONE | `c5071d32`; thêm sàn độc lập `PS_MIN_ROWS` và ca selftest 3b |
+| KT-121 | **K6** ảnh canonical sau vòng phát triển | KT-114 | 20 m | DONE | `fd22dffc`; `5e2ec219…` |
+| KT-122 | **K6** bất biến pager thành TAP 36 + đính chính `k6-parity.md` | KT-115 | 45 m | DONE | `08d02c9b`, `40e2648d`; `sectors_per_page` viết literal |
+| KT-123 | **K6** ba đính chính từ review chéo lô hai | KT-114 | 45 m | DONE | `484b6f98`; `ST_NOFS` trả lời ngay thay vì đứng năm mươi tư giây |
+| KT-124 | **K6** ảnh canonical sau KT-122/123 | KT-123 | 20 m | DONE | `c2fdd297`; `64db17ea…` |
+| KT-125 | **K6** hai lệnh nữa: `truncate`, `jobs` | KT-114 | 45 m | DONE | `6d6dd698`, `feb45790`; `CMDS` mười ba→mười lăm; ảnh `503be0f9…` |
 | KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | BLOCKED | bắt lại 2 lỗi driver cũ ở mô hình |
 | KT-82 | **K6** văn bản đóng K6 (a hoặc b) + caveat P20 | KT-89 | 3 h | BLOCKED | ba trạng thái đóng/hoãn/mở; số từ bảng KT-83; **điều kiện tiên quyết (A1-179)**: 4 tài liệu `pre_existing` (`K6-DOD`, `k6-exec`, `k6-persist`, `k6-parity`) phải chuyển số vào khối `scope=` trước |
 | KT-83 | **K6** mở K7 "Đóng lỗi v1" + chốt bảng 7 lỗi | KT-82 | 3 h | BLOCKED | 2 đóng / 1 hoãn K5' / 4 mở; `file:dòng` từng lỗi; K7 **không** nhận N5 |
