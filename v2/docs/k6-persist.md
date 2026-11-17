@@ -23,7 +23,7 @@ là nguồn số đo (chúng nằm trong khối `scope-red=`). Script kiểm:
 | D2-113 “ảnh sản phẩm **không** có U-mode/shell” | **CHƯA ĐÓNG** — vẫn là nợ của KT-76 (không thay đổi bởi KT-75) |
 | TAP gộp của một ảnh trong `ktest.sh` | **KHÔNG** — chuỗi nhiều boot/ảnh; runner riêng, lý do ở §2.2 |
 
-## 2. Kiến trúc: vì sao **mười** boot, vì sao **kịch bản ở LBA=0**
+## 2. Kiến trúc: vì sao **mười** boot, vì sao **kịch bản ở LBA đầu tiên**
 
 ### 2.1 Mỗi pha là **hai** tiến trình
 
@@ -39,12 +39,12 @@ persist cần **mười** boot trên **một** ảnh đĩa, mỗi boot một k�
 sẽ phải nới mô hình “một ảnh một boot” (đúng thứ D2-110 cấm nới). Vì vậy KT-75 giữ **nguyên**
 matrix (vẫn là bảy ảnh, boot độc lập) và thêm runner riêng; matrix vẫn xanh **toàn bộ** (số trong khối §8).
 
-### 2.3 Kịch bản ở **LBA=0**
+### 2.3 Kịch bản ở **LBA đầu tiên**
 
-Runner ghi một bản ghi nhỏ vào **LBA=0** trước **mỗi** boot (kernel đọc **thô** qua virtio-blk):
+Runner ghi một bản ghi nhỏ vào **LBA đầu tiên** trước **mỗi** boot (kernel đọc **thô** qua virtio-blk):
 
-- LBA=0 là sector **dành riêng** của FS: `stage()` từ chối LBA=0, `format` chỉ ghi số không **một** lần,
-  và `Fs::initialize` chỉ đọc LBA=0 khi superblock hỏng (`fs.rs:800`) ⇒ sau format nó **không**
+- LBA đầu tiên là sector **dành riêng** của FS: `stage()` từ chối LBA đầu tiên, `format` chỉ ghi số không **một** lần,
+  và `Fs::initialize` chỉ đọc LBA đầu tiên khi superblock hỏng (`fs.rs:800`) ⇒ sau format nó **không**
   bị FS đọc/ghi.
 - Kernel in lại **nguyên văn** kịch bản nó đọc (kể cả `nonce`) ⇒ runner và kernel lệch nhau thì
   `# log-check` đỏ ngay; không có “kịch bản ngầm”.
@@ -61,10 +61,11 @@ Runner ghi một bản ghi nhỏ vào **LBA=0** trước **mỗi** boot (kernel 
 Bảng hành vi (không số): tạo file mới + ghi; ghi đè mở rộng; append tại EOF; truncate về
 không rồi ghi lại; rename; xoá rồi tạo lại **cùng tên**; file lớn đi qua **double-indirect**. Kích thước và băm trong từng khối dưới là **số đo**.
 
-Bất biến của pha **ghi** (điều kiện `ok` của TAP): `recorded=1` + `fsync=1` + `durable=1`
-(`pending_blocks=0` **và** có `T_FLUSH` thật **và** không có `flush` bị bỏ) + `overflow=0` (quan
-sát — chưa có ca âm, xem §3.1). Bất biến của pha **đọc lại**: `match=1` + `mismatched=0` +
-`size_bad=0` + `absent_bad=0` + `recorded=1` + `pending_blocks=0` (`size_bad`/`absent_bad`: quan
+Bất biến của pha **ghi** (điều kiện `ok` của TAP): `recorded`, `fsync`, `durable` đều bằng một
+(`pending_blocks` bằng không **và** có `T_FLUSH` thật **và** không có `flush` bị bỏ), `overflow`
+bằng không (quan sát — chưa có ca âm, xem §3.1). Bất biến của pha **đọc lại**: `match` bằng một,
+`mismatched` bằng không, `size_bad` bằng không, `absent_bad` bằng không, `recorded` bằng một,
+`pending_blocks` bằng không (`size_bad`/`absent_bad`: quan
 sát — chưa có ca âm, xem §3.1).
 
 ### 3.1 Bộ đếm — cái nào **đã có ca âm**, cái nào **chưa chứng minh** (D2-108B)
@@ -72,9 +73,9 @@ sát — chưa có ca âm, xem §3.1).
 | Bộ đếm | Trạng thái bằng chứng |
 |---|---|
 | `pending_blocks`, `device_flushes`, `pushed`, `flushes_ignored`, `absent`, `bytes_lost` | **có cặp dương/âm thật**: bảy pha dương vs hai boot ca âm (khối `scope-red=` bên dưới) |
-| `match`, `mismatched` | **có ca âm thật**: bộ kiểm đỏ-trước/tự phá sửa payload trên đĩa ⇒ `match=0` và `mismatched` khác không |
+| `match`, `mismatched` | **có ca âm thật**: bộ kiểm đỏ-trước/tự phá sửa payload trên đĩa ⇒ `match` bằng không và `mismatched` khác không |
 | `overflow`, `size_bad`, `absent_bad`, `replayed`, `errors`, `id_mismatch`, `timeouts` | **quan sát — CHƯA chứng minh**: chỉ thấy một giá trị ở mọi boot, chưa dựng được ca âm trong đợt này (**nợ**) |
-| `recorded`, `fsync`, `durable` | **quan sát — CHƯA chứng minh**: chỉ thấy nhánh xanh; nhánh `durable=0` chưa có ca |
+| `recorded`, `fsync`, `durable` | **quan sát — CHƯA chứng minh**: chỉ thấy nhánh xanh; nhánh `durable` bằng không chưa có ca |
 | `ok`, `phases`, `records`, `total_ok` | **quan sát — CHƯA chứng minh**: `ok` in **bằng** `phases` (cùng một biến trong `report_total`) nên **không thể** khác — không chứng minh gì; bằng chứng **độc lập** là `writes_ok`/`verifies_ok`/`records` cộng host so **từng byte** `/pstate` |
 | `flushes_done` | quan sát; cặp dương/âm đã được phủ bởi `device_flushes` + `flushes_ignored` |
 
@@ -131,7 +132,7 @@ suy ra kiểm được tại chỗ (D2-106b); cả hai **khác không** ⇒ file
 
 Mỗi boot append một bản ghi vào `/pstate` (pha, hành vi ghi/đọc lại, `ok`). Boot đọc lại cuối
 **đọc lại từ đĩa** rồi mới in `phases=… ok=…`; nếu bất kỳ lần ghi/đọc nào hỏng dấu, `phases` **không**
-thể đủ bảy. Đây là chỗ chặn “tự khai xanh”: con số `ok=7` được **suy ra** từ dữ liệu bền, không từ
+thể đủ bảy. Đây là chỗ chặn “tự khai xanh”: con số `ok` (bảy) được **suy ra** từ dữ liệu bền, không từ
 biến đếm RAM.
 
 ## 5. Kiểm chứng **độc lập phía host** (`vifast-fsutil` trên **cùng** ảnh đĩa)
@@ -141,7 +142,7 @@ và so **từng byte** với mô hình sinh lại ở [`test/boot/persist_host.p
 (cài đặt **độc lập** công thức payload). Ba điều kiện phụ:
 
 - **tập tên** phải khớp: tên cũ sau rename/xoá phải **vắng**, không có entry lạ;
-- `fsutil_mutated=0`: sha256 ảnh **không đổi** trong lúc kiểm ⇒ kiểm host **không** sửa ảnh
+- `fsutil_mutated` bằng không: sha256 ảnh **không đổi** trong lúc kiểm ⇒ kiểm host **không** sửa ảnh
   (chứng minh đây là đọc trên **cùng** file ảnh, không phải “mount rồi ghi đè”);
 - host cũng kiểm `/pstate` (nhật ký pha) ⇒ chuỗi append của kernel được xác nhận bằng byte.
 
@@ -183,9 +184,9 @@ không có `FLUSH` ⇒ không có gì ra đĩa; có `FLUSH` ⇒ dữ liệu số
 # persist: phase=neg action=verify_absent absent=1 p7_match=1 mismatched=0 phases=7 writes_ok=7 verifies_ok=7 records=14 sha_prefix=5fe3d3c0
 ```
 
-`device_flushes=0` + `pushed=0` + `bytes_lost=6144` là **đo**: pha âm không gửi một `FLUSH` nào và
-không đẩy block nào; boot đọc lại thấy `/pneg.txt` **vắng** (`absent=1`) trong khi bảy pha trước vẫn
-nguyên (`p7_match=1`, `records=14`). Host kiểm thêm `changed=0` cho **cả hai** boot âm:
+ba trường `device_flushes`, `pushed`, `bytes_lost` (khối trên) là **đo**: pha âm không gửi một `FLUSH` nào và
+không đẩy block nào; boot đọc lại thấy `/pneg.txt` **vắng** (`absent` bằng một) trong khi bảy pha trước vẫn
+nguyên (`p7_match` bằng một, `records` bằng mười bốn). Host kiểm thêm `changed` bằng không cho **cả hai** boot âm:
 
 ```text scope-red=kt75-persist-run.log
 # sha: tag=b09 sha=72529ae553c2c8d875b637a837c7b6a4d7828de9e7b465e9293e0bab79bf4ef2 changed=0 (ca âm: không có gì ra thiết bị)

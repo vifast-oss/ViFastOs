@@ -70,7 +70,7 @@ giá trị `SetTls` **và** TAP kernel/SMP của các ảnh cũ vẫn xanh (matr
 Trap entry lưu **toàn bộ** GPR vào trapframe, nên `tf.x[REG_TP]` tại `ecall` **là** `tp` của U-mode.
 Không cần `mv ?, tp` trong chương trình U-mode ⇒ **không** `unsafe` trong mọi chương trình U-mode
 (giữ D2-93/D2-101). Hai lượt chạy của chương trình A chứng minh đúng hợp đồng "hiệu lực ở lần
-resume kế tiếp": lượt đầu `observed_first=0`, lượt sau `observed` = giá trị đã `SetTls`.
+resume kế tiếp": lượt đầu `observed_first` bằng không, lượt sau `observed` bằng giá trị đã `SetTls`.
 
 ```text scope=kt74-qemu-ktest-exec.log
 # tls: set=0x74310001 observed_first=0 observed=0x74310001 method=15 const:method_source=spec traps=6 stats=2 sys0_calls=2 sys0_err=0 exit=1 exit2=1 tcb=0x3 tcb_tls=0x74310001 ok=1
@@ -125,7 +125,7 @@ thật** (KT-75+), không phải bảng ảnh nhúng.
 
 `init.ld` link mọi chương trình U-mode tại `USER_BASE`, nên `e_entry` bằng nhau. Vì vậy "reset
 `sepc`" **không** được chứng minh bằng `entry` khác nhau (evidence ghi rõ
-`const:elf_linked_at_base=1`), mà bằng: (a) **VSpace đổi** (map lại toàn bộ ảnh mới), (b) ảnh mới
+hằng số `elf_linked_at_base` bằng một), mà bằng: (a) **VSpace đổi** (map lại toàn bộ ảnh mới), (b) ảnh mới
 **chạy thật** với mã thoát riêng, (c) ảnh mới **khác byte** ảnh cũ (`img_differ`, `img_a`/`img_b`
 đọc từ `include_bytes`).
 
@@ -151,7 +151,7 @@ ok 4 - exec chain 3 buoc
 
 **Ca âm của phép đo "không rò"** (D2-108B — bộ đếm bằng nhau mà không có ca âm thì không chứng
 minh gì): bản đột biến **bỏ `release_with`** ⇒ `frames` và `vspaces` **tăng gấp đôi** (khối
-`scope-red` dưới), TAP `exec giu pid cspace` **đỏ** (`same=0`).
+`scope-red` dưới), TAP `exec giu pid cspace` **đỏ** (`same` bằng không).
 
 ```text scope-red=kt74-red-qemu.log
 # exec: step=1 pid=0 tcb=3 cspace_same=1 old_vspace=2 new_vspace=14 vspace_changed=1 old_entry=0x40000000 new_entry=0x40000000 const:elf_linked_at_base=1 img_differ=1 img_a=8520 img_b=8496 freed=11 new_pages=11 exit=2 objects=17 frames=11 caps=14 vspaces=1 page_tables=3 mappings=11 -> objects=32 frames=22 caps=26 vspaces=2 page_tables=6 mappings=22 same=0 check=1 ok=0

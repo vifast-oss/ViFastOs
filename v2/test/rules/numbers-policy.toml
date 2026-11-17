@@ -210,23 +210,3 @@ debt = "26 số dạng key=value ở prose (siết luật 1 theo phản biện K
 reason = "viết trước khi luật 1 siết đường key=value (phản biện KT-80); ngoài vùng ghi KT-80"
 date = "2026-11-17"
 
-[[legacy]]
-path = "v2/docs/k6-exec.md"
-sha256 = "2ca05913d998ae2a7a93f6e767cbcde29fa52d31207a6b9bc7660aa6d0ac4d04"
-kind = "pre_existing"
-expires_task = "KT-82"
-owner = "KT-74"
-debt = "3 số dạng key=value ở prose; chuyển vào khối scope= khi mở lại"
-reason = "viết trước khi luật 1 siết đường key=value (phản biện KT-80); ngoài vùng ghi KT-80"
-date = "2026-11-17"
-
-[[legacy]]
-path = "v2/docs/k6-persist.md"
-sha256 = "67c272975602820d4c92f8c22ba1cd401b24daddf40236245c54a0e18454782e"
-kind = "pre_existing"
-expires_task = "KT-82"
-owner = "KT-75"
-debt = "28 số dạng key=value ở prose; chuyển vào khối scope= khi mở lại"
-reason = "viết trước khi luật 1 siết đường key=value (phản biện KT-80); ngoài vùng ghi KT-80"
-date = "2026-11-17"
-
