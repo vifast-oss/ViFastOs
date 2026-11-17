@@ -52,11 +52,25 @@ export LC_ALL
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
-LOGDIR="${SHELL_EDGE_LOGDIR:-/tmp/kt108-shell-edge}"
+# **KT-112** (review chéo): `LOGDIR` cố định ⇒ hai lượt chạy **song song** dùng chung log, và một
+# lượt có thể đọc PASS từ log của lượt kia (đã dựng lại được). Nay mỗi lượt một thư mục riêng;
+# `SHELL_EDGE_LOGDIR` vẫn cho phép chỉ định (khi đó người dùng tự chịu trách nhiệm không chạy song song).
+if [ -n "${SHELL_EDGE_LOGDIR:-}" ]; then
+    LOGDIR="$SHELL_EDGE_LOGDIR"
+else
+    LOGDIR="$(mktemp -d "${TMPDIR:-/tmp}/kt108-shell-edge.XXXXXX")" || {
+        echo "shell-edge: không tạo được thư mục log tạm" >&2
+        exit 2
+    }
+    SHELL_EDGE_LOGDIR_TMP="$LOGDIR"
+fi
 QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
 QEMU_MIN_MINOR=2
-BOOT_POLLS=400     # 400 × 0,05 s = 20 s chờ `shell>` (D2-72 Q10)
-CASE_POLLS=200     # 200 × 0,05 s = 10 s chờ output/marker của một ca
+# **KT-112**: `sleep 0,05` trên macOS thực tế tốn ~0,2 s (đo: 200 lần = 41,6 s), nên **không** được
+# hứa "20 s"/"10 s" trong thông báo lỗi. Ngân sách dưới đây tính theo **số vòng poll**, và thông báo
+# lỗi in **số vòng** thay vì giây để không nói sai.
+BOOT_POLLS=400     # 400 vòng chờ `shell>` (D2-72 Q10)
+CASE_POLLS=200     # 200 vòng chờ output/marker của một ca
 POLL_S=0.05
 QEMU_TDS=1200      # trần QEMU 120 s (qg_boot); harness tự kill sớm hơn khi ca quá hạn
 WAIT_BUDGET_S=5    # ca 8: `wait 13` phải trả lời trong 5 s
@@ -119,6 +133,8 @@ cleanup() {
     fi
     [ -n "${FIFO:-}" ] && rm -f "$FIFO" 2>/dev/null
     [ -n "${SELFTEST_ROOT:-}" ] && rm -rf "$SELFTEST_ROOT" 2>/dev/null
+    # Chỉ xoá thư mục log **do chính script tạo** (không xoá khi người dùng chỉ định qua biến).
+    [ -n "${SHELL_EDGE_LOGDIR_TMP:-}" ] && rm -rf "$SHELL_EDGE_LOGDIR_TMP" 2>/dev/null
     qg_cleanup
     return 0
 }
@@ -178,8 +194,15 @@ check_ps_no_unknown() {
         echo "mong đúng 1 dòng '# shell: ps n=<n>', thấy ${n_ps:-0}"
         return 1
     fi
+    # **KT-112**: trước chỉ đòi `>= 1` dòng ⇒ `ps` thoái hoá còn một tiến trình vẫn xanh. Nay đòi
+    # **đúng** số dòng bằng `n` trong dòng tổng kết (hai nguồn độc lập trong cùng log).
+    n_declared="$(sed -n 's/^# shell: ps n=\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)"
     if [ "${n_rows:-0}" -lt 1 ]; then
         echo "ps không in dòng '  pid=… state=…' nào (bảng rỗng)"
+        return 1
+    fi
+    if [ -n "$n_declared" ] && [ "${n_rows:-0}" -ne "$n_declared" ]; then
+        echo "ps khai n=$n_declared nhưng in $n_rows dòng pid — bảng thiếu dòng"
         return 1
     fi
     if [ "${n_unknown:-0}" -ne 0 ]; then
@@ -663,7 +686,7 @@ run_real() {
 
     # (0) chờ shell lên (prompt `shell>` do shell U-mode in).
     if ! wait_re '^shell>$' "$BOOT_POLLS"; then
-        echo "# boot: FAIL (không thấy 'shell>' trong $((BOOT_POLLS * 5 / 100)) s)"
+        echo "# boot: FAIL (không thấy 'shell>' sau $BOOT_POLLS vòng poll)"
         tail -5 "$LOG" 2>/dev/null | sed 's/^/#   /'
         kill_own_qemu
         wait "$QGB_PID" 2>/dev/null || true

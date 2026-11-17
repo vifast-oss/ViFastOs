@@ -53,7 +53,15 @@ Ba dạng gặp trong audit:
 | 29 | `walk_shape` (pte) | `v2/lib/vifast-pte/src/walk.rs:15,82-89` | `v2/lib/vifast-pte/tests/kt35_pte.rs:172-174` (literal 30/21/12) | **AN TOÀN** (D1) | — (literal Sv39 độc lập) | Sửa `INDEX_BITS` 9→8: `kt35_pte` **FAIL** (3/9) |
 | 30 | `Record::to_bytes` (traceformat) | `v2/lib/vifast-traceformat/src/lib.rs:53-62` | `v2/lib/vifast-traceformat/tests/crosscheck.rs:60-75` (so golden nhị phân đã commit) | **AN TOÀN** (D1) | — (golden nhị phân `v2/test/trace/golden-sim-seed7.bin` là nguồn độc lập) | Đảo `a`/`b` trong `to_bytes`: `cargo test -p vifast-traceformat` **FAIL** (2/6) |
 
-**Tổng**: 30 ứng viên; **6 NGHI VẤN** (#2–#7); **3 đã chứng minh xanh giả bằng thực nghiệm**
+> **ĐÍNH CHÍNH (review chéo, 2026-11-18)**: con số dưới đây ghi **ba** mục "đã chứng minh xanh giả",
+> nhưng reviewer độc lập chỉ ra mục `persist_host.py` là **đột biến phía test**, không phải phía code:
+> harness **gốc** vẫn bắt được `<< 16` ở phía kernel. Vậy đúng là **hai** mục chứng minh được bằng
+> đột biến **phía code** (#2 `kt18_tcb`, #3 IDL). Mục `persist_host.py` **vẫn** là NGHI VẤN, nhưng vì
+> lý do khác — reviewer tìm ra log `single == double` **lọt** harness gốc; đã vá bằng **KT-111**.
+> Hai mục NGHI VẤN còn lại (`ktest_con.rs:359`, `ktest_core.rs:531`) reviewer xác nhận là **xanh giả
+> thật (nhẹ)**; `persist_host.py:42` thì **không** phải xanh giả có nghĩa.
+
+**Tổng**: 30 ứng viên; **6 NGHI VẤN** (#2–#7); **2 đã chứng minh xanh giả bằng đột biến phía code**
 (#2 `kt18_tcb`, #3 IDL, #4 `persist_host.py`); 24 AN TOÀN có bằng chứng (mutation hoặc nguồn độc lập).
 
 ## 2. Chi tiết các mục NGHI VẤN
