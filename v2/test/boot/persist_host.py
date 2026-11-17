@@ -227,6 +227,28 @@ def check_log(args):
                     detail, single, double = (int(value) for value in match.groups())
                     if single == 0 or double == 0:
                         fail(f"pha 7: thiếu bảng gián tiếp single={single} double={double}")
+                    # **KT-111**: kiểm **ngữ nghĩa** trước, rồi mới kiểm công thức. Nếu chỉ kiểm
+                    # `detail == (single << 32) | double` thì harness và kernel dùng **cùng một
+                    # công thức** ⇒ đổi cả hai (ví dụ `<< 16`) vẫn xanh (KT-107 mục 3). Ba bất biến
+                    # dưới đây **không** phụ thuộc cách đóng gói:
+                    #   (i)  hai khối phải **khác nhau** (một khối không thể vừa single vừa double);
+                    #   (ii) cả hai phải **dương** (khối 0 là superblock, không phải bảng gián tiếp);
+                    #   (iii) `detail` phải **lớn hơn** cả hai (nó gộp hai khối, không thể bằng một).
+                    if single == double:
+                        fail(f"pha 7: single={single} trùng double — hai bảng gián tiếp phải khác khối")
+                    #   (iv) `detail` phải **≥ 2^32**: nó gộp hai khối 32 bit, nên nếu ai đổi dịch
+                    #        bit (ví dụ `<< 16`) thì `detail` tụt xuống dưới 2^32 — bất biến này
+                    #        **không** phụ thuộc con số dịch cụ thể.
+                    if detail < (1 << 32):
+                        fail(
+                            f"pha 7: detail={detail} < 2^32 — không thể gộp hai khối 32 bit "
+                            f"(single={single} double={double})"
+                        )
+                    if detail <= single or detail <= double:
+                        fail(
+                            f"pha 7: detail={detail} không lớn hơn single={single}/double={double} "
+                            "— cách đóng gói đã làm mất một khối"
+                        )
                     if detail != (single << 32) | double:
                         fail(f"pha 7: detail={detail} != single<<32|double={((single << 32) | double)}")
             if args.phase == 3 and int(got.get("detail", "0")) != 2048:
