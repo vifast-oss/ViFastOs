@@ -45,3 +45,21 @@ if size > 0xFFFF_FFFF {
   phình từ 79 lên 32768 B (đường grow commit từng block trước khi báo lỗi). Ghi nhận, chưa vá.
 - **`jobs` không có gì kiểm**: `ps` được TAP 4 đối chiếu `ps_real`, còn `jobs` chép cùng công thức
   giải mã mà **không** có nguồn đối chiếu. Nếu công thức sai, không ai bắt.
+
+## Bổ sung: ca tự động cho hai lệnh mới (đóng phát hiện #2 của reviewer)
+
+Reviewer chỉ ra đúng: "shell-edge tám trên tám PASS" là **thật** nhưng **không phủ** mã mới. Đã thêm:
+
+- **`check_truncate_jobs`** — kiểm **ba** vế độc lập: (a) `truncate /README 5` in đúng dòng xác nhận;
+  (b) `stat /README` sau đó in `size=5` (chứng minh truncate **có hiệu lực**, không chỉ in); (c) `jobs`
+  in đủ bốn số và **tổng** bằng `n` của `ps`.
+- **Ca selftest 3c** — log sai (stat vẫn `size=79`) phải **ĐỎ**; log đúng phải **XANH**. Selftest lên
+  **hai mươi ba** kiểm (mười lăm sai→ĐỎ + tám đúng→XANH).
+- **Ca chạy thật** đặt **ngay trước** `exit` (vì `truncate` **đổi** `/README`, đặt sau sẽ ảnh hưởng ca
+  khác). Không đánh số ca mới nên `mark_remaining_fail` và bảng tổng kết không phải sửa.
+
+```text
+# truncate-jobs: PASS (# shell: stat path=/README kind=1 size=5 ino=2)
+# shell-edge: 8/8 ca PASS
+# shell-edge-selftest: PASS (8/8 ca, 23/23 kiểm: 15 sai→ĐỎ + 8 đúng→XANH)
+```

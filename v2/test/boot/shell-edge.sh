@@ -222,6 +222,44 @@ check_ps_no_unknown() {
     return 0
 }
 
+# 3c. **KT-126** — hai lệnh mới `truncate` và `jobs` (KT-125) phải **thật sự** chạy trên ảnh sản
+#     phẩm. Trước đây chúng không có ca nào: journal dẫn "shell-edge tám trên tám PASS" là thật
+#     nhưng **không phủ** mã mới — đúng dạng xanh giả đợt này đang chống.
+#     Kiểm ba vế **độc lập**:
+#       (a) `truncate /README 5` in đúng dòng xác nhận;
+#       (b) `stat /README` sau đó in `size=5` — chứng minh truncate **có hiệu lực**, không chỉ in;
+#       (c) `jobs` in đủ bốn số và **tổng** bằng `n` của `ps` (hai lệnh đọc cùng nguồn `PS_REQ`).
+check_truncate_jobs() {
+    local log="$1" n_trunc n_stat n_jobs n_ps total
+    n_trunc="$(grep -c -x -F '# shell: truncate path=/README size=5' "$log" 2>/dev/null || true)"
+    if [ "${n_trunc:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: truncate path=/README size=5', thấy ${n_trunc:-0}"
+        return 1
+    fi
+    n_stat="$(grep -c -x -F '# shell: stat path=/README kind=1 size=5 ino=2' "$log" 2>/dev/null || true)"
+    if [ "${n_stat:-0}" -ne 1 ]; then
+        echo "truncate báo xong nhưng stat không thấy size=5 (thấy ${n_stat:-0} dòng khớp)"
+        return 1
+    fi
+    n_jobs="$(grep -c -E '^# shell: jobs ready=[0-9]+ running=[0-9]+ blocked=[0-9]+ other=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n_jobs:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: jobs ready=… running=… blocked=… other=…', thấy ${n_jobs:-0}"
+        return 1
+    fi
+    total="$(sed -n 's/^# shell: jobs ready=\([0-9]*\) running=\([0-9]*\) blocked=\([0-9]*\) other=\([0-9]*\)$/\1+\2+\3+\4/p' "$log" 2>/dev/null | head -1)"
+    if [ -z "$total" ]; then
+        echo "không đọc được bốn số của jobs"
+        return 1
+    fi
+    total=$((total))
+    n_ps="$(sed -n 's/^# shell: ps n=\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)"
+    if [ -n "$n_ps" ] && [ "$total" -ne "$n_ps" ]; then
+        echo "jobs đếm tổng $total nhưng ps khai n=$n_ps — hai lệnh lệch nhau"
+        return 1
+    fi
+    return 0
+}
+
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
 #    (không báo), >1 = báo mỗi byte (lỗi cũ) — cả hai đều ĐỎ.
 check_long_line_once() {
@@ -436,6 +474,24 @@ run_selftest() {
     } >"$right"
     selftest_pair "3b ps-mot-dong" check_ps_no_unknown "$wrong" "$right"
 
+    # ---- ca 3c (**KT-126**): `truncate` + `jobs` — hai lệnh mới phải có ca thật.
+    d="$(mktemp -d "$root/c3c.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: truncate path=/README size=5\n'
+        printf '# shell: stat path=/README kind=1 size=79 ino=2\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: ps n=3\n'
+    } >"$wrong"
+    {
+        printf '# shell: truncate path=/README size=5\n'
+        printf '# shell: stat path=/README kind=1 size=5 ino=2\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: ps n=3\n'
+    } >"$right"
+    selftest_pair "3c truncate-jobs" check_truncate_jobs "$wrong" "$right"
+
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"
     wrong="$d/wrong.log"
@@ -646,7 +702,7 @@ preflight_image() {
 
 # ------------------------------------------------------------------ chạy thật
 run_real() {
-    local qemu sbi qv qmaj qrest qmin img_sha img_bytes build_line rc=0 i c
+    local qemu sbi qv qmaj qrest qmin img_sha img_bytes build_line rc=0 i c reason
     local long_line g40
 
     preflight_image
@@ -824,6 +880,28 @@ run_real() {
     # (8) `wait 13` không treo shell.
     if [ "$CASE_TIMEOUT" -eq 0 ]; then
         run_case_wait || rc=1
+    fi
+
+    # (8b) **KT-126**: hai lệnh mới `truncate` + `jobs` — chạy **ngay trước** `exit` để không ảnh
+    #      hưởng ca nào phía sau (truncate **đổi** `/README`). Không đánh số ca mới: dùng chung
+    #      khung của ca 9 và chỉ thêm phép kiểm, nên `mark_remaining_fail` và bảng tổng kết không đổi.
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        for c in 'ps' 'truncate /README 5' 'stat /README' 'jobs'; do
+            send_line "$c" || true
+        done
+        if case_end 9; then
+            if reason="$(check_truncate_jobs "$CASE_LOG")"; then
+                echo "# truncate-jobs: PASS ($(grep -m1 -x -F '# shell: stat path=/README kind=1 size=5 ino=2' "$CASE_LOG"))"
+            else
+                echo "# truncate-jobs: FAIL ($reason)"
+                rc=1
+            fi
+        else
+            echo "# truncate-jobs: FAIL (quá hạn — shell treo ở truncate/jobs)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
     fi
 
     # (9) thoát sạch: `exit` ⇒ shell in `# shell: exit code=0`, kernel in `# product halt:`.
