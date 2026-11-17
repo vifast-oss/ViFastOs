@@ -9,12 +9,13 @@
 | `vis-host-linux/`, `vis-host-wasm/` — workspace riêng, path dep của `vis-cli` | `ViScript/vis-host-linux/`, `ViScript/vis-host-wasm/` |
 | `vis-dev`, `vis` — shim gốc repo gọi `viscript/bin/…` | `ViScript/vis-dev`, `ViScript/vis` (gọi `bin/…`) |
 
-- **Đường dẫn repo mới (local)**: `/Users/mps/dvchd/ViScript`
+- **Repo mới (GitHub)**: **https://github.com/vifast-oss/ViScript** (public)
+- **Đường dẫn local**: `/Users/mps/dvchd/ViScript`
 - **Lịch sử**: **459 commit** giữ lại (lọc từ 1791 commit của `ViFastOs`), gồm **mọi** commit `[ST-…]`
   của dòng ViScript. Ánh xạ SHA cũ → mới: `ViScript/agent/JOURNAL/st171-commit-map.txt`.
 - **Sổ nợ / QUEUE / DECISIONS / JOURNAL / báo cáo `R1..R29`** đã chuyển sang `ViScript/agent/`;
   số nợ và số task **giữ nguyên** (#146, #140, ST-171…), không đánh lại.
 - **Cổng của dòng ViScript nay chạy trong repo `ViScript`**: `./vis-dev gate --fast`.
-- **Remote**: **chưa có** — BLOCKED-CHO-A0 (cần URL + quyền tạo `vifast-oss/ViScript`).
+- **Remote**: `origin` = `https://github.com/vifast-oss/ViScript.git` (đã push `main`).
 
 Không sửa mã ViScript trong repo này nữa; mọi thay đổi làm ở repo `ViScript`.
