@@ -494,7 +494,17 @@ vbrev_gate() {
         return 1
     fi
     # Ảnh phải chứa đúng chuỗi danh tính của dòng log (log của ảnh khác ⇒ từ chối).
-    if [ -n "$image" ]; then
+    # D2-127 + review KT-89: ảnh là **bắt buộc** — thiếu ảnh thì không chứng minh được log thuộc
+    # ảnh nào ⇒ TỪ CHỐI (trước đây bỏ trống ảnh là bỏ qua bước này = fail-open).
+    if [ -z "$image" ]; then
+        vbrev_refuse no-image "image_inputs=$inputs dirty=$idirty head_rev=$head12 log=$log"
+        return 1
+    fi
+    if [ ! -f "$image" ]; then
+        vbrev_refuse image-missing "image=$image log=$log"
+        return 1
+    fi
+    if true; then
         if ! vbrev_image_has "$image" "$inputs" "$idirty"; then
             vbrev_refuse image-mismatch "image=$image image_inputs=$inputs dirty=$idirty head_rev=$head12 log=$log"
             return 1
@@ -577,7 +587,7 @@ vbrev_selftest() {
         git init -q .
         git config user.email "kt89@example.invalid"
         git config user.name "kt89"
-        mkdir -p v2/kernel/k v2/lib/alloc/src v2/agent v2/docs v2/bin
+        mkdir -p v2/kernel/k/src v2/lib/alloc/src v2/agent v2/docs v2/bin
         cat >v2/kernel/Cargo.toml <<'EOF'
 [workspace]
 resolver = "2"
@@ -591,12 +601,27 @@ edition = "2021"
 [dependencies]
 alloc = { path = "../../lib/alloc" }
 EOF
-        printf 'pub fn f() -> u32 { 1 }\n' >v2/kernel/k/src.rs
+        printf 'pub fn f() -> u32 { 1 }\n' >v2/kernel/k/src/lib.rs
         printf '[package]\nname = "alloc"\nversion = "0.1.0"\nedition = "2021"\n' >v2/lib/alloc/Cargo.toml
         printf 'pub fn a() -> u32 { 1 }\n' >v2/lib/alloc/src/lib.rs
         printf '[toolchain]\nchannel = "1.99.1"\n' >v2/rust-toolchain.toml
         printf '# lock\n' >v2/Cargo.lock
-        printf '# host\n' >v2/Cargo.toml
+        # `cargo metadata --locked` cần lockfile của **workspace kernel** (không tự tạo khi --locked).
+        cat >v2/kernel/Cargo.lock <<'LOCK'
+version = 3
+
+[[package]]
+name = "alloc"
+version = "0.1.0"
+
+[[package]]
+name = "k"
+version = "0.1.0"
+dependencies = [
+ "alloc",
+]
+LOCK
+        printf '[workspace]\nresolver = "2"\nmembers = []\n' >v2/Cargo.toml
         printf '# tool\n' >v2/bin/v2
         printf 'log\n' >v2/agent/journal.log
         printf 'doc\n' >v2/docs/d.md
@@ -620,7 +645,7 @@ EOF
         rc=1
     }
     # (b) sửa kernel **chưa** commit ⇒ dirty=1
-    printf 'pub fn f() -> u32 { 2 }\n' >"$root/v2/kernel/k/src.rs"
+    printf 'pub fn f() -> u32 { 2 }\n' >"$root/v2/kernel/k/src/lib.rs"
     dirty="$(vbrev_dirty "$root")"
     [ "$dirty" = "1" ] || {
         echo "# vbrev-selftest (b) FAIL: sửa kernel chưa commit mà dirty=$dirty"

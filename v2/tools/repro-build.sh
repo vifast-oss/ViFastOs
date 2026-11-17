@@ -204,6 +204,7 @@ DIGEST="$(python3 "$HERE/../test/conformance/image_digest.py" "$IMAGE" 2>/dev/nu
 # KT-86: ảnh **phải** thật sự mang đúng danh tính vừa tính. Nếu build script bị cargo dùng lại
 # (cache) ⇒ ảnh mang rev cũ ⇒ **dừng, không dùng kết quả** (đúng lớp lỗi KT-76: "build sạch" thật
 # ra là no-op). Nhờ vậy `repro-build.sh` không bao giờ xuất một ảnh có nguồn gốc khác dòng REPRO.
-vbrev_image_has "$IMAGE" "$BUILD_REV" "$BUILD_DIRTY" ||
-    die "KT-86: ảnh KHÔNG mang danh tính build rev=$BUILD_REV dirty=$BUILD_DIRTY (build script bị cargo dùng lại?) — không dùng kết quả"
-echo "REPRO machine=$(uname -sm | tr ' ' '-') root=$ROOT sha256=$SHA size=$SIZE wall_s=$((t1 - t0)) rev=$BUILD_REV dirty=$BUILD_DIRTY $DIGEST image=$IMAGE"
+# D2-127: danh tính **quyết định** là dấu vân tay build-inputs (16 hex), KHÔNG phải rev 12 hex.
+vbrev_image_has "$IMAGE" "$BUILD_INPUTS" "$BUILD_DIRTY" ||
+    die "KT-89: ảnh KHÔNG mang danh tính build inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY (build script bị cargo dùng lại?) — không dùng kết quả"
+echo "REPRO machine=$(uname -sm | tr ' ' '-') root=$ROOT sha256=$SHA size=$SIZE wall_s=$((t1 - t0)) inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY rev=$BUILD_REV $DIGEST image=$IMAGE"
