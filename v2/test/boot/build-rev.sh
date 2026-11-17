@@ -45,7 +45,11 @@ set -u
 
 # Phạm vi tính build-inputs — KHÔNG thêm đường dẫn khác mà không sửa docs + ca kiểm.
 VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/bin"
-VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml"
+# KT-93 (review verify-kt89): **script đo và script build** cũng là đầu vào — đổi định nghĩa dấu
+# vân tay mà dấu vân tay không đổi là khe tin-cậy. `build-rev.sh` định nghĩa dấu vân tay;
+# `repro-build.sh` đặt RUSTFLAGS (remap/strip) ảnh hưởng byte ảnh; `rustc-canon.rs` là wrapper
+# rustc canonical. Ba tệp này **phải** nằm trong dấu vân tay.
+VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/test/boot/build-rev.sh v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
 # Độ dài `rev` HEAD chỉ để tra trong log (12 hex đầu của SHA-1).
