@@ -1,0 +1,76 @@
+# ST-176 — tu kiem vis-lock | host=mps | 2026-11-17T07:28:27Z | python3=Python 3.9.6
+# tep khoa mac dinh: /Users/mps/.vifast-measure.lock ; command -v flock: (khong co)
+# log tam: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//st176-lock.1mmIux
+
+== 1. co ban: vis-lock -- echo hien (mong doi exit 0, co lock=yes) ==
+vis-lock: lock=yes pid=5754 tep=/Users/mps/.vifast-measure.lock cho=0.0s
+hien
+vis-lock: lock=no pid=5754 ma_ra=0 giay=0.0s
+[exit=0]
+
+== 2a. dung sai: thieu '--' (mong doi exit 2) ==
+vis-lock: thieu '--' truoc lenh (gap 'echo')
+dung: bin/vis-lock [--timeout <giay>] [--log <tep>] -- <lenh> [doi so…]
+
+  --timeout <giay>  cho khoa toi da <giay>; het thoi gian => exit 124, lenh KHONG chay
+                    (khong co co nay hoac 0 => cho vo han)
+  --log <tep>       ghi tiep cac dong "# ST-176 vis-lock …" (load_truoc luc lay khoa,
+                    load_sau + ma_ra + giay luc xong) vao <tep>; KHONG truncate
+  VIS_LOCK_FILE     duong khoa (mac dinh ~/.vifast-measure.lock)
+[exit=2]
+
+== 2b. dung sai: --timeout khong phai so (mong doi exit 2) ==
+vis-lock: --timeout can so giay nguyen (nhan 'abc')
+[exit=2]
+
+== 2c. dung sai: thieu lenh sau '--' (mong doi exit 2) ==
+vis-lock: thieu lenh sau '--'
+dung: bin/vis-lock [--timeout <giay>] [--log <tep>] -- <lenh> [doi so…]
+
+  --timeout <giay>  cho khoa toi da <giay>; het thoi gian => exit 124, lenh KHONG chay
+                    (khong co co nay hoac 0 => cho vo han)
+  --log <tep>       ghi tiep cac dong "# ST-176 vis-lock …" (load_truoc luc lay khoa,
+                    load_sau + ma_ra + giay luc xong) vao <tep>; KHONG truncate
+  VIS_LOCK_FILE     duong khoa (mac dinh ~/.vifast-measure.lock)
+[exit=2]
+
+== 3. HAI tien trinh dong thoi: A giu khoa 5 s, B bat dau sau 0,5 s (mong doi B CHO ~4,5 s) ==
+A exit=0 · B exit=0 · B cho 5 s (mong doi >= 4)
+[exit=0]
+--- thu tu dong (A truoc, B sau):
+[A bat dau 2026-11-17T07:28:27Z]
+vis-lock: lock=yes pid=5769 tep=/Users/mps/.vifast-measure.lock cho=0.0s
+A: vao luc 07:28:27, giu 5 s
+[B bat dau 2026-11-17T07:28:28Z]
+vis-lock: khoa '/Users/mps/.vifast-measure.lock' dang bi giu — cho (toi da 30s)
+A: ra luc 07:28:32
+vis-lock: lock=no pid=5769 ma_ra=0 giay=5.2s
+vis-lock: lock=yes pid=5780 tep=/Users/mps/.vifast-measure.lock cho=4.8s
+B: vao luc 07:28:33
+vis-lock: lock=no pid=5780 ma_ra=0 giay=0.0s
+[het 2026-11-17T07:28:33Z]
+
+== 4. het thoi gian: giu khoa 6 s, roi --timeout 1 => exit 124, lenh KHONG chay ==
+vis-lock: lock=yes pid=5806 tep=/Users/mps/.vifast-measure.lock cho=0.0s
+vis-lock: khoa '/Users/mps/.vifast-measure.lock' dang bi giu — cho (toi da 1s)
+vis-lock: HET THOI GIAN cho khoa sau 1s — lenh KHONG chay (exit 124)
+[exit=124]
+DUNG: lenh KHONG chay
+vis-lock: lock=no pid=5806 ma_ra=0 giay=6.2s
+
+== 5. khoa that su giu o muc flock: trong luc A giu, python LOCK_NB phai that bai ==
+vis-lock: lock=yes pid=5823 tep=/Users/mps/.vifast-measure.lock cho=0.0s
+DUNG: LOCK_NB that bai khi dang bi giu ([Errno 35] Resource temporarily unavailable)
+[exit=0]
+vis-lock: lock=no pid=5823 ma_ra=0 giay=3.2s
+
+== 6. noi dung log khoa (--log) ==
+# ST-176 vis-lock lock=yes pid=5754 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="echo hien" load_truoc="{ 1.10 1.22 1.42 }" thoi_diem="2026-11-17T07:28:27Z"
+# ST-176 vis-lock lock=yes pid=5754 (giu suot lenh) ma_ra=0 giay=0.0 load_sau="{ 1.10 1.22 1.42 }" thoi_diem="2026-11-17T07:28:27Z"
+# ST-176 vis-lock lock=yes pid=5769 tep=/Users/mps/.vifast-measure.lock cho=0.0s host=mps lenh="sh -c echo "A: vao luc $(date -u +%H:%M:%S), giu 5 s"; sleep 5; echo "A: ra luc $(date -u +%H:%M:%S)"" load_truoc="{ 1.10 1.22 1.42 }" thoi_diem="2026-11-17T07:28:27Z"
+# ST-176 vis-lock lock=yes pid=5769 (giu suot lenh) ma_ra=0 giay=5.2 load_sau="{ 1.09 1.22 1.42 }" thoi_diem="2026-11-17T07:28:32Z"
+# ST-176 vis-lock lock=yes pid=5780 tep=/Users/mps/.vifast-measure.lock cho=4.8s host=mps lenh="sh -c echo "B: vao luc $(date -u +%H:%M:%S)"" load_truoc="{ 1.09 1.22 1.42 }" thoi_diem="2026-11-17T07:28:33Z"
+# ST-176 vis-lock lock=yes pid=5780 (giu suot lenh) ma_ra=0 giay=0.0 load_sau="{ 1.09 1.22 1.42 }" thoi_diem="2026-11-17T07:28:33Z"
+[exit=0]
+
+# [exit=0] het tu kiem
