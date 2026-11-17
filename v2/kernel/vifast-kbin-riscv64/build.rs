@@ -188,6 +188,35 @@ fn main() {
     );
 }
 
+/// **KT-92 / A1-184** — cờ `--remap-path-prefix` mà cargo đã cấp cho **crate chính**, để các lần
+/// gọi `$RUSTC` trực tiếp (shim U-mode, rlib, ELF user) dùng **cùng** ánh xạ đường dẫn.
+///
+/// Vì sao: `build.rs` gọi `$RUSTC` trực tiếp nên **không** nhận `RUSTFLAGS` của cargo ⇒ cùng một
+/// commit build ở hai đường dẫn nguồn khác nhau cho ra sha khác nhau (A1-184: `c65ee0f6` vs
+/// `07c34fc6`). Truyền lại đúng cờ remap làm đường dẫn nguồn biến mất khỏi byte ảnh.
+fn remap_flags() -> Vec<String> {
+    let mut out = Vec::new();
+    // Cargo đặt `CARGO_ENCODED_RUSTFLAGS` cho build script, phân tách bằng 0x1f.
+    if let Ok(encoded) = std::env::var("CARGO_ENCODED_RUSTFLAGS") {
+        for part in encoded.split('\u{1f}') {
+            if part.starts_with("--remap-path-prefix") {
+                out.push(part.to_string());
+            }
+        }
+    }
+    // Dự phòng: `RUSTFLAGS` dạng chuỗi (một số môi trường chỉ đặt biến này).
+    if out.is_empty() {
+        if let Ok(flags) = std::env::var("RUSTFLAGS") {
+            for part in flags.split_whitespace() {
+                if part.starts_with("--remap-path-prefix") {
+                    out.push(part.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Biên dịch + liên kết một chương trình user thành ELF64 ở `$OUT_DIR/<out_name>`.
 ///
 /// Dùng `$RUSTC` (cargo cấp) thay vì tự gọi `cargo` lồng nhau: cùng toolchain, không đổi
@@ -202,6 +231,7 @@ fn build_user_lib(dir: &Path) -> PathBuf {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let source = dir.join("../vifast-plat-user/lib.rs");
     let status = Command::new(&rustc)
+        .args(remap_flags())
         .current_dir(dir)
         .arg("--crate-name")
         .arg("vifast_user_abi")
@@ -243,6 +273,7 @@ fn build_rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Pat
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let source = dir.join(source);
     let mut cmd = Command::new(&rustc);
+    cmd.args(remap_flags());
     cmd.current_dir(dir)
         .arg("--crate-name")
         .arg(crate_name)
@@ -296,6 +327,7 @@ fn build_user_elf_with(
     let source = dir.join("init").join(source_name);
     let script = dir.join("init/init.ld");
     let mut cmd = Command::new(&rustc);
+    cmd.args(remap_flags());
     cmd.current_dir(dir)
         .arg("--target")
         .arg("riscv64gc-unknown-none-elf")
