@@ -59,8 +59,20 @@ Sáu tiêu chí ở §1 (trừ soak, chờ §2), cộng **hai** lỗi v1 đã đ
 
 ### 3.3 MỞ
 
-**N1**, **N2**, **N3**, **N7** — bốn lỗi v1 còn mở, chuyển sang K7 ("Đóng lỗi v1"). Bảng chi tiết
-`file:dòng` thuộc **KT-83** (chưa làm).
+**N1**, **N2**, **N3**, **N7** — bốn lỗi v1 còn mở, chuyển sang K7 ("Đóng lỗi v1").
+
+Bảng chi tiết `file:dòng` đã xong: [`v2/agent/JOURNAL/kt83-table.md`](../JOURNAL/kt83-table.md).
+Tóm tắt trạng thái bằng chứng (từ bảng đó):
+
+| Lỗi | Bằng chứng v1 | Ca kiểm v2 | Vì sao còn mở |
+|---|---|---|---|
+| N1 | có | **một phần** — chỉ một hart, không migrate | thiếu ca "đơn điệu sau migrate" + chéo hart |
+| N2 | có | **đủ** (có ca âm) | thiếu phép đo "năm mươi boot, không đỏ" |
+| N3 | có | **một phần** — hai client, không có checker "đúng một lần" | thiếu checker + ca bốn client + đột biến phát lại |
+| N7 | có | **chưa có** ca kiểm đúng tiêu chí | chưa có test "một cơ chế wake chung cho ba port" |
+
+**Đính chính kèm theo** (KT-83): `K6-DOD.md` §4 có ba chỗ sai đã ghi đính chính ngay đầu mục —
+hai dẫn `file:dòng` lệch, và **N5** phải đọc là **HOÃN K5′**, không phải "N/A".
 
 ## 4. Nợ P20 (tái lập byte) — caveat bắt buộc
 
