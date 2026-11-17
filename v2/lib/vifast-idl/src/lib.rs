@@ -232,6 +232,32 @@ mod tests {
         let _ = info;
     }
 
+    /// **KT-107**: hằng dịch bit của `MessageInfo` phải khớp **`spec/abi.toml`**, không phải khớp
+    /// chính chúng. Trước đây `roundtrip_moi_method` giải mã bằng **đúng** `INFO_CAPS_SHIFT` mà
+    /// encoder sinh ra ⇒ đổi hằng số (ví dụ `20` → `21`) thì test **vẫn xanh** (đã chứng minh bằng
+    /// đột biến), tức wire format sai mà unit test không bắt. Test này đọc **nguyên văn** dòng
+    /// `layout` trong spec và đối chiếu ⇒ nguồn độc lập.
+    #[test]
+    fn info_shift_khop_spec() {
+        let spec = include_str!("../../../../spec/abi.toml");
+        let layout = spec
+            .lines()
+            .find(|line| line.trim_start().starts_with("layout ="))
+            .expect("spec/abi.toml phải có dòng layout");
+        // Dạng: layout = "label:0..19, caps:20..22, no_reply:23, ... length:28..34"
+        let field = |name: &str| -> u32 {
+            let start = layout
+                .find(&format!("{name}:"))
+                .unwrap_or_else(|| panic!("spec thiếu trường {name}"));
+            let rest = &layout[start + name.len() + 1..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse().expect("spec: số bit không hợp lệ")
+        };
+        assert_eq!(field("caps"), INFO_CAPS_SHIFT, "caps phải khớp spec");
+        assert_eq!(field("length"), INFO_LENGTH_SHIFT, "length phải khớp spec");
+        assert_eq!(field("label"), 0, "label bắt đầu ở bit 0");
+    }
+
     /// Tệp sinh của **cả hai** interface đều không `unsafe`/asm (D2-101 tinh thần).
     #[test]
     fn generated_pager_khong_unsafe() {
