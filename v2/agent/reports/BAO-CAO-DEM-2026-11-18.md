@@ -47,6 +47,39 @@ văn: `v2/agent/JOURNAL/kt105-journal.md` (mục "Ảnh canonical mới nhất")
 Đã ghim; parity sáu trên sáu; persist PASS; ma trận hai mươi mốt trên hai mươi mốt. **Chưa** soak một nghìn trên ảnh này (soak gần nhất
 là `dd9f7050…`, trước KT-103/104/105).
 
+## 4b. Vòng chạy **song song + review chéo** (sau báo cáo đầu)
+
+Bốn việc độc lập chạy song song, rồi **hai reviewer độc lập** kiểm chéo. Kết quả:
+
+| Task | Nội dung | Kết quả |
+|---|---|---|
+| **KT-107** | Truy tìm chỗ **test dùng chung công thức với code** | ba mươi ứng viên; **sáu** nghi vấn; **hai** chứng minh xanh giả bằng đột biến phía code |
+| **KT-108** | Harness ca biên cho shell | tám ca; selftest mười chín kiểm; chạy trên ảnh cũ **đỏ ba trên tám** đúng ba lỗi thật |
+| **KT-109** | Bảng hai mươi hai lệnh parity đang hoãn | nhóm A tám lệnh (hai giờ), B tám, C năm, D một; tổng **mười bốn phẩy năm giờ** |
+| **KT-110** | Đo thời gian cổng | `gate --fast` bốn trăm lẻ bảy giây, **L0 chiếm tám mươi lăm phần trăm**, L1 chỉ một giây |
+
+**Review chéo bắt được (đây là giá trị thật của vòng này):**
+
+| Phát hiện | Xử lý |
+|---|---|
+| `shell-edge.sh` dùng `LOGDIR` **cố định** ⇒ hai lượt song song đọc chung log; ảnh giả **không boot** vẫn báo PASS nhờ log lượt khác | **KT-112** vá: mỗi lượt một thư mục `mktemp -d`; đã dựng lại ca âm để chứng minh |
+| `check_ps_no_unknown` chỉ đòi **≥ một** dòng pid | **KT-112** vá: đối chiếu với `n` trong dòng tổng kết |
+| Thông báo lỗi hứa "hai mươi giây" nhưng `sleep` một phần hai mươi giây thực tế tốn khoảng một phần năm giây ⇒ thật là ~tám mươi giây | **KT-112** vá: in **số vòng poll** |
+| KT-107 ghi "ba trên sáu chứng minh xanh giả" — thực chất **hai trên sáu** (mục thứ ba là đột biến **phía test**) | đính chính trong `kt107-audit.md` |
+| KT-109 mục bốn lỗi số học một giờ | đính chính: đợt thứ hai là **ba giờ**, tổng **mười bốn phẩy năm giờ** |
+| KT-110 ghi `smp` bốn giá trị — thực tế mặc định **một hart** (đo: hai mươi bảy phẩy chín giây so với một trăm năm mươi mốt giây) | đính chính |
+| KT-110 gán điều kiện `/tmp/repfx.out` cho P3 — thực ra thuộc **P6** | đính chính |
+| KT-110 thiếu lớp rủi ro **đồng hồ thực** khi song song hoá L0 | bổ sung: `kt30_stress.rs:21`, `spsc.rs:218`, `compile_fail.rs:74` |
+
+**Hai việc tôi tự làm thêm từ kết quả audit:**
+
+- **KT-111** — `persist_host.py` kiểm `detail` bằng **cùng công thức** với kernel. Thêm **bốn bất biến
+  ngữ nghĩa** (hai khối khác nhau, cả hai dương, `detail` lớn hơn cả hai, `detail` lớn hơn hoặc bằng hai mũ ba mươi hai) ⇒ đổi dịch
+  dịch bit mười sáu hay hai mươi bốn đều **đỏ** (trước: xanh).
+- **KT-107 (vá mục đầu)** — thêm test `info_shift_khop_spec` đọc **nguyên văn** dòng `layout` trong
+  `spec/abi.toml`. Reviewer xác nhận **độc lập thật**: `gen_idl.py:173,175` **viết cứng** `20`/`28`,
+  không đọc spec.
+
 ## 5. Cần Agent 0 quyết
 
 | STT | Việc | Ghi chú |
