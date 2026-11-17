@@ -303,8 +303,16 @@ fn fs_dispatch(line: &[u8]) -> bool {
     } else if starts_with(line, b"ls ") {
         cmd_ls(&line[3..]);
         true
+    } else if line == b"cat" {
+        // KT-104: `cat`/`write` **không tham số** trước đây rơi xuống nhánh "lệnh lạ" ⇒ in
+        // `# shell: ?`, gây hiểu nhầm là shell không biết lệnh. Nay báo đúng: thiếu đường dẫn.
+        put(b"# shell: thieu duong dan\n");
+        true
     } else if starts_with(line, b"cat ") {
         cmd_cat(&line[4..]);
+        true
+    } else if line == b"write" {
+        put(b"# shell: thieu duong dan\n");
         true
     } else if starts_with(line, b"write ") {
         let (path, text) = split_space(&line[6..]);
