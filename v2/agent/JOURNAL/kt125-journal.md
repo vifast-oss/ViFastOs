@@ -46,3 +46,34 @@ bash v2/test/boot/shell-edge.sh --image <ảnh cũ> → 8/8 ca PASS (harness đ�
 
 `history`, `!!` — cần **trạng thái lịch sử** trong shell (buffer + con trỏ). Chưa làm: đây là tính
 năng mới thật sự, không chỉ là nối opcode có sẵn, nên đáng một task riêng.
+
+## Sự cố khi build ảnh test (đã vá)
+
+Lần build đầu, `ktest-con` **FAIL**:
+
+```text
+error[E0425]: cannot find function `cmd_truncate` in this scope
+  note: found an item that was configured out
+     --> init/shell_user.rs:254  #[cfg(shell_fs)] fn cmd_truncate(...)
+```
+
+Nguyên nhân: tôi đặt hai nhánh dispatch `jobs`/`truncate` trong chuỗi `if/else` **chính**, nhưng hai
+hàm lại bị `#[cfg(shell_fs)]` loại ở ảnh test. **Vá**: chuyển hai nhánh vào `fs_dispatch` (hàm đã có
+`#[cfg(shell_fs)]`).
+
+**Bài học**: thêm lệnh vào shell phải sửa **ba** chỗ cùng một `cfg` — hàm, `CMDS`/`help`/banner, **và
+chỗ dispatch**. Tôi quên chỗ thứ ba; ma trận bắt được ngay.
+
+## Ảnh canonical cuối
+
+```text
+REPRO sha256=503be0f9986502620e369fd056009bf593a7195be58aa14485c4ba099c017f59
+      size=205440  inputs=3a2e6b095d6491b1  dirty=0  rev=feb45790afc6
+      build=2dc8d3f9e71d47ef  text=130072
+# đã ghim: v2/artifacts/503be0f9….bin
+
+bash v2/test/boot/ktest.sh 1 matrix → # KTEST: 21/21 boot sạch · ktest.sh: PASS
+bash v2/test/parity/run.sh --mode serial --image v2/artifacts/503be0f9….bin → KET_LUAN=ok
+bash v2/test/boot/shell-edge.sh --image v2/artifacts/503be0f9….bin → 8/8 ca PASS
+bash v2/test/boot/persist.sh → persist.sh: PASS
+```
