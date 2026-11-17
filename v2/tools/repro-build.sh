@@ -123,6 +123,18 @@ if [ -z "$BUILD_REV" ]; then
 fi
 export VIFAST_BUILD_REV="$BUILD_REV"
 export VIFAST_BUILD_DIRTY="$BUILD_DIRTY"
+# D2-127: danh tính **quyết định** là dấu vân tay **nội dung build-inputs** (không phải rev).
+# Cùng nguồn sự thật với harness: `vbrev_inputs_calc` của `v2/test/boot/build-rev.sh`.
+if vbrev_inputs_calc "$ROOT"; then
+    BUILD_INPUTS="$VBREV_CALC_SHORT"
+    BUILD_INPUTS_COUNT="$VBREV_CALC_COUNT"
+else
+    BUILD_INPUTS="unknown"
+    BUILD_INPUTS_COUNT="0"
+    echo "# repro-build: CẢNH BÁO không tính được dấu vân tay build-inputs (${VBREV_CALC_ERROR:-unknown}) — ảnh mang inputs=unknown, cổng đo sẽ TỪ CHỐI" >&2
+fi
+export VIFAST_BUILD_INPUTS="$BUILD_INPUTS"
+export VIFAST_BUILD_INPUTS_COUNT="$BUILD_INPUTS_COUNT"
 
 # A1-175: **cấm** dùng `target/` của repo cho build canonical — nó là nơi ảnh phát hành
 # (`v2/kernel/target/<target>/release/<bin>`) do KT-75/76/78 soak/đo. Mặc định = thư mục tạm

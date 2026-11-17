@@ -48,7 +48,7 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 /// (`cargo:rustc-env`, không viết tay trong mã — D2-102: in từ `const`, không literal):
 ///
 /// ```text
-/// # build: rev=<12 hex của git rev-parse HEAD> dirty=<0|1>
+/// # build: inputs=<16 hex dấu vân tay build-inputs> dirty=<0|1>
 /// ```
 ///
 /// `dirty=1` ⇔ có thay đổi chưa commit trong `v2/kernel`/`v2/lib` **tại thời điểm build**
@@ -56,8 +56,8 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 /// `v2/test/boot/build-rev.sh` đọc dòng này từ log boot và **TỪ CHỐI ĐO** khi `rev` lệch
 /// `git rev-parse HEAD`, khi `dirty=1`, hoặc khi log **không có** dòng này (fail-closed).
 const BUILD_LINE: &str = concat!(
-    "# build: rev=",
-    env!("VIFAST_BUILD_REV"),
+    "# build: inputs=",
+    env!("VIFAST_BUILD_INPUTS"),
     " dirty=",
     env!("VIFAST_BUILD_DIRTY"),
     "\n"

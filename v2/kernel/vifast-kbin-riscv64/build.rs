@@ -366,6 +366,43 @@ const UNKNOWN_REV: &str = "unknown";
 /// Số ký tự hex của `rev` trong dòng bằng chứng (khớp `VBREV_REV_LEN` của harness).
 const REV_LEN: usize = 12;
 
+/// Dấu vân tay build-inputs khi không tính được (khớp `VBREV_INPUTS_LEN` = 16 của harness).
+const UNKNOWN_INPUTS: &str = "unknown";
+
+/// `true` ⇔ `s` là 16 ký tự hex thường (đúng độ dài `VBREV_INPUTS_LEN`).
+fn is_inputs16(s: &str) -> bool {
+    s.len() == 16
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Tính dấu vân tay build-inputs bằng **chính** `v2/test/boot/build-rev.sh` (một nguồn sự thật).
+/// Trả `None` khi không chạy được ⇒ ảnh mang `inputs=unknown` ⇒ cổng **từ chối** (fail-closed).
+fn inputs_from_script(root: &Path) -> Option<String> {
+    let script = root.join("v2/test/boot/build-rev.sh");
+    if !script.is_file() {
+        return None;
+    }
+    let out = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(". \"$1\" && vbrev_inputs_calc \"$2\" && printf '%s' \"$VBREV_CALC_SHORT\"")
+        .arg("bash")
+        .arg(&script)
+        .arg(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8(out.stdout).ok()?;
+    let s = s.trim().to_string();
+    if is_inputs16(&s) {
+        Some(s)
+    } else {
+        None
+    }
+}
+
 /// Đặt `VIFAST_BUILD_REV`/`VIFAST_BUILD_DIRTY` cho crate (⇒ `env!` trong `src/main.rs`) và khai
 /// báo mọi thứ phải làm build script **chạy lại** để giá trị không bị cũ.
 fn build_identity(manifest_dir: &str) {
@@ -384,9 +421,17 @@ fn build_identity(manifest_dir: &str) {
         .ok()
         .filter(|v| v == "0" || v == "1")
         .unwrap_or_else(|| git_dirty(&root));
+    // D2-127: danh tính **quyết định** là dấu vân tay **nội dung build-inputs** (không phải rev).
+    // Nguồn sự thật duy nhất: `vbrev_inputs_calc` của `v2/test/boot/build-rev.sh` — build script
+    // **gọi chính script đó** thay vì chép lại định nghĩa (A0: danh sách do script sinh, không viết tay).
+    let inputs = std::env::var("VIFAST_BUILD_INPUTS")
+        .ok()
+        .filter(|v| is_inputs16(v))
+        .unwrap_or_else(|| inputs_from_script(&root).unwrap_or_else(|| UNKNOWN_INPUTS.to_string()));
     println!("cargo:rustc-env=VIFAST_BUILD_REV={rev}");
     println!("cargo:rustc-env=VIFAST_BUILD_DIRTY={dirty}");
-    println!("cargo:warning=KT-86 build identity rev={rev} dirty={dirty}");
+    println!("cargo:rustc-env=VIFAST_BUILD_INPUTS={inputs}");
+    println!("cargo:warning=KT-89 build identity inputs={inputs} dirty={dirty} rev={rev}");
     // Bản build **sau** phải tính lại danh tính: env đổi, HEAD/index đổi, hoặc mã nguồn trong
     // phạm vi dirty đổi. Thiếu các dòng này cargo dùng lại build script cũ ⇒ ảnh mang rev cũ
     // (đúng lớp lỗi KT-76). Mọi bất định chỉ dẫn tới **từ chối đo**, không dẫn tới nhận nhầm.
