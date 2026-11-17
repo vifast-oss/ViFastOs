@@ -1395,9 +1395,16 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         "pager ca am quyen va khong ghi de",
         "ca am khong do duoc hoac PTE/du lieu bi ghi de",
     );
-    // Bất biến: `reads == misses` (mỗi miss đúng một lần đọc trang) — D2-106.
-    let sectors_per_page = u64::from((PAGE_SIZE / vifast_vfs::SECTOR_SIZE) as u32);
-    if reads != misses || sectors != misses * sectors_per_page {
+    // **KT-122** (review toàn dự án #4): bất biến `reads == misses` (mỗi miss đúng **một** lần đọc
+    // trang, D2-106) trước đây chỉ **in** một dòng khi sai — không TAP nào đỏ, nên đột biến
+    // `reads += 1` → `+= 2` vẫn cho 35 `ok`/0 `not ok`. Nay thành **TAP 36**.
+    //
+    // `sectors_per_page` viết bằng **literal 8** (một trang 4 KiB / một sector 512 B) thay vì tính
+    // từ `PAGE_SIZE / SECTOR_SIZE` — nếu tính từ hai hằng của chính code thì đó lại là "test dùng
+    // chung công thức với code" (bài học KT-107).
+    let sectors_per_page = 8u64;
+    let pager_invariant = reads == misses && sectors == misses * sectors_per_page;
+    {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
@@ -1406,9 +1413,16 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
             misses,
             sectors,
             sectors_per_page,
-            u8::from(reads == misses && sectors == misses * sectors_per_page)
+            u8::from(pager_invariant)
         );
     }
+    tap(
+        fails,
+        pager_invariant,
+        36,
+        "pager bat bien reads==misses",
+        "so lan doc trang khac so lan miss (hoac sectors khac misses*8)",
+    );
     // Dọn tài nguyên của pha này (trả Untyped cho pha sau — không đổi ngưỡng).
     pager_loaded.release();
     a_loaded.release();

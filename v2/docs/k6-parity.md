@@ -52,16 +52,18 @@ theo **tag**, không theo con số lịch sử.
 | `history` | — | `docs/v1/overnight-log.md:2776` | deferred-K7 |
 | `!!` | — | `docs/v1/overnight-log.md:2776` | deferred-K7 |
 
-**Bốn lệnh `active`** (`help`, `echo`, `ps`, `kill` — shell v2 đã có, `shell_user.rs:247-269`) ·
-**hai mươi bốn mục `deferred-K7`**.
+**Sáu lệnh `active`** (`help`, `echo`, `ps`, `kill`, `ls`, `cat` — shell v2 đã có) ·
+**hai mươi hai mục `deferred-K7`**. (Đính chính KT-122: bản trước ghi "bốn" và "hai mươi bốn" —
+đúng là sáu và hai mươi hai, khớp `spec/v1-parity.toml` và bảng KT-109.)
 
 **Lý do `deferred` đã sửa cho đúng hiện trạng (review KT-77a):**
 - `time`, `uptime`: **không** phải "cần syscall đồng hồ" — `ClockRead` = syscall mười một đã có
   (`spec/abi.toml:117`, `v2/kernel/vifast-plat-riscv64/src/user.rs:1229`, TAP
   `v2/kernel/vifast-kbin-riscv64/src/ktest_user.rs:1105`). Thiếu chỉ là **builtin shell**.
 - `jobs`: **không** phải "cần `TcbInfo`" — shell v2 **đã** nhận state từng TCB trong reply `PS_REQ`
-  và tự in (`shell_user.rs:189-218`: `pid=entry>>5`, `state=(entry>>1)&0x1f`). Thiếu chỉ là builtin
-  đếm Ready/Running.
+  và tự in (`shell_user.rs`: `pid=entry>>5`, `state=(entry>>1)&0x0f`). Thiếu chỉ là builtin
+  đếm Ready/Running. **Đính chính KT-122**: bản trước ghi `&0x1f` — đó là **lỗi thật** đã vá ở
+  KT-105 (trạng thái chiếm **bốn** bit, không phải năm; `&0x1f` làm `ps` in `state=Unknown`).
 - `cd`/`pwd`: **hai dữ kiện mâu thuẫn**, ghi cả hai chiều trong mục (`source` + `counter_evidence`)
   và `decision = 'cho Agent 0'`: mã/tài liệu ở tag `v1-archive` **có** cd/pwd
   (`v1-archive:crates/vifast-client/src/main.rs:878`) nhưng `docs/v1/overnight-log.md:3664-3669`

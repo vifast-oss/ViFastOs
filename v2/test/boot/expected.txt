@@ -66,7 +66,7 @@ ktest-guard 3 3
 # page ngoài file trả mã `InvalidArgument`) + **1 TAP ca âm** (35: aux = CNode cap `P_SELF`
 # không phải VSpace ⇒ `WrongObjectType` (2); VA đã map ⇒ `AlreadyMapped` (10), không ghi đè)
 # ⇒ **35 TAP**.
-ktest-user 35 35
+ktest-user 36 36
 
 # **KT-66** — ảnh demo thứ tư `vifast-kbin-ktest-proc` (bin riêng, cùng feature `ktest,user`):
 # đúng mười ca cũ **15..24** của `ktest-user`, đánh số lại **1..10** (TAP một ảnh phải liên tục

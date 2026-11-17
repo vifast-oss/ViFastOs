@@ -351,6 +351,7 @@ pager eviction LRU khong mat du lieu
 pager hai client chia se mot trang
 pager page ngoai file tra ma
 pager ca am quyen va khong ghi de
+pager bat bien reads==misses
 EOF
 }
 
