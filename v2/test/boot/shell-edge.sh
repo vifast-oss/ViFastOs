@@ -74,6 +74,9 @@ CASE_POLLS=200     # 200 vòng chờ output/marker của một ca
 POLL_S=0.05
 QEMU_TDS=1200      # trần QEMU 120 s (qg_boot); harness tự kill sớm hơn khi ca quá hạn
 WAIT_BUDGET_S=5    # ca 8: `wait 13` phải trả lời trong 5 s
+# **KT-120**: sàn **độc lập** cho `ps` — ảnh sản phẩm luôn có ít nhất procsrv + shell + victim.
+# Không đọc từ log (nếu đọc từ log thì shell in sai số vẫn khớp chính nó).
+PS_MIN_ROWS=3
 LONG_LEN=200       # ca 4: dòng dài 200 ký tự (> MAX_LINE 64 của ảnh có FS)
 WAIT_PID=13        # ca 8: pid tiến trình đang chạy (procsrv) trên ảnh đã ghim
 
@@ -194,11 +197,18 @@ check_ps_no_unknown() {
         echo "mong đúng 1 dòng '# shell: ps n=<n>', thấy ${n_ps:-0}"
         return 1
     fi
-    # **KT-112**: trước chỉ đòi `>= 1` dòng ⇒ `ps` thoái hoá còn một tiến trình vẫn xanh. Nay đòi
-    # **đúng** số dòng bằng `n` trong dòng tổng kết (hai nguồn độc lập trong cùng log).
+    # **KT-120** (review toàn dự án): bản KT-112 ở đây là **kiểm rỗng** — `n_rows` và `n_declared`
+    # cùng sinh từ **một** biến `count` của shell, nên `n_rows == n_declared` **luôn** đúng; `ps`
+    # thoái hoá còn một tiến trình vẫn xanh (reviewer dựng lại được). Nay đòi thêm một **sàn độc
+    # lập**: ảnh sản phẩm luôn có ít nhất procsrv + shell + victim ⇒ `ps` phải in **≥ 3** dòng.
+    # Sàn này không đọc từ log, nên shell in sai số vẫn bị bắt.
     n_declared="$(sed -n 's/^# shell: ps n=\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)"
     if [ "${n_rows:-0}" -lt 1 ]; then
         echo "ps không in dòng '  pid=… state=…' nào (bảng rỗng)"
+        return 1
+    fi
+    if [ "${n_rows:-0}" -lt "$PS_MIN_ROWS" ]; then
+        echo "ps chỉ in $n_rows dòng pid, dưới sàn $PS_MIN_ROWS (procsrv + shell + victim)"
         return 1
     fi
     if [ -n "$n_declared" ] && [ "${n_rows:-0}" -ne "$n_declared" ]; then
@@ -406,6 +416,16 @@ run_selftest() {
         printf '  pid=17 state=Ready\n'
     } >"$right"
     selftest_pair "3 ps-khong-unknown" check_ps_no_unknown "$wrong" "$right"
+
+    # ---- ca 3b (**KT-120**): `ps` thoái hoá còn **một** tiến trình — không có `state=Unknown`,
+    #      `n` khớp số dòng, nên bản KT-112 để lọt. Sàn độc lập `PS_MIN_ROWS` phải bắt.
+    d="$(mktemp -d "$root/c3b.XXXXXX")"
+    wrong="$d/wrong.log"
+    {
+        printf '# shell: ps n=1\n'
+        printf '  pid=13 state=Ready\n'
+    } >"$wrong"
+    selftest_pair "3b ps-mot-dong" check_ps_no_unknown "$wrong" "$right"
 
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"

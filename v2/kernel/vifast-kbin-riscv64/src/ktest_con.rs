@@ -363,12 +363,24 @@ pub extern "C" fn rust_main() -> ! {
     expect.num(u64::from(conchan::SLOT_BYTES));
     expect.push(b" check=1");
     let (head2, tail2, used2, _) = uart_console::ring_stats();
+    // Bất biến **độc lập** của ring (`v2/lib/vifast-ring`): `seq` là số message producer đã
+    // publish nên **phải bằng `head`** (`H_SEQ` = "bằng `head`"; `Ring::check` cũng đòi
+    // `seq == head`), và `head`/`tail`/`used` phải thoả quan hệ `used == head - tail`,
+    // `head >= tail`, `used <= size`. Chuỗi kỳ vọng ở trên dựng `seq` từ **cùng** header mà
+    // chương trình U đọc, nên nếu producer ghi `seq` sai thì hai bên vẫn khớp; khẳng định
+    // dưới đây so `seq` với `head`/`tail`/`used` của ring (nguồn độc lập với chuỗi kỳ vọng).
+    let ring_invariants = seq == head2
+        && head2 >= tail2
+        && used2 == head2 - tail2
+        && used2 <= u64::from(conchan::CHANNEL_SLOTS)
+        && head2 >= ring.head;
     let ok2 = mapped
         && exit_code == 0
         && user::captured_contains(0, expect.as_bytes())
         && head2 == head
         && tail2 == head2
-        && used2 == 0;
+        && used2 == 0
+        && ring_invariants;
     {
         let mut w = PlatformWriter(&PLATFORM);
         let mut prefix = [0u8; 48];

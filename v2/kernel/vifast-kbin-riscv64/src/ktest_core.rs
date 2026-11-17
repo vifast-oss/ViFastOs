@@ -36,6 +36,7 @@ use vifast_plat_common::obj::ObjKind;
 use vifast_plat_common::{Platform, PlatformWriter};
 
 use vifast_plat_riscv64::core_bridge;
+use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::obj as aobj;
 use vifast_plat_riscv64::Riscv64Virt;
 
@@ -529,7 +530,19 @@ fn core_taps(
             .expect("core TAP 50: obj layer Frame");
         let frame_pa = om.frame_pa(ofr).unwrap_or(0);
         let label = (frame_pa >> 12) as u32;
-        let mut ok50 = frame_pa != 0;
+        // Bất biến **độc lập** (D2-66): PA của Frame phải nằm trong **cửa sổ PA** mà allocator
+        // của Untyped đã cấp (watermark `frame_budget`, nguồn khác `frame_pa`) và trong dải RAM
+        // thật của nền tảng (`mmu::RAM_PHYS_BASE..+RAM_BYTES`); nhãn futex là PPN của đúng PA
+        // đó — kiểm **ngược** `label << 12 == frame_pa` (không lấy lại `frame_pa >> 12` làm kỳ
+        // vọng). Nhờ vậy `frame_pa` sai (khác 0) không lọt: nhãn sẽ ra ngoài cửa sổ/RAM hoặc
+        // lệch PA, thay vì chỉ khớp với chính nó như trước.
+        let budget = om.frame_budget(obj.untyped0).unwrap_or_default();
+        let pa_in_window =
+            frame_pa >= budget.base && frame_pa + (1 << 12) <= budget.base + budget.used;
+        let pa_in_ram = frame_pa >= mmu::RAM_PHYS_BASE
+            && frame_pa + (1 << 12) <= mmu::RAM_PHYS_BASE + mmu::RAM_BYTES;
+        let label_roundtrip = u64::from(label) << 12 == frame_pa;
+        let mut ok50 = frame_pa != 0 && pa_in_window && pa_in_ram && label_roundtrip;
         ok50 &= m.wait_addr(rig.t2s, label, WA_OFFSET, 0).is_ok();
         ok50 &= m.tcb_state(rig.t2)
             == Ok(TcbState::BlockedOnAddress {
