@@ -102,7 +102,7 @@ const MAX_LINE: usize = 32;
 /// **KT-114** thêm bốn lệnh nữa (`time`/`uptime`/`sync`/`stat`) **cũng chỉ** trong nhánh
 /// `shell_fs` ⇒ ảnh sản phẩm **9 → 13**, ảnh test vẫn **6**.
 #[cfg(shell_fs)]
-const CMDS: u64 = 13;
+const CMDS: u64 = 15;
 #[cfg(not(shell_fs))]
 const CMDS: u64 = 6;
 
@@ -246,6 +246,66 @@ fn wait_reply(want: u64) -> (u64, [u64; 4]) {
         }
         yield_cpu();
     }
+}
+
+/// `truncate <path> <size>` — **KT-125**: đổi cỡ tệp về `size` byte qua `OP_TRUNC` (opcode **đã
+/// có**, `write` đang dùng). Không ghi dữ liệu, chỉ đổi cỡ.
+#[cfg(shell_fs)]
+fn cmd_truncate(path: &[u8], size: u64) {
+    if fs_set_path(path).is_err() {
+        no_fs();
+        return;
+    }
+    let head = OP_TRUNC | (size << 8);
+    match fs_call([head, 0, 0, 0]) {
+        Some(reply) => {
+            if fs_status(reply).is_none() {
+                return;
+            }
+            put(b"# shell: truncate path=");
+            put(path);
+            put(b" size=");
+            put_u64(size);
+            put(b"\n");
+        }
+        None => no_fs(),
+    }
+}
+
+/// `jobs` — **KT-125**: đếm tiến trình theo trạng thái từ **cùng** reply `PS_REQ` mà `ps` dùng
+/// (không thêm đường kernel). In `ready=`, `running=`, `blocked=`, `other=`.
+#[cfg(shell_fs)]
+fn cmd_jobs() {
+    send(EP_PS, PS_REQ, [0, 0, 0, 0]);
+    let (_, mr) = wait_reply(PS_REPLY);
+    let mut ready = 0u64;
+    let mut running = 0u64;
+    let mut blocked = 0u64;
+    let mut other = 0u64;
+    for word in mr {
+        for half in 0..2 {
+            let entry = if half == 0 { word & 0xFFFF } else { word >> 16 };
+            if entry == 0 {
+                continue;
+            }
+            // Cùng cách giải mã **bốn bit** trạng thái như `cmd_ps` (KT-105).
+            match (entry >> 1) & 0x0F {
+                1 => ready += 1,
+                2 => running += 1,
+                3..=7 => blocked += 1,
+                _ => other += 1,
+            }
+        }
+    }
+    put(b"# shell: jobs ready=");
+    put_u64(ready);
+    put(b" running=");
+    put_u64(running);
+    put(b" blocked=");
+    put_u64(blocked);
+    put(b" other=");
+    put_u64(other);
+    put(b"\n");
 }
 
 fn cmd_ps() {
@@ -693,7 +753,7 @@ fn run_line(line: &[u8]) {
         put_u64(CMDS);
         put(b"\n");
         #[cfg(shell_fs)]
-        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | exit\n");
+        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit\n");
         #[cfg(not(shell_fs))]
         put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | exit\n");
         send(EP_EVENTS, EV_HELP, [CMDS, 0, 0, 0]);
@@ -707,6 +767,19 @@ fn run_line(line: &[u8]) {
         if let Some(pid) = parse_u64(&line[5..]) {
             cmd_kill(pid);
         }
+    } else if line == b"jobs" {
+        cmd_jobs();
+    } else if starts_with(line, b"truncate ") {
+        let (path, size) = split_space(&line[9..]);
+        if path.is_empty() {
+            put(b"# shell: thieu duong dan\n");
+        } else if let Some(size) = parse_u64(size) {
+            cmd_truncate(path, size);
+        } else {
+            put(b"# shell: thieu kich thuoc\n");
+        }
+    } else if line == b"truncate" {
+        put(b"# shell: thieu duong dan\n");
     } else if line == b"exit" {
         put(b"# shell: exit code=0\n");
         // Kernel ghi `FaultKind::Exit{0}` vào fault_ep của shell (procsrv nhận).
@@ -719,7 +792,7 @@ fn run_line(line: &[u8]) {
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     #[cfg(shell_fs)]
-    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/time/uptime/sync/stat/exit\n");
+    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/time/uptime/sync/stat/truncate/jobs/exit\n");
     #[cfg(not(shell_fs))]
     put(b"# shell: up cmds=help/echo/ps/wait/kill/exit\n");
     put(b"# shell: input=ring va=0x");
