@@ -34,3 +34,19 @@ shell> xuất hiện 3 lần        (sau help, sau dòng dài, sau exit)
 - Hành vi **không** đổi: dòng vẫn bị cắt ở `MAX_LINE` và vẫn được chạy (đã cắt) — chỉ **số dòng
   cảnh báo** đổi.
 - Không đụng `CMDS` ⇒ `# shell: help cmds=` giữ nguyên, harness không phải sửa.
+
+## Kiểm lại sau vá (kernel đổi ⇒ phải đo lại)
+
+```text
+REPRO sha256=f6f3d0c6106263af9fa83f80c519531beadfea9b926038550c300f87d2e0fd4c
+      size=205440  inputs=044599ac17964d22  dirty=0  rev=535227cc95eb
+      build=907912139bffcff0  text=130062
+# đã ghim: v2/artifacts/f6f3d0c6….bin
+
+bash v2/test/boot/ktest.sh 1 matrix   → # KTEST: 21/21 boot sạch · ktest.sh: PASS
+bash v2/test/parity/run.sh --mode serial --image v2/artifacts/f6f3d0c6….bin
+                                      → parity: not_ok=0 · KET_LUAN=ok (exit 0)
+bash v2/test/boot/persist.sh          → persist.sh: PASS (7 pha, distinct_process=1)
+```
+
+Ảnh canonical mới nhất: **`f6f3d0c6…`** (205.440 B, `inputs=044599ac17964d22 dirty=0`).
