@@ -77,6 +77,9 @@ const OP_SYNC: u64 = 0x16;
 const ST_OK: u64 = 0;
 #[cfg(shell_fs)]
 const ST_END: u64 = 1;
+/// **KT-123**: dịch vụ FS không sẵn sàng (khớp `proc_abi::ST_NOFS`).
+#[cfg(shell_fs)]
+const ST_NOFS: u64 = 3;
 /// Số byte tên/dữ liệu mỗi request/reply (3 MR word).
 #[cfg(shell_fs)]
 const FS_BYTES: usize = 24;
@@ -414,6 +417,11 @@ fn fs_status(reply: [u64; 4]) -> Option<u64> {
     let status = reply[0] & 0xff;
     if status == ST_OK || status == ST_END {
         return Some(status);
+    }
+    // **KT-123**: `ST_NOFS` = dịch vụ FS không sẵn sàng ⇒ **không** in `fs loi code=…`; trả `None`
+    // để caller gọi `no_fs()` in `fs khong san sang` (đúng nghĩa, và không lộ mã nội bộ).
+    if status == ST_NOFS {
+        return None;
     }
     put_err((reply[0] >> 8) & 0xff);
     None

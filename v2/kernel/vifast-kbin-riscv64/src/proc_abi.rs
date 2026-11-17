@@ -105,3 +105,6 @@ pub const ST_OK: u64 = 0;
 pub const ST_END: u64 = 1;
 /// Reply: lỗi — mã lỗi ở byte 1 của word 0 ([`crate::proc_fs`] `err_code`).
 pub const ST_ERR: u64 = 2;
+/// **KT-123**: dịch vụ FS **không sẵn sàng** (ảnh có `product-fs` nhưng mount hỏng). Khác `ST_ERR`
+/// (lỗi của một thao tác cụ thể) — shell in `fs khong san sang` thay vì `fs loi code=<n>`.
+pub const ST_NOFS: u64 = 3;

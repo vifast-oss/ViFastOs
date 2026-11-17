@@ -285,9 +285,23 @@ fn service(m: &mut Machine, rig: &Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
                 svc.fs_replies += 1;
             }
         } else {
-            // Ảnh **không** FS: vẫn phải rút request khỏi hàng đợi để endpoint không đầy (không
-            // treo); shell nhận `timeout` và in `fs khong san sang` — parity FS đỏ (ca âm 5(c)).
-            while let Ok(Some(_)) = m.nb_recv(rig.tcb_obj[T_KERN], rig.ep_slot[6]) {}
+            // Ảnh **không** FS: rút request khỏi hàng đợi để endpoint không đầy, **và trả lời ngay**
+            // một `FS_REPLY` lỗi. **KT-123** (review chéo): trước đây chỉ rút mà **không** trả lời,
+            // nên shell quay `FS_REPLY_BUDGET` (hai mươi nghìn) vòng `Yield` rồi mới bỏ cuộc — đo
+            // được **~54 giây mỗi lệnh** (`ls` cũ ~50 giây). Nay shell nhận lỗi ở vòng đầu ⇒ in
+            // `fs khong san sang` rồi trả prompt ngay. Parity FS vẫn **đỏ** (ca âm 5(c)) vì không
+            // có dữ liệu thật — chỉ nhanh hơn, không nới phép kiểm nào.
+            while let Ok(Some(request)) = m.nb_recv(rig.tcb_obj[T_KERN], rig.ep_slot[6]) {
+                if u64::from(request.info.label()) != FS_REQ {
+                    continue;
+                }
+                let _ = m.nb_send(
+                    rig.tcb_obj[T_KERN],
+                    rig.ep_slot[3],
+                    msg(FS_REPLY, &[ST_NOFS, 0, 0, 0]),
+                );
+                svc.fs_replies += 1;
+            }
         }
     }
 }

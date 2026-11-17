@@ -425,6 +425,15 @@ run_selftest() {
         printf '# shell: ps n=1\n'
         printf '  pid=13 state=Ready\n'
     } >"$wrong"
+    # **KT-123** (review chéo): ca 3b phải có `right.log` **riêng** — trước dùng lại `$right` của
+    # ca 3, nên nếu ai sửa ca 3 thành một dòng thì 3b sẽ đỏ oan.
+    right="$d/right.log"
+    {
+        printf '# shell: ps n=3\n'
+        printf '  pid=13 state=Ready\n'
+        printf '  pid=15 state=Ready\n'
+        printf '  pid=17 state=Ready\n'
+    } >"$right"
     selftest_pair "3b ps-mot-dong" check_ps_no_unknown "$wrong" "$right"
 
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).

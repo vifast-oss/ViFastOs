@@ -363,12 +363,13 @@ pub extern "C" fn rust_main() -> ! {
     expect.num(u64::from(conchan::SLOT_BYTES));
     expect.push(b" check=1");
     let (head2, tail2, used2, _) = uart_console::ring_stats();
-    // Bất biến **độc lập** của ring (`v2/lib/vifast-ring`): `seq` là số message producer đã
-    // publish nên **phải bằng `head`** (`H_SEQ` = "bằng `head`"; `Ring::check` cũng đòi
-    // `seq == head`), và `head`/`tail`/`used` phải thoả quan hệ `used == head - tail`,
-    // `head >= tail`, `used <= size`. Chuỗi kỳ vọng ở trên dựng `seq` từ **cùng** header mà
-    // chương trình U đọc, nên nếu producer ghi `seq` sai thì hai bên vẫn khớp; khẳng định
-    // dưới đây so `seq` với `head`/`tail`/`used` của ring (nguồn độc lập với chuỗi kỳ vọng).
+    // **KT-123** (review chéo, đính chính): khẳng định dưới đây **không** phải nguồn độc lập với
+    // `Ring::check()` — nó kiểm **nhất quán nội tại** của cùng header (`seq == head`,
+    // `used == head - tail`, …), và `Ring::check()` đã đòi đúng `seq == head` (`v2/lib/vifast-ring`).
+    // Đo thực tế của reviewer: tắt khẳng định này đi thì đột biến `seq` **vẫn** bị bắt (bởi
+    // `Ring::check()` qua `check=0` trong chuỗi kỳ vọng, và bởi TAP 1 đã có `seq == head`).
+    // Giữ lại vì nó rẻ và bắt được header hỏng **cục bộ** (ví dụ `used` sai mà `check` chưa chạy),
+    // nhưng **không** được mô tả là "độc lập" — nó là kiểm nhất quán, không phải kiểm chéo nguồn.
     let ring_invariants = seq == head2
         && head2 >= tail2
         && used2 == head2 - tail2
