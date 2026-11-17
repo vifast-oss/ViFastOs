@@ -780,7 +780,11 @@ pub fn run(
                     continue;
                 }
                 let pid = entry >> 5;
-                let state = ((entry >> 1) & 0x1F) as u8;
+                // KT-105: kernel đóng gói `(id << 5) | (state.index() << 1) | suspended` ⇒ trạng
+                // thái chiếm **bốn** bit. Bản cũ dùng `& 0x1F` (năm bit) — **cùng lỗi** với shell,
+                // nên test và shell "khớp nhau" mà cả hai đều sai (`state=Unknown`). Nay cả hai
+                // dùng `& 0x0F`.
+                let state = ((entry >> 1) & 0x0F) as u8;
                 let suspended = entry & 1 != 0;
                 let mut line = FixedBuf::new();
                 line.push(b"  pid=");
