@@ -627,6 +627,10 @@ pub extern "C" fn _start() -> ! {
     let mut words = [0u64; 4];
     let mut line = [0u8; MAX_LINE];
     let mut len = 0usize;
+    // KT-103: cờ "dòng này đã báo quá dài" — trước đây mỗi byte vượt `MAX_LINE` in **một** dòng
+    // cảnh báo ⇒ một dòng dài một nghìn byte in gần một nghìn dòng, làm ngập log và làm chậm
+    // UART. Nay báo **một lần** cho mỗi dòng.
+    let mut overflowed = false;
     loop {
         match ring.recv(&mut words) {
             Ok(()) => {
@@ -640,14 +644,16 @@ pub extern "C" fn _start() -> ! {
                     if *byte == b'\n' {
                         run_line(&line[..len]);
                         len = 0;
+                        overflowed = false;
                         // Prompt sau **mỗi** dòng lệnh (kể cả dòng sai) — trừ khi `run_line`
                         // đã `exit` (không trả về).
                         put(b"shell>\n");
                     } else if len < MAX_LINE {
                         line[len] = *byte;
                         len += 1;
-                    } else {
-                        // Dòng quá dài: bỏ phần dư, không tràn buffer (báo để không im lặng).
+                    } else if !overflowed {
+                        // Dòng quá dài: bỏ phần dư, không tràn buffer — báo **một lần** mỗi dòng.
+                        overflowed = true;
                         put(b"# shell: dong qua dai\n");
                     }
                 }
