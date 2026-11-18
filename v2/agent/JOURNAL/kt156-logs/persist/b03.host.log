@@ -1,0 +1,3 @@
+# host file: name=/p1.txt bytes=3072 size_ok=1 sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 want_sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 match=1
+# host file: name=/pstate bytes=20 size_ok=1 sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 want_sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 match=1
+# host: phase=3 records=5 files=2 fsck=1 fail=0 img_sha256=a72bcf174d06f89926f6290eb3a64d3e3a64906bae08536b2b1126979057720d fsutil_mutated=0
