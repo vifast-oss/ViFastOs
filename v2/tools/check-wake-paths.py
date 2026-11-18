@@ -62,6 +62,20 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
       (giữ lại sẽ là allowlist mục `E_STRICT_STALE`, và nếu tệp thành sản phẩm thì mục cũ sẽ
       **âm thầm miễn** hai chỗ chuyển `Ready` — bỏ mục là hướng fail-closed).
 
+  **KT-177** — reviewer L16 (KT-174 §2) phá bản KT-171/KT-174 bằng **bốn** lớp nữa; cả bốn
+  đều là "mã sản phẩm biên dịch `wake`, `--strict` vẫn `errors=0`". Nay:
+    - **H4** — `include!` **lồng hai lớp** qua tệp test-only: `resolve_include_targets` thành
+      **fixpoint/worklist** (trạng thái `True → False` đơn điệu, xử lý lại khi đổi) ⇒ "sản
+      phẩm thắng" lan **hết** chuỗi include, không dừng ở lớp đầu.
+    - **H6** — `macro_rules!` trong cây **che** tên trong `SAFE_VALUE_MACROS` (`concat!`…) ⇒
+      tên đó **không** còn an toàn (`_shadowed_safe_macros`), nên `wake` làm đối số macro bị
+      bắt thay vì rơi xuống miễn trừ biến cục bộ.
+    - **H7** — thân `macro_rules!` trong `v2/lib/**` chứa `include!`/`#[path]` ⇒ ĐỎ
+      (`E_STRICT_MACRO_INCLUDE`, fail-closed): đường dẫn giải theo **tệp gọi**, không phân
+      giải tĩnh an toàn được.
+    - **H8** — literal chuỗi Rust **đầy đủ** (`RE_STR_LIT`: `r#"…"#`, `br#"…"#`, …) cho
+      `include!`/`#[path]`; bản KT-174 chỉ thêm `r?` nên dạng **có `#`** vẫn lọt.
+
 Fail-closed: thiếu mỏ neo (không tìm thấy `wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ,
 không được coi là "không có gì để kiểm".
 
@@ -404,7 +418,12 @@ RE_MOD_DECL = re.compile(
 RE_MOD_DECL_RAW = re.compile(
     r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", re.M
 )
-RE_PATH_ATTR_LINE = re.compile(r'^\s*#\[path\s*=\s*r?"([^"]+)"\s*\]\s*$')
+# **KT-177/G1** (reviewer L16 §4, H8): literal chuỗi Rust **đầy đủ** — `"…"`, `r"…"`,
+# `r#"…"#`, `r##"…"##`, `b"…"`, `br#"…"#`, `c"…"`. Bản KT-174 chỉ thêm `r?` nên dạng **có `#`**
+# (`r#"evil_b.rs"#`) vẫn lọt — cùng một lớp với H8. Nhóm có tên `hashes` = số `#` (rỗng với
+# chuỗi thường), `path` = nội dung; backreference `(?P=hashes)` buộc số `#` đóng **bằng** mở.
+RE_STR_LIT = r'(?:b|c)?r?(?P<hashes>#*)"(?P<path>[^"]*)"(?P=hashes)'
+RE_PATH_ATTR_LINE = re.compile(r"^\s*#\[path\s*=\s*" + RE_STR_LIT + r"\s*\]\s*$")
 RE_CFG_ATTR_LINE = re.compile(r"^\s*#\[cfg\((.*)\)\]\s*$")
 
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
@@ -583,7 +602,8 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
         for a in attrs:
             pm = RE_PATH_ATTR_LINE.match(a)
             if pm:
-                target = (p.parent / pm.group(1)).resolve()
+                # **KT-177/G1**: nhóm có tên `path` = đường dẫn (chuỗi thô có `#`).
+                target = (p.parent / pm.group("path")).resolve()
                 child_dir = target.parent
                 break
         if target is None:
@@ -655,8 +675,16 @@ def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> boo
 
 # ------------------------------------------------------------------ KT-171: B6/B7 include!/#[path]
 
-RE_INCLUDE_MACRO = re.compile(r'\binclude!\s*\(\s*r?"([^"]+)"\s*\)')
-RE_PATH_ATTR_ANY = re.compile(r'#\[path\s*=\s*r?"([^"]+)"\s*\]')
+# **KT-177/G1** (reviewer L16 §4, H8): dùng chung `RE_STR_LIT` — nhận **mọi** dạng literal
+# chuỗi Rust, không chỉ `"…"`/`r"…"`. Nhóm có tên `path` là đường dẫn.
+#
+# **KT-177/H9** (cùng gốc G1/G2, ngoài bốn lớp bắt buộc): `include!` nhận **cả ba** dấu ngoặc
+# (`include!("…")`, `include!["…"]`, `include!{"…"}`) — bản KT-171/174 chỉ khớp `(`, nên
+# `include!["evil_b.rs"]` (rustc **chấp nhận**, `cargo check` RC=0) lọt hoàn toàn.
+RE_INCLUDE_MACRO = re.compile(
+    r"\binclude!\s*[\(\{\[]\s*" + RE_STR_LIT + r"\s*[\)\}\]]"
+)
+RE_PATH_ATTR_ANY = re.compile(r"#\[path\s*=\s*" + RE_STR_LIT + r"\]")
 
 
 def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
@@ -680,18 +708,31 @@ def resolve_include_targets(
       - đích **ngoài** `v2/kernel`+`v2/sim` ⇒ **ĐỎ** (không quét được, fail-closed);
       - đích **trong** cây ⇒ **quét chính tệp đích** (kế thừa trạng thái test-only của tệp
         kéo nó vào; sản phẩm thắng nếu cả hai).
+
+    **KT-177/G4** (reviewer L16 §2.4, H4): bản KT-171 dùng `resolved` để **không xử lý lại** một
+    tệp. Với `include!` **lồng hai lớp** (`core_sched.rs` (sản phẩm) → `evil_a.rs` (test-only) →
+    `evil_b.rs` (test-only)), `evil_a` được xử lý **trước** với `is_test=True` ⇒ `evil_b` nhận
+    `True`; khi `core_sched.rs` include `evil_a` thì `evil_a` đã `resolved` nên **không** lan
+    `False` xuống `evil_b` ⇒ `evil_b` ở lại test-only ⇒ lọt. Nay là **fixpoint/worklist** như
+    `test_only_modules`: trạng thái mỗi tệp chỉ đi `True → False` (đơn điệu), và khi nó đổi thì
+    tệp được **xử lý lại** để lan tiếp xuống con. Không có vòng lặp vô hạn vì trạng thái đơn điệu.
     """
     extra: Dict[str, Tuple[Path, bool]] = {}
     errors: List[str] = []
-    resolved: set = set()
+    status: Dict[Path, bool] = {}
     queue: List[Tuple[Path, bool]] = []
     for p, _, _ in files:
         queue.append((p, rel(root, p) in test_only))
     while queue:
         p, is_test = queue.pop()
-        if p in resolved:
-            continue
-        resolved.add(p)
+        if p in status:
+            # Đã xử lý với trạng thái **mạnh hơn hoặc bằng** ⇒ không cần lại. Chỉ xử lý lại
+            # đúng một lần khi `True → False` (sản phẩm thắng) để lan xuống con.
+            if not status[p] or is_test:
+                continue
+            status[p] = False
+        else:
+            status[p] = is_test
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -706,16 +747,16 @@ def resolve_include_targets(
         for m in RE_INCLUDE_MACRO.finditer(code_keep):
             if not code[m.start() : m.end()].strip():
                 continue  # nằm trong literal chuỗi
-            found.append(("include!", m.group(1), m.start()))
+            found.append(("include!", m.group("path"), m.start()))
         for m in RE_PATH_ATTR_ANY.finditer(code_keep):
             if not code[m.start() : m.end()].strip():
                 continue
-            found.append(("#[path]", m.group(1), m.start()))
+            found.append(("#[path]", m.group("path"), m.start()))
         # **KT-174/H3** (reviewer L16): `include!` **không** literal (`concat!`/`env!`/biến)
         # không phân giải được đích ⇒ fail-closed với tệp **sản phẩm**.
         if not is_test:
             covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
-            for m in re.finditer(r"\binclude!\s*\(", code_keep):
+            for m in re.finditer(r"\binclude!\s*[\(\{\[]", code_keep):
                 if m.start() in covered:
                     continue
                 if not code[m.start() : m.end()].strip():
@@ -741,12 +782,12 @@ def resolve_include_targets(
                     f"(fail-closed, KT-171 B6/B7)"
                 )
                 continue
-            if inside in extra:
-                extra[inside] = (target, extra[inside][1] and is_test)
-            else:
-                extra[inside] = (target, is_test)
-            if target not in resolved:
-                queue.append((target, is_test))
+            prev = extra.get(inside)
+            new = is_test if prev is None else (prev[1] and is_test)
+            extra[inside] = (target, new)
+            # **KT-177/G4**: lan xuống con khi trạng thái đổi `True → False` (hoặc lần đầu).
+            if target not in status or (status[target] and not new):
+                queue.append((target, new))
     return extra, errors
 
 
@@ -766,6 +807,14 @@ def scan_lib_macros(root: Path, r: Report) -> None:
     phạm vi quét cũ) với thân `$m.wake($t)`; lời gọi `vifast_abi::wake_call!(m, t)` **không**
     chứa token `wake` nên lọt. Nay thân macro ở **mọi** crate `v2/lib` bị quét; token `wake`
     (không phải `wake_from`/`wake_step`/`wake_addr`) ⇒ ĐỎ, trừ allowlist có lý do.
+
+    **KT-177/G5** (reviewer L16 §2.7, H7): thân macro chứa `include!`/`#[path]` mà **không**
+    có token `wake` thì bản KT-171 vẫn xanh — `resolve_include_targets` chỉ lặp trên
+    `v2/kernel`+`v2/sim` nên `include!` trong `v2/lib` **không** được phân giải, và đích nằm
+    trong `v2/lib` nên cũng không bị quét token. Đường dẫn `include!` trong thân macro giải
+    theo **tệp gọi** (đã kiểm bằng `rustc` độc lập — reviewer L16 §2.7), không theo tệp định
+    nghĩa ⇒ **không thể phân giải tĩnh an toàn** ⇒ fail-closed: mọi `include!`/`#[path]` trong
+    thân `macro_rules!` của `v2/lib` là ĐỎ.
     """
     base = root / "v2/lib"
     if not base.is_dir():
@@ -809,6 +858,21 @@ def scan_lib_macros(root: Path, r: Report) -> None:
                     f"macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4); "
                     f"dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do",
                 )
+            # **KT-177/G5** (H7): `include!`/`#[path]` trong thân macro ⇒ fail-closed.
+            for im in re.finditer(r"\binclude!\s*[\(\{\[]", body):
+                lineno = code.count("\n", 0, j + im.start()) + 1
+                r.err(
+                    "E_STRICT_MACRO_INCLUDE",
+                    f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `include!` — đường dẫn "
+                    f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
+                )
+            for pm in re.finditer(r"#\[path\b", body):
+                lineno = code.count("\n", 0, j + pm.start()) + 1
+                r.err(
+                    "E_STRICT_MACRO_INCLUDE",
+                    f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — đường dẫn "
+                    f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
+                )
 
 
 # ------------------------------------------------------------------ KT-171: B10 scope + macro
@@ -837,6 +901,41 @@ SAFE_VALUE_MACROS = frozenset(
     }
 )
 RE_MACRO_BANG_BEFORE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*!\s*$")
+
+
+def _shadowed_safe_macros(
+    root: Path, files: Sequence[Tuple[Path, str, List[Fn]]]
+) -> set:
+    """**KT-177/G6** (reviewer L16 §2.6, H6): tên trong `SAFE_VALUE_MACROS` bị **che**.
+
+    `SAFE_VALUE_MACROS` tin **tên** macro là "chỉ đọc giá trị", nhưng `macro_rules! concat`
+    trong cây **che** macro chuẩn cùng tên và có thể biến ident thành **tên hàm**
+    (`$m.$name($t)`). Khi đó `wake` là đối số macro "an toàn" ⇒ nhánh `SAFE_VALUE_MACROS` bỏ
+    qua ⇒ rơi xuống `_exempt_local_wake` ⇒ biến cục bộ `wake` cùng khối miễn ⇒ **lọt**.
+
+    Nay: quét **toàn cây** (`v2/kernel` + `v2/sim` + `v2/lib`) tìm `macro_rules! <tên>` trùng
+    tên an toàn; tên nào bị che thì **không** còn an toàn (fail-closed). Chỉ **siết**: trên cây
+    sạch hiện không có `macro_rules!` nào trùng tên an toàn (chỉ `sctlr_setters`, `bail`).
+    """
+    out: set = set()
+    texts: List[Tuple[Path, str]] = [(p, t) for p, t, _ in files]
+    base = root / "v2/lib"
+    if base.is_dir():
+        for p in sorted(base.rglob("*.rs")):
+            if "target" in p.parts:
+                continue
+            try:
+                texts.append((p, p.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                continue
+    for _p, text in texts:
+        if "macro_rules!" not in text:
+            continue
+        code = strip_rust_noise(text)
+        for m in RE_MACRO_RULES.finditer(code):
+            if m.group(1) in SAFE_VALUE_MACROS:
+                out.add(m.group(1))
+    return out
 
 
 def _delim_pairs(code: str) -> List[Tuple[int, int, str]]:
@@ -1461,6 +1560,10 @@ def scan_v2(
             wake_targets.append((p, text, find_functions(p, text), is_test))
             added.add(p)
 
+        # **KT-177/G6** (H6): tên macro "an toàn" bị `macro_rules!` trong cây **che** thì
+        # không còn an toàn — `concat!` bị che có thể biến ident `wake` thành **tên hàm**.
+        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+
         for p, text, fns, is_test in wake_targets:
             relp = rel(root, p)
             if is_test:
@@ -1498,10 +1601,17 @@ def scan_v2(
                         groups = _delim_pairs(code)
                         scopes = _local_wake_scopes(code, groups)
                     macro = _macro_arg_of(code, s, groups)
-                    if macro is not None and macro not in SAFE_VALUE_MACROS:
+                    if macro is not None and macro not in safe_macros:
                         why = (
                             f"`wake` là đối số của macro `{macro}!` — macro có thể biến "
-                            f"ident thành tên hàm (KT-171 B10)"
+                            f"ident thành tên hàm (KT-171 B10"
+                            + (
+                                ""
+                                if macro not in SAFE_VALUE_MACROS
+                                else f"; tên `{macro}` bị `macro_rules!` trong cây che — "
+                                f"KT-177 H6"
+                            )
+                            + ")"
                         )
                     elif _exempt_local_wake(s, scopes, groups):
                         continue  # biến cục bộ tên `wake` **trong cùng khối**, không phải hàm
@@ -1713,7 +1823,9 @@ def selftest() -> int:
     15 ca KT-151/155/159 + **11 ca KT-165** (sáu cách lách H1..H6 + năm đối chứng dương) +
     **13 ca KT-171** (sáu lớp B4/B6/B7/B8/B9/B10 của reviewer L11 + bảy đối chứng dương) +
     **7 ca KT-172** (bốn call site luật 1–5 chuyển sang đồ thị module: hai đột biến
-    `ktest_evil.rs`/`src/tests/evil.rs` + hai đối chứng dương + ba ca luật 1/2/3).
+    `ktest_evil.rs`/`src/tests/evil.rs` + hai đối chứng dương + ba ca luật 1/2/3) +
+    **10 ca KT-177** (bốn lớp còn nợ của reviewer L16: H4/H6/H7/H8 + bốn đối chứng dương
+    + hai ca H9 cho dấu ngoặc của `include!`). Tổng **56** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -2565,6 +2677,221 @@ def selftest() -> int:
             )
         )
 
+        # ============ KT-177 (L19) — bốn lớp còn nợ của luật `wake` (reviewer L16, KT-174) ============
+        # Bối cảnh: KT-174 (lead, `c5f1ab00`) vá H5/H1/H2/H3. Reviewer L16 §2.4/§2.6/§2.7/§2.8
+        # còn **bốn** lớp: H4 (`include!` lồng hai lớp), H6 (macro che tên "an toàn"), H7
+        # (`include!` trong thân macro `v2/lib`), H8 (raw string **có `#`** tới tệp test-only
+        # trong cây). Mỗi ca: đột biến **đúng** cách L16 đã phá ⇒ ĐỎ; kèm đối chứng dương.
+
+        # (4ak) **H4** — `include!` lồng **hai lớp** qua tệp test-only:
+        # `core_ipc.rs` (sản phẩm) → `evil_a.rs` (test-only) → `evil_b.rs` (test-only, có
+        # `self.wake(t)`). Trước KT-177: XANH — `resolved` chặn lan "sản phẩm thắng" xuống con.
+        d = tmp / "v2-h4-nested-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 `include!` lồng hai lớp qua tệp test-only ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4al) Đối chứng dương cho H4: cùng lồng hai lớp nhưng đích chỉ `wake_from(` ⇒ XANH
+        # (fixpoint không phải "thấy include! lồng là đỏ").
+        d = tmp / "v2-h4b-nested-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b `include!` lồng hai lớp, đích chỉ `wake_from(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4am) **H6** — `macro_rules! concat` trong cây **che** macro chuẩn cùng tên; thân
+        # biến ident thành **tên hàm** (`$m.$name($t)`), `wake` là đối số macro "an toàn" và
+        # có biến cục bộ `wake` cùng khối. Trước KT-177: XANH.
+        d = tmp / "v2-h6-shadow-safe-macro"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_macro.rs",
+            "macro_rules! concat {\n"
+            "    ($m:expr, $name:ident, $t:expr) => {\n"
+            "        $m.$name($t)\n"
+            "    };\n"
+            "}\n"
+            "impl M {\n"
+            "    fn f(&mut self, t: u32) -> u8 {\n"
+            "        let mut wake = 0u32;\n"
+            "        wake += 1;\n"
+            "        concat!(self, wake, t);\n"
+            "        0\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H6 `macro_rules! concat` che tên an toàn + biến `wake` ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4an) Đối chứng dương cho H6: **không** có macro che tên ⇒ `assert_eq!(wake, 1)` với
+        # biến cục bộ `wake` vẫn XANH (miễn trừ macro chỉ-đọc-giá-trị còn hiệu lực).
+        d = tmp / "v2-h6b-safe-macro-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_tcb.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n"
+            "        let mut wake = 0u32;\n"
+            "        wake += 1;\n"
+            "        assert_eq!(wake, 1);\n"
+            "        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H6b `assert_eq!(wake, 1)` không bị che ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ao) **H7** — thân `macro_rules!` trong `v2/lib` chứa `include!` (thân **không** có
+        # token `wake`). Trước KT-177: XANH — `scan_lib_macros` chỉ tìm token `wake`, và
+        # `resolve_include_targets` không quét `v2/lib`.
+        d = tmp / "v2-h7-macro-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! evil_inc {\n"
+            "    () => {\n        include!(\"evil_inc_body.rs\")\n    };\n}\n",
+        )
+        _write(d / "v2/lib/vifast-abi/src/evil_inc_body.rs", "0\n")
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H7 thân `macro_rules!` trong `v2/lib` chứa `include!` ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ap) Đối chứng dương cho H7: macro `v2/lib` dùng `concat!` (không `include!`) ⇒ XANH.
+        d = tmp / "v2-h7b-macro-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! ok_macro {\n"
+            "    ($a:expr) => {\n        concat!($a, \"!\")\n    };\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H7b macro `v2/lib` dùng `concat!`, không `include!` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aq) **H8** — `#[path = r#"…"#]` (chuỗi thô **có `#`**) trỏ tới tệp test-only **trong
+        # cây**. Bản KT-174 chỉ thêm `r?` nên dạng có `#` vẫn lọt: `_mods_of` bỏ cạnh sản phẩm
+        # ⇒ tệp ở lại test-only. Trước KT-177: XANH.
+        d = tmp / "v2-h8-raw-hash-path"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"evil_b.rs"#]\nmod evil_b_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'H8 `#[path = r#"…"#]` tới tệp test-only trong cây ⇒ đỏ (KT-177)',
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ar) Đối chứng dương cho H8: `#[path = r#"…"#]` tới tệp **sản phẩm** chỉ dùng
+        # `wake_from(` ⇒ XANH (raw string có `#` không tự nó làm đỏ).
+        d = tmp / "v2-h8b-raw-hash-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"evil_ok.rs"#]\nmod evil_ok_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'H8b `#[path = r#"…"#]` tới tệp sản phẩm chỉ `wake_from(` ⇒ xanh',
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4as) **H9** (cùng gốc G1/G2, ngoài bốn lớp bắt buộc) — `include!` dùng dấu ngoặc
+        # **vuông**/nhọn: `include!["evil_b.rs"]` / `include!{"evil_b.rs"}`. rustc **chấp
+        # nhận** cả hai (`cargo check` RC=0); bản KT-171/174 chỉ khớp `(`, nên lọt hoàn toàn.
+        for _delim, _open, _close in (("vuông", "[", "]"), ("nhọn", "{", "}")):
+            d = tmp / f"v2-h9-include-delim-{_open}"
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+            _write(
+                d / "v2/kernel/vifast-core/src/evil_b.rs",
+                "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                "        self.wake(t);\n        0\n    }\n}\n",
+            )
+            _write(
+                d / "v2/kernel/vifast-core/src/core_ipc.rs",
+                f'include!{_open}"evil_b.rs"{_close};\n',
+            )
+            rep = scan_v2(d, strict=True, allowlist={})
+            cases.append(
+                (
+                    f"H9 `include!{_open}…{_close}` (ngoặc {_delim}) tới tệp test-only ⇒ đỏ "
+                    f"(KT-177)",
+                    (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                    "; ".join(rep.errors),
+                )
+            )
+
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
         _fixture_v1(d, channels=3)
@@ -2621,7 +2948,7 @@ def main(argv: Sequence[str]) -> int:
         help="allowlist tường minh: mọi chuyển Ready phải qua cửa wake hoặc có trong allowlist",
     )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 46 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 56 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:
