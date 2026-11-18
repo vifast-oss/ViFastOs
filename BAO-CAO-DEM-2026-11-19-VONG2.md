@@ -215,7 +215,7 @@ Reviewer L16 phá KT-171 bằng **8 lớp**, nặng nhất là **H5**: `include!
 - **H1/H2**: `include!`/`#[path]` dùng **chuỗi thô** `r"…"` nay được phân giải ⇒ vẫn ĐỎ.
 - **H3**: `include!` **không literal** (`concat!`/`env!`/biến) trong tệp sản phẩm ⇒ `E_STRICT_WAKE_INCLUDE` fail-closed.
 
-Selftest giữ **46/46**; `--strict` `errors=0` trên cây sạch. **Còn nợ** (ghi rõ): H4 (`include!` lồng 2 lớp), H6 (macro `v2/lib` che `concat!`), H7 (macro chứa `include!`), H8 (`#[path]` chuỗi thô tới tệp test-only trong cây).
+Selftest giữ **46/46**; `--strict` `errors=0` trên cây sạch. **Còn nợ** (ghi rõ, đã kiểm lại độc lập ở KT-180): **H4** (`include!` lồng 2 lớp — dựng lại được, `errors=0`), H6 (macro `v2/lib` che `concat!`), H7 (macro chứa `include!`). **H8 đã đóng** — dựng lại đúng đột biến của L16 (`#[path = r"evil_b.rs"]` từ mã sản phẩm) nay **ĐỎ** `E_STRICT_TEST_ONLY_WAKE … evil_b.rs:3`; bản nháp báo cáo ghi H8 là nợ là **sai**, đã sửa.
 
 ---
 
