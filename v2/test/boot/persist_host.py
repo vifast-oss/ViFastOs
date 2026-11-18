@@ -460,6 +460,102 @@ def cmd_host(args):
     return 0 if not fails else 1
 
 
+# ------------------------------------------------------------------- KT-136: kiểm sau "cắt điện"
+def cmd_crash_host(args):
+    """Kiểm ảnh đĩa **sau khi QEMU bị giết giữa lúc đang ghi** (KT-136).
+
+    Không đòi "ảnh phải đúng trạng thái pha N" — cắt điện giữa lúc ghi thì **không** biết trước
+    pha nào đã commit. Đòi đúng ba điều mà một FS có journal **phải** giữ:
+
+    1. **fsck sạch** — không có cấu trúc hỏng (superblock/bitmap/inode/dir/journal).
+    2. **Dữ liệu đã commit trước đó còn nguyên từng byte** — ở đây là trạng thái sau pha 6
+       (`/p5.bin` = payload 6, `/p1.txt` vắng). Đây là điều quan trọng nhất: một lần cắt điện
+       **không** được làm mất dữ liệu đã báo "đã ghi".
+    3. **Tệp đang ghi dở, nếu có, phải là một TIỀN TỐ của nội dung đúng** — không được là rác.
+       Cỡ của nó phải ≤ cỡ đích, và từng byte phải khớp payload pha 7 ở cùng offset.
+
+    `/pstate` được phép có 11 hoặc 12 bản ghi (bản ghi pha 7 có thể đã commit hoặc chưa), nhưng
+    **mọi** bản ghi có mặt phải đúng định dạng và đúng thứ tự pha.
+    """
+    fails = []
+
+    def fail(message):
+        fails.append(message)
+
+    # `fsck` **được phép ghi**: sau một lần cắt điện, journal có thể còn bản ghi chưa áp dụng và
+    # `fsck` phát lại nó (replay) — đó là hành vi đúng của FS có journal, không phải hỏng. Vì vậy
+    # đo sha **sau** `fsck` rồi mới kiểm "các phép đọc không ghi vào ảnh"; đo trước `fsck` sẽ báo
+    # động giả (đã đo được ở lần chạy đầu: `fsutil_mutated=1` dù fsck sạch).
+    fsck = run([args.fsutil, "fsck", args.disk])
+    if fsck.returncode != 0:
+        fail(f"fsutil fsck exit={fsck.returncode}: {fsck.stderr.decode(errors='replace')[:160]}")
+    before = sha256_file(args.disk)
+
+    # (2) dữ liệu đã commit ở pha 6
+    committed = files_after(6)
+    for name, want in committed.items():
+        got = fsutil_get(args.fsutil, args.disk, name)
+        if got != want:
+            fail(f"get {name}: {len(got)} B khác mô hình đã commit {len(want)} B / nội dung lệch")
+        print(
+            f"# crash file: name={name} bytes={len(got)} want={len(want)} "
+            f"match={int(got == want)} const:committed=1"
+        )
+    for name in ABSENT[6]:
+        size = fsutil_stat_size(args.fsutil, args.disk, name)
+        if size is not None:
+            fail(f"stat {name} vẫn tồn tại sau crash (size={size}) — dữ liệu đã xoá sống lại")
+        print(f"# crash file: name={name} absent={int(size is None)} const:want_absent=1")
+
+    # (3) tệp đang ghi dở: vắng, hoặc là tiền tố của payload pha 7
+    p7 = "/p7.bin"
+    size = fsutil_stat_size(args.fsutil, args.disk, p7)
+    if size is None:
+        print(f"# crash file: name={p7} absent=1 (pha 7 chưa commit — hợp lệ)")
+    else:
+        want = payload(7, P7_BYTES)
+        if size > P7_BYTES:
+            fail(f"stat {p7} size={size} > cỡ đích {P7_BYTES} — ghi quá phạm vi")
+        got = fsutil_get(args.fsutil, args.disk, p7)
+        prefix_ok = got == want[: len(got)]
+        if not prefix_ok:
+            first = next((i for i in range(min(len(got), len(want))) if got[i] != want[i]), None)
+            fail(f"get {p7}: {len(got)} B KHÔNG phải tiền tố payload pha 7 (byte lệch đầu {first})")
+        print(
+            f"# crash file: name={p7} bytes={len(got)} want_max={P7_BYTES} "
+            f"prefix_ok={int(prefix_ok)} partial={int(len(got) < P7_BYTES)}"
+        )
+
+    # `/pstate`: 11 hoặc 12 bản ghi, mọi bản ghi đúng định dạng
+    st = fsutil_get(args.fsutil, args.disk, PSTATE)
+    n = len(st) // 4
+    if len(st) % 4 != 0:
+        fail(f"get {PSTATE}: {len(st)} B không chia hết 4 — bản ghi rách")
+    if n not in (2 * 6 - 1, 2 * 6):
+        fail(f"get {PSTATE}: {n} bản ghi (cần 11 hoặc 12 sau crash giữa pha 7)")
+    for i in range(min(n, 2 * PHASES)):
+        phase, action, ok, pad = st[i * 4 : i * 4 + 4]
+        want_phase = i // 2 + 1
+        want_action = 1 if i % 2 == 0 else 2
+        if (phase, action, ok, pad) != (want_phase, want_action, 1, 0):
+            fail(
+                f"get {PSTATE}: bản ghi {i} = ({phase},{action},{ok},{pad})"
+                f" (cần ({want_phase},{want_action},1,0))"
+            )
+    print(f"# crash state: records={n} well_formed={int(not any('bản ghi' in f for f in fails))}")
+
+    after = sha256_file(args.disk)
+    if before != after:
+        fail(f"host verify ĐÃ GHI vào ảnh: sha256 {before[:16]}… -> {after[:16]}…")
+    print(
+        f"# crash host: fsck={int(fsck.returncode == 0)} fail={len(fails)} "
+        f"img_sha256={after} fsutil_mutated={int(before != after)}"
+    )
+    for message in fails:
+        print(f"FAIL crash-host {os.path.basename(args.disk)}: {message}")
+    return 0 if not fails else 1
+
+
 # ------------------------------------------------------------------------------------------ main
 def main():
     parser = argparse.ArgumentParser(description="KT-75 host model/verifier cho test-persist")
@@ -492,6 +588,11 @@ def main():
     host.add_argument("--phase", type=int, choices=range(1, PHASES + 1), required=True)
     host.add_argument("--records", type=int, required=True)
     host.set_defaults(func=cmd_host)
+
+    crash = sub.add_parser("crash-host", help="kiểm ảnh đĩa sau khi QEMU bị giết giữa lúc ghi (KT-136)")
+    crash.add_argument("--disk", required=True)
+    crash.add_argument("--fsutil", required=True)
+    crash.set_defaults(func=cmd_crash_host)
 
     args = parser.parse_args()
     return args.func(args)

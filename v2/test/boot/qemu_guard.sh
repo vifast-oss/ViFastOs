@@ -191,9 +191,16 @@ qg_init() {
 }
 
 # ---------------------------------------------------------------- một boot
-# `qg_boot <log> <tds> <bin> [args…]` — xem hợp đồng ở đầu tệp.
-qg_boot() {
-    local log="${1:-}" tds="${2:-}" bin="${3:-}" pid="" waited=0 pg="" v=0 t0=0 tmax=0
+# `qg_start <log> <tds> <bin> [args…]` — **khởi động** QEMU trong process group riêng, KHÔNG chờ.
+#
+# Tách khỏi `qg_boot` ở KT-136: ca "cắt điện giữa lúc đang ghi" cần **giết** QEMU ở một thời điểm
+# chọn trước, mà `qg_boot` luôn chờ tới khi tiến trình tự thoát (hoặc hết ngân sách). Hai hàm dùng
+# **cùng** một đường khởi động ⇒ không có đường thứ hai lệch nhau về setpgrp/đo pgid.
+#
+# Đặt `QG_LAST_PID`, `QG_LAST_PGID`, `QG_LAST_TDS`, `QG_LAST_LOG`. Trả 0 = đã khởi động;
+# 125 = tham số/môi trường hỏng (không có tiến trình nào được tạo).
+qg_start() {
+    local log="${1:-}" tds="${2:-}" bin="${3:-}" pid="" pg="" v=0
     shift 3 2>/dev/null || true
     QG_LAST_PID=""
     QG_LAST_PGID=""
@@ -256,7 +263,16 @@ qg_boot() {
         echo "qemu_guard: CẢNH BÁO pgid=$pg != pid=$pid — QEMU KHÔNG ở group riêng (OD-K6-6)" >&2
     fi
     qg_guard_note boot_start
-    waited="$v" # giữ đúng ngân sách timeout (phần đã tiêu để đo PGID)
+    QG_START_SPENT="$v" # số bước 0,1 s đã tiêu để đo PGID — `qg_boot` trừ vào ngân sách
+    return 0
+}
+
+# `qg_boot <log> <tds> <bin> [args…]` — xem hợp đồng ở đầu tệp.
+qg_boot() {
+    local waited=0 t0=0 tmax=0
+    qg_start "$@" || return $?
+    local pid="$QG_LAST_PID" tds="$QG_LAST_TDS"
+    waited="${QG_START_SPENT:-0}" # giữ đúng ngân sách timeout (phần đã tiêu để đo PGID)
     # Ngân sách = `tds` bước 0,1 s (đúng như vòng cũ). Thêm **trần tuyệt đối** theo `SECONDS`
     # (2× danh nghĩa + 5 s) để boot không thể treo vô hạn kể cả khi `sleep` bị kéo dài:
     # KHÔNG nới ngưỡng (chỉ siết), và boot bình thường (~1 s) không bao giờ chạm trần.
@@ -275,6 +291,37 @@ qg_boot() {
         qg_guard_note boot_end
         rm -f -- "$QG_BINFO" 2>/dev/null || true
         return 124
+    fi
+    wait "$pid" 2>/dev/null
+    QG_LAST_RC=0
+    qg_guard_note boot_end
+    rm -f -- "$QG_BINFO" 2>/dev/null || true
+    return 0
+}
+
+# `qg_boot_kill <log> <tds> <delay_ds> <bin> [args…]` — khởi động rồi **giết cả process group**
+# sau `delay_ds` bước 0,1 s (KT-136: "cắt điện" giữa lúc kernel đang ghi xuống đĩa).
+#
+# Trả 137 = đã giết (đúng ca đang đo); 0 = QEMU tự thoát **trước** khi hết `delay_ds` (ca đo
+# KHÔNG hợp lệ — không có gì bị cắt); 125 = tham số hỏng. Người gọi **phải** coi 0 là lỗi của
+# phép đo, không phải thành công: không cắt được thì không chứng minh được gì.
+qg_boot_kill() {
+    local delay="${3:-}" i=0
+    case "$delay" in '' | *[!0-9]*) return 125 ;; esac
+    qg_start "$@" || return $?
+    local pid="$QG_LAST_PID"
+    while [ "$i" -lt "$delay" ] && kill -0 "$pid" 2>/dev/null; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+    QG_LAST_SECS="$i"
+    if kill -0 "$pid" 2>/dev/null; then
+        qg_kill_group "$pid"
+        wait "$pid" 2>/dev/null
+        QG_LAST_RC=137
+        qg_guard_note boot_end
+        rm -f -- "$QG_BINFO" 2>/dev/null || true
+        return 137
     fi
     wait "$pid" 2>/dev/null
     QG_LAST_RC=0

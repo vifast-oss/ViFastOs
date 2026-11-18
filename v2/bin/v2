@@ -408,6 +408,11 @@ do_gate_fast() {
     # `check`. Khi `nightly` đầy đủ có thì chuyển sang đó (Agent 0: "khi nightly đầy đủ có thì
     # chuyển sang").
     run_step "selftest persist đỏ-trước (KT-75)" bash "$V2_ROOT/test/boot/persist.sh" --red-selftest || return 1
+    # **KT-136 (Agent 0, lượt 4, việc 2)**: cắt điện giữa lúc kernel đang ghi pha 7 rồi kiểm ảnh
+    # đĩa (fsck sạch + dữ liệu đã commit còn nguyên + tệp dở phải là tiền tố) và kiểm FS còn
+    # đọc/ghi được sau đó. Đo bằng `date +%s%N`: ~17 s (build đã cache) ⇒ vừa `gate --fast`.
+    # Soak 100 boot (`--soak 10`) thì **không** vào cổng: ~3 phút, để chạy riêng làm bằng chứng.
+    run_step "cắt điện giữa lúc ghi (KT-136)" bash "$V2_ROOT/test/boot/persist.sh" --crash || return 1
     # **KT-139 (Agent 0)**: ba script tự kiểm **độc lập** (không cờ `--selftest`, nhận theo tên
     # tệp) trước đây **không cổng nào gọi** — cùng lớp lỗi đã làm `build-rev.sh --selftest` đỏ âm
     # thầm. Cả ba đều **chậm** (đo bằng `date +%s%N`: selfbreak ~95 s, neg-test ~12 s,
