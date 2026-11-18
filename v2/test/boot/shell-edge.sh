@@ -56,7 +56,8 @@
 #                             `cd /README/..` `pwd` `cat README` `stat README` `write rel.txt xin chao`
 #                             `cat rel.txt` `truncate rel.txt 2` `stat rel.txt` `ls` `ls .`
 #                             `cat ../README` `cd /khongco/..` `pwd` `cd /docs` `pwd` `ls`
-#                             `cat /docs/note.txt` `cd /docs/khongco` `pwd` `cd ..` `pwd`
+#                             `cat /docs/note.txt` `cat note.txt` `stat note.txt` `ls .`
+#                             `cd /docs/khongco` `pwd` `cd ..` `pwd`
 #                             `cd /docs/..` `pwd`
 #                                              ⇒ `pwd` tám lần in `/` + **hai** lần in `/docs` (thư mục
 #                                                hiện tại **không** đổi khi `cd` hỏng, **đổi** được vào
@@ -66,10 +67,15 @@
 #                                                `truncate`/`ls` (ghép với thư mục hiện tại); **KT-158**:
 #                                                `cd /docs` ⇒ `pwd` in `/docs`, `ls` trong `/docs` thấy
 #                                                `note.txt`, `cat /docs/note.txt` đọc đúng nội dung,
-#                                                `cd /docs/khongco` lỗi mà `pwd` **vẫn** `/docs`
+#                                                `cd /docs/khongco` lỗi mà `pwd` **vẫn** `/docs`;
+#                                                **KT-166** (review L6): `cat note.txt`/`stat note.txt`/
+#                                                `ls .` chạy **trong** `/docs` — đường **tương đối** ở
+#                                                thư mục con, nên đột biến "`resolve_path` bỏ qua `Cwd`"
+#                                                **phải ĐỎ** (trước KT-166 nó vẫn xanh)
 #   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba**; 14 là **K7 lượt bốn**; 15 là **K7 lượt năm §B3.4c**;
 #    16 là **KT-137** — `cd`/`pwd` + thư mục hiện tại + đường dẫn tương đối; **KT-158** thêm thư mục
-#    con `/docs` vào FS sản phẩm để vế "thư mục hiện tại **đổi được**" kiểm được thật.)
+#    con `/docs` vào FS sản phẩm để vế "thư mục hiện tại **đổi được**" kiểm được thật; **KT-166**
+#    thêm ba lệnh **tương đối trong** `/docs` để đột biến "`resolve_path` bỏ qua `Cwd`" phải ĐỎ.)
 #
 # **Phán quyết từng lệnh** (Q4 vòng ba): bốn ca 10/11/12/13 in **một dòng cho mỗi lệnh**
 # (`# <ca>[<lệnh>]: PASS/FAIL (lý do)`) và **chạy hết** mọi lệnh rồi mới kết luận — log sai hai
@@ -1106,34 +1112,54 @@ ok_kt137_cd_docs() {
     return 0
 }
 
-# **KT-158**: `ls` trong `/docs` ⇒ **đúng một** dòng `# shell: ls n=1 path=/docs` **và** bảng có
-# `note.txt` — chứng minh `ls` **không tham số** liệt kê **thư mục hiện tại** (không phải luôn `/`).
+# **KT-158** + **KT-166**: `ls` (không tham số) và `ls .` trong `/docs` ⇒ **đúng hai** dòng
+# `# shell: ls n=1 path=/docs` và **hai** dòng `  f note.txt` — chứng minh `ls` liệt kê **thư mục
+# hiện tại** (không phải luôn `/`) **và** `ls .` phân giải **tương đối** qua `Cwd`. Đột biến
+# "`resolve_path` bỏ qua `Cwd`" (reviewer L6, KT-161 §1.4) làm `ls .` thành `ls /` ⇒ chỉ còn
+# **một** dòng `path=/docs` ⇒ phép kiểm này ĐỎ.
 ok_kt137_ls_docs() {
     local log="$1" n m
     n="$(grep -c -x -F '# shell: ls n=1 path=/docs' "$log" 2>/dev/null || true)"
-    if [ "${n:-0}" -ne 1 ]; then
-        echo "mong đúng 1 dòng '# shell: ls n=1 path=/docs', thấy ${n:-0}"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: ls n=1 path=/docs' (ls + ls .), thấy ${n:-0}"
         return 1
     fi
     m="$(grep -c -x -F '  f note.txt' "$log" 2>/dev/null || true)"
-    if [ "${m:-0}" -lt 1 ]; then
-        echo "bảng 'ls' trong /docs không có 'note.txt' — không liệt kê thư mục hiện tại"
+    if [ "${m:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '  f note.txt' (ls + ls .), thấy ${m:-0}"
         return 1
     fi
     return 0
 }
 
-# **KT-158**: `cat /docs/note.txt` ⇒ in **đúng nội dung** (16 B) rồi `# shell: cat ok bytes=16 …`.
+# **KT-158** + **KT-166**: `cat /docs/note.txt` (tuyệt đối) **và** `cat note.txt` (tương đối,
+# trong `/docs`) ⇒ **hai** dòng nội dung `ghi chu cua docs` + **hai** dòng
+# `# shell: cat ok bytes=16 first=ghi chu …`. Đột biến "`resolve_path` bỏ qua `Cwd`" làm
+# `cat note.txt` thành `cat /note.txt` ⇒ `fs loi code=5` ⇒ chỉ còn **một** dòng mỗi loại.
 ok_kt137_cat_docs() {
     local log="$1" n m
     n="$(grep -c -x -F 'ghi chu cua docs' "$log" 2>/dev/null || true)"
-    if [ "${n:-0}" -ne 1 ]; then
-        echo "mong đúng 1 dòng nội dung 'ghi chu cua docs', thấy ${n:-0}"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng nội dung 'ghi chu cua docs' (cat /docs/note.txt + cat note.txt), thấy ${n:-0}"
         return 1
     fi
     m="$(grep -c -E '^# shell: cat ok bytes=16 first=ghi chu' "$log" 2>/dev/null || true)"
-    if [ "${m:-0}" -ne 1 ]; then
-        echo "mong đúng 1 dòng '# shell: cat ok bytes=16 first=ghi chu…', thấy ${m:-0}"
+    if [ "${m:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: cat ok bytes=16 first=ghi chu…' (tuyệt đối + tương đối), thấy ${m:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# **KT-166**: `stat note.txt` (tương đối, trong `/docs`) ⇒ **đúng một** dòng
+# `# shell: stat path=/docs/note.txt kind=1 size=16 ino=<n>` — chứng minh `stat` **phân giải**
+# đường tương đối qua `Cwd`. Đột biến "`resolve_path` bỏ qua `Cwd`" ⇒ `stat /note.txt` ⇒
+# `fs loi code=5`, **không** có dòng `stat` nào ⇒ phép kiểm này ĐỎ.
+ok_kt137_stat_docs() {
+    local log="$1" n
+    n="$(grep -c -E '^# shell: stat path=/docs/note\.txt kind=1 size=16 ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: stat path=/docs/note.txt kind=1 size=16 ino=<n>', thấy ${n:-0}"
         return 1
     fi
     return 0
@@ -1241,7 +1267,8 @@ check_kt137_cdpwd() {
         "ls-cwd:ok_kt137_ls_cwd" \
         "cd-docs:ok_kt137_cd_docs" \
         "ls-docs:ok_kt137_ls_docs" \
-        "cat-docs:ok_kt137_cat_docs"
+        "cat-docs:ok_kt137_cat_docs" \
+        "stat-docs:ok_kt137_stat_docs"
 }
 
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
@@ -1796,8 +1823,10 @@ run_selftest() {
     #      đường dẫn gửi **nguyên** đường tương đối xuống FS ⇒ `fs loi code=2`/`code=5`. Thêm hành
     #      vi **trước KT-158** (FS sản phẩm **không** có `/docs`): `cd /docs` báo không có, `ls`
     #      trong `/docs` và `cat /docs/note.txt` đều `fs loi code=5`, và `pwd` **không** in `/docs`
-    #      lần nào. Vì vậy **mười hai** phép kiểm phải đỏ, hai phép kiểm còn lại (`cd-khong-co`,
-    #      `ls-cwd`) vẫn xanh — chứng minh phán quyết **quy đúng lệnh**, không phải "đỏ cả ca".
+    #      lần nào. **KT-166** thêm ba lệnh tương đối trong `/docs` (`cat note.txt`, `stat note.txt`,
+    #      `ls .`) — log sai cho chúng `fs loi code=2` (đường tương đối gửi nguyên xuống FS). Vì vậy
+    #      **mười ba** phép kiểm phải đỏ, hai phép kiểm còn lại (`cd-khong-co`, `ls-cwd`) vẫn xanh —
+    #      chứng minh phán quyết **quy đúng lệnh**, không phải "đỏ cả ca".
     d="$(mktemp -d "$root/c16.XXXXXX")"
     wrong="$d/wrong.log"
     right="$d/right.log"
@@ -1832,6 +1861,9 @@ run_selftest() {
         printf '# shell: pwd /\n'
         printf '# shell: fs loi code=5\n'
         printf '# shell: fs loi code=5\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=2\n'
         printf '# shell: cd khong co /docs/khongco\n'
         printf '# shell: pwd /\n'
         printf '# shell: cd /\n'
@@ -1886,6 +1918,11 @@ run_selftest() {
         printf '# shell: ls n=1 path=/docs\n'
         printf 'ghi chu cua docs\n'
         printf '# shell: cat ok bytes=16 first=ghi chu \n'
+        printf 'ghi chu cua docs\n'
+        printf '# shell: cat ok bytes=16 first=ghi chu \n'
+        printf '# shell: stat path=/docs/note.txt kind=1 size=16 ino=4\n'
+        printf '  f note.txt\n'
+        printf '# shell: ls n=1 path=/docs\n'
         printf '# shell: cd khong co /docs/khongco\n'
         printf '# shell: pwd /docs\n'
         printf '# shell: cd /\n'
@@ -1894,14 +1931,15 @@ run_selftest() {
         printf '# shell: pwd /\n'
         printf '# shell: echo __END_16__\n'
     } >"$right"
-    selftest_verdicts "16 kt137-cdpwd (sai)" check_kt137_cdpwd "$wrong" 1 2 12 \
+    selftest_verdicts "16 kt137-cdpwd (sai)" check_kt137_cdpwd "$wrong" 1 2 13 \
         'kt137-cdpwd[pwd]: FAIL' 'kt137-cdpwd[cd-tep]: FAIL' \
         'kt137-cdpwd[cd-thu-tu]: FAIL' 'kt137-cdpwd[cat-tuong-doi]: FAIL' \
         'kt137-cdpwd[stat-tuong-doi]: FAIL' 'kt137-cdpwd[write-tuong-doi]: FAIL' \
         'kt137-cdpwd[cat-rel]: FAIL' 'kt137-cdpwd[truncate-tuong-doi]: FAIL' \
         'kt137-cdpwd[stat-rel]: FAIL' 'kt137-cdpwd[cd-docs]: FAIL' \
-        'kt137-cdpwd[ls-docs]: FAIL' 'kt137-cdpwd[cat-docs]: FAIL'
-    selftest_verdicts "16 kt137-cdpwd (dung)" check_kt137_cdpwd "$right" 0 14 0
+        'kt137-cdpwd[ls-docs]: FAIL' 'kt137-cdpwd[cat-docs]: FAIL' \
+        'kt137-cdpwd[stat-docs]: FAIL'
+    selftest_verdicts "16 kt137-cdpwd (dung)" check_kt137_cdpwd "$right" 0 15 0
     # Hai phép kiểm **vẫn xanh** trong log sai ở trên cần ca âm **riêng** (nếu không, chúng chưa
     # được chứng minh là bắt được lỗi): `cd-khong-co` với **hai** dòng (lệnh chạy hai lần) và
     # `ls-cwd` với **một** dòng `ls` (thiếu `ls .`).
@@ -2407,20 +2445,23 @@ run_real() {
     fi
 
     # (16) **KT-137** (`cd`/`pwd` + thư mục hiện tại + **đường dẫn tương đối**) + **KT-158** (thư mục
-    #      con `/docs`): mười bốn phép kiểm, mỗi lệnh một dòng phán quyết. Đặt **trước** (8b) để
-    #      `/README` còn 79 byte (8b truncate nó về 5). Ca này **tạo** `/rel.txt` ở gốc — không ca
-    #      nào sau đọc **số mục** của gốc, và `stat /README … ino=2` của (8b) không đổi (README được
-    #      seed **trước** mọi tệp khác). Khối `/docs` ở **cuối** ca: `cd /docs` ⇒ `pwd` in `/docs`,
-    #      `ls` trong `/docs` thấy `note.txt`, `cat /docs/note.txt` đọc đúng nội dung,
-    #      `cd /docs/khongco` lỗi mà `pwd` **vẫn** `/docs`, rồi `cd ..`/`cd /docs/..` về `/`.
+    #      con `/docs`) + **KT-166** (đường tương đối **trong** thư mục con): mười lăm phép kiểm,
+    #      mỗi lệnh một dòng phán quyết. Đặt **trước** (8b) để `/README` còn 79 byte (8b truncate nó
+    #      về 5). Ca này **tạo** `/rel.txt` ở gốc — không ca nào sau đọc **số mục** của gốc, và
+    #      `stat /README … ino=2` của (8b) không đổi (README được seed **trước** mọi tệp khác).
+    #      Khối `/docs` ở **cuối** ca: `cd /docs` ⇒ `pwd` in `/docs`, `ls` trong `/docs` thấy
+    #      `note.txt`, `cat /docs/note.txt` đọc đúng nội dung, rồi **KT-166** chạy `cat note.txt`/
+    #      `stat note.txt`/`ls .` — **đường tương đối trong thư mục con** (đột biến "`resolve_path`
+    #      bỏ qua `Cwd`" phải ĐỎ), `cd /docs/khongco` lỗi mà `pwd` **vẫn** `/docs`, rồi
+    #      `cd ..`/`cd /docs/..` về `/`.
     if [ "$CASE_TIMEOUT" -eq 0 ]; then
         case_begin
         for c in 'pwd' 'cd /khongco' 'pwd' 'cd /README' 'pwd' 'cd ..' 'cd' 'cd /' 'pwd' \
             'cd /README/..' 'pwd' 'cat README' 'stat README' 'write rel.txt xin chao' \
             'cat rel.txt' 'truncate rel.txt 2' 'stat rel.txt' 'ls' 'ls .' 'cat ../README' \
             'cd /khongco/..' 'pwd' \
-            'cd /docs' 'pwd' 'ls' 'cat /docs/note.txt' 'cd /docs/khongco' 'pwd' \
-            'cd ..' 'pwd' 'cd /docs/..' 'pwd'; do
+            'cd /docs' 'pwd' 'ls' 'cat /docs/note.txt' 'cat note.txt' 'stat note.txt' 'ls .' \
+            'cd /docs/khongco' 'pwd' 'cd ..' 'pwd' 'cd /docs/..' 'pwd'; do
             send_line "$c" || true
             sleep 0.15
         done
