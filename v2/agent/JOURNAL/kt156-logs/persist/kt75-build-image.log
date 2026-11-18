@@ -1,0 +1,4 @@
+   Compiling vifast-kbin-riscv64 v0.1.0 (/private/tmp/night-L9-k7measure/v2/kernel/vifast-kbin-riscv64)
+   Compiling vifast-plat-riscv64 v0.1.0 (/private/tmp/night-L9-k7measure/v2/kernel/vifast-plat-riscv64)
+warning: vifast-kbin-riscv64@0.1.0: KT-89 build identity algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0 rev=ba7223da23b8
+    Finished `release` profile [optimized] target(s) in 5.76s

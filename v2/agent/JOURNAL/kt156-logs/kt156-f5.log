@@ -1,0 +1,7 @@
+===== F5 NGUONG tren anh san pham 2026-11-18T16:12:55Z =====
+### image_bytes=209536 tran=262144
+# image=product path=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin file=209536 data+bss=223696 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=130722 .rodata=64024 .data=7832 .bss=215864 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7832 .bss=215864 
+### budget_exit=0
+

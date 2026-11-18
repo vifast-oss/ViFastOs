@@ -1,0 +1,10 @@
+# soak 1000 boot tren anh phat hanh da ghim (trich tu kt156-f4.log)
+# soak: bắt đầu N=1000 lanes=3 16:48:39Z
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.29 loadavg_5m=4.99 loadavg_15m=4.54 ncpu=12 boot_done=1 verdict=OK
+# infra: invalid=0 isolation_bad=0 guard_log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/soak/qemu-guard.log
+# soak: xong wall=290s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
+# soak: BUILD_ID=b080e40c1bd815d1 sha256=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71 git=ba7223da23b88c66a922d59e25c1112a104ef1af
+# soak: 1000/1000 lỗi=0 — 0/N chỉ là trần (QD §5.3); không retry (D2-07)
+# soak: 0/1000 lỗi (PASS)
+# soak.sh: PASS
+# results.txt: ok=1000 fail=0

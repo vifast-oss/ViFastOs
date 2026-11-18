@@ -1,0 +1,31 @@
+# qemu_guard: pid=91835 date_utc=2026-11-18T16:23:31Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.60 loadavg_5m=3.01 loadavg_15m=3.32 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=91907 pgid=91907 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-1-help-serial-custom-smp4-kt156.log
+# boot_end seq=1 pid=91907 pgid=91907 isolated=1 rc=124 secs=18.1 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-1-help-serial-custom-smp4-kt156.log
+# boot_start seq=2 pid=92942 pgid=92942 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-2-echo-serial-custom-smp4-kt156.log
+# boot_end seq=2 pid=92942 pgid=92942 isolated=1 rc=124 secs=17.8 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-2-echo-serial-custom-smp4-kt156.log
+# boot_start seq=3 pid=93993 pgid=93993 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-3-ps-serial-custom-smp4-kt156.log
+# boot_end seq=3 pid=93993 pgid=93993 isolated=1 rc=124 secs=17.7 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-3-ps-serial-custom-smp4-kt156.log
+# boot_start seq=4 pid=95026 pgid=95026 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-4-kill-serial-custom-smp4-kt156.log
+# boot_end seq=4 pid=95026 pgid=95026 isolated=1 rc=124 secs=18.0 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-4-kill-serial-custom-smp4-kt156.log
+# boot_start seq=5 pid=96058 pgid=96058 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-5-cd-serial-custom-smp4-kt156.log
+# boot_end seq=5 pid=96058 pgid=96058 isolated=1 rc=124 secs=17.7 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-5-cd-serial-custom-smp4-kt156.log
+# boot_start seq=6 pid=97084 pgid=97084 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-6-pwd-serial-custom-smp4-kt156.log
+# boot_end seq=6 pid=97084 pgid=97084 isolated=1 rc=124 secs=18.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-6-pwd-serial-custom-smp4-kt156.log
+# boot_start seq=7 pid=98115 pgid=98115 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-7-time-serial-custom-smp4-kt156.log
+# boot_end seq=7 pid=98115 pgid=98115 isolated=1 rc=124 secs=16.9 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-7-time-serial-custom-smp4-kt156.log
+# boot_start seq=8 pid=99145 pgid=99145 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-8-ls-serial-custom-smp4-kt156.log
+# boot_end seq=8 pid=99145 pgid=99145 isolated=1 rc=124 secs=17.9 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-8-ls-serial-custom-smp4-kt156.log
+# boot_start seq=9 pid=362 pgid=362 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-9-cat-serial-custom-smp4-kt156.log
+# boot_end seq=9 pid=362 pgid=362 isolated=1 rc=124 secs=17.9 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-9-cat-serial-custom-smp4-kt156.log
+# boot_start seq=10 pid=1523 pgid=1523 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-10-stat-serial-custom-smp4-kt156.log
+# boot_end seq=10 pid=1523 pgid=1523 isolated=1 rc=124 secs=18.8 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-10-stat-serial-custom-smp4-kt156.log
+# boot_start seq=11 pid=2567 pgid=2567 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-11-sync-serial-custom-smp4-kt156.log
+# boot_end seq=11 pid=2567 pgid=2567 isolated=1 rc=124 secs=17.8 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-11-sync-serial-custom-smp4-kt156.log
+# boot_start seq=12 pid=3619 pgid=3619 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-12-truncate-serial-custom-smp4-kt156.log
+# boot_end seq=12 pid=3619 pgid=3619 isolated=1 rc=124 secs=17.6 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-12-truncate-serial-custom-smp4-kt156.log
+# boot_start seq=13 pid=4662 pgid=4662 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-13-uptime-serial-custom-smp4-kt156.log
+# boot_end seq=13 pid=4662 pgid=4662 isolated=1 rc=124 secs=18.5 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-13-uptime-serial-custom-smp4-kt156.log
+# boot_start seq=14 pid=5694 pgid=5694 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-14-jobs-serial-custom-smp4-kt156.log
+# boot_end seq=14 pid=5694 pgid=5694 isolated=1 rc=124 secs=17.1 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-14-jobs-serial-custom-smp4-kt156.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.17 loadavg_5m=5.54 loadavg_15m=4.73 ncpu=12 boot_done=14 verdict=OK

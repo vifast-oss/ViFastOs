@@ -1,0 +1,56 @@
+===== F3 CA AM anh TAT shell 2026-11-18T16:34:43Z =====
+### build_noshell_exit=0
+REPRO machine=Darwin-arm64 root=/private/tmp/night-L9-k7measure sha256=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71 size=209536 wall_s=15 algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0 rev=ba7223da23b8 build=b080e40c1bd815d1 text=130722 image=/private/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vifast-repro-target.P295SD/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+### noshell_sha=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71
+PIN sha=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71 size=209536 path=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin # build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0 state=da-co
+### noshell_pinned=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin
+### f3_noshell_boot_exit=0
+### f3_noshell_shell_prompt_lines=2
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# run.sh: task=KT-77a mode=serial image=custom smp=1 negative=none
+# run.sh: toml=/private/tmp/night-L9-k7measure/spec/v1-parity.toml
+# run.sh: image=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/private/tmp/night-L9-k7measure/v2/test/boot/qemu_guard.sh (khong sua) boot_timeout=20s send_delay_ms=50
+# parity: image_path=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin image_sha256=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71 image_bytes=209536
+# parity: artifacts_bin=artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin co=0 (dong bang artifacts/<sha>.bin thuoc KT-84)
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.73 loadavg_5m=5.07 loadavg_15m=4.61 ncpu=12 boot_done=0 verdict=OK
+# parity: spec_total=28 active=14 deferred=14 (nguon: /private/tmp/night-L9-k7measure/spec/v1-parity.toml)
+# parity: serial name=help payload_bytes=10 min_count=2 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-1-help-serial-custom-smp1-kt156-noshell.log
+ok 1 - help (khop=16 >= 2, waited_ms=0)
+# parity: serial name=echo payload_bytes=10 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-2-echo-serial-custom-smp1-kt156-noshell.log
+ok 2 - echo (khop=7 >= 1, waited_ms=0)
+# parity: serial name=ps payload_bytes=3 min_count=2 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-3-ps-serial-custom-smp1-kt156-noshell.log
+ok 3 - ps (khop=8 >= 2, waited_ms=0)
+# parity: serial name=kill payload_bytes=9 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-4-kill-serial-custom-smp1-kt156-noshell.log
+ok 4 - kill (khop=8 >= 1, waited_ms=0)
+# parity: serial name=cd payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-5-cd-serial-custom-smp1-kt156-noshell.log
+ok 5 - cd (khop=8 >= 1, waited_ms=0)
+# parity: serial name=pwd payload_bytes=4 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-6-pwd-serial-custom-smp1-kt156-noshell.log
+ok 6 - pwd (khop=8 >= 1, waited_ms=0)
+# parity: serial name=time payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-7-time-serial-custom-smp1-kt156-noshell.log
+ok 7 - time (khop=7 >= 1, waited_ms=0)
+# parity: serial name=ls payload_bytes=3 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-8-ls-serial-custom-smp1-kt156-noshell.log
+ok 8 - ls (khop=8 >= 1, waited_ms=0)
+# parity: serial name=cat payload_bytes=32 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-9-cat-serial-custom-smp1-kt156-noshell.log
+ok 9 - cat (khop=8 >= 1, waited_ms=0)
+# parity: serial name=stat payload_bytes=13 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-10-stat-serial-custom-smp1-kt156-noshell.log
+ok 10 - stat (khop=8 >= 1, waited_ms=0)
+# parity: serial name=sync payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-11-sync-serial-custom-smp1-kt156-noshell.log
+ok 11 - sync (khop=8 >= 1, waited_ms=0)
+# parity: serial name=truncate payload_bytes=19 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-12-truncate-serial-custom-smp1-kt156-noshell.log
+ok 12 - truncate (khop=8 >= 1, waited_ms=0)
+# parity: serial name=uptime payload_bytes=7 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-13-uptime-serial-custom-smp1-kt156-noshell.log
+ok 13 - uptime (khop=8 >= 1, waited_ms=0)
+# parity: serial name=jobs payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-14-jobs-serial-custom-smp1-kt156-noshell.log
+ok 14 - jobs (khop=8 >= 1, waited_ms=0)
+# parity: total=28 ok=14 deferred=14 active=14 (active_da_chay=14)
+# parity: not_ok=0 timeout=0 khong_co_shell=0 qemu_rc=124
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.28 loadavg_5m=4.19 loadavg_15m=4.27 ncpu=12 boot_done=14 verdict=OK
+# parity: qemu_con_sot_total=0 qemu_cua_script=0
+# parity: KET_LUAN=ok (exit 0)
+### f3_parity_noshell_exit=0
+# parity: total=28 ok=14 deferred=14 active=14 (active_da_chay=14)
+# parity: not_ok=0 timeout=0 khong_co_shell=0 qemu_rc=124
+# parity: KET_LUAN=ok (exit 0)
+
