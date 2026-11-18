@@ -60,7 +60,13 @@ WAKE_STEP = "wake_step"
 MAIL_CONSUMER = "apply_mail"
 
 # Hàm phát message `Wake` (đường chéo hart).
-WAKE_PRODUCER = "wake"
+#
+# **KT-154 (N7-2)** — mở rộng **có kiểm soát**: `wake` là API công khai (đường hộp thư cũ);
+# `wake_from` là **cửa duy nhất** cho mọi đường sản phẩm (IPC/Reply/Notification/finalise/
+# refill) — nó cũng phát `Wake` về `home` khi khác hart. Cả hai **cùng một kênh**; không
+# thêm hàm thứ ba nào được phát `Wake`. Định nghĩa lại phạm vi này đã quét lại **toàn bộ**
+# `v2/kernel` + `v2/sim` (Luật 2) — xem `v2/agent/JOURNAL/kt154-n7fix.md` §8.
+WAKE_PRODUCER = ("wake", "wake_from")
 
 # Hàm phát `Migrate` (push migration).
 MIGRATE_PRODUCER = "push_step"
@@ -350,14 +356,17 @@ def scan_v2(root: Path, strict: bool) -> Report:
                     "E_CHANNEL_MISSING",
                     f"{layer}: không có chỗ phát `MailboxMsg::{kind}` — tầng này mất kênh",
                 )
-    # `Wake` chỉ được phát từ `wake`; `Migrate` chỉ từ `push_step` (đường push migration).
+    # `Wake` chỉ được phát từ `wake`/`wake_from` (một kênh, hai cửa cùng kênh — KT-154);
+    # `Migrate` chỉ từ `push_step` (đường push migration).
     for kind, allowed in (("Wake", WAKE_PRODUCER), ("Migrate", MIGRATE_PRODUCER)):
+        allowed_set = (allowed,) if isinstance(allowed, str) else tuple(allowed)
         for site in producers[kind]:
             fname = site.rsplit("(", 1)[-1].rstrip(")")
-            if fname != allowed:
+            if fname not in allowed_set:
                 r.err(
                     "E_CHANNEL_PRODUCER",
-                    f"`MailboxMsg::{kind}` phát từ `{fname}` ({site}) — chỉ `{allowed}` được phát",
+                    f"`MailboxMsg::{kind}` phát từ `{fname}` ({site}) — chỉ "
+                    f"{sorted(allowed_set)} được phát",
                 )
     for kind in WAKE_KINDS:
         for site in producers[kind]:
