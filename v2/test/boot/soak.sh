@@ -454,7 +454,9 @@ boot_one_shell() {
     rm -f "$fifo" 2>/dev/null || true
 
     # (4) danh tính ảnh: dòng `# build:` do kernel in phải khớp ảnh đang chạy.
-    n="$(grep -cE '^# build: inputs=[0-9a-f]+ dirty=0$' "$out" || true)"
+    # KT-143: dòng danh tính nay có `algo=` — đòi **đúng** dạng mới, không nhận dạng cũ, vì soak
+    # chỉ đo ảnh vừa build từ cây hiện tại.
+    n="$(grep -cE '^# build: algo=[0-9A-Za-z._-]+ inputs=[0-9a-f]+ dirty=0$' "$out" || true)"
     [ "${n:-0}" -eq 1 ] || why="$why build-line=${n:-0}/1"
     # (5) không PANIC (fail-closed, tính cả dòng thụt đầu dòng).
     n="$(grep -cE '^[[:space:]]*PANIC' "$out" || true)"

@@ -1473,7 +1473,9 @@ run_real() {
         img_sha="$(sha256sum "$IMAGE" | awk '{print $1}')"
     fi
     img_bytes="$(wc -c <"$IMAGE" | tr -d ' ')"
-    build_line="$(LC_ALL=C grep -a -o -m1 '# build: [a-z]*=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
+    # KT-143: dòng danh tính nay có `algo=` (tên định nghĩa dấu vân tay) đứng trước `inputs=`.
+    # Vẫn nhận dạng cũ để log của ảnh lịch sử vẫn in được dòng danh tính.
+    build_line="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: [a-z]*=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
 
     echo "# shell-edge KT-108 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "# image: $IMAGE"

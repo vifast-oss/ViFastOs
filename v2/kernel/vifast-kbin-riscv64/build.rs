@@ -401,11 +401,53 @@ const REV_LEN: usize = 12;
 /// Dấu vân tay build-inputs khi không tính được (khớp `VBREV_INPUTS_LEN` = 16 của harness).
 const UNKNOWN_INPUTS: &str = "unknown";
 
+/// **KT-143** — tên **định nghĩa** dấu vân tay build-inputs (`VBREV_ALGO` của harness), in vào
+/// dòng `# build:` để một log tự khai nó được tính bằng **công thức nào**. Vì sao cần: đổi định
+/// nghĩa (thêm/bớt thư mục khỏi phạm vi) làm dấu vân tay đổi mà **không** đổi một byte mã nguồn
+/// nào — nhìn log cũ và log mới thấy hai số khác nhau mà không có cách nào biết chúng có so được
+/// với nhau hay không. Có `algo=` thì câu trả lời nằm ngay trong log.
+const UNKNOWN_ALGO: &str = "unknown";
+
+/// `true` ⇔ `s` là một tên định nghĩa hợp lệ (chữ/số/`-`/`_`/`.`, không rỗng, ≤ 32 ký tự).
+fn is_algo(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 32
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+}
+
 /// `true` ⇔ `s` là 16 ký tự hex thường (đúng độ dài `VBREV_INPUTS_LEN`).
 fn is_inputs16(s: &str) -> bool {
     s.len() == 16
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Đọc `VBREV_ALGO` bằng **chính** `v2/test/boot/build-rev.sh` (một nguồn sự thật — không chép
+/// lại tên định nghĩa vào build script). Trả `None` khi không chạy được ⇒ ảnh mang
+/// `algo=unknown` ⇒ cổng **từ chối** (fail-closed).
+fn algo_from_script(root: &Path) -> Option<String> {
+    let script = root.join("v2/test/boot/build-rev.sh");
+    if !script.is_file() {
+        return None;
+    }
+    let out = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(". \"$1\" && printf '%s' \"$VBREV_ALGO\"")
+        .arg("bash")
+        .arg(&script)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8(out.stdout).ok()?;
+    let s = s.trim().to_string();
+    if is_algo(&s) {
+        Some(s)
+    } else {
+        None
+    }
 }
 
 /// Tính dấu vân tay build-inputs bằng **chính** `v2/test/boot/build-rev.sh` (một nguồn sự thật).
@@ -460,10 +502,18 @@ fn build_identity(manifest_dir: &str) {
         .ok()
         .filter(|v| is_inputs16(v))
         .unwrap_or_else(|| inputs_from_script(&root).unwrap_or_else(|| UNKNOWN_INPUTS.to_string()));
+    // KT-143: tên **định nghĩa** dấu vân tay, cùng nguồn sự thật với `inputs`.
+    let algo = std::env::var("VIFAST_BUILD_ALGO")
+        .ok()
+        .filter(|v| is_algo(v))
+        .unwrap_or_else(|| algo_from_script(&root).unwrap_or_else(|| UNKNOWN_ALGO.to_string()));
     println!("cargo:rustc-env=VIFAST_BUILD_REV={rev}");
     println!("cargo:rustc-env=VIFAST_BUILD_DIRTY={dirty}");
     println!("cargo:rustc-env=VIFAST_BUILD_INPUTS={inputs}");
-    println!("cargo:warning=KT-89 build identity inputs={inputs} dirty={dirty} rev={rev}");
+    println!("cargo:rustc-env=VIFAST_BUILD_ALGO={algo}");
+    println!(
+        "cargo:warning=KT-89 build identity algo={algo} inputs={inputs} dirty={dirty} rev={rev}"
+    );
     // Bản build **sau** phải tính lại danh tính: env đổi, HEAD/index đổi, hoặc mã nguồn trong
     // phạm vi dirty đổi. Thiếu các dòng này cargo dùng lại build script cũ ⇒ ảnh mang rev cũ
     // (đúng lớp lỗi KT-76). Mọi bất định chỉ dẫn tới **từ chối đo**, không dẫn tới nhận nhầm.
@@ -472,6 +522,9 @@ fn build_identity(manifest_dir: &str) {
     // D2-127: dấu vân tay build-inputs cũng là **đầu vào** — thiếu dòng này thì cargo dùng lại
     // build script cũ ⇒ ảnh mang dấu vân tay cũ (đúng lớp lỗi KT-76).
     println!("cargo:rerun-if-env-changed=VIFAST_BUILD_INPUTS");
+    // KT-143: tên định nghĩa cũng là **đầu vào** — thiếu dòng này thì cargo dùng lại build script
+    // cũ ⇒ ảnh mang `algo=` cũ (đúng lớp lỗi KT-76).
+    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_ALGO");
     for path in identity_watch_paths(&root) {
         println!("cargo:rerun-if-changed={}", path.display());
     }

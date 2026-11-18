@@ -134,6 +134,9 @@ else
     echo "# repro-build: CẢNH BÁO không tính được dấu vân tay build-inputs (${VBREV_CALC_ERROR:-unknown}) — ảnh mang inputs=unknown, cổng đo sẽ TỪ CHỐI" >&2
 fi
 export VIFAST_BUILD_INPUTS="$BUILD_INPUTS"
+# KT-143: tên **định nghĩa** dấu vân tay cũng vào ảnh (dòng `# build: algo=…`), để một log tự khai
+# nó được tính bằng công thức nào. `VBREV_ALGO` là nguồn sự thật duy nhất (build-rev.sh).
+export VIFAST_BUILD_ALGO="$VBREV_ALGO"
 export VIFAST_BUILD_INPUTS_COUNT="$BUILD_INPUTS_COUNT"
 
 # A1-175: **cấm** dùng `target/` của repo cho build canonical — nó là nơi ảnh phát hành
@@ -205,6 +208,6 @@ DIGEST="$(python3 "$HERE/../test/conformance/image_digest.py" "$IMAGE" 2>/dev/nu
 # (cache) ⇒ ảnh mang rev cũ ⇒ **dừng, không dùng kết quả** (đúng lớp lỗi KT-76: "build sạch" thật
 # ra là no-op). Nhờ vậy `repro-build.sh` không bao giờ xuất một ảnh có nguồn gốc khác dòng REPRO.
 # D2-127: danh tính **quyết định** là dấu vân tay build-inputs (16 hex), KHÔNG phải rev 12 hex.
-vbrev_image_has "$IMAGE" "$BUILD_INPUTS" "$BUILD_DIRTY" ||
-    die "KT-89: ảnh KHÔNG mang danh tính build inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY (build script bị cargo dùng lại?) — không dùng kết quả"
-echo "REPRO machine=$(uname -sm | tr ' ' '-') root=$ROOT sha256=$SHA size=$SIZE wall_s=$((t1 - t0)) inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY rev=$BUILD_REV $DIGEST image=$IMAGE"
+vbrev_image_has "$IMAGE" "$VBREV_ALGO" "$BUILD_INPUTS" "$BUILD_DIRTY" ||
+    die "KT-89: ảnh KHÔNG mang danh tính build algo=$VBREV_ALGO inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY (build script bị cargo dùng lại?) — không dùng kết quả"
+echo "REPRO machine=$(uname -sm | tr ' ' '-') root=$ROOT sha256=$SHA size=$SIZE wall_s=$((t1 - t0)) algo=$VBREV_ALGO inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY rev=$BUILD_REV $DIGEST image=$IMAGE"

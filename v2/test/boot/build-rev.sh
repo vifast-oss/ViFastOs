@@ -66,7 +66,7 @@ VBREV_INPUT_ROOTS="v2/kernel v2/lib"
 # Rủi ro còn lại (ghi ở `JOURNAL/kt134-journal.md`): đổi **thuật toán** dấu vân tay thì dấu vân tay
 # không đổi ⇒ dấu vân tay cũ và mới không so được. Chấp nhận: đổi thuật toán là đổi **định dạng**,
 # phải bump `VBREV_ALGO` (hằng số dưới đây, **có** nằm trong chuỗi băm).
-VBREV_ALGO="kt134-v3"
+VBREV_ALGO="kt134-v4"
 VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
@@ -445,18 +445,33 @@ vbrev_line() {
     grep -a -m1 -E '^# build: ' "$1" 2>/dev/null | tr -d '\r'
 }
 
-# vbrev_parse <dòng> -> đặt VBREV_LINE_INPUTS / VBREV_LINE_DIRTY; 0 = đúng định dạng, 1 = sai
-# Định dạng **chặt**: `# build: inputs=<16 hex|unknown> dirty=<0|1>` và **không có gì thêm** —
-# dòng méo (thiếu khoá, hex sai độ dài, dirty=2, có rác) không được coi là bằng chứng.
+# vbrev_parse <dòng> -> đặt VBREV_LINE_ALGO / VBREV_LINE_INPUTS / VBREV_LINE_DIRTY;
+#   0 = đúng định dạng, 1 = sai.
+# Định dạng **chặt**: `# build: algo=<tên> inputs=<16 hex|unknown> dirty=<0|1>` và **không có gì
+# thêm** — dòng méo (thiếu khoá, hex sai độ dài, dirty=2, có rác) không được coi là bằng chứng.
+#
+# **KT-143**: `algo=` là **bắt buộc** và phải **khớp** `VBREV_ALGO` hiện hành. Vì sao chặt: đổi
+# định nghĩa dấu vân tay (thêm/bớt thư mục khỏi phạm vi) làm `inputs` đổi mà **không** đổi một byte
+# mã nguồn nào. Không có `algo=` thì hai log khác số mà người đọc không biết chúng có so được với
+# nhau hay không — và tệ hơn, một log cũ có thể "tình cờ" khớp số với định nghĩa mới. Log cũ
+# (trước KT-143) **không** được sửa và **không** được phân tích lại: truy nguyên bằng commit.
 vbrev_parse() {
     local line="${1:-}" rest=""
+    VBREV_LINE_ALGO=""
     VBREV_LINE_INPUTS=""
     VBREV_LINE_DIRTY=""
     case "$line" in
-        "# build: inputs="*) ;;
+        "# build: algo="*) ;;
         *) return 1 ;;
     esac
-    rest="${line#\# build: inputs=}"
+    rest="${line#\# build: algo=}"
+    VBREV_LINE_ALGO="${rest%% *}"
+    rest="${rest#"$VBREV_LINE_ALGO"}"
+    case "$rest" in
+        " inputs="*) ;;
+        *) return 1 ;;
+    esac
+    rest="${rest# inputs=}"
     VBREV_LINE_INPUTS="${rest%% *}"
     rest="${rest#"$VBREV_LINE_INPUTS"}"
     case "$rest" in
@@ -464,6 +479,11 @@ vbrev_parse() {
         *) return 1 ;;
     esac
     VBREV_LINE_DIRTY="${rest# dirty=}"
+    # `algo` phải **đúng** định nghĩa hiện hành; `unknown` cũng bị từ chối (fail-closed).
+    case "$VBREV_LINE_ALGO" in
+        '' | *[!0-9A-Za-z._-]*) return 1 ;;
+    esac
+    [ "$VBREV_LINE_ALGO" = "$VBREV_ALGO" ] || return 1
     case "$VBREV_LINE_INPUTS" in
         unknown) ;;
         '' | *[!0-9a-f]*) return 1 ;;
@@ -478,13 +498,15 @@ vbrev_parse() {
     return 0
 }
 
-# vbrev_image_has <ảnh> <inputs> <dirty> -> 0 nếu **chính tệp ảnh** chứa chuỗi danh tính đó.
+# vbrev_image_has <ảnh> <algo> <inputs> <dirty> -> 0 nếu **chính tệp ảnh** chứa chuỗi danh tính đó.
 # Kiểm này chặn ca "log của ảnh khác bị đem ra làm bằng chứng" (log không cần khớp ảnh đang đo).
+# KT-143: chuỗi danh tính nay gồm **cả** `algo=` — ảnh build bằng định nghĩa khác thì không phải
+# ảnh đang đo, dù `inputs` tình cờ trùng.
 vbrev_image_has() {
-    local image="${1:-}" inputs="${2:-}" dirty="${3:-}"
+    local image="${1:-}" algo="${2:-}" inputs="${3:-}" dirty="${4:-}"
     [ -f "$image" ] || return 1
-    [ -n "$inputs" ] && [ -n "$dirty" ] || return 1
-    LC_ALL=C grep -a -q -F "inputs=$inputs dirty=$dirty" "$image" 2>/dev/null
+    [ -n "$algo" ] && [ -n "$inputs" ] && [ -n "$dirty" ] || return 1
+    LC_ALL=C grep -a -q -F "algo=$algo inputs=$inputs dirty=$dirty" "$image" 2>/dev/null
 }
 
 # ------------------------------------------------------------------- cổng
@@ -506,7 +528,7 @@ vbrev_accept() {
 # (8) byte ảnh chứa đúng danh tính (nếu truyền ảnh).
 vbrev_gate() {
     local log="${1:-}" where="${2:-}" image="${3:-}"
-    local line="" root="" head="" head12="" inputs="" idirty="" tree_dirty=""
+    local line="" root="" head="" head12="" inputs="" idirty="" ialgo="" tree_dirty=""
     local cur="" count="" first=""
 
     if [ ! -f "$log" ]; then
@@ -525,6 +547,7 @@ vbrev_gate() {
     fi
     inputs="$VBREV_LINE_INPUTS"
     idirty="$VBREV_LINE_DIRTY"
+    ialgo="$VBREV_LINE_ALGO"
 
     root="$(vbrev_toplevel "$where")"
     if [ -z "$root" ]; then
@@ -576,8 +599,8 @@ vbrev_gate() {
         return 1
     fi
     if true; then
-        if ! vbrev_image_has "$image" "$inputs" "$idirty"; then
-            vbrev_refuse image-mismatch "image=$image image_inputs=$inputs dirty=$idirty head_rev=$head12 log=$log"
+        if ! vbrev_image_has "$image" "$ialgo" "$inputs" "$idirty"; then
+            vbrev_refuse image-mismatch "image=$image image_algo=$ialgo image_inputs=$inputs dirty=$idirty head_rev=$head12 log=$log"
             return 1
         fi
     fi
@@ -767,8 +790,8 @@ LOCK
     #     mang dấu vân tay CŨ. Vế (ii) là vế mà (c)/(d)/(e) **chưa** chứng minh: chúng chỉ nói
     #     "dấu vân tay đổi", không nói "harness từ chối". Không có vế này thì một cổng hỏng
     #     (luôn ACCEPT) vẫn qua được toàn bộ selftest.
-    printf '# build: inputs=%s dirty=0\n' "$fp4" >"$scratch/old.log"
-    printf 'ELF-gia\n# build: inputs=%s dirty=0\n' "$fp4" >"$scratch/old.bin"
+    printf '# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp4" >"$scratch/old.log"
+    printf 'ELF-gia\n# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp4" >"$scratch/old.bin"
     printf 'pub fn f() -> u32 { 3 }\n' >"$root/v2/kernel/k/src/lib.rs"
     git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "kernel 1 byte" >/dev/null 2>&1
     vbrev_inputs_calc "$root" || rc=1
@@ -787,8 +810,8 @@ LOCK
     esac
     # (g) ĐỐI CHỨNG DƯƠNG của (f): cùng cây đó, log/ảnh mang dấu vân tay **MỚI** ⇒ cổng PHẢI
     #     ACCEPT. Thiếu vế này thì một cổng hỏng (luôn REFUSE) cũng qua được (f).
-    printf '# build: inputs=%s dirty=0\n' "$fp5" >"$scratch/new.log"
-    printf 'ELF-gia\n# build: inputs=%s dirty=0\n' "$fp5" >"$scratch/new.bin"
+    printf '# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp5" >"$scratch/new.log"
+    printf 'ELF-gia\n# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp5" >"$scratch/new.bin"
     gate_out="$(vbrev_gate "$scratch/new.log" "$root" "$scratch/new.bin" 2>&1)"
     case "$gate_out" in
         *"ACCEPT inputs=$fp5"*) ;;
@@ -881,9 +904,52 @@ LOCK
             fi
         fi
     fi
+    # (k) KT-143: dòng `# build:` **thiếu** `algo=` hoặc `algo=` **khác** định nghĩa hiện hành ⇒
+    #     cổng PHẢI TỪ CHỐI (`malformed`), kể cả khi `inputs`/`dirty` khớp hoàn hảo. Vì sao cần:
+    #     đổi định nghĩa dấu vân tay làm `inputs` đổi mà không đổi byte mã nào; một log cũ có thể
+    #     "tình cờ" khớp số với định nghĩa mới, và khi ấy cổng sẽ nhận một ảnh không cùng định
+    #     nghĩa. Ca này ĐỎ nếu ai đó bỏ phép so `algo` trong `vbrev_parse`.
+    if [ "$rc" -eq 0 ]; then
+        local kbad=0
+        # (k1) thiếu hẳn `algo=`
+        printf '# build: inputs=%s dirty=0\n' "$fp11" >"$scratch/noalgo.log"
+        printf 'ELF-gia\n# build: inputs=%s dirty=0\n' "$fp11" >"$scratch/noalgo.bin"
+        gate_out="$(vbrev_gate "$scratch/noalgo.log" "$root" "$scratch/noalgo.bin" 2>&1)"
+        case "$gate_out" in
+            *"REFUSE reason=malformed"*) ;;
+            *)
+                echo "# vbrev-selftest (k1) FAIL: log THIẾU algo= mà cổng không từ chối — [$gate_out]"
+                kbad=1
+                ;;
+        esac
+        # (k2) `algo=` khác định nghĩa hiện hành
+        printf '# build: algo=kt000-khong-co inputs=%s dirty=0\n' "$fp11" >"$scratch/badalgo.log"
+        printf 'ELF-gia\n# build: algo=kt000-khong-co inputs=%s dirty=0\n' "$fp11" >"$scratch/badalgo.bin"
+        gate_out="$(vbrev_gate "$scratch/badalgo.log" "$root" "$scratch/badalgo.bin" 2>&1)"
+        case "$gate_out" in
+            *"REFUSE reason=malformed"*) ;;
+            *)
+                echo "# vbrev-selftest (k2) FAIL: log có algo= KHÁC định nghĩa mà cổng không từ chối — [$gate_out]"
+                kbad=1
+                ;;
+        esac
+        # (k3) đối chứng dương: cùng inputs/dirty nhưng `algo=` ĐÚNG ⇒ cổng ACCEPT. Thiếu vế này
+        #      thì một cổng hỏng (luôn REFUSE) cũng qua được (k1)/(k2).
+        printf '# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp11" >"$scratch/okalgo.log"
+        printf 'ELF-gia\n# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$fp11" >"$scratch/okalgo.bin"
+        gate_out="$(vbrev_gate "$scratch/okalgo.log" "$root" "$scratch/okalgo.bin" 2>&1)"
+        case "$gate_out" in
+            *"ACCEPT inputs=$fp11"*) ;;
+            *)
+                echo "# vbrev-selftest (k3) FAIL: log có algo= ĐÚNG mà cổng không chấp nhận — [$gate_out]"
+                kbad=1
+                ;;
+        esac
+        [ "$kbad" -eq 0 ] || rc=1
+    fi
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k)"
     else
         echo "# vbrev-selftest: FAIL"
     fi

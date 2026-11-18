@@ -43,7 +43,8 @@ fi
 if [ -n "$ART" ]; then
     ART_SHA="$(shasum -a 256 "$ART" | awk '{print $1}')"
     ART_SIZE="$(wc -c <"$ART" | tr -d ' ')"
-    ART_LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$ART" 2>/dev/null || true)"
+    # KT-143: dạng mới có `algo=`; vẫn nhận dạng cũ để ảnh lịch sử vẫn hiện đúng dòng.
+    ART_LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$ART" 2>/dev/null || true)"
 fi
 
 # Đếm task theo trạng thái trong QUEUE.

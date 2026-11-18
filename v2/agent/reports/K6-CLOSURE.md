@@ -277,6 +277,25 @@ hệ quả **có chủ ý** của việc làm đúng nguyên tắc "chỉ ghim �
 **hiện hành** luôn tra ở `./v2/bin/v2 status`, không tra ở tài liệu này. Con số một nghìn vòng trên
 đây gắn với ảnh `464fe583…` — ảnh **đã đo thật**, không phải ảnh đang có.
 
+**Định nghĩa dấu vân tay đã đổi sang `kt134-v3` ở commit `3b132dcd`** (Agent 0, phiếu lượt bốn,
+mục "K6"): phạm vi bỏ `tests/`/`benches/`/`examples/` và sửa lỗi `meta` tree-oid. Sau đó, ở task
+KT-143, dòng `# build:` do kernel in mang thêm **tên định nghĩa**:
+`# build: algo=<tên> inputs=<16 hex> dirty=<0|1>`; harness **từ chối** log thiếu `algo=` hoặc có
+`algo=` khác định nghĩa hiện hành. Vì sao: đổi định nghĩa làm `inputs` đổi mà **không** đổi một byte
+mã sản phẩm nào, nên nếu log không tự khai nó tính bằng công thức nào thì hai log khác số mà người
+đọc không có cách nào biết chúng có so được với nhau hay không.
+
+`VBREV_ALGO` vì vậy tăng lên `kt134-v4` ở KT-143 — **không** phải vì giá trị dấu vân tay đổi (nó
+vẫn là `1324edbf33f315b8` trước và sau), mà vì **script tính** đã đổi (thêm phép kiểm `algo`), và
+bản ghim cặp (sha script, tên định nghĩa) cố ý coi mọi thay đổi script là thay đổi định nghĩa.
+
+**Kết luận K6 và phụ lục A giữ nguyên**, gắn với **sha ảnh đã ghi** (`a0287e4b…` cho §1–§8,
+`464fe583…` cho phụ lục A). **Không** chạy lại soak một nghìn vòng, **không** làm lại baseline.
+
+**Log cũ (trước khi có `algo=`) không được sửa và không được phân tích lại.** Chúng thuộc định
+nghĩa `kt134-v1`/`kt134-v2`; muốn biết một log cũ tính bằng định nghĩa nào thì **truy theo commit**
+đã sinh ra nó (`git log --oneline -- v2/test/boot/build-rev.sh`), không đoán từ con số.
+
 ## A.5 Hạn chế còn lại
 
 Hai hạn chế kia (§4.2 volume RAM, §4.3 ma trận là ảnh test) **vẫn còn**. §4.2 đang được xử lý ở

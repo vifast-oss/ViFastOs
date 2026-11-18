@@ -48,15 +48,24 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 /// (`cargo:rustc-env`, không viết tay trong mã — D2-102: in từ `const`, không literal):
 ///
 /// ```text
-/// # build: inputs=<16 hex dấu vân tay build-inputs> dirty=<0|1>
+/// # build: algo=<tên định nghĩa dấu vân tay> inputs=<16 hex> dirty=<0|1>
 /// ```
 ///
 /// `dirty=1` ⇔ có thay đổi chưa commit trong `v2/kernel`/`v2/lib` **tại thời điểm build**
 /// (định nghĩa đầy đủ: `v2/test/boot/build-rev.sh` + `v2/docs/k6-build-rev.md` §2). Harness
 /// `v2/test/boot/build-rev.sh` đọc dòng này từ log boot và **TỪ CHỐI ĐO** khi `rev` lệch
 /// `git rev-parse HEAD`, khi `dirty=1`, hoặc khi log **không có** dòng này (fail-closed).
+///
+/// **KT-143**: `algo=` là tên **định nghĩa** đã tính ra `inputs` (`VBREV_ALGO` của harness). Đổi
+/// định nghĩa (thêm/bớt thư mục khỏi phạm vi) làm `inputs` đổi mà **không** đổi một byte mã nguồn
+/// nào; thiếu `algo=` thì hai log khác số mà người đọc không có cách nào biết chúng có so được
+/// với nhau hay không. Harness **từ chối** log thiếu `algo=` hoặc `algo=` khác định nghĩa hiện
+/// hành — log cũ (trước KT-143) không được sửa và không được phân tích lại, truy nguyên bằng
+/// commit.
 const BUILD_LINE: &str = concat!(
-    "# build: inputs=",
+    "# build: algo=",
+    env!("VIFAST_BUILD_ALGO"),
+    " inputs=",
     env!("VIFAST_BUILD_INPUTS"),
     " dirty=",
     env!("VIFAST_BUILD_DIRTY"),

@@ -43,7 +43,8 @@ if [ "$1" = "--selftest" ]; then
     rc=0
     # Ảnh giả: 4 KiB rác + dòng danh tính (đúng dạng kernel in).
     mk_img() { # <path> <inputs> <dirty>
-        { head -c 4096 /dev/zero; printf '# build: inputs=%s dirty=%s\n' "$2" "$3"; } >"$1"
+        # KT-143: dòng danh tính nay có `algo=` — ảnh giả phải đúng dạng kernel in.
+        { head -c 4096 /dev/zero; printf '# build: algo=%s inputs=%s dirty=%s\n' "$VBREV_ALGO" "$2" "$3"; } >"$1"
     }
     # Dấu vân tay **thật** của cây hiện tại (để ca dương khớp); nếu không tính được thì dùng
     # giá trị cố định và ca dương sẽ bị từ chối — đúng fail-closed, và selftest báo FAIL.
@@ -116,7 +117,7 @@ if [ "$1" = "--verify" ]; then
         # Chấp nhận **cả hai** định dạng danh tính: `inputs=` (từ KT-89) và `rev=` (trước KT-89).
         # Ảnh **trước KT-86** không có dòng nào — đó là ảnh lịch sử, đếm riêng là `legacy`,
         # **không** phải lỗi (tên tệp vẫn phải khớp sha, đó mới là lỗi).
-        if ! LC_ALL=C grep -a -q -m1 -e '# build: inputs=' -e '# build: rev=' "$f"; then
+        if ! LC_ALL=C grep -a -q -m1 -e '# build: algo=' -e '# build: inputs=' -e '# build: rev=' "$f"; then
             n_legacy=$((n_legacy + 1))
             continue
         fi
@@ -154,9 +155,11 @@ SIZE="$(wc -c <"$IMAGE" | tr -d ' ')"
 DEST="$DEST_DIR/$SHA.bin"
 
 # Ảnh phải tự khai nguồn (KT-86/KT-89): không có dòng `# build:` ⇒ không ghim.
-LINE="$(LC_ALL=C grep -a -o -m1 '# build: inputs=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
+# KT-143: dạng mới có `algo=`; vẫn nhận dạng cũ (`inputs=` không có `algo=`) để ảnh **lịch sử**
+# ghim được — nhưng ảnh mới build mà thiếu `algo=` thì `vbrev_gate` sẽ từ chối ở chỗ khác.
+LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: inputs=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
 [ -n "$LINE" ] || {
-    echo "pin-artifact: ảnh KHÔNG có dòng '# build: inputs=… dirty=…' — không ghim (fail-closed)" >&2
+    echo "pin-artifact: ảnh KHÔNG có dòng '# build: algo=… inputs=… dirty=…' — không ghim (fail-closed)" >&2
     exit 3
 }
 

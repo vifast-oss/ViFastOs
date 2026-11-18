@@ -57,7 +57,9 @@ if [ "$1" = "--selftest" ]; then
 
     # Ảnh giả: vài KiB rác + dòng danh tính (đúng dạng kernel in).
     mk_img() { # <path> <inputs> <dirty> [kích thước rác]
-        { head -c "${4:-4096}" /dev/zero; printf '# build: inputs=%s dirty=%s\n' "$2" "$3"; } >"$1"
+        # KT-143: dòng danh tính nay có `algo=` (tên định nghĩa dấu vân tay) — ảnh giả phải đúng
+        # dạng kernel in, nếu không các ca tự kiểm sẽ đo một định dạng không tồn tại.
+        { head -c "${4:-4096}" /dev/zero; printf '# build: algo=%s inputs=%s dirty=%s\n' "$VBREV_ALGO" "$2" "$3"; } >"$1"
     }
     mk_legacy() { # <path> <rev> <dirty>
         { head -c 4096 /dev/zero; printf '# build: rev=%s dirty=%s\n' "$2" "$3"; } >"$1"
@@ -149,7 +151,7 @@ done
 # --- 1. danh tính ảnh ------------------------------------------------------------------------
 SHA="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
 SIZE="$(wc -c <"$IMAGE" | tr -d ' ')"
-LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
+LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
 [ -n "$LINE" ] || refuse 3 no-build-line
 say "# ảnh: sha256=$SHA size=$SIZE"
 say "# danh tính: $LINE"
