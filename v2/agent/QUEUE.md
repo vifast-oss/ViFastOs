@@ -223,7 +223,7 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-123 | **K6** ba đính chính từ review chéo lô hai | KT-114 | 45 m | DONE | `484b6f98`; `ST_NOFS` trả lời ngay thay vì đứng năm mươi tư giây |
 | KT-124 | **K6** ảnh canonical sau KT-122/123 | KT-123 | 20 m | DONE | `c2fdd297`; `64db17ea…` |
 | KT-125 | **K6** hai lệnh nữa: `truncate`, `jobs` | KT-114 | 45 m | DONE | `6d6dd698`, `feb45790`; `CMDS` mười ba→mười lăm; ảnh `503be0f9…` |
-| KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | READY | bắt lại 2 lỗi driver cũ ở mô hình; **Agent 0 mở 2026-11-18 (Q7)** |
+| KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | DONE | bắt lại 2 lỗi driver cũ ở mô hình; **Agent 0 mở 2026-11-18 (Q7)** |
 | KT-82 | **K6** văn bản đóng K6 (a hoặc b) + caveat P20 | KT-89 | 3 h | DONE | **Agent 0 chốt Q1 = (B), Q2 = (A) 2026-11-18**; văn bản chính thức: [`reports/K6-CLOSURE.md`](reports/K6-CLOSURE.md) — K6 **ĐẠT** gắn ảnh `a0287e4b…`, ba hạn chế + caveat P20 nằm trong văn bản |
 | KT-83 | **K6** mở K7 "Đóng lỗi v1" + chốt bảng 7 lỗi | KT-82 | 3 h | DONE | **Agent 0 chốt Q7 = (A) 2026-11-18**: mở K7, thứ tự **N2 → N3 → N7 → N1**; N5 gắn K5'; luật đóng lỗi ba vế (đỏ-trên-mã-cũ / xanh-trên-mã-mới / đột-biến-làm-đỏ-lại) |
 | KT-127 | **K6** giải thích `fault_seen` + checker soak fail-closed + ghi soak vào sổ | KT-126 | 1 h | DONE | `07b244a7`; `fault_seen` = `Exit` của shell qua kênh fault (D2-25); đột biến `+=2` ⇒ `fault-seen=2(want=1)`; soak 1000/1000 ảnh `a0287e4b…` vào `STATE.md` |

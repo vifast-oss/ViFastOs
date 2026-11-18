@@ -31,3 +31,4 @@ pub mod console;
 pub mod features;
 pub mod pci;
 pub mod queue;
+pub mod strict;

@@ -123,16 +123,19 @@ pub mod virtio_blk;
 #[cfg(feature = "vcon")]
 pub mod virtio_console;
 
+// **KT-81**: địa chỉ nền tảng **dẫn xuất** từ bảng một nguồn
+// [`vifast_plat_common::resources::REGIONS`] — không còn hằng số viết tay thứ hai để lệch.
+// Bảng ấy cũng có phép kiểm **chồng lấn** (`first_overlap`) chạy trong test.
 /// UART0 của QEMU `virt` (16550A) — dữ kiện nền tảng, D2-72 Q7.
-pub const UART0_BASE: usize = 0x1000_0000;
+pub const UART0_BASE: usize = vifast_plat_common::resources::UART0.base as usize;
 /// Dòng IRQ của UART0 trên PLIC của `virt` (D2-72 Q7).
 pub const UART0_IRQ: u32 = 10;
 /// PLIC cổ điển của `virt` (D2-72 Q7/Q8); `ndev` đọc từ register, không giả định.
-pub const PLIC_BASE: usize = 0x0c00_0000;
+pub const PLIC_BASE: usize = vifast_plat_common::resources::PLIC.base as usize;
 /// CLINT/ACLINT của `virt` (`aclint=on`; D2-72 Q7).
-pub const CLINT_BASE: usize = 0x0200_0000;
+pub const CLINT_BASE: usize = vifast_plat_common::resources::CLINT.base as usize;
 /// Trang test của `virt` (`test@100000`; D2-72 Q7).
-pub const TEST_PAGE_BASE: usize = 0x0010_0000;
+pub const TEST_PAGE_BASE: usize = vifast_plat_common::resources::TEST_PAGE.base as usize;
 /// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6) — nguồn duy nhất ở
 /// [`vifast_plat_common::timer::TIMEBASE_HZ`] (KT-47), đây chỉ là tên ngắn cho code arch.
 pub const TIME_HZ: u64 = vifast_plat_common::timer::TIMEBASE_HZ;
