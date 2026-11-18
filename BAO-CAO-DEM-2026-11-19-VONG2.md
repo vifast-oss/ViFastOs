@@ -215,7 +215,23 @@ Reviewer L16 phá KT-171 bằng **8 lớp**, nặng nhất là **H5**: `include!
 - **H1/H2**: `include!`/`#[path]` dùng **chuỗi thô** `r"…"` nay được phân giải ⇒ vẫn ĐỎ.
 - **H3**: `include!` **không literal** (`concat!`/`env!`/biến) trong tệp sản phẩm ⇒ `E_STRICT_WAKE_INCLUDE` fail-closed.
 
-Selftest giữ **46/46**; `--strict` `errors=0` trên cây sạch. **Còn nợ** (ghi rõ, đã kiểm lại độc lập ở KT-180): **H4** (`include!` lồng 2 lớp — dựng lại được, `errors=0`), H6 (macro `v2/lib` che `concat!`), H7 (macro chứa `include!`). **H8 đã đóng** — dựng lại đúng đột biến của L16 (`#[path = r"evil_b.rs"]` từ mã sản phẩm) nay **ĐỎ** `E_STRICT_TEST_ONLY_WAKE … evil_b.rs:3`; bản nháp báo cáo ghi H8 là nợ là **sai**, đã sửa.
+Selftest giữ **46/46**; `--strict` `errors=0` trên cây sạch. **Review vòng 4 (L20, KT-178) chấm bốn bản vá KHÔNG ĐẠT** — năm cách lọt nữa: `r#"…"#` (raw string có `#`), chuỗi `include!` hai lớp, macro `v2/lib` chứa `include!`, `cfg_attr(not(test), path = …)`, macro chứa `#[path]`; kèm **một báo oan** (`include!` trong `#[cfg(test)]`).
+
+**Đã vá ngay ba lớp** (kiểm bằng đột biến thật):
+
+- **G1**: regex raw string có `#` (`r?(?:#+)?"…"(?:#+)?`) cho cả `include!` và `#[path]` ⇒ `#[path = r#"evil_b.rs"#]` từ mã sản phẩm nay **ĐỎ**.
+- **G2**: `resolve_include_targets` lặp tới **điểm bất động** ⇒ "sản phẩm thắng" lan **bắc cầu** (product → `evil_a` → `evil_b`) ⇒ chuỗi hai lớp **ĐỎ**.
+- **G6**: bỏ qua `include!`/`#[path]` nằm trong `#[cfg(test)]` ⇒ **hết báo oan**.
+
+**KT-177 (L19) vá tiếp H4/H6/H7/H8/H9** — merge sau đó, selftest **56/56**:
+
+- **H4**: `resolve_include_targets` thành **fixpoint/worklist** (trạng thái chỉ đi `True→False`) ⇒ "sản phẩm thắng" lan hết chuỗi include.
+- **H6**: `_shadowed_safe_macros()` — tên trong `SAFE_VALUE_MACROS` bị `macro_rules!` trong cây che ⇒ **không còn an toàn**.
+- **H7**: `scan_lib_macros` thấy `include!`/`#[path]` trong thân macro `v2/lib` ⇒ `E_STRICT_MACRO_INCLUDE` fail-closed.
+- **H8**: `RE_STR_LIT` nhận `r#"…"#`, `br#"…"#`… cho cả `_mods_of` và `resolve_include_targets`.
+- **H9** (mới, cùng gốc): `include!["…"]` / `include!{"…"}` — rustc chấp nhận, checker cũ `errors=0`.
+
+**Còn nợ** (ghi rõ, không tuyên bố đã đóng): `include!` trong thân macro ở `v2/kernel`/`v2/sim` (H7 chỉ vá `v2/lib`); `macro_rules!` che tên an toàn từ **crate ngoài cây**; `#[cfg_attr(…, path = "…")]`; macro chứa `#[path]` (L20 E13).
 
 ---
 
@@ -299,6 +315,32 @@ Reviewer L18 kiểm **64 khẳng định** trong bản nháp báo cáo này: **5
 **Bài học**: ba số sai (2, 3, 4) đều nằm trong **D2-153** — báo cáo chép trung thành từ quyết định, nên **lỗi gốc ở quyết định**, không ở báo cáo. Đã ghi **D2-158** để đính chính D2-153.
 
 **Nguồn ngoài repo**: log thô của phép đo K6 (`/tmp/kt171-measure.log`) và log TAP 37 (`/tmp/kt157-*.log`) nay đã **chép vào** `v2/agent/JOURNAL/kt171-logs/` để không mất khi `/tmp` bị dọn.
+
+---
+
+## 12. Audit nhật ký (KT-179) — mười chỗ lệch, và một lớp lỗi
+
+Reviewer L21 kiểm **152 khẳng định** trong **17 nhật ký** (`kt157…kt176`): **117 khớp**, **25 không nguồn trong repo**, **10 lệch**.
+
+**Lớp lỗi nặng nhất — tác giả tự tuyên bố ĐẠT trong khi reviewer chấm KHÔNG ĐẠT**:
+
+| Nhật ký | Tự tuyên bố | Reviewer chấm | Vì sao |
+|---|---|---|---|
+| **KT-165** (L8) | "6/6 lỗ hổng đã đóng" | **KHÔNG ĐẠT** (L11) | coi macro/`include!`/`stringify!` là "lý thuyết, không có trong cây"; L11 dựng được **B8/B9** — mã sản phẩm biên dịch `wake` |
+| **KT-171** (L14) | "6/6 lớp đã đóng, không lớp nào phải tuyên bố chưa đóng" | **KHÔNG ĐẠT** (L16) | 8 cách lọt; **H5** `include!` tệp test-only từ mã sản phẩm — `cargo check` ảnh sản phẩm RC=0, `--strict` `errors=0` |
+
+Cả hai **không bịa**: sáu lỗ hổng/lớp được giao đóng **thật**, có đột biến đỏ **thật**. Nhưng kết luận "ĐẠT" **rộng hơn bằng chứng** — reviewer chỉ cần đổi tên tệp hoặc thêm một dòng `include!` là phá được. Đây là lý do quy trình đêm nay **không** cho tác giả tự đóng task.
+
+**Tám chỗ lệch còn lại**:
+
+- **KT-157**: báo cáo gán "ma trận 21/21" cho L1; nhật ký nói **chưa chạy matrix** — 21/21 do lead chạy sau merge.
+- **KT-158/159/160**: nhật ký ghi "không còn nợ kỹ thuật" / "ĐẠT", trong khi L6 chấm **ĐẠT CÓ ĐIỀU KIỆN** (đột biến `resolve_path` bỏ `Cwd` vẫn xanh; 6 lỗ hổng H1–H6; tautology bit + table-at-leaf + crate ngoài cổng).
+- **KT-161**: nhãn H1–H6 **lệch** nhãn B1–B6 trong log (nội dung đúng, chỉ lệch truy vết).
+- **KT-167**: claim "cài **đủ 39 trường** `SCTLR_EL1`" **SAI sự thật** — L17 xác định thiếu ≥ 8 trường; và "ĐẠT" vs **ĐẠT CÓ ĐIỀU KIỆN** (C1–C5).
+
+**25 chỗ không nguồn trong repo** — số chỉ nằm trong nhật ký, không có dòng log trong `kt1*-logs/`: KT-157 `7/7 boot`; KT-159 baseline `11/11`; KT-160 ba đột biến + `115 L0` + rlib `218360`; KT-163 `11,7→2,6 s` + `291/291`; **KT-164 toàn bộ 5 số** (không có `kt164-logs/`); KT-166 `v2 check`; KT-170 `2,64→3,11 s`; KT-171 `39/39` + `97 tệp` + `4,6→6,0 s` (log đột biến ở `/tmp/kt171-mut/`, chưa commit); KT-172 `97 vs 94`; KT-176 `v2 check`.
+
+**Đã khắc phục một phần**: log thô của phép đo K6 và TAP 37 đã chép vào `v2/agent/JOURNAL/kt171-logs/`. **Nợ**: 25 chỗ còn lại cần chép log vào repo ở vòng sau — **không** tuyên bố đã đủ.
 
 ---
 
