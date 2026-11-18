@@ -218,6 +218,30 @@ impl Machine {
 
     /// `wake(tcb)` — đánh thức TCB đang chặn/ngủ rồi `→ Ready`; **không** phát lại IPC.
     /// **KT-29**: khác hart ⇒ gửi `MailboxMsg::Wake` vào hộp thư `home` (luật 3).
+    ///
+    /// # CHỈ dùng cho test / ảnh test — sản phẩm dùng [`Machine::wake_from`]
+    ///
+    /// **KT-159 (N7, D2-144).** Hàm này **không** có call site sản phẩm nào (đo ở D2-144): chỉ
+    /// ảnh test (`vifast-kbin-riscv64/src/ktest_inv.rs`, `ktest_user.rs`) và test sim gọi nó.
+    /// Mọi đường đánh thức TCB **trong** kernel (IPC/Reply/Notification/finalise/refill) đi qua
+    /// [`Machine::wake_from`] hoặc [`Machine::wake_from_unlink`]. Luật **máy kiểm**:
+    /// `v2/tools/check-wake-paths.py --strict` **đỏ** (`E_STRICT_TEST_ONLY_WAKE`) khi có lời gọi
+    /// `wake(` trong `v2/kernel/vifast-core/src/` hoặc `v2/sim/vifast-sim/src/` ngoài
+    /// `#[cfg(test)]`/`mod tests`.
+    ///
+    /// **Vì sao hai ngữ nghĩa — cố ý, không phải trùng lặp:**
+    ///
+    /// - `wake()` = **post-only** khi khác hart: chỉ gửi `MailboxMsg::Wake` vào hộp thư `home`,
+    ///   **không** đổi trạng thái TCB ngay. Đúng luật 3 (hart này không ghi trạng thái của hart
+    ///   khác) và đúng cho người gọi **không** giữ bookkeeping nào của TCB — hart `home` tự
+    ///   `wake_step` khi xử lý hộp thư.
+    /// - [`Machine::wake_from`] = **post + `Ready` ngay**: các đường sản phẩm đã tự gỡ phần
+    ///   bookkeeping của mình (waiter khỏi hàng chờ, `Reply.caller`, message khỏi
+    ///   `Endpoint.send`) nên trạng thái **phải** nhất quán ngay; hoãn sang hart `home` sẽ vi
+    ///   phạm bất biến C2 (`Reply.caller ⇔ BlockedOnReply`) và `check_ipc`.
+    ///
+    /// Gọi `wake()` trong mã sản phẩm là **bẫy**: TCB nằm chờ trong hộp thư trong khi
+    /// bookkeeping đã bị gỡ ⇒ bất biến đỏ. Đó là lý do có luật máy kiểm ở trên.
     pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
         let info = self.tcb_data(tcb)?.snapshot();
         if self.n_harts > 1 && info.home != self.current_hart {

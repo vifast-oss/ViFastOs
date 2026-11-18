@@ -5712,6 +5712,23 @@ impl Machine {
     /// `MailboxMsg::Wake(tcb)` vào hộp thư của `home`; hart đích đánh thức khi xử lý hộp thư và
     /// **chỉ preempt** nếu ưu tiên của TCB **>** `published.cur_prio` của đích. Cùng hart (và
     /// `n = 1`) giữ nguyên đường cũ.
+    ///
+    /// # CHỈ dùng cho test / ảnh test — sản phẩm dùng [`Machine::wake_from`]
+    ///
+    /// **KT-159 (N7, D2-144).** Đối xứng `vifast-core::Machine::wake`: hàm này **không** có call
+    /// site sản phẩm nào (đo ở D2-144) — chỉ ảnh test và test sim gọi nó. Mọi đường đánh thức
+    /// TCB trong sim (IPC/Reply/Notification/finalise/refill) đi qua [`Machine::wake_from`]
+    /// hoặc [`Machine::wake_from_unlink`]. Luật **máy kiểm**:
+    /// `v2/tools/check-wake-paths.py --strict` **đỏ** (`E_STRICT_TEST_ONLY_WAKE`) khi có lời gọi
+    /// `wake(` trong `v2/kernel/vifast-core/src/` hoặc `v2/sim/vifast-sim/src/` ngoài
+    /// `#[cfg(test)]`/`mod tests`.
+    ///
+    /// **Vì sao hai ngữ nghĩa — cố ý, không phải trùng lặp:** `wake()` = **post-only** khi khác
+    /// hart (chỉ gửi `MailboxMsg::Wake` về `home`, **không** đổi trạng thái ngay — đúng luật 3,
+    /// đúng cho người gọi không giữ bookkeeping nào); [`Machine::wake_from`] = **post + `Ready`
+    /// ngay** (đường sản phẩm đã tự gỡ bookkeeping nên trạng thái phải nhất quán ngay, nếu hoãn
+    /// sẽ vi phạm C2 `Reply.caller ⇔ BlockedOnReply` và `check_ipc`). Gọi `wake()` trong mã sản
+    /// phẩm là **bẫy** — xem doc của `vifast-core::Machine::wake`.
     pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
         let info = self.tcb_info_obj(tcb)?;
         if self.sched.len() > 1 && info.home != self.current_hart {

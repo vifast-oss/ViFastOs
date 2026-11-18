@@ -27,6 +27,12 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
   ĐỎ; mục trong allowlist không còn khớp ⇒ ĐỎ. Mức này **xanh** trên v2 sau KT-154/155 và
   **nằm trong `v2 check`** từ KT-155 (thay heuristic "thân hàm có `is_blocked()`/`Sleeping`"
   vốn chỉ phủ 4/16 đường — KT-154 §7).
+- **`--strict`** (KT-159, D2-144): `wake()` là API **CHỈ-DÙNG-CHO-TEST** — lời gọi `wake(`
+  trong `v2/kernel/vifast-core/src/` hoặc `v2/sim/vifast-sim/src/` **ngoài**
+  `#[cfg(test)]`/`mod tests` ⇒ ĐỎ (`E_STRICT_TEST_ONLY_WAKE`), fail-closed. Bỏ qua **chú
+  thích** (`//`, `///`, `//!`) và dòng **định nghĩa** (`fn wake(`). Vì sao: `wake()` =
+  post-only, `wake_from()` = post + `Ready` ngay — gọi `wake()` trong đường sản phẩm (đã tự gỡ
+  bookkeeping) làm TCB nằm chờ trong hộp thư trong khi C2/`check_ipc` đã đỏ.
 
 Fail-closed: thiếu mỏ neo (không tìm thấy `wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ,
 không được coi là "không có gì để kiểm".
@@ -78,6 +84,31 @@ WAKE_PRODUCER = ("wake", "wake_from", "wake_from_unlink")
 
 # Hàm phát `Migrate` (push migration).
 MIGRATE_PRODUCER = "push_step"
+
+# **KT-159 (N7, D2-144)** — `wake()` là API **CHỈ-DÙNG-CHO-TEST**.
+#
+# Đo được ở D2-144: `wake()` **không có** call site sản phẩm nào — chỉ ảnh test
+# (`vifast-kbin-riscv64/src/ktest_inv.rs:51`, `ktest_user.rs:692`) và test sim. Nhưng nó vẫn là
+# **bẫy**: `wake()` = **post-only** (khác hart: chỉ gửi `MailboxMsg::Wake`, **không** đổi trạng
+# thái ngay) còn `wake_from()` = **post + `Ready` ngay**. Người viết sau gọi `wake()` trong một
+# đường sản phẩm (đã tự gỡ bookkeeping) sẽ làm TCB nằm chờ trong hộp thư trong khi bất biến C2
+# (`Reply.caller ⇔ BlockedOnReply`) / `check_ipc` đã đỏ. Vì vậy **cưỡng chế bằng máy**:
+# lời gọi `wake(` trong `v2/kernel/vifast-core/src/` hoặc `v2/sim/vifast-sim/src/` ngoài
+# `#[cfg(test)]`/`mod tests` ⇒ ĐỎ (`E_STRICT_TEST_ONLY_WAKE`), fail-closed.
+#
+# Phạm vi **hẹp có chủ ý**: ảnh test (`vifast-kbin-riscv64/src/ktest*.rs`) và `tests/` được
+# phép gọi `wake()` — đó là mục đích duy nhất còn lại của nó.
+TEST_ONLY_WAKE_SCOPE = (
+    "v2/kernel/vifast-core/src/",
+    "v2/sim/vifast-sim/src/",
+)
+# Lời gọi `wake(` — **không** khớp `wake_from(`, `wake_from_unlink(`, `wake_step(`, `wake_addr(`
+# (sau `wake` là `_` chứ không phải `(`) và **không** khớp `MailboxMsg::Wake(` (phân biệt hoa
+# thường). Lookbehind chặn hậu tố kiểu `rewake(`.
+RE_TEST_ONLY_WAKE_CALL = re.compile(r"(?<![A-Za-z0-9_])wake\s*\(")
+# Định nghĩa hàm (`pub fn wake(`, `fn wake(`) **không** phải lời gọi — phải bỏ qua, nếu không
+# chính chỗ khai báo API sẽ làm cổng đỏ.
+RE_FN_WAKE_DEF = re.compile(r"\bfn\s+wake\s*\(")
 
 # Tệp định nghĩa kiểu hộp thư của từng tầng.
 KERNEL_MAILBOX = "v2/kernel/vifast-core/src/mailbox.rs"
@@ -272,6 +303,22 @@ def is_test_file(path: Path, root: Path) -> bool:
 
 def in_ranges(line: int, ranges: Sequence[Tuple[int, int]]) -> bool:
     return any(a <= line <= b for a, b in ranges)
+
+
+def strip_line_comment(line: str) -> str:
+    """Bỏ **chú thích dòng** (`//`, `///`, `//!`) khỏi một dòng mã, giữ nguyên chuỗi.
+
+    Vì sao cần: luật `E_STRICT_TEST_ONLY_WAKE` (KT-159) tìm *lời gọi* `wake(`, mà doc-comment
+    của chính `wake()` **có** chữ `wake(` — không bỏ chú thích thì máy kiểm báo oan chính chỗ
+    khai báo API. Chỉ cắt `//` **ngoài** chuỗi (đếm nháy kép trước đó: số lẻ ⇒ `//` nằm trong
+    chuỗi, ví dụ `"http://…"`).
+    """
+    idx = line.find("//")
+    if idx < 0:
+        return line
+    if line[:idx].count('"') % 2 == 1:
+        return line
+    return line[:idx]
 
 def enclosing(fns: Sequence[Fn], line: int) -> Optional[Fn]:
     """Hàm bao quanh dòng `line` (1-based); chọn khoảng nhỏ nhất."""
@@ -598,6 +645,37 @@ def scan_v2(
                     f"({allow[key]})",
                 )
 
+        # 6) `--strict` (KT-159, D2-144): `wake()` là API **CHỈ-DÙNG-CHO-TEST**.
+        #    Lời gọi `wake(` trong `v2/kernel/vifast-core/src/` hoặc `v2/sim/vifast-sim/src/`
+        #    **ngoài** `#[cfg(test)]`/`mod tests` ⇒ ĐỎ, fail-closed. Bỏ qua **chú thích**
+        #    (`//`, `///`, `//!`) để không báo oan doc-comment của chính `wake()`; bỏ qua dòng
+        #    **định nghĩa** (`fn wake(`) vì đó là chỗ khai báo API, không phải lời gọi.
+        #    Vì sao: `wake()` = post-only, `wake_from()` = post + `Ready` ngay — gọi `wake()`
+        #    trong đường sản phẩm (đã tự gỡ bookkeeping) làm TCB nằm chờ trong hộp thư trong
+        #    khi C2/`check_ipc` đã đỏ. Xem `v2/agent/JOURNAL/kt159-wake2.md`.
+        for p, text, _fns in files:
+            relp = rel(root, p)
+            if not relp.startswith(TEST_ONLY_WAKE_SCOPE):
+                continue
+            if is_test_file(p, root):
+                continue
+            tr = test_ranges.get(str(p), [])
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if in_ranges(lineno, tr):
+                    continue
+                code = strip_line_comment(line)
+                if not code.strip():
+                    continue
+                if RE_FN_WAKE_DEF.search(code):
+                    continue
+                if RE_TEST_ONLY_WAKE_CALL.search(code):
+                    r.err(
+                        "E_STRICT_TEST_ONLY_WAKE",
+                        f"  {relp}:{lineno}: gọi `wake(` trong mã sản phẩm — `wake()` là API "
+                        f"CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/"
+                        f"`wake_from_unlink`",
+                    )
+
     return r
 
 
@@ -789,7 +867,7 @@ def _fixture_v1(base: Path, channels: int = 3) -> None:
 
 
 def selftest() -> int:
-    """Sáu ca dương + năm ca âm; mỗi ca một dòng `ok`/`not ok`."""
+    """Chín ca dương + sáu ca âm; mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
     try:
@@ -914,6 +992,84 @@ def selftest() -> int:
             )
         )
 
+        # (4f) v2 `--strict` + **đột biến KT-159**: lời gọi `wake(` trong mã sản phẩm
+        # (`vifast-core/src/`) ⇒ đỏ `E_STRICT_TEST_ONLY_WAKE`. Đây là luật cưỡng chế D2-144:
+        # `wake()` là API chỉ-dùng-cho-test, sản phẩm phải dùng `wake_from`.
+        d = tmp / "v2-strict-test-only-wake"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n        self.wake(tcb);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)",
+                (not rep.ok)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4g) Đối chứng dương: **chỉ** `wake_from(` ⇒ xanh (luật không phải "thấy chữ wake là
+        # đỏ"; `wake_from`/`wake_from_unlink`/`wake_step` là đường sản phẩm hợp lệ).
+        d = tmp / "v2-strict-wake-from"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n        self.wake_from(tcb);\n        self.wake_from_unlink(tcb);\n        self.wake_step(tcb, false);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4h) `wake(` **trong** `#[cfg(test)] mod tests` ⇒ xanh (test được phép — mục đích duy
+        # nhất còn lại của `wake()`).
+        d = tmp / "v2-strict-wake-cfg-test"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n        0\n    }\n}\n\n"
+            "#[cfg(test)]\nmod tests {\n    fn t(m: &mut M) {\n        m.wake(1);\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4i) `wake(` **trong chú thích** (`///`, `//`, `//!`) ⇒ xanh — không báo oan
+        # doc-comment của chính `wake()`.
+        d = tmp / "v2-strict-wake-comment"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "//! Gọi `wake(tcb)` chỉ trong test.\n"
+            "impl M {\n"
+            "    /// `wake(tcb)` — chỉ dùng cho test.\n"
+            "    // self.wake(tcb);\n"
+            "    fn f(&mut self) -> u8 {\n"
+            "        0\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
         _fixture_v1(d, channels=3)
@@ -970,7 +1126,7 @@ def main(argv: Sequence[str]) -> int:
         help="allowlist tường minh: mọi chuyển Ready phải qua cửa wake hoặc có trong allowlist",
     )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 11 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 15 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:
