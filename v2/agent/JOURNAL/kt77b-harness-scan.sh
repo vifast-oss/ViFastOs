@@ -32,6 +32,11 @@
 # Exit: 0 = sản phẩm sạch **và** ca âm bị bắt; 1 = vi phạm; 2 = lỗi dùng/thiếu tệp.
 set -u
 
+# KT-129: `cargo tree` (lớp feature-graph) cần `cargo` trong PATH. Thiếu PATH ⇒ `feat_tree` trả
+# rỗng ⇒ `ktest=0 umode=0` ⇒ ca 3/4 ĐỎ **oan** (đã xảy ra khi chạy từ shell không có ~/.cargo/bin).
+# Các script khác của repo đều tự đặt PATH; script này trước đây không.
+export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 IMG=""

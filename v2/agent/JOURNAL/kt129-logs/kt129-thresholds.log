@@ -1,0 +1,27 @@
+### KT-129 NGUONG + HARNESS SCAN 2026-11-18T02:13:55Z
+### image=a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13
+### image_bytes=205440 tran=262144
+# image=product path=v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin file=205440 data+bss=223696 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=130072 .rodata=59248 .data=7832 .bss=215864 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7832 .bss=215864 
+### budget_exit=0
+
+# kt77b-harness-scan: image=v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin sha256=a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13 bytes=205440
+# kt77b-harness-scan: markers=15 (chuỗi do mã test phát ra; ảnh canonical đã strip)
+# scan product: hits=0
+ok 1 - anh san pham khong chua ma harness (hits=0)
+# kt77b-harness-scan: negative=v2/agent/JOURNAL/kt129-logs/ktest-proc-ca-am.bin sha256=e4641801aea89371b3f6e055fd4b842e83236adc5729de9421827962184f7b0f bytes=437800
+# marker 'ktest_' hits=2
+# marker 'proc_demo' hits=2
+# marker '# ktest halt' hits=1
+# marker 'not ok' hits=19
+# marker 'probe_fault_entry' hits=1
+# scan negative: hits=25
+ok 2 - ca am: anh co harness bi bat (hits=25 > 0)
+# kt77b-harness-scan: feature-graph product=product-shell,product-fs harness=ktest,user (crate vifast-plat-riscv64)
+# feat product: ktest=0 umode=1
+# feat harness: ktest=1
+ok 3 - probe gate: cau hinh san pham KHONG bat 'ktest' (probe khong duoc bien dich), co 'umode'
+ok 4 - ca am cua probe gate: cau hinh anh test BAT 'ktest' (ktest=1 > 0)
+# kt77b-harness-scan: KET_LUAN=ok (product=0, negative>0, probe_gate=ok)
+### harness_scan_exit=0

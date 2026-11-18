@@ -1,0 +1,125 @@
+### KT-129 MATRIX 2026-11-18T02:23:18Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.38 loadavg_5m=4.87 loadavg_15m=4.98 ncpu=12 boot_done=0 verdict=OK
+# runner KT-54: expected.txt = nguồn sự thật duy nhất; TAP 1..N liên tục; đúng 1 PANIC theo mẫu
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2) — icount shift=6 (D2-74)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected[ktest]: plan=70 ok=70 ten-TAP=70
+# expected[ktest-guard]: plan=3 ok=3 ten-TAP=3
+# expected[ktest-user]: plan=36 ok=36 ten-TAP=36
+# expected[ktest-proc]: plan=10 ok=10 ten-TAP=10
+# expected[ktest-vblk]: plan=6 ok=6 ten-TAP=6
+# expected[ktest-con]: plan=5 ok=5 ten-TAP=5
+# expected[ktest-exec]: plan=6 ok=6 ten-TAP=6
+# smp-list: 1 2 4 — NBOOT=1 — timeout=20 s/boot — logdir=v2/agent/JOURNAL/kt129-logs/ktest-matrix
+# build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+# build ảnh test vblk (riscv64gc-unknown-none-elf, release, --features ktest,vblk)
+# build ảnh test con (riscv64gc-unknown-none-elf, release, --features ktest,user,con)
+# build ảnh test exec (riscv64gc-unknown-none-elf, release, --features ktest,user,exec)
+# build ảnh test user+proc (riscv64gc-unknown-none-elf, release, --features ktest,user)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=713048 data+bss=242840 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=225552 .rodata=69616 .data=7992 .bss=234848 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7992 .bss=234848 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=54072 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=11356 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=2680 
+# image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=603584 data+bss=203352 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=156414 .rodata=147160 .data=7768 .bss=195584 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=195584 
+# image=ktest-proc path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc file=437800 data+bss=207256 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=113386 .rodata=75216 .data=7768 .bss=199488 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=199488 
+# image=ktest-vblk path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-vblk file=132104 data+bss=10976 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=41512 .rodata=8816 .bss=10976 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=10976 
+# image=ktest-con path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-con file=357856 data+bss=214160 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=106578 .rodata=31544 .data=7768 .bss=206392 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=206392 
+# image=ktest-exec path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-exec file=357480 data+bss=202992 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=98204 .rodata=54600 .data=7768 .bss=195224 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=195224 
+# image=ktest ktest-strings=238
+# image=ktest-guard ktest-strings=6
+# image=ktest-user ktest-strings=90
+# image=ktest-proc ktest-strings=27
+# image=ktest-vblk ktest-strings=32
+# image=ktest-con ktest-strings=21
+# image=ktest-exec ktest-strings=20
+# rev-gate (KT-86): đòi rev=HEAD và dirty=0 — build ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/Users/mps/dvchd/ViFastOs head_rev=25138df79e9d inputs=9678bd237308031d count=265 dirty=0 scope=[v2/kernel v2/lib v2/bin v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/test/boot/build-rev.sh v2/tools/repro-build.sh v2/tools/rustc-canon.rs v2/tools/pre-measure.sh v2/tools/task-target.sh]
+REV-GATE: ACCEPT inputs=9678bd237308031d current_inputs=9678bd237308031d head_rev=25138df79e9d count=265 log=v2/agent/JOURNAL/kt129-logs/ktest-matrix/kt86-rev-gate.log
+ok - ktest smp=1 boot 1 (70 TAP, 4s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp1-1.log
+ok - ktest-guard smp=1 boot 1 (3 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp1-1.log
+ok - ktest-user smp=1 boot 1 (36 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp1-1.log
+ok - ktest-proc smp=1 boot 1 (10 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp1-1.log
+ok - ktest-vblk smp=1 boot 1 (6 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp1-1.log
+# con host: tx_file=v2/agent/JOURNAL/kt129-logs/ktest-matrix/con-smp1-boot1.out bytes=24 ok=1
+ok - ktest-con smp=1 boot 1 (5 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp1-1.log
+ok - ktest-exec smp=1 boot 1 (6 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp1-1.log
+ok - ktest smp=2 boot 1 (70 TAP, 11s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp2-1.log
+ok - ktest-guard smp=2 boot 1 (3 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp2-1.log
+ok - ktest-user smp=2 boot 1 (36 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp2-1.log
+ok - ktest-proc smp=2 boot 1 (10 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp2-1.log
+ok - ktest-vblk smp=2 boot 1 (6 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp2-1.log
+# con host: tx_file=v2/agent/JOURNAL/kt129-logs/ktest-matrix/con-smp2-boot1.out bytes=24 ok=1
+ok - ktest-con smp=2 boot 1 (5 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp2-1.log
+ok - ktest-exec smp=2 boot 1 (6 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp2-1.log
+ok - ktest smp=4 boot 1 (70 TAP, 18s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp4-1.log
+ok - ktest-guard smp=4 boot 1 (3 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp4-1.log
+ok - ktest-user smp=4 boot 1 (36 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp4-1.log
+ok - ktest-proc smp=4 boot 1 (10 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp4-1.log
+ok - ktest-vblk smp=4 boot 1 (6 TAP, 0s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp4-1.log
+# con host: tx_file=v2/agent/JOURNAL/kt129-logs/ktest-matrix/con-smp4-boot1.out bytes=24 ok=1
+ok - ktest-con smp=4 boot 1 (5 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp4-1.log
+ok - ktest-exec smp=4 boot 1 (6 TAP, 1s) log v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp4-1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.74 loadavg_5m=4.46 loadavg_15m=4.82 ncpu=12 boot_done=22 verdict=OK
+# infra: invalid=0 isolation_bad=0 guard_log=v2/agent/JOURNAL/kt129-logs/ktest-matrix/qemu-guard.log
+# guard_summary_log=v2/agent/JOURNAL/kt129-logs/ktest-matrix/guard-summary.log
+# ================= BẢNG TỔNG KẾT (image × smp × boot) =================
+# image       smp  boot  TAP       kết quả log
+# ktest       1    1     70/70     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp1-1.log 
+# ktest-guard 1    1     3/3       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp1-1.log 
+# ktest-user  1    1     36/36     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp1-1.log 
+# ktest-proc  1    1     10/10     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp1-1.log 
+# ktest-vblk  1    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp1-1.log 
+# ktest-con   1    1     5/5       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp1-1.log con-host-tx=1
+# ktest-exec  1    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp1-1.log 
+# ktest       2    1     70/70     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp2-1.log 
+# ktest-guard 2    1     3/3       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp2-1.log 
+# ktest-user  2    1     36/36     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp2-1.log 
+# ktest-proc  2    1     10/10     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp2-1.log 
+# ktest-vblk  2    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp2-1.log 
+# ktest-con   2    1     5/5       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp2-1.log con-host-tx=1
+# ktest-exec  2    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp2-1.log 
+# ktest       4    1     70/70     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-smp4-1.log 
+# ktest-guard 4    1     3/3       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-guard-smp4-1.log 
+# ktest-user  4    1     36/36     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-user-smp4-1.log 
+# ktest-proc  4    1     10/10     PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-proc-smp4-1.log 
+# ktest-vblk  4    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-vblk-smp4-1.log 
+# ktest-con   4    1     5/5       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-con-smp4-1.log con-host-tx=1
+# ktest-exec  4    1     6/6       PASS     v2/agent/JOURNAL/kt129-logs/ktest-matrix/ktest-exec-smp4-1.log 
+# ------------------------- gộp theo (image, smp) -------------------------
+# ktest       smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest       smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest       smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# =======================================================================
+# KTEST: 21/21 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec)
+# ktest.sh: PASS
+### matrix_exit=0

@@ -1,0 +1,34 @@
+### KT-129 SHELL-EDGE 2026-11-18T02:28:00Z
+# shell-edge KT-108 — 2026-11-18T02:28:00Z
+# image: v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin
+# image: sha256=a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13 bytes=205440
+# image: # build: inputs=8b5d76c4fdeaf7bb dirty=0
+# qemu: 11.1.3 (/opt/homebrew/bin/qemu-system-riscv64); opensbi: /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# cấu hình: -machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1 -no-reboot (không icount)
+# log: v2/agent/JOURNAL/kt129-logs/shell-edge/qemu.log
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=1.67 loadavg_5m=3.14 loadavg_15m=4.18 ncpu=12 boot_done=0 verdict=OK
+# boot: shell> đã lên
+# cat-khong-tham-so: PASS
+#   | # shell: thieu duong dan
+# write-khong-tham-so: PASS
+#   | # shell: thieu duong dan
+# ps-khong-unknown: PASS
+#   | 3 dòng pid, state=Unknown=0
+# dong-dai-mot-canh-bao: PASS
+#   | dòng 200 ký tự -> 1 dòng '# shell: dong qua dai'
+# cat-khong-co: PASS
+#   | # shell: fs loi code=5
+# write-cat-bytes: PASS
+#   | # shell: cat ok bytes=8 first=xin chao
+# write-de-co-lai: PASS
+#   | # shell: cat ok bytes=2 first=ab
+# wait-khong-treo: PASS
+#   wait 13: trả lời sau 0s (hạn 5s); 'echo sau-wait' chạy
+# new-cmds-ok: PASS (# shell: stat path=/README kind=1 size=79 ino=2)
+# new-cmds-edge: PASS (# shell: kich thuoc qua lon (toi da 4294967295))
+# truncate-jobs: PASS (# shell: stat path=/README kind=1 size=5 ino=2)
+# exit: PASS (# shell: exit code=0, # product halt:)
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=1.70 loadavg_5m=3.12 loadavg_15m=4.17 ncpu=12 boot_done=0 verdict=OK
+# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge PASS
+# shell-edge.sh: PASS
+### shell_edge_exit=0

@@ -223,9 +223,15 @@ APPROVED 2026-11-13 Agent 0 — K1b (D2-49, 1 hart + hoãn push migration K1c)**
 | KT-123 | **K6** ba đính chính từ review chéo lô hai | KT-114 | 45 m | DONE | `484b6f98`; `ST_NOFS` trả lời ngay thay vì đứng năm mươi tư giây |
 | KT-124 | **K6** ảnh canonical sau KT-122/123 | KT-123 | 20 m | DONE | `c2fdd297`; `64db17ea…` |
 | KT-125 | **K6** hai lệnh nữa: `truncate`, `jobs` | KT-114 | 45 m | DONE | `6d6dd698`, `feb45790`; `CMDS` mười ba→mười lăm; ảnh `503be0f9…` |
-| KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | BLOCKED | bắt lại 2 lỗi driver cũ ở mô hình |
-| KT-82 | **K6** văn bản đóng K6 (a hoặc b) + caveat P20 | KT-89 | 3 h | BLOCKED | ba trạng thái đóng/hoãn/mở; số từ bảng KT-83; **điều kiện tiên quyết (A1-179)**: 4 tài liệu `pre_existing` (`K6-DOD`, `k6-exec`, `k6-persist`, `k6-parity`) phải chuyển số vào khối `scope=` trước |
-| KT-83 | **K6** mở K7 "Đóng lỗi v1" + chốt bảng 7 lỗi | KT-82 | 3 h | BLOCKED | 2 đóng / 1 hoãn K5' / 4 mở; `file:dòng` từng lỗi; K7 **không** nhận N5 |
+| KT-81 | **K6** thiết bị giả nghiêm ngặt + bảng tài nguyên | KT-80 | 3 h | READY | bắt lại 2 lỗi driver cũ ở mô hình; **Agent 0 mở 2026-11-18 (Q7)** |
+| KT-82 | **K6** văn bản đóng K6 (a hoặc b) + caveat P20 | KT-89 | 3 h | DONE | **Agent 0 chốt Q1 = (B), Q2 = (A) 2026-11-18**; văn bản chính thức: [`reports/K6-CLOSURE.md`](reports/K6-CLOSURE.md) — K6 **ĐẠT** gắn ảnh `a0287e4b…`, ba hạn chế + caveat P20 nằm trong văn bản |
+| KT-83 | **K6** mở K7 "Đóng lỗi v1" + chốt bảng 7 lỗi | KT-82 | 3 h | DONE | **Agent 0 chốt Q7 = (A) 2026-11-18**: mở K7, thứ tự **N2 → N3 → N7 → N1**; N5 gắn K5'; luật đóng lỗi ba vế (đỏ-trên-mã-cũ / xanh-trên-mã-mới / đột-biến-làm-đỏ-lại) |
+| KT-127 | **K6** giải thích `fault_seen` + checker soak fail-closed + ghi soak vào sổ | KT-126 | 1 h | DONE | `07b244a7`; `fault_seen` = `Exit` của shell qua kênh fault (D2-25); đột biến `+=2` ⇒ `fault-seen=2(want=1)`; soak 1000/1000 ảnh `a0287e4b…` vào `STATE.md` |
+| KT-128 | **K6** ca hồi quy **âm** cho cổng build-inputs (Q3) | KT-127 | 1 h | DONE | `25138df7`; sửa một byte mã kernel ⇒ dấu vân tay đổi **và** cổng REFUSE `inputs-mismatch`, kèm đối chứng dương; phát hiện selftest **đã đỏ từ trước** (không cổng nào chạy) ⇒ nối vào `v2 check` |
+| KT-129 | **K6** đo lại sáu tiêu chí trên **đúng ảnh** Agent 0 đã chốt | KT-128 | 1 h | DONE | log `v2/agent/JOURNAL/kt129-logs/`; boot ba cấu hình hart, parity mười hai lệnh `active`, ma trận, persist, ngưỡng, harness scan |
+| KT-130 | **K6** `spec/v1-parity.toml` sáu mục `deferred-K7` → `active` + ca kiểm chín lệnh trên ảnh sản phẩm (Q4) | KT-129 | 2 h | DONE | sáu mục `time`/`uptime`/`sync`/`stat`/`truncate`/`jobs`; `shell-edge` thêm ca `new-cmds-ok` + `new-cmds-edge` (mỗi lệnh một ca đúng + một ca biên) |
+| KT-131 | **K6** đưa năng lực "soak ảnh phát hành" vào harness chính thức | KT-127 | 2 h | READY | **Agent 0 mở 2026-11-18 (Q1 kèm theo)** — hết hạn chế §4.1 của `K6-CLOSURE.md` |
+| KT-132 | **K6** kiểm chứng `cd`/`pwd` trên v1 tại tag đóng băng (Q5) | KT-129 | 1 h | READY | **Agent 0 giao 2026-11-18 (Q5)**: build v1 tại tag, boot, chạy thật `cd`/`pwd`; chạy được ⇒ (A) đưa vào danh sách, không ⇒ (B) loại kèm log |
 
 **APPROVED 2026-11-17 Agent 0** — quyết định cổng K6 `OD-K6-1..8` tại [`reports/QUYET-DINH-A0-K6-2026-11-17.md`](reports/QUYET-DINH-A0-K6-2026-11-17.md) (sha256 `0361fb7e…`), ghi thành **D2-119**. Kèm: (i) `spec/v1-parity.toml` **tạo mới** được phép ở KT-77a (không đổi ABI); (ii) đính chính của lead: số lỗi v1 đã đóng là **2/7** (N4, N6), **1/7 hoãn K5'** (N5), **4/7 mở** (N1/N2/N3/N7) — KT-83 chốt lại trước khi văn bản đóng K6 dùng con số.
 | KT-77 | ~~**K6** đưa U-mode + shell vào ảnh sản phẩm~~ → **tách thành KT-77a/77b** (D2-119) | — | — | DONE | superseded |
