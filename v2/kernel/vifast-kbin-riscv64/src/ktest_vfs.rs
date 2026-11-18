@@ -1474,7 +1474,7 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# pager: once deliveries={} faults={} served={} rejected={} planned={} distinct_va={} ok={}",
+            "# pager: once deliveries={} faults={} served={} rejected={} expected_va={} distinct_va={} ok={}",
             ev.ledger.deliveries,
             faults,
             served,
