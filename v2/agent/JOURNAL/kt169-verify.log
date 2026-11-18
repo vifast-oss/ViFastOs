@@ -1,0 +1,29 @@
+# verify-numbers: root=/private/tmp/night2-L12-x86audit docs=37 tracked=36 staged=0 untracked=1 scan=index+untracked legacy=19 laws=1,2,3,7,8
+# note - luat 1: loại khỏi tài liệu đích [v2/agent/reports/A1-decision-log.md] chủ Agent 1: sổ quyết định sống (append mỗi quyết định), không phải báo cáo số đo; số đo trong sổ thuộc verifier của task tương ứng
+ok - luat 1: docs_checked=18 pre_existing=0 excluded=1 (1119 ms)
+ok - luat 2: pairs=120 pending=1 (2987 ms)
+ok - luat 3: counters=2 used=2 (104 ms)
+ok - luat 7: extractions=3 (43 ms)
+ok - self-test union-haystack: ĐỎ đúng mã E1_NOT_VERBATIM
+ok - self-test heading-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test heading-not-reset: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test decimal-x-y: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test fence-text-no-scope: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test bare-small-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test scope-tmp: ĐỎ đúng mã E1_SCOPE_OUTSIDE_REPO
+ok - self-test scope-negative-source: ĐỎ đúng mã E1_SCOPE_FORBIDDEN
+ok - self-test counter-unproven: ĐỎ đúng mã E3_UNPROVEN_IN_OK
+ok - self-test counter-undeclared: ĐỎ đúng mã E3_COUNTER_UNDECLARED
+ok - self-test counter-proven-no-negative: ĐỎ đúng mã E3_NEGATIVE_ZERO
+ok - self-test assign-key-value: ĐỎ đúng mã E1_NUMBER_ASSIGNED
+ok - self-test assign-ident-key-bad-value: ĐỎ đúng mã E1_NUMBER_ASSIGNED
+ok - self-test pre-existing-expired: ĐỎ đúng mã E1_EXPIRED
+ok - self-test criteria-drop-column: ĐỎ đúng mã E7_COLUMN_MISMATCH
+ok - self-test log-after-report: ĐỎ đúng mã E2_ORDER
+ok - self-test legacy-changed: ĐỎ đúng mã E1_LEGACY_SHA
+ok - self-test untracked-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test staged-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test legacy-untracked: ĐỎ đúng mã E1_LEGACY_UNTRACKED
+ok - self-test legacy-staged: ĐỎ đúng mã E1_LEGACY_STAGED
+ok - luat 8: cases=21 (13576 ms)
+# verify-numbers: ok=5 fail=0 wall_ms=18075 law_wall_ms={1:1119,2:2987,3:104,7:43,8:13576}

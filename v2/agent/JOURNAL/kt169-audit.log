@@ -1,0 +1,100 @@
+# KT-169 — bằng chứng audit sẵn sàng K5' (x86_64), sinh 2026-11-19
+# Worktree: /private/tmp/night2-L12-x86audit — nhánh night2/L12-x86audit
+# Mọi dòng dưới đây là output nguyên văn của lệnh ghi ngay trước nó.
+
+$ git rev-parse --short HEAD
+25306b3f
+$ git branch --show-current
+night2/L12-x86audit
+$ git log --oneline -1
+25306b3f [KT-157] D2-151..153: T-INFRA gate flake + N3 dong han (4 client muc kernel) + sau task dem vong hai DAT
+
+$ ls v2/kernel
+Cargo.lock
+Cargo.toml
+rust-toolchain.toml
+vifast-core
+vifast-kbin-riscv64
+vifast-plat-aarch64
+vifast-plat-common
+vifast-plat-riscv64
+vifast-plat-user
+
+$ test -d v2/kernel/vifast-plat-x86_64; echo "plat-x86_64-dir-exit=$?"
+plat-x86_64-dir-exit=1
+$ test -d v2/boot; echo "boot-dir-exit=$?"
+boot-dir-exit=1
+$ test -d v2/lib/vifast-acpi; echo "acpi-dir-exit=$?"
+acpi-dir-exit=1
+
+$ grep -n "vifast-plat-x86_64" v2/kernel/Cargo.toml | wc -l
+       0
+$ grep -n "x86_64" v2/kernel/Cargo.toml | wc -l
+       0
+$ grep -rnE "\b(PML4|IOAPIC|LAPIC|GDT|IDT|TSS|XSAVE|SMEP|SMAP|KPTI)\b" v2/kernel v2/lib --include=*.rs | wc -l
+       0
+$ grep -rn "cfg(target_arch)" v2/kernel/vifast-core/src v2/kernel/vifast-plat-common/src v2/lib/vifast-pte/src | wc -l
+       0
+$ grep -n "copy_high\|high_half" v2/lib/vifast-pte/src/mmu.rs | wc -l
+       0
+
+$ grep -n "pub trait PageTableFormat\|pub trait Mmu" v2/lib/vifast-pte/src/mmu.rs
+253:pub trait PageTableFormat {
+297:pub trait Mmu {
+$ grep -n "impl PageTableFormat" v2/kernel/vifast-plat-common/src/mmu.rs v2/kernel/vifast-plat-aarch64/src/format.rs
+v2/kernel/vifast-plat-common/src/mmu.rs:481:impl PageTableFormat for Sv39 {
+v2/kernel/vifast-plat-aarch64/src/format.rs:51://! §358/§1101). Tệp này **chỉ còn impl** ([`Aarch64`] + `impl PageTableFormat for Aarch64`),
+v2/kernel/vifast-plat-aarch64/src/format.rs:247:impl PageTableFormat for Aarch64 {
+$ grep -n "pub const PTE_LEVELS\|pub const VA_BITS\|pub const ASID_BITS" v2/lib/vifast-pte/src/lib.rs
+58:pub const PTE_LEVELS: usize = 3;
+63:pub const VA_BITS: u8 = 39;
+66:pub const ASID_BITS: u8 = 8;
+$ grep -n "walk_shape\|PTE_LEVELS" v2/kernel/vifast-plat-common/src/obj/vspace.rs | head -2
+7:use vifast_pte::{walk_shape, PAGE_SIZE_BITS, PTE_LEVELS};
+73:        let mut reserved = [OBJ_NONE; PTE_LEVELS - 1];
+
+$ grep -n "pub trait Platform" v2/kernel/vifast-plat-common/src/lib.rs
+89:pub trait Platform {
+$ grep -n "pub struct TrapFrame" v2/kernel/vifast-plat-common/src/trap.rs
+148:pub struct TrapFrame {
+$ grep -n "pub struct TrapFacts" v2/kernel/vifast-plat-common/src/fault.rs
+230:pub struct TrapFacts {
+$ grep -n "pub const TIMEBASE_HZ\|pub const TICK_HZ" v2/kernel/vifast-plat-common/src/timer.rs
+50:pub const TIMEBASE_HZ: u64 = 10_000_000;
+52:pub const TICK_HZ: u64 = 100;
+$ grep -n "pub const SBI_EXT_HSM" v2/kernel/vifast-plat-common/src/smp.rs
+269:pub const SBI_EXT_HSM: u64 = 0x48_53_4D;
+$ grep -n "pub const SBI_EXT_IPI" v2/kernel/vifast-plat-common/src/ipi.rs
+49:pub const SBI_EXT_IPI: u64 = 0x0073_5049;
+$ grep -n "pub const REGIONS" v2/kernel/vifast-plat-common/src/resources.rs
+84:pub const REGIONS: &[Region] = &[UART0, PLIC, CLINT, TEST_PAGE, PCI_ECAM, PCI_MMIO32];
+$ grep -n "pub trait PhysMem" v2/kernel/vifast-plat-common/src/obj/mod.rs
+327:pub trait PhysMem {
+$ grep -n "pub trait TlbEnv" v2/kernel/vifast-core/src/tlb.rs
+84:pub trait TlbEnv {
+$ grep -n "sepc += 4" v2/kernel/vifast-core/src/syscall.rs
+143:    /// Ghi `a0/a1/a2/a3..a6` rồi `sepc += 4` — TCB **vẫn** `Running` trên hart này.
+
+$ sed -n "66,68p" spec/abi.toml
+[calling.x86_64]
+reserved = true
+note = "Mở ở K5' theo D2-10; chỉ giữ số, không đóng băng chữ ký"
+$ grep -n "qemu-system-riscv64" v2/test/boot/run.sh | head -1
+44:QEMU="$(command -v qemu-system-riscv64 || true)"
+$ grep -n "OUTPUT_ARCH" v2/kernel/vifast-kbin-riscv64/linker.ld
+5:OUTPUT_ARCH(riscv)
+$ grep -n "x86_64-unknown-none" v2/rust-toolchain.toml
+12:    "x86_64-unknown-none",
+
+$ grep -n "int 0x80" crates/vifast-kernel-x86_64-uefi/src/user.S | head -1
+34:    int 0x80
+$ grep -n "enable_pcid\|configure_lapic\|reload_cr3" crates/vifast-platform-x86_64/src/platform.rs | head -3
+759:unsafe fn enable_pcid() {
+964:    unsafe { reload_cr3() };
+1219:unsafe fn configure_lapic() -> u32 {
+$ grep -n "static mut PML4\|static mut GDTS\|static mut IDT\|static mut TSSS" crates/vifast-platform-x86_64/src/platform.rs
+59:static mut PML4: Table = Table([0; 512]);
+472:static mut GDTS: [[u64; GDT_ENTRIES]; MAX_HARTS] = [[0; GDT_ENTRIES]; MAX_HARTS];
+475:static mut IDT: [IdtEntry; 256] = [IdtEntry::zero(); 256];
+495:static mut IDT_PTR: DescriptorTablePtr = DescriptorTablePtr { limit: 0, base: 0 };
+496:static mut TSSS: [Tss; MAX_HARTS] = [Tss::zero(); MAX_HARTS];
