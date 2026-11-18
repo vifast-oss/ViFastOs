@@ -95,6 +95,20 @@ if [ "${1:-}" = "--image" ]; then
     shift 2
     [ -f "$GIVEN_IMAGE" ] || die "không thấy ảnh: $GIVEN_IMAGE"
 fi
+# **KT-135 (C2 của Agent 0, 2026-11-18)**: `--features` cho phép soak **đúng ảnh phát hành**
+# (`product-shell,product-fs`). Mặc định (không cờ) giữ nguyên ảnh **không shell** — bằng chứng cũ
+# không mất giá trị. Ảnh có shell không tự thoát, nên chế độ này phải **lái shell** (xem
+# `boot_one_shell`): chờ `shell>`, gửi `help`, gửi `exit`, đòi `# product halt:` + QEMU rc=0.
+SOAK_FEATURES=""
+if [ "${1:-}" = "--features" ]; then
+    [ "$#" -ge 2 ] || die "--features cần danh sách feature (ví dụ: product-shell,product-fs)"
+    SOAK_FEATURES="$2"
+    shift 2
+fi
+SHELL_MODE=0
+case ",$SOAK_FEATURES," in
+    *,product-shell,*) SHELL_MODE=1 ;;
+esac
 if [ "${1:-}" = "--smoke" ]; then
     SMOKE=1
     shift
@@ -187,12 +201,36 @@ qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 if [ -n "$GIVEN_IMAGE" ]; then
     # KT-96: soak.sh đo "boot tới **halt**". Ảnh **có shell** không tự thoát ⇒ mọi boot sẽ
     # `timeout` ⇒ 0/N là **giả**. Từ chối sớm thay vì để người đọc hiểu sai.
-    if LC_ALL=C grep -a -q -m1 '# product shell:' "$IMAGE" 2>/dev/null; then
+    if [ "$SHELL_MODE" -ne 1 ] && LC_ALL=C grep -a -q -m1 '# product shell:' "$IMAGE" 2>/dev/null; then
         echo "soak.sh: ảnh '$IMAGE' CÓ shell (không tự thoát) — soak.sh không đo được ảnh này." >&2
         echo "soak.sh: dùng script gửi 'exit' qua UART (xem v2/agent/JOURNAL/kt90-soak-product-image.sh)" >&2
         exit 2
     fi
     echo "# ảnh cho trước (không build): $IMAGE"
+elif [ -n "$SOAK_FEATURES" ]; then
+    # **KT-135 (C2 của Agent 0)**: khi soak **ảnh phát hành**, phải build bằng **pipeline canonical**
+    # (`repro-build.sh`: remap + strip) — nếu build bằng `cargo build` trần thì sha KHÁC ảnh phát
+    # hành, và "soak ảnh phát hành" sẽ là soak một ảnh khác. Đây đúng yêu cầu "phải ra đúng sha ảnh
+    # phát hành".
+    echo "# build ảnh sản phẩm bằng pipeline canonical ($TARGET, release, features=$SOAK_FEATURES)"
+    REPRO_OUT="$(VIFAST_REPRO_CARGO_EXTRA="--features $SOAK_FEATURES" \
+        VIFAST_REPRO_LOG=/tmp/kt57-soak-build.log bash "$REPO_ROOT/v2/tools/repro-build.sh" 2>&1)" || {
+        printf '%s\n' "$REPRO_OUT" | tail -20 >&2
+        die "repro-build ảnh sản phẩm FAIL (xem /tmp/kt57-soak-build.log)"
+    }
+    printf '%s\n' "$REPRO_OUT" | grep -E '^REPRO ' | tail -1
+    IMAGE="$(printf '%s\n' "$REPRO_OUT" | sed -n 's/.* image=\(.*\)$/\1/p' | tail -1)"
+    [ -n "$IMAGE" ] && [ -f "$IMAGE" ] || die "repro-build không trả đường dẫn ảnh"
+    PRODUCT_IMAGE="$IMAGE"
+    # Neo: sha ảnh build ra phải trùng ảnh phát hành đã ghim (nếu có ghim).
+    BUILT_SHA="$(shasum -a 256 "$IMAGE" 2>/dev/null | awk '{print $1}')"
+    [ -n "$BUILT_SHA" ] || BUILT_SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
+    PINNED="$REPO_ROOT/v2/artifacts/$BUILT_SHA.bin"
+    if [ -f "$PINNED" ]; then
+        echo "# neo ảnh: sha=$BUILT_SHA TRÙNG ảnh đã ghim $PINNED"
+    else
+        echo "# neo ảnh: sha=$BUILT_SHA (chưa ghim; ghim bằng v2/tools/pin-artifact.sh nếu cần)"
+    fi
 else
     echo "# build ảnh sản phẩm ($TARGET, release)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
@@ -202,6 +240,10 @@ else
     fi
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+# KT-135: `QEMU_ARGS` được dựng **trước** khối build (dòng ~177) nên nếu nhánh canonical đổi
+# `IMAGE` thì phải dựng lại — nếu không, soak sẽ boot ảnh cũ trong `target/`.
+QEMU_ARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \
+    -cpu rv64 -m 128M -smp 1 -no-reboot)
 
 # D2-72 Q5: `.data+.sdata+.bss+.sbss` ≤ 262.144 B — fail nếu vượt, không nới.
 bash "$BUDGET" "$IMAGE" product || die "budget ảnh sản phẩm VƯỢT trần (D2-72 Q5)"
@@ -244,7 +286,7 @@ fi
 echo "# rev-gate (KT-86): build + boot MỘT lần ảnh sản phẩm để đọc dòng '# build:'"
 vbrev_summary "$REPO_ROOT"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
-    --target "$TARGET" --release >"$LOGDIR/kt86-product-build.log" 2>&1; then
+    --target "$TARGET" --release ${SOAK_FEATURES:+--features "$SOAK_FEATURES"} >"$LOGDIR/kt86-product-build.log" 2>&1; then
     tail -20 "$LOGDIR/kt86-product-build.log" >&2
     vbrev_refuse product-build-failed "log=$LOGDIR/kt86-product-build.log"
     echo "# soak.sh: TỪ CHỐI ĐO (KT-86/D2-125.3)"
@@ -258,7 +300,10 @@ if ! qg_boot "$REV_GATE_LOG" "$TIMEOUT_DS" "$QEMU" \
     # lần dò này là đọc dòng đó); `vbrev_gate` ngay dưới vẫn kiểm byte ảnh.
     # KT-100: chỉ chấp nhận **timeout** (ảnh có shell không tự thoát), KHÔNG chấp nhận crash:
     # log có `PANIC` hoặc `Fault` ⇒ vẫn là `probe-boot-failed`.
-    if [ -n "$GIVEN_IMAGE" ] && LC_ALL=C grep -a -q -m1 '# build:' "$REV_GATE_LOG" 2>/dev/null &&
+    # KT-135: ảnh **có shell** (chế độ `--features`) cũng không tự thoát — cùng lý do với ảnh cho
+    # trước ở KT-96. Vẫn chỉ chấp nhận **timeout**, không chấp nhận crash (điều kiện PANIC bên dưới).
+    if { [ -n "$GIVEN_IMAGE" ] || [ "$SHELL_MODE" -eq 1 ]; } &&
+        LC_ALL=C grep -a -q -m1 '# build:' "$REV_GATE_LOG" 2>/dev/null &&
         ! LC_ALL=C grep -a -qE 'PANIC|FaultKind' "$REV_GATE_LOG" 2>/dev/null; then
         echo "# rev-gate: ảnh có shell không tự thoát (timeout) — đã có dòng '# build:', tiếp tục"
     else
@@ -337,11 +382,100 @@ boot_one() {
     return 0
 }
 
+# ------------------------------------------------------------------ vòng cho ảnh CÓ shell
+# **KT-135 (C2 của Agent 0)**: ảnh phát hành không tự thoát — nó chờ lệnh. Vòng soak phải **lái**
+# shell và đòi **ba** dấu hiệu mỗi vòng: `shell>` (U-mode đã lên), `# shell: help cmds=` (shell
+# thật sự nhận và xử lý lệnh), `# shell: exit code=0` + `# product halt:` (thoát sạch). Thiếu bất
+# kỳ dấu hiệu nào ⇒ vòng đó ĐỎ. Đây là điều kiện Agent 0 đặt: "thiếu một dấu hiệu ⇒ đỏ".
+P_SHELL=0.03
+P_HELP=0.05
+T_SHELL_POLLS=667 # 667 × 0,03 s ≈ 20 s tới `shell>` (D2-72 Q10)
+T_HELP_POLLS=100  # 100 × 0,05 s = 5 s chờ phản hồi `help`
+T_HALT_POLLS=200  # 200 × 0,05 s = 10 s chờ `# product halt:` + QEMU thoát
+
+soak_wait_re() { # $1 ERE, $2 max polls, $3 poll secs, $4 pid, $5 log
+    local i=0
+    while [ "$i" -lt "$2" ]; do
+        grep -qE "$1" "$5" 2>/dev/null && return 0
+        kill -0 "$4" 2>/dev/null || break
+        sleep "$3"
+        i=$((i + 1))
+    done
+    grep -qE "$1" "$5" 2>/dev/null
+}
+
+boot_one_shell() {
+    local i="$1" out="$RUNDIR/boot-$i.log" fifo="$RUNDIR/fifo-$i" pid="" why="" n=""
+    rm -f "$fifo" 2>/dev/null || true
+    mkfifo "$fifo" 2>/dev/null || {
+        printf 'fail %s infra no-fifo\n' "$i" >>"$RESULTS"
+        return 1
+    }
+    # RDWR: `open` của QEMU không chặn; byte bơm vào nằm trong pipe tới khi QEMU đọc.
+    exec 8<>"$fifo" || {
+        printf 'fail %s infra no-fifo-open\n' "$i" >>"$RESULTS"
+        return 1
+    }
+    : >"$out"
+    "$QEMU" "${QEMU_ARGS[@]}" <"$fifo" >"$out" 2>&1 &
+    pid=$!
+
+    # (1) `shell>` — U-mode shell đã lên.
+    soak_wait_re '^shell>$' "$T_SHELL_POLLS" "$P_SHELL" "$pid" "$out" || why="$why,timeout-shell"
+    # (2) `help` — shell nhận và xử lý lệnh thật.
+    if [ -z "$why" ]; then
+        printf 'help\n' >&8 2>/dev/null || true
+        soak_wait_re '^# shell: help cmds=[0-9]+$' "$T_HELP_POLLS" "$P_HELP" "$pid" "$out" ||
+            why="$why,no-help-response"
+    fi
+    # (3) `exit` — thoát sạch: shell in mã thoát, kernel in dòng halt, QEMU tự thoát.
+    if [ -z "$why" ]; then
+        printf 'exit\n' >&8 2>/dev/null || true
+        soak_wait_re '^# shell: exit code=0$' "$T_HALT_POLLS" "$P_HELP" "$pid" "$out" ||
+            why="$why,no-exit-line"
+        soak_wait_re '^# product halt:' "$T_HALT_POLLS" "$P_HELP" "$pid" "$out" ||
+            why="$why,no-halt-line"
+        local g=0
+        while [ "$g" -lt "$T_HALT_POLLS" ]; do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep "$P_HELP"
+            g=$((g + 1))
+        done
+        kill -0 "$pid" 2>/dev/null && why="$why,qemu-khong-thoat"
+    fi
+    exec 8>&-
+    if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    else
+        wait "$pid" 2>/dev/null
+        [ "$?" -eq 0 ] || why="$why,qemu-rc-khac-0"
+    fi
+    rm -f "$fifo" 2>/dev/null || true
+
+    # (4) danh tính ảnh: dòng `# build:` do kernel in phải khớp ảnh đang chạy.
+    n="$(grep -cE '^# build: inputs=[0-9a-f]+ dirty=0$' "$out" || true)"
+    [ "${n:-0}" -eq 1 ] || why="$why build-line=${n:-0}/1"
+    # (5) không PANIC (fail-closed, tính cả dòng thụt đầu dòng).
+    n="$(grep -cE '^[[:space:]]*PANIC' "$out" || true)"
+    [ "${n:-0}" -eq 0 ] || why="$why panic=${n:-0}"
+
+    if [ -n "$why" ]; then
+        printf 'fail %s %s\n' "$i" "$(printf '%s' "$why" | tr ' ' ',')" >>"$RESULTS"
+        echo "boot $i/$N FAIL:$why log=$out" >&2
+        tail -5 "$out" | sed 's/^/    /' >&2
+        return 1
+    fi
+    printf 'ok %s\n' "$i" >>"$RESULTS"
+    echo "boot $i/$N ok"
+    return 0
+}
+
 # ------------------------------------------------------------------ luồng
 lane_worker() {
     local lane="$1" i="$2"
     while [ "$i" -le "$N" ]; do
-        boot_one "$i" || true
+        if [ "$SHELL_MODE" -eq 1 ]; then boot_one_shell "$i" || true; else boot_one "$i" || true; fi
         i=$((i + LANES))
     done
 }
