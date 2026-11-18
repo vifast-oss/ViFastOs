@@ -1,0 +1,21 @@
+# shell-edge KT-108 — 2026-11-18T19:18:14Z
+# image: /private/tmp/l6-target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# image: sha256=34159e5c48ef6222d71f06b09fb752efbeb097a1006fbf25fd84c280da03bb93 bytes=209536
+# image: # build: algo=kt134-v4 inputs=066f9134d56f6bd4 dirty=1
+# kt137-cdpwd[pwd]: PASS
+# kt137-cdpwd[cd-khong-co]: PASS
+# kt137-cdpwd[cd-tep]: PASS
+# kt137-cdpwd[cd-thu-tu]: PASS
+# kt137-cdpwd[cat-tuong-doi]: PASS
+# kt137-cdpwd[stat-tuong-doi]: PASS
+# kt137-cdpwd[write-tuong-doi]: PASS
+# kt137-cdpwd[cat-rel]: PASS
+# kt137-cdpwd[truncate-tuong-doi]: PASS
+# kt137-cdpwd[stat-rel]: PASS
+# kt137-cdpwd[ls-cwd]: PASS
+# kt137-cdpwd[cd-docs]: PASS
+# kt137-cdpwd[ls-docs]: PASS
+# kt137-cdpwd[cat-docs]: PASS
+# kt137-cdpwd: PASS (# shell: pwd /)
+# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc + kt137-cdpwd PASS
+# shell-edge.sh: PASS
