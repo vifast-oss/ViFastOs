@@ -1,0 +1,44 @@
+   Compiling vifast-sim v0.1.0 (/private/tmp/night-L8-n7sim/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.87s
+     Running tests/kt155_n7sim.rs (v2/target/debug/deps/kt155_n7sim-89fc4154a0b226ea)
+
+running 4 tests
+test kt155_sim_cung_hart_khong_gui_wake ... ok
+test kt155_sim_reply_cheo_hart_phai_gui_wake ... FAILED
+test kt155_sim_refill_cheo_hart_phai_gui_wake ... FAILED
+test kt155_sim_resume_cheo_hart_phai_gui_wake ... FAILED
+
+failures:
+
+---- kt155_sim_reply_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt155_sim_reply_cheo_hart_phai_gui_wake' (77911818) panicked at sim/vifast-sim/tests/kt155_n7sim.rs:155:5:
+assertion `left == right` failed: Call chéo hart: hộp thư hart 0 phải có Wake(server)
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- kt155_sim_refill_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt155_sim_refill_cheo_hart_phai_gui_wake' (77911817) panicked at sim/vifast-sim/tests/kt155_n7sim.rs:245:5:
+assertion `left == right` failed: refill chéo hart: hộp thư hart 1 phải có đúng một Wake
+  left: 0
+ right: 1
+
+---- kt155_sim_resume_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt155_sim_resume_cheo_hart_phai_gui_wake' (77911819) panicked at sim/vifast-sim/tests/kt155_n7sim.rs:198:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+
+
+failures:
+    kt155_sim_refill_cheo_hart_phai_gui_wake
+    kt155_sim_reply_cheo_hart_phai_gui_wake
+    kt155_sim_resume_cheo_hart_phai_gui_wake
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt155_n7sim`
+EXIT=101
