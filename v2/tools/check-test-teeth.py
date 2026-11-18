@@ -96,6 +96,10 @@ ASSERT_TOKENS: Tuple[str, ...] = (
 # gì, nên vẫn phải có control flow mới tính.
 CONTROL_FLOW = re.compile(r"\b(?:if|match|else|while|for|loop)\b")
 
+# Lời gọi hàm, **kể cả turbofish** `tro_giup::<T>(…)`. Bản đầu chỉ khớp `ten(` nên test gọi
+# trợ giúp generic bị báo oan `E_NO_ASSERT` (review L6 dựng lại trên `mmu_shared.rs`).
+CALL_NAME_RE = r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:::\s*<[^;{}()]*?>)?\s*[(!]"
+
 # Hàm trợ giúp **ở tệp khác** (máy kiểm không thấy thân) mà vẫn tính là răng.
 # Khoá = tên hàm; giá trị = lý do. Hiện **rỗng**: mọi trợ giúp trong cây đều cùng tệp và
 # được tự dò. Giữ cơ chế để lần sau có trợ giúp dùng chung thì khai báo tường minh, không
@@ -850,7 +854,10 @@ def scan(
         calls_of: Dict[str, Set[str]] = {}
         for f in fns:
             body = m[f.body_start : f.body_end]
-            calls_of[f.name] = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*[(!]", body))
+            # **KT-163b** (review L6): phải nhận cả turbofish `tro_giup::<T>(…)` — nếu không,
+            # test gọi trợ giúp generic bị báo oan `E_NO_ASSERT` (đã dựng lại trên
+            # `vifast-plat-common/tests/mmu_shared.rs`).
+            calls_of[f.name] = set(re.findall(CALL_NAME_RE, body))
 
         def teeth_of(name: str, seen: Optional[Set[str]] = None) -> bool:
             seen = set() if seen is None else seen
@@ -927,7 +934,7 @@ def scan(
             if not has_token and f.is_should_panic:
                 has_token = True
             if not has_token:
-                called = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*[(!]", own_s))
+                called = set(re.findall(CALL_NAME_RE, own_s))
                 if any(c in helper_allow for c in called):
                     has_token = True
                 elif any(c in helper_teeth and teeth_of(c) for c in called):
@@ -1028,7 +1035,7 @@ def _fixture(root: Path, files: Dict[str, str]) -> None:
 
 
 def selftest() -> int:
-    """Hai mươi mốt ca: mỗi ca một dòng `ok`/`not ok`."""
+    """Hai mươi hai ca: mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt163-selftest-"))
     try:
@@ -1218,6 +1225,26 @@ def selftest() -> int:
         rep = scan(d, allow_let={}, helper_allow={})
         cases.append(
             ("`#[test]` gọi trợ giúp transitive ⇒ xanh", rep.ok, "; ".join(rep.errors))
+        )
+
+        # (6b) `#[test]` gọi trợ giúp generic bằng **turbofish** ⇒ xanh (KT-163b, review L6).
+        d = tmp / "helper-turbofish"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/t.rs": (
+                    "fn kiem_chung<F: Default>() {\n    assert_eq!(F::default(), F::default());\n}\n\n"
+                    "#[test]\nfn dung_tro_giup_generic() {\n    kiem_chung::<u32>();\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`#[test]` gọi trợ giúp generic `::<T>` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
         )
 
         # (7) `#[test]` gọi trợ giúp **khai báo** (tệp khác) ⇒ xanh.
