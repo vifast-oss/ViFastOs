@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![no_std]
 #![forbid(unsafe_code)]
-//! `vifast-pte` — hình ba cấp và layout PTE **model-only** của K2 (KT-35).
+//! `vifast-pte` — hình ba cấp và layout PTE **model-only** của K2 (KT-35), và từ KT-164 là nhà
+//! của **trait bảng trang dùng chung** ([`PageTableFormat`], [`Mmu`]).
 //!
-//! Crate này chỉ cung cấp **hình/layout**: cỡ Frame ↔ `size_bits`, PTE thô 64 bit, mảng PTE cố
+//! Crate này cung cấp **hình/layout**: cỡ Frame ↔ `size_bits`, PTE thô 64 bit, mảng PTE cố
 //! định, và `walk_shape` tách VA 39 bit thành ba chỉ số 9 bit. **Không** có PageTable walker,
 //! map/unmap, quyền/attrs, W^X, ASID, TLB — những phần đó thuộc KT-37..KT-41. Tài liệu mô hình
 //! và bảy hằng số `[TK]` ở `v2/docs/k2-vm.md`.
+//!
+//! **KT-164** (thiết kế §358/§1101): module [`mmu`] giữ trait [`PageTableFormat`]/[`Mmu`] và các
+//! kiểu đi kèm ([`Perms`], [`MemAttr`], [`Shareability`], [`Descriptor`], [`Translation`],
+//! [`MapError`]) để riscv64 (Sv39) và aarch64 cài **cùng một** trait — trước đó chúng định nghĩa
+//! cục bộ trong `vifast-plat-aarch64` (nợ N1 của KT-160). Đây vẫn là **hợp đồng dữ liệu**: không
+//! asm, không `cfg` theo kiến trúc (luật R2), không `unsafe`; phần `satp`/`TTBR`/`TLBI` ở crate arch (D2-17).
 //!
 //! **K2 không phải kernel thật**: đây là mô hình tất định trong sim, không PTE phần cứng, không
 //! MMU/TLB thật, không QEMU, không `sfence.vma`; K3 mới là kernel/QEMU thật. Xem
@@ -29,11 +36,16 @@
 
 mod error;
 mod frame;
+mod mmu;
 mod pte;
 mod walk;
 
 pub use error::PteError;
 pub use frame::FrameSize;
+pub use mmu::{
+    is_canonical_bits, Descriptor, MapError, MemAttr, Mmu, PageTableFormat, Perms, Shareability,
+    Translation,
+};
 pub use pte::{Pte, PteArray};
 pub use walk::{walk_shape, WalkShape};
 

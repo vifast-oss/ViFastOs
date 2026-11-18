@@ -49,6 +49,9 @@ dependencies = [
 [[package]]
 name = "vifast-plat-aarch64"
 version = "0.1.0"
+dependencies = [
+ "vifast-pte",
+]
 
 [[package]]
 name = "vifast-plat-common"
@@ -56,6 +59,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-alloc",
  "vifast-core",
+ "vifast-plat-aarch64",
  "vifast-pte",
 ]
 

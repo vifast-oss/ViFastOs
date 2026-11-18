@@ -29,7 +29,17 @@
 //! `kernel/vifast-plat-riscv64` (D2-17; ASID thật KT-51); không cấp phát frame động (KT-52),
 //! không U-mode (KT-53).
 
-use vifast_pte::{walk_shape, Pte, PAGE_SIZE_BITS, PTE_LEVELS, VA_BITS};
+use vifast_pte::{
+    walk_shape, Descriptor, MemAttr, Mmu, PageTableFormat, Perms, Pte, Shareability, Translation,
+    PAGE_SIZE_BITS, PTE_LEVELS, VA_BITS,
+};
+
+// KT-164: `MapError` là kiểu **dùng chung** ở `vifast-pte` (thiết kế §358/§1101) — cùng một enum
+// với `vifast-plat-aarch64`, nên tầng trên và test generic so lỗi mà không phải biết định dạng.
+// Sv39 dùng tập con `OutOfArena`/`LevelOutOfRange`/`InvalidFlags`/...; các biến thể của AArch64
+// (`OutOfFrames`, `PaOutOfRange`, `InvalidPerms`, `NotMapped`, `BlockUnsupported`) vẫn có mặt để
+// hai định dạng dùng chung một kiểu lỗi.
+pub use vifast_pte::MapError;
 
 /// Cỡ một trang/bảng cơ sở: 4 KiB.
 pub const PAGE_BYTES: u64 = 1 << 12;
@@ -172,25 +182,6 @@ impl PteFlags {
     pub const fn device_rw() -> Self {
         Self::leaf(true, true, false)
     }
-}
-
-/// Lỗi dựng bảng — lỗi **nội bộ task** (không phải mã lỗi ABI; `spec/` không mở — D2-72 Q1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MapError {
-    /// Arena không đủ chỗ cho bảng mới.
-    OutOfArena,
-    /// VA/PA/arena không căn lề 4 KiB (hoặc căn lề sai với cỡ leaf).
-    Unaligned,
-    /// Cấp leaf ngoài `0..PTE_LEVELS`.
-    LevelOutOfRange,
-    /// VA không canonical theo `VA_BITS`.
-    NotCanonical,
-    /// Cờ leaf không hợp lệ (`V=0`, không quyền nào, hoặc `W=1` mà `R=0`).
-    InvalidFlags,
-    /// Ô PTE đã có mapping khác (leaf hoặc bảng).
-    AlreadyMapped,
-    /// Bảng không nằm trong arena (dữ liệu hỏng) — chỉ xảy ra nếu logic sai.
-    CorruptTable,
 }
 
 /// Kết quả `walk` phần mềm: dừng ở entry invalid, leaf, hay bảng non-leaf.
@@ -466,5 +457,183 @@ impl PteMemory for PageTableBuilder<'_> {
         let mut slot = [0u8; PTE_BYTES];
         slot.copy_from_slice(self.arena.get(at..at + PTE_BYTES)?);
         Some(u64::from_le_bytes(slot))
+    }
+}
+
+// ---------------------------------------------------------------- định dạng dùng chung (KT-164)
+
+/// Định dạng **Sv39** (RISC-V, 3 mức, 4 KiB, 39-bit VA, 56-bit PA) — KT-164.
+///
+/// Đây là "mặt định dạng" của [`PageTableBuilder`]: cùng trait [`PageTableFormat`] với `Aarch64`
+/// của `vifast-plat-aarch64`, nhờ vậy **một** thân test generic (`kiem_tung_dinh_dang`) chạy được
+/// cho cả hai định dạng — bằng chứng trait dùng chung thật, không phải hai bản trùng.
+///
+/// Hằng số hình học lấy từ [`vifast_pte`] (`PTE_LEVELS`, `VA_BITS`, `PAGE_SIZE_BITS`,
+/// `walk_shape`), bit PTE lấy từ chính module này — không chép tay lần thứ hai.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Sv39;
+
+impl Sv39 {
+    /// Số bit PA của Sv39: PPN 44 bit + 12 bit offset.
+    pub const PA_BITS: u32 = 56;
+}
+
+impl PageTableFormat for Sv39 {
+    const LEVELS: usize = vifast_pte::PTE_LEVELS;
+    const PAGE_BITS: u32 = PAGE_SIZE_BITS[0] as u32;
+    const INDEX_BITS: u32 = 9;
+    const VA_BITS: u32 = vifast_pte::VA_BITS as u32;
+    const PA_BITS: u32 = Sv39::PA_BITS;
+    const PAGE_BYTES: u64 = crate::mmu::PAGE_BYTES;
+    const ENTRIES: usize = crate::mmu::PTE_ENTRIES;
+
+    /// Chỉ số entry của `va` tại `level` (0 = gốc): `walk_shape` trả `[gốc, giữa, lá]` nên
+    /// `indices()[level]` đúng quy ước của trait.
+    fn index(va: u64, level: usize) -> usize {
+        if level >= vifast_pte::PTE_LEVELS {
+            return 0;
+        }
+        walk_shape(va).indices()[level] as usize
+    }
+
+    fn is_canonical(va: u64) -> bool {
+        is_canonical(va)
+    }
+
+    fn encode_table(pa: u64) -> u64 {
+        ((pa >> 12) << PTE_PPN_SHIFT) | PTE_VALID
+    }
+
+    /// Lá 4 KiB: `PPN | V | A | D | R/W/X` (+ `U` nếu user). Sv39 **không** có khái niệm
+    /// thuộc tính bộ nhớ/shareability trong PTE (PBMT không dùng) nên bỏ qua `attr`/`share`.
+    fn encode_leaf(pa: u64, perms: Perms, _attr: MemAttr, _share: Shareability) -> u64 {
+        let mut pte = ((pa >> 12) << PTE_PPN_SHIFT)
+            | PteFlags::leaf(perms.read, perms.write, perms.exec).bits();
+        if perms.user {
+            pte |= PTE_USER;
+        }
+        pte
+    }
+
+    fn decode(entry: u64, level: usize) -> Descriptor {
+        if entry & PTE_VALID == 0 {
+            return Descriptor::Invalid;
+        }
+        let pa = (entry >> PTE_PPN_SHIFT) << 12;
+        let leaf = entry & (PTE_READ | PTE_WRITE | PTE_EXEC) != 0;
+        if level + 1 == vifast_pte::PTE_LEVELS {
+            // Mức lá: entry không có quyền nào là bảng (phần cứng coi là fault), `W=1, R=0` là
+            // reserved — cả hai đều không dùng được.
+            if !leaf || (entry & PTE_WRITE != 0 && entry & PTE_READ == 0) {
+                return Descriptor::Reserved;
+            }
+            Descriptor::Leaf {
+                pa,
+                perms: Perms {
+                    read: entry & PTE_READ != 0,
+                    write: entry & PTE_WRITE != 0,
+                    exec: entry & PTE_EXEC != 0,
+                    user: entry & PTE_USER != 0,
+                },
+            }
+        } else if leaf {
+            // Superpage 2 MiB (mức 1) / 1 GiB (mức 0) — `PageTableBuilder` không tạo ở đây.
+            Descriptor::Block { pa, level }
+        } else {
+            Descriptor::Table { pa }
+        }
+    }
+
+    /// Sv39 cấm `W=1, R=0` (privileged spec) và một lá không quyền nào là vô nghĩa.
+    fn perms_valid(perms: Perms) -> bool {
+        perms.is_valid() && (!perms.write || perms.read)
+    }
+}
+
+/// `PageTableBuilder` cài **cùng** trait [`Mmu`] với `PageTable` của `vifast-plat-aarch64`
+/// (KT-164) — tầng trên đổi MMU mà không đổi lời gọi.
+///
+/// Khác biệt có chủ đích: arena là bump allocator nên `unmap` **không** thu hồi frame (chỉ xoá
+/// lá); `translate` trả `level = PTE_LEVELS - 1` (quy ước của trait: 0 = gốc) và từ chối
+/// superpage bằng `BlockUnsupported`.
+impl Mmu for PageTableBuilder<'_> {
+    type Fmt = Sv39;
+
+    fn root(&self) -> u64 {
+        PageTableBuilder::root(self)
+    }
+
+    fn map(&mut self, va: u64, pa: u64, perms: Perms) -> Result<(), MapError> {
+        if !<Sv39 as PageTableFormat>::perms_valid(perms) {
+            return Err(MapError::InvalidPerms);
+        }
+        let mut flags = PteFlags::leaf(perms.read, perms.write, perms.exec);
+        if perms.user {
+            flags = PteFlags::from_bits(flags.bits() | PTE_USER);
+        }
+        PageTableBuilder::map(self, va, pa, 0, flags)
+    }
+
+    fn unmap(&mut self, va: u64) -> Result<u64, MapError> {
+        if va & (PAGE_BYTES - 1) != 0 {
+            return Err(MapError::Unaligned);
+        }
+        if !is_canonical(va) {
+            return Err(MapError::NotCanonical);
+        }
+        let indices = walk_shape(va).indices();
+        let mut table = self.root;
+        let mut current = PTE_LEVELS - 1;
+        while current > 0 {
+            let index = indices[PTE_LEVELS - 1 - current] as usize;
+            let entry = self.load(table, index).ok_or(MapError::CorruptTable)?;
+            if entry & PTE_VALID == 0 {
+                return Err(MapError::NotMapped);
+            }
+            if entry & (PTE_READ | PTE_WRITE | PTE_EXEC) != 0 {
+                return Err(MapError::BlockUnsupported);
+            }
+            table = (entry >> PTE_PPN_SHIFT) << 12;
+            current -= 1;
+        }
+        let leaf_index = indices[PTE_LEVELS - 1] as usize;
+        let entry = self.load(table, leaf_index).ok_or(MapError::CorruptTable)?;
+        if entry & PTE_VALID == 0 {
+            return Err(MapError::NotMapped);
+        }
+        if entry & (PTE_READ | PTE_WRITE | PTE_EXEC) == 0 {
+            return Err(MapError::CorruptTable);
+        }
+        let pa = (entry >> PTE_PPN_SHIFT) << 12;
+        self.store(table, leaf_index, 0)?;
+        self.leaves -= 1;
+        Ok(pa)
+    }
+
+    fn translate(&self, va: u64) -> Result<Translation, MapError> {
+        if !is_canonical(va) {
+            return Err(MapError::NotCanonical);
+        }
+        let walk = self.walk(va);
+        if !walk.valid {
+            return Err(MapError::NotMapped);
+        }
+        if !walk.leaf {
+            return Err(MapError::CorruptTable);
+        }
+        if walk.level != 0 {
+            return Err(MapError::BlockUnsupported);
+        }
+        let raw = walk.raw();
+        Ok(Translation {
+            pa: walk.phys,
+            perms: Perms {
+                read: raw & PTE_READ != 0,
+                write: raw & PTE_WRITE != 0,
+                exec: raw & PTE_EXEC != 0,
+                user: raw & PTE_USER != 0,
+            },
+            level: PTE_LEVELS - 1,
+        })
     }
 }

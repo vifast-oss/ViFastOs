@@ -43,15 +43,18 @@
 //! - `PXN` bit 53 / `UXN` bit 54: cấm thực thi ở EL1 / EL0. Kernel exec: `PXN=0, UXN=1`; user
 //!   exec: `PXN=1, UXN=0`; không exec: cả hai bằng 1.
 //!
-//! # Quan hệ với `vifast-pte` / `vifast-plat-common`
+//! # Quan hệ với `vifast-pte` (KT-164)
 //!
-//! Tại `6b2fdce7` **chưa có** trait `PageTableFormat` trong `vifast-pte` hay
-//! `vifast-plat-common` (thiết kế §358/§1101 mới chỉ **đặt chỗ** cho nó ở `vifast-pte`; hiện
-//! `vifast-pte` là hình Sv39 3 mức, `vifast-plat-common::mmu` là `PageTableBuilder` Sv39 cụ
-//! thể). Bước 1 vì vậy **định nghĩa trait tại đây** ([`PageTableFormat`]) và cài cho [`Aarch64`];
-//! khi K4' bước 2 mở, trait chuyển lên `vifast-pte` theo thiết kế và crate này chỉ còn impl —
-//! **nợ có tên** ghi ở `v2/agent/JOURNAL/kt160-aarch64.md` §6. Không sửa `vifast-pte`/
-//! `vifast-plat-common` đêm nay để không đụng L0 của cổng (D2-147, D2-148).
+//! Từ KT-164, trait [`PageTableFormat`] + [`Mmu`](vifast_pte::Mmu) và các kiểu đi kèm
+//! ([`Perms`], [`MemAttr`], [`Shareability`], [`Descriptor`], [`Translation`](vifast_pte::Translation),
+//! [`MapError`](vifast_pte::MapError)) nằm ở crate **dùng chung** `vifast-pte` (thiết kế
+//! §358/§1101). Tệp này **chỉ còn impl** ([`Aarch64`] + `impl PageTableFormat for Aarch64`),
+//! không định nghĩa lại trait — nợ N1 của KT-160 đã đóng. Các tên cũ vẫn được re-export ở đây để
+//! `vifast_plat_aarch64::format::*` giữ nguyên đường dẫn.
+
+pub use vifast_pte::{
+    is_canonical_bits, Descriptor, MemAttr, PageTableFormat, Perms, Shareability,
+};
 
 /// Số mức bảng trang của AArch64 4 KiB granule.
 pub const AARCH64_LEVELS: usize = 4;
@@ -107,231 +110,18 @@ pub const MAIR_NORMAL_WB_RW_ALLOC: u64 = 0xFF;
 /// `MAIR_EL1` đã định nghĩa" — nếu ai đổi [`MemAttr`] mà quên `MAIR_EL1` thì test đỏ.
 pub const MAIR_EL1: u64 = MAIR_DEVICE_NGNRNE | (MAIR_NORMAL_WB_RW_ALLOC << 8);
 
-/// Thuộc tính bộ nhớ của một leaf — ánh xạ 1-1 sang chỉ số byte trong `MAIR_EL1`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum MemAttr {
-    /// Device-nGnRnE (MMIO): byte 0 của [`MAIR_EL1`].
-    Device = 0,
-    /// Normal write-back RW-allocate (RAM): byte 1 của [`MAIR_EL1`].
-    Normal = 1,
-}
-
-impl MemAttr {
-    /// Chỉ số `AttrIndx` (bit 4:2 của descriptor).
-    pub const fn mair_index(self) -> u64 {
-        self as u64
-    }
-
-    /// Bóc `AttrIndx` từ một descriptor leaf; `None` nếu chỉ số chưa được định nghĩa.
-    pub const fn from_index(index: u64) -> Option<Self> {
-        match index {
-            0 => Some(Self::Device),
-            1 => Some(Self::Normal),
-            _ => None,
-        }
-    }
-
-    /// Byte `MAIR_EL1` tương ứng (để test đối chiếu).
-    pub const fn mair_byte(self) -> u64 {
-        (MAIR_EL1 >> (8 * self.mair_index())) & 0xFF
-    }
-}
-
-/// Shareability của một leaf (`SH[1:0]`, bit 9:8).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Shareability {
-    /// `0b00` — non-shareable.
-    NonShareable = 0b00,
-    /// `0b10` — outer shareable.
-    Outer = 0b10,
-    /// `0b11` — inner shareable (kernel dùng mặc định).
-    Inner = 0b11,
-}
-
-impl Shareability {
-    /// Bit `SH[1:0]`.
-    pub const fn bits(self) -> u64 {
-        self as u64
-    }
-
-    /// Bóc `SH[1:0]`; `0b01` là reserved nên trả `None`.
-    pub const fn from_bits(bits: u64) -> Option<Self> {
-        match bits & 0b11 {
-            0b00 => Some(Self::NonShareable),
-            0b10 => Some(Self::Outer),
-            0b11 => Some(Self::Inner),
-            _ => None,
-        }
-    }
-}
-
-/// Quyền truy cập của một leaf — dạng **độc lập arch** để `Mmu` dùng chung.
+/// Chỉ số `AttrIndx` (bit 4:2 của descriptor) của một [`MemAttr`] — AArch64 dùng chỉ số này làm
+/// byte trong `MAIR_EL1`.
 ///
-/// AArch64 **không có** bit `R` riêng: `AP[2]` chọn RW/RO, `AP[1]` chọn EL0/EL1, nên mọi leaf
-/// hợp lệ đều **đọc được**. Vì vậy `read = false` là quyền **không biểu diễn được** ⇒
-/// [`Perms::is_valid`] trả `false` (map trả `InvalidPerms`), thay vì lặng lẽ cấp quyền đọc.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Perms {
-    /// Đọc được (luôn `true` với leaf hợp lệ của AArch64).
-    pub read: bool,
-    /// Ghi được (`AP[2] = 0`).
-    pub write: bool,
-    /// Thực thi được (EL0 nếu `user`, EL1 nếu kernel).
-    pub exec: bool,
-    /// EL0 truy cập được (`AP[1] = 1`).
-    pub user: bool,
+/// `MemAttr` là kiểu **dùng chung** (`vifast-pte`); tên `mair_*` là cách AArch64 gọi nó, nên hàm
+/// nằm ở đây chứ không ở crate dùng chung.
+pub const fn mair_index(attr: MemAttr) -> u64 {
+    attr.index()
 }
 
-impl Perms {
-    /// Không quyền nào — **không hợp lệ** (giữ để test ca âm).
-    pub const NONE: Self = Self {
-        read: false,
-        write: false,
-        exec: false,
-        user: false,
-    };
-    /// Kernel RW, NX (data/stack/physmap).
-    pub const KERNEL_RW: Self = Self {
-        read: true,
-        write: true,
-        exec: false,
-        user: false,
-    };
-    /// Kernel RX (text).
-    pub const KERNEL_RX: Self = Self {
-        read: true,
-        write: false,
-        exec: true,
-        user: false,
-    };
-    /// Kernel RWX (image — W^X đầy đủ là bước sau).
-    pub const KERNEL_RWX: Self = Self {
-        read: true,
-        write: true,
-        exec: true,
-        user: false,
-    };
-    /// User RW, NX.
-    pub const USER_RW: Self = Self {
-        read: true,
-        write: true,
-        exec: false,
-        user: true,
-    };
-    /// User RX.
-    pub const USER_RX: Self = Self {
-        read: true,
-        write: false,
-        exec: true,
-        user: true,
-    };
-    /// User RO, NX.
-    pub const USER_RO: Self = Self {
-        read: true,
-        write: false,
-        exec: false,
-        user: true,
-    };
-
-    /// Tạo từ bốn cờ.
-    pub const fn new(read: bool, write: bool, exec: bool, user: bool) -> Self {
-        Self {
-            read,
-            write,
-            exec,
-            user,
-        }
-    }
-
-    /// `true` ⇔ biểu diễn được bằng descriptor AArch64 (xem doc của [`Perms`]).
-    pub const fn is_valid(self) -> bool {
-        self.read
-    }
-}
-
-/// Kết quả bóc một descriptor.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Descriptor {
-    /// `V = 0` — entry trống.
-    Invalid,
-    /// Hợp lệ nhưng mã hoá không dùng được (reserved/không nhất quán với mức).
-    Reserved,
-    /// Con trỏ tới bảng mức kế tiếp (chỉ mức 0..2).
-    Table {
-        /// Địa chỉ vật lý bảng con (đã bỏ 12 bit offset).
-        pa: u64,
-    },
-    /// Lá 4 KiB (chỉ mức 3).
-    Leaf {
-        /// Địa chỉ vật lý trang (đã bỏ 12 bit offset).
-        pa: u64,
-        /// Quyền đọc/ghi/thực thi/user.
-        perms: Perms,
-    },
-    /// Block descriptor (2 MiB ở mức 2, 1 GiB ở mức 1) — bước 1 **không tạo**, chỉ nhận diện.
-    Block {
-        /// Địa chỉ vật lý khối.
-        pa: u64,
-        /// Mức của block.
-        level: usize,
-    },
-}
-
-/// Hình học + cách mã hoá descriptor của một định dạng bảng trang.
-///
-/// Đây là trait mà thiết kế §358/§1101 đặt ở `vifast-pte`; bước 1 định nghĩa **tại crate này**
-/// (xem doc đầu tệp). `Mmu` ([`crate::mmu::PageTable`]) chỉ dùng trait này, không biết AArch64 —
-/// test `mmu_generic_over_second_format` chứng minh bằng một format thứ hai.
-pub trait PageTableFormat {
-    /// Số mức (gốc = 0, lá = `LEVELS - 1`).
-    const LEVELS: usize;
-    /// Số bit offset trong trang.
-    const PAGE_BITS: u32;
-    /// Số bit chỉ số mỗi mức.
-    const INDEX_BITS: u32;
-    /// Số bit VA canonical.
-    const VA_BITS: u32;
-    /// Số bit địa chỉ vật lý.
-    const PA_BITS: u32;
-    /// Cỡ trang (byte).
-    const PAGE_BYTES: u64;
-    /// Số entry mỗi bảng.
-    const ENTRIES: usize;
-
-    /// Chỉ số entry của `va` tại `level` (level ngoài dải ⇒ 0).
-    fn index(va: u64, level: usize) -> usize;
-
-    /// `va` có canonical theo [`Self::VA_BITS`] không.
-    fn is_canonical(va: u64) -> bool;
-
-    /// Mã hoá descriptor **bảng** trỏ tới `pa`.
-    fn encode_table(pa: u64) -> u64;
-
-    /// Mã hoá descriptor **lá** 4 KiB cho `pa` với quyền/thuộc tính/shareability.
-    fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64;
-
-    /// Bóc descriptor tại `level`.
-    fn decode(entry: u64, level: usize) -> Descriptor;
-}
-
-/// `va` canonical theo `va_bits` bit: bit `va_bits - 1` chép vào mọi bit cao hơn.
-///
-/// Hàm **thuần**, không panic với mọi `u64`; `va_bits` ngoài `1..64` coi như không ràng buộc.
-/// Tách khỏi [`Aarch64`] để format 48-bit (thiết kế §541) dùng lại được — test
-/// `format_48_bit_va` chốt điều này.
-pub const fn is_canonical_bits(va: u64, va_bits: u32) -> bool {
-    if va_bits == 0 || va_bits >= 64 {
-        return true;
-    }
-    let sign = (va >> (va_bits - 1)) & 1;
-    let upper = va >> va_bits;
-    if sign == 1 {
-        upper == (1u64 << (64 - va_bits)) - 1
-    } else {
-        upper == 0
-    }
+/// Byte `MAIR_EL1` tương ứng với một [`MemAttr`] (để test đối chiếu).
+pub const fn mair_byte(attr: MemAttr) -> u64 {
+    (MAIR_EL1 >> (8 * attr.index())) & 0xFF
 }
 
 /// Định dạng AArch64 VMSA 4 KiB granule, 4 mức, 39-bit VA canonical, 48-bit PA (D2-147).
@@ -379,7 +169,7 @@ impl Aarch64 {
     /// - `AttrIndx = attr`, `SH = share`.
     pub const fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64 {
         let mut d = DESC_VALID | DESC_TABLE_OR_PAGE | DESC_AF;
-        d |= attr.mair_index() << DESC_ATTR_SHIFT;
+        d |= attr.index() << DESC_ATTR_SHIFT;
         d |= share.bits() << DESC_SH_SHIFT;
         if !perms.write {
             d |= DESC_AP_RO;
@@ -481,5 +271,12 @@ impl PageTableFormat for Aarch64 {
 
     fn decode(entry: u64, level: usize) -> Descriptor {
         Aarch64::decode(entry, level)
+    }
+
+    /// AArch64 **không có** bit `R` riêng: `AP[2]` chọn RW/RO, `AP[1]` chọn EL0/EL1, nên mọi lá
+    /// hợp lệ đều **đọc được**. `read = false` là quyền **không biểu diễn được** ⇒ từ chối
+    /// (`InvalidPerms`) thay vì lặng lẽ cấp quyền đọc.
+    fn perms_valid(perms: Perms) -> bool {
+        perms.read
     }
 }

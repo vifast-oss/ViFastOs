@@ -17,3 +17,9 @@ vifast-core = { path = "../vifast-core" }
 # KT-67 (D2-95): allocator Frame **duy nhất** trên Untyped — object layer bỏ `pa_used`/
 # `pa_holes` riêng, dùng `vifast_alloc::FrameArena` (một nguồn sự thật byte, no_std, safe).
 vifast-alloc = { path = "../../lib/vifast-alloc" }
+
+[dev-dependencies]
+# KT-164: test generic `kiem_tung_dinh_dang<F: PageTableFormat>` chạy **cùng một thân** cho Sv39
+# (crate này) và AArch64 (crate kia) — cần định dạng AArch64 để chứng minh trait dùng chung thật.
+# Chỉ dev-dependency: ảnh sản phẩm và L0 build thường **không** kéo crate aarch64.
+vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
