@@ -421,7 +421,10 @@ do_gate_fast() {
     # của `v2/Cargo.toml` **không** chạy nó — thiếu bước này thì test `smp` (bố cục per-hart) đỏ
     # mà cổng vẫn xanh (đúng lỗi B7). `vifast-virtio` **không** thuộc workspace kernel (nó là
     # path-dep của `v2/lib`) nên đã nằm trong L0 của `v2/Cargo.toml` — **không** thêm lần hai.
-    run_step "L0 kernel workspace (KT-148)" "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" -p vifast-plat-common || return 1
+    # **KT-166** (review L6, KT-161 §3.5): `vifast-plat-aarch64` là member của workspace kernel
+    # nhưng **không** được test ở đâu trong cổng — 22 test host + việc crate **có biên dịch** chỉ
+    # được kiểm khi ai đó gõ tay đúng lệnh. Thêm `-p` thứ hai để crate nằm trong L0 thật sự.
+    run_step "L0 kernel workspace (KT-148)" "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" -p vifast-plat-common -p vifast-plat-aarch64 || return 1
     echo "--- L1 (sim 1.000 seed)"
     local t0 t1
     PYTHON="$(find_python || true)"

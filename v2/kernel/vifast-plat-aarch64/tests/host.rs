@@ -259,6 +259,118 @@ fn descriptor_bits_aarch64() {
     assert_eq!(Aarch64::decode(0, 3), Descriptor::Invalid);
 }
 
+// ------------------------------------------------- 1b. bit **literal** ARMv8-A (KT-166)
+
+/// Vị trí bit **chép tay từ đặc tả ARMv8-A** (ARM DDI 0487, mục D8.3 "VMSAv8-64 translation
+/// table descriptor format"), **cố ý không** lấy từ hằng `DESC_*` của crate.
+///
+/// Vì sao có khối này: reviewer L6 (KT-161 §3.3) chứng minh `descriptor_bits_aarch64` là
+/// **tautology một phần** — nó so bit bằng **chính** hằng mà `encode_leaf` dùng, nên đổi **vị
+/// trí** một bit (`DESC_ATTR_SHIFT 2→3`, `DESC_NG 1<<11→1<<60`) thì encoder và test cùng đổi
+/// theo và **22/22 vẫn xanh**. Bảng dưới đây là nguồn **độc lập** để neo encoder vào đặc tả:
+/// đột biến vị trí bit **phải** làm test đỏ.
+mod armv8a {
+    /// `AttrIndx[2:0]` — bit 4:2.
+    pub const ATTR_INDX_SHIFT: u32 = 2;
+    /// `AP[2:1]` — bit 7:6 (`AP[2]` = chỉ đọc, `AP[1]` = EL0 truy cập được).
+    pub const AP_SHIFT: u32 = 6;
+    pub const AP_MASK: u64 = 0b11 << AP_SHIFT;
+    pub const AP_RO: u64 = 1 << 7;
+    pub const AP_USER: u64 = 1 << 6;
+    /// `SH[1:0]` — bit 9:8.
+    pub const SH_SHIFT: u32 = 8;
+    /// `AF` — bit 10.
+    pub const AF: u64 = 1 << 10;
+    /// `nG` — bit 11.
+    pub const NG: u64 = 1 << 11;
+    /// `PXN` — bit 53; `UXN` — bit 54.
+    pub const PXN: u64 = 1 << 53;
+    pub const UXN: u64 = 1 << 54;
+    /// `V` bit 0; bit 1 = 1 với page/table descriptor.
+    pub const VALID: u64 = 1 << 0;
+    pub const TABLE_OR_PAGE: u64 = 1 << 1;
+    /// Địa chỉ PA bắt đầu ở bit 12 (48 bit PA).
+    pub const ADDR_SHIFT: u32 = 12;
+    pub const ADDR_MASK: u64 = 0x0000_FFFF_FFFF_F000;
+}
+
+/// Descriptor leaf phải khớp **giá trị tuyệt đối** tính tay từ ARMv8-A — không so với hằng
+/// của crate. Đột biến `DESC_ATTR_SHIFT 2→3` hoặc `DESC_NG 1<<11→1<<60` làm test này **ĐỎ**.
+#[test]
+fn descriptor_bits_literal_armv8a() {
+    // Leaf đã biết: VA 0x1000, PA 0x8000_1000, KERNEL_RW, Normal, Inner.
+    let d = Aarch64::encode_leaf(PA, Perms::KERNEL_RW, MemAttr::Normal, Shareability::Inner);
+    // KERNEL_RW: V|bit1|AF|AttrIndx=1|SH=0b11|PXN|UXN|PA (AP[2]=0, AP[1]=0, nG=0).
+    assert_eq!(
+        d,
+        armv8a::VALID
+            | armv8a::TABLE_OR_PAGE
+            | armv8a::AF
+            | (1u64 << armv8a::ATTR_INDX_SHIFT)
+            | (0b11u64 << armv8a::SH_SHIFT)
+            | armv8a::PXN
+            | armv8a::UXN
+            | PA,
+        "descriptor KERNEL_RW phải đúng từng bit ARMv8-A"
+    );
+    assert_eq!(
+        d, 0x0060_0000_8000_1707,
+        "giá trị tuyệt đối của leaf KERNEL_RW (tính tay từ đặc tả)"
+    );
+    assert_eq!(
+        (d >> armv8a::ATTR_INDX_SHIFT) & 0b111,
+        1,
+        "AttrIndx = 1 (Normal) ở bit 4:2"
+    );
+    assert_eq!(
+        (d >> armv8a::SH_SHIFT) & 0b11,
+        0b11,
+        "SH = inner shareable ở bit 9:8"
+    );
+    assert_eq!(d & armv8a::AP_MASK, 0, "KERNEL_RW: AP[2:1] = 0");
+    assert_eq!(d & armv8a::AF, armv8a::AF, "AF = 1 ở bit 10");
+    assert_eq!(d & armv8a::NG, 0, "kernel leaf: nG = 0 ở bit 11");
+    assert_eq!(d & armv8a::UXN, armv8a::UXN, "kernel NX: UXN = 1 ở bit 54");
+    assert_eq!(d & armv8a::PXN, armv8a::PXN, "kernel NX: PXN = 1 ở bit 53");
+    assert_eq!(d & 0xFFF, 0x707, "12 bit thấp: V|bit1|AttrIndx|AP|SH|AF|nG");
+    assert_eq!(
+        (d >> armv8a::ADDR_SHIFT) & (armv8a::ADDR_MASK >> armv8a::ADDR_SHIFT),
+        PA >> armv8a::ADDR_SHIFT,
+        "PA nằm ở bit 47:12, không đè trường thuộc tính"
+    );
+
+    // Leaf user RX: AP[2]=1 (RO), AP[1]=1 (EL0), nG=1, UXN=0, PXN=1.
+    let u = Aarch64::encode_leaf(PA, Perms::USER_RX, MemAttr::Normal, Shareability::Inner);
+    assert_eq!(
+        u,
+        armv8a::VALID
+            | armv8a::TABLE_OR_PAGE
+            | armv8a::AF
+            | (1u64 << armv8a::ATTR_INDX_SHIFT)
+            | (0b11u64 << armv8a::SH_SHIFT)
+            | armv8a::AP_RO
+            | armv8a::AP_USER
+            | armv8a::NG
+            | armv8a::PXN
+            | PA,
+        "descriptor USER_RX phải đúng từng bit ARMv8-A"
+    );
+    assert_eq!(
+        u, 0x0020_0000_8000_1FC7,
+        "giá trị tuyệt đối của leaf USER_RX (tính tay từ đặc tả)"
+    );
+    assert_eq!(u & armv8a::AP_RO, armv8a::AP_RO, "user RX: AP[2] = 1 (RO)");
+    assert_eq!(u & armv8a::AP_USER, armv8a::AP_USER, "user: AP[1] = 1");
+    assert_eq!(u & armv8a::NG, armv8a::NG, "leaf user phải nG ở bit 11");
+    assert_eq!(u & armv8a::UXN, 0, "user exec: UXN = 0");
+    assert_eq!(u & armv8a::PXN, armv8a::PXN, "user: PXN = 1");
+    assert_eq!(
+        (u >> armv8a::ADDR_SHIFT) & (armv8a::ADDR_MASK >> armv8a::ADDR_SHIFT),
+        PA >> armv8a::ADDR_SHIFT,
+        "PA của leaf user ở bit 47:12"
+    );
+}
+
 #[test]
 fn mair_index_matches_programmed_mair() {
     for attr in [MemAttr::Device, MemAttr::Normal] {
@@ -587,6 +699,92 @@ fn block_descriptor_rejected() {
     let root = mmu.root();
     assert!(mmu.memory_mut().write_entry(root, 0, block));
     assert_eq!(mmu.translate(VA), Err(MapError::CorruptTable));
+}
+
+/// Format **cố ý hỏng** cho ca âm "bảng ở mức lá" (KT-166): `decode` trả `Table` ở **mọi** mức,
+/// kể cả mức lá. Không format thật nào làm vậy — AArch64 giải mã `0b11` ở mức lá thành `Leaf`
+/// (page descriptor, đúng ARMv8-A), nên nhánh phòng thủ `translate`
+/// (`if level + 1 == F::LEVELS { return Err(CorruptTable) }`) **không** chạm được qua AArch64.
+/// Đây là format duy nhất chạm được nhánh đó, và nó đúng là dữ liệu hỏng mà nhánh ấy sinh ra
+/// để chặn: bảng trang thật không bao giờ trỏ tới một **bảng** ở mức lá.
+struct TableAtLeaf4;
+
+impl PageTableFormat for TableAtLeaf4 {
+    const LEVELS: usize = 4;
+    const PAGE_BITS: u32 = 12;
+    const INDEX_BITS: u32 = 9;
+    const VA_BITS: u32 = 39;
+    const PA_BITS: u32 = 48;
+    const PAGE_BYTES: u64 = 4096;
+    const ENTRIES: usize = 512;
+
+    fn index(va: u64, level: usize) -> usize {
+        ((va >> (12 + 9 * (3 - level))) & 0x1FF) as usize
+    }
+    fn is_canonical(va: u64) -> bool {
+        is_canonical_bits(va, 39)
+    }
+    fn encode_table(pa: u64) -> u64 {
+        (pa & !0xFFF) | 0b11
+    }
+    fn encode_leaf(pa: u64, _perms: Perms, _attr: MemAttr, _share: Shareability) -> u64 {
+        (pa & !0xFFF) | 0b11
+    }
+    fn decode(entry: u64, _level: usize) -> Descriptor {
+        if entry & 1 == 0 {
+            return Descriptor::Invalid;
+        }
+        Descriptor::Table { pa: entry & !0xFFF }
+    }
+}
+
+/// `translate` gặp descriptor **bảng** ở mức lá ⇒ `CorruptTable`, **không** coi là bảng rồi đi
+/// tiếp/trả PA rác. Reviewer L6 (KT-161 §3.4) chứng minh xoá nhánh kiểm này vẫn 22/22 xanh —
+/// test này là ca âm còn thiếu.
+#[test]
+fn translate_table_at_leaf_rejected() {
+    let mut mmu = PageTable::<TableAtLeaf4, _>::new(TestMemory::new(FRAME_BASE)).expect("gốc");
+    let mut table = mmu.root();
+    // Dựng đường đi 4 mức bằng descriptor **bảng** ở cả ba mức trung gian.
+    for level in 0..3 {
+        let next = mmu
+            .memory_mut()
+            .alloc_frame()
+            .expect("frame bảng trung gian");
+        assert!(
+            mmu.memory_mut().zero_frame(next),
+            "frame bảng mới phải zero được"
+        );
+        assert!(
+            mmu.memory_mut().write_entry(
+                table,
+                TableAtLeaf4::index(VA, level),
+                TableAtLeaf4::encode_table(next)
+            ),
+            "ghi entry bảng ở mức {level}"
+        );
+        table = next;
+    }
+    // Mức lá (level 3): đặt **descriptor bảng** — dữ liệu hỏng, không phải page descriptor.
+    let bogus_pa = 0x0000_0000_9000_0000u64;
+    assert!(
+        mmu.memory_mut().write_entry(
+            table,
+            TableAtLeaf4::index(VA, 3),
+            TableAtLeaf4::encode_table(bogus_pa)
+        ),
+        "ghi entry mức lá"
+    );
+    assert_eq!(
+        mmu.translate(VA),
+        Err(MapError::CorruptTable),
+        "bảng ở mức lá phải CorruptTable, không được trả PA rác"
+    );
+    assert_eq!(
+        mmu.walk(VA).outcome,
+        WalkOutcome::Table,
+        "walk chẩn đoán báo Table, không nói dối là Leaf"
+    );
 }
 
 // ---------------------------------------------------------------- 4. không rò rỉ frame
