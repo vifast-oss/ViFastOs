@@ -259,3 +259,16 @@ D2-109C: số phải lấy từ log).
   `exec` chỉ chạy trên hart boot (hart phụ park) — chưa kiểm `exec` đồng thời hai hart.
 - **`MAX_INIT_PAGES`** (danh sách trang của loader) giới hạn ảnh U-mode ở một cỡ nhất định; ảnh
   lớn hơn ⇒ `LoadError::Image` (nguyên tử, không rò) nhưng **chưa** có ca kiểm chạm biên này.
+
+## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
+
+Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
+cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+mà không phải viết số vào prose.
+
+| Trường đo | Loại khối | Tệp log |
+|---|---|---|
+| `observed` | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `observed_first` | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `elf_linked_at_base` | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `same` | `scope=` | `kt74-qemu-ktest-exec.log` |

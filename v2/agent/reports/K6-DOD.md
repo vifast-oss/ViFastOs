@@ -509,3 +509,20 @@ SELFTEST_EXIT=0
 - (e) Kiểm **S1** bằng tay: `strings` ảnh sản phẩm **không** có `procsrv`/`shell`; ảnh `ktest-proc`
   **có**; boot sản phẩm dừng ở `# k3 halt` (`kt76-product-boot.log`).
 - (f) Không có ngưỡng nào bị nới: trần ảnh/`size_of`/N soak/seed L1/smp — so §5.7 + §5.3 + §5.6.
+
+## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
+
+Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
+cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+mà không phải viết số vào prose.
+
+| Trường đo | Loại khối | Tệp log |
+|---|---|---|
+| `fail` | `scope=` | `kt76-soak.log` |
+| `index` | `scope=` | `kt71-green-qemu-ktest.log` |
+| `MAX_IO` | `scope=` | `kt76-criteria.txt` |
+| `boots` | `scope=` | `kt76-persist-run.log` |
+| `clients` | `scope=` | `kt70-green-qemu-ktest-user.log` |
+| `build` | `scope=` | `kt76-build-sha.log` |
+| `bytes` | `scope=` | `kt76-build-sha.log` |
+| `qemu_ppid1` | `scope=` | `kt76-orphan.log` |

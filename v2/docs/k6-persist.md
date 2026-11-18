@@ -288,3 +288,30 @@ digest build=ef566cfa583e34bb text=49874
   §3.1) — chúng là **quan sát**, không phải bằng chứng; dựng ca âm là việc của task sau.
 - Matrix **không** chứa ảnh persist (lý do ở §2.2) ⇒ “matrix xanh” **không** phải bằng chứng cho
   persist; bằng chứng là runner riêng ở §8. Đây là chủ ý, không phải thiếu sót.
+
+## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
+
+Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
+cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+mà không phải viết số vào prose.
+
+| Trường đo | Loại khối | Tệp log |
+|---|---|---|
+| `ok` | `scope=` | `kt75-qemu-b08.log` |
+| `recorded` | `scope=` | `kt75-qemu-b01.log` |
+| `fsync` | `scope=` | `kt75-qemu-b01.log` |
+| `durable` | `scope=` | `kt75-qemu-b01.log` |
+| `pending_blocks` | `scope=` | `kt75-qemu-b01.log` |
+| `overflow` | `scope=` | `kt75-qemu-b01.log` |
+| `match` | `scope=` | `kt75-qemu-b02.log` |
+| `mismatched` | `scope=` | `kt75-qemu-b02.log` |
+| `size_bad` | `scope=` | `kt75-qemu-b02.log` |
+| `absent_bad` | `scope=` | `kt75-qemu-b02.log` |
+| `fsutil_mutated` | `scope=` | `kt75-host-b07.log` |
+| `device_flushes` | `scope=` | `kt75-qemu-b01.log` |
+| `pushed` | `scope=` | `kt75-qemu-b01.log` |
+| `bytes_lost` | `scope-red=` | `kt75-qemu-b09.log` |
+| `absent` | `scope=` | `kt75-qemu-b02.log` |
+| `p7_match` | `scope-red=` | `kt75-qemu-b10.log` |
+| `records` | `scope=` | `kt75-qemu-b08.log` |
+| `changed` | `scope-red=` | `kt75-persist-run.log` |
