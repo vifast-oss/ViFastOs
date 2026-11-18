@@ -1,0 +1,12 @@
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common --test smp
+   Compiling vifast-core v0.1.0 (/private/tmp/night-L6-review/v2/kernel/vifast-core)
+   Compiling vifast-plat-common v0.1.0 (/private/tmp/night-L6-review/v2/kernel/vifast-plat-common)
+error[E0080]: evaluation panicked: assertion failed: HART_STRIDE == 0x1D000
+   --> vifast-plat-common/src/smp.rs:380:5
+    |
+380 |     assert!(HART_STRIDE == 0x1D000);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `smp::_` failed here
+
+For more information about this error, try `rustc --explain E0080`.
+error: could not compile `vifast-plat-common` (lib) due to 1 previous error
+EXIT=101
