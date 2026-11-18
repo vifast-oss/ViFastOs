@@ -423,6 +423,12 @@ fn fs_dispatch(line: &[u8]) -> bool {
         let (path, text) = split_space(&line[6..]);
         if path.is_empty() {
             put(b"# shell: thieu duong dan\n");
+        } else if text.is_empty() {
+            // **K7 (Agent 0, phiếu lượt bốn câu 1)**: `write <path>` **thiếu nội dung** ⇒ LỖI, tệp
+            // **KHÔNG** bị đổi. Trước đây nhánh này cắt tệp về rỗng (`TRUNC 0`) — cắt ngầm khi gõ
+            // thiếu là rủi ro mất dữ liệu, đúng nhóm lỗi K7 ưu tiên. Muốn cắt rỗng thì dùng
+            // `truncate <path> 0`, tường minh.
+            put(b"# shell: thieu noi dung\n");
         } else {
             cmd_write(path, text);
         }

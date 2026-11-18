@@ -665,11 +665,12 @@ check_new_cmds_edge2() {
 # Hành vi **thật** đọc từ `v2/kernel/vifast-kbin-riscv64/init/shell_user.rs` (không đoán):
 #   - `time 5`  : `fs_dispatch` chỉ khớp **nguyên dòng** `time`; không có nhánh `time ` ⇒ rơi
 #                 xuống `run_line` ⇒ `# shell: ?`.  (shell_user.rs:430, 797)
-#   - `write /a`: `starts_with(line, b"write ")` ⇒ `split_space` cho path=`/a`, text=**rỗng**;
-#                 `cmd_write` bỏ vòng ghi, gọi `OP_TRUNC | 0` ⇒ cắt tệp về **0 byte** rồi `OP_SYNC`
-#                 ⇒ in `# shell: write /a bytes=0 sync=ok`. **Không** báo lỗi, **không** treo.
-#                 (shell_user.rs:422-428, 635-685) — đây là **chỗ lệch** với kỳ vọng "phải báo
-#                 lỗi, không được ghi rỗng"; ca này ghim hành vi thật, xem báo cáo Q4 §4.
+#   - `write /a`: **K7 (Agent 0, phiếu lượt bốn câu 1)** — hành vi **đã đổi**. Trước: `split_space`
+#                 cho path=`/a`, text=**rỗng** ⇒ `cmd_write` gọi `OP_TRUNC | 0` ⇒ cắt tệp về 0 byte
+#                 rồi in `bytes=0 sync=ok` (cắt ngầm khi gõ thiếu = rủi ro mất dữ liệu). Nay:
+#                 `fs_dispatch` có nhánh `text.is_empty()` ⇒ in `# shell: thieu noi dung` và tệp
+#                 **KHÔNG** bị đổi. Muốn cắt rỗng thì dùng `truncate <path> 0`, tường minh.
+#                 (shell_user.rs:422-436)
 #   - `write /khongco/x abc`: `fs_set_path` chỉ **nạp** đường dẫn (không kiểm), rồi `OP_WRITE`
 #                 ⇒ kernel `lookup` trượt ⇒ `create` trượt vì thư mục cha không có ⇒
 #                 `FsError::NotFound` ⇒ `err_code` = 5 ⇒ `# shell: fs loi code=5`.
@@ -709,21 +710,37 @@ ok_edge3_time_arg() {
 # `write /a` (đường dẫn, **không** nội dung) ⇒ hành vi thật: cắt tệp về 0 byte và **nói thật**
 # `bytes=0`; `stat /a` sau đó phải thấy `size=0`. Đòi cả hai để một `write` im lặng (không in gì)
 # hoặc một `write` ghi rỗng mà không nói cũng đỏ.
+# `write /a` (đường dẫn, **KHÔNG** nội dung) ⇒ **LỖI** và tệp **KHÔNG** bị đổi.
+#
+# K7 (Agent 0, phiếu lượt bốn câu 1) — đổi từ "cắt tệp về rỗng" sang "báo lỗi". Ba vế của luật
+# đóng lỗi, và cách ca này cài cả ba:
+#
+#   1. **Đỏ trên mã cũ**: mã cũ in `# shell: write /a bytes=0 sync=ok` và `stat` thấy `size=0`.
+#      Ca này đòi `# shell: thieu noi dung` **và** `size=8` ⇒ mã cũ đỏ ở **cả hai** vế.
+#   2. **Xanh trên mã mới**: `size=8` là cỡ **cũ** (do `write /a xin chao` đặt trước), nên nó
+#      chứng minh tệp **không bị đụng** — không chỉ chứng minh "có in lỗi".
+#   3. **Đột biến bỏ nhánh ⇒ đỏ**: bỏ nhánh `text.is_empty()` thì dòng lỗi biến mất và `size`
+#      về 0 ⇒ cả hai vế đỏ lại.
 ok_edge3_write_no_text() {
-    local log="$1" n8 n0 ns
+    local log="$1" n8 nerr ns
     n8="$(grep -c -x -F '# shell: write /a bytes=8 sync=ok' "$log" 2>/dev/null || true)"
     if [ "${n8:-0}" -ne 1 ]; then
         echo "mong đúng 1 dòng '# shell: write /a bytes=8 sync=ok' (tiền đề), thấy ${n8:-0}"
         return 1
     fi
-    n0="$(grep -c -x -F '# shell: write /a bytes=0 sync=ok' "$log" 2>/dev/null || true)"
-    if [ "${n0:-0}" -ne 1 ]; then
-        echo "mong đúng 1 dòng '# shell: write /a bytes=0 sync=ok' (write /a khong noi dung), thấy ${n0:-0}"
+    nerr="$(grep -c -x -F '# shell: thieu noi dung' "$log" 2>/dev/null || true)"
+    if [ "${nerr:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: thieu noi dung' (write /a khong noi dung phai BAO LOI), thấy ${nerr:-0}"
         return 1
     fi
-    ns="$(grep -c -E '^# shell: stat path=/a kind=[0-9]+ size=0 ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    # Không được còn dấu vết của hành vi cũ (cắt ngầm).
+    if grep -q -x -F '# shell: write /a bytes=0 sync=ok' "$log" 2>/dev/null; then
+        echo "còn dòng '# shell: write /a bytes=0 sync=ok' — hành vi CŨ (cắt ngầm) vẫn chạy"
+        return 1
+    fi
+    ns="$(grep -c -E '^# shell: stat path=/a kind=[0-9]+ size=8 ino=[0-9]+$' "$log" 2>/dev/null || true)"
     if [ "${ns:-0}" -ne 1 ]; then
-        echo "stat /a không thấy size=0 sau 'write /a' (thấy ${ns:-0} dòng khớp) — ghi rỗng không có hiệu lực?"
+        echo "stat /a KHÔNG thấy size=8 sau 'write /a' (thấy ${ns:-0} dòng khớp) — tệp đã bị đổi, lẽ ra phải giữ nguyên"
         return 1
     fi
     return 0
@@ -799,6 +816,90 @@ check_new_cmds_edge3() {
         "write-thu-muc-khong-co:ok_edge3_write_missing_dir" \
         "ls-tep:ok_edge3_ls_file" \
         "sync-tham-so:ok_edge3_sync_arg"
+}
+
+# --- k7-uu-tien: bốn ca biên **nhóm ưu tiên** của K7 (Agent 0, phiếu lượt bốn) --------------
+#
+# Nhóm ưu tiên = **toàn vẹn dữ liệu**: một lệnh gõ sai **không** được làm mất/làm hỏng dữ liệu đã
+# có. Bốn ca, mỗi ca **ghim hành vi thật** đọc từ mã (không đoán):
+#   - `write / abc`  : `/` là thư mục ⇒ `Fs::write` trả `IsDir` ⇒ `err_code` = 8. Không ghi gì.
+#   - `truncate / 5` : `/` là thư mục ⇒ `Fs::truncate` trả `IsDir` ⇒ `err_code` = 8. Không cắt gì.
+#   - `truncate /a`  : thiếu kích thước ⇒ `# shell: thieu kich thuoc`; tệp **không** bị đổi.
+#   - `write    abc` : đường dẫn rỗng (phần trước dấu cách đầu là rỗng) ⇒ `# shell: thieu duong dan`.
+# Cộng một ca **toàn vẹn** ở cuối: sau cả bốn lệnh, `/a` vẫn `size=8` và `cat /a` vẫn đọc đúng
+# `xin chao`. Bốn ca riêng lẻ chỉ nói "có in lỗi"; ca toàn vẹn mới nói "dữ liệu còn nguyên".
+
+# `write / abc` ⇒ đúng một `# shell: fs loi code=8` (IsDir), **không** có dòng `write` thành công.
+ok_k7_write_dir() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: fs loi code=8' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -lt 1 ]; then
+        echo "mong ít nhất 1 dòng '# shell: fs loi code=8' (write/truncate lên thư mục), thấy ${n:-0}"
+        return 1
+    fi
+    if grep -q -E '^# shell: write / bytes=' "$log" 2>/dev/null; then
+        echo "có dòng '# shell: write / bytes=…' — ghi lên thư mục mà không báo lỗi"
+        return 1
+    fi
+    return 0
+}
+
+# `truncate / 5` ⇒ cũng `code=8`; và **không** có dòng `truncate` thành công nào cho `/`.
+ok_k7_trunc_dir() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: fs loi code=8' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -lt 2 ]; then
+        echo "mong ít nhất 2 dòng '# shell: fs loi code=8' (write / + truncate /), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `truncate /a` (thiếu kích thước) ⇒ đúng một `# shell: thieu kich thuoc`.
+ok_k7_trunc_no_size() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: thieu kich thuoc' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: thieu kich thuoc' (truncate /a), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `write    abc` (đường dẫn rỗng) ⇒ đúng một `# shell: thieu duong dan`.
+ok_k7_write_space_path() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: thieu duong dan' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: thieu duong dan' (write voi duong dan rong), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# **Toàn vẹn**: sau bốn lệnh sai, `/a` vẫn 8 byte và đọc lại đúng nội dung.
+ok_k7_khong_mat_du_lieu() {
+    local log="$1" ns nc
+    ns="$(grep -c -E '^# shell: stat path=/a kind=[0-9]+ size=8 ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${ns:-0}" -ne 1 ]; then
+        echo "stat /a KHÔNG thấy size=8 sau bốn lệnh sai (thấy ${ns:-0}) — dữ liệu đã bị đổi"
+        return 1
+    fi
+    nc="$(grep -c -x -F '# shell: cat ok bytes=8 first=xin chao' "$log" 2>/dev/null || true)"
+    if [ "${nc:-0}" -ne 1 ]; then
+        echo "cat /a KHÔNG đọc lại đúng 'xin chao' (thấy ${nc:-0}) — nội dung đã bị đổi"
+        return 1
+    fi
+    return 0
+}
+
+check_k7_uu_tien() {
+    emit_verdicts "k7-uu-tien" "$1" \
+        "write-thu-muc:ok_k7_write_dir" \
+        "truncate-thu-muc:ok_k7_trunc_dir" \
+        "truncate-thieu-co:ok_k7_trunc_no_size" \
+        "write-duong-dan-rong:ok_k7_write_space_path" \
+        "khong-mat-du-lieu:ok_k7_khong_mat_du_lieu"
 }
 
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
@@ -1206,16 +1307,51 @@ run_selftest() {
     {
         printf '# shell: ?\n'
         printf '# shell: write /a bytes=8 sync=ok\n'
-        printf '# shell: write /a bytes=0 sync=ok\n'
-        printf '# shell: stat path=/a kind=1 size=0 ino=3\n'
+        printf '# shell: thieu noi dung\n'
+        printf '# shell: stat path=/a kind=1 size=8 ino=3\n'
         printf '# shell: fs loi code=5\n'
         printf '# shell: fs loi code=7\n'
         printf '# shell: ?\n'
         printf '# shell: echo __END_13__\n'
     } >"$right"
-    selftest_verdicts "3g new-cmds-edge3 (sai)" check_new_cmds_edge3 "$wrong" 1 3 2 \
-        'new-cmds-edge3[time-tham-so]: FAIL' 'new-cmds-edge3[ls-tep]: FAIL'
+    # Log SAI ở trên cố ý giữ **hành vi CŨ** của `write /a` (`bytes=0`, `size=0`) ⇒ nay phải đỏ
+    # **ba** lệnh, không phải hai: `time 5` bị bỏ qua, `ls /README` liệt kê bừa, và `write /a`
+    # cắt ngầm. Đây là vế "đỏ trên mã cũ" của luật đóng lỗi, cài ngay trong selftest.
+    selftest_verdicts "3g new-cmds-edge3 (sai)" check_new_cmds_edge3 "$wrong" 1 2 3 \
+        'new-cmds-edge3[time-tham-so]: FAIL' 'new-cmds-edge3[ls-tep]: FAIL' \
+        'new-cmds-edge3[write-thieu-noi-dung]: FAIL'
     selftest_verdicts "3g new-cmds-edge3 (dung)" check_new_cmds_edge3 "$right" 0 5 0
+
+    # ---- ca 14 (**K7 nhóm ưu tiên**): bốn ca biên toàn vẹn dữ liệu. Log SAI cố ý hỏng **ba**
+    #      lệnh: `write /` báo thành công (ghi lên thư mục), `truncate /` không báo `code=8`, và
+    #      `/a` bị đổi còn 0 byte ⇒ thông điệp đỏ phải nêu **cả ba**.
+    d="$(mktemp -d "$root/c14.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: write /a bytes=8 sync=ok\n'
+        printf '# shell: write / bytes=8 sync=ok\n'
+        printf '# shell: fs loi code=8\n'
+        printf '# shell: thieu kich thuoc\n'
+        printf '# shell: thieu duong dan\n'
+        printf '# shell: stat path=/a kind=1 size=0 ino=3\n'
+        printf '# shell: cat ok bytes=0 first=\n'
+        printf '# shell: echo __END_14__\n'
+    } >"$wrong"
+    {
+        printf '# shell: write /a bytes=8 sync=ok\n'
+        printf '# shell: fs loi code=8\n'
+        printf '# shell: fs loi code=8\n'
+        printf '# shell: thieu kich thuoc\n'
+        printf '# shell: thieu duong dan\n'
+        printf '# shell: stat path=/a kind=1 size=8 ino=3\n'
+        printf '# shell: cat ok bytes=8 first=xin chao\n'
+        printf '# shell: echo __END_14__\n'
+    } >"$right"
+    selftest_verdicts "14 k7-uu-tien (sai)" check_k7_uu_tien "$wrong" 1 2 3 \
+        'k7-uu-tien[write-thu-muc]: FAIL' 'k7-uu-tien[truncate-thu-muc]: FAIL' \
+        'k7-uu-tien[khong-mat-du-lieu]: FAIL'
+    selftest_verdicts "14 k7-uu-tien (dung)" check_k7_uu_tien "$right" 0 5 0
 
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"
@@ -1707,6 +1843,32 @@ run_real() {
             fi
         else
             echo "# new-cmds-edge3: FAIL (quá hạn — shell treo ở ca biên mới)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
+    # (14) **K7 nhóm ưu tiên** (Agent 0, phiếu lượt bốn): bốn ca biên **toàn vẹn dữ liệu** —
+    #      `write` lên thư mục, `truncate` lên thư mục, `truncate` thiếu cỡ, `write` với đường dẫn
+    #      rỗng. `/a` được tạo **ngay trong ca** (8 byte) rồi bốn lệnh sai lần lượt chạy; cuối cùng
+    #      `stat` + `cat` chứng minh dữ liệu **còn nguyên**. Đặt **trước** (8b) để `/README` còn
+    #      nguyên (ca này không chạm `/README`).
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        for c in 'write /a xin chao' 'write / abc' 'truncate / 5' 'truncate /a' \
+            'write    abc' 'stat /a' 'cat /a'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 14; then
+            if check_k7_uu_tien "$CASE_LOG"; then
+                echo "# k7-uu-tien: PASS"
+            else
+                echo "# k7-uu-tien: FAIL (xem các dòng [<lệnh>]: FAIL ở trên)"
+                rc=1
+            fi
+        else
+            echo "# k7-uu-tien: FAIL (quá hạn — shell treo ở ca K7)"
             CASE_TIMEOUT=1
             rc=1
         fi
