@@ -186,6 +186,17 @@ có thư mục `/bin` (chỉ seed `/README`), nên kịch bản v1 `cd /bin` c�
 **Mười sáu ca cũ** (1..8, 10..15, 8b `truncate-jobs`, `exit`) đều PASS trong cùng lượt chạy — xem
 `/tmp/kt137-ve2.out` (mỗi ca một dòng `# <tên>: PASS`). Không ca nào đỏ.
 
+**Tái lập**: build lại ở HEAD `67d2e808` (commit nhật ký **không** đổi build-inputs) cho **cùng**
+sha `36fcee017231dc9c6a136312862cd10fa6cb2232704aea9e34dfd28b7aead37e`, `inputs=170becc54c514926`,
+`dirty=0` — ảnh **byte-identical**, nên số đo ở trên áp cho cả HEAD cuối.
+
+**T-INFRA (ghi để không đọc nhầm)**: lượt đo chạy lúc máy có **QEMU của sub-agent khác** (ppid=1),
+nên harness in thêm hai dòng `# infra after: … qemu_foreign=1 … verdict=KHONG_HOP_LE ly_do=qemu_ppid1=1`
+và `# MEASUREMENT_INVALID tag=after ly_do=qemu_ppid1=1`. Đó là **cảnh báo hạ tầng** của
+`qemu_guard.sh` (không phải ca kiểm đỏ): phán quyết của harness vẫn `# shell-edge.sh: PASS`,
+`exit=0`, và QEMU của chính lượt đo đã được dọn (`qemu_own=0`). Không retry để "lấy xanh" — lượt
+chạy lại sau đó (vế 2 lần hai, cùng ảnh) cũng PASS.
+
 ## 6. Vế 3 — **đột biến** (bỏ kiểm `kind=2` ⇒ `cd` vào **tệp** vẫn "thành công")
 
 Đột biến: xoá nhánh
