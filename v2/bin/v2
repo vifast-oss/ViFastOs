@@ -286,6 +286,11 @@ do_check() {
         # `gate --fast`; bật cờ để **script thứ tư** rơi vào lớp này là ĐỎ ngay, không chờ ai rà tay.
         # Không thêm ngoại lệ nào: một ngoại lệ = miễn trừ phép kiểm = lại để lỗ mục âm thầm.
         run_step "cổng selftest có cổng gọi (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" --standalone-red || fails=$((fails + 1))
+        # **KT-151 (N7, D2-131)** — máy kiểm "một cơ chế đánh thức TCB": quét `v2/kernel` +
+        # `v2/sim`, đòi kênh chéo hart là hộp thư duy nhất, không doorbell riêng theo arch.
+        # Fail-closed: thiếu mỏ neo (`wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ.
+        run_step "wake paths (KT-151: một cơ chế wake)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" || fails=$((fails + 1))
+        run_step "selftest wake paths (KT-151)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --selftest || fails=$((fails + 1))
     fi
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then
