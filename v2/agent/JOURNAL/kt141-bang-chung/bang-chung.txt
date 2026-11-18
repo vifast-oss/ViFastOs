@@ -1,0 +1,27 @@
+### 1. shell-edge selftest
+$ bash v2/test/boot/shell-edge.sh --selftest | tail -1
+# shell-edge-selftest: PASS (8/8 ca, 32/32 kiểm: 18 sai→ĐỎ + 14 đúng→XANH)
+### 2. scope-table selftest
+$ python3 v2/tools/check-scope-table.py --selftest | tail -1
+# check-scope-table-selftest: PASS (31/31 ca)
+### 3. selftest-wiring standalone-red
+$ python3 v2/tools/check-selftest-wiring.py --standalone-red | tail -1
+check-selftest-wiring: PASS (11 script tự kiểm: 11 có cổng, 0 ngoại lệ, 0 mồ côi)
+### 4. build-rev selftest
+$ bash v2/test/boot/build-rev.sh --selftest | tail -1
+# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j)
+### 5. algo-pin selftest
+$ bash v2/tools/check-algo-pin.sh --selftest | tail -1
+# algo-pin-selftest: PASS (12 ca: a/b/c/d/e/f/g/h1/h2/i/j/k)
+### 6. counter-evidence selftest
+$ bash v2/test/rules/counter-evidence.sh --selftest | tail -1
+# counter-evidence-selftest: PASS (4/4 ca)
+### 7. status
+$ ./v2/bin/v2 status
+== dòng OS ViFastOs ==
+HEAD        3b132dcd75d0 (main)  chưa push: 0
+build-inputs 210 mục  dấu vân tay: 1324edbf33f315b8  dirty: 0
+ảnh mới nhất af01e670275b4104954816ae537ad63bc0ee807bba7496dcb8872044683315b8.bin
+             sha256=af01e670275b4104954816ae537ad63bc0ee807bba7496dcb8872044683315b8 size=205440
+             # build: inputs=1324edbf33f315b8 dirty=0
+task        DONE=129 READY=3 BLOCKED=0 REVIEW=0
