@@ -76,9 +76,20 @@ VIFAST_REPRO_CARGO_EXTRA="--features product-shell,product-fs" bash v2/tools/rep
 bash v2/test/boot/shell-edge.sh --image <ảnh>
 ```
 
-Ảnh: `sha256=d7b7284bf22b8fc9211afd8b49464df6156164568793269a1120f514b295a247 size=209536
-build=f1d0667d8cdb07bd text=130934 inputs=0b8016e6cb6038d5 dirty=1 rev=6b2fdce7ae28`
-(log `kt158-logs/kt158-build-green.log`).
+**Lượt đo chính** (build **sau khi commit**, cây sạch ⇒ `dirty=0`, danh tính khớp đúng HEAD
+`399d5ac0`):
+
+```
+# image: sha256=735e1030bbeec74f46a0a94297266e8103d39e4083e1c8d2935e323f729ad27e bytes=209536
+# image: # build: algo=kt134-v4 inputs=0dd9e10ec24a0024 dirty=0
+```
+
+(log `kt158-logs/kt158-build-clean.log` + `kt158-logs/kt158-shell-edge-clean.log`)
+
+Lượt đo **trước** commit (cùng nội dung nguồn, `dirty=1`) cũng xanh — log
+`kt158-logs/kt158-build-green.log` / `kt158-logs/kt158-shell-edge-green.log`, ảnh
+`sha256=d7b7284bf22b8fc9211afd8b49464df6156164568793269a1120f514b295a247 size=209536
+build=f1d0667d8cdb07bd text=130934 inputs=0b8016e6cb6038d5 dirty=1 rev=6b2fdce7ae28`.
 
 Dòng `# product fs:` (đổi `used=2` → `used=4` vì thêm ba mục):
 
@@ -97,7 +108,7 @@ Dòng `# product fs:` (đổi `used=2` → `used=4` vì thêm ba mục):
 # shell: ls n=5 path=/
 ```
 
-Khối `/docs` của ca 16 (dán nguyên văn từ `kt158-logs/run-green/qemu.log`):
+Khối `/docs` của ca 16 (dán nguyên văn từ `kt158-logs/run-clean/qemu.log`):
 
 ```
 # shell: cd /docs
@@ -123,7 +134,7 @@ shell>
 # shell: pwd /
 ```
 
-Mười bốn dòng phán quyết của ca 16 (log `kt158-logs/kt158-shell-edge-green.log`):
+Mười bốn dòng phán quyết của ca 16 (log `kt158-logs/kt158-shell-edge-clean.log`):
 
 ```
 # kt137-cdpwd[pwd]: PASS
@@ -246,7 +257,9 @@ Log đầy đủ: `v2/agent/JOURNAL/kt158-logs/kt158-v2-check.log`.
   tài liệu **đo** của KT-77c, **không** thuộc phạm vi task và **không** có cổng nào đối chiếu
   (`grep -rn k6-product-fs` trong `v2/tools/`/`v2/test/` = 0). Không sửa để tránh đụng tài liệu
   ngoài phạm vi; nếu Agent 0 muốn cập nhật thì đó là việc riêng (kèm log đo mới).
-- Ảnh dùng để đo mang `dirty=1` (thay đổi chưa commit tại thời điểm build) — đúng như thiết kế
-  KT-86; `shell-edge.sh` chỉ đòi `algo=` khớp định nghĩa hiện hành, không đòi `dirty=0`.
+- Ảnh dùng để đo **chính** (sau commit) mang `dirty=0`, `inputs=0dd9e10ec24a0024`, `rev=399d5ac08fe8`
+  — danh tính khớp đúng HEAD đã commit. Lượt đo **trước** commit (`dirty=1`) cũng xanh và được giữ
+  làm log phụ; `shell-edge.sh` chỉ đòi `algo=` khớp định nghĩa hiện hành, không đòi `dirty=0`
+  (`vbrev_gate` mới đòi — `shell-edge` không dùng `vbrev_gate`).
 - Một QEMU mỗi lượt, `pgrep qemu-system | wc -l` = 0 trước và sau mỗi lượt; không `pkill -f
   qemu-system`.
