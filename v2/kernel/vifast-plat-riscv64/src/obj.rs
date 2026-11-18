@@ -29,7 +29,13 @@ use crate::{mmu, tlb, Riscv64Virt};
 
 /// Số byte arena object layer (RAM thật sau arena page table KT-46) — `[TK]`, đủ cho 2 Untyped,
 /// nhiều PageTable 4 KiB và bảng trung gian của vài VSpace.
-pub const OBJ_ARENA_BYTES: u32 = 64 * 1024;
+///
+/// **KT-157**: 64 KiB → 96 KiB. Pha pager dựng **năm** VSpace (pager + 4 client U-mode), mỗi
+/// VSpace cần root + L1 + L0 = 3 PageTable 4 KiB ⇒ 60 KiB chỉ riêng bảng trang, cộng metadata
+/// CNode/TCB/SC/Endpoint ≈ 10 KiB ⇒ 64 KiB **không đủ** (đo: rig fail `NotEnoughMemory`). Đây là
+/// **dung lượng bộ nhớ**, không phải ngưỡng thời gian/seed/`MAX_OBJECTS`; `MAX_OBJECTS = 96`
+/// giữ nguyên, `# capa: u0 truoc rig` không nằm trong `expected.txt` nên phép đo không đổi.
+pub const OBJ_ARENA_BYTES: u32 = 96 * 1024;
 
 /// Đáy **cửa sổ PA** của `U0`: 32 MiB trong RAM (`-m 128M`), căn **2 MiB** nên cấp được Frame
 /// 2 MiB rồi 4 KiB theo thứ tự giảm dần (K2 KT-36: không đệm căn lề ngầm).

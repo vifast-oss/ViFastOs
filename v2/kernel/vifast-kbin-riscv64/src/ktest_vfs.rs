@@ -17,18 +17,16 @@
 use core::fmt::Write;
 
 use vifast_core::{
-    FaultAccess, FaultKind, KError, Machine, Message, MessageInfo, ObjId, ObjType, SlotRef,
-    TcbState, VmFaultReason,
+    FaultAccess, FaultKind, KError, Machine, Message, MessageInfo, ObjId, SlotRef, TcbState,
+    VmFaultReason,
 };
 use vifast_idl::pager::{decode, encode_fault, Request, METHOD_FAULT, METHOD_STOP};
 use vifast_plat_common::mmu::{PTE_READ, PTE_USER};
-use vifast_plat_common::obj::{CapId, ObjKind};
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
+use vifast_plat_common::obj::CapId;
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
-use vifast_plat_riscv64::mem_bridge;
 use vifast_plat_riscv64::obj as aobj;
-use vifast_plat_riscv64::user::{self, LoadedInit, PagerFault, Stop};
+use vifast_plat_riscv64::user::{self, PagerFault, Stop};
 use vifast_plat_riscv64::Riscv64Virt;
 use vifast_vfs::{byte_at, Stat, CACHE_CAPACITY, PAGE_SIZE};
 
@@ -36,93 +34,24 @@ use vifast_vfs::{byte_at, Stat, CACHE_CAPACITY, PAGE_SIZE};
 mod common;
 
 mod ktest_vfs_once;
+mod ktest_vfs_rig;
 
 use ktest_vfs_once::{check_once, DeliveryLedger};
+use ktest_vfs_rig::{
+    build_rig, Rig, Task, K_EP_FAULT, K_EP_REPLY, LOAD_SLOT_A, LOAD_SLOT_B, LOAD_SLOT_C,
+    LOAD_SLOT_D, LOAD_SLOT_PAGER, NONE_U64,
+};
 
 use common::{
-    result, A_BASE, A_TABLE, B_BASE, B_FILE1_BASE, B_PROBE_VA, B_TABLE, C_RESULT, C_VSPACE,
-    DISK_FRAMES, P_DISK0, P_EP_FAULT, P_EP_REPLY, P_POOL0, P_STATS, P_VSPACE, P_VS_A, P_VS_B,
-    RESULT_MAGIC_B, VA_RESULT,
+    result, A_BASE, A_TABLE, B_BASE, B_FILE1_BASE, B_PROBE_VA, B_TABLE, C_BASE, C_TABLE, D_BASE,
+    D_TABLE, RESULT_MAGIC_B, VA_RESULT,
 };
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
 
-static PAGER_SERVER_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pager_server.elf"));
-static PAGER_CLIENT_A_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pager_client_a.elf"));
-static PAGER_CLIENT_B_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pager_client_b.elf"));
-
 // ---------------------------------------------------------------------------------------------
 // Bố cục (khớp `init/pager_common.rs` + chương trình U-mode)
 // ---------------------------------------------------------------------------------------------
-
-/// Ô bảng dải user của ba tác vụ (sau KT-69 dùng 1/2; pager dùng 1, A 2, B 3).
-const LOAD_SLOT_PAGER: usize = 1;
-const LOAD_SLOT_A: usize = 2;
-const LOAD_SLOT_B: usize = 3;
-
-/// Slot cspace **gốc** cho TCB/SC/Endpoint của pha pager (13..24 — các pha trước đã dọn).
-const R_TCB_PAGER: usize = 13;
-const R_TCB_A: usize = 14;
-const R_TCB_B: usize = 15;
-const R_TCB_KERN: usize = 16;
-const R_SC_PAGER: usize = 17;
-const R_SC_A: usize = 18;
-const R_SC_B: usize = 19;
-const R_EP_FAULT: usize = 20;
-const R_EP_REPLY: usize = 21;
-const R_CSPACE: usize = 22;
-
-/// Slot cspace của client cho cap Endpoint fault.
-const C_FAULT_EP: usize = 5;
-/// Slot cspace của **kernel** (TCB điều phối): self, ep_fault, ep_reply.
-const K_EP_FAULT: usize = 1;
-const K_EP_REPLY: usize = 2;
-
-/// `u64::MAX` = chưa có.
-const NONE_U64: u64 = u64::MAX;
-
-/// Rig của pha pager.
-struct Rig {
-    cn_kern: ObjId,
-    tcb_pager: ObjId,
-    tcb_a: ObjId,
-    tcb_b: ObjId,
-    tcb_kern: ObjId,
-    vs_a: CapId,
-    vs_b: CapId,
-    core_vs_a: ObjId,
-    core_vs_b: ObjId,
-    stats_pa: u64,
-    result_a_pa: u64,
-    result_b_pa: u64,
-    pool_pa: [u64; CACHE_CAPACITY],
-}
-
-/// Một tác vụ U-mode chạy tiếp được.
-struct Task<'a> {
-    loaded: &'a LoadedInit,
-    tf: TrapFrame,
-    tcb: ObjId,
-    slot: usize,
-    exited: bool,
-    code: u64,
-}
-
-impl<'a> Task<'a> {
-    fn new(loaded: &'a LoadedInit, tcb: ObjId, slot: usize) -> Self {
-        let mut tf = TrapFrame::zeroed();
-        tf.x[REG_SP] = user::USER_STACK_TOP;
-        tf.sepc = loaded.entry;
-        Self {
-            loaded,
-            tf,
-            tcb,
-            slot,
-            exited: false,
-            code: NONE_U64,
-        }
-    }
-}
 
 /// Đưa TCB `Inactive/Ready` → `Running{hart:0}` (như `ktest_capa`).
 fn set_running(m: &mut Machine, tcb: ObjId) -> bool {
@@ -173,28 +102,51 @@ fn result_word(pa: u64, field: u64) -> u64 {
 }
 
 /// Quy VA của client về `(file, page)` theo đúng vùng đã cấu hình.
+///
+/// KT-157: bốn client, mỗi client một **vùng VA riêng** (không chồng) — C/D chỉ dùng file 0.
 fn page_of(client: usize, va: u64) -> Option<(u32, u32)> {
-    if client == 0 {
-        if (A_BASE..A_BASE + 3 * 4096).contains(&va) {
-            return Some((0, ((va - A_BASE) / 4096) as u32));
+    match client {
+        0 => {
+            if (A_BASE..A_BASE + 3 * 4096).contains(&va) {
+                Some((0, ((va - A_BASE) / 4096) as u32))
+            } else {
+                None
+            }
         }
-        None
-    } else if va == B_PROBE_VA {
-        Some((0, 99))
-    } else if (B_FILE1_BASE..B_FILE1_BASE + 2 * 4096).contains(&va) {
-        Some((1, ((va - B_FILE1_BASE) / 4096) as u32))
-    } else if (B_BASE..B_BASE + 3 * 4096).contains(&va) {
-        Some((0, ((va - B_BASE) / 4096) as u32))
-    } else {
-        None
+        1 => {
+            if va == B_PROBE_VA {
+                Some((0, 99))
+            } else if (B_FILE1_BASE..B_FILE1_BASE + 2 * 4096).contains(&va) {
+                Some((1, ((va - B_FILE1_BASE) / 4096) as u32))
+            } else if (B_BASE..B_BASE + 3 * 4096).contains(&va) {
+                Some((0, ((va - B_BASE) / 4096) as u32))
+            } else {
+                None
+            }
+        }
+        2 => {
+            if (C_BASE..C_BASE + 2 * 4096).contains(&va) {
+                Some((0, ((va - C_BASE) / 4096) as u32))
+            } else {
+                None
+            }
+        }
+        _ => {
+            if (D_BASE..D_BASE + 2 * 4096).contains(&va) {
+                Some((0, ((va - D_BASE) / 4096) as u32))
+            } else {
+                None
+            }
+        }
     }
 }
 
 fn va_of(client: usize, file: u32, page: u32) -> u64 {
-    if client == 0 {
-        A_BASE + u64::from(page) * 4096
-    } else {
-        common::b_va(file, page)
+    match client {
+        0 => A_BASE + u64::from(page) * 4096,
+        1 => common::b_va(file, page),
+        2 => common::c_va(page),
+        _ => common::d_va(page),
     }
 }
 
@@ -206,262 +158,6 @@ fn walk_client(vs: CapId, va: u64) -> Option<(u64, u64)> {
     } else {
         None
     }
-}
-
-/// Tạo một Frame 4 KiB từ Untyped + trả `(key bắc cầu, PA)` — qua **object layer**.
-fn new_frame(load_untyped: CapId, size_bits: u8) -> Option<(u64, u64)> {
-    let m = aobj::machine();
-    let cap = m.retype(load_untyped, ObjKind::Frame, size_bits).ok()?;
-    let id = m.cap_key(cap).ok()?;
-    let pa = m.frame_pa(cap).ok()?;
-    Some((mem_bridge::make_key(cap, id), pa))
-}
-
-/// Dựng rig: ba CNode/TCB/SC, hai Endpoint, bảy Frame + cap VSpace cho pager/client.
-fn build_rig(
-    root: ObjId,
-    us: SlotRef,
-    ctl: SlotRef,
-    load_untyped: CapId,
-    stage: &mut &'static str,
-) -> Option<(Rig, LoadedInit, LoadedInit, LoadedInit)> {
-    *stage = "load pager";
-    let pager = match user::load_init_slot(PAGER_SERVER_ELF, load_untyped, LOAD_SLOT_PAGER) {
-        Ok(loaded) => loaded,
-        Err(error) => {
-            *stage = error.name();
-            return None;
-        }
-    };
-    *stage = "load client a";
-    let client_a = match user::load_init_slot(PAGER_CLIENT_A_ELF, load_untyped, LOAD_SLOT_A) {
-        Ok(loaded) => loaded,
-        Err(error) => {
-            *stage = error.name();
-            return None;
-        }
-    };
-    *stage = "load client b";
-    let client_b = match user::load_init_slot(PAGER_CLIENT_B_ELF, load_untyped, LOAD_SLOT_B) {
-        Ok(loaded) => loaded,
-        Err(error) => {
-            *stage = error.name();
-            return None;
-        }
-    };
-
-    // ---- object layer: key VSpace + 9 Frame (3 pool, 5 đĩa 4 KiB, stats, 2 result)
-    *stage = "object keys";
-    let vs_pager_key = {
-        let m = aobj::machine();
-        let id = m.cap_key(pager.vspace).ok()?;
-        mem_bridge::make_key(pager.vspace, id)
-    };
-    let vs_a_key = {
-        let m = aobj::machine();
-        let id = m.cap_key(client_a.vspace).ok()?;
-        mem_bridge::make_key(client_a.vspace, id)
-    };
-    let vs_b_key = {
-        let m = aobj::machine();
-        let id = m.cap_key(client_b.vspace).ok()?;
-        mem_bridge::make_key(client_b.vspace, id)
-    };
-    *stage = "object frames";
-    let mut pool_pa = [0u64; CACHE_CAPACITY];
-    let mut frame_keys = [0u64; CACHE_CAPACITY];
-    let mut index = 0usize;
-    while index < CACHE_CAPACITY {
-        let (key, pa) = new_frame(load_untyped, 12)?;
-        frame_keys[index] = key;
-        pool_pa[index] = pa;
-        index += 1;
-    }
-    let mut disk_keys = [0u64; DISK_FRAMES as usize];
-    let mut disk_index = 0usize;
-    while disk_index < DISK_FRAMES as usize {
-        let (key, _pa) = new_frame(load_untyped, 12)?;
-        disk_keys[disk_index] = key;
-        disk_index += 1;
-    }
-    let (stats_key, stats_pa) = new_frame(load_untyped, 12)?;
-    let (result_a_key, result_a_pa) = new_frame(load_untyped, 12)?;
-    let (result_b_key, result_b_pa) = new_frame(load_untyped, 12)?;
-
-    let rig = core_bridge::with_machine(|m| -> Option<Rig> {
-        *stage = "cnodes";
-        let cn_pager = m.add_cnode(32);
-        let cn_a = m.add_cnode(16);
-        let cn_b = m.add_cnode(16);
-        let cn_kern = m.add_cnode(16);
-        // Slot 0 của mỗi CNode = cap **CNode** của chính nó (không phải TCB) — pager dùng
-        // `P_SELF` làm aux sai loại cho ca âm TAP 35.
-        for cn in [cn_pager, cn_a, cn_b, cn_kern] {
-            let self_cap = m.root_cap(cn);
-            m.put_cap(cn, 0, self_cap).ok()?;
-        }
-        let root_self = m.root_cap(root);
-        m.put_cap(root, R_CSPACE, root_self).ok()?;
-        *stage = "endpoints";
-        let ep_fault_cap = m.retype(us, ObjType::Endpoint, 0, 0).ok()?;
-        let ep_reply_cap = m.retype(us, ObjType::Endpoint, 0, 0).ok()?;
-        m.put_cap(root, R_EP_FAULT, ep_fault_cap).ok()?;
-        m.put_cap(root, R_EP_REPLY, ep_reply_cap).ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_FAULT),
-            SlotRef::new(cn_pager, P_EP_FAULT as usize),
-        )
-        .ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_REPLY),
-            SlotRef::new(cn_pager, P_EP_REPLY as usize),
-        )
-        .ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_FAULT),
-            SlotRef::new(cn_kern, K_EP_FAULT),
-        )
-        .ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_REPLY),
-            SlotRef::new(cn_kern, K_EP_REPLY),
-        )
-        .ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_FAULT),
-            SlotRef::new(cn_a, C_FAULT_EP),
-        )
-        .ok()?;
-        m.copy(
-            SlotRef::new(root, R_EP_FAULT),
-            SlotRef::new(cn_b, C_FAULT_EP),
-        )
-        .ok()?;
-
-        *stage = "vspaces";
-        let vs_pager_obj = m.add_foreign_object(ObjType::VSpace, vs_pager_key).ok()?;
-        let vs_a_obj = m.add_foreign_object(ObjType::VSpace, vs_a_key).ok()?;
-        let vs_b_obj = m.add_foreign_object(ObjType::VSpace, vs_b_key).ok()?;
-        {
-            let cap = m.root_cap(vs_pager_obj);
-            m.put_cap(cn_pager, P_VSPACE as usize, cap)
-        }
-        .ok()?;
-        {
-            let cap = m.root_cap(vs_a_obj);
-            m.put_cap(cn_pager, P_VS_A as usize, cap)
-        }
-        .ok()?;
-        {
-            let cap = m.root_cap(vs_b_obj);
-            m.put_cap(cn_pager, P_VS_B as usize, cap)
-        }
-        .ok()?;
-        {
-            let cap = m.root_cap(vs_a_obj);
-            m.put_cap(cn_a, C_VSPACE as usize, cap)
-        }
-        .ok()?;
-        {
-            let cap = m.root_cap(vs_b_obj);
-            m.put_cap(cn_b, C_VSPACE as usize, cap)
-        }
-        .ok()?;
-
-        *stage = "frame caps";
-        for (slot, frame_key) in frame_keys.iter().enumerate() {
-            let obj = m.add_foreign_object(ObjType::Frame, *frame_key).ok()?;
-            {
-                let cap = m.root_cap(obj);
-                m.put_cap(cn_pager, P_POOL0 as usize + slot, cap)
-            }
-            .ok()?;
-        }
-        for (slot, disk_key) in disk_keys.iter().enumerate() {
-            let obj = m.add_foreign_object(ObjType::Frame, *disk_key).ok()?;
-            let cap = m.root_cap(obj);
-            m.put_cap(cn_pager, P_DISK0 as usize + slot, cap).ok()?;
-        }
-        let stats_obj = m.add_foreign_object(ObjType::Frame, stats_key).ok()?;
-        {
-            let cap = m.root_cap(stats_obj);
-            m.put_cap(cn_pager, P_STATS as usize, cap)
-        }
-        .ok()?;
-        let result_a_obj = m.add_foreign_object(ObjType::Frame, result_a_key).ok()?;
-        {
-            let cap = m.root_cap(result_a_obj);
-            m.put_cap(cn_a, C_RESULT as usize, cap)
-        }
-        .ok()?;
-        let result_b_obj = m.add_foreign_object(ObjType::Frame, result_b_key).ok()?;
-        {
-            let cap = m.root_cap(result_b_obj);
-            m.put_cap(cn_b, C_RESULT as usize, cap)
-        }
-        .ok()?;
-
-        *stage = "tbcs";
-        let mut tcb_objs = [0u32; 4];
-        let plans = [
-            (R_TCB_PAGER, R_SC_PAGER, cn_pager),
-            (R_TCB_A, R_SC_A, cn_a),
-            (R_TCB_B, R_SC_B, cn_b),
-            (R_TCB_KERN, R_SC_PAGER, cn_kern),
-        ];
-        for (index, (tcb_slot, sc_slot, cnode)) in plans.into_iter().enumerate() {
-            let tcb_cap = match m.retype(us, ObjType::Tcb, 0, 0) {
-                Ok(cap) => cap,
-                Err(error) => {
-                    *stage = "tcb retype fail";
-                    let mut w = PlatformWriter(&PLATFORM);
-                    let _ = writeln!(w, "# pager: tcb retype err={:?} index={index}", error);
-                    return None;
-                }
-            };
-            let tcb = m.cap_obj(tcb_cap).ok()?;
-            m.put_cap(root, tcb_slot, tcb_cap).ok()?;
-            if index != 3 {
-                let sc_cap = m.retype(us, ObjType::SchedContext, 0, 0).ok()?;
-                m.put_cap(root, sc_slot, sc_cap).ok()?;
-            }
-            m.tcb_configure(SlotRef::new(root, tcb_slot), Some(SlotRef::new(cnode, 0)))
-                .ok()?;
-            m.sched_control_configure(ctl, SlotRef::new(root, sc_slot), 500, 5_000)
-                .ok()?;
-            m.set_sched_params(
-                SlotRef::new(root, tcb_slot),
-                Some(SlotRef::new(root, sc_slot)),
-            )
-            .ok()?;
-            m.tcb_set_priority(SlotRef::new(root, tcb_slot), 3, 10)
-                .ok()?;
-            if index == 3 {
-                m.transition_tcb(tcb, TcbState::Ready).ok()?;
-            }
-            tcb_objs[index] = tcb;
-        }
-        m.tcb_set_fault_ep(SlotRef::new(root, R_TCB_A), SlotRef::new(cn_a, C_FAULT_EP))
-            .ok()?;
-        m.tcb_set_fault_ep(SlotRef::new(root, R_TCB_B), SlotRef::new(cn_b, C_FAULT_EP))
-            .ok()?;
-        Some(Rig {
-            cn_kern,
-            tcb_pager: tcb_objs[0],
-            tcb_a: tcb_objs[1],
-            tcb_b: tcb_objs[2],
-            tcb_kern: tcb_objs[3],
-            vs_a: client_a.vspace,
-            vs_b: client_b.vspace,
-            core_vs_a: vs_a_obj,
-            core_vs_b: vs_b_obj,
-            stats_pa,
-            result_a_pa,
-            result_b_pa,
-            pool_pa,
-        })
-    });
-    rig.map(|rig| (rig, pager, client_a, client_b))
 }
 
 /// Chạy một tác vụ U-mode tới `Yield`/`Exit`/`Fault`.
@@ -506,11 +202,11 @@ fn deliver_and_pump(
     ev: &mut Evidence,
 ) -> Option<Served> {
     // 1) core: `FaultKind::Vm` đi fault_ep của client (ghi `last_fault` cho pager + đếm fault).
-    let tcb = if client == 0 { rig.tcb_a } else { rig.tcb_b };
-    let vspace = if client == 0 {
-        rig.core_vs_a
-    } else {
-        rig.core_vs_b
+    let (tcb, vspace) = match client {
+        0 => (rig.tcb_a, rig.core_vs_a),
+        1 => (rig.tcb_b, rig.core_vs_b),
+        2 => (rig.tcb_c, rig.core_vs_c),
+        _ => (rig.tcb_d, rig.core_vs_d),
     };
     core_bridge::with_machine(|m| {
         task_ready(m, tcb);
@@ -535,9 +231,9 @@ fn deliver_and_pump(
         m.nb_send(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_FAULT), message)
     })
     .ok()?;
-    // KT-150 (N3): message `pager.fault` **đã gửi** ⇒ ghi sổ theo địa chỉ. Đây là vế "kernel
-    // giao" của checker; vế "pager nhận" là `Stat::Faults` đọc từ khối stats.
-    ev.ledger.record(va);
+    // KT-150 (N3) / KT-157: message `pager.fault` **đã gửi** ⇒ ghi sổ theo `(client, va)`. Đây là
+    // vế "kernel giao" của checker; vế "pager nhận" là `Stat::Faults` đọc từ khối stats.
+    ev.ledger.record(client as u8, va);
     // 3) chạy pager tới khi kernel nhận `served` (tối đa 8 bước).
     let mut core_fault = false;
     for _ in 0..8 {
@@ -625,7 +321,11 @@ struct Evidence {
     reason_name: &'static str,
     a_pages_done: usize,
     b_pages_done: usize,
-    /// KT-150 (N3): sổ giao `pager.fault` **theo từng địa chỉ** — nguồn của checker.
+    /// KT-157: mã `Exit` của client C/D (`0` = đã kiểm đủ byte) + số ca sai của C/D.
+    c_exit: u64,
+    d_exit: u64,
+    cd_bad: u32,
+    /// KT-150 (N3) / KT-157: sổ giao `pager.fault` **theo `(client, va)`** — nguồn của checker.
     ledger: DeliveryLedger,
 }
 
@@ -914,10 +614,74 @@ fn advance_to(
     }
 }
 
+/// KT-157 — chạy **một** client C/D tới `Exit`: mỗi fault phải khớp bảng `(file, page)` của
+/// client, pager phải phục vụ (`status == 0`), và mã `Exit` phải `0` (mọi byte đã kiểm đúng).
+///
+/// Trả `true` ⇔ client chạy sạch. Mọi bất thường (fault ngoài bảng, pager từ chối, `Blocked`,
+/// `Halt`, hết ngân sách bước) ⇒ `false` + `ev.cd_bad` tăng — **fail-closed**.
+fn run_cd_client(
+    rig: &Rig,
+    pager: &mut Task<'_>,
+    task: &mut Task<'_>,
+    client: usize,
+    table: &[(u32, u32)],
+    ev: &mut Evidence,
+    steps: &mut usize,
+) -> bool {
+    let mut step = 0usize;
+    let mut guard = 0usize;
+    while guard < 40 {
+        guard += 1;
+        if task.exited {
+            break;
+        }
+        let stop = run_task(task);
+        *steps += 1;
+        match stop {
+            Stop::Yield => {}
+            Stop::Exit { code } => {
+                if client == 2 {
+                    ev.c_exit = code;
+                } else {
+                    ev.d_exit = code;
+                }
+                return code == 0;
+            }
+            Stop::Fault => {
+                let fault: PagerFault = user::pager_fault();
+                let Some((file, page)) = page_of(client, fault.va) else {
+                    ev.cd_bad += 1;
+                    return false;
+                };
+                if table.get(step).copied() != Some((file, page)) {
+                    ev.cd_bad += 1;
+                    return false;
+                }
+                let Some(served) = deliver_and_pump(rig, client, file, page, fault.va, pager, ev)
+                else {
+                    ev.cd_bad += 1;
+                    return false;
+                };
+                if served.status != 0 {
+                    ev.cd_bad += 1;
+                    return false;
+                }
+                step += 1;
+            }
+            Stop::Blocked(_) | Stop::Halt { .. } => {
+                ev.cd_bad += 1;
+                return false;
+            }
+        }
+    }
+    ev.cd_bad += 1;
+    false
+}
+
 /// Pha **pager + page cache**: TAP 30..34.
 pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, fails: &mut usize) {
     let mut stage = "start";
-    let Some((rig, pager_loaded, a_loaded, b_loaded)) =
+    let Some((rig, pager_loaded, a_loaded, b_loaded, c_loaded, d_loaded)) =
         build_rig(root, us, ctl, load_untyped, &mut stage)
     else {
         {
@@ -973,6 +737,8 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
             (33, "pager hai client chia se mot trang"),
             (34, "pager page ngoai file tra ma"),
             (35, "pager ca am quyen va khong ghi de"),
+            (36, "pager bat bien reads==misses"),
+            (37, "pager giao dung mot lan"),
         ] {
             tap(fails, false, number, name, "dung rig pager that bai");
         }
@@ -982,6 +748,8 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
     let mut pager = Task::new(&pager_loaded, rig.tcb_pager, LOAD_SLOT_PAGER);
     let mut client_a = Task::new(&a_loaded, rig.tcb_a, LOAD_SLOT_A);
     let mut client_b = Task::new(&b_loaded, rig.tcb_b, LOAD_SLOT_B);
+    let mut client_c = Task::new(&c_loaded, rig.tcb_c, LOAD_SLOT_C);
+    let mut client_d = Task::new(&d_loaded, rig.tcb_d, LOAD_SLOT_D);
     // F1: `Default` cho `pa_p0_first = 0`, nhưng code so với `NONE_U64` ⇒ khởi tạo tường minh
     // qua struct-update (không gán sau `default()` — clippy `field_reassign_with_default`).
     let mut ev = Evidence {
@@ -1115,35 +883,10 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         );
     }
 
-    // Kết thúc: gửi `stop`, chạy pager tới `Exit(0)` (có thể còn fault Exit của client trong hàng).
-    {
-        let info = MessageInfo::new(METHOD_STOP, 0, false, 0, 0).expect("info stop");
-        let message = Message::new(info, &[]).expect("message stop");
-        let _ = core_bridge::with_machine(|m| {
-            task_ready(m, rig.tcb_kern);
-            m.nb_send(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_FAULT), message)
-        });
-    }
-    let mut guard = 0usize;
-    while guard < 24 {
-        guard += 1;
-        let stop = run_task(&mut pager);
-        steps += 1;
-        match stop {
-            Stop::Exit { code } => {
-                ev.pager_exit = code;
-                break;
-            }
-            Stop::Yield | Stop::Blocked(_) => {}
-            _ => break,
-        }
-        core_bridge::with_machine(|m| task_ready(m, rig.tcb_kern));
-        let _ = core_bridge::with_machine(|m| {
-            m.nb_recv(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_REPLY))
-        });
-    }
-    user::set_pager_faults(false);
-    user::enable_multitask(false);
+    // ---------------------------------------------------------------------------------------
+    // KT-157: chốt phép đo **A/B** trước khi chạy C/D. TAP 30..36 giữ nguyên số của kịch bản
+    // A/B (cache/hit/evict/reject); C/D chỉ thêm vào sổ giao của TAP 37.
+    // ---------------------------------------------------------------------------------------
     ev.steps = steps;
     ev.reloads = stat(rig.stats_pa, Stat::Reloads);
     ev.a_ok_pages = result_word(rig.result_a_pa, result::OK_PAGES);
@@ -1164,7 +907,7 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
     let entries = stat(rig.stats_pa, Stat::Entries);
     let unique = stat(rig.stats_pa, Stat::UniqueKeys);
     let shared = stat(rig.stats_pa, Stat::SharedHits);
-    let faults = stat(rig.stats_pa, Stat::Faults);
+    let ab_faults = stat(rig.stats_pa, Stat::Faults);
     let clients = stat(rig.stats_pa, Stat::Clients);
     let magic = stat(rig.stats_pa, Stat::Magic);
     let (_, _, access_code, reason_code) = ev.first_fault.unwrap_or((0, 0, 0, 0));
@@ -1206,19 +949,8 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
             evicted = Some((1, page_seen, va_of(1, 1, page_seen)));
         }
     }
-    let obj_counts = aobj::machine().check_objmem().ok().map(|s| s.counts);
     {
         let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# pager: objmem objects={} caps={} frames={} pt={} vs={} maps={}",
-            obj_counts.map(|c| c.objects).unwrap_or(0),
-            obj_counts.map(|c| c.caps).unwrap_or(0),
-            obj_counts.map(|c| c.frames).unwrap_or(0),
-            obj_counts.map(|c| c.page_tables).unwrap_or(0),
-            obj_counts.map(|c| c.vspaces).unwrap_or(0),
-            obj_counts.map(|c| c.mappings).unwrap_or(0)
-        );
         let _ = writeln!(
             w,
             "# pager: fault kind={} va=0x{:x} client={} access={} reason={} core_fault={} faults={} ready={} const:page={} const:sector={}",
@@ -1228,7 +960,7 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
             ev.access_name,
             ev.reason_name,
             u8::from(ev.core_fault_seen),
-            faults,
+            ab_faults,
             u8::from(ready),
             PAGE_SIZE,
             vifast_vfs::SECTOR_SIZE
@@ -1290,17 +1022,6 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         );
         let _ = writeln!(
             w,
-            "# pager: exit pager={} a={} b={} steps={} const:starts=3 exits={} (=(pager==0)+(a==0)+(b==0x8000_0000|status))",
-            ev.pager_exit,
-            ev.a_exit,
-            ev.b_exit,
-            ev.steps,
-            u8::from(ev.pager_exit == 0)
-                + u8::from(ev.a_exit == 0)
-                + u8::from(ev.b_exit == 0x8000_0000 | invalid_argument)
-        );
-        let _ = writeln!(
-            w,
             "# pager: neg aux_status={} name={} over_status={} name={} pa_same={} (walk=0x{:x} exp=0x{:x}) magic={:#x} const:neg_over=10 (aux=P_SELF là CNode cap, không phải VSpace ⇒ core trả {} trước object layer)",
             ev.neg_aux,
             abi_error_name(ev.neg_aux as u16),
@@ -1357,7 +1078,8 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         "pager eviction LRU khong mat du lieu",
         "eviction/reload du lieu sai",
     );
-    let tap33 = clients == 2
+    // KT-157: pager khai **bốn** client (A/B/C/D) — `Stat::Clients` = `CLIENTS` = 4.
+    let tap33 = clients == 4
         && ev.p2_equal
         && shared >= 2
         && entries <= CACHE_CAPACITY as u64
@@ -1434,31 +1156,130 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         "pager bat bien reads==misses",
         "so lan doc trang khac so lan miss (hoac sectors khac misses*8)",
     );
-    // **KT-150 (N3)** — checker "giao đúng một lần" (D2-130 mục (a)). Ba vế, **fail-closed**
-    // (thiếu vế nào ⇒ đỏ, không "bỏ qua"):
+
+    // ---------------------------------------------------------------------------------------
+    // KT-157 — **hai client C/D**: mỗi client một VSpace + CSpace riêng, fault trên VA riêng
+    // (`C_BASE`/`D_BASE`), pager giao **đúng một lần** cho từng VA. Chạy **sau** A/B để số đo
+    // cache của TAP 30..36 không đổi; sổ giao của TAP 37 cộng dồn cả bốn client.
+    // ---------------------------------------------------------------------------------------
+    let mut cd_steps = 0usize;
+    let c_ok = run_cd_client(
+        &rig,
+        &mut pager,
+        &mut client_c,
+        2,
+        &C_TABLE,
+        &mut ev,
+        &mut cd_steps,
+    );
+    let d_ok = run_cd_client(
+        &rig,
+        &mut pager,
+        &mut client_d,
+        3,
+        &D_TABLE,
+        &mut ev,
+        &mut cd_steps,
+    );
+    steps += cd_steps;
+    if !c_ok {
+        ev.cd_bad += 1;
+    }
+    if !d_ok {
+        ev.cd_bad += 1;
+    }
+
+    // Kết thúc: gửi `stop`, chạy pager tới `Exit(0)` (có thể còn fault Exit của client trong hàng).
+    {
+        let info = MessageInfo::new(METHOD_STOP, 0, false, 0, 0).expect("info stop");
+        let message = Message::new(info, &[]).expect("message stop");
+        let _ = core_bridge::with_machine(|m| {
+            task_ready(m, rig.tcb_kern);
+            m.nb_send(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_FAULT), message)
+        });
+    }
+    let mut guard = 0usize;
+    while guard < 24 {
+        guard += 1;
+        let stop = run_task(&mut pager);
+        steps += 1;
+        match stop {
+            Stop::Exit { code } => {
+                ev.pager_exit = code;
+                break;
+            }
+            Stop::Yield | Stop::Blocked(_) => {}
+            _ => break,
+        }
+        core_bridge::with_machine(|m| task_ready(m, rig.tcb_kern));
+        let _ = core_bridge::with_machine(|m| {
+            m.nb_recv(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_REPLY))
+        });
+    }
+    user::set_pager_faults(false);
+    user::enable_multitask(false);
+    ev.steps = steps;
+    // Số **cuối** (cộng cả C/D) — nguồn của TAP 37.
+    let faults = stat(rig.stats_pa, Stat::Faults);
+    let served_final = stat(rig.stats_pa, Stat::Served);
+    let rejected_final = stat(rig.stats_pa, Stat::Rejected);
+    let obj_counts = aobj::machine().check_objmem().ok().map(|s| s.counts);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# pager: objmem objects={} caps={} frames={} pt={} vs={} maps={}",
+            obj_counts.map(|c| c.objects).unwrap_or(0),
+            obj_counts.map(|c| c.caps).unwrap_or(0),
+            obj_counts.map(|c| c.frames).unwrap_or(0),
+            obj_counts.map(|c| c.page_tables).unwrap_or(0),
+            obj_counts.map(|c| c.vspaces).unwrap_or(0),
+            obj_counts.map(|c| c.mappings).unwrap_or(0)
+        );
+        let _ = writeln!(
+            w,
+            "# pager: exit pager={} a={} b={} steps={} const:starts=3 exits={} (=(pager==0)+(a==0)+(b==0x8000_0000|status))",
+            ev.pager_exit,
+            ev.a_exit,
+            ev.b_exit,
+            ev.steps,
+            u8::from(ev.pager_exit == 0)
+                + u8::from(ev.a_exit == 0)
+                + u8::from(ev.b_exit == 0x8000_0000 | invalid_argument)
+        );
+    }
+
+    // **KT-150 (N3) / KT-157** — checker "giao đúng một lần" theo **`(client, va)`**. Bốn vế,
+    // **fail-closed** (thiếu vế nào ⇒ đỏ, không "bỏ qua"):
     //   (i)   kernel **gửi** `deliveries` message `pager.fault`; pager **nhận** `faults`
     //         (`Stat::Faults`) ⇒ phải **bằng nhau** — message bị giao lặp ⇒ pager nhận nhiều hơn.
     //   (ii)  pager trả `served + rejected` ⇒ phải **bằng** `faults` — xử lý lặp ⇒ nhiều hơn.
-    //   (iii) **theo từng địa chỉ**: số lần giao cho mỗi VA phải bằng số lần **bảng client**
-    //         (`A_TABLE`/`B_TABLE`) yêu cầu — trang nạp lại sau trục xuất ⇒ 2, còn lại 1. Số
-    //         kỳ vọng **suy từ bảng**, không viết tay; VA không có trong sổ ⇒ `delivered_to` = 0
-    //         ⇒ đỏ (thiếu dòng cũng là đỏ).
-    let mut expected = [(0u64, 0u64); 8];
+    //   (iii) **theo từng `(client, va)`**: số lần giao cho mỗi cặp phải bằng số lần **bảng client**
+    //         (`A_TABLE`/`B_TABLE`/`C_TABLE`/`D_TABLE`) yêu cầu — trang nạp lại sau trục xuất ⇒ 2,
+    //         còn lại 1. Số kỳ vọng **suy từ bảng**, không viết tay; cặp không có trong sổ ⇒
+    //         `delivered_to` = 0 ⇒ đỏ (thiếu dòng cũng là đỏ).
+    //   (iv)  **đủ bốn client**: `distinct_clients() == 4` và C/D `Exit(0)` sau khi kiểm đủ byte.
+    let mut expected = [(0u8, 0u64, 0u64); 16];
     let mut n_expected = 0usize;
-    for (client, table) in [(0usize, &A_TABLE[..]), (1usize, &B_TABLE[..])] {
+    for (client, table) in [
+        (0u8, &A_TABLE[..]),
+        (1u8, &B_TABLE[..]),
+        (2u8, &C_TABLE[..]),
+        (3u8, &D_TABLE[..]),
+    ] {
         for (file, page) in table.iter() {
-            let va = va_of(client, *file, *page);
+            let va = va_of(client as usize, *file, *page);
             let want = table.iter().filter(|(f, p)| f == file && p == page).count() as u64;
             let mut seen = false;
             let mut index = 0usize;
             while index < n_expected {
-                if expected[index].0 == va {
+                if expected[index].0 == client && expected[index].1 == va {
                     seen = true;
                 }
                 index += 1;
             }
             if !seen && n_expected < expected.len() {
-                expected[n_expected] = (va, want);
+                expected[n_expected] = (client, va, want);
                 n_expected += 1;
             }
         }
@@ -1467,20 +1288,24 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         &ev.ledger,
         &expected[..n_expected],
         faults,
-        served,
-        rejected,
-    );
+        served_final,
+        rejected_final,
+    ) && ev.ledger.distinct_clients() == 4
+        && ev.c_exit == 0
+        && ev.d_exit == 0
+        && ev.cd_bad == 0;
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# pager: once deliveries={} faults={} served={} rejected={} expected_va={} distinct_va={} ok={}",
+            "# pager: clients={} deliveries={} faults={} served={} rejected={} expected_va={} distinct_va={} ok={}",
+            ev.ledger.distinct_clients(),
             ev.ledger.deliveries,
             faults,
-            served,
-            rejected,
+            served_final,
+            rejected_final,
             n_expected,
-            ev.ledger.n_va,
+            ev.ledger.n_entries,
             u8::from(once_ok)
         );
     }
@@ -1489,10 +1314,12 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         once_ok,
         37,
         "pager giao dung mot lan",
-        "message bi giao/xu ly lap, hoac so dem theo dia chi khong doc duoc",
+        "message bi giao/xu ly lap, hoac so dem theo (client,va) khong doc duoc",
     );
     // Dọn tài nguyên của pha này (trả Untyped cho pha sau — không đổi ngưỡng).
     pager_loaded.release();
     a_loaded.release();
     b_loaded.release();
+    c_loaded.release();
+    d_loaded.release();
 }

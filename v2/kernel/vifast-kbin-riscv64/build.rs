@@ -51,6 +51,10 @@ fn main() {
     println!("cargo:rerun-if-changed=init/pager_server_user.rs");
     println!("cargo:rerun-if-changed=init/pager_client_a_user.rs");
     println!("cargo:rerun-if-changed=init/pager_client_b_user.rs");
+    // KT-157: hai client C/D (bốn tiến trình U-mode ở mức kernel).
+    println!("cargo:rerun-if-changed=init/pager_client_cd_common.rs");
+    println!("cargo:rerun-if-changed=init/pager_client_c_user.rs");
+    println!("cargo:rerun-if-changed=init/pager_client_d_user.rs");
     println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/generated.rs");
@@ -184,6 +188,19 @@ fn main() {
         dir,
         "pager_client_b_user.rs",
         "pager_client_b.elf",
+        &shim_all,
+    );
+    // KT-157: **bốn** client U-mode — C/D tối giản (không khối kết quả) để vừa object/arena.
+    build_user_elf(
+        dir,
+        "pager_client_c_user.rs",
+        "pager_client_c.elf",
+        &shim_all,
+    );
+    build_user_elf(
+        dir,
+        "pager_client_d_user.rs",
+        "pager_client_d.elf",
         &shim_all,
     );
 }
