@@ -1,0 +1,15 @@
+diff --git a/v2/kernel/vifast-core/src/core_sched.rs b/v2/kernel/vifast-core/src/core_sched.rs
+index 53b44908..48fe3a10 100644
+--- a/v2/kernel/vifast-core/src/core_sched.rs
++++ b/v2/kernel/vifast-core/src/core_sched.rs
+@@ -221,7 +221,9 @@ impl Machine {
+     pub fn wake(&mut self, tcb: ObjId) -> Result<(), KError> {
+         let info = self.tcb_data(tcb)?.snapshot();
+         if self.n_harts > 1 && info.home != self.current_hart {
+-            return self.post_mail(info.home, MailboxMsg::Wake(tcb));
++            // ĐỘT BIẾN KT-151: đường wake thứ hai đi vòng qua hộp thư.
++            let _ = info;
++            return self.wake_step(tcb);
+         }
+         self.wake_step(tcb)?;
+         self.sched_after_op(false);

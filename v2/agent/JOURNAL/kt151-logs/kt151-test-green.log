@@ -1,0 +1,14 @@
+   Compiling vifast-core v0.1.0 (/private/tmp/night-L3-n7/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/private/tmp/night-L3-n7/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.12s
+     Running tests/kt151_wake.rs (v2/target/debug/deps/kt151_wake-640bfb85443134ea)
+
+running 5 tests
+test kt151_core_wake_cung_hart_khong_qua_hop_thu ... ok
+test kt151_core_reschedule_qua_hop_thu_chay_tcb ... ok
+test kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... ok
+test kt151_core_migrate_qua_hop_thu_dung_mot_lan ... ok
+test kt151_sim_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

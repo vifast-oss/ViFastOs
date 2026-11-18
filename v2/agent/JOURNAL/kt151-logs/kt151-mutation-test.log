@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/kt151_wake.rs (v2/target/debug/deps/kt151_wake-640bfb85443134ea)
+
+running 5 tests
+test kt151_core_migrate_qua_hop_thu_dung_mot_lan ... ok
+test kt151_core_reschedule_qua_hop_thu_chay_tcb ... ok
+test kt151_core_wake_cung_hart_khong_qua_hop_thu ... ok
+test kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... FAILED
+test kt151_sim_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... ok
+
+failures:
+
+---- kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay stdout ----
+
+thread 'kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay' (77012643) panicked at sim/vifast-sim/tests/kt151_wake.rs:198:5:
+assertion `left == right` failed: phải có đúng một message trong hộp thư hart 1
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt151_wake`
