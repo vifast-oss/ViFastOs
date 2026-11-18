@@ -256,6 +256,10 @@ do_check() {
     # ca l1..l5, có **đối chứng dương** (l3) để một hàm luôn-từ-chối không qua được. Tách khỏi
     # `build-rev.sh` để định nghĩa dấu vân tay không phải tăng `VBREV_ALGO` vì một hàm tiêu thụ.
     run_step "selftest danh tính ảnh (KT-145: l1..l5)" bash "$V2_ROOT/test/boot/build-identity.sh" --selftest || fails=$((fails + 1))
+    # **KT-149 (D2-129)**: harness T26 (`t26.sh`) có `--selftest` ca âm — log đỏ giả phải bị bắt
+    # đỏ, log xanh giả phải được nhận xanh. Nối vào `check` (nhóm nhanh, không cần QEMU/ảnh) để
+    # không lặp lại lớp lỗi "selftest không cổng nào gọi" (KT-134).
+    run_step "selftest t26 (KT-149: g1..g4)" bash "$V2_ROOT/test/boot/t26.sh" --selftest || fails=$((fails + 1))
     # **KT-134 (C1 của Agent 0)**: `build-rev.sh` đã ra khỏi danh sách ghim, nên đổi **thuật toán**
     # mà quên tăng `VBREV_ALGO` sẽ không ai phát hiện. Tệp ghim giữ cặp (sha script, giá trị algo);
     # `--strict` để ghim cũ (đã tăng algo nhưng quên `--update`) cũng là ĐỎ — nếu không, cơ chế chỉ
