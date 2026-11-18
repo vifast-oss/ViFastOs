@@ -352,6 +352,7 @@ pager hai client chia se mot trang
 pager page ngoai file tra ma
 pager ca am quyen va khong ghi de
 pager bat bien reads==misses
+pager giao dung mot lan
 EOF
 }
 
@@ -641,7 +642,8 @@ EOF
 ^# pager: reject client=1 page=99 status=5 name=InvalidArgument reads_before=[0-9]+ reads_after=[0-9]+ delta=0 \(=reads_after-reads_before\) exit=0x80000005$
 ^# pager: exit pager=0 a=0 b=2147483653 steps=[0-9]+ const:starts=3 exits=3 \(=\(pager==0\)\+\(a==0\)\+\(b==0x8000_0000\|status\)\)$
 ^# pager: neg aux_status=2 name=WrongObjectType over_status=10 name=AlreadyMapped pa_same=1 \(walk=0x[0-9a-f]+ exp=0x[0-9a-f]+\) magic=0x[0-9a-f]+ const:neg_over=10 \(aux=P_SELF là CNode cap, không phải VSpace ⇒ core trả WrongObjectType trước object layer\)$
-^# ktest-user: taps=35 ok=1$
+^# pager: once deliveries=[1-9][0-9]* faults=[1-9][0-9]* served=[0-9]+ rejected=[0-9]+ expected_va=[1-9][0-9]* distinct_va=[1-9][0-9]* ok=1$
+^# ktest-user: taps=37 ok=1$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
@@ -746,7 +748,7 @@ panic_allow_re() {
     case "$1" in
         ktest) printf '%s' '^PANIC: nested trap \(KT-45: trap trong handler = fatal, khong resume\)$' ;;
         ktest-guard) printf '%s' '^PANIC: guard page fault scause=0xf stval=0x[0-9a-f]+ sepc=0x[0-9a-f]+ sstatus=0x[0-9a-f]+$' ;;
-        ktest-user) printf '%s' '^PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager xong \(35 TAP, 0 fail\)$' ;;
+        ktest-user) printf '%s' '^PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager xong \(37 TAP, 0 fail\)$' ;;
         ktest-proc) printf '%s' '^PANIC: u-mode fault scause=0xc stval=0x[0-9a-f]+ sepc=0x[0-9a-f]+ sstatus=0x[0-9a-f]+ from_u=1$' ;;
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
