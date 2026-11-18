@@ -298,59 +298,6 @@ test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
 
 **Không** test cũ nào đỏ ⇒ không phải dừng theo ràng buộc "quá 3 test cũ đỏ".
 
-## 8. (5) Máy kiểm `--strict` trước/sau
-
-**Trước** (cây trước vá = `git archive HEAD` tại commit `419db2dd`, **không phải ảnh**):
-
-```text
-$ git archive HEAD | tar -x -C /tmp/kt154-before
-$ python3 v2/tools/check-wake-paths.py --root /tmp/kt154-before --strict
-# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
-# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
-# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:388 (push_step)
-# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
-# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
-# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:240 (wake_step)
-# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
-# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5737 (wake_step)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
-E E_STRICT_TRANSITION 4 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
-E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
-E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
-E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
-E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
-# check-wake-paths: mode=v2 strict=1 errors=5 warnings=0
-```
-
-**Sau** (cây đã vá):
-
-```text
-$ python3 v2/tools/check-wake-paths.py --strict
-# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
-# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake_from)
-# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
-# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:416 (push_step)
-# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
-# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
-# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:268 (wake_step)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5737 (wake_step)
-# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
-E E_STRICT_TRANSITION 2 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
-E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
-E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
-# check-wake-paths: mode=v2 strict=1 errors=3 warnings=0
-```
-
-**4 → 2**; **kernel về 0**. Hai chỗ còn lại **đều ở `v2/sim`** (`tcb_resume_with_regs`,
-`process_refills`) — **ngoài phạm vi** task (task chỉ định "16 đường trong `v2/kernel`").
-Sim là **oracle**; vá sim là việc của task riêng (cùng hình dạng: thêm `wake_from` cho sim
-+ 15 chỗ). Ghi nợ **N7-2b** ở §11.
-
-Mức **mặc định** (nằm trong `v2 check`) sau khi vá: `errors=0` (§9).
-
 ## 7. (4) Đột biến — bỏ vá ở **một** đường ⇒ test đỏ lại
 
 Đột biến (diff nguyên văn, `kt154-logs/kt154-mutation-test.log` chạy trên cây đã đột biến):
@@ -411,6 +358,59 @@ test (1) là vế bắt buộc, không phải "làm cho đủ".
 
 Khôi phục (`git checkout -- v2/kernel/vifast-core/src/core_ipc.rs`) ⇒ xanh lại
 (`kt154-logs/kt154-mutation-restored.log`, `7 passed; 0 failed`).
+
+## 8. (5) Máy kiểm `--strict` trước/sau
+
+**Trước** (cây trước vá = `git archive HEAD` tại commit `419db2dd`, **không phải ảnh**):
+
+```text
+$ git archive HEAD | tar -x -C /tmp/kt154-before
+$ python3 v2/tools/check-wake-paths.py --root /tmp/kt154-before --strict
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:388 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:240 (wake_step)
+# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
+# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5737 (wake_step)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+E E_STRICT_TRANSITION 4 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
+E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+# check-wake-paths: mode=v2 strict=1 errors=5 warnings=0
+```
+
+**Sau** (cây đã vá):
+
+```text
+$ python3 v2/tools/check-wake-paths.py --strict
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:416 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:268 (wake_step)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5737 (wake_step)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+E E_STRICT_TRANSITION 2 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+# check-wake-paths: mode=v2 strict=1 errors=3 warnings=0
+```
+
+**4 → 2**; **kernel về 0**. Hai chỗ còn lại **đều ở `v2/sim`** (`tcb_resume_with_regs`,
+`process_refills`) — **ngoài phạm vi** task (task chỉ định "16 đường trong `v2/kernel`").
+Sim là **oracle**; vá sim là việc của task riêng (cùng hình dạng: thêm `wake_from` cho sim
++ 15 chỗ). Ghi nợ **N7-2b** ở §11.
+
+Mức **mặc định** (nằm trong `v2 check`) sau khi vá: `errors=0` (§9).
 
 ## 9. Cổng (ba cổng bắt buộc)
 
