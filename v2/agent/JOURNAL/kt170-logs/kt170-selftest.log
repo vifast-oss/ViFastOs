@@ -1,0 +1,32 @@
+ok - cây sạch ⇒ xanh
+ok - `assert!(true)` ⇒ đỏ
+ok - `assert_eq!(x, x)` ⇒ đỏ
+ok - `assert_eq!(f(x), f(x))` (tất định) ⇒ xanh
+ok - `assert_ne!(x, x)` ⇒ đỏ
+ok - `#[ignore]` ⇒ đỏ
+ok - `#[test]` không khẳng định ⇒ đỏ
+ok - `#[test]` chỉ có `.unwrap()` ⇒ đỏ
+ok - `#[test]` không khẳng định + allowlist khớp ⇒ xanh
+ok - allowlist `#[test]` mục ⇒ đỏ
+ok - `#[test]` gọi trợ giúp transitive ⇒ xanh
+ok - `#[test]` gọi trợ giúp generic `::<T>` ⇒ xanh
+ok - `#[test]` gọi trợ giúp trong HELPER_ALLOW ⇒ xanh
+ok - `let _ =` nuốt `Result` ⇒ đỏ
+ok - `let _ =` + allowlist khớp ⇒ xanh
+ok - allowlist mục ⇒ đỏ
+ok - `let _ = foo().unwrap()` ⇒ xanh
+ok - `panic!` vô điều kiện ⇒ đỏ, có điều kiện ⇒ xanh
+ok - chỉ quét `#[cfg(test)]` trong src/
+ok - `#[cfg(all(test, …))]` ⇒ vẫn quét
+ok - `#[should_panic(expected = …)]` ⇒ xanh
+ok - cây không có test ⇒ đỏ (fail-closed)
+ok - `#[should_panic]` trần ⇒ đỏ
+ok - `#[should_panic(expected = "")]` ⇒ đỏ (khớp mọi thông điệp)
+ok - `#[should_panic]` trần + allowlist khớp ⇒ xanh
+ok - allowlist `#[should_panic]` mục ⇒ đỏ
+ok - `#[test]` gọi trợ giúp ở tệp khác ⇒ xanh (không cần HELPER_ALLOW)
+ok - `#[test]` gọi trợ giúp tệp khác **không** răng ⇒ đỏ
+ok - trợ giúp tệp khác **bắc cầu** ⇒ xanh
+ok - `use … as …` ⇒ phân giải tên gốc
+ok - trợ giúp tệp khác **tên mơ hồ** ⇒ đỏ (fail-closed)
+# selftest: 31/31 ok

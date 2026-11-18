@@ -9,7 +9,7 @@ khẳng định điều luôn đúng). Gần nhất là N7 suýt đóng sai (D2-
 mới phát hiện, vì **không có máy kiểm** nào bắt lớp lỗi đó. Một bảng viết tay không chống
 được tái diễn — tệp này là máy kiểm.
 
-Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ. Bốn lớp:
+Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ. Năm lớp:
 
 (a) **Hằng-đúng** — `assert!(true)`, `assert_eq!(x, x)` với hai vế **giống hệt** sau khi
     chuẩn hoá khoảng trắng, `assert!(1 == 1)`. Cú pháp là bằng chứng: không cần suy luận.
@@ -22,20 +22,35 @@ Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ.
     (`assert!`, `assert_eq!`, `assert_ne!`, `assert_matches!`, `debug_assert*!`,
     `expect_err`, `unwrap_err`, `panic!` **có điều kiện**) **và** không gọi hàm trợ giúp
     đã biết. "Hàm trợ giúp đã biết" = hàm cùng tệp mà **transitive** dẫn tới một token
-    khẳng định (tự dò, không cần khai báo), hoặc tên có trong `HELPER_ALLOW` (trợ giúp
-    nằm ở tệp khác — máy kiểm không thấy thân). `#[should_panic]` cũng là răng: nó khẳng
-    định một panic. `unwrap()` **không** phải răng: nó chỉ chứng minh "không lỗi", không
-    chứng minh giá trị đúng. Ca hợp lệ không có token ⇒ `ALLOW_NO_ASSERT` kèm lý do.
+    khẳng định (tự dò, không cần khai báo), hoặc hàm **ở tệp khác trong phạm vi test** có
+    trong **bản đồ toàn cây** (KT-170: dựng từ chính cây nguồn, phân giải theo tên và
+    `use … as …`; hàm **sản phẩm** không tính — xem `build_global_helpers`), hoặc tên có
+    trong `HELPER_ALLOW` (đường **dự phòng** tường minh, dùng khi tên mơ hồ).
+    `#[should_panic]` cũng là răng: nó khẳng định một panic. `unwrap()` **không** phải
+    răng: nó chỉ chứng minh "không lỗi", không chứng minh giá trị đúng. Ca hợp lệ không
+    có token ⇒ `ALLOW_NO_ASSERT` kèm lý do.
 (d) **`let _ =` nuốt `Result`** — trong thân test, `let _ = <gọi hàm>;` mà hàm được gọi
     **khai báo trả `Result<…>`** (tra bảng chữ ký dựng từ chính cây nguồn, có phân giải
     `type X = Result<…>`). Không đoán theo tên: chỉ ĐỎ khi **đọc được** kiểu trả về.
     `let _ = foo().unwrap();` **không** bị bắt: `unwrap` panic khi lỗi, không nuốt.
+(e) **`#[should_panic]` trần** — `#[should_panic]` **không** có `expected = "…"` ⇒ ĐỎ
+    (`E_SHOULD_PANIC_BARE`): bắt **panic bất kỳ** là răng yếu — một panic không liên quan
+    (tràn số, `unwrap` hỏng ở chỗ khác) vẫn làm test xanh, che mất lỗi thật. Cú pháp là
+    bằng chứng: không cần suy luận. `#[should_panic(expected = "…")]` ⇒ **XANH**: khẳng
+    định **đúng** panic được chờ, không phải "panic gì cũng được". `expected = ""` (khớp
+    mọi thông điệp) tính là **trần**. Ca hợp lệ ⇒ `ALLOW_SHOULD_PANIC_BARE` kèm lý do.
 
 Fail-closed
 -----------
 - Mục **mới** không có trong allowlist ⇒ ĐỎ. Allowlist chỉ chứa mục **đã rà** kèm lý do.
 - Mục allowlist **không còn khớp** chỗ nào ⇒ ĐỎ (`E_ALLOW_STALE`) — nếu không, allowlist
   phình dần và che mất vi phạm mới.
+- Bản đồ trợ giúp toàn cây **chỉ tính hàm trong phạm vi test** (tệp dưới `tests/` hoặc
+  khối `#[cfg(test)]`); hàm **sản phẩm** có `debug_assert!` **không** tính — nhận chúng là
+  nới máy kiểm (đo trước khi siết: 277/285 test gọi tên chéo tệp trỏ vào hàm sản phẩm).
+- Bản đồ chỉ tính một tên khi **mọi** định nghĩa cùng tên trong phạm vi test đều có răng
+  (bắc cầu). Tên **mơ hồ** (có định nghĩa không răng) ⇒ không tính — fail-closed; ca thật
+  thì khai `HELPER_ALLOW` kèm lý do, không nới luật.
 - Cây không có tệp test nào ⇒ ĐỎ (`E_NO_TESTS`) — "không có gì để kiểm" không phải xanh.
 - Cây không có `v2/` ⇒ ĐỎ (exit 1), không im lặng bỏ qua.
 
@@ -96,14 +111,22 @@ ASSERT_TOKENS: Tuple[str, ...] = (
 # gì, nên vẫn phải có control flow mới tính.
 CONTROL_FLOW = re.compile(r"\b(?:if|match|else|while|for|loop)\b")
 
+# `#[should_panic(expected = "…")]` — răng **thật**: khẳng định đúng panic được chờ.
+# Nội dung chuỗi đã bị `mask_source` che thành dấu cách nhưng **độ dài giữ nguyên**, nên
+# `expected = ""` (khớp **mọi** thông điệp ⇒ y như trần) vẫn phân biệt được với `"x"`:
+# `""` không có ký tự nào giữa hai dấu nháy.
+SHOULD_PANIC_EXPECTED_RE = re.compile(r'^should_panic\s*\(\s*expected\s*=\s*"[^"]+"')
+
 # Lời gọi hàm, **kể cả turbofish** `tro_giup::<T>(…)`. Bản đầu chỉ khớp `ten(` nên test gọi
 # trợ giúp generic bị báo oan `E_NO_ASSERT` (review L6 dựng lại trên `mmu_shared.rs`).
 CALL_NAME_RE = r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:::\s*<[^;{}()]*?>)?\s*[(!]"
 
-# Hàm trợ giúp **ở tệp khác** (máy kiểm không thấy thân) mà vẫn tính là răng.
-# Khoá = tên hàm; giá trị = lý do. Hiện **rỗng**: mọi trợ giúp trong cây đều cùng tệp và
-# được tự dò. Giữ cơ chế để lần sau có trợ giúp dùng chung thì khai báo tường minh, không
-# phải nới luật.
+# Hàm trợ giúp **ở tệp khác** mà vẫn tính là răng — **đường dự phòng tường minh**.
+# Từ KT-170, lớp (c) tự dựng **bản đồ toàn cây** (xem `build_global_helpers`), nên phần lớn
+# trợ giúp ở tệp khác **trong phạm vi test** được nhận **không cần** khai báo. Bảng này chỉ
+# còn dùng khi tên **mơ hồ** (nhiều định nghĩa cùng tên, có cái không răng), khi trợ giúp nằm
+# ngoài cây nguồn, hoặc khi trợ giúp là hàm **sản phẩm** (Agent 0 chốt: không tính).
+# Khoá = tên hàm; giá trị = lý do. Hiện **rỗng**.
 HELPER_ALLOW: Dict[str, str] = {}
 
 # `#[test]` **không** có token khẳng định nào — allowlist tường minh (hiện **rỗng**).
@@ -111,6 +134,13 @@ HELPER_ALLOW: Dict[str, str] = {}
 # Chỉ dùng cho ca **thật sự** không khẳng định được gì bằng token: vd test chỉ đòi "không
 # panic" trên đầu vào hỏng. Không dùng để né việc viết khẳng định.
 ALLOW_NO_ASSERT: Dict[Tuple[str, str], Tuple[int, str]] = {}
+
+# `#[should_panic]` **trần** (không `expected = "…"`) — allowlist tường minh (hiện **rỗng**).
+# Khoá = (tệp tương đối, tên hàm test); giá trị = (số dòng lúc khai, lý do).
+# Cây hiện **không** có `#[should_panic]` nào (KT-170 rà 0/977 test), nên bảng rỗng. Giữ cơ
+# chế để ca hợp lệ về sau (vd panic của `core` không có thông điệp ổn định) khai tường minh
+# thay vì nới luật.
+ALLOW_SHOULD_PANIC_BARE: Dict[Tuple[str, str], Tuple[int, str]] = {}
 
 # `let _ = <gọi hàm>;` trong thân test, hàm trả `Result<…>` — allowlist tường minh.
 # Khoá = (tệp tương đối, tên hàm test, thứ tự 1-based trong thân hàm).
@@ -302,6 +332,11 @@ class Fn:
     @property
     def is_should_panic(self) -> bool:
         return any(a.startswith("should_panic") for a in self.attrs)
+
+    @property
+    def should_panic_has_expected(self) -> bool:
+        """`#[should_panic(expected = "…")]` với chuỗi **không rỗng** ⇒ răng thật."""
+        return any(SHOULD_PANIC_EXPECTED_RE.match(a) for a in self.attrs)
 
 
 def is_test_attr(attr: str) -> bool:
@@ -614,6 +649,98 @@ def is_result_type(rt: str, aliases: Dict[str, str], depth: int = 0) -> bool:
     return False
 
 
+# ------------------------------------------------------------------ bản đồ trợ giúp toàn cây
+
+# `use …::ten as biet_danh;` — chỉ cần cặp (bí danh, tên gốc). `use x::*` (glob) không phân
+# giải được nên bỏ qua: bỏ qua chỉ làm **đỏ oan** (an toàn), không làm xanh giả.
+USE_ALIAS_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def build_use_aliases(
+    parsed: Sequence["ParsedFile"], scope: Set[Path]
+) -> Dict[Path, Dict[str, str]]:
+    """Bảng `bí danh -> tên gốc` theo từng tệp **trong phạm vi test**, từ các câu `use`.
+
+    Chỉ tệp trong phạm vi test mới cần: bảng này dùng để phân giải tên gọi **trong thân
+    test**. Quét cả cây là phí (295 tệp so với 127).
+    """
+    out: Dict[Path, Dict[str, str]] = {}
+    for pf in parsed:
+        if pf.path not in scope:
+            continue
+        aliases: Dict[str, str] = {}
+        for mt in re.finditer(r"\buse\s+([^;]+);", pf.masked):
+            for am in USE_ALIAS_RE.finditer(mt.group(1)):
+                aliases[am.group(2)] = am.group(1)
+        if aliases:
+            out[pf.path] = aliases
+    return out
+
+
+def build_global_helpers(
+    parsed: Sequence["ParsedFile"],
+    whole: Set[Path],
+    inline: Dict[Path, List[Tuple[int, int]]],
+) -> Set[str]:
+    """Tên hàm **trong phạm vi test** mà **mọi** định nghĩa cùng tên đều có răng.
+
+    "Có răng" = thân có token khẳng định (hoặc `panic!` **có điều kiện**), **hoặc** gọi một
+    tên đã có răng — bao đóng bắc cầu tới điểm bất động. Bản đồ dựng từ **toàn cây** (mọi tệp
+    `.rs`), nên test gọi trợ giúp ở **tệp khác** được tính là có răng mà **không cần**
+    `HELPER_ALLOW`.
+
+    **Chỉ hàm trong phạm vi test** mới được tính (Agent 0 chốt KT-170): tệp dưới `tests/`
+    (hoặc tệp `mod X;` của `#[cfg(test)]`) **hoặc** nằm trong khối `#[cfg(test)]`. Hàm **sản
+    phẩm** có `debug_assert!` **không** tính: đo trên cây trước khi siết cho thấy **277/285**
+    test gọi tên chéo tệp trỏ vào hàm sản phẩm — nhận chúng là **nới** máy kiểm (một test
+    không assert mà gọi `fsck()` sẽ xanh nhờ assert của sản phẩm), đúng thứ repo cấm.
+
+    Vì sao đòi **mọi** định nghĩa cùng tên: tên trùng giữa các tệp là chuyện thường (`kiem`,
+    `setup`…). Nếu chỉ cần **một** định nghĩa có răng thì một test gọi trợ giúp **không** răng
+    trùng tên sẽ được xanh oan. Đòi tất cả là fail-closed: tên mơ hồ ⇒ không tính, người viết
+    khai `HELPER_ALLOW` nếu ca thật.
+
+    Hàm `#[test]` bị loại khỏi bản đồ: test không phải trợ giúp, và gọi chéo test là mùi lạ.
+    """
+    direct: Dict[str, List[bool]] = {}
+    calls: Dict[str, List[Set[str]]] = {}
+    for pf in parsed:
+        m = pf.masked
+        is_whole = pf.path in whole
+        ranges = inline.get(pf.path, [])
+        if not is_whole and not ranges:
+            continue
+        for f in pf.fns:
+            if f.is_test:
+                continue
+            if not (is_whole or in_ranges(f.start, ranges)):
+                continue
+            body = m[f.body_start : f.body_end]
+            has = any(t in body for t in ASSERT_TOKENS) or (
+                "panic!" in body and bool(CONTROL_FLOW.search(body))
+            )
+            direct.setdefault(f.name, []).append(has)
+            calls.setdefault(f.name, []).append(set(re.findall(CALL_NAME_RE, body)))
+    teeth: Set[str] = {n for n, ds in direct.items() if all(ds)}
+    changed = True
+    while changed:
+        changed = False
+        for n, ds in direct.items():
+            if n in teeth:
+                continue
+            ok = True
+            for i, has in enumerate(ds):
+                if has:
+                    continue
+                if not any(c in teeth for c in calls[n][i]):
+                    ok = False
+                    break
+            if ok:
+                teeth.add(n)
+                changed = True
+    return teeth
+
+
 # ------------------------------------------------------------------ phân tích biểu thức
 
 # Phương thức **tiêu thụ** `Result` (panic/đổi sang giá trị khác) — không phải "nuốt".
@@ -792,10 +919,14 @@ def scan(
     allow_let: Optional[Dict[Tuple[str, str, int], Tuple[int, str]]] = None,
     helper_allow: Optional[Dict[str, str]] = None,
     allow_no_assert: Optional[Dict[Tuple[str, str], Tuple[int, str]]] = None,
+    allow_should_panic: Optional[Dict[Tuple[str, str], Tuple[int, str]]] = None,
 ) -> Report:
     allow_let = ALLOW_LET_UNDERSCORE if allow_let is None else allow_let
     helper_allow = HELPER_ALLOW if helper_allow is None else helper_allow
     allow_no_assert = ALLOW_NO_ASSERT if allow_no_assert is None else allow_no_assert
+    allow_should_panic = (
+        ALLOW_SHOULD_PANIC_BARE if allow_should_panic is None else allow_should_panic
+    )
     rep = Report()
 
     files = iter_rs_files(root)
@@ -813,11 +944,17 @@ def scan(
 
     whole, inline = build_scope(root, parsed)
     rets, aliases = build_return_types(parsed)
+    # KT-170: bản đồ trợ giúp **toàn cây** — chỉ hàm trong phạm vi test (lớp (c) không còn
+    # phụ thuộc `HELPER_ALLOW`) — và bảng bí danh `use … as …` để phân giải tên gọi.
+    g_teeth = build_global_helpers(parsed, whole, inline)
+    use_aliases = build_use_aliases(parsed, whole | set(inline))
 
     used_allow: Set[Tuple[str, str, int]] = set()
     used_no_assert: Set[Tuple[str, str]] = set()
+    used_should_panic: Set[Tuple[str, str]] = set()
     n_tests = 0
     n_files = 0
+    n_global_used = 0
 
     for pf in parsed:
         p = pf.path
@@ -935,10 +1072,17 @@ def scan(
                 has_token = True
             if not has_token:
                 called = set(re.findall(CALL_NAME_RE, own_s))
+                # KT-170: bí danh `use … as …` của **tệp này** — `kt(3)` phải tra ra `kiem`.
+                file_aliases = use_aliases.get(p, {})
+                called |= {file_aliases[c] for c in called if c in file_aliases}
                 if any(c in helper_allow for c in called):
                     has_token = True
                 elif any(c in helper_teeth and teeth_of(c) for c in called):
                     has_token = True
+                elif any(c in g_teeth for c in called):
+                    # Trợ giúp ở **tệp khác** (bản đồ toàn cây) — không cần `HELPER_ALLOW`.
+                    has_token = True
+                    n_global_used += 1
             if not has_token:
                 key_na = (rel, f.name)
                 if key_na in allow_no_assert:
@@ -947,6 +1091,19 @@ def scan(
                     rep.errors.append(
                         f"E_NO_ASSERT {rel}:{pf.line_of(f.start)}: `#[test] fn {f.name}` không có "
                         "token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả"
+                    )
+
+            # (e) `#[should_panic]` **trần** (KT-170): bắt panic bất kỳ là răng yếu — một panic
+            # không liên quan vẫn làm test xanh. `expected = "…"` (chuỗi khác rỗng) là răng thật.
+            if f.is_should_panic and not f.should_panic_has_expected:
+                key_sp = (rel, f.name)
+                if key_sp in allow_should_panic:
+                    used_should_panic.add(key_sp)
+                else:
+                    rep.errors.append(
+                        f"E_SHOULD_PANIC_BARE {rel}:{pf.line_of(f.start)}: `#[test] fn {f.name}` "
+                        "có `#[should_panic]` **không** `expected = \"…\"` — bắt panic bất kỳ là "
+                        "răng yếu, dễ che lỗi khác; thêm `expected` hoặc allowlist kèm lý do"
                     )
 
             # (d) `let _ =` nuốt Result. Thứ tự chỉ đếm trên **ứng viên** (đã phân giải
@@ -993,6 +1150,16 @@ def scan(
             "không còn khớp chỗ nào — gỡ mục hoặc sửa khoá"
         )
 
+    for key in sorted(allow_should_panic):
+        if key in used_should_panic:
+            continue
+        rel, fname = key
+        line = allow_should_panic[key][0]
+        rep.errors.append(
+            f"E_ALLOW_STALE {rel}:{line}: mục allowlist `#[should_panic]` trần ({fname}) "
+            "không còn khớp chỗ nào — gỡ mục hoặc sửa khoá"
+        )
+
     if n_tests == 0:
         rep.errors.append(
             "E_NO_TESTS v2/: không tìm thấy `#[test]` nào trong phạm vi — fail-closed"
@@ -1003,8 +1170,16 @@ def scan(
     rep.info.append(f"allowlist `let _ =`: {len(allow_let)} mục, khớp {len(used_allow)}")
     rep.info.append(f"trợ giúp khai báo ngoài tệp: {len(helper_allow)}")
     rep.info.append(
+        f"bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): {len(g_teeth)} tên có răng, "
+        f"{n_global_used} test dùng đường này"
+    )
+    rep.info.append(
         f"allowlist `#[test]` không khẳng định: {len(allow_no_assert)} mục, "
         f"khớp {len(used_no_assert)}"
+    )
+    rep.info.append(
+        f"allowlist `#[should_panic]` trần: {len(allow_should_panic)} mục, "
+        f"khớp {len(used_should_panic)}"
     )
     return rep
 
@@ -1035,7 +1210,7 @@ def _fixture(root: Path, files: Dict[str, str]) -> None:
 
 
 def selftest() -> int:
-    """Hai mươi hai ca: mỗi ca một dòng `ok`/`not ok`."""
+    """Ba mươi ba ca: mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt163-selftest-"))
     try:
@@ -1412,19 +1587,25 @@ def selftest() -> int:
             )
         )
 
-        # (15) `#[should_panic]` không có assert ⇒ xanh (panic **là** khẳng định).
+        # (15) `#[should_panic(expected = "…")]` không có assert ⇒ xanh (panic **là** khẳng
+        # định, và `expected` làm nó có răng thật). Từ KT-170 dạng **trần** là ĐỎ — ca (17).
         d = tmp / "should-panic"
         _fixture(
             d,
             {
                 "v2/lib/a/tests/t.rs": (
-                    "#[test]\n#[should_panic]\nfn phai_panic() {\n    let _x = 1 / 0;\n}\n"
+                    "#[test]\n#[should_panic(expected = \"chia cho 0\")]\n"
+                    "fn phai_panic() {\n    let _x = 1 / 0;\n}\n"
                 ),
             },
         )
         rep = scan(d, allow_let={}, helper_allow={})
         cases.append(
-            ("`#[should_panic]` ⇒ xanh", rep.ok, "; ".join(rep.errors))
+            (
+                "`#[should_panic(expected = …)]` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
         )
 
         # (16) cây không có test nào ⇒ đỏ (fail-closed).
@@ -1435,6 +1616,257 @@ def selftest() -> int:
             (
                 "cây không có test ⇒ đỏ (fail-closed)",
                 (not rep.ok) and any("E_NO_TESTS" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (17) `#[should_panic]` **trần** ⇒ đỏ (KT-170, lớp (e)): bắt panic bất kỳ là răng
+        # yếu. Ca này **có** assert trong thân, để chứng minh (e) độc lập với (c).
+        d = tmp / "should-panic-bare"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\n#[should_panic]\nfn phai_panic() {\n    assert_eq!(1, 1 + 0);\n"
+                    "    let _x = 1 / 0;\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`#[should_panic]` trần ⇒ đỏ",
+                (not rep.ok) and any("E_SHOULD_PANIC_BARE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (18) `expected = ""` khớp **mọi** thông điệp ⇒ y như trần ⇒ đỏ.
+        d = tmp / "should-panic-empty"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\n#[should_panic(expected = \"\")]\nfn phai_panic() {\n"
+                    "    assert_eq!(1, 1 + 0);\n    let _x = 1 / 0;\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`#[should_panic(expected = \"\")]` ⇒ đỏ (khớp mọi thông điệp)",
+                (not rep.ok) and any("E_SHOULD_PANIC_BARE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (19) `#[should_panic]` trần + allowlist khớp ⇒ xanh (đối chứng dương).
+        d = tmp / "should-panic-allow"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\n#[should_panic]\nfn phai_panic() {\n    assert_eq!(1, 1 + 0);\n"
+                    "    let _x = 1 / 0;\n}\n"
+                ),
+            },
+        )
+        rep = scan(
+            d,
+            allow_let={},
+            helper_allow={},
+            allow_should_panic={("v2/lib/a/tests/t.rs", "phai_panic"): (2, "lý do thử")},
+        )
+        cases.append(
+            (
+                "`#[should_panic]` trần + allowlist khớp ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (20) allowlist `#[should_panic]` **mục** ⇒ đỏ (fail-closed).
+        d = tmp / "should-panic-stale"
+        _fixture(d, {"v2/lib/a/tests/t.rs": _FIXTURE_CLEAN})
+        rep = scan(
+            d,
+            allow_let={},
+            helper_allow={},
+            allow_should_panic={("v2/lib/a/tests/t.rs", "khong_ton_tai"): (1, "mục chết")},
+        )
+        cases.append(
+            (
+                "allowlist `#[should_panic]` mục ⇒ đỏ",
+                (not rep.ok) and any("E_ALLOW_STALE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (21) `#[test]` gọi trợ giúp ở **tệp khác** ⇒ xanh **không cần** `HELPER_ALLOW`
+        # (KT-170: bản đồ trợ giúp toàn cây).
+        d = tmp / "helper-cross-file"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/common/mod.rs": (
+                    "pub fn kiem_ngoai(x: u32) {\n    assert_eq!(x, 3);\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "mod common;\n\n#[test]\nfn dung_tro_giup_ngoai() {\n"
+                    "    common::kiem_ngoai(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`#[test]` gọi trợ giúp ở tệp khác ⇒ xanh (không cần HELPER_ALLOW)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (22) đối chứng **âm**: trợ giúp ở tệp khác **không** răng ⇒ vẫn đỏ. Nếu không có ca
+        # này, một bản vá "mọi lời gọi chéo tệp đều xanh" sẽ lọt qua selftest.
+        d = tmp / "helper-cross-file-bare"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/common/mod.rs": (
+                    "pub fn khong_kiem(x: u32) -> u32 {\n    x + 1\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "mod common;\n\n#[test]\nfn chi_goi() {\n"
+                    "    let _x = common::khong_kiem(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`#[test]` gọi trợ giúp tệp khác **không** răng ⇒ đỏ",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (23) bắc cầu **qua ba tệp**: test -> `boc` (tệp B) -> `kiem` (tệp C, có assert).
+        d = tmp / "helper-cross-file-transitive"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/common/mot.rs": "pub fn boc(x: u32) {\n    kiem(x);\n}\n",
+                "v2/lib/a/tests/common/hai.rs": (
+                    "pub fn kiem(x: u32) {\n    assert_eq!(x, 3);\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "mod common;\n\n#[test]\nfn dung_tro_giup_bac_cau() {\n    common::boc(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp tệp khác **bắc cầu** ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (24) bí danh `use … as …` ⇒ phân giải đúng tên gốc.
+        d = tmp / "helper-alias"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/common/mod.rs": (
+                    "pub fn kiem_ngoai(x: u32) {\n    assert_eq!(x, 3);\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "mod common;\nuse common::kiem_ngoai as kt;\n\n"
+                    "#[test]\nfn dung_biet_danh() {\n    kt(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "`use … as …` ⇒ phân giải tên gốc",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (25) tên **mơ hồ** (hai định nghĩa, một không răng) ⇒ **không** tính là răng
+        # (fail-closed): thà đỏ oan còn hơn xanh oan; ca thật thì khai `HELPER_ALLOW`.
+        d = tmp / "helper-ambiguous"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/common/mot.rs": (
+                    "pub fn kiem(x: u32) {\n    assert_eq!(x, 3);\n}\n"
+                ),
+                "v2/lib/a/tests/common/hai.rs": "pub fn kiem(x: u32) -> u32 {\n    x + 1\n}\n",
+                "v2/lib/a/tests/t.rs": (
+                    "mod common;\n\n#[test]\nfn goi_ten_mo_ho() {\n    common::kiem(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp tệp khác **tên mơ hồ** ⇒ đỏ (fail-closed)",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (26) **Agent 0 chốt KT-170**: trợ giúp ở tệp **sản phẩm** (ngoài `#[cfg(test)]`) có
+        # `debug_assert!` ⇒ **KHÔNG** tính là răng. Test gọi nó mà không assert ⇒ đỏ. Nếu
+        # không có ca này, bản đồ "toàn cây" nhận cả hàm sản phẩm sẽ lọt qua selftest.
+        d = tmp / "helper-production"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn kiem_san_pham(x: u32) -> u32 {\n    debug_assert!(x > 0);\n"
+                    "    x + 1\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\nfn chi_goi_san_pham() {\n    let _x = kiem_san_pham(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp ở tệp **sản phẩm** (`debug_assert!`) ⇒ KHÔNG tính là răng",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (27) đối chứng dương cho (26): trợ giúp trong khối `#[cfg(test)]` của tệp `src/`
+        # **vẫn** được tính (phạm vi test, dù không phải tệp dưới `tests/`).
+        d = tmp / "helper-cfg-test"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn f() -> u32 {\n    1\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    pub fn kiem_cfg(x: u32) {\n"
+                    "        assert_eq!(x, 3);\n    }\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\nfn dung_tro_giup_cfg() {\n    kiem_cfg(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp trong `#[cfg(test)]` của `src/` ⇒ vẫn tính là răng",
+                rep.ok,
                 "; ".join(rep.errors),
             )
         )
@@ -1461,7 +1893,7 @@ def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=None, help="gốc cây nguồn (mặc định: repo chứa tệp này)")
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 21 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 33 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:
