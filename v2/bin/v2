@@ -246,7 +246,13 @@ do_check() {
     run_step "fmt" "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || fails=$((fails + 1))
     run_step "clippy" "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings || fails=$((fails + 1))
     echo "--- luật cấu trúc R1..R5"
-    if rules "$V2_ROOT"; then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
+    # **KT-155 (T-INFRA)** — chạy `rules` trong **subshell**: bash 3.2 (macOS) bị hỏng heap
+    # (`BUG IN CLIENT OF LIBMALLOC: memory corruption of free block`, SIGTRAP) sau khi `rules`
+    # quét cây lớn; heap hỏng bị các tiến trình con kế thừa ⇒ `self-test luật` đỏ oan (exit
+    # 133). Subshell cô lập hỏng hóc, **không** đổi ngữ nghĩa (cùng output, cùng mã thoát).
+    # Bằng chứng: `v2/agent/JOURNAL/kt155-logs/kt155-check-base.log` (cây base cũng đỏ) +
+    # `kt155-check-final3.log` (sau workaround xanh). Không phải nới ngưỡng.
+    if ( rules "$V2_ROOT" ); then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
     run_step "self-test luật" bash "$V2_ROOT/test/rules/run.sh" || fails=$((fails + 1))
     run_step "luật máy K6 (KT-80: 1,2,3,7,8)" check_k6_rules || fails=$((fails + 1))
     # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
@@ -295,6 +301,12 @@ do_check() {
         # Fail-closed: thiếu mỏ neo (`wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ.
         run_step "wake paths (KT-151: một cơ chế wake)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" || fails=$((fails + 1))
         run_step "selftest wake paths (KT-151)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --selftest || fails=$((fails + 1))
+        # **KT-155 (N7-2b)** — `--strict` vào cổng: **allowlist tường minh** thay heuristic
+        # "thân hàm có `is_blocked()`/`Sleeping`" (heuristic chỉ phủ 4/16 đường — KT-154 §7).
+        # Mọi `transition_tcb(…, TcbState::Ready)` phải qua cửa `wake_step`/`wake_from` hoặc
+        # có tên trong allowlist kèm lý do; chỗ lạ ⇒ ĐỎ (fail-closed hai chiều). Đây là
+        # **thêm phép đo**, không nới ngưỡng nào.
+        run_step "wake paths --strict (KT-155: allowlist)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --strict || fails=$((fails + 1))
     fi
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then

@@ -21,9 +21,12 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
 - **Mức mặc định (cổng)**: kênh **chéo hart** phải là hộp thư duy nhất; không có doorbell
   riêng theo arch; ba loại `Wake`/`Reschedule`/`Migrate` có mặt và được tiêu thụ đúng một
   chỗ. Mức này **xanh** trên v2 và **đỏ** trên v1 (ba kênh).
-- **`--strict`**: đòi **mọi** chuyển `blocked/sleeping → Ready` nằm trong **một** hàm
-  `wake_step`. Mức này **đỏ** trên v2 (nợ N7-2: các đường IPC/finalise đánh thức trực tiếp)
-  — chạy để **đo nợ**, không nằm trong cổng.
+- **`--strict`** (KT-155): **allowlist tường minh** — mọi `transition_tcb(…, TcbState::Ready)`
+  trong mã sản phẩm phải hoặc nằm trong một **cửa wake** (`wake_step`/`wake_from`), hoặc có
+  tên trong `NON_WAKE_READY_SITES` kèm lý do. Fail-closed **hai chiều**: chỗ lạ trong mã ⇒
+  ĐỎ; mục trong allowlist không còn khớp ⇒ ĐỎ. Mức này **xanh** trên v2 sau KT-154/155 và
+  **nằm trong `v2 check`** từ KT-155 (thay heuristic "thân hàm có `is_blocked()`/`Sleeping`"
+  vốn chỉ phủ 4/16 đường — KT-154 §7).
 
 Fail-closed: thiếu mỏ neo (không tìm thấy `wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ,
 không được coi là "không có gì để kiểm".
@@ -66,7 +69,12 @@ MAIL_CONSUMER = "apply_mail"
 # refill) — nó cũng phát `Wake` về `home` khi khác hart. Cả hai **cùng một kênh**; không
 # thêm hàm thứ ba nào được phát `Wake`. Định nghĩa lại phạm vi này đã quét lại **toàn bộ**
 # `v2/kernel` + `v2/sim` (Luật 2) — xem `v2/agent/JOURNAL/kt154-n7fix.md` §8.
-WAKE_PRODUCER = ("wake", "wake_from")
+#
+# **KT-155 (N7-4)** — thêm **một** cửa cùng kênh: `wake_from_unlink` (như `wake_from` nhưng
+# `unlink = true`) cho `wake_addr` — waiter `BlockedOnAddress` phải gỡ bucket WaitAddr **và**
+# đánh thức hart `home`. Vẫn **một** kênh (`MailboxMsg::Wake`), ba cửa; đã quét lại toàn bộ
+# `v2/kernel` + `v2/sim` (Luật 2) — xem `v2/agent/JOURNAL/kt155-n7-dong.md`.
+WAKE_PRODUCER = ("wake", "wake_from", "wake_from_unlink")
 
 # Hàm phát `Migrate` (push migration).
 MIGRATE_PRODUCER = "push_step"
@@ -78,6 +86,50 @@ SYNC_MAILBOX = "v2/lib/vifast-sync/src/mailbox.rs"
 SYNC_TEST = "v2/lib/vifast-sync/tests/kt30_sync.rs"
 KERNEL_SCHED = "v2/kernel/vifast-core/src/core_sched.rs"
 SIM_KOBJ = "v2/sim/vifast-sim/src/kobj.rs"
+
+# **KT-155** — allowlist tường minh thay heuristic "thân hàm có `is_blocked()`/`Sleeping`".
+# Heuristic cũ chỉ phủ **4/16** đường (KT-154 §7): đột biến ở `reply_with` (bỏ `wake_from`,
+# gọi `transition_tcb` trực tiếp) **không** bị bắt vì thân hàm không có `is_blocked()`/
+# `Sleeping`. Nay mọi `transition_tcb(…, TcbState::Ready)` trong mã sản phẩm phải hoặc nằm
+# trong một **cửa wake**, hoặc có tên ở `NON_WAKE_READY_SITES` kèm lý do — fail-closed.
+#
+# Cửa wake: **chỉ** `wake_step` (thân chuyển trạng thái) và `wake_from` (cửa sản phẩm) —
+# khoá theo (tệp, hàm) để hàm trùng tên ở tệp khác không lọt.
+WAKE_DOORS = {
+    (KERNEL_SCHED, "wake_step"),
+    (KERNEL_SCHED, "wake_from"),
+    (KERNEL_SCHED, "wake_from_unlink"),
+    (SIM_KOBJ, "wake_step"),
+    (SIM_KOBJ, "wake_from"),
+    (SIM_KOBJ, "wake_from_unlink"),
+}
+
+# Chỗ `transition_tcb(…, Ready)` **không** phải wake, khoá (tệp, hàm, thứ tự trong hàm).
+# Thứ tự trong hàm (1-based) để một chỗ **mới** trong cùng hàm bị bắt (fail-closed) mà không
+# phụ thuộc số dòng (dòng trôi khi sửa tệp). Mục không còn khớp chỗ nào ⇒ ĐỎ (`E_STRICT_STALE`).
+NON_WAKE_READY_SITES: Dict[Tuple[str, str, int], str] = {
+    # --- kernel: chuyển Running→Ready (dispatch/yield/preempt) và Inactive→Ready (khởi tạo).
+    ("v2/kernel/vifast-core/src/core_ipc.rs", "ensure_started", 1): "Inactive→Ready (khởi tạo TCB)",
+    ("v2/kernel/vifast-core/src/core_ipc.rs", "reply_with", 1): "Running→Ready của chính replier",
+    ("v2/kernel/vifast-core/src/core_sched.rs", "dispatch_step", 1): "Running→Ready (dispatch)",
+    ("v2/kernel/vifast-core/src/core_sched.rs", "yield_current", 1): "Running→Ready (yield)",
+    ("v2/kernel/vifast-core/src/core_tcb.rs", "transition_tcb", 1): "nguyên thuỷ: preempt Running→Ready",
+    ("v2/kernel/vifast-core/src/core_tcb.rs", "tcb_suspend", 1): "treo: Ready + suspended (không chạy)",
+    # --- kernel: mã khởi tạo sản phẩm (không phải đường wake của TCB đang chờ).
+    ("v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs", "build_rig", 1): "khởi tạo sản phẩm",
+    ("v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs", "task_ready", 1): "khởi tạo sản phẩm",
+    ("v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs", "build_rig", 1): "khởi tạo sản phẩm",
+    ("v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs", "turn", 1): "khởi tạo sản phẩm",
+    ("v2/kernel/vifast-plat-riscv64/src/core_bridge.rs", "boot_smoke", 1): "khởi tạo sản phẩm",
+    # --- sim: cùng phân loại với kernel (sim là oracle, đối xứng từng đường).
+    ("v2/sim/vifast-sim/src/kobj.rs", "transition_tcb", 1): "nguyên thuỷ: preempt Running→Ready",
+    ("v2/sim/vifast-sim/src/kobj.rs", "tcb_suspend", 1): "treo: Ready + suspended (không chạy)",
+    ("v2/sim/vifast-sim/src/kobj.rs", "dispatch_step", 1): "Running→Ready (dispatch)",
+    ("v2/sim/vifast-sim/src/kobj.rs", "yield_current", 1): "Running→Ready (yield)",
+    ("v2/sim/vifast-sim/src/kobj.rs", "reply_with", 1): "Running→Ready của chính replier",
+    ("v2/sim/vifast-sim/src/kobj.rs", "ensure_started", 1): "Inactive→Ready (khởi tạo TCB)",
+}
+
 
 # Thư mục quét.
 V2_SCAN = ("v2/kernel", "v2/sim")
@@ -273,7 +325,11 @@ class Report:
 
 # ------------------------------------------------------------------ v2
 
-def scan_v2(root: Path, strict: bool) -> Report:
+def scan_v2(
+    root: Path,
+    strict: bool,
+    allowlist: Optional[Dict[Tuple[str, str, int], str]] = None,
+) -> Report:
     r = Report()
 
     # --- mỏ neo (fail-closed) -------------------------------------------------
@@ -448,44 +504,99 @@ def scan_v2(root: Path, strict: bool) -> Report:
         "kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`"
     )
 
-    # 5) `--strict`: mọi chuyển blocked/sleeping → Ready phải nằm trong `wake_step`.
+    # 5) `--strict` (KT-155): **allowlist tường minh** thay heuristic "thân hàm có
+    #    `is_blocked()`/`Sleeping`". Heuristic cũ chỉ phủ 4/16 đường (KT-154 §7) nên đột biến
+    #    ở `reply_with` (bỏ `wake_from`, gọi `transition_tcb` trực tiếp) **không** bị bắt.
+    #    Nay **mọi** `transition_tcb(…, TcbState::Ready)` trong mã sản phẩm phải hoặc nằm
+    #    trong một **cửa wake** (`WAKE_DOORS`), hoặc có tên trong `NON_WAKE_READY_SITES`
+    #    (kèm lý do). Fail-closed **hai chiều**:
+    #      - chỗ trong mã không có trong allowlist ⇒ ĐỎ (đường wake thứ hai / đột biến);
+    #      - mục trong allowlist không còn khớp chỗ nào ⇒ ĐỎ (allowlist mục, phải cập nhật).
     if strict:
-        transitions: List[str] = []
+        allow = NON_WAKE_READY_SITES if allowlist is None else allowlist
+        sites: List[Tuple[str, str, int, int]] = []
         for p, text, fns in files:
             relp = rel(root, p)
             if is_test_file(p, root):
                 continue
             tr = test_ranges.get(str(p), [])
             lines = text.splitlines()
+            counts: Dict[Tuple[str, str], int] = {}
             for lineno, line in enumerate(lines, 1):
                 if in_ranges(lineno, tr):
                     continue
                 if not RE_READY_TRANSITION.search(line):
+                    # Fail-closed: câu lệnh `transition_tcb(…)` **nhiều dòng** mà máy kiểm
+                    # (quét theo dòng) không xếp loại được ⇒ ĐỎ, không bỏ qua im lặng. Gom
+                    # **đúng** lời gọi theo cân bằng ngoặc (không quét sang câu lệnh kế).
+                    if "transition_tcb" in line and not line.lstrip().startswith(
+                        ("//", "*", "/*")
+                    ):
+                        window = "\n".join(lines[lineno - 1 : lineno + 8])
+                        pos = window.index("transition_tcb")
+                        depth = 0
+                        end = None
+                        for k in range(pos, len(window)):
+                            c = window[k]
+                            if c == "(":
+                                depth += 1
+                            elif c == ")":
+                                depth -= 1
+                                if depth == 0:
+                                    end = k
+                                    break
+                        call = window[pos : end + 1] if end is not None else window[pos:]
+                        if "TcbState::Ready" in call:
+                            r.err(
+                                "E_STRICT_TRANSITION",
+                                f"  {relp}:{lineno}: `transition_tcb` nhiều dòng — "
+                                f"máy kiểm không xếp loại được (fail-closed)",
+                            )
                     continue
                 fn = enclosing(fns, lineno)
                 if fn is None:
+                    # Fail-closed: không xác định được hàm bao quanh ⇒ không thể xếp loại.
+                    r.err(
+                        "E_STRICT_TRANSITION",
+                        f"  {relp}:{lineno}: `TcbState::Ready` ngoài hàm — không xác định "
+                        f"được cửa (fail-closed)",
+                    )
                     continue
-                body = "\n".join(lines[fn.start - 1 : fn.end])
-                # Chỉ tính **đánh thức** (nguồn blocked/sleeping), không tính Running→Ready
-                # của `dispatch`/`yield` hay khởi tạo `Inactive→Ready`.
-                if "is_blocked()" not in body and "Sleeping" not in body:
-                    continue
-                # `transition_tcb` là **nguyên thuỷ** chuyển trạng thái (không phải đường wake);
-                # `tcb_suspend` là **treo** (Ready + suspended), không phải đánh thức.
-                if fn.name in ("transition_tcb", "tcb_suspend"):
-                    continue
-                transitions.append(f"{relp}:{lineno} ({fn.name})")
-        bad = [t for t in transitions if not t.endswith(f"({WAKE_STEP})")]
-        for t in transitions:
-            r.note(f"chuyển Ready: {t}")
+                key = (relp, fn.name)
+                counts[key] = counts.get(key, 0) + 1
+                sites.append((relp, fn.name, counts[key], lineno))
+        used: set = set()
+        bad: List[str] = []
+        for relp, fname, ordinal, lineno in sites:
+            if (relp, fname) in WAKE_DOORS:
+                r.note(f"cửa wake: {relp}:{lineno} ({fname})")
+                continue
+            key = (relp, fname, ordinal)
+            if key in allow:
+                used.add(key)
+                r.note(f"chuyển Ready không-wake: {relp}:{lineno} ({fname}) — {allow[key]}")
+                continue
+            bad.append(f"{relp}:{lineno} ({fname})")
         if bad:
             r.err(
                 "E_STRICT_TRANSITION",
-                f"{len(bad)} chỗ chuyển `TcbState::Ready` ngoài `{WAKE_STEP}` "
-                f"(nợ N7-2, không nằm trong cổng mặc định)",
+                f"{len(bad)} chỗ chuyển `TcbState::Ready` ngoài cửa wake "
+                f"(allowlist tường minh KT-155)",
             )
-            for t in bad:
-                r.err("E_STRICT_TRANSITION", f"  {t}")
+            for b in bad:
+                r.err("E_STRICT_TRANSITION", f"  {b}")
+        # Mục trong allowlist phải còn khớp chỗ nào đó. Chỉ xét tệp **có trong cây** — cây
+        # test tối thiểu (selftest) không có đủ tệp của repo thật, không được coi là mục.
+        present = {rel(root, p) for p, _, _ in files}
+        for key in sorted(allow):
+            if key[0] not in present:
+                continue
+            if key not in used:
+                r.err(
+                    "E_STRICT_STALE",
+                    f"  allowlist có mục không còn khớp: {key[0]} {key[1]} #{key[2]} "
+                    f"({allow[key]})",
+                )
 
     return r
 
@@ -570,7 +681,12 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _fixture_v2(base: Path, extra_doorbell: bool = False, missing_wake_step: bool = False) -> None:
+def _fixture_v2(
+    base: Path,
+    extra_doorbell: bool = False,
+    missing_wake_step: bool = False,
+    extra_sched: str = "",
+) -> None:
     """Cây v2 giả tối thiểu: một hộp thư, một `wake_step`, một `apply_mail`."""
     _write(
         base / KERNEL_MAILBOX,
@@ -599,6 +715,7 @@ def _fixture_v2(base: Path, extra_doorbell: bool = False, missing_wake_step: boo
         "        self.wake_step(tcb)\n"
         "    }\n"
         + wake_step
+        + extra_sched
         + "    fn apply_mail(&mut self, hart: u16, msg: MailboxMsg) {\n"
         "        match msg {\n"
         "            MailboxMsg::Wake(tcb) => { let _ = self.wake_step(tcb); }\n"
@@ -672,7 +789,7 @@ def _fixture_v1(base: Path, channels: int = 3) -> None:
 
 
 def selftest() -> int:
-    """Bốn ca dương + ba ca âm; mỗi ca một dòng `ok`/`not ok`."""
+    """Sáu ca dương + năm ca âm; mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
     try:
@@ -706,18 +823,93 @@ def selftest() -> int:
             )
         )
 
-        # (4) v2 `--strict` với transition ngoài `wake_step` ⇒ đỏ.
+        # (4) v2 `--strict` với transition ngoài cửa wake ⇒ đỏ.
         d = tmp / "v2-strict"
         _fixture_v2(d)
         _write(
             d / "v2/kernel/vifast-core/src/core_ipc.rs",
             "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        if self.tcb_state(tcb).is_blocked() {\n            return self.transition_tcb(tcb, TcbState::Ready);\n        }\n        0\n    }\n}\n",
         )
-        rep = scan_v2(d, strict=True)
+        rep = scan_v2(d, strict=True, allowlist={})
         cases.append(
             (
-                "v2 `--strict` transition ngoài `wake_step` ⇒ đỏ",
+                "v2 `--strict` transition ngoài cửa wake ⇒ đỏ",
                 (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4b) v2 `--strict` + allowlist khớp ⇒ xanh (đối chứng dương: allowlist không
+        # luôn-đỏ). `dispatch_step` là chuyển Running→Ready, có tên trong allowlist.
+        d = tmp / "v2-strict-allow"
+        _fixture_v2(
+            d,
+            extra_sched=(
+                "    fn dispatch_step(&mut self, hart: u16) -> u8 {\n"
+                "        self.transition_tcb(1, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+            ),
+        )
+        allow_ok = {(KERNEL_SCHED, "dispatch_step", 1): "Running→Ready (dispatch)"}
+        rep = scan_v2(d, strict=True, allowlist=allow_ok)
+        cases.append(
+            (
+                "v2 `--strict` + allowlist khớp ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c) v2 `--strict` + **đột biến**: thêm chỗ thứ hai trong `dispatch_step` (hàm đã
+        # có trong allowlist) ⇒ đỏ. Đây là ca chống tái diễn đúng lỗi KT-154 §7: heuristic cũ
+        # bỏ sót vì thân hàm không có `is_blocked()`/`Sleeping`.
+        d = tmp / "v2-strict-mutate"
+        _fixture_v2(
+            d,
+            extra_sched=(
+                "    fn dispatch_step(&mut self, hart: u16) -> u8 {\n"
+                "        self.transition_tcb(1, TcbState::Ready);\n"
+                "        self.transition_tcb(2, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+            ),
+        )
+        rep = scan_v2(d, strict=True, allowlist=allow_ok)
+        cases.append(
+            (
+                "v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4d) v2 `--strict` + allowlist **mục** (không còn khớp chỗ nào) ⇒ đỏ (fail-closed).
+        d = tmp / "v2-strict-stale"
+        _fixture_v2(d)
+        allow_stale = {(KERNEL_SCHED, "khong_ton_tai", 1): "mục"}
+        rep = scan_v2(d, strict=True, allowlist=allow_stale)
+        cases.append(
+            (
+                "v2 `--strict` allowlist mục ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_STALE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4e) v2 `--strict` + `transition_tcb` **nhiều dòng** ⇒ đỏ (fail-closed: máy kiểm
+        # quét theo dòng không xếp loại được, không được bỏ qua im lặng).
+        d = tmp / "v2-strict-multiline"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        self.transition_tcb(\n            tcb,\n            TcbState::Ready,\n        );\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)",
+                (not rep.ok) and any("nhiều dòng" in e for e in rep.errors),
                 "; ".join(rep.errors),
             )
         )
@@ -772,9 +964,13 @@ def selftest() -> int:
 def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=None, help="gốc cây nguồn (mặc định: repo chứa tệp này)")
-    ap.add_argument("--strict", action="store_true", help="đòi mọi chuyển Ready nằm trong wake_step")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="allowlist tường minh: mọi chuyển Ready phải qua cửa wake hoặc có trong allowlist",
+    )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 7 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 11 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:

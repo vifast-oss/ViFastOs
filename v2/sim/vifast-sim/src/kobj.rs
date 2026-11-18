@@ -5305,7 +5305,7 @@ impl Machine {
             // Đã `Ready`: nếu vừa bỏ `suspended`, `set_tcb_suspended(false)` đã sync đúng bucket;
             // nếu không, TCB vẫn ở đúng chỗ — **không** gọi `transition_tcb` (cặp danh tính cấm).
             TcbState::Ready => {}
-            _ => self.transition_tcb(obj, TcbState::Ready)?,
+            _ => self.wake_from(obj)?,
         }
         self.sched_after_op(true);
         Ok(())
@@ -5717,15 +5717,53 @@ impl Machine {
         if self.sched.len() > 1 && info.home != self.current_hart {
             return self.post_mail(info.home, MailboxMsg::Wake(tcb));
         }
-        self.wake_step(tcb)?;
+        self.wake_step(tcb, true)?;
         self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-155 (N7-2b)** — bản **đối xứng** của `vifast-core::Machine::wake_from` cho sim:
+    /// cửa **duy nhất** cho mọi đường đánh thức TCB trong sim (IPC/Reply/Notification/
+    /// finalise/refill). Khác hart ⇒ gửi `MailboxMsg::Wake` vào hộp thư `home` (đánh thức
+    /// hart đích) **và** vẫn chuyển `Ready` cục bộ — cùng lý do như kernel: các đường gọi đã
+    /// tự gỡ bookkeeping của mình nên trạng thái phải nhất quán **ngay**; hoãn sang hart
+    /// `home` sẽ vi phạm bất biến C2 (`Reply.caller ⇔ BlockedOnReply`) và `check_ipc`.
+    ///
+    /// `unlink = false` (xem [`Machine::wake_step`]): **không** gỡ TCB khỏi mọi hàng chờ —
+    /// các đường gọi đã gỡ đúng phần của mình, và `unlink_tcb_queues` sẽ gỡ **cả** message
+    /// `NBSend` không liên quan rồi đếm lại `ipc_dropped` (đường finalise đã đếm ⇒ hai lần).
+    fn wake_from(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        let cheo_hart = self.sched.len() > 1 && info.home != self.current_hart;
+        self.wake_step(tcb, false)?;
+        if cheo_hart {
+            self.push_mail(info.home, MailboxMsg::Wake(tcb))?;
+        }
+        Ok(())
+    }
+
+    /// **KT-155 (N7-4)** — như [`Machine::wake_from`] nhưng **gỡ** TCB khỏi mọi hàng chờ
+    /// trước khi `Ready` (`unlink = true`). Dùng cho `wake_addr`: waiter `BlockedOnAddress`
+    /// phải được gỡ khỏi bucket WaitAddr, và khác hart thì phải gửi `Wake` về `home` (đối
+    /// xứng kernel; trước KT-155 `wake_addr` gọi `wake_step` trực tiếp — nợ N7-4).
+    fn wake_from_unlink(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        let cheo_hart = self.sched.len() > 1 && info.home != self.current_hart;
+        self.wake_step(tcb, true)?;
+        if cheo_hart {
+            self.push_mail(info.home, MailboxMsg::Wake(tcb))?;
+        }
         Ok(())
     }
 
     /// Thân của [`Machine::wake`] **không** tự kiểm bất biến — dùng cho đường xử lý hộp thư
     /// (KT-22, [`Machine::process_mail`]) để **một** bước chỉ kiểm bất biến một lần; `wake`
     /// công khai kiểm sau khi xong. Idempotent: TCB đã `Ready` ⇒ no-op.
-    fn wake_step(&mut self, tcb: ObjId) -> Result<(), KError> {
+    ///
+    /// **KT-155**: `unlink` quyết định có gỡ TCB khỏi **mọi** hàng chờ trước khi `Ready` hay
+    /// không — đường hộp thư/`wake`/`wake_addr` cần (`true`); đường sản phẩm đã tự gỡ nên
+    /// dùng [`Machine::wake_from`] (`false`). Đối xứng `vifast-core::Machine::wake_step`.
+    fn wake_step(&mut self, tcb: ObjId, unlink: bool) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Ready {
             return Ok(());
@@ -5733,7 +5771,9 @@ impl Machine {
         if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
             return Err(KError::IllegalOperation);
         }
-        self.unlink_tcb_queues(tcb);
+        if unlink {
+            self.unlink_tcb_queues(tcb);
+        }
         self.transition_tcb(tcb, TcbState::Ready)
     }
 
@@ -5932,7 +5972,7 @@ impl Machine {
                     return;
                 }
                 if info.state.is_blocked() || matches!(info.state, TcbState::Sleeping { .. }) {
-                    let _ = self.wake_step(tcb);
+                    let _ = self.wake_step(tcb, true);
                 }
                 if self.sched.len() > 1 {
                     let eff = match self.effective_priority(tcb) {
@@ -8055,7 +8095,7 @@ impl Machine {
             }
         }
         for tcb in wake {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.wake_from(tcb)?;
         }
         Ok(())
     }
@@ -8348,7 +8388,7 @@ impl Machine {
     fn cancel_reply_of(&mut self, donor: ObjId) -> Result<(), KError> {
         if let TcbState::BlockedOnReply { reply } = self.tcb_state(donor)? {
             self.reply_set_caller(reply, None)?;
-            self.transition_tcb(donor, TcbState::Ready)?;
+            self.wake_from(donor)?;
         }
         Ok(())
     }
@@ -8369,7 +8409,7 @@ impl Machine {
                 self.tcb_state(c)?,
                 TcbState::BlockedOnReply { reply } if reply == reply_obj
             ) {
-                self.transition_tcb(c, TcbState::Ready)?;
+                self.wake_from(c)?;
             }
         }
         Ok(caller)
@@ -8651,8 +8691,9 @@ impl Machine {
             }
         }
         for tcb in &chon {
-            // `wake_step` gỡ TCB khỏi **mọi** hàng chờ (kể cả bucket này) rồi `→ Ready`.
-            self.wake_step(*tcb)?;
+            // **KT-155 (N7-4)**: gỡ bucket WaitAddr (`unlink = true`) **và** gửi `Wake` về
+            // `home` khi waiter ở hart khác — đối xứng kernel.
+            self.wake_from_unlink(*tcb)?;
         }
         self.sched_after_op(false);
         Ok(chon.len() as u32)
@@ -8812,7 +8853,7 @@ impl Machine {
         // Gỡ TCB khỏi **mọi** hàng chờ (waiter notification hoặc `Recv` của Endpoint) trước
         // khi `→ Ready` — cùng cửa với `Suspend(Abort)`/finalise.
         self.unlink_tcb_queues(target);
-        self.transition_tcb(target, TcbState::Ready)?;
+        self.wake_from(target)?;
         self.body_mut(ntfn, |k| match k {
             Kind::Notification(n) => {
                 n.word = 0;
@@ -9283,7 +9324,7 @@ impl Machine {
                         _ => {
                             if q.blocking {
                                 self.set_last_ipc_error(q.sender, KError::Cancelled)?;
-                                self.transition_tcb(q.sender, TcbState::Ready)?;
+                                self.wake_from(q.sender)?;
                             }
                         }
                     }
@@ -9298,7 +9339,7 @@ impl Machine {
                 }
                 _ => {
                     if q.blocking {
-                        self.transition_tcb(q.sender, TcbState::Ready)?;
+                        self.wake_from(q.sender)?;
                     }
                 }
             },
@@ -9368,7 +9409,7 @@ impl Machine {
                 msg.info = msg.info.with_no_reply(true);
             }
             self.deliver_message(waiter, &mut msg, &snaps, plan.as_ref())?;
-            self.transition_tcb(waiter, TcbState::Ready)?;
+            self.wake_from(waiter)?;
             if user_no_reply {
                 // (a) Caller đặt cờ: Call = Send, **không** sinh Reply.
                 self.sched_after_op(true);
@@ -9504,7 +9545,7 @@ impl Machine {
                 .endpoint_take_waiter(ep_obj)?
                 .expect("has_waiter vừa kiểm");
             self.deliver_message(waiter, &mut msg, &snaps, plan.as_ref())?;
-            self.transition_tcb(waiter, TcbState::Ready)?;
+            self.wake_from(waiter)?;
         } else {
             self.endpoint_enqueue(
                 ep_obj,
@@ -9727,7 +9768,7 @@ impl Machine {
             }
         }
         if let Some(caller) = caller {
-            self.transition_tcb(caller, TcbState::Ready)?;
+            self.wake_from(caller)?;
         }
         if matches!(state, TcbState::Running { .. }) {
             self.transition_tcb(tcb, TcbState::Ready)?;
@@ -9907,7 +9948,7 @@ impl Machine {
                     if w != tcb {
                         // **KT-26**: procsrv phải biết `(sender, Exit{code})` vừa nhận.
                         self.record_last_fault(w, tcb, FaultKind::Exit { code })?;
-                        self.transition_tcb(w, TcbState::Ready)?;
+                        self.wake_from(w)?;
                     }
                 }
                 // KT-23: `Exit` từ `Inactive` giữ `Inactive` (cặp danh tính `(Inactive, Inactive)`
@@ -10032,7 +10073,7 @@ impl Machine {
                 };
                 let _ = self.deliver_queued(w, q, reply_obj, None)?;
                 if w != tcb {
-                    self.transition_tcb(w, TcbState::Ready)?;
+                    self.wake_from(w)?;
                 }
             }
             None => {
@@ -10785,7 +10826,7 @@ impl Machine {
             return;
         }
         let _ = self.set_last_ipc_error(tcb, KError::Cancelled);
-        let _ = self.transition_tcb(tcb, TcbState::Ready);
+        let _ = self.wake_from(tcb);
     }
 
     /// Bỏ tham chiếu tới object/cap chết (thiết kế §4.2: không trường nào trỏ tới object chết).
