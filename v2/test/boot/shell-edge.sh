@@ -29,6 +29,16 @@
 #   8. wait-khong-treo        `wait 13` (tiến trình đang chạy) rồi `echo sau-wait`
 #                                              ⇒ `wait` trả lời trong hạn, `echo` vẫn chạy
 #
+# Ba phép kiểm **thêm** (không đánh số ca, dùng chung khung `case_begin`/`case_end`):
+#   8b. truncate-jobs         `truncate /README 5` + `stat /README` + `jobs` + `ps`
+#                                              ⇒ truncate **có hiệu lực** (size=5) và tổng `jobs` = `ps n`
+#   10. new-cmds-ok           `time` `uptime` `sync` `stat /README` `ls`
+#                                              ⇒ mỗi lệnh in đúng dạng, `ls` liệt kê ≥ 1 mục thật
+#   11. new-cmds-edge         `stat` (không tham số) `stat /khongco` `ls /khongco`
+#                             `truncate /README abc` `truncate /README 4294967296` `sync`×2 `time`×2
+#                                              ⇒ báo đúng lỗi, size ≥ 2^32 bị từ chối, đồng hồ đơn điệu
+#   (10/11 là **KT-130**, Q4 của Agent 0: 9 lệnh thêm phải có ca kiểm trên ảnh sản phẩm.)
+#
 # **`--selftest` (bắt buộc theo luật repo: harness mới phải có ca âm)**: dựng **log giả** trong
 # `mktemp -d` cho **mỗi** ca — một log **cố tình sai** (đúng đầu ra của lỗi cũ: `# shell: ?`,
 # `state=Unknown`, 100 dòng `dong qua dai`, …) và một log **đúng** — rồi chạy **chính** hàm khẳng
@@ -255,6 +265,107 @@ check_truncate_jobs() {
     n_ps="$(sed -n 's/^# shell: ps n=\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)"
     if [ -n "$n_ps" ] && [ "$total" -ne "$n_ps" ]; then
         echo "jobs đếm tổng $total nhưng ps khai n=$n_ps — hai lệnh lệch nhau"
+        return 1
+    fi
+    return 0
+}
+
+# 3d. **KT-130** (Q4 của Agent 0, 18/11/2026) — năm lệnh `time`/`uptime`/`sync`/`stat`/`ls` phải
+#     **thật sự** chạy trên ảnh sản phẩm và in đúng dạng. Trước đây chúng chỉ được parity phủ
+#     (một dòng mỗi lệnh) — không có ca nào kiểm **nội dung** trên ảnh sản phẩm.
+#     `time` in **một** dòng (`time ns=`), `uptime` in **một** dòng (`uptime ms=`) — đòi **đúng
+#     một** mỗi loại để một lệnh không thể "mượn" dòng của lệnh kia.
+check_new_cmds_ok() {
+    local log="$1" n
+    n="$(grep -c -E '^# shell: time ns=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: time ns=<n>', thấy ${n:-0}"
+        return 1
+    fi
+    # `time` chỉ in **một** dòng (`time ns=`); `uptime` in **một** dòng (`uptime ms=`). Đòi **đúng
+    # một** mỗi loại — nếu ai đó cho `time` in kèm dòng uptime thì ca này đỏ và phải bàn lại.
+    n="$(grep -c -E '^# shell: uptime ms=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: uptime ms=<n>', thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: sync ok' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: sync ok', thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -E '^# shell: stat path=/README kind=[0-9]+ size=[0-9]+ ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: stat path=/README kind=… size=… ino=…', thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -E '^# shell: ls n=[0-9]+ path=/$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: ls n=<n> path=/', thấy ${n:-0}"
+        return 1
+    fi
+    # `ls` phải liệt kê **ít nhất một** mục thật — bảng rỗng không được tính là đạt.
+    n="$(grep -c -E '^  [fdl] [A-Za-z0-9_.-]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -lt 1 ]; then
+        echo "ls không liệt kê mục nào (bảng rỗng)"
+        return 1
+    fi
+    return 0
+}
+
+# 3e. **KT-130** — ca **biên** cho cùng năm lệnh, cộng `truncate`/`jobs` đã có ở 3c:
+#     (a) `stat` không tham số ⇒ `thieu duong dan` (không rơi xuống `# shell: ?`);
+#     (b) `stat`/`ls` trên đường **không có** ⇒ đúng **hai** dòng `fs loi code=5`;
+#     (c) `truncate` size không phải số ⇒ `thieu kich thuoc`;
+#     (d) `truncate` size ≥ 2^32 ⇒ `kich thuoc qua lon` (KT-126: từ chối sớm, không cắt âm thầm);
+#     (e) `sync` hai lần ⇒ **hai** dòng `sync ok` (idempotent, không treo);
+#     (f) `time` hai lần ⇒ **hai** dòng `time ns=`, và lần sau **≥** lần trước (đồng hồ đơn điệu);
+#     (g) **không** dòng `# shell: ?` nào — mọi lệnh trên đều là lệnh shell biết.
+check_new_cmds_edge() {
+    local log="$1" n t1 t2
+    n="$(grep -c -x -F '# shell: thieu duong dan' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: thieu duong dan' (stat khong tham so), thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: thieu kich thuoc' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: thieu kich thuoc', thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: kich thuoc qua lon (toi da 4294967295)' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng 'kich thuoc qua lon', thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: fs loi code=5' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: fs loi code=5' (stat + ls tren duong khong co), thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: sync ok' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: sync ok' (sync hai lan), thấy ${n:-0}"
+        return 1
+    fi
+    n="$(grep -c -E '^# shell: time ns=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: time ns=<n>' (time hai lan), thấy ${n:-0}"
+        return 1
+    fi
+    t1="$(sed -n 's/^# shell: time ns=\([0-9][0-9]*\)$/\1/p' "$log" 2>/dev/null | sed -n '1p')"
+    t2="$(sed -n 's/^# shell: time ns=\([0-9][0-9]*\)$/\1/p' "$log" 2>/dev/null | sed -n '2p')"
+    if [ -z "$t1" ] || [ -z "$t2" ]; then
+        echo "không đọc được hai mốc thời gian của time"
+        return 1
+    fi
+    if [ "$t2" -lt "$t1" ]; then
+        echo "đồng hồ lùi: time lần hai ($t2) < lần một ($t1)"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: ?' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 0 ]; then
+        echo "thấy ${n:-0} dòng '# shell: ?' (lệnh bị coi là lạ)"
         return 1
     fi
     return 0
@@ -491,6 +602,57 @@ run_selftest() {
         printf '# shell: ps n=3\n'
     } >"$right"
     selftest_pair "3c truncate-jobs" check_truncate_jobs "$wrong" "$right"
+
+    # ---- ca 3d (**KT-130**): năm lệnh `time`/`uptime`/`sync`/`stat`/`ls` — ca ĐÚNG.
+    #      Log sai: thiếu `sync ok` và `ls` không liệt kê mục nào (bảng rỗng) ⇒ phải ĐỎ.
+    d="$(mktemp -d "$root/c3d.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: time ns=1000\n'
+        printf '# shell: uptime ms=0\n'
+        printf '# shell: stat path=/README kind=1 size=79 ino=2\n'
+        printf '# shell: ls n=0 path=/\n'
+    } >"$wrong"
+    {
+        printf '# shell: time ns=1000\n'
+        printf '# shell: uptime ms=0\n'
+        printf '# shell: sync ok\n'
+        printf '# shell: stat path=/README kind=1 size=79 ino=2\n'
+        printf '# shell: ls n=1 path=/\n'
+        printf '  f README\n'
+    } >"$right"
+    selftest_pair "3d new-cmds-ok" check_new_cmds_ok "$wrong" "$right"
+
+    # ---- ca 3e (**KT-130**): ca BIÊN của cùng bộ lệnh.
+    #      Log sai: `truncate` size quá lớn **không** bị từ chối (in dòng thành công) và đồng hồ
+    #      **lùi** ⇒ phải ĐỎ.
+    d="$(mktemp -d "$root/c3e.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: thieu duong dan\n'
+        printf '# shell: thieu kich thuoc\n'
+        printf '# shell: truncate path=/README size=4294967296\n'
+        printf '# shell: fs loi code=5\n'
+        printf '# shell: fs loi code=5\n'
+        printf '# shell: sync ok\n'
+        printf '# shell: sync ok\n'
+        printf '# shell: time ns=2000\n'
+        printf '# shell: time ns=1000\n'
+    } >"$wrong"
+    {
+        printf '# shell: thieu duong dan\n'
+        printf '# shell: thieu kich thuoc\n'
+        printf '# shell: kich thuoc qua lon (toi da 4294967295)\n'
+        printf '# shell: fs loi code=5\n'
+        printf '# shell: fs loi code=5\n'
+        printf '# shell: sync ok\n'
+        printf '# shell: sync ok\n'
+        printf '# shell: time ns=1000\n'
+        printf '# shell: time ns=2000\n'
+    } >"$right"
+    selftest_pair "3e new-cmds-edge" check_new_cmds_edge "$wrong" "$right"
 
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"
@@ -882,6 +1044,54 @@ run_real() {
         run_case_wait || rc=1
     fi
 
+    # (10) **KT-130** (Q4 của Agent 0, 18/11/2026): năm lệnh `time`/`uptime`/`sync`/`stat`/`ls` —
+    #      ca **ĐÚNG** trên ảnh sản phẩm. Đặt **trước** (8b) để `/README` còn nguyên cỡ gốc.
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        # KT-130: gửi **cách nhau** một nhịp. Đo được: gửi năm dòng liền một hơi thì `uptime`
+        # mất (FIFO 16 B của 16550 + shell in hai dòng cho `time` ⇒ byte bị rơi). Nhịp 0,15 s
+        # đủ và không làm chậm đáng kể.
+        for c in 'time' 'uptime' 'sync' 'stat /README' 'ls'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 10; then
+            if reason="$(check_new_cmds_ok "$CASE_LOG")"; then
+                echo "# new-cmds-ok: PASS ($(grep -m1 -E '^# shell: stat path=/README ' "$CASE_LOG"))"
+            else
+                echo "# new-cmds-ok: FAIL ($reason)"
+                rc=1
+            fi
+        else
+            echo "# new-cmds-ok: FAIL (quá hạn — shell treo ở time/uptime/sync/stat/ls)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
+    # (11) **KT-130**: ca **BIÊN** của cùng bộ lệnh (tham số sai, đường không có, size quá lớn,
+    #      sync lặp, đồng hồ đơn điệu). Vẫn trước (8b) để `/README` chưa bị truncate.
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        for c in 'stat' 'stat /khongco' 'ls /khongco' 'truncate /README abc' \
+            'truncate /README 4294967296' 'sync' 'sync' 'time' 'time'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 11; then
+            if reason="$(check_new_cmds_edge "$CASE_LOG")"; then
+                echo "# new-cmds-edge: PASS ($(grep -m1 -x -F '# shell: kich thuoc qua lon (toi da 4294967295)' "$CASE_LOG"))"
+            else
+                echo "# new-cmds-edge: FAIL ($reason)"
+                rc=1
+            fi
+        else
+            echo "# new-cmds-edge: FAIL (quá hạn — shell treo ở ca biên)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
     # (8b) **KT-126**: hai lệnh mới `truncate` + `jobs` — chạy **ngay trước** `exit` để không ảnh
     #      hưởng ca nào phía sau (truncate **đổi** `/README`). Không đánh số ca mới: dùng chung
     #      khung của ca 9 và chỉ thêm phép kiểm, nên `mark_remaining_fail` và bảng tổng kết không đổi.
@@ -938,7 +1148,7 @@ run_real() {
     qg_infra after "$LOGDIR/infra.log" || true
 
     if [ "$rc" -eq 0 ]; then
-        echo "# shell-edge: 8/8 ca PASS"
+        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge PASS"
         echo "# shell-edge.sh: PASS"
         return 0
     fi

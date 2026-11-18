@@ -149,12 +149,13 @@ reason = 'hai du kien mau thuan: (a) v1-archive code co pwd (main.rs:878) va ban
 name = 'time'
 args = ''
 send = 'time\n'
-expect = 'so tick/thoi gian tu luc boot (v1: uptime -> <n> ticks)'
+expect = '^# shell: time ns=[0-9]+$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:81'
 v1_output = ''
-status = 'deferred-K7'
-reason = 'thieu BUILTIN time trong shell v2 (shell_user.rs:247-269 chi co help/echo/ps/wait/kill/exit); syscall dong ho ClockRead (11) DA CO (spec/abi.toml:117, v2/kernel/vifast-plat-riscv64/src/user.rs:1229, TAP ktest_user.rs:1105) => khong phai ABI moi; chi can builtin => K7'
+status = 'active'
+note = 'KT-114 (Agent 0 duyet Q4 18/11/2026): builtin `time` co trong anh SAN PHAM (nhanh cfg(shell_fs)); dung ClockRead (11) da co, KHONG mo ABI. v1 in so tick tu luc boot; v2 in `# shell: time ns=<n>` roi `# shell: uptime ms=<n>` => parity mot phan (don vi khac)'
 
 [[command]]
 name = 'ls'
@@ -226,37 +227,40 @@ reason = 'shell v2 chua co lenh FS => KT-77b/K7'
 [[command]]
 name = 'stat'
 args = '<path>'
-send = 'stat /\n'
-expect = '<size> bytes file|dir|link'
+send = 'stat /README\n'
+expect = '^# shell: stat path=/README kind=[0-9]+ size=[0-9]+ ino=[0-9]+$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:82'
 source_more = 'docs/v1/overnight-log.md:2576'
 v1_output = '512 bytes dir'
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-114 (Agent 0 duyet Q4 18/11/2026): builtin `stat` co trong anh SAN PHAM; dung OP_STAT da co trong kernel (truoc do chua ai goi), KHONG mo ABI. Doi `send` tu `stat /` sang `stat /README` vi `/README` la tep chac chan co tren ca hai phuong tien (proc_fs.rs:368,409). v1 in `<size> bytes file|dir|link`; v2 in `# shell: stat path=<p> kind=<k> size=<s> ino=<i>` => parity mot phan (them kind/ino)'
 
 [[command]]
 name = 'sync'
 args = ''
 send = 'sync\n'
-expect = 'day du lieu xuong thiet bi (flush)'
+expect = '^# shell: sync ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:82'
 v1_output = ''
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS/flush; v2 chua co fsync tu user mode => K7 (D2-117)'
+status = 'active'
+note = 'KT-114 (Agent 0 duyet Q4 18/11/2026): builtin `sync` co trong anh SAN PHAM; dung OP_SYNC da co (duong `write` dang dung), KHONG mo ABI. v1 day du lieu xuong thiet bi; v2 in `# shell: sync ok` sau khi flush xong'
 
 [[command]]
 name = 'truncate'
 args = '<path> <size>'
-send = 'truncate /a 4\n'
-expect = 'cat tep ve <size> byte'
+send = 'truncate /README 4\n'
+expect = '^# shell: truncate path=/README size=4$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:82'
 source_more = 'docs/v1/overnight-log.md:2255'
 v1_output = 'ghi 8 byte, truncate con 4'
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-125 (Agent 0 duyet Q4 18/11/2026): builtin `truncate` co trong anh SAN PHAM; dung OP_TRUNC da co, KHONG mo ABI. Doi `send` tu `/a` sang `/README` vi `/a` khong ton tai tren volume moi format. KT-126: size >= 2^32 bi tu choi som (head chi chua 32 bit) thay vi cat am tham. v1 in ket qua sau khi cat; v2 in `# shell: truncate path=<p> size=<s>` => parity mot phan'
 
 [[command]]
 name = 'fsck'
@@ -298,13 +302,14 @@ reason = 'can opcode STATFS/ABI FS tu shell chua co tren v2 => K7'
 name = 'uptime'
 args = ''
 send = 'uptime\n'
-expect = '<n> ticks (v1 do duoc: 2s / 68 ticks)'
+expect = '^# shell: uptime ms=[0-9]+$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2576'
 source_more = 'docs/v1/overnight-log.md:3470'
 v1_output = '2s'
-status = 'deferred-K7'
-reason = 'thieu BUILTIN uptime trong shell v2; du lieu dong ho da co qua ClockRead (11) (spec/abi.toml:117, user.rs:1229) => chi can builtin, khong can ABI moi; ở v1 uptime la applet /bin/uptime (v1-archive:crates/vifast-bin/src/main.rs:224) => K7'
+status = 'active'
+note = 'KT-114 (Agent 0 duyet Q4 18/11/2026): builtin `uptime` co trong anh SAN PHAM; du lieu dong ho qua ClockRead (11) da co, KHONG mo ABI. v1 in `<n> ticks` (do duoc 2s / 68 ticks); v2 in `# shell: uptime ms=<n>` => parity mot phan (don vi khac)'
 
 [[command]]
 name = 'uname'
@@ -355,12 +360,13 @@ reason = 'shell v2 chua co exec tu FS => KT-77b/K7'
 name = 'jobs'
 args = ''
 send = 'jobs\n'
-expect = 'jobs: N runnable'
+expect = '^# shell: jobs ready=[0-9]+ running=[0-9]+ blocked=[0-9]+ other=[0-9]+$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2903'
 v1_output = 'jobs: 2 runnable'
-status = 'deferred-K7'
-reason = 'thieu BUILTIN jobs trong shell v2; du lieu can (state tung TCB) DA CO trong reply PS_REQ ma shell v2 dang dung: shell_user.rs:189-218 tu doc entry = pid<<5 | state<<1 | suspended va in state=... => chi can builtin dem Ready/Running, KHONG can ABI moi; ở v1 jobs la applet (v1-archive:crates/vifast-bin/src/main.rs:233) => K7'
+status = 'active'
+note = 'KT-125 (Agent 0 duyet Q4 18/11/2026): builtin `jobs` co trong anh SAN PHAM; dem trang thai tu CUNG reply PS_REQ ma `ps` dung, KHONG them duong kernel, KHONG mo ABI. v1 in `jobs: N runnable`; v2 in `# shell: jobs ready=<n> running=<n> blocked=<n> other=<n>` => parity mot phan (tach bon nhom)'
 
 [[command]]
 name = 'loop'
