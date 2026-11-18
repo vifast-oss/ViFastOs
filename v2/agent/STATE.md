@@ -4,29 +4,36 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : nền `dbd97729` (`[KT-00]` `D2-119`); trong lúc làm, nhánh `main` tiến thêm do tab
-                khác (`d2dbb0cc` khi chạy cổng cuối — commit của tab khác), `dirty-kernel-paths=0`; **delta KT-78
-                chưa commit** (lead commit theo pathspec). KT-78 **không sửa code**: chỉ harness
-                (`v2/test/boot/**`), docs, STATE/BLOCKED, JOURNAL; **không** chạm `spec/`,
-                `v2/kernel/**`, `v2/lib/**`, `crates/`, `viscript/`, `review/`.
-BUILD_ID      : ảnh **sản phẩm** **không đổi byte** so KT-76 — `sha256=fd202276…` (đầy đủ ở
-                `kt78-product-sha.log`), `build=ef566cfa583e34bb`, `text=49874`, `bytes=188552`
-                (**không feature**, `D2-108A`) ⇒ soak chạy lại trên **đúng** sha đó; **tái lập byte
-                CHƯA chứng minh** (nợ `P20`, `KT-79`).
-Task          : **KT-78 (`OD-K6-6`: harness QEMU — process group riêng, timeout cứng, dọn dẹp)** —
-                **DONE** (đã vá **ba** phát hiện của reviewer KT-78): ca âm (a) cha chết
-                (`SIGKILL`/`SIGINT`/`SIGTERM`) ⇒ `0` QEMU trong `≤ 200 ms`; ca âm (b) boot treo ⇒
-                `exit=124`; ca âm bộ đếm `isolation` (`iso-bad`, `D2-108B`); đỏ-trước tái hiện
-                `D2-116` (QEMU `ppid=1`). Số nguyên văn trong **khối `scope=`** ở mục KT-78 cuối tệp.
-Nguồn số     : `v2/docs/k3b-core.md` §25 + `v2/docs/k6-harness.md` + `JOURNAL/kt78-*`. Script kiểm
-                `JOURNAL/kt78-verify-numbers.sh` (tự phá: `kt78-verify-selfbreak.sh`, chạy trên
-                **bản copy** — `D2-113F`).
-Cổng gần nhất : số **nguyên văn** chỉ nằm trong khối `scope=` ở mục KT-78 cuối tệp: `gate --fast`
-                PASS, matrix `21/21`, soak `0/1000`, persist bảy pha, hạ tầng `verdict=OK` trước và
-                sau **mỗi** phép đo. **Không** chép số ra khối này.
-Nợ / BLOCKED  : (giữ nguyên của KT-76, xem mục KT-76 cuối tệp). KT-78 thêm nợ nhỏ: phụ thuộc
-                `perl` cho process group; `loadavg` chỉ là lưới phụ; `qemu_own` của thân script
-                không đếm QEMU trong lane soak (xem `docs/k6-harness.md` §7).
+HEAD          : `2dc03fed15758d4f91bee0b74aaa0ec73a892edf` (`main`, đã push — `origin/main` cùng sha;
+                `chưa push: 0`). Commit cuối `[KT-171]` (D2-155..156 + báo cáo đêm vòng hai + log đo
+                lại K6). Cây `v2/` sạch (`dirty=0`).
+BUILD-INPUTS  : **226 mục**, dấu vân tay `40f902a41ecd3979`, `dirty=0` (`./v2/bin/v2 status`).
+ẢNH SẢN PHẨM  : `2af101d141fb9a2864a92941cd60030e86a382873eb0b184ba945be25a460896`, **213 632 B**,
+                `build=d6b1bf144b141cf5`, `inputs=40f902a41ecd3979`, `dirty=0`; `data+bss=224288`,
+                trần `262144` (không nới). Ảnh nằm ở `v2/artifacts/` (gitignored) — **không** đi theo
+                worktree; `v2 status` báo "không có trong `v2/artifacts/`" khi chạy trong worktree.
+ẢNH CA ÂM     : `f38fc77a0bae2729ff341a71b081524f816713e2d515105ee554e41ca4296ea0`, **82 552 B**
+                (ảnh tắt shell, dùng cho F3).
+TASK          : **KT-176** (audit báo cáo đêm vòng hai + cập nhật STATE) — **DONE** trên nhánh
+                `night2/L18-reportaudit`; phát hiện: 64 khẳng định kiểm, **56 khớp**, **8 lệch/không
+                nguồn** (chi tiết `JOURNAL/kt176-reportaudit.md`). **Không** sửa báo cáo (lead sửa).
+TASK DONE/READY: `./v2/bin/v2 status` ⇒ **DONE=148 READY=11 BLOCKED=0 REVIEW=0**. `QUEUE.md` (Agent 0
+                giữ) còn để `READY` cho **KT-157..163, KT-167..170** — **sổ chưa lật**, thực tế **đã
+                merge** vào `main`; `DONE` trong QUEUE: **KT-164, KT-165, KT-166**. **KT-171** chưa có
+                dòng trong QUEUE (mở bằng D2-155, đã merge `fda1500d`).
+ĐÊM VÒNG HAI  : **ĐÃ ĐÓNG** — KT-157..171 (14 task, 14 merge, 14 sub-agent L1..L14), trừ các task
+                **READY của sóng bốn** (L15..L18 đang chạy, **chưa** có mã trong QUEUE). Xem mục
+                "ĐÊM 2026-11-19 VÒNG HAI" ở cuối tệp.
+CỔNG GẦN NHẤT  : `gate --fast` **PASS** trên `fda1500d` (`/tmp/gate-3.log`, sau 14 merge);
+                `v2 check` **PASS** trên `2dc03fed` (KT-176). Số nguyên văn của K6 nằm ở
+                `JOURNAL/kt171-logs/` + `/tmp/kt171-measure.log` (log thô **ngoài repo** — xem
+                `JOURNAL/kt176-reportaudit.md` §4).
+NỢ / BLOCKED  : **BLOCKED=0**. Nợ còn mở (không chặn): K4' chưa đạt (mới bước 1–2); K5' chưa mở
+                (chờ Agent 0 duyệt M1 + mở `spec/abi.toml` `[calling.x86_64]`); N1 "600 boot x86_64"
+                ở K5' (D2-149); `is_test_file_heuristic` còn dùng cho mục 1–5 của
+                `check-wake-paths.py` (cần Agent 0 quyết vì đổi ngữ nghĩa KT-155); bản đồ trợ giúp
+                cùng tệp (KT-163) chưa siết; `cd` nhiều cấp chưa kiểm. Chi tiết §10 báo cáo đêm +
+                `JOURNAL/kt176-reportaudit.md`.
 ```
 ```
 ## KT-64a — đồng bộ sim theo D2-89/D2-90 + parity `TlbFlush` (D2-92c)
@@ -3973,3 +3980,107 @@ kiểm xanh.
 
 **Còn mở (READY, không chặn K6)**: KT-81 (thiết bị giả nghiêm ngặt), KT-131 (đưa soak ảnh phát hành
 vào harness chính thức — hết hạn chế §4.1), KT-132 (đóng `cd`/`pwd` vào K7).
+
+---
+
+## ĐÊM 2026-11-19 VÒNG HAI — KT-157..KT-171 (ĐÃ ĐÓNG)
+
+**Ai**: Agent 1 **quyết thay Agent 0** (D2-148), 14 sub-agent `L1..L14`, mỗi cái một worktree riêng,
+chỉ lead merge. Bắt đầu 03:44 JST, hạn 09:00 JST. Báo cáo: `BAO-CAO-DEM-2026-11-19-VONG2.md`
+(267 dòng). Audit độc lập: `JOURNAL/kt176-reportaudit.md` (KT-176).
+
+### Trạng thái cuối (đo được)
+
+| Hạng mục | Giá trị | Nguồn |
+|---|---|---|
+| HEAD `main` | `2dc03fed15758d4f91bee0b74aaa0ec73a892edf` | `git rev-parse HEAD`; `origin/main` cùng sha |
+| build-inputs | **226 mục**, `40f902a41ecd3979`, `dirty=0` | `./v2/bin/v2 status`; `REV-GATE … count=226` |
+| ảnh sản phẩm | `2af101d1…`, **213 632 B**, `build=d6b1bf144b141cf5` | `JOURNAL/kt171-logs/kt171-f2-write-smp1.log:2` |
+| ảnh ca âm (tắt shell) | `f38fc77a…`, **82 552 B** | `JOURNAL/kt171-logs/parity/…-noshell.log:5` |
+| `v2 status` | **DONE=148 READY=11 BLOCKED=0 REVIEW=0** | `./v2/bin/v2 status` |
+| Cổng | `gate --fast` **PASS** trên `fda1500d`; `v2 check` **PASS** trên `2dc03fed` | `/tmp/gate-3.log`; KT-176 |
+
+### 14 task đã merge (14 nhánh, 14 merge commit)
+
+| Task | Sub-agent | Nội dung | Kết quả đo |
+|---|---|---|---|
+| **KT-157** | L1 | N3: bốn client **mức kernel** cho pager | TAP 37 `clients=4 … ok=1`; đột biến `ok=0`; `OBJ_ARENA_BYTES 64→96 KiB`, `MAX_PROCS 4→6` |
+| **KT-158** | L2 | KT-137: seed `/docs` + `/docs/note.txt` | ca 16 **11→14** phép kiểm; đột biến `pwd` hằng `/` đỏ |
+| **KT-159** | L3 | N7: `wake()` chỉ-dùng-test | `E_STRICT_TEST_ONLY_WAKE`; 6 test ghim; selftest **15/15** |
+| **KT-160** | L4 | K4' bước 1: `vifast-plat-aarch64` | **22** test host; 3 đột biến đỏ; rlib `218 360 B` |
+| **KT-161** | L6 | review đối kháng sóng một | 3 task **ĐẠT CÓ ĐIỀU KIỆN**; 6 cách lách luật wake |
+| **KT-163** | L5 | máy kiểm "test có răng" | 4 lớp; selftest **21/21**; bắt **2 test giả thật** |
+| **KT-164** | L7 | trait `PageTableFormat`/`Mmu` dùng chung | Sv39 + AArch64 cùng impl; L0 **118 passed** |
+| **KT-165** | L8 | vá 6 lỗ hổng luật wake | selftest **26/26**; checker cũ `errors=0` trên cùng đột biến |
+| **KT-166** | L9 | vá lỗ hổng KT-158/160 | ca 16 **14→15** phép kiểm; `Cwd` đỏ 4 phép kiểm; **22→24** test aarch64 |
+| **KT-167** | L10 | K4' bước 2: thanh ghi + asm | **43** test host; 3 đột biến; `llvm-objdump` 11 mã |
+| **KT-168** | L11 | review vòng hai | **KT-165 KHÔNG ĐẠT** (5 lớp, B8/B9 thật); KT-166 ĐẠT |
+| **KT-169** | L12 | K5' audit x86_64 | 18 mục thiếu kèm `file:dòng`; 8 bước; 10 rủi ro |
+| **KT-170** | L13 | siết máy kiểm | `E_SHOULD_PANIC_BARE`; bản đồ **319→80**; selftest **33/33** |
+| **KT-171** | L14 | vá vòng 3 luật wake | **6/6** lớp đóng; selftest **39/39**; 6 đột biến đỏ, checker cũ `errors=0` |
+
+### Sáu tiêu chí K6 đo lại trên ảnh `2af101d1…` (D2-156) — **F1–F6 ĐẠT**
+
+Đo lại vì KT-158 sửa `proc_fs.rs` ⇒ ảnh cũ `e7149448…` (bằng chứng đóng K7, D2-143) không còn khớp
+cây. Tổng **30 m 40 s** (`20:37:13Z → 21:07:53Z`). Log thô: `/tmp/kt171-measure.log` (**ngoài repo** —
+xem `JOURNAL/kt176-reportaudit.md` §4); log con trong repo: `JOURNAL/kt171-logs/`.
+
+| Tiêu chí | Kết quả |
+|---|---|
+| **F1** `shell>` ở 1/2/4 hart | `shell_prompt_lines=2` ở cả ba |
+| **F2** parity + đọc lại sau reboot + persist | 4 lượt `total=28 ok=14 deferred=14 active=14`, `not_ok=0 timeout=0`; `f2_reboot_read_cat_ok=2`; đĩa không đổi; `persist_exit=0` |
+| **F3** ca âm ảnh tắt shell | `shell_prompt_lines=0`; `not_ok=14 khong_co_shell=14`; `exit=5` |
+| **F4** ma trận + soak | `KTEST: 21/21 boot sạch`; soak `ok=1000 fail=0 wall=295s` |
+| **F5** ngưỡng bộ nhớ | `file=213632 data+bss=224288 budget=262144` |
+| **F6** quét harness | `harness_scan_exit=0` |
+
+**K7 giữ nguyên phán quyết ĐẠT** (D2-143); bằng chứng K6 nay theo cây mới (D2-156). Không tiêu chí
+nào bị nới.
+
+### Quyết định trong đêm (D2-144 … D2-156, 13 mục)
+
+D2-144 wake chỉ-dùng-test · D2-145 N3 đóng bằng ảnh test · D2-146 seed `/docs` · D2-147 K4' bước 1
+không boot · D2-148 giao thức đêm vòng hai · D2-149 N1 ở lại K5' · D2-150 máy kiểm 4 lớp · D2-151
+T-INFRA `persist --crash` đỏ oan · D2-152 N3 đóng hẳn · D2-153 sáu task ĐẠT · D2-154 sóng ba ·
+D2-155 KT-165 KHÔNG ĐẠT + mở KT-171 · D2-156 K6 đo lại trên ảnh mới.
+
+### Audit KT-176 — 8 chỗ báo cáo lệch nguồn (lead sửa, **không** tự sửa)
+
+1. §1 "**chín task**" → thực tế **14** merge (số "chín" là mốc giữa đêm `25306b3f`, D2-154).
+2. §4 KT-158 "11 → **15** phép kiểm" → **14** (`kt158-fsdir.md:21`, `kt158-shell-edge-green.log`,
+   merge `4a317dbd`).
+3. §4 KT-158 "**Hai** đột biến đỏ" → **một** (`pwd`); đột biến `resolve_path` bỏ `Cwd` **vẫn xanh**
+   ở KT-158 (`kt161-review.md:21`), chỉ đỏ từ KT-166.
+4. §4 KT-160 "**24** test host" → **22** (`kt160-aarch64.md:24`, `kt161-logs/kt160-baseline.log`,
+   merge `9a8b8acb`); 24 là sau KT-166.
+5. §9 "HEAD `fda1500d6b95`" → HEAD cuối là **`2dc03fed`**; `fda1500d` là HEAD lúc đo/cổng.
+6. §9 "`gate --fast` PASS trên **cây cuối**" → PASS trên `fda1500d` (sau 14 merge), không phải
+   `2dc03fed`.
+7. §9 "`v2 check` PASS sau **mỗi** merge" → không có log từng merge; chỉ có mốc `25306b3f`,
+   `fda1500d`.
+8. §9 "không `pkill -f qemu-system` lần nào" → khẳng định phủ định, không kiểm được bằng máy.
+
+Ngoài ra **6 nhóm nguồn ngoài repo** (log thô `/tmp`, chưa commit): `kt171-measure.log` (toàn bộ §8),
+`kt157-{green,red-mutation}-smp1.log` (TAP 37), `kt171-mut/logs/` (39/39 + 6 đột biến), `218 360 B`
+(chỉ trong journal md), `118 passed` (chỉ trong journal md), log `clang` của KT-167 (chỉ có
+`llvm-objdump`). Chi tiết + đề nghị: `JOURNAL/kt176-reportaudit.md` §3–§4.
+
+### Nợ còn mở sau đêm (không chặn)
+
+1. `is_test_file_heuristic` vẫn dùng cho mục 1–5 của `check-wake-paths.py` — **cần Agent 0 quyết**
+   (đổi ngữ nghĩa KT-155).
+2. `include!`/`#[path]` chỉ phân giải trong `--strict`.
+3. `macro_rules!` ngoài `v2/lib` + ngoài `v2/kernel/*/src`/`v2/sim/*/src` không quét thân.
+4. Bản đồ trợ giúp cùng tệp (KT-163) chưa siết — cần đo tác động.
+5. **K4' chưa đạt**: mới bước 1–2; chưa linker script, vector table, `eret`, đường boot, `VSpace`
+   thật, `TLBI` sau `unmap`.
+6. **K5' chưa mở**: chờ Agent 0 duyệt M1 + mở `spec/abi.toml` `[calling.x86_64]`.
+7. **N1 "600 boot x86_64"** vẫn ở K5' (D2-149).
+8. `cd` vào thư mục con **sâu** (nhiều cấp) chưa kiểm — FS sản phẩm mới có một cấp `/docs`.
+
+### Sóng bốn (đang chạy, **chưa** có mã trong QUEUE)
+
+`L15` (`night2/L15-testfile`), `L16` (`night2/L16-review3`), `L17` (`night2/L17-a64review`),
+`L18` (`night2/L18-reportaudit` = KT-176). Các task này **chưa** có dòng trong `QUEUE.md` (Agent 0
+giữ sổ) — khi lật sổ phải thêm cùng lúc với việc chuyển KT-157..163, KT-167..170 từ `READY` sang
+`DONE`.
