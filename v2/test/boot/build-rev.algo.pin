@@ -20,5 +20,5 @@
 # **Tệp này KHÔNG nằm trong build-inputs** (không thuộc `VBREV_INPUT_ROOTS`/`VBREV_INPUT_FILES`)
 # và **không được** thêm vào: nó là công cụ kiểm, không phải đầu vào của ảnh. Thêm vào sẽ làm dấu
 # vân tay phụ thuộc chính bản ghim của nó (vòng tròn), trái định nghĩa Q3 mà KT-134 đã chốt.
-VBREV_ALGO_PIN=kt134-v1
-VBREV_SCRIPT_SHA256=1b25f3299c284c55ccc87086f8fdc60f216f51da15e6745b773f27b62d22362a
+VBREV_ALGO_PIN=kt134-v2
+VBREV_SCRIPT_SHA256=7c9d840707d598a128a7b20eaaed0c6fffbeebc335000ab9d77ca74ee2a79040

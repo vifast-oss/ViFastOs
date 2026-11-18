@@ -246,11 +246,11 @@ script riêng trong `JOURNAL/` — không phải harness.
 ## A.3 Kết quả — một nghìn vòng, harness chính thức, ảnh phát hành
 
 ```text scope=kt138-soak-product/summary.txt
-# soak: xong wall=292s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
-# soak: BUILD_ID=301720ec292c4f89 sha256=d2925f7e513fde6c8be405fcc30e3ca95597031600048f33b30f0b417185c2e2 git=ba8486ecd14fee6d2fe07a1d21f441897fbea204
+# soak: xong wall=290s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
+# soak: BUILD_ID=301720ec292c4f89 sha256=464fe583caf8d95e084e51d5c7f075a7660a7b4fc27fc9dd71befba7c65eeab8 git=4ed158b4ce047116b82925e88cee3cca4c0597f8
 # soak: 0/1000 lỗi (PASS)
 # soak.sh: PASS
-# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.57 loadavg_5m=5.72 loadavg_15m=4.43 ncpu=12 boot_done=1 verdict=OK
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=7.99 loadavg_5m=5.29 loadavg_15m=4.39 ncpu=12 boot_done=1 verdict=OK
 ```
 
 Bằng chứng **mỗi vòng** đủ ba dấu hiệu (trích một vòng bất kỳ trong một nghìn vòng):
@@ -263,8 +263,8 @@ Bằng chứng **mỗi vòng** đủ ba dấu hiệu (trích một vòng bất k
 
 | | Kết luận gốc (§1–§8) | Phụ lục này |
 |---|---|---|
-| Ảnh | `a0287e4b…` | `d2925f7e…` |
-| Build từ | `f4d1dd5f` | `ba8486ec` |
+| Ảnh | `a0287e4b…` | `464fe583…` |
+| Build từ | `f4d1dd5f` | `4ed158b4` |
 | Vì sao khác | — | các commit **sửa công cụ đo** sau đó (KT-127/128/134/135) đổi dấu vân tay; mã sản phẩm không đổi |
 
 Đây **không** phải làm lại baseline: kết luận K6 vẫn gắn `a0287e4b` như Agent 0 đã chốt. Phụ lục chỉ

@@ -44,7 +44,14 @@
 set -u
 
 # Phạm vi tính build-inputs — KHÔNG thêm đường dẫn khác mà không sửa docs + ca kiểm.
-VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/bin"
+#
+# **KT-134 (C1 của Agent 0, lượt 2) — `v2/bin` bị LOẠI khỏi phạm vi.** Đo được: commit
+# `4ed158b4` chỉ sửa `v2/bin/v2` (script cổng) mà dấu vân tay đổi `0872fff0…` → `cc740cfa…`,
+# tức danh sách ghim lại chứa tệp **không phải đầu vào của ảnh** — đúng lỗi C1 mà Agent 0 vừa
+# bắt. Kiểm: `v2/kernel/*/build.rs` **không** gọi `v2/bin`; `vifast-gen` sinh ra
+# `v2/lib/vifast-idl/src/generated*.rs` và các tệp đó **đã tracked trong `v2/lib`** (vẫn nằm
+# trong phạm vi) ⇒ đổi generator mà sinh lại thì dấu vân tay vẫn đổi qua `v2/lib`.
+VBREV_INPUT_ROOTS="v2/kernel v2/lib"
 # KT-93 (review verify-kt89): **script build** cũng là đầu vào — `repro-build.sh` đặt RUSTFLAGS
 # (remap/strip) ảnh hưởng **byte ảnh**; `rustc-canon.rs` là wrapper rustc canonical. Hai tệp này
 # **phải** nằm trong dấu vân tay.
@@ -59,7 +66,7 @@ VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/bin"
 # Rủi ro còn lại (ghi ở `JOURNAL/kt134-journal.md`): đổi **thuật toán** dấu vân tay thì dấu vân tay
 # không đổi ⇒ dấu vân tay cũ và mới không so được. Chấp nhận: đổi thuật toán là đổi **định dạng**,
 # phải bump `VBREV_ALGO` (hằng số dưới đây, **có** nằm trong chuỗi băm).
-VBREV_ALGO="kt134-v1"
+VBREV_ALGO="kt134-v2"
 VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
@@ -609,7 +616,7 @@ EOF
 # commit** ⇒ dirty=1, (c) commit kernel ⇒ dấu vân tay đổi, (d) crate ngoài `v2/kernel` (metadata
 # báo) ⇒ dấu vân tay đổi, (e) `v2/rust-toolchain.toml` ⇒ dấu vân tay đổi. Trả 0 = đạt.
 vbrev_selftest() {
-    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" fp6="" fp7="" dirty=""
+    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" fp6="" fp7="" fp8="" fp9="" dirty=""
     local gate_out=""
     local cargo=""
     cargo="$(vbrev_cargo)" || {
@@ -798,9 +805,35 @@ LOCK
             fi
         fi
     fi
+    # (i) KT-134 lượt 2: sửa **script cổng** `v2/bin/v2` ⇒ dấu vân tay **KHÔNG** đổi. Ca này ĐỎ
+    #     nếu ai đó thêm lại `v2/bin` vào `VBREV_INPUT_ROOTS` — đúng lỗi đã xảy ra ở commit
+    #     `4ed158b4` (chỉ sửa script cổng mà dấu vân tay đổi).
+    if [ "$rc" -eq 0 ]; then
+        mkdir -p "$root/v2/bin"
+        printf '#!/bin/sh\n# script cong gia\n' >"$root/v2/bin/v2"
+        git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "cong" >/dev/null 2>&1
+        if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (i) FAIL: không tính được dấu vân tay sau khi thêm script cổng (${VBREV_CALC_ERROR:-?})"
+            rc=1
+        else
+            fp8="$VBREV_CALC_SHORT"
+            printf '#!/bin/sh\n# script cong gia, sua mot dong\n' >"$root/v2/bin/v2"
+            git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "cong 1 dong" >/dev/null 2>&1
+            if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+                echo "# vbrev-selftest (i) FAIL: không tính được dấu vân tay sau khi sửa script cổng (${VBREV_CALC_ERROR:-?})"
+                rc=1
+            else
+                fp9="$VBREV_CALC_SHORT"
+                if [ "$fp8" != "$fp9" ]; then
+                    echo "# vbrev-selftest (i) FAIL: sửa script cổng mà dấu vân tay ĐỔI ($fp8 -> $fp9) — 'v2/bin' còn trong phạm vi"
+                    rc=1
+                fi
+            fi
+        fi
+    fi
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i)"
     else
         echo "# vbrev-selftest: FAIL"
     fi
