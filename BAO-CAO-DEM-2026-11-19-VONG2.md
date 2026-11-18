@@ -64,8 +64,8 @@ Bốn sóng, **không bao giờ quá bốn** cùng lúc; mỗi cái một worktr
 | **L13** | `night2/L13-teeth2` | KT-170 — siết máy kiểm | 33/33; bản đồ trợ giúp **chỉ** phạm vi test |
 | **L14** | `night2/L14-wakefix3` | KT-171 — vá vòng 3 luật wake | 6/6 lớp đóng; 39/39 selftest |
 | **L15** | `night2/L15-testfile` | KT-172 — đóng nốt lỗ hổng `is_test_file` | 46/46 selftest; 2 đột biến đỏ; checker cũ `errors=0` |
-| **L16** | `night2/L16-review3` | KT-174 — review vòng 3 luật wake | (xem §11) |
-| **L17** | `night2/L17-a64review` | KT-175 — review KT-167 | (xem §11) |
+| **L16** | `night2/L16-review3` | KT-174 — review vòng 3 luật wake | **KT-171 KHÔNG ĐẠT**; 8 lớp lọt; H5 nặng nhất |
+| **L17** | `night2/L17-a64review` | KT-175 — review KT-167 | ĐẠT CÓ ĐIỀU KIỆN; 14 hằng chết; `TLBI` 6/6 khớp |
 | **L18** | `night2/L18-reportaudit` | KT-176 — audit báo cáo + STATE | 64 khẳng định; **8 chỗ lệch** đã sửa |
 
 ---
@@ -205,6 +205,18 @@ Cả **6/6** lớp đóng:
 
 Selftest **39/39**. Sáu đột biến thật (dựng lại đúng cách L11, `cargo check` RC=0 chứng minh biên dịch được) đều **ĐỎ** đúng mã + `file:dòng`; **cùng 6 đột biến** chạy checker KT-165 ⇒ **cả 6 `errors=0`** — tái lập đúng phán quyết "KHÔNG ĐẠT".
 
+### KT-174 — review vòng 3: **KT-171 KHÔNG ĐẠT**, rồi vá H5/H1/H2/H3
+
+Reviewer L16 phá KT-171 bằng **8 lớp**, nặng nhất là **H5**: `include!("evil_b.rs")` từ `core_sched.rs` (sản phẩm) + `#[cfg(test)] mod evil_b;` ⇒ ảnh sản phẩm biên dịch `wake` (`cargo check --target riscv64gc-unknown-none-elf` RC=0) mà `--strict` vẫn `errors=0`. Gốc: vòng quét lấy `is_test` từ **đồ thị `mod`** và bỏ qua kết quả "sản phẩm thắng" của đồ thị `include!`.
+
+**Đã vá ngay trong đêm** (bốn lớp, kiểm bằng đột biến thật):
+
+- **H5**: `test_only` trừ đi mọi tệp mà đồ thị `include!` kết luận là **sản phẩm** ⇒ `E_STRICT_TEST_ONLY_WAKE v2/kernel/vifast-core/src/evil_b.rs:4`.
+- **H1/H2**: `include!`/`#[path]` dùng **chuỗi thô** `r"…"` nay được phân giải ⇒ vẫn ĐỎ.
+- **H3**: `include!` **không literal** (`concat!`/`env!`/biến) trong tệp sản phẩm ⇒ `E_STRICT_WAKE_INCLUDE` fail-closed.
+
+Selftest giữ **46/46**; `--strict` `errors=0` trên cây sạch. **Còn nợ** (ghi rõ): H4 (`include!` lồng 2 lớp), H6 (macro `v2/lib` che `concat!`), H7 (macro chứa `include!`), H8 (`#[path]` chuỗi thô tới tệp test-only trong cây).
+
 ---
 
 ## 7. Câu chuyện lớn nhất: luật wake bị phá **ba vòng**
@@ -213,7 +225,7 @@ Selftest **39/39**. Sáu đột biến thật (dựng lại đúng cách L11, `c
 |---|---|---|---|---|
 | 1 | L6 (review) | thêm đường wake thứ hai đi vòng hộp thư | L8 (KT-165) | 6 lỗ hổng đóng |
 | 2 | L11 (review) | đổi **tên tệp** `ktest_evil.rs`; `src/tests/` không `cfg(test)` | L14 (KT-171) | 6 lớp đóng |
-| 3 | — | (chưa có vòng 3) | — | 39/39 selftest |
+| 3 | L16 (review) | `include!` tệp test-only từ mã sản phẩm; raw string; `include!` không literal | lead (vá ngay) | H5/H1/H2/H3 đóng; H4/H6/H7/H8 còn nợ |
 
 Điểm chung: **mỗi lần tác giả tự kiểm thì xanh, reviewer độc lập thì đỏ**. Đây là lý do quy trình đêm nay giữ **reviewer riêng**, không cho tác giả tự tuyên bố đóng.
 
