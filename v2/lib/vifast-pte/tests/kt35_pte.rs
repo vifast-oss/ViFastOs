@@ -200,7 +200,9 @@ fn pte_la_newtype_u64_tho() {
     // Layout là u64 thô: KT-35 **không** gán nghĩa bit (rights/attrs thuộc KT-37).
     assert_eq!(Pte::from_raw(u64::MAX).raw(), u64::MAX);
     assert!(format!("{pte:?}").contains("Pte"));
-    assert_eq!(pte, pte);
+    // KT-163: `assert_eq!(pte, pte)` cũ là hằng-đúng (hai vế **cùng một biến**) — không đo
+    // gì. So với một `Pte` dựng lại từ cùng bit mới thật sự kiểm `PartialEq`.
+    assert_eq!(pte, Pte::from_raw(0x8000_0000_0000_0fff));
     assert_ne!(pte, Pte::EMPTY);
 }
 

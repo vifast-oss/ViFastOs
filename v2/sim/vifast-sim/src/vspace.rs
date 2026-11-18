@@ -281,7 +281,17 @@ mod tests {
             generation: 2,
             active_on: HartMask::from_bits(0b01),
         };
-        assert_eq!(info, info);
+        // KT-163: `assert_eq!(info, info)` cũ là hằng-đúng (hai vế **cùng một biến**).
+        // So với một giá trị dựng lại từ cùng trường mới thật sự kiểm `PartialEq`.
+        assert_eq!(
+            info,
+            VSpaceInfo {
+                root: 7,
+                asid: 3,
+                generation: 2,
+                active_on: HartMask::from_bits(0b01),
+            }
+        );
         let cmd = FlushCmd {
             seq: 1,
             scope: FlushScope::Generation,
