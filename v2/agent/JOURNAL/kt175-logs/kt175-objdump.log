@@ -1,0 +1,43 @@
+# KT-175 — objdump object aarch64-unknown-none: asm that (khong phai stub host)
+# OBJ=v2/kernel/target/aarch64-unknown-none/debug/deps/vifast_plat_aarch64-5230a749f446d2b1.o
+# lenh: cargo rustc -p vifast-plat-aarch64 --target aarch64-unknown-none -- --emit=obj
+
+8: d51b4220     	msr	DAIF, x0
+8: d5088740     	tlbi	aside1, x0
+8: d5088320     	tlbi	vae1is, x0
+4: d5384028     	mrs	x8, ELR_EL1
+4: d5385208     	mrs	x8, ESR_EL1
+4: d5386008     	mrs	x8, FAR_EL1
+4: d5382048     	mrs	x8, TCR_EL1
+0: d508871f     	tlbi	vmalle1
+4: d538a208     	mrs	x8, MAIR_EL1
+4: d5384008     	mrs	x8, SPSR_EL1
+4: d538c008     	mrs	x8, VBAR_EL1
+8: d5088340     	tlbi	aside1is, x0
+8: d5184020     	msr	ELR_EL1, x0
+8: d5182040     	msr	TCR_EL1, x0
+4: d5381008     	mrs	x8, SCTLR_EL1
+4: d5382008     	mrs	x8, TTBR0_EL1
+4: d5382028     	mrs	x8, TTBR1_EL1
+0: d508831f     	tlbi	vmalle1is
+8: d518a200     	msr	MAIR_EL1, x0
+8: d5184000     	msr	SPSR_EL1, x0
+8: d518c000     	msr	VBAR_EL1, x0
+8: d5181000     	msr	SCTLR_EL1, x0
+8: d5182000     	msr	TTBR0_EL1, x0
+8: d5182020     	msr	TTBR1_EL1, x0
+0: d5033fdf     	isb
+0: d5033fbf     	dmb	sy
+0: d5033f9f     	dsb	sy
+0: d5033bbf     	dmb	ish
+0: d5033b9f     	dsb	ish
+4: d53b4228     	mrs	x8, DAIF
+8: d5088720     	tlbi	vae1, x0
+
+## dem theo loai
+   2 dmb
+   2 dsb
+   1 isb
+  11 mrs
+   9 msr
+   6 tlbi

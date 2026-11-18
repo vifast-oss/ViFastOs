@@ -1,0 +1,11 @@
+# KT-175 — build lai --target aarch64-unknown-none (xoa artifact truoc do)
+# worktree /private/tmp/night2-L17-a64review, HEAD 2dc03fed
+
+   Compiling vifast-pte v0.1.0 (/private/tmp/night2-L17-a64review/v2/lib/vifast-pte)
+   Compiling vifast-plat-aarch64 v0.1.0 (/private/tmp/night2-L17-a64review/v2/kernel/vifast-plat-aarch64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.79s
+EXIT=0
+
+## artifact
+-rw-r--r--@ 1 mps  wheel  625242 Nov 19 06:29 v2/kernel/target/aarch64-unknown-none/debug/deps/libvifast_plat_aarch64-dee115547863a83c.rlib
+-rw-r--r--@ 1 mps  wheel  625242 Nov 19 06:29 v2/kernel/target/aarch64-unknown-none/debug/libvifast_plat_aarch64.rlib
