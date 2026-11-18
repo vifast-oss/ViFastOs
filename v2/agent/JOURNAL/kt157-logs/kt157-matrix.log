@@ -1,0 +1,123 @@
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.76 loadavg_5m=4.26 loadavg_15m=5.08 ncpu=12 boot_done=0 verdict=OK
+# runner KT-54: expected.txt = nguồn sự thật duy nhất; TAP 1..N liên tục; đúng 1 PANIC theo mẫu
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2) — icount shift=6 (D2-74)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected[ktest]: plan=70 ok=70 ten-TAP=70
+# expected[ktest-guard]: plan=3 ok=3 ten-TAP=3
+# expected[ktest-user]: plan=37 ok=37 ten-TAP=37
+# expected[ktest-proc]: plan=10 ok=10 ten-TAP=10
+# expected[ktest-vblk]: plan=6 ok=6 ten-TAP=6
+# expected[ktest-con]: plan=5 ok=5 ten-TAP=5
+# expected[ktest-exec]: plan=6 ok=6 ten-TAP=6
+# smp-list: 1 2 4 — NBOOT=1 — timeout=20 s/boot — logdir=/tmp/k3-ktest
+# build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+# build ảnh test vblk (riscv64gc-unknown-none-elf, release, --features ktest,vblk)
+# build ảnh test con (riscv64gc-unknown-none-elf, release, --features ktest,user,con)
+# build ảnh test exec (riscv64gc-unknown-none-elf, release, --features ktest,user,exec)
+# build ảnh test user+proc (riscv64gc-unknown-none-elf, release, --features ktest,user)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=718296 data+bss=242840 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=227772 .rodata=69760 .data=7992 .bss=234848 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7992 .bss=234848 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=54424 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=11358 .rodata=3000 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=2680 
+# image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=633888 data+bss=203944 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=161686 .rodata=164896 .data=7768 .bss=196176 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=196176 
+# image=ktest-proc path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc file=439280 data+bss=209904 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=114192 .rodata=75368 .data=7768 .bss=202136 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=202136 
+# image=ktest-vblk path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-vblk file=132456 data+bss=10976 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=41512 .rodata=8920 .bss=10976 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=10976 
+# image=ktest-con path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-con file=359280 data+bss=216808 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=107376 .rodata=31696 .data=7768 .bss=209040 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=209040 
+# image=ktest-exec path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-exec file=363048 data+bss=203584 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=99008 .rodata=54752 .data=7768 .bss=195816 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=195816 
+# image=ktest ktest-strings=238
+# image=ktest-guard ktest-strings=6
+# image=ktest-user ktest-strings=101
+# image=ktest-proc ktest-strings=27
+# image=ktest-vblk ktest-strings=32
+# image=ktest-con ktest-strings=21
+# image=ktest-exec ktest-strings=20
+# rev-gate (KT-86): đòi rev=HEAD và dirty=0 — build ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/Users/mps/dvchd/ViFastOs head_rev=e022cdbed90e inputs=efe45ec08a656d39 count=222 dirty=0 scope=[v2/kernel v2/lib v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs]
+REV-GATE: ACCEPT inputs=efe45ec08a656d39 current_inputs=efe45ec08a656d39 head_rev=e022cdbed90e count=222 log=/tmp/k3-ktest/kt86-rev-gate.log
+ok - ktest smp=1 boot 1 (70 TAP, 5s) log /tmp/k3-ktest/ktest-smp1-1.log
+ok - ktest-guard smp=1 boot 1 (3 TAP, 0s) log /tmp/k3-ktest/ktest-guard-smp1-1.log
+ok - ktest-user smp=1 boot 1 (37 TAP, 1s) log /tmp/k3-ktest/ktest-user-smp1-1.log
+ok - ktest-proc smp=1 boot 1 (10 TAP, 0s) log /tmp/k3-ktest/ktest-proc-smp1-1.log
+ok - ktest-vblk smp=1 boot 1 (6 TAP, 0s) log /tmp/k3-ktest/ktest-vblk-smp1-1.log
+# con host: tx_file=/tmp/k3-ktest/con-smp1-boot1.out bytes=24 ok=1
+ok - ktest-con smp=1 boot 1 (5 TAP, 0s) log /tmp/k3-ktest/ktest-con-smp1-1.log
+ok - ktest-exec smp=1 boot 1 (6 TAP, 0s) log /tmp/k3-ktest/ktest-exec-smp1-1.log
+ok - ktest smp=2 boot 1 (70 TAP, 11s) log /tmp/k3-ktest/ktest-smp2-1.log
+ok - ktest-guard smp=2 boot 1 (3 TAP, 1s) log /tmp/k3-ktest/ktest-guard-smp2-1.log
+ok - ktest-user smp=2 boot 1 (37 TAP, 1s) log /tmp/k3-ktest/ktest-user-smp2-1.log
+ok - ktest-proc smp=2 boot 1 (10 TAP, 0s) log /tmp/k3-ktest/ktest-proc-smp2-1.log
+ok - ktest-vblk smp=2 boot 1 (6 TAP, 0s) log /tmp/k3-ktest/ktest-vblk-smp2-1.log
+# con host: tx_file=/tmp/k3-ktest/con-smp2-boot1.out bytes=24 ok=1
+ok - ktest-con smp=2 boot 1 (5 TAP, 1s) log /tmp/k3-ktest/ktest-con-smp2-1.log
+ok - ktest-exec smp=2 boot 1 (6 TAP, 1s) log /tmp/k3-ktest/ktest-exec-smp2-1.log
+ok - ktest smp=4 boot 1 (70 TAP, 17s) log /tmp/k3-ktest/ktest-smp4-1.log
+ok - ktest-guard smp=4 boot 1 (3 TAP, 0s) log /tmp/k3-ktest/ktest-guard-smp4-1.log
+ok - ktest-user smp=4 boot 1 (37 TAP, 1s) log /tmp/k3-ktest/ktest-user-smp4-1.log
+ok - ktest-proc smp=4 boot 1 (10 TAP, 1s) log /tmp/k3-ktest/ktest-proc-smp4-1.log
+ok - ktest-vblk smp=4 boot 1 (6 TAP, 1s) log /tmp/k3-ktest/ktest-vblk-smp4-1.log
+# con host: tx_file=/tmp/k3-ktest/con-smp4-boot1.out bytes=24 ok=1
+ok - ktest-con smp=4 boot 1 (5 TAP, 1s) log /tmp/k3-ktest/ktest-con-smp4-1.log
+ok - ktest-exec smp=4 boot 1 (6 TAP, 1s) log /tmp/k3-ktest/ktest-exec-smp4-1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.06 loadavg_5m=3.88 loadavg_15m=4.81 ncpu=12 boot_done=22 verdict=OK
+# infra: invalid=0 isolation_bad=0 guard_log=/tmp/k3-ktest/qemu-guard.log
+# guard_summary_log=/tmp/k3-ktest/guard-summary.log
+# ================= BẢNG TỔNG KẾT (image × smp × boot) =================
+# image       smp  boot  TAP       kết quả log
+# ktest       1    1     70/70     PASS     /tmp/k3-ktest/ktest-smp1-1.log 
+# ktest-guard 1    1     3/3       PASS     /tmp/k3-ktest/ktest-guard-smp1-1.log 
+# ktest-user  1    1     37/37     PASS     /tmp/k3-ktest/ktest-user-smp1-1.log 
+# ktest-proc  1    1     10/10     PASS     /tmp/k3-ktest/ktest-proc-smp1-1.log 
+# ktest-vblk  1    1     6/6       PASS     /tmp/k3-ktest/ktest-vblk-smp1-1.log 
+# ktest-con   1    1     5/5       PASS     /tmp/k3-ktest/ktest-con-smp1-1.log con-host-tx=1
+# ktest-exec  1    1     6/6       PASS     /tmp/k3-ktest/ktest-exec-smp1-1.log 
+# ktest       2    1     70/70     PASS     /tmp/k3-ktest/ktest-smp2-1.log 
+# ktest-guard 2    1     3/3       PASS     /tmp/k3-ktest/ktest-guard-smp2-1.log 
+# ktest-user  2    1     37/37     PASS     /tmp/k3-ktest/ktest-user-smp2-1.log 
+# ktest-proc  2    1     10/10     PASS     /tmp/k3-ktest/ktest-proc-smp2-1.log 
+# ktest-vblk  2    1     6/6       PASS     /tmp/k3-ktest/ktest-vblk-smp2-1.log 
+# ktest-con   2    1     5/5       PASS     /tmp/k3-ktest/ktest-con-smp2-1.log con-host-tx=1
+# ktest-exec  2    1     6/6       PASS     /tmp/k3-ktest/ktest-exec-smp2-1.log 
+# ktest       4    1     70/70     PASS     /tmp/k3-ktest/ktest-smp4-1.log 
+# ktest-guard 4    1     3/3       PASS     /tmp/k3-ktest/ktest-guard-smp4-1.log 
+# ktest-user  4    1     37/37     PASS     /tmp/k3-ktest/ktest-user-smp4-1.log 
+# ktest-proc  4    1     10/10     PASS     /tmp/k3-ktest/ktest-proc-smp4-1.log 
+# ktest-vblk  4    1     6/6       PASS     /tmp/k3-ktest/ktest-vblk-smp4-1.log 
+# ktest-con   4    1     5/5       PASS     /tmp/k3-ktest/ktest-con-smp4-1.log con-host-tx=1
+# ktest-exec  4    1     6/6       PASS     /tmp/k3-ktest/ktest-exec-smp4-1.log 
+# ------------------------- gộp theo (image, smp) -------------------------
+# ktest       smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest       smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest       smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=2  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=4  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# =======================================================================
+# KTEST: 21/21 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec)
+# ktest.sh: PASS

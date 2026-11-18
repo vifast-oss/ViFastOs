@@ -1,0 +1,18 @@
+    Checking vifast-abi v0.1.0 (/private/tmp/night2-L16-review3/v2/lib/vifast-abi)
+    Checking vifast-core v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-core)
+warning: trait `WakeApi` is never used
+ --> vifast-core/src/evil_trait.rs:3:11
+  |
+3 | pub trait WakeApi {
+  |           ^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `evil_trait` is never used
+  --> vifast-core/src/evil_trait.rs:13:8
+   |
+13 | pub fn evil_trait(api: &mut dyn WakeApi, t: crate::ObjId) -> Result<(), crate::KError> {
+   |        ^^^^^^^^^^
+
+warning: `vifast-core` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.69s

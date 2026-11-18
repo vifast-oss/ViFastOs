@@ -1,0 +1,15 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-core)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-kbin-riscv64)
+warning: function `evil_raw_path` is never used
+ --> vifast-core/src/evil_b.rs:3:8
+  |
+3 | pub fn evil_raw_path(m: &mut crate::Machine, t: crate::ObjId) -> Result<(), crate::KError> {
+  |        ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 1 warning
+    Checking vifast-plat-common v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-plat-common)
+    Checking vifast-plat-riscv64 v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-plat-riscv64)
+warning: vifast-kbin-riscv64@0.1.0: KT-89 build identity algo=kt134-v4 inputs=40f902a41ecd3979 dirty=1 rev=2dc03fed1575
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.41s

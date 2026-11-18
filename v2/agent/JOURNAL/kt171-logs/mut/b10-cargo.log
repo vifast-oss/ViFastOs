@@ -1,0 +1,21 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night2-L14-wakefix3/v2/kernel/vifast-core)
+warning: variable `wake` is assigned to, but never used
+    --> vifast-core/src/core_sched.rs:1014:13
+     |
+1014 |         let mut wake = 0u32;
+     |             ^^^^^^^^
+     |
+     = note: consider using `_wake` instead
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `wake` is never read
+    --> vifast-core/src/core_sched.rs:1015:9
+     |
+1015 |         wake += 1;
+     |         ^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.93s
