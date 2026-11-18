@@ -4,7 +4,9 @@
 - **Quyết định**: `D2-145` (Agent 1 quyết thay Agent 0, 2026-11-19) — đọc nguyên văn ở
   `v2/agent/DECISIONS.md:265` của worktree. Nợ `D2-136` mục (ii): "4 client mức kernel".
 - **Ngân sách**: 3 h. Bắt đầu 03:50 JST 2026-11-19.
-- **Commit trên nhánh** (không push, không merge): xem `git log -1` — `[KT-157] ...`.
+- **Commit trên nhánh** (không push, không merge):
+  - `6dadf4a1` — bốn client U-mode + sổ `(client, va)` + TAP 37 + đột biến + journal.
+  - `952e35c1` — sửa mảng `caps` TAP 31 (`ktest_obj.rs`) cho arena 96 KiB: main `ktest` 70/70.
 
 ---
 
@@ -153,6 +155,33 @@ nhưng `faults=15` (pager **nhận** 15) ⇒ **1 message bị giao lặp**; `rej
 
 ---
 
+## 3b. Toàn bộ 7 ảnh test (`bash v2/test/boot/ktest.sh`, smp=1, NBOOT=1)
+
+```text
+# ktest       smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# KTEST: 7/7 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec)
+# ktest.sh: PASS
+```
+
+Log `ktest-user` của vòng này (`/tmp/k3-ktest/ktest-user-smp1-1.log`, dòng 257-258):
+
+```text
+# pager: clients=4 deliveries=14 faults=14 served=13 rejected=1 expected_va=11 distinct_va=11 ok=1
+ok 37 - pager giao dung mot lan
+```
+
+**Ghi chú TAP 31**: arena 64 → 96 KiB làm `tap31_byte_invariant` (`ktest_obj.rs`) dừng sớm vì mảng
+`caps` chỉ 20 phần tử (24 PageTable mới ⇒ chưa chạm `NotEnoughMemory`) ⇒ TAP 31 đỏ oan. Đã nâng
+mảng lên 32 (dung lượng mảng test, không phải ngưỡng) — main `ktest` trở lại 70/70.
+
+---
+
 ## 4. `./v2/bin/v2 check` PASS
 
 ```text
@@ -169,9 +198,12 @@ v2 check: PASS (L1 chạy trong gate --fast)
 ## 5. Còn thiếu / hạn chế
 
 - **Không** chạy `gate --fast` (luật đêm D2-148: sub-agent chỉ `v2 check` + test đúng phạm vi).
-- **Không** chạy `ktest.sh` đầy đủ matrix 1/2/4 cho cả 7 ảnh trong ngân sách này — chỉ boot
-  `ktest-user` `-smp 1` (log §2) + `--check-log`. `-smp 2/4` không đổi đường pager (một hart chạy
-  U-mode tuần tự), nhưng **chưa đo**; lead nên chạy `bash v2/test/boot/ktest.sh 1 matrix` sau merge.
+- **Không** chạy matrix `-smp 1/2/4` cho cả 7 ảnh trong ngân sách này — đã chạy
+  `bash v2/test/boot/ktest.sh` (smp=1, NBOOT=1, **7/7 PASS**, §3b). `-smp 2/4` không đổi đường
+  pager (một hart chạy U-mode tuần tự), nhưng **chưa đo**; lead nên chạy
+  `bash v2/test/boot/ktest.sh 1 matrix` sau merge.
+- Dòng `# pager: exit … const:starts=3 exits=3` vẫn chỉ nói về pager/A/B (regex harness giữ
+  nguyên); C/D được kiểm bằng `c_exit == 0 && d_exit == 0` trong TAP 37, không phải dòng này.
 - C/D dùng **1 trang stack** (không phải 8 như A/B) — chương trình tối giản, không đệ quy; nếu sau
   này C/D cần stack lớn hơn thì phải nâng `MAX_MAPPINGS` (hiện 64, đã dùng 60) — **chưa** làm vì
   không cần cho phép đo này.
