@@ -1,0 +1,52 @@
+=== các bước mới trong v2/bin/v2 trên HEAD ===
+
+$ grep -n "wake paths\|selftest wake paths\|L0 kernel workspace\|t26" v2/bin/v2
+292:        run_step "wake paths (KT-151: một cơ chế wake)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" || fails=$((fails + 1))
+293:        run_step "selftest wake paths (KT-151)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --selftest || fails=$((fails + 1))
+400:    run_step "L0 kernel workspace (KT-148)" "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" -p vifast-plat-common || return 1
+539:# **KT-26** (K1C-PLAN §5 KT-26 DoD 8): thêm `kt26_fault` (FaultKind 4 biến thể model-only, fault
+541:# 3 seed × 8 op bằng `cfg(miri)`). KHÔNG thêm `kt26_scn` (đọc tệp — test I/O).
+610:    run_miri_test "vifast-sim kt26_fault" -p vifast-sim --test kt26_fault || return 1
+
+=== các bước in ra bởi ./v2/bin/v2 check (HEAD a9460f0c) ===
+--- fmt: OK
+--- clippy: OK
+--- luật cấu trúc: OK
+--- self-test luật: OK
+--- luật máy K6 (KT-80: 1,2,3,7,8): OK
+--- selftest build-inputs (KT-128/134: a..h): OK
+--- selftest danh tính ảnh (KT-145: l1..l5): OK
+--- ghim thuật toán dấu vân tay (KT-134): OK
+--- selftest ghim thuật toán (KT-134): OK
+--- selftest shell-edge (KT-108): OK
+--- selftest budget (KT-88): OK
+--- selftest counter-evidence (KT-80): OK
+--- selftest task-target (KT-84): OK
+--- bảng đối chiếu số ↔ khối scope= (KT-134): OK
+--- selftest bảng đối chiếu (KT-134): OK
+--- selftest wiring (KT-134): OK
+--- cổng selftest có cổng gọi (KT-134): OK
+--- wake paths (KT-151: một cơ chế wake): OK
+--- selftest wake paths (KT-151): OK
+--- abi spec: OK
+--- golden trace: OK
+--- scn: OK
+--- báo cáo: OK
+--- báo cáo fixtures: OK
+--- abi reserved: OK
+--- abi fixtures: OK
+--- gen-check: OK
+--- gen fixtures: OK
+--- idl-gen-check: OK
+--- idl fixtures: OK
+--- build (L0 compile): OK
+v2 check: PASS (L1 chạy trong gate --fast)
+
+=== t26.sh có trên main? ===
+ls: v2/test/boot/t26.sh: No such file or directory
+
+=== t26.sh có trên nhánh night/L1-n2? ===
+v2/test/boot/t26.sh
+
+=== nhánh night/L1-n2 có được merge vào main? ===
+NOT-ANCESTOR

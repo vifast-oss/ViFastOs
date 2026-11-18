@@ -1,0 +1,11 @@
+$ bash /tmp/l6-boot-user.sh /tmp/l6-kt150-green-smp1.log 1
+# infra l6: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.90 loadavg_5m=4.26 loadavg_15m=4.70 ncpu=12 boot_done=1 verdict=OK
+BOOT_RC=0
+
+$ bash v2/test/boot/ktest.sh --check-log ktest-user /tmp/l6-kt150-green-smp1.log 1
+ok - check-log ktest-user smp=1 (plan=37 ok=37, 64 evidence) log /tmp/l6-kt150-green-smp1.log
+# check-log: PASS
+
+--- dòng evidence TAP 37 ---
+245:# pager: once deliveries=10 faults=10 served=9 rejected=1 expected_va=7 distinct_va=7 ok=1
+246:ok 37 - pager giao dung mot lan
