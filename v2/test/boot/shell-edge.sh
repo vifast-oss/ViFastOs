@@ -1952,8 +1952,8 @@ preflight_image() {
     fi
     # Ảnh phải có shell (nếu không, mọi ca sẽ chờ `shell>` vô ích).
     # **KT-114**: khớp **tập lệnh** (`help` rồi các tên `[a-z]+` ngăn bằng `/`) thay vì chuỗi cứng
-    # `help/echo/ps/wait/kill/ls/cat/write/exit` — shell sản phẩm thêm lệnh (9 → 13) thì script
-    # **không** phải sửa. Không neo `^`: chuỗi nằm trong `.rodata` của ELF nên byte trước nó không
+    # `help/echo/ps/wait/kill/ls/cat/write/exit` — shell sản phẩm thêm lệnh (9 → 13 → 17, KT-137)
+    # thì script **không** phải sửa. Không neo `^`: chuỗi nằm trong `.rodata` của ELF nên byte trước nó không
     # phải newline; neo `$` được vì literal kết thúc bằng `\n`.
     LC_ALL=C grep -a -q -m1 -E '# shell: up cmds=help(/[a-z]+)+$' "$IMAGE" 2>/dev/null ||
         die "ảnh '$IMAGE' không có shell ('# shell: up cmds=help/...') — không phải ảnh product-shell"
