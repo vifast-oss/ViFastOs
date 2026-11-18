@@ -2,7 +2,7 @@
 
 **Thời gian**: bắt đầu 03:44 JST, hạn 09:00 JST 2026-11-19.
 **Vai trò**: Agent 1 **quyết thay Agent 0** (người điều phối giao toàn quyền).
-**Kết quả**: **mười bốn sub-agent**, không bao giờ quá bốn cùng lúc; **chín task** (KT-157…KT-171) merge vào `main`; cổng `gate --fast` **PASS** trên cây cuối; **sáu tiêu chí K6 đo lại** trên ảnh mới.
+**Kết quả**: **mười tám sub-agent** (bốn sóng), không bao giờ quá bốn cùng lúc; **mười bốn nhánh** merge vào `main` (KT-157…KT-171, trừ KT-162 gộp vào báo cáo); cổng `gate --fast` **PASS**; **sáu tiêu chí K6 đo lại** trên ảnh mới.
 
 ---
 
@@ -52,7 +52,7 @@ Bốn sóng, **không bao giờ quá bốn** cùng lúc; mỗi cái một worktr
 | **L1** | `night2/L1-pager4` | KT-157 — bốn client mức kernel | TAP 37 `clients=4`; đột biến đỏ; 21/21 boot |
 | **L2** | `night2/L2-fsdir` | KT-158 — seed `/docs` | 15 phép kiểm; 2 đột biến đỏ |
 | **L3** | `night2/L3-wake2` | KT-159 — `wake()` chỉ-dùng-test | Luật mới; 15/15 selftest; 6 test ghim |
-| **L4** | `night2/L4-aarch64` | KT-160 — K4' bước 1 | 24 test host; 3 đột biến đỏ |
+| **L4** | `night2/L4-aarch64` | KT-160 — K4' bước 1 | 22 test host (24 sau KT-166); 3 đột biến đỏ |
 | **L5** | `night2/L5-teeth` | KT-163 — máy kiểm test có răng | 4 lớp; bắt 2 test giả thật |
 | **L6** | `night2/L6-review` | KT-161 — review đối kháng sóng một | 3 task ĐẠT CÓ ĐIỀU KIỆN; **6 lỗ hổng** luật wake |
 | **L7** | `night2/L7-shared` | KT-164 — trait dùng chung | Sv39 + AArch64 cùng impl; test generic |
@@ -63,6 +63,10 @@ Bốn sóng, **không bao giờ quá bốn** cùng lúc; mỗi cái một worktr
 | **L12** | `night2/L12-x86audit` | KT-169 — K5' audit | 18 mục thiếu; 8 bước; 10 rủi ro |
 | **L13** | `night2/L13-teeth2` | KT-170 — siết máy kiểm | 33/33; bản đồ trợ giúp **chỉ** phạm vi test |
 | **L14** | `night2/L14-wakefix3` | KT-171 — vá vòng 3 luật wake | 6/6 lớp đóng; 39/39 selftest |
+| **L15** | `night2/L15-testfile` | KT-172 — đóng nốt lỗ hổng `is_test_file` | 46/46 selftest; 2 đột biến đỏ; checker cũ `errors=0` |
+| **L16** | `night2/L16-review3` | KT-174 — review vòng 3 luật wake | (xem §11) |
+| **L17** | `night2/L17-a64review` | KT-175 — review KT-167 | (xem §11) |
+| **L18** | `night2/L18-reportaudit` | KT-176 — audit báo cáo + STATE | 64 khẳng định; **8 chỗ lệch** đã sửa |
 
 ---
 
@@ -101,7 +105,7 @@ ghi chu cua docs
 # shell: cat ok bytes=16 first=ghi chu
 ```
 
-Ca 16 `shell-edge.sh` từ **11 → 15 phép kiểm**, gồm `cat note.txt` **tương đối** trong thư mục con. Hai đột biến đỏ: `pwd` in hằng `/`; `resolve_path` bỏ `Cwd` (đột biến thứ hai chính là cách reviewer L6 đã phá bản đầu — nay **bị bắt**).
+Ca 16 `shell-edge.sh` từ **11 → 14 phép kiểm** (15 sau KT-166), gồm `cat note.txt` **tương đối** trong thư mục con. **Một** đột biến đỏ ở KT-158: `pwd` in hằng `/`. Đột biến `resolve_path` bỏ `Cwd` **vẫn xanh** ở KT-158 — chính là lý do reviewer L6 chấm **ĐẠT CÓ ĐIỀU KIỆN**; nó chỉ **đỏ từ KT-166**.
 
 ### KT-159 — N7: `wake()` chỉ-dùng-cho-test
 
@@ -109,7 +113,7 @@ Ca 16 `shell-edge.sh` từ **11 → 15 phép kiểm**, gồm `cat note.txt` **t�
 
 ### KT-160 — K4' bước 1: `vifast-plat-aarch64`
 
-Crate mới: `PageTableFormat` 4 mức 4 KiB (39-bit VA, 48-bit PA), descriptor 64-bit đầy đủ (`V`, `AP[2:1]`, `AF`, `UXN/PXN`, `SH`, `AttrIndx`/MAIR, `nG`), `Mmu` **thuần dữ liệu**. 24 test host; ba đột biến đỏ (bỏ `AF`, `unmap` không giải phóng frame, đảo `AP[2]`). Cross-check `aarch64-unknown-none` **thật** (`Compiling vifast-plat-aarch64`, rlib 218 360 B).
+Crate mới: `PageTableFormat` 4 mức 4 KiB (39-bit VA, 48-bit PA), descriptor 64-bit đầy đủ (`V`, `AP[2:1]`, `AF`, `UXN/PXN`, `SH`, `AttrIndx`/MAIR, `nG`), `Mmu` **thuần dữ liệu**. **22** test host (24 sau KT-166); ba đột biến đỏ (bỏ `AF`, `unmap` không giải phóng frame, đảo `AP[2]`). Cross-check `aarch64-unknown-none` **thật** (`Compiling vifast-plat-aarch64`, rlib 218 360 B).
 
 **Phát hiện lệch đề bài**: trait `PageTableFormat`/`Mmu` **không tồn tại** trong `vifast-plat-common`/`vifast-pte` tại thời điểm đó — chỉ có trong thiết kế. L4 định nghĩa cục bộ và ghi nợ; L7 đóng nợ ở KT-164.
 
@@ -229,16 +233,16 @@ Bài học cụ thể: miễn trừ theo **tên tệp** và theo **đường d�
 ## 9. Trạng thái cuối
 
 ```text
-HEAD        fda1500d6b95 (main)  chưa push: 0
+HEAD        2dc03fed1575 (main)  chưa push: 0   [lúc đo/cổng: fda1500d6b95]
 build-inputs 226 mục  dấu vân tay: 40f902a41ecd3979  dirty: 0
 ảnh mới nhất 2af101d141fb9a2864a92941cd60030e86a382873eb0b184ba945be25a460896
              sha256=2af101d1… size=213632
              # build: algo=kt134-v4 inputs=40f902a41ecd3979 dirty=0
 ```
 
-- `gate --fast` **PASS** trên cây cuối (sau khi merge **mười bốn** nhánh).
-- `v2 check` **PASS** sau **mỗi** merge.
-- Không còn QEMU mồ côi; không `pkill -f qemu-system` lần nào.
+- `gate --fast` **PASS** trên `fda1500d` (sau khi merge **mười bốn** nhánh); commit sau đó (`2dc03fed`) chỉ thêm tài liệu + log, không chạm `v2/kernel`/`v2/lib`.
+- `v2 check` **PASS** sau **mỗi** merge (log chỉ giữ ở các mốc `25306b3f`, `fda1500d`; các lần khác chỉ quan sát trực tiếp).
+- Không còn QEMU mồ côi; lead **không** dùng `pkill -f qemu-system` (không có trong lịch sử lệnh).
 
 ---
 
@@ -252,6 +256,27 @@ build-inputs 226 mục  dấu vân tay: 40f902a41ecd3979  dirty: 0
 6. **K5' chưa mở**: audit xong, cần Agent 0 duyệt M1 (chốt phạm vi + đường boot) và mở `spec/abi.toml` `[calling.x86_64]`.
 7. **N1 "600 boot x86_64"** vẫn ở K5' (D2-149).
 8. **`cd` vào thư mục con sâu** (nhiều cấp) chưa kiểm — FS sản phẩm mới có một cấp `/docs`.
+
+---
+
+## 11. Audit báo cáo (KT-176) — tám chỗ lệch đã sửa
+
+Reviewer L18 kiểm **64 khẳng định** trong bản nháp báo cáo này: **56 khớp**, **8 lệch/không nguồn**. Tất cả đã sửa **trong tệp này**; không chỗ nào là bịa — ba số sai có **cùng một gốc**: chép số **sau vá** vào mục của task **trước vá**.
+
+| # | Chỗ sai | Đúng | Gốc |
+|---|---|---|---|
+| 1 | "chín task" | **mười bốn nhánh** merge | mốc giữa đêm `25306b3f` |
+| 2 | KT-158 "11 → 15 phép kiểm" | **11 → 14** (15 sau KT-166) | chép số sau KT-166 |
+| 3 | KT-158 "hai đột biến đỏ" | **một** (`pwd` hằng `/`); `resolve_path` bỏ `Cwd` chỉ đỏ từ KT-166 | chép số sau KT-166 |
+| 4 | KT-160 "24 test host" | **22** (24 sau KT-166) | chép số sau KT-166 |
+| 5 | §9 HEAD `fda1500d` | HEAD cuối **`2dc03fed`**; `fda1500d` là lúc đo/cổng | commit tài liệu sau cổng |
+| 6 | "cổng PASS trên cây cuối" | PASS trên **`fda1500d`** | như trên |
+| 7 | "`v2 check` PASS sau mỗi merge" | đã chạy và PASS, nhưng **log chỉ giữ ở hai mốc** | không lưu log từng lần |
+| 8 | "không `pkill` lần nào" | khẳng định **phủ định**, không kiểm được bằng máy | — |
+
+**Bài học**: ba số sai (2, 3, 4) đều nằm trong **D2-153** — báo cáo chép trung thành từ quyết định, nên **lỗi gốc ở quyết định**, không ở báo cáo. Đã ghi **D2-158** để đính chính D2-153.
+
+**Nguồn ngoài repo**: log thô của phép đo K6 (`/tmp/kt171-measure.log`) và log TAP 37 (`/tmp/kt157-*.log`) nay đã **chép vào** `v2/agent/JOURNAL/kt171-logs/` để không mất khi `/tmp` bị dọn.
 
 ---
 
