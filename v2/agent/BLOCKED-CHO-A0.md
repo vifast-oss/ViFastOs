@@ -95,3 +95,47 @@ build-inputs = (bao đóng phụ thuộc theo cargo metadata của kernel/plat/l
 kèm **ca hồi quy dương bắt buộc**: chỉ sửa `v2/docs` hoặc `v2/agent` ⇒ build 2 lần **cùng sha** (chứng minh phần trừ không ảnh hưởng byte ảnh), bổ sung cho 5 ca âm của mục (6).
 
 **Trạng thái**: KT-89 **chưa** bắt đầu; cần A0 chốt trước, nếu không KT-89 sẽ “xong” theo đúng chữ nhưng cổng tự khoá chính nó.
+
+---
+
+## B7 · Test `smp` ĐỎ SẴN và **không cổng nào chạy** — sửa kỳ vọng hay sửa mã? (mở 2026-11-18)
+
+**Phát hiện** (khi chạy L0 của workspace kernel trong KT-81 §A5b):
+
+```text
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common --test smp
+---- bo_cuc_per_hart_khong_chong_va_can_trang stdout ----
+thread '…' panicked at vifast-plat-common/tests/smp.rs:23:5:
+assertion `left == right` failed
+  left: 86016
+ right: 118784
+test result: FAILED. 8 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+- `86016` = `HART_GUARD_BYTES + HART_STACK_BYTES + HART_TRAP_STACK_BYTES` (4K + 64K + 16K).
+- `118784` = `HART_STRIDE`, **đã** gồm `HART_SYSCALL_STACK_BYTES` (32K, thêm ở KT-66).
+- Chú thích đầu `v2/kernel/vifast-plat-common/src/smp.rs:10-11` cũng ghi công thức **thiếu** số hạng
+  syscall stack ⇒ **hai chỗ cùng cũ**, không phải test sai một mình.
+- `smp.rs` (nguồn **và** test) **không** bị sửa trong task này ⇒ **đỏ sẵn từ trước**.
+
+**Vì sao không ai thấy**: `v2/Cargo.toml` có `exclude = ["kernel"]`, nên `gate --fast` (L0 trên
+`v2/Cargo.toml`) **không** chạm `vifast-plat-common`. Test này chỉ chạy khi ai đó gõ tay
+`--manifest-path v2/kernel/Cargo.toml`. Đây là lớp lỗi "test đỏ mà không cổng nào chạy" — cùng lớp
+với `build-rev.sh --selftest` trước KT-134.
+
+**Hai đường, Agent 0 chọn:**
+
+| | (A) Sửa **test + chú thích** cho khớp `HART_STRIDE` | (B) Sửa **mã** để `HART_STRIDE` bỏ syscall stack |
+|---|---|---|
+| Đúng với hiện trạng | có — linker script đã cấp 32 KiB syscall stack (`linker.ld` chú thích KT-49/KT-66) | **không** — sẽ làm hẹp vùng per-hart so với linker script ⇒ `mmu::init` panic (nó kiểm khớp) |
+| Rủi ro | thấp; chỉ sửa kỳ vọng + chú thích | cao; đổi bố cục bộ nhớ đã chạy |
+| Vi phạm luật nào | "sửa kỳ vọng để test xanh" — **cần A0 cho phép rõ** | đổi bố cục bộ nhớ = đổi thiết kế |
+
+**Đề xuất của Agent 1 (không tự quyết)**: **(A)**, kèm hai việc bắt buộc:
+1. Sửa `smp.rs:23` thành `GUARD + STACK + TRAP + SYSCALL == HART_STRIDE` **và** sửa chú thích
+   `smp.rs:10-11` — sửa **cả hai** để không còn chỗ nào ghi công thức cũ.
+2. Thêm **cổng** chạy L0 của workspace kernel (`cargo test --manifest-path v2/kernel/Cargo.toml
+   -p vifast-plat-common -p vifast-virtio`) vào `gate --fast`, để lớp lỗi này không tái diễn. Đây
+   là **thêm phép đo**, không nới ngưỡng.
+
+**Trạng thái**: **KHÔNG** sửa trong đêm (B1: Agent 1 được *từ chối* đổi kỳ vọng, không được tự đổi).

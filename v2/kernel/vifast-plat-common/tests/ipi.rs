@@ -28,8 +28,11 @@ fn hang_so_ipi_dung_sbi_va_aclint() {
     assert!(MSWI_WINDOW_BYTES >= MSWI_HART_STRIDE * MAX_HARTS as u64);
     assert_eq!(mswi_offset(0), 0);
     assert_eq!(mswi_offset(7), 28);
-    assert_eq!(mswi_address(0x0200_0000, 0), 0x0200_0000);
-    assert_eq!(mswi_address(0x0200_0000, 7), 0x0200_001c);
+    // KT-81 (§A5b): base MSWI lấy từ **bảng tài nguyên** (`REGIONS`), không viết tay lần thứ hai.
+    // Nếu bảng đổi (hoặc ai đó sửa một chỗ), ca này đổi theo — đó là mục đích.
+    let clint = vifast_plat_common::resources::CLINT.base;
+    assert_eq!(mswi_address(clint, 0), clint);
+    assert_eq!(mswi_address(clint, 7), clint + 0x1c);
     assert!(msip_pending(1));
     assert!(msip_pending(0xffff_ffff));
     assert!(!msip_pending(0));

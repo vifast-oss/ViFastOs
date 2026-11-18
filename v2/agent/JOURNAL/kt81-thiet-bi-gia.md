@@ -85,3 +85,118 @@ trùng một byte ở biên), kích thước 0 bị bắt, tràn địa chỉ b�
 - **Không** chứng minh driver thật **tuân** mọi điều kiện của `StrictBlk`. Việc đó cần nối mô hình
   vào đường chạy thật (một bước nữa, chưa làm). Hiện tại giá trị của task là: **hai lỗi v1 ấy giờ
   có một mô hình bắt được**, và bảng tài nguyên có phép kiểm chồng lấn thật.
+
+---
+
+# KT-81 §A5a — nối `StrictBlk` vào **mã dựng request của driver thật**
+
+**Ngày**: 2026-11-18 · **Agent 1** (Agent 0 phiếu lượt 5 §A5a)
+
+## 4. Việc Agent 0 giao (nguyên văn §A5a)
+
+> a) StrictBlk nối driver thật: cho mã dựng request của driver virtio-blk thật (cùng mã biên dịch
+>    vào ảnh, không chép lại) chạy qua StrictBlk trong test host; phủ đọc / ghi / flush / nhiều
+>    sector / sector cuối. Đột biến: tái tạo lỗi v1 #1 và #2 trong mã driver ⇒ StrictBlk báo đúng
+>    FlushNotNegotiated / LengthMismatch. Không nối được mà không đổi driver ⇒ DỪNG, ghi vào hàng
+>    chờ Agent 0.
+
+## 5. Hiện trạng trước khi sửa — vì sao §3 ở trên **không đủ**
+
+`v2/lib/vifast-virtio/tests/strict.rs` tự dựng `ReqHeader::new(...)` bằng tay rồi đưa cho
+`StrictBlk`. Nghĩa là nó chứng minh **mô hình**, **không** chứng minh **driver**: một driver gửi
+request sai vẫn qua, vì test không bao giờ chạy mã của driver.
+
+Driver thật (`v2/kernel/vifast-plat-riscv64/src/virtio_blk.rs::submit`) tự làm **ba** việc rời nhau:
+
+```rust
+let header = ReqHeader::new(kind, sector).encode();          // (1) header
+let status_index = if kind == T_FLUSH { 1u16 } else { 2u16 }; // (2) hình dạng chuỗi descriptor
+… len: SECTOR_BYTES as u32 …                                  // (3) độ dài đệm
+```
+
+Ba chỗ có thể lệch nhau, và test host chỉ chạm được chỗ (1).
+
+## 6. Sửa gì
+
+| tệp | sửa |
+|---|---|
+| `v2/lib/vifast-virtio/src/blk.rs` | **MỚI** `BuiltRequest` + `build_request(kind, sector, sectors)` — trả **một** giá trị gồm header đã mã hoá, `sectors`, `data_len`, `status_index`. `data_len` **tính từ số sector**, không nhận từ người gọi (chính chỗ khai tay là nơi lỗi v1 #2 sinh ra). |
+| `v2/kernel/vifast-plat-riscv64/src/virtio_blk.rs` | `submit` gọi `build_request(kind, sector, 1)`; header, `status_index`, và `len` của descriptor dữ liệu đều lấy từ **cùng** giá trị ấy. Không còn `ReqHeader::new` hay `SECTOR_BYTES` thứ hai trong đường dựng request. |
+| `v2/lib/vifast-virtio/tests/driver_request.rs` | **MỚI** 11 ca: đọc / ghi / flush / **nhiều sector** / **sector cuối** / ngoài mép / chưa đàm phán FLUSH / độ dài lệch (ba chiều) / loại lạ / hình dạng request / **cấu trúc** (driver phải gọi `build_request`). |
+
+**Vì sao `build_request` nằm trong `vifast-virtio` chứ không trong crate kernel**: `vifast-virtio`
+là crate **thuần**, biên dịch **cả** vào ảnh (driver gọi nó) **và** vào test host. Đó đúng là điều
+kiện "cùng mã biên dịch vào ảnh, không chép lại". `vifast-plat-riscv64` có inline asm nên **không**
+build được cho host — đặt mã dựng request ở đó thì test host không chạm tới được.
+
+## 7. Bằng chứng — ca kiểm chạy thật
+
+```text
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-virtio --test driver_request
+test doc_mot_sector ... ok
+test doc_nhieu_sector ... ok
+test doc_qua_mep_bi_tu_choi ... ok
+test do_dai_lech_bi_tu_choi ... ok
+test driver_that_dung_build_request ... ok
+test flush_khi_chua_dam_phan_bi_tu_choi ... ok
+test flush_sau_dam_phan ... ok
+test ghi_mot_sector ... ok
+test hinh_dang_request_dung ... ok
+test loai_la_bi_tu_choi ... ok
+test sector_cuoi ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+## 8. Đột biến — tái tạo **hai lỗi v1 trong mã driver** ⇒ ĐỎ đúng lý do
+
+### Đột biến #1 — lỗi v1 #1: driver **không** đàm phán `VIRTIO_BLK_F_FLUSH` mà vẫn gửi `T_FLUSH`
+
+Sửa `negotiated_features` để bỏ nhánh `FLUSH_MASK`:
+
+```text
+test flush_sau_dam_phan ... FAILED
+thread 'flush_sau_dam_phan' panicked at …/driver_request.rs:74:5:
+  left: Err(FlushNotNegotiated)
+test do_dai_lech_bi_tu_choi ... FAILED
+thread 'do_dai_lech_bi_tu_choi' panicked at …/driver_request.rs:148:5:
+  left: Err(FlushNotNegotiated)
+test result: FAILED. 9 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+`StrictBlk` báo **đúng** `FlushNotNegotiated`. (`do_dai_lech_bi_tu_choi` cũng đỏ vì thứ tự kiểm cố
+định: đàm phán FLUSH được kiểm **trước** độ dài — đúng thiết kế.)
+
+### Đột biến #2 — lỗi v1 #2: driver khai **độ dài đệm sai**
+
+Sửa `build_request` để `data_len = 0` cho mọi loại:
+
+```text
+test doc_mot_sector ... FAILED
+  left: Err(LengthMismatch { want: 512, got: 0 })
+test ghi_mot_sector ... FAILED
+  left: Err(LengthMismatch { want: 512, got: 0 })
+test doc_nhieu_sector ... FAILED
+  left: Err(LengthMismatch { want: 2048, got: 0 })
+test sector_cuoi ... FAILED
+test doc_qua_mep_bi_tu_choi ... FAILED
+test hinh_dang_request_dung ... FAILED
+test result: FAILED. 5 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+`StrictBlk` báo **đúng** `LengthMismatch`. Khôi phục cả hai ⇒ `11 passed`.
+
+## 9. Cái **không** làm
+
+- **Không** đổi ngữ nghĩa driver: vẫn một request một lúc, vẫn `SECTOR_BYTES = 512`, vẫn poll `used`.
+  Chỉ **gom** ba chỗ dựng request về một hàm.
+- **Không** thêm `unsafe`, không đổi ABI, không đổi `spec/`.
+- **Không** chứng minh driver tuân **mọi** điều kiện của `StrictBlk` (ví dụ thứ tự fence, `used->id`).
+  Việc đó cần chạy `StrictBlk` **trong** đường thật — vẫn là nợ, ghi ở §10.
+- **Không** sửa test `smp` đỏ sẵn — xem `kt81-quet-bang-tai-nguyen.md` §6.
+
+## 10. Nợ còn lại của KT-81
+
+`StrictBlk` nay kiểm **mã dựng request** của driver thật, nhưng **không** nằm trong đường chạy sản
+phẩm: nó không kiểm được thứ tự fence, `used->id`, hay việc driver có thật sự gửi đúng cái nó dựng.
+Muốn đóng nốt thì phải cho driver gọi `StrictBlk` ở chế độ kiểm (feature `ktest`) — đó là thay đổi
+đường chạy, cần Agent 0 quyết.

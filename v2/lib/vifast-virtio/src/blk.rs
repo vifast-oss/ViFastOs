@@ -93,6 +93,55 @@ impl ReqHeader {
     }
 }
 
+/// Một request virtio-blk **đã dựng xong** — kết quả của [`build_request`].
+///
+/// # Vì sao trả **cấu trúc** chứ không chỉ 16 byte header
+///
+/// Một request không chỉ là header. Thiết bị thật kiểm **cả** độ dài đệm và dải sector; driver
+/// dựng header đúng mà khai độ dài sai thì vẫn hỏng. Gom cả ba thứ vào **một** giá trị để "cái
+/// driver gửi" và "cái test kiểm" là **một** — không có đường thứ hai để lệch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuiltRequest {
+    /// 16 byte header little-endian, đã mã hoá, sẵn sàng chép vào ring.
+    pub header: [u8; REQ_HEADER_BYTES],
+    /// Loại request (`T_IN`/`T_OUT`/`T_FLUSH`).
+    pub kind: u32,
+    /// Sector bắt đầu (đơn vị 512 B của spec).
+    pub sector: u64,
+    /// Số sector của request (`0` cho `FLUSH`).
+    pub sectors: u32,
+    /// Độ dài đệm dữ liệu mà request **đòi** (`0` cho `FLUSH`).
+    pub data_len: u32,
+    /// Chỉ số descriptor của status trong chuỗi (`1` cho `FLUSH`, `2` cho `IN`/`OUT`).
+    pub status_index: u16,
+}
+
+/// **Dựng một request virtio-blk** từ `(loại, sector, số sector)`.
+///
+/// # Đây là mã của driver **thật**
+///
+/// `v2/kernel/vifast-plat-riscv64/src/virtio_blk.rs` (`submit`) gọi **đúng hàm này** — không chép
+/// lại công thức ở đâu khác. Nhờ vậy test host (`tests/driver_request.rs`) chạy **cùng** mã được
+/// biên dịch vào ảnh, và `StrictBlk` kiểm đúng cái driver thật sự gửi.
+///
+/// `data_len` tính từ **số sector**, không nhận từ người gọi: nếu người gọi tự khai độ dài thì
+/// chính chỗ khai ấy là nơi lỗi v1 #2 sinh ra.
+pub fn build_request(kind: u32, sector: u64, sectors: u32) -> BuiltRequest {
+    let data_len = if kind == T_FLUSH {
+        0
+    } else {
+        sectors.saturating_mul(DEFAULT_SECTOR_BYTES)
+    };
+    BuiltRequest {
+        header: ReqHeader::new(kind, sector).encode(),
+        kind,
+        sector,
+        sectors,
+        data_len,
+        status_index: if kind == T_FLUSH { 1 } else { 2 },
+    }
+}
+
 /// `virtio_blk_config` mà driver đọc (chỉ các trường nó dùng — không đoán phần còn lại).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BlkConfig {

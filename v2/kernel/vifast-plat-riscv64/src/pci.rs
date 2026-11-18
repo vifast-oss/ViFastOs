@@ -30,19 +30,32 @@ use vifast_virtio::pci::{
 use crate::mmu::{
     PLIC_WINDOW_BYTES, PLIC_WINDOW_HIGH_BASE, PLIC_WINDOW_LOW_BASE, RAM_BYTES, RAM_PHYS_BASE,
 };
-use crate::UART0_BASE;
 
 /// Base ECAM của QEMU `virt` (dữ kiện nền tảng, D2-72 Q7): `info mtree` ⇒
 /// `alias pcie-ecam @pcie-mmcfg-mmio`, 256 MiB (bus<<20).
-pub const ECAM_BASE: u64 = 0x3000_0000;
+///
+/// **KT-81 (Agent 0 phiếu lượt 5 §A5b)**: **dẫn xuất** từ [`vifast_plat_common::resources::PCI_ECAM`]
+/// — trước đây là số viết tay thứ hai, có thể lệch với bảng `REGIONS` mà không ai thấy.
+pub const ECAM_BASE: u64 = vifast_plat_common::resources::PCI_ECAM.base;
 /// Cỡ ECAM driver **map** (2 MiB): đủ bus 0 và 1 (mỗi function 4 KiB; bus 1 MiB).
 pub const ECAM_MAP_BYTES: u64 = 2 << 20;
 /// Cửa sổ MMIO PCIe của QEMU `virt` (`alias pcie-mmio @gpex_mmio_window`, 1 GiB).
-pub const PCI_MMIO_WINDOW_BASE: u64 = 0x4000_0000;
+///
+/// **KT-81 (§A5b)**: dẫn xuất từ [`vifast_plat_common::resources::PCI_MMIO32`].
+pub const PCI_MMIO_WINDOW_BASE: u64 = vifast_plat_common::resources::PCI_MMIO32.base;
 /// Cỡ cửa sổ MMIO PCIe (1 GiB — dùng để kiểm BAR gán ra nằm trong cửa sổ).
-pub const PCI_MMIO_WINDOW_BYTES: u64 = 1 << 30;
+///
+/// **KT-81 (§A5b)**: dẫn xuất từ [`vifast_plat_common::resources::PCI_MMIO32`].
+pub const PCI_MMIO_WINDOW_BYTES: u64 = vifast_plat_common::resources::PCI_MMIO32.size;
 /// Cỡ leaf 2 MiB dùng để map ECAM + BAR (đủ cho một BAR modern 0x4000).
 pub const PCI_MAP_LEAF_BYTES: u64 = 2 << 20;
+
+// **KT-81 (§A5b)** — phép kiểm **khớp bảng** ngay lúc biên dịch: driver map ECAM 2 MiB và dùng
+// toàn bộ cửa sổ MMIO 32-bit; nếu ai đó thu nhỏ vùng trong `REGIONS` mà không sửa driver (hoặc
+// ngược lại), ảnh **không biên dịch được** thay vì map ra ngoài vùng đã khai.
+const _: () = assert!(ECAM_MAP_BYTES <= vifast_plat_common::resources::PCI_ECAM.size);
+const _: () = assert!(PCI_MMIO_WINDOW_BYTES == vifast_plat_common::resources::PCI_MMIO32.size);
+const _: () = assert!(PCI_MMIO_WINDOW_BASE == vifast_plat_common::resources::PCI_MMIO32.base);
 /// Địa chỉ driver **gán** cho BAR modern của virtio-blk (đầu cửa sổ, căn 2 MiB) — KT-72.
 pub const BAR_ASSIGN_BASE: u64 = PCI_MMIO_WINDOW_BASE;
 /// Địa chỉ driver **gán** cho BAR modern của virtio-console — KT-73: **khác** base của blk để hai
@@ -73,7 +86,11 @@ pub const MAX_OTHER_BARS: usize = 8;
 /// PLIC 2 MiB, ECAM 2 MiB driver map, và toàn bộ RAM `-m 128M`. Gán BAR vào đây = đè im lặng.
 /// Đây là **dữ kiện nền tảng QEMU virt** (D2-72 Q7) lấy từ hằng của `mmu`, không phải số đo.
 pub const RESERVED_RANGES: [(u64, u64); 5] = [
-    (UART0_BASE as u64, 0x1000),
+    // KT-81 (§A5b): cỡ UART0 lấy từ bảng `REGIONS`, không viết tay `0x1000` lần thứ hai.
+    (
+        vifast_plat_common::resources::UART0.base,
+        vifast_plat_common::resources::UART0.size,
+    ),
     (PLIC_WINDOW_LOW_BASE, PLIC_WINDOW_BYTES),
     (PLIC_WINDOW_HIGH_BASE, PLIC_WINDOW_BYTES),
     (ECAM_BASE, ECAM_MAP_BYTES),

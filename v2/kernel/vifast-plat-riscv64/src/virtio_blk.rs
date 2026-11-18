@@ -28,8 +28,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_common::Platform;
 use vifast_virtio::blk::{
-    decode_config, flush_negotiated, negotiated_features, status_to_result, BlkError, ReqHeader,
-    BLK_CONFIG_BYTES, T_FLUSH, T_IN, T_OUT,
+    build_request, decode_config, flush_negotiated, negotiated_features, status_to_result,
+    BlkError, BLK_CONFIG_BYTES, T_FLUSH, T_IN, T_OUT,
 };
 use vifast_virtio::features::{
     features_ok, status_sequence_ok, ACK, DRIVER, DRIVER_OK, FEATURES_OK, F_VERSION_1,
@@ -502,14 +502,20 @@ fn submit(
         dst.copy_from_slice(bytes);
     }
     // Header + status khởi tạo (status = 0xff để phát hiện thiết bị không ghi).
-    let header = ReqHeader::new(kind, sector).encode();
-    page()[REQ_OFF..REQ_OFF + 16].copy_from_slice(&header);
+    //
+    // **KT-81 (§A5a)**: request được dựng bằng `vifast_virtio::blk::build_request` — **cùng** mã
+    // mà test host (`v2/lib/vifast-virtio/tests/driver_request.rs`) đưa qua `StrictBlk`. Trước đây
+    // driver tự ghép header + tự tính `status_index` + tự khai `SECTOR_BYTES` cho descriptor: ba
+    // chỗ có thể lệch nhau, và test host chỉ kiểm được chỗ thứ nhất. Nay cả ba đi ra từ **một**
+    // giá trị.
+    let req = build_request(kind, sector, 1);
+    page()[REQ_OFF..REQ_OFF + 16].copy_from_slice(&req.header);
     page()[STATUS_OFF] = 0xff;
 
     REQUESTS.fetch_add(1, Ordering::SeqCst);
     let qsize = s.queue_size;
     // Chuỗi descriptor: header → [data] → status. FLUSH không có data (§5.2.6).
-    let status_index = if kind == T_FLUSH { 1u16 } else { 2u16 };
+    let status_index = req.status_index;
     {
         let mut q = queue_with(qsize)?;
         if !q.set_desc(
@@ -534,7 +540,9 @@ fn submit(
                 1,
                 Desc {
                     addr: data_pa,
-                    len: SECTOR_BYTES as u32,
+                    // KT-81 (§A5a): độ dài descriptor lấy từ **cùng** giá trị đã dựng request —
+                    // không viết `SECTOR_BYTES` lần thứ hai (đó đúng là chỗ lỗi v1 #2 sinh ra).
+                    len: req.data_len,
                     flags,
                     next: 2,
                 },
