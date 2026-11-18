@@ -23,6 +23,10 @@ use core::marker::PhantomData;
 
 use crate::format::{Descriptor, MemAttr, PageTableFormat, Perms, Shareability};
 
+// KT-164: `MapError`/`Mmu`/`Translation` là kiểu **dùng chung** ở `vifast-pte` (thiết kế
+// §358/§1101); tệp này chỉ còn phần dữ liệu `PageTable`/`TableMemory`/`Walk` và impl `Mmu`.
+pub use vifast_pte::{MapError, Mmu, Translation};
+
 /// Số mức tối đa mà [`Walk`] ghi lại (đủ cho mọi format của bước 1; format nhiều mức hơn phải
 /// nâng hằng số này — `Walk` là chẩn đoán, không phải đường map).
 pub const MAX_LEVELS: usize = 4;
@@ -50,40 +54,6 @@ pub trait TableMemory {
 
     /// Zero toàn bộ frame; `false` nếu không zero được.
     fn zero_frame(&mut self, pa: u64) -> bool;
-}
-
-/// Lỗi của `Mmu` — lỗi **nội bộ task** (không phải mã lỗi ABI; `spec/` không mở — D2-72 Q1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MapError {
-    /// Hết frame cho bảng trung gian/gốc.
-    OutOfFrames,
-    /// VA/PA không căn lề 4 KiB.
-    Unaligned,
-    /// VA không canonical theo `VA_BITS`.
-    NotCanonical,
-    /// PA vượt `PA_BITS`.
-    PaOutOfRange,
-    /// Quyền không biểu diễn được (AArch64 không có leaf "không đọc được").
-    InvalidPerms,
-    /// VA đã có mapping (lá hoặc block phủ lên).
-    AlreadyMapped,
-    /// VA chưa có mapping.
-    NotMapped,
-    /// Gặp block descriptor (2 MiB/1 GiB) — bước 1 chỉ tạo/nhận lá 4 KiB.
-    BlockUnsupported,
-    /// Bảng trang hỏng (entry reserved, PA ngoài nguồn, ghi thất bại).
-    CorruptTable,
-}
-
-/// Kết quả dịch VA → PA.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Translation {
-    /// Địa chỉ vật lý (đáy trang).
-    pub pa: u64,
-    /// Quyền của lá.
-    pub perms: Perms,
-    /// Mức của lá (bước 1 luôn là mức cuối).
-    pub level: usize,
 }
 
 /// Một bước của walk chẩn đoán.
@@ -221,7 +191,7 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
         if pa >> F::PA_BITS != 0 {
             return Err(MapError::PaOutOfRange);
         }
-        if !perms.is_valid() {
+        if !F::perms_valid(perms) {
             return Err(MapError::InvalidPerms);
         }
 
@@ -466,27 +436,6 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
         self.memory.free_frame(table);
         Ok(())
     }
-}
-
-/// Giao diện `Mmu` của thiết kế §183 (`type Fmt: PageTableFormat`) — phần **dữ liệu**.
-///
-/// Cài cho [`PageTable`]; test `mmu_generic_over_second_format` gọi qua trait này với **hai**
-/// format khác nhau để chứng minh `Mmu` không phụ thuộc AArch64.
-pub trait Mmu {
-    /// Định dạng bảng trang.
-    type Fmt: PageTableFormat;
-
-    /// PA bảng gốc.
-    fn root(&self) -> u64;
-
-    /// Map 4 KiB với thuộc tính mặc định.
-    fn map(&mut self, va: u64, pa: u64, perms: Perms) -> Result<(), MapError>;
-
-    /// Bỏ mapping 4 KiB, trả PA.
-    fn unmap(&mut self, va: u64) -> Result<u64, MapError>;
-
-    /// Dịch VA → PA.
-    fn translate(&self, va: u64) -> Result<Translation, MapError>;
 }
 
 impl<F: PageTableFormat, M: TableMemory> Mmu for PageTable<F, M> {

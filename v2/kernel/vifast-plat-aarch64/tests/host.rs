@@ -21,10 +21,10 @@
 //!    AArch64 48-bit VA (thiết kế §541) dùng lại đúng cách mã hoá.
 
 use vifast_plat_aarch64::format::{
-    is_canonical_bits, Aarch64, Descriptor, MemAttr, PageTableFormat, Perms, Shareability,
-    AARCH64_ENTRIES, AARCH64_LEVELS, AARCH64_MAX_VA_BITS, AARCH64_PAGE_BYTES, AARCH64_PA_BITS,
-    AARCH64_VA_BITS, DESC_ADDR_MASK, DESC_AF, DESC_AP_RO, DESC_AP_USER, DESC_ATTR_SHIFT, DESC_NG,
-    DESC_NS, DESC_PXN, DESC_SH_SHIFT, DESC_UXN, DESC_VALID, MAIR_EL1,
+    is_canonical_bits, mair_byte, mair_index, Aarch64, Descriptor, MemAttr, PageTableFormat, Perms,
+    Shareability, AARCH64_ENTRIES, AARCH64_LEVELS, AARCH64_MAX_VA_BITS, AARCH64_PAGE_BYTES,
+    AARCH64_PA_BITS, AARCH64_VA_BITS, DESC_ADDR_MASK, DESC_AF, DESC_AP_RO, DESC_AP_USER,
+    DESC_ATTR_SHIFT, DESC_NG, DESC_NS, DESC_PXN, DESC_SH_SHIFT, DESC_UXN, DESC_VALID, MAIR_EL1,
 };
 use vifast_plat_aarch64::mmu::{MapError, Mmu, PageTable, TableMemory, Translation, WalkOutcome};
 
@@ -201,7 +201,7 @@ fn descriptor_bits_aarch64() {
     assert_eq!(d & DESC_NS, 0, "bước 1: non-secure luôn 0");
     assert_eq!(
         (d >> DESC_ATTR_SHIFT) & 0b111,
-        MemAttr::Normal.mair_index(),
+        mair_index(MemAttr::Normal),
         "AttrIndx = chỉ số MAIR của Normal"
     );
     assert_eq!(
@@ -212,7 +212,7 @@ fn descriptor_bits_aarch64() {
     assert_eq!(d & DESC_ADDR_MASK, pa, "PA nằm ở bit 47:12");
     assert_eq!(
         Aarch64::leaf_mair_index(d),
-        MemAttr::Normal.mair_index(),
+        mair_index(MemAttr::Normal),
         "helper bóc AttrIndx"
     );
     assert_eq!(
@@ -262,17 +262,17 @@ fn descriptor_bits_aarch64() {
 #[test]
 fn mair_index_matches_programmed_mair() {
     for attr in [MemAttr::Device, MemAttr::Normal] {
-        let index = attr.mair_index();
+        let index = mair_index(attr);
         assert!(index < 8, "AttrIndx chỉ 3 bit");
         assert_eq!(
             (MAIR_EL1 >> (8 * index)) & 0xFF,
-            attr.mair_byte(),
+            mair_byte(attr),
             "byte MAIR của {attr:?} phải khớp MAIR_EL1"
         );
         assert_eq!(MemAttr::from_index(index), Some(attr));
     }
-    assert_eq!(MemAttr::Device.mair_byte(), 0x00);
-    assert_eq!(MemAttr::Normal.mair_byte(), 0xFF);
+    assert_eq!(mair_byte(MemAttr::Device), 0x00);
+    assert_eq!(mair_byte(MemAttr::Normal), 0xFF);
     assert_eq!(MemAttr::from_index(2), None, "chỉ số MAIR chưa định nghĩa");
     assert_eq!(Shareability::from_bits(0b01), None, "SH = 0b01 là reserved");
     assert_eq!(Shareability::from_bits(0b11), Some(Shareability::Inner));
