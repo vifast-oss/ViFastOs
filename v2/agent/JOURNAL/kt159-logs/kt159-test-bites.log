@@ -1,0 +1,22 @@
+# ĐỘT BIẾN 1: wake() thành post+Ready (bỏ nhánh post-only) ⇒ ca (a) phải ĐỎ
+test kt159_core_wake_from_cheo_hart_ready_ngay ... ok
+test kt159_core_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+test kt159_sim_wake_cheo_hart_post_only ... ok
+test kt159_sim_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+test kt159_sim_wake_from_cheo_hart_ready_ngay ... ok
+test kt159_core_wake_cheo_hart_post_only ... FAILED
+assertion `left == right` failed: wake() chéo hart KHÔNG được đổi trạng thái TCB ngay (post-only, D2-144)
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# ĐỘT BIẾN 2: wake_from() không push Wake ⇒ ca (b) phải ĐỎ
+test kt159_core_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+test kt159_core_wake_cheo_hart_post_only ... ok
+test kt159_core_wake_from_cheo_hart_ready_ngay ... FAILED
+test kt159_sim_wake_cheo_hart_post_only ... ok
+test kt159_sim_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+test kt159_sim_wake_from_cheo_hart_ready_ngay ... ok
+assertion `left == right` failed: wake_from() chéo hart vẫn phải gửi đúng một `Wake` về hart home
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# KHÔI PHỤC: kt159 xanh lại
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
