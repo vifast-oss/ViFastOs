@@ -22,9 +22,10 @@ Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ.
     (`assert!`, `assert_eq!`, `assert_ne!`, `assert_matches!`, `debug_assert*!`,
     `expect_err`, `unwrap_err`, `panic!` **có điều kiện**) **và** không gọi hàm trợ giúp
     đã biết. "Hàm trợ giúp đã biết" = hàm cùng tệp mà **transitive** dẫn tới một token
-    khẳng định (tự dò, không cần khai báo), hoặc hàm **ở tệp khác** có trong **bản đồ
-    toàn cây** (KT-170: dựng từ chính cây nguồn, phân giải theo tên và `use … as …`),
-    hoặc tên có trong `HELPER_ALLOW` (đường **dự phòng** tường minh, dùng khi tên mơ hồ).
+    khẳng định (tự dò, không cần khai báo), hoặc hàm **ở tệp khác trong phạm vi test** có
+    trong **bản đồ toàn cây** (KT-170: dựng từ chính cây nguồn, phân giải theo tên và
+    `use … as …`; hàm **sản phẩm** không tính — xem `build_global_helpers`), hoặc tên có
+    trong `HELPER_ALLOW` (đường **dự phòng** tường minh, dùng khi tên mơ hồ).
     `#[should_panic]` cũng là răng: nó khẳng định một panic. `unwrap()` **không** phải
     răng: nó chỉ chứng minh "không lỗi", không chứng minh giá trị đúng. Ca hợp lệ không
     có token ⇒ `ALLOW_NO_ASSERT` kèm lý do.
@@ -44,9 +45,12 @@ Fail-closed
 - Mục **mới** không có trong allowlist ⇒ ĐỎ. Allowlist chỉ chứa mục **đã rà** kèm lý do.
 - Mục allowlist **không còn khớp** chỗ nào ⇒ ĐỎ (`E_ALLOW_STALE`) — nếu không, allowlist
   phình dần và che mất vi phạm mới.
-- Bản đồ trợ giúp toàn cây chỉ tính một tên khi **mọi** định nghĩa cùng tên trong cây đều
-  có răng (bắc cầu). Tên **mơ hồ** (có định nghĩa không răng) ⇒ không tính — fail-closed;
-  ca thật thì khai `HELPER_ALLOW` kèm lý do, không nới luật.
+- Bản đồ trợ giúp toàn cây **chỉ tính hàm trong phạm vi test** (tệp dưới `tests/` hoặc
+  khối `#[cfg(test)]`); hàm **sản phẩm** có `debug_assert!` **không** tính — nhận chúng là
+  nới máy kiểm (đo trước khi siết: 277/285 test gọi tên chéo tệp trỏ vào hàm sản phẩm).
+- Bản đồ chỉ tính một tên khi **mọi** định nghĩa cùng tên trong phạm vi test đều có răng
+  (bắc cầu). Tên **mơ hồ** (có định nghĩa không răng) ⇒ không tính — fail-closed; ca thật
+  thì khai `HELPER_ALLOW` kèm lý do, không nới luật.
 - Cây không có tệp test nào ⇒ ĐỎ (`E_NO_TESTS`) — "không có gì để kiểm" không phải xanh.
 - Cây không có `v2/` ⇒ ĐỎ (exit 1), không im lặng bỏ qua.
 
@@ -119,8 +123,9 @@ CALL_NAME_RE = r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:::\s*<[^;{}()]*?>)?\s*[(!]"
 
 # Hàm trợ giúp **ở tệp khác** mà vẫn tính là răng — **đường dự phòng tường minh**.
 # Từ KT-170, lớp (c) tự dựng **bản đồ toàn cây** (xem `build_global_helpers`), nên phần lớn
-# trợ giúp ở tệp khác được nhận **không cần** khai báo. Bảng này chỉ còn dùng khi tên **mơ
-# hồ** (nhiều định nghĩa cùng tên, có cái không răng) hoặc trợ giúp nằm ngoài cây nguồn.
+# trợ giúp ở tệp khác **trong phạm vi test** được nhận **không cần** khai báo. Bảng này chỉ
+# còn dùng khi tên **mơ hồ** (nhiều định nghĩa cùng tên, có cái không răng), khi trợ giúp nằm
+# ngoài cây nguồn, hoặc khi trợ giúp là hàm **sản phẩm** (Agent 0 chốt: không tính).
 # Khoá = tên hàm; giá trị = lý do. Hiện **rỗng**.
 HELPER_ALLOW: Dict[str, str] = {}
 
@@ -672,12 +677,23 @@ def build_use_aliases(
     return out
 
 
-def build_global_helpers(parsed: Sequence["ParsedFile"]) -> Set[str]:
-    """Tên hàm **không phải** `#[test]` mà **mọi** định nghĩa cùng tên trong cây đều có răng.
+def build_global_helpers(
+    parsed: Sequence["ParsedFile"],
+    whole: Set[Path],
+    inline: Dict[Path, List[Tuple[int, int]]],
+) -> Set[str]:
+    """Tên hàm **trong phạm vi test** mà **mọi** định nghĩa cùng tên đều có răng.
 
     "Có răng" = thân có token khẳng định (hoặc `panic!` **có điều kiện**), **hoặc** gọi một
-    tên đã có răng — bao đóng bắc cầu tới điểm bất động. Đây là bản đồ **toàn cây** (KT-170),
-    nên test gọi trợ giúp ở **tệp khác** được tính là có răng mà **không cần** `HELPER_ALLOW`.
+    tên đã có răng — bao đóng bắc cầu tới điểm bất động. Bản đồ dựng từ **toàn cây** (mọi tệp
+    `.rs`), nên test gọi trợ giúp ở **tệp khác** được tính là có răng mà **không cần**
+    `HELPER_ALLOW`.
+
+    **Chỉ hàm trong phạm vi test** mới được tính (Agent 0 chốt KT-170): tệp dưới `tests/`
+    (hoặc tệp `mod X;` của `#[cfg(test)]`) **hoặc** nằm trong khối `#[cfg(test)]`. Hàm **sản
+    phẩm** có `debug_assert!` **không** tính: đo trên cây trước khi siết cho thấy **277/285**
+    test gọi tên chéo tệp trỏ vào hàm sản phẩm — nhận chúng là **nới** máy kiểm (một test
+    không assert mà gọi `fsck()` sẽ xanh nhờ assert của sản phẩm), đúng thứ repo cấm.
 
     Vì sao đòi **mọi** định nghĩa cùng tên: tên trùng giữa các tệp là chuyện thường (`kiem`,
     `setup`…). Nếu chỉ cần **một** định nghĩa có răng thì một test gọi trợ giúp **không** răng
@@ -690,8 +706,14 @@ def build_global_helpers(parsed: Sequence["ParsedFile"]) -> Set[str]:
     calls: Dict[str, List[Set[str]]] = {}
     for pf in parsed:
         m = pf.masked
+        is_whole = pf.path in whole
+        ranges = inline.get(pf.path, [])
+        if not is_whole and not ranges:
+            continue
         for f in pf.fns:
             if f.is_test:
+                continue
+            if not (is_whole or in_ranges(f.start, ranges)):
                 continue
             body = m[f.body_start : f.body_end]
             has = any(t in body for t in ASSERT_TOKENS) or (
@@ -922,9 +944,9 @@ def scan(
 
     whole, inline = build_scope(root, parsed)
     rets, aliases = build_return_types(parsed)
-    # KT-170: bản đồ trợ giúp **toàn cây** (lớp (c) không còn phụ thuộc `HELPER_ALLOW`) và
-    # bảng bí danh `use … as …` để phân giải tên gọi.
-    g_teeth = build_global_helpers(parsed)
+    # KT-170: bản đồ trợ giúp **toàn cây** — chỉ hàm trong phạm vi test (lớp (c) không còn
+    # phụ thuộc `HELPER_ALLOW`) — và bảng bí danh `use … as …` để phân giải tên gọi.
+    g_teeth = build_global_helpers(parsed, whole, inline)
     use_aliases = build_use_aliases(parsed, whole | set(inline))
 
     used_allow: Set[Tuple[str, str, int]] = set()
@@ -1148,7 +1170,7 @@ def scan(
     rep.info.append(f"allowlist `let _ =`: {len(allow_let)} mục, khớp {len(used_allow)}")
     rep.info.append(f"trợ giúp khai báo ngoài tệp: {len(helper_allow)}")
     rep.info.append(
-        f"bản đồ trợ giúp toàn cây: {len(g_teeth)} tên có răng, "
+        f"bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): {len(g_teeth)} tên có răng, "
         f"{n_global_used} test dùng đường này"
     )
     rep.info.append(
@@ -1188,7 +1210,7 @@ def _fixture(root: Path, files: Dict[str, str]) -> None:
 
 
 def selftest() -> int:
-    """Ba mươi mốt ca: mỗi ca một dòng `ok`/`not ok`."""
+    """Ba mươi ba ca: mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt163-selftest-"))
     try:
@@ -1798,6 +1820,56 @@ def selftest() -> int:
                 "; ".join(rep.errors),
             )
         )
+
+        # (26) **Agent 0 chốt KT-170**: trợ giúp ở tệp **sản phẩm** (ngoài `#[cfg(test)]`) có
+        # `debug_assert!` ⇒ **KHÔNG** tính là răng. Test gọi nó mà không assert ⇒ đỏ. Nếu
+        # không có ca này, bản đồ "toàn cây" nhận cả hàm sản phẩm sẽ lọt qua selftest.
+        d = tmp / "helper-production"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn kiem_san_pham(x: u32) -> u32 {\n    debug_assert!(x > 0);\n"
+                    "    x + 1\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\nfn chi_goi_san_pham() {\n    let _x = kiem_san_pham(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp ở tệp **sản phẩm** (`debug_assert!`) ⇒ KHÔNG tính là răng",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (27) đối chứng dương cho (26): trợ giúp trong khối `#[cfg(test)]` của tệp `src/`
+        # **vẫn** được tính (phạm vi test, dù không phải tệp dưới `tests/`).
+        d = tmp / "helper-cfg-test"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn f() -> u32 {\n    1\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    pub fn kiem_cfg(x: u32) {\n"
+                    "        assert_eq!(x, 3);\n    }\n}\n"
+                ),
+                "v2/lib/a/tests/t.rs": (
+                    "#[test]\nfn dung_tro_giup_cfg() {\n    kiem_cfg(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp trong `#[cfg(test)]` của `src/` ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1821,7 +1893,7 @@ def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=None, help="gốc cây nguồn (mặc định: repo chứa tệp này)")
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 31 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 33 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:
