@@ -404,7 +404,7 @@ RE_MOD_DECL = re.compile(
 RE_MOD_DECL_RAW = re.compile(
     r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", re.M
 )
-RE_PATH_ATTR_LINE = re.compile(r'^\s*#\[path\s*=\s*"([^"]+)"\s*\]\s*$')
+RE_PATH_ATTR_LINE = re.compile(r'^\s*#\[path\s*=\s*r?"([^"]+)"\s*\]\s*$')
 RE_CFG_ATTR_LINE = re.compile(r"^\s*#\[cfg\((.*)\)\]\s*$")
 
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
@@ -655,8 +655,8 @@ def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> boo
 
 # ------------------------------------------------------------------ KT-171: B6/B7 include!/#[path]
 
-RE_INCLUDE_MACRO = re.compile(r'\binclude!\s*\(\s*"([^"]+)"\s*\)')
-RE_PATH_ATTR_ANY = re.compile(r'#\[path\s*=\s*"([^"]+)"\s*\]')
+RE_INCLUDE_MACRO = re.compile(r'\binclude!\s*\(\s*r?"([^"]+)"\s*\)')
+RE_PATH_ATTR_ANY = re.compile(r'#\[path\s*=\s*r?"([^"]+)"\s*\]')
 
 
 def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
@@ -711,6 +711,20 @@ def resolve_include_targets(
             if not code[m.start() : m.end()].strip():
                 continue
             found.append(("#[path]", m.group(1), m.start()))
+        # **KT-174/H3** (reviewer L16): `include!` **không** literal (`concat!`/`env!`/biến)
+        # không phân giải được đích ⇒ fail-closed với tệp **sản phẩm**.
+        if not is_test:
+            covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
+            for m in re.finditer(r"\binclude!\s*\(", code_keep):
+                if m.start() in covered:
+                    continue
+                if not code[m.start() : m.end()].strip():
+                    continue
+                lineno = code_keep.count("\n", 0, m.start()) + 1
+                errors.append(
+                    f"  {relp}:{lineno}: `include!` không phải literal chuỗi — không phân giải "
+                    f"được đích (fail-closed, KT-174 H3)"
+                )
         for kind, raw, off in found:
             lineno = code_keep.count("\n", 0, off) + 1
             target = (p.parent / raw).resolve()
@@ -1151,6 +1165,15 @@ def scan_v2(
     # reviewer L11 đã phá cho luật `wake` (KT-168 §1.2 B8/B9). Tính **một lần** cho cả lượt
     # quét (hàm có cache theo gốc cây, nhưng truyền vào để không phụ thuộc cache toàn cục).
     test_only = test_only_modules(root)
+
+    # **KT-174/H5** (reviewer L16): tệp được `include!` từ **mã sản phẩm** là mã sản phẩm,
+    # dù đồ thị `mod` nói nó test-only. Trước bản vá này, `include!("evil_b.rs")` từ
+    # `core_sched.rs` (sản phẩm) + `#[cfg(test)] mod evil_b;` ⇒ `--strict` vẫn `errors=0`
+    # trong khi ảnh sản phẩm biên dịch `wake`. **Sản phẩm thắng.**
+    _extra0, _ = resolve_include_targets(root, files, test_only)
+    _product_included = {relp for relp, (_, t) in _extra0.items() if not t}
+    if _product_included:
+        test_only = set(test_only) - _product_included
 
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}

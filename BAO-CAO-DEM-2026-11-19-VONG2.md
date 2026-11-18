@@ -164,6 +164,16 @@ Ca 16 thêm `cat note.txt`/`stat note.txt`/`ls .` **tương đối** trong `/doc
 
 **Phát hiện trung thực**: `SCTLR_EL1` **không có** `UXN`/`PXN` theo DDI 0601 bản 2024-12 — hai bit đó là **descriptor** (54/53), đã có ở `format.rs`. Không bịa trường.
 
+**Review độc lập L17 (KT-175) chấm ĐẠT CÓ ĐIỀU KIỆN** — năm điều kiện C1–C5, ghi thành nợ:
+
+- **C1**: **14 hằng công khai "chết"** (11 `TCR_*_MASK`, `TTBR_BADDR_SHIFT`, `VBAR_BASE_SHIFT`, `SPSR_M_SHIFT`) — 14/14 đột biến vẫn 43/43 xanh. Bước 3 dùng mask để bóc trường sẽ **im lặng sai bit**.
+- **C2**: `sctlr_builder` so **OR hằng của chính crate** — 3/3 hoán vị setter vẫn xanh (đúng lớp KT-160).
+- **C3**: chỉ **3/33** stub host được kiểm — 3/3 stub no-op vẫn xanh.
+- **C4**: claim "đủ 39 trường `SCTLR_EL1`" **SAI** — thiếu ≥ 8 trường thật (nAA, EnRCTX, CMOW, TCF0, TCF, ATA0, TWEDEn, TWEDEL).
+- **C5**: log build đã commit chỉ có `Finished`, thiếu `Compiling`/rlib.
+
+**Đã xác nhận đúng (không phá được)**: 17/17 đột biến shift `TCR_EL1` đỏ; 8/8 đột biến `MAIR_EL1` đỏ; **6/6 mã `TLBI` khớp độc lập** `clang --target=aarch64-none-elf` + `llvm-objdump` (`vmalle1 d508871f`, `vmalle1is d508831f`, `vae1 d5088720`, `vae1is d5088320`, `aside1 d5088740`, `aside1is d5088340`); 13/13 barrier khớp; `SCTLR_EL1` **đúng là không có** `UXN`/`PXN`; stub host panic thật; build thật (`Compiling` + rlib 625 242 B).
+
 ### KT-168 — review vòng hai: **KT-165 KHÔNG ĐẠT**
 
 Reviewer L11 phá bản vá KT-165 bằng **5 lớp**, hai lớp là lỗ hổng **thật** (mã sản phẩm biên dịch `wake`, `--strict` vẫn `errors=0`):
