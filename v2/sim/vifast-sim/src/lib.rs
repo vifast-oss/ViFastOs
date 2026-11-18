@@ -11,6 +11,7 @@ use std::collections::VecDeque;
 
 use vifast_objmem::OwnedArena;
 
+pub mod clock;
 pub mod frame;
 pub mod ipc;
 pub mod kobj;
