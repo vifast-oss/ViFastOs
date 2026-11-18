@@ -307,6 +307,14 @@ do_check() {
         # có tên trong allowlist kèm lý do; chỗ lạ ⇒ ĐỎ (fail-closed hai chiều). Đây là
         # **thêm phép đo**, không nới ngưỡng nào.
         run_step "wake paths --strict (KT-155: allowlist)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --strict || fails=$((fails + 1))
+        # **KT-163 (N7, D2-137)** — máy kiểm "test có răng": chống lớp lỗi **xanh-giả** đã
+        # xảy ra hơn mười lần (gần nhất N7 suýt đóng sai). Bốn lớp **chắc chắn**, không
+        # heuristic mờ: (a) `assert!(true)` / `assert_eq!(x, x)` hằng-đúng; (b) `#[ignore]`;
+        # (c) `#[test]` không có token khẳng định nào và không gọi trợ giúp đã biết;
+        # (d) `let _ =` nuốt `Result` (tra bảng chữ ký dựng từ chính cây nguồn).
+        # Fail-closed: mục mới không có trong allowlist ⇒ ĐỎ; mục allowlist chết ⇒ ĐỎ.
+        run_step "test có răng (KT-163)" "$PY" "$V2_ROOT/tools/check-test-teeth.py" || fails=$((fails + 1))
+        run_step "selftest test có răng (KT-163)" "$PY" "$V2_ROOT/tools/check-test-teeth.py" --selftest || fails=$((fails + 1))
     fi
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then
