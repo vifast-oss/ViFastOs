@@ -252,6 +252,10 @@ do_check() {
     # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
     # chỉ nằm trong tệp. Trước đây `build-rev.sh --selftest` ĐỎ âm thầm vì không cổng nào gọi nó.
     run_step "selftest build-inputs (KT-128/134: a..h)" bash "$V2_ROOT/test/boot/build-rev.sh" --selftest || fails=$((fails + 1))
+    # **KT-145 (Agent 0 phiếu lượt 5 §A4)**: cổng **danh tính ảnh** (`vbrev_image_identity`) — năm
+    # ca l1..l5, có **đối chứng dương** (l3) để một hàm luôn-từ-chối không qua được. Tách khỏi
+    # `build-rev.sh` để định nghĩa dấu vân tay không phải tăng `VBREV_ALGO` vì một hàm tiêu thụ.
+    run_step "selftest danh tính ảnh (KT-145: l1..l5)" bash "$V2_ROOT/test/boot/build-identity.sh" --selftest || fails=$((fails + 1))
     # **KT-134 (C1 của Agent 0)**: `build-rev.sh` đã ra khỏi danh sách ghim, nên đổi **thuật toán**
     # mà quên tăng `VBREV_ALGO` sẽ không ai phát hiện. Tệp ghim giữ cặp (sha script, giá trị algo);
     # `--strict` để ghim cũ (đã tăng algo nhưng quên `--update`) cũng là ĐỎ — nếu không, cơ chế chỉ
@@ -404,6 +408,11 @@ do_gate_fast() {
     run_step "selftest qemu guard (KT-78)" bash "$V2_ROOT/test/boot/guard_selftest.sh" || return 1
     run_step "selftest pre-measure (KT-95)" bash "$V2_ROOT/tools/pre-measure.sh" --selftest || return 1
     run_step "selftest pin-artifact (KT-84)" bash "$V2_ROOT/tools/pin-artifact.sh" --selftest || return 1
+    # **KT-145 (Agent 0 phiếu lượt 5 §A4)**: đường đo phải TỪ CHỐI ảnh không cùng định nghĩa dấu
+    # vân tay; chỉ `status.sh`/`pin-artifact.sh` được nhận dạng cũ. Ca này chạy **chính** ba script
+    # đường đo trên ảnh giả (dạng cũ / algo sai / algo đúng) + quét toàn bộ `v2/` tìm chỗ còn nhận
+    # dạng cũ. Không QEMU, không build ⇒ vài giây.
+    run_step "algo= nghiêm ngặt ở đường đo (KT-145)" bash "$V2_ROOT/test/boot/algo-strict.sh" || return 1
     # **KT-134 (Agent 0, phần 3)**: `persist.sh --red-selftest` cần QEMU nên để ở đây, không ở
     # `check`. Khi `nightly` đầy đủ có thì chuyển sang đó (Agent 0: "khi nightly đầy đủ có thì
     # chuyển sang").

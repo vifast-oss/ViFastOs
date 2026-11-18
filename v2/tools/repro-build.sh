@@ -115,6 +115,9 @@ export RUSTFLAGS="$REMAP -C strip=symbols ${VIFAST_REPRO_RUSTFLAGS:-}"
 # `dirty=1`: ảnh **nói thật** là không biết nguồn, và cổng đo của harness sẽ **từ chối** ảnh đó.
 # Script **không** tự bịa rev — bịa đúng là lớp lỗi đang chặn (D2-108A).
 . "$HERE/../test/boot/build-rev.sh"
+# KT-145: cổng **danh tính ảnh** — tách khỏi `build-rev.sh` (xem `build-identity.sh`).
+# shellcheck source=/dev/null
+. "$HERE/../test/boot/build-identity.sh"
 BUILD_REV="$(vbrev_rev12 "$ROOT")"
 BUILD_DIRTY="$(vbrev_dirty "$ROOT")"
 if [ -z "$BUILD_REV" ]; then
@@ -208,6 +211,13 @@ DIGEST="$(python3 "$HERE/../test/conformance/image_digest.py" "$IMAGE" 2>/dev/nu
 # (cache) ⇒ ảnh mang rev cũ ⇒ **dừng, không dùng kết quả** (đúng lớp lỗi KT-76: "build sạch" thật
 # ra là no-op). Nhờ vậy `repro-build.sh` không bao giờ xuất một ảnh có nguồn gốc khác dòng REPRO.
 # D2-127: danh tính **quyết định** là dấu vân tay build-inputs (16 hex), KHÔNG phải rev 12 hex.
+# **KT-145** (Agent 0 phiếu lượt 5 §A4): kiểm **định nghĩa** (`algo=`) trước, rồi mới kiểm **giá
+# trị** (`inputs`/`dirty`). Hai lý do: (i) thông điệp lỗi phải phân biệt "ảnh dạng cũ" với "ảnh
+# khác dấu vân tay" — hai nguyên nhân khác nhau; (ii) `repro-build.sh` là **đường đo** (nó xuất
+# dòng `REPRO` mà mọi phép đo khác trích), nên nó không được nhận ảnh không cùng định nghĩa.
+if ! vbrev_image_identity "$IMAGE"; then
+    die "KT-145: ảnh KHÔNG cùng định nghĩa dấu vân tay (reason=$VBREV_IMG_REASON algo=${VBREV_IMG_ALGO:-<none>} current_algo=$VBREV_ALGO) — không dùng kết quả"
+fi
 vbrev_image_has "$IMAGE" "$VBREV_ALGO" "$BUILD_INPUTS" "$BUILD_DIRTY" ||
     die "KT-89: ảnh KHÔNG mang danh tính build algo=$VBREV_ALGO inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY (build script bị cargo dùng lại?) — không dùng kết quả"
 echo "REPRO machine=$(uname -sm | tr ' ' '-') root=$ROOT sha256=$SHA size=$SIZE wall_s=$((t1 - t0)) algo=$VBREV_ALGO inputs=$BUILD_INPUTS dirty=$BUILD_DIRTY rev=$BUILD_REV $DIGEST image=$IMAGE"

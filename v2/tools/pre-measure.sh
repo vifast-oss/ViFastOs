@@ -9,13 +9,18 @@
 # Dùng:
 #   bash v2/tools/pre-measure.sh <ảnh>          # kiểm và in bảng trạng thái
 #   bash v2/tools/pre-measure.sh <ảnh> --quiet  # chỉ in dòng kết luận
-#   ... --allow-legacy   # chấp nhận ảnh định dạng CŨ (`rev=`, trước KT-89) — chỉ cho ảnh lịch sử
-#   bash v2/tools/pre-measure.sh --selftest     # tự kiểm 6 ca (dương + âm)
+#   bash v2/tools/pre-measure.sh --selftest     # tự kiểm 7 ca (dương + âm)
+#
+# **KT-145** (Agent 0 phiếu lượt 5 §A4): cờ `--allow-legacy` đã **bị bỏ**. Trước đây nó cho phép
+# một phép đo chấp nhận ảnh định dạng CŨ (`rev=`, thiếu `algo=`) — tức đúng cái lỗ mà §A4 đóng.
+# Nay **đường đo** chỉ nhận ảnh tự khai ĐÚNG định nghĩa dấu vân tay hiện hành; chỉ
+# `v2/tools/status.sh` và `v2/tools/pin-artifact.sh` được nhận dạng cũ (hiển thị/ghim ảnh lịch sử).
 #
 # Thư mục ảnh ghim đổi được bằng `PRE_MEASURE_ART_DIR` (mặc định `v2/artifacts`) — `--selftest`
 # dùng nó để không đụng ảnh thật. **Hành vi mặc định không đổi.**
 #
-# Exit: 0 = ĐO ĐƯỢC; 2 = dùng sai; 3 = ảnh không có dòng danh tính; 4 = dấu vân tay ảnh ≠ cây;
+# Exit: 0 = ĐO ĐƯỢC; 2 = dùng sai; 3 = ảnh không có dòng danh tính; 4 = dấu vân tay ảnh ≠ cây
+#       (hoặc ảnh dạng cũ / `algo=` khác định nghĩa hiện hành);
 #       5 = ảnh tự khai dirty; 6 = ảnh chưa ghim vào artifacts/; 7 = cây nguồn bẩn; 8 = QEMU sót.
 set -u
 LC_ALL=C
@@ -26,7 +31,6 @@ V2_ROOT="$(cd "$HERE/.." && pwd)"
 ROOT="$(cd "$V2_ROOT/.." && pwd)"
 ART_DIR="${PRE_MEASURE_ART_DIR:-$V2_ROOT/artifacts}"
 QUIET=0
-ALLOW_LEGACY=0
 
 die() {
     echo "pre-measure: $*" >&2
@@ -40,7 +44,7 @@ refuse() { # <mã> <lý do>
     exit "$1"
 }
 
-[ "$#" -ge 1 ] || die "dùng: pre-measure.sh <ảnh> [--quiet] [--allow-legacy] | --selftest"
+[ "$#" -ge 1 ] || die "dùng: pre-measure.sh <ảnh> [--quiet] | --selftest"
 
 # --- chế độ --selftest: dựng ảnh giả trong thư mục tạm, kiểm cả nhánh nhận và nhánh từ chối ----
 # Mọi lần gọi con đều đặt `PRE_MEASURE_ART_DIR` vào thư mục tạm ⇒ **không** đụng `v2/artifacts/`.
@@ -63,6 +67,10 @@ if [ "$1" = "--selftest" ]; then
     }
     mk_legacy() { # <path> <rev> <dirty>
         { head -c 4096 /dev/zero; printf '# build: rev=%s dirty=%s\n' "$2" "$3"; } >"$1"
+    }
+    # KT-145: ảnh **dạng mới** nhưng `algo=` KHÁC định nghĩa hiện hành — ca âm cho §A4.
+    mk_badalgo() { # <path> <inputs> <dirty>
+        { head -c 4096 /dev/zero; printf '# build: algo=kt000-khong-co inputs=%s dirty=%s\n' "$2" "$3"; } >"$1"
     }
     pin() { # <ảnh> — chép vào ART dưới tên sha256 (cùng quy ước pin-artifact.sh)
         local sha
@@ -118,8 +126,10 @@ if [ "$1" = "--selftest" ]; then
     mk_img "$TMP/unpinned.bin" "$CUR_FP" 0 8192 # khác byte với good.bin ⇒ chưa ghim
     head -c 4096 /dev/zero >"$TMP/nobuild.bin"
     mk_legacy "$TMP/legacy.bin" "cf96eb9b589d" 0
+    mk_badalgo "$TMP/badalgo.bin" "$CUR_FP" 0
     pin "$TMP/good.bin"
     pin "$TMP/legacy.bin"
+    pin "$TMP/badalgo.bin"
 
     expect_ok a "$TMP/good.bin"                         # (a) khớp cây + đã ghim + cây sạch
     expect_refuse b 4 inputs-mismatch "$TMP/stale.bin"  # (b) lệch dấu vân tay
@@ -127,10 +137,12 @@ if [ "$1" = "--selftest" ]; then
     expect_refuse d 6 not-pinned "$TMP/unpinned.bin"    # (d) ảnh chưa ghim
     expect_refuse e 3 no-build-line "$TMP/nobuild.bin"  # (e) ảnh không có dòng build
     expect_refuse f 4 legacy-format "$TMP/legacy.bin"   # (f) định dạng cũ ⇒ từ chối
-    expect_ok f "$TMP/legacy.bin" --allow-legacy        # (f) --allow-legacy ⇒ OK
+    # (g) KT-145: `algo=` khác định nghĩa hiện hành ⇒ TỪ CHỐI, **kể cả** khi `inputs` khớp hoàn hảo
+    #     (ảnh dưới đây mang đúng `$CUR_FP` của cây). Ca này ĐỎ nếu ai đó bỏ phép kiểm `algo`.
+    expect_refuse g 4 algo-mismatch "$TMP/badalgo.bin"
 
     if [ "$rc" -eq 0 ]; then
-        echo "# pre-measure-selftest: PASS (a/b/c/d/e/f)"
+        echo "# pre-measure-selftest: PASS (a/b/c/d/e/f/g)"
     else
         echo "# pre-measure-selftest: FAIL"
     fi
@@ -142,7 +154,6 @@ shift
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --quiet) QUIET=1; shift ;;
-        --allow-legacy) ALLOW_LEGACY=1; shift ;;
         *) die "tham số lạ: $1" ;;
     esac
 done
@@ -151,30 +162,35 @@ done
 # --- 1. danh tính ảnh ------------------------------------------------------------------------
 SHA="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
 SIZE="$(wc -c <"$IMAGE" | tr -d ' ')"
-LINE="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: inputs=[0-9a-f]* dirty=[01]' -e '# build: rev=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
-[ -n "$LINE" ] || refuse 3 no-build-line
+# shellcheck source=/dev/null
+. "$V2_ROOT/test/boot/build-identity.sh"
+# **KT-145** (§A4): kiểm **định nghĩa** dấu vân tay **trước** mọi phép đọc khác. Thứ tự này quan
+# trọng vì hai lẽ: (i) đổi định nghĩa làm `inputs` đổi mà không đổi byte mã nào, nên một ảnh cũ có
+# thể "tình cờ" khớp `inputs` với định nghĩa mới — so giá trị trước sẽ nhận nhầm; (ii) ảnh **dạng
+# cũ** phải báo đúng `legacy-format`, không bị nhầm thành `no-build-line` (nó **có** dòng danh
+# tính, chỉ là dạng cũ) — hai nguyên nhân khác nhau, người đọc cần biết mình đang cầm ảnh gì.
+if ! vbrev_image_identity "$IMAGE"; then
+    case "$VBREV_IMG_REASON" in
+        no-build-line) refuse 3 no-build-line ;;   # không có dòng danh tính nào (mã thoát cũ, giữ nguyên)
+        no-algo) refuse 4 legacy-format ;;         # CÓ dòng nhưng dạng cũ (thiếu `algo=`)
+        *) refuse 4 "$VBREV_IMG_REASON" ;;
+    esac
+fi
+LINE="# build: algo=$VBREV_IMG_ALGO inputs=$VBREV_IMG_INPUTS dirty=$VBREV_IMG_DIRTY"
 say "# ảnh: sha256=$SHA size=$SIZE"
 say "# danh tính: $LINE"
+say "# định nghĩa dấu vân tay: ảnh=$VBREV_IMG_ALGO hiện hành=$VBREV_ALGO"
 
 # --- 2. dấu vân tay so với cây hiện tại ------------------------------------------------------
 HEAD="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
 [ -n "$HEAD" ] || refuse 7 no-git
 say "# HEAD: $HEAD"
-
-IMG_INPUTS="$(printf '%s' "$LINE" | sed -n 's/.*inputs=\([0-9a-f]*\).*/\1/p')"
-IMG_DIRTY="$(printf '%s' "$LINE" | sed -n 's/.*dirty=\([01]\).*/\1/p')"
-if [ -n "$IMG_INPUTS" ]; then
-    # shellcheck source=/dev/null
-    . "$V2_ROOT/test/boot/build-rev.sh"
-    vbrev_inputs_calc "$ROOT" >/dev/null 2>&1 || refuse 4 no-current-fingerprint
-    CUR="$VBREV_CALC_SHORT"
-    say "# dấu vân tay: ảnh=$IMG_INPUTS cây=$CUR"
-    [ "$IMG_INPUTS" = "$CUR" ] || refuse 4 inputs-mismatch
-else
-    # Ảnh định dạng cũ **không** chứng minh được nó khớp cây hiện tại ⇒ mặc định TỪ CHỐI.
-    say "# dấu vân tay: ảnh dùng định dạng CŨ (rev=) — không so được với cây"
-    [ "$ALLOW_LEGACY" -eq 1 ] || refuse 4 legacy-format
-fi
+IMG_INPUTS="$VBREV_IMG_INPUTS"
+IMG_DIRTY="$VBREV_IMG_DIRTY"
+vbrev_inputs_calc "$ROOT" >/dev/null 2>&1 || refuse 4 no-current-fingerprint
+CUR="$VBREV_CALC_SHORT"
+say "# dấu vân tay: ảnh=$IMG_INPUTS cây=$CUR"
+[ "$IMG_INPUTS" = "$CUR" ] || refuse 4 inputs-mismatch
 [ "$IMG_DIRTY" = "1" ] && refuse 5 image-dirty
 
 # --- 3. ảnh đã ghim chưa ---------------------------------------------------------------------

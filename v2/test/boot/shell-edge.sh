@@ -117,8 +117,14 @@ usage() {
     # In **toàn bộ** khối chú thích đầu tệp (đến `set -u`), không neo số dòng: header dài ra
     # (Q4 vòng ba thêm ca 13) thì `--help` vẫn không bị cắt cụt.
     sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" 2>/dev/null | sed '$d' | sed 's/^# \{0,1\}//'
-    echo "shell-edge.sh: dùng: shell-edge.sh --image <ảnh.bin> [--selftest] | --selftest | --help"
+    echo "shell-edge.sh: dùng: shell-edge.sh --image <ảnh.bin> [--selftest] | --selftest | --check-image <ảnh.bin> | --help"
 }
+
+# KT-145: nguồn sự thật của **danh tính ảnh** là `build-identity.sh` (nó tự nạp `build-rev.sh` để
+# lấy `VBREV_ALGO`). Không chép lại công thức/định dạng ở đây. Hai tệp ấy chỉ định nghĩa hàm +
+# hằng số khi được source (phần chạy được bọc trong `if [ "${BASH_SOURCE[0]}" = "$0" ]`).
+# shellcheck source=/dev/null
+. "$HERE/build-identity.sh"
 
 # KT-78 (OD-K6-6): **mọi** lần mở QEMU đi qua `qemu_guard.sh` — process group riêng, timeout kill
 # **cả group**, trap dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL). Không sửa guard.
@@ -130,6 +136,7 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?) — OD-
 # ------------------------------------------------------------------ trạng thái toàn cục
 IMAGE=""
 MODE_SELFTEST=0
+MODE_CHECK_IMAGE=0   # KT-145: chỉ kiểm danh tính ảnh rồi thoát (không mở QEMU)
 LOG=""          # log QEMU của lần chạy thật
 CASE_LOG=""     # lát log của ca đang kiểm
 CASE_FROM=1     # dòng bắt đầu lát log của ca đang kiểm
@@ -1543,6 +1550,13 @@ mark_remaining_fail() {
 # ------------------------------------------------------------------ preflight ảnh
 preflight_image() {
     [ -f "$IMAGE" ] || die "không thấy ảnh: $IMAGE"
+    # KT-145 (Agent 0 phiếu lượt 5 §A4): **đường đo** chỉ nhận ảnh tự khai ĐÚNG định nghĩa dấu vân
+    # tay hiện hành. Ảnh dạng cũ (thiếu `algo=`) hoặc `algo=` khác ⇒ TỪ CHỐI, không đo. Chỉ
+    # `v2/tools/status.sh` và `v2/tools/pin-artifact.sh` được nhận dạng cũ (hiển thị/ghim ảnh lịch sử).
+    if ! vbrev_image_identity "$IMAGE"; then
+        echo "REV-GATE: REFUSE reason=$VBREV_IMG_REASON image=$IMAGE algo=${VBREV_IMG_ALGO:-<none>} current_algo=$VBREV_ALGO" >&2
+        die "ảnh '$IMAGE' KHÔNG cùng định nghĩa dấu vân tay ($VBREV_IMG_REASON) — đường đo từ chối (KT-145)"
+    fi
     # Ảnh phải có shell (nếu không, mọi ca sẽ chờ `shell>` vô ích).
     # **KT-114**: khớp **tập lệnh** (`help` rồi các tên `[a-z]+` ngăn bằng `/`) thay vì chuỗi cứng
     # `help/echo/ps/wait/kill/ls/cat/write/exit` — shell sản phẩm thêm lệnh (9 → 13) thì script
@@ -1610,8 +1624,10 @@ run_real() {
     fi
     img_bytes="$(wc -c <"$IMAGE" | tr -d ' ')"
     # KT-143: dòng danh tính nay có `algo=` (tên định nghĩa dấu vân tay) đứng trước `inputs=`.
-    # Vẫn nhận dạng cũ để log của ảnh lịch sử vẫn in được dòng danh tính.
-    build_line="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' -e '# build: [a-z]*=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
+    # **KT-145** (§A4): chỉ nhận **dạng mới**. `preflight_image` đã TỪ CHỐI ảnh dạng cũ / `algo=`
+    # khác hiện hành trước khi tới đây, nên nhánh "nhận dạng cũ để in dòng danh tính" không còn
+    # đường dùng — giữ nó chỉ làm phép kiểm yếu đi mà không ai thấy.
+    build_line="$(LC_ALL=C grep -a -o -m1 -e '# build: algo=[0-9A-Za-z._-]* inputs=[0-9a-f]* dirty=[01]' "$IMAGE" 2>/dev/null || true)"
 
     echo "# shell-edge KT-108 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "# image: $IMAGE"
@@ -1953,6 +1969,12 @@ while [ "$#" -gt 0 ]; do
             IMAGE="$2"
             shift 2
             ;;
+        --check-image)
+            [ "$#" -ge 2 ] || die "--check-image cần đường dẫn ảnh"
+            IMAGE="$2"
+            MODE_CHECK_IMAGE=1
+            shift 2
+            ;;
         --image=*)
             IMAGE="${1#--image=}"
             shift
@@ -1969,6 +1991,17 @@ done
 
 if [ "$MODE_SELFTEST" -eq 0 ] && [ -z "$IMAGE" ]; then
     die "cần --image <ảnh.bin> hoặc --selftest"
+fi
+
+# KT-145: `--check-image` chỉ chạy phép kiểm danh tính ảnh rồi thoát — dùng cho ca hồi quy
+# `v2/test/boot/algo-strict.sh` (không mở QEMU nên ca kiểm chạy trong vài giây).
+if [ "$MODE_CHECK_IMAGE" -eq 1 ]; then
+    if vbrev_image_identity "$IMAGE"; then
+        echo "REV-GATE: ACCEPT image=$IMAGE algo=$VBREV_IMG_ALGO inputs=$VBREV_IMG_INPUTS dirty=$VBREV_IMG_DIRTY"
+        exit 0
+    fi
+    echo "REV-GATE: REFUSE reason=$VBREV_IMG_REASON image=$IMAGE algo=${VBREV_IMG_ALGO:-<none>} current_algo=$VBREV_ALGO"
+    exit 1
 fi
 
 RC=0

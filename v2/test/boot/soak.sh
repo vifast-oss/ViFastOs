@@ -48,6 +48,10 @@ BUDGET="$HERE/budget.sh"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 # KT-86 (D2-125.3): cổng danh tính bản dựng — nguồn sự thật duy nhất cho rev/dirty.
 . "$HERE/build-rev.sh"
+# KT-145: cổng **danh tính ảnh** (`vbrev_image_identity`) — tách khỏi `build-rev.sh` để định nghĩa
+# dấu vân tay (được ghim bằng `check-algo-pin.sh`) không phải tăng `VBREV_ALGO` vì một hàm tiêu thụ.
+# shellcheck source=/dev/null
+. "$HERE/build-identity.sh"
 TARGET="riscv64gc-unknown-none-elf"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 # Ảnh **sản phẩm không feature** — ảnh duy nhất in dòng `# build:` (KT-86; phải đặt **sau** TARGET).
@@ -79,7 +83,7 @@ INFRA_INVALID=0
 
 usage() {
     sed -n 's/^# \{0,1\}//; 2,48p' "${BASH_SOURCE[0]}" 2>/dev/null | sed -n '1,60p'
-    echo "soak.sh: dùng: soak.sh [NBOOT] [LANES] | soak.sh --smoke N [LANES] | soak.sh --help"
+    echo "soak.sh: dùng: soak.sh [NBOOT] [LANES] | soak.sh --smoke N [LANES] | soak.sh --check-image <ảnh.bin> | soak.sh --help"
 }
 
 # ------------------------------------------------------------------ đối số
@@ -94,6 +98,19 @@ if [ "${1:-}" = "--image" ]; then
     GIVEN_IMAGE="$2"
     shift 2
     [ -f "$GIVEN_IMAGE" ] || die "không thấy ảnh: $GIVEN_IMAGE"
+fi
+# **KT-145** (Agent 0 phiếu lượt 5 §A4): `--check-image` chỉ kiểm **danh tính** ảnh rồi thoát —
+# không build, không mở QEMU. Dùng cho ca hồi quy `v2/test/boot/algo-strict.sh`.
+if [ "${1:-}" = "--check-image" ]; then
+    [ "$#" -ge 2 ] || die "--check-image cần đường dẫn ảnh"
+    CHECK_IMAGE="$2"
+    shift 2
+    if vbrev_image_identity "$CHECK_IMAGE"; then
+        echo "REV-GATE: ACCEPT image=$CHECK_IMAGE algo=$VBREV_IMG_ALGO inputs=$VBREV_IMG_INPUTS dirty=$VBREV_IMG_DIRTY"
+        exit 0
+    fi
+    echo "REV-GATE: REFUSE reason=$VBREV_IMG_REASON image=$CHECK_IMAGE algo=${VBREV_IMG_ALGO:-<none>} current_algo=$VBREV_ALGO"
+    exit 1
 fi
 # **KT-135 (C2 của Agent 0, 2026-11-18)**: `--features` cho phép soak **đúng ảnh phát hành**
 # (`product-shell,product-fs`). Mặc định (không cờ) giữ nguyên ảnh **không shell** — bằng chứng cũ
@@ -240,6 +257,14 @@ else
     fi
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+# **KT-145** (Agent 0 phiếu lượt 5 §A4): soak là **đường đo** ⇒ chỉ nhận ảnh tự khai ĐÚNG định
+# nghĩa dấu vân tay hiện hành. Ảnh dạng cũ (thiếu `algo=`) hoặc `algo=` khác ⇒ TỪ CHỐI **trước**
+# khi boot, không để phép đo chạy rồi mới phát hiện. (Chỉ `status.sh`/`pin-artifact.sh` được nhận
+# dạng cũ — chúng hiển thị/ghim ảnh lịch sử, không đo.)
+if ! vbrev_image_identity "$IMAGE"; then
+    vbrev_refuse "$VBREV_IMG_REASON" "image=$IMAGE algo=${VBREV_IMG_ALGO:-<none>} current_algo=$VBREV_ALGO"
+    die "ảnh '$IMAGE' KHÔNG cùng định nghĩa dấu vân tay ($VBREV_IMG_REASON) — soak từ chối (KT-145)"
+fi
 # KT-135: `QEMU_ARGS` được dựng **trước** khối build (dòng ~177) nên nếu nhánh canonical đổi
 # `IMAGE` thì phải dựng lại — nếu không, soak sẽ boot ảnh cũ trong `target/`.
 QEMU_ARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \
