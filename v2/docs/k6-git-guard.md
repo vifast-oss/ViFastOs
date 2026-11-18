@@ -45,6 +45,11 @@ commit; khi lead commit log xong, ai cần số thì mở đúng khối trong lo
   qua hook nên không thể hỏng (có ca kiểm riêng trong log ca âm).
 - Bản cài là **của repo**, không phải của một checkout: người mới clone phải chạy
   `v2/tools/git-guard/install.sh` (hook không đi theo git — mục bảy).
+- **Chạy `install.sh` TRƯỚC `gate` lần đầu** (R4 của Agent 0, phiếu lượt bốn): `gate --fast` gọi
+  hai ca âm git-guard, mà hai ca ấy cần hook **đã cài**; thiếu hook thì chúng tự in "hook CHƯA
+  cài đúng — chạy …install.sh trước" và thoát với **mã lỗi môi trường** ⇒ cổng ĐỎ kèm lý do rõ,
+  **không** im lặng bỏ qua. Đây là hành vi cố ý (bỏ qua thì cổng xanh mà phép kiểm không chạy),
+  nên bản clone mới phải cài hook trước khi trông đợi cổng xanh.
 
 ### 1.1 Vì sao phải thêm `reference-transaction` (A1-183)
 

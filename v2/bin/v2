@@ -420,6 +420,11 @@ do_gate_fast() {
     # cổng ĐỎ kèm lý do, không im lặng bỏ qua. Chúng tự dọn worktree/nhánh tạm và tự kiểm bất biến
     # (HEAD/index/số worktree của checkout chính không đổi) nên chạy được trong cổng.
     run_step "ca âm git-guard (KT-85)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" || return 1
+    # **R5 (Agent 0, lượt 4)**: tên nhánh tạm của `neg-test.sh` từng là hằng số `task/kt85neg` ⇒
+    # hai lần chạy song song tranh nhau cùng một nhánh (lần hai `worktree add -b` hỏng, trap lần
+    # nhất xoá nhánh lần hai). Ca này chạy **đúng hai lần song song** và đòi cả hai PASS; nó đỏ
+    # nếu ai đưa tên nhánh về hằng số. Đo bằng `date +%s%N`: ~14 s.
+    run_step "ca âm git-guard song song (R5)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" --selftest-parallel || return 1
     run_step "ca âm git-guard b (KT-85b)" bash "$V2_ROOT/tools/git-guard/neg-test-kt85b.sh" || return 1
     echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }

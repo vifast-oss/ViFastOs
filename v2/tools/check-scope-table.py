@@ -20,12 +20,18 @@ Tệp này làm đúng năm việc:
    người đọc cũng đọc ra cùng kết luận.
 2. **Ngữ nghĩa** — nếu văn xuôi nói "`trường` bằng <chữ số>", chữ số đó phải **khớp** giá trị trong
    khối. Lệch ⇒ đỏ. Đây là vế bắt được "sửa một số trong log mà quên sửa văn xuôi".
-3. **Đếm lỗ có thể rộng dần** — vế (2) phải bỏ qua những câu nói về **tình huống khác** (nhánh âm,
-   ca đỏ, giả thuyết), nên có bộ từ khoá loại trừ `QUALIFIERS`. Bộ từ khoá ấy là một **lỗ**: ai
-   thêm một từ khoá để né một câu khó thì checker vẫn xanh nhưng phép kiểm đã bị nới. Vì vậy
-   checker **in ra số câu bị bỏ qua + vị trí** (stdout, để nằm trong log cổng) và **CẢNH BÁO** khi
-   số đó tăng so với mốc ở `v2/agent/JOURNAL/scope-table-skip-count.txt`. Cảnh báo **không** làm
-   đỏ — Agent 0 nói "cảnh báo trong log", không nói đỏ — nhưng phải nổi bật.
+2b. **So với khối mà câu nói tới** (`resolve_claim_block`, KT-142) — câu nói về khối `scope-red=`
+   thì so với **khối đỏ**, không so với khối xanh mà dòng bảng trỏ tới. Trước KT-142 những câu
+   ấy phải được **miễn** bằng từ khoá loại trừ, tức là phép kiểm bị nới đúng ở chỗ dễ sai nhất
+   (số của ca âm). Nay chỉ câu **không quy được** khối nào mới rơi về khối của dòng bảng.
+3. **Đếm lỗ có thể rộng dần** — vế (2) phải bỏ qua những câu nói về **tình huống khác** (giả
+   thuyết, kỳ vọng, đột biến, "chưa có ca"), nên có bộ từ khoá loại trừ `QUALIFIERS`. Bộ từ khoá ấy
+   là một **lỗ**: ai thêm một từ khoá để né một câu khó thì checker vẫn xanh nhưng phép kiểm đã bị
+   nới. Vì vậy checker **in ra số câu bị bỏ qua + vị trí** (stdout, để nằm trong log cổng) và
+   **CẢNH BÁO** khi số đó tăng so với mốc ở `v2/agent/JOURNAL/scope-table-skip-count.txt`. Cảnh
+   báo **không** làm đỏ — Agent 0 nói "cảnh báo trong log", không nói đỏ — nhưng phải nổi bật.
+   KT-142 đã quét **toàn bộ** danh sách (Agent 0 lượt 4 câu 3): 14 từ khoá ⇒ 9, số câu bị bỏ qua
+   4 ⇒ 1. Sổ từng câu: `v2/agent/JOURNAL/kt142-quet-qualifiers.md`.
 4. **Đột biến** (`--selftest`) — dựng tài liệu giả rồi phá từng bất biến, mỗi ca phải đỏ **kèm đúng
    mã lý do**; cộng ca dương (tài liệu đúng phải xanh) để một checker hỏng-luôn-đỏ không qua được;
    cộng ca đếm/cảnh báo (bắt stdout) để chính vế (3) cũng có ca âm.
@@ -126,8 +132,15 @@ class DocResult(NamedTuple):
 
 def split_blocks(
     text: str,
-) -> tuple[str, list[tuple[int, int]], list[tuple[str, str, str, str | None]], set[str]]:
-    """Trả (văn xuôi không có khối code, mốc dòng, [(loại, log, nội-dung, tiết)], các tiết có).
+) -> tuple[
+    str,
+    list[tuple[int, int]],
+    list[tuple[str, str, str, str | None]],
+    set[str],
+    dict[int, str | None],
+]:
+    """Trả (văn xuôi không có khối code, mốc dòng, [(loại, log, nội-dung, tiết)], các tiết có,
+    tiết-của-từng-dòng-văn-xuôi).
 
     Mốc dòng là `[(offset_bắt_đầu_dòng_trong_văn_xuôi, số_dòng_trong_tệp)]`. Cần nó vì văn xuôi đã
     bị **cắt khối code** nên số dòng của văn xuôi không trùng số dòng của tệp — mà báo cáo "câu bị
@@ -136,10 +149,16 @@ def split_blocks(
     Phần tử thứ tư của mỗi khối là **số hiệu tiết** chứa khối (`"7"`, `"2.3"`, hoặc `None` nếu khối
     nằm trước tiêu đề đánh số đầu tiên / dưới một tiêu đề **không** đánh số). Cần nó cho luật
     `E_AMBIGUOUS_FIELD`: cột "Khối" của bảng phải trỏ tới khối **thật sự** nằm trong tiết đã ghi.
+
+    Phần tử thứ năm là `{số_dòng_trong_tệp: tiết}` cho **dòng văn xuôi**. Cần nó cho luật
+    `E_CLAIM_BLOCK` (KT-142): một câu văn xuôi nói về khối nào thì phải so với **khối đó**, không
+    phải khối mà dòng bảng trỏ tới — nếu không, mọi câu nói về khối `scope-red=` đều buộc phải
+    được miễn bằng từ khoá, và bộ từ khoá loại trừ lại rộng ra.
     """
     prose_lines: list[tuple[int, str]] = []
     blocks: list[tuple[str, str, str, str | None]] = []
     sections: set[str] = set()
+    line_section: dict[int, str | None] = {}
     cur: tuple[str, str] | None = None
     buf: list[str] = []
     section: str | None = None
@@ -160,6 +179,7 @@ def split_blocks(
                 # tiết đánh số **cuối cùng** và cột "Khối" sẽ "đúng" một cách giả tạo.
                 section = None
             prose_lines.append((lineno, line))
+            line_section[lineno] = section
         else:
             if FENCE_RE.match(line):
                 blocks.append((cur[0], cur[1], "\n".join(buf), section))
@@ -174,7 +194,7 @@ def split_blocks(
     for lineno, line in prose_lines:
         starts.append((off, lineno))
         off += len(line) + 1
-    return "\n".join(line for _, line in prose_lines), starts, blocks, sections
+    return "\n".join(line for _, line in prose_lines), starts, blocks, sections, line_section
 
 
 def line_at(starts: list[tuple[int, int]], pos: int) -> int:
@@ -324,32 +344,24 @@ def _claim_re(field: str) -> re.Pattern[str]:
 #   3. Checker in ra **số câu bị bỏ qua + vị trí** và **CẢNH BÁO** khi số đó tăng so với mốc ở
 #      `SKIP_COUNT_FILE` — để người đọc thấy ngay nếu ai vừa nới.
 #
-# Từ khoá nào **rộng** thì ghi rõ là rộng: `đỏ`, `nếu`, `sẽ` khớp với rất nhiều câu; chúng tồn tại
-# vì văn xuôi của ba tài liệu này thật sự dùng chúng cho nhánh âm/giả thuyết, **không** phải vì tiện.
+# Từ khoá nào **rộng** thì ghi rõ là rộng: `nếu`, `sẽ` khớp với rất nhiều câu; chúng tồn tại
+# vì văn xuôi của ba tài liệu này thật sự dùng chúng cho giả thuyết/dự định, **không** phải vì tiện.
+#
+# **KT-142 (Agent 0, lượt 4 câu 3) — đã quét toàn bộ danh sách.** Bản trước có 14 từ khoá; quét
+# từng câu bị loại cho thấy **bốn** từ khoá (`nhánh`, `ca âm`, `ca đỏ`, `vắng`, `đỏ`) chỉ gánh
+# những câu nói về **khối `scope-red=`** — tức là việc mà `resolve_claim_block` làm được. Nay câu
+# nào chỉ rõ khối (hoặc nằm cùng tiết với đúng một khối có trường) thì **được so thật**, nên năm
+# từ khoá ấy đã **bỏ**; số câu bị bỏ qua giảm từ bốn xuống một. Chi tiết từng câu: xem
+# `v2/agent/JOURNAL/kt142-quet-qualifiers.md`.
 QUALIFIERS: tuple[tuple[str, str], ...] = (
-    (
-        "nhánh",
-        "câu nói về một **nhánh khác** của cùng trường (vd `durable` bằng không ở nhánh chưa có ca)",
-    ),
-    (
-        "ca âm",
-        "câu nói về **ca âm** (đối chứng) — giá trị ở đó thuộc khối `scope-red=`, không phải khối `scope=` đang xét",
-    ),
-    ("ca đỏ", "câu nói về **ca đỏ** — cùng lý do với `ca âm`"),
     ("chưa có", "câu nói 'chưa có ca' — mô tả **thiếu** bằng chứng, không khẳng định giá trị đo"),
     ("nếu", "câu **giả thuyết** ('nếu … thì đỏ') — không phải số đo"),
     ("đột biến", "câu nói về bản **đột biến**; log mutation không bao giờ là nguồn số (D2-112c)"),
     ("mong", "câu nói **kỳ vọng** ('mong đợi'), không phải số đo"),
     ("phải là", "câu nói **điều kiện phải thoả** (bất biến/kỳ vọng), không phải số đo"),
     ("sẽ", "câu nói **tương lai**/dự định — chưa đo"),
-    ("vắng", "câu nói 'vắng' (absent) — mô tả trạng thái của **ca âm**"),
     ("bỏ ", "câu nói về việc **bỏ** một dòng/khối (đột biến 'bỏ `release_with`')"),
     ("tăng gấp đôi", "câu nói về **hệ quả của đột biến** ('frames tăng gấp đôi')"),
-    ("khác không", "câu khẳng định **bất đẳng thức** ('khác không'), không phải một giá trị cụ thể"),
-    (
-        "đỏ",
-        "câu nói **kết quả đỏ** (TAP đỏ / ca đỏ) — giá trị trong câu là của ca đỏ, không phải khối xanh đang xét",
-    ),
 )
 
 
@@ -391,11 +403,78 @@ def _excerpt(sentence: str, n: int = 60) -> str:
     return s if len(s) <= n else s[:n] + "…"
 
 
+# ---------------------------------------------------------------- khối mà **câu** nói tới (KT-142)
+#
+# Vì sao cần: bản trước so **mọi** câu văn xuôi với khối mà **dòng bảng** trỏ tới. Nhưng ba tài liệu
+# K6 có những câu nói về khối `scope-red=` (ca âm) trong khi dòng bảng trỏ khối `scope=` xanh — so
+# thẳng thì đỏ oan, nên chúng phải được **miễn** bằng từ khoá. Đó chính là lỗ mà Agent 0 bảo quét
+# (lượt 4, câu 3): từ khoá loại trừ đang gánh việc mà phép kiểm làm được. Nay câu nào **chỉ rõ**
+# khối (hoặc nằm cùng tiết với đúng một khối có trường đó) thì so với **khối ấy**; chỉ câu không
+# quy được khối nào mới rơi về khối của dòng bảng.
+#
+# Thứ tự quy khối — **chặt trước, lỏng sau**, và mỗi bước chỉ nhận khi kết quả **duy nhất**:
+#   1. Câu ghi đúng `scope=<tệp>` / `scope-red=<tệp>` ⇒ khối đó.
+#   2. Câu ghi **loại** khối (`scope-red` / `scope`) mà không ghi tệp ⇒ khối **cùng tiết** cùng
+#      loại; phải duy nhất về giá trị.
+#   3. Câu nằm trong tiết có khối chứa trường ⇒ khối cùng tiết; phải duy nhất về giá trị.
+#   4. Không quy được ⇒ `None` (dùng khối của dòng bảng, như bản cũ).
+#
+# "Duy nhất về **giá trị**" chứ không phải "duy nhất về số khối": tiết 3.1 có nhiều khối cùng ghi
+# `recorded=1` — chúng không mâu thuẫn nên vẫn quy được. Chỉ khi các khối **nói khác nhau** mới bỏ
+# qua bước đó, vì lúc ấy không có căn cứ chọn.
+BLOCK_NAME_RE = re.compile(r"`(scope(?:-red)?)=([^`\s]+)`")
+BLOCK_KIND_RE = re.compile(r"`(scope(?:-red)?)`")
+
+
+def _unique_value(values: list[int]) -> int | None:
+    """Giá trị nếu danh sách chỉ có **một** giá trị khác nhau, None nếu mâu thuẫn/rỗng."""
+    if not values:
+        return None
+    first = values[0]
+    return first if all(v == first for v in values) else None
+
+
+def resolve_claim_block(
+    blocks: list[tuple[str, str, str, str | None]],
+    field: str,
+    sentence: str,
+    section: str | None,
+) -> int | None:
+    """Giá trị của `field` trong khối mà **câu** nói tới; None nếu không quy được duy nhất."""
+    # (1) Câu ghi đúng tên khối.
+    named = BLOCK_NAME_RE.findall(sentence)
+    if named:
+        vals = [
+            v
+            for k, l, body, _sec in blocks
+            if (k, l) in named and (v := field_value(body, field)) is not None
+        ]
+        got = _unique_value(vals)
+        if got is not None:
+            return got
+    # (2) Câu ghi **loại** khối, không ghi tệp.
+    kinds = {k for k in BLOCK_KIND_RE.findall(sentence)}
+    if kinds:
+        vals = [
+            v
+            for k, _l, body, sec in blocks
+            if k in kinds and sec == section and (v := field_value(body, field)) is not None
+        ]
+        got = _unique_value(vals)
+        if got is not None:
+            return got
+    # (3) Cùng tiết.
+    vals = [
+        v for _k, _l, body, sec in blocks if sec == section and (v := field_value(body, field)) is not None
+    ]
+    return _unique_value(vals)
+
+
 def check_doc(path: str) -> DocResult:
     """Trả (lỗi, câu bị bỏ qua, số câu khẳng định). Lỗi rỗng = xanh."""
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
-    prose, starts, blocks, sections = split_blocks(text)
+    prose, starts, blocks, sections, line_section = split_blocks(text)
     rows = parse_table(prose)
     if not rows:
         raise Fail("E_NO_TABLE", "không thấy bảng đối chiếu số ↔ khối `scope=`")
@@ -483,17 +562,24 @@ def check_doc(path: str) -> DocResult:
         #     xanh — mốc so sánh phải ổn định, nếu không cảnh báo "tăng" sẽ là nhiễu.
         for m in _claim_re(field).finditer(prose):
             claims += 1
+            line = line_at(starts, m.start())
             sent = _sentence_of(prose, m.start())
             keyword = first_qualifier(sent)
             if keyword is not None:
-                skips.append(Skip(line_at(starts, m.start()), keyword, sent.strip()))
+                skips.append(Skip(line, keyword, sent.strip()))
                 continue
-            if value is None:
+            # KT-142: câu nói về khối nào thì so với **khối đó** (xem `resolve_claim_block`).
+            # Không quy được ⇒ giữ nguyên hành vi cũ: so với khối của dòng bảng.
+            target = resolve_claim_block(blocks, field, sent, line_section.get(line))
+            if target is None:
+                target = value
+            if target is None:
                 continue  # đã có lỗi cấu trúc cho trường này ở trên
             claim = WORDS[m.group(1)]
-            if claim != value:
+            if claim != target:
                 errors.append(
-                    f"E_VALUE_MISMATCH: `{field}` — văn xuôi nói {claim}, khối `{kind}={log}` ghi {value}"
+                    f"E_VALUE_MISMATCH: `{field}` — văn xuôi nói {claim}, khối ghi {target}"
+                    f" (dòng bảng trỏ `{kind}={log}` ghi {value})"
                 )
     return DocResult(errors, skips, claims)
 
@@ -672,6 +758,52 @@ SKIP_DOC = GOOD.replace(
     "Văn xuôi nói `alpha` bằng một; nhánh `alpha` bằng hai chưa có ca; `beta` bằng không",
 )
 
+# ---------------------------------------------------------------- fixture cho luật KT-142
+#
+# `alpha` có **hai** giá trị (1 ở khối `scope=`, 2 ở khối `scope-red=`) trong **cùng** tiết 1;
+# `gamma` có ba giá trị (0 ở khối xanh, 5 ở khối đỏ tiết 1, 7 ở khối đỏ tiết 2). Dòng bảng trỏ
+# khối **xanh** cho cả hai. Nhờ vậy mỗi luật quy khối đều có ca dương **và** ca âm:
+#
+#   - câu ghi loại khối (`scope-red`) cùng tiết  ⇒ luật 2;
+#   - câu ghi tên khối (`scope-red=log-red.log`) ⇒ luật 1;
+#   - câu không ghi khối, tiết chỉ có một khối chứa trường (`gamma` ở tiết 2) ⇒ luật 3;
+#   - câu không ghi khối, tiết có **hai** khối nói khác nhau (`alpha` ở tiết 1) ⇒ không quy được,
+#     phải rơi về khối của dòng bảng — ca này là ca chứng minh bước "duy nhất" thật sự có tác dụng.
+#
+# Khối `scope-red=` cố ý đứng **trước** khối `scope=` trong tiết 1: ca "hai khối nói khác nhau"
+# chỉ bắt được đột biến "bỏ bước duy nhất" khi giá trị của khối **đầu** khác giá trị dòng bảng
+# (đột biến trả `values[0]` = 2, dòng bảng = 1, câu nói 2 ⇒ đột biến xanh oan).
+KT142 = """# Tài liệu giả
+
+## 1. Tiết một
+
+PROSE1
+
+```text scope-red=log-red.log
+# alpha=2 gamma=5
+```
+
+```text scope=log-a.log
+# alpha=1 gamma=0
+```
+
+## 2. Tiết hai
+
+PROSE2
+
+```text scope-red=log-red2.log
+# gamma=7
+```
+
+## Bảng đối chiếu số ↔ khối `scope=`
+
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `alpha` | một | `scope=` | `log-a.log` | §1 |
+| `gamma` | không | `scope=` | `log-a.log` | §1 |
+```
+"""
+
 # ---------------------------------------------------------------- fixture cho luật KT-140
 #
 # `MULTI`: `alpha` có **hai** giá trị trong tài liệu (`1` ở §1, `2` ở §2) ⇒ dòng bảng **buộc** phải
@@ -805,6 +937,76 @@ def selftest() -> int:
             ),
             "",
             2,
+        )
+    )
+    # ---- KT-142: câu nói về khối nào thì so với **khối đó** (Agent 0 lượt 4 câu 3) ----
+    #
+    # Bốn ca dưới đây là **lý do** năm từ khoá loại trừ đã bị bỏ: câu nói về khối `scope-red=`
+    # trước kia phải miễn bằng từ khoá, nay được so thật. Mỗi luật quy khối có một ca dương (đúng
+    # số ⇒ xanh) **và** một ca âm (sai số ⇒ đỏ) — ca dương một mình không chứng minh gì, vì một
+    # hàm luôn trả `None` cũng làm mọi ca dương xanh.
+    cases.append(
+        (
+            "KT-142 dương: câu ghi **loại** khối `scope-red` cùng tiết ⇒ so với khối đỏ, xanh",
+            KT142.replace("PROSE1", "Ca âm cho thấy `alpha` bằng hai (khối `scope-red` dưới)."),
+            "",
+            0,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 âm: câu ghi loại khối `scope-red` cùng tiết mà **sai** số ⇒ đỏ",
+            KT142.replace("PROSE1", "Ca âm cho thấy `alpha` bằng một (khối `scope-red` dưới)."),
+            "E_VALUE_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 dương: câu ghi **tên** khối `scope-red=<tệp>` ở tiết khác ⇒ so với khối đó, xanh",
+            KT142.replace("PROSE2", "`alpha` bằng hai — khối `scope-red=log-red.log`."),
+            "",
+            0,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 âm: câu ghi tên khối `scope-red=<tệp>` mà **sai** số ⇒ đỏ",
+            KT142.replace("PROSE2", "`alpha` bằng một — khối `scope-red=log-red.log`."),
+            "E_VALUE_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 dương: câu không ghi khối, cùng tiết chỉ có **một** khối chứa trường ⇒ so khối đó",
+            KT142.replace("PROSE2", "`gamma` bằng bảy."),
+            "",
+            0,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 âm: cùng tiết một khối chứa trường mà **sai** số ⇒ đỏ",
+            KT142.replace("PROSE2", "`gamma` bằng không."),
+            "E_VALUE_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 âm: cùng tiết **hai** khối nói khác nhau ⇒ không quy được, rơi về khối dòng bảng",
+            KT142.replace("PROSE1", "`alpha` bằng hai."),
+            "E_VALUE_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "KT-142 dương: câu nói về khối đỏ **không** cần từ khoá nào ⇒ 0 câu bị bỏ qua",
+            KT142.replace("PROSE1", "Ca âm cho thấy `alpha` bằng hai (khối `scope-red` dưới)."),
+            "",
+            0,
         )
     )
     cases.append(

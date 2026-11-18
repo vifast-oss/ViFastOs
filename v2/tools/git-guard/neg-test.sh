@@ -14,8 +14,14 @@
 #   NO-VERIFY `git commit --no-verify` vẫn bỏ qua hook — quyền của người, có chủ ý
 #
 # An toàn:
-#   * Chỉ dùng `git worktree add <tmp> -b task/kt85neg`; commit nằm trên nhánh tạm, bị xoá
+#   * Chỉ dùng `git worktree add <tmp> -b <nhánh tạm>`; commit nằm trên nhánh tạm, bị xoá
 #     cùng worktree ⇒ không để lại commit nào trên nhánh chính, không sửa lịch sử.
+#   * **Tên nhánh tạm là duy nhất cho từng lần chạy** (`task/kt85neg-<pid>-<epoch>`), không
+#     phải hằng số `task/kt85neg` (R5 của Agent 0, lượt 4). Vì sao: hai lần chạy song song —
+#     kể cả hai lần do hai agent khác nhau bấm — trước đây tranh nhau **cùng một** tên nhánh;
+#     lần thứ hai `git worktree add -b` hỏng, và tệ hơn: trap của lần thứ nhất `git branch -D`
+#     xoá nhánh của lần thứ hai. Ca `--selftest-parallel` chạy đúng hai lần song song và đòi
+#     **cả hai** PASS.
 #   * `git add` **chỉ** chạy trong index của worktree tạm (mỗi worktree có index riêng —
 #     đây chính là cơ chế vá A1-177). Script kiểm fingerprint index của checkout chính
 #     trước/sau và in kết quả.
@@ -27,6 +33,7 @@
 #   v2/tools/git-guard/neg-test.sh --dir /tmp/kt85neg   # đúng tên thư mục đề bài
 #   v2/tools/git-guard/neg-test.sh --keep           # giữ worktree khi có ca hỏng
 #   v2/tools/git-guard/neg-test.sh --no-cleanup     # giữ lại để soi (nhớ dọn tay)
+#   v2/tools/git-guard/neg-test.sh --selftest-parallel  # hai lần chạy song song, cả hai phải PASS
 #
 # Mã thoát: 0 = cả năm ca đúng như kỳ vọng; 1 = có ca sai; 2 = lỗi môi trường.
 
@@ -39,9 +46,11 @@ REPO="$(git -C "$GUARD_DIR" rev-parse --show-toplevel 2>/dev/null)" || {
 }
 
 WT=''
-BRANCH='task/kt85neg'
+# Rỗng = **tự sinh tên duy nhất** sau khi phân tích tham số (xem `--selftest-parallel`).
+BRANCH=''
 KEEP=0
 NO_CLEANUP=0
+SELFTEST_PARALLEL=0
 MESSAGE_PREFIX='[KT-85]'
 
 while [ $# -gt 0 ]; do
@@ -56,6 +65,7 @@ while [ $# -gt 0 ]; do
             BRANCH="$2"
             shift
             ;;
+        --selftest-parallel) SELFTEST_PARALLEL=1 ;;
         --keep) KEEP=1 ;;
         --no-cleanup) NO_CLEANUP=1 ;;
         -h | --help) sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -63,6 +73,58 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+# Tên nhánh tạm **duy nhất cho từng lần chạy** (R5). `$$` là pid của shell này, `date +%s` là
+# epoch giây; hai lần chạy song song luôn khác pid nên không bao giờ trùng tên. `--branch` vẫn
+# ghi đè được (dùng cho ca tự kiểm của chính script).
+if [ -z "$BRANCH" ]; then
+    BRANCH="task/kt85neg-$$-$(date +%s)"
+fi
+
+# ---------------------------------------------------------------- ca hai lần chạy song song (R5)
+#
+# Vì sao có ca này: tên nhánh tạm từng là hằng số `task/kt85neg`. Hai lần chạy song song (hai
+# agent, hoặc `gate --fast` của hai worktree) tranh nhau **cùng một** tên: lần thứ hai
+# `git worktree add -b` hỏng vì nhánh đã tồn tại, và trap của lần thứ nhất `git branch -D` xoá
+# nhánh mà lần thứ hai đang dùng. Ca này chạy **đúng hai lần song song** và đòi cả hai PASS —
+# nếu tên nhánh quay lại thành hằng số, ca này đỏ.
+if [ "$SELFTEST_PARALLEL" -eq 1 ]; then
+    _p1_log="$(mktemp "${TMPDIR:-/tmp}/kt85neg-par1.XXXXXX")" || exit 2
+    _p2_log="$(mktemp "${TMPDIR:-/tmp}/kt85neg-par2.XXXXXX")" || exit 2
+    bash "${BASH_SOURCE[0]}" >"$_p1_log" 2>&1 &
+    _p1=$!
+    bash "${BASH_SOURCE[0]}" >"$_p2_log" 2>&1 &
+    _p2=$!
+    wait "$_p1"; _rc1=$?
+    wait "$_p2"; _rc2=$?
+    _b1="$(sed -n 's/^nhánh tạm *: *//p' "$_p1_log" | head -n 1)"
+    _b2="$(sed -n 's/^nhánh tạm *: *//p' "$_p2_log" | head -n 1)"
+    _bad=0
+    if [ "$_rc1" -ne 0 ]; then
+        echo "not ok - selftest-parallel: lần 1 exit $_rc1 (mong 0)" >&2
+        tail -n 20 "$_p1_log" >&2
+        _bad=1
+    fi
+    if [ "$_rc2" -ne 0 ]; then
+        echo "not ok - selftest-parallel: lần 2 exit $_rc2 (mong 0)" >&2
+        tail -n 20 "$_p2_log" >&2
+        _bad=1
+    fi
+    if [ -z "$_b1" ] || [ -z "$_b2" ]; then
+        echo "not ok - selftest-parallel: không đọc được tên nhánh tạm từ log con" >&2
+        _bad=1
+    elif [ "$_b1" = "$_b2" ]; then
+        echo "not ok - selftest-parallel: hai lần chạy dùng CÙNG tên nhánh [$_b1]" >&2
+        _bad=1
+    fi
+    if [ "$_bad" -eq 0 ]; then
+        echo "ok - selftest-parallel: hai lần chạy song song đều PASS, nhánh tạm khác nhau"
+        echo "     lần 1: $_b1"
+        echo "     lần 2: $_b2"
+    fi
+    rm -f "$_p1_log" "$_p2_log"
+    exit "$_bad"
+fi
 
 if [ -z "$WT" ]; then
     WT="$(mktemp -d "${TMPDIR:-/tmp}/kt85neg.XXXXXX")" || exit 2

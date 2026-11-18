@@ -138,6 +138,16 @@ checker cũ **đã** đỏ từ trước. **Xanh cũ là may, không phải thi�
 
 ## 3.2 Một chỗ hành vi **lệch** yêu cầu của anh — cần anh quyết
 
+> **ĐÍNH CHÍNH (Agent 0, phiếu lượt bốn, mục "Ba chỗ phải trả lời trước khi làm tiếp", câu 1).**
+> Câu dưới đây **khai sai**: anh **không** yêu cầu "`write` thiếu nội dung phải báo lỗi". Quyết
+> định lượt hai của anh chỉ yêu cầu **thêm ca biên** cho trường hợp ấy, để ghim hành vi thật.
+> Tôi đã tự gán cho anh một kỳ vọng rồi quay lại hỏi anh về chính kỳ vọng mình bịa ra. Đó là lỗi
+> của tôi, không phải của anh. Luật rút ra, áp từ nay: **không ghi kỳ vọng thay Agent 0**; muốn
+> viện dẫn thì **trích nguyên văn** câu trong phiếu quyết định, không diễn giải.
+>
+> Đoạn dưới giữ nguyên văn (không xoá) để thấy đúng cái đã sai. Kết luận đúng: hành vi thật là
+> **cắt tệp về rỗng**; anh đã quyết (lượt bốn, câu 1) **đổi thành báo lỗi**, việc đó vào K7.
+
 Anh yêu cầu: "`write` có đường dẫn nhưng thiếu nội dung ⇒ **phải báo lỗi rõ ràng**, không được ghi
 rỗng". **Hành vi thật ngược lại**: shell **không báo lỗi**, nó **cắt tệp về rỗng**.
 

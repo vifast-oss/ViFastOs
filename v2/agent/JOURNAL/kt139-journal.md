@@ -314,6 +314,32 @@ clone mới, `gate --fast` sẽ ĐỎ ở hai bước này cho tới khi ai đó
 `bash v2/tools/git-guard/install.sh`. Trong repo này hook **đã cài đúng** (`install.sh --check` →
 `PASS — check đạt (pre-commit pre-push commit-msg reference-transaction)`), nên cả hai chạy xanh.
 
+### 6.4 R2 — `selfbreak.sh` đỏ khi cây làm việc đang bị task khác sửa dở: **KHÔNG phải script hỏng**
+
+Agent 0 chấp nhận giải thích này (phiếu lượt 4, mục "Hàng rào", R2) và yêu cầu **ghi vào
+JOURNAL** để lần sau không ai đọc log đỏ rồi kết luận script hỏng. Ghi ở đây.
+
+**Cơ chế.** `selfbreak.sh` không chạy verifier trên cây thật; nó dựng một **bản copy tối thiểu**
+rồi chạy năm luật trên bản copy ấy. Danh sách tệp chép lấy từ `git ls-files` — tức **chỉ tệp đã
+có trong index**. Hệ quả:
+
+- Tệp **đã tracked** mà task khác đang sửa dở: **vẫn được chép**, kèm nội dung mới trong cây làm
+  việc. Không gây đỏ.
+- Tệp **mới, chưa `git add`** (điển hình: log bằng chứng mới, hoặc tài liệu mới): **không** được
+  chép. Nếu một tài liệu đã tracked trích khối ```` ```text scope=<log> ```` trỏ tới tệp mới ấy,
+  bản copy có tài liệu mà **không** có log ⇒ luật 1 báo `E1_SCOPE_LOG_MISSING` ⇒ `selfbreak.sh`
+  đỏ.
+
+**Vì sao đỏ đó là ĐÚNG, không phải hỏng.** Bản copy cố ý chỉ chép tệp trong index (D2-105a): nếu
+chép cả bản nháp chưa `git add` của task khác thì phép thử sẽ phụ thuộc vào trạng thái dở dang của
+task ấy, và hai task chạy song song sẽ làm nhau đỏ/xanh thất thường. Đỏ ở đây nói đúng một điều:
+**cây làm việc đang tự mâu thuẫn** — tài liệu đã trích một log chưa vào repo.
+
+**Cách phân biệt "đỏ đúng" với "script hỏng".** Đọc thông điệp: nếu là `E1_SCOPE_LOG_MISSING` (hoặc
+cùng họ `E1_*` chỉ vào một tệp **chưa `git add`**), đó là hàng rào liên-task — `git add` tệp ấy
+rồi chạy lại. Nếu là lỗi cú pháp, `command not found`, hay exit khác 0 mà **không** có mã `E1_*`,
+đó mới là script hỏng. Không có ngoại lệ nào được thêm vào script để né trường hợp này.
+
 ---
 
 ## 7. Tổng kết — cái gì đã xong, cái gì là **hàng rào cần biết**
@@ -331,10 +357,10 @@ clone mới, `gate --fast` sẽ ĐỎ ở hai bước này cho tới khi ai đó
 | # | Hàng rào | Hệ quả |
 |---|---|---|
 | R1 | `check-scope-table.py` **đỏ sẵn ở HEAD** (6 `E_AMBIGUOUS_FIELD` trong `v2/docs/k6-exec.md`, `v2/docs/k6-persist.md`) | `gate --fast` đỏ ở `do_check` **trước** ba bước mới ⇒ ba bước chưa chạy được trong một lần `gate --fast` trọn vẹn cho tới khi task sở hữu hai tài liệu đó sửa xong. **Không** sửa hộ (không thuộc phạm vi KT-139). |
-| R2 | `selfbreak.sh` đỏ khi có task song song sửa tài liệu trích log **chưa `git add`** | `gate --fast` đỏ trong lúc task khác đang làm dở. Đây là **đúng** theo D2-105a, nhưng là hàng rào **liên-task**: chạy cổng khi cây làm việc đang bị task khác sửa dở sẽ đỏ. |
+| R2 | `selfbreak.sh` đỏ khi có task song song sửa tài liệu trích log **chưa `git add`** | `gate --fast` đỏ trong lúc task khác đang làm dở. Đây là **đúng** theo D2-105a, nhưng là hàng rào **liên-task**: chạy cổng khi cây làm việc đang bị task khác sửa dở sẽ đỏ. **Không phải script hỏng** — cơ chế và cách phân biệt ở §6.4 (Agent 0 chấp nhận, lượt 4). |
 | R3 | `neg-test.sh` đỏ nếu còn **mục worktree rác** (đăng ký còn, thư mục mất) | Lần chạy đầu trong repo này đỏ vì 14 mục rác; chính script `prune` chúng. Sau đó xanh. |
 | R4 | Hai script git-guard cần **hook đã cài** (`install.sh`) | Bản clone mới: `gate --fast` đỏ kèm thông điệp rõ cho tới khi cài hook. |
-| R5 | `neg-test.sh` dùng **tên nhánh cố định** `task/kt85neg` | Hai `gate --fast` chạy **song song** sẽ đụng nhánh ⇒ một bên đỏ. Cổng vốn không được chạy song song (AGENTS.md §6: nightly/soak không chạy song song với cổng khác). |
+| R5 | `neg-test.sh` dùng **tên nhánh cố định** `task/kt85neg` | Hai `gate --fast` chạy **song song** sẽ đụng nhánh ⇒ một bên đỏ. Cổng vốn không được chạy song song (AGENTS.md §6: nightly/soak không chạy song song với cổng khác). **ĐÃ VÁ ở KT-142** (Agent 0 lượt 4): tên nhánh nay là `task/kt85neg-<pid>-<epoch>`, và `gate --fast` có thêm ca `--selftest-parallel` chạy đúng hai lần song song, đòi cả hai PASS. |
 
 **Không thêm ngoại lệ nào.** Không nới ngưỡng, không sửa kỳ vọng có sẵn, không commit, không push,
 không chạy QEMU.

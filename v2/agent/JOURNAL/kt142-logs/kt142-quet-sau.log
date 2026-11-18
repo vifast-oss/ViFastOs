@@ -1,0 +1,22 @@
+SAU KT-142 — ban moi tren ba tai lieu hien tai
+TONG cau bi bo qua: 1
+So tu khoa dang dung: 1 / 8
+
+### 'chưa có' -> 1 cau
+    v2/docs/k6-persist.md:78
+      nhánh `durable` bằng không chưa có ca |
+
+### 'nếu' -> 0 cau
+
+### 'đột biến' -> 0 cau
+
+### 'mong' -> 0 cau
+
+### 'phải là' -> 0 cau
+
+### 'sẽ' -> 0 cau
+
+### 'bỏ ' -> 0 cau
+
+### 'tăng gấp đôi' -> 0 cau
+

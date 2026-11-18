@@ -67,6 +67,12 @@ Chạy trên **ảnh sản phẩm** `af01e670…` (build từ HEAD `f1077036`, p
 
 ## 5. Một chỗ hành vi **lệch** kỳ vọng của Agent 0 — nói thẳng
 
+> **ĐÍNH CHÍNH (Agent 0, phiếu lượt bốn, câu đầu tiên).** Tiêu đề và câu đầu của mục này **sai**:
+> Agent 0 **không** đặt kỳ vọng "phải báo lỗi". Quyết định lượt hai chỉ yêu cầu **thêm ca biên**.
+> Kỳ vọng ấy do tôi tự gán. Đoạn dưới giữ nguyên văn để thấy cái đã sai; kết luận đúng: hành vi
+> thật là **cắt tệp về rỗng**, và Agent 0 đã quyết (lượt bốn, câu đầu tiên) **đổi thành báo lỗi**
+> — việc đó vào K7.
+
 Agent 0 yêu cầu: "`write` có đường dẫn nhưng thiếu nội dung ⇒ phải báo lỗi rõ ràng, không được ghi
 rỗng". **Hành vi thật ngược lại**: shell **không báo lỗi**, nó **cắt tệp về rỗng** và in `bytes` bằng rỗng.
 
