@@ -1,0 +1,5 @@
+# qemu_guard: pid=70869 date_utc=2026-11-18T21:01:54Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.31 loadavg_5m=5.18 loadavg_15m=5.49 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=71522 pgid=71522 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/soak/kt86-rev-gate.log
+# boot_end seq=1 pid=71522 pgid=71522 isolated=1 rc=124 secs=17.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/soak/kt86-rev-gate.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.00 loadavg_5m=5.08 loadavg_15m=5.33 ncpu=12 boot_done=1 verdict=OK

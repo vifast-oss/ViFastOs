@@ -1,0 +1,31 @@
+# qemu_guard: pid=88858 date_utc=2026-11-18T20:37:35Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.97 loadavg_5m=4.63 loadavg_15m=4.71 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=88932 pgid=88932 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-1-help-serial-custom-smp1-kt171.log
+# boot_end seq=1 pid=88932 pgid=88932 isolated=1 rc=124 secs=17.6 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-1-help-serial-custom-smp1-kt171.log
+# boot_start seq=2 pid=92728 pgid=92728 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-2-echo-serial-custom-smp1-kt171.log
+# boot_end seq=2 pid=92728 pgid=92728 isolated=1 rc=124 secs=17.7 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-2-echo-serial-custom-smp1-kt171.log
+# boot_start seq=3 pid=94204 pgid=94204 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-3-ps-serial-custom-smp1-kt171.log
+# boot_end seq=3 pid=94204 pgid=94204 isolated=1 rc=124 secs=17.0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-3-ps-serial-custom-smp1-kt171.log
+# boot_start seq=4 pid=95287 pgid=95287 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-4-kill-serial-custom-smp1-kt171.log
+# boot_end seq=4 pid=95287 pgid=95287 isolated=1 rc=124 secs=17.5 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-4-kill-serial-custom-smp1-kt171.log
+# boot_start seq=5 pid=96325 pgid=96325 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-5-cd-serial-custom-smp1-kt171.log
+# boot_end seq=5 pid=96325 pgid=96325 isolated=1 rc=124 secs=17.7 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-5-cd-serial-custom-smp1-kt171.log
+# boot_start seq=6 pid=97375 pgid=97375 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-6-pwd-serial-custom-smp1-kt171.log
+# boot_end seq=6 pid=97375 pgid=97375 isolated=1 rc=124 secs=17.4 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-6-pwd-serial-custom-smp1-kt171.log
+# boot_start seq=7 pid=98434 pgid=98434 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-7-time-serial-custom-smp1-kt171.log
+# boot_end seq=7 pid=98434 pgid=98434 isolated=1 rc=124 secs=17.5 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-7-time-serial-custom-smp1-kt171.log
+# boot_start seq=8 pid=99487 pgid=99487 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-8-ls-serial-custom-smp1-kt171.log
+# boot_end seq=8 pid=99487 pgid=99487 isolated=1 rc=124 secs=17.8 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-8-ls-serial-custom-smp1-kt171.log
+# boot_start seq=9 pid=816 pgid=816 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-9-cat-serial-custom-smp1-kt171.log
+# boot_end seq=9 pid=816 pgid=816 isolated=1 rc=124 secs=17.8 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-9-cat-serial-custom-smp1-kt171.log
+# boot_start seq=10 pid=3307 pgid=3307 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-10-stat-serial-custom-smp1-kt171.log
+# boot_end seq=10 pid=3307 pgid=3307 isolated=1 rc=124 secs=18.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-10-stat-serial-custom-smp1-kt171.log
+# boot_start seq=11 pid=7567 pgid=7567 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-11-sync-serial-custom-smp1-kt171.log
+# boot_end seq=11 pid=7567 pgid=7567 isolated=1 rc=124 secs=17.6 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-11-sync-serial-custom-smp1-kt171.log
+# boot_start seq=12 pid=10235 pgid=10235 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-12-truncate-serial-custom-smp1-kt171.log
+# boot_end seq=12 pid=10235 pgid=10235 isolated=1 rc=124 secs=17.1 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-12-truncate-serial-custom-smp1-kt171.log
+# boot_start seq=13 pid=11294 pgid=11294 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-13-uptime-serial-custom-smp1-kt171.log
+# boot_end seq=13 pid=11294 pgid=11294 isolated=1 rc=124 secs=17.5 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-13-uptime-serial-custom-smp1-kt171.log
+# boot_start seq=14 pid=12513 pgid=12513 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-14-jobs-serial-custom-smp1-kt171.log
+# boot_end seq=14 pid=12513 pgid=12513 isolated=1 rc=124 secs=17.7 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/parity/kt77a-serial-14-jobs-serial-custom-smp1-kt171.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.95 loadavg_5m=4.58 loadavg_15m=4.65 ncpu=12 boot_done=14 verdict=OK
