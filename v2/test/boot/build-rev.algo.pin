@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-134 (C1 của Agent 0) — **GHIM PHIÊN BẢN THUẬT TOÁN** của dấu vân tay build-inputs.
+#
+# Vì sao tệp này tồn tại:
+#   KT-134 loại `v2/test/boot/build-rev.sh` khỏi danh sách ghim (nó là **định nghĩa** dấu vân tay,
+#   không phải đầu vào của ảnh). Hệ quả: sửa **thuật toán** trong script mà quên tăng `VBREV_ALGO`
+#   thì dấu vân tay **không đổi** — dấu vân tay cũ và mới trở nên **không so được** với nhau, và
+#   không cổng nào phát hiện. Tệp này ghim **cặp** (sha256 của script, giá trị `VBREV_ALGO`) để
+#   `v2/tools/check-algo-pin.sh` phát hiện đúng ca đó.
+#
+# Định dạng: `KEY=value` trần, **không** dấu nháy, **không** khoảng trắng — đọc được bằng shell
+# thuần (`sed -n 's/^KEY=//p'`) và cũng `source` được. Không dùng TOML/JSON để không cần python.
+#   VBREV_ALGO_PIN       — giá trị `VBREV_ALGO` tại thời điểm ghim (hằng số này nằm trong chuỗi băm).
+#   VBREV_SCRIPT_SHA256  — sha256 của `v2/test/boot/build-rev.sh` tại thời điểm ghim.
+#
+# Cách dùng:
+#   bash v2/tools/check-algo-pin.sh            # kiểm (xanh/đỏ)
+#   bash v2/tools/check-algo-pin.sh --update   # ghi lại ghim SAU KHI đã tăng VBREV_ALGO
+#
+# **Tệp này KHÔNG nằm trong build-inputs** (không thuộc `VBREV_INPUT_ROOTS`/`VBREV_INPUT_FILES`)
+# và **không được** thêm vào: nó là công cụ kiểm, không phải đầu vào của ảnh. Thêm vào sẽ làm dấu
+# vân tay phụ thuộc chính bản ghim của nó (vòng tròn), trái định nghĩa Q3 mà KT-134 đã chốt.
+VBREV_ALGO_PIN=kt134-v1
+VBREV_SCRIPT_SHA256=1b25f3299c284c55ccc87086f8fdc60f216f51da15e6745b773f27b62d22362a

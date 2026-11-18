@@ -1,0 +1,14 @@
+# KT-138 — SOAK 1.000 VÒNG TRÊN ẢNH PHÁT HÀNH, CHẠY BẰNG HARNESS CHÍNH THỨC
+# Lệnh: bash v2/test/boot/soak.sh --features product-shell,product-fs 1000 3
+# Đây là lần đầu harness chính thức soak **đúng ảnh phát hành** (trước đây soak.sh build ảnh
+# không shell, nên "một nghìn vòng không lỗi" không nói gì về ảnh phát hành — hạn chế 1 của K6).
+# Mỗi vòng đòi đủ ba dấu hiệu: `shell>`, `# shell: help cmds=<n>`, `# shell: exit code=0` +
+# `# product halt:` + QEMU tự thoát mã 0. Thiếu một dấu hiệu là vòng đó đỏ.
+# build ảnh: pipeline canonical (repro-build.sh) ⇒ sha trùng ảnh phát hành.
+# soak: xong wall=292s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
+# soak: BUILD_ID=301720ec292c4f89 sha256=d2925f7e513fde6c8be405fcc30e3ca95597031600048f33b30f0b417185c2e2 git=ba8486ecd14fee6d2fe07a1d21f441897fbea204
+# soak: 1000/1000 lỗi=0 — 0/N chỉ là trần (QD §5.3); không retry (D2-07)
+# soak: 0/1000 lỗi (PASS)
+# soak.sh: PASS
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.57 loadavg_5m=5.72 loadavg_15m=4.43 ncpu=12 boot_done=1 verdict=OK
+# infra: invalid=0 isolation_bad=0

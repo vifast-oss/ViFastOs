@@ -1,0 +1,13 @@
+# check-scope-table — mốc số câu bị bỏ qua vì từ khoá loại trừ (QUALIFIERS).
+#
+# Vì sao có tệp này: bộ từ khoá loại trừ là một **lỗ có thể rộng dần**. Ai đó thêm một từ
+# khoá để né một câu khó thì checker vẫn xanh nhưng phép kiểm đã bị nới. Checker so số câu
+# bỏ qua của lần chạy này với mốc dưới đây và in CẢNH BÁO khi số đó **tăng** (không làm đỏ).
+#
+# Định dạng: mỗi dòng `<tệp> <số câu>`; dòng bắt đầu bằng '#' là chú thích.
+# Tệp này KHÔNG phải ngưỡng: nó chỉ là mốc so sánh, do checker ghi tự động (trừ --no-record).
+# Xoá tệp = nhận mốc mới (không cảnh báo) — nhưng tệp nằm trong git nên việc xoá hiện trong diff.
+# cập nhật: 2026-11-18T13:06:28+09:00
+v2/docs/k6-exec.md 1
+v2/docs/k6-persist.md 3
+v2/agent/reports/K6-DOD.md 0

@@ -37,7 +37,10 @@
 #   11. new-cmds-edge         `stat` (không tham số) `stat /khongco` `ls /khongco`
 #                             `truncate /README abc` `truncate /README 4294967296` `sync`×2 `time`×2
 #                                              ⇒ báo đúng lỗi, size ≥ 2^32 bị từ chối, đồng hồ đơn điệu
-#   (10/11 là **KT-130**, Q4 của Agent 0: 9 lệnh thêm phải có ca kiểm trên ảnh sản phẩm.)
+#   12. new-cmds-edge2        `uptime`×2 `uptime 5` `jobs`×2 `jobs 5`
+#                                              ⇒ `uptime` đơn điệu; hai dòng `jobs` **giống nhau từng ký tự**;
+#                                                `uptime 5`/`jobs 5` là lệnh lạ (`# shell: ?` ×2)
+#   (10/11/12 là **KT-130**, Q4 của Agent 0: 9 lệnh thêm phải có ca kiểm trên ảnh sản phẩm.)
 #
 # **`--selftest` (bắt buộc theo luật repo: harness mới phải có ca âm)**: dựng **log giả** trong
 # `mktemp -d` cho **mỗi** ca — một log **cố tình sai** (đúng đầu ra của lỗi cũ: `# shell: ?`,
@@ -98,7 +101,7 @@ die() {
 }
 
 usage() {
-    sed -n '2,47p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'
+    sed -n '2,50p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'
     echo "shell-edge.sh: dùng: shell-edge.sh --image <ảnh.bin> [--selftest] | --selftest | --help"
 }
 
@@ -371,6 +374,55 @@ check_new_cmds_edge() {
     return 0
 }
 
+# 3f. **KT-130** (Q4 của Agent 0, vòng hai) — `uptime` và `jobs` **thiếu ca biên**.
+#     Vòng trước tôi khai "chín lệnh, mỗi lệnh một ca đúng + một ca biên", nhưng `new-cmds-edge`
+#     **không** gửi `uptime` lẫn `jobs`: hai lệnh đó chỉ có ca **đúng** (`new-cmds-ok` cho `uptime`,
+#     `truncate-jobs` cho `jobs`). Agent 0 bắt đúng chỗ hụt này. Ca này vá đúng hai lỗ đó, và kiểm
+#     thêm một vế mà ca đúng **không** kiểm được: **tham số thừa không được bỏ qua im lặng**.
+#     `fs_dispatch` so khớp **nguyên dòng** (`line == b"uptime"`, `line == b"jobs"`), không có nhánh
+#     `starts_with(line, b"uptime ")` ⇒ `uptime 5`/`jobs 5` rơi xuống nhánh "lệnh lạ" và in
+#     `# shell: ?`. Đòi **đúng hai** dòng `?` (một cho mỗi lệnh) để một lệnh không thể "mượn" dòng
+#     của lệnh kia; và nếu sau này ai "tiện tay" cho hai lệnh này nhận tham số thì ca này đỏ — bỏ
+#     qua tham số trong im lặng là dạng sai tệ nhất: người dùng tưởng lệnh đã hiểu ý mình.
+#     `jobs` phải **idempotent từng ký tự**: hai lần gọi liền nhau đọc **cùng** một reply `PS_REQ`,
+#     nên hai dòng lệch nhau nghĩa là bộ đếm trạng thái bị nhiễu (hoặc shell tự đổi trạng thái
+#     giữa hai lần) — đúng thứ `truncate-jobs` (một lần gọi) không thể thấy.
+check_new_cmds_edge2() {
+    local log="$1" n u1 u2 j1 j2
+    n="$(grep -c -E '^# shell: uptime ms=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: uptime ms=<n>' (uptime hai lan), thấy ${n:-0}"
+        return 1
+    fi
+    u1="$(sed -n 's/^# shell: uptime ms=\([0-9][0-9]*\)$/\1/p' "$log" 2>/dev/null | sed -n '1p')"
+    u2="$(sed -n 's/^# shell: uptime ms=\([0-9][0-9]*\)$/\1/p' "$log" 2>/dev/null | sed -n '2p')"
+    if [ -z "$u1" ] || [ -z "$u2" ]; then
+        echo "không đọc được hai mốc uptime"
+        return 1
+    fi
+    if [ "$u2" -lt "$u1" ]; then
+        echo "đồng hồ lùi: uptime lần hai ($u2 ms) < lần một ($u1 ms)"
+        return 1
+    fi
+    n="$(grep -c -E '^# shell: jobs ready=[0-9]+ running=[0-9]+ blocked=[0-9]+ other=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: jobs ready=… running=… blocked=… other=…', thấy ${n:-0}"
+        return 1
+    fi
+    j1="$(grep -E '^# shell: jobs ready=[0-9]+ running=[0-9]+ blocked=[0-9]+ other=[0-9]+$' "$log" 2>/dev/null | sed -n '1p')"
+    j2="$(grep -E '^# shell: jobs ready=[0-9]+ running=[0-9]+ blocked=[0-9]+ other=[0-9]+$' "$log" 2>/dev/null | sed -n '2p')"
+    if [ "$j1" != "$j2" ]; then
+        echo "jobs không idempotent: lần một '$j1' ≠ lần hai '$j2'"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: ?' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: ?' (uptime 5 + jobs 5), thấy ${n:-0} (tham số bị bỏ qua im lặng?)"
+        return 1
+    fi
+    return 0
+}
+
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
 #    (không báo), >1 = báo mỗi byte (lỗi cũ) — cả hai đều ĐỎ.
 check_long_line_once() {
@@ -466,6 +518,12 @@ SELFTEST_CASES=8
 SELFTEST_CHECKS=0
 SELFTEST_OK=0
 SELFTEST_FAIL=0
+# **KT-130** (vòng hai): `SELFTEST_CASES` đếm **ca có số** (1..8) trong chú thích đầu tệp, **không**
+# phải số log-đúng. Từ ca 3b trở đi mỗi ca có **nhiều** cặp log, nên dòng tổng kết cũ in
+# `$((SELFTEST_CHECKS - SELFTEST_CASES)) sai→ĐỎ + $SELFTEST_CASES đúng→XANH` — sai số (27 kiểm mà
+# in "19 sai + 8 đúng", thật là 15 sai + 12 đúng). Đếm riêng số log-đúng để dòng tổng kết không nói
+# sai nữa; **không** đổi phán quyết PASS/FAIL nào.
+SELFTEST_RIGHT=0
 
 # `selftest_pair <nhãn> <hàm> <log-sai> <log-đúng> [tham số thêm…]`
 selftest_pair() {
@@ -483,6 +541,7 @@ selftest_pair() {
     if reason="$("$checker" "$right" "$@")"; then
         echo "# selftest $label: log ĐÚNG -> XANH đúng"
         SELFTEST_OK=$((SELFTEST_OK + 1))
+        SELFTEST_RIGHT=$((SELFTEST_RIGHT + 1))
     else
         echo "# selftest $label: log ĐÚNG -> FAIL (harness báo đỏ giả: $reason)"
         SELFTEST_FAIL=$((SELFTEST_FAIL + 1))
@@ -654,6 +713,54 @@ run_selftest() {
     } >"$right"
     selftest_pair "3e new-cmds-edge" check_new_cmds_edge "$wrong" "$right"
 
+    # ---- ca 3f (**KT-130**, vòng hai): `uptime` + `jobs` — đúng hai lệnh Agent 0 chỉ ra là **thiếu
+    #      ca biên**. Log sai: `uptime` **lùi** (đồng hồ không đơn điệu) ⇒ phải ĐỎ.
+    d="$(mktemp -d "$root/c3f.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: uptime ms=2000\n'
+        printf '# shell: uptime ms=1000\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: ?\n'
+        printf '# shell: ?\n'
+    } >"$wrong"
+    {
+        printf '# shell: uptime ms=1000\n'
+        printf '# shell: uptime ms=2000\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: ?\n'
+        printf '# shell: ?\n'
+    } >"$right"
+    selftest_pair "3f new-cmds-edge2" check_new_cmds_edge2 "$wrong" "$right"
+    # Ca phụ 1: `jobs` **không** idempotent (hai dòng lệch nhau) ⇒ phải ĐỎ. Tách khỏi log sai chính
+    # để chứng minh **nhánh idempotent** cũng bắt được, không chỉ nhánh đồng hồ.
+    d="$(mktemp -d "$root/c3f1.XXXXXX")"
+    wrong="$d/wrong.log"
+    {
+        printf '# shell: uptime ms=1000\n'
+        printf '# shell: uptime ms=2000\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: jobs ready=2 running=1 blocked=0 other=0\n'
+        printf '# shell: ?\n'
+        printf '# shell: ?\n'
+    } >"$wrong"
+    selftest_red "3f new-cmds-edge2 (jobs lech)" check_new_cmds_edge2 "$wrong"
+    # Ca phụ 2: `uptime 5`/`jobs 5` **không** bị coi là lệnh lạ (chỉ một dòng `?`) ⇒ phải ĐỎ: đó
+    # đúng là dấu hiệu tham số bị bỏ qua im lặng.
+    d="$(mktemp -d "$root/c3f2.XXXXXX")"
+    wrong="$d/wrong.log"
+    {
+        printf '# shell: uptime ms=1000\n'
+        printf '# shell: uptime ms=2000\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: jobs ready=3 running=0 blocked=0 other=0\n'
+        printf '# shell: ?\n'
+    } >"$wrong"
+    selftest_red "3f new-cmds-edge2 (tham so bi bo qua)" check_new_cmds_edge2 "$wrong"
+
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"
     wrong="$d/wrong.log"
@@ -723,7 +830,7 @@ run_selftest() {
     selftest_red "8 wait-khong-treo (cham)" check_wait_no_hang "$right" 99
 
     if [ "$SELFTEST_FAIL" -eq 0 ]; then
-        echo "# shell-edge-selftest: PASS ($SELFTEST_CASES/$SELFTEST_CASES ca, $SELFTEST_OK/$SELFTEST_CHECKS kiểm: $((SELFTEST_CHECKS - SELFTEST_CASES)) sai→ĐỎ + $SELFTEST_CASES đúng→XANH)"
+        echo "# shell-edge-selftest: PASS ($SELFTEST_CASES/$SELFTEST_CASES ca, $SELFTEST_OK/$SELFTEST_CHECKS kiểm: $((SELFTEST_CHECKS - SELFTEST_RIGHT)) sai→ĐỎ + $SELFTEST_RIGHT đúng→XANH)"
         return 0
     fi
     echo "# shell-edge-selftest: FAIL ($SELFTEST_FAIL/$SELFTEST_CHECKS kiểm sai)"
@@ -1092,6 +1199,31 @@ run_real() {
         fi
     fi
 
+    # (12) **KT-130** (vòng hai, Q4 của Agent 0): `uptime` + `jobs` — hai lệnh trước đây **chỉ** có ca
+    #      đúng. Kiểm ba vế: đồng hồ `uptime` đơn điệu, `jobs` idempotent **từng ký tự**, và tham số
+    #      thừa (`uptime 5`, `jobs 5`) **không** được bỏ qua im lặng — phải rơi xuống `# shell: ?`.
+    #      Vẫn đặt trước (8b) để không dính `truncate /README`; hai lệnh này không đọc `/README`.
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        # KT-130: gửi **cách nhau** một nhịp — gửi liền một hơi thì byte bị rơi (FIFO 16 B của 16550).
+        for c in 'uptime' 'uptime' 'uptime 5' 'jobs' 'jobs' 'jobs 5'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 12; then
+            if reason="$(check_new_cmds_edge2 "$CASE_LOG")"; then
+                echo "# new-cmds-edge2: PASS ($(grep -m1 -E '^# shell: jobs ready=' "$CASE_LOG"))"
+            else
+                echo "# new-cmds-edge2: FAIL ($reason)"
+                rc=1
+            fi
+        else
+            echo "# new-cmds-edge2: FAIL (quá hạn — shell treo ở uptime/jobs)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
     # (8b) **KT-126**: hai lệnh mới `truncate` + `jobs` — chạy **ngay trước** `exit` để không ảnh
     #      hưởng ca nào phía sau (truncate **đổi** `/README`). Không đánh số ca mới: dùng chung
     #      khung của ca 9 và chỉ thêm phép kiểm, nên `mark_remaining_fail` và bảng tổng kết không đổi.
@@ -1148,7 +1280,7 @@ run_real() {
     qg_infra after "$LOGDIR/infra.log" || true
 
     if [ "$rc" -eq 0 ]; then
-        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge PASS"
+        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 PASS"
         echo "# shell-edge.sh: PASS"
         return 0
     fi

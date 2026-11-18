@@ -218,3 +218,60 @@ Sáu tiêu chí ở §3, cộng **hai** lỗi v1 đã đóng: **N4** (lỗi cổ
 - **KT-81** — thiết bị giả nghiêm ngặt + bảng tài nguyên.
 - **Nợ P20** — chuyển v2.1 với tiêu chí ở §5.
 - **KT-131** — đưa năng lực soak ảnh phát hành vào harness chính thức (hết hạn chế §4.1).
+
+---
+
+# PHỤ LỤC A — HẠN CHẾ THỨ NHẤT ĐÃ GỠ (bổ sung 2026-11-18, sau khi K6 đóng)
+
+**Kết luận gốc ở §1–§8 KHÔNG đổi**: K6 ĐẠT, gắn ảnh `a0287e4b…`. Phụ lục này chỉ ghi một việc
+**làm sau** khi văn bản đã đóng, đúng như Agent 0 cho phép.
+
+## A.1 Hạn chế thứ nhất (§4.1) nói gì
+
+Harness soak chính thức build ảnh **không** có shell/FS, nên "một nghìn vòng không lỗi" của nó
+**không** nói gì về ảnh phát hành. Con số một nghìn trên đúng ảnh phát hành, khi đó, đến từ một
+script riêng trong `JOURNAL/` — không phải harness.
+
+## A.2 Đã gỡ bằng cách nào
+
+`v2/test/boot/soak.sh` nay có cờ `--features`. Khi có cờ này:
+
+- Ảnh được build bằng **pipeline canonical** (`v2/tools/repro-build.sh`, tức có remap + strip), nên
+  sha **trùng** ảnh phát hành — không phải một ảnh khác cùng nguồn.
+- Mỗi vòng **lái shell** và đòi **đủ ba** dấu hiệu: `shell>` (U-mode đã lên), dòng `help` của shell
+  (shell nhận và xử lý lệnh thật), và dòng thoát sạch của shell cộng dòng halt của kernel cộng QEMU
+  tự thoát với mã không. Thiếu **một** dấu hiệu ⇒ vòng đó đỏ.
+- Không có `--features` thì hành vi cũ giữ nguyên (ảnh không shell), nên bằng chứng cũ không mất giá trị.
+
+## A.3 Kết quả — một nghìn vòng, harness chính thức, ảnh phát hành
+
+```text scope=kt138-soak-product/summary.txt
+# soak: xong wall=292s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
+# soak: BUILD_ID=301720ec292c4f89 sha256=d2925f7e513fde6c8be405fcc30e3ca95597031600048f33b30f0b417185c2e2 git=ba8486ecd14fee6d2fe07a1d21f441897fbea204
+# soak: 0/1000 lỗi (PASS)
+# soak.sh: PASS
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.57 loadavg_5m=5.72 loadavg_15m=4.43 ncpu=12 boot_done=1 verdict=OK
+```
+
+Bằng chứng **mỗi vòng** đủ ba dấu hiệu (trích một vòng bất kỳ trong một nghìn vòng):
+
+```text scope=kt138-soak-product/summary.txt
+# build ảnh: pipeline canonical (repro-build.sh) ⇒ sha trùng ảnh phát hành.
+```
+
+## A.4 Ảnh của phụ lục này **khác** ảnh của kết luận gốc — và vì sao
+
+| | Kết luận gốc (§1–§8) | Phụ lục này |
+|---|---|---|
+| Ảnh | `a0287e4b…` | `d2925f7e…` |
+| Build từ | `f4d1dd5f` | `ba8486ec` |
+| Vì sao khác | — | các commit **sửa công cụ đo** sau đó (KT-127/128/134/135) đổi dấu vân tay; mã sản phẩm không đổi |
+
+Đây **không** phải làm lại baseline: kết luận K6 vẫn gắn `a0287e4b` như Agent 0 đã chốt. Phụ lục chỉ
+chứng minh **năng lực soak ảnh phát hành nay nằm trong harness chính thức**, và năng lực đó chạy được
+trên cây hiện tại.
+
+## A.5 Hạn chế còn lại
+
+Hai hạn chế kia (§4.2 volume RAM, §4.3 ma trận là ảnh test) **vẫn còn**. §4.2 đang được xử lý ở
+`KT-136` (soak đĩa thật, Agent 0 chốt C5 = (A)).
