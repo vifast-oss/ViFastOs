@@ -263,12 +263,23 @@ D2-109C: số phải lấy từ log).
 ## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
 
 Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
-cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+cột "Tệp log" chỉ tệp, cột "Khối" chỉ **tiết** chứa khối. Cột "Khối" là **bắt buộc** khi một trường
+có **nhiều** giá trị trong tài liệu (KT-140): thiếu nó thì người đọc tra khối **đầu tiên** gặp giá
+trị khác và tưởng bảng sai. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
-|---|---|---|---|
-| `observed` | không | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `observed_first` | không | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `elf_linked_at_base` | một | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `same` | một | `scope=` | `kt74-qemu-ktest-exec.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `observed` | không | `scope=` | `kt74-qemu-ktest-exec.log` | §7 |
+| `observed_first` | không | `scope=` | `kt74-qemu-ktest-exec.log` | §2.3 |
+| `elf_linked_at_base` | một | `scope=` | `kt74-qemu-ktest-exec.log` | §4.3 |
+| `same` | một | `scope=` | `kt74-qemu-ktest-exec.log` | §4.3 |
+
+**Ghi chú `observed` (KT-140 — hai khối, hai tình huống, không mâu thuẫn):** dòng bảng trên trỏ
+**khối §7**, nơi `observed` bằng **không** — sau `exec` sang ảnh **D** (ảnh D **không** gọi `SetTls`, nên TLS của
+TCB và `tp` quan sát đều bằng **không**). Khối **§2.3** cũng in trường `observed` nhưng là **trường
+hợp khác**: `observed=0x74310001` — lượt chạy **thứ hai** của chương trình A **sau** `SetTls`, tức
+giá trị TLS vừa đặt, không phải giá trị sau `exec`. Bảng chọn §7 vì cột "Giá trị (chữ)" ghi
+**không**; §2.3 là **ca khác** và **không** được dùng để đọc dòng bảng này. Đây đúng là lý do cột
+"Khối" tồn tại: nếu chỉ ghi tệp log, người đọc tra khối `observed` **đầu tiên** (§2.3) sẽ thấy
+`0x74310001` và kết luận sai rằng bảng lệch log.

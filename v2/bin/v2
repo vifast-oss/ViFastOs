@@ -275,7 +275,13 @@ do_check() {
         # bắt được ca "cổng truyền cờ mà script không xử lý cờ" (đã xảy ra thật với
         # `counter-evidence.sh` — bước cổng mang nhãn selftest mà không kiểm gì).
         run_step "selftest wiring (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" --selftest || fails=$((fails + 1))
-        run_step "cổng selftest có cổng gọi (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" || fails=$((fails + 1))
+        # **KT-139 (Agent 0)**: bật `--standalone-red` **vĩnh viễn**. Vì sao: công cụ này có **hai**
+        # lớp — lớp có cờ (`--selftest`/`--red-selftest`) vốn đã đỏ khi mồ côi, còn lớp **độc lập**
+        # (không cờ, nhận theo tên tệp: `selfbreak.sh`, `neg-test*.sh`) trước đây **chỉ được báo
+        # cáo**, nên ba script mồ côi nằm im mà cổng vẫn xanh. Nay cả ba đã được nối vào
+        # `gate --fast`; bật cờ để **script thứ tư** rơi vào lớp này là ĐỎ ngay, không chờ ai rà tay.
+        # Không thêm ngoại lệ nào: một ngoại lệ = miễn trừ phép kiểm = lại để lỗ mục âm thầm.
+        run_step "cổng selftest có cổng gọi (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" --standalone-red || fails=$((fails + 1))
     fi
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then
@@ -402,6 +408,19 @@ do_gate_fast() {
     # `check`. Khi `nightly` đầy đủ có thì chuyển sang đó (Agent 0: "khi nightly đầy đủ có thì
     # chuyển sang").
     run_step "selftest persist đỏ-trước (KT-75)" bash "$V2_ROOT/test/boot/persist.sh" --red-selftest || return 1
+    # **KT-139 (Agent 0)**: ba script tự kiểm **độc lập** (không cờ `--selftest`, nhận theo tên
+    # tệp) trước đây **không cổng nào gọi** — cùng lớp lỗi đã làm `build-rev.sh --selftest` đỏ âm
+    # thầm. Cả ba đều **chậm** (đo bằng `date +%s%N`: selfbreak ~95 s, neg-test ~12 s,
+    # neg-test-kt85b ~26 s) nên đặt ở `gate --fast`, KHÔNG đặt ở `check` (check phải nhanh).
+    # Vì sao `selfbreak.sh` quan trọng: nó là **đường duy nhất** chạm `verify-numbers.py --self-test`
+    # (hai lời gọi trong ca luật 8) ⇒ nối nó là nối luôn chuỗi đó vào cổng.
+    run_step "selfbreak 5 luật K6 (KT-80)" bash "$V2_ROOT/test/rules/selfbreak.sh" || return 1
+    # Hai script git-guard cần **hook đã cài** (`v2/tools/git-guard/install.sh`; hook không đi theo
+    # git). Thiếu hook thì chúng tự in "hook CHƯA cài đúng — chạy …install.sh trước" và exit 2 ⇒
+    # cổng ĐỎ kèm lý do, không im lặng bỏ qua. Chúng tự dọn worktree/nhánh tạm và tự kiểm bất biến
+    # (HEAD/index/số worktree của checkout chính không đổi) nên chạy được trong cổng.
+    run_step "ca âm git-guard (KT-85)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" || return 1
+    run_step "ca âm git-guard b (KT-85b)" bash "$V2_ROOT/tools/git-guard/neg-test-kt85b.sh" || return 1
     echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }
 

@@ -271,6 +271,12 @@ Bằng chứng **mỗi vòng** đủ ba dấu hiệu (trích một vòng bất k
 chứng minh **năng lực soak ảnh phát hành nay nằm trong harness chính thức**, và năng lực đó chạy được
 trên cây hiện tại.
 
+**Lưu ý về dấu vân tay đang còn chạy.** Sau phụ lục này, mỗi lần **đổi định nghĩa** dấu vân tay
+(loại thêm tệp không phải đầu vào, nhúng tên thuật toán vào dòng log) lại sinh một ảnh mới. Đó là
+hệ quả **có chủ ý** của việc làm đúng nguyên tắc "chỉ ghim đầu vào thật", không phải bất ổn. Ảnh
+**hiện hành** luôn tra ở `./v2/bin/v2 status`, không tra ở tài liệu này. Con số một nghìn vòng trên
+đây gắn với ảnh `464fe583…` — ảnh **đã đo thật**, không phải ảnh đang có.
+
 ## A.5 Hạn chế còn lại
 
 Hai hạn chế kia (§4.2 volume RAM, §4.3 ma trận là ảnh test) **vẫn còn**. §4.2 đang được xử lý ở

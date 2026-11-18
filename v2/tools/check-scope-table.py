@@ -7,10 +7,17 @@ Vì sao có tệp này: KT-133 thêm vào ba tài liệu K6 một bảng nói "t
 liệu khai một đằng, log một nẻo, và không ai phát hiện. Agent 0 chốt: **không có kiểm máy thì Q6
 coi như chưa xong**.
 
-Tệp này làm đúng bốn việc:
+Tệp này làm đúng năm việc:
 
 1. **Cấu trúc** — mỗi dòng bảng phải trỏ tới một khối `scope=`/`scope-red=` **có thật** trong chính
    tài liệu đó, và trường đo phải xuất hiện **kèm giá trị số** trong khối ấy.
+1b. **Không mập mờ** (`E_AMBIGUOUS_FIELD`) — nếu một trường có **nhiều hơn một** giá trị trong
+   **tất cả** các khối của tài liệu thì dòng bảng **phải** ghi rõ nó nói về khối ở **tiết nào**
+   (cột "Khối", dạng `§7` / `§2.3`), và checker kiểm khối được trỏ tới **thật sự** nằm trong tiết
+   đó. Vì sao cần: KT-140 — dòng `observed` trong `k6-exec.md` trỏ một tệp log có **hai** khối in
+   `observed` với **hai** giá trị (`0x74310001` ở §2.3, `0` ở §7); checker cũ resolve sang khối §7
+   nên vẫn xanh, nhưng **người đọc** tra khối đầu tiên thấy mâu thuẫn. Một phép kiểm chỉ đúng khi
+   người đọc cũng đọc ra cùng kết luận.
 2. **Ngữ nghĩa** — nếu văn xuôi nói "`trường` bằng <chữ số>", chữ số đó phải **khớp** giá trị trong
    khối. Lệch ⇒ đỏ. Đây là vế bắt được "sửa một số trong log mà quên sửa văn xuôi".
 3. **Đếm lỗ có thể rộng dần** — vế (2) phải bỏ qua những câu nói về **tình huống khác** (nhánh âm,
@@ -74,9 +81,18 @@ WORDS = {
 }
 
 TABLE_HEADER = "Bảng đối chiếu số ↔ khối"
-ROW_RE = re.compile(
-    r"^\|\s*`([A-Za-z_][A-Za-z0-9_.]*)`\s*\|\s*([^|`]+?)\s*\|\s*`(scope(?:-red)?)=`\s*\|\s*`([^`]+)`\s*\|\s*$"
-)
+# Bốn cột **bắt buộc** của bảng, đúng thứ tự. Cột thứ năm ("Khối") là **tuỳ chọn** — xem
+# `SECTION_COL`; bảng không có nó vẫn hợp lệ **nếu** không dòng nào cần chỉ rõ khối (luật
+# `E_AMBIGUOUS_FIELD`). Bắt buộc đọc tiêu đề cột thay vì đoán vị trí: một bảng đổi thứ tự cột mà
+# checker vẫn đọc theo vị trí là đúng lớp "xanh giả" tệp này sinh ra để chặn.
+TABLE_COLS = ("Trường đo", "Giá trị (chữ)", "Loại khối", "Tệp log")
+SECTION_COL = "Khối"
+# Cột "Khối" ghi **số hiệu tiết** dạng `§7` / `§2.3` — máy đọc được, không phải suy luận từ văn xuôi.
+SECTION_RE = re.compile(r"^§(\d+(?:\.\d+)*)$")
+# Tiêu đề tiết **có đánh số** (`## 7. …`, `### 2.3 …`). Tiêu đề không đánh số (vd `## Bảng đối
+# chiếu …`) đặt lại tiết = None: khối nằm dưới nó **không** thuộc tiết nào, nên không được dùng làm
+# đích của cột "Khối".
+HEADING_RE = re.compile(r"^(#{2,6})\s+(\d+(?:\.\d+)*)\.?\s")
 BLOCK_RE = re.compile(r"^```text (scope(?:-red)?)=(\S+)\s*$")
 FENCE_RE = re.compile(r"^```\s*$")
 
@@ -108,17 +124,25 @@ class DocResult(NamedTuple):
     claims: int  # tổng số câu khẳng định "`trường` … bằng <chữ số>" đã thấy (kể cả bị bỏ qua)
 
 
-def split_blocks(text: str) -> tuple[str, list[tuple[int, int]], list[tuple[str, str, str]]]:
-    """Trả (văn xuôi không có khối code, mốc dòng, [(loại, đường-dẫn-log, nội-dung)]).
+def split_blocks(
+    text: str,
+) -> tuple[str, list[tuple[int, int]], list[tuple[str, str, str, str | None]], set[str]]:
+    """Trả (văn xuôi không có khối code, mốc dòng, [(loại, log, nội-dung, tiết)], các tiết có).
 
     Mốc dòng là `[(offset_bắt_đầu_dòng_trong_văn_xuôi, số_dòng_trong_tệp)]`. Cần nó vì văn xuôi đã
     bị **cắt khối code** nên số dòng của văn xuôi không trùng số dòng của tệp — mà báo cáo "câu bị
     bỏ qua" phải chỉ đúng `tệp:số-dòng` để người đọc mở được.
+
+    Phần tử thứ tư của mỗi khối là **số hiệu tiết** chứa khối (`"7"`, `"2.3"`, hoặc `None` nếu khối
+    nằm trước tiêu đề đánh số đầu tiên / dưới một tiêu đề **không** đánh số). Cần nó cho luật
+    `E_AMBIGUOUS_FIELD`: cột "Khối" của bảng phải trỏ tới khối **thật sự** nằm trong tiết đã ghi.
     """
     prose_lines: list[tuple[int, str]] = []
-    blocks: list[tuple[str, str, str]] = []
+    blocks: list[tuple[str, str, str, str | None]] = []
+    sections: set[str] = set()
     cur: tuple[str, str] | None = None
     buf: list[str] = []
+    section: str | None = None
     for lineno, line in enumerate(text.splitlines(), 1):
         if cur is None:
             m = BLOCK_RE.match(line)
@@ -126,10 +150,19 @@ def split_blocks(text: str) -> tuple[str, list[tuple[int, int]], list[tuple[str,
                 cur = (m.group(1), m.group(2))
                 buf = []
                 continue
+            h = HEADING_RE.match(line)
+            if h:
+                section = h.group(2)
+                sections.add(section)
+            elif re.match(r"^#{2,6}\s", line):
+                # Tiêu đề **không** đánh số (vd "## Bảng đối chiếu …"): khối dưới nó không thuộc
+                # tiết nào ⇒ đặt lại None. Nếu không, một khối ở cuối tài liệu sẽ bị gán nhầm vào
+                # tiết đánh số **cuối cùng** và cột "Khối" sẽ "đúng" một cách giả tạo.
+                section = None
             prose_lines.append((lineno, line))
         else:
             if FENCE_RE.match(line):
-                blocks.append((cur[0], cur[1], "\n".join(buf)))
+                blocks.append((cur[0], cur[1], "\n".join(buf), section))
                 cur = None
                 buf = []
                 continue
@@ -141,7 +174,7 @@ def split_blocks(text: str) -> tuple[str, list[tuple[int, int]], list[tuple[str,
     for lineno, line in prose_lines:
         starts.append((off, lineno))
         off += len(line) + 1
-    return "\n".join(line for _, line in prose_lines), starts, blocks
+    return "\n".join(line for _, line in prose_lines), starts, blocks, sections
 
 
 def line_at(starts: list[tuple[int, int]], pos: int) -> int:
@@ -152,8 +185,20 @@ def line_at(starts: list[tuple[int, int]], pos: int) -> int:
     return starts[max(i, 0)][1]
 
 
-def parse_table(prose: str) -> list[tuple[str, str, str, str]]:
-    """Trả [(trường, giá-trị-chữ, loại-khối, tệp-log)]; rỗng nếu không có bảng."""
+def _cells(line: str) -> list[str] | None:
+    """Tách một dòng bảng Markdown thành các ô; None nếu dòng không phải dòng bảng."""
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|")):
+        return None
+    return [c.strip() for c in s[1:-1].split("|")]
+
+
+def parse_table(prose: str) -> list[tuple[str, str, str, str, str]]:
+    """Trả [(trường, giá-trị-chữ, loại-khối, tệp-log, tiết)]; rỗng nếu không có bảng.
+
+    `tiết` là nội dung cột "Khối" (`""` nếu bảng không có cột đó hoặc ô để trống). Đọc **theo tên
+    cột** ở dòng tiêu đề, không theo vị trí: bảng đổi thứ tự cột thì phải đỏ, không được đọc nhầm.
+    """
     lines = prose.splitlines()
     start = None
     for i, line in enumerate(lines):
@@ -162,15 +207,52 @@ def parse_table(prose: str) -> list[tuple[str, str, str, str]]:
             break
     if start is None:
         return []
-    rows: list[tuple[str, str, str, str]] = []
-    for line in lines[start:]:
-        m = ROW_RE.match(line.strip())
-        if m:
-            rows.append((m.group(1), m.group(2).strip(), m.group(3), m.group(4)))
-        elif rows and line.strip().startswith("|"):
-            continue
-        elif rows and not line.strip():
+    # Dòng tiêu đề cột là dòng bảng **đầu tiên** sau tiêu đề mục (giữa hai thứ có thể có văn xuôi).
+    hdr_i = None
+    for i in range(start + 1, len(lines)):
+        if lines[i].strip().startswith("|"):
+            hdr_i = i
             break
+    if hdr_i is None:
+        raise Fail("E_TABLE_HEADER", "không thấy dòng tiêu đề cột của bảng đối chiếu")
+    header = _cells(lines[hdr_i])
+    if header is None or tuple(header[:4]) != TABLE_COLS:
+        raise Fail(
+            "E_TABLE_HEADER",
+            f"tiêu đề cột phải bắt đầu bằng {list(TABLE_COLS)}, thấy {header}",
+        )
+    if len(header) == 5 and header[4] != SECTION_COL:
+        raise Fail("E_TABLE_HEADER", f"cột thứ năm phải là '{SECTION_COL}', thấy '{header[4]}'")
+    if len(header) > 5:
+        raise Fail("E_TABLE_HEADER", f"bảng có {len(header)} cột, tối đa 5")
+    ncols = len(header)
+    rows: list[tuple[str, str, str, str, str]] = []
+    for line in lines[hdr_i + 1 :]:
+        cells = _cells(line)
+        if cells is None:
+            if rows and not line.strip():
+                break
+            continue
+        if all(set(c) <= set("-: ") for c in cells):
+            continue  # dòng phân cách |---|---|
+        if len(cells) != ncols:
+            raise Fail(
+                "E_TABLE_ROW_SHAPE",
+                f"dòng bảng có {len(cells)} cột, tiêu đề có {ncols}: {line.strip()}",
+            )
+        m = re.fullmatch(r"`([A-Za-z_][A-Za-z0-9_.]*)`", cells[0])
+        if not m:
+            continue  # không phải dòng dữ liệu (vd dòng tiêu đề lặp lại)
+        km = re.fullmatch(r"`(scope(?:-red)?)=`", cells[2])
+        if not km:
+            raise Fail(
+                "E_TABLE_ROW_SHAPE",
+                f"cột 'Loại khối' phải là `scope=`/`scope-red=`, thấy {cells[2]!r}",
+            )
+        lm = re.fullmatch(r"`([^`]+)`", cells[3])
+        if not lm:
+            raise Fail("E_TABLE_ROW_SHAPE", f"cột 'Tệp log' phải là `tên-tệp`, thấy {cells[3]!r}")
+        rows.append((m.group(1), cells[1], km.group(1), lm.group(1), cells[4] if ncols == 5 else ""))
     return rows
 
 
@@ -188,6 +270,34 @@ def field_value(block_text: str, field: str) -> int | None:
     if not m:
         return None
     return int(m.group(1))
+
+
+def field_values_all(blocks: list[tuple[str, str, str, str | None]], field: str) -> set[int]:
+    """**Mọi** giá trị khác nhau của `field` trong **tất cả** các khối — thập phân **và** hex.
+
+    Vì sao phải có hex (đây là lý do tồn tại của hàm này, đừng "tối giản" nó đi): `observed` trong
+    `k6-exec.md` có `observed=0` ở §7 **và** `observed=0x74310001` ở §2.3. Nếu chỉ đếm giá trị thập
+    phân thì trường này trông như **một** giá trị, luật `E_AMBIGUOUS_FIELD` bỏ sót đúng chỗ tài liệu
+    mập mờ — tức luật không bắt được lỗi mà nó sinh ra để bắt. Hex được quy về số nguyên để `0x10`
+    và `16` là **cùng** một giá trị (không báo mập mờ oan).
+    """
+    pat = re.compile(
+        r"(?<![A-Za-z0-9_])" + re.escape(field) + r"=(0[xX][0-9A-Fa-f_]+|-?\d+)(?![0-9A-Za-z_])"
+    )
+    out: set[int] = set()
+    for _kind, _log, body, _section in blocks:
+        for m in pat.finditer(body):
+            tok = m.group(1).replace("_", "")
+            try:
+                out.add(int(tok, 16) if tok[:2].lower() == "0x" else int(tok, 10))
+            except ValueError:
+                continue
+    return out
+
+
+def _fmt_values(values: set[int]) -> str:
+    """Danh sách giá trị cho thông điệp lỗi: thập phân, kèm hex khi > 9 (để đọc được cả hai kiểu)."""
+    return ", ".join(f"{v} (0x{v:x})" if v > 9 else str(v) for v in sorted(values))
 
 
 def _claim_re(field: str) -> re.Pattern[str]:
@@ -285,34 +395,79 @@ def check_doc(path: str) -> DocResult:
     """Trả (lỗi, câu bị bỏ qua, số câu khẳng định). Lỗi rỗng = xanh."""
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
-    prose, starts, blocks = split_blocks(text)
+    prose, starts, blocks, sections = split_blocks(text)
     rows = parse_table(prose)
     if not rows:
         raise Fail("E_NO_TABLE", "không thấy bảng đối chiếu số ↔ khối `scope=`")
     errors: list[str] = []
     skips: list[Skip] = []
     claims = 0
-    for field, word, kind, log in rows:
-        # Một đường-dẫn log có thể xuất hiện ở **nhiều** khối (cùng tệp log trích hai đoạn khác
-        # nhau). Chọn khối **đầu tiên** có trường này kèm giá trị **thập phân**.
+    for field, word, kind, log, section in rows:
+        # (0) **Không mập mờ** (KT-140): nếu trường này có **nhiều hơn một** giá trị trong **tất cả**
+        #     các khối của tài liệu thì dòng bảng **phải** ghi rõ nó nói về khối ở tiết nào. Vì sao:
+        #     checker cũ chọn "khối đầu tiên có trường" nên vẫn xanh, nhưng **người đọc** tra khối
+        #     đầu tiên thấy giá trị khác — phép kiểm đúng mà tài liệu vẫn mập mờ. Đếm **cả hex** để
+        #     bắt đúng ca `observed` (0x74310001 ở §2.3 vs 0 ở §7).
+        all_values = field_values_all(blocks, field)
+        if len(all_values) > 1 and not section:
+            errors.append(
+                f"E_AMBIGUOUS_FIELD: `{field}` có {len(all_values)} giá trị khác nhau trong tài liệu"
+                f" ({_fmt_values(all_values)}) nhưng dòng bảng không ghi cột '{SECTION_COL}'"
+                f" — người đọc tra khối đầu tiên sẽ thấy giá trị khác"
+            )
+        # (0b) Cột "Khối" phải **máy đọc được** và trỏ tới tiết **có thật**.
+        want_section: str | None = None
+        struct_bad = False
+        if section:
+            sm = SECTION_RE.match(section)
+            if not sm:
+                errors.append(
+                    f"E_SECTION_UNKNOWN: `{field}` — cột '{SECTION_COL}' ghi {section!r},"
+                    f" phải dạng §<số> (vd §7, §2.3)"
+                )
+                struct_bad = True
+            elif sm.group(1) not in sections:
+                errors.append(
+                    f"E_SECTION_UNKNOWN: `{field}` — cột '{SECTION_COL}' ghi {section!r}"
+                    f" nhưng tài liệu không có tiết đó"
+                )
+                struct_bad = True
+            else:
+                want_section = sm.group(1)
+        # (1) Khối đích: một đường-dẫn log có thể xuất hiện ở **nhiều** khối (cùng tệp log trích hai
+        #     đoạn khác nhau). Có cột "Khối" thì **chỉ** xét khối trong tiết đó — đây là chỗ làm cho
+        #     "chỉ rõ khối" có hiệu lực thật, không chỉ là lời khai. Không có thì giữ luật cũ: khối
+        #     **đầu tiên** có trường này kèm giá trị **thập phân**.
         value = None
-        for k, l, body in blocks:
-            if k == kind and l == log:
+        if not struct_bad:
+            for k, l, body, sec in blocks:
+                if k != kind or l != log:
+                    continue
+                if want_section is not None and sec != want_section:
+                    continue
                 v = field_value(body, field)
                 if v is not None:
                     value = v
                     break
-        if value is None:
-            if not any(k == kind and l == log for k, l, _ in blocks):
-                errors.append(
-                    f"E_BLOCK_MISSING: `{field}` trỏ khối `{kind}={log}` nhưng tài liệu không có khối đó"
-                )
-            else:
-                errors.append(
-                    f"E_FIELD_MISSING: `{field}` không có giá trị số trong khối `{kind}={log}`"
-                )
-        else:
-            # (1) Cột "Giá trị (chữ)" của bảng phải khớp số trong khối — đây là vế **chính**,
+            if value is None:
+                same_kind_log = [(sec, body) for k, l, body, sec in blocks if k == kind and l == log]
+                if not same_kind_log:
+                    errors.append(
+                        f"E_BLOCK_MISSING: `{field}` trỏ khối `{kind}={log}` nhưng tài liệu không có khối đó"
+                    )
+                elif want_section is not None and not any(
+                    sec == want_section for sec, _ in same_kind_log
+                ):
+                    errors.append(
+                        f"E_SECTION_MISMATCH: `{field}` — cột '{SECTION_COL}' ghi §{want_section}"
+                        f" nhưng khối `{kind}={log}` không nằm trong tiết đó"
+                    )
+                else:
+                    errors.append(
+                        f"E_FIELD_MISSING: `{field}` không có giá trị số trong khối `{kind}={log}`"
+                    )
+        if value is not None:
+            # (2) Cột "Giá trị (chữ)" của bảng phải khớp số trong khối — đây là vế **chính**,
             #     không phụ thuộc cách hành văn.
             want = WORDS.get(word.strip())
             if want is None:
@@ -323,7 +478,7 @@ def check_doc(path: str) -> DocResult:
                 errors.append(
                     f"E_TABLE_MISMATCH: `{field}` — bảng ghi '{word}' ({want}), khối `{kind}={log}` ghi {value}"
                 )
-        # (2) Văn xuôi: chỉ so những câu **không** nói về tình huống khác. Quét **cả khi** khối
+        # (3) Văn xuôi: chỉ so những câu **không** nói về tình huống khác. Quét **cả khi** khối
         #     không resolve được, để số câu bỏ qua không phụ thuộc vào việc tài liệu đang đỏ hay
         #     xanh — mốc so sánh phải ổn định, nếu không cảnh báo "tăng" sẽ là nhiễu.
         for m in _claim_re(field).finditer(prose):
@@ -517,6 +672,93 @@ SKIP_DOC = GOOD.replace(
     "Văn xuôi nói `alpha` bằng một; nhánh `alpha` bằng hai chưa có ca; `beta` bằng không",
 )
 
+# ---------------------------------------------------------------- fixture cho luật KT-140
+#
+# `MULTI`: `alpha` có **hai** giá trị trong tài liệu (`1` ở §1, `2` ở §2) ⇒ dòng bảng **buộc** phải
+# ghi cột "Khối". `beta` chỉ có **một** giá trị (`0`) ⇒ ô "Khối" để trống vẫn hợp lệ (ca (a) của
+# Agent 0: "trường một giá trị, không cần ghi khối ⇒ xanh").
+MULTI = """# Tài liệu giả
+
+Văn xuôi nói `alpha` bằng một.
+
+## 1. Tiết một
+
+```text scope=log-a.log
+# alpha=1 beta=0
+```
+
+## 2. Tiết hai
+
+```text scope=log-b.log
+# alpha=2 beta=0
+```
+
+## Bảng đối chiếu số ↔ khối `scope=`
+
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `alpha` | một | `scope=` | `log-a.log` | §1 |
+| `beta` | không | `scope=` | `log-a.log` | |
+```
+"""
+
+# `MULTI_HEX`: đúng lớp lỗi KT-140 — `alpha` có `0x10` ở §1 và `1` ở §2. Nếu phép đếm **bỏ hex** thì
+# trường này trông như **một** giá trị và luật bỏ sót đúng ca `observed` của `k6-exec.md`. Dòng bảng
+# trỏ §2 (khối thập phân) nên **xanh**; bỏ cột "Khối" ⇒ phải đỏ `E_AMBIGUOUS_FIELD`.
+MULTI_HEX = """# Tài liệu giả
+
+Văn xuôi nói `alpha` bằng một.
+
+## 1. Tiết một
+
+```text scope=log-a.log
+# alpha=0x10 beta=0
+```
+
+## 2. Tiết hai
+
+```text scope=log-b.log
+# alpha=1 beta=0
+```
+
+## Bảng đối chiếu số ↔ khối `scope=`
+
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `alpha` | một | `scope=` | `log-b.log` | §2 |
+| `beta` | không | `scope=` | `log-a.log` | |
+```
+"""
+
+# Hồi quy hex của KT-134 **+** luật mới: hai khối **cùng tiết** §1, khối hex đứng trước. `alpha` có
+# hai giá trị (0x10, 1) ⇒ dòng bảng **buộc** ghi §1; trong §1 khối hex **không** được che khối thập
+# phân ⇒ resolve ra 1 (xanh). Bỏ bước "hex không phải thập phân" thì ca này đỏ.
+HEX_FIRST = """# Tài liệu giả
+
+Văn xuôi nói `alpha` bằng một và `beta` bằng không.
+
+## 1. Tiết một
+
+```text scope=log-a.log
+# alpha=0x10 beta=0
+```
+
+```text scope=log-a.log
+# alpha=1 beta=0
+```
+
+## Bảng đối chiếu số ↔ khối `scope=`
+
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `alpha` | một | `scope=` | `log-a.log` | §1 |
+| `beta` | không | `scope=` | `log-a.log` | §1 |
+```
+"""
+
+ALPHA_ROW = "| `alpha` | một | `scope=` | `log-a.log` | §1 |"
+BETA_ROW = "| `beta` | không | `scope=` | `log-a.log` | |"
+
 
 def _run_capture(root: str, record: bool, docs: list[str]) -> tuple[int, str]:
     """Chạy `run` và **bắt stdout** — ca cảnh báo phải kiểm chữ in ra, không chỉ mã exit."""
@@ -654,17 +896,125 @@ def selftest() -> int:
         )
     )
     # ... nhưng khối hex đứng **trước** không được che khối thập phân đứng sau (đúng luật "khối
-    # đầu tiên có giá trị thập phân" — ca thật: `observed` trong k6-exec.md).
+    # đầu tiên có giá trị thập phân" — ca thật: `observed` trong k6-exec.md). Hai khối **cùng tiết**
+    # §1 nên ca này còn kiểm luôn rằng cột "Khối" **không** làm mất phép kiểm hex.
     cases.append(
         (
-            "dương: khối hex đứng trước, khối thập phân sau ⇒ lấy khối thập phân",
-            GOOD.replace(
-                "```text scope=log-a.log\n# alpha=1 beta=0\n```",
-                "```text scope=log-a.log\n# alpha=0x10 beta=0\n```\n\n"
-                "```text scope=log-a.log\n# alpha=1 beta=0\n```",
-            ),
+            "dương: khối hex đứng trước trong cùng tiết ⇒ lấy khối thập phân",
+            HEX_FIRST,
             "",
             0,
+        )
+    )
+
+    # ---------------------------------------------------------------- KT-140: E_AMBIGUOUS_FIELD
+    #
+    # Ba ca Agent 0 yêu cầu, cộng ba ca phụ cho vế "chỉ rõ khối phải **đúng**":
+    #   (a) trường **một** giá trị, không ghi khối ⇒ xanh;
+    #   (b) trường **nhiều** giá trị, dòng bảng **không** ghi khối ⇒ đỏ `E_AMBIGUOUS_FIELD`;
+    #   (c) trường **nhiều** giá trị, dòng bảng ghi khối **đúng** ⇒ xanh.
+    cases.append(
+        (
+            "(a) dương: trường một giá trị, ô 'Khối' để trống ⇒ xanh",
+            # Bỏ khối §2 ⇒ `alpha` chỉ còn **một** giá trị (1); ô "Khối" để trống vẫn hợp lệ.
+            MULTI.replace(
+                "## 2. Tiết hai\n\n```text scope=log-b.log\n# alpha=2 beta=0\n```\n\n", ""
+            ).replace(ALPHA_ROW, "| `alpha` | một | `scope=` | `log-a.log` | |"),
+            "",
+            0,
+        )
+    )
+    cases.append(
+        (
+            "(b) âm: trường nhiều giá trị, dòng bảng KHÔNG ghi khối ⇒ E_AMBIGUOUS_FIELD",
+            MULTI.replace(ALPHA_ROW, "| `alpha` | một | `scope=` | `log-a.log` | |"),
+            "E_AMBIGUOUS_FIELD",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "(c) dương: trường nhiều giá trị, dòng bảng ghi khối ĐÚNG ⇒ xanh",
+            MULTI,
+            "",
+            0,
+        )
+    )
+    cases.append(
+        (
+            "âm: trường nhiều giá trị, dòng bảng ghi khối SAI ⇒ E_SECTION_MISMATCH",
+            MULTI.replace(ALPHA_ROW, "| `alpha` | một | `scope=` | `log-a.log` | §2 |"),
+            "E_SECTION_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "âm: cột 'Khối' ghi tiết không có trong tài liệu ⇒ E_SECTION_UNKNOWN",
+            MULTI.replace(ALPHA_ROW, "| `alpha` | một | `scope=` | `log-a.log` | §9 |"),
+            "E_SECTION_UNKNOWN",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "âm: cột 'Khối' không đúng dạng §<số> ⇒ E_SECTION_UNKNOWN",
+            MULTI.replace(ALPHA_ROW, "| `alpha` | một | `scope=` | `log-a.log` | tiết 1 |"),
+            "E_SECTION_UNKNOWN",
+            None,
+        )
+    )
+    # Vế "khối phải **đúng**" phải có hiệu lực **cả khi** trường chỉ có một giá trị — nếu không,
+    # cột "Khối" chỉ là lời khai và một dòng trỏ nhầm tiết vẫn xanh.
+    cases.append(
+        (
+            "âm: trường một giá trị nhưng cột 'Khối' trỏ nhầm tiết ⇒ E_SECTION_MISMATCH",
+            MULTI.replace(BETA_ROW, "| `beta` | không | `scope=` | `log-a.log` | §2 |"),
+            "E_SECTION_MISMATCH",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "dương: trường một giá trị, cột 'Khối' trỏ đúng tiết ⇒ xanh",
+            MULTI.replace(BETA_ROW, "| `beta` | không | `scope=` | `log-a.log` | §1 |"),
+            "",
+            0,
+        )
+    )
+    # Đếm **cả hex**: `alpha` có `0x10` (§1) và `1` (§2) ⇒ hai giá trị. Bỏ hex khỏi phép đếm thì ca
+    # này xanh và luật bỏ sót đúng ca `observed` của k6-exec.md.
+    cases.append(
+        (
+            "âm: nhiều giá trị vì có hex (0x10 vs 1), không ghi khối ⇒ E_AMBIGUOUS_FIELD",
+            MULTI_HEX.replace("| `log-b.log` | §2 |", "| `log-b.log` | |"),
+            "E_AMBIGUOUS_FIELD",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "dương: nhiều giá trị vì có hex, ghi khối đúng (§2, khối thập phân) ⇒ xanh",
+            MULTI_HEX,
+            "",
+            0,
+        )
+    )
+    # Hình dạng bảng: tiêu đề 5 cột mà dòng chỉ 4 cột ⇒ đỏ, không được "đọc rộng tay".
+    cases.append(
+        (
+            "âm: dòng bảng thiếu cột so với tiêu đề ⇒ E_TABLE_ROW_SHAPE",
+            MULTI.replace(BETA_ROW, "| `beta` | không | `scope=` | `log-a.log` |"),
+            "E_TABLE_ROW_SHAPE",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "âm: cột thứ năm của tiêu đề không tên 'Khối' ⇒ E_TABLE_HEADER",
+            MULTI.replace("| Tệp log | Khối |", "| Tệp log | Tiết |"),
+            "E_TABLE_HEADER",
+            None,
         )
     )
 

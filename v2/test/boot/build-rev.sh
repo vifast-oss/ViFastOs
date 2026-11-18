@@ -66,7 +66,7 @@ VBREV_INPUT_ROOTS="v2/kernel v2/lib"
 # Rủi ro còn lại (ghi ở `JOURNAL/kt134-journal.md`): đổi **thuật toán** dấu vân tay thì dấu vân tay
 # không đổi ⇒ dấu vân tay cũ và mới không so được. Chấp nhận: đổi thuật toán là đổi **định dạng**,
 # phải bump `VBREV_ALGO` (hằng số dưới đây, **có** nằm trong chuỗi băm).
-VBREV_ALGO="kt134-v2"
+VBREV_ALGO="kt134-v3"
 VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
@@ -146,6 +146,16 @@ vbrev_input_allowed() {
         v2/artifacts | v2/artifacts/*) return 1 ;;
         v2/target | v2/target/*) return 1 ;;
         v2/target-* | v2/target-*/*) return 1 ;;
+        # **KT-134 (luật 2 của Agent 0: quét LẠI TOÀN BỘ phạm vi)**: ba thư mục dưới đây là test
+        # tích hợp / bench / example — cargo **không bao giờ** biên dịch chúng vào binary phát
+        # hành, nên chúng không phải đầu vào của ảnh. Đo được: `v2/kernel` + `v2/lib` có ba mươi
+        # ba tệp như vậy; sửa một tệp trong đó trước đây làm dấu vân tay đổi (cùng lớp lỗi C1).
+        # **Cố ý KHÔNG loại `src/`**: một tệp trong `src/` có thể được `mod` không-test biên dịch,
+        # nên giữ nguyên là phía an toàn (thừa còn hơn thiếu: thiếu ⇒ hai ảnh khác nhau cùng dấu
+        # vân tay).
+        */tests | */tests/*) return 1 ;;
+        */benches | */benches/*) return 1 ;;
+        */examples | */examples/*) return 1 ;;
         '' | */) return 1 ;;
         *) return 0 ;;
     esac
@@ -214,10 +224,24 @@ vbrev_inputs_list() {
         VBREV_CALC_ERROR="missing-input:$_missing"
         return 1
     fi
+    # **KT-134 lượt 3 (luật 2 của Agent 0)**: `meta` là danh sách **thư mục gói**, và `git
+    # rev-parse HEAD:<thư-mục>` trả **tree oid** — tree gộp **mọi** tệp bên trong, kể cả `tests/`.
+    # Vì vậy chỉ cần `meta` có mặt là việc loại `*/tests/*` ở trên **vô hiệu**: sửa một tệp test
+    # vẫn đổi dấu vân tay. Đo được: ca (j) đỏ đúng vì lý do này.
+    # Nay chỉ giữ `meta` cho thư mục **nằm ngoài** các gốc — đó mới là mục đích ban đầu của nó
+    # (bắt gói cargo ở nơi khác); thư mục nằm trong gốc đã được `tracked` phủ **theo từng tệp**.
+    local _m="" _keep="" _under=""
+    for _m in $meta; do
+        _under=0
+        for _r in $VBREV_INPUT_ROOTS; do
+            case "$_m" in "$_r" | "$_r"/*) _under=1 ;; esac
+        done
+        [ "$_under" -eq 1 ] || _keep="$_keep $_m"
+    done
     {
         [ -n "$tracked" ] && printf '%s\n' "$tracked"
         [ -n "$pins" ] && printf '%s\n' "$pins"
-        [ -n "$meta" ] && printf '%s\n' "$meta"
+        [ -n "$_keep" ] && printf '%s\n' $_keep
     } | while IFS= read -r line; do
         vbrev_input_allowed "$line" && printf '%s\n' "$line"
     done | LC_ALL=C sort -u
@@ -616,7 +640,7 @@ EOF
 # commit** ⇒ dirty=1, (c) commit kernel ⇒ dấu vân tay đổi, (d) crate ngoài `v2/kernel` (metadata
 # báo) ⇒ dấu vân tay đổi, (e) `v2/rust-toolchain.toml` ⇒ dấu vân tay đổi. Trả 0 = đạt.
 vbrev_selftest() {
-    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" fp6="" fp7="" fp8="" fp9="" dirty=""
+    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" fp6="" fp7="" fp8="" fp9="" fp10="" fp11="" dirty=""
     local gate_out=""
     local cargo=""
     cargo="$(vbrev_cargo)" || {
@@ -831,9 +855,35 @@ LOCK
             fi
         fi
     fi
+    # (j) KT-134 lượt 3 (luật 2 của Agent 0): sửa một tệp trong `tests/` (test tích hợp — cargo
+    #     không biên dịch vào binary phát hành) ⇒ dấu vân tay **KHÔNG** đổi. Ca này ĐỎ nếu ai đó
+    #     bỏ ba dòng loại `*/tests/*` khỏi `vbrev_input_allowed`.
+    if [ "$rc" -eq 0 ]; then
+        mkdir -p "$root/v2/kernel/k/tests"
+        printf '// test tich hop gia\n' >"$root/v2/kernel/k/tests/it.rs"
+        git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "test" >/dev/null 2>&1
+        if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (j) FAIL: không tính được dấu vân tay sau khi thêm tệp tests/ (${VBREV_CALC_ERROR:-?})"
+            rc=1
+        else
+            fp10="$VBREV_CALC_SHORT"
+            printf '// test tich hop gia, sua mot dong\n' >"$root/v2/kernel/k/tests/it.rs"
+            git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "test 1 dong" >/dev/null 2>&1
+            if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+                echo "# vbrev-selftest (j) FAIL: không tính được dấu vân tay sau khi sửa tệp tests/ (${VBREV_CALC_ERROR:-?})"
+                rc=1
+            else
+                fp11="$VBREV_CALC_SHORT"
+                if [ "$fp10" != "$fp11" ]; then
+                    echo "# vbrev-selftest (j) FAIL: sửa tệp tests/ mà dấu vân tay ĐỔI ($fp10 -> $fp11) — test tích hợp còn trong phạm vi"
+                    rc=1
+                fi
+            fi
+        fi
+    fi
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j)"
     else
         echo "# vbrev-selftest: FAIL"
     fi

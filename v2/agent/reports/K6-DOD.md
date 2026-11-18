@@ -513,12 +513,14 @@ SELFTEST_EXIT=0
 ## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
 
 Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
-cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+cột "Tệp log" chỉ tệp, cột "Khối" chỉ **tiết** chứa khối. Cột "Khối" là **bắt buộc** khi một trường
+có **nhiều** giá trị trong tài liệu (KT-140): thiếu nó thì người đọc tra khối **đầu tiên** gặp giá
+trị khác và tưởng bảng sai. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
-|---|---|---|---|
-| `fail` | không | `scope=` | `kt76-soak.log` |
-| `boots` | mười | `scope=` | `kt76-persist-run.log` |
-| `clients` | hai | `scope=` | `kt70-green-qemu-ktest-user.log` |
-| `qemu_ppid1` | không | `scope=` | `kt76-orphan.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `fail` | không | `scope=` | `kt76-soak.log` | §5.3 |
+| `boots` | mười | `scope=` | `kt76-persist-run.log` | §3.3 |
+| `clients` | hai | `scope=` | `kt70-green-qemu-ktest-user.log` | §3.3 |
+| `qemu_ppid1` | không | `scope=` | `kt76-orphan.log` | §5.0 |

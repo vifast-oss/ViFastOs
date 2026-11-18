@@ -200,3 +200,12 @@ date = "2026-11-17"
 # (hoặc K7) đưa số vào khối `scope=` thì xoá mục này. Sửa nội dung tệp ⇒ ĐỎ (phải xử lý lại),
 # nên nó không thể âm thầm thành "miễn trừ vĩnh viễn".
 
+
+# KT-140 (Agent 0 câu 3): ca âm của `persist` — payload bị phá trên đĩa rồi boot đọc lại. Tên tệp
+# `b02.log` không tự chứa `mutation|break|selfbreak|neg|ca-am|red-`, nên phải khai ở đây mới được
+# đứng sau `scope-red=`. Log đã chép vào repo (trước đó chỉ nằm ở `/tmp`, nên khẳng định của
+# `k6-persist.md` §3.1 không có khối nào chứng minh).
+[[negative_log]]
+name = "b02.log"
+reason = "boot đọc lại sau khi payload bị phá trên đĩa: `match` bằng không, `mismatched` khác không (k6-persist.md §7)"
+date = "2026-11-18"

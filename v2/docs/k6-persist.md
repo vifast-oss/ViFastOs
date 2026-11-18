@@ -73,7 +73,7 @@ sát — chưa có ca âm, xem §3.1).
 | Bộ đếm | Trạng thái bằng chứng |
 |---|---|
 | `pending_blocks`, `device_flushes`, `pushed`, `flushes_ignored`, `absent`, `bytes_lost` | **có cặp dương/âm thật**: bảy pha dương vs hai boot ca âm (khối `scope-red=` bên dưới) |
-| `match`, `mismatched` | **có ca âm thật**: bộ kiểm đỏ-trước/tự phá sửa payload trên đĩa ⇒ `match` bằng không và `mismatched` khác không |
+| `match`, `mismatched` | **có ca âm thật**: bộ kiểm đỏ-trước/tự phá sửa payload trên đĩa ⇒ `match` bằng không và `mismatched` khác không — **khối `scope-red=kt140-persist-red/b02.log` ở §7** (KT-140: trước đó khẳng định này **không** có khối nào trích trong repo) |
 | `overflow`, `size_bad`, `absent_bad`, `replayed`, `errors`, `id_mismatch`, `timeouts` | **quan sát — CHƯA chứng minh**: chỉ thấy một giá trị ở mọi boot, chưa dựng được ca âm trong đợt này (**nợ**) |
 | `recorded`, `fsync`, `durable` | **quan sát — CHƯA chứng minh**: chỉ thấy nhánh xanh; nhánh `durable` bằng không chưa có ca |
 | `ok`, `phases`, `records`, `total_ok` | **quan sát — CHƯA chứng minh**: `ok` in **bằng** `phases` (cùng một biến trong `report_total`) nên **không thể** khác — không chứng minh gì; bằng chứng **độc lập** là `writes_ok`/`verifies_ok`/`records` cộng host so **từng byte** `/pstate` |
@@ -215,6 +215,20 @@ thật — luật D2-113F): boot ghi pha một xanh, host ghi đè `/p1.txt` b�
 # red-selftest: PASS (QEMU + host đều phát hiện payload bị đổi trên đĩa)
 ```
 
+**Số đo bộ đếm của ca âm** (KT-140 — §3.1 khẳng định `match`/`mismatched` của ca âm nhưng trước đó
+**không** khối nào trong repo trích chúng; log gốc nằm ở `/tmp`). Chạy lại **đúng** lệnh
+`bash v2/test/boot/persist.sh --red-selftest` (2026-11-18, exit không, `# persist.sh: PASS`), log QEMU
+của boot **đọc lại** sau khi payload bị phá in `match` bằng **không** và `mismatched` **khác không**
+(phần lớn byte lệch — đúng **hai** byte của payload gốc tình cờ bằng `0xAA`, kiểm được bằng công thức
+`payload` trong [`test/boot/persist_host.py`](../test/boot/persist_host.py)), kèm TAP đỏ
+tương ứng. Log chép vào repo: [`JOURNAL/kt140-persist-red/`](JOURNAL/kt140-persist-red/) —
+`README.md` trong đó ghi lệnh, ngày và danh mục tệp.
+
+```text scope-red=kt140-persist-red/b02.log
+# persist: phase=1 action=verify files=1 bytes=512 read=512 absent=0 match=0 sha_prefix=799edf40 mismatched=510 size_bad=0 absent_bad=0 recorded=1 pending_blocks=0 replayed=0
+not ok 1 - persist verify phase 1: byte đọc lại LỆCH / băm lệch / nhật ký pha hỏng
+```
+
 **Đỏ trước phía host**: chính bộ kiểm host ở trên là thứ chạy **trước** khi có ảnh (đỏ `NotFound`)
 và **sau** khi có ảnh (xanh); ngoài ra
 [`tests/kt75_persist_host.rs`](../lib/vifast-fs/tests/kt75_persist_host.rs) có ca **đổi một byte trên
@@ -292,23 +306,30 @@ digest build=ef566cfa583e34bb text=49874
 ## Bảng đối chiếu số ↔ khối `scope=` (KT-133, Q6 của Agent 0)
 
 Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`scope-red=`** của chính tệp này —
-cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
+cột "Tệp log" chỉ tệp, cột "Khối" chỉ **tiết** chứa khối. Cột "Khối" là **bắt buộc** khi một trường
+có **nhiều** giá trị trong tài liệu (KT-140): thiếu nó thì người đọc tra khối **đầu tiên** gặp giá
+trị khác và tưởng bảng sai. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
-|---|---|---|---|
-| `ok` | bảy | `scope=` | `kt75-qemu-b08.log` |
-| `recorded` | một | `scope=` | `kt75-qemu-b01.log` |
-| `fsync` | một | `scope=` | `kt75-qemu-b01.log` |
-| `durable` | một | `scope=` | `kt75-qemu-b01.log` |
-| `overflow` | không | `scope=` | `kt75-qemu-b01.log` |
-| `match` | một | `scope=` | `kt75-qemu-b02.log` |
-| `mismatched` | không | `scope=` | `kt75-qemu-b02.log` |
-| `size_bad` | không | `scope=` | `kt75-qemu-b02.log` |
-| `absent_bad` | không | `scope=` | `kt75-qemu-b02.log` |
-| `fsutil_mutated` | không | `scope=` | `kt75-host-b07.log` |
-| `device_flushes` | chín | `scope=` | `kt75-qemu-b01.log` |
-| `absent` | không | `scope=` | `kt75-qemu-b02.log` |
-| `p7_match` | một | `scope-red=` | `kt75-qemu-b10.log` |
-| `records` | mười bốn | `scope=` | `kt75-qemu-b08.log` |
-| `changed` | không | `scope-red=` | `kt75-persist-run.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log | Khối |
+|---|---|---|---|---|
+| `ok` | bảy | `scope=` | `kt75-qemu-b08.log` | §3.1 |
+| `recorded` | một | `scope=` | `kt75-qemu-b01.log` | §3.1 |
+| `fsync` | một | `scope=` | `kt75-qemu-b01.log` | §3.1 |
+| `durable` | một | `scope=` | `kt75-qemu-b01.log` | §3.1 |
+| `overflow` | không | `scope=` | `kt75-qemu-b01.log` | §3.1 |
+| `match` | một | `scope=` | `kt75-qemu-b02.log` | §3.1 |
+| `mismatched` | không | `scope=` | `kt75-qemu-b02.log` | §3.1 |
+| `size_bad` | không | `scope=` | `kt75-qemu-b02.log` | §3.1 |
+| `absent_bad` | không | `scope=` | `kt75-qemu-b02.log` | §3.1 |
+| `fsutil_mutated` | không | `scope=` | `kt75-host-b07.log` | §5 |
+| `device_flushes` | chín | `scope=` | `kt75-qemu-b01.log` | §3.1 |
+| `absent` | không | `scope=` | `kt75-qemu-b02.log` | §3.1 |
+| `p7_match` | một | `scope-red=` | `kt75-qemu-b10.log` | §6.2 |
+| `records` | mười bốn | `scope=` | `kt75-qemu-b08.log` | §3.1 |
+| `changed` | không | `scope-red=` | `kt75-persist-run.log` | §6.2 |
+
+**Ghi chú `match`/`mismatched` (KT-140):** hai dòng bảng trên trỏ **khối §3.1** — giá trị của **bảy
+pha dương** (`match` bằng một, `mismatched` bằng không). Ca âm ở §7 in **cùng** hai trường với
+giá trị **khác**; đó là **tình huống khác** (payload bị phá trên đĩa), **không** phải
+giá trị của dòng bảng này. Cột "Khối" là thứ phân biệt hai tình huống bằng máy đọc được.
