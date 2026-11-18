@@ -30,6 +30,11 @@ pub const B_BASE: u64 = 0x4018_0000;
 pub const B_FILE1_BASE: u64 = 0x401B_0000;
 /// VA **cố định** cho fault trang ngoài file của client B (page 99 không thể nhân `page*4096`).
 pub const B_PROBE_VA: u64 = 0x401D_0000;
+/// Đáy vùng VA của **client C** (KT-157) — 2 trang file 0, tách khỏi A/B và khỏi IPC buffer
+/// (`0x4002_0000`), pool pager (`0x4005_0000`) và đĩa pager (`0x4009_0000`).
+pub const C_BASE: u64 = 0x4006_0000;
+/// Đáy vùng VA của **client D** (KT-157) — 2 trang file 0, tách khỏi C.
+pub const D_BASE: u64 = 0x4008_0000;
 
 /// Cờ `Frame.Map`: `R|U` (đọc được từ U-mode).
 pub const FLAGS_RU: u64 = 1 | 8;
@@ -50,6 +55,10 @@ pub const P_EP_REPLY: u64 = 2;
 pub const P_VS_A: u64 = 3;
 /// Cap VSpace của client B.
 pub const P_VS_B: u64 = 4;
+/// Cap VSpace của client C (KT-157).
+pub const P_VS_C: u64 = 16;
+/// Cap VSpace của client D (KT-157).
+pub const P_VS_D: u64 = 17;
 /// Cap Frame pool đầu tiên (slot `P_POOL0 + i`).
 pub const P_POOL0: u64 = 5;
 /// Cap Frame stats.
@@ -66,8 +75,8 @@ pub const C_RESULT: u64 = 1;
 /// Cap VSpace của chính client.
 pub const C_VSPACE: u64 = 2;
 
-/// Số client dùng pager (thiết kế: 2 — đo lại bằng bộ đếm).
-pub const CLIENTS: u32 = 2;
+/// Số client dùng pager (KT-157: **4** — A/B/C/D, mỗi client một VSpace + CSpace riêng).
+pub const CLIENTS: u32 = 4;
 
 // ---------------------------------------------------------------------------------------------
 // Bảng trang client (thứ tự **chính xác** — kernel rig dùng cùng bảng để quy VA → (file,page))
@@ -79,10 +88,25 @@ pub const A_TABLE: [(u32, u32); 5] = [(0, 0), (0, 1), (0, 2), (0, 0), (0, 2)];
 /// Client B: trang 2 file 0 (**hit cache** — cùng PA với client A), trang 0/1 file 1 (miss),
 /// trang 2 file 0 lần nữa (**hit lần hai** sau khi A nạp lại), rồi 1 trang **ngoài file**.
 pub const B_TABLE: [(u32, u32); 5] = [(0, 2), (1, 0), (1, 1), (0, 2), (0, 99)];
+/// Client C (KT-157): 2 trang file 0 tại VA riêng `C_BASE` — mỗi trang fault **đúng một** lần.
+pub const C_TABLE: [(u32, u32); 2] = [(0, 0), (0, 1)];
+/// Client D (KT-157): 2 trang file 0 tại VA riêng `D_BASE` — mỗi trang fault **đúng một** lần.
+/// Dùng page 0/1 (khác **VA** với C nhờ `D_BASE` khác) để `page_of` chỉ cần một dải liên tục.
+pub const D_TABLE: [(u32, u32); 2] = [(0, 0), (0, 1)];
 
 /// VA của một trang trong bảng của client A.
 pub const fn a_va(page: u32) -> u64 {
     A_BASE + page as u64 * 4096
+}
+
+/// VA của một trang trong bảng của client C.
+pub const fn c_va(page: u32) -> u64 {
+    C_BASE + page as u64 * 4096
+}
+
+/// VA của một trang trong bảng của client D.
+pub const fn d_va(page: u32) -> u64 {
+    D_BASE + page as u64 * 4096
 }
 
 /// VA của một trang trong bảng của client B; trang ngoài file dùng VA cố định `B_PROBE_VA`.

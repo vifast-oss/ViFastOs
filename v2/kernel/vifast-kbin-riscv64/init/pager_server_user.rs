@@ -21,7 +21,8 @@ mod common;
 
 use common::{
     result, P_DISK0, P_EP_FAULT, P_EP_REPLY, P_POOL0, P_SELF, P_STATS, P_VSPACE, P_VS_A, P_VS_B,
-    VA_DISK, VA_POOL, VA_RESULT, VA_STATS, CLIENTS, DISK_FRAMES, FLAGS_RU, FLAGS_RWU,
+    P_VS_C, P_VS_D, VA_DISK, VA_POOL, VA_RESULT, VA_STATS, CLIENTS, DISK_FRAMES, FLAGS_RU,
+    FLAGS_RWU,
 };
 use vifast_vfs::SECTOR_SIZE as BLOCK_SIZE;
 use vifast_idl::pager::{decode, encode_finish, encode_ready, encode_served, Request, METHOD_FAULT};
@@ -159,10 +160,12 @@ impl Server {
     }
 
     fn vspace_cap(&self, client: u32) -> u64 {
-        if client == 0 {
-            P_VS_A
-        } else {
-            P_VS_B
+        // KT-157: bốn client, mỗi client một VSpace riêng (A/B/C/D).
+        match client {
+            0 => P_VS_A,
+            1 => P_VS_B,
+            2 => P_VS_C,
+            _ => P_VS_D,
         }
     }
 

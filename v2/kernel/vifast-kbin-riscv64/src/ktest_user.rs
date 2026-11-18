@@ -484,7 +484,11 @@ pub extern "C" fn rust_main() -> ! {
     // ---------------- TAP 25..29: KT-69 IDL + ring chia sẻ (hai tiến trình U-mode) ----------
     ktest_ring::ring_phase(sys.root, sys.us, sys.ctl, obj.untyped0, &mut fails);
 
-    // ---------------- TAP 30..34: KT-70 VFS tầng 1 — pager + page cache --------------------
+    // ---------------- TAP 30..37: KT-70/KT-150/KT-157 pager + page cache ----------------
+    // **KT-157**: trả tài nguyên `init` (VSpace + 12 Frame + 3 PageTable) **trước** pha pager —
+    // pha này dựng **năm** VSpace (pager + 4 client U-mode) nên `MAX_OBJECTS = 96` chỉ đủ khi
+    // `init` (đã `Exited`, mọi TAP 1..6 đã đo xong) nhường chỗ. Không đổi TAP nào.
+    loaded.release();
     ktest_vfs::pager_phase(sys.root, sys.us, sys.ctl, obj.untyped0, &mut fails);
 
     if fails > 0 {

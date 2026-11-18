@@ -95,7 +95,9 @@ pub const USER_STACK_GUARD_TOP: u64 = USER_STACK_TOP - USER_STACK_BYTES;
 /// Số tác vụ U-mode tối đa mà runtime đa nhiệm hỗ trợ (KT-65: procsrv + shell + con + dự phòng).
 /// Mỗi tác vụ có **bảng dải user riêng**: `DebugPutStr` phải kiểm con trỏ theo đúng VSpace đang
 /// chạy, không dùng bảng của lượt nạp trước (KT-53 chỉ có một tác vụ nên bảng là static đơn).
-pub const MAX_PROCS: usize = 4;
+/// KT-157: 4 → 6 (pager + 4 client U-mode A/B/C/D + ô 0 dự phòng). Dung lượng bảng dải
+/// (test-only), không phải `MAX_TCBS` của core (giữ 64) và không phải ngưỡng thời gian/seed.
+pub const MAX_PROCS: usize = 6;
 
 /// Bảng dải `[base,end)` theo **ô tác vụ** (nạp bằng [`load_init_slot`], chọn bằng
 /// [`set_active_slot`]).
@@ -136,7 +138,7 @@ fn active_ranges() -> &'static UserRanges {
     &RANGE_SLOTS[ACTIVE_SLOT.load(Ordering::Relaxed) as usize]
 }
 
-fn loading_ranges() -> &'static UserRanges {
+pub(crate) fn loading_ranges() -> &'static UserRanges {
     &RANGE_SLOTS[LOAD_SLOT.load(Ordering::Relaxed) as usize]
 }
 
@@ -429,6 +431,19 @@ pub fn load_init(bytes: &[u8], untyped: CapId) -> Result<LoadedInit, LoadError> 
 /// Như [`load_init`] nhưng ghi bảng dải user vào **ô tác vụ** `slot` (KT-65: nhiều chương trình
 /// U-mode trong cùng ảnh test, mỗi chương trình một VSpace).
 pub fn load_init_slot(bytes: &[u8], untyped: CapId, slot: usize) -> Result<LoadedInit, LoadError> {
+    load_init_slot_with_stack(bytes, untyped, slot, USER_STACK_PAGES)
+}
+
+/// Số trang stack user mặc định (8 trang = 32 KiB).
+pub const USER_STACK_PAGES: usize = (USER_STACK_BYTES / 4096) as usize;
+
+/// Như [`load_init_slot`] nhưng chọn số trang stack — KT-157 dùng 1 trang cho client C/D.
+pub fn load_init_slot_with_stack(
+    bytes: &[u8],
+    untyped: CapId,
+    slot: usize,
+    stack_pages: usize,
+) -> Result<LoadedInit, LoadError> {
     set_load_slot(slot);
     let image = vifast_elf::parse(bytes, EM_RISCV, USER_BASE, USER_TOP).map_err(LoadError::Elf)?;
     // Ảnh không được chạm guard/stack user; guard nằm ngay dưới stack.
@@ -545,33 +560,12 @@ pub fn load_init_slot(bytes: &[u8], untyped: CapId, slot: usize) -> Result<Loade
         }
     }
 
-    // Stack user: 8 trang RW NX; trang ngay dưới (guard) **không map**.
-    let mut stack_pages = 0usize;
-    let mut stack_va = USER_STACK_GUARD_TOP;
-    while stack_va < USER_STACK_TOP {
-        let frame = match m.retype(untyped, ObjKind::Frame, 12) {
-            Ok(frame) => frame,
-            Err(e) => bail!(init_pages, LoadError::Obj(e)),
+    // Stack user: `stack_pages` trang RW NX; trang ngay dưới (guard) **không map**.
+    let stack_pages =
+        match crate::init_pages::map_user_stack(m, vspace, untyped, stack_pages, &mut init_pages) {
+            Ok(pages) => pages,
+            Err(e) => bail!(init_pages, e),
         };
-        let pa = match m.frame_pa(frame) {
-            Ok(pa) => pa,
-            Err(e) => bail!(init_pages, LoadError::Obj(e)),
-        };
-        if !write_page(pa, &[]) {
-            bail!(init_pages, LoadError::Physmap);
-        }
-        if let Err(e) = m.map(vspace, stack_va, frame, MapFlags::RW_NX_USER) {
-            bail!(init_pages, LoadError::Obj(e));
-        }
-        if !init_pages.push(stack_va, frame) {
-            bail!(init_pages, LoadError::Image);
-        }
-        if stack_pages == 0 && !loading_ranges().push(USER_STACK_GUARD_TOP, USER_STACK_TOP) {
-            bail!(init_pages, LoadError::Image);
-        }
-        stack_pages += 1;
-        stack_va += 4096;
-    }
 
     // **KT-67b** — trang **IPC buffer** (một Frame 4 KiB, `R|W|U|NX`, zero):
     // `spec/abi.toml` dòng 58 chốt header IPC buffer chứa receive window (CPTR, ≤4 cap); shim
@@ -675,7 +669,7 @@ pub fn load_init_slot(bytes: &[u8], untyped: CapId, slot: usize) -> Result<Loade
 /// # Safety
 /// Logic: `pa` do object layer cấp trong cửa sổ PA của Untyped, `mmu::physmap_alias` chỉ trả
 /// `Some` khi PA nằm trong RAM 128 MiB đã map — nên 4 KiB ghi là hợp lệ.
-fn write_page(pa: u64, data: &[u8]) -> bool {
+pub(crate) fn write_page(pa: u64, data: &[u8]) -> bool {
     if data.len() > 4096 {
         return false;
     }

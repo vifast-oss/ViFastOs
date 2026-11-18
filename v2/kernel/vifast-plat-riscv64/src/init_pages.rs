@@ -118,6 +118,48 @@ impl LoadedInit {
     }
 }
 
+/// **KT-157** — map `stack_pages` trang stack user (RW NX) sát `USER_STACK_TOP`; trả số trang đã
+/// map. Trang guard ngay dưới **không** map. Tách khỏi `user.rs` để giữ R1 (≤ 1.500 dòng/tệp).
+///
+/// `stack_pages` được kẹp vào `[1, USER_STACK_BYTES/4096]`; `0`/quá lớn ⇒ dùng mặc định 8 trang.
+#[cfg(feature = "user")]
+pub fn map_user_stack(
+    m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>,
+    vspace: CapId,
+    untyped: CapId,
+    stack_pages: usize,
+    init_pages: &mut InitPages,
+) -> Result<usize, crate::user::LoadError> {
+    use crate::user::{loading_ranges, write_page, LoadError, USER_STACK_BYTES, USER_STACK_TOP};
+    use vifast_plat_common::obj::{MapFlags, ObjKind};
+
+    let max_pages = (USER_STACK_BYTES / 4096) as usize;
+    let stack_pages = stack_pages.clamp(1, max_pages);
+    let stack_bottom = USER_STACK_TOP - (stack_pages as u64) * 4096;
+    let mut mapped = 0usize;
+    let mut stack_va = stack_bottom;
+    while stack_va < USER_STACK_TOP {
+        let frame = m
+            .retype(untyped, ObjKind::Frame, 12)
+            .map_err(LoadError::Obj)?;
+        let pa = m.frame_pa(frame).map_err(LoadError::Obj)?;
+        if !write_page(pa, &[]) {
+            return Err(LoadError::Physmap);
+        }
+        m.map(vspace, stack_va, frame, MapFlags::RW_NX_USER)
+            .map_err(LoadError::Obj)?;
+        if !init_pages.push(stack_va, frame) {
+            return Err(LoadError::Image);
+        }
+        if mapped == 0 && !loading_ranges().push(stack_bottom, USER_STACK_TOP) {
+            return Err(LoadError::Image);
+        }
+        mapped += 1;
+        stack_va += 4096;
+    }
+    Ok(mapped)
+}
+
 /// **KT-74** — giải phóng `pages` + VSpace `vspace` (dùng chung cho [`LoadedInit::release`] và
 /// đường **thất bại** của loader: `exec` hỏng phải **không** để lại Frame/VSpace mồ côi).
 ///
