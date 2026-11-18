@@ -66,7 +66,10 @@ ktest-guard 3 3
 # page ngoài file trả mã `InvalidArgument`) + **1 TAP ca âm** (35: aux = CNode cap `P_SELF`
 # không phải VSpace ⇒ `WrongObjectType` (2); VA đã map ⇒ `AlreadyMapped` (10), không ghi đè)
 # ⇒ **35 TAP**.
-ktest-user 36 36
+# **KT-150** (K7, N3/T31): ảnh user thêm **1 TAP** (37: checker "giao đúng một lần" — kernel
+# gửi `deliveries` message `pager.fault`, pager nhận `faults`; `served+rejected == faults`; đếm
+# **theo từng địa chỉ** so với bảng client) ⇒ **37 TAP**. Số TAP khớp manifest `ktest.sh` + kernel.
+ktest-user 37 37
 
 # **KT-66** — ảnh demo thứ tư `vifast-kbin-ktest-proc` (bin riêng, cùng feature `ktest,user`):
 # đúng mười ca cũ **15..24** của `ktest-user`, đánh số lại **1..10** (TAP một ảnh phải liên tục

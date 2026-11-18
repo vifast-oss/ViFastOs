@@ -88,7 +88,7 @@ const MARKER_BYTES: u64 = 51;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..36\n");
+    PLATFORM.put_str("TAP version 13\n1..37\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     // Bảng trang + arena/guard trước (mmu::init bật satp); ASID lease rồi object layer.
@@ -497,12 +497,12 @@ pub extern "C" fn rust_main() -> ! {
     // (`src/ktest_proc.rs`) để ảnh này trả headroom: không còn `proc_demo`, 3 ELF demo và
     // 32 KiB stack syscall tĩnh trong `.bss` của ảnh này.
     user::print_stack_evidence();
-    PLATFORM.put_str("# ktest-user: taps=35 ok=1\n");
+    PLATFORM.put_str("# ktest-user: taps=37 ok=1\n");
     // PANIC **có chủ đích** (không phải fault): kết thúc boot sạch với đúng **một** dòng PANIC
     // theo mẫu của runner (`expected.txt`: `ktest-user 14 14`). In thẳng + `halt` (không qua
     // `panic!`) để log không có dòng `PANIC at …` thứ hai.
     PLATFORM.put_str(
-        "PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager xong (35 TAP, 0 fail)\n",
+        "PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager xong (37 TAP, 0 fail)\n",
     );
     PLATFORM.halt(1)
 }

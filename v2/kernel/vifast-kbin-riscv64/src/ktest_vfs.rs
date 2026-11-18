@@ -35,6 +35,10 @@ use vifast_vfs::{byte_at, Stat, CACHE_CAPACITY, PAGE_SIZE};
 #[path = "../init/pager_common.rs"]
 mod common;
 
+mod ktest_vfs_once;
+
+use ktest_vfs_once::{check_once, DeliveryLedger};
+
 use common::{
     result, A_BASE, A_TABLE, B_BASE, B_FILE1_BASE, B_PROBE_VA, B_TABLE, C_RESULT, C_VSPACE,
     DISK_FRAMES, P_DISK0, P_EP_FAULT, P_EP_REPLY, P_POOL0, P_STATS, P_VSPACE, P_VS_A, P_VS_B,
@@ -499,6 +503,7 @@ fn deliver_and_pump(
     page: u32,
     va: u64,
     pager: &mut Task<'_>,
+    ev: &mut Evidence,
 ) -> Option<Served> {
     // 1) core: `FaultKind::Vm` đi fault_ep của client (ghi `last_fault` cho pager + đếm fault).
     let tcb = if client == 0 { rig.tcb_a } else { rig.tcb_b };
@@ -530,6 +535,9 @@ fn deliver_and_pump(
         m.nb_send(rig.tcb_kern, SlotRef::new(rig.cn_kern, K_EP_FAULT), message)
     })
     .ok()?;
+    // KT-150 (N3): message `pager.fault` **đã gửi** ⇒ ghi sổ theo địa chỉ. Đây là vế "kernel
+    // giao" của checker; vế "pager nhận" là `Stat::Faults` đọc từ khối stats.
+    ev.ledger.record(va);
     // 3) chạy pager tới khi kernel nhận `served` (tối đa 8 bước).
     let mut core_fault = false;
     for _ in 0..8 {
@@ -617,6 +625,8 @@ struct Evidence {
     reason_name: &'static str,
     a_pages_done: usize,
     b_pages_done: usize,
+    /// KT-150 (N3): sổ giao `pager.fault` **theo từng địa chỉ** — nguồn của checker.
+    ledger: DeliveryLedger,
 }
 
 /// Trạng thái tracking mapping theo client, **theo trang** (PA đã thấy gần nhất + ever-seen).
@@ -730,7 +740,8 @@ fn step_client(
                 ev.first_fault = Some((client as u64, fault.va, fault.access, fault.reason));
             }
             let reads_before = stat(rig.stats_pa, Stat::Reads);
-            let Some(served) = deliver_and_pump(rig, client, file, page, fault.va, pager) else {
+            let Some(served) = deliver_and_pump(rig, client, file, page, fault.va, pager, ev)
+            else {
                 ev.mapping_bad += 1;
                 return StepOut::Fault;
             };
@@ -1422,6 +1433,63 @@ pub fn pager_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, 
         36,
         "pager bat bien reads==misses",
         "so lan doc trang khac so lan miss (hoac sectors khac misses*8)",
+    );
+    // **KT-150 (N3)** — checker "giao đúng một lần" (D2-130 mục (a)). Ba vế, **fail-closed**
+    // (thiếu vế nào ⇒ đỏ, không "bỏ qua"):
+    //   (i)   kernel **gửi** `deliveries` message `pager.fault`; pager **nhận** `faults`
+    //         (`Stat::Faults`) ⇒ phải **bằng nhau** — message bị giao lặp ⇒ pager nhận nhiều hơn.
+    //   (ii)  pager trả `served + rejected` ⇒ phải **bằng** `faults` — xử lý lặp ⇒ nhiều hơn.
+    //   (iii) **theo từng địa chỉ**: số lần giao cho mỗi VA phải bằng số lần **bảng client**
+    //         (`A_TABLE`/`B_TABLE`) yêu cầu — trang nạp lại sau trục xuất ⇒ 2, còn lại 1. Số
+    //         kỳ vọng **suy từ bảng**, không viết tay; VA không có trong sổ ⇒ `delivered_to` = 0
+    //         ⇒ đỏ (thiếu dòng cũng là đỏ).
+    let mut expected = [(0u64, 0u64); 8];
+    let mut n_expected = 0usize;
+    for (client, table) in [(0usize, &A_TABLE[..]), (1usize, &B_TABLE[..])] {
+        for (file, page) in table.iter() {
+            let va = va_of(client, *file, *page);
+            let want = table.iter().filter(|(f, p)| f == file && p == page).count() as u64;
+            let mut seen = false;
+            let mut index = 0usize;
+            while index < n_expected {
+                if expected[index].0 == va {
+                    seen = true;
+                }
+                index += 1;
+            }
+            if !seen && n_expected < expected.len() {
+                expected[n_expected] = (va, want);
+                n_expected += 1;
+            }
+        }
+    }
+    let once_ok = check_once(
+        &ev.ledger,
+        &expected[..n_expected],
+        faults,
+        served,
+        rejected,
+    );
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# pager: once deliveries={} faults={} served={} rejected={} planned={} distinct_va={} ok={}",
+            ev.ledger.deliveries,
+            faults,
+            served,
+            rejected,
+            n_expected,
+            ev.ledger.n_va,
+            u8::from(once_ok)
+        );
+    }
+    tap(
+        fails,
+        once_ok,
+        37,
+        "pager giao dung mot lan",
+        "message bi giao/xu ly lap, hoac so dem theo dia chi khong doc duoc",
     );
     // Dọn tài nguyên của pha này (trả Untyped cho pha sau — không đổi ngưỡng).
     pager_loaded.release();
