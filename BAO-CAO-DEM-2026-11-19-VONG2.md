@@ -271,7 +271,7 @@ Bài học cụ thể: miễn trừ theo **tên tệp** và theo **đường d�
 ## 9. Trạng thái cuối
 
 ```text
-HEAD        56373184f8b2 (main)  chưa push: 0   [lúc đo K6: fda1500d6b95]
+HEAD        f8fcfc1df9e0 (main)  chưa push: 0   [hash cũ trước khi dọn lịch sử: 92c8e72e]
 build-inputs 226 mục  dấu vân tay: 40f902a41ecd3979  dirty: 0
 ảnh mới nhất 2af101d141fb9a2864a92941cd60030e86a382873eb0b184ba945be25a460896
              sha256=2af101d1… size=213632
@@ -343,6 +343,8 @@ Cả hai **không bịa**: sáu lỗ hổng/lớp được giao đóng **thật*
 **Đã khắc phục một phần**: log thô của phép đo K6 và TAP 37 đã chép vào `v2/agent/JOURNAL/kt171-logs/`. **Nợ**: 25 chỗ còn lại cần chép log vào repo ở vòng sau — **không** tuyên bố đã đủ.
 
 ---
+
+> **Lịch sử đã được dọn ngày 2026-11-19** (`git filter-repo --strip-blobs-bigger-than 1M`): sáu ảnh đĩa 4 MiB bị bỏ khỏi toàn bộ lịch sử, pack 21,78 → 17,08 MiB. **Mọi hash sau `f82a8560` (2026-11-17) đã đổi** — hash trong báo cáo này là hash **trước** khi dọn; bảng ánh xạ ở [`v2/agent/JOURNAL/commit-map-2026-11-19.txt`](v2/agent/JOURNAL/commit-map-2026-11-19.txt), ghi chú ở [`DON-LOG-2026-11-19.md`](v2/agent/JOURNAL/DON-LOG-2026-11-19.md).
 
 ## Phụ lục A — Commit trên `main` trong đêm
 
