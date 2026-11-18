@@ -27,7 +27,8 @@ ca kt137-cdpwd kiem thu muc con (11->14 phep kiem); dot bien pwd in hang / ⇒ c
 - Ảnh sản phẩm mới (`--features product-shell,product-fs`): `shell-edge.sh --image` **PASS** toàn bộ
   (8/8 ca + `truncate-jobs` + `new-cmds-ok` + `new-cmds-edge` + `new-cmds-edge2` + `new-cmds-edge3` +
   `k7-uu-tien` + `k7-thu-muc` + `kt137-cdpwd`), ca 16 **14/14 xanh**.
-- `./v2/bin/v2 check` **PASS** (HEAD `6b2fdce7` + thay đổi của task).
+- `./v2/bin/v2 check` **PASS** — chạy **hai** lần: trên cây trước commit (HEAD `6b2fdce7` + thay đổi
+  của task) và trên **HEAD cuối** `8051fb89` (log `kt158-logs/kt158-v2-check-final.log`).
 - **Không** sửa `spec/`: mục `ls` của `spec/v1-parity.toml` chỉ khớp `^# shell: ls n=[0-9]+ path=/`
   (**không** khớp nội dung) ⇒ thêm `/docs` **không** phá parity. Không sửa `docs/QUYET-DINH-*`,
   `docs/v2/ViFastOs-v2-thiet-ke.md`, `docs/v1/`.
@@ -229,17 +230,22 @@ Ca 16 **ĐỎ** (dán nguyên văn từ `kt158-logs/kt158-shell-edge-mut.log`):
 
 ## 6. `./v2/bin/v2 check`
 
+Lượt **cuối** (trên HEAD đã commit `8051fb89`):
+
 ```
-== v2 check (HEAD 6b2fdce7) ==
+== v2 check (HEAD 8051fb89) ==
 --- fmt: OK
 ...
---- selftest shell-edge (KT-108): OK
+# selftest 16 kt137-cdpwd (sai): ĐÚNG (2 PASS + 12 FAIL, mã thoát 1)
+# selftest 16 kt137-cdpwd (dung): ĐÚNG (14 PASS + 0 FAIL, mã thoát 0)
+# shell-edge-selftest: PASS (9/9 ca, 42/42 kiểm: 23 sai→ĐỎ + 19 đúng→XANH)
 ...
 --- build (L0 compile): OK
 v2 check: PASS (L1 chạy trong gate --fast)
 ```
 
-Log đầy đủ: `v2/agent/JOURNAL/kt158-logs/kt158-v2-check.log`.
+Log đầy đủ: `v2/agent/JOURNAL/kt158-logs/kt158-v2-check-final.log` (lượt cuối) và
+`kt158-v2-check.log` (lượt trước commit, HEAD `6b2fdce7`).
 
 ## 7. `persist.sh` — đã kiểm, **không** phải sửa
 
@@ -253,7 +259,7 @@ Log đầy đủ: `v2/agent/JOURNAL/kt158-logs/kt158-v2-check.log`.
 
 - **Không** còn nợ kỹ thuật nào của phạm vi task. `spec/` **không** phải sửa (mục `ls` của
   `spec/v1-parity.toml` không khớp nội dung).
-- `v2/docs/k6-product-fs.md` có **log mẫu cũ** in `used=2` (dòng 103/107/111/140/148/223). Đây là
+- `v2/docs/k6-product-fs.md` có **log mẫu cũ** in `used=2` (dòng 103/107/111/140/223). Đây là
   tài liệu **đo** của KT-77c, **không** thuộc phạm vi task và **không** có cổng nào đối chiếu
   (`grep -rn k6-product-fs` trong `v2/tools/`/`v2/test/` = 0). Không sửa để tránh đụng tài liệu
   ngoài phạm vi; nếu Agent 0 muốn cập nhật thì đó là việc riêng (kèm log đo mới).
