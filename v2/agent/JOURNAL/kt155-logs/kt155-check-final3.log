@@ -1,8 +1,8 @@
-== v2 check (HEAD fda5a2fb) ==
+== v2 check (HEAD 5327e27e) ==
 --- fmt
 --- fmt: OK
 --- clippy
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.38s
 --- clippy: OK
 --- luật cấu trúc R1..R5
 --- luật cấu trúc: OK
@@ -20,10 +20,10 @@ ok 6 - case hợp lệ (đối chứng dương) thì PASS
 --- luật máy K6 (KT-80: 1,2,3,7,8)
 # verify-numbers: root=/private/tmp/night-L8-n7sim docs=36 tracked=36 staged=0 untracked=0 scan=index+untracked legacy=19 laws=1,2,3,7,8
 # note - luat 1: loại khỏi tài liệu đích [v2/agent/reports/A1-decision-log.md] chủ Agent 1: sổ quyết định sống (append mỗi quyết định), không phải báo cáo số đo; số đo trong sổ thuộc verifier của task tương ứng
-ok - luat 1: docs_checked=17 pre_existing=0 excluded=1 (895 ms)
-ok - luat 2: pairs=120 pending=0 (2966 ms)
-ok - luat 3: counters=2 used=2 (33 ms)
-ok - luat 7: extractions=3 (14 ms)
+ok - luat 1: docs_checked=17 pre_existing=0 excluded=1 (808 ms)
+ok - luat 2: pairs=120 pending=0 (3274 ms)
+ok - luat 3: counters=2 used=2 (92 ms)
+ok - luat 7: extractions=3 (39 ms)
 ok - self-test union-haystack: ĐỎ đúng mã E1_NOT_VERBATIM
 ok - self-test heading-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
 ok - self-test heading-not-reset: ĐỎ đúng mã E1_NUMBER_OUTSIDE
@@ -45,8 +45,8 @@ ok - self-test untracked-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
 ok - self-test staged-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
 ok - self-test legacy-untracked: ĐỎ đúng mã E1_LEGACY_UNTRACKED
 ok - self-test legacy-staged: ĐỎ đúng mã E1_LEGACY_STAGED
-ok - luat 8: cases=21 (12228 ms)
-# verify-numbers: ok=5 fail=0 wall_ms=16406 law_wall_ms={1:895,2:2966,3:33,7:14,8:12228}
+ok - luat 8: cases=21 (12046 ms)
+# verify-numbers: ok=5 fail=0 wall_ms=16518 law_wall_ms={1:808,2:3274,3:92,7:39,8:12046}
 --- luật máy K6 (KT-80: 1,2,3,7,8): OK
 --- selftest build-inputs (KT-128/134: a..h)
 # vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k)
@@ -64,7 +64,7 @@ ALGO-PIN: OK sha=aa9da80740711703397f469360c99ada4f7d6359fe952d36f04301cf762deb7
 # algo-pin-selftest: PASS (12 ca: a/b/c/d/e/f/g/h1/h2/i/j/k)
 --- selftest ghim thuật toán (KT-134): OK
 --- selftest shell-edge (KT-108)
-# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.qZlGjU (không cần QEMU/ảnh)
+# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.y1oGwQ (không cần QEMU/ảnh)
 # selftest 1 cat-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
 # selftest 1 cat-khong-tham-so: log ĐÚNG -> XANH đúng
 # selftest 1 cat-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
