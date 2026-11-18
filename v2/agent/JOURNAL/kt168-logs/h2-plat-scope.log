@@ -1,0 +1,30 @@
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:272 (wake_from)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:287 (wake_from_unlink)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5735 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5757 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5771 (wake_from_unlink)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:455 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6113 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_ipc.rs:192 (ensure_started) — Inactive→Ready (khởi tạo TCB)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_ipc.rs:700 (reply_with) — Running→Ready của chính replier
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_sched.rs:171 (dispatch_step) — Running→Ready (dispatch)
+# cửa wake: v2/kernel/vifast-core/src/core_sched.rs:307 (wake_step)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_sched.rs:318 (yield_current) — Running→Ready (yield)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_tcb.rs:436 (transition_tcb) — nguyên thuỷ: preempt Running→Ready
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_tcb.rs:508 (tcb_suspend) — treo: Ready + suspended (không chạy)
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs:209 (build_rig) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs:383 (task_ready) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs:200 (build_rig) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs:325 (turn) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-plat-riscv64/src/core_bridge.rs:270 (boot_smoke) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5132 (transition_tcb) — nguyên thuỷ: preempt Running→Ready
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5218 (tcb_suspend) — treo: Ready + suspended (không chạy)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5640 (dispatch_step) — Running→Ready (dispatch)
+# cửa wake: v2/sim/vifast-sim/src/kobj.rs:5794 (wake_step)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5807 (yield_current) — Running→Ready (yield)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:9791 (reply_with) — Running→Ready của chính replier
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:10368 (ensure_started) — Inactive→Ready (khởi tạo TCB)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-plat-riscv64/src/lib.rs:903: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0

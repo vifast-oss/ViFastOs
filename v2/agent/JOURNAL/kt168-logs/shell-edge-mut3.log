@@ -1,0 +1,82 @@
+# shell-edge KT-108 — 2026-11-18T20:24:44Z
+# image: /tmp/l11-target-mut3/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# image: sha256=272b56d76475fdb5b43302beef5beda083baad5d0943f062d1105d00567fc3a8 bytes=213632
+# image: # build: algo=kt134-v4 inputs=efe45ec08a656d39 dirty=1
+# qemu: 11.1.3 (/opt/homebrew/bin/qemu-system-riscv64); opensbi: /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# cấu hình: -machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1 -no-reboot (không icount)
+# log: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-shell-edge.qZxhNr/qemu.log
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.26 loadavg_5m=4.29 loadavg_15m=4.24 ncpu=12 boot_done=0 verdict=OK
+# boot: shell> đã lên
+# cat-khong-tham-so: PASS
+#   | # shell: thieu duong dan
+# write-khong-tham-so: PASS
+#   | # shell: thieu duong dan
+# ps-khong-unknown: PASS
+#   | 3 dòng pid, state=Unknown=0
+# dong-dai-mot-canh-bao: PASS
+#   | dòng 200 ký tự -> 1 dòng '# shell: dong qua dai'
+# cat-khong-co: PASS
+#   | # shell: fs loi code=5
+# write-cat-bytes: PASS
+#   | # shell: cat ok bytes=8 first=xin chao
+# write-de-co-lai: PASS
+#   | # shell: cat ok bytes=2 first=ab
+# wait-khong-treo: PASS
+#   wait 13: trả lời sau 0s (hạn 5s); 'echo sau-wait' chạy
+# new-cmds-ok[time]: PASS
+# new-cmds-ok[uptime]: PASS
+# new-cmds-ok[sync]: PASS
+# new-cmds-ok[stat]: PASS
+# new-cmds-ok[ls]: PASS
+# new-cmds-ok: PASS (# shell: stat path=/README kind=1 size=79 ino=2)
+# new-cmds-edge[stat]: PASS
+# new-cmds-edge[ls]: PASS
+# new-cmds-edge[truncate]: PASS
+# new-cmds-edge[sync]: PASS
+# new-cmds-edge[time]: PASS
+# new-cmds-edge[tong]: PASS
+# new-cmds-edge: PASS (# shell: kich thuoc qua lon (toi da 4294967295))
+# new-cmds-edge2[uptime]: PASS
+# new-cmds-edge2[jobs]: PASS
+# new-cmds-edge2[uptime-5]: PASS
+# new-cmds-edge2[jobs-5]: PASS
+# new-cmds-edge2[tong]: PASS
+# new-cmds-edge2: PASS (# shell: jobs ready=3 running=0 blocked=0 other=0)
+# new-cmds-edge3[time-tham-so]: PASS
+# new-cmds-edge3[write-thieu-noi-dung]: PASS
+# new-cmds-edge3[write-thu-muc-khong-co]: PASS
+# new-cmds-edge3[ls-tep]: PASS
+# new-cmds-edge3[sync-tham-so]: PASS
+# new-cmds-edge3: PASS
+# k7-uu-tien[write-thu-muc]: PASS
+# k7-uu-tien[truncate-thu-muc]: PASS
+# k7-uu-tien[truncate-thieu-co]: PASS
+# k7-uu-tien[write-duong-dan-rong]: PASS
+# k7-uu-tien[khong-mat-du-lieu]: PASS
+# k7-uu-tien: PASS
+# k7-thu-muc[cat-thu-muc]: PASS
+# k7-thu-muc[stat-thu-muc]: PASS
+# k7-thu-muc[time-hai-tham-so]: PASS
+# k7-thu-muc[khong-mat-du-lieu]: PASS
+# k7-thu-muc: PASS
+# kt137-cdpwd[pwd]: FAIL (mong đúng 8 dòng '# shell: pwd /', thấy 6)
+# kt137-cdpwd[cd-khong-co]: PASS
+# kt137-cdpwd[cd-tep]: PASS
+# kt137-cdpwd[cd-thu-tu]: FAIL (chuỗi dòng 'cd' lệch: thấy [# shell: cd khong co /khongco|# shell: cd khong phai thu muc /README|# shell: cd loi code=2 /..|# shell: cd /|# shell: cd /|# shell: cd loi code=7 /README/..|# shell: cd khong co /khongco/..|# shell: cd /docs|# shell: cd khong co /docs/khongco|# shell: cd loi code=2 /docs/..|# shell: cd loi code=2 /docs/..])
+# kt137-cdpwd[cat-tuong-doi]: FAIL (mong đúng 2 dòng '# shell: cat ok bytes=79 first=ViFastOs' (cat README + cat ../README), thấy 1)
+# kt137-cdpwd[stat-tuong-doi]: PASS
+# kt137-cdpwd[write-tuong-doi]: PASS
+# kt137-cdpwd[cat-rel]: PASS
+# kt137-cdpwd[truncate-tuong-doi]: PASS
+# kt137-cdpwd[stat-rel]: PASS
+# kt137-cdpwd[ls-cwd]: PASS
+# kt137-cdpwd[cd-docs]: PASS
+# kt137-cdpwd[ls-docs]: PASS
+# kt137-cdpwd[cat-docs]: PASS
+# kt137-cdpwd[stat-docs]: PASS
+# kt137-cdpwd: FAIL (xem các dòng [<lệnh>]: FAIL ở trên)
+# truncate-jobs: PASS (# shell: stat path=/README kind=1 size=5 ino=2)
+# exit: PASS (# shell: exit code=0, # product halt:)
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.07 loadavg_5m=4.72 loadavg_15m=4.39 ncpu=12 boot_done=0 verdict=OK
+# shell-edge: có ca ĐỎ (xem log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-shell-edge.qZxhNr/qemu.log)
+# shell-edge.sh: FAIL

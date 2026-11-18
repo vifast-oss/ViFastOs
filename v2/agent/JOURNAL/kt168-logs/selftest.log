@@ -1,0 +1,27 @@
+ok - v2 sạch ⇒ xanh
+ok - v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
+ok - v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
+ok - v2 `--strict` transition ngoài cửa wake ⇒ đỏ
+ok - v2 `--strict` + allowlist khớp ⇒ xanh
+ok - v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ
+ok - v2 `--strict` allowlist mục ⇒ đỏ
+ok - v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)
+ok - v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)
+ok - v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh
+ok - v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh
+ok - v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
+ok - H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)
+ok - H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)
+ok - H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)
+ok - H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)
+ok - H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)
+ok - H4 `wake /*x*/ (t)` ⇒ đỏ (block comment chen giữa)
+ok - H5 `wake` ⏎ `(t)` ⇒ đỏ (gọi cắt dòng)
+ok - H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ
+ok - phạm vi mới: chỉ `wake_from(`/`wake_step(`/`wake_addr(` ⇒ xanh
+ok - `#[cfg(test)] mod tests` thật vẫn được miễn ⇒ xanh
+ok - biến cục bộ `let mut wake = …` ⇒ xanh (không báo oan)
+ok - v1 ba kênh ⇒ đỏ
+ok - v1 một kênh ⇒ xanh
+ok - cây rỗng ⇒ đỏ (fail-closed)
+# selftest: 26/26 ok
