@@ -1,0 +1,91 @@
+
+--- riscv64 (rc=0, 3.2s) ---
+INT OUT other
+MINT RES h=0 t=0 s=0 own=0
+BUILD bin=8077d71-7e5cd4fe feats=none
+BIN OK args
+argv: HIARG
+MINT IN
+MINT OUT other
+MINT RES h=0 t=0 s=0 own=0
+BUILD bin=8077d71-7e5cd4fe feats=none
+BIN OK uname
+ViFastOs riscv64 bootinfo-v3
+MINT IN
+MINT OUT other
+MINT RES h=0 t=0 s=0 own=0
+BUILD bin=8077d71-7e5cd4fe feats=none
+BIN OK uptime
+uptime 0m00s
+FAULT EP OK addr=0x0000000000000000
+MEM OOM OK
+FSV ok
+SLO 08 00 00 00 00 00 00 00 
+LOOK s=0512 b=1 b0=30 i=07
+COM l=00 v=696
+DIRP s=0512 b=1 e0=01 mm=00
+FS LARGE OK
+FS APPEND OK
+FS OPEN FLAGS OK
+FS STAT PATH OK
+FSV ok
+SLO 08 00 00 00 00 00 00 00 
+LOOK s=0512 b=1 b0=30 i=07
+COM l=00 v=746
+DIRP s=0512 b=1 e0=01 mm=00
+HARD LINK OK
+FSV ok
+SLO 08 00 00 00 00 00 00 00 
+LOOK s=0512 b=1 b0=30 i=07
+COM l=00 v=772
+DIRP s=0512 b=1 e0=01 mm=00
+SYMLINK OK
+IRQ OK
+SHELL READY
+IPC MINT REQ
+MINT IN
+MINT OUT ilop
+MINT RES h=0 t=59 s=2 own=0
+IPC MINT RET
+IPC RIGHTS OK
+shell> PREEMPT OK (ticks=101, switches=47838)
+SMP IDLE OK (hart1_wakeups=127, idle_entries=17, wake_timer=93, wake_sgi=34)
+SMP TIMER RATE (ap=104, bsp=101)
+SMP TIMER OK (hart1_ticks=104)
+SMP PREEMPT OK (user_ticks=10, preempts=4)
+SMP POST IDLE OK (ticks=92, idle_entries=111, wake_timer=92)
+SMP SCHED OK (hart0=79641, hart1=113657, resched_sent=1, resched_wake=1, idle_entries=17)
+BKL STATS (h0_acq=51407, h0_spin=129764, h1_acq=2447, h1_spin=196499, h2_acq=0, h2_spin=0, h3_acq=0, h3_spin=0)
+TLB STATS (va_flush=260, ipi=19, skipped=241)
+ROOT SWITCH 1312
+CTX SIZE 280
+SYSCALLS t=62 n=0
+PICKS t=62 n=0
+STATE t=62 GONE
+CURT t=62 h=9
+TICKS t=62 n=0
+ENSURE FAIL n=0
+ORPHAN n=0
+PC62 GONE
+KILLED 63 64 65 66 107 107 110 114 117 120 68 140 111 112 112 112
+DATA UNTYPED pages=79/86 objects=68/86
+DATA LEAKED 0
+BOOT STACK used=19016 size=196608
+SYSCALLS t=62 n=0
+KSTORE CANARY OK
+
+PASS
+TCP PROBE: guest đã nhận dữ liệu echo từ host
+TCP PROBE: host accepted the guest connection
+TCP PROBE: host received PING-FROM-GUEST from guest
+    [riscv64] help           -> 'help\nhelp time echo ls': OK
+    [riscv64] cd /binpwd    -> 'pwd\n/bin': OK
+    [riscv64] uname          -> 'BIN OK uname': OK
+    [riscv64] ps             -> 'BIN OK ps': OK
+    [riscv64] df             -> 'blocks': OK
+    [riscv64] history!!     -> '!!\n!!: ': OK
+--- riscv64 interactive PASS ---
+
+=== summary ===
+RETRY 0/1 (không lớp nào)
+riscv64  1/1 PASS

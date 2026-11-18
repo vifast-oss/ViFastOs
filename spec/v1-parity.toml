@@ -126,10 +126,10 @@ timeout_ms = 2000
 source = 'v1-archive:crates/vifast-client/src/main.rs:883'
 source_more = 'v1-archive:docs/11-hien-tai/16-van-hanh.md:109'
 counter_evidence = 'docs/v1/overnight-log.md:3664-3669 (vong 222) ghi da REVERT cd/pwd vi vuot ngan sach trang; nhung ma o tag v1-archive (ca2eaf54/r323) lai CO cd/pwd => hai du kien mau thuan, khong tu chon'
-decision = 'cho Agent 0'
+decision = 'Agent 0 Q5 2026-11-18: (A) DUA VAO danh sach — nguyen tac "tuong duong v1" so voi BAN DONG BANG, khong so voi y dinh'
 v1_output = 'cwd <path>'
 status = 'deferred-K7'
-reason = 'hai du kien mau thuan: (a) v1-archive code co cd (main.rs:883) va bang lenh co dong cd (:109); (b) docs/v1/overnight-log.md:3664-3669 ghi vong 222 da revert. Khong duoc im lang; shell v2 chua co builtin cd/pwd => cho Agent 0 quyet (BLOCKED-CHO-A0)'
+reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log, dong "[riscv64] cd /binpwd -> pwd\n/bin: OK"). Vay cd LA lenh cua v1 dong bang. Giu deferred-K7 vi shell v2 CHUA co builtin cd/pwd => thuoc K7'
 
 [[command]]
 name = 'pwd'
@@ -140,10 +140,10 @@ timeout_ms = 2000
 source = 'v1-archive:crates/vifast-client/src/main.rs:878'
 source_more = 'v1-archive:docs/11-hien-tai/16-van-hanh.md:121'
 counter_evidence = 'docs/v1/overnight-log.md:3664-3669 (vong 222) ghi da REVERT cd/pwd vi vuot ngan sach trang; nhung ma o tag v1-archive (ca2eaf54/r323) lai CO pwd => hai du kien mau thuan, khong tu chon'
-decision = 'cho Agent 0'
+decision = 'Agent 0 Q5 2026-11-18: (A) DUA VAO danh sach — nguyen tac "tuong duong v1" so voi BAN DONG BANG, khong so voi y dinh'
 v1_output = 'cwd <path>'
 status = 'deferred-K7'
-reason = 'hai du kien mau thuan: (a) v1-archive code co pwd (main.rs:878) va bang lenh co dong pwd (:121); (b) docs/v1/overnight-log.md:3664-3669 ghi vong 222 da revert. Khong duoc im lang; shell v2 chua co builtin cd/pwd => cho Agent 0 quyet (BLOCKED-CHO-A0)'
+reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log). Vay pwd LA lenh cua v1 dong bang. Giu deferred-K7 vi shell v2 CHUA co builtin cd/pwd => thuoc K7'
 
 [[command]]
 name = 'time'
