@@ -57,5 +57,32 @@ Bằng chứng đỏ của chính đèn: khi tạm đảo kỳ vọng của ca �
 ## 6. Việc chưa làm
 
 - Chưa có tầng VFS/`read_dir` trong v2 ⇒ phép đo dừng ở `create` + `lookup` + `read` của fs.
-- Chưa chạy trên sim/QEMU (`-smp 2`, 50 boot) — KT-08 chưa có.
+- ~~Chưa chạy trên sim/QEMU (`-smp 2`, 50 boot)~~ — **đã chạy ở KT-149** (xem §7).
 - Không nới `MAX_IO`; không đổi hằng số sản phẩm.
+
+## 7. KT-149 (D2-129) — đo lại bốn điều kiện N2
+
+- **(ii) 50 boot ảnh sản phẩm v2** (`product-shell,product-fs`, `-smp 2`) với kịch bản ghi rồi đọc
+  lại **ngay**, so **từng byte**: **0 đỏ** — harness `v2/test/boot/t26.sh`, log
+  `v2/agent/JOURNAL/kt149-logs/v2-50boots.log`.
+- **(iii) test host** `t26_read_your_own_write` ở `MAX_IO=256`, 1.000 seed: **xanh** (3 test).
+- **(iv) đột biến** bỏ `flush()` thứ hai trong `commit()` ⇒ (iii) **đỏ** (2 test đỏ ở seed 1);
+  khôi phục ⇒ xanh.
+- **(i) vế 1 trên tag `v1-archive`**: **0/50 T-FS** — tag đã chứa bản vá r296b (`9cd233f3`), nên
+  phép đo đúng chữ **không** tái hiện T26. Trên **mã trước vá** (`5fc7b3ff`, cha của bản vá):
+  **5/50 T-FS**, đúng chữ ký `V2MK open=1` / `V2RD end n=06` / `V2FAIL v2=1 fsck=0` / `FS V2 BAD`.
+  Cần lead/Agent 0 chốt vế 1 dùng tag (đã vá) hay commit trước vá.
+
+Số đo nguyên văn (mỗi khối trích từ đúng log ghi kèm):
+
+```text scope=v2/agent/JOURNAL/kt149-logs/v2-50boots.log
+# t26: boots=50 green=50 red=0
+```
+
+```text scope=v2/agent/JOURNAL/kt149-logs/v1-50boots-tag.log
+SUMMARY red=2 green=48 total=50
+```
+
+```text scope=v2/agent/JOURNAL/kt149-logs/v1-50boots-prefix.log
+SUMMARY red=7 green=43 total=50
+```

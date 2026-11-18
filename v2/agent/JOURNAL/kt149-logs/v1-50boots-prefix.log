@@ -1,0 +1,87 @@
+BOOT 1 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-IPC=1)
+    FAIL: thiếu marker (1): IPC RIGHTS OK
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+BOOT 2 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 3 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 4 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 5 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 6 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 7 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 8 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 9 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 10 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 11 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 12 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-FS=1)
+    V2FAIL v2=1 fsck=0
+    FS V2 BAD
+    FAIL: thiếu marker (1): FS V2 OK
+          kèm marker BỊ CẤM: ['FS V2 BAD'] — đây là lỗi thật, không phải flake
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-FS=1)
+BOOT 13 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 14 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-FS=1)
+    V2FAIL v2=1 fsck=0
+    FS V2 BAD
+    FAIL: thiếu marker (1): FS V2 OK
+          kèm marker BỊ CẤM: ['FS V2 BAD'] — đây là lỗi thật, không phải flake
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-FS=1)
+BOOT 15 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 16 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 17 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 18 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 19 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 20 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 21 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 22 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 23 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 24 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 25 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 26 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 27 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 28 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-KHAC=1)
+    FAIL: không khớp điều kiện nào trong accept() (xem log đầy đủ)
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-KHAC=1)
+BOOT 29 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 30 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 31 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 32 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 33 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 34 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 35 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-FS=1)
+    V2FAIL v2=1 fsck=0
+    FS V2 BAD
+    FAIL: thiếu marker (1): FS V2 OK
+          kèm marker BỊ CẤM: ['FS V2 BAD'] — đây là lỗi thật, không phải flake
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-FS=1)
+BOOT 36 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 37 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 38 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 39 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 40 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-FS=1)
+    V2FAIL v2=1 fsck=0
+    FS V2 BAD
+    FAIL: thiếu marker (1): FS V2 OK
+          kèm marker BỊ CẤM: ['FS V2 BAD'] — đây là lỗi thật, không phải flake
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-FS=1)
+BOOT 41 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 42 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 43 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 44 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 45 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 46 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 47 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 48 rc=1 RED | x86_64   0/1 PASS | RETRY 1/1 (T-FS=1)
+    V2FAIL v2=1 fsck=0
+    FS V2 BAD
+    FAIL: thiếu marker (1): FS V2 OK
+          kèm marker BỊ CẤM: ['FS V2 BAD'] — đây là lỗi thật, không phải flake
+    artifacts: /private/tmp/n2-v1-prefix/artifacts/flake-x86_64-1-a0
+    RETRY 1/1 (T-FS=1)
+BOOT 49 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+BOOT 50 rc=0 GREEN | x86_64   1/1 PASS | RETRY 0/1 (không lớp nào)
+SUMMARY red=7 green=43 total=50
+PREFIX_EXIT=0

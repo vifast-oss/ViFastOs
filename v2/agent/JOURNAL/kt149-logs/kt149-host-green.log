@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/t26_read_your_own_write.rs (target/debug/deps/t26_read_your_own_write-94d3b6a7a901fa6d)
+
+running 3 tests
+test harness_catches_silent_write_loss ... ok
+test ryow_1000_seeds ... ok
+test ryow_across_remount_1000_seeds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.62s
+
+GREEN_EXIT=0

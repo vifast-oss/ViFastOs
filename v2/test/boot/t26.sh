@@ -228,6 +228,18 @@ kill_own_qemu() {
     return 0
 }
 
+# AGENTS §9 / D2-134: tối đa 3 QEMU toàn máy, tối đa 1 QEMU của chính task này. Trước khi mở
+# QEMU, đếm `qemu-system` toàn máy; ≥ 3 thì chờ 20 s rồi đếm lại (không `pkill`, không giết lạ).
+wait_qemu_slot() {
+    local n
+    while :; do
+        n="$(pgrep -f qemu-system 2>/dev/null | wc -l | tr -d ' ')"
+        [ "${n:-0}" -lt 3 ] && return 0
+        echo "# t26: cho QEMU (dang co $n >= 3) — sleep 20"
+        sleep 20
+    done
+}
+
 wait_re() {
     local re="$1" max="$2" i=0
     while [ "$i" -lt "$max" ]; do
@@ -327,6 +339,7 @@ run_boots() {
 
     i=1
     while [ "$i" -le "$nboots" ]; do
+        wait_qemu_slot
         if boot_one "$i" "$qemu" "$sbi"; then
             green=$((green + 1))
         else
