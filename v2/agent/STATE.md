@@ -3946,3 +3946,30 @@ sót QEMU, không PANIC, không timeout.
 của chính shell đi qua kênh fault (D2-25), không phải lỗi; checker soak nay **fail-closed** trên giá
 trị đó (`WANT_FAULT_SEEN=1`) kèm **đột biến phía mã** chứng minh nó đỏ. Chi tiết:
 `v2/agent/JOURNAL/kt127-journal.md`.
+
+## 2026-11-18 11:00–11:50 — THỰC THI TÁM QUYẾT ĐỊNH CỦA AGENT 0 (Q1–Q8)
+
+Agent 0 chốt Q1–Q8 trong `PHIEU-QUYET-DINH-GUI-AGENT0-2026-11-18.md`. Đã thi hành đủ tám, mỗi
+quyết định một commit xanh + push:
+
+| Quyết định | Commit | Kết quả |
+|---|---|---|
+| Q1 (B) — K6 ĐẠT có điều kiện | `07b244a7` (KT-127), `6a72c7d5` (KT-129) | `fault_seen` giải thích được (là `Exit` của shell qua kênh fault, D2-25); checker soak fail-closed + đột biến phía mã; soak ghi vào sổ; văn bản đóng chính thức |
+| Q2 (A) — caveat P20 trong văn bản | `6a72c7d5` | §5 của `K6-CLOSURE.md`; nợ chuyển v2.1 với tiêu chí "sha ảnh phát hành = sha ảnh canonical, hai máy × hai đường dẫn" |
+| Q3 (A) — build-inputs + ca âm bắt buộc | `25138df7` (KT-128) | sửa một byte mã kernel ⇒ dấu vân tay đổi **và** cổng REFUSE `inputs-mismatch`; phát hiện selftest **đã đỏ từ trước** vì không cổng nào chạy ⇒ nối vào `v2 check` |
+| Q4 (A) — sáu mục spec + ca kiểm chín lệnh | `2815e2d5` (KT-130) | `time`/`uptime`/`sync`/`stat`/`truncate`/`jobs` thành `active`; `shell-edge` thêm `new-cmds-ok` + `new-cmds-edge` (mỗi lệnh một ca đúng + một ca biên), selftest 27 kiểm |
+| Q5 — kiểm chứng `cd`/`pwd` trước khi áp luật | `647a04bc` (KT-132) | build + boot v1 tại tag đóng băng, chạy thật `cd /bin` rồi `pwd` ⇒ in `/bin` ⇒ **(A) đưa vào danh sách**; giữ `deferred-K7` vì shell v2 chưa có builtin |
+| Q6 (A) — 58 số vào khối `scope=` | `f2b3e2b4` (KT-133) | bảng đối chiếu số ↔ khối cho `k6-exec`/`k6-persist`/`K6-DOD`; prose vẫn dùng chữ nên `pre_existing=0` |
+| Q7 (A) — mở K7 + KT-81 | `6a72c7d5` | K7 mở, thứ tự N2 → N3 → N7 → N1; KT-81 READY; luật đóng lỗi ba vế ghi trong `K6-CLOSURE.md` §8 |
+| Q8 — xác nhận A1-188..194 | `6a72c7d5` | A1-188 thay bằng Q3; ghi chú chế độ quyết định thay thế |
+
+**Đo lại sáu tiêu chí trên đúng ảnh Agent 0 đã chốt** (`a0287e4b…`), log ở `JOURNAL/kt129-logs/`:
+boot ba cấu hình hart tới `shell>`, parity mười hai lệnh `active` ở smp một và smp bốn, ma trận
+hai mươi mốt boot sạch, persist bảy pha, ba ngưỡng, harness scan sạch, `shell-edge` mười một phép
+kiểm xanh.
+
+**Một phát hiện khi đo**: `kt77b-harness-scan.sh` không tự đặt `PATH` nên khi chạy từ shell không có
+`~/.cargo/bin` thì `cargo tree` rỗng ⇒ ca 3/4 đỏ **oan**. Đã vá (đặt `PATH` như các script khác).
+
+**Còn mở (READY, không chặn K6)**: KT-81 (thiết bị giả nghiêm ngặt), KT-131 (đưa soak ảnh phát hành
+vào harness chính thức — hết hạn chế §4.1), KT-132 (đóng `cd`/`pwd` vào K7).
