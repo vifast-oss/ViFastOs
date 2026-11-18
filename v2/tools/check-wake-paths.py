@@ -336,14 +336,20 @@ def scan_v2(root: Path, strict: bool) -> Report:
             fname = fn.name if fn else "<ngoài hàm>"
             producers[kind].append(f"{rel(root, p)}:{lineno} ({fname})")
 
-    # `Wake` và `Migrate` **phải** có chỗ phát; `Reschedule` là kênh có sẵn (hiện chưa có
-    # producer trong mã sản phẩm) nên chỉ đòi có nhánh tiêu thụ — thiếu nhánh đó mới là đỏ.
+    # `Wake` và `Migrate` **phải** có chỗ phát ở **cả hai** tầng (kernel + sim); `Reschedule`
+    # là kênh có sẵn (hiện chưa có producer trong mã sản phẩm) nên chỉ đòi có nhánh tiêu thụ.
     for kind in ("Wake", "Migrate"):
         if not producers[kind]:
             r.err(
                 "E_CHANNEL_MISSING",
                 f"không có chỗ phát `MailboxMsg::{kind}` — kênh chéo hart không đủ",
             )
+        for layer, prefix in (("kernel", "v2/kernel/"), ("sim", "v2/sim/")):
+            if not any(site.startswith(prefix) for site in producers[kind]):
+                r.err(
+                    "E_CHANNEL_MISSING",
+                    f"{layer}: không có chỗ phát `MailboxMsg::{kind}` — tầng này mất kênh",
+                )
     # `Wake` chỉ được phát từ `wake`; `Migrate` chỉ từ `push_step` (đường push migration).
     for kind, allowed in (("Wake", WAKE_PRODUCER), ("Migrate", MIGRATE_PRODUCER)):
         for site in producers[kind]:
@@ -696,7 +702,7 @@ def selftest() -> int:
         _fixture_v2(d)
         _write(
             d / "v2/kernel/vifast-core/src/core_ipc.rs",
-            "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+            "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        if self.tcb_state(tcb).is_blocked() {\n            return self.transition_tcb(tcb, TcbState::Ready);\n        }\n        0\n    }\n}\n",
         )
         rep = scan_v2(d, strict=True)
         cases.append(

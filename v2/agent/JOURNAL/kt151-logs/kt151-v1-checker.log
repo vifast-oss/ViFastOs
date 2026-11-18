@@ -1,0 +1,16 @@
+# kernel wake: crates/vifast-kernel/src/ipc.rs:9 (make_ready)
+# kernel wake: crates/vifast-kernel/src/lib.rs:1279 (wake_budgeters)
+# kernel wake: crates/vifast-kernel/src/lib.rs:4242 (wake_error)
+# kernel wake: crates/vifast-kernel/src/lib.rs:6437 (wake_sleepers)
+# kênh chéo hart: aarch64:RESCHED_PENDING+GIC SGI — crates/vifast-platform-aarch64/src/platform.rs:193 (send_reschedule)
+# kênh chéo hart: aarch64:RESCHED_PENDING+GIC SGI — crates/vifast-platform-aarch64/src/platform.rs:1517 (wake_hart)
+# kênh chéo hart: riscv64:MAINT_KIND+send_ipi — crates/vifast-platform-riscv64/src/platform.rs:315 (send_reschedule)
+# kênh chéo hart: riscv64:MAINT_KIND+send_ipi — crates/vifast-platform-riscv64/src/platform.rs:1339 (wake_hart)
+# kênh chéo hart: x86_64:AP_RESCHED_PENDING+LAPIC — crates/vifast-platform-x86_64/src/platform.rs:2905 (wake_hart)
+E E_V1_MULTI_CHANNEL tìm thấy 3 cơ chế đánh thức chéo hart: aarch64:RESCHED_PENDING+GIC SGI, riscv64:MAINT_KIND+send_ipi, x86_64:AP_RESCHED_PENDING+LAPIC
+E E_V1_MULTI_CHANNEL   aarch64:RESCHED_PENDING+GIC SGI: crates/vifast-platform-aarch64/src/platform.rs:193 (send_reschedule)
+E E_V1_MULTI_CHANNEL   aarch64:RESCHED_PENDING+GIC SGI: crates/vifast-platform-aarch64/src/platform.rs:1517 (wake_hart)
+E E_V1_MULTI_CHANNEL   riscv64:MAINT_KIND+send_ipi: crates/vifast-platform-riscv64/src/platform.rs:315 (send_reschedule)
+E E_V1_MULTI_CHANNEL   riscv64:MAINT_KIND+send_ipi: crates/vifast-platform-riscv64/src/platform.rs:1339 (wake_hart)
+E E_V1_MULTI_CHANNEL   x86_64:AP_RESCHED_PENDING+LAPIC: crates/vifast-platform-x86_64/src/platform.rs:2905 (wake_hart)
+# check-wake-paths: mode=v1 strict=0 errors=6 warnings=0
