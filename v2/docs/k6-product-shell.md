@@ -195,6 +195,25 @@ PANIC: u-mode fault scause=0xc stval=0x40002000 sepc=0x40002000 sstatus=0x800000
    `user::ranges_save`) chỉ được `exec` dùng, nên khi build `product-shell` trình biên dịch cảnh
    báo "never used". Không phải lỗi; dọn bằng `#[cfg(feature = "exec")]` ở lần chạm tệp sau.
 
+## 11b. KT-137 — `cd`/`pwd` + thư mục hiện tại + đường dẫn tương đối
+
+**Ngày**: 2026-11-18 · **Task**: KT-137 · **Quyết định**: D2-133 (Agent 1 quyết thay Agent 0).
+
+Shell sản phẩm thêm **hai** builtin `cd`/`pwd` (chỉ nhánh `cfg(shell_fs)`), nên `help cmds=` của
+ảnh sản phẩm tăng từ mười lăm lên **mười bảy**; ảnh test (không FS) **vẫn sáu** nên
+`proc_demo.rs`/`ktest.sh` không phải sửa. Shell giữ thư mục hiện tại trong buffer cố định và
+**tự chuẩn hoá từ vựng** (`.`/`..`/`//`) trước khi gửi `OP_PATH` — `vifast-fs` vốn từ chối hai
+tên `.`/`..` và đòi đường tuyệt đối, nên **không** đổi ngữ nghĩa FS, **không** đổi giao thức FS
+server, **không** mở ABI. Mọi lệnh có tham số đường dẫn (`ls`/`cat`/`write`/`truncate`/`stat`)
+nhận **đường tương đối** so với thư mục hiện tại; `ls` không tham số liệt kê thư mục hiện tại.
+
+Hành vi đã ghim: `cd` không tham số về `/`; `cd ..` ở gốc **ở lại** `/`; `cd` vào đường không có
+hoặc vào **tệp** báo lỗi và **không** đổi thư mục hiện tại; `pwd` in `# shell: pwd <đường>`.
+
+Bằng chứng: ca `kt137-cdpwd` của `v2/test/boot/shell-edge.sh` (mười một phép kiểm, mỗi lệnh một
+dòng phán quyết) + nhật ký `v2/agent/JOURNAL/kt137-cdpwd.md` (ba vế: đỏ trên mã cũ, xanh trên mã
+mới, đột biến).
+
 ## 11. Tái lập (lệnh có tham số dạng chữ, để tài liệu không chứa số đo viết tay)
 
 ```bash

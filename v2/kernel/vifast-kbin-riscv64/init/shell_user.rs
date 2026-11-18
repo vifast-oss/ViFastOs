@@ -23,6 +23,11 @@
 //!   `stat <path>` — **không** mở ABI mới: `time`/`uptime` gọi `ClockRead` (11) đã có,
 //!   `sync`/`stat` dùng `OP_SYNC`/`OP_STAT` của dịch vụ FS đã có. Ảnh test (không FS) giữ **6**
 //!   lệnh ⇒ kỳ vọng `# shell: help cmds=6` của harness không đổi.
+//! - **KT-137** (cùng nhánh `#[cfg(shell_fs)]`): `cd [path]` + `pwd` — shell giữ **thư mục hiện
+//!   tại** trong buffer cố định ([`Cwd`]) và **tự chuẩn hoá từ vựng** đường dẫn (`.`/`..`/`//`)
+//!   trước khi gửi `OP_PATH`; mọi lệnh có tham số đường dẫn (`ls`/`cat`/`write`/`truncate`/`stat`)
+//!   nhận **đường tương đối** so với thư mục hiện tại. **Không** đổi ngữ nghĩa FS, không đổi giao
+//!   thức FS server, không mở ABI: `vifast-fs` vốn từ chối `.`/`..` và đòi đường tuyệt đối.
 //! - `exit`  — `Exit(0)`.
 //!
 //! Vòng lặp polling + `Yield`: kernel là scheduler tuần tự của pha demo (không có scheduler
@@ -101,8 +106,9 @@ const MAX_LINE: usize = 32;
 /// (`proc_demo.rs`, `v2/test/boot/ktest.sh`) **không** phải sửa.
 /// **KT-114** thêm bốn lệnh nữa (`time`/`uptime`/`sync`/`stat`) **cũng chỉ** trong nhánh
 /// `shell_fs` ⇒ ảnh sản phẩm **9 → 13**, ảnh test vẫn **6**.
+/// **KT-137** thêm `cd`/`pwd` (cùng nhánh) ⇒ ảnh sản phẩm **15 → 17**, ảnh test vẫn **6**.
 #[cfg(shell_fs)]
-const CMDS: u64 = 15;
+const CMDS: u64 = 17;
 #[cfg(not(shell_fs))]
 const CMDS: u64 = 6;
 
@@ -382,15 +388,232 @@ fn cmd_kill(pid: u64) {
 // dựng được volume RAM ⇒ in `fs khong san sang` rồi **trả prompt**, không treo.
 // ---------------------------------------------------------------------------------------------
 
-/// `true` ⇔ `line` là lệnh của nhánh `shell_fs` (`ls`/`cat`/`write` + **KT-114**
-/// `time`/`uptime`/`sync`/`stat`) và đã được thi hành.
+// ---------------------------------------------------------------------------------------------
+// **KT-137** — `cd`/`pwd` + thư mục hiện tại + **đường dẫn tương đối**.
+//
+// Vì sao **chỉ** sửa shell: `vifast-fs` đòi đường **tuyệt đối** và **từ chối** hai tên `.`/`..`
+// (`v2/lib/vifast-fs/src/path.rs:123,148`), nên shell phải tự chuẩn hoá **từ vựng** rồi mới gửi
+// `OP_PATH`. Nhờ vậy **không** đổi ngữ nghĩa FS, **không** đổi giao thức FS server, **không** mở
+// ABI — đúng ràng buộc KT-137.
+//
+// Thư mục hiện tại sống trong **buffer cố định** trên stack của `_start` (không `static mut`,
+// không `unsafe`, không `alloc`), truyền xuống `run_line`/`fs_dispatch` bằng `&mut`.
+// ---------------------------------------------------------------------------------------------
+
+/// Cỡ tối đa của thư mục hiện tại = `proc_fs::MAX_PATH` (kernel **từ chối** đường dài hơn 48 B).
 #[cfg(shell_fs)]
-fn fs_dispatch(line: &[u8]) -> bool {
+const CWD_MAX: usize = 48;
+/// `kind` của thư mục trong `OP_STAT` (`proc_fs::stat` trả `kind<<8`; 2 = `INODE_DIR`).
+#[cfg(shell_fs)]
+const KIND_DIR: u64 = 2;
+
+/// Thư mục hiện tại: đường dẫn **tuyệt đối, đã chuẩn hoá** (không `.`/`..`, không `//`, không
+/// `/` cuối — trừ gốc `/`).
+#[cfg(shell_fs)]
+struct Cwd {
+    buf: [u8; CWD_MAX],
+    len: usize,
+}
+
+#[cfg(shell_fs)]
+impl Cwd {
+    /// Gốc `/` — trạng thái đầu của shell (khớp v1: `pwd` đầu tiên in `/`).
+    fn root() -> Self {
+        let mut buf = [0u8; CWD_MAX];
+        buf[0] = b'/';
+        Cwd { buf, len: 1 }
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+
+    /// Ghi đè bằng đường **đã chuẩn hoá** (caller bảo đảm `path.len() <= CWD_MAX`).
+    fn set(&mut self, path: &[u8]) {
+        let take = core::cmp::min(path.len(), CWD_MAX);
+        self.buf[..take].copy_from_slice(&path[..take]);
+        self.len = take;
+    }
+}
+
+/// Lỗi phân giải đường dẫn (không phải lỗi FS — chưa gửi request nào).
+#[cfg(shell_fs)]
+enum PathErr {
+    /// Tham số rỗng (`cd ` / `cat ` với toàn dấu cách).
+    Empty,
+    /// Đường sau khi ghép dài hơn [`CWD_MAX`] ⇒ kernel sẽ từ chối, báo sớm cho đúng.
+    TooLong,
+}
+
+/// In thông điệp lỗi phân giải đường dẫn (dùng chung cho mọi lệnh có tham số đường dẫn).
+#[cfg(shell_fs)]
+fn path_err(err: PathErr) {
+    match err {
+        PathErr::Empty => put(b"# shell: thieu duong dan\n"),
+        PathErr::TooLong => put(b"# shell: duong qua dai\n"),
+    }
+}
+
+/// Ghép `arg` với `cwd` rồi **chuẩn hoá từ vựng** vào `out`; trả độ dài (luôn bắt đầu bằng `/`).
+///
+/// Quy tắc (giống POSIX ở mức từ vựng, **không** chạm đĩa):
+/// - `arg` bắt đầu bằng `/` ⇒ tính từ gốc; ngược lại tính từ `cwd`.
+/// - `//` gộp, `.` bỏ, `..` lùi **một** thành phần; ở gốc thì `..` **đứng yên** (không lên trên `/`).
+/// - Kết quả không có `/` cuối (trừ gốc) ⇒ `pwd` in đúng một dạng duy nhất cho mỗi thư mục.
+#[cfg(shell_fs)]
+fn resolve_path(cwd: &Cwd, arg: &[u8], out: &mut [u8; CWD_MAX]) -> Result<usize, PathErr> {
+    if arg.is_empty() {
+        return Err(PathErr::Empty);
+    }
+    let mut len;
+    if arg[0] == b'/' {
+        out[0] = b'/';
+        len = 1;
+    } else {
+        len = cwd.len;
+        out[..len].copy_from_slice(cwd.as_slice());
+    }
+    let mut pos = 0usize;
+    while pos < arg.len() {
+        while pos < arg.len() && arg[pos] == b'/' {
+            pos += 1;
+        }
+        let start = pos;
+        while pos < arg.len() && arg[pos] != b'/' {
+            pos += 1;
+        }
+        let comp = &arg[start..pos];
+        if comp.is_empty() || comp == b"." {
+            continue;
+        }
+        if comp == b".." {
+            // Lùi một thành phần: bỏ dấu `/` cuối + tên cuối; ở gốc (`len == 1`) thì đứng yên.
+            if len > 1 {
+                let mut cut = len;
+                while cut > 1 && out[cut - 1] != b'/' {
+                    cut -= 1;
+                }
+                len = if cut > 1 { cut - 1 } else { 1 };
+            }
+            continue;
+        }
+        // Gốc `/` đã kết thúc bằng `/` ⇒ **không** thêm dấu phân cách (nếu thêm sẽ ra `//x`).
+        let sep = if len != 0 && out[len - 1] == b'/' { 0 } else { 1 };
+        if len + sep + comp.len() > CWD_MAX {
+            return Err(PathErr::TooLong);
+        }
+        if sep == 1 {
+            out[len] = b'/';
+            len += 1;
+        }
+        out[len..len + comp.len()].copy_from_slice(comp);
+        len += comp.len();
+    }
+    Ok(len)
+}
+
+/// Phân giải tham số đường dẫn của một lệnh; `None` = đã in lỗi, caller **không** gọi lệnh.
+#[cfg(shell_fs)]
+fn resolve_arg(cwd: &Cwd, arg: &[u8]) -> Option<([u8; CWD_MAX], usize)> {
+    let mut out = [0u8; CWD_MAX];
+    match resolve_path(cwd, arg, &mut out) {
+        Ok(len) => Some((out, len)),
+        Err(err) => {
+            path_err(err);
+            None
+        }
+    }
+}
+
+/// `cd [path]` — **KT-137**. Không tham số ⇒ về `/` (ghim bằng ca kiểm `kt137-cdpwd`).
+/// Đường **không có** hoặc **không phải thư mục** ⇒ báo lỗi và **KHÔNG** đổi thư mục hiện tại
+/// (kiểm bằng `pwd` ngay sau đó trong ca kiểm).
+#[cfg(shell_fs)]
+fn cmd_cd(cwd: &mut Cwd, arg: Option<&[u8]>) {
+    let mut out = [0u8; CWD_MAX];
+    let len = match arg {
+        None => {
+            out[0] = b'/';
+            1
+        }
+        Some(a) => match resolve_path(cwd, a, &mut out) {
+            Ok(len) => len,
+            Err(err) => {
+                path_err(err);
+                return;
+            }
+        },
+    };
+    if fs_set_path(&out[..len]).is_err() {
+        no_fs();
+        return;
+    }
+    let Some(reply) = fs_call([OP_STAT, 0, 0, 0]) else {
+        no_fs();
+        return;
+    };
+    let status = reply[0] & 0xff;
+    if status != ST_OK {
+        if status == ST_NOFS {
+            no_fs();
+        } else if (reply[0] >> 8) & 0xff == 5 {
+            // 5 = `FsError::NotFound` (`proc_fs::err_code`) — thông điệp đọc được, không chỉ mã.
+            put(b"# shell: cd khong co ");
+            put(&out[..len]);
+            put(b"\n");
+        } else {
+            // Mã lỗi FS khác (11 = NameTooLong, 7 = NotDir, …) — in kèm để không nói mơ hồ.
+            put(b"# shell: cd loi code=");
+            put_u64((reply[0] >> 8) & 0xff);
+            put(b" ");
+            put(&out[..len]);
+            put(b"\n");
+        }
+        return;
+    }
+    let kind = (reply[0] >> 8) & 0xff;
+    if kind != KIND_DIR {
+        put(b"# shell: cd khong phai thu muc ");
+        put(&out[..len]);
+        put(b"\n");
+        return;
+    }
+    cwd.set(&out[..len]);
+    put(b"# shell: cd ");
+    put(&out[..len]);
+    put(b"\n");
+}
+
+/// `pwd` — **KT-137**: in thư mục hiện tại (đã chuẩn hoá) sau `# shell: pwd `.
+#[cfg(shell_fs)]
+fn cmd_pwd(cwd: &Cwd) {
+    put(b"# shell: pwd ");
+    put(cwd.as_slice());
+    put(b"\n");
+}
+
+/// `true` ⇔ `line` là lệnh của nhánh `shell_fs` (`ls`/`cat`/`write` + **KT-114**
+/// `time`/`uptime`/`sync`/`stat` + **KT-137** `cd`/`pwd`) và đã được thi hành.
+#[cfg(shell_fs)]
+fn fs_dispatch(line: &[u8], cwd: &mut Cwd) -> bool {
     if line == b"ls" {
-        cmd_ls(b"/");
+        // **KT-137**: `ls` **không tham số** liệt kê **thư mục hiện tại** (trước: luôn `/`).
+        cmd_ls(cwd.as_slice());
         true
     } else if starts_with(line, b"ls ") {
-        cmd_ls(&line[3..]);
+        if let Some((path, len)) = resolve_arg(cwd, &line[3..]) {
+            cmd_ls(&path[..len]);
+        }
+        true
+    } else if line == b"cd" {
+        // **KT-137**: `cd` không tham số ⇒ về `/` (chọn một hành vi và ghim bằng ca kiểm).
+        cmd_cd(cwd, None);
+        true
+    } else if starts_with(line, b"cd ") {
+        cmd_cd(cwd, Some(&line[3..]));
+        true
+    } else if line == b"pwd" {
+        cmd_pwd(cwd);
         true
     } else if line == b"cat" {
         // KT-104: `cat`/`write` **không tham số** trước đây rơi xuống nhánh "lệnh lạ" ⇒ in
@@ -398,7 +621,9 @@ fn fs_dispatch(line: &[u8]) -> bool {
         put(b"# shell: thieu duong dan\n");
         true
     } else if starts_with(line, b"cat ") {
-        cmd_cat(&line[4..]);
+        if let Some((path, len)) = resolve_arg(cwd, &line[4..]) {
+            cmd_cat(&path[..len]);
+        }
         true
     } else if line == b"jobs" {
         cmd_jobs();
@@ -411,7 +636,9 @@ fn fs_dispatch(line: &[u8]) -> bool {
         if path.is_empty() {
             put(b"# shell: thieu duong dan\n");
         } else if let Some(size) = parse_u64(size) {
-            cmd_truncate(path, size);
+            if let Some((resolved, len)) = resolve_arg(cwd, path) {
+                cmd_truncate(&resolved[..len], size);
+            }
         } else {
             put(b"# shell: thieu kich thuoc\n");
         }
@@ -429,8 +656,8 @@ fn fs_dispatch(line: &[u8]) -> bool {
             // thiếu là rủi ro mất dữ liệu, đúng nhóm lỗi K7 ưu tiên. Muốn cắt rỗng thì dùng
             // `truncate <path> 0`, tường minh.
             put(b"# shell: thieu noi dung\n");
-        } else {
-            cmd_write(path, text);
+        } else if let Some((resolved, len)) = resolve_arg(cwd, path) {
+            cmd_write(&resolved[..len], text);
         }
         true
     } else if line == b"time" {
@@ -447,7 +674,9 @@ fn fs_dispatch(line: &[u8]) -> bool {
         put(b"# shell: thieu duong dan\n");
         true
     } else if starts_with(line, b"stat ") {
-        cmd_stat(&line[5..]);
+        if let Some((path, len)) = resolve_arg(cwd, &line[5..]) {
+            cmd_stat(&path[..len]);
+        }
         true
     } else {
         false
@@ -765,11 +994,13 @@ fn split_space(line: &[u8]) -> (&[u8], &[u8]) {
     (line, &[])
 }
 
-fn run_line(line: &[u8]) {
+/// Chạy **một** dòng lệnh. `cwd` chỉ tồn tại ở ảnh có FS (`shell_fs`) — ảnh test không có thư mục
+/// hiện tại nên tham số được `#[cfg]` bỏ hẳn (không sinh cảnh báo "unused").
+fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
     // **KT-77c**: lệnh FS của shell sản phẩm đi qua `fs_dispatch` — tách khỏi chuỗi `if/else` để
     // ảnh **không** `shell_fs` giữ nguyên chuỗi lệnh cũ (kỳ vọng harness không đổi).
     #[cfg(shell_fs)]
-    if fs_dispatch(line) {
+    if fs_dispatch(line, cwd) {
         return;
     }
     if starts_with(line, b"echo ") {
@@ -782,7 +1013,7 @@ fn run_line(line: &[u8]) {
         put_u64(CMDS);
         put(b"\n");
         #[cfg(shell_fs)]
-        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit\n");
+        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit\n");
         #[cfg(not(shell_fs))]
         put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | exit\n");
         send(EP_EVENTS, EV_HELP, [CMDS, 0, 0, 0]);
@@ -808,7 +1039,7 @@ fn run_line(line: &[u8]) {
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     #[cfg(shell_fs)]
-    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/time/uptime/sync/stat/truncate/jobs/exit\n");
+    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit\n");
     #[cfg(not(shell_fs))]
     put(b"# shell: up cmds=help/echo/ps/wait/kill/exit\n");
     put(b"# shell: input=ring va=0x");
@@ -829,6 +1060,10 @@ pub extern "C" fn _start() -> ! {
     let mut words = [0u64; 4];
     let mut line = [0u8; MAX_LINE];
     let mut len = 0usize;
+    // **KT-137**: thư mục hiện tại của shell — sống **trong** `_start` (không `static mut`), bắt
+    // đầu ở gốc `/` như v1.
+    #[cfg(shell_fs)]
+    let mut cwd = Cwd::root();
     // KT-103: cờ "dòng này đã báo quá dài" — trước đây mỗi byte vượt `MAX_LINE` in **một** dòng
     // cảnh báo ⇒ một dòng dài một nghìn byte in gần một nghìn dòng, làm ngập log và làm chậm
     // UART. Nay báo **một lần** cho mỗi dòng.
@@ -844,7 +1079,7 @@ pub extern "C" fn _start() -> ! {
                 }
                 for byte in &slot[..count] {
                     if *byte == b'\n' {
-                        run_line(&line[..len]);
+                        run_line(&line[..len], #[cfg(shell_fs)] &mut cwd);
                         len = 0;
                         overflowed = false;
                         // Prompt sau **mỗi** dòng lệnh (kể cả dòng sai) — trừ khi `run_line`

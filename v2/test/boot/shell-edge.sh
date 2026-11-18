@@ -52,7 +52,17 @@
 #   15. k7-thu-muc            `cat /` `stat /` `time 5 6` `cat /README`
 #                                              ⇒ `cat` thư mục ⇒ `fs loi code=8`; `stat` thư mục ⇒ `kind=2`;
 #                                                `time` hai tham số ⇒ `# shell: ?`; `/README` còn nguyên
-#   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba**; 14 là **K7 lượt bốn**; 15 là **K7 lượt năm §B3.4c**.)
+#   16. kt137-cdpwd           `pwd` `cd /khongco` `pwd` `cd /README` `pwd` `cd ..` `cd` `cd /` `pwd`
+#                             `cd /README/..` `pwd` `cat README` `stat README` `write rel.txt xin chao`
+#                             `cat rel.txt` `truncate rel.txt 2` `stat rel.txt` `ls` `ls .`
+#                             `cat ../README` `cd /khongco/..` `pwd`
+#                                              ⇒ `pwd` sáu lần **đều** in `/` (thư mục hiện tại **không**
+#                                                đổi khi `cd` hỏng); `cd` đường không có / vào tệp báo lỗi
+#                                                đúng; `cd ..`/`cd`/`cd /`/`cd /README/..`/`cd /khongco/..`
+#                                                ⇒ `/`; **đường tương đối** chạy cho `cat`/`stat`/`write`/
+#                                                `truncate`/`ls` (ghép với thư mục hiện tại)
+#   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba**; 14 là **K7 lượt bốn**; 15 là **K7 lượt năm §B3.4c**;
+#    16 là **KT-137** — `cd`/`pwd` + thư mục hiện tại + đường dẫn tương đối.)
 #
 # **Phán quyết từng lệnh** (Q4 vòng ba): bốn ca 10/11/12/13 in **một dòng cho mỗi lệnh**
 # (`# <ca>[<lệnh>]: PASS/FAIL (lý do)`) và **chạy hết** mọi lệnh rồi mới kết luận — log sai hai
@@ -989,6 +999,180 @@ check_k7_thu_muc() {
         "khong-mat-du-lieu:ok_k7_thu_muc_khong_mat_du_lieu"
 }
 
+# --- kt137-cdpwd: `cd`/`pwd` + thư mục hiện tại + **đường dẫn tương đối** (KT-137) ------------
+#
+# Vì sao có ca này: KT-132 đã chứng minh v1 tại tag đóng băng **có** `cd`/`pwd` (log
+# `v2/agent/JOURNAL/kt132-v1-cdpwd.log`: `cd /bin` rồi `pwd` ⇒ `/bin`), nên hai lệnh thuộc
+# "tương đương v1" và phải có trong shell v2. Ca này ghim **hành vi thật** của bản KT-137 trên
+# ảnh sản phẩm, **mỗi lệnh một dòng phán quyết** (`emit_verdicts`), và kiểm cả **đường tương đối**
+# cho mọi lệnh có tham số đường dẫn.
+#
+# Vì sao `pwd` phải đếm **cả** số dòng `pwd` khác `/`: shell giữ thư mục hiện tại trong buffer;
+# nếu `cd` hỏng mà vẫn ghi đè (lỗi thật đã từng có ở shell khác), `pwd` sau đó in `/khongco` —
+# đếm riêng dòng `/` sẽ **không** thấy. Vế thứ hai bắt đúng lỗi ấy.
+
+# `pwd` sáu lần ⇒ **sáu** dòng `# shell: pwd /` và **không** dòng `pwd` nào khác.
+ok_kt137_pwd() {
+    local log="$1" n all
+    n="$(grep -c -x -F '# shell: pwd /' "$log" 2>/dev/null || true)"
+    all="$(grep -c -E '^# shell: pwd ' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 6 ]; then
+        echo "mong đúng 6 dòng '# shell: pwd /', thấy ${n:-0}"
+        return 1
+    fi
+    if [ "${all:-0}" -ne 6 ]; then
+        echo "có ${all:-0} dòng '# shell: pwd …' nhưng chỉ ${n:-0} dòng in '/' — thư mục hiện tại bị đổi"
+        return 1
+    fi
+    return 0
+}
+
+# `cd /khongco` ⇒ **đúng một** `# shell: cd khong co /khongco` (vế "không đổi thư mục hiện tại" do
+# `ok_kt137_pwd` chứng minh).
+ok_kt137_cd_khong_co() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: cd khong co /khongco' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: cd khong co /khongco', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `cd /README` (tệp, không phải thư mục) ⇒ **đúng một** `# shell: cd khong phai thu muc /README`.
+ok_kt137_cd_tep() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: cd khong phai thu muc /README' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: cd khong phai thu muc /README', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# Bảy lệnh `cd` in **đúng thứ tự** bảy dòng. Vì sao so **chuỗi** chứ không đếm tổng: năm lệnh
+# cùng in `# shell: cd /` (`cd ..`, `cd`, `cd /`, `cd /README/..`, `cd /khongco/..`) — đếm tổng
+# không quy được lỗi cho lệnh nào; so thứ tự thì lệnh nào in sai cũng làm lệch chuỗi.
+ok_kt137_cd_thu_tu() {
+    local log="$1" got want
+    got="$(grep -E '^# shell: cd ' "$log" 2>/dev/null || true)"
+    want="$(printf '%s\n' \
+        '# shell: cd khong co /khongco' \
+        '# shell: cd khong phai thu muc /README' \
+        '# shell: cd /' \
+        '# shell: cd /' \
+        '# shell: cd /' \
+        '# shell: cd /' \
+        '# shell: cd /')"
+    if [ "$got" != "$want" ]; then
+        echo "chuỗi dòng 'cd' lệch: thấy [$(printf '%s' "$got" | tr '\n' '|')]"
+        return 1
+    fi
+    return 0
+}
+
+# `cat README` và `cat ../README` ⇒ **hai** dòng `cat ok bytes=79 first=ViFastOs` (đường tương đối
+# ghép với thư mục hiện tại `/`). Trước KT-137 shell gửi nguyên `README` xuống FS ⇒ `fs loi code=2`.
+ok_kt137_cat_tuong_doi() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: cat ok bytes=79 first=ViFastOs' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: cat ok bytes=79 first=ViFastOs' (cat README + cat ../README), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `stat README` ⇒ `# shell: stat path=/README kind=1 size=79 ino=2` — đường **tuyệt đối** sau khi
+# ghép, chứng minh shell đã phân giải chứ không gửi `README` thô xuống FS.
+ok_kt137_stat_tuong_doi() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: stat path=/README kind=1 size=79 ino=2' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: stat path=/README kind=1 size=79 ino=2', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `write rel.txt xin chao` ⇒ `# shell: write /rel.txt bytes=8 sync=ok` (tạo tệp ở thư mục hiện tại).
+ok_kt137_write_tuong_doi() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: write /rel.txt bytes=8 sync=ok' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: write /rel.txt bytes=8 sync=ok', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `cat rel.txt` ⇒ `# shell: cat ok bytes=8 first=xin chao` (đọc lại đúng tệp vừa ghi bằng đường
+# tương đối).
+ok_kt137_cat_rel() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: cat ok bytes=8 first=xin chao' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: cat ok bytes=8 first=xin chao', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `truncate rel.txt 2` ⇒ `# shell: truncate path=/rel.txt size=2` (đường tương đối + cỡ đúng).
+ok_kt137_truncate_tuong_doi() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: truncate path=/rel.txt size=2' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: truncate path=/rel.txt size=2', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `stat rel.txt` ⇒ `# shell: stat path=/rel.txt kind=1 size=2 ino=<n>` (truncate **có** hiệu lực).
+ok_kt137_stat_rel() {
+    local log="$1" n
+    n="$(grep -c -E '^# shell: stat path=/rel.txt kind=1 size=2 ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: stat path=/rel.txt kind=1 size=2 ino=<n>', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `ls` (không tham số) và `ls .` ⇒ **hai** dòng `ls n=<n> path=/` và bảng có `rel.txt` — liệt kê
+# **thư mục hiện tại** (trước KT-137 `ls` không tham số luôn liệt kê `/`; ở gốc hai hành vi trùng
+# nhau nên vế này chỉ ghim dạng dòng, vế mạnh là các phép kiểm đường tương đối ở trên).
+ok_kt137_ls_cwd() {
+    local log="$1" n m
+    n="$(grep -c -E '^# shell: ls n=[0-9]+ path=/$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 2 ]; then
+        echo "mong đúng 2 dòng '# shell: ls n=<n> path=/' (ls + ls .), thấy ${n:-0}"
+        return 1
+    fi
+    m="$(grep -c -x -F '  f rel.txt' "$log" 2>/dev/null || true)"
+    if [ "${m:-0}" -lt 1 ]; then
+        echo "bảng 'ls' không có 'rel.txt' — không liệt kê thư mục hiện tại"
+        return 1
+    fi
+    return 0
+}
+
+check_kt137_cdpwd() {
+    emit_verdicts "kt137-cdpwd" "$1" \
+        "pwd:ok_kt137_pwd" \
+        "cd-khong-co:ok_kt137_cd_khong_co" \
+        "cd-tep:ok_kt137_cd_tep" \
+        "cd-thu-tu:ok_kt137_cd_thu_tu" \
+        "cat-tuong-doi:ok_kt137_cat_tuong_doi" \
+        "stat-tuong-doi:ok_kt137_stat_tuong_doi" \
+        "write-tuong-doi:ok_kt137_write_tuong_doi" \
+        "cat-rel:ok_kt137_cat_rel" \
+        "truncate-tuong-doi:ok_kt137_truncate_tuong_doi" \
+        "stat-rel:ok_kt137_stat_rel" \
+        "ls-cwd:ok_kt137_ls_cwd"
+}
+
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
 #    (không báo), >1 = báo mỗi byte (lỗi cũ) — cả hai đều ĐỎ.
 check_long_line_once() {
@@ -1080,11 +1264,11 @@ check_wait_no_hang() {
 #   - `right.log`: đầu ra **đúng** ⇒ hàm phải trả 0.
 # Ca 8 có thêm một log "đúng nội dung nhưng quá chậm" (dt=99 s) ⇒ vẫn phải ĐỎ.
 # =====================================================================================
-SELFTEST_CASES=8
+SELFTEST_CASES=9
 SELFTEST_CHECKS=0
 SELFTEST_OK=0
 SELFTEST_FAIL=0
-# **KT-130** (vòng hai): `SELFTEST_CASES` đếm **ca có số** (1..8) trong chú thích đầu tệp, **không**
+# **KT-130** (vòng hai): `SELFTEST_CASES` đếm **ca có số** (1..8, **KT-137** thêm 16) trong chú thích đầu tệp, **không**
 # phải số log-đúng. Từ ca 3b trở đi mỗi ca có **nhiều** cặp log, nên dòng tổng kết cũ in
 # `$((SELFTEST_CHECKS - SELFTEST_CASES)) sai→ĐỎ + $SELFTEST_CASES đúng→XANH` — sai số (27 kiểm mà
 # in "19 sai + 8 đúng", thật là 15 sai + 12 đúng). Đếm riêng số log-đúng để dòng tổng kết không nói
@@ -1532,6 +1716,110 @@ run_selftest() {
     selftest_pair "8 wait-khong-treo" check_wait_no_hang "$wrong" "$right" 0
     # Ca phụ: nội dung đúng nhưng `wait` trả lời quá chậm (99 s) ⇒ vẫn phải ĐỎ.
     selftest_red "8 wait-khong-treo (cham)" check_wait_no_hang "$right" 99
+
+    # ---- ca 16 (**KT-137**): `cd`/`pwd` + thư mục hiện tại + đường dẫn tương đối.
+    #      Log ĐÚNG = đầu ra thật của ca 16 trên ảnh sản phẩm (mỗi lệnh một dòng, đúng thứ tự).
+    #      Log SAI cố ý giữ **hành vi trước KT-137** ở ba chỗ: (a) `cd` hỏng vẫn đổi thư mục hiện
+    #      tại (`pwd` in `/khongco`), (b) `cd /README` (tệp) **thành công**, (c) mọi lệnh có tham số
+    #      đường dẫn gửi **nguyên** đường tương đối xuống FS ⇒ `fs loi code=2`/`code=5`. Vì vậy
+    #      **chín** phép kiểm phải đỏ, hai phép kiểm còn lại (`cd-khong-co`, `ls-cwd`) vẫn xanh —
+    #      chứng minh phán quyết **quy đúng lệnh**, không phải "đỏ cả ca".
+    d="$(mktemp -d "$root/c16.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: pwd /\n'
+        printf '# shell: cd khong co /khongco\n'
+        printf '# shell: pwd /khongco\n'
+        printf '# shell: cd /README\n'
+        printf '# shell: pwd /README\n'
+        printf '# shell: cd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=5\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: fs loi code=5\n'
+        printf '  f README\n'
+        printf '  f rel.txt\n'
+        printf '# shell: ls n=2 path=/\n'
+        printf '  f README\n'
+        printf '  f rel.txt\n'
+        printf '# shell: ls n=2 path=/\n'
+        printf '# shell: fs loi code=2\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: echo __END_16__\n'
+    } >"$wrong"
+    {
+        printf '# shell: pwd /\n'
+        printf '# shell: cd khong co /khongco\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd khong phai thu muc /README\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf 'ViFastOs v2 - FS tren anh san pham\n'
+        printf 'lenh: ls | cat <path> | write <path> <text>\n'
+        printf '\n'
+        printf '# shell: cat ok bytes=79 first=ViFastOs\n'
+        printf '# shell: stat path=/README kind=1 size=79 ino=2\n'
+        printf '# shell: write /rel.txt bytes=8 sync=ok\n'
+        printf 'xin chao\n'
+        printf '# shell: cat ok bytes=8 first=xin chao\n'
+        printf '# shell: truncate path=/rel.txt size=2\n'
+        printf '# shell: stat path=/rel.txt kind=1 size=2 ino=5\n'
+        printf '  f README\n'
+        printf '  f a\n'
+        printf '  f g\n'
+        printf '  f rel.txt\n'
+        printf '# shell: ls n=4 path=/\n'
+        printf '  f README\n'
+        printf '  f a\n'
+        printf '  f g\n'
+        printf '  f rel.txt\n'
+        printf '# shell: ls n=4 path=/\n'
+        printf 'ViFastOs v2 - FS tren anh san pham\n'
+        printf 'lenh: ls | cat <path> | write <path> <text>\n'
+        printf '\n'
+        printf '# shell: cat ok bytes=79 first=ViFastOs\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: echo __END_16__\n'
+    } >"$right"
+    selftest_verdicts "16 kt137-cdpwd (sai)" check_kt137_cdpwd "$wrong" 1 2 9 \
+        'kt137-cdpwd[pwd]: FAIL' 'kt137-cdpwd[cd-tep]: FAIL' \
+        'kt137-cdpwd[cd-thu-tu]: FAIL' 'kt137-cdpwd[cat-tuong-doi]: FAIL' \
+        'kt137-cdpwd[stat-tuong-doi]: FAIL' 'kt137-cdpwd[write-tuong-doi]: FAIL' \
+        'kt137-cdpwd[cat-rel]: FAIL' 'kt137-cdpwd[truncate-tuong-doi]: FAIL' \
+        'kt137-cdpwd[stat-rel]: FAIL'
+    selftest_verdicts "16 kt137-cdpwd (dung)" check_kt137_cdpwd "$right" 0 11 0
+    # Hai phép kiểm **vẫn xanh** trong log sai ở trên cần ca âm **riêng** (nếu không, chúng chưa
+    # được chứng minh là bắt được lỗi): `cd-khong-co` với **hai** dòng (lệnh chạy hai lần) và
+    # `ls-cwd` với **một** dòng `ls` (thiếu `ls .`).
+    d="$(mktemp -d "$root/c16b.XXXXXX")"
+    w2="$d/w2.log"
+    {
+        printf '# shell: cd khong co /khongco\n'
+        printf '# shell: cd khong co /khongco\n'
+    } >"$w2"
+    selftest_pair "16 cd-khong-co" ok_kt137_cd_khong_co "$w2" "$right"
+    d="$(mktemp -d "$root/c16c.XXXXXX")"
+    w3="$d/w3.log"
+    {
+        printf '  f rel.txt\n'
+        printf '# shell: ls n=2 path=/\n'
+    } >"$w3"
+    selftest_pair "16 ls-cwd" ok_kt137_ls_cwd "$w3" "$right"
 
     if [ "$SELFTEST_FAIL" -eq 0 ]; then
         echo "# shell-edge-selftest: PASS ($SELFTEST_CASES/$SELFTEST_CASES ca, $SELFTEST_OK/$SELFTEST_CHECKS kiểm: $((SELFTEST_CHECKS - SELFTEST_RIGHT)) sai→ĐỎ + $SELFTEST_RIGHT đúng→XANH)"
@@ -2019,6 +2307,33 @@ run_real() {
         fi
     fi
 
+    # (16) **KT-137** (`cd`/`pwd` + thư mục hiện tại + **đường dẫn tương đối**): mười một phép kiểm,
+    #      mỗi lệnh một dòng phán quyết. Đặt **trước** (8b) để `/README` còn 79 byte (8b truncate nó
+    #      về 5). Ca này **tạo** `/rel.txt` ở gốc — không ca nào sau đọc **số mục** của gốc, và
+    #      `stat /README … ino=2` của (8b) không đổi (README được seed **trước** mọi tệp khác).
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        for c in 'pwd' 'cd /khongco' 'pwd' 'cd /README' 'pwd' 'cd ..' 'cd' 'cd /' 'pwd' \
+            'cd /README/..' 'pwd' 'cat README' 'stat README' 'write rel.txt xin chao' \
+            'cat rel.txt' 'truncate rel.txt 2' 'stat rel.txt' 'ls' 'ls .' 'cat ../README' \
+            'cd /khongco/..' 'pwd'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 16; then
+            if check_kt137_cdpwd "$CASE_LOG"; then
+                echo "# kt137-cdpwd: PASS ($(grep -m1 -x -F '# shell: pwd /' "$CASE_LOG"))"
+            else
+                echo "# kt137-cdpwd: FAIL (xem các dòng [<lệnh>]: FAIL ở trên)"
+                rc=1
+            fi
+        else
+            echo "# kt137-cdpwd: FAIL (quá hạn — shell treo ở ca cd/pwd)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
     # (8b) **KT-126**: hai lệnh mới `truncate` + `jobs` — chạy **ngay trước** `exit` để không ảnh
     #      hưởng ca nào phía sau (truncate **đổi** `/README`). Không đánh số ca mới: dùng chung
     #      khung của ca 9 và chỉ thêm phép kiểm, nên `mark_remaining_fail` và bảng tổng kết không đổi.
@@ -2075,7 +2390,7 @@ run_real() {
     qg_infra after "$LOGDIR/infra.log" || true
 
     if [ "$rc" -eq 0 ]; then
-        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc PASS"
+        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc + kt137-cdpwd PASS"
         echo "# shell-edge.sh: PASS"
         return 0
     fi

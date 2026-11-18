@@ -27,8 +27,8 @@ theo **tag**, không theo con số lịch sử.
 | `echo` | `<text>` | `docs/v1/agent2-report-21.md:81`; `docs/v1/agent2-report-62.md:23` | **active** |
 | `ps` | — | `docs/v1/overnight-log.md:2633`; `v1-archive:crates/vifast-bin/src/main.rs:230` | **active** |
 | `kill` | `<pid>` | `docs/v1/overnight-log.md:2887` | **active** |
-| `cd` | `<path>` | `v1-archive:crates/vifast-client/src/main.rs:883`; `v1-archive:docs/11-hien-tai/16-van-hanh.md:109` | deferred-K7 + **cho A0** |
-| `pwd` | — | `v1-archive:crates/vifast-client/src/main.rs:878`; `v1-archive:docs/11-hien-tai/16-van-hanh.md:121` | deferred-K7 + **cho A0** |
+| `cd` | `<path>` | `v1-archive:crates/vifast-client/src/main.rs:883`; `v1-archive:docs/11-hien-tai/16-van-hanh.md:109` | **active** (KT-137) |
+| `pwd` | — | `v1-archive:crates/vifast-client/src/main.rs:878`; `v1-archive:docs/11-hien-tai/16-van-hanh.md:121` | **active** (KT-137) |
 | `time` | — | `docs/v1/agent2-report-21.md:81` | deferred-K7 |
 | `ls` | `[path]` | `docs/v1/agent2-report-21.md:81`; `docs/v1/overnight-log.md:3470` | deferred-K7 |
 | `cat` | `<path>` | `docs/v1/agent2-report-21.md:81` | deferred-K7 |
@@ -52,9 +52,10 @@ theo **tag**, không theo con số lịch sử.
 | `history` | — | `docs/v1/overnight-log.md:2776` | deferred-K7 |
 | `!!` | — | `docs/v1/overnight-log.md:2776` | deferred-K7 |
 
-**Sáu lệnh `active`** (`help`, `echo`, `ps`, `kill`, `ls`, `cat` — shell v2 đã có) ·
-**hai mươi hai mục `deferred-K7`**. (Đính chính KT-122: bản trước ghi "bốn" và "hai mươi bốn" —
-đúng là sáu và hai mươi hai, khớp `spec/v1-parity.toml` và bảng KT-109.)
+**Mười bốn lệnh `active`** (`help`, `echo`, `ps`, `kill`, `ls`, `cat` — shell v2 đã có từ trước;
+`time`, `uptime`, `sync`, `stat`, `truncate`, `jobs` — KT-130; `cd`, `pwd` — KT-137) ·
+**mười bốn mục `deferred-K7`**. (Đính chính KT-122: bản trước ghi "bốn" và "hai mươi bốn" — đúng là
+sáu và hai mươi hai ở thời điểm ấy; KT-130 và KT-137 đã lật thêm tám mục sang `active`.)
 
 **Lý do `deferred` đã sửa cho đúng hiện trạng (review KT-77a):**
 - `time`, `uptime`: **không** phải "cần syscall đồng hồ" — `ClockRead` = syscall mười một đã có
