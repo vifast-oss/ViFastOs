@@ -1,26 +1,10 @@
-== v2 check (HEAD 419db2dd) ==
+== v2 check (HEAD 28d4a663) ==
 --- fmt
 --- fmt: OK
 --- clippy
-    Checking vifast-abi v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-abi)
-    Checking vifast-objmem v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-objmem)
-    Checking vifast-pte v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-pte)
-    Checking vifast-traceformat v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-traceformat)
-    Checking vifast-scenario v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-scenario)
-    Checking vifast-fs v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-fs)
-    Checking vifast-elf v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-elf)
-    Checking vifast-virtio v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-virtio)
-    Checking vifast-sync v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-sync)
-    Checking vifast-agentctl v0.1.0 (/private/tmp/night-L7-n7fix/v2/tools/vifast-agentctl)
-    Checking vifast-alloc v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-alloc)
-    Checking vifast-ring v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-ring)
     Checking vifast-core v0.1.0 (/private/tmp/night-L7-n7fix/v2/kernel/vifast-core)
-    Checking vifast-model v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-model)
     Checking vifast-sim v0.1.0 (/private/tmp/night-L7-n7fix/v2/sim/vifast-sim)
-    Checking vifast-idl v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-idl)
-    Checking vifast-vfs v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-vfs)
-    Checking vifast-fsutil v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-fsutil)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.31s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.03s
 --- clippy: OK
 --- luật cấu trúc R1..R5
 --- luật cấu trúc: OK
@@ -38,9 +22,9 @@ ok 6 - case hợp lệ (đối chứng dương) thì PASS
 --- luật máy K6 (KT-80: 1,2,3,7,8)
 # verify-numbers: root=/private/tmp/night-L7-n7fix docs=36 tracked=36 staged=0 untracked=0 scan=index+untracked legacy=19 laws=1,2,3,7,8
 # note - luat 1: loại khỏi tài liệu đích [v2/agent/reports/A1-decision-log.md] chủ Agent 1: sổ quyết định sống (append mỗi quyết định), không phải báo cáo số đo; số đo trong sổ thuộc verifier của task tương ứng
-ok - luat 1: docs_checked=17 pre_existing=0 excluded=1 (869 ms)
-ok - luat 2: pairs=120 pending=0 (3909 ms)
-ok - luat 3: counters=2 used=2 (93 ms)
+ok - luat 1: docs_checked=17 pre_existing=0 excluded=1 (962 ms)
+ok - luat 2: pairs=120 pending=0 (2998 ms)
+ok - luat 3: counters=2 used=2 (92 ms)
 ok - luat 7: extractions=3 (39 ms)
 ok - self-test union-haystack: ĐỎ đúng mã E1_NOT_VERBATIM
 ok - self-test heading-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
@@ -63,8 +47,8 @@ ok - self-test untracked-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
 ok - self-test staged-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
 ok - self-test legacy-untracked: ĐỎ đúng mã E1_LEGACY_UNTRACKED
 ok - self-test legacy-staged: ĐỎ đúng mã E1_LEGACY_STAGED
-ok - luat 8: cases=21 (12145 ms)
-# verify-numbers: ok=5 fail=0 wall_ms=17337 law_wall_ms={1:869,2:3909,3:93,7:39,8:12145}
+ok - luat 8: cases=21 (13051 ms)
+# verify-numbers: ok=5 fail=0 wall_ms=17429 law_wall_ms={1:962,2:2998,3:92,7:39,8:13051}
 --- luật máy K6 (KT-80: 1,2,3,7,8): OK
 --- selftest build-inputs (KT-128/134: a..h)
 # vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k)
@@ -82,7 +66,7 @@ ALGO-PIN: OK sha=aa9da80740711703397f469360c99ada4f7d6359fe952d36f04301cf762deb7
 # algo-pin-selftest: PASS (12 ca: a/b/c/d/e/f/g/h1/h2/i/j/k)
 --- selftest ghim thuật toán (KT-134): OK
 --- selftest shell-edge (KT-108)
-# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.WzQQ6l (không cần QEMU/ảnh)
+# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.ZeQ3Xv (không cần QEMU/ảnh)
 # selftest 1 cat-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
 # selftest 1 cat-khong-tham-so: log ĐÚNG -> XANH đúng
 # selftest 1 cat-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
@@ -315,9 +299,6 @@ ok IDL đổi mà stub không đổi bị bắt
 # idl fixtures: PASS
 --- idl fixtures: OK
 --- build (L0 compile)
-   Compiling vifast-fsutil v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-fsutil)
-   Compiling vifast-elf v0.1.0 (/private/tmp/night-L7-n7fix/v2/lib/vifast-elf)
-   Compiling vifast-agentctl v0.1.0 (/private/tmp/night-L7-n7fix/v2/tools/vifast-agentctl)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.29s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.58s
 --- build (L0 compile): OK
 v2 check: PASS (L1 chạy trong gate --fast)

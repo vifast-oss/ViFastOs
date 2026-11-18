@@ -347,3 +347,138 @@ Sim là **oracle**; vá sim là việc của task riêng (cùng hình dạng: th
 + 15 chỗ). Ghi nợ **N7-2b** ở §11.
 
 Mức **mặc định** (nằm trong `v2 check`) sau khi vá: `errors=0` (§9).
+
+## 7. (4) Đột biến — bỏ vá ở **một** đường ⇒ test đỏ lại
+
+Đột biến (diff nguyên văn, `kt154-logs/kt154-mutation-test.log` chạy trên cây đã đột biến):
+
+```diff
+--- a/v2/kernel/vifast-core/src/core_ipc.rs
++++ b/v2/kernel/vifast-core/src/core_ipc.rs
+@@ -694,7 +694,8 @@ impl Machine {
+         }
+         if let Some(caller) = caller {
+-            self.wake_from(caller)?;
++            // ĐỘT BIẾN KT-154: bỏ vá ở **một** đường (`reply_with`) — quay lại transition trực tiếp.
++            self.transition_tcb(caller, TcbState::Ready)?;
+         }
+         if matches!(state, TcbState::Running { .. }) {
+```
+
+Test **đỏ** đúng ca Reply, 6 ca còn lại vẫn xanh (nguyên văn):
+
+```text
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt154_n7fix
+running 7 tests
+test kt154_core_cung_hart_khong_gui_wake ... ok
+test kt154_core_mot_hart_khong_gui_wake ... ok
+test kt154_core_notification_cheo_hart_phai_gui_wake ... ok
+test kt154_core_recv_giao_message_cheo_hart_phai_gui_wake ... ok
+test kt154_core_reply_cheo_hart_phai_gui_wake ... FAILED
+test kt154_core_reply_cung_hart_khong_gui_wake ... ok
+test kt154_core_wake_inactive_van_loi ... ok
+
+failures:
+
+---- kt154_core_reply_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt154_core_reply_cheo_hart_phai_gui_wake' (77741854) panicked at sim/vifast-sim/tests/kt154_n7fix.rs:161:9:
+assertion `left == right` failed: Reply chéo hart: hộp thư hart 1 phải có đúng một message `Wake`
+  left: 0
+ right: 1
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+**Phát hiện phụ (quan trọng, ghi để không tưởng máy kiểm phủ hết)**: máy kiểm `--strict`
+**KHÔNG** bắt được đột biến này (nguyên văn `kt154-logs/kt154-mutation-checker.log`):
+
+```text
+$ python3 v2/tools/check-wake-paths.py --strict
+E E_STRICT_TRANSITION 2 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+# check-wake-paths: mode=v2 strict=1 errors=3 warnings=0
+```
+
+Lý do: `--strict` chỉ đếm hàm có **guard** `is_blocked()`/`Sleeping` trong thân, nên nó chỉ
+phủ **4/16** đường (2 kernel + 2 sim). 12 đường còn lại (IPC/Reply/Notification/finalise)
+**không** được máy kiểm phủ — chúng được giữ bởi **test** `kt154_n7fix.rs`. Đây là lý do
+test (1) là vế bắt buộc, không phải "làm cho đủ".
+
+Khôi phục (`git checkout -- v2/kernel/vifast-core/src/core_ipc.rs`) ⇒ xanh lại
+(`kt154-logs/kt154-mutation-restored.log`, `7 passed; 0 failed`).
+
+## 9. Cổng (ba cổng bắt buộc)
+
+```text
+$ ./v2/bin/v2 check
+...
+--- wake paths (KT-151: một cơ chế wake): OK
+--- selftest wake paths (KT-151): OK
+...
+v2 check: PASS (L1 chạy trong gate --fast)
+```
+
+(Log đầy đủ `kt154-logs/kt154-check.log`; `EXIT=0`.)
+
+```text
+$ cargo test --manifest-path v2/Cargo.toml --workspace
+EXIT=0 · 105 dòng "test result: ok" · 0 dòng FAILED/failures:/error[
+```
+
+```text
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common
+EXIT=0 · 12 dòng "test result: ok" (0 failed ở mọi tệp)
+```
+
+Máy kiểm mức mặc định (nằm trong `v2 check`):
+
+```text
+$ python3 v2/tools/check-wake-paths.py
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:416 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+```
+
+`--selftest` 7/7 (`kt154-logs/kt154-selftest.log`).
+
+## 10. Tệp đã sửa/thêm
+
+| tệp | loại |
+|---|---|
+| `v2/sim/vifast-sim/tests/kt154_n7fix.rs` | **mới** — 7 ca (3 chéo hart đỏ-trước, 4 đối chứng) |
+| `v2/kernel/vifast-core/src/core_sched.rs` | `wake_from` (cửa mới) + `wake_step(tcb, unlink)` |
+| `v2/kernel/vifast-core/src/core_ipc.rs` | 8 chỗ → `wake_from` |
+| `v2/kernel/vifast-core/src/core_finalise.rs` | 4 chỗ → `wake_from` |
+| `v2/kernel/vifast-core/src/core_sync.rs` | 1 chỗ → `wake_from` (+ `wake_addr` giữ `wake_step(_, true)`) |
+| `v2/kernel/vifast-core/src/core_tcb.rs` | 2 chỗ → `wake_from` |
+| `v2/tools/check-wake-paths.py` | `WAKE_PRODUCER = ("wake", "wake_from")` (định nghĩa lại, §5.3) |
+| `v2/agent/JOURNAL/kt154-logs/*` | log nguyên văn từng vế |
+| `v2/agent/JOURNAL/kt154-n7fix.md` | tệp này |
+
+## 11. Việc còn lại (ghi để lead/A0 quyết)
+
+- **N7-2b (sim)**: `v2/sim/vifast-sim/src/kobj.rs` còn **2** chỗ `--strict` đỏ
+  (`tcb_resume_with_regs:5308`, `process_refills:8058`) và **11** đường IPC/Reply/
+  Notification/finalise đánh thức trực tiếp (cùng hình dạng kernel). Sim là **oracle**;
+  vá sim phải làm **đối xứng** với kernel (thêm `wake_from` cho sim + 15 chỗ) để parity
+  `kt59_core_parity`/`kt64_core_parity` còn đúng. **Ngoài phạm vi** KT-154 (task chỉ định
+  `v2/kernel`).
+- **N7-4 (`wake_addr` chéo hart)**: `core_sync.rs:558` vẫn gọi `wake_step(tcb, true)` trực
+  tiếp ⇒ waiter `BlockedOnAddress` ở hart khác **không** nhận `Wake` về `home`. Chưa vá vì
+  `wake_addr` **cần** `unlink = true` (gỡ node khỏi bucket WaitAddr) — khác 15 đường kia;
+  cần một biến thể `wake_from_unlink` + test riêng. Ghi nợ.
+- **Máy kiểm `--strict` chỉ phủ 4/16** (§7): nên mở rộng để đếm **mọi** `transition_tcb(…,
+  Ready)` ngoài `wake_step` trừ một **allowlist tường minh** (`dispatch_step`,
+  `yield_current`, `ensure_started`, `tcb_suspend`, `transition_tcb`) thay vì heuristic
+  "thân hàm có `is_blocked()`/`Sleeping`". Việc này **đổi định nghĩa cổng** ⇒ task riêng.
+- **`wake()` công khai vẫn "post-only"** khi khác hart (giữ nguyên để không phá test KT-151).
+  Nghĩa là API công khai và cửa sản phẩm `wake_from` **khác nhau** ở chế độ chéo hart:
+  `wake` để TCB chờ tới khi hart `home` xử lý hộp thư; `wake_from` đánh thức ngay **và**
+  gửi `Wake`. Đây là chủ ý (4 đường finalise/resume không thể hoãn — §5.1), nhưng là chỗ
+  dễ nhầm; nếu A0 muốn **một** ngữ nghĩa duy nhất thì phải đổi test KT-151 (task riêng).
