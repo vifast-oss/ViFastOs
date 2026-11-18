@@ -175,6 +175,35 @@ giữa hai boot và `cat` đọc lại đúng byte đã ghi.
 # evidence: dia_khong_doi_giua_hai_boot=1 (boot 2 chi doc)
 ```
 
+## 6b. Ranh giới bền **theo từng thao tác** — và tệp dở sau cắt điện
+
+**Journal của FS là theo TỪNG THAO TÁC, không theo GIAO DỊCH.** Mỗi thao tác ghi (tạo tệp, ghi
+block, đổi kích thước, đổi tên) được journal hoá và commit riêng; `fsync` chỉ bảo đảm các thao tác
+**đã commit** đã ra thiết bị. Không có khái niệm "một lần ghi tệp là một đơn vị nguyên tử": một lần
+ghi nhiều block là **nhiều** thao tác, và cắt điện giữa chừng để lại **tiền tố** của dữ liệu.
+
+Hệ quả, ghim lại làm hành vi đã biết (không phải lỗi):
+
+- Sau cắt điện giữa lúc ghi, trên đĩa có thể còn **tệp dở** — nội dung là tiền tố đúng của payload,
+  kích thước nhỏ hơn kích thước đích. `fsck` vẫn **sạch**: journal nhất quán, không có thao tác
+  nửa vời.
+- **Không mất dữ liệu đã commit.** Mọi thao tác đã commit đọc lại được từng byte sau khi boot lại.
+- `fs.create` là **tạo độc quyền**: gặp tên đã tồn tại ⇒ `Exists`. Vì thế một tệp dở để lại sẽ
+  **chặn** lần tạo lại cùng tên. Đây là ngữ nghĩa `create` đúng, **giữ nguyên** trong K7 (Agent 0
+  chốt: FS nhất quán, không mất dữ liệu đã commit ⇒ đạt C5).
+- **Chính sách của người dùng/harness**: gặp tệp dở thì **xoá rồi tạo lại**. `persist.sh --crash`
+  làm đúng vậy và có ca kiểm: cắt điện ⇒ dọn tệp dở ⇒ boot lại ⇒ **ghi lại được** pha dở ⇒ chạy
+  tiếp tới cuối chuỗi pha, không kẹt. Bỏ bước dọn ⇒ ca kiểm **đỏ** (đột biến đã chạy).
+
+**Nợ v2.1** (ghi để không quên, **không** làm trong K7):
+
+- **Ghi tệp an toàn**: ghi vào tệp tạm rồi **đổi tên nguyên tử** (FS đã có `rename`) ⇒ người dùng
+  không bao giờ thấy tệp dở dưới tên thật. Cần quyết định thêm: tệp tạm đặt ở đâu, dọn tệp tạm cũ
+  lúc mount thế nào.
+- **Quyết định ngữ nghĩa `create`**: giữ `Exists` (như hiện tại) hay thêm cờ "tạo hoặc cắt rỗng"
+  (`O_TRUNC`-kiểu). Đổi ngữ nghĩa này ảnh hưởng shell và mọi chương trình dùng FS ⇒ phải qua
+  Agent 0, không tự đổi.
+
 ## 7. Ca âm (tiêu chí năm) và ca âm harness (tiêu chí sáu)
 
 - **(a) không có đĩa** — boot **không** `-drive`: `medium=ram` + `volatile=` + `why=` lý do;

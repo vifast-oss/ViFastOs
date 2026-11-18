@@ -359,14 +359,19 @@ soak_run() {
 #
 #   1. `crash-host` kiểm ảnh đĩa: fsck sạch, dữ liệu đã commit còn nguyên từng byte, tệp ghi dở
 #      (nếu có) phải là **tiền tố** của payload đúng — không được là rác.
-#   2. boot lại b07r (đọc pha 6 + ghi pha 7): **đọc** pha 6 phải xanh (dữ liệu đã commit đọc được
-#      sau cắt điện). **Ghi** pha 7 **hỏng** vì `/p7.bin` đã tồn tại dở — `fs.create` là **tạo
-#      độc quyền**, đúng ngữ nghĩa `create`. Đây là **hành vi thật, ghim lại**, không phải lỗi
-#      của FS: journal của FS là **theo từng thao tác**, không phải theo giao dịch, nên một lần
-#      cắt giữa lúc ghi để lại tệp dở. Ghi nhận ở dòng `# crash: ghim`.
-#   3. boot b01r (ghi pha 1 vào `/p1.txt` — đường dẫn **vắng** sau pha 5) phải **xanh** ⇒ FS vẫn
+#   2. **KT-146 (Agent 0 phiếu lượt 5 §A6)**: **dọn tệp dở** rồi boot lại b07r (đọc pha 6 + ghi
+#      pha 7). Vì sao phải dọn: `fs.create` là **tạo độc quyền** — Agent 0 chốt **giữ nguyên**
+#      ngữ nghĩa ấy trong K7 (FS nhất quán, không mất dữ liệu đã commit ⇒ đạt C5). Hệ quả: một tệp
+#      dở do cắt điện để lại sẽ **chặn** mọi lần ghi lại cùng tên. Người dùng thật gặp đúng tình
+#      huống này sau mất điện. Bước dọn là **chính sách của harness**, không phải thay đổi ngữ
+#      nghĩa FS: xoá tệp dở rồi để kernel tạo lại từ đầu.
+#      Sau khi dọn: **đọc** pha 6 phải xanh (dữ liệu đã commit đọc được sau cắt điện) **và**
+#      **ghi** pha 7 phải xanh (không kẹt).
+#   3. boot b08r (đọc lại pha 7 + tổng kết `phases=7 ok=7`) phải **xanh** ⇒ chạy tiếp được tới
+#      **cuối** chuỗi pha, không kẹt ở pha 7.
+#   4. boot b01r (ghi pha 1 vào `/p1.txt` — đường dẫn **vắng** sau pha 5) phải **xanh** ⇒ FS vẫn
 #      **ghi được** sau cắt điện, không chỉ đọc được.
-#   4. `fsutil fsck` lần cuối phải sạch.
+#   5. `fsutil fsck` lần cuối phải sạch.
 #
 # Nếu bước 1 đỏ ⇒ đó là **phát hiện**, không phải lỗi của script: báo Agent 0 trước khi sửa FS.
 crash_run() {
@@ -435,23 +440,58 @@ crash_run() {
             rc=1
         fi
     fi
-    # (2) Phục hồi: đọc lại pha 6 phải xanh; ghi pha 7 hỏng vì `/p7.bin` đã tồn tại dở — ghim.
+    # (1b) **KT-146 (§A6)**: dọn tệp dở trước khi boot lại.
+    #
+    # Vì sao là **bước riêng có tên** chứ không "kệ nó": `fs.create` là tạo **độc quyền** (Agent 0
+    # chốt giữ nguyên ngữ nghĩa trong K7). Một tệp dở do cắt điện để lại sẽ chặn mọi lần ghi lại
+    # cùng tên — người dùng thật gặp đúng tình huống này sau mất điện. Harness dọn rồi để kernel
+    # tạo lại; đây là **chính sách của harness**, không phải thay đổi FS.
+    #
+    # Đột biến để chứng minh bước này có tác dụng: bỏ khối `if` dưới đây ⇒ pha 7 đỏ ⇒ ca (2) đỏ.
     tag=b07r
+    if "$FSUTIL" ls "$DISK" / 2>/dev/null | awk '{print $2}' | grep -qx "p7.bin"; then
+        if "$FSUTIL" rm "$DISK" /p7.bin >"$LOGDIR/$tag.don-tep-do.log" 2>&1; then
+            echo "# crash: dọn — đã xoá /p7.bin DỞ (create là tạo độc quyền; xoá rồi để kernel tạo lại)"
+        else
+            bad "crash: KHÔNG xoá được /p7.bin dở (xem $LOGDIR/$tag.don-tep-do.log)"
+            rc=1
+        fi
+    else
+        echo "# crash: dọn — không có /p7.bin dở (cắt điện chưa kịp tạo tệp) — không cần dọn"
+    fi
+
+    # (2) Phục hồi: đọc lại pha 6 **và** ghi lại pha 7 đều phải xanh sau khi dọn.
     run_boot "$tag" 6 7 0 0 8107 || return 1
-    # KHÔNG gọi `check_log` cho boot này: `check_log` đòi log **không** có dòng `not ok`, mà ở đây
-    # dòng `not ok 2` là **hành vi đã ghim** (ghi pha 7 hỏng vì `/p7.bin` tồn tại dở). Kiểm từng
-    # dòng TAP bằng tay bên dưới — chặt hơn và đúng ý hơn là bỏ qua cả log.
+    # KHÔNG gọi `check_log` cho boot này: `check_log` đòi log khớp **mô hình đầy đủ** của một boot
+    # sạch, mà boot này là boot **phục hồi** (đĩa đã có dữ liệu pha 1..6). Kiểm từng dòng TAP bằng
+    # tay bên dưới — chặt hơn và đúng ý hơn là bỏ qua cả log.
     if grep -qx "ok 1 - persist verify phase 6" "$LOGDIR/$tag.log"; then
         echo "# crash: boot sau cắt điện ĐỌC được dữ liệu đã commit (verify pha 6 xanh)"
     else
         bad "crash: boot sau cắt điện KHÔNG đọc được dữ liệu đã commit (verify pha 6 đỏ)"
         rc=1
     fi
-    if grep -qx "not ok 2 - persist write phase 7: pha ghi không bền (pending>0 / không có T_FLUSH / lỗi FS)" "$LOGDIR/$tag.log"; then
-        echo "# crash: ghim — ghi pha 7 sau cắt điện HỎNG vì /p7.bin đã tồn tại dở (create là tạo độc quyền)"
-        echo "# crash: ghim — journal của FS là theo TỪNG THAO TÁC, không theo giao dịch; cắt giữa lúc ghi để lại tệp dở"
+    if grep -qx "ok 2 - persist write phase 7" "$LOGDIR/$tag.log"; then
+        echo "# crash: boot sau cắt điện GHI LẠI được pha 7 sau khi dọn tệp dở (không kẹt)"
     else
-        echo "# crash: ghi pha 7 sau cắt điện KHÔNG hỏng như lần đo trước — hành vi đã đổi, xem lại"
+        bad "crash: boot sau cắt điện KHÔNG ghi lại được pha 7 sau khi dọn tệp dở"
+        rc=1
+    fi
+
+    # (2b) **KT-146 (§A6)**: chạy tiếp tới **cuối** chuỗi pha — không chỉ qua pha 7.
+    tag=b08r
+    run_boot "$tag" 7 0 0 0 8108 || return 1
+    if grep -qx "ok 1 - persist verify phase 7" "$LOGDIR/$tag.log"; then
+        echo "# crash: boot sau cắt điện ĐỌC LẠI được pha 7 vừa ghi (verify pha 7 xanh)"
+    else
+        bad "crash: boot sau cắt điện KHÔNG đọc lại được pha 7 vừa ghi (verify pha 7 đỏ)"
+        rc=1
+    fi
+    if grep -qE "^# persist: phases=7 ok=7 " "$LOGDIR/$tag.log"; then
+        echo "# crash: chạy tiếp tới CUỐI — tổng kết phases=7 ok=7"
+    else
+        bad "crash: KHÔNG chạy tiếp được tới cuối (thiếu '# persist: phases=7 ok=7')"
+        rc=1
     fi
     # (3) FS còn **ghi được** sau cắt điện: pha 1 tạo `/p1.txt` (đã bị rename đi ở pha 5).
     tag=b01r

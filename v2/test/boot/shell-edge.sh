@@ -46,7 +46,13 @@
 #                                                cắt tệp về 0 byte và **nói thật** `bytes=0`; `write` vào
 #                                                thư mục không có ⇒ `fs loi code=5`; `ls` lên **tệp** ⇒
 #                                                `fs loi code=7`, **không** liệt kê bừa
-#   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba** — cùng Q4 của Agent 0.)
+#   14. k7-uu-tien            `write /a xin chao` `write / abc` `truncate / 5` `truncate /a`
+#                             `write    abc` `stat /a` `cat /a`
+#                                              ⇒ bốn lệnh sai **không** làm mất dữ liệu; `/a` vẫn 8 byte
+#   15. k7-thu-muc            `cat /` `stat /` `time 5 6` `cat /README`
+#                                              ⇒ `cat` thư mục ⇒ `fs loi code=8`; `stat` thư mục ⇒ `kind=2`;
+#                                                `time` hai tham số ⇒ `# shell: ?`; `/README` còn nguyên
+#   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba**; 14 là **K7 lượt bốn**; 15 là **K7 lượt năm §B3.4c**.)
 #
 # **Phán quyết từng lệnh** (Q4 vòng ba): bốn ca 10/11/12/13 in **một dòng cho mỗi lệnh**
 # (`# <ca>[<lệnh>]: PASS/FAIL (lý do)`) và **chạy hết** mọi lệnh rồi mới kết luận — log sai hai
@@ -909,6 +915,80 @@ check_k7_uu_tien() {
         "khong-mat-du-lieu:ok_k7_khong_mat_du_lieu"
 }
 
+# --- k7-thu-muc: ba ca biên **thư mục / tham số thừa** của K7 (Agent 0, phiếu lượt năm §B3.4c) --
+#
+# Agent 0 giao: "cat/stat lên thư mục, time hai tham số (ghim hành vi thật trước; hành vi làm
+# hỏng/mất dữ liệu ⇒ hàng chờ Agent 0, không tự sửa)".
+#
+# Hành vi **thật** đo trên ảnh sản phẩm (không đoán từ mã):
+#   - `cat /`      ⇒ `# shell: fs loi code=8` (IsDir). Không in byte nào của thư mục.
+#   - `stat /`     ⇒ `# shell: stat path=/ kind=2 size=512 ino=1` (kind 2 = thư mục).
+#   - `time 5 6`   ⇒ `# shell: ?` (lệnh lạ — `time` chỉ nhận **không** tham số).
+# Cả ba **không** làm hỏng/mất dữ liệu ⇒ **ghim**, không phải hàng chờ Agent 0. Ca toàn vẹn cuối
+# chứng minh `/README` vẫn đọc đúng sau ba lệnh.
+
+# `cat /` ⇒ đúng một `# shell: fs loi code=8`, và **không** có dòng `cat ok` nào cho `/`.
+ok_k7_cat_dir() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: fs loi code=8' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: fs loi code=8' (cat lên thư mục), thấy ${n:-0}"
+        return 1
+    fi
+    # Thư mục `/` có `size=512`; nếu `cat /` in nội dung thì sẽ có dòng `cat ok bytes=512`.
+    # Đòi **không** có dòng ấy — chặt hơn "không có cat ok nào" (ca này còn `cat /README`).
+    if grep -q -E '^# shell: cat ok bytes=512 first=' "$log" 2>/dev/null; then
+        echo "có dòng '# shell: cat ok bytes=512 …' — cat lên thư mục mà vẫn in nội dung"
+        return 1
+    fi
+    return 0
+}
+
+# `stat /` ⇒ đúng một dòng `kind=2` (thư mục) cho `/`.
+ok_k7_stat_dir() {
+    local log="$1" n
+    n="$(grep -c -E '^# shell: stat path=/ kind=2 size=[0-9]+ ino=[0-9]+$' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: stat path=/ kind=2 …' (stat lên thư mục), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `time 5 6` (hai tham số) ⇒ đúng một `# shell: ?` — `time` chỉ nhận **không** tham số.
+ok_k7_time_hai_tham_so() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: ?' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: ?' (time hai tham số), thấy ${n:-0}"
+        return 1
+    fi
+    if grep -q -E '^# shell: time ns=[0-9]+$' "$log" 2>/dev/null; then
+        echo "có dòng '# shell: time ns=…' — 'time 5 6' bị coi là hợp lệ"
+        return 1
+    fi
+    return 0
+}
+
+# **Toàn vẹn**: sau ba lệnh trên, `/README` vẫn đọc đúng 79 byte đầu `ViFastOs`.
+ok_k7_thu_muc_khong_mat_du_lieu() {
+    local log="$1" n
+    n="$(grep -c -x -F '# shell: cat ok bytes=79 first=ViFastOs' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "cat /README KHÔNG đọc lại đúng 'ViFastOs' (thấy ${n:-0}) — dữ liệu đã bị đổi"
+        return 1
+    fi
+    return 0
+}
+
+check_k7_thu_muc() {
+    emit_verdicts "k7-thu-muc" "$1" \
+        "cat-thu-muc:ok_k7_cat_dir" \
+        "stat-thu-muc:ok_k7_stat_dir" \
+        "time-hai-tham-so:ok_k7_time_hai_tham_so" \
+        "khong-mat-du-lieu:ok_k7_thu_muc_khong_mat_du_lieu"
+}
+
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
 #    (không báo), >1 = báo mỗi byte (lỗi cũ) — cả hai đều ĐỎ.
 check_long_line_once() {
@@ -1359,6 +1439,31 @@ run_selftest() {
         'k7-uu-tien[write-thu-muc]: FAIL' 'k7-uu-tien[truncate-thu-muc]: FAIL' \
         'k7-uu-tien[khong-mat-du-lieu]: FAIL'
     selftest_verdicts "14 k7-uu-tien (dung)" check_k7_uu_tien "$right" 0 5 0
+
+    # ---- ca 15 (**K7 thư mục / tham số thừa**): `cat /`, `stat /`, `time 5 6`. Log SAI cố ý hỏng
+    #      **ba** lệnh: `cat /` in nội dung thay vì `code=8`, `stat /` báo `kind=1` (tệp) thay vì
+    #      `kind=2` (thư mục), `time 5 6` chạy như `time` hợp lệ ⇒ thông điệp đỏ phải nêu **cả ba**.
+    d="$(mktemp -d "$root/c15.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: cat ok bytes=512 first=ViFastOs\n'
+        printf '# shell: stat path=/ kind=1 size=512 ino=1\n'
+        printf '# shell: time ns=12345\n'
+        printf '# shell: cat ok bytes=79 first=ViFastOs\n'
+        printf '# shell: echo __END_15__\n'
+    } >"$wrong"
+    {
+        printf '# shell: fs loi code=8\n'
+        printf '# shell: stat path=/ kind=2 size=512 ino=1\n'
+        printf '# shell: ?\n'
+        printf '# shell: cat ok bytes=79 first=ViFastOs\n'
+        printf '# shell: echo __END_15__\n'
+    } >"$right"
+    selftest_verdicts "15 k7-thu-muc (sai)" check_k7_thu_muc "$wrong" 1 1 3 \
+        'k7-thu-muc[cat-thu-muc]: FAIL' 'k7-thu-muc[stat-thu-muc]: FAIL' \
+        'k7-thu-muc[time-hai-tham-so]: FAIL'
+    selftest_verdicts "15 k7-thu-muc (dung)" check_k7_thu_muc "$right" 0 4 0
 
     # ---- ca 4: dòng dài. Lỗi cũ in một cảnh báo **mỗi byte** (100 dòng cho dòng 200 ký tự).
     d="$(mktemp -d "$root/c4.XXXXXX")"
@@ -1890,6 +1995,30 @@ run_real() {
         fi
     fi
 
+    # (15) **K7 thư mục / tham số thừa** (Agent 0, phiếu lượt năm §B3.4c): `cat` lên thư mục,
+    #      `stat` lên thư mục, `time` **hai** tham số. Cả ba **ghim hành vi thật** đã đo trên ảnh
+    #      sản phẩm; không lệnh nào làm hỏng/mất dữ liệu nên **không** phải hàng chờ Agent 0.
+    #      Đặt **trước** (8b) để `/README` còn nguyên (ca này chỉ đọc nó).
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        for c in 'cat /' 'stat /' 'time 5 6' 'cat /README'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 15; then
+            if check_k7_thu_muc "$CASE_LOG"; then
+                echo "# k7-thu-muc: PASS"
+            else
+                echo "# k7-thu-muc: FAIL (xem các dòng [<lệnh>]: FAIL ở trên)"
+                rc=1
+            fi
+        else
+            echo "# k7-thu-muc: FAIL (quá hạn — shell treo ở ca thư mục)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
     # (8b) **KT-126**: hai lệnh mới `truncate` + `jobs` — chạy **ngay trước** `exit` để không ảnh
     #      hưởng ca nào phía sau (truncate **đổi** `/README`). Không đánh số ca mới: dùng chung
     #      khung của ca 9 và chỉ thêm phép kiểm, nên `mark_remaining_fail` và bảng tổng kết không đổi.
@@ -1946,7 +2075,7 @@ run_real() {
     qg_infra after "$LOGDIR/infra.log" || true
 
     if [ "$rc" -eq 0 ]; then
-        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 PASS"
+        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc PASS"
         echo "# shell-edge.sh: PASS"
         return 0
     fi
