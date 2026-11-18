@@ -1,0 +1,15 @@
+   Compiling vifast-core v0.1.0 (/private/tmp/night2-L6-review/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/private/tmp/night2-L6-review/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.44s
+     Running tests/kt159_wake_semantics.rs (v2/target/debug/deps/kt159_wake_semantics-052bb3fa3e907b0d)
+
+running 6 tests
+test kt159_core_wake_cheo_hart_post_only ... ok
+test kt159_core_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+test kt159_core_wake_from_cheo_hart_ready_ngay ... ok
+test kt159_sim_wake_cheo_hart_post_only ... ok
+test kt159_sim_wake_from_cheo_hart_ready_ngay ... ok
+test kt159_sim_cung_hart_ca_hai_ready_ngay_khong_wake ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
