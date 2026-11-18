@@ -388,6 +388,11 @@ do_check() {
 do_gate_fast() {
     do_check || return 1
     run_step "L0 test" "$CARGO" test --manifest-path "$MANIFEST" --workspace || return 1
+    # KT-148 (D2-128): workspace **kernel** có manifest riêng (`v2/kernel/Cargo.toml`) nên `L0 test`
+    # của `v2/Cargo.toml` **không** chạy nó — thiếu bước này thì test `smp` (bố cục per-hart) đỏ
+    # mà cổng vẫn xanh (đúng lỗi B7). `vifast-virtio` **không** thuộc workspace kernel (nó là
+    # path-dep của `v2/lib`) nên đã nằm trong L0 của `v2/Cargo.toml` — **không** thêm lần hai.
+    run_step "L0 kernel workspace (KT-148)" "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" -p vifast-plat-common || return 1
     echo "--- L1 (sim 1.000 seed)"
     local t0 t1
     PYTHON="$(find_python || true)"

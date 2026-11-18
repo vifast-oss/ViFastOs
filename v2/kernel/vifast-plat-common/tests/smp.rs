@@ -9,19 +9,21 @@ use vifast_plat_common::plic::PerHartPlicStats;
 use vifast_plat_common::smp::{
     classify_hart_status, guard_offset, hart_bit, hart_of_offset, hart_present, hart_record_offset,
     hart_start_ok, in_hart_area, is_guard_offset, mask_count, mask_of, range_mask,
-    stack_bottom_offset, stack_top_offset, start_decision, trap_bottom_offset, trap_top_offset,
-    valid_hart, HartMask, HartStatus, StartDecision, HART_AREA_BYTES, HART_GUARD_BYTES,
-    HART_STACK_BYTES, HART_STRIDE, HART_TRAP_STACK_BYTES, MAX_HARTS, SBI_ERR_ALREADY_AVAILABLE,
+    stack_bottom_offset, stack_top_offset, start_decision, syscall_bottom_offset,
+    syscall_top_offset, trap_bottom_offset, trap_top_offset, valid_hart, HartMask, HartStatus,
+    StartDecision, HART_AREA_BYTES, HART_GUARD_BYTES, HART_STACK_BYTES, HART_STRIDE,
+    HART_SYSCALL_STACK_BYTES, HART_TRAP_STACK_BYTES, MAX_HARTS, SBI_ERR_ALREADY_AVAILABLE,
     SBI_ERR_FAILED, SBI_ERR_INVALID_PARAM, SBI_HART_STARTED, SBI_HART_STOPPED, SBI_SUCCESS,
 };
 use vifast_plat_common::timer::PerHartTimerStats;
 
 #[test]
 fn bo_cuc_per_hart_khong_chong_va_can_trang() {
-    // Mỗi record: guard 4 KiB + stack 64 KiB + trap stack 16 KiB; guard nằm ngay dưới stack của
-    // chính hart đó (tràn stack chạm đúng guard của hart mình — KT-49).
+    // Mỗi record: guard 4 KiB + stack 64 KiB + trap stack 16 KiB + syscall stack 32 KiB; guard nằm
+    // ngay dưới stack của chính hart đó (tràn stack chạm đúng guard của hart mình — KT-49).
+    // KT-66 thêm **syscall stack** vào record ⇒ công thức **phải** có đủ bốn số hạng (KT-148).
     assert_eq!(
-        HART_GUARD_BYTES + HART_STACK_BYTES + HART_TRAP_STACK_BYTES,
+        HART_GUARD_BYTES + HART_STACK_BYTES + HART_TRAP_STACK_BYTES + HART_SYSCALL_STACK_BYTES,
         HART_STRIDE
     );
     assert_eq!(HART_AREA_BYTES, HART_STRIDE * MAX_HARTS as u64);
@@ -39,8 +41,15 @@ fn bo_cuc_per_hart_khong_chong_va_can_trang() {
             trap_top_offset(hart),
             trap_bottom_offset(hart) + HART_TRAP_STACK_BYTES
         );
+        // KT-66: syscall stack nằm **ngay trên** trap stack, đỉnh của nó là hết record.
+        assert_eq!(syscall_bottom_offset(hart), trap_top_offset(hart));
+        assert_eq!(
+            syscall_top_offset(hart),
+            syscall_bottom_offset(hart) + HART_SYSCALL_STACK_BYTES
+        );
         if hart + 1 < MAX_HARTS {
-            assert!(trap_top_offset(hart) <= guard_offset(hart + 1));
+            // Record **liền kề**: đỉnh syscall stack của hart này = guard của hart kế (không hở).
+            assert_eq!(syscall_top_offset(hart), guard_offset(hart + 1));
         }
         // Guard của hart này nằm ngoài stack của mọi hart khác.
         for other in 0..MAX_HARTS {
@@ -55,7 +64,7 @@ fn bo_cuc_per_hart_khong_chong_va_can_trang() {
             );
         }
     }
-    assert_eq!(trap_top_offset(MAX_HARTS - 1), HART_AREA_BYTES);
+    assert_eq!(syscall_top_offset(MAX_HARTS - 1), HART_AREA_BYTES);
 }
 
 #[test]

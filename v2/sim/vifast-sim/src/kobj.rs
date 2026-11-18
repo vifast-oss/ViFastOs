@@ -69,6 +69,7 @@
 //!   `HasChildren` (atomic, "lỗi bất biến, không im lặng"); [`Machine::check_frames`] kiểm lại
 //!   sau mỗi op (KT-42 mở rộng thành `check_vm`).
 
+use crate::clock::MonotonicClock;
 use crate::frame::FrameArea;
 /// **KT-36** — metadata Frame + cửa sổ PA của Untyped (định nghĩa ở [`crate::frame`];
 /// re-export để test/harness dùng `vifast_sim::kobj::{FrameMeta, UNTYPED_PA_WINDOW}`).
@@ -772,7 +773,16 @@ pub struct Machine {
     /// ngữ nghĩa KT-18; test KT-19 bật bằng [`Machine::set_preempt_every_step`].
     preempt_every_step: bool,
     /// KT-20: thời gian ảo (tick), **không** đọc `Instant`/wall clock (D2-49(h)).
+    ///
+    /// Đây là đồng hồ **ngân sách MCS** (charge `budget`/`period`), **không** phải đồng hồ wall
+    /// mà `GetTime` đọc — đồng hồ wall là [`Machine::clock`] (KT-152/N1), có **nguồn theo hart**
+    /// và max-update như v1. Hai đồng hồ tách nhau vì ngữ nghĩa khác nhau: `now` bị `tick` đẩy
+    /// theo TCB đang chạy, còn đồng hồ wall phải đơn điệu qua migrate **và** qua `reset()` của
+    /// một hart muộn (v1 T33a).
     now: u64,
+    /// **KT-152 (N1)** — đồng hồ **wall monotonic** (một nguồn hệ thống + nguồn theo hart), mô
+    /// hình cơ chế v1 T33a. Xem [`crate::clock`].
+    clock: MonotonicClock,
     /// **KT-36** — chỉ số (0-based) của các Untyped có cửa sổ PA, để `retype_frame` kiểm chồng
     /// `pa` mà **không** quét toàn bộ `objects` (10.000 Frame trong một Untyped ⇒ O(1)/lần).
     /// Phần tử có thể trỏ Untyped đã chết — nơi dùng phải kiểm `alive`/`ty`.
@@ -1056,6 +1066,7 @@ impl Machine {
             migrate_count: 0,
             preempt_every_step: false,
             now: 0,
+            clock: MonotonicClock::new(),
             frame_windows: Vec::new(),
             frame_objects: 0,
             page_tables: Vec::new(),
@@ -7820,6 +7831,94 @@ impl Machine {
     /// Thời gian ảo hiện tại (đơn vị tick) — **không** đọc `Instant`/wall clock (D2-49(h)).
     pub fn virtual_now(&self) -> u64 {
         self.now
+    }
+
+    // ------------------------------------------- đồng hồ wall monotonic (KT-152 / N1)
+    //
+    // **Model-only `[TK]`**, không phải spec/ABI. Mô hình cơ chế v1 T33a: mỗi hart có **nguồn**
+    // thời gian riêng, đồng hồ **hệ thống** là max-update trên mọi nguồn, và **mọi** hart đọc
+    // cùng một giá trị. `reset()` của một hart muộn (v1 `init_kernel()`) **không** được đụng
+    // đồng hồ hệ thống. Xem [`crate::clock`] và `tests/kt152_n1.rs`.
+
+    /// **KT-152** — hart `hart` nâng **nguồn** thời gian của mình thêm `n` (mô hình ngắt timer
+    /// của hart đó); đồng hồ hệ thống nhận **max-update** nên **không** hart nào làm nó lùi.
+    ///
+    /// `hart` ngoài dải ⇒ `InvalidArgument` (không panic).
+    pub fn clock_tick_on(&mut self, hart: u16, n: u64) -> Result<(), KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if !self.clock.tick_on(hart as usize, n) {
+            return Err(KError::InvalidArgument);
+        }
+        Ok(())
+    }
+
+    /// **KT-152** — đọc đồng hồ **wall** "từ" hart `hart`: **mọi** hart nhận **cùng** một giá
+    /// trị tại cùng một điểm của kịch bản (một thứ tự monotonic duy nhất — "conformance chéo
+    /// hart"). Mỗi lần đọc được ghi vào bộ đếm an ninh [`Machine::clock_backwards`].
+    ///
+    /// `hart` ngoài dải ⇒ `InvalidArgument`.
+    pub fn clock_read(&mut self, hart: u16) -> Result<u64, KError> {
+        if hart as usize >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        self.clock
+            .read(hart as usize)
+            .ok_or(KError::InvalidArgument)
+    }
+
+    /// **KT-152** — mô hình `Kernel::reset()` chạy trên **một hart muộn** (v1 `init_kernel()`):
+    /// dựng lại scheduler + hộp thư **của hart đó** và đưa **nguồn** thời gian của nó về `0`,
+    /// nhưng **giữ nguyên** đồng hồ hệ thống (bản vá r323 của v1).
+    ///
+    /// Chỉ hợp lệ khi hart **rảnh và rỗng** (không `current`, không TCB trong hàng, không message
+    /// chờ) — nếu không trả `IllegalOperation` thay vì phá bất biến scheduler.
+    pub fn hart_reinit(&mut self, hart: u16) -> Result<(), KError> {
+        let h = hart as usize;
+        if h >= self.sched.len() {
+            return Err(KError::InvalidArgument);
+        }
+        if !self.sched[h].idle() || !self.sched[h].is_empty() || !self.mail[h].is_empty() {
+            return Err(KError::IllegalOperation);
+        }
+        self.sched[h] = HartSched::new();
+        self.mail[h] = HartMailbox::new();
+        if !self.clock.reset_hart(h) {
+            return Err(KError::InvalidArgument);
+        }
+        self.refresh_published();
+        Ok(())
+    }
+
+    /// **KT-152** — đồng hồ wall hệ thống hiện tại (không ghi nhận lần đọc).
+    pub fn clock_system(&self) -> u64 {
+        self.clock.system()
+    }
+
+    /// **KT-152** — **nguồn** thời gian của hart `hart` (`None` nếu ngoài dải **của mô hình**,
+    /// tức `hart >= hart_count()` — không phải `MAX_HARTS`).
+    pub fn clock_per_hart(&self, hart: u16) -> Option<u64> {
+        if hart as usize >= self.sched.len() {
+            return None;
+        }
+        self.clock.per_hart(hart as usize)
+    }
+
+    /// **KT-152** — số lần đọc đã trả giá trị **nhỏ hơn** lần đọc trước (bộ đếm an ninh; đúng
+    /// thì `0`, và có **ca âm** chứng minh nó bắt được lỗi — D2-108(B)).
+    pub fn clock_backwards(&self) -> u64 {
+        self.clock.backwards()
+    }
+
+    /// **KT-152** — tổng số lần [`Machine::clock_read`] (chứng minh phép kiểm không rỗng).
+    pub fn clock_reads(&self) -> u64 {
+        self.clock.reads()
+    }
+
+    /// **KT-152** — bất biến đồng hồ: `system >= per_hart[h]` với mọi hart (max-update đúng).
+    pub fn check_clock(&self) -> Result<(), String> {
+        self.clock.check()
     }
 
     /// `tick(n)` — chạy đồng hồ ảo `n` đơn vị; tất định, cùng kịch bản ⇒ cùng mốc refill.
