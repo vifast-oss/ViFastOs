@@ -245,6 +245,18 @@ EXIT=0
 
 (`kt159-check.log`)
 
+**Chạy lại sau commit** (cây đã có `JOURNAL/kt159-wake2.md` + 7 tệp log — để chắc chắn chính
+nhật ký/log **không** làm cổng đỏ):
+
+```
+$ ./v2/bin/v2 check
+--- wake paths --strict (KT-155: allowlist): OK
+v2 check: PASS (L1 chạy trong gate --fast)
+EXIT=0
+```
+
+(`kt159-check-postcommit.log`)
+
 ## 8. Tệp đã chạm
 
 | Tệp | Loại | Ghi chú |
