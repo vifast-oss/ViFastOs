@@ -5742,6 +5742,20 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-155 (N7-4)** — như [`Machine::wake_from`] nhưng **gỡ** TCB khỏi mọi hàng chờ
+    /// trước khi `Ready` (`unlink = true`). Dùng cho `wake_addr`: waiter `BlockedOnAddress`
+    /// phải được gỡ khỏi bucket WaitAddr, và khác hart thì phải gửi `Wake` về `home` (đối
+    /// xứng kernel; trước KT-155 `wake_addr` gọi `wake_step` trực tiếp — nợ N7-4).
+    fn wake_from_unlink(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_info_obj(tcb)?;
+        let cheo_hart = self.sched.len() > 1 && info.home != self.current_hart;
+        self.wake_step(tcb, true)?;
+        if cheo_hart {
+            self.push_mail(info.home, MailboxMsg::Wake(tcb))?;
+        }
+        Ok(())
+    }
+
     /// Thân của [`Machine::wake`] **không** tự kiểm bất biến — dùng cho đường xử lý hộp thư
     /// (KT-22, [`Machine::process_mail`]) để **một** bước chỉ kiểm bất biến một lần; `wake`
     /// công khai kiểm sau khi xong. Idempotent: TCB đã `Ready` ⇒ no-op.
@@ -8677,8 +8691,9 @@ impl Machine {
             }
         }
         for tcb in &chon {
-            // `wake_step` gỡ TCB khỏi **mọi** hàng chờ (kể cả bucket này) rồi `→ Ready`.
-            self.wake_step(*tcb, true)?;
+            // **KT-155 (N7-4)**: gỡ bucket WaitAddr (`unlink = true`) **và** gửi `Wake` về
+            // `home` khi waiter ở hart khác — đối xứng kernel.
+            self.wake_from_unlink(*tcb)?;
         }
         self.sched_after_op(false);
         Ok(chon.len() as u32)

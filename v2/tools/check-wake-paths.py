@@ -69,7 +69,12 @@ MAIL_CONSUMER = "apply_mail"
 # refill) — nó cũng phát `Wake` về `home` khi khác hart. Cả hai **cùng một kênh**; không
 # thêm hàm thứ ba nào được phát `Wake`. Định nghĩa lại phạm vi này đã quét lại **toàn bộ**
 # `v2/kernel` + `v2/sim` (Luật 2) — xem `v2/agent/JOURNAL/kt154-n7fix.md` §8.
-WAKE_PRODUCER = ("wake", "wake_from")
+#
+# **KT-155 (N7-4)** — thêm **một** cửa cùng kênh: `wake_from_unlink` (như `wake_from` nhưng
+# `unlink = true`) cho `wake_addr` — waiter `BlockedOnAddress` phải gỡ bucket WaitAddr **và**
+# đánh thức hart `home`. Vẫn **một** kênh (`MailboxMsg::Wake`), ba cửa; đã quét lại toàn bộ
+# `v2/kernel` + `v2/sim` (Luật 2) — xem `v2/agent/JOURNAL/kt155-n7-dong.md`.
+WAKE_PRODUCER = ("wake", "wake_from", "wake_from_unlink")
 
 # Hàm phát `Migrate` (push migration).
 MIGRATE_PRODUCER = "push_step"
@@ -93,8 +98,10 @@ SIM_KOBJ = "v2/sim/vifast-sim/src/kobj.rs"
 WAKE_DOORS = {
     (KERNEL_SCHED, "wake_step"),
     (KERNEL_SCHED, "wake_from"),
+    (KERNEL_SCHED, "wake_from_unlink"),
     (SIM_KOBJ, "wake_step"),
     (SIM_KOBJ, "wake_from"),
+    (SIM_KOBJ, "wake_from_unlink"),
 }
 
 # Chỗ `transition_tcb(…, Ready)` **không** phải wake, khoá (tệp, hàm, thứ tự trong hàm).

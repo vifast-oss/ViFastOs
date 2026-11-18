@@ -203,7 +203,11 @@ fn kt155_sim_resume_cheo_hart_phai_gui_wake() {
     r.m.tcb_resume_with_regs(r.t_s[1], msg(0, &[0xAA, 0xBB]))
         .expect("tcb_resume_with_regs");
     r.kiem("tcb_resume_with_regs");
-    assert_eq!(r.state(1), TcbState::Ready, "resume phải đưa caller về Ready");
+    assert_eq!(
+        r.state(1),
+        TcbState::Ready,
+        "resume phải đưa caller về Ready"
+    );
     assert_eq!(
         r.m.mail_len(1).expect("mail_len"),
         1,
@@ -239,7 +243,8 @@ fn kt155_sim_refill_cheo_hart_phai_gui_wake() {
 
     // Refill ở hart 0 (khác `home` = 1) ⇒ phải gửi `Wake` về hart 1.
     r.m.set_current_hart(0).expect("hart 0");
-    r.m.tick(SC_PERIOD - SC_BUDGET).expect("tick tới biên refill");
+    r.m.tick(SC_PERIOD - SC_BUDGET)
+        .expect("tick tới biên refill");
     r.kiem("refill");
     assert_eq!(r.state(1), TcbState::Ready, "refill phải đánh thức TCB");
     assert_eq!(
@@ -272,5 +277,44 @@ fn kt155_sim_cung_hart_khong_gui_wake() {
         r.m.mail_len(0).expect("mail_len"),
         0,
         "cùng hart ⇒ không gửi message"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// (5) `wake_addr` — waiter `BlockedOnAddress` có `home` khác hart ⇒ `Wake` về `home` (N7-4).
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn kt155_sim_wake_addr_cheo_hart_phai_gui_wake() {
+    let mut r = Rig::new(2);
+    r.home(0, 0);
+    r.home(1, 1);
+    // Khoá WaitAddr chỉ là `ObjId` (không cần object Frame); `addr_word` trả 0 cho khoá lạ.
+    let frame = r.t[0];
+    r.m.set_current_hart(1).expect("hart 1");
+    r.m.wait_addr(r.t_s[1], frame, 0, 0).expect("wait_addr");
+    r.kiem("wait_addr");
+    assert!(
+        matches!(r.state(1), TcbState::BlockedOnAddress { .. }),
+        "waiter phải `BlockedOnAddress`"
+    );
+
+    // Đánh thức từ hart 0 (khác `home` = 1) ⇒ phải gửi `Wake` về hart 1.
+    r.m.set_current_hart(0).expect("hart 0");
+    assert_eq!(r.m.wake_addr(frame, 0, u32::MAX).expect("wake_addr"), 1);
+    r.kiem("wake_addr");
+    assert_eq!(
+        r.state(1),
+        TcbState::Ready,
+        "wake_addr phải đưa waiter về Ready"
+    );
+    assert_eq!(
+        r.m.mail_len(1).expect("mail_len"),
+        1,
+        "wake_addr chéo hart: hộp thư hart 1 phải có đúng một Wake"
+    );
+    assert_eq!(
+        r.m.mail_items(1).expect("mail_items"),
+        vec![MailboxMsg::Wake(r.t[1])]
     );
 }

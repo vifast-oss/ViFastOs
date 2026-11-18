@@ -250,6 +250,21 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-155 (N7-4)** — như [`Machine::wake_from`] nhưng **gỡ** TCB khỏi mọi hàng chờ
+    /// trước khi `Ready` (`unlink = true`). Dùng cho `wake_addr`: waiter `BlockedOnAddress`
+    /// phải được gỡ khỏi bucket WaitAddr, và khác hart thì phải gửi `Wake` về `home` (trước
+    /// KT-155 `wake_addr` gọi `wake_step(tcb, true)` trực tiếp nên waiter ở hart khác **không**
+    /// được đánh thức — nợ N7-4).
+    pub(crate) fn wake_from_unlink(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_data(tcb)?.snapshot();
+        let cheo_hart = self.n_harts > 1 && info.home != self.current_hart;
+        self.wake_step(tcb, true)?;
+        if cheo_hart {
+            self.push_mail(info.home, MailboxMsg::Wake(tcb))?;
+        }
+        Ok(())
+    }
+
     /// Thân chuyển `blocked/sleeping → Ready` — **một** chỗ duy nhất (máy kiểm
     /// `v2/tools/check-wake-paths.py --strict` đòi điều này). `unlink` quyết định có gỡ TCB
     /// khỏi **mọi** hàng chờ trước khi `Ready` hay không: đường hộp thư/`wake`/`wake_addr`

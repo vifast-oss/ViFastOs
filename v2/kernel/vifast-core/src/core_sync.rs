@@ -555,7 +555,10 @@ impl Machine {
             cur = node.next;
         }
         for &tcb in &chon[..nchon] {
-            self.wake_step(tcb, true)?;
+            // **KT-155 (N7-4)**: gỡ bucket WaitAddr (`unlink = true`) **và** gửi `Wake` về
+            // `home` khi waiter ở hart khác — trước đây gọi `wake_step` trực tiếp nên hart
+            // `home` không được đánh thức.
+            self.wake_from_unlink(tcb)?;
         }
         self.sched_after_op(false);
         Ok(nchon as u32)
