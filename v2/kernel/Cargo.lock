@@ -47,6 +47,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vifast-plat-aarch64"
+version = "0.1.0"
+
+[[package]]
 name = "vifast-plat-common"
 version = "0.1.0"
 dependencies = [
