@@ -404,7 +404,7 @@ RE_MOD_DECL = re.compile(
 RE_MOD_DECL_RAW = re.compile(
     r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", re.M
 )
-RE_PATH_ATTR_LINE = re.compile(r'^\s*#\[path\s*=\s*r?"([^"]+)"\s*\]\s*$')
+RE_PATH_ATTR_LINE = re.compile(r'^\s*#\[path\s*=\s*r?(?:#+)?"([^"]+)"(?:#+)?\s*\]\s*$')
 RE_CFG_ATTR_LINE = re.compile(r"^\s*#\[cfg\((.*)\)\]\s*$")
 
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
@@ -655,8 +655,8 @@ def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> boo
 
 # ------------------------------------------------------------------ KT-171: B6/B7 include!/#[path]
 
-RE_INCLUDE_MACRO = re.compile(r'\binclude!\s*\(\s*r?"([^"]+)"\s*\)')
-RE_PATH_ATTR_ANY = re.compile(r'#\[path\s*=\s*r?"([^"]+)"\s*\]')
+RE_INCLUDE_MACRO = re.compile(r'\binclude!\s*\(\s*r?(?:#+)?"([^"]+)"(?:#+)?\s*\)')
+RE_PATH_ATTR_ANY = re.compile(r'#\[path\s*=\s*r?(?:#+)?"([^"]+)"(?:#+)?\s*\]')
 
 
 def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
@@ -702,6 +702,9 @@ def resolve_include_targets(
         code = strip_rust_noise(text)
         code_keep = strip_rust_noise(text, keep_strings=True)
         relp = rel(root, p)
+        # **KT-178/G6** (reviewer L20): `include!`/`#[path]` nằm trong `#[cfg(test)]` của tệp
+        # sản phẩm **không** kéo mã vào sản phẩm ⇒ bỏ qua (trước đây báo oan).
+        _tr = test_line_ranges(text)
         found: List[Tuple[str, str, int]] = []
         for m in RE_INCLUDE_MACRO.finditer(code_keep):
             if not code[m.start() : m.end()].strip():
@@ -727,6 +730,8 @@ def resolve_include_targets(
                 )
         for kind, raw, off in found:
             lineno = code_keep.count("\n", 0, off) + 1
+            if in_ranges(lineno, _tr):
+                continue
             target = (p.parent / raw).resolve()
             inside = _inside_scan_tree(root, target)
             if inside is None:
@@ -1170,10 +1175,15 @@ def scan_v2(
     # dù đồ thị `mod` nói nó test-only. Trước bản vá này, `include!("evil_b.rs")` từ
     # `core_sched.rs` (sản phẩm) + `#[cfg(test)] mod evil_b;` ⇒ `--strict` vẫn `errors=0`
     # trong khi ảnh sản phẩm biên dịch `wake`. **Sản phẩm thắng.**
-    _extra0, _ = resolve_include_targets(root, files, test_only)
-    _product_included = {relp for relp, (_, t) in _extra0.items() if not t}
-    if _product_included:
-        test_only = set(test_only) - _product_included
+    # **KT-178/G2** (reviewer L20): chuỗi `include!` hai lớp — lặp tới điểm bất động để
+    # "sản phẩm thắng" lan **bắc cầu** (product → evil_a → evil_b).
+    _prev = None
+    while _prev != test_only:
+        _prev = set(test_only)
+        _extra0, _ = resolve_include_targets(root, files, test_only)
+        _product_included = {relp for relp, (_, t) in _extra0.items() if not t}
+        if _product_included:
+            test_only = test_only - _product_included
 
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
