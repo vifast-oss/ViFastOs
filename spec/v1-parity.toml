@@ -121,7 +121,7 @@ note = 'v1 in KILL EXEC OK|SKIP; v2 in # shell: kill pid=N code=0 => parity mot 
 name = 'cd'
 args = '<path>'
 send = 'cd /\n'
-expect = 'doi thu muc hien tai; v1 in cwd <path>'
+expect = '# shell: cd /'
 timeout_ms = 2000
 source = 'v1-archive:crates/vifast-client/src/main.rs:883'
 source_more = 'v1-archive:docs/11-hien-tai/16-van-hanh.md:109'
@@ -129,13 +129,13 @@ counter_evidence = 'docs/v1/overnight-log.md:3664-3669 (vong 222) ghi da REVERT 
 decision = 'Agent 0 Q5 2026-11-18: (A) DUA VAO danh sach — nguyen tac "tuong duong v1" so voi BAN DONG BANG, khong so voi y dinh'
 v1_output = 'cwd <path>'
 status = 'active'
-reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log, dong "[riscv64] cd /binpwd -> pwd\n/bin: OK"). Vay cd LA lenh cua v1 dong bang. Giu deferred-K7 vi shell v2 CHUA co builtin cd/pwd => thuoc K7'
+reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log, dong "[riscv64] cd /binpwd -> pwd\n/bin: OK"). Vay cd LA lenh cua v1 dong bang. KT-137 (2026-11-19) da them builtin cd/pwd vao shell san pham => status active; expect doi sang dau ra that cua v2 (`# shell: cd /`). Gioi han: FS san pham chi co goc `/` nen `cd` vao thu muc con chua kiem duoc (no ghi o JOURNAL/kt137-cdpwd.md)'
 
 [[command]]
 name = 'pwd'
 args = ''
 send = 'pwd\n'
-expect = 'in thu muc hien tai (v1: cwd())'
+expect = '# shell: pwd /'
 timeout_ms = 2000
 source = 'v1-archive:crates/vifast-client/src/main.rs:878'
 source_more = 'v1-archive:docs/11-hien-tai/16-van-hanh.md:121'
@@ -143,7 +143,7 @@ counter_evidence = 'docs/v1/overnight-log.md:3664-3669 (vong 222) ghi da REVERT 
 decision = 'Agent 0 Q5 2026-11-18: (A) DUA VAO danh sach — nguyen tac "tuong duong v1" so voi BAN DONG BANG, khong so voi y dinh'
 v1_output = 'cwd <path>'
 status = 'active'
-reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log). Vay pwd LA lenh cua v1 dong bang. Giu deferred-K7 vi shell v2 CHUA co builtin cd/pwd => thuoc K7'
+reason = 'DA KIEM CHUNG 2026-11-18 (KT-132): build v1 tai tag dong bang, boot that, chay `cd /bin` roi `pwd` => in `/bin` (log v2/agent/JOURNAL/kt132-v1-cdpwd.log). Vay pwd LA lenh cua v1 dong bang. KT-137 (2026-11-19) da them builtin cd/pwd vao shell san pham => status active; expect doi sang dau ra that cua v2 (`# shell: pwd /`). Gioi han: FS san pham chi co goc `/` nen `pwd` sau `cd` vao thu muc con chua kiem duoc (no ghi o JOURNAL/kt137-cdpwd.md)'
 
 [[command]]
 name = 'time'
