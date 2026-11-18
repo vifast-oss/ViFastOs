@@ -67,9 +67,9 @@ Ghi thành **D2-128 … D2-142** trong [`v2/agent/DECISIONS.md`](v2/agent/DECISI
 
 ---
 
-## 3. Tám sub-agent
+## 3. Chín sub-agent
 
-Bốn sóng, **không bao giờ quá bốn** sub-agent cùng lúc; mỗi cái một worktree riêng, chỉ lead merge.
+Năm sóng, **không bao giờ quá bốn** sub-agent cùng lúc; mỗi cái một worktree riêng, chỉ lead merge.
 
 | Sub-agent | Nhánh | Việc | Kết quả |
 |---|---|---|---|
