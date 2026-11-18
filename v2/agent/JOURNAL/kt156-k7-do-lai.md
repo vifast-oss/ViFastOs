@@ -341,6 +341,11 @@ ktest-con ktest-exec`). Con số **24** trong OD-K6-2 là của thời điểm c
 và ở soak (đúng thiết kế, xem `K6-CLOSURE.md` §4.3). **Không** nới/không đổi phạm vi: báo cáo đúng
 số đo được (21/21) và nêu rõ vì sao khác 24.
 
+**Cách cộng khớp 24** (nếu đọc "8 ảnh" = 7 ảnh test + ảnh sản phẩm): **21** boot ma trận (7 ảnh test
+× 3 hart) + **3** boot ảnh sản phẩm ở 1/2/4 hart (chính là **F1**, §2.1) = **24** boot. Cả **24**
+boot đó đều đã chạy trong task này và đều xanh; chỉ khác cách chia thư mục log (ma trận do
+`ktest.sh` điều khiển, ảnh sản phẩm do `kt156-closure-measure.sh` mục F1 điều khiển).
+
 ### 2.5 F5 — ngưỡng giữ nguyên
 
 ```bash
