@@ -53,7 +53,7 @@
 use core::fmt::Write;
 
 use vifast_fs::{
-    format_with_options, BlockDev, FormatOptions, Fs, FsError, BLOCK_SIZE, INODE_FILE,
+    format_with_options, BlockDev, FormatOptions, Fs, FsError, BLOCK_SIZE, INODE_DIR, INODE_FILE,
 };
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::static_slot::StaticSlot;
@@ -80,6 +80,9 @@ pub const RAM_VOL_BLOCKS: u32 = 96;
 /// Nội dung `/README` của volume mới format — ASCII, không số phiên bản (số đo thuộc tài liệu).
 const README: &[u8] =
     b"ViFastOs v2 - FS tren anh san pham\nlenh: ls | cat <path> | write <path> <text>\n";
+/// Nội dung `/docs/note.txt` của volume mới format — ASCII, **một** dòng, không số phiên bản.
+/// **KT-158**: 16 B (không có `\n` cuối) để `cat` in đúng một dòng nội dung rồi dòng tổng kết.
+const DOCS_NOTE: &[u8] = b"ghi chu cua docs";
 
 /// `Fs` trên hai phương tiện sau một kiểu — kiểu **công khai** để `proc_rt` giữ tham chiếu.
 pub type FsVol = Fs<Volume>;
@@ -365,7 +368,8 @@ pub fn open(platform: &Riscv64Virt, slot: &'static StaticSlot<FsVol>) -> Open {
         Prepared::Nothing { why } => (Medium::None, why, None),
     };
     let mut mounted = mounted;
-    // `/README` bảo đảm có ở cả hai phương tiện (`create` trả `Exists` nếu đã có — bỏ qua).
+    // `/README` + `/docs/note.txt` bảo đảm có ở cả hai phương tiện (`create` trả `Exists` nếu đã
+    // có — bỏ qua; **KT-158** thêm thư mục con `/docs`).
     if let Some(fs) = mounted.as_mut() {
         seed(fs);
     }
@@ -406,11 +410,29 @@ pub fn open(platform: &Riscv64Virt, slot: &'static StaticSlot<FsVol>) -> Open {
     Open { fs: mounted, svc }
 }
 
-/// Tạo `/README` trên volume **mới format** + `fsync` (để `cat /README` có nội dung ở cả hai
-/// phương tiện). Lỗi ở đây **không** làm mất FS: chỉ bỏ qua (dòng `used=` đã in).
+/// Tạo `/README` + `/docs/note.txt` trên volume **mới format** + `fsync` (để `cat` có nội dung ở cả
+/// hai phương tiện). Lỗi ở đây **không** làm mất FS: chỉ bỏ qua (dòng `used=` đã in).
+///
+/// **KT-158** (nợ KT-137, D2-138): trước đây chỉ seed `/README` ⇒ FS sản phẩm chỉ có **gốc** `/`,
+/// nên D2-138 ghi hạn chế "`cd` vào **thư mục con** chưa kiểm được" và đột biến "`pwd` in hằng `/`"
+/// **không phân biệt được**. Thêm `/docs` (thư mục) + `/docs/note.txt` (tệp) cho ca `kt137-cdpwd`
+/// một thư mục con **thật**: `cd /docs` ⇒ `pwd` in `/docs`, `ls` trong `/docs` thấy `note.txt`,
+/// `cat /docs/note.txt` đọc đúng nội dung — nhờ vậy đột biến `pwd` in hằng `/` **phải ĐỎ**.
+///
+/// Không đổi `TOTAL_BLOCKS` của FS và không đụng ngân sách `.data+.bss`: ba inode (README, docs,
+/// note.txt) + ba block dữ liệu nằm trong volume 96 block sẵn có (`RAM_VOL_BLOCKS`).
 fn seed(fs: &mut FsVol) {
     if let Ok(ino) = fs.create(b"/README", 0, INODE_FILE) {
         let _ = fs.write(ino, 0, README, 0);
+        let _ = fs.fsync();
+    }
+    // **KT-158**: thư mục trước, tệp sau — `create` đòi thư mục cha đã có (`resolve_parent`).
+    // `create` trả `Exists` khi đã có (đĩa đã seed lần trước) ⇒ bỏ qua, giữ nguyên dữ liệu người dùng.
+    if fs.create(b"/docs", 0, INODE_DIR).is_ok() {
+        let _ = fs.fsync();
+    }
+    if let Ok(ino) = fs.create(b"/docs/note.txt", 0, INODE_FILE) {
+        let _ = fs.write(ino, 0, DOCS_NOTE, 0);
         let _ = fs.fsync();
     }
 }
