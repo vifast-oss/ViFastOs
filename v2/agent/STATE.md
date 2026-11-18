@@ -3907,3 +3907,42 @@ build **FAIL**. Ma trận bắt ngay. Bài học: thêm lệnh phải sửa **ba
 
 Bất biến `ktest_con` **không** độc lập (tắt đi vẫn đỏ nhờ `Ring::check`); ca 3b dùng lại `right.log`;
 và **ảnh có `product-fs` mà FS trống đứng năm mươi tư giây mỗi lệnh** — nay kernel trả `ST_NOFS` ngay.
+
+---
+
+## 18/11/2026 10:25–10:32 — SOAK 1.000 TRÊN ẢNH PHÁT HÀNH MỚI NHẤT (KT-127, Q1 điều kiện 2)
+
+**Ai chạy**: lead (Agent 1) chạy trực tiếp; ghi sổ theo yêu cầu Agent 0 ngày 18/11 (Q1 điều kiện 2).
+**Vì sao**: ảnh `a0287e4b` (KT-126) đã có ma trận 21/21, parity, `shell-edge` 8/8, persist — **chưa**
+có soak 1.000. Agent 0 chọn Q1 = (B): K6 gắn với ảnh **mới nhất**, nên phép đo này là điều kiện.
+
+**Lệnh**:
+
+```bash
+bash v2/agent/JOURNAL/kt90-soak-product-image.sh 1000 3 \
+  --image=v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin
+```
+
+**Kết quả** (log: `v2/agent/JOURNAL/kt90-logs/run-soak-20261118-102508-72680`):
+
+```text
+# KT-90 soak xong — 2026-11-18T01:31:18Z
+# wall=370s tổng=1000/1000 ok=1000 fail=0 (370s)
+# timeout-shell=0 panic=0 help-response=1000/1000 rx_bytes_min=10
+# ảnh: sha256=a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13 changed=0 bytes=205440
+# infra after: qemu_con_sot_total=0 qemu_ppid1=0 (trước: 0/0)
+# kt90: 1000/1000 vòng xanh — mỗi vòng có 'shell>' + phản hồi 'help' qua UART + halt sạch
+# kt90: PASS
+```
+
+**Đọc**: 1.000 boot liên tiếp trên **đúng** ảnh phát hành; mỗi vòng vào được `shell>`, `help` trả lời
+`cmds=15`, `exit code=0`, `# product halt:` sạch; ảnh **không đổi** giữa chừng (`changed=0`); không
+sót QEMU, không PANIC, không timeout.
+
+**Trạng thái ảnh `a0287e4b` sau phép đo này**: đã có **đủ** mọi bằng chứng — ma trận 21/21, parity,
+`shell-edge` 8/8, persist 7 pha, soak 1.000/1.000.
+
+**Kèm theo (KT-127)**: `fault_seen=1` trong dòng `# product halt` **đã giải thích** — đó là `Exit`
+của chính shell đi qua kênh fault (D2-25), không phải lỗi; checker soak nay **fail-closed** trên giá
+trị đó (`WANT_FAULT_SEEN=1`) kèm **đột biến phía mã** chứng minh nó đỏ. Chi tiết:
+`v2/agent/JOURNAL/kt127-journal.md`.

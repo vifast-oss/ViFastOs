@@ -66,6 +66,20 @@ if [ -n "$GIVEN_IMAGE" ]; then
 fi
 SOAK_SH="$REPO/v2/test/boot/soak.sh"
 
+# KT-127 (Q1 điều kiện 1 của Agent 0): `fault_seen` trong `# product halt:` **KHÔNG** phải lỗi —
+# nó là **Exit của chính shell** đi qua kênh fault, đúng thiết kế D2-25 ("Exit là fault, không phải
+# Reply"). Chuỗi sinh ra nó:
+#   shell gọi syscall 14 `Exit(0)`
+#     → core ghi `Tcb.last_fault = FaultKind::Exit{code}` + TCB `Inactive` (D2-25)
+#     → kernel `service()` đọc `take_last_fault` rồi gửi `FAULT_EXIT` vào fault_ep
+#     → procsrv `recv(EP_FAULT)` in `# proc: recv exit pid=… code=…` rồi gửi `EV_FAULT`
+#     → kernel `service()` nhận `EV_FAULT` ⇒ `svc.faults += 1` ⇒ in `fault_seen=1`.
+# Mỗi boot có **đúng một** tiến trình thoát (shell). `kill` dùng `Tcb.Suspend(Abort)` nên **không**
+# sinh fault; page fault là **fatal** (`Stop::Fault` → `fail(...)`), không đi qua đường này.
+# ⇒ Giá trị mong đợi là **đúng 1**, không phải "≥ 0": 0 nghĩa là giao thức Exit đã đứt, 2 nghĩa là
+# có fault thứ hai bị che. Lệch ⇒ ĐỎ.
+WANT_FAULT_SEEN=1
+
 # Ngưỡng thời gian (số vòng poll × bước poll), KHÔNG nới trong lúc đo.
 T_SHELL_POLLS=667 # 667 × 0.03 s ≈ 20 s/boot tới `shell>` (D2-72 Q10)
 P_SHELL=0.03
@@ -443,6 +457,12 @@ boot_one() {
     c_ok1="$(grep -c -x -F 'ok 1 - k3 boot' "$log" 2>/dev/null || true)"
     c_halt="$(grep -c -x -F '# k3 halt' "$log" 2>/dev/null || true)"
     c_exit0="$(grep -c -x -F '# shell: exit code=0' "$log" 2>/dev/null || true)"
+    # KT-127: `fault_seen` phải **đúng** bằng giá trị mong đợi (xem `WANT_FAULT_SEEN` ở đầu tệp),
+    # và phải có **đúng một** dòng `# proc: recv exit … code=0` — hai vế độc lập: vế thứ hai chứng
+    # minh fault đếm được **là** Exit của shell, không phải fault lạ.
+    c_haltline="$(grep -cE '^# product halt: ' "$log" 2>/dev/null || true)"
+    c_exitrecv="$(grep -cE '^# proc: recv exit pid=[0-9]+ code=0$' "$log" 2>/dev/null || true)"
+    fault_seen="$(sed -n 's/^# product halt:.* fault_seen=\([0-9]*\) .*/\1/p' "$log" | head -1)"
     fsmed="$(sed -n 's/^# product fs: medium=\([a-z-]*\).*/\1/p' "$log" | head -1)"
     rx="$(sed -n 's/^# product halt:.* rx_bytes=\([0-9]*\) .*/\1/p' "$log" | head -1)"
     : "${rx:=0}"
@@ -456,19 +476,24 @@ boot_one() {
     [ "${c_ok1:-0}" -eq 1 ] || why="$why,ok1=${c_ok1:-0}"
     [ "${c_halt:-0}" -eq 0 ] || why="$why,halt-marker=${c_halt:-0}" # ảnh phát hành KHÔNG halt sau boot
     [ "${c_exit0:-0}" -eq 1 ] || why="$why,exit0=${c_exit0:-0}"
+    [ "${c_haltline:-0}" -eq 1 ] || why="$why,halt-line=${c_haltline:-0}"
+    [ "${fault_seen:-}" = "$WANT_FAULT_SEEN" ] || why="$why,fault-seen=${fault_seen:-none}(want=$WANT_FAULT_SEEN)"
+    [ "${c_exitrecv:-0}" -eq 1 ] || why="$why,exit-recv=${c_exitrecv:-0}"
     [ "$rx" -gt 0 ] || why="$why,rx-bytes=$rx"
     [ "$rc" -eq 0 ] || why="$why,qemu-rc=$rc"
 
     if [ -n "$why" ]; then
-        printf 'fail %s lane=%s why=%s shell_polls=%s help_polls=%s halt_polls=%s gone_polls=%s rx=%s qemu_rc=%s log=boot-%s.log\n' \
-            "$i" "$lane" "${why#,}" "$shell_polls" "$help_polls" "$halt_polls" "$gone_polls" "$rx" "$rc" "$i" >>"$res"
+        # KT-127: mang `help=` cả vào dòng `fail` — trước đây chỉ dòng `ok` có, nên một vòng đỏ vì
+        # lý do khác vẫn bị đếm là "help-response=0/N" dù shell đã trả lời (báo cáo sai sự thật).
+        printf 'fail %s lane=%s why=%s help=%s shell_polls=%s help_polls=%s halt_polls=%s gone_polls=%s rx=%s qemu_rc=%s log=boot-%s.log\n' \
+            "$i" "$lane" "${why#,}" "${help:-0}" "$shell_polls" "$help_polls" "$halt_polls" "$gone_polls" "$rx" "$rc" "$i" >>"$res"
         tail -8 "$log" | sed 's/^/    /' >&2
         echo "boot $i/$N FAIL:${why} lane=$lane" >&2
         return 1
     fi
 
-    printf 'ok %s lane=%s help=%s fs=%s rx=%s qemu_rc=%s shell_polls=%s help_polls=%s halt_polls=%s gone_polls=%s killed=%s\n' \
-        "$i" "$lane" "$help" "$fsmed" "$rx" "$rc" "$shell_polls" "$help_polls" "$halt_polls" "$gone_polls" "$killed" >>"$res"
+    printf 'ok %s lane=%s help=%s fs=%s rx=%s fault_seen=%s qemu_rc=%s shell_polls=%s help_polls=%s halt_polls=%s gone_polls=%s killed=%s\n' \
+        "$i" "$lane" "$help" "$fsmed" "$rx" "$fault_seen" "$rc" "$shell_polls" "$help_polls" "$halt_polls" "$gone_polls" "$killed" >>"$res"
     # Bản gọn 3 dòng chứng cứ danh tính ảnh + shell, để grep nhanh sau khi đo.
     {
         printf '# boot %s | %s\n' "$i" "$(grep -m1 -x -F "$WANT_BUILD_LINE" "$log")"
@@ -515,7 +540,7 @@ FAIL_COUNT="$(grep -c '^fail ' "$RESULT_MERGED" 2>/dev/null || true)"
 TOTAL=$((OK_COUNT + FAIL_COUNT))
 TO_COUNT="$(grep -c 'why=.*timeout-shell' "$RESULT_MERGED" 2>/dev/null || true)"
 PANIC_COUNT="$(grep -c 'why=.*panic=' "$RESULT_MERGED" 2>/dev/null || true)"
-HELP_COUNT="$(grep -c '^ok .* help=[0-9][0-9]*' "$RESULT_MERGED" 2>/dev/null || true)"
+HELP_COUNT="$(grep -cE '^(ok|fail) .* help=[0-9]+' "$RESULT_MERGED" 2>/dev/null || true)"
 RX_MIN="$(grep '^ok ' "$RESULT_MERGED" 2>/dev/null | sed -n 's/.* rx=\([0-9]*\) .*/\1/p' | sort -n | head -1)"
 : "${RX_MIN:=0}"
 

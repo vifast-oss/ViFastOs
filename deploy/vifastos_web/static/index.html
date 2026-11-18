@@ -25,7 +25,7 @@
   <meta name="twitter:title" content="ViFastOs — microkernel nhỏ, viết bằng Rust">
   <meta name="twitter:description" content="seL4-style, capability-based, no_std. Chạy trên QEMU với riscv64 / aarch64 / x86_64.">
   <meta name="twitter:image" content="https://os.vifast.org/static/brand/og-1200.png">
-  <link rel="stylesheet" href="/static/styles.css?v=20261109a">
+  <link rel="stylesheet" href="/static/styles.css?v=20261118a">
 </head>
 <body>
   <div class="topline" aria-hidden="true"></div>
@@ -265,7 +265,7 @@
     <section class="section" id="san-pham">
       <div class="wrap">
         <h2>Sản phẩm cùng hệ</h2>
-        <p class="section-lead">Ba sản phẩm, một hệ sinh thái: gõ tiếng Việt, đọc tiếng Việt và giữ lõi hệ điều hành. Cùng chạy local-first, cùng giấy phép MIT hoặc Apache-2.0.</p>
+        <p class="section-lead">Năm sản phẩm, một hệ sinh thái: gõ tiếng Việt, đọc tiếng Việt, giữ lõi hệ điều hành, và một ngôn ngữ lập trình cùng shell của nó. Cùng chạy local-first, cùng giấy phép MIT hoặc Apache-2.0.</p>
         <div class="prod-grid">
           <article class="prod-card current">
             <span class="prod-tag">Đang xem · Hệ điều hành</span>
@@ -307,6 +307,32 @@
             <div class="prod-actions">
               <a class="prod-btn" href="https://tts.vifast.org/" rel="noopener noreferrer" target="_blank">Website ↗</a>
               <a class="prod-link" href="https://github.com/vifast-oss/ViFastTts" target="_blank" rel="noopener noreferrer">Mã nguồn GitHub ↗</a>
+            </div>
+          </article>
+          <article class="prod-card">
+            <span class="prod-tag">Cùng hệ sinh thái · Ngôn ngữ lập trình</span>
+            <h3>ViScript</h3>
+            <p>Ngôn ngữ lập trình dễ học cho người Việt: cú pháp gọn như Python, kiểm tra kiểu như Rust.</p>
+            <ul>
+            <li>Tên biến và thông báo lỗi bằng tiếng Việt</li>
+            <li>Không con trỏ, không unsafe, không kế thừa lớp</li>
+            <li>Tệp .vis, lệnh vis — đang mở rộng thư viện chuẩn</li>
+            </ul>
+            <div class="prod-actions">
+              <a class="prod-btn" href="https://github.com/vifast-oss/ViScript" target="_blank" rel="noopener noreferrer">Mã nguồn GitHub ↗</a>
+            </div>
+          </article>
+          <article class="prod-card">
+            <span class="prod-tag">Cùng hệ sinh thái · Shell</span>
+            <h3>ViShell</h3>
+            <p>Shell viết bằng chính ViScript: mỗi lệnh một task có heap riêng.</p>
+            <ul>
+            <li>Prompt là một hàm trong tệp cấu hình</li>
+            <li>Kịch bản .vish, lệnh vish</li>
+            <li>Đang phát triển — nằm trong repo ViScript</li>
+            </ul>
+            <div class="prod-actions">
+              <a class="prod-btn" href="https://github.com/vifast-oss/ViScript" target="_blank" rel="noopener noreferrer">Mã nguồn GitHub ↗</a>
             </div>
           </article>
         </div>
