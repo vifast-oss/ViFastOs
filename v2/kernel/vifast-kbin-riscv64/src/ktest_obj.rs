@@ -181,7 +181,9 @@ fn tap31_byte_invariant(m: &mut Mac, u0: CapId, fails: &mut usize) {
     let s2 = m.untyped_stats(u0).unwrap_or_default();
     let atomic = bad == Some(ObjError::InvalidArgument) && s2 == s1;
     // Hết arena ⇒ mọi lần gọi sau trả `NotEnoughMemory` **atomic** (byte trước/sau y hệt).
-    let mut caps = [CapId::NONE; 20];
+    // KT-157: arena object layer 64 → 96 KiB ⇒ 24 PageTable 4 KiB; mảng phải đủ chỗ để chạm
+    // `NotEnoughMemory` thật (20 phần tử cũ dừng sớm ⇒ `oom=0` ⇒ TAP 31 đỏ oan).
+    let mut caps = [CapId::NONE; 32];
     let mut n_caps = 0usize;
     let mut oom = false;
     let mut oom_atomic = false;
