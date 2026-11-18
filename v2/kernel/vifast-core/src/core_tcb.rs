@@ -589,7 +589,7 @@ impl Machine {
         match state {
             // `Sleeping` giữ nguyên (bảng §4.5); `Ready` đã đúng chỗ (cặp danh tính cấm).
             TcbState::Sleeping { .. } | TcbState::Ready => {}
-            _ => self.transition_tcb(obj, TcbState::Ready)?,
+            _ => self.wake_from(obj)?,
         }
         self.sched_after_op(true);
         Ok(())
@@ -742,7 +742,7 @@ impl Machine {
             }
         }
         for &tcb in &wake[..n_wake] {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.wake_from(tcb)?;
         }
         Ok(())
     }

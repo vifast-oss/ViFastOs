@@ -223,12 +223,38 @@ impl Machine {
         if self.n_harts > 1 && info.home != self.current_hart {
             return self.post_mail(info.home, MailboxMsg::Wake(tcb));
         }
-        self.wake_step(tcb)?;
+        self.wake_step(tcb, true)?;
         self.sched_after_op(false);
         Ok(())
     }
 
-    pub(crate) fn wake_step(&mut self, tcb: ObjId) -> Result<(), KError> {
+    /// **KT-154 (N7-2)** — cửa **duy nhất** cho mọi đường đánh thức TCB **trong** kernel
+    /// (IPC/Reply/Notification/finalise/refill). Khác hart ⇒ gửi `MailboxMsg::Wake` vào hộp
+    /// thư `home` (đánh thức hart đích) **và** vẫn chuyển `Ready` cục bộ: các đường gọi đã
+    /// tự gỡ đúng phần bookkeeping của mình (waiter khỏi hàng, `Reply.caller`, message khỏi
+    /// `Endpoint.send`) nên trạng thái phải nhất quán **ngay** — hoãn sang hart `home` sẽ vi
+    /// phạm bất biến C2 (`Reply.caller ⇔ BlockedOnReply`) và `check_ipc` (object bị finalise
+    /// không còn để chờ). Cùng hart (và `n_harts == 1`) giữ nguyên đường cũ: chỉ `wake_step`,
+    /// **không** message.
+    ///
+    /// `unlink = false` (xem [`Machine::wake_step`]): **không** gỡ TCB khỏi mọi hàng chờ —
+    /// các đường gọi đã gỡ đúng phần của mình, và `unlink_tcb_queues` sẽ gỡ **cả** message
+    /// `NBSend` không liên quan rồi đếm lại `ipc_dropped` (đường finalise đã đếm ⇒ hai lần).
+    pub(crate) fn wake_from(&mut self, tcb: ObjId) -> Result<(), KError> {
+        let info = self.tcb_data(tcb)?.snapshot();
+        let cheo_hart = self.n_harts > 1 && info.home != self.current_hart;
+        self.wake_step(tcb, false)?;
+        if cheo_hart {
+            self.push_mail(info.home, MailboxMsg::Wake(tcb))?;
+        }
+        Ok(())
+    }
+
+    /// Thân chuyển `blocked/sleeping → Ready` — **một** chỗ duy nhất (máy kiểm
+    /// `v2/tools/check-wake-paths.py --strict` đòi điều này). `unlink` quyết định có gỡ TCB
+    /// khỏi **mọi** hàng chờ trước khi `Ready` hay không: đường hộp thư/`wake`/`wake_addr`
+    /// cần (`true`); đường sản phẩm đã tự gỡ nên dùng [`Machine::wake_from`] (`false`).
+    pub(crate) fn wake_step(&mut self, tcb: ObjId, unlink: bool) -> Result<(), KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Ready {
             return Ok(());
@@ -236,7 +262,9 @@ impl Machine {
         if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
             return Err(KError::IllegalOperation);
         }
-        self.unlink_tcb_queues(tcb);
+        if unlink {
+            self.unlink_tcb_queues(tcb);
+        }
         self.transition_tcb(tcb, TcbState::Ready)
     }
 
@@ -587,7 +615,7 @@ impl Machine {
                     return;
                 }
                 if info.state.is_blocked() || matches!(info.state, TcbState::Sleeping { .. }) {
-                    let _ = self.wake_step(tcb);
+                    let _ = self.wake_step(tcb, true);
                 }
                 // **KT-64** — hart đang chờ `TlbFlush` thì **không** preempt/dispatch: phải
                 // phục vụ flush trước (tránh chạy trên TLB cũ); message vẫn được xử lý xong.

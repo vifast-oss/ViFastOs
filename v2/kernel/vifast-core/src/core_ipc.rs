@@ -330,7 +330,7 @@ impl Machine {
                         _ => {
                             if q.blocking {
                                 self.set_last_ipc_error(q.sender, KError::Cancelled)?;
-                                self.transition_tcb(q.sender, TcbState::Ready)?;
+                                self.wake_from(q.sender)?;
                             }
                         }
                     }
@@ -344,7 +344,7 @@ impl Machine {
                 }
                 _ => {
                     if q.blocking {
-                        self.transition_tcb(q.sender, TcbState::Ready)?;
+                        self.wake_from(q.sender)?;
                     }
                 }
             },
@@ -414,7 +414,7 @@ impl Machine {
                 msg.info = msg.info.with_no_reply(true);
             }
             self.deliver_message(waiter, &mut msg, plan.as_ref())?;
-            self.transition_tcb(waiter, TcbState::Ready)?;
+            self.wake_from(waiter)?;
             if user_no_reply {
                 self.sched_after_op(true);
                 return Ok(());
@@ -516,7 +516,7 @@ impl Machine {
                 .endpoint_take_waiter(ep_obj)?
                 .expect("has_waiter vừa kiểm");
             self.deliver_message(waiter, &mut msg, plan.as_ref())?;
-            self.transition_tcb(waiter, TcbState::Ready)?;
+            self.wake_from(waiter)?;
         } else {
             self.endpoint_enqueue(
                 ep_obj,
@@ -694,7 +694,7 @@ impl Machine {
             }
         }
         if let Some(caller) = caller {
-            self.transition_tcb(caller, TcbState::Ready)?;
+            self.wake_from(caller)?;
         }
         if matches!(state, TcbState::Running { .. }) {
             self.transition_tcb(tcb, TcbState::Ready)?;
@@ -800,7 +800,7 @@ impl Machine {
                 if let Some((w, _)) = waiter {
                     if w != tcb {
                         self.record_last_fault(w, tcb, FaultKind::Exit { code })?;
-                        self.transition_tcb(w, TcbState::Ready)?;
+                        self.wake_from(w)?;
                     }
                 }
                 if state != TcbState::Inactive {
@@ -885,7 +885,7 @@ impl Machine {
                 };
                 let _ = self.deliver_queued(w, q, reply_obj, None)?;
                 if w != tcb {
-                    self.transition_tcb(w, TcbState::Ready)?;
+                    self.wake_from(w)?;
                 }
             }
             None => {
@@ -1102,7 +1102,7 @@ impl Machine {
     fn cancel_reply_of(&mut self, donor: ObjId) -> Result<(), KError> {
         if let TcbState::BlockedOnReply { reply } = self.tcb_state(donor)? {
             self.reply_set_caller(reply, None)?;
-            self.transition_tcb(donor, TcbState::Ready)?;
+            self.wake_from(donor)?;
         }
         Ok(())
     }

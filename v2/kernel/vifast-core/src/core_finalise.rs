@@ -36,7 +36,7 @@ impl Machine {
                 self.tcb_state(c),
                 Ok(TcbState::BlockedOnReply { reply }) if reply == reply_obj
             ) {
-                let _ = self.transition_tcb(c, TcbState::Ready);
+                let _ = self.wake_from(c);
             }
         }
         caller
@@ -96,14 +96,14 @@ impl Machine {
         if let Some((w, _)) = recv {
             if matches!(self.tcb_state(w), Ok(TcbState::BlockedOnRecv { ep: e2, .. }) if e2 == ep) {
                 let _ = self.set_last_ipc_error(w, KError::Cancelled);
-                let _ = self.transition_tcb(w, TcbState::Ready);
+                let _ = self.wake_from(w);
             }
         }
         // **D2-90** — sender bị finalise: `Cancelled + Ready`, không treo trên Endpoint đã chết.
         for &s in &senders[..n_senders] {
             if matches!(self.tcb_state(s), Ok(TcbState::BlockedOnSend { ep: e2, .. }) if e2 == ep) {
                 let _ = self.set_last_ipc_error(s, KError::Cancelled);
-                let _ = self.transition_tcb(s, TcbState::Ready);
+                let _ = self.wake_from(s);
             }
         }
     }
@@ -121,7 +121,7 @@ impl Machine {
                 Ok(TcbState::BlockedOnNotification { ntfn: n2 }) if n2 == ntfn
             ) {
                 let _ = self.set_last_ipc_error(w, KError::Cancelled);
-                let _ = self.transition_tcb(w, TcbState::Ready);
+                let _ = self.wake_from(w);
             }
         }
     }

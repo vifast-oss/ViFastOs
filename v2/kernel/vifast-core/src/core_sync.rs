@@ -58,7 +58,7 @@ impl Machine {
         }
         self.deliver_notification(target, new_word, new_badge)?;
         self.unlink_tcb_queues(target);
-        self.transition_tcb(target, TcbState::Ready)?;
+        self.wake_from(target)?;
         {
             let n = self.notification_data_mut(ntfn)?;
             n.word = 0;
@@ -555,7 +555,7 @@ impl Machine {
             cur = node.next;
         }
         for &tcb in &chon[..nchon] {
-            self.wake_step(tcb)?;
+            self.wake_step(tcb, true)?;
         }
         self.sched_after_op(false);
         Ok(nchon as u32)
