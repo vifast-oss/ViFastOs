@@ -224,6 +224,8 @@ v2/kernel/vifast-core/src/core_sched.rs:279:        self.transition_tcb(cur, Tcb
 v2/kernel/vifast-core/src/tls_tests.rs:299:    r.m.transition_tcb(r.tcb, TcbState::Ready).expect("Ready");
 v2/kernel/vifast-core/src/core_tcb.rs:436:                    self.transition_tcb(cur, TcbState::Ready)?;
 v2/kernel/vifast-core/src/core_tcb.rs:508:            self.transition_tcb(obj, TcbState::Ready)?;
+v2/kernel/vifast-core/src/core_tcb.rs:939:        m.transition_tcb(ps, TcbState::Ready).expect("ps Ready");
+v2/kernel/vifast-core/src/core_tcb.rs:975:        m.transition_tcb(victim, TcbState::Ready).expect("Ready");
 ```
 
 Từng dòng còn lại **không phải** đánh thức (đúng phân loại §3.3 `kt151-n7.md`):
@@ -231,7 +233,8 @@ Từng dòng còn lại **không phải** đánh thức (đúng phân loại §3
 (`Running→Ready` của **chính** replier); `core_sched.rs:171` `dispatch_step` và `:279`
 `yield_current` (`Running→Ready`); `core_sched.rs:268` **`wake_step`** (cửa);
 `core_tcb.rs:436` `transition_tcb` (nguyên thuỷ, `Running→Ready` khi preempt);
-`core_tcb.rs:508` `tcb_suspend` (Suspend, không phải wake); `tls_tests.rs:299` mã test.
+`core_tcb.rs:508` `tcb_suspend` (Suspend, không phải wake); `core_tcb.rs:939`/`:975` và
+`tls_tests.rs:299` là mã **test** (`#[cfg(test)]`).
 
 ### 5.3 Đổi định nghĩa máy kiểm (Luật 2) — quét lại **toàn bộ**
 
