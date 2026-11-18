@@ -51,6 +51,17 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
     - **B4** — quét thân `macro_rules!` trong **`v2/lib/**`** tìm token `wake`
       (`E_STRICT_MACRO_WAKE`), allowlist `MACRO_WAKE_ALLOW` có lý do.
 
+  **KT-172** — KT-171 chỉ vá **luật `wake`**; **luật 1–5** (kênh `MailboxMsg`, consumer, arch,
+  `E_STRICT_TRANSITION`) vẫn miễn theo **tên/đường dẫn** (`is_test_file_heuristic`), nên module
+  **sản phẩm** tên `ktest_evil.rs` lọt **luật KT-155** — đúng cách reviewer L11 đã phá. Nay:
+    - **bốn call site** của luật 1–5 dùng [`is_test_file`] (đồ thị module); `test_only` tính
+      **một lần** ở đầu `scan_v2`, dùng chung cho cả luật 1–5 và luật `wake`;
+    - `is_test_file_heuristic` **xoá** ⇒ không còn hai định nghĩa "test-only" lệch nhau;
+    - hệ quả đã biết: `proc_demo.rs` (chỉ `mod` từ `ktest_proc.rs`, bin `required-features =
+      ["ktest","user"]`) thành **test-only** ⇒ hai mục `NON_WAKE_READY_SITES` của nó **bỏ**
+      (giữ lại sẽ là allowlist mục `E_STRICT_STALE`, và nếu tệp thành sản phẩm thì mục cũ sẽ
+      **âm thầm miễn** hai chỗ chuyển `Ready` — bỏ mục là hướng fail-closed).
+
 Fail-closed: thiếu mỏ neo (không tìm thấy `wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ,
 không được coi là "không có gì để kiểm".
 
@@ -201,8 +212,14 @@ NON_WAKE_READY_SITES: Dict[Tuple[str, str, int], str] = {
     ("v2/kernel/vifast-core/src/core_tcb.rs", "transition_tcb", 1): "nguyên thuỷ: preempt Running→Ready",
     ("v2/kernel/vifast-core/src/core_tcb.rs", "tcb_suspend", 1): "treo: Ready + suspended (không chạy)",
     # --- kernel: mã khởi tạo sản phẩm (không phải đường wake của TCB đang chờ).
-    ("v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs", "build_rig", 1): "khởi tạo sản phẩm",
-    ("v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs", "task_ready", 1): "khởi tạo sản phẩm",
+    #
+    # **KT-172** — hai mục `proc_demo.rs` (`build_rig` #1, `task_ready` #1) đã **bỏ**. Vì sao:
+    # `proc_demo.rs` **chỉ** được `mod proc_demo;` từ `ktest_proc.rs` — bin có
+    # `required-features = ["ktest", "user"]` ⇒ **test-only thật** theo đồ thị module. Từ KT-172
+    # luật 5 dùng `is_test_file` (đồ thị) nên tệp này **không còn được quét**; giữ mục lại thì
+    # `E_STRICT_STALE` đỏ (allowlist mục) — và tệ hơn, nếu mai kia `proc_demo.rs` được `mod` từ
+    # `main.rs` (thành **sản phẩm**) thì mục cũ sẽ **âm thầm miễn** hai chỗ chuyển `Ready`.
+    # Bỏ mục ⇒ hướng fail-closed: thành sản phẩm là `E_STRICT_TRANSITION` đỏ ngay.
     ("v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs", "build_rig", 1): "khởi tạo sản phẩm",
     ("v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs", "turn", 1): "khởi tạo sản phẩm",
     ("v2/kernel/vifast-plat-riscv64/src/core_bridge.rs", "boot_smoke", 1): "khởi tạo sản phẩm",
@@ -369,25 +386,15 @@ def test_line_ranges(text: str) -> List[Tuple[int, int]]:
     return ranges
 
 
-def is_test_file_heuristic(path: Path, root: Path) -> bool:
-    """Heuristic **tên/đường dẫn** — CHỈ dùng cho các mục 1–5 (kênh/arch/transition).
-
-    **KT-171**: đây **không** phải định nghĩa "test-only" của luật `wake`. Reviewer L11
-    (KT-168 §1.2 B8/B9) đã phá đúng heuristic này: một module **sản phẩm** tên `ktest_*.rs`
-    hoặc đặt dưới `src/tests/` được miễn dù được biên dịch vào ảnh sản phẩm. Luật `wake`
-    dùng [`is_test_file`] (đồ thị module) — xem `test_only_modules`.
-    """
-    relp = rel(root, path)
-    name = path.name
-    return (
-        "/tests/" in relp
-        or name.endswith("_tests.rs")
-        or name.startswith("ktest")
-        or name == "tls_tests.rs"
-    )
-
-
 # ------------------------------------------------------------------ KT-171: test-only thật
+
+# **KT-172** — `is_test_file_heuristic` (miễn theo **tên** `ktest*`/`*_tests.rs`/`tls_tests.rs`
+# và theo **đường dẫn** `/tests/`) đã **xoá**. Nó là đúng lỗ hổng reviewer L11 đã phá cho luật
+# `wake` (KT-168 §1.2 B8/B9): một module **sản phẩm** tên `ktest_evil.rs` hoặc đặt dưới
+# `src/tests/` được miễn dù được biên dịch vào ảnh sản phẩm. KT-171 vá luật `wake`; KT-172 vá
+# **nốt** bốn call site của luật 1–5 (kênh `MailboxMsg`, consumer, arch, `E_STRICT_TRANSITION`)
+# sang [`is_test_file`] (đồ thị module). Không còn đường nào miễn theo tên ⇒ không còn hai định
+# nghĩa "test-only" lệch nhau.
 
 # `mod NAME;` (không thân) — khai báo module ngoài.
 RE_MOD_DECL = re.compile(
@@ -635,10 +642,11 @@ def test_only_modules(root: Path) -> set:
 
 
 def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> bool:
-    """Tệp **test-only thật sự** (KT-171) — dùng cho luật `E_STRICT_TEST_ONLY_WAKE`.
+    """Tệp **test-only thật sự** (KT-171) — dùng cho **mọi** luật (1–5 và luật `wake`).
 
-    Khác [`is_test_file_heuristic`]: dựa trên **đồ thị module** (`test_only_modules`), không
-    dựa tên tệp/đường dẫn. Đây là bản vá B8/B9 của reviewer L11 (KT-168 §1.2).
+    Dựa trên **đồ thị module** (`test_only_modules`), không dựa tên tệp/đường dẫn. Đây là bản
+    vá B8/B9 của reviewer L11 (KT-168 §1.2). **KT-172**: luật 1–5 cũng dùng hàm này (trước đó
+    dùng `is_test_file_heuristic`, nay đã xoá) — một định nghĩa "test-only" duy nhất.
     """
     if test_only is None:
         test_only = test_only_modules(root)
@@ -1136,10 +1144,18 @@ def scan_v2(
         files.append((p, text, find_functions(p, text)))
         test_ranges[str(p)] = test_line_ranges(text)
 
+    # **KT-172** — "test-only" cho **mọi** luật (1–5) là **đồ thị module**
+    # (`test_only_modules`), không theo tên/đường dẫn. Trước KT-172 bốn call site dưới đây
+    # dùng `is_test_file_heuristic`, nên module **sản phẩm** tên `ktest_evil.rs` (hoặc đặt
+    # dưới `src/tests/`) được miễn cả **luật KT-155** (`E_STRICT_TRANSITION`) — đúng lỗ hổng
+    # reviewer L11 đã phá cho luật `wake` (KT-168 §1.2 B8/B9). Tính **một lần** cho cả lượt
+    # quét (hàm có cache theo gốc cây, nhưng truyền vào để không phụ thuộc cache toàn cục).
+    test_only = test_only_modules(root)
+
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
     for p, text, fns in files:
-        if is_test_file_heuristic(p, root) or p.name == "mailbox.rs":
+        if is_test_file(p, root, test_only) or p.name == "mailbox.rs":
             continue
         tr = test_ranges.get(str(p), [])
         lines = text.splitlines()
@@ -1200,7 +1216,7 @@ def scan_v2(
     # 2) Người tiêu thụ: `Wake`/`Reschedule`/`Migrate` chỉ trong `apply_mail`.
     consumers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
     for p, text, fns in files:
-        if p.name == "mailbox.rs" or is_test_file_heuristic(p, root):
+        if p.name == "mailbox.rs" or is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
         for lineno, line in enumerate(text.splitlines(), 1):
@@ -1235,7 +1251,7 @@ def scan_v2(
         relp = rel(root, p)
         if not re.match(r"v2/kernel/vifast-plat-(riscv64|aarch64|x86_64)/", relp):
             continue
-        if is_test_file_heuristic(p, root):
+        if is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
         for lineno, line in enumerate(text.splitlines(), 1):
@@ -1286,7 +1302,7 @@ def scan_v2(
         sites: List[Tuple[str, str, int, int]] = []
         for p, text, fns in files:
             relp = rel(root, p)
-            if is_test_file_heuristic(p, root):
+            if is_test_file(p, root, test_only):
                 continue
             tr = test_ranges.get(str(p), [])
             lines = text.splitlines()
@@ -1399,7 +1415,8 @@ def scan_v2(
         #    trong đường sản phẩm (đã tự gỡ bookkeeping) làm TCB nằm chờ trong hộp thư trong
         #    khi C2/`check_ipc` đã đỏ. Xem `v2/agent/JOURNAL/kt159-wake2.md` +
         #    `v2/agent/JOURNAL/kt165-wakefix.md` + `v2/agent/JOURNAL/kt171-wakefix3.md`.
-        test_only = test_only_modules(root)
+        #    **KT-172**: `test_only` đã tính **một lần** ở đầu `scan_v2` (dùng chung cho luật
+        #    1–5 và luật `wake`) — không tính lại, không để hai định nghĩa "test-only" lệch nhau.
         extra, inc_errors = resolve_include_targets(root, files, test_only)
         for e in inc_errors:
             r.err("E_STRICT_WAKE_INCLUDE", e)
@@ -1671,7 +1688,9 @@ def selftest() -> int:
     """Mỗi ca một dòng `ok`/`not ok`.
 
     15 ca KT-151/155/159 + **11 ca KT-165** (sáu cách lách H1..H6 + năm đối chứng dương) +
-    **13 ca KT-171** (sáu lớp B4/B6/B7/B8/B9/B10 của reviewer L11 + bảy đối chứng dương).
+    **13 ca KT-171** (sáu lớp B4/B6/B7/B8/B9/B10 của reviewer L11 + bảy đối chứng dương) +
+    **7 ca KT-172** (bốn call site luật 1–5 chuyển sang đồ thị module: hai đột biến
+    `ktest_evil.rs`/`src/tests/evil.rs` + hai đối chứng dương + ba ca luật 1/2/3).
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -2352,6 +2371,177 @@ def selftest() -> int:
             )
         )
 
+        # ============ KT-172 (L15) — luật 1–5 dùng **đồ thị module**, không theo tên ============
+        # Bối cảnh: KT-171 vá **luật `wake`** (B8/B9) nhưng bốn call site của luật 1–5 vẫn dùng
+        # `is_test_file_heuristic` (miễn theo tên `ktest*`/`/tests/`). Hệ quả: module **sản phẩm**
+        # tên `ktest_evil.rs` lọt **luật KT-155** (`E_STRICT_TRANSITION`) — đúng cách reviewer L11
+        # đã phá. KT-172 đổi cả bốn sang `is_test_file` (đồ thị module) và **xoá** heuristic.
+        #
+        # Mỗi ca đột biến dưới đây là **đúng** cách phá của L11: tệp mang tên `ktest*` (hoặc nằm
+        # dưới `src/tests/`) nhưng được `mod` từ **crate root sản phẩm** ⇒ phải bị quét.
+
+        # (4ah) **Đột biến A (KT-172)** — `ktest_evil.rs` + `mod ktest_evil;` trong `main.rs`
+        # (ảnh sản phẩm), chuyển `TcbState::Ready` **trực tiếp** (không qua `wake_from`).
+        # Trước KT-172: XANH (`errors=0`) vì tên `ktest*` được miễn.
+        d = tmp / "v2-kt172-a-ktest-evil-transition"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/Cargo.toml",
+            '[package]\nname = "vifast-kbin-riscv64"\n\n'
+            '[[bin]]\nname = "vifast-kbin-riscv64"\npath = "src/main.rs"\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 A: `ktest_evil.rs` + `mod` từ `main.rs`, `transition_tcb(…, Ready)` "
+                "trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ai) Đối chứng dương cho A: cùng tệp, nhưng `#[cfg(feature = "ktest")] mod` ⇒
+        # **test-only thật** (ảnh test kernel, D2-08) ⇒ XANH. Không có ca này thì "đỏ" ở (4ah)
+        # có thể chỉ là "đỏ mọi thứ".
+        d = tmp / "v2-kt172-a2-ktest-cfg"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            '#[cfg(feature = "ktest")]\nmod ktest_evil;\n\nfn main() {}\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn test(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)',
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aj) **Đột biến B (KT-172)** — `vifast-core/src/tests/evil.rs` + `mod tests;` trong
+        # `lib.rs` **không** `#[cfg(test)]`, chuyển `Ready` trực tiếp. Trước KT-172: XANH vì
+        # đường dẫn chứa `/tests/`.
+        d = tmp / "v2-kt172-b-src-tests-transition"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 B: `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]`, "
+                "`transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ak) Đối chứng dương cho B: `#[cfg(test)] mod tests;` ⇒ XANH.
+        d = tmp / "v2-kt172-b2-src-tests-cfg"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn test(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 B2: `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4al) **Luật 1** (kênh `MailboxMsg`) cũng phải quét module sản phẩm tên `ktest*`:
+        # phát `MailboxMsg::Wake` từ hàm **không** phải cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`.
+        d = tmp / "v2-kt172-c-luat1-producer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.post_mail(1, MailboxMsg::Wake(t));\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 C: luật 1 — `ktest_evil.rs` (sản phẩm) phát `MailboxMsg::Wake` "
+                "ngoài cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`",
+                (not rep.ok) and any("E_CHANNEL_PRODUCER" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4am) **Luật 2** (consumer): xử lý `MailboxMsg::Wake` ngoài `apply_mail` ⇒ đỏ
+        # `E_CONSUMER`.
+        d = tmp / "v2-kt172-d-luat2-consumer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, m: MailboxMsg) {\n"
+            "        match m {\n            MailboxMsg::Wake(t) => { let _ = t; }\n"
+            "            _ => {}\n        }\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 D: luật 2 — `ktest_evil.rs` (sản phẩm) xử lý `MailboxMsg::Wake` "
+                "ngoài `apply_mail` ⇒ đỏ `E_CONSUMER`",
+                (not rep.ok) and any("E_CONSUMER" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4an) **Luật 3** (arch): tệp tên `ktest*` trong crate `vifast-plat-*` dùng
+        # `wake_step` ⇒ đỏ `E_ARCH_WAKE` (trước KT-172: miễn theo tên).
+        d = tmp / "v2-kt172-e-luat3-arch"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/lib.rs",
+            "mod ktest_evil;\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/ktest_evil.rs",
+            "fn duong_san_pham(m: &mut M, t: u32) -> u8 {\n    m.wake_step(t)\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 E: luật 3 — `ktest_evil.rs` (sản phẩm) trong `vifast-plat-*` dùng "
+                "`wake_step` ⇒ đỏ `E_ARCH_WAKE`",
+                (not rep.ok) and any("E_ARCH_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
         _fixture_v1(d, channels=3)
@@ -2408,7 +2598,7 @@ def main(argv: Sequence[str]) -> int:
         help="allowlist tường minh: mọi chuyển Ready phải qua cửa wake hoặc có trong allowlist",
     )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 39 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 46 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:
