@@ -295,23 +295,20 @@ Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`
 cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Loại khối | Tệp log |
-|---|---|---|
-| `ok` | `scope=` | `kt75-qemu-b08.log` |
-| `recorded` | `scope=` | `kt75-qemu-b01.log` |
-| `fsync` | `scope=` | `kt75-qemu-b01.log` |
-| `durable` | `scope=` | `kt75-qemu-b01.log` |
-| `pending_blocks` | `scope=` | `kt75-qemu-b01.log` |
-| `overflow` | `scope=` | `kt75-qemu-b01.log` |
-| `match` | `scope=` | `kt75-qemu-b02.log` |
-| `mismatched` | `scope=` | `kt75-qemu-b02.log` |
-| `size_bad` | `scope=` | `kt75-qemu-b02.log` |
-| `absent_bad` | `scope=` | `kt75-qemu-b02.log` |
-| `fsutil_mutated` | `scope=` | `kt75-host-b07.log` |
-| `device_flushes` | `scope=` | `kt75-qemu-b01.log` |
-| `pushed` | `scope=` | `kt75-qemu-b01.log` |
-| `bytes_lost` | `scope-red=` | `kt75-qemu-b09.log` |
-| `absent` | `scope=` | `kt75-qemu-b02.log` |
-| `p7_match` | `scope-red=` | `kt75-qemu-b10.log` |
-| `records` | `scope=` | `kt75-qemu-b08.log` |
-| `changed` | `scope-red=` | `kt75-persist-run.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
+|---|---|---|---|
+| `ok` | bảy | `scope=` | `kt75-qemu-b08.log` |
+| `recorded` | một | `scope=` | `kt75-qemu-b01.log` |
+| `fsync` | một | `scope=` | `kt75-qemu-b01.log` |
+| `durable` | một | `scope=` | `kt75-qemu-b01.log` |
+| `overflow` | không | `scope=` | `kt75-qemu-b01.log` |
+| `match` | một | `scope=` | `kt75-qemu-b02.log` |
+| `mismatched` | không | `scope=` | `kt75-qemu-b02.log` |
+| `size_bad` | không | `scope=` | `kt75-qemu-b02.log` |
+| `absent_bad` | không | `scope=` | `kt75-qemu-b02.log` |
+| `fsutil_mutated` | không | `scope=` | `kt75-host-b07.log` |
+| `device_flushes` | chín | `scope=` | `kt75-qemu-b01.log` |
+| `absent` | không | `scope=` | `kt75-qemu-b02.log` |
+| `p7_match` | một | `scope-red=` | `kt75-qemu-b10.log` |
+| `records` | mười bốn | `scope=` | `kt75-qemu-b08.log` |
+| `changed` | không | `scope-red=` | `kt75-persist-run.log` |

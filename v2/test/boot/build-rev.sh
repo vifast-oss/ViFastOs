@@ -45,11 +45,22 @@ set -u
 
 # Phạm vi tính build-inputs — KHÔNG thêm đường dẫn khác mà không sửa docs + ca kiểm.
 VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/bin"
-# KT-93 (review verify-kt89): **script đo và script build** cũng là đầu vào — đổi định nghĩa dấu
-# vân tay mà dấu vân tay không đổi là khe tin-cậy. `build-rev.sh` định nghĩa dấu vân tay;
-# `repro-build.sh` đặt RUSTFLAGS (remap/strip) ảnh hưởng byte ảnh; `rustc-canon.rs` là wrapper
-# rustc canonical. Ba tệp này **phải** nằm trong dấu vân tay.
-VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/test/boot/build-rev.sh v2/tools/repro-build.sh v2/tools/rustc-canon.rs v2/tools/pre-measure.sh v2/tools/task-target.sh"
+# KT-93 (review verify-kt89): **script build** cũng là đầu vào — `repro-build.sh` đặt RUSTFLAGS
+# (remap/strip) ảnh hưởng **byte ảnh**; `rustc-canon.rs` là wrapper rustc canonical. Hai tệp này
+# **phải** nằm trong dấu vân tay.
+#
+# **KT-134 (Q3 + C1 của Agent 0, 2026-11-18) — BA tệp bị LOẠI khỏi danh sách ghim:**
+#   * `v2/test/boot/build-rev.sh` — chính script này, tức **định nghĩa** dấu vân tay, không phải
+#     đầu vào của ảnh. Đo được: KT-128 sửa nó (thêm ca hồi quy âm) ⇒ sha ảnh đổi, dù mã sản phẩm
+#     không đổi một dòng. Đó là "danh sách ghim chứa tệp không phải đầu vào", trái định nghĩa Q3.
+#   * `v2/tools/pre-measure.sh` — kiểm **trước khi đo**, không tham gia build.
+#   * `v2/tools/task-target.sh` — chỉ đặt `CARGO_TARGET_DIR`, không đổi byte ảnh.
+# Ca kiểm (h) của `--selftest` chứng minh: sửa một tệp test/checker ⇒ dấu vân tay **KHÔNG** đổi.
+# Rủi ro còn lại (ghi ở `JOURNAL/kt134-journal.md`): đổi **thuật toán** dấu vân tay thì dấu vân tay
+# không đổi ⇒ dấu vân tay cũ và mới không so được. Chấp nhận: đổi thuật toán là đổi **định dạng**,
+# phải bump `VBREV_ALGO` (hằng số dưới đây, **có** nằm trong chuỗi băm).
+VBREV_ALGO="kt134-v1"
+VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
 # Độ dài `rev` HEAD chỉ để tra trong log (12 hex đầu của SHA-1).
@@ -291,7 +302,10 @@ vbrev_inputs_calc() {
         return 1
     fi
     count="$(wc -l <"$tmp" | tr -d ' ')"
-    : >"$oids" || {
+    # KT-134: dòng **phiên bản thuật toán** đứng đầu chuỗi băm. Nhờ nó, đổi thuật toán mà quên
+    # bump `VBREV_ALGO` thì dấu vân tay vẫn đổi (vì hằng số nằm trong chuỗi băm), còn đổi **tệp
+    # công cụ** thì không đổi — đúng ranh giới "đầu vào ảnh" / "công cụ đo".
+    printf 'algo\t%s\n' "$VBREV_ALGO" >"$oids" || {
         rm -f "$tmp" "$oids"
         VBREV_CALC_ERROR="no-temp"
         return 1
@@ -595,7 +609,7 @@ EOF
 # commit** ⇒ dirty=1, (c) commit kernel ⇒ dấu vân tay đổi, (d) crate ngoài `v2/kernel` (metadata
 # báo) ⇒ dấu vân tay đổi, (e) `v2/rust-toolchain.toml` ⇒ dấu vân tay đổi. Trả 0 = đạt.
 vbrev_selftest() {
-    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" dirty=""
+    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" fp6="" fp7="" dirty=""
     local gate_out=""
     local cargo=""
     cargo="$(vbrev_cargo)" || {
@@ -752,9 +766,41 @@ LOCK
             rc=1
             ;;
     esac
+    # (h) KT-134 (C1 của Agent 0): sửa một tệp **test/checker** (không phải đầu vào của ảnh) ⇒
+    #     dấu vân tay **KHÔNG** đổi. Đây là vế chứng minh danh sách ghim không còn chứa tệp công cụ.
+    #     Ca này ĐỎ nếu ai đó thêm lại `build-rev.sh`/`pre-measure.sh`/`task-target.sh` vào danh sách.
+    fp6="$VBREV_CALC_SHORT"
+    # Tệp test/checker **không** nằm trong danh sách ghim nên mini-repo không tự sinh ra nó;
+    # ca này tự tạo rồi sửa — đúng thứ cần chứng minh.
+    mkdir -p "$root/v2/test/boot"
+    printf '# checker gia\n' >"$root/v2/test/boot/build-rev.sh"
+    git -C "$root" add -A >/dev/null 2>&1
+    git -C "$root" commit -q -m "checker" >/dev/null 2>&1
+    # **Fail-closed**: nếu phép tính không chạy được (ví dụ ai đó thêm lại tệp công cụ vào danh
+    # sách ghim ⇒ `missing-input`), ca này phải ĐỎ. Bản đầu của ca (h) dùng `|| true` nên khi
+    # đột biến nó vẫn xanh — đúng loại "xanh giả" phải tránh.
+    if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+        echo "# vbrev-selftest (h) FAIL: không tính được dấu vân tay trên cây sạch (${VBREV_CALC_ERROR:-?}) — danh sách ghim có thể chứa tệp không tồn tại"
+        rc=1
+    else
+        fp6="$VBREV_CALC_SHORT"
+        # Dấu vân tay băm **blob ở HEAD**, nên phải commit thì mới thấy thay đổi (giống ca (f)).
+        printf '# them mot dong vo hai (ca h)\n' >>"$root/v2/test/boot/build-rev.sh"
+        git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "checker 1 dong" >/dev/null 2>&1
+        if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (h) FAIL: không tính được dấu vân tay sau khi sửa tệp test (${VBREV_CALC_ERROR:-?})"
+            rc=1
+        else
+            fp7="$VBREV_CALC_SHORT"
+            if [ "$fp6" != "$fp7" ]; then
+                echo "# vbrev-selftest (h) FAIL: sửa tệp test/checker mà dấu vân tay ĐỔI ($fp6 -> $fp7) — danh sách ghim còn chứa tệp không phải đầu vào"
+                rc=1
+            fi
+        fi
+    fi
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h)"
     else
         echo "# vbrev-selftest: FAIL"
     fi

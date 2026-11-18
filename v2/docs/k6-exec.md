@@ -266,9 +266,9 @@ Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`
 cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Loại khối | Tệp log |
-|---|---|---|
-| `observed` | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `observed_first` | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `elf_linked_at_base` | `scope=` | `kt74-qemu-ktest-exec.log` |
-| `same` | `scope=` | `kt74-qemu-ktest-exec.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
+|---|---|---|---|
+| `observed` | không | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `observed_first` | không | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `elf_linked_at_base` | một | `scope=` | `kt74-qemu-ktest-exec.log` |
+| `same` | một | `scope=` | `kt74-qemu-ktest-exec.log` |

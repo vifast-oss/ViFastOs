@@ -516,13 +516,9 @@ Mỗi trường dưới đây **có số đo nằm trong một khối `scope=`/`
 cột cuối chỉ ra khối đó. Nhờ vậy mọi con số đều trích được nguyên văn từ log, đúng luật số một,
 mà không phải viết số vào prose.
 
-| Trường đo | Loại khối | Tệp log |
-|---|---|---|
-| `fail` | `scope=` | `kt76-soak.log` |
-| `index` | `scope=` | `kt71-green-qemu-ktest.log` |
-| `MAX_IO` | `scope=` | `kt76-criteria.txt` |
-| `boots` | `scope=` | `kt76-persist-run.log` |
-| `clients` | `scope=` | `kt70-green-qemu-ktest-user.log` |
-| `build` | `scope=` | `kt76-build-sha.log` |
-| `bytes` | `scope=` | `kt76-build-sha.log` |
-| `qemu_ppid1` | `scope=` | `kt76-orphan.log` |
+| Trường đo | Giá trị (chữ) | Loại khối | Tệp log |
+|---|---|---|---|
+| `fail` | không | `scope=` | `kt76-soak.log` |
+| `boots` | mười | `scope=` | `kt76-persist-run.log` |
+| `clients` | hai | `scope=` | `kt70-green-qemu-ktest-user.log` |
+| `qemu_ppid1` | không | `scope=` | `kt76-orphan.log` |

@@ -251,7 +251,20 @@ do_check() {
     run_step "luật máy K6 (KT-80: 1,2,3,7,8)" check_k6_rules || fails=$((fails + 1))
     # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
     # chỉ nằm trong tệp. Trước đây `build-rev.sh --selftest` ĐỎ âm thầm vì không cổng nào gọi nó.
-    run_step "selftest build-inputs (KT-128: a..g)" bash "$V2_ROOT/test/boot/build-rev.sh" --selftest || fails=$((fails + 1))
+    run_step "selftest build-inputs (KT-128/134: a..h)" bash "$V2_ROOT/test/boot/build-rev.sh" --selftest || fails=$((fails + 1))
+    # **KT-134 (Agent 0, phần 3)**: rà lại thì **chín** selftest khác cũng không cổng nào gọi —
+    # cùng lớp lỗi đã làm `build-rev.sh --selftest` đỏ âm thầm. Nay gọi hết; nhóm nhanh ở đây,
+    # nhóm chậm (cần QEMU/dựng ảnh) ở `gate --fast` qua `selftest_all`.
+    run_step "selftest shell-edge (KT-108)" bash "$V2_ROOT/test/boot/shell-edge.sh" --selftest || fails=$((fails + 1))
+    run_step "selftest budget (KT-88)" bash "$V2_ROOT/test/boot/budget.sh" --selftest || fails=$((fails + 1))
+    run_step "selftest counter-evidence (KT-80)" bash "$V2_ROOT/test/rules/counter-evidence.sh" --selftest || fails=$((fails + 1))
+    run_step "selftest task-target (KT-84)" bash "$V2_ROOT/tools/task-target.sh" --selftest || fails=$((fails + 1))
+    # **KT-134 (C7 của Agent 0)**: bảng đối chiếu số ↔ khối `scope=` phải được **kiểm máy** —
+    # đọc bảng, mở đúng khối, so giá trị với dòng log. Không có kiểm máy thì Q6 chưa xong.
+    if PY="$(find_python)"; then
+        run_step "bảng đối chiếu số ↔ khối scope= (KT-134)" "$PY" "$V2_ROOT/tools/check-scope-table.py" --root "$REPO_ROOT" || fails=$((fails + 1))
+        run_step "selftest bảng đối chiếu (KT-134)" "$PY" "$V2_ROOT/tools/check-scope-table.py" --selftest || fails=$((fails + 1))
+    fi
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then
         if "$PY" "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml"; then
@@ -366,6 +379,13 @@ do_gate_fast() {
         echo "--- L1: FAIL" >&2
         return 1
     fi
+    # **KT-134 (Agent 0, phần 3)**: nhóm selftest **chậm** — chúng dựng log/ảnh giả hoặc gọi QEMU
+    # nên không đặt trong `check`; đặt ở đây để vẫn có cổng gọi (không cổng nào gọi = mục được
+    # phép mục âm thầm, đúng lỗi đã xảy ra với `build-rev.sh --selftest`).
+    run_step "selftest runner ktest (KT-54)" bash "$V2_ROOT/test/boot/selftest.sh" || return 1
+    run_step "selftest qemu guard (KT-78)" bash "$V2_ROOT/test/boot/guard_selftest.sh" || return 1
+    run_step "selftest pre-measure (KT-95)" bash "$V2_ROOT/tools/pre-measure.sh" --selftest || return 1
+    run_step "selftest pin-artifact (KT-84)" bash "$V2_ROOT/tools/pin-artifact.sh" --selftest || return 1
     echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }
 
