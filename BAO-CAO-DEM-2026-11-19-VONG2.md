@@ -271,14 +271,14 @@ Bài học cụ thể: miễn trừ theo **tên tệp** và theo **đường d�
 ## 9. Trạng thái cuối
 
 ```text
-HEAD        2dc03fed1575 (main)  chưa push: 0   [lúc đo/cổng: fda1500d6b95]
+HEAD        56373184f8b2 (main)  chưa push: 0   [lúc đo K6: fda1500d6b95]
 build-inputs 226 mục  dấu vân tay: 40f902a41ecd3979  dirty: 0
 ảnh mới nhất 2af101d141fb9a2864a92941cd60030e86a382873eb0b184ba945be25a460896
              sha256=2af101d1… size=213632
              # build: algo=kt134-v4 inputs=40f902a41ecd3979 dirty=0
 ```
 
-- `gate --fast` **PASS** trên `fda1500d` (sau khi merge **mười bốn** nhánh); commit sau đó (`2dc03fed`) chỉ thêm tài liệu + log, không chạm `v2/kernel`/`v2/lib`.
+- `gate --fast` **PASS** trên `56373184` (sau **mười tám** nhánh merge); các commit sau `fda1500d` chỉ chạm công cụ/tài liệu — `git diff fda1500d..HEAD -- v2/kernel v2/lib` **rỗng** ⇒ ảnh K6 vẫn khớp cây.
 - `v2 check` **PASS** sau **mỗi** merge (log chỉ giữ ở các mốc `25306b3f`, `fda1500d`; các lần khác chỉ quan sát trực tiếp).
 - Không còn QEMU mồ côi; lead **không** dùng `pkill -f qemu-system` (không có trong lịch sử lệnh).
 

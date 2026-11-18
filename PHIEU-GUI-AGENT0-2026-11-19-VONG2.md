@@ -10,25 +10,24 @@ Chỗ nào phiếu khác báo cáo thì phiếu là bản **đã kiểm lại** 
 ## 1. Trạng thái một khối
 
 ```text
-HEAD         d68d7eb8953c (night2/L22-phieu, từ main d68d7eb8)   chưa push: 0
+HEAD         56373184f8b2 (main)   chưa push: 0
 build-inputs 226 mục   dấu vân tay: 40f902a41ecd3979   dirty: 0
 ảnh sản phẩm 2af101d141fb9a2864a92941cd60030e86a382873eb0b184ba945be25a460896
              size=213632   # build=d6b1bf144b141cf5 inputs=40f902a41ecd3979 dirty=0
              data+bss=224288 / trần 262144 (F5, không nới)
 ảnh ca âm    f38fc77a0bae2729ff341a71b081524f816713e2d515105ee554e41ca4296ea0
              size=82552    (shell tắt; parity not_ok=14 khong_co_shell=14, exit=5)
-gate --fast  PASS trên fda1500d (sau 14 merge); fda1500d..HEAD: diff v2/kernel|v2/lib RỖNG
-task         DONE=161  READY=3  BLOCKED=0  REVIEW=0
+gate --fast  PASS trên 56373184 (sau 18 merge); fda1500d..HEAD: diff v2/kernel|v2/lib RỖNG
+task         DONE=168  READY=0  BLOCKED=0  REVIEW=0
 ```
 
 Nguồn: `./v2/bin/v2 status` (worktree này, 07:06 JST); ảnh sản phẩm
 `JOURNAL/kt171-logs/kt171-measure.log:2,34,56`; ảnh ca âm `…/kt171-measure.log:310-313`;
 cổng `BAO-CAO…§9` + `git diff --stat fda1500d..HEAD -- v2/kernel v2/lib` (rỗng).
 `v2/artifacts/` là thư mục gitignore và **không có** trong worktree này — sha lấy từ log đã commit.
-Ba chế độ checker chạy lại 07:06 trên cây sạch: `errors=0` / `--strict errors=0` / `--selftest 46/46`.
+Ba chế độ checker chạy lại trên cây sạch: `errors=0` / `--strict errors=0` / `--selftest 56/56`.
 
-**Ba dòng READY là sổ chưa lật, không phải việc mở**: KT-162 (báo cáo — đã có), KT-174 và
-KT-175 (đã merge `e0fdcae6`/`def95b32`, QUEUE còn ghi READY). Agent 0 lật sổ khi duyệt phiếu.
+**Sổ đã lật hết**: `READY=0`. KT-162/174/175/177/178/179 đều đã DONE.
 
 **Điều đáng nhớ**: luật `wake` bị phá **ba vòng** trong một đêm, cả ba lần đều do **reviewer độc
 lập** — không phải tác giả. Giữ quy trình "reviewer có quyền phá" là thứ đáng giữ nhất.
