@@ -1,0 +1,22 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/pager.rs (v2/target/debug/deps/pager-d70b36f8d6849a99)
+
+running 15 tests
+test checker_fail_closed_khi_so_rong ... ok
+test backend_ram_ghi_doc_lai_va_ngoai_dai_loi ... ok
+test backend_ram_seed_va_doc_tung_sector ... ok
+test backend_ram_byte_moi_offset_khop_mau ... ok
+test hinh_hoc_trang_va_file_tu_nhat_quan ... ok
+test hit_khong_doc_backend ... ok
+test miss_evict_lru_khi_vuot_nguong ... ok
+test du_lieu_nap_dung_mau_backend ... ok
+test ngoai_file_tra_ma_va_khong_doc_backend ... ok
+test mot_ban_trong_cache_cho_moi_khoa ... ok
+test ram_dev_khong_unsafe_va_kich_thuoc_thiet_ke ... ok
+test stats_block_ghi_doc_qua_bang_tu ... ok
+test bon_client_giao_dung_mot_lan_va_chia_se_frame ... ok
+test ca_am_phat_lai_call_khi_resume_thi_checker_do ... ok
+test stats_phan_anh_bo_dem_do_duoc ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
