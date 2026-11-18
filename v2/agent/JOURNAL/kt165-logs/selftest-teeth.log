@@ -1,0 +1,14 @@
+# KT-165 (L8) — selftest CO RANG: gỡ từng vá ⇒ ca tương ứng phải `not ok`.
+# Bản sao checker ở /tmp, KHÔNG sửa tệp trong repo.
+
+--- A: phạm vi cũ KT-159 (chỉ core + sim): # selftest: 23/26 ok
+    not ok - H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)
+    not ok - H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)
+    not ok - H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)
+--- B: regex cũ theo dòng `wake\s*\(`: # selftest: 24/26 ok
+    not ok - H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)
+    not ok - H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)
+--- C: test_line_ranges cũ (quét 4 dòng kế): # selftest: 25/26 ok
+    not ok - H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ
+--- D: khử nhiễu thành no-op: # selftest: 25/26 ok
+    not ok - v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
