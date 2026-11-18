@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-160 (D2-147) — K4' bước 1: phần **host-testable** của platform AArch64.
+# Crate **thuần dữ liệu**: không asm, không `cfg(target_arch)`, không `unsafe`, không dependency
+# ngoài (D2-21). Phần TTBR/MAIR/TLB/asm của K4' bước 2 nằm ở crate arch như `vifast-plat-riscv64`
+# (D2-17) — đêm nay **không** boot aarch64, **không** tuyên bố K4' đạt.
+[package]
+name = "vifast-plat-aarch64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Platform AArch64 K4' bước 1: PageTableFormat 4 mức 4 KiB (39-bit VA, 48-bit PA) thuần dữ liệu, host-testable"
+
+[dependencies]
