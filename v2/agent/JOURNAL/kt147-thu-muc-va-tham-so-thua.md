@@ -87,3 +87,9 @@ Log SAI cố ý tái hiện **đúng ba** hồi quy cần bắt: `cat /` in nộ
   phẩm — ngoài phạm vi Agent 1 được quyết (B1).
 - **Không** thêm `cd`/`pwd`: đó là **KT-137**, Agent 0 xếp **cuối** K7.
 - **Không** đụng `ls` tương đối: Agent 0 gộp vào KT-137.
+
+## 6. Commit
+
+Việc của task này vào **cùng** commit `61308b81` với KT-146, vì cả hai chạm
+`v2/test/boot/shell-edge.sh` và tách ra sẽ làm một trong hai commit **không** tự xanh. Commit
+message ghi `[KT-146]` ở subject và nêu KT-147 ở thân; JOURNAL tách riêng (tệp này).
