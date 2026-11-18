@@ -35,11 +35,11 @@
 //! 2. `csrw satp` (mode 8) + `sfence.vma`, đọc lại `satp`, walk phần mềm lại và so PTE
 //!    trước/sau; kiểm alias ghi/đọc qua nửa cao + physmap.
 //!
-//! KT-49: vùng NOLOAD per-hart (`MAX_HARTS` record `guard | stack | trap stack`, xem
-//! [`vifast_plat_common::smp`]) thay cho **một** guard/stack/trap stack của KT-46. Mọi guard của
-//! **từng hart** là NONE ở cả ba alias (identity, nửa cao, physmap); stack/trap stack của mọi hart
-//! là leaf 4 KiB RW NX. Hart thứ cấp [`adopt_satp`] cùng root của BSP khi vào S-mode (SBI HSM đánh
-//! thức với `satp = 0`).
+//! KT-49: vùng NOLOAD per-hart (`MAX_HARTS` record `guard | stack | trap stack | syscall stack`,
+//! xem [`vifast_plat_common::smp`]) thay cho **một** guard/stack/trap stack của KT-46. Mọi guard
+//! của **từng hart** là NONE ở cả ba alias (identity, nửa cao, physmap); stack/trap stack/syscall
+//! stack của mọi hart là leaf 4 KiB RW NX. Hart thứ cấp [`adopt_satp`] cùng root của BSP khi vào
+//! S-mode (SBI HSM đánh thức với `satp = 0`).
 //!
 //! Không timer/PLIC/ASID/U-mode ở KT-46 (KT-47/48/51/53).
 
@@ -662,7 +662,7 @@ pub fn hart_area_base() -> u64 {
     unsafe { sym(&__hart_area_base) }
 }
 
-/// Bước record per-hart (`HART_STRIDE = guard + stack + trap stack`).
+/// Bước record per-hart (`HART_STRIDE = guard + stack + trap stack + syscall stack`, KT-66).
 pub const fn hart_stride() -> u64 {
     HART_STRIDE
 }

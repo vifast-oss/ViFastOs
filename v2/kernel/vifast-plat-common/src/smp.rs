@@ -6,10 +6,11 @@
 //! phần *ngữ nghĩa* chạy được trên host (D2-72 Q12):
 //!
 //! - **`MAX_HARTS = 8`** `[TK]` (D2-72 Q4) — trần hart của K3; matrix kiểm `1/2/4`;
-//! - **bố cục NOLOAD theo hart**: mỗi hart một **record** `guard | stack | trap stack`
-//!   ([`HART_GUARD_BYTES`] + [`HART_STACK_BYTES`] + [`HART_TRAP_STACK_BYTES`] =
-//!   [`HART_STRIDE`]); guard nằm **ngay dưới** đáy stack của **chính hart đó** nên tràn stack
-//!   chạm đúng guard của hart mình (không dùng chung guard như KT-44..48 một hart);
+//! - **bố cục NOLOAD theo hart**: mỗi hart một **record** `guard | stack | trap stack | syscall
+//!   stack` ([`HART_GUARD_BYTES`] + [`HART_STACK_BYTES`] + [`HART_TRAP_STACK_BYTES`] +
+//!   [`HART_SYSCALL_STACK_BYTES`] = [`HART_STRIDE`], KT-66); guard nằm **ngay dưới** đáy stack
+//!   của **chính hart đó** nên tràn stack chạm đúng guard của hart mình (không dùng chung guard
+//!   như KT-44..48 một hart);
 //! - [`HartMask`] — bitmask hart bằng `AtomicU64` (không `unsafe`), dùng cho `hart_online`,
 //!   `hart_started`, barrier và kết quả TAP theo hart;
 //! - **SBI HSM** (EID [`SBI_EXT_HSM`] `0x48534D`): FID 0 `hart_start`, 1 `hart_stop`, 2

@@ -34,7 +34,8 @@
 //! claim/complete.
 //!
 //! KT-49 mở module [`smp`]: `MAX_HARTS = 8` `[TK]` (D2-72 Q4), **bố cục NOLOAD theo hart**
-//! (`guard | stack | trap stack`, [`smp::HART_STRIDE`]), [`smp::HartMask`] cho `hart_online` +
+//! (`guard | stack | trap stack | syscall stack`, [`smp::HART_STRIDE`], KT-66), [`smp::HartMask`]
+//! cho `hart_online` +
 //! barrier, và **SBI HSM** (`hart_start`/`hart_get_status` + phân loại trạng thái ⇒ hart ngoài
 //! DTB bị từ chối, không panic cả máy). [`timer`]/[`plic`] chuyển bộ đếm từ **một hart toàn cục**
 //! (KT-47/KT-48) sang **PerHart** (`TIMER_STATS.get(hart)`/`PLIC_STATS.get(hart)`).
