@@ -249,6 +249,9 @@ do_check() {
     if rules "$V2_ROOT"; then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
     run_step "self-test luật" bash "$V2_ROOT/test/rules/run.sh" || fails=$((fails + 1))
     run_step "luật máy K6 (KT-80: 1,2,3,7,8)" check_k6_rules || fails=$((fails + 1))
+    # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
+    # chỉ nằm trong tệp. Trước đây `build-rev.sh --selftest` ĐỎ âm thầm vì không cổng nào gọi nó.
+    run_step "selftest build-inputs (KT-128: a..g)" bash "$V2_ROOT/test/boot/build-rev.sh" --selftest || fails=$((fails + 1))
     echo "--- spec/abi.toml"
     if PY="$(find_python)"; then
         if "$PY" "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml"; then

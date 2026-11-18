@@ -595,7 +595,8 @@ EOF
 # commit** ⇒ dirty=1, (c) commit kernel ⇒ dấu vân tay đổi, (d) crate ngoài `v2/kernel` (metadata
 # báo) ⇒ dấu vân tay đổi, (e) `v2/rust-toolchain.toml` ⇒ dấu vân tay đổi. Trả 0 = đạt.
 vbrev_selftest() {
-    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" dirty=""
+    local scratch="" root="" rc=0 fp0="" fp1="" fp2="" fp3="" fp4="" fp5="" dirty=""
+    local gate_out=""
     local cargo=""
     cargo="$(vbrev_cargo)" || {
         echo "# vbrev-selftest: không có cargo — bỏ qua"
@@ -651,6 +652,15 @@ LOCK
         printf '# tool\n' >v2/bin/v2
         printf 'log\n' >v2/agent/journal.log
         printf 'doc\n' >v2/docs/d.md
+        # KT-128: tạo **mọi** tệp ghim trong `VBREV_INPUT_FILES` mà repo mini chưa có. Trước đây
+        # danh sách này lớn dần (KT-93 thêm 3 tệp, KT-95/98 thêm 2) mà repo mini không cập nhật ⇒
+        # `vbrev_inputs_calc` trả `missing-input` ⇒ (c)(d)(e) ĐỎ **âm thầm** (không cổng nào chạy
+        # selftest). Sinh từ chính biến để không lệch lần nữa.
+        for _f in $VBREV_INPUT_FILES; do
+            [ -f "$_f" ] && continue
+            mkdir -p "$(dirname "$_f")"
+            printf '# pinned\n' >"$_f"
+        done
         git add -A
         git commit -qm baseline
     ) >/dev/null 2>&1 || {
@@ -707,9 +717,44 @@ LOCK
         echo "# vbrev-selftest (e) FAIL: rust-toolchain.toml đổi mà dấu vân tay không đổi"
         rc=1
     }
+    # (f) KT-128 (Q3 bổ sung của Agent 0): ca hồi quy **ÂM** — sửa **một byte** trong mã kernel
+    #     rồi commit ⇒ (i) dấu vân tay PHẢI đổi, VÀ (ii) **cổng PHẢI TỪ CHỐI ĐO** khi log/ảnh còn
+    #     mang dấu vân tay CŨ. Vế (ii) là vế mà (c)/(d)/(e) **chưa** chứng minh: chúng chỉ nói
+    #     "dấu vân tay đổi", không nói "harness từ chối". Không có vế này thì một cổng hỏng
+    #     (luôn ACCEPT) vẫn qua được toàn bộ selftest.
+    printf '# build: inputs=%s dirty=0\n' "$fp4" >"$scratch/old.log"
+    printf 'ELF-gia\n# build: inputs=%s dirty=0\n' "$fp4" >"$scratch/old.bin"
+    printf 'pub fn f() -> u32 { 3 }\n' >"$root/v2/kernel/k/src/lib.rs"
+    git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "kernel 1 byte" >/dev/null 2>&1
+    vbrev_inputs_calc "$root" || rc=1
+    fp5="$VBREV_CALC_SHORT"
+    [ "$fp4" != "$fp5" ] || {
+        echo "# vbrev-selftest (f) FAIL: sửa 1 byte mã kernel mà dấu vân tay không đổi"
+        rc=1
+    }
+    gate_out="$(vbrev_gate "$scratch/old.log" "$root" "$scratch/old.bin" 2>&1)"
+    case "$gate_out" in
+        *"REFUSE reason=inputs-mismatch"*) ;;
+        *)
+            echo "# vbrev-selftest (f) FAIL: cổng KHÔNG từ chối ảnh cũ sau khi kernel đổi — [$gate_out]"
+            rc=1
+            ;;
+    esac
+    # (g) ĐỐI CHỨNG DƯƠNG của (f): cùng cây đó, log/ảnh mang dấu vân tay **MỚI** ⇒ cổng PHẢI
+    #     ACCEPT. Thiếu vế này thì một cổng hỏng (luôn REFUSE) cũng qua được (f).
+    printf '# build: inputs=%s dirty=0\n' "$fp5" >"$scratch/new.log"
+    printf 'ELF-gia\n# build: inputs=%s dirty=0\n' "$fp5" >"$scratch/new.bin"
+    gate_out="$(vbrev_gate "$scratch/new.log" "$root" "$scratch/new.bin" 2>&1)"
+    case "$gate_out" in
+        *"ACCEPT inputs=$fp5"*) ;;
+        *)
+            echo "# vbrev-selftest (g) FAIL: cổng KHÔNG chấp nhận ảnh khớp dấu vân tay hiện tại — [$gate_out]"
+            rc=1
+            ;;
+    esac
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g)"
     else
         echo "# vbrev-selftest: FAIL"
     fi
