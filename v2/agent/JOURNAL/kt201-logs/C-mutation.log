@@ -1,0 +1,40 @@
+BASELINE: 118/118 ok, not-ok=0, rc=0
+
+[KILLED] in_test_only_wake_scope: 103/118 ok, not-ok=15
+[KILLED] _test_char_ranges: 114/118 ok, not-ok=4
+[KILLED] attr_path_edges: 101/118 ok, not-ok=17
+[KILLED] _check_macro_body: 106/118 ok, not-ok=12
+[KILLED] cfg_is_test_tokens: 106/118 ok, not-ok=12
+[KILLED] _check_wake_text: 92/118 ok, not-ok=26
+[KILLED] resolve_include_targets: 94/118 ok, not-ok=24
+[KILLED] scan_lexical: 113/118 ok, not-ok=5
+[*** SURVIVED ***] scan_structure: 118/118 ok, not-ok=0
+[KILLED] _mods_of: 106/118 ok, not-ok=12
+[KILLED] test_only_modules: 113/118 ok, not-ok=5
+[KILLED] scan_lib_macros: 116/118 ok, not-ok=2
+[KILLED] scan_kernel_macro_includes: 107/118 ok, not-ok=11
+[KILLED] _shadowed_safe_macros: 117/118 ok, not-ok=1
+[KILLED] _exempt_local_wake: 115/118 ok, not-ok=3
+[KILLED] _macro_arg_of: 116/118 ok, not-ok=2
+[*** SURVIVED ***] _in_use_item: 118/118 ok, not-ok=0
+[KILLED] strip_rust_noise: 117/118 ok, not-ok=1
+[KILLED] _walk_items: 78/118 ok, not-ok=40
+[KILLED] _decode_string: 112/118 ok, not-ok=6
+[ARTIFACT] tokenize: selftest crashed -> AttributeError: 'NoneType' object has no attribute 'name'
+[ARTIFACT] build_tree: selftest crashed -> AttributeError: 'NoneType' object has no attribute 'name'
+[ARTIFACT] parse_attr: selftest crashed -> __main__.LexError: <lex>:1:1: E_LEX_ATTR mut
+[KILLED] _local_wake_scopes: 115/118 ok, not-ok=3
+[KILLED] _delim_pairs: 115/118 ok, not-ok=3
+[KILLED] _inside_scan_tree: 93/118 ok, not-ok=25
+[KILLED] _protected_files: 113/118 ok, not-ok=5
+[KILLED] classify_v1_channel: 117/118 ok, not-ok=1
+[KILLED] find_functions: 93/118 ok, not-ok=25
+[*** SURVIVED ***] test_line_ranges: 118/118 ok, not-ok=0
+[*** SURVIVED ***] _attrs_test_context: 118/118 ok, not-ok=0
+[*** SURVIVED ***] _feature_list: 118/118 ok, not-ok=0
+[*** SURVIVED ***] _cargo_sections: 118/118 ok, not-ok=0
+[KILLED] crate_roots: 113/118 ok, not-ok=5
+[KILLED] is_test_file: 113/118 ok, not-ok=5
+
+=== survivors (no selftest case detects the mutation): ['scan_structure', '_in_use_item', 'test_line_ranges', '_attrs_test_context', '_feature_list', '_cargo_sections']
+=== artifacts (mutation broke the script): ['tokenize', 'build_tree', 'parse_attr']
