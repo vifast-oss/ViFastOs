@@ -1,0 +1,884 @@
+[
+  {
+    "name": "B1 macro_rules! thân chứa m.wake(t) (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.6,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.71 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.42 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.56,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=2 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`",
+        "E E_STRICT_MACRO_WAKE   v2/kernel/vifast-core/src/lib.rs:124: thân `macro_rules! kt224_macro_wake` chứa token `wake` — macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4, KT-181); dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do"
+      ],
+      "n_errors": 2,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B2 macro_rules! nhận tên hàm `wake` làm đối số (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.65,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.71 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.47 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/lib.rs:128: `wake` là đối số của macro `kt224_call!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.76,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:128: `wake` là đối số của macro `kt224_call!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B3a #[cfg(feature = \"ktest\")] khối trong lib.rs (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.87,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (2.01 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.69 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 25.8,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B3b #[cfg(feature = \"ktest\")] mod tệp RIÊNG (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.29,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.56 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.02 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 26.5,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 26.7,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B4a #[cfg(any())] khối trong lib.rs (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.7,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (2.01 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.53 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 25.79,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B4b #[cfg(any())] mod tệp RIÊNG (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.29,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.59 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.12 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.91,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/kt224_cfg_any.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B5 #[cfg(target_os = \"none\")] mod tệp RIÊNG (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.22,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.59 s), 18 artifact, 17 tệp .d, 113 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.06 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/kt224_cfg_none.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.41,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/kt224_cfg_none.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B6 include! trỏ tệp KHÔNG tồn tại (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.1,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=101 (1.32 s), 14 artifact, 17 tệp .d, 112 tệp .rs [build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed)]",
+        "# check-wake-depinfo: errors=1 warnings=0 (5.94 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_BUILD   đơn vị `kernel`: cargo check RC=101 (build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed))"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.5,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:122: `include!` trỏ tới `v2/kernel/vifast-core/src/kt224_khong_ton_tai.rs` không tồn tại (fail-closed, KT-171 B6/B7)"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B7 #[path] trỏ /tmp/kt224_evil.rs ngoài workspace (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.65,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.70 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.47 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.81,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:122: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`/tmp/kt224_evil.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B8 symlink src/kt224_link.rs → /tmp/kt224_evil_link.rs (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.34,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.75 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.18 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 32.67,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/kt224_link.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B9 #[path = \"kt224_evil.txt\"] tệp không đuôi .rs (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.5,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.97 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.33 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.52,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/kt224_evil.txt:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B10 #[path] tên tệp có DẤU CÁCH (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.16,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.59 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (5.98 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 27.2,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/kt224 evil.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B11 #[path] vào thư mục tên `target` (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.69,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.73 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.51 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 29.86,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/target/kt224_evil.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B12 #[path = \"kt224_evil.txt\"] trong v2/lib (vifast-model)",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 3.13,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.38 s), 20 artifact, 20 tệp .d, 75 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (2.87 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 27.54,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 29.45,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B13 symlink trong v2/lib → /tmp/kt224_evil_lib.rs",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 3.14,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.38 s), 20 artifact, 20 tệp .d, 75 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (2.98 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 25.71,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 26.4,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B14 #[path] vào src/target/ trong v2/lib",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 2.93,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.29 s), 20 artifact, 20 tệp .d, 75 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (2.76 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 24.87,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 25.41,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B15 #[path] tên tệp có DẤU CÁCH trong v2/lib",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 2.87,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.29 s), 20 artifact, 20 tệp .d, 75 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (2.71 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 24.64,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 24.8,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B16 #[path] tên tệp UNICODE trong v2/lib (đối chứng parse UTF-8)",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 2.72,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.29 s), 20 artifact, 20 tệp .d, 76 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (2.57 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/lib/vifast-model/src/kt224_évil.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 25.18,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 25.21,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B17 tệp sinh bởi build.rs vào OUT_DIR (v2/lib)",
+    "unit": "host",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 3.86,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (1.26 s), 21 artifact, 20 tệp .d, 75 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (3.71 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 25.06,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_WAKE_INCLUDE   v2/lib/vifast-model/src/lib.rs:44: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B18 m.wake(t) trong tệp CỬA WAKE core_sched.rs (miễn cả tệp ở lớp 2)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.18,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.63 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.02 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.68,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_sched.rs:1006: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "B19 #[cfg(test)] trên nhánh match + wake ở nhánh sản phẩm (KT-219 #13)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 1,
+      "seconds": 6.38,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.51 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=1 warnings=0 (6.16 s)"
+      ],
+      "errors": [
+        "E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/lib.rs:127: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 1,
+      "seconds": 26.96,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0"
+      ],
+      "errors": [
+        "E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:127: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+      ],
+      "n_errors": 1,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "C1a đối chứng dương: wake_from/wake_step/biến `wake` (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.62,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.65 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.45 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 26.39,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 30.01,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "C1b đối chứng dương: MailboxMsg::Wake trong PATTERN (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.93,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (2.22 s), 18 artifact, 17 tệp .d, 112 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.72 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 26.96,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 26.72,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "C1c đối chứng dương: định nghĩa `fn wake` trong tệp mới (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.96,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (2.33 s), 18 artifact, 17 tệp .d, 113 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.79 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 26.8,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 26.8,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  },
+  {
+    "name": "C1d đối chứng dương: `wake` trong chú thích + chuỗi (kernel)",
+    "unit": "kernel",
+    "strict": false,
+    "layer2": {
+      "rc": 0,
+      "seconds": 6.42,
+      "tail": [
+        "# check-wake-depinfo: root=/private/tmp/night3-L53-kt224",
+        "# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.74 s), 18 artifact, 17 tệp .d, 113 tệp .rs",
+        "# check-wake-depinfo: errors=0 warnings=0 (6.24 s)"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1": {
+      "rc": 0,
+      "seconds": 25.97,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    },
+    "layer1_strict": {
+      "rc": 0,
+      "seconds": 26.19,
+      "tail": [
+        "# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0"
+      ],
+      "errors": [],
+      "n_errors": 0,
+      "warnings": [],
+      "n_warnings": 0
+    }
+  }
+]
