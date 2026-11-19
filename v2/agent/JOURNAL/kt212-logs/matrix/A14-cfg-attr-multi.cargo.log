@@ -1,0 +1,25 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L47-kt212/v2/kernel/vifast-core)
+warning: unused attribute
+ --> vifast-core/src/foo.rs:2:42
+  |
+2 |     #[cfg_attr(all(), path = "decoy.rs", path = "../../../evil.rs")]
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove this attribute
+  |
+note: attribute also specified here
+ --> vifast-core/src/foo.rs:2:23
+  |
+2 |     #[cfg_attr(all(), path = "decoy.rs", path = "../../../evil.rs")]
+  |                       ^^^^^^^^^^^^^^^^^
+  = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+  = note: `#[warn(unused_attributes)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `d` is never used
+ --> vifast-core/src/foo/inner/decoy.rs:1:8
+  |
+1 | pub fn d() {}
+  |        ^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 2 warnings (run `cargo fix --lib -p vifast-core` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.55s

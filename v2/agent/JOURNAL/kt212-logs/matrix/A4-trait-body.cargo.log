@@ -1,0 +1,10 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L47-kt212/v2/kernel/vifast-core)
+error: module is not supported in `trait`s or `impl`s
+ --> vifast-core/src/foo.rs:3:5
+  |
+3 |     mod baz;
+  |     ^^^^^^^^
+  |
+  = help: consider moving the module out to a nearby module scope
+
+error: could not compile `vifast-core` (lib) due to 1 previous error
