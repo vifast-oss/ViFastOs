@@ -771,7 +771,9 @@ def resolve_include_targets(
         # **KT-184/D2-161**: cùng luật cho `#[path]` — trước KT-184 chỉ `include!` không
         # literal bị bắt, `#[path = concat!("evil", ".rs")]` lọt hoàn toàn (không phân giải
         # được đích nên tệp đích không được quét). Nay fail-closed y như `include!`.
-        if not is_test:
+        # **D2-161** (Agent 0): luật áp cho **MỌI** tệp trong `v2/kernel`+`v2/sim`, kể cả
+        # tệp test-only — "mọi `include!`/`#[path]` phải literal và trỏ trong cây".
+        if True:
             covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
             for m in re.finditer(r"\binclude!\s*[\(\{\[]", code_keep):
                 if m.start() in covered:
