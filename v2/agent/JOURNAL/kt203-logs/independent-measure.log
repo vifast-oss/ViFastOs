@@ -1,0 +1,37 @@
+== KT-203: phép đo ĐỘC LẬP (không dùng checker/script tác giả) ==
+root: /private/tmp/night3-L41-review182
+n_files: 308
+n_whole: 95
+n_inline_files: 36
+n_tests: 1019
+n_own: 996
+n_local: 23
+n_local_test_scope: 23
+n_local_product: 0
+n_global: 0
+n_none: 0
+n_call_product: 155
+n_call_product_no_own: 0
+n_newly_red: 0
+n_product_only: 0
+g_teeth_size: 80
+n_item_cfg_test: 11
+
+== Q1: test CHỈ có răng nhờ hàm SẢN PHẨM cùng tệp ==
+
+== Q3: test đổi XANH → ĐỎ sau khi siết ==
+
+== Q4: item `#[cfg(test)]` (không phải `mod`) — checker bỏ sót khỏi phạm vi ==
+  v2/kernel/vifast-core/src/slotmem.rs: window_words
+  v2/lib/vifast-fs/src/tx.rs: crc32_bitwise
+  v2/lib/vifast-fs/src/tx.rs: crc32_continue_bitwise
+  v2/lib/vifast-objmem/src/lib.rs: use
+  v2/lib/vifast-objmem/src/store.rs: alloc_block
+  v2/lib/vifast-sync/src/mcs.rs: test_enqueue
+  v2/lib/vifast-sync/src/mcs.rs: test_woken
+  v2/lib/vifast-sync/src/mcs.rs: test_release
+  v2/lib/vifast-sync/src/mcs.rs: slot
+  v2/sim/vifast-sim/src/tlb.rs: seed_entry_for_test
+  v2/sim/vifast-sim/src/tlb.rs: entries_mut_for_test
+
+# JSON: /tmp/l41-review/independent.json

@@ -1,0 +1,68 @@
+== KT-206: đột biến kiểm răng của ca 35/36 (F1) và 37-40 (F2) ==
+M0 = bản gốc; M1b = gỡ TOÀN BỘ điều kiện phạm vi (KT-182+KT-206);
+M1c = gỡ nhánh in_ranges; M3 = gỡ nhánh is_whole; M5 = gỡ nhánh item cfg(test);
+M6 = gỡ khoảng impl; M7 = gỡ cfg(all(test, …)); M2 = xoá bản đồ cùng tệp.
+
+--- m0-baseline (exit 0) — bản gốc ---
+    # selftest: 40/40 ok
+
+--- m1b-revert-all-scope (exit 1) — gỡ toàn bộ điều kiện phạm vi — ca 35 ĐỎ, ca 36 XANH (nới, không siết) ---
+    not ok - trợ giúp **cùng tệp** là hàm sản phẩm (`debug_assert!`) ⇒ KHÔNG tính là răng
+    not ok - trợ giúp **cùng tệp** trong `#[cfg(test)]` ⇒ vẫn tính là răng
+    # selftest: 38/40 ok
+
+--- m1c-no-in-ranges (exit 1) — gỡ nhánh in_ranges — ca 35 ĐỎ ---
+    not ok - `#[test]` chỉ có `.unwrap()` ⇒ đỏ
+    not ok - `let _ =` nuốt `Result` ⇒ đỏ
+    not ok - `let _ =` + allowlist khớp ⇒ xanh
+    not ok - `let _ = foo().unwrap()` ⇒ xanh
+    not ok - trợ giúp trong `#[cfg(test)]` của `src/` ⇒ vẫn tính là răng
+    not ok - trợ giúp **cùng tệp** là hàm sản phẩm (`debug_assert!`) ⇒ KHÔNG tính là răng
+    not ok - trợ giúp **cùng tệp** trong `#[cfg(test)]` ⇒ vẫn tính là răng
+    not ok - trợ giúp `#[cfg(test)]` trên **item `fn`** có token ⇒ vẫn tính là răng
+    not ok - trợ giúp `#[cfg(test)]` trên **item `fn`** không token ⇒ vẫn ĐỎ
+    not ok - trợ giúp `#[cfg(test)]` trên **`impl`** có token ⇒ vẫn tính là răng
+    not ok - trợ giúp `#[cfg(all(test, …))]` trên item có token ⇒ vẫn tính là răng
+    # selftest: 29/40 ok
+
+--- m3-no-is-whole (exit 1) — gỡ nhánh is_whole — ca 36 ĐỎ ---
+    not ok - cây sạch ⇒ xanh
+    not ok - `assert_eq!(f(x), f(x))` (tất định) ⇒ xanh
+    not ok - `#[test]` không khẳng định ⇒ đỏ
+    not ok - `#[test]` không khẳng định + allowlist khớp ⇒ xanh
+    not ok - `#[test]` gọi trợ giúp transitive ⇒ xanh
+    not ok - `#[test]` gọi trợ giúp generic `::<T>` ⇒ xanh
+    not ok - `#[test]` gọi trợ giúp trong HELPER_ALLOW ⇒ xanh
+    not ok - `panic!` vô điều kiện ⇒ đỏ, có điều kiện ⇒ xanh
+    not ok - `#[should_panic(expected = …)]` ⇒ xanh
+    not ok - `#[should_panic]` trần ⇒ đỏ
+    not ok - `#[should_panic(expected = "")]` ⇒ đỏ (khớp mọi thông điệp)
+    not ok - `#[should_panic]` trần + allowlist khớp ⇒ xanh
+    not ok - `#[test]` gọi trợ giúp ở tệp khác ⇒ xanh (không cần HELPER_ALLOW)
+    not ok - `#[test]` gọi trợ giúp tệp khác **không** răng ⇒ đỏ
+    not ok - trợ giúp tệp khác **bắc cầu** ⇒ xanh
+    not ok - `use … as …` ⇒ phân giải tên gốc
+    not ok - trợ giúp tệp khác **tên mơ hồ** ⇒ đỏ (fail-closed)
+    not ok - trợ giúp ở tệp **sản phẩm** (`debug_assert!`) ⇒ KHÔNG tính là răng
+    not ok - trợ giúp trong `#[cfg(test)]` của `src/` ⇒ vẫn tính là răng
+    not ok - trợ giúp **cùng tệp** trong `tests/` ⇒ vẫn tính là răng
+    # selftest: 20/40 ok
+
+--- m5-no-item-cfg (exit 1) — gỡ nhánh item cfg(test) — ca 37/40 ĐỎ ---
+    not ok - trợ giúp `#[cfg(test)]` trên **item `fn`** có token ⇒ vẫn tính là răng
+    not ok - trợ giúp `#[cfg(all(test, …))]` trên item có token ⇒ vẫn tính là răng
+    # selftest: 38/40 ok
+
+--- m6-no-impl-ranges (exit 1) — gỡ khoảng #[cfg(test)] impl — ca 39 ĐỎ ---
+    not ok - trợ giúp `#[cfg(test)]` trên **`impl`** có token ⇒ vẫn tính là răng
+    # selftest: 39/40 ok
+
+--- m7-no-all-test (exit 1) — gỡ cfg(all(test, …)) — ca 40 ĐỎ ---
+    not ok - trợ giúp `#[cfg(all(test, …))]` trên item có token ⇒ vẫn tính là răng
+    # selftest: 39/40 ok
+
+--- m2-local-map-dead (exit 1) — xoá bản đồ cùng tệp — ca 35/36 ĐỎ ---
+    not ok - trợ giúp **cùng tệp** trong `#[cfg(test)]` ⇒ vẫn tính là răng
+    not ok - trợ giúp **cùng tệp** trong `tests/` ⇒ vẫn tính là răng
+    # selftest: 38/40 ok
+
