@@ -1,0 +1,6 @@
+# KT-205 — kiểm giả thuyết: sha ảnh **nhạy với số dòng nguồn** (không đổi mã).
+# Chèn **một dòng trống** sau dòng SPDX của shell_user.rs (mã không đổi) rồi build lại:
+REPRO machine=Darwin-arm64 root=/private/tmp/night3-L43-fix183 sha256=19ae69ebbaad2c347b12c07704d0d993dc1ba7315332b2bb221f16afdcad802f size=213632 wall_s=15 algo=kt134-v4 inputs=43df126a4a6702ec dirty=1 rev=8c921bbe6c30 build=b08c5c57cdbdb156 text=131202
+# So với ảnh sạch 639ca6d1… ⇒ sha ĐỔI dù mã không đổi ⇒ số dòng nguồn vào ảnh
+# (Location của panic = file + line + col, nhúng dạng số trong .rodata).
+# Đã hoàn nguyên: shell_user.rs sha256=c59c1984404a3aab1cfe489e8f51187baf86551a2ab6e393192270d6e34a3344
