@@ -25,9 +25,9 @@ cây nguồn, chạy được **không cần biên dịch**, và **fail-closed**
 - Chuỗi thường `"x.rs"`, chuỗi thô `r"x.rs"`, `r#"x.rs"#`, `r##"x.rs"##`.
 - `#[path = "x.rs"]`, `#[ path = "x.rs" ]`, `#[\npath = "x.rs"]`.
 - `#[cfg_attr(not(test), path = "x.rs")]` (một tầng `cfg_attr`).
-- **KHÔNG** hỗ trợ: `#[r#path = "…"]` (raw identifier ở tên thuộc tính — rustc coi là `#[path]`),
+- **CHƯA** hỗ trợ: `#[r#path = "…"]` (raw identifier ở tên thuộc tính — rustc coi là `#[path]`),
   chuỗi có **escape** (`"a\x2eb"`, `"a\u{2e}b"`), `cfg_attr` **lồng** nhiều tầng. Ba dạng này
-  **bị từ chối** (xem §3) — reviewer L30 (KT-192) đã chứng minh chúng lọt bản trước.
+  **lọt** checker hiện tại (xem §3b) — reviewer L30 (KT-192) đã chứng minh.
 - `mod NAME;` khai báo thường (đồ thị module, kể cả `#[cfg(test)]`/`#[cfg(feature = "ktest")]`).
 - `macro_rules!` với **mọi** tên (kể cả Unicode) và **cả ba** dấu thân `{ … }`, `( … )`, `[ … ]`.
 - Chú thích chen giữa `#`/`[`/`path` (khử chú thích trước khi khớp).
@@ -42,10 +42,22 @@ cây nguồn, chạy được **không cần biên dịch**, và **fail-closed**
 | Thân `macro_rules!` chứa `include`/`path`/`mod` (bất kỳ dạng) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi**, không phân giải tĩnh được |
 | Thân `macro_rules!` chứa `$…:tt` (passthrough) | `E_STRICT_MACRO_TT` | có thể chở `mod`/`include!` từ **lời gọi** |
 | Thân `macro_rules!` khai `mod …;` | `E_STRICT_MACRO_MOD` (literal) / `E_STRICT_MACRO_INCLUDE` (`mod $n;`, `mod r#x;`) | đồ thị module không thấy |
-| `#[r#path = "…"]` (raw identifier) | `E_STRICT_WAKE_INCLUDE` | rustc coi là `#[path]`; checker không phân giải |
-| Chuỗi có **escape** (`\x2e`, `\u{2e}`) trong `include!`/`#[path]` | `E_STRICT_WAKE_INCLUDE` | checker lấy literal thô, rustc giải mã |
-| `cfg_attr` **lồng** nhiều tầng | `E_STRICT_WAKE_INCLUDE` | không phân giải tĩnh an toàn |
 | `wake(` trong mã sản phẩm **thuộc `TEST_ONLY_WAKE_SCOPE`** | `E_STRICT_TEST_ONLY_WAKE` | D2-144; `wake` trong `v2/lib` sản phẩm **không** bị luật này phủ |
+
+### 3b. Đường lọt **đã biết**, checker hiện tại **CHƯA** bảo vệ
+
+> **A0 2026-11-19 (D2-166 §2)**: ba dạng dưới đây **không** được gọi là "đã bị từ chối". Chúng là
+> **đường lọt đã biết, chưa được checker hiện tại bảo vệ**. Trong lúc chờ KT-194, checker hiện tại
+> **không** được dùng làm bằng chứng duy nhất để đóng luật tương ứng. Công bố giới hạn **không**
+> thay thế được cơ chế chặn.
+
+| Dạng | Trạng thái thực tế | Bằng chứng |
+|---|---|---|
+| `#[r#path = "…"]` (raw identifier) | **LỌT** — không báo lỗi ở cả chế độ thường lẫn `--strict` | KT-192 (L30) |
+| Chuỗi có **escape** (`\x2e`, `\u{2e}`) trong `include!`/`#[path]` | **LỌT** — không báo lỗi ở cả hai chế độ | KT-192 (L30) |
+| `cfg_attr` **lồng** nhiều tầng → tệp test-only | **LỌT** ở chế độ thường; `--strict` chỉ đỏ nhờ **luật `wake`**, không nhờ phân giải `path` | KT-192 (L30) |
+
+Ba dạng này sẽ được xử lý ở **KT-194** (lexer/token-tree + bộ đọc cấu trúc tối thiểu).
 
 ## 4. Điều checker **KHÔNG** bảo đảm
 

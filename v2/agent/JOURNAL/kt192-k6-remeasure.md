@@ -29,8 +29,30 @@ log         v2/agent/JOURNAL/kt192-logs/kt192-measure.log
 | F5 | `.data + .bss ≤ 262144` | `file=213632 data+bss=224288 budget=262144` | §F5 |
 | F6 | Ảnh sản phẩm không chứa mã harness | `harness_scan_exit=0`, product `hits=0`, ảnh âm `hits=25` | §F6 |
 
-**Kết luận**: cả **6/6** tiêu chí **ĐẠT** trên ảnh `b090cfe8…` — ảnh này là ảnh nguồn dùng để mở cổng
-cho tới khi có thay đổi mới trong `v2/kernel`/`v2/lib`.
+**Kết luận**: cả **6/6** tiêu chí **ĐẠT** trên ảnh `b090cfe8…`.
+
+## Quy tắc tái sử dụng bằng chứng (A0 D2-166 §6 — thay câu "hiệu lực tới khi kernel/lib đổi")
+
+- **Được** tái sử dụng kết quả chạy ảnh khi **đầu vào tạo ảnh** và **môi trường liên quan** không đổi.
+- **Phải chạy lại** các kiểm tra bị ảnh hưởng nếu **checker/harness đổi**, dù mã kernel không đổi.
+- **Không** phải chạy lại soak chỉ vì sửa tài liệu không liên quan.
+- Phân biệt ba thứ: (a) **ảnh sản phẩm** có đổi không; (b) **bộ công cụ đánh giá ảnh** có đổi không;
+  (c) **gate trên HEAD hiện tại** đã chạy chưa.
+- Kết thúc KT-194 phải chạy **gate phù hợp trên HEAD tích hợp cuối** — **không** gọi gate của
+  `a90f1d77` là "gate đã chạy trên HEAD mới".
+
+## Chuỗi bằng chứng: commit nhúng trong ảnh ≠ HEAD lúc đo
+
+| Thành phần | Giá trị | Ý nghĩa |
+|---|---|---|
+| commit **nhúng trong ảnh** | `6f2d2c1d` | `rev=` do `repro-build.sh` ghi vào ảnh lúc build |
+| **HEAD lúc đo** | `8581c218` | HEAD khi script đo chạy; sau `6f2d2c1d` chỉ có commit **tài liệu** |
+| **dấu vân tay build-inputs** | `89f40ef16c97e6d5` | băm của `v2/kernel`+`v2/lib`+tệp build; **không** phụ thuộc tài liệu |
+| **gate** | PASS trên `a90f1d77` | commit trước `6f2d2c1d`; `a90f1d77..HEAD` diff `v2/kernel`+`v2/lib` = **0 dòng** |
+
+Cách tái lập: `git diff --stat a90f1d77..HEAD -- v2/kernel v2/lib` phải rỗng; `v2 status` phải in
+đúng dấu vân tay `89f40ef16c97e6d5`; `REV-GATE: ACCEPT inputs=89f40ef16c97e6d5` trong log xác nhận
+ảnh khớp cây tại thời điểm đo.
 
 ## Ghi chú
 
