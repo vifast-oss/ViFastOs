@@ -30,8 +30,9 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
 - **`--strict`** (KT-159, D2-144; **KT-165** mở rộng; **KT-171** vá vòng 3): `wake()` là API
   **CHỈ-DÙNG-CHO-TEST** —
   **mọi** tham chiếu `wake` (lời gọi `wake(`, `Machine::wake`/`::wake`, `use …wake`, `wake` dùng
-  làm giá trị) trong **mã sản phẩm** (`vifast-core/src/`, `vifast-sim/src/`,
-  `vifast-kbin-riscv64/src/`, **mọi** `vifast-plat-*/src/`) **ngoài** `#[cfg(test)]`/`mod tests`
+  làm giá trị) trong **mã sản phẩm** (**mọi** crate dưới `v2/kernel/<crate>/` và
+  `v2/sim/<crate>/`: toàn bộ `src/**` cộng `build.rs` — **mẫu**, không liệt kê cứng; KT-209/L2)
+  **ngoài** `#[cfg(test)]`/`mod tests`
   ⇒ ĐỎ (`E_STRICT_TEST_ONLY_WAKE`), fail-closed. Bỏ qua **chú thích** (`//`, `///`, `//!`,
   `/* … */`), **literal chuỗi/ký tự**, **định nghĩa** (`fn wake`) và **biến cục bộ** tên `wake`.
   Vì sao: `wake()` = post-only, `wake_from()` = post + `Ready` ngay — gọi `wake()` trong đường
@@ -161,21 +162,20 @@ MIGRATE_PRODUCER = "push_step"
 #
 # Ảnh test (`vifast-kbin-riscv64/src/ktest*.rs`) và `tests/` vẫn được phép gọi `wake()` — đó là
 # mục đích duy nhất còn lại của nó (`is_test_file` miễn).
-TEST_ONLY_WAKE_SCOPE = (
-    "v2/kernel/vifast-core/src/",
-    "v2/sim/vifast-sim/src/",
-    "v2/kernel/vifast-kbin-riscv64/src/",
-)
-# Mọi crate `vifast-plat-*` (riscv64, aarch64, common, user, …). Dùng **mẫu** chứ không liệt kê
-# cứng: crate plat thứ tư ra đời sau vẫn tự động nằm trong phạm vi (fail-closed theo hướng mở).
-RE_TEST_ONLY_WAKE_SCOPE_PLAT = re.compile(r"^v2/kernel/vifast-plat-[a-z0-9_]+/src/")
+#
+# **KT-209/L2** — reviewer L40 (KT-201 §D2 L2) dựng `v2/kernel/vifast-newcrate/src/lib.rs` và
+# `v2/sim/vifast-sim2/src/lib.rs` chứa `m.wake(t)` ⇒ checker **XANH**; và
+# `v2/kernel/vifast-core/build.rs` chứa `m.wake(t)` ⇒ **XANH** (chỉ `src/` được quét). Hợp đồng
+# §1 lại nói "`v2/kernel/**`" — **sai** so với hành vi. Nay phạm vi là **mẫu**, không liệt kê
+# cứng: **mọi** crate dưới `v2/kernel/<crate>/` và `v2/sim/<crate>/` — toàn bộ `src/**` **cộng**
+# `build.rs` — kể cả crate ra đời sau. `tests/` cấp crate vẫn ngoài phạm vi (test-only, do
+# `is_test_file` miễn; chúng không khớp mẫu này).
+RE_TEST_ONLY_WAKE_SCOPE = re.compile(r"^v2/(?:kernel|sim)/[^/]+/(?:src/.*\.rs|build\.rs)$")
 
 
 def in_test_only_wake_scope(relp: str) -> bool:
     """Tệp có thuộc phạm vi luật `wake()` chỉ-dùng-cho-test không (đường dẫn tương đối gốc)."""
-    return relp.startswith(TEST_ONLY_WAKE_SCOPE) or bool(
-        RE_TEST_ONLY_WAKE_SCOPE_PLAT.match(relp)
-    )
+    return bool(RE_TEST_ONLY_WAKE_SCOPE.match(relp))
 
 
 # Token `wake` **đứng riêng**: không phải `wake_from`/`wake_from_unlink`/`wake_step`/`wake_addr`
@@ -1411,6 +1411,25 @@ def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
     return None
 
 
+def _inside_lib_tree(root: Path, target: Path) -> Optional[str]:
+    """**KT-209/L3** — `relpath` nếu `target` nằm trong `v2/lib`, ngược lại `None`."""
+    try:
+        relp = str(target.relative_to(root))
+    except ValueError:
+        return None
+    if relp.startswith("v2/lib/"):
+        return relp
+    return None
+
+
+def _source_tree(relp: str) -> str:
+    """**KT-209/L3** — cây nguồn của một tệp: `kernel` / `sim` / `lib` / `""`."""
+    for name in ("kernel", "sim", "lib"):
+        if relp.startswith(f"v2/{name}/"):
+            return name
+    return ""
+
+
 def resolve_include_targets(
     root: Path, files: Sequence[Tuple[Path, str, List[Fn]]], test_only: set
 ) -> Tuple[Dict[str, Tuple[Path, bool]], List[str]]:
@@ -1429,6 +1448,16 @@ def resolve_include_targets(
     `False` xuống `evil_b` ⇒ `evil_b` ở lại test-only ⇒ lọt. Nay là **fixpoint/worklist** như
     `test_only_modules`: trạng thái mỗi tệp chỉ đi `True → False` (đơn điệu), và khi nó đổi thì
     tệp được **xử lý lại** để lan tiếp xuống con. Không có vòng lặp vô hạn vì trạng thái đơn điệu.
+
+    **KT-209/L3** (reviewer L40 KT-201 §D2 L3): trước bản này worklist chỉ seed từ
+    `v2/kernel`+`v2/sim`, nên `include!`/`#[path]` trong `v2/lib` **ngoài** thân macro **không**
+    được phân giải ⇒ đích ngoài cây không bị quét, và hợp đồng §4 chỉ ghi `#[path]`. Nay seed
+    thêm **mọi** tệp `v2/lib/**/*.rs`; nguồn `v2/lib` có luật riêng: đích phải nằm **trong
+    `v2/lib`** (fail-closed). Đích sang `v2/kernel`/`v2/sim` bị **ĐỎ** — `include!`/`#[path]`
+    của lib kéo mã tầng khác vào crate lib, và luật `wake` chỉ quét kernel/sim nên không được
+    để cạnh nguồn ẩn. Đích trong `v2/lib` được phân giải **tiếp** (include! lồng không trốn
+    được) nhưng **không** vào `extra`: `extra` là tập tệp bị luật `wake` quét, mà mã `v2/lib`
+    không có `Machine` nên `wake()` không thể xuất hiện ở đó (cạnh sang kernel/sim đã bị chặn).
     """
     extra: Dict[str, Tuple[Path, bool]] = {}
     errors: List[str] = []
@@ -1436,6 +1465,11 @@ def resolve_include_targets(
     queue: List[Tuple[Path, bool]] = []
     for p, _, _ in files:
         queue.append((p, rel(root, p) in test_only))
+    # **KT-209/L3** — `include!`/`#[path]` trong `v2/lib` ngoài macro cũng phải phân giải.
+    # Tệp lib là **sản phẩm** (không có ngữ cảnh test-only trong `test_only_modules`, vốn chỉ
+    # dựng đồ thị module cho kernel/sim) ⇒ `is_test=False`.
+    for p in iter_rs(root, ("v2/lib",)):
+        queue.append((p, False))
     while queue:
         p, is_test = queue.pop()
         if p in status:
@@ -1511,8 +1545,42 @@ def resolve_include_targets(
                 continue
             line = tok.line if isinstance(tok, Tok) else 1
             errors.append(f"  {relp}:{line}: {msg} (fail-closed, KT-194)")
+        src_tree = _source_tree(relp)
         for kind, raw, tok, base in found:
             target = (base / raw).resolve()
+            if src_tree == "lib":
+                # **KT-209/L3** — nguồn `v2/lib`: đích phải nằm **trong `v2/lib`**. Đích sang
+                # `v2/kernel`/`v2/sim` (mã tầng khác) hoặc ra ngoài cây ⇒ ĐỎ: `include!`/
+                # `#[path]` của lib kéo mã lạ vào crate lib, và luật `wake` chỉ quét kernel/sim
+                # nên không được để cạnh nguồn ẩn.
+                inside = _inside_lib_tree(root, target)
+                if inside is None:
+                    errors.append(
+                        f"  {relp}:{tok.line}: `{kind}` trỏ ra ngoài `v2/lib` "
+                        f"(`{raw}`) — không quét được đích (fail-closed, KT-209 L3)"
+                    )
+                    continue
+                if target.is_dir():
+                    if tok.start in inline_path_toks:
+                        continue
+                    errors.append(
+                        f"  {relp}:{tok.line}: `{kind}` trỏ tới thư mục `{inside}` nhưng `mod` "
+                        f"không có thân — không phân giải được (fail-closed, KT-199 F4c)"
+                    )
+                    continue
+                if not target.is_file():
+                    errors.append(
+                        f"  {relp}:{tok.line}: `{kind}` trỏ tới `{inside}` không tồn tại "
+                        f"(fail-closed, KT-209 L3)"
+                    )
+                    continue
+                # Đích trong `v2/lib`: phân giải **tiếp** (`include!` lồng không trốn được)
+                # nhưng **không** vào `extra` — `extra` là tập tệp bị luật `wake` quét, mà mã
+                # `v2/lib` không có `Machine` nên `wake()` không thể xuất hiện ở đó (cạnh sang
+                # kernel/sim đã bị chặn ở trên).
+                if target not in status or status[target]:
+                    queue.append((target, False))
+                continue
             inside = _inside_scan_tree(root, target)
             if inside is None:
                 errors.append(
@@ -2873,7 +2941,11 @@ def selftest() -> int:
     lồng/char-lifetime/delimiter/đầu vào hỏng/độ sâu; **9 ca tập cạnh nguồn** xác nhận **đúng
     cạnh** cho `#[path]`/`#[r#path]`/escape/`cfg_attr` lồng/`include!` `[]`+`{}`/`mod` Unicode/
     macro Unicode + đối chứng nhiễu comment-chuỗi; **9 ca chính sách** ba repro mới + đối chứng
-    hợp lệ + năm đầu vào hỏng `E_LEX_*`). Tổng **107** ca.
+    hợp lệ + năm đầu vào hỏng `E_LEX_*`) +
+    **13 ca KT-209** (L40 KT-201 §D2 L2/L3: **7 ca phạm vi `wake` theo mẫu** — crate kernel
+    mới, crate sim mới, `build.rs` kernel/sim, tệp con sâu, hai đối chứng dương `wake_from`;
+    **6 ca `include!`/`#[path]` trong `v2/lib`** — sang kernel, ra ngoài cây, lồng hai lớp,
+    `#[path]` sang kernel, hai đối chứng dương trong `v2/lib`). Tổng **131** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -4779,6 +4851,117 @@ def selftest() -> int:
         _broken("delimiter lệch", "fn f() { (]\n", "E_LEX_UNBALANCED")
         _broken("escape sai", 'const S: &str = "a\\qb";\n', "E_LEX_INVALID_ESCAPE")
         _broken("quá sâu", "(" * (MAX_TREE_DEPTH + 2), "E_LEX_DEPTH")
+
+        # ============ KT-209 (L40 KT-201 §D2 L2/L3) — hai lỗ tiềm ẩn ============
+        # **L2** — phạm vi luật `wake` theo **mẫu**, không liệt kê cứng: mọi crate
+        # `v2/kernel/<crate>/src/**` + `build.rs` và `v2/sim/<crate>/src/**` + `build.rs`.
+        # Trước bản này: crate mới / `build.rs` ⇒ XANH (reviewer L40 dựng được).
+        def _scope_case(name: str, relpath: str, src: str, expect_red: bool) -> None:
+            d = tmp / ("kt209-l2-" + name)
+            _fixture_v2(d)
+            _write(d / relpath, src)
+            rep = scan_v2(d, strict=True, allowlist={})
+            got = any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors)
+            cases.append(
+                (
+                    f"KT-209/L2 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _WAKE_SRC = (
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n"
+        )
+        _OK_SRC = (
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n"
+        )
+        _scope_case(
+            "crate kernel MỚI", "v2/kernel/vifast-newcrate/src/lib.rs", _WAKE_SRC, True
+        )
+        _scope_case("crate sim MỚI", "v2/sim/vifast-sim2/src/lib.rs", _WAKE_SRC, True)
+        _scope_case("build.rs vifast-core", "v2/kernel/vifast-core/build.rs", _WAKE_SRC, True)
+        _scope_case("build.rs vifast-sim", "v2/sim/vifast-sim/build.rs", _WAKE_SRC, True)
+        _scope_case(
+            "tệp con sâu trong crate MỚI",
+            "v2/kernel/vifast-newcrate/src/sub/deep.rs",
+            _WAKE_SRC,
+            True,
+        )
+        _scope_case(
+            "ĐỐI CHỨNG DƯƠNG crate kernel MỚI (wake_from)",
+            "v2/kernel/vifast-newcrate/src/lib.rs",
+            _OK_SRC,
+            False,
+        )
+        _scope_case(
+            "ĐỐI CHỨNG DƯƠNG build.rs (wake_from)",
+            "v2/kernel/vifast-core/build.rs",
+            _OK_SRC,
+            False,
+        )
+
+        # **L3** — `include!`/`#[path]` trong `v2/lib` **ngoài** thân macro được phân giải;
+        # đích phải nằm **trong `v2/lib`** (fail-closed). Trước bản này: worklist chỉ seed
+        # `v2/kernel`+`v2/sim` ⇒ `include!` trong `v2/lib` XANH.
+        def _lib_case(name: str, lib_src: str, files: dict, expect_red: bool) -> None:
+            d = tmp / ("kt209-l3-" + name)
+            _fixture_v2(d)
+            for relpath, text in files.items():
+                _write(d / relpath, text)
+            _write(d / "v2/lib/vifast-abi/src/lib.rs", lib_src)
+            rep = scan_v2(d, strict=True, allowlist={})
+            got = any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors)
+            cases.append(
+                (
+                    f"KT-209/L3 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _lib_case(
+            "include! lib → kernel (đích sạch) — cạnh nguồn bị kiểm",
+            'include!("../../../kernel/vifast-core/src/evil.rs");\n',
+            {"v2/kernel/vifast-core/src/evil.rs": "pub fn clean() {}\n"},
+            True,
+        )
+        _lib_case(
+            "include! lib → ngoài cây",
+            'include!("../../../../tmp/evil_outside.rs");\n',
+            {},
+            True,
+        )
+        _lib_case(
+            "include! lib → lib (đối chứng dương)",
+            'include!("kt209_ok.rs");\n',
+            {"v2/lib/vifast-abi/src/kt209_ok.rs": "pub fn ok() {}\n"},
+            False,
+        )
+        _lib_case(
+            "include! LỒNG lib → lib → ngoài cây",
+            'include!("kt209_nested_a.rs");\n',
+            {
+                "v2/lib/vifast-abi/src/kt209_nested_a.rs": (
+                    'include!("../../../../tmp/evil_outside.rs");\n'
+                ),
+            },
+            True,
+        )
+        _lib_case(
+            "#[path] lib → kernel",
+            '#[path = "../../../kernel/vifast-core/src/evil.rs"]\nmod evil;\n',
+            {"v2/kernel/vifast-core/src/evil.rs": "pub fn clean() {}\n"},
+            True,
+        )
+        _lib_case(
+            "#[path] lib → lib (đối chứng dương)",
+            '#[path = "kt209_ok.rs"]\nmod kt209_ok;\n',
+            {"v2/lib/vifast-abi/src/kt209_ok.rs": "pub fn ok() {}\n"},
+            False,
+        )
 
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
