@@ -1,0 +1,157 @@
+[
+  {
+    "ma": "r01",
+    "ten": "L40 macro_rules! :item + include! trong đối số lời gọi",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 3,
+    "static_normal_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_TT",
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 3,
+    "static_strict_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_TT",
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "r02",
+    "ten": "L44 include! vị trí biểu thức trong ( … )",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "r03",
+    "ten": "L47 #[path] trong inline module của tệp non-mod-rs",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "r04",
+    "ten": "L47 src/target/evil.rs (thư mục tên target)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "depinfo_rc": 0,
+    "depinfo_n": 0,
+    "depinfo_codes": [],
+    "depinfo_hidden": 0
+  },
+  {
+    "ma": "r05",
+    "ten": "L49 #[cfg(test)] trên nhánh match (đường lọt #13)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_TEST_ONLY_WAKE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 0
+  },
+  {
+    "ma": "r06",
+    "ten": "L40 mod trong lời gọi macro (cfg_if!)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 5,
+    "static_normal_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_MOD",
+      "E_STRICT_MACRO_TT",
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 5,
+    "static_strict_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_MOD",
+      "E_STRICT_MACRO_TT",
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "r07",
+    "ten": "L40/L45 include! trong v2/lib trỏ sang v2/kernel",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  }
+]
