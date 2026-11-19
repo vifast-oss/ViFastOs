@@ -1,0 +1,104 @@
+======================================================================
+B2c — macro ngoac TRON + #[path] (dang L28)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B2)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)
+# check-wake-paths: mode=v2 strict=0 errors=2 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+
+======================================================================
+B3a — macro ngoac TRON + include!
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+
+======================================================================
+B2c-vuong — macro ngoac VUONG + #[path]
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B2)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)
+# check-wake-paths: mode=v2 strict=0 errors=2 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+
+======================================================================
+B3a-vuong — macro ngoac VUONG + include!
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+
+======================================================================
+B2d — cfg_attr(not(test), path) trong than macro
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:5: thân `macro_rules! evil_paren` chứa `cfg_attr(…, path = …)` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-189 B2d)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/m.rs:6: thân `macro_rules! evil_paren` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)
+# check-wake-paths: mode=v2 strict=0 errors=2 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+
+======================================================================
+T3c — mod trong macro + loi goi #[cfg(not(test))]
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/m.rs:4: thân `macro_rules! evil_decl` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:4 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:4 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:21 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:21 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
