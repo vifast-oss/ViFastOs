@@ -1547,14 +1547,27 @@ def resolve_include_targets(
     return extra, errors
 
 
-# ------------------------------------------------------------------ KT-171: B4 macro v2/lib
+# ------------------------------------------------------------------ KT-171/KT-181: thân macro
 
 # **KT-194** — `_macro_bodies`/`RE_MACRO_RULES` cũ đã **xoá**: thân macro lấy từ token-tree
 # (`_walk_items` gọi `on_macro` với nhóm thân). Tên macro là **định danh** (Unicode, raw ident).
 
-# Allowlist **có lý do** cho thân `macro_rules!` trong `v2/lib/**` chứa token `wake`.
-# Khoá: (relpath, tên macro). Hiện **rỗng** — không có macro nào trong `v2/lib` chạm `wake`.
+# Allowlist **có lý do** cho thân `macro_rules!` chứa token `wake`.
+# Khoá: (relpath, tên macro). Hiện **rỗng** — không có macro nào trong cây chạm `wake`.
 MACRO_WAKE_ALLOW: Dict[Tuple[str, str], str] = {}
+
+# **KT-181** (D2-164) — gốc cây nguồn **sản phẩm** mà thân `macro_rules!` phải được kiểm
+# **cả hai** luật (token `wake` + `include!`/`#[path]`/`mod`/`:tt`). Trước KT-181 hai luật nằm
+# ở hai hàm với phạm vi **khác nhau**: `scan_lib_macros` quét `v2/lib/**` (cả hai luật) còn
+# `scan_kernel_macro_includes` quét `v2/kernel/**`+`v2/sim/**` (**chỉ** luật include). Hệ quả:
+# thân macro ở `v2/kernel/vifast-kbin-riscv64/init/`, `v2/kernel/*/tests/`,
+# `v2/kernel/vifast-plat-user/` chứa token `wake` **không** bị luật token bắt (luật `wake`
+# toàn văn bản chỉ phủ `v2/kernel/vifast-*/src/` + `v2/sim/vifast-sim/src/`).
+#
+# **Ngoài** danh sách (lý do ghi ở `CHECKER-WAKE-CONTRACT.md` §1/§4):
+#   - `v2/test/fixtures/**` — fixture **cố tình sai** của các máy kiểm khác;
+#   - `v2/tools/**` — công cụ phát triển, **không** link vào ảnh sản phẩm.
+MACRO_SCAN_ROOTS = ("v2/lib", "v2/kernel", "v2/sim")
 
 
 def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
@@ -1670,60 +1683,30 @@ def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
     check_list(body.children)
 
 
-def scan_lib_macros(root: Path, r: Report) -> None:
-    """KT-171 (B4): quét thân `macro_rules!` trong `v2/lib/**` tìm token `wake`.
+def scan_macro_bodies(root: Path, r: Report) -> None:
+    """**KT-171/B4**, **KT-187/B2+B3**, **KT-181** — quét thân `macro_rules!` ở **mọi** tệp
+    nguồn sản phẩm (`MACRO_SCAN_ROOTS` = `v2/lib`, `v2/kernel`, `v2/sim`) với **cả hai** luật:
 
-    Reviewer L11 đặt `#[macro_export] macro_rules! wake_call` trong `v2/lib/vifast-abi` (ngoài
-    phạm vi quét cũ) với thân `$m.wake($t)`; lời gọi `vifast_abi::wake_call!(m, t)` **không**
-    chứa token `wake` nên lọt. Nay thân macro ở **mọi** crate `v2/lib` bị quét; token `wake`
-    (không phải `wake_from`/`wake_step`/`wake_addr`) ⇒ ĐỎ, trừ allowlist có lý do.
+    1. **token `wake`** trong thân ⇒ `E_STRICT_MACRO_WAKE`. Reviewer L11 đặt
+       `#[macro_export] macro_rules! wake_call` trong `v2/lib/vifast-abi` (ngoài phạm vi quét
+       cũ) với thân `$m.wake($t)`; lời gọi `vifast_abi::wake_call!(m, t)` **không** chứa token
+       `wake` nên lọt. Token `wake` (không phải `wake_from`/`wake_step`/`wake_addr`) ⇒ ĐỎ,
+       trừ `MACRO_WAKE_ALLOW` có lý do.
+    2. **`include!`/`#[path]`/`cfg_attr(path)`/`mod`/`$…:tt`** trong thân ⇒ `_check_macro_body`
+       (fail-closed). Reviewer L25 dựng được hai đường lọt thật: `macro_rules!` định nghĩa ở
+       thư mục A (decoy sạch) nhưng **gọi** ở thư mục B; rustc giải `include!`/`#[path]` trong
+       thân macro theo **tệp gọi** (đã kiểm bằng `rustc`), còn `resolve_include_targets` giải
+       theo **tệp định nghĩa** ⇒ đích thật không bao giờ được quét. Không phân giải tĩnh an
+       toàn được ⇒ ĐỎ.
 
-    **KT-177/G5** (reviewer L16 §2.7, H7): thân macro chứa `include!`/`#[path]` mà **không**
-    có token `wake` thì bản KT-171 vẫn xanh — `resolve_include_targets` chỉ lặp trên
-    `v2/kernel`+`v2/sim` nên `include!` trong `v2/lib` **không** được phân giải, và đích nằm
-    trong `v2/lib` nên cũng không bị quét token. Đường dẫn `include!` trong thân macro giải
-    theo **tệp gọi** (đã kiểm bằng `rustc` độc lập — reviewer L16 §2.7), không theo tệp định
-    nghĩa ⇒ **không thể phân giải tĩnh an toàn** ⇒ fail-closed: mọi `include!`/`#[path]` trong
-    thân `macro_rules!` của `v2/lib` là ĐỎ.
+    **KT-181** (D2-164): trước bản này luật (1) chỉ chạy ở `v2/lib` (`scan_lib_macros`), còn
+    `v2/kernel`+`v2/sim` chỉ có luật (2) (`scan_kernel_macro_includes`). Hệ quả: thân macro ở
+    `v2/kernel/vifast-kbin-riscv64/init/`, `v2/kernel/*/tests/`, `v2/kernel/vifast-plat-user/`
+    chứa token `wake` **không** bị luật (1) bắt (luật `wake` toàn văn bản chỉ phủ
+    `v2/kernel/vifast-*/src/` + `v2/sim/vifast-sim/src/`). Nay **một** hàm, **một** phạm vi,
+    **hai** luật — không còn khoảng trống giữa hai hàm.
     """
-    base = root / "v2/lib"
-    if not base.is_dir():
-        return
-    for p in sorted(base.rglob("*.rs")):
-        if "target" in p.parts:
-            continue
-        tree, errs = parse_file(p)
-        if tree is None or errs:
-            continue
-        relp = rel(root, p)
-
-        def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
-            name = name_tok.val
-            for tok in _iter_tokens(body.children):
-                if tok.kind == "ident" and tok.val == "wake":
-                    if (relp, name) in MACRO_WAKE_ALLOW:
-                        continue
-                    r.err(
-                        "E_STRICT_MACRO_WAKE",
-                        f"  {relp}:{tok.line}: thân `macro_rules! {name}` chứa token `wake` — "
-                        f"macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4); "
-                        f"dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do",
-                    )
-            _check_macro_body(relp, name, body, r)
-
-        _walk_items(tree, relp, p.parent, on_macro=on_macro, errors=[])
-
-
-def scan_kernel_macro_includes(root: Path, r: Report) -> None:
-    """**KT-187/B2+B3** (reviewer L25): `include!`/`#[path]` trong thân `macro_rules!` của
-    `v2/kernel`/`v2/sim` — **fail-closed**.
-
-    Reviewer L25 dựng được hai đường lọt thật: `macro_rules!` định nghĩa ở thư mục A (decoy
-    sạch) nhưng **gọi** ở thư mục B; rustc giải `include!`/`#[path]` trong thân macro theo
-    **tệp gọi** (đã kiểm bằng `rustc`), còn `resolve_include_targets` giải theo **tệp định
-    nghĩa** ⇒ đích thật không bao giờ được quét. Không phân giải tĩnh an toàn được ⇒ ĐỎ.
-    """
-    for base_rel in ("v2/kernel", "v2/sim"):
+    for base_rel in MACRO_SCAN_ROOTS:
         base = root / base_rel
         if not base.is_dir():
             continue
@@ -1736,7 +1719,19 @@ def scan_kernel_macro_includes(root: Path, r: Report) -> None:
             relp = rel(root, p)
 
             def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
-                _check_macro_body(relp, name_tok.val, body, r)
+                name = name_tok.val
+                for tok in _iter_tokens(body.children):
+                    if tok.kind == "ident" and tok.val == "wake":
+                        if (relp, name) in MACRO_WAKE_ALLOW:
+                            continue
+                        r.err(
+                            "E_STRICT_MACRO_WAKE",
+                            f"  {relp}:{tok.line}: thân `macro_rules! {name}` chứa token "
+                            f"`wake` — macro có thể sinh lời gọi `wake()` trong mã sản phẩm "
+                            f"(KT-171 B4, KT-181); dùng `wake_from`/`wake_step` hoặc thêm "
+                            f"allowlist có lý do",
+                        )
+                _check_macro_body(relp, name, body, r)
 
             _walk_items(tree, relp, p.parent, on_macro=on_macro, errors=[])
 
@@ -2590,8 +2585,10 @@ def scan_v2(
         #      B10 — miễn local-binding theo **cả hàm**: nay chỉ miễn trong **cùng khối** của
         #              binding; token `wake` làm **đối số macro** không được miễn (macro có thể
         #              biến ident thành tên hàm — `$m.$name($t)`).
-        #      B4 — macro ở crate khác: `scan_lib_macros` quét thân `macro_rules!` trong
-        #              `v2/lib/**` tìm token `wake` (allowlist `MACRO_WAKE_ALLOW` có lý do).
+        #      B4 — macro ở crate khác: `scan_macro_bodies` quét thân `macro_rules!` trong
+        #              `v2/lib`+`v2/kernel`+`v2/sim` tìm token `wake` (allowlist
+        #              `MACRO_WAKE_ALLOW` có lý do). **KT-181**: trước bản này chỉ `v2/lib`
+        #              được quét token; `v2/kernel`+`v2/sim` chỉ có luật include.
         #
         #    Bỏ qua: **chú thích** + **literal chuỗi/ký tự** (khử nhiễu), **định nghĩa**
         #    `fn wake`, và **biến cục bộ** tên `wake` (`let mut wake = …` — có thật trong cây).
@@ -2659,11 +2656,12 @@ def scan_v2(
                 tr = test_line_ranges(text)
             _check_wake_text(relp, text, tr, safe_macros, r)
 
-    # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** — quét thân `macro_rules!`. Chạy ở **mọi** chế
-    #    độ: D2-161 đòi `include!`/`#[path]` literal + trong cây ở **cả ba** chế độ, và
-    #    `include!`/`#[path]` trong thân macro giải theo **tệp gọi** nên phải fail-closed.
-    scan_lib_macros(root, r)
-    scan_kernel_macro_includes(root, r)
+    # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** + **KT-181** — quét thân `macro_rules!` ở **mọi**
+    #    tệp nguồn sản phẩm (`v2/lib`+`v2/kernel`+`v2/sim`) với **cả hai** luật (token `wake` +
+    #    `include!`/`#[path]`/`mod`/`:tt`). Chạy ở **mọi** chế độ: D2-161 đòi `include!`/`#[path]`
+    #    literal + trong cây ở **cả ba** chế độ, và `include!`/`#[path]` trong thân macro giải
+    #    theo **tệp gọi** nên phải fail-closed.
+    scan_macro_bodies(root, r)
 
     return r
 
@@ -2873,7 +2871,10 @@ def selftest() -> int:
     lồng/char-lifetime/delimiter/đầu vào hỏng/độ sâu; **9 ca tập cạnh nguồn** xác nhận **đúng
     cạnh** cho `#[path]`/`#[r#path]`/escape/`cfg_attr` lồng/`include!` `[]`+`{}`/`mod` Unicode/
     macro Unicode + đối chứng nhiễu comment-chuỗi; **9 ca chính sách** ba repro mới + đối chứng
-    hợp lệ + năm đầu vào hỏng `E_LEX_*`). Tổng **107** ca.
+    hợp lệ + năm đầu vào hỏng `E_LEX_*`) +
+    **10 ca KT-181** (D2-164: thân macro ở `init/`, `vifast-plat-user/`, `tests/` của kernel/sim
+    được kiểm token `wake` — bốn ca ĐỎ + bốn đối chứng `wake_from` **cùng thư mục** + một đối
+    chứng nhiễu chuỗi + một ca ngoài phạm vi `v2/tools`). Tổng **128** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -4779,6 +4780,91 @@ def selftest() -> int:
         _broken("delimiter lệch", "fn f() { (]\n", "E_LEX_UNBALANCED")
         _broken("escape sai", 'const S: &str = "a\\qb";\n', "E_LEX_INVALID_ESCAPE")
         _broken("quá sâu", "(" * (MAX_TREE_DEPTH + 2), "E_LEX_DEPTH")
+
+        # --- (g) **KT-181** (D2-164) — thân `macro_rules!` ở **mọi** tệp nguồn sản phẩm
+        # (`v2/lib`+`v2/kernel`+`v2/sim`) phải được kiểm **cả hai** luật. Trước KT-181 luật
+        # token `wake` chỉ chạy ở `v2/lib` (`scan_lib_macros`); `v2/kernel`+`v2/sim` chỉ có
+        # luật include (`scan_kernel_macro_includes`) ⇒ macro trong `init/`, `tests/`,
+        # `vifast-plat-user/` chứa token `wake` **lọt**. Mỗi ca ĐỎ kèm **đối chứng**
+        # `wake_from` trong **cùng** thư mục (không báo oan) + một đối chứng nhiễu chuỗi.
+        def _kt181_case(name: str, relpath: str, body: str, expect_red: bool) -> None:
+            d = tmp / ("kt181-" + name)
+            _fixture_v2(d)
+            _write(
+                d / relpath,
+                "#[macro_export]\nmacro_rules! kt181_m {\n"
+                "    ($m:expr, $t:expr) => {\n        " + body + "\n    };\n}\n",
+            )
+            rep = scan_v2(d, strict=True, allowlist={})
+            got = any("E_STRICT_MACRO_WAKE" in e for e in rep.errors)
+            cases.append(
+                (
+                    f"KT-181 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _kt181_case(
+            "init/ macro `wake`",
+            "v2/kernel/vifast-kbin-riscv64/init/evil.rs",
+            "$m.wake($t)",
+            True,
+        )
+        _kt181_case(
+            "init/ macro `wake_from` (đối chứng)",
+            "v2/kernel/vifast-kbin-riscv64/init/ok.rs",
+            "$m.wake_from($t)",
+            False,
+        )
+        _kt181_case(
+            "init/ macro chuỗi \"wake\" (đối chứng nhiễu)",
+            "v2/kernel/vifast-kbin-riscv64/init/ok_str.rs",
+            'let _ = "wake";',
+            False,
+        )
+        _kt181_case(
+            "vifast-plat-user macro `wake`",
+            "v2/kernel/vifast-plat-user/lib.rs",
+            "$m.wake($t)",
+            True,
+        )
+        _kt181_case(
+            "vifast-plat-user macro `wake_from` (đối chứng)",
+            "v2/kernel/vifast-plat-user/lib.rs",
+            "$m.wake_from($t)",
+            False,
+        )
+        _kt181_case(
+            "vifast-plat-common/tests macro `wake`",
+            "v2/kernel/vifast-plat-common/tests/evil.rs",
+            "$m.wake($t)",
+            True,
+        )
+        _kt181_case(
+            "vifast-plat-common/tests macro `wake_from` (đối chứng)",
+            "v2/kernel/vifast-plat-common/tests/ok.rs",
+            "$m.wake_from($t)",
+            False,
+        )
+        _kt181_case(
+            "sim/tests macro `wake`",
+            "v2/sim/vifast-sim/tests/evil.rs",
+            "$m.wake($t)",
+            True,
+        )
+        _kt181_case(
+            "sim/tests macro `wake_from` (đối chứng)",
+            "v2/sim/vifast-sim/tests/ok.rs",
+            "$m.wake_from($t)",
+            False,
+        )
+        _kt181_case(
+            "v2/tools macro `wake` (ngoài phạm vi, lý do ở hợp đồng)",
+            "v2/tools/vifast-agentctl/src/lib.rs",
+            "$m.wake($t)",
+            False,
+        )
 
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
