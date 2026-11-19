@@ -1,10 +1,11 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219 / KT-225
 
 **Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại) + **KT-209** (L40 KT-201
 §D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D — quét token toàn cục cho `include!`/`#[path]`) +
 **KT-213** (L47 KT-212 — gốc phân giải `#[path]` của tệp non-mod-rs) + **KT-215** (L47 KT-212 —
 bộ lọc `target/`, `MAILBOX_DEFS`, đóng F2) + **KT-219** (L49 KT-218 — vùng test quá rộng trên
-nhánh `match`, đường lọt #13). **Chưa** được reviewer độc lập xác nhận trên HEAD
+nhánh `match`, đường lọt #13) + **KT-225** (L52 KT-223 — bốn báo oan `include!` + đường lọt lớp một
+`.txt` + răng ca B29/B30). **Chưa** được reviewer độc lập xác nhận trên HEAD
 cuối — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
 
 Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
@@ -49,6 +50,16 @@ include!{…})`, `(include!{…})`, `(|| include!{…})`, `Some(include!{…})`)
 được và **bị từ chối riêng** (không phải lỗ hổng): thân `macro_rules!` (`_check_macro_body`,
 `E_STRICT_MACRO_INCLUDE`) và **đối số lời gọi macro** (`_check_macro_passthrough`,
 `E_STRICT_MACRO_INCLUDE`/`E_STRICT_MACRO_MOD`).
+
+**KT-225** (L52 KT-223 — bốn báo oan) — `_walk_all` **chỉ** coi `include` + `!` là `include!` khi
+sau `!` là **nhóm phân cách** `{`/`(`/`[` hoặc **literal chuỗi** (cú pháp macro hợp lệ). Hệ quả:
+`include` + `!=` / `self.include` + `!=` (`!` + `=`) **không** còn bị ĐỎ oan; `include!("x",)`
+(trailing comma) được **nhận** (XANH nếu đích trong cây). `_walk_all` **không** sinh cạnh từ
+**đối số lời gọi macro** (`in_macro_args`): token trong đó là token stream, không phải mã cho tới
+khi macro mở rộng — `_check_macro_passthrough` xử lý riêng, **trừ** `stringify!`/`concat!`
+(`SAFE_TOKEN_MACROS`: không mở rộng đối số thành mã) ⇒ `stringify!(include!)` **XANH**; tên an toàn bị `macro_rules!` trong cây **che** thì **không** miễn (`_shadowed_safe_macros`, cùng lý do KT-177/G6) ⇒ `macro_rules! stringify { ($x:expr) => { $x } }` + `stringify!(include!("…"))` vẫn **ĐỎ**. Thân
+`macro_rules!` trong tệp **không phải `.rs`** được `include!` vào cây cũng được quét
+(`scan_macro_bodies` nhận `extra_files`) — đóng đường lọt lớp một `.txt` (reviewer L52 KT-223 §3).
 
 **KT-202** — `include!`/`#[path]`/`mod` nằm trong **đối số lời gọi macro** bị **từ chối thẳng**
 (`E_STRICT_MACRO_INCLUDE`/`E_STRICT_MACRO_MOD`) thay vì phân giải: `_scan_macro_calls` quét
@@ -101,6 +112,11 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
   (`_walk_items`/`scan_structure`): `mod` chỉ có nghĩa ở mức item, và mọi vị trí `mod` hợp lệ
   đều nằm trong `{ … }` mà `_walk_items` đã đệ quy; đường thoát khỏi cây bằng `mod` **phải** qua
   `#[path]` — đã bị quét toàn cục bắt.
+- **KT-225**: `include` + `!` **chỉ** là `include!` khi sau `!` là **nhóm phân cách** hoặc
+  **literal chuỗi**; `include` + `!=` / `self.include` + `!=` **XANH**; `include!("x",)` (trailing
+  comma) **XANH** nếu đích trong cây. Đối số `stringify!`/`concat!` (`SAFE_TOKEN_MACROS`) **không**
+  bị coi là mã ⇒ `stringify!(include!)` **XANH**. Thân `macro_rules!` trong tệp **không phải
+  `.rs`** được `include!` vào cây **được quét** (`scan_macro_bodies(extra_files=…)`).
 - Chú thích chen giữa `#`/`[`/`path` (khử chú thích trước khi khớp).
 - `#[path = "sub"] mod m { … }` — inline module: `sub` là **thư mục**, không phải cạnh tệp (KT-196/F4);
   module con của nó được duyệt trong **thư mục `#[path]`**, không phải `cur_dir/NAME` (KT-199/F4b).
@@ -131,12 +147,12 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 | Dạng | Mã lỗi | Lý do |
 |---|---|---|
 | `include!`/`#[path]`/`cfg_attr(path)` **không literal** (`concat!`, `env!`, biến) — **mọi** vị trí token (KT-211) | `E_STRICT_WAKE_INCLUDE` | không phân giải được đích |
-| `include!` **không có** đối số (KT-211) | `E_STRICT_WAKE_INCLUDE` | không phân giải được đích |
+| `include!` **không có** đối số **nhưng** có nhóm rỗng `include!()` (KT-211) | `E_STRICT_WAKE_INCLUDE` | không phân giải được đích. **KT-225**: `include!;` (không có nhóm/chuỗi sau `!`) **không** phải cú pháp macro hợp lệ ⇒ **không** báo (không biên dịch được) |
 | Đích trỏ **ra ngoài** `v2/kernel`+`v2/sim` (nguồn kernel/sim) — **mọi** vị trí token (KT-211) | `E_STRICT_WAKE_INCLUDE` | không quét được |
 | Đích trỏ **ra ngoài** `v2/lib` (nguồn `v2/lib`, kể cả sang `v2/kernel`/`v2/sim`) | `E_STRICT_WAKE_INCLUDE` | cạnh nguồn ẩn; luật `wake` chỉ quét kernel/sim (KT-209/L3) |
 | Đích **không tồn tại** (và không phải thư mục) | `E_STRICT_WAKE_INCLUDE` | fail-closed |
 | `#[path]` trỏ **thư mục** trên `mod` **không có thân** | `E_STRICT_WAKE_INCLUDE` | sai cú pháp, không phân giải được (KT-199/F4c) |
-| Thân `macro_rules!` chứa `include!`/`#[path]` (bất kỳ dạng) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi** |
+| Thân `macro_rules!` chứa `include!`/`#[path]` (bất kỳ dạng) — **kể cả** thân trong tệp **không phải `.rs`** được `include!` vào cây (KT-225) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi** |
 | Thân `macro_rules!` chứa `$…:<frag>` với `frag ∈ {tt, item, stmt, block, meta}` (passthrough) | `E_STRICT_MACRO_TT` | có thể chở `mod`/`include!`/`#[path]` từ **lời gọi**; `:expr` **không** bị từ chối (lý do §4) |
 | `include!`/`#[path]`/`mod` trong **đối số lời gọi macro** (nhóm sau `!`) | `E_STRICT_MACRO_INCLUDE` / `E_STRICT_MACRO_MOD` | `_walk_items` cũ bỏ **mù** nhóm sau `!`; KT-202 fail-closed |
 | Thân `macro_rules!` khai `mod NAME;` (định danh literal) | `E_STRICT_MACRO_MOD` | đồ thị module không thấy |
@@ -162,7 +178,8 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 | **Miễn luật arch theo tiền tố `virtio_`** (mở) | `RE_DOORBELL` bỏ qua tệp có tên bắt đầu `virtio_` (thiết bị virtio dùng `doorbell` hợp lệ). Một tệp `virtio_x.rs` trong `vifast-plat-*` dùng `doorbell` sẽ được miễn. **Chưa vá**: phân biệt "thiết bị virtio thật" cần kiểm ngữ nghĩa (kiểu `Virtio*`), không phải đổi tên; hạ tầng hiện tại không có. Ghi nợ có tên. | Không phải luật `wake`/`include!`/`#[path]`; rủi ro thấp (luật arch chỉ áp `vifast-plat-*`). |
 | **Tệp `.rs` không thuộc crate** | `v2/kernel/vifast-plat-user/lib.rs` (shim U-mode) và `v2/kernel/vifast-kbin-riscv64/init/*.rs` (chương trình U-mode) **không** khớp mẫu `<crate>/src/**`/`build.rs` ⇒ không bị luật `wake` quét **trực tiếp** (một số tệp `init/*.rs` được kéo vào qua `#[path]` từ `src/` và xử lý như đích `extra`). | Đo 2026-11-20: **không** có token `wake`; chúng không có `Machine` (chỉ syscall U-mode). Ghi để không thành "phát hiện mới". |
 | **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro ⇒ XANH (chỉ `v2/kernel`+`v2/sim` được quét cấu trúc). | §1 đã ghi `v2/lib` chỉ bảo vệ thân macro + `include!`/`#[path]`; **không** phải lỗi. |
-| **Báo oan có trước** (không phải hồi quy — đối chiếu checker `0fa0fe65` giống hệt) | `#[cfg(test)] include!`; `#[cfg(feature = "ktest")] fn` **inline** (chuỗi `"ktest"` bị `strip_rust_noise` xoá); `#[cfg(test)] const/static`; `macro_rules!` thân `()`/`[]`; block statement; match arm pattern literal; `stringify!(include!)` (**có** `!` — `stringify!(include)` **không** `!` thì XANH). **KT-211** (reviewer L44 §D6) đo thêm **bốn** dạng **ĐỎ** (`--strict`) mà danh sách **không** có: (a) `#[cfg_attr(test, path = "evil.rs")] mod m;` (đích có `wake`) ⇒ **ĐỎ**; (b) `if let Some(wake) = o { wake }` ⇒ **ĐỎ** `E_STRICT_TEST_ONLY_WAKE`; (c) `let g = \|wake: u32\| wake + <số>;` ⇒ **ĐỎ**; (d) `struct S { pub wake: u32 }` + `s.wake` ⇒ **ĐỎ**. | Cây thật **không** có dạng nào (mọi chỗ `ktest` đều không chứa `wake`); ghi để không thành "phát hiện mới". |
+| **Báo oan có trước** (không phải hồi quy — đối chiếu checker `0fa0fe65` giống hệt) | `#[cfg(test)] include!`; `#[cfg(feature = "ktest")] fn` **inline** (chuỗi `"ktest"` bị `strip_rust_noise` xoá); `#[cfg(test)] const/static`; `macro_rules!` thân `()`/`[]`; block statement; match arm pattern literal. **KT-211** (reviewer L44 §D6) đo thêm **bốn** dạng **ĐỎ** (`--strict`) mà danh sách **không** có: (a) `#[cfg_attr(test, path = "evil.rs")] mod m;` (đích có `wake`) ⇒ **ĐỎ**; (b) `if let Some(wake) = o { wake }` ⇒ **ĐỎ** `E_STRICT_TEST_ONLY_WAKE`; (c) `let g = \|wake: u32\| wake + <số>;` ⇒ **ĐỎ**; (d) `struct S { pub wake: u32 }` + `s.wake` ⇒ **ĐỎ**. **KT-225** (L52 KT-223 §C) **đã vá bốn** dạng báo oan của luật `include!`: `stringify!(include!)` (nay **XANH** — `SAFE_TOKEN_MACROS`), `include` + `!=` / `self.include` + `!=` (nay **XANH** — `!` + `=` không phải macro), `include!("x",)` (nay **XANH** — trailing comma hợp lệ). | Cây thật **không** có dạng nào (mọi chỗ `ktest` đều không chứa `wake`); ghi để không thành "phát hiện mới". |
+| ~~**Thân `macro_rules!` trong tệp không phải `.rs`**~~ | **ĐÓNG (KT-225, L52 KT-223 — đường lọt lớp một)**: `scan_macro_bodies` chỉ `rglob("*.rs")`, nên `macro_rules! evil { () => { include!("…") } }` trong `src/macro_def.txt` (được `include!("macro_def.txt")` ở vị trí item) **không** bị `_check_macro_body` quét; `_walk_all` bỏ qua thân macro ⇒ checker tĩnh **XANH cả hai chế độ** trong khi `cargo check` thành công và mã sản phẩm gọi `wake` (lớp hai `check-wake-depinfo.py` bắt được). Nay `scan_macro_bodies` nhận `extra_files` = mọi tệp được `include!`/`#[path]` vào cây (không chỉ `.rs`) ⇒ quét thân macro ⇒ **ĐỎ** `E_STRICT_MACRO_INCLUDE`. Ca selftest KT-225 TXT. | **Đã vá**; cây thật xanh cả hai chế độ. |
 | **Macro ngoài `MACRO_SCAN_ROOTS`** (KT-181) | `v2/tools/**` (công cụ phát triển, **không** link vào ảnh sản phẩm) và `v2/test/fixtures/**` (fixture **cố tình sai**) **không** được quét thân macro. | Không phải mã sản phẩm; cây thật **không** có `macro_rules!` ở hai gốc này. Nếu tương lai có mã sản phẩm ở đó, phải thêm gốc vào `MACRO_SCAN_ROOTS` — **không** được coi là đã bảo vệ. |
 | **Không có đường lọt thật cho `wake` ngoài phạm vi cũ** (KT-181 — ghi để **không thổi phồng**) | Trước KT-181, macro ở `init/`/`tests/`/`vifast-plat-user/` chứa token `wake` **không** bị luật token bắt. Nhưng **không** dựng được đường lọt: `init/`+`vifast-plat-user/` biên dịch bằng `rustc` trực tiếp **không** `--extern vifast_core`; `tests/` không phải sản phẩm; nạp bằng `#[path]`/`include!` từ kernel thì `extra` đã quét (đột biến M1c: `cargo check` biên dịch được nhưng checker **ĐỎ**). | Đây là **phòng ngừa**, không phải lỗ hổng đã bị khai thác. |
 
