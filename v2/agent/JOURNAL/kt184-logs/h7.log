@@ -4,7 +4,8 @@
 
 ### H7 — checker HIỆN TẠI (KT-184) --strict
 E E_STRICT_MACRO_INCLUDE   v2/lib/vifast-abi/src/lib.rs:128: thân `macro_rules! evil_inc` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)
-# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+E E_STRICT_MACRO_INCLUDE   v2/lib/vifast-abi/src/lib.rs:128: thân `macro_rules! evil_inc` chứa `include` — không phân giải tĩnh được (fail-closed, KT-191)
+# check-wake-paths: mode=v2 strict=1 errors=2 warnings=0
 rc=1
 
 ### H7 — checker 7e7e1b53 (KT-174, TRƯỚC KT-177) --strict
