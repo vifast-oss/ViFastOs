@@ -95,6 +95,24 @@ bị lớp 1 bắt), **0** báo oan.
 **Đây là xác nhận mạnh nhất cho bài học**: cách tấn công **theo lớp** tìm ra đường lọt mà **13
 đường cũ không có** — và cả hai đều lọt **cả hai lớp**.
 
+**Rồi L57 tấn công tiếp và tìm ra đường lọt #16 — một HỌ SÁU DẠNG, lọt CẢ BA lớp:**
+
+| Dạng | Mã | Gốc |
+|---|---|---|
+| 1 | `helper(m, t, TcbState::Ready)` + `fn helper(m,t,s){ m.transition_tcb(t,s) }` cùng tệp | phân tích cục bộ |
+| 2 | như (1) nhưng helper ở **tệp khác** | phân tích cục bộ |
+| 3 | `fn ready_state() -> TcbState { TcbState::Ready }` + `m.transition_tcb(t, ready_state())` | không theo dõi hàm trả về |
+| 4 | `const R: TcbState = TcbState::Ready;` + `m.transition_tcb(t, R)` | không theo dõi hằng |
+| 5 | `static R: TcbState = TcbState::Ready;` + `m.transition_tcb(t, R)` | không theo dõi static |
+| 6 | `(|s: TcbState| m.transition_tcb(t, s))(TcbState::Ready)` | không theo dõi closure |
+
+Tất cả `cargo check` **RC=0** và **XANH cả ba lớp**. Đối chứng: `if/else` gán biến, `[Ready][0]`,
+`*&Ready`, `Ready /*comment*/` đều **ĐỎ** — đúng thiết kế.
+
+**Gốc**: `_transition_calls` phân tích **cục bộ trong một hàm**; nó chỉ bắt biến **gán trực tiếp**
+từ `TcbState::Ready` trong cùng hàm. Đóng được họ này cần **phân tích liên hàm** hoặc
+`cargo expand` + dataflow — **chưa làm**.
+
 ### 2.4. K6 — đo lại trên ảnh mới
 
 KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6702ec` ⇒ ảnh K6 cũ
@@ -173,6 +191,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | **D2-179** | Đường lọt **#14** (macro lồng che tên an toàn), lọt **cả hai** lớp; mở KT-230 |
 | **D2-180** | KT-230 ĐẠT (đóng #14); đường lọt **#15** (alias kiểu che `TcbState::Ready`); mở KT-231 |
 | **D2-181** | KT-231 ĐẠT (đóng #15) |
+| **D2-182** | Đường lọt **#16** (họ 6 dạng: `Ready` qua tham số/hằng/closure), lọt **cả ba** lớp |
 
 ---
 
@@ -198,8 +217,12 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | L52 | KT-223 (review KT-211) + KT-225 | ĐẠT CÓ ĐIỀU KIỆN → ĐẠT — tìm 4 báo oan + đường lọt `.txt` |
 | L53 | KT-224 (review KT-214) + KT-227 + KT-228 | **KHÔNG ĐẠT** → ĐẠT — tìm **5 đường lọt cả hai lớp** |
 | L54 | KT-229 (tấn công theo lớp) + KT-230 + KT-231 | ĐẠT — tìm **#14** và **#15**, cả hai lọt **cả hai lớp** |
+| L55 | KT-232 (fn-pointer) | đang chạy |
+| L56 | KT-233 (build.rs/OUT_DIR) | đang chạy |
+| L57 | KT-234 (tham số liên hàm) | **SỐNG** — tìm **#16** (họ 6 dạng), lọt **cả ba** lớp |
+| L58 | KT-235 (verify cuối) | đang chạy |
 
-**Tổng**: 18 sub-agent, 4 chạy song song mỗi lượt.
+**Tổng**: 22 sub-agent, 4 chạy song song mỗi lượt.
 
 ---
 
