@@ -16,7 +16,7 @@ build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 K6            6/6 ĐẠT trên ảnh 639ca6d1 (KT-210)
 task          DONE=189  READY=1  BLOCKED=0  REVIEW=3
 luật wake     CHƯA ĐÓNG — KT-194 và KT-184 giữ REVIEW
-checker       lớp 1: 246 ca; lớp 2: 20 ca; cả hai errors=0 trên cây thật
+checker       lớp 1: 259 ca; lớp 2: 31 ca; cả hai errors=0 trên cây thật
 ```
 
 ---
@@ -46,11 +46,18 @@ nuốt nhánh sản phẩm — nó lọt **cả hai lớp** kiểm vì hai lớp
 | **1** tĩnh | lexer + token-tree + walker | mọi tệp, mọi nhánh `#[cfg]`, đích `include!`/`#[path]` | vị trí token lạ (đã vá 13 lần) |
 | **2** dep-info | hỏi **rustc** danh sách tệp thật | đúng danh sách nạp, kể cả `v2/lib` | mã do macro sinh, nhánh `#[cfg]` tắt |
 
+**Nhưng hai lớp KHÔNG đủ.** Reviewer L53 tìm được **năm** đường lọt **lọt cả hai lớp** cùng lúc
+(B3b `#[cfg(feature="ktest")] mod`; B12–B15 trong `v2/lib`: `.txt`, symlink, `src/target/`, dấu
+cách) — reviewer trước đó (L51) chấm "ĐÓNG ĐƯỢC" vì chỉ chọn mẫu từ danh sách đã biết. KT-227
+đã vá: **5 → 0** đường lọt cả hai lớp, **0** báo oan. Nhưng bài học còn: **reviewer chọn mẫu từ
+danh sách đã biết thì không thể tìm đường lọt mới.**
+
 Lớp 2 đã nối vào `v2 check` (D2-173). Chi phí **+8 s** ấm.
 
 **Tôi KHÔNG tuyên bố luật đã đóng.** Mỗi lần tuyên bố đóng trước đây đều bị reviewer kế tiếp
-phá trong vài giờ. Đề nghị của tôi: **một vòng tấn công độc lập nữa** trên HEAD cuối trước khi
-đóng.
+phá trong vài giờ — **đêm nay đã xảy ra đúng như vậy**: L51 chấm "ĐÓNG ĐƯỢC", L53 phá trong
+chưa đầy một giờ. D2-178 đã rút tuyên bố đó. Đề nghị: **một vòng tấn công theo LỚP** (mọi tổ hợp
+`#[cfg]` × vị trí × gốc phân giải), **không** theo danh sách đường lọt đã biết.
 
 ---
 
@@ -65,6 +72,9 @@ phá trong vài giờ. Đề nghị của tôi: **một vòng tấn công độc
 | **D2-173** | Nối lớp 2 vào `v2 check` |
 | **D2-174** | Đường lọt #13, lọt **cả hai** lớp; mở KT-219 |
 | **D2-175** | Đính chính D2-174; chốt hệ đánh số; dãy selftest là DAG |
+| **D2-176** | KT-211 ĐẠT CÓ ĐIỀU KIỆN; 4 báo oan; mở KT-225 |
+| **D2-177** | Reviewer cuối chấm ĐÓNG ĐƯỢC (phạm vi 7 đường lọt) |
+| **D2-178** | **ĐÍNH CHÍNH D2-177**: luật `wake` **CHƯA đóng**; 5 đường lọt cả hai lớp |
 
 ---
 
@@ -85,7 +95,10 @@ phá trong vài giờ. Đề nghị của tôi: **một vòng tấn công độc
 
 | Nợ | Mức | Ghi chú |
 |---|---|---|
-| KT-211, KT-214 chưa có reviewer độc lập | **P1** | chỉ tác giả tự chấm |
+| ~~KT-211, KT-214 chưa có reviewer độc lập~~ | — | **ĐÃ ĐÓNG**: KT-223 (L52) và KT-224 (L53) |
+| `v2/lib` ngoài luật token của lớp 1 | P2 | **DEBT-KT227-1**: không nguy hiểm (không crate `v2/lib` nào phụ thuộc core/sim ở `[dependencies]`; `vifast-model::Machine` không có `wake`) |
+| B4b `#[cfg(any())] mod` tệp riêng | P2 | lớp 2 không thấy (nhánh tắt); lớp 1 bắt |
+| B17 OUT_DIR/build.rs | P2 | lớp 2 không thấy nhưng **không im lặng** (`W_DEPINFO_SKIPPED`); lớp 1 bắt |
 | `:expr` passthrough chưa từ chối | P2 | cây thật có `bail` dùng `:expr`; từ chối sẽ báo oan |
 | Tệp `.rs` không thuộc crate ngoài mẫu `wake` | P2 | đo **0** token `wake`; không có `Machine` |
 | `virtio_` tiền tố tên tệp (luật arch) | P3 | rủi ro thấp |

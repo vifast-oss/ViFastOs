@@ -4,7 +4,7 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `be3a0cd8` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-221]`.
+HEAD          : `1b0d0d26` (`main`, đã push). Commit cuối `[KT-228]`.
                 Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0` (`./v2/bin/v2 status`).
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
@@ -14,27 +14,33 @@ K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210, `JOURNAL/kt210
                 F1 shell smp 1/2/4; F2 parity + đọc lại sau reboot + persist; F3 ảnh tắt shell đỏ;
                 F4 matrix + soak **1000/1000** fail=0 (297 s); F5 `data+bss=224288` ≤ 262144;
                 F6 product `hits=0`, ảnh âm `hits=25`.
-CỔNG          : `gate --fast` **PASS** trên `be3a0cd8` (16 m 46 s, 52 bước OK,
-                `JOURNAL/kt221-logs/kt221-gate-pass-be3a0cd8.log`). `v2 check` **PASS**.
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=192 READY=0 BLOCKED=0 REVIEW=2**.
+CỔNG          : `gate --fast` **PASS** trên `1b0d0d26` (14 m 02 s, **52** bước OK,
+                `JOURNAL/kt228-logs/kt228-gate-pass.log`). `v2 check` **PASS**.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=197 READY=0 BLOCKED=0 REVIEW=2**.
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
-ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. 14 sub-agent (L37..L50), 4 chạy song song mỗi lượt.
+ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. **17** sub-agent (L37..L53), 4 chạy song song mỗi lượt.
                 Xong: KT-181, KT-182+203+206, KT-183+204+205, KT-201, KT-202, KT-207,
                 KT-209, KT-210, KT-211, KT-212+213+215, KT-214, KT-216, KT-217, KT-218+219,
-                KT-220, KT-221. Báo cáo: `BAO-CAO-DEM-2026-11-20.md`; phiếu:
-                `PHIEU-GUI-AGENT0-2026-11-20-VONG8.md`.
+                KT-220, KT-221, KT-222, KT-223+225, KT-224+227+228, KT-226.
+                Báo cáo: `BAO-CAO-DEM-2026-11-20.md`; phiếu: `PHIEU-GUI-AGENT0-2026-11-20-VONG8.md`.
 LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. **Mười ba** đường lọt đã bị phá;
                 đêm nay tìm thêm **ba** (#11 `#[path]` non-mod-rs, #12 `src/target/`,
-                #13 `#[cfg(test)]` trên nhánh `match` — lọt **cả hai** lớp) và đóng cả ba.
-                **Hai lớp**: lớp 1 `check-wake-paths.py` (**246** ca selftest) + lớp 2
-                `check-wake-depinfo.py` (**20** ca, hỏi rustc danh sách tệp thật). Cả hai
-                `errors=0` trên cây thật. D2-169..D2-175 ghi lại.
+                #13 `#[cfg(test)]` trên nhánh `match`) và đóng cả ba. **Nhưng** reviewer L53
+                (KT-224) tìm tiếp **năm** đường lọt **lọt CẢ HAI lớp** (B3b `ktest`, B12–B15
+                `v2/lib`) — KT-227 đã vá: **5 → 0**, **0** báo oan. **Hai lớp**: lớp 1
+                `check-wake-paths.py` (**259** ca) + lớp 2 `check-wake-depinfo.py` (**31** ca).
+                Cả hai `errors=0` trên cây thật. D2-169..D2-178 ghi lại.
+                **Bài học**: reviewer chọn mẫu từ danh sách đã biết thì **không thể** tìm đường
+                lọt mới — vòng sau phải tấn công **theo lớp**, không theo danh sách.
 NỢ / BLOCKED  : **BLOCKED=0**. Nợ còn mở (không chặn): K4' chưa đạt (mới bước 1–2); K5' chưa mở;
                 N1 "600 boot x86_64" ở K5' (D2-149); C3 aarch64 (28/31 stub host chưa kiểm);
-                KT-211/KT-214 **chưa có reviewer độc lập**; `:expr` passthrough chưa từ chối;
-                tệp `.rs` không thuộc crate ngoài mẫu `wake`; `virtio_` tiền tố tên tệp;
-                bash 3.2 SIGTRAP/SIGSEGV đã vá (KT-207, KT-221) nhưng gốc cần bash ≥ 4;
-                lớp 3 (`cargo expand`) chưa có — mã do macro sinh vẫn ngoài tầm cả hai lớp.
+                **DEBT-KT227-1** (`v2/lib` ngoài luật token lớp 1 — không nguy hiểm: không crate
+                `v2/lib` nào phụ thuộc core/sim ở `[dependencies]`); B4b `#[cfg(any())] mod`
+                (lớp 2 không thấy, lớp 1 bắt); B17 OUT_DIR (lớp 2 không thấy nhưng
+                `W_DEPINFO_SKIPPED`, lớp 1 bắt); `:expr` passthrough chưa từ chối;
+                `virtio_` tiền tố tên tệp; bash 3.2 SIGTRAP/SIGSEGV đã vá (KT-207, KT-221)
+                nhưng gốc cần bash ≥ 4; lớp 3 (`cargo expand`) chưa có — mã do macro sinh
+                vẫn ngoài tầm cả hai lớp.
 ```
 ```
 ## KT-64a — đồng bộ sim theo D2-89/D2-90 + parity `TlbFlush` (D2-92c)
