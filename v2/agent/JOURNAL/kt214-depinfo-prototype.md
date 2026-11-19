@@ -1,5 +1,13 @@
 # KT-214 — Nguyên mẫu: kiểm `wake` theo **danh sách tệp THẬT của rustc** (`--emit=dep-info`)
 
+> **ĐÍNH CHÍNH KT-227 (2026-11-20, L53).** Journal này đo ở gốc `dc6e01ae` — **trước** khi
+> KT-211/KT-213/KT-215 merge. Trên HEAD `83275d94`, checker tĩnh bắt **11/11** đường (6 đường
+> trước đây XANH nay ĐỎ bằng fail-closed `E_STRICT_WAKE_INCLUDE`/`E_STRICT_TEST_ONLY_WAKE`).
+> Vì vậy mọi câu "checker tĩnh chỉ bắt 5/11" dưới đây là **số đo lịch sử**, **không** phải hiện
+> trạng. Giới hạn #6 dưới đây cũng **sai một phần**: lớp 1 **cũng không** bắt
+> `#[cfg(feature = "ktest")] mod` (miễn test-only) — đã vá ở KT-227 P0-4. Bằng chứng tái lập:
+> `kt224-logs/p02-p07-tai-lap-head.log`; chi tiết: `kt227-layer2-fixes.md`.
+
 **Người làm**: L48 (sub-agent của Agent 1) · **Nhánh**: `night3/L48-kt214` · **Gốc**: `dc6e01ae`
 **Công cụ mới**: [`v2/tools/check-wake-depinfo.py`](../../tools/check-wake-depinfo.py) (969 dòng, 20 ca `--selftest`)
 **Log**: [`kt214-logs/`](kt214-logs/) — 11 đường × 4 log + bảng JSON + harness
@@ -15,7 +23,7 @@ kể cả **6** đường mà checker tĩnh hiện tại (`dc6e01ae`) vẫn **XA
 | Hạng mục | Kết quả |
 |---|---|
 | Nguyên mẫu bắt được | **11/11** đường lọt (mỗi đường: `cargo check` RC=0, tức repro **biên dịch được**) |
-| Checker cũ (`--strict`) bắt được | **5/11** — lọt **6**: `include!` vị trí biểu thức trong `( … )`/`[ … ]` (5 biến thể) + `#[path]` trong inline module của tệp non-mod-rs |
+| Checker cũ (`--strict`) bắt được | **5/11** ở gốc `dc6e01ae` — lọt **6**: `include!` vị trí biểu thức trong `( … )`/`[ … ]` (5 biến thể) + `#[path]` trong inline module của tệp non-mod-rs. **Trên HEAD `83275d94`: 11/11** (KT-227 đính chính) |
 | Chi phí (cache ấm) | **6,3 s** — so với checker cũ **21,3 s** (thường) / **26,3 s** (`--strict`) |
 | Chi phí (kernel lạnh, giống `v2 check` sau clippy) | **10,9 s** |
 | Chi phí (lạnh hoàn toàn, `--fresh`) | **14,7 s** |
@@ -155,7 +163,10 @@ phải mã chết), đo **cả hai** checker, rồi **hoàn nguyên**. Log từn
 | 10 | `macro_rules!` `:expr` + `include!` | L44 | RC=0 | **ĐỎ** (1) | **ĐỎ** (1) | **ĐỎ** (1) | `v2/lib/kt214_evil_expr.rs` |
 | 11 | `mod` khai trong lời gọi macro (`cfg_if!`) | L40 | RC=0 | **ĐỎ** (4) | **ĐỎ** (4) | **ĐỎ** (1) | `v2/lib/kt214_evil_core.rs` |
 
-**Tổng**: checker cũ **5/11** (đường 1, 8, 9, 10, 11) · nguyên mẫu **11/11**.
+**Tổng (ở gốc `dc6e01ae`)**: checker cũ **5/11** (đường 1, 8, 9, 10, 11) · nguyên mẫu **11/11**.
+**Trên HEAD `83275d94` (KT-227 đo lại)**: checker cũ **11/11** — p02–p06 nay ĐỎ
+`E_STRICT_WAKE_INCLUDE`, p07 nay ĐỎ `E_STRICT_TEST_ONLY_WAKE` (log
+`kt224-logs/p02-p07-tai-lap-head.log`).
 
 ### 3.1 Đọc bảng cho đúng — ba điều quan trọng
 
@@ -285,7 +296,7 @@ là hợp đồng với `make`/`cargo` từ nhiều năm và **cargo phụ thu�
 | 3 | **Khó báo dòng/cột** | Thấp | Thực ra **không** khó: `.d` cho **tệp**, còn dòng/cột do `_check_wake_text` tính trên nội dung tệp — đầu ra có `tệp:dòng` đầy đủ (xem bảng §3) |
 | 4 | **Khó phân biệt test-only** | Trung bình | Bản build sản phẩm **không** nạp tệp test ⇒ không cần miễn. Nếu có nạp (feature `ktest`), nguyên mẫu dựng đồ thị module (9,4 s) và dùng **kết quả của nó**, không dùng mẫu tên |
 | 5 | **Không thấy mã do macro sinh ra** | **Có** | `include!`/`#[path]` thì thấy (rustc nạp tệp thật), nhưng `macro_rules!` **sinh** ra `m.wake(t)` từ token **không** có trong tệp nào ⇒ `.d` không giúp. Đây là lý do **phải giữ** luật macro của checker tĩnh |
-| 6 | **Không thấy `wake` trong mã chỉ có ở nhánh `cfg` không bật** | **Có** | Bản build chỉ nạp nhánh `cfg` đang bật. Checker tĩnh quét **mọi** nhánh. Ví dụ: `#[cfg(feature = "ktest")]` — nguyên mẫu **không** thấy nếu feature tắt |
+| 6 | **Không thấy `wake` trong mã chỉ có ở nhánh `cfg` không bật** | **Có** | Bản build chỉ nạp nhánh `cfg` đang bật. **ĐÍNH CHÍNH KT-227**: câu "checker tĩnh quét **mọi** nhánh" **sai** với `#[cfg(feature = "ktest")] mod` — lớp 1 miễn tệp đó vì `test_only_modules` coi module ktest là test-only ⇒ **cả hai lớp cùng mù** (đường lọt B3b của KT-224). Đã vá ở KT-227 P0-4 (fail-closed). Với `#[cfg(any())]`/`#[cfg(test)]` thì lớp 1 vẫn quét. |
 | 7 | **Phụ thuộc profile/target dir** | Thấp | hard-code `debug`; đổi sang `--release` phải sửa |
 | 8 | **Không thay được luật cấu trúc** | — | `E_STRICT_TRANSITION`/`E_STRICT_STALE`/`E_LEX_*`/`E_ARCH_*` vẫn cần checker tĩnh |
 
@@ -294,7 +305,7 @@ checker tĩnh, chỉ **bổ sung**. Cụ thể:
 
 - #5: `macro_rules!` sinh mã — checker tĩnh bắt bằng luật "thân macro chứa `wake`/`include!`/`mod`/
   `:tt`" (`E_STRICT_MACRO_*`). Nguyên mẫu **không** thấy gì vì không có tệp nào chứa token đó.
-- #6: `#[cfg]` tắt — checker tĩnh quét mọi nhánh; nguyên mẫu chỉ thấy nhánh được biên dịch. Một
+- #6: `#[cfg]` tắt — checker tĩnh quét mọi nhánh **trừ** `#[cfg(feature = "ktest")] mod` (đính chính KT-227: cả hai lớp cùng mù ở đó); nguyên mẫu chỉ thấy nhánh được biên dịch. Một
   `m.wake(t)` trong `#[cfg(feature = "ktest")]` sẽ **lọt** nguyên mẫu nếu build không bật feature.
 
 ---
@@ -306,7 +317,7 @@ checker tĩnh, chỉ **bổ sung**. Cụ thể:
 | Câu hỏi | Trả lời |
 |---|---|
 | Nguyên mẫu có **thay được** `check-wake-paths.py`? | **KHÔNG.** Hai lý do đo được: (a) không thấy mã do `macro_rules!` sinh ra; (b) không thấy nhánh `#[cfg]` không bật. Ngoài ra nó không chạy được khi cây chưa build. |
-| Nó **bổ sung** được gì? | **Đúng lớp lỗi đã phá 11 lần**: "checker tự suy luận cú pháp ⇒ bỏ sót vị trí/gốc phân giải". Nó bắt **6/11** đường mà checker tĩnh vẫn XANH, và với 5 đường còn lại nó bắt bằng **đúng tệp chứa `wake`** thay vì bằng luật mẫu. |
+| Nó **bổ sung** được gì? | **Đúng lớp lỗi đã phá 11 lần**: "checker tự suy luận cú pháp ⇒ bỏ sót vị trí/gốc phân giải". Ở gốc `dc6e01ae` nó bắt **6/11** đường mà checker tĩnh XANH; **trên HEAD `83275d94` checker tĩnh đã bắt 11/11** (KT-227 đính chính) ⇒ giá trị hiện tại là **cơ chế độc lập** + phủ `v2/lib`, không phải "lấp 6/11". |
 | Có nên chạy trong `gate --fast` sau bước build? | **Có** — nhưng đặt ở `v2 check` **sau clippy** rẻ hơn: host gần như miễn phí (0,37 s), chỉ kernel 4,65 s. |
 
 ### 7.2 Đề xuất cụ thể

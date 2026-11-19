@@ -66,7 +66,9 @@ Exit: 0 = xanh; 1 = đỏ; 2 = dùng sai.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -184,29 +186,85 @@ def _unescape_dep(tok: str) -> str:
     return "".join(out)
 
 
+def _join_continuations(text: str) -> str:
+    """**KT-227 P0-2** — nối dòng make dep-info: dòng kết thúc bằng **số lẻ** dấu `\\`.
+
+    Vì sao đếm số lẻ: `\\\\` (hai dấu) là **một** backslash literal trong tên tệp, không phải
+    dòng nối. Chỉ dấu `\\` **lẻ** cuối dòng mới escape newline. Bản cũ dùng
+    `text.replace("\\\\\\n", " ")` nên một tên tệp kết thúc bằng `\\` bị nối nhầm.
+    """
+    out: List[str] = []
+    buf = ""
+    for raw in text.split("\n"):
+        line = raw[:-1] if raw.endswith("\r") else raw
+        k = len(line) - len(line.rstrip("\\"))
+        if k % 2 == 1:
+            buf += line[:-1] + " "
+            continue
+        out.append(buf + line)
+        buf = ""
+    if buf:
+        out.append(buf)
+    return "\n".join(out)
+
+
+def _split_dep_tokens(s: str) -> List[str]:
+    """**KT-227 P0-2** — tách danh sách phụ thuộc theo khoảng trắng, **tôn trọng** escape.
+
+    Vì sao không `s.split()`: tên tệp có dấu cách được make escape thành `a\\ b.rs`; `split()`
+    cắt thành `a\\` + `b.rs` ⇒ không bao giờ resolve được (đường lọt B10/B15 của KT-224).
+    """
+    out: List[str] = []
+    cur: List[str] = []
+    i = 0
+    n = len(s)
+    while i < n:
+        ch = s[i]
+        if ch == "\\" and i + 1 < n and s[i + 1] in (" ", "\\", "#"):
+            cur.append(s[i + 1])
+            i += 2
+            continue
+        if ch.isspace():
+            if cur:
+                out.append("".join(cur))
+                cur = []
+            i += 1
+            continue
+        cur.append(ch)
+        i += 1
+    if cur:
+        out.append("".join(cur))
+    return out
+
+
 def parse_depinfo(path: Path) -> Tuple[Set[str], List[str]]:
     """Đọc một tệp `.d` ⇒ (tập **đích** của tệp, danh sách **phụ thuộc**).
 
     Định dạng make: `<đích>: <phụ thuộc> <phụ thuộc> …`, nối dòng bằng `\\` + newline. Tệp `.d`
     của rustc có **nhiều** dòng đích (chính `.d`, `.rmeta`/binary, rồi từng tệp nguồn làm đích
     rỗng) — gom hết phụ thuộc của mọi dòng, gom hết đích để đối chiếu với artifact của cargo.
+
+    **KT-227 P0-2** — dòng bắt đầu bằng `#` là **chú thích** của make (`# env-dep:OUT_DIR=…`);
+    bản cũ coi `OUT_DIR=…` là phụ thuộc. Escape `\\ ` được xử lý **trong lúc tách token**, không
+    tách trước rồi mới giải.
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return set(), []
-    text = text.replace("\\\r\n", " ").replace("\\\n", " ")
+    text = _join_continuations(text)
     targets: Set[str] = set()
     deps: List[str] = []
     for line in text.splitlines():
+        if line.startswith("#"):
+            continue
         if ":" not in line:
             continue
         lhs, _, rhs = line.partition(":")
         lhs = lhs.strip()
         if lhs:
             targets.add(_unescape_dep(lhs))
-        for tok in rhs.split():
-            deps.append(_unescape_dep(tok))
+        deps.extend(_split_dep_tokens(rhs))
     return targets, deps
 
 
@@ -231,7 +289,17 @@ def resolve_dep(tok: str, ws_root: Path) -> Optional[Path]:
 class UnitResult:
     """Kết quả một đơn vị build: RC, thời gian, artifact, tệp nguồn rustc nạp."""
 
-    __slots__ = ("name", "cmd", "rc", "seconds", "artifacts", "depinfo_used", "loaded", "note")
+    __slots__ = (
+        "name",
+        "cmd",
+        "rc",
+        "seconds",
+        "artifacts",
+        "depinfo_used",
+        "loaded",
+        "skipped",
+        "note",
+    )
 
     def __init__(self, name: str, cmd: Sequence[str]) -> None:
         self.name = name
@@ -241,57 +309,93 @@ class UnitResult:
         self.artifacts = 0
         self.depinfo_used = 0
         self.loaded: Set[Path] = set()
+        # **KT-227 P0-3** — tệp rustc nạp mà công cụ **không quét** (ngoài gốc repo / thư mục
+        # build / không phải tệp). Trước bản này chúng bị bỏ **im lặng** — đúng lớp "xanh-giả".
+        self.skipped: List[Tuple[str, str]] = []
         self.note = ""
 
 
-def _is_build_dir(root: Path, p: Path) -> bool:
-    """**KT-226** — dùng **chung** định nghĩa với lớp 1 (`CWP._is_build_dir`).
-
-    Trước KT-226 lớp 2 dùng `"target" in relp.parts` ⇒ bỏ qua **cả** `src/target/` — tái hiện
-    đường lọt #12 ở lớp 2 (lớp 1 đã vá ở KT-215). Nay chỉ bỏ qua khi `target` đứng **trước**
-    `src` trong đường dẫn tương đối gốc (thư mục build thật: `v2/kernel/target/`, `v2/target/`,
-    `<crate>/target/`), **không** bỏ qua `src/**/target/**`.
-
-    **Không chép lần hai**: gọi thẳng `CWP._is_build_dir` để hai lớp không lệch nhau — bài học
-    đường lọt #13 (hai lớp dùng chung `_test_char_ranges` nên cùng mù một chỗ).
-
-    Chuẩn hoá **cả hai** đường dẫn trước khi so: `resolve_dep` trả đường dẫn đã `resolve()`
-    (macOS: `/var` → `/private/var`) còn `root` có thể chưa — lệch gốc làm `relative_to` ném
-    `ValueError` ⇒ hàm trả `False` (quét thừa, fail-closed) và bộ lọc **mất tác dụng**.
-    """
-    try:
-        return CWP._is_build_dir(root.resolve(), p.resolve())
-    except OSError:  # pragma: no cover - phòng hờ
-        return False
-
-
-def _load_dep_files(
+def collect_depinfo(
     deps_dir: Path,
     ws_root: Path,
     root: Path,
     res: UnitResult,
-    artifacts: Optional[Set[str]] = None,
-    use_all: bool = True,
+    use_all: bool,
+    artifacts: Set[str],
 ) -> None:
-    """Đọc mọi `.d` trong `deps_dir` ⇒ `res.loaded` (tệp `.rs` rustc nạp, đã lọc build dir).
+    """**KT-227 P0-3** — đọc `.d` trong `deps_dir` ⇒ `res.loaded` + `res.skipped`.
 
-    Tách khỏi `run_unit` (KT-226) để `--no-build` và `--selftest` dùng **cùng** một đường lọc —
-    trước đây hai vòng lặp chép tay cùng một bộ lọc `"target" in relp.parts`.
+    Dùng chung cho đường build (`run_unit`) và `--no-build` để hai đường không lệch nhau.
+
+    Ba sửa so với bản KT-214:
+      - bộ lọc `target` dùng **chung** `CWP._is_build_dir` (chỉ bỏ khi `target` đứng **trước**
+        `src`) — bản cũ `"target" in relp.parts` là **hồi quy đường lọt #12**;
+      - **không** lọc theo đuôi `.rs`: `#[path = "evil.txt"] mod m;` là mã Rust thật, rustc nạp
+        nó; bản cũ bỏ vì `suffix != ".rs"` (đường lọt B9/B12);
+      - mọi tệp bị bỏ được ghi vào `res.skipped` kèm lý do — tầng gọi báo ĐỎ (ngoài gốc repo)
+        hoặc CẢNH BÁO (thư mục build / không phải tệp), không im lặng.
     """
+    if not deps_dir.is_dir():
+        res.note = f"không có thư mục dep-info {deps_dir}"
+        return
+    seen_skip: Set[Tuple[str, str]] = set()
+
+    def skip(path: str, why: str) -> None:
+        key = (path, why)
+        if key not in seen_skip:
+            seen_skip.add(key)
+            res.skipped.append(key)
+
     for d in sorted(deps_dir.glob("*.d")):
         if not RE_DEPINFO.search(d.name):
             continue
         targets, deps = parse_depinfo(d)
-        if not use_all and artifacts is not None and not (targets & artifacts):
+        if not use_all and not (targets & artifacts):
             continue
         res.depinfo_used += 1
         for tok in deps:
             p = resolve_dep(tok, ws_root)
-            if p is None or p.suffix != ".rs" or not p.is_file():
+            if p is None:
+                skip(tok, "không resolve được")
                 continue
-            if _is_build_dir(root, p):
+            if not p.is_file():
+                skip(tok, "không phải tệp")
+                continue
+            try:
+                relp = p.relative_to(root)
+            except ValueError:
+                skip(str(p), "ngoài gốc repo")
+                continue
+            if CWP._is_build_dir(root, p):
+                skip(str(relp), "thư mục build")
                 continue
             res.loaded.add(p)
+
+
+def depinfo_empty_errors(results: Sequence[UnitResult], loaded: Set[Path]) -> List[str]:
+    """**KT-227 P0-1** — fail-closed khi `.d` rỗng/thiếu/không cho tệp nào.
+
+    Trước bản này: `.d` rỗng hoặc không tồn tại ⇒ `errors=0`, RC=0, **0 tệp quét** — xanh-giả
+    đúng lớp lỗi repo đang chống. Nay mọi trường hợp "không đọc được tệp nào" là ĐỎ.
+    """
+    errs: List[str] = []
+    if not loaded:
+        errs.append(
+            "  không đọc được tệp `.rs` nào từ `.d` — fail-closed (KT-227 P0-1); "
+            "kiểm `target/`, `--no-build`, bộ lọc artifact"
+        )
+    for res in results:
+        if res.depinfo_used == 0:
+            errs.append(
+                f"  đơn vị `{res.name}`: không có tệp `.d` nào được dùng — fail-closed "
+                f"(KT-227 P0-1)"
+            )
+        elif not res.loaded:
+            errs.append(
+                f"  đơn vị `{res.name}`: `.d` không cho tệp `.rs` nào — fail-closed "
+                f"(KT-227 P0-1)"
+            )
+    return errs
 
 
 def run_unit(
@@ -376,10 +480,6 @@ def run_unit(
     deps_dir = deps_dir / "debug/deps"
     ws_root = (root / manifest).parent
 
-    if not deps_dir.is_dir():
-        res.note = f"không có thư mục dep-info {deps_dir}"
-        return res
-
     # Khi build **thành công**: chỉ lấy `.d` của unit có mặt trong lần chạy này (chính xác).
     # Khi build **thất bại**: cargo **không** phát `compiler-artifact` cho unit hỏng, nhưng rustc
     # **vẫn ghi** `.d` (đã đo với lỗi kiểu E0308 và E0583) ⇒ lấy **mọi** `.d` trong thư mục
@@ -388,11 +488,24 @@ def run_unit(
     if build_ok is False:
         res.note = "build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed)"
 
-    _load_dep_files(deps_dir, ws_root, root, res, artifacts=artifacts, use_all=use_all)
+    collect_depinfo(deps_dir, ws_root, root, res, use_all, artifacts)
     return res
 
 
 # ------------------------------------------------------------------ luật
+
+def is_producer_file(text: str) -> bool:
+    """Tệp **định nghĩa** một cửa phát `Wake` (`WAKE_PRODUCER`).
+
+    **KT-227 P0-3 / KT-226** — chỉ dùng để **đếm** (`producer_files`), **KHÔNG** miễn cả tệp.
+    Việc miễn **định nghĩa** `fn wake` do `CWP._check_wake_text` làm; miễn cả tệp là bất đối
+    xứng với lớp 1 (đường lọt B18 của KT-224).
+    """
+    for name in CWP.WAKE_PRODUCER:
+        if re.search(r"\bfn\s+" + re.escape(name) + r"\s*\(", text):
+            return True
+    return False
+
 
 def hidden_files(root: Path, loaded: Iterable[Path]) -> List[str]:
     """Tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — chỉ tới được qua `#[path]`/`include!`."""
@@ -436,7 +549,7 @@ def scan(
     # Tên macro "an toàn" bị `macro_rules!` trong cây che ⇒ không còn an toàn (KT-177/G6).
     safe_macros = CWP.SAFE_VALUE_MACROS - CWP._shadowed_safe_macros(root, triples)
 
-    counts = {"loaded": len(files), "scanned": 0, "exempt_producer": 0, "exempt_test": 0}
+    counts = {"loaded": len(files), "scanned": 0, "producer_files": 0, "exempt_test": 0}
     for p in files:
         text = texts.get(p)
         if text is None:
@@ -445,10 +558,13 @@ def scan(
         if test_only is not None and relp in test_only:
             counts["exempt_test"] += 1
             continue
-        # **KT-226** — KHÔNG miễn **cả tệp** producer nữa: lớp 2 chỉ miễn **định nghĩa**
-        # `fn wake` (do `_check_wake_text` xử lý), đồng nhất với lớp 1. Trước KT-226 tệp định
-        # nghĩa `fn wake` được miễn cả tệp ⇒ lời gọi `wake(` trong tệp đó XANH ở lớp 2 nhưng
-        # ĐỎ ở lớp 1 (bất đối xứng allowlist — reviewer L51 KT-222 §4).
+        # **KT-227 P0-3 / KT-226** — KHÔNG miễn **cả tệp** producer nữa: lớp 2 chỉ miễn
+        # **định nghĩa** `fn wake` (do `_check_wake_text` xử lý), đồng nhất với lớp 1.
+        # Trước KT-226/KT-227 tệp định nghĩa `fn wake` được miễn cả tệp ⇒ lời gọi `wake(`
+        # trong tệp đó XANH ở lớp 2 nhưng ĐỎ ở lớp 1 (bất đối xứng allowlist — reviewer L51
+        # KT-222 §4; đường lọt B18 của KT-224).
+        if is_producer_file(text):
+            counts["producer_files"] += 1
         counts["scanned"] += 1
         # R1 — luật token `wake` của checker tĩnh, **nguyên văn** (không chép).
         sub = CWP.Report()
@@ -629,13 +745,13 @@ def selftest() -> int:
         rep, counts = scan(root, loaded, test_only=set())
         ghi(
             "(5) cây sạch (chỉ tệp trong src/) ⇒ XANH",
-            rep.ok and counts["scanned"] == 3 and counts["exempt_producer"] == 0,
+            rep.ok and counts["scanned"] == 3 and counts["producer_files"] == 1,
             f"errors={rep.errors} counts={counts}",
         )
         ghi(
-            "(6) tệp định nghĩa `fn wake` được **quét** nhưng định nghĩa được miễn ⇒ XANH",
-            rep.ok and counts["exempt_producer"] == 0,
-            f"errors={rep.errors} counts={counts}",
+            "(6) tệp định nghĩa `fn wake` VẪN được quét (chỉ miễn định nghĩa, KT-227 P0-3)",
+            counts["producer_files"] == 1 and counts["scanned"] == 3,
+            f"producer_files={counts['producer_files']} scanned={counts['scanned']}",
         )
         # **KT-226** — bất đối xứng allowlist producer: lớp 2 KHÔNG miễn cả tệp nữa. Tệp định
         # nghĩa `fn wake` mà **gọi** `wake(` phải ĐỎ (trước KT-226: XANH ở lớp 2, ĐỎ ở lớp 1).
@@ -803,7 +919,101 @@ def selftest() -> int:
             blob[:120],
         )
 
-        # --- (21) KT-226: `_is_build_dir` — chỉ bỏ `target` **trước** `src` ------------------
+        # --- (21) KT-227 P0-2: escape `\ ` đi **qua `parse_depinfo`** ------------------------
+        d = base / "space.d"
+        d.write_text("libx.rmeta: src/a\\ b.rs src/c.rs\n", encoding="utf-8")
+        _, deps = parse_depinfo(d)
+        ghi(
+            "(21) P0-2: `parse_depinfo` giữ tên tệp có dấu cách (`a\\ b.rs` ⇒ `a b.rs`)",
+            deps == ["src/a b.rs", "src/c.rs"],
+            f"deps={deps}",
+        )
+
+        # --- (22) KT-227 P0-2: nối dòng + `\\` + dòng chú thích `#` --------------------------
+        d = base / "cont.d"
+        d.write_text(
+            "# env-dep:OUT_DIR=/tmp/x\n"
+            "libx.rmeta: a.rs \\\n  b.rs c\\\\d.rs\n",
+            encoding="utf-8",
+        )
+        targets, deps = parse_depinfo(d)
+        ghi(
+            "(22) P0-2: nối dòng `\\`, `\\\\` literal, bỏ dòng `#` (không coi OUT_DIR là phụ thuộc)",
+            targets == {"libx.rmeta"} and deps == ["a.rs", "b.rs", "c\\d.rs"],
+            f"targets={sorted(targets)} deps={deps}",
+        )
+
+        # --- (23) KT-227 P0-1: `.d` rỗng/thiếu ⇒ fail-closed --------------------------------
+        empty_res = UnitResult("host", ["(no-build)"])
+        ghi(
+            "(23) P0-1: `depinfo_empty_errors` ĐỎ khi 0 tệp nạp / 0 `.d`",
+            len(depinfo_empty_errors([empty_res], set())) >= 2,
+            str(depinfo_empty_errors([empty_res], set())),
+        )
+        ok_res = UnitResult("host", ["(no-build)"])
+        ok_res.depinfo_used = 1
+        ok_res.loaded = {src / "clean.rs"}
+        ghi(
+            "(24) P0-1: `depinfo_empty_errors` rỗng khi có tệp nạp",
+            depinfo_empty_errors([ok_res], ok_res.loaded) == [],
+            str(depinfo_empty_errors([ok_res], ok_res.loaded)),
+        )
+
+        # --- (25) KT-227 P0-1 end-to-end: `--no-build` trên cây không `.d` ⇒ RC=1 -----------
+        fake = base / "fake-root"
+        (fake / "v2/kernel").mkdir(parents=True, exist_ok=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["--root", str(fake), "--no-build"])
+        out = buf.getvalue()
+        ghi(
+            "(25) P0-1 end-to-end: `--no-build` không `.d` ⇒ RC=1 + `E_DEPINFO_EMPTY`",
+            rc == 1 and "E_DEPINFO_EMPTY" in out,
+            f"rc={rc} out={out[-160:]}",
+        )
+
+        # --- (26) KT-227 P0-3: `.txt` + `src/target/` được quét, `/tmp` bị báo --------------
+        ws3 = base / "ws3"
+        (ws3 / "src/target").mkdir(parents=True, exist_ok=True)
+        (ws3 / "src/a.rs").write_text("// a\n", encoding="utf-8")
+        (ws3 / "src/evil.txt").write_text("// evil\n", encoding="utf-8")
+        (ws3 / "src/target/evil.rs").write_text("// evil\n", encoding="utf-8")
+        outside = base / "ngoai.rs"
+        outside.write_text("// ngoai\n", encoding="utf-8")
+        dd = base / "deps3"
+        dd.mkdir()
+        _ghi_d(
+            dd / "x-1.d",
+            ws3,
+            [ws3 / "src/a.rs", ws3 / "src/evil.txt", ws3 / "src/target/evil.rs", outside],
+            target=dd / "libx.rmeta",
+        )
+        res3 = UnitResult("host", ["(no-build)"])
+        collect_depinfo(dd, ws3, ws3.resolve(), res3, True, set())
+        rel3 = {str(p.relative_to(ws3.resolve())) for p in res3.loaded}
+        ghi(
+            "(26) P0-3: `.txt` + `src/target/` được nạp; tệp ngoài gốc bị ghi `skipped`",
+            rel3 == {"src/a.rs", "src/evil.txt", "src/target/evil.rs"}
+            and any(why == "ngoài gốc repo" for _, why in res3.skipped),
+            f"loaded={sorted(rel3)} skipped={res3.skipped}",
+        )
+
+        # --- (27) KT-227 P0-3: tệp cửa wake KHÔNG còn được miễn cả tệp ----------------------
+        prod = src / "core_sched_evil.rs"
+        prod.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn wake(&mut self, _t: u32) {}\n"
+            "pub fn go(m: &mut crate::Machine, t: u32) { let _ = m.wake(t); }\n",
+            encoding="utf-8",
+        )
+        rep, counts = scan(root, loaded | {prod}, test_only=set())
+        ghi(
+            "(27) P0-3: tệp có `fn wake` VẪN bị bắt nếu có `m.wake(t)` (không miễn cả tệp)",
+            (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (28) KT-226: `_is_build_dir` — chỉ bỏ `target` **trước** `src` ------------------
         src_target = root / "v2/kernel/vifast-core/src/target/evil.rs"
         build_target = root / "v2/kernel/target/evil.rs"
         src_target.parent.mkdir(parents=True, exist_ok=True)
@@ -811,35 +1021,35 @@ def selftest() -> int:
         src_target.write_text(_GIA_EVIL, encoding="utf-8")
         build_target.write_text(_GIA_EVIL, encoding="utf-8")
         ghi(
-            "(21) `_is_build_dir`: `src/target/` KHÔNG bỏ qua, `v2/kernel/target/` bỏ qua",
-            _is_build_dir(root, src_target) is False
-            and _is_build_dir(root, build_target) is True
-            and _is_build_dir(root, src / "clean.rs") is False,
-            f"src/target={_is_build_dir(root, src_target)} "
-            f"kernel/target={_is_build_dir(root, build_target)}",
+            "(28) `_is_build_dir`: `src/target/` KHÔNG bỏ qua, `v2/kernel/target/` bỏ qua",
+            CWP._is_build_dir(root, src_target) is False
+            and CWP._is_build_dir(root, build_target) is True
+            and CWP._is_build_dir(root, src / "clean.rs") is False,
+            f"src/target={CWP._is_build_dir(root, src_target)} "
+            f"kernel/target={CWP._is_build_dir(root, build_target)}",
         )
 
-        # --- (22) KT-226: `.d` nạp `src/target/evil.rs` ⇒ vào `loaded` ⇒ ĐỎ -----------------
+        # --- (29) KT-226: `.d` nạp `src/target/evil.rs` ⇒ vào `loaded` ⇒ ĐỎ -----------------
         dd_a = base / "deps-kt226-src-target"
         _ghi_d(dd_a / "liba.d", root, [src_target])
         res_a = UnitResult("kernel", ["(selftest)"])
-        _load_dep_files(dd_a, root, root, res_a)
+        collect_depinfo(dd_a, root, root.resolve(), res_a, True, set())
         rep_a, _ = scan(root, res_a.loaded, test_only=set())
         ghi(
-            "(22) `.d` nạp `src/target/evil.rs` (wake) ⇒ ĐỎ `E_DEPINFO_WAKE` (trước KT-226: XANH)",
+            "(29) `.d` nạp `src/target/evil.rs` (wake) ⇒ ĐỎ `E_DEPINFO_WAKE` (trước KT-226: XANH)",
             src_target.resolve() in res_a.loaded
             and any("E_DEPINFO_WAKE" in e for e in rep_a.errors),
             f"loaded={sorted(CWP.rel(root, p) for p in res_a.loaded)} errors={rep_a.errors}",
         )
 
-        # --- (23) KT-226: `.d` nạp `v2/kernel/target/evil.rs` ⇒ bị lọc ⇒ XANH ---------------
+        # --- (30) KT-226: `.d` nạp `v2/kernel/target/evil.rs` ⇒ bị lọc ⇒ XANH ---------------
         dd_b = base / "deps-kt226-build-target"
         _ghi_d(dd_b / "libb.d", root, [build_target])
         res_b = UnitResult("kernel", ["(selftest)"])
-        _load_dep_files(dd_b, root, root, res_b)
+        collect_depinfo(dd_b, root, root.resolve(), res_b, True, set())
         rep_b, _ = scan(root, res_b.loaded, test_only=set())
         ghi(
-            "(23) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH",
+            "(30) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH",
             build_target.resolve() not in res_b.loaded and not rep_b.errors,
             f"loaded={sorted(CWP.rel(root, p) for p in res_b.loaded)} errors={rep_b.errors}",
         )
@@ -903,10 +1113,8 @@ def main(argv: Sequence[str]) -> int:
                 deps_dir = deps_dir / triple
             deps_dir = deps_dir / "debug/deps"
             ws_root = (root / manifest).parent
-            if deps_dir.is_dir():
-                _load_dep_files(deps_dir, ws_root, root, res)
-            else:
-                res.note = f"không có {deps_dir}"
+            # `--no-build` không có artifact của lần chạy ⇒ lấy mọi `.d` (superset).
+            collect_depinfo(deps_dir, ws_root, root, res, True, set())
             results.append(res)
     else:
         if cargo is None:
@@ -952,6 +1160,24 @@ def main(argv: Sequence[str]) -> int:
     rep, counts = scan(root, loaded, test_only=test_only, do_transitions=not args.no_transition)
     for e in build_errors:
         rep.err("E_DEPINFO_BUILD", e)
+    # **KT-227 P0-1** — `.d` rỗng/thiếu/không cho tệp nào ⇒ ĐỎ (trước bản này là xanh-giả).
+    for e in depinfo_empty_errors(results, loaded):
+        rep.err("E_DEPINFO_EMPTY", e)
+    # **KT-227 P0-3** — tệp rustc nạp mà công cụ không quét: ngoài gốc repo ⇒ ĐỎ (fail-closed);
+    # thư mục build / không phải tệp ⇒ CẢNH BÁO (không im lặng).
+    for res in results:
+        for path, why in res.skipped:
+            if why == "ngoài gốc repo":
+                rep.err(
+                    "E_DEPINFO_OUTSIDE",
+                    f"  {path}: tệp rustc nạp nằm ngoài gốc repo — không quét được "
+                    f"(fail-closed, KT-227 P0-3)",
+                )
+            else:
+                rep.warn(
+                    "W_DEPINFO_SKIPPED",
+                    f"  {path}: bỏ qua ({why}) — KT-227 P0-3",
+                )
 
     hidden = hidden_files(root, loaded)
     outside = outside_static_scope(root, loaded)
@@ -980,7 +1206,7 @@ def main(argv: Sequence[str]) -> int:
                         ],
                         "loaded_files": counts["loaded"],
                         "scanned_files": counts["scanned"],
-                        "exempt_producer": counts["exempt_producer"],
+                        "producer_files": counts["producer_files"],
                         "exempt_test": counts["exempt_test"],
                         "hidden_files": hidden,
                         "outside_static_scope": outside,
@@ -1007,7 +1233,7 @@ def main(argv: Sequence[str]) -> int:
     print(f"# rustc nạp: {counts['loaded']} tệp .rs trong cây (gộp {len(results)} đơn vị)")
     print(
         f"# quét: {counts['scanned']} tệp "
-        f"(miễn {counts['exempt_test']} tệp test-only; KT-226: không miễn cả tệp cửa wake)"
+        f"(tệp cửa wake: {counts['producer_files']} — KHÔNG miễn cả tệp; miễn {counts['exempt_test']} tệp test-only)"
     )
     print(f"# test-only: {graph_mode}")
     print(

@@ -918,8 +918,17 @@ def attr_path_edges(
     return edges, problems
 
 
-def cfg_is_test_tokens(nodes: Sequence[object]) -> bool:
-    """`#[cfg(…)]` có phải ngữ cảnh **test** không (chỉ nhận dạng chắc chắn)."""
+def cfg_is_test_tokens(nodes: Sequence[object], ktest_is_test: bool = False) -> bool:
+    """`#[cfg(…)]` có phải ngữ cảnh **test** không (chỉ nhận dạng chắc chắn).
+
+    **KT-227 P0-4** — `#[cfg(feature = "ktest")]` **không** còn được coi là test theo mặc định.
+    Vì sao: đường lọt B3b của KT-224 — `#[cfg(feature = "ktest")] mod evil;` + tệp riêng chứa
+    `m.wake(t)` lọt **cả hai** lớp: lớp 2 không nạp (feature tắt), lớp 1 miễn vì coi module là
+    test-only. Không có bằng chứng `ktest` **không bao giờ** bật trong build sản phẩm (nó là
+    feature của `vifast-kbin-riscv64`/`vifast-plat-riscv64`) ⇒ **fail-closed**: coi là sản phẩm.
+    `ktest_is_test=True` chỉ dùng cho ngữ cảnh **khối** (`_test_char_ranges`) nếu cần giữ miễn
+    theo khối; hiện không nơi nào bật (đo 0 báo oan trên cây thật).
+    """
     # `#[cfg(test)]`: vị từ nằm trong **một** nhóm `( … )`.
     if len(nodes) == 1 and isinstance(nodes[0], Group) and nodes[0].open.val == "(":
         nodes = nodes[0].children
@@ -927,7 +936,8 @@ def cfg_is_test_tokens(nodes: Sequence[object]) -> bool:
     if len(nodes) == 1 and _is_ident(nodes[0], "test"):
         return True
     if (
-        len(nodes) == 3
+        ktest_is_test
+        and len(nodes) == 3
         and _is_ident(nodes[0], "feature")
         and _is_punct(nodes[1], "=")
         and isinstance(nodes[2], Tok)
@@ -942,7 +952,7 @@ def cfg_is_test_tokens(nodes: Sequence[object]) -> bool:
         and nodes[1].open.val == "("
     ):
         parts = _split_commas(nodes[1].children)
-        return bool(parts) and all(cfg_is_test_tokens(p) for p in parts)
+        return bool(parts) and all(cfg_is_test_tokens(p, ktest_is_test) for p in parts)
     return False
 
 
@@ -3965,8 +3975,9 @@ def selftest() -> int:
             )
         )
 
-        # (4v) Đối chứng dương cho B8: `#[cfg(feature = "ktest")] mod ktest_ok;` là **test-only
-        # thật** (ảnh test kernel) ⇒ XANH.
+        # (4v) **KT-227 P0-4** — `#[cfg(feature = "ktest")] mod ktest_ok;` **KHÔNG** còn được
+        # coi là test-only: không có bằng chứng `ktest` không bao giờ bật trong build sản phẩm
+        # ⇒ fail-closed, coi là sản phẩm ⇒ `wake` trong tệp đó ĐỎ (đường lọt B3b của KT-224).
         d = tmp / "v2-b8b-ktest-cfg"
         _fixture_v2(d)
         _write(
@@ -3981,8 +3992,8 @@ def selftest() -> int:
         rep = scan_v2(d, strict=True, allowlist={})
         cases.append(
             (
-                'B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ xanh (test-only thật)',
-                rep.ok,
+                'B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ đỏ (fail-closed, KT-227 P0-4)',
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
                 "; ".join(rep.errors),
             )
         )
@@ -4255,9 +4266,9 @@ def selftest() -> int:
             )
         )
 
-        # (4ai) Đối chứng dương cho A: cùng tệp, nhưng `#[cfg(feature = "ktest")] mod` ⇒
-        # **test-only thật** (ảnh test kernel, D2-08) ⇒ XANH. Không có ca này thì "đỏ" ở (4ah)
-        # có thể chỉ là "đỏ mọi thứ".
+        # (4ai) **KT-227 P0-4** — cùng tệp, nhưng `#[cfg(feature = "ktest")] mod` **KHÔNG**
+        # còn là test-only (fail-closed) ⇒ `transition_tcb(…, Ready)` trong đó ĐỎ ở `--strict`.
+        # Không có ca này thì "đỏ" ở (4ah) có thể chỉ là "đỏ mọi thứ".
         d = tmp / "v2-kt172-a2-ktest-cfg"
         _fixture_v2(d)
         _write(
@@ -4272,8 +4283,8 @@ def selftest() -> int:
         rep = scan_v2(d, strict=True, allowlist={})
         cases.append(
             (
-                'KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)',
-                rep.ok,
+                'KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ đỏ (KT-227 P0-4)',
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
                 "; ".join(rep.errors),
             )
         )
