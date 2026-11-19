@@ -9,7 +9,7 @@
 ## 1. Trạng thái một khối
 
 ```text
-HEAD          6c9ef94e   (main, đã push, chưa push: 0)
+HEAD          c3a4205d   (main, đã push, chưa push: 0)
 build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 ảnh sản phẩm  639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
               213 632 B, build=b08c5c57cdbdb156, inputs=43df126a4a6702ec
@@ -275,7 +275,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 
 ## 6b. Hiệu lực của cổng trên HEAD cuối
 
-`gate --fast` chạy trên `a08bf042`. Từ đó đến HEAD cuối `786335b2` có **103 commit** trong đêm,
+`gate --fast` chạy trên `a08bf042`. Từ đó đến HEAD cuối `c3a4205d` có **105 commit** trong đêm,
 nhưng `git diff --name-only a08bf042..HEAD` **không** có tệp mã nào — chỉ `v2/agent/` (journal,
 STATE, QUEUE, DECISIONS) và `BAO-CAO`/`PHIEU`. ⇒ **kết quả cổng vẫn hiệu lực** cho HEAD cuối.
 `v2 check` chạy lại trên HEAD cuối: **PASS** (`JOURNAL/kt235-logs/kt235-v2check-final.log`).

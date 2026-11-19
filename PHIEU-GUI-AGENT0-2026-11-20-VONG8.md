@@ -9,7 +9,7 @@
 ## 1. Trạng thái một khối
 
 ```text
-HEAD          6c9ef94e   (main, đã push, chưa push: 0)
+HEAD          c3a4205d   (main, đã push, chưa push: 0)
 build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 ảnh sản phẩm  639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
               213 632 B, build=b08c5c57cdbdb156
