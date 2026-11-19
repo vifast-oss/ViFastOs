@@ -83,6 +83,10 @@ const README: &[u8] =
 /// Nội dung `/docs/note.txt` của volume mới format — ASCII, **một** dòng, không số phiên bản.
 /// **KT-158**: 16 B (không có `\n` cuối) để `cat` in đúng một dòng nội dung rồi dòng tổng kết.
 const DOCS_NOTE: &[u8] = b"ghi chu cua docs";
+/// Nội dung `/docs/sub/deep.txt` — **KT-183**: tệp ở **cấp sâu** (hai thư mục lồng nhau) để ca
+/// `kt183-cd-sau` kiểm `cd /docs/sub` + `pwd` + `cat deep.txt` (đường **tương đối** trong thư mục
+/// sâu) trên FS sản phẩm **nhiều cấp**. 4 B, không `\n` cuối (cùng quy ước `DOCS_NOTE`).
+const DOCS_DEEP: &[u8] = b"deep";
 
 /// `Fs` trên hai phương tiện sau một kiểu — kiểu **công khai** để `proc_rt` giữ tham chiếu.
 pub type FsVol = Fs<Volume>;
@@ -410,8 +414,9 @@ pub fn open(platform: &Riscv64Virt, slot: &'static StaticSlot<FsVol>) -> Open {
     Open { fs: mounted, svc }
 }
 
-/// Tạo `/README` + `/docs/note.txt` trên volume **mới format** + `fsync` (để `cat` có nội dung ở cả
-/// hai phương tiện). Lỗi ở đây **không** làm mất FS: chỉ bỏ qua (dòng `used=` đã in).
+/// Tạo `/README` + `/docs/note.txt` + `/docs/sub/deep.txt` trên volume **mới format** + `fsync`
+/// (để `cat` có nội dung ở cả hai phương tiện). Lỗi ở đây **không** làm mất FS: chỉ bỏ qua (dòng
+/// `used=` đã in).
 ///
 /// **KT-158** (nợ KT-137, D2-138): trước đây chỉ seed `/README` ⇒ FS sản phẩm chỉ có **gốc** `/`,
 /// nên D2-138 ghi hạn chế "`cd` vào **thư mục con** chưa kiểm được" và đột biến "`pwd` in hằng `/`"
@@ -419,8 +424,15 @@ pub fn open(platform: &Riscv64Virt, slot: &'static StaticSlot<FsVol>) -> Open {
 /// một thư mục con **thật**: `cd /docs` ⇒ `pwd` in `/docs`, `ls` trong `/docs` thấy `note.txt`,
 /// `cat /docs/note.txt` đọc đúng nội dung — nhờ vậy đột biến `pwd` in hằng `/` **phải ĐỎ**.
 ///
-/// Không đổi `TOTAL_BLOCKS` của FS và không đụng ngân sách `.data+.bss`: ba inode (README, docs,
-/// note.txt) + ba block dữ liệu nằm trong volume 96 block sẵn có (`RAM_VOL_BLOCKS`).
+/// **KT-183** (D2-164): `/docs` mới là **một** cấp; thêm `/docs/sub` (thư mục) + `/docs/sub/deep.txt`
+/// (tệp) để FS sản phẩm có **nhiều cấp** thật — ca `kt183-cd-sau` kiểm `cd /docs/sub` ⇒ `pwd` in
+/// `/docs/sub`, `cat deep.txt` (tương đối) đọc đúng, `cd ../..` ⇒ `/`, `cd /docs/sub/..` ⇒ `/docs`
+/// (chuẩn hoá `..`), `cd ../../..` từ `/docs/sub` **kẹp** ở `/` (không âm). Trước KT-183 không có
+/// thư mục sâu nên các vế "nhiều cấp"/"kẹp gốc" **không kiểm được**.
+///
+/// Không đổi `TOTAL_BLOCKS` của FS và không đụng ngân sách `.data+.bss`: năm inode (README, docs,
+/// note.txt, sub, deep.txt) + bốn block dữ liệu nằm trong volume 96 block sẵn có
+/// (`RAM_VOL_BLOCKS`).
 fn seed(fs: &mut FsVol) {
     if let Ok(ino) = fs.create(b"/README", 0, INODE_FILE) {
         let _ = fs.write(ino, 0, README, 0);
@@ -433,6 +445,14 @@ fn seed(fs: &mut FsVol) {
     }
     if let Ok(ino) = fs.create(b"/docs/note.txt", 0, INODE_FILE) {
         let _ = fs.write(ino, 0, DOCS_NOTE, 0);
+        let _ = fs.fsync();
+    }
+    // **KT-183**: cấp sâu — cùng thứ tự "thư mục trước, tệp sau"; `Exists` ⇒ bỏ qua (đĩa đã seed).
+    if fs.create(b"/docs/sub", 0, INODE_DIR).is_ok() {
+        let _ = fs.fsync();
+    }
+    if let Ok(ino) = fs.create(b"/docs/sub/deep.txt", 0, INODE_FILE) {
+        let _ = fs.write(ino, 0, DOCS_DEEP, 0);
         let _ = fs.fsync();
     }
 }
