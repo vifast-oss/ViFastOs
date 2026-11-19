@@ -76,6 +76,19 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
     - **H8** — literal chuỗi Rust **đầy đủ** (`RE_STR_LIT`: `r#"…"#`, `br#"…"#`, …) cho
       `include!`/`#[path]`; bản KT-174 chỉ thêm `r?` nên dạng **có `#`** vẫn lọt.
 
+  **KT-184** (D2-160 + D2-161) — **luật cứng `include!`/`#[path]` ở MỌI chế độ**:
+    - **D2-161** — khối phân giải `include!`/`#[path]` + phát lỗi `E_STRICT_WAKE_INCLUDE`
+      trước đây nằm **trong** `if strict:` (dòng ~1542), nên `v2 check` **thường** (và
+      `gate`) không bắt được `include!(concat!(…))` hay `#[path]` trỏ ra ngoài cây. Nay
+      chạy **ngoài** `if strict:` — mọi `include!`/`#[path]` trong `v2/kernel`+`v2/sim`
+      phải **literal** và **trỏ trong cây**, kiểm ở **mọi** chế độ. Mã lỗi giữ tên lịch sử
+      `E_STRICT_WAKE_INCLUDE` (KT-171) để không phá các ca/allowlist đã có.
+    - **D2-161** — thêm kiểm `#[path]` **không literal** (`#[path = concat!(…)]`): trước
+      KT-184 chỉ `include!` không literal bị bắt, `#[path]` không phân giải được thì **lọt**
+      hoàn toàn (tệp đích không được quét).
+    - **D2-160** — H4 đã đóng bằng fixpoint (KT-177/G4); KT-184 chỉ **thêm ca** ba lớp và
+      một dạng hai lớp `#[path]`+`include!` để khoá hành vi, không đổi thuật toán.
+
 Fail-closed: thiếu mỏ neo (không tìm thấy `wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ,
 không được coi là "không có gì để kiểm".
 
@@ -754,6 +767,10 @@ def resolve_include_targets(
             found.append(("#[path]", m.group("path"), m.start()))
         # **KT-174/H3** (reviewer L16): `include!` **không** literal (`concat!`/`env!`/biến)
         # không phân giải được đích ⇒ fail-closed với tệp **sản phẩm**.
+        #
+        # **KT-184/D2-161**: cùng luật cho `#[path]` — trước KT-184 chỉ `include!` không
+        # literal bị bắt, `#[path = concat!("evil", ".rs")]` lọt hoàn toàn (không phân giải
+        # được đích nên tệp đích không được quét). Nay fail-closed y như `include!`.
         if not is_test:
             covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
             for m in re.finditer(r"\binclude!\s*[\(\{\[]", code_keep):
@@ -765,6 +782,17 @@ def resolve_include_targets(
                 errors.append(
                     f"  {relp}:{lineno}: `include!` không phải literal chuỗi — không phân giải "
                     f"được đích (fail-closed, KT-174 H3)"
+                )
+            covered_path = {m.start() for m in RE_PATH_ATTR_ANY.finditer(code_keep)}
+            for m in re.finditer(r"#\[path\s*=", code_keep):
+                if m.start() in covered_path:
+                    continue
+                if not code[m.start() : m.end()].strip():
+                    continue
+                lineno = code_keep.count("\n", 0, m.start()) + 1
+                errors.append(
+                    f"  {relp}:{lineno}: `#[path]` không phải literal chuỗi — không phân giải "
+                    f"được đích (fail-closed, KT-184 D2-161)"
                 )
         for kind, raw, off in found:
             lineno = code_keep.count("\n", 0, off) + 1
@@ -1269,10 +1297,24 @@ def scan_v2(
     # dù đồ thị `mod` nói nó test-only. Trước bản vá này, `include!("evil_b.rs")` từ
     # `core_sched.rs` (sản phẩm) + `#[cfg(test)] mod evil_b;` ⇒ `--strict` vẫn `errors=0`
     # trong khi ảnh sản phẩm biên dịch `wake`. **Sản phẩm thắng.**
-    _extra0, _ = resolve_include_targets(root, files, test_only)
-    _product_included = {relp for relp, (_, t) in _extra0.items() if not t}
+    #
+    # **KT-184/D2-161** — luật cứng `include!`/`#[path]` chạy ở **MỌI** chế độ, không chỉ
+    # `--strict`. Trước KT-184 khối phân giải + phát lỗi nằm **trong** `if strict:` (dòng
+    # ~1542) nên `v2 check` thường (và `gate`) **không** bắt được `include!(concat!(…))`
+    # hay `#[path]` trỏ ra ngoài cây — đúng lỗ hổng D2-161 đóng. Nay:
+    #   - mọi `include!`/`#[path]` trong `v2/kernel`+`v2/sim` phải **literal** và **trỏ
+    #     trong cây**; đích ngoài cây / không tồn tại / không literal ⇒ ĐỎ ở mọi chế độ;
+    #   - `extra` (tệp đích + trạng thái test-only) vẫn được khối `--strict` dùng lại.
+    extra, inc_errors = resolve_include_targets(root, files, test_only)
+    _product_included = {relp for relp, (_, t) in extra.items() if not t}
     if _product_included:
         test_only = set(test_only) - _product_included
+        # Trạng thái test-only đổi ⇒ phân giải lại: lần hai thấy nhiều tệp **sản phẩm**
+        # hơn nên bắt được nhiều `include!`/`#[path]` không literal hơn (đơn điệu,
+        # fail-closed). Đây đúng là lần phân giải mà khối `--strict` đã dùng trước KT-184.
+        extra, inc_errors = resolve_include_targets(root, files, test_only)
+    for e in inc_errors:
+        r.err("E_STRICT_WAKE_INCLUDE", e)
 
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
@@ -1539,9 +1581,9 @@ def scan_v2(
         #    `v2/agent/JOURNAL/kt165-wakefix.md` + `v2/agent/JOURNAL/kt171-wakefix3.md`.
         #    **KT-172**: `test_only` đã tính **một lần** ở đầu `scan_v2` (dùng chung cho luật
         #    1–5 và luật `wake`) — không tính lại, không để hai định nghĩa "test-only" lệch nhau.
-        extra, inc_errors = resolve_include_targets(root, files, test_only)
-        for e in inc_errors:
-            r.err("E_STRICT_WAKE_INCLUDE", e)
+        #    **KT-184/D2-161**: `extra` + lỗi `include!`/`#[path]` đã được phân giải **ngoài**
+        #    `if strict:` (chạy ở mọi chế độ) — khối này chỉ **dùng lại** `extra`, không phân
+        #    giải lần nữa (một nguồn sự thật cho cả hai chế độ).
         wake_targets: List[Tuple[Path, str, List[Fn], bool]] = []
         added: set = set()
         for p, text, fns in files:
@@ -1825,7 +1867,10 @@ def selftest() -> int:
     **7 ca KT-172** (bốn call site luật 1–5 chuyển sang đồ thị module: hai đột biến
     `ktest_evil.rs`/`src/tests/evil.rs` + hai đối chứng dương + ba ca luật 1/2/3) +
     **10 ca KT-177** (bốn lớp còn nợ của reviewer L16: H4/H6/H7/H8 + bốn đối chứng dương
-    + hai ca H9 cho dấu ngoặc của `include!`). Tổng **56** ca.
+    + hai ca H9 cho dấu ngoặc của `include!`) +
+    **8 ca KT-184** (D2-160: H4 **ba lớp** + một dạng **hai lớp** `#[path]`+`include!`, mỗi
+    dạng kèm đối chứng dương; D2-161: ba đột biến `include!`/`#[path]` không literal / ra
+    ngoài cây chạy ở **chế độ thường** + một đối chứng dương). Tổng **64** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -2892,6 +2937,202 @@ def selftest() -> int:
                 )
             )
 
+        # ============ KT-184 (D2-160 + D2-161) — H4 ba lớp + luật cứng ở MỌI chế độ ============
+        # **D2-160**: H4 đã đóng bằng fixpoint (KT-177/G4). Thêm ca **ba lớp** (mới) và một
+        # dạng **hai lớp** khác (`#[path]` + `include!`) để khoá hành vi lan "sản phẩm thắng"
+        # qua **nhiều** lớp, không chỉ hai lớp của ca 4ak.
+        # **D2-161**: `include!`/`#[path]` phải **literal** và **trỏ trong cây**, kiểm ở
+        # **chế độ thường** (`strict=False`). Trước KT-184 khối phân giải nằm trong
+        # `if strict:` nên `v2 check` thường (và `gate`) **không** bắt được ba đột biến dưới.
+
+        # (4at) H4 **ba lớp**: `core_ipc.rs` (sản phẩm) → `evil_a.rs` → `evil_b.rs` →
+        # `evil_c.rs` (cả ba test-only qua `#[cfg(test)] mod`, `evil_c` gọi `wake`).
+        d = tmp / "v2-h4-three-layer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n"
+            "#[cfg(test)]\nmod evil_c;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(d / "v2/kernel/vifast-core/src/evil_b.rs", 'include!("evil_c.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_c.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 ba lớp `include!` qua tệp test-only ⇒ đỏ (KT-184/D2-160)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4au) Đối chứng dương cho ba lớp: đích chỉ `wake_from(` ⇒ XANH (fixpoint không phải
+        # "thấy `include!` lồng ba lớp là đỏ").
+        d = tmp / "v2-h4b-three-layer-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n"
+            "#[cfg(test)]\nmod evil_c;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(d / "v2/kernel/vifast-core/src/evil_b.rs", 'include!("evil_c.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_c.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b ba lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4av) H4 **hai lớp** dạng **khác**: `#[path]` nạp tệp sản phẩm `evil_a.rs`, rồi
+        # `evil_a.rs` `include!("evil_b.rs")` (test-only, có `wake`) ⇒ sản phẩm thắng phải lan
+        # qua **cả hai** cơ chế (`#[path]` rồi `include!`).
+        d = tmp / "v2-h4-path-include"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_a.rs"]\nmod evil_a;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 `#[path]` (sản phẩm) + `include!` (test-only) hai lớp ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aw) Đối chứng dương cho (4av): đích chỉ `wake_from(` ⇒ XANH.
+        d = tmp / "v2-h4b-path-include-ok"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_a.rs"]\nmod evil_a;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b `#[path]` + `include!` hai lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ax) **D2-161** — `include!(concat!(…))` **không literal** trong mã sản phẩm, chạy
+        # ở **chế độ thường**. Trước KT-184: XANH (khối nằm trong `if strict:`).
+        d = tmp / "v2-d2161-include-nonliteral"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'include!(concat!("evil", "_b.rs"));\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `include!(concat!(…))` ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ay) **D2-161** — `#[path = r#"…"#]` trỏ **ra ngoài** `v2/kernel`+`v2/sim`, chạy ở
+        # **chế độ thường**. Trước KT-184: XANH.
+        d = tmp / "v2-d2161-path-outside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/evil_out.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"../../../lib/vifast-abi/src/evil_out.rs"#]\nmod evil_out;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `#[path]` ra ngoài cây ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4az) **D2-161** — `#[path = concat!(…)]` **không literal**, chạy ở **chế độ thường**.
+        # Trước KT-184: XANH (chỉ `include!` không literal bị bắt).
+        d = tmp / "v2-d2161-path-nonliteral"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_x.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = concat!("evil", "_x.rs")]\nmod evil_x;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `#[path = concat!(…)]` ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ba) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
+        # `wake_from(` ⇒ XANH ở chế độ thường (luật không phải "có `#[path]` là đỏ").
+        d = tmp / "v2-d2161-path-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_ok.rs"]\nmod evil_ok_product;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161b `#[path]` literal trong cây ở chế độ thường ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
         _fixture_v1(d, channels=3)
@@ -2948,7 +3189,7 @@ def main(argv: Sequence[str]) -> int:
         help="allowlist tường minh: mọi chuyển Ready phải qua cửa wake hoặc có trong allowlist",
     )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 56 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 64 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:

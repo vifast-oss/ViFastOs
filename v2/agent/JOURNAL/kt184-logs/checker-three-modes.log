@@ -1,0 +1,11 @@
+### python3 v2/tools/check-wake-paths.py (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### python3 v2/tools/check-wake-paths.py --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### python3 v2/tools/check-wake-paths.py --selftest
+# selftest: 64/64 ok
+rc=0
