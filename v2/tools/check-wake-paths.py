@@ -413,6 +413,730 @@ def test_line_ranges(text: str) -> List[Tuple[int, int]]:
     return ranges
 
 
+# ------------------------------------------------------------------ KT-194: lexer + token-tree
+#
+# **D2-166** — thay lớp so khớp **văn bản thô** bằng **lexer + token-tree + bộ đọc cấu trúc
+# tối thiểu**. Mỗi token giữ **vị trí nguồn** (`file`, `line`, `col`, `start`, `end`) để:
+#   - báo đúng `file:dòng`;
+#   - phân biệt **lỗi từ vựng** (`E_LEX_*`) với **vi phạm chính sách** (`E_STRICT_*`);
+#   - đối chiếu repro với chẩn đoán.
+# Đầu vào không hiểu (chuỗi/comment chưa đóng, delimiter lệch, escape sai, quá sâu) ⇒ **lỗi**,
+# không trả về tập token/cạnh thiếu rồi tiếp tục xanh (D2-166 §3C).
+
+MAX_TREE_DEPTH = 128
+MAX_ATTR_DEPTH = 32
+
+
+class LexError(Exception):
+    """Lỗi từ vựng/cấu trúc — **không** phải vi phạm chính sách."""
+
+    __slots__ = ("relp", "line", "col", "code", "msg")
+
+    def __init__(self, relp: str, line: int, col: int, code: str, msg: str) -> None:
+        self.relp = relp
+        self.line = line
+        self.col = col
+        self.code = code
+        self.msg = msg
+        super().__init__(f"{relp}:{line}:{col}: {code} {msg}")
+
+
+class Tok:
+    """Một token Rust kèm **vị trí nguồn** (1-based line/col; offset byte trong tệp)."""
+
+    __slots__ = ("kind", "val", "raw", "file", "line", "col", "start", "end")
+
+    def __init__(
+        self,
+        kind: str,
+        val: str,
+        raw: object,
+        file: str,
+        line: int,
+        col: int,
+        start: int,
+        end: int,
+    ) -> None:
+        self.kind = kind
+        self.val = val
+        self.raw = raw
+        self.file = file
+        self.line = line
+        self.col = col
+        self.start = start
+        self.end = end
+
+    def __repr__(self) -> str:  # pragma: no cover - chẩn đoán
+        return f"Tok({self.kind},{self.val!r}@{self.line}:{self.col})"
+
+
+class Group:
+    """Nhóm ngoặc lồng nhau (token-tree)."""
+
+    __slots__ = ("open", "close", "children")
+
+    def __init__(self, open_tok: Tok, close_tok: Optional[Tok], children: List[object]) -> None:
+        self.open = open_tok
+        self.close = close_tok
+        self.children = children
+
+    def __repr__(self) -> str:  # pragma: no cover - chẩn đoán
+        return f"Group({self.open.val}…{len(self.children)} con)"
+
+
+class Attr:
+    """Thuộc tính `#[…]` đã đọc theo **cấu trúc** (tên + token đối số)."""
+
+    __slots__ = ("name", "tok", "args", "group")
+
+    def __init__(self, name: str, tok: Tok, args: List[object], group: Optional[Group]) -> None:
+        self.name = name
+        self.tok = tok
+        self.args = args
+        self.group = group
+
+
+# Token hoá bằng **một** regex chính (C-speed) + xử lý tay cho chú thích khối lồng nhau,
+# chuỗi thô và giải mã escape. Thứ tự nhánh là quan trọng: `rawstr` trước `rawident`,
+# `bytestr` trước `ident`, `char` trước `lifetime`.
+_RE_LEX = re.compile(
+    r"""
+    (?P<ws>[ \t\r\n\f\v]+)
+  | (?P<line>//[^\n]*)
+  | (?P<block>/\*)
+  | (?P<rawstr>(?:b|c)?r(?P<rh>\#*)"(?P<rb>.*?)"(?P=rh))
+  | (?P<bytestr>[bc]"(?:[^"\\]|\\.)*")
+  | (?P<str>"(?:[^"\\]|\\.)*")
+  | (?P<char>'(?:[^'\\]|\\x[0-9A-Fa-f]{2}|\\u\{[0-9A-Fa-f]{1,6}\}|\\[nrt\\0'"]|\\)')
+  | (?P<lifetime>'[^\W\d]\w*)
+  | (?P<rawident>r\#[^\W\d]\w*)
+  | (?P<ident>[^\W\d]\w*)
+  | (?P<num>[0-9][0-9A-Za-z_]*(?:\.[0-9][0-9A-Za-z_]*)?)
+  | (?P<punct>.)
+    """,
+    re.X | re.S | re.UNICODE,
+)
+_RE_RAW_START = re.compile(r'(?:b|c)?r(#*)"')
+_SIMPLE_ESC = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\", "0": "\0", "'": "'", '"': '"'}
+_HEX = "0123456789abcdefABCDEF"
+_PAIRS = {"(": ")", "[": "]", "{": "}"}
+
+
+def _decode_string(
+    body: str, relp: str, line: int, col: int, byte: bool = False
+) -> Tuple[Optional[str], Optional[LexError]]:
+    """Giải mã escape của chuỗi Rust; escape sai/không hỗ trợ ⇒ **lỗi** (D2-166 §3C)."""
+    out: List[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        c = body[i]
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+        if i + 1 >= n:
+            return None, LexError(relp, line, col, "E_LEX_INVALID_ESCAPE", "escape ở cuối chuỗi")
+        e = body[i + 1]
+        if e in _SIMPLE_ESC:
+            out.append(_SIMPLE_ESC[e])
+            i += 2
+            continue
+        if e == "x":
+            h = body[i + 2 : i + 4]
+            if len(h) != 2 or any(ch not in _HEX for ch in h):
+                return None, LexError(
+                    relp, line, col, "E_LEX_INVALID_ESCAPE", "`\\x` cần đúng 2 chữ số hex"
+                )
+            out.append(chr(int(h, 16)))
+            i += 4
+            continue
+        if e == "u" and not byte:
+            if i + 2 >= n or body[i + 2] != "{":
+                return None, LexError(
+                    relp, line, col, "E_LEX_INVALID_ESCAPE", "`\\u` cần dạng `\\u{…}`"
+                )
+            j = body.find("}", i + 3)
+            if j < 0:
+                return None, LexError(
+                    relp, line, col, "E_LEX_INVALID_ESCAPE", "`\\u{…}` chưa đóng"
+                )
+            h = body[i + 3 : j]
+            if not h or len(h) > 6 or any(ch not in _HEX for ch in h):
+                return None, LexError(
+                    relp, line, col, "E_LEX_INVALID_ESCAPE", "`\\u{…}` không hợp lệ"
+                )
+            cp = int(h, 16)
+            if cp > 0x10FFFF or 0xD800 <= cp <= 0xDFFF:
+                return None, LexError(
+                    relp, line, col, "E_LEX_INVALID_ESCAPE", "`\\u{…}` ngoài Unicode"
+                )
+            out.append(chr(cp))
+            i = j + 1
+            continue
+        if e == "\n":
+            i += 2
+            while i < n and body[i] in " \t\r\n":
+                i += 1
+            continue
+        if e == "\r" and i + 2 < n and body[i + 2] == "\n":
+            i += 3
+            while i < n and body[i] in " \t\r\n":
+                i += 1
+            continue
+        return None, LexError(
+            relp, line, col, "E_LEX_INVALID_ESCAPE", f"escape không hỗ trợ `\\{e}`"
+        )
+    return "".join(out), None
+
+
+def tokenize(text: str, relp: str) -> Tuple[List[Tok], List[LexError]]:
+    """Token hoá **đầy đủ** một tệp Rust; trả `(token, lỗi từ vựng)`.
+
+    Không bao giờ "đoán" khi gặp đầu vào hỏng: chuỗi/comment chưa đóng, escape sai, ký tự
+    không nhận dạng ⇒ ghi lỗi và dừng (không trả token thiếu rồi tiếp tục xanh).
+    """
+    toks: List[Tok] = []
+    errs: List[LexError] = []
+    pos = 0
+    line = 1
+    col = 1
+    n = len(text)
+    while pos < n:
+        m = _RE_LEX.match(text, pos)
+        if m is None:  # pragma: no cover - `punct` nuốt mọi ký tự
+            errs.append(
+                LexError(relp, line, col, "E_LEX_UNKNOWN", f"ký tự không nhận dạng: {text[pos]!r}")
+            )
+            break
+        kind = m.lastgroup or ""
+        seg = m.group(0)
+        start_line, start_col = line, col
+        end = m.end()
+        # --- chuỗi thô: regex đã khớp trọn; nếu có mở `r#*"` mà không khớp ⇒ chưa đóng.
+        if kind != "rawstr" and _RE_RAW_START.match(text, pos):
+            errs.append(
+                LexError(
+                    relp,
+                    start_line,
+                    start_col,
+                    "E_LEX_UNTERMINATED_STRING",
+                    "chuỗi thô `r#\"…\"#` chưa đóng hoặc sai số `#`",
+                )
+            )
+            break
+        if kind == "ws" or kind == "line":
+            pass
+        elif kind == "block":
+            depth = 0
+            j = pos
+            while j < n:
+                if text.startswith("/*", j):
+                    depth += 1
+                    j += 2
+                elif text.startswith("*/", j):
+                    depth -= 1
+                    j += 2
+                    if depth == 0:
+                        break
+                else:
+                    j += 1
+            if depth != 0:
+                errs.append(
+                    LexError(
+                        relp,
+                        start_line,
+                        start_col,
+                        "E_LEX_UNTERMINATED_COMMENT",
+                        "chú thích khối `/*` chưa đóng",
+                    )
+                )
+                break
+            seg = text[pos:j]
+            end = j
+        elif kind == "rawstr":
+            toks.append(
+                Tok("str", m.group("rb"), seg, relp, start_line, start_col, pos, end)
+            )
+        elif kind == "bytestr":
+            val, err = _decode_string(seg[2:-1], relp, start_line, start_col, byte=True)
+            if err is not None:
+                errs.append(err)
+                break
+            toks.append(Tok("bytestr", val or "", seg, relp, start_line, start_col, pos, end))
+        elif kind == "str":
+            val, err = _decode_string(seg[1:-1], relp, start_line, start_col)
+            if err is not None:
+                errs.append(err)
+                break
+            toks.append(Tok("str", val or "", seg, relp, start_line, start_col, pos, end))
+        elif kind == "char":
+            _, err = _decode_string(seg[1:-1], relp, start_line, start_col)
+            if err is not None:
+                errs.append(err)
+                break
+            toks.append(Tok("char", seg, seg, relp, start_line, start_col, pos, end))
+        elif kind == "lifetime":
+            toks.append(Tok("lifetime", seg[1:], seg, relp, start_line, start_col, pos, end))
+        elif kind == "rawident":
+            toks.append(Tok("ident", seg[2:], True, relp, start_line, start_col, pos, end))
+        elif kind == "ident":
+            toks.append(Tok("ident", seg, False, relp, start_line, start_col, pos, end))
+        elif kind == "num":
+            toks.append(Tok("num", seg, seg, relp, start_line, start_col, pos, end))
+        elif kind == "punct":
+            ch = seg
+            if ch in "([{":
+                toks.append(Tok("open", ch, ch, relp, start_line, start_col, pos, end))
+            elif ch in ")]}":
+                toks.append(Tok("close", ch, ch, relp, start_line, start_col, pos, end))
+            elif ch == '"':
+                errs.append(
+                    LexError(
+                        relp,
+                        start_line,
+                        start_col,
+                        "E_LEX_UNTERMINATED_STRING",
+                        "chuỗi chưa đóng",
+                    )
+                )
+                break
+            elif ch == "'":
+                errs.append(
+                    LexError(
+                        relp,
+                        start_line,
+                        start_col,
+                        "E_LEX_UNTERMINATED_CHAR",
+                        "literal ký tự/lifetime không hợp lệ",
+                    )
+                )
+                break
+            else:
+                toks.append(Tok("punct", ch, ch, relp, start_line, start_col, pos, end))
+        # cập nhật dòng/cột theo đoạn đã tiêu thụ
+        nl = seg.count("\n")
+        if nl:
+            line += nl
+            col = len(seg) - seg.rfind("\n")
+        else:
+            col += len(seg)
+        pos = end
+    return toks, errs
+
+
+def build_tree(tokens: Sequence[Tok], relp: str) -> List[object]:
+    """Dựng token-tree; delimiter lệch/quá sâu ⇒ `LexError` (không bỏ qua)."""
+    root: List[object] = []
+    stack: List[Tuple[Optional[Group], List[object]]] = [(None, root)]
+    for t in tokens:
+        if t.kind == "open":
+            g = Group(t, None, [])
+            stack[-1][1].append(g)
+            stack.append((g, g.children))
+            if len(stack) > MAX_TREE_DEPTH:
+                raise LexError(
+                    relp,
+                    t.line,
+                    t.col,
+                    "E_LEX_DEPTH",
+                    f"lồng ngoặc quá {MAX_TREE_DEPTH} tầng",
+                )
+        elif t.kind == "close":
+            if len(stack) == 1:
+                raise LexError(
+                    relp, t.line, t.col, "E_LEX_UNBALANCED", f"`{t.val}` đóng mà không có ngoặc mở"
+                )
+            g = stack.pop()[0]
+            assert g is not None
+            if _PAIRS[g.open.val] != t.val:
+                raise LexError(
+                    relp,
+                    t.line,
+                    t.col,
+                    "E_LEX_UNBALANCED",
+                    f"`{g.open.val}` mở tại {g.open.line}:{g.open.col} nhưng đóng bằng `{t.val}`",
+                )
+            g.close = t
+        else:
+            stack[-1][1].append(t)
+    if len(stack) != 1:
+        g = stack[-1][0]
+        assert g is not None
+        raise LexError(
+            relp,
+            g.open.line,
+            g.open.col,
+            "E_LEX_UNBALANCED",
+            f"`{g.open.val}` chưa đóng",
+        )
+    return root
+
+
+_PARSE_CACHE: Dict[Tuple[str, int, int], Tuple[Optional[List[object]], List[LexError]]] = {}
+
+
+def parse_file(p: Path) -> Tuple[Optional[List[object]], List[LexError]]:
+    """Đọc + token hoá + dựng cây một tệp; cache theo `(đường dẫn, mtime, kích thước)`."""
+    try:
+        st = p.stat()
+    except OSError:
+        return None, []
+    key = (str(p), st.st_mtime_ns, st.st_size)
+    cached = _PARSE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None, []
+    toks, errs = tokenize(text, str(p))
+    tree: Optional[List[object]] = None
+    if not errs:
+        try:
+            tree = build_tree(toks, str(p))
+        except LexError as e:
+            errs.append(e)
+    res = (tree, errs)
+    _PARSE_CACHE[key] = res
+    return res
+
+
+def _is_punct(n: object, val: str) -> bool:
+    return isinstance(n, Tok) and n.kind == "punct" and n.val == val
+
+
+def _is_ident(n: object, val: Optional[str] = None) -> bool:
+    return isinstance(n, Tok) and n.kind == "ident" and (val is None or n.val == val)
+
+
+def _iter_tokens(nodes: Sequence[object]) -> Iterable[Tok]:
+    for n in nodes:
+        if isinstance(n, Group):
+            yield from _iter_tokens(n.children)
+        else:
+            assert isinstance(n, Tok)
+            yield n
+
+
+def _split_commas(nodes: Sequence[object]) -> List[List[object]]:
+    parts: List[List[object]] = []
+    cur: List[object] = []
+    for n in nodes:
+        if _is_punct(n, ","):
+            parts.append(cur)
+            cur = []
+        else:
+            cur.append(n)
+    parts.append(cur)
+    return parts
+
+
+def parse_attr(g: Group, relp: str) -> Attr:
+    """Đọc tên thuộc tính theo **cấu trúc**; tên không phải định danh ⇒ lỗi cấu trúc."""
+    if not (isinstance(g, Group) and g.open.val == "["):
+        raise LexError(relp, g.open.line, g.open.col, "E_LEX_ATTR", "thuộc tính không mở bằng `[`")
+    ch = g.children
+    if not ch or not isinstance(ch[0], Tok) or ch[0].kind != "ident":
+        raise LexError(
+            relp, g.open.line, g.open.col, "E_LEX_ATTR", "tên thuộc tính không phải định danh"
+        )
+    return Attr(ch[0].val, ch[0], ch[1:], g)
+
+
+def _attr_from_tokens(nodes: Sequence[object], relp: str) -> Tuple[Optional[Attr], List[Tuple[object, str]]]:
+    """Đọc một nhánh thuộc tính trong `cfg_attr(…, <nhánh>)`."""
+    if not nodes:
+        return None, [(None, "nhánh thuộc tính rỗng")]
+    first = nodes[0]
+    if isinstance(first, Tok) and first.kind == "ident":
+        return Attr(first.val, first, list(nodes[1:]), None), []
+    tok = first if isinstance(first, Tok) else first.open
+    return None, [(tok, "tên thuộc tính trong `cfg_attr` không phải định danh — không phân giải được")]
+
+
+def attr_path_edges(
+    attr: Attr, relp: str, depth: int = 0
+) -> Tuple[List[Tuple[str, bool, Tok]], List[Tuple[object, str]]]:
+    """Cạnh `path` của một thuộc tính.
+
+    Trả `(cạnh, vấn_đề)`:
+      - cạnh = `(giá_trị_đã_giải_mã, chắc_chắn?, token)`;
+      - `chắc_chắn=True` cho `#[path = …]`, `False` cho `cfg_attr(…, path = …)`;
+      - vấn đề = `(token, thông_điệp)` cho dạng **không phân giải được** (fail-closed).
+    `cfg_attr` **lồng** được đệ quy có giới hạn; quá `MAX_ATTR_DEPTH` ⇒ `LexError`.
+    """
+    edges: List[Tuple[str, bool, Tok]] = []
+    problems: List[Tuple[object, str]] = []
+    if depth > MAX_ATTR_DEPTH:
+        raise LexError(
+            relp,
+            attr.tok.line,
+            attr.tok.col,
+            "E_LEX_DEPTH",
+            f"`cfg_attr` lồng quá {MAX_ATTR_DEPTH} tầng",
+        )
+    if attr.name == "path":
+        rest = attr.args
+        if (
+            len(rest) == 2
+            and _is_punct(rest[0], "=")
+            and isinstance(rest[1], Tok)
+            and rest[1].kind == "str"
+        ):
+            edges.append((rest[1].val, True, rest[1]))
+        else:
+            problems.append(
+                (attr.tok, "`path` không phải literal chuỗi — không phân giải được đích")
+            )
+        return edges, problems
+    if attr.name == "cfg_attr":
+        # `cfg_attr(…)`: đối số nằm trong **một** nhóm `( … )`.
+        args = attr.args
+        if len(args) == 1 and isinstance(args[0], Group) and args[0].open.val == "(":
+            args = args[0].children
+        parts = _split_commas(args)
+        if len(parts) < 2:
+            problems.append((attr.tok, "`cfg_attr` thiếu nhánh thuộc tính"))
+            return edges, problems
+        for part in parts[1:]:
+            sub, sub_problems = _attr_from_tokens(part, relp)
+            problems.extend(sub_problems)
+            if sub is None:
+                continue
+            e2, p2 = attr_path_edges(sub, relp, depth + 1)
+            edges.extend(e2)
+            problems.extend(p2)
+        return edges, problems
+    return edges, problems
+
+
+def cfg_is_test_tokens(nodes: Sequence[object]) -> bool:
+    """`#[cfg(…)]` có phải ngữ cảnh **test** không (chỉ nhận dạng chắc chắn)."""
+    # `#[cfg(test)]`: vị từ nằm trong **một** nhóm `( … )`.
+    if len(nodes) == 1 and isinstance(nodes[0], Group) and nodes[0].open.val == "(":
+        nodes = nodes[0].children
+    nodes = [n for n in nodes if not _is_punct(n, ",")]
+    if len(nodes) == 1 and _is_ident(nodes[0], "test"):
+        return True
+    if (
+        len(nodes) == 3
+        and _is_ident(nodes[0], "feature")
+        and _is_punct(nodes[1], "=")
+        and isinstance(nodes[2], Tok)
+        and nodes[2].kind == "str"
+        and nodes[2].val == "ktest"
+    ):
+        return True
+    if (
+        len(nodes) == 2
+        and _is_ident(nodes[0], "all")
+        and isinstance(nodes[1], Group)
+        and nodes[1].open.val == "("
+    ):
+        parts = _split_commas(nodes[1].children)
+        return bool(parts) and all(cfg_is_test_tokens(p) for p in parts)
+    return False
+
+
+def _attrs_test_context(attrs: Sequence[Attr], line: int, tr: Sequence[Tuple[int, int]]) -> bool:
+    """`mod` có nằm trong ngữ cảnh test không: trong khối test, hoặc có `#[cfg(test)]` trực tiếp."""
+    if in_ranges(line, tr):
+        return True
+    for a in attrs:
+        if a.name == "cfg" and cfg_is_test_tokens(a.args):
+            return True
+    return False
+
+
+def _walk_items(
+    nodes: Sequence[object],
+    relp: str,
+    cur_dir: Path,
+    on_attr: Optional[object] = None,
+    on_mod: Optional[object] = None,
+    on_macro: Optional[object] = None,
+    on_include: Optional[object] = None,
+    errors: Optional[List[LexError]] = None,
+    depth: int = 0,
+) -> None:
+    """Duyệt **cấu trúc** mức mục: thuộc tính, `mod`, `macro_rules!`, `include!`.
+
+    - Chỉ đệ quy vào nhóm `{ … }` (thân khối/inline module); nhóm đứng sau `!` là **lời gọi
+      macro** ⇒ bỏ qua (token trong lời gọi không phải mục Rust cho tới khi mở rộng).
+    - `macro_rules!` ⇒ gọi `on_macro` với **thân** rồi bỏ qua thân (luật macro xử lý riêng).
+    - `mod NAME;` / `mod NAME { … }` ⇒ gọi `on_mod`; inline module đệ quy với thư mục con.
+    """
+    if depth > MAX_TREE_DEPTH:
+        if errors is not None:
+            errors.append(LexError(relp, 1, 1, "E_LEX_DEPTH", "cây token quá sâu"))
+        return
+    pending: List[Attr] = []
+    i = 0
+    n = len(nodes)
+    while i < n:
+        node = nodes[i]
+        if isinstance(node, Group):
+            prev = nodes[i - 1] if i > 0 else None
+            if _is_punct(prev, "!"):
+                i += 1
+                pending = []
+                continue
+            if node.open.val == "{":
+                _walk_items(
+                    node.children,
+                    relp,
+                    cur_dir,
+                    on_attr,
+                    on_mod,
+                    on_macro,
+                    on_include,
+                    errors,
+                    depth + 1,
+                )
+            i += 1
+            pending = []
+            continue
+        assert isinstance(node, Tok)
+        if node.kind == "punct" and node.val == "#":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+            if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "[":
+                try:
+                    attr = parse_attr(nodes[j], relp)
+                except LexError as e:
+                    if errors is not None:
+                        errors.append(e)
+                    i = j + 1
+                    pending = []
+                    continue
+                pending.append(attr)
+                if on_attr is not None:
+                    on_attr(attr, cur_dir)
+                i = j + 1
+                continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "macro_rules":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+            if j < n and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                name_tok = nodes[j]
+                j += 1
+                if j < n and isinstance(nodes[j], Group):
+                    if on_macro is not None:
+                        on_macro(name_tok, nodes[j], cur_dir)
+                    i = j + 1
+                    pending = []
+                    continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "include":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+                if j < n and isinstance(nodes[j], Group):
+                    if on_include is not None:
+                        on_include(nodes[j], cur_dir)
+                    i = j + 1
+                    pending = []
+                    continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "mod":
+            j = i + 1
+            if j < n and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                name_tok = nodes[j]
+                j += 1
+                if j < n and _is_punct(nodes[j], ";"):
+                    if on_mod is not None:
+                        on_mod(name_tok, pending, False, None, cur_dir)
+                    i = j + 1
+                    pending = []
+                    continue
+                if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "{":
+                    if on_mod is not None:
+                        on_mod(name_tok, pending, True, nodes[j], cur_dir)
+                    _walk_items(
+                        nodes[j].children,
+                        relp,
+                        cur_dir / name_tok.val,
+                        on_attr,
+                        on_mod,
+                        on_macro,
+                        on_include,
+                        errors,
+                        depth + 1,
+                    )
+                    i = j + 1
+                    pending = []
+                    continue
+            if errors is not None:
+                errors.append(
+                    LexError(
+                        relp,
+                        node.line,
+                        node.col,
+                        "E_LEX_STRUCT",
+                        "khai báo `mod` không có định danh hợp lệ — không phân giải được cạnh nguồn",
+                    )
+                )
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "pub":
+            j = i + 1
+            if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "(":
+                j += 1
+            i = j
+            continue
+        pending = []
+        i += 1
+
+
+def _protected_files(root: Path) -> Iterable[Path]:
+    for base_rel in ("v2/kernel", "v2/sim", "v2/lib"):
+        base = root / base_rel
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.rs")):
+            if "target" in p.parts:
+                continue
+            yield p
+
+
+def scan_lexical(root: Path, r: Report) -> None:
+    """**D2-166 §3C** — lỗi từ vựng trong tệp thuộc phạm vi bảo vệ ⇒ ĐỎ (không bỏ qua)."""
+    for p in _protected_files(root):
+        _, errs = parse_file(p)
+        for e in errs:
+            r.err(e.code, f"  {rel(root, Path(e.relp))}:{e.line}:{e.col}: {e.msg}")
+
+
+def scan_structure(root: Path, r: Report) -> None:
+    """**D2-166 §3C** — cấu trúc liên quan tới cạnh nguồn không phân giải được ⇒ ĐỎ."""
+    for base_rel in ("v2/kernel", "v2/sim"):
+        base = root / base_rel
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.rs")):
+            if "target" in p.parts:
+                continue
+            tree, errs = parse_file(p)
+            if tree is None or errs:
+                continue
+            relp = rel(root, p)
+            errs2: List[LexError] = []
+            _walk_items(tree, relp, p.parent, errors=errs2)
+            for e in errs2:
+                r.err(e.code, f"  {relp}:{e.line}:{e.col}: {e.msg}")
+
+
 # ------------------------------------------------------------------ KT-171: test-only thật
 
 # **KT-172** — `is_test_file_heuristic` (miễn theo **tên** `ktest*`/`*_tests.rs`/`tls_tests.rs`
@@ -423,21 +1147,9 @@ def test_line_ranges(text: str) -> List[Tuple[int, int]]:
 # sang [`is_test_file`] (đồ thị module). Không còn đường nào miễn theo tên ⇒ không còn hai định
 # nghĩa "test-only" lệch nhau.
 
-# `mod NAME;` (không thân) — khai báo module ngoài.
-RE_MOD_DECL = re.compile(
-    r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"
-)
-# Bản MULTILINE trên văn bản **thô** — chỉ để lọc rẻ tệp có khai báo `mod NAME;`.
-RE_MOD_DECL_RAW = re.compile(
-    r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", re.M
-)
-# **KT-177/G1** (reviewer L16 §4, H8): literal chuỗi Rust **đầy đủ** — `"…"`, `r"…"`,
-# `r#"…"#`, `r##"…"##`, `b"…"`, `br#"…"#`, `c"…"`. Bản KT-174 chỉ thêm `r?` nên dạng **có `#`**
-# (`r#"evil_b.rs"#`) vẫn lọt — cùng một lớp với H8. Nhóm có tên `hashes` = số `#` (rỗng với
-# chuỗi thường), `path` = nội dung; backreference `(?P=hashes)` buộc số `#` đóng **bằng** mở.
-RE_STR_LIT = r'(?:b|c)?r?(?P<hashes>#*)"(?P<path>[^"]*)"(?P=hashes)'
-RE_PATH_ATTR_LINE = re.compile(r"^\s*#\s*\[\s*path\s*=\s*" + RE_STR_LIT + r"\s*\]\s*$")
-RE_CFG_ATTR_LINE = re.compile(r"^\s*#\[cfg\((.*)\)\]\s*$")
+# **KT-194** — các regex `RE_MOD_DECL*`, `RE_PATH_ATTR_LINE`, `RE_CFG_ATTR_LINE`,
+# `RE_STR_LIT` của lớp từ vựng cũ đã **xoá**; `_mods_of` đọc bằng token-tree
+# (`_walk_items` + `attr_path_edges`). Giữ tên cũ trong lịch sử journal, không giữ mã.
 
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
 _TEST_ONLY_CACHE: Dict[str, set] = {}
@@ -528,54 +1240,18 @@ def crate_roots(root: Path) -> List[Tuple[Path, bool]]:
     return out
 
 
-def _attrs_before(lines: Sequence[str], idx: int) -> List[str]:
-    """Các dòng `#[…]` liền trước dòng `idx` (bỏ dòng trống), giữ thứ tự nguồn."""
-    out: List[str] = []
-    j = idx - 1
-    while j >= 0:
-        s = lines[j].strip()
-        if not s:
-            j -= 1
-            continue
-        if s.startswith("#["):
-            out.append(s)
-            j -= 1
-            continue
-        break
-    out.reverse()
-    return out
-
-
-def _cfg_is_test(cfg: str) -> bool:
-    """`#[cfg(…)]` có phải ngữ cảnh **test** không (fail-closed: chỉ nhận dạng chắc chắn)."""
-    cfg = cfg.strip()
-    if cfg == "test":
-        return True
-    if cfg == 'feature = "ktest"':
-        return True
-    if cfg.startswith("all(") and cfg.endswith(")"):
-        parts = [x.strip() for x in cfg[4:-1].split(",")]
-        return bool(parts) and all(_cfg_is_test(x) for x in parts)
-    return False
-
-
-def _mod_is_test_context(
-    attrs: Sequence[str], lineno: int, tr: Sequence[Tuple[int, int]]
-) -> bool:
-    """`mod` có nằm trong ngữ cảnh test không: trong khối `#[cfg(test)]`, hoặc có thuộc tính
-    `#[cfg(test)]`/`#[cfg(feature = "ktest")]` **trực tiếp**."""
-    if in_ranges(lineno, tr):
-        return True
-    for a in attrs:
-        m = RE_CFG_ATTR_LINE.match(a)
-        if m and _cfg_is_test(m.group(1)):
-            return True
-    return False
-
-
 def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
     """Module con khai báo trong `p`: `(tệp đích, mod nằm trong ngữ cảnh test?, thư mục module
     của đích)`.
+
+    **KT-194/D2-166** — đọc bằng **token-tree**, không regex trên văn bản thô:
+      - `mod NAME;` / `mod NAME { … }` nhận theo **cấu trúc** (raw ident `r#x` ⇒ `x`);
+      - `#[path = "…"]` lấy literal **đã giải mã escape** (`"a\x2eb"` ⇒ `a.b`);
+      - `#[r#path = "…"]` là **cùng** thuộc tính `path` (raw ident được chuẩn hoá);
+      - `cfg_attr(…, path = …)` **lồng** được đệ quy có giới hạn; cạnh **có điều kiện** vẫn
+        được thu thập (bảo thủ: có thể là sản phẩm) — xem `attr_path_edges`;
+      - `mod` trong **lời gọi macro** / thân `macro_rules!` **không** phải khai báo module
+        (luật macro riêng xử lý).
 
     **KT-171** — `mod_dir` là thư mục chứa module con của `p` theo **đúng** luật Rust:
       - crate root (`lib.rs`/`main.rs`/`[[bin]] path`) ⇒ thư mục của chính nó;
@@ -590,43 +1266,51 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
     if cached is not None:
         return cached
     out: List[Tuple[Path, bool, Path]] = []
+    tree, errs = parse_file(p)
+    if tree is None or errs:
+        _MODS_CACHE[key] = out
+        return out
     try:
         text = p.read_text(encoding="utf-8", errors="replace")
     except OSError:
         _MODS_CACHE[key] = out
         return out
-    # Rẻ: chỉ khử nhiễu tệp **có** khai báo `mod NAME;` (đa số tệp không có).
-    if not RE_MOD_DECL_RAW.search(text):
-        _MODS_CACHE[key] = out
-        return out
-    # Giữ literal chuỗi để đọc `#[path = "…"]`; chú thích vẫn bị khử.
-    code = strip_rust_noise(text, keep_strings=True)
-    lines = code.splitlines()
     tr = test_line_ranges(text)
-    for idx, line in enumerate(lines):
-        m = RE_MOD_DECL.match(line)
-        if not m:
-            continue
-        name = m.group(1)
-        attrs = _attrs_before(lines, idx)
-        is_test = _mod_is_test_context(attrs, idx + 1, tr)
+    relp = str(p)
+
+    def on_mod(
+        name_tok: Tok,
+        attrs: Sequence[Attr],
+        inline: bool,
+        group: Optional[Group],
+        cur_dir: Path,
+    ) -> None:
+        is_test = _attrs_test_context(attrs, name_tok.line, tr)
+        if inline:
+            # Inline module: không có tệp đích; con của nó được duyệt với `cur_dir/name`.
+            return
         target: Optional[Path] = None
         child_dir: Optional[Path] = None
         for a in attrs:
-            pm = RE_PATH_ATTR_LINE.match(a) or RE_CFG_ATTR_PATH.search(a)
-            if pm:
-                # **KT-177/G1**: nhóm có tên `path` = đường dẫn (chuỗi thô có `#`).
-                target = (p.parent / pm.group("path")).resolve()
+            try:
+                edges, _ = attr_path_edges(a, relp)
+            except LexError:
+                continue
+            if edges:
+                val, _certain, _tok = edges[0]
+                target = (cur_dir / val).resolve()
                 child_dir = target.parent
                 break
         if target is None:
-            for cand in (mod_dir / (name + ".rs"), mod_dir / name / "mod.rs"):
+            for cand in (cur_dir / (name_tok.val + ".rs"), cur_dir / name_tok.val / "mod.rs"):
                 if cand.is_file():
                     target = cand.resolve()
-                    child_dir = mod_dir / name
+                    child_dir = cur_dir / name_tok.val
                     break
         if target is not None and child_dir is not None:
             out.append((target, is_test, child_dir))
+
+    _walk_items(tree, relp, mod_dir, on_mod=on_mod, errors=[])
     _MODS_CACHE[key] = out
     return out
 
@@ -688,20 +1372,8 @@ def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> boo
 
 # ------------------------------------------------------------------ KT-171: B6/B7 include!/#[path]
 
-# **KT-177/G1** (reviewer L16 §4, H8): dùng chung `RE_STR_LIT` — nhận **mọi** dạng literal
-# chuỗi Rust, không chỉ `"…"`/`r"…"`. Nhóm có tên `path` là đường dẫn.
-#
-# **KT-177/H9** (cùng gốc G1/G2, ngoài bốn lớp bắt buộc): `include!` nhận **cả ba** dấu ngoặc
-# (`include!("…")`, `include!["…"]`, `include!{"…"}`) — bản KT-171/174 chỉ khớp `(`, nên
-# `include!["evil_b.rs"]` (rustc **chấp nhận**, `cargo check` RC=0) lọt hoàn toàn.
-RE_INCLUDE_MACRO = re.compile(
-    r"\binclude\s*!\s*[\(\{\[]\s*" + RE_STR_LIT + r"\s*[\)\}\]]"
-)
-RE_PATH_ATTR_ANY = re.compile(r"#\s*\[\s*path\s*=\s*" + RE_STR_LIT + r"\s*\]")
-# **KT-187/B1** (reviewer L25): `#[cfg_attr(not(test), path = "…")]` — `#[path` **không** liền
-# nên mọi regex trên đều vô hình. Đây là dạng **thật** nhất: `cfg_attr` bật `path` khi không
-# test, tức đúng lúc mã sản phẩm biên dịch.
-RE_CFG_ATTR_PATH = re.compile(r"cfg_attr\s*\([^;{}]*?\bpath\s*=\s*" + RE_STR_LIT)
+# **KT-194** — `RE_INCLUDE_MACRO`/`RE_PATH_ATTR_ANY`/`RE_CFG_ATTR_PATH` của lớp từ vựng cũ
+# đã **xoá**; `resolve_include_targets` đọc bằng token-tree (`_walk_items` + `attr_path_edges`).
 
 
 def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
@@ -750,89 +1422,53 @@ def resolve_include_targets(
             status[p] = False
         else:
             status[p] = is_test
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        tree, errs = parse_file(p)
+        if tree is None or errs:
+            # Lỗi từ vựng đã được `scan_lexical` báo; không phân giải tiếp trên cây thiếu.
             continue
-        # Rẻ: đa số tệp không có `include!`/`#[path]` — khỏi khử nhiễu cả tệp.
-        # **KT-187/B1** + **KT-189**: `cfg_attr(…, path = …)` không chứa `#[path` liền, và
-        # `include ! (…)`/`#[ path = … ]`/`#[\npath = …]` không khớp chuỗi thô — dùng regex.
-        # **KT-191**: khử chú thích **trước** khi lọc — `#[/*c*/path]` làm regex thô không mở.
-        if not re.search(r"include\s*!|#\s*\[\s*path|cfg_attr", strip_rust_noise(text, keep_strings=True)):
-            continue
-        code = strip_rust_noise(text)
-        code_keep = strip_rust_noise(text, keep_strings=True)
         relp = rel(root, p)
-        found: List[Tuple[str, str, int]] = []
-        for m in RE_INCLUDE_MACRO.finditer(code_keep):
-            if not code[m.start() : m.end()].strip():
-                continue  # nằm trong literal chuỗi
-            found.append(("include!", m.group("path"), m.start()))
-        for m in RE_PATH_ATTR_ANY.finditer(code_keep):
-            if not code[m.start() : m.end()].strip():
+        found: List[Tuple[str, str, Tok, Path]] = []
+        problems: List[Tuple[object, str]] = []
+
+        def on_attr(attr: Attr, cur_dir: Path) -> None:
+            try:
+                edges, probs = attr_path_edges(attr, relp)
+            except LexError:
+                # Lỗi cấu trúc đã được `scan_structure` báo.
+                return
+            for val, certain, tok in edges:
+                kind = "#[path]" if certain else "#[cfg_attr(path)]"
+                found.append((kind, val, tok, cur_dir))
+            problems.extend(probs)
+
+        def on_include(group: Group, cur_dir: Path) -> None:
+            ch = group.children
+            if len(ch) == 1 and isinstance(ch[0], Tok) and ch[0].kind == "str":
+                # `include!` giải đường dẫn theo **thư mục tệp gọi**, không theo inline module.
+                found.append(("include!", ch[0].val, ch[0], p.parent))
+            else:
+                problems.append(
+                    (group.open, "`include!` không phải literal chuỗi — không phân giải được đích")
+                )
+
+        _walk_items(tree, relp, p.parent, on_attr=on_attr, on_include=on_include, errors=[])
+        for tok, msg in problems:
+            if isinstance(tok, LexError):
                 continue
-            found.append(("#[path]", m.group("path"), m.start()))
-        # **KT-187/B1**: `#[cfg_attr(…, path = "…")]` — coi như `#[path]`.
-        for m in RE_CFG_ATTR_PATH.finditer(code_keep):
-            if not code[m.start() : m.end()].strip():
-                continue
-            found.append(("#[cfg_attr(path)]", m.group("path"), m.start()))
-        # **KT-174/H3** (reviewer L16): `include!` **không** literal (`concat!`/`env!`/biến)
-        # không phân giải được đích ⇒ fail-closed với tệp **sản phẩm**.
-        #
-        # **KT-184/D2-161**: cùng luật cho `#[path]` — trước KT-184 chỉ `include!` không
-        # literal bị bắt, `#[path = concat!("evil", ".rs")]` lọt hoàn toàn (không phân giải
-        # được đích nên tệp đích không được quét). Nay fail-closed y như `include!`.
-        # **D2-161** (Agent 0): luật áp cho **MỌI** tệp trong `v2/kernel`+`v2/sim`, kể cả
-        # tệp test-only — "mọi `include!`/`#[path]` phải literal và trỏ trong cây".
-        if True:
-            covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
-            for m in re.finditer(r"\binclude\s*!\s*[\(\{\[]", code_keep):
-                if m.start() in covered:
-                    continue
-                if not code[m.start() : m.end()].strip():
-                    continue
-                lineno = code_keep.count("\n", 0, m.start()) + 1
-                errors.append(
-                    f"  {relp}:{lineno}: `include!` không phải literal chuỗi — không phân giải "
-                    f"được đích (fail-closed, KT-174 H3)"
-                )
-            # **KT-187/B1**: `cfg_attr(…, path = …)` không literal cũng fail-closed.
-            covered_cfg = {m.start() for m in RE_CFG_ATTR_PATH.finditer(code_keep)}
-            for m in re.finditer(r"cfg_attr\s*\([^;{}]*?\bpath\s*=", code_keep):
-                if m.start() in covered_cfg:
-                    continue
-                if not code[m.start() : m.end()].strip():
-                    continue
-                lineno = code_keep.count("\n", 0, m.start()) + 1
-                errors.append(
-                    f"  {relp}:{lineno}: `cfg_attr(…, path = …)` không phải literal chuỗi — "
-                    f"không phân giải được đích (fail-closed, KT-187 B1)"
-                )
-            covered_path = {m.start() for m in RE_PATH_ATTR_ANY.finditer(code_keep)}
-            for m in re.finditer(r"#\s*\[\s*path\s*=", code_keep):
-                if m.start() in covered_path:
-                    continue
-                if not code[m.start() : m.end()].strip():
-                    continue
-                lineno = code_keep.count("\n", 0, m.start()) + 1
-                errors.append(
-                    f"  {relp}:{lineno}: `#[path]` không phải literal chuỗi — không phân giải "
-                    f"được đích (fail-closed, KT-184 D2-161)"
-                )
-        for kind, raw, off in found:
-            lineno = code_keep.count("\n", 0, off) + 1
-            target = (p.parent / raw).resolve()
+            line = tok.line if isinstance(tok, Tok) else 1
+            errors.append(f"  {relp}:{line}: {msg} (fail-closed, KT-194)")
+        for kind, raw, tok, base in found:
+            target = (base / raw).resolve()
             inside = _inside_scan_tree(root, target)
             if inside is None:
                 errors.append(
-                    f"  {relp}:{lineno}: `{kind}` trỏ ra ngoài `v2/kernel`+`v2/sim` "
+                    f"  {relp}:{tok.line}: `{kind}` trỏ ra ngoài `v2/kernel`+`v2/sim` "
                     f"(`{raw}`) — không quét được đích (fail-closed, KT-171 B6/B7)"
                 )
                 continue
             if not target.is_file():
                 errors.append(
-                    f"  {relp}:{lineno}: `{kind}` trỏ tới `{inside}` không tồn tại "
+                    f"  {relp}:{tok.line}: `{kind}` trỏ tới `{inside}` không tồn tại "
                     f"(fail-closed, KT-171 B6/B7)"
                 )
                 continue
@@ -847,85 +1483,125 @@ def resolve_include_targets(
 
 # ------------------------------------------------------------------ KT-171: B4 macro v2/lib
 
-# **KT-191** (reviewer L29): tên macro là **định danh Rust**, không chỉ ASCII — `macro_rules! é`
-# là hợp lệ và bản ASCII-only **bỏ qua toàn bộ thân macro** ⇒ vô hiệu hoá cả bốn luật cùng lúc.
-RE_MACRO_RULES = re.compile(r"\bmacro_rules\s*!\s*([^\s(\[{;]+)")
+# **KT-194** — `_macro_bodies`/`RE_MACRO_RULES` cũ đã **xoá**: thân macro lấy từ token-tree
+# (`_walk_items` gọi `on_macro` với nhóm thân). Tên macro là **định danh** (Unicode, raw ident).
 
 # Allowlist **có lý do** cho thân `macro_rules!` trong `v2/lib/**` chứa token `wake`.
 # Khoá: (relpath, tên macro). Hiện **rỗng** — không có macro nào trong `v2/lib` chạm `wake`.
 MACRO_WAKE_ALLOW: Dict[Tuple[str, str], str] = {}
 
 
-def _macro_bodies(code: str):
-    """**KT-189/B2c+B3a** (reviewer L28): thân `macro_rules!` có **ba** dạng ngoặc
-    (`{ … }`, `( … )`, `[ … ]`). Bản trước chỉ nhận `{` và dừng ở `;` ⇒
-    `macro_rules! evil ( () => ( #[path = "…"] mod x; ); );` **bị bỏ qua hoàn toàn**.
-    Trả `(tên, offset_đầu_thân, offset_cuối_thân)`.
+def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
+    """**KT-189/B2d+T3c**, **KT-191**, **KT-194** — thân `macro_rules!` chứa cấu trúc có thể
+    sinh `include!`/`#[path]`/`mod` ⇒ fail-closed.
+
+    Nhận dạng **theo cấu trúc token**, không theo từ khoá:
+      - `include` + `!` (không phải `include_str!`, không phải biến `include`);
+      - thuộc tính `#[path]` (kể cả `#[r#path]`) và `cfg_attr(…, path = …)` **lồng**;
+      - `mod NAME;` / `mod NAME { … }` (kể cả raw ident `mod r#x;` ⇒ `E_STRICT_MACRO_INCLUDE`);
+      - `$…:tt` (passthrough) ⇒ `E_STRICT_MACRO_TT`.
+
+    **Giảm báo oan có chủ đích** (D2-166 §3D): `std::path::Path`, `$path:expr`, `modulo(1)`,
+    `include_str!` **không** còn bị coi là dấu hiệu — chúng không phải thuộc tính/macro/module.
+    Hạn chế bảo thủ còn giữ: **mọi** thuộc tính trong thân macro có tên `path`/`cfg_attr` đều
+    ĐỎ (không đánh giá `cfg`), và `$…:tt` ĐỎ vì có thể chở `mod x;` từ lời gọi.
     """
-    for m in RE_MACRO_RULES.finditer(code):
-        name = m.group(1)
-        j = m.end()
-        while j < len(code) and code[j] not in "([{;":
-            j += 1
-        if j >= len(code) or code[j] == ";":
-            continue
-        opener = code[j]
-        closer = {"(": ")", "[": "]", "{": "}"}[opener]
-        depth = 0
-        end = None
-        for k in range(j, len(code)):
-            if code[k] == opener:
-                depth += 1
-            elif code[k] == closer:
-                depth -= 1
-                if depth == 0:
-                    end = k
-                    break
-        if end is None:
-            end = len(code) - 1
-        yield name, j, end
 
+    def check_list(nodes: Sequence[object]) -> None:
+        for i, n in enumerate(nodes):
+            if isinstance(n, Group):
+                check_list(n.children)
+                continue
+            assert isinstance(n, Tok)
+            if n.kind == "ident" and n.val == "include":
+                if i + 1 < len(nodes) and _is_punct(nodes[i + 1], "!"):
+                    r.err(
+                        "E_STRICT_MACRO_INCLUDE",
+                        f"  {relp}:{n.line}: thân `macro_rules! {name}` chứa `include!` — "
+                        f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
+                        f"(fail-closed, KT-194)",
+                    )
+            if n.kind == "punct" and n.val == "#":
+                j = i + 1
+                if j < len(nodes) and _is_punct(nodes[j], "!"):
+                    j += 1
+                if j < len(nodes) and isinstance(nodes[j], Group) and nodes[j].open.val == "[":
+                    try:
+                        attr = parse_attr(nodes[j], relp)
+                    except LexError:
+                        r.err(
+                            "E_STRICT_MACRO_INCLUDE",
+                            f"  {relp}:{nodes[j].open.line}: thân `macro_rules! {name}` chứa "
+                            f"thuộc tính không đọc được — không phân giải tĩnh được "
+                            f"(fail-closed, KT-194)",
+                        )
+                        continue
+                    if attr.name == "path":
+                        r.err(
+                            "E_STRICT_MACRO_INCLUDE",
+                            f"  {relp}:{attr.tok.line}: thân `macro_rules! {name}` chứa "
+                            f"`#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải "
+                            f"tĩnh được (fail-closed, KT-194)",
+                        )
+                    elif attr.name == "cfg_attr":
+                        try:
+                            edges, probs = attr_path_edges(attr, relp)
+                        except LexError:
+                            edges, probs = [], [(attr.tok, "không đọc được")]
+                        if edges or probs:
+                            r.err(
+                                "E_STRICT_MACRO_INCLUDE",
+                                f"  {relp}:{attr.tok.line}: thân `macro_rules! {name}` chứa "
+                                f"`cfg_attr(…, path = …)` — đường dẫn giải theo **tệp gọi**, "
+                                f"không phân giải tĩnh được (fail-closed, KT-194)",
+                            )
+            if n.kind == "ident" and n.val == "mod":
+                j = i + 1
+                if j < len(nodes) and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                    raw = bool(nodes[j].raw)
+                    j += 1
+                    if j < len(nodes) and _is_punct(nodes[j], ";"):
+                        if raw:
+                            r.err(
+                                "E_STRICT_MACRO_INCLUDE",
+                                f"  {relp}:{n.line}: thân `macro_rules! {name}` khai "
+                                f"`mod r#…;` — không phân giải tĩnh được (fail-closed, KT-194)",
+                            )
+                        else:
+                            r.err(
+                                "E_STRICT_MACRO_MOD",
+                                f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod …;` — "
+                                f"đồ thị module không thấy module này nên không xác định được "
+                                f"test-only (fail-closed, KT-194)",
+                            )
+                    elif j < len(nodes) and isinstance(nodes[j], Group) and nodes[j].open.val == "{":
+                        r.err(
+                            "E_STRICT_MACRO_MOD",
+                            f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod … {{…}}` — "
+                            f"đồ thị module không thấy module này nên không xác định được "
+                            f"test-only (fail-closed, KT-194)",
+                        )
+                elif j < len(nodes) and _is_punct(nodes[j], "$"):
+                    r.err(
+                        "E_STRICT_MACRO_INCLUDE",
+                        f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod $…;` — "
+                        f"không phân giải tĩnh được (fail-closed, KT-194)",
+                    )
+            if n.kind == "punct" and n.val == ":":
+                if (
+                    i + 1 < len(nodes)
+                    and isinstance(nodes[i + 1], Tok)
+                    and nodes[i + 1].kind == "ident"
+                    and nodes[i + 1].val == "tt"
+                ):
+                    r.err(
+                        "E_STRICT_MACRO_TT",
+                        f"  {relp}:{n.line}: thân `macro_rules! {name}` dùng `$…:tt` "
+                        f"(passthrough) — có thể chở `mod`/`include!` từ **lời gọi** "
+                        f"(fail-closed, KT-194)",
+                    )
 
-def _check_macro_body(relp: str, name: str, body: str, code: str, j: int, r: Report) -> None:
-    """**KT-189/B2d+T3c** (reviewer L28): thân macro chứa `cfg_attr(…, path = …)` hoặc
-    `mod NAME;` ⇒ fail-closed.
-
-    - `cfg_attr(…, path = …)` **không** khớp `#[path` nên bản trước vô hình (B2d).
-    - `mod NAME;` trong thân macro: `_mods_of` không thấy ⇒ đồ thị module nói tệp đích là
-      test-only, nhưng bản sản phẩm vẫn biên dịch nó (T3c). Không phân giải tĩnh an toàn ⇒ ĐỎ.
-    """
-    # **KT-191** (reviewer L29): không phân giải được macro ⇒ **mọi** thân macro chứa
-    # `include`/`path`/`mod` (dù là metavariable `mod $n;`, raw ident `mod r#x;`, hay
-    # `cfg_attr`) đều ĐỎ; và `$…:tt` (passthrough) cũng ĐỎ vì nó có thể chở `mod x;` từ
-    # **lời gọi** (`crate::pass! { mod x; }`) — thân định nghĩa không có chữ `mod` nào.
-    for km in re.finditer(r"\b(include|path|mod)\b", body):
-        lineno = code.count("\n", 0, j + km.start()) + 1
-        r.err(
-            "E_STRICT_MACRO_INCLUDE",
-            f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `{km.group(1)}` — không phân "
-            f"giải tĩnh được (fail-closed, KT-191)",
-        )
-    for tm in re.finditer(r":\s*tt\b", body):
-        lineno = code.count("\n", 0, j + tm.start()) + 1
-        r.err(
-            "E_STRICT_MACRO_TT",
-            f"  {relp}:{lineno}: thân `macro_rules! {name}` dùng `$…:tt` (passthrough) — có thể "
-            f"chở `mod`/`include!` từ **lời gọi** (fail-closed, KT-191)",
-        )
-    for cm in re.finditer(r"cfg_attr\s*\([^;{}]*?\bpath\s*=", body):
-        lineno = code.count("\n", 0, j + cm.start()) + 1
-        r.err(
-            "E_STRICT_MACRO_INCLUDE",
-            f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `cfg_attr(…, path = …)` — "
-            f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-189 B2d)",
-        )
-    for mm in re.finditer(r"\bmod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", body):
-        lineno = code.count("\n", 0, j + mm.start()) + 1
-        r.err(
-            "E_STRICT_MACRO_MOD",
-            f"  {relp}:{lineno}: thân `macro_rules! {name}` khai `mod …;` — đồ thị module "
-            f"không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)",
-        )
+    check_list(body.children)
 
 
 def scan_lib_macros(root: Path, r: Report) -> None:
@@ -950,40 +1626,26 @@ def scan_lib_macros(root: Path, r: Report) -> None:
     for p in sorted(base.rglob("*.rs")):
         if "target" in p.parts:
             continue
-        relp = rel(root, p)
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        tree, errs = parse_file(p)
+        if tree is None or errs:
             continue
-        code = strip_rust_noise(text)
-        for name, j, end in _macro_bodies(code):
-            body = code[j : end + 1]
-            for wm in RE_WAKE_TOKEN.finditer(body):
-                if (relp, name) in MACRO_WAKE_ALLOW:
-                    continue
-                lineno = code.count("\n", 0, j + wm.start()) + 1
-                r.err(
-                    "E_STRICT_MACRO_WAKE",
-                    f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa token `wake` — "
-                    f"macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4); "
-                    f"dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do",
-                )
-            # **KT-177/G5** (H7): `include!`/`#[path]` trong thân macro ⇒ fail-closed.
-            for im in re.finditer(r"\binclude\s*!\s*[\(\{\[]", body):
-                lineno = code.count("\n", 0, j + im.start()) + 1
-                r.err(
-                    "E_STRICT_MACRO_INCLUDE",
-                    f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `include!` — đường dẫn "
-                    f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
-                )
-            for pm in re.finditer(r"#\s*\[\s*path\b", body):
-                lineno = code.count("\n", 0, j + pm.start()) + 1
-                r.err(
-                    "E_STRICT_MACRO_INCLUDE",
-                    f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — đường dẫn "
-                    f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
-                )
-            _check_macro_body(relp, name, body, code, j, r)
+        relp = rel(root, p)
+
+        def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
+            name = name_tok.val
+            for tok in _iter_tokens(body.children):
+                if tok.kind == "ident" and tok.val == "wake":
+                    if (relp, name) in MACRO_WAKE_ALLOW:
+                        continue
+                    r.err(
+                        "E_STRICT_MACRO_WAKE",
+                        f"  {relp}:{tok.line}: thân `macro_rules! {name}` chứa token `wake` — "
+                        f"macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4); "
+                        f"dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do",
+                    )
+            _check_macro_body(relp, name, body, r)
+
+        _walk_items(tree, relp, p.parent, on_macro=on_macro, errors=[])
 
 
 def scan_kernel_macro_includes(root: Path, r: Report) -> None:
@@ -1002,31 +1664,15 @@ def scan_kernel_macro_includes(root: Path, r: Report) -> None:
         for p in sorted(base.rglob("*.rs")):
             if "target" in p.parts:
                 continue
-            relp = rel(root, p)
-            try:
-                text = p.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            tree, errs = parse_file(p)
+            if tree is None or errs:
                 continue
-            code = strip_rust_noise(text)
-            for name, j, end in _macro_bodies(code):
-                body = code[j : end + 1]
-                for im in re.finditer(r"\binclude\s*!\s*[\(\{\[]", body):
-                    lineno = code.count("\n", 0, j + im.start()) + 1
-                    r.err(
-                        "E_STRICT_MACRO_INCLUDE",
-                        f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `include!` — "
-                        f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
-                        f"(fail-closed, KT-187 B3)",
-                    )
-                for pm in re.finditer(r"#\s*\[\s*path\b", body):
-                    lineno = code.count("\n", 0, j + pm.start()) + 1
-                    r.err(
-                        "E_STRICT_MACRO_INCLUDE",
-                        f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — "
-                        f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
-                        f"(fail-closed, KT-187 B2)",
-                    )
-                _check_macro_body(relp, name, body, code, j, r)
+            relp = rel(root, p)
+
+            def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
+                _check_macro_body(relp, name_tok.val, body, r)
+
+            _walk_items(tree, relp, p.parent, on_macro=on_macro, errors=[])
 
 
 # ------------------------------------------------------------------ KT-171: B10 scope + macro
@@ -1082,13 +1728,18 @@ def _shadowed_safe_macros(
                 texts.append((p, p.read_text(encoding="utf-8", errors="replace")))
             except OSError:
                 continue
-    for _p, text in texts:
+    for p, text in texts:
         if "macro_rules!" not in text:
             continue
-        code = strip_rust_noise(text)
-        for m in RE_MACRO_RULES.finditer(code):
-            if m.group(1) in SAFE_VALUE_MACROS:
-                out.add(m.group(1))
+        tree, errs = parse_file(p)
+        if tree is None or errs:
+            continue
+
+        def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
+            if name_tok.val in SAFE_VALUE_MACROS:
+                out.add(name_tok.val)
+
+        _walk_items(tree, str(p), p.parent, on_macro=on_macro, errors=[])
     return out
 
 
@@ -1402,6 +2053,12 @@ def scan_v2(
         for kind in WAKE_KINDS:
             if f"Msg::{kind}" not in t:
                 r.err("E_ANCHOR_MISSING", f"{SYNC_TEST}: không dùng `Msg::{kind}`")
+
+    # **KT-194/D2-166 §3C** — lỗi từ vựng/cấu trúc trong tệp thuộc phạm vi bảo vệ phải **ĐỎ**;
+    # không được trả về tập token/cạnh thiếu rồi tiếp tục xanh. Chạy **trước** mọi luật để
+    # chẩn đoán `E_LEX_*` không bị lẫn với vi phạm chính sách `E_STRICT_*`.
+    scan_lexical(root, r)
+    scan_structure(root, r)
 
     # --- quét mọi tệp nguồn ---------------------------------------------------
     files: List[Tuple[Path, str, List[Fn]]] = []
