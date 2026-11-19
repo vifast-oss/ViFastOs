@@ -210,6 +210,13 @@ SYNC_TEST = "v2/lib/vifast-sync/tests/kt30_sync.rs"
 KERNEL_SCHED = "v2/kernel/vifast-core/src/core_sched.rs"
 SIM_KOBJ = "v2/sim/vifast-sim/src/kobj.rs"
 
+# **KT-215** — tệp định nghĩa `MailboxMsg` được **miễn** luật 1/2 (kênh chuyển message): enum
+# của nó khớp `RE_MAILBOX_MSG` nhưng không phải chỗ **phát**/xử lý. Trước KT-215 điều kiện là
+# `p.name == "mailbox.rs"` — khớp **mọi** tệp cùng tên ở bất kỳ thư mục nào, nên một tệp
+# `src/sub/mailbox.rs` chứa `post_mail(…, MailboxMsg::Wake(t))` được miễn luật 1 (kênh wake thứ
+# hai). Nay so **đúng relpath** của hai tệp định nghĩa trong phạm vi quét (`v2/kernel`+`v2/sim`).
+MAILBOX_DEFS = (KERNEL_MAILBOX, SIM_MAILBOX)
+
 # **KT-155** — allowlist tường minh thay heuristic "thân hàm có `is_blocked()`/`Sleeping`".
 # Heuristic cũ chỉ phủ **4/16** đường (KT-154 §7): đột biến ở `reply_with` (bỏ `wake_from`,
 # gọi `transition_tcb` trực tiếp) **không** bị bắt vì thân hàm không có `is_blocked()`/
@@ -1134,13 +1141,39 @@ def _walk_items(
         i += 1
 
 
+def _is_build_dir(root: Path, p: Path) -> bool:
+    """`p` nằm trong thư mục **build của cargo** (`target/`) ⇒ bỏ qua khi quét.
+
+    **KT-215** (reviewer L47 KT-212 — đường lọt #12) — trước bản này cả **năm** chỗ quét dùng
+    `"target" in p.parts`, khớp **bất kỳ** thành phần `target` nào, kể cả `src/target/`. Hệ quả:
+    `mod target;` + `src/target/evil.rs` chứa `wake` **biên dịch được** (`cargo check` RC=0) mà
+    checker **XANH cả hai chế độ** — tệp không vào `files`, không vào `_protected_files`, không
+    vào `scan_structure`, không vào `extra` (worklist seed từ `files`).
+
+    Nay chỉ bỏ qua khi `target` đứng **trước** `src` trong đường dẫn **tương đối gốc** — đúng
+    thư mục build thật (`v2/kernel/target/`, `v2/target/`, `<crate>/target/`), **không** bỏ qua
+    `src/**/target/**`. Đường dẫn không nằm dưới `root` ⇒ **không** bỏ qua (fail-closed: quét
+    thừa còn hơn bỏ sót).
+    """
+    try:
+        parts = p.relative_to(root).parts
+    except ValueError:
+        return False
+    if "target" not in parts:
+        return False
+    ti = parts.index("target")
+    if "src" not in parts:
+        return True
+    return ti < parts.index("src")
+
+
 def _protected_files(root: Path) -> Iterable[Path]:
     for base_rel in ("v2/kernel", "v2/sim", "v2/lib"):
         base = root / base_rel
         if not base.is_dir():
             continue
         for p in sorted(base.rglob("*.rs")):
-            if "target" in p.parts:
+            if _is_build_dir(root, p):
                 continue
             yield p
 
@@ -1160,7 +1193,7 @@ def scan_structure(root: Path, r: Report) -> None:
         if not base.is_dir():
             continue
         for p in sorted(base.rglob("*.rs")):
-            if "target" in p.parts:
+            if _is_build_dir(root, p):
                 continue
             tree, errs = parse_file(p)
             if tree is None or errs:
@@ -1939,7 +1972,7 @@ def scan_macro_bodies(root: Path, r: Report) -> None:
         if not base.is_dir():
             continue
         for p in sorted(base.rglob("*.rs")):
-            if "target" in p.parts:
+            if _is_build_dir(root, p):
                 continue
             tree, errs = parse_file(p)
             if tree is None or errs:
@@ -2019,7 +2052,7 @@ def _shadowed_safe_macros(
     base = root / "v2/lib"
     if base.is_dir():
         for p in sorted(base.rglob("*.rs")):
-            if "target" in p.parts:
+            if _is_build_dir(root, p):
                 continue
             try:
                 texts.append((p, p.read_text(encoding="utf-8", errors="replace")))
@@ -2277,7 +2310,7 @@ def iter_rs(root: Path, rel_dirs: Iterable[str]) -> Iterable[Path]:
         if not base.is_dir():
             continue
         for p in sorted(base.rglob("*.rs")):
-            if "target" in p.parts:
+            if _is_build_dir(root, p):
                 continue
             yield p
 
@@ -2570,7 +2603,7 @@ def scan_v2(
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
     for p, text, fns in files:
-        if is_test_file(p, root, test_only) or p.name == "mailbox.rs":
+        if rel(root, p) in MAILBOX_DEFS or is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
         lines = text.splitlines()
@@ -2631,7 +2664,7 @@ def scan_v2(
     # 2) Người tiêu thụ: `Wake`/`Reschedule`/`Migrate` chỉ trong `apply_mail`.
     consumers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
     for p, text, fns in files:
-        if p.name == "mailbox.rs" or is_test_file(p, root, test_only):
+        if rel(root, p) in MAILBOX_DEFS or is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
         for lineno, line in enumerate(text.splitlines(), 1):
@@ -2875,13 +2908,31 @@ def scan_v2(
     # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
     if not strict:
         safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+        # **KT-215** — **đóng F2** (hợp đồng §4): luật `wake` chạy ở **cả** chế độ thường cho
+        # **mọi** tệp sản phẩm trong phạm vi, không chỉ tệp bị kéo vào bằng `#[path]`/`include!`
+        # (`extra`). Đường lọt #12 (`src/target/evil.rs`) là module **bình thường** — không bao
+        # giờ vào `extra` — nên trước bản này chế độ thường XANH trong khi `--strict` ĐỎ. Hai
+        # chế độ nay cùng một tập đích cho luật `wake`; `--strict` chỉ còn thêm allowlist
+        # `transition_tcb` (`E_STRICT_TRANSITION`/`E_STRICT_STALE`).
+        scanned: set = set()
+        for p, text, _fns in files:
+            relp = rel(root, p)
+            if not in_test_only_wake_scope(relp):
+                continue
+            if is_test_file(p, root, test_only):
+                continue
+            tr = test_ranges.get(str(p))
+            if tr is None:
+                tr = test_line_ranges(text)
+            _check_wake_text(relp, text, tr, safe_macros, r)
+            scanned.add(p)
         # **KT-195/F1** (reviewer L34): điều kiện cũ `relp not in orig_test_only` khiến khối này
         # **chỉ chạy khi `_mods_of` phân giải SAI** — quan hệ ngược. Khi `#[path]` nằm trong
         # `lib.rs` (phân giải đúng), tệp đích đã thành **sản phẩm** trong `test_only_modules`
         # ⇒ không còn trong `orig_test_only` ⇒ bị bỏ qua ⇒ XANH. Nay quét **mọi** tệp sản phẩm
         # trong `extra` (tệp bị kéo vào bằng `#[path]`/`include!`), không phụ thuộc vị trí.
         for relp, (p, is_test) in sorted(extra.items()):
-            if is_test:
+            if is_test or p in scanned:
                 continue
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
@@ -5441,6 +5492,89 @@ def selftest() -> int:
                 "KT-213 `#[path]` mức mục trong tệp non-mod-rs ⇒ `src/bar.rs`",
                 any(str(t).endswith("src/bar.rs") for t, _, _ in mods),
                 f"{mods}",
+            )
+        )
+
+        # --- (4c) **KT-215** — bộ lọc thư mục build `target/` -------------------------------
+        # Reviewer L47 (KT-212) dựng đường lọt #12: cả **năm** chỗ quét dùng
+        # `"target" in p.parts`, khớp **bất kỳ** thành phần `target` nào — kể cả `src/target/`.
+        # `mod target;` + `src/target/evil.rs` chứa `wake` **biên dịch được** (`cargo check`
+        # RC=0) mà checker **XANH cả hai chế độ**. Nay `_is_build_dir` chỉ bỏ qua `target`
+        # đứng **trước** `src`.
+        def _kt215_case(name: str, files: dict, expect_red: bool, strict: bool) -> None:
+            d = tmp / ("kt215-" + name)
+            _fixture_v2(d)
+            for relp, body in files.items():
+                _write(d / relp, body)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            got = not rep.ok
+            cases.append(
+                (
+                    f"KT-215 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _KT215_EVIL = (
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n"
+        )
+        for _strict in (False, True):
+            _kt215_case(
+                "repro #12 `src/target/evil.rs` chứa `wake`"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/lib.rs": "mod target;\n",
+                    "v2/kernel/vifast-core/src/target/mod.rs": "mod evil;\n",
+                    "v2/kernel/vifast-core/src/target/evil.rs": _KT215_EVIL,
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt215_case(
+                "đối chứng dương: tệp trong `v2/kernel/target/` (build dir) bị bỏ qua"
+                + (" (--strict)" if _strict else " (thường)"),
+                {"v2/kernel/target/kt215-probe/evil.rs": _KT215_EVIL},
+                False,
+                _strict,
+            )
+        # Bảng `_is_build_dir`: chỉ bỏ qua `target` **trước** `src` (thư mục build thật).
+        _root = tmp / "kt215-builddir"
+        for _relp, _want in (
+            ("v2/kernel/target/x.rs", True),
+            ("v2/kernel/vifast-core/target/x.rs", True),
+            ("v2/kernel/vifast-core/src/target/x.rs", False),
+            ("v2/kernel/vifast-core/src/foo/target/x.rs", False),
+            ("v2/lib/vifast-abi/src/target/x.rs", False),
+            ("v2/kernel/vifast-core/src/foo.rs", False),
+        ):
+            _got = _is_build_dir(_root, _root / _relp)
+            cases.append(
+                (
+                    f"KT-215 `_is_build_dir({_relp})` ⇒ {_want}",
+                    _got == _want,
+                    f"{_got}",
+                )
+            )
+
+        # **KT-215** — cùng lớp: miễn luật 1/2 theo **tên** `mailbox.rs` khớp mọi thư mục.
+        # Nay so **đúng relpath** của hai tệp định nghĩa; tệp cùng tên ở thư mục khác là sản phẩm.
+        d = tmp / "kt215-mailbox-name"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/sub/mailbox.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.post_mail(1, MailboxMsg::Wake(t));\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-215 `src/sub/mailbox.rs` (cùng tên, khác thư mục) phát `MailboxMsg::Wake` "
+                "⇒ đỏ `E_CHANNEL_PRODUCER`",
+                (not rep.ok) and any("E_CHANNEL_PRODUCER" in e for e in rep.errors),
+                "; ".join(rep.errors),
             )
         )
 
