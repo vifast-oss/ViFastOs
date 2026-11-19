@@ -960,6 +960,7 @@ def _walk_items(
     errors: Optional[List[LexError]] = None,
     depth: int = 0,
     in_test: bool = False,
+    mod_dir: Optional[Path] = None,
 ) -> None:
     """Duyệt **cấu trúc** mức mục: thuộc tính, `mod`, `macro_rules!`, `include!`.
 
@@ -969,7 +970,16 @@ def _walk_items(
       `_walk_items` vì nó chỉ đệ quy `{…}` nên bỏ sót lời gọi lồng trong `( … )`/`[…]`.
     - `macro_rules!` ⇒ gọi `on_macro` với **thân** rồi bỏ qua thân (luật macro xử lý riêng).
     - `mod NAME;` / `mod NAME { … }` ⇒ gọi `on_mod`; inline module đệ quy với thư mục con.
+
+    **KT-213** — `cur_dir` là gốc của **mức hiện tại** (`#[path]` ở mức mục giải theo đây);
+    `mod_dir` là **thư mục module của tệp** (chỉ khác `cur_dir` ở mức gốc của tệp non-mod-rs:
+    `src/foo.rs` ⇒ `src/foo/`). Khi vào **inline module không có `#[path]`**, thư mục con là
+    `mod_dir/NAME` — đúng Rust Reference ("path starts with a directory with the name of the
+    non-mod-rs module"). Trước KT-213 dùng `cur_dir/NAME` nên `#[path]` trong inline module của
+    tệp non-mod-rs lệch một tầng `foo/` so với rustc (đường lọt #11).
     """
+    if mod_dir is None:
+        mod_dir = cur_dir
     if depth > MAX_TREE_DEPTH:
         if errors is not None:
             errors.append(LexError(relp, 1, 1, "E_LEX_DEPTH", "cây token quá sâu"))
@@ -997,6 +1007,7 @@ def _walk_items(
                     errors,
                     depth + 1,
                     in_test,
+                    mod_dir,
                 )
             i += 1
             pending = []
@@ -1059,7 +1070,7 @@ def _walk_items(
                 j += 1
                 if j < n and _is_punct(nodes[j], ";"):
                     if on_mod is not None:
-                        on_mod(name_tok, pending, False, None, cur_dir, in_test)
+                        on_mod(name_tok, pending, False, None, cur_dir, in_test, mod_dir)
                     i = j + 1
                     pending = []
                     continue
@@ -1069,10 +1080,13 @@ def _walk_items(
                         a.name == "cfg" and cfg_is_test_tokens(a.args) for a in pending
                     )
                     if on_mod is not None:
-                        on_mod(name_tok, pending, True, nodes[j], cur_dir, in_test)
+                        on_mod(name_tok, pending, True, nodes[j], cur_dir, in_test, mod_dir)
                     # **KT-199/F4b** (reviewer L35): inline module có `#[path = "sub"]` thì
                     # thư mục con là `sub`, KHÔNG phải `cur_dir/NAME` (rustc dùng `#[path]`).
-                    _child_dir = cur_dir / name_tok.val
+                    # **KT-213** — không có `#[path]` thì thư mục con là `mod_dir/NAME` (gốc
+                    # module của **tệp**), không phải `cur_dir/NAME`: với tệp non-mod-rs
+                    # `src/foo.rs`, rustc dùng `src/foo/NAME/`, còn `cur_dir` mức gốc là `src/`.
+                    _child_dir = mod_dir / name_tok.val
                     for _a in pending:
                         try:
                             _edges, _ = attr_path_edges(_a, relp)
@@ -1092,6 +1106,7 @@ def _walk_items(
                         errors,
                         depth + 1,
                         _mod_test,
+                        _child_dir,
                     )
                     i = j + 1
                     pending = []
@@ -1174,6 +1189,9 @@ def scan_structure(root: Path, r: Report) -> None:
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
 _TEST_ONLY_CACHE: Dict[str, set] = {}
 _MODS_CACHE: Dict[Tuple[str, str], List[Tuple[Path, bool, Path]]] = {}
+# **KT-213** — đồ thị module dùng chung cho `test_only_modules` **và** gốc phân giải `#[path]`
+# (`module_dirs`). Một lần dựng, hai nơi đọc ⇒ không có hai định nghĩa `mod_dir` lệch nhau.
+_GRAPH_CACHE: Dict[str, Tuple[Dict[Path, bool], Dict[Path, Path]]] = {}
 
 
 def _cargo_sections(text: str) -> List[Tuple[str, Dict[str, str]]]:
@@ -1305,6 +1323,7 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
         group: Optional[Group],
         cur_dir: Path,
         in_test: bool = False,
+        mod_dir: Optional[Path] = None,
     ) -> None:
         # **KT-196/F2** (A0 2026-11-19 §2): ngữ cảnh test quyết định theo **item/token-tree**,
         # KHÔNG theo dòng văn bản. `#[cfg(test)] fn h() {} mod evil;` — `mod evil` không có
@@ -1315,6 +1334,12 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
         if inline:
             # Inline module: không có tệp đích; con của nó được duyệt với `cur_dir/name`.
             return
+        # **KT-213** — hai gốc khác nhau, đúng như rustc:
+        #   - `#[path = "…"]` giải theo **mức hiện tại** (`cur_dir`: thư mục tệp ở mức gốc,
+        #     thư mục inline module khi lồng trong `mod NAME { … }`);
+        #   - `mod NAME;` không `#[path]` giải theo **thư mục module của tệp** (`mod_dir`:
+        #     `src/foo/` với tệp non-mod-rs `src/foo.rs`), rồi `NAME.rs`/`NAME/mod.rs`.
+        plain_base = mod_dir if mod_dir is not None else cur_dir
         target: Optional[Path] = None
         child_dir: Optional[Path] = None
         for a in attrs:
@@ -1328,33 +1353,37 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
                 child_dir = target.parent
                 break
         if target is None:
-            for cand in (cur_dir / (name_tok.val + ".rs"), cur_dir / name_tok.val / "mod.rs"):
+            for cand in (
+                plain_base / (name_tok.val + ".rs"),
+                plain_base / name_tok.val / "mod.rs",
+            ):
                 if cand.is_file():
                     target = cand.resolve()
-                    child_dir = cur_dir / name_tok.val
+                    child_dir = plain_base / name_tok.val
                     break
         if target is not None and child_dir is not None:
             out.append((target, is_test, child_dir))
 
-    _walk_items(tree, relp, mod_dir, on_mod=on_mod, errors=[])
+    # **KT-213** — `cur_dir` mức gốc là **thư mục tệp** (`#[path]` ở mức mục giải theo đây);
+    # `mod_dir` là thư mục module của tệp (chỉ khác ở tệp non-mod-rs). Trước KT-213 truyền
+    # thẳng `mod_dir` làm `cur_dir` ⇒ `#[path]` mức mục trong `src/foo.rs` giải thành
+    # `src/foo/a.rs` thay vì `src/a.rs` (sai một tầng).
+    _walk_items(tree, relp, p.parent, on_mod=on_mod, errors=[], mod_dir=mod_dir)
     _MODS_CACHE[key] = out
     return out
 
 
-def test_only_modules(root: Path) -> set:
-    """Tập `relpath` của tệp **thật sự test-only** (KT-171, vá B8/B9).
+def _module_graph(root: Path) -> Tuple[Dict[Path, bool], Dict[Path, Path]]:
+    """Đồ thị module từ crate root: `(test-only?, thư mục module)` cho từng tệp.
 
-    Một tệp là test-only **chỉ khi** mọi đường tới nó đều từ ngữ cảnh test:
-      (a) `tests/*.rs` cấp crate (integration test), hoặc
-      (b) được `mod` trong khối `#[cfg(test)]` / có `#[cfg(test)]` trực tiếp, hoặc
-      (c) được `mod` dưới `#[cfg(feature = "ktest")]` (ảnh test kernel), hoặc
-      (d) là bin có `required-features` chứa `ktest`.
-    **Tên tệp không đủ** (`ktest_evil.rs` là sản phẩm nếu `mod` từ `main.rs`), **thư mục
-    `src/tests/` không đủ** (`mod tests;` không `#[cfg(test)]` là sản phẩm). Tệp không tới
-    được từ crate root nào ⇒ **sản phẩm** (fail-closed).
+    **KT-213** — tách khỏi `test_only_modules` để `resolve_include_targets` dùng **cùng**
+    một định nghĩa `mod_dir` (gốc phân giải `#[path]`), không chép lần hai. `mod_dir` là
+    thư mục mà rustc dùng làm gốc cho `#[path]` **bên trong inline module** của tệp:
+      - crate root / `mod.rs` / tệp nạp bằng `#[path]` ⇒ thư mục của tệp;
+      - tệp non-mod-rs `src/foo.rs` (nạp bằng `mod foo;`) ⇒ `src/foo/`.
     """
     key = str(root)
-    cached = _TEST_ONLY_CACHE.get(key)
+    cached = _GRAPH_CACHE.get(key)
     if cached is not None:
         return cached
     status: Dict[Path, bool] = {}
@@ -1379,9 +1408,53 @@ def test_only_modules(root: Path) -> set:
             elif status[child] and not new:
                 status[child] = False
                 work.append(child)
+    _GRAPH_CACHE[key] = (status, moddir)
+    return status, moddir
+
+
+def test_only_modules(root: Path) -> set:
+    """Tập `relpath` của tệp **thật sự test-only** (KT-171, vá B8/B9).
+
+    Một tệp là test-only **chỉ khi** mọi đường tới nó đều từ ngữ cảnh test:
+      (a) `tests/*.rs` cấp crate (integration test), hoặc
+      (b) được `mod` trong khối `#[cfg(test)]` / có `#[cfg(test)]` trực tiếp, hoặc
+      (c) được `mod` dưới `#[cfg(feature = "ktest")]` (ảnh test kernel), hoặc
+      (d) là bin có `required-features` chứa `ktest`.
+    **Tên tệp không đủ** (`ktest_evil.rs` là sản phẩm nếu `mod` từ `main.rs`), **thư mục
+    `src/tests/` không đủ** (`mod tests;` không `#[cfg(test)]` là sản phẩm). Tệp không tới
+    được từ crate root nào ⇒ **sản phẩm** (fail-closed).
+    """
+    key = str(root)
+    cached = _TEST_ONLY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    status, _ = _module_graph(root)
     out = {rel(root, p) for p, is_test in status.items() if is_test}
     _TEST_ONLY_CACHE[key] = out
     return out
+
+
+def module_dirs(root: Path) -> Dict[Path, Path]:
+    """**KT-213** — thư mục module **đúng như rustc** cho mọi tệp tới được từ crate root.
+
+    Đây là gốc phân giải `#[path]` **bên trong inline module** (Rust Reference, Items >
+    Modules > The path attribute): mod-rs ⇒ thư mục tệp; non-mod-rs ⇒ `<thư mục>/<stem>/`.
+    Trước KT-213 `resolve_include_targets` dùng thẳng `p.parent` cho **mọi** tệp, nên
+    `#[path]` trong inline module của `src/foo.rs` lệch đúng một tầng `foo/` so với rustc.
+    """
+    return _module_graph(root)[1]
+
+
+def _default_mod_dir(p: Path) -> Path:
+    """**KT-213** — `mod_dir` cho tệp **không** tới được từ crate root của cargo.
+
+    `module_dirs` phủ **mọi** tệp được biên dịch như module của crate cargo (đồ thị `mod`/
+    `#[path]` từ `crate_roots`). Tệp ngoài đồ thị là **crate root** do `build.rs` biên dịch
+    trực tiếp (`v2/kernel/*/init/*.rs`, `v2/kernel/vifast-plat-user/lib.rs`, `build.rs`) hoặc
+    tệp chết — với cả hai, gốc phân giải `#[path]` là **thư mục của chính tệp** (rustc coi
+    crate root là mod-rs). Đây cũng là hành vi cũ trước KT-213, nên không thêm báo oan.
+    """
+    return p.parent
 
 
 def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> bool:
@@ -1464,24 +1537,33 @@ def resolve_include_targets(
     extra: Dict[str, Tuple[Path, bool]] = {}
     errors: List[str] = []
     status: Dict[Path, bool] = {}
-    queue: List[Tuple[Path, bool]] = []
+    # **KT-213** — mỗi mục hàng đợi mang **gốc phân giải** `#[path]` của tệp (thư mục module
+    # đúng như rustc), không phải `p.parent` cho mọi tệp. Xem `module_dirs`/`_default_mod_dir`.
+    queue: List[Tuple[Path, bool, Path]] = []
+    moddir = module_dirs(root)
     for p, _, _ in files:
-        queue.append((p, rel(root, p) in test_only))
+        queue.append((p, rel(root, p) in test_only, moddir.get(p) or _default_mod_dir(p)))
     # **KT-209/L3** — `include!`/`#[path]` trong `v2/lib` ngoài macro cũng phải phân giải.
     # Tệp lib là **sản phẩm** (không có ngữ cảnh test-only trong `test_only_modules`, vốn chỉ
     # dựng đồ thị module cho kernel/sim) ⇒ `is_test=False`.
     for p in iter_rs(root, ("v2/lib",)):
-        queue.append((p, False))
+        queue.append((p, False, moddir.get(p) or _default_mod_dir(p)))
+    # **KT-213** — `(tệp, mod_dir)` đã xử lý. Cùng một tệp có thể được nạp bằng hai cạnh khác
+    # nhau (`mod foo;` ⇒ `src/foo/`, `#[path = "foo.rs"] mod bar;` ⇒ `src/`) và `#[path]` bên
+    # trong inline module giải **khác nhau** theo từng cạnh ⇒ phải xử lý **mỗi cặp** một lần.
+    done: set = set()
     while queue:
-        p, is_test = queue.pop()
+        p, is_test, p_mod_dir = queue.pop()
+        key = (p, p_mod_dir)
         if p in status:
             # Đã xử lý với trạng thái **mạnh hơn hoặc bằng** ⇒ không cần lại. Chỉ xử lý lại
             # đúng một lần khi `True → False` (sản phẩm thắng) để lan xuống con.
-            if not status[p] or is_test:
+            if key in done and (not status[p] or is_test):
                 continue
-            status[p] = False
+            status[p] = status[p] and is_test
         else:
             status[p] = is_test
+        done.add(key)
         tree, errs = parse_file(p)
         if tree is None or errs:
             # Lỗi từ vựng đã được `scan_lexical` báo; không phân giải tiếp trên cây thiếu.
@@ -1522,6 +1604,7 @@ def resolve_include_targets(
             group: Optional[Group],
             cur_dir: Path,
             in_test: bool = False,
+            mod_dir: Optional[Path] = None,
         ) -> None:
             if not inline:
                 return
@@ -1541,6 +1624,7 @@ def resolve_include_targets(
             on_mod=on_mod,
             on_include=on_include,
             errors=[],
+            mod_dir=p_mod_dir,
         )
         for tok, msg in problems:
             if isinstance(tok, LexError):
@@ -1580,8 +1664,11 @@ def resolve_include_targets(
                 # nhưng **không** vào `extra` — `extra` là tập tệp bị luật `wake` quét, mà mã
                 # `v2/lib` không có `Machine` nên `wake()` không thể xuất hiện ở đó (cạnh sang
                 # kernel/sim đã bị chặn ở trên).
-                if target not in status or status[target]:
-                    queue.append((target, False))
+                # **KT-213** — đích của `#[path]`/`include!` có `mod_dir` = thư mục của **tệp
+                # đích** (rustc: tệp nạp bằng `#[path]` và tệp `include!` đều giải `#[path]`
+                # trong inline module theo thư mục tệp — đã đo bằng rustc 1.100).
+                if (target, target.parent) not in done or status.get(target, True):
+                    queue.append((target, False, target.parent))
                 continue
             inside = _inside_scan_tree(root, target)
             if inside is None:
@@ -1612,8 +1699,9 @@ def resolve_include_targets(
             new = is_test if prev is None else (prev[1] and is_test)
             extra[inside] = (target, new)
             # **KT-177/G4**: lan xuống con khi trạng thái đổi `True → False` (hoặc lần đầu).
-            if target not in status or (status[target] and not new):
-                queue.append((target, new))
+            # **KT-213** — `mod_dir` của đích là thư mục **tệp đích** (xem chú thích nhánh lib).
+            if (target, target.parent) not in done or status.get(target, True):
+                queue.append((target, new, target.parent))
     return extra, errors
 
 
@@ -5241,6 +5329,119 @@ def selftest() -> int:
             "macro_rules! pass { ($e:expr) => { $e }; }\n"
             "fn f() { let _ = (pass!(1 + 1)); }\n",
             False,
+        )
+
+        # --- (4b) **KT-213** — gốc phân giải `#[path]` của tệp **non-mod-rs** ---------------
+        # Reviewer L47 (KT-212) dựng đường lọt #11: `resolve_include_targets` truyền `p.parent`
+        # làm gốc cho **mọi** tệp, nên `#[path]` nằm trong **inline module** của `src/foo.rs`
+        # giải theo `src/<inline>/` thay vì `src/foo/<inline>/` (rustc). Hệ quả: `#[path]` trỏ
+        # ra **ngoài `src/`** (ngoài phạm vi luật `wake`) vẫn XANH trong khi rustc biên dịch
+        # tệp thật. Cùng gốc sai ở `_mods_of` (nó truyền `mod_dir` làm `cur_dir` ⇒ `#[path]`
+        # **mức mục** trong `src/foo.rs` giải thành `src/foo/a.rs` thay vì `src/a.rs`).
+        _EVIL_BODY = (
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n"
+        )
+
+        def _kt213_case(
+            name: str,
+            foo_src: str,
+            files: dict,
+            expect_red: bool,
+            strict: bool = True,
+        ) -> None:
+            d = tmp / ("kt213-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod foo;\n")
+            _write(d / "v2/kernel/vifast-core/src/foo.rs", foo_src)
+            for relp, body in files.items():
+                _write(d / relp, body)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            got = not rep.ok
+            cases.append(
+                (
+                    f"KT-213 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _kt213_case(
+            "repro #11 `#[path]` trong inline module tệp non-mod-rs → ngoài `src/` (thường)",
+            'mod inner {\n    #[path = "../../../evil.rs"]\n    mod baz;\n}\n',
+            {
+                "v2/kernel/vifast-core/src/foo/inner/notes.txt": "x\n",
+                "v2/kernel/vifast-core/evil.rs": _EVIL_BODY,
+                "v2/kernel/evil.rs": "pub fn decoy() {}\n",
+            },
+            True,
+            strict=False,
+        )
+        _kt213_case(
+            "repro #11 `#[path]` trong inline module tệp non-mod-rs → ngoài `src/` (--strict)",
+            'mod inner {\n    #[path = "../../../evil.rs"]\n    mod baz;\n}\n',
+            {
+                "v2/kernel/vifast-core/src/foo/inner/notes.txt": "x\n",
+                "v2/kernel/vifast-core/evil.rs": _EVIL_BODY,
+                "v2/kernel/evil.rs": "pub fn decoy() {}\n",
+            },
+            True,
+            strict=True,
+        )
+        _kt213_case(
+            "đối chứng dương: `#[path]` trong inline module tệp non-mod-rs → tệp THẬT trong cây",
+            'mod inner {\n    #[path = "ok.rs"]\n    mod baz;\n}\n',
+            {"v2/kernel/vifast-core/src/foo/inner/ok.rs": "pub fn ok() {}\n"},
+            False,
+        )
+        _kt213_case(
+            "đối chứng dương: `#[path]` mức mục trong tệp non-mod-rs → tệp cạnh tệp",
+            '#[path = "ok.rs"]\nmod baz;\n',
+            {"v2/kernel/vifast-core/src/ok.rs": "pub fn ok() {}\n"},
+            False,
+        )
+        _kt213_case(
+            "`#[path]` mức mục trong tệp non-mod-rs → ngoài `src/` (không hồi quy)",
+            '#[path = "../evil.rs"]\nmod baz;\n',
+            {"v2/kernel/vifast-core/evil.rs": _EVIL_BODY},
+            True,
+        )
+        _kt213_case(
+            "đối chứng dương: `#[path]` trên inline module trong tệp non-mod-rs",
+            '#[path = "sub"]\nmod inner {\n    #[path = "ok.rs"]\n    mod baz;\n}\n',
+            {"v2/kernel/vifast-core/src/sub/ok.rs": "pub fn ok() {}\n"},
+            False,
+        )
+
+        # `_mods_of` phải dùng **hai** gốc: `#[path]` mức mục theo thư mục tệp, `mod NAME;`
+        # theo thư mục module của tệp. Trước KT-213 cả hai dùng `mod_dir` ⇒ `#[path]` sai;
+        # nếu chỉ đổi `cur_dir` thành `p.parent` thì `mod NAME;` lại sai.
+        d = tmp / "kt213-mods-of"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod foo;\n")
+        _write(d / "v2/kernel/vifast-core/src/foo.rs", "mod bar;\n")
+        _write(d / "v2/kernel/vifast-core/src/foo/bar.rs", "pub fn bar() {}\n")
+        mods = _mods_of(
+            d / "v2/kernel/vifast-core/src/foo.rs", d / "v2/kernel/vifast-core/src/foo"
+        )
+        cases.append(
+            (
+                "KT-213 `mod bar;` trong tệp non-mod-rs ⇒ `src/foo/bar.rs`",
+                any(str(t).endswith("src/foo/bar.rs") for t, _, _ in mods),
+                f"{mods}",
+            )
+        )
+        _write(d / "v2/kernel/vifast-core/src/baz.rs", '#[path = "bar.rs"]\nmod bar;\n')
+        _write(d / "v2/kernel/vifast-core/src/bar.rs", "pub fn bar() {}\n")
+        mods = _mods_of(
+            d / "v2/kernel/vifast-core/src/baz.rs", d / "v2/kernel/vifast-core/src/baz"
+        )
+        cases.append(
+            (
+                "KT-213 `#[path]` mức mục trong tệp non-mod-rs ⇒ `src/bar.rs`",
+                any(str(t).endswith("src/bar.rs") for t, _, _ in mods),
+                f"{mods}",
+            )
         )
 
         # (5) v1 ba kênh ⇒ đỏ.
