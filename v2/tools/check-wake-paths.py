@@ -1952,13 +1952,23 @@ def resolve_include_targets(
                         f"(fail-closed, KT-209 L3)"
                     )
                     continue
-                # Đích trong `v2/lib`: phân giải **tiếp** (`include!` lồng không trốn được)
-                # nhưng **không** vào `extra` — `extra` là tập tệp bị luật `wake` quét, mà mã
-                # `v2/lib` không có `Machine` nên `wake()` không thể xuất hiện ở đó (cạnh sang
-                # kernel/sim đã bị chặn ở trên).
+                # Đích trong `v2/lib`: phân giải **tiếp** (`include!` lồng không trốn được).
+                #
+                # **KT-230** — đích `v2/lib` **vào `extra`** (trước đây cố ý bỏ, lý do "mã
+                # `v2/lib` không có `Machine` nên `wake()` không thể xuất hiện"). Lý do đó
+                # **sai** theo hai nghĩa, và bỏ đích khỏi `extra` làm lớp 1 mù:
+                #   (i) tệp đích có thể chứa token `wake` (B12–B15 của KT-224: `.txt`,
+                #       symlink, `target/`, dấu cách — lớp 1 XANH, chỉ lớp 2 bắt);
+                #   (ii) tệp đích **không phải `.rs`** có thể định nghĩa `macro_rules!` che
+                #       tên macro "an toàn" (đường lọt #14, biến thể `.txt`) — `_shadowed_safe_macros`
+                #       chỉ thấy nếu đích nằm trong `extra`.
+                # Nay fail-closed: đích `v2/lib` là **sản phẩm** (`is_test=False`) và được quét
+                # như mọi đích `include!`/`#[path]` khác.
                 # **KT-213** — đích của `#[path]`/`include!` có `mod_dir` = thư mục của **tệp
                 # đích** (rustc: tệp nạp bằng `#[path]` và tệp `include!` đều giải `#[path]`
                 # trong inline module theo thư mục tệp — đã đo bằng rustc 1.100).
+                prev = extra.get(inside)
+                extra[inside] = (target, False if prev is None else (prev[1] and False))
                 if (target, target.parent) not in done or status.get(target, True):
                     queue.append((target, False, target.parent))
                 continue
@@ -2359,19 +2369,69 @@ SAFE_VALUE_MACROS = frozenset(
 RE_MACRO_BANG_BEFORE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*!\s*$")
 
 
+def _collect_safe_macro_defs(nodes: Sequence[object], out: set) -> None:
+    """**KT-230** — thu **mọi** `macro_rules! <tên-an-toàn>` trong cây token, **mọi tầng**.
+
+    Vì sao đệ quy **mọi** nhóm (không chỉ `{…}` như `_walk_items`): đường lọt #14 (reviewer
+    L54, KT-229) định nghĩa `macro_rules! matches` **lồng trong thân** một `macro_rules!` khác
+    rồi gọi macro ngoài để expansion sinh định nghĩa. `_walk_items` **bỏ qua thân macro** ⇒
+    bản KT-177 không thấy ⇒ tên `matches` vẫn "an toàn" ⇒ `let wake = …; matches!(m, wake, t)`
+    được miễn theo local-binding ⇒ **lọt cả hai lớp** (cargo RC=0).
+
+    Nay quét **toàn cây token** — kể cả thân `macro_rules!`, đối số lời gọi macro, mọi
+    delimiter `{}`/`()`/`[]` — fail-closed: thấy tên an toàn ở **bất kỳ** đâu là coi như bị che.
+    """
+    i = 0
+    n = len(nodes)
+    while i < n:
+        node = nodes[i]
+        if isinstance(node, Group):
+            _collect_safe_macro_defs(node.children, out)
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "macro_rules":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+            if j < n and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                if nodes[j].val in SAFE_VALUE_MACROS:
+                    out.add(nodes[j].val)
+                j += 1
+                if j < n and isinstance(nodes[j], Group):
+                    # Đệ quy **thân** macro: định nghĩa lồng (đường lọt #14) nằm ở đây.
+                    _collect_safe_macro_defs(nodes[j].children, out)
+                    i = j + 1
+                    continue
+            i += 1
+            continue
+        i += 1
+
+
 def _shadowed_safe_macros(
-    root: Path, files: Sequence[Tuple[Path, str, List[Fn]]]
+    root: Path,
+    files: Sequence[Tuple[Path, str, List[Fn]]],
+    extra_files: Optional[Iterable[Path]] = None,
 ) -> set:
-    """**KT-177/G6** (reviewer L16 §2.6, H6): tên trong `SAFE_VALUE_MACROS` bị **che**.
+    """**KT-177/G6** (reviewer L16 §2.6, H6) + **KT-230** (reviewer L54, đường lọt #14): tên
+    trong `SAFE_VALUE_MACROS` bị **che**.
 
     `SAFE_VALUE_MACROS` tin **tên** macro là "chỉ đọc giá trị", nhưng `macro_rules! concat`
     trong cây **che** macro chuẩn cùng tên và có thể biến ident thành **tên hàm**
     (`$m.$name($t)`). Khi đó `wake` là đối số macro "an toàn" ⇒ nhánh `SAFE_VALUE_MACROS` bỏ
     qua ⇒ rơi xuống `_exempt_local_wake` ⇒ biến cục bộ `wake` cùng khối miễn ⇒ **lọt**.
 
-    Nay: quét **toàn cây** (`v2/kernel` + `v2/sim` + `v2/lib`) tìm `macro_rules! <tên>` trùng
-    tên an toàn; tên nào bị che thì **không** còn an toàn (fail-closed). Chỉ **siết**: trên cây
-    sạch hiện không có `macro_rules!` nào trùng tên an toàn (chỉ `sctlr_setters`, `bail`).
+    Nay: quét **toàn cây** (`v2/kernel` + `v2/sim` + `v2/lib` + tệp `include!`/`#[path]` đích)
+    tìm `macro_rules! <tên>` trùng tên an toàn; tên nào bị che thì **không** còn an toàn
+    (fail-closed). Chỉ **siết**: trên cây sạch hiện không có `macro_rules!` nào trùng tên an
+    toàn (chỉ `sctlr_setters`, `bail`).
+
+    **KT-230** — hai lỗ của bản KT-177:
+      - `_walk_items` **bỏ qua thân `macro_rules!`** ⇒ định nghĩa **lồng** (macro sinh macro)
+        không bị thấy. Nay [`_collect_safe_macro_defs`] đệ quy **mọi** nhóm, mọi tầng.
+      - chỉ quét `.rs` ⇒ tệp `.txt`/`.RS`/không đuôi được `include!` vào `v2/lib`/`v2/kernel`
+        định nghĩa macro che tên an toàn **không** bị thấy (lớp 2 may bắt được vì dùng danh
+        sách tệp rustc nạp; lớp 1 thì không). Nay nhận thêm `extra_files` — lớp 1 truyền
+        đích `include!`/`#[path]` đã phân giải.
     """
     out: set = set()
     texts: List[Tuple[Path, str]] = [(p, t) for p, t, _ in files]
@@ -2384,18 +2444,20 @@ def _shadowed_safe_macros(
                 texts.append((p, p.read_text(encoding="utf-8", errors="replace")))
             except OSError:
                 continue
+    for p in sorted(extra_files or ()):
+        if _is_build_dir(root, p):
+            continue
+        try:
+            texts.append((p, p.read_text(encoding="utf-8", errors="replace")))
+        except OSError:
+            continue
     for p, text in texts:
         if "macro_rules!" not in text:
             continue
         tree, errs = parse_file(p)
         if tree is None or errs:
             continue
-
-        def on_macro(name_tok: Tok, body: Group, cur_dir: Path) -> None:
-            if name_tok.val in SAFE_VALUE_MACROS:
-                out.add(name_tok.val)
-
-        _walk_items(tree, str(p), p.parent, on_macro=on_macro, errors=[])
+        _collect_safe_macro_defs(tree, out)
     return out
 
 
@@ -3257,7 +3319,9 @@ def scan_v2(
 
         # **KT-177/G6** (H6): tên macro "an toàn" bị `macro_rules!` trong cây **che** thì
         # không còn an toàn — `concat!` bị che có thể biến ident `wake` thành **tên hàm**.
-        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(
+            root, files, extra_files=[p for p, _ in extra.values()]
+        )
 
         for p, text, fns, is_test in wake_targets:
             relp = rel(root, p)
@@ -3274,7 +3338,9 @@ def scan_v2(
     # lồng). Nay chạy **cùng** luật token `wake` trên đúng các tệp ẩn đó ⇒ fail-closed ở mọi
     # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
     if not strict:
-        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(
+            root, files, extra_files=[p for p, _ in extra.values()]
+        )
         # **KT-215** — **đóng F2** (hợp đồng §4): luật `wake` chạy ở **cả** chế độ thường cho
         # **mọi** tệp sản phẩm trong phạm vi, không chỉ tệp bị kéo vào bằng `#[path]`/`include!`
         # (`extra`). Đường lọt #12 (`src/target/evil.rs`) là module **bình thường** — không bao
@@ -3319,7 +3385,9 @@ def scan_v2(
     # toàn (cùng lý do KT-177/G6 cho `wake`): `macro_rules! stringify { ($x:expr) => { $x } }`
     # + `stringify!(include!("…"))` sẽ mở rộng `include!` thật. Truyền tập bị che xuống
     # `scan_macro_bodies` để **không** miễn nhầm.
-    _shadowed_safe = frozenset(_shadowed_safe_macros(root, files))
+    _shadowed_safe = frozenset(
+        _shadowed_safe_macros(root, files, extra_files=[p for p, _ in extra.values()])
+    )
     scan_macro_bodies(
         root,
         r,
@@ -3547,6 +3615,9 @@ def selftest() -> int:
     `$…:<frag>` passthrough — repro `:item` + `include!` ở **cả hai** chế độ, `:item`→`:tt`,
     `include!` trần, `:item`/`:stmt`/`:block`/`:meta`, `#[path]`/`mod` trong lời gọi, biến thể
     lồng trong `( … )`, bốn đối chứng dương + một ca `:expr` xanh có lý do). Tổng **157** ca.
+    **22 ca KT-230** (reviewer L54 — đường lọt #14: `macro_rules!` **lồng** che tên macro "an
+    toàn"; repro một tầng + hai tầng + hai biến thể `.txt` (`v2/lib`, `v2/kernel`) + đối chứng
+    âm + sáu đối chứng dương). Tổng **281** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -6659,6 +6730,234 @@ def selftest() -> int:
                 "; ".join(rep.errors),
             )
         )
+
+        # **KT-230** (reviewer L54, đường lọt #14) — `macro_rules!` **lồng** che tên macro
+        # "an toàn". `_shadowed_safe_macros` bản KT-177 chỉ thấy `macro_rules!` mức mục
+        # (`_walk_items` bỏ qua thân macro) ⇒ `matches` vẫn "an toàn" ⇒ `let wake = …;
+        # matches!(m, wake, t)` được miễn local-binding ⇒ **lọt cả hai lớp** (cargo RC=0).
+        # Nay `_collect_safe_macro_defs` đệ quy **mọi** tầng nhóm, và lớp 1 nhận thêm
+        # `extra_files` (đích `include!`/`#[path]`, kể cả tệp không `.rs`).
+        _KT230_NESTED = (
+            "macro_rules! kt230_outer {\n"
+            "    () => {\n"
+            "        #[macro_export]\n"
+            "        macro_rules! matches {\n"
+            "            ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+            "        }\n"
+            "    };\n"
+            "}\n"
+            "kt230_outer!();\n"
+        )
+        _KT230_NESTED2 = (
+            "macro_rules! kt230_l1 {\n"
+            "    () => {\n"
+            "        macro_rules! kt230_l2 {\n"
+            "            () => {\n"
+            "                #[macro_export]\n"
+            "                macro_rules! matches {\n"
+            "                    ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+            "                }\n"
+            "            };\n"
+            "        }\n"
+            "        kt230_l2!();\n"
+            "    };\n"
+            "}\n"
+            "kt230_l1!();\n"
+        )
+        _KT230_CALL = (
+            "impl M {\n"
+            "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        let wake = 0u32;\n"
+            "        let _ = wake;\n"
+            "        let _ = matches!(self, wake, t);\n"
+            "        0\n"
+            "    }\n"
+            "}\n"
+        )
+        _KT230_CALL_NO_BIND = (
+            "impl M {\n"
+            "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        let _ = matches!(self, wake, t);\n"
+            "        0\n"
+            "    }\n"
+            "}\n"
+        )
+
+        def _kt230_case(name: str, files: dict, expect_red: bool, strict: bool) -> None:
+            d = tmp / ("kt230-" + name)
+            _fixture_v2(d)
+            for relp, body in files.items():
+                _write(d / relp, body)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            got = not rep.ok
+            cases.append(
+                (
+                    f"KT-230 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        for _strict in (False, True):
+            _kt230_case(
+                "repro #14 `macro_rules! matches` LỒNG trong macro khác + `let wake` + "
+                "`matches!(m, wake, t)`"
+                + (" (--strict)" if _strict else " (thường)"),
+                {"v2/kernel/vifast-core/src/evil.rs": _KT230_NESTED + _KT230_CALL},
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "repro #14 lồng **hai** tầng (macro sinh macro sinh macro)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {"v2/kernel/vifast-core/src/evil.rs": _KT230_NESTED2 + _KT230_CALL},
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "repro #14 biến thể `.txt` trong `v2/lib` (đích `include!` không `.rs`)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/lib/vifast-abi/src/lib.rs": 'include!("macros.txt");\n',
+                    "v2/lib/vifast-abi/src/macros.txt": _KT230_NESTED,
+                    "v2/kernel/vifast-core/src/evil.rs": _KT230_CALL,
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "repro #14 biến thể `.txt` trong `v2/kernel` (đích `include!` vào `extra`)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/macros.txt": _KT230_NESTED,
+                    "v2/kernel/vifast-core/src/evil.rs": 'include!("macros.txt");\n' + _KT230_CALL,
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng âm: bỏ `let wake = …` ⇒ vẫn đỏ (không hồi quy)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {"v2/kernel/vifast-core/src/evil.rs": _KT230_NESTED + _KT230_CALL_NO_BIND},
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: `matches!(t, wake)` với macro THẬT + `let wake` ⇒ xanh "
+                "(ca KT-171 B10 phải giữ)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn hop_le(&mut self, t: u32) -> u8 {\n"
+                        "        let wake = 0u32;\n"
+                        "        let _ = wake;\n"
+                        "        let _ = matches!(t, wake);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: `stringify!(wake)` + `let wake` ⇒ xanh"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn hop_le(&mut self) -> u8 {\n"
+                        "        let wake = 0u32;\n"
+                        "        let _ = wake;\n"
+                        "        let _ = stringify!(wake);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: `concat!(\"wa\", \"ke\")` ⇒ xanh"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn hop_le(&mut self) -> u8 {\n"
+                        "        let _ = concat!(\"wa\", \"ke\");\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: `assert!(wake)` với `let wake = true` ⇒ xanh"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn hop_le(&mut self) -> u8 {\n"
+                        "        let wake = true;\n"
+                        "        assert!(wake);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: `macro_rules! matches` mức mục trong `v2/lib` (KT-177) ⇒ đỏ"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/lib/vifast-abi/src/lib.rs": (
+                        "#[macro_export]\n"
+                        "macro_rules! matches {\n"
+                        "    ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+                        "}\n"
+                    ),
+                    "v2/kernel/vifast-core/src/evil.rs": _KT230_CALL,
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt230_case(
+                "đối chứng dương: macro tên KHÔNG an toàn (`evil!`) ⇒ đỏ"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/evil.rs": (
+                        "macro_rules! evil {\n"
+                        "    ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+                        "}\n"
+                        "impl M {\n"
+                        "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                        "        let wake = 0u32;\n"
+                        "        let _ = wake;\n"
+                        "        let _ = evil!(self, wake, t);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                True,
+                _strict,
+            )
 
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"

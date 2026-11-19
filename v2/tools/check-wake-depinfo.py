@@ -1054,6 +1054,87 @@ def selftest() -> int:
             f"loaded={sorted(CWP.rel(root, p) for p in res_b.loaded)} errors={rep_b.errors}",
         )
 
+        # --- (31) KT-230: macro_rules! LỒNG che tên an toàn ⇒ ĐỎ (đường lọt #14) ----------
+        # Lớp 2 dùng **danh sách tệp rustc nạp** cho `_shadowed_safe_macros`; bản KT-177 chỉ
+        # thấy `macro_rules!` mức mục nên `matches` lồng vẫn "an toàn" ⇒ `let wake = …;
+        # matches!(m, wake, t)` XANH. Nay `_collect_safe_macro_defs` đệ quy mọi tầng.
+        nested = src / "nested_macro.rs"
+        nested.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "macro_rules! kt230_outer {\n"
+            "    () => {\n"
+            "        #[macro_export]\n"
+            "        macro_rules! matches {\n"
+            "            ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+            "        }\n"
+            "    };\n"
+            "}\n"
+            "kt230_outer!();\n"
+            "pub fn evil(m: &mut crate::Machine, t: u32) {\n"
+            "    let wake = 0u32;\n"
+            "    let _ = wake;\n"
+            "    let _ = matches!(m, wake, t);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {nested}, test_only=set())
+        ghi(
+            "(31) KT-230: `macro_rules! matches` LỒNG + `let wake` + `matches!(m, wake, t)` "
+            "⇒ ĐỎ `E_DEPINFO_WAKE` (trước: XANH)",
+            (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (32) KT-230 đối chứng dương: macro THẬT + `let wake` ⇒ XANH (KT-171 B10) ------
+        ok_macro = src / "ok_macro.rs"
+        ok_macro.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn hop_le(t: u32) {\n"
+            "    let wake = 0u32;\n"
+            "    let _ = wake;\n"
+            "    let _ = matches!(t, wake);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {ok_macro}, test_only=set())
+        ghi(
+            "(32) KT-230 đối chứng dương: `matches!(t, wake)` macro THẬT + `let wake` ⇒ XANH",
+            rep.ok,
+            f"errors={rep.errors}",
+        )
+
+        # --- (33) KT-230: macro lồng trong tệp KHÔNG `.rs` được nạp ⇒ ĐỎ -------------------
+        nested_txt = root / "v2/lib/vifast-abi/src/nested_macros.txt"
+        nested_txt.parent.mkdir(parents=True, exist_ok=True)
+        nested_txt.write_text(
+            "macro_rules! kt230_outer {\n"
+            "    () => {\n"
+            "        #[macro_export]\n"
+            "        macro_rules! matches {\n"
+            "            ($m:expr, $x:ident, $t:expr) => { $m.$x($t) };\n"
+            "        }\n"
+            "    };\n"
+            "}\n"
+            "kt230_outer!();\n",
+            encoding="utf-8",
+        )
+        call_txt = src / "call_txt.rs"
+        call_txt.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn evil(m: &mut crate::Machine, t: u32) {\n"
+            "    let wake = 0u32;\n"
+            "    let _ = wake;\n"
+            "    let _ = matches!(m, wake, t);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {nested_txt, call_txt}, test_only=set())
+        ghi(
+            "(33) KT-230: macro lồng trong tệp `.txt` được nạp + lời gọi ⇒ ĐỎ `E_DEPINFO_WAKE`",
+            (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
     ok = sum(1 for _, o, _ in cases if o)
     print(f"# selftest: {ok}/{len(cases)} ok")
     return 0 if ok == len(cases) else 1
