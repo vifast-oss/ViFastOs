@@ -10,6 +10,7 @@ members = [
     "vifast-plat-aarch64",
     "vifast-plat-common",
     "vifast-plat-riscv64",
+    "vifast-plat-x86_64",
 ]
 
 [workspace.package]

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-186 (D2-163) — K5' bước M2: phần **host-testable** của platform x86_64.
+# Crate **thuần dữ liệu**: không asm, không `cfg(target_arch)`, không `unsafe`, không dependency
+# ngoài (D2-21). Không boot, không QEMU — bằng chứng là `cargo test` trên host.
+[package]
+name = "vifast-plat-x86_64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + hằng thanh ghi/CR0/CR4/EFER thuần dữ liệu, host-testable"
+
+[dependencies]
+# KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate
+# **dùng chung** `vifast-pte` (thiết kế §358/§1101) — crate này chỉ còn impl + hằng số, không
+# định nghĩa lại (nợ "hai bản trùng" của audit K5' §2.4 đã đóng). Crate nội bộ, `no_std`,
+# không dependency ngoài (D2-21).
+vifast-pte = { path = "../../lib/vifast-pte" }

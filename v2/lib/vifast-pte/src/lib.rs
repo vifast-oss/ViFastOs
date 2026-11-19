@@ -5,9 +5,15 @@
 //! của **trait bảng trang dùng chung** ([`PageTableFormat`], [`Mmu`]).
 //!
 //! Crate này cung cấp **hình/layout**: cỡ Frame ↔ `size_bits`, PTE thô 64 bit, mảng PTE cố
-//! định, và `walk_shape` tách VA 39 bit thành ba chỉ số 9 bit. **Không** có PageTable walker,
-//! map/unmap, quyền/attrs, W^X, ASID, TLB — những phần đó thuộc KT-37..KT-41. Tài liệu mô hình
-//! và bảy hằng số `[TK]` ở `v2/docs/k2-vm.md`.
+//! định, và `walk_shape` tách VA 39 bit thành ba chỉ số 9 bit. **Không** có W^X, ASID, TLB —
+//! những phần đó thuộc KT-37..KT-41; quyền/attrs chỉ là **kiểu dữ liệu** (`Perms`/`MemAttr`),
+//! không phải chính sách. Tài liệu mô hình và bảy hằng số `[TK]` ở `v2/docs/k2-vm.md`.
+//!
+//! **KT-186 (D2-163)**: [`PageTable`] giữ walker `PageTable<F, M>` + trait nguồn frame
+//! [`TableMemory`] **dùng chung** cho ba định dạng (Sv39, AArch64, x86_64) — chuyển từ
+//! `vifast-plat-aarch64` (KT-160) về đây để không có bản thứ hai. Đây vẫn là **hợp đồng dữ
+//! liệu**: không asm, không `unsafe`, không `cfg` theo kiến trúc; phần nạp `satp`/`TTBR`/`CR3`
+//! và TLB là việc của crate arch (D2-17).
 //!
 //! **KT-164** (thiết kế §358/§1101): module [`mmu`] giữ trait [`PageTableFormat`]/[`Mmu`] và các
 //! kiểu đi kèm ([`Perms`], [`MemAttr`], [`Shareability`], [`Descriptor`], [`Translation`],
@@ -37,6 +43,7 @@
 mod error;
 mod frame;
 mod mmu;
+mod page_table;
 mod pte;
 mod walk;
 
@@ -46,6 +53,7 @@ pub use mmu::{
     is_canonical_bits, Descriptor, MapError, MemAttr, Mmu, PageTableFormat, Perms, Shareability,
     Translation,
 };
+pub use page_table::{PageTable, TableMemory, Walk, WalkOutcome, WalkStep, MAX_LEVELS};
 pub use pte::{Pte, PteArray};
 pub use walk::{walk_shape, WalkShape};
 
