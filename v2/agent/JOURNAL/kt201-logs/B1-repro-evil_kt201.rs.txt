@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// KT-201 repro: product code that calls the test-only `wake()` API.
+#[allow(dead_code)]
+pub fn evil_kt201(m: &mut crate::Machine, t: crate::ObjId) {
+    let _ = m.wake(t);
+}
