@@ -1,0 +1,107 @@
+=== KT-235 evidence — 2026-11-19T23:27:03Z ===
+
+### A1 git log -1
+cbc2c2af [KT-231] so: KT-229/230/231 DONE — DONE=202 READY=0 REVIEW=2
+### A2 git status --porcelain
+?? v2/agent/JOURNAL/kt235-logs/
+?? v2/agent/JOURNAL/kt235-verify-final.md
+(end, 2 dòng)
+### A3 v2 status
+== dòng OS ViFastOs ==
+HEAD        cbc2c2af5fc0 (night3/L58-kt235)  chưa push: 0
+build-inputs 233 mục  dấu vân tay: 43df126a4a6702ec  dirty: 0
+ảnh mới nhất (không có trong v2/artifacts/)
+task        DONE=202 READY=0 BLOCKED=0 REVIEW=2
+cổng        ./v2/bin/v2 check | ./v2/bin/v2 check-rules | ./v2/bin/v2 gate --fast
+
+### B5 check-wake-paths --selftest
+ok - cây rỗng ⇒ đỏ (fail-closed)
+# selftest: 295/295 ok
+### B6 check-wake-depinfo --selftest
+ok  - (37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan)
+# selftest: 37/37 ok
+### B7 check-wake-paths --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+### B8 check-wake-depinfo --root
+# check-wake-depinfo: errors=0 warnings=0 (11.45 s)
+
+### C9 gate log last line
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
+### C9 count '^--- .*: OK$'
+50
+### C9 count '^--- .*: OK' (prefix)
+52
+### C9 non-$ OK lines
+--- scn fixtures: OK (5 case âm, kiểm thông điệp)
+--- L1: OK (932 ms, đo bởi cổng)
+### C9 run_step count do_check
+25
+### C9 run_step count do_gate_fast
+13
+
+### D10 soak
+1513:# soak: xong wall=297s (3 boot/s); ok=1000 fail=0 tổng=1000/1000
+### D10 data+bss
+56:# image=product path=/Users/mps/dvchd/ViFastOs/v2/artifacts/639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81.bin file=213632 data+bss=224288 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+498:# image=product path=/Users/mps/dvchd/ViFastOs/v2/artifacts/639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81.bin file=213632 data+bss=224288 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+### D10 shell_prompt_lines
+13:### smp=1 shell_prompt_lines=2
+20:### smp=2 shell_prompt_lines=2
+27:### smp=4 shell_prompt_lines=2
+315:### f3_noshell_shell_prompt_lines=0
+### D11 image
+-rwxr-xr-x@ 1 mps  staff  213632 Nov 20 01:12 /Users/mps/dvchd/ViFastOs/v2/artifacts/639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81.bin
+### D11 sha256
+639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81  /Users/mps/dvchd/ViFastOs/v2/artifacts/639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81.bin
+
+### E12 QUEUE status.sh regex
+DONE     202
+READY    0
+BLOCKED  0
+REVIEW   2
+### E12 QUEUE naive
+DONE     204
+READY    0
+BLOCKED  1
+REVIEW   3
+### E13 DECISIONS D2-169..181
+- **D2-169**
+- **D2-170**
+- **D2-171**
+- **D2-172**
+- **D2-173**
+- **D2-174**
+- **D2-175**
+- **D2-176**
+- **D2-177**
+- **D2-178**
+- **D2-179**
+- **D2-180**
+- **D2-181**
+### E13 total D2
+181
+### E14 STATE header
+HEAD          : `a08bf042` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-231]`.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=199 READY=0 BLOCKED=0 REVIEW=2**.
+### E14 actual HEAD
+cbc2c2af5fc016c1f732846c3ed215edf2fdeeaa
+
+### F15 report HEAD/DONE/selftest
+HEAD          af1ba3c9   (main, đã push, chưa push: 0)
+task          DONE=189  READY=1  BLOCKED=0  REVIEW=3
+checker       lớp 1: 246 ca selftest; lớp 2: 20 ca; cả hai errors=0 trên cây thật
+| **1** | `check-wake-paths.py` | lexer + token-tree + walker tĩnh | **295** ca | ~21 s |
+### F15 phieu HEAD/DONE/selftest
+HEAD          a08bf042   (main, đã push, chưa push: 0)
+task          DONE=199  READY=0  BLOCKED=0  REVIEW=2
+checker       lớp 1: 295 ca; lớp 2: 37 ca; cả hai errors=0 trên cây thật
+### F15 af1ba3c9 distance
+37
+### F15 a08bf042 distance
+3
+### F15 post-gate diff names
+BAO-CAO-DEM-2026-11-20.md
+PHIEU-GUI-AGENT0-2026-11-20-VONG8.md
+v2/agent/JOURNAL/kt231-logs/kt231-gate-pass.log
+v2/agent/QUEUE.md
+v2/agent/STATE.md
