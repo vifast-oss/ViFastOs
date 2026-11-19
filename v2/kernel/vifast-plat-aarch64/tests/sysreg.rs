@@ -19,10 +19,13 @@ use vifast_plat_aarch64::sysreg::{
     SCTLR_ENDB, SCTLR_ENIA, SCTLR_ENIB, SCTLR_ENTP2, SCTLR_EOS, SCTLR_EPAN, SCTLR_I, SCTLR_IESB,
     SCTLR_ITD, SCTLR_ITFSB, SCTLR_LSMAOE, SCTLR_M, SCTLR_NTLSMD, SCTLR_NTWE, SCTLR_NTWI, SCTLR_SA,
     SCTLR_SA0, SCTLR_SED, SCTLR_SPAN, SCTLR_TSCXT, SCTLR_UCI, SCTLR_UCT, SCTLR_UMA, SCTLR_WXN,
-    SPSR_C, SPSR_N, SPSR_V, SPSR_Z, TCR_A1, TCR_AS, TCR_EL1_KERNEL, TCR_EPD0, TCR_EPD1,
-    TCR_IPS_SHIFT, TCR_IRGN0_SHIFT, TCR_IRGN1_SHIFT, TCR_ORGN0_SHIFT, TCR_ORGN1_SHIFT,
-    TCR_SH0_SHIFT, TCR_SH1_SHIFT, TCR_T0SZ_SHIFT, TCR_T1SZ_SHIFT, TCR_TBI0, TCR_TBI1,
-    TCR_TG0_SHIFT, TCR_TG1_SHIFT, TTBR_ASID_SHIFT, TTBR_BADDR_MASK, TTBR_CNP, VBAR_BASE_MASK,
+    SPSR_C, SPSR_M_MASK, SPSR_M_SHIFT, SPSR_N, SPSR_V, SPSR_Z, TCR_A1, TCR_AS, TCR_EL1_KERNEL,
+    TCR_EPD0, TCR_EPD1, TCR_IPS_MASK, TCR_IPS_SHIFT, TCR_IRGN0_MASK, TCR_IRGN0_SHIFT,
+    TCR_IRGN1_MASK, TCR_IRGN1_SHIFT, TCR_ORGN0_MASK, TCR_ORGN0_SHIFT, TCR_ORGN1_MASK,
+    TCR_ORGN1_SHIFT, TCR_SH0_MASK, TCR_SH0_SHIFT, TCR_SH1_MASK, TCR_SH1_SHIFT, TCR_T0SZ_MASK,
+    TCR_T0SZ_SHIFT, TCR_T1SZ_MASK, TCR_T1SZ_SHIFT, TCR_TBI0, TCR_TBI1, TCR_TG0_MASK, TCR_TG0_SHIFT,
+    TCR_TG1_MASK, TCR_TG1_SHIFT, TTBR_ASID_SHIFT, TTBR_BADDR_MASK, TTBR_BADDR_SHIFT, TTBR_CNP,
+    VBAR_BASE_MASK, VBAR_BASE_SHIFT,
 };
 use vifast_plat_aarch64::Shareability;
 
@@ -196,6 +199,55 @@ fn tcr_sz_masked_to_six_bits() {
     assert_eq!((tcr.bits() >> 16) & 0x3F, 0);
 }
 
+/// 11 mặt nạ `TCR_*_MASK` — **giá trị bit tham chiếu viết tay** từ Arm ARM (DDI 0487),
+/// bảng `TCR_EL1`: `T0SZ[5:0]`, `IRGN0[9:8]`, `ORGN0[11:10]`, `SH0[13:12]`, `TG0[15:14]`,
+/// `T1SZ[21:16]`, `IRGN1[25:24]`, `ORGN1[27:26]`, `SH1[29:28]`, `TG1[31:30]`, `IPS[34:32]`.
+///
+/// Đây là **API công khai** (`pub use` ở `lib.rs`); bước 3 dùng mask để bóc/ghép trường nên
+/// một mask sai phải làm test **ĐỎ** (C1 của KT-175, D2-162). Không so với hằng khác của crate.
+#[test]
+fn tcr_masks_reference_values() {
+    let expected: [(u64, u64, &str); 11] = [
+        (TCR_T0SZ_MASK, 0x0000_0000_0000_003F, "T0SZ[5:0]"),
+        (TCR_IRGN0_MASK, 0x0000_0000_0000_0300, "IRGN0[9:8]"),
+        (TCR_ORGN0_MASK, 0x0000_0000_0000_0C00, "ORGN0[11:10]"),
+        (TCR_SH0_MASK, 0x0000_0000_0000_3000, "SH0[13:12]"),
+        (TCR_TG0_MASK, 0x0000_0000_0000_C000, "TG0[15:14]"),
+        (TCR_T1SZ_MASK, 0x0000_0000_003F_0000, "T1SZ[21:16]"),
+        (TCR_IRGN1_MASK, 0x0000_0000_0300_0000, "IRGN1[25:24]"),
+        (TCR_ORGN1_MASK, 0x0000_0000_0C00_0000, "ORGN1[27:26]"),
+        (TCR_SH1_MASK, 0x0000_0000_3000_0000, "SH1[29:28]"),
+        (TCR_TG1_MASK, 0x0000_0000_C000_0000, "TG1[31:30]"),
+        (TCR_IPS_MASK, 0x0000_0007_0000_0000, "IPS[34:32]"),
+    ];
+    for (actual, want, name) in expected {
+        assert_eq!(actual, want, "mặt nạ {name} sai");
+    }
+}
+
+/// Bóc trường từ **giá trị thanh ghi viết tay** bằng chính các mask công khai — chứng minh
+/// mask dùng được để đọc đúng trường, không chỉ đúng khi so literal.
+#[test]
+fn tcr_masks_extract_reference_fields() {
+    // Cùng giá trị tuyệt đối mà `tcr_field_positions` dựng từ builder (tính tay từ DDI 0487).
+    let raw: u64 = 0x0000_0074_F9D5_AEAA;
+    assert_eq!(raw & TCR_T0SZ_MASK, 0x2A, "T0SZ");
+    assert_eq!((raw & TCR_IRGN0_MASK) >> 8, 0b10, "IRGN0 = WriteThrough");
+    assert_eq!(
+        (raw & TCR_ORGN0_MASK) >> 10,
+        0b11,
+        "ORGN0 = WriteBackNoWriteAllocate"
+    );
+    assert_eq!((raw & TCR_SH0_MASK) >> 12, 0b10, "SH0 = Outer");
+    assert_eq!((raw & TCR_TG0_MASK) >> 14, 0b10, "TG0 = 16 KiB");
+    assert_eq!((raw & TCR_T1SZ_MASK) >> 16, 0x15, "T1SZ");
+    assert_eq!((raw & TCR_IRGN1_MASK) >> 24, 0b01, "IRGN1 = WBWA");
+    assert_eq!((raw & TCR_ORGN1_MASK) >> 26, 0b10, "ORGN1 = WriteThrough");
+    assert_eq!((raw & TCR_SH1_MASK) >> 28, 0b11, "SH1 = Inner");
+    assert_eq!((raw & TCR_TG1_MASK) >> 30, 0b11, "TG1 = 64 KiB");
+    assert_eq!((raw & TCR_IPS_MASK) >> 32, 0b100, "IPS = 44 bit");
+}
+
 // ---------------------------------------------------------------- MAIR_EL1
 
 /// 8 slot 8 bit: slot `i` ở bit `8*i` — giá trị tuyệt đối tính tay.
@@ -321,7 +373,9 @@ fn sctlr_builder() {
     assert!(!off.bit(SCTLR_M));
     assert!(!off.bit(SCTLR_WXN));
     assert!(off.bit(SCTLR_I));
-    // Các setter còn lại vẫn dùng được (một tổ hợp đại diện).
+    // Tổ hợp 34 setter còn lại — **giá trị tuyệt đối viết tay** (không OR hằng của crate):
+    // bit 23,24,25,26,14,15,16,18,21,22,13,27,28,29,30,31,35,36,37,43,44,54,55,56,57,60,
+    // 11,20,5,7,8,9,1,4.
     let misc = Sctlr::new()
         .with_span(true)
         .with_el0_big_endian(true)
@@ -357,43 +411,68 @@ fn sctlr_builder() {
         .with_uma(true)
         .with_alignment(true)
         .with_el0_stack_alignment(true);
-    assert_eq!(
-        misc.bits(),
-        SCTLR_SPAN
-            | SCTLR_E0E
-            | SCTLR_EE
-            | SCTLR_UCI
-            | SCTLR_DZE
-            | SCTLR_UCT
-            | SCTLR_NTWI
-            | SCTLR_NTWE
-            | SCTLR_IESB
-            | SCTLR_EIS
-            | SCTLR_ENDB
-            | SCTLR_ENDA
-            | SCTLR_NTLSMD
-            | SCTLR_LSMAOE
-            | SCTLR_ENIB
-            | SCTLR_ENIA
-            | SCTLR_BT0
-            | SCTLR_BT1
-            | SCTLR_ITFSB
-            | SCTLR_ATA
-            | SCTLR_DSSBS
-            | SCTLR_ENASR
-            | SCTLR_ENAS0
-            | SCTLR_ENALS
-            | SCTLR_EPAN
-            | SCTLR_ENTP2
-            | SCTLR_EOS
-            | SCTLR_TSCXT
-            | SCTLR_CP15BEN
-            | SCTLR_ITD
-            | SCTLR_SED
-            | SCTLR_UMA
-            | SCTLR_A
-            | SCTLR_SA0
-    );
+    assert_eq!(misc.bits(), 0x13C0_1838_FFF5_EBB2);
+}
+
+/// **Từng** setter `Sctlr` phải nối đúng **một** bit tuyệt đối viết tay từ DDI 0487.
+///
+/// Thay tautology cũ (`misc.bits() == OR hằng của chính crate`): phép OR giao hoán nên hoán vị
+/// hai setter vẫn xanh. Ở đây mỗi setter được kiểm **riêng** với literal ⇒ hoán vị
+/// `span↔E0E`, `ata↔dssbs`, `ntwi↔ntwe` đều **ĐỎ** (C2 của KT-175, D2-162).
+#[test]
+fn sctlr_setters_reference_bits() {
+    let expected: [(u64, u64, &str); 39] = [
+        (Sctlr::new().with_mmu(true).bits(), 1 << 0, "M"),
+        (Sctlr::new().with_alignment(true).bits(), 1 << 1, "A"),
+        (Sctlr::new().with_cache(true).bits(), 1 << 2, "C"),
+        (Sctlr::new().with_stack_alignment(true).bits(), 1 << 3, "SA"),
+        (
+            Sctlr::new().with_el0_stack_alignment(true).bits(),
+            1 << 4,
+            "SA0",
+        ),
+        (Sctlr::new().with_cp15ben(true).bits(), 1 << 5, "CP15BEN"),
+        (Sctlr::new().with_itd(true).bits(), 1 << 7, "ITD"),
+        (Sctlr::new().with_sed(true).bits(), 1 << 8, "SED"),
+        (Sctlr::new().with_uma(true).bits(), 1 << 9, "UMA"),
+        (Sctlr::new().with_eos(true).bits(), 1 << 11, "EOS"),
+        (Sctlr::new().with_icache(true).bits(), 1 << 12, "I"),
+        (Sctlr::new().with_endb(true).bits(), 1 << 13, "EnDB"),
+        (Sctlr::new().with_dze(true).bits(), 1 << 14, "DZE"),
+        (Sctlr::new().with_uct(true).bits(), 1 << 15, "UCT"),
+        (Sctlr::new().with_ntwi(true).bits(), 1 << 16, "nTWI"),
+        (Sctlr::new().with_ntwe(true).bits(), 1 << 18, "nTWE"),
+        (Sctlr::new().with_wxn(true).bits(), 1 << 19, "WXN"),
+        (Sctlr::new().with_tscxt(true).bits(), 1 << 20, "TSCXT"),
+        (Sctlr::new().with_iesb(true).bits(), 1 << 21, "IESB"),
+        (Sctlr::new().with_eis(true).bits(), 1 << 22, "EIS"),
+        (Sctlr::new().with_span(true).bits(), 1 << 23, "SPAN"),
+        (
+            Sctlr::new().with_el0_big_endian(true).bits(),
+            1 << 24,
+            "E0E",
+        ),
+        (Sctlr::new().with_el1_big_endian(true).bits(), 1 << 25, "EE"),
+        (Sctlr::new().with_uci(true).bits(), 1 << 26, "UCI"),
+        (Sctlr::new().with_enda(true).bits(), 1 << 27, "EnDA"),
+        (Sctlr::new().with_ntlsmd(true).bits(), 1 << 28, "nTLSMD"),
+        (Sctlr::new().with_lsmaoe(true).bits(), 1 << 29, "LSMAOE"),
+        (Sctlr::new().with_enib(true).bits(), 1 << 30, "EnIB"),
+        (Sctlr::new().with_enia(true).bits(), 1 << 31, "EnIA"),
+        (Sctlr::new().with_bt0(true).bits(), 1 << 35, "BT0"),
+        (Sctlr::new().with_bt1(true).bits(), 1 << 36, "BT1"),
+        (Sctlr::new().with_itfsb(true).bits(), 1 << 37, "ITFSB"),
+        (Sctlr::new().with_ata(true).bits(), 1 << 43, "ATA"),
+        (Sctlr::new().with_dssbs(true).bits(), 1 << 44, "DSSBS"),
+        (Sctlr::new().with_enasr(true).bits(), 1 << 54, "EnASR"),
+        (Sctlr::new().with_enas0(true).bits(), 1 << 55, "EnAS0"),
+        (Sctlr::new().with_enals(true).bits(), 1 << 56, "EnALS"),
+        (Sctlr::new().with_epan(true).bits(), 1 << 57, "EPAN"),
+        (Sctlr::new().with_entp2(true).bits(), 1 << 60, "EnTP2"),
+    ];
+    for (actual, want, name) in expected {
+        assert_eq!(actual, want, "setter {name} nối sai bit");
+    }
 }
 
 // ---------------------------------------------------------------- TTBR0/1_EL1
@@ -508,6 +587,21 @@ fn spsr_fields() {
     assert_eq!(SPSR_Z, 0x4000_0000);
     assert_eq!(SPSR_C, 0x2000_0000);
     assert_eq!(SPSR_V, 0x1000_0000);
+}
+
+/// Ba hằng **shift** công khai — **giá trị tham chiếu viết tay** từ DDI 0487.
+///
+/// `TTBR`: `BADDR` bắt đầu bit 1 (bit `[11:1]` RES0 với granule 4 KiB); `VBAR`: `VBA[63:11]`
+/// (11 bit thấp RES0, 2 KiB aligned); `SPSR`: `M[3:0]` ở bit 0. Đột biến từng hằng phải làm
+/// test **ĐỎ** (C1 của KT-175, D2-162).
+#[test]
+fn shift_constants_reference_values() {
+    assert_eq!(TTBR_BADDR_SHIFT, 1, "TTBR BADDR bắt đầu bit 1");
+    assert_eq!(1u64 << TTBR_BADDR_SHIFT, 0x2, "bit 1");
+    assert_eq!(VBAR_BASE_SHIFT, 11, "VBAR VBA[63:11]");
+    assert_eq!(1u64 << VBAR_BASE_SHIFT, 0x800, "2 KiB alignment");
+    assert_eq!(SPSR_M_SHIFT, 0, "SPSR M[3:0] ở bit 0");
+    assert_eq!(SPSR_M_MASK, 0xF, "M[3:0] = 4 bit");
 }
 
 /// `DAIF`: D[9] A[8] I[7] F[6] — giá trị tuyệt đối tính tay.
