@@ -1,0 +1,14 @@
+    Checking vifast-sim v0.1.0 (/private/tmp/night3-L49-kt218/v2/sim/vifast-sim)
+warning: unexpected `cfg` condition value: `ktest`
+   --> sim/vifast-sim/src/lib.rs:393:7
+    |
+393 | #[cfg(feature = "ktest")]
+    |       ^^^^^^^^^^^^^^^^^ help: remove the condition
+    |
+    = note: no expected values for `feature`
+    = help: consider adding `ktest` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `vifast-sim` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.01s

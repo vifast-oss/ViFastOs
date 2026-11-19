@@ -1,9 +1,10 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219
 
 **Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại) + **KT-209** (L40 KT-201
 §D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D — quét token toàn cục cho `include!`/`#[path]`) +
 **KT-213** (L47 KT-212 — gốc phân giải `#[path]` của tệp non-mod-rs) + **KT-215** (L47 KT-212 —
-bộ lọc `target/`, `MAILBOX_DEFS`, đóng F2). **Chưa** được reviewer độc lập xác nhận trên HEAD
+bộ lọc `target/`, `MAILBOX_DEFS`, đóng F2) + **KT-219** (L49 KT-218 — vùng test quá rộng trên
+nhánh `match`, đường lọt #13). **Chưa** được reviewer độc lập xác nhận trên HEAD
 cuối — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
 
 Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
@@ -71,6 +72,14 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 - **Ngữ cảnh test theo item/token-tree** (KT-196/F2 + KT-198/F2b): áp cho **cả** đồ thị module
   (`_mods_of`) **và** luật `wake` (`_test_char_ranges`). `#[cfg(test)]` chỉ áp cho **mục kế tiếp**,
   không lan sang mục cùng dòng; `mod`/`fn` trong khối test lồng vẫn là test.
+- **KT-219** — vùng test kết thúc ở **cuối mục thật**: thân `{…}` nếu mục có thân, ngược lại
+  `;` hoặc `,` **cùng mức**. Dấu `,` chỉ là mốc kết thúc khi đã thấy `=>` (nhánh `match`) — `,`
+  còn xuất hiện trong generic params (`fn f<T, U>`), `use a::b, c::d;`, field struct, biến thể
+  enum: các ngữ cảnh đó **không chứa được lời gọi `wake`**, cắt sớm chỉ làm vùng test **hẹp**
+  hơn (báo oan), không làm rộng (lọt). Trước bản này `#[cfg(test)]` trên nhánh `match`
+  `A => (),` bị quét tiếp sang nhánh kế và lấy thân `{…}` của nhánh **sản phẩm** làm thân mục
+  test ⇒ nuốt `m.wake(t)` — đường lọt #13, lọt **cả hai** lớp vì `check-wake-depinfo.py` dùng
+  lại chính `_test_char_ranges`. Số đo + repro đầy đủ: `JOURNAL/kt219-test-range.md`.
 - `macro_rules!` với **mọi** tên (kể cả Unicode) và **cả ba** dấu thân `{ … }`, `( … )`, `[ … ]`.
 - **KT-181**: thân `macro_rules!` ở **mọi** tệp `v2/lib`+`v2/kernel`+`v2/sim` được kiểm **cả
   hai** luật — token `wake` (`E_STRICT_MACRO_WAKE`, trừ `MACRO_WAKE_ALLOW` có lý do) **và**
@@ -142,6 +151,7 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 
 | Mã | Mô tả | Ảnh hưởng |
 |---|---|---|
+| ~~**Vùng test quá rộng trên nhánh `match`**~~ | **ĐÓNG (KT-219, L49 KT-218 — đường lọt #13)**: `_test_char_ranges` (KT-198/F2b) quét từ mục tới **`{` group kế tiếp**, chỉ dừng ở `;`; với mục **không có thân `{…}`** mà kết thúc bằng **`,`** (nhánh `match` `A => (),`, field struct, biến thể enum) vùng test chạy tiếp sang mục kế và lấy thân `{…}` của **mục sản phẩm** làm thân mục test. Repro: `#[cfg(test)] A => (),` + nhánh `B => { m.wake(t); }` trong `v2/sim/vifast-sim/src/evil.rs` ⇒ `cargo check` **thành công**, checker thường **XANH**, `--strict` **XANH**, `check-wake-depinfo` **XANH** (lớp hai dùng lại chính hàm này). Đối chứng âm: bỏ dòng `#[cfg(test)]` ⇒ cả hai lớp **ĐỎ** (`E_STRICT_TEST_ONLY_WAKE`/`E_DEPINFO_WAKE`). Nay vùng test kết thúc ở **cuối mục thật**: thân `{…}` nếu có, ngược lại `;` hoặc `,` cùng mức (`,` chỉ khi đã thấy `=>`). Ca selftest KT-219: nhánh match âm/dương + các dạng mục không thân khác + đối chứng dương. | **Đã vá**; cây thật xanh cả hai chế độ, `--selftest` xanh toàn bộ, lớp hai xanh. Số đo: `JOURNAL/kt219-test-range.md`. |
 | ~~**F2 (một phần)**~~ | **ĐÓNG (KT-215)**: luật `wake` trước đây chỉ chạy đầy đủ ở `--strict`; chế độ thường chỉ quét tệp bị kéo vào bằng `#[path]`/`include!` (`extra`). Đường lọt #12 (`src/target/evil.rs`) là module **bình thường** — không bao giờ vào `extra` — nên chế độ thường XANH trong khi `--strict` ĐỎ. Nay chế độ thường quét **mọi** tệp sản phẩm trong phạm vi (cùng tập đích với `--strict`); `--strict` chỉ còn thêm allowlist `transition_tcb` (`E_STRICT_TRANSITION`/`E_STRICT_STALE`). | **Đã đóng**; cây thật xanh cả hai chế độ. |
 | **Macro invocation** (KT-202 đóng **một dạng**; KT-211 đóng **lớp**) | `_walk_items` **bỏ mù** nhóm sau `!` (lời gọi macro) — trước KT-202 `include!`/`#[path]`/`mod` trong đối số lời gọi không bao giờ được phân giải. Reviewer L40: `macro_rules! pass { ($i:item) => { $i }; } pass!(include! {"…"});` ⇒ `cargo check` biên dịch được, checker **xanh** **cả hai** chế độ. KT-202 thêm `_scan_macro_calls` quét **toàn cây token** tìm lời gọi macro ⇒ `E_STRICT_MACRO_INCLUDE`/`E_STRICT_MACRO_MOD` (fail-closed) — **chỉ** phủ **đối số lời gọi macro**. **KT-211** (reviewer L44) đo được **lớp lỗi vẫn sống**: `include!` **trần** ở vị trí biểu thức trong `( … )`/`[ … ]` (`sink(include!{…})`, `[include!{…}]`, `(0u8, include!{…})`, `(include!{…})`, `(|| include!{…})`, `Some(include!{…})`) và `#[path]` trên `mod` trong khối lồng `( … )` — `cargo check` **biên dịch được**, checker **XANH** **cả hai** chế độ. Nay `_walk_all` quét **toàn bộ token** (mọi tầng nhóm, mọi loại nhóm) cho `include!` + `#[path]`; `mod` giữ đường cấu trúc (lý do §2). | **Đã đóng lớp** (KT-211); cây thật xanh. `_scan_macro_calls` **giữ** (bắt `mod` trong đối số lời gọi macro — quét toàn cục không xử lý `mod`; đã đo: xoá nó ⇒ ca `pass!(mod evil;)` XANH). |
 | **`:expr` không bị từ chối** (KT-202) | `$…:expr` chở được `include!` ở vị trí biểu thức, nhưng **không** chở được `mod`/`#[path]`; `include!` trong **đối số lời gọi** đã bị vá **đầu tiên** bắt ở **tệp gọi**. Cây thật có `macro_rules! bail` (`v2/kernel/vifast-plat-riscv64/src/user.rs`) dùng `$pages:expr, $e:expr` hợp lệ — từ chối `:expr` sẽ báo oan và làm `v2 check` ĐỎ (đo: các lỗi `E_STRICT_MACRO_TT` trên `bail`, `kt181-logs/kt202-expr-conflict.log`). | Chấp nhận: `:expr` chỉ còn hở khi macro được **gọi từ tệp ngoài `MACRO_SCAN_ROOTS`** (không phải mã sản phẩm). Ghi rõ, **không** tuyên bố đã đóng. |

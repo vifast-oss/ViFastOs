@@ -1,0 +1,81 @@
+    Checking vifast-pte v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-pte)
+    Checking vifast-abi v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-abi)
+    Checking vifast-alloc v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-alloc)
+    Checking vifast-ring v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-ring)
+    Checking vifast-elf v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-elf)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-kbin-riscv64)
+    Checking vifast-fs v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-fs)
+    Checking vifast-virtio v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-virtio)
+    Checking vifast-idl v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-idl)
+    Checking vifast-traceformat v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-traceformat)
+    Checking vifast-scenario v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-scenario)
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-core)
+    Checking vifast-plat-x86_64 v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-plat-x86_64)
+    Checking vifast-plat-aarch64 v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-plat-aarch64)
+    Checking vifast-vfs v0.1.0 (/private/tmp/night3-L49-kt218/v2/lib/vifast-vfs)
+warning: function `evil` is never used
+ --> vifast-core/src/evil.rs:4:8
+  |
+4 | pub fn evil(m: &mut Machine, t: ObjId) -> Result<(), KError> {
+  |        ^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 1 warning
+    Checking vifast-plat-common v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-plat-common)
+warning: vifast-kbin-riscv64@0.1.0: KT-89 build identity algo=kt134-v4 inputs=43df126a4a6702ec dirty=1 rev=e4f28098996c
+    Checking vifast-plat-riscv64 v0.1.0 (/private/tmp/night3-L49-kt218/v2/kernel/vifast-plat-riscv64)
+warning: unused dependency `vifast-idl`
+   --> vifast-kbin-riscv64/Cargo.toml:113:1
+    |
+113 | vifast-idl = { path = "../../lib/vifast-idl" }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `vifast-idl`
+warning: unused dependency `vifast-scenario`
+   --> vifast-kbin-riscv64/Cargo.toml:106:1
+    |
+106 | vifast-scenario = { path = "../../lib/vifast-scenario" }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: consider removing the dependency on `vifast-scenario`
+warning: unused dependency `vifast-traceformat`
+   --> vifast-kbin-riscv64/Cargo.toml:110:1
+    |
+110 | vifast-traceformat = { path = "../../lib/vifast-traceformat", default-features = false }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: consider removing the dependency on `vifast-traceformat`
+warning: unused dependency `vifast-vfs`
+   --> vifast-kbin-riscv64/Cargo.toml:116:1
+    |
+116 | vifast-vfs = { path = "../../lib/vifast-vfs" }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: consider removing the dependency on `vifast-vfs`
+warning: `vifast-kbin-riscv64` (manifest) generated 4 warnings
+warning: unused dependency `vifast-elf`
+  --> vifast-plat-riscv64/Cargo.toml:47:1
+   |
+47 | vifast-elf = { path = "../../lib/vifast-elf" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `vifast-elf`
+warning: unused dependency `vifast-ring`
+  --> vifast-plat-riscv64/Cargo.toml:58:1
+   |
+58 | vifast-ring = { path = "../../lib/vifast-ring" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `vifast-ring`
+warning: unused dependency `vifast-virtio`
+  --> vifast-plat-riscv64/Cargo.toml:55:1
+   |
+55 | vifast-virtio = { path = "../../lib/vifast-virtio" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `vifast-virtio`
+warning: `vifast-plat-riscv64` (manifest) generated 3 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.29s
