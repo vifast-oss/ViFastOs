@@ -4,7 +4,7 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `cbc2c2af` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-231]` (sổ).
+HEAD          : `f16c5aaa` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-233]` (merge).
                 Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0` (`./v2/bin/v2 status`).
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
@@ -16,12 +16,13 @@ K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210, `JOURNAL/kt210
                 F6 product `hits=0`, ảnh âm `hits=25`.
 CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, **52** bước OK;
                 `JOURNAL/kt231-logs/kt231-gate-pass.log`). `v2 check` **PASS**.
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=202 READY=0 BLOCKED=0 REVIEW=2**.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=206 READY=0 BLOCKED=0 REVIEW=2**.
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
 ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. **18** sub-agent (L37..L54), 4 chạy song song mỗi lượt.
                 Xong: KT-181, KT-182+203+206, KT-183+204+205, KT-201, KT-202, KT-207,
                 KT-209, KT-210, KT-211, KT-212+213+215, KT-214, KT-216, KT-217, KT-218+219,
-                KT-220, KT-221, KT-222, KT-223+225, KT-224+227+228, KT-226, KT-229+230+231.
+                KT-220, KT-221, KT-222, KT-223+225, KT-224+227+228, KT-226, KT-229+230+231,
+                KT-232, KT-233, KT-234, KT-235.
                 Báo cáo: `BAO-CAO-DEM-2026-11-20.md`; phiếu: `PHIEU-GUI-AGENT0-2026-11-20-VONG8.md`.
 LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. **Mười lăm** đường lọt đã bị phá.
                 Đêm nay tìm thêm **năm** và đóng cả năm: #11 `#[path]` non-mod-rs (KT-213),
@@ -32,6 +33,10 @@ LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. **Mười 
                 Cả hai `errors=0` trên cây thật. D2-169..D2-181 ghi lại.
                 **Bài học**: reviewer chọn mẫu từ danh sách đã biết thì **không thể** tìm đường
                 lọt mới — L54 tấn công **theo lớp** và tìm ra #14/#15 mà 13 đường cũ không có.
+                **Vòng cuối (L55/L56/L57) tìm thêm #16, #17, #18** — cả ba lọt **cả hai/cả ba**
+                lớp: #16 `Ready` qua tham số/hằng/closure (6 dạng); #17 `transition_tcb` làm
+                fn-pointer/UFCS (7 biến thể, **2 lỗi gốc độc lập**); #18 crate thành viên
+                workspace **ngoài ba gốc quét**. **Tổng: mười tám đường lọt, sáu đường mới đêm nay.**
 NỢ / BLOCKED  : **BLOCKED=0**. Nợ còn mở (không chặn): K4' chưa đạt (mới bước 1–2); K5' chưa mở;
                 N1 "600 boot x86_64" ở K5' (D2-149); C3 aarch64 (28/31 stub host chưa kiểm);
                 **DEBT-KT227-1** (`v2/lib` ngoài luật token lớp 1 — không nguy hiểm: không crate
