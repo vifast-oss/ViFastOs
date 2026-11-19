@@ -37,8 +37,10 @@ Hai luật được áp (cùng ngữ nghĩa với checker tĩnh, khác **nguồn
 
   - **R1 `wake`** (`E_DEPINFO_WAKE`): mọi tham chiếu `wake` không được miễn (định nghĩa `fn wake`,
     biến cục bộ, chú thích/chuỗi, ngữ cảnh test) trong **bất kỳ** tệp rustc nạp ⇒ ĐỎ. Miễn:
-    tệp **định nghĩa** một cửa trong `WAKE_PRODUCER` (`fn wake`/`wake_from`/`wake_from_unlink`)
-    và tệp **test-only** (đồ thị module của checker tĩnh).
+    **định nghĩa** `fn wake` (do `_check_wake_text` xử lý) và tệp **test-only** (đồ thị module
+    của checker tĩnh). **KT-226**: **không** miễn **cả tệp** định nghĩa cửa `wake` nữa — lớp 1
+    chỉ miễn định nghĩa, lớp 2 phải đồng nhất (bất đối xứng cũ: tệp producer chứa lời gọi
+    `wake(` XANH ở lớp 2 nhưng ĐỎ ở lớp 1).
   - **R2 chuyển `Ready`** (`E_DEPINFO_TRANSITION`): mọi `transition_tcb(…, TcbState::Ready)`
     trong tệp dưới `v2/kernel`/`v2/sim` phải nằm trong cửa `WAKE_DOORS` hoặc có tên trong
     `NON_WAKE_READY_SITES` (allowlist hiện có, khoá `(tệp, hàm, thứ tự)`).
@@ -242,6 +244,56 @@ class UnitResult:
         self.note = ""
 
 
+def _is_build_dir(root: Path, p: Path) -> bool:
+    """**KT-226** — dùng **chung** định nghĩa với lớp 1 (`CWP._is_build_dir`).
+
+    Trước KT-226 lớp 2 dùng `"target" in relp.parts` ⇒ bỏ qua **cả** `src/target/` — tái hiện
+    đường lọt #12 ở lớp 2 (lớp 1 đã vá ở KT-215). Nay chỉ bỏ qua khi `target` đứng **trước**
+    `src` trong đường dẫn tương đối gốc (thư mục build thật: `v2/kernel/target/`, `v2/target/`,
+    `<crate>/target/`), **không** bỏ qua `src/**/target/**`.
+
+    **Không chép lần hai**: gọi thẳng `CWP._is_build_dir` để hai lớp không lệch nhau — bài học
+    đường lọt #13 (hai lớp dùng chung `_test_char_ranges` nên cùng mù một chỗ).
+
+    Chuẩn hoá **cả hai** đường dẫn trước khi so: `resolve_dep` trả đường dẫn đã `resolve()`
+    (macOS: `/var` → `/private/var`) còn `root` có thể chưa — lệch gốc làm `relative_to` ném
+    `ValueError` ⇒ hàm trả `False` (quét thừa, fail-closed) và bộ lọc **mất tác dụng**.
+    """
+    try:
+        return CWP._is_build_dir(root.resolve(), p.resolve())
+    except OSError:  # pragma: no cover - phòng hờ
+        return False
+
+
+def _load_dep_files(
+    deps_dir: Path,
+    ws_root: Path,
+    root: Path,
+    res: UnitResult,
+    artifacts: Optional[Set[str]] = None,
+    use_all: bool = True,
+) -> None:
+    """Đọc mọi `.d` trong `deps_dir` ⇒ `res.loaded` (tệp `.rs` rustc nạp, đã lọc build dir).
+
+    Tách khỏi `run_unit` (KT-226) để `--no-build` và `--selftest` dùng **cùng** một đường lọc —
+    trước đây hai vòng lặp chép tay cùng một bộ lọc `"target" in relp.parts`.
+    """
+    for d in sorted(deps_dir.glob("*.d")):
+        if not RE_DEPINFO.search(d.name):
+            continue
+        targets, deps = parse_depinfo(d)
+        if not use_all and artifacts is not None and not (targets & artifacts):
+            continue
+        res.depinfo_used += 1
+        for tok in deps:
+            p = resolve_dep(tok, ws_root)
+            if p is None or p.suffix != ".rs" or not p.is_file():
+                continue
+            if _is_build_dir(root, p):
+                continue
+            res.loaded.add(p)
+
+
 def run_unit(
     root: Path,
     name: str,
@@ -336,41 +388,11 @@ def run_unit(
     if build_ok is False:
         res.note = "build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed)"
 
-    for d in sorted(deps_dir.glob("*.d")):
-        if not RE_DEPINFO.search(d.name):
-            continue
-        targets, deps = parse_depinfo(d)
-        if not use_all and not (targets & artifacts):
-            continue
-        res.depinfo_used += 1
-        for tok in deps:
-            p = resolve_dep(tok, ws_root)
-            if p is None or p.suffix != ".rs" or not p.is_file():
-                continue
-            try:
-                relp = p.relative_to(root)
-            except ValueError:
-                continue
-            if "target" in relp.parts:
-                continue
-            res.loaded.add(p)
+    _load_dep_files(deps_dir, ws_root, root, res, artifacts=artifacts, use_all=use_all)
     return res
 
 
 # ------------------------------------------------------------------ luật
-
-def is_producer_file(text: str) -> bool:
-    """Tệp **định nghĩa** một cửa phát `Wake` (`WAKE_PRODUCER`) ⇒ được phép chứa `wake`.
-
-    Vì sao cần: `core_sched.rs`/`kobj.rs` khai `pub fn wake(…)` — chính chỗ khai báo API. Luật
-    token đã miễn **định nghĩa** `fn wake`, nhưng tệp còn có thể chứa tham chiếu khác (doc, alias)
-    trong tương lai; allowlist theo **tệp** giữ nguyên tinh thần "chỉ cửa wake được phát Wake".
-    """
-    for name in CWP.WAKE_PRODUCER:
-        if re.search(r"\bfn\s+" + re.escape(name) + r"\s*\(", text):
-            return True
-    return False
-
 
 def hidden_files(root: Path, loaded: Iterable[Path]) -> List[str]:
     """Tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — chỉ tới được qua `#[path]`/`include!`."""
@@ -423,9 +445,10 @@ def scan(
         if test_only is not None and relp in test_only:
             counts["exempt_test"] += 1
             continue
-        if is_producer_file(text):
-            counts["exempt_producer"] += 1
-            continue
+        # **KT-226** — KHÔNG miễn **cả tệp** producer nữa: lớp 2 chỉ miễn **định nghĩa**
+        # `fn wake` (do `_check_wake_text` xử lý), đồng nhất với lớp 1. Trước KT-226 tệp định
+        # nghĩa `fn wake` được miễn cả tệp ⇒ lời gọi `wake(` trong tệp đó XANH ở lớp 2 nhưng
+        # ĐỎ ở lớp 1 (bất đối xứng allowlist — reviewer L51 KT-222 §4).
         counts["scanned"] += 1
         # R1 — luật token `wake` của checker tĩnh, **nguyên văn** (không chép).
         sub = CWP.Report()
@@ -606,13 +629,30 @@ def selftest() -> int:
         rep, counts = scan(root, loaded, test_only=set())
         ghi(
             "(5) cây sạch (chỉ tệp trong src/) ⇒ XANH",
-            rep.ok and counts["scanned"] == 2 and counts["exempt_producer"] == 1,
+            rep.ok and counts["scanned"] == 3 and counts["exempt_producer"] == 0,
             f"errors={rep.errors} counts={counts}",
         )
         ghi(
-            "(6) tệp định nghĩa `fn wake` được miễn (WAKE_PRODUCER)",
-            counts["exempt_producer"] == 1,
-            f"exempt_producer={counts['exempt_producer']}",
+            "(6) tệp định nghĩa `fn wake` được **quét** nhưng định nghĩa được miễn ⇒ XANH",
+            rep.ok and counts["exempt_producer"] == 0,
+            f"errors={rep.errors} counts={counts}",
+        )
+        # **KT-226** — bất đối xứng allowlist producer: lớp 2 KHÔNG miễn cả tệp nữa. Tệp định
+        # nghĩa `fn wake` mà **gọi** `wake(` phải ĐỎ (trước KT-226: XANH ở lớp 2, ĐỎ ở lớp 1).
+        prod_call = src / "prod_call.rs"
+        prod_call.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn wake(_t: u32) {}\n"
+            "pub fn call_it() {\n"
+            "    wake(1);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {prod_call}, test_only=set())
+        ghi(
+            "(6b) tệp producer **gọi** `wake(` ⇒ ĐỎ (đồng nhất lớp 1; trước KT-226: XANH)",
+            (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
         )
 
         # --- (7) ĐÍCH `include!` NGOÀI `<crate>/src` chứa `wake` ⇒ ĐỎ -----------------------
@@ -763,6 +803,47 @@ def selftest() -> int:
             blob[:120],
         )
 
+        # --- (21) KT-226: `_is_build_dir` — chỉ bỏ `target` **trước** `src` ------------------
+        src_target = root / "v2/kernel/vifast-core/src/target/evil.rs"
+        build_target = root / "v2/kernel/target/evil.rs"
+        src_target.parent.mkdir(parents=True, exist_ok=True)
+        build_target.parent.mkdir(parents=True, exist_ok=True)
+        src_target.write_text(_GIA_EVIL, encoding="utf-8")
+        build_target.write_text(_GIA_EVIL, encoding="utf-8")
+        ghi(
+            "(21) `_is_build_dir`: `src/target/` KHÔNG bỏ qua, `v2/kernel/target/` bỏ qua",
+            _is_build_dir(root, src_target) is False
+            and _is_build_dir(root, build_target) is True
+            and _is_build_dir(root, src / "clean.rs") is False,
+            f"src/target={_is_build_dir(root, src_target)} "
+            f"kernel/target={_is_build_dir(root, build_target)}",
+        )
+
+        # --- (22) KT-226: `.d` nạp `src/target/evil.rs` ⇒ vào `loaded` ⇒ ĐỎ -----------------
+        dd_a = base / "deps-kt226-src-target"
+        _ghi_d(dd_a / "liba.d", root, [src_target])
+        res_a = UnitResult("kernel", ["(selftest)"])
+        _load_dep_files(dd_a, root, root, res_a)
+        rep_a, _ = scan(root, res_a.loaded, test_only=set())
+        ghi(
+            "(22) `.d` nạp `src/target/evil.rs` (wake) ⇒ ĐỎ `E_DEPINFO_WAKE` (trước KT-226: XANH)",
+            src_target.resolve() in res_a.loaded
+            and any("E_DEPINFO_WAKE" in e for e in rep_a.errors),
+            f"loaded={sorted(CWP.rel(root, p) for p in res_a.loaded)} errors={rep_a.errors}",
+        )
+
+        # --- (23) KT-226: `.d` nạp `v2/kernel/target/evil.rs` ⇒ bị lọc ⇒ XANH ---------------
+        dd_b = base / "deps-kt226-build-target"
+        _ghi_d(dd_b / "libb.d", root, [build_target])
+        res_b = UnitResult("kernel", ["(selftest)"])
+        _load_dep_files(dd_b, root, root, res_b)
+        rep_b, _ = scan(root, res_b.loaded, test_only=set())
+        ghi(
+            "(23) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH",
+            build_target.resolve() not in res_b.loaded and not rep_b.errors,
+            f"loaded={sorted(CWP.rel(root, p) for p in res_b.loaded)} errors={rep_b.errors}",
+        )
+
     ok = sum(1 for _, o, _ in cases if o)
     print(f"# selftest: {ok}/{len(cases)} ok")
     return 0 if ok == len(cases) else 1
@@ -823,20 +904,7 @@ def main(argv: Sequence[str]) -> int:
             deps_dir = deps_dir / "debug/deps"
             ws_root = (root / manifest).parent
             if deps_dir.is_dir():
-                for d in sorted(deps_dir.glob("*.d")):
-                    targets, deps = parse_depinfo(d)
-                    res.depinfo_used += 1
-                    for tok in deps:
-                        p = resolve_dep(tok, ws_root)
-                        if p is None or p.suffix != ".rs" or not p.is_file():
-                            continue
-                        try:
-                            relp = p.relative_to(root)
-                        except ValueError:
-                            continue
-                        if "target" in relp.parts:
-                            continue
-                        res.loaded.add(p)
+                _load_dep_files(deps_dir, ws_root, root, res)
             else:
                 res.note = f"không có {deps_dir}"
             results.append(res)
@@ -939,7 +1007,7 @@ def main(argv: Sequence[str]) -> int:
     print(f"# rustc nạp: {counts['loaded']} tệp .rs trong cây (gộp {len(results)} đơn vị)")
     print(
         f"# quét: {counts['scanned']} tệp "
-        f"(miễn {counts['exempt_producer']} tệp cửa wake + {counts['exempt_test']} tệp test-only)"
+        f"(miễn {counts['exempt_test']} tệp test-only; KT-226: không miễn cả tệp cửa wake)"
     )
     print(f"# test-only: {graph_mode}")
     print(
