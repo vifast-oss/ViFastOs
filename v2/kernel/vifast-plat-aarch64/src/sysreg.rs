@@ -20,9 +20,17 @@
 //! `SCTLR_EL1` **không** có trường `UXN`/`PXN`: hai bit đó là bit **descriptor** (bit 54/53 của
 //! entry bảng trang, đã cài ở [`crate::format`] là [`DESC_UXN`](crate::format::DESC_UXN) /
 //! [`DESC_PXN`](crate::format::DESC_PXN)). Tệp này vì vậy **không** bịa trường không tồn tại;
-//! nó cài đúng các trường có thật của `SCTLR_EL1` (kể cả `WXN`, `SPAN`, `E0E`, `EE`, `UCI`,
-//! `DZE`, `UCT`, `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`,
-//! `EnIA`, `BT0`, `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
+//! nó cài **39 trường** của `SCTLR_EL1` (kể cả `WXN`, `SPAN`, `E0E`, `EE`, `UCI`, `DZE`, `UCT`,
+//! `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`, `EnIA`, `BT0`,
+//! `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
+//!
+//! **Không** tuyên bố "đủ trường": DDI 0601 (2024-12) có **54** trường `SCTLR_EL1`, tệp này mới
+//! cài **39**. Còn thiếu **≥8 trường có thật**: `nAA` (bit 6), `EnRCTX` (10), `CMOW` (32),
+//! `TCF0` (39:38), `TCF` (41:40), `ATA0` (42), `TWEDEn` (45), `TWEDEL` (49:46); ngoài ra Linux
+//! master liệt kê thêm các trường ARMv9.x (`EnFPM` 34, `MSCEn` 33, `TCSO0` 58, `TCSO` 59,
+//! `NMI` 61, `SPINTMASK` 62, `TIDCP` 63) có thể chưa có trong bản 2024-12. 39 trường đã cài
+//! **đúng vị trí** (test `sctlr_bit_positions`), nhưng **không** test nào khẳng định tính đầy
+//! đủ — đây là **nợ có tên** cho bước sau, không phải "đủ".
 //!
 //! # Vì sao builder trả `u64` chứ không phải kiểu riêng cho từng thanh ghi
 //!

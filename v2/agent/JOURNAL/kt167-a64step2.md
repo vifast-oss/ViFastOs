@@ -171,10 +171,14 @@ hai để hằng encoding và instruction lệch nhau (asm dùng `.inst <hằng>
    nhưng theo Arm Architecture Registers (DDI 0601, bản 2024-12) `SCTLR_EL1` không có hai
    trường này — `UXN`/`PXN` là bit **descriptor** (bit 54/53 của entry bảng trang), đã cài ở
    `format.rs` (`DESC_UXN`/`DESC_PXN`) từ KT-160. Tôi **không bịa** trường không tồn tại; thay
-   vào đó cài đủ 39 trường có thật của `SCTLR_EL1` (kể cả `WXN`, `SPAN`, `E0E`, `EE`, `UCI`,
-   `DZE`, `UCT`, `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`,
-   `EnIA`, `BT0`, `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
+   vào đó cài **39 trường** của `SCTLR_EL1` (kể cả `WXN`, `SPAN`, `E0E`, `EE`, `UCI`, `DZE`,
+   `UCT`, `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`, `EnIA`,
+   `BT0`, `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
+   **Không** phải "đủ": DDI 0601 (2024-12) có **54** trường, còn thiếu **≥8 trường có thật** —
+   `nAA` (bit 6), `EnRCTX` (10), `CMOW` (32), `TCF0` (39:38), `TCF` (41:40), `ATA0` (42),
+   `TWEDEn` (45), `TWEDEL` (49:46) — cùng các trường ARMv9.x có thể chưa có trong bản 2024-12.
    Ghi chú này nằm ngay đầu `src/sysreg.rs` và trong test `sctlr_bit_positions`.
+   **KT-185 (C4, D2-162)** đã sửa claim "đủ 39 trường" ở cả `src/sysreg.rs` và mục này.
 2. **Máy host là Apple Silicon (`aarch64-apple-darwin`)** ⇒ `#[cfg(target_arch = "aarch64")]`
    một mình sẽ biên dịch asm **đặc quyền** (`TLBI`, `msr`) vào test host và chạy ở EL0 ⇒ fault.
    Điều kiện đúng là **aarch64 bare-metal**: `#[cfg(all(target_arch = "aarch64", target_os =
