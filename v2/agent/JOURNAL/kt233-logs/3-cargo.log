@@ -1,0 +1,4 @@
+   Compiling vifast-sim v0.1.0 (/private/tmp/night3-L56-kt233/v2/sim/vifast-sim)
+sim/vifast-sim/src/gen_evil.rs:3:8: warning: function `evil` is never used
+warning: `vifast-sim` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.40s
