@@ -1433,8 +1433,10 @@ def resolve_include_targets(
         def on_attr(attr: Attr, cur_dir: Path) -> None:
             try:
                 edges, probs = attr_path_edges(attr, relp)
-            except LexError:
-                # Lỗi cấu trúc đã được `scan_structure` báo.
+            except LexError as e:
+                # **KT-195/F3** (reviewer L34): KHÔNG nuốt lỗi cấu trúc — `E_LEX_DEPTH` phải
+                # nổi lên thành lỗi cổng (D2-166 §3C: quá độ sâu ⇒ lỗi rõ + exit khác 0).
+                errors.append(f"  {e.relp}:{e.line}:{e.col}: {e.code} {e.msg} (fail-closed, KT-195 F3)")
                 return
             for val, certain, tok in edges:
                 kind = "#[path]" if certain else "#[cfg_attr(path)]"
