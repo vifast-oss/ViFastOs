@@ -1,0 +1,28 @@
+== KT-203: so sánh checker TRƯỚC (a8abe344~1) vs SAU (a8abe344) trên cây thật ==
+
+-- TRƯỚC --
+# tệp có phạm vi test: 130
+# hàm `#[test]`: 1019
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): 80 tên có răng, 0 test dùng đường này
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+
+-- SAU --
+# tệp có phạm vi test: 130
+# hàm `#[test]`: 1019
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): 80 tên có răng, 0 test dùng đường này
+# bản đồ trợ giúp cùng tệp (chỉ hàm trong phạm vi test): 23 test dùng đường này
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+
+-- diff errors --
+new ok True errors 0
+old ok True errors 0
+new-old: []
+old-new: []

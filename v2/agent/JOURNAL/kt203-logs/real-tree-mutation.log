@@ -1,0 +1,9 @@
+== KT-203: đột biến trên cây thật — thêm test chỉ gọi Machine::add_cnode (hàm sản phẩm cùng tệp, có assert!) ==
+Kỳ vọng: TRƯỚC xanh oan; SAU đỏ E_NO_ASSERT.
+
+TRƯỚC (a8abe344~1): exit=0 ok=True errors=0
+
+SAU (a8abe344): exit=1 ok=False errors=1
+    E_NO_ASSERT v2/lib/vifast-model/src/machine.rs:1040: `#[test] fn kt203_dot_bien_chi_goi_san_pham_cung_tep` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả
+
+Đã gỡ đột biến; git status: ?? v2/agent/JOURNAL/kt203-logs/
