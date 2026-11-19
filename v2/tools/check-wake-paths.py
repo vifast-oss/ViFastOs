@@ -2036,6 +2036,102 @@ class Report:
 
 # ------------------------------------------------------------------ v2
 
+def _item_end(toks: Sequence[Tok], start: int) -> Optional[int]:
+    """Chỉ số token **cuối** của mục bắt đầu tại `start` (`;` hoặc `}` khớp, mức 0)."""
+    n = len(toks)
+    depth = 0
+    i = start
+    while i < n:
+        t = toks[i]
+        if t.val in "([{":
+            depth += 1
+        elif t.val in ")]}":
+            depth -= 1
+            if depth == 0 and t.val == "}":
+                return i
+        elif t.val == ";" and depth == 0:
+            return i
+        i += 1
+    return None
+
+
+def _test_char_ranges(code: str, relp: str) -> List[Tuple[int, int]]:
+    """**KT-198/F2b** (reviewer L35) — khoảng **ký tự** của các mục test, theo **token-tree**.
+
+    Bản cũ `test_line_ranges` quyết định theo **dòng**: `#[cfg(test)] fn h() { … } pub fn evil(…)`
+    cùng dòng ⇒ cả `evil` bị coi là test ⇒ luật `wake` bỏ qua ⇒ **lọt** (cargo RC=0). Nay mỗi
+    `#[cfg(test)]` chỉ đánh dấu **đúng mục nó gắn vào** (từ mục tới `}` khớp).
+    """
+    toks, errs = tokenize(code, relp)
+    if errs:
+        return []
+    try:
+        tree = build_tree(toks, relp)
+    except LexError:
+        return []
+    out: List[Tuple[int, int]] = []
+
+    def walk(nodes: Sequence[object], in_test: bool, depth: int) -> None:
+        if depth > MAX_TREE_DEPTH:
+            return
+        pending: List[Attr] = []
+        i = 0
+        n = len(nodes)
+        while i < n:
+            node = nodes[i]
+            if isinstance(node, Group):
+                prev = nodes[i - 1] if i > 0 else None
+                if _is_punct(prev, "!"):
+                    i += 1
+                    pending = []
+                    continue
+                if node.open.val == "{":
+                    walk(node.children, in_test, depth + 1)
+                i += 1
+                pending = []
+                continue
+            if node.kind == "punct" and node.val == "#":
+                j = i + 1
+                if j < n and _is_punct(nodes[j], "!"):
+                    j += 1
+                if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "[":
+                    try:
+                        attr = parse_attr(nodes[j], relp)
+                    except LexError:
+                        i = j + 1
+                        pending = []
+                        continue
+                    pending.append(attr)
+                    i = j + 1
+                    continue
+                pending = []
+                i += 1
+                continue
+            if node.kind == "ident":
+                k = i + 1
+                while k < n and not (
+                    isinstance(nodes[k], Group) and nodes[k].open.val == "{"
+                ):
+                    if _is_punct(nodes[k], ";"):
+                        break
+                    k += 1
+                if k < n and isinstance(nodes[k], Group) and nodes[k].open.val == "{":
+                    is_test = in_test or any(
+                        a.name == "cfg" and cfg_is_test_tokens(a.args) for a in pending
+                    )
+                    if is_test:
+                        out.append((node.start, nodes[k].close.end))
+                    walk(nodes[k].children, is_test, depth + 1)
+                    i = k + 1
+                    pending = []
+                    continue
+            pending = []
+            i += 1
+
+    walk(tree, False, 0)
+    return out
+
+
 def _check_wake_text(
     relp: str,
     text: str,
@@ -2052,6 +2148,8 @@ def _check_wake_text(
            được luật `--strict` bắt nên chế độ thường xanh).
     """
     code = strip_rust_noise(text)
+    # **KT-198/F2b**: ngữ cảnh test theo **token-tree** (khoảng ký tự), không theo dòng.
+    test_ranges = _test_char_ranges(code, relp)
     # Đầu dòng (offset) để đổi offset token ⇒ số dòng, không phải quét lại từng dòng.
     line_starts = [0]
     for idx, ch in enumerate(code):
@@ -2063,7 +2161,7 @@ def _check_wake_text(
     for m in RE_WAKE_TOKEN.finditer(code):
         s = m.start()
         lineno = bisect.bisect_right(line_starts, s)
-        if in_ranges(lineno, tr):
+        if in_ranges(s, test_ranges):
             continue
         before = code[max(0, s - 80) : s]
         if RE_FN_WAKE_DEF_BEFORE.search(before):
@@ -4529,6 +4627,38 @@ def selftest() -> int:
             "nhiều thuộc tính trước mod test",
             "#[cfg(test)]\n#[allow(dead_code)]\nmod evil_t;\n",
             True,
+        )
+
+        # --- (e) **KT-198/F2b** (reviewer L35): luật `wake` dùng ngữ cảnh test theo
+        # **token-tree**, không theo dòng. `#[cfg(test)]` chỉ miễn **đúng mục nó gắn vào**.
+        def _wake_case(name: str, src: str, expect_red: bool) -> None:
+            d = tmp / ("kt198-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", src)
+            rep = scan_v2(d, strict=True, allowlist={})
+            got = any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors)
+            cases.append(
+                (
+                    f"KT-198/F2b {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _wake_case(
+            "hàm sản phẩm cùng dòng sau `}` test",
+            "#[cfg(test)]\nfn h() { let _ = 1; } pub fn evil() { let _ = m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "wake trong mod test thật",
+            "#[cfg(test)]\nmod tests {\n    fn f() { let _ = m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "wake trong fn test thật",
+            "#[cfg(test)]\nfn f() { let _ = m.wake(t); }\n",
+            False,
         )
 
         d = tmp / "kt194c-ok"
