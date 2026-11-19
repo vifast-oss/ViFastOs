@@ -9,14 +9,14 @@
 ## 1. Trạng thái một khối
 
 ```text
-HEAD          af1ba3c9   (main, đã push, chưa push: 0)
+HEAD          a08bf042   (main, đã push, chưa push: 0)
 build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 ảnh sản phẩm  639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
               213 632 B, build=b08c5c57cdbdb156
 K6            6/6 ĐẠT trên ảnh 639ca6d1 (KT-210)
-task          DONE=189  READY=1  BLOCKED=0  REVIEW=3
+task          DONE=199  READY=0  BLOCKED=0  REVIEW=2
 luật wake     CHƯA ĐÓNG — KT-194 và KT-184 giữ REVIEW
-checker       lớp 1: 259 ca; lớp 2: 31 ca; cả hai errors=0 trên cây thật
+checker       lớp 1: 295 ca; lớp 2: 37 ca; cả hai errors=0 trên cây thật
 ```
 
 ---
@@ -49,8 +49,17 @@ nuốt nhánh sản phẩm — nó lọt **cả hai lớp** kiểm vì hai lớp
 **Nhưng hai lớp KHÔNG đủ.** Reviewer L53 tìm được **năm** đường lọt **lọt cả hai lớp** cùng lúc
 (B3b `#[cfg(feature="ktest")] mod`; B12–B15 trong `v2/lib`: `.txt`, symlink, `src/target/`, dấu
 cách) — reviewer trước đó (L51) chấm "ĐÓNG ĐƯỢC" vì chỉ chọn mẫu từ danh sách đã biết. KT-227
-đã vá: **5 → 0** đường lọt cả hai lớp, **0** báo oan. Nhưng bài học còn: **reviewer chọn mẫu từ
-danh sách đã biết thì không thể tìm đường lọt mới.**
+đã vá: **5 → 0**.
+
+**Rồi reviewer L54 tấn công THEO LỚP (không theo danh sách) và tìm thêm HAI đường lọt SỐNG:**
+
+| # | Đường lọt | Gốc | Vá |
+|---|---|---|---|
+| **#14** | `macro_rules!` **lồng trong thân** `macro_rules!` khác che tên macro "an toàn" ⇒ `matches!(m, wake, t)` mở rộng thành `m.wake(t)` | `_shadowed_safe_macros` chỉ thấy `macro_rules!` **literal** | **KT-230** |
+| **#15** | `use TcbState as S;` + `m.transition_tcb(t, S::Ready)` | `RE_READY_TRANSITION` khớp **văn bản** `TcbState::Ready` | **KT-231** |
+
+Cả hai lọt **cả hai lớp**. Đây là **xác nhận mạnh nhất** cho bài học: tấn công **theo lớp** tìm
+ra đường lọt mà **13 đường cũ không có**.
 
 Lớp 2 đã nối vào `v2 check` (D2-173). Chi phí **+8 s** ấm.
 
@@ -75,6 +84,9 @@ chưa đầy một giờ. D2-178 đã rút tuyên bố đó. Đề nghị: **m�
 | **D2-176** | KT-211 ĐẠT CÓ ĐIỀU KIỆN; 4 báo oan; mở KT-225 |
 | **D2-177** | Reviewer cuối chấm ĐÓNG ĐƯỢC (phạm vi 7 đường lọt) |
 | **D2-178** | **ĐÍNH CHÍNH D2-177**: luật `wake` **CHƯA đóng**; 5 đường lọt cả hai lớp |
+| **D2-179** | Đường lọt **#14** (macro lồng che tên an toàn); mở KT-230 |
+| **D2-180** | KT-230 ĐẠT; đường lọt **#15** (alias kiểu che `TcbState::Ready`); mở KT-231 |
+| **D2-181** | KT-231 ĐẠT (đóng #15) |
 
 ---
 
@@ -99,6 +111,10 @@ chưa đầy một giờ. D2-178 đã rút tuyên bố đó. Đề nghị: **m�
 | `v2/lib` ngoài luật token của lớp 1 | P2 | **DEBT-KT227-1**: không nguy hiểm (không crate `v2/lib` nào phụ thuộc core/sim ở `[dependencies]`; `vifast-model::Machine` không có `wake`) |
 | B4b `#[cfg(any())] mod` tệp riêng | P2 | lớp 2 không thấy (nhánh tắt); lớp 1 bắt |
 | B17 OUT_DIR/build.rs | P2 | lớp 2 không thấy nhưng **không im lặng** (`W_DEPINFO_SKIPPED`); lớp 1 bắt |
+| Truyền `Ready` qua tham số liên hàm | P2 | phân tích cục bộ không thấy |
+| `transition_tcb` dùng làm **giá trị** (fn-pointer) | P2 | `_transition_calls` chỉ thấy **lời gọi** — reviewer sau thử **trước** |
+| Proc-macro che tên an toàn | P3 | cây **không** có crate `proc-macro = true` (đo = 0) |
+| `build.rs` sinh `$OUT_DIR` + `include!` ẩn trong macro | P2 | **chưa đo** |
 | `:expr` passthrough chưa từ chối | P2 | cây thật có `bail` dùng `:expr`; từ chối sẽ báo oan |
 | Tệp `.rs` không thuộc crate ngoài mẫu `wake` | P2 | đo **0** token `wake`; không có `Machine` |
 | `virtio_` tiền tố tên tệp (luật arch) | P3 | rủi ro thấp |
