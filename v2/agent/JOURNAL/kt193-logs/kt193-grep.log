@@ -1,0 +1,34 @@
+# KT-193 — grep so cu (2026-11-19)
+# HEAD: 8581c218a091d1ba0b79914e21a69a1ff59404b7
+
+## 1. grep '54 trường|đủ 39|33 stub' trong 3 tệp
+v2/agent/JOURNAL/kt167-a64step2.md:187:   **KT-185 (C4, D2-162)** đã sửa claim "đủ 39 trường" ở cả `src/sysreg.rs` và mục này.
+v2/agent/JOURNAL/kt185-c1c5.md:15:| **C4** claim "đủ 39 trường" | **XONG** — sửa doc-comment + journal, liệt kê đúng tên 8 trường thiếu | §3 |
+v2/agent/JOURNAL/kt185-c1c5.md:94:- `src/sysreg.rs:17-33` (doc-comment đầu tệp): bỏ "cài **đủ 39 trường** có thật", thay bằng
+v2/agent/JOURNAL/kt185-c1c5.md:103:  sửa claim "đủ 39 trường".
+
+## 2. grep mở rộng '54 trường|33 stub|8 trường|30/'
+v2/agent/JOURNAL/kt185-c1c5.md:15:| **C4** claim "đủ 39 trường" | **XONG** — sửa doc-comment + journal, liệt kê đúng tên 8 trường thiếu | §3 |
+v2/agent/JOURNAL/kt185-c1c5.md:124:30/31 stub host chưa được kiểm (L17 §4.2). **Không** làm trong KT-185 theo D2-162 ("C3 để bước 3").
+
+## 3. '58' trong 3 tệp (markdown bold nên không khớp '58 trường')
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:27://! **Không** tuyên bố "đủ trường": DDI 0601 (2024-12) có **58** trường `SCTLR_EL1`, tệp này mới
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:30://! `TMT` (51), `TME0` (52), `TME` (53), `MSCEn` (33), `EnFPM` (34), `TCSO0` (58), `TCSO` (59),
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:33://! tên** cho bước sau, không phải "đủ". (Số 58 và danh sách 19 trường do reviewer L26/KT-188
+v2/agent/JOURNAL/kt167-a64step2.md:181:   **Không** phải "đủ": DDI 0601 (2024-12) có **58** trường, còn thiếu **19 trường có thật** —
+v2/agent/JOURNAL/kt167-a64step2.md:184:   `MSCEn` (33), `EnFPM` (34), `TCSO0` (58), `TCSO` (59), `NMI` (61), `SPINTMASK` (62),
+v2/agent/JOURNAL/kt185-c1c5.md:95:  "cài **39 trường**" + đoạn **"Không tuyên bố 'đủ trường'"**: DDI 0601 (2024-12) có **58**
+v2/agent/JOURNAL/kt185-c1c5.md:99:  `MSCEn` (33), `EnFPM` (34), `TCSO0` (58), `TCSO` (59), `NMI` (61), `SPINTMASK` (62),
+
+## 4. '31' trong 3 tệp
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:584:pub const SCTLR_ENIA: u64 = 1 << 31;
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:811:    /// `0x31` — breakpoint từ EL1.
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:812:    BreakpointSameEl = 0x31,
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:833:            0x31 => Some(Self::BreakpointSameEl),
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:1015:/// Bit `N` (bit 31).
+v2/kernel/vifast-plat-aarch64/src/sysreg.rs:1016:pub const SPSR_N: u64 = 1 << 31;
+v2/agent/JOURNAL/kt167-a64step2.md:161:       0: d508831f     	tlbi	vmalle1is
+v2/agent/JOURNAL/kt185-c1c5.md:32:  `ORGN1[27:26]` `0x0C00_0000`, `SH1[29:28]` `0x3000_0000`, `TG1[31:30]` `0xC000_0000`,
+v2/agent/JOURNAL/kt185-c1c5.md:74:  (bit 23,24,25,26,14,15,16,18,21,22,13,27,28,29,30,31,35,36,37,43,44,54,55,56,57,60,
+v2/agent/JOURNAL/kt185-c1c5.md:124:30/31 stub host chưa được kiểm (L17 §4.2). **Không** làm trong KT-185 theo D2-162 ("C3 để bước 3").
+v2/agent/JOURNAL/kt185-c1c5.md:125:Nợ: **KT-185-C3** — test cả **31** stub `src/asm.rs:329-460` (hiện `host_stub_is_fail_loud` chỉ
