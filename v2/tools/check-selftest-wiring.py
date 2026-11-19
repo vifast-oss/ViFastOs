@@ -90,6 +90,17 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # Thêm một mục vào đây là **miễn trừ** một script khỏi phép kiểm, nên phải kèm lý do thật.
     # (Trước đây có một mục cho chính công cụ này; nay nó đã được nối vào `v2 check` nên bỏ —
     # để lại sẽ sinh `W_EXEMPT_UNUSED`, đúng như công cụ tự báo.)
+    #
+    # **KT-214** — `v2/tools/check-wake-depinfo.py` là **nguyên mẫu** (lớp kiểm `wake` theo
+    # danh sách tệp thật của rustc). Nó **không** nằm trong cổng nào vì mỗi lượt chạy cần
+    # `cargo check --workspace` cho **hai** workspace (host + kernel riscv64) rồi quét 145 tệp
+    # — đo được 6,3 s khi cache ấm, 10,9 s khi kernel lạnh, 14,7 s khi lạnh hoàn toàn. Việc
+    # nối nó vào `v2 check` (sau clippy) hay `gate --fast` (sau L0) là **quyết định của A0**,
+    # chưa được duyệt trong task nguyên mẫu này. Khi nối vào cổng thì **xoá mục này**.
+    (
+        "v2/tools/check-wake-depinfo.py",
+        "nguyên mẫu KT-214 (cần cargo check 2 workspace, 6,3–14,7 s); A0 chưa quyết nối vào cổng",
+    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính
