@@ -1,0 +1,87 @@
+# KT-188 — L26 độc lập dựng lại đột biến KT-185 (KHÔNG dùng script tác giả)
+# ngày: 2026-11-19T01:20:57Z (UTC)
+# lệnh: python3 /tmp/l26_mut.py (harness riêng của L26)
+
+BASELINE rc=0 | test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+C1-01 T0SZ_MASK 0x3F->0x1F                                             | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-02 T1SZ_MASK 0x3F->0x1F                                             | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_reference_values
+C1-03 IRGN0_MASK 0b11->0b01                                            | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-04 ORGN0_MASK 0b11->0b01                                            | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-05 SH0_MASK 0b11->0b10                                              | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_reference_values
+C1-06 TG0_MASK 0b11->0b01                                              | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-07 IRGN1_MASK 0b11->0b01                                            | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_reference_values
+C1-08 ORGN1_MASK 0b11->0b01                                            | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-09 SH1_MASK 0b11->0b10                                              | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-10 TG1_MASK 0b11->0b01                                              | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-11 IPS_MASK 0b111->0b011                                            | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+C1-12 TTBR_BADDR_SHIFT 1->2                                            | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | shift_constants_reference_values
+C1-13 VBAR_BASE_SHIFT 11->12                                           | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | shift_constants_reference_values
+C1-14 SPSR_M_SHIFT 0->1                                                | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | shift_constants_reference_values
+S1 shift-of-mask IRGN0_SHIFT 8->9 (mask follows)                       | RED   | rc=101 | test result: FAILED. 15 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_field_positions tcr_kernel_value tcr_masks_extract_reference_fields tcr_masks_reference_values
+S2 shift+hardcode compensate: IRGN0_SHIFT 8->9, MASK=0b11<<8           | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_field_positions tcr_kernel_value
+S3 swap IRGN0_MASK<->ORGN0_MASK defs                                   | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+S4 swap T0SZ_MASK<->T1SZ_MASK defs                                     | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+S5 IPS_SHIFT 32->33 + MASK hardcode 0b111<<32                          | RED   | rc=101 | test result: FAILED. 16 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_field_positions tcr_ips_encodings tcr_kernel_value
+S6 const+test both edited (IRGN0 0x300->0x600)                         | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields
+S7 IPS_MASK width 0b111->0b11                                          | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_extract_reference_fields tcr_masks_reference_values
+S8 T0SZ_MASK 0x3F->0x7F (widen)                                        | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_masks_reference_values
+S9 TG0_MASK shift 14->15 (mask follows)                                | RED   | rc=101 | test result: FAILED. 14 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | tcr_field_positions tcr_kernel_value tcr_masks_extract_reference_fields tcr_masks_reference_values tcr_tg_encodings
+S10 SPSR_M_SHIFT 0->1 + SPSR_M_MASK 0xF->0x1E (compensate)             | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | shift_constants_reference_values spsr_fields
+S11 VBAR_BASE_SHIFT 11->12 + VBAR_BASE_MASK !0x7FF->!0xFFF (compensate) | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s | shift_constants_reference_values vbar_fields
+S12 TTBR_BADDR_SHIFT 1->2 + TTBR_BADDR_MASK !0xFFF->!0x1FFF (compensate) | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | shift_constants_reference_values ttbr_fields
+C2-01 span<->E0E                                                       | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_setters_reference_bits
+C2-02 ata<->dssbs                                                      | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_setters_reference_bits
+C2-03 ntwi<->ntwe                                                      | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_setters_reference_bits
+C2-04 mmu<->alignment (with_m<->with_a)                                | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder sctlr_setters_reference_bits
+C2-05 stack_alignment<->el0_stack_alignment (SA<->SA0)                 | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder sctlr_setters_reference_bits
+C2-06 bt0<->bt1                                                        | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_setters_reference_bits
+C2-07 enasr<->enas0                                                    | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_setters_reference_bits
+C2-08 single remap with_mmu=>SCTLR_A (dup)                             | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder sctlr_setters_reference_bits
+C2-09 macro ignores off: self.with($bit, true)                         | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s | sctlr_builder
+C2-10 macro inverts: self.with($bit, !on)                              | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder sctlr_setters_reference_bits
+C2-11 SCTLR_M 1<<0 -> 1<<1 (const only)                                | RED   | rc=101 | test result: FAILED. 16 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_bit_positions sctlr_builder sctlr_setters_reference_bits
+C2-12 SCTLR_M 1<<0 -> 1<<1 + test literals edited                      | RED   | rc=101 | test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder
+C2-13 duplicate mapping: with_span=>SCTLR_SPAN, with_el0_big_endian=>SCTLR_SPAN | RED   | rc=101 | test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s | sctlr_builder sctlr_setters_reference_bits
+C2-14 drop one setter from macro (with_entp2 removed)                  | RED   | rc=101 |  | 
+
+=== SUMMARY ===
+C1-01 T0SZ_MASK 0x3F->0x1F -> RED
+C1-02 T1SZ_MASK 0x3F->0x1F -> RED
+C1-03 IRGN0_MASK 0b11->0b01 -> RED
+C1-04 ORGN0_MASK 0b11->0b01 -> RED
+C1-05 SH0_MASK 0b11->0b10 -> RED
+C1-06 TG0_MASK 0b11->0b01 -> RED
+C1-07 IRGN1_MASK 0b11->0b01 -> RED
+C1-08 ORGN1_MASK 0b11->0b01 -> RED
+C1-09 SH1_MASK 0b11->0b10 -> RED
+C1-10 TG1_MASK 0b11->0b01 -> RED
+C1-11 IPS_MASK 0b111->0b011 -> RED
+C1-12 TTBR_BADDR_SHIFT 1->2 -> RED
+C1-13 VBAR_BASE_SHIFT 11->12 -> RED
+C1-14 SPSR_M_SHIFT 0->1 -> RED
+S1 shift-of-mask IRGN0_SHIFT 8->9 (mask follows) -> RED
+S2 shift+hardcode compensate: IRGN0_SHIFT 8->9, MASK=0b11<<8 -> RED
+S3 swap IRGN0_MASK<->ORGN0_MASK defs -> RED
+S4 swap T0SZ_MASK<->T1SZ_MASK defs -> RED
+S5 IPS_SHIFT 32->33 + MASK hardcode 0b111<<32 -> RED
+S6 const+test both edited (IRGN0 0x300->0x600) -> RED
+S7 IPS_MASK width 0b111->0b11 -> RED
+S8 T0SZ_MASK 0x3F->0x7F (widen) -> RED
+S9 TG0_MASK shift 14->15 (mask follows) -> RED
+S10 SPSR_M_SHIFT 0->1 + SPSR_M_MASK 0xF->0x1E (compensate) -> RED
+S11 VBAR_BASE_SHIFT 11->12 + VBAR_BASE_MASK !0x7FF->!0xFFF (compensate) -> RED
+S12 TTBR_BADDR_SHIFT 1->2 + TTBR_BADDR_MASK !0xFFF->!0x1FFF (compensate) -> RED
+C2-01 span<->E0E -> RED
+C2-02 ata<->dssbs -> RED
+C2-03 ntwi<->ntwe -> RED
+C2-04 mmu<->alignment (with_m<->with_a) -> RED
+C2-05 stack_alignment<->el0_stack_alignment (SA<->SA0) -> RED
+C2-06 bt0<->bt1 -> RED
+C2-07 enasr<->enas0 -> RED
+C2-08 single remap with_mmu=>SCTLR_A (dup) -> RED
+C2-09 macro ignores off: self.with($bit, true) -> RED
+C2-10 macro inverts: self.with($bit, !on) -> RED
+C2-11 SCTLR_M 1<<0 -> 1<<1 (const only) -> RED
+C2-12 SCTLR_M 1<<0 -> 1<<1 + test literals edited -> RED
+C2-13 duplicate mapping: with_span=>SCTLR_SPAN, with_el0_big_endian=>SCTLR_SPAN -> RED
+C2-14 drop one setter from macro (with_entp2 removed) -> RED

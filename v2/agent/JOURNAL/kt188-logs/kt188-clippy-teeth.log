@@ -1,0 +1,11 @@
+# KT-188 — L26 clippy + check-test-teeth
+# ngày: 2026-11-19T01:21:52Z (UTC)
+--- clippy
+    Checking vifast-plat-aarch64 v0.1.0 (/private/tmp/night2-L26-review185/v2/kernel/vifast-plat-aarch64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.86s
+CLIPPY_EXIT=0
+--- check-test-teeth
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+TEETH_EXIT=0
