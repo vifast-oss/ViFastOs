@@ -1,0 +1,31 @@
+### clean tree / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### two layers / current --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### two layers / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### two layers / pre-184 (9921f606^) --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### two layers / 7e7e1b53 --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### three layers / current --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_c.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### three layers / 7e7e1b53 --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
