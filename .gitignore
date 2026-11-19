@@ -14,3 +14,7 @@ target-task/
 v2/agent/JOURNAL/**/*.img
 v2/agent/JOURNAL/**/*.bin
 v2/agent/JOURNAL/**/run-*/
+v2/agent/JOURNAL/**/soak/
+v2/agent/JOURNAL/**/parity/
+v2/agent/JOURNAL/**/persist/
+v2/agent/JOURNAL/**/ktest-matrix/
