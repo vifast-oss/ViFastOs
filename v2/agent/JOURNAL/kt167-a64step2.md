@@ -92,6 +92,10 @@ Log: `v2/agent/JOURNAL/kt167-logs/kt167-aarch64-build.log` (`EXIT=0`).
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
 ```
 
+**KT-185 (C5, D2-162)** chụp lại từ target sạch — log đầy đủ có `Compiling vifast-plat-aarch64`
++ rlib ở [`kt185-logs/kt185-aarch64-build.log`](kt185-logs/kt185-aarch64-build.log); log cũ ở
+trên chỉ có `Finished` nên **không** dùng làm bằng chứng build thật.
+
 ### 3.3 Đột biến 1 — sai shift `TCR_EL1` (`TCR_IRGN0_SHIFT` 8 → 9)
 
 Log: `v2/agent/JOURNAL/kt167-logs/kt167-mut1-tcr-shift.log` (`EXIT=101`).
