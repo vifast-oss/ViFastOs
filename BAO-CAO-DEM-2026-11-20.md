@@ -55,16 +55,36 @@ tìm thêm **ba** đường lọt mới và đóng cả ba.
 
 | Lớp | Công cụ | Cách kiểm | Selftest | Chi phí |
 |---|---|---|---|---|
-| **1** | `check-wake-paths.py` | lexer + token-tree + walker tĩnh | **246** ca | ~21 s |
-| **2** | `check-wake-depinfo.py` | hỏi **rustc** danh sách tệp thật (`--emit=dep-info`) | **20** ca | 8,3 s ấm / 26,9 s lạnh |
+| **1** | `check-wake-paths.py` | lexer + token-tree + walker tĩnh | **259** ca | ~21 s |
+| **2** | `check-wake-depinfo.py` | hỏi **rustc** danh sách tệp thật (`--emit=dep-info`) | **27** ca | 8,3 s ấm / 26,9 s lạnh |
 
-Lớp 2 được nối vào `v2 check` (KT-217, D2-173). Nguyên mẫu KT-214 đo: lớp 2 bắt **11/11**
-đường lọt đã biết, lớp 1 bắt **5/11** (ở thời điểm đo). Hai lớp **bù nhau**:
+Lớp 2 được nối vào `v2 check` (KT-217, D2-173). **Con số "lớp 2 bắt 11/11, lớp 1 bắt 5/11"
+là số đo ở `dc6e01ae` — trước KT-211/213/215.** Trên HEAD hiện tại, **lớp 1 bắt 11/11**; giá trị
+thật của lớp 2 là **cơ chế độc lập** + phủ `v2/lib`, không phải "lấp 6/11". (Đính chính KT-227.)
+
+Hai lớp **bù nhau**:
 
 - Lớp 1 phủ **rộng**: mọi tệp, mọi nhánh `#[cfg]`, đích `include!`/`#[path]` kể cả tệp không
   được nạp.
 - Lớp 2 phủ **sâu**: đúng danh sách rustc nạp, kể cả `v2/lib`.
-- Lỗ chung duy nhất là #13 — **đã đóng**.
+
+**Nhưng hai lớp KHÔNG đủ.** Reviewer L53 (KT-224) tìm được **năm** đường lọt **lọt cả hai lớp**
+cùng lúc — điều mà reviewer trước (KT-222) không thấy vì chỉ chọn mẫu từ danh sách đã biết:
+
+| # | Đường lọt cả hai lớp | Gốc |
+|---|---|---|
+| B3b | `#[cfg(feature = "ktest")] mod` + tệp riêng trong `v2/kernel` | lớp 1 coi module `ktest` là test-only; lớp 2 không nạp (feature tắt) |
+| B12 | `#[path = "*.txt"]` trong `v2/lib` | lớp 1 không áp luật token trên `v2/lib`; lớp 2 bỏ vì đuôi tệp |
+| B13 | symlink → `/tmp` trong `v2/lib` | lớp 2 `resolve()` ra ngoài |
+| B14 | `#[path]` vào `src/target/` trong `v2/lib` | lớp 2 lọc `"target" in parts` |
+| B15 | tên tệp có dấu cách trong `v2/lib` | lớp 2 parse `\ ` sai |
+
+Cộng **tám** đường lọt riêng lớp 2 (lớp 1 bắt) và **hai lỗi nghiêm trọng**: **fail-open** (`.d`
+rỗng/thiếu ⇒ `errors=0`, RC=0) và **parse `\ ` sai**.
+
+KT-227 vá cả năm: **5 → 0** đường lọt cả hai lớp, **8 → 2** đường lọt riêng lớp 2 (cả hai đều
+bị lớp 1 bắt), **0** báo oan. Nhưng **bài học vẫn còn**: reviewer chọn mẫu từ danh sách đã biết
+thì **không thể** tìm đường lọt mới.
 
 ### 2.4. K6 — đo lại trên ảnh mới
 
@@ -95,7 +115,9 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 
 1. **Luật `wake` CHƯA đóng.** KT-194 và KT-184 giữ **REVIEW**. Mười ba đường lọt đã bị phá;
    đêm nay đóng được ba đường mới nhất, nhưng **không** có cơ sở để tuyên bố "đã đóng" — mỗi
-   lần tuyên bố đóng trước đây đều bị reviewer kế tiếp phá trong vòng vài giờ.
+   lần tuyên bố đóng trước đây đều bị reviewer kế tiếp phá trong vòng vài giờ. **Đêm nay đã
+   xảy ra đúng như vậy**: reviewer L51 chấm "ĐÓNG ĐƯỢC", rồi reviewer L53 tìm tiếp **năm**
+   đường lọt **cả hai lớp** trong vòng chưa đầy một giờ. D2-178 đã rút tuyên bố đó.
 2. **KT-211 và KT-214 chưa có reviewer độc lập** — chỉ tác giả tự chấm. Ghi thành nợ có tên.
 3. **`:expr` passthrough chưa từ chối** (KT-202) — cây thật có `macro_rules! bail` dùng `:expr`
    hợp lệ; từ chối sẽ báo oan. Đường còn hở chỉ khi macro được gọi từ tệp ngoài phạm vi quét.
@@ -136,6 +158,9 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | **D2-173** | Nối lớp 2 (`dep-info`) vào `v2 check` |
 | **D2-174** | Đường lọt #13 (nhánh `match`), lọt **cả hai** lớp; mở KT-219 |
 | **D2-175** | Đính chính D2-174; chốt hệ đánh số 13 đường lọt; dãy selftest là DAG |
+| **D2-176** | KT-211 ĐẠT CÓ ĐIỀU KIỆN; 4 báo oan; mở KT-225 |
+| **D2-177** | Reviewer cuối chấm ĐÓNG ĐƯỢC trên `be3a0cd8` (phạm vi 7 đường lọt) |
+| **D2-178** | **ĐÍNH CHÍNH D2-177**: luật `wake` **CHƯA đóng**; KT-214 KHÔNG ĐẠT; 5 đường lọt cả hai lớp |
 
 ---
 
@@ -157,8 +182,11 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | L48 | KT-214 (nguyên mẫu dep-info) | ĐẠT CÓ ĐIỀU KIỆN |
 | L49 | KT-218 (tấn công cuối) + KT-219 | ĐẠT — tìm #13 |
 | L50 | KT-220 (audit đêm) | TRUNG THỰC, 1 lệch nhỏ |
+| L51 | KT-222 (verify cuối) + KT-226 | ĐÓNG ĐƯỢC **trong phạm vi 7 đường lọt đã chọn** — bị D2-178 rút |
+| L52 | KT-223 (review KT-211) + KT-225 | ĐẠT CÓ ĐIỀU KIỆN → ĐẠT — tìm 4 báo oan + đường lọt `.txt` |
+| L53 | KT-224 (review KT-214) + KT-227 + KT-228 | **KHÔNG ĐẠT** → ĐẠT — tìm **5 đường lọt cả hai lớp** |
 
-**Tổng**: 14 sub-agent, 4 chạy song song mỗi lượt.
+**Tổng**: 17 sub-agent, 4 chạy song song mỗi lượt.
 
 ---
 
