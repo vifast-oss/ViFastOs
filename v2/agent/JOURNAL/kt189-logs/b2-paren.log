@@ -1,0 +1,29 @@
+# B2c — macro_rules! ngoặc TRÒN + #[path]
+# cây: b2/paren (đã chạy cargo fmt; đã thêm call site sản phẩm)
+
+### m.rs:
+#[macro_export]
+macro_rules! evil_paren (
+    () => (
+        #[path = "evil.rs"] mod x;
+    );
+);
+
+### B2c CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B2c CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B2c OLD 8670cdfe (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B2c cargo fmt --all --check
+fmt rc=0
+### B2c cargo clippy -p vifast-core -- -D warnings
+clippy rc=0
+### B2c cargo check -p vifast-core
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.73s

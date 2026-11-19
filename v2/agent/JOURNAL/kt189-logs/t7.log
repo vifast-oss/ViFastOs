@@ -1,0 +1,92 @@
+### T7a build.rs chứa include!(concat!(env!("OUT_DIR"), …))
+### T7a build.rs chứa include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/build.rs:2: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T7a build.rs chứa include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường) CUR --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/build.rs:2: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T7a build.rs chứa include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+error: environment variable `OUT_DIR` not defined at compile time
+ --> vifast-core/build.rs:2:22
+error: could not compile `vifast-core` (build script) due to 1 previous error
+
+### T7b sản phẩm include!(concat!(env!("OUT_DIR"), …))
+### T7b sản phẩm include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T7b sản phẩm include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường) CUR --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T7b sản phẩm include!(concat!(env!("OUT_DIR"), …)) CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+error: environment variable `OUT_DIR` not defined at compile time
+    --> vifast-core/src/core_sched.rs:1005:18
+error: could not compile `vifast-core` (lib) due to 1 previous error
+
+### T7c include! đường dẫn tuyệt đối ra ngoài cây
+### T7c include! đường dẫn tuyệt đối ra ngoài cây CUR (chế độ thường)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`/tmp/kt189-l28/evil_abs.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T7c include! đường dẫn tuyệt đối ra ngoài cây CUR (chế độ thường) CUR --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`/tmp/kt189-l28/evil_abs.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T7c include! đường dẫn tuyệt đối ra ngoài cây CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+ --> /tmp/kt189-l28/evil_abs.rs:1:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.00s
+
+### T7d chuỗi include! qua tệp .inc → evil_t.rs (test-only, có wake)
+### T7d chuỗi include! qua tệp .inc → evil_t.rs (test-only, có wake) CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T7d chuỗi include! qua tệp .inc → evil_t.rs (test-only, có wake) CUR (chế độ thường) CUR --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T7d chuỗi include! qua tệp .inc → evil_t.rs (test-only, có wake) CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+error[E0252]: the name `ObjId` is defined multiple times
+  --> vifast-core/src/evil_t.rs:1:22
+error[E0252]: the name `Machine` is defined multiple times
+  --> vifast-core/src/evil_t.rs:1:13
+
+### T7e concat_idents!(wa, ke) — không có token wake
+### T7e concat_idents!(wa, ke) — không có token wake CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T7e concat_idents!(wa, ke) — không có token wake CUR (chế độ thường) CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### T7e concat_idents!(wa, ke) — không có token wake CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+error: cannot find macro `concat_idents` in this scope
+    --> vifast-core/src/core_sched.rs:1005:44
+error: could not compile `vifast-core` (lib) due to 1 previous error
+
+### T7f some_macro!(wake) — token wake là đối số macro lạ
+### T7f some_macro!(wake) — token wake là đối số macro lạ CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T7f some_macro!(wake) — token wake là đối số macro lạ CUR (chế độ thường) CUR --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_sched.rs:1005: `wake` là đối số của macro `some_macro!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T7f some_macro!(wake) — token wake là đối số macro lạ CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+error: cannot find macro `some_macro` in this scope
+    --> vifast-core/src/core_sched.rs:1005:45
+error: could not compile `vifast-core` (lib) due to 1 previous error
+
