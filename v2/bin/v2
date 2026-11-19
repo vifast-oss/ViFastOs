@@ -323,6 +323,16 @@ do_check() {
         # có tên trong allowlist kèm lý do; chỗ lạ ⇒ ĐỎ (fail-closed hai chiều). Đây là
         # **thêm phép đo**, không nới ngưỡng nào.
         run_step "wake paths --strict (KT-155: allowlist)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --strict || fails=$((fails + 1))
+        # **KT-217 (D2-173)** — **lớp 2** cho luật `wake`: kiểm theo **danh sách tệp thật** mà
+        # rustc nạp (`--emit=dep-info`), không tự suy luận cú pháp. Vì sao cần: luật này đã bị
+        # phá **mười hai** lần; mọi bản vá tĩnh đều bỏ sót một vị trí token hoặc một gốc phân
+        # giải. Nguyên mẫu KT-214 đo được: bắt **11/11** đường lọt đã biết (checker tĩnh bắt
+        # 5/11), chạy **stable 1.99.1**, không `-Z`, chi phí **+4,8 s** sau `clippy` (dùng chung
+        # `.rmeta`). Hai giới hạn cứng ⇒ **không** thay thế lớp 1: mã do `macro_rules!` sinh ra
+        # (không nằm trong tệp nào) và nhánh `#[cfg]` **không bật** (bản build chỉ nạp nhánh
+        # đang bật, checker tĩnh quét mọi nhánh). Vì vậy đây là **thêm**, không phải thay.
+        run_step "wake theo dep-info (KT-217: lớp 2)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --root "$REPO_ROOT" || fails=$((fails + 1))
+        run_step "selftest wake dep-info (KT-217)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --selftest || fails=$((fails + 1))
         # **KT-163 (N7, D2-137)** — máy kiểm "test có răng": chống lớp lỗi **xanh-giả** đã
         # xảy ra hơn mười lần (gần nhất N7 suýt đóng sai). Bốn lớp **chắc chắn**, không
         # heuristic mờ: (a) `assert!(true)` / `assert_eq!(x, x)` hằng-đúng; (b) `#[ignore]`;
