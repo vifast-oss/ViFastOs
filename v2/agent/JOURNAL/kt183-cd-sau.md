@@ -200,6 +200,11 @@ Dòng danh tính trong ảnh + dòng `# product fs:` (đổi `used=4` → `used=
 Kết quả `shell-edge.sh --image` trên ảnh mới: **73 dòng PASS, 0 FAIL**; dòng cuối
 `# shell-edge.sh: PASS`.
 
+**Tái lập trên HEAD cuối** (sau ba commit `4fc80f61` → `febba904` → `0118d1ea`): build lại từ
+HEAD `0118d1ea` cho **đúng** `sha256=639ca6d1…`, `inputs=43df126a4a6702ec`, `dirty=0` — hai commit
+nhật ký **không** đổi build-inputs (chúng nằm trong `v2/agent/**`, bị loại khỏi dấu vân tay), nên
+ảnh ghim vẫn là ảnh nguồn của HEAD cuối. Log `kt183-logs/kt183-build-repro-check.log`.
+
 **Ảnh xanh trước commit** (cùng nội dung nguồn, `dirty=1`, dùng cho đột biến/hoàn nguyên):
 `sha256=9e2b784914cfef2140f7107073aa05c8a4b46ff6f5bff47c566c9a4805e88de8`,
 `inputs=89f40ef16c97e6d5 dirty=1 rev=8f5a11892500` — log `kt183-logs/kt183-build-green-precommit.log`,
@@ -247,4 +252,5 @@ Kết quả `shell-edge.sh --image` trên ảnh mới: **73 dòng PASS, 0 FAIL**
 | `kt183-logs/kt183-shell-edge-clean.log` | `shell-edge --image` ảnh chính (**PASS**, 73 PASS / 0 FAIL) |
 | `kt183-logs/run-clean/qemu.log` | log QEMU đầy đủ của lượt chính |
 | `kt183-logs/kt183-v2-check-precommit.log` | `./v2/bin/v2 check` trên cây trước commit (**PASS**) |
-| `kt183-logs/kt183-v2-check-final.log` | `./v2/bin/v2 check` trên HEAD cuối `febba904` (**PASS**) |
+| `kt183-logs/kt183-v2-check-final.log` | `./v2/bin/v2 check` trên HEAD `febba904` (**PASS**) |
+| `kt183-logs/kt183-build-repro-check.log` | build lại từ HEAD `0118d1ea` — sha **trùng** `639ca6d1…` |
