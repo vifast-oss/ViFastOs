@@ -273,6 +273,13 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 
 ---
 
+## 6b. Hiệu lực của cổng trên HEAD cuối
+
+`gate --fast` chạy trên `a08bf042`. Từ đó đến HEAD cuối `786335b2` có **103 commit** trong đêm,
+nhưng `git diff --name-only a08bf042..HEAD` **không** có tệp mã nào — chỉ `v2/agent/` (journal,
+STATE, QUEUE, DECISIONS) và `BAO-CAO`/`PHIEU`. ⇒ **kết quả cổng vẫn hiệu lực** cho HEAD cuối.
+`v2 check` chạy lại trên HEAD cuối: **PASS** (`JOURNAL/kt235-logs/kt235-v2check-final.log`).
+
 ## 7. Ghi chú về tính trung thực
 
 Audit độc lập KT-220 kiểm **190** khẳng định: **183 khớp**, **1 lệch**, **6 không nguồn**,
