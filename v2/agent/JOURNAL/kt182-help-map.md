@@ -133,8 +133,11 @@ python3 v2/agent/JOURNAL/kt182-logs/measure-local-map.py \
 | 22 | `v2/sim/vifast-sim/tests/kt60_core_parity.rs:4136` | `kt63_parity_revoke_cap_reply_con_huy_caller` | `run63` |
 | 23 | `v2/sim/vifast-sim/tests/kt60_core_parity.rs:4182` | `kt63_parity_reply_cap_chet_trong_waiter_q7b` | `run63` |
 
-Hai tên `rig`, `run` **không** có trong bản đồ toàn cây (tên mơ hồ toàn cây) ⇒ bản đồ cùng
-tệp **vẫn cần** sau khi siết; không thể bỏ nó.
+Hai tên `rig`, `run` **không** có trong bản đồ toàn cây (tên mơ hồ toàn cây). **KT-206**
+(review L41 F5): chỉ **`run`** là **bắt buộc** — xoá sạch bản đồ cùng tệp thì 6 test đỏ, cả
+6 đều dùng `run`; `rig` không bắt buộc vì các test gọi `rig` cũng gọi `run_steps`/`arm_rig`
+(có trong bản đồ toàn cây). Kết luận "bản đồ cùng tệp **vẫn cần** sau khi siết" **giữ
+nguyên**; chi tiết "cả hai tên" là quá mức.
 
 ### 4.3 Vì sao 0 — nhưng lỗ hổng vẫn thật
 
@@ -230,10 +233,13 @@ cây tối thiểu. Log: `kt182-logs/kt182-fixture-proof.log`.
 |---|---|---|---|---|
 | A `same-file-product-debug` | hàm **sản phẩm** cùng tệp có `debug_assert!`; test `#[cfg(test)]` gọi mà không assert | **XANH** | **ĐỎ** (`E_NO_ASSERT`) | xanh oan → đỏ |
 | B `same-file-product-assert` | như A nhưng hàm sản phẩm có `assert!` (răng **thật**) | **XANH** | **ĐỎ** (`E_NO_ASSERT`) | xanh oan → đỏ |
-| C `same-file-test-helper` | trợ giúp **trong `#[cfg(test)]`** có `assert_eq!`; test gọi mà không assert | **XANH** | **XANH** | xanh → xanh (đối chứng dương) |
+| C `same-file-test-helper` | trợ giúp **trong `#[cfg(test)]`** có `assert_eq!`; test gọi mà không assert; **KT-206**: thêm hàm sản phẩm cùng tên đặt **sau** mod + định nghĩa cùng tên không răng ở `tests/` khác | **ĐỎ** (last-wins lấy hàm sản phẩm) | **XANH** | đỏ → xanh (đối chứng dương; **có răng**: SAU+bản-đồ-cùng-tệp-chết ⇒ **ĐỎ**) |
 
 A và B chứng minh lỗ hổng **cắn** cả `debug_assert!` (răng giả) **lẫn** `assert!` (răng
-thật) — tức đây không phải chuyện "chỉ debug". C chứng minh siết **không** quá tay.
+thật) — tức đây không phải chuyện "chỉ debug". C (fixture **mới** của KT-206) chứng minh
+hai điều: (i) bản vá **sửa báo oan** do trùng tên — TRƯỚC đỏ vì bản đồ cùng tệp last-wins
+lấy hàm sản phẩm cùng tên, SAU xanh; (ii) siết **không** quá tay — trợ giúp test-scope vẫn
+được tính, và C **có răng**: SAU+bản-đồ-cùng-tệp-chết ⇒ đỏ.
 
 ### 6.2 Cây thật — `v2 check` đỏ rồi xanh
 
@@ -272,6 +278,11 @@ Ba ca mới (không mất ca cũ, không đổi ca cũ):
 Ca 34 là **đối chứng âm** (nếu ai "vá" bản đồ cùng tệp thành nhận lại hàm sản phẩm, ca
 này đỏ ngay). Ca 35/36 là **đối chứng dương** cho hai nhánh phạm vi test (`#[cfg(test)]`
 và tệp `tests/`) — chứng minh siết không quá tay.
+
+**KT-206** (review L41 F1): fixture **cũ** của ca 35/36 **không có răng** — bản đồ toàn cây
+(KT-170) chứng nhận cùng tên nên ca vẫn xanh dù bản đồ cùng tệp chết. KT-206 đã thêm tên
+mơ hồ + hàm sản phẩm cùng tên để ca có răng (xem `kt206-fix182.md` §F1); selftest 36 → 40
+ca (thêm 37–40 cho item-level `#[cfg(test)]`).
 
 ## 7. Giới hạn còn lại
 

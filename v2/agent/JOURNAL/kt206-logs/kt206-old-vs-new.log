@@ -1,0 +1,29 @@
+== KT-206: checker KT-182 (a8abe344) vs KT-206 trên cây thật ==
+
+-- KT-182 --
+# tệp có phạm vi test: 130
+# hàm `#[test]`: 1019
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): 80 tên có răng, 0 test dùng đường này
+# bản đồ trợ giúp cùng tệp (chỉ hàm trong phạm vi test): 23 test dùng đường này
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+
+-- KT-206 --
+# tệp có phạm vi test: 130
+# hàm `#[test]`: 1019
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): 80 tên có răng, 0 test dùng đường này
+# bản đồ trợ giúp cùng tệp (chỉ hàm trong phạm vi test): 23 test dùng đường này
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+
+-- diff errors --
+KT-206 ok True errors 0
+KT-182 ok True errors 0
+new-old: []
+old-new: []

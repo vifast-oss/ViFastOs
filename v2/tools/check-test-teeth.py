@@ -23,7 +23,8 @@ Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ.
     `expect_err`, `unwrap_err`, `panic!` **có điều kiện**) **và** không gọi hàm trợ giúp
     đã biết. "Hàm trợ giúp đã biết" = hàm **cùng tệp trong phạm vi test** mà
     **transitive** dẫn tới một token khẳng định (tự dò, không cần khai báo; KT-182: hàm
-    **sản phẩm** cùng tệp **không** tính), hoặc hàm **ở tệp khác trong phạm vi test** có
+    **sản phẩm** cùng tệp **không** tính; KT-206: `#[cfg(test)]` đặt trên **chính item**
+    — `fn`/`impl` — cũng là phạm vi test), hoặc hàm **ở tệp khác trong phạm vi test** có
     trong **bản đồ toàn cây** (KT-170: dựng từ chính cây nguồn, phân giải theo tên và
     `use … as …`; hàm **sản phẩm** không tính — xem `build_global_helpers`), hoặc tên có
     trong `HELPER_ALLOW` (đường **dự phòng** tường minh, dùng khi tên mơ hồ).
@@ -51,9 +52,15 @@ Fail-closed
   nới máy kiểm (đo trước khi siết: 277/285 test gọi tên chéo tệp trỏ vào hàm sản phẩm).
 - Bản đồ trợ giúp **cùng tệp** cũng **chỉ tính hàm trong phạm vi test** (KT-182): hàm
   **sản phẩm** cùng tệp (ngoài `#[cfg(test)]`) **không** tính. Đo trước khi siết:
-  **0** test chỉ có răng nhờ hàm sản phẩm cùng tệp (155 test gọi hàm sản phẩm cùng tệp
-  nhưng **tất cả** đều có token khẳng định riêng) ⇒ siết **không** làm đỏ test nào,
-  **0** mục allowlist. Log: `v2/agent/JOURNAL/kt182-logs/`.
+  **0** test chỉ có răng nhờ hàm sản phẩm cùng tệp (155 test gọi **tên** hàm sản phẩm
+  cùng tệp — đo **theo tên gọi**, không phân giải kiểu — nhưng **tất cả** đều có token
+  khẳng định riêng) ⇒ siết **không** làm đỏ test nào, **0** mục allowlist. Log:
+  `v2/agent/JOURNAL/kt182-logs/`.
+- **KT-206** (review L41 F2): `#[cfg(test)]` / `#[cfg(all(test, …))]` đặt trên **chính
+  item** (`fn`, `impl`) cũng là phạm vi test — trước đây chỉ nhận `mod`, nên trợ giúp
+  test-only item-level bị coi là sản phẩm và bị loại khỏi bản đồ cùng tệp ⇒ test gọi nó
+  bị `E_NO_ASSERT` oan. `#[cfg(any(test, …))]` **không** tính (item đó vẫn biên dịch ở
+  production khi feature khác bật). Log: `v2/agent/JOURNAL/kt206-logs/`.
 - Bản đồ chỉ tính một tên khi **mọi** định nghĩa cùng tên trong phạm vi test đều có răng
   (bắc cầu). Tên **mơ hồ** (có định nghĩa không răng) ⇒ không tính — fail-closed; ca thật
   thì khai `HELPER_ALLOW` kèm lý do, không nới luật.
@@ -71,7 +78,8 @@ Phạm vi
 -------
 - `v2/**/tests/*.rs` (trừ `compile-fail/`) — cả tệp là phạm vi test.
 - `v2/**/src/**/*.rs` — chỉ trong khối `#[cfg(test)]` (kể cả `#[cfg(all(test, …))]`),
-  dạng `mod X { … }` **hoặc** `mod X;` trỏ tới tệp khác.
+  dạng `mod X { … }` **hoặc** `mod X;` trỏ tới tệp khác, **hoặc** `#[cfg(test)]` /
+  `#[cfg(all(test, …))]` đặt trên **chính item** (`fn`, `impl` — KT-206).
 - Bỏ `target/` và `v2/test/fixtures/` (fixture cố tình sai cho luật khác).
 
 Dùng
@@ -319,6 +327,8 @@ def mask_source(src: str) -> str:
 FN_RE = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)")
 CFG_RE = re.compile(r"#\s*\[\s*cfg\s*\(")
 MOD_RE = re.compile(r"mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*([{;])")
+# **KT-206** (review L41 F2): `#[cfg(test)] impl … { … }` — item-level test scope.
+IMPL_RE = re.compile(r"(?:unsafe\s+)?impl\b")
 
 
 @dataclass
@@ -348,6 +358,39 @@ class Fn:
 def is_test_attr(attr: str) -> bool:
     """`test`, `tokio::test`, `async_std::test` — nhưng **không** `cfg(test)`."""
     return bool(re.fullmatch(r"(?:[A-Za-z_][A-Za-z0-9_]*::)*test", attr.strip()))
+
+
+def is_cfg_test_attr(attr: str) -> bool:
+    """`cfg(test)` / `cfg(all(test, …))` trên **chính item** — phạm vi test (KT-206).
+
+    **Không** nhận `cfg(any(test, …))`: mod/item đó **có** biên dịch ở production khi
+    feature khác bật, nên hàm bên trong vẫn là mã sản phẩm. **Không** nhận
+    `cfg(not(test))`. Chuỗi trong `cfg(feature = "…")` đã bị `mask_source` che nên
+    `feature = "ktest"` không khớp `\\btest\\b`.
+    """
+    a = attr.strip()
+    m = re.match(r"cfg\s*\(", a)
+    if not m:
+        return False
+    inner = a[m.end() :]
+    if re.fullmatch(r"\s*test\s*\)\s*", inner):
+        return True
+    return bool(re.match(r"\s*all\s*\(", inner) and re.search(r"\btest\b", inner))
+
+
+def in_test_scope(
+    f: "Fn", is_whole: bool, ranges: Sequence[Tuple[int, int]]
+) -> bool:
+    """Hàm `f` có thuộc phạm vi test không (tệp `tests/`, `#[cfg(test)] mod`, item-level).
+
+    **KT-206** (review L41 F2): trước đây chỉ `is_whole or in_ranges`, nên
+    `#[cfg(test)] fn helper()` / `#[cfg(test)] impl` bị coi là sản phẩm.
+    """
+    return (
+        is_whole
+        or in_ranges(f.start, ranges)
+        or any(is_cfg_test_attr(a) for a in f.attrs)
+    )
 
 
 def collect_attrs(m: str, pos: int) -> List[str]:
@@ -458,6 +501,61 @@ def top_level_fns(fns: Sequence[Fn]) -> List[Fn]:
     return out
 
 
+def _cfg_item_start(m: str, mt: "re.Match[str]") -> Optional[int]:
+    """Vị trí item sau `#[cfg(…test…)]` tại `mt`; `None` nếu không phải cfg test.
+
+    Dùng chung cho `mod` và `impl` (KT-206) — trước đây logic nằm lẫn trong
+    `parse_cfg_mods`, nên `#[cfg(test)] impl` bị bỏ sót.
+    """
+    i = mt.end() - 1  # tại '('
+    depth = 0
+    j = i
+    while j < len(m):
+        if m[j] == "(":
+            depth += 1
+        elif m[j] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    if j >= len(m):
+        return None
+    cfg_text = m[i + 1 : j]
+    if not re.search(r"\btest\b", cfg_text):
+        return None
+    if re.search(r"\bnot\s*\(\s*test\s*\)", cfg_text):
+        return None
+    k = j + 1
+    while k < len(m) and m[k] in " \t\n":
+        k += 1
+    if k >= len(m) or m[k] != "]":
+        return None
+    k += 1
+    # bỏ qua các thuộc tính khác giữa `#[cfg(…)]` và item
+    while True:
+        while k < len(m) and m[k] in " \t\n":
+            k += 1
+        if k < len(m) and m[k] == "#":
+            k2 = k + 1
+            while k2 < len(m) and m[k2] in " \t\n":
+                k2 += 1
+            if k2 < len(m) and m[k2] == "[":
+                d2 = 0
+                k3 = k2
+                while k3 < len(m):
+                    if m[k3] == "[":
+                        d2 += 1
+                    elif m[k3] == "]":
+                        d2 -= 1
+                        if d2 == 0:
+                            break
+                    k3 += 1
+                k = k3 + 1
+                continue
+        break
+    return k
+
+
 def parse_cfg_mods(m: str) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
     """Các `#[cfg(…test…)] mod X { … }` / `mod X;` — trả (kind, tên, khoảng).
 
@@ -465,52 +563,9 @@ def parse_cfg_mods(m: str) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
     """
     out: List[Tuple[str, str, Optional[Tuple[int, int]]]] = []
     for mt in CFG_RE.finditer(m):
-        i = mt.end() - 1  # tại '('
-        depth = 0
-        j = i
-        while j < len(m):
-            if m[j] == "(":
-                depth += 1
-            elif m[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        if j >= len(m):
+        k = _cfg_item_start(m, mt)
+        if k is None:
             continue
-        cfg_text = m[i + 1 : j]
-        if not re.search(r"\btest\b", cfg_text):
-            continue
-        if re.search(r"\bnot\s*\(\s*test\s*\)", cfg_text):
-            continue
-        k = j + 1
-        while k < len(m) and m[k] in " \t\n":
-            k += 1
-        if k >= len(m) or m[k] != "]":
-            continue
-        k += 1
-        # bỏ qua các thuộc tính khác giữa `#[cfg(…)]` và `mod`
-        while True:
-            while k < len(m) and m[k] in " \t\n":
-                k += 1
-            if k < len(m) and m[k] == "#":
-                k2 = k + 1
-                while k2 < len(m) and m[k2] in " \t\n":
-                    k2 += 1
-                if k2 < len(m) and m[k2] == "[":
-                    d2 = 0
-                    k3 = k2
-                    while k3 < len(m):
-                        if m[k3] == "[":
-                            d2 += 1
-                        elif m[k3] == "]":
-                            d2 -= 1
-                            if d2 == 0:
-                                break
-                        k3 += 1
-                    k = k3 + 1
-                    continue
-            break
         mm = MOD_RE.match(m, k)
         if not mm:
             continue
@@ -519,17 +574,41 @@ def parse_cfg_mods(m: str) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
             out.append(("file", name, None))
         else:
             b = mm.end() - 1
-            d = 0
-            e = b
-            while e < len(m):
-                if m[e] == "{":
-                    d += 1
-                elif m[e] == "}":
-                    d -= 1
-                    if d == 0:
-                        break
-                e += 1
-            out.append(("inline", name, (b, e)))
+            e = _match_brace(m, b)
+            if e >= 0:
+                out.append(("inline", name, (b, e)))
+    return out
+
+
+def parse_cfg_impls(m: str) -> List[Tuple[int, int]]:
+    """Khoảng thân `#[cfg(…test…)] impl … { … }` — phạm vi test **item-level** (KT-206).
+
+    `#[cfg(test)] impl S { fn helper() { … } }` là mã **chỉ test** (không biên dịch ở
+    production), nhưng `parse_cfg_mods` chỉ nhận `mod`, nên trước KT-206 các method bên
+    trong bị coi là **sản phẩm** và bị loại khỏi bản đồ cùng tệp ⇒ test gọi chúng bị
+    `E_NO_ASSERT` oan. Hàm này trả khoảng thân `impl` để `in_ranges` nhận đúng.
+    """
+    out: List[Tuple[int, int]] = []
+    for mt in CFG_RE.finditer(m):
+        k = _cfg_item_start(m, mt)
+        if k is None or not IMPL_RE.match(m, k):
+            continue
+        j = k
+        depth = 0
+        while j < len(m):
+            ch = m[j]
+            if ch in "([<":
+                depth += 1
+            elif ch in ")]>":
+                depth -= 1
+            elif ch == "{" and depth <= 0:
+                break
+            j += 1
+        if j >= len(m):
+            continue
+        e = _match_brace(m, j)
+        if e >= 0:
+            out.append((j, e))
     return out
 
 
@@ -604,6 +683,9 @@ def build_scope(
                 for cand in (pf.path.parent / f"{name}.rs", pf.path.parent / name / "mod.rs"):
                     if cand.exists():
                         whole.add(cand)
+        # **KT-206** (review L41 F2): `#[cfg(test)] impl … { … }` cũng là phạm vi test.
+        for rng in parse_cfg_impls(pf.masked):
+            inline.setdefault(pf.path, []).append(rng)
     for pf in parsed:
         parts = pf.path.relative_to(root).parts
         if "tests" in parts[:-1]:
@@ -719,7 +801,7 @@ def build_global_helpers(
         for f in pf.fns:
             if f.is_test:
                 continue
-            if not (is_whole or in_ranges(f.start, ranges)):
+            if not in_test_scope(f, is_whole, ranges):
                 continue
             body = m[f.body_start : f.body_end]
             has = any(t in body for t in ASSERT_TOKENS) or (
@@ -995,7 +1077,7 @@ def scan(
         for f in fns:
             if f.is_test:
                 continue
-            if not (is_whole or in_ranges(f.start, ranges)):
+            if not in_test_scope(f, is_whole, ranges):
                 continue
             body = m[f.body_start : f.body_end]
             helper_teeth[f.name] = any(t in body for t in ASSERT_TOKENS) or (
@@ -1004,7 +1086,7 @@ def scan(
         # Bao đóng bắc cầu: trợ giúp gọi trợ giúp.
         calls_of: Dict[str, Set[str]] = {}
         for f in fns:
-            if not (is_whole or in_ranges(f.start, ranges)):
+            if not in_test_scope(f, is_whole, ranges):
                 continue
             body = m[f.body_start : f.body_end]
             # **KT-163b** (review L6): phải nhận cả turbofish `tro_giup::<T>(…)` — nếu không,
@@ -1063,7 +1145,7 @@ def scan(
         for f in top:
             if not f.is_test:
                 continue
-            if not (is_whole or in_ranges(f.start, ranges)):
+            if not in_test_scope(f, is_whole, ranges):
                 continue
             n_tests += 1
             body = m[f.body_start : f.body_end]
@@ -1233,7 +1315,7 @@ def _fixture(root: Path, files: Dict[str, str]) -> None:
 
 
 def selftest() -> int:
-    """Ba mươi sáu ca: mỗi ca một dòng `ok`/`not ok`."""
+    """Bốn mươi ca: mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt163-selftest-"))
     try:
@@ -1921,16 +2003,25 @@ def selftest() -> int:
 
         # (35) đối chứng dương cho (34): trợ giúp **cùng tệp** nằm trong `#[cfg(test)]`
         # **vẫn** tính — siết không quá tay.
+        # **KT-206** (review L41 F1): fixture cũ **không có răng** — bản đồ toàn cây
+        # (KT-170) chứng nhận cùng tên, nên ca vẫn xanh dù bản đồ cùng tệp chết. Fixture
+        # mới thêm hai thứ: (a) hàm **sản phẩm cùng tên** đặt **sau** mod — gỡ bản vá thì
+        # bản đồ cùng tệp last-wins lấy hàm sản phẩm **không răng** ⇒ ĐỎ; (b) định nghĩa
+        # cùng tên **không răng** ở tệp `tests/` khác — loại tên khỏi bản đồ toàn cây nên
+        # không có đường dự phòng. Nhờ vậy: gỡ bản vá ⇒ ĐỎ; xoá bản đồ cùng tệp ⇒ ĐỎ.
         d = tmp / "helper-same-file-cfg-test"
         _fixture(
             d,
             {
                 "v2/lib/a/src/lib.rs": (
-                    "pub fn f() -> u32 {\n    1\n}\n\n"
                     "#[cfg(test)]\nmod tests {\n"
                     "    fn kiem_cung_tep(x: u32) {\n        assert_eq!(x, 3);\n    }\n\n"
                     "    #[test]\n    fn dung_tro_giup_cung_tep() {\n"
-                    "        kiem_cung_tep(3);\n    }\n}\n"
+                    "        kiem_cung_tep(3);\n    }\n}\n\n"
+                    "pub fn kiem_cung_tep(x: u32) {\n    let _ = x;\n}\n"
+                ),
+                "v2/lib/a/tests/khac.rs": (
+                    "fn kiem_cung_tep(x: u32) {\n    let _ = x;\n}\n"
                 ),
             },
         )
@@ -1945,6 +2036,10 @@ def selftest() -> int:
 
         # (36) đối chứng dương cho tệp dưới `tests/`: cả tệp là phạm vi test, trợ giúp cùng
         # tệp **vẫn** tính (chứng minh `is_whole` không bị siết quá tay).
+        # **KT-206** (F1): thêm định nghĩa cùng tên **không răng** ở tệp `tests/` khác để
+        # loại tên khỏi bản đồ toàn cây; nhờ vậy ca có răng: gỡ nhánh `is_whole` (hoặc xoá
+        # bản đồ cùng tệp) ⇒ ĐỎ. Gỡ **cả** điều kiện là **nới** (mọi hàm vào bản đồ) nên ca
+        # vẫn xanh — đúng ngữ nghĩa, không phải thiếu răng.
         d = tmp / "helper-same-file-tests"
         _fixture(
             d,
@@ -1953,12 +2048,103 @@ def selftest() -> int:
                     "fn kiem_cung_tep(x: u32) {\n    assert_eq!(x, 3);\n}\n\n"
                     "#[test]\nfn dung_tro_giup_cung_tep() {\n    kiem_cung_tep(3);\n}\n"
                 ),
+                "v2/lib/a/tests/khac.rs": (
+                    "fn kiem_cung_tep(x: u32) {\n    let _ = x;\n}\n"
+                ),
             },
         )
         rep = scan(d, allow_let={}, helper_allow={})
         cases.append(
             (
                 "trợ giúp **cùng tệp** trong `tests/` ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (37) **KT-206** (review L41 F2): `#[cfg(test)]` đặt trên **chính item** (`fn`) là
+        # phạm vi test — trợ giúp test-only item-level có token ⇒ vẫn tính là răng.
+        d = tmp / "item-cfg-test-fn"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "#[cfg(test)]\nfn tro_giup(x: u32) {\n    assert_eq!(x, 3);\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    use super::*;\n\n"
+                    "    #[test]\n    fn t() {\n        tro_giup(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp `#[cfg(test)]` trên **item `fn`** có token ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (38) đối chứng âm cho (37): item `#[cfg(test)]` **không** token ⇒ vẫn ĐỎ — bảo
+        # đảm bản vá không nhận bừa mọi item `cfg(test)` là "có răng".
+        d = tmp / "item-cfg-test-fn-no-teeth"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "#[cfg(test)]\nfn tro_giup(x: u32) {\n    let _ = x;\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    use super::*;\n\n"
+                    "    #[test]\n    fn t() {\n        tro_giup(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp `#[cfg(test)]` trên **item `fn`** không token ⇒ vẫn ĐỎ",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (39) `#[cfg(test)]` trên **`impl`** là phạm vi test — method có token ⇒ vẫn tính.
+        d = tmp / "item-cfg-test-impl"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub struct S;\n\n#[cfg(test)]\nimpl S {\n"
+                    "    fn tro_giup(&self, x: u32) {\n        assert_eq!(x, 3);\n    }\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    use super::*;\n\n"
+                    "    #[test]\n    fn t() {\n        S.tro_giup(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp `#[cfg(test)]` trên **`impl`** có token ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (40) `#[cfg(all(test, …))]` trên item cũng là phạm vi test.
+        d = tmp / "item-cfg-all-test-fn"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "#[cfg(all(test, feature = \"x\"))]\nfn tro_giup(x: u32) {\n"
+                    "    assert_eq!(x, 3);\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    use super::*;\n\n"
+                    "    #[test]\n    fn t() {\n        tro_giup(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp `#[cfg(all(test, …))]` trên item có token ⇒ vẫn tính là răng",
                 rep.ok,
                 "; ".join(rep.errors),
             )
@@ -1986,7 +2172,7 @@ def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=None, help="gốc cây nguồn (mặc định: repo chứa tệp này)")
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 36 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 40 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:

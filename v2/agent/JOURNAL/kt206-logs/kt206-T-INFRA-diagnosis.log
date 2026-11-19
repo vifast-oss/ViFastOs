@@ -1,0 +1,18 @@
+== KT-206: chẩn đoán bước FAIL của v2 check ==
+Hai lần chạy đều FAIL ở bước 'luật cấu trúc R1..R5' — SIGTRAP (Trace/BPT trap: 5) trong subshell bash 3.2 (T-INFRA, KT-155).
+Bước 'test có răng (KT-163)' và 'selftest test có răng' trong cùng log: OK.
+
+-- ./v2/bin/v2 rules (chạy trực tiếp, không subshell) --
+rules: PASS (/private/tmp/night3-L41-review182/v2)
+exit=0
+
+-- python3 v2/tools/check-test-teeth.py --
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+exit=0
+
+-- python3 v2/tools/check-test-teeth.py --selftest --
+ok - trợ giúp `#[cfg(all(test, …))]` trên item có token ⇒ vẫn tính là răng
+# selftest: 40/40 ok
+exit=0
