@@ -74,3 +74,28 @@ python3 v2/tools/check-wake-paths.py              # errors=0
 python3 v2/tools/check-wake-paths.py --strict     # errors=0
 ./v2/bin/v2 check                                 # PASS
 ```
+
+
+---
+
+## ĐÍNH CHÍNH của lead (2026-11-19 15:05) — sau khi kiểm lại độc lập
+
+Báo cáo trên ghi ba repro "**thường ĐỎ / strict ĐỎ**". **Sai**: lead dựng lại đúng ba đột biến trên
+cây **đã merge** (`8e0bd8c2`) và đo:
+
+| Dạng | `--strict` | chế độ **thường** |
+|---|---|---|
+| `#[r#path = "evil_t.rs"]` | **ĐỎ** `E_STRICT_TEST_ONLY_WAKE evil_t.rs:3` | **XANH** |
+| `#[path = "evil_t\x2ers"]` | **ĐỎ** | **XANH** |
+| `cfg_attr` lồng | **ĐỎ** | **XANH** |
+
+Nguyên nhân: luật `wake` là **strict-only** theo D2-144; ba repro là vi phạm **luật `wake`**, không
+phải vi phạm luật "include/path literal + trong cây" (luật đó **có** chạy ở mọi chế độ và lexer mới
+đã phân giải `#[r#path]`/escape). Selftest ba ca `_repro(...)` cũng chỉ gọi `strict=True` — **không**
+kiểm chế độ thường.
+
+**Hệ quả thực tế**: `./v2/bin/v2 check` và `gate --fast` **đều chạy `--strict`** ⇒ cổng vẫn bắt được.
+Nhưng câu "thường ĐỎ" trong báo cáo là **sai** và đã được sửa ở đây; **không** dùng nó làm bằng chứng.
+
+**Còn nợ**: nếu A0 muốn luật `wake` chạy ở **cả** chế độ thường, cần một quyết định riêng (D2-144
+hiện chỉ định strict).
