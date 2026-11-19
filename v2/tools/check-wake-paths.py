@@ -2572,6 +2572,17 @@ def _test_char_ranges(code: str, relp: str) -> List[Tuple[int, int]]:
     Bản cũ `test_line_ranges` quyết định theo **dòng**: `#[cfg(test)] fn h() { … } pub fn evil(…)`
     cùng dòng ⇒ cả `evil` bị coi là test ⇒ luật `wake` bỏ qua ⇒ **lọt** (cargo RC=0). Nay mỗi
     `#[cfg(test)]` chỉ đánh dấu **đúng mục nó gắn vào** (từ mục tới `}` khớp).
+
+    **KT-219** (L49, đường lọt #13) — bản KT-198 chỉ dừng vòng quét ở `;` và `{`, nên với mục
+    **không có thân `{…}`** mà kết thúc bằng **dấu `,`** (nhánh `match` `A => (),`, field struct,
+    biến thể enum) vùng test chạy tiếp sang mục kế và lấy thân `{…}` của **mục sản phẩm** làm
+    thân của mục test. Đo được: `#[cfg(test)] A => (),` + nhánh `B => { m.wake(t); }` ⇒
+    `_test_char_ranges` trả vùng phủ **cả** `m.wake(t)` ⇒ **cả hai lớp** (lớp 2 dùng lại chính
+    hàm này) XANH trong khi `cargo check` RC=0. Nay vùng test kết thúc ở **cuối mục thật**:
+    thân `{…}` nếu có, ngược lại `;` hoặc `,` **cùng mức**. Dấu `,` chỉ là mốc kết thúc khi đã
+    thấy `=>` (nhánh `match`) — `,` còn xuất hiện trong generic params (`fn f<T, U>`),
+    `use a::b, c::d;`, field struct, biến thể enum: các ngữ cảnh đó **không chứa được lời gọi
+    `wake`**, cắt sớm chỉ làm vùng test **hẹp** hơn (báo oan), không làm rộng (lọt).
     """
     toks, errs = tokenize(code, relp)
     if errs:
@@ -2619,21 +2630,51 @@ def _test_char_ranges(code: str, relp: str) -> List[Tuple[int, int]]:
                 i += 1
                 continue
             if node.kind == "ident":
+                # **KT-219** — tìm **cuối mục** đúng: thân `{…}` (mục có thân) **hoặc** `;`/`,`
+                # cùng mức (mục không thân). Trước bản này vòng quét chỉ dừng ở `;` và `{`,
+                # nên `#[cfg(test)]` trên **nhánh `match`** `A => (),` (kết thúc bằng `,`)
+                # quét tiếp sang nhánh kế và lấy thân `{…}` của nhánh **sản phẩm** làm thân
+                # của mục test ⇒ nuốt `m.wake(t)` (đường lọt #13, lọt **cả hai** lớp vì
+                # `check-wake-depinfo.py` dùng lại chính hàm này).
                 k = i + 1
-                while k < n and not (
-                    isinstance(nodes[k], Group) and nodes[k].open.val == "{"
-                ):
-                    if _is_punct(nodes[k], ";"):
+                body: Optional[int] = None
+                term: Optional[int] = None
+                seen_arrow = False
+                while k < n:
+                    nd = nodes[k]
+                    if isinstance(nd, Group):
+                        if nd.open.val == "{":
+                            body = k
+                            break
+                        k += 1
+                        continue
+                    if _is_punct(nd, ";"):
+                        term = k
                         break
+                    if _is_punct(nd, ",") and seen_arrow:
+                        term = k
+                        break
+                    if (
+                        _is_punct(nd, "=")
+                        and k + 1 < n
+                        and _is_punct(nodes[k + 1], ">")
+                    ):
+                        seen_arrow = True
                     k += 1
-                if k < n and isinstance(nodes[k], Group) and nodes[k].open.val == "{":
-                    is_test = in_test or any(
-                        a.name == "cfg" and cfg_is_test_tokens(a.args) for a in pending
-                    )
+                is_test = in_test or any(
+                    a.name == "cfg" and cfg_is_test_tokens(a.args) for a in pending
+                )
+                if body is not None:
                     if is_test:
-                        out.append((node.start, nodes[k].close.end))
-                    walk(nodes[k].children, is_test, depth + 1)
-                    i = k + 1
+                        out.append((node.start, nodes[body].close.end))
+                    walk(nodes[body].children, is_test, depth + 1)
+                    i = body + 1
+                    pending = []
+                    continue
+                if term is not None:
+                    if is_test:
+                        out.append((node.start, nodes[term].end))
+                    i = term + 1
                     pending = []
                     continue
             pending = []
@@ -5201,6 +5242,369 @@ def selftest() -> int:
         _wake_case(
             "wake trong fn test thật",
             "#[cfg(test)]\nfn f() { let _ = m.wake(t); }\n",
+            False,
+        )
+
+        # --- (e2) **KT-219** (L49, đường lọt #13): vùng test phải kết thúc ở **cuối mục**,
+        # không được kéo sang mục kế. `#[cfg(test)]` trên nhánh `match` `A => (),` (kết thúc
+        # bằng `,`, không có thân `{…}`) từng bị quét tiếp sang nhánh kế và lấy thân `{…}` của
+        # nhánh **sản phẩm** làm thân mục test ⇒ nuốt `m.wake(t)`; cả hai lớp dùng chung
+        # `_test_char_ranges` nên **cùng XANH** trong khi `cargo check` RC=0.
+        _wake_case(
+            "KT-219 nhánh match test không thân + nhánh sản phẩm wake",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A => (),\n"
+            "        B => {\n"
+            "            m.wake(t);\n"
+            "        }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 nhánh match test có guard + nhánh sản phẩm wake",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A if sel > 0 => (),\n"
+            "        B => { m.wake(t); }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 nhánh match test không thân + nhánh sản phẩm wake (feature ktest)",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(feature = \"ktest\")]\n"
+            "        A => (),\n"
+            "        B => { m.wake(t); }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 nhánh match test không thân + nhánh sản phẩm wake (đảo thứ tự)",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        B => { m.wake(t); }\n"
+            "        #[cfg(test)]\n"
+            "        A => (),\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 nhánh match test không thân + nhánh sản phẩm wake (guard sản phẩm)",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A => (),\n"
+            "        B if sel > 1 => { m.wake(t); }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 nhánh match test không thân + nhánh sản phẩm wake (macro)",
+            "pub fn evil(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A => (),\n"
+            "        B => { let _ = m.wake(t); }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            True,
+        )
+        # Đối chứng dương: nhánh match **thật sự** test ⇒ vẫn miễn.
+        _wake_case(
+            "KT-219 nhánh match test có thân chứa wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A => { m.wake(t); }\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 nhánh match test không thân chứa wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A => m.wake(t),\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 nhánh match test có guard chứa wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32, sel: u32) {\n"
+            "    match sel {\n"
+            "        #[cfg(test)]\n"
+            "        A if sel > 0 => m.wake(t),\n"
+            "        _ => (),\n"
+            "    }\n"
+            "}\n",
+            False,
+        )
+        # Các dạng mục **không thân** khác: vùng test không được kéo sang mục kế.
+        _wake_case(
+            "KT-219 cfg(test) use + fn sản phẩm wake",
+            "#[cfg(test)]\nuse crate::M::wake;\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) const + fn sản phẩm wake",
+            "#[cfg(test)]\nconst X: u32 = 0;\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) static + fn sản phẩm wake",
+            "#[cfg(test)]\nstatic X: u32 = 0;\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) mod tests; + fn sản phẩm wake",
+            "#[cfg(test)]\nmod tests;\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) fn không thân (trait) + fn sản phẩm wake",
+            "trait T {\n    #[cfg(test)]\n    fn f();\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) field struct + fn sản phẩm wake",
+            "struct S {\n    #[cfg(test)]\n    a: u32,\n    b: u32,\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) biến thể enum + fn sản phẩm wake",
+            "enum E {\n    #[cfg(test)]\n    A,\n    B,\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) if + fn sản phẩm wake",
+            "pub fn f(c: bool) {\n    #[cfg(test)]\n    if c { let _ = 1; }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) if let + fn sản phẩm wake",
+            "pub fn f(o: Option<u32>) {\n    #[cfg(test)]\n    if let Some(x) = o { let _ = x; }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) if let chứa wake ⇒ xanh",
+            "pub fn f(o: Option<u32>, m: &mut M, t: u32) {\n    #[cfg(test)]\n"
+            "    if let Some(_x) = o { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let tuple + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let x = (1, 2);\n    let _ = x;\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let closure nhiều tham số + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let g = |a: u32, b: u32| a + b;\n    let _ = g;\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) use nhiều nhánh + fn sản phẩm wake",
+            "#[cfg(test)]\nuse crate::{M, wake};\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) macro_rules + fn sản phẩm wake",
+            "#[cfg(test)]\nmacro_rules! m { () => { 1 }; }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) lời gọi macro ngoặc nhọn + fn sản phẩm wake",
+            "#[cfg(test)]\nfoo! { 1 }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) lời gọi macro ngoặc tròn + fn sản phẩm wake",
+            "#[cfg(test)]\nfoo!(1);\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) impl + fn sản phẩm wake",
+            "#[cfg(test)]\nimpl X { fn f(&self) {} }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) trait + fn sản phẩm wake",
+            "#[cfg(test)]\ntrait T { fn f(&self); }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) struct + fn sản phẩm wake",
+            "#[cfg(test)]\nstruct S { a: u32 }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) enum + fn sản phẩm wake",
+            "#[cfg(test)]\nenum E { A }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) union + fn sản phẩm wake",
+            "#[cfg(test)]\nunion U { a: u32 }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) extern + fn sản phẩm wake",
+            "#[cfg(test)]\nextern \"C\" { fn foo(); }\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) unsafe + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    unsafe { let _ = 1; }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) while + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    while false { let _ = 1; }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) for + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    for _i in 0..1 { let _ = 1; }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) match + fn sản phẩm wake",
+            "pub fn f(x: u32) {\n    #[cfg(test)]\n    match x { _ => {} }\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let match + fn sản phẩm wake",
+            "pub fn f(x: u32) {\n    #[cfg(test)]\n    let y = match x { _ => 1 };\n    let _ = y;\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let struct literal + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let s = S { a: 1 };\n    let _ = s;\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let array + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let a = [1, 2];\n    let _ = a;\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) return block + fn sản phẩm wake",
+            "pub fn f() -> u32 {\n    #[cfg(test)]\n    return { 1 };\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) async block + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let _ = async { 1 };\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        _wake_case(
+            "KT-219 cfg(test) const block + fn sản phẩm wake",
+            "pub fn f() {\n    #[cfg(test)]\n    let _ = const { 1 };\n}\n"
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+            True,
+        )
+        # Đối chứng dương cho các dạng mục **thật sự** test.
+        _wake_case(
+            "KT-219 cfg(test) fn có thân chứa wake ⇒ xanh",
+            "#[cfg(test)]\nfn helper(m: &mut M, t: u32) { m.wake(t); }\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) fn generic nhiều tham số chứa wake ⇒ xanh",
+            "#[cfg(test)]\nfn helper<T, U>(m: &mut M, t: u32) { m.wake(t); }\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) mod tests chứa wake ⇒ xanh",
+            "#[cfg(test)]\nmod tests {\n    fn f(m: &mut M, t: u32) { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) use nhập wake ⇒ xanh",
+            "#[cfg(test)]\nuse crate::M::wake;\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) let gọi wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32) {\n    #[cfg(test)]\n    let _ = m.wake(t);\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) impl chứa wake ⇒ xanh",
+            "#[cfg(test)]\nimpl X {\n    fn f(m: &mut M, t: u32) { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) trait default method chứa wake ⇒ xanh",
+            "#[cfg(test)]\ntrait T {\n    fn f(m: &mut M, t: u32) { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) if chứa wake ⇒ xanh",
+            "pub fn f(c: bool, m: &mut M, t: u32) {\n    #[cfg(test)]\n    if c { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) match chứa wake ⇒ xanh",
+            "pub fn f(x: u32, m: &mut M, t: u32) {\n    #[cfg(test)]\n    match x { _ => { m.wake(t); } }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) loop chứa wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32) {\n    #[cfg(test)]\n    loop { m.wake(t); }\n}\n",
+            False,
+        )
+        _wake_case(
+            "KT-219 cfg(test) unsafe chứa wake ⇒ xanh",
+            "pub fn f(m: &mut M, t: u32) {\n    #[cfg(test)]\n    unsafe { m.wake(t); }\n}\n",
             False,
         )
 

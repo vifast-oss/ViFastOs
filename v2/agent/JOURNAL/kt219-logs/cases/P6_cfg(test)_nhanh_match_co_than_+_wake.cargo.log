@@ -1,0 +1,31 @@
+    Checking vifast-sim v0.1.0 (/private/tmp/night3-L49-kt218/v2/sim/vifast-sim)
+warning: unused variable: `m`
+ --> sim/vifast-sim/src/evil.rs:4:10
+  |
+4 | pub fn f(m: &mut Machine, t: ObjId, sel: u32) -> Result<(), KError> {
+  |          ^ help: if this is intentional, prefix it with an underscore: `_m`
+  |
+  = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `t`
+ --> sim/vifast-sim/src/evil.rs:4:27
+  |
+4 | pub fn f(m: &mut Machine, t: ObjId, sel: u32) -> Result<(), KError> {
+  |                           ^ help: if this is intentional, prefix it with an underscore: `_t`
+
+warning: constant `A` is never used
+ --> sim/vifast-sim/src/evil.rs:3:7
+  |
+3 | const A: u32 = 0;
+  |       ^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `f` is never used
+ --> sim/vifast-sim/src/evil.rs:4:8
+  |
+4 | pub fn f(m: &mut Machine, t: ObjId, sel: u32) -> Result<(), KError> {
+  |        ^
+
+warning: `vifast-sim` (lib) generated 4 warnings (run `cargo fix --lib -p vifast-sim` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.10s

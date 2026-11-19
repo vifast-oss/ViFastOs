@@ -1,0 +1,11 @@
+    Checking vifast-sim v0.1.0 (/private/tmp/night3-L49-kt218/v2/sim/vifast-sim)
+warning: function `evil` is never used
+ --> sim/vifast-sim/src/evil\x.rs:4:8
+  |
+4 | pub fn evil(m: &mut Machine, t: ObjId) -> Result<(), KError> {
+  |        ^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-sim` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.03s

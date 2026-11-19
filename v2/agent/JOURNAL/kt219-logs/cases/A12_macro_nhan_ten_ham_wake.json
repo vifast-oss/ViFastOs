@@ -1,0 +1,18 @@
+{
+  "name": "A12 macro nhan ten ham wake",
+  "target": "host",
+  "cargo_rc": 0,
+  "l1_normal": "DO",
+  "l1_strict": "DO",
+  "l2": "DO",
+  "l1n_errs": [
+    "E E_STRICT_TEST_ONLY_WAKE   v2/sim/vifast-sim/src/lib.rs:395: `wake` là đối số của macro `call!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+  ],
+  "l1s_errs": [
+    "E E_STRICT_TEST_ONLY_WAKE   v2/sim/vifast-sim/src/lib.rs:395: `wake` là đối số của macro `call!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+  ],
+  "l2_errs": [
+    "E E_DEPINFO_WAKE   v2/sim/vifast-sim/src/lib.rs:395: `wake` là đối số của macro `call!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+  ],
+  "expect": "L1 DO / L2 DO"
+}
