@@ -35,6 +35,18 @@ CARGO="$(find_cargo)" || {
 }
 export PATH="$(dirname "$CARGO"):$PATH"
 
+# **KT-190** (T-INFRA 2026-11-19): ghim toolchain theo `v2/rust-toolchain.toml` cho **mọi** lệnh
+# cargo của script. Trước đây script dựa vào toolchain **mặc định của máy**; khi rustup nâng
+# stable 1.99.1 → 1.100.0, clippy bắt 13 lint `needless_range_loop` mới trong `vifast-fs`/
+# `vifast-alloc` (mã **không đổi**) ⇒ cổng đỏ oan, và ảnh build có thể lệch toolchain so với
+# `repro-build.sh` (vốn gọi `cargo +1.99.1`). Ghim để cổng + ảnh không phụ thuộc máy.
+if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -f "$V2_ROOT/rust-toolchain.toml" ]; then
+    _v2_tc="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$V2_ROOT/rust-toolchain.toml" | head -1)"
+    if [ -n "$_v2_tc" ]; then
+        export RUSTUP_TOOLCHAIN="$_v2_tc"
+    fi
+fi
+
 # rustup có thể không nằm trên PATH (máy này: ~/.cargo/bin) — cùng cách tìm như cargo.
 find_rustup() {
     if command -v rustup >/dev/null 2>&1; then
