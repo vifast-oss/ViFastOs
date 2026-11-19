@@ -757,7 +757,8 @@ def resolve_include_targets(
         # Rẻ: đa số tệp không có `include!`/`#[path]` — khỏi khử nhiễu cả tệp.
         # **KT-187/B1** + **KT-189**: `cfg_attr(…, path = …)` không chứa `#[path` liền, và
         # `include ! (…)`/`#[ path = … ]`/`#[\npath = …]` không khớp chuỗi thô — dùng regex.
-        if not re.search(r"include\s*!|#\s*\[\s*path|cfg_attr", text):
+        # **KT-191**: khử chú thích **trước** khi lọc — `#[/*c*/path]` làm regex thô không mở.
+        if not re.search(r"include\s*!|#\s*\[\s*path|cfg_attr", strip_rust_noise(text, keep_strings=True)):
             continue
         code = strip_rust_noise(text)
         code_keep = strip_rust_noise(text, keep_strings=True)
@@ -846,7 +847,9 @@ def resolve_include_targets(
 
 # ------------------------------------------------------------------ KT-171: B4 macro v2/lib
 
-RE_MACRO_RULES = re.compile(r"\bmacro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)")
+# **KT-191** (reviewer L29): tên macro là **định danh Rust**, không chỉ ASCII — `macro_rules! é`
+# là hợp lệ và bản ASCII-only **bỏ qua toàn bộ thân macro** ⇒ vô hiệu hoá cả bốn luật cùng lúc.
+RE_MACRO_RULES = re.compile(r"\bmacro_rules\s*!\s*([^\s(\[{;]+)")
 
 # Allowlist **có lý do** cho thân `macro_rules!` trong `v2/lib/**` chứa token `wake`.
 # Khoá: (relpath, tên macro). Hiện **rỗng** — không có macro nào trong `v2/lib` chạm `wake`.
@@ -891,6 +894,24 @@ def _check_macro_body(relp: str, name: str, body: str, code: str, j: int, r: Rep
     - `mod NAME;` trong thân macro: `_mods_of` không thấy ⇒ đồ thị module nói tệp đích là
       test-only, nhưng bản sản phẩm vẫn biên dịch nó (T3c). Không phân giải tĩnh an toàn ⇒ ĐỎ.
     """
+    # **KT-191** (reviewer L29): không phân giải được macro ⇒ **mọi** thân macro chứa
+    # `include`/`path`/`mod` (dù là metavariable `mod $n;`, raw ident `mod r#x;`, hay
+    # `cfg_attr`) đều ĐỎ; và `$…:tt` (passthrough) cũng ĐỎ vì nó có thể chở `mod x;` từ
+    # **lời gọi** (`crate::pass! { mod x; }`) — thân định nghĩa không có chữ `mod` nào.
+    for km in re.finditer(r"\b(include|path|mod)\b", body):
+        lineno = code.count("\n", 0, j + km.start()) + 1
+        r.err(
+            "E_STRICT_MACRO_INCLUDE",
+            f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `{km.group(1)}` — không phân "
+            f"giải tĩnh được (fail-closed, KT-191)",
+        )
+    for tm in re.finditer(r":\s*tt\b", body):
+        lineno = code.count("\n", 0, j + tm.start()) + 1
+        r.err(
+            "E_STRICT_MACRO_TT",
+            f"  {relp}:{lineno}: thân `macro_rules! {name}` dùng `$…:tt` (passthrough) — có thể "
+            f"chở `mod`/`include!` từ **lời gọi** (fail-closed, KT-191)",
+        )
     for cm in re.finditer(r"cfg_attr\s*\([^;{}]*?\bpath\s*=", body):
         lineno = code.count("\n", 0, j + cm.start()) + 1
         r.err(
@@ -3343,7 +3364,87 @@ def selftest() -> int:
             )
         )
 
-        # (4bi) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
+        # (4bj) **KT-191** — tên macro **Unicode** (`macro_rules! é`) ⇒ ĐỎ (bản ASCII-only bỏ qua).
+        d = tmp / "v2-kt191-unicode-macro"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! é { () => ( #[path = "evil_b.rs"] mod evil; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 tên macro Unicode ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bk) **KT-191** — `mod $n;` (metavariable) trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-kt191-mod-metavar"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! m { ($n:ident) => ( mod $n; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `mod $n;` trong macro ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bl) **KT-191** — `mod r#x;` (raw ident) trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-kt191-mod-raw"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! m { () => ( mod r#x; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `mod r#x;` trong macro ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bm) **KT-191** — passthrough `$($t:tt)*` ⇒ ĐỎ (có thể chở `mod x;` từ lời gọi).
+        d = tmp / "v2-kt191-passthrough"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! pass { ($($t:tt)*) => ( $($t)* ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 passthrough `$…:tt` ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_TT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bn) **KT-191** — `#[/*c*/path]` (chú thích chen giữa) ⇒ ĐỎ (bộ lọc khử chú thích trước).
+        d = tmp / "v2-kt191-comment-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[/*c*/path = "evil_b.rs"]\nmod evil_c;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `#[/*c*/path]` ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bo) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
         # `wake_from(` ⇒ XANH ở chế độ thường (luật không phải "có `#[path]` là đỏ").
         d = tmp / "v2-d2161-path-ok"
         _fixture_v2(d)
