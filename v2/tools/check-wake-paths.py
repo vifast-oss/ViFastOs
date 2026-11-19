@@ -2016,6 +2016,75 @@ class Report:
 
 # ------------------------------------------------------------------ v2
 
+def _check_wake_text(
+    relp: str,
+    text: str,
+    tr: Sequence[Tuple[int, int]],
+    safe_macros: set,
+    r: Report,
+) -> None:
+    """**KT-155/KT-165/KT-171/KT-194** — luật token `wake` trên **một** tệp sản phẩm.
+
+    Tách khỏi `scan_v2` để dùng chung cho **hai** đường:
+      (i) mọi tệp sản phẩm ở `--strict` (KT-155);
+      (ii) tệp **test-only bị kéo vào sản phẩm** bằng `#[path]`/`include!` ở chế độ thường
+           (D2-166 §3C — không âm thầm bỏ qua cạnh nguồn ẩn; trước KT-194 đường này chỉ
+           được luật `--strict` bắt nên chế độ thường xanh).
+    """
+    code = strip_rust_noise(text)
+    # Đầu dòng (offset) để đổi offset token ⇒ số dòng, không phải quét lại từng dòng.
+    line_starts = [0]
+    for idx, ch in enumerate(code):
+        if ch == "\n":
+            line_starts.append(idx + 1)
+    groups: Optional[List[Tuple[int, int, str]]] = None
+    scopes: List[Tuple[int, int, int]] = []
+
+    for m in RE_WAKE_TOKEN.finditer(code):
+        s = m.start()
+        lineno = bisect.bisect_right(line_starts, s)
+        if in_ranges(lineno, tr):
+            continue
+        before = code[max(0, s - 80) : s]
+        if RE_FN_WAKE_DEF_BEFORE.search(before):
+            continue  # định nghĩa `fn wake(` — chỗ khai báo API, không phải tham chiếu
+        after = code[m.end() :]
+        nxt = after.lstrip()[:1]
+        if RE_WAKE_PATH_BEFORE.search(before):
+            why = "tham chiếu `…::wake` (alias/fn-pointer), không có `(`"
+        elif nxt == "(":
+            why = "gọi `wake(`"
+        elif _in_use_item(code, s):
+            why = "`use …wake` (nhập hàm `wake` vào phạm vi)"
+        else:
+            if groups is None:
+                groups = _delim_pairs(code)
+                scopes = _local_wake_scopes(code, groups)
+            macro = _macro_arg_of(code, s, groups)
+            if macro is not None and macro not in safe_macros:
+                why = (
+                    f"`wake` là đối số của macro `{macro}!` — macro có thể biến "
+                    f"ident thành tên hàm (KT-171 B10"
+                    + (
+                        ""
+                        if macro not in SAFE_VALUE_MACROS
+                        else f"; tên `{macro}` bị `macro_rules!` trong cây che — "
+                        f"KT-177 H6"
+                    )
+                    + ")"
+                )
+            elif _exempt_local_wake(s, scopes, groups):
+                continue  # biến cục bộ tên `wake` **trong cùng khối**, không phải hàm
+            else:
+                why = "dùng `wake` làm giá trị (không có `(`)"
+        r.err(
+            "E_STRICT_TEST_ONLY_WAKE",
+            f"  {relp}:{lineno}: {why} trong mã sản phẩm — `wake()` là API "
+            f"CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/"
+            f"`wake_from_unlink`",
+        )
+
+
 def scan_v2(
     root: Path,
     strict: bool,
@@ -2089,6 +2158,10 @@ def scan_v2(
     #     trong cây**; đích ngoài cây / không tồn tại / không literal ⇒ ĐỎ ở mọi chế độ;
     #   - `extra` (tệp đích + trạng thái test-only) vẫn được khối `--strict` dùng lại.
     extra, inc_errors = resolve_include_targets(root, files, test_only)
+    # **KT-194/D2-166 §3C** — giữ tập test-only **gốc** trước khi "sản phẩm thắng": tệp
+    # test-only bị kéo vào sản phẩm là tệp **ẩn** với đồ thị module, phải kiểm `wake` ở
+    # **cả** chế độ (xem khối `if not strict:` dưới).
+    orig_test_only = set(test_only)
     _product_included = {relp for relp, (_, t) in extra.items() if not t}
     if _product_included:
         test_only = set(test_only) - _product_included
@@ -2396,58 +2469,26 @@ def scan_v2(
             tr = test_ranges.get(str(p))
             if tr is None:
                 tr = test_line_ranges(text)
-            code = strip_rust_noise(text)
-            # Đầu dòng (offset) để đổi offset token ⇒ số dòng, không phải quét lại từng dòng.
-            line_starts = [0]
-            for idx, ch in enumerate(code):
-                if ch == "\n":
-                    line_starts.append(idx + 1)
-            groups: Optional[List[Tuple[int, int, str]]] = None
-            scopes: List[Tuple[int, int, int]] = []
+            _check_wake_text(relp, text, tr, safe_macros, r)
 
-            for m in RE_WAKE_TOKEN.finditer(code):
-                s = m.start()
-                lineno = bisect.bisect_right(line_starts, s)
-                if in_ranges(lineno, tr):
-                    continue
-                before = code[max(0, s - 80) : s]
-                if RE_FN_WAKE_DEF_BEFORE.search(before):
-                    continue  # định nghĩa `fn wake(` — chỗ khai báo API, không phải tham chiếu
-                after = code[m.end() :]
-                nxt = after.lstrip()[:1]
-                if RE_WAKE_PATH_BEFORE.search(before):
-                    why = "tham chiếu `…::wake` (alias/fn-pointer), không có `(`"
-                elif nxt == "(":
-                    why = "gọi `wake(`"
-                elif _in_use_item(code, s):
-                    why = "`use …wake` (nhập hàm `wake` vào phạm vi)"
-                else:
-                    if groups is None:
-                        groups = _delim_pairs(code)
-                        scopes = _local_wake_scopes(code, groups)
-                    macro = _macro_arg_of(code, s, groups)
-                    if macro is not None and macro not in safe_macros:
-                        why = (
-                            f"`wake` là đối số của macro `{macro}!` — macro có thể biến "
-                            f"ident thành tên hàm (KT-171 B10"
-                            + (
-                                ""
-                                if macro not in SAFE_VALUE_MACROS
-                                else f"; tên `{macro}` bị `macro_rules!` trong cây che — "
-                                f"KT-177 H6"
-                            )
-                            + ")"
-                        )
-                    elif _exempt_local_wake(s, scopes, groups):
-                        continue  # biến cục bộ tên `wake` **trong cùng khối**, không phải hàm
-                    else:
-                        why = "dùng `wake` làm giá trị (không có `(`)"
-                r.err(
-                    "E_STRICT_TEST_ONLY_WAKE",
-                    f"  {relp}:{lineno}: {why} trong mã sản phẩm — `wake()` là API "
-                    f"CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/"
-                    f"`wake_from_unlink`",
-                )
+    # **KT-194/D2-166 §3C** — tệp **test-only** bị kéo vào **sản phẩm** bằng `#[path]`/
+    # `include!` là tệp **ẩn** với đồ thị module. Ở `--strict` luật `wake` đã bắt; ở chế độ
+    # thường trước KT-194 **xanh** (đúng ba repro D2-166 §2: `#[r#path]`, escape, `cfg_attr`
+    # lồng). Nay chạy **cùng** luật token `wake` trên đúng các tệp ẩn đó ⇒ fail-closed ở mọi
+    # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
+    if not strict:
+        safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+        for relp, (p, is_test) in sorted(extra.items()):
+            if is_test or relp not in orig_test_only:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            tr = test_ranges.get(str(p))
+            if tr is None:
+                tr = test_line_ranges(text)
+            _check_wake_text(relp, text, tr, safe_macros, r)
 
     # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** — quét thân `macro_rules!`. Chạy ở **mọi** chế
     #    độ: D2-161 đòi `include!`/`#[path]` literal + trong cây ở **cả ba** chế độ, và
@@ -2656,7 +2697,14 @@ def selftest() -> int:
     + hai ca H9 cho dấu ngoặc của `include!`) +
     **8 ca KT-184** (D2-160: H4 **ba lớp** + một dạng **hai lớp** `#[path]`+`include!`, mỗi
     dạng kèm đối chứng dương; D2-161: ba đột biến `include!`/`#[path]` không literal / ra
-    ngoài cây chạy ở **chế độ thường** + một đối chứng dương). Tổng **64** ca.
+    ngoài cây chạy ở **chế độ thường** + một đối chứng dương) +
+    **12 ca KT-187/189/191** (`cfg_attr(path)`, `#[path]`/`include!` trong thân macro mọi
+    delimiter, tên macro Unicode, `mod r#…;`, `$…:tt`, `#[/*c*/path]`) +
+    **31 ca KT-194** (D2-166 §5 — ba tầng: **13 ca lexer** raw ident/chuỗi/raw/escape/comment
+    lồng/char-lifetime/delimiter/đầu vào hỏng/độ sâu; **9 ca tập cạnh nguồn** xác nhận **đúng
+    cạnh** cho `#[path]`/`#[r#path]`/escape/`cfg_attr` lồng/`include!` `[]`+`{}`/`mod` Unicode/
+    macro Unicode + đối chứng nhiễu comment-chuỗi; **9 ca chính sách** ba repro mới + đối chứng
+    hợp lệ + năm đầu vào hỏng `E_LEX_*`). Tổng **107** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -4122,6 +4170,328 @@ def selftest() -> int:
                 "; ".join(rep.errors),
             )
         )
+
+        # ================================================================ KT-194
+        # **D2-166 §5** — ba tầng test: (a) lexer; (b) **tập cạnh nguồn** (xác nhận **đúng
+        # cạnh**, không chỉ exit code); (c) chính sách + cây thật (ba repro mới + đối chứng
+        # hợp lệ). Ba repro là ba đường lọt D2-166 §2: `#[r#path]`, escape chuỗi, `cfg_attr`
+        # lồng — trước KT-194 checker cũ (regex trên văn bản thô) bỏ lọt cả ba.
+
+        # --- (a) lexer -------------------------------------------------------
+        def _lex(text: str):
+            return tokenize(text, "<lex>")
+
+        toks, errs = _lex("r#path")
+        cases.append(
+            (
+                "KT-194a raw ident `r#path` ⇒ ident `path` (raw=True)",
+                (not errs)
+                and len(toks) == 1
+                and toks[0].kind == "ident"
+                and toks[0].val == "path"
+                and toks[0].raw is True,
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex('"a\\x2eb"')
+        cases.append(
+            (
+                "KT-194a chuỗi escape `\\x2e` ⇒ giải mã `.`",
+                (not errs) and len(toks) == 1 and toks[0].kind == "str" and toks[0].val == "a.b",
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex('"\\u{2e}"')
+        cases.append(
+            (
+                "KT-194a chuỗi escape `\\u{2e}` ⇒ giải mã `.`",
+                (not errs) and len(toks) == 1 and toks[0].val == ".",
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex('r#"a"b"#')
+        cases.append(
+            (
+                'KT-194a chuỗi thô `r#"a"b"#` ⇒ giữ nguyên dấu `"`',
+                (not errs) and len(toks) == 1 and toks[0].kind == "str" and toks[0].val == 'a"b',
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex("/* /* */ */")
+        cases.append(
+            (
+                "KT-194a chú thích khối lồng ⇒ không token, không lỗi",
+                (not errs) and not toks,
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex("'a' 'b")
+        cases.append(
+            (
+                "KT-194a char `'a'` vs lifetime `'b`",
+                (not errs)
+                and len(toks) == 2
+                and toks[0].kind == "char"
+                and toks[1].kind == "lifetime"
+                and toks[1].val == "b",
+                f"{toks} {errs}",
+            )
+        )
+
+        toks, errs = _lex("(]")
+        try:
+            build_tree(toks, "<lex>")
+            delim_ok = False
+            delim_detail = "không lỗi"
+        except LexError as e:
+            delim_ok = e.code == "E_LEX_UNBALANCED"
+            delim_detail = str(e)
+        cases.append(("KT-194a delimiter lệch `(]` ⇒ E_LEX_UNBALANCED", delim_ok, delim_detail))
+
+        toks, errs = _lex('"abc')
+        cases.append(
+            (
+                "KT-194a chuỗi chưa đóng ⇒ E_LEX_UNTERMINATED_STRING",
+                bool(errs) and errs[0].code == "E_LEX_UNTERMINATED_STRING",
+                f"{errs}",
+            )
+        )
+
+        toks, errs = _lex("/* abc")
+        cases.append(
+            (
+                "KT-194a chú thích chưa đóng ⇒ E_LEX_UNTERMINATED_COMMENT",
+                bool(errs) and errs[0].code == "E_LEX_UNTERMINATED_COMMENT",
+                f"{errs}",
+            )
+        )
+
+        toks, errs = _lex('"a\\qb"')
+        cases.append(
+            (
+                "KT-194a escape không hỗ trợ `\\q` ⇒ E_LEX_INVALID_ESCAPE",
+                bool(errs) and errs[0].code == "E_LEX_INVALID_ESCAPE",
+                f"{errs}",
+            )
+        )
+
+        toks, errs = _lex("(" * (MAX_TREE_DEPTH + 2))
+        try:
+            build_tree(toks, "<lex>")
+            depth_ok = False
+            depth_detail = "không lỗi"
+        except LexError as e:
+            depth_ok = e.code == "E_LEX_DEPTH"
+            depth_detail = str(e)
+        cases.append(
+            ("KT-194a lồng ngoặc quá MAX_TREE_DEPTH ⇒ E_LEX_DEPTH", depth_ok, depth_detail)
+        )
+
+        inner = 'path = "p"'
+        for _ in range(MAX_ATTR_DEPTH + 2):
+            inner = "cfg_attr(x, " + inner + ")"
+        toks, errs = _lex("#[" + inner + "]")
+        tree = build_tree(toks, "<lex>") if not errs else []
+        attr = parse_attr(tree[1], "<lex>") if len(tree) > 1 else None
+        try:
+            attr_path_edges(attr, "<lex>")
+            adepth_ok = False
+            adepth_detail = "không lỗi"
+        except LexError as e:
+            adepth_ok = e.code == "E_LEX_DEPTH"
+            adepth_detail = str(e)
+        cases.append(
+            (
+                "KT-194a `cfg_attr` lồng quá MAX_ATTR_DEPTH ⇒ E_LEX_DEPTH",
+                adepth_ok,
+                adepth_detail,
+            )
+        )
+
+        toks, errs = _lex("#[1 = 2]")
+        tree = build_tree(toks, "<lex>") if not errs else []
+        try:
+            parse_attr(tree[1], "<lex>")
+            attr_ok = False
+            attr_detail = "không lỗi"
+        except LexError as e:
+            attr_ok = e.code == "E_LEX_ATTR"
+            attr_detail = str(e)
+        cases.append(
+            ("KT-194a tên thuộc tính không phải định danh ⇒ E_LEX_ATTR", attr_ok, attr_detail)
+        )
+
+        # --- (b) tập cạnh nguồn: xác nhận **đúng cạnh**, không chỉ exit code ---------
+        def _edges_of(d: Path):
+            # `scan_v2` chuẩn hoá gốc bằng `.resolve()`; ở đây cũng vậy để `relative_to()`
+            # khớp trên macOS (`/var` → `/private/var`).
+            d = d.resolve()
+            files = [
+                (p, p.read_text(encoding="utf-8", errors="replace"), [])
+                for p in iter_rs(d, V2_SCAN)
+            ]
+            return resolve_include_targets(d, files, test_only_modules(d))
+
+        def _edge_case(name: str, attr_text: str, want: str) -> None:
+            d = tmp / ("kt194b-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_t;\n")
+            _write(d / "v2/kernel/vifast-core/src/evil_t.rs", "pub fn f() {}\n")
+            _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", attr_text + "\nmod evil_p;\n")
+            extra, errs = _edges_of(d)
+            got = extra.get(want)
+            cases.append(
+                (
+                    f"KT-194b {name} ⇒ đúng cạnh `{want}` (sản phẩm)",
+                    (not errs) and got is not None and got[1] is False,
+                    f"extra={sorted(extra)} errs={errs}",
+                )
+            )
+
+        _edge_case("path", '#[path = "evil_t.rs"]', "v2/kernel/vifast-core/src/evil_t.rs")
+        _edge_case("r#path", '#[r#path = "evil_t.rs"]', "v2/kernel/vifast-core/src/evil_t.rs")
+        _edge_case("escape", '#[path = "evil_t\\x2ers"]', "v2/kernel/vifast-core/src/evil_t.rs")
+        _edge_case(
+            "cfg_attr lồng",
+            '#[cfg_attr(all(not(test)), cfg_attr(not(test), path = "evil_t.rs"))]',
+            "v2/kernel/vifast-core/src/evil_t.rs",
+        )
+
+        for delim, text in (
+            ("[]", 'include!["evil_t.rs"];'),
+            ("{}", 'include!{"evil_t.rs"}'),
+        ):
+            d = tmp / ("kt194b-include-" + ("sq" if delim == "[]" else "br"))
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_t;\n")
+            _write(d / "v2/kernel/vifast-core/src/evil_t.rs", "pub fn f() {}\n")
+            _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", text + "\n")
+            extra, errs = _edges_of(d)
+            want = "v2/kernel/vifast-core/src/evil_t.rs"
+            got = extra.get(want)
+            cases.append(
+                (
+                    f"KT-194b `include!` delimiter `{delim}` ⇒ đúng cạnh",
+                    (not errs) and got is not None and got[1] is False,
+                    f"extra={sorted(extra)} errs={errs}",
+                )
+            )
+
+        d = tmp / "kt194b-mod-unicode"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod xin_chào;\n")
+        _write(d / "v2/kernel/vifast-core/src/xin_chào.rs", "pub fn f() {}\n")
+        mods = _mods_of(
+            d / "v2/kernel/vifast-core/src/lib.rs", d / "v2/kernel/vifast-core/src"
+        )
+        cases.append(
+            (
+                "KT-194b `mod` tên Unicode ⇒ đúng cạnh",
+                any(str(t).endswith("xin_chào.rs") for t, _, _ in mods),
+                f"{mods}",
+            )
+        )
+
+        d = tmp / "kt194b-macro-unicode"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! xin_chào [ () => { include!("x.rs"); } ];\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-194b `macro_rules!` tên Unicode, thân `[]` ⇒ đỏ E_STRICT_MACRO_INCLUDE",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        d = tmp / "kt194b-noise"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '// #[path = "evil_t.rs"]\nconst S: &str = "#[path = \\"evil_t.rs\\"]";\n',
+        )
+        extra, errs = _edges_of(d)
+        cases.append(
+            (
+                "KT-194b `#[path]` trong comment/chuỗi ⇒ không cạnh",
+                (not errs) and not extra,
+                f"extra={sorted(extra)} errs={errs}",
+            )
+        )
+
+        # --- (c) chính sách + cây thật: ba repro mới + đối chứng hợp lệ -----------
+        def _repro(name: str, attr_text: str) -> None:
+            d = tmp / ("kt194c-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_t;\n")
+            _write(
+                d / "v2/kernel/vifast-core/src/evil_t.rs",
+                "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                "        self.wake(t);\n        0\n    }\n}\n",
+            )
+            _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", attr_text + "\nmod evil_p;\n")
+            rep = scan_v2(d, strict=True, allowlist={})
+            cases.append(
+                (
+                    f"KT-194c repro {name} ⇒ đỏ E_STRICT_TEST_ONLY_WAKE",
+                    (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _repro("r#path", '#[r#path = "evil_t.rs"]')
+        _repro("escape", '#[path = "evil_t\\x2ers"]')
+        _repro(
+            "cfg_attr lồng",
+            '#[cfg_attr(all(not(test)), cfg_attr(not(test), path = "evil_t.rs"))]',
+        )
+
+        d = tmp / "kt194c-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[r#path = "evil_ok.rs"]\nmod evil_ok_p;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-194c đối chứng `#[r#path]` tới tệp sản phẩm `wake_from` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        def _broken(name: str, text: str, code: str) -> None:
+            d = tmp / ("kt194c-broken-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", text)
+            rep = scan_v2(d, strict=False)
+            cases.append(
+                (
+                    f"KT-194c đầu vào hỏng ({name}) ⇒ đỏ {code}",
+                    (not rep.ok) and any(code in e for e in rep.errors),
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _broken("chuỗi chưa đóng", 'const S: &str = "abc;\n', "E_LEX_UNTERMINATED_STRING")
+        _broken("comment chưa đóng", "/* abc\n", "E_LEX_UNTERMINATED_COMMENT")
+        _broken("delimiter lệch", "fn f() { (]\n", "E_LEX_UNBALANCED")
+        _broken("escape sai", 'const S: &str = "a\\qb";\n', "E_LEX_INVALID_ESCAPE")
+        _broken("quá sâu", "(" * (MAX_TREE_DEPTH + 2), "E_LEX_DEPTH")
 
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
