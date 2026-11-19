@@ -1,0 +1,24 @@
+RC=0
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L51-kt222/v2/kernel/vifast-core)
+warning: constant `POS_STR` is never used
+ --> vifast-core/src/kt222_pos.rs:4:11
+  |
+4 | pub const POS_STR: &str = include_str!("../../../lib/kt222_pos.txt");
+  |           ^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `POS_BYTES` is never used
+ --> vifast-core/src/kt222_pos.rs:5:11
+  |
+5 | pub const POS_BYTES: &[u8] = include_bytes!("../../../lib/kt222_pos.bin");
+  |           ^^^^^^^^^
+
+warning: constant `POS_STRINGIFY` is never used
+ --> vifast-core/src/kt222_pos.rs:6:11
+  |
+6 | pub const POS_STRINGIFY: &str = stringify!(include);
+  |           ^^^^^^^^^^^^^
+
+warning: `vifast-core` (lib) generated 3 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.57s

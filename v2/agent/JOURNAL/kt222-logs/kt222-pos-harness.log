@@ -1,0 +1,4 @@
+cargo RC=0
+lớp 1 normal: RC=0 errors=0 []
+lớp 1 strict: RC=0 errors=0 []
+lớp 2: RC=0 errors=0 []

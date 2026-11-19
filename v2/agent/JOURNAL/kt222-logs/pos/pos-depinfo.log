@@ -1,0 +1,9 @@
+RC=0
+# check-wake-depinfo: root=/private/tmp/night3-L51-kt222
+# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L51-kt222/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.63 s), 18 artifact, 17 tệp .d, 116 tệp .rs
+# rustc nạp: 116 tệp .rs trong cây (gộp 1 đơn vị)
+# quét: 114 tệp (miễn 2 tệp cửa wake + 0 tệp test-only)
+# test-only: không cần (không có tệp tên test trong danh sách nạp)
+# tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): 0
+# tệp ngoài phạm vi luật wake tĩnh (in_test_only_wake_scope): 41
+# check-wake-depinfo: errors=0 warnings=0 (6.52 s)

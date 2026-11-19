@@ -1,0 +1,51 @@
+
+===== r01: L40 macro_rules! :item + include! trong đối số lời gọi
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=3 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_TT', 'E_STRICT_WAKE_INCLUDE']
+  lớp 1 strict: RC=1 errors=3 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_TT', 'E_STRICT_WAKE_INCLUDE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== r02: L44 include! vị trí biểu thức trong ( … )
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  lớp 1 strict: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== r03: L47 #[path] trong inline module của tệp non-mod-rs
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 1 strict: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== r04: L47 src/target/evil.rs (thư mục tên target)
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 1 strict: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 2: RC=0 errors=0 [] hidden=0
+
+===== r05: L49 #[cfg(test)] trên nhánh match (đường lọt #13)
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 1 strict: RC=1 errors=1 ['E_STRICT_TEST_ONLY_WAKE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=0
+
+===== r06: L40 mod trong lời gọi macro (cfg_if!)
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=5 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_MOD', 'E_STRICT_MACRO_TT', 'E_STRICT_WAKE_INCLUDE']
+  lớp 1 strict: RC=1 errors=5 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_MOD', 'E_STRICT_MACRO_TT', 'E_STRICT_WAKE_INCLUDE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== r07: L40/L45 include! trong v2/lib trỏ sang v2/kernel
+  cargo RC=0
+  lớp 1 normal: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  lớp 1 strict: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  lớp 2: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== BẢNG =====
+r01 cargo=  0 L1= 3/ 3 L2= 1 hidden=1
+r02 cargo=  0 L1= 1/ 1 L2= 1 hidden=1
+r03 cargo=  0 L1= 1/ 1 L2= 1 hidden=1
+r04 cargo=  0 L1= 1/ 1 L2= 0 hidden=0
+r05 cargo=  0 L1= 1/ 1 L2= 1 hidden=0
+r06 cargo=  0 L1= 5/ 5 L2= 1 hidden=1
+r07 cargo=  0 L1= 1/ 1 L2= 1 hidden=1
