@@ -1,0 +1,63 @@
+# T3a macro_rules! ngoặc VUÔNG + #[path]
+### T3a macro_rules! ngoặc VUÔNG + #[path] CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T3a macro_rules! ngoặc VUÔNG + #[path] CUR (chế độ thường) CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### T3a macro_rules! ngoặc VUÔNG + #[path] CUR (chế độ thường) CUR --strict cargo fmt --all --check
+fmt rc=0
+### T3a macro_rules! ngoặc VUÔNG + #[path] CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.78s
+# T3b macro_rules! ngoặc VUÔNG + include!
+### T3b macro_rules! ngoặc VUÔNG + include! CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T3b macro_rules! ngoặc VUÔNG + include! CUR (chế độ thường) CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### T3b macro_rules! ngoặc VUÔNG + include! CUR (chế độ thường) CUR --strict cargo fmt --all --check
+fmt rc=0
+### T3b macro_rules! ngoặc VUÔNG + include! CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.03s
+# T3c `mod` trong macro + lời gọi #[cfg(not(test))] (tệp test-only theo đồ thị)
+### T3c `mod` trong macro + lời gọi #[cfg(not(test))] (tệp test-only theo đồ thị) CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T3c `mod` trong macro + lời gọi #[cfg(not(test))] (tệp test-only theo đồ thị) CUR (chế độ thường) CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### T3c `mod` trong macro + lời gọi #[cfg(not(test))] (tệp test-only theo đồ thị) CUR (chế độ thường) CUR --strict cargo fmt --all --check
+fmt rc=1
+### T3c `mod` trong macro + lời gọi #[cfg(not(test))] (tệp test-only theo đồ thị) CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/x.rs:4:8
+ --> vifast-core/src/sub/s.rs:1:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.97s
+# T3d include! trong macro ngoặc tròn, KHÔNG decoy (định nghĩa m.rs)
+### T3d include! trong macro ngoặc tròn, KHÔNG decoy (định nghĩa m.rs) CUR (chế độ thường)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/m.rs:4: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T3d include! trong macro ngoặc tròn, KHÔNG decoy (định nghĩa m.rs) CUR (chế độ thường) CUR --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/m.rs:4: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T3d include! trong macro ngoặc tròn, KHÔNG decoy (định nghĩa m.rs) CUR (chế độ thường) CUR --strict cargo fmt --all --check
+fmt rc=0
+### T3d include! trong macro ngoặc tròn, KHÔNG decoy (định nghĩa m.rs) CUR (chế độ thường) CUR --strict cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.04s

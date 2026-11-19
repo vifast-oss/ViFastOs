@@ -1,0 +1,9 @@
+Diff in /private/tmp/kt189-l28/b2/inc/v2/kernel/vifast-core/src/m.rs:1:
+ #[macro_export]
+ macro_rules! evil_mod {
+-    () => { include!("evil.rs"); };
++    () => {
++        include!("evil.rs");
++    };
+ }
+ 

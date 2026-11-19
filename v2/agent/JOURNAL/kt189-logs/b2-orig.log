@@ -1,0 +1,24 @@
+# B2 gốc — #[path] trong thân macro_rules! (rustc giải theo tệp gọi)
+### B2 CUR (chế độ thường)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:3: thân `macro_rules! evil_mod` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B2)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### B2 CUR --strict
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/m.rs:3: thân `macro_rules! evil_mod` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-187 B2)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### B2 OLD 8670cdfe (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B2 OLD 8670cdfe --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B2 cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.05s
+rc=0

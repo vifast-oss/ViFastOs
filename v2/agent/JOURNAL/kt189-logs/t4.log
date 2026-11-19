@@ -1,0 +1,124 @@
+### T4a include ! (…) []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4b include!{…} []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4c include![…] []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4d include ! { … } []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4e include!(r"…") []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4f include!(r#"…"#) []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4g include! /*c*/ (…) []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4h include!(concat!(…)) []
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T4i #[ path = … ] []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4j #[path="…"] []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4k # [ path = … ] []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4l #[path = r"…"] []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4m #[path = concat!(…)] []
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `#[path]` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-184 D2-161)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T4n cfg_attr không dấu cách []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4o cfg_attr path r"…" []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4p cfg_attr nhiều attr []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4q cfg_attr lồng []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T4r cfg_attr path concat! []
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `cfg_attr(…, path = …)` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-187 B1)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### T4s cfg_attr xuống dòng []
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T5a cfg_attr(test, path = "evil_t.rs") — CHỈ bật khi test (đích có wake)
+### T5a CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T5a CUR --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T5a OLD 8670cdfe --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T5b include! trong #[cfg(test)] của tệp SẢN PHẨM, đích trong cây có wake
+### T5b CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T5b CUR --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T5b OLD 8670cdfe --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T5c #[path] trong #[cfg(test)] của tệp SẢN PHẨM, đích trong cây có wake
+### T5c CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### T5c CUR --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### T5c OLD 8670cdfe --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:5: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+

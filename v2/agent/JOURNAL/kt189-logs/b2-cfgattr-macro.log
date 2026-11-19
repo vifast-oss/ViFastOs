@@ -1,0 +1,26 @@
+# B2d — #[cfg_attr(not(test), path = "…")] TRONG thân macro_rules! (B1+B2)
+# cây: b2/cfgattr-macro (đã chạy cargo fmt; đã thêm call site sản phẩm)
+
+### m.rs sau fmt:
+#[macro_export]
+macro_rules! evil_mod {
+    () => {
+        #[cfg_attr(not(test), path = "evil.rs")]
+        mod x;
+    };
+}
+
+### B2d CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B2d CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B2d cargo fmt --all --check
+fmt rc=0
+### B2d cargo clippy -p vifast-core -- -D warnings
+clippy rc=0
+### B2d cargo check -p vifast-core
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.71s
