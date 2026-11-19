@@ -1,0 +1,376 @@
+==============================================================================
+CONTRACT §2 include! ()
+  mutation: 'include!("evil_inc.rs");\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 include! []
+  mutation: 'include!["evil_inc.rs"];\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 include! {}
+  mutation: 'include!{"evil_inc.rs"};\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 include ! ( )
+  mutation: 'include ! ( "evil_inc.rs" );\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path r"…"
+  mutation: '#[path = r"evil_p.rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path r#"…"#
+  mutation: '#[path = r#"evil_p.rs"#]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path r##"…"##
+  mutation: '#[path = r##"evil_p.rs"##]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path escape \x2e
+  mutation: '#[path = "evil_p\\x2ers"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path escape \u{2e}
+  mutation: '#[path = "evil_p\\u{2e}rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path spaced
+  mutation: '#[ path = "evil_p.rs" ]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path newline
+  mutation: '#[\npath = "evil_p.rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 path raw ident
+  mutation: '#[r#path = "evil_p.rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 cfg_attr(path)
+  mutation: '#[cfg_attr(not(test), path = "evil_p.rs")]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 cfg_attr lồng
+  mutation: '#[cfg_attr(not(test), cfg_attr(not(test), path = "evil_p.rs"))]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 mod #[cfg(test)] ⇒ test-only
+  mutation: '#[cfg(test)]\nmod evil_t;\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 mod #[cfg(feature="ktest")] ⇒ test-only
+  mutation: '#[cfg(feature = "ktest")]\nmod evil_k;\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 mod cùng dòng sau fn test ⇒ sản phẩm
+  mutation: '#[cfg(test)] fn h() {} mod evil;\n'
+  normal: RC=0 red=False (expect True)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: FAIL
+==============================================================================
+CONTRACT §2 mod trong khối test lồng ⇒ test
+  mutation: '#[cfg(test)]\nmod tests { mod evil; }\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 macro_rules! tên Unicode thân {}
+  mutation: 'macro_rules! é { () => { } }\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 macro_rules! thân ()
+  mutation: 'macro_rules! m1 ( () => { } );\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 macro_rules! thân []
+  mutation: 'macro_rules! m2 [ () => { } ];\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 comment giữa # và [
+  mutation: '#/*x*/[path = "evil_p.rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §2 comment trong attr
+  mutation: '#[ /*x*/ path = "evil_p.rs" ]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_p.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 include! concat!
+  mutation: 'include!(concat!("evil", "_inc.rs"));\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 path concat!
+  mutation: '#[path = concat!("evil", "_p.rs")]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `path` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `path` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 path biến
+  mutation: '#[path = SOME_PATH]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `path` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `path` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 path ra ngoài cây
+  mutation: '#[path = "../../../../../../etc/passwd"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../../../../etc/passwd`) — không quét được đích (fail-closed, KT-171 B6/B7)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../../../../etc/passwd`) — không quét được đích (fail-closed, KT-171 B6/B7)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 path không tồn tại
+  mutation: '#[path = "nope_xyz.rs"]\nmod e;\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `#[path]` trỏ tới `v2/kernel/vifast-core/src/nope_xyz.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `#[path]` trỏ tới `v2/kernel/vifast-core/src/nope_xyz.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro include!
+  mutation: 'macro_rules! m { () => { include!("x.rs") } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro #[path]
+  mutation: 'macro_rules! m { () => { #[path = "x.rs"] mod y; } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194)
+    N: E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194)
+    S: E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro mod literal
+  mutation: 'macro_rules! m { () => { mod y; } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro mod r#x
+  mutation: 'macro_rules! m { () => { mod r#y; } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod r#…;` — không phân giải tĩnh được (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod r#…;` — không phân giải tĩnh được (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro mod $n
+  mutation: 'macro_rules! m { ($n:ident) => { mod $n; } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod $…;` — không phân giải tĩnh được (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` khai `mod $…;` — không phân giải tĩnh được (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 macro $…:tt
+  mutation: 'macro_rules! m { ($t:tt) => { $t } }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/lib.rs:121: thân `macro_rules! m` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §3 wake sản phẩm: strict đỏ / thường xanh
+  mutation: 'pub fn evil(m: &mut Machine, t: ObjId) { let _ = m.wake(t); }\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:121: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: FAIL
+==============================================================================
+CONTRACT §3 chuỗi chưa đóng
+  mutation: 'pub fn f() { let s = "abc; }\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_LEX_UNTERMINATED_STRING   v2/kernel/vifast-core/src/lib.rs:121:22: chuỗi chưa đóng
+  strict: RC=1 red=True (expect True)
+    S: E E_LEX_UNTERMINATED_STRING   v2/kernel/vifast-core/src/lib.rs:121:22: chuỗi chưa đóng
+    S: E E_STRICT_TRANSITION 1 chỗ chuyển `TcbState::Ready` ngoài cửa wake (allowlist tường minh KT-155)
+    S: E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/tls_tests.rs:299 (set_tls_khi_ready_van_ghi_duoc)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §4 macro invocation chứa #[path] ra ngoài ⇒ bỏ qua (đã ghi)
+  mutation: 'foo! { #[path = "../../../../agent/evil.rs"] mod e; }\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §4 #[path] trong v2/lib không phân giải (đã ghi)
+  mutation: None
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §4 F3 cfg_attr 40 tầng trong v2/lib ngoài macro ⇒ xanh (đã ghi)
+  mutation: None
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §5 include! OUT_DIR bị từ chối
+  mutation: 'include!(concat!(env!("OUT_DIR"), "/x.rs"));\n'
+  normal: RC=1 red=True (expect True)
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:121: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §5 cfg(any(test,…)) không nhận là test ⇒ sản phẩm
+  mutation: '#[cfg(any(test, feature = "x"))]\nmod evil;\n'
+  normal: RC=0 red=False (expect True)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: FAIL
+==============================================================================
+CONTRACT §5 cfg(all(test, feature="ktest")) nhận là test
+  mutation: '#[cfg(all(test, feature = "ktest"))]\nmod evil;\n'
+  normal: RC=0 red=False (expect False)
+  strict: RC=0 red=False (expect False)
+  VERDICT: PASS
+==============================================================================
+CONTRACT §5 cfg(not(test)) ⇒ sản phẩm
+  mutation: '#[cfg(not(test))]\nmod evil;\n'
+  normal: RC=0 red=False (expect True)
+  strict: RC=1 red=True (expect True)
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+  VERDICT: FAIL
+
+===== TỔNG HỢP HỢP ĐỒNG =====
+PASS  §2 include! (): normal_red=True strict_red=True
+PASS  §2 include! []: normal_red=True strict_red=True
+PASS  §2 include! {}: normal_red=True strict_red=True
+PASS  §2 include ! ( ): normal_red=True strict_red=True
+PASS  §2 path r"…": normal_red=True strict_red=True
+PASS  §2 path r#"…"#: normal_red=True strict_red=True
+PASS  §2 path r##"…"##: normal_red=True strict_red=True
+PASS  §2 path escape \x2e: normal_red=True strict_red=True
+PASS  §2 path escape \u{2e}: normal_red=True strict_red=True
+PASS  §2 path spaced: normal_red=True strict_red=True
+PASS  §2 path newline: normal_red=True strict_red=True
+PASS  §2 path raw ident: normal_red=True strict_red=True
+PASS  §2 cfg_attr(path): normal_red=True strict_red=True
+PASS  §2 cfg_attr lồng: normal_red=True strict_red=True
+PASS  §2 mod #[cfg(test)] ⇒ test-only: normal_red=False strict_red=False
+PASS  §2 mod #[cfg(feature="ktest")] ⇒ test-only: normal_red=False strict_red=False
+FAIL  §2 mod cùng dòng sau fn test ⇒ sản phẩm: normal_red=False strict_red=True
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  §2 mod trong khối test lồng ⇒ test: normal_red=False strict_red=False
+PASS  §2 macro_rules! tên Unicode thân {}: normal_red=False strict_red=False
+PASS  §2 macro_rules! thân (): normal_red=False strict_red=False
+PASS  §2 macro_rules! thân []: normal_red=False strict_red=False
+PASS  §2 comment giữa # và [: normal_red=True strict_red=True
+PASS  §2 comment trong attr: normal_red=True strict_red=True
+PASS  §3 include! concat!: normal_red=True strict_red=True
+PASS  §3 path concat!: normal_red=True strict_red=True
+PASS  §3 path biến: normal_red=True strict_red=True
+PASS  §3 path ra ngoài cây: normal_red=True strict_red=True
+PASS  §3 path không tồn tại: normal_red=True strict_red=True
+PASS  §3 macro include!: normal_red=True strict_red=True
+PASS  §3 macro #[path]: normal_red=True strict_red=True
+PASS  §3 macro mod literal: normal_red=True strict_red=True
+PASS  §3 macro mod r#x: normal_red=True strict_red=True
+PASS  §3 macro mod $n: normal_red=True strict_red=True
+PASS  §3 macro $…:tt: normal_red=True strict_red=True
+FAIL  §3 wake sản phẩm: strict đỏ / thường xanh: normal_red=False strict_red=True
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:121: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  §3 chuỗi chưa đóng: normal_red=True strict_red=True
+PASS  §4 macro invocation chứa #[path] ra ngoài ⇒ bỏ qua (đã ghi): normal_red=False strict_red=False
+PASS  §4 #[path] trong v2/lib không phân giải (đã ghi): normal_red=False strict_red=False
+PASS  §4 F3 cfg_attr 40 tầng trong v2/lib ngoài macro ⇒ xanh (đã ghi): normal_red=False strict_red=False
+PASS  §5 include! OUT_DIR bị từ chối: normal_red=True strict_red=True
+FAIL  §5 cfg(any(test,…)) không nhận là test ⇒ sản phẩm: normal_red=False strict_red=True
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  §5 cfg(all(test, feature="ktest")) nhận là test: normal_red=False strict_red=False
+FAIL  §5 cfg(not(test)) ⇒ sản phẩm: normal_red=False strict_red=True
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+
+4 FAIL / 43 ca
+RC=0

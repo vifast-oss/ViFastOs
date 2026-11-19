@@ -1,0 +1,118 @@
+v2 sạch ⇒ xanh
+v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
+v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
+v2 `--strict` transition ngoài cửa wake ⇒ đỏ
+v2 `--strict` + allowlist khớp ⇒ xanh
+v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ
+v2 `--strict` allowlist mục ⇒ đỏ
+v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)
+v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)
+v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh
+v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh
+v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
+H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)
+H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)
+H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)
+H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)
+H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)
+H4 `wake /*x*/ (t)` ⇒ đỏ (block comment chen giữa)
+H5 `wake` ⏎ `(t)` ⇒ đỏ (gọi cắt dòng)
+H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ
+phạm vi mới: chỉ `wake_from(`/`wake_step(`/`wake_addr(` ⇒ xanh
+`#[cfg(test)] mod tests` thật vẫn được miễn ⇒ xanh
+biến cục bộ `let mut wake = …` ⇒ xanh (không báo oan)
+B8 module sản phẩm tên `ktest_evil.rs` + `mod` từ `main.rs` ⇒ đỏ (KT-171)
+B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ xanh (test-only thật)
+B9 `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]` ⇒ đỏ (KT-171)
+B9b `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+B6 `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+B6b `include!` trỏ trong `v2/kernel` (ngoài `src/`) ⇒ quét đích ⇒ đỏ
+B7 `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+B7b `#[path]` trỏ trong cây, đích chỉ `wake_from(` ⇒ xanh
+B10 `wake` làm đối số macro `$name:ident` ⇒ đỏ (KT-171)
+B10b binding ở khối con, token ở khối cha ⇒ đỏ (scope, KT-171)
+B10c binding + dùng cùng khối ⇒ xanh (không báo oan)
+B4 `macro_rules!` trong `v2/lib` chứa token `wake` ⇒ đỏ (KT-171)
+B4b `macro_rules!` trong `v2/lib` chỉ `wake_from(` ⇒ xanh
+KT-172 A: `ktest_evil.rs` + `mod` từ `main.rs`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)
+KT-172 B: `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+KT-172 B2: `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+KT-172 C: luật 1 — `ktest_evil.rs` (sản phẩm) phát `MailboxMsg::Wake` ngoài cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`
+KT-172 D: luật 2 — `ktest_evil.rs` (sản phẩm) xử lý `MailboxMsg::Wake` ngoài `apply_mail` ⇒ đỏ `E_CONSUMER`
+KT-172 E: luật 3 — `ktest_evil.rs` (sản phẩm) trong `vifast-plat-*` dùng `wake_step` ⇒ đỏ `E_ARCH_WAKE`
+H4 `include!` lồng hai lớp qua tệp test-only ⇒ đỏ (KT-177)
+H4b `include!` lồng hai lớp, đích chỉ `wake_from(` ⇒ xanh
+H6 `macro_rules! concat` che tên an toàn + biến `wake` ⇒ đỏ (KT-177)
+H6b `assert_eq!(wake, 1)` không bị che ⇒ xanh (không báo oan)
+H7 thân `macro_rules!` trong `v2/lib` chứa `include!` ⇒ đỏ (KT-177)
+H7b macro `v2/lib` dùng `concat!`, không `include!` ⇒ xanh
+H8 `#[path = r#"…"#]` tới tệp test-only trong cây ⇒ đỏ (KT-177)
+H8b `#[path = r#"…"#]` tới tệp sản phẩm chỉ `wake_from(` ⇒ xanh
+H9 `include![…]` (ngoặc vuông) tới tệp test-only ⇒ đỏ (KT-177)
+H9 `include!{…}` (ngoặc nhọn) tới tệp test-only ⇒ đỏ (KT-177)
+H4 ba lớp `include!` qua tệp test-only ⇒ đỏ (KT-184/D2-160)
+H4b ba lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+H4 `#[path]` (sản phẩm) + `include!` (test-only) hai lớp ⇒ đỏ (KT-184)
+H4b `#[path]` + `include!` hai lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+D2-161 `include!(concat!(…))` ở chế độ thường ⇒ đỏ (KT-184)
+D2-161 `#[path]` ra ngoài cây ở chế độ thường ⇒ đỏ (KT-184)
+D2-161 `#[path = concat!(…)]` ở chế độ thường ⇒ đỏ (KT-184)
+B1 `#[cfg_attr(not(test), path = …)]` tới tệp test-only ⇒ đỏ (KT-187)
+B2 `#[path]` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+B3 `include!` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+B2c `#[path]` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+B3a `include!` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+B2d `cfg_attr(path)` trong thân macro ⇒ đỏ (KT-189)
+T3c `mod …;` trong thân macro ⇒ đỏ (KT-189)
+KT-191 tên macro Unicode ⇒ đỏ (KT-191)
+KT-191 `mod $n;` trong macro ⇒ đỏ (KT-191)
+KT-191 `mod r#x;` trong macro ⇒ đỏ (KT-191)
+KT-191 passthrough `$…:tt` ⇒ đỏ (KT-191)
+KT-191 `#[/*c*/path]` ⇒ đỏ (KT-191)
+D2-161b `#[path]` literal trong cây ở chế độ thường ⇒ xanh (KT-184)
+KT-194a raw ident `r#path` ⇒ ident `path` (raw=True)
+KT-194a chuỗi escape `\x2e` ⇒ giải mã `.`
+KT-194a chuỗi escape `\u{2e}` ⇒ giải mã `.`
+KT-194a chuỗi thô `r#"a"b"#` ⇒ giữ nguyên dấu `"`
+KT-194a chú thích khối lồng ⇒ không token, không lỗi
+KT-194a char `'a'` vs lifetime `'b`
+KT-194a delimiter lệch `(]` ⇒ E_LEX_UNBALANCED
+KT-194a chuỗi chưa đóng ⇒ E_LEX_UNTERMINATED_STRING
+KT-194a chú thích chưa đóng ⇒ E_LEX_UNTERMINATED_COMMENT
+KT-194a escape không hỗ trợ `\q` ⇒ E_LEX_INVALID_ESCAPE
+KT-194a lồng ngoặc quá MAX_TREE_DEPTH ⇒ E_LEX_DEPTH
+KT-194a `cfg_attr` lồng quá MAX_ATTR_DEPTH ⇒ E_LEX_DEPTH
+KT-194a tên thuộc tính không phải định danh ⇒ E_LEX_ATTR
+KT-194b path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+KT-194b r#path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+KT-194b escape ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+KT-194b cfg_attr lồng ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+KT-194b `include!` delimiter `[]` ⇒ đúng cạnh
+KT-194b `include!` delimiter `{}` ⇒ đúng cạnh
+KT-194b `mod` tên Unicode ⇒ đúng cạnh
+KT-194b `macro_rules!` tên Unicode, thân `[]` ⇒ đỏ E_STRICT_MACRO_INCLUDE
+KT-194b `#[path]` trong comment/chuỗi ⇒ không cạnh
+KT-194c repro r#path ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+KT-194c repro escape ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+KT-194c repro cfg_attr lồng ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+KT-196/F2 cùng dòng sau fn test ⇒ sản phẩm
+KT-196/F2 khác dòng sau fn test ⇒ sản phẩm
+KT-196/F2 thuộc tính trực tiếp ⇒ test
+KT-196/F2 trong mod test lồng ⇒ test
+KT-196/F2 chú thích + dòng trống xen giữa ⇒ sản phẩm
+KT-196/F2 nhiều thuộc tính trước mod test ⇒ test
+KT-198/F2b hàm sản phẩm cùng dòng sau `}` test ⇒ đỏ
+KT-198/F2b wake trong mod test thật ⇒ xanh
+KT-198/F2b wake trong fn test thật ⇒ xanh
+KT-199/F4b inline module `#[path]` + con test-only ⇒ xanh (không báo oan)
+KT-199/F4c `#[path]` trỏ thư mục trên `mod` không thân ⇒ đỏ E_STRICT_WAKE_INCLUDE
+KT-194c đối chứng `#[r#path]` tới tệp sản phẩm `wake_from` ⇒ xanh
+KT-194c đầu vào hỏng (chuỗi chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_STRING
+KT-194c đầu vào hỏng (comment chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_COMMENT
+KT-194c đầu vào hỏng (delimiter lệch) ⇒ đỏ E_LEX_UNBALANCED
+KT-194c đầu vào hỏng (escape sai) ⇒ đỏ E_LEX_INVALID_ESCAPE
+KT-194c đầu vào hỏng (quá sâu) ⇒ đỏ E_LEX_DEPTH
+v1 ba kênh ⇒ đỏ
+v1 một kênh ⇒ xanh
+cây rỗng ⇒ đỏ (fail-closed)
