@@ -113,6 +113,21 @@ Tất cả `cargo check` **RC=0** và **XANH cả ba lớp**. Đối chứng: `i
 từ `TcbState::Ready` trong cùng hàm. Đóng được họ này cần **phân tích liên hàm** hoặc
 `cargo expand` + dataflow — **chưa làm**.
 
+**Và đường lọt #17 — `transition_tcb` lấy làm fn-pointer, lọt CẢ BA lớp:**
+
+```rust
+let tt = Machine::transition_tcb;
+tt(m, t, TcbState::Ready);
+```
+
+`cargo check` **RC=0**; lớp 1 thường **RC=0**; lớp 1 `--strict` **RC=0**; lớp 2 **RC=0** (tệp
+**có** trong `.d`). Đối chứng âm cùng tệp cùng vị trí, đổi thành `m.transition_tcb(t,
+TcbState::Ready)` ⇒ **ĐỎ cả ba**. Gốc: `_transition_calls` chỉ khớp ident `transition_tcb`
+**theo sau bởi nhóm `(`** — lấy fn-pointer rồi gọi qua biến thì không khớp.
+
+**Tổng cộng đêm nay: mười bảy đường lọt, năm đường mới (#13–#17), và #13–#17 đều lọt cả hai
+hoặc cả ba lớp.**
+
 ### 2.4. K6 — đo lại trên ảnh mới
 
 KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6702ec` ⇒ ảnh K6 cũ
@@ -192,6 +207,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | **D2-180** | KT-230 ĐẠT (đóng #14); đường lọt **#15** (alias kiểu che `TcbState::Ready`); mở KT-231 |
 | **D2-181** | KT-231 ĐẠT (đóng #15) |
 | **D2-182** | Đường lọt **#16** (họ 6 dạng: `Ready` qua tham số/hằng/closure), lọt **cả ba** lớp |
+| **D2-183** | Đường lọt **#17** (`transition_tcb` làm fn-pointer), lọt **cả ba** lớp |
 
 ---
 
@@ -217,7 +233,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | L52 | KT-223 (review KT-211) + KT-225 | ĐẠT CÓ ĐIỀU KIỆN → ĐẠT — tìm 4 báo oan + đường lọt `.txt` |
 | L53 | KT-224 (review KT-214) + KT-227 + KT-228 | **KHÔNG ĐẠT** → ĐẠT — tìm **5 đường lọt cả hai lớp** |
 | L54 | KT-229 (tấn công theo lớp) + KT-230 + KT-231 | ĐẠT — tìm **#14** và **#15**, cả hai lọt **cả hai lớp** |
-| L55 | KT-232 (fn-pointer) | đang chạy |
+| L55 | KT-232 (fn-pointer) | **SỐNG** — tìm **#17**, lọt **cả ba** lớp |
 | L56 | KT-233 (build.rs/OUT_DIR) | đang chạy |
 | L57 | KT-234 (tham số liên hàm) | **SỐNG** — tìm **#16** (họ 6 dạng), lọt **cả ba** lớp |
 | L58 | KT-235 (verify cuối) | đang chạy |
