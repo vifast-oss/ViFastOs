@@ -1,0 +1,18 @@
+# KT-197 — đối chiếu hợp đồng §2/§3 (HEAD d6468563)
+# Mỗi ca: thêm vào lib.rs (evil_t.rs test-only, thân gọi wake) rồi chạy cả hai chế độ.
+rawstr-r1          normal_RC=1 strict_RC=1 OK   #[path = r"evil_t.rs"]
+rawstr-r2          normal_RC=1 strict_RC=1 OK   #[path = r#"evil_t.rs"#]
+rawstr-r3          normal_RC=1 strict_RC=1 OK   #[path = r##"evil_t.rs"##]
+escape-u2e         normal_RC=1 strict_RC=1 OK   #[path = "evil_t\u{2e}rs"]
+escape-x2e         normal_RC=1 strict_RC=1 OK   #[path = "evil_t\x2ers"]
+cfg-ktest          normal_RC=0 strict_RC=0 OK   #[cfg(feature = "ktest")] mod evil_x;  (test-only)
+macro-paren        normal_RC=0 strict_RC=0 OK   macro_rules! m ( () => { } );
+macro-bracket      normal_RC=0 strict_RC=0 OK   macro_rules! m [ () => { } ];
+path-concat        normal_RC=1 strict_RC=1 OK   #[path = concat!(...)]  -> E_STRICT_WAKE_INCLUDE
+include-concat     normal_RC=1 strict_RC=1 OK   include!(concat!(...)) -> E_STRICT_WAKE_INCLUDE
+path-outside       normal_RC=1 strict_RC=1 OK   #[path = "../../../../../../etc/passwd"] -> E_STRICT_WAKE_INCLUDE
+path-missing       normal_RC=1 strict_RC=1 OK   #[path = "nope_kt197.rs"] -> E_STRICT_WAKE_INCLUDE
+unterminated-string normal_RC=1 strict_RC=1 OK  E_LEX_UNTERMINATED_STRING
+unterminated-comment normal_RC=1 strict_RC=1 OK E_LEX_UNTERMINATED_COMMENT
+unbalanced         normal_RC=1 strict_RC=1 OK   E_LEX_UNBALANCED
+bad-escape         normal_RC=1 strict_RC=1 OK   E_LEX_INVALID_ESCAPE

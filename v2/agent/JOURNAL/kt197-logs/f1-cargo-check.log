@@ -1,0 +1,9 @@
+# KT-197 — cargo check cho 6 ca F1 (HEAD d6468563)
+# Lệnh: RUSTUP_TOOLCHAIN=1.99.1 CARGO_TARGET_DIR=/tmp/kt197/target \
+#       cargo check --manifest-path v2/kernel/Cargo.toml -p vifast-core --offline
+f1-lib-rpath      cargo_check_RC=0 0 errors
+f1-core-rpath     cargo_check_RC=0 0 errors
+f1-lib-escape     cargo_check_RC=0 0 errors
+f1-core-escape    cargo_check_RC=0 0 errors
+f1-lib-cfgattr    cargo_check_RC=0 0 errors
+f1-core-cfgattr   cargo_check_RC=0 0 errors

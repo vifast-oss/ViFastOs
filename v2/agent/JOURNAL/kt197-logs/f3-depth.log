@@ -1,0 +1,16 @@
+N=31 normal_RC=1 strict_RC=1 normal_err=1 strict_err=1
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+N=32 normal_RC=1 strict_RC=1 normal_err=1 strict_err=1
+    N: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+    S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+N=33 normal_RC=1 strict_RC=1 normal_err=1 strict_err=1
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+N=34 normal_RC=1 strict_RC=1 normal_err=1 strict_err=1
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+N=40 normal_RC=1 strict_RC=1 normal_err=1 strict_err=1
+    N: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+    S: E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/lib.rs:125:663: E_LEX_DEPTH `cfg_attr` lồng quá 32 tầng (fail-closed, KT-195 F3)
+RC=0
