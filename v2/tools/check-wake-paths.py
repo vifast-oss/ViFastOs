@@ -959,6 +959,7 @@ def _walk_items(
     on_include: Optional[object] = None,
     errors: Optional[List[LexError]] = None,
     depth: int = 0,
+    in_test: bool = False,
 ) -> None:
     """Duyệt **cấu trúc** mức mục: thuộc tính, `mod`, `macro_rules!`, `include!`.
 
@@ -993,6 +994,7 @@ def _walk_items(
                     on_include,
                     errors,
                     depth + 1,
+                    in_test,
                 )
             i += 1
             pending = []
@@ -1055,13 +1057,17 @@ def _walk_items(
                 j += 1
                 if j < n and _is_punct(nodes[j], ";"):
                     if on_mod is not None:
-                        on_mod(name_tok, pending, False, None, cur_dir)
+                        on_mod(name_tok, pending, False, None, cur_dir, in_test)
                     i = j + 1
                     pending = []
                     continue
                 if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "{":
+                    # **KT-196/F2**: ngữ cảnh test theo **item/token**, không theo dòng.
+                    _mod_test = in_test or any(
+                        a.name == "cfg" and cfg_is_test_tokens(a.args) for a in pending
+                    )
                     if on_mod is not None:
-                        on_mod(name_tok, pending, True, nodes[j], cur_dir)
+                        on_mod(name_tok, pending, True, nodes[j], cur_dir, in_test)
                     _walk_items(
                         nodes[j].children,
                         relp,
@@ -1072,6 +1078,7 @@ def _walk_items(
                         on_include,
                         errors,
                         depth + 1,
+                        _mod_test,
                     )
                     i = j + 1
                     pending = []
@@ -1284,8 +1291,14 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
         inline: bool,
         group: Optional[Group],
         cur_dir: Path,
+        in_test: bool = False,
     ) -> None:
-        is_test = _attrs_test_context(attrs, name_tok.line, tr)
+        # **KT-196/F2** (A0 2026-11-19 §2): ngữ cảnh test quyết định theo **item/token-tree**,
+        # KHÔNG theo dòng văn bản. `#[cfg(test)] fn h() {} mod evil;` — `mod evil` không có
+        # thuộc tính nào và không nằm trong khối test ⇒ sản phẩm.
+        is_test = in_test or any(
+            a.name == "cfg" and cfg_is_test_tokens(a.args) for a in attrs
+        )
         if inline:
             # Inline module: không có tệp đích; con của nó được duyệt với `cur_dir/name`.
             return
@@ -1467,6 +1480,11 @@ def resolve_include_targets(
                     f"  {relp}:{tok.line}: `{kind}` trỏ ra ngoài `v2/kernel`+`v2/sim` "
                     f"(`{raw}`) — không quét được đích (fail-closed, KT-171 B6/B7)"
                 )
+                continue
+            if target.is_dir():
+                # **KT-196/F4** (A0 2026-11-19 §4): `#[path = "sub"] mod m { … }` — inline
+                # module, `sub` là **thư mục** chứa module con, KHÔNG phải tệp nguồn. Bản trước
+                # báo oan "không tồn tại". Nay bỏ qua (không phải cạnh tệp), không báo lỗi.
                 continue
             if not target.is_file():
                 errors.append(
@@ -4459,6 +4477,58 @@ def selftest() -> int:
         _repro(
             "cfg_attr lồng",
             '#[cfg_attr(all(not(test)), cfg_attr(not(test), path = "evil_t.rs"))]',
+        )
+
+        # --- (d) **KT-196/F2** (A0 2026-11-19 §2): ngữ cảnh test theo **item/token-tree**,
+        # không theo dòng. `#[cfg(test)]` chỉ áp cho **mục kế tiếp**, không lan sang mục cùng dòng.
+        def _scope_case(name: str, src: str, expect_test: bool) -> None:
+            d = tmp / ("kt196-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", src)
+            _write(d / "v2/kernel/vifast-core/src/evil_t.rs", "pub fn f() {}\n")
+            mods = _mods_of(
+                d / "v2/kernel/vifast-core/src/lib.rs", d / "v2/kernel/vifast-core/src"
+            )
+            got = [is_test for t, is_test, _ in mods if str(t).endswith("evil_t.rs")]
+            cases.append(
+                (
+                    f"KT-196/F2 {name} ⇒ {'test' if expect_test else 'sản phẩm'}",
+                    bool(got) and got[0] == expect_test,
+                    f"{mods}",
+                )
+            )
+
+        _scope_case("cùng dòng sau fn test", "#[cfg(test)] fn h() {} mod evil_t;\n", False)
+        _scope_case("khác dòng sau fn test", "#[cfg(test)]\nfn h() {}\nmod evil_t;\n", False)
+        _scope_case("thuộc tính trực tiếp", "#[cfg(test)]\nmod evil_t;\n", True)
+        # Ca lồng: tệp đích nằm trong thư mục module con (`src/tests/`).
+        d = tmp / "kt196-long"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod tests {\n    mod evil_t;\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/tests/evil_t.rs", "pub fn f() {}\n")
+        mods = _mods_of(
+            d / "v2/kernel/vifast-core/src/lib.rs", d / "v2/kernel/vifast-core/src"
+        )
+        got = [is_test for t, is_test, _ in mods if str(t).endswith("tests/evil_t.rs")]
+        cases.append(
+            (
+                "KT-196/F2 trong mod test lồng ⇒ test",
+                bool(got) and got[0] is True,
+                f"{mods}",
+            )
+        )
+        _scope_case(
+            "chú thích + dòng trống xen giữa",
+            "#[cfg(test)]\nfn h() {}\n\n// chú thích\nmod evil_t;\n",
+            False,
+        )
+        _scope_case(
+            "nhiều thuộc tính trước mod test",
+            "#[cfg(test)]\n#[allow(dead_code)]\nmod evil_t;\n",
+            True,
         )
 
         d = tmp / "kt194c-ok"

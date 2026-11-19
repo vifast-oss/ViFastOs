@@ -1,10 +1,10 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 (D2-160 + D2-161)
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196
 
-**Trạng thái**: bản do Agent 1 soạn theo yêu cầu **A0 2026-11-19** ("ghi rõ hợp đồng của checker").
-**Chưa được reviewer độc lập xác nhận** — KT-184 vẫn `REVIEW`.
+**Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại). **Chưa** được reviewer độc
+lập xác nhận trên HEAD cuối — KT-184 và KT-194 vẫn `REVIEW`.
 
-Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **máy kiểm từ vựng** (lexical) trên
-cây nguồn, chạy được **không cần biên dịch**, và **fail-closed** ở mọi chỗ nó không phân giải được.
+Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
+trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed** ở mọi chỗ nó không phân giải được.
 
 ---
 
@@ -19,71 +19,74 @@ cây nguồn, chạy được **không cần biên dịch**, và **fail-closed**
 
 Đích của `include!`/`#[path]` phải nằm trong `v2/kernel` hoặc `v2/sim`; trỏ ra ngoài ⇒ **ĐỎ**.
 
-## 2. Dạng **được hỗ trợ** (phân giải được)
+---
+
+## 2. **Đã hỗ trợ và được kiểm**
 
 - `include!("x.rs")`, `include!["x.rs"]`, `include!{"x.rs"}`, `include ! ( "x.rs" )`.
-- Chuỗi thường `"x.rs"`, chuỗi thô `r"x.rs"`, `r#"x.rs"#`, `r##"x.rs"##`.
-- `#[path = "x.rs"]`, `#[ path = "x.rs" ]`, `#[\npath = "x.rs"]`.
-- `#[cfg_attr(not(test), path = "x.rs")]` (một tầng `cfg_attr`).
-- **CHƯA** hỗ trợ: `#[r#path = "…"]` (raw identifier ở tên thuộc tính — rustc coi là `#[path]`),
-  chuỗi có **escape** (`"a\x2eb"`, `"a\u{2e}b"`), `cfg_attr` **lồng** nhiều tầng. Ba dạng này
-  **lọt** checker hiện tại (xem §3b) — reviewer L30 (KT-192) đã chứng minh.
-- `mod NAME;` khai báo thường (đồ thị module, kể cả `#[cfg(test)]`/`#[cfg(feature = "ktest")]`).
+- Chuỗi thường `"x.rs"`, chuỗi thô `r"x.rs"`, `r#"x.rs"#`, `r##"x.rs"##`; **escape** `\x2e`,
+  `\u{2e}`, `\n`, `\t`, `\\`, `\"` — giải mã trước khi so.
+- `#[path = "x.rs"]`, `#[ path = "x.rs" ]`, `#[\npath = "x.rs"]`, **`#[r#path = "x.rs"]`** (raw ident).
+- `#[cfg_attr(not(test), path = "x.rs")]` và **`cfg_attr` lồng** (giới hạn `MAX_ATTR_DEPTH`).
+- `mod NAME;` khai báo thường (đồ thị module), kể cả `#[cfg(test)]`/`#[cfg(feature = "ktest")]`.
+- **Ngữ cảnh test theo item/token-tree** (KT-196/F2): `#[cfg(test)]` chỉ áp cho **mục kế tiếp**,
+  không lan sang mục cùng dòng; `mod` trong khối test lồng vẫn là test.
 - `macro_rules!` với **mọi** tên (kể cả Unicode) và **cả ba** dấu thân `{ … }`, `( … )`, `[ … ]`.
 - Chú thích chen giữa `#`/`[`/`path` (khử chú thích trước khi khớp).
+- `#[path = "sub"] mod m { … }` — inline module: `sub` là **thư mục**, không phải cạnh tệp (KT-196/F4).
 
-## 3. Dạng **bị từ chối có chủ đích** (fail-closed)
+---
+
+## 3. **Bị từ chối có chủ đích** (fail-closed)
 
 | Dạng | Mã lỗi | Lý do |
 |---|---|---|
 | `include!`/`#[path]`/`cfg_attr(path)` **không literal** (`concat!`, `env!`, biến) | `E_STRICT_WAKE_INCLUDE` | không phân giải được đích |
 | Đích trỏ **ra ngoài** `v2/kernel`+`v2/sim` | `E_STRICT_WAKE_INCLUDE` | không quét được |
-| Đích **không tồn tại** | `E_STRICT_WAKE_INCLUDE` | fail-closed |
-| Thân `macro_rules!` chứa `include`/`path`/`mod` (bất kỳ dạng) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi**, không phân giải tĩnh được |
+| Đích **không tồn tại** (và không phải thư mục) | `E_STRICT_WAKE_INCLUDE` | fail-closed |
+| Thân `macro_rules!` chứa `include`/`path`/`mod` (bất kỳ dạng) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi** |
 | Thân `macro_rules!` chứa `$…:tt` (passthrough) | `E_STRICT_MACRO_TT` | có thể chở `mod`/`include!` từ **lời gọi** |
-| Thân `macro_rules!` khai `mod …;` | `E_STRICT_MACRO_MOD` (literal) / `E_STRICT_MACRO_INCLUDE` (`mod $n;`, `mod r#x;`) | đồ thị module không thấy |
-| `wake(` trong mã sản phẩm **thuộc `TEST_ONLY_WAKE_SCOPE`** | `E_STRICT_TEST_ONLY_WAKE` | D2-144; `wake` trong `v2/lib` sản phẩm **không** bị luật này phủ |
+| Thân `macro_rules!` khai `mod …;` | `E_STRICT_MACRO_MOD` | đồ thị module không thấy |
+| `wake(` trong mã sản phẩm **thuộc `TEST_ONLY_WAKE_SCOPE`** | `E_STRICT_TEST_ONLY_WAKE` | D2-144 |
+| Chuỗi/comment chưa đóng, delimiter lệch, escape sai, quá độ sâu | `E_LEX_*` | D2-166 §3C |
 
-### 3b. Đường lọt **đã biết**, checker hiện tại **CHƯA** bảo vệ
+---
 
-> **A0 2026-11-19 (D2-166 §2)**: ba dạng dưới đây **không** được gọi là "đã bị từ chối". Chúng là
-> **đường lọt đã biết, chưa được checker hiện tại bảo vệ**. Trong lúc chờ KT-194, checker hiện tại
-> **không** được dùng làm bằng chứng duy nhất để đóng luật tương ứng. Công bố giới hạn **không**
-> thay thế được cơ chế chặn.
+## 4. **Sai lệch implementation còn mở** (đã biết, chưa đóng)
 
-| Dạng | Trạng thái thực tế | Bằng chứng |
+| Mã | Mô tả | Ảnh hưởng |
 |---|---|---|
-| `#[r#path = "…"]` (raw identifier) | **LỌT** — không báo lỗi ở cả chế độ thường lẫn `--strict` | KT-192 (L30) |
-| Chuỗi có **escape** (`\x2e`, `\u{2e}`) trong `include!`/`#[path]` | **LỌT** — không báo lỗi ở cả hai chế độ | KT-192 (L30) |
-| `cfg_attr` **lồng** nhiều tầng → tệp test-only | **LỌT** ở chế độ thường; `--strict` chỉ đỏ nhờ **luật `wake`**, không nhờ phân giải `path` | KT-192 (L30) |
+| **F2 (một phần)** | Ngữ cảnh test đã theo item/token-tree, nhưng luật `wake` **vẫn chỉ chạy đầy đủ ở `--strict`** (D2-144). Chế độ thường chỉ quét tệp bị kéo vào bằng `#[path]`/`include!`. | `v2 check`/`gate` chạy `--strict` nên cổng vẫn bắt; nhưng gọi checker ở chế độ thường **không** đủ. |
+| **Macro invocation** | `_walk_items` **bỏ qua** nhóm sau `!` (lời gọi macro). Nếu lời gọi chứa `mod`/`#[path]` (vd `cfg_if! { … }`), cạnh nguồn **không** được phân giải. | Cây thật **không** có lời gọi macro chứa `mod`/`#[path]` (đã grep). **Không** tuyên bố fail-closed cho phạm vi này. |
+| **`#[path]` trong `v2/lib`** | `resolve_include_targets` chỉ lặp trên `v2/kernel`+`v2/sim`; `#[path]` trong `v2/lib` không được phân giải. | Luật `wake` cũng không phủ `v2/lib`; ngoài phạm vi hiện tại. |
 
-Ba dạng này sẽ được xử lý ở **KT-194** (lexer/token-tree + bộ đọc cấu trúc tối thiểu).
+---
 
-## 4. Điều checker **KHÔNG** bảo đảm
+## 5. **Ngoài phạm vi bảo đảm**
 
 - **Ngữ nghĩa mở rộng macro** — không mô phỏng `macro_rules!`; chỉ từ chối thân macro có dấu hiệu.
-- **Proc-macro** (`paste!`, `concat_idents!`) — không có trong allowlist phụ thuộc; nếu thêm, phải
-   mở rộng hợp đồng này.
+- **Proc-macro** (`paste!`, `concat_idents!`) — không có trong allowlist phụ thuộc. **Không** có điểm
+  kiểm soát cụ thể ⇒ **không** tuyên bố fail-closed cho proc-macro.
 - **Mã sinh lúc build** (`build.rs`, `OUT_DIR`) — ngoài phạm vi; `include!(concat!(env!("OUT_DIR"), …))`
-   sẽ **bị từ chối** (fail-closed), không phải báo oan.
-- **`#[cfg]` phức tạp** — chỉ hiểu `#[cfg(test)]` và `#[cfg(feature = "ktest")]`; `cfg_attr` lồng
-   nhiều tầng có thể không phân giải.
+  **bị từ chối** (fail-closed), không phải báo oan.
+- **`#[cfg]` phức tạp** — chỉ hiểu `#[cfg(test)]` và `#[cfg(feature = "ktest")]`.
 - **Đường dẫn qua symlink** — phân giải theo `Path::resolve`, không theo symlink của rustc.
 - **Code nằm ngoài `v2/kernel`/`v2/sim`** — không quét.
 
-## 5. Cách chạy
+---
+
+## 6. Cách chạy
 
 ```bash
-python3 v2/tools/check-wake-paths.py            # chế độ thường (include!/#[path] + macro)
-python3 v2/tools/check-wake-paths.py --strict   # + luật wake chỉ-dùng-test + allowlist
+python3 v2/tools/check-wake-paths.py            # chế độ thường
+python3 v2/tools/check-wake-paths.py --strict   # + luật wake đầy đủ + allowlist
 python3 v2/tools/check-wake-paths.py --selftest # số ca hiện tại
 ```
 
 Cả ba chế độ chạy trong `./v2/bin/v2 check` và `gate --fast`.
 
-## 6. Bảo trì
+## 7. Bảo trì
 
-- Mọi dạng mới **phải** thêm vào §2 (hỗ trợ) hoặc §3 (từ chối) **trước** khi vá regex.
-- Mọi ca hồi quy nằm trong `--selftest`, mỗi ca có **đối chứng dương**.
-- Nếu vòng review thứ tư còn tìm được đường lọt **cùng bản chất**, A0 yêu cầu **dừng vá cục bộ** và
-  trình phương án lexer/token-tree — xem quyết định A0 2026-11-19 §2.
+- Mọi dạng mới **phải** thêm vào §2 (hỗ trợ) hoặc §3 (từ chối) **trước** khi sửa mã.
+- Mọi ca hồi quy nằm trong `--selftest`; ca mới phải có **đối chứng dương** khi có thể.
+- Sai lệch còn mở **phải** ghi ở §4, không được im lặng.
