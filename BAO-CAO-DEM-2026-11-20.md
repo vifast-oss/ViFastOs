@@ -55,8 +55,8 @@ tìm thêm **ba** đường lọt mới và đóng cả ba.
 
 | Lớp | Công cụ | Cách kiểm | Selftest | Chi phí |
 |---|---|---|---|---|
-| **1** | `check-wake-paths.py` | lexer + token-tree + walker tĩnh | **259** ca | ~21 s |
-| **2** | `check-wake-depinfo.py` | hỏi **rustc** danh sách tệp thật (`--emit=dep-info`) | **27** ca | 8,3 s ấm / 26,9 s lạnh |
+| **1** | `check-wake-paths.py` | lexer + token-tree + walker tĩnh | **295** ca | ~21 s |
+| **2** | `check-wake-depinfo.py` | hỏi **rustc** danh sách tệp thật (`--emit=dep-info`) | **37** ca | 8,3 s ấm / 26,9 s lạnh |
 
 Lớp 2 được nối vào `v2 check` (KT-217, D2-173). **Con số "lớp 2 bắt 11/11, lớp 1 bắt 5/11"
 là số đo ở `dc6e01ae` — trước KT-211/213/215.** Trên HEAD hiện tại, **lớp 1 bắt 11/11**; giá trị
@@ -83,8 +83,17 @@ Cộng **tám** đường lọt riêng lớp 2 (lớp 1 bắt) và **hai lỗi n
 rỗng/thiếu ⇒ `errors=0`, RC=0) và **parse `\ ` sai**.
 
 KT-227 vá cả năm: **5 → 0** đường lọt cả hai lớp, **8 → 2** đường lọt riêng lớp 2 (cả hai đều
-bị lớp 1 bắt), **0** báo oan. Nhưng **bài học vẫn còn**: reviewer chọn mẫu từ danh sách đã biết
-thì **không thể** tìm đường lọt mới.
+bị lớp 1 bắt), **0** báo oan.
+
+**Rồi reviewer L54 tấn công THEO LỚP (không theo danh sách) và tìm thêm HAI đường lọt SỐNG nữa:**
+
+| # | Đường lọt | Gốc | Vá |
+|---|---|---|---|
+| **#14** | `macro_rules!` **lồng trong thân** `macro_rules!` khác che tên macro "an toàn" ⇒ `matches!(m, wake, t)` mở rộng thành `m.wake(t)` | `_shadowed_safe_macros` chỉ thấy `macro_rules!` **literal** | **KT-230** — đệ quy mọi tầng nhóm; đích `v2/lib` vào `extra` |
+| **#15** | `use TcbState as S;` + `m.transition_tcb(t, S::Ready)` | `RE_READY_TRANSITION` khớp **văn bản** `TcbState::Ready` | **KT-231** — `_transition_calls` kiểm **token-tree**, alias ⇒ ĐỎ |
+
+**Đây là xác nhận mạnh nhất cho bài học**: cách tấn công **theo lớp** tìm ra đường lọt mà **13
+đường cũ không có** — và cả hai đều lọt **cả hai lớp**.
 
 ### 2.4. K6 — đo lại trên ảnh mới
 
@@ -161,6 +170,9 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | **D2-176** | KT-211 ĐẠT CÓ ĐIỀU KIỆN; 4 báo oan; mở KT-225 |
 | **D2-177** | Reviewer cuối chấm ĐÓNG ĐƯỢC trên `be3a0cd8` (phạm vi 7 đường lọt) |
 | **D2-178** | **ĐÍNH CHÍNH D2-177**: luật `wake` **CHƯA đóng**; KT-214 KHÔNG ĐẠT; 5 đường lọt cả hai lớp |
+| **D2-179** | Đường lọt **#14** (macro lồng che tên an toàn), lọt **cả hai** lớp; mở KT-230 |
+| **D2-180** | KT-230 ĐẠT (đóng #14); đường lọt **#15** (alias kiểu che `TcbState::Ready`); mở KT-231 |
+| **D2-181** | KT-231 ĐẠT (đóng #15) |
 
 ---
 
@@ -185,8 +197,9 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | L51 | KT-222 (verify cuối) + KT-226 | ĐÓNG ĐƯỢC **trong phạm vi 7 đường lọt đã chọn** — bị D2-178 rút |
 | L52 | KT-223 (review KT-211) + KT-225 | ĐẠT CÓ ĐIỀU KIỆN → ĐẠT — tìm 4 báo oan + đường lọt `.txt` |
 | L53 | KT-224 (review KT-214) + KT-227 + KT-228 | **KHÔNG ĐẠT** → ĐẠT — tìm **5 đường lọt cả hai lớp** |
+| L54 | KT-229 (tấn công theo lớp) + KT-230 + KT-231 | ĐẠT — tìm **#14** và **#15**, cả hai lọt **cả hai lớp** |
 
-**Tổng**: 17 sub-agent, 4 chạy song song mỗi lượt.
+**Tổng**: 18 sub-agent, 4 chạy song song mỗi lượt.
 
 ---
 
