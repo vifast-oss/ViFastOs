@@ -1,0 +1,4 @@
+=== KT-202 repro: cargo check (kỳ vọng RC=0) ===
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L37-kt181/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.62s
+cargo RC=0

@@ -1,0 +1,7 @@
+write /p.txt hello77
+write /p.txt hello77
+cat /p.txt
+cat /p.txt
+ls
+ls
+exit

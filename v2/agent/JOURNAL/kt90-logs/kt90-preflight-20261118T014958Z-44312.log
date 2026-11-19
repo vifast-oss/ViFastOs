@@ -1,0 +1,13 @@
+# KT-90 preflight — 2026-11-18T01:49:58Z
+# script=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt90-soak-product-image.sh mode=dry N=1 lanes=1
+# qemu=11.1.3 (/opt/homebrew/bin/qemu-system-riscv64) opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# git HEAD=f4d1dd5f690457248a4ec7296b1fe5d8d10cf764
+# ảnh phát hành: path=v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin
+# ảnh phát hành: sha256=a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13 bytes=205440
+# sha256+bytes khớp ảnh phát hành (KT-88 §0: 291502d2…0353, 205.440 B)
+# grep -a trong ảnh: build-line=1 product-shell-strings=2 product-fs-fmt=2
+# soak.sh nguồn cờ: 163:QEMU_ARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \ 164-    -cpu rv64 -m 128M -smp 1 -no-reboot) # D2-72 Q2; KHÔNG -icount (D2-74 điều kiện c) 
+# QEMU_ARGS (bản cứng của script; soak.sh chỉ đối chiếu): -machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel v2/artifacts/a0287e4ba926673ea0b5145b146e357e4f09898f2e8244b9ba8c51aa2cbf9f13.bin -nographic -cpu rv64 -m 128M -smp 1 -no-reboot
+# infra before: qemu_con_sot_total=0 qemu_ppid1=0 loadavg=6.59 5.62 4.88 ncpu=12
+# run dir: /Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt90-logs/run-dry-20261118-104958-44312
+# dry bắt đầu 2026-11-18T01:49:58Z
