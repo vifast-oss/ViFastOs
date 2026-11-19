@@ -1,0 +1,502 @@
+== v2 check (HEAD febba904) ==
+--- fmt
+--- fmt: OK
+--- clippy
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+--- clippy: OK
+--- luật cấu trúc R1..R5
+--- luật cấu trúc: OK
+--- self-test luật
+TAP version 13
+1..6
+ok 1 - R1 tệp > 1.500 dòng trong kernel/lib bị bắt
+ok 2 - R2 cfg(target_arch) trong lib bị bắt
+ok 3 - R3 tệp thiếu SPDX bị bắt
+ok 4 - R4 path-dependency sang crates/ bị bắt
+ok 5 - R5 unsafe ngoài danh sách đóng bị bắt
+ok 6 - case hợp lệ (đối chứng dương) thì PASS
+# 6/6 case đúng kỳ vọng
+--- self-test luật: OK
+--- luật máy K6 (KT-80: 1,2,3,7,8)
+# verify-numbers: root=/private/tmp/night3-L39-kt183 docs=40 tracked=40 staged=0 untracked=0 scan=index+untracked legacy=19 laws=1,2,3,7,8
+# note - luat 1: loại khỏi tài liệu đích [v2/agent/reports/A1-decision-log.md] chủ Agent 1: sổ quyết định sống (append mỗi quyết định), không phải báo cáo số đo; số đo trong sổ thuộc verifier của task tương ứng
+ok - luat 1: docs_checked=21 pre_existing=0 excluded=1 (1279 ms)
+ok - luat 2: pairs=123 pending=0 (3697 ms)
+ok - luat 3: counters=2 used=2 (105 ms)
+ok - luat 7: extractions=3 (46 ms)
+ok - self-test union-haystack: ĐỎ đúng mã E1_NOT_VERBATIM
+ok - self-test heading-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test heading-not-reset: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test decimal-x-y: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test fence-text-no-scope: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test bare-small-number: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test scope-tmp: ĐỎ đúng mã E1_SCOPE_OUTSIDE_REPO
+ok - self-test scope-negative-source: ĐỎ đúng mã E1_SCOPE_FORBIDDEN
+ok - self-test counter-unproven: ĐỎ đúng mã E3_UNPROVEN_IN_OK
+ok - self-test counter-undeclared: ĐỎ đúng mã E3_COUNTER_UNDECLARED
+ok - self-test counter-proven-no-negative: ĐỎ đúng mã E3_NEGATIVE_ZERO
+ok - self-test assign-key-value: ĐỎ đúng mã E1_NUMBER_ASSIGNED
+ok - self-test assign-ident-key-bad-value: ĐỎ đúng mã E1_NUMBER_ASSIGNED
+ok - self-test pre-existing-expired: ĐỎ đúng mã E1_EXPIRED
+ok - self-test criteria-drop-column: ĐỎ đúng mã E7_COLUMN_MISMATCH
+ok - self-test log-after-report: ĐỎ đúng mã E2_ORDER
+ok - self-test legacy-changed: ĐỎ đúng mã E1_LEGACY_SHA
+ok - self-test untracked-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test staged-doc-skipped: ĐỎ đúng mã E1_NUMBER_OUTSIDE
+ok - self-test legacy-untracked: ĐỎ đúng mã E1_LEGACY_UNTRACKED
+ok - self-test legacy-staged: ĐỎ đúng mã E1_LEGACY_STAGED
+ok - luat 8: cases=21 (13498 ms)
+# verify-numbers: ok=5 fail=0 wall_ms=18892 law_wall_ms={1:1279,2:3697,3:105,7:46,8:13498}
+--- luật máy K6 (KT-80: 1,2,3,7,8): OK
+--- selftest build-inputs (KT-128/134: a..h)
+# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k)
+--- selftest build-inputs (KT-128/134: a..h): OK
+--- selftest danh tính ảnh (KT-145: l1..l5)
+# build-identity-selftest: PASS (l1/l2/l3/l4/l5)
+--- selftest danh tính ảnh (KT-145: l1..l5): OK
+--- selftest t26 (KT-149: g1..g4)
+# t26-selftest: PASS (g1 xanh, g2/g3/g4 đỏ)
+--- selftest t26 (KT-149: g1..g4): OK
+--- ghim thuật toán dấu vân tay (KT-134)
+ALGO-PIN: OK sha=aa9da80740711703397f469360c99ada4f7d6359fe952d36f04301cf762deb73 algo=kt134-v4 pin_sha=aa9da80740711703397f469360c99ada4f7d6359fe952d36f04301cf762deb73 pin_algo=kt134-v4 state=khop
+--- ghim thuật toán dấu vân tay (KT-134): OK
+--- selftest ghim thuật toán (KT-134)
+# algo-pin-selftest: PASS (12 ca: a/b/c/d/e/f/g/h1/h2/i/j/k)
+--- selftest ghim thuật toán (KT-134): OK
+--- selftest shell-edge (KT-108)
+# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.GrYccx (không cần QEMU/ảnh)
+# selftest 1 cat-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 1 cat-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 1 cat-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 2 write-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 2 write-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 2 write-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 3 ps-khong-unknown: log SAI -> ĐỎ đúng (thấy 3 dòng 'state=Unknown' (lỗi KT-105 tái phát))
+# selftest 3 ps-khong-unknown: log ĐÚNG -> XANH đúng
+# selftest 3b ps-mot-dong: log SAI -> ĐỎ đúng (ps chỉ in 1 dòng pid, dưới sàn 3 (procsrv + shell + victim))
+# selftest 3b ps-mot-dong: log ĐÚNG -> XANH đúng
+# selftest 3c truncate-jobs: log SAI -> ĐỎ đúng (truncate báo xong nhưng stat không thấy size=5 (thấy 0 dòng khớp))
+# selftest 3c truncate-jobs: log ĐÚNG -> XANH đúng
+# selftest 3d new-cmds-ok (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 3d new-cmds-ok (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 3e new-cmds-edge (sai): ĐÚNG (4 PASS + 2 FAIL, mã thoát 1)
+# selftest 3e new-cmds-edge (dung): ĐÚNG (6 PASS + 0 FAIL, mã thoát 0)
+# selftest 3f new-cmds-edge2 (sai): ĐÚNG (3 PASS + 2 FAIL, mã thoát 1)
+# selftest 3f new-cmds-edge2 (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 3f new-cmds-edge2 (uptime 5 bi bo qua): ĐÚNG (3 PASS + 2 FAIL, mã thoát 1)
+# selftest 3g new-cmds-edge3 (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 3g new-cmds-edge3 (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 14 k7-uu-tien (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 14 k7-uu-tien (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 15 k7-thu-muc (sai): ĐÚNG (1 PASS + 3 FAIL, mã thoát 1)
+# selftest 15 k7-thu-muc (dung): ĐÚNG (4 PASS + 0 FAIL, mã thoát 0)
+# selftest 4 dong-dai-mot-canh-bao: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: dong qua dai', thấy 100 (KT-103: một lần mỗi dòng))
+# selftest 4 dong-dai-mot-canh-bao: log ĐÚNG -> XANH đúng
+# selftest 5 cat-khong-co: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: fs loi code=5', thấy 0)
+# selftest 5 cat-khong-co: log ĐÚNG -> XANH đúng
+# selftest 6 write-cat-bytes: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=8 first=xin chao', thấy 0)
+# selftest 6 write-cat-bytes: log ĐÚNG -> XANH đúng
+# selftest 7 write-de-co-lai: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=2 first=ab', thấy 0 (ghi đè không co lại?))
+# selftest 7 write-de-co-lai: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: wait pid=13 code=<n>', thấy 0 (shell treo ở wait?))
+# selftest 8 wait-khong-treo: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo (cham): log SAI -> ĐỎ đúng (wait trả lời sau 99s > 5s (quá hạn))
+# selftest 16 kt137-cdpwd (sai): ĐÚNG (2 PASS + 13 FAIL, mã thoát 1)
+# selftest 16 kt137-cdpwd (dung): ĐÚNG (15 PASS + 0 FAIL, mã thoát 0)
+# selftest 16 cd-khong-co: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cd khong co /khongco', thấy 2)
+# selftest 16 cd-khong-co: log ĐÚNG -> XANH đúng
+# selftest 16 ls-cwd: log SAI -> ĐỎ đúng (mong đúng 2 dòng '# shell: ls n=<n> path=/' (ls + ls .), thấy 1)
+# selftest 16 ls-cwd: log ĐÚNG -> XANH đúng
+# selftest 17 kt183-cd-sau (truoc KT-183): ĐÚNG (3 PASS + 5 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dot bien .. khong xu ly): ĐÚNG (3 PASS + 5 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dot bien pwd hang /): ĐÚNG (4 PASS + 4 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dung): ĐÚNG (8 PASS + 0 FAIL, mã thoát 0)
+# shell-edge-selftest: PASS (10/10 ca, 46/46 kiểm: 26 sai→ĐỎ + 20 đúng→XANH)
+--- selftest shell-edge (KT-108): OK
+--- selftest budget (KT-88)
+ok 1 - cộng .data+.bss = 1032
+ok 2 - cộng tên biến thể (.data.rel.ro/.sdata/.sbss) = 128
+ok 3 - .bss 300 KiB ⇒ 307200 > 262144 (cổng sẽ FAIL)
+# budget --selftest: PASS
+--- selftest budget (KT-88): OK
+--- selftest counter-evidence (KT-80)
+ok - selftest dương: có 0 ở log xanh và khác 0 ở log âm: pass đúng
+ok - selftest âm: log xanh không có giá trị 0: fail đúng
+ok - selftest âm: log âm chỉ có 0 (không có ca âm thật): fail đúng
+ok - selftest âm: thiếu log âm: fail đúng
+# counter-evidence-selftest: PASS (4/4 ca)
+--- selftest counter-evidence (KT-80): OK
+--- selftest task-target (KT-84)
+# task-target-selftest: PASS (a/b/c/d/e/f)
+--- selftest task-target (KT-84): OK
+--- bảng đối chiếu số ↔ khối scope= (KT-134)
+ok - v2/docs/k6-exec.md: bảng đối chiếu khớp khối scope=
+ok - v2/docs/k6-persist.md: bảng đối chiếu khớp khối scope=
+ok - v2/agent/reports/K6-DOD.md: bảng đối chiếu khớp khối scope=
+# check-scope-table: bỏ qua 1/21 câu khẳng định (từ khoá loại trừ) — v2/docs/k6-exec.md 0, v2/docs/k6-persist.md 1, v2/agent/reports/K6-DOD.md 0
+#   v2/docs/k6-persist.md:78  [chưa có]  nhánh `durable` bằng không chưa có ca |
+# check-scope-table: số câu bỏ qua 1 (mốc 1) — không tăng
+# check-scope-table: PASS
+--- bảng đối chiếu số ↔ khối scope= (KT-134): OK
+--- selftest bảng đối chiếu (KT-134)
+ok - selftest dương: tài liệu đúng: XANH, bỏ qua 0 câu
+ok - selftest dương: câu có từ khoá tình huống khác thì bỏ qua (câu cùng dòng không có từ khoá vẫn được so): XANH, bỏ qua 1 câu
+ok - selftest dương: hai câu bị bỏ qua thì đếm đúng 2: XANH, bỏ qua 2 câu
+ok - selftest KT-142 dương: câu ghi **loại** khối `scope-red` cùng tiết ⇒ so với khối đỏ, xanh: XANH, bỏ qua 0 câu
+ok - selftest KT-142 âm: câu ghi loại khối `scope-red` cùng tiết mà **sai** số ⇒ đỏ: ĐỎ đúng (E_VALUE_MISMATCH)
+ok - selftest KT-142 dương: câu ghi **tên** khối `scope-red=<tệp>` ở tiết khác ⇒ so với khối đó, xanh: XANH, bỏ qua 0 câu
+ok - selftest KT-142 âm: câu ghi tên khối `scope-red=<tệp>` mà **sai** số ⇒ đỏ: ĐỎ đúng (E_VALUE_MISMATCH)
+ok - selftest KT-142 dương: câu không ghi khối, cùng tiết chỉ có **một** khối chứa trường ⇒ so khối đó: XANH, bỏ qua 0 câu
+ok - selftest KT-142 âm: cùng tiết một khối chứa trường mà **sai** số ⇒ đỏ: ĐỎ đúng (E_VALUE_MISMATCH)
+ok - selftest KT-142 âm: cùng tiết **hai** khối nói khác nhau ⇒ không quy được, rơi về khối dòng bảng: ĐỎ đúng (E_VALUE_MISMATCH)
+ok - selftest KT-142 dương: câu nói về khối đỏ **không** cần từ khoá nào ⇒ 0 câu bị bỏ qua: XANH, bỏ qua 0 câu
+ok - selftest âm: cột giá trị lệch khối: ĐỎ đúng (E_TABLE_MISMATCH)
+ok - selftest âm: văn xuôi lệch khối: ĐỎ đúng (E_VALUE_MISMATCH)
+ok - selftest âm: câu KHÔNG có từ khoá mà lệch giá trị vẫn đỏ (bộ lọc không nuốt quá nhiều): ĐỎ đúng (E_VALUE_MISMATCH), bỏ qua 0 câu
+ok - selftest âm: đột biến một số trong log: ĐỎ đúng (E_TABLE_MISMATCH)
+ok - selftest âm: trỏ khối không có: ĐỎ đúng (E_BLOCK_MISSING)
+ok - selftest âm: trường không có trong khối: ĐỎ đúng (E_FIELD_MISSING)
+ok - selftest âm: cột giá trị không phải chữ số: ĐỎ đúng (E_WORD_UNKNOWN)
+ok - selftest âm: không có bảng: ĐỎ đúng (E_NO_TABLE)
+ok - selftest âm: khối không đóng: ĐỎ đúng (E_BLOCK_UNCLOSED)
+ok - selftest âm: giá trị hex không được đọc thành số thập phân (0x10 ≠ 0): ĐỎ đúng (E_FIELD_MISSING)
+ok - selftest dương: khối hex đứng trước trong cùng tiết ⇒ lấy khối thập phân: XANH, bỏ qua 0 câu
+ok - selftest (a) dương: trường một giá trị, ô 'Khối' để trống ⇒ xanh: XANH, bỏ qua 0 câu
+ok - selftest (b) âm: trường nhiều giá trị, dòng bảng KHÔNG ghi khối ⇒ E_AMBIGUOUS_FIELD: ĐỎ đúng (E_AMBIGUOUS_FIELD)
+ok - selftest (c) dương: trường nhiều giá trị, dòng bảng ghi khối ĐÚNG ⇒ xanh: XANH, bỏ qua 0 câu
+ok - selftest âm: trường nhiều giá trị, dòng bảng ghi khối SAI ⇒ E_SECTION_MISMATCH: ĐỎ đúng (E_SECTION_MISMATCH)
+ok - selftest âm: cột 'Khối' ghi tiết không có trong tài liệu ⇒ E_SECTION_UNKNOWN: ĐỎ đúng (E_SECTION_UNKNOWN)
+ok - selftest âm: cột 'Khối' không đúng dạng §<số> ⇒ E_SECTION_UNKNOWN: ĐỎ đúng (E_SECTION_UNKNOWN)
+ok - selftest âm: trường một giá trị nhưng cột 'Khối' trỏ nhầm tiết ⇒ E_SECTION_MISMATCH: ĐỎ đúng (E_SECTION_MISMATCH)
+ok - selftest dương: trường một giá trị, cột 'Khối' trỏ đúng tiết ⇒ xanh: XANH, bỏ qua 0 câu
+ok - selftest âm: nhiều giá trị vì có hex (0x10 vs 1), không ghi khối ⇒ E_AMBIGUOUS_FIELD: ĐỎ đúng (E_AMBIGUOUS_FIELD)
+ok - selftest dương: nhiều giá trị vì có hex, ghi khối đúng (§2, khối thập phân) ⇒ xanh: XANH, bỏ qua 0 câu
+ok - selftest âm: dòng bảng thiếu cột so với tiêu đề ⇒ E_TABLE_ROW_SHAPE: ĐỎ đúng (E_TABLE_ROW_SHAPE)
+ok - selftest âm: cột thứ năm của tiêu đề không tên 'Khối' ⇒ E_TABLE_HEADER: ĐỎ đúng (E_TABLE_HEADER)
+ok - selftest cảnh báo: số bỏ qua tăng so với mốc giả ⇒ in CẢNH BÁO, không đỏ: có cảnh báo, exit 0
+ok - selftest không cảnh báo: số bỏ qua bằng mốc: không cảnh báo, exit 0
+ok - selftest không cảnh báo: số bỏ qua giảm so với mốc: không cảnh báo, exit 0
+ok - selftest ghi mốc: chưa có tệp ⇒ ghi đúng số câu bỏ qua
+ok - selftest --no-record: không ghi tệp mốc
+# check-scope-table-selftest: PASS (39/39 ca)
+--- selftest bảng đối chiếu (KT-134): OK
+--- selftest wiring (KT-134)
+TAP version 13
+1..9
+ok 1 - (a) dương: mọi script tự kiểm đều có cổng gọi ⇒ xanh
+ok 2 - (b) âm: một script không có cổng gọi ⇒ đỏ E_ORPHAN, in đúng tên
+ok 3 - (c) dương: script mồ côi nằm trong ngoại lệ ⇒ xanh, vẫn in ra
+ok 4 - (d) âm: chỉ nhắc trong chú thích ⇒ không phải script tự kiểm
+ok 5 - (e) âm: cổng chỉ nhắc trong chú thích ⇒ vẫn mồ côi (không phải lời gọi)
+ok 6 - (f) cảnh báo: cổng gọi cờ vào script không xử lý cờ ⇒ W_FAKE_SELFTEST, không đỏ
+ok 7 - (g) âm: `--selftest-stack` không bị coi là `--selftest`
+ok 8 - (h) `--standalone-red`: độc lập mồ côi mặc định báo cáo, bật cờ thì đỏ
+ok 9 - (i) ngoại lệ dùng chung: script độc lập trong ngoại lệ không đỏ dù bật --standalone-red
+# selftest: 9/9 ca đúng như kỳ vọng
+--- selftest wiring (KT-134): OK
+--- cổng selftest có cổng gọi (KT-134)
+== check-selftest-wiring: quét /private/tmp/night3-L39-kt183 ==
+# tệp cổng: v2/bin/v2 + v2/test/rules/ (9 tệp)
+# script tự kiểm có cờ: 15
+
+| script | cổng gọi? | cổng nào |
+|---|---|---|
+| v2/test/boot/budget.sh | CÓ | v2/bin/v2:291 |
+| v2/test/boot/build-identity.sh | CÓ | v2/bin/v2:276 |
+| v2/test/boot/build-rev.sh | CÓ | v2/bin/v2:272 |
+| v2/test/boot/persist.sh | CÓ | v2/bin/v2:470 |
+| v2/test/boot/shell-edge.sh | CÓ | v2/bin/v2:290 |
+| v2/test/boot/t26.sh | CÓ | v2/bin/v2:280 |
+| v2/test/rules/counter-evidence.sh | CÓ | v2/bin/v2:292 |
+| v2/tools/check-algo-pin.sh | CÓ | v2/bin/v2:286 |
+| v2/tools/check-scope-table.py | CÓ | v2/bin/v2:298 |
+| v2/tools/check-selftest-wiring.py | CÓ | v2/bin/v2:303 |
+| v2/tools/check-test-teeth.py | CÓ | v2/bin/v2:329 |
+| v2/tools/check-wake-paths.py | CÓ | v2/bin/v2:315 |
+| v2/tools/pin-artifact.sh | CÓ | v2/bin/v2:461 |
+| v2/tools/pre-measure.sh | CÓ | v2/bin/v2:460 |
+| v2/tools/task-target.sh | CÓ | v2/bin/v2:293 |
+
+NGOẠI LỆ (có lý do — không tính mồ côi)
+- (không có ngoại lệ nào được dùng)
+
+BÁO CÁO — script tự kiểm độc lập (không cờ; ĐÃ tính mồ côi đỏ)
+| script | cổng gọi? | cổng nào |
+|---|---|---|
+| v2/test/abi/run_fixtures.sh | CÓ | v2/bin/v2:377 |
+| v2/test/boot/guard_selftest.sh | CÓ | v2/bin/v2:459 |
+| v2/test/boot/selftest.sh | CÓ | v2/bin/v2:458 |
+| v2/test/gen/run_fixtures.sh | CÓ | v2/bin/v2:387 |
+| v2/test/gen/run_idl_fixtures.sh | CÓ | v2/bin/v2:403 |
+| v2/test/report/run_fixtures.sh | CÓ | v2/bin/v2:367 |
+| v2/test/rules/selfbreak.sh | CÓ | v2/bin/v2:482 |
+| v2/test/scn/run_fixtures.sh | CÓ | v2/bin/v2:353 |
+| v2/tools/git-guard/neg-test-kt85b.sh | CÓ | v2/bin/v2:493 |
+| v2/tools/git-guard/neg-test.sh | CÓ | v2/bin/v2:487, v2/bin/v2:492 |
+
+check-selftest-wiring: PASS (15 script tự kiểm: 15 có cổng, 0 ngoại lệ, 0 mồ côi)
+--- cổng selftest có cổng gọi (KT-134): OK
+--- wake paths (KT-151: một cơ chế wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:272 (wake_from)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:287 (wake_from_unlink)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5735 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5757 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5771 (wake_from_unlink)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:455 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6113 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+--- wake paths (KT-151: một cơ chế wake): OK
+--- selftest wake paths (KT-151)
+ok - v2 sạch ⇒ xanh
+ok - v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
+ok - v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
+ok - v2 `--strict` transition ngoài cửa wake ⇒ đỏ
+ok - v2 `--strict` + allowlist khớp ⇒ xanh
+ok - v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ
+ok - v2 `--strict` allowlist mục ⇒ đỏ
+ok - v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)
+ok - v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)
+ok - v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh
+ok - v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh
+ok - v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
+ok - H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)
+ok - H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)
+ok - H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)
+ok - H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)
+ok - H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)
+ok - H4 `wake /*x*/ (t)` ⇒ đỏ (block comment chen giữa)
+ok - H5 `wake` ⏎ `(t)` ⇒ đỏ (gọi cắt dòng)
+ok - H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ
+ok - phạm vi mới: chỉ `wake_from(`/`wake_step(`/`wake_addr(` ⇒ xanh
+ok - `#[cfg(test)] mod tests` thật vẫn được miễn ⇒ xanh
+ok - biến cục bộ `let mut wake = …` ⇒ xanh (không báo oan)
+ok - B8 module sản phẩm tên `ktest_evil.rs` + `mod` từ `main.rs` ⇒ đỏ (KT-171)
+ok - B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ xanh (test-only thật)
+ok - B9 `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]` ⇒ đỏ (KT-171)
+ok - B9b `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+ok - B6 `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+ok - B6b `include!` trỏ trong `v2/kernel` (ngoài `src/`) ⇒ quét đích ⇒ đỏ
+ok - B7 `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+ok - B7b `#[path]` trỏ trong cây, đích chỉ `wake_from(` ⇒ xanh
+ok - B10 `wake` làm đối số macro `$name:ident` ⇒ đỏ (KT-171)
+ok - B10b binding ở khối con, token ở khối cha ⇒ đỏ (scope, KT-171)
+ok - B10c binding + dùng cùng khối ⇒ xanh (không báo oan)
+ok - B4 `macro_rules!` trong `v2/lib` chứa token `wake` ⇒ đỏ (KT-171)
+ok - B4b `macro_rules!` trong `v2/lib` chỉ `wake_from(` ⇒ xanh
+ok - KT-172 A: `ktest_evil.rs` + `mod` từ `main.rs`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+ok - KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)
+ok - KT-172 B: `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+ok - KT-172 B2: `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+ok - KT-172 C: luật 1 — `ktest_evil.rs` (sản phẩm) phát `MailboxMsg::Wake` ngoài cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`
+ok - KT-172 D: luật 2 — `ktest_evil.rs` (sản phẩm) xử lý `MailboxMsg::Wake` ngoài `apply_mail` ⇒ đỏ `E_CONSUMER`
+ok - KT-172 E: luật 3 — `ktest_evil.rs` (sản phẩm) trong `vifast-plat-*` dùng `wake_step` ⇒ đỏ `E_ARCH_WAKE`
+ok - H4 `include!` lồng hai lớp qua tệp test-only ⇒ đỏ (KT-177)
+ok - H4b `include!` lồng hai lớp, đích chỉ `wake_from(` ⇒ xanh
+ok - H6 `macro_rules! concat` che tên an toàn + biến `wake` ⇒ đỏ (KT-177)
+ok - H6b `assert_eq!(wake, 1)` không bị che ⇒ xanh (không báo oan)
+ok - H7 thân `macro_rules!` trong `v2/lib` chứa `include!` ⇒ đỏ (KT-177)
+ok - H7b macro `v2/lib` dùng `concat!`, không `include!` ⇒ xanh
+ok - H8 `#[path = r#"…"#]` tới tệp test-only trong cây ⇒ đỏ (KT-177)
+ok - H8b `#[path = r#"…"#]` tới tệp sản phẩm chỉ `wake_from(` ⇒ xanh
+ok - H9 `include![…]` (ngoặc vuông) tới tệp test-only ⇒ đỏ (KT-177)
+ok - H9 `include!{…}` (ngoặc nhọn) tới tệp test-only ⇒ đỏ (KT-177)
+ok - H4 ba lớp `include!` qua tệp test-only ⇒ đỏ (KT-184/D2-160)
+ok - H4b ba lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+ok - H4 `#[path]` (sản phẩm) + `include!` (test-only) hai lớp ⇒ đỏ (KT-184)
+ok - H4b `#[path]` + `include!` hai lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+ok - D2-161 `include!(concat!(…))` ở chế độ thường ⇒ đỏ (KT-184)
+ok - D2-161 `#[path]` ra ngoài cây ở chế độ thường ⇒ đỏ (KT-184)
+ok - D2-161 `#[path = concat!(…)]` ở chế độ thường ⇒ đỏ (KT-184)
+ok - B1 `#[cfg_attr(not(test), path = …)]` tới tệp test-only ⇒ đỏ (KT-187)
+ok - B2 `#[path]` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+ok - B3 `include!` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+ok - B2c `#[path]` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+ok - B3a `include!` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+ok - B2d `cfg_attr(path)` trong thân macro ⇒ đỏ (KT-189)
+ok - T3c `mod …;` trong thân macro ⇒ đỏ (KT-189)
+ok - KT-191 tên macro Unicode ⇒ đỏ (KT-191)
+ok - KT-191 `mod $n;` trong macro ⇒ đỏ (KT-191)
+ok - KT-191 `mod r#x;` trong macro ⇒ đỏ (KT-191)
+ok - KT-191 passthrough `$…:tt` ⇒ đỏ (KT-191)
+ok - KT-191 `#[/*c*/path]` ⇒ đỏ (KT-191)
+ok - D2-161b `#[path]` literal trong cây ở chế độ thường ⇒ xanh (KT-184)
+ok - KT-194a raw ident `r#path` ⇒ ident `path` (raw=True)
+ok - KT-194a chuỗi escape `\x2e` ⇒ giải mã `.`
+ok - KT-194a chuỗi escape `\u{2e}` ⇒ giải mã `.`
+ok - KT-194a chuỗi thô `r#"a"b"#` ⇒ giữ nguyên dấu `"`
+ok - KT-194a chú thích khối lồng ⇒ không token, không lỗi
+ok - KT-194a char `'a'` vs lifetime `'b`
+ok - KT-194a delimiter lệch `(]` ⇒ E_LEX_UNBALANCED
+ok - KT-194a chuỗi chưa đóng ⇒ E_LEX_UNTERMINATED_STRING
+ok - KT-194a chú thích chưa đóng ⇒ E_LEX_UNTERMINATED_COMMENT
+ok - KT-194a escape không hỗ trợ `\q` ⇒ E_LEX_INVALID_ESCAPE
+ok - KT-194a lồng ngoặc quá MAX_TREE_DEPTH ⇒ E_LEX_DEPTH
+ok - KT-194a `cfg_attr` lồng quá MAX_ATTR_DEPTH ⇒ E_LEX_DEPTH
+ok - KT-194a tên thuộc tính không phải định danh ⇒ E_LEX_ATTR
+ok - KT-194b path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b r#path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b escape ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b cfg_attr lồng ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b `include!` delimiter `[]` ⇒ đúng cạnh
+ok - KT-194b `include!` delimiter `{}` ⇒ đúng cạnh
+ok - KT-194b `mod` tên Unicode ⇒ đúng cạnh
+ok - KT-194b `macro_rules!` tên Unicode, thân `[]` ⇒ đỏ E_STRICT_MACRO_INCLUDE
+ok - KT-194b `#[path]` trong comment/chuỗi ⇒ không cạnh
+ok - KT-194c repro r#path ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-194c repro escape ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-194c repro cfg_attr lồng ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-196/F2 cùng dòng sau fn test ⇒ sản phẩm
+ok - KT-196/F2 khác dòng sau fn test ⇒ sản phẩm
+ok - KT-196/F2 thuộc tính trực tiếp ⇒ test
+ok - KT-196/F2 trong mod test lồng ⇒ test
+ok - KT-196/F2 chú thích + dòng trống xen giữa ⇒ sản phẩm
+ok - KT-196/F2 nhiều thuộc tính trước mod test ⇒ test
+ok - KT-198/F2b hàm sản phẩm cùng dòng sau `}` test ⇒ đỏ
+ok - KT-198/F2b wake trong mod test thật ⇒ xanh
+ok - KT-198/F2b wake trong fn test thật ⇒ xanh
+ok - KT-199/F4b inline module `#[path]` + con test-only ⇒ xanh (không báo oan)
+ok - KT-199/F4c `#[path]` trỏ thư mục trên `mod` không thân ⇒ đỏ E_STRICT_WAKE_INCLUDE
+ok - KT-194c đối chứng `#[r#path]` tới tệp sản phẩm `wake_from` ⇒ xanh
+ok - KT-194c đầu vào hỏng (chuỗi chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_STRING
+ok - KT-194c đầu vào hỏng (comment chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_COMMENT
+ok - KT-194c đầu vào hỏng (delimiter lệch) ⇒ đỏ E_LEX_UNBALANCED
+ok - KT-194c đầu vào hỏng (escape sai) ⇒ đỏ E_LEX_INVALID_ESCAPE
+ok - KT-194c đầu vào hỏng (quá sâu) ⇒ đỏ E_LEX_DEPTH
+ok - v1 ba kênh ⇒ đỏ
+ok - v1 một kênh ⇒ xanh
+ok - cây rỗng ⇒ đỏ (fail-closed)
+# selftest: 118/118 ok
+--- selftest wake paths (KT-151): OK
+--- wake paths --strict (KT-155: allowlist)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:272 (wake_from)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:287 (wake_from_unlink)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5735 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5757 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5771 (wake_from_unlink)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:455 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6113 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_ipc.rs:192 (ensure_started) — Inactive→Ready (khởi tạo TCB)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_ipc.rs:700 (reply_with) — Running→Ready của chính replier
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_sched.rs:171 (dispatch_step) — Running→Ready (dispatch)
+# cửa wake: v2/kernel/vifast-core/src/core_sched.rs:307 (wake_step)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_sched.rs:318 (yield_current) — Running→Ready (yield)
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_tcb.rs:436 (transition_tcb) — nguyên thuỷ: preempt Running→Ready
+# chuyển Ready không-wake: v2/kernel/vifast-core/src/core_tcb.rs:508 (tcb_suspend) — treo: Ready + suspended (không chạy)
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs:200 (build_rig) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs:325 (turn) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/kernel/vifast-plat-riscv64/src/core_bridge.rs:270 (boot_smoke) — khởi tạo sản phẩm
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5132 (transition_tcb) — nguyên thuỷ: preempt Running→Ready
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5218 (tcb_suspend) — treo: Ready + suspended (không chạy)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5640 (dispatch_step) — Running→Ready (dispatch)
+# cửa wake: v2/sim/vifast-sim/src/kobj.rs:5794 (wake_step)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:5807 (yield_current) — Running→Ready (yield)
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:9791 (reply_with) — Running→Ready của chính replier
+# chuyển Ready không-wake: v2/sim/vifast-sim/src/kobj.rs:10368 (ensure_started) — Inactive→Ready (khởi tạo TCB)
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+--- wake paths --strict (KT-155: allowlist): OK
+--- test có răng (KT-163)
+# tệp có phạm vi test: 130
+# hàm `#[test]`: 1019
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# bản đồ trợ giúp toàn cây (chỉ hàm trong phạm vi test): 80 tên có răng, 0 test dùng đường này
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# allowlist `#[should_panic]` trần: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0
+--- test có răng (KT-163): OK
+--- selftest test có răng (KT-163)
+ok - cây sạch ⇒ xanh
+ok - `assert!(true)` ⇒ đỏ
+ok - `assert_eq!(x, x)` ⇒ đỏ
+ok - `assert_eq!(f(x), f(x))` (tất định) ⇒ xanh
+ok - `assert_ne!(x, x)` ⇒ đỏ
+ok - `#[ignore]` ⇒ đỏ
+ok - `#[test]` không khẳng định ⇒ đỏ
+ok - `#[test]` chỉ có `.unwrap()` ⇒ đỏ
+ok - `#[test]` không khẳng định + allowlist khớp ⇒ xanh
+ok - allowlist `#[test]` mục ⇒ đỏ
+ok - `#[test]` gọi trợ giúp transitive ⇒ xanh
+ok - `#[test]` gọi trợ giúp generic `::<T>` ⇒ xanh
+ok - `#[test]` gọi trợ giúp trong HELPER_ALLOW ⇒ xanh
+ok - `let _ =` nuốt `Result` ⇒ đỏ
+ok - `let _ =` + allowlist khớp ⇒ xanh
+ok - allowlist mục ⇒ đỏ
+ok - `let _ = foo().unwrap()` ⇒ xanh
+ok - `panic!` vô điều kiện ⇒ đỏ, có điều kiện ⇒ xanh
+ok - chỉ quét `#[cfg(test)]` trong src/
+ok - `#[cfg(all(test, …))]` ⇒ vẫn quét
+ok - `#[should_panic(expected = …)]` ⇒ xanh
+ok - cây không có test ⇒ đỏ (fail-closed)
+ok - `#[should_panic]` trần ⇒ đỏ
+ok - `#[should_panic(expected = "")]` ⇒ đỏ (khớp mọi thông điệp)
+ok - `#[should_panic]` trần + allowlist khớp ⇒ xanh
+ok - allowlist `#[should_panic]` mục ⇒ đỏ
+ok - `#[test]` gọi trợ giúp ở tệp khác ⇒ xanh (không cần HELPER_ALLOW)
+ok - `#[test]` gọi trợ giúp tệp khác **không** răng ⇒ đỏ
+ok - trợ giúp tệp khác **bắc cầu** ⇒ xanh
+ok - `use … as …` ⇒ phân giải tên gốc
+ok - trợ giúp tệp khác **tên mơ hồ** ⇒ đỏ (fail-closed)
+ok - trợ giúp ở tệp **sản phẩm** (`debug_assert!`) ⇒ KHÔNG tính là răng
+ok - trợ giúp trong `#[cfg(test)]` của `src/` ⇒ vẫn tính là răng
+# selftest: 33/33 ok
+--- selftest test có răng (KT-163): OK
+--- spec/abi.toml
+abi-check: PASS (/private/tmp/night3-L39-kt183/spec/abi.toml)
+--- abi spec: OK
+--- golden trace (D2-43)
+gen_golden: PASS (6400 B, 200 bản ghi)
+--- golden trace: OK
+--- kịch bản .scn (KT-04c)
+scn-check: PASS (27 tệp, 0 blocked, 16 nhóm)
+--- scn: OK
+--- scn fixtures: OK (5 case âm, kiểm thông điệp)
+--- báo cáo R1-v2 (Khối E)
+report-check: PASS (1 báo cáo, 177 hàng QUEUE phủ đủ)
+--- báo cáo: OK
+--- fixture âm của máy kiểm báo cáo
+1..6
+ok 1 - fixture bad-head bị bắt
+ok 2 - fixture bad-commit bị bắt
+ok 3 - fixture bad-status bị bắt
+ok 4 - fixture missing-task bị bắt
+ok 5 - fixture bad-yc bị bắt
+ok 6 - fixture missing-blocked bị bắt
+# fixtures: PASS
+--- báo cáo fixtures: OK
+reserved-check: PASS (8 object reserved, /private/tmp/night3-L39-kt183/spec/abi.toml)
+--- abi reserved: OK
+--- fixture âm của máy kiểm ABI
+1..3
+ok 1 - thiếu syscall 13 bị bắt
+ok 2 - reserved syscall 15..31 bị bắt
+ok 3 - object reserved id 18 bị bắt
+# abi fixtures: PASS
+--- abi fixtures: OK
+--- gen-check (KT-05: code + docs sinh từ spec)
+gen-check: PASS (code + docs khớp spec/abi.toml)
+--- gen-check: OK
+--- fixture âm của gen-check
+1..4
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - sửa tay docs/abi.md bị bắt
+ok 3 - spec thiếu method_signature bị bắt
+ok 4 - abi_version đổi thì đầu ra đổi
+# gen fixtures: PASS
+--- gen fixtures: OK
+--- idl-gen-check (KT-69: stub sinh từ .vidl)
+vifast-idl: PASS (stub khớp IDL)
+--- idl-gen-check: OK
+--- fixture âm của idl-gen-check
+1..2
+ok sửa tay generated.rs bị bắt
+ok IDL đổi mà stub không đổi bị bắt
+# idl fixtures: PASS
+--- idl fixtures: OK
+--- build (L0 compile)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
+--- build (L0 compile): OK
+v2 check: PASS (L1 chạy trong gate --fast)

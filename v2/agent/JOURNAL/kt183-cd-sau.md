@@ -35,7 +35,8 @@ D2-164 yêu cầu kiểm `cd` vào thư mục con **sâu** (nhiều cấp) — "
   `new-cmds-ok` + `new-cmds-edge` + `new-cmds-edge2` + `new-cmds-edge3` + `k7-uu-tien` + `k7-thu-muc` +
   `kt137-cdpwd` + `kt183-cd-sau`; **73 dòng PASS, 0 FAIL**.
 - `./v2/bin/v2 check` **PASS** trên cây trước commit (`4fc80f61` + thay đổi của task) — log
-  `kt183-logs/kt183-v2-check-precommit.log`; chạy lại trên HEAD cuối sau commit nhật ký.
+  `kt183-logs/kt183-v2-check-precommit.log`; chạy lại **PASS** trên HEAD cuối `febba904` (commit
+  nhật ký) — log `kt183-logs/kt183-v2-check-final.log` (`== v2 check (HEAD febba904) ==`).
 - **Không** sửa `spec/`, `v2/agent/QUEUE.md`, `v2/agent/DECISIONS.md`, `docs/QUYET-DINH-*`,
   `docs/v2/*`, `docs/v1/*`, `AGENTS.md`, `v2/AGENTS.md`.
 
@@ -246,4 +247,4 @@ Kết quả `shell-edge.sh --image` trên ảnh mới: **73 dòng PASS, 0 FAIL**
 | `kt183-logs/kt183-shell-edge-clean.log` | `shell-edge --image` ảnh chính (**PASS**, 73 PASS / 0 FAIL) |
 | `kt183-logs/run-clean/qemu.log` | log QEMU đầy đủ của lượt chính |
 | `kt183-logs/kt183-v2-check-precommit.log` | `./v2/bin/v2 check` trên cây trước commit (**PASS**) |
-| `kt183-logs/kt183-v2-check-final.log` | `./v2/bin/v2 check` trên HEAD cuối (**PASS**) |
+| `kt183-logs/kt183-v2-check-final.log` | `./v2/bin/v2 check` trên HEAD cuối `febba904` (**PASS**) |
