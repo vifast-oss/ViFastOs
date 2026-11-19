@@ -575,10 +575,15 @@ def scan(
             r.err("E_DEPINFO_WAKE", msg)
 
     if do_transitions:
-        # R2 — **nguyên văn** cách checker tĩnh làm (KT-155): quét **theo dòng**, bỏ vùng
-        # `#[cfg(test)]`/`mod tests` (`test_line_ranges`), xác định hàm bao quanh bằng
-        # `enclosing`, đếm **thứ tự** trong hàm. Không dùng khoảng dòng của `find_functions`
-        # vì khoảng đó gộp cả hàm test nằm sau ⇒ báo oan (đã đo: 7 dương tính giả).
+        # R2 — **KT-231**: dùng **cùng** bộ quét token-tree của lớp một (`CWP._transition_calls`),
+        # không regex văn bản. Vì sao: đường lọt #15 (reviewer L54, KT-229) — `RE_READY_TRANSITION`
+        # khớp `TcbState::Ready` trên **một dòng**; `use crate::TcbState as S;` +
+        # `m.transition_tcb(t, S::Ready)` XANH cả hai lớp. Nay:
+        #   - `ready` (literal `TcbState::Ready`) ⇒ cửa wake / allowlist như cũ;
+        #   - `other` (literal `TcbState::<BiếnThểKhác>`) ⇒ chứng minh không Ready ⇒ XANH;
+        #   - `alias`/`unknown` ⇒ **ĐỎ** (fail-closed);
+        #   - `var` ⇒ ĐỎ nếu hàm gán biến từ `TcbState::Ready` (dataflow-lite, tránh báo oan
+        #     `block_current(cur, to)`).
         for p in files:
             text = texts.get(p)
             if text is None:
@@ -590,26 +595,49 @@ def scan(
                 continue
             tr = CWP.test_line_ranges(text)
             fns = CWP.find_functions(p, text)
-            lines = text.splitlines()
             ordinal: Dict[Tuple[str, str], int] = {}
-            for lineno, line in enumerate(lines, 1):
+            for lineno, kind, desc in CWP._transition_calls(text, relp):
                 if CWP.in_ranges(lineno, tr):
-                    continue
-                if not CWP.RE_READY_TRANSITION.search(line):
                     continue
                 fn = CWP.enclosing(fns, lineno)
                 if fn is None:
                     r.err(
                         "E_DEPINFO_TRANSITION",
-                        f"  {relp}:{lineno}: `TcbState::Ready` ngoài hàm — không xác định "
-                        f"được cửa (fail-closed)",
+                        f"  {relp}:{lineno}: `transition_tcb` ngoài hàm — không xác định "
+                        f"được cửa (fail-closed, KT-231)",
+                    )
+                    continue
+                if (relp, fn.name) in CWP.WAKE_DOORS:
+                    continue
+                if kind == "other":
+                    continue
+                if kind == "alias":
+                    r.err(
+                        "E_DEPINFO_TRANSITION",
+                        f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — đối số thứ hai "
+                        f"KHÔNG phải literal `TcbState::Ready` (alias/đường dẫn lạ) ⇒ không "
+                        f"chứng minh được (fail-closed, KT-231)",
+                    )
+                    continue
+                if kind == "var":
+                    if CWP._var_may_be_ready(text, fn, desc):
+                        r.err(
+                            "E_DEPINFO_TRANSITION",
+                            f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — biến `{desc}` "
+                            f"được gán từ `TcbState::Ready` trong `{fn.name}` ⇒ không chứng "
+                            f"minh được (fail-closed, KT-231)",
+                        )
+                    continue
+                if kind == "unknown":
+                    r.err(
+                        "E_DEPINFO_TRANSITION",
+                        f"  {relp}:{lineno}: `transition_tcb` — {desc} ⇒ không chứng minh "
+                        f"được (fail-closed, KT-231)",
                     )
                     continue
                 key = (relp, fn.name)
                 ordinal[key] = ordinal.get(key, 0) + 1
                 idx = ordinal[key]
-                if (relp, fn.name) in CWP.WAKE_DOORS:
-                    continue
                 if (relp, fn.name, idx) in CWP.NON_WAKE_READY_SITES:
                     continue
                 r.err(
@@ -1132,6 +1160,56 @@ def selftest() -> int:
         ghi(
             "(33) KT-230: macro lồng trong tệp `.txt` được nạp + lời gọi ⇒ ĐỎ `E_DEPINFO_WAKE`",
             (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (35) KT-231: alias `TcbState as S` + `S::Ready` ⇒ ĐỎ (đường lọt #15) -----------
+        alias = src / "alias_ready.rs"
+        alias.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "use crate::TcbState as S;\n"
+            "pub fn evil(m: &mut crate::Machine, t: u32) {\n"
+            "    let _ = m.transition_tcb(t, S::Ready);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {alias}, test_only=set())
+        ghi(
+            "(35) KT-231: alias `TcbState as S` + `S::Ready` ⇒ ĐỎ `E_DEPINFO_TRANSITION` "
+            "(trước: XANH)",
+            (not rep.ok) and any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (36) KT-231 đối chứng dương: `TcbState::Blocked` ⇒ XANH ------------------------
+        blocked = src / "blocked_ok.rs"
+        blocked.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn hop_le(m: &mut crate::Machine, t: u32) {\n"
+            "    let _ = m.transition_tcb(t, TcbState::Blocked);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {blocked}, test_only=set())
+        ghi(
+            "(36) KT-231 đối chứng dương: `TcbState::Blocked` ngoài cửa ⇒ XANH",
+            rep.ok,
+            f"errors={rep.errors}",
+        )
+
+        # --- (37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan) ----------
+        param = src / "param_ok.rs"
+        param.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn block_current(m: &mut crate::Machine, t: u32, to: TcbState) {\n"
+            "    let _ = m.transition_tcb(t, to);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {param}, test_only=set())
+        ghi(
+            "(37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan)",
+            rep.ok,
             f"errors={rep.errors}",
         )
 

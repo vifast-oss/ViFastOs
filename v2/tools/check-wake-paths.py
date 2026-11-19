@@ -2942,6 +2942,106 @@ def _check_wake_text(
         )
 
 
+def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
+    """**KT-231** — mọi lời gọi `transition_tcb(…)` theo **token-tree** (không regex văn bản).
+
+    Trả `[(dòng, dạng, mô_tả)]`, dạng:
+      - `"ready"` — đối số thứ hai kết thúc bằng `TcbState::Ready` (kể cả path-qualified
+        `vifast_core::TcbState::Ready`) ⇒ chuyển Ready **thật**;
+      - `"other"` — kết thúc bằng `TcbState::<BiếnThểKhác>` ⇒ **chứng minh** không Ready;
+      - `"alias"` — kết thúc bằng `<X>::Ready` với `X ≠ TcbState` (`S::Ready`, `Self::Ready`,
+        đường dẫn lạ) ⇒ **không chứng minh** được ⇒ ĐỎ;
+      - `"var"` — một định danh trần (biến) ⇒ chỉ ĐỎ nếu hàm gán biến đó từ `TcbState::Ready`
+        (xem [`_var_may_be_ready`]);
+      - `"unknown"` — dạng khác ⇒ ĐỎ (fail-closed).
+
+    Vì sao token-tree: đường lọt #15 (reviewer L54, KT-229) — `RE_READY_TRANSITION` khớp
+    **văn bản** `TcbState::Ready` trên **một dòng**; `use crate::TcbState as S;` +
+    `m.transition_tcb(t, S::Ready)` **XANH cả hai lớp** trong khi `cargo check` biên dịch được.
+    Token-tree thấy đúng **đối số thứ hai**, không phụ thuộc alias/xuống dòng/đường dẫn.
+    """
+    toks, errs = tokenize(text, relp)
+    if errs:
+        return []
+    try:
+        tree = build_tree(toks, relp)
+    except LexError:
+        return []
+    out: List[Tuple[int, str, str]] = []
+
+    def segs_of(arg: Sequence[object]) -> List[str]:
+        """Các **đoạn định danh** của một đường dẫn biến thể (`a::b::C` ⇒ `[a, b, C]`)."""
+        segs: List[str] = []
+        i = 0
+        n = len(arg)
+        while i < n:
+            t = arg[i]
+            if isinstance(t, Group):
+                break
+            if t.kind == "ident":
+                segs.append(t.val)
+                i += 1
+                continue
+            if t.kind == "punct" and t.val == ":" and i + 1 < n and _is_punct(arg[i + 1], ":"):
+                i += 2
+                continue
+            break
+        return segs
+
+    def walk(nodes: Sequence[object]) -> None:
+        for i, node in enumerate(nodes):
+            if isinstance(node, Group):
+                walk(node.children)
+                continue
+            if not (node.kind == "ident" and node.val == "transition_tcb"):
+                continue
+            if (
+                i + 1 >= len(nodes)
+                or not isinstance(nodes[i + 1], Group)
+                or nodes[i + 1].open.val != "("
+            ):
+                continue
+            prev = nodes[i - 1] if i > 0 else None
+            if prev is not None and getattr(prev, "kind", None) == "ident" and prev.val == "fn":
+                continue  # định nghĩa `fn transition_tcb(`
+            args = _split_commas(nodes[i + 1].children)
+            if len(args) < 2:
+                out.append((node.line, "unknown", "thiếu đối số thứ hai"))
+                continue
+            segs = segs_of(args[1])
+            if len(segs) >= 2 and segs[-2] == "TcbState" and segs[-1] == "Ready":
+                out.append((node.line, "ready", "TcbState::Ready"))
+            elif len(segs) >= 2 and segs[-2] == "TcbState":
+                out.append((node.line, "other", f"TcbState::{segs[-1]}"))
+            elif len(segs) >= 2 and segs[-1] == "Ready":
+                out.append((node.line, "alias", "::".join(segs)))
+            elif len(segs) == 1:
+                out.append((node.line, "var", segs[0]))
+            else:
+                out.append(
+                    (node.line, "unknown", "đối số thứ hai không phải đường dẫn biến thể")
+                )
+
+    walk(tree)
+    return out
+
+
+def _var_may_be_ready(text: str, fn: Fn, var: str) -> bool:
+    """**KT-231** — biến `var` (đối số thứ hai của `transition_tcb`) có được **gán từ**
+    `TcbState::Ready` trong thân `fn` không.
+
+    Vì sao cần dataflow-lite: `block_current(&mut self, to: TcbState)` gọi
+    `self.transition_tcb(cur, to)` với `to` là **tham số** (luôn là trạng thái *blocked* —
+    hợp lệ); nếu coi **mọi** biến là ĐỎ thì báo oan cây thật. Ngược lại, đường lọt
+    `let r = TcbState::Ready; m.transition_tcb(t, r)` phải **ĐỎ**. Nay: chỉ ĐỎ khi thân hàm
+    có phép gán `var = … TcbState::Ready`. Bất biến liên hàm (truyền `Ready` qua tham số) là
+    **rủi ro còn lại** — ghi ở journal, không tuyên bố đã đóng.
+    """
+    body = "\n".join(text.splitlines()[fn.start - 1 : fn.end])
+    pat = r"\b" + re.escape(var) + r"\s*(?::[^=;]*)?=\s*[^;]*TcbState::Ready"
+    return bool(re.search(pat, body))
+
+
 def scan_v2(
     root: Path,
     strict: bool,
@@ -3174,81 +3274,97 @@ def scan_v2(
     #    (kèm lý do). Fail-closed **hai chiều**:
     #      - chỗ trong mã không có trong allowlist ⇒ ĐỎ (đường wake thứ hai / đột biến);
     #      - mục trong allowlist không còn khớp chỗ nào ⇒ ĐỎ (allowlist mục, phải cập nhật).
-    if strict:
-        allow = NON_WAKE_READY_SITES if allowlist is None else allowlist
-        sites: List[Tuple[str, str, int, int]] = []
-        for p, text, fns in files:
-            relp = rel(root, p)
-            if is_test_file(p, root, test_only):
+    # 5) **KT-155** (allowlist tường minh) + **KT-231** (token-tree, chạy ở **mọi** chế độ):
+    #    mọi lời gọi `transition_tcb(…)` trong mã sản phẩm phải hoặc nằm trong một **cửa wake**
+    #    (`WAKE_DOORS`), hoặc có tên trong `NON_WAKE_READY_SITES` (kèm lý do), hoặc **chứng minh
+    #    được** đối số thứ hai **không** phải `Ready` (literal `TcbState::<BiếnThểKhác>`).
+    #    Mọi dạng khác — alias `S::Ready`/`Self::Ready`, biến được gán từ `TcbState::Ready`,
+    #    đường dẫn lạ — ⇒ **ĐỎ** (fail-closed).
+    #
+    #    **KT-231** — đường lọt #15 (reviewer L54, KT-229): `RE_READY_TRANSITION` khớp **văn bản**
+    #    `TcbState::Ready` trên **một dòng**; `use crate::TcbState as S;` +
+    #    `m.transition_tcb(t, S::Ready)` **XANH cả hai lớp** trong khi `cargo check` biên dịch
+    #    được. Nay dùng [`_transition_calls`] (token-tree) — không phụ thuộc alias/xuống dòng.
+    #    Chạy ở **mọi** chế độ (lead KT-231 yêu cầu repro #15 ĐỎ cả lớp 1 thường); `--strict`
+    #    chỉ còn thêm luật token `wake` (mục 6).
+    allow = NON_WAKE_READY_SITES if allowlist is None else allowlist
+    sites: List[Tuple[str, str, int, int]] = []
+    for p, text, fns in files:
+        relp = rel(root, p)
+        if is_test_file(p, root, test_only):
+            continue
+        tr = test_ranges.get(str(p), [])
+        counts: Dict[Tuple[str, str], int] = {}
+        for lineno, kind, desc in _transition_calls(text, relp):
+            if in_ranges(lineno, tr):
                 continue
-            tr = test_ranges.get(str(p), [])
-            lines = text.splitlines()
-            counts: Dict[Tuple[str, str], int] = {}
-            for lineno, line in enumerate(lines, 1):
-                if in_ranges(lineno, tr):
-                    continue
-                if not RE_READY_TRANSITION.search(line):
-                    # Fail-closed: câu lệnh `transition_tcb(…)` **nhiều dòng** mà máy kiểm
-                    # (quét theo dòng) không xếp loại được ⇒ ĐỎ, không bỏ qua im lặng. Gom
-                    # **đúng** lời gọi theo cân bằng ngoặc (không quét sang câu lệnh kế).
-                    if "transition_tcb" in line and not line.lstrip().startswith(
-                        ("//", "*", "/*")
-                    ):
-                        window = "\n".join(lines[lineno - 1 : lineno + 8])
-                        pos = window.index("transition_tcb")
-                        depth = 0
-                        end = None
-                        for k in range(pos, len(window)):
-                            c = window[k]
-                            if c == "(":
-                                depth += 1
-                            elif c == ")":
-                                depth -= 1
-                                if depth == 0:
-                                    end = k
-                                    break
-                        call = window[pos : end + 1] if end is not None else window[pos:]
-                        if "TcbState::Ready" in call:
-                            r.err(
-                                "E_STRICT_TRANSITION",
-                                f"  {relp}:{lineno}: `transition_tcb` nhiều dòng — "
-                                f"máy kiểm không xếp loại được (fail-closed)",
-                            )
-                    continue
-                fn = enclosing(fns, lineno)
-                if fn is None:
-                    # Fail-closed: không xác định được hàm bao quanh ⇒ không thể xếp loại.
+            fn = enclosing(fns, lineno)
+            if fn is None:
+                r.err(
+                    "E_STRICT_TRANSITION",
+                    f"  {relp}:{lineno}: `transition_tcb` ngoài hàm — không xác định "
+                    f"được cửa (fail-closed, KT-231)",
+                )
+                continue
+            if (relp, fn.name) in WAKE_DOORS:
+                r.note(f"cửa wake: {relp}:{lineno} ({fn.name})")
+                continue
+            if kind == "other":
+                continue  # chứng minh **không** Ready — hợp lệ
+            if kind == "alias":
+                r.err(
+                    "E_STRICT_TRANSITION",
+                    f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — đối số thứ hai KHÔNG "
+                    f"phải literal `TcbState::Ready` (alias/đường dẫn lạ) ⇒ không chứng minh "
+                    f"được (fail-closed, KT-231)",
+                )
+                continue
+            if kind == "var":
+                if _var_may_be_ready(text, fn, desc):
                     r.err(
                         "E_STRICT_TRANSITION",
-                        f"  {relp}:{lineno}: `TcbState::Ready` ngoài hàm — không xác định "
-                        f"được cửa (fail-closed)",
+                        f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — biến `{desc}` được "
+                        f"gán từ `TcbState::Ready` trong `{fn.name}` ⇒ không chứng minh được "
+                        f"(fail-closed, KT-231)",
                     )
-                    continue
-                key = (relp, fn.name)
-                counts[key] = counts.get(key, 0) + 1
-                sites.append((relp, fn.name, counts[key], lineno))
-        used: set = set()
-        bad: List[str] = []
-        for relp, fname, ordinal, lineno in sites:
-            if (relp, fname) in WAKE_DOORS:
-                r.note(f"cửa wake: {relp}:{lineno} ({fname})")
                 continue
-            key = (relp, fname, ordinal)
-            if key in allow:
-                used.add(key)
-                r.note(f"chuyển Ready không-wake: {relp}:{lineno} ({fname}) — {allow[key]}")
+            if kind == "unknown":
+                r.err(
+                    "E_STRICT_TRANSITION",
+                    f"  {relp}:{lineno}: `transition_tcb` — {desc} ⇒ không chứng minh được "
+                    f"(fail-closed, KT-231)",
+                )
                 continue
-            bad.append(f"{relp}:{lineno} ({fname})")
-        if bad:
-            r.err(
-                "E_STRICT_TRANSITION",
-                f"{len(bad)} chỗ chuyển `TcbState::Ready` ngoài cửa wake "
-                f"(allowlist tường minh KT-155)",
-            )
-            for b in bad:
-                r.err("E_STRICT_TRANSITION", f"  {b}")
-        # Mục trong allowlist phải còn khớp chỗ nào đó. Chỉ xét tệp **có trong cây** — cây
-        # test tối thiểu (selftest) không có đủ tệp của repo thật, không được coi là mục.
+            # kind == "ready"
+            key = (relp, fn.name)
+            counts[key] = counts.get(key, 0) + 1
+            sites.append((relp, fn.name, counts[key], lineno))
+    used: set = set()
+    bad: List[str] = []
+    for relp, fname, ordinal, lineno in sites:
+        if (relp, fname) in WAKE_DOORS:
+            r.note(f"cửa wake: {relp}:{lineno} ({fname})")
+            continue
+        key = (relp, fname, ordinal)
+        if key in allow:
+            used.add(key)
+            r.note(f"chuyển Ready không-wake: {relp}:{lineno} ({fname}) — {allow[key]}")
+            continue
+        bad.append(f"{relp}:{lineno} ({fname})")
+    if bad:
+        r.err(
+            "E_STRICT_TRANSITION",
+            f"{len(bad)} chỗ chuyển `TcbState::Ready` ngoài cửa wake "
+            f"(allowlist tường minh KT-155)",
+        )
+        for b in bad:
+            r.err("E_STRICT_TRANSITION", f"  {b}")
+    # Mục trong allowlist phải còn khớp chỗ nào đó. Chỉ xét tệp **có trong cây** — cây
+    # test tối thiểu (selftest) không có đủ tệp của repo thật, không được coi là mục.
+    # **KT-231** — kiểm "mục allowlist cũ" chỉ ở `--strict` (giữ hành vi cũ): luật transition
+    # nay chạy ở **mọi** chế độ, nhưng cây fixture của selftest không có đủ tệp của repo thật
+    # nên kiểm stale ở chế độ thường sẽ báo oan. `v2 check` chạy **cả** `--strict` nên không mất.
+    if strict:
         present = {rel(root, p) for p, _, _ in files}
         for key in sorted(allow):
             if key[0] not in present:
@@ -3260,6 +3376,7 @@ def scan_v2(
                     f"({allow[key]})",
                 )
 
+    if strict:
         # 6) `--strict` (KT-159, D2-144; **KT-165** mở rộng; **KT-171** vá vòng 3):
         #    `wake()` là API **CHỈ-DÙNG-CHO-TEST**. **Mọi** tham chiếu `wake` trong **mã sản
         #    phẩm** ngoài `#[cfg(test)]`/`mod tests` ⇒ ĐỎ, fail-closed.
@@ -3737,8 +3854,8 @@ def selftest() -> int:
         rep = scan_v2(d, strict=True, allowlist={})
         cases.append(
             (
-                "v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)",
-                (not rep.ok) and any("nhiều dòng" in e for e in rep.errors),
+                "v2 `--strict` transition nhiều dòng ⇒ đỏ (token-tree, KT-231)",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
                 "; ".join(rep.errors),
             )
         )
@@ -6950,6 +7067,155 @@ def selftest() -> int:
                         "        let wake = 0u32;\n"
                         "        let _ = wake;\n"
                         "        let _ = evil!(self, wake, t);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                True,
+                _strict,
+            )
+
+        # **KT-231** (reviewer L54, đường lọt #15) — `transition_tcb(…, Ready)` ẩn bằng **alias
+        # kiểu**: `use crate::TcbState as S;` + `m.transition_tcb(t, S::Ready)`. Bản KT-155 khớp
+        # **văn bản** `TcbState::Ready` trên **một dòng** ⇒ XANH cả hai lớp. Nay token-tree:
+        # đối số thứ hai phải **chứng minh** được — literal `TcbState::Ready` (cửa/allowlist)
+        # hoặc literal `TcbState::<BiếnThểKhác>` (không Ready); alias/biến-gán-từ-Ready/đường
+        # dẫn lạ ⇒ ĐỎ. Luật chạy ở **mọi** chế độ (lead KT-231).
+        def _kt231_case(
+            name: str,
+            files: dict,
+            expect_red: bool,
+            strict: bool,
+            allowlist: Optional[Dict[Tuple[str, str, int], str]] = None,
+        ) -> None:
+            d = tmp / ("kt231-" + name)
+            _fixture_v2(d)
+            for relp, body in files.items():
+                _write(d / relp, body)
+            rep = scan_v2(d, strict=strict, allowlist=allowlist if allowlist is not None else {})
+            got = not rep.ok
+            cases.append(
+                (
+                    f"KT-231 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _KT231_ALIAS = (
+            "use crate::TcbState as S;\n"
+            "impl M {\n"
+            "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        let _ = self.transition_tcb(t, S::Ready);\n"
+            "        0\n"
+            "    }\n"
+            "}\n"
+        )
+        for _strict in (False, True):
+            _kt231_case(
+                "repro #15 alias `TcbState as S` + `S::Ready`"
+                + (" (--strict)" if _strict else " (thường)"),
+                {"v2/kernel/vifast-core/src/evil.rs": _KT231_ALIAS},
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "`Self::Ready` (alias qua Self)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/evil.rs": (
+                        "impl M {\n"
+                        "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                        "        let _ = self.transition_tcb(t, Self::Ready);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "biến gán từ `TcbState::Ready` rồi truyền"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/evil.rs": (
+                        "impl M {\n"
+                        "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                        "        let r = TcbState::Ready;\n"
+                        "        let _ = self.transition_tcb(t, r);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                True,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "đối chứng dương: `TcbState::Blocked` ngoài cửa ⇒ xanh (chứng minh không Ready)"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn hop_le(&mut self, t: u32) -> u8 {\n"
+                        "        let _ = self.transition_tcb(t, TcbState::Blocked);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "đối chứng dương: `TcbState::Ready` trong hàm có mục allowlist ⇒ xanh"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/allow.rs": (
+                        "impl M {\n"
+                        "    fn cho_phep(&mut self, t: u32) -> u8 {\n"
+                        "        let _ = self.transition_tcb(t, TcbState::Ready);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+                {("v2/kernel/vifast-core/src/allow.rs", "cho_phep", 1): "khởi tạo (selftest)"},
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "đối chứng dương: biến **tham số** `to` (block_current) ⇒ xanh, không báo oan"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/ok.rs": (
+                        "impl M {\n"
+                        "    fn block_current(&mut self, t: u32, to: TcbState) -> u8 {\n"
+                        "        let _ = self.transition_tcb(t, to);\n"
+                        "        0\n"
+                        "    }\n"
+                        "}\n"
+                    )
+                },
+                False,
+                _strict,
+            )
+        for _strict in (False, True):
+            _kt231_case(
+                "đối chứng dương: path-qualified `vifast_core::TcbState::Ready` ngoài cửa ⇒ đỏ"
+                + (" (--strict)" if _strict else " (thường)"),
+                {
+                    "v2/kernel/vifast-core/src/evil.rs": (
+                        "impl M {\n"
+                        "    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                        "        let _ = self.transition_tcb(t, vifast_core::TcbState::Ready);\n"
                         "        0\n"
                         "    }\n"
                         "}\n"
