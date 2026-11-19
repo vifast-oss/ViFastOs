@@ -106,15 +106,16 @@ Log: `kt228-logs/repro-txt.log`.
 Harness: [`kt228-logs/harness-25-ca.py`](kt228-logs/harness-25-ca.py) (bản KT-227, chạy trên
 công cụ **đã merge**); bảng máy đọc: `kt228-logs/bang-tan-cong.json`.
 
-| Nhóm | Số ca | Kết quả |
+| Nhóm | Số ca | Danh sách |
 |---|---|---|
-| Cả hai lớp ĐỎ | 18 | B1, B2, B3a, B4a, B5, B6, B7, B8, B9, B10, B11, B18, B19 + … |
+| **Cả hai lớp ĐỎ** | **13** | B1, B2, B3a, B4a, B5, B6, B7, B8, B9, B10, B11, B18, B19 |
 | Lớp 2 ĐỎ / lớp 1 XANH | 5 | B12, B13, B14, B15, B16 (đều trong `v2/lib` — lớp 1 không có luật token ở đó) |
-| Lớp 1 ĐỎ / lớp 2 XANH | 2 | B3b (ktest, feature tắt), B4b (`cfg(any())`, luôn tắt) |
-| Lớp 2 XANH có cảnh báo / lớp 1 ĐỎ | 1 | B17 (OUT_DIR — `W_DEPINFO_SKIPPED`) |
+| Lớp 2 XANH / lớp 1 ĐỎ | 3 | B3b (ktest, feature tắt), B4b (`cfg(any())`, luôn tắt), B17 (OUT_DIR — có `W_DEPINFO_SKIPPED`) |
+| **Cả hai lớp XANH** | **0** | — |
 | Đối chứng dương XANH | 4 | C1a–C1d |
 
-**Đường lọt cả hai lớp: 0. Báo oan: 0.**
+**Đường lọt cả hai lớp: 0. Báo oan: 0.** Ba ca lớp 2 XANH đều bị lớp 1 bắt (B3b: KT-227 P0-4;
+B4b: giới hạn cứng `cfg(any())`; B17: `include!` không literal).
 
 ---
 
