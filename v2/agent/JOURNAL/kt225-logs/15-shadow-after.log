@@ -1,0 +1,23 @@
+--- SHADOW stringify :expr + include!
+    normal: DO (1 err)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+    strict: DO (1 err)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+--- SHADOW stringify :tt + include!
+    normal: DO (2 err)
+      E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt223_attack.rs:1: thân `macro_rules! stringify` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+    strict: DO (2 err)
+      E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt223_attack.rs:1: thân `macro_rules! stringify` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+--- SHADOW concat :expr + include!
+    normal: DO (1 err)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+    strict: DO (1 err)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt223_attack.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+--- KHÔNG shadow stringify!(include!)
+    normal: XANH (0 err)
+    strict: XANH (0 err)
+--- KHÔNG shadow concat!(include!("ok.rs"))
+    normal: XANH (0 err)
+    strict: XANH (0 err)

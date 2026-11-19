@@ -37,8 +37,10 @@ Hai luật được áp (cùng ngữ nghĩa với checker tĩnh, khác **nguồn
 
   - **R1 `wake`** (`E_DEPINFO_WAKE`): mọi tham chiếu `wake` không được miễn (định nghĩa `fn wake`,
     biến cục bộ, chú thích/chuỗi, ngữ cảnh test) trong **bất kỳ** tệp rustc nạp ⇒ ĐỎ. Miễn:
-    tệp **định nghĩa** một cửa trong `WAKE_PRODUCER` (`fn wake`/`wake_from`/`wake_from_unlink`)
-    và tệp **test-only** (đồ thị module của checker tĩnh).
+    **định nghĩa** `fn wake` (do `_check_wake_text` xử lý) và tệp **test-only** (đồ thị module
+    của checker tĩnh). **KT-226**: **không** miễn **cả tệp** định nghĩa cửa `wake` nữa — lớp 1
+    chỉ miễn định nghĩa, lớp 2 phải đồng nhất (bất đối xứng cũ: tệp producer chứa lời gọi
+    `wake(` XANH ở lớp 2 nhưng ĐỎ ở lớp 1).
   - **R2 chuyển `Ready`** (`E_DEPINFO_TRANSITION`): mọi `transition_tcb(…, TcbState::Ready)`
     trong tệp dưới `v2/kernel`/`v2/sim` phải nằm trong cửa `WAKE_DOORS` hoặc có tên trong
     `NON_WAKE_READY_SITES` (allowlist hiện có, khoá `(tệp, hàm, thứ tự)`).
@@ -493,11 +495,11 @@ def run_unit(
 # ------------------------------------------------------------------ luật
 
 def is_producer_file(text: str) -> bool:
-    """Tệp **định nghĩa** một cửa phát `Wake` (`WAKE_PRODUCER`) ⇒ được phép chứa `wake`.
+    """Tệp **định nghĩa** một cửa phát `Wake` (`WAKE_PRODUCER`).
 
-    Vì sao cần: `core_sched.rs`/`kobj.rs` khai `pub fn wake(…)` — chính chỗ khai báo API. Luật
-    token đã miễn **định nghĩa** `fn wake`, nhưng tệp còn có thể chứa tham chiếu khác (doc, alias)
-    trong tương lai; allowlist theo **tệp** giữ nguyên tinh thần "chỉ cửa wake được phát Wake".
+    **KT-227 P0-3 / KT-226** — chỉ dùng để **đếm** (`producer_files`), **KHÔNG** miễn cả tệp.
+    Việc miễn **định nghĩa** `fn wake` do `CWP._check_wake_text` làm; miễn cả tệp là bất đối
+    xứng với lớp 1 (đường lọt B18 của KT-224).
     """
     for name in CWP.WAKE_PRODUCER:
         if re.search(r"\bfn\s+" + re.escape(name) + r"\s*\(", text):
@@ -556,9 +558,11 @@ def scan(
         if test_only is not None and relp in test_only:
             counts["exempt_test"] += 1
             continue
-        # **KT-227 P0-3** — KHÔNG miễn cả tệp chỉ vì nó định nghĩa một cửa wake. Bản KT-214
-        # miễn `core_sched.rs`/`kobj.rs` toàn bộ ⇒ một `m.wake(t)` thêm vào đó lọt lớp 2
-        # (đường lọt B18). `_check_wake_text` đã miễn **định nghĩa** `fn wake` — đúng mức.
+        # **KT-227 P0-3 / KT-226** — KHÔNG miễn **cả tệp** producer nữa: lớp 2 chỉ miễn
+        # **định nghĩa** `fn wake` (do `_check_wake_text` xử lý), đồng nhất với lớp 1.
+        # Trước KT-226/KT-227 tệp định nghĩa `fn wake` được miễn cả tệp ⇒ lời gọi `wake(`
+        # trong tệp đó XANH ở lớp 2 nhưng ĐỎ ở lớp 1 (bất đối xứng allowlist — reviewer L51
+        # KT-222 §4; đường lọt B18 của KT-224).
         if is_producer_file(text):
             counts["producer_files"] += 1
         counts["scanned"] += 1
@@ -748,6 +752,23 @@ def selftest() -> int:
             "(6) tệp định nghĩa `fn wake` VẪN được quét (chỉ miễn định nghĩa, KT-227 P0-3)",
             counts["producer_files"] == 1 and counts["scanned"] == 3,
             f"producer_files={counts['producer_files']} scanned={counts['scanned']}",
+        )
+        # **KT-226** — bất đối xứng allowlist producer: lớp 2 KHÔNG miễn cả tệp nữa. Tệp định
+        # nghĩa `fn wake` mà **gọi** `wake(` phải ĐỎ (trước KT-226: XANH ở lớp 2, ĐỎ ở lớp 1).
+        prod_call = src / "prod_call.rs"
+        prod_call.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn wake(_t: u32) {}\n"
+            "pub fn call_it() {\n"
+            "    wake(1);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {prod_call}, test_only=set())
+        ghi(
+            "(6b) tệp producer **gọi** `wake(` ⇒ ĐỎ (đồng nhất lớp 1; trước KT-226: XANH)",
+            (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
+            f"errors={rep.errors}",
         )
 
         # --- (7) ĐÍCH `include!` NGOÀI `<crate>/src` chứa `wake` ⇒ ĐỎ -----------------------
@@ -990,6 +1011,47 @@ def selftest() -> int:
             "(27) P0-3: tệp có `fn wake` VẪN bị bắt nếu có `m.wake(t)` (không miễn cả tệp)",
             (not rep.ok) and any("E_DEPINFO_WAKE" in e for e in rep.errors),
             f"errors={rep.errors}",
+        )
+
+        # --- (28) KT-226: `_is_build_dir` — chỉ bỏ `target` **trước** `src` ------------------
+        src_target = root / "v2/kernel/vifast-core/src/target/evil.rs"
+        build_target = root / "v2/kernel/target/evil.rs"
+        src_target.parent.mkdir(parents=True, exist_ok=True)
+        build_target.parent.mkdir(parents=True, exist_ok=True)
+        src_target.write_text(_GIA_EVIL, encoding="utf-8")
+        build_target.write_text(_GIA_EVIL, encoding="utf-8")
+        ghi(
+            "(28) `_is_build_dir`: `src/target/` KHÔNG bỏ qua, `v2/kernel/target/` bỏ qua",
+            CWP._is_build_dir(root, src_target) is False
+            and CWP._is_build_dir(root, build_target) is True
+            and CWP._is_build_dir(root, src / "clean.rs") is False,
+            f"src/target={CWP._is_build_dir(root, src_target)} "
+            f"kernel/target={CWP._is_build_dir(root, build_target)}",
+        )
+
+        # --- (29) KT-226: `.d` nạp `src/target/evil.rs` ⇒ vào `loaded` ⇒ ĐỎ -----------------
+        dd_a = base / "deps-kt226-src-target"
+        _ghi_d(dd_a / "liba.d", root, [src_target])
+        res_a = UnitResult("kernel", ["(selftest)"])
+        collect_depinfo(dd_a, root, root.resolve(), res_a, True, set())
+        rep_a, _ = scan(root, res_a.loaded, test_only=set())
+        ghi(
+            "(29) `.d` nạp `src/target/evil.rs` (wake) ⇒ ĐỎ `E_DEPINFO_WAKE` (trước KT-226: XANH)",
+            src_target.resolve() in res_a.loaded
+            and any("E_DEPINFO_WAKE" in e for e in rep_a.errors),
+            f"loaded={sorted(CWP.rel(root, p) for p in res_a.loaded)} errors={rep_a.errors}",
+        )
+
+        # --- (30) KT-226: `.d` nạp `v2/kernel/target/evil.rs` ⇒ bị lọc ⇒ XANH ---------------
+        dd_b = base / "deps-kt226-build-target"
+        _ghi_d(dd_b / "libb.d", root, [build_target])
+        res_b = UnitResult("kernel", ["(selftest)"])
+        collect_depinfo(dd_b, root, root.resolve(), res_b, True, set())
+        rep_b, _ = scan(root, res_b.loaded, test_only=set())
+        ghi(
+            "(30) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH",
+            build_target.resolve() not in res_b.loaded and not rep_b.errors,
+            f"loaded={sorted(CWP.rel(root, p) for p in res_b.loaded)} errors={rep_b.errors}",
         )
 
     ok = sum(1 for _, o, _ in cases if o)

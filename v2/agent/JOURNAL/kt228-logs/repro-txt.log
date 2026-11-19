@@ -1,0 +1,7 @@
+cargo check -p vifast-core RC= 0
+L1 thường: RC=1 errors=1
+    E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt228_macro_def.txt:3: thân `macro_rules! kt228_evil` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân g
+L1 --strict: RC=1 errors=1
+    E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt228_macro_def.txt:3: thân `macro_rules! kt228_evil` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân g
+L2 dep-info: RC=1 errors=1
+    E E_DEPINFO_WAKE   v2/lib/kt228_evil_expr.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`

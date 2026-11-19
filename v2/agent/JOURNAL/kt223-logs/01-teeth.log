@@ -1,0 +1,54 @@
+=== 8 ca KT-211: assert thật + 'phá' fixture ===
+
+--- ca gốc (phải PASS) ---
+B01 gốc sink(include!{...})                          expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:3: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B02 gốc [include!{...}]                              expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B03 gốc (0u8, include!{...})                         expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B23 gốc (include!{...})                              expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B24 gốc (|| include!{...})                           expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B25 gốc Some(include!{...})                          expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B26 gốc include_str! (dương)                         expect_red=False got=False -> PASS
+B26 gốc stringify!(include) (dương)                  expect_red=False got=False -> PASS
+B28 gốc #[path] trong ( ... ) (đỏ)                   expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:3: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_mod.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+B28 gốc #[path] trong ( ... ) (dương)                expect_red=False got=False -> PASS
+B29 gốc include! không literal                       expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-194)
+B30 gốc include! lồng 2 tầng                         expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+--- PHÁ 1: B01 đổi include! -> include_str! (không còn kiểm include!) ---
+B01 phá                                              expect_red=True  got=False -> FAIL
+
+--- PHÁ 2: B26 stringify!(include) -> stringify!(include!) (vẫn là báo oan khác mã) ---
+B26stringify phá                                     expect_red=False got=True  -> FAIL
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` không có đối số — không phân giải được đích (fail-closed, KT-194)
+      E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+
+--- PHÁ 3: B29 non-literal -> literal trỏ ra ngoài (vẫn đỏ, nhưng lý do khác) ---
+B29 phá                                              expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+--- PHÁ 4: B30 lồng 2 tầng -> 1 tầng (vẫn đỏ, nhưng không kiểm lồng) ---
+B30 phá                                              expect_red=True  got=True  -> PASS
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+--- PHÁ 5: B28 dương -> đích ngoài cây (phải FAIL nếu có răng) ---
+B28ok phá                                            expect_red=False got=True  -> FAIL
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:3: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_mod.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+--- PHÁ 6: B26 include_str! dương -> include! (phải FAIL nếu có răng) ---
+B26str phá                                           expect_red=False got=True  -> FAIL
+      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+--- PHÁ 7: B02 -> include_str! (phải FAIL nếu có răng) ---
+B02 phá                                              expect_red=True  got=False -> FAIL
+
+--- PHÁ 8: B23 -> include_str! (phải FAIL nếu có răng) ---
+B23 phá                                              expect_red=True  got=False -> FAIL

@@ -1,0 +1,14 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L51-kt222/v2/kernel/vifast-core)
+warning: unexpected `cfg` condition value: `ktest`
+ --> vifast-core/src/kt222_r08.rs:2:7
+  |
+2 | #[cfg(feature = "ktest")]
+  |       ^^^^^^^^^^^^^^^^^ help: remove the condition
+  |
+  = note: no expected values for `feature`
+  = help: consider adding `ktest` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `vifast-core` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
