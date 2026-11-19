@@ -1,5 +1,11 @@
 # KT-217 — nối `check-wake-depinfo.py` vào `v2 check` làm **lớp 2** cho luật `wake`
 
+> **ĐÍNH CHÍNH KT-227 (2026-11-20, L53).** Câu "checker tĩnh bắt 5/11" dưới đây là số đo ở
+gốc `dc6e01ae` (trước KT-211/213/215). **Trên HEAD `83275d94`, checker tĩnh bắt 11/11** —
+đã tái lập p02–p07 (`kt224-logs/p02-p07-tai-lap-head.log`). Luận cứ "lớp 2 lấp 6/11" **không
+còn đúng**; giá trị hiện tại của lớp 2 là **cơ chế độc lập** + phủ `v2/lib`. Xem
+`kt227-layer2-fixes.md`.
+
 **Ngày**: 2026-11-20 (đêm, Agent 1 giữ quyền A0)
 **Quyết định**: D2-173.
 
@@ -26,7 +32,8 @@ macro đều do rustc phân giải — **không còn** lớp lỗi "bỏ sót v�
 
 ## 2. Đo của nguyên mẫu (KT-214, `JOURNAL/kt214-depinfo-prototype.md`)
 
-- Bắt **11/11** đường lọt đã biết; checker tĩnh bắt **5/11**.
+- Bắt **11/11** đường lọt đã biết; checker tĩnh bắt **5/11** *ở gốc `dc6e01ae`* — **trên HEAD
+  `83275d94` checker tĩnh bắt 11/11** (đính chính KT-227).
 - **Stable 1.99.1**, **không** `-Z`, **không** nightly. `--emit=dep-info` là mặc định của cargo.
 - rustc **vẫn ghi `.d` khi biên dịch lỗi** (đo với `E0308`, `E0583`) ⇒ danh sách tệp không phụ
   thuộc build xanh.
@@ -35,7 +42,8 @@ macro đều do rustc phân giải — **không còn** lớp lỗi "bỏ sót v�
 ## 3. Hai giới hạn cứng ⇒ **không** thay thế lớp 1
 
 1. **Mã do `macro_rules!` sinh ra** — token `m.wake(t)` không nằm trong tệp nào ⇒ `.d` không giúp.
-2. **Nhánh `#[cfg]` không bật** — bản build chỉ nạp nhánh đang bật; checker tĩnh quét **mọi** nhánh.
+2. **Nhánh `#[cfg]` không bật** — bản build chỉ nạp nhánh đang bật; checker tĩnh quét **mọi** nhánh
+   **trừ** `#[cfg(feature = "ktest")] mod` (đính chính KT-227: cả hai lớp cùng mù ở đó; đã vá P0-4).
 
 Vì vậy lớp 2 là **thêm**, không phải thay.
 
@@ -87,6 +95,7 @@ việc bắt được lớp lỗi đã phá luật **mười hai** lần.
 - Lớp 2 cần `cargo check` chạy được; nếu máy không có cargo thì bước này đỏ (fail-closed, đúng
   hướng — `v2 check` vốn đã cần cargo).
 - Lớp 2 **không** thay lớp 1: lớp 1 còn giữ luật `transition_tcb`/allowlist và quét mọi nhánh
+  (trừ `#[cfg(feature = "ktest")] mod` — đã vá KT-227 P0-4)
   `#[cfg]`.
 
 ## 8. Tệp
