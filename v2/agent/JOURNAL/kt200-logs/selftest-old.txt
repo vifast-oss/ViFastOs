@@ -1,0 +1,1524 @@
+def selftest() -> int:
+    """Mỗi ca một dòng `ok`/`not ok`.
+
+    15 ca KT-151/155/159 + **11 ca KT-165** (sáu cách lách H1..H6 + năm đối chứng dương) +
+    **13 ca KT-171** (sáu lớp B4/B6/B7/B8/B9/B10 của reviewer L11 + bảy đối chứng dương) +
+    **7 ca KT-172** (bốn call site luật 1–5 chuyển sang đồ thị module: hai đột biến
+    `ktest_evil.rs`/`src/tests/evil.rs` + hai đối chứng dương + ba ca luật 1/2/3) +
+    **10 ca KT-177** (bốn lớp còn nợ của reviewer L16: H4/H6/H7/H8 + bốn đối chứng dương
+    + hai ca H9 cho dấu ngoặc của `include!`) +
+    **8 ca KT-184** (D2-160: H4 **ba lớp** + một dạng **hai lớp** `#[path]`+`include!`, mỗi
+    dạng kèm đối chứng dương; D2-161: ba đột biến `include!`/`#[path]` không literal / ra
+    ngoài cây chạy ở **chế độ thường** + một đối chứng dương). Tổng **64** ca.
+    """
+    cases: List[Tuple[str, bool, str]] = []
+    tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
+    try:
+        # (1) v2 sạch ⇒ xanh.
+        d = tmp / "v2-clean"
+        _fixture_v2(d)
+        rep = scan_v2(d, strict=False)
+        cases.append(("v2 sạch ⇒ xanh", rep.ok, "; ".join(rep.errors)))
+
+        # (2) v2 thêm doorbell arch ⇒ đỏ.
+        d = tmp / "v2-doorbell"
+        _fixture_v2(d, extra_doorbell=True)
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ",
+                (not rep.ok) and any("E_ARCH_DOORBELL" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (3) v2 thiếu `wake_step` ⇒ đỏ (fail-closed).
+        d = tmp / "v2-missing"
+        _fixture_v2(d, missing_wake_step=True)
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "v2 thiếu `wake_step` ⇒ đỏ (fail-closed)",
+                (not rep.ok) and any("E_ANCHOR_MISSING" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4) v2 `--strict` với transition ngoài cửa wake ⇒ đỏ.
+        d = tmp / "v2-strict"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        if self.tcb_state(tcb).is_blocked() {\n            return self.transition_tcb(tcb, TcbState::Ready);\n        }\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` transition ngoài cửa wake ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4b) v2 `--strict` + allowlist khớp ⇒ xanh (đối chứng dương: allowlist không
+        # luôn-đỏ). `dispatch_step` là chuyển Running→Ready, có tên trong allowlist.
+        d = tmp / "v2-strict-allow"
+        _fixture_v2(
+            d,
+            extra_sched=(
+                "    fn dispatch_step(&mut self, hart: u16) -> u8 {\n"
+                "        self.transition_tcb(1, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+            ),
+        )
+        allow_ok = {(KERNEL_SCHED, "dispatch_step", 1): "Running→Ready (dispatch)"}
+        rep = scan_v2(d, strict=True, allowlist=allow_ok)
+        cases.append(
+            (
+                "v2 `--strict` + allowlist khớp ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c) v2 `--strict` + **đột biến**: thêm chỗ thứ hai trong `dispatch_step` (hàm đã
+        # có trong allowlist) ⇒ đỏ. Đây là ca chống tái diễn đúng lỗi KT-154 §7: heuristic cũ
+        # bỏ sót vì thân hàm không có `is_blocked()`/`Sleeping`.
+        d = tmp / "v2-strict-mutate"
+        _fixture_v2(
+            d,
+            extra_sched=(
+                "    fn dispatch_step(&mut self, hart: u16) -> u8 {\n"
+                "        self.transition_tcb(1, TcbState::Ready);\n"
+                "        self.transition_tcb(2, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+            ),
+        )
+        rep = scan_v2(d, strict=True, allowlist=allow_ok)
+        cases.append(
+            (
+                "v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4d) v2 `--strict` + allowlist **mục** (không còn khớp chỗ nào) ⇒ đỏ (fail-closed).
+        d = tmp / "v2-strict-stale"
+        _fixture_v2(d)
+        allow_stale = {(KERNEL_SCHED, "khong_ton_tai", 1): "mục"}
+        rep = scan_v2(d, strict=True, allowlist=allow_stale)
+        cases.append(
+            (
+                "v2 `--strict` allowlist mục ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_STALE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4e) v2 `--strict` + `transition_tcb` **nhiều dòng** ⇒ đỏ (fail-closed: máy kiểm
+        # quét theo dòng không xếp loại được, không được bỏ qua im lặng).
+        d = tmp / "v2-strict-multiline"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn reply(&mut self, tcb: u32) -> u8 {\n        self.transition_tcb(\n            tcb,\n            TcbState::Ready,\n        );\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)",
+                (not rep.ok) and any("nhiều dòng" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4f) v2 `--strict` + **đột biến KT-159**: lời gọi `wake(` trong mã sản phẩm
+        # (`vifast-core/src/`) ⇒ đỏ `E_STRICT_TEST_ONLY_WAKE`. Đây là luật cưỡng chế D2-144:
+        # `wake()` là API chỉ-dùng-cho-test, sản phẩm phải dùng `wake_from`.
+        d = tmp / "v2-strict-test-only-wake"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n        self.wake(tcb);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)",
+                (not rep.ok)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4g) Đối chứng dương: **chỉ** `wake_from(` ⇒ xanh (luật không phải "thấy chữ wake là
+        # đỏ"; `wake_from`/`wake_from_unlink`/`wake_step` là đường sản phẩm hợp lệ).
+        d = tmp / "v2-strict-wake-from"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n        self.wake_from(tcb);\n        self.wake_from_unlink(tcb);\n        self.wake_step(tcb, false);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4h) `wake(` **trong** `#[cfg(test)] mod tests` ⇒ xanh (test được phép — mục đích duy
+        # nhất còn lại của `wake()`).
+        d = tmp / "v2-strict-wake-cfg-test"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n        0\n    }\n}\n\n"
+            "#[cfg(test)]\nmod tests {\n    fn t(m: &mut M) {\n        m.wake(1);\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4i) `wake(` **trong chú thích** (`///`, `//`, `//!`) ⇒ xanh — không báo oan
+        # doc-comment của chính `wake()`.
+        d = tmp / "v2-strict-wake-comment"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "//! Gọi `wake(tcb)` chỉ trong test.\n"
+            "impl M {\n"
+            "    /// `wake(tcb)` — chỉ dùng cho test.\n"
+            "    // self.wake(tcb);\n"
+            "    fn f(&mut self) -> u8 {\n"
+            "        0\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # ============ KT-165 (L8) — sáu cách lách của reviewer L6 (KT-161 §2.3) ============
+        # Mỗi ca: log giả **chứa đúng cách lách** ⇒ ĐỎ `E_STRICT_TEST_ONLY_WAKE`; kèm đối chứng
+        # dương để chứng minh luật không phải "thấy chữ `wake` là đỏ".
+
+        # (4j) **H1** — `m.wake(t)` trong **ảnh sản phẩm** `vifast-kbin-riscv64/src/` (đúng nơi
+        # một lời gọi sản phẩm sẽ được viết). Trước KT-165: XANH (`errors=0`).
+        d = tmp / "v2-strict-h1-kbin"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4k) **H2** — `m.wake(t)` trong crate plat `vifast-plat-riscv64/src/`. Trước: XANH.
+        d = tmp / "v2-strict-h2-plat"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/lib.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4l) **H2b** — crate plat **mới** (`vifast-plat-aarch64`) cũng nằm trong phạm vi: dùng
+        # **mẫu** `vifast-plat-*/src/`, không liệt kê cứng ⇒ crate thứ tư không lọt.
+        d = tmp / "v2-strict-h2b-plat-moi"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-aarch64/src/lib.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4m) **H3** — alias/fn-pointer: `let g = Machine::wake; g(self, t)` — **không** có `(`
+        # ngay sau `wake`. Trước: XANH.
+        d = tmp / "v2-strict-h3-alias"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        let g = Machine::wake;\n        g(self, t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4n) **H3b** — `use …::{wake, wake_from};` nhập **hàm** vào phạm vi (không có `::wake`
+        # liền nhau). Trước: XANH.
+        d = tmp / "v2-strict-h3b-use"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "use vifast_core::Machine::{wake, wake_from};\nimpl M {\n    fn f(&mut self) -> u8 {\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4o) **H4** — block comment chen giữa: `self.wake /* L6 */ (t)`. Trước: XANH.
+        d = tmp / "v2-strict-h4-block-comment"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake /* L6 */ (t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 `wake /*x*/ (t)` ⇒ đỏ (block comment chen giữa)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4p) **H5** — lời gọi cắt dòng: `self.wake` ⏎ `(t)`. Trước: XANH.
+        d = tmp / "v2-strict-h5-cat-dong"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake\n            (t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H5 `wake` ⏎ `(t)` ⇒ đỏ (gọi cắt dòng)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4q) **H6** — `#[cfg(test)]` trên một `use`, rồi `mod` **sản phẩm** trong ≤ 4 dòng:
+        # `test_line_ranges` cũ nuốt cả module ⇒ lời gọi `wake(` được miễn. Trước: XANH.
+        d = tmp / "v2-strict-h6-cfg-test-use"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "#[cfg(test)]\nuse super::*;\n\nmod san_pham {\n    fn f(m: &mut M, t: u32) {\n        m.wake(t);\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4r) Đối chứng dương cho **phạm vi mới**: chỉ `wake_from(`/`wake_from_unlink(`/
+        # `wake_step(`/`wake_addr(` trong `vifast-kbin-riscv64/src/` + `vifast-plat-*/src/` ⇒
+        # XANH. Không có ca này thì "mở rộng phạm vi" có thể chỉ là "đỏ mọi thứ".
+        d = tmp / "v2-strict-scope-moi-wake-from"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake_from(t);\n        self.wake_from_unlink(t);\n        self.wake_step(t, false);\n        self.wake_addr(1, 2, 3);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/lib.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "phạm vi mới: chỉ `wake_from(`/`wake_step(`/`wake_addr(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4s) Đối chứng dương cho **H6**: `#[cfg(test)]` gắn **trực tiếp** `mod tests` vẫn được
+        # miễn (kể cả khi có `#[cfg(test)]` trên `use` đứng trước) — luật không cấm test.
+        d = tmp / "v2-strict-cfg-test-that"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "#[cfg(test)]\nuse super::*;\n\nimpl M {\n    fn f(&mut self) -> u8 {\n        0\n    }\n}\n\n"
+            "#[cfg(test)]\nmod tests {\n    fn t(m: &mut M) {\n        m.wake(1);\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "`#[cfg(test)] mod tests` thật vẫn được miễn ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4t) Đối chứng dương cho **biến cục bộ** tên `wake` (có thật trong cây:
+        # `core_tcb.rs:721`, `kobj.rs:8095`) — không báo oan.
+        d = tmp / "v2-strict-bien-cuc-bo-wake"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_tcb.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n        let mut wake = [0u32; 4];\n        wake[0] = 1;\n        for &t in &wake[..1] {\n            let _ = t;\n        }\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "biến cục bộ `let mut wake = …` ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # ============ KT-171 (L14) — sáu lớp reviewer L11 đã phá (KT-168 §1.2) ============
+        # Mỗi ca: log giả **chứa đúng cách lách** ⇒ ĐỎ; kèm đối chứng dương để chứng minh
+        # luật không phải "thấy chữ `wake` là đỏ".
+
+        # (4u) **B8** — module **sản phẩm** tên `ktest_evil.rs` + `mod ktest_evil;` trong
+        # `main.rs` (ảnh sản phẩm). Trước KT-171: XANH (miễn theo tên `ktest*`).
+        d = tmp / "v2-b8-ktest-name"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/Cargo.toml",
+            '[package]\nname = "vifast-kbin-riscv64"\n\n'
+            '[[bin]]\nname = "vifast-kbin-riscv64"\npath = "src/main.rs"\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B8 module sản phẩm tên `ktest_evil.rs` + `mod` từ `main.rs` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4v) Đối chứng dương cho B8: `#[cfg(feature = "ktest")] mod ktest_ok;` là **test-only
+        # thật** (ảnh test kernel) ⇒ XANH.
+        d = tmp / "v2-b8b-ktest-cfg"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            '#[cfg(feature = "ktest")]\nmod ktest_ok;\n\nfn main() {}\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_ok.rs",
+            "impl M {\n    fn test(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ xanh (test-only thật)',
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4w) **B9** — module **sản phẩm** dưới `src/tests/` + `mod tests;` **không**
+        # `#[cfg(test)]`. Trước KT-171: XANH (miễn theo đường dẫn `/tests/`).
+        d = tmp / "v2-b9-src-tests"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B9 `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4x) Đối chứng dương cho B9: `#[cfg(test)] mod tests;` ⇒ XANH.
+        d = tmp / "v2-b9b-src-tests-cfg"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn test(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B9b `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4y) **B6** — `include!` trỏ **ra ngoài** `v2/kernel`+`v2/sim` (tệp chứa `wake`).
+        # Trước KT-171: XANH (không phân giải `include!`).
+        d = tmp / "v2-b6-include-outside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'include!("../../../lib/vifast-abi/src/evil_include.rs");\n',
+        )
+        _write(
+            d / "v2/lib/vifast-abi/src/evil_include.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B6 `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4z) **B6b** — `include!` trỏ **trong** `v2/kernel` nhưng **ngoài** `src/` (tệp không
+        # nằm trong phạm vi quét trực tiếp): phải **quét tệp đích** ⇒ ĐỎ.
+        d = tmp / "v2-b6b-include-inside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'include!("../inc/evil_inc.rs");\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/inc/evil_inc.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B6b `include!` trỏ trong `v2/kernel` (ngoài `src/`) ⇒ quét đích ⇒ đỏ",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aa) **B7** — `#[path]` trỏ **ra ngoài** `v2/kernel`+`v2/sim`. Trước: XANH.
+        d = tmp / "v2-b7-path-outside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "../../../lib/vifast-abi/src/evil_path.rs"]\nmod _b7;\n',
+        )
+        _write(
+            d / "v2/lib/vifast-abi/src/evil_path.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B7 `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ab) Đối chứng dương cho B7: `#[path]` trỏ trong `v2/kernel`, đích chỉ dùng
+        # `wake_from` ⇒ XANH (luật không phải "có `#[path]` là đỏ").
+        d = tmp / "v2-b7b-path-inside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "../inc/evil_ok.rs"]\nmod _b7;\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/inc/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B7b `#[path]` trỏ trong cây, đích chỉ `wake_from(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ac) **B10** — `let mut wake` + macro nhận `$name:ident` biến ident `wake` thành
+        # **tên hàm** (`$m.$name($t)`). Trước KT-171: XANH (miễn local-binding theo cả hàm).
+        d = tmp / "v2-b10-local-macro"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            "macro_rules! _b10 {\n"
+            "    ($m:expr, $name:ident, $t:expr) => {\n"
+            "        $m.$name($t)\n"
+            "    };\n"
+            "}\n"
+            "impl M {\n"
+            "    fn f(&mut self, t: u32) -> u8 {\n"
+            "        let mut wake = 0u32;\n"
+            "        wake += 1;\n"
+            "        _b10!(self, wake, t);\n"
+            "        0\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B10 `wake` làm đối số macro `$name:ident` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ad) **B10b** — binding trong **khối con**, token ở **khối cha** ⇒ ĐỎ (trước: XANH
+        # vì `_fn_has_local_wake` miễn cả hàm).
+        d = tmp / "v2-b10b-scope"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_tcb.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n        {\n"
+            "            let mut wake = [0u32; 4];\n            wake[0] = 1;\n        }\n"
+            "        let _ = wake;\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B10b binding ở khối con, token ở khối cha ⇒ đỏ (scope, KT-171)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ae) Đối chứng dương cho B10: binding + dùng **cùng khối** (và trong khối con của
+        # nó) ⇒ XANH — không báo oan biến cục bộ có thật trong cây.
+        d = tmp / "v2-b10c-cung-khoi"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_tcb.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n"
+            "        let mut wake = [0u32; 4];\n"
+            "        if true {\n            wake[0] = 1;\n        }\n"
+            "        for &t in &wake[..1] {\n            let _ = t;\n        }\n"
+            "        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B10c binding + dùng cùng khối ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4af) **B4** — `#[macro_export] macro_rules! wake_call` trong `v2/lib/vifast-abi`
+        # (ngoài phạm vi quét cũ), thân `$m.wake($t)`. Trước KT-171: XANH.
+        d = tmp / "v2-b4-macro-lib"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! wake_call {\n"
+            "    ($m:expr, $t:expr) => {\n        $m.wake($t)\n    };\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B4 `macro_rules!` trong `v2/lib` chứa token `wake` ⇒ đỏ (KT-171)",
+                (not rep.ok) and any("E_STRICT_MACRO_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ag) Đối chứng dương cho B4: macro trong `v2/lib` chỉ dùng `wake_from` ⇒ XANH.
+        d = tmp / "v2-b4b-macro-lib-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! wake_call {\n"
+            "    ($m:expr, $t:expr) => {\n        $m.wake_from($t)\n    };\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B4b `macro_rules!` trong `v2/lib` chỉ `wake_from(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # ============ KT-172 (L15) — luật 1–5 dùng **đồ thị module**, không theo tên ============
+        # Bối cảnh: KT-171 vá **luật `wake`** (B8/B9) nhưng bốn call site của luật 1–5 vẫn dùng
+        # `is_test_file_heuristic` (miễn theo tên `ktest*`/`/tests/`). Hệ quả: module **sản phẩm**
+        # tên `ktest_evil.rs` lọt **luật KT-155** (`E_STRICT_TRANSITION`) — đúng cách reviewer L11
+        # đã phá. KT-172 đổi cả bốn sang `is_test_file` (đồ thị module) và **xoá** heuristic.
+        #
+        # Mỗi ca đột biến dưới đây là **đúng** cách phá của L11: tệp mang tên `ktest*` (hoặc nằm
+        # dưới `src/tests/`) nhưng được `mod` từ **crate root sản phẩm** ⇒ phải bị quét.
+
+        # (4ah) **Đột biến A (KT-172)** — `ktest_evil.rs` + `mod ktest_evil;` trong `main.rs`
+        # (ảnh sản phẩm), chuyển `TcbState::Ready` **trực tiếp** (không qua `wake_from`).
+        # Trước KT-172: XANH (`errors=0`) vì tên `ktest*` được miễn.
+        d = tmp / "v2-kt172-a-ktest-evil-transition"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/Cargo.toml",
+            '[package]\nname = "vifast-kbin-riscv64"\n\n'
+            '[[bin]]\nname = "vifast-kbin-riscv64"\npath = "src/main.rs"\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 A: `ktest_evil.rs` + `mod` từ `main.rs`, `transition_tcb(…, Ready)` "
+                "trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ai) Đối chứng dương cho A: cùng tệp, nhưng `#[cfg(feature = "ktest")] mod` ⇒
+        # **test-only thật** (ảnh test kernel, D2-08) ⇒ XANH. Không có ca này thì "đỏ" ở (4ah)
+        # có thể chỉ là "đỏ mọi thứ".
+        d = tmp / "v2-kt172-a2-ktest-cfg"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            '#[cfg(feature = "ktest")]\nmod ktest_evil;\n\nfn main() {}\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn test(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)',
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aj) **Đột biến B (KT-172)** — `vifast-core/src/tests/evil.rs` + `mod tests;` trong
+        # `lib.rs` **không** `#[cfg(test)]`, chuyển `Ready` trực tiếp. Trước KT-172: XANH vì
+        # đường dẫn chứa `/tests/`.
+        d = tmp / "v2-kt172-b-src-tests-transition"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "mod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 B: `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]`, "
+                "`transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`",
+                (not rep.ok) and any("E_STRICT_TRANSITION" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ak) Đối chứng dương cho B: `#[cfg(test)] mod tests;` ⇒ XANH.
+        d = tmp / "v2-kt172-b2-src-tests-cfg"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod tests;\n")
+        _write(d / "v2/kernel/vifast-core/src/tests.rs", "mod evil;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/tests/evil.rs",
+            "impl M {\n    fn test(&mut self, tcb: u32) -> u8 {\n"
+            "        self.transition_tcb(tcb, TcbState::Ready)\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-172 B2: `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4al) **Luật 1** (kênh `MailboxMsg`) cũng phải quét module sản phẩm tên `ktest*`:
+        # phát `MailboxMsg::Wake` từ hàm **không** phải cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`.
+        d = tmp / "v2-kt172-c-luat1-producer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.post_mail(1, MailboxMsg::Wake(t));\n        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 C: luật 1 — `ktest_evil.rs` (sản phẩm) phát `MailboxMsg::Wake` "
+                "ngoài cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`",
+                (not rep.ok) and any("E_CHANNEL_PRODUCER" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4am) **Luật 2** (consumer): xử lý `MailboxMsg::Wake` ngoài `apply_mail` ⇒ đỏ
+        # `E_CONSUMER`.
+        d = tmp / "v2-kt172-d-luat2-consumer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/main.rs",
+            "mod ktest_evil;\n\nfn main() {}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/src/ktest_evil.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, m: MailboxMsg) {\n"
+            "        match m {\n            MailboxMsg::Wake(t) => { let _ = t; }\n"
+            "            _ => {}\n        }\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 D: luật 2 — `ktest_evil.rs` (sản phẩm) xử lý `MailboxMsg::Wake` "
+                "ngoài `apply_mail` ⇒ đỏ `E_CONSUMER`",
+                (not rep.ok) and any("E_CONSUMER" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4an) **Luật 3** (arch): tệp tên `ktest*` trong crate `vifast-plat-*` dùng
+        # `wake_step` ⇒ đỏ `E_ARCH_WAKE` (trước KT-172: miễn theo tên).
+        d = tmp / "v2-kt172-e-luat3-arch"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/lib.rs",
+            "mod ktest_evil;\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/ktest_evil.rs",
+            "fn duong_san_pham(m: &mut M, t: u32) -> u8 {\n    m.wake_step(t)\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-172 E: luật 3 — `ktest_evil.rs` (sản phẩm) trong `vifast-plat-*` dùng "
+                "`wake_step` ⇒ đỏ `E_ARCH_WAKE`",
+                (not rep.ok) and any("E_ARCH_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # ============ KT-177 (L19) — bốn lớp còn nợ của luật `wake` (reviewer L16, KT-174) ============
+        # Bối cảnh: KT-174 (lead, `c5f1ab00`) vá H5/H1/H2/H3. Reviewer L16 §2.4/§2.6/§2.7/§2.8
+        # còn **bốn** lớp: H4 (`include!` lồng hai lớp), H6 (macro che tên "an toàn"), H7
+        # (`include!` trong thân macro `v2/lib`), H8 (raw string **có `#`** tới tệp test-only
+        # trong cây). Mỗi ca: đột biến **đúng** cách L16 đã phá ⇒ ĐỎ; kèm đối chứng dương.
+
+        # (4ak) **H4** — `include!` lồng **hai lớp** qua tệp test-only:
+        # `core_ipc.rs` (sản phẩm) → `evil_a.rs` (test-only) → `evil_b.rs` (test-only, có
+        # `self.wake(t)`). Trước KT-177: XANH — `resolved` chặn lan "sản phẩm thắng" xuống con.
+        d = tmp / "v2-h4-nested-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 `include!` lồng hai lớp qua tệp test-only ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4al) Đối chứng dương cho H4: cùng lồng hai lớp nhưng đích chỉ `wake_from(` ⇒ XANH
+        # (fixpoint không phải "thấy include! lồng là đỏ").
+        d = tmp / "v2-h4b-nested-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b `include!` lồng hai lớp, đích chỉ `wake_from(` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4am) **H6** — `macro_rules! concat` trong cây **che** macro chuẩn cùng tên; thân
+        # biến ident thành **tên hàm** (`$m.$name($t)`), `wake` là đối số macro "an toàn" và
+        # có biến cục bộ `wake` cùng khối. Trước KT-177: XANH.
+        d = tmp / "v2-h6-shadow-safe-macro"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_macro.rs",
+            "macro_rules! concat {\n"
+            "    ($m:expr, $name:ident, $t:expr) => {\n"
+            "        $m.$name($t)\n"
+            "    };\n"
+            "}\n"
+            "impl M {\n"
+            "    fn f(&mut self, t: u32) -> u8 {\n"
+            "        let mut wake = 0u32;\n"
+            "        wake += 1;\n"
+            "        concat!(self, wake, t);\n"
+            "        0\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H6 `macro_rules! concat` che tên an toàn + biến `wake` ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4an) Đối chứng dương cho H6: **không** có macro che tên ⇒ `assert_eq!(wake, 1)` với
+        # biến cục bộ `wake` vẫn XANH (miễn trừ macro chỉ-đọc-giá-trị còn hiệu lực).
+        d = tmp / "v2-h6b-safe-macro-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_tcb.rs",
+            "impl M {\n    fn f(&mut self) -> u8 {\n"
+            "        let mut wake = 0u32;\n"
+            "        wake += 1;\n"
+            "        assert_eq!(wake, 1);\n"
+            "        0\n    }\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H6b `assert_eq!(wake, 1)` không bị che ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ao) **H7** — thân `macro_rules!` trong `v2/lib` chứa `include!` (thân **không** có
+        # token `wake`). Trước KT-177: XANH — `scan_lib_macros` chỉ tìm token `wake`, và
+        # `resolve_include_targets` không quét `v2/lib`.
+        d = tmp / "v2-h7-macro-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! evil_inc {\n"
+            "    () => {\n        include!(\"evil_inc_body.rs\")\n    };\n}\n",
+        )
+        _write(d / "v2/lib/vifast-abi/src/evil_inc_body.rs", "0\n")
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H7 thân `macro_rules!` trong `v2/lib` chứa `include!` ⇒ đỏ (KT-177)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ap) Đối chứng dương cho H7: macro `v2/lib` dùng `concat!` (không `include!`) ⇒ XANH.
+        d = tmp / "v2-h7b-macro-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/lib.rs",
+            "#[macro_export]\nmacro_rules! ok_macro {\n"
+            "    ($a:expr) => {\n        concat!($a, \"!\")\n    };\n}\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H7b macro `v2/lib` dùng `concat!`, không `include!` ⇒ xanh",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aq) **H8** — `#[path = r#"…"#]` (chuỗi thô **có `#`**) trỏ tới tệp test-only **trong
+        # cây**. Bản KT-174 chỉ thêm `r?` nên dạng có `#` vẫn lọt: `_mods_of` bỏ cạnh sản phẩm
+        # ⇒ tệp ở lại test-only. Trước KT-177: XANH.
+        d = tmp / "v2-h8-raw-hash-path"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"evil_b.rs"#]\nmod evil_b_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'H8 `#[path = r#"…"#]` tới tệp test-only trong cây ⇒ đỏ (KT-177)',
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ar) Đối chứng dương cho H8: `#[path = r#"…"#]` tới tệp **sản phẩm** chỉ dùng
+        # `wake_from(` ⇒ XANH (raw string có `#` không tự nó làm đỏ).
+        d = tmp / "v2-h8b-raw-hash-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"evil_ok.rs"#]\nmod evil_ok_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                'H8b `#[path = r#"…"#]` tới tệp sản phẩm chỉ `wake_from(` ⇒ xanh',
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4as) **H9** (cùng gốc G1/G2, ngoài bốn lớp bắt buộc) — `include!` dùng dấu ngoặc
+        # **vuông**/nhọn: `include!["evil_b.rs"]` / `include!{"evil_b.rs"}`. rustc **chấp
+        # nhận** cả hai (`cargo check` RC=0); bản KT-171/174 chỉ khớp `(`, nên lọt hoàn toàn.
+        for _delim, _open, _close in (("vuông", "[", "]"), ("nhọn", "{", "}")):
+            d = tmp / f"v2-h9-include-delim-{_open}"
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+            _write(
+                d / "v2/kernel/vifast-core/src/evil_b.rs",
+                "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+                "        self.wake(t);\n        0\n    }\n}\n",
+            )
+            _write(
+                d / "v2/kernel/vifast-core/src/core_ipc.rs",
+                f'include!{_open}"evil_b.rs"{_close};\n',
+            )
+            rep = scan_v2(d, strict=True, allowlist={})
+            cases.append(
+                (
+                    f"H9 `include!{_open}…{_close}` (ngoặc {_delim}) tới tệp test-only ⇒ đỏ "
+                    f"(KT-177)",
+                    (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                    "; ".join(rep.errors),
+                )
+            )
+
+        # ============ KT-184 (D2-160 + D2-161) — H4 ba lớp + luật cứng ở MỌI chế độ ============
+        # **D2-160**: H4 đã đóng bằng fixpoint (KT-177/G4). Thêm ca **ba lớp** (mới) và một
+        # dạng **hai lớp** khác (`#[path]` + `include!`) để khoá hành vi lan "sản phẩm thắng"
+        # qua **nhiều** lớp, không chỉ hai lớp của ca 4ak.
+        # **D2-161**: `include!`/`#[path]` phải **literal** và **trỏ trong cây**, kiểm ở
+        # **chế độ thường** (`strict=False`). Trước KT-184 khối phân giải nằm trong
+        # `if strict:` nên `v2 check` thường (và `gate`) **không** bắt được ba đột biến dưới.
+
+        # (4at) H4 **ba lớp**: `core_ipc.rs` (sản phẩm) → `evil_a.rs` → `evil_b.rs` →
+        # `evil_c.rs` (cả ba test-only qua `#[cfg(test)] mod`, `evil_c` gọi `wake`).
+        d = tmp / "v2-h4-three-layer"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n"
+            "#[cfg(test)]\nmod evil_c;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(d / "v2/kernel/vifast-core/src/evil_b.rs", 'include!("evil_c.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_c.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 ba lớp `include!` qua tệp test-only ⇒ đỏ (KT-184/D2-160)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4au) Đối chứng dương cho ba lớp: đích chỉ `wake_from(` ⇒ XANH (fixpoint không phải
+        # "thấy `include!` lồng ba lớp là đỏ").
+        d = tmp / "v2-h4b-three-layer-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_a;\n#[cfg(test)]\nmod evil_b;\n"
+            "#[cfg(test)]\nmod evil_c;\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(d / "v2/kernel/vifast-core/src/evil_b.rs", 'include!("evil_c.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_c.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(d / "v2/kernel/vifast-core/src/core_ipc.rs", 'include!("evil_a.rs");\n')
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b ba lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4av) H4 **hai lớp** dạng **khác**: `#[path]` nạp tệp sản phẩm `evil_a.rs`, rồi
+        # `evil_a.rs` `include!("evil_b.rs")` (test-only, có `wake`) ⇒ sản phẩm thắng phải lan
+        # qua **cả hai** cơ chế (`#[path]` rồi `include!`).
+        d = tmp / "v2-h4-path-include"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_a.rs"]\nmod evil_a;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4 `#[path]` (sản phẩm) + `include!` (test-only) hai lớp ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4aw) Đối chứng dương cho (4av): đích chỉ `wake_from(` ⇒ XANH.
+        d = tmp / "v2-h4b-path-include-ok"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", "#[cfg(test)]\nmod evil_b;\n")
+        _write(d / "v2/kernel/vifast-core/src/evil_a.rs", 'include!("evil_b.rs");\n')
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_a.rs"]\nmod evil_a;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "H4b `#[path]` + `include!` hai lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ax) **D2-161** — `include!(concat!(…))` **không literal** trong mã sản phẩm, chạy
+        # ở **chế độ thường**. Trước KT-184: XANH (khối nằm trong `if strict:`).
+        d = tmp / "v2-d2161-include-nonliteral"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'include!(concat!("evil", "_b.rs"));\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `include!(concat!(…))` ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ay) **D2-161** — `#[path = r#"…"#]` trỏ **ra ngoài** `v2/kernel`+`v2/sim`, chạy ở
+        # **chế độ thường**. Trước KT-184: XANH.
+        d = tmp / "v2-d2161-path-outside"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-abi/src/evil_out.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = r#"../../../lib/vifast-abi/src/evil_out.rs"#]\nmod evil_out;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `#[path]` ra ngoài cây ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4az) **D2-161** — `#[path = concat!(…)]` **không literal**, chạy ở **chế độ thường**.
+        # Trước KT-184: XANH (chỉ `include!` không literal bị bắt).
+        d = tmp / "v2-d2161-path-nonliteral"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_x.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = concat!("evil", "_x.rs")]\nmod evil_x;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161 `#[path = concat!(…)]` ở chế độ thường ⇒ đỏ (KT-184)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4ba) **KT-187/B1** — `#[cfg_attr(not(test), path = "…")]` trỏ tệp test-only có
+        # `wake` ⇒ ĐỎ. Trước KT-187: XANH (mọi regex đòi `#[path` **liền**).
+        d = tmp / "v2-b1-cfgattr-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[cfg_attr(not(test), path = "evil_b.rs")]\nmod evil_b_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B1 `#[cfg_attr(not(test), path = …)]` tới tệp test-only ⇒ đỏ (KT-187)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bb) **KT-187/B2** — `#[path]` trong thân `macro_rules!` ⇒ ĐỎ ở **chế độ thường**
+        # (rustc giải theo tệp gọi, checker không phân giải tĩnh an toàn được).
+        d = tmp / "v2-b2-macro-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil_mod { () => { #[path = "evil_b.rs"] mod evil; } }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2 `#[path]` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bc) **KT-187/B3** — `include!` trong thân `macro_rules!` ⇒ ĐỎ ở **chế độ thường**.
+        d = tmp / "v2-b3-macro-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil_inc { () => { include!("evil_b.rs"); } }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B3 `include!` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4be) **KT-189/B2c** — `macro_rules!` dùng **ngoặc tròn** cho thân:
+        # `macro_rules! evil ( () => ( #[path = "…"] mod x; ); );`. Bản trước dừng ở `;` ⇒ bỏ qua.
+        d = tmp / "v2-b2c-macro-paren"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( #[path = "evil_b.rs"] mod evil; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2c `#[path]` trong macro ngoặc tròn ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bf) **KT-189/B3a** — `include!` trong macro ngoặc tròn ⇒ ĐỎ.
+        d = tmp / "v2-b3a-macro-paren-inc"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( include!("evil_b.rs"); ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B3a `include!` trong macro ngoặc tròn ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bg) **KT-189/B2d** — `cfg_attr(…, path = …)` trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-b2d-macro-cfgattr"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( #[cfg_attr(not(test), path = "evil_b.rs")] mod x; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2d `cfg_attr(path)` trong thân macro ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bh) **KT-189/T3c** — `mod NAME;` trong thân macro ⇒ ĐỎ (`E_STRICT_MACRO_MOD`).
+        d = tmp / "v2-t3c-macro-mod"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( mod evil3; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "T3c `mod …;` trong thân macro ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_MOD" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bj) **KT-191** — tên macro **Unicode** (`macro_rules! é`) ⇒ ĐỎ (bản ASCII-only bỏ qua).
+        d = tmp / "v2-kt191-unicode-macro"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! é { () => ( #[path = "evil_b.rs"] mod evil; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 tên macro Unicode ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bk) **KT-191** — `mod $n;` (metavariable) trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-kt191-mod-metavar"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! m { ($n:ident) => ( mod $n; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `mod $n;` trong macro ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bl) **KT-191** — `mod r#x;` (raw ident) trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-kt191-mod-raw"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! m { () => ( mod r#x; ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `mod r#x;` trong macro ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bm) **KT-191** — passthrough `$($t:tt)*` ⇒ ĐỎ (có thể chở `mod x;` từ lời gọi).
+        d = tmp / "v2-kt191-passthrough"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! pass { ($($t:tt)*) => ( $($t)* ); }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 passthrough `$…:tt` ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_MACRO_TT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bn) **KT-191** — `#[/*c*/path]` (chú thích chen giữa) ⇒ ĐỎ (bộ lọc khử chú thích trước).
+        d = tmp / "v2-kt191-comment-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[/*c*/path = "evil_b.rs"]\nmod evil_c;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-191 `#[/*c*/path]` ⇒ đỏ (KT-191)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bo) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
+        # `wake_from(` ⇒ XANH ở chế độ thường (luật không phải "có `#[path]` là đỏ").
+        d = tmp / "v2-d2161-path-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_ok.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake_from(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[path = "evil_ok.rs"]\nmod evil_ok_product;\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "D2-161b `#[path]` literal trong cây ở chế độ thường ⇒ xanh (KT-184)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (5) v1 ba kênh ⇒ đỏ.
+        d = tmp / "v1-three"
+        _fixture_v1(d, channels=3)
+        rep = scan_v1(d, strict=False)
+        cases.append(
+            (
+                "v1 ba kênh ⇒ đỏ",
+                (not rep.ok) and any("E_V1_MULTI_CHANNEL" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (6) v1 một kênh ⇒ xanh (đối chứng dương: máy kiểm không phải luôn-đỏ).
+        d = tmp / "v1-one"
+        _fixture_v1(d, channels=1)
+        rep = scan_v1(d, strict=False)
+        cases.append(("v1 một kênh ⇒ xanh", rep.ok, "; ".join(rep.errors)))
+
+        # (7) cây rỗng ⇒ đỏ (fail-closed).
+        d = tmp / "empty"
+        d.mkdir()
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "cây rỗng ⇒ đỏ (fail-closed)",
+                (not rep.ok) and any("E_ANCHOR_MISSING" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    fails = 0
+    for name, ok, detail in cases:
+        if ok:
+            print(f"ok - {name}")
+        else:
+            fails += 1
+            print(f"not ok - {name}")
+            if detail:
+                print(f"#   {detail}")
+    print(f"# selftest: {len(cases) - fails}/{len(cases)} ok")
+    return 0 if fails == 0 else 1
+
+
+# ------------------------------------------------------------------ main

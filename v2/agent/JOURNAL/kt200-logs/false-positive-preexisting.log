@@ -1,0 +1,22 @@
+===== OLD 0fa0fe65 =====
+#[cfg(test)] include!: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(feature = "ktest")] fn: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] const = Machine::wake: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] macro_rules (): red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] block statement: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+===== NEW 98694376 =====
+#[cfg(test)] include!: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_inc.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(feature = "ktest")] fn: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] const = Machine::wake: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] macro_rules (): red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+#[cfg(test)] block statement: red=True
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`

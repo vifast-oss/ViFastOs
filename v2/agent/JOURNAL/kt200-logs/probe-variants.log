@@ -1,0 +1,42 @@
+PASS  #[cfg(test)] fn: red=False (expect False) ranges=[(13, 67)]
+PASS  #[cfg(test)] mod: red=False (expect False) ranges=[(13, 81), (25, 79)]
+PASS  #[cfg(test)] impl: red=False (expect False) ranges=[(13, 78), (22, 76)]
+PASS  #[cfg(test)] trait: red=False (expect False) ranges=[(13, 79), (23, 77)]
+PASS  #[cfg(test)] struct: red=False (expect False) ranges=[(13, 31)]
+PASS  #[cfg(test)] macro_rules {} body: red=False (expect False) ranges=[(13, 60)]
+PASS  #[cfg(test)] unsafe fn: red=False (expect False) ranges=[(13, 74)]
+PASS  #[cfg(test)] pub(crate) fn: red=False (expect False) ranges=[(13, 78)]
+PASS  #[cfg(test)] async fn: red=False (expect False) ranges=[(13, 73)]
+PASS  #[cfg(test)] extern fn: red=False (expect False) ranges=[(13, 78)]
+FAIL  #[cfg(test)] match arm: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  #[cfg(test)] let block: red=False (expect False) ranges=[(22, 52)]
+FAIL  #[cfg(test)] const = Machine::wake: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(test)] static = Machine::wake: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(test)] macro_rules () body: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(test)] macro_rules [] body: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(test)] block statement: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  #[cfg(test)] include!: red=False (expect False) ranges=[]
+FAIL  #[cfg(feature = "ktest")] fn: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(feature = "ktest")] mod: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  sản phẩm fn: red=True (expect True) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  sản phẩm cùng dòng sau } test: red=True (expect True) ranges=[(13, 22)]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  sản phẩm cùng dòng sau } mod test: red=True (expect True) ranges=[(13, 25)]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  #[cfg(not(test))] fn: red=True (expect True) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  #[cfg(any(test, feature="x"))] fn: red=True (expect True) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  #[cfg(all(test, feature="ktest"))] fn: red=True (expect False) ranges=[]
+      E_STRICT_TEST_ONLY_WAKE   <probe>:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+
+9 FAIL / 26 ca
