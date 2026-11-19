@@ -258,13 +258,17 @@ do_check() {
     run_step "fmt" "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || fails=$((fails + 1))
     run_step "clippy" "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings || fails=$((fails + 1))
     echo "--- luật cấu trúc R1..R5"
-    # **KT-155 (T-INFRA)** — chạy `rules` trong **subshell**: bash 3.2 (macOS) bị hỏng heap
-    # (`BUG IN CLIENT OF LIBMALLOC: memory corruption of free block`, SIGTRAP) sau khi `rules`
-    # quét cây lớn; heap hỏng bị các tiến trình con kế thừa ⇒ `self-test luật` đỏ oan (exit
-    # 133). Subshell cô lập hỏng hóc, **không** đổi ngữ nghĩa (cùng output, cùng mã thoát).
-    # Bằng chứng: `v2/agent/JOURNAL/kt155-logs/kt155-check-base.log` (cây base cũng đỏ) +
-    # `kt155-check-final3.log` (sau workaround xanh). Không phải nới ngưỡng.
-    if ( rules "$V2_ROOT" ); then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
+    # **KT-155 (T-INFRA)** — bash 3.2 (macOS) bị hỏng heap (`BUG IN CLIENT OF LIBMALLOC:
+    # memory corruption of free block`, SIGTRAP) sau khi `rules` quét cây lớn; heap hỏng bị
+    # các tiến trình con kế thừa ⇒ bước sau đỏ oan (exit 133).
+    # **KT-207 (T-INFRA, 2026-11-20)** — workaround **subshell** của KT-155 **không đủ**: hai
+    # reviewer độc lập (L41/L42) vẫn đỏ ngay **bước `rules`** (`Trace/BPT trap: 5`), vì subshell
+    # `( … )` là **fork** — nó **thừa hưởng** heap đã hỏng của tiến trình cha (sau `clippy`).
+    # Nay chạy `rules` trong **tiến trình bash mới** qua chính lệnh con `v2 rules --root`:
+    # heap sạch, không thừa hưởng hỏng hóc. Cùng output, cùng mã thoát, cùng ngữ nghĩa.
+    # Bằng chứng: `v2/agent/JOURNAL/kt207-logs/` (trước: SIGTRAP ở `rules`; sau: 5/5 lượt
+    # `v2 check` xanh dưới tải 3 sub-agent). Không phải nới ngưỡng.
+    if bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
     run_step "self-test luật" bash "$V2_ROOT/test/rules/run.sh" || fails=$((fails + 1))
     run_step "luật máy K6 (KT-80: 1,2,3,7,8)" check_k6_rules || fails=$((fails + 1))
     # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
