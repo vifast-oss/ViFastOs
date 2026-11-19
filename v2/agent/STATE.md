@@ -4,38 +4,37 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `41e568bc` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-211]` (D2-170).
+HEAD          : `be3a0cd8` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-221]`.
                 Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0` (`./v2/bin/v2 status`).
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
                 `build=b08c5c57cdbdb156`, `inputs=43df126a4a6702ec`, `dirty=0`; `data+bss=224288`,
-                trần `262144` (không nới). Ảnh nằm ở `v2/artifacts/` (gitignored) — **không** đi theo
-                worktree; `v2 status` báo "không có trong `v2/artifacts/`" khi chạy trong worktree.
-ẢNH CA ÂM     : `f38fc77a0bae2729ff341a71b081524f816713e2d515105ee554e41ca4296ea0`, **82 552 B**
-                (ảnh tắt shell, dùng cho F3).
+                trần `262144` (không nới). Ảnh nằm ở `v2/artifacts/` (gitignored).
 K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210, `JOURNAL/kt210-k6-remeasure.md`):
                 F1 shell smp 1/2/4; F2 parity + đọc lại sau reboot + persist; F3 ảnh tắt shell đỏ;
                 F4 matrix + soak **1000/1000** fail=0 (297 s); F5 `data+bss=224288` ≤ 262144;
                 F6 product `hits=0`, ảnh âm `hits=25`.
-TASK DONE/READY: `./v2/bin/v2 status` ⇒ **DONE=176 READY=6 BLOCKED=0 REVIEW=3**.
-ĐÊM 2026-11-20 : đang chạy. Đã xong: KT-181 (quét thân macro toàn cây), KT-182 + KT-203 + KT-206
-                (bản đồ trợ giúp cùng tệp), KT-183 + KT-204 + KT-205 (`cd` thư mục sâu, 19/19 khối),
-                KT-201 (review vòng 4 — **KHÔNG ĐẠT**), KT-202 (vá lời gọi macro), KT-207 (T-INFRA
-                SIGTRAP), KT-208 (review KT-202 — **KHÔNG ĐẠT**), KT-209 (phạm vi `wake` theo mẫu +
-                `include!` trong `v2/lib`), KT-210 (đo lại K6). Đang chạy: KT-211 (quét `include!`
-                toàn cục), KT-212 (tấn công `#[path]`/`mod`).
-LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. Đường lọt đã bị phá **mười** lần;
-                hai lần gần nhất: L40 (macro passthrough `:item` + `include!` trong đối số lời gọi),
-                L44 (`include!` ở vị trí biểu thức trong `( … )`/`[ … ]`). D2-169 + D2-170 ghi lại.
-                Checker hiện **157** ca selftest; `--strict` `errors=0` trên cây thật.
-CỔNG GẦN NHẤT  : `v2 check` **PASS** trên `04edf94b` (sau merge KT-181+KT-202) và trên `41e568bc`.
-                `gate --fast` gần nhất: **PASS** trên `c8bef672` (trước đêm) — **chưa** chạy lại trên
-                HEAD đêm nay; phải chạy trước khi đóng bất cứ điều gì.
+CỔNG          : `gate --fast` **PASS** trên `be3a0cd8` (16 m 46 s, 52 bước OK,
+                `JOURNAL/kt221-logs/kt221-gate-pass-be3a0cd8.log`). `v2 check` **PASS**.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=192 READY=0 BLOCKED=0 REVIEW=2**.
+                REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
+ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. 14 sub-agent (L37..L50), 4 chạy song song mỗi lượt.
+                Xong: KT-181, KT-182+203+206, KT-183+204+205, KT-201, KT-202, KT-207,
+                KT-209, KT-210, KT-211, KT-212+213+215, KT-214, KT-216, KT-217, KT-218+219,
+                KT-220, KT-221. Báo cáo: `BAO-CAO-DEM-2026-11-20.md`; phiếu:
+                `PHIEU-GUI-AGENT0-2026-11-20-VONG8.md`.
+LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. **Mười ba** đường lọt đã bị phá;
+                đêm nay tìm thêm **ba** (#11 `#[path]` non-mod-rs, #12 `src/target/`,
+                #13 `#[cfg(test)]` trên nhánh `match` — lọt **cả hai** lớp) và đóng cả ba.
+                **Hai lớp**: lớp 1 `check-wake-paths.py` (**246** ca selftest) + lớp 2
+                `check-wake-depinfo.py` (**20** ca, hỏi rustc danh sách tệp thật). Cả hai
+                `errors=0` trên cây thật. D2-169..D2-175 ghi lại.
 NỢ / BLOCKED  : **BLOCKED=0**. Nợ còn mở (không chặn): K4' chưa đạt (mới bước 1–2); K5' chưa mở;
                 N1 "600 boot x86_64" ở K5' (D2-149); C3 aarch64 (28/31 stub host chưa kiểm);
-                `:expr` passthrough chưa từ chối (KT-202, có lý do); tệp `.rs` không thuộc crate
-                (`vifast-plat-user/lib.rs`, `init/*.rs`) ngoài mẫu `wake`; bash 3.2 SIGTRAP đã vá
-                bằng KT-207 nhưng gốc chưa chữa (cần bash ≥ 4).
+                KT-211/KT-214 **chưa có reviewer độc lập**; `:expr` passthrough chưa từ chối;
+                tệp `.rs` không thuộc crate ngoài mẫu `wake`; `virtio_` tiền tố tên tệp;
+                bash 3.2 SIGTRAP/SIGSEGV đã vá (KT-207, KT-221) nhưng gốc cần bash ≥ 4;
+                lớp 3 (`cargo expand`) chưa có — mã do macro sinh vẫn ngoài tầm cả hai lớp.
 ```
 ```
 ## KT-64a — đồng bộ sim theo D2-89/D2-90 + parity `TlbFlush` (D2-92c)
