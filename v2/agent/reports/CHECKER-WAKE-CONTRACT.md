@@ -1,8 +1,10 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215
 
 **Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại) + **KT-209** (L40 KT-201
-§D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D). **Chưa** được reviewer độc lập xác nhận trên HEAD
-cuối — KT-184, KT-194, KT-211 vẫn `REVIEW`.
+§D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D — quét token toàn cục cho `include!`/`#[path]`) +
+**KT-213** (L47 KT-212 — gốc phân giải `#[path]` của tệp non-mod-rs) + **KT-215** (L47 KT-212 —
+bộ lọc `target/`, `MAILBOX_DEFS`, đóng F2). **Chưa** được reviewer độc lập xác nhận trên HEAD
+cuối — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
 
 Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
 trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed** ở mọi chỗ nó không phân giải được.
@@ -97,6 +99,21 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
   tệp `v2/lib/**/*.rs`; đích trong `v2/lib` được phân giải **tiếp** (lồng bao nhiêu lớp cũng hết).
   Đích trong `v2/lib` **không** vào tập bị luật `wake` quét (`extra`) — mã lib không có `Machine`
   nên `wake()` không thể xuất hiện; cạnh sang kernel/sim đã bị chặn ở §3.
+- **Gốc phân giải `#[path]` đúng như rustc** (KT-213). Hai gốc **khác nhau**, không được lẫn:
+  - `#[path = "…"]` ở **mức mục** giải theo **thư mục của tệp** (`p.parent`) — đúng cho cả tệp
+    mod-rs lẫn non-mod-rs;
+  - `#[path = "…"]` **trong inline module** giải theo **thư mục module của tệp** cộng các thành
+    phần inline: mod-rs (crate root, `mod.rs`, tệp nạp bằng `#[path]`) ⇒ `<thư mục tệp>/<inline>/…`;
+    non-mod-rs (`src/foo.rs` nạp bằng `mod foo;`) ⇒ `<thư mục tệp>/foo/<inline>/…`;
+  - `mod NAME;` **không** `#[path]` giải theo **thư mục module của tệp** (`src/foo/NAME.rs` với
+    `src/foo.rs`), không theo thư mục tệp;
+  - `#[path = "sub"] mod m { … }` (inline module có `#[path]`) ⇒ thư mục con là `<mức hiện tại>/sub`,
+    **không** áp tiền tố `<stem>/` (đã đo bằng `rustc`: `src/foo.rs` +
+    `#[path="sub"] mod m { #[path="a.rs"] mod x; }` ⇒ `src/sub/a.rs`; log ở
+    `v2/agent/JOURNAL/kt212-attack-path-mod.md` §3).
+  `module_dirs()` (dựng từ **cùng** đồ thị module với `test_only_modules`) cung cấp thư mục module
+  cho mọi tệp tới được từ crate root; tệp ngoài đồ thị (`build.rs`, `init/*.rs`,
+  `vifast-plat-user/lib.rs` — crate root do `build.rs` biên dịch) dùng thư mục của chính tệp.
 
 ---
 
@@ -125,10 +142,14 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 
 | Mã | Mô tả | Ảnh hưởng |
 |---|---|---|
-| **F2 (một phần)** | Ngữ cảnh test đã theo item/token-tree, nhưng luật `wake` **vẫn chỉ chạy đầy đủ ở `--strict`** (D2-144). Chế độ thường chỉ quét tệp bị kéo vào bằng `#[path]`/`include!`. | `v2 check`/`gate` chạy `--strict` nên cổng vẫn bắt; nhưng gọi checker ở chế độ thường **không** đủ. |
+| ~~**F2 (một phần)**~~ | **ĐÓNG (KT-215)**: luật `wake` trước đây chỉ chạy đầy đủ ở `--strict`; chế độ thường chỉ quét tệp bị kéo vào bằng `#[path]`/`include!` (`extra`). Đường lọt #12 (`src/target/evil.rs`) là module **bình thường** — không bao giờ vào `extra` — nên chế độ thường XANH trong khi `--strict` ĐỎ. Nay chế độ thường quét **mọi** tệp sản phẩm trong phạm vi (cùng tập đích với `--strict`); `--strict` chỉ còn thêm allowlist `transition_tcb` (`E_STRICT_TRANSITION`/`E_STRICT_STALE`). | **Đã đóng**; cây thật xanh cả hai chế độ. |
 | **Macro invocation** (KT-202 đóng **một dạng**; KT-211 đóng **lớp**) | `_walk_items` **bỏ mù** nhóm sau `!` (lời gọi macro) — trước KT-202 `include!`/`#[path]`/`mod` trong đối số lời gọi không bao giờ được phân giải. Reviewer L40: `macro_rules! pass { ($i:item) => { $i }; } pass!(include! {"…"});` ⇒ `cargo check` biên dịch được, checker **xanh** **cả hai** chế độ. KT-202 thêm `_scan_macro_calls` quét **toàn cây token** tìm lời gọi macro ⇒ `E_STRICT_MACRO_INCLUDE`/`E_STRICT_MACRO_MOD` (fail-closed) — **chỉ** phủ **đối số lời gọi macro**. **KT-211** (reviewer L44) đo được **lớp lỗi vẫn sống**: `include!` **trần** ở vị trí biểu thức trong `( … )`/`[ … ]` (`sink(include!{…})`, `[include!{…}]`, `(0u8, include!{…})`, `(include!{…})`, `(|| include!{…})`, `Some(include!{…})`) và `#[path]` trên `mod` trong khối lồng `( … )` — `cargo check` **biên dịch được**, checker **XANH** **cả hai** chế độ. Nay `_walk_all` quét **toàn bộ token** (mọi tầng nhóm, mọi loại nhóm) cho `include!` + `#[path]`; `mod` giữ đường cấu trúc (lý do §2). | **Đã đóng lớp** (KT-211); cây thật xanh. `_scan_macro_calls` **giữ** (bắt `mod` trong đối số lời gọi macro — quét toàn cục không xử lý `mod`; đã đo: xoá nó ⇒ ca `pass!(mod evil;)` XANH). |
 | **`:expr` không bị từ chối** (KT-202) | `$…:expr` chở được `include!` ở vị trí biểu thức, nhưng **không** chở được `mod`/`#[path]`; `include!` trong **đối số lời gọi** đã bị vá **đầu tiên** bắt ở **tệp gọi**. Cây thật có `macro_rules! bail` (`v2/kernel/vifast-plat-riscv64/src/user.rs`) dùng `$pages:expr, $e:expr` hợp lệ — từ chối `:expr` sẽ báo oan và làm `v2 check` ĐỎ (đo: các lỗi `E_STRICT_MACRO_TT` trên `bail`, `kt181-logs/kt202-expr-conflict.log`). | Chấp nhận: `:expr` chỉ còn hở khi macro được **gọi từ tệp ngoài `MACRO_SCAN_ROOTS`** (không phải mã sản phẩm). Ghi rõ, **không** tuyên bố đã đóng. |
 | ~~`#[path]`/`include!` trong `v2/lib`~~ | **ĐÓNG (KT-209/L3)**: worklist seed thêm mọi tệp `v2/lib/**/*.rs`; đích phải ở trong `v2/lib` (fail-closed). | — |
+| ~~**Gốc phân giải `#[path]` của tệp non-mod-rs**~~ | **ĐÓNG (KT-213, reviewer L47 KT-212 — đường lọt #11)**: `resolve_include_targets` truyền `p.parent` làm gốc cho **mọi** tệp, nên `#[path]` trong **inline module** của `src/foo.rs` giải theo `src/<inline>/` thay vì `src/foo/<inline>/` (rustc). Hệ quả: `#[path]` trỏ **ra ngoài `src/`** (ngoài phạm vi luật `wake`) vẫn **XANH** trong khi rustc biên dịch tệp thật. Repro đã đo: `src/foo.rs` = `mod inner { #[path = "../../../evil.rs"] mod baz; }` + `src/foo/inner/notes.txt` (chỉ để thư mục tồn tại) + `vifast-core/evil.rs` chứa `m.wake(t)` + decoy `v2/kernel/evil.rs` ⇒ `cargo check -p vifast-core` **thành công**, checker **XANH cả hai chế độ**. Cùng gốc sai ở `_mods_of` (nó truyền `mod_dir` làm `cur_dir` ⇒ `#[path]` **mức mục** trong `src/foo.rs` giải thành `src/foo/a.rs` thay vì `src/a.rs`). Nay `_walk_items` nhận **hai** gốc (`cur_dir` cho `#[path]` mức hiện tại, `mod_dir` cho inline module + `mod NAME;`), `module_dirs()` dùng chung đồ thị module với `test_only_modules`. Ca selftest KT-213: repro âm (thường + `--strict`), đối chứng dương cho `#[path]` trong inline module / `#[path]` mức mục / `#[path]` trên inline module, và hai ca `_mods_of`. | **Đã vá**; cây thật xanh cả hai chế độ, `--selftest` xanh toàn bộ (log ở `v2/agent/JOURNAL/kt213-logs/`). |
+| ~~**Bộ lọc thư mục build `target/`**~~ | **ĐÓNG (KT-215, reviewer L47 KT-212 — đường lọt #12)**: cả **năm** chỗ quét (`iter_rs`, `_protected_files`, `scan_structure`, `scan_macro_bodies`, `_shadowed_safe_macros`) dùng `"target" in p.parts`, khớp **bất kỳ** thành phần `target` nào — kể cả `src/target/`. Hệ quả: `mod target;` + `src/target/evil.rs` chứa `wake` **biên dịch được** (`cargo check` thành công) mà checker **XANH cả hai chế độ**; tệp không vào `files`, không vào `_protected_files`, không vào `scan_structure`, không vào `extra`. Nay **một** hàm `_is_build_dir(root, p)` dùng chung: chỉ bỏ qua khi `target` đứng **trước** `src` trong đường dẫn tương đối (thư mục build thật `v2/kernel/target/`, `v2/target/`, `<crate>/target/`), **không** bỏ qua `src/**/target/**`; đường dẫn ngoài `root` ⇒ **không** bỏ qua (fail-closed). Ca selftest: repro âm (thường + `--strict`), đối chứng dương (tệp trong `v2/kernel/target/` vẫn bị bỏ qua), và bảng `_is_build_dir`. | **Đã vá**; cây thật xanh cả hai chế độ. |
+| ~~**Miễn luật kênh theo tên `mailbox.rs`**~~ | **ĐÓNG (KT-215, cùng lớp)**: điều kiện `p.name == "mailbox.rs"` khớp **mọi** tệp cùng tên ở bất kỳ thư mục nào ⇒ một tệp `src/sub/mailbox.rs` chứa `post_mail(…, MailboxMsg::Wake(t))` được miễn luật kênh phát (kênh wake thứ hai). Nay so **đúng relpath** của hai tệp định nghĩa trong phạm vi quét (`MAILBOX_DEFS`). Ca selftest: tệp cùng tên ở thư mục khác phát `MailboxMsg::Wake` ⇒ ĐỎ. | **Đã vá**. |
+| **Miễn luật arch theo tiền tố `virtio_`** (mở) | `RE_DOORBELL` bỏ qua tệp có tên bắt đầu `virtio_` (thiết bị virtio dùng `doorbell` hợp lệ). Một tệp `virtio_x.rs` trong `vifast-plat-*` dùng `doorbell` sẽ được miễn. **Chưa vá**: phân biệt "thiết bị virtio thật" cần kiểm ngữ nghĩa (kiểu `Virtio*`), không phải đổi tên; hạ tầng hiện tại không có. Ghi nợ có tên. | Không phải luật `wake`/`include!`/`#[path]`; rủi ro thấp (luật arch chỉ áp `vifast-plat-*`). |
 | **Tệp `.rs` không thuộc crate** | `v2/kernel/vifast-plat-user/lib.rs` (shim U-mode) và `v2/kernel/vifast-kbin-riscv64/init/*.rs` (chương trình U-mode) **không** khớp mẫu `<crate>/src/**`/`build.rs` ⇒ không bị luật `wake` quét **trực tiếp** (một số tệp `init/*.rs` được kéo vào qua `#[path]` từ `src/` và xử lý như đích `extra`). | Đo 2026-11-20: **không** có token `wake`; chúng không có `Machine` (chỉ syscall U-mode). Ghi để không thành "phát hiện mới". |
 | **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro ⇒ XANH (chỉ `v2/kernel`+`v2/sim` được quét cấu trúc). | §1 đã ghi `v2/lib` chỉ bảo vệ thân macro + `include!`/`#[path]`; **không** phải lỗi. |
 | **Báo oan có trước** (không phải hồi quy — đối chiếu checker `0fa0fe65` giống hệt) | `#[cfg(test)] include!`; `#[cfg(feature = "ktest")] fn` **inline** (chuỗi `"ktest"` bị `strip_rust_noise` xoá); `#[cfg(test)] const/static`; `macro_rules!` thân `()`/`[]`; block statement; match arm pattern literal; `stringify!(include!)` (**có** `!` — `stringify!(include)` **không** `!` thì XANH). **KT-211** (reviewer L44 §D6) đo thêm **bốn** dạng **ĐỎ** (`--strict`) mà danh sách **không** có: (a) `#[cfg_attr(test, path = "evil.rs")] mod m;` (đích có `wake`) ⇒ **ĐỎ**; (b) `if let Some(wake) = o { wake }` ⇒ **ĐỎ** `E_STRICT_TEST_ONLY_WAKE`; (c) `let g = \|wake: u32\| wake + <số>;` ⇒ **ĐỎ**; (d) `struct S { pub wake: u32 }` + `s.wake` ⇒ **ĐỎ**. | Cây thật **không** có dạng nào (mọi chỗ `ktest` đều không chứa `wake`); ghi để không thành "phát hiện mới". |
