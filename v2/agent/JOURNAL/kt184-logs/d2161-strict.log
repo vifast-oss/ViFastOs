@@ -1,0 +1,25 @@
+# KT-184 / D2-161 — đối chứng: cùng ba đột biến ở --strict
+# (B3 lọt cả --strict trước KT-184: chỉ include! không literal bị bắt)
+
+### B1 include!(concat!(…)) — checker b6efc403, --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=2 warnings=0
+rc=1
+
+### B2 #[path] ra ngoài cây — checker b6efc403, --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/vifast-abi/src/evil_out.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### B3 #[path = concat!(…)] — checker b6efc403, --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_x.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### B3 #[path = concat!(…)] — checker HIỆN TẠI (KT-184), --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1005: `#[path]` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-184 D2-161)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_x.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=2 warnings=0
+rc=1
+
