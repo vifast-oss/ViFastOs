@@ -1,0 +1,17 @@
+=== CA B25-method-call-args ===
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// KT-208 B25: `include!` trong đối số lời gọi method.
+#[allow(dead_code)]
+pub fn kt208_b25(m: &mut crate::Machine, t: crate::ObjId) {
+    let _ = Some(include! {"../../../lib/evil_expr.rs"});
+}
+--- cargo check ---
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L44-review202/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
+CARGO_RC=0
+--- checker (thường) ---
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+NORMAL_RC=0
+--- checker (--strict) ---
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+STRICT_RC=0

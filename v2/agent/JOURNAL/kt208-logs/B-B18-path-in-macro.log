@@ -1,0 +1,25 @@
+=== CA B18-path-in-macro ===
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// KT-208 B18: `#[path]` trong lời gọi macro.
+macro_rules! kt208_pass {
+    ($i:item) => {
+        $i
+    };
+}
+kt208_pass!(#[path = "../../../lib/evil_item.rs"] mod kt208_evil_mod;);
+--- cargo check ---
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L44-review202/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
+CARGO_RC=0
+--- checker (thường) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=0 errors=3 warnings=0
+NORMAL_RC=1
+--- checker (--strict) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=1 errors=3 warnings=0
+STRICT_RC=1

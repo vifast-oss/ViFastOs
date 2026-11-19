@@ -1,0 +1,14 @@
+ca                                                   strict  kết quả  kỳ vọng
+§4 báo oan #4 cfg_attr(test, path) trên mod          True    XANH     ĐỎ (báo oan)
+§4 báo oan #6 if let Some(wake)                      True    ĐỎ       ĐỎ (báo oan)
+      mã: E_STRICT_TEST_ONLY_WAKE
+§4 báo oan #7 tham số closure tên wake               True    ĐỎ       ĐỎ (báo oan)
+      mã: E_STRICT_TEST_ONLY_WAKE
+§4 báo oan #8 trường struct tên wake                 True    ĐỎ       ĐỎ (báo oan)
+      mã: E_STRICT_TEST_ONLY_WAKE
+§1 phạm vi wake: crate MỚI dưới v2/kernel            True    XANH     ĐỎ nếu §1 đúng
+§1 phạm vi wake: crate MỚI dưới v2/sim               True    XANH     ĐỎ nếu §1 đúng
+§1 phạm vi wake: build.rs của vifast-core            True    XANH     ĐỎ nếu §1 đúng
+§4 include! trong v2/lib ngoài macro (L40 §B3)       True    XANH     ĐỎ nếu hợp đồng đã ghi
+§4 báo oan #4 cfg_attr(test, path) trên mod, ĐÍCH CÓ wake => ĐỎ
+    E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_f
