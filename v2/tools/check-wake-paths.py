@@ -2478,8 +2478,13 @@ def scan_v2(
     # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
     if not strict:
         safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(root, files)
+        # **KT-195/F1** (reviewer L34): điều kiện cũ `relp not in orig_test_only` khiến khối này
+        # **chỉ chạy khi `_mods_of` phân giải SAI** — quan hệ ngược. Khi `#[path]` nằm trong
+        # `lib.rs` (phân giải đúng), tệp đích đã thành **sản phẩm** trong `test_only_modules`
+        # ⇒ không còn trong `orig_test_only` ⇒ bị bỏ qua ⇒ XANH. Nay quét **mọi** tệp sản phẩm
+        # trong `extra` (tệp bị kéo vào bằng `#[path]`/`include!`), không phụ thuộc vị trí.
         for relp, (p, is_test) in sorted(extra.items()):
-            if is_test or relp not in orig_test_only:
+            if is_test:
                 continue
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
