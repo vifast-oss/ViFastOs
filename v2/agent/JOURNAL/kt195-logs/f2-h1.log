@@ -1,0 +1,9 @@
+== f2 ==
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+thuong RC=0
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+strict RC=0
+warning: function `evil_wake` is never used
+ --> vifast-core/src/evil.rs:4:8
+4 | pub fn evil_wake(m: &mut Machine, t: ObjId) { let _ = m.wake(t); }
+cargo RC=0
