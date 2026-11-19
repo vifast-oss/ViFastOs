@@ -1,0 +1,2 @@
+scan_v2 normal ok: False
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/sub` không tồn tại (fail-closed, KT-171 B6/B7)
