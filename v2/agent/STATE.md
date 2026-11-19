@@ -4,7 +4,7 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `a08bf042` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-231]`.
+HEAD          : `cbc2c2af` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-231]` (sổ).
                 Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0` (`./v2/bin/v2 status`).
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
@@ -14,9 +14,9 @@ K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210, `JOURNAL/kt210
                 F1 shell smp 1/2/4; F2 parity + đọc lại sau reboot + persist; F3 ảnh tắt shell đỏ;
                 F4 matrix + soak **1000/1000** fail=0 (297 s); F5 `data+bss=224288` ≤ 262144;
                 F6 product `hits=0`, ảnh âm `hits=25`.
-CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, **52** bước OK,
+CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, **52** bước OK;
                 `JOURNAL/kt231-logs/kt231-gate-pass.log`). `v2 check` **PASS**.
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=199 READY=0 BLOCKED=0 REVIEW=2**.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=202 READY=0 BLOCKED=0 REVIEW=2**.
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
 ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. **18** sub-agent (L37..L54), 4 chạy song song mỗi lượt.
                 Xong: KT-181, KT-182+203+206, KT-183+204+205, KT-201, KT-202, KT-207,

@@ -9,14 +9,14 @@
 ## 1. Trạng thái một khối
 
 ```text
-HEAD          af1ba3c9   (main, đã push, chưa push: 0)
+HEAD          cbc2c2af   (main, đã push, chưa push: 0)
 build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 ảnh sản phẩm  639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
               213 632 B, build=b08c5c57cdbdb156, inputs=43df126a4a6702ec
 K6            6/6 ĐẠT trên ảnh 639ca6d1 (KT-210)
-task          DONE=189  READY=1  BLOCKED=0  REVIEW=3
+task          DONE=202  READY=0  BLOCKED=0  REVIEW=2
 luật wake     CHƯA ĐÓNG — KT-194 và KT-184 giữ REVIEW
-checker       lớp 1: 246 ca selftest; lớp 2: 20 ca; cả hai errors=0 trên cây thật
+checker       lớp 1: 295 ca selftest; lớp 2: 37 ca; cả hai errors=0 trên cây thật
 ```
 
 ---
@@ -169,7 +169,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
    hai lớp.
 4. **Cân nhắc `cargo expand`** cho lớp 3 (mã do `macro_rules!` sinh ra) — hiện là lỗ hổng đã
    biết của cả hai lớp. Cần nightly ⇒ phải quyết riêng.
-5. **Sổ trạng thái**: `DONE=189 READY=1 BLOCKED=0 REVIEW=3`. `BLOCKED=0` **không** có nghĩa
+5. **Sổ trạng thái**: `DONE=202 READY=0 BLOCKED=0 REVIEW=2`. `BLOCKED=0` **không** có nghĩa
    mọi cổng đều mở được — K4'/K5' vẫn đóng theo quyết định của A0.
 
 ---

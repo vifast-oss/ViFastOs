@@ -9,12 +9,12 @@
 ## 1. Trạng thái một khối
 
 ```text
-HEAD          a08bf042   (main, đã push, chưa push: 0)
+HEAD          cbc2c2af   (main, đã push, chưa push: 0)
 build-inputs  233 mục, dấu vân tay 43df126a4a6702ec, dirty=0
 ảnh sản phẩm  639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
               213 632 B, build=b08c5c57cdbdb156
 K6            6/6 ĐẠT trên ảnh 639ca6d1 (KT-210)
-task          DONE=199  READY=0  BLOCKED=0  REVIEW=2
+task          DONE=202  READY=0  BLOCKED=0  REVIEW=2
 luật wake     CHƯA ĐÓNG — KT-194 và KT-184 giữ REVIEW
 checker       lớp 1: 295 ca; lớp 2: 37 ca; cả hai errors=0 trên cây thật
 ```
