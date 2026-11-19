@@ -1,0 +1,33 @@
+=== CA B17-mod-in-macro ===
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// KT-208 B17: `mod` trong lời gọi macro.
+macro_rules! kt208_pass {
+    ($i:item) => {
+        $i
+    };
+}
+kt208_pass!(mod kt208_evil_mod;);
+--- cargo check ---
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L44-review202/v2/kernel/vifast-core)
+error[E0583]: file not found for module `kt208_evil_mod`
+ --> vifast-core/src/kt208_attack.rs:8:13
+  |
+8 | kt208_pass!(mod kt208_evil_mod;);
+  |             ^^^^^^^^^^^^^^^^^^^
+  |
+  = help: to create the module `kt208_evil_mod`, create file "vifast-core/src/kt208_attack/kt208_evil_mod.rs" or "vifast-core/src/kt208_attack/kt208_evil_mod/mod.rs"
+  = note: if there is a `mod kt208_evil_mod` elsewhere in the crate already, import it with `use crate::...` instead
+
+For more information about this error, try `rustc --explain E0583`.
+error: could not compile `vifast-core` (lib) due to 1 previous error
+CARGO_RC=101
+--- checker (thường) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=0 errors=2 warnings=0
+NORMAL_RC=1
+--- checker (--strict) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/kt208_attack.rs:8: lời gọi macro khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=1 errors=2 warnings=0
+STRICT_RC=1

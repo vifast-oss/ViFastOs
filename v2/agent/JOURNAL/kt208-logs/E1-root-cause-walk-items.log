@@ -1,0 +1,5 @@
+A: include! trong ( … )          _walk_items thấy include! : KHÔNG
+B: include! trong [ … ]          _walk_items thấy include! : KHÔNG
+C: include! trong { … }          _walk_items thấy include! : CÓ
+D: include! trần câu lệnh        _walk_items thấy include! : CÓ
+E: include! ở mức mục            _walk_items thấy include! : CÓ

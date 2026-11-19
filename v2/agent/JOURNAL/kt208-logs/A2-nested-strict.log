@@ -1,0 +1,5 @@
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt201_evil.rs:4: thân `macro_rules! kt201_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt201_evil.rs:8: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt201_nested.rs:10: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=1 errors=3 warnings=0
+RC=1
