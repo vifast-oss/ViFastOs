@@ -1119,6 +1119,155 @@ def _walk_items(
         i += 1
 
 
+def _walk_all(
+    nodes: Sequence[object],
+    relp: str,
+    cur_dir: Path,
+    on_include: object,
+    on_path_attr: object,
+    inline_path_toks: set,
+    depth: int = 0,
+) -> None:
+    """**KT-211** (reviewer L44, KT-208 §B1) — quét **mọi** token của tệp, **mọi** tầng nhóm,
+    **mọi** loại nhóm `{`/`(`/`[`, tìm `include!` và `#[path]`.
+
+    Vì sao **không** dùng `_walk_items`: nó chỉ đệ quy nhóm `{ … }` (để không nhầm `mod` trong
+    biểu thức thành khai báo module). Hệ quả đo được (reviewer L44): `include!` ở **vị trí
+    biểu thức** trong `( … )`/`[ … ]` — `sink(include!{…})`, `[include!{…}]`,
+    `(0u8, include!{…})`, `(include!{…})`, `(|| include!{…})`, `Some(include!{…})` — **không
+    bao giờ** được `on_include` gọi ⇒ đích không phân giải, không bị từ chối; `cargo check`
+    RC=0, checker `errors=0` **cả hai** chế độ. Cùng lỗ với `#[path]` trên `mod` trong khối
+    lồng `( … )` (`({ #[path = "…"] mod m; 1 })` — `cargo check` RC=0, checker XANH).
+
+    Khác `_walk_items`:
+      - đệ quy **mọi** nhóm (kể cả nhóm sau `!` — lời gọi macro; `_check_macro_passthrough`
+        vẫn từ chối `include!`/`#[path]`/`mod` trong **đối số** lời gọi macro, nên đây là
+        lớp **thêm**, không thay thế);
+      - **bỏ qua** thân `macro_rules!` (đã bị `_check_macro_body` từ chối riêng — tránh báo
+        trùng và tránh phân giải sai theo tệp định nghĩa);
+      - `mod` **không** được xử lý như khai báo module ở đây (chỉ có nghĩa ở mức item —
+        `_walk_items` giữ đường cấu trúc); `cur_dir` **chỉ** đổi khi vào thân **inline
+        module** để `#[path]` lồng phân giải đúng như rustc (đã kiểm bằng `rustc`:
+        `#[path = "sub"] mod m { #[path = "y.rs"] mod n; }` ⇒ `sub/y.rs`).
+
+    `include!` phân giải theo **thư mục tệp chứa** (callback `on_include` capture `p.parent`),
+    **không** theo `cur_dir` — đúng ngữ nghĩa rustc (đã kiểm: `mod m { include!("x.rs") }` ⇒
+    `x.rs` cạnh tệp gốc).
+    """
+    if depth > MAX_TREE_DEPTH:
+        return
+    pending: List[Attr] = []
+    i = 0
+    n = len(nodes)
+    while i < n:
+        node = nodes[i]
+        if isinstance(node, Group):
+            # **KT-211** — đệ quy **mọi** nhóm, kể cả nhóm sau `!` (lời gọi macro) và nhóm
+            # `( … )`/`[ … ]`. Thân `macro_rules!` đã bị nhánh `macro_rules` bên dưới bỏ qua.
+            _walk_all(
+                node.children,
+                relp,
+                cur_dir,
+                on_include,
+                on_path_attr,
+                inline_path_toks,
+                depth + 1,
+            )
+            i += 1
+            pending = []
+            continue
+        assert isinstance(node, Tok)
+        if node.kind == "punct" and node.val == "#":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+            if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "[":
+                try:
+                    attr = parse_attr(nodes[j], relp)
+                except LexError:
+                    # Lỗi từ vựng/cấu trúc đã được `scan_lexical`/`scan_structure` báo.
+                    i = j + 1
+                    pending = []
+                    continue
+                pending.append(attr)
+                on_path_attr(attr, cur_dir)
+                i = j + 1
+                continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "macro_rules":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+            if j < n and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                j += 1
+                if j < n and isinstance(nodes[j], Group):
+                    # **Bỏ qua thân `macro_rules!`** — `_check_macro_body` từ chối
+                    # `include!`/`#[path]`/`mod` trong thân (fail-closed) và `include!` trong
+                    # thân giải theo **tệp gọi**, không phân giải tĩnh được.
+                    i = j + 1
+                    pending = []
+                    continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "include":
+            j = i + 1
+            if j < n and _is_punct(nodes[j], "!"):
+                j += 1
+                on_include(nodes, j, node)
+                # Xử lý tiếp **đối số** (nhóm) ở vòng lặp — `include!` lồng vẫn được thấy.
+                i = j
+                pending = []
+                continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "mod":
+            j = i + 1
+            if j < n and isinstance(nodes[j], Tok) and nodes[j].kind == "ident":
+                name_tok = nodes[j]
+                j += 1
+                if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "{":
+                    # Inline module: `cur_dir` đổi theo `#[path]` (rustc) — KT-199/F4b.
+                    child_dir = cur_dir / name_tok.val
+                    _child_set = False
+                    for _a in pending:
+                        try:
+                            _edges, _ = attr_path_edges(_a, relp)
+                        except LexError:
+                            continue
+                        for _val, _certain, _tok in _edges:
+                            inline_path_toks.add(_tok.start)
+                        if _edges and not _child_set:
+                            child_dir = (cur_dir / _edges[0][0]).resolve()
+                            _child_set = True
+                    _walk_all(
+                        nodes[j].children,
+                        relp,
+                        child_dir,
+                        on_include,
+                        on_path_attr,
+                        inline_path_toks,
+                        depth + 1,
+                    )
+                    i = j + 1
+                    pending = []
+                    continue
+            pending = []
+            i += 1
+            continue
+        if node.kind == "ident" and node.val == "pub":
+            j = i + 1
+            if j < n and isinstance(nodes[j], Group) and nodes[j].open.val == "(":
+                j += 1
+            i = j
+            continue
+        pending = []
+        i += 1
+
+
 def _protected_files(root: Path) -> Iterable[Path]:
     for base_rel in ("v2/kernel", "v2/sim", "v2/lib"):
         base = root / base_rel
@@ -1490,7 +1639,7 @@ def resolve_include_targets(
         found: List[Tuple[str, str, Tok, Path]] = []
         problems: List[Tuple[object, str]] = []
 
-        def on_attr(attr: Attr, cur_dir: Path) -> None:
+        def on_path_attr(attr: Attr, cur_dir: Path) -> None:
             try:
                 edges, probs = attr_path_edges(attr, relp)
             except LexError as e:
@@ -1503,44 +1652,51 @@ def resolve_include_targets(
                 found.append((kind, val, tok, cur_dir))
             problems.extend(probs)
 
-        def on_include(group: Group, cur_dir: Path) -> None:
-            ch = group.children
-            if len(ch) == 1 and isinstance(ch[0], Tok) and ch[0].kind == "str":
-                # `include!` giải đường dẫn theo **thư mục tệp gọi**, không theo inline module.
-                found.append(("include!", ch[0].val, ch[0], p.parent))
-            else:
+        def on_include(nodes: Sequence[object], j: int, include_tok: Tok) -> None:
+            """**KT-211** — đối số `include!` lấy từ **token kế tiếp**, ở **bất kỳ** vị trí.
+
+            Nhóm `{…}`/`(…)`/`[…]` phải chứa **đúng một** literal chuỗi; chuỗi literal trần
+            (không nhóm) cũng nhận (phòng thủ). Mọi dạng khác ⇒ **ĐỎ** fail-closed — kể cả
+            `include!` **không có** đối số (không phân giải được đích).
+            """
+            if j >= len(nodes):
                 problems.append(
-                    (group.open, "`include!` không phải literal chuỗi — không phân giải được đích")
+                    (include_tok, "`include!` không có đối số — không phân giải được đích")
                 )
+                return
+            arg = nodes[j]
+            if isinstance(arg, Group):
+                ch = arg.children
+                if len(ch) == 1 and isinstance(ch[0], Tok) and ch[0].kind == "str":
+                    # `include!` giải đường dẫn theo **thư mục tệp gọi**, không theo inline module.
+                    found.append(("include!", ch[0].val, ch[0], p.parent))
+                else:
+                    problems.append(
+                        (arg.open, "`include!` không phải literal chuỗi — không phân giải được đích")
+                    )
+                return
+            if isinstance(arg, Tok) and arg.kind == "str":
+                found.append(("include!", arg.val, arg, p.parent))
+                return
+            problems.append(
+                (include_tok, "`include!` không phải literal chuỗi — không phân giải được đích")
+            )
 
         inline_path_toks: set = set()
-
-        def on_mod(
-            name_tok: Tok,
-            attrs: Sequence[Attr],
-            inline: bool,
-            group: Optional[Group],
-            cur_dir: Path,
-            in_test: bool = False,
-        ) -> None:
-            if not inline:
-                return
-            for a in attrs:
-                try:
-                    edges, _ = attr_path_edges(a, relp)
-                except LexError:
-                    continue
-                for _val, _certain, tok in edges:
-                    inline_path_toks.add(tok.start)
-
-        _walk_items(
+        # **KT-211** (reviewer L44, KT-208 §B1) — quét **toàn bộ token** của tệp (mọi tầng
+        # nhóm, mọi loại nhóm `{`/`(`/`[`) thay cho đường cấu trúc `_walk_items` (chỉ đệ quy
+        # `{ … }`). Đường cấu trúc bỏ sót `include!` ở **vị trí biểu thức** trong `( … )`/
+        # `[ … ]` và `#[path]` trên `mod` trong khối lồng `( … )` — reviewer L44 dựng **6**
+        # biến thể, `cargo check` RC=0, checker `errors=0` **cả hai** chế độ. `mod` vẫn theo
+        # đường cấu trúc (`_walk_items`/`scan_structure`): `mod` chỉ có nghĩa ở mức item, và
+        # mọi vị trí `mod` hợp lệ đều nằm trong `{ … }` mà `_walk_items` đã đệ quy.
+        _walk_all(
             tree,
             relp,
             p.parent,
-            on_attr=on_attr,
-            on_mod=on_mod,
-            on_include=on_include,
-            errors=[],
+            on_include,
+            on_path_attr,
+            inline_path_toks,
         )
         for tok, msg in problems:
             if isinstance(tok, LexError):
@@ -5241,6 +5397,201 @@ def selftest() -> int:
             "macro_rules! pass { ($e:expr) => { $e }; }\n"
             "fn f() { let _ = (pass!(1 + 1)); }\n",
             False,
+        )
+
+        # --- (i) **KT-211** (reviewer L44, KT-208 §B1) — `include!` ở **vị trí biểu thức**
+        # trong nhóm `( … )`/`[ … ]` (KHÔNG phải `{ … }`, KHÔNG phải đối số lời gọi macro).
+        # `_walk_items` chỉ đệ quy `{ … }` ⇒ `on_include` **không bao giờ** được gọi; đích
+        # `include!` không được phân giải, không bị từ chối. Sáu biến thể, `cargo check`
+        # RC=0, checker `errors=0` **cả hai** chế độ (reviewer L44 đo trực tiếp). Cùng lỗ
+        # với `#[path]` trên `mod` trong khối lồng `( … )` (`_walk_items` không thấy `{ … }`
+        # bên trong `( … )`). Nay: **quét token toàn cục** cho `include!` + `#[path]` (mọi
+        # tầng nhóm, mọi loại nhóm), bỏ qua thân `macro_rules!` (đã bị `_check_macro_body`
+        # từ chối riêng). Mỗi ca ĐỎ kèm **đối chứng dương** (include_str!/include_bytes!/
+        # stringify!(include)/include! hợp lệ trong cây/`#[path]` hợp lệ).
+        def _kt211_case(
+            name: str,
+            relpath: str,
+            src: str,
+            expect_red: bool,
+            extra_files: Optional[dict] = None,
+            strict: bool = True,
+        ) -> None:
+            d = tmp / ("kt211-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/lib/evil_expr.rs", "m.wake(t)\n")
+            for rp, text in (extra_files or {}).items():
+                _write(d / rp, text)
+            _write(d / relpath, src)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            got = any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors)
+            cases.append(
+                (
+                    f"KT-211 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _KT211_CORE = "v2/kernel/vifast-core/src/kt211_evil.rs"
+        _KT211_EVIL = "../../../lib/evil_expr.rs"
+        _kt211_case(
+            "B01 `sink(include!{…})` — đối số lời gọi HÀM trong `( … )`",
+            _KT211_CORE,
+            "fn kt211_sink<T>(_: T) {}\n"
+            "pub fn kt211_b01() {\n"
+            f'    kt211_sink(include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B02 `[include!{…}]` — mảng `[ … ]`",
+            _KT211_CORE,
+            "pub fn kt211_b02() {\n"
+            f'    let _ = [include! {{"{_KT211_EVIL}"}}];\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B03 `(0u8, include!{…})` — tuple `( … )`",
+            _KT211_CORE,
+            "pub fn kt211_b03() {\n"
+            f'    let _ = (0u8, include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B23 `(include!{…})` — trần trong `( … )`",
+            _KT211_CORE,
+            "pub fn kt211_b23() {\n"
+            f'    let _ = (include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B24 `(|| include!{…})` — thân closure trong `( … )`",
+            _KT211_CORE,
+            "pub fn kt211_b24() {\n"
+            f'    let _mut_f = (|| include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B25 `Some(include!{…})` — đối số hàm/biến thể",
+            _KT211_CORE,
+            "pub fn kt211_b25() {\n"
+            f'    let _ = Some(include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B04 đối chứng: `{ include!{…} }` — khối `{ … }` vẫn ĐỎ",
+            _KT211_CORE,
+            "pub fn kt211_b04() {\n"
+            f'    let _ = {{ include! {{"{_KT211_EVIL}"}} }};\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B05 đối chứng: `include!` trần câu lệnh vẫn ĐỎ",
+            _KT211_CORE,
+            "pub fn kt211_b05() {\n"
+            f'    let _ = include! {{"{_KT211_EVIL}"}};\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B26 đối chứng dương: `include_str!` XANH",
+            _KT211_CORE,
+            "pub fn kt211_ok_str() {\n"
+            f'    let _ = include_str!("{_KT211_EVIL}");\n'
+            "}\n",
+            False,
+        )
+        _kt211_case(
+            "B26 đối chứng dương: `include_bytes!` XANH",
+            _KT211_CORE,
+            "pub fn kt211_ok_bytes() {\n"
+            f'    let _ = include_bytes!("{_KT211_EVIL}");\n'
+            "}\n",
+            False,
+        )
+        _kt211_case(
+            "B26 đối chứng dương: `stringify!(include)` XANH",
+            _KT211_CORE,
+            "pub fn kt211_ok_stringify() {\n"
+            "    let _ = stringify!(include);\n"
+            "}\n",
+            False,
+        )
+        _kt211_case(
+            "B26 đối chứng dương: `include!` hợp lệ TRONG cây, trong `( … )` XANH",
+            _KT211_CORE,
+            "pub fn kt211_ok_include() {\n"
+            '    let _ = (include! {"kt211_ok_expr.rs"});\n'
+            "}\n",
+            False,
+            {"v2/kernel/vifast-core/src/kt211_ok_expr.rs": "1u8\n"},
+        )
+        _kt211_case(
+            "B28 `#[path]` trên `mod` trong khối lồng `( … )` — đích ngoài cây",
+            _KT211_CORE,
+            "pub fn kt211_path_leak() {\n"
+            "    let _ = ({\n"
+            '        #[path = "../../../lib/evil_mod.rs"]\n'
+            "        mod evil_mod;\n"
+            "        1u8\n"
+            "    });\n"
+            "}\n",
+            True,
+            {"v2/lib/evil_mod.rs": "m.wake(t)\n"},
+        )
+        _kt211_case(
+            "B28 đối chứng dương: `#[path]` trên `mod` trong khối lồng `( … )` — đích trong cây",
+            _KT211_CORE,
+            "pub fn kt211_path_ok() {\n"
+            "    let _ = ({\n"
+            '        #[path = "kt211_ok_mod.rs"]\n'
+            "        mod ok_mod;\n"
+            "        1u8\n"
+            "    });\n"
+            "}\n",
+            False,
+            {"v2/kernel/vifast-core/src/kt211_ok_mod.rs": "pub fn ok() {}\n"},
+        )
+        _kt211_case(
+            "B27 `include!` trong `( … )` ở `v2/lib` — đích ngoài `v2/lib`",
+            "v2/lib/vifast-abi/src/lib.rs",
+            "fn kt211_sink<T>(_: T) {}\n"
+            "pub fn kt211_lib() {\n"
+            '    kt211_sink(include! {"../../../test/evil.rs"});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B27 `include!` trong `( … )` ở `v2/sim` — đích ngoài cây",
+            "v2/sim/vifast-sim/src/lib.rs",
+            "fn kt211_sink<T>(_: T) {}\n"
+            "pub fn kt211_sim() {\n"
+            '    kt211_sink(include! {"../../../test/evil.rs"});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B29 `include!` không literal trong `( … )` — fail-closed",
+            _KT211_CORE,
+            "pub fn kt211_b29() {\n"
+            '    let _ = (include! {concat!("../../../lib/", "evil_expr.rs")});\n'
+            "}\n",
+            True,
+        )
+        _kt211_case(
+            "B30 `include!` trong `( … )` lồng 2 tầng nhóm",
+            _KT211_CORE,
+            "pub fn kt211_b30() {\n"
+            f'    let _ = ([include! {{"{_KT211_EVIL}"}}], 0u8);\n'
+            "}\n",
+            True,
         )
 
         # (5) v1 ba kênh ⇒ đỏ.

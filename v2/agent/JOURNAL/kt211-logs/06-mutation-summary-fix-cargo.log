@@ -1,0 +1,10 @@
+=== B28 #[path] trên mod trong khối lồng ( … ) — tệp đích hình dạng item ===
+B28-path-in-paren                  cargo=0   normal=1  (err=1 ) strict=1  (err=1 )
+=== repro L40 (KT-202) — tệp đích hình dạng item ===
+L40-repro                          cargo=0   normal=1  (err=3 ) strict=1  (err=3 )
+=== B27 v2/lib — include! trong ( … ), đích ngoài v2/lib ===
+B27-lib                            cargo=101 normal=1  (err=4 ) strict=1  (err=4 )
+=== B27 v2/sim — include! trong ( … ), đích ngoài cây ===
+B27-sim                            cargo=101 normal=1  (err=4 ) strict=1  (err=4 )
+=== khôi phục ===
+DONE
