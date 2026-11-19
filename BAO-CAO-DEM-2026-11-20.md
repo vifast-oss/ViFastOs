@@ -125,7 +125,18 @@ tt(m, t, TcbState::Ready);
 TcbState::Ready)` ⇒ **ĐỎ cả ba**. Gốc: `_transition_calls` chỉ khớp ident `transition_tcb`
 **theo sau bởi nhóm `(`** — lấy fn-pointer rồi gọi qua biến thì không khớp.
 
-**Tổng cộng đêm nay: mười bảy đường lọt, năm đường mới (#13–#17), và #13–#17 đều lọt cả hai
+**Và đường lọt #18 — crate thành viên workspace NGOÀI ba gốc quét, lọt CẢ HAI lớp:**
+
+Thêm crate `v2/extra/evil` vào `members` của `v2/Cargo.toml`, dep `path` tới `vifast-sim`,
+`build.rs` ghi `$OUT_DIR/evil.rs` chứa `wake`, `src/lib.rs` có
+`include!(concat!(env!("OUT_DIR"), "/evil.rs"));`.
+
+`cargo check -p vifast-evil` **RC=0**; lớp 1 **XANH**; lớp 1 `--strict` **XANH**; lớp 2 **XANH**
+(chỉ `W_DEPINFO_SKIPPED`). Gốc: lớp 1 chỉ quét `v2/kernel`+`v2/sim`+`v2/lib`; lớp 2 **thấy** tệp
+`OUT_DIR` nhưng **bỏ qua** vì "thư mục build". `v2/tools/vifast-agentctl` là crate **sẵn có**
+ngoài ba gốc — chỉ cần thêm dep `vifast-sim` là cùng đường.
+
+**Tổng cộng đêm nay: mười tám đường lọt, sáu đường mới (#13–#18), và #13–#18 đều lọt cả hai
 hoặc cả ba lớp.**
 
 ### 2.4. K6 — đo lại trên ảnh mới
@@ -208,6 +219,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | **D2-181** | KT-231 ĐẠT (đóng #15) |
 | **D2-182** | Đường lọt **#16** (họ 6 dạng: `Ready` qua tham số/hằng/closure), lọt **cả ba** lớp |
 | **D2-183** | Đường lọt **#17** (`transition_tcb` làm fn-pointer), lọt **cả ba** lớp |
+| **D2-184** | Đường lọt **#18** (crate ngoài ba gốc quét), lọt **cả hai** lớp |
 
 ---
 
@@ -234,7 +246,7 @@ KT-183 đổi `v2/kernel` ⇒ dấu vân tay `89f40ef16c97e6d5` → `43df126a4a6
 | L53 | KT-224 (review KT-214) + KT-227 + KT-228 | **KHÔNG ĐẠT** → ĐẠT — tìm **5 đường lọt cả hai lớp** |
 | L54 | KT-229 (tấn công theo lớp) + KT-230 + KT-231 | ĐẠT — tìm **#14** và **#15**, cả hai lọt **cả hai lớp** |
 | L55 | KT-232 (fn-pointer) | **SỐNG** — tìm **#17**, lọt **cả ba** lớp |
-| L56 | KT-233 (build.rs/OUT_DIR) | đang chạy |
+| L56 | KT-233 (build.rs/OUT_DIR) | **SỐNG** — tìm **#18** (crate ngoài ba gốc), lọt **cả hai** lớp |
 | L57 | KT-234 (tham số liên hàm) | **SỐNG** — tìm **#16** (họ 6 dạng), lọt **cả ba** lớp |
 | L58 | KT-235 (verify cuối) | đang chạy |
 
