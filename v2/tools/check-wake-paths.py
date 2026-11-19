@@ -436,7 +436,7 @@ RE_MOD_DECL_RAW = re.compile(
 # (`r#"evil_b.rs"#`) vẫn lọt — cùng một lớp với H8. Nhóm có tên `hashes` = số `#` (rỗng với
 # chuỗi thường), `path` = nội dung; backreference `(?P=hashes)` buộc số `#` đóng **bằng** mở.
 RE_STR_LIT = r'(?:b|c)?r?(?P<hashes>#*)"(?P<path>[^"]*)"(?P=hashes)'
-RE_PATH_ATTR_LINE = re.compile(r"^\s*#\[path\s*=\s*" + RE_STR_LIT + r"\s*\]\s*$")
+RE_PATH_ATTR_LINE = re.compile(r"^\s*#\s*\[\s*path\s*=\s*" + RE_STR_LIT + r"\s*\]\s*$")
 RE_CFG_ATTR_LINE = re.compile(r"^\s*#\[cfg\((.*)\)\]\s*$")
 
 # Cache theo gốc cây (selftest dựng nhiều cây tạm, mỗi cây một khoá).
@@ -613,7 +613,7 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
         target: Optional[Path] = None
         child_dir: Optional[Path] = None
         for a in attrs:
-            pm = RE_PATH_ATTR_LINE.match(a)
+            pm = RE_PATH_ATTR_LINE.match(a) or RE_CFG_ATTR_PATH.search(a)
             if pm:
                 # **KT-177/G1**: nhóm có tên `path` = đường dẫn (chuỗi thô có `#`).
                 target = (p.parent / pm.group("path")).resolve()
@@ -695,9 +695,13 @@ def is_test_file(path: Path, root: Path, test_only: Optional[set] = None) -> boo
 # (`include!("…")`, `include!["…"]`, `include!{"…"}`) — bản KT-171/174 chỉ khớp `(`, nên
 # `include!["evil_b.rs"]` (rustc **chấp nhận**, `cargo check` RC=0) lọt hoàn toàn.
 RE_INCLUDE_MACRO = re.compile(
-    r"\binclude!\s*[\(\{\[]\s*" + RE_STR_LIT + r"\s*[\)\}\]]"
+    r"\binclude\s*!\s*[\(\{\[]\s*" + RE_STR_LIT + r"\s*[\)\}\]]"
 )
-RE_PATH_ATTR_ANY = re.compile(r"#\[path\s*=\s*" + RE_STR_LIT + r"\]")
+RE_PATH_ATTR_ANY = re.compile(r"#\s*\[\s*path\s*=\s*" + RE_STR_LIT + r"\s*\]")
+# **KT-187/B1** (reviewer L25): `#[cfg_attr(not(test), path = "…")]` — `#[path` **không** liền
+# nên mọi regex trên đều vô hình. Đây là dạng **thật** nhất: `cfg_attr` bật `path` khi không
+# test, tức đúng lúc mã sản phẩm biên dịch.
+RE_CFG_ATTR_PATH = re.compile(r"cfg_attr\s*\([^;{}]*?\bpath\s*=\s*" + RE_STR_LIT)
 
 
 def _inside_scan_tree(root: Path, target: Path) -> Optional[str]:
@@ -751,7 +755,8 @@ def resolve_include_targets(
         except OSError:
             continue
         # Rẻ: đa số tệp không có `include!`/`#[path]` — khỏi khử nhiễu cả tệp.
-        if "include!" not in text and "#[path" not in text:
+        # **KT-187/B1**: `cfg_attr(…, path = …)` không chứa `#[path` liền — phải mở cửa sớm.
+        if "include!" not in text and "#[path" not in text and "cfg_attr" not in text:
             continue
         code = strip_rust_noise(text)
         code_keep = strip_rust_noise(text, keep_strings=True)
@@ -765,6 +770,11 @@ def resolve_include_targets(
             if not code[m.start() : m.end()].strip():
                 continue
             found.append(("#[path]", m.group("path"), m.start()))
+        # **KT-187/B1**: `#[cfg_attr(…, path = "…")]` — coi như `#[path]`.
+        for m in RE_CFG_ATTR_PATH.finditer(code_keep):
+            if not code[m.start() : m.end()].strip():
+                continue
+            found.append(("#[cfg_attr(path)]", m.group("path"), m.start()))
         # **KT-174/H3** (reviewer L16): `include!` **không** literal (`concat!`/`env!`/biến)
         # không phân giải được đích ⇒ fail-closed với tệp **sản phẩm**.
         #
@@ -775,7 +785,7 @@ def resolve_include_targets(
         # tệp test-only — "mọi `include!`/`#[path]` phải literal và trỏ trong cây".
         if True:
             covered = {m.start() for m in RE_INCLUDE_MACRO.finditer(code_keep)}
-            for m in re.finditer(r"\binclude!\s*[\(\{\[]", code_keep):
+            for m in re.finditer(r"\binclude\s*!\s*[\(\{\[]", code_keep):
                 if m.start() in covered:
                     continue
                 if not code[m.start() : m.end()].strip():
@@ -785,8 +795,20 @@ def resolve_include_targets(
                     f"  {relp}:{lineno}: `include!` không phải literal chuỗi — không phân giải "
                     f"được đích (fail-closed, KT-174 H3)"
                 )
+            # **KT-187/B1**: `cfg_attr(…, path = …)` không literal cũng fail-closed.
+            covered_cfg = {m.start() for m in RE_CFG_ATTR_PATH.finditer(code_keep)}
+            for m in re.finditer(r"cfg_attr\s*\([^;{}]*?\bpath\s*=", code_keep):
+                if m.start() in covered_cfg:
+                    continue
+                if not code[m.start() : m.end()].strip():
+                    continue
+                lineno = code_keep.count("\n", 0, m.start()) + 1
+                errors.append(
+                    f"  {relp}:{lineno}: `cfg_attr(…, path = …)` không phải literal chuỗi — "
+                    f"không phân giải được đích (fail-closed, KT-187 B1)"
+                )
             covered_path = {m.start() for m in RE_PATH_ATTR_ANY.finditer(code_keep)}
-            for m in re.finditer(r"#\[path\s*=", code_keep):
+            for m in re.finditer(r"#\s*\[\s*path\s*=", code_keep):
                 if m.start() in covered_path:
                     continue
                 if not code[m.start() : m.end()].strip():
@@ -889,20 +911,80 @@ def scan_lib_macros(root: Path, r: Report) -> None:
                     f"dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do",
                 )
             # **KT-177/G5** (H7): `include!`/`#[path]` trong thân macro ⇒ fail-closed.
-            for im in re.finditer(r"\binclude!\s*[\(\{\[]", body):
+            for im in re.finditer(r"\binclude\s*!\s*[\(\{\[]", body):
                 lineno = code.count("\n", 0, j + im.start()) + 1
                 r.err(
                     "E_STRICT_MACRO_INCLUDE",
                     f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `include!` — đường dẫn "
                     f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
                 )
-            for pm in re.finditer(r"#\[path\b", body):
+            for pm in re.finditer(r"#\s*\[\s*path\b", body):
                 lineno = code.count("\n", 0, j + pm.start()) + 1
                 r.err(
                     "E_STRICT_MACRO_INCLUDE",
                     f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — đường dẫn "
                     f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
                 )
+
+
+def scan_kernel_macro_includes(root: Path, r: Report) -> None:
+    """**KT-187/B2+B3** (reviewer L25): `include!`/`#[path]` trong thân `macro_rules!` của
+    `v2/kernel`/`v2/sim` — **fail-closed**.
+
+    Reviewer L25 dựng được hai đường lọt thật: `macro_rules!` định nghĩa ở thư mục A (decoy
+    sạch) nhưng **gọi** ở thư mục B; rustc giải `include!`/`#[path]` trong thân macro theo
+    **tệp gọi** (đã kiểm bằng `rustc`), còn `resolve_include_targets` giải theo **tệp định
+    nghĩa** ⇒ đích thật không bao giờ được quét. Không phân giải tĩnh an toàn được ⇒ ĐỎ.
+    """
+    for base_rel in ("v2/kernel", "v2/sim"):
+        base = root / base_rel
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.rs")):
+            if "target" in p.parts:
+                continue
+            relp = rel(root, p)
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            code = strip_rust_noise(text)
+            for m in RE_MACRO_RULES.finditer(code):
+                name = m.group(1)
+                j = m.end()
+                while j < len(code) and code[j] not in "{;":
+                    j += 1
+                if j >= len(code) or code[j] != "{":
+                    continue
+                depth = 0
+                end = None
+                for k in range(j, len(code)):
+                    if code[k] == "{":
+                        depth += 1
+                    elif code[k] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = k
+                            break
+                if end is None:
+                    end = len(code) - 1
+                body = code[j : end + 1]
+                for im in re.finditer(r"\binclude\s*!\s*[\(\{\[]", body):
+                    lineno = code.count("\n", 0, j + im.start()) + 1
+                    r.err(
+                        "E_STRICT_MACRO_INCLUDE",
+                        f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `include!` — "
+                        f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
+                        f"(fail-closed, KT-187 B3)",
+                    )
+                for pm in re.finditer(r"#\s*\[\s*path\b", body):
+                    lineno = code.count("\n", 0, j + pm.start()) + 1
+                    r.err(
+                        "E_STRICT_MACRO_INCLUDE",
+                        f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — "
+                        f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
+                        f"(fail-closed, KT-187 B2)",
+                    )
 
 
 # ------------------------------------------------------------------ KT-171: B10 scope + macro
@@ -1668,8 +1750,11 @@ def scan_v2(
                     f"`wake_from_unlink`",
                 )
 
-        # 7) **KT-171 (B4)** — macro ở crate khác: quét thân `macro_rules!` trong `v2/lib/**`.
-        scan_lib_macros(root, r)
+    # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** — quét thân `macro_rules!`. Chạy ở **mọi** chế
+    #    độ: D2-161 đòi `include!`/`#[path]` literal + trong cây ở **cả ba** chế độ, và
+    #    `include!`/`#[path]` trong thân macro giải theo **tệp gọi** nên phải fail-closed.
+    scan_lib_macros(root, r)
+    scan_kernel_macro_includes(root, r)
 
     return r
 
@@ -3113,7 +3198,66 @@ def selftest() -> int:
             )
         )
 
-        # (4ba) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
+        # (4ba) **KT-187/B1** — `#[cfg_attr(not(test), path = "…")]` trỏ tệp test-only có
+        # `wake` ⇒ ĐỎ. Trước KT-187: XANH (mọi regex đòi `#[path` **liền**).
+        d = tmp / "v2-b1-cfgattr-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            "#[cfg(test)]\nmod evil_b;\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/evil_b.rs",
+            "impl M {\n    fn duong_san_pham(&mut self, t: u32) -> u8 {\n"
+            "        self.wake(t);\n        0\n    }\n}\n",
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            '#[cfg_attr(not(test), path = "evil_b.rs")]\nmod evil_b_product;\n',
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "B1 `#[cfg_attr(not(test), path = …)]` tới tệp test-only ⇒ đỏ (KT-187)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bb) **KT-187/B2** — `#[path]` trong thân `macro_rules!` ⇒ ĐỎ ở **chế độ thường**
+        # (rustc giải theo tệp gọi, checker không phân giải tĩnh an toàn được).
+        d = tmp / "v2-b2-macro-path"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil_mod { () => { #[path = "evil_b.rs"] mod evil; } }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2 `#[path]` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bc) **KT-187/B3** — `include!` trong thân `macro_rules!` ⇒ ĐỎ ở **chế độ thường**.
+        d = tmp / "v2-b3-macro-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil_inc { () => { include!("evil_b.rs"); } }\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B3 `include!` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bd) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
         # `wake_from(` ⇒ XANH ở chế độ thường (luật không phải "có `#[path]` là đỏ").
         d = tmp / "v2-d2161-path-ok"
         _fixture_v2(d)
