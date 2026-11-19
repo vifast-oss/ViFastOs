@@ -964,7 +964,9 @@ def _walk_items(
     """Duyệt **cấu trúc** mức mục: thuộc tính, `mod`, `macro_rules!`, `include!`.
 
     - Chỉ đệ quy vào nhóm `{ … }` (thân khối/inline module); nhóm đứng sau `!` là **lời gọi
-      macro** ⇒ bỏ qua (token trong lời gọi không phải mục Rust cho tới khi mở rộng).
+      macro** ⇒ bỏ qua (token trong lời gọi không phải mục Rust cho tới khi mở rộng). **KT-202**
+      quét đối số lời gọi bằng `_scan_macro_calls` (đệ quy **mọi** nhóm) — không dùng
+      `_walk_items` vì nó chỉ đệ quy `{…}` nên bỏ sót lời gọi lồng trong `( … )`/`[…]`.
     - `macro_rules!` ⇒ gọi `on_macro` với **thân** rồi bỏ qua thân (luật macro xử lý riêng).
     - `mod NAME;` / `mod NAME { … }` ⇒ gọi `on_mod`; inline module đệ quy với thư mục con.
     """
@@ -1570,20 +1572,34 @@ MACRO_WAKE_ALLOW: Dict[Tuple[str, str], str] = {}
 MACRO_SCAN_ROOTS = ("v2/lib", "v2/kernel", "v2/sim")
 
 
-def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
-    """**KT-189/B2d+T3c**, **KT-191**, **KT-194** — thân `macro_rules!` chứa cấu trúc có thể
-    sinh `include!`/`#[path]`/`mod` ⇒ fail-closed.
+# **KT-202** — fragment `$…:<frag>` chở được `include!`/`mod`/`#[path]` từ **lời gọi**.
+# `:expr` **không** nằm trong danh sách (xem lý do đầy đủ ở hợp đồng §4):
+#   (i) `:expr` không chở được `mod` (item) hay `#[path]` (thuộc tính) — chỉ chở được `include!`
+#       ở vị trí biểu thức;
+#   (ii) `include!` trong **đối số lời gọi** đã bị `_check_macro_passthrough` bắt ở **tệp gọi**
+#        (KT-202 vá 1) — kể cả khi macro dùng `:expr`;
+#   (iii) cây thật có `macro_rules! bail` (`v2/kernel/vifast-plat-riscv64/src/user.rs`) dùng
+#        `$pages:expr, $e:expr` hợp lệ — từ chối `:expr` sẽ báo oan và làm `v2 check` ĐỎ.
+MACRO_PASSTHROUGH_FRAGS = frozenset({"tt", "item", "stmt", "block", "meta"})
+
+
+def _check_macro_passthrough(relp: str, where: str, nodes: Sequence[object], r: Report) -> None:
+    """**KT-189/B2d+T3c**, **KT-191**, **KT-194**, **KT-202** — token có thể sinh
+    `include!`/`#[path]`/`mod` ⇒ fail-closed.
+
+    Dùng chung cho **hai** nơi:
+      - thân `macro_rules!` (`_check_macro_body`);
+      - **đối số lời gọi macro** (`_scan_macro_calls`, KT-202).
 
     Nhận dạng **theo cấu trúc token**, không theo từ khoá:
       - `include` + `!` (không phải `include_str!`, không phải biến `include`);
       - thuộc tính `#[path]` (kể cả `#[r#path]`) và `cfg_attr(…, path = …)` **lồng**;
-      - `mod NAME;` / `mod NAME { … }` (kể cả raw ident `mod r#x;` ⇒ `E_STRICT_MACRO_INCLUDE`);
-      - `$…:tt` (passthrough) ⇒ `E_STRICT_MACRO_TT`.
+      - `mod NAME;` / `mod NAME { … }` (kể cả raw ident `mod r#x;` ⇒ `E_STRICT_MACRO_INCLUDE`).
 
     **Giảm báo oan có chủ đích** (D2-166 §3D): `std::path::Path`, `$path:expr`, `modulo(1)`,
-    `include_str!` **không** còn bị coi là dấu hiệu — chúng không phải thuộc tính/macro/module.
-    Hạn chế bảo thủ còn giữ: **mọi** thuộc tính trong thân macro có tên `path`/`cfg_attr` đều
-    ĐỎ (không đánh giá `cfg`), và `$…:tt` ĐỎ vì có thể chở `mod x;` từ lời gọi.
+    `include_str!` **không** bị coi là dấu hiệu — chúng không phải thuộc tính/macro/module.
+    Hạn chế bảo thủ còn giữ: **mọi** thuộc tính trong phạm vi có tên `path`/`cfg_attr` đều
+    ĐỎ (không đánh giá `cfg`).
     """
 
     def check_list(nodes: Sequence[object]) -> None:
@@ -1596,9 +1612,9 @@ def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
                 if i + 1 < len(nodes) and _is_punct(nodes[i + 1], "!"):
                     r.err(
                         "E_STRICT_MACRO_INCLUDE",
-                        f"  {relp}:{n.line}: thân `macro_rules! {name}` chứa `include!` — "
+                        f"  {relp}:{n.line}: {where} chứa `include!` — "
                         f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
-                        f"(fail-closed, KT-194)",
+                        f"(fail-closed, KT-194/KT-202)",
                     )
             if n.kind == "punct" and n.val == "#":
                 j = i + 1
@@ -1610,17 +1626,17 @@ def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
                     except LexError:
                         r.err(
                             "E_STRICT_MACRO_INCLUDE",
-                            f"  {relp}:{nodes[j].open.line}: thân `macro_rules! {name}` chứa "
+                            f"  {relp}:{nodes[j].open.line}: {where} chứa "
                             f"thuộc tính không đọc được — không phân giải tĩnh được "
-                            f"(fail-closed, KT-194)",
+                            f"(fail-closed, KT-194/KT-202)",
                         )
                         continue
                     if attr.name == "path":
                         r.err(
                             "E_STRICT_MACRO_INCLUDE",
-                            f"  {relp}:{attr.tok.line}: thân `macro_rules! {name}` chứa "
+                            f"  {relp}:{attr.tok.line}: {where} chứa "
                             f"`#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải "
-                            f"tĩnh được (fail-closed, KT-194)",
+                            f"tĩnh được (fail-closed, KT-194/KT-202)",
                         )
                     elif attr.name == "cfg_attr":
                         try:
@@ -1630,9 +1646,9 @@ def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
                         if edges or probs:
                             r.err(
                                 "E_STRICT_MACRO_INCLUDE",
-                                f"  {relp}:{attr.tok.line}: thân `macro_rules! {name}` chứa "
+                                f"  {relp}:{attr.tok.line}: {where} chứa "
                                 f"`cfg_attr(…, path = …)` — đường dẫn giải theo **tệp gọi**, "
-                                f"không phân giải tĩnh được (fail-closed, KT-194)",
+                                f"không phân giải tĩnh được (fail-closed, KT-194/KT-202)",
                             )
             if n.kind == "ident" and n.val == "mod":
                 j = i + 1
@@ -1643,44 +1659,100 @@ def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
                         if raw:
                             r.err(
                                 "E_STRICT_MACRO_INCLUDE",
-                                f"  {relp}:{n.line}: thân `macro_rules! {name}` khai "
-                                f"`mod r#…;` — không phân giải tĩnh được (fail-closed, KT-194)",
+                                f"  {relp}:{n.line}: {where} khai "
+                                f"`mod r#…;` — không phân giải tĩnh được (fail-closed, KT-194/KT-202)",
                             )
                         else:
                             r.err(
                                 "E_STRICT_MACRO_MOD",
-                                f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod …;` — "
+                                f"  {relp}:{n.line}: {where} khai `mod …;` — "
                                 f"đồ thị module không thấy module này nên không xác định được "
-                                f"test-only (fail-closed, KT-194)",
+                                f"test-only (fail-closed, KT-194/KT-202)",
                             )
                     elif j < len(nodes) and isinstance(nodes[j], Group) and nodes[j].open.val == "{":
                         r.err(
                             "E_STRICT_MACRO_MOD",
-                            f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod … {{…}}` — "
+                            f"  {relp}:{n.line}: {where} khai `mod … {{…}}` — "
                             f"đồ thị module không thấy module này nên không xác định được "
-                            f"test-only (fail-closed, KT-194)",
+                            f"test-only (fail-closed, KT-194/KT-202)",
                         )
                 elif j < len(nodes) and _is_punct(nodes[j], "$"):
                     r.err(
                         "E_STRICT_MACRO_INCLUDE",
-                        f"  {relp}:{n.line}: thân `macro_rules! {name}` khai `mod $…;` — "
-                        f"không phân giải tĩnh được (fail-closed, KT-194)",
+                        f"  {relp}:{n.line}: {where} khai `mod $…;` — "
+                        f"không phân giải tĩnh được (fail-closed, KT-194/KT-202)",
                     )
+
+    check_list(nodes)
+
+
+def _check_macro_body(relp: str, name: str, body: Group, r: Report) -> None:
+    """**KT-189/B2d+T3c**, **KT-191**, **KT-194**, **KT-202** — thân `macro_rules!` chứa cấu
+    trúc có thể sinh `include!`/`#[path]`/`mod` ⇒ fail-closed.
+
+    Hai lớp:
+      1. `include!`/`#[path]`/`cfg_attr(path)`/`mod` — dùng chung `_check_macro_passthrough`
+         (cùng logic với **đối số lời gọi macro**, KT-202 vá 1);
+      2. `$…:<frag>` passthrough với `frag ∈ MACRO_PASSTHROUGH_FRAGS` ⇒ `E_STRICT_MACRO_TT`
+         (KT-202 vá 2 — trước đây chỉ `:tt`).
+    """
+    where = f"thân `macro_rules! {name}`"
+    _check_macro_passthrough(relp, where, body.children, r)
+
+    def check_frag(nodes: Sequence[object]) -> None:
+        for i, n in enumerate(nodes):
+            if isinstance(n, Group):
+                check_frag(n.children)
+                continue
+            assert isinstance(n, Tok)
             if n.kind == "punct" and n.val == ":":
                 if (
                     i + 1 < len(nodes)
                     and isinstance(nodes[i + 1], Tok)
                     and nodes[i + 1].kind == "ident"
-                    and nodes[i + 1].val == "tt"
+                    and nodes[i + 1].val in MACRO_PASSTHROUGH_FRAGS
                 ):
                     r.err(
                         "E_STRICT_MACRO_TT",
-                        f"  {relp}:{n.line}: thân `macro_rules! {name}` dùng `$…:tt` "
-                        f"(passthrough) — có thể chở `mod`/`include!` từ **lời gọi** "
-                        f"(fail-closed, KT-194)",
+                        f"  {relp}:{n.line}: {where} dùng `$…:{nodes[i + 1].val}` "
+                        f"(passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** "
+                        f"(fail-closed, KT-194/KT-202)",
                     )
 
-    check_list(body.children)
+    check_frag(body.children)
+
+
+def _scan_macro_calls(nodes: Sequence[object], relp: str, r: Report) -> None:
+    """**KT-202** (reviewer L40) — quét **đối số lời gọi macro** ở **mọi** tầng nhóm.
+
+    Vì sao không dùng `_walk_items`: nó chỉ đệ quy vào nhóm `{ … }` (để không nhầm `mod` trong
+    biểu thức thành khai báo module). Lời gọi macro nằm trong `( … )`/`[…]` — ví dụ
+    `let _ = (pass!(include! {"…"}));` — **không** bao giờ được thấy. Đã đo: dạng lồng này
+    `cargo check` biên dịch được và checker **xanh** nếu chỉ sửa `_walk_items`
+    (`kt181-logs/kt202-nested-checker.log`). Nay quét **toàn cây token**.
+
+    Không đệ quy tiếp vào nhóm của **lời gọi macro** sau khi đã gọi `_check_macro_passthrough`:
+    hàm đó đã quét đệ quy toàn bộ nhóm (kể cả lời gọi lồng bên trong) ⇒ tránh báo trùng.
+    """
+    for i, n in enumerate(nodes):
+        if isinstance(n, Group):
+            prev = nodes[i - 1] if i > 0 else None
+            if _is_punct(prev, "!"):
+                _check_macro_passthrough(relp, "lời gọi macro", n.children, r)
+            elif (
+                i >= 3
+                and isinstance(nodes[i - 1], Tok)
+                and nodes[i - 1].kind == "ident"
+                and _is_punct(nodes[i - 2], "!")
+                and isinstance(nodes[i - 3], Tok)
+                and nodes[i - 3].kind == "ident"
+                and nodes[i - 3].val == "macro_rules"
+            ):
+                # Thân `macro_rules!` — `_check_macro_body` đã quét đệ quy; bỏ qua để tránh
+                # báo trùng khi thân chứa lời gọi macro có `include!`/`#[path]`/`mod`.
+                continue
+            else:
+                _scan_macro_calls(n.children, relp, r)
 
 
 def scan_macro_bodies(root: Path, r: Report) -> None:
@@ -1692,7 +1764,7 @@ def scan_macro_bodies(root: Path, r: Report) -> None:
        cũ) với thân `$m.wake($t)`; lời gọi `vifast_abi::wake_call!(m, t)` **không** chứa token
        `wake` nên lọt. Token `wake` (không phải `wake_from`/`wake_step`/`wake_addr`) ⇒ ĐỎ,
        trừ `MACRO_WAKE_ALLOW` có lý do.
-    2. **`include!`/`#[path]`/`cfg_attr(path)`/`mod`/`$…:tt`** trong thân ⇒ `_check_macro_body`
+    2. **`include!`/`#[path]`/`cfg_attr(path)`/`mod`/`$…:<frag>`** trong thân ⇒ `_check_macro_body`
        (fail-closed). Reviewer L25 dựng được hai đường lọt thật: `macro_rules!` định nghĩa ở
        thư mục A (decoy sạch) nhưng **gọi** ở thư mục B; rustc giải `include!`/`#[path]` trong
        thân macro theo **tệp gọi** (đã kiểm bằng `rustc`), còn `resolve_include_targets` giải
@@ -1734,6 +1806,14 @@ def scan_macro_bodies(root: Path, r: Report) -> None:
                 _check_macro_body(relp, name, body, r)
 
             _walk_items(tree, relp, p.parent, on_macro=on_macro, errors=[])
+
+            # **KT-202** — quét **đối số lời gọi macro** ở **mọi** tầng nhóm: `include!`/
+            # `#[path]`/`mod` trong đối số không bao giờ được `resolve_include_targets` thấy
+            # (nhóm sau `!` bị bỏ qua). Reviewer L40: `macro_rules! pass { ($i:item) => { $i }; }
+            # pass!(include! {"…"});` ⇒ `cargo check` biên dịch được, checker **xanh** cả hai
+            # chế độ. Dạng lồng trong `( … )` cũng lọt nếu chỉ sửa `_walk_items` (đã đo) ⇒ quét
+            # **toàn cây token** bằng `_scan_macro_calls`.
+            _scan_macro_calls(tree, relp, r)
 
 
 # ------------------------------------------------------------------ KT-171: B10 scope + macro
@@ -2874,7 +2954,11 @@ def selftest() -> int:
     hợp lệ + năm đầu vào hỏng `E_LEX_*`) +
     **10 ca KT-181** (D2-164: thân macro ở `init/`, `vifast-plat-user/`, `tests/` của kernel/sim
     được kiểm token `wake` — bốn ca ĐỎ + bốn đối chứng `wake_from` **cùng thư mục** + một đối
-    chứng nhiễu chuỗi + một ca ngoài phạm vi `v2/tools`). Tổng **128** ca.
+    chứng nhiễu chuỗi + một ca ngoài phạm vi `v2/tools`) +
+    **16 ca KT-202** (reviewer L40: `include!`/`#[path]`/`mod` trong **đối số lời gọi macro** và
+    `$…:<frag>` passthrough — repro `:item` + `include!` ở **cả hai** chế độ, `:item`→`:tt`,
+    `include!` trần, `:item`/`:stmt`/`:block`/`:meta`, `#[path]`/`mod` trong lời gọi, biến thể
+    lồng trong `( … )`, bốn đối chứng dương + một ca `:expr` xanh có lý do). Tổng **144** ca.
     """
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt151-selftest-"))
@@ -4863,6 +4947,117 @@ def selftest() -> int:
             "v2/tools macro `wake` (ngoài phạm vi, lý do ở hợp đồng)",
             "v2/tools/vifast-agentctl/src/lib.rs",
             "$m.wake($t)",
+            False,
+        )
+
+        # --- (h) **KT-202** (reviewer L40) — hai đường lọt **sống**:
+        #   (1) `include!`/`#[path]`/`mod` nằm trong **đối số lời gọi macro** (nhóm sau `!`) —
+        #       `_walk_items` cũ bỏ **mù** nhóm đó nên `resolve_include_targets` không bao giờ
+        #       thấy; (2) `$…:<frag>` passthrough — `_check_macro_body` cũ chỉ từ chối `:tt`.
+        # Repro: `macro_rules! pass { ($i:item) => { $i }; } pass!(include! {"…"});` —
+        # `cargo check` RC=0, checker `errors=0` **cả hai** chế độ. Mỗi ca ĐỎ kèm đối chứng
+        # dương (lời gọi macro không include/path/mod ⇒ xanh).
+        def _kt202_case(name: str, src: str, expect_red: bool, strict: bool = True) -> None:
+            d = tmp / ("kt202-" + name)
+            _fixture_v2(d)
+            _write(d / "v2/kernel/vifast-core/src/kt202_evil.rs", src)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            got = not rep.ok
+            cases.append(
+                (
+                    f"KT-202 {name} ⇒ {'đỏ' if expect_red else 'xanh'}",
+                    got == expect_red,
+                    "; ".join(rep.errors),
+                )
+            )
+
+        _kt202_case(
+            "repro `:item` + `include!` trong lời gọi (chế độ thường)",
+            'macro_rules! pass { ($i:item) => { $i }; }\n'
+            'pass!(include! {"../../../lib/evil.rs"});\n',
+            True,
+            strict=False,
+        )
+        _kt202_case(
+            "repro `:item` + `include!` trong lời gọi (--strict)",
+            'macro_rules! pass { ($i:item) => { $i }; }\n'
+            'pass!(include! {"../../../lib/evil.rs"});\n',
+            True,
+            strict=True,
+        )
+        _kt202_case(
+            "`:item` → `:tt` vẫn đỏ (không hồi quy)",
+            'macro_rules! pass { ($i:tt) => { $i }; }\n'
+            'pass!(include! {"../../../lib/evil.rs"});\n',
+            True,
+        )
+        _kt202_case(
+            "`include!` trần (không macro) vẫn đỏ",
+            'include! {"../../../lib/evil.rs"};\n',
+            True,
+        )
+        _kt202_case(
+            "`:item` passthrough trong thân (không lời gọi)",
+            "macro_rules! pass { ($i:item) => { $i }; }\n",
+            True,
+        )
+        _kt202_case(
+            "`include!` trong lời gọi macro (thân không passthrough)",
+            "macro_rules! pass { () => {}; }\n"
+            'pass!(include! {"../../../lib/evil.rs"});\n',
+            True,
+        )
+        _kt202_case(
+            "`#[path]` trong lời gọi macro",
+            "macro_rules! pass { () => {}; }\n"
+            'pass!(#[path = "evil.rs"] mod evil;);\n',
+            True,
+        )
+        _kt202_case(
+            "`mod` trong lời gọi macro",
+            "macro_rules! pass { () => {}; }\npass!(mod evil;);\n",
+            True,
+        )
+        _kt202_case(
+            "`:stmt` passthrough",
+            "macro_rules! pass { ($s:stmt) => { $s }; }\n",
+            True,
+        )
+        _kt202_case(
+            "`:block` passthrough",
+            "macro_rules! pass { ($b:block) => { $b }; }\n",
+            True,
+        )
+        _kt202_case(
+            "`:meta` passthrough",
+            "macro_rules! pass { ($m:meta) => { $m }; }\n",
+            True,
+        )
+        _kt202_case(
+            "`:expr` passthrough ⇒ xanh (cây thật `bail` dùng `:expr`; lý do ở hợp đồng §4)",
+            "macro_rules! pass { ($e:expr) => { $e }; }\n",
+            False,
+        )
+        _kt202_case(
+            "đối chứng dương: `assert_eq!`/`vec!`/`format!`",
+            'fn f() { assert_eq!(1, 1); let _ = vec![1, 2]; let _ = format!("x"); }\n',
+            False,
+        )
+        _kt202_case(
+            "đối chứng dương: `#[cfg(test)]` trong lời gọi macro",
+            "macro_rules! pass { () => {}; }\npass!(#[cfg(test)] fn f() {});\n",
+            False,
+        )
+        _kt202_case(
+            "biến thể lồng trong `( … )` (chỉ sửa `_walk_items` sẽ bỏ sót)",
+            "macro_rules! pass { ($e:expr) => { $e }; }\n"
+            'fn f() { let _ = (pass!(include! {"../../../lib/evil.rs"})); }\n',
+            True,
+        )
+        _kt202_case(
+            "đối chứng dương: lời gọi macro lồng trong `( … )` không include/path/mod",
+            "macro_rules! pass { ($e:expr) => { $e }; }\n"
+            "fn f() { let _ = (pass!(1 + 1)); }\n",
             False,
         )
 
