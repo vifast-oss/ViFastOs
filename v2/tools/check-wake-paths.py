@@ -755,8 +755,9 @@ def resolve_include_targets(
         except OSError:
             continue
         # Rẻ: đa số tệp không có `include!`/`#[path]` — khỏi khử nhiễu cả tệp.
-        # **KT-187/B1**: `cfg_attr(…, path = …)` không chứa `#[path` liền — phải mở cửa sớm.
-        if "include!" not in text and "#[path" not in text and "cfg_attr" not in text:
+        # **KT-187/B1** + **KT-189**: `cfg_attr(…, path = …)` không chứa `#[path` liền, và
+        # `include ! (…)`/`#[ path = … ]`/`#[\npath = …]` không khớp chuỗi thô — dùng regex.
+        if not re.search(r"include\s*!|#\s*\[\s*path|cfg_attr", text):
             continue
         code = strip_rust_noise(text)
         code_keep = strip_rust_noise(text, keep_strings=True)
@@ -852,6 +853,60 @@ RE_MACRO_RULES = re.compile(r"\bmacro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)")
 MACRO_WAKE_ALLOW: Dict[Tuple[str, str], str] = {}
 
 
+def _macro_bodies(code: str):
+    """**KT-189/B2c+B3a** (reviewer L28): thân `macro_rules!` có **ba** dạng ngoặc
+    (`{ … }`, `( … )`, `[ … ]`). Bản trước chỉ nhận `{` và dừng ở `;` ⇒
+    `macro_rules! evil ( () => ( #[path = "…"] mod x; ); );` **bị bỏ qua hoàn toàn**.
+    Trả `(tên, offset_đầu_thân, offset_cuối_thân)`.
+    """
+    for m in RE_MACRO_RULES.finditer(code):
+        name = m.group(1)
+        j = m.end()
+        while j < len(code) and code[j] not in "([{;":
+            j += 1
+        if j >= len(code) or code[j] == ";":
+            continue
+        opener = code[j]
+        closer = {"(": ")", "[": "]", "{": "}"}[opener]
+        depth = 0
+        end = None
+        for k in range(j, len(code)):
+            if code[k] == opener:
+                depth += 1
+            elif code[k] == closer:
+                depth -= 1
+                if depth == 0:
+                    end = k
+                    break
+        if end is None:
+            end = len(code) - 1
+        yield name, j, end
+
+
+def _check_macro_body(relp: str, name: str, body: str, code: str, j: int, r: Report) -> None:
+    """**KT-189/B2d+T3c** (reviewer L28): thân macro chứa `cfg_attr(…, path = …)` hoặc
+    `mod NAME;` ⇒ fail-closed.
+
+    - `cfg_attr(…, path = …)` **không** khớp `#[path` nên bản trước vô hình (B2d).
+    - `mod NAME;` trong thân macro: `_mods_of` không thấy ⇒ đồ thị module nói tệp đích là
+      test-only, nhưng bản sản phẩm vẫn biên dịch nó (T3c). Không phân giải tĩnh an toàn ⇒ ĐỎ.
+    """
+    for cm in re.finditer(r"cfg_attr\s*\([^;{}]*?\bpath\s*=", body):
+        lineno = code.count("\n", 0, j + cm.start()) + 1
+        r.err(
+            "E_STRICT_MACRO_INCLUDE",
+            f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `cfg_attr(…, path = …)` — "
+            f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-189 B2d)",
+        )
+    for mm in re.finditer(r"\bmod\s+[A-Za-z_][A-Za-z0-9_]*\s*;", body):
+        lineno = code.count("\n", 0, j + mm.start()) + 1
+        r.err(
+            "E_STRICT_MACRO_MOD",
+            f"  {relp}:{lineno}: thân `macro_rules! {name}` khai `mod …;` — đồ thị module "
+            f"không thấy module này nên không xác định được test-only (fail-closed, KT-189 T3c)",
+        )
+
+
 def scan_lib_macros(root: Path, r: Report) -> None:
     """KT-171 (B4): quét thân `macro_rules!` trong `v2/lib/**` tìm token `wake`.
 
@@ -880,25 +935,7 @@ def scan_lib_macros(root: Path, r: Report) -> None:
         except OSError:
             continue
         code = strip_rust_noise(text)
-        for m in RE_MACRO_RULES.finditer(code):
-            name = m.group(1)
-            j = m.end()
-            while j < len(code) and code[j] not in "{;":
-                j += 1
-            if j >= len(code) or code[j] != "{":
-                continue
-            depth = 0
-            end = None
-            for k in range(j, len(code)):
-                if code[k] == "{":
-                    depth += 1
-                elif code[k] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        end = k
-                        break
-            if end is None:
-                end = len(code) - 1
+        for name, j, end in _macro_bodies(code):
             body = code[j : end + 1]
             for wm in RE_WAKE_TOKEN.finditer(body):
                 if (relp, name) in MACRO_WAKE_ALLOW:
@@ -925,6 +962,7 @@ def scan_lib_macros(root: Path, r: Report) -> None:
                     f"  {relp}:{lineno}: thân `macro_rules! {name}` chứa `#[path]` — đường dẫn "
                     f"giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-177 H7)",
                 )
+            _check_macro_body(relp, name, body, code, j, r)
 
 
 def scan_kernel_macro_includes(root: Path, r: Report) -> None:
@@ -949,25 +987,7 @@ def scan_kernel_macro_includes(root: Path, r: Report) -> None:
             except OSError:
                 continue
             code = strip_rust_noise(text)
-            for m in RE_MACRO_RULES.finditer(code):
-                name = m.group(1)
-                j = m.end()
-                while j < len(code) and code[j] not in "{;":
-                    j += 1
-                if j >= len(code) or code[j] != "{":
-                    continue
-                depth = 0
-                end = None
-                for k in range(j, len(code)):
-                    if code[k] == "{":
-                        depth += 1
-                    elif code[k] == "}":
-                        depth -= 1
-                        if depth == 0:
-                            end = k
-                            break
-                if end is None:
-                    end = len(code) - 1
+            for name, j, end in _macro_bodies(code):
                 body = code[j : end + 1]
                 for im in re.finditer(r"\binclude\s*!\s*[\(\{\[]", body):
                     lineno = code.count("\n", 0, j + im.start()) + 1
@@ -985,6 +1005,7 @@ def scan_kernel_macro_includes(root: Path, r: Report) -> None:
                         f"đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được "
                         f"(fail-closed, KT-187 B2)",
                     )
+                _check_macro_body(relp, name, body, code, j, r)
 
 
 # ------------------------------------------------------------------ KT-171: B10 scope + macro
@@ -3257,7 +3278,72 @@ def selftest() -> int:
             )
         )
 
-        # (4bd) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
+        # (4be) **KT-189/B2c** — `macro_rules!` dùng **ngoặc tròn** cho thân:
+        # `macro_rules! evil ( () => ( #[path = "…"] mod x; ); );`. Bản trước dừng ở `;` ⇒ bỏ qua.
+        d = tmp / "v2-b2c-macro-paren"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( #[path = "evil_b.rs"] mod evil; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2c `#[path]` trong macro ngoặc tròn ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bf) **KT-189/B3a** — `include!` trong macro ngoặc tròn ⇒ ĐỎ.
+        d = tmp / "v2-b3a-macro-paren-inc"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( include!("evil_b.rs"); ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B3a `include!` trong macro ngoặc tròn ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bg) **KT-189/B2d** — `cfg_attr(…, path = …)` trong thân macro ⇒ ĐỎ.
+        d = tmp / "v2-b2d-macro-cfgattr"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( #[cfg_attr(not(test), path = "evil_b.rs")] mod x; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "B2d `cfg_attr(path)` trong thân macro ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bh) **KT-189/T3c** — `mod NAME;` trong thân macro ⇒ ĐỎ (`E_STRICT_MACRO_MOD`).
+        d = tmp / "v2-t3c-macro-mod"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/core_ipc.rs",
+            'macro_rules! evil ( () => ( mod evil3; ); );\n',
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "T3c `mod …;` trong thân macro ⇒ đỏ (KT-189)",
+                (not rep.ok) and any("E_STRICT_MACRO_MOD" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4bi) Đối chứng dương cho D2-161: `#[path]` **literal**, trỏ **trong** cây, đích chỉ
         # `wake_from(` ⇒ XANH ở chế độ thường (luật không phải "có `#[path]` là đỏ").
         d = tmp / "v2-d2161-path-ok"
         _fixture_v2(d)
