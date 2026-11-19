@@ -122,8 +122,27 @@ tt(m, t, TcbState::Ready);
 
 `cargo check` **RC=0**; lớp 1 thường **RC=0**; lớp 1 `--strict` **RC=0**; lớp 2 **RC=0** (tệp
 **có** trong `.d`). Đối chứng âm cùng tệp cùng vị trí, đổi thành `m.transition_tcb(t,
-TcbState::Ready)` ⇒ **ĐỎ cả ba**. Gốc: `_transition_calls` chỉ khớp ident `transition_tcb`
-**theo sau bởi nhóm `(`** — lấy fn-pointer rồi gọi qua biến thì không khớp.
+TcbState::Ready)` ⇒ **ĐỎ cả ba**.
+
+Đo đủ **8 biến thể**, **7 SỐNG**:
+
+| Dạng | Mã | L1 | L1s | L2 |
+|---|---|---|---|---|
+| 1 | `let tt = Machine::transition_tcb; tt(m,t,Ready)` | XANH | XANH | XANH |
+| 2 | fn-pointer có kiểu tường minh | XANH | XANH | XANH |
+| 3 | truyền qua `fn call(f: fn(...), ...)` | XANH | XANH | XANH |
+| 4 | closure `\|m,t\| m.transition_tcb(t,Ready)` | **ĐỎ** | **ĐỎ** | **ĐỎ** |
+| 5a | generic `F: Fn(&mut Machine, ObjId, TcbState)` | XANH | XANH | XANH |
+| 5b | trait object `&dyn Fn(...)` | XANH | XANH | XANH |
+| 6 | `use crate::Machine as M;` + `M::transition_tcb(m,t,Ready)` | XANH | XANH | XANH |
+| 7 | `let f = <Machine>::transition_tcb; f(m,t,Ready)` | XANH | XANH | XANH |
+
+**Hai lỗi gốc độc lập**:
+1. Dạng 1/2/3/5/7: `_transition_calls` chỉ khớp ident `transition_tcb` **theo sau bởi `(`**;
+   dùng làm **giá trị** ⇒ vô hình cả ba lớp.
+2. Dạng 6 (khác #15): văn bản **có** `transition_tcb(`, nhưng checker đọc `args[1]` = `t`
+   (ObjId) làm trạng thái — giả định **method syntax** ⇒ dạng `var` ⇒ XANH. Đây là lỗi
+   **đọc sai đối số** khi gọi **UFCS** (`M::transition_tcb(m, t, Ready)`).
 
 **Và đường lọt #18 — crate thành viên workspace NGOÀI ba gốc quét, lọt CẢ HAI lớp:**
 
