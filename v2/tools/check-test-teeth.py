@@ -21,8 +21,9 @@ Nguyên tắc: **chỉ bắt lớp chắc chắn**, không bắt heuristic mờ.
 (c) **`#[test]` không có răng** — thân hàm không có token khẳng định nào
     (`assert!`, `assert_eq!`, `assert_ne!`, `assert_matches!`, `debug_assert*!`,
     `expect_err`, `unwrap_err`, `panic!` **có điều kiện**) **và** không gọi hàm trợ giúp
-    đã biết. "Hàm trợ giúp đã biết" = hàm cùng tệp mà **transitive** dẫn tới một token
-    khẳng định (tự dò, không cần khai báo), hoặc hàm **ở tệp khác trong phạm vi test** có
+    đã biết. "Hàm trợ giúp đã biết" = hàm **cùng tệp trong phạm vi test** mà
+    **transitive** dẫn tới một token khẳng định (tự dò, không cần khai báo; KT-182: hàm
+    **sản phẩm** cùng tệp **không** tính), hoặc hàm **ở tệp khác trong phạm vi test** có
     trong **bản đồ toàn cây** (KT-170: dựng từ chính cây nguồn, phân giải theo tên và
     `use … as …`; hàm **sản phẩm** không tính — xem `build_global_helpers`), hoặc tên có
     trong `HELPER_ALLOW` (đường **dự phòng** tường minh, dùng khi tên mơ hồ).
@@ -48,6 +49,11 @@ Fail-closed
 - Bản đồ trợ giúp toàn cây **chỉ tính hàm trong phạm vi test** (tệp dưới `tests/` hoặc
   khối `#[cfg(test)]`); hàm **sản phẩm** có `debug_assert!` **không** tính — nhận chúng là
   nới máy kiểm (đo trước khi siết: 277/285 test gọi tên chéo tệp trỏ vào hàm sản phẩm).
+- Bản đồ trợ giúp **cùng tệp** cũng **chỉ tính hàm trong phạm vi test** (KT-182): hàm
+  **sản phẩm** cùng tệp (ngoài `#[cfg(test)]`) **không** tính. Đo trước khi siết:
+  **0** test chỉ có răng nhờ hàm sản phẩm cùng tệp (155 test gọi hàm sản phẩm cùng tệp
+  nhưng **tất cả** đều có token khẳng định riêng) ⇒ siết **không** làm đỏ test nào,
+  **0** mục allowlist. Log: `v2/agent/JOURNAL/kt182-logs/`.
 - Bản đồ chỉ tính một tên khi **mọi** định nghĩa cùng tên trong phạm vi test đều có răng
   (bắc cầu). Tên **mơ hồ** (có định nghĩa không răng) ⇒ không tính — fail-closed; ca thật
   thì khai `HELPER_ALLOW` kèm lý do, không nới luật.
@@ -955,6 +961,7 @@ def scan(
     n_tests = 0
     n_files = 0
     n_global_used = 0
+    n_local_used = 0
 
     for pf in parsed:
         p = pf.path
@@ -979,9 +986,16 @@ def scan(
         top = top_level_fns(fns)
 
         # Bản đồ trợ giúp: hàm **không phải** `#[test]` mà thân có token khẳng định.
+        # **KT-182**: chỉ hàm trong **phạm vi test** — đồng bộ với bản đồ toàn cây (KT-170).
+        # Hàm **sản phẩm** cùng tệp (ngoài `#[cfg(test)]`) **không** tính: một test gọi
+        # `super::fsck()` mà không assert sẽ xanh nhờ `debug_assert!` của sản phẩm. Đo trên
+        # cây 2026-11-19: **0** test dựa vào đường này (155 test gọi hàm sản phẩm cùng tệp
+        # nhưng **tất cả** đều có token khẳng định riêng) ⇒ siết không làm đỏ test nào.
         helper_teeth: Dict[str, bool] = {}
         for f in fns:
             if f.is_test:
+                continue
+            if not (is_whole or in_ranges(f.start, ranges)):
                 continue
             body = m[f.body_start : f.body_end]
             helper_teeth[f.name] = any(t in body for t in ASSERT_TOKENS) or (
@@ -990,6 +1004,8 @@ def scan(
         # Bao đóng bắc cầu: trợ giúp gọi trợ giúp.
         calls_of: Dict[str, Set[str]] = {}
         for f in fns:
+            if not (is_whole or in_ranges(f.start, ranges)):
+                continue
             body = m[f.body_start : f.body_end]
             # **KT-163b** (review L6): phải nhận cả turbofish `tro_giup::<T>(…)` — nếu không,
             # test gọi trợ giúp generic bị báo oan `E_NO_ASSERT` (đã dựng lại trên
@@ -1078,7 +1094,10 @@ def scan(
                 if any(c in helper_allow for c in called):
                     has_token = True
                 elif any(c in helper_teeth and teeth_of(c) for c in called):
+                    # Trợ giúp **cùng tệp trong phạm vi test** (KT-182: hàm sản phẩm cùng
+                    # tệp không nằm trong bản đồ).
                     has_token = True
+                    n_local_used += 1
                 elif any(c in g_teeth for c in called):
                     # Trợ giúp ở **tệp khác** (bản đồ toàn cây) — không cần `HELPER_ALLOW`.
                     has_token = True
@@ -1174,6 +1193,10 @@ def scan(
         f"{n_global_used} test dùng đường này"
     )
     rep.info.append(
+        f"bản đồ trợ giúp cùng tệp (chỉ hàm trong phạm vi test): {n_local_used} test dùng "
+        "đường này"
+    )
+    rep.info.append(
         f"allowlist `#[test]` không khẳng định: {len(allow_no_assert)} mục, "
         f"khớp {len(used_no_assert)}"
     )
@@ -1210,7 +1233,7 @@ def _fixture(root: Path, files: Dict[str, str]) -> None:
 
 
 def selftest() -> int:
-    """Ba mươi ba ca: mỗi ca một dòng `ok`/`not ok`."""
+    """Ba mươi sáu ca: mỗi ca một dòng `ok`/`not ok`."""
     cases: List[Tuple[str, bool, str]] = []
     tmp = Path(tempfile.mkdtemp(prefix="kt163-selftest-"))
     try:
@@ -1870,6 +1893,76 @@ def selftest() -> int:
                 "; ".join(rep.errors),
             )
         )
+
+        # (34) **KT-182**: trợ giúp **cùng tệp** nhưng là hàm **sản phẩm** (ngoài
+        # `#[cfg(test)]`) có `debug_assert!` ⇒ **KHÔNG** tính là răng. Trước KT-182 ca này
+        # **xanh oan**: bản đồ cùng tệp nhận mọi hàm không-phải-`#[test]` trong tệp.
+        d = tmp / "helper-same-file-production"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn kiem_san_pham(x: u32) -> u32 {\n    debug_assert!(x > 0);\n"
+                    "    x + 1\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n    use super::*;\n\n"
+                    "    #[test]\n    fn chi_goi_san_pham_cung_tep() {\n"
+                    "        let _x = kiem_san_pham(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp **cùng tệp** là hàm sản phẩm (`debug_assert!`) ⇒ KHÔNG tính là răng",
+                (not rep.ok) and any("E_NO_ASSERT" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (35) đối chứng dương cho (34): trợ giúp **cùng tệp** nằm trong `#[cfg(test)]`
+        # **vẫn** tính — siết không quá tay.
+        d = tmp / "helper-same-file-cfg-test"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/src/lib.rs": (
+                    "pub fn f() -> u32 {\n    1\n}\n\n"
+                    "#[cfg(test)]\nmod tests {\n"
+                    "    fn kiem_cung_tep(x: u32) {\n        assert_eq!(x, 3);\n    }\n\n"
+                    "    #[test]\n    fn dung_tro_giup_cung_tep() {\n"
+                    "        kiem_cung_tep(3);\n    }\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp **cùng tệp** trong `#[cfg(test)]` ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (36) đối chứng dương cho tệp dưới `tests/`: cả tệp là phạm vi test, trợ giúp cùng
+        # tệp **vẫn** tính (chứng minh `is_whole` không bị siết quá tay).
+        d = tmp / "helper-same-file-tests"
+        _fixture(
+            d,
+            {
+                "v2/lib/a/tests/t.rs": (
+                    "fn kiem_cung_tep(x: u32) {\n    assert_eq!(x, 3);\n}\n\n"
+                    "#[test]\nfn dung_tro_giup_cung_tep() {\n    kiem_cung_tep(3);\n}\n"
+                ),
+            },
+        )
+        rep = scan(d, allow_let={}, helper_allow={})
+        cases.append(
+            (
+                "trợ giúp **cùng tệp** trong `tests/` ⇒ vẫn tính là răng",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1893,7 +1986,7 @@ def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=None, help="gốc cây nguồn (mặc định: repo chứa tệp này)")
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy 33 ca tự kiểm")
+    ap.add_argument("--selftest", action="store_true", help="chạy 36 ca tự kiểm")
     args = ap.parse_args(argv)
 
     if args.selftest:

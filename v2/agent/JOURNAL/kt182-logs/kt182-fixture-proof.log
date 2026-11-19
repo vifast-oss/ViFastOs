@@ -1,0 +1,12 @@
+# checker TRƯỚC: 8f5a1189:v2/tools/check-test-teeth.py
+# checker SAU:   /private/tmp/night3-L38-kt182/v2/tools/check-test-teeth.py
+
+fixture                          TRƯỚC                        SAU                          kỳ vọng
+--------------------------------------------------------------------------------------------------------------
+A-same-file-product-debug        XANH                         ĐỎ (1 lỗi)                   TRƯỚC xanh oan → SAU đỏ
+    SAU: E_NO_ASSERT v2/lib/a/src/lib.rs:11: `#[test] fn chi_goi_san_pham_cung_tep` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả
+B-same-file-product-assert       XANH                         ĐỎ (1 lỗi)                   TRƯỚC xanh oan → SAU đỏ
+    SAU: E_NO_ASSERT v2/lib/a/src/lib.rs:11: `#[test] fn chi_goi_san_pham_cung_tep` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả
+C-same-file-test-helper          XANH                         XANH                         TRƯỚC xanh → SAU xanh
+
+# kết luận: ĐÚNG kỳ vọng
