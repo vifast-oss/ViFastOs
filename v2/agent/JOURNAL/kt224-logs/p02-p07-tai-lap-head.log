@@ -1,0 +1,21 @@
+cargo check -p vifast-core RC= 0
+
+--- check-wake-paths (thường): RC=1 errors=6
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p06.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p05.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p04.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p03.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p02.rs:5: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/kt214_p07_evil.rs:6: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+
+--- check-wake-paths --strict: RC=1 errors=6
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p06.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p05.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p04.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p03.rs:4: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt214_p02.rs:5: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt214_evil_expr.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/kt214_p07_evil.rs:6: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+
+--- check-wake-depinfo --unit kernel: RC=1 errors=2
+E E_DEPINFO_WAKE   v2/kernel/vifast-core/kt214_p07_evil.rs:6: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+E E_DEPINFO_WAKE   v2/lib/kt214_evil_expr.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
