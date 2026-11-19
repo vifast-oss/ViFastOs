@@ -133,11 +133,30 @@ relpath() {
 }
 
 rules() {
-    local root found=0 dirs=() d f n line path
+    local root found=0
     root="$(cd "$1" 2>/dev/null && pwd)" || {
         echo "rules: không có thư mục $1" >&2
         return 1
     }
+    # **KT-221 (T-INFRA, 2026-11-20)** — bash 3.2 (macOS) thỉnh thoảng **SIGSEGV/SIGTRAP**
+    # khi `rules` chạy **sau `clippy`** trong cùng một lượt `v2 check` (đo được 1 lần
+    # `Segmentation fault: 11` ở `gate --fast`; chạy rời 10/10 lượt xanh). Nghi phạm:
+    # **process substitution** `< <(find …)` + vòng `while read` **lồng nhau** — mẫu đã làm
+    # hỏng heap bash 3.2 ở KT-155/KT-207. Nay ghi kết quả `find`/`grep` ra **tệp tạm** rồi
+    # đọc từ tệp: **không** còn process substitution. Cùng output, cùng mã thoát.
+    local TMPD
+    TMPD="$(mktemp -d "${TMPDIR:-/tmp}/v2rules.XXXXXX")" || {
+        echo "rules: không tạo được thư mục tạm" >&2
+        return 1
+    }
+    _rules_impl "$root" "$TMPD"
+    found=$?
+    rm -rf "$TMPD"
+    return "$found"
+}
+
+_rules_impl() {
+    local root="$1" TMPD="$2" found=0 dirs=() d f n line path
     # Fixture cố ý vi phạm nằm ở v2/test/fixtures — chỉ loại khi quét chính cây v2.
     local EXCL=(-not -path '/__khong_ton_tai__/*')
     if [ "$root" = "$V2_ROOT" ]; then
@@ -157,27 +176,30 @@ rules() {
     # R1: tệp trong kernel/ và lib/ không quá 1.500 dòng [TK]
     for d in kernel lib; do
         [ -d "$root/$d" ] || continue
+        find "$root/$d" -type f \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
+            -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r1"
         while IFS= read -r -d '' f; do
             n=$(wc -l <"$f" | tr -d ' ')
             if [ "$n" -gt 1500 ]; then
                 echo "R1 $(relpath "$f" "$root"): $n dòng > 1500"
                 found=1
             fi
-        done < <(find "$root/$d" -type f \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
-            -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
+        done <"$TMPD/r1"
     done
 
     # R2: cấm cfg(target_arch) trong kernel/vifast-core và lib/ (thiết kế §8)
     for d in "$root/kernel/vifast-core" "$root/lib"; do
         [ -d "$d" ] || continue
+        grep -rn --include='*.rs' 'cfg(target_arch' "$d" 2>/dev/null >"$TMPD/r2"
         while IFS= read -r line; do
             echo "R2 ${line#"$root"/}"
             found=1
-        done < <(grep -rn --include='*.rs' 'cfg(target_arch' "$d" 2>/dev/null)
+        done <"$TMPD/r2"
     done
 
     # R3: SPDX theo loại tệp (QD §9.3)
     for d in "${dirs[@]}"; do
+        find "$d" -type f -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r3"
         while IFS= read -r -d '' f; do
             case "$f" in
                 *.rs | *.s | *.asm | *.ld | *.toml | *.vis | *.vish | *.vidl | *.sh | *.py)
@@ -193,35 +215,39 @@ rules() {
                     fi
                     ;;
             esac
-        done < <(find "$d" -type f -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
+        done <"$TMPD/r3"
     done
 
     # R4: cấm path-dependency sang crates/ — v1 đã đóng băng (D2-26)
     for d in "${dirs[@]}"; do
+        find "$d" -name Cargo.toml -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r4"
         while IFS= read -r -d '' f; do
             n=0
+            grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*crates/' "$f" 2>/dev/null >"$TMPD/r4in"
             while IFS= read -r line; do
                 n=$((n + 1))
                 echo "R4 $(relpath "$f" "$root"):$n: path-dependency sang crates/ ($line)"
                 found=1
-            done < <(grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*crates/' "$f" 2>/dev/null)
-        done < <(find "$d" -name Cargo.toml -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
+            done <"$TMPD/r4in"
+        done <"$TMPD/r4"
     done
 
     # R5: unsafe chỉ trong danh sách đóng (D2-17): vifast-sync, vifast-objmem,
     #     kernel/vifast-plat-*, boot/
     for d in "${dirs[@]}"; do
+        find "$d" -name '*.rs' -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r5"
         while IFS= read -r -d '' f; do
             path="$(relpath "$f" "$root")"
             case "$f" in
                 "$root"/boot/* | "$root"/kernel/vifast-plat-* | *vifast-sync* | *vifast-objmem*) continue ;;
             esac
+            grep -nE '\bunsafe[[:space:]]*(fn|impl|trait|extern|\{)' "$f" 2>/dev/null |
+                sed "s|^|$path:|" >"$TMPD/r5in"
             while IFS= read -r line; do
                 echo "R5 $line"
                 found=1
-            done < <(grep -nE '\bunsafe[[:space:]]*(fn|impl|trait|extern|\{)' "$f" 2>/dev/null |
-                sed "s|^|$path:|")
-        done < <(find "$d" -name '*.rs' -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null)
+            done <"$TMPD/r5in"
+        done <"$TMPD/r5"
     done
 
     return "$found"
