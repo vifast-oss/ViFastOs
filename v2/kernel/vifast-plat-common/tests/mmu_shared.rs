@@ -11,7 +11,8 @@
 //! dạng thật:
 //!
 //! - [`Aarch64`] — 4 mức, 4 KiB, 39-bit VA, 48-bit PA (`vifast-plat-aarch64`);
-//! - [`Sv39`] — 3 mức, 4 KiB, 39-bit VA, 56-bit PA (`vifast-plat-common`).
+//! - [`Sv39`] — 3 mức, 4 KiB, 39-bit VA, 56-bit PA (`vifast-plat-common`);
+//! - [`X86_64`] — 4 mức, 4 KiB, 39-bit VA, 48-bit PA (`vifast-plat-x86_64`, KT-186).
 //!
 //! Cùng thân test ⇒ cùng map/unmap/translate/quyền/đếm frame; chỉ khác `F::LEVELS` (số bảng
 //! trung gian), đúng bản chất hình học. Nếu ai định nghĩa lại trait ở một crate (hai bản trùng)
@@ -23,6 +24,7 @@
 use vifast_plat_aarch64::format::Aarch64;
 use vifast_plat_aarch64::mmu::{PageTable, TableMemory};
 use vifast_plat_common::mmu::{PageTableBuilder, Sv39};
+use vifast_plat_x86_64::format::X86_64;
 use vifast_pte::{MapError, Mmu, PageTableFormat, Perms};
 
 /// Số entry một bảng trang của test (4 KiB / 8 B).
@@ -244,6 +246,13 @@ fn dinh_dang_aarch64() {
 #[test]
 fn dinh_dang_sv39() {
     kiem_tung_dinh_dang::<Sv39>();
+}
+
+/// KT-186 (D2-163): x86_64 chạy **cùng** thân test generic — bằng chứng ba định dạng dùng chung
+/// một walker (`vifast_pte::PageTable`) và một trait `PageTableFormat`.
+#[test]
+fn dinh_dang_x86_64() {
+    kiem_tung_dinh_dang::<X86_64>();
 }
 
 #[test]

@@ -23,3 +23,6 @@ vifast-alloc = { path = "../../lib/vifast-alloc" }
 # (crate này) và AArch64 (crate kia) — cần định dạng AArch64 để chứng minh trait dùng chung thật.
 # Chỉ dev-dependency: ảnh sản phẩm và L0 build thường **không** kéo crate aarch64.
 vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
+# KT-186 (D2-163): thân test generic chạy thêm cho **x86_64** (K5' bước M2) — cùng một thân
+# `kiem_tung_dinh_dang<F: PageTableFormat>` cho ba định dạng. Chỉ dev-dependency.
+vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }
