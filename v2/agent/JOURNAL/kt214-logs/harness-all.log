@@ -1,0 +1,79 @@
+
+===== p01: macro_rules! passthrough `:item` + include! trong đối số lời gọi (L40)
+  cargo RC=0
+  static normal: RC=1 errors=2 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_TT']
+  static strict: RC=1 errors=2 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_TT']
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p02: include! vị trí biểu thức trong `( … )` (L44)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p03: include! vị trí biểu thức trong `[ … ]` (L44)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p04: `(0u8, include!{…})` — tuple (L44)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p05: `(|| include!{…})` — thân closure trong `( … )` (L44)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p06: `Some(include!{…})` — đối số hàm/biến thể (L44)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p07: #[path] trong inline module của tệp non-mod-rs (L47)
+  cargo RC=0
+  static normal: RC=0 errors=0 []
+  static strict: RC=0 errors=0 []
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p08: #[path] trỏ ra ngoài `src/` qua `..` (L47)
+  cargo RC=0
+  static normal: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  static strict: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p09: include! trong `v2/lib` trỏ sang `v2/kernel` (L40/L45)
+  cargo RC=0
+  static normal: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  static strict: RC=1 errors=1 ['E_STRICT_WAKE_INCLUDE']
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p10: macro_rules! `:expr` + include! (đường còn hở có lý do) (L44)
+  cargo RC=0
+  static normal: RC=1 errors=1 ['E_STRICT_MACRO_INCLUDE']
+  static strict: RC=1 errors=1 ['E_STRICT_MACRO_INCLUDE']
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== p11: `mod` khai trong lời gọi macro (`cfg_if!`) (L40)
+  cargo RC=0
+  static normal: RC=1 errors=4 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_MOD', 'E_STRICT_MACRO_TT']
+  static strict: RC=1 errors=4 ['E_STRICT_MACRO_INCLUDE', 'E_STRICT_MACRO_MOD', 'E_STRICT_MACRO_TT']
+  depinfo: RC=1 errors=1 ['E_DEPINFO_WAKE'] hidden=1
+
+===== BẢNG =====
+p01 cargo=  0 static= 2/ 2 depinfo= 1 hidden=1
+p02 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p03 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p04 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p05 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p06 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p07 cargo=  0 static= 0/ 0 depinfo= 1 hidden=1
+p08 cargo=  0 static= 1/ 1 depinfo= 1 hidden=1
+p09 cargo=  0 static= 1/ 1 depinfo= 1 hidden=1
+p10 cargo=  0 static= 1/ 1 depinfo= 1 hidden=1
+p11 cargo=  0 static= 4/ 4 depinfo= 1 hidden=1

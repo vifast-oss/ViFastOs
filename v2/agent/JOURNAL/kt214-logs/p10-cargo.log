@@ -1,0 +1,4 @@
+RC=0
+    Checking vifast-abi v0.1.0 (/private/tmp/night3-L48-kt214/v2/lib/vifast-abi)
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L48-kt214/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.67s
