@@ -1,0 +1,18 @@
+# B3 — include! trong thân macro_rules! (rustc giải theo tệp gọi)
+# cây: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt187-l25/compile/macro-include (bản sao v2/kernel + v2/sim + v2/lib + workspace v2)
+
+### B3 checker hiện tại (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B3 checker hiện tại --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B3 cargo fmt --all --check
+fmt rc=0
+### B3 cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.00s
+rc=0

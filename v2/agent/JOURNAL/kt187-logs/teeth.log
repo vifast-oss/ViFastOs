@@ -1,0 +1,28 @@
+PASS  4at H4 three-layer wake (current, strict): errors=1 codes=['E_STRICT_TEST_ONLY_WAKE']
+        E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_c.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  4at H4 three-layer wake (OLD 7e7e1b53, strict): errors=0 codes=[]
+PASS  4au H4b three-layer wake_from (current, strict): errors=0 codes=[]
+PASS  4au+ mutation re-added (current, strict): errors=1 codes=['E_STRICT_TEST_ONLY_WAKE']
+        E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_c.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  4av #[path]+include! wake (current, strict): errors=1 codes=['E_STRICT_TEST_ONLY_WAKE']
+        E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+FAIL  4av #[path]+include! wake (OLD 7e7e1b53, strict): errors=1 codes=['E_STRICT_TEST_ONLY_WAKE']
+        E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+PASS  4aw #[path]+include! wake_from (current, strict): errors=0 codes=[]
+PASS  4ax include!(concat!) normal (current): errors=1 codes=['E_STRICT_WAKE_INCLUDE']
+        E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+PASS  4ax include!(concat!) normal (OLD 7e7e1b53): errors=0 codes=[]
+PASS  4ax- mutation removed (literal include) (current, normal): errors=0 codes=[]
+PASS  4ay #[path] outside normal (current): errors=1 codes=['E_STRICT_WAKE_INCLUDE']
+        E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/vifast-abi/src/evil_out.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+PASS  4ay #[path] outside normal (OLD 7e7e1b53): errors=0 codes=[]
+PASS  4ay- mutation removed (in-tree literal) (current): errors=0 codes=[]
+PASS  4az #[path=concat!] normal (current): errors=1 codes=['E_STRICT_WAKE_INCLUDE']
+        E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-184 D2-161)
+PASS  4az #[path=concat!] normal (OLD 7e7e1b53): errors=0 codes=[]
+PASS  4az- mutation removed (literal path) (current, normal): errors=0 codes=[]
+PASS  4ba #[path] literal in-tree wake_from normal (current): errors=0 codes=[]
+PASS  4ba+ mutation added (path outside) (current, normal): errors=1 codes=['E_STRICT_WAKE_INCLUDE']
+        E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/vifast-abi/src/evil_out.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+
+teeth: 17/18 pass

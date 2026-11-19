@@ -1,0 +1,127 @@
+/private/tmp/night2-L25-review184/v2/agent/JOURNAL/kt187-logs/t3-bypass.sh: line 32: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt187-l25/bypass/cfgattr2/v2/kernel/vifast-core/src/core_sched/evil2.rs: No such file or directory
+### cfgattr / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### cfgattr / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### cfgattr2 / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### cfgattr2 / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### macro-inc / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### macro-inc / current --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### macro-mod / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### macro-mod / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### paste / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### paste / current --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_sched.rs:1005: `wake` là đối số của macro `paste!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### concat-idents / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### concat-idents / current --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_sched.rs:1005: `wake` là đối số của macro `concat_idents!` — macro có thể biến ident thành tên hàm (KT-171 B10) trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### path-abs / current normal
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`/tmp/l25-184/evil_abs.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### path-abs / current --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`/tmp/l25-184/evil_abs.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### path-backslash / current normal
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ tới `v2/kernel/vifast-core/src/..\\..\\evil_win.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### path-backslash / current --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ tới `v2/kernel/vifast-core/src/..\\..\\evil_win.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### buildrs / current normal
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-kbin-riscv64/build.rs:643: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### buildrs / current --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-kbin-riscv64/build.rs:643: `include!` không phải literal chuỗi — không phân giải được đích (fail-closed, KT-174 H3)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### cfgtest-include / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### cfgtest-include / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### path-missing / current normal
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ tới `v2/kernel/vifast-core/src/khong_ton_tai.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### path-missing / current --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ tới `v2/kernel/vifast-core/src/khong_ton_tai.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### path-dotdot / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### path-dotdot / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### symlink-in / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### symlink-in / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### symlink-out / current normal
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`link_out.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+rc=1
+
+### symlink-out / current --strict
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_sched.rs:1004: `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` (`link_out.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/link_out.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=2 warnings=0
+rc=1
+

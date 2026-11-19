@@ -1,0 +1,32 @@
+### inc-space / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### inc-space / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### path-space / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### path-space / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### path-newline / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### path-newline / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### cfgattr-out / current normal
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### cfgattr-out / current --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
