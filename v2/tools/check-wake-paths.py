@@ -1068,10 +1068,21 @@ def _walk_items(
                     )
                     if on_mod is not None:
                         on_mod(name_tok, pending, True, nodes[j], cur_dir, in_test)
+                    # **KT-199/F4b** (reviewer L35): inline module có `#[path = "sub"]` thì
+                    # thư mục con là `sub`, KHÔNG phải `cur_dir/NAME` (rustc dùng `#[path]`).
+                    _child_dir = cur_dir / name_tok.val
+                    for _a in pending:
+                        try:
+                            _edges, _ = attr_path_edges(_a, relp)
+                        except LexError:
+                            continue
+                        if _edges:
+                            _child_dir = (cur_dir / _edges[0][0]).resolve()
+                            break
                     _walk_items(
                         nodes[j].children,
                         relp,
-                        cur_dir / name_tok.val,
+                        _child_dir,
                         on_attr,
                         on_mod,
                         on_macro,
@@ -1466,7 +1477,35 @@ def resolve_include_targets(
                     (group.open, "`include!` không phải literal chuỗi — không phân giải được đích")
                 )
 
-        _walk_items(tree, relp, p.parent, on_attr=on_attr, on_include=on_include, errors=[])
+        inline_path_toks: set = set()
+
+        def on_mod(
+            name_tok: Tok,
+            attrs: Sequence[Attr],
+            inline: bool,
+            group: Optional[Group],
+            cur_dir: Path,
+            in_test: bool = False,
+        ) -> None:
+            if not inline:
+                return
+            for a in attrs:
+                try:
+                    edges, _ = attr_path_edges(a, relp)
+                except LexError:
+                    continue
+                for _val, _certain, tok in edges:
+                    inline_path_toks.add(tok.start)
+
+        _walk_items(
+            tree,
+            relp,
+            p.parent,
+            on_attr=on_attr,
+            on_mod=on_mod,
+            on_include=on_include,
+            errors=[],
+        )
         for tok, msg in problems:
             if isinstance(tok, LexError):
                 continue
@@ -1482,9 +1521,16 @@ def resolve_include_targets(
                 )
                 continue
             if target.is_dir():
-                # **KT-196/F4** (A0 2026-11-19 §4): `#[path = "sub"] mod m { … }` — inline
-                # module, `sub` là **thư mục** chứa module con, KHÔNG phải tệp nguồn. Bản trước
-                # báo oan "không tồn tại". Nay bỏ qua (không phải cạnh tệp), không báo lỗi.
+                # **KT-196/F4**: `#[path = "sub"] mod m { … }` — inline module, `sub` là **thư
+                # mục** chứa module con, KHÔNG phải tệp nguồn ⇒ bỏ qua (không phải cạnh tệp).
+                # **KT-199/F4c** (reviewer L35): nếu `mod` **không** có thân thì `#[path]` trỏ
+                # thư mục là **sai cú pháp** ⇒ phải báo lỗi, không được im lặng.
+                if tok.start in inline_path_toks:
+                    continue
+                errors.append(
+                    f"  {relp}:{tok.line}: `{kind}` trỏ tới thư mục `{inside}` nhưng `mod` "
+                    f"không có thân — không phân giải được (fail-closed, KT-199 F4c)"
+                )
                 continue
             if not target.is_file():
                 errors.append(
@@ -4659,6 +4705,40 @@ def selftest() -> int:
             "wake trong fn test thật",
             "#[cfg(test)]\nfn f() { let _ = m.wake(t); }\n",
             False,
+        )
+
+        # --- (f) **KT-199/F4b/F4c** (reviewer L35): inline module có `#[path]` dùng đúng
+        # thư mục `#[path]`; `#[path]` trỏ thư mục trên `mod` **không** thân ⇒ lỗi rõ.
+        d = tmp / "kt199-f4b"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/lib.rs",
+            '#[cfg(test)]\n#[path = "sub"]\nmod m {\n    mod child;\n}\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/sub/child.rs",
+            "pub fn f() { let _ = m.wake(t); }\n",
+        )
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-199/F4b inline module `#[path]` + con test-only ⇒ xanh (không báo oan)",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        d = tmp / "kt199-f4c"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/lib.rs", '#[path = "sub"]\nmod m;\n')
+        (d / "v2/kernel/vifast-core/src/sub").mkdir(parents=True, exist_ok=True)
+        rep = scan_v2(d, strict=True, allowlist={})
+        cases.append(
+            (
+                "KT-199/F4c `#[path]` trỏ thư mục trên `mod` không thân ⇒ đỏ E_STRICT_WAKE_INCLUDE",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
         )
 
         d = tmp / "kt194c-ok"

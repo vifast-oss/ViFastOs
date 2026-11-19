@@ -34,7 +34,8 @@ trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed**
   không lan sang mục cùng dòng; `mod`/`fn` trong khối test lồng vẫn là test.
 - `macro_rules!` với **mọi** tên (kể cả Unicode) và **cả ba** dấu thân `{ … }`, `( … )`, `[ … ]`.
 - Chú thích chen giữa `#`/`[`/`path` (khử chú thích trước khi khớp).
-- `#[path = "sub"] mod m { … }` — inline module: `sub` là **thư mục**, không phải cạnh tệp (KT-196/F4).
+- `#[path = "sub"] mod m { … }` — inline module: `sub` là **thư mục**, không phải cạnh tệp (KT-196/F4);
+  module con của nó được duyệt trong **thư mục `#[path]`**, không phải `cur_dir/NAME` (KT-199/F4b).
 
 ---
 
@@ -45,6 +46,7 @@ trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed**
 | `include!`/`#[path]`/`cfg_attr(path)` **không literal** (`concat!`, `env!`, biến) | `E_STRICT_WAKE_INCLUDE` | không phân giải được đích |
 | Đích trỏ **ra ngoài** `v2/kernel`+`v2/sim` | `E_STRICT_WAKE_INCLUDE` | không quét được |
 | Đích **không tồn tại** (và không phải thư mục) | `E_STRICT_WAKE_INCLUDE` | fail-closed |
+| `#[path]` trỏ **thư mục** trên `mod` **không có thân** | `E_STRICT_WAKE_INCLUDE` | sai cú pháp, không phân giải được (KT-199/F4c) |
 | Thân `macro_rules!` chứa `include`/`path`/`mod` (bất kỳ dạng) | `E_STRICT_MACRO_INCLUDE` | rustc giải theo **tệp gọi** |
 | Thân `macro_rules!` chứa `$…:tt` (passthrough) | `E_STRICT_MACRO_TT` | có thể chở `mod`/`include!` từ **lời gọi** |
 | Thân `macro_rules!` khai `mod NAME;` (định danh literal) | `E_STRICT_MACRO_MOD` | đồ thị module không thấy |
@@ -61,8 +63,6 @@ trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed**
 | **F2 (một phần)** | Ngữ cảnh test đã theo item/token-tree, nhưng luật `wake` **vẫn chỉ chạy đầy đủ ở `--strict`** (D2-144). Chế độ thường chỉ quét tệp bị kéo vào bằng `#[path]`/`include!`. | `v2 check`/`gate` chạy `--strict` nên cổng vẫn bắt; nhưng gọi checker ở chế độ thường **không** đủ. |
 | **Macro invocation** | `_walk_items` **bỏ qua** nhóm sau `!` (lời gọi macro). Nếu lời gọi chứa `mod`/`#[path]` (vd `cfg_if! { … }`), cạnh nguồn **không** được phân giải. | Cây thật **không** có lời gọi macro chứa `mod`/`#[path]` (đã grep). **Không** tuyên bố fail-closed cho phạm vi này. |
 | **`#[path]` trong `v2/lib`** | `resolve_include_targets` chỉ lặp trên `v2/kernel`+`v2/sim`; `#[path]` trong `v2/lib` không được phân giải. | Luật `wake` cũng không phủ `v2/lib`; ngoài phạm vi hiện tại. |
-| **F4b** | `#[cfg(test)] #[path = "sub"] mod m { mod child; }` + `sub/child.rs` gọi `wake` ⇒ `--strict` **báo oan** (con test-only bị coi sản phẩm; `_walk_items` đệ quy `cur_dir/name` thay vì thư mục `#[path]`). | Cây thật không dùng dạng này; **chưa** đóng. |
-| **F4c** | `#[path = "sub"] mod m;` (không-inline) + `sub` là **thư mục** ⇒ bỏ qua **im lặng** (không báo lỗi, không cạnh). | Cây thật không dùng; **chưa** đóng. |
 | **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro ⇒ XANH (chỉ `v2/kernel`+`v2/sim` được quét cấu trúc). | §1 đã ghi `v2/lib` chỉ bảo vệ thân macro; **không** phải lỗi. |
 
 ---
