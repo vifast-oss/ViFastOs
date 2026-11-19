@@ -74,20 +74,32 @@
 #                                                **phải ĐỎ** (trước KT-166 nó vẫn xanh)
 #   17. kt183-cd-sau          `cd /docs/sub` `pwd` `cat deep.txt` `cd ../..` `pwd`
 #                             `cd /docs/sub/..` `pwd` `cd /docs/sub` `cd ../../..` `pwd`
-#                             `cd /docs` `pwd` `cd /`
+#                             `cd /docs` `pwd` `cd /` `cd /docs/sub/` `pwd`
 #                                              ⇒ **KT-183** (D2-164): FS sản phẩm **nhiều cấp**
 #                                                (`/docs/sub` + `/docs/sub/deep.txt`); `pwd` in
 #                                                `/docs/sub`; `cat deep.txt` (tương đối) đọc đúng;
 #                                                `cd ../..` ⇒ `/`; `cd /docs/sub/..` ⇒ `/docs`
 #                                                (chuẩn hoá `..`); `cd ../../..` từ `/docs/sub` ⇒ `/`
 #                                                (**kẹp** gốc, không âm); đối chứng `cd /docs` ⇒
-#                                                `/docs` (không hồi quy `kt137-cdpwd`)
+#                                                `/docs` (không hồi quy `kt137-cdpwd`);
+#                                                **KT-205** (review KT-204, M2): `cd /docs/sub/`
+#                                                (**có** `/` cuối) ⇒ `pwd` **vẫn** `/docs/sub`
+#                                                (đột biến "in ra mà **không** đổi `cwd`" phải ĐỎ)
+#   18. kt183-bien-path       `cd /docs/sub` `cd /docs/sub/<38×a>` (48 B)
+#                             `cd /docs/sub/<39×a>` (49 B) `pwd`
+#                                              ⇒ **KT-205** (review KT-204, M4): biên `MAX_PATH`
+#                                                48 B — đường **đúng** 48 B ⇒ `cd loi code=11`
+#                                                (tên thành phần 38 B > `MAX_NAME` 28 B, **không**
+#                                                phải `duong qua dai`); 49 B ⇒ `duong qua dai`;
+#                                                `pwd` **vẫn** `/docs/sub` (cd hỏng **không** đổi cwd)
 #   (10/11/12 là **KT-130**; 13 là **Q4 vòng ba**; 14 là **K7 lượt bốn**; 15 là **K7 lượt năm §B3.4c**;
 #    16 là **KT-137** — `cd`/`pwd` + thư mục hiện tại + đường dẫn tương đối; **KT-158** thêm thư mục
 #    con `/docs` vào FS sản phẩm để vế "thư mục hiện tại **đổi được**" kiểm được thật; **KT-166**
 #    thêm ba lệnh **tương đối trong** `/docs` để đột biến "`resolve_path` bỏ qua `Cwd`" phải ĐỎ;
 #    **KT-183** thêm thư mục **sâu** `/docs/sub` + tệp `deep.txt` để kiểm `cd` nhiều cấp, `..` lùi
-#    hai cấp, chuẩn hoá `..` và **kẹp** ở gốc.)
+#    hai cấp, chuẩn hoá `..` và **kẹp** ở gốc; **KT-205** (review KT-204) đóng hai lỗ hổng ca kiểm:
+#    M2 — `cd` có `/` cuối **không** đổi `cwd` (thêm `cd /docs/sub/` + `pwd` vào ca 17); M4 — biên
+#    `MAX_PATH` 48 B off-by-one (thêm ca 18 với đường **đúng** 48 B và 49 B).)
 #
 # **Phán quyết từng lệnh** (Q4 vòng ba): bốn ca 10/11/12/13 in **một dòng cho mỗi lệnh**
 # (`# <ca>[<lệnh>]: PASS/FAIL (lý do)`) và **chạy hết** mọi lệnh rồi mới kết luận — log sai hai
@@ -1442,9 +1454,12 @@ ok_kt183_doi_chung() {
     return 0
 }
 
-# Bảy lệnh `cd` in **đúng thứ tự** bảy dòng. So **chuỗi** chứ không đếm tổng: `cd /` xuất hiện
+# Tám lệnh `cd` in **đúng thứ tự** tám dòng. So **chuỗi** chứ không đếm tổng: `cd /` xuất hiện
 # **hai** lần (`cd ../..`, `cd ../../..`) và `cd /docs` **hai** lần (`cd /docs/sub/..`, `cd /docs`),
 # nên đếm tổng không quy được lỗi cho lệnh nào; so thứ tự thì lệnh nào in sai cũng làm lệch chuỗi.
+# Dòng **cuối** là `cd /docs/sub/` (**KT-205**, M2) — `resolve_path` bỏ `/` cuối nên in
+# `# shell: cd /docs/sub`; đột biến "in ra mà **không** đổi `cwd`" vẫn in đúng dòng này, nên phép
+# kiểm `cd-slash-cuoi` (vị trí `pwd` ngay sau) mới là vế bắt nó.
 ok_kt183_cd_thu_tu() {
     local log="$1" got want
     got="$(grep -E '^# shell: cd ' "$log" 2>/dev/null || true)"
@@ -1455,7 +1470,8 @@ ok_kt183_cd_thu_tu() {
         '# shell: cd /docs/sub' \
         '# shell: cd /' \
         '# shell: cd /docs' \
-        '# shell: cd /')"
+        '# shell: cd /' \
+        '# shell: cd /docs/sub')"
     if [ "$got" != "$want" ]; then
         echo "chuỗi dòng 'cd' lệch: thấy [$(printf '%s' "$got" | tr '\n' '|')]"
         return 1
@@ -1463,7 +1479,7 @@ ok_kt183_cd_thu_tu() {
     return 0
 }
 
-# Năm lệnh `pwd` in **đúng thứ tự** năm dòng: `/docs/sub`, `/`, `/docs`, `/`, `/docs`.
+# Sáu lệnh `pwd` in **đúng thứ tự** sáu dòng: `/docs/sub`, `/`, `/docs`, `/`, `/docs`, `/docs/sub`.
 ok_kt183_pwd_thu_tu() {
     local log="$1" got want
     got="$(grep -E '^# shell: pwd ' "$log" 2>/dev/null || true)"
@@ -1472,9 +1488,42 @@ ok_kt183_pwd_thu_tu() {
         '# shell: pwd /' \
         '# shell: pwd /docs' \
         '# shell: pwd /' \
-        '# shell: pwd /docs')"
+        '# shell: pwd /docs' \
+        '# shell: pwd /docs/sub')"
     if [ "$got" != "$want" ]; then
         echo "chuỗi dòng 'pwd' lệch: thấy [$(printf '%s' "$got" | tr '\n' '|')]"
+        return 1
+    fi
+    return 0
+}
+
+# `ok_kt183_cd_slash_cuoi` — **KT-205** (review KT-204, **M2**): `cd /docs/sub/` (**có** `/` cuối)
+# phải **đổi** thư mục hiện tại. Dòng `cd` **cuối** của ca là kết quả của lệnh này (`resolve_path`
+# bỏ `/` cuối ⇒ in `# shell: cd /docs/sub`), và dòng `pwd` ngay sau phải là `# shell: pwd /docs/sub`.
+#
+# Vì sao cần phép kiểm **riêng**: đột biến M2 của review KT-204 (`cmd_cd`: nếu `arg` kết thúc `/`
+# và `len>1` thì in `# shell: cd <path>` rồi `return`, **không** `cwd.set`) in ra **đúng** dòng
+# `# shell: cd /docs/sub` — nên `thu-tu-cd` vẫn xanh; chỉ `pwd` ngay sau mới lộ (`/` thay vì
+# `/docs/sub`). Trước KT-205 đột biến này đi qua **toàn bộ** harness (ca 17 8/8 XANH, `kt137-cdpwd`
+# cũng XANH) vì không ca nào có lệnh `cd` kết thúc bằng `/` (trừ `cd /`).
+ok_kt183_cd_slash_cuoi() {
+    local log="$1" ln pn
+    ln="$(last_line "$log" '^# shell: cd ')"
+    if [ -z "$ln" ]; then
+        echo "không thấy dòng 'cd' nào (cd /docs/sub/ có / cuối)"
+        return 1
+    fi
+    if ! sed -n "${ln}p" "$log" | grep -q -x -F '# shell: cd /docs/sub'; then
+        echo "dòng 'cd' cuối là '$(sed -n "${ln}p" "$log")', mong '# shell: cd /docs/sub' (cd /docs/sub/ có / cuối)"
+        return 1
+    fi
+    pn="$(kt183_next_pwd "$log" "$ln")"
+    if [ -z "$pn" ]; then
+        echo "không thấy dòng 'pwd' sau 'cd /docs/sub/'"
+        return 1
+    fi
+    if ! sed -n "${pn}p" "$log" | grep -q -x -F '# shell: pwd /docs/sub'; then
+        echo "sau 'cd /docs/sub/' là '$(sed -n "${pn}p" "$log")', mong '# shell: pwd /docs/sub'"
         return 1
     fi
     return 0
@@ -1489,7 +1538,81 @@ check_kt183_cd_sau() {
         "cd-kep-goc:ok_kt183_cd_kep_goc" \
         "doi-chung:ok_kt183_doi_chung" \
         "thu-tu-cd:ok_kt183_cd_thu_tu" \
-        "thu-tu-pwd:ok_kt183_pwd_thu_tu"
+        "thu-tu-pwd:ok_kt183_pwd_thu_tu" \
+        "cd-slash-cuoi:ok_kt183_cd_slash_cuoi"
+}
+
+# --- kt183-bien-path: biên `MAX_PATH` 48 B của `cd` — **KT-205** (review KT-204, M4) -----------
+#
+# Vì sao có ca này: `shell_user.rs` có `CWD_MAX = 48` (= `proc_fs::MAX_PATH`) và `resolve_path`
+# từ chối khi `len + sep + comp.len() > CWD_MAX`; `vifast-fs` có `MAX_NAME = 28` và trả
+# `FsError::NameTooLong` (mã **11**) khi một **thành phần** dài hơn 28 B. Hai biên **khác nhau**:
+#   - đường **đúng** 48 B (`/docs/sub/` + 38×`a` = 10 + 38) ⇒ **qua** phép kiểm `MAX_PATH`, rồi FS
+#     từ chối vì tên thành phần 38 B > 28 B ⇒ `# shell: cd loi code=11 <đường 48 B>`;
+#   - đường 49 B (`/docs/sub/` + 39×`a`) ⇒ shell từ chối **sớm** ⇒ `# shell: duong qua dai`.
+# Đột biến M4 của review KT-204 (`>` → `>=` ở kiểm độ dài) làm đường **đúng** 48 B in
+# `duong qua dai` thay vì `cd loi code=11` — trước KT-205 **không** ca nào dùng đường gần 48 B nên
+# đột biến đi qua toàn harness. Ca này ghim **cả hai** vế và ghim thêm "cd hỏng **không** đổi cwd".
+
+# `ok_kt183_bien_48`: đúng **một** dòng `# shell: cd loi code=11 <đường 48 B>`; đường phải **đúng**
+# 48 B (tự kiểm của harness, không phải "gần đúng"). Đột biến `>` → `>=` ⇒ không có dòng này ⇒ ĐỎ.
+ok_kt183_bien_48() {
+    local log="$1" a path want n
+    a="$(printf 'a%.0s' $(seq 1 38))"
+    path="/docs/sub/$a"
+    if [ "${#path}" -ne 48 ]; then
+        echo "lỗi harness: đường thử dài ${#path} B, mong **đúng** 48 B"
+        return 1
+    fi
+    want="# shell: cd loi code=11 $path"
+    n="$(grep -c -x -F "$want" "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '$want', thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `ok_kt183_bien_49`: đúng **một** dòng `# shell: duong qua dai` (shell chặn **sớm** đường 49 B).
+# Đột biến `>` → `>=` làm đường 48 B **cũng** in `duong qua dai` ⇒ 2 dòng ⇒ ĐỎ; shell nhận đường
+# 49 B (không chặn) ⇒ 0 dòng ⇒ ĐỎ.
+ok_kt183_bien_49() {
+    local log="$1" a path n
+    a="$(printf 'a%.0s' $(seq 1 39))"
+    path="/docs/sub/$a"
+    if [ "${#path}" -ne 49 ]; then
+        echo "lỗi harness: đường thử dài ${#path} B, mong **đúng** 49 B"
+        return 1
+    fi
+    n="$(grep -c -x -F '# shell: duong qua dai' "$log" 2>/dev/null || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "mong đúng 1 dòng '# shell: duong qua dai' (đường 49 B), thấy ${n:-0}"
+        return 1
+    fi
+    return 0
+}
+
+# `ok_kt183_pwd_sau_loi`: sau **hai** lệnh `cd` hỏng ở biên, `pwd` **vẫn** `/docs/sub` — cd hỏng
+# **không** được đổi thư mục hiện tại (cùng bất biến `kt137-cdpwd` ghim cho `cd` hỏng thường).
+ok_kt183_pwd_sau_loi() {
+    local log="$1" ln pn
+    ln="$(last_line "$log" '^# shell: pwd ')"
+    if [ -z "$ln" ]; then
+        echo "không thấy dòng 'pwd' nào (sau hai cd hỏng ở biên)"
+        return 1
+    fi
+    if ! sed -n "${ln}p" "$log" | grep -q -x -F '# shell: pwd /docs/sub'; then
+        echo "dòng 'pwd' cuối là '$(sed -n "${ln}p" "$log")', mong '# shell: pwd /docs/sub' (cd hỏng không đổi cwd)"
+        return 1
+    fi
+    return 0
+}
+
+check_kt183_bien_path() {
+    emit_verdicts "kt183-bien-path" "$1" \
+        "bien-48:ok_kt183_bien_48" \
+        "bien-49:ok_kt183_bien_49" \
+        "pwd-sau-loi:ok_kt183_pwd_sau_loi"
 }
 
 # 4. Dòng dài hơn `MAX_LINE` ⇒ **đúng một** `# shell: dong qua dai` (KT-103). 0 dòng = im lặng
@@ -1583,7 +1706,7 @@ check_wait_no_hang() {
 #   - `right.log`: đầu ra **đúng** ⇒ hàm phải trả 0.
 # Ca 8 có thêm một log "đúng nội dung nhưng quá chậm" (dt=99 s) ⇒ vẫn phải ĐỎ.
 # =====================================================================================
-SELFTEST_CASES=10
+SELFTEST_CASES=11
 SELFTEST_CHECKS=0
 SELFTEST_OK=0
 SELFTEST_FAIL=0
@@ -1677,7 +1800,7 @@ selftest_verdicts() {
 }
 
 run_selftest() {
-    local root d wrong right both i
+    local root d wrong right both i a38 a39
     root="$(mktemp -d "${TMPDIR:-/tmp}/kt108-selftest.XXXXXX" 2>/dev/null)" ||
         {
             echo "# shell-edge-selftest: FAIL (không tạo được mktemp -d)"
@@ -2183,7 +2306,7 @@ run_selftest() {
 
     # ---- ca 17 (**KT-183**, D2-164): `cd` vào thư mục con **sâu** (`/docs/sub`).
     #      Log ĐÚNG = đầu ra thật của ca 17 trên ảnh sản phẩm (mỗi lệnh một dòng, đúng thứ tự).
-    #      Ba log SAI, mỗi log ứng với **một** kiểu hỏng thật:
+    #      **Bốn** log SAI, mỗi log ứng với **một** kiểu hỏng thật:
     #        (a) **trước KT-183**: FS sản phẩm **không** có `/docs/sub` ⇒ `cd /docs/sub` báo không
     #            có, `pwd` vẫn `/`, `cat deep.txt` ⇒ `fs loi code=5`; `cd ../..` từ `/` và
     #            `cd /docs/sub/..` (chuẩn hoá từ vựng) **vẫn** ra `/` và `/docs` nên hai phép kiểm
@@ -2192,7 +2315,11 @@ run_selftest() {
     #            gửi nguyên đường có `..` xuống FS ⇒ `cd khong co …` ⇒ ba phép kiểm vị trí + hai
     #            phép kiểm chuỗi ĐỎ;
     #        (c) **đột biến "`pwd` in hằng `/`"**: `pwd` không bao giờ in `/docs/sub`/`/docs` ⇒
-    #            `cd-sub`, `cd-chuan-hoa`, `doi-chung`, `thu-tu-pwd` ĐỎ.
+    #            `cd-sub`, `cd-chuan-hoa`, `doi-chung`, `thu-tu-pwd` ĐỎ;
+    #        (d) **đột biến M2 của review KT-204** (**KT-205**): `cd /docs/sub/` (**có** `/` cuối)
+    #            in `# shell: cd /docs/sub` nhưng **không** đổi `cwd` ⇒ `pwd` ngay sau in `/` ⇒
+    #            `cd-slash-cuoi` + `thu-tu-pwd` ĐỎ (bảy phép kiểm còn lại **xanh** — chứng minh
+    #            phép kiểm mới bắt đúng vế này, không phải "đỏ cả ca").
     d="$(mktemp -d "$root/c17.XXXXXX")"
     wrong="$d/wrong.log"
     right="$d/right.log"
@@ -2210,12 +2337,14 @@ run_selftest() {
         printf '# shell: cd /docs\n'
         printf '# shell: pwd /docs\n'
         printf '# shell: cd /\n'
+        printf '# shell: cd khong co /docs/sub\n'
+        printf '# shell: pwd /\n'
         printf '# shell: echo __END_17__\n'
     } >"$wrong"
-    selftest_verdicts "17 kt183-cd-sau (truoc KT-183)" check_kt183_cd_sau "$wrong" 1 3 5 \
+    selftest_verdicts "17 kt183-cd-sau (truoc KT-183)" check_kt183_cd_sau "$wrong" 1 3 6 \
         'kt183-cd-sau[cd-sub]: FAIL' 'kt183-cd-sau[cat-deep]: FAIL' \
         'kt183-cd-sau[cd-kep-goc]: FAIL' 'kt183-cd-sau[thu-tu-cd]: FAIL' \
-        'kt183-cd-sau[thu-tu-pwd]: FAIL'
+        'kt183-cd-sau[thu-tu-pwd]: FAIL' 'kt183-cd-sau[cd-slash-cuoi]: FAIL'
     d="$(mktemp -d "$root/c17b.XXXXXX")"
     wrong="$d/wrong.log"
     {
@@ -2233,9 +2362,11 @@ run_selftest() {
         printf '# shell: cd /docs\n'
         printf '# shell: pwd /docs\n'
         printf '# shell: cd /\n'
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: pwd /docs/sub\n'
         printf '# shell: echo __END_17__\n'
     } >"$wrong"
-    selftest_verdicts "17 kt183-cd-sau (dot bien .. khong xu ly)" check_kt183_cd_sau "$wrong" 1 3 5 \
+    selftest_verdicts "17 kt183-cd-sau (dot bien .. khong xu ly)" check_kt183_cd_sau "$wrong" 1 4 5 \
         'kt183-cd-sau[cd-hai-cap]: FAIL' 'kt183-cd-sau[cd-chuan-hoa]: FAIL' \
         'kt183-cd-sau[cd-kep-goc]: FAIL' 'kt183-cd-sau[thu-tu-cd]: FAIL' \
         'kt183-cd-sau[thu-tu-pwd]: FAIL'
@@ -2256,11 +2387,18 @@ run_selftest() {
         printf '# shell: cd /docs\n'
         printf '# shell: pwd /\n'
         printf '# shell: cd /\n'
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: pwd /\n'
         printf '# shell: echo __END_17__\n'
     } >"$wrong"
-    selftest_verdicts "17 kt183-cd-sau (dot bien pwd hang /)" check_kt183_cd_sau "$wrong" 1 4 4 \
+    selftest_verdicts "17 kt183-cd-sau (dot bien pwd hang /)" check_kt183_cd_sau "$wrong" 1 4 5 \
         'kt183-cd-sau[cd-sub]: FAIL' 'kt183-cd-sau[cd-chuan-hoa]: FAIL' \
-        'kt183-cd-sau[doi-chung]: FAIL' 'kt183-cd-sau[thu-tu-pwd]: FAIL'
+        'kt183-cd-sau[doi-chung]: FAIL' 'kt183-cd-sau[thu-tu-pwd]: FAIL' \
+        'kt183-cd-sau[cd-slash-cuoi]: FAIL'
+    # (d) **KT-205** — đột biến M2 của review KT-204: `cd /docs/sub/` in ra **đúng** dòng
+    # `# shell: cd /docs/sub` nhưng `cwd` **không** đổi ⇒ chỉ `pwd` ngay sau lộ ra.
+    d="$(mktemp -d "$root/c17d.XXXXXX")"
+    wrong="$d/wrong.log"
     {
         printf '# shell: cd /docs/sub\n'
         printf '# shell: pwd /docs/sub\n'
@@ -2276,9 +2414,85 @@ run_selftest() {
         printf '# shell: cd /docs\n'
         printf '# shell: pwd /docs\n'
         printf '# shell: cd /\n'
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: echo __END_17__\n'
+    } >"$wrong"
+    selftest_verdicts "17 kt183-cd-sau (dot bien M2: / cuoi khong doi cwd)" check_kt183_cd_sau "$wrong" 1 7 2 \
+        'kt183-cd-sau[thu-tu-pwd]: FAIL' 'kt183-cd-sau[cd-slash-cuoi]: FAIL'
+    {
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: pwd /docs/sub\n'
+        printf 'deep\n'
+        printf '# shell: cat ok bytes=4 first=deep\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd /docs\n'
+        printf '# shell: pwd /docs\n'
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: cd /\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: cd /docs\n'
+        printf '# shell: pwd /docs\n'
+        printf '# shell: cd /\n'
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: pwd /docs/sub\n'
         printf '# shell: echo __END_17__\n'
     } >"$right"
-    selftest_verdicts "17 kt183-cd-sau (dung)" check_kt183_cd_sau "$right" 0 8 0
+    selftest_verdicts "17 kt183-cd-sau (dung)" check_kt183_cd_sau "$right" 0 9 0
+
+    # ---- ca 18 (**KT-205**, review KT-204 **M4**): biên `MAX_PATH` 48 B của `cd`.
+    #      Log ĐÚNG = đầu ra thật của ca 18 trên ảnh sản phẩm: đường **đúng** 48 B ⇒
+    #      `cd loi code=11` (tên thành phần 38 B > `MAX_NAME` 28 B), đường 49 B ⇒ `duong qua dai`,
+    #      `pwd` **vẫn** `/docs/sub`. Ba log SAI:
+    #        (a) **đột biến M4** (`>` → `>=`): đường 48 B **cũng** in `duong qua dai` ⇒ `bien-48`
+    #            + `bien-49` ĐỎ (2 dòng `duong qua dai`), `pwd-sau-loi` xanh;
+    #        (b) shell **nhận** đường 49 B (không chặn sớm) ⇒ 0 dòng `duong qua dai` ⇒ `bien-49` ĐỎ;
+    #        (c) `cd` hỏng **đổi** `cwd` ⇒ `pwd` in `/` ⇒ `pwd-sau-loi` ĐỎ.
+    a38="$(printf 'a%.0s' $(seq 1 38))"
+    a39="$(printf 'a%.0s' $(seq 1 39))"
+    d="$(mktemp -d "$root/c18.XXXXXX")"
+    wrong="$d/wrong.log"
+    right="$d/right.log"
+    {
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: duong qua dai\n'
+        printf '# shell: duong qua dai\n'
+        printf '# shell: pwd /docs/sub\n'
+        printf '# shell: echo __END_18__\n'
+    } >"$wrong"
+    selftest_verdicts "18 kt183-bien-path (dot bien M4: > thanh >=)" check_kt183_bien_path "$wrong" 1 1 2 \
+        'kt183-bien-path[bien-48]: FAIL' 'kt183-bien-path[bien-49]: FAIL'
+    d="$(mktemp -d "$root/c18b.XXXXXX")"
+    wrong="$d/wrong.log"
+    {
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: cd loi code=11 /docs/sub/%s\n' "$a38"
+        printf '# shell: cd loi code=11 /docs/sub/%s\n' "$a39"
+        printf '# shell: pwd /docs/sub\n'
+        printf '# shell: echo __END_18__\n'
+    } >"$wrong"
+    selftest_verdicts "18 kt183-bien-path (49 B khong bi chan som)" check_kt183_bien_path "$wrong" 1 2 1 \
+        'kt183-bien-path[bien-49]: FAIL'
+    d="$(mktemp -d "$root/c18c.XXXXXX")"
+    wrong="$d/wrong.log"
+    {
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: cd loi code=11 /docs/sub/%s\n' "$a38"
+        printf '# shell: duong qua dai\n'
+        printf '# shell: pwd /\n'
+        printf '# shell: echo __END_18__\n'
+    } >"$wrong"
+    selftest_verdicts "18 kt183-bien-path (cd hong doi cwd)" check_kt183_bien_path "$wrong" 1 2 1 \
+        'kt183-bien-path[pwd-sau-loi]: FAIL'
+    {
+        printf '# shell: cd /docs/sub\n'
+        printf '# shell: cd loi code=11 /docs/sub/%s\n' "$a38"
+        printf '# shell: duong qua dai\n'
+        printf '# shell: pwd /docs/sub\n'
+        printf '# shell: echo __END_18__\n'
+    } >"$right"
+    selftest_verdicts "18 kt183-bien-path (dung)" check_kt183_bien_path "$right" 0 3 0
 
     if [ "$SELFTEST_FAIL" -eq 0 ]; then
         echo "# shell-edge-selftest: PASS ($SELFTEST_CASES/$SELFTEST_CASES ca, $SELFTEST_OK/$SELFTEST_CHECKS kiểm: $((SELFTEST_CHECKS - SELFTEST_RIGHT)) sai→ĐỎ + $SELFTEST_RIGHT đúng→XANH)"
@@ -2430,7 +2644,7 @@ preflight_image() {
 # ------------------------------------------------------------------ chạy thật
 run_real() {
     local qemu sbi qv qmaj qrest qmin img_sha img_bytes build_line rc=0 i c reason
-    local long_line g40
+    local long_line g40 a38 a39
 
     preflight_image
 
@@ -2802,16 +3016,18 @@ run_real() {
     fi
 
     # (17) **KT-183** (D2-164): `cd` vào thư mục con **sâu** — FS sản phẩm nay có **nhiều cấp**
-    #      (`/docs/sub` + `/docs/sub/deep.txt`). Mười ba lệnh, tám phép kiểm (mỗi lệnh một dòng
-    #      phán quyết): `cd /docs/sub` ⇒ `pwd` in `/docs/sub`; `cat deep.txt` (tương đối) đọc đúng;
-    #      `cd ../..` ⇒ `/`; `cd /docs/sub/..` ⇒ `/docs` (chuẩn hoá `..`); `cd ../../..` từ
+    #      (`/docs/sub` + `/docs/sub/deep.txt`). Mười lăm lệnh, **chín** phép kiểm (mỗi lệnh một
+    #      dòng phán quyết): `cd /docs/sub` ⇒ `pwd` in `/docs/sub`; `cat deep.txt` (tương đối) đọc
+    #      đúng; `cd ../..` ⇒ `/`; `cd /docs/sub/..` ⇒ `/docs` (chuẩn hoá `..`); `cd ../../..` từ
     #      `/docs/sub` ⇒ `/` (**kẹp** gốc); đối chứng `cd /docs` ⇒ `/docs` (không hồi quy
-    #      `kt137-cdpwd`). Đặt **trước** (8b) để `/README` còn 79 byte (8b truncate nó về 5); ca
-    #      này **không** tạo tệp ở gốc nên không đổi `ls n=` của ca nào khác.
+    #      `kt137-cdpwd`); **KT-205** (review KT-204, M2): `cd /docs/sub/` (**có** `/` cuối) ⇒
+    #      `pwd` **vẫn** `/docs/sub` — đột biến "in ra mà **không** đổi `cwd`" phải ĐỎ. Đặt
+    #      **trước** (8b) để `/README` còn 79 byte (8b truncate nó về 5); ca này **không** tạo tệp
+    #      ở gốc nên không đổi `ls n=` của ca nào khác.
     if [ "$CASE_TIMEOUT" -eq 0 ]; then
         case_begin
         for c in 'cd /docs/sub' 'pwd' 'cat deep.txt' 'cd ../..' 'pwd' 'cd /docs/sub/..' 'pwd' \
-            'cd /docs/sub' 'cd ../../..' 'pwd' 'cd /docs' 'pwd' 'cd /'; do
+            'cd /docs/sub' 'cd ../../..' 'pwd' 'cd /docs' 'pwd' 'cd /' 'cd /docs/sub/' 'pwd'; do
             send_line "$c" || true
             sleep 0.15
         done
@@ -2824,6 +3040,34 @@ run_real() {
             fi
         else
             echo "# kt183-cd-sau: FAIL (quá hạn — shell treo ở ca cd thư mục sâu)"
+            CASE_TIMEOUT=1
+            rc=1
+        fi
+    fi
+
+    # (18) **KT-205** (review KT-204, **M4**): biên `MAX_PATH` **48 B** của `cd`. Hai lệnh `cd`
+    #      dùng đường **đúng** 48 B (`/docs/sub/` + 38×`a`) và 49 B (`/docs/sub/` + 39×`a`), rồi
+    #      `pwd` chứng minh cd hỏng **không** đổi thư mục hiện tại. Vì sao **ca riêng** (không nhét
+    #      vào ca 17): ca 17 có phép kiểm `cd-kep-goc` đòi **0** dòng lỗi `cd` — hai lệnh biên ở
+    #      đây **cố ý** sinh lỗi, nhét vào sẽ làm phép kiểm ấy mất nghĩa. Đặt **trước** (8b) để
+    #      `/README` còn 79 byte; ca **không** tạo tệp nên không đổi `ls n=` của ca nào khác.
+    if [ "$CASE_TIMEOUT" -eq 0 ]; then
+        case_begin
+        a38="$(printf 'a%.0s' $(seq 1 38))"
+        a39="$(printf 'a%.0s' $(seq 1 39))"
+        for c in 'cd /docs/sub' "cd /docs/sub/$a38" "cd /docs/sub/$a39" 'pwd'; do
+            send_line "$c" || true
+            sleep 0.15
+        done
+        if case_end 18; then
+            if check_kt183_bien_path "$CASE_LOG"; then
+                echo "# kt183-bien-path: PASS ($(grep -m1 -F '# shell: cd loi code=11 ' "$CASE_LOG" | cut -c1-60)…)"
+            else
+                echo "# kt183-bien-path: FAIL (xem các dòng [<lệnh>]: FAIL ở trên)"
+                rc=1
+            fi
+        else
+            echo "# kt183-bien-path: FAIL (quá hạn — shell treo ở ca biên MAX_PATH)"
             CASE_TIMEOUT=1
             rc=1
         fi
@@ -2885,7 +3129,7 @@ run_real() {
     qg_infra after "$LOGDIR/infra.log" || true
 
     if [ "$rc" -eq 0 ]; then
-        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc + kt137-cdpwd + kt183-cd-sau PASS"
+        echo "# shell-edge: 8/8 ca + truncate-jobs + new-cmds-ok + new-cmds-edge + new-cmds-edge2 + new-cmds-edge3 + k7-uu-tien + k7-thu-muc + kt137-cdpwd + kt183-cd-sau + kt183-bien-path PASS"
         echo "# shell-edge.sh: PASS"
         return 0
     fi

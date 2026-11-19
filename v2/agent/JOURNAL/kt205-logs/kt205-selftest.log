@@ -1,0 +1,53 @@
+# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.6n4zzM (không cần QEMU/ảnh)
+# selftest 1 cat-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 1 cat-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 1 cat-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 2 write-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 2 write-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 2 write-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 3 ps-khong-unknown: log SAI -> ĐỎ đúng (thấy 3 dòng 'state=Unknown' (lỗi KT-105 tái phát))
+# selftest 3 ps-khong-unknown: log ĐÚNG -> XANH đúng
+# selftest 3b ps-mot-dong: log SAI -> ĐỎ đúng (ps chỉ in 1 dòng pid, dưới sàn 3 (procsrv + shell + victim))
+# selftest 3b ps-mot-dong: log ĐÚNG -> XANH đúng
+# selftest 3c truncate-jobs: log SAI -> ĐỎ đúng (truncate báo xong nhưng stat không thấy size=5 (thấy 0 dòng khớp))
+# selftest 3c truncate-jobs: log ĐÚNG -> XANH đúng
+# selftest 3d new-cmds-ok (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 3d new-cmds-ok (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 3e new-cmds-edge (sai): ĐÚNG (4 PASS + 2 FAIL, mã thoát 1)
+# selftest 3e new-cmds-edge (dung): ĐÚNG (6 PASS + 0 FAIL, mã thoát 0)
+# selftest 3f new-cmds-edge2 (sai): ĐÚNG (3 PASS + 2 FAIL, mã thoát 1)
+# selftest 3f new-cmds-edge2 (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 3f new-cmds-edge2 (uptime 5 bi bo qua): ĐÚNG (3 PASS + 2 FAIL, mã thoát 1)
+# selftest 3g new-cmds-edge3 (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 3g new-cmds-edge3 (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 14 k7-uu-tien (sai): ĐÚNG (2 PASS + 3 FAIL, mã thoát 1)
+# selftest 14 k7-uu-tien (dung): ĐÚNG (5 PASS + 0 FAIL, mã thoát 0)
+# selftest 15 k7-thu-muc (sai): ĐÚNG (1 PASS + 3 FAIL, mã thoát 1)
+# selftest 15 k7-thu-muc (dung): ĐÚNG (4 PASS + 0 FAIL, mã thoát 0)
+# selftest 4 dong-dai-mot-canh-bao: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: dong qua dai', thấy 100 (KT-103: một lần mỗi dòng))
+# selftest 4 dong-dai-mot-canh-bao: log ĐÚNG -> XANH đúng
+# selftest 5 cat-khong-co: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: fs loi code=5', thấy 0)
+# selftest 5 cat-khong-co: log ĐÚNG -> XANH đúng
+# selftest 6 write-cat-bytes: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=8 first=xin chao', thấy 0)
+# selftest 6 write-cat-bytes: log ĐÚNG -> XANH đúng
+# selftest 7 write-de-co-lai: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=2 first=ab', thấy 0 (ghi đè không co lại?))
+# selftest 7 write-de-co-lai: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: wait pid=13 code=<n>', thấy 0 (shell treo ở wait?))
+# selftest 8 wait-khong-treo: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo (cham): log SAI -> ĐỎ đúng (wait trả lời sau 99s > 5s (quá hạn))
+# selftest 16 kt137-cdpwd (sai): ĐÚNG (2 PASS + 13 FAIL, mã thoát 1)
+# selftest 16 kt137-cdpwd (dung): ĐÚNG (15 PASS + 0 FAIL, mã thoát 0)
+# selftest 16 cd-khong-co: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cd khong co /khongco', thấy 2)
+# selftest 16 cd-khong-co: log ĐÚNG -> XANH đúng
+# selftest 16 ls-cwd: log SAI -> ĐỎ đúng (mong đúng 2 dòng '# shell: ls n=<n> path=/' (ls + ls .), thấy 1)
+# selftest 16 ls-cwd: log ĐÚNG -> XANH đúng
+# selftest 17 kt183-cd-sau (truoc KT-183): ĐÚNG (3 PASS + 6 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dot bien .. khong xu ly): ĐÚNG (4 PASS + 5 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dot bien pwd hang /): ĐÚNG (4 PASS + 5 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dot bien M2: / cuoi khong doi cwd): ĐÚNG (7 PASS + 2 FAIL, mã thoát 1)
+# selftest 17 kt183-cd-sau (dung): ĐÚNG (9 PASS + 0 FAIL, mã thoát 0)
+# selftest 18 kt183-bien-path (dot bien M4: > thanh >=): ĐÚNG (1 PASS + 2 FAIL, mã thoát 1)
+# selftest 18 kt183-bien-path (49 B khong bi chan som): ĐÚNG (2 PASS + 1 FAIL, mã thoát 1)
+# selftest 18 kt183-bien-path (cd hong doi cwd): ĐÚNG (2 PASS + 1 FAIL, mã thoát 1)
+# selftest 18 kt183-bien-path (dung): ĐÚNG (3 PASS + 0 FAIL, mã thoát 0)
+# shell-edge-selftest: PASS (11/11 ca, 51/51 kiểm: 30 sai→ĐỎ + 21 đúng→XANH)

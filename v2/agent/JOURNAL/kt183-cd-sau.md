@@ -13,6 +13,31 @@ D2-164 yêu cầu kiểm `cd` vào thư mục con **sâu** (nhiều cấp) — "
 
 ---
 
+> ## ĐÍNH CHÍNH (KT-205, 2026-11-20)
+>
+> Review KT-204 (§7.1, §7.2) chỉ ra **hai** chỗ sai số trong nhật ký này. **Không** xoá lịch sử —
+> giữ nguyên văn bản gốc và thêm đính chính ở đây (kèm dấu ⚠ tại đúng chỗ trong thân tệp):
+>
+> 1. **§5 — "rev trong ảnh" là SAI.** Ảnh **không** nhúng `rev`: `strings` ảnh chỉ có
+>    `# build: algo=kt134-v4 inputs=43df126a4a6702ec dirty=0`; `build.rs` **có** đặt
+>    `cargo:rustc-env=VIFAST_BUILD_REV`, nhưng `main.rs` chỉ dùng `ALGO/INPUTS/DIRTY` để in dòng
+>    `# build:` — `REV` **không** được tham chiếu nên **không** vào ảnh. `rev` chỉ in ở dòng `REPRO`
+>    của **log build**. Đọc đúng phải là: `commit 4fc80f61… (rev **của lượt build**: 4fc80f61991f)`.
+>    Bằng chứng chéo: build từ `4fc80f61`, `0118d1ea`, `cd74d73e`, `8c921bbe` cho **cùng** sha
+>    `639ca6d1…` dù `rev` khác — nếu `rev` nằm trong ảnh thì sha **phải** khác.
+> 2. **§3 + §8 — `kt183-logs/run-clean/qemu.log` KHÔNG có trong nhánh.** `ls
+>    v2/agent/JOURNAL/kt183-logs/` không có `run-clean/`; `git ls-files` cũng không. Khối trích
+>    trong §3 **khớp** đầu ra thật (review KT-204 và KT-205 đã tái lập **độc lập**), nên nội dung
+>    không sai — nhưng **bằng chứng gốc thiếu**. Nay có log QEMU đầy đủ của lượt tái lập KT-205:
+>    `v2/agent/JOURNAL/kt205-logs/kt205-qemu-clean.log` (khối `/docs/sub` + ca 18 mới).
+>
+> **Ghi chú thêm (không phải lỗi, chỉ để không lẫn)**: ca `kt183-cd-sau` nay có **15 lệnh / 9 phép
+> kiểm** (KT-205 thêm `cd /docs/sub/` + `pwd` và phép kiểm `cd-slash-cuoi`), và harness có thêm ca
+> 18 `kt183-bien-path` (biên `MAX_PATH` 48 B). Các số "13 lệnh, 8 phép kiểm" trong tệp này là
+> trạng thái **tại thời điểm KT-183** — xem `v2/agent/JOURNAL/kt205-fix183.md`.
+
+---
+
 ## 1. Kết luận ngắn
 
 - `seed()` nay tạo **năm** mục: `/README` (như cũ), `/docs` (như cũ), `/docs/note.txt` (như cũ),
@@ -87,6 +112,10 @@ Lệnh (13): `cd /docs/sub` `pwd` `cat deep.txt` `cd ../..` `pwd` `cd /docs/sub/
 | `thu-tu-pwd` | chuỗi 5 dòng `pwd` đúng thứ tự (`/docs/sub`, `/`, `/docs`, `/`, `/docs`) | PASS |
 
 Khối `/docs/sub` dán nguyên văn từ `kt183-logs/run-clean/qemu.log`:
+
+> ⚠ **ĐÍNH CHÍNH (KT-205)**: tệp `kt183-logs/run-clean/qemu.log` **không có** trong nhánh —
+> xem mục **ĐÍNH CHÍNH** ở đầu tệp. Khối dưới đây **khớp** đầu ra thật (KT-204 + KT-205 tái lập
+> độc lập); log QEMU đầy đủ của lượt tái lập KT-205: `kt205-logs/kt205-qemu-clean.log`.
 
 ```text
 # shell: cd /docs/sub
@@ -178,7 +207,9 @@ bash v2/test/boot/shell-edge.sh --image v2/artifacts/639ca6d1….bin
 **Lượt đo chính** (build **sau** commit `4fc80f61`, cây sạch ⇒ `dirty=0`, danh tính khớp đúng HEAD):
 
 ```text
-commit      4fc80f61991fe73807273d55691583d9a699edba   (rev trong ảnh: 4fc80f61991f)
+commit      4fc80f61991fe73807273d55691583d9a699edba   (rev **của lượt build**: 4fc80f61991f)
+# ⚠ ĐÍNH CHÍNH (KT-205): bản gốc ghi "rev trong ảnh" — SAI, ảnh **không** nhúng `rev`
+#   (xem mục ĐÍNH CHÍNH ở đầu tệp).
 image       639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81
 size        213632 B
 inputs      43df126a4a6702ec   dirty=0   build=b08c5c57cdbdb156   text=131202
@@ -187,7 +218,7 @@ toolchain   1.99.1-aarch64-apple-darwin (rustc 1.99.1 (58cf8f9c3 2026-10-13),
 qemu        11.1.3 (/opt/homebrew/bin/qemu-system-riscv64)
 opensbi     /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
 log         kt183-logs/kt183-build-clean.log, kt183-logs/kt183-pin-clean.log,
-            kt183-logs/kt183-shell-edge-clean.log, kt183-logs/run-clean/qemu.log
+            kt183-logs/kt183-shell-edge-clean.log, kt183-logs/run-clean/qemu.log  ⚠ (tệp này KHÔNG có — xem ĐÍNH CHÍNH)
 ```
 
 Dòng danh tính trong ảnh + dòng `# product fs:` (đổi `used=4` → `used=6` vì thêm hai mục):
@@ -250,7 +281,7 @@ nhật ký **không** đổi build-inputs (chúng nằm trong `v2/agent/**`, b�
 | `kt183-logs/kt183-build-clean.log` | build ảnh chính sau commit (`639ca6d1…`, `dirty=0`) |
 | `kt183-logs/kt183-pin-clean.log` | `pin-artifact.sh` ảnh chính |
 | `kt183-logs/kt183-shell-edge-clean.log` | `shell-edge --image` ảnh chính (**PASS**, 73 PASS / 0 FAIL) |
-| `kt183-logs/run-clean/qemu.log` | log QEMU đầy đủ của lượt chính |
+| `kt183-logs/run-clean/qemu.log` | ⚠ **KHÔNG có trong nhánh** (ĐÍNH CHÍNH KT-205) — log QEMU đầy đủ của lượt tái lập KT-205: `kt205-logs/kt205-qemu-clean.log` |
 | `kt183-logs/kt183-v2-check-precommit.log` | `./v2/bin/v2 check` trên cây trước commit (**PASS**) |
 | `kt183-logs/kt183-v2-check-final.log` | `./v2/bin/v2 check` trên HEAD `febba904` (**PASS**) |
 | `kt183-logs/kt183-build-repro-check.log` | build lại từ HEAD `0118d1ea` — sha **trùng** `639ca6d1…` |
