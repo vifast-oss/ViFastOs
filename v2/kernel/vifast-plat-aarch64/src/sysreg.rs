@@ -24,13 +24,15 @@
 //! `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`, `EnIA`, `BT0`,
 //! `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
 //!
-//! **Không** tuyên bố "đủ trường": DDI 0601 (2024-12) có **54** trường `SCTLR_EL1`, tệp này mới
-//! cài **39**. Còn thiếu **≥8 trường có thật**: `nAA` (bit 6), `EnRCTX` (10), `CMOW` (32),
-//! `TCF0` (39:38), `TCF` (41:40), `ATA0` (42), `TWEDEn` (45), `TWEDEL` (49:46); ngoài ra Linux
-//! master liệt kê thêm các trường ARMv9.x (`EnFPM` 34, `MSCEn` 33, `TCSO0` 58, `TCSO` 59,
-//! `NMI` 61, `SPINTMASK` 62, `TIDCP` 63) có thể chưa có trong bản 2024-12. 39 trường đã cài
-//! **đúng vị trí** (test `sctlr_bit_positions`), nhưng **không** test nào khẳng định tính đầy
-//! đủ — đây là **nợ có tên** cho bước sau, không phải "đủ".
+//! **Không** tuyên bố "đủ trường": DDI 0601 (2024-12) có **58** trường `SCTLR_EL1`, tệp này mới
+//! cài **39**. Còn thiếu **19 trường có thật**: `nAA` (bit 6), `EnRCTX` (10), `CMOW` (32),
+//! `TCF0` (39:38), `TCF` (41:40), `ATA0` (42), `TWEDEn` (45), `TWEDEL` (49:46), `TMT0` (50),
+//! `TMT` (51), `TME0` (52), `TME` (53), `MSCEn` (33), `EnFPM` (34), `TCSO0` (58), `TCSO` (59),
+//! `NMI` (61), `SPINTMASK` (62), `TIDCP` (63). 39 trường đã cài **đúng vị trí** (test
+//! `sctlr_bit_positions`), nhưng **không** test nào khẳng định tính đầy đủ — đây là **nợ có
+//! tên** cho bước sau, không phải "đủ". (Số 58 và danh sách 19 trường do reviewer L26/KT-188
+//! đối chiếu DDI 0601 bản 2024-12; bản nháp KT-185 ghi "54" là **sai** — 54 là bản latest
+//! 2026-09 đã bỏ `TME*`.)
 //!
 //! # Vì sao builder trả `u64` chứ không phải kiểu riêng cho từng thanh ghi
 //!

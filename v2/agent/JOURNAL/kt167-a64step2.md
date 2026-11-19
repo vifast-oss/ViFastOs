@@ -178,9 +178,11 @@ hai để hằng encoding và instruction lệch nhau (asm dùng `.inst <hằng>
    vào đó cài **39 trường** của `SCTLR_EL1` (kể cả `WXN`, `SPAN`, `E0E`, `EE`, `UCI`, `DZE`,
    `UCT`, `nTWI`, `nTWE`, `IESB`, `EIS`, `EnDB`, `EnDA`, `nTLSMD`, `LSMAOE`, `EnIB`, `EnIA`,
    `BT0`, `BT1`, `ITFSB`, `ATA`, `DSSBS`, `EnASR`, `EnAS0`, `EnALS`, `EPAN`, `EnTP2`).
-   **Không** phải "đủ": DDI 0601 (2024-12) có **54** trường, còn thiếu **≥8 trường có thật** —
+   **Không** phải "đủ": DDI 0601 (2024-12) có **58** trường, còn thiếu **19 trường có thật** —
    `nAA` (bit 6), `EnRCTX` (10), `CMOW` (32), `TCF0` (39:38), `TCF` (41:40), `ATA0` (42),
-   `TWEDEn` (45), `TWEDEL` (49:46) — cùng các trường ARMv9.x có thể chưa có trong bản 2024-12.
+   `TWEDEn` (45), `TWEDEL` (49:46), `TMT0` (50), `TMT` (51), `TME0` (52), `TME` (53),
+   `MSCEn` (33), `EnFPM` (34), `TCSO0` (58), `TCSO` (59), `NMI` (61), `SPINTMASK` (62),
+   `TIDCP` (63). (KT-188 sửa: bản nháp ghi "54" là **sai** — 54 là bản latest 2026-09.)
    Ghi chú này nằm ngay đầu `src/sysreg.rs` và trong test `sctlr_bit_positions`.
    **KT-185 (C4, D2-162)** đã sửa claim "đủ 39 trường" ở cả `src/sysreg.rs` và mục này.
 2. **Máy host là Apple Silicon (`aarch64-apple-darwin`)** ⇒ `#[cfg(target_arch = "aarch64")]`
