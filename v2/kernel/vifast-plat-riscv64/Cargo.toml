@@ -46,6 +46,10 @@ input = ["ktest"]
 # loader U-mode nên kéo theo `user`. Ảnh sản phẩm **không** bật (chưa có U-mode/shell — nợ D2-113
 # ghi `BLOCKED` có số ở `docs/k6-exec.md` §7).
 exec = ["user"]
+# **KT-263** (D2-203): PCI (dùng lại của KT-72) + virtio-gpu 2D một queue `controlq` + framebuffer
+# 640×480 ở dải PA riêng — chỉ ảnh `ktest-gpu`. Ảnh sản phẩm **không** bật (chưa có người nhận
+# màn hình ở U-mode; D2-203 mục (3) chỉ mở D1 phần 4 ở mức driver + ảnh test).
+gpu = ["ktest"]
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }

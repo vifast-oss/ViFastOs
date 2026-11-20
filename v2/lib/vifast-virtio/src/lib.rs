@@ -29,6 +29,9 @@ pub mod blk;
 pub mod conchan;
 pub mod console;
 pub mod features;
+/// **KT-263** `virtio_gpu` — device id/feature/`virtio_gpu_ctrl_hdr` + sáu lệnh 2D
+/// (§5.7), **font bitmap 8×8** ASCII 32..126 và hàm vẽ `fill_rect`/`draw_text`.
+pub mod gpu;
 /// **KT-255** `virtio_input` — device id/feature/`virtio_input_config`/`virtio_input_event` +
 /// **bảng chuyển mã phím → ASCII** (§5.8).
 pub mod input;

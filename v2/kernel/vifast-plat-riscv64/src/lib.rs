@@ -89,7 +89,8 @@ pub mod pager_fault;
     feature = "vcon",
     feature = "block",
     feature = "net",
-    feature = "input"
+    feature = "input",
+    feature = "gpu"
 ))]
 pub mod pci;
 pub mod plic;
@@ -128,6 +129,13 @@ pub mod virtio_blk;
 /// (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-con` (`feature = "vcon"`).
 #[cfg(feature = "vcon")]
 pub mod virtio_console;
+/// **KT-263** driver virtio-gpu 2D (`0x1050`/`0x1010`) — một virtqueue `controlq`, chuỗi lệnh
+/// `GET_DISPLAY_INFO` → `RESOURCE_CREATE_2D` → `RESOURCE_ATTACH_BACKING` → `SET_SCANOUT` →
+/// `TRANSFER_TO_HOST_2D` → `RESOURCE_FLUSH`, framebuffer 640×480 ở dải PA riêng; dùng lại `pci.rs`
+/// của KT-72 (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-gpu` (`feature = "gpu"`); ảnh
+/// sản phẩm **không** bật (D2-203: chưa có người nhận màn hình ở U-mode).
+#[cfg(feature = "gpu")]
+pub mod virtio_gpu;
 /// **KT-255** driver virtio-input (`0x1012`, bàn phím) — một virtqueue `event`, đọc
 /// `virtio_input_config` (tên/danh tính/`EV_BITS`), dùng lại `pci.rs` của KT-72 (không nhân đôi
 /// đường ECAM/BAR). Chỉ ảnh test `ktest-input` (`feature = "input"`); ảnh sản phẩm **không** bật

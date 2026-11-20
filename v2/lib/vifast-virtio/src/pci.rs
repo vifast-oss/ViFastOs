@@ -128,7 +128,8 @@ impl Bar {
     }
 }
 
-/// Loại thiết bị virtio mà driver K6 tìm (KT-72 blk; KT-73 console; KT-245 net; KT-255 input).
+/// Loại thiết bị virtio mà driver K6 tìm (KT-72 blk; KT-73 console; KT-245 net; KT-255 input;
+/// KT-263 gpu).
 ///
 /// Một enum thay cho hai hàm quét riêng: driver PCI quét **một** vòng bus/device/function và so
 /// khớp theo `(vendor, device)` — thêm thiết bị thứ hai **không** nhân đôi code ECAM/BAR
@@ -143,6 +144,8 @@ pub enum VirtioKind {
     Net,
     /// **KT-255** `virtio-keyboard` (0x1012/0x1052).
     Input,
+    /// **KT-263** `virtio-gpu` (0x1050/0x1010).
+    Gpu,
 }
 
 impl VirtioKind {
@@ -153,6 +156,7 @@ impl VirtioKind {
             VirtioKind::Console => "console",
             VirtioKind::Net => "net",
             VirtioKind::Input => "input",
+            VirtioKind::Gpu => "gpu",
         }
     }
 
@@ -177,6 +181,11 @@ impl VirtioKind {
                 device == crate::input::VIRTIO_INPUT_KEYBOARD
                     || device == crate::input::VIRTIO_INPUT_KEYBOARD_MODERN_ONLY
             }
+            // KT-263: id lấy từ `gpu::` — cùng lý do.
+            VirtioKind::Gpu => {
+                device == crate::gpu::VIRTIO_GPU_MODERN
+                    || device == crate::gpu::VIRTIO_GPU_TRANSITIONAL
+            }
         }
     }
 }
@@ -199,6 +208,11 @@ pub const fn is_virtio_net(vendor: u16, device: u16) -> bool {
 /// `true` ⇔ `(vendor_id, device_id)` là virtio-keyboard mà KT-255 chấp nhận (0x1012/0x1052).
 pub const fn is_virtio_input(vendor: u16, device: u16) -> bool {
     VirtioKind::Input.matches(vendor, device)
+}
+
+/// `true` ⇔ `(vendor_id, device_id)` là virtio-gpu mà KT-263 chấp nhận (0x1050/0x1010).
+pub const fn is_virtio_gpu(vendor: u16, device: u16) -> bool {
+    VirtioKind::Gpu.matches(vendor, device)
 }
 
 /// Đọc `(vendor_id, device_id)` từ config space.

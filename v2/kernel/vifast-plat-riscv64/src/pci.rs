@@ -70,13 +70,20 @@ pub const BAR_ASSIGN_BASE_NET: u64 = PCI_MMIO_WINDOW_BASE + 2 * PCI_MAP_LEAF_BYT
 /// đã đo (`assigned=0x40000000`/`0x40200000`/`0x40400000`) **không đổi**; mỗi loại một leaf ⇒ hai
 /// driver cùng có mặt không tranh một trang.
 pub const BAR_ASSIGN_BASE_INPUT: u64 = PCI_MMIO_WINDOW_BASE + 3 * PCI_MAP_LEAF_BYTES;
+/// Địa chỉ driver **gán** cho BAR modern của virtio-gpu — **KT-263**: leaf thứ **năm** của cửa sổ
+/// PCIe. Giữ nguyên leaf 0 (blk), 1 (console), 2 (net), 3 (input) ⇒ ảnh `ktest-vblk`/`ktest-con`/
+/// `ktest-net`/`ktest-input` đã đo (`assigned=0x40000000`/`0x40200000`/`0x40400000`/`0x40600000`)
+/// **không đổi**; mỗi loại một leaf ⇒ hai driver cùng có mặt không tranh một trang.
+pub const BAR_ASSIGN_BASE_GPU: u64 = PCI_MMIO_WINDOW_BASE + 4 * PCI_MAP_LEAF_BYTES;
 /// Số leaf 2 MiB của cửa sổ PCIe mà driver **identity-map** (`mmu::map_mmio`).
 ///
 /// **KT-245**: cửa sổ phải **liền một dải** từ [`PCI_MMIO_WINDOW_BASE`] vì `mmu_range_conflict`
 /// kiểm "leaf đã map có nằm trong cửa sổ của chính driver" bằng một khoảng duy nhất. Ảnh net gán
 /// BAR ở leaf **2** ⇒ phải map **3** leaf (leaf 1 chỉ để trống, không tốn PA). Ảnh blk (1 leaf) và
 /// ảnh console (2 leaf) **không đổi** — số đo `assigned=0x40200000` của KT-73 giữ nguyên.
-pub const PCI_DRIVER_LEAVES: u64 = if cfg!(feature = "input") {
+pub const PCI_DRIVER_LEAVES: u64 = if cfg!(feature = "gpu") {
+    5
+} else if cfg!(feature = "input") {
     4
 } else if cfg!(feature = "net") {
     3
@@ -417,6 +424,7 @@ pub fn init_for(kind: VirtioKind) -> Result<PciReport, PciFail> {
         VirtioKind::Console => BAR_ASSIGN_BASE_CONSOLE,
         VirtioKind::Net => BAR_ASSIGN_BASE_NET,
         VirtioKind::Input => BAR_ASSIGN_BASE_INPUT,
+        VirtioKind::Gpu => BAR_ASSIGN_BASE_GPU,
     };
     if assigned < PCI_MMIO_WINDOW_BASE
         || assigned + bar_size > PCI_MMIO_WINDOW_BASE + PCI_MMIO_WINDOW_BYTES

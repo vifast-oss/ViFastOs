@@ -41,6 +41,11 @@ net = ["ktest", "vifast-plat-riscv64/net"]
 # mã phím → ASCII. Tách ảnh riêng (cùng lý do KT-72/73/245: `.text`/mapping của các ảnh cũ không
 # đổi, và ảnh này cần `-device virtio-keyboard-pci` + monitor `sendkey` trong dòng QEMU).
 input = ["ktest", "vifast-plat-riscv64/input"]
+# **KT-263** (D2-203): ảnh `ktest-gpu` — PCI ECAM + virtio-gpu 2D một queue `controlq` +
+# framebuffer 640×480 ở dải PA riêng (300 frame). Tách ảnh riêng (cùng lý do KT-72/73/245/255:
+# `.text`/mapping của các ảnh cũ không đổi, và ảnh này cần `-device virtio-gpu-pci` + monitor
+# `screendump` trong dòng QEMU).
+gpu = ["ktest", "vifast-plat-riscv64/gpu"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
@@ -119,6 +124,14 @@ required-features = ["ktest", "net"]
 name = "vifast-kbin-ktest-input"
 path = "src/ktest_input.rs"
 required-features = ["ktest", "input"]
+
+# **KT-263** (D2-203): ảnh **virtio-gpu 2D** riêng — cần `-device virtio-gpu-pci` + monitor
+# `screendump` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest` 92,6 % trần;
+# task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
+[[bin]]
+name = "vifast-kbin-ktest-gpu"
+path = "src/ktest_gpu.rs"
+required-features = ["ktest", "gpu"]
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }

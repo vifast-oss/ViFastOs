@@ -490,7 +490,8 @@ fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
         feature = "vcon",
         feature = "block",
         feature = "net",
-        feature = "input"
+        feature = "input",
+        feature = "gpu"
     ))]
     {
         builder.map(
@@ -553,6 +554,37 @@ fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
             builder.map(
                 crate::pci::BAR_ASSIGN_BASE_INPUT,
                 crate::pci::BAR_ASSIGN_BASE_INPUT,
+                1,
+                PteFlags::device_rw(),
+            )?;
+        }
+        // KT-263: leaf **thứ năm** của cửa sổ PCIe — BAR gpu gán ở `0x4080_0000`. Cùng lý do
+        // KT-245/255: cửa sổ phải **liền một dải** (`PCI_DRIVER_LEAVES` = 5) vì
+        // `pci::mmu_range_conflict` kiểm bằng một khoảng duy nhất; leaf 1..4 map luôn cho liền dải
+        // dù ảnh gpu không dùng.
+        #[cfg(feature = "gpu")]
+        {
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_CONSOLE,
+                crate::pci::BAR_ASSIGN_BASE_CONSOLE,
+                1,
+                PteFlags::device_rw(),
+            )?;
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_NET,
+                crate::pci::BAR_ASSIGN_BASE_NET,
+                1,
+                PteFlags::device_rw(),
+            )?;
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_INPUT,
+                crate::pci::BAR_ASSIGN_BASE_INPUT,
+                1,
+                PteFlags::device_rw(),
+            )?;
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_GPU,
+                crate::pci::BAR_ASSIGN_BASE_GPU,
                 1,
                 PteFlags::device_rw(),
             )?;
