@@ -776,7 +776,7 @@ fn ticks_to_ms(ticks: u64) -> u64 {
 }
 
 /// `true` ⇔ `now` **đã** qua `deadline` (so sánh an toàn với wrap của `rdtime`).
-fn past_deadline(now: u64, deadline: u64) -> bool {
+pub(crate) fn past_deadline(now: u64, deadline: u64) -> bool {
     now.wrapping_sub(deadline) < u64::MAX / 2
 }
 
@@ -1217,6 +1217,11 @@ pub fn udp_echo(
     udp_send(
         our_ip, our_mac, dst_ip, dst_mac, src_port, dst_port, payload,
     )?;
+    // **KT-268**: ngân sách `timeout_ticks` tính cho **cả bước** (gửi + chờ). Trước đây hạn chờ
+    // bắt đầu **sau** khi gửi, nên `elapsed_ms` của ca timeout là 3000 + thời gian gửi (đo được
+    // 3001 ms dưới tải) — dòng evidence "timeout đúng 3 s" thành flake. Trừ thời gian gửi khỏi
+    // hạn chờ làm tổng đúng bằng ngân sách, không nới ngưỡng nào.
+    let spent = Riscv64Virt.now_ticks().wrapping_sub(started);
     let mut reply = [0u8; UDP_MAX_PAYLOAD];
     let len = udp_recv(
         our_ip,
@@ -1224,7 +1229,7 @@ pub fn udp_echo(
         dst_port,
         src_port,
         &mut reply,
-        timeout_ticks,
+        timeout_ticks.saturating_sub(spent),
     )?;
     if &reply[..len] != payload {
         return Err(NetError::BadFrame);
@@ -1261,6 +1266,9 @@ pub fn dns_query(
         DNS_PORT,
         &request[..request_len],
     )?;
+    // **KT-268**: như `udp_echo` — ngân sách tính cho cả bước, nên `elapsed_ms` của ca timeout
+    // đúng bằng `timeout_ticks` (3000 ms), không cộng thời gian gửi.
+    let spent = Riscv64Virt.now_ticks().wrapping_sub(started);
     let mut reply = [0u8; UDP_MAX_PAYLOAD];
     let reply_len = udp_recv(
         our_ip,
@@ -1268,7 +1276,7 @@ pub fn dns_query(
         DNS_PORT,
         UDP_CLIENT_PORT,
         &mut reply,
-        timeout_ticks,
+        timeout_ticks.saturating_sub(spent),
     )?;
     let message =
         DnsMessage::parse_response(&reply[..reply_len], id).map_err(|_| NetError::BadFrame)?;

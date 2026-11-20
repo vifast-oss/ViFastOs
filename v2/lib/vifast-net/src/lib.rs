@@ -34,6 +34,7 @@
 //! | [`udp`] | header UDP 8 byte + checksum pseudo-header IPv4 |
 //! | [`dhcp`] | BOOTP/DHCP: DISCOVER/REQUEST + đọc OFFER/ACK |
 //! | [`dns`] | DNS RFC 1035: query `A`, parse reply, giải nén tên có phát hiện vòng lặp |
+//! | [`tcp`] | header TCP 20 byte + checksum pseudo-header + máy trạng thái client (RFC 793) |
 //! | [`frame`] | bọc header Ethernet + payload |
 #![no_std]
 #![deny(unsafe_code)]
@@ -47,4 +48,5 @@ pub mod eth;
 pub mod frame;
 pub mod icmp;
 pub mod ipv4;
+pub mod tcp;
 pub mod udp;

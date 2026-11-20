@@ -18,6 +18,8 @@ pub const IHL_NO_OPTIONS: u8 = 5;
 pub const PROTO_ICMP: u8 = 1;
 /// Protocol của UDP.
 pub const PROTO_UDP: u8 = 17;
+/// Protocol của TCP.
+pub const PROTO_TCP: u8 = 6;
 /// Bit `DF` (don't fragment) trong byte flags.
 pub const FLAG_DF: u8 = 0x02;
 /// Bit `MF` (more fragments) trong byte flags.

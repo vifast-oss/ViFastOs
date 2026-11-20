@@ -9,7 +9,7 @@
 //! 21 boot matrix cũ **không đổi**; (c) boot kết thúc bằng **một** dòng `PANIC:` chủ đích (cùng
 //! quy ước ảnh guard/user/proc/vblk/con/exec).
 //!
-//! # TAP (9 test; tên khớp `v2/test/boot/net.sh`)
+//! # TAP (11 test; tên khớp `v2/test/boot/net.sh`)
 //!
 //! 1. `net device` — quét ECAM tìm **vendor/device đọc từ thiết bị** (`0x1af4:0x1000`), đo cỡ BAR
 //!    bằng mask, **gán** BAR (firmware không enumerate), đọc lại BAR + `command`, đọc bốn
@@ -34,6 +34,12 @@
 //!    `net: udp echo ok len=15 rtt=<ms>`.
 //! 9. `net dns a` — **KT-260**: truy vấn `example.com` type `A` tới `10.0.2.3:53`, parse bản ghi
 //!    `A` đầu tiên ⇒ `net: dns example.com a=<ip> ttl=<n>`.
+//! 10. `net tcp connect` — **KT-268**: mở TCP thật tới **server trên host** (runner dựng
+//!     `python3` lắng nghe `127.0.0.1:<port>`; khách nối `10.0.2.2:<port>` — slirp ánh xạ
+//!     `10.0.2.2` → loopback của host): SYN → SYN+ACK → ACK ⇒
+//!     `net: tcp connect 10.0.2.2:<port> ok rtt=<ms>`.
+//! 11. `net tcp data` — **KT-268**: nhận **đúng** chuỗi server gửi (`net: tcp recv=<n> first=<…>`),
+//!     gửi lại một payload (server ghi `recv=` trong log của nó), rồi đóng bằng FIN.
 //!
 //! Mọi dòng `# net:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
@@ -45,9 +51,11 @@ use core::fmt::Write;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_net::dns::TYPE_A;
+use vifast_net::tcp::State;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
+use vifast_plat_riscv64::tcp;
 use vifast_plat_riscv64::virtio_net;
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::net::{MAX_FRAME_BYTES, Q_RX, Q_TX};
@@ -70,6 +78,10 @@ const DNS_ID_ECHO: u16 = 0x4b54;
 const DNS_ID_A: u16 = 0x4b55;
 /// Tên hỏi cho TAP 9.
 const DNS_NAME_A: &[u8] = b"example.com";
+/// Payload khách gửi lại cho server ở TAP 11 (server ghi `recv=` trong log của nó).
+const TCP_SEND_PAYLOAD: &[u8] = b"vifast-tcp-send";
+/// Cỡ tối đa của `first=` in ra ở TAP 11 (đủ thấy chuỗi server gửi, không tràn dòng log).
+const TCP_FIRST_BYTES: usize = 32;
 
 fn put(ok: bool, number: usize, name: &str, fails: &mut usize, why: &str) {
     let mut w = PlatformWriter(&PLATFORM);
@@ -78,6 +90,20 @@ fn put(ok: bool, number: usize, name: &str, fails: &mut usize, why: &str) {
     } else {
         let _ = writeln!(w, "not ok {number} - {name}: {why}");
         *fails += 1;
+    }
+}
+
+/// Tên trạng thái TCP để in evidence (D2-102: tên ổn định, không in số trần).
+fn state_name(state: State) -> &'static str {
+    match state {
+        State::Closed => "closed",
+        State::SynSent => "syn-sent",
+        State::Established => "established",
+        State::FinWait1 => "fin-wait-1",
+        State::FinWait2 => "fin-wait-2",
+        State::Closing => "closing",
+        State::TimeWait => "time-wait",
+        State::LastAck => "last-ack",
     }
 }
 
@@ -108,7 +134,7 @@ fn mac_str(mac: [u8; 6], out: &mut [u8; 17]) {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..9\n");
+    PLATFORM.put_str("TAP version 13\n1..11\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let mmu_report = mmu::init();
@@ -117,14 +143,16 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(
             w,
             "# net image: hart={} stvec=0x{:x} direct={} satp=0x{:x} mode={} tables={} used={} \
-             const:gateway=10.0.2.2 const:ping_count={PING_COUNT} const:dns=10.0.2.3:53",
+             const:gateway=10.0.2.2 const:ping_count={PING_COUNT} const:dns=10.0.2.3:53 \
+             const:tcp=10.0.2.2:{}",
             PLATFORM.hart_id(),
             stvec,
             (stvec & 0b11 == 0) as u8,
             mmu_report.satp,
             mmu_report.satp >> 60,
             mmu_report.tables,
-            mmu_report.used
+            mmu_report.used,
+            tcp::TCP_SERVER_PORT
         );
     }
     let mut fails = 0usize;
@@ -864,6 +892,180 @@ pub extern "C" fn rust_main() -> ! {
         }
     }
 
+    // ------------------------------------------------ 10) TCP connect tới server trên host
+    // **Server thật**: runner dựng `python3` lắng nghe `127.0.0.1:<TCP_SERVER_PORT>`; khách nối
+    // `10.0.2.2:<port>` — slirp ánh xạ `10.0.2.2` → loopback của host (`sotranslate_out4`).
+    // Không có server ⇒ `tcp_connect` timeout 3 s (fail-closed, không treo).
+    let mut tcp = {
+        let started = PLATFORM.now_ticks();
+        let result = tcp::tcp_connect(
+            config.ip,
+            MacAddr::new(mac),
+            GATEWAY_IP,
+            gateway_mac,
+            tcp::TCP_SERVER_PORT,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(conn) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net: tcp connect {}:{} ok rtt={} state={}",
+                        GATEWAY_IP,
+                        tcp::TCP_SERVER_PORT,
+                        elapsed_ms,
+                        state_name(conn.state())
+                    );
+                    let _ = writeln!(
+                        w,
+                        "# net tcp connect: iss=0x{:x} snd_una=0x{:x} rcv_nxt=0x{:x} \
+                         retransmits={} elapsed_ms={elapsed_ms} const:timeout_ms={} \
+                         const:port={}",
+                        conn.iss(),
+                        conn.snd_una(),
+                        conn.rcv_nxt(),
+                        conn.retries(),
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ,
+                        tcp::TCP_SERVER_PORT
+                    );
+                }
+                put(true, 10, "net tcp connect", &mut fails, "");
+                conn
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net tcp connect: target={}:{} err={} elapsed_ms={elapsed_ms} \
+                         const:timeout_ms={}",
+                        GATEWAY_IP,
+                        tcp::TCP_SERVER_PORT,
+                        error.name(),
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                    let _ = writeln!(w, "# net: no tcp");
+                }
+                put(
+                    false,
+                    10,
+                    "net tcp connect",
+                    &mut fails,
+                    "không mở được TCP trong 3 s",
+                );
+                PLATFORM.put_str("# ktest halt\n");
+                PLATFORM.halt(1)
+            }
+        }
+    };
+
+    // ------------------------------------------------ 11) TCP data: nhận chuỗi server + gửi lại + đóng
+    {
+        let mut buf = [0u8; 64];
+        let started = PLATFORM.now_ticks();
+        let result = tcp::tcp_recv(&mut tcp, &mut buf, virtio_net::NET_STEP_TIMEOUT_TICKS);
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(n) if n > 0 => {
+                // `first=` in **đúng byte nhận được** (ký tự không in được thay bằng '.'), tối đa
+                // `TCP_FIRST_BYTES` — runner đối chiếu với chuỗi server gửi.
+                let mut first = [0u8; TCP_FIRST_BYTES];
+                let mut first_len = 0;
+                while first_len < n && first_len < TCP_FIRST_BYTES {
+                    let byte = buf[first_len];
+                    first[first_len] = if (0x20..0x7f).contains(&byte) {
+                        byte
+                    } else {
+                        b'.'
+                    };
+                    first_len += 1;
+                }
+                let first = core::str::from_utf8(&first[..first_len]).unwrap_or("?");
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(w, "# net: tcp recv={n} first={first}");
+                }
+                // Chiều khách → host: server ghi `recv=` trong log của nó (bằng chứng hai chiều).
+                let sent = tcp::tcp_send(
+                    &mut tcp,
+                    TCP_SEND_PAYLOAD,
+                    virtio_net::NET_STEP_TIMEOUT_TICKS,
+                );
+                let closed = tcp::tcp_close(&mut tcp, virtio_net::NET_STEP_TIMEOUT_TICKS);
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net tcp data: recv={n} sent={} send={} close={} state={} \
+                         retransmits={} elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                        TCP_SEND_PAYLOAD.len(),
+                        match sent {
+                            Ok(_) => "ok",
+                            Err(error) => error.name(),
+                        },
+                        match closed {
+                            Ok(()) => "ok",
+                            Err(error) => error.name(),
+                        },
+                        state_name(tcp.state()),
+                        tcp.retries(),
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                }
+                let ok = sent.is_ok() && closed.is_ok();
+                put(ok, 11, "net tcp data", &mut fails, "gửi/đóng TCP thất bại");
+            }
+            Ok(_) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net tcp data: recv=0 elapsed_ms={elapsed_ms} state={}",
+                        state_name(tcp.state())
+                    );
+                    let _ = writeln!(w, "# net: no tcp");
+                }
+                put(
+                    false,
+                    11,
+                    "net tcp data",
+                    &mut fails,
+                    "peer đóng trước khi gửi dữ liệu",
+                );
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net tcp data: recv_err={} elapsed_ms={elapsed_ms} state={} \
+                         const:timeout_ms={}",
+                        error.name(),
+                        state_name(tcp.state()),
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                    let _ = writeln!(w, "# net: no tcp");
+                }
+                put(
+                    false,
+                    11,
+                    "net tcp data",
+                    &mut fails,
+                    "không nhận được dữ liệu TCP trong 3 s",
+                );
+            }
+        }
+    }
+
     // ------------------------------------------------ kết thúc chủ đích
     let stats = virtio_net::stats();
     {
@@ -884,7 +1086,7 @@ pub extern "C" fn rust_main() -> ! {
         );
         // Dấu kết thúc **chủ đích** (không có fault): runner đòi đúng **một** dòng PANIC cho mỗi
         // boot; ảnh này không fault nên tự in dấu kết thúc rồi `halt(0)`. Nội dung lấy từ `fails`.
-        let _ = writeln!(w, "PANIC: KT-260 net xong (9 TAP, {fails} fail)");
+        let _ = writeln!(w, "PANIC: KT-268 net xong (11 TAP, {fails} fail)");
     }
     PLATFORM.halt(0)
 }

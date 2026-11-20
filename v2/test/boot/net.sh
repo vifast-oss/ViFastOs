@@ -9,9 +9,9 @@
 # các nhánh khác (KT-243..KT-251).
 #
 # Hợp đồng (fail-closed, không nới ngưỡng):
-#   1. **Ca dương** (`-netdev user`): log phải có `TAP version 13` + `1..9` đúng một lần, chín dòng
-#      `ok 1..9` đúng **thứ tự** và đúng **tên**, **không** `not ok`, đúng **một** dòng
-#      `PANIC: KT-260 net xong (9 TAP, 0 fail)`, và các dòng bằng chứng:
+#   1. **Ca dương** (`-netdev user`): log phải có `TAP version 13` + `1..11` đúng một
+#      lần, mười một dòng `ok 1..11` đúng **thứ tự** và đúng **tên**, **không** `not ok`, đúng
+#      **một** dòng `PANIC: KT-268 net xong (11 TAP, 0 fail)`, và các dòng bằng chứng:
 #        - MAC thật `52:54:00:…` (OUI QEMU) đọc từ thiết bị;
 #        - `net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`;
 #        - `net: arp gw=<mac>` (MAC gateway khác 0, không broadcast);
@@ -24,6 +24,12 @@
 #        - **KT-260** hai dòng timeout **đúng 3 s** (fail-closed, không treo):
 #          `# net udp echo: target=10.0.2.2:7 result=Timeout elapsed_ms=3000 …` và
 #          `# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 …`;
+#        - **KT-268** `net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established` +
+#          `# net tcp connect:` (server TCP **thật** trên host: slirp ánh xạ `10.0.2.2` → loopback
+#          của host — xem ghi chú `hostfwd` dưới đây);
+#        - **KT-268** `net: tcp recv=13 first=vifast-tcp-ok` (đúng chuỗi **server gửi**) +
+#          `# net tcp data:` có `sent=15 send=ok close=ok`; log **server** phải có `accept`,
+#          `sent=13`, `recv=15` (bằng chứng hai chiều khách ↔ host);
 #        - `# net stats:` có `errors=0 timeouts=0 id_mismatch=0`.
 #   2. **Ca âm "không thiết bị"**: **cùng** ảnh, **không** `-netdev`/`-device` ⇒ log phải có
 #      `net: no device` + `not ok 1 - net device`, **không** có `ok 1`, **không** có dòng PANIC
@@ -32,10 +38,18 @@
 #      mặt, **không** peer nào trả lời) ⇒ log phải có `net: no link` + `not ok 3 - net dhcp`,
 #      **không** có `ok 3`, **không** có dòng PANIC "xong". Chứng minh DHCP **fail-closed** chứ
 #      không treo và không PASS giả.
-#   4. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`/`ok 8`/`ok 9`,
-#      đổi MAC, đổi `oper`, đổi `ip=`, đổi `len=`, đổi `a=`, xoá dòng timeout, thêm `not ok`, xoá
-#      `# net stats:`) rồi đòi validator **từ chối** từng bản; và hai log ca âm "PASS giả" phải bị
-#      từ chối.
+#   4. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`/`ok 8`/`ok 9`/
+#      `ok 10`/`ok 11`, đổi MAC, đổi `oper`, đổi `ip=`, đổi `len=`, đổi `a=`, đổi `first=`, đổi
+#      `recv=`, đổi `send=ok`, xoá dòng timeout, thêm `not ok`, xoá `# net stats:`) rồi đòi
+#      validator **từ chối** từng bản; và hai log ca âm "PASS giả" phải bị từ chối.
+#
+# **Ghi chú `hostfwd` (KT-268)**: đề bài gợi ý `-netdev user,hostfwd=tcp::<port>-:<port>`, nhưng
+# `hostfwd` của QEMU là chiều **host → guest** (`hostfwd=[tcp]:[hostaddr]:hostport-[guestaddr]:
+# guestport`), còn ta cần **guest → host**; đặt cùng cổng thì QEMU báo "Could not set up host
+# forwarding rule" vì chính server đang giữ cổng đó. Đường **thật** cho guest → host của slirp là
+# ánh xạ có sẵn `10.0.2.2` → `127.0.0.1` của host (libslirp `sotranslate_out4`), nên runner chỉ cần
+# dựng server trên `127.0.0.1:$TCP_PORT` và khách nối `10.0.2.2:$TCP_PORT`. Bằng chứng hai chiều:
+# log server có `accept peer=127.0.0.1:<cổng tạm>`, `sent=13`, `recv=15`.
 #
 # Dùng:
 #   bash v2/test/boot/net.sh                 # build + ca dương + hai ca âm (PASS/FAIL)
@@ -59,11 +73,11 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 QEMU_ICOUNT="-icount shift=6" # D2-74 (chỉ runner; run.sh/soak không icount)
 QEMU_MIN_MAJOR=9
 QEMU_MIN_MINOR=2
-# Số TAP của ảnh — runner đòi đúng chín dòng `ok 1..9` đúng **tên** (thêm/bớt TAP phải sửa cả
-# kernel, tệp này và `# net stats` trong cùng commit).
-TAP_COUNT=9
+# Số TAP của ảnh — runner đòi đúng mười một dòng `ok 1..11` đúng **tên** (thêm/bớt TAP phải sửa
+# cả kernel, tệp này và `# net stats` trong cùng commit).
+TAP_COUNT=11
 # Dòng kết thúc chủ đích của ảnh (khớp `ktest_net.rs`).
-PANIC_OK='^PANIC: KT-260 net xong \(9 TAP, 0 fail\)$'
+PANIC_OK='^PANIC: KT-268 net xong \(11 TAP, 0 fail\)$'
 # OUI mà QEMU gán cho card slirp — MAC **đọc từ thiết bị**, hằng này chỉ để đối chiếu nguồn gốc.
 MAC_PREFIX="52:54:00:"
 # Giá trị DHCP mà slirp của QEMU cấp (dữ kiện nền tảng QEMU, không phải số đo của kernel).
@@ -79,6 +93,17 @@ UDP_ECHO_DNS='^# net udp echo: target=10\.0\.2\.3:53 via=dns-question-echo paylo
 DNS_A_LINE='^# net: dns example\.com a=([0-9]{1,3}\.){3}[0-9]{1,3} ttl=[0-9]+$'
 DNS_REPLY='^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$'
 DNS_TIMEOUT='^# net dns: target=192\.0\.2\.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000$'
+# **KT-268** — TCP: server **thật** trên host. Runner dựng `python3` lắng nghe
+# `127.0.0.1:$TCP_PORT`; khách nối `10.0.2.2:$TCP_PORT` (slirp ánh xạ 10.0.2.2 → loopback host —
+# xem ghi chú `hostfwd` ở đầu tệp). Server gửi đúng `$TCP_TOKEN` (13 byte) rồi chờ khách gửi
+# `$TCP_SEND_LEN` byte + FIN; log server là bằng chứng **hai chiều**.
+TCP_PORT=45678
+TCP_TOKEN="vifast-tcp-ok"
+TCP_TOKEN_LEN=${#TCP_TOKEN}
+TCP_SEND_LEN=15 # `vifast-tcp-send`
+TCP_CONNECT_LINE="^# net: tcp connect 10\.0\.2\.2:${TCP_PORT} ok rtt=[0-9]+ state=established$"
+TCP_RECV_LINE="^# net: tcp recv=${TCP_TOKEN_LEN} first=${TCP_TOKEN}$"
+TCP_DATA_LINE="^# net tcp data: recv=${TCP_TOKEN_LEN} sent=${TCP_SEND_LEN} send=ok close=ok state=(fin-wait-2|time-wait|closing|last-ack|closed) retransmits=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$"
 
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -217,6 +242,8 @@ validate_positive() {
     check_tap 7 "net rx"
     check_tap 8 "net udp echo"
     check_tap 9 "net dns a"
+    check_tap 10 "net tcp connect"
+    check_tap 11 "net tcp data"
     # 3) Không `not ok` nào.
     check_count "ca dương: dòng 'not ok'" '^not ok' 0
     # 4) Đúng **một** dòng PANIC kết thúc, đúng mẫu.
@@ -252,11 +279,18 @@ validate_positive() {
     check_grep "dòng 'net dns:' rcode=0 an=1 cho example.com" "$DNS_REPLY"
     check_grep "dòng timeout DNS 'target=192.0.2.1:53 result=Timeout elapsed_ms=3000'" \
         "$DNS_TIMEOUT"
-    # 13) Hai ca âm **không** được lẫn vào log ca dương.
+    # 13) **KT-268** — TCP: mở tới **server thật trên host** (ánh xạ 10.0.2.2 của slirp), nhận **đúng** chuỗi
+    #     server gửi, gửi lại payload và đóng bằng FIN.
+    check_grep "dòng 'net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established'" \
+        "$TCP_CONNECT_LINE"
+    check_grep "dòng 'net: tcp recv=13 first=vifast-tcp-ok'" "$TCP_RECV_LINE"
+    check_grep "dòng 'net tcp data:' recv=13 sent=15 send=ok close=ok" "$TCP_DATA_LINE"
+    # 14) Hai ca âm **không** được lẫn vào log ca dương.
     check_count "ca dương: dòng 'net: no device'" 'net: no device' 0
     check_count "ca dương: dòng 'net: no link'" 'net: no link' 0
     check_count "ca dương: dòng 'net: no udp'" 'net: no udp' 0
     check_count "ca dương: dòng 'net: no dns'" 'net: no dns' 0
+    check_count "ca dương: dòng 'net: no tcp'" 'net: no tcp' 0
     return $((FAILS - before))
 }
 
@@ -274,7 +308,7 @@ validate_negative() {
     check_count "ca âm: 'not ok 1 - net device'" '^not ok 1 - net device' 1
     # 3) **Không** được có `ok 1` — đây là chỗ bắt "PASS giả".
     check_count "ca âm: 'ok 1 - net device'" '^ok 1 - net device' 0
-    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 9 TAP).
+    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 11 TAP).
     check_count "ca âm: dòng PANIC 'xong'" "$PANIC_OK" 0
     return $((FAILS - before))
 }
@@ -300,16 +334,149 @@ validate_nolink() {
     return $((FAILS - before))
 }
 
+# ---------------------------------------------------------------- TCP server trên host (KT-268)
+# Vì sao `python3` chứ không `socat`/`nc`: hai công cụ đó **có thể không có** trên máy đo; python3
+# là thứ runner đã đòi cho các bước khác. Server ghi log từng mốc (`listen`/`accept`/`sent`/`recv`)
+# để runner có bằng chứng **hai chiều** khách ↔ host, không chỉ tin log của khách.
+TCP_SERVER_PID=""
+
+write_tcp_server() {
+    cat >"$LOGDIR/kt268-tcp-server.py" <<'PY'
+import socket, sys
+
+port = int(sys.argv[1])
+token = sys.argv[2].encode()
+log = sys.argv[3]
+
+
+def note(line):
+    with open(log, "a") as handle:
+        handle.write(line + "\n")
+
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    srv.bind(("127.0.0.1", port))
+except OSError as error:
+    note("bind_err=%s" % error)
+    sys.exit(2)
+srv.listen(1)
+note("listen port=%d" % port)
+srv.settimeout(60.0)
+try:
+    conn, addr = srv.accept()
+except socket.timeout:
+    note("accept_timeout")
+    sys.exit(3)
+note("accept peer=%s:%d" % addr)
+conn.sendall(token)
+note("sent=%d" % len(token))
+conn.settimeout(5.0)
+total = 0
+try:
+    while True:
+        data = conn.recv(4096)
+        if not data:
+            break
+        total += len(data)
+except socket.timeout:
+    note("recv_timeout")
+note("recv=%d" % total)
+conn.close()
+srv.close()
+PY
+}
+
+# `start_tcp_server <log>`: dựng server, chờ dòng `listen` (tối đa 5 s). 0 = sẵn sàng.
+start_tcp_server() {
+    local srv_log="$1" i
+    command -v python3 >/dev/null 2>&1 || {
+        echo "net.sh: không có python3 để dựng TCP server" >&2
+        return 1
+    }
+    write_tcp_server
+    rm -f "$srv_log"
+    python3 "$LOGDIR/kt268-tcp-server.py" "$TCP_PORT" "$TCP_TOKEN" "$srv_log" &
+    TCP_SERVER_PID=$!
+    for i in $(seq 1 50); do
+        if grep -q '^listen ' "$srv_log" 2>/dev/null; then
+            return 0
+        fi
+        if grep -q '^bind_err=' "$srv_log" 2>/dev/null; then
+            echo "net.sh: TCP server không bind được 127.0.0.1:$TCP_PORT — port đang bận?" >&2
+            cat "$srv_log" >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+    echo "net.sh: TCP server không lắng nghe sau 5 s" >&2
+    return 1
+}
+
+# `wait_tcp_server <log>`: chờ server xong (tối đa 20 s) và đòi đủ ba mốc bằng chứng.
+wait_tcp_server() {
+    local srv_log="$1" i
+    for i in $(seq 1 200); do
+        if grep -qE '^(recv=|accept_timeout|bind_err)' "$srv_log" 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+    if [ -n "$TCP_SERVER_PID" ]; then
+        if kill -0 "$TCP_SERVER_PID" 2>/dev/null; then
+            kill "$TCP_SERVER_PID" 2>/dev/null || true
+            echo "net.sh: server TCP vẫn chạy sau 20 s — đã kill" >&2
+            TCP_SERVER_PID=""
+            return 1
+        fi
+        wait "$TCP_SERVER_PID" 2>/dev/null || true
+        TCP_SERVER_PID=""
+    fi
+    grep -q '^accept ' "$srv_log" || {
+        echo "net.sh: server TCP không nhận kết nối từ khách" >&2
+        return 1
+    }
+    grep -qx "sent=$TCP_TOKEN_LEN" "$srv_log" || {
+        echo "net.sh: server TCP không gửi đủ $TCP_TOKEN_LEN byte" >&2
+        return 1
+    }
+    grep -qx "recv=$TCP_SEND_LEN" "$srv_log" || {
+        echo "net.sh: server TCP không nhận đúng $TCP_SEND_LEN byte từ khách" >&2
+        return 1
+    }
+    return 0
+}
+
+stop_tcp_server() {
+    if [ -n "$TCP_SERVER_PID" ]; then
+        kill "$TCP_SERVER_PID" 2>/dev/null || true
+        wait "$TCP_SERVER_PID" 2>/dev/null || true
+        TCP_SERVER_PID=""
+    fi
+}
+
 # ---------------------------------------------------------------- ba ca
 run_positive() {
     local log="$LOGDIR/kt245-positive.log"
-    echo "# ca dương: -netdev user,id=n0 -device virtio-net-pci,netdev=n0"
+    local srv_log="$LOGDIR/kt268-tcp-server.log"
+    echo "# ca dương: -netdev user,id=n0 -device virtio-net-pci,netdev=n0 (TCP server host 127.0.0.1:$TCP_PORT qua ánh xạ 10.0.2.2 của slirp)"
+    if ! start_tcp_server "$srv_log"; then
+        bad "ca dương: không dựng được TCP server trên 127.0.0.1:$TCP_PORT"
+        stop_tcp_server
+        return 1
+    fi
     if ! boot "$log" -netdev user,id=n0 -device virtio-net-pci,netdev=n0; then
         bad "ca dương: QEMU không tự thoát trong 20 s (timeout/kill cả group)"
+        stop_tcp_server
+        return 1
+    fi
+    if ! wait_tcp_server "$srv_log"; then
+        bad "ca dương: server TCP không có đủ bằng chứng hai chiều (accept/sent/recv)"
         return 1
     fi
     if validate_positive "$log"; then
-        ok "ca dương: 9/9 TAP + MAC thật + DHCP + ARP + ping + ARP reply + UDP echo + DNS A + bộ đếm sạch ($log)"
+        ok "ca dương: 11/11 TAP + MAC thật + DHCP + ARP + ping + ARP reply + UDP echo + DNS A + TCP connect/data + bộ đếm sạch ($log)"
         return 0
     fi
     return 1
@@ -374,11 +541,11 @@ red_selftest() {
     local neg="$LOGDIR/kt245-selftest-neg.log"
     local nolink="$LOGDIR/kt245-selftest-nolink.log"
     local tmp="$LOGDIR/kt245-selftest-mut.log"
-    # Log **tốt** dựng tay: đúng chín TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để kiểm
-    # validator, không dùng làm bằng chứng KT-245/246/260).
+    # Log **tốt** dựng tay: đúng mười một TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để
+    # kiểm validator, không dùng làm bằng chứng KT-245/246/260/268).
     cat >"$good" <<'EOF'
 TAP version 13
-1..9
+1..11
 # net dev: mac=52:54:00:12:34:56 status=0x1 mtu_raw=65535
 ok 1 - net device
 ok 2 - net mac
@@ -401,15 +568,22 @@ ok 8 - net udp echo
 # net: dns example.com a=104.20.23.154 ttl=300
 ok 9 - net dns a
 # net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000
+# net: tcp connect 10.0.2.2:45678 ok rtt=2 state=established
+# net tcp connect: iss=0x4b540001 snd_una=0x4b540002 rcv_nxt=0x20000001 retransmits=0 elapsed_ms=2 const:timeout_ms=3000 const:port=45678
+ok 10 - net tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+# net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=3 const:timeout_ms=3000
+ok 11 - net tcp data
 # net stats: tx_frames=12 tx_bytes=1218 rx_frames=10 rx_bytes=1772 notifies=23 errors=0 timeouts=0 id_mismatch=0
-PANIC: KT-260 net xong (9 TAP, 0 fail)
+PANIC: KT-268 net xong (11 TAP, 0 fail)
 EOF
     expect_accept "log tốt dựng tay" validate_positive "$good"
-    # Mười bốn đột biến phải bị **từ chối** — nếu không, validator rỗng.
+    # Hai mươi đột biến phải bị **từ chối** — nếu không, validator rỗng.
     local name
     for name in xoa_ok3 doi_mac doi_oper doi_ip them_not_ok xoa_stats doi_ping_n \
         xoa_ok8 xoa_ok9 doi_udp_len doi_echoed doi_dns_a doi_dns_ttl doi_rcode \
-        xoa_udp_timeout xoa_dns_timeout; do
+        xoa_udp_timeout xoa_dns_timeout xoa_ok10 xoa_ok11 doi_tcp_port doi_tcp_recv \
+        doi_tcp_first doi_tcp_send doi_tcp_state; do
         case "$name" in
             xoa_ok3) grep -v '^ok 3 - net dhcp$' "$good" >"$tmp" ;;
             doi_mac) sed 's/mac=52:54:00:/mac=02:00:00:/' "$good" >"$tmp" ;;
@@ -427,13 +601,20 @@ EOF
             doi_rcode) sed 's/rcode=0 an=1/rcode=3 an=1/' "$good" >"$tmp" ;;
             xoa_udp_timeout) grep -v '^# net udp echo: target=10.0.2.2:7 result=Timeout' "$good" >"$tmp" ;;
             xoa_dns_timeout) grep -v '^# net dns: target=192.0.2.1:53 result=Timeout' "$good" >"$tmp" ;;
+            xoa_ok10) grep -v '^ok 10 - net tcp connect$' "$good" >"$tmp" ;;
+            xoa_ok11) grep -v '^ok 11 - net tcp data$' "$good" >"$tmp" ;;
+            doi_tcp_port) sed 's/10.0.2.2:45678/10.0.2.2:45679/' "$good" >"$tmp" ;;
+            doi_tcp_recv) sed 's/tcp recv=13/tcp recv=12/' "$good" >"$tmp" ;;
+            doi_tcp_first) sed 's/first=vifast-tcp-ok/first=vifast-tcp-NO/' "$good" >"$tmp" ;;
+            doi_tcp_send) sed 's/send=ok close=ok/send=Timeout close=ok/' "$good" >"$tmp" ;;
+            doi_tcp_state) sed 's/state=fin-wait-2/state=syn-sent/' "$good" >"$tmp" ;;
         esac
         expect_reject "đột biến '$name'" validate_positive "$tmp"
     done
     # Ca âm "không thiết bị": log đỏ đúng cách ⇒ chấp nhận; log "PASS giả" (có `ok 1`) ⇒ từ chối.
     cat >"$neg" <<'EOF'
 TAP version 13
-1..9
+1..11
 # net pci: err=NoDevice stage=nodevice
 # net: no device
 not ok 1 - net device: không tìm/khởi tạo được PCI
@@ -445,7 +626,7 @@ EOF
     # Ca âm "không mạng": DHCP fail-closed ⇒ chấp nhận; DHCP "PASS giả" ⇒ từ chối.
     cat >"$nolink" <<'EOF'
 TAP version 13
-1..9
+1..11
 ok 1 - net device
 ok 2 - net mac
 # net: no link

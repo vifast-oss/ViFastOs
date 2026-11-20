@@ -98,6 +98,11 @@ pub mod plic;
 #[cfg(feature = "ktest")]
 pub mod probe;
 pub mod smp;
+/// **KT-268** TCP client trên virtio-net (N1 phần 2) — mở/gửi/nhận/đóng một kết nối, timeout 3 s
+/// mỗi bước, retransmit tối đa 3 lần. Máy trạng thái thuần ở `vifast-net::tcp`; tệp này chỉ dựng
+/// frame + chờ segment + thi hành hành động. Chỉ ảnh test `ktest-net` (`feature = "net"`).
+#[cfg(feature = "net")]
+pub mod tcp;
 pub mod tf_store;
 pub mod timer;
 pub mod tlb;
