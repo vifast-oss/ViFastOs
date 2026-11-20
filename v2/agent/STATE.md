@@ -5,7 +5,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 sau D2-187..D2-193 ===
-HEAD          : `59bede14` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
+HEAD          : `ab406b3e` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0`.
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
                 `build=b08c5c57cdbdb156`, `inputs=43df126a4a6702ec`, `dirty=0`; `data+bss=224288`,
@@ -17,7 +17,7 @@ CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, 52 bước
                 `JOURNAL/kt231-logs/kt231-gate-pass.log`). **D2-191**: đây là **gate trên
                 `a08bf042`**, **KHÔNG** phải "gate trên HEAD". Sau khi tích hợp đợt sửa này
                 **phải chạy full gate trên commit cuối**.
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=206 READY=0 BLOCKED=0 REVIEW=2**.
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=208 READY=2 BLOCKED=0 REVIEW=2** (KT-237/240 DONE; KT-238/239 còn READY).
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
 LUẬT WAKE      : **CHƯA ĐÓNG** — KT-184/KT-194 giữ **REVIEW** (D2-190: không đóng bằng số
                 selftest hay một vòng reviewer không tìm thấy lỗi).
