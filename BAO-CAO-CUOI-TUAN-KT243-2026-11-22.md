@@ -288,6 +288,49 @@ text=ViFast`. **Bằng chứng thật** (không chỉ "lệnh gửi xong"): `scr
 mode của **host** nên không đổi khi `SET_SCANOUT` ⇒ TAP `scanout` dùng ca âm đối chứng
 (`InvalidResourceId`) thay vì so mode.
 
+### 3.22 KT-265 — aarch64 **soak 1.000** + `budget-aarch64.sh`
+**XONG.** `soak-aarch64.sh` cùng **bất biến** `soak.sh` (N=1.000, 3 luồng, 20 s/boot, **không
+retry**, hash ảnh khớp ELF, `-smp 4`). **Đo**:
+```text
+# N=1000 lanes=3 timeout=20s/boot; p=3/1000 ⇒ n ≥ 3/p = 1000 (D2-24)
+# image=product bytes=149328 sha256=b7568e134ebb7426…  BUILD_ID build=68b890daa9e08f6b text=38072
+# soak: xong wall=247s (4 boot/s); ok=1000 fail=0 tổng=1000/1000
+# soak: 0/1000 lỗi (PASS)
+```
+Mỗi boot kiểm: đúng 1 `TAP version 13`, đúng 1 `1..15`, đủ 15 dòng `ok`, 0 `not ok`, đúng 1
+`# viFastOs aarch64: boot ok`, đúng 1 `# conf image:` **khớp ELF**, `# smp: online mask=0xf … harts=4`,
+3 dòng `# tlbi:`, 0 `PANIC`. Guard: `boot_end=1001 isolated_1=1001 rc_0=1001 rc_124=0`.
+**Trung thực**: mẫu `qg_infra after` thấy QEMU x86_64 của sub-agent khác ⇒ `verdict=KHONG_HOP_LE`,
+`MEASUREMENT_INVALID tag=after` ⇒ **số thời gian 247 s không dùng để kết luận**; **số lỗi 0/1000 vẫn
+hợp lệ** (mỗi boot kiểm độc lập, `rc_124=0`, `qemu_own=0`). Không chạy lại để "lấy số đẹp" (§6.3).
+**Budget aarch64**: `data+bss=155872 / 262144` (59,5 %), `.smp_stacks=557056` (NOLOAD) báo riêng;
+`--selftest` 8/8. **Dòng `# conf image:`** (D2-80) thêm vào kernel aarch64 (FNV-1a 64 trên `.text`,
+đọc **từng byte** vì `text=38072` không chia hết 8); runner **12/12** + **10 ca âm**.
+**Nợ P20 đo được**: sha ảnh phụ thuộc **cách viết đường dẫn** build (`--manifest-path v2/kernel/…`
+⇒ `build=31e03367…`; `--manifest-path /tmp/…/v2/kernel/…` ⇒ `build=68b890da…`).
+
+### 3.23 KT-266 — K5' bước 3: x86_64 APIC + timer
+**XONG.** LAPIC (ID/version/SVR/TPR) + IOAPIC (mask hết rồi mở đúng IRQ0) + **PIT 100 Hz** làm nguồn
+tick + IDT vector 32/255. **Đo**:
+```text
+# apic: id=0 version=0x14 svr=0x1ff
+# apic: ioapic id=0 ver=0x20 entries=24
+# timer: lapic count0=981000 count1=473000 runs=1 ioapic_route=1 nominal_hz=100 pit=0x2e7f->0x2a11
+# timer: hz=57 ticks=3 window_pit=41456
+# timer: eoi=3 ticks=3 spurious=0
+ok 8 - apic: lapic id
+ok 9 - apic: ioapic
+ok 10 - timer: ticks
+ok 11 - timer: eoi
+```
+TAP **11/11**, runner **11/11** (9 ca âm). **Năm quyết định kỹ thuật đáng ghi**: (1) MMIO LAPIC/IOAPIC
+nằm **ngoài** identity map 1 GiB ⇒ thêm bảng PD thứ hai gắn `PDPT[3]`, lá `PCD=1`; (2) **phải che
+8259 PIC** (`0x21`/`0xA1`=0xFF) trước `sti` — BIOS đặt vector IRQ0 = **`0x08`** (trùng `#DF`), lần
+chạy đầu chết đúng `# exc: vec=8`; (3) **nguồn tick là PIT, không phải LAPIC timer** — đo được LAPIC
+timer giao ngắt **2,8–38,5 ms** cho chu kỳ danh định 100 µs và **đổi giữa các lần boot**; (4) PIT
+kênh 2 làm đồng hồ đo độc lập ⇒ `hz` **đo** được 36–218 Hz (dao động do TCG), **không** hardcode;
+(5) `VEC_UNKNOWN` dời **255 → 254** vì 255 là vector thật của spurious.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |

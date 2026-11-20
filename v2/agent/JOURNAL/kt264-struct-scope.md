@@ -296,3 +296,24 @@ fail-closed khi thấy `v2/kernel/vifast-core/src/lib.rs` bẩn (đo được: m
 
 **Không** sửa: `v2/kernel/**`, `v2/sim/**`, `v2/lib/**`, `spec/`, `v2/bin/v2`,
 `v2/agent/{STATE,QUEUE,DECISIONS}.md`.
+
+---
+
+## Phụ lục — T2 lần 1 đỏ ở `cắt điện giữa lúc ghi (KT-136)`: **flake đã biết (D2-151)**, không phải hồi quy
+
+`gate --fast` trên `1f2d8310` (sau khi merge KT-264) đỏ **đúng một** bước:
+
+```text
+FAIL crash-host kt75-disk.img: get /pstate: 13 bản ghi (cần 11 hoặc 12 sau crash giữa pha 7)
+```
+
+Đây **chính xác** là flake **D2-151** đã ghi ngày 2026-11-19: ca này giết QEMU **theo dòng serial**
+("ngay sau dòng verify pha 6"); khi host chậm (máy còn tải của ba sub-agent vừa xong), lệnh kill rơi
+**sau** khi khách ghi xong pha 7 ⇒ `/pstate` 13 bản ghi thay vì 11–12. Bằng chứng trong log: `/p7.bin`
+đủ `73728 B`, `partial=0`, `committed=1` — tức pha 7 **đã xong**, không phải mất toàn vẹn.
+
+**Phân loại theo AGENTS §4.5** (chạy lại **một lần**, chỉ để phân loại): `bash v2/test/boot/persist.sh
+--crash` trên máy **rảnh** ⇒ `# persist.sh: PASS`, `RC=0`. ⇒ **không phải hồi quy mã**; KT-264 chỉ
+sửa `v2/tools/check-wake-paths.py` + journal, không chạm đường persist.
+
+**Không** dùng lần đỏ này để kết luận (D2-151, D2-116). T2 bàn giao chạy lại trên máy rảnh.
