@@ -67,10 +67,11 @@ impl<D: BlockDev> Fs<D> {
             report.note(|r| &mut r.bad_blocks);
             changed = true;
         }
-        for index in used..direct.min(MAX_BLOCKS_PER_INODE) {
-            if inode.blocks[index] != 0 {
-                self.mark_free(inode.blocks[index]);
-                inode.blocks[index] = 0;
+        let end = direct.min(MAX_BLOCKS_PER_INODE);
+        for block in inode.blocks.iter_mut().take(end).skip(used) {
+            if *block != 0 {
+                self.mark_free(*block);
+                *block = 0;
                 *bitmap_dirty = true;
                 report.note(|r| &mut r.bad_blocks);
                 changed = true;
@@ -196,17 +197,17 @@ impl<D: BlockDev> Fs<D> {
     pub(crate) fn fsck_free_inode(&mut self, inode: &Inode, bitmap_dirty: &mut bool) {
         let direct = self.direct_blocks;
         if inode.kind == INODE_DIR {
-            for index in 0..MAX_DIR_BLOCKS {
-                if inode.blocks[index] != 0 {
-                    self.mark_free(inode.blocks[index]);
+            for &block in inode.blocks.iter().take(MAX_DIR_BLOCKS) {
+                if block != 0 {
+                    self.mark_free(block);
                     *bitmap_dirty = true;
                 }
             }
             return;
         }
-        for index in 0..direct.min(MAX_BLOCKS_PER_INODE) {
-            if inode.blocks[index] != 0 {
-                self.mark_free(inode.blocks[index]);
+        for &block in inode.blocks.iter().take(direct.min(MAX_BLOCKS_PER_INODE)) {
+            if block != 0 {
+                self.mark_free(block);
                 *bitmap_dirty = true;
             }
         }
@@ -457,8 +458,11 @@ impl<D: BlockDev> Fs<D> {
                 continue;
             }
             if inode.kind == INODE_DIR {
-                for block_index in 0..inode.blocks_used().min(MAX_DIR_BLOCKS) {
-                    let block = inode.blocks[block_index];
+                for &block in inode
+                    .blocks
+                    .iter()
+                    .take(inode.blocks_used().min(MAX_DIR_BLOCKS))
+                {
                     if block != 0 {
                         self.fsck_claim(block, &mut block_used, &mut report_claim);
                     }

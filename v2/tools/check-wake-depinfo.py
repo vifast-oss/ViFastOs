@@ -105,7 +105,7 @@ import tempfile
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 HERE = Path(__file__).resolve()
 DEFAULT_ROOT = HERE.parent.parent.parent  # v2/tools/… → gốc repo
@@ -196,7 +196,7 @@ REFUSED_PREFIXES: Tuple[str, ...] = ("v2/tools/",)
 # Dấu "lần build hiện tại" cho `--no-build`: danh sách `.d` + sha256 của lần build xanh gần nhất.
 # Không có dấu / dấu lệch ⇒ `E_DEPINFO_STALE` (fail-closed) — chứng minh không đọc `.d` cũ.
 STAMP_NAME = ".kt238-depinfo-stamp.json"
-STAMP_VERSION = 1
+STAMP_VERSION = 2
 
 
 class CrateInfo:
@@ -521,14 +521,14 @@ def stamp_path(target_dir: Path) -> Path:
     return target_dir / STAMP_NAME
 
 
-def write_stamp(target_dir: Path, unit: str, deps_dir: Path, depinfo_files: Sequence[Path]) -> None:
-    """Ghi dấu "lần build hiện tại" — danh sách `.d` **đã dùng** + sha256."""
+def write_stamp(target_dir: Path, unit: str, deps_dir, depinfo_files: Sequence[Path]) -> None:
+    """Ghi dấu "lần build hiện tại" — danh sách `.d` **đã dùng** + sha256 + thư mục."""
     target_dir = target_dir.resolve()
-    deps_dir = deps_dir.resolve()
+    dirs = [p.resolve() for p in _as_dirs(deps_dir)]
     data = {
         "version": STAMP_VERSION,
         "unit": unit,
-        "deps_dir": str(deps_dir),
+        "deps_dirs": [str(p) for p in dirs],
         "files": {p.name: _sha256_file(p) for p in sorted(depinfo_files)},
     }
     try:
@@ -541,7 +541,7 @@ def write_stamp(target_dir: Path, unit: str, deps_dir: Path, depinfo_files: Sequ
 
 
 def verify_stamp(
-    target_dir: Path, unit: str, deps_dir: Path, present: Set[str]
+    target_dir: Path, unit: str, deps_dir, present: Set[str]
 ) -> Tuple[Optional[Set[str]], List[str]]:
     """Kiểm dấu lần build cho `--no-build` ⇒ `(tập .d hiện hành, lỗi)`.
 
@@ -549,7 +549,8 @@ def verify_stamp(
     dấu** mới được đọc — chứng minh `.d` cũ (và nguồn `OUT_DIR` cũ mà nó trỏ tới) không bị đọc.
     """
     target_dir = target_dir.resolve()
-    deps_dir = deps_dir.resolve()
+    dir_paths = [p.resolve() for p in _as_dirs(deps_dir)]
+    dirs = {str(p) for p in dir_paths}
     sp = stamp_path(target_dir)
     if not sp.is_file():
         return None, [
@@ -563,10 +564,10 @@ def verify_stamp(
     errs: List[str] = []
     if data.get("version") != STAMP_VERSION:
         errs.append(f"  đơn vị `{unit}`: dấu lần build sai phiên bản (fail-closed, KT-238)")
-    if data.get("deps_dir") != str(deps_dir):
+    if set(data.get("deps_dirs") or []) != dirs:
         errs.append(
             f"  đơn vị `{unit}`: dấu lần build thuộc deps dir khác "
-            f"(`{data.get('deps_dir')}` ≠ `{deps_dir}`) — fail-closed (KT-238)"
+            f"(`{sorted(data.get('deps_dirs') or [])}` ≠ `{sorted(dirs)}`) — fail-closed (KT-238)"
         )
     files: Dict[str, str] = data.get("files") or {}
     missing = sorted(set(files) - present)
@@ -576,8 +577,8 @@ def verify_stamp(
             f"— fail-closed (KT-238)"
         )
     for name, want in sorted(files.items()):
-        p = deps_dir / name
-        if not p.is_file():
+        p = next((d / name for d in dir_paths if (d / name).is_file()), None)
+        if p is None:
             continue
         got = _sha256_file(p)
         if got != want:
@@ -793,8 +794,65 @@ def _unit_pkg(
     return None
 
 
+
+def depinfo_dirs(target_dir: Path, triple: Optional[str], artifacts: Iterable[str]) -> List[Path]:
+    """Thư mục chứa tệp `.d` — suy từ **artifact của lần build hiện tại**.
+
+    **KT-242 (A0 duyệt 2026-11-20)** — cargo ≥ 1.100 đổi **bố cục artifact**: `.d` nằm ở
+    `<target>/debug/build/<pkg>/<hash>/out/` thay vì `<target>/debug/deps/`. Không được chọn
+    thư mục **theo việc nó tồn tại**: sau nhiều lần build, cả hai bố cục có thể cùng có mặt và
+    cách đó sẽ đọc `.d` cũ hoặc bỏ sót nguồn mới.
+
+    Cách đúng: mỗi artifact cargo báo (đường dẫn tuyệt đối) nằm **cùng thư mục** với `.d` của
+    unit đó ở **cả hai** bố cục ⇒ lấy `dirname(artifact)`. Nhờ vậy:
+      - gắn với **lần build và cấu hình đang kiểm** (danh sách artifact của chính lần chạy);
+      - hai bố cục cùng tồn tại vẫn lấy đúng tệp của lần này;
+      - build đỏ (không có artifact) ⇒ quét **cả hai** bố cục (superset, fail-closed) — tầng
+        gọi đã báo `E_DEPINFO_BUILD`.
+    """
+    base = target_dir / triple if triple else target_dir
+    dirs: List[Path] = []
+    for a in artifacts:
+        p = Path(a)
+        if not p.is_absolute():
+            continue
+        d = p.parent
+        if d.is_dir() and d not in dirs:
+            dirs.append(d)
+    if not dirs:
+        for cand in (base / "debug/deps", base / "debug/build"):
+            if cand.is_dir():
+                dirs.append(cand)
+    return dirs
+
+
+def _as_dirs(d) -> List[Path]:
+    """Chuẩn hoá tham số thư mục: một `Path` hoặc danh sách `Path`."""
+    if isinstance(d, (list, tuple)):
+        return [Path(x) for x in d]
+    return [Path(d)]
+
+
+def stamp_deps_dirs(target_dir: Path) -> List[Path]:
+    """Thư mục `.d` đã ghi trong **dấu lần build** (dùng cho `--no-build`)."""
+    sp = stamp_path(target_dir.resolve())
+    try:
+        data = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if data.get("version") != STAMP_VERSION:
+        return []
+    return [Path(p) for p in data.get("deps_dirs") or []]
+
+
+def depinfo_glob(deps_dir: Path) -> List[Path]:
+    """Danh sách `.d` trong `deps_dir` — đệ quy khi là `build/` (bố cục cargo ≥ 1.100)."""
+    pattern = "**/*.d" if deps_dir.name == "build" else "*.d"
+    return sorted(deps_dir.glob(pattern))
+
+
 def collect_depinfo(
-    deps_dir: Path,
+    deps_dir: Union[Path, Sequence[Path]],
     ws_root: Path,
     root: Path,
     res: UnitResult,
@@ -818,7 +876,8 @@ def collect_depinfo(
         không còn cảnh báo-rồi-PASS.
       - `only_files` (dùng cho `--no-build`): chỉ đọc `.d` có trong **dấu lần build**.
     """
-    if not deps_dir.is_dir():
+    dirs = [d for d in _as_dirs(deps_dir) if d.is_dir()]
+    if not dirs:
         res.note = f"không có thư mục dep-info {deps_dir}"
         return
     seen_skip: Set[Tuple[str, str]] = set()
@@ -829,7 +888,10 @@ def collect_depinfo(
             seen_skip.add(key)
             res.skipped.append(key)
 
-    for d in sorted(deps_dir.glob("*.d")):
+    dep_files: List[Path] = []
+    for dd in dirs:
+        dep_files.extend(depinfo_glob(dd))
+    for d in dep_files:
         if not RE_DEPINFO.search(d.name):
             continue
         if only_files is not None and d.name not in only_files:
@@ -987,10 +1049,7 @@ def run_unit(
         target_dir = (root / target_rel).resolve()
         res.note = "không có target dir từ cargo metadata — dùng dự phòng (fail-closed)"
     res.target_dir = target_dir
-    deps_dir = target_dir
-    if triple:
-        deps_dir = deps_dir / triple
-    deps_dir = deps_dir / "debug/deps"
+    deps_dirs = depinfo_dirs(target_dir, triple, artifacts)
     ws_root = (root / manifest).parent
 
     # Khi build **thành công**: chỉ lấy `.d` của unit có mặt trong lần chạy này (chính xác).
@@ -1002,7 +1061,7 @@ def run_unit(
         res.note = "build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed)"
 
     collect_depinfo(
-        deps_dir,
+        deps_dirs,
         ws_root,
         root,
         res,
@@ -1014,7 +1073,7 @@ def run_unit(
     # **KT-238** — dấu "lần build hiện tại" cho `--no-build`: chỉ ghi khi build xanh và dùng
     # target dir thật (không ghi vào target dir tạm của `--fresh`).
     if res.rc == 0 and fresh_dir is None and build_ok is not False:
-        write_stamp(target_dir, name, deps_dir, res.depinfo_files)
+        write_stamp(target_dir, name, deps_dirs, res.depinfo_files)
     return res
 
 
@@ -2358,6 +2417,40 @@ def selftest() -> int:
             f"rc={rc} out={out[-300:]}",
         )
 
+        # --- (52)(53) KT-242: hai bố cục artifact cùng tồn tại ------------------------------
+        # **A0 duyệt 2026-11-20**: không được chọn thư mục `.d` chỉ vì nó tồn tại. Khi cả
+        # `debug/deps/` (bố cục cũ) và `debug/build/<pkg>/<hash>/out/` (cargo ≥ 1.100) cùng có
+        # mặt, phải chọn theo **artifact của lần build này**.
+        base52 = base / "layout"
+        legacy52 = base52 / "debug/deps"
+        new52 = base52 / "debug/build/pkg/abc123/out"
+        legacy52.mkdir(parents=True, exist_ok=True)
+        new52.mkdir(parents=True, exist_ok=True)
+        (legacy52 / "cu-1.d").write_text("", encoding="utf-8")
+        (new52 / "moi-1.d").write_text("", encoding="utf-8")
+        got52 = depinfo_dirs(base52, None, [str(new52 / "libx-abc123.rlib")])
+        ghi(
+            "(52) KT-242: hai bố cục cùng tồn tại — chọn theo artifact của lần build",
+            got52 == [new52],
+            f"got={got52}",
+        )
+        got53 = depinfo_dirs(base52, None, [])
+        # Dự phòng quét **cả** `debug/deps` và **cả cây** `debug/build` (đệ quy) ⇒ phủ mọi bố cục.
+        ghi(
+            "(53) KT-242: build đỏ (không artifact) — quét CẢ HAI bố cục (superset, fail-closed)",
+            set(got53) == {legacy52, base52 / "debug/build"},
+            f"got={got53}",
+        )
+        # Layout trộn: artifact của hai unit nằm ở hai bố cục khác nhau ⇒ lấy cả hai thư mục.
+        got54 = depinfo_dirs(
+            base52, None, [str(new52 / "libx-abc123.rlib"), str(legacy52 / "liby-def456.rlib")]
+        )
+        ghi(
+            "(54) KT-242: layout trộn — artifact ở hai bố cục ⇒ lấy cả hai thư mục",
+            set(got54) == {new52, legacy52},
+            f"got={got54}",
+        )
+
     ok = sum(1 for _, o, _ in cases if o)
     print(f"# selftest: {ok}/{len(cases)} ok")
     return 0 if ok == len(cases) else 1
@@ -2442,16 +2535,15 @@ def main(argv: Sequence[str]) -> int:
                 target_dir = (root / target_rel).resolve()
                 res.note = "không có target dir từ cargo metadata — dùng dự phòng (fail-closed)"
             res.target_dir = target_dir
-            deps_dir = target_dir
-            if triple:
-                deps_dir = deps_dir / triple
-            deps_dir = deps_dir / "debug/deps"
+            # **KT-242 (A0 duyệt)**: thư mục `.d` lấy từ **dấu lần build** (đã ghi lúc build),
+            # không đoán theo thư mục đang tồn tại.
+            deps_dirs = stamp_deps_dirs(target_dir) or depinfo_dirs(target_dir, triple, [])
             ws_root = (root / manifest).parent
-            present = {d.name for d in deps_dir.glob("*.d")} if deps_dir.is_dir() else set()
-            only, errs = verify_stamp(target_dir, name, deps_dir, present)
+            present = {d.name for dd in deps_dirs for d in depinfo_glob(dd)}
+            only, errs = verify_stamp(target_dir, name, deps_dirs, present)
             stamp_errors.extend(errs)
             collect_depinfo(
-                deps_dir,
+                deps_dirs,
                 ws_root,
                 root,
                 res,

@@ -4,9 +4,9 @@
 # **mọi thư mục cha**, nên một file ở gốc repo sẽ áp cả `crates/`/`viscript/` — thay đổi chính
 # sách build của dòng khác, ngoài quyền của task này (D2-121, A1-174).
 # Bản sao cho workspace kernel: `v2/kernel/rust-toolchain.toml` (cùng nội dung).
-# Các script build tái lập gọi **tường minh** `cargo +1.99.1` nên không phụ thuộc file này.
+# Các script build tái lập gọi **tường minh** `cargo +1.100.0` nên không phụ thuộc file này.
 [toolchain]
-channel = "1.99.1"
+channel = "1.100.0"
 components = ["rustfmt", "clippy", "llvm-tools"]
 targets = [
     "x86_64-unknown-none",

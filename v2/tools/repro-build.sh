@@ -16,7 +16,7 @@
 #      nên tên symbol mang hash đường dẫn; strip cắt hẳn nguồn đó. `.text` digest (D2-80) vẫn
 #      đọc được vì section header còn nguyên — kiểm bằng `v2/test/conformance/image_digest.py`.
 #   3. `CARGO_INCREMENTAL=0`, `SOURCE_DATE_EPOCH=0`, `LC_ALL=C`, toolchain **ghim** ở
-#      `rust-toolchain.toml` (1.99.1) — biến môi trường/thời gian không được rò vào ảnh.
+#      `rust-toolchain.toml` (1.100.0) — biến môi trường/thời gian không được rò vào ảnh.
 #
 # Dùng:
 #   bash v2/tools/repro-build.sh [--root DIR] [--bin NAME] [--package NAME]
@@ -80,7 +80,7 @@ export PATH="$(dirname "$CARGO"):$PATH"
 # Ghim toolchain **tường minh**: không dựa vào `rust-toolchain.toml` ở gốc repo (A1-174: file đó
 # sẽ phủ cả crates/viscript của dòng khác). Nếu thiếu toolchain hoặc thiếu rustup thì cảnh báo —
 # script KHÔNG tự hạ/đổi ngưỡng, chỉ nói rõ môi trường không đúng.
-REPRO_TOOLCHAIN="${VIFAST_REPRO_TOOLCHAIN:-1.99.1}"
+REPRO_TOOLCHAIN="${VIFAST_REPRO_TOOLCHAIN:-1.100.0}"
 if command -v rustup >/dev/null 2>&1; then
     if rustup toolchain list 2>/dev/null | grep -q "^${REPRO_TOOLCHAIN}"; then
         export RUSTUP_TOOLCHAIN="$REPRO_TOOLCHAIN"

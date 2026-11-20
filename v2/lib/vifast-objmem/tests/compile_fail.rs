@@ -14,32 +14,92 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Rlib của `vifast-objmem` mà test binary đang dùng (cùng thư mục `deps`).
+/// Rlib của `vifast-objmem` — lấy từ **artifact Cargo của đúng package/profile đang kiểm**.
+///
+/// **KT-242 (A0 duyệt 2026-11-20)** — **không** quét thư mục rồi lấy bản "mới nhất" hay "đầu
+/// tiên": target dir có thể chứa nhiều rlib cùng crate (feature, profile, lần build khác) và
+/// chọn sai nghĩa là test kiểm nhầm mã. Cách đúng: hỏi **cargo** bằng `--message-format=json`
+/// (cùng manifest, cùng profile `dev` mà `cargo test` dùng để link integration test), lấy
+/// `filenames` của artifact `vifast-objmem`. Không đúng **một** rlib ⇒ **thất bại rõ**, không
+/// đoán.
 fn rlib_objmem() -> PathBuf {
-    let exe = std::env::current_exe().expect("current_exe");
-    let deps = exe.parent().expect("thư mục deps").to_path_buf();
-    let mut moi_nhat: Option<(std::time::SystemTime, PathBuf)> = None;
-    for entry in std::fs::read_dir(&deps).expect("đọc deps") {
-        let p = entry.expect("entry").path();
-        let ten = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if ten.starts_with("libvifast_objmem-") && ten.ends_with(".rlib") {
-            let t = std::fs::metadata(&p)
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            if moi_nhat.as_ref().is_none_or(|(t0, _)| t > *t0) {
-                moi_nhat = Some((t, p));
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let out = Command::new(&cargo)
+        .args(["build", "--manifest-path"])
+        .arg(&manifest)
+        .args(["-p", "vifast-objmem", "--message-format=json"])
+        .output()
+        .unwrap_or_else(|e| panic!("không chạy được {cargo}: {e}"));
+    assert!(
+        out.status.success(),
+        "cargo build -p vifast-objmem đỏ:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let cands = chon_rlib(&String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        cands.len(),
+        1,
+        "phải có đúng MỘT rlib của vifast-objmem từ cargo (không đoán khi mơ hồ), thấy: {cands:?}"
+    );
+    cands.into_iter().next().expect("đã kiểm len == 1")
+}
+
+/// Lọc rlib của `vifast-objmem` từ đầu ra `cargo build --message-format=json`.
+///
+/// Tách khỏi `rlib_objmem` để **kiểm được** ca nhiều ứng viên / artifact cũ mà không cần dựng
+/// target dir thật: đầu vào là JSON, đầu ra là danh sách ứng viên; tầng gọi đòi **đúng một**.
+fn chon_rlib(artifacts_json: &str) -> Vec<PathBuf> {
+    let mut cands: Vec<PathBuf> = Vec::new();
+    for line in artifacts_json.lines() {
+        if !line.contains("\"reason\":\"compiler-artifact\"")
+            || !line.contains("\"name\":\"vifast_objmem\"")
+        {
+            continue;
+        }
+        for f in filenames_of(line) {
+            if f.ends_with(".rlib") {
+                cands.push(PathBuf::from(f));
             }
         }
     }
-    moi_nhat
-        .map(|(_, p)| p)
-        .or_else(|| {
-            // Dự phòng: artifact lib ở `<target>/debug/libvifast_objmem.rlib`.
-            let debug = deps.parent()?;
-            let p = debug.join("libvifast_objmem.rlib");
-            p.is_file().then_some(p)
-        })
-        .expect("phải tìm thấy rlib của vifast-objmem")
+    cands.sort();
+    cands.dedup();
+    cands
+}
+
+/// Trích mảng `"filenames":[…]` của một dòng JSON `compiler-artifact`.
+fn filenames_of(line: &str) -> Vec<String> {
+    const K: &str = "\"filenames\":[";
+    let Some(i) = line.find(K) else {
+        return Vec::new();
+    };
+    let start = i + K.len();
+    let Some(j) = line[start..].find(']') else {
+        return Vec::new();
+    };
+    line[start..start + j]
+        .split("\",\"")
+        .map(|s| s.trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// **KT-242** — chọn rlib phải **tất định** và **thất bại rõ** khi mơ hồ.
+#[test]
+fn chon_rlib_tu_artifact_json() {
+    // Một artifact, một rlib ⇒ đúng một ứng viên.
+    let mot = r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-aaaa.rlib","/t/libvifast_objmem-aaaa.rmeta"]}"#;
+    assert_eq!(chon_rlib(mot).len(), 1, "một artifact ⇒ một rlib");
+    // Artifact cũ + artifact mới cùng crate ⇒ **hai** ứng viên; tầng gọi phải từ chối.
+    let hai = format!("{mot}\n{}", r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-bbbb.rlib"]}"#);
+    assert_eq!(chon_rlib(&hai).len(), 2, "artifact cũ + mới ⇒ hai ứng viên (không tự chọn)");
+    // Artifact của crate khác ⇒ không lấy.
+    let khac = r#"{"reason":"compiler-artifact","target":{"name":"vifast-alloc"},"filenames":["/t/libvifast_alloc-cccc.rlib"]}"#;
+    assert!(chon_rlib(khac).is_empty(), "crate khác ⇒ không lấy");
+    // Chỉ có .rmeta (chưa sinh rlib) ⇒ không có ứng viên ⇒ tầng gọi thất bại rõ.
+    let meta = r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-dddd.rmeta"]}"#;
+    assert!(chon_rlib(meta).is_empty(), "chỉ .rmeta ⇒ không có rlib");
 }
 
 #[test]

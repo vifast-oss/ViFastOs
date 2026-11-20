@@ -468,8 +468,9 @@ impl<D: BlockDev> Fs<D> {
             name_len: [0u8; DIR_ENTRIES_PER_BLOCK],
             inos: [0u16; DIR_ENTRIES_PER_BLOCK],
         };
-        for block_index in 0..inode.blocks_used() {
-            let lba = inode.blocks[block_index];
+        let used_blocks = inode.blocks_used();
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for (block_index, &lba) in inode.blocks[..used_blocks].iter().enumerate() {
             if block_index == 0 {
                 let (cached, dirty) = self.dev.slot_state(lba);
                 snap.cached = cached;
@@ -584,13 +585,10 @@ impl<D: BlockDev> Fs<D> {
         // T26: tới đây là "hết" — đo lại bằng đường RAW (bỏ cache) để biết
         // ảnh nào đúng. Lệch ⇒ bug cache/inode, không phải hết thật.
         let mut cached_seen = 0u32;
-        for block_index in 0..inode.blocks_used() {
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for &lba in &inode.blocks[..inode.blocks_used()] {
             let mut cached = zero_block();
-            if self
-                .dev
-                .read(inode.blocks[block_index], &mut cached)
-                .is_ok()
-            {
+            if self.dev.read(lba, &mut cached).is_ok() {
                 for slot in 0..DIR_ENTRIES_PER_BLOCK {
                     if get_u16(&cached, slot * DIR_ENTRY_SIZE) != 0 {
                         cached_seen += 1;
@@ -599,9 +597,10 @@ impl<D: BlockDev> Fs<D> {
             }
         }
         let mut raw_seen = 0u32;
-        for block_index in 0..inode.blocks_used() {
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for &lba in &inode.blocks[..inode.blocks_used()] {
             let mut raw = zero_block();
-            if self.dev.read(inode.blocks[block_index], &mut raw).is_ok() {
+            if self.dev.read(lba, &mut raw).is_ok() {
                 for slot in 0..DIR_ENTRIES_PER_BLOCK {
                     if get_u16(&raw, slot * DIR_ENTRY_SIZE) != 0 {
                         raw_seen += 1;
@@ -670,9 +669,10 @@ impl<D: BlockDev> Fs<D> {
 
     pub(crate) fn dir_empty(&mut self, dir: u16) -> Result<bool, FsError> {
         let inode = self.inodes[dir as usize - 1];
-        for block_index in 0..inode.blocks_used() {
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for &lba in &inode.blocks[..inode.blocks_used()] {
             let mut block = zero_block();
-            self.dev.read(inode.blocks[block_index], &mut block)?;
+            self.dev.read(lba, &mut block)?;
             for slot in 0..DIR_ENTRIES_PER_BLOCK {
                 if get_u16(&block, slot * DIR_ENTRY_SIZE) != 0 {
                     return Ok(false);
