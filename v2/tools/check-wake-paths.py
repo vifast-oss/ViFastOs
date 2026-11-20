@@ -3004,11 +3004,28 @@ def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
             prev = nodes[i - 1] if i > 0 else None
             if prev is not None and getattr(prev, "kind", None) == "ident" and prev.val == "fn":
                 continue  # định nghĩa `fn transition_tcb(`
+            # **KT-239 (WB-17 biến thể 6/UFCS)** — `M::transition_tcb(m, t, Ready)`: định danh
+            # đứng sau `::` là lời gọi hàm liên kết, KHÔNG phải method `.transition_tcb(`.
+            # Đối số thứ hai ở văn bản (`t`) là ObjId, trạng thái thật nằm ở args[2].
+            # Đọc nhầm args[1] làm `var t` ⇒ `_var_may_be_ready("t") = False` ⇒ XANH.
+            # Nay: khi có tiền tố `::` thì dịch chỉ số +1 (receiver tường minh chiếm args[0]).
+            is_ufcs = (
+                i >= 2
+                and _is_punct(nodes[i - 1], ":")
+                and _is_punct(nodes[i - 2], ":")
+            )
             args = _split_commas(nodes[i + 1].children)
-            if len(args) < 2:
-                out.append((node.line, "unknown", "thiếu đối số thứ hai"))
-                continue
-            segs = segs_of(args[1])
+            if is_ufcs:
+                # UFCS method `Type::transition_tcb(m, t, state)`: args[0]=receiver.
+                if len(args) < 3:
+                    out.append((node.line, "unknown", "UFCS thiếu đối số trạng thái (args[2])"))
+                    continue
+                segs = segs_of(args[2])
+            else:
+                if len(args) < 2:
+                    out.append((node.line, "unknown", "thiếu đối số thứ hai"))
+                    continue
+                segs = segs_of(args[1])
             if len(segs) >= 2 and segs[-2] == "TcbState" and segs[-1] == "Ready":
                 out.append((node.line, "ready", "TcbState::Ready"))
             elif len(segs) >= 2 and segs[-2] == "TcbState":
@@ -7224,6 +7241,420 @@ def selftest() -> int:
                 True,
                 _strict,
             )
+
+        # **KT-239 (WB-16/WB-17, D2-190 §2)** — đóng gói repro BỀN cho 6 dạng WB-16 +
+        # 7 biến thể WB-17. Mỗi biến thể dựng đúng mã journal (kt234-interfn.md,
+        # kt232-fnptr.md), chạy ở **cả hai** chế độ, qua một lệnh
+        # (`check-wake-paths.py --selftest`). Quy ước kỳ vọng:
+        #   - WB-17 f6 (UFCS) sau vá đọc args[2] ⇒ ĐỎ `E_STRICT_TRANSITION` **đúng
+        #     nguyên nhân** (literal `TcbState::Ready` ngoài cửa wake/allowlist);
+        #   - 12 biến thể còn sống (WB-16 f1..f6, WB-17 f1/f2/f3/f5a/f5b/f7) ⇒ GHI
+        #     NHẬN SỐNG: checker XANH (đúng thực trạng journal) — ca tự kiểm assert
+        #     XANH + biên dịch giả lập OK, để luồng A (KT-237, ranh giới API) đóng;
+        #     khi nào luồng A đóng thì đổi kỳ vọng sang ĐỎ tại đúng chỗ này.
+        # Vì sao không dựng cây kernel thật + cargo check ở đây: selftest của lớp 1 là
+        # kiểm máy **không cần cargo** (fixture tối thiểu + `_fixture_v2`); tính "biên
+        # dịch được" (cargo RC=0) đã được journal gốc đo trên cây thật và được giữ
+        # nguyên trong `kt239-repro-harden.md` + log `kt239-logs/`. Ca tự kiểm assert
+        # **mã lỗi cụ thể** (`E_STRICT_TRANSITION`/`E_ANCHOR_MISSING`/XANH-đúng-lý-do),
+        # không nhận ĐỎ vì lý do khác (neo thiếu/cây rỗng/lex) làm bằng chứng.
+        _KT239_EVIL = "v2/kernel/vifast-core/src/evil.rs"
+
+        def _kt239_case(
+            name: str,
+            body: str,
+            expect: str,
+            strict: bool,
+            relp: str = _KT239_EVIL,
+            calls: Optional[List[Tuple[str, str]]] = None,
+            need: str = "transition_tcb",
+            site: Optional[Tuple[int, str]] = None,
+            append: bool = False,
+            label: Optional[str] = None,
+        ) -> None:
+            """Dựng fixture, chạy `scan_v2`, rồi **chứng minh nguyên nhân** — không chỉ
+            assert mã lỗi:
+
+            - `calls`: phân loại **bắt buộc** của `_transition_calls` trên đúng văn bản
+              (`[(kind, desc)]`). Đây là mắt xích chứng minh checker **thấy đúng đối số**:
+              WB-16 ⇒ `("var", …)` (tham số/const/closure — `_var_may_be_ready` không mô
+              hình hoá ⇒ XANH); UFCS sau vá ⇒ `("ready", "TcbState::Ready")` (đọc args[2]);
+              WB-17 fn-pointer ⇒ `[]` (checker **không thấy** lời gọi — đúng đường lọt).
+            - `need`: chuỗi **phải** có trong văn bản — chặn ca rỗng nghĩa (fixture không
+              chứa gì để kiểm mà vẫn "xanh").
+            - `site`: với ca ĐỎ, `(dòng, tên hàm)` mà thông điệp lỗi **phải** nêu đúng.
+            """
+            d = tmp / ("kt239-" + name)
+            _fixture_v2(d)
+            old = (d / relp).read_text(encoding="utf-8") if (d / relp).is_file() else ""
+            _write(d / relp, (old + body) if append else body)
+            rep = scan_v2(d, strict=strict, allowlist={})
+            why: List[str] = []
+            if need and need not in body:
+                why.append(f"văn bản ca thiếu `{need}`")
+            if calls is not None:
+                got = [(k, dsc) for _, k, dsc in _transition_calls(body, relp)]
+                if got != list(calls):
+                    why.append(f"phân loại lời gọi {got} ≠ kỳ vọng {list(calls)}")
+            if expect == "red-transition":
+                # ĐỎ **chỉ** vì luật transition: không `E_ANCHOR_MISSING`/`E_LEX_*`/
+                # `E_STRICT_STALE`/cây rỗng chen vào làm "bằng chứng".
+                ok = (not rep.ok) and all(
+                    e.startswith("E_STRICT_TRANSITION") for e in rep.errors
+                )
+                # … và thông điệp nêu **đúng nguyên nhân** (literal `TcbState::Ready`
+                # ngoài cửa wake) + **đúng chỗ** (tệp:dòng + tên hàm).
+                ok = ok and any("ngoài cửa wake" in e for e in rep.errors)
+                if site is not None:
+                    _ln, _fn = site
+                    ok = ok and any(f"{relp}:{_ln} ({_fn})" in e for e in rep.errors)
+            elif expect == "alive-green":  # ghi nhận sống, chờ luồng A (KT-237) đóng
+                ok = rep.ok
+            else:  # "green" — đối chứng dương: phải XANH, không báo oan
+                ok = rep.ok
+            cases.append(
+                (
+                    f"KT-239 {label or name} ⇒ "
+                    + {
+                        "red-transition": "đỏ E_STRICT_TRANSITION",
+                        "alive-green": "ghi nhận sống (xanh)",
+                    }.get(expect, "xanh (không báo oan)")
+                    + (" (--strict)" if strict else " (thường)"),
+                    ok and not why,
+                    "; ".join(rep.errors + why),
+                )
+            )
+
+        # --- WB-16 (6 dạng sống, journal kt234-interfn.md §2/§3.4) ---------------------
+        # Mỗi mục: (văn bản, phân loại `_transition_calls` bắt buộc, chuỗi phải có).
+        _KT239_WB16 = {
+            # f1 — helper cùng tệp: `Ready` ở call site `helper(…, Ready)`, lời gọi
+            # `transition_tcb(t, s)` trong `helper` chỉ thấy `var s` (tham số, không gán).
+            "wb16-f1-helper-cung-tep": (
+                "fn helper(m: &mut M, t: u32, s: TcbState) -> u8 {\n"
+                "    let _ = m.transition_tcb(t, s);\n"
+                "    0\n"
+                "}\n"
+                "impl M {\n"
+                "    fn kt239_f1(&mut self, t: u32) -> u8 {\n"
+                "        let _ = helper(self, t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [("var", "s")],
+                "transition_tcb",
+            ),
+            # f2 — helper ở TỆP KHÁC: call site `helper(…, Ready)` không chứa token
+            # `transition_tcb`; `_transition_calls` trong tệp helper chỉ thấy `var s`.
+            "wb16-f2-helper-tep-khac": (
+                "impl M {\n"
+                "    fn kt239_f2(&mut self, t: u32) -> u8 {\n"
+                "        let _ = crate::kt239_f2_helper::helper(self, t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [],
+                "TcbState::Ready",
+            ),
+            # f3 — hàm TRẢ VỀ Ready: đối số thứ hai là `ready_state()` (call) ⇒ `var`,
+            # `_var_may_be_ready` không mô hình hoá call ⇒ XANH.
+            "wb16-f3-ham-tra-ve-ready": (
+                "fn ready_state() -> TcbState {\n"
+                "    TcbState::Ready\n"
+                "}\n"
+                "impl M {\n"
+                "    fn kt239_f3(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, ready_state());\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [("var", "ready_state")],
+                "transition_tcb",
+            ),
+            # f4 — const: `R` là const ngoài hàm ⇒ thân hàm không có phép gán ⇒ XANH.
+            "wb16-f4-const": (
+                "const R: TcbState = TcbState::Ready;\n"
+                "impl M {\n"
+                "    fn kt239_f4(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, R);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [("var", "R")],
+                "transition_tcb",
+            ),
+            # f5 — static: như const.
+            "wb16-f5-static": (
+                "static R: TcbState = TcbState::Ready;\n"
+                "impl M {\n"
+                "    fn kt239_f5(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, R);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [("var", "R")],
+                "transition_tcb",
+            ),
+            # f6 — closure: IIFE `(|s| transition_tcb(t, s))(Ready)` — lời gọi trong
+            # closure chỉ thấy `var s` (tham số closure) ⇒ XANH.
+            "wb16-f6-closure": (
+                "impl M {\n"
+                "    fn kt239_f6(&mut self, t: u32) -> u8 {\n"
+                "        let _ = (|s: TcbState| self.transition_tcb(t, s))(TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                [("var", "s")],
+                "transition_tcb",
+            ),
+        }
+        for _name, (_body, _calls, _need) in _KT239_WB16.items():
+            for _strict in (False, True):
+                _kt239_case(
+                    _name,
+                    _body,
+                    "alive-green",
+                    _strict,
+                    calls=_calls,
+                    need=_need,
+                )
+        # f2 cần thêm tệp helper (không thì `crate::…` chỉ là văn bản, vẫn XANH nhưng
+        # thiếu đúng cấu trúc journal). Tệp helper chứa lời gọi `transition_tcb(t, s)`.
+        for _strict in (False, True):
+            d = tmp / ("kt239-wb16-f2-helper-tep-khac-full-" + ("s" if _strict else "t"))
+            _fixture_v2(d)
+            _f2_site = (
+                "impl M {\n"
+                "    fn kt239_f2(&mut self, t: u32) -> u8 {\n"
+                "        let _ = crate::kt239_f2_helper::helper(self, t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "}\n"
+            )
+            _f2_helper = (
+                "fn helper(m: &mut M, t: u32, s: TcbState) -> u8 {\n"
+                "    let _ = m.transition_tcb(t, s);\n"
+                "    0\n"
+                "}\n"
+            )
+            _write(d / _KT239_EVIL, _f2_site)
+            _write(d / "v2/kernel/vifast-core/src/kt239_f2_helper.rs", _f2_helper)
+            rep = scan_v2(d, strict=_strict, allowlist={})
+            # Nguyên nhân XANH phải đúng: call site **không** có token `transition_tcb`
+            # (nên luật transition không thấy), còn tệp helper thấy `var s` (tham số).
+            _why: List[str] = []
+            if "TcbState::Ready" not in _f2_site:
+                _why.append("call site thiếu `TcbState::Ready`")
+            if "transition_tcb" in _f2_site:
+                _why.append("call site lại chứa `transition_tcb` (ca không còn đúng dạng)")
+            if [
+                (k, dsc)
+                for _, k, dsc in _transition_calls(
+                    _f2_helper, "v2/kernel/vifast-core/src/kt239_f2_helper.rs"
+                )
+            ] != [("var", "s")]:
+                _why.append("tệp helper không được phân loại `var s`")
+            cases.append(
+                (
+                    "KT-239 wb16-f2-helper-tep-khac (đủ 2 tệp) ⇒ ghi nhận sống (xanh)"
+                    + (" (--strict)" if _strict else " (thường)"),
+                    rep.ok and not _why,
+                    "; ".join(rep.errors + _why),
+                )
+            )
+
+        # --- WB-17 (7 biến thể, journal kt232-fnptr.md §2) ------------------------------
+        # f1/f2/f3/f5a/f5b/f7: `transition_tcb` xuất hiện nhưng **không** phải lời gọi
+        # (`(` ngay sau định danh) ⇒ `_transition_calls` trả **rỗng** — đúng đường lọt
+        # "fn-pointer": checker không thấy, nên XANH. `need` chặn ca rỗng nghĩa.
+        _KT239_WB17_ALIVE = {
+            # f1 — `let tt = Machine::transition_tcb;` (dùng làm giá trị, không `(` sau
+            # định danh) ⇒ `_transition_calls` bỏ qua ⇒ XANH.
+            "wb17-f1-fn-pointer-tran": (
+                "impl M {\n"
+                "    fn kt239_f1(&mut self, t: u32) -> u8 {\n"
+                "        let tt = Machine::transition_tcb;\n"
+                "        let _ = tt;\n"
+                "        0\n"
+                "    }\n"
+                "}\n"
+            ),
+            # f2 — fn-pointer có kiểu tường minh.
+            "wb17-f2-fn-pointer-kieu": (
+                "impl M {\n"
+                "    fn kt239_f2(&mut self, t: u32) -> u8 {\n"
+                "        let tt: fn(&mut M, u32, TcbState) -> u8 = Machine::transition_tcb;\n"
+                "        let _ = tt;\n"
+                "        0\n"
+                "    }\n"
+                "}\n"
+            ),
+            # f3 — truyền qua tham số hàm trợ giúp `fn call(f: fn(…), …)`.
+            "wb17-f3-qua-tham-so-ham": (
+                "fn call(f: fn(&mut M, u32, TcbState) -> u8, m: &mut M, t: u32) -> u8 {\n"
+                "    let _ = f;\n"
+                "    0\n"
+                "}\n"
+                "impl M {\n"
+                "    fn kt239_f3(&mut self, t: u32) -> u8 {\n"
+                "        call(Machine::transition_tcb, self, t)\n"
+                "    }\n"
+                "}\n"
+            ),
+            # f5a — generic `F: Fn(…)`.
+            "wb17-f5a-generic": (
+                "fn call_generic<F>(f: F, m: &mut M, t: u32) -> u8\n"
+                "where\n"
+                "    F: Fn(&mut M, u32, TcbState) -> u8,\n"
+                "{\n"
+                "    let _ = f;\n"
+                "    0\n"
+                "}\n"
+                "impl M {\n"
+                "    fn kt239_f5(&mut self, t: u32) -> u8 {\n"
+                "        call_generic(Machine::transition_tcb, self, t)\n"
+                "    }\n"
+                "}\n"
+            ),
+            # f5b — trait object `&dyn Fn(…)`.
+            "wb17-f5b-trait-object": (
+                "impl M {\n"
+                "    fn kt239_f5b(&mut self, t: u32) -> u8 {\n"
+                "        let f: fn(&mut M, u32, TcbState) -> u8 = Machine::transition_tcb;\n"
+                "        let g: &dyn Fn(&mut M, u32, TcbState) -> u8 = &f;\n"
+                "        let _ = g;\n"
+                "        0\n"
+                "    }\n"
+                "}\n"
+            ),
+            # f7 — `let f = <Machine>::transition_tcb;` (đường dẫn turbofish, không `(`).
+            "wb17-f7-turbofish": (
+                "impl M {\n"
+                "    fn kt239_f7(&mut self, t: u32) -> u8 {\n"
+                "        let f = <Machine>::transition_tcb;\n"
+                "        let _ = f;\n"
+                "        0\n"
+                "    }\n"
+                "}\n"
+            ),
+        }
+        for _name, _body in _KT239_WB17_ALIVE.items():
+            for _strict in (False, True):
+                _kt239_case(_name, _body, "alive-green", _strict, calls=[])
+        # f6 — UFCS `M::transition_tcb(m, t, Ready)`: SAU VÁ KT-239 đọc args[2] ⇒ ĐỎ
+        # `E_STRICT_TRANSITION` đúng nguyên nhân (trước vá: XANH vì đọc nhầm args[1]).
+        # `calls=[("ready", "TcbState::Ready")]` là **chốt chống hồi quy của bản vá**:
+        # hoàn nguyên `segs_of(args[1])` ⇒ phân loại thành `("var", "t")` ⇒ ca này ĐỎ.
+        _KT239_UFCS = (
+            "use crate::Machine as M2;\n"
+            "impl M {\n"
+            "    fn kt239_f6(&mut self, t: u32) -> u8 {\n"
+            "        let _ = M2::transition_tcb(self, t, TcbState::Ready);\n"
+            "        0\n"
+            "    }\n"
+            "}\n"
+        )
+        for _strict in (False, True):
+            _kt239_case(
+                "wb17-f6-UFCS-doc-dung-args2",
+                _KT239_UFCS,
+                "red-transition",
+                _strict,
+                calls=[("ready", "TcbState::Ready")],
+                site=(4, "kt239_f6"),
+            )
+
+        # --- Đối chứng ÂM: thẳng `TcbState::Ready` ⇒ ĐỎ đúng mã (mỗi chế độ 1 ca) -----
+        # Dùng **cùng đường dẫn** `evil.rs` như 12 ca "ghi nhận sống": cùng một tệp, cùng
+        # một fixture — ĐỎ khi Ready là literal, XANH khi rơi vào dạng đã ghi ⇒ chứng minh
+        # các ca XANH kia **không** xanh vì tệp bị bỏ qua ngoài phạm vi quét.
+        _KT239_NEG = (
+            "impl M {\n"
+            "    fn am(&mut self, t: u32) -> u8 {\n"
+            "        let _ = self.transition_tcb(t, TcbState::Ready);\n"
+            "        0\n"
+            "    }\n"
+            "}\n"
+        )
+        for _strict in (False, True):
+            _kt239_case(
+                "doi-chung-am-thang-Ready",
+                _KT239_NEG,
+                "red-transition",
+                _strict,
+                calls=[("ready", "TcbState::Ready")],
+                site=(3, "am"),
+            )
+
+        # --- Đối chứng DƯƠNG: cửa wake + block_current tham số + biến thể khác ------
+        # Mỗi mục: (văn bản, tệp, phân loại `_transition_calls` bắt buộc).
+        _KT239_POS = {
+            # wake_step/wake_from/wake_from_unlink là cửa (WAKE_DOORS) ⇒ XANH.
+            "duong-cua-wake": (
+                "impl M {\n"
+                "    fn wake_step(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "    fn wake_from(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "    fn wake_from_unlink(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, TcbState::Ready);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                "v2/kernel/vifast-core/src/core_sched.rs",
+                [("ready", "TcbState::Ready")] * 3,
+            ),
+            # block_current tham số `to` ⇒ XANH (không báo oan).
+            "duong-block-current-tham-so": (
+                "impl M {\n"
+                "    fn block_current(&mut self, t: u32, to: TcbState) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, to);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                "v2/kernel/vifast-core/src/ok.rs",
+                [("var", "to")],
+            ),
+            # `TcbState::<BiếnThểKhác>` ⇒ XANH (chứng minh không Ready) — gồm **cả** dạng
+            # UFCS `M2::transition_tcb(self, t, TcbState::Blocked)`: chứng minh nhánh UFCS
+            # đọc args[2] mà **không** biến mọi lời gọi UFCS thành ĐỎ (chống overfit).
+            "duong-bien-the-khac": (
+                "use crate::Machine as M2;\n"
+                "impl M {\n"
+                "    fn hop_le(&mut self, t: u32) -> u8 {\n"
+                "        let _ = self.transition_tcb(t, TcbState::Blocked);\n"
+                "        let _ = self.transition_tcb(t, TcbState::Sleeping);\n"
+                "        let _ = M2::transition_tcb(self, t, TcbState::Blocked);\n"
+                "        0\n"
+                "    }\n"
+                "}\n",
+                "v2/kernel/vifast-core/src/ok.rs",
+                [
+                    ("other", "TcbState::Blocked"),
+                    ("other", "TcbState::Sleeping"),
+                    ("other", "TcbState::Blocked"),
+                ],
+            ),
+        }
+        for _name, (_body, _relp, _calls) in _KT239_POS.items():
+            for _strict in (False, True):
+                # Cửa wake (WAKE_DOORS) khoá theo (tệp, hàm): chỉ `core_sched.rs`/
+                # `kobj.rs` — NỐI THÊM vào tệp cửa của fixture (không ghi đè, giữ
+                # `fn wake(`/producer/kênh của `_fixture_v2`).
+                _kt239_case(
+                    _name + "-" + ("s" if _strict else "t"),
+                    _body,
+                    "green",
+                    _strict,
+                    relp=_relp,
+                    calls=_calls,
+                    append=True,
+                    label=_name,
+                )
 
         # (5) v1 ba kênh ⇒ đỏ.
         d = tmp / "v1-three"
