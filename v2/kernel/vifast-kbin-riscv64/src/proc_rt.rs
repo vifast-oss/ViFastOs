@@ -28,7 +28,8 @@
 use core::fmt::Write;
 
 use vifast_core::{
-    FaultKind, Machine, Message, MessageInfo, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+    FaultKind, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode,
+    TcbState,
 };
 use vifast_plat_common::obj::CapId;
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
@@ -197,8 +198,7 @@ fn build_rig(untyped: ObjId) -> Rig {
             m.set_sched_params(tcb[i], Some(sc[i]))
                 .expect("KT-77b: sched params");
             m.tcb_set_priority(tcb[i], 5, 10).expect("KT-77b: priority");
-            m.transition_tcb(tcb_obj[i], TcbState::Ready)
-                .expect("KT-77b: Ready");
+            m.start_tcb(tcb_obj[i]).expect("KT-77b: Ready");
         }
         Rig {
             tcb,
@@ -311,7 +311,7 @@ fn turn(rig: &Rig, task: &mut Task, idx: usize) -> Option<Stop> {
     user::set_active_slot(task.slot);
     user::bind_core_tcb(rig.tcb_obj[idx]);
     let entered = core_bridge::with_machine(|m| {
-        m.transition_tcb(rig.tcb_obj[idx], TcbState::Running { hart: 0 })
+        m.transition_tcb(rig.tcb_obj[idx], NonReadyTarget::Running { hart: 0 })
             .is_ok()
     });
     if !entered {
@@ -322,7 +322,7 @@ fn turn(rig: &Rig, task: &mut Task, idx: usize) -> Option<Stop> {
     match stop {
         Stop::Yield => {
             core_bridge::with_machine(|m| {
-                let _ = m.transition_tcb(rig.tcb_obj[idx], TcbState::Ready);
+                let _ = m.tcb_yield(rig.tcb_obj[idx]);
             });
         }
         _ => task.exited = true,

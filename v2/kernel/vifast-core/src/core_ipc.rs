@@ -8,7 +8,7 @@
 //! (futex không timeout — D2-53 Q4), **donation KT-21** gắn `Call`/`Reply`, và **fault**
 //! (`Exit` đi `BlockedOnSend` không Reply; fault khác đi Call + Reply).
 //!
-//! **Hai hook còn nợ từ KT-59** được nối tại [`Machine::transition_tcb`] (`core_tcb.rs`):
+//! **Hai hook còn nợ từ KT-59** được nối tại [`Machine::transition_tcb`] (`state_write.rs`):
 //! `release_donation_of` khi rời `BlockedOnReply`; xung đột `Reply.caller` ⇒
 //! `IllegalOperation`.
 //!
@@ -26,6 +26,7 @@ use crate::objstate::{
     NODE_NONE,
 };
 use crate::tcb::{FaultKind, SleepReason, TcbState};
+use crate::NonReadyTarget;
 
 /// Giá trị `(word, badge)` của Notification (model API `[TK]`, KT-27) — như sim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -189,7 +190,7 @@ impl Machine {
     pub(crate) fn ensure_started(&mut self, tcb: ObjId) -> Result<TcbState, KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Inactive {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.start_tcb(tcb)?;
             return Ok(TcbState::Ready);
         }
         Ok(state)
@@ -319,12 +320,15 @@ impl Machine {
                 self.record_last_fault(receiver, q.sender, kind)?;
                 if kind.is_exit() {
                     // Fault Exit: procsrv Recv xong mới Inactive (D2-25).
-                    self.transition_tcb(q.sender, TcbState::Inactive)?;
+                    self.transition_tcb(q.sender, NonReadyTarget::Inactive)?;
                 } else {
                     match (q.call, reply_obj) {
                         (true, Some(rep)) if q.blocking => {
                             self.reply_set_caller(rep, Some(q.sender))?;
-                            self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                            self.transition_tcb(
+                                q.sender,
+                                NonReadyTarget::BlockedOnReply { reply: rep },
+                            )?;
                             self.donate_sc(q.sender, receiver)?;
                         }
                         _ => {
@@ -339,7 +343,7 @@ impl Machine {
             None => match (q.call, reply_obj) {
                 (true, Some(rep)) if q.blocking => {
                     self.reply_set_caller(rep, Some(q.sender))?;
-                    self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                    self.transition_tcb(q.sender, NonReadyTarget::BlockedOnReply { reply: rep })?;
                     self.donate_sc(q.sender, receiver)?;
                 }
                 _ => {
@@ -422,7 +426,7 @@ impl Machine {
             match reply_obj {
                 Some(rep) => {
                     self.reply_set_caller(rep, Some(tcb))?;
-                    self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: rep })?;
+                    self.transition_tcb(tcb, NonReadyTarget::BlockedOnReply { reply: rep })?;
                     self.donate_sc(tcb, waiter)?;
                 }
                 None => {
@@ -447,7 +451,7 @@ impl Machine {
             if blocking {
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: None,
@@ -532,7 +536,7 @@ impl Machine {
             if blocking {
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: false,
                         fault: None,
@@ -596,7 +600,7 @@ impl Machine {
                 self.endpoint_data_mut(ep_obj)?.recv = Some((tcb, reply_cap));
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnRecv {
+                    NonReadyTarget::BlockedOnRecv {
                         ep: ep_obj,
                         reply: reply_obj,
                     },
@@ -697,7 +701,7 @@ impl Machine {
             self.wake_from(caller)?;
         }
         if matches!(state, TcbState::Running { .. }) {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.yield_to_ready(tcb)?;
         }
         self.tcb_data_mut(tcb)?.last_fault = None;
         self.sched_after_op(true);
@@ -804,7 +808,7 @@ impl Machine {
                     }
                 }
                 if state != TcbState::Inactive {
-                    self.transition_tcb(tcb, TcbState::Inactive)?;
+                    self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
                 }
             }
             Some(ep_obj) => {
@@ -822,7 +826,7 @@ impl Machine {
                 )?;
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: false,
                         fault: Some(FaultKind::Exit { code }),
@@ -835,7 +839,7 @@ impl Machine {
                     return Ok(());
                 }
                 self.unlink_tcb_queues(tcb);
-                self.transition_tcb(tcb, TcbState::Inactive)?;
+                self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
             }
         }
         self.sched_after_op(true);
@@ -867,7 +871,7 @@ impl Machine {
             Some((w, _)) => {
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: Some(kind),
@@ -902,7 +906,7 @@ impl Machine {
                 )?;
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: Some(kind),
@@ -1147,7 +1151,7 @@ impl Machine {
             if matches!(self.tcb_state(donee)?, TcbState::Running { .. }) {
                 self.transition_tcb(
                     donee,
-                    TcbState::Sleeping {
+                    NonReadyTarget::Sleeping {
                         reason: SleepReason::Budget,
                     },
                 )?;

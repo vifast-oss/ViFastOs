@@ -17,8 +17,8 @@
 use core::fmt::Write;
 
 use vifast_core::{
-    FaultAccess, FaultKind, KError, Machine, Message, MessageInfo, ObjId, SlotRef, TcbState,
-    VmFaultReason,
+    FaultAccess, FaultKind, KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, SlotRef,
+    TcbState, VmFaultReason,
 };
 use vifast_idl::pager::{decode, encode_fault, Request, METHOD_FAULT, METHOD_STOP};
 use vifast_plat_common::mmu::{PTE_READ, PTE_USER};
@@ -58,15 +58,22 @@ fn set_running(m: &mut Machine, tcb: ObjId) -> bool {
     if matches!(m.tcb_state(tcb), Ok(TcbState::Running { .. })) {
         return true;
     }
-    if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.transition_tcb(tcb, TcbState::Ready).is_err()
-    {
+    if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.start_tcb(tcb).is_err() {
         return false;
     }
-    m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()
+    m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })
+        .is_ok()
 }
 
 fn task_ready(m: &mut Machine, tcb: ObjId) {
-    let _ = m.transition_tcb(tcb, TcbState::Ready);
+    // **D2-187/D2-194** — không còn cửa "đặt `Ready` vô điều kiện": chọn cửa khớp trạng thái
+    // nguồn. `wake` là API **test-only** (D2-144) và đúng ngữ nghĩa cho `BlockedOn*`/`Sleeping`.
+    let _ = match m.tcb_state(tcb) {
+        Ok(TcbState::Inactive) => m.start_tcb(tcb),
+        Ok(TcbState::Ready) => Ok(()),
+        Ok(TcbState::Running { .. }) => m.tcb_yield(tcb),
+        _ => m.wake(tcb),
+    };
 }
 
 fn abi_error_name(code: u16) -> &'static str {

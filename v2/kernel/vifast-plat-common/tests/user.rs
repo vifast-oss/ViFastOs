@@ -20,7 +20,7 @@
 //! - `DebugGetInfo` (15) ⇒ kênh `a1/a3/a4/a5` đúng `spec/abi.toml` `[debug_info]`.
 
 use vifast_core::syscall::{SyscallEnv, SyscallOutcome, REPLY_NONE};
-use vifast_core::{Machine, ObjType, SlotRef, TcbState};
+use vifast_core::{Machine, NonReadyTarget, ObjType, SlotRef, TcbState};
 use vifast_plat_common::user::{
     self as abi, SyscallAction, TaskState, UserRange, UserTask, ERR_NOT_MAPPED, MAX_DEBUG_PUT,
     SYS_DEBUG_GET_INFO, SYS_DEBUG_HALT, SYS_DEBUG_PUT_STR, SYS_EXIT,
@@ -117,8 +117,8 @@ fn rig(task: &UserTask) -> (Machine, Rig) {
     m.set_sched_params(tcb_slot, Some(SlotRef::new(root, 4)))
         .expect("params");
     m.tcb_set_priority(tcb_slot, 3, 10).expect("priority");
-    m.transition_tcb(obj[0], TcbState::Ready).expect("Ready");
-    m.transition_tcb(obj[0], TcbState::Running { hart: 0 })
+    m.start_tcb(obj[0]).expect("Ready");
+    m.transition_tcb(obj[0], NonReadyTarget::Running { hart: 0 })
         .expect("Running");
     (
         m,

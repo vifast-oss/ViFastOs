@@ -8,7 +8,7 @@
 
 use core::fmt::Write;
 
-use vifast_core::{ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{ObjId, ObjType, SlotRef};
 use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::PlatformWriter;
@@ -398,7 +398,7 @@ pub(crate) fn build_rig(
                 .ok()?;
             if index == 5 {
                 *stage = "tcb ready";
-                m.transition_tcb(tcb, TcbState::Ready).ok()?;
+                m.start_tcb(tcb).ok()?;
             }
             tcb_objs[index] = tcb;
         }

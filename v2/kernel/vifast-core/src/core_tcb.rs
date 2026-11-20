@@ -17,6 +17,7 @@ use crate::tcb::{
     FaultKind, SleepReason, SuspendMode, TcbInfo, TcbSnapshot, TcbState, TCB_STATE_COUNT,
 };
 use crate::tcbdata::{ScData, TcbData};
+use crate::NonReadyTarget;
 
 impl Machine {
     // ------------------------------------------------------- body TCB/SchedContext
@@ -381,79 +382,6 @@ impl Machine {
         Ok(self.tcb_data(tcb)?.ipc)
     }
 
-    /// **Một cửa** đổi trạng thái TCB (D2-49(d)): tra bảng [`crate::tcb::ALLOWED`]; cặp cấm
-    /// trả `IllegalOperation`, **không** đổi trạng thái, đếm vào `forbidden_hits`.
-    ///
-    /// KT-21/25/27/34 hook của sim (`release_donation_of`, liên kết `Reply.caller`) chưa có
-    /// vật thể tương ứng ở KT-59 — KT-60 nối lại **tại đúng cửa này** (một cửa duy nhất).
-    pub fn transition_tcb(&mut self, tcb: ObjId, to: TcbState) -> Result<(), KError> {
-        let from = self.tcb_state(tcb)?;
-        if !crate::tcb::allowed(from, to) {
-            self.forbidden_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
-            return Err(KError::IllegalOperation);
-        }
-        // **KT-21** — rời `BlockedOnReply` bằng đường **khác** `Reply` = bỏ cuộc gọi ⇒ trả SC
-        // donation về client ngay (hook thứ nhất còn nợ từ KT-59).
-        if matches!(from, TcbState::BlockedOnReply { .. })
-            && !matches!(to, TcbState::BlockedOnReply { .. })
-            && self.is_donation_donor(tcb)
-        {
-            self.release_donation_of(tcb)?;
-        }
-        // **KT-34** (C2, D2-63) — giữ liên kết `Reply ⇔ BlockedOnReply` ở **chính** cổng
-        // trạng thái (hook thứ hai còn nợ từ KT-59):
-        // - vào `BlockedOnReply{reply}` ⇒ `Reply.caller = Some(tcb)`; Reply **đã** bind người
-        //   khác ⇒ `IllegalOperation`, **không** ghi đè;
-        // - rời `BlockedOnReply` ⇒ gỡ `caller` nếu đang là `tcb`.
-        if let TcbState::BlockedOnReply { reply } = to {
-            if self.object_alive(reply) && self.object_type(reply) == Some(ObjType::Reply) {
-                match self.reply_caller(reply)? {
-                    None => self.reply_set_caller(reply, Some(tcb))?,
-                    Some(c) if c == tcb => {}
-                    Some(_) => return Err(KError::IllegalOperation),
-                }
-            }
-        } else if let TcbState::BlockedOnReply { reply } = from {
-            if self.object_alive(reply)
-                && self.object_type(reply) == Some(ObjType::Reply)
-                && self.reply_caller(reply)? == Some(tcb)
-            {
-                self.reply_set_caller(reply, None)?;
-            }
-        }
-        // Bất biến ≤1 `Running`/hart (KT-19 DoD 2): TCB vào `Running{hart}` khi hart đang có
-        // TCB chạy ⇒ đưa TCB cũ về `Ready` **trước**, qua đúng cửa này.
-        if let TcbState::Running { hart } = to {
-            if hart as usize >= self.n_harts {
-                return Err(KError::InvalidArgument);
-            }
-            // KT-29: `Running{hart}` chỉ hợp lệ khi `home == hart`.
-            if self.tcb_data(tcb)?.home != hart {
-                return Err(KError::IllegalOperation);
-            }
-            if let Some(cur) = self.sched[hart as usize].current() {
-                if cur != tcb {
-                    self.transition_tcb(cur, TcbState::Ready)?;
-                }
-            }
-        }
-        self.tcb_data_mut(tcb)?.state = to;
-        self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
-        // KT-23: đếm hoạt động ngân sách ở **một cửa**.
-        if matches!(from, TcbState::Running { .. })
-            && matches!(
-                to,
-                TcbState::Sleeping {
-                    reason: SleepReason::Budget
-                }
-            )
-        {
-            self.budget_sleeps += 1;
-        }
-        self.sched_sync(tcb)?;
-        Ok(())
-    }
-
     /// Số lần cặp `(from, to)` đã đi qua cổng.
     pub fn pair_hit_count(&self, from: usize, to: usize) -> u32 {
         self.pair_hits[from * TCB_STATE_COUNT + to]
@@ -505,7 +433,7 @@ impl Machine {
         self.release_donation_of(obj)?;
         self.unlink_tcb_queues(obj);
         if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
-            self.transition_tcb(obj, TcbState::Ready)?;
+            self.suspend_to_ready(obj)?;
         }
         self.set_tcb_suspended(obj, true)?;
         self.sched_after_op(true);
@@ -617,7 +545,7 @@ impl Machine {
             t.bound_notification = None;
             released
         };
-        self.transition_tcb(tcb, TcbState::Dead)?;
+        self.transition_tcb(tcb, NonReadyTarget::Dead)?;
         self.finalise_log[self.n_finalise] = FinaliseEntry {
             tcb,
             state: TcbState::Dead,
@@ -665,7 +593,7 @@ impl Machine {
         let Some(sc) = self.funding_sc(tcb) else {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -674,7 +602,7 @@ impl Machine {
         if !self.sc_data(sc)?.budget.is_configured() {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -684,7 +612,7 @@ impl Machine {
         if !charged || !self.tcb_has_budget(tcb) {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -753,7 +681,7 @@ impl Machine {
         if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(tcb) {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -936,7 +864,7 @@ mod tests {
             .expect("cspace child");
         m.tcb_set_fault_ep(child_slot, ep_slot)
             .expect("fault_ep child");
-        m.transition_tcb(ps, TcbState::Ready).expect("ps Ready");
+        m.start_tcb(ps).expect("ps Ready");
         // procsrv `Recv` chặn trên EP_FAULT — đúng lượt nhận fault của QD §1 Q-A.
         m.recv(ps, ep_slot, None).expect("ps Recv");
         m.exit(child, 42).expect("child Exit");
@@ -972,8 +900,8 @@ mod tests {
         m.put_cap(c0, 1, cap).expect("dat cap TCB");
         let slot = SlotRef::new(c0, 1);
         let victim = m.cap_obj_at(c0, 1).expect("obj victim");
-        m.transition_tcb(victim, TcbState::Ready).expect("Ready");
-        m.transition_tcb(victim, TcbState::Running { hart: 0 })
+        m.start_tcb(victim).expect("Ready");
+        m.transition_tcb(victim, NonReadyTarget::Running { hart: 0 })
             .expect("Running");
         m.tcb_suspend(slot, SuspendMode::Abort).expect("Suspend");
         assert_eq!(m.tcb_state(victim), Ok(TcbState::Ready));

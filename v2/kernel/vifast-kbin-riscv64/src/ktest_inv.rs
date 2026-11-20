@@ -16,7 +16,7 @@
 use core::fmt::Write;
 
 use vifast_core::RIGHT_READ;
-use vifast_core::{KError, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{KError, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
 use vifast_plat_common::fault::{FaultKind, FAULT_STATS};
 use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::user::TaskState;
@@ -50,7 +50,7 @@ fn set_running(m: &mut vifast_core::Machine, tcb: ObjId) {
     if m.tcb_state(tcb) != Ok(TcbState::Running { hart: 0 }) {
         let _ = m.wake(tcb);
         if m.tcb_state(tcb) == Ok(TcbState::Ready) {
-            let _ = m.transition_tcb(tcb, TcbState::Running { hart: 0 });
+            let _ = m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 });
         }
     }
 }
@@ -150,7 +150,7 @@ pub fn invocation_phase(
         // Pha kernel-level (TAP 7..13) có thể còn TCB `Ready` khác ⇒ **không** dùng `dispatch`
         // (sẽ chọn TCB khác); đưa thẳng TCB invocation về `Running{hart:0}` như helper
         // `make_running` của TAP kernel-level, rồi kiểm lại bằng `current(0)`.
-        m.transition_tcb(tcb, TcbState::Ready)?;
+        m.start_tcb(tcb)?;
         set_running(m, tcb);
         if m.current(0) != Some(tcb) {
             return Err(KError::IllegalOperation);

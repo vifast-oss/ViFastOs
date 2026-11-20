@@ -71,6 +71,7 @@ mod objstate;
 pub mod sched;
 mod slotmem;
 pub mod spec;
+mod state_write;
 pub mod syscall;
 pub mod tcb;
 mod tcbdata;
@@ -112,6 +113,7 @@ pub use spec::{
     ARENA_ALIGN, CNODE_BASE_BYTES, DEFAULT_ALIGN_BYTES, FLAG_GUEST, PAGE_BYTES, RIGHTS_ALL,
     RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ, RIGHT_WRITE, SLOT_BYTES, UNTYPED_MIN_BYTES,
 };
+pub use state_write::NonReadyTarget;
 pub use tcb::{
     allowed, allowed_count, coverage, coverage_design, forbidden_count, reserved_count,
     BlockedOnKind, FaultAccess, FaultKind, SleepReason, SuspendMode, TcbInfo, TcbSnapshot,

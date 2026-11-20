@@ -105,6 +105,19 @@ fn invariants_ok(m: &Machine) -> bool {
         && m.check_fault().is_ok()
 }
 
+/// Đưa TCB về `Ready` qua **cửa** khớp trạng thái nguồn (test-only).
+///
+/// **D2-187/D2-194** — không còn cửa "đặt `Ready` vô điều kiện": `Inactive` ⇒ `start_tcb`,
+/// `Running` ⇒ `tcb_yield`, `BlockedOn*`/`Sleeping` ⇒ `wake` (API **test-only**, D2-144).
+fn task_ready(m: &mut Machine, tcb: ObjId) -> Result<(), KError> {
+    match m.tcb_state(tcb)? {
+        TcbState::Inactive => m.start_tcb(tcb),
+        TcbState::Ready => Ok(()),
+        TcbState::Running { .. } => m.tcb_yield(tcb),
+        _ => m.wake(tcb),
+    }
+}
+
 /// Dựng CNode gốc + 8 object lõi từ **Untyped của core** (harness cấp, như `build()` parity
 /// KT-60). Lỗi ở bước này là lỗi model ⇒ panic có chuỗi ổn định để runner đỏ.
 fn build_rig(m: &mut Machine, u: ObjId) -> Rig {
@@ -299,7 +312,7 @@ fn core_taps(
         ok46 &= m.sched_control_configure(rig.ctl, rig.sc, 4, 8).is_ok();
         ok46 &= m.set_sched_params(rig.t0s, Some(rig.sc)).is_ok();
         ok46 &= m.tcb_set_priority(rig.t0s, 3, 10).is_ok();
-        ok46 &= m.transition_tcb(rig.t0, TcbState::Ready).is_ok();
+        ok46 &= m.start_tcb(rig.t0).is_ok();
         ok46 &= m.tcb_suspend(rig.t0s, SuspendMode::Abort).is_ok();
         let after_suspend = m.tcb_read_state(rig.t0s).ok();
         let suspended_ok = after_suspend.map(|s| s.suspended).unwrap_or(false);
@@ -356,7 +369,7 @@ fn core_taps(
         let mut ok47 = m.sched_control_configure(rig.ctl, rig.sc1, 4, 8).is_ok();
         ok47 &= m.set_sched_params(rig.t1s, Some(rig.sc1)).is_ok();
         ok47 &= m.tcb_set_priority(rig.t1s, 2, 10).is_ok();
-        ok47 &= m.transition_tcb(rig.t1, TcbState::Ready).is_ok();
+        ok47 &= m.start_tcb(rig.t1).is_ok();
         let pick0 = m.sched_pick_on(0);
         let d0 = m.dispatch(0).ok().flatten();
         ok47 &= pick0 == Some(rig.t0) && d0 == Some(rig.t0);
@@ -648,7 +661,7 @@ fn core_taps(
 
         // ---------------------------------------------------------- TAP 52: invariants
         // Đưa mọi TCB về Ready trước khi revoke (Running→Revoke sẽ làm current treo).
-        let _ = m.transition_tcb(rig.t1, TcbState::Ready);
+        let _ = task_ready(m, rig.t1);
         let _ = m.delete(rig.cspace);
         let deleted = m.revoke(rig.root, Some(0)).unwrap_or(0);
         let used52 = m.untyped_used(u);
@@ -748,7 +761,7 @@ fn cap_ipc_taps(m: &mut Machine, u: ObjId, fails: &mut usize) {
     let _ep1 = mk(m, ObjType::Endpoint, 11);
     let _rep = mk(m, ObjType::Reply, 12);
     for t in [t0, t1, t2, t3, t4] {
-        m.transition_tcb(t, TcbState::Ready).expect("kt63: Ready");
+        m.start_tcb(t).expect("kt63: Ready");
     }
     let win = |base: usize| {
         [
@@ -871,8 +884,7 @@ fn cap_ipc_taps(m: &mut Machine, u: ObjId, fails: &mut usize) {
 
     // ------------------------------------------------- TAP 54: message mang cap qua Call/Reply
     let t5 = mk(m, ObjType::Tcb, 6);
-    m.transition_tcb(t5, TcbState::Ready)
-        .expect("kt63: Ready t5");
+    m.start_tcb(t5).expect("kt63: Ready t5");
     m.tcb_set_recv_window(SlotRef::new(root, 6), win(50))
         .expect("kt63: bind window t5");
     m.tcb_set_recv_window(SlotRef::new(root, 1), win(54))

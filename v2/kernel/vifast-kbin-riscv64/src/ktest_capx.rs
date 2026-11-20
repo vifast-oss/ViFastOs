@@ -26,7 +26,9 @@
 
 use core::fmt::Write;
 
-use vifast_core::{KError, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT};
+use vifast_core::{
+    KError, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT,
+};
 use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{Platform, PlatformWriter};
@@ -79,9 +81,9 @@ struct Rig {
 fn set_running(m: &mut vifast_core::Machine, tcb: ObjId) -> Result<(), KError> {
     if !matches!(m.tcb_state(tcb)?, TcbState::Running { .. }) {
         if m.tcb_state(tcb)? == TcbState::Inactive {
-            m.transition_tcb(tcb, TcbState::Ready)?;
+            m.start_tcb(tcb)?;
         }
-        m.transition_tcb(tcb, TcbState::Running { hart: 0 })?;
+        m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })?;
     }
     Ok(())
 }
@@ -233,7 +235,7 @@ pub fn capx_phase(
     // memsrv kết thúc bằng `Yield` (không `Exit`: Exit huỷ message đang chờ — D2-25); đưa TCB A
     // về `Ready` để hart 0 không còn `Running` nào trước khi chạy B.
     let a_ready = matches!(stop_a, Some(Stop::Yield))
-        && core_bridge::with_machine(|m| m.transition_tcb(rig.tcb_a, TcbState::Ready).is_ok());
+        && core_bridge::with_machine(|m| m.tcb_yield(rig.tcb_a).is_ok());
     if !a_ready {
         fail(fails, "memsrv khong Yield");
         user::enable_multitask(false);

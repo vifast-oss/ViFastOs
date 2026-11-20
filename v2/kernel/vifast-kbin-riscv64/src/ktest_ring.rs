@@ -17,7 +17,7 @@
 
 use core::fmt::Write;
 
-use vifast_core::{KError, Machine, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
 use vifast_plat_common::mmu::{PTE_READ, PTE_USER, PTE_WRITE};
 use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
@@ -109,15 +109,22 @@ fn set_running(m: &mut Machine, tcb: ObjId) -> bool {
     if matches!(m.tcb_state(tcb), Ok(TcbState::Running { .. })) {
         return true;
     }
-    if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.transition_tcb(tcb, TcbState::Ready).is_err()
-    {
+    if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.start_tcb(tcb).is_err() {
         return false;
     }
-    m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()
+    m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })
+        .is_ok()
 }
 
 fn task_ready(m: &mut Machine, tcb: ObjId) {
-    let _ = m.transition_tcb(tcb, TcbState::Ready);
+    // **D2-187/D2-194** — không còn cửa "đặt `Ready` vô điều kiện": chọn cửa khớp trạng thái
+    // nguồn. `wake` là API **test-only** (D2-144) và đúng ngữ nghĩa cho `BlockedOn*`/`Sleeping`.
+    let _ = match m.tcb_state(tcb) {
+        Ok(TcbState::Inactive) => m.start_tcb(tcb),
+        Ok(TcbState::Ready) => Ok(()),
+        Ok(TcbState::Running { .. }) => m.tcb_yield(tcb),
+        _ => m.wake(tcb),
+    };
 }
 
 /// `true` ⇔ TCB đang chờ (không chạy được ở bước này) — pha này **không** dùng IPC chặn nên
