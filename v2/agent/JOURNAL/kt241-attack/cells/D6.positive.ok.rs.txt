@@ -1,0 +1,4 @@
+// KT-241 D6 — tệp lành trong `src/`.
+pub fn ok() -> u32 {
+    0
+}

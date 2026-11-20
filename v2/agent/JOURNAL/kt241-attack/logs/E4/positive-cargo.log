@@ -1,0 +1,11 @@
+    Checking vifast-core v0.1.0 (/tmp/kt242-s1/v2/kernel/vifast-core)
+warning: function `wrap` is never used
+ --> vifast-core/src/kt241_e4.rs:4:8
+  |
+4 | pub fn wrap(m: &mut Machine, t: ObjId, s: NonReadyTarget) {
+  |        ^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.77s

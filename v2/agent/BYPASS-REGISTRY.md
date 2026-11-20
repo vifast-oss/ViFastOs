@@ -31,9 +31,10 @@ repro biên dịch được mà cả hai cơ chế kiểm đều XANH); `PARTIAL
 | **WB-13** | #13 | `#[cfg(test)]` trên **nhánh `match`** — vùng test nuốt nhánh sản phẩm | L49 (KT-218) | CLOSED | KT-219 |
 | **WB-14** | #14 | `macro_rules!` **lồng trong thân** macro khác che tên macro "an toàn" | L54 (KT-229) | CLOSED | KT-230 |
 | **WB-15** | #15 | `use TcbState as S;` + `m.transition_tcb(t, S::Ready)` | L54 | CLOSED | KT-231 |
-| **WB-16** | #16 | `Ready` qua **helper liên hàm / `const` / `static` / closure / hàm trả về** (6 dạng) | L57 (KT-234) | **OPEN** | — |
-| **WB-17** | #17 | `transition_tcb` làm **fn-pointer / generic `F: Fn` / trait object / UFCS** (7 biến thể) | L55 (KT-232) | **OPEN** (UFCS đã vá KT-239; fn-pointer/generic/trait-object còn sống, chờ KT-237 vá API) | KT-239 (UFCS) |
+| **WB-16** | #16 | `Ready` qua **helper liên hàm / `const` / `static` / closure / hàm trả về** (6 dạng) | L57 (KT-234) | **CLOSED** ở tầng **API** (2026-11-21) | KT-237 (thu hẹp API `NonReadyTarget`). Bằng chứng: ô **B1–B5** PASS — `cargo check` RC=101 `E0308` `expected NonReadyTarget, found TcbState`; đối chứng dương PASS |
+| **WB-17** | #17 | `transition_tcb` làm **fn-pointer / generic `F: Fn` / trait object / UFCS** (7 biến thể) | L55 (KT-232) | **CLOSED** ở tầng **API** (2026-11-21) | KT-237 (API) + KT-239 (UFCS). Bằng chứng: ô **A1–A4** PASS — `E0308`/`E0631` tại chính `transition_tcb`; đối chứng dương PASS |
 | **WB-18** | #18 | crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR` | L56 (KT-233) | **CLOSED** | KT-238 (phạm vi từ `cargo metadata`, 22 crate) |
+| **WB-19** | — | **cửa thứ bảy**: `impl`/`fn` **lồng trong thân cửa** gọi thẳng `write_state` ⇒ **cả hai lớp XANH** | review độc lập (luồng 2) | **OPEN** | đang vá (luồng 2) — **không** thuộc KT-241 |
 
 ---
 
@@ -56,17 +57,24 @@ Có **hai** hệ đánh số từng chạy song song (D2-175 đã chốt một h
 
 ---
 
-## Ba đường **đang chặn nghiệm thu** (D2-193 §2)
+## Ba đường **từng chặn nghiệm thu** (D2-193 §2) — đóng ở tầng **API**; **WB-19** còn OPEN ở tầng **checker**
 
-**WB-16, WB-17, WB-18 là P0 chặn nghiệm thu luật `wake`** — **không** được ghi vào "nợ không
+**WB-16, WB-17, WB-18 từng là P0 chặn nghiệm thu luật `wake`** — **không** được ghi vào "nợ không
 chặn". Mỗi đường đều có repro **biên dịch được** (`cargo check` RC=0) mà **cả hai cơ chế kiểm
-đều XANH**.
+đều XANH**. **Cả ba đã đóng**: WB-18 (KT-238), WB-16/WB-17 (KT-237 + KT-239; nghiệm thu KT-241
+2026-11-21 — ma trận tấn công 28 ô, xem `JOURNAL/kt241-attack/`).
 
-| Mã | Repro đã dựng | Bằng chứng |
-|---|---|---|
-| WB-16 | `fn helper(m,t,s){ m.transition_tcb(t,s) }` + `helper(m,t,TcbState::Ready)`; `const`/`static`; closure | `JOURNAL/kt234-interfn.md` + `kt234-logs/` |
-| WB-17 | `let tt = Machine::transition_tcb; tt(m,t,TcbState::Ready)`; generic `F: Fn`; trait object; UFCS `M::transition_tcb(m,t,Ready)` | `JOURNAL/kt232-fnptr.md` + `kt232-logs/` |
-| WB-18 | crate `v2/extra/evil` ngoài ba gốc + `build.rs` ghi `$OUT_DIR/evil.rs` | `JOURNAL/kt233-buildrs.md` + `kt233-logs/` |
+**Phạm vi đóng — đọc kỹ**: WB-16/WB-17 đóng ở tầng **API** (thu hẹp kiểu ⇒ đường gọi sai **không
+biểu diễn được**, `cargo check` từ chối). Điều này **KHÔNG** có nghĩa "luật `wake` đã đóng":
+**WB-19** là lỗ ở tầng **checker** (`impl`/`fn` lồng trong thân cửa gọi thẳng `write_state` ⇒ cả
+hai lớp XANH) và **đang OPEN**. Hai tầng khác nhau — **không** suy từ "WB-16/17 CLOSED" ra "checker
+kín".
+
+| Mã | Repro đã dựng | Bằng chứng | Trạng thái |
+|---|---|---|---|
+| WB-16 | `fn helper(m,t,s){ m.transition_tcb(t,s) }` + `helper(m,t,TcbState::Ready)`; `const`/`static`; closure | `JOURNAL/kt234-interfn.md` + `kt234-logs/`; **nghiệm thu**: ô **B1–B5** PASS, `E0308` `expected NonReadyTarget, found TcbState` | **CLOSED** |
+| WB-17 | `let tt = Machine::transition_tcb; tt(m,t,TcbState::Ready)`; generic `F: Fn`; trait object; UFCS `M::transition_tcb(m,t,Ready)` | `JOURNAL/kt232-fnptr.md` + `kt232-logs/`; **nghiệm thu**: ô **A1–A4** PASS, `E0308`/`E0631` | **CLOSED** |
+| WB-18 | crate `v2/extra/evil` ngoài ba gốc + `build.rs` ghi `$OUT_DIR/evil.rs` | `JOURNAL/kt233-buildrs.md` + `kt233-logs/`; KT-238 | **CLOSED** |
 
 **Hướng đóng** (D2-187, D2-188): **không** vá bằng phân tích liên hàm; **thu hẹp API** để đường
 gọi sai **không biểu diễn được** (kiểu đích chuyển trạng thái loại trừ `Ready`; primitive ghi
