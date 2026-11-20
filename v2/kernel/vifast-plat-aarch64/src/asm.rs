@@ -35,6 +35,12 @@
 
 #![allow(unsafe_code)] // D2-17: crate `kernel/vifast-plat-*`; chỉ asm mới cần.
 
+/// `PSCI SYSTEM_OFF` (function id 64-bit) — tắt máy qua hypervisor/QEMU.
+///
+/// Giá trị theo PSCI spec (ARM DEN 0022): `0x8400_0008` = `SYSTEM_OFF` trong dải function id
+/// 64-bit (`0x8400_0000` + offset 8).
+pub const PSCI_SYSTEM_OFF: u64 = 0x8400_0008;
+
 #[cfg(all(target_arch = "aarch64", target_os = "none"))]
 mod imp {
     use core::arch::asm;
@@ -177,6 +183,55 @@ mod imp {
                 options(nostack, preserves_flags),
             )
         };
+    }
+
+    // ------------------------------------------------------------------ MMIO
+
+    /// Đọc 32 bit từ MMIO (thanh ghi thiết bị) — `ldr w` với địa chỉ tuyệt đối.
+    ///
+    /// **Vì sao ở đây**: `unsafe` chỉ được nằm trong mô-đun này (D2-17); driver PL011
+    /// ([`crate::pl011`]) vì vậy **không** có `unsafe` mà vẫn truy cập được thanh ghi.
+    pub fn mmio_read_u32(addr: u64) -> u32 {
+        // SAFETY: `addr` do caller cấp và phải là địa chỉ MMIO của thiết bị đã map (PL011 ở
+        // `0x0900_0000` trên QEMU virt). Đọc 4 byte căn lề tự nhiên; không ghi.
+        unsafe { core::ptr::read_volatile(addr as *const u32) }
+    }
+
+    /// Ghi 32 bit ra MMIO (thanh ghi thiết bị).
+    pub fn mmio_write_u32(addr: u64, value: u32) {
+        // SAFETY: như `mmio_read_u32`; ghi 4 byte vào thanh ghi thiết bị đã map.
+        unsafe { core::ptr::write_volatile(addr as *mut u32, value) };
+    }
+
+    // ------------------------------------------------------------------ PSCI / dừng máy
+
+    /// `PSCI SYSTEM_OFF` qua `hvc #0` với `x0 = 0x8400_0008` (PSCI v1.x, 64-bit calling
+    /// convention, function id `0x8400_0008` = `SYSTEM_OFF`).
+    ///
+    /// QEMU `virt` đặt PSCI conduit = **HVC** khi khách khởi động ở EL1 (đúng đường `-kernel`
+    /// của bước 3); `SYSTEM_OFF` làm QEMU thoát với mã 0. Hàm **trả về** nếu PSCI không có
+    /// (hypervisor khác/không hỗ trợ) — caller phải có đường dự phòng, không giả định đã tắt.
+    pub fn psci_system_off() {
+        // SAFETY: `hvc #0` là lệnh gọi hypervisor hợp lệ ở EL1; `x0` mang function id PSCI.
+        // Không đọc/ghi bộ nhớ của kernel.
+        unsafe {
+            asm!(
+                "hvc #0",
+                in("x0") super::PSCI_SYSTEM_OFF,
+                options(nostack, preserves_flags),
+            )
+        };
+    }
+
+    /// `wfi` trong vòng lặp vô hạn — đường dừng **dự phòng** khi PSCI không tắt được máy.
+    ///
+    /// Không phải "treo im lặng": caller đã in marker/`PANIC` trước đó, và runner phân biệt
+    /// đường sạch với đường treo bằng chính các dòng ấy (xem `v2/test/boot/run-aarch64.sh`).
+    pub fn wfi_forever() -> ! {
+        loop {
+            // SAFETY: `wfi` chỉ chờ ngắt; không truy cập bộ nhớ, không đổi thanh ghi.
+            unsafe { asm!("wfi", options(nostack, preserves_flags, nomem)) };
+        }
     }
 
     // ------------------------------------------------------------------ sysreg: ghi
@@ -376,6 +431,22 @@ mod imp {
     /// Stub host của `isb`.
     pub fn isb() {
         host_stub("isb")
+    }
+    /// Stub host của MMIO đọc — **panic**: trên host không có thiết bị PL011 đã map.
+    pub fn mmio_read_u32(_addr: u64) -> u32 {
+        host_stub("mmio read u32")
+    }
+    /// Stub host của MMIO ghi — **panic**: trên host không có thiết bị PL011 đã map.
+    pub fn mmio_write_u32(_addr: u64, _value: u32) {
+        host_stub("mmio write u32")
+    }
+    /// Stub host của `PSCI SYSTEM_OFF` — **panic**: trên host không có PSCI.
+    pub fn psci_system_off() {
+        host_stub("psci system_off")
+    }
+    /// Stub host của `wfi` vô hạn — **panic**: trên host không được treo tiến trình test.
+    pub fn wfi_forever() -> ! {
+        host_stub("wfi forever")
     }
     /// Stub host của `msr tcr_el1`.
     pub fn write_tcr_el1(_value: u64) {

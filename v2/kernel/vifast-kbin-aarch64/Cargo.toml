@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-247 (D2-195) — K4' bước 3, B3.1: ảnh boot **aarch64** đầu tiên của ViFastOs.
+#
+# Phạm vi: linker script + `_start` + PL011 + `PSCI SYSTEM_OFF`. **Không** MMU, **không** bảng
+# vector, **không** U-mode (ba việc đó là KT-248/249). Ảnh nạp trực tiếp bằng
+# `qemu-system-aarch64 -M virt -kernel <elf>` (D2-195 Q1: `-kernel` trực tiếp, không AAVMF/UEFI).
+#
+# Vì sao **không** dùng feature như `vifast-kbin-riscv64`: bước 3 mới có **một** ảnh; tách ảnh
+# test/sản phẩm là việc của bước sau (D2-08 vẫn áp: ảnh này không chứa harness nào).
+[package]
+name = "vifast-kbin-aarch64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ảnh boot aarch64 K4' bước 3 (KT-247): linker script + _start + PL011 + PSCI halt, nạp qua QEMU virt -kernel"
+
+[[bin]]
+name = "vifast-kbin-aarch64"
+path = "src/main.rs"
+
+[dependencies]
+# Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
+vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }

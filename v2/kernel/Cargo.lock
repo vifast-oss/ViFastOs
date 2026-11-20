@@ -30,6 +30,13 @@ name = "vifast-idl"
 version = "0.1.0"
 
 [[package]]
+name = "vifast-kbin-aarch64"
+version = "0.1.0"
+dependencies = [
+ "vifast-plat-aarch64",
+]
+
+[[package]]
 name = "vifast-kbin-riscv64"
 version = "0.1.0"
 dependencies = [

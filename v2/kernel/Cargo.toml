@@ -6,6 +6,7 @@
 resolver = "2"
 members = [
     "vifast-core",
+    "vifast-kbin-aarch64",
     "vifast-kbin-riscv64",
     "vifast-plat-aarch64",
     "vifast-plat-common",

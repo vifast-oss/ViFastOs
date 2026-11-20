@@ -47,8 +47,22 @@ pub mod asm;
 pub mod barrier;
 pub mod format;
 pub mod mmu;
+pub mod pl011;
+pub mod resources;
 pub mod sysreg;
 pub mod tlb;
+
+/// Dừng máy **sạch** (KT-247): `PSCI SYSTEM_OFF` qua `hvc #0`, dự phòng `wfi` vô hạn.
+///
+/// QEMU `virt` với `-kernel` đặt PSCI conduit = HVC (khách ở EL1) ⇒ `SYSTEM_OFF` làm QEMU
+/// thoát mã 0. Nếu lệnh không tắt được (môi trường không có PSCI), hàm **không** im lặng: nó
+/// chuyển sang [`asm::wfi_forever`] — runner phân biệt bằng marker đã in trước đó.
+///
+/// `code` chỉ để phân loại trong log (giống riscv64: PSCI không mang mã thoát).
+pub fn debug_halt(_code: usize) -> ! {
+    asm::psci_system_off();
+    asm::wfi_forever()
+}
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format AArch64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::AARCH64_LEVELS);
