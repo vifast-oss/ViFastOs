@@ -1,0 +1,362 @@
+# KT-244 — log đỏ-trước → xanh của crate `vifast-net` (D2-05)
+
+Người ghi: sub-agent `netlib` · Nhánh `task/kt243-net` · Base `main` @ `43a054e3`
+· Ngày: 2026-11-21 01:19:37 JST · Máy: macOS arm64 (ps), Rust 1.100.0.
+
+## 0. Cách làm (đỏ trước, xanh sau)
+
+1. Viết **toàn bộ** test host (`v2/lib/vifast-net/tests/`, bốn tệp) **trước**.
+2. Viết `addr`/`checksum`/`eth`/`arp`/`ipv4`/`udp`/`frame`; để `icmp`/`dhcp` là **khung rỗng**
+   (`unimplemented!`) — API đã chốt, thân hàm chưa viết.
+3. Chạy `cargo test -p vifast-net --no-fail-fast` ⇒ **ĐỎ** (mục §1 dưới, nguyên văn).
+4. Viết `icmp`/`dhcp` ⇒ chạy lại ⇒ **XANH** (mục §2, nguyên văn).
+
+## 1. ĐỎ TRƯỚC — `cargo test -p vifast-net --no-fail-fast` (nguyên văn)
+
+```text
+warning: fields `buf` and `len` are never read
+   --> lib/vifast-net/src/dhcp.rs:103:5
+    |
+102 | pub struct DhcpMessage {
+    |            ----------- fields in this struct
+103 |     buf: [u8; DHCP_MAX_LEN],
+    |     ^^^
+104 |     len: usize,
+    |     ^^^
+    |
+    = note: `DhcpMessage` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-net` (lib) generated 1 warning
+warning: `vifast-net` (lib test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (target/debug/build/vifast-net/1798e31228b5ed53/out/vifast_net-1798e31228b5ed53)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/addr_checksum.rs (target/debug/build/vifast-net/616fc09608386528/out/addr_checksum-616fc09608386528)
+
+running 14 tests
+test checksum_add_u16_bang_add_bytes ... ok
+test checksum_cong_don_tung_manh_bang_nhau ... ok
+test checksum_do_dai_le_dem_byte_cao ... ok
+test checksum_header_ipv4_vector ... ok
+test checksum_rong_bang_ffff ... ok
+test checksum_vector_rfc1071 ... ok
+test ipv4_display_va_thuoc_tinh ... ok
+test ipv4_u32_be_khu_hoi ... ok
+test mac_broadcast_va_zero ... ok
+test mac_display_dang_hai_cham ... ok
+test mac_hex_muoi_hai_ky_tu ... ok
+test same_subnet_theo_khau_do ... ok
+test subnet_mask_tien_to_va_dia_chi ... ok
+test subnet_mask_tu_dia_chi_chi_nhan_lien_tuc ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dhcp.rs (target/debug/build/vifast-net/493d3e6dab9925c4/out/dhcp-493d3e6dab9925c4)
+
+running 13 tests
+test dhcp_ca_am_cookie_sai ... FAILED
+test dhcp_ca_am_cat_cut_va_qua_dai ... FAILED
+test dhcp_ca_am_htype_hlen_op ... FAILED
+test dhcp_ca_am_option_cut_duoi ... FAILED
+test dhcp_ca_am_option_vuot_khung ... FAILED
+test dhcp_hang_so_va_magic ... ok
+test dhcp_ca_am_thieu_end ... FAILED
+test dhcp_discover_byte_exact ... FAILED
+test dhcp_pad_bi_bo_qua ... FAILED
+test dhcp_option_khong_co_tra_none ... FAILED
+test dhcp_parse_ack_va_hostname ... FAILED
+test dhcp_parse_offer_va_getter ... FAILED
+test dhcp_request_roundtrip ... FAILED
+
+failures:
+
+---- dhcp_ca_am_cookie_sai stdout ----
+
+thread 'dhcp_ca_am_cookie_sai' (88607930) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- dhcp_ca_am_cat_cut_va_qua_dai stdout ----
+
+thread 'dhcp_ca_am_cat_cut_va_qua_dai' (88607929) panicked at lib/vifast-net/src/dhcp.rs:120:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_ca_am_htype_hlen_op stdout ----
+
+thread 'dhcp_ca_am_htype_hlen_op' (88607931) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_ca_am_option_cut_duoi stdout ----
+
+thread 'dhcp_ca_am_option_cut_duoi' (88607932) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_ca_am_option_vuot_khung stdout ----
+
+thread 'dhcp_ca_am_option_vuot_khung' (88607933) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_ca_am_thieu_end stdout ----
+
+thread 'dhcp_ca_am_thieu_end' (88607934) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_discover_byte_exact stdout ----
+
+thread 'dhcp_discover_byte_exact' (88607935) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_pad_bi_bo_qua stdout ----
+
+thread 'dhcp_pad_bi_bo_qua' (88607938) panicked at lib/vifast-net/src/dhcp.rs:120:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_option_khong_co_tra_none stdout ----
+
+thread 'dhcp_option_khong_co_tra_none' (88607937) panicked at lib/vifast-net/src/dhcp.rs:110:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_parse_ack_va_hostname stdout ----
+
+thread 'dhcp_parse_ack_va_hostname' (88607939) panicked at lib/vifast-net/src/dhcp.rs:120:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_parse_offer_va_getter stdout ----
+
+thread 'dhcp_parse_offer_va_getter' (88607940) panicked at lib/vifast-net/src/dhcp.rs:120:9:
+not implemented: KT-244: dhcp chưa viết
+
+---- dhcp_request_roundtrip stdout ----
+
+thread 'dhcp_request_roundtrip' (88607941) panicked at lib/vifast-net/src/dhcp.rs:115:9:
+not implemented: KT-244: dhcp chưa viết
+
+
+failures:
+    dhcp_ca_am_cat_cut_va_qua_dai
+    dhcp_ca_am_cookie_sai
+    dhcp_ca_am_htype_hlen_op
+    dhcp_ca_am_option_cut_duoi
+    dhcp_ca_am_option_vuot_khung
+    dhcp_ca_am_thieu_end
+    dhcp_discover_byte_exact
+    dhcp_option_khong_co_tra_none
+    dhcp_pad_bi_bo_qua
+    dhcp_parse_ack_va_hostname
+    dhcp_parse_offer_va_getter
+    dhcp_request_roundtrip
+
+test result: FAILED. 1 passed; 12 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-net --test dhcp`
+     Running tests/eth_arp.rs (target/debug/build/vifast-net/e977faba60ef26b3/out/eth_arp-e977faba60ef26b3)
+
+running 11 tests
+test arp_frame_request_that_byte_exact ... ok
+test arp_reply_roundtrip ... ok
+test arp_ca_am_hlen_plen_htype_ptype_oper ... ok
+test arp_request_roundtrip ... ok
+test arp_ca_am_cat_cut_va_buffer_hep ... ok
+test eth_ca_am_buffer_hep ... ok
+test eth_ca_am_cat_cut ... ok
+test eth_hang_so_va_ten_loi ... ok
+test eth_roundtrip_va_byte_layout ... ok
+test frame_ca_am_cat_cut_va_buffer_hep ... ok
+test frame_roundtrip_va_payload ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ipv4_icmp_udp.rs (target/debug/build/vifast-net/a77cb43aa677440d/out/ipv4_icmp_udp-a77cb43aa677440d)
+
+running 20 tests
+test ipv4_ca_am_cat_cut ... ok
+test ipv4_ca_am_checksum_sai_va_co_bo_kiem ... ok
+test icmp_echo_request_roundtrip ... FAILED
+test icmp_ca_am_cat_cut_va_buffer_hep ... FAILED
+test icmp_ca_am_checksum_sai ... FAILED
+test ipv4_ca_am_total_length_sai ... ok
+test icmp_type_la_tra_other ... FAILED
+test ipv4_ca_am_version_sai ... ok
+test icmp_echo_code_khac_khong_tra_other ... FAILED
+test ipv4_checksum_dung_sau_encode ... ok
+test ipv4_ca_am_ihl_sai ... ok
+test icmp_echo_reply_roundtrip ... FAILED
+test ipv4_roundtrip_va_payload ... ok
+test ipv4_tu_choi_phan_manh ... ok
+test udp_ca_am_cat_cut_va_buffer_hep ... ok
+test udp_ca_am_checksum_sai ... ok
+test udp_ca_am_length_sai ... ok
+test udp_checksum_khong_dung_bang_khong ... ok
+test udp_checksum_phu_thuoc_pseudo_header ... ok
+test udp_roundtrip_va_checksum_vector ... ok
+
+failures:
+
+---- icmp_echo_request_roundtrip stdout ----
+
+thread 'icmp_echo_request_roundtrip' (88607970) panicked at lib/vifast-net/src/icmp.rs:67:9:
+not implemented: KT-244: icmp chưa viết
+
+---- icmp_ca_am_cat_cut_va_buffer_hep stdout ----
+
+thread 'icmp_ca_am_cat_cut_va_buffer_hep' (88607966) panicked at lib/vifast-net/src/icmp.rs:82:9:
+not implemented: KT-244: icmp chưa viết
+
+---- icmp_ca_am_checksum_sai stdout ----
+
+thread 'icmp_ca_am_checksum_sai' (88607967) panicked at lib/vifast-net/src/icmp.rs:67:9:
+not implemented: KT-244: icmp chưa viết
+
+---- icmp_type_la_tra_other stdout ----
+
+thread 'icmp_type_la_tra_other' (88607971) panicked at lib/vifast-net/src/icmp.rs:82:9:
+not implemented: KT-244: icmp chưa viết
+
+---- icmp_echo_code_khac_khong_tra_other stdout ----
+
+thread 'icmp_echo_code_khac_khong_tra_other' (88607968) panicked at lib/vifast-net/src/icmp.rs:82:9:
+not implemented: KT-244: icmp chưa viết
+
+---- icmp_echo_reply_roundtrip stdout ----
+
+thread 'icmp_echo_reply_roundtrip' (88607969) panicked at lib/vifast-net/src/icmp.rs:72:9:
+not implemented: KT-244: icmp chưa viết
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    icmp_ca_am_cat_cut_va_buffer_hep
+    icmp_ca_am_checksum_sai
+    icmp_echo_code_khac_khong_tra_other
+    icmp_echo_reply_roundtrip
+    icmp_echo_request_roundtrip
+    icmp_type_la_tra_other
+
+test result: FAILED. 14 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-net --test ipv4_icmp_udp`
+   Doc-tests vifast_net
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 2 targets failed:
+    `-p vifast-net --test dhcp`
+    `-p vifast-net --test ipv4_icmp_udp`
+```
+
+**Kết luận §1**: 18 test ĐỎ — 12 của `dhcp` + 6 của `icmp`; 39 test khác XANH. Đỏ đúng chỗ cần
+viết, không phải đỏ vì lỗi biên dịch.
+
+## 2. XANH — `cargo test -p vifast-net --no-fail-fast` sau khi viết `icmp`/`dhcp` (2026-11-21 01:20:11 JST, nguyên văn)
+
+```text
+   Compiling vifast-net v0.1.0 (/private/tmp/kt243-s2/v2/lib/vifast-net)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.28s
+     Running unittests src/lib.rs (target/debug/build/vifast-net/1798e31228b5ed53/out/vifast_net-1798e31228b5ed53)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/addr_checksum.rs (target/debug/build/vifast-net/616fc09608386528/out/addr_checksum-616fc09608386528)
+
+running 14 tests
+test checksum_add_u16_bang_add_bytes ... ok
+test checksum_cong_don_tung_manh_bang_nhau ... ok
+test checksum_do_dai_le_dem_byte_cao ... ok
+test checksum_header_ipv4_vector ... ok
+test checksum_rong_bang_ffff ... ok
+test checksum_vector_rfc1071 ... ok
+test ipv4_u32_be_khu_hoi ... ok
+test ipv4_display_va_thuoc_tinh ... ok
+test mac_broadcast_va_zero ... ok
+test mac_display_dang_hai_cham ... ok
+test mac_hex_muoi_hai_ky_tu ... ok
+test same_subnet_theo_khau_do ... ok
+test subnet_mask_tien_to_va_dia_chi ... ok
+test subnet_mask_tu_dia_chi_chi_nhan_lien_tuc ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dhcp.rs (target/debug/build/vifast-net/493d3e6dab9925c4/out/dhcp-493d3e6dab9925c4)
+
+running 13 tests
+test dhcp_ca_am_htype_hlen_op ... ok
+test dhcp_ca_am_option_cut_duoi ... ok
+test dhcp_ca_am_option_vuot_khung ... ok
+test dhcp_ca_am_cat_cut_va_qua_dai ... ok
+test dhcp_ca_am_cookie_sai ... ok
+test dhcp_ca_am_thieu_end ... ok
+test dhcp_discover_byte_exact ... ok
+test dhcp_hang_so_va_magic ... ok
+test dhcp_option_khong_co_tra_none ... ok
+test dhcp_pad_bi_bo_qua ... ok
+test dhcp_parse_ack_va_hostname ... ok
+test dhcp_parse_offer_va_getter ... ok
+test dhcp_request_roundtrip ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/eth_arp.rs (target/debug/build/vifast-net/e977faba60ef26b3/out/eth_arp-e977faba60ef26b3)
+
+running 11 tests
+test arp_ca_am_cat_cut_va_buffer_hep ... ok
+test arp_frame_request_that_byte_exact ... ok
+test arp_reply_roundtrip ... ok
+test arp_ca_am_hlen_plen_htype_ptype_oper ... ok
+test arp_request_roundtrip ... ok
+test eth_ca_am_buffer_hep ... ok
+test eth_ca_am_cat_cut ... ok
+test eth_hang_so_va_ten_loi ... ok
+test eth_roundtrip_va_byte_layout ... ok
+test frame_ca_am_cat_cut_va_buffer_hep ... ok
+test frame_roundtrip_va_payload ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ipv4_icmp_udp.rs (target/debug/build/vifast-net/a77cb43aa677440d/out/ipv4_icmp_udp-a77cb43aa677440d)
+
+running 20 tests
+test icmp_ca_am_cat_cut_va_buffer_hep ... ok
+test icmp_echo_code_khac_khong_tra_other ... ok
+test icmp_ca_am_checksum_sai ... ok
+test icmp_echo_reply_roundtrip ... ok
+test icmp_type_la_tra_other ... ok
+test ipv4_ca_am_cat_cut ... ok
+test icmp_echo_request_roundtrip ... ok
+test ipv4_ca_am_checksum_sai_va_co_bo_kiem ... ok
+test ipv4_ca_am_ihl_sai ... ok
+test ipv4_ca_am_version_sai ... ok
+test ipv4_checksum_dung_sau_encode ... ok
+test ipv4_ca_am_total_length_sai ... ok
+test ipv4_roundtrip_va_payload ... ok
+test ipv4_tu_choi_phan_manh ... ok
+test udp_ca_am_cat_cut_va_buffer_hep ... ok
+test udp_ca_am_checksum_sai ... ok
+test udp_ca_am_length_sai ... ok
+test udp_checksum_khong_dung_bang_khong ... ok
+test udp_checksum_phu_thuoc_pseudo_header ... ok
+test udp_roundtrip_va_checksum_vector ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_net
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+```
+
+**Kết luận §2**: **58 test XANH**, 0 đỏ, 0 ignored. Phân bố: \`addr_checksum\` 14, \`dhcp\` 13,
+\`eth_arp\` 11, \`ipv4_icmp_udp\` 20. Mỗi codec có **ca âm** (checksum sai, cắt cụt, version/IHL/
+total-length sai, ARP hlen/plen/htype/ptype/oper sai, DHCP option vượt khung/thiếu END/cookie sai,
+UDP length sai, ICMP type lạ) và có **vector chuẩn** (RFC 1071; header IPv4 thật; frame ARP request
+byte-exact; DHCP DISCOVER byte-exact tự dựng).

@@ -19,6 +19,7 @@ members = [
     "lib/vifast-vfs",
     "lib/vifast-virtio",
     "lib/vifast-fsutil",
+    "lib/vifast-net",
     "tools/vifast-agentctl",
     "sim/vifast-sim",
 ]

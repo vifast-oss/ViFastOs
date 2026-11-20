@@ -1,0 +1,11 @@
+# lib/vifast-net — KT-244 (D1): codec mạng THUẦN (Ethernet/ARP/IPv4/ICMP/UDP/DHCP)
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "KT-244: codec mạng thuần (Ethernet II, ARP, IPv4, ICMP echo, UDP, DHCP) — no_std, không unsafe, không dependency"
+
+[dependencies]
