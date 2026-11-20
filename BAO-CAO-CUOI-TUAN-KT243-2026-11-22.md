@@ -188,6 +188,106 @@ sản phẩm, đọc `cargo build -v`, ĐỎ nếu có `--cfg test`/`--test`; 10
 **KT-184/KT-194 vẫn REVIEW** — D2-190 còn mục 5 (vòng tấn công mới trên HEAD sau KT-256) và mục 6
 (T2 trên commit tích hợp). Journal `JOURNAL/kt256-wake-debt.md`.
 
+### 3.16 KT-258 — vòng tấn công **mới** cho luật `wake` (vòng 3)
+**27 biến thể / 8 nhóm → 4 đường lọt thuộc 3 gốc**, đã vá:
+- **WB-21** — crate `v2/drivers/evil` là path-dep **tuỳ chọn** của `vifast-kbin-riscv64`, chỉ bật bởi
+  `product-fs`, gọi `wake` ⇒ trước vá **XANH cả ba** (kể cả `cargo --features product-fs`).
+- **WB-22** — `include!` trong crate ở **gốc mới** (đích trong/ngoài crate) ⇒ trước vá XANH cả ba.
+- **WB-23** — path-dep **ra ngoài gốc repo** (`/tmp/…`), tuỳ chọn bởi `product-fs` ⇒ trước vá XANH cả ba.
+- **Gốc chung**: phạm vi **định nghĩa** (từ `cargo metadata`) rộng hơn **vòng lặp** của lớp tĩnh
+  (`V2_SCAN`) và rộng hơn **cấu hình build** của lớp dep-info. Ba lỗ: `token_scope` trả `False` cho
+  crate `workspace="closure"`; worklist `include!`/`#[path]` không seed crate ngoài `V2_SCAN`;
+  `_crate_from_package` **bỏ im lặng** path-dep ngoài gốc repo.
+- **Vá**: `product_closure()`, `E_SCOPE_OUTSIDE`, seed worklist theo phạm vi. Selftest **420→430**
+  (+10 ca có răng, mỗi ca kèm đối chứng dương), dep-info **67/67**, cây thật 0 lỗi.
+- **KT-184/194 vẫn REVIEW**: còn nợ §7.3 (luật **cấu trúc** chưa mở cho crate ngoài `V2_SCAN` — cùng
+  lớp lỗi với WB-22, có thể dựng lại đường lọt bằng `mod` graph) + T2 trên commit tích hợp.
+Journal `JOURNAL/kt258-wake-attack.md`, bảng `JOURNAL/kt258-attack/kt258-attack.tsv`.
+
+### 3.17 KT-259 — aarch64 **smp 2 hart**
+**XONG.** PSCI `CPU_ON` + stack per-hart (arena có guard) + **GICv3** (distributor + redistributor +
+SGI) + IPI. **Đo**:
+```text
+# smp: cpu_on rc=0 (success) online=1 waited=156060 hart1_mpidr=0x0000000080000001 ctx=1
+# smp: hart=1 online
+# smp: ipi recv=1 intid=0
+# smp: ipi send=Ok(()) count=1 waited=15159 sgi=0 target=1
+# smp: report hart0=1 hart1=1 waited=9859 online=1 ipi=1
+ok 10 - smp: hart 1 online
+ok 11 - smp: ipi 0->1
+ok 12 - smp: both harts report
+```
+TAP **12/12**, runner **9/9** (7 ca âm), host test **112→136**. **Ba phát hiện**: QEMU `virt` mặc
+định **GICv2** ⇒ phải `-M virt,gic-version=3`; **quy tắc "in trước, đặt cờ sau"** (hai hart in xen ký
+tự: `# smp: # smp: ipiipi send=recv=1`); `GICR` (0x080A_0000) **chưa** được map trong `VSpace` ⇒ map
+thêm 1 MiB. `main.rs` vượt R1 ⇒ tách `smpboot.rs` (511 dòng). **Đột biến**: (i) bỏ clear
+`GICR_WAKER.ProcessorSleep` **không** đỏ được trên QEMU 11.1.3 (ghi trung thực) ⇒ thay bằng (i') bỏ
+`GICR_ISENABLER0` bit 0 (**ĐỎ** thật); (ii) `CPU_ON` entry+4 ⇒ **PANIC có kiểm soát**; (iii) bỏ guard
+stack ⇒ host **ĐỎ** 5 ca + QEMU `layout=Err(Overlap)`.
+
+### 3.18 KT-260 — UDP echo + DNS query (N1 phần đầu)
+**XONG.** `vifast-net::dns` (RFC 1035, **21 test host**, có phát hiện **con trỏ vòng lặp**). **Đo**:
+```text
+# net udp echo: target=10.0.2.3:53 via=dns-question-echo payload_len=15 reply_len=33 rcode=0 echoed=1 rtt_ms=6
+# net: udp echo ok len=15 rtt=6
+ok 8 - net udp echo
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=61 rtt_ms=6
+# net: dns example.com a=172.66.147.243 ttl=205
+ok 9 - net dns a
+```
+**Trung thực**: libslirp **không** có echo service UDP ở `10.0.2.2:7` (`udp_input` chỉ xử lý
+BOOTP/TFTP) ⇒ bằng chứng UDP hai chiều lấy từ **DNS question echo** (server chép nguyên question
+section, RFC 1035 §4.1.2); `udp_echo` tới `10.0.2.2:7` vẫn hiện thực đầy đủ và **timeout 3 s** đúng.
+Ca âm: DNS tới `192.0.2.1:53` (TEST-NET-1) ⇒ timeout 3 s. Runner **9 TAP** + 2 ca âm +
+`--red-selftest` **21 kiểm**.
+
+### 3.19 KT-261 — K5' bước 2: x86_64 GDT/TSS/IDT + exception
+**XONG.** GDT 5 descriptor + TSS (IST1 cho `#DF`) + IDT 256 ô; **5 exception đo được**:
+```text
+# exc: vec=3 err=0x0 rip=0x100281 cs=0x8 rflags=0x2
+# exc: vec=6 err=0x0 rip=0x100290 cs=0x8 rflags=0x10002
+# exc: vec=14 err=0x0 rip=0x1002a0 cs=0x8 rflags=0x10002
+# exc: cr2=0x700000000000
+# exc: vec=13 err=0x38 rip=0x1002b4 cs=0x8 rflags=0x10002
+# exc: vec=255 err=0x0 rip=0x1002c2 cs=0x8 rflags=0x2
+```
+Mỗi ca **resume bằng `iretq`** rồi chạy tiếp (không cần tách boot). TAP **7/7**, runner **9/9**
+(7 ca âm), 26 test host mới. **Ba phát hiện thật**: (1) **`.got` phải GIỮ** trong `linker.ld` — bản
+KT-257 `DISCARD` cả `.got`; khi crate khác tham chiếu stub asm qua `extern "C"`, rustc phát sinh
+tham chiếu GOT-gián-tiếp ⇒ mọi entry thành **địa chỉ 0** (`callq *0x0`); (2) **`INT3`/`INT n` lưu RIP
+lệnh KẾ TIẾP**, fault (`#UD`/`#PF`/`#GP`) lưu RIP **chính** lệnh gây lỗi — resume khác nhau;
+(3) **`ltr` đánh dấu descriptor TSS busy** (`0x89 → 0x8B`) ⇒ TAP 1 là bằng chứng `ltr` nạp thật.
+
+### 3.20 KT-262 — K4' B3.6: `TLBI` + shootdown đa hart + smp 4
+**XONG.** **4 hart online** + **shootdown thật**:
+```text
+# tlbi: remap va=0x60000000 pa=0x40093000 magic=0x5653504143450001
+# tlbi: hart=1 read1=0x5653504143450001 magic=0x5653504143450001 match=1
+# tlbi: shootdown va=0x60000000 targets=0xe expected=3 acks=3 waited=32283 timeout=0 ok=1
+# tlbi: hart=1 read2 fault=1 va=0x60000000 access=Read reason=NotMapped esr=0x96000006
+# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1
+ok 13 - tlbi: hart 1 sees unmap
+ok 14 - tlbi: ack from all harts
+ok 15 - smp: 4 harts online
+```
+`seen=0x3` = hart 0 (TAP 9) **và** hart 1 (TAP 13) — hai hart khác nhau, đúng bản ghi fault theo
+hart. TAP **15/15**, runner **11/11** (9 ca âm), host test **136→155**. **Hai lỗi thật**: (1) stub
+vector **xoá `x9`** (từ KT-248) ⇒ `ldar x9,[x9]` với `x9=4` ⇒ `far=0x4`; vá bằng khung 16 B giữ `x9`
+gốc; (2) **`GICR_IPRIORITYR<n>` là thanh ghi theo BYTE** — ghi u32 lệch lề với `sgi=1` ⇒ **alignment
+fault** `far=0x080b0401`. **Đột biến**: (i) hart phụ không `tlbi` và (ii) bỏ `dsb ish` **không** đỏ
+được trên QEMU TCG (nó flush TLB **mọi** CPU) — ghi trung thực, thay bằng **đối chứng dương** "bỏ
+`tlbi` của hart 0, chỉ giữ SGI ⇒ TAP 13 vẫn xanh" ⇒ chứng minh đường SGI thật sự xoá TLB hart 1.
+
+### 3.21 KT-263 — D1 phần 4: virtio-gpu 2D
+**XONG.** `# gpu display: w=1280 h=800`, `# gpu resource: id=1 format=1 w=640 h=480`,
+`# gpu scanout: … enabled=1 bogus=InvalidResourceId`, `# gpu draw: rect=40,40,200,120 color=0xff0000
+text=ViFast`. **Bằng chứng thật** (không chỉ "lệnh gửi xong"): `screendump` PPM `P6 640 480` —
+(40,40)=(255,0,0) trong hình chữ nhật, (240,40)=(0,0,0) ngoài, (40,200)=(255,255,255) bit 0 glyph
+`'V'`, khối chữ **122** pixel trắng = đúng tổng popcount 6 glyph "ViFast". 5 TAP, **33 test host**,
+`--red-selftest` **25 kiểm**, ca âm "không thiết bị". **Trung thực**: `GET_DISPLAY_INFO` của QEMU trả
+mode của **host** nên không đổi khi `SET_SCANOUT` ⇒ TAP `scanout` dùng ca âm đối chứng
+(`InvalidResourceId`) thay vì so mode.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
