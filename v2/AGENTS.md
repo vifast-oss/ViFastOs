@@ -37,17 +37,35 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 - Trace **luôn bật**, không có cờ tắt (D2-09). Test kernel **không** nằm trong boot sản phẩm (D2-08).
 - Cổng cứng `.data + .bss ≤ 256 KiB` [TK], đo ở K0.5 (QD §3.5).
 - **L1 đã bật** từ KT-08 trong `gate --fast`: sim 1.000 seed; nightly 100.000 seed.
+- **Toolchain ghim Rust 1.100.0** ở `v2/rust-toolchain.toml`, `v2/kernel/rust-toolchain.toml`,
+  `rust-version` (`v2/Cargo.toml`), `v2/tools/repro-build.sh`, `v2/tools/repro-build-windows.ps1`.
+  Đổi toolchain là thay đổi **ảnh hưởng ảnh** ⇒ phải build ảnh mới + đo lại K6.
+- **Ba tầng kiểm** (KT-242): T0 agent tự chạy, **T1** `gate --dev`, **T2** `gate --fast`.
+  T1 **không** phải full gate — xem `AGENTS.md` §6.1. **Tầng L1** smoke/medium/full: §6.2.
+- **Tái dùng bằng chứng** theo khóa đầu vào (`commit` + `build-inputs` + `toolchain` + `config` +
+  `binary.sha256` + dòng `# build:` của ảnh), fail-closed khi thiếu: `AGENTS.md` §6.3.
+- **Nợ P20**: sha256 ảnh **phụ thuộc thư mục build** (cùng `build-inputs` vẫn ra sha khác nhau giữa
+  các thư mục). Danh tính bền là dòng `# build: algo=… inputs=… dirty=…`; **không** dùng sha ảnh
+  làm danh tính xuyên thư mục.
 - Cấm `pkill -f qemu-system` toàn cục: chỉ `kill <pid>` của chính task. Tối đa 3 QEMU song song.
 - Ngân sách 3 giờ/task; vượt thì dừng, ghi tiến độ, chuyển task không phụ thuộc.
 
 ## 5. Lệnh
 
 ```bash
-./v2/bin/v2 check
-./v2/bin/v2 gate --fast
-./v2/bin/v2 nightly
+./v2/bin/v2 check                  # nhanh: fmt + clippy + luật, không chạy sim
+./v2/bin/v2 gate --dev             # T1: kiểm tích hợp nhanh — KHÔNG phải full gate
+./v2/bin/v2 gate --fast            # T2: cổng đầy đủ, bắt buộc trên ứng viên tích hợp
+./v2/bin/v2 nightly                # L1 100.000 seed, mutation, Miri, soak
+
+bash v2/tools/l1-tier.sh --tier smoke|medium|full   # ba mức L1 (tự chia lô)
+bash v2/tools/l1-tier.sh --selftest                 # 27 ca, không chạy sim
 ```
 
 Lệnh nằm ở `v2/bin/v2`; có thể `export PATH="$PWD/v2/bin:$PATH"` để gõ `v2 …`.
+
+`gate --fast` chạy các làn song song cho checker **chỉ đọc**; bước QEMU/persist/git-guard và bước
+**sửa cây** giữ **độc quyền** ở làn `sau`. Log từng bước phát lại theo số thứ tự cố định nên log
+hai lần chạy vẫn so sánh được.
 
 Commit: `[KT-##] <tóm tắt>`. Push sau mỗi commit xanh: `git push origin main`. Duyệt: dòng `APPROVED <YYYY-MM-DD> Agent 0` trong `agent/QUEUE.md`.

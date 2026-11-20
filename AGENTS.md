@@ -1,6 +1,6 @@
 # AGENTS.md — luật làm việc trong repo ViFastOs
 
-Cập nhật: 2026-11-12 (vòng vá sau review). Nguồn sự thật của vòng vá:
+Cập nhật: 2026-11-20 (KT-242: ba tầng kiểm, tầng L1, tái dùng bằng chứng). Nguồn sự thật của vòng vá:
 [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md) (gọi tắt **QD**).
 Tệp này áp cho **mọi** agent làm việc trong repo. Hai dòng sản phẩm có bản rút gọn:
 [`v2/AGENTS.md`](v2/AGENTS.md). **Dòng ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
@@ -64,7 +64,8 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 
 ```bash
 ./v2/bin/v2 check                  # nhanh: fmt + clippy + luật cấu trúc, không chạy sim
-./v2/bin/v2 gate --fast            # cổng bắt buộc cuối mỗi task: fmt, clippy, luật cấu trúc, L0, gen-check (từ KT-05), L1 1.000 seed (từ khi có sim)
+./v2/bin/v2 gate --dev             # T1: kiểm tích hợp nhanh (§6.1) — KHÔNG phải full gate
+./v2/bin/v2 gate --fast            # T2: cổng đầy đủ, bắt buộc trên ứng viên tích hợp
 ./v2/bin/v2 nightly                # L1 100.000 seed, mutation, Miri, soak (không chạy trong vòng task)
 
 ./vis-dev check             # dòng ViScript
@@ -75,8 +76,53 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 - Lệnh v2 nằm ở `v2/bin/v2` (không thể là `./v2` vì `v2/` là thư mục). Có thể `export PATH="$PWD/v2/bin:$PATH"` rồi gõ `v2 …`; tài liệu dùng dạng đầy đủ `./v2/bin/v2`.
 - `./v2/bin/v2 nightly` và soak **không** chạy song song với build/cổng khác.
 - **L1 đã bật** trong `gate --fast` từ KT-08 (1.000 seed; nightly 100.000 seed).
-- Chưa có `gate` đầy đủ trong vòng 1; chỉ `gate --fast`.
+- Chưa có `gate` đầy đủ trong vòng 1; `gate --fast` là **T2** (đầy đủ nhất hiện có).
 - Đo thời gian L1 ngay khi sim chạy; vượt 60 s thì giảm seed của `--fast`, **không** giảm invariant (QD §5.2).
+
+### 6.1 Ba tầng kiểm (KT-242, A0 2026-11-20)
+
+| Tầng | Lệnh | Nội dung | Khi chạy |
+|---|---|---|---|
+| **T0** | agent tự chạy | `cargo test -p <crate>`, test đỏ-trước, checker liên quan | trong lúc sửa |
+| **T1** | `./v2/bin/v2 gate --dev` | fmt/lint + luật + checker + compile-fail + L0 + L1 1.000 + smoke QEMU; **bỏ 8 bước selftest harness** | trước khi tích hợp nhóm thay đổi |
+| **T2** | `./v2/bin/v2 gate --fast` | đầy đủ mọi bước | trên ứng viên tích hợp / bàn giao |
+
+- **T1 không phải full gate.** Không được gọi kết quả T1 là "full gate PASS"; output T1 in rõ nhãn.
+- Không bỏ âm thầm bước nào: mỗi bước bị bỏ in `--- <tên>: BỎ QUA (T1 — chỉ chạy ở T2)`.
+- **T2 bắt buộc ngay** (không trì hoãn) khi thay đổi chạm: đồng bộ SMP/memory ordering/vòng đời
+  đối tượng; page table/quyền truy cập/revoke/allocator; boot/linker/layout ảnh/toolchain; persist
+  và toàn vẹn dữ liệu; bản sửa cho lỗi chỉ tái hiện dưới stress.
+- `main` có thể ở trạng thái "đã kiểm T1, chờ T2" — phải ghi rõ; **không** gọi là ứng viên nghiệm thu.
+
+### 6.2 Tầng L1
+
+| Mức | Seed | Dùng khi |
+|---|---:|---|
+| **L1-smoke** | 1.000 (mặc định của `gate --fast`/`--dev`) | mọi lần T1/T2 |
+| **L1-medium** | 10.000 | thay đổi chạm sim/scheduler/IPC |
+| **L1-full** | 100.000 × 4 cấu hình = 400k (hợp đồng K6) | ứng viên nghiệm thu |
+
+```bash
+bash v2/tools/l1-tier.sh --tier smoke|medium|full   # tự chia lô, gộp bảng, đỏ nếu thiếu seed
+bash v2/tools/l1-tier.sh --selftest                 # 27 ca, không chạy sim
+```
+
+Không gọi smoke/medium là "tương đương full". Chia lô **không** đổi seed/`SO_OP`/cấu hình/ngưỡng.
+
+### 6.3 Tái dùng bằng chứng (chống chạy lặp vô ích)
+
+Mỗi phép đo lưu **khóa đầu vào**: `commit` + `build-inputs` + `toolchain` + `config/seed` +
+`binary.sha256` (+ dòng `# build:` của ảnh nếu dùng ảnh) + lệnh + kết quả + log.
+
+- Chỉ sửa tài liệu/runner **không** ảnh hưởng phép kiểm ⇒ **giữ bằng chứng cũ**, ghi lý do.
+- **Không** chỉ nhìn SHA ảnh để quyết định tái dùng L1: L1 còn phụ thuộc source mô phỏng, harness,
+  cấu hình, seed.
+- **Nợ P20**: sha256 ảnh **phụ thuộc thư mục build**; danh tính bền là dòng
+  `# build: algo=… inputs=… dirty=…`.
+- Thiếu dữ liệu / không chắc ⇒ **chạy**, không PASS mặc định.
+- Mặc định **≤ 1 đợt T2 theo lịch / 24 giờ**, cộng 1 đợt trên ứng viên bàn giao nếu đầu vào đổi;
+  vượt phải có lý do kỹ thuật và ghi lại.
+- Không chạy lại L1-full/soak trên cùng fingerprint chỉ để tăng số lần PASS.
 
 ## 7. Commit
 
@@ -87,6 +133,8 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 - Commit chạm `kernel/` hoặc `lib/` phải xanh `--fast`; lỗi logic phải có `.scn` đỏ trước (D2-05).
 - Hồi quy ⇒ **revert trước**, điều tra sau (D2-03).
 - **Push sau mỗi commit xanh của task**: `git push origin main`; tag đẩy riêng `git push origin <tag>`. Không push khi cổng đỏ; không push commit WIP.
+- Hook `vifast-guard` đòi `VIFAST_ROLE=lead` khi commit/push lên nhánh bảo vệ. Agent **không** tự
+  đặt biến này và **không** dùng `--no-verify`: stage xong thì báo lead commit.
 
 ## 8. Duyệt
 
