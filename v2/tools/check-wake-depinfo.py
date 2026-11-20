@@ -1120,7 +1120,11 @@ def hidden_files(
 
 def outside_static_scope(root: Path, loaded: Iterable[Path]) -> List[str]:
     """Tệp rustc nạp mà luật `wake` **tĩnh** không mở (không khớp `in_test_only_wake_scope`)."""
-    return sorted(CWP.rel(root, p) for p in loaded if not CWP.in_test_only_wake_scope(CWP.rel(root, p)))
+    return sorted(
+        CWP.rel(root, p)
+        for p in loaded
+        if not CWP.in_test_only_wake_scope(CWP.rel(root, p), root)
+    )
 
 
 def scan(
@@ -1231,10 +1235,14 @@ def scan(
                 continue
             if test_only is not None and relp in test_only:
                 continue
-            tr = CWP.test_line_ranges(text)
+            # **KT-242 (N5)** — vùng test là **khoảng KÝ TỰ** (`_test_char_ranges`,
+            # token-tree), không phải khoảng dòng: `test_line_ranges` lan cả dòng nên miễn
+            # mã sản phẩm **cùng dòng** một mục `#[cfg(test)]`. Dùng **cùng** hàm của lớp
+            # một (import, không chép luật).
+            tr = CWP._test_char_ranges(CWP.strip_rust_noise(text), relp)
             fns = CWP.find_functions(p, text)
-            for lineno, kind, desc in CWP._transition_calls(text, relp):
-                if CWP.in_ranges(lineno, tr):
+            for lineno, kind, desc, _start in CWP._transition_calls(text, relp):
+                if CWP.in_ranges(_start, tr):
                     continue
                 if kind == "ok":
                     continue
@@ -1272,11 +1280,12 @@ def scan(
             if test_only is not None and relp in test_only:
                 continue
             sub = CWP.Report()
+            # **KT-242 (N1/N2 + N5)** — `_check_state_write` nay nhận **khoảng ký tự** và tự
+            # quy `write_state` cho **hàm trong cùng theo token-tree** (bỏ tham số `fns`).
             CWP._check_state_write(
                 relp,
                 text,
-                CWP.find_functions(p, text),
-                CWP.test_line_ranges(text),
+                CWP._test_char_ranges(CWP.strip_rust_noise(text), relp),
                 None,
                 sub,
             )
@@ -1703,6 +1712,73 @@ def selftest() -> int:
         ghi(
             "(16f) R3: `write_state` trong `tcb_yield` (trong `state_write.rs`) ⇒ ĐỎ",
             (not rep.ok) and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (16k) **KT-242 N1/N2**: `write_state` trong `impl` **lồng trong thân** một cửa --
+        # Đường lọt "cửa thứ bảy": `impl Machine { pub fn kt242_door(…) { self.write_state(…) } }`
+        # lồng trong `wake_step`; mã sản phẩm gọi `m.kt242_door(t)` ⇒ TCB về `Ready` **không
+        # qua điều kiện nguồn nào**. Trước KT-242 lớp 2 XANH (cùng gốc `enclosing`/`find_functions`
+        # với lớp 1). Nay `_check_state_write` quy cho **hàm trong cùng theo token-tree**.
+        _sw_path2 = src / "state_write.rs"
+        _sw_orig2 = _sw_path2.read_text(encoding="utf-8")
+        try:
+            _sw_path2.write_text(
+                _sw_orig2.replace(
+                    "    pub fn wake_step(&mut self, _t: u32) {\n"
+                    "        self.write_state(_t, TcbState::Ready);\n"
+                    "    }\n",
+                    "    pub fn wake_step(&mut self, _t: u32) {\n"
+                    "        impl Machine {\n"
+                    "            pub fn kt242_door(&mut self, _t: u32) {\n"
+                    "                self.write_state(_t, TcbState::Ready);\n"
+                    "            }\n"
+                    "        }\n"
+                    "        self.write_state(_t, TcbState::Ready);\n"
+                    "    }\n",
+                ),
+                encoding="utf-8",
+            )
+            rep, _ = scan(root, loaded, test_only=set())
+        finally:
+            _sw_path2.write_text(_sw_orig2, encoding="utf-8")
+        ghi(
+            "(16k) KT-242 N1/N2: `impl` lồng trong cửa gọi `write_state` ⇒ ĐỎ "
+            "E_DEPINFO_STATE_WRITE",
+            (not rep.ok)
+            and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors)
+            and any("kt242_door" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (16l) **KT-242 N5**: R2 miễn theo **ký tự**, không theo dòng --------------------
+        # `test_line_ranges` cũ phủ **cả** dòng `#[cfg(test)] fn helper() {} fn evil(…) { … }`
+        # ⇒ `transition_tcb(…, TcbState::Ready)` cùng dòng được miễn. Nay chỉ mục test được miễn.
+        _n5 = src / "kt242_n5.rs"
+        _n5.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "#[cfg(test)]\n"
+            "fn helper() {} fn evil() { transition_tcb(1, TcbState::Ready); }\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {_n5}, test_only=set())
+        ghi(
+            "(16l) KT-242 N5: R2 cùng dòng `#[cfg(test)]` ⇒ ĐỎ E_DEPINFO_TRANSITION",
+            (not rep.ok) and any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        # Đối chứng dương: `#[cfg(test)] mod t { … }` **vẫn** được miễn.
+        _n5b = src / "kt242_n5b.rs"
+        _n5b.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "#[cfg(test)]\n"
+            "mod t { fn evil() { transition_tcb(1, TcbState::Ready); } }\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {_n5b}, test_only=set())
+        ghi(
+            "(16m) KT-242 N5 đối chứng dương: `#[cfg(test)] mod t { … }` ⇒ XANH",
+            not any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
             f"errors={rep.errors}",
         )
 

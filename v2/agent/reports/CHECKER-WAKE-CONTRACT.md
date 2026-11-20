@@ -1,4 +1,4 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219 / KT-225 / KT-241
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219 / KT-225 / KT-241 / KT-242
 
 **Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại) + **KT-209** (L40 KT-201
 §D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D — quét token toàn cục cho `include!`/`#[path]`) +
@@ -7,8 +7,12 @@ bộ lọc `target/`, `MAILBOX_DEFS`, đóng F2) + **KT-219** (L49 KT-218 — v�
 nhánh `match`, đường lọt #13) + **KT-225** (L52 KT-223 — bốn báo oan `include!` + đường lọt lớp một
 `.txt` + răng ca B29/B30) + **KT-241** (D2-194 §3 — API thu hẹp `NonReadyTarget`, mỏ neo kiểu,
 luật `write_state`, bỏ tham số `tr` chết; **phân loại hai lệch + ba mục chưa nguồn của KT-240** —
-xem §4.1). **Chưa** được reviewer độc lập xác nhận trên HEAD
-cuối — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
+xem §4.1) + **KT-242** (review độc lập `JOURNAL/kt242-wake-review.md`: **sáu** đường lọt mới; vá
+**hàm lồng không phải cửa**, **vùng test theo ký tự** cho **mọi** luật, **phạm vi = mẫu ∪ crate
+root thật** + đuôi `.rs` không phân biệt hoa/thường, **đường dẫn không phân giải được ⇒ lỗi cổng
+rõ** thay vì traceback; số ca selftest của hai lớp tăng — số đo đầy đủ ở
+`JOURNAL/kt242-wake-review.md` §7). **Chưa** được reviewer độc lập xác nhận lại trên HEAD sau
+KT-242 — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
 
 Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
 trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed** ở mọi chỗ nó không phân giải được.
@@ -21,6 +25,8 @@ trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed**
 |---|---|
 | `v2/kernel/<crate>/src/**` + `v2/kernel/<crate>/build.rs` | `include!`/`#[path]`/`cfg_attr(path)` literal + trong cây; `wake` chỉ-dùng-test; thân `macro_rules!` (**token `wake`** + `include!`/`#[path]`/`mod`/`:tt`); **KT-241**: mỏ neo kiểu + luật `write_state`/`into_state` + `transition_tcb` không nhận `TcbState` |
 | `v2/sim/<crate>/src/**` + `v2/sim/<crate>/build.rs` | như trên |
+| **KT-242 (phạm vi crate root)** — **mọi crate root thật** của `v2/kernel/<crate>`/`v2/sim/<crate>`: `[lib] path`, `[[bin]] path` (kể cả **ngoài `src/`**, ví dụ `bin/x.rs`), `src/lib.rs`, `src/main.rs`, `tests/*.rs` | như trên. Trước KT-242 phạm vi là **mẫu** `src/**`+`build.rs`; bin/lib khai báo **ngoài `src/`** là bố cục Rust hợp lệ mà `cargo` biên dịch thật, nhưng **không** khớp mẫu ⇒ luật token `wake` **không** chạy (đo: lớp tĩnh XANH cả hai chế độ, lớp dep-info ĐỎ `E_DEPINFO_WAKE`). Nay phạm vi = **mẫu ∪ crate root thật** (`crate_roots`, đọc `Cargo.toml`) |
+| **KT-242 (đuôi hoa/thường)** — tệp đuôi `.rs` **không phân biệt hoa/thường** (`.RS`, `.Rs`) | như trên. Trên macOS/Windows `mod x;` nạp `src/x.RS` (đo: `cargo check` biên dịch được) nhưng `rglob("*.rs")` **bỏ sót** ⇒ luật token `wake` không chạy (lớp tĩnh XANH, lớp dep-info ĐỎ). Nay duyệt bằng `os.scandir` + `suffix.lower() == ".rs"` (`_iter_rs_ci`), và `RE_TEST_ONLY_WAKE_SCOPE` dùng `re.IGNORECASE` |
 | `v2/kernel/vifast-core/src/state_write.rs`, `v2/sim/vifast-sim/src/kobj/state_write.rs` | **KT-241**: nơi **duy nhất** được chứa `write_state`/`into_state`; `write_state` chỉ được gọi bởi sáu hàm ở `STATE_WRITE_CALLERS`; là **mỏ neo** của toàn bộ ranh giới API (xem §2b) |
 | `v2/lib/**` | thân `macro_rules!` (token `wake`, `include!`, `#[path]`, `mod`, `:tt`); `include!`/`#[path]` **ngoài** macro được phân giải, đích phải ở trong `v2/lib` |
 | `v2/test/**`, `v2/agent/**` | **không** bảo vệ (ngoài phạm vi) |
@@ -33,11 +39,20 @@ kể cả crate ra đời sau. `tests/` cấp crate nằm ngoài (test-only, `is
 U-mode, **không** phải crate — biên dịch bởi `vifast-kbin-riscv64/build.rs`) và
 `v2/kernel/vifast-kbin-riscv64/init/*.rs` (chương trình U-mode, biên dịch bởi `build.rs`).
 
-**`cfg_attr` lồng trong `v2/lib`** (KT-240 N3) — `v2/lib` **không** được quét **cấu trúc**
-(`scan_structure` chỉ chạy `v2/kernel`+`v2/sim`), nên `#[cfg_attr(…, path = "…")]` lồng nhiều
-tầng **ngoài** thân macro trong `v2/lib` ⇒ **XANH**. Đây là **hệ quả của phạm vi** (`v2/lib` chỉ
-bảo vệ thân macro + `include!`/`#[path]`), **không** phải khẳng định đã đo — bản cũ ghi "§1 đã
-ghi" là **tham chiếu vòng sai**; nay ghi rõ tại đây. **Chưa được chứng minh** bằng log đo.
+**`cfg_attr` lồng trong `v2/lib`** (KT-240; **KT-242 đo lại**) — `v2/lib` **không** được quét
+**cấu trúc** (`scan_structure` chỉ chạy `v2/kernel`+`v2/sim`). **ĐÃ ĐO** (KT-242, hai ca đối
+chứng trong `JOURNAL/kt242-wake-repro/fixture-probes.py`):
+
+- `#[cfg_attr(any(), cfg_attr(any(), path = "evil.rs"))] mod m;` trong `v2/lib` **được phân
+  giải** — `resolve_include_targets` seed **mọi** tệp `v2/lib/**/*.rs` và `_walk_all` →
+  `attr_path_edges` đệ quy `cfg_attr` **hai tầng**;
+- đích **trong** `v2/lib` ⇒ **XANH** (tệp đích vào `extra`, nhưng `v2/lib` **không** thuộc luật
+  token `wake` — xem nợ DEBT-KT227-1);
+- đích **ra ngoài** `v2/lib` ⇒ **ĐỎ** `E_STRICT_WAKE_INCLUDE` (cả hai chế độ).
+
+⇒ Câu cũ ("`cfg_attr` lồng trong `v2/lib` ⇒ XANH") **chỉ đúng khi đích ở trong `v2/lib`**; khi
+đích ra ngoài thì **ĐỎ**. Phần thật sự còn hở là **DEBT-KT227-1** (`v2/lib` ngoài luật token
+`wake`), **không** phải `cfg_attr`.
 
 **KT-181** (D2-164): thân `macro_rules!` được quét ở **cả ba** gốc `v2/lib`+`v2/kernel`+`v2/sim`
 (`MACRO_SCAN_ROOTS`), **kể cả** `v2/kernel/vifast-kbin-riscv64/init/` (chương trình U-mode đóng
@@ -90,9 +105,16 @@ xoá nó ⇒ ca `pass!(mod evil;)` **XANH**.
 - `#[path = "x.rs"]`, `#[ path = "x.rs" ]`, `#[\npath = "x.rs"]`, **`#[r#path = "x.rs"]`** (raw ident).
 - `#[cfg_attr(not(test), path = "x.rs")]` và **`cfg_attr` lồng** (giới hạn `MAX_ATTR_DEPTH`).
 - `mod NAME;` khai báo thường (đồ thị module), kể cả `#[cfg(test)]`/`#[cfg(feature = "ktest")]`.
-- **Ngữ cảnh test theo item/token-tree** (KT-196/F2 + KT-198/F2b): áp cho **cả** đồ thị module
-  (`_mods_of`) **và** luật `wake` (`_test_char_ranges`). `#[cfg(test)]` chỉ áp cho **mục kế tiếp**,
-  không lan sang mục cùng dòng; `mod`/`fn` trong khối test lồng vẫn là test.
+- **Ngữ cảnh test theo item/token-tree** (KT-196/F2 + KT-198/F2b + **KT-242**): áp cho **cả**
+  đồ thị module (`_mods_of`) **và** **mọi** luật quyết định — luật kênh (`MailboxMsg`), luật
+  consumer, luật arch, R2 (`transition_tcb`), R3 (`write_state`), R1 (`wake`) — ở **cả hai** lớp.
+  `#[cfg(test)]` chỉ áp cho **mục kế tiếp**, **không** lan sang mục cùng dòng; `mod`/`fn` trong
+  khối test lồng vẫn là test.
+  **KT-242 (vùng test theo ký tự)** — trước bản này **năm** chỗ vẫn dùng `test_line_ranges`
+  (**theo dòng**), nên `#[cfg(test)]\nfn helper() {} fn evil(…) { … }` cho vùng phủ **cả** dòng
+  thứ hai ⇒ mã sản phẩm **cùng dòng** một mục test được miễn (đo: luật kênh/consumer/arch XANH;
+  xem `JOURNAL/kt242-wake-review.md` §2). Nay **mọi** luật dùng `_test_char_ranges` + **offset ký
+  tự**; `test_line_ranges` **không** còn call site sản xuất (có ca selftest chốt).
 - **KT-219** — vùng test kết thúc ở **cuối mục thật**: thân `{…}` nếu mục có thân, ngược lại
   `;` hoặc `,` **cùng mức**. Dấu `,` chỉ là mốc kết thúc khi đã thấy `=>` (nhánh `match`) — `,`
   còn xuất hiện trong generic params (`fn f<T, U>`), `use a::b, c::d;`, field struct, biến thể
@@ -192,6 +214,7 @@ ngữ nghĩa**. Hệ quả: **hệ thống kiểu** đóng WB-16/WB-17 (`E0308`/
 | `transition_tcb` **đảo kiểu** | `E_STRICT_TRANSITION` | đối số thứ hai là/chứa `TcbState` **hoặc** kết thúc bằng/chứa `…::Ready` (alias `S::Ready`, `Self::Ready`, `NonReadyTarget::Ready`) | dưới API mới dạng này **không biên dịch được** ⇒ có người đã đảo `to: NonReadyTarget` về `to: TcbState`. Đây **không** còn là "phân tích Ready/không-Ready" — nó là **chốt chống đảo kiểu**. Không còn cửa/allowlist nào được miễn. |
 | `write_state`/`into_state` **ngoài** `state_write.rs` | `E_STRICT_STATE_WRITE` | mọi xuất hiện (gọi, dùng làm giá trị, định nghĩa) ở tệp khác — **trừ** mã trong `#[cfg(test)]` (cùng quy ước miễn của mọi luật khác; test **không thể** gọi `write_state` vì private, nên miễn không tạo lỗ hổng) | primitive ghi thô là **private**; không tệp nào khác được chạm. Đây là **luật thay thế** cho allowlist `NON_WAKE_READY_SITES` (đã **xoá**: dưới API mới không còn chỗ `transition_tcb(…, Ready)` hợp lệ để miễn). |
 | `write_state` **sai cửa** trong `state_write.rs` | `E_STRICT_STATE_WRITE` | gọi từ hàm **không** thuộc `STATE_WRITE_CALLERS`; hoặc dùng làm **giá trị** (`let f = Self::write_state;`) | mỗi cửa có điều kiện nguồn riêng; một wrapper/hàm thứ bảy là **bỏ kiểm** (D2-194 §2). `tcb_yield` là ca cụ thể: phải qua `yield_to_ready`. |
+| **KT-242 (hàm lồng)** — `write_state` trong `fn`/`impl`/`trait`/`mod` **lồng trong thân** một cửa | `E_STRICT_STATE_WRITE` | "hàm gọi" = **hàm trong cùng theo token-tree** (`_innermost_fn_tree`), **không** phải hàm theo dòng/thụt lề (`enclosing`/`find_functions`). Hàm lồng **không** thuộc `STATE_WRITE_CALLERS` ⇒ ĐỎ | đường lọt "cửa thứ bảy": `impl Machine { pub fn kt242_door(…) { self.write_state(tcb, TcbState::Ready) } }` lồng trong `wake_step`; mã sản phẩm gọi `m.kt242_door(t)` ⇒ TCB về `Ready` **không qua điều kiện nguồn nào**. Trước KT-242: `cargo check` biên dịch được, lớp tĩnh thường/`--strict`/lớp dep-info **đều XANH** (đo: `JOURNAL/kt242-wake-repro/logs/r3a/`). Gốc: `find_functions` **nhảy qua** hàm lồng nên `enclosing` trả **cửa ngoài**. |
 | `into_state` dùng làm giá trị trong `state_write.rs` | `E_STRICT_STATE_WRITE` | không phải định nghĩa/call | giữ ranh giới "chỉ gọi, không lấy hàm" |
 
 **Bỏ hẳn**: `NON_WAKE_READY_SITES` (mười lăm mục) và `_var_may_be_ready`. Lý do: câu hỏi "biến này có
@@ -303,7 +326,7 @@ Lớp dep-info áp **cùng** hàm (`CWP._check_nonready_conv_file`) trên **mọ
 | ~~**Miễn luật kênh theo tên `mailbox.rs`**~~ | **ĐÓNG (KT-215, cùng lớp)**: điều kiện `p.name == "mailbox.rs"` khớp **mọi** tệp cùng tên ở bất kỳ thư mục nào ⇒ một tệp `src/sub/mailbox.rs` chứa `post_mail(…, MailboxMsg::Wake(t))` được miễn luật kênh phát (kênh wake thứ hai). Nay so **đúng relpath** của hai tệp định nghĩa trong phạm vi quét (`MAILBOX_DEFS`). Ca selftest: tệp cùng tên ở thư mục khác phát `MailboxMsg::Wake` ⇒ ĐỎ. | **Đã vá**. |
 | **Miễn luật arch theo tiền tố `virtio_`** (mở) | `RE_DOORBELL` bỏ qua tệp có tên bắt đầu `virtio_` (thiết bị virtio dùng `doorbell` hợp lệ). Một tệp `virtio_x.rs` trong `vifast-plat-*` dùng `doorbell` sẽ được miễn. **Chưa vá**: phân biệt "thiết bị virtio thật" cần kiểm ngữ nghĩa (kiểu `Virtio*`), không phải đổi tên; hạ tầng hiện tại không có. Ghi nợ có tên. | Không phải luật `wake`/`include!`/`#[path]`; rủi ro thấp (luật arch chỉ áp `vifast-plat-*`). |
 | **Tệp `.rs` không thuộc crate** | `v2/kernel/vifast-plat-user/lib.rs` (shim U-mode) và `v2/kernel/vifast-kbin-riscv64/init/*.rs` (chương trình U-mode) **không** khớp mẫu `<crate>/src/**`/`build.rs` ⇒ không bị luật `wake` quét **trực tiếp** (một số tệp `init/*.rs` được kéo vào qua `#[path]` từ `src/` và xử lý như đích `extra`). | **ĐÃ ĐO LẠI** (KT-240 N1): `grep` token `wake` trên `vifast-plat-user/lib.rs` + **hai mươi lăm** tệp `init/*.rs` ⇒ **không dòng nào khớp**; đối chứng trên `core_sched.rs` **có** khớp. Log: `JOURNAL/kt241-logs/n1-wake-ngoai-mau.log` (HEAD `c5a83552`). **Còn phải đo lại trên HEAD cuối** sau hợp nhất. Ghi để không thành "phát hiện mới". |
-| **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro ⇒ XANH (chỉ `v2/kernel`+`v2/sim` được quét cấu trúc). | **CHƯA ĐƯỢC CHỨNG MINH** (KT-240 N3): bản cũ ghi "§1 đã ghi" — **sai**, §1 **không** ghi trường hợp này (tham chiếu vòng). Nội dung kỹ thuật đúng vì đây là **hệ quả** của phạm vi `v2/lib` (chỉ bảo vệ thân macro + `include!`/`#[path]`), **không** phải khẳng định đã đo. **Không** tính là đạt. |
+| **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro: đích **trong** `v2/lib` ⇒ XANH; đích **ra ngoài** ⇒ ĐỎ `E_STRICT_WAKE_INCLUDE`. | **ĐÃ ĐO** (KT-242, hai ca đối chứng): `resolve_include_targets` seed **mọi** tệp `v2/lib/**/*.rs` và `attr_path_edges` đệ quy `cfg_attr` **hai tầng** ⇒ câu cũ "⇒ XANH" **chỉ đúng khi đích ở trong `v2/lib`**. Phần thật sự còn hở là **DEBT-KT227-1** (`v2/lib` ngoài luật token `wake`), **không** phải `cfg_attr`. |
 | **Báo oan có trước** (không phải hồi quy — đối chiếu checker `0fa0fe65` giống hệt) | `#[cfg(test)] include!`; `#[cfg(feature = "ktest")] fn` **inline** (chuỗi `"ktest"` bị `strip_rust_noise` xoá); `#[cfg(test)] const/static`; `macro_rules!` thân `()`/`[]`; block statement; match arm pattern literal. **KT-211** (reviewer L44 §D6) đo thêm **bốn** dạng **ĐỎ** (`--strict`) mà danh sách **không** có: (a) `#[cfg_attr(test, path = "evil.rs")] mod m;` (đích có `wake`) ⇒ **ĐỎ**; (b) `if let Some(wake) = o { wake }` ⇒ **ĐỎ** `E_STRICT_TEST_ONLY_WAKE`; (c) `let g = \|wake: u32\| wake + <số>;` ⇒ **ĐỎ**; (d) `struct S { pub wake: u32 }` + `s.wake` ⇒ **ĐỎ**. **KT-225** (L52 KT-223 §C) **đã vá bốn** dạng báo oan của luật `include!`: `stringify!(include!)` (nay **XANH** — `SAFE_TOKEN_MACROS`), `include` + `!=` / `self.include` + `!=` (nay **XANH** — `!` + `=` không phải macro), `include!("x",)` (nay **XANH** — trailing comma hợp lệ). | Cây thật **không** có dạng nào (mọi chỗ `ktest` đều không chứa `wake`); ghi để không thành "phát hiện mới". |
 | ~~**Thân `macro_rules!` trong tệp không phải `.rs`**~~ | **ĐÓNG (KT-225, L52 KT-223 — đường lọt lớp một)**: `scan_macro_bodies` chỉ `rglob("*.rs")`, nên `macro_rules! evil { () => { include!("…") } }` trong `src/macro_def.txt` (được `include!("macro_def.txt")` ở vị trí item) **không** bị `_check_macro_body` quét; `_walk_all` bỏ qua thân macro ⇒ checker tĩnh **XANH cả hai chế độ** trong khi `cargo check` thành công và mã sản phẩm gọi `wake` (lớp hai `check-wake-depinfo.py` bắt được). Nay `scan_macro_bodies` nhận `extra_files` = mọi tệp được `include!`/`#[path]` vào cây (không chỉ `.rs`) ⇒ quét thân macro ⇒ **ĐỎ** `E_STRICT_MACRO_INCLUDE`. Ca selftest KT-225 TXT. | **Đã vá**; cây thật xanh cả hai chế độ. |
 | **Macro ngoài `MACRO_SCAN_ROOTS`** (KT-181) | `v2/tools/**` (công cụ phát triển, **không** link vào ảnh sản phẩm) và `v2/test/fixtures/**` (fixture **cố tình sai**) **không** được quét thân macro. | Không phải mã sản phẩm; cây thật **không** có `macro_rules!` ở hai gốc này. Nếu tương lai có mã sản phẩm ở đó, phải thêm gốc vào `MACRO_SCAN_ROOTS` — **không** được coi là đã bảo vệ. |
