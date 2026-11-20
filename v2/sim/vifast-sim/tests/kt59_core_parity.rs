@@ -83,66 +83,102 @@ enum CS {
 }
 
 impl CS {
-    fn sim(self) -> ks::TcbState {
-        match self {
-            CS::Inactive => ks::TcbState::Inactive,
-            CS::Ready => ks::TcbState::Ready,
-            CS::Running { hart } => ks::TcbState::Running { hart },
-            CS::BlockedOnSend { ep, call } => ks::TcbState::BlockedOnSend {
+    /// Đích **không-`Ready`** phía sim (D2-187/D2-194). `None` khi `CS::Ready`: `Ready`
+    /// **không** biểu diễn được bằng [`ks::NonReadyTarget`] — phải đi qua **cửa ngữ nghĩa**
+    /// ([`sim_to_ready`]).
+    fn sim_nonready(self) -> Option<ks::NonReadyTarget> {
+        Some(match self {
+            CS::Ready => return None,
+            CS::Inactive => ks::NonReadyTarget::Inactive,
+            CS::Running { hart } => ks::NonReadyTarget::Running { hart },
+            CS::BlockedOnSend { ep, call } => ks::NonReadyTarget::BlockedOnSend {
                 ep,
                 call,
                 fault: None,
             },
-            CS::BlockedOnRecv { ep, reply } => ks::TcbState::BlockedOnRecv {
+            CS::BlockedOnRecv { ep, reply } => ks::NonReadyTarget::BlockedOnRecv {
                 ep,
                 reply: if reply == 0 { None } else { Some(reply) },
             },
-            CS::BlockedOnReply { reply } => ks::TcbState::BlockedOnReply { reply },
-            CS::BlockedOnNotification { ntfn } => ks::TcbState::BlockedOnNotification { ntfn },
-            CS::BlockedOnAddress { frame, offset } => {
-                ks::TcbState::BlockedOnAddress { frame, offset }
+            CS::BlockedOnReply { reply } => ks::NonReadyTarget::BlockedOnReply { reply },
+            CS::BlockedOnNotification { ntfn } => {
+                ks::NonReadyTarget::BlockedOnNotification { ntfn }
             }
-            CS::Sleeping { reason } => ks::TcbState::Sleeping {
+            CS::BlockedOnAddress { frame, offset } => {
+                ks::NonReadyTarget::BlockedOnAddress { frame, offset }
+            }
+            CS::Sleeping { reason } => ks::NonReadyTarget::Sleeping {
                 reason: if reason == 0 {
                     ks::SleepReason::Timeout
                 } else {
                     ks::SleepReason::Budget
                 },
             },
-            CS::Stopping => ks::TcbState::Stopping,
-            CS::Dead => ks::TcbState::Dead,
-        }
+            CS::Stopping => ks::NonReadyTarget::Stopping,
+            CS::Dead => ks::NonReadyTarget::Dead,
+        })
     }
 
-    fn core(self) -> kc::TcbState {
-        match self {
-            CS::Inactive => kc::TcbState::Inactive,
-            CS::Ready => kc::TcbState::Ready,
-            CS::Running { hart } => kc::TcbState::Running { hart },
-            CS::BlockedOnSend { ep, call } => kc::TcbState::BlockedOnSend {
+    /// Như [`CS::sim_nonready`] nhưng phía core.
+    fn core_nonready(self) -> Option<kc::NonReadyTarget> {
+        Some(match self {
+            CS::Ready => return None,
+            CS::Inactive => kc::NonReadyTarget::Inactive,
+            CS::Running { hart } => kc::NonReadyTarget::Running { hart },
+            CS::BlockedOnSend { ep, call } => kc::NonReadyTarget::BlockedOnSend {
                 ep,
                 call,
                 fault: None,
             },
-            CS::BlockedOnRecv { ep, reply } => kc::TcbState::BlockedOnRecv {
+            CS::BlockedOnRecv { ep, reply } => kc::NonReadyTarget::BlockedOnRecv {
                 ep,
                 reply: if reply == 0 { None } else { Some(reply) },
             },
-            CS::BlockedOnReply { reply } => kc::TcbState::BlockedOnReply { reply },
-            CS::BlockedOnNotification { ntfn } => kc::TcbState::BlockedOnNotification { ntfn },
-            CS::BlockedOnAddress { frame, offset } => {
-                kc::TcbState::BlockedOnAddress { frame, offset }
+            CS::BlockedOnReply { reply } => kc::NonReadyTarget::BlockedOnReply { reply },
+            CS::BlockedOnNotification { ntfn } => {
+                kc::NonReadyTarget::BlockedOnNotification { ntfn }
             }
-            CS::Sleeping { reason } => kc::TcbState::Sleeping {
+            CS::BlockedOnAddress { frame, offset } => {
+                kc::NonReadyTarget::BlockedOnAddress { frame, offset }
+            }
+            CS::Sleeping { reason } => kc::NonReadyTarget::Sleeping {
                 reason: if reason == 0 {
                     kc::SleepReason::Timeout
                 } else {
                     kc::SleepReason::Budget
                 },
             },
-            CS::Stopping => kc::TcbState::Stopping,
-            CS::Dead => kc::TcbState::Dead,
+            CS::Stopping => kc::NonReadyTarget::Stopping,
+            CS::Dead => kc::NonReadyTarget::Dead,
+        })
+    }
+}
+
+/// Cửa `Ready` phía **sim** theo trạng thái nguồn (D2-187/D2-194): `Inactive` ⇒ `start_tcb`;
+/// `Running` ⇒ `tcb_yield`; `BlockedOn*`/`Sleeping` ⇒ `wake` (test-only, D2-144); còn lại
+/// (`Ready`/`Stopping`/`Dead`) ⇒ không cửa nào nhận ⇒ `IllegalOperation`.
+fn sim_to_ready(m: &mut ks::Machine, tcb: u32) -> Res {
+    match m.tcb_state(tcb) {
+        Ok(ks::TcbState::Inactive) => unit_sim(m.start_tcb(tcb)),
+        Ok(ks::TcbState::Running { .. }) => unit_sim(m.tcb_yield(tcb)),
+        Ok(st) if st.is_blocked() || matches!(st, ks::TcbState::Sleeping { .. }) => {
+            unit_sim(m.wake(tcb))
         }
+        Ok(_) => Err(se(ks::KError::IllegalOperation)),
+        Err(e) => Err(se(e)),
+    }
+}
+
+/// Như [`sim_to_ready] nhưng phía **core**.
+fn core_to_ready(m: &mut kc::Machine, tcb: u32) -> Res {
+    match m.tcb_state(tcb) {
+        Ok(kc::TcbState::Inactive) => unit_core(m.start_tcb(tcb)),
+        Ok(kc::TcbState::Running { .. }) => unit_core(m.tcb_yield(tcb)),
+        Ok(st) if st.is_blocked() || matches!(st, kc::TcbState::Sleeping { .. }) => {
+            unit_core(m.wake(tcb))
+        }
+        Ok(_) => Err(ce(kc::KError::IllegalOperation)),
+        Err(e) => Err(ce(e)),
     }
 }
 
@@ -654,7 +690,10 @@ impl Mut for ks::Machine {
         ))
     }
     fn transition(&mut self, tcb: u32, st: CS) -> Res {
-        unit_sim(self.transition_tcb(tcb, st.sim()))
+        match st.sim_nonready() {
+            Some(to) => unit_sim(self.transition_tcb(tcb, to)),
+            None => sim_to_ready(self, tcb),
+        }
     }
     fn suspend(&mut self, tcb: (u32, usize), abort: bool) -> Res {
         unit_sim(self.tcb_suspend(
@@ -679,9 +718,11 @@ impl Mut for ks::Machine {
         opt_sim(self.dispatch(h))
     }
     fn block_current(&mut self, h: u16, st: CS) -> Res {
-        self.block_current(h, st.sim())
-            .map(|o| o as u64)
-            .map_err(se)
+        match st.sim_nonready() {
+            Some(to) => self.block_current(h, to).map(|o| o as u64).map_err(se),
+            // `Ready` không phải đích block hợp lệ (D2-194 §1(d)) — giữ nguyên mã lỗi cũ.
+            None => Err(se(ks::KError::InvalidArgument)),
+        }
     }
     fn wake(&mut self, tcb: u32) -> Res {
         unit_sim(self.wake(tcb))
@@ -916,7 +957,10 @@ impl Mut for kc::Machine {
         ))
     }
     fn transition(&mut self, tcb: u32, st: CS) -> Res {
-        unit_core(self.transition_tcb(tcb, st.core()))
+        match st.core_nonready() {
+            Some(to) => unit_core(self.transition_tcb(tcb, to)),
+            None => core_to_ready(self, tcb),
+        }
     }
     fn suspend(&mut self, tcb: (u32, usize), abort: bool) -> Res {
         unit_core(self.tcb_suspend(
@@ -941,9 +985,10 @@ impl Mut for kc::Machine {
         opt_core(self.dispatch(h))
     }
     fn block_current(&mut self, h: u16, st: CS) -> Res {
-        self.block_current(h, st.core())
-            .map(|o| o as u64)
-            .map_err(ce)
+        match st.core_nonready() {
+            Some(to) => self.block_current(h, to).map(|o| o as u64).map_err(ce),
+            None => Err(ce(kc::KError::InvalidArgument)),
+        }
     }
     fn wake(&mut self, tcb: u32) -> Res {
         unit_core(self.wake(tcb))
@@ -1666,9 +1711,12 @@ fn kt59_parity_scheduler_fifo_round_robin() {
         ok(Op::Dispatch { h: 0 }, r.tcbs[1] as u64),
         // block_current: chỉ nhận trạng thái chặn/ngủ.
         err(
+            // **KT-241** — `Ready` **không** biểu diễn được ở kiểu đích nữa; dùng
+            // `Running` để giữ đúng phép kiểm **runtime** "không phải đích block hợp lệ"
+            // (D2-194 §1(d)) — vẫn kỳ vọng `InvalidArgument`.
             Op::BlockCurrent {
                 h: 0,
-                st: CS::Ready,
+                st: CS::Running { hart: 0 },
             },
             kc::KError::InvalidArgument,
         ),

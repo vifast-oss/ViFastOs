@@ -145,7 +145,7 @@ impl RigIpc {
             *obj = m.add_kernel_object(ObjType::Tcb);
             let cap = m.root_cap(*obj);
             m.put_cap(c0, 10 + i, cap).expect("cap TCB");
-            m.transition_tcb(*obj, TcbState::Ready).expect("Ready");
+            m.start_tcb(*obj).expect("Ready");
         }
         Self {
             m,
@@ -215,7 +215,7 @@ impl RigLoi {
         let t0 = m.add_kernel_object(ObjType::Tcb);
         let cap = m.root_cap(t0);
         m.put_cap(c0, 3, cap).expect("cap TCB");
-        m.transition_tcb(t0, TcbState::Ready).expect("Ready");
+        m.start_tcb(t0).expect("Ready");
         Self {
             m,
             t0,
@@ -316,7 +316,7 @@ fn scenario_step_send_nbsend_nbrecv() {
         *obj = m.add_kernel_object(ObjType::Tcb);
         let cap = m.root_cap(*obj);
         m.put_cap(c0, 10 + i, cap).expect("cap TCB");
-        m.transition_tcb(*obj, TcbState::Ready).expect("Ready");
+        m.start_tcb(*obj).expect("Ready");
     }
     let ep_s = slot(c0, 0);
     let client = tcb[0];

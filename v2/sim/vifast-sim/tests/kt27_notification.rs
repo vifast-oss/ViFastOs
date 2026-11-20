@@ -25,7 +25,8 @@
 
 use vifast_sim::ipc::Message;
 use vifast_sim::kobj::{
-    KError, Machine, NotificationValue, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL,
+    KError, Machine, NonReadyTarget, NotificationValue, ObjId, ObjType, SlotRef, TcbState,
+    RIGHTS_ALL,
 };
 use vifast_sim::scenario::{run_sequential, ScenarioStep, Step};
 use vifast_sim::Lcg;
@@ -145,8 +146,7 @@ impl Rig {
             t_s,
         };
         for i in 0..r.t.len() {
-            r.m.transition_tcb(r.t[i], TcbState::Ready)
-                .expect("Inactive→Ready");
+            r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
         }
         r
     }
@@ -690,8 +690,12 @@ fn nbsend_wait_voi_word_co_san_khong_chan() {
 fn check_notifications_bat_waiter_lech() {
     let mut r = Rig::new(1);
     r.recv_ntfn(0, 0).expect("Wait rỗng");
-    // Đường tắt **sai** (không qua unlink): đổi trạng thái trực tiếp ⇒ waiter còn treo.
-    r.m.transition_tcb(r.t[0], TcbState::Ready)
+    // **KT-241 — thay đổi phạm vi ca kiểm (API thu hẹp, KHÔNG nới ngưỡng).** Đích đổi từ
+    // `Ready` sang `Inactive`: `Ready` **không** còn biểu diễn được ở cửa thông thường
+    // (`NonReadyTarget` loại `Ready`), còn `BlockedOnNotification → Inactive` là cặp `ALLOWED`
+    // và **không** unlink — nên **bất biến được kiểm là như nhau**: TCB rời trạng thái chờ mà
+    // `ntfn.waiter` vẫn treo.
+    r.m.transition_tcb(r.t[0], NonReadyTarget::Inactive)
         .expect("transition trực tiếp");
     assert_eq!(r.m.notification_waiter(r.ntfn[0]), Ok(Some(r.t[0])));
     let e =
@@ -701,6 +705,15 @@ fn check_notifications_bat_waiter_lech() {
         e.contains("waiter") || e.contains("BlockedOnNotification"),
         "thông điệp phải nêu waiter/BlockedOnNotification: {e}"
     );
+
+    // **Đối chứng dương** — cùng kịch bản nhưng đi **đúng** cửa `wake()` (có unlink): waiter
+    // phải được gỡ và `check_notifications()` phải `Ok` ⇒ phép kiểm trên không phải "luôn đỏ".
+    let mut ok = Rig::new(1);
+    ok.recv_ntfn(0, 0).expect("Wait rỗng");
+    ok.m.wake(ok.t[0]).expect("wake đúng đường");
+    assert_eq!(ok.m.notification_waiter(ok.ntfn[0]), Ok(None));
+    ok.m.check_notifications()
+        .expect("wake đúng ⇒ bất biến sạch");
 }
 
 // ===========================================================================

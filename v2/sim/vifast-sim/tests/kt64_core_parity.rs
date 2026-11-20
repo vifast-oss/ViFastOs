@@ -21,8 +21,8 @@
 use kc::{KError as CoreErr, Machine as CoreMachine, ObjId as CoreObj};
 use vifast_core as kc;
 use vifast_sim::kobj::{
-    FaultKind as SimFault, KError as SimErr, Machine as SimMachine, ObjId as SimObj,
-    SlotRef as SimSlot, TcbState as SimState,
+    FaultKind as SimFault, KError as SimErr, Machine as SimMachine, NonReadyTarget as SimTarget,
+    ObjId as SimObj, SlotRef as SimSlot, TcbState as SimState,
 };
 
 fn sslot(c: u32, s: usize) -> SimSlot {
@@ -167,7 +167,7 @@ fn sim_bind() -> SimBind {
         let cap = m.root_cap(t[i]);
         m.put_cap(c0, *s, cap).expect("cap TCB");
         t_s[i] = sslot(c0, *s);
-        m.transition_tcb(t[i], SimState::Ready).expect("Ready");
+        m.start_tcb(t[i]).expect("Ready");
     }
     SimBind {
         m,
@@ -210,7 +210,7 @@ fn core_bind() -> CoreBind {
         let cap = m.root_cap(t[i]);
         m.put_cap(c0, *s, cap).expect("cap TCB");
         t_s[i] = cslot(c0, *s);
-        m.transition_tcb(t[i], kc::TcbState::Ready).expect("Ready");
+        m.start_tcb(t[i]).expect("Ready");
     }
     CoreBind {
         m,
@@ -438,7 +438,7 @@ fn sim_res() -> SimRes {
         let cap = m.root_cap(t[i]);
         m.put_cap(c0, *s, cap).expect("cap tcb");
         t_s[i] = sslot(c0, *s);
-        m.transition_tcb(t[i], SimState::Ready).expect("Ready");
+        m.start_tcb(t[i]).expect("Ready");
     }
     m.tcb_set_fault_ep(t_s[0], sslot(c0, B_EP))
         .expect("fault_ep");
@@ -461,7 +461,7 @@ fn core_res() -> CoreRes {
         let cap = m.root_cap(t[i]);
         m.put_cap(c0, *s, cap).expect("cap tcb");
         t_s[i] = cslot(c0, *s);
-        m.transition_tcb(t[i], kc::TcbState::Ready).expect("Ready");
+        m.start_tcb(t[i]).expect("Ready");
     }
     m.tcb_set_fault_ep(t_s[0], cslot(c0, B_EP))
         .expect("fault_ep");
@@ -584,8 +584,8 @@ fn kt64_parity_resume_with_regs() {
     buoc_b(&mut s, &mut c, 6, rs, rc, "resume caller BlockedOnReply");
 
     // `Running` ⇒ cấm (`IllegalOperation`), digest không đổi (thanh ghi giữ 0x66).
-    let rs = rc_sim(s.m.transition_tcb(s.t[0], SimState::Running { hart: 0 }));
-    let rc = rc_core(c.m.transition_tcb(c.t[0], kc::TcbState::Running { hart: 0 }));
+    let rs = rc_sim(s.m.transition_tcb(s.t[0], SimTarget::Running { hart: 0 }));
+    let rc = rc_core(c.m.transition_tcb(c.t[0], kc::NonReadyTarget::Running { hart: 0 }));
     assert_eq!(rs, rc, "t0 Running");
     let rs = rc_sim(s.m.tcb_resume_with_regs(s.t_s[0], sim_msg(4, &[0x77])));
     let rc = rc_core(c.m.tcb_resume_with_regs(c.t_s[0], core_msg(4, &[0x77])));

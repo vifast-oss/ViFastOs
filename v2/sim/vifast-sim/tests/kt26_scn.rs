@@ -177,7 +177,7 @@ impl Rig {
             *obj = m.add_kernel_object(ObjType::Tcb);
             let cap = m.root_cap(*obj);
             m.put_cap(c0, 10 + i, cap).expect("cap TCB");
-            m.transition_tcb(*obj, TcbState::Ready).expect("Ready");
+            m.start_tcb(*obj).expect("Ready");
         }
         Self {
             m,

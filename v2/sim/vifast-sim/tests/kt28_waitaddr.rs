@@ -23,8 +23,8 @@
 //! `check_caps` + `check_all_bytes`.
 
 use vifast_sim::kobj::{
-    waitaddr_bucket, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
-    WAITADDR_BUCKETS,
+    waitaddr_bucket, KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode,
+    TcbState, WAITADDR_BUCKETS,
 };
 use vifast_sim::Lcg;
 
@@ -90,8 +90,7 @@ impl Rig {
         }
         let mut r = Rig { m, ep, u0, t, s };
         for i in 0..3 {
-            r.m.transition_tcb(r.t[i], TcbState::Ready)
-                .expect("Inactive→Ready");
+            r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
         }
         r
     }
@@ -535,9 +534,12 @@ fn check_waitaddr_bat_waiter_lech_trang_thai() {
     let ep = r.ep;
     r.set(ep, 16, 1);
     r.wait(0, ep, 16, 1).expect("waiter");
-    // Đường tắt **sai**: đổi trạng thái trực tiếp (BlockedOnAddress → Ready là cặp ALLOWED)
-    // ⇒ waiter còn treo trong bucket nhưng TCB đã Ready.
-    r.m.transition_tcb(r.t[0], TcbState::Ready)
+    // **KT-241 — thay đổi phạm vi ca kiểm (API thu hẹp, KHÔNG nới ngưỡng).** Đích đổi từ
+    // `Ready` sang `Inactive`: `Ready` **không** còn biểu diễn được ở cửa thông thường
+    // (`NonReadyTarget` loại `Ready`), còn `BlockedOnAddress → Inactive` là cặp `ALLOWED` và
+    // **không** unlink — nên **bất biến được kiểm là như nhau**: TCB rời trạng thái chờ mà
+    // nút waiter vẫn treo trong bucket.
+    r.m.transition_tcb(r.t[0], NonReadyTarget::Inactive)
         .expect("transition trực tiếp");
     assert_eq!(r.m.address_waiters_len(), 1, "waiter vẫn còn (đường sai)");
     let e =
@@ -547,6 +549,16 @@ fn check_waitaddr_bat_waiter_lech_trang_thai() {
         e.contains("waiter") || e.contains("BlockedOnAddress"),
         "thông điệp phải nêu waiter/BlockedOnAddress: {e}"
     );
+
+    // **Đối chứng dương** — cùng kịch bản nhưng đi **đúng** cửa `wake()` (có unlink): nút
+    // waiter phải được gỡ và `check_waitaddr()` phải `Ok` ⇒ phép kiểm trên không "luôn đỏ".
+    let mut ok = Rig::new();
+    let ep2 = ok.ep;
+    ok.set(ep2, 16, 1);
+    ok.wait(0, ep2, 16, 1).expect("waiter");
+    ok.m.wake(ok.t[0]).expect("wake đúng đường");
+    assert_eq!(ok.m.address_waiters_len(), 0);
+    ok.m.check_waitaddr().expect("wake đúng ⇒ bất biến sạch");
 }
 
 // ===========================================================================

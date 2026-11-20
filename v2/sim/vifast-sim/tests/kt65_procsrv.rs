@@ -4,7 +4,9 @@
 //! **một lần**; `kill` = `Tcb.Suspend(Abort)` đặt cờ `suspended`. Đây là các ngữ nghĩa mà
 //! procsrv/shell U-mode dựa vào (không thêm syscall); core có test song song cùng tên hành vi.
 
-use vifast_sim::kobj::{FaultKind, Machine, ObjType, SlotRef, SuspendMode, TcbState};
+use vifast_sim::kobj::{
+    FaultKind, Machine, NonReadyTarget, ObjType, SlotRef, SuspendMode, TcbState,
+};
 
 fn slot(cnode: u32, slot: usize) -> SlotRef {
     SlotRef::new(cnode, slot)
@@ -42,8 +44,7 @@ fn rig() -> (Machine, u32, u32, u32) {
 #[test]
 fn kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive() {
     let (mut m, c0, ps, child) = rig();
-    m.transition_tcb(ps, TcbState::Ready)
-        .expect("procsrv Ready");
+    m.start_tcb(ps).expect("procsrv Ready");
     // procsrv `Recv` chặn trên EP_FAULT — lượt nhận fault của QD §1 Q-A.
     m.recv(ps, slot(c0, 1), None).expect("procsrv Recv");
     m.exit(child, 42).expect("con Exit");
@@ -58,8 +59,8 @@ fn kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive() {
 #[test]
 fn kt65_kill_bang_suspend_abort_dat_co_treo() {
     let (mut m, c0, _ps, victim) = rig();
-    m.transition_tcb(victim, TcbState::Ready).expect("Ready");
-    m.transition_tcb(victim, TcbState::Running { hart: 0 })
+    m.start_tcb(victim).expect("Ready");
+    m.transition_tcb(victim, NonReadyTarget::Running { hart: 0 })
         .expect("Running");
     m.tcb_suspend(slot(c0, 3), SuspendMode::Abort)
         .expect("Suspend Abort");

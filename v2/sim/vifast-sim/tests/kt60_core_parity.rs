@@ -48,12 +48,15 @@ enum CS {
 }
 
 impl CS {
-    fn sim(self) -> ks::TcbState {
-        match self {
-            CS::Inactive => ks::TcbState::Inactive,
-            CS::Ready => ks::TcbState::Ready,
-            CS::Running { hart } => ks::TcbState::Running { hart },
-            CS::BlockedOnSend { ep, call, fault } => ks::TcbState::BlockedOnSend {
+    /// Đích **không-`Ready`** phía sim (D2-187/D2-194). `None` khi `CS::Ready`: `Ready`
+    /// **không** biểu diễn được bằng [`ks::NonReadyTarget`] — phải đi qua **cửa ngữ nghĩa**
+    /// ([`sim_to_ready`]).
+    fn sim_nonready(self) -> Option<ks::NonReadyTarget> {
+        Some(match self {
+            CS::Ready => return None,
+            CS::Inactive => ks::NonReadyTarget::Inactive,
+            CS::Running { hart } => ks::NonReadyTarget::Running { hart },
+            CS::BlockedOnSend { ep, call, fault } => ks::NonReadyTarget::BlockedOnSend {
                 ep,
                 call,
                 fault: if fault == 0 {
@@ -62,33 +65,36 @@ impl CS {
                     Some(ks::FaultKind::Exit { code: fault as u64 })
                 },
             },
-            CS::BlockedOnRecv { ep, reply } => ks::TcbState::BlockedOnRecv {
+            CS::BlockedOnRecv { ep, reply } => ks::NonReadyTarget::BlockedOnRecv {
                 ep,
                 reply: if reply == 0 { None } else { Some(reply) },
             },
-            CS::BlockedOnReply { reply } => ks::TcbState::BlockedOnReply { reply },
-            CS::BlockedOnNotification { ntfn } => ks::TcbState::BlockedOnNotification { ntfn },
-            CS::BlockedOnAddress { frame, offset } => {
-                ks::TcbState::BlockedOnAddress { frame, offset }
+            CS::BlockedOnReply { reply } => ks::NonReadyTarget::BlockedOnReply { reply },
+            CS::BlockedOnNotification { ntfn } => {
+                ks::NonReadyTarget::BlockedOnNotification { ntfn }
             }
-            CS::Sleeping { reason } => ks::TcbState::Sleeping {
+            CS::BlockedOnAddress { frame, offset } => {
+                ks::NonReadyTarget::BlockedOnAddress { frame, offset }
+            }
+            CS::Sleeping { reason } => ks::NonReadyTarget::Sleeping {
                 reason: if reason == 0 {
                     ks::SleepReason::Timeout
                 } else {
                     ks::SleepReason::Budget
                 },
             },
-            CS::Stopping => ks::TcbState::Stopping,
-            CS::Dead => ks::TcbState::Dead,
-        }
+            CS::Stopping => ks::NonReadyTarget::Stopping,
+            CS::Dead => ks::NonReadyTarget::Dead,
+        })
     }
 
-    fn core(self) -> kc::TcbState {
-        match self {
-            CS::Inactive => kc::TcbState::Inactive,
-            CS::Ready => kc::TcbState::Ready,
-            CS::Running { hart } => kc::TcbState::Running { hart },
-            CS::BlockedOnSend { ep, call, fault } => kc::TcbState::BlockedOnSend {
+    /// Như [`CS::sim_nonready`] nhưng phía core.
+    fn core_nonready(self) -> Option<kc::NonReadyTarget> {
+        Some(match self {
+            CS::Ready => return None,
+            CS::Inactive => kc::NonReadyTarget::Inactive,
+            CS::Running { hart } => kc::NonReadyTarget::Running { hart },
+            CS::BlockedOnSend { ep, call, fault } => kc::NonReadyTarget::BlockedOnSend {
                 ep,
                 call,
                 fault: if fault == 0 {
@@ -97,25 +103,55 @@ impl CS {
                     Some(kc::FaultKind::Exit { code: fault as u64 })
                 },
             },
-            CS::BlockedOnRecv { ep, reply } => kc::TcbState::BlockedOnRecv {
+            CS::BlockedOnRecv { ep, reply } => kc::NonReadyTarget::BlockedOnRecv {
                 ep,
                 reply: if reply == 0 { None } else { Some(reply) },
             },
-            CS::BlockedOnReply { reply } => kc::TcbState::BlockedOnReply { reply },
-            CS::BlockedOnNotification { ntfn } => kc::TcbState::BlockedOnNotification { ntfn },
-            CS::BlockedOnAddress { frame, offset } => {
-                kc::TcbState::BlockedOnAddress { frame, offset }
+            CS::BlockedOnReply { reply } => kc::NonReadyTarget::BlockedOnReply { reply },
+            CS::BlockedOnNotification { ntfn } => {
+                kc::NonReadyTarget::BlockedOnNotification { ntfn }
             }
-            CS::Sleeping { reason } => kc::TcbState::Sleeping {
+            CS::BlockedOnAddress { frame, offset } => {
+                kc::NonReadyTarget::BlockedOnAddress { frame, offset }
+            }
+            CS::Sleeping { reason } => kc::NonReadyTarget::Sleeping {
                 reason: if reason == 0 {
                     kc::SleepReason::Timeout
                 } else {
                     kc::SleepReason::Budget
                 },
             },
-            CS::Stopping => kc::TcbState::Stopping,
-            CS::Dead => kc::TcbState::Dead,
+            CS::Stopping => kc::NonReadyTarget::Stopping,
+            CS::Dead => kc::NonReadyTarget::Dead,
+        })
+    }
+}
+
+/// Cửa `Ready` phía **sim** theo trạng thái nguồn (D2-187/D2-194): `Inactive` ⇒ `start_tcb`;
+/// `Running` ⇒ `tcb_yield`; `BlockedOn*`/`Sleeping` ⇒ `wake` (test-only, D2-144); còn lại
+/// (`Ready`/`Stopping`/`Dead`) ⇒ không cửa nào nhận ⇒ `IllegalOperation`.
+fn sim_to_ready(m: &mut ks::Machine, tcb: u32) -> Res {
+    match m.tcb_state(tcb) {
+        Ok(ks::TcbState::Inactive) => unit_sim(m.start_tcb(tcb)),
+        Ok(ks::TcbState::Running { .. }) => unit_sim(m.tcb_yield(tcb)),
+        Ok(st) if st.is_blocked() || matches!(st, ks::TcbState::Sleeping { .. }) => {
+            unit_sim(m.wake(tcb))
         }
+        Ok(_) => Err(se(ks::KError::IllegalOperation)),
+        Err(e) => Err(se(e)),
+    }
+}
+
+/// Như [`sim_to_ready`] nhưng phía **core**.
+fn core_to_ready(m: &mut kc::Machine, tcb: u32) -> Res {
+    match m.tcb_state(tcb) {
+        Ok(kc::TcbState::Inactive) => unit_core(m.start_tcb(tcb)),
+        Ok(kc::TcbState::Running { .. }) => unit_core(m.tcb_yield(tcb)),
+        Ok(st) if st.is_blocked() || matches!(st, kc::TcbState::Sleeping { .. }) => {
+            unit_core(m.wake(tcb))
+        }
+        Ok(_) => Err(ce(kc::KError::IllegalOperation)),
+        Err(e) => Err(ce(e)),
     }
 }
 
@@ -1221,10 +1257,17 @@ impl Mut for ks::Machine {
                 };
                 unit_sim(self.inject_fault(tcb, k))
             }
-            Op::Transition { tcb, to } => unit_sim(self.transition_tcb(tcb, to.sim())),
-            Op::BlockCurrent { hart, to } => match self.block_current(hart, to.sim()) {
-                Ok(o) => Ok(o as u64),
-                Err(e) => Err(se(e)),
+            Op::Transition { tcb, to } => match to.sim_nonready() {
+                Some(target) => unit_sim(self.transition_tcb(tcb, target)),
+                None => sim_to_ready(self, tcb),
+            },
+            Op::BlockCurrent { hart, to } => match to.sim_nonready() {
+                Some(target) => match self.block_current(hart, target) {
+                    Ok(o) => Ok(o as u64),
+                    Err(e) => Err(se(e)),
+                },
+                // `Ready` không phải đích block hợp lệ (D2-194 §1(d)).
+                None => Err(se(ks::KError::InvalidArgument)),
             },
             Op::Suspend { tcb, abort } => unit_sim(self.tcb_suspend(
                 ks::SlotRef::new(tcb.0, tcb.1),
@@ -1667,10 +1710,16 @@ impl Mut for kc::Machine {
                 };
                 unit_core(self.inject_fault(tcb, k))
             }
-            Op::Transition { tcb, to } => unit_core(self.transition_tcb(tcb, to.core())),
-            Op::BlockCurrent { hart, to } => match self.block_current(hart, to.core()) {
-                Ok(o) => Ok(o as u64),
-                Err(e) => Err(ce(e)),
+            Op::Transition { tcb, to } => match to.core_nonready() {
+                Some(target) => unit_core(self.transition_tcb(tcb, target)),
+                None => core_to_ready(self, tcb),
+            },
+            Op::BlockCurrent { hart, to } => match to.core_nonready() {
+                Some(target) => match self.block_current(hart, target) {
+                    Ok(o) => Ok(o as u64),
+                    Err(e) => Err(ce(e)),
+                },
+                None => Err(ce(kc::KError::InvalidArgument)),
             },
             Op::Suspend { tcb, abort } => unit_core(self.tcb_suspend(
                 kc::SlotRef::new(tcb.0, tcb.1),
@@ -3348,7 +3397,7 @@ impl Mut63 for ks::Machine {
         self.add_kernel_object(ks::ObjType::Tcb)
     }
     fn ready(&mut self, tcb: u32) -> Res {
-        unit_sim(self.transition_tcb(tcb, ks::TcbState::Ready))
+        unit_sim(self.start_tcb(tcb))
     }
     fn bind_window(&mut self, tcb: (u32, usize), win: [(u32, usize); 4]) -> Res {
         let mut w = [ks::SlotRef::new(0, 0); 4];
@@ -3435,7 +3484,7 @@ impl Mut63 for kc::Machine {
         self.add_kernel_object(kc::ObjType::Tcb)
     }
     fn ready(&mut self, tcb: u32) -> Res {
-        unit_core(self.transition_tcb(tcb, kc::TcbState::Ready))
+        unit_core(self.start_tcb(tcb))
     }
     fn bind_window(&mut self, tcb: (u32, usize), win: [(u32, usize); 4]) -> Res {
         let mut w = [kc::SlotRef::new(0, 0); 4];

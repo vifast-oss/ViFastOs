@@ -20,8 +20,8 @@
 
 use vifast_sim::ipc::{Message, MessageInfo, MAX_CAPS, MAX_WORDS};
 use vifast_sim::kobj::{
-    CapId, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState, RIGHTS_ALL,
-    RIGHT_GRANT, RIGHT_READ, RIGHT_WRITE,
+    CapId, KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+    RIGHTS_ALL, RIGHT_GRANT, RIGHT_READ, RIGHT_WRITE,
 };
 use vifast_sim::scenario::{run_sequential, Msg, ScenarioStep, Step};
 use vifast_sim::Lcg;
@@ -183,8 +183,7 @@ impl Rig {
             t_s,
         };
         for i in 0..r.t.len() {
-            r.m.transition_tcb(r.t[i], TcbState::Ready)
-                .expect("Inactive→Ready");
+            r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
             let w = r.win[i];
             r.m.tcb_set_recv_window(r.t_s[i], w)
                 .expect("bind receive window");
@@ -534,7 +533,7 @@ fn receive_window_chua_bind_tra_invalid_argument() {
     let t2 = r.m.add_kernel_object(ObjType::Tcb);
     let t2_cap = r.m.root_cap(t2);
     r.m.put_cap(r.c0, 50, t2_cap).expect("cap TCB 2");
-    r.m.transition_tcb(t2, TcbState::Ready).expect("Ready");
+    r.m.start_tcb(t2).expect("Ready");
     let t2_s = slot(r.c0, 50);
     r.m.recv(t2, r.ep_s[1], None).expect("TCB 2 Recv");
     assert_eq!(
@@ -983,8 +982,8 @@ impl RigDon {
         m.tcb_set_priority(client_s, 5, 255).expect("prio client");
         let server_s = slot(c0, 11);
         m.tcb_set_priority(server_s, 1, 255).expect("prio server");
-        m.transition_tcb(client, TcbState::Ready).expect("Ready");
-        m.transition_tcb(server, TcbState::Ready).expect("Ready");
+        m.start_tcb(client).expect("Ready");
+        m.start_tcb(server).expect("Ready");
         Self {
             m,
             c0,
@@ -1501,7 +1500,7 @@ fn cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller() {
     // không đổi trạng thái, **không** ghi đè caller (lỗi C2 bị chặn ngay ở cổng).
     let st2 = r.st(2);
     assert_eq!(
-        r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[0] }),
+        r.m.transition_tcb(r.t[2], NonReadyTarget::BlockedOnReply { reply: r.rep[0] }),
         Err(KError::IllegalOperation),
         "Reply đang bind caller khác ⇒ cổng không cho bind đè"
     );
@@ -1510,7 +1509,7 @@ fn cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller() {
     r.m.check_reply_links().expect("liên kết Reply vẫn đúng");
     // Vào `BlockedOnReply` bằng cổng thấp trên Reply **rảnh** ⇒ tự bind `caller = Some(t[2])`.
     assert_eq!(r.m.reply_caller(r.rep[1]), Ok(None));
-    r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[1] })
+    r.m.transition_tcb(r.t[2], NonReadyTarget::BlockedOnReply { reply: r.rep[1] })
         .expect("vào BlockedOnReply trên Reply rảnh");
     assert_eq!(
         r.m.reply_caller(r.rep[1]),
@@ -1519,8 +1518,7 @@ fn cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller() {
     );
     r.m.check_reply_links().expect("liên kết Reply sau khi vào");
     // Rời `BlockedOnReply` bằng cổng thấp ⇒ tự gỡ `caller` (không còn "caller ma").
-    r.m.transition_tcb(r.t[2], TcbState::Ready)
-        .expect("rời BlockedOnReply");
+    r.m.wake(r.t[2]).expect("rời BlockedOnReply");
     assert_eq!(
         r.m.reply_caller(r.rep[1]),
         Ok(None),

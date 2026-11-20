@@ -314,8 +314,7 @@ impl Rig {
         }
         m.tcb_set_fault_ep(t_s[0], slot(c, S_EP))
             .expect("Tcb.SetFaultEp t0");
-        m.transition_tcb(t[0], TcbState::Ready)
-            .expect("t0 Inactive→Ready");
+        m.start_tcb(t[0]).expect("t0 Inactive→Ready");
         let mut procsrv = ProcsrvModel::new(t[1], slot(c, S_EP), slot(c, S_REP));
         procsrv.track(t[0], t_s[0]);
 

@@ -105,6 +105,15 @@ pub use crate::vspace::{AsidState, FlushCmd, FlushScope, HartMask, VSpaceInfo, A
 use vifast_objmem::{Dead, KObj, ObjRef, ObjStore, OwnedMem, ARENA_ALIGN};
 use vifast_pte::{FrameSize, Pte};
 
+/// **KT-241** — cửa ghi trạng thái TCB (D2-187/D2-194): nguyên thuỷ thô **private** +
+/// năm cửa `Ready`. Là **module con** của `kobj` nên thấy được item private của `kobj`
+/// (không phải nới `pub(crate)` cho field/method nào của [`Machine`]).
+mod state_write;
+/// **KT-241** — đích chuyển trạng thái **loại trừ `Ready`** (10 biến thể còn lại của
+/// [`TcbState`]); re-export để `vifast_sim::kobj::NonReadyTarget` hoạt động, đối xứng
+/// `vifast_core::NonReadyTarget`.
+pub use state_write::NonReadyTarget;
+
 /// `flags` bit GUEST của `Untyped.Retype` (D2-32: chỉ VSpace nhận, tới H1 trả NotSupported).
 pub const FLAG_GUEST: u32 = 1;
 
@@ -5069,95 +5078,6 @@ impl Machine {
         })
     }
 
-    /// **Một cửa** đổi trạng thái TCB (D2-49(d)): tra bảng [`ALLOWED`]; cặp cấm trả
-    /// `IllegalOperation` và **không** đổi trạng thái; mỗi lần chuyển hợp lệ cộng
-    /// `pair_hits` để `transition_coverage()` báo phủ cặp.
-    ///
-    /// Mọi đường `call`/`recv`/`reply`/`exit`/`tcb_suspend`/`finalise_tcb` dùng hàm này.
-    /// Thao tác **không** đổi trạng thái (ví dụ `Resume`, `Suspend` trên `Ready`/`Sleeping`)
-    /// **không** gọi cổng — bảng không có cặp danh tính ngoài `BlockedOnSend → BlockedOnSend`.
-    pub fn transition_tcb(&mut self, tcb: ObjId, to: TcbState) -> Result<(), KError> {
-        let from = self.tcb_state(tcb)?;
-        if !crate::tcb::allowed(from, to) {
-            // KT-23: đếm **cặp cấm bị thử** (DoD 3) — không đổi trạng thái, không đếm hit.
-            self.forbidden_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
-            return Err(KError::IllegalOperation);
-        }
-        // KT-21: rời `BlockedOnReply` bằng đường **khác** `Reply` (wake/suspend/exit/finalise
-        // hoặc `transition_tcb` trực tiếp) = bỏ cuộc gọi ⇒ SC donation phải trả về client ngay,
-        // không để SC treo trên TCB không còn chờ reply (bất biến "donor đang BlockedOnReply").
-        if matches!(from, TcbState::BlockedOnReply { .. })
-            && !matches!(to, TcbState::BlockedOnReply { .. })
-            && self.is_donation_donor(tcb)
-        {
-            self.release_donation_of(tcb)?;
-        }
-        // **KT-34** (C2, D2-63) — giữ liên kết `Reply ⇔ BlockedOnReply` ở **chính** cổng trạng
-        // thái (một cửa, cùng chỗ hook KT-21 donation ở trên):
-        // - vào `BlockedOnReply{reply}` ⇒ `Reply.caller = Some(tcb)` (Reply **đã** bind người
-        //   khác ⇒ `IllegalOperation`, **không** ghi đè — chặn lỗi C2 ngay cả ở cổng thấp);
-        // - rời `BlockedOnReply` ⇒ gỡ `caller` nếu đang là `tcb` (giống `wake`/`finalise` đã làm
-        //   qua `unlink_tcb_queues`), để **không** còn `caller = Some(t)` mà `t` không chờ.
-        // Object **không** phải `Reply` sống thì bỏ qua: ma trận 11×11 (KT-23) dựng trạng thái
-        // bằng id tượng trưng — cùng quy ước chiều ngược của `check_notifications` (KT-27).
-        if let TcbState::BlockedOnReply { reply } = to {
-            if self.object_alive(reply) && self.object_type(reply) == Some(ObjType::Reply) {
-                match self.reply_caller(reply)? {
-                    None => self.reply_set_caller(reply, Some(tcb))?,
-                    Some(c) if c == tcb => {}
-                    Some(_) => return Err(KError::IllegalOperation),
-                }
-            }
-        } else if let TcbState::BlockedOnReply { reply } = from {
-            if self.object_alive(reply)
-                && self.object_type(reply) == Some(ObjType::Reply)
-                && self.reply_caller(reply)? == Some(tcb)
-            {
-                self.reply_set_caller(reply, None)?;
-            }
-        }
-        // Bất biến ≤1 `Running`/hart (KT-19 DoD 2): TCB vào `Running{hart}` khi hart đang có
-        // TCB chạy ⇒ đưa TCB cũ về `Ready` **trước**, qua đúng cửa này (không đường tắt).
-        if let TcbState::Running { hart } = to {
-            if hart as usize >= self.sched.len() {
-                return Err(KError::InvalidArgument);
-            }
-            // **KT-29**: `Running{hart}` chỉ hợp lệ khi `home == hart` (bất biến `check_smp`:
-            // home khớp hart đang giữ `current`); TCB muốn đổi hart phải qua `Ready`/dispatch.
-            if self.tcb_info_obj(tcb)?.home != hart {
-                return Err(KError::IllegalOperation);
-            }
-            if let Some(cur) = self.sched[hart as usize].current() {
-                if cur != tcb {
-                    self.transition_tcb(cur, TcbState::Ready)?;
-                }
-            }
-        }
-        self.body_mut(tcb, |k| match k {
-            Kind::Tcb(t) => {
-                t.state = to;
-                Ok(())
-            }
-            _ => Err(KError::WrongObjectType),
-        })?;
-        self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
-        // KT-23: đếm hoạt động ngân sách ở **một cửa** (DoD 2/8): `Running` hết budget ⇒
-        // `Sleeping{Budget}` (bảng §4.5 `:302-311`; refill đếm ở `process_refills`).
-        if matches!(from, TcbState::Running { .. })
-            && matches!(
-                to,
-                TcbState::Sleeping {
-                    reason: SleepReason::Budget
-                }
-            )
-        {
-            self.budget_sleeps += 1;
-        }
-        // KT-19: state đổi ⇒ ready queue/`current` đổi theo (một cửa duy nhất).
-        self.sched_sync(tcb)?;
-        Ok(())
-    }
-
     /// Số lần cặp `(from, to)` (chỉ số `TcbState::index`) đã đi qua cổng.
     pub fn pair_hit_count(&self, from: usize, to: usize) -> u32 {
         self.pair_hits[from * TCB_STATE_COUNT + to]
@@ -5215,7 +5135,7 @@ impl Machine {
         // Invariant §4.4: gỡ khỏi hàng **trước** khi bật cờ để bất biến kiểm được sau event.
         self.unlink_tcb_queues(obj);
         if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
-            self.transition_tcb(obj, TcbState::Ready)?;
+            self.suspend_to_ready(obj)?;
         }
         self.set_tcb_suspended(obj, true)?;
         self.sched_after_op(true);
@@ -5425,7 +5345,7 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
-        self.transition_tcb(tcb, TcbState::Dead)?;
+        self.transition_tcb(tcb, NonReadyTarget::Dead)?;
         self.finalise_log.push(FinaliseEntry {
             tcb,
             state: TcbState::Dead,
@@ -5637,7 +5557,7 @@ impl Machine {
             if !matches!(self.tcb_state(cur)?, TcbState::Running { .. }) {
                 return Err(KError::IllegalOperation);
             }
-            self.transition_tcb(cur, TcbState::Ready)?;
+            self.preempt_current(cur)?;
         }
         let next = match self.sched_pick_on(hart) {
             Some(tcb) => tcb,
@@ -5651,7 +5571,7 @@ impl Machine {
         if info.state != TcbState::Ready || info.suspended {
             return Err(KError::IllegalOperation);
         }
-        self.transition_tcb(next, TcbState::Running { hart })?;
+        self.transition_tcb(next, NonReadyTarget::Running { hart })?;
         Ok(Some(next))
     }
 
@@ -5659,16 +5579,23 @@ impl Machine {
     /// sang trạng thái chặn/ngủ `to` qua [`Machine::transition_tcb`] và rời `current`.
     /// Chỉ nhận trạng thái `BlockedOn*`/`Sleeping` (không dùng để đổi sang `Ready`).
     ///
+    /// **KT-241** — `to` là [`NonReadyTarget`] (kiểu **không** biểu diễn được `Ready`), nhưng
+    /// vẫn phải kiểm [`NonReadyTarget::is_block_target`] ở **runtime**: `Running`/`Inactive`/
+    /// `Stopping`/`Dead` **không** phải đích block hợp lệ (D2-194 §1(d)).
+    ///
     /// Đây là **primitive scheduler** cho test, không công bố wait trên object nào — trừ
     /// **KT-27**: `BlockedOnNotification{ntfn}` ghi `waiter` lên Notification để bất biến
     /// "waiter ⇔ `TcbState`" luôn đúng. Các đường IPC thật (`call`/`recv`/`tcb_wait_*`) mới ghi
     /// hàng chờ của Endpoint/Reply/Notification; [`Machine::wake`] gỡ mọi tham chiếu còn lại
     /// trước khi `→ Ready`.
-    pub fn block_current(&mut self, hart: u16, to: TcbState) -> Result<ObjId, KError> {
+    pub fn block_current(&mut self, hart: u16, to: NonReadyTarget) -> Result<ObjId, KError> {
         if hart as usize >= self.sched.len() {
             return Err(KError::InvalidArgument);
         }
-        if !(to.is_blocked() || matches!(to, TcbState::Sleeping { .. })) {
+        // **D2-194 §1(d)** — "không phải `Ready`" CHƯA đồng nghĩa "được phép block vào":
+        // `Running`/`Inactive`/`Stopping`/`Dead` vẫn phải bị từ chối ở **runtime** (kiểu đích
+        // `NonReadyTarget` chỉ loại `Ready`, không loại bốn trạng thái kia).
+        if !to.is_block_target() {
             return Err(KError::InvalidArgument);
         }
         let cur = self.sched[hart as usize]
@@ -5676,7 +5603,9 @@ impl Machine {
             .ok_or(KError::IllegalOperation)?;
         // **KT-27** — `BlockedOnNotification` phải ghi waiter trên object (bất biến
         // `check_notifications`: `waiter` ⇔ `TcbState`); kiểm **trước** khi gỡ hàng chờ.
-        if let TcbState::BlockedOnNotification { ntfn } = to {
+        // So khớp **trên `NonReadyTarget`** — `kobj` **không** được thấy `into_state` (private
+        // của `state_write`).
+        if let NonReadyTarget::BlockedOnNotification { ntfn } = to {
             let waiter = self.body(ntfn, |k| match k {
                 Kind::Notification(n) => Ok(n.waiter),
                 _ => Err(KError::WrongObjectType),
@@ -5689,7 +5618,7 @@ impl Machine {
         }
         self.unlink_tcb_queues(cur);
         self.transition_tcb(cur, to)?;
-        if let TcbState::BlockedOnNotification { ntfn } = to {
+        if let NonReadyTarget::BlockedOnNotification { ntfn } = to {
             self.body_mut(ntfn, |k| match k {
                 Kind::Notification(n) => {
                     n.waiter = Some(cur);
@@ -5773,27 +5702,6 @@ impl Machine {
         Ok(())
     }
 
-    /// Thân của [`Machine::wake`] **không** tự kiểm bất biến — dùng cho đường xử lý hộp thư
-    /// (KT-22, [`Machine::process_mail`]) để **một** bước chỉ kiểm bất biến một lần; `wake`
-    /// công khai kiểm sau khi xong. Idempotent: TCB đã `Ready` ⇒ no-op.
-    ///
-    /// **KT-155**: `unlink` quyết định có gỡ TCB khỏi **mọi** hàng chờ trước khi `Ready` hay
-    /// không — đường hộp thư/`wake`/`wake_addr` cần (`true`); đường sản phẩm đã tự gỡ nên
-    /// dùng [`Machine::wake_from`] (`false`). Đối xứng `vifast-core::Machine::wake_step`.
-    fn wake_step(&mut self, tcb: ObjId, unlink: bool) -> Result<(), KError> {
-        let state = self.tcb_state(tcb)?;
-        if state == TcbState::Ready {
-            return Ok(());
-        }
-        if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
-            return Err(KError::IllegalOperation);
-        }
-        if unlink {
-            self.unlink_tcb_queues(tcb);
-        }
-        self.transition_tcb(tcb, TcbState::Ready)
-    }
-
     /// `yield_current(hart)` — model API `[TK]` (DoD 5): TCB đang chạy nhường CPU
     /// (`Running → Ready`, vào **cuối** hàng cùng mức) rồi `dispatch` chọn TCB kế tiếp.
     /// Trả `current` mới (có thể chính TCB vừa nhường nếu nó vẫn cao nhất và hàng rỗng).
@@ -5804,7 +5712,7 @@ impl Machine {
         let cur = self.sched[hart as usize]
             .current()
             .ok_or(KError::IllegalOperation)?;
-        self.transition_tcb(cur, TcbState::Ready)?;
+        self.yield_to_ready(cur)?;
         let next = self.dispatch(hart)?;
         self.sched_after_op(false);
         Ok(next)
@@ -8021,7 +7929,7 @@ impl Machine {
             // tiếp; `pick` đã chặn từ đầu, D2-50).
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -8037,7 +7945,7 @@ impl Machine {
         if !configured {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -8051,7 +7959,7 @@ impl Machine {
         if !charged || !can {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -8127,7 +8035,7 @@ impl Machine {
         if matches!(info.state, TcbState::Running { .. }) && !self.tcb_has_budget(tcb) {
             self.transition_tcb(
                 tcb,
-                TcbState::Sleeping {
+                NonReadyTarget::Sleeping {
                     reason: SleepReason::Budget,
                 },
             )?;
@@ -8519,7 +8427,7 @@ impl Machine {
             if matches!(self.tcb_state(donee)?, TcbState::Running { .. }) {
                 self.transition_tcb(
                     donee,
-                    TcbState::Sleeping {
+                    NonReadyTarget::Sleeping {
                         reason: SleepReason::Budget,
                     },
                 )?;
@@ -8587,7 +8495,10 @@ impl Machine {
             }
             _ => Err(KError::WrongObjectType),
         })?;
-        self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })?;
+        self.transition_tcb(
+            tcb_obj,
+            NonReadyTarget::BlockedOnNotification { ntfn: ntfn_obj },
+        )?;
         self.sched_after_op(true);
         Ok(())
     }
@@ -8667,7 +8578,7 @@ impl Machine {
         }
         // Chuyển trạng thái **trước** khi push: `transition_tcb` có thể từ chối cặp (bảng
         // 11×11) và không được để nút mồ côi; push không lỗi ⇒ hàng và trạng thái luôn khớp.
-        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
+        self.transition_tcb(tcb_obj, NonReadyTarget::BlockedOnAddress { frame, offset })?;
         let bucket = waitaddr_bucket(frame, offset);
         self.address_waiters[bucket].push((frame, offset, tcb_obj));
         self.sched_after_op(true);
@@ -9326,7 +9237,7 @@ impl Machine {
                 self.record_last_fault(receiver, q.sender, kind)?;
                 if kind.is_exit() {
                     // Fault Exit: procsrv Recv xong mới Inactive (QD §1 Q-A, D2-25).
-                    self.transition_tcb(q.sender, TcbState::Inactive)?;
+                    self.transition_tcb(q.sender, NonReadyTarget::Inactive)?;
                 } else {
                     // Fault ≠ Exit đi **Call + Reply** tới `fault_ep` (thiết kế §4.6 `:321`):
                     // caller chờ `BlockedOnReply` để procsrv trả lời kèm thanh ghi mới.
@@ -9335,7 +9246,10 @@ impl Machine {
                     match (q.call, reply_obj) {
                         (true, Some(rep)) if q.blocking => {
                             self.reply_set_caller(rep, Some(q.sender))?;
-                            self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                            self.transition_tcb(
+                                q.sender,
+                                NonReadyTarget::BlockedOnReply { reply: rep },
+                            )?;
                             self.donate_sc(q.sender, receiver)?;
                         }
                         _ => {
@@ -9350,7 +9264,7 @@ impl Machine {
             None => match (q.call, reply_obj) {
                 (true, Some(rep)) if q.blocking => {
                     self.reply_set_caller(rep, Some(q.sender))?;
-                    self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;
+                    self.transition_tcb(q.sender, NonReadyTarget::BlockedOnReply { reply: rep })?;
                     // KT-21: `Call` xếp hàng nay mới giao được ⇒ SC của client đi theo.
                     self.donate_sc(q.sender, receiver)?;
                 }
@@ -9435,7 +9349,7 @@ impl Machine {
             match reply_obj {
                 Some(rep) => {
                     self.reply_set_caller(rep, Some(tcb))?;
-                    self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: rep })?;
+                    self.transition_tcb(tcb, NonReadyTarget::BlockedOnReply { reply: rep })?;
                     // KT-21 (D2-49(c)): SC của client đi theo `Call` sang server passive.
                     self.donate_sc(tcb, waiter)?;
                 }
@@ -9462,7 +9376,7 @@ impl Machine {
             if blocking {
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: None,
@@ -9578,7 +9492,7 @@ impl Machine {
             if blocking {
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: false,
                         fault: None,
@@ -9657,7 +9571,7 @@ impl Machine {
                 })?;
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnRecv {
+                    NonReadyTarget::BlockedOnRecv {
                         ep: ep_obj,
                         reply: reply_obj,
                     },
@@ -9788,7 +9702,7 @@ impl Machine {
             self.wake_from(caller)?;
         }
         if matches!(state, TcbState::Running { .. }) {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.yield_to_ready(tcb)?;
         }
         // **KT-26**: server vừa trả lời (Reply/ReplyRecv) ⇒ bản ghi "fault vừa nhận" đã xử lý
         // xong; xoá để `recv_exit` kế tiếp không tiêu thụ nhầm fault cũ.
@@ -9971,7 +9885,7 @@ impl Machine {
                 // KT-23: `Exit` từ `Inactive` giữ `Inactive` (cặp danh tính `(Inactive, Inactive)`
                 // bị cấm — cùng quy ước với nhánh không `fault_ep`, D2-25/KT-18).
                 if state != TcbState::Inactive {
-                    self.transition_tcb(tcb, TcbState::Inactive)?;
+                    self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
                 }
             }
             Some(ep_obj) => {
@@ -9997,7 +9911,7 @@ impl Machine {
                 })?;
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: false,
                         fault: Some(FaultKind::Exit { code }),
@@ -10010,7 +9924,7 @@ impl Machine {
                     return Ok(());
                 }
                 self.unlink_tcb_queues(tcb);
-                self.transition_tcb(tcb, TcbState::Inactive)?;
+                self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
             }
         }
         self.sched_after_op(true);
@@ -10069,7 +9983,7 @@ impl Machine {
                 // `deliver_queued` (một chỗ xử lý fault: `last_fault` + Reply/Cancelled).
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: Some(kind),
@@ -10107,7 +10021,7 @@ impl Machine {
                 )?;
                 self.transition_tcb(
                     tcb,
-                    TcbState::BlockedOnSend {
+                    NonReadyTarget::BlockedOnSend {
                         ep: ep_obj,
                         call: true,
                         fault: Some(kind),
@@ -10365,7 +10279,7 @@ impl Machine {
     fn ensure_started(&mut self, tcb: ObjId) -> Result<TcbState, KError> {
         let state = self.tcb_state(tcb)?;
         if state == TcbState::Inactive {
-            self.transition_tcb(tcb, TcbState::Ready)?;
+            self.start_tcb(tcb)?;
             return Ok(TcbState::Ready);
         }
         Ok(state)
@@ -11173,10 +11087,10 @@ mod tests {
     fn check_waitaddr_bat_sai_bucket() {
         let mut m = Machine::new();
         let tcb = m.add_kernel_object(ObjType::Tcb);
-        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.start_tcb(tcb).expect("Ready");
         m.transition_tcb(
             tcb,
-            TcbState::BlockedOnAddress {
+            NonReadyTarget::BlockedOnAddress {
                 frame: 5,
                 offset: 8,
             },
@@ -11204,10 +11118,10 @@ mod tests {
     fn check_waitaddr_bat_trung_va_tcb_chet() {
         let mut m = Machine::new();
         let tcb = m.add_kernel_object(ObjType::Tcb);
-        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.start_tcb(tcb).expect("Ready");
         m.transition_tcb(
             tcb,
-            TcbState::BlockedOnAddress {
+            NonReadyTarget::BlockedOnAddress {
                 frame: 9,
                 offset: 16,
             },
@@ -11235,7 +11149,7 @@ mod tests {
         // (a) published.idle lệch `current == None`.
         let mut m = Machine::with_harts(2);
         let tcb = m.add_kernel_object(ObjType::Tcb);
-        m.transition_tcb(tcb, TcbState::Ready).expect("Ready");
+        m.start_tcb(tcb).expect("Ready");
         m.check_smp().expect("mô hình sạch");
         m.published[0].idle = false;
         let e = m.check_smp().expect_err("phải bắt published lệch");
@@ -11828,7 +11742,7 @@ mod tests {
         m.put_cap(c, 1, tcap).expect("cap TCB");
         m.tcb_set_fault_ep(SlotRef::new(c, 1), SlotRef::new(c, 0))
             .expect("fault_ep");
-        m.transition_tcb(t, TcbState::Ready).expect("Ready");
+        m.start_tcb(t).expect("Ready");
         let kind = FaultKind::Vm {
             vspace: 0,
             va: 0x3000,
@@ -11840,14 +11754,31 @@ mod tests {
         assert_eq!(m.endpoint_send_len(ep), Ok(1));
 
         // (1) Trạng thái không còn khớp hàng (fault "mất" khỏi TCB).
-        m.transition_tcb(t, TcbState::Ready).expect("rời hàng trần");
+        //
+        // **KT-241** — `Ready` **không** còn biểu diễn được bằng `transition_tcb`; cửa đúng
+        // ngữ nghĩa cho `BlockedOnSend → Ready` là `wake` (test-only, D2-144). `wake` gỡ
+        // message fault khỏi hàng **đúng đường**, nên phải **gieo lại** message để dựng đúng
+        // trạng thái lệch cần kiểm: hàng còn fault, TCB **không** còn `BlockedOnSend{fault}`.
+        m.wake(t).expect("rời hàng trần");
+        m.endpoint_enqueue(
+            ep,
+            QueuedMessage {
+                msg: None,
+                sender: t,
+                call: true,
+                fault: Some(kind),
+                blocking: true,
+                snaps: Vec::new(),
+            },
+        )
+        .expect("gieo lại fault để dựng trạng thái lệch");
         let e = m
             .check_fault()
             .expect_err("phải bắt fault không khớp trạng thái");
         assert!(e.contains("trạng thái") || e.contains("hàng"), "{e}");
         m.transition_tcb(
             t,
-            TcbState::BlockedOnSend {
+            NonReadyTarget::BlockedOnSend {
                 ep,
                 call: true,
                 fault: Some(kind),

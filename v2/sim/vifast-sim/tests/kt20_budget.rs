@@ -26,7 +26,8 @@
 //!    (dispatch vẫn là op tường minh, như KT-19).
 
 use vifast_sim::kobj::{
-    KError, Machine, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode, TcbState,
+    KError, Machine, NonReadyTarget, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode,
+    TcbState,
 };
 use vifast_sim::Lcg;
 
@@ -123,9 +124,7 @@ impl Rig {
 
     /// `Inactive → Ready` (cặp ALLOWED của bảng KT-18; enqueue qua một cửa KT-19).
     fn ready(&mut self, i: usize) {
-        self.m
-            .transition_tcb(self.t[i], TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t[i]).expect("Inactive→Ready");
         kiem(&self.m, "transition Ready");
     }
 
@@ -848,7 +847,7 @@ fn invariant_budget_moi_chu_ky_thang_hang_khong_vuot() {
                 _ => {
                     let _ = r.m.block_current(
                         0,
-                        TcbState::Sleeping {
+                        NonReadyTarget::Sleeping {
                             reason: SleepReason::Timeout,
                         },
                     );

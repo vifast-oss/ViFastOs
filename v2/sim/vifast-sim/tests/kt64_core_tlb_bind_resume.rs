@@ -19,8 +19,8 @@
 //!   `Ready`, `Sleeping`; trạng thái khác ⇒ `IllegalOperation` (không mở đường user tự resume).
 
 use kc::{
-    FaultKind, KError, Machine, Message, MessageInfo, ObjId, ObjType, SleepReason, SlotRef,
-    TcbState, TlbEnv, TlbScope,
+    FaultKind, KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SleepReason,
+    SlotRef, TcbState, TlbEnv, TlbScope,
 };
 use vifast_core as kc;
 
@@ -129,7 +129,7 @@ fn kt64_tlb_nhieu_hart_chan_dispatch_va_cho_du_ack() {
     m.set_sched_params(ts, Some(slot(c0, 2))).expect("gắn SC");
     m.tcb_set_affinity(ts, 0b11).expect("affinity 0|1");
     m.tcb_set_home(ts, 1).expect("home hart 1");
-    m.transition_tcb(t, TcbState::Ready).expect("Ready");
+    m.start_tcb(t).expect("Ready");
     let seq = m
         .tlb_shootdown_begin(&mut env, TlbScope::Asid, 9, 0)
         .expect("begin");
@@ -545,7 +545,7 @@ fn kt64_bind_signal_chi_danh_thuc_dung_bound() {
         r.m.put_cap(c0, 30 + i, tc).expect("cap tcb");
         ts[i] = slot(c0, 30 + i);
         tobj[i] = t;
-        r.m.transition_tcb(t, TcbState::Ready).expect("Ready");
+        r.m.start_tcb(t).expect("Ready");
         r.m.tcb_bind_notification(ts[i], r.ntfn[i])
             .expect("bind ntfn");
         r.m.recv(t, ep, None).expect("recv chặn");
@@ -597,7 +597,7 @@ fn resume_rig() -> ResumeRig {
     let t = m.add_kernel_object(ObjType::Tcb);
     let tc = m.root_cap(t);
     m.put_cap(c0, 10, tc).expect("cap tcb");
-    m.transition_tcb(t, TcbState::Ready).expect("Ready");
+    m.start_tcb(t).expect("Ready");
     ResumeRig {
         m,
         c0,
@@ -656,14 +656,14 @@ fn kt64_resume_trang_thai_cam_bi_tu_choi() {
     assert_eq!(r.m.tcb_regs(r.t).unwrap()[0], 7);
     // Running: cấm (đang chạy trên hart).
     r.m.set_current_hart(0).unwrap();
-    r.m.transition_tcb(r.t, TcbState::Running { hart: 0 })
+    r.m.transition_tcb(r.t, NonReadyTarget::Running { hart: 0 })
         .expect("Running");
     assert_eq!(
         r.m.tcb_resume_with_regs(r.ts, msg(3, &[9])).err(),
         Some(KError::IllegalOperation)
     );
     assert_eq!(r.m.tcb_regs(r.t).unwrap()[0], 7, "lỗi không đổi thanh ghi");
-    r.m.transition_tcb(r.t, TcbState::Ready).expect("Ready lại");
+    r.m.tcb_yield(r.t).expect("Ready lại");
     // Inactive: cấm (không có context để resume).
     let t2 = r.m.add_kernel_object(ObjType::Tcb);
     let t2c = r.m.root_cap(t2);
@@ -689,7 +689,7 @@ fn kt64_resume_blocked_on_reply_va_message_cap() {
     let t2c = r.m.root_cap(t2);
     r.m.put_cap(r.c0, 11, t2c).expect("cap t2");
     let ts2 = slot(r.c0, 11);
-    r.m.transition_tcb(t2, TcbState::Ready).expect("t2 Ready");
+    r.m.start_tcb(t2).expect("t2 Ready");
     r.m.recv(t2, r.ep, Some(r.rep))
         .expect("t2 recv + reply cap");
     r.m.call_msg(r.t, r.ep, msg(5, &[0x55])).expect("call");
@@ -721,11 +721,11 @@ fn kt64_resume_blocked_on_reply_va_message_cap() {
 fn kt64_resume_sleeping_giu_nguyen() {
     let mut r = resume_rig();
     r.m.set_current_hart(0).unwrap();
-    r.m.transition_tcb(r.t, TcbState::Running { hart: 0 })
+    r.m.transition_tcb(r.t, NonReadyTarget::Running { hart: 0 })
         .expect("Running");
     r.m.transition_tcb(
         r.t,
-        TcbState::Sleeping {
+        NonReadyTarget::Sleeping {
             reason: SleepReason::Budget,
         },
     )

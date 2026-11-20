@@ -27,8 +27,8 @@
 //!    còn budget, D2-50); bước quản trị (suspend/resume/read/tick/pick/set-params) luôn chọn được.
 
 use vifast_sim::kobj::{
-    KError, Machine, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode, TcbInfo, TcbState,
-    ALLOWED, TCB_STATE_COUNT,
+    KError, Machine, NonReadyTarget, ObjId, ObjType, ScInfo, SleepReason, SlotRef, SuspendMode,
+    TcbInfo, TcbState, ALLOWED, TCB_STATE_COUNT,
 };
 use vifast_sim::mailbox::{MailboxMsg, MAILBOX_CAP};
 use vifast_sim::scenario::{run_interleaved, ScenarioError, ScenarioStep, Step};
@@ -95,6 +95,64 @@ fn state_for(index: usize, ids: &Ids) -> TcbState {
     }
 }
 
+/// Đích **không-`Ready`** của chỉ số `index` trong bảng `ALLOWED` (D2-187/D2-194).
+///
+/// `index == 1` (`Ready`) **không** biểu diễn được bằng [`NonReadyTarget`] — cột `Ready` phải
+/// đi qua **cửa ngữ nghĩa** ([`apply_pair`]); gọi hàm này với `index == 1` là lỗi lập trình.
+fn target_for(index: usize, ids: &Ids) -> NonReadyTarget {
+    match index {
+        0 => NonReadyTarget::Inactive,
+        2 => NonReadyTarget::Running { hart: 0 },
+        3 => NonReadyTarget::BlockedOnSend {
+            ep: ids.ep,
+            call: true,
+            fault: None,
+        },
+        4 => NonReadyTarget::BlockedOnRecv {
+            ep: ids.ep,
+            reply: None,
+        },
+        5 => NonReadyTarget::BlockedOnReply { reply: ids.rep },
+        6 => NonReadyTarget::BlockedOnNotification { ntfn: ids.ntfn },
+        7 => NonReadyTarget::BlockedOnAddress {
+            frame: ids.frame,
+            offset: 16,
+        },
+        8 => NonReadyTarget::Sleeping {
+            reason: SleepReason::Budget,
+        },
+        9 => NonReadyTarget::Stopping,
+        10 => NonReadyTarget::Dead,
+        1 => panic!("`Ready` không biểu diễn được bằng `NonReadyTarget` — dùng cửa"),
+        _ => panic!("chỉ số trạng thái ngoài 0..11"),
+    }
+}
+
+/// Áp cặp `(from → to)` của bảng `ALLOWED` qua **đúng cửa** của API KT-241.
+///
+/// `to != Ready` ⇒ cửa thông thường [`Machine::transition_tcb`] với [`NonReadyTarget`].
+/// `to == Ready` ⇒ **cửa ngữ nghĩa** theo trạng thái nguồn: `Inactive` ⇒
+/// [`Machine::start_tcb`]; `Running` ⇒ [`Machine::tcb_yield`]; `BlockedOn*`/`Sleeping` ⇒
+/// [`Machine::wake`] (test-only, D2-144); `Ready`/`Stopping`/`Dead` ⇒ không cửa nào nhận ⇒
+/// `IllegalOperation` (đúng như bảng: `(Ready, Ready)` cấm, `Stopping`/`Dead` không ra được).
+fn apply_pair(
+    m: &mut Machine,
+    tcb: ObjId,
+    from: usize,
+    to: usize,
+    ids: &Ids,
+) -> Result<(), KError> {
+    if to != 1 {
+        return m.transition_tcb(tcb, target_for(to, ids));
+    }
+    match from {
+        0 => m.start_tcb(tcb),
+        2 => m.tcb_yield(tcb),
+        3..=8 => m.wake(tcb),
+        _ => Err(KError::IllegalOperation),
+    }
+}
+
 /// Đưa một TCB **mới** từ `Inactive` tới `index` chỉ bằng các cặp `ALLOWED` (đúng đường của
 /// bảng, không cửa sau) — giống KT-18; đây là cách duy nhất chạm `Stopping` ở K1b.
 fn drive_to(m: &mut Machine, tcb: ObjId, index: usize, ids: &Ids) {
@@ -112,9 +170,10 @@ fn drive_to(m: &mut Machine, tcb: ObjId, index: usize, ids: &Ids) {
         10 => &[10],
         _ => panic!("chỉ số trạng thái ngoài 0..11"),
     };
+    let mut from = 0usize;
     for step in path {
-        m.transition_tcb(tcb, state_for(*step, ids))
-            .expect("đường dẫn trạng thái của bảng phải ALLOWED");
+        apply_pair(m, tcb, from, *step, ids).expect("đường dẫn trạng thái của bảng phải ALLOWED");
+        from = *step;
     }
 }
 
@@ -157,7 +216,7 @@ fn ma_tran_46_cap_va_73_cap_cam() {
             drive_to(&mut m, tcb, from, &ids);
             let before = m.tcb_state(tcb).expect("trạng thái nguồn");
             let target = state_for(to, &ids);
-            let got = m.transition_tcb(tcb, target);
+            let got = apply_pair(&mut m, tcb, from, to, &ids);
             if *is_allowed {
                 allowed_ok += 1;
                 assert!(
@@ -186,10 +245,47 @@ fn ma_tran_46_cap_va_73_cap_cam() {
                     0,
                     "cặp cấm ({from}->{to}) không được đếm hit"
                 );
+                // **KT-241 — thay đổi phạm vi ca kiểm (API thu hẹp, KHÔNG nới ngưỡng).**
+                // Cột `Ready` **không** còn biểu diễn được ở cửa thông thường
+                // (`NonReadyTarget` loại `Ready`) ⇒ cổng thông thường **không** nhận cặp
+                // `(X, Ready)` bị cấm ⇒ `forbidden_hits` **không** tăng. Việc **từ chối** vẫn
+                // được khẳng định **đủ**: thử **cả ba** cửa `pub` — `start_tcb`/`tcb_yield`
+                // phải `IllegalOperation`; `wake` phải `IllegalOperation` với nguồn
+                // `Stopping`/`Dead`, còn nguồn `Ready` thì `wake` **idempotent** trả `Ok`
+                // (API-SPEC §3 dòng 1) và **không** đổi trạng thái.
+                if to == 1 {
+                    assert_eq!(
+                        m.start_tcb(tcb),
+                        Err(KError::IllegalOperation),
+                        "cửa start_tcb phải từ chối ({from}->Ready)"
+                    );
+                    assert_eq!(
+                        m.tcb_yield(tcb),
+                        Err(KError::IllegalOperation),
+                        "cửa tcb_yield phải từ chối ({from}->Ready)"
+                    );
+                    let mong_wake = if from == 1 {
+                        Ok(())
+                    } else {
+                        Err(KError::IllegalOperation)
+                    };
+                    assert_eq!(
+                        m.wake(tcb),
+                        mong_wake,
+                        "cửa wake ({from}->Ready): idempotent khi nguồn Ready, từ chối nguồn khác"
+                    );
+                    assert_eq!(
+                        m.tcb_state(tcb),
+                        Ok(before),
+                        "cửa `Ready` không được đổi trạng thái ({from}->Ready)"
+                    );
+                }
+                // Chỉ **kỳ vọng đếm** đổi cho cột `Ready`; kỳ vọng **an toàn** ở trên giữ đủ.
+                let mong_dem = if to == 1 { 0 } else { 1 };
                 assert_eq!(
                     m.forbidden_attempt_count(from, to),
-                    1,
-                    "cặp cấm ({from}->{to}) phải được đếm đúng 1 lần thử"
+                    mong_dem,
+                    "cặp cấm ({from}->{to}): cột `Ready` không chạm được cổng thông thường"
                 );
             }
             // Slot tạm của ma trận: gỡ cap để không tái dùng slot (mỗi cặp một TCB).
@@ -218,12 +314,17 @@ fn ma_tran_46_cap_va_73_cap_cam() {
         r.transition.forbidden_pairs_total, 73,
         "tổng cặp cấm phải là 73"
     );
+    // **KT-241 — thay đổi phạm vi ca kiểm**: 70 = 73 − 3 cặp cấm của **cột `Ready`**
+    // (`Ready/Stopping/Dead → Ready`). Cột này **không** còn biểu diễn được ở cửa thông
+    // thường ⇒ cổng thông thường không nhận cặp `(X, Ready)` bị cấm ⇒ bộ đếm không tăng; việc
+    // **từ chối** vẫn được khẳng định qua **cửa ngữ nghĩa** (assert trong vòng lặp ở trên).
+    // Không nới `ALLOWED`, không đổi `forbidden_hits`.
     assert_eq!(
-        r.transition.forbidden_pairs_attempted, 73,
-        "MỌI cặp cấm phải được thử ít nhất một lần (thiếu cặp ⇒ test đỏ)"
+        r.transition.forbidden_pairs_attempted, 70,
+        "70 = 73 − 3 cặp cấm cột `Ready` (không chạm được cổng thông thường, KT-241)"
     );
     assert!(
-        r.transition.forbidden_attempts >= 73,
+        r.transition.forbidden_attempts >= 70,
         "forbidden_attempts phải > 0 (thực tế {})",
         r.transition.forbidden_attempts
     );
@@ -267,16 +368,19 @@ fn cap_cam_theo_thiet_ke_bi_tu_choi() {
         drive_to(&mut m, tcb, from, &ids);
         let before = m.tcb_state(tcb).expect("trạng thái nguồn");
         assert_eq!(
-            m.transition_tcb(tcb, state_for(to, &ids)),
+            apply_pair(&mut m, tcb, from, to, &ids),
             Err(KError::IllegalOperation),
             "{ly_do}"
         );
         assert_eq!(m.tcb_state(tcb), Ok(before), "{ly_do}: state không đổi");
     }
-    // 4 cặp cấm vừa thử đều được đếm (nguồn của `forbidden_attempts`).
+    // 4 cặp cấm vừa thử đều bị **từ chối**; 3 cặp đích **không-Ready** được **đếm**.
+    // **KT-241** — `(10, 1)` (`Dead → Ready`) đích là `Ready`: cột `Ready` không còn biểu diễn
+    // được ở cửa thông thường ⇒ cổng thông thường không nhận cặp bị cấm ⇒ bộ đếm **không** tăng;
+    // việc **từ chối** vẫn được khẳng định ở `assert_eq!(apply_pair(...), Err(...))` phía trên.
     assert_eq!(m.forbidden_attempt_count(0, 2), 1);
     assert_eq!(m.forbidden_attempt_count(8, 2), 1);
-    assert_eq!(m.forbidden_attempt_count(10, 1), 1);
+    assert_eq!(m.forbidden_attempt_count(10, 1), 0);
     assert_eq!(m.forbidden_attempt_count(1, 8), 1);
 }
 
@@ -348,8 +452,7 @@ fn sc_rig() -> ScRig {
     m.tcb_set_priority(t0_s, 5, 255).expect("t0 priority");
     m.tcb_set_priority(t1_s, 5, 255).expect("t1 priority");
     for obj in [t0, t1] {
-        m.transition_tcb(obj, TcbState::Ready)
-            .expect("Inactive→Ready");
+        m.start_tcb(obj).expect("Inactive→Ready");
     }
     ScRig {
         m,
@@ -630,7 +733,7 @@ fn fuzz_rig() -> FuzzRig {
         if i < N_SC {
             m.set_sched_params(ts[i], Some(slot(c0, F_SC + i)))
                 .expect("set_sched_params (test-only)");
-            m.transition_tcb(obj, TcbState::Ready).expect("Ready");
+            m.start_tcb(obj).expect("Ready");
         }
     }
     FuzzRig {
@@ -997,8 +1100,8 @@ fn busy_rig() -> BusyRig {
     m.tcb_set_priority(t1_s, 5, 255).expect("t1 priority");
     let ep_fault_s = slot(c0, B_EP_FAULT);
     m.tcb_set_fault_ep(t0_s, ep_fault_s).expect("t0 fault_ep");
-    m.transition_tcb(t0, TcbState::Ready).expect("t0 Ready");
-    m.transition_tcb(t1, TcbState::Ready).expect("t1 Ready");
+    m.start_tcb(t0).expect("t0 Ready");
+    m.start_tcb(t1).expect("t1 Ready");
     // Chờ server passive t1 `Recv`, rồi t0 `Call` ⇒ t0 `BlockedOnReply` + donate SC0 cho t1.
     m.recv(t1, slot(c0, B_EP0), Some(slot(c0, B_REP0)))
         .expect("t1 Recv");
@@ -1138,8 +1241,7 @@ fn exit_fault_giao_thang_cho_recv_waiter() {
         let procsrv = m.add_kernel_object(ObjType::Tcb);
         let procsrv_cap = m.root_cap(procsrv);
         m.put_cap(c0, 1, procsrv_cap).expect("cap procsrv");
-        m.transition_tcb(procsrv, TcbState::Ready)
-            .expect("procsrv Ready");
+        m.start_tcb(procsrv).expect("procsrv Ready");
         m.recv(procsrv, ep_s, None).expect("procsrv Recv");
         assert_eq!(
             m.tcb_state(procsrv),
@@ -1151,8 +1253,9 @@ fn exit_fault_giao_thang_cho_recv_waiter() {
         let thoat_s = slot(c0, 2);
         m.tcb_set_fault_ep(thoat_s, ep_s).expect("fault_ep");
         if trang_thai_dau != TcbState::Inactive {
-            m.transition_tcb(thoat, trang_thai_dau)
-                .expect("trạng thái đầu");
+            // **KT-241** — `trang_thai_dau` chỉ có `Ready` (nhánh `Inactive` bị bỏ qua) và
+            // `thoat` là TCB **mới** (`Inactive`) ⇒ cửa đúng là `start_tcb`.
+            m.start_tcb(thoat).expect("trạng thái đầu");
         }
         m.exit(thoat, 7).expect("Exit phải giao thẳng cho waiter");
         assert_eq!(

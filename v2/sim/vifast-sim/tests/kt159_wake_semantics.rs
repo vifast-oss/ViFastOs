@@ -93,9 +93,7 @@ impl CoreRig {
         self.m.tcb_set_priority(self.s0, 5, 255).expect("prio");
         self.m.tcb_set_affinity(self.s0, 0b11).expect("affinity");
         self.m.tcb_set_home(self.s0, home).expect("home");
-        self.m
-            .transition_tcb(self.t0, kc::TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t0).expect("Inactive→Ready");
     }
 
     /// Chặn TCB trên Notification (waiter được ghi trên object — bất biến "waiter ⇔ TcbState").
@@ -172,9 +170,7 @@ impl SimRig {
         self.m.tcb_set_priority(self.s0, 5, 255).expect("prio");
         self.m.tcb_set_affinity(self.s0, 0b11).expect("affinity");
         self.m.tcb_set_home(self.s0, home).expect("home");
-        self.m
-            .transition_tcb(self.t0, vs::kobj::TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t0).expect("Inactive→Ready");
     }
 
     fn block_ntfn(&mut self) {

@@ -9,8 +9,8 @@
 //! Bảng xuất ra [`v2/docs/k1b-tcb-transition.md`](../../../docs/k1b-tcb-transition.md) `[TK]`.
 
 use vifast_sim::kobj::{
-    BlockedOnKind, FaultKind, KError, Machine, ObjId, ObjType, SleepReason, SlotRef, SuspendMode,
-    TcbSnapshot, TcbState, ALLOWED,
+    BlockedOnKind, FaultKind, KError, Machine, NonReadyTarget, ObjId, ObjType, SleepReason,
+    SlotRef, SuspendMode, TcbSnapshot, TcbState, ALLOWED,
 };
 
 const N_STATES: usize = 11;
@@ -141,6 +141,64 @@ fn state_for(index: usize, ids: &Ids) -> TcbState {
     }
 }
 
+/// Đích **không-`Ready`** của chỉ số `index` trong bảng `ALLOWED` (D2-187/D2-194).
+///
+/// `index == 1` (`Ready`) **không** biểu diễn được bằng [`NonReadyTarget`] — cột `Ready` phải
+/// đi qua **cửa ngữ nghĩa** ([`apply_pair`]); gọi hàm này với `index == 1` là lỗi lập trình.
+fn target_for(index: usize, ids: &Ids) -> NonReadyTarget {
+    match index {
+        0 => NonReadyTarget::Inactive,
+        2 => NonReadyTarget::Running { hart: 0 },
+        3 => NonReadyTarget::BlockedOnSend {
+            ep: ids.ep,
+            call: false,
+            fault: Some(FaultKind::Exit { code: 1 }),
+        },
+        4 => NonReadyTarget::BlockedOnRecv {
+            ep: ids.ep,
+            reply: None,
+        },
+        5 => NonReadyTarget::BlockedOnReply { reply: ids.rep },
+        6 => NonReadyTarget::BlockedOnNotification { ntfn: ids.ntfn },
+        7 => NonReadyTarget::BlockedOnAddress {
+            frame: ids.frame,
+            offset: 16,
+        },
+        8 => NonReadyTarget::Sleeping {
+            reason: SleepReason::Budget,
+        },
+        9 => NonReadyTarget::Stopping,
+        10 => NonReadyTarget::Dead,
+        1 => panic!("`Ready` không biểu diễn được bằng `NonReadyTarget` — dùng cửa"),
+        _ => panic!("chỉ số trạng thái ngoài 0..11"),
+    }
+}
+
+/// Áp cặp `(from → to)` của bảng `ALLOWED` qua **đúng cửa** của API KT-241.
+///
+/// `to != Ready` ⇒ cửa thông thường [`Machine::transition_tcb`] với [`NonReadyTarget`].
+/// `to == Ready` ⇒ **cửa ngữ nghĩa** theo trạng thái nguồn: `Inactive` ⇒
+/// [`Machine::start_tcb`]; `Running` ⇒ [`Machine::tcb_yield`]; `BlockedOn*`/`Sleeping` ⇒
+/// [`Machine::wake`] (test-only, D2-144); `Ready`/`Stopping`/`Dead` ⇒ không cửa nào nhận ⇒
+/// `IllegalOperation` (đúng như bảng: `(Ready, Ready)` cấm, `Stopping`/`Dead` không ra được).
+fn apply_pair(
+    m: &mut Machine,
+    tcb: ObjId,
+    from: usize,
+    to: usize,
+    ids: &Ids,
+) -> Result<(), KError> {
+    if to != 1 {
+        return m.transition_tcb(tcb, target_for(to, ids));
+    }
+    match from {
+        0 => m.start_tcb(tcb),
+        2 => m.tcb_yield(tcb),
+        3..=8 => m.wake(tcb),
+        _ => Err(KError::IllegalOperation),
+    }
+}
+
 /// Đưa một TCB **mới** từ `Inactive` tới `index` chỉ bằng các cặp `ALLOWED` (đường dẫn của
 /// bảng, không có cửa sau). `index = 10` đi thẳng `Inactive → Dead` (finalise).
 fn drive_to(m: &mut Machine, tcb: ObjId, index: usize, ids: &Ids) {
@@ -158,9 +216,10 @@ fn drive_to(m: &mut Machine, tcb: ObjId, index: usize, ids: &Ids) {
         10 => &[10],
         _ => panic!("chỉ số trạng thái ngoài 0..11"),
     };
+    let mut from = 0usize;
     for step in path {
-        m.transition_tcb(tcb, state_for(*step, ids))
-            .expect("đường dẫn trạng thái của bảng phải ALLOWED");
+        apply_pair(m, tcb, from, *step, ids).expect("đường dẫn trạng thái của bảng phải ALLOWED");
+        from = *step;
     }
 }
 
@@ -435,17 +494,22 @@ fn bang_allowed_bat_bien_thiet_ke() {
 
 #[test]
 fn bang_allowed_11x11_du_cap_va_cam() {
-    let ids = ids();
+    let mut ids = ids();
     let mut m = Machine::new();
     let mut allowed = 0usize;
     for (from, row) in ALLOWED.iter().enumerate() {
         for (to, is_allowed) in row.iter().enumerate() {
             // Mỗi cặp một TCB mới trên **cùng** một `Machine` ⇒ `pair_hits` cộng dồn đủ 121 cặp.
             let tcb = m.add_kernel_object(ObjType::Tcb);
+            // **KT-241** — cột `Ready` đi qua cửa `wake` cho nguồn `BlockedOn*`/`Sleeping`, mà
+            // `wake` chạy `sched_after_op` ⇒ `check_reply_links` đòi `BlockedOnReply{reply}`
+            // trỏ **Reply thật**. Mỗi cặp một Reply mới (Reply đã bind caller khác thì cổng
+            // KT-34 từ chối — cùng lý do như ma trận KT-23).
+            ids.rep = m.add_kernel_object(ObjType::Reply);
             drive_to(&mut m, tcb, from, &ids);
             let before = m.tcb_state(tcb).expect("trạng thái nguồn");
             let target = state_for(to, &ids);
-            let result = m.transition_tcb(tcb, target);
+            let result = apply_pair(&mut m, tcb, from, to, &ids);
             if *is_allowed {
                 allowed += 1;
                 assert!(
@@ -527,7 +591,7 @@ fn cap_cam_theo_thiet_ke_bi_tu_choi() {
         let before = m.tcb_state(tcb).expect("trạng thái nguồn");
         assert_eq!(before, state_for(from, &ids), "{ly_do}");
         assert_eq!(
-            m.transition_tcb(tcb, state_for(to, &ids)),
+            apply_pair(&mut m, tcb, from, to, &ids),
             Err(KError::IllegalOperation),
             "cặp ({from}->{to}) phải bị từ chối: {ly_do}"
         );
@@ -703,9 +767,9 @@ fn suspend_abort_tren_sleeping_giu_trang_thai() {
         Some(9)
     );
     drive_to(&mut m, tcb, 1, &ids);
-    m.transition_tcb(tcb, state_for(2, &ids))
+    m.transition_tcb(tcb, target_for(2, &ids))
         .expect("Ready→Running");
-    m.transition_tcb(tcb, state_for(8, &ids))
+    m.transition_tcb(tcb, target_for(8, &ids))
         .expect("Running→Sleeping");
     m.tcb_suspend(slot(c0, 0), SuspendMode::Abort)
         .expect("Abort trên Sleeping");
@@ -1134,7 +1198,7 @@ fn suspend_tcb_inactive_va_dead_illegal() {
     assert!(!r.read().suspended);
 
     r.m.exit(r.client, 1).expect("Exit");
-    r.m.transition_tcb(r.client, TcbState::Dead)
+    r.m.transition_tcb(r.client, NonReadyTarget::Dead)
         .expect("1→10 khi finalise");
     assert_eq!(
         r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort),

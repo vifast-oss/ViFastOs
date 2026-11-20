@@ -24,7 +24,7 @@
 //!
 //! Bất biến kiểm **sau mỗi** bước: [`kiem`] (scheduler + SMP + IPC + mailbox + đồng hồ).
 
-use vifast_sim::kobj::{KError, Machine, ObjId, ObjType, SlotRef, TcbState};
+use vifast_sim::kobj::{KError, Machine, ObjId, ObjType, SlotRef};
 use vifast_sim::mailbox::MailboxMsg;
 
 fn slot(cnode: ObjId, s: usize) -> SlotRef {
@@ -102,9 +102,7 @@ impl Rig {
         self.m.tcb_set_priority(self.s[i], p, 255).expect("prio");
         self.m.tcb_set_affinity(self.s[i], mask).expect("affinity");
         self.m.tcb_set_home(self.s[i], h).expect("home");
-        self.m
-            .transition_tcb(self.t[i], TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t[i]).expect("Inactive→Ready");
         kiem(&self.m, "dat TCB");
     }
 
@@ -152,8 +150,7 @@ fn don_dieu_sau_migrate_hai_hart() {
     // migrate của mô hình; `push_migration` là **chính sách** push chỉ chạy khi nguồn có > 1 TCB
     // cùng mức cao nhất, nên không dùng cho ca 1 TCB). `transition_tcb` chỉ đồng bộ scheduler;
     // `published` được làm tươi ở public op kế tiếp (`send_mail`), nên `kiem` đặt **sau** nó.
-    r.m.transition_tcb(r.t[0], TcbState::Ready)
-        .expect("Running→Ready (preempt)");
+    r.m.tcb_yield(r.t[0]).expect("Running→Ready (preempt)");
     r.m.send_mail(
         1,
         MailboxMsg::Migrate {
@@ -194,8 +191,7 @@ fn don_dieu_sau_migrate_hai_hart() {
     assert!(sau2 >= sau);
 
     // Migrate **ngược** về hart 0 (nguồn hart 0 = 5 < 11) — vẫn không được lùi.
-    r.m.transition_tcb(r.t[0], TcbState::Ready)
-        .expect("Running→Ready lần hai");
+    r.m.tcb_yield(r.t[0]).expect("Running→Ready lần hai");
     r.m.send_mail(
         0,
         MailboxMsg::Migrate {
