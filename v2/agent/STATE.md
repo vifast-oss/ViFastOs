@@ -4,28 +4,29 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 04:05 (vòng 2 cuối tuần) ===
-HEAD          : `ebe07582` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
-CỔNG          : **T2** `gate --fast` **PASS 62/62** trên `ebe07582` (**571,7 s**).
-                **T1** `gate --dev` **PASS** trên `ebe07582` (**299,5 s**).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 04:25 (cuối vòng 2) ===
+HEAD          : `14df1639` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
+CỔNG          : **T2** `gate --fast` **PASS 62/62** trên `14df1639` (**534,3 s**).
+                **T1** `gate --dev` **PASS** trên `14df1639` (**301,5 s**).
                 Bước mới: 56 aarch64 (T1+T2), 57 virtio-net (T2), 58 cfg-test (T2),
                 59 x86_64 (T1+T2), 60 virtio-input (T2), 61/62 selftest validator (T1+T2),
                 63 QEMU smoke (T1).
 BUILD-INPUTS  : đổi (thêm `vifast-kbin-x86_64`, `virtio-input`, `wake_scope.py`) — **phải đo lại**
-                trước khi dùng bằng chứng ảnh cũ.
-AARCH64       : boot + vector + **MMU** + **nửa cao/physmap** (KT-253: `SplitMmu` định tuyến theo VA,
-                16 ca host, TAP 7/7, 3 đột biến). `VSpace` thật (KT-254) đang làm.
+                trước khi dùng bằng chứng ảnh cũ; ảnh sản phẩm cuối tuần **chưa** build lại sau vòng 2.
+AARCH64       : boot + vector + MMU + **nửa cao/physmap** (KT-253) + **`VSpace` thật** (KT-254) —
+                `# high: … match=1`, `# physmap: … match=1`, `# vspace: … match=1`,
+                `# fault: kind=Vm esr=0x96000006`; TAP **9/9**, runner 7/7, test host **112**.
 X86_64        : **boot thật** `# viFastOs x86_64: boot ok` — long mode (`lma=1`), PVH
                 (`pvh_magic=0x336ec578`), COM1, identity map 512 trang; runner 7/7 + 5 ca âm.
-MẠNG          : virtio-net + DHCP/ARP/ICMP (KT-244/245/246/246b) — **vẫn xanh** sau vòng 2.
-BÀN PHÍM      : virtio-input (KT-255) — `sendkey a` ⇒ `ascii=0x61`, `shift-a` ⇒ `0x41`, `f1` ⇒ none;
+MẠNG          : virtio-net + DHCP/ARP/ICMP (KT-244/245/246/246b) — xanh.
+BÀN PHÍM      : virtio-input (KT-255) — `sendkey a` ⇒ `0x61`, `shift-a` ⇒ `0x41`, `f1` ⇒ none;
                 30 test host, 15 kiểm `--red-selftest`, 5 TAP + ca âm.
-LUẬT WAKE     : KT-256 — **một** phạm vi từ `cargo metadata` (`wake_scope.py`), đóng DEBT-KT227-1
-                bằng ca canh `E_SCOPE_LIB_CORE`, kiểm máy `--cfg test` (`check-no-cfg-test.py`).
-                Selftest: lớp tĩnh **420**, dep-info **67**, cfg-test **10**. **KT-184/194 vẫn REVIEW**.
-TASK          : KT-243..KT-257 DONE (trừ KT-254 đang chạy). **KT-184/KT-194 REVIEW**.
-NỢ MỞ         : P20; K4' B3.5–B3.7 (Q2/Q6 hoãn); K5' đầy đủ; L2 đã đóng nhưng cần vòng tấn công mới
-                trên HEAD sau KT-256 (D2-190 mục 5); TCP/socket (N1); virtio-gpu.
+LUẬT WAKE     : KT-256 — một phạm vi từ `cargo metadata` (`wake_scope.py`), DEBT-KT227-1 đóng bằng
+                ca canh `E_SCOPE_LIB_CORE`, kiểm máy `--cfg test`. Selftest **420**/**67**/**10**.
+                **KT-184/194 vẫn REVIEW** (D2-190 mục 5: vòng tấn công mới trên HEAD sau KT-256).
+TASK          : **KT-243..KT-257 DONE** (15 task). **KT-184/KT-194 REVIEW**.
+NỢ MỞ         : P20; K4' B3.6 (TLBI shootdown) + B3.7 (U-mode — Q2 hoãn); K5' đầy đủ;
+                vòng tấn công mới luật wake; TCP/socket (N1); virtio-gpu; arena aarch64 28/32 frame.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0, không sửa `spec/`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
