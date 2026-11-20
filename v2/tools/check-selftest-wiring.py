@@ -94,6 +94,18 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # **KT-217 (D2-173)** — `v2/tools/check-wake-depinfo.py` **đã** được nối vào `v2 check`
     # (lớp 2 cho luật `wake`), nên mục miễn trừ của KT-214 đã **xoá** — để lại sẽ sinh
     # `W_EXEMPT_UNUSED`, đúng như công cụ tự báo.
+    #
+    # **KT-256** — `v2/tools/check-no-cfg-test.py` kiểm giả định "ảnh sản phẩm **không** có
+    # `--cfg test`" bằng cách **build thật** ảnh sản phẩm (`--features product-fs`, ~40 s, cần
+    # cargo + target `riscv64gc-unknown-none-elf`). `v2 check` là cổng **nhanh** (không build ảnh)
+    # nên chưa nối; đề xuất nối vào `gate --fast` — một dòng `run_step` trong `v2/bin/v2`, **ngoài
+    # quyền** của KT-256 (task cấm sửa `v2/bin/v2`). Ca tự kiểm của nó (10 ca trên log tổng hợp,
+    # **không** cần cargo) chạy độc lập: `python3 v2/tools/check-no-cfg-test.py --selftest`.
+    (
+        "v2/tools/check-no-cfg-test.py",
+        "build thật ảnh sản phẩm (~40 s, cần cargo + target riscv64) — không phù hợp `v2 check` "
+        "(cổng nhanh); đề xuất nối vào `gate --fast` (cần sửa `v2/bin/v2`, ngoài quyền KT-256)",
+    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính

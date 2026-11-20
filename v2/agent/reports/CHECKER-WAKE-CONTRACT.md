@@ -1,4 +1,4 @@
-# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219 / KT-225 / KT-241 / KT-242
+# Hợp đồng của `check-wake-paths.py` — KT-184 / KT-194 / KT-196 / KT-209 / KT-211 / KT-213 / KT-215 / KT-219 / KT-225 / KT-241 / KT-242 / KT-256
 
 **Trạng thái**: bản cập nhật theo **A0 2026-11-19 §5** (tách bốn loại) + **KT-209** (L40 KT-201
 §D2 L2/L3) + **KT-211** (L44 KT-208 §B1/D — quét token toàn cục cho `include!`/`#[path]`) +
@@ -11,8 +11,14 @@ xem §4.1) + **KT-242** (review độc lập `JOURNAL/kt242-wake-review.md`: **s
 **hàm lồng không phải cửa**, **vùng test theo ký tự** cho **mọi** luật, **phạm vi = mẫu ∪ crate
 root thật** + đuôi `.rs` không phân biệt hoa/thường, **đường dẫn không phân giải được ⇒ lỗi cổng
 rõ** thay vì traceback; số ca selftest của hai lớp tăng — số đo đầy đủ ở
-`JOURNAL/kt242-wake-review.md` §7). **Chưa** được reviewer độc lập xác nhận lại trên HEAD sau
-KT-242 — KT-184, KT-194, KT-211, KT-213 vẫn `REVIEW`.
+`JOURNAL/kt242-wake-review.md` §7) + **KT-256** (nợ **L2**: **ba** mẫu phạm vi vênh nhau
+(`RE_TEST_ONLY_WAKE_SCOPE`, `MACRO_SCAN_ROOTS`, `RE_CRATE_SRC`) **hợp nhất** thành **một** định
+nghĩa sinh từ `cargo metadata` — `v2/tools/wake_scope.py`, dùng chung **cả hai** checker; thêm
+ba mã lỗi phạm vi `E_SCOPE_METADATA`/`E_SCOPE_REDUCTION`/`E_SCOPE_LIB_CORE`; **DEBT-KT227-1**
+đóng bằng ca canh `E_SCOPE_LIB_CORE`; thêm phép kiểm máy `check-no-cfg-test.py` cho giả định
+"ảnh sản phẩm **không** có `--cfg test`" — số đo ở `JOURNAL/kt256-wake-debt.md`). **Chưa** được
+reviewer độc lập xác nhận lại trên HEAD sau KT-242/KT-256 — KT-184, KT-194, KT-211, KT-213 vẫn
+`REVIEW`.
 
 Máy kiểm này **không** phải bộ phân tích Rust tổng quát. Nó là **lexer + token-tree + bộ đọc cấu
 trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed** ở mọi chỗ nó không phân giải được.
@@ -21,16 +27,46 @@ trúc tối thiểu**, chạy **không cần biên dịch**, và **fail-closed**
 
 ## 1. Phạm vi cây nguồn được bảo vệ
 
+**KT-256 (L2, D2-188) — MỘT định nghĩa phạm vi.** Trước KT-256 có **ba** mẫu vênh nhau:
+`RE_TEST_ONLY_WAKE_SCOPE` (luật token, lớp tĩnh), `MACRO_SCAN_ROOTS` (thân macro, lớp tĩnh) và
+`RE_CRATE_SRC` (dự phòng, lớp dep-info). Nay **cả hai** checker import **cùng** một nguồn:
+`v2/tools/wake_scope.py` → `protected_scope(root)`, sinh từ `cargo metadata --no-deps` của
+`v2/Cargo.toml` + `v2/kernel/Cargo.toml` + **bao đóng path-dependency nội bộ** (D2-188), phân
+loại **bảo vệ** / **từ chối rõ** (`v2/tools/`, nâng lên bảo vệ nếu bao đóng chứa crate bảo vệ).
+Ba **view** suy từ cùng một đối tượng:
+
+| View | Nội dung | Dùng cho |
+|---|---|---|
+| `contains(relp)` | tệp thuộc crate **bảo vệ** ∪ `NON_CRATE_SOURCE_TREES` | `hidden_files` (lớp dep-info), gốc quét thân macro |
+| `token_scope(relp)` | `contains` **và** crate thuộc workspace **kernel** (ảnh sản phẩm) **hoặc** crate `vifast-sim` (oracle, tự định nghĩa `fn wake`) **hoặc** cây nguồn sản phẩm không-phải-crate | luật token `wake` (`in_test_only_wake_scope`) |
+| `macro_roots()` | `roots()` = thư mục crate bảo vệ ∪ cây nguồn không-phải-crate | `scan_macro_bodies` |
+
+**Ngoại lệ có lý do** (`NON_CRATE_SOURCE_TREES`, không phải mẫu đường dẫn):
+`v2/kernel/vifast-plat-user` — shim ABI U-mode, **không phải crate**, biên dịch bởi
+`vifast-kbin-riscv64/build.rs` và đóng vào ảnh sản phẩm.
+
+**Không giảm phạm vi** — `check_no_reduction(root)` đối chiếu **mọi** tệp `.rs` dưới ba gốc cũ
+(`LEGACY_ROOTS` = `v2/lib`, `v2/kernel`, `v2/sim`) với `contains()`; tệp nào ngoài ⇒
+`E_SCOPE_REDUCTION`. Đây là **lưới an toàn di trú** (không phải định nghĩa): nếu metadata bỏ sót
+một cây nguồn từng được mẫu cũ che, cổng **ĐỎ** thay vì âm thầm hẹp lại.
+
+**Hệ quả đã đo (đều là *mở rộng*, **không** token `wake` nào nên không báo oan)** — xem
+`JOURNAL/kt256-wake-debt.md` §2: tệp sản phẩm **ngoài `src/`** của crate ảnh sản phẩm
+(`vifast-kbin-riscv64/init/*.rs`, shim `vifast-plat-user/lib.rs`) vào phạm vi luật token; crate
+thêm vào workspace ở **thư mục gốc mới** (`v2/drivers/…`) vào phạm vi cả hai lớp; crate
+`v2/tools/` **phụ thuộc** crate bảo vệ được **nâng** ở **cả** lớp tĩnh (trước KT-256 chỉ lớp
+dep-info nâng).
+
 | Cây | Luật áp |
 |---|---|
 | `v2/kernel/<crate>/src/**` + `v2/kernel/<crate>/build.rs` | `include!`/`#[path]`/`cfg_attr(path)` literal + trong cây; `wake` chỉ-dùng-test; thân `macro_rules!` (**token `wake`** + `include!`/`#[path]`/`mod`/`:tt`); **KT-241**: mỏ neo kiểu + luật `write_state`/`into_state` + `transition_tcb` không nhận `TcbState` |
 | `v2/sim/<crate>/src/**` + `v2/sim/<crate>/build.rs` | như trên |
 | **KT-242 (phạm vi crate root)** — **mọi crate root thật** của `v2/kernel/<crate>`/`v2/sim/<crate>`: `[lib] path`, `[[bin]] path` (kể cả **ngoài `src/`**, ví dụ `bin/x.rs`), `src/lib.rs`, `src/main.rs`, `tests/*.rs` | như trên. Trước KT-242 phạm vi là **mẫu** `src/**`+`build.rs`; bin/lib khai báo **ngoài `src/`** là bố cục Rust hợp lệ mà `cargo` biên dịch thật, nhưng **không** khớp mẫu ⇒ luật token `wake` **không** chạy (đo: lớp tĩnh XANH cả hai chế độ, lớp dep-info ĐỎ `E_DEPINFO_WAKE`). Nay phạm vi = **mẫu ∪ crate root thật** (`crate_roots`, đọc `Cargo.toml`) |
-| **KT-242 (đuôi hoa/thường)** — tệp đuôi `.rs` **không phân biệt hoa/thường** (`.RS`, `.Rs`) | như trên. Trên macOS/Windows `mod x;` nạp `src/x.RS` (đo: `cargo check` biên dịch được) nhưng `rglob("*.rs")` **bỏ sót** ⇒ luật token `wake` không chạy (lớp tĩnh XANH, lớp dep-info ĐỎ). Nay duyệt bằng `os.scandir` + `suffix.lower() == ".rs"` (`_iter_rs_ci`), và `RE_TEST_ONLY_WAKE_SCOPE` dùng `re.IGNORECASE` |
+| **KT-242 (đuôi hoa/thường)** — tệp đuôi `.rs` **không phân biệt hoa/thường** (`.RS`, `.Rs`) | như trên. Trên macOS/Windows `mod x;` nạp `src/x.RS` (đo: `cargo check` biên dịch được) nhưng `rglob("*.rs")` **bỏ sót** ⇒ luật token `wake` không chạy (lớp tĩnh XANH, lớp dep-info ĐỎ). Nay duyệt bằng `os.scandir` + `suffix.lower() == ".rs"` (`_iter_rs_ci`). **KT-256**: mẫu `RE_TEST_ONLY_WAKE_SCOPE` (mang `re.IGNORECASE`) đã **xoá** — phạm vi nay do `wake_scope` quyết định theo **crate**, đuôi hoa/thường vẫn được `_iter_rs_ci` duyệt |
 | `v2/kernel/vifast-core/src/state_write.rs`, `v2/sim/vifast-sim/src/kobj/state_write.rs` | **KT-241**: nơi **duy nhất** được chứa `write_state`/`into_state`; `write_state` chỉ được gọi bởi sáu hàm ở `STATE_WRITE_CALLERS`; là **mỏ neo** của toàn bộ ranh giới API (xem §2b) |
 | `v2/lib/**` | thân `macro_rules!` (token `wake`, `include!`, `#[path]`, `mod`, `:tt`); `include!`/`#[path]` **ngoài** macro được phân giải, đích phải ở trong `v2/lib` |
 | `v2/test/**`, `v2/agent/**` | **không** bảo vệ (ngoài phạm vi) |
-| `v2/tools/**` | **ngoài phạm vi tĩnh** (công cụ phát triển, không link vào ảnh sản phẩm). **KT-241 sửa mô tả cũ**: lớp **dep-info** áp R1 cho **mọi** tệp rustc nạp, và R2/R3 cho **mọi** crate trong bao đóng `cargo metadata` — một crate `v2/tools/` **phụ thuộc crate bảo vệ** được **nâng** lên bảo vệ (`_classify_scope`, KT-238). Câu "v2/tools không bảo vệ" chỉ đúng cho **lớp tĩnh**. |
+| `v2/tools/**` | **từ chối rõ** (công cụ phát triển, không link vào ảnh sản phẩm) — **trừ** crate `v2/tools/` **phụ thuộc** crate bảo vệ: được **nâng** lên bảo vệ (`_classify_scope`, KT-238). **KT-256**: việc nâng nay áp cho **cả lớp tĩnh** (trước KT-256 chỉ lớp dep-info nâng) — crate công cụ phụ thuộc sản phẩm có thể gọi `wake()` nên thân macro của nó cũng phải bị quét. |
 
 **KT-209/L2** — phạm vi `wake` là **mẫu**, không liệt kê cứng: **mọi** crate dưới
 `v2/kernel/<crate>/` và `v2/sim/<crate>/` (toàn bộ `src/**` cộng `build.rs`) nằm trong phạm vi,
@@ -305,6 +341,9 @@ Lớp dep-info áp **cùng** hàm (`CWP._check_nonready_conv_file`) trên **mọ
 | **KT-241** — mỏ neo kiểu **sai** (`NonReadyTarget` có `Ready`; chữ ký `transition_tcb`/`block_current` là `TcbState`; `core_tcb.rs`/`kobj.rs` còn `fn transition_tcb`) | `E_ANCHOR_TYPE` | API bị **đảo** ⇒ đường lọt cũ sống dậy (D2-194 §3) |
 | **KT-241 (E5)** — `write_state`/`into_state` bị nới thành `pub`/`pub(crate)`/`pub(super)`/`pub(in …)` | `E_ANCHOR_API` | primitive ghi thô phải **private**; nới ⇒ mọi module trong crate gọi được (D2-187 §3) |
 | **KT-241 (E1/E2)** — mọi phép chuyển `TcbState` ⇄ `NonReadyTarget` ngoài `into_state` private: `impl From`/`TryFrom`/`Into`, inherent impl `NonReadyTarget { fn …(TcbState) -> Self }`, inherent impl `TcbState { fn … -> NonReadyTarget }`, `pub fn` nhận `TcbState` trả `NonReadyTarget` | `E_STRICT_NONREADY_CONV` | orphan rule cho phép impl **bên trong** crate ⇒ `cargo check` thành công ⇒ đường vòng tái tạo (API-SPEC §1) |
+| **KT-256** — không dựng được phạm vi từ `cargo metadata` trên cây **có** workspace manifest (không có `cargo`, metadata RC≠0, không crate nào) | `E_SCOPE_METADATA` | D2-188: phạm vi **phải** sinh từ metadata; quét-rồi-PASS với phạm vi rỗng là fail-open |
+| **KT-256** — tệp `.rs` dưới ba gốc cũ (`v2/lib`, `v2/kernel`, `v2/sim`) **ngoài** phạm vi metadata | `E_SCOPE_REDUCTION` | lưới an toàn di trú: định nghĩa mới **không** được hẹp hơn ba mẫu cũ ở bất kỳ đâu |
+| **KT-256 / DEBT-KT227-1** — crate `v2/lib` có `vifast-core` trong **bao đóng normal dependency** | `E_SCOPE_LIB_CORE` | `v2/lib` ngoài luật token `wake`; điều đó chỉ an toàn khi `wake()` **không gọi được** từ mã sản phẩm `v2/lib`. Có phụ thuộc ⇒ **mở rộng luật** (hoặc gỡ phụ thuộc) |
 | Chuỗi/comment chưa đóng, delimiter lệch, escape sai, quá độ sâu | `E_LEX_*` | D2-166 §3C |
 
 ---
@@ -377,7 +416,17 @@ python3 v2/tools/check-wake-paths.py            # chế độ thường
 python3 v2/tools/check-wake-paths.py --strict   # + luật token `wake` đầy đủ
 python3 v2/tools/check-wake-paths.py --selftest # số ca hiện tại (KT-241: xem journal)
 python3 v2/tools/check-wake-depinfo.py --selftest # lớp dep-info (KT-241: xem journal)
+
+# KT-256 — phép kiểm máy cho giả định "ảnh sản phẩm KHÔNG có --cfg test"
+python3 v2/tools/check-no-cfg-test.py            # build thật ảnh sản phẩm (--features product-fs) + đọc `cargo build -v`
+python3 v2/tools/check-no-cfg-test.py --log F    # kiểm lại log đã lưu (tái dùng bằng chứng)
+python3 v2/tools/check-no-cfg-test.py --selftest # các ca trên log tổng hợp (không cần cargo)
+python3 v2/tools/check-no-cfg-test.py --selftest-live  # ca âm end-to-end: RUSTFLAGS=--cfg test ⇒ ĐỎ
 ```
+
+**KT-256 — chưa nối vào `v2/bin/v2`**: `check-no-cfg-test.py` chạy **độc lập** (build thật ~17 s
+trên máy đo). Nối thành bước cổng cần sửa `v2/bin/v2` — **ngoài quyền** của task KT-256; đề xuất
+ở `JOURNAL/kt256-wake-debt.md` §5.
 
 **KT-241 sửa thuật ngữ (KT-240 L1)**: đây là **ba lượt kiểm thuộc HAI cơ chế**, không phải ba
 lớp độc lập (D2-189 §3): (i) **lớp tĩnh** `check-wake-paths.py` chạy **hai lượt** — chế độ thường

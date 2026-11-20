@@ -134,6 +134,13 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+# **KT-256 (L2, D2-188)** — phạm vi bảo vệ là **MỘT** định nghĩa sinh từ `cargo metadata`
+# (`v2/tools/wake_scope.py`), dùng chung với lớp dep-info. Trước KT-256 tệp này có **hai** mẫu
+# riêng (`RE_TEST_ONLY_WAKE_SCOPE` cho luật token, `MACRO_SCAN_ROOTS` cho thân macro) và lớp
+# dep-info có mẫu thứ ba (`RE_CRATE_SRC`) — ba định nghĩa vênh nhau (nợ L2).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import wake_scope  # noqa: E402  (đường dẫn phải sửa trước khi import)
+
 # ------------------------------------------------------------------ hằng số
 
 # Ba loại message đánh thức TCB (D2-131). `Stop`/`TlbFlush` không đánh thức TCB.
@@ -193,42 +200,38 @@ MIGRATE_PRODUCER = "push_step"
 # **KT-242 (N4)** — `re.IGNORECASE`: trên macOS/Windows rustc nạp `src/x.RS` cho `mod x;`
 # (đã đo: `cargo check` RC=0), nên **đuôi** phải so không phân biệt hoa/thường. `IGNORECASE`
 # áp cả phần thư mục — chấp nhận được: chỉ **mở rộng** phạm vi (fail-closed), không thu hẹp.
-RE_TEST_ONLY_WAKE_SCOPE = re.compile(
-    r"^v2/(?:kernel|sim)/[^/]+/(?:src/.*\.rs|build\.rs)$", re.IGNORECASE
-)
-
-# **KT-242 (N3)** — mẫu trên **không** phủ bin/lib khai báo **ngoài `src/`**:
-# `[[bin]] path = "bin/x.rs"` / `[lib] path = "lib.rs"` là bố cục Rust hợp lệ, `cargo` biên dịch
-# thật, nhưng `relp` không khớp `src/.*\.rs` ⇒ luật token `wake` **không** chạy (đo được: lớp 1
-# XANH cả hai chế độ, lớp 2 ĐỎ `E_DEPINFO_WAKE`). Nay phạm vi = **mẫu** ∪ **crate root thật**
-# (`crate_roots`, đọc `[lib] path`/`[[bin]] path` từ `Cargo.toml`) ⇒ bố cục nào cargo biên dịch
-# cũng vào phạm vi. Cache theo gốc cây (selftest dựng nhiều cây tạm).
-_CRATE_ROOT_CACHE: Dict[str, set] = {}
-
-
-def _crate_root_relps(root: Path) -> set:
-    """Tập `relpath` của **mọi crate root** (lib/bin/tests) dưới `v2/kernel`+`v2/sim`."""
-    key = str(root)
-    cached = _CRATE_ROOT_CACHE.get(key)
-    if cached is not None:
-        return cached
-    out = {rel(root, p) for p, _ in crate_roots(root)}
-    _CRATE_ROOT_CACHE[key] = out
-    return out
+# (Mẫu `RE_TEST_ONLY_WAKE_SCOPE` mang `IGNORECASE` đã **xoá** ở KT-256; phạm vi nay do
+# `wake_scope` quyết định theo **crate**, không theo đuôi tệp — đuôi hoa/thường vẫn được duyệt
+# bởi `_iter_rs_ci`.)
+#
+# **KT-256 (L2, D2-188)** — **xoá** mẫu `RE_TEST_ONLY_WAKE_SCOPE` + `_crate_root_relps`: phạm vi
+# luật token nay là **view** `token_scope()` của **một** định nghĩa sinh từ `cargo metadata`
+# (`v2/tools/wake_scope.py`), dùng chung với lớp dep-info. Hệ quả (đều **mở rộng**, đã đo 0 token
+# `wake` nên không báo oan): tệp sản phẩm **ngoài `src/`** của crate ảnh sản phẩm (chương trình
+# U-mode `vifast-kbin-riscv64/init/*.rs`, shim `vifast-plat-user/lib.rs`) vào phạm vi; crate thêm
+# vào workspace ở thư mục gốc **mới** cũng vào phạm vi (mẫu cũ mù).
+# **DEBT-KT227-1** — `v2/lib` **vẫn** ngoài luật token (chính sách: luật áp ảnh sản phẩm + sim);
+# điều kiện làm nó an toàn được canh bằng `E_SCOPE_LIB_CORE` (`wake_scope.check_lib_core_dependency`).
 
 
-def in_test_only_wake_scope(relp: str, root: Optional[Path] = None) -> bool:
+def in_test_only_wake_scope(
+    relp: str,
+    root: Optional[Path] = None,
+    scope: Optional["wake_scope.ProtectedScope"] = None,
+) -> bool:
     """Tệp có thuộc phạm vi luật `wake()` chỉ-dùng-cho-test không (đường dẫn tương đối gốc).
 
-    **KT-242 (N3)** — nhận thêm `root`: ngoài **mẫu** `src/**`/`build.rs`, mọi **crate root**
-    thật (kể cả `[[bin]] path`/`[lib] path` **ngoài `src/`**) cũng thuộc phạm vi. Không truyền
-    `root` ⇒ chỉ mẫu (giữ tương thích cho caller cũ/selftest).
+    **KT-256 (L2)** — phạm vi là **view** `token_scope()` của định nghĩa duy nhất
+    (`wake_scope.protected_scope`), sinh từ `cargo metadata` của `v2/Cargo.toml` +
+    `v2/kernel/Cargo.toml` + bao đóng dependency nội bộ. Không truyền `root` ⇒ mẫu dự phòng cũ
+    (giữ tương thích cho caller cũ/selftest). `scope` cho phép tầng gọi truyền phạm vi đã dựng
+    (selftest chèn metadata, `scan_v2` dựng một lần).
     """
-    if RE_TEST_ONLY_WAKE_SCOPE.match(relp):
-        return True
-    if root is not None:
-        return relp in _crate_root_relps(root)
-    return False
+    if scope is not None:
+        return scope.token_scope(relp)
+    if root is None:
+        return wake_scope.fallback_token_scope(relp)
+    return wake_scope.protected_scope(root).token_scope(relp)
 
 
 # Token `wake` **đứng riêng**: không phải `wake_from`/`wake_from_unlink`/`wake_step`/`wake_addr`
@@ -2175,7 +2178,14 @@ MACRO_WAKE_ALLOW: Dict[Tuple[str, str], str] = {}
 # **Ngoài** danh sách (lý do ghi ở `CHECKER-WAKE-CONTRACT.md` §1/§4):
 #   - `v2/test/fixtures/**` — fixture **cố tình sai** của các máy kiểm khác;
 #   - `v2/tools/**` — công cụ phát triển, **không** link vào ảnh sản phẩm.
-MACRO_SCAN_ROOTS = ("v2/lib", "v2/kernel", "v2/sim")
+#
+# **KT-256 (L2, D2-188)** — **xoá** hằng `MACRO_SCAN_ROOTS`: gốc quét nay là
+# `wake_scope.protected_scope(root).macro_roots()` — thư mục crate **bảo vệ** (sinh từ
+# `cargo metadata`) ∪ cây nguồn không-phải-crate (`vifast-plat-user`). Hệ quả (đều **mở rộng**):
+# crate thêm vào workspace ở thư mục gốc **mới** (`v2/drivers/<crate>`) được quét (mẫu cũ mù);
+# crate `v2/tools/<crate>` **phụ thuộc** crate bảo vệ được **nâng** lên bảo vệ (đồng nhất với lớp
+# dep-info, `_classify_scope`) nên cũng được quét. `v2/tools` **không** phụ thuộc sản phẩm vẫn
+# ngoài phạm vi (như cũ).
 
 
 # **KT-202** — fragment `$…:<frag>` chở được `include!`/`mod`/`#[path]` từ **lời gọi**.
@@ -2409,9 +2419,10 @@ def scan_macro_bodies(
     r: Report,
     extra_files: Optional[Iterable[Path]] = None,
     shadowed_safe: frozenset = frozenset(),
+    scope: Optional["wake_scope.ProtectedScope"] = None,
 ) -> None:
-    """**KT-171/B4**, **KT-187/B2+B3**, **KT-181** — quét thân `macro_rules!` ở **mọi** tệp
-    nguồn sản phẩm (`MACRO_SCAN_ROOTS` = `v2/lib`, `v2/kernel`, `v2/sim`) với **cả hai** luật:
+    """**KT-171/B4**, **KT-187/B2+B3**, **KT-181**, **KT-256/L2** — quét thân `macro_rules!` ở
+    **mọi** tệp nguồn sản phẩm với **cả hai** luật:
 
     1. **token `wake`** trong thân ⇒ `E_STRICT_MACRO_WAKE`. Reviewer L11 đặt
        `#[macro_export] macro_rules! wake_call` trong `v2/lib/vifast-abi` (ngoài phạm vi quét
@@ -2431,7 +2442,12 @@ def scan_macro_bodies(
     chứa token `wake` **không** bị luật (1) bắt (luật `wake` toàn văn bản chỉ phủ
     `v2/kernel/vifast-*/src/` + `v2/sim/vifast-sim/src/`). Nay **một** hàm, **một** phạm vi,
     **hai** luật — không còn khoảng trống giữa hai hàm.
+
+    **KT-256 (L2, D2-188)** — gốc quét là `scope.macro_roots()` (định nghĩa duy nhất sinh từ
+    `cargo metadata`), không còn hằng `MACRO_SCAN_ROOTS`. `scope=None` ⇒ dựng từ `root`.
     """
+    if scope is None:
+        scope = wake_scope.protected_scope(root)
     seen: set = set()
 
     def scan_one(p: Path) -> None:
@@ -2468,7 +2484,7 @@ def scan_macro_bodies(
         # **toàn cây token** bằng `_scan_macro_calls`.
         _scan_macro_calls(tree, relp, r, shadowed_safe)
 
-    for base_rel in MACRO_SCAN_ROOTS:
+    for base_rel in scope.macro_roots():
         base = root / base_rel
         if not base.is_dir():
             continue
@@ -3909,12 +3925,30 @@ def scan_v2(
     root: Path,
     strict: bool,
     extra_doors: Optional[set] = None,
+    scope: Optional["wake_scope.ProtectedScope"] = None,
 ) -> Report:
     r = Report()
     # **KT-171**: chuẩn hoá gốc (giải symlink) để `rel()`/`relative_to()` khớp nhau giữa
     # đường dẫn từ `iter_rs` và đường dẫn **phân giải** từ `#[path]`/`include!` (macOS:
     # `/var` → `/private/var`; selftest dựng cây trong `tempfile.mkdtemp`).
     root = root.resolve()
+
+    # **KT-256 (L2, D2-188)** — phạm vi bảo vệ: **một** định nghĩa sinh từ `cargo metadata`
+    # (`wake_scope`), dùng cho **cả hai** checker. Dựng **một lần** cho cả lượt quét.
+    #   - `scope.error` (không dựng được metadata trên cây **có** workspace manifest) ⇒ ĐỎ
+    #     `E_SCOPE_METADATA`: không được quét-rồi-PASS với phạm vi rỗng (fail-closed).
+    #   - `check_no_reduction` ⇒ `E_SCOPE_REDUCTION`: định nghĩa mới **không** được hẹp hơn ba
+    #     mẫu cũ ở bất kỳ tệp nào (lưới an toàn di trú, KT-256).
+    #   - `check_lib_core_dependency` ⇒ `E_SCOPE_LIB_CORE`: **DEBT-KT227-1** — `v2/lib` ngoài luật
+    #     token chỉ an toàn khi không crate `v2/lib` nào phụ thuộc `vifast-core` (normal dep).
+    if scope is None:
+        scope = wake_scope.protected_scope(root)
+    if scope.error:
+        r.err("E_SCOPE_METADATA", f"  {scope.error}")
+    for e in scope.check_no_reduction(root):
+        r.err("E_SCOPE_REDUCTION", e)
+    for e in scope.check_lib_core_dependency():
+        r.err("E_SCOPE_LIB_CORE", e)
 
     # --- mỏ neo (fail-closed) -------------------------------------------------
     # **KT-241** — `wake_step` **rời** `core_sched.rs`/`kobj.rs` sang `state_write.rs`
@@ -4276,7 +4310,7 @@ def scan_v2(
             relp = rel(root, p)
             # **KT-242 (N3)** — truyền `root`: phạm vi = mẫu ∪ **crate root thật** (bin/lib
             # khai báo ngoài `src/`).
-            if not in_test_only_wake_scope(relp, root):
+            if not in_test_only_wake_scope(relp, root, scope):
                 continue
             wake_targets.append((p, text, fns, is_test_file(p, root, test_only)))
             added.add(p)
@@ -4323,7 +4357,7 @@ def scan_v2(
         for p, text, _fns in files:
             relp = rel(root, p)
             # **KT-242 (N3)** — truyền `root` (xem trên).
-            if not in_test_only_wake_scope(relp, root):
+            if not in_test_only_wake_scope(relp, root, scope):
                 continue
             if is_test_file(p, root, test_only):
                 continue
@@ -4360,6 +4394,7 @@ def scan_v2(
         r,
         extra_files=[p for p, _ in extra.values()],
         shadowed_safe=_shadowed_safe,
+        scope=scope,
     )
 
     return r
@@ -9402,11 +9437,12 @@ def selftest() -> int:
             )
         )
         # (c) `in_test_only_wake_scope` **có** tham số `root` (phạm vi = mẫu ∪ crate root).
+        # **KT-256** — thêm `scope` (tầng gọi truyền phạm vi đã dựng); `root` vẫn phải có.
         _scope_params = list(inspect.signature(in_test_only_wake_scope).parameters)
         cases.append(
             (
                 "KT-242 N3 chốt: `in_test_only_wake_scope` nhận `root` (crate root thật)",
-                _scope_params == ["relp", "root"],
+                "root" in _scope_params and _scope_params[:2] == ["relp", "root"],
                 str(_scope_params),
             )
         )
@@ -9459,6 +9495,223 @@ def selftest() -> int:
                 "; ".join(rep.errors),
             )
         )
+
+        # ================================================================ KT-256 (L2, D2-188)
+        # **Một** định nghĩa phạm vi sinh từ `cargo metadata` (`v2/tools/wake_scope.py`) dùng cho
+        # **cả hai** checker. Các ca dưới là **đột biến hai chiều**: chứng minh (i) **ba mẫu cũ**
+        # không khớp tệp đó, (ii) định nghĩa mới khớp, (iii) checker **ĐỎ** đúng mã lỗi. Thêm ba
+        # ca cho **lưới an toàn** (`E_SCOPE_REDUCTION`, `E_SCOPE_LIB_CORE`, `E_SCOPE_METADATA`) để
+        # chúng không phải "luật luôn xanh".
+        _OLD_TOKEN_PAT = re.compile(r"^v2/(?:kernel|sim)/[^/]+/(?:src/.*\.rs|build\.rs)$")
+        _OLD_MACRO_ROOTS = ("v2/lib", "v2/kernel", "v2/sim")
+
+        def _scope256(sroot, pkgs, devdeps=()):
+            """Blob `cargo metadata` giả (không chạy cargo) cho các ca KT-256."""
+            packages = []
+            for name, d, deps in pkgs:
+                dep_objs = [
+                    {"name": dep.split("/")[-1], "path": str(sroot / dep), "kind": None}
+                    for dep in deps
+                ]
+                for owner, dep in devdeps:
+                    if owner == name:
+                        dep_objs.append(
+                            {
+                                "name": dep.split("/")[-1],
+                                "path": str(sroot / dep),
+                                "kind": "dev",
+                            }
+                        )
+                packages.append(
+                    {
+                        "name": name,
+                        "manifest_path": str(sroot / d / "Cargo.toml"),
+                        "targets": [
+                            {
+                                "name": name.replace("-", "_"),
+                                "kind": ["lib"],
+                                "src_path": str(sroot / d / "src/lib.rs"),
+                            }
+                        ],
+                        "dependencies": dep_objs,
+                    }
+                )
+            return wake_scope.scope_from_metadata(
+                sroot,
+                [
+                    (
+                        "host",
+                        {
+                            "target_directory": str(sroot / "v2/target"),
+                            "packages": packages,
+                        },
+                    )
+                ],
+            )
+
+        # Bộ crate tối thiểu của `_fixture_v2` (để `check_no_reduction` không báo oan).
+        _FIX_PKGS = [
+            ("vifast-sync", "v2/lib/vifast-sync", ()),
+            ("vifast-core", "v2/kernel/vifast-core", ()),
+            ("vifast-sim", "v2/sim/vifast-sim", ()),
+        ]
+
+        # --- T1: tệp sản phẩm NGOÀI `src/` của crate ảnh sản phẩm (chương trình U-mode) ------
+        d = tmp / "kt256-t1-init"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-kbin-riscv64/init/evil.rs",
+            "pub fn f(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        relp = "v2/kernel/vifast-kbin-riscv64/init/evil.rs"
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-256/L2 T1: `wake` trong `init/` (sản phẩm, ngoài `src/`) ⇒ ĐỎ; mẫu cũ KHÔNG khớp",
+                (not rep.ok)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors)
+                and _OLD_TOKEN_PAT.match(relp) is None,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T2: shim `vifast-plat-user` (cây KHÔNG phải crate, đóng vào ảnh) ----------------
+        d = tmp / "kt256-t2-platuser"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-user/lib.rs",
+            "pub fn f(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        relp = "v2/kernel/vifast-plat-user/lib.rs"
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-256/L2 T2: `wake` trong shim `vifast-plat-user/lib.rs` ⇒ ĐỎ; mẫu cũ KHÔNG khớp",
+                (not rep.ok)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors)
+                and _OLD_TOKEN_PAT.match(relp) is None,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T3: crate ở thư mục gốc MỚI (`v2/drivers/…`) — thân macro chứa `wake` -----------
+        d = tmp / "kt256-t3-drivers"
+        _fixture_v2(d)
+        _write(
+            d / "v2/drivers/vifast-x/src/lib.rs",
+            "macro_rules! door { () => { m.wake(t) } }\n",
+        )
+        relp = "v2/drivers/vifast-x/src/lib.rs"
+        sc = _scope256(d, _FIX_PKGS + [("vifast-x", "v2/drivers/vifast-x", ())])
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/L2 T3: crate ở gốc MỚI `v2/drivers/…` — thân macro `wake` ⇒ ĐỎ; "
+                "`MACRO_SCAN_ROOTS` cũ mù",
+                (not rep.ok)
+                and any("E_STRICT_MACRO_WAKE" in e for e in rep.errors)
+                and not relp.startswith(tuple(r + "/" for r in _OLD_MACRO_ROOTS)),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T4: `v2/tools/<crate>` phụ thuộc crate bảo vệ ⇒ NÂNG ⇒ macro scan bắt -----------
+        d = tmp / "kt256-t4-tool"
+        _fixture_v2(d)
+        _write(
+            d / "v2/tools/tool/src/lib.rs",
+            "macro_rules! door { () => { m.wake(t) } }\n",
+        )
+        relp = "v2/tools/tool/src/lib.rs"
+        sc = _scope256(d, _FIX_PKGS + [("tool", "v2/tools/tool", ("v2/kernel/vifast-core",))])
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/L2 T4: `v2/tools` phụ thuộc crate bảo vệ ⇒ nâng ⇒ thân macro `wake` ĐỎ",
+                (not rep.ok)
+                and any("E_STRICT_MACRO_WAKE" in e for e in rep.errors)
+                and sc.by_name["tool"].status == "protected"
+                and "nâng" in sc.by_name["tool"].reason
+                and not relp.startswith(tuple(r + "/" for r in _OLD_MACRO_ROOTS)),
+                f"errors={rep.errors} tool={sc.by_name['tool'].status}",
+            )
+        )
+
+        # --- T5: lưới "không giảm phạm vi" — metadata thiếu crate có thật trên đĩa -----------
+        d = tmp / "kt256-t5-reduction"
+        _fixture_v2(d)
+        sc = _scope256(
+            d,
+            [("vifast-sync", "v2/lib/vifast-sync", ()), ("vifast-sim", "v2/sim/vifast-sim", ())],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/L2 T5: metadata bỏ sót crate có thật ⇒ `E_SCOPE_REDUCTION` (không giảm phạm vi)",
+                (not rep.ok) and any("E_SCOPE_REDUCTION" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T6: DEBT-KT227-1 — `v2/lib` phụ thuộc `vifast-core` (normal) ⇒ ĐỎ ---------------
+        d = tmp / "kt256-t6-libcore"
+        _fixture_v2(d)
+        sc = _scope256(
+            d,
+            _FIX_PKGS + [("vifast-model", "v2/lib/vifast-model", ("v2/kernel/vifast-core",))],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/DEBT-KT227-1: crate `v2/lib` phụ thuộc `vifast-core` (normal) ⇒ "
+                "`E_SCOPE_LIB_CORE` (buộc mở rộng luật token)",
+                (not rep.ok) and any("E_SCOPE_LIB_CORE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # Đối chứng dương: **dev**-dependency thì KHÔNG báo (dev không làm `wake()` gọi được từ
+        # mã sản phẩm) — thiếu vế này thì một luật "luôn đỏ" cũng qua được ca trên.
+        sc = _scope256(
+            d,
+            _FIX_PKGS + [("vifast-model", "v2/lib/vifast-model", ())],
+            devdeps=[("vifast-model", "v2/kernel/vifast-core")],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/DEBT-KT227-1 đối chứng dương: `v2/lib` chỉ **dev**-dep `vifast-core` ⇒ XANH",
+                rep.ok,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T7: không dựng được metadata trên cây CÓ manifest ⇒ ĐỎ (fail-closed) ------------
+        d = tmp / "kt256-t7-meta"
+        _fixture_v2(d)
+        sc = wake_scope.ProtectedScope()
+        sc.error = "cargo metadata trả 0 crate (giả lập)"
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-256/L2 T7: không dựng được phạm vi từ metadata ⇒ `E_SCOPE_METADATA` (fail-closed)",
+                (not rep.ok) and any("E_SCOPE_METADATA" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- T8: chính sách `v2/lib` ngoài luật token (DEBT-KT227-1) + phạm vi dự phòng ------
+        d = tmp / "kt256-t8-policy"
+        _fixture_v2(d)
+        cases.append(
+            (
+                "KT-256/DEBT-KT227-1: `v2/lib` NGOÀI luật token; `v2/kernel`+`v2/sim` TRONG "
+                "(phạm vi dự phòng của cây fixture)",
+                in_test_only_wake_scope("v2/kernel/vifast-core/src/lib.rs", d)
+                and in_test_only_wake_scope("v2/sim/vifast-sim/src/kobj.rs", d)
+                and not in_test_only_wake_scope("v2/lib/vifast-abi/src/lib.rs", d),
+                "phạm vi token sai chính sách",
+            )
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -9486,7 +9739,7 @@ def main(argv: Sequence[str]) -> int:
         help="thêm luật token `wake` đầy đủ (KT-241: luật transition/write_state/mỏ neo chạy ở MỌI chế độ)",
     )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
-    ap.add_argument("--selftest", action="store_true", help="chạy các ca tự kiểm (KT-241: 376)")
+    ap.add_argument("--selftest", action="store_true", help="chạy các ca tự kiểm (KT-256: 420)")
     args = ap.parse_args(argv)
 
     if args.selftest:
