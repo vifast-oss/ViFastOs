@@ -51,6 +51,7 @@ pub mod pl011;
 pub mod resources;
 pub mod sysreg;
 pub mod tlb;
+pub mod vector;
 
 /// Dừng máy **sạch** (KT-247): `PSCI SYSTEM_OFF` qua `hvc #0`, dự phòng `wfi` vô hạn.
 ///
@@ -99,4 +100,7 @@ pub use sysreg::{
 pub use tlb::{
     tlbi_encoding, tlbi_va_arg, TLBI_ASIDE1, TLBI_ASIDE1IS, TLBI_SYS_BASE, TLBI_VAE1, TLBI_VAE1IS,
     TLBI_VMALLE1, TLBI_VMALLE1IS,
+};
+pub use vector::{
+    is_aligned, vector_offset, VectorKind, VECTOR_ALIGN, VECTOR_COUNT, VECTOR_STRIDE,
 };

@@ -24,6 +24,16 @@ SECTIONS
         __text_end = .;
     }
 
+    /* KT-248: bảng vector 16 ô × 0x80, cả bảng căn 0x800 (`VBAR_EL1` chỉ giữ bit [63:11]).
+       **Output section riêng** (không nhét vào `.text`) để `objdump -h` chứng minh được nó là
+       `TEXT` chứ **không** phải `BSS`: `.bss` là NOLOAD nên bảng nằm trong `.bss` sẽ **không**
+       có trong ảnh đã nạp. `KEEP` chống `--gc-sections` xoá (không ai tham chiếu từng ô).
+       `__vector_base` do **linker** cấp; asm của ảnh không định nghĩa lại. */
+    .text.vectors : ALIGN(0x800) {
+        __vector_base = .;
+        KEEP(*(.vectors))
+    }
+
     .rodata : ALIGN(4K) {
         *(.rodata .rodata.*)
     }

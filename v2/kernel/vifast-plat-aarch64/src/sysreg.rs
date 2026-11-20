@@ -810,6 +810,12 @@ pub enum ExceptionClass {
     BreakpointLowerEl = 0x30,
     /// `0x31` — breakpoint từ EL1.
     BreakpointSameEl = 0x31,
+    /// `0x3C` — **`BRK` instruction** (AArch64). KT-248: `brk #0` cố ý dùng mã này.
+    ///
+    /// **Không** nhầm với `0x30`/`0x31`: hai mã đó là *breakpoint* phần cứng (so khớp địa chỉ
+    /// qua `DBGBVR`/`DBGBCR`), còn `BRK` là instruction mềm luôn sinh `EC = 0x3C` (DDI 0487
+    /// §D17.2.37). Trước KT-248 enum thiếu mã này nên handler đồng bộ không nhận ra `brk #0`.
+    Brk64 = 0x3C,
 }
 
 impl ExceptionClass {
@@ -831,6 +837,7 @@ impl ExceptionClass {
             0x26 => Some(Self::SpAlignment),
             0x30 => Some(Self::BreakpointLowerEl),
             0x31 => Some(Self::BreakpointSameEl),
+            0x3C => Some(Self::Brk64),
             _ => None,
         }
     }
@@ -848,6 +855,14 @@ impl Esr {
             bits |= ESR_IL;
         }
         Self(bits)
+    }
+
+    /// Bóc giá trị **thô** đọc từ `ESR_EL1` (KT-248) — đối xứng của [`Self::new`].
+    ///
+    /// Handler đồng bộ nhận `ESR_EL1` dạng `u64` từ asm; dùng hàm này thay vì tự dịch bit tại
+    /// chỗ để chỉ có **một** định nghĩa vị trí `EC`/`IL`/`ISS` (cùng tệp với các hằng đó).
+    pub const fn from_bits(raw: u64) -> Self {
+        Self(raw)
     }
 
     /// Giá trị 64 bit đọc từ `ESR_EL1`.

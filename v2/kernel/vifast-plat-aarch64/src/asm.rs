@@ -35,6 +35,28 @@
 
 #![allow(unsafe_code)] // D2-17: crate `kernel/vifast-plat-*`; chỉ asm mới cần.
 
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
+use core::arch::global_asm;
+
+// Probe `brk #0` (KT-248) — **một** instruction, địa chỉ lấy được từ Rust để so `ELR_EL1`.
+//
+// Đặt ở tệp này (không phải ảnh) vì gọi một `extern "C"` fn cần `unsafe`, mà `unsafe` chỉ được
+// nằm trong mô-đun này (D2-17 / luật R5). Ảnh gọi `brk_probe` — hàm an toàn.
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
+global_asm!(
+    ".section .text, \"ax\"",
+    ".globl __vifast_brk_probe",
+    "__vifast_brk_probe:",
+    "brk #0",
+    "ret",
+);
+
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
+extern "C" {
+    /// Nhãn asm của probe — chỉ dùng để lấy địa chỉ và gọi.
+    fn __vifast_brk_probe();
+}
+
 /// `PSCI SYSTEM_OFF` (function id 64-bit) — tắt máy qua hypervisor/QEMU.
 ///
 /// Giá trị theo PSCI spec (ARM DEN 0022): `0x8400_0008` = `SYSTEM_OFF` trong dải function id
@@ -201,6 +223,25 @@ mod imp {
     pub fn mmio_write_u32(addr: u64, value: u32) {
         // SAFETY: như `mmio_read_u32`; ghi 4 byte vào thanh ghi thiết bị đã map.
         unsafe { core::ptr::write_volatile(addr as *mut u32, value) };
+    }
+
+    // ------------------------------------------------------------------ probe BRK (KT-248)
+
+    /// `brk #0` — trap **có chủ đích** vào ô `SyncCurrentElSpX` (`0x200`) của bảng vector.
+    ///
+    /// `ELR_EL1` của `BRK` là **địa chỉ instruction `BRK`** (không phải `+4`), nên handler phải
+    /// tự cộng 4 khi resume — xem `vec_handler` của ảnh. Hàm này **trả về** sau khi handler
+    /// resume; nếu chưa cài bảng vector thì `brk` đi vào `VBAR_EL1 = 0` và treo (đúng: probe chỉ
+    /// dùng sau khi đã cài).
+    pub fn brk_probe() {
+        // SAFETY: `brk #0` là instruction hợp lệ ở EL1; nó **không** đọc/ghi bộ nhớ, chỉ sinh
+        // exception đồng bộ. Handler của ảnh resume bằng `ELR += 4`.
+        unsafe { super::__vifast_brk_probe() };
+    }
+
+    /// Địa chỉ instruction `brk #0` của [`brk_probe`] — để handler so với `ELR_EL1`.
+    pub fn brk_probe_addr() -> u64 {
+        super::__vifast_brk_probe as *const () as u64
     }
 
     // ------------------------------------------------------------------ PSCI / dừng máy
@@ -439,6 +480,14 @@ mod imp {
     /// Stub host của MMIO ghi — **panic**: trên host không có thiết bị PL011 đã map.
     pub fn mmio_write_u32(_addr: u64, _value: u32) {
         host_stub("mmio write u32")
+    }
+    /// Stub host của `brk #0` — **panic**: trên host `brk` sẽ giết tiến trình test.
+    pub fn brk_probe() {
+        host_stub("brk #0")
+    }
+    /// Stub host của địa chỉ probe — **panic**: không có asm trên host.
+    pub fn brk_probe_addr() -> u64 {
+        host_stub("brk #0 addr")
     }
     /// Stub host của `PSCI SYSTEM_OFF` — **panic**: trên host không có PSCI.
     pub fn psci_system_off() {
