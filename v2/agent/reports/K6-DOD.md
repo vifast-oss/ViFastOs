@@ -1,6 +1,52 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # K6-DOD — cổng K6: "tương đương v1" theo danh sách đo được + soak + L1 `seeds_total` bốn trăm nghìn
 
+## Cập nhật 2026-11-21 (KT-251) — đo lại **S1** trên ảnh sản phẩm
+
+> Mục này **thay thế kết luận S1** của KT-76 (§3.2). Phần còn lại của tệp giữ nguyên làm bản ghi
+> lịch sử KT-76. **Không** tiêu chí nào bị sửa, **không** ngưỡng nào bị nới; C1..C8 và N1..N7
+> không bị đụng.
+
+**Vì sao đo lại**: kết luận S1 = KHÔNG ĐẠT của KT-76 đo trên ảnh sản phẩm **trước** KT-77b
+(`product-shell`) và KT-77c (`product-fs`). Hai task đó đã đưa shell U-mode + FS vào **chính** ảnh
+sản phẩm, nên kết luận cũ không còn đúng với ảnh hiện tại — phải **đo**, không suy đoán.
+
+**Ảnh đo**: dựng từ HEAD `8caae70a`, cây sạch, bằng đường canonical
+`VIFAST_REPRO_CARGO_EXTRA="--features product-shell,product-fs" bash v2/tools/repro-build.sh
+--target-dir /tmp/kt251-target`; sha256 `2eced41f…`; dòng `# build:` của ảnh ở khối dưới. QEMU
+`virt` + OpenSBI `fw_dynamic`, `-cpu rv64 -m 128M -smp 1|2`.
+
+**Kết quả**: boot smp một và smp hai đều có `shell>` (bốn dòng), `help` liệt kê mười bảy lệnh,
+`ls /` liệt kê hai mục, `cat /README` đọc bảy mươi chín byte (`first=ViFastOs`), `exit` thoát sạch,
+và dòng `# product halt:` báo `shell_exit` bằng không. Log serial nguyên văn:
+`kt251-s1-smp1.log`, `kt251-s1-smp2.log`; dòng S1 ở §3.2 ghi `log:dòng`.
+
+```text scope=kt251-repro.log
+REPRO machine=Darwin-arm64 root=/private/tmp/kt243-s2 sha256=2eced41f8e82031dc56599a06047070640f6c211ac6aca199bba8985f958be74 size=213632 wall_s=25 algo=kt134-v4 inputs=e5992dbf68072503 dirty=0 rev=8caae70af67a build=f861bd283066120f text=131728 image=/private/tmp/kt251-target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+```
+
+```text scope=kt251-s1-smp1.log
+# build: algo=kt134-v4 inputs=e5992dbf68072503 dirty=0
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+shell>
+# shell: help cmds=17
+# shell: ls n=2 path=/
+# shell: cat ok bytes=79 first=ViFastOs
+# shell: exit code=0
+# product halt: shell_exit=0 fault_seen=1 events=4 ps_replies=0 ps_n=0 kill_suspend=0 proc_up=1 fs_replies=26 rx_windows=27 rx_irqs=0 rx_bytes=54 rx_late=54 ring_used=2 ring_head=4 ring_tail=2 ring_ok=1
+```
+
+```text scope=kt251-s1-smp2.log
+# build: algo=kt134-v4 inputs=e5992dbf68072503 dirty=0
+# product shell: harts=2 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# shell: help cmds=17
+# shell: ls n=2 path=/
+# shell: cat ok bytes=79 first=ViFastOs
+# shell: exit code=0
+# product halt: shell_exit=0 fault_seen=1 events=4 ps_replies=0 ps_n=0 kill_suspend=0 proc_up=1 fs_replies=26 rx_windows=27 rx_irqs=0 rx_bytes=108 rx_late=108 ring_used=5 ring_head=7 ring_tail=2 ring_ok=1
+```
+
 Người ghi: **Agent 2 dòng OS** · Ngày: **2026-11-17** · Task: **KT-76** (cổng K6, task cuối của K6)
 · HEAD khi mở task: `3776689d` (`[KT-00] D2-117`) · Nhánh `main` · Máy `ps` (mười hai nhân, arm64);
 QEMU/OpenSBI: xem khối §5.0/§5.8 (script in ra, **không** chép tay).
@@ -10,7 +56,9 @@ QEMU/OpenSBI: xem khối §5.0/§5.8 (script in ra, **không** chép tay).
 > - **Tám hạng mục đo được** của thiết kế §10.1 dòng K6 (VFS journal/fsck/rename/truncate/
 >   double-indirect; pager nhiều client; exec chain; “test-persist 7 pha”): **ĐẠT** — mỗi hạng mục
 >   có `log:dòng` **nằm trong repo** và trích nguyên văn (§3.1 + §3.3).
-> - **"Tương đương v1" ở mức NGƯỜI DÙNG: KHÔNG ĐẠT.** Ảnh **sản phẩm** vẫn không có U-mode/shell
+> - **"Tương đương v1" ở mức NGƯỜI DÙNG: KHÔNG ĐẠT** *(kết luận KT-76 — **đã được KT-251
+>   đo lại thành ĐẠT** trên ảnh sản phẩm có `product-shell,product-fs`; xem mục "Cập nhật
+>   2026-11-21 (KT-251)" ở đầu tệp)*. Ảnh **sản phẩm** vẫn không có U-mode/shell
 >   (kernel `halt` sau boot), trong khi v1 có shell tương tác **trên chính ảnh đó** (§3.2 — dòng
 >   **S1**). Vì vậy tài liệu này **không** tuyên bố K6 "tương đương v1"; đề xuất **KT-77** hoặc hạ
 >   phạm vi **có văn bản của Agent 0**.
@@ -109,7 +157,7 @@ TAP** mà `v2/test/boot/expected.txt` quy định; `ktest-persist` (C8) do runne
 
 | Mã | Tiêu chí | Kết quả | Bằng chứng (`log:dòng`) | Ghi chú |
 |---|---|---|---|---|
-| **S1** | **Ảnh SẢN PHẨM có U-mode/shell tương tác như v1** (điều kiện để gọi "tương đương v1" ở mức người dùng) | **KHÔNG ĐẠT** | `kt76-product-umode.log:3`, `kt76-product-umode.log:7`, `kt76-product-serial.log:83` | Ảnh sản phẩm `halt` sau `# k3 halt`; U-mode nằm sau feature `user`; **shell chỉ có trong ảnh test** `ktest-proc`. v1 có `shell>` + `--input-check` trên **chính** ảnh boot (`docs/v1/agent2-report-21.md:83`, `docs/v1/overnight-log.md:1499`) |
+| **S1** | **Ảnh SẢN PHẨM có U-mode/shell tương tác như v1** (điều kiện để gọi "tương đương v1" ở mức người dùng) | **ĐẠT** (KT-251, đo lại trên ảnh sản phẩm `product-shell,product-fs`) | `kt251-s1-smp1.log:91`, `kt251-s1-smp1.log:92`, `kt251-s1-smp1.log:97`, `kt251-s1-smp1.log:102`, `kt251-s1-smp1.log:104`, `kt251-s1-smp2.log:92`, `kt251-s1-smp2.log:97`, `kt251-s1-smp2.log:102`, `kt251-s1-smp2.log:104` | Ảnh sản phẩm dựng từ HEAD `8caae70a` bằng `repro-build.sh` với `--features product-shell,product-fs`; sha256 `2eced41f…`; dòng `# build:` ở `kt251-s1-smp1.log:68`. Boot QEMU `virt` smp một và hai: `shell>` + `help` + `ls /` + `cat /README` + `exit` đều có trong log serial. Bằng chứng cũ của KT-76 là ảnh **trước** KT-77b/77c (không có shell) — xem mục "Cập nhật 2026-11-21 (KT-251)" ở đầu tệp |
 
 **Vì sao S1 là KHÔNG ĐẠT (không phải N/A):**
 - `v2/kernel/vifast-kbin-riscv64/src/main.rs:361-362`: ảnh sản phẩm in dòng `ok` cho `k3 boot`,
