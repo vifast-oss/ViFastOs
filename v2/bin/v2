@@ -381,6 +381,11 @@ do_check() {
     run_step "selftest budget (KT-88)" bash "$V2_ROOT/test/boot/budget.sh" --selftest || fails=$((fails + 1))
     run_step "selftest counter-evidence (KT-80)" bash "$V2_ROOT/test/rules/counter-evidence.sh" --selftest || fails=$((fails + 1))
     run_step "selftest task-target (KT-84)" bash "$V2_ROOT/tools/task-target.sh" --selftest || fails=$((fails + 1))
+    # **KT-242** — ba mức L1 (`smoke`/`medium`/`full`) + chia lô seed: selftest kiểm **bảng mức**,
+    # **công thức phủ seed** (hợp các lô = `0..seeds`, không sót không trùng), **digest XOR gộp
+    # lô được**, và **clamp `--jobs`**. 27 ca, **không** chạy sim (< 1 s). Công cụ `l1-tier.sh`
+    # tự nó **không** vào cổng: nó chạy hàng chục tiến trình, phải chạy **một mình** (AGENTS §6).
+    run_step "selftest ba mức L1 (KT-242)" bash "$V2_ROOT/tools/l1-tier.sh" --selftest || fails=$((fails + 1))
     # **KT-134 (C7 của Agent 0)**: bảng đối chiếu số ↔ khối `scope=` phải được **kiểm máy** —
     # đọc bảng, mở đúng khối, so giá trị với dòng log. Không có kiểm máy thì Q6 chưa xong.
     if PY="$(find_python)"; then
