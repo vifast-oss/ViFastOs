@@ -140,6 +140,23 @@ pub fn read_msr(msr: u32) -> u64 {
     ((high as u64) << 32) | (low as u64)
 }
 
+/// Ghi MSR 64-bit (`wrmsr`): `u64` → `EDX:EAX`.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_msr(msr: u32, value: u64) {
+    let low = value as u32;
+    let high = (value >> 32) as u32;
+    // SAFETY: `wrmsr` ở CPL0 với MSR hợp lệ; không đụng bộ nhớ.
+    unsafe {
+        asm!(
+            "wrmsr",
+            in("ecx") msr,
+            in("eax") low,
+            in("edx") high,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
 /// Đọc 32-bit tại địa chỉ **vật lý** (identity map ⇒ VA == PA).
 ///
 /// Dùng để đọc `hvm_start_info.magic` mà `%ebx` trỏ tới — bằng chứng giao thức PVH. Địa chỉ nằm
@@ -148,6 +165,16 @@ pub fn read_msr(msr: u32) -> u64 {
 pub fn read_u32(addr: u64) -> u32 {
     // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (identity map 1 GiB của ảnh boot).
     unsafe { core::ptr::read_volatile(addr as *const u32) }
+}
+
+/// Ghi 32-bit tại địa chỉ **vật lý** (identity map ⇒ VA == PA).
+///
+/// Dùng cho **MMIO** của LAPIC/IOAPIC (KT-266): địa chỉ nằm trong MMIO map 3..4 GiB mà ảnh dựng
+/// ở `_start`; `volatile` để compiler không gộp/bỏ lần ghi.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_u32(addr: u64, value: u32) {
+    // SAFETY: caller bảo đảm `addr` là MMIO đã map và ghi được (LAPIC/IOAPIC).
+    unsafe { core::ptr::write_volatile(addr as *mut u32, value) }
 }
 
 /// Đọc 64-bit tại địa chỉ **vật lý** (identity map ⇒ VA == PA).
@@ -168,6 +195,44 @@ pub fn read_cr2() -> u64 {
         asm!("mov {}, cr2", out(reg) value, options(nomem, nostack, preserves_flags));
     }
     value
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ngắt — KT-266 (K5' bước 3)
+// ---------------------------------------------------------------------------------------------
+
+/// `sti` — bật ngắt che được (`RFLAGS.IF = 1`).
+///
+/// Sau lệnh này ngắt (PIT qua IOAPIC → LAPIC → vector 32) bắt đầu được CPU nhận. Ảnh gọi **một
+/// lần** ngay trước khi đo tick; mọi phần còn lại của boot chạy với ngắt tắt (trạng thái từ
+/// `_start`).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sti() {
+    // SAFETY: `sti` ở CPL0; không đụng bộ nhớ/stack.
+    unsafe {
+        asm!("sti", options(nomem, nostack));
+    }
+}
+
+/// `hlt` — dừng CPU tới **ngắt kế tiếp** (không đụng `RFLAGS.IF`).
+///
+/// Dùng trong vòng chờ khi ngắt đã bật: nhường BQL để QEMU xử lý timer, thay vì busy-wait giữ
+/// BQL và làm ngắt bị trễ hàng trăm ms (đo được ở KT-266).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn hlt() {
+    // SAFETY: `hlt` ở CPL0; không đụng bộ nhớ/stack.
+    unsafe {
+        asm!("hlt", options(nomem, nostack));
+    }
+}
+
+/// `cli` — tắt ngắt che được (`RFLAGS.IF = 0`).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn cli() {
+    // SAFETY: `cli` ở CPL0; không đụng bộ nhớ/stack.
+    unsafe {
+        asm!("cli", options(nomem, nostack));
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -254,7 +319,7 @@ core::arch::global_asm!(
     ".globl vifast_isr_unknown",
     "vifast_isr_unknown:",
     "push 0",
-    "push 0xff",
+    "push {unknown_vec}",
     "jmp vifast_isr_common",
     ".p2align 4",
     ".globl vifast_isr_de",
@@ -330,6 +395,19 @@ core::arch::global_asm!(
     ".globl vifast_isr_sx",
     "vifast_isr_sx:",
     "push 30",
+    "jmp vifast_isr_common",
+    // ---- KT-266: hai vector **ngắt** (không mã lỗi) — timer 32 và spurious 255.
+    ".p2align 4",
+    ".globl vifast_isr_timer",
+    "vifast_isr_timer:",
+    "push 0",
+    "push {timer_vec}",
+    "jmp vifast_isr_common",
+    ".p2align 4",
+    ".globl vifast_isr_spurious",
+    "vifast_isr_spurious:",
+    "push 0",
+    "push {spurious_vec}",
     "jmp vifast_isr_common",
     // ---- stub chung: giữ 15 GPR, gọi handler Rust, `iretq` hoặc halt.
     ".p2align 4",
@@ -432,6 +510,11 @@ core::arch::global_asm!(
     rip_off = const crate::exc::FRAME_RIP_OFFSET,
     cs_off = const crate::exc::FRAME_CS_OFFSET,
     rflags_off = const crate::exc::FRAME_RFLAGS_OFFSET,
+    // KT-266: vector **thật** của hai stub mới + sentinel mới của `isr_unknown` (255 đã là
+    // vector thật của spurious nên sentinel dời sang 254 — xem `crate::exc::VEC_UNKNOWN`).
+    timer_vec = const crate::exc::VEC_TIMER as u32,
+    spurious_vec = const crate::exc::VEC_SPURIOUS as u32,
+    unknown_vec = const crate::exc::VEC_UNKNOWN as u32,
 );
 
 // Khai báo stub asm — định nghĩa trong `global_asm!` ở trên.
@@ -452,6 +535,8 @@ extern "C" {
     fn vifast_isr_cp();
     fn vifast_isr_vc();
     fn vifast_isr_sx();
+    fn vifast_isr_timer();
+    fn vifast_isr_spurious();
     fn vifast_probe_int3();
     fn vifast_probe_int3_next();
     fn vifast_probe_ud2();
@@ -471,8 +556,8 @@ extern "C" {
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn stub_addr(slot: usize) -> u64 {
     use crate::exc::{
-        STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_NP, STUB_PF, STUB_SS,
-        STUB_SX, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC,
+        STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_NP, STUB_PF,
+        STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC,
     };
     let f: unsafe extern "C" fn() = match slot {
         STUB_UNKNOWN => vifast_isr_unknown,
@@ -490,6 +575,8 @@ pub fn stub_addr(slot: usize) -> u64 {
         STUB_CP => vifast_isr_cp,
         STUB_VC => vifast_isr_vc,
         STUB_SX => vifast_isr_sx,
+        STUB_TIMER => vifast_isr_timer,
+        STUB_SPURIOUS => vifast_isr_spurious,
         _ => return 0,
     };
     f as usize as u64
@@ -664,6 +751,36 @@ pub fn read_cr4() -> u64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_msr(_msr: u32) -> u64 {
     host_only("read_msr")
+}
+
+/// Stub host của [`write_msr`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_msr(_msr: u32, _value: u64) {
+    host_only("write_msr")
+}
+
+/// Stub host của [`write_u32`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_u32(_addr: u64, _value: u32) {
+    host_only("write_u32")
+}
+
+/// Stub host của [`sti`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sti() {
+    host_only("sti")
+}
+
+/// Stub host của [`cli`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn cli() {
+    host_only("cli")
+}
+
+/// Stub host của [`hlt`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn hlt() {
+    host_only("hlt")
 }
 
 /// Stub host của [`read_u32`].

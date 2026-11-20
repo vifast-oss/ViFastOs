@@ -29,9 +29,9 @@ use vifast_plat_x86_64::exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SS, STUB_SX, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC,
-    VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF, VEC_SS, VEC_SX, VEC_TS, VEC_UD,
-    VEC_UNKNOWN, VEC_VC,
+    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD,
+    STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF,
+    VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN, VEC_VC,
 };
 use vifast_plat_x86_64::gdt::{
     entry as gdt_entry, gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code,
@@ -395,8 +395,13 @@ fn exception_vectors_literal() {
     assert_eq!(VEC_VC, 29);
     assert_eq!(VEC_SX, 30);
     // Sentinel của `isr_unknown` không trùng vector thật nào (0..31) và không phải 0.
-    assert_eq!(VEC_UNKNOWN, 0xFF);
+    // **KT-266**: dời từ 255 sang 254 vì 255 là vector **thật** của spurious (có stub riêng).
+    assert_eq!(VEC_UNKNOWN, 0xFE);
     assert!(VEC_UNKNOWN > 31);
+    assert_ne!(VEC_UNKNOWN, VEC_SPURIOUS as u64);
+    // Hai vector **ngắt** của KT-266.
+    assert_eq!(VEC_TIMER, 32);
+    assert_eq!(VEC_SPURIOUS, 255);
 }
 
 /// Tập vector **có mã lỗi** đúng 10 vector của SDM Bảng 6-1.
@@ -435,18 +440,21 @@ fn stub_slot_mapping() {
     assert_eq!(stub_slot(VEC_CP), STUB_CP);
     assert_eq!(stub_slot(VEC_VC), STUB_VC);
     assert_eq!(stub_slot(VEC_SX), STUB_SX);
-    // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x30, 255) về stub chung.
-    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x30, 0x80, 0xFF] {
+    // KT-266: timer 32 và spurious 255 có stub riêng.
+    assert_eq!(stub_slot(VEC_TIMER), STUB_TIMER);
+    assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
+    // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x30, 0xFE) về stub chung.
+    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x30, 0x80, 0xFE] {
         assert_eq!(stub_slot(vec), STUB_UNKNOWN, "vector {vec}");
     }
-    // Đếm: đúng 14 vector có stub riêng.
+    // Đếm: đúng 16 vector có stub riêng (14 exception + timer + spurious).
     let special = (0..=255u8)
         .filter(|v| stub_slot(*v) != STUB_UNKNOWN)
         .count();
-    assert_eq!(special, 14);
+    assert_eq!(special, 16);
 }
 
-/// 15 slot là **15 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
+/// 17 slot là **17 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
 #[test]
 fn stub_slots_are_distinct() {
     let slots = [
@@ -465,6 +473,8 @@ fn stub_slots_are_distinct() {
         STUB_CP,
         STUB_VC,
         STUB_SX,
+        STUB_TIMER,
+        STUB_SPURIOUS,
     ];
     assert_eq!(slots.len(), STUB_COUNT);
     for (i, a) in slots.iter().enumerate() {

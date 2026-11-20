@@ -61,10 +61,23 @@ pub const VEC_VC: u8 = 29;
 /// `#SX` — security exception (có mã lỗi).
 pub const VEC_SX: u8 = 30;
 
+/// **Timer** — vector 32 (KT-266). Nằm ngoài dải exception 0..31: đây là **ngắt** phần cứng đầu
+/// tiên của ảnh. Đây là vector của `LVT_TIMER`; nguồn tick thực tế là **PIT** (kênh 0) đi qua
+/// IOAPIC → LAPIC (xem `v2/docs/k5-x86_64-boot.md` §5.4).
+pub const VEC_TIMER: u8 = 32;
+
+/// **Spurious interrupt** của LAPIC — vector 255 (KT-266). SDM Vol 3A §10.9: ngắt spurious
+/// **không** cần `EOI`; handler chỉ đếm rồi `iretq`.
+pub const VEC_SPURIOUS: u8 = 255;
+
 /// Vector **giả** mà stub `isr_unknown` đẩy: stub dùng chung không biết vector thật, nên nó đẩy
-/// một sentinel và handler in `vec=255`. Chọn `0xFF` vì nó **không** trùng vector thật nào
-/// (0..31) và không trùng `0` (giá trị "chưa có" của biến đếm).
-pub const VEC_UNKNOWN: u64 = 0xFF;
+/// một sentinel và handler in `vec=254`.
+///
+/// **KT-266 dời sentinel từ 255 sang 254**: từ bước 3, vector **255 là vector thật** (spurious
+/// của LAPIC) và có stub riêng, nên sentinel phải khác nó — nếu không, handler không phân biệt
+/// được "ngắt spurious" với "vector lạ". `254` vẫn không trùng vector thật nào (0..31, 32, 255)
+/// và không trùng `0` (giá trị "chưa có" của biến đếm).
+pub const VEC_UNKNOWN: u64 = 0xFE;
 
 /// Tập vector **có mã lỗi** (SDM Vol 3A Bảng 6-1) — đúng 10 vector.
 pub const ERROR_CODE_VECTORS: [u8; 10] = [
@@ -117,14 +130,18 @@ pub const STUB_CP: usize = 12;
 pub const STUB_VC: usize = 13;
 /// Slot stub `#SX` (có mã lỗi).
 pub const STUB_SX: usize = 14;
+/// Slot stub **LAPIC timer** (vector 32, không mã lỗi) — KT-266.
+pub const STUB_TIMER: usize = 15;
+/// Slot stub **spurious** (vector 255, không mã lỗi) — KT-266.
+pub const STUB_SPURIOUS: usize = 16;
 /// Số slot stub — **khớp** số nhánh của `asm::stub_addr`.
-pub const STUB_COUNT: usize = 15;
+pub const STUB_COUNT: usize = 17;
 
 /// Vector → slot stub. Vector không có stub riêng rơi về [`STUB_UNKNOWN`].
 ///
 /// **Hợp đồng với asm**: `asm::stub_addr(slot)` phải trả đúng stub của slot này, và stub phải
 /// đẩy đúng vector (hoặc [`VEC_UNKNOWN`] với slot 0). Test host chốt ánh xạ; ảnh boot chốt hành
-/// vi thật (`int3` ⇒ `vec=3`, …).
+/// vi thật (`int3` ⇒ `vec=3`, timer ⇒ `vec=32`, …).
 pub const fn stub_slot(vec: u8) -> usize {
     match vec {
         VEC_DE => STUB_DE,
@@ -141,6 +158,8 @@ pub const fn stub_slot(vec: u8) -> usize {
         VEC_CP => STUB_CP,
         VEC_VC => STUB_VC,
         VEC_SX => STUB_SX,
+        VEC_TIMER => STUB_TIMER,
+        VEC_SPURIOUS => STUB_SPURIOUS,
         _ => STUB_UNKNOWN,
     }
 }
@@ -162,7 +181,9 @@ pub const fn name(vec: u64) -> &'static str {
         21 => "cp",
         29 => "vc",
         30 => "sx",
-        255 => "unknown",
+        32 => "timer",
+        254 => "unknown",
+        255 => "spurious",
         _ => "other",
     }
 }

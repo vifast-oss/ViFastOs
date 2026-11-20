@@ -37,7 +37,7 @@
 //!   `hvm_start_info.magic = 0x336ec578`.
 
 use crate::control::{CR0_PE, CR0_PG, CR4_PAE, EFER_LMA, EFER_LME, MSR_IA32_EFER};
-use crate::format::{PTE_PRESENT, PTE_PS, PTE_RW};
+use crate::format::{PTE_PCD, PTE_PRESENT, PTE_PS, PTE_RW};
 
 /// Địa chỉ nạp của ảnh: 1 MiB — trên vùng EBDA/IVT/option ROM của PC, dưới 128 MiB RAM của QEMU.
 pub const BOOT_LOAD_ADDR: u64 = 0x0010_0000;
@@ -53,6 +53,27 @@ pub const PD_ENTRIES: usize = 512;
 /// 1 GiB = 512 × 2 MiB ⇒ **một** bảng PD là đủ, không cần bảng PT mức cuối.
 pub const IDENTITY_MAP_BYTES: u64 = 1 << 30;
 
+// ---------------------------------------------------------------------------------------------
+// MMIO map 3..4 GiB — KT-266 (K5' bước 3)
+// ---------------------------------------------------------------------------------------------
+//
+// LAPIC (`0xFEE0_0000`) và IOAPIC (`0xFEC0_0000`) nằm **trên** 3 GiB, ngoài identity map 1 GiB
+// của KT-257. Truy cập chúng khi chưa map ⇒ `#PF` ngay lần đọc `LAPIC_ID` đầu tiên. Vì vậy ảnh
+// dựng **thêm một** bảng PD (512 × 2 MiB) phủ `0xC000_0000..0x1_0000_0000` và gắn vào
+// `PDPT[3]`; identity map 1 GiB **giữ nguyên** (không đổi hợp đồng KT-257).
+//
+// Vùng 3..4 GiB của PC là **MMIO** (PCI hole, IOAPIC, LAPIC, BIOS) nên lá 2 MiB đặt thêm
+// `PCD = 1` (cache disable) — đúng cách map MMIO, không phụ thuộc QEMU có mô phỏng cache hay không.
+
+/// Gốc vùng **MMIO map**: 3 GiB (`PDPT[3]`).
+pub const MMIO_MAP_BASE: u64 = 0xC000_0000;
+/// Cỡ vùng MMIO map: 1 GiB = 512 × 2 MiB.
+pub const MMIO_MAP_BYTES: u64 = 1 << 30;
+/// Chỉ số `PDPT` của vùng MMIO map (`3 GiB / 1 GiB`).
+pub const MMIO_PDPT_INDEX: usize = 3;
+/// Cờ lá 2 MiB cho vùng MMIO: `P | RW | PS | PCD` (uncached).
+pub const PD_MMIO_FLAGS: u64 = PTE_PRESENT | PTE_RW | PTE_PS | PTE_PCD;
+
 /// Entry **bảng** (PML4E/PDPTE): `PA | P | RW`.
 pub const fn table_entry(pa: u64) -> u64 {
     pa | PTE_PRESENT | PTE_RW
@@ -64,6 +85,11 @@ pub const fn table_entry(pa: u64) -> u64 {
 /// không đặt `NX` (bước 1 chưa bật `EFER.NXE`, và vùng này chứa cả code lẫn stack).
 pub const fn pd_entry(index: usize) -> u64 {
     ((index as u64) * LARGE_PAGE_BYTES) | PTE_PRESENT | PTE_RW | PTE_PS
+}
+
+/// Entry **lá 2 MiB** của vùng MMIO map: `MMIO_MAP_BASE + index × 2 MiB | P | RW | PS | PCD`.
+pub const fn mmio_pd_entry(index: usize) -> u64 {
+    MMIO_MAP_BASE + ((index as u64) * LARGE_PAGE_BYTES) | PD_MMIO_FLAGS
 }
 
 /// Một bước của chuỗi bật long mode — **thứ tự** là hợp đồng (SDM §9.8.5).

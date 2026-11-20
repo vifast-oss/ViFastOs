@@ -31,11 +31,11 @@
 #![allow(clippy::assertions_on_constants)]
 
 use vifast_plat_x86_64::boot::{
-    gdt_kernel_code, gdt_kernel_data, pd_entry, table_entry, LongModeStep, BOOT_LOAD_ADDR,
-    GDT_KERNEL_CODE, GDT_KERNEL_DATA, GDT_NULL, IDENTITY_MAP_BYTES, LARGE_PAGE_BYTES,
-    LONG_MODE_SEQUENCE, MULTIBOOT2_ARCH_I386, MULTIBOOT2_CHECKSUM, MULTIBOOT2_END_TAG_SIZE,
-    MULTIBOOT2_HEADER_LEN, MULTIBOOT2_MAGIC, PD_ENTRIES, PVH_NOTE_NAME, PVH_NOTE_TYPE,
-    PVH_START_MAGIC,
+    gdt_kernel_code, gdt_kernel_data, mmio_pd_entry, pd_entry, table_entry, LongModeStep,
+    BOOT_LOAD_ADDR, GDT_KERNEL_CODE, GDT_KERNEL_DATA, GDT_NULL, IDENTITY_MAP_BYTES,
+    LARGE_PAGE_BYTES, LONG_MODE_SEQUENCE, MMIO_MAP_BASE, MMIO_MAP_BYTES, MMIO_PDPT_INDEX,
+    MULTIBOOT2_ARCH_I386, MULTIBOOT2_CHECKSUM, MULTIBOOT2_END_TAG_SIZE, MULTIBOOT2_HEADER_LEN,
+    MULTIBOOT2_MAGIC, PD_ENTRIES, PD_MMIO_FLAGS, PVH_NOTE_NAME, PVH_NOTE_TYPE, PVH_START_MAGIC,
 };
 use vifast_plat_x86_64::serial::{
     divisor, init_sequence, COM1_BASE, FCR_ENABLE_CLEAR_14, INIT_STEPS, LCR_8N1, LCR_DLAB, LSR_DR,
@@ -191,6 +191,34 @@ fn identity_map_covers_kernel_and_low_mmio() {
     // Entry cuối kết thúc đúng cuối map (không hở, không tràn).
     let last = pd_entry(PD_ENTRIES - 1) & !0xFFF;
     assert_eq!(last + LARGE_PAGE_BYTES, IDENTITY_MAP_BYTES);
+}
+
+/// **KT-266**: MMIO map 3..4 GiB — LAPIC/IOAPIC nằm ngoài identity map 1 GiB.
+#[test]
+fn mmio_map_covers_lapic_and_ioapic() {
+    assert_eq!(MMIO_MAP_BASE, 0xC000_0000);
+    assert_eq!(MMIO_MAP_BYTES, 1 << 30);
+    assert_eq!(MMIO_PDPT_INDEX, 3);
+    // `PDPT[3]` phủ đúng `3 GiB..4 GiB` (mỗi PDPT entry 1 GiB).
+    assert_eq!(MMIO_PDPT_INDEX as u64 * (1 << 30), MMIO_MAP_BASE);
+    assert_eq!(MMIO_MAP_BYTES / LARGE_PAGE_BYTES, PD_ENTRIES as u64);
+    // Lá 2 MiB của vùng MMIO: P|RW|PS|PCD = 0x93, địa chỉ bắt đầu từ 3 GiB.
+    assert_eq!(PD_MMIO_FLAGS, 0x93);
+    assert_eq!(mmio_pd_entry(0), 0xC000_0093);
+    assert_eq!(mmio_pd_entry(1), 0xC020_0093);
+    assert_eq!(mmio_pd_entry(511), 0xFFE0_0093);
+    // LAPIC `0xFEE0_0000` và IOAPIC `0xFEC0_0000` nằm trong map, đúng chỉ số entry.
+    for base in [0xFEE0_0000u64, 0xFEC0_0000] {
+        assert!(base >= MMIO_MAP_BASE && base < MMIO_MAP_BASE + MMIO_MAP_BYTES);
+        let index = ((base - MMIO_MAP_BASE) / LARGE_PAGE_BYTES) as usize;
+        assert_eq!(
+            mmio_pd_entry(index) & !0xFFF,
+            base & !(LARGE_PAGE_BYTES - 1)
+        );
+    }
+    // Entry cuối kết thúc đúng 4 GiB.
+    let last = mmio_pd_entry(PD_ENTRIES - 1) & !0xFFF;
+    assert_eq!(last + LARGE_PAGE_BYTES, MMIO_MAP_BASE + MMIO_MAP_BYTES);
 }
 
 /// Thứ tự bật long mode theo Intel SDM §9.8.5 — sai thứ tự là triple fault, không phải "chậm".

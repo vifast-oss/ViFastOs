@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh boot **x86_64** của ViFastOs — KT-257 (K5' bước 1) + KT-261 (K5' bước 2: GDT/TSS/IDT).
+//! Ảnh boot **x86_64** của ViFastOs — KT-257 (K5' bước 1) + KT-261 (K5' bước 2: GDT/TSS/IDT) +
+//! KT-266 (K5' bước 3: APIC + timer).
 //!
 //! # Đường boot
 //!
@@ -8,13 +9,17 @@
 //!        │
 //!        ├─ QEMU đọc **PVH note** (`.note.Xen`, type 18) ⇒ entry 32-bit = `_start`
 //!        ├─ _start (32-bit protected mode): cli/cld → esp = __stack_top → zero .bss
-//!        │    → dựng PML4/PDPT/PD (identity 1 GiB, 2 MiB/page) → CR4.PAE → CR3
-//!        │    → EFER.LME → CR0.PG|PE → lgdt (GDT tạm 3 entry) → ljmp 0x08:long_mode_entry
+//!        │    → dựng PML4/PDPT/PD (identity 1 GiB + **MMIO map 3..4 GiB**, 2 MiB/page)
+//!        │    → CR4.PAE → CR3 → EFER.LME → CR0.PG|PE → lgdt (GDT tạm 3 entry)
+//!        │    → ljmp 0x08:long_mode_entry
 //!        ├─ long_mode_entry (64-bit): DS/ES/SS = 0x10 → rsp = __stack_top
 //!        │    → kmain(eax, ebx, __stack_top, __ist1_top)
 //!        ├─ kmain: COM1 115200 8N1 → TAP version/plan → in bằng chứng long mode
 //!        │    → TSS (RSP0 + IST1) → GDT thật 7 entry + `ltr` → IDT 256 ô + `lidt`
-//!        │    → TAP 1..7 (gdt/idt loaded + int3/ud2/#PF/#GP/unknown) → marker → halt
+//!        │    → TAP 1..7 (gdt/idt loaded + int3/ud2/#PF/#GP/unknown)
+//!        │    → LAPIC (SVR/TPR) → IOAPIC (mask hết) → timer (LVT + initial count)
+//!        │    → `sti` → TAP 8..11 (lapic id, ioapic, timer ticks, timer eoi) → `cli`
+//!        │    → marker → halt
 //!        └─ asm::halt: chờ LSR.TEMT (có trần) → outw(0x604, 0x2000) ⇒ QEMU thoát mã 0
 //! ```
 //!
@@ -51,11 +56,13 @@
 //! nằm ở [`vifast_plat_x86_64::asm`] — crate `kernel/vifast-plat-*` mà D2-17 cho phép `unsafe`.
 //! Nhờ vậy ảnh giữ đúng luật R5 mà vẫn có đủ đường boot + xử lý exception.
 //!
-//! # Phạm vi (D2-203, KT-261)
+//! # Phạm vi (D2-203, KT-261; D2-204, KT-266)
 //!
-//! **Không** APIC, **không** timer, **không** U-mode, **không** PCI, **không** SMP, **không**
-//! `-cpu max`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp 1|2|4 + soak
-//! 600 boot, D2-149) — đây là **bước 2**.
+//! **Đã có**: GDT/TSS/IDT + handler exception (KT-261); LAPIC (ID/version/SVR/TPR), IOAPIC
+//! (ID/version + mask toàn bộ redirection), LAPIC timer periodic + `EOI` (KT-266).
+//!
+//! **Chưa**: U-mode, PCI, SMP, IPI, `-cpu max`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như
+//! K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) — đây là **bước 3**.
 
 #![no_std]
 #![no_main]
@@ -64,9 +71,10 @@ use core::arch::global_asm;
 use core::fmt::{self, Write};
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use vifast_plat_x86_64::apic;
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::boot;
-use vifast_plat_x86_64::control::{CR0_PE, CR0_PG, CR4_PAE};
+use vifast_plat_x86_64::control::{CR0_PE, CR0_PG, CR4_PAE, MSR_IA32_APIC_BASE};
 use vifast_plat_x86_64::exc;
 use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
@@ -85,12 +93,15 @@ pub const BOOT_MARKER: &str = "# viFastOs x86_64: boot BAD\n";
 pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 
 /// Số ca TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
-pub const TAP_TESTS: usize = 7;
+///
+/// KT-266 thêm **bốn** ca: `apic: lapic id`, `apic: ioapic`, `timer: ticks`, `timer: eoi`.
+pub const TAP_TESTS: usize = 11;
 
 /// Địa chỉ **canonical** nhưng **chưa map** dùng cho ca `#PF`: `0x0000_7000_0000_0000`.
 ///
 /// Canonical vì bit 63..48 = 0 trùng bit 47 = 0 (4-level paging, 48-bit VA); chưa map vì
-/// `PML4[224]` = 0 (identity map của ảnh chỉ phủ `0..1 GiB`). Đọc nó ⇒ `#PF` với `P = 0`.
+/// `PML4[224]` = 0 (identity map của ảnh chỉ phủ `0..1 GiB`, MMIO map phủ `3..4 GiB`). Đọc nó
+/// ⇒ `#PF` với `P = 0`.
 pub const PF_UNMAPPED_ADDR: u64 = 0x0000_7000_0000_0000;
 
 /// Selector **ngoài** GDT (bảng có 7 entry ⇒ limit 55; selector `0x38` = index 7 = byte 56).
@@ -163,6 +174,14 @@ global_asm!(
     "or eax, 3",
     "mov dword ptr [edi], eax",
     "mov dword ptr [edi + 4], 0",
+    // 5b. PDPT[3] = __pd_mmio | P|RW — **MMIO map 3..4 GiB** (KT-266): LAPIC `0xFEE0_0000` và
+    //     IOAPIC `0xFEC0_0000` nằm trên 3 GiB, ngoài identity map 1 GiB của KT-257. PDPT entry 3
+    //     phủ `0xC000_0000..0x1_0000_0000`; mỗi entry PDPT là 8 byte nên offset = 3 × 8 = 24.
+    "mov edi, offset __pdpt",
+    "mov eax, offset __pd_mmio",
+    "or eax, 3",
+    "mov dword ptr [edi + 24], eax",
+    "mov dword ptr [edi + 28], 0",
     // 6. PD[i] = i*2MiB | P|RW|PS — identity map 1 GiB bằng 512 lá 2 MiB.
     "mov edi, offset __pd",
     "mov eax, 0x83",
@@ -174,6 +193,18 @@ global_asm!(
     "add edi, 8",
     "dec ecx",
     "jnz 1b",
+    // 6b. __pd_mmio[i] = 0xC000_0000 + i*2MiB | P|RW|PS|PCD — 512 lá 2 MiB, **uncached** (PCD
+    //     bit 4 = 0x10) vì vùng 3..4 GiB của PC là MMIO (PCI hole, IOAPIC, LAPIC, BIOS).
+    "mov edi, offset __pd_mmio",
+    "mov eax, 0xC0000093",
+    "mov ecx, 512",
+    "2:",
+    "mov dword ptr [edi], eax",
+    "mov dword ptr [edi + 4], 0",
+    "add eax, 0x200000",
+    "add edi, 8",
+    "dec ecx",
+    "jnz 2b",
     // 7. CR4.PAE = 1 (bắt buộc trước CR3 cho long mode).
     "mov eax, cr4",
     "or eax, 0x20",
@@ -231,6 +262,10 @@ global_asm!(
     ".skip 4096",
     ".align 4096",
     "__pd:",
+    ".skip 4096",
+    // KT-266: bảng PD **thứ hai** cho MMIO map 3..4 GiB (LAPIC/IOAPIC) — 512 lá 2 MiB, PCD.
+    ".align 4096",
+    "__pd_mmio:",
     ".skip 4096",
     // Stack IST1 cho `#DF` (KT-261): 4 KiB riêng, `__ist1_top` = đỉnh (stack mọc xuống).
     ".align 4096",
@@ -389,7 +424,10 @@ fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
         && EXC_CS.load(Ordering::Relaxed) == exc::KERNEL_CS
 }
 
-/// Handler **chung** của mọi exception — stub asm (`vifast_isr_common`) gọi hàm này.
+/// Handler **chung** của mọi exception **và** ngắt — stub asm (`vifast_isr_common`) gọi hàm này.
+///
+/// KT-266 thêm hai nhánh **ngắt** (vector 32 timer, vector 255 spurious) xử lý **trước** mọi
+/// thứ khác và **không** in dòng `# exc:`; phần còn lại vẫn là đường exception của KT-261.
 ///
 /// Trả **`rip` để resume** (⇒ stub `iretq` về đó) hoặc **`0`** (⇒ stub halt sạch). Hàm **không**
 /// bao giờ trả về nếu exception không phải ca kiểm đã arm: nó in nguyên nhân rồi `halt(2)` — che
@@ -401,6 +439,22 @@ fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
 /// trường của frame và truyền thành 5 tham số SysV — cùng thông tin, không cần `unsafe`.
 #[no_mangle]
 pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u64) -> u64 {
+    // ---- KT-266: **ngắt** (không phải exception) — xử lý trước, **không** in dòng `# exc:`.
+    //
+    // Timer: tăng tick, ghi `EOI`, tăng bộ đếm EOI, rồi `iretq` về đúng chỗ bị ngắt. Không in
+    // gì: một dòng log mỗi tick sẽ làm nghẽn COM1 và biến phép đo thành đo tốc độ UART.
+    if vec == exc::VEC_TIMER as u64 {
+        TICK_COUNT.fetch_add(1, Ordering::Relaxed);
+        lapic_eoi();
+        EOI_COUNT.fetch_add(1, Ordering::Relaxed);
+        return rip;
+    }
+    // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
+    if vec == exc::VEC_SPURIOUS as u64 {
+        SPURIOUS_COUNT.fetch_add(1, Ordering::Relaxed);
+        return rip;
+    }
+
     let cr2 = asm::read_cr2();
     let mut console = Console;
     let _ = writeln!(
@@ -436,6 +490,404 @@ pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u6
 
     // Exception **không** được chờ: in xong halt sạch — không quay lại chỗ lỗi.
     asm::halt(2)
+}
+
+// ---------------------------------------------------------------------------------------------
+// APIC + timer — KT-266 (K5' bước 3)
+// ---------------------------------------------------------------------------------------------
+
+/// Địa chỉ MMIO của LAPIC, đọc từ `IA32_APIC_BASE` lúc khởi tạo — handler `EOI` dùng lại.
+static LAPIC_BASE: AtomicU64 = AtomicU64::new(0);
+/// Số tick timer đã nhận (handler tăng) — nguồn tick là PIT kênh 0 qua IOAPIC → LAPIC.
+static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Số lần ghi `EOI` (handler tăng **sau** khi ghi EOI thành công).
+static EOI_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Số ngắt **spurious** đã nhận — không `EOI` (SDM Vol 3A §10.9).
+static SPURIOUS_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Số chia LAPIC timer: **1** (mã `0b1011`).
+const TIMER_DIVIDE: u32 = 1;
+/// Giá trị đếm đầu tiên của LAPIC timer — 1 ms danh định (mô hình QEMU: 1 count/ns).
+///
+/// **Không** dùng làm nguồn tick: QEMU TCG giao ngắt LAPIC timer không đều (đo được chu kỳ
+/// 2,8–38,5 ms cho chu kỳ danh định 100 µs). Ảnh cấu hình đủ ba thanh ghi + **kiểm đếm ngược**
+/// (bằng chứng timer chạy) rồi mask `LVT`; nguồn tick là **PIT** (xem [`timer_init`]).
+const TIMER_INITIAL_COUNT: u32 = 1_000_000;
+/// Số chia PIT cho **100 Hz**: 1_193_182 / 100 = 11_931,82 ⇒ 11_932 (sai số 0,0015 %).
+const PIT_DIVISOR_100HZ: u16 = 11_932;
+/// Tần số tick danh định của PIT (Hz) — **tính** từ hằng số PIT, làm tròn, không hardcode.
+const PIT_TICK_HZ: u32 =
+    (apic::PIT_FREQUENCY_HZ + PIT_DIVISOR_100HZ as u32 / 2) / PIT_DIVISOR_100HZ as u32;
+/// Chân IOAPIC của IRQ0 (PIT) trên PC: **pin 2** (IRQ0 → pin 2, IRQ1 → pin 1, IRQ2 → pin 0).
+const IOAPIC_PIT_PIN: u32 = 2;
+/// Trần vòng chờ **một** mốc tick — mốc đầu busy-wait (mỗi vòng 3 cổng I/O PIT) nên timer hỏng
+/// thì trần này cắt (ĐỎ) thay vì treo; hai mốc sau dùng `hlt` (timer đã chứng minh chạy).
+///
+/// Đo được: mốc đầu tới sau ~150 ms ≈ vài chục nghìn vòng ⇒ 500_000 là dư ~10×.
+const TICK_SPIN_BOUND: u32 = 500_000;
+/// Chênh lệch tick tối đa giữa hai mốc liên tiếp — vượt là timer chạy sai nhịp (không hardcode
+/// số tick chính xác: QEMU TCG không đều).
+const MAX_TICK_DELTA: u64 = 1_000;
+
+/// Đọc thanh ghi LAPIC (MMIO 32-bit) theo offset.
+fn lapic_read(offset: u32) -> u32 {
+    asm::read_u32(LAPIC_BASE.load(Ordering::Relaxed) + offset as u64)
+}
+
+/// Ghi thanh ghi LAPIC (MMIO 32-bit) theo offset.
+fn lapic_write(offset: u32, value: u32) {
+    asm::write_u32(LAPIC_BASE.load(Ordering::Relaxed) + offset as u64, value);
+}
+
+/// Ghi `EOI` — báo LAPIC đã xử lý xong ngắt hiện tại (SDM §10.6.1).
+fn lapic_eoi() {
+    lapic_write(apic::LAPIC_EOI, 0);
+}
+
+/// Đọc thanh ghi IOAPIC qua cặp `IOREGSEL`/`IOWIN`.
+fn ioapic_read(reg: u32) -> u32 {
+    asm::write_u32(apic::IOAPIC_DEFAULT_BASE + apic::IOAPIC_REGSEL as u64, reg);
+    asm::read_u32(apic::IOAPIC_DEFAULT_BASE + apic::IOAPIC_WIN as u64)
+}
+
+/// Ghi thanh ghi IOAPIC qua cặp `IOREGSEL`/`IOWIN`.
+fn ioapic_write(reg: u32, value: u32) {
+    asm::write_u32(apic::IOAPIC_DEFAULT_BASE + apic::IOAPIC_REGSEL as u64, reg);
+    asm::write_u32(apic::IOAPIC_DEFAULT_BASE + apic::IOAPIC_WIN as u64, value);
+}
+
+/// Nạp PIT kênh 0 **mode 2** (rate generator — tự nạp lại) với `divisor`.
+fn pit_program_mode2(divisor: u16) {
+    asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_CH0_MODE2_LOHI);
+    asm::outb(apic::PIT_CH0_DATA, divisor as u8);
+    asm::outb(apic::PIT_CH0_DATA, (divisor >> 8) as u8);
+}
+
+/// Đọc counter PIT kênh 0 bằng lệnh **latch** (hai lần đọc LSB/MSB là một ảnh ổn định).
+fn pit_latch_read() -> u16 {
+    asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_LATCH_CH0);
+    let lo = asm::inb(apic::PIT_CH0_DATA) as u16;
+    let hi = asm::inb(apic::PIT_CH0_DATA) as u16;
+    (hi << 8) | lo
+}
+
+/// Nạp PIT **kênh 2** mode 2 (rate generator) với `divisor` — **đồng hồ đo** độc lập kênh 0.
+///
+/// Kênh 2 là timer của loa: phải bật **gate** (cổng `0x61` bit 0) thì counter mới chạy, và giữ
+/// bit dữ liệu loa = 0 để không phát âm. Dùng divisor `0xFFFF` (chu kỳ 54,9 ms) — lớn hơn nhiều
+/// so với khoảng cách giữa hai lần đọc (~10 ms), nên `pit_elapsed_ticks` không bị mất vòng.
+fn pit2_program_mode2(divisor: u16) {
+    let p61 = asm::inb(apic::PIT_SPEAKER_PORT);
+    asm::outb(
+        apic::PIT_SPEAKER_PORT,
+        (p61 & !apic::PIT_SPEAKER_DATA) | apic::PIT_SPEAKER_GATE2,
+    );
+    asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_CH2_MODE2_LOHI);
+    asm::outb(apic::PIT_CH2_DATA, divisor as u8);
+    asm::outb(apic::PIT_CH2_DATA, (divisor >> 8) as u8);
+}
+
+/// Đọc counter PIT **kênh 2** bằng lệnh latch.
+fn pit2_latch_read() -> u16 {
+    asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_LATCH_CH2);
+    let lo = asm::inb(apic::PIT_CH2_DATA) as u16;
+    let hi = asm::inb(apic::PIT_CH2_DATA) as u16;
+    (hi << 8) | lo
+}
+
+/// Chờ tới khi `TICK_COUNT >= target`, tối đa `bound` vòng; trả tick hiện tại hoặc `None`.
+///
+/// Trong lúc chờ, **cộng dồn** số tick PIT đã trôi qua vào `elapsed` (xử lý bọc mode 2 mỗi lần
+/// đọc) — nhờ vậy cửa sổ đo `hz` không bị đếm thiếu khi counter PIT nạp lại nhiều lần.
+fn wait_ticks_pit(
+    target: u64,
+    bound: u32,
+    prev: &mut u16,
+    elapsed: &mut u32,
+    allow_hlt: bool,
+) -> Option<u64> {
+    let mut spins = 0u32;
+    loop {
+        let now = TICK_COUNT.load(Ordering::Relaxed);
+        if now >= target {
+            return Some(now);
+        }
+        if spins >= bound {
+            return None;
+        }
+        let p = pit2_latch_read();
+        *elapsed += apic::pit_elapsed_ticks(*prev, p);
+        *prev = p;
+        spins += 1;
+        if allow_hlt {
+            // `hlt` (ngắt đã bật) nhường BQL cho QEMU xử lý timer — busy-wait làm ngắt trễ
+            // ~100 ms. Chỉ dùng **sau** khi đã thấy tick đầu tiên: nếu timer hỏng, `hlt` sẽ
+            // chặn tới khi runner hết ngân sách, còn busy-wait thì trần `bound` cắt được.
+            asm::hlt();
+        } else {
+            core::hint::spin_loop();
+        }
+    }
+}
+
+/// Kết quả khởi tạo LAPIC — bằng chứng in ra log + dùng cho TAP.
+struct LapicInfo {
+    /// `IA32_APIC_BASE` đọc lại sau khi bật (bit 11 = enable).
+    base_msr: u64,
+    /// Địa chỉ MMIO đã dùng.
+    base: u64,
+    /// `LAPIC_ID` thô.
+    id_raw: u32,
+    /// `LAPIC_VERSION` thô.
+    version_raw: u32,
+    /// `SVR` đọc lại sau khi ghi.
+    svr: u32,
+}
+
+/// Khởi tạo LAPIC: che 8259 PIC, đọc `IA32_APIC_BASE`, bật APIC toàn cục nếu cần, đọc
+/// ID/version, bật `SVR`, đặt `TPR = 0` (nhận mọi ưu tiên), mask `LINT0`/`LINT1`.
+fn lapic_init() -> LapicInfo {
+    // 0. Che **8259 PIC** trước mọi thứ: trên PC, PIC nối vào `LAPIC.LINT0` (virtual wire) và
+    //    BIOS đặt vector IRQ0 = `0x08` — **trùng `#DF`**. Không che thì ngắt PIT (IRQ0) được giao
+    //    thẳng cho CPU với vector 8 và ảnh chết trong `#DF` ngay sau `sti` (đo được ở lần chạy
+    //    đầu KT-266: `# exc: vec=8 err=0x100479 rip=0x8 cs=0x203`).
+    asm::outb(apic::PIC1_DATA, apic::PIC_MASK_ALL);
+    asm::outb(apic::PIC2_DATA, apic::PIC_MASK_ALL);
+
+    // 1. `IA32_APIC_BASE`: base ở bit 12..51, bit 11 = enable toàn cục.
+    let mut msr = asm::read_msr(MSR_IA32_APIC_BASE);
+    if msr & apic::APIC_BASE_ENABLE == 0 {
+        msr |= apic::APIC_BASE_ENABLE;
+        asm::write_msr(MSR_IA32_APIC_BASE, msr);
+    }
+    let base = msr & apic::APIC_BASE_ADDR_MASK;
+    LAPIC_BASE.store(base, Ordering::Relaxed);
+
+    // 2. Đọc ID/version **trước** khi bật SVR — nếu MMIO không map/không có APIC, đây là chỗ
+    //    fault hoặc đọc ra 0/0xFFFFFFFF và TAP sẽ đỏ.
+    let id_raw = lapic_read(apic::LAPIC_ID);
+    let version_raw = lapic_read(apic::LAPIC_VERSION);
+
+    // 3. Bật APIC bằng phần mềm: `SVR = vector spurious | APIC_ENABLE`.
+    lapic_write(apic::LAPIC_SVR, apic::svr_value(exc::VEC_SPURIOUS));
+    // 4. `TPR = 0` — không che ưu tiên nào (mọi ngắt đều được nhận).
+    lapic_write(apic::LAPIC_TPR, 0);
+    // 4b. Mask `LINT0`/`LINT1` — chặn nốt đường virtual wire của PIC và NMI ngoài; nguồn ngắt
+    //     duy nhất còn lại là IOAPIC (đã mask toàn bộ, sau đó mở đúng IRQ0 cho PIT).
+    lapic_write(apic::LAPIC_LVT_LINT0, apic::LVT_MASKED);
+    lapic_write(apic::LAPIC_LVT_LINT1, apic::LVT_MASKED);
+    // 5. Đọc lại SVR — bằng chứng ghi **thật**, không chỉ "đã gọi".
+    let svr = lapic_read(apic::LAPIC_SVR);
+
+    LapicInfo {
+        base_msr: asm::read_msr(MSR_IA32_APIC_BASE),
+        base,
+        id_raw,
+        version_raw,
+        svr,
+    }
+}
+
+/// Kết quả khởi tạo IOAPIC.
+struct IoapicInfo {
+    /// `IOAPICID` thô.
+    id_raw: u32,
+    /// `IOAPICVER` thô.
+    version_raw: u32,
+    /// Số redirection entry (`IOAPICVER` + 1).
+    entries: u32,
+    /// `true` ⇔ **mọi** entry đọc lại đều có bit mask.
+    all_masked: bool,
+}
+
+/// Khởi tạo IOAPIC: đọc `IOAPICID`/`IOAPICVER`, rồi **mask toàn bộ** redirection entry.
+///
+/// Bước này **chưa** cần ngoại vi: mục tiêu là chứng minh có IOAPIC thật (đọc được ID/version)
+/// và che hết nguồn ngắt ngoài. [`timer_init`] sau đó mở **đúng một** entry (IRQ0/PIT) làm nguồn
+/// tick — đó là lựa chọn dự phòng của KT-266, ghi rõ trong tài liệu.
+fn ioapic_init() -> IoapicInfo {
+    let id_raw = ioapic_read(apic::IOAPIC_ID_REG);
+    let version_raw = ioapic_read(apic::IOAPIC_VER_REG);
+    let entries = apic::ioapic_redirection_count(version_raw);
+    let mut all_masked = true;
+    let mut pin = 0u32;
+    while pin < entries {
+        if let Some(reg) = apic::ioapic_redtbl_reg(pin) {
+            let low = ioapic_read(reg);
+            ioapic_write(reg, apic::ioapic_redir_low_masked(low));
+            // Đọc lại: mask phải **thật sự** nằm trong thanh ghi.
+            if !apic::ioapic_redir_is_masked(ioapic_read(reg)) {
+                all_masked = false;
+            }
+        }
+        pin += 1;
+    }
+    IoapicInfo {
+        id_raw,
+        version_raw,
+        entries,
+        all_masked,
+    }
+}
+
+/// Kết quả khởi tạo timer.
+struct TimerInit {
+    /// `LAPIC_TIMER_CURRENT_COUNT` lần đọc thứ nhất.
+    lapic_count0: u32,
+    /// `LAPIC_TIMER_CURRENT_COUNT` lần đọc thứ hai (sau vài vòng).
+    lapic_count1: u32,
+    /// `true` ⇔ current count **giảm** ⇒ LAPIC timer chạy thật.
+    lapic_timer_runs: bool,
+    /// `true` ⇔ redirection IRQ0 của IOAPIC trỏ vector 32, **không** mask, dest 0.
+    ioapic_route_ok: bool,
+    /// Counter PIT đọc ngay sau khi nạp mode 2 (phải ≈ divisor).
+    pit_counter0: u16,
+    /// Counter PIT sau vài vòng (phải **giảm**).
+    pit_counter1: u16,
+}
+
+/// Khởi tạo timer: cấu hình + kiểm LAPIC timer, rồi dùng **PIT** làm nguồn tick.
+///
+/// # Vì sao nguồn tick là PIT (D2-204, KT-266)
+///
+/// Đo trên QEMU 11.1.3 TCG: LAPIC timer đặt `initial_count = 100_000`, chia 1 (chu kỳ danh định
+/// 100 µs theo mô hình QEMU `(count+1) ns`) nhưng **khoảng cách giữa hai ngắt đo được** là
+/// 2,8–38,5 ms và đổi giữa các lần boot — QEMU chỉ xử lý timer ở ranh giới vòng lặp chính, không
+/// theo từng chu kỳ. Vì vậy ảnh dùng **PIT kênh 0 mode 2** (1,193182 MHz, chia 11_932 ⇒ 100 Hz)
+/// làm nguồn tick, còn LAPIC **nhận** ngắt qua IOAPIC (redirection IRQ0 → vector 32) và ghi
+/// `EOI`. LAPIC timer vẫn được cấu hình đủ ba thanh ghi và **kiểm đếm ngược** — bằng chứng nó
+/// chạy — rồi mask để không tranh nguồn tick.
+fn timer_init() -> TimerInit {
+    // ---- 1. LAPIC timer: đủ ba thanh ghi (divide, LVT, initial count) + kiểm đếm ngược.
+    let divide_code = apic::timer_divide_code(TIMER_DIVIDE).unwrap_or(apic::TIMER_DIVIDE_BY_1);
+    lapic_write(apic::LAPIC_TIMER_DIVIDE, divide_code);
+    lapic_write(
+        apic::LAPIC_LVT_TIMER,
+        apic::lvt_timer_value(exc::VEC_TIMER, true),
+    );
+    lapic_write(apic::LAPIC_TIMER_INITIAL_COUNT, TIMER_INITIAL_COUNT);
+    let lapic_count0 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
+    let mut spins = 0u32;
+    while spins < 1_000 {
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    let lapic_count1 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
+    let lapic_timer_runs = lapic_count1 < lapic_count0;
+    // Mask `LVT`: nguồn tick là PIT, LAPIC timer **không** được phát ngắt.
+    lapic_write(
+        apic::LAPIC_LVT_TIMER,
+        apic::lvt_timer_value(exc::VEC_TIMER, true) | apic::LVT_MASKED,
+    );
+
+    // ---- 2. PIT kênh 0 mode 2 — 100 Hz.
+    pit_program_mode2(PIT_DIVISOR_100HZ);
+    let pit_counter0 = pit_latch_read();
+    let mut pit_spins = 0u32;
+    while pit_spins < 2000 {
+        core::hint::spin_loop();
+        pit_spins += 1;
+    }
+    let pit_counter1 = pit_latch_read();
+
+    // ---- 3. IOAPIC: mở **đúng một** redirection (IRQ0/PIT) → vector 32, dest = LAPIC 0.
+    let mut ioapic_route_ok = false;
+    if let Some(reg) = apic::ioapic_redtbl_reg(IOAPIC_PIT_PIN) {
+        ioapic_write(reg, exc::VEC_TIMER as u32);
+        ioapic_write(reg + 1, 0);
+        let low = ioapic_read(reg);
+        let high = ioapic_read(reg + 1);
+        ioapic_route_ok = (low & 0xFF) == exc::VEC_TIMER as u32
+            && !apic::ioapic_redir_is_masked(low)
+            && high == 0;
+    }
+
+    TimerInit {
+        lapic_count0,
+        lapic_count1,
+        lapic_timer_runs,
+        ioapic_route_ok,
+        pit_counter0,
+        pit_counter1,
+    }
+}
+
+/// Kết quả đo timer.
+struct TimerInfo {
+    /// Tần số tick **đo được** (Hz) trên cửa sổ ba mốc — không phải tần số danh định.
+    hz: u32,
+    /// Tick tại mốc thứ ba.
+    ticks: u64,
+    /// `true` ⇔ ba mốc **tăng nghiêm ngặt** và chênh lệch trong khoảng hợp lý.
+    ticks_ok: bool,
+    /// `true` ⇔ số `EOI` == số tick.
+    eoi_ok: bool,
+    /// Cửa sổ đo **đo được** (tick PIT) từ mốc đầu tới mốc cuối — bằng chứng nhịp.
+    period_pit: u32,
+}
+
+/// Đo timer: ba mốc tick + `hz` **đo** bằng PIT + đối chiếu `EOI` với tick.
+///
+/// # Vì sao **không** hardcode số tick
+///
+/// QEMU TCG không bảo đảm nhịp đều: một mốc có thể nhảy 1 hoặc vài tick. Vì vậy ca kiểm chỉ đòi
+/// (i) ba mốc **tăng nghiêm ngặt**, (ii) mỗi chênh lệch ≤ [`MAX_TICK_DELTA`], (iii) `hz > 0`.
+/// Số tick **tuyệt đối** không phải hợp đồng.
+///
+/// `hz` là **trung bình đo được** trên cả cửa sổ ba mốc (không phải tần số danh định): PIT đếm
+/// bằng counter mode 2, còn tick đếm bằng handler. Dưới TCG, QEMU xử lý timer ở ranh giới vòng
+/// lặp chính nên `hz` đo được **thấp hơn** 100 Hz danh định và đổi giữa các lần boot — đó là số
+/// thật, không phải lỗi cấu hình.
+fn measure_timer() -> TimerInfo {
+    // ---- 1. Ba mốc tick: mỗi mốc chờ tick tăng thêm 1 (có trần), **cộng dồn** PIT kênh 2.
+    pit2_program_mode2(apic::PIT_MAX_DIVISOR);
+    let mut prev = pit2_latch_read();
+    let mut elapsed = 0u32;
+    let s0 = TICK_COUNT.load(Ordering::Relaxed);
+    // Mốc đầu **busy-wait** (trần `bound` cắt được nếu timer hỏng); hai mốc sau `hlt` vì timer
+    // đã chứng minh chạy.
+    let s1 = wait_ticks_pit(s0 + 1, TICK_SPIN_BOUND, &mut prev, &mut elapsed, false);
+    // `hz` đo trên **hai mốc sau** (busy-wait đầu chậm hơn hẳn nên không đại diện nhịp).
+    let mut prev2 = pit2_latch_read();
+    let mut elapsed2 = 0u32;
+    let s2 = match s1 {
+        Some(t) => wait_ticks_pit(t + 1, TICK_SPIN_BOUND, &mut prev2, &mut elapsed2, true),
+        None => None,
+    };
+    let s3 = match s2 {
+        Some(t) => wait_ticks_pit(t + 1, TICK_SPIN_BOUND, &mut prev2, &mut elapsed2, true),
+        None => None,
+    };
+    let ticks_ok = match (s1, s2, s3) {
+        (Some(a), Some(b), Some(c)) => {
+            a > s0
+                && b > a
+                && c > b
+                && (a - s0) <= MAX_TICK_DELTA
+                && (b - a) <= MAX_TICK_DELTA
+                && (c - b) <= MAX_TICK_DELTA
+        }
+        _ => false,
+    };
+    let ticks = s3.unwrap_or_else(|| TICK_COUNT.load(Ordering::Relaxed));
+
+    // ---- 2. `hz` trung bình trên cửa sổ hai mốc sau: tick LAPIC / tick PIT × 1,193182 MHz.
+    let tick_delta = match (s1, s3) {
+        (Some(a), Some(c)) => c.saturating_sub(a).min(u32::MAX as u64) as u32,
+        _ => 0,
+    };
+    let hz = apic::hz_from_pit(tick_delta, elapsed2);
+
+    // ---- 3. `EOI` phải bằng tick: handler ghi EOI **mỗi** tick, không thừa không thiếu.
+    let eoi_ok = EOI_COUNT.load(Ordering::Relaxed) == TICK_COUNT.load(Ordering::Relaxed);
+
+    TimerInfo {
+        hz,
+        ticks,
+        ticks_ok,
+        eoi_ok,
+        period_pit: elapsed2,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -496,6 +948,15 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         boot::IDENTITY_MAP_BYTES,
         boot::PD_ENTRIES,
         cr3 & !0xFFF,
+    );
+    // KT-266: MMIO map 3..4 GiB — LAPIC/IOAPIC nằm ngoài identity map 1 GiB.
+    let _ = writeln!(
+        console,
+        "# viFastOs x86_64: mmio map 0x{:x}..0x{:x} pages={} pcd={}",
+        boot::MMIO_MAP_BASE,
+        boot::MMIO_MAP_BASE + boot::MMIO_MAP_BYTES,
+        boot::PD_ENTRIES,
+        (boot::PD_MMIO_FLAGS & 0x10) >> 4,
     );
 
     // Marker **chỉ** in khi long mode thật sự bật (LMA + PG + PE + PAE). Nếu in sớm, một ảnh hỏng
@@ -602,7 +1063,7 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         exc_caught(VEC_GP, GP_BAD_SELECTOR as u64, asm::probe_gp_insn()),
     );
 
-    // ---- TAP 7: `int 0x30` ⇒ ô `isr_unknown` (sentinel 255) — mọi vector khác vẫn **thấy được**.
+    // ---- TAP 7: `int 0x30` ⇒ ô `isr_unknown` (sentinel 254) — mọi vector khác vẫn **thấy được**.
     exc_reset();
     exc_arm(exc::VEC_UNKNOWN, asm::probe_unknown_resume());
     asm::probe_unknown();
@@ -612,6 +1073,81 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         "exc: unknown",
         exc_caught(exc::VEC_UNKNOWN, 0, asm::probe_unknown_resume()),
     );
+
+    // ---- KT-266: APIC + timer.
+    //
+    // Thứ tự: LAPIC (SVR/TPR) → IOAPIC (mask hết) → timer (LVT + initial count) → `sti` → đo.
+    // Ngắt **chỉ** bật sau khi mọi thứ đã cấu hình: một ngắt đến sớm sẽ vào handler khi
+    // `LAPIC_BASE`/`TICK_COUNT` chưa sẵn sàng.
+
+    // ---- TAP 8: LAPIC — đọc được ID/version qua MMIO, `SVR` đã bật (bit 8) + vector spurious.
+    let lapic = lapic_init();
+    let lapic_id = apic::lapic_id(lapic.id_raw);
+    let lapic_version = apic::lapic_version(lapic.version_raw);
+    let lapic_ok = lapic.base == apic::LAPIC_DEFAULT_BASE
+        && lapic.base_msr & apic::APIC_BASE_ENABLE != 0
+        && lapic.svr & apic::SVR_APIC_ENABLE != 0
+        && (lapic.svr & apic::SVR_VECTOR_MASK) == exc::VEC_SPURIOUS as u32
+        && lapic_version != 0
+        && lapic_version != 0xFF;
+    let _ = writeln!(
+        console,
+        "# apic: id={lapic_id} version=0x{lapic_version:02x} svr=0x{:03x}",
+        lapic.svr,
+    );
+    check(&mut console, 8, "apic: lapic id", lapic_ok);
+
+    // ---- TAP 9: IOAPIC — đọc được `IOAPICID`/`IOAPICVER`, **mask toàn bộ** redirection entry.
+    let ioapic = ioapic_init();
+    let ioapic_id = apic::ioapic_id(ioapic.id_raw);
+    let ioapic_version = apic::ioapic_version(ioapic.version_raw);
+    let ioapic_ok = ioapic.entries >= 1
+        && ioapic.entries <= apic::IOAPIC_MAX_REDIRECTIONS
+        && ioapic_version != 0
+        && ioapic_version != 0xFF
+        && ioapic.all_masked;
+    let _ = writeln!(
+        console,
+        "# apic: ioapic id={ioapic_id} ver=0x{ioapic_version:02x} entries={}",
+        ioapic.entries,
+    );
+    check(&mut console, 9, "apic: ioapic", ioapic_ok);
+
+    // ---- TAP 10/11: timer — cấu hình LAPIC timer + PIT, bật ngắt, đo tick + EOI.
+    let timer_init = timer_init();
+    let _ = writeln!(
+        console,
+        "# timer: lapic count0={} count1={} runs={} ioapic_route={} nominal_hz={} pit=0x{:04x}->0x{:04x}",
+        timer_init.lapic_count0,
+        timer_init.lapic_count1,
+        timer_init.lapic_timer_runs as u8,
+        timer_init.ioapic_route_ok as u8,
+        PIT_TICK_HZ,
+        timer_init.pit_counter0,
+        timer_init.pit_counter1,
+    );
+    asm::sti();
+    let timer = measure_timer();
+    asm::cli();
+    let _ = writeln!(
+        console,
+        "# timer: hz={} ticks={} window_pit={}",
+        timer.hz, timer.ticks, timer.period_pit,
+    );
+    check(
+        &mut console,
+        10,
+        "timer: ticks",
+        timer.ticks_ok && timer.hz > 0 && timer_init.lapic_timer_runs && timer_init.ioapic_route_ok,
+    );
+    let _ = writeln!(
+        console,
+        "# timer: eoi={} ticks={} spurious={}",
+        EOI_COUNT.load(Ordering::Relaxed),
+        TICK_COUNT.load(Ordering::Relaxed),
+        SPURIOUS_COUNT.load(Ordering::Relaxed),
+    );
+    check(&mut console, 11, "timer: eoi", timer.eoi_ok);
 
     let _ = writeln!(
         console,

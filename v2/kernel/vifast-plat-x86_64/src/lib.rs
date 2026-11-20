@@ -20,6 +20,8 @@
 //!   `divisor()` cho 115200 8N1, **thứ tự** chuỗi khởi tạo;
 //! - [`boot`] (KT-257): dữ liệu đường boot — entry bảng trang 2 MiB, thứ tự bật long mode, GDT
 //!   tối thiểu, header multiboot2 và note PVH.
+//! - [`apic`] (KT-266): dữ liệu **APIC + timer** — địa chỉ MMIO LAPIC/IOAPIC, offset + bit thanh
+//!   ghi, bảng chia LAPIC timer, redirection entry IOAPIC, và số học PIT để **đo** `hz`.
 //!
 //! # Crate này **không** làm gì
 //!
@@ -47,6 +49,7 @@
 #![no_std]
 #![deny(unsafe_code)]
 
+pub mod apic;
 pub mod asm;
 pub mod boot;
 pub mod calling;
@@ -62,6 +65,23 @@ pub mod tss;
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);
 
+pub use apic::{
+    hz_from_pit, ioapic_id, ioapic_redir_is_masked, ioapic_redir_low_masked,
+    ioapic_redirection_count, ioapic_redtbl_reg, ioapic_version, lapic_id, lapic_version,
+    lvt_is_masked, lvt_timer_value, lvt_vector, pit_elapsed_ticks, svr_value, timer_divide_code,
+    timer_divide_value, APIC_BASE_ADDR_MASK, APIC_BASE_BSP, APIC_BASE_ENABLE, IOAPIC_DEFAULT_BASE,
+    IOAPIC_ID_REG, IOAPIC_MAX_REDIRECTIONS, IOAPIC_REDIR_MASKED, IOAPIC_REDTBL_BASE,
+    IOAPIC_REDTBL_STRIDE, IOAPIC_REGSEL, IOAPIC_VER_REG, IOAPIC_WIN, LAPIC_DEFAULT_BASE, LAPIC_EOI,
+    LAPIC_ID, LAPIC_ID_SHIFT, LAPIC_LVT_LINT0, LAPIC_LVT_LINT1, LAPIC_LVT_TIMER, LAPIC_SVR,
+    LAPIC_TIMER_CURRENT_COUNT, LAPIC_TIMER_DIVIDE, LAPIC_TIMER_INITIAL_COUNT, LAPIC_TPR,
+    LAPIC_VERSION, LAPIC_VERSION_MASK, LVT_MASKED, LVT_TIMER_PERIODIC, LVT_VECTOR_MASK, PIC1_DATA,
+    PIC2_DATA, PIC_MASK_ALL, PIT_CH0_CMD, PIT_CH0_DATA, PIT_CH2_DATA, PIT_CMD_CH0_MODE0_LOHI,
+    PIT_CMD_CH0_MODE2_LOHI, PIT_CMD_CH2_MODE2_LOHI, PIT_CMD_LATCH_CH0, PIT_CMD_LATCH_CH2,
+    PIT_FREQUENCY_HZ, PIT_MAX_DIVISOR, PIT_SPEAKER_DATA, PIT_SPEAKER_GATE2, PIT_SPEAKER_PORT,
+    SVR_APIC_ENABLE, SVR_VECTOR_MASK, TIMER_DIVIDE_BY_1, TIMER_DIVIDE_BY_128, TIMER_DIVIDE_BY_16,
+    TIMER_DIVIDE_BY_2, TIMER_DIVIDE_BY_32, TIMER_DIVIDE_BY_4, TIMER_DIVIDE_BY_64,
+    TIMER_DIVIDE_BY_8,
+};
 pub use calling::{
     Reg, INT80_MR_REGS, INT80_RETURN_MSGINFO_REG, INT80_VECTOR, SYSCALL_ARG_REGS,
     SYSCALL_CLOBBERED, SYSCALL_MR_REGS, SYSCALL_MSGINFO_REG, SYSCALL_MSRS, SYSCALL_NUMBER_REG,
@@ -85,9 +105,9 @@ pub use exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SS, STUB_SX, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC,
-    VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF, VEC_SS, VEC_SX, VEC_TS, VEC_UD,
-    VEC_UNKNOWN, VEC_VC,
+    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD,
+    STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF,
+    VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN, VEC_VC,
 };
 pub use format::{
     is_canonical_bits, Descriptor, MemAttr, PageTableFormat, Perms, Shareability, IA32_PAT_DEFAULT,
