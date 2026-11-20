@@ -3921,6 +3921,40 @@ def _check_state_write(
     return used
 
 
+def _scope_token_targets(
+    root: Path,
+    scope: "wake_scope.ProtectedScope",
+    files: Sequence[Tuple[Path, str, List[Fn]]],
+    test_only: set,
+) -> List[Tuple[Path, str, List[Fn], bool]]:
+    """**KT-258 (WB-21)** — tệp thuộc `token_scope` nhưng **ngoài** `V2_SCAN`.
+
+    Luật token `wake` trước KT-258 chỉ chạy trên `files` = `v2/kernel` + `v2/sim`. Phạm vi
+    **định nghĩa** (`wake_scope.token_scope`) rộng hơn: crate trong **bao đóng sản phẩm** ở gốc
+    mới (`v2/drivers/…`) là mã sản phẩm nhưng **không bao giờ** được quét ⇒ đường lọt WB-21
+    (đo: `JOURNAL/kt258-attack/logs/p1c-feature-gated-closure/`). Hàm này trả đúng các tệp còn
+    thiếu để **cả hai** chế độ dùng chung một tập đích (một nguồn, không chép luật).
+    """
+    known = {p for p, _t, _f in files}
+    out: List[Tuple[Path, str, List[Fn], bool]] = []
+    for base_rel in scope.roots():
+        base = root / base_rel
+        if not base.is_dir():
+            continue
+        for p in _iter_rs_ci(base, root):
+            if p in known or _is_build_dir(root, p):
+                continue
+            relp = rel(root, p)
+            if not scope.token_scope(relp):
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            out.append((p, text, find_functions(p, text), is_test_file(p, root, test_only)))
+    return out
+
+
 def scan_v2(
     root: Path,
     strict: bool,
@@ -3949,6 +3983,9 @@ def scan_v2(
         r.err("E_SCOPE_REDUCTION", e)
     for e in scope.check_lib_core_dependency():
         r.err("E_SCOPE_LIB_CORE", e)
+    # **KT-258 (WB-23)** — path-dependency ra **ngoài gốc repo** ⇒ từ chối rõ (D2-188 §2).
+    for e in scope.check_outside_dependencies():
+        r.err("E_SCOPE_OUTSIDE", e)
 
     # --- mỏ neo (fail-closed) -------------------------------------------------
     # **KT-241** — `wake_step` **rời** `core_sched.rs`/`kobj.rs` sang `state_write.rs`
@@ -4025,6 +4062,11 @@ def scan_v2(
     # reviewer L11 đã phá cho luật `wake` (KT-168 §1.2 B8/B9). Tính **một lần** cho cả lượt
     # quét (hàm có cache theo gốc cây, nhưng truyền vào để không phụ thuộc cache toàn cục).
     test_only = test_only_modules(root)
+    # **KT-258 (WB-21)** — luật token phải chạy trên **mọi** tệp thuộc `token_scope`, không chỉ
+    # `V2_SCAN`: crate trong bao đóng sản phẩm ở gốc mới (`v2/drivers/…`) nằm trong phạm vi
+    # **định nghĩa** nhưng ngoài vòng lặp cũ ⇒ trước bản này luật token **không bao giờ** chạy
+    # trên nó (đường lọt WB-21). Tính **một lần**, dùng cho cả hai chế độ.
+    scope_targets = _scope_token_targets(root, scope, files, test_only)
 
     # **KT-174/H5** (reviewer L16): tệp được `include!` từ **mã sản phẩm** là mã sản phẩm,
     # dù đồ thị `mod` nói nó test-only. Trước bản vá này, `include!("evil_b.rs")` từ
@@ -4038,7 +4080,13 @@ def scan_v2(
     #   - mọi `include!`/`#[path]` trong `v2/kernel`+`v2/sim` phải **literal** và **trỏ
     #     trong cây**; đích ngoài cây / không tồn tại / không literal ⇒ ĐỎ ở mọi chế độ;
     #   - `extra` (tệp đích + trạng thái test-only) vẫn được khối `--strict` dùng lại.
-    extra, inc_errors = resolve_include_targets(root, files, test_only)
+    # **KT-258 (WB-22)** — worklist `include!`/`#[path]` phải seed **cả** tệp ngoài `V2_SCAN`
+    # (crate trong bao đóng sản phẩm): trước bản này `include!("…")` trong crate ở gốc mới
+    # **không** được phân giải ⇒ đích ngoài cây không bị kiểm (đo: p1e). Đích của crate ngoài
+    # `v2/kernel`+`v2/sim` bị **từ chối rõ** (`E_STRICT_WAKE_INCLUDE`) — fail-closed, đúng
+    # D2-188 §2 ("kiểm tra, hoặc từ chối rõ vì ngoài hợp đồng").
+    _scope_seed = [(p, t, f) for p, t, f, _i in scope_targets]
+    extra, inc_errors = resolve_include_targets(root, list(files) + _scope_seed, test_only)
     # **KT-194/D2-166 §3C** — giữ tập test-only **gốc** trước khi "sản phẩm thắng": tệp
     # test-only bị kéo vào sản phẩm là tệp **ẩn** với đồ thị module, phải kiểm `wake` ở
     # **cả** chế độ (xem khối `if not strict:` dưới).
@@ -4049,7 +4097,9 @@ def scan_v2(
         # Trạng thái test-only đổi ⇒ phân giải lại: lần hai thấy nhiều tệp **sản phẩm**
         # hơn nên bắt được nhiều `include!`/`#[path]` không literal hơn (đơn điệu,
         # fail-closed). Đây đúng là lần phân giải mà khối `--strict` đã dùng trước KT-184.
-        extra, inc_errors = resolve_include_targets(root, files, test_only)
+        extra, inc_errors = resolve_include_targets(
+            root, list(files) + _scope_seed, test_only
+        )
     for e in inc_errors:
         r.err("E_STRICT_WAKE_INCLUDE", e)
 
@@ -4323,11 +4373,20 @@ def scan_v2(
                 continue
             wake_targets.append((p, text, find_functions(p, text), is_test))
             added.add(p)
+        # **KT-258 (WB-21)** — tệp trong `token_scope` nhưng ngoài `V2_SCAN` (crate ở gốc mới
+        # trong bao đóng sản phẩm) cũng là đích của luật token.
+        for p, text, fns, is_test in scope_targets:
+            if p in added:
+                continue
+            wake_targets.append((p, text, fns, is_test))
+            added.add(p)
 
         # **KT-177/G6** (H6): tên macro "an toàn" bị `macro_rules!` trong cây **che** thì
         # không còn an toàn — `concat!` bị che có thể biến ident `wake` thành **tên hàm**.
         safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(
-            root, files, extra_files=[p for p, _ in extra.values()]
+            root,
+            files,
+            extra_files=[p for p, _ in extra.values()] + [p for p, _t, _f, _i in scope_targets],
         )
 
         for p, text, fns, is_test in wake_targets:
@@ -4345,7 +4404,9 @@ def scan_v2(
     # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
     if not strict:
         safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(
-            root, files, extra_files=[p for p, _ in extra.values()]
+            root,
+            files,
+            extra_files=[p for p, _ in extra.values()] + [p for p, _t, _f, _i in scope_targets],
         )
         # **KT-215** — **đóng F2** (hợp đồng §4): luật `wake` chạy ở **cả** chế độ thường cho
         # **mọi** tệp sản phẩm trong phạm vi, không chỉ tệp bị kéo vào bằng `#[path]`/`include!`
@@ -4376,6 +4437,13 @@ def scan_v2(
             except OSError:
                 continue
             _check_wake_text(relp, text, safe_macros, r)
+        # **KT-258 (WB-21)** — cùng tập đích với `--strict`: tệp trong `token_scope` ngoài
+        # `V2_SCAN` (crate ở gốc mới trong bao đóng sản phẩm).
+        for p, text, _fns, is_test in scope_targets:
+            if is_test or p in scanned:
+                continue
+            _check_wake_text(rel(root, p), text, safe_macros, r)
+            scanned.add(p)
 
     # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** + **KT-181** — quét thân `macro_rules!` ở **mọi**
     #    tệp nguồn sản phẩm (`v2/lib`+`v2/kernel`+`v2/sim`) với **cả hai** luật (token `wake` +
@@ -9175,8 +9243,12 @@ def selftest() -> int:
                     _bad_calls.append(f"{_f}: {_st}")
         cases.append(
             (
-                "KT-241 `tr`: 4 call site (lớp 1 ×3 + lớp 2 ×1), không truyền `test_line_ranges`",
-                len(_calls) == 4 and not _bad_calls,
+                # **KT-258** — thêm **một** call site ở lớp 1 (tập đích ngoài `V2_SCAN`,
+                # WB-21): 5 = lớp 1 ×4 + lớp 2 ×1. Không phải nới luật — cùng một hàm luật,
+                # thêm một tập đích; ca vẫn khẳng định **không** call site nào truyền
+                # `test_line_ranges`.
+                "KT-241 `tr`: 5 call site (lớp 1 ×4 + lớp 2 ×1), không truyền `test_line_ranges`",
+                len(_calls) == 5 and not _bad_calls,
                 f"{len(_calls)} call site; sai: {_bad_calls}",
             )
         )
@@ -9710,6 +9782,244 @@ def selftest() -> int:
                 and in_test_only_wake_scope("v2/sim/vifast-sim/src/kobj.rs", d)
                 and not in_test_only_wake_scope("v2/lib/vifast-abi/src/lib.rs", d),
                 "phạm vi token sai chính sách",
+            )
+        )
+
+        # ================================================================ KT-258 (WB-21/WB-22)
+        # **Phạm vi mới của KT-256** (sinh từ `cargo metadata`) rộng hơn **vòng lặp** của lớp
+        # tĩnh (`V2_SCAN` = `v2/kernel` + `v2/sim`): crate trong **bao đóng sản phẩm** ở gốc mới
+        # (`v2/drivers/…`) là `contains`=True nhưng `token_scope`=False (workspace="closure") và
+        # không được `iter_rs` duyệt ⇒ luật token **không bao giờ** chạy trên nó. Đo được đường
+        # lọt **cả ba** lượt kiểm khi crate đó là path-dependency **tuỳ chọn** của
+        # `vifast-kbin-riscv64` (chỉ bật bởi `product-fs`): `JOURNAL/kt258-attack/`.
+        # Các ca dưới là **đột biến hai chiều**: trước vá XANH, sau vá ĐỎ.
+
+        def _scope258(sroot, host_pkgs, kernel_pkgs, closure_pkgs=()):
+            """Blob `cargo metadata` giả có **đơn vị `closure`** (path-dep ngoài workspace)."""
+
+            def _unit(name, pkgs):
+                packages = []
+                for pname, d, deps in pkgs:
+                    dep_objs = [
+                        {"name": dep.split("/")[-1], "path": str(sroot / dep), "kind": None}
+                        for dep in deps
+                    ]
+                    packages.append(
+                        {
+                            "name": pname,
+                            "manifest_path": str(sroot / d / "Cargo.toml"),
+                            "targets": [
+                                {
+                                    "name": pname.replace("-", "_"),
+                                    "kind": ["lib"],
+                                    "src_path": str(sroot / d / "src/lib.rs"),
+                                }
+                            ],
+                            "dependencies": dep_objs,
+                        }
+                    )
+                return (
+                    name,
+                    {"target_directory": str(sroot / "v2/target"), "packages": packages},
+                )
+
+            units = [_unit("host", host_pkgs), _unit("kernel", kernel_pkgs)]
+            if closure_pkgs:
+                units.append(_unit("closure", closure_pkgs))
+            return wake_scope.scope_from_metadata(sroot, units)
+
+        _HOST_PKGS = [
+            ("vifast-sync", "v2/lib/vifast-sync", ()),
+            ("vifast-sim", "v2/sim/vifast-sim", ()),
+        ]
+        _KERNEL_PKGS = [("vifast-core", "v2/kernel/vifast-core", ("v2/drivers/evil",))]
+        _CLOSURE_PKGS = [("vifast-evil", "v2/drivers/evil", ())]
+
+        # --- U1: crate trong bao đóng sản phẩm ở GỐC MỚI gọi `wake` ⇒ ĐỎ ---------------------
+        d = tmp / "kt258-u1-closure"
+        _fixture_v2(d)
+        _write(
+            d / "v2/drivers/evil/src/lib.rs",
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        relp = "v2/drivers/evil/src/lib.rs"
+        sc = _scope258(d, _HOST_PKGS, _KERNEL_PKGS, _CLOSURE_PKGS)
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-21 U1: `wake` trong crate ở GỐC MỚI thuộc **bao đóng sản phẩm** ⇒ ĐỎ "
+                "(trước vá: XANH — `token_scope`=False + ngoài `V2_SCAN`)",
+                (not rep.ok)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors)
+                and sc.token_scope(relp)
+                and _OLD_TOKEN_PAT.match(relp) is None,
+                f"errors={rep.errors}",
+            )
+        )
+        rep = scan_v2(d, strict=True, scope=sc, extra_doors=set())
+        cases.append(
+            (
+                "KT-258/WB-21 U1s: như U1 ở `--strict` ⇒ ĐỎ (cùng tập đích, hai chế độ)",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- U2: đối chứng dương — cùng crate, KHÔNG có `wake` ⇒ XANH ------------------------
+        d = tmp / "kt258-u2-clean"
+        _fixture_v2(d)
+        _write(
+            d / "v2/drivers/evil/src/lib.rs",
+            "pub fn evil(m: &mut M, t: u32) { let _ = (m, t); }\n",
+        )
+        sc = _scope258(d, _HOST_PKGS, _KERNEL_PKGS, _CLOSURE_PKGS)
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-21 U2 đối chứng dương: crate bao đóng sản phẩm KHÔNG có `wake` ⇒ XANH",
+                rep.ok,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- U3: crate bao đóng **không** thuộc sản phẩm/oracle ⇒ ngoài luật token (XANH) ----
+        d = tmp / "kt258-u3-hostonly"
+        _fixture_v2(d)
+        _write(
+            d / "v2/foo/evil/src/lib.rs",
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        sc = _scope258(
+            d,
+            _HOST_PKGS + [("vifast-model", "v2/lib/vifast-model", ("v2/foo/evil",))],
+            _KERNEL_PKGS,
+            [("vifast-evil", "v2/foo/evil", ())],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-21 U3: crate bao đóng **không** thuộc sản phẩm/oracle ⇒ ngoài luật "
+                "token (XANH) — phạm vi không mở rộng mù",
+                rep.ok,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- U4: `v2/lib` trong bao đóng sản phẩm — chính sách KT-256 giữ ngoài luật token ----
+        d = tmp / "kt258-u4-libclosure"
+        _fixture_v2(d)
+        _write(
+            d / "v2/lib/vifast-x/src/lib.rs",
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        sc = _scope258(
+            d,
+            _HOST_PKGS,
+            [("vifast-core", "v2/kernel/vifast-core", ("v2/lib/vifast-x",))],
+            [("vifast-x", "v2/lib/vifast-x", ())],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-21 U4: `v2/lib` trong bao đóng sản phẩm vẫn NGOÀI luật token "
+                "(chính sách KT-256; canh bằng `E_SCOPE_LIB_CORE`)",
+                rep.ok and not sc.token_scope("v2/lib/vifast-x/src/lib.rs"),
+                f"errors={rep.errors}",
+            )
+        )
+        sc = _scope258(
+            d,
+            _HOST_PKGS,
+            [("vifast-core", "v2/kernel/vifast-core", ("v2/lib/vifast-x",))],
+            [("vifast-x", "v2/lib/vifast-x", ("v2/kernel/vifast-core",))],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-21 U4b: `v2/lib` trong bao đóng sản phẩm mà phụ thuộc `vifast-core` "
+                "⇒ `E_SCOPE_LIB_CORE` (ca canh có răng)",
+                (not rep.ok) and any("E_SCOPE_LIB_CORE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- U5: WB-22 — `include!` trong crate bao đóng sản phẩm trỏ RA NGOÀI cây ⇒ ĐỎ ------
+        d = tmp / "kt258-u5-include"
+        _fixture_v2(d)
+        _write(
+            d / "v2/drivers/evil/src/lib.rs",
+            'include!("../../../agent/evil_src.rs");\n',
+        )
+        _write(
+            d / "v2/agent/evil_src.rs",
+            "pub fn evil(m: &mut M, t: u32) { m.wake(t); }\n",
+        )
+        sc = _scope258(d, _HOST_PKGS, _KERNEL_PKGS, _CLOSURE_PKGS)
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-22 U5: `include!` trong crate bao đóng sản phẩm trỏ ra ngoài "
+                "`v2/kernel`+`v2/sim` ⇒ ĐỎ `E_STRICT_WAKE_INCLUDE` (trước vá: XANH)",
+                (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # Đối chứng dương: cùng crate, `include!` trỏ tới tệp **trong** `v2/kernel` ⇒ XANH.
+        d = tmp / "kt258-u5b-include-ok"
+        _fixture_v2(d)
+        _write(
+            d / "v2/drivers/evil/src/lib.rs",
+            'include!("../../../kernel/vifast-core/src/kt258_ok.rs");\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/src/kt258_ok.rs",
+            "pub fn ok(m: &mut M, t: u32) { let _ = (m, t); }\n",
+        )
+        sc = _scope258(d, _HOST_PKGS, _KERNEL_PKGS, _CLOSURE_PKGS)
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-22 U5b đối chứng dương: `include!` trong crate bao đóng trỏ tới tệp "
+                "TRONG `v2/kernel` ⇒ XANH (luật không phải luôn-đỏ)",
+                rep.ok,
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- U6: WB-23 — path-dependency ra NGOÀI gốc repo ⇒ từ chối rõ ---------------------
+        d = tmp / "kt258-u6-outside"
+        _fixture_v2(d)
+        sc = _scope258(
+            d,
+            _HOST_PKGS,
+            [("vifast-core", "v2/kernel/vifast-core", ("/tmp/kt258-outside-crate",))],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-23 U6: path-dependency ra NGOÀI gốc repo ⇒ `E_SCOPE_OUTSIDE` "
+                "(từ chối rõ, không bỏ im lặng khỏi phạm vi)",
+                (not rep.ok) and any("E_SCOPE_OUTSIDE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # Đối chứng dương: path-dependency **trong** repo ⇒ không có `E_SCOPE_OUTSIDE`.
+        d = tmp / "kt258-u6b-inside"
+        _fixture_v2(d)
+        _write(d / "v2/foo/evil/src/lib.rs", "pub fn ok() {}\n")
+        sc = _scope258(
+            d,
+            _HOST_PKGS,
+            [("vifast-core", "v2/kernel/vifast-core", ("v2/foo/evil",))],
+            [("vifast-evil", "v2/foo/evil", ())],
+        )
+        rep = scan_v2(d, strict=False, scope=sc)
+        cases.append(
+            (
+                "KT-258/WB-23 U6b đối chứng dương: path-dependency TRONG repo ⇒ không "
+                "`E_SCOPE_OUTSIDE` (luật không phải luôn-đỏ)",
+                not any("E_SCOPE_OUTSIDE" in e for e in rep.errors),
+                f"errors={rep.errors}",
             )
         )
     finally:

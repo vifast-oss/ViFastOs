@@ -2352,6 +2352,10 @@ def main(argv: Sequence[str]) -> int:
         scope_errors.append(
             "  không dựng được phạm vi từ cargo metadata (0 crate) — fail-closed (KT-238)"
         )
+    # **KT-258 (WB-23)** — path-dependency ra ngoài gốc repo ⇒ từ chối rõ (cùng ca canh với
+    # lớp tĩnh; lớp này chỉ thấy nếu cấu hình build đang kiểm có build nó).
+    for e in scope.check_outside_dependencies():
+        scope_errors.append(e)
     for name, _manifest, _triple, _target_rel in units:
         if scope.target_dirs.get(name) is None:
             scope_errors.append(

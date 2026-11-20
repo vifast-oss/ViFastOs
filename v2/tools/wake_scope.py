@@ -124,6 +124,7 @@ class CrateScope:
         "workspace",
         "status",
         "reason",
+        "outside_deps",
     )
 
     def __init__(
@@ -136,6 +137,7 @@ class CrateScope:
         src_paths: Sequence[str],
         normal_deps: Optional[Sequence[str]] = None,
         workspace: str = "",
+        outside_deps: Optional[Sequence[str]] = None,
     ) -> None:
         self.name = name
         self.dir_rel = dir_rel
@@ -150,6 +152,8 @@ class CrateScope:
         self.workspace = workspace
         self.status = "protected"
         self.reason = ""
+        # **KT-258 (WB-23)** — path-dependency trỏ **ra ngoài gốc repo** (không quét được).
+        self.outside_deps = list(outside_deps or [])
 
     def __repr__(self) -> str:  # pragma: no cover - chẩn đoán
         return f"CrateScope({self.name!r}, {self.dir_rel!r}, {self.status!r})"
@@ -166,6 +170,8 @@ class ProtectedScope:
         self.notes: List[str] = []
         # `True` = sinh từ `cargo metadata`; `False` = dự phòng mẫu (cây không có manifest).
         self.from_metadata = False
+        # **KT-258 (WB-21)** — cache bao đóng **sản phẩm** (xem `product_closure()`).
+        self._product_closure: Optional[Set[str]] = None
         # Lỗi dựng phạm vi (fail-closed): tầng gọi **phải** biến nó thành lỗi cổng.
         self.error: Optional[str] = None
 
@@ -240,7 +246,48 @@ class ProtectedScope:
         c = self.classify(relp)
         if c is None or c.status != "protected":
             return False
-        return c.workspace in TOKEN_RULE_WORKSPACES or c.name in TOKEN_RULE_EXTRA_CRATES
+        if c.workspace in TOKEN_RULE_WORKSPACES or c.name in TOKEN_RULE_EXTRA_CRATES:
+            return True
+        # **KT-258 (WB-21)** — crate trong **bao đóng sản phẩm** (path-dependency của ảnh sản
+        # phẩm hoặc của oracle) cũng là mã sản phẩm ⇒ luật token phải áp, dù nó **không** phải
+        # thành viên workspace. Trước bản này `token_scope` trả `False` cho crate
+        # `workspace="closure"` ⇒ một crate ở gốc mới chỉ cần là path-dep (tuỳ chọn) của
+        # `vifast-kbin-riscv64` là lọt **cả ba** lượt kiểm (đo: `JOURNAL/kt258-attack/`).
+        # **Trừ `v2/lib`**: chính sách KT-256 giữ `v2/lib` ngoài luật token, canh bằng
+        # `check_lib_core_dependency()` (`E_SCOPE_LIB_CORE`) — mọi đường tới `wake()` từ
+        # `v2/lib` đều phải qua `vifast-core`, nên ca canh là đủ.
+        if c.dir_rel in self.product_closure() and not c.dir_rel.startswith("v2/lib/"):
+            return True
+        return False
+
+    def product_closure(self) -> Set[str]:
+        """**KT-258 (WB-21)** — `dir_rel` của mọi crate trong **bao đóng sản phẩm**.
+
+        Đi từ crate thuộc workspace **ảnh sản phẩm** (`TOKEN_RULE_WORKSPACES`) và crate oracle
+        (`TOKEN_RULE_EXTRA_CRATES`) theo `deps` (path-dependency nội bộ). Crate trong bao đóng
+        này **được biên dịch vào ảnh sản phẩm / oracle** dù **không** phải thành viên workspace
+        (path-dependency, kể cả `optional` chỉ bật bởi feature của ảnh) ⇒ luật token `wake`
+        phải áp; nếu không, một crate ở gốc mới chỉ cần là path-dep tuỳ chọn của ảnh là lọt
+        **cả ba** lượt kiểm (WB-21, đo ở `JOURNAL/kt258-attack/`).
+        """
+        if self._product_closure is not None:
+            return self._product_closure
+        seen: Set[str] = set()
+        stack = [
+            c.dir_rel
+            for c in self.crates.values()
+            if c.workspace in TOKEN_RULE_WORKSPACES or c.name in TOKEN_RULE_EXTRA_CRATES
+        ]
+        while stack:
+            d = stack.pop()
+            if d in seen:
+                continue
+            seen.add(d)
+            c = self.crates.get(d)
+            if c is not None:
+                stack.extend(c.deps)
+        self._product_closure = seen
+        return seen
 
     # -- kiểm bất biến (fail-closed) ---------------------------------------
 
@@ -274,6 +321,28 @@ class ProtectedScope:
                         f"  {relp}: nằm dưới `{base_rel}` (mẫu cũ che) nhưng **ngoài** phạm vi "
                         f"sinh từ cargo metadata — phạm vi bị **giảm** (fail-closed, KT-256/L2)"
                     )
+        return out
+
+    def check_outside_dependencies(self) -> List[str]:
+        """**KT-258 (WB-23)** — path-dependency trỏ **ra ngoài gốc repo** ⇒ từ chối rõ.
+
+        `cargo metadata` vẫn liệt kê dependency đó, nhưng `_crate_from_package` **không** quy
+        được về `dir_rel` trong repo ⇒ nó không vào phạm vi; lớp tĩnh không quét được (ngoài
+        gốc), lớp dep-info chỉ thấy nếu cấu hình build đang kiểm **có** build nó. Một path-dep
+        **tuỳ chọn** chỉ bật bởi feature của ảnh sản phẩm ⇒ lọt **cả ba** lượt kiểm (đo:
+        `JOURNAL/kt258-attack/logs/p7d-feature-gated-outside/`). D2-188 §2: nguồn ngoài hợp
+        đồng phải **từ chối rõ**, không được bỏ qua.
+        """
+        if not self.from_metadata:
+            return []
+        out: List[str] = []
+        for c in self.protected():
+            for p in c.outside_deps:
+                out.append(
+                    f"  {c.name} ({c.dir_rel}): path-dependency `{p}` nằm **ngoài gốc repo** — "
+                    f"không quét được (fail-closed, KT-258/WB-23); chuyển crate vào trong repo "
+                    f"hoặc gỡ phụ thuộc"
+                )
         return out
 
     def check_lib_core_dependency(self) -> List[str]:
@@ -358,12 +427,16 @@ def _crate_from_package(
     manifest_rel = _rel_or_none(root, manifest) or dir_rel
     deps: List[str] = []
     normal_deps: List[str] = []
+    outside: List[str] = []
     for d in pkg.get("dependencies") or []:
         p = d.get("path")
         if not p:
             continue
         r = _rel_or_none(root, Path(p))
         if r is None:
+            # **KT-258 (WB-23)** — path-dependency **ngoài gốc repo**: không quét được ⇒
+            # ghi nhận để tầng gọi **từ chối rõ** (fail-closed), không im lặng bỏ khỏi phạm vi.
+            outside.append(str(p))
             continue
         deps.append(r)
         # `kind` = None ⇒ normal dependency; "dev"/"build" ⇒ không tính cho DEBT-KT227-1.
@@ -389,6 +462,7 @@ def _crate_from_package(
         src_paths,
         normal_deps=normal_deps,
         workspace=workspace,
+        outside_deps=outside,
     )
 
 
