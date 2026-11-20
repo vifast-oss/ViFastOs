@@ -1,0 +1,9 @@
+
+running 1 test
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 4, 100000 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 1, ipc_median 11; ipc_sent 1137907, ipc_delivered 211782, ipc_dropped 709172; vm map 257645, walk 71505, unmap 135398, fault 229034, shootdown 135398)
+# L1 OK: 100000 lượt (smp [4], seeds 100000)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1773.54s
+
