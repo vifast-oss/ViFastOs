@@ -36,8 +36,8 @@ use vifast_virtio::features::{
 };
 use vifast_virtio::net::{
     decode_config, frame_len, frame_ok, hdr_bytes, mac_negotiated, negotiated_features, NetConfig,
-    NetError, NetHdr, HDR_MODERN_BYTES, MIN_QUEUE_SIZE, NET_CONFIG_BYTES, QUEUES_REQUIRED,
-    QUEUE_SIZE, Q_RX, Q_TX, RX_BUF_BYTES, TX_BUF_BYTES,
+    NetError, NetHdr, HDR_MODERN_BYTES, MAX_FRAME_BYTES, MIN_QUEUE_SIZE, NET_CONFIG_BYTES,
+    QUEUES_REQUIRED, QUEUE_SIZE, Q_RX, Q_TX, RX_BUF_BYTES, TX_BUF_BYTES,
 };
 use vifast_virtio::queue::{Desc, DescFlags, SplitQueue, VqLayout};
 
@@ -712,6 +712,772 @@ pub fn config_generation() -> u8 {
         return 0;
     }
     read8(common + C_CONFIG_GENERATION)
+}
+
+// ================================================================================
+// KT-246 — DHCP client + ARP + ICMP echo (D2-196 mục (1) bước 3)
+//
+// **NỢ KT-246 (ghi rõ, không giấu)**: codec Ethernet/IPv4/ICMP/UDP/DHCP dưới đây nằm **tạm** trong
+// tệp driver vì crate `vifast-net` (KT-244, sub-agent `netlib`, worktree `/tmp/kt243-s2`) **chưa
+// có** trong worktree này lúc làm KT-246 (đã kiểm `ls /tmp/kt243-s2/v2/lib/vifast-net` ⇒ không
+// tồn tại). Khi crate ấy land: **xoá cả khối này**, thay bằng `vifast_net::{eth, arp, ipv4, icmp,
+// udp, dhcp}` và **chuyển** các ca kiểm tương ứng sang host test của crate đó. Mọi hàm ở đây là
+// **thuần** (không `unsafe`, không cấp phát, không đọc trạng thái driver) nên việc chuyển đi là
+// máy móc; phần **không** chuyển được là `dhcp_acquire`/`arp_resolve`/`ping` (chúng gọi
+// `send_frame`/`recv_frame_wait`).
+//
+// Bất biến: mọi hàm `*_parse` **từ chối** (trả `None`) thay vì đọc tràn/kẹp im lặng; mọi hàm
+// `*_build` trả `None` khi đệm không đủ. Không có đường "đoán" nào.
+// ================================================================================
+
+/// Cỡ header Ethernet (6 đích + 6 nguồn + 2 ethertype).
+pub const ETH_HDR_BYTES: usize = 14;
+/// Ethertype IPv4.
+pub const ETHERTYPE_IPV4: u16 = 0x0800;
+/// Ethertype ARP.
+pub const ETHERTYPE_ARP: u16 = 0x0806;
+/// Cỡ header IPv4 tối thiểu (không option).
+pub const IPV4_HDR_BYTES: usize = 20;
+/// Số hiệu giao thức ICMP trong IPv4.
+pub const IP_PROTO_ICMP: u8 = 1;
+/// Số hiệu giao thức UDP trong IPv4.
+pub const IP_PROTO_UDP: u8 = 17;
+/// Cỡ header UDP.
+pub const UDP_HDR_BYTES: usize = 8;
+/// Cổng DHCP client.
+pub const DHCP_CLIENT_PORT: u16 = 68;
+/// Cổng DHCP server.
+pub const DHCP_SERVER_PORT: u16 = 67;
+/// Cỡ phần **cố định** của BOOTP trước magic cookie (op..file).
+pub const DHCP_FIXED_BYTES: usize = 236;
+/// Magic cookie của DHCP (`99.130.83.99`).
+pub const DHCP_MAGIC: [u8; 4] = [99, 130, 83, 99];
+/// Option `pad`.
+pub const DHCP_OPT_PAD: u8 = 0;
+/// Option `end`.
+pub const DHCP_OPT_END: u8 = 255;
+/// Option `message type`.
+pub const DHCP_OPT_MSG_TYPE: u8 = 53;
+/// Option `subnet mask`.
+pub const DHCP_OPT_SUBNET_MASK: u8 = 1;
+/// Option `router`.
+pub const DHCP_OPT_ROUTER: u8 = 3;
+/// Option `requested ip`.
+pub const DHCP_OPT_REQUESTED_IP: u8 = 50;
+/// Option `server identifier`.
+pub const DHCP_OPT_SERVER_ID: u8 = 54;
+/// Option `parameter request list`.
+pub const DHCP_OPT_PARAM_LIST: u8 = 55;
+/// `DHCPDISCOVER`.
+pub const DHCP_DISCOVER: u8 = 1;
+/// `DHCPOFFER`.
+pub const DHCP_OFFER: u8 = 2;
+/// `DHCPREQUEST`.
+pub const DHCP_REQUEST: u8 = 3;
+/// `DHCPACK`.
+pub const DHCP_ACK: u8 = 5;
+/// MAC broadcast.
+pub const BROADCAST_MAC: [u8; 6] = [0xff; 6];
+/// IPv4 broadcast.
+pub const BROADCAST_IP: [u8; 4] = [255, 255, 255, 255];
+/// IPv4 "chưa có địa chỉ".
+pub const ZERO_IP: [u8; 4] = [0, 0, 0, 0];
+/// Cỡ payload ICMP echo (byte đệm; đủ để RTT có nghĩa, không cần lớn).
+pub const ICMP_PAYLOAD_BYTES: usize = 32;
+/// Timeout mặc định cho **mỗi** bước mạng (DHCP/ARP/ping) — 3 s ảo (D2-196 mục (1)).
+pub const NET_STEP_TIMEOUT_TICKS: u64 = 3 * TIMEBASE_HZ;
+
+/// Tổng one's-complement 16 bit của `data` (byte lẻ được đệm 0 ở cuối).
+pub fn ones_complement_sum(data: &[u8]) -> u16 {
+    let mut sum = 0u32;
+    let mut index = 0;
+    while index + 1 < data.len() {
+        sum += u16::from_be_bytes([data[index], data[index + 1]]) as u32;
+        index += 2;
+    }
+    if index < data.len() {
+        sum += (data[index] as u32) << 8;
+    }
+    while sum >> 16 != 0 {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    sum as u16
+}
+
+/// Checksum Internet (bù một của [`ones_complement_sum`]).
+pub fn checksum(data: &[u8]) -> u16 {
+    !ones_complement_sum(data)
+}
+
+/// Một frame Ethernet đã giải mã (payload là **lát** của frame gốc, không copy).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EthFrame<'a> {
+    /// MAC đích.
+    pub dst: [u8; 6],
+    /// MAC nguồn.
+    pub src: [u8; 6],
+    /// Ethertype.
+    pub ethertype: u16,
+    /// Phần sau header.
+    pub payload: &'a [u8],
+}
+
+/// Dựng frame Ethernet vào `out`; trả tổng số byte. `None` nếu `out` không đủ.
+pub fn eth_build(
+    dst: [u8; 6],
+    src: [u8; 6],
+    ethertype: u16,
+    payload: &[u8],
+    out: &mut [u8],
+) -> Option<usize> {
+    let total = ETH_HDR_BYTES + payload.len();
+    if out.len() < total {
+        return None;
+    }
+    out[0..6].copy_from_slice(&dst);
+    out[6..12].copy_from_slice(&src);
+    out[12..14].copy_from_slice(&ethertype.to_be_bytes());
+    out[ETH_HDR_BYTES..total].copy_from_slice(payload);
+    Some(total)
+}
+
+/// Giải mã frame Ethernet. `None` nếu ngắn hơn [`ETH_HDR_BYTES`].
+pub fn eth_parse(frame: &[u8]) -> Option<EthFrame<'_>> {
+    if frame.len() < ETH_HDR_BYTES {
+        return None;
+    }
+    let mut dst = [0u8; 6];
+    let mut src = [0u8; 6];
+    dst.copy_from_slice(&frame[0..6]);
+    src.copy_from_slice(&frame[6..12]);
+    Some(EthFrame {
+        dst,
+        src,
+        ethertype: u16::from_be_bytes([frame[12], frame[13]]),
+        payload: &frame[ETH_HDR_BYTES..],
+    })
+}
+
+/// Một gói IPv4 đã giải mã (payload là lát của gói gốc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ipv4Packet<'a> {
+    /// Địa chỉ nguồn.
+    pub src: [u8; 4],
+    /// Địa chỉ đích.
+    pub dst: [u8; 4],
+    /// Số hiệu giao thức.
+    pub proto: u8,
+    /// Phần sau header (đã cắt theo `total_length`).
+    pub payload: &'a [u8],
+}
+
+/// Dựng gói IPv4 (không option) vào `out`; trả tổng số byte.
+///
+/// `None` nếu `out` không đủ hoặc tổng vượt MTU 1500 (driver không phân mảnh).
+pub fn ipv4_build(
+    src: [u8; 4],
+    dst: [u8; 4],
+    proto: u8,
+    payload: &[u8],
+    out: &mut [u8],
+) -> Option<usize> {
+    let total = IPV4_HDR_BYTES + payload.len();
+    if out.len() < total || total > 1500 {
+        return None;
+    }
+    for byte in out[..IPV4_HDR_BYTES].iter_mut() {
+        *byte = 0;
+    }
+    out[0] = 0x45; // version 4, IHL 5 (20 byte)
+    out[2..4].copy_from_slice(&(total as u16).to_be_bytes());
+    out[6..8].copy_from_slice(&0x4000u16.to_be_bytes()); // DF: không phân mảnh
+    out[8] = 64; // TTL
+    out[9] = proto;
+    out[12..16].copy_from_slice(&src);
+    out[16..20].copy_from_slice(&dst);
+    let sum = checksum(&out[..IPV4_HDR_BYTES]);
+    out[10..12].copy_from_slice(&sum.to_be_bytes());
+    out[IPV4_HDR_BYTES..total].copy_from_slice(payload);
+    Some(total)
+}
+
+/// Giải mã gói IPv4. `None` nếu: ngắn hơn header, version ≠ 4, `IHL` < 5, `total_length` vô lý,
+/// hoặc **checksum header sai** (không tin gói hỏng).
+pub fn ipv4_parse(packet: &[u8]) -> Option<Ipv4Packet<'_>> {
+    if packet.len() < IPV4_HDR_BYTES {
+        return None;
+    }
+    if packet[0] >> 4 != 4 {
+        return None;
+    }
+    let ihl = ((packet[0] & 0x0f) as usize) * 4;
+    if ihl < IPV4_HDR_BYTES || packet.len() < ihl {
+        return None;
+    }
+    let total = u16::from_be_bytes([packet[2], packet[3]]) as usize;
+    if total < ihl || total > packet.len() {
+        return None;
+    }
+    // Checksum hợp lệ ⇔ bù một của tổng (kể cả trường checksum) bằng 0.
+    if checksum(&packet[..ihl]) != 0 {
+        return None;
+    }
+    let mut src = [0u8; 4];
+    let mut dst = [0u8; 4];
+    src.copy_from_slice(&packet[12..16]);
+    dst.copy_from_slice(&packet[16..20]);
+    Some(Ipv4Packet {
+        src,
+        dst,
+        proto: packet[9],
+        payload: &packet[ihl..total],
+    })
+}
+
+/// Dựng ICMP echo request (type 8, code 0) vào `out`; trả tổng số byte.
+pub fn icmp_build_echo(id: u16, seq: u16, payload: &[u8], out: &mut [u8]) -> Option<usize> {
+    let total = 8 + payload.len();
+    if out.len() < total {
+        return None;
+    }
+    out[0] = 8; // echo request
+    out[1] = 0; // code
+    out[4..6].copy_from_slice(&id.to_be_bytes());
+    out[6..8].copy_from_slice(&seq.to_be_bytes());
+    out[8..total].copy_from_slice(payload);
+    let sum = checksum(&out[..total]);
+    out[2..4].copy_from_slice(&sum.to_be_bytes());
+    Some(total)
+}
+
+/// Kiểm một ICMP echo **reply** (type 0, code 0) khớp `id`/`seq`; trả số byte payload.
+///
+/// `None` nếu: ngắn hơn 8, không phải reply, checksum sai, hoặc `id`/`seq` lệch (reply của lần
+/// ping khác — **không** nhận bừa).
+pub fn icmp_parse_echo_reply(packet: &[u8], id: u16, seq: u16) -> Option<usize> {
+    if packet.len() < 8 {
+        return None;
+    }
+    if packet[0] != 0 || packet[1] != 0 {
+        return None;
+    }
+    if checksum(packet) != 0 {
+        return None;
+    }
+    if u16::from_be_bytes([packet[4], packet[5]]) != id {
+        return None;
+    }
+    if u16::from_be_bytes([packet[6], packet[7]]) != seq {
+        return None;
+    }
+    Some(packet.len() - 8)
+}
+
+/// Một datagram UDP đã giải mã.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UdpDatagram<'a> {
+    /// Cổng nguồn.
+    pub src_port: u16,
+    /// Cổng đích.
+    pub dst_port: u16,
+    /// Payload (đã cắt theo `length` của UDP).
+    pub payload: &'a [u8],
+}
+
+/// Dựng datagram UDP vào `out`; trả tổng số byte. Checksum = 0 (IPv4 cho phép — RFC 768).
+pub fn udp_build(src_port: u16, dst_port: u16, payload: &[u8], out: &mut [u8]) -> Option<usize> {
+    let total = UDP_HDR_BYTES + payload.len();
+    if out.len() < total || total > u16::MAX as usize {
+        return None;
+    }
+    out[0..2].copy_from_slice(&src_port.to_be_bytes());
+    out[2..4].copy_from_slice(&dst_port.to_be_bytes());
+    out[4..6].copy_from_slice(&(total as u16).to_be_bytes());
+    out[6..8].copy_from_slice(&0u16.to_be_bytes());
+    out[UDP_HDR_BYTES..total].copy_from_slice(payload);
+    Some(total)
+}
+
+/// Giải mã datagram UDP. `None` nếu ngắn hơn header hoặc `length` vô lý.
+pub fn udp_parse(packet: &[u8]) -> Option<UdpDatagram<'_>> {
+    if packet.len() < UDP_HDR_BYTES {
+        return None;
+    }
+    let len = u16::from_be_bytes([packet[4], packet[5]]) as usize;
+    if len < UDP_HDR_BYTES || len > packet.len() {
+        return None;
+    }
+    Some(UdpDatagram {
+        src_port: u16::from_be_bytes([packet[0], packet[1]]),
+        dst_port: u16::from_be_bytes([packet[2], packet[3]]),
+        payload: &packet[UDP_HDR_BYTES..len],
+    })
+}
+
+/// Một thông điệp DHCP đã giải mã (chỉ các trường driver dùng).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DhcpMessage {
+    /// Loại thông điệp (option 53).
+    pub msg_type: u8,
+    /// Transaction id.
+    pub xid: u32,
+    /// `yiaddr` — địa chỉ server cấp cho ta.
+    pub yiaddr: [u8; 4],
+    /// `siaddr` — địa chỉ next server.
+    pub siaddr: [u8; 4],
+    /// `chaddr[0..6]` — MAC mà thông điệp nhắm tới.
+    pub chaddr: [u8; 6],
+    /// Option 1 — mặt nạ mạng.
+    pub subnet_mask: Option<[u8; 4]>,
+    /// Option 3 — router đầu tiên.
+    pub router: Option<[u8; 4]>,
+    /// Option 54 — server identifier.
+    pub server_id: Option<[u8; 4]>,
+}
+
+/// Dựng thông điệp DHCP (BOOTREQUEST) vào `out`; trả tổng số byte.
+///
+/// `None` nếu `out` không đủ. `requested_ip`/`server_id` chỉ có ở `DHCPREQUEST`.
+pub fn dhcp_build(
+    msg_type: u8,
+    xid: u32,
+    mac: [u8; 6],
+    requested_ip: Option<[u8; 4]>,
+    server_id: Option<[u8; 4]>,
+    out: &mut [u8],
+) -> Option<usize> {
+    // 236 cố định + 4 magic + (3 + 6 + 6 + 6) option + 1 end = 262 tối đa.
+    let mut len = DHCP_FIXED_BYTES + 4;
+    if out.len() < len + 22 {
+        return None;
+    }
+    for byte in out[..len].iter_mut() {
+        *byte = 0;
+    }
+    out[0] = 1; // BOOTREQUEST
+    out[1] = 1; // htype = Ethernet
+    out[2] = 6; // hlen
+    out[3] = 0; // hops
+    out[4..8].copy_from_slice(&xid.to_be_bytes());
+    // flags = 0x8000: yêu cầu server **broadcast** reply (ta chưa có IP nên không nhận unicast).
+    out[10..12].copy_from_slice(&0x8000u16.to_be_bytes());
+    out[28..34].copy_from_slice(&mac); // chaddr
+    out[DHCP_FIXED_BYTES..DHCP_FIXED_BYTES + 4].copy_from_slice(&DHCP_MAGIC);
+    out[len] = DHCP_OPT_MSG_TYPE;
+    out[len + 1] = 1;
+    out[len + 2] = msg_type;
+    len += 3;
+    if let Some(ip) = requested_ip {
+        out[len] = DHCP_OPT_REQUESTED_IP;
+        out[len + 1] = 4;
+        out[len + 2..len + 6].copy_from_slice(&ip);
+        len += 6;
+    }
+    if let Some(id) = server_id {
+        out[len] = DHCP_OPT_SERVER_ID;
+        out[len + 1] = 4;
+        out[len + 2..len + 6].copy_from_slice(&id);
+        len += 6;
+    }
+    // Danh sách tham số muốn server gửi: mặt nạ (1), router (3), DNS (6), domain (15).
+    out[len] = DHCP_OPT_PARAM_LIST;
+    out[len + 1] = 4;
+    out[len + 2] = DHCP_OPT_SUBNET_MASK;
+    out[len + 3] = DHCP_OPT_ROUTER;
+    out[len + 4] = 6;
+    out[len + 5] = 15;
+    len += 6;
+    out[len] = DHCP_OPT_END;
+    len += 1;
+    Some(len)
+}
+
+/// Giải mã thông điệp DHCP. `None` nếu: ngắn hơn phần cố định + magic, `op` ≠ 2 (BOOTREPLY),
+/// magic cookie sai, option bị cắt cụt, hoặc **không** có option 53.
+pub fn dhcp_parse(packet: &[u8]) -> Option<DhcpMessage> {
+    if packet.len() < DHCP_FIXED_BYTES + 4 {
+        return None;
+    }
+    if packet[0] != 2 {
+        return None;
+    }
+    if packet[DHCP_FIXED_BYTES..DHCP_FIXED_BYTES + 4] != DHCP_MAGIC {
+        return None;
+    }
+    let mut message = DhcpMessage {
+        msg_type: 0,
+        xid: u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]),
+        yiaddr: [packet[16], packet[17], packet[18], packet[19]],
+        siaddr: [packet[20], packet[21], packet[22], packet[23]],
+        chaddr: [
+            packet[28], packet[29], packet[30], packet[31], packet[32], packet[33],
+        ],
+        subnet_mask: None,
+        router: None,
+        server_id: None,
+    };
+    let mut index = DHCP_FIXED_BYTES + 4;
+    while index < packet.len() {
+        let code = packet[index];
+        if code == DHCP_OPT_END {
+            break;
+        }
+        if code == DHCP_OPT_PAD {
+            index += 1;
+            continue;
+        }
+        if index + 1 >= packet.len() {
+            return None;
+        }
+        let size = packet[index + 1] as usize;
+        if index + 2 + size > packet.len() {
+            return None;
+        }
+        let value = &packet[index + 2..index + 2 + size];
+        match code {
+            DHCP_OPT_MSG_TYPE if size == 1 => message.msg_type = value[0],
+            DHCP_OPT_SUBNET_MASK if size == 4 => {
+                message.subnet_mask = Some([value[0], value[1], value[2], value[3]]);
+            }
+            DHCP_OPT_ROUTER if size >= 4 => {
+                message.router = Some([value[0], value[1], value[2], value[3]]);
+            }
+            DHCP_OPT_SERVER_ID if size == 4 => {
+                message.server_id = Some([value[0], value[1], value[2], value[3]]);
+            }
+            _ => {}
+        }
+        index += 2 + size;
+    }
+    if message.msg_type == 0 {
+        return None;
+    }
+    Some(message)
+}
+
+/// Dựng **ARP request** (Ethernet/IPv4) hỏi MAC của `target_ip`; trả tổng số byte (42).
+pub fn arp_build_request(
+    mac: [u8; 6],
+    source_ip: [u8; 4],
+    target_ip: [u8; 4],
+    out: &mut [u8],
+) -> Option<usize> {
+    let mut arp = [0u8; 28];
+    arp[0..2].copy_from_slice(&1u16.to_be_bytes()); // htype = Ethernet
+    arp[2..4].copy_from_slice(&ETHERTYPE_IPV4.to_be_bytes()); // ptype
+    arp[4] = 6; // hlen
+    arp[5] = 4; // plen
+    arp[6..8].copy_from_slice(&1u16.to_be_bytes()); // oper = request
+    arp[8..14].copy_from_slice(&mac); // sha
+    arp[14..18].copy_from_slice(&source_ip); // spa
+    arp[18..24].copy_from_slice(&[0u8; 6]); // tha (chưa biết)
+    arp[24..28].copy_from_slice(&target_ip); // tpa
+    eth_build(BROADCAST_MAC, mac, ETHERTYPE_ARP, &arp, out)
+}
+
+/// Kiểm một **ARP reply** cho `target_ip` gửi tới `our_ip`/`our_mac`; trả MAC của người trả lời.
+///
+/// # Bẫy đã tự gặp (KT-246)
+///
+/// Trong **ARP reply**, `ar_tip` là địa chỉ của **người hỏi** (`our_ip`), **không** phải
+/// `target_ip` — `ar_spa` mới là `target_ip`. Bản đầu kiểm `ar_tip == target_ip` nên **mọi** reply
+/// hợp lệ đều bị từ chối và ARP timeout dù thiết bị đã trả lời (đo được: `# net arp:
+/// elapsed_ms=3000 err=Timeout` trong khi TAP `net rx` thô vẫn nhận đúng frame).
+///
+/// `None` nếu: không phải ARP/IPv4, `oper` ≠ 2, `spa` ≠ `target_ip`, `tpa` ≠ `our_ip`,
+/// `tha` ≠ `our_mac`, hoặc MAC nguồn toàn 0 / broadcast (giá trị vô nghĩa).
+pub fn arp_parse_reply(
+    frame: &[u8],
+    our_ip: [u8; 4],
+    target_ip: [u8; 4],
+    our_mac: [u8; 6],
+) -> Option<[u8; 6]> {
+    let eth = eth_parse(frame)?;
+    if eth.ethertype != ETHERTYPE_ARP || eth.payload.len() < 28 {
+        return None;
+    }
+    let arp = eth.payload;
+    if u16::from_be_bytes([arp[0], arp[1]]) != 1
+        || u16::from_be_bytes([arp[2], arp[3]]) != ETHERTYPE_IPV4
+        || arp[4] != 6
+        || arp[5] != 4
+        || u16::from_be_bytes([arp[6], arp[7]]) != 2
+    {
+        return None;
+    }
+    let mut sender_mac = [0u8; 6];
+    sender_mac.copy_from_slice(&arp[8..14]);
+    let sender_ip = [arp[14], arp[15], arp[16], arp[17]];
+    let target_mac = [arp[18], arp[19], arp[20], arp[21], arp[22], arp[23]];
+    let asked_ip = [arp[24], arp[25], arp[26], arp[27]];
+    if sender_ip != target_ip || asked_ip != our_ip || target_mac != our_mac {
+        return None;
+    }
+    if sender_mac == [0u8; 6] || sender_mac == BROADCAST_MAC {
+        return None;
+    }
+    Some(sender_mac)
+}
+
+/// Cấu hình IPv4 lấy được qua DHCP.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetConfig4 {
+    /// Địa chỉ của ta.
+    pub ip: [u8; 4],
+    /// Gateway (router đầu tiên).
+    pub gw: [u8; 4],
+    /// Mặt nạ mạng.
+    pub mask: [u8; 4],
+    /// Server identifier.
+    pub server: [u8; 4],
+}
+
+/// Dựng frame DHCP hoàn chỉnh (Ethernet + IPv4 + UDP + BOOTP) vào `out`; trả tổng số byte.
+fn dhcp_frame(
+    msg_type: u8,
+    xid: u32,
+    mac: [u8; 6],
+    requested_ip: Option<[u8; 4]>,
+    server_id: Option<[u8; 4]>,
+    out: &mut [u8],
+) -> Option<usize> {
+    let mut bootp = [0u8; 320];
+    let bootp_len = dhcp_build(msg_type, xid, mac, requested_ip, server_id, &mut bootp)?;
+    let mut udp = [0u8; 340];
+    let udp_len = udp_build(
+        DHCP_CLIENT_PORT,
+        DHCP_SERVER_PORT,
+        &bootp[..bootp_len],
+        &mut udp,
+    )?;
+    let mut ip = [0u8; 360];
+    let ip_len = ipv4_build(
+        ZERO_IP,
+        BROADCAST_IP,
+        IP_PROTO_UDP,
+        &udp[..udp_len],
+        &mut ip,
+    )?;
+    eth_build(BROADCAST_MAC, mac, ETHERTYPE_IPV4, &ip[..ip_len], out)
+}
+
+/// Giải một frame DHCP **khớp** `xid`/`mac`/`want_type`; `None` nếu không khớp (bỏ qua frame khác).
+fn dhcp_frame_parse(frame: &[u8], xid: u32, mac: [u8; 6], want_type: u8) -> Option<DhcpMessage> {
+    let eth = eth_parse(frame)?;
+    if eth.ethertype != ETHERTYPE_IPV4 {
+        return None;
+    }
+    let ip = ipv4_parse(eth.payload)?;
+    if ip.proto != IP_PROTO_UDP {
+        return None;
+    }
+    let udp = udp_parse(ip.payload)?;
+    if udp.src_port != DHCP_SERVER_PORT || udp.dst_port != DHCP_CLIENT_PORT {
+        return None;
+    }
+    let message = dhcp_parse(udp.payload)?;
+    if message.xid != xid || message.chaddr != mac || message.msg_type != want_type {
+        return None;
+    }
+    Some(message)
+}
+
+/// Chờ một frame DHCP loại `want_type` khớp `xid`/`mac`, tối đa `timeout_ticks`.
+fn dhcp_wait(
+    xid: u32,
+    mac: [u8; 6],
+    want_type: u8,
+    timeout_ticks: u64,
+) -> Result<DhcpMessage, NetError> {
+    let deadline = Riscv64Virt.now_ticks().wrapping_add(timeout_ticks);
+    let mut frame = [0u8; MAX_FRAME_BYTES];
+    loop {
+        let now = Riscv64Virt.now_ticks();
+        if now.wrapping_sub(deadline) < u64::MAX / 2 {
+            return Err(NetError::Timeout);
+        }
+        let remaining = deadline.wrapping_sub(now);
+        if let Some(len) = recv_frame_wait(&mut frame, remaining) {
+            if let Some(message) = dhcp_frame_parse(&frame[..len], xid, mac, want_type) {
+                return Ok(message);
+            }
+        }
+    }
+}
+
+/// **DHCP client** đầy đủ: DISCOVER → OFFER → REQUEST → ACK.
+///
+/// `Err(NetError::Timeout)` nếu không có server trả lời trong `timeout_ticks` **mỗi bước** — đây là
+/// đường "không có mạng" (fail-closed, không treo). `Err(NetError::Io)` nếu server trả ACK thiếu
+/// mặt nạ/router (không đoán giá trị thiếu).
+pub fn dhcp_acquire(timeout_ticks: u64) -> Result<NetConfig4, NetError> {
+    let mac = mac();
+    // xid **tất định**: K6 chưa có RNG; hằng số vẫn đủ phân biệt reply của ta với frame khác vì
+    // còn kiểm `chaddr` = MAC của ta.
+    let xid = 0x4b54_3234u32;
+    let mut frame = [0u8; 400];
+    // ---- DISCOVER
+    let len =
+        dhcp_frame(DHCP_DISCOVER, xid, mac, None, None, &mut frame).ok_or(NetError::BadFrame)?;
+    send_frame(&frame[..len])?;
+    let offer = dhcp_wait(xid, mac, DHCP_OFFER, timeout_ticks)?;
+    if offer.yiaddr == ZERO_IP {
+        return Err(NetError::Io);
+    }
+    let server = offer.server_id.ok_or(NetError::Io)?;
+    // ---- REQUEST
+    let len = dhcp_frame(
+        DHCP_REQUEST,
+        xid,
+        mac,
+        Some(offer.yiaddr),
+        Some(server),
+        &mut frame,
+    )
+    .ok_or(NetError::BadFrame)?;
+    send_frame(&frame[..len])?;
+    let ack = dhcp_wait(xid, mac, DHCP_ACK, timeout_ticks)?;
+    if ack.yiaddr != offer.yiaddr {
+        return Err(NetError::Io);
+    }
+    Ok(NetConfig4 {
+        ip: ack.yiaddr,
+        gw: ack.router.ok_or(NetError::Io)?,
+        mask: ack.subnet_mask.ok_or(NetError::Io)?,
+        server: ack.server_id.unwrap_or(server),
+    })
+}
+
+/// **ARP resolve**: hỏi MAC của `target_ip` (dùng `our_ip`/MAC của ta làm nguồn).
+pub fn arp_resolve(
+    our_ip: [u8; 4],
+    target_ip: [u8; 4],
+    timeout_ticks: u64,
+) -> Result<[u8; 6], NetError> {
+    let our_mac = mac();
+    let mut frame = [0u8; 64];
+    let len =
+        arp_build_request(our_mac, our_ip, target_ip, &mut frame).ok_or(NetError::BadFrame)?;
+    send_frame(&frame[..len])?;
+    let deadline = Riscv64Virt.now_ticks().wrapping_add(timeout_ticks);
+    let mut reply = [0u8; MAX_FRAME_BYTES];
+    loop {
+        let now = Riscv64Virt.now_ticks();
+        if now.wrapping_sub(deadline) < u64::MAX / 2 {
+            return Err(NetError::Timeout);
+        }
+        let remaining = deadline.wrapping_sub(now);
+        if let Some(got) = recv_frame_wait(&mut reply, remaining) {
+            if let Some(found) = arp_parse_reply(&reply[..got], our_ip, target_ip, our_mac) {
+                return Ok(found);
+            }
+        }
+    }
+}
+
+/// Kết quả một loạt ping.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PingStats {
+    /// Số echo request đã gửi.
+    pub sent: u32,
+    /// Số echo reply nhận được.
+    pub received: u32,
+    /// RTT nhỏ nhất (ms).
+    pub rtt_min_ms: u64,
+    /// RTT lớn nhất (ms).
+    pub rtt_max_ms: u64,
+}
+
+/// Đổi tick timebase sang ms (làm tròn xuống).
+fn ticks_to_ms(ticks: u64) -> u64 {
+    ticks.saturating_mul(1000) / TIMEBASE_HZ
+}
+
+/// **ICMP echo** `count` lần tới `target_ip` qua `target_mac` (đã resolve bằng ARP).
+///
+/// `Err(NetError::Timeout)` nếu **không** nhận được reply nào; `Err(NetError::Io)` nếu nhận được
+/// ít hơn `count` (mất gói — không giấu).
+pub fn ping(
+    our_ip: [u8; 4],
+    our_mac: [u8; 6],
+    target_ip: [u8; 4],
+    target_mac: [u8; 6],
+    count: u32,
+    timeout_ticks: u64,
+) -> Result<PingStats, NetError> {
+    let mut stats = PingStats::default();
+    let mut payload = [0u8; ICMP_PAYLOAD_BYTES];
+    for (index, byte) in payload.iter_mut().enumerate() {
+        *byte = index as u8;
+    }
+    let id = 0x4b54u16;
+    let mut frame = [0u8; 128];
+    let mut reply = [0u8; MAX_FRAME_BYTES];
+    let mut seq = 1u16;
+    while stats.sent < count {
+        let mut icmp = [0u8; 8 + ICMP_PAYLOAD_BYTES];
+        let icmp_len = icmp_build_echo(id, seq, &payload, &mut icmp).ok_or(NetError::BadFrame)?;
+        let mut ip = [0u8; 64];
+        let ip_len = ipv4_build(our_ip, target_ip, IP_PROTO_ICMP, &icmp[..icmp_len], &mut ip)
+            .ok_or(NetError::BadFrame)?;
+        let len = eth_build(
+            target_mac,
+            our_mac,
+            ETHERTYPE_IPV4,
+            &ip[..ip_len],
+            &mut frame,
+        )
+        .ok_or(NetError::BadFrame)?;
+        let started = Riscv64Virt.now_ticks();
+        send_frame(&frame[..len])?;
+        stats.sent += 1;
+        let deadline = started.wrapping_add(timeout_ticks);
+        let mut answered = false;
+        loop {
+            let now = Riscv64Virt.now_ticks();
+            if now.wrapping_sub(deadline) < u64::MAX / 2 {
+                break;
+            }
+            let remaining = deadline.wrapping_sub(now);
+            let Some(got) = recv_frame_wait(&mut reply, remaining) else {
+                continue;
+            };
+            let Some(eth) = eth_parse(&reply[..got]) else {
+                continue;
+            };
+            if eth.ethertype != ETHERTYPE_IPV4 {
+                continue;
+            }
+            let Some(ip) = ipv4_parse(eth.payload) else {
+                continue;
+            };
+            if ip.proto != IP_PROTO_ICMP || ip.src != target_ip {
+                continue;
+            }
+            if icmp_parse_echo_reply(ip.payload, id, seq).is_none() {
+                continue;
+            }
+            let rtt = ticks_to_ms(Riscv64Virt.now_ticks().wrapping_sub(started));
+            stats.received += 1;
+            if stats.received == 1 || rtt < stats.rtt_min_ms {
+                stats.rtt_min_ms = rtt;
+            }
+            if rtt > stats.rtt_max_ms {
+                stats.rtt_max_ms = rtt;
+            }
+            answered = true;
+            break;
+        }
+        if !answered && stats.received == 0 {
+            // Chưa từng có reply nào ⇒ coi như không có mạng (fail-closed, không chờ 3 lần).
+            return Err(NetError::Timeout);
+        }
+        seq = seq.wrapping_add(1);
+    }
+    if stats.received != count {
+        return Err(NetError::Io);
+    }
+    Ok(stats)
 }
 
 const _: () = {

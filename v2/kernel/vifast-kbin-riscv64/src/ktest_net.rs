@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh **test virtio-net** riscv64 (KT-245, D1) — bin `vifast-kbin-ktest-net`, feature `ktest,net`,
-//! nạp qua OpenSBI **kèm** `-netdev user,id=n0 -device virtio-net-pci,netdev=n0`.
+//! Ảnh **test virtio-net** riscv64 (KT-245 + KT-246, D1) — bin `vifast-kbin-ktest-net`, feature
+//! `ktest,net`, nạp qua OpenSBI **kèm** `-netdev user,id=n0 -device virtio-net-pci,netdev=n0`.
 //!
 //! # Vì sao ảnh riêng
 //!
@@ -9,7 +9,7 @@
 //! 21 boot matrix cũ **không đổi**; (c) boot kết thúc bằng **một** dòng `PANIC:` chủ đích (cùng
 //! quy ước ảnh guard/user/proc/vblk/con/exec).
 //!
-//! # TAP (4 test; tên khớp `v2/test/boot/net.sh`)
+//! # TAP (7 test; tên khớp `v2/test/boot/net.sh`)
 //!
 //! 1. `net device` — quét ECAM tìm **vendor/device đọc từ thiết bị** (`0x1af4:0x1000`), đo cỡ BAR
 //!    bằng mask, **gán** BAR (firmware không enumerate), đọc lại BAR + `command`, đọc bốn
@@ -17,11 +17,16 @@
 //! 2. `net mac` — đàm phán `VIRTIO_F_VERSION_1` + `VIRTIO_NET_F_MAC` (**không** `MRG_RXBUF`,
 //!    **không** `STATUS`), hai queue `rx`/`tx` bật, **MAC đọc từ `virtio_net_config`** (tiền tố
 //!    QEMU `52:54:00:`), địa chỉ DMA identity (`VA == PA`).
-//! 3. `net tx` — gửi **một** frame ARP request thật (42 byte, broadcast) qua queue `tx`; thiết bị
+//! 3. `net dhcp` — **DHCP client thật**: DISCOVER (broadcast) → OFFER → REQUEST → ACK; in
+//!    `net: dhcp ip=… gw=… mask=… server=…`. Không có server trong 3 s ⇒ `net: no link` + TAP đỏ
+//!    (fail-closed, **không** treo).
+//! 4. `net arp` — hỏi MAC của gateway bằng ARP request, nhận reply ⇒ `net: arp gw=<mac>`.
+//! 5. `net ping` — **3** ICMP echo request tới gateway, nhận đủ 3 reply ⇒
+//!    `net: ping <ip> ok n=3 rtt=<ms>`.
+//! 6. `net tx` — gửi **một** frame ARP request thô (42 byte, broadcast) qua queue `tx`; thiết bị
 //!    hoàn tất `used` (`used->id` khớp head, `used->len` không vượt số byte đã đưa).
-//! 4. `net rx` — nhận **frame trả lời** của slirp trên queue `rx`: ARP reply từ gateway
-//!    `10.0.2.2`, đúng `oper=2`, `sender_mac` khác 0, `target_mac` = MAC của ta. Đây là **một**
-//!    vòng tx→rx thật qua thiết bị, không phải loopback phần mềm.
+//! 7. `net rx` — nhận **frame trả lời** của slirp trên queue `rx`: ARP reply từ gateway
+//!    `10.0.2.2`, đúng `oper=2`, `sender_mac` khác 0, `target_mac` = MAC của ta.
 //!
 //! Mọi dòng `# net:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
@@ -31,7 +36,6 @@
 
 use core::fmt::Write;
 
-use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
@@ -45,14 +49,12 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// IP gateway của QEMU slirp (`-netdev user`): `10.0.2.2` (dữ kiện nền tảng QEMU, không phải số đo).
 const GATEWAY_IP: [u8; 4] = [10, 0, 2, 2];
-/// IP mặc định của guest trong slirp: `10.0.2.15` — dùng làm `spa` của ARP request.
-const GUEST_IP: [u8; 4] = [10, 0, 2, 15];
 /// Ethertype ARP.
 const ETHERTYPE_ARP: u16 = 0x0806;
 /// Cỡ một ARP request Ethernet/IPv4: 14 (Ethernet) + 28 (ARP) = 42.
 const ARP_FRAME_BYTES: usize = 42;
-/// Timeout chờ frame trả lời (tick timebase) — 1 s ảo.
-const RX_TIMEOUT_TICKS: u64 = TIMEBASE_HZ;
+/// Số echo request của TAP 5 (D2-196 mục (1): "gửi 3 echo request").
+const PING_COUNT: u32 = 3;
 
 fn put(ok: bool, number: usize, name: &str, fails: &mut usize, why: &str) {
     let mut w = PlatformWriter(&PLATFORM);
@@ -75,7 +77,7 @@ fn identity(addr: u64) -> bool {
     addr - walk.phys < leaf_bytes
 }
 
-/// In MAC dạng `52:54:00:12:34:56` (không dùng `{:02x}` lặp trong `writeln!` để giữ `no_std` gọn).
+/// In MAC dạng `52:54:00:12:34:56` vào `out` (17 byte, không NUL).
 fn mac_str(mac: [u8; 6], out: &mut [u8; 17]) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut index = 0;
@@ -89,25 +91,9 @@ fn mac_str(mac: [u8; 6], out: &mut [u8; 17]) {
     }
 }
 
-/// Dựng **ARP request** Ethernet/IPv4 hỏi MAC của `target_ip` (42 byte, broadcast).
-fn build_arp_request(mac: [u8; 6], target_ip: [u8; 4], out: &mut [u8; ARP_FRAME_BYTES]) {
-    out[0..6].copy_from_slice(&[0xff; 6]); // đích: broadcast
-    out[6..12].copy_from_slice(&mac); // nguồn: MAC của ta
-    out[12..14].copy_from_slice(&ETHERTYPE_ARP.to_be_bytes());
-    out[14..16].copy_from_slice(&1u16.to_be_bytes()); // htype = Ethernet
-    out[16..18].copy_from_slice(&0x0800u16.to_be_bytes()); // ptype = IPv4
-    out[18] = 6; // hlen
-    out[19] = 4; // plen
-    out[20..22].copy_from_slice(&1u16.to_be_bytes()); // oper = request
-    out[22..28].copy_from_slice(&mac); // sha
-    out[28..32].copy_from_slice(&GUEST_IP); // spa
-    out[32..38].copy_from_slice(&[0u8; 6]); // tha (chưa biết)
-    out[38..42].copy_from_slice(&target_ip); // tpa
-}
-
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..4\n");
+    PLATFORM.put_str("TAP version 13\n1..7\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let mmu_report = mmu::init();
@@ -116,7 +102,7 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(
             w,
             "# net image: hart={} stvec=0x{:x} direct={} satp=0x{:x} mode={} tables={} used={} \
-             const:gateway=10.0.2.2 const:guest=10.0.2.15",
+             const:gateway=10.0.2.2 const:ping_count={PING_COUNT}",
             PLATFORM.hart_id(),
             stvec,
             (stvec & 0b11 == 0) as u8,
@@ -320,16 +306,191 @@ pub extern "C" fn rust_main() -> ! {
             PLATFORM.halt(1)
         }
     };
-
-    // ------------------------------------------------ 3) TX: gửi ARP request thật
     let mac = net.config.mac;
-    let mut request = [0u8; ARP_FRAME_BYTES];
-    build_arp_request(mac, GATEWAY_IP, &mut request);
+
+    // ------------------------------------------------ 3) DHCP: DISCOVER → OFFER → REQUEST → ACK
+    let config = {
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::dhcp_acquire(virtio_net::NET_STEP_TIMEOUT_TICKS);
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(config) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net: dhcp ip={}.{}.{}.{} gw={}.{}.{}.{} mask={}.{}.{}.{} \
+                         server={}.{}.{}.{}",
+                        config.ip[0],
+                        config.ip[1],
+                        config.ip[2],
+                        config.ip[3],
+                        config.gw[0],
+                        config.gw[1],
+                        config.gw[2],
+                        config.gw[3],
+                        config.mask[0],
+                        config.mask[1],
+                        config.mask[2],
+                        config.mask[3],
+                        config.server[0],
+                        config.server[1],
+                        config.server[2],
+                        config.server[3]
+                    );
+                    let _ = writeln!(
+                        w,
+                        "# net dhcp: elapsed_ms={elapsed_ms} xid=0x{:x} \
+                         const:timeout_ms={}",
+                        0x4b54_3234u32,
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                }
+                put(true, 3, "net dhcp", &mut fails, "");
+                config
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net dhcp: elapsed_ms={elapsed_ms} err={}",
+                        error.name()
+                    );
+                    // Dòng **cố định** cho runner + ca "không mạng" (D2-196 mục (3)).
+                    let _ = writeln!(w, "# net: no link");
+                }
+                put(
+                    false,
+                    3,
+                    "net dhcp",
+                    &mut fails,
+                    "không nhận được DHCP OFFER/ACK trong 3 s",
+                );
+                PLATFORM.put_str("# ktest halt\n");
+                PLATFORM.halt(1)
+            }
+        }
+    };
+
+    // ------------------------------------------------ 4) ARP: MAC của gateway
+    let gateway_mac = {
+        let started = PLATFORM.now_ticks();
+        let result =
+            virtio_net::arp_resolve(config.ip, config.gw, virtio_net::NET_STEP_TIMEOUT_TICKS);
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(found) => {
+                let mut text = [0u8; 17];
+                mac_str(found, &mut text);
+                let name = core::str::from_utf8(&text).unwrap_or("?");
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(w, "# net: arp gw={name}");
+                    let _ = writeln!(
+                        w,
+                        "# net arp: elapsed_ms={elapsed_ms} gw={}.{}.{}.{} mac_khong_broadcast={}",
+                        config.gw[0],
+                        config.gw[1],
+                        config.gw[2],
+                        config.gw[3],
+                        (found != [0u8; 6] && found != [0xffu8; 6]) as u8
+                    );
+                }
+                put(true, 4, "net arp", &mut fails, "");
+                found
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(w, "# net arp: elapsed_ms={elapsed_ms} err={}", error.name());
+                    let _ = writeln!(w, "# net: no link");
+                }
+                put(
+                    false,
+                    4,
+                    "net arp",
+                    &mut fails,
+                    "không nhận được ARP reply của gateway",
+                );
+                PLATFORM.put_str("# ktest halt\n");
+                PLATFORM.halt(1)
+            }
+        }
+    };
+
+    // ------------------------------------------------ 5) ICMP echo ×3 tới gateway
     {
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::ping(
+            config.ip,
+            mac,
+            config.gw,
+            gateway_mac,
+            PING_COUNT,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(stats) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net: ping {}.{}.{}.{} ok n={} rtt={}",
+                        config.gw[0],
+                        config.gw[1],
+                        config.gw[2],
+                        config.gw[3],
+                        stats.received,
+                        stats.rtt_max_ms
+                    );
+                    let _ = writeln!(
+                        w,
+                        "# net ping: sent={} received={} rtt_min_ms={} rtt_max_ms={} \
+                         elapsed_ms={elapsed_ms} const:count={PING_COUNT}",
+                        stats.sent, stats.received, stats.rtt_min_ms, stats.rtt_max_ms
+                    );
+                }
+                put(true, 5, "net ping", &mut fails, "");
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net ping: elapsed_ms={elapsed_ms} err={}",
+                        error.name()
+                    );
+                    let _ = writeln!(w, "# net: no link");
+                }
+                put(
+                    false,
+                    5,
+                    "net ping",
+                    &mut fails,
+                    "không nhận đủ 3 ICMP echo reply",
+                );
+                PLATFORM.put_str("# ktest halt\n");
+                PLATFORM.halt(1)
+            }
+        }
+    }
+
+    // ------------------------------------------------ 6) TX thô: gửi ARP request thật
+    let mut request = [0u8; ARP_FRAME_BYTES];
+    {
+        let len =
+            virtio_net::arp_build_request(mac, config.ip, config.gw, &mut request).unwrap_or(0);
         let before = virtio_net::stats();
-        let result = virtio_net::send_frame(&request);
+        let result = virtio_net::send_frame(&request[..len]);
         let after = virtio_net::stats();
-        let ok = result.is_ok()
+        let ok = len == ARP_FRAME_BYTES
+            && result.is_ok()
             && after.tx_frames == before.tx_frames + 1
             && after.tx_bytes == before.tx_bytes + ARP_FRAME_BYTES as u64
             && after.errors == before.errors
@@ -357,18 +518,18 @@ pub extern "C" fn rust_main() -> ! {
         }
         put(
             ok,
-            3,
+            6,
             "net tx",
             &mut fails,
             "gửi frame ARP request thất bại",
         );
     }
 
-    // ------------------------------------------------ 4) RX: nhận ARP reply của slirp
+    // ------------------------------------------------ 7) RX thô: nhận ARP reply của slirp
     {
         let mut frame = [0u8; MAX_FRAME_BYTES];
         let before = virtio_net::stats();
-        let got = virtio_net::recv_frame_wait(&mut frame, RX_TIMEOUT_TICKS);
+        let got = virtio_net::recv_frame_wait(&mut frame, virtio_net::NET_STEP_TIMEOUT_TICKS);
         let after = virtio_net::stats();
         let mut sender_mac = [0u8; 6];
         let mut sender_ip = [0u8; 4];
@@ -422,7 +583,7 @@ pub extern "C" fn rust_main() -> ! {
         }
         put(
             ok,
-            4,
+            7,
             "net rx",
             &mut fails,
             "không nhận được ARP reply của slirp",
@@ -449,7 +610,7 @@ pub extern "C" fn rust_main() -> ! {
         );
         // Dấu kết thúc **chủ đích** (không có fault): runner đòi đúng **một** dòng PANIC cho mỗi
         // boot; ảnh này không fault nên tự in dấu kết thúc rồi `halt(0)`. Nội dung lấy từ `fails`.
-        let _ = writeln!(w, "PANIC: KT-245 net xong (4 TAP, {fails} fail)");
+        let _ = writeln!(w, "PANIC: KT-246 net xong (7 TAP, {fails} fail)");
     }
     PLATFORM.halt(0)
 }
