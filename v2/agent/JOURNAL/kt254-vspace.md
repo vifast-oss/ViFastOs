@@ -19,7 +19,8 @@ error: could not compile `vifast-plat-aarch64` (test "fault") due to 1 previous 
 error: could not compile `vifast-plat-aarch64` (test "vspace") due to 1 previous error
 ```
 
-**Sau khi sửa** — 17 test host mới (log [`kt254-vspace.log`](kt254-vspace.log) §1):
+**Sau khi sửa** — 18 test host mới (10 `vspace` + 7 `fault` + 1 `CPACR`; log
+[`kt254-vspace.log`](kt254-vspace.log) §1):
 
 ```text
 $ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test vspace --test fault
@@ -44,7 +45,7 @@ test lower_el_aborts_are_classified ... ok
 test non_abort_is_none ... ok
 ```
 
-Toàn crate: **112 ca host** (trước KT-254: 92) — 7 `fault` + 24 `host` + 10 `mmu_boot` +
+Toàn crate: **112 ca host** (trước KT-254: 94) — 7 `fault` + 24 `host` + 10 `mmu_boot` +
 13 `pl011` + 16 `split_mmu` + 20 `sysreg` + 4 `tlb_barrier` + 8 `vector` + 10 `vspace`.
 
 ## 2. Đã làm

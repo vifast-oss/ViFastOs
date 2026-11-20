@@ -22,7 +22,7 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 test result: ok. 8 passed; 0 failed; 0 ignored
      Running tests/vspace.rs
 test result: ok. 10 passed; 0 failed; 0 ignored
-# TỔNG: 112 ca host (trước KT-254: 92; +10 vspace, +7 fault, +1 CPACR)
+# TỔNG: 112 ca host (trước KT-254: 94; +10 vspace, +7 fault, +1 CPACR)
 
 ### 2. QEMU — TAP 9/9, runner 7/7
 $ bash v2/test/boot/run-aarch64.sh; echo "EXIT=$?"

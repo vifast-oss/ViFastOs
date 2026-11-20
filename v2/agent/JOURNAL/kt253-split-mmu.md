@@ -46,7 +46,7 @@ test walk_routes_by_half ... ok
 test result: ok. 16 passed; 0 failed; 0 ignored
 ```
 
-Toàn crate: **92 ca host** (trước KT-253: 78) — 24 `host` + 10 `mmu_boot` + 13 `pl011` +
+Toàn crate: **94 ca host** (trước KT-253: 78) — 24 `host` + 10 `mmu_boot` + 13 `pl011` +
 **16 `split_mmu`** + 19 `sysreg` + 4 `tlb_barrier` + 8 `vector`.
 
 ## 2. Đã làm
