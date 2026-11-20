@@ -1,0 +1,16 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night4-A-kt237/v2/kernel/vifast-core)
+vifast-core/src/kt237_evil.rs:6:7: error[E0624]: method `write_state_raw` is private: private method
+vifast-core/src/kt237_wb16.rs:6:34: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb16.rs:18:34: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb16.rs:22:34: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb16.rs:26:34: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb16.rs:29:49: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb16_helper.rs:6:34: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb17.rs:7:14: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb17.rs:11:9: error[E0308]: mismatched types: expected fn pointer, found fn item
+vifast-core/src/kt237_wb17.rs:18:10: error[E0308]: mismatched types: expected fn pointer, found fn item
+vifast-core/src/kt237_wb17.rs:24:9: error[E0631]: type mismatch in function arguments: expected due to this
+vifast-core/src/kt237_wb17.rs:30:44: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb17.rs:34:13: error[E0308]: mismatched types: expected `NonReadyTarget`, found `TcbState`
+vifast-core/src/kt237_wb17.rs:37:9: error[E0631]: type mismatch in function arguments: expected due to this
+error: could not compile `vifast-core` (lib) due to 14 previous errors
