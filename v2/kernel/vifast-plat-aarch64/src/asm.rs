@@ -293,6 +293,44 @@ mod imp {
         }
     }
 
+    // ------------------------------------------------------------------ nửa cao (KT-253)
+
+    /// Nhảy sang **VA nửa cao**: đặt `sp` rồi `br` tới `entry` — **không** trả về.
+    ///
+    /// Dùng thanh ghi cố định (`x9`/`x10`) thay vì `in(reg)` để thứ tự hai lệnh không phụ thuộc
+    /// bộ cấp phát thanh ghi: `sp` phải đổi **trước** khi `br` tới code nửa cao (code ấy dùng
+    /// stack ngay ở lệnh đầu tiên nếu nó gọi hàm).
+    ///
+    /// # An toàn (caller)
+    ///
+    /// `entry` phải là VA **đã map** trong bảng nửa cao và `[sp - …, sp)` phải là vùng stack đã
+    /// map ở nửa cao. Hàm này không kiểm — nó là bước cuối của đường boot, sai thì fault ngay
+    /// (bảng vector in `# trap:` rồi dừng, không im lặng).
+    pub fn jump_high(entry: u64, sp: u64) -> ! {
+        // SAFETY: caller đã map `entry` + vùng stack quanh `sp` trong bảng nửa cao; `br` không
+        // đọc/ghi bộ nhớ nào khác. `options(noreturn)` vì không có đường quay lại.
+        unsafe {
+            asm!(
+                "mov sp, x9",
+                "br x10",
+                in("x9") sp,
+                in("x10") entry,
+                options(noreturn),
+            )
+        }
+    }
+
+    /// Địa chỉ instruction hiện tại (`adr x, .`) — bằng chứng **PC đang thật sự ở VA nửa cao**.
+    ///
+    /// Đây là phép đo không thể giả: nếu chỉ in một hằng số thì không chứng minh được gì; đọc
+    /// PC thật rồi so với VA nửa cao mong đợi mới chứng minh instruction fetch đi qua `TTBR1`.
+    pub fn current_pc() -> u64 {
+        let pc: u64;
+        // SAFETY: `adr` chỉ đọc PC vào thanh ghi, không truy cập bộ nhớ.
+        unsafe { asm!("adr {pc}, .", pc = out(reg) pc) };
+        pc
+    }
+
     // ------------------------------------------------------------------ sysreg: ghi
 
     /// Ghi `TCR_EL1` (gọi [`isb`] sau khi ghi).
@@ -522,6 +560,14 @@ mod imp {
     /// Stub host của `wfi` vô hạn — **panic**: trên host không được treo tiến trình test.
     pub fn wfi_forever() -> ! {
         host_stub("wfi forever")
+    }
+    /// Stub host của nhảy nửa cao — **panic**: trên host không có bảng trang nửa cao.
+    pub fn jump_high(_entry: u64, _sp: u64) -> ! {
+        host_stub("jump high")
+    }
+    /// Stub host của đọc PC — **panic**: không có asm trên host.
+    pub fn current_pc() -> u64 {
+        host_stub("current pc")
     }
     /// Stub host của `msr tcr_el1`.
     pub fn write_tcr_el1(_value: u64) {

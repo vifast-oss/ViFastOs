@@ -51,6 +51,7 @@ pub mod format;
 pub mod mmu;
 pub mod pl011;
 pub mod resources;
+pub mod split_mmu;
 pub mod sysreg;
 pub mod tlb;
 pub mod vector;
@@ -71,10 +72,13 @@ pub fn debug_halt(_code: usize) -> ! {
 const _: () = assert!(mmu::MAX_LEVELS >= format::AARCH64_LEVELS);
 
 pub use boot_mmu::{
-    apply_step, enable_mmu, map_identity, mmu_is_on, sctlr_for_mmu_on, start_level, ttbr0_base,
-    MmuStep, MMU_ENABLE_SEQUENCE,
+    apply_step, enable_mmu, level1_base, map_identity, mmu_is_on, sctlr_for_mmu_on, start_level,
+    ttbr0_base, ttbr1_base, MmuStep, MMU_ENABLE_SEQUENCE,
 };
-pub use bootmem::{boot_memory, BootMemory, BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS};
+pub use bootmem::{
+    boot_memory, shared_boot_memory, BootMemory, SharedBootMemory, BOOT_ARENA_FRAMES,
+    BOOT_ARENA_WORDS,
+};
 pub use format::{
     is_canonical_bits, mair_byte, mair_index, Aarch64, Descriptor, MemAttr, PageTableFormat, Perms,
     Shareability, AARCH64_ENTRIES, AARCH64_INDEX_BITS, AARCH64_LEVELS, AARCH64_MAX_VA_BITS,
@@ -85,6 +89,10 @@ pub use format::{
 };
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, MAX_LEVELS,
+};
+pub use split_mmu::{
+    half_of, high_alias_va, map_high_alias, map_physmap, physmap_va, Half, SplitMmu,
+    HIGH_HALF_BASE, KERNEL_HIGH_BASE, PHYSMAP_BASE,
 };
 pub use sysreg::{
     Daif, ElrEl1, Esr, ExceptionClass, FarEl1, Granule, Ips, Mair, Sctlr, Spsr, SpsrMode, Tcr,

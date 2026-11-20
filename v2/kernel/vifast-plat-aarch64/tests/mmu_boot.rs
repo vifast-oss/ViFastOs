@@ -108,7 +108,9 @@ impl TableMemory for TestMemory {
 
 // ---------------------------------------------------------------- thứ tự chuỗi bật MMU
 
-/// **Thứ tự bắt buộc**: `TCR → MAIR → TTBR0 → SCTLR → ISB` (5 bước, không thừa không thiếu).
+/// **Thứ tự bắt buộc**: `TCR → MAIR → TTBR0 → TTBR1 → SCTLR → ISB` (6 bước, không thừa không
+/// thiếu). `TTBR1` được KT-253 (B3.4) thêm vào giữa `TTBR0` và `SCTLR`: nửa cao phải có gốc
+/// **trước** khi `SCTLR_EL1.M = 1`.
 ///
 /// Đột biến (i) — bỏ `ISB` — làm test này **ĐỎ**.
 #[test]
@@ -116,13 +118,18 @@ fn mmu_enable_sequence_order() {
     // Dùng `.get()` chứ không `[i]`: nếu ai bỏ một bước, test phải **chạy** và ĐỎ với thông điệp
     // rõ, không phải lỗi biên dịch "index out of bounds" (lỗi biên dịch dễ bị nhầm là hỏng không
     // liên quan — bài học từ chính đột biến (i) của KT-249).
-    assert_eq!(MMU_ENABLE_SEQUENCE.len(), 5, "chuỗi phải đủ 5 bước");
+    assert_eq!(MMU_ENABLE_SEQUENCE.len(), 6, "chuỗi phải đủ 6 bước");
     assert_eq!(MMU_ENABLE_SEQUENCE.first(), Some(&MmuStep::WriteTcr));
     assert_eq!(MMU_ENABLE_SEQUENCE.get(1), Some(&MmuStep::WriteMair));
     assert_eq!(MMU_ENABLE_SEQUENCE.get(2), Some(&MmuStep::WriteTtbr0));
-    assert_eq!(MMU_ENABLE_SEQUENCE.get(3), Some(&MmuStep::WriteSctlr));
     assert_eq!(
-        MMU_ENABLE_SEQUENCE.get(4),
+        MMU_ENABLE_SEQUENCE.get(3),
+        Some(&MmuStep::WriteTtbr1),
+        "TTBR1 phải có trước SCTLR — nửa cao phải map xong trước khi bật MMU"
+    );
+    assert_eq!(MMU_ENABLE_SEQUENCE.get(4), Some(&MmuStep::WriteSctlr));
+    assert_eq!(
+        MMU_ENABLE_SEQUENCE.get(5),
         Some(&MmuStep::Isb),
         "ISB phải là bước cuối — thiếu nó thì MMU có thể chưa có hiệu lực"
     );

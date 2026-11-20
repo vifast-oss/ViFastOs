@@ -25,8 +25,9 @@
 //!
 //! # Phạm vi
 //!
-//! Chỉ **identity map** (VA == PA) cho vùng ảnh kernel + UART + GIC. Nửa cao (`TTBR1_EL1`) và
-//! physmap là B3.4 — **không** thuộc bước 3 (D2-195 hoãn Q4).
+//! **KT-249** (B3.3): identity map (VA == PA) cho vùng ảnh kernel + UART + GIC, bật MMU với
+//! `TTBR0_EL1`. **KT-253** (B3.4, D2-199): thêm bước `TTBR1_EL1` vào chuỗi (nửa cao) và
+//! [`ttbr1_base`] — bảng nửa cao do [`crate::split_mmu::SplitMmu`] dựng, không phải tệp này.
 
 use crate::asm;
 use crate::format::{Aarch64, Descriptor, MemAttr, Perms};
@@ -42,6 +43,8 @@ pub enum MmuStep {
     WriteMair,
     /// `msr ttbr0_el1` — bảng gốc nửa thấp (**mức 1**, xem [`ttbr0_base`]).
     WriteTtbr0,
+    /// `msr ttbr1_el1` — bảng gốc nửa cao (**mức 1**, xem [`ttbr1_base`]) — KT-253/B3.4.
+    WriteTtbr1,
     /// `msr sctlr_el1` — bật `M` (bước **cuối** trước `ISB`).
     WriteSctlr,
     /// `isb` — context synchronization: không có nó, các lệnh sau có thể vẫn dùng trạng thái cũ.
@@ -55,17 +58,23 @@ impl MmuStep {
             Self::WriteTcr => "tcr",
             Self::WriteMair => "mair",
             Self::WriteTtbr0 => "ttbr0",
+            Self::WriteTtbr1 => "ttbr1",
             Self::WriteSctlr => "sctlr",
             Self::Isb => "isb",
         }
     }
 }
 
-/// Chuỗi bật MMU **bắt buộc** — 5 bước, đúng thứ tự (xem tài liệu đầu tệp).
-pub const MMU_ENABLE_SEQUENCE: [MmuStep; 5] = [
+/// Chuỗi bật MMU **bắt buộc** — 6 bước, đúng thứ tự (xem tài liệu đầu tệp).
+///
+/// **KT-253** thêm [`MmuStep::WriteTtbr1`] giữa `TTBR0` và `SCTLR`: nửa cao phải có gốc **trước**
+/// khi `SCTLR_EL1.M = 1`, nếu không lần nhảy sang VA nửa cao sẽ fault ngay (và trên QEMU TCG
+/// không có "may mắn" nào cứu).
+pub const MMU_ENABLE_SEQUENCE: [MmuStep; 6] = [
     MmuStep::WriteTcr,
     MmuStep::WriteMair,
     MmuStep::WriteTtbr0,
+    MmuStep::WriteTtbr1,
     MmuStep::WriteSctlr,
     MmuStep::Isb,
 ];
@@ -101,11 +110,12 @@ pub fn mmu_is_on(sctlr: u64) -> bool {
 ///
 /// Tách khỏi [`enable_mmu`] để ảnh in được marker **trước và sau từng bước** (R5 của thiết kế:
 /// bật MMU sai thứ tự ⇒ treo không log).
-pub fn apply_step(step: MmuStep, tcr: u64, mair: u64, ttbr0: u64, sctlr: u64) {
+pub fn apply_step(step: MmuStep, tcr: u64, mair: u64, ttbr0: u64, ttbr1: u64, sctlr: u64) {
     match step {
         MmuStep::WriteTcr => asm::write_tcr_el1(tcr),
         MmuStep::WriteMair => asm::write_mair_el1(mair),
         MmuStep::WriteTtbr0 => asm::write_ttbr0_el1(ttbr0),
+        MmuStep::WriteTtbr1 => asm::write_ttbr1_el1(ttbr1),
         MmuStep::WriteSctlr => asm::write_sctlr_el1(sctlr),
         MmuStep::Isb => asm::isb(),
     }
@@ -116,23 +126,37 @@ pub fn apply_step(step: MmuStep, tcr: u64, mair: u64, ttbr0: u64, sctlr: u64) {
 /// Ảnh **không** dùng hàm này trực tiếp khi cần log từng bước — nó lặp qua
 /// [`MMU_ENABLE_SEQUENCE`] và gọi [`apply_step`] để in marker trước/sau mỗi bước. Hàm này giữ
 /// đường "một lần gọi" cho test/đường tắt và để chuỗi có **một** định nghĩa.
-pub fn enable_mmu(tcr: u64, mair: u64, ttbr0: u64, sctlr: u64) -> usize {
+pub fn enable_mmu(tcr: u64, mair: u64, ttbr0: u64, ttbr1: u64, sctlr: u64) -> usize {
     for step in MMU_ENABLE_SEQUENCE {
-        apply_step(step, tcr, mair, ttbr0, sctlr);
+        apply_step(step, tcr, mair, ttbr0, ttbr1, sctlr);
     }
     MMU_ENABLE_SEQUENCE.len()
 }
 
-/// PA của bảng **mức 1** mà `TTBR0_EL1` phải trỏ tới (con của gốc mức 0), `None` nếu chưa có.
+/// PA bảng **mức 1** dưới gốc của `table` cho VA `va` (chỉ số mức 0 của `va`), `None` nếu chưa có.
 ///
-/// Với `T0SZ = 25` walk bắt đầu ở mức 1 (xem [`start_level`]); bảng gốc mức 0 chỉ là "hộp" chứa
-/// đúng một entry (chỉ số 0) trỏ xuống mức 1 cho nửa thấp 39-bit.
-pub fn ttbr0_base<M: TableMemory>(table: &PageTable<Aarch64, M>) -> Option<u64> {
-    let entry = table.memory().read_entry(table.root(), 0)?;
+/// Với `T0SZ = T1SZ = 25` walk bắt đầu ở **mức 1** (xem [`start_level`]); bảng gốc mức 0 chỉ là
+/// "hộp" chứa entry trỏ xuống mức 1. Chỉ số mức 0 là `0` cho nửa thấp và `0x1FF` cho nửa cao
+/// (39-bit VA canonical) — nên **một** hàm phục vụ cả hai nửa, không có bản thứ hai của logic.
+pub fn level1_base<M: TableMemory>(table: &PageTable<Aarch64, M>, va: u64) -> Option<u64> {
+    let index = Aarch64::index(va, 0);
+    let entry = table.memory().read_entry(table.root(), index)?;
     match Aarch64::decode(entry, 0) {
         Descriptor::Table { pa } => Some(pa),
         _ => None,
     }
+}
+
+/// PA của bảng **mức 1** mà `TTBR0_EL1` phải trỏ tới (con của gốc mức 0 cho nửa thấp), `None`
+/// nếu chưa có.
+pub fn ttbr0_base<M: TableMemory>(table: &PageTable<Aarch64, M>) -> Option<u64> {
+    level1_base(table, 0)
+}
+
+/// PA của bảng **mức 1** mà `TTBR1_EL1` phải trỏ tới (con của gốc mức 0 cho nửa cao), `None`
+/// nếu chưa có — KT-253/B3.4.
+pub fn ttbr1_base<M: TableMemory>(table: &PageTable<Aarch64, M>) -> Option<u64> {
+    level1_base(table, crate::split_mmu::HIGH_HALF_BASE)
 }
 
 /// Identity map `[start, end)` bằng trang 4 KiB; trả **số trang** đã map.

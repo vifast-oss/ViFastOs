@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh boot **aarch64** của ViFastOs — KT-247 (B3.1) + KT-248 (B3.2).
+//! Ảnh boot **aarch64** của ViFastOs — KT-247 (B3.1) + KT-248 (B3.2) + KT-249 (B3.3) +
+//! KT-253 (B3.4).
 //!
 //! # Đường boot
 //!
@@ -8,26 +9,33 @@
 //!        │
 //!        ├─ QEMU nạp ELF tại 0x4008_0000 (linker.ld), nhảy vào _start ở EL1, x0 = địa chỉ DTB
 //!        ├─ _start: sp ← __stack_top; zero .bss; gọi kmain
-//!        ├─ kmain: PL011 init → marker → cài VBAR_EL1 → probe `brk #0` → in bằng chứng → halt
+//!        ├─ kmain (VA **thấp**, identity): PL011 → VBAR_EL1 → brk #0 → dựng **hai** bảng trang
+//!        │     (nửa thấp + nửa cao) → bật MMU (TCR→MAIR→TTBR0→TTBR1→SCTLR→ISB)
+//!        ├─ jump_high: sp ← VA nửa cao của stack, br tới VA nửa cao của high_entry
+//!        ├─ high_entry (VA **nửa cao**): đo PC thật + physmap, phát TAP 6/7, in marker
 //!        └─ debug_halt: PSCI SYSTEM_OFF (hvc #0, x0 = 0x8400_0008) ⇒ QEMU thoát mã 0
 //! ```
 //!
-//! # KT-248 — bảng vector + `VBAR_EL1` + handler đồng bộ
+//! # KT-253 — nửa cao (`TTBR1_EL1`) + physmap (B3.4, D2-199)
 //!
-//! - **Bảng 16 ô × `0x80`**, cả bảng căn `0x800`, đặt trong `.text.vectors` (`"ax"`) — **không**
-//!   `.bss` (`.bss` là NOLOAD ⇒ bảng không có trong ảnh đã nạp, `VBAR_EL1` trỏ vào rác).
-//! - Mỗi ô là một stub 2 instruction: `mov x9, #<ô>` rồi `b vec_common`. Offset của từng ô lấy
-//!   từ **hằng của crate arch** (`VECTOR_STRIDE`) qua `const` operand của `global_asm!` — không
-//!   có bản thứ hai của con số `0x80` trong asm để lệch với `vifast_plat_aarch64::vector`.
-//! - `vec_common` lưu `x0..x18, x29, x30` (176 B), đọc `ESR_EL1`/`FAR_EL1`/`ELR_EL1`/`SPSR_EL1`
-//!   rồi gọi [`vec_handler`]. Handler trả `1` ⇒ khôi phục thanh ghi + `eret`; trả `0` ⇒ dừng.
-//! - **`brk #0` cố ý**: handler nhận `EC = 0x3C`, ghi lại `ELR_EL1` (địa chỉ instruction `BRK`),
-//!   cộng 4 rồi resume ⇒ `kmain` in bằng chứng `ec=0x3c … match=1` và đi tiếp.
+//! - **Hai** `PageTable` trên **một** arena chia sẻ (`bootmem::shared_boot_memory`), gói trong
+//!   [`SplitMmu`] định tuyến theo VA — **không** chép walk/map, **không** đổi trait (D2-199).
+//! - Bảng **nửa thấp** (`TTBR0_EL1`): identity map ảnh + UART + GIC + trang probe (KT-249).
+//! - Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh tại [`KERNEL_HIGH_BASE`] + **physmap**
+//!   `PHYSMAP_BASE + PA` cho vùng ảnh.
+//! - Sau khi bật MMU, ảnh **nhảy** sang VA nửa cao: PC và SP đều ở nửa cao, `VBAR_EL1` được cài
+//!   lại bằng VA nửa cao của bảng vector. Bằng chứng: `# high: va=… pa=… match=1` (PC thật đọc
+//!   bằng `adr`) và `# physmap: pa=… read=… match=1` (đọc PA qua cửa sổ physmap).
 //!
-//! # Phạm vi (D2-195)
+//! **Giới hạn đã biết (ghi rõ, không giấu)**: ảnh vẫn **liên kết ở PA** (`0x4008_0000`), nên
+//! truy cập **dữ liệu** của mã sau khi nhảy vẫn dùng VA thấp qua `TTBR0` (identity) — chỉ
+//! **instruction fetch**, **stack** và **bảng vector** chạy ở nửa cao. Liên kết toàn ảnh ở VMA
+//! nửa cao (LMA thấp) là bước riêng; B3.4 chỉ yêu cầu "kernel chạy nửa cao" theo nghĩa PC/SP.
 //!
-//! Bước 3 mở **B3.1–B3.3 + B3.8**. Ảnh này có B3.1 + B3.2; **chưa** MMU (KT-249), **chưa** TAP
-//! (KT-250). **Không** tuyên bố K4' đạt.
+//! # Phạm vi (D2-195 + D2-199)
+//!
+//! Bước 3 mở **B3.1–B3.4 + B3.8**. Ảnh này có B3.1–B3.4; **chưa** `VSpace` (B3.5/KT-254),
+//! **chưa** TLBI shootdown (B3.6), **chưa** U-mode (B3.7). **Không** tuyên bố K4' đạt.
 
 #![no_std]
 #![no_main]
@@ -37,12 +45,12 @@ use core::fmt::{self, Write};
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_aarch64::boot_mmu::{
-    apply_step, map_identity, mmu_is_on, sctlr_for_mmu_on, ttbr0_base, MMU_ENABLE_SEQUENCE,
+    apply_step, map_identity, mmu_is_on, sctlr_for_mmu_on, MMU_ENABLE_SEQUENCE,
 };
 use vifast_plat_aarch64::bootmem;
-use vifast_plat_aarch64::format::{Aarch64, MemAttr, Perms};
-use vifast_plat_aarch64::mmu::PageTable;
+use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
+use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
 use vifast_plat_aarch64::{asm, debug_halt, pl011};
@@ -177,13 +185,15 @@ global_asm!(
 // `unsafe` (luật R5).
 extern "C" {
     static __vector_base: u8;
-    // Biên vùng ảnh do `linker.ld` cấp — dùng để identity map **đúng** khoảng ảnh chiếm
-    // (kể cả `.stack` NOLOAD, vì stack phải dùng được sau khi bật MMU).
+    // Biên vùng ảnh do `linker.ld` cấp — dùng để map **đúng** khoảng ảnh chiếm (kể cả `.stack`
+    // NOLOAD, vì stack phải dùng được sau khi bật MMU).
     static __text_start: u8;
     static __kernel_end: u8;
+    // Đỉnh stack (cuối `.stack` NOLOAD) — KT-253 dùng để tính SP nửa cao.
+    static __stack_top: u8;
 }
 
-/// Địa chỉ bảng vector của ảnh này.
+/// Địa chỉ bảng vector của ảnh này (VA **thấp** — nơi linker đặt nó).
 fn vector_base() -> u64 {
     core::ptr::addr_of!(__vector_base) as u64
 }
@@ -237,11 +247,59 @@ const PROBE_VA: u64 = 0x5000_0000;
 const PROBE_MAGIC: u64 = 0x4D4D_5500_0000_0001;
 
 // ---------------------------------------------------------------------------------------------
+// KT-253 — trạng thái đo của nửa cao + physmap
+// ---------------------------------------------------------------------------------------------
+
+/// Trang **physmap probe**: ghi magic qua VA thấp (identity) **trước** khi nhảy, đọc lại qua
+/// **cửa sổ physmap** (`PHYSMAP_BASE + PA`) **sau** khi nhảy. Đây là phép đo "physmap đọc được
+/// PA bất kỳ đã map" của B3.4 — nếu cửa sổ physmap thiếu, lần đọc fault và bảng vector in
+/// `# trap:` rồi dừng (runner đỏ), không im lặng.
+#[repr(align(4096))]
+struct PhysProbePage([AtomicU64; 512]);
+
+/// Trang physmap probe — `.bss`, nằm trong khoảng ảnh nên được map cả identity (nửa thấp) lẫn
+/// physmap (nửa cao).
+static PHYS_PROBE: PhysProbePage = PhysProbePage([const { AtomicU64::new(0) }; 512]);
+
+/// Giá trị ghi vào trang physmap probe trước khi nhảy.
+const PHYSMAP_MAGIC: u64 = 0x5048_5953_4D41_5001;
+
+/// VA nửa cao mong đợi của [`high_entry`] (tính **trước** khi nhảy, đọc lại sau khi nhảy).
+static HIGH_EXPECT_VA: AtomicU64 = AtomicU64::new(0);
+/// PA mong đợi của [`high_entry`].
+static HIGH_EXPECT_PA: AtomicU64 = AtomicU64::new(0);
+/// Kết quả `translate(HIGH_EXPECT_VA)` bằng **walk phần mềm** trên bảng nửa cao (trước khi nhảy).
+static HIGH_TRANSLATED_PA: AtomicU64 = AtomicU64::new(u64::MAX);
+/// VA nửa cao của `kmain` (in trước khi nhảy — "VA nửa cao của kmain" theo yêu cầu B3.4).
+static KMAIN_HIGH_VA: AtomicU64 = AtomicU64::new(0);
+/// PA của `kmain`.
+static KMAIN_PA: AtomicU64 = AtomicU64::new(0);
+/// Kết quả `translate(KMAIN_HIGH_VA)`.
+static KMAIN_TRANSLATED_PA: AtomicU64 = AtomicU64::new(u64::MAX);
+/// VA physmap của trang [`PHYS_PROBE`] (`PHYSMAP_BASE + PA`).
+static PHYSMAP_PROBE_VA: AtomicU64 = AtomicU64::new(0);
+/// PA của trang [`PHYS_PROBE`].
+static PHYSMAP_PROBE_PA: AtomicU64 = AtomicU64::new(0);
+/// Số lần [`high_entry`] đã chạy (phải đúng **1**).
+static HIGH_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+/// PA của `__text_start` (địa chỉ **liên kết**, đọc lúc PC còn ở nửa thấp).
+///
+/// **Vì sao phải lưu**: sau khi nhảy sang nửa cao, `adrp` là **PC-relative** nên
+/// `addr_of!(__text_start)` trả **alias nửa cao** của symbol, không phải PA liên kết. Giá trị
+/// PA thật phải đọc **trước** khi nhảy rồi truyền qua static (static được đọc qua `adrp` ⇒ đi
+/// qua `TTBR1`, đúng bản đồ nửa cao).
+static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
+/// PA của `__vector_base` (địa chỉ liên kết, đọc lúc PC còn ở nửa thấp).
+static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
+
+// ---------------------------------------------------------------------------------------------
 // KT-250 — TAP trên serial
 // ---------------------------------------------------------------------------------------------
 
 /// Số ca kiểm TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
-pub const TAP_TESTS: usize = 5;
+///
+/// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap).
+pub const TAP_TESTS: usize = 7;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -398,7 +456,7 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         debug_halt(5)
     }
 
-    // ---- KT-249: bật MMU (TCR → MAIR → TTBR0 → SCTLR → ISB) trên identity map.
+    // ---- KT-249 + KT-253: dựng hai bảng trang, bật MMU (TCR→MAIR→TTBR0→TTBR1→SCTLR→ISB).
     let mmu = mmu_bringup(&mut console);
     if !tap(&mut console, 4, "mmu: SCTLR_EL1.M=1 after ISB", mmu.on) {
         debug_halt(5)
@@ -412,6 +470,95 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         debug_halt(5)
     }
 
+    // ---- KT-253: nhảy sang **VA nửa cao**. Từ đây PC/SP ở nửa cao; `high_entry` đo và phát
+    // TAP 6/7. Marker **trước** bước nhảy (R5): nếu treo/fault ở đây, log cho biết đúng bước.
+    let _ = writeln!(
+        console,
+        "# high: jump begin entry=0x{:x} sp=0x{:x}",
+        mmu.high_entry_va, mmu.high_sp
+    );
+    asm::jump_high(mmu.high_entry_va, mmu.high_sp);
+}
+
+/// **KT-253** — chạy ở **VA nửa cao** (được [`asm::jump_high`] nhảy tới).
+///
+/// Phép đo (không thể giả):
+///
+/// 1. `adr` đọc **PC thật** — phải nằm trong trang của [`HIGH_EXPECT_VA`] (VA nửa cao);
+/// 2. `translate(HIGH_EXPECT_VA)` bằng walk phần mềm (làm **trước** khi nhảy) phải bằng
+///    [`HIGH_EXPECT_PA`];
+/// 3. đọc PA của trang [`PHYS_PROBE`] qua **cửa sổ physmap** phải ra [`PHYSMAP_MAGIC`] — chứng
+///    minh physmap đọc được PA bất kỳ đã map, không cần identity.
+///
+/// Sau đó cài lại `VBAR_EL1` bằng **VA nửa cao** của bảng vector (từ đây cả exception vector
+/// cũng chạy ở nửa cao), in marker rồi tắt máy sạch.
+#[no_mangle]
+pub extern "C" fn high_entry() -> ! {
+    let mut console = Console;
+    HIGH_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
+    let _ = writeln!(console, "# high: jump ok");
+
+    // ---- Đo 1: PC thật (đọc bằng `adr`) + PA suy ra từ alias.
+    let pc = asm::current_pc();
+    let expect_va = HIGH_EXPECT_VA.load(Ordering::Relaxed);
+    let expect_pa = HIGH_EXPECT_PA.load(Ordering::Relaxed);
+    let translated = HIGH_TRANSLATED_PA.load(Ordering::Relaxed);
+    // PA liên kết đọc **trước** khi nhảy (xem `TEXT_START_PA`): sau khi nhảy, `adrp` cho alias
+    // nửa cao của symbol chứ không phải PA.
+    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
+    let pc_pa = text_start + (pc - KERNEL_HIGH_BASE);
+    let same_page = (pc >> 12) == (expect_va >> 12);
+    // `translate` trả PA **đáy trang** (descriptor chỉ giữ bit [47:12]) ⇒ so với đáy trang.
+    let high_ok = same_page && translated == (expect_pa & !0xFFF);
+    let _ = writeln!(
+        console,
+        "# high: va=0x{pc:x} pa=0x{pc_pa:x} match={} expect_va=0x{expect_va:x} expect_pa=0x{expect_pa:x} translated=0x{translated:x} same_page={}",
+        high_ok as u8,
+        same_page as u8,
+    );
+
+    // ---- Đo 2: physmap đọc PA đã ghi trước đó (qua VA thấp, trước khi nhảy).
+    let physmap_va = PHYSMAP_PROBE_VA.load(Ordering::Relaxed);
+    let physmap_pa = PHYSMAP_PROBE_PA.load(Ordering::Relaxed);
+    let read = asm::read_u64(physmap_va);
+    let physmap_ok = read == PHYSMAP_MAGIC;
+    let _ = writeln!(
+        console,
+        "# physmap: pa=0x{physmap_pa:x} read=0x{read:016x} match={} va=0x{physmap_va:x} expect=0x{PHYSMAP_MAGIC:016x} base=0x{PHYSMAP_BASE:x}",
+        physmap_ok as u8,
+    );
+
+    // ---- Cài lại VBAR_EL1 bằng VA **nửa cao** của bảng vector: từ đây cả exception vector
+    // cũng đi qua `TTBR1` (nếu map nửa cao của ảnh sai, fault tại đây sẽ lộ ngay).
+    let high_vector = high_alias_va(
+        VECTOR_BASE_PA.load(Ordering::Relaxed),
+        text_start,
+        KERNEL_HIGH_BASE,
+    );
+    let vbar = vector::install(high_vector);
+    let _ = writeln!(
+        console,
+        "# high: vbar=0x{vbar:x} high=0x{high_vector:x} match={}",
+        (vbar == high_vector) as u8,
+    );
+
+    if !tap(
+        &mut console,
+        6,
+        "high: PC at high VA, translate matches PA",
+        high_ok,
+    ) {
+        debug_halt(5)
+    }
+    if !tap(
+        &mut console,
+        7,
+        "physmap: read PA via physmap window",
+        physmap_ok,
+    ) {
+        debug_halt(5)
+    }
+
     // Marker **duy nhất** của ảnh — chỉ in khi **mọi** ca TAP đã xanh (nếu in sớm, một ảnh hỏng
     // vẫn có marker và runner dễ nhận nhầm là boot sạch).
     let _ = pl011::write_str(BOOT_MARKER);
@@ -419,7 +566,8 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
     debug_halt(0)
 }
 
-/// Kết quả ba phép đo của B3.3 — `mmu_bringup` trả về để `kmain` phát TAP.
+/// Kết quả các phép đo của B3.3 + thông tin nhảy nửa cao của B3.4 — `mmu_bringup` trả về để
+/// `kmain` phát TAP và thực hiện bước nhảy.
 #[derive(Clone, Copy, Debug, Default)]
 struct MmuOutcome {
     /// `SCTLR_EL1.M == 1` sau `ISB`.
@@ -428,38 +576,47 @@ struct MmuOutcome {
     marker_ok: bool,
     /// Đọc trang probe qua **VA không identity** ra đúng magic.
     probe_ok: bool,
+    /// VA nửa cao của [`high_entry`] (đích của bước nhảy).
+    high_entry_va: u64,
+    /// SP nửa cao (đỉnh stack alias sang nửa cao).
+    high_sp: u64,
 }
 
-/// **KT-249** — dựng bảng trang, identity map vùng ảnh + UART + GIC, rồi bật MMU theo đúng
-/// [`MMU_ENABLE_SEQUENCE`], in marker **trước và sau từng bước** (R5 của thiết kế: sai thứ tự ⇒
-/// treo không log), và đo ba thứ:
+/// **KT-249 + KT-253** — dựng **hai** bảng trang (nửa thấp identity + nửa cao alias/physmap),
+/// bật MMU theo đúng [`MMU_ENABLE_SEQUENCE`] (6 bước, in marker **trước và sau từng bước** — R5
+/// của thiết kế: sai thứ tự ⇒ treo không log), rồi đo ba thứ của B3.3 và chuẩn bị bước nhảy của
+/// B3.4.
 ///
-/// 1. `SCTLR_EL1.M == 1` **sau** `ISB` (đọc lại thanh ghi);
-/// 2. marker ghi trước khi bật, đọc lại qua VA sau khi bật — **không đổi**;
-/// 3. trang probe map vào **VA không identity**: đọc qua VA ra đúng magic ⇒ translation thật sự
-///    chạy, không chỉ bit `M` được bật.
+/// Trả [`MmuOutcome`]; mọi lỗi bảng trang là `PANIC` (fail-loud), không im lặng bỏ trang.
 fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let text_start = core::ptr::addr_of!(__text_start) as u64;
     let kernel_end = core::ptr::addr_of!(__kernel_end) as u64;
+    let stack_top = core::ptr::addr_of!(__stack_top) as u64;
     let probe_pa = core::ptr::addr_of!(PROBE_PAGE.0) as u64;
+    let phys_probe_pa = core::ptr::addr_of!(PHYS_PROBE.0) as u64;
 
     // Marker + magic ghi **trước** khi bật MMU (PA == VA ở thời điểm này).
     MMU_MARKER.store(MMU_MARKER_VALUE, Ordering::Relaxed);
     PROBE_PAGE.0[0].store(PROBE_MAGIC, Ordering::Relaxed);
+    PHYS_PROBE.0[0].store(PHYSMAP_MAGIC, Ordering::Relaxed);
 
-    let mem = bootmem::boot_memory();
-    let arena_base = mem.base_hint();
-    let frames_total = mem.frames_total();
-    let mut table = match PageTable::<Aarch64, bootmem::BootMemory>::new(mem) {
-        Ok(table) => table,
+    // ---- Hai bảng trang trên **một** arena chia sẻ (KT-253): nếu mỗi bảng có bộ đếm riêng thì
+    // cả hai cấp từ frame 0 và ghi đè lên nhau.
+    let (low_mem, high_mem) = bootmem::shared_boot_memory();
+    let arena_base = low_mem.base_hint();
+    let frames_total = low_mem.frames_total();
+    let mut mmu = match SplitMmu::<bootmem::SharedBootMemory>::new(low_mem, high_mem) {
+        Ok(mmu) => mmu,
         Err(error) => {
             let _ = writeln!(console, "PANIC: mmu: tạo bảng trang lỗi {error:?}");
             debug_halt(3)
         }
     };
+
+    // ---- Bảng **nửa thấp** (`TTBR0_EL1`): identity map ảnh + UART + GIC + trang probe.
     // Vùng ảnh: RWX (W^X đầy đủ là việc của tầng VSpace, B3.5 — không thuộc bước 3).
     let pages_kernel = match map_identity(
-        &mut table,
+        mmu.low_mut(),
         text_start,
         kernel_end,
         Perms::KERNEL_RWX,
@@ -473,7 +630,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     };
     // UART + GIC là **Device**: truy cập không gộp/không đoán trước (Normal sẽ sai ngữ nghĩa).
     let pages_uart = match map_identity(
-        &mut table,
+        mmu.low_mut(),
         UART0.base,
         UART0.end(),
         Perms::KERNEL_RW,
@@ -486,7 +643,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         }
     };
     let pages_gic = match map_identity(
-        &mut table,
+        mmu.low_mut(),
         GIC.base,
         GIC_CPU.end(),
         Perms::KERNEL_RW,
@@ -499,7 +656,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         }
     };
     // Trang probe: **VA không identity** → PA của trang trong `.bss`.
-    if let Err(error) = table.map_with(
+    if let Err(error) = mmu.low_mut().map_with(
         PROBE_VA,
         probe_pa,
         Perms::KERNEL_RW,
@@ -510,10 +667,40 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         debug_halt(3)
     }
 
-    let ttbr0 = match ttbr0_base(&table) {
+    // ---- Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh + physmap (KT-253).
+    let pages_high = match mmu.map_high_alias(
+        text_start,
+        kernel_end,
+        KERNEL_HIGH_BASE,
+        Perms::KERNEL_RWX,
+        MemAttr::Normal,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: map alias nửa cao lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let pages_physmap =
+        match mmu.map_physmap(text_start, kernel_end, Perms::KERNEL_RW, MemAttr::Normal) {
+            Ok(pages) => pages,
+            Err(error) => {
+                let _ = writeln!(console, "PANIC: mmu: map physmap lỗi {error:?}");
+                debug_halt(3)
+            }
+        };
+
+    let ttbr0 = match mmu.ttbr0_base() {
         Some(pa) => pa,
         None => {
             let _ = writeln!(console, "PANIC: mmu: không có bảng mức 1 cho TTBR0");
+            debug_halt(3)
+        }
+    };
+    let ttbr1 = match mmu.ttbr1_base() {
+        Some(pa) => pa,
+        None => {
+            let _ = writeln!(console, "PANIC: mmu: không có bảng mức 1 cho TTBR1");
             debug_halt(3)
         }
     };
@@ -522,13 +709,18 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let sctlr = sctlr_for_mmu_on(asm::read_sctlr_el1());
     let _ = writeln!(
         console,
-        "# mmu: arena=0x{arena_base:x} frames={frames_total} used={} root=0x{:x} ttbr0=0x{ttbr0:x} level=1",
-        table.memory().frames_used(),
-        table.root(),
+        "# mmu: arena=0x{arena_base:x} frames={frames_total} used={} root_low=0x{:x} root_high=0x{:x} ttbr0=0x{ttbr0:x} ttbr1=0x{ttbr1:x} level=1",
+        mmu.low().memory().frames_used(),
+        mmu.root_low(),
+        mmu.root_high(),
     );
     let _ = writeln!(
         console,
         "# mmu: map kernel=0x{text_start:x}-0x{kernel_end:x} pages={pages_kernel} uart={pages_uart} gic={pages_gic} probe_va=0x{PROBE_VA:x} probe_pa=0x{probe_pa:x}",
+    );
+    let _ = writeln!(
+        console,
+        "# mmu: high alias=0x{text_start:x}-0x{kernel_end:x} base=0x{KERNEL_HIGH_BASE:x} pages={pages_high} physmap_base=0x{PHYSMAP_BASE:x} pages_physmap={pages_physmap}",
     );
     let _ = writeln!(
         console,
@@ -545,7 +737,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
             MMU_ENABLE_SEQUENCE.len(),
             step.name()
         );
-        apply_step(*step, tcr, mair, ttbr0, sctlr);
+        apply_step(*step, tcr, mair, ttbr0, ttbr1, sctlr);
         let _ = writeln!(
             console,
             "# mmu: step {}/{} {} ok",
@@ -581,11 +773,62 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         (probe == PROBE_MAGIC) as u8,
     );
 
+    // ---- KT-253: chuẩn bị bước nhảy nửa cao. Mọi phép đo **phần mềm** (walk trên bảng nửa
+    // cao) làm ở đây vì `SplitMmu` nằm trên stack **nửa thấp**; sau khi nhảy, `high_entry` chỉ
+    // cần so PC thật với giá trị đã ghi.
+    let kmain_pa = kmain as *const () as usize as u64;
+    let kmain_va = high_alias_va(kmain_pa, text_start, KERNEL_HIGH_BASE);
+    let kmain_translated = match mmu.translate(kmain_va) {
+        Ok(t) => t.pa,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: translate kmain nửa cao lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let high_entry_pa = high_entry as *const () as usize as u64;
+    let high_entry_va = high_alias_va(high_entry_pa, text_start, KERNEL_HIGH_BASE);
+    let high_translated = match mmu.translate(high_entry_va) {
+        Ok(t) => t.pa,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: translate high_entry lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let high_sp = high_alias_va(stack_top, text_start, KERNEL_HIGH_BASE);
+    let physmap_probe_va = vifast_plat_aarch64::split_mmu::physmap_va(phys_probe_pa);
+
+    TEXT_START_PA.store(text_start, Ordering::Relaxed);
+    VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
+    KMAIN_HIGH_VA.store(kmain_va, Ordering::Relaxed);
+    KMAIN_PA.store(kmain_pa, Ordering::Relaxed);
+    KMAIN_TRANSLATED_PA.store(kmain_translated, Ordering::Relaxed);
+    HIGH_EXPECT_VA.store(high_entry_va, Ordering::Relaxed);
+    HIGH_EXPECT_PA.store(high_entry_pa, Ordering::Relaxed);
+    HIGH_TRANSLATED_PA.store(high_translated, Ordering::Relaxed);
+    PHYSMAP_PROBE_VA.store(physmap_probe_va, Ordering::Relaxed);
+    PHYSMAP_PROBE_PA.store(phys_probe_pa, Ordering::Relaxed);
+
+    let _ = writeln!(
+        console,
+        "# high: kmain va=0x{kmain_va:x} pa=0x{kmain_pa:x} match={} translated=0x{kmain_translated:x}",
+        (kmain_translated == (kmain_pa & !0xFFF)) as u8,
+    );
+    let _ = writeln!(
+        console,
+        "# high: entry va=0x{high_entry_va:x} pa=0x{high_entry_pa:x} translated=0x{high_translated:x} sp=0x{high_sp:x}",
+    );
+    let _ = writeln!(
+        console,
+        "# physmap: probe pa=0x{phys_probe_pa:x} va=0x{physmap_probe_va:x} magic=0x{PHYSMAP_MAGIC:016x}",
+    );
+
     // Ba phép đo trên là **điều kiện** của B3.3, không phải thông tin tham khảo: `kmain` phát
     // TAP từ chúng và dừng máy nếu bất kỳ phép nào sai.
     MmuOutcome {
         on,
         marker_ok: marker == MMU_MARKER_VALUE,
         probe_ok: probe == PROBE_MAGIC,
+        high_entry_va,
+        high_sp,
     }
 }

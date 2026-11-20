@@ -21,12 +21,12 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 5)
+#   EXPECT_TESTS    số ca TAP (mặc định 7 — KT-253 thêm 2 ca nửa cao/physmap)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
 # **Không** tuyên bố K4' đạt: K4' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000) — bước sau.
-# Runner này chỉ là B3.8 **phần đầu** (một hart, một ảnh, TAP 5 ca).
+# Runner này chỉ là B3.8 **phần đầu** (một hart, một ảnh, TAP 7 ca sau KT-253).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +38,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-5}"
+EXPECT_TESTS="${EXPECT_TESTS:-7}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 
 case "${1:-}" in
@@ -236,10 +236,10 @@ selftest_negative() {
         echo "ok $n - ca âm (c): có 'not ok' ⇒ ĐỎ ($(head -1 "$tmp/c.out"))"
     fi
 
-    # (d) plan sai (1..4 thay vì 1..5)
+    # (d) plan sai (1..N-1 thay vì 1..N) — dùng $EXPECT_TESTS, không hard-code số ca
     n=$((n + 1))
     cases=$((cases + 1))
-    sed 's/^1\.\.5$/1..4/' "$good" >"$tmp/d.log" 2>/dev/null || true
+    sed "s/^1\.\.$EXPECT_TESTS\$/1..$((EXPECT_TESTS - 1))/" "$good" >"$tmp/d.log" 2>/dev/null || true
     if check_log "$tmp/d.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/d.out" 2>&1; then
         echo "not ok $n - ca âm (d): plan sai mà kiểm vẫn XANH"
         fails=$((fails + 1))
