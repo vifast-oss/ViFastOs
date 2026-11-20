@@ -176,8 +176,13 @@ _rules_impl() {
     # R1: tệp trong kernel/ và lib/ không quá 1.500 dòng [TK]
     for d in kernel lib; do
         [ -d "$root/$d" ] || continue
-        find "$root/$d" -type f \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
-            -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r1"
+        # **KT-242 (P7)** — `-name target -prune` thay `-not -path '*/target/*'`: cùng tập tệp
+        # (mọi thứ dưới thư mục tên `target` bị bỏ), nhưng **không đi vào** cây target. Đo trên
+        # cây hiện tại: `find v2 -type f -not -path '*/target/*'` = **4,82 s** (442.781 tệp trong
+        # `v2/target`), bản `-prune` = **0,03 s**. Không đổi phép kiểm nào.
+        find "$root/$d" -name target -prune -o -type f \
+            \( -name '*.rs' -o -name '*.s' -o -name '*.asm' \) \
+            "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r1"
         while IFS= read -r -d '' f; do
             n=$(wc -l <"$f" | tr -d ' ')
             if [ "$n" -gt 1500 ]; then
@@ -199,7 +204,7 @@ _rules_impl() {
 
     # R3: SPDX theo loại tệp (QD §9.3)
     for d in "${dirs[@]}"; do
-        find "$d" -type f -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r3"
+        find "$d" -name target -prune -o -type f "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r3"
         while IFS= read -r -d '' f; do
             case "$f" in
                 *.rs | *.s | *.asm | *.ld | *.toml | *.vis | *.vish | *.vidl | *.sh | *.py)
@@ -220,7 +225,7 @@ _rules_impl() {
 
     # R4: cấm path-dependency sang crates/ — v1 đã đóng băng (D2-26)
     for d in "${dirs[@]}"; do
-        find "$d" -name Cargo.toml -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r4"
+        find "$d" -name target -prune -o -name Cargo.toml "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r4"
         while IFS= read -r -d '' f; do
             n=0
             grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*crates/' "$f" 2>/dev/null >"$TMPD/r4in"
@@ -235,7 +240,7 @@ _rules_impl() {
     # R5: unsafe chỉ trong danh sách đóng (D2-17): vifast-sync, vifast-objmem,
     #     kernel/vifast-plat-*, boot/
     for d in "${dirs[@]}"; do
-        find "$d" -name '*.rs' -not -path '*/target/*' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r5"
+        find "$d" -name target -prune -o -name '*.rs' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r5"
         while IFS= read -r -d '' f; do
             path="$(relpath "$f" "$root")"
             case "$f" in
@@ -255,15 +260,46 @@ _rules_impl() {
 
 # ---------------------------------------------------------------- các lệnh
 
+# **KT-242 (P9)** — mốc thời gian từng bước. Mỗi bước in thêm một dòng `# step-time <tên> <ms>`
+# (tiền tố `#` nên mọi bộ đọc log cũ bỏ qua) và cuối `check`/`gate` in bảng tổng. Mục đích:
+# cổng đã phình 18 → 53 bước trong 2 ngày mà **không ai thấy** bước nào ăn bao nhiêu giây.
+# Không đổi thứ tự, không đổi phép kiểm, không đổi mã thoát.
+now_ms() {
+    if command -v perl >/dev/null 2>&1; then
+        perl -MTime::HiRes=time -e 'printf "%d", time*1000'
+    else
+        date +%s | awk '{printf "%d", $1*1000}'
+    fi
+}
+
+# Bảng thời gian tích luỹ của lượt chạy hiện tại (mỗi dòng "ms<TAB>tên").
+STEP_TIMES=""
+step_time_reset() { STEP_TIMES=""; }
+step_time_add() { STEP_TIMES="${STEP_TIMES}$1	$2
+"; }
+step_time_report() {
+    [ -n "$STEP_TIMES" ] || return 0
+    echo "--- bảng thời gian từng bước (ms, giảm dần)"
+    printf '%s' "$STEP_TIMES" | sort -rn | awk -F'\t' '{printf "# step-time-total %8d ms  %s\n", $1, $2}'
+}
+
 run_step() { # <tên> <lệnh...>
     local name="$1"
     shift
+    local t0 t1
+    t0="$(now_ms)"
     echo "--- $name"
     if "$@"; then
+        t1="$(now_ms)"
         echo "--- $name: OK"
+        printf '# step-time %s %s ms\n' "$name" "$((t1 - t0))"
+        step_time_add "$((t1 - t0))" "$name"
         return 0
     fi
+    t1="$(now_ms)"
     echo "--- $name: FAIL" >&2
+    printf '# step-time %s %s ms (FAIL)\n' "$name" "$((t1 - t0))"
+    step_time_add "$((t1 - t0))" "$name (FAIL)"
     return 1
 }
 
@@ -279,7 +315,9 @@ check_k6_rules() {
 }
 
 do_check() {
-    local fails=0
+    local fails=0 t_start
+    t_start="$(now_ms)"
+    step_time_reset
     echo "== v2 check (HEAD $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')) =="
     run_step "fmt" "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || fails=$((fails + 1))
     run_step "clippy" "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings || fails=$((fails + 1))
@@ -465,6 +503,10 @@ do_check() {
         fails=$((fails + 1))
     fi
     run_step "build (L0 compile)" "$CARGO" build --manifest-path "$MANIFEST" --workspace || fails=$((fails + 1))
+    if [ "${V2_IN_GATE:-0}" = "0" ]; then
+        step_time_report
+        printf '# step-time-total %8d ms  TỔNG check\n' "$(( $(now_ms) - t_start ))"
+    fi
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
@@ -472,9 +514,176 @@ do_check() {
     echo "v2 check: PASS (L1 chạy trong gate --fast)"
 }
 
+# **KT-242 (P1)** — chạy **song song** các binary test của L0 thay vì để cargo chạy lần lượt.
+#
+# Vì sao: `cargo test --workspace` chạy **từng binary một**; đo trên cây hiện tại (20/11):
+# 111 binary, tổng thời gian test **256,5 s**, cộng ~33 s khởi chạy ⇒ ~290 s trên **1 nhân**
+# trong khi máy có 12 nhân. Chạy 92 binary với `-P 8` (đo dưới tải) còn **103 s**.
+#
+# Ngữ nghĩa **không đổi**: cùng binary, cùng test, cùng assert, cùng seed, cùng mã thoát.
+# Chỉ đổi *thứ tự/đồng thời*. Ba điều kiện an toàn:
+#   1. **Doc-test** không nằm trong binary ⇒ chạy riêng `cargo test --workspace --doc`
+#      (nếu bỏ bước này là **mất phủ** 19 suite doc-test).
+#   2. **Binary nhạy thời gian** (`kt30_stress` biên 3 s, `spsc` hạn 10 s) chạy **một mình**,
+#      không song song — dưới tải chúng đỏ oan (D2-116/D2-141). Danh sách: `V2_TEST_SERIAL`.
+#   3. Mỗi binary ghi log + mã thoát **riêng**; gộp sau khi chạy xong ⇒ không đua tệp.
+#
+# Tinh chỉnh: `V2_TEST_JOBS` (mặc định 6), `V2_TEST_THREADS` (mặc định rỗng = để libtest tự
+# chọn `num_cpus`), `V2_TEST_SERIAL` (mặc định "kt30_stress spsc").
+l0_test_parallel() {
+    local jobs="${V2_TEST_JOBS:-6}" threads="${V2_TEST_THREADS:-}"
+    local serial_pat="${V2_TEST_SERIAL:-kt30_stress spsc}"
+    local serial_all="${V2_TEST_SERIAL_ALL:-0}"
+    local ncpu tmpd rc=0 t0 t1 nrun=0 nfail=0 ntest=0 b pkg n r
+    local PY
+    PY="$(find_python)" || {
+        echo "L0: cần python ≥ 3.11 có tomllib để đọc --message-format=json" >&2
+        return 1
+    }
+    ncpu="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
+    # **A0 duyệt (2026-11-20)**: giới hạn **tổng** mức song song, không chỉ số process.
+    # `jobs` binary × `threads` test-thread mỗi binary ≤ ncpu. Mặc định chia đều; đặt
+    # `V2_TEST_THREADS` để ép một giá trị (dùng cho phép đo D).
+    if [ -z "$threads" ]; then
+        threads=$((ncpu / jobs))
+        [ "$threads" -lt 1 ] && threads=1
+    fi
+    tmpd="$(mktemp -d "${TMPDIR:-/tmp}/v2l0.XXXXXX")" || return 1
+    t0="$(now_ms)"
+
+    # 1) Biên dịch toàn bộ test target (cargo tự song song theo crate).
+    if ! "$CARGO" test --manifest-path "$MANIFEST" --workspace --no-run \
+            --message-format=json >"$tmpd/build.json" 2>"$tmpd/build.err"; then
+        cat "$tmpd/build.err" >&2
+        rm -rf "$tmpd"
+        return 1
+    fi
+    t1="$(now_ms)"
+    echo "# L0: biên dịch xong sau $((t1 - t0)) ms"
+
+    # 2) Danh sách binary test + **thư mục gói** (cwd mà cargo dùng khi chạy test).
+    #    - Chỉ lấy artifact của **lần build hiện tại** (`--message-format=json` của chính
+    #      lệnh vừa chạy), không quét binary cũ trong target dir.
+    #    - Ghi **NUL-separated** để đường dẫn có dấu cách vẫn đúng.
+    #    - Vì sao cần cwd: một số test đọc đường dẫn **tương đối** (`../../agent/QUEUE.md`);
+    #      cargo chạy binary với cwd = thư mục gói, nên runner phải làm y hệt — nếu không,
+    #      test đỏ oan (đo được: `so_that_v2_doc_duoc_va_viscript_da_tach`).
+    "$PY" - "$tmpd/build.json" >"$tmpd/bins" <<'PYEOF'
+import json, os, sys
+seen = set()
+out = sys.stdout
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    try:
+        m = json.loads(line)
+    except Exception:
+        continue
+    if m.get("reason") != "compiler-artifact":
+        continue
+    if not m.get("profile", {}).get("test"):
+        continue
+    e = m.get("executable")
+    if not e or e in seen:
+        continue
+    seen.add(e)
+    pkg = os.path.dirname(m.get("manifest_path") or "")
+    out.write("%s\0%s\0" % (e, pkg))
+PYEOF
+    if [ ! -s "$tmpd/bins" ]; then
+        echo "L0: không lấy được binary test nào từ cargo (build.json rỗng?)" >&2
+        rm -rf "$tmpd"
+        return 1
+    fi
+
+    # 3) Tách binary nhạy thời gian ra khỏi lô song song (hoặc tất cả nếu ép tuần tự).
+    : >"$tmpd/serial"
+    : >"$tmpd/par"
+    while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
+        n="$(basename "$b")"
+        if [ "$serial_all" = "1" ]; then
+            printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/serial"
+            continue
+        fi
+        case " $serial_pat " in
+            *" ${n%%-*} "*) printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/serial" ;;
+            *) printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/par" ;;
+        esac
+    done <"$tmpd/bins"
+
+    # 4) Runner một binary: cwd = thư mục gói (như cargo), log riêng, mã thoát riêng.
+    #    Mã thoát được ghi ra tệp `.rc` để **không** bị pipeline/xargs che mất.
+    cat >"$tmpd/run-one.sh" <<'SHEOF'
+#!/bin/sh
+d="$1"; b="$2"; pkg="$3"; n="$(basename "$b")"
+if [ ! -x "$b" ]; then
+    echo "L0: binary không chạy được: $b" >"$d/$n.log" 2>&1
+    echo 126 >"$d/$n.rc"
+    exit 0
+fi
+if [ -n "$pkg" ]; then
+    cd "$pkg" || { echo "L0: không vào được thư mục gói: $pkg" >"$d/$n.log" 2>&1; echo 97 >"$d/$n.rc"; exit 0; }
+fi
+if [ -n "${V2_TEST_THREADS:-}" ]; then
+    "$b" --test-threads="$V2_TEST_THREADS" >"$d/$n.log" 2>&1
+else
+    "$b" >"$d/$n.log" 2>&1
+fi
+echo $? >"$d/$n.rc"
+SHEOF
+    chmod +x "$tmpd/run-one.sh"
+
+    # 5) Chạy: lô song song trước, rồi các binary nhạy thời gian chạy một mình.
+    if [ -s "$tmpd/par" ]; then
+        V2_TEST_THREADS="$threads" xargs -0 -P "$jobs" -n 2 sh "$tmpd/run-one.sh" "$tmpd" \
+            <"$tmpd/par" || echo "# L0: cảnh báo — xargs trả mã khác 0 (kiểm từng .rc bên dưới)" >&2
+    fi
+    while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
+        V2_TEST_THREADS="$threads" sh "$tmpd/run-one.sh" "$tmpd" "$b" "$pkg"
+    done <"$tmpd/serial"
+
+    # 6) Gộp kết quả: đỏ / không chạy được / bị signal ở **bất kỳ** binary nào ⇒ L0 đỏ.
+    while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
+        n="$(basename "$b")"
+        nrun=$((nrun + 1))
+        if [ ! -f "$tmpd/$n.rc" ]; then
+            nfail=$((nfail + 1))
+            echo "--- L0: ĐỎ $n (không có mã thoát — binary chưa chạy?)" >&2
+            continue
+        fi
+        r="$(cat "$tmpd/$n.rc")"
+        if [ "$r" -ne 0 ]; then
+            nfail=$((nfail + 1))
+            if [ "$r" -gt 128 ]; then
+                echo "--- L0: ĐỎ $n (bị signal $((r - 128)))" >&2
+            else
+                echo "--- L0: ĐỎ $n (rc=$r)" >&2
+            fi
+            sed -n '1,200p' "$tmpd/$n.log" >&2
+        fi
+        # Đếm test **thực thi** (không chỉ đếm binary) để đối chiếu trước/sau.
+        if [ -f "$tmpd/$n.log" ]; then
+            ntest=$((ntest + $(grep -oE '[0-9]+ passed' "$tmpd/$n.log" 2>/dev/null | awk '{s+=$1} END {print s+0}')))
+        fi
+    done <"$tmpd/bins"
+    t1="$(now_ms)"
+    echo "# L0: $nrun binary, $ntest test đã chạy, $nfail đỏ, $((t1 - t0)) ms (jobs=$jobs, threads=$threads, serial_all=$serial_all)"
+    [ "$nfail" -eq 0 ] || rc=1
+
+    # 7) Doc-test: KHÔNG nằm trong binary test ⇒ phải chạy riêng, nếu không là mất phủ.
+    if ! "$CARGO" test --manifest-path "$MANIFEST" --workspace --doc; then
+        rc=1
+    fi
+
+    rm -rf "$tmpd"
+    return "$rc"
+}
+
 do_gate_fast() {
-    do_check || return 1
-    run_step "L0 test" "$CARGO" test --manifest-path "$MANIFEST" --workspace || return 1
+    local t_start
+    t_start="$(now_ms)"
+    V2_IN_GATE=1
+    do_check || { V2_IN_GATE=0; return 1; }
+    V2_IN_GATE=0
+    run_step "L0 test" l0_test_parallel || return 1
     # KT-148 (D2-128): workspace **kernel** có manifest riêng (`v2/kernel/Cargo.toml`) nên `L0 test`
     # của `v2/Cargo.toml` **không** chạy nó — thiếu bước này thì test `smp` (bố cục per-hart) đỏ
     # mà cổng vẫn xanh (đúng lỗi B7). `vifast-virtio` **không** thuộc workspace kernel (nó là
@@ -537,6 +746,8 @@ do_gate_fast() {
     # nếu ai đưa tên nhánh về hằng số. Đo bằng `date +%s%N`: ~14 s.
     run_step "ca âm git-guard song song (R5)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" --selftest-parallel || return 1
     run_step "ca âm git-guard b (KT-85b)" bash "$V2_ROOT/tools/git-guard/neg-test-kt85b.sh" || return 1
+    step_time_report
+    printf '# step-time-total %8d ms  TỔNG gate --fast\n' "$(( $(now_ms) - t_start ))"
     echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
 }
 

@@ -53,6 +53,18 @@ fn n9_khong_build_va_stderr_neu_tran_n() {
     assert!(nguon.is_file(), "thiếu {}", nguon.display());
     let rlib = rlib_objmem();
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    // **KT-242 (A0 duyệt 2026-11-20)** — thư mục tạm **duy nhất theo lần gọi** (PID + đồng hồ
+    // nano) và **có cleanup**. PID một mình không đủ: nhiều test trong cùng một process có thể
+    // dùng cùng tên, và tệp `.o` còn lại làm lần chạy sau đọc nhầm.
+    let tmp = std::env::temp_dir().join(format!(
+        "vifast_objmem_n9_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&tmp).expect("tạo thư mục tạm");
     let out = Command::new(&rustc)
         .args([
             "--edition",
@@ -71,10 +83,12 @@ fn n9_khong_build_va_stderr_neu_tran_n() {
         .arg("--extern")
         .arg(format!("vifast_objmem={}", rlib.display()))
         .arg("-o")
-        .arg(std::env::temp_dir().join("vifast_objmem_n9.o"))
+        .arg(tmp.join("n9.o"))
         .arg(&nguon)
         .output()
         .unwrap_or_else(|e| panic!("không chạy được {rustc}: {e}"));
+    // Cleanup **trước** mọi assert: đỏ vì lý do gì cũng không để rác lại.
+    let _ = std::fs::remove_dir_all(&tmp);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         !out.status.success(),

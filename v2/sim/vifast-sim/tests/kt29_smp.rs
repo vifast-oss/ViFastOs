@@ -864,21 +864,43 @@ fn mot_luot(seed: u64, harts: u16) -> Vec<String> {
     trace
 }
 
-#[test]
-fn fuzz_smp_tat_dinh_bat_bien() {
+/// Một cấu hình hart: `so_seed()` seed × `so_op()` op, cùng seed ⇒ **cùng trace**.
+fn fuzz_smp_mot_cau_hinh(harts: u16) {
     let seeds = so_seed();
-    for harts in [1u16, 2, 4, 8] {
-        for seed in 0..seeds {
-            let a = mot_luot(seed, harts);
-            let b = mot_luot(seed, harts);
-            assert_eq!(a, b, "smp {harts} seed {seed}: cùng seed phải cùng trace");
-            assert_eq!(a.len(), so_op(), "đúng số op");
-        }
-        println!(
-            "# KT-29 fuzz OK: smp {harts}, {seeds} seed × {} op",
-            so_op()
-        );
+    for seed in 0..seeds {
+        let a = mot_luot(seed, harts);
+        let b = mot_luot(seed, harts);
+        assert_eq!(a, b, "smp {harts} seed {seed}: cùng seed phải cùng trace");
+        assert_eq!(a.len(), so_op(), "đúng số op");
     }
+    println!(
+        "# KT-29 fuzz OK: smp {harts}, {seeds} seed × {} op",
+        so_op()
+    );
+}
+
+// **KT-242 (P2)** — tách **một** test thành **bốn** test theo smp để harness chạy song song được.
+// Phủ **không đổi**: vẫn 1.000 seed × 64 op × smp ∈ {1,2,4,8}, vẫn so trace hai lượt mỗi seed,
+// vẫn in cùng dòng `# KT-29 fuzz OK` cho từng cấu hình. Trước: một test tự lặp 4 cấu hình ⇒
+// **56,5 s trên một nhân** (đo 20/11, `user 51,9 s / real 54,6 s`). Sau: 4 test ⇒ ~14 s.
+#[test]
+fn fuzz_smp_harts_1() {
+    fuzz_smp_mot_cau_hinh(1);
+}
+
+#[test]
+fn fuzz_smp_harts_2() {
+    fuzz_smp_mot_cau_hinh(2);
+}
+
+#[test]
+fn fuzz_smp_harts_4() {
+    fuzz_smp_mot_cau_hinh(4);
+}
+
+#[test]
+fn fuzz_smp_harts_8() {
+    fuzz_smp_mot_cau_hinh(8);
 }
 
 // ---------------------------------------------------------------------------

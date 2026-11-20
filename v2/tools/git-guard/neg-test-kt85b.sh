@@ -190,6 +190,18 @@ if [ ! -d "$CLONE/.git" ]; then
     say "neg-test-kt85b.sh: tạo clone tạm THẤT BẠI" >&2
     exit 2
 fi
+# **KT-242 (A0 duyệt 2026-11-20)** — khi cổng chạy trong **worktree trên nhánh phát triển**,
+# `git clone` từ worktree chỉ mang nhánh đang đứng ⇒ clone **không** có `refs/heads/main`, và
+# test đỏ vì lý do môi trường chứ không phải hook. Fixture tự tạo `main` trong clone trỏ đúng
+# commit `main` của repo thật: vẫn kiểm **đúng luật bảo vệ** (cherry-pick/merge/reset vào chính
+# `refs/heads/main`), **không** tắt guard, **không** ép nhánh phát triển phải tên `main`.
+if ! git -C "$CLONE" rev-parse --verify --quiet refs/heads/main >/dev/null; then
+    git -C "$CLONE" branch --quiet main "$MAIN_BEFORE" || {
+        say "neg-test-kt85b.sh: không tạo được refs/heads/main trong clone" >&2
+        exit 2
+    }
+    say "  (clone không có main — đã tạo main = $MAIN_BEFORE, đúng commit của repo thật)"
+fi
 say "  nhánh đang đứng : $(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
 say "  main của clone  : $(git -C "$CLONE" rev-parse refs/heads/main)"
 say
