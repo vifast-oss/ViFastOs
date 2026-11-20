@@ -33,7 +33,7 @@ repro biên dịch được mà cả hai cơ chế kiểm đều XANH); `PARTIAL
 | **WB-15** | #15 | `use TcbState as S;` + `m.transition_tcb(t, S::Ready)` | L54 | CLOSED | KT-231 |
 | **WB-16** | #16 | `Ready` qua **helper liên hàm / `const` / `static` / closure / hàm trả về** (6 dạng) | L57 (KT-234) | **OPEN** | — |
 | **WB-17** | #17 | `transition_tcb` làm **fn-pointer / generic `F: Fn` / trait object / UFCS** (7 biến thể) | L55 (KT-232) | **OPEN** | — |
-| **WB-18** | #18 | crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR` | L56 (KT-233) | **OPEN** | — |
+| **WB-18** | #18 | crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR` | L56 (KT-233) | **CLOSED** | KT-238 (phạm vi từ `cargo metadata`, 22 crate) |
 
 ---
 
