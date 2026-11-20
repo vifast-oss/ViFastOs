@@ -23,7 +23,7 @@
 #   bảo vệ: vifast-virtio (v2/lib/vifast-virtio)
 #   bảo vệ: vifast-sim (v2/sim/vifast-sim)
 #   từ chối rõ: vifast-agentctl (v2/tools/vifast-agentctl) — công cụ (v2/tools/), không phải sản phẩm
-# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.10 s), 20 artifact, 20 tệp .d, 75 tệp .rs [target dir: /private/tmp/kt242-s2/v2/target]
+# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.09 s), 20 artifact, 20 tệp .d, 75 tệp .rs [target dir: /private/tmp/kt242-s2/v2/target]
 # đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (0.11 s), 18 artifact, 18 tệp .d, 115 tệp .rs [target dir: /private/tmp/kt242-s2/v2/kernel/target]
 # rustc nạp: 149 tệp .rs trong cây (gộp 2 đơn vị)
 # quét: 149 tệp (tệp cửa wake: 2 — KHÔNG miễn cả tệp; miễn 0 tệp test-only)
@@ -32,5 +32,5 @@
 # tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): 0
 # tệp ngoài phạm vi luật wake tĩnh (in_test_only_wake_scope): 59
 E E_DEPINFO_WAKE   v2/kernel/vifast-core/src/kt242_rs.rs:9: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-# check-wake-depinfo: errors=1 warnings=0 (21.92 s)
+# check-wake-depinfo: errors=1 warnings=0 (17.10 s)
 RC=1

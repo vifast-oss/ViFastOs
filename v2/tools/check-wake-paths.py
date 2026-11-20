@@ -190,12 +190,45 @@ MIGRATE_PRODUCER = "push_step"
 # cứng: **mọi** crate dưới `v2/kernel/<crate>/` và `v2/sim/<crate>/` — toàn bộ `src/**` **cộng**
 # `build.rs` — kể cả crate ra đời sau. `tests/` cấp crate vẫn ngoài phạm vi (test-only, do
 # `is_test_file` miễn; chúng không khớp mẫu này).
-RE_TEST_ONLY_WAKE_SCOPE = re.compile(r"^v2/(?:kernel|sim)/[^/]+/(?:src/.*\.rs|build\.rs)$")
+# **KT-242 (N4)** — `re.IGNORECASE`: trên macOS/Windows rustc nạp `src/x.RS` cho `mod x;`
+# (đã đo: `cargo check` RC=0), nên **đuôi** phải so không phân biệt hoa/thường. `IGNORECASE`
+# áp cả phần thư mục — chấp nhận được: chỉ **mở rộng** phạm vi (fail-closed), không thu hẹp.
+RE_TEST_ONLY_WAKE_SCOPE = re.compile(
+    r"^v2/(?:kernel|sim)/[^/]+/(?:src/.*\.rs|build\.rs)$", re.IGNORECASE
+)
+
+# **KT-242 (N3)** — mẫu trên **không** phủ bin/lib khai báo **ngoài `src/`**:
+# `[[bin]] path = "bin/x.rs"` / `[lib] path = "lib.rs"` là bố cục Rust hợp lệ, `cargo` biên dịch
+# thật, nhưng `relp` không khớp `src/.*\.rs` ⇒ luật token `wake` **không** chạy (đo được: lớp 1
+# XANH cả hai chế độ, lớp 2 ĐỎ `E_DEPINFO_WAKE`). Nay phạm vi = **mẫu** ∪ **crate root thật**
+# (`crate_roots`, đọc `[lib] path`/`[[bin]] path` từ `Cargo.toml`) ⇒ bố cục nào cargo biên dịch
+# cũng vào phạm vi. Cache theo gốc cây (selftest dựng nhiều cây tạm).
+_CRATE_ROOT_CACHE: Dict[str, set] = {}
 
 
-def in_test_only_wake_scope(relp: str) -> bool:
-    """Tệp có thuộc phạm vi luật `wake()` chỉ-dùng-cho-test không (đường dẫn tương đối gốc)."""
-    return bool(RE_TEST_ONLY_WAKE_SCOPE.match(relp))
+def _crate_root_relps(root: Path) -> set:
+    """Tập `relpath` của **mọi crate root** (lib/bin/tests) dưới `v2/kernel`+`v2/sim`."""
+    key = str(root)
+    cached = _CRATE_ROOT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    out = {rel(root, p) for p, _ in crate_roots(root)}
+    _CRATE_ROOT_CACHE[key] = out
+    return out
+
+
+def in_test_only_wake_scope(relp: str, root: Optional[Path] = None) -> bool:
+    """Tệp có thuộc phạm vi luật `wake()` chỉ-dùng-cho-test không (đường dẫn tương đối gốc).
+
+    **KT-242 (N3)** — nhận thêm `root`: ngoài **mẫu** `src/**`/`build.rs`, mọi **crate root**
+    thật (kể cả `[[bin]] path`/`[lib] path` **ngoài `src/`**) cũng thuộc phạm vi. Không truyền
+    `root` ⇒ chỉ mẫu (giữ tương thích cho caller cũ/selftest).
+    """
+    if RE_TEST_ONLY_WAKE_SCOPE.match(relp):
+        return True
+    if root is not None:
+        return relp in _crate_root_relps(root)
+    return False
 
 
 # Token `wake` **đứng riêng**: không phải `wake_from`/`wake_from_unlink`/`wake_step`/`wake_addr`
@@ -1002,6 +1035,21 @@ def _attrs_test_context(attrs: Sequence[Attr], line: int, tr: Sequence[Tuple[int
     return False
 
 
+def _safe_resolve(base: Path, raw: str) -> Optional[Path]:
+    """`(base / raw).resolve()` — trả `None` khi đường dẫn **không phân giải được**.
+
+    **KT-242 (N6)** — `Path.resolve()` ném `ValueError` khi đường dẫn chứa NUL
+    (`include!("\\0")`) và `OSError` khi quá dài / vòng symlink. Trước bản này lỗi đó **thoát
+    ra ngoài** thành traceback ⇒ vi phạm D2-166 §3C ("**không âm thầm bỏ qua** … ⇒ lỗi **rõ** +
+    exit khác 0"): exit khác 0 nhưng **không rõ** và không có mã lỗi. Nay trả `None` để caller
+    phát lỗi cổng có **vị trí nguồn** (`E_STRICT_WAKE_INCLUDE`).
+    """
+    try:
+        return (base / raw).resolve()
+    except (ValueError, OSError):
+        return None
+
+
 def _walk_items(
     nodes: Sequence[object],
     relp: str,
@@ -1146,7 +1194,11 @@ def _walk_items(
                         except LexError:
                             continue
                         if _edges:
-                            _child_dir = (cur_dir / _edges[0][0]).resolve()
+                            # **KT-242 (N6)** — `_safe_resolve`: đường dẫn không phân giải
+                            # được (NUL/quá dài) ⇒ giữ `mod_dir/NAME` thay vì ném ra ngoài.
+                            _res = _safe_resolve(cur_dir, _edges[0][0])
+                            if _res is not None:
+                                _child_dir = _res
                             break
                     _walk_items(
                         nodes[j].children,
@@ -1360,7 +1412,10 @@ def _walk_all(
                         for _val, _certain, _tok in _edges:
                             inline_path_toks.add(_tok.start)
                         if _edges and not _child_set:
-                            child_dir = (cur_dir / _edges[0][0]).resolve()
+                            # **KT-242 (N6)** — `_safe_resolve` (xem `_walk_items`).
+                            _res = _safe_resolve(cur_dir, _edges[0][0])
+                            if _res is not None:
+                                child_dir = _res
                             _child_set = True
                     _walk_all(
                         nodes[j].children,
@@ -1414,12 +1469,55 @@ def _is_build_dir(root: Path, p: Path) -> bool:
     return ti < parts.index("src")
 
 
+def _iter_rs_ci(base: Path, root: Path) -> List[Path]:
+    """Mọi tệp `.rs` dưới `base`, đuôi **không phân biệt hoa/thường**, đã lọc thư mục build.
+
+    **KT-242 (N4)** — `rglob("*.rs")` so khớp **phân biệt** hoa/thường, nhưng rustc trên
+    macOS/Windows nạp `src/x.RS` cho `mod x;` (đã đo: `cargo check` RC=0) ⇒ tệp **sản phẩm**
+    không được quét (lớp 1 XANH, lớp 2 ĐỎ). Nay duyệt bằng `os.scandir` — **cắt sớm** thư mục
+    build (`target/`) nên không chậm hơn `rglob`, và so `suffix.lower() == ".rs"`.
+
+    Trả danh sách **đã sắp xếp** (thứ tự ổn định như `sorted(rglob(...))` trước đây).
+    """
+    out: List[Path] = []
+    seen: set = set()
+    stack: List[Path] = [base]
+    while stack:
+        d = stack.pop()
+        try:
+            st = d.stat()
+        except OSError:
+            continue
+        key = (st.st_dev, st.st_ino)
+        if key in seen:  # symlink vòng
+            continue
+        seen.add(key)
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            p = Path(e.path)
+            try:
+                if e.is_dir(follow_symlinks=True):
+                    if not _is_build_dir(root, p):
+                        stack.append(p)
+                    continue
+                if not e.is_file(follow_symlinks=True):
+                    continue
+            except OSError:
+                continue
+            if p.suffix.lower() == ".rs":
+                out.append(p)
+    return sorted(out)
+
+
 def _protected_files(root: Path) -> Iterable[Path]:
     for base_rel in ("v2/kernel", "v2/sim", "v2/lib"):
         base = root / base_rel
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*.rs")):
+        for p in _iter_rs_ci(base, root):
             if _is_build_dir(root, p):
                 continue
             yield p
@@ -1439,7 +1537,7 @@ def scan_structure(root: Path, r: Report) -> None:
         base = root / base_rel
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*.rs")):
+        for p in _iter_rs_ci(base, root):
             if _is_build_dir(root, p):
                 continue
             tree, errs = parse_file(p)
@@ -1593,7 +1691,8 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
     except OSError:
         _MODS_CACHE[key] = out
         return out
-    tr = test_line_ranges(text)
+    # **KT-242 (N5)** — `tr = test_line_ranges(text)` ở đây là **chết** (không dùng); bỏ để
+    # không còn chỗ nào *trông như* `test_line_ranges` còn quyết định luật.
     relp = str(p)
 
     def on_mod(
@@ -1629,7 +1728,12 @@ def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
                 continue
             if edges:
                 val, _certain, _tok = edges[0]
-                target = (cur_dir / val).resolve()
+                # **KT-242 (N6)** — đường dẫn không phân giải được ⇒ bỏ cạnh này; lỗi cổng
+                # do `resolve_include_targets` phát (có vị trí nguồn).
+                _res = _safe_resolve(cur_dir, val)
+                if _res is None:
+                    break
+                target = _res
                 child_dir = target.parent
                 break
         if target is None:
@@ -1961,7 +2065,15 @@ def resolve_include_targets(
             errors.append(f"  {relp}:{line}: {msg} (fail-closed, KT-194)")
         src_tree = _source_tree(relp)
         for kind, raw, tok, base in found:
-            target = (base / raw).resolve()
+            # **KT-242 (N6)** — đường dẫn không phân giải được (NUL/quá dài/vòng symlink)
+            # ⇒ **lỗi cổng rõ** thay vì traceback (D2-166 §3C).
+            target = _safe_resolve(base, raw)
+            if target is None:
+                errors.append(
+                    f"  {relp}:{tok.line}: `{kind}` có đường dẫn không phân giải được "
+                    f"({raw!r}) — fail-closed (KT-242 N6)"
+                )
+                continue
             if src_tree == "lib":
                 # **KT-209/L3** — nguồn `v2/lib`: đích phải nằm **trong `v2/lib`**. Đích sang
                 # `v2/kernel`/`v2/sim` (mã tầng khác) hoặc ra ngoài cây ⇒ ĐỎ: `include!`/
@@ -2360,7 +2472,8 @@ def scan_macro_bodies(
         base = root / base_rel
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*.rs")):
+        # **KT-242 (N4)** — đuôi `.rs` **không phân biệt hoa/thường** (`_iter_rs_ci`).
+        for p in _iter_rs_ci(base, root):
             if _is_build_dir(root, p):
                 continue
             scan_one(p)
@@ -2473,7 +2586,8 @@ def _shadowed_safe_macros(
     texts: List[Tuple[Path, str]] = [(p, t) for p, t, _ in files]
     base = root / "v2/lib"
     if base.is_dir():
-        for p in sorted(base.rglob("*.rs")):
+        # **KT-242 (N4)** — đuôi `.rs` **không phân biệt hoa/thường** (`_iter_rs_ci`).
+        for p in _iter_rs_ci(base, root):
             if _is_build_dir(root, p):
                 continue
             try:
@@ -2729,11 +2843,12 @@ def enclosing(fns: Sequence[Fn], line: int) -> Optional[Fn]:
 
 
 def iter_rs(root: Path, rel_dirs: Iterable[str]) -> Iterable[Path]:
-    for rel in rel_dirs:
-        base = root / rel
+    """Mọi tệp `.rs` dưới các thư mục — **KT-242 (N4)**: đuôi không phân biệt hoa/thường."""
+    for relp_dir in rel_dirs:
+        base = root / relp_dir
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*.rs")):
+        for p in _iter_rs_ci(base, root):
             if _is_build_dir(root, p):
                 continue
             yield p
@@ -2789,7 +2904,26 @@ def _item_end(toks: Sequence[Tok], start: int) -> Optional[int]:
     return None
 
 
+# **KT-242 (N5)** — cache kết quả phân vùng test theo `(relp, độ dài, hash)`.
+# `scan_v2` cần vùng test cho **mọi** luật, còn `_check_wake_text` (R1) tự tính lại; trước bản
+# này mỗi tệp bị token hoá **hai** lần. Cache chỉ là bộ nhớ đệm thuần (không đổi ngữ nghĩa):
+# khoá gồm `relp` + độ dài + hash nội dung, nên hai nội dung khác nhau không thể trùng khoá
+# trong thực tế; selftest dựng tệp mới ở đường dẫn mới nên không lẫn.
+_TEST_RANGE_CACHE: Dict[Tuple[str, int, int], List[Tuple[int, int]]] = {}
+
+
 def _test_char_ranges(code: str, relp: str) -> List[Tuple[int, int]]:
+    """Như [`_test_char_ranges_uncached`], có **cache** theo `(relp, độ dài, hash)`."""
+    key = (relp, len(code), hash(code))
+    cached = _TEST_RANGE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    out = _test_char_ranges_uncached(code, relp)
+    _TEST_RANGE_CACHE[key] = out
+    return out
+
+
+def _test_char_ranges_uncached(code: str, relp: str) -> List[Tuple[int, int]]:
     """**KT-198/F2b** (reviewer L35) — khoảng **ký tự** của các mục test, theo **token-tree**.
 
     Bản cũ `test_line_ranges` quyết định theo **dòng**: `#[cfg(test)] fn h() { … } pub fn evil(…)`
@@ -2998,11 +3132,13 @@ def _walk_nodes(nodes: Sequence[object]) -> Iterable[Tuple[object, Sequence[obje
             yield from _walk_nodes(n.children)
 
 
-def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
+def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str, int]]:
     """**KT-241** — mọi lời gọi `transition_tcb(…)`; **chỉ** kiểm đối số thứ hai có phải
     `TcbState`/`Ready` không (chốt chống **đảo kiểu**), không phân tích Ready/không-Ready.
 
-    Trả `[(dòng, dạng, mô_tả)]`, dạng:
+    Trả `[(dòng, dạng, mô_tả, offset_ký_tự)]` — `offset` là vị trí **ký tự** của token
+    `transition_tcb` trong `text`, để caller lọc vùng test theo **khoảng ký tự**
+    (`_test_char_ranges`) thay vì theo dòng (**KT-242 N5**). Dạng:
       - `"tcbstate"` — đối số thứ hai là/chứa `TcbState` ⇒ **ĐỎ**: dưới API KT-241
         (`to: NonReadyTarget`) dạng này **không biên dịch được** ⇒ có người đã **đảo kiểu**
         `transition_tcb` về `TcbState`;
@@ -3032,7 +3168,7 @@ def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
         tree = build_tree(toks, relp)
     except LexError:
         return []
-    out: List[Tuple[int, str, str]] = []
+    out: List[Tuple[int, str, str, int]] = []
 
     def segs_of(arg: Sequence[object]) -> List[str]:
         """Các **đoạn định danh** của một đường dẫn biến thể (`a::b::C` ⇒ `[a, b, C]`)."""
@@ -3081,12 +3217,12 @@ def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
             if is_ufcs:
                 # UFCS method `Type::transition_tcb(m, t, state)`: args[0]=receiver.
                 if len(args) < 3:
-                    out.append((node.line, "ok", "UFCS thiếu đối số trạng thái (args[2])"))
+                    out.append((node.line, "ok", "UFCS thiếu đối số trạng thái (args[2])", node.start))
                     continue
                 arg = args[2]
             else:
                 if len(args) < 2:
-                    out.append((node.line, "ok", "thiếu đối số thứ hai"))
+                    out.append((node.line, "ok", "thiếu đối số thứ hai", node.start))
                     continue
                 arg = args[1]
             segs = segs_of(arg)
@@ -3097,13 +3233,18 @@ def _transition_calls(text: str, relp: str) -> List[Tuple[int, str, str]]:
             has_tcb = any(t.kind == "ident" and t.val == "TcbState" for t in flat)
             has_ready = any(t.kind == "ident" and t.val == "Ready" for t in flat)
             if has_tcb:
-                out.append((node.line, "tcbstate", "::".join(segs) or "biểu thức chứa `TcbState`"))
+                out.append((node.line, "tcbstate", "::".join(segs) or "biểu thức chứa `TcbState`", node.start))
             elif has_ready:
                 out.append(
-                    (node.line, "ready_alias", "::".join(segs) or "biểu thức chứa `Ready`")
+                    (
+                        node.line,
+                        "ready_alias",
+                        "::".join(segs) or "biểu thức chứa `Ready`",
+                        node.start,
+                    )
                 )
             else:
-                out.append((node.line, "ok", "::".join(segs) or "biểu thức"))
+                out.append((node.line, "ok", "::".join(segs) or "biểu thức", node.start))
 
     walk(tree)
     return out
@@ -3500,10 +3641,68 @@ def _check_nonready_conv(root: Path, r: Report) -> None:
         _check_nonready_conv_tree(rel(root, p), tree, r)
 
 
+def _fn_body_groups(nodes: Sequence[object], out: List[Tuple[str, Group]]) -> None:
+    """Thu `(tên, nhóm thân)` của **mọi** `fn` **có thân**, ở **mọi** tầng token-tree.
+
+    **KT-242 (N1/N2)** — cần biết **hàm trong cùng** chứa một token. `find_functions` (theo
+    dòng + thụt lề) **nhảy qua** hàm lồng (`i = end + 1`), nên không dùng được cho việc này.
+    """
+    i = 0
+    n = len(nodes)
+    while i < n:
+        node = nodes[i]
+        if isinstance(node, Group):
+            _fn_body_groups(node.children, out)
+            i += 1
+            continue
+        if _is_ident(node, "fn") and i + 1 < n and _is_ident(nodes[i + 1]):
+            name = nodes[i + 1].val
+            j = i + 2
+            while j < n and not (isinstance(nodes[j], Group) and nodes[j].open.val == "("):
+                j += 1
+            if j < n:
+                k = j + 1
+                while k < n:
+                    x = nodes[k]
+                    if isinstance(x, Group) and x.open.val == "{":
+                        out.append((name, x))
+                        break
+                    if _is_punct(x, ";"):
+                        break
+                    k += 1
+        i += 1
+
+
+def _innermost_fn_tree(tree: Sequence[object], tok: Tok) -> Optional[str]:
+    """Tên **hàm trong cùng** chứa `tok` (token-tree); `None` nếu ngoài mọi hàm.
+
+    **KT-242 (N1/N2)** — đường lọt "cửa thứ bảy": `impl Machine { pub fn kt242_door(…) {
+    self.write_state(tcb, TcbState::Ready) } }` **lồng trong thân** `wake_step`; mã sản phẩm
+    gọi `m.kt242_door(t)` ⇒ TCB về `Ready` **không qua điều kiện nguồn nào**. `cargo check`
+    RC=0; lớp 1 thường/`--strict`/lớp 2 **đều XANH** (đo: `JOURNAL/kt242-wake-repro/logs/r3a/`).
+
+    Gốc: `_check_state_write` quy `write_state` cho hàm qua `enclosing(fns, n.line)`, mà
+    `find_functions` **bỏ qua** hàm lồng ⇒ `write_state` trong `fn`/`impl` lồng bị quy cho
+    **cửa ngoài** ⇒ thuộc `STATE_WRITE_CALLERS`. Nay đọc **token-tree**: hàm **trong cùng**
+    thắng, nên hàm lồng **không** phải cửa ⇒ ĐỎ. Đây là **siết**, không nới: 6 cửa thật vẫn
+    XANH (ca selftest đối chứng dương).
+    """
+    best: Optional[Tuple[str, int]] = None
+    groups: List[Tuple[str, Group]] = []
+    _fn_body_groups(tree, groups)
+    for name, body in groups:
+        if body.close is None:
+            continue
+        if body.open.start <= tok.start <= body.close.end:
+            span = body.close.end - body.open.start
+            if best is None or span < best[1]:
+                best = (name, span)
+    return best[0] if best else None
+
+
 def _check_state_write(
     relp: str,
     text: str,
-    fns: Sequence[Fn],
     tr: Sequence[Tuple[int, int]],
     extra_doors: Optional[set],
     r: Report,
@@ -3516,6 +3715,12 @@ def _check_state_write(
       - trong `state_write.rs`: `write_state` chỉ được **gọi** bởi `STATE_WRITE_CALLERS`
         (cửa thông thường `transition_tcb` + 5 cửa `Ready`); dùng làm **giá trị**
         (`let f = Self::write_state;`) ⇒ ĐỎ; `into_state` được phép (không thể sinh `Ready`).
+
+    **KT-242 (N1/N2)** — "hàm gọi" là **hàm trong cùng theo token-tree**
+    ([`_innermost_fn_tree`]), **không** phải hàm theo dòng/thụt lề (`enclosing`): hàm lồng
+    trong thân một cửa **không** phải cửa ⇒ ĐỎ. Tham số `fns` (từ `find_functions`) **bỏ** —
+    nó là nguồn của lỗi quy sai; tham số `tr` nay là **khoảng ký tự** (`_test_char_ranges`),
+    không phải khoảng dòng (KT-242 N5).
 
     Trả tập `(tệp, hàm)` của `extra_doors` **đã dùng** (để kiểm mục allowlist mục —
     `E_STRICT_STALE`).
@@ -3535,7 +3740,7 @@ def _check_state_write(
     for n, sibs, i in _walk_nodes(tree):
         if not (isinstance(n, Tok) and n.kind == "ident" and n.val in ("write_state", "into_state")):
             continue
-        if in_ranges(n.line, tr):
+        if in_ranges(n.start, tr):
             continue  # mã test — cùng quy ước miễn của mọi luật khác
         prev = sibs[i - 1] if i > 0 else None
         nxt = sibs[i + 1] if i + 1 < len(sibs) else None
@@ -3565,22 +3770,24 @@ def _check_state_write(
                 f"tiếp** trong cửa (KT-241)",
             )
             continue
-        fn = enclosing(fns, n.line)
-        if fn is None:
+        # **KT-242 (N1/N2)** — hàm **trong cùng** theo token-tree, không theo dòng/thụt lề.
+        fn_name = _innermost_fn_tree(tree, n)
+        if fn_name is None:
             r.err(
                 "E_STRICT_STATE_WRITE",
                 f"  {relp}:{n.line}: `write_state` ngoài hàm — không xác định được cửa "
                 f"(fail-closed, KT-241)",
             )
             continue
-        if fn.name in allowed:
-            used.add((relp, fn.name))
+        if fn_name in allowed:
+            used.add((relp, fn_name))
             continue
         r.err(
             "E_STRICT_STATE_WRITE",
-            f"  {relp}:{n.line}: `write_state` trong `{fn.name}` — chỉ "
+            f"  {relp}:{n.line}: `write_state` trong `{fn_name}` — chỉ "
             f"{len(STATE_WRITE_CALLERS)} hàm được gọi trực tiếp (cửa thông thường + 5 cửa "
-            f"`Ready`; `tcb_yield` phải qua `yield_to_ready`) (KT-241)",
+            f"`Ready`; `tcb_yield` phải qua `yield_to_ready`); hàm **lồng trong thân** một "
+            f"cửa **không** phải cửa (KT-241, KT-242 N1/N2)",
         )
     return used
 
@@ -3636,11 +3843,22 @@ def scan_v2(
 
     # --- quét mọi tệp nguồn ---------------------------------------------------
     files: List[Tuple[Path, str, List[Fn]]] = []
+    # **KT-242 (N5)** — vùng test là **khoảng KÝ TỰ** (`_test_char_ranges`, token-tree), không
+    # phải khoảng **dòng** (`test_line_ranges`). `test_line_ranges` lan cả dòng: đo được
+    # `#[cfg(test)]\nfn helper() {} fn evil(…) { … }` ⇒ vùng `(1,2)` phủ **cả** dòng 2 ⇒ luật
+    # 1/2/3 (và R2/R3) miễn mã sản phẩm **cùng dòng** một mục test. Hợp đồng §2 nói "không lan
+    # sang mục cùng dòng" — sai cho tới bản này.
     test_ranges: Dict[str, List[Tuple[int, int]]] = {}
+    line_starts: Dict[str, List[int]] = {}
     for p in iter_rs(root, V2_SCAN):
         text = p.read_text(encoding="utf-8", errors="replace")
         files.append((p, text, find_functions(p, text)))
-        test_ranges[str(p)] = test_line_ranges(text)
+        test_ranges[str(p)] = _test_char_ranges(strip_rust_noise(text), rel(root, p))
+        _ls = [0]
+        for _idx, _ch in enumerate(text):
+            if _ch == "\n":
+                _ls.append(_idx + 1)
+        line_starts[str(p)] = _ls
 
     # **KT-241** — mỏ neo **kiểu** (fail-closed): đọc **định nghĩa** `state_write.rs` thay vì
     # tin tên hàm. Chạy **trước** mọi luật chính sách để chẩn đoán "API bị đảo" không lẫn với
@@ -3694,15 +3912,17 @@ def scan_v2(
         if rel(root, p) in MAILBOX_DEFS or is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
+        ls = line_starts.get(str(p), [0])
         lines = text.splitlines()
         for lineno, line in enumerate(lines, 1):
-            if in_ranges(lineno, tr):
-                continue
             stripped = line.lstrip()
             if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
                 continue
             m = RE_MAILBOX_MSG.search(line)
             if not m:
+                continue
+            # **KT-242 (N5)** — miễn theo **vị trí của match**, không theo cả dòng.
+            if in_ranges(ls[lineno - 1] + m.start(), tr):
                 continue
             kind = m.group(1)
             if kind not in producers:
@@ -3755,17 +3975,17 @@ def scan_v2(
         if rel(root, p) in MAILBOX_DEFS or is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
+        ls = line_starts.get(str(p), [0])
         for lineno, line in enumerate(text.splitlines(), 1):
-            if in_ranges(lineno, tr):
-                continue
             if "=>" not in line:
-                continue
-            kinds = RE_MAILBOX_MSG.findall(line)
-            if not kinds:
                 continue
             fn = enclosing(fns, lineno)
             fname = fn.name if fn else "<ngoài hàm>"
-            for kind in kinds:
+            for _m in RE_MAILBOX_MSG.finditer(line):
+                # **KT-242 (N5)** — miễn theo **vị trí của match**, không theo cả dòng.
+                if in_ranges(ls[lineno - 1] + _m.start(), tr):
+                    continue
+                kind = _m.group(1)
                 if kind in consumers:
                     consumers[kind].append(f"{rel(root, p)}:{lineno} ({fname})")
     for kind in WAKE_KINDS:
@@ -3790,25 +4010,33 @@ def scan_v2(
         if is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
+        ls = line_starts.get(str(p), [0])
+
+        def _exempt(col: int) -> bool:
+            """**KT-242 (N5)** — vị trí (dòng, cột) có nằm trong vùng test không."""
+            return in_ranges(ls[lineno - 1] + col, tr)
+
         for lineno, line in enumerate(text.splitlines(), 1):
-            if in_ranges(lineno, tr):
-                continue
-            if re.search(r"\b(?:wake_step|MailboxMsg|send_reschedule|wake_hart)\b", line):
+            _m_arch = re.search(r"\b(?:wake_step|MailboxMsg|send_reschedule|wake_hart)\b", line)
+            if _m_arch and not _exempt(_m_arch.start()):
                 r.err(
                     "E_ARCH_WAKE",
                     f"{relp}:{lineno}: tầng arch có kênh wake riêng",
                 )
-            if RE_IPI_WAKE_POST.search(line) and RE_IPI_POST.search(line):
+            _m_ipi = RE_IPI_WAKE_POST.search(line)
+            if _m_ipi and RE_IPI_POST.search(line) and not _exempt(_m_ipi.start()):
                 r.err(
                     "E_ARCH_DOORBELL",
                     f"{relp}:{lineno}: arch tự post `IpiKind::Wake` (doorbell riêng)",
                 )
-            if RE_DOORBELL.search(line) and not p.name.startswith("virtio_"):
+            _m_door = RE_DOORBELL.search(line)
+            if _m_door and not p.name.startswith("virtio_") and not _exempt(_m_door.start()):
                 r.err(
                     "E_ARCH_DOORBELL",
                     f"{relp}:{lineno}: `doorbell` ngoài thiết bị virtio",
                 )
-            if RE_READY_TRANSITION.search(line):
+            _m_ready = RE_READY_TRANSITION.search(line)
+            if _m_ready and not _exempt(_m_ready.start()):
                 fn = enclosing(fns, lineno)
                 body = ""
                 if fn is not None:
@@ -3840,8 +4068,9 @@ def scan_v2(
         if is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
-        for lineno, kind, desc in _transition_calls(text, relp):
-            if in_ranges(lineno, tr):
+        for lineno, kind, desc, _start in _transition_calls(text, relp):
+            # **KT-242 (N5)** — miễn theo **offset ký tự** của token, không theo dòng.
+            if in_ranges(_start, tr):
                 continue
             if kind == "ok":
                 continue
@@ -3873,7 +4102,7 @@ def scan_v2(
         if is_test_file(p, root, test_only):
             continue
         tr = test_ranges.get(str(p), [])
-        used_doors |= _check_state_write(relp, text, fns, tr, extra_doors, r)
+        used_doors |= _check_state_write(relp, text, tr, extra_doors, r)
 
     # Mục `extra_doors` (chỉ selftest dùng) phải còn khớp chỗ nào đó — giữ tinh thần
     # `E_STRICT_STALE` của allowlist cũ (mục allowlist mục ⇒ ĐỎ). Chỉ xét tệp **có trong cây**.
@@ -3932,7 +4161,9 @@ def scan_v2(
         added: set = set()
         for p, text, fns in files:
             relp = rel(root, p)
-            if not in_test_only_wake_scope(relp):
+            # **KT-242 (N3)** — truyền `root`: phạm vi = mẫu ∪ **crate root thật** (bin/lib
+            # khai báo ngoài `src/`).
+            if not in_test_only_wake_scope(relp, root):
                 continue
             wake_targets.append((p, text, fns, is_test_file(p, root, test_only)))
             added.add(p)
@@ -3978,7 +4209,8 @@ def scan_v2(
         scanned: set = set()
         for p, text, _fns in files:
             relp = rel(root, p)
-            if not in_test_only_wake_scope(relp):
+            # **KT-242 (N3)** — truyền `root` (xem trên).
+            if not in_test_only_wake_scope(relp, root):
                 continue
             if is_test_file(p, root, test_only):
                 continue
@@ -8264,7 +8496,7 @@ def selftest() -> int:
             if need and need not in body:
                 why.append(f"văn bản ca thiếu `{need}`")
             if calls is not None:
-                got = [(k, dsc) for _, k, dsc in _transition_calls(body, relp)]
+                got = [(k, dsc) for _, k, dsc, _s in _transition_calls(body, relp)]
                 if got != list(calls):
                     why.append(f"phân loại lời gọi {got} ≠ kỳ vọng {list(calls)}")
             if expect == "red-transition":
@@ -8426,7 +8658,7 @@ def selftest() -> int:
                 _why.append("call site lại chứa `transition_tcb` (ca không còn đúng dạng)")
             if [
                 (k, dsc)
-                for _, k, dsc in _transition_calls(
+                for _, k, dsc, _s in _transition_calls(
                     _f2_helper, "v2/kernel/vifast-core/src/kt239_f2_helper.rs"
                 )
             ] != [("ok", "s")]:
@@ -8695,6 +8927,290 @@ def selftest() -> int:
                 "KT-241 `tr`: 4 call site (lớp 1 ×3 + lớp 2 ×1), không truyền `test_line_ranges`",
                 len(_calls) == 4 and not _bad_calls,
                 f"{len(_calls)} call site; sai: {_bad_calls}",
+            )
+        )
+
+        # ======================================================================
+        # **KT-242** — khép bốn lệch hợp đồng ảnh hưởng luật `wake` (review độc lập
+        # `JOURNAL/kt242-wake-review.md`). Mỗi mục có **đối chứng dương** để chứng minh
+        # bản vá là **siết**, không phải "luôn đỏ".
+        # ======================================================================
+
+        # --- N1/N2: `write_state` quy cho **hàm trong cùng** (token-tree) -------------
+        _N1_IMPL = (
+            "    pub(crate) fn wake_step(&mut self, tcb: u32) -> u8 {\n"
+            "        impl M {\n"
+            "            pub fn kt242_door(&mut self, tcb: u32) -> u8 {\n"
+            "                self.write_state(tcb, TcbState::Ready)\n"
+            "            }\n"
+            "        }\n"
+            "        self.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+        )
+        _N1_FN = (
+            "    pub(crate) fn wake_step(&mut self, tcb: u32) -> u8 {\n"
+            "        fn kt242_door(m: &mut M, tcb: u32) -> u8 {\n"
+            "            m.write_state(tcb, TcbState::Ready)\n"
+            "        }\n"
+            "        let _ = kt242_door;\n"
+            "        self.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+        )
+        _N1_OLD = (
+            "    pub(crate) fn wake_step(&mut self, tcb: u32) -> u8 {\n"
+            "        self.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+        )
+        for _n1_name, _n1_new in (("impl", _N1_IMPL), ("fn", _N1_FN)):
+            d = tmp / ("kt242-n1-" + _n1_name)
+            _fixture_v2(d)
+            _swp = d / KERNEL_STATE_WRITE
+            _swp.write_text(
+                _swp.read_text(encoding="utf-8").replace(_N1_OLD, _n1_new, 1),
+                encoding="utf-8",
+            )
+            for _strict in (False, True):
+                rep = scan_v2(d, strict=_strict, extra_doors=set())
+                cases.append(
+                    (
+                        f"KT-242 N1/N2 `{_n1_name}` lồng trong cửa gọi `write_state` ⇒ đỏ "
+                        f"E_STRICT_STATE_WRITE"
+                        + (" (--strict)" if _strict else " (thường)"),
+                        (not rep.ok)
+                        and any("E_STRICT_STATE_WRITE" in e for e in rep.errors)
+                        and any("kt242_door" in e for e in rep.errors),
+                        "; ".join(rep.errors),
+                    )
+                )
+
+        # Đối chứng dương: **6 cửa thật** vẫn được nhận **đúng cửa** (bản vá không làm đỏ
+        # cửa thật, và không quy nhầm sang hàm khác).
+        d = tmp / "kt242-n1-doors"
+        _fixture_v2(d)
+        _sw_text = (d / KERNEL_STATE_WRITE).read_text(encoding="utf-8")
+        _r = Report()
+        _used = _check_state_write(
+            KERNEL_STATE_WRITE,
+            _sw_text,
+            _test_char_ranges(strip_rust_noise(_sw_text), KERNEL_STATE_WRITE),
+            None,
+            _r,
+        )
+        _expected = {(KERNEL_STATE_WRITE, _n) for _n in STATE_WRITE_CALLERS}
+        cases.append(
+            (
+                "KT-242 N1 đối chứng dương: 6 cửa thật vẫn được nhận đúng cửa",
+                _r.ok and _used == _expected,
+                f"used={sorted(_used)}; errors={_r.errors}",
+            )
+        )
+
+        # --- N5: vùng test theo **ký tự**, không theo dòng ---------------------------
+        # Cùng-dòng: `#[cfg(test)]` trên một mục **có thân** rồi mã sản phẩm **cùng dòng**.
+        # `test_line_ranges` cũ phủ **cả** dòng ⇒ miễn; `_test_char_ranges` chỉ phủ mục test.
+        _N5_PART = "#[cfg(test)]\nfn helper() {} "
+        _N5_CASES = (
+            (
+                "luật 1 (post_mail MailboxMsg::Wake)",
+                "v2/kernel/vifast-core/src/sub/mailbox.rs",
+                _N5_PART + "fn evil(&mut self) { self.post_mail(0, MailboxMsg::Wake(1)); }\n",
+                "E_CHANNEL_PRODUCER",
+            ),
+            (
+                "luật 2 (consumer MailboxMsg::Wake)",
+                "v2/kernel/vifast-core/src/evil2.rs",
+                _N5_PART
+                + "fn evil(msg: MailboxMsg) { match msg { MailboxMsg::Wake(t) => "
+                + "{ let _ = t; } _ => {} } }\n",
+                "E_CONSUMER",
+            ),
+            (
+                "luật 3 (arch IpiKind::Wake)",
+                "v2/kernel/vifast-plat-riscv64/src/ipi.rs",
+                _N5_PART
+                + "fn post_wake(hart: usize) { IPI_MAILBOXES.get(hart).post(IpiKind::Wake); }\n",
+                "E_ARCH_DOORBELL",
+            ),
+        )
+        for _n5_name, _n5_relp, _n5_text, _n5_code in _N5_CASES:
+            d = tmp / ("kt242-n5-" + _n5_code.lower())
+            _fixture_v2(d)
+            _write(d / _n5_relp, _n5_text)
+            for _strict in (False, True):
+                rep = scan_v2(d, strict=_strict, extra_doors=set())
+                cases.append(
+                    (
+                        f"KT-242 N5 {_n5_name} cùng dòng `#[cfg(test)]` ⇒ đỏ {_n5_code}"
+                        + (" (--strict)" if _strict else " (thường)"),
+                        (not rep.ok) and any(_n5_code in e for e in rep.errors),
+                        "; ".join(rep.errors),
+                    )
+                )
+
+        # Đối chứng dương: `#[cfg(test)] mod t { … }` **vẫn** được miễn (không báo oan).
+        d = tmp / "kt242-n5-pos"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil3.rs",
+            "#[cfg(test)]\nmod t { fn evil(m: &mut M, t: u32) { let _ = m.wake(t); } }\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "KT-242 N5 đối chứng dương: `#[cfg(test)] mod t { … }` vẫn XANH",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+        # Đối chứng dương: R1 (luật token `wake`) **vẫn** bắt mã cùng dòng (không hồi quy).
+        d = tmp / "kt242-n5-r1"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/evil4.rs",
+            _N5_PART + "pub fn evil(m: &mut M, t: u32) { let _ = m.wake(t); }\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "KT-242 N5 đối chứng dương: R1 cùng dòng `#[cfg(test)]` vẫn ĐỎ",
+                (not rep.ok) and any("E_STRICT_TEST_ONLY_WAKE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # --- N3: `[[bin]] path` **ngoài `src/`** ------------------------------------
+        d = tmp / "kt242-n3-bin"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/Cargo.toml",
+            '[package]\nname = "vifast-core"\n\n[[bin]]\nname = "kt242-bin"\n'
+            'path = "bin/kt242_bin.rs"\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/bin/kt242_bin.rs",
+            "fn main() { let mut m = M; let _ = m.wake(0); }\n",
+        )
+        for _strict in (False, True):
+            rep = scan_v2(d, strict=_strict, extra_doors=set())
+            cases.append(
+                (
+                    "KT-242 N3 `[[bin]] path` ngoài `src/` chứa `wake` ⇒ đỏ "
+                    "E_STRICT_TEST_ONLY_WAKE"
+                    + (" (--strict)" if _strict else " (thường)"),
+                    (not rep.ok)
+                    and any(
+                        "E_STRICT_TEST_ONLY_WAKE" in e and "bin/kt242_bin.rs" in e
+                        for e in rep.errors
+                    ),
+                    "; ".join(rep.errors),
+                )
+            )
+        # Đối chứng dương: `tests/*.rs` cấp crate **vẫn** được miễn (test-only).
+        d = tmp / "kt242-n3-tests"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/Cargo.toml",
+            '[package]\nname = "vifast-core"\n',
+        )
+        _write(
+            d / "v2/kernel/vifast-core/tests/kt242_ok.rs",
+            "fn t(m: &mut M) { let _ = m.wake(0); }\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "KT-242 N3 đối chứng dương: `tests/*.rs` cấp crate vẫn XANH",
+                rep.ok,
+                "; ".join(rep.errors),
+            )
+        )
+
+        # --- N4: tệp `.RS` (hoa) — FS không phân biệt hoa/thường ---------------------
+        d = tmp / "kt242-n4-rs"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-core/src/kt242_rs.RS",
+            "pub fn evil(m: &mut M, t: u32) { let _ = m.wake(t); }\n",
+        )
+        for _strict in (False, True):
+            rep = scan_v2(d, strict=_strict, extra_doors=set())
+            cases.append(
+                (
+                    "KT-242 N4 tệp `.RS` (hoa) chứa `wake` ⇒ đỏ E_STRICT_TEST_ONLY_WAKE"
+                    + (" (--strict)" if _strict else " (thường)"),
+                    (not rep.ok)
+                    and any(
+                        "E_STRICT_TEST_ONLY_WAKE" in e and "kt242_rs.RS" in e
+                        for e in rep.errors
+                    ),
+                    "; ".join(rep.errors),
+                )
+            )
+
+        # --- Chốt chống tái diễn: **không** còn thành phần quyết định theo DÒNG ---------
+        # (a) `test_line_ranges` **không** còn call site sản xuất nào (chỉ còn trong chính
+        #     `selftest` để chứng minh hai cách phân vùng khác nhau).
+        _here2 = Path(__file__).resolve().parent
+        _tlr_bad: List[str] = []
+        for _f in ("check-wake-paths.py", "check-wake-depinfo.py"):
+            _fp = _here2 / _f
+            if not _fp.is_file():
+                continue
+            for _ln in _fp.read_text(encoding="utf-8").splitlines():
+                _st = _ln.strip()
+                if "test_line_ranges(" not in _ln or "def test_line_ranges" in _ln:
+                    continue
+                if _st.startswith("#"):
+                    continue
+                # Bản thân `selftest` được phép (ca chứng minh hai cách khác nhau).
+                if _f == "check-wake-paths.py" and "_line_covers" in _ln:
+                    continue
+                # Dòng **docstring** (nhắc lịch sử trong dấu backtick) không phải call site.
+                if "`" in _ln:
+                    continue
+                _tlr_bad.append(f"{_f}: {_st}")
+        cases.append(
+            (
+                "KT-242 N5 chốt: `test_line_ranges` không còn call site sản xuất",
+                not _tlr_bad,
+                f"call site: {_tlr_bad}",
+            )
+        )
+        # (b) `_check_state_write` **không** còn tham số `fns` (nguồn quy sai hàm).
+        _sw_params = list(inspect.signature(_check_state_write).parameters)
+        cases.append(
+            (
+                "KT-242 N1 chốt: `_check_state_write` không còn tham số `fns`",
+                _sw_params == ["relp", "text", "tr", "extra_doors", "r"],
+                str(_sw_params),
+            )
+        )
+        # (c) `in_test_only_wake_scope` **có** tham số `root` (phạm vi = mẫu ∪ crate root).
+        _scope_params = list(inspect.signature(in_test_only_wake_scope).parameters)
+        cases.append(
+            (
+                "KT-242 N3 chốt: `in_test_only_wake_scope` nhận `root` (crate root thật)",
+                _scope_params == ["relp", "root"],
+                str(_scope_params),
+            )
+        )
+
+        # --- N6: đường dẫn không phân giải được ⇒ lỗi cổng RÕ, không traceback --------
+        d = tmp / "kt242-n6-nul"
+        _fixture_v2(d)
+        _write(d / "v2/kernel/vifast-core/src/evil5.rs", 'include!("\\0");\n')
+        try:
+            rep = scan_v2(d, strict=False)
+            _n6_ok = (not rep.ok) and any("E_STRICT_WAKE_INCLUDE" in e for e in rep.errors)
+            _n6_detail = "; ".join(rep.errors)
+        except Exception as _e:  # noqa: BLE001 - chính là điều ca này cấm
+            _n6_ok = False
+            _n6_detail = f"CRASH {type(_e).__name__}: {_e}"
+        cases.append(
+            (
+                "KT-242 N6 `include!(\"\\0\")` ⇒ đỏ E_STRICT_WAKE_INCLUDE (không crash)",
+                _n6_ok,
+                _n6_detail,
             )
         )
 

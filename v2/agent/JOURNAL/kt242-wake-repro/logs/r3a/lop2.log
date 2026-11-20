@@ -23,13 +23,14 @@
 #   bảo vệ: vifast-virtio (v2/lib/vifast-virtio)
 #   bảo vệ: vifast-sim (v2/sim/vifast-sim)
 #   từ chối rõ: vifast-agentctl (v2/tools/vifast-agentctl) — công cụ (v2/tools/), không phải sản phẩm
-# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.11 s), 20 artifact, 20 tệp .d, 75 tệp .rs [target dir: /private/tmp/kt242-s2/v2/target]
-# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (0.13 s), 18 artifact, 18 tệp .d, 115 tệp .rs [target dir: /private/tmp/kt242-s2/v2/kernel/target]
+# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.10 s), 20 artifact, 20 tệp .d, 75 tệp .rs [target dir: /private/tmp/kt242-s2/v2/target]
+# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/kt242-s2/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.52 s), 18 artifact, 18 tệp .d, 115 tệp .rs [target dir: /private/tmp/kt242-s2/v2/kernel/target]
 # rustc nạp: 149 tệp .rs trong cây (gộp 2 đơn vị)
 # quét: 149 tệp (tệp cửa wake: 2 — KHÔNG miễn cả tệp; miễn 0 tệp test-only)
 # tệp sinh trong target dir (đã quét): 0
 # test-only: không cần (không có tệp tên test trong danh sách nạp)
 # tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): 0
 # tệp ngoài phạm vi luật wake tĩnh (in_test_only_wake_scope): 59
-# check-wake-depinfo: errors=0 warnings=0 (17.56 s)
-RC=0
+E E_DEPINFO_STATE_WRITE   v2/kernel/vifast-core/src/state_write.rs:243: `write_state` trong `kt242_door` — chỉ 6 hàm được gọi trực tiếp (cửa thông thường + 5 cửa `Ready`; `tcb_yield` phải qua `yield_to_ready`); hàm **lồng trong thân** một cửa **không** phải cửa (KT-241, KT-242 N1/N2)
+# check-wake-depinfo: errors=1 warnings=0 (18.16 s)
+RC=1

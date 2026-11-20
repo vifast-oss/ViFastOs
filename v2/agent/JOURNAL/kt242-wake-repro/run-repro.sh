@@ -16,8 +16,9 @@ git status --porcelain > "$LOG/git-truoc.txt"
 
 cleanup() {
   cd "$ROOT"
-  # Khôi phục mọi tệp đã theo dõi + xoá tệp mới của repro.
-  git checkout -- . 2>/dev/null || true
+  # **KT-242** — chỉ khôi phục **cây sản phẩm**; KHÔNG `git checkout -- .` toàn repo, vì log
+  # của repro là tệp **đã theo dõi** (commit trước) và sẽ bị trả về bản cũ ⇒ mất bằng chứng.
+  git checkout -- v2/kernel v2/sim v2/lib 2>/dev/null || true
   git clean -fdq v2/kernel v2/sim v2/lib 2>/dev/null || true
   echo "[khoi-phuc] git status:" > "$LOG/git-sau.txt"
   git status --porcelain >> "$LOG/git-sau.txt"

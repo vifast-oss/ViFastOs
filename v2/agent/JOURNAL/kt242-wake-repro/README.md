@@ -34,10 +34,16 @@ bash v2/agent/JOURNAL/kt242-wake-repro/run-repro.sh rs-case v2/agent/JOURNAL/kt2
 bash v2/agent/JOURNAL/kt242-wake-repro/run-repro.sh binpath v2/agent/JOURNAL/kt242-wake-repro/binpath.sh
 ```
 
-`run-repro.sh` **luôn** khôi phục cây (`git checkout -- .` + `git clean -fdq v2/kernel v2/sim
-v2/lib`) kể cả khi lỗi; `logs/<tên>/git-sau.txt` phải chỉ còn `?? v2/agent/JOURNAL/kt242-wake-repro/`.
+`run-repro.sh` **luôn** khôi phục cây kể cả khi lỗi, nhưng **chỉ** `v2/kernel`/`v2/sim`/`v2/lib`
+(`git checkout -- v2/kernel v2/sim v2/lib` + `git clean -fdq v2/kernel v2/sim v2/lib`).
+**KT-242 (bản vá)** — bản cũ dùng `git checkout -- .` **toàn repo**, tức là **xoá luôn** bản vá
+checker đang phát triển (đã xảy ra một lần: mất 34 sửa đổi trong `check-wake-paths.py`). Nay chỉ
+khôi phục **cây sản phẩm**; `logs/<tên>/git-sau.txt` phải **không** còn tệp nào dưới
+`v2/kernel`/`v2/sim`/`v2/lib`.
 
 ## Kết quả tóm tắt
+
+### Trước bản vá (review `5546baa0`)
 
 | Ca | Lớp 1 thường | Lớp 1 `--strict` | Lớp 2 | `cargo` |
 |---|---|---|---|---|
@@ -49,3 +55,20 @@ v2/lib`) kể cả khi lỗi; `logs/<tên>/git-sau.txt` phải chỉ còn `?? v2
 | fixture N5a'/N5b' (đối chứng âm) | **ĐỎ** | **ĐỎ** | — | — |
 | fixture N6 (`include!("\0")`) | **crash** `ValueError` | **crash** | — | — |
 | `a1` (kết quả âm) | XANH | XANH | — | **RC=101** (`E0615`: `self.wake` không hợp lệ) |
+
+### Sau bản vá (KT-242 nhóm C — xem [`../kt242-wake-patch.md`](../kt242-wake-patch.md))
+
+| Ca | Lớp 1 thường | Lớp 1 `--strict` | Lớp 2 | `cargo` |
+|---|---|---|---|---|
+| `r3a` (N1) | **ĐỎ** `E_STRICT_STATE_WRITE` | **ĐỎ** | **ĐỎ** `E_DEPINFO_STATE_WRITE` | RC=0 |
+| `rs-case` (N4) | **ĐỎ** `E_STRICT_TEST_ONLY_WAKE` | **ĐỎ** | **ĐỎ** `E_DEPINFO_WAKE` | RC=0 |
+| `binpath` (N3) | **ĐỎ** `E_STRICT_TEST_ONLY_WAKE` | **ĐỎ** | **ĐỎ** `E_DEPINFO_WAKE` | RC=0 |
+| fixture N2 | **ĐỎ** `E_STRICT_STATE_WRITE` | **ĐỎ** | (không áp) | — |
+| fixture N5a/N5b/N5c | **ĐỎ** `E_ARCH_DOORBELL`/`E_CHANNEL_PRODUCER`/`E_CONSUMER` | **ĐỎ** | — | — |
+| fixture N5a'/N5b' (đối chứng âm) | **ĐỎ** | **ĐỎ** | — | — |
+| fixture N6 (`include!("\0")`) | **ĐỎ** `E_STRICT_WAKE_INCLUDE` | **ĐỎ** | — | — |
+| `a1` (kết quả âm) | XANH | XANH | — | **RC=101** (`E0615`: `self.wake` không hợp lệ) |
+
+Đối chứng dương **giữ nguyên**: R1 cùng dòng `#[cfg(test)]` vẫn **ĐỎ**; R1 trong
+`#[cfg(test)] mod t` vẫn **XANH**; `cfg_attr` lồng trong `v2/lib` trỏ ra ngoài vẫn **ĐỎ**; crate
+mới dưới `v2/kernel` vẫn **ĐỎ**; DEBT-KT227-1 vẫn **XANH** (ngoài phạm vi bản vá).
