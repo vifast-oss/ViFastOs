@@ -237,6 +237,23 @@ const PROBE_VA: u64 = 0x5000_0000;
 const PROBE_MAGIC: u64 = 0x4D4D_5500_0000_0001;
 
 // ---------------------------------------------------------------------------------------------
+// KT-250 — TAP trên serial
+// ---------------------------------------------------------------------------------------------
+
+/// Số ca kiểm TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
+pub const TAP_TESTS: usize = 5;
+
+/// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
+///
+/// TAP 13 (Test Anything Protocol): dòng `ok`/`not ok` phải bắt đầu dòng, số hiệu liên tục, và
+/// `#` là comment. Runner (`v2/test/boot/run-aarch64.sh`) đếm **đúng** `N` dòng `ok`, đòi
+/// `1..N`, và coi mọi `not ok`/`PANIC` là đỏ.
+fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
+    let _ = writeln!(console, "{} {n} - {name}", if ok { "ok" } else { "not ok" });
+    ok
+}
+
+// ---------------------------------------------------------------------------------------------
 // Console tối giản trên PL011
 // ---------------------------------------------------------------------------------------------
 
@@ -306,14 +323,25 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
 /// chứng "địa chỉ nền tảng là thật"; B3.1/B3.2 chưa đọc DTB).
 #[no_mangle]
 pub extern "C" fn kmain(_dtb: u64) -> ! {
-    // PL011 theo đúng chuỗi DDI 0183 (tắt → chia tần → khung → xoá ngắt → bật).
-    let _steps = pl011::init();
-    let _ = pl011::write_str(BOOT_MARKER);
+    let mut console = Console;
+    // TAP 13: dòng phiên bản phải là dòng **đầu tiên**; plan `1..N` ngay sau.
+    let _ = writeln!(console, "TAP version 13");
+    let _ = writeln!(console, "1..{TAP_TESTS}");
+
+    // ---- Ca 1: PL011 nạp đủ chuỗi khởi tạo (DDI 0183: tắt → chia tần → khung → xoá ngắt → bật).
+    let steps = pl011::init();
+    if !tap(
+        &mut console,
+        1,
+        "pl011: init sequence applied",
+        steps == pl011::INIT_SEQUENCE.len(),
+    ) {
+        debug_halt(5)
+    }
 
     // ---- KT-248: cài bảng vector rồi chứng minh nó sống bằng một `brk #0` cố ý.
     let base = vector_base();
     let vbar = vector::install(base);
-    let mut console = Console;
     let _ = writeln!(
         console,
         "# vector: base=0x{base:x} vbar=0x{vbar:x} slots={} stride=0x{:x} align=0x{:x} aligned={}",
@@ -322,6 +350,14 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         vector::VECTOR_ALIGN,
         vector::is_aligned(base) as u8,
     );
+    if !tap(
+        &mut console,
+        2,
+        "vector: 16 slots, VBAR_EL1 installed",
+        vbar == base && vector::is_aligned(base),
+    ) {
+        debug_halt(5)
+    }
 
     let expected = asm::brk_probe_addr();
     asm::brk_probe();
@@ -348,10 +384,50 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         "# trap: other={}",
         OTHER_TRAPS.load(Ordering::Relaxed)
     );
+    let brk_ok = count == 1
+        && slot == 4
+        && esr.ec() == Some(ExceptionClass::Brk64)
+        && elr == expected
+        && OTHER_TRAPS.load(Ordering::Relaxed) == 0;
+    if !tap(
+        &mut console,
+        3,
+        "brk #0: ec=0x3c, elr matches instruction",
+        brk_ok,
+    ) {
+        debug_halt(5)
+    }
 
     // ---- KT-249: bật MMU (TCR → MAIR → TTBR0 → SCTLR → ISB) trên identity map.
-    mmu_bringup(&mut console);
+    let mmu = mmu_bringup(&mut console);
+    if !tap(&mut console, 4, "mmu: SCTLR_EL1.M=1 after ISB", mmu.on) {
+        debug_halt(5)
+    }
+    if !tap(
+        &mut console,
+        5,
+        "mmu: identity marker + non-identity probe VA",
+        mmu.marker_ok && mmu.probe_ok,
+    ) {
+        debug_halt(5)
+    }
+
+    // Marker **duy nhất** của ảnh — chỉ in khi **mọi** ca TAP đã xanh (nếu in sớm, một ảnh hỏng
+    // vẫn có marker và runner dễ nhận nhầm là boot sạch).
+    let _ = pl011::write_str(BOOT_MARKER);
+    let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)
+}
+
+/// Kết quả ba phép đo của B3.3 — `mmu_bringup` trả về để `kmain` phát TAP.
+#[derive(Clone, Copy, Debug, Default)]
+struct MmuOutcome {
+    /// `SCTLR_EL1.M == 1` sau `ISB`.
+    on: bool,
+    /// Marker ghi trước khi bật, đọc lại qua VA sau khi bật — không đổi.
+    marker_ok: bool,
+    /// Đọc trang probe qua **VA không identity** ra đúng magic.
+    probe_ok: bool,
 }
 
 /// **KT-249** — dựng bảng trang, identity map vùng ảnh + UART + GIC, rồi bật MMU theo đúng
@@ -362,7 +438,7 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
 /// 2. marker ghi trước khi bật, đọc lại qua VA sau khi bật — **không đổi**;
 /// 3. trang probe map vào **VA không identity**: đọc qua VA ra đúng magic ⇒ translation thật sự
 ///    chạy, không chỉ bit `M` được bật.
-fn mmu_bringup(console: &mut Console) {
+fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let text_start = core::ptr::addr_of!(__text_start) as u64;
     let kernel_end = core::ptr::addr_of!(__kernel_end) as u64;
     let probe_pa = core::ptr::addr_of!(PROBE_PAGE.0) as u64;
@@ -505,9 +581,11 @@ fn mmu_bringup(console: &mut Console) {
         (probe == PROBE_MAGIC) as u8,
     );
 
-    // Fail-loud: ba phép đo trên là **điều kiện** của B3.3, không phải thông tin tham khảo.
-    if !on || marker != MMU_MARKER_VALUE || probe != PROBE_MAGIC {
-        let _ = writeln!(console, "PANIC: mmu: phép đo B3.3 không đạt");
-        debug_halt(4)
+    // Ba phép đo trên là **điều kiện** của B3.3, không phải thông tin tham khảo: `kmain` phát
+    // TAP từ chúng và dừng máy nếu bất kỳ phép nào sai.
+    MmuOutcome {
+        on,
+        marker_ok: marker == MMU_MARKER_VALUE,
+        probe_ok: probe == PROBE_MAGIC,
     }
 }
