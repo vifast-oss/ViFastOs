@@ -4,29 +4,27 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 19:40 (KT-242) ===
-HEAD          : `21cc75cd` (`main`, **đã push**). Cây sạch (`dirty=0`).
-BUILD-INPUTS  : **234 mục**, dấu vân tay **`54f3b59fc08f3221`**, `dirty=0`
-                (đổi vì toolchain 1.100.0; trước KT-242: `71d32c46b1939fe3`).
-TOOLCHAIN     : **Rust 1.100.0** — ghim ở `v2/rust-toolchain.toml`, `v2/kernel/rust-toolchain.toml`,
-                `rust-version` (`v2/Cargo.toml`), `v2/tools/repro-build.sh`,
-                `v2/tools/repro-build-windows.ps1`.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 21:20 (KT-242 cuối tuần) ===
+HEAD          : `e12477fb` (`main`, **đã push**). Cây sạch (`dirty=0`).
+BUILD-INPUTS  : **234 mục**, dấu vân tay **`54f3b59fc08f3221`**, `dirty=0` — **KHÔNG ĐỔI** so với
+                trước cuối tuần ⇒ **bằng chứng K6 trên ảnh `d915b977…` vẫn hiệu lực**.
+TOOLCHAIN     : **Rust 1.100.0** (ghim ở `v2/rust-toolchain.toml`, `v2/kernel/rust-toolchain.toml`,
+                `rust-version`, `repro-build.sh`, `repro-build-windows.ps1`).
 ẢNH SẢN PHẨM  : `d915b977edbdae4661a3bb31e4aa7ec33f8e9d703bbba2c7f88069f200e541dc` (191 288 B,
-                `# build: algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0`), build trong
-                `/tmp/kt242-tc`. **Nợ P20**: sha256 **phụ thuộc thư mục build** (cây chung build
-                ra `746acb05…`); danh tính bền là dòng `# build:` (giống nhau mọi lần build).
-K6            : **đo lại đủ 5 hạng mục trên ảnh `d915b977…`** (2026-11-20): ktest **21/21**,
-                persist **PASS**, conformance **61/61**, soak **1000/1000**, L1 400k **4/4**.
-                Ánh xạ hợp đồng: **C1..C8 phủ**; **N1..N7 và S1 GIỮ MỞ** (không đo lại, trạng thái
-                cũ giữ nguyên). Log: `v2/agent/JOURNAL/kt242-logs/` (+ `SHA256SUMS`).
-CỔNG          : `gate --fast` (**T2**, 53 bước) **PASS** trên `c6127fa0` (684,6 s).
-                `gate --dev` (**T1**, 46 bước + 8 bỏ qua) **PASS** trên `21cc75cd` (433,4 s).
+                `# build: algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0`). **Nợ P20**: sha256 phụ
+                thuộc thư mục build; danh tính bền là dòng `# build:`.
+K6            : đo lại đủ 5 hạng mục trên ảnh `d915b977…`: ktest **21/21**, persist **PASS**,
+                conformance **61/61**, soak **1000/1000**, L1 400k **4/4**. Ánh xạ: **C1..C8 phủ**;
+                **N1..N7 và S1 GIỮ MỞ**. Log `v2/agent/JOURNAL/kt242-logs/` (+ `SHA256SUMS`).
+CỔNG          : **T2** `gate --fast` **PASS 54/54** trên `e12477fb` (**477,2 s**).
+                **T1** `gate --dev` **PASS** trên `e12477fb` (**272,0 s**, 8 bước harness bỏ qua).
                 T1 **không** phải full gate — xem `KE-HOACH-CUOI-TUAN-2026-11-20.md` §2.
-TASK          : KT-241 (API `NonReadyTarget`) **đã hiện thực + đã hợp nhất**, đang **nghiệm thu**
-                (ma trận tấn công 27 ô: 19/27 đã chạy; 8 ô D5, E1–E7 đang chạy).
-                KT-184/KT-194 giữ **REVIEW** (luật wake; WB-16/WB-17 chưa đóng).
-CUỐI TUẦN    : kế hoạch `KE-HOACH-CUOI-TUAN-2026-11-20.md`; 4 luồng sub-agent (KT-241, review
-                wake, C/P3, L1+K4'/K5' design). Hạn bàn giao **09:00 JST thứ Hai 23/11/2026**.
+TASK          : **KT-241 DONE** (ma trận tấn công **28/28**, thêm ô D6).
+                **KT-184/KT-194 REVIEW** — review độc lập tìm **6 đường lọt mới (N1–N6)**, đã vá cả
+                6 (selftest lớp tĩnh 384→406, dep-info 62→65), nhưng **cần một vòng review độc lập
+                trên HEAD mới** trước khi đóng. **WB-19** (cửa thứ bảy) **OPEN**.
+CUỐI TUẦN    : báo cáo `BAO-CAO-CUOI-TUAN-KT242-2026-11-20.md`; kế hoạch
+                `KE-HOACH-CUOI-TUAN-2026-11-20.md`. Hạn bàn giao **09:00 JST thứ Hai 23/11/2026**.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
