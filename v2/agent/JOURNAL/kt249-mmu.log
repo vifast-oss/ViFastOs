@@ -1,0 +1,69 @@
+# KT-249 — bằng chứng đo (K4' bước 3, B3.3: bật MMU + identity map)
+# ngày: 2026-11-20T16:54:39Z  host: Darwin arm64  rustc: rustc 1.100.0 (0ef1bc386 2026-11-09)
+
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test mmu_boot
+running 10 tests
+test mair_slot1_is_normal_wb ... ok
+test map_identity_range ... ok
+test mmu_enable_sequence_order ... ok
+test sctlr_sets_mmu_bit ... ok
+test tcr_start_level ... ok
+test map_identity_aligns_outward ... ok
+test map_identity_empty ... ok
+test boot_memory_exhausts ... ok
+test boot_memory_round_trip ... ok
+test ttbr0_is_level1_table ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+$ cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-aarch64 --target aarch64-unknown-none --release
+   Compiling vifast-kbin-aarch64 v0.1.0 (/private/tmp/kt243-s1/v2/kernel/vifast-kbin-aarch64)
+    Finished `release` profile [optimized] target(s) in 1.20s
+
+$ xcrun llvm-objdump -h v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64
+Sections:
+Idx Name          Size     VMA              Type
+  0               00000000 0000000000000000 
+  1 .text         0000214c 0000000040080000 TEXT
+  2 .text.vectors 00000810 0000000040082800 TEXT
+  3 .rodata       000008ac 0000000040084000 DATA
+  4 .data         00000008 0000000040085000 DATA
+  5 .bss          00043000 0000000040086000 BSS
+  6 .stack_guard  00001000 00000000400c9000 BSS
+  7 .stack        00010000 00000000400ca000 BSS
+  8 .symtab       00001200 0000000000000000 
+
+# boot QEMU (qemu_guard: process group + timeout 5 s)
+qg_boot rc=0
+--- serial ---
+# viFastOs aarch64: boot ok
+# vector: base=0x40082800 vbar=0x40082800 slots=16 stride=0x80 align=0x800 aligned=1
+# brk: count=1 slot=4 kind=sync-cur-spx off=0x200 ec=0x3c il=1 elr=0x40080038 expect=0x40080038 match=1 spsr=0x600003c5 far=0x0
+# trap: other=0
+# mmu: arena=0x40089000 frames=64 used=8 root=0x40089000 ttbr0=0x4008a000 level=1
+# mmu: map kernel=0x40080000-0x400da000 pages=90 uart=1 gic=32 probe_va=0x50000000 probe_pa=0x40087000
+# mmu: tcr=0x00000015b5193519 mair=0x000000000000ff00 sctlr=0x0000000000c50839
+# mmu: step 1/5 tcr begin
+# mmu: step 1/5 tcr ok
+# mmu: step 2/5 mair begin
+# mmu: step 2/5 mair ok
+# mmu: step 3/5 ttbr0 begin
+# mmu: step 3/5 ttbr0 ok
+# mmu: step 4/5 sctlr begin
+# mmu: step 4/5 sctlr ok
+# mmu: step 5/5 isb begin
+# mmu: step 5/5 isb ok
+# mmu: on=1 sctlr=0x0000000000c50839 m=1
+# mmu: marker before=0x5649464153540001 after=0x5649464153540001 same=1
+# mmu: probe va=0x50000000 read=0x4d4d550000000001 magic=0x4d4d550000000001 match=1
+--- hết serial ---
+
+# kiểm dòng bằng chứng (nguyên văn):
+marker_count=1
+mmu_on=1 OK
+marker_same=1 OK
+probe_match=1 OK
+mmu_steps_ok=5
+PANIC=none OK
+
+$ shasum -a 256 v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64
+065e073ee7151485c617ba34beff783c14e1fd327476155cd5c699d0a2739d93  v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64

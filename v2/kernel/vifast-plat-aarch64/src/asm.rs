@@ -225,6 +225,24 @@ mod imp {
         unsafe { core::ptr::write_volatile(addr as *mut u32, value) };
     }
 
+    // ------------------------------------------------------------------ bộ nhớ thô (KT-249)
+
+    /// Đọc 64 bit tại **địa chỉ tuyệt đối** `addr` (VA sau khi MMU bật, PA trước đó).
+    ///
+    /// Dùng cho ca kiểm "MMU thật sự bật": đọc cùng một trang qua **VA không identity** — nếu
+    /// MMU chưa bật thì địa chỉ ấy là PA và trả giá trị khác. `unsafe` nằm ở đây (D2-17).
+    pub fn read_u64(addr: u64) -> u64 {
+        // SAFETY: `addr` do caller cấp và phải là địa chỉ đọc được trong bản đồ hiện hành
+        // (identity map của kernel hoặc VA đã map tường minh). Đọc 8 byte căn lề tự nhiên.
+        unsafe { core::ptr::read_volatile(addr as *const u64) }
+    }
+
+    /// Ghi 64 bit tại **địa chỉ tuyệt đối** `addr` (xem [`read_u64`]).
+    pub fn write_u64(addr: u64, value: u64) {
+        // SAFETY: như `read_u64`; ghi 8 byte vào vùng nhớ đã map và ghi được.
+        unsafe { core::ptr::write_volatile(addr as *mut u64, value) };
+    }
+
     // ------------------------------------------------------------------ probe BRK (KT-248)
 
     /// `brk #0` — trap **có chủ đích** vào ô `SyncCurrentElSpX` (`0x200`) của bảng vector.
@@ -480,6 +498,14 @@ mod imp {
     /// Stub host của MMIO ghi — **panic**: trên host không có thiết bị PL011 đã map.
     pub fn mmio_write_u32(_addr: u64, _value: u32) {
         host_stub("mmio write u32")
+    }
+    /// Stub host của đọc bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
+    pub fn read_u64(_addr: u64) -> u64 {
+        host_stub("read u64")
+    }
+    /// Stub host của ghi bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
+    pub fn write_u64(_addr: u64, _value: u64) {
+        host_stub("write u64")
     }
     /// Stub host của `brk #0` — **panic**: trên host `brk` sẽ giết tiến trình test.
     pub fn brk_probe() {

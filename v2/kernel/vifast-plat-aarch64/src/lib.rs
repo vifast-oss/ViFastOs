@@ -45,6 +45,8 @@
 
 pub mod asm;
 pub mod barrier;
+pub mod boot_mmu;
+pub mod bootmem;
 pub mod format;
 pub mod mmu;
 pub mod pl011;
@@ -68,6 +70,11 @@ pub fn debug_halt(_code: usize) -> ! {
 /// `Walk` chẩn đoán phải ghi được mọi mức của format AArch64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::AARCH64_LEVELS);
 
+pub use boot_mmu::{
+    apply_step, enable_mmu, map_identity, mmu_is_on, sctlr_for_mmu_on, start_level, ttbr0_base,
+    MmuStep, MMU_ENABLE_SEQUENCE,
+};
+pub use bootmem::{boot_memory, BootMemory, BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS};
 pub use format::{
     is_canonical_bits, mair_byte, mair_index, Aarch64, Descriptor, MemAttr, PageTableFormat, Perms,
     Shareability, AARCH64_ENTRIES, AARCH64_INDEX_BITS, AARCH64_LEVELS, AARCH64_MAX_VA_BITS,

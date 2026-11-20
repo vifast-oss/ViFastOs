@@ -36,7 +36,14 @@ use core::arch::global_asm;
 use core::fmt::{self, Write};
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass};
+use vifast_plat_aarch64::boot_mmu::{
+    apply_step, map_identity, mmu_is_on, sctlr_for_mmu_on, ttbr0_base, MMU_ENABLE_SEQUENCE,
+};
+use vifast_plat_aarch64::bootmem;
+use vifast_plat_aarch64::format::{Aarch64, MemAttr, Perms};
+use vifast_plat_aarch64::mmu::PageTable;
+use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
+use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
 use vifast_plat_aarch64::{asm, debug_halt, pl011};
 
@@ -170,6 +177,10 @@ global_asm!(
 // `unsafe` (luật R5).
 extern "C" {
     static __vector_base: u8;
+    // Biên vùng ảnh do `linker.ld` cấp — dùng để identity map **đúng** khoảng ảnh chiếm
+    // (kể cả `.stack` NOLOAD, vì stack phải dùng được sau khi bật MMU).
+    static __text_start: u8;
+    static __kernel_end: u8;
 }
 
 /// Địa chỉ bảng vector của ảnh này.
@@ -195,6 +206,35 @@ static BRK_FAR: AtomicU64 = AtomicU64::new(0);
 static BRK_SPSR: AtomicU64 = AtomicU64::new(0);
 /// Số trap **không** phải `BRK` (phải 0 — mọi trap khác là lỗi thật, in rồi dừng).
 static OTHER_TRAPS: AtomicU64 = AtomicU64::new(0);
+
+// ---------------------------------------------------------------------------------------------
+// KT-249 — trạng thái đo của MMU
+// ---------------------------------------------------------------------------------------------
+
+/// Marker ghi **trước** khi bật MMU, đọc lại **sau** khi bật: cùng một địa chỉ ảo (identity) nên
+/// giá trị phải không đổi. Đây là phép đo "MMU bật mà bản đồ đúng" của B3.3.
+static MMU_MARKER: AtomicU64 = AtomicU64::new(0);
+/// Giá trị marker — hằng để không thể "đọc lại chính thứ vừa ghi" một cách vô nghĩa.
+const MMU_MARKER_VALUE: u64 = 0x5649_4641_5354_0001;
+
+/// Trang **probe** cho phép đo "MMU thật sự bật": nó nằm trong `.bss` (PA == VA trước MMU) và
+/// được map vào một **VA không identity** ([`PROBE_VA`]). Đọc qua VA ấy:
+///
+/// - MMU **bật** ⇒ dịch sang PA của trang này ⇒ đọc ra [`PROBE_MAGIC`];
+/// - MMU **tắt** ⇒ đọc thẳng PA `0x5000_0000` (ngoài RAM 128 MiB của QEMU) ⇒ giá trị khác.
+///
+/// Đây là phép đo **không thể** đạt được bằng cách chỉ đọc `SCTLR_EL1.M` (bit có thể bật mà
+/// translation chưa có hiệu lực).
+#[repr(align(4096))]
+struct ProbePage([AtomicU64; 512]);
+
+/// Trang probe — `.bss`, zero bởi `_start`.
+static PROBE_PAGE: ProbePage = ProbePage([const { AtomicU64::new(0) }; 512]);
+
+/// VA **không identity** của trang probe (ngoài RAM 128 MiB của QEMU `virt`).
+const PROBE_VA: u64 = 0x5000_0000;
+/// Giá trị nhận dạng ghi vào trang probe trước khi bật MMU.
+const PROBE_MAGIC: u64 = 0x4D4D_5500_0000_0001;
 
 // ---------------------------------------------------------------------------------------------
 // Console tối giản trên PL011
@@ -308,5 +348,166 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         "# trap: other={}",
         OTHER_TRAPS.load(Ordering::Relaxed)
     );
+
+    // ---- KT-249: bật MMU (TCR → MAIR → TTBR0 → SCTLR → ISB) trên identity map.
+    mmu_bringup(&mut console);
     debug_halt(0)
+}
+
+/// **KT-249** — dựng bảng trang, identity map vùng ảnh + UART + GIC, rồi bật MMU theo đúng
+/// [`MMU_ENABLE_SEQUENCE`], in marker **trước và sau từng bước** (R5 của thiết kế: sai thứ tự ⇒
+/// treo không log), và đo ba thứ:
+///
+/// 1. `SCTLR_EL1.M == 1` **sau** `ISB` (đọc lại thanh ghi);
+/// 2. marker ghi trước khi bật, đọc lại qua VA sau khi bật — **không đổi**;
+/// 3. trang probe map vào **VA không identity**: đọc qua VA ra đúng magic ⇒ translation thật sự
+///    chạy, không chỉ bit `M` được bật.
+fn mmu_bringup(console: &mut Console) {
+    let text_start = core::ptr::addr_of!(__text_start) as u64;
+    let kernel_end = core::ptr::addr_of!(__kernel_end) as u64;
+    let probe_pa = core::ptr::addr_of!(PROBE_PAGE.0) as u64;
+
+    // Marker + magic ghi **trước** khi bật MMU (PA == VA ở thời điểm này).
+    MMU_MARKER.store(MMU_MARKER_VALUE, Ordering::Relaxed);
+    PROBE_PAGE.0[0].store(PROBE_MAGIC, Ordering::Relaxed);
+
+    let mem = bootmem::boot_memory();
+    let arena_base = mem.base_hint();
+    let frames_total = mem.frames_total();
+    let mut table = match PageTable::<Aarch64, bootmem::BootMemory>::new(mem) {
+        Ok(table) => table,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: tạo bảng trang lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // Vùng ảnh: RWX (W^X đầy đủ là việc của tầng VSpace, B3.5 — không thuộc bước 3).
+    let pages_kernel = match map_identity(
+        &mut table,
+        text_start,
+        kernel_end,
+        Perms::KERNEL_RWX,
+        MemAttr::Normal,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: map kernel lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // UART + GIC là **Device**: truy cập không gộp/không đoán trước (Normal sẽ sai ngữ nghĩa).
+    let pages_uart = match map_identity(
+        &mut table,
+        UART0.base,
+        UART0.end(),
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: map uart lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let pages_gic = match map_identity(
+        &mut table,
+        GIC.base,
+        GIC_CPU.end(),
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: map gic lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // Trang probe: **VA không identity** → PA của trang trong `.bss`.
+    if let Err(error) = table.map_with(
+        PROBE_VA,
+        probe_pa,
+        Perms::KERNEL_RW,
+        MemAttr::Normal,
+        vifast_plat_aarch64::format::Shareability::Inner,
+    ) {
+        let _ = writeln!(console, "PANIC: mmu: map probe lỗi {error:?}");
+        debug_halt(3)
+    }
+
+    let ttbr0 = match ttbr0_base(&table) {
+        Some(pa) => pa,
+        None => {
+            let _ = writeln!(console, "PANIC: mmu: không có bảng mức 1 cho TTBR0");
+            debug_halt(3)
+        }
+    };
+    let tcr = TCR_EL1_KERNEL.bits();
+    let mair = MAIR_EL1_KERNEL.bits();
+    let sctlr = sctlr_for_mmu_on(asm::read_sctlr_el1());
+    let _ = writeln!(
+        console,
+        "# mmu: arena=0x{arena_base:x} frames={frames_total} used={} root=0x{:x} ttbr0=0x{ttbr0:x} level=1",
+        table.memory().frames_used(),
+        table.root(),
+    );
+    let _ = writeln!(
+        console,
+        "# mmu: map kernel=0x{text_start:x}-0x{kernel_end:x} pages={pages_kernel} uart={pages_uart} gic={pages_gic} probe_va=0x{PROBE_VA:x} probe_pa=0x{probe_pa:x}",
+    );
+    let _ = writeln!(
+        console,
+        "# mmu: tcr=0x{tcr:016x} mair=0x{mair:016x} sctlr=0x{sctlr:016x}",
+    );
+
+    // Chuỗi bật MMU: marker **trước và sau từng bước** (R5). Nếu treo ở bước nào, log cho biết
+    // bước ấy — đây là toàn bộ mục đích của các dòng này.
+    for (index, step) in MMU_ENABLE_SEQUENCE.iter().enumerate() {
+        let _ = writeln!(
+            console,
+            "# mmu: step {}/{} {} begin",
+            index + 1,
+            MMU_ENABLE_SEQUENCE.len(),
+            step.name()
+        );
+        apply_step(*step, tcr, mair, ttbr0, sctlr);
+        let _ = writeln!(
+            console,
+            "# mmu: step {}/{} {} ok",
+            index + 1,
+            MMU_ENABLE_SEQUENCE.len(),
+            step.name()
+        );
+    }
+
+    // ---- Đo 1: `SCTLR_EL1.M` sau `ISB`.
+    let sctlr_now = asm::read_sctlr_el1();
+    let on = mmu_is_on(sctlr_now);
+    let _ = writeln!(
+        console,
+        "# mmu: on={} sctlr=0x{sctlr_now:016x} m={}",
+        on as u8,
+        (sctlr_now & 1) as u8,
+    );
+
+    // ---- Đo 2: marker qua VA (identity) không đổi giá trị.
+    let marker = MMU_MARKER.load(Ordering::Relaxed);
+    let _ = writeln!(
+        console,
+        "# mmu: marker before=0x{MMU_MARKER_VALUE:016x} after=0x{marker:016x} same={}",
+        (marker == MMU_MARKER_VALUE) as u8,
+    );
+
+    // ---- Đo 3: đọc qua **VA không identity** ⇒ chỉ đúng khi translation thật sự chạy.
+    let probe = asm::read_u64(PROBE_VA);
+    let _ = writeln!(
+        console,
+        "# mmu: probe va=0x{PROBE_VA:x} read=0x{probe:016x} magic=0x{PROBE_MAGIC:016x} match={}",
+        (probe == PROBE_MAGIC) as u8,
+    );
+
+    // Fail-loud: ba phép đo trên là **điều kiện** của B3.3, không phải thông tin tham khảo.
+    if !on || marker != MMU_MARKER_VALUE || probe != PROBE_MAGIC {
+        let _ = writeln!(console, "PANIC: mmu: phép đo B3.3 không đạt");
+        debug_halt(4)
+    }
 }

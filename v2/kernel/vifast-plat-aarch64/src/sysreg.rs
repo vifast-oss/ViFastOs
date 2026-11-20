@@ -615,6 +615,12 @@ impl Sctlr {
         Self(0)
     }
 
+    /// Đọc giá trị **thô** của `SCTLR_EL1` (KT-249) — để `msr` giữ nguyên mọi bit hiện có và chỉ
+    /// đặt thêm `M`, thay vì ghi đè bằng hằng số (ghi đè sẽ xoá cấu hình `RES1`/firmware).
+    pub const fn from_bits(raw: u64) -> Self {
+        Self(raw)
+    }
+
     /// Giá trị 64 bit để ghi `SCTLR_EL1`.
     pub const fn bits(self) -> u64 {
         self.0
