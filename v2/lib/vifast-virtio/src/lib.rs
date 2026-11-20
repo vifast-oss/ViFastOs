@@ -29,6 +29,8 @@ pub mod blk;
 pub mod conchan;
 pub mod console;
 pub mod features;
+/// **KT-245** `virtio_net` — device id/feature/`virtio_net_config`/`virtio_net_hdr` (§5.1).
+pub mod net;
 pub mod pci;
 pub mod queue;
 pub mod strict;

@@ -128,7 +128,7 @@ impl Bar {
     }
 }
 
-/// Loại thiết bị virtio mà driver K6 tìm (KT-72 blk; KT-73 console).
+/// Loại thiết bị virtio mà driver K6 tìm (KT-72 blk; KT-73 console; KT-245 net).
 ///
 /// Một enum thay cho hai hàm quét riêng: driver PCI quét **một** vòng bus/device/function và so
 /// khớp theo `(vendor, device)` — thêm thiết bị thứ hai **không** nhân đôi code ECAM/BAR
@@ -139,6 +139,8 @@ pub enum VirtioKind {
     Blk,
     /// `virtio-console`/`virtio-serial` (0x1003/0x1043).
     Console,
+    /// **KT-245** `virtio-net` (0x1000/0x1041).
+    Net,
 }
 
 impl VirtioKind {
@@ -147,6 +149,7 @@ impl VirtioKind {
         match self {
             VirtioKind::Blk => "blk",
             VirtioKind::Console => "console",
+            VirtioKind::Net => "net",
         }
     }
 
@@ -161,6 +164,11 @@ impl VirtioKind {
                 device == crate::console::VIRTIO_CONSOLE_MODERN
                     || device == crate::console::VIRTIO_CONSOLE_MODERN_ONLY
             }
+            // KT-245: id lấy từ `net::` — **một** nguồn, không chép số lần thứ hai.
+            VirtioKind::Net => {
+                device == crate::net::VIRTIO_NET_MODERN
+                    || device == crate::net::VIRTIO_NET_MODERN_ONLY
+            }
         }
     }
 }
@@ -173,6 +181,11 @@ pub const fn is_virtio_blk(vendor: u16, device: u16) -> bool {
 /// `true` ⇔ `(vendor_id, device_id)` là virtio-console mà KT-73 chấp nhận (0x1003/0x1043).
 pub const fn is_virtio_console(vendor: u16, device: u16) -> bool {
     VirtioKind::Console.matches(vendor, device)
+}
+
+/// `true` ⇔ `(vendor_id, device_id)` là virtio-net mà KT-245 chấp nhận (0x1000/0x1041).
+pub const fn is_virtio_net(vendor: u16, device: u16) -> bool {
+    VirtioKind::Net.matches(vendor, device)
 }
 
 /// Đọc `(vendor_id, device_id)` từ config space.

@@ -485,7 +485,7 @@ fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
     // KT-72 (chỉ ảnh test): PCIe ECAM 2 MiB (bus 0/1) + 2 MiB đầu cửa sổ MMIO PCIe nơi driver
     // gán BAR modern của virtio-blk. Cả hai là Device RW NX; ảnh sản phẩm **không** map (không
     // đổi `.text`/mapping của soak).
-    #[cfg(any(feature = "vblk", feature = "vcon", feature = "block"))]
+    #[cfg(any(feature = "vblk", feature = "vcon", feature = "block", feature = "net"))]
     {
         builder.map(
             crate::pci::ECAM_BASE,
@@ -508,6 +508,24 @@ fn map_mmio(builder: &mut PageTableBuilder<'_>) -> Result<(), MapError> {
             1,
             PteFlags::device_rw(),
         )?;
+        // KT-245: leaf **thứ ba** của cửa sổ PCIe — BAR net gán ở `0x4040_0000`. Cửa sổ phải liền
+        // một dải (`PCI_DRIVER_LEAVES`) vì `pci::mmu_range_conflict` kiểm bằng một khoảng duy nhất;
+        // leaf 1 (console) map luôn cho liền dải dù ảnh net không dùng.
+        #[cfg(feature = "net")]
+        {
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_CONSOLE,
+                crate::pci::BAR_ASSIGN_BASE_CONSOLE,
+                1,
+                PteFlags::device_rw(),
+            )?;
+            builder.map(
+                crate::pci::BAR_ASSIGN_BASE_NET,
+                crate::pci::BAR_ASSIGN_BASE_NET,
+                1,
+                PteFlags::device_rw(),
+            )?;
+        }
     }
     Ok(())
 }

@@ -84,7 +84,7 @@ pub mod pager_fault;
 /// sản phẩm chưa mở K6-driver nên giữ nguyên `.text` (KT-73 mở cho sản phẩm).
 /// KT-73: console **dùng lại** module này (`init_for(VirtioKind::Console)`) — một đường quét
 /// ECAM/BAR/cap cho mọi thiết bị virtio.
-#[cfg(any(feature = "vblk", feature = "vcon", feature = "block"))]
+#[cfg(any(feature = "vblk", feature = "vcon", feature = "block", feature = "net"))]
 pub mod pci;
 pub mod plic;
 /// KT-56: probe trap **thật** cho `FaultKind` (chỉ ảnh test — `#[cfg(feature = "ktest")]`).
@@ -122,6 +122,11 @@ pub mod virtio_blk;
 /// (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-con` (`feature = "vcon"`).
 #[cfg(feature = "vcon")]
 pub mod virtio_console;
+/// **KT-245** driver virtio-net (`0x1000`) — hai virtqueue rx/tx, MAC thật từ `virtio_net_config`,
+/// dùng lại `pci.rs` của KT-72 (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-net`
+/// (`feature = "net"`); ảnh sản phẩm **không** bật (D2-196: chưa có net server U-mode).
+#[cfg(feature = "net")]
+pub mod virtio_net;
 
 // **KT-81**: địa chỉ nền tảng **dẫn xuất** từ bảng một nguồn
 // [`vifast_plat_common::resources::REGIONS`] — không còn hằng số viết tay thứ hai để lệch.

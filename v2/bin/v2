@@ -623,6 +623,9 @@ step_pre_measure() { bash "$V2_ROOT/tools/pre-measure.sh" --selftest; }
 step_pin_artifact() { bash "$V2_ROOT/tools/pin-artifact.sh" --selftest; }
 step_algo_strict() { bash "$V2_ROOT/test/boot/algo-strict.sh"; }
 step_persist_red() { bash "$V2_ROOT/test/boot/persist.sh" --red-selftest; }
+# **KT-245** (D2-196): tự kiểm validator của runner virtio-net — chứng minh bộ kiểm **không
+# rỗng** (5 đột biến log tốt + ca âm "PASS giả" đều phải bị từ chối). Không QEMU, không sửa cây.
+step_net_red() { bash "$V2_ROOT/test/boot/net.sh" --red-selftest; }
 step_persist_crash() { bash "$V2_ROOT/test/boot/persist.sh" --crash; }
 step_selfbreak() { bash "$V2_ROOT/test/rules/selfbreak.sh"; }
 step_neg1() { bash "$V2_ROOT/tools/git-guard/neg-test.sh"; }
@@ -901,8 +904,9 @@ do_gate_fast() {
     lane_step sau 52 "ca âm git-guard (KT-85)" step_neg1
     lane_step sau 53 "ca âm git-guard song song (R5)" step_neg2
     lane_step sau 54 "ca âm git-guard b (KT-85b)" step_neg3
+    lane_step B 55 "selftest validator net (KT-245)" step_net_red
     lane_run
-    fails="$(lane_fails 54)"
+    fails="$(lane_fails 55)"
     [ "$fails" -eq 0 ] || return 1
     return 0
 }

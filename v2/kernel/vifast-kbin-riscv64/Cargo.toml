@@ -33,6 +33,10 @@ con = ["ktest", "user", "vifast-plat-riscv64/vcon"]
 # KT-74: ảnh `ktest-exec` — `Tcb.SetTls` (core) + `exec(path)` (plat). Tách ảnh riêng để `.text`
 # của 6 ảnh cũ **không đổi** (D2-109/D2-111: tách khi chạm trần hoặc khi thêm đường mới).
 exec = ["ktest", "user", "vifast-plat-riscv64/exec"]
+# **KT-245** (D2-196): ảnh `ktest-net` — PCI ECAM + virtio-net hai queue + MAC thật + gửi/nhận
+# frame thô. Tách ảnh riêng (cùng lý do KT-72/73: `.text`/mapping của các ảnh cũ không đổi, và ảnh
+# này cần `-netdev`/`-device virtio-net-pci` trong dòng QEMU).
+net = ["ktest", "vifast-plat-riscv64/net"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
@@ -95,6 +99,14 @@ required-features = ["ktest", "user", "con"]
 name = "vifast-kbin-ktest-exec"
 path = "src/ktest_exec.rs"
 required-features = ["ktest", "user", "exec"]
+
+# **KT-245** (D2-196): ảnh **virtio-net** riêng — cần `-netdev user,id=n0 -device
+# virtio-net-pci,netdev=n0` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest`
+# 92,6 % trần; task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
+[[bin]]
+name = "vifast-kbin-ktest-net"
+path = "src/ktest_net.rs"
+required-features = ["ktest", "net"]
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }

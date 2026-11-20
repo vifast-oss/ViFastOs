@@ -61,15 +61,27 @@ pub const BAR_ASSIGN_BASE: u64 = PCI_MMIO_WINDOW_BASE;
 /// Địa chỉ driver **gán** cho BAR modern của virtio-console — KT-73: **khác** base của blk để hai
 /// driver (nếu cùng có mặt) không tranh một trang; vẫn trong cửa sổ PCIe và qua `first_conflict`.
 pub const BAR_ASSIGN_BASE_CONSOLE: u64 = PCI_MMIO_WINDOW_BASE + PCI_MAP_LEAF_BYTES;
-/// Số byte cửa sổ PCIe driver **identity-map** cho BAR của mình (`mmu::map_mmio`): một leaf 2 MiB
-/// cho blk; console gán BAR ở leaf **thứ hai** nên bản `vcon` map/miễn trừ hai leaf. Hai hằng phải
-/// khớp nhau, nếu lệch thì `mmu_range_conflict` báo `BarConflict` (fail-closed) — đúng ca KT-73
-/// đã bắt được trước khi chạy.
-pub const PCI_DRIVER_WINDOW_BYTES: u64 = if cfg!(feature = "vcon") {
-    2 * PCI_MAP_LEAF_BYTES
+/// Địa chỉ driver **gán** cho BAR modern của virtio-net — **KT-245**: leaf thứ **ba** của cửa sổ
+/// PCIe. Giữ nguyên leaf 1 cho console (ảnh `ktest-con` đã đo `assigned=0x40200000`) và leaf 0 cho
+/// blk; mỗi loại một leaf ⇒ hai driver cùng có mặt không tranh một trang.
+pub const BAR_ASSIGN_BASE_NET: u64 = PCI_MMIO_WINDOW_BASE + 2 * PCI_MAP_LEAF_BYTES;
+/// Số leaf 2 MiB của cửa sổ PCIe mà driver **identity-map** (`mmu::map_mmio`).
+///
+/// **KT-245**: cửa sổ phải **liền một dải** từ [`PCI_MMIO_WINDOW_BASE`] vì `mmu_range_conflict`
+/// kiểm "leaf đã map có nằm trong cửa sổ của chính driver" bằng một khoảng duy nhất. Ảnh net gán
+/// BAR ở leaf **2** ⇒ phải map **3** leaf (leaf 1 chỉ để trống, không tốn PA). Ảnh blk (1 leaf) và
+/// ảnh console (2 leaf) **không đổi** — số đo `assigned=0x40200000` của KT-73 giữ nguyên.
+pub const PCI_DRIVER_LEAVES: u64 = if cfg!(feature = "net") {
+    3
+} else if cfg!(feature = "vcon") {
+    2
 } else {
-    PCI_MAP_LEAF_BYTES
+    1
 };
+/// Số byte cửa sổ PCIe driver **identity-map** cho BAR của mình (`mmu::map_mmio`).
+/// Hai hằng phải khớp nhau, nếu lệch thì `mmu_range_conflict` báo `BarConflict` (fail-closed) —
+/// đúng ca KT-73 đã bắt được trước khi chạy.
+pub const PCI_DRIVER_WINDOW_BYTES: u64 = PCI_DRIVER_LEAVES * PCI_MAP_LEAF_BYTES;
 
 /// Số bus quét (chỉ bus 0 — `virt` không có cầu nối sau).
 pub const SCAN_BUSES: u8 = 1;
@@ -396,6 +408,7 @@ pub fn init_for(kind: VirtioKind) -> Result<PciReport, PciFail> {
     let assigned = match kind {
         VirtioKind::Blk => BAR_ASSIGN_BASE,
         VirtioKind::Console => BAR_ASSIGN_BASE_CONSOLE,
+        VirtioKind::Net => BAR_ASSIGN_BASE_NET,
     };
     if assigned < PCI_MMIO_WINDOW_BASE
         || assigned + bar_size > PCI_MMIO_WINDOW_BASE + PCI_MMIO_WINDOW_BYTES
