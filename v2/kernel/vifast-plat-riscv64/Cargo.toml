@@ -59,3 +59,7 @@ vifast-virtio = { path = "../../lib/vifast-virtio" }
 # KT-73: ring 1P/1C của KT-69 (header/slot/magic) dùng làm kênh byte UART → U-mode; kernel cài
 # `Mem` bằng physmap (`uart_console::PhysMem`). Crate `no_std`, không unsafe.
 vifast-ring = { path = "../../lib/vifast-ring" }
+# **KT-246b** (D2-196): codec mạng **thuần** (Ethernet/ARP/IPv4/ICMP/UDP/DHCP) — `no_std`,
+# `deny(unsafe_code)`, không dependency ngoài (D2-21), 58 test host. Driver `virtio_net` chỉ còn
+# phần MMIO/queue/DMA + chính sách client; **không** còn bản sao codec nào trong kernel.
+vifast-net = { path = "../../lib/vifast-net" }

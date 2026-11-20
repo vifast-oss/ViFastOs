@@ -129,3 +129,6 @@ vifast-vfs = { path = "../../lib/vifast-vfs" }
 vifast-abi = { path = "../../lib/vifast-abi" }
 # KT-72: hằng số/mã lỗi virtio dùng trong ảnh test vblk (logic đã test host ở crate này).
 vifast-virtio = { path = "../../lib/vifast-virtio" }
+# **KT-246b**: địa chỉ (`Ipv4Addr`/`MacAddr`) cho ảnh `ktest-net` — cùng crate mà driver dùng, để
+# ảnh và driver không có hai định nghĩa "địa chỉ" khác nhau.
+vifast-net = { path = "../../lib/vifast-net" }

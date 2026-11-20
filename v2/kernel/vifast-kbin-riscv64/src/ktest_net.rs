@@ -36,6 +36,7 @@
 
 use core::fmt::Write;
 
+use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
@@ -48,7 +49,7 @@ static PLATFORM: Riscv64Virt = Riscv64Virt;
 static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// IP gateway của QEMU slirp (`-netdev user`): `10.0.2.2` (dữ kiện nền tảng QEMU, không phải số đo).
-const GATEWAY_IP: [u8; 4] = [10, 0, 2, 2];
+const GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 2);
 /// Ethertype ARP.
 const ETHERTYPE_ARP: u16 = 0x0806;
 /// Cỡ một ARP request Ethernet/IPv4: 14 (Ethernet) + 28 (ARP) = 42.
@@ -320,24 +321,8 @@ pub extern "C" fn rust_main() -> ! {
                     let mut w = PlatformWriter(&PLATFORM);
                     let _ = writeln!(
                         w,
-                        "# net: dhcp ip={}.{}.{}.{} gw={}.{}.{}.{} mask={}.{}.{}.{} \
-                         server={}.{}.{}.{}",
-                        config.ip[0],
-                        config.ip[1],
-                        config.ip[2],
-                        config.ip[3],
-                        config.gw[0],
-                        config.gw[1],
-                        config.gw[2],
-                        config.gw[3],
-                        config.mask[0],
-                        config.mask[1],
-                        config.mask[2],
-                        config.mask[3],
-                        config.server[0],
-                        config.server[1],
-                        config.server[2],
-                        config.server[3]
+                        "# net: dhcp ip={} gw={} mask={} server={}",
+                        config.ip, config.gw, config.mask, config.server
                     );
                     let _ = writeln!(
                         w,
@@ -384,20 +369,14 @@ pub extern "C" fn rust_main() -> ! {
             / vifast_plat_common::timer::TIMEBASE_HZ;
         match result {
             Ok(found) => {
-                let mut text = [0u8; 17];
-                mac_str(found, &mut text);
-                let name = core::str::from_utf8(&text).unwrap_or("?");
                 {
                     let mut w = PlatformWriter(&PLATFORM);
-                    let _ = writeln!(w, "# net: arp gw={name}");
+                    let _ = writeln!(w, "# net: arp gw={found}");
                     let _ = writeln!(
                         w,
-                        "# net arp: elapsed_ms={elapsed_ms} gw={}.{}.{}.{} mac_khong_broadcast={}",
-                        config.gw[0],
-                        config.gw[1],
-                        config.gw[2],
-                        config.gw[3],
-                        (found != [0u8; 6] && found != [0xffu8; 6]) as u8
+                        "# net arp: elapsed_ms={elapsed_ms} gw={} mac_khong_broadcast={}",
+                        config.gw,
+                        (!found.is_zero() && !found.is_broadcast()) as u8
                     );
                 }
                 put(true, 4, "net arp", &mut fails, "");
@@ -427,7 +406,7 @@ pub extern "C" fn rust_main() -> ! {
         let started = PLATFORM.now_ticks();
         let result = virtio_net::ping(
             config.ip,
-            mac,
+            MacAddr::new(mac),
             config.gw,
             gateway_mac,
             PING_COUNT,
@@ -441,13 +420,8 @@ pub extern "C" fn rust_main() -> ! {
                     let mut w = PlatformWriter(&PLATFORM);
                     let _ = writeln!(
                         w,
-                        "# net: ping {}.{}.{}.{} ok n={} rtt={}",
-                        config.gw[0],
-                        config.gw[1],
-                        config.gw[2],
-                        config.gw[3],
-                        stats.received,
-                        stats.rtt_max_ms
+                        "# net: ping {} ok n={} rtt={}",
+                        config.gw, stats.received, stats.rtt_max_ms
                     );
                     let _ = writeln!(
                         w,
@@ -485,7 +459,8 @@ pub extern "C" fn rust_main() -> ! {
     let mut request = [0u8; ARP_FRAME_BYTES];
     {
         let len =
-            virtio_net::arp_build_request(mac, config.ip, config.gw, &mut request).unwrap_or(0);
+            virtio_net::arp_build_request(MacAddr::new(mac), config.ip, config.gw, &mut request)
+                .unwrap_or(0);
         let before = virtio_net::stats();
         let result = virtio_net::send_frame(&request[..len]);
         let after = virtio_net::stats();
@@ -549,7 +524,7 @@ pub extern "C" fn rust_main() -> ! {
             && got.unwrap_or(0) >= ARP_FRAME_BYTES
             && ethertype == ETHERTYPE_ARP
             && oper == 2
-            && sender_ip == GATEWAY_IP
+            && sender_ip == GATEWAY_IP.octets()
             && sender_mac != [0u8; 6]
             && target_mac == mac
             && after.rx_frames == before.rx_frames + 1
