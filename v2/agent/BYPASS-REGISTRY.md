@@ -35,6 +35,7 @@ repro biên dịch được mà cả hai cơ chế kiểm đều XANH); `PARTIAL
 | **WB-17** | #17 | `transition_tcb` làm **fn-pointer / generic `F: Fn` / trait object / UFCS** (7 biến thể) | L55 (KT-232) | **CLOSED** ở tầng **API** (2026-11-21) | KT-237 (API) + KT-239 (UFCS). Bằng chứng: ô **A1–A4** PASS — `E0308`/`E0631` tại chính `transition_tcb`; đối chứng dương PASS |
 | **WB-18** | #18 | crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR` | L56 (KT-233) | **CLOSED** | KT-238 (phạm vi từ `cargo metadata`, 22 crate) |
 | **WB-19** | — | **cửa thứ bảy**: `impl`/`fn` **lồng trong thân cửa** gọi thẳng `write_state` ⇒ **cả hai lớp XANH** | review độc lập (luồng 2) | **CLOSED** | vá `c0b48f3b`; **lead xác minh độc lập** trên `0018f5ab` — `JOURNAL/kt242-wake-verify.md` (cả 3 lớp ĐỎ, `cargo` RC=0) |
+| **WB-20** | — | **cửa thứ bảy qua TRÙNG TÊN**: `fn wake_step` (cùng tên 6 cửa) ở `impl` **kiểu khác** / **module con** / **trait impl** / **free fn** trong `state_write.rs` gọi `write_state(t, Ready)` ⇒ **cả ba lớp XANH**, `cargo RC=0` | KT-252 (vòng tấn công mới, nhóm G1) | **CLOSED** (2026-11-21) | vá `_check_state_write`: cửa phải là method của **cùng kiểu** với `write_state` (`_enclosing_impl_type`); +5 ca selftest có răng + đối chứng dương. Bằng chứng: 4 biến thể XANH trước vá → **ĐỎ cả ba lớp** sau vá — `JOURNAL/kt252-wake-attack.md` §2–§3 |
 
 ---
 

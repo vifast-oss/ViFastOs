@@ -3700,6 +3700,98 @@ def _innermost_fn_tree(tree: Sequence[object], tok: Tok) -> Optional[str]:
     return best[0] if best else None
 
 
+def _impl_groups(nodes: Sequence[object], out: List[Tuple[List[object], Group]]) -> None:
+    """Thu `(token đầu `impl`, nhóm thân `{…}`)` của **mọi** `impl` ở **mọi** tầng token-tree.
+
+    **KT-252 (WB-20)** — cần biết một `fn` là method của **kiểu nào** để phân biệt cửa thật
+    (`impl Machine { fn wake_step }`) với hàm **trùng tên** (`impl Kt252Door { fn wake_step }`,
+    `mod kt252 { fn wake_step }`, free `fn wake_step`). Trước bản này luật chỉ so **tên hàm**.
+    """
+    i = 0
+    n = len(nodes)
+    while i < n:
+        node = nodes[i]
+        if isinstance(node, Group):
+            _impl_groups(node.children, out)
+            i += 1
+            continue
+        if _is_ident(node, "impl"):
+            j = i + 1
+            header: List[object] = []
+            body: Optional[Group] = None
+            while j < n:
+                x = nodes[j]
+                if isinstance(x, Group) and x.open.val == "{":
+                    body = x
+                    break
+                header.append(x)
+                j += 1
+            if body is not None:
+                out.append((header, body))
+        i += 1
+
+
+def _impl_type_from_header(header: Sequence[object]) -> Optional[str]:
+    """Kiểu **được impl** từ token đầu `impl` (bỏ generic `<…>` ở mức 0).
+
+    `impl Machine` ⇒ `Machine`; `impl<T> Machine<T>` ⇒ `Machine`;
+    `impl Kt252Trait for Kt252Door` ⇒ `Kt252Door` (kiểu **đứng sau `for`**).
+    """
+    depth = 0
+    idents: List[str] = []
+    for t in header:
+        if isinstance(t, Group):
+            continue
+        if _is_punct(t, "<"):
+            depth += 1
+            continue
+        if _is_punct(t, ">"):
+            depth = max(0, depth - 1)
+            continue
+        if depth > 0:
+            continue
+        if _is_ident(t, "for"):
+            idents = []
+            continue
+        if isinstance(t, Tok) and t.kind == "ident" and t.val not in (
+            "impl",
+            "where",
+            "dyn",
+            "mut",
+            "const",
+            "unsafe",
+            "extern",
+            "default",
+        ):
+            idents.append(t.val)
+    return idents[-1] if idents else None
+
+
+def _enclosing_impl_type(tree: Sequence[object], tok: Tok) -> Optional[str]:
+    """Kiểu của `impl` **trong cùng** chứa `tok` (khoảng nhỏ nhất thắng); `None` nếu ngoài impl."""
+    best: Optional[Tuple[int, Optional[str]]] = None
+    groups: List[Tuple[List[object], Group]] = []
+    _impl_groups(tree, groups)
+    for header, body in groups:
+        if body.close is None:
+            continue
+        if body.open.start <= tok.start <= body.close.end:
+            span = body.close.end - body.open.start
+            if best is None or span < best[0]:
+                best = (span, _impl_type_from_header(header))
+    return best[1] if best else None
+
+
+def _fn_def_token(tree: Sequence[object], name: str) -> Optional[Tok]:
+    """Token của **định nghĩa** `fn <name>` đầu tiên (không phải lời gọi)."""
+    for n, sibs, i in _walk_nodes(tree):
+        if isinstance(n, Tok) and n.kind == "ident" and n.val == name:
+            prev = sibs[i - 1] if i > 0 else None
+            if prev is not None and _is_ident(prev, "fn"):
+                return n
+    return None
+
+
 def _check_state_write(
     relp: str,
     text: str,
@@ -3737,6 +3829,14 @@ def _check_state_write(
     allowed = set(STATE_WRITE_CALLERS)
     if extra_doors:
         allowed |= {fn for (f, fn) in extra_doors if f == relp}
+    # **KT-252 (WB-20)** — cửa phải là method của **cùng kiểu** với `write_state` (thực tế:
+    # `impl Machine`). Trước bản này luật chỉ so **tên hàm**, nên một `fn wake_step` **trùng tên**
+    # ở `impl` khác / module con / free fn vẫn được coi là cửa ⇒ ghi `Ready` không qua điều kiện
+    # nguồn nào (đo: `cargo check` RC=0, cả ba lượt kiểm XANH — `JOURNAL/kt252-attack/`).
+    owner: Optional[str] = None
+    wdef = _fn_def_token(tree, "write_state")
+    if wdef is not None:
+        owner = _enclosing_impl_type(tree, wdef)
     for n, sibs, i in _walk_nodes(tree):
         if not (isinstance(n, Tok) and n.kind == "ident" and n.val in ("write_state", "into_state")):
             continue
@@ -3780,6 +3880,19 @@ def _check_state_write(
             )
             continue
         if fn_name in allowed:
+            # **KT-252 (WB-20)** — tên khớp **chưa đủ**: hàm phải là method của **cùng kiểu**
+            # với `write_state` (`impl Machine`). `impl Kt252Door { fn wake_step }`, trait impl,
+            # `mod kt252 { fn wake_step }`, free `fn wake_step` đều **không** phải cửa.
+            impl_ty = _enclosing_impl_type(tree, n)
+            if owner is None or impl_ty != owner:
+                r.err(
+                    "E_STRICT_STATE_WRITE",
+                    f"  {relp}:{n.line}: `write_state` trong `{fn_name}` nhưng **không phải "
+                    f"method của `{owner or '?'}`** (kiểu: `{impl_ty or 'không có impl'}`) — "
+                    f"cửa phải là method của **cùng kiểu** với `write_state`; hàm **trùng tên** "
+                    f"ở impl khác / module con / free fn **không** phải cửa (KT-252, WB-20)",
+                )
+                continue
             used.add((relp, fn_name))
             continue
         r.err(
@@ -4654,6 +4767,109 @@ def selftest() -> int:
             (
                 "v2 `--strict` `write_state` trong `tcb_yield` (phải qua `yield_to_ready`) ⇒ đỏ",
                 (not rep.ok) and any("E_STRICT_STATE_WRITE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c2) **KT-252 (WB-20)** — "cửa thứ bảy" qua **TRÙNG TÊN**: `impl Kt252Door { fn
+        # wake_step { self.write_state(tcb, TcbState::Ready) } }` trong `state_write.rs`. Tên
+        # khớp `STATE_WRITE_CALLERS` nhưng **kiểu khác** `write_state` ⇒ phải ĐỎ. Trước bản vá
+        # luật chỉ so tên ⇒ XANH (đo: `cargo check` RC=0, cả ba lượt kiểm XANH).
+        d = tmp / "v2-strict-kt252-impl-khac"
+        _fixture_v2(d)
+        _write(
+            d / KERNEL_STATE_WRITE,
+            _state_write_rs()
+            + "pub struct Kt252Door;\n"
+            "impl Kt252Door {\n"
+            "    pub fn wake_step(m: &mut M, tcb: u32) -> u8 {\n"
+            "        m.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "v2 `--strict` `fn wake_step` trùng tên trong `impl` KHÁC ⇒ đỏ (KT-252)",
+                (not rep.ok) and any("E_STRICT_STATE_WRITE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c3) **KT-252** — trùng tên trong **module con**: `mod kt252 { fn wake_step }` ⇒ ĐỎ.
+        d = tmp / "v2-strict-kt252-mod"
+        _fixture_v2(d)
+        _write(
+            d / KERNEL_STATE_WRITE,
+            _state_write_rs()
+            + "pub mod kt252 {\n"
+            "    pub fn wake_step(m: &mut super::M, tcb: u32) -> u8 {\n"
+            "        m.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "v2 `--strict` `fn wake_step` trùng tên trong module con ⇒ đỏ (KT-252)",
+                (not rep.ok) and any("E_STRICT_STATE_WRITE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c4) **KT-252** — trùng tên trong **trait impl** ⇒ ĐỎ.
+        d = tmp / "v2-strict-kt252-trait"
+        _fixture_v2(d)
+        _write(
+            d / KERNEL_STATE_WRITE,
+            _state_write_rs()
+            + "pub struct Kt252Door;\n"
+            "pub trait Kt252Trait {\n"
+            "    fn wake_step(m: &mut M, tcb: u32) -> u8;\n"
+            "}\n"
+            "impl Kt252Trait for Kt252Door {\n"
+            "    fn wake_step(m: &mut M, tcb: u32) -> u8 {\n"
+            "        m.write_state(tcb, TcbState::Ready)\n"
+            "    }\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "v2 `--strict` `fn wake_step` trùng tên trong trait impl ⇒ đỏ (KT-252)",
+                (not rep.ok) and any("E_STRICT_STATE_WRITE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c5) **KT-252** — trùng tên ở **free fn** mức module ⇒ ĐỎ.
+        d = tmp / "v2-strict-kt252-free"
+        _fixture_v2(d)
+        _write(
+            d / KERNEL_STATE_WRITE,
+            _state_write_rs()
+            + "pub fn wake_step(m: &mut M, tcb: u32) -> u8 {\n"
+            "    m.write_state(tcb, TcbState::Ready)\n"
+            "}\n",
+        )
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "v2 `--strict` `fn wake_step` trùng tên ở free fn ⇒ đỏ (KT-252)",
+                (not rep.ok) and any("E_STRICT_STATE_WRITE" in e for e in rep.errors),
+                "; ".join(rep.errors),
+            )
+        )
+
+        # (4c6) **KT-252 đối chứng DƯƠNG** — sáu cửa thật (method của `impl M`, cùng kiểu với
+        # `write_state`) vẫn XANH. Thiếu vế này thì một luật "luôn đỏ" cũng qua được (4c2)..(4c5).
+        d = tmp / "v2-strict-kt252-duong"
+        _fixture_v2(d)
+        rep = scan_v2(d, strict=True, extra_doors=set())
+        cases.append(
+            (
+                "v2 `--strict` sáu cửa thật (method của `impl M`) ⇒ xanh (KT-252 đối chứng dương)",
+                rep.ok,
                 "; ".join(rep.errors),
             )
         )
