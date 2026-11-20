@@ -24,7 +24,9 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 N_BOOT="${1:-1}"
 SMP="${2:-1}"
 TIMEOUT_DS=200   # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
-LOGDIR="${KT49_LOGDIR:-/tmp/k3-run}" # KT-78: log hạ tầng + guard (run.sh trước đây không có LOGDIR)
+LOGDIR="${KT49_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-run}" # KT-78: log hạ tầng + guard (run.sh trước đây không có LOGDIR)
+# KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên (build ảnh sản phẩm).
+mkdir -p "$LOGDIR" 2>/dev/null || true
 QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
 QEMU_MIN_MINOR=2
 
@@ -73,9 +75,9 @@ echo "# opensbi $SBI"
 
 echo "# build ảnh sản phẩm ($TARGET, release)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
-    --target "$TARGET" --release >/tmp/k3-product-build.log 2>&1; then
-    tail -20 /tmp/k3-product-build.log >&2
-    die "build ảnh sản phẩm FAIL (xem /tmp/k3-product-build.log)"
+    --target "$TARGET" --release >"$LOGDIR/k3-product-build.log" 2>&1; then
+    tail -20 "$LOGDIR/k3-product-build.log" >&2
+    die "build ảnh sản phẩm FAIL (xem $LOGDIR/k3-product-build.log)"
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
 
@@ -98,7 +100,7 @@ echo "# boot: n=$N_BOOT smp=$SMP timeout=$((TIMEOUT_DS / 10))s"
 fails=0
 i=1
 while [ "$i" -le "$N_BOOT" ]; do
-    out="/tmp/k3-product-boot-$i.log"
+    out="$LOGDIR/k3-product-boot-$i.log"
     # KT-78: process group riêng + timeout kill cả group (125 = không khởi động được).
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -machine virt,aia=none,aclint=on -bios "$SBI" \
         -kernel "$IMAGE" -nographic -cpu rv64 -m 128M -smp "$SMP" -no-reboot; then

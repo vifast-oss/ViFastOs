@@ -40,7 +40,11 @@ KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
 V2MANIFEST="$V2_ROOT/Cargo.toml"
 IMAGE="${KT75_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-persist}"
 FSUTIL="${KT75_FSUTIL:-$V2_ROOT/target/debug/vifast-fsutil}"
-LOGDIR="${KT75_LOGDIR:-/tmp/kt75-persist}"
+LOGDIR="${KT75_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt75-persist}"
+# KT-242 (P3): LOGDIR nay **riêng theo lần chạy** ⇒ phải tạo **trước** lần ghi log đầu tiên
+# (`build_everything` ghi `kt75-build-image.log` trước `fresh_disk`). Trước đây đường cố định
+# `/tmp/kt75-persist` tồn tại sẵn từ lần chạy trước nên lỗi này bị che.
+mkdir -p "$LOGDIR" 2>/dev/null || true
 DISK="$LOGDIR/kt75-disk.img"
 HOSTPY="$HERE/persist_host.py"
 # KT-86 (D2-125.3): cổng danh tính bản dựng — nguồn sự thật duy nhất cho rev/dirty.

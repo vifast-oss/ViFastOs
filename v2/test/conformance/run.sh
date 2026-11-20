@@ -18,7 +18,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
-LOGDIR="${KT55_LOGDIR:-/tmp/k3-kt55}"
+LOGDIR="${KT55_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-kt55}"
 SMP=2
 MODE=compare
 BOOT=0
@@ -89,7 +89,7 @@ if [ "$BOOT" = 1 ]; then
         exit 1
     fi
 fi
-KT_LOGDIR="${KT54_LOGDIR:-/tmp/k3-ktest}"
+KT_LOGDIR="${KT54_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-ktest}"
 [ -f "$QEMU_LOG" ] || QEMU_LOG="$KT_LOGDIR/ktest-smp${SMP}-1.log"
 [ -f "$QEMU_LOG" ] || die "không thấy log QEMU cho smp=$SMP (chạy --boot hoặc KT54_LOGDIR)"
 

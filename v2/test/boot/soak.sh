@@ -56,7 +56,9 @@ TARGET="riscv64gc-unknown-none-elf"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 # Ảnh **sản phẩm không feature** — ảnh duy nhất in dòng `# build:` (KT-86; phải đặt **sau** TARGET).
 PRODUCT_IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
-LOGDIR="${SOAK_LOGDIR:-/tmp/k3-soak}"
+LOGDIR="${SOAK_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-soak}"
+# KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
+mkdir -p "$LOGDIR" 2>/dev/null || true
 QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
 QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
@@ -231,9 +233,9 @@ elif [ -n "$SOAK_FEATURES" ]; then
     # phát hành".
     echo "# build ảnh sản phẩm bằng pipeline canonical ($TARGET, release, features=$SOAK_FEATURES)"
     REPRO_OUT="$(VIFAST_REPRO_CARGO_EXTRA="--features $SOAK_FEATURES" \
-        VIFAST_REPRO_LOG=/tmp/kt57-soak-build.log bash "$REPO_ROOT/v2/tools/repro-build.sh" 2>&1)" || {
+        VIFAST_REPRO_LOG="$LOGDIR/kt57-soak-build.log" bash "$REPO_ROOT/v2/tools/repro-build.sh" 2>&1)" || {
         printf '%s\n' "$REPRO_OUT" | tail -20 >&2
-        die "repro-build ảnh sản phẩm FAIL (xem /tmp/kt57-soak-build.log)"
+        die "repro-build ảnh sản phẩm FAIL (xem $LOGDIR/kt57-soak-build.log)"
     }
     printf '%s\n' "$REPRO_OUT" | grep -E '^REPRO ' | tail -1
     IMAGE="$(printf '%s\n' "$REPRO_OUT" | sed -n 's/.* image=\(.*\)$/\1/p' | tail -1)"
@@ -251,9 +253,9 @@ elif [ -n "$SOAK_FEATURES" ]; then
 else
     echo "# build ảnh sản phẩm ($TARGET, release)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 \
-        --target "$TARGET" --release >/tmp/kt57-soak-build.log 2>&1; then
-        tail -20 /tmp/kt57-soak-build.log >&2
-        die "build ảnh sản phẩm FAIL (xem /tmp/kt57-soak-build.log)"
+        --target "$TARGET" --release >"$LOGDIR/kt57-soak-build.log" 2>&1; then
+        tail -20 "$LOGDIR/kt57-soak-build.log" >&2
+        die "build ảnh sản phẩm FAIL (xem $LOGDIR/kt57-soak-build.log)"
     fi
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
