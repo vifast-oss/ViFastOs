@@ -1,0 +1,5 @@
+// KT-241 C1 — đối chứng dương: macro `matches!` THẬT + `let wake` cục bộ ⇒ XANH.
+pub fn positive(x: u32) -> bool {
+    let wake = 0u32;
+    matches!(x, 0) && wake == 0
+}

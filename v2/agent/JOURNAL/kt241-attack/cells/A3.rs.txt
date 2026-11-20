@@ -1,0 +1,31 @@
+// KT-241 A3 — fn-pointer / generic `F: Fn` / trait object.
+// Kỳ vọng: compiler E0308/E0631 — không thể ép `transition_tcb` (nhận `NonReadyTarget`)
+// thành hàm nhận `TcbState`.
+use crate::{KError, Machine, ObjId, TcbState};
+
+pub fn attack_fnptr(m: &mut Machine, t: ObjId) {
+    let f = Machine::transition_tcb;
+    let _ = f(m, t, TcbState::Ready);
+}
+
+pub fn attack_fnptr_typed(m: &mut Machine, t: ObjId) {
+    let f: fn(&mut Machine, ObjId, TcbState) -> Result<(), KError> = Machine::transition_tcb;
+    let _ = f(m, t, TcbState::Ready);
+}
+
+fn call_generic<F: Fn(&mut Machine, ObjId, TcbState) -> Result<(), KError>>(
+    f: F,
+    m: &mut Machine,
+    t: ObjId,
+) -> Result<(), KError> {
+    f(m, t, TcbState::Ready)
+}
+
+pub fn attack_generic(m: &mut Machine, t: ObjId) {
+    let _ = call_generic(Machine::transition_tcb, m, t);
+}
+
+pub fn attack_trait_object(m: &mut Machine, t: ObjId) {
+    let f: &dyn Fn(&mut Machine, ObjId, TcbState) -> Result<(), KError> = &Machine::transition_tcb;
+    let _ = f(m, t, TcbState::Ready);
+}

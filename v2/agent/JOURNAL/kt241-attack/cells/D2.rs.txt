@@ -1,0 +1,8 @@
+// KT-241 D2 — tên tệp CÓ DẤU CÁCH, nạp bằng `#[path]`.
+// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_TEST_ONLY_WAKE`; lớp 2 ĐỎ `E_DEPINFO_WAKE`
+// (parse `.d` phải xử lý escape `\ `).
+use crate::{Machine, ObjId};
+
+pub fn evil(m: &mut Machine, t: ObjId) {
+    let _ = m.wake(t);
+}

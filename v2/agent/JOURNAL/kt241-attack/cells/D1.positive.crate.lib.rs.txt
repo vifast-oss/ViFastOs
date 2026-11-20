@@ -1,0 +1,2 @@
+// KT-241 D1 — đối chứng dương: crate ngoài ba gốc, mã sinh lành.
+include!(concat!(env!("OUT_DIR"), "/ok.rs"));

@@ -1,0 +1,14 @@
+== KT-241 PREFLIGHT ==
+root: /private/tmp/kt241-E-audit
+toolchain: 1.99.1 (cargo: /Users/mps/.cargo/bin/cargo)
+python: python3 (/usr/bin/python3)
+FAIL  core state_write.rs CHƯA có (A chưa hợp nhất)
+FAIL  core lib.rs CHƯA re-export NonReadyTarget
+FAIL  sim kobj.rs CHƯA có NonReadyTarget
+FAIL  write_state CHƯA có trong state_write.rs
+FAIL  into_state CHƯA có trong state_write.rs
+PASS  v2/tools/check-wake-paths.py
+PASS  v2/tools/check-wake-depinfo.py
+PASS  v2/bin/v2
+PASS  cargo cargo 1.99.1 (5f94df478 2026-08-27)
+== PREFLIGHT FAIL (5 mục) ==

@@ -1,0 +1,6 @@
+// KT-241 D3 — module trong `src/target/`.
+use crate::{Machine, ObjId};
+
+pub fn evil(m: &mut Machine, t: ObjId) {
+    let _ = m.wake(t);
+}

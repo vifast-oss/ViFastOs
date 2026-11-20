@@ -1,0 +1,15 @@
+// KT-241 C1 — `macro_rules!` che tên macro "an toàn" (`matches`) rồi mở rộng thành `m.wake(t)`.
+// Đây là repro WB-14/KT-230. Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_TEST_ONLY_WAKE`;
+// lớp 2 ĐỎ `E_DEPINFO_WAKE`.
+use crate::{Machine, ObjId};
+
+macro_rules! matches {
+    ($m:expr, $x:ident, $t:expr) => {
+        $m.$x($t)
+    };
+}
+
+pub fn attack(m: &mut Machine, t: ObjId) {
+    let wake = 0u32;
+    let _ = matches!(m, wake, t);
+}

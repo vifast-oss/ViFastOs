@@ -1,0 +1,2 @@
+// KT-241 D3 — đối chứng dương: `src/target/` chứa module lành ⇒ XANH.
+mod ok;

@@ -1,0 +1,4 @@
+// KT-241 D5 — `#[path]` MỨC MỤC trỏ ra ngoài `src/` (`src/../evil.rs` = crate root).
+// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_WAKE_INCLUDE`; lớp 2 ĐỎ `E_DEPINFO_WAKE`.
+#[path = "../evil.rs"]
+mod evil;

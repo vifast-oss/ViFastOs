@@ -1,0 +1,13 @@
+// KT-241 E6 — `unsafe transmute` từ `NonReadyTarget` sang `TcbState` (core `#![forbid(unsafe_code)]`).
+// Kỳ vọng: compiler từ chối vì `forbid(unsafe_code)` (không có mã E; lọc theo "unsafe").
+// Ghi chú: sim KHÔNG có `forbid(unsafe_code)` — ô này chạy trên core; nếu chạy trên sim,
+// transmute chỉ tạo giá trị `TcbState`, không có đường ghi `Ready` (không phải cửa).
+use crate::NonReadyTarget;
+
+pub fn attack() -> crate::tcb::TcbState {
+    unsafe {
+        core::mem::transmute::<NonReadyTarget, crate::tcb::TcbState>(NonReadyTarget::Running {
+            hart: 0,
+        })
+    }
+}
