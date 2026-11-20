@@ -4,28 +4,30 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 06:45 (sau vòng 4) ===
-HEAD          : `2badfba8` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
-CỔNG          : **T2** `gate --fast` **PASS 64/64** trên `2badfba8` (**561,5 s**).
-                **T1** `gate --dev` **PASS** trên `36c4d36e` (**303,8 s**).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 08:35 (sau vòng 5) ===
+HEAD          : `c8361a36` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 66/66** trên `1f2d8310` (**574,8 s**) — ứng viên bàn giao.
+                **T1** `gate --dev` **PASS** trên `7bb39d9c` (**342,4 s**).
                 Bước mới: 55 net validator, 56 aarch64, 57 virtio-net, 58 cfg-test, 59 x86_64,
-                60 virtio-input, 61/62 validator, 63 virtio-gpu, 64 validator gpu, 65 QEMU smoke.
-BUILD-INPUTS  : đổi (thêm `vifast-kbin-x86_64`, `virtio-input`, `virtio-gpu`, `wake_scope.py`) —
-                ảnh sản phẩm **chưa** build lại sau vòng 3/4.
-AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + **smp 4 hart** + **TLBI shootdown**
-                (`acks=3`, hart 1 thấy unmap); TAP **15/15**, runner **11/11**, host test **155**.
-X86_64        : boot + **GDT/TSS/IDT** + 5 exception (`int3`/`ud2`/`#PF`/`#GP`/unknown) resume bằng
-                `iretq`; TAP **7/7**, runner **9/9** (7 ca âm), 26 test host mới.
-MẠNG          : virtio-net + DHCP/ARP/ICMP + **UDP echo + DNS** (KT-260) — TAP **9/9**.
-BÀN PHÍM      : virtio-input (KT-255) — 5 TAP, 30 test host.
-ĐỒ HOẠ        : virtio-gpu 2D (KT-263) — 5 TAP, 33 test host, **PPM đúng màu** tại toạ độ đã vẽ.
-LUẬT WAKE     : KT-256 (một phạm vi) + KT-258 (**27 biến thể/8 nhóm → WB-21/22/23 vá**);
-                selftest **430**/**67**/**10**. **KT-184/194 vẫn REVIEW** — còn nợ §7.3 (luật cấu
-                trúc chưa mở cho crate ngoài `V2_SCAN`) + T2 trên commit tích hợp (đã có).
-TASK          : **KT-243..KT-263 DONE** (21 task). **KT-184/KT-194 REVIEW**.
-NỢ MỞ         : P20; K4' B3.7 (U-mode — Q2 hoãn); K5' đầy đủ (APIC/timer/U-mode/PCI/SMP);
-                luật cấu trúc cho crate ngoài `V2_SCAN`; TCP/socket (N1); soak 1.000 aarch64;
-                ảnh sản phẩm chưa build lại sau vòng 3/4.
+                60 virtio-input, 61/62 validator, 63 virtio-gpu, 64 validator gpu,
+                66/67 selftest soak+budget aarch64, 68 QEMU smoke (T1).
+                **Flake đã biết**: `cắt điện giữa lúc ghi (KT-136)` đỏ 1 lần khi máy còn tải
+                (D2-151); chạy lại một mình ⇒ PASS. Không phải hồi quy.
+BUILD-INPUTS  : `574ef041370e68e7` (285 mục) tại `1f2d8310`; ảnh sản phẩm `6f492f49…` tại
+                `a52a1e3e` (`inputs=0fa34f818a29c399`, `build=f861bd283066120f`, `text=131728`).
+AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + **smp 4** + **TLBI shootdown**
+                + **soak 1.000 = 0 lỗi** + `budget-aarch64` (155.872/262.144 B) + `# conf image:`;
+                TAP **15/15**, runner **12/12** (10 ca âm), host test **155**.
+X86_64        : boot + GDT/TSS/IDT + 5 exception + **APIC (LAPIC/IOAPIC) + PIT 100 Hz**;
+                TAP **11/11**, runner **11/11** (9 ca âm).
+MẠNG          : virtio-net + DHCP/ARP/ICMP + **UDP echo + DNS** — TAP **9/9**.
+BÀN PHÍM      : virtio-input — 5 TAP, 30 test host.
+ĐỒ HOẠ        : virtio-gpu 2D — 5 TAP, 33 test host, **PPM đúng màu**.
+LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205) — đạt **hợp đồng hữu hạn** D2-190 7/7 mục;
+                selftest **442**/**67**/**10**; ba nợ **ngoài** hợp đồng → **KT-267** (READY).
+TASK          : **KT-243..KT-266 DONE** (24 task). **0 REVIEW**. **1 READY** (KT-267).
+NỢ MỞ         : P20 (đo được: sha ảnh phụ thuộc **cách viết đường dẫn** build); K4' B3.7 (U-mode —
+                Q2 hoãn); K5' đầy đủ (U-mode/PCI/SMP/`-cpu max`); TCP/socket (N1); KT-267.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0, không sửa `spec/`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
