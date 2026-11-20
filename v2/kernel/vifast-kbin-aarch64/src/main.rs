@@ -77,6 +77,10 @@ mod smpboot;
 /// phải phân biệt được **hart nào** đã fault, nên không dùng một ô toàn cục.
 mod faults;
 
+/// **KT-269** (B3.7, D2-206): U-mode — stub EL0 (`.el0`), handler `svc`, `eret` xuống EL0 và
+/// đường `Exit` quay về EL1h. Tách tệp riêng (luật R1: tệp trong `kernel/` ≤ 1.500 dòng).
+mod umode;
+
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
 
@@ -233,6 +237,10 @@ global_asm!(
     "mrs x2, far_el1",
     "mrs x3, elr_el1",
     "mrs x4, spsr_el1",
+    // **KT-269**: `x5` = con trỏ khung trap (sau `sub sp, sp, #176`) — handler U-mode đọc
+    // `x8` (số hiệu syscall) và ghi `x0`/`x1` (error/value) qua con trỏ này. `x5` đã được cất
+    // ở `[sp, #32]` nên dùng lại thanh ghi là an toàn.
+    "mov x5, sp",
     "bl vec_handler",
     // x0 = 0 ⇒ dừng; khác 0 ⇒ khôi phục + eret (handler đã sửa ELR_EL1 nếu cần).
     "cbz x0, vec_halt",
@@ -427,15 +435,16 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap) + 2 ca của KT-254 (`VSpace` map/walk/
 /// activate, và fault `FaultKind::Vm` sau `unmap`) + 3 ca của KT-259 (hart 1 online, IPI 0→1,
 /// mọi hart báo alive) + 3 ca của KT-262 (`tlbi: hart 1 sees unmap`, `tlbi: ack from all harts`,
-/// `smp: 4 harts online`).
-pub const TAP_TESTS: usize = 15;
+/// `smp: 4 harts online`) + **3 ca của KT-269** (EL0 vào được, `svc` được xử lý, EL0 chạy tiếp
+/// sau `svc` rồi `Exit`).
+pub const TAP_TESTS: usize = 18;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
 /// TAP 13 (Test Anything Protocol): dòng `ok`/`not ok` phải bắt đầu dòng, số hiệu liên tục, và
 /// `#` là comment. Runner (`v2/test/boot/run-aarch64.sh`) đếm **đúng** `N` dòng `ok`, đòi
 /// `1..N`, và coi mọi `not ok`/`PANIC` là đỏ.
-fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
+pub(crate) fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
     let _ = writeln!(console, "{} {n} - {name}", if ok { "ok" } else { "not ok" });
     ok
 }
@@ -445,7 +454,7 @@ fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
 // ---------------------------------------------------------------------------------------------
 
 /// `core::fmt::Write` trên [`pl011`] — để `panic!`/`write!` in được số mà không cần `alloc`.
-struct Console;
+pub(crate) struct Console;
 
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -474,7 +483,14 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 /// Hàm **không** trả về khi trap không phải `BRK`: nó in nguyên nhân rồi `debug_halt(2)` — một
 /// fault thật ở bước 3 là lỗi, không được "resume rồi hy vọng".
 #[no_mangle]
-pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr: u64) -> u64 {
+pub extern "C" fn vec_handler(
+    slot: u64,
+    esr_raw: u64,
+    far: u64,
+    elr: u64,
+    spsr: u64,
+    frame: u64,
+) -> u64 {
     let esr = Esr::from_bits(esr_raw);
     let ec = esr.ec_raw();
 
@@ -500,6 +516,15 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
             gic::end_irq(intid);
         }
         return 1;
+    }
+
+    // ---- **KT-269** (B3.7): U-mode. `svc` từ EL0 (ô 8), fault từ EL0 (đột biến (ii): trang
+    // không `user=true`) và `svc` từ EL1 (phòng thủ — nếu trang EL0 cho EL1 thực thi; đột biến
+    // (i) thực tế dừng **sớm hơn** ở instruction abort `EC=0x21` vì `USER_RX` đặt `PXN=1`) đều
+    // do `umode::handle` quyết định — nó in bằng chứng rồi resume hoặc dừng, **không** rơi vào
+    // đường trap chung.
+    if let Some(result) = umode::handle(slot, esr_raw, far, elr, spsr, frame) {
+        return result;
     }
 
     if esr.ec() == Some(ExceptionClass::Brk64) {
@@ -982,11 +1007,10 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(5)
     }
 
-    // Marker **duy nhất** của ảnh — chỉ in khi **mọi** ca TAP đã xanh (nếu in sớm, một ảnh hỏng
-    // vẫn có marker và runner dễ nhận nhầm là boot sạch).
-    let _ = pl011::write_str(BOOT_MARKER);
-    let _ = writeln!(console, "# viFastOs aarch64: halt");
-    debug_halt(0)
+    // ---- **KT-269** (B3.7, D2-206): U-mode. Map trang mã EL0 + stack user rồi `eret` xuống
+    // EL0; **không trả về** — đường `Exit` của EL0 `eret` về EL1h tại `umode::el0_done`, nơi in
+    // marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi TAP 1..18 đã xanh.
+    umode::run(&mut console, &mut vs, text_start)
 }
 
 /// Map **identity** `[start, end)` vào `VSpace` bằng trang 4 KiB (làm tròn ra ngoài) — dùng cho

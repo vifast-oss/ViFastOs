@@ -293,10 +293,32 @@ def main():
     check(call.get("mr_registers") == ["a3", "a4", "a5", "a6"],
           "riscv64: MR0..MR3 ở a3..a6 (4 MR, đúng quy ước v1)")
     check(bool(call.get("ipc_buffer")), "riscv64: phải khai báo ipc_buffer (receive window)")
-    # 2 arch còn lại chỉ giữ số reserved (D2-10)
-    for arch in ("aarch64", "x86_64"):
-        got = doc.get("calling", {}).get(arch, {})
-        check(got.get("reserved") is True, f"{arch}: chỉ reserved tới K4'/K5' (D2-10)")
+    # **KT-269 / D2-206**: `[calling.aarch64]` đã MỞ — kiểm **đối xứng** từng trường với
+    # riscv64 (cùng vai trò, chỉ đổi tên thanh ghi + cơ chế chuyển `svc #0`). Ba trường
+    # `trap`/`stack`/`clobbered` là bổ sung tường minh của aarch64 (riscv64 đóng băng).
+    a64 = doc.get("calling", {}).get("aarch64", {})
+    check(a64.get("reserved") is not True, "aarch64: đã mở (D2-206) ⇒ KHÔNG còn reserved = true")
+    check(a64.get("syscall_number") == "x8", "aarch64: số syscall phải ở x8")
+    check(a64.get("return_error") == "x0", "aarch64: trả lỗi ở x0")
+    check(a64.get("return_value") == "x1", "aarch64: trả value ở x1")
+    check(a64.get("args") == ["x0", "x1"], "aarch64: 2 tham số ở x0/x1 (đối xứng a0/a1)")
+    check(a64.get("message_info") == "x2", "aarch64: MessageInfo ở x2 (đối xứng a2)")
+    check(a64.get("mr_registers") == ["x3", "x4", "x5", "x6"],
+          "aarch64: MR0..MR3 ở x3..x6 (đối xứng a3..a6)")
+    check(a64.get("trap") == "svc #0", "aarch64: cơ chế chuyển phải là 'svc #0' (thay ecall)")
+    check(bool(a64.get("stack")), "aarch64: phải khai báo quy ước ngăn xếp (SP_EL0/SP_EL1)")
+    check(bool(a64.get("clobbered")), "aarch64: phải khai báo thanh ghi bị clobber")
+    check(bool(a64.get("ipc_buffer")), "aarch64: phải khai báo ipc_buffer (receive window)")
+    check(bool(a64.get("preserved")), "aarch64: phải khai báo preserved")
+    check(bool(a64.get("note")), "aarch64: phải có note giải thích")
+    # Đối xứng **cấu trúc**: cùng tập khoá với riscv64 + đúng ba trường bổ sung.
+    extra = {"trap", "stack", "clobbered"}
+    check(set(a64) == set(call) | extra,
+          "aarch64: trường phải đối xứng riscv64 + {trap,stack,clobbered}; lệch "
+          f"{sorted(set(a64) ^ (set(call) | extra))}")
+    # x86_64 **vẫn** chỉ giữ số reserved (D2-10) — chưa mở.
+    x64 = doc.get("calling", {}).get("x86_64", {})
+    check(x64.get("reserved") is True, "x86_64: chỉ reserved tới K5' (D2-10)")
 
     # --- kích thước/căn lề -------------------------------------------
     slot = doc.get("object_size", {}).get("slot", {})

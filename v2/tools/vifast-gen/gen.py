@@ -180,8 +180,52 @@ def gen_rs(doc: dict) -> str:
             )
             out.append(f'    ("{name}", &[{fields}]),')
         out.append("];")
+    # **KT-269 / D2-206**: quy ước gọi sinh từ `[calling.*]` — chỉ arch **đã mở** (có
+    # `syscall_number`). Nhờ vậy U-mode/kernel dùng hằng sinh thay vì chép tay tên thanh ghi
+    # (D2-11); `reserved = true` (arch chưa mở) **không** sinh gì.
+    gen_calling(out, doc)
     out.append("")
     return "\n".join(out)
+
+
+def gen_calling(out: list[str], doc: dict) -> None:
+    """Sinh hằng quy ước gọi cho mọi arch **đã mở** trong `[calling.*]`."""
+    calling = doc.get("calling") or {}
+    opened = sorted(
+        arch
+        for arch, entry in calling.items()
+        if isinstance(entry, dict) and entry.get("syscall_number")
+    )
+    if not opened:
+        return
+    arches = ", ".join(f'"{arch}"' for arch in opened)
+    out.append("#[rustfmt::skip]")
+    out.append(f"pub const CALLING_ARCHES: [&str; {len(opened)}] = [{arches}];")
+    for arch in opened:
+        entry = calling[arch]
+        prefix = arch.upper()
+        for key, const in (
+            ("syscall_number", "SYSCALL_NUMBER_REG"),
+            ("message_info", "MESSAGE_INFO_REG"),
+            ("return_error", "RETURN_ERROR_REG"),
+            ("return_value", "RETURN_VALUE_REG"),
+            ("trap", "TRAP"),
+        ):
+            value = entry.get(key)
+            if isinstance(value, str):
+                out.append("#[rustfmt::skip]")
+                out.append(f'pub const {prefix}_{const}: &str = "{value}";')
+        for key, const in (
+            ("args", "ARG_REGS"),
+            ("mr_registers", "MR_REGS"),
+            ("preserved", "PRESERVED_REGS"),
+            ("clobbered", "CLOBBERED_REGS"),
+        ):
+            value = entry.get(key)
+            if isinstance(value, list):
+                items = ", ".join(f'"{item}"' for item in value)
+                out.append("#[rustfmt::skip]")
+                out.append(f"pub const {prefix}_{const}: [&str; {len(value)}] = [{items}];")
 
 
 def gen_md(doc: dict) -> str:
@@ -213,6 +257,29 @@ def gen_md(doc: dict) -> str:
         params = ", ".join(sig[name].get("params", [])) or "—"
         rets = ", ".join(sig[name].get("returns", [])) or "—"
         out.append(f"| `{name}` | {params} | {rets} |")
+    # **KT-269 / D2-206**: quy ước gọi của arch **đã mở** — sinh từ `[calling.*]`, không chép tay.
+    calling = doc.get("calling") or {}
+    opened = sorted(
+        arch
+        for arch, entry in calling.items()
+        if isinstance(entry, dict) and entry.get("syscall_number")
+    )
+    if opened:
+        out += ["", "## Quy ước gọi (`[calling.*]`, D2-206)", "",
+                "| Arch | Số hiệu | Tham số | MessageInfo | MR | Trả lỗi | Trả value | Chuyển |",
+                "|---|---|---|---|---|---|---|---|"]
+        for arch in opened:
+            entry = calling[arch]
+            args = ", ".join(entry.get("args", [])) or "—"
+            mrs = ", ".join(entry.get("mr_registers", [])) or "—"
+            out.append(
+                f"| `{arch}` | `{entry.get('syscall_number', '—')}` | {args} | "
+                f"`{entry.get('message_info', '—')}` | {mrs} | "
+                f"`{entry.get('return_error', '—')}` | `{entry.get('return_value', '—')}` | "
+                f"`{entry.get('trap', '—')}` |"
+            )
+        out += ["", "Arch còn `reserved = true` (chưa mở) không có mặt trong bảng này; `—` = spec "
+                "không khai báo trường ấy (riscv64 đóng băng, không được thêm trường)."]
     fk = doc.get("method_signature", {}).get("fault_kind") or {}
     fk_names = fk.get("names") or []
     if fk_names:

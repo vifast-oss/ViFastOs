@@ -91,6 +91,15 @@ SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng
 | `Tcb.Suspend` | tcb, mode | — |
 | `Untyped.Retype` | cap, dst, type, size_bits, flags | slot |
 
+## Quy ước gọi (`[calling.*]`, D2-206)
+
+| Arch | Số hiệu | Tham số | MessageInfo | MR | Trả lỗi | Trả value | Chuyển |
+|---|---|---|---|---|---|---|---|
+| `aarch64` | `x8` | x0, x1 | `x2` | x3, x4, x5, x6 | `x0` | `x1` | `svc #0` |
+| `riscv64` | `a7` | a0, a1 | `a2` | a3, a4, a5, a6 | `a0` | `a1` | `—` |
+
+Arch còn `reserved = true` (chưa mở) không có mặt trong bảng này; `—` = spec không khai báo trường ấy (riscv64 đóng băng, không được thêm trường).
+
 ## `FaultKind` (D2-56a, `[method_signature.fault_kind]`)
 
 | Biến thể | Trường |

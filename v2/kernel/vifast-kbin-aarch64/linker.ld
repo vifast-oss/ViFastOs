@@ -34,6 +34,17 @@ SECTIONS
         KEEP(*(.vectors))
     }
 
+    /* **KT-269** — trang mã **EL0** (B3.7): section riêng, căn 4 KiB, để ảnh map **cùng PA** ở
+       một VA user (`EL0_CODE_VA`) với `Perms::USER_RX`. `KEEP` chống `--gc-sections` xoá (không
+       ai tham chiếu từng instruction). Phải vừa **một** Frame 4 KiB: ảnh PANIC nếu
+       `__el0_end - __el0_start > 0x1000` (xem `umode::run`). Nằm **ngoài** `.text` nên không
+       đổi `# conf image:` (bản băm `.text` của KT-265). */
+    .el0 : ALIGN(4K) {
+        __el0_start = .;
+        KEEP(*(.el0))
+        __el0_end = .;
+    }
+
     .rodata : ALIGN(4K) {
         *(.rodata .rodata.*)
     }

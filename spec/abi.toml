@@ -59,9 +59,24 @@ ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, 
 preserved = ["sp", "gp", "tp", "s0..s11", "fs0..fs11"]
 note = "Lấy đúng quy ước v1 đang chạy (crates/vifast-user/src/lib.rs), không tự đặt"
 
+# **KT-269 / D2-206** — MỞ `[calling.aarch64]` (B3.7 của K4' bước 3). Đối xứng **từng trường**
+# với `[calling.riscv64]` ở trên: cùng vai trò, chỉ đổi tên thanh ghi theo AArch64 và cơ chế
+# chuyển `svc #0` thay `ecall`. Ba trường `trap`/`stack`/`clobbered` là **bổ sung tường minh**
+# cho aarch64 (mục riscv64 đã đóng băng nên không được thêm vào đó); chúng **không** đổi ngữ
+# nghĩa của 5 thứ đóng băng ở `[frozen]` (D2-15). `reserved` đã bỏ — arch này **đã mở**.
 [calling.aarch64]
-reserved = true
-note = "Mở ở K4' theo D2-10; chỉ giữ số, không đóng băng chữ ký"
+syscall_number = "x8"          # AArch64: số hiệu syscall ở x8 (khuôn AArch64/Linux)
+args = ["x0", "x1"]            # 2 tham số đầu — đối xứng a0/a1 của riscv64
+message_info = "x2"            # MessageInfo (35 bit) — đối xứng a2
+mr_registers = ["x3", "x4", "x5", "x6"]   # MR0..MR3 — đối xứng a3..a6
+return_error = "x0"            # 0 = thành công, khác 0 = mã lỗi (1..19)
+return_value = "x1"
+trap = "svc #0"                # cơ chế chuyển: `svc #0` (thay `ecall`); `ESR_EL1.ISS[15:0]` = imm16
+stack = "SP_EL0 là ngăn xếp user, kernel chạy trên SP_EL1; `svc` không đổi sp, `eret` khôi phục đúng sp user"
+clobbered = ["x0", "x1", "nzcv"]   # thanh ghi syscall được phép đổi (x0/x1 = error/value, cờ NZCV)
+ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, ≤4 cap)"
+preserved = ["sp", "x19..x28", "x29", "d8..d15"]   # callee-saved của AAPCS64
+note = "Đối xứng [calling.riscv64] (D2-206/KT-269): x8 = số hiệu, x0/x1 = tham số + (error,value), x2 = MessageInfo, x3..x6 = 4 MR; chuyển bằng `svc #0`. Không tự đặt số khác — bám khuôn AArch64 (x8) và giữ đúng vai trò từng trường của riscv64."
 
 [calling.x86_64]
 reserved = true

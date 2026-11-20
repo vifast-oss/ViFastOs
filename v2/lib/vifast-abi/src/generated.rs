@@ -372,3 +372,37 @@ pub const FAULT_KINDS: [(&str, &[&str]); 4] = [
     ("UnknownSyscall", &["nr: u64"]),
     ("UserException", &["ip: u64", "kind: u64"]),
 ];
+#[rustfmt::skip]
+pub const CALLING_ARCHES: [&str; 2] = ["aarch64", "riscv64"];
+#[rustfmt::skip]
+pub const AARCH64_SYSCALL_NUMBER_REG: &str = "x8";
+#[rustfmt::skip]
+pub const AARCH64_MESSAGE_INFO_REG: &str = "x2";
+#[rustfmt::skip]
+pub const AARCH64_RETURN_ERROR_REG: &str = "x0";
+#[rustfmt::skip]
+pub const AARCH64_RETURN_VALUE_REG: &str = "x1";
+#[rustfmt::skip]
+pub const AARCH64_TRAP: &str = "svc #0";
+#[rustfmt::skip]
+pub const AARCH64_ARG_REGS: [&str; 2] = ["x0", "x1"];
+#[rustfmt::skip]
+pub const AARCH64_MR_REGS: [&str; 4] = ["x3", "x4", "x5", "x6"];
+#[rustfmt::skip]
+pub const AARCH64_PRESERVED_REGS: [&str; 4] = ["sp", "x19..x28", "x29", "d8..d15"];
+#[rustfmt::skip]
+pub const AARCH64_CLOBBERED_REGS: [&str; 3] = ["x0", "x1", "nzcv"];
+#[rustfmt::skip]
+pub const RISCV64_SYSCALL_NUMBER_REG: &str = "a7";
+#[rustfmt::skip]
+pub const RISCV64_MESSAGE_INFO_REG: &str = "a2";
+#[rustfmt::skip]
+pub const RISCV64_RETURN_ERROR_REG: &str = "a0";
+#[rustfmt::skip]
+pub const RISCV64_RETURN_VALUE_REG: &str = "a1";
+#[rustfmt::skip]
+pub const RISCV64_ARG_REGS: [&str; 2] = ["a0", "a1"];
+#[rustfmt::skip]
+pub const RISCV64_MR_REGS: [&str; 4] = ["a3", "a4", "a5", "a6"];
+#[rustfmt::skip]
+pub const RISCV64_PRESERVED_REGS: [&str; 5] = ["sp", "gp", "tp", "s0..s11", "fs0..fs11"];

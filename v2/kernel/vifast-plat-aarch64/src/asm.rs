@@ -626,6 +626,65 @@ mod imp {
         // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng từ hart id.
         unsafe { asm!("msr icc_sgi1r_el1, {}", in(reg) value, options(nostack, preserves_flags)) };
     }
+
+    // ------------------------------------------------------------------ U-mode (KT-269)
+
+    /// Đọc một ô của **khung trap** do stub vector dựng (`x0..x18, x29, x30` — 21 ô).
+    ///
+    /// `frame` là `sp` của stub sau `sub sp, sp, #176`; ô `index` nằm ở `frame + index*8`.
+    /// Dùng `read_volatile`: khung do asm ghi, compiler **không** được gộp/đoán giá trị.
+    ///
+    /// # An toàn (caller)
+    ///
+    /// `frame` phải là khung 176 B còn sống trên stack kernel và `index < FRAME_SLOTS`; handler
+    /// của ảnh chỉ đọc ba ô cố định (`FRAME_X0`/`FRAME_X1`/`FRAME_X8`).
+    pub fn frame_get(frame: u64, index: usize) -> u64 {
+        // SAFETY: `frame` do stub vector truyền vào (khung 176 B trên stack kernel); `index` do
+        // caller giữ < 21. `read_volatile` để không bị tối ưu thành đọc thanh ghi.
+        unsafe { core::ptr::read_volatile((frame as *const u64).add(index)) }
+    }
+
+    /// Ghi một ô của khung trap — dùng để đặt `x0`/`x1` (`error`/`value`) trước `eret`.
+    ///
+    /// # An toàn (caller)
+    ///
+    /// Như [`frame_get`]: `frame` là khung 176 B còn sống, `index < FRAME_SLOTS`.
+    pub fn frame_set(frame: u64, index: usize, value: u64) {
+        // SAFETY: như `frame_get` — cùng khung, cùng bất biến `index`.
+        unsafe { core::ptr::write_volatile((frame as *mut u64).add(index), value) }
+    }
+
+    /// `eret` xuống **EL0**: đặt `SP_EL0`, `ELR_EL1`, `SPSR_EL1` rồi `eret` — **không** trả về.
+    ///
+    /// Thứ tự bắt buộc: `SP_EL0` trước (EL0 dùng nó ngay ở lệnh đầu nếu stub gọi hàm), rồi
+    /// `ELR_EL1`/`SPSR_EL1`, `ISB` (context synchronization cho `eret`), rồi `eret`.
+    ///
+    /// `spsr` phải có `M[3:0] = 0b0000` (EL0t) — hàm **không** kiểm (caller dựng bằng
+    /// [`crate::umode::spsr_el0`]). Nếu SPSR sai chế độ, `eret` về EL1 và handler bắt được
+    /// (`# umode: svc from EL1`) — đó là đột biến (i) của KT-269, không phải đường sản phẩm.
+    ///
+    /// # An toàn (caller)
+    ///
+    /// `entry` phải là VA **đã map** `user` + exec trong bảng trang đang hoạt động, và
+    /// `[sp - …, sp)` phải là stack user đã map `user` + write. Hàm không kiểm — sai thì fault
+    /// từ EL0 và handler in `# umode: fault` rồi dừng (không im lặng).
+    pub fn eret_to_el0(entry: u64, sp: u64, spsr: u64) -> ! {
+        // SAFETY: caller đã map `entry` (user RX) và vùng stack quanh `sp` (user RW) trong bảng
+        // trang đang hoạt động; `eret` không trả về nên `options(noreturn)`.
+        unsafe {
+            asm!(
+                "msr sp_el0, {sp}",
+                "msr elr_el1, {entry}",
+                "msr spsr_el1, {spsr}",
+                "isb",
+                "eret",
+                sp = in(reg) sp,
+                entry = in(reg) entry,
+                spsr = in(reg) spsr,
+                options(noreturn),
+            )
+        }
+    }
 }
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
@@ -862,6 +921,18 @@ mod imp {
     /// Stub host của `msr icc_sgi1r_el1`.
     pub fn write_icc_sgi1r_el1(_value: u64) {
         host_stub("msr icc_sgi1r_el1")
+    }
+    /// Stub host của đọc khung trap — **panic**: trên host không có khung trap của stub vector.
+    pub fn frame_get(_frame: u64, _index: usize) -> u64 {
+        host_stub("frame get")
+    }
+    /// Stub host của ghi khung trap — **panic**: như `frame_get`.
+    pub fn frame_set(_frame: u64, _index: usize, _value: u64) {
+        host_stub("frame set")
+    }
+    /// Stub host của `eret` xuống EL0 — **panic**: trên host không có EL0 của kernel.
+    pub fn eret_to_el0(_entry: u64, _sp: u64, _spsr: u64) -> ! {
+        host_stub("eret to el0")
     }
 }
 

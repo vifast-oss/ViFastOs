@@ -27,3 +27,7 @@ vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
 # của crate arch (`vifast_plat_aarch64::fault`), không định nghĩa lại `FaultKind` thứ hai.
 # Chỉ ảnh (leaf) kéo crate này; crate arch **không** phụ thuộc ngược (tránh vòng dev-dep).
 vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-269** (D2-206): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`
+# (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — không chép tay 12/14 (D2-11). Crate `no_std`, không
+# dependency ngoài; `global_asm!` nhận `const` operand nên stub EL0 đổi theo spec.
+vifast-abi = { path = "../../lib/vifast-abi" }

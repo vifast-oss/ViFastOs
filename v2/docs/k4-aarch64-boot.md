@@ -1,14 +1,16 @@
 # K4' bước 3 (phần đầu) — ViFastOs **boot thật trên AArch64** (QEMU `virt`)
 
-Trạng thái: **B3.1–B3.6 + B3.8 + B3.9 DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
+Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
 **Soak 1.000 + `budget-aarch64.sh` DONE** (KT-265, §8) — điều kiện "như K3" đã đủ **phần soak**.
+**U-mode/EL0 + `svc` DONE** (KT-269, §9) — `[calling.aarch64]` đã mở (D2-206).
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt247-*`, `kt248-*`, `kt249-*`, `kt250-*`,
-`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`.
+`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`, `kt269-*`.
 Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa cao làm trong crate arch),
-**D2-203** (KT-262: `TLBI` shootdown + smp 4), **D2-204** (KT-265: soak 1.000 + budget aarch64).
+**D2-203** (KT-262: `TLBI` shootdown + smp 4), **D2-204** (KT-265: soak 1.000 + budget aarch64),
+**D2-206** (KT-269: mở `[calling.aarch64]` + U-mode).
 
 ## 1. Phạm vi
 
@@ -20,13 +22,15 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.4 | nửa cao (`TTBR1_EL1`) + physmap | KT-253 | mở (D2-199) |
 | B3.5 | `VSpace` thật | KT-254 | mở |
 | B3.6 | `TLBI` + shootdown đa hart | KT-262 | **DONE** (smp 4, ack đủ 3 hart phụ) |
-| B3.7 | U-mode + `eret` + `svc` | — | **chặn** (Q2: `spec/abi.toml [calling.aarch64]` chưa mở) |
+| B3.7 | U-mode + `eret` + `svc` | KT-269 | **DONE** (D2-206: `[calling.aarch64]` đã mở) |
 | B3.8 | runner QEMU + TAP + ca âm | KT-250 | **DONE (phần đầu)** |
 | B3.9 | **smp 2**: PSCI `CPU_ON` + GICv3 `SGI 0` (IPI) | KT-259 | **DONE** (2 hart) |
 | B3.9+ | **smp 4** + ba SGI (IPI 0, shootdown 1, lệnh 2) | KT-262 | **DONE** (4 hart) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
-`cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8).
+`cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8). **U-mode** (B3.7) chỉ
+là **một** syscall (`DebugPutStr`) + `Exit` — **không** IPC từ EL0, **không** nhiều process,
+**không** preemption (D2-206).
 
 ## 2. Đường boot
 
@@ -166,11 +170,12 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
 
 - Dùng `qemu_guard.sh` (process group + timeout + dọn con) — **`perl -e 'alarm N; exec @ARGV'`
   KHÔNG giết được QEMU** (qemu bỏ qua `SIGALRM`).
-- **12/12 kiểm sạch** (KT-262 + KT-265): ELF (`.text` @ `0x4008_0000`, `.text.vectors` là TEXT,
-  16 stub đúng offset), boot (**TAP 15/15** + marker đúng 1 lần + **8 dòng `# smp:`** + **3 dòng
-  `# tlbi:`** + **`# conf image:` khớp ELF** — đúng một lần mỗi dòng), **10 ca âm** (marker sai,
-  thiếu `ok`, có `not ok`, plan sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, **thiếu
-  dòng `# tlbi:`**, **thiếu ack shootdown**, **hash ảnh lệch ELF**) đều **ĐỎ đúng**.
+- **13/13 kiểm sạch** (KT-262 + KT-265 + KT-269): ELF (`.text` @ `0x4008_0000`, `.text.vectors`
+  là TEXT, 16 stub đúng offset), boot (**TAP 18/18** + marker đúng 1 lần + **8 dòng `# smp:`** +
+  **3 dòng `# tlbi:`** + **`# umode: el0 ran svc=0 ret=<len>`** + **`# conf image:` khớp ELF** —
+  đúng một lần mỗi dòng), **11 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai, log rỗng,
+  thiếu dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack shootdown**,
+  **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) đều **ĐỎ đúng**.
 - Nối vào cổng: bước **56** `QEMU aarch64 (K4' bước 3)` — chạy ở **cả T1 và T2**.
 
 ## 7. Còn thiếu (ghi rõ, không giấu)
@@ -178,7 +183,9 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
 1. **Timer per-hart / preemption**: chưa — chưa có `CNTP`/`CNTV` per-hart, chưa có scheduler.
    `smp 4` **đã** xong (KT-262).
 2. **Soak 1.000** boot: **DONE** (KT-265, §8) — **0/1000 lỗi**, 3 luồng, 20 s/boot, không retry.
-3. **U-mode** (B3.7): chặn bởi Q2 — `spec/abi.toml [calling.aarch64]` **chưa mở**.
+3. **U-mode** (B3.7): **DONE** (KT-269, §9) — `[calling.aarch64]` đã mở (D2-206). Phạm vi hẹp:
+   **một** syscall (`DebugPutStr`) + `Exit`; **chưa** IPC từ EL0, **chưa** nhiều process,
+   **chưa** preemption, **chưa** `FaultKind::Exit` qua `fault_ep` (chưa có procsrv).
 4. **Mỗi hart một address space/ASID**: chưa — bốn hart dùng **cùng** bảng trang `VSpace`
    (hart 0 ở VA nửa cao, hart phụ ở VA thấp).
 5. **DTB**: `_start` nhận con trỏ trong `x0` nhưng **chưa đọc**; địa chỉ thiết bị đang là hằng của
@@ -235,3 +242,104 @@ lệnh, `--manifest-path v2/kernel/Cargo.toml` (từ `/tmp/kt264-s2`) cho `build
 còn `--manifest-path /tmp/kt264-s2/v2/kernel/Cargo.toml` (từ `/`) cho `build=68b890daa9e08f6b`
 (`.text` lệch 3.707 byte, cùng cỡ). Soak **tự build + tự băm trong cùng một lần chạy** nên nhất
 quán; **không** so sha ảnh giữa hai lần chạy khác cách gọi.
+
+## 9. U-mode (EL0) + `svc` — B3.7 (KT-269, D2-206)
+
+### 9.1 `spec/abi.toml [calling.aarch64]` — đã mở
+
+`reserved = true` đã bỏ; mục này **đối xứng từng trường** với `[calling.riscv64]` (cùng vai trò,
+chỉ đổi tên thanh ghi + cơ chế chuyển), cộng ba trường **bổ sung tường minh** cho aarch64
+(`trap`/`stack`/`clobbered` — riscv64 đóng băng nên không được thêm vào mục ấy):
+
+| Trường | riscv64 | aarch64 |
+|---|---|---|
+| `syscall_number` | `a7` | **`x8`** |
+| `args` | `a0`, `a1` | **`x0`, `x1`** |
+| `message_info` | `a2` | **`x2`** |
+| `mr_registers` | `a3..a6` | **`x3..x6`** |
+| `return_error` / `return_value` | `a0` / `a1` | **`x0` / `x1`** |
+| `trap` | — (đóng băng) | **`svc #0`** |
+| `stack` | — (đóng băng) | **SP_EL0 user / SP_EL1 kernel** |
+| `clobbered` | — (đóng băng) | **`x0`, `x1`, `nzcv`** |
+| `preserved` | `sp, gp, tp, s0..s11, fs0..fs11` | **`sp, x19..x28, x29, d8..d15`** |
+
+`vifast-gen` sinh hằng từ `[calling.*]` cho **arch đã mở** (`AARCH64_*`, `RISCV64_*`,
+`CALLING_ARCHES`) vào `v2/lib/vifast-abi/src/generated.rs` + bảng trong `docs/abi.md`; ảnh dùng
+hằng **sinh** cho số hiệu syscall (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — `global_asm!` nhận `const`
+operand nên stub EL0 đổi theo spec, không có số 12/14 viết tay (D2-11). `check_abi.py` kiểm
+**đối xứng cấu trúc** (cùng tập khoá với riscv64 + đúng ba trường bổ sung) và `x86_64` **vẫn**
+`reserved = true` (D2-10).
+
+### 9.2 Đường chạy
+
+```text
+high_entry (EL1h, VA nửa cao)
+  ├─ map `.el0` (PA trong ảnh) tại EL0_CODE_VA = 0x7000_0000, Perms::USER_RX
+  ├─ map trang stack user (PA trong .bss) tại EL0_STACK_VA = 0x7000_1000, Perms::USER_RW
+  ├─ vs.activate()  (TTBR0 = bảng VSpace; VA mới chưa có entry TLB cũ)
+  ├─ SP_EL0 ← 0x7000_2000, ELR_EL1 ← entry, SPSR_EL1 ← 0x3c0 (EL0t | DAIF mask), ISB, eret
+  ↓
+EL0: adr x0, msg; mov x1, #12; mov x8, #12 (DebugPutStr); svc #0
+  ↑ ô 8 (Lower EL AArch64 Sync), EC=0x15: đọc ESR.ISS (imm16) + x8 (số hiệu) + x0/x1 (ptr/len)
+    → in chuỗi user qua PL011 → x0 = 0 (error), x1 = 12 (value) → eret (ELR đã là instruction kế)
+  ↓
+EL0: mov x8, #14 (Exit); mov x0, #0; svc #0
+  ↑ handler: TAP 18 (EL0 **đã chạy tiếp** sau `svc` đầu) → ELR ← el0_done, SPSR ← EL1h
+  ↓
+el0_done (EL1h): marker + halt
+```
+
+**Ba điểm kỹ thuật đo được, không suy đoán:**
+
+1. **`svc` đặt `ELR_EL1` = instruction KẾ TIẾP** (DDI 0487 §D17.2.37 — preferred return address
+   của SVC), **khác `brk`** (ELR trỏ vào chính instruction, KT-248 phải `+4`). Đo được:
+   `# umode: svc … elr=0x70000010` trong khi `svc` ở `0x7000_000c`. Vì vậy handler **không**
+   cộng 4; cộng 4 là bỏ một instruction của EL0.
+2. **Kernel đọc được trang user** vì `SCTLR_EL1.SPAN = 1` (PAN không bật khi vào exception) —
+   nếu PAN bật, lần đọc chuỗi đầu fault và handler in `# umode: fault` thay vì im lặng.
+3. **`Perms::USER_RX` đặt `PXN = 1`** ⇒ nếu `eret` sai chế độ (SPSR để EL1h), EL1 **không**
+   thực thi được trang EL0 — đột biến (i) dừng ở instruction abort `EC=0x21` trước cả `svc`.
+
+### 9.3 Đo được (log `boot-1.log`, TAP 16/17/18)
+
+```text
+# umode: eret entry=0x70000000 sp=0x70002000 spsr=0x3c0 mode=EL0t code_va=0x70000000 code_pa=0x4008b000 code_bytes=52 stack_va=0x70001000 stack_pa=0x40097000
+ok 16 - umode: el0 entered
+el0 says hi
+ok 17 - umode: svc handled
+# umode: el0 ran svc=0 ret=12
+# umode: svc nr=12 imm=0 elr=0x70000010 ptr=0x70000028 len=12 printed=12 error=0 ret=12
+ok 18 - umode: returned to el0
+# umode: exit code=0 nr=14 imm=0
+# umode: done
+# viFastOs aarch64: boot ok
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| `SPSR_EL1` lúc `eret` | `0x3c0` — `M=0b0000` (EL0t), `DAIF` mask đủ |
+| trang mã EL0 | `code_bytes=52`, một Frame 4 KiB, `USER_RX` |
+| `svc` đầu | `imm=0`, `nr=12` (DebugPutStr), `elr=0x7000_0010` (= instruction kế) |
+| trả kết quả | `x0=0` (error), `x1=12` (value) — đúng `[calling.aarch64]` |
+| EL0 chạy tiếp | `svc` thứ hai `nr=14` (Exit) ⇒ TAP 18 |
+| runner | **13/13** kiểm sạch, TAP **18/18**, **11 ca âm** ĐỎ đúng |
+
+### 9.4 Đột biến bắt buộc (ghi trung thực **tầng nào** đỏ)
+
+| # | Đột biến | Kết quả |
+|---|---|---|
+| (i) | `SPSR_EL1` để EL1 (`M=0b0101`) | **ĐỎ** — `# trap: slot=4 off=0x200 ec=0x21 il=1 far=0x70000000 elr=0x70000000 spsr=0x3c5` (instruction abort từ EL1: trang EL0 là `PXN=1`), **không** có TAP 16, **không** marker |
+| (ii) | trang EL0 map `KERNEL_RX` (không `user=true`) | **ĐỎ** — `# umode: fault ec=0x20 esr=0x000000008200000f far=0x70000000 elr=0x70000000 spsr=0x3c0 mode=EL0t` (instruction abort **từ EL0**), **không** có TAP 16, **không** marker |
+| (iii) | handler **không** tiến `ELR_EL1` | **Không phải đột biến trên AArch64**: `svc` đã đặt ELR = instruction kế, nên "không tăng" là hành vi **đúng** (xem §9.2 điểm 1). Đột biến tương đương đã chạy: **(iii-a)** lùi `ELR` về chính `svc` (`elr - 4`) ⇒ `svc` thứ hai đọc `x0 = 0` (giá trị trả của lần trước) ⇒ `# trap: slot=4 ec=0x25 far=0x0` — **ĐỎ, dừng có kiểm soát**; **(iii-b)** lùi `ELR` về **đầu stub** ⇒ `svc` lặp vô hạn, log bị chặn ở **256 B** (21 dòng `el0 says hi`), `qg_boot rc=124` (timeout 5 s) — **ĐỎ, treo có kiểm soát**, không có marker/TAP 18 |
+
+**Không** được gọi (i)/(ii) là "đã kiểm trên phần cứng": cả hai đo trên QEMU TCG.
+
+### 9.5 Còn thiếu của B3.7 (ghi rõ)
+
+1. **Một** syscall (`DebugPutStr`) + `Exit`; **không** IPC từ EL0, **không** nhiều process.
+2. **Không** preemption/timer từ EL0; `DAIF` mask đủ trong `SPSR_EL1` nên EL0 không nhận ngắt.
+3. `Exit` **chưa** đi qua `fault_ep`/`FaultKind::Exit` (chưa có procsrv) — nó `eret` về EL1h
+   tại `el0_done` để in marker rồi tắt máy.
+4. **Không** có `Tcb`/`VSpace` object cho tiến trình EL0: trang mã/stack được map trực tiếp vào
+   `VSpace` của ảnh, chưa qua cap/Untyped (nợ M17 của object layer).
+5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

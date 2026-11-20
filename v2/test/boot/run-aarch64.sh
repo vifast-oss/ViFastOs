@@ -15,16 +15,18 @@
 # Dùng: bash v2/test/boot/run-aarch64.sh [NBOOT]
 #
 # **Ca âm chạy MẶC ĐỊNH** (không cần cờ): sau lần boot đầu, runner chạy lại **cùng** bộ kiểm
-# `check_log` trên log tốt với 10 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
+# `check_log` trên log tốt với 11 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
 # sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, thiếu dòng `# tlbi:`, thiếu ack
-# shootdown, **hash ảnh lệch ELF**) và đòi **cả 10 phải ĐỎ**. Nhờ vậy mỗi lần chạy runner vừa
+# shootdown, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) và đòi **cả 11 phải ĐỎ**. Nhờ vậy mỗi lần chạy runner vừa
 # chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
 # "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 12 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
-#                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo)
+#   EXPECT_TESTS    số ca TAP (mặc định 18 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
+#                   KT-262 thêm 3 ca TLBI/smp 4, **KT-269 thêm 3 ca U-mode**: EL0 vào được, `svc`
+#                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
@@ -62,7 +64,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-15}"
+EXPECT_TESTS="${EXPECT_TESTS:-18}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -288,9 +290,29 @@ check_digest() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# umode:` (KT-269)
+# **Bằng chứng U-mode**: đúng **một** dòng `# umode: el0 ran svc=<n> ret=<v>` — nó chỉ được in
+# khi handler `svc` **thật sự** đọc được số hiệu syscall từ `x8` của EL0 và trả kết quả qua
+# `x1` (quy ước `[calling.aarch64]`). Ảnh chỉ chạy EL1 (không `eret` xuống EL0) sẽ **không** có
+# dòng này ⇒ ĐỎ, dù TAP 1..15 vẫn xanh.
+check_umode() {
+    local log="$1" bad=0 n
+    n="$(grep -cE '^# umode: el0 ran svc=[0-9]+ ret=[0-9]+$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# umode: el0 ran svc=<n> ret=<v>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    # `svc #0` ⇒ imm16 = 0; `ret` phải > 0 (DebugPutStr trả độ dài chuỗi đã in).
+    grep -Eq '^# umode: el0 ran svc=0 ret=[1-9][0-9]*$' "$log" || {
+        echo "# dòng '# umode: el0 ran svc=0 ret=<len>' không đúng (imm16 phải 0, ret > 0)"
+        bad=1
+    }
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
-# hash ảnh. In lý do đỏ ra stdout.
+# `# umode:` + hash ảnh. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
     local okn notn mn i
@@ -337,6 +359,7 @@ check_log() {
     fi
     check_smp "$log" || bad=1
     check_tlbi "$log" || bad=1
+    check_umode "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -461,6 +484,17 @@ selftest_negative() {
         echo "ok $n - ca âm (j): hash ảnh lệch ELF ⇒ ĐỎ ($(head -1 "$tmp/j.out"))"
     fi
 
+    # (k) **KT-269** — thiếu **cả** dòng `# umode:` (ảnh không `eret` xuống EL0 / không xử lý `svc`)
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# umode: ' "$good" >"$tmp/k.log" 2>/dev/null || true
+    if check_log "$tmp/k.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/k.out" 2>&1; then
+        echo "not ok $n - ca âm (k): thiếu dòng '# umode:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (k): thiếu dòng '# umode:' ⇒ ĐỎ ($(head -1 "$tmp/k.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -543,7 +577,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 10))
+    total=$((total + 11))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"
