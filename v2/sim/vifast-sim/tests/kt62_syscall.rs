@@ -19,7 +19,7 @@
 //! `docs/k3b-core.md` §11. Test này chạy trong `gate --fast` (L0 của workspace v2).
 
 use kc::syscall::{self, SyscallEnv, SyscallOutcome};
-use kc::{KError, Machine, ObjId, ObjType, SlotRef, TcbState};
+use kc::{KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
 use vifast_core as kc;
 
 // ---------------------------------------------------------------------------------------------
@@ -103,8 +103,8 @@ fn setup_tcb(m: &mut Machine, rig: &Rig, slot: SlotRef, tcb: ObjId, sc: SlotRef)
         .expect("sc");
     m.set_sched_params(slot, Some(sc)).expect("sched params");
     m.tcb_set_priority(slot, 3, 10).expect("priority");
-    m.transition_tcb(tcb, TcbState::Ready).expect("ready");
-    m.transition_tcb(tcb, TcbState::Running { hart: 0 })
+    m.start_tcb(tcb).expect("ready");
+    m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })
         .expect("running");
 }
 
@@ -119,7 +119,7 @@ fn make_running(m: &mut Machine, tcb: ObjId) {
     if m.tcb_state(tcb) != Ok(TcbState::Running { hart: 0 }) {
         let _ = m.wake(tcb);
         if m.tcb_state(tcb) == Ok(TcbState::Ready) {
-            m.transition_tcb(tcb, TcbState::Running { hart: 0 })
+            m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })
                 .expect("running lại");
         }
     }
@@ -623,8 +623,8 @@ fn kt62_yield_doi_tcb() {
     let mut env = FakeEnv::new();
     // `setup_tcb` đưa t1 Running ⇒ current = t1; Yield của t1 ⇒ quay lại t0? Cùng mức FIFO:
     // t0 đang Running trước đó bị t1 thay; để kiểm tường minh, đặt t0 làm current lại.
-    m.transition_tcb(rig.t1, TcbState::Ready).expect("t1 ready");
-    m.transition_tcb(rig.t0, TcbState::Running { hart: 0 })
+    m.tcb_yield(rig.t1).expect("t1 ready");
+    m.transition_tcb(rig.t0, NonReadyTarget::Running { hart: 0 })
         .expect("t0 running");
     let before = m.current(0);
     assert_eq!(before, Some(rig.t0));
@@ -669,7 +669,7 @@ fn kt62_ipc_vong_qua_dispatch() {
             state: TcbState::BlockedOnRecv { .. }
         }
     ));
-    m.transition_tcb(rig.t0, TcbState::Running { hart: 0 })
+    m.transition_tcb(rig.t0, NonReadyTarget::Running { hart: 0 })
         .expect("t0 running");
     let out = call(
         &mut m,
@@ -691,7 +691,7 @@ fn kt62_ipc_vong_qua_dispatch() {
     assert_eq!((area.mr(0), area.mr(1)), (Some(0x11), Some(0x22)));
 
     // Server t1 Reply: Send trên Reply cap (1) — caller t0 về Ready, Reply.caller sạch.
-    m.transition_tcb(rig.t1, TcbState::Running { hart: 0 })
+    m.transition_tcb(rig.t1, NonReadyTarget::Running { hart: 0 })
         .expect("t1 running");
     let out = call(
         &mut m,

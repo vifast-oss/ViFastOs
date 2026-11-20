@@ -65,8 +65,8 @@
 
 use vifast_sim::ipc::{Message, MessageInfo};
 use vifast_sim::kobj::{
-    FaultAccess, FaultKind, Machine, MapAttrs, MapRights, ObjId, ObjType, SlotRef, TcbState,
-    VmFaultReason, RIGHTS_ALL,
+    FaultAccess, FaultKind, Machine, MapAttrs, MapRights, NonReadyTarget, ObjId, ObjType, SlotRef,
+    TcbState, VmFaultReason, RIGHTS_ALL,
 };
 use vifast_sim::tcb::SleepReason;
 use vifast_sim::Lcg;
@@ -272,7 +272,7 @@ impl Rig {
                 .expect("prio");
             m.tcb_set_affinity(slot(c0, S_TCB + i), (1u64 << harts) - 1)
                 .expect("affinity");
-            m.transition_tcb(*obj, TcbState::Ready).expect("Ready");
+            m.start_tcb(*obj).expect("Ready");
             m.tcb_set_fault_ep(slot(c0, S_TCB + i), slot(c0, S_FAULT_EP))
                 .expect("fault_ep");
             *s = slot(c0, S_TCB + i);
@@ -388,7 +388,7 @@ impl Rig {
                 if self.m.current(h).is_some() {
                     let _ = self.m.block_current(
                         h,
-                        TcbState::Sleeping {
+                        NonReadyTarget::Sleeping {
                             reason: SleepReason::Timeout,
                         },
                     );
@@ -414,9 +414,7 @@ impl Rig {
                 let i = rng.below(N_TCB as u64) as usize;
                 let st = self.m.tcb_state(self.t[i]).expect("state");
                 if matches!(st, TcbState::Inactive) {
-                    self.m
-                        .transition_tcb(self.t[i], TcbState::Ready)
-                        .expect("Ready");
+                    self.m.start_tcb(self.t[i]).expect("Ready");
                     dong.push_str(&format!(" ready{i}"));
                 } else if !matches!(st, TcbState::Ready | TcbState::Running { .. }) {
                     let _ = self.m.wake(self.t[i]);

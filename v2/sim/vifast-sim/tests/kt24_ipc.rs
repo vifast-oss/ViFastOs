@@ -118,8 +118,7 @@ impl Rig {
             t,
         };
         for i in 0..r.t.len() {
-            r.m.transition_tcb(r.t[i], TcbState::Ready)
-                .expect("Inactive→Ready");
+            r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
         }
         r
     }

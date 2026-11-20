@@ -20,8 +20,8 @@
 
 use vifast_sim::ipc::{Message, MessageInfo, WORDS_IN_REGISTERS};
 use vifast_sim::kobj::{
-    FaultAccess, FaultKind, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
-    VmFaultReason,
+    FaultAccess, FaultKind, KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode,
+    TcbState, VmFaultReason,
 };
 use vifast_sim::procsrv_model::{ProcsrvModel, WaitHow, WaitResult};
 use vifast_sim::Lcg;
@@ -108,8 +108,7 @@ impl Rig {
                     .expect("set_sched_params (test-only)");
             }
             m.tcb_set_priority(t_s[i], 5, 255).expect("Tcb.SetPriority");
-            m.transition_tcb(*obj, TcbState::Ready)
-                .expect("Inactive→Ready");
+            m.start_tcb(*obj).expect("Inactive→Ready");
         }
         // `fault_ep` cho hai tiến trình con; procsrv/`t[3]` **không** cần.
         for i in [0usize, 2] {
@@ -714,11 +713,11 @@ fn procsrv_kill_revoke_xoa_cap_dan_xuat() {
 #[test]
 fn resume_with_regs_giu_sleeping_va_ghi_thanh_ghi() {
     let mut r = Rig::new();
-    r.m.transition_tcb(r.t[0], TcbState::Running { hart: 0 })
+    r.m.transition_tcb(r.t[0], NonReadyTarget::Running { hart: 0 })
         .expect("Ready→Running");
     r.m.transition_tcb(
         r.t[0],
-        TcbState::Sleeping {
+        NonReadyTarget::Sleeping {
             reason: vifast_sim::kobj::SleepReason::Budget,
         },
     )
@@ -832,7 +831,7 @@ fn mot_seed(seed: u64) -> Vec<String> {
                 // Kích hoạt lại một TCB đã chết (controller, không phải syscall) để vòng fuzz
                 // không bão hoà ở trạng thái `Inactive`; `tcb_configure` xoá exit_code.
                 if r.st(i) == TcbState::Inactive {
-                    r.m.transition_tcb(r.t[i], TcbState::Ready)
+                    r.m.start_tcb(r.t[i])
                 } else {
                     Ok(())
                 }
@@ -892,8 +891,8 @@ fn scenario_step_fault_replyfault_resumewithregs() {
     let srv = m.add_kernel_object(ObjType::Tcb);
     let srv_cap = m.root_cap(srv);
     m.put_cap(c0, 11, srv_cap).expect("cap srv");
-    m.transition_tcb(app, TcbState::Ready).expect("Ready app");
-    m.transition_tcb(srv, TcbState::Ready).expect("Ready srv");
+    m.start_tcb(app).expect("Ready app");
+    m.start_tcb(srv).expect("Ready srv");
     m.tcb_set_fault_ep(app_s, ep_s).expect("SetFaultEp");
 
     let kind = FaultKind::UnknownSyscall { nr: 12 };

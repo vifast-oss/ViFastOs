@@ -13,7 +13,9 @@
 //! - `Ready` (không treo) ⇔ có trong hàng; `Running{hart}` ⇔ là `current` của hart đó;
 //! - ≤ **1** `Running`/hart; `len`/bitmap khớp số phần tử; `idle ⇔ current == None`.
 
-use vifast_sim::kobj::{KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState};
+use vifast_sim::kobj::{
+    KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+};
 use vifast_sim::Lcg;
 
 fn slot(cnode: ObjId, s: usize) -> SlotRef {
@@ -122,9 +124,7 @@ impl Rig {
 
     /// `Inactive → Ready` qua **một cửa** (cặp ALLOWED của bảng KT-18).
     fn ready(&mut self, i: usize) {
-        self.m
-            .transition_tcb(self.t[i], TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t[i]).expect("Inactive→Ready");
         kiem(&self.m, "transition Ready");
     }
 
@@ -179,7 +179,7 @@ fn pick_du_256_muc_uu_tien_cao_nhat_duoc_chon() {
         let sr = slot(c0, p);
         gan_sc_mac_dinh(&mut m, c0, p, 257);
         m.tcb_set_priority(sr, p as u8, 255).expect("priority p");
-        m.transition_tcb(t, TcbState::Ready).expect("Ready");
+        m.start_tcb(t).expect("Ready");
         tcb.push(t);
         sl.push(sr);
     }
@@ -298,7 +298,7 @@ fn dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien() {
     gan_sc_mac_dinh(&mut r.m, r.c0, 11, S_SC);
     r.m.tcb_set_priority(slot(r.c0, 11), 10, 255)
         .expect("priority D");
-    r.m.transition_tcb(d, TcbState::Ready).expect("D Ready");
+    r.m.start_tcb(d).expect("D Ready");
     kiem(&r.m, "D Ready");
     assert_eq!(r.dispatch(0), Some(d), "mức 10 phải preempt mức 9");
     assert_eq!(r.m.tcb_state(r.t[2]), Ok(TcbState::Ready));
@@ -339,7 +339,7 @@ fn check_sched_sau_moi_op_cong_khai() {
     kiem(&r.m, "Tcb.SetHome");
 
     // IPC: Call không có người nhận ⇒ BlockedOnSend.
-    r.m.transition_tcb(r.t[0], TcbState::Ready).expect("Ready");
+    r.m.start_tcb(r.t[0]).expect("Ready");
     kiem(&r.m, "transition Ready");
     r.m.tcb_set_priority(r.s[0], 5, 9).expect("priority");
     kiem(&r.m, "SetPriority");
@@ -623,7 +623,7 @@ fn wake_suspended_khong_enqueue_resume_enqueue_dung_priority() {
     let blocked =
         r.m.block_current(
             0,
-            TcbState::BlockedOnRecv {
+            NonReadyTarget::BlockedOnRecv {
                 ep: r.ep,
                 reply: None,
             },
@@ -662,7 +662,7 @@ fn block_current_va_yield_current_doi_current() {
     let blocked =
         r.m.block_current(
             0,
-            TcbState::BlockedOnSend {
+            NonReadyTarget::BlockedOnSend {
                 ep: r.ep,
                 call: true,
                 fault: None,
@@ -697,15 +697,21 @@ fn block_current_va_yield_current_doi_current() {
     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[1]));
     assert_eq!(r.m.tcb_state(r.t[1]), Ok(TcbState::Running { hart: 0 }));
 
-    // `block_current` chỉ nhận trạng thái chặn/ngủ — không cho biến Running thành Ready.
+    // `block_current` chỉ nhận trạng thái chặn/ngủ — **không** phải `Ready`, và cũng **không**
+    // phải `Running`/`Inactive`/`Stopping`/`Dead` (D2-194 §1(d): "không phải `Ready`" **chưa**
+    // đồng nghĩa "được phép block vào").
+    //
+    // **KT-241** — `Ready` **không** còn biểu diễn được ở kiểu đích (`NonReadyTarget` loại
+    // `Ready`), nên ca này dùng `Running { hart: 0 }` để giữ **đúng** phép kiểm **runtime**
+    // "đích không phải tập block hợp lệ" — vẫn kỳ vọng `InvalidArgument`.
     assert_eq!(
-        r.m.block_current(0, TcbState::Ready),
+        r.m.block_current(0, NonReadyTarget::Running { hart: 0 }),
         Err(KError::InvalidArgument)
     );
-    kiem(&r.m, "block_current(Ready) bị từ chối");
+    kiem(&r.m, "block_current(Running) bị từ chối");
     // Chặn TCB đang chạy rồi `yield_current` khi hart rảnh ⇒ IllegalOperation.
     assert_eq!(
-        r.m.block_current(0, TcbState::BlockedOnNotification { ntfn: r.ntfn }),
+        r.m.block_current(0, NonReadyTarget::BlockedOnNotification { ntfn: r.ntfn }),
         Ok(r.t[1])
     );
     kiem(&r.m, "block_current(Notification)");
@@ -763,7 +769,7 @@ fn finalise_va_suspend_go_ready_queue() {
             .expect("Retype TCB");
         m.put_cap(c0, 1 + i, cap).expect("cap TCB");
         *item = m.cap_obj(cap).expect("obj TCB");
-        m.transition_tcb(*item, TcbState::Ready).expect("Ready");
+        m.start_tcb(*item).expect("Ready");
     }
     kiem(&m, "2 TCB Ready trước Revoke");
     assert_eq!(m.ready_len(0), 2);

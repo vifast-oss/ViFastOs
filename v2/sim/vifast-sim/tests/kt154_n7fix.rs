@@ -102,8 +102,7 @@ impl Rig {
                 (1u64 << harts) - 1
             };
             m.tcb_set_affinity(t_s[i], mask).expect("Tcb.SetAffinity");
-            m.transition_tcb(obj, TcbState::Ready)
-                .expect("Inactive→Ready");
+            m.start_tcb(obj).expect("Inactive→Ready");
         }
         Rig {
             m,

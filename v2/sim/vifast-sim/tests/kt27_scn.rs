@@ -100,7 +100,7 @@ fn runner_scn_21_notification_signal_wait() {
     let tcb = m.add_kernel_object(ObjType::Tcb);
     let tcb_cap = m.root_cap(tcb);
     m.put_cap(c0, S_TCB, tcb_cap).expect("cap tcb0");
-    m.transition_tcb(tcb, TcbState::Ready).expect("tcb0 Ready");
+    m.start_tcb(tcb).expect("tcb0 Ready");
     let ntfn_s = slot(c0, S_NTFN);
 
     for (i, b) in steps.iter().enumerate() {

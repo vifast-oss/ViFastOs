@@ -188,9 +188,7 @@ impl Rig {
 
     /// `Inactive → Ready` (cặp ALLOWED của bảng KT-18, vào hàng qua một cửa KT-19).
     fn ready(&mut self, tcb: usize) {
-        self.m
-            .transition_tcb(self.t[tcb], TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t[tcb]).expect("Inactive→Ready");
         kiem(&self.m, "transition Ready");
     }
 

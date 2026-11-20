@@ -161,7 +161,7 @@ fn dung_rig() -> Rig {
         *tcb = m.add_kernel_object(ObjType::Tcb);
         let cap = m.root_cap(*tcb);
         m.put_cap(c0, 10 + i, cap).expect("cap tcb");
-        m.transition_tcb(*tcb, TcbState::Ready).expect("tcb Ready");
+        m.start_tcb(*tcb).expect("tcb Ready");
     }
     Rig { m, c1, s, obj, t }
 }

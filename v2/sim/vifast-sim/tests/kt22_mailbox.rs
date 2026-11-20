@@ -232,9 +232,7 @@ impl Rig {
 
     fn ready(&mut self, i: usize) {
         if self.m.tcb_state(self.t[i]).expect("tcb_state") == TcbState::Inactive {
-            self.m
-                .transition_tcb(self.t[i], TcbState::Ready)
-                .expect("Inactive→Ready");
+            self.m.start_tcb(self.t[i]).expect("Inactive→Ready");
             self.kiem("transition Ready");
         }
     }

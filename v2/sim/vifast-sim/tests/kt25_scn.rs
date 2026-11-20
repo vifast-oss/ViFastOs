@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use vifast_sim::ipc::MessageInfo;
 use vifast_sim::ipc::{Message, MAX_CAPS};
 use vifast_sim::kobj::{
-    KError, Machine, ObjId, ObjType, SlotRef, TcbState, RIGHT_GRANT, RIGHT_READ, RIGHT_WRITE,
+    KError, Machine, ObjId, ObjType, SlotRef, RIGHT_GRANT, RIGHT_READ, RIGHT_WRITE,
 };
 
 fn slot(cnode: ObjId, s: usize) -> SlotRef {
@@ -150,7 +150,7 @@ impl RigScn {
             *obj = m.add_kernel_object(ObjType::Tcb);
             let cap = m.root_cap(*obj);
             m.put_cap(c0, 10 + i, cap).expect("tcb");
-            m.transition_tcb(*obj, TcbState::Ready).expect("Ready");
+            m.start_tcb(*obj).expect("Ready");
         }
         Self {
             m,

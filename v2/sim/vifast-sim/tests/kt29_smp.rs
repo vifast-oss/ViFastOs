@@ -23,7 +23,9 @@
 //! Bất biến kiểm **sau mỗi** bước: [`Machine::check_sched`] + [`Machine::check_harts`] +
 //! [`Machine::check_ipc`] + [`Machine::check_mailboxes`] (gói trong [`kiem`]).
 
-use vifast_sim::kobj::{KError, Machine, ObjId, ObjType, Published, SlotRef, TcbState, MAX_HARTS};
+use vifast_sim::kobj::{
+    KError, Machine, NonReadyTarget, ObjId, ObjType, Published, SlotRef, TcbState, MAX_HARTS,
+};
 use vifast_sim::mailbox::MailboxMsg;
 use vifast_sim::tcb::SleepReason;
 use vifast_sim::Lcg;
@@ -114,9 +116,7 @@ impl Rig {
 
     /// `Inactive → Ready` (một cửa `transition_tcb`).
     fn ready(&mut self, i: usize) {
-        self.m
-            .transition_tcb(self.t[i], TcbState::Ready)
-            .expect("Inactive→Ready");
+        self.m.start_tcb(self.t[i]).expect("Inactive→Ready");
         kiem(&self.m, "transition Ready");
     }
 
@@ -209,7 +209,7 @@ fn published_idle_cur_prio_va_guard_luat_3() {
     // TCB ngủ ⇒ hart 0 rảnh lại, published cập nhật.
     r.m.block_current(
         0,
-        TcbState::Sleeping {
+        NonReadyTarget::Sleeping {
             reason: SleepReason::Timeout,
         },
     )
@@ -314,7 +314,7 @@ fn push_drain_fifo_va_mot_tcb_moi_hart_nguon() {
     r.dat(0, 5, 0b11, 1);
     r.m.transition_tcb(
         r.t[0],
-        TcbState::BlockedOnAddress {
+        NonReadyTarget::BlockedOnAddress {
             frame: 1,
             offset: 0,
         },
@@ -354,12 +354,12 @@ fn push_drain_fifo_va_mot_tcb_moi_hart_nguon() {
     //     nhận 2 (đây là "≤1 TCB/hart nguồn", không phải "≤1 TCB/đích").
     let mut r = Rig::new(3, 6);
     r.dat(0, 1, 0b111, 0);
-    r.m.transition_tcb(r.t[0], TcbState::Running { hart: 0 })
+    r.m.transition_tcb(r.t[0], NonReadyTarget::Running { hart: 0 })
         .expect("t0 chạy hart 0");
     r.dat(1, 5, 0b111, 0);
     r.dat(2, 5, 0b111, 0);
     r.dat(3, 1, 0b111, 1);
-    r.m.transition_tcb(r.t[3], TcbState::Running { hart: 1 })
+    r.m.transition_tcb(r.t[3], NonReadyTarget::Running { hart: 1 })
         .expect("t3 chạy hart 1");
     r.dat(4, 5, 0b111, 1);
     r.dat(5, 5, 0b111, 1);
@@ -640,7 +640,7 @@ fn wake_cheo_hart_qua_hop_thu_va_nguong_preempt() {
     r.dat(1, 7, 0b11, 1); // t1 chờ trên hart 1 mức 7 (vào hàng **sau** khi t0 chạy)
     r.m.transition_tcb(
         r.t[1],
-        TcbState::BlockedOnAddress {
+        NonReadyTarget::BlockedOnAddress {
             frame: 1,
             offset: 0,
         },
@@ -679,7 +679,7 @@ fn wake_cheo_hart_qua_hop_thu_va_nguong_preempt() {
     r.dat(1, 5, 0b11, 1);
     r.m.transition_tcb(
         r.t[1],
-        TcbState::BlockedOnAddress {
+        NonReadyTarget::BlockedOnAddress {
             frame: 1,
             offset: 0,
         },
@@ -696,7 +696,7 @@ fn wake_cheo_hart_qua_hop_thu_va_nguong_preempt() {
     r.dat(0, 5, 0b11, 0);
     r.m.transition_tcb(
         r.t[0],
-        TcbState::BlockedOnAddress {
+        NonReadyTarget::BlockedOnAddress {
             frame: 2,
             offset: 8,
         },
@@ -786,7 +786,7 @@ fn mot_luot(seed: u64, harts: u16) -> Vec<String> {
                     let got =
                         r.m.block_current(
                             h,
-                            TcbState::Sleeping {
+                            NonReadyTarget::Sleeping {
                                 reason: SleepReason::Timeout,
                             },
                         )
@@ -816,8 +816,7 @@ fn mot_luot(seed: u64, harts: u16) -> Vec<String> {
                 let i = rng.below(4) as usize;
                 let st = r.m.tcb_state(r.t[i]).expect("state");
                 if matches!(st, TcbState::Inactive) {
-                    r.m.transition_tcb(r.t[i], TcbState::Ready)
-                        .expect("Inactive→Ready");
+                    r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
                     mo_ta.push_str(&format!(" ready {i}"));
                 } else if !matches!(st, TcbState::Ready | TcbState::Running { .. }) {
                     let _ = r.m.wake(r.t[i]);
@@ -830,7 +829,7 @@ fn mot_luot(seed: u64, harts: u16) -> Vec<String> {
                     TcbState::Ready => {
                         r.m.transition_tcb(
                             r.t[i],
-                            TcbState::BlockedOnAddress {
+                            NonReadyTarget::BlockedOnAddress {
                                 frame: 1 + i as ObjId,
                                 offset: 0,
                             },
@@ -839,8 +838,7 @@ fn mot_luot(seed: u64, harts: u16) -> Vec<String> {
                         mo_ta.push_str(&format!(" addr {i}"));
                     }
                     TcbState::Inactive => {
-                        r.m.transition_tcb(r.t[i], TcbState::Ready)
-                            .expect("Inactive→Ready");
+                        r.m.start_tcb(r.t[i]).expect("Inactive→Ready");
                         mo_ta.push_str(&format!(" ready {i}"));
                     }
                     _ => mo_ta.push_str(" addr (bỏ)"),

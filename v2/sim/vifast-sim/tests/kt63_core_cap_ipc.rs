@@ -77,7 +77,7 @@ fn build() -> Rig {
         m.put_cap(c0, 10 + i, cap).expect("cap TCB");
         t[i] = obj;
         ts[i] = slot(c0, 10 + i);
-        m.transition_tcb(obj, TcbState::Ready).expect("Ready");
+        m.start_tcb(obj).expect("Ready");
     }
     let mut src = [0u32; 4];
     for (i, s) in SRC.iter().enumerate() {
