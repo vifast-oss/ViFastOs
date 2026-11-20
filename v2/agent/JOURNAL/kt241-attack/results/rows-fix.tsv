@@ -1,0 +1,4 @@
+C3  C  path      0      -              1      E_STRICT_TEST_ONLY_WAKE 1      E_STRICT_TEST_ONLY_WAKE 1      E_DEPINFO_WAKE PASS   PASS
+D5  D  path      0      -              1      E_STRICT_TEST_ONLY_WAKE 1      E_STRICT_TEST_ONLY_WAKE 1      E_DEPINFO_WAKE PASS   PASS
+E7  E  mutate    -      -              1      E_ANCHOR_TYPE  1      E_ANCHOR_TYPE  1      E_DEPINFO_BUILD PASS   PASS
+D6  D  path      0      -              1      E_STRICT_WAKE_INCLUDE 1      E_STRICT_WAKE_INCLUDE 1      E_DEPINFO_SCOPE,E_DEPINFO_WAKE PASS   PASS

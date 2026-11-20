@@ -1,0 +1,6 @@
+ID  GRP KIND      CARGO  CODES          L1     L1CODES        L1S    L1SCODES       L2     L2CODES        POS    VERDICT
+E2  E  core      0      -              1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_DEPINFO_NONREADY_CONV,E_DEPINFO_TRANSITION PASS   PASS
+
+== TỔNG: 1 ô | PASS=1 FAIL=0 ERROR=0 ==
+kết quả: /tmp/kt242-s1/v2/agent/JOURNAL/kt241-attack/results/current.tsv
+log: /tmp/kt242-s1/v2/agent/JOURNAL/kt241-attack/logs/<ID>/

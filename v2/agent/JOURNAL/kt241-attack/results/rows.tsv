@@ -1,0 +1,8 @@
+D5  D  path      0      -              1      E_STRICT_TEST_ONLY_WAKE 1      E_STRICT_TEST_ONLY_WAKE 1      E_DEPINFO_WAKE PASS   FAIL
+E1  E  core      0      -              1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_DEPINFO_NONREADY_CONV,E_DEPINFO_TRANSITION PASS   PASS
+E2  E  core      0      -              1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_STRICT_NONREADY_CONV,E_STRICT_TRANSITION 1      E_DEPINFO_NONREADY_CONV,E_DEPINFO_TRANSITION PASS   PASS
+E3  E  core      101    E0624          1      E_STRICT_STATE_WRITE 1      E_STRICT_STATE_WRITE 1      E_DEPINFO_BUILD PASS   PASS
+E4  E  core      101    E0308          0      -              0      -              1      E_DEPINFO_BUILD PASS   PASS
+E5  E  core      101    E0624          1      E_STRICT_STATE_WRITE 1      E_STRICT_STATE_WRITE 1      E_DEPINFO_BUILD PASS   PASS
+E6  E  core      101    unsafe         0      -              0      -              1      E_DEPINFO_BUILD PASS   PASS
+E7  E  mutate    -      -              1      E_ANCHOR_TYPE  1      E_ANCHOR_TYPE  1      E_DEPINFO_BUILD PASS   FAIL
