@@ -11,6 +11,7 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt244-*`, `kt245-*`, `kt
 | KT-245 | driver virtio-net (phần thuần + MMIO hai queue + MAC + quét PCI) | **DONE** |
 | KT-246 | DHCP client + ARP + ICMP echo trên QEMU `-netdev user` | **DONE** |
 | KT-246b | de-dup: `virtio_net` dùng `vifast-net`, xoá codec trùng | **DONE** |
+| KT-260 | UDP echo + DNS query (RFC 1035) — N1 phần đầu | **DONE** |
 
 **Không** làm: TCP, socket API, net server U-mode (N1), virtio-gpu/input (input = KT-255),
 `spec/` change, ảnh sản phẩm (driver chỉ trong ảnh test `ktest-net`).
@@ -68,8 +69,12 @@ thanh ghi.
 # net: arp gw=52:55:0a:00:02:02
 # net: ping 10.0.2.2 ok n=3 rtt=0
 ok 1..7 - net device/mac/dhcp/arp/ping/tx/rx
-# net stats: tx_frames=7 tx_bytes=902 rx_frames=7 rx_bytes=1530 notifies=15 errors=0 timeouts=0 id_mismatch=0
-PANIC: KT-246 net xong (7 TAP, 0 fail)
+# net: udp echo ok len=15 rtt=6
+ok 8 - net udp echo
+# net: dns example.com a=172.66.147.243 ttl=205
+ok 9 - net dns a
+# net stats: tx_frames=12 tx_bytes=1218 rx_frames=10 rx_bytes=1772 notifies=23 errors=0 timeouts=0 id_mismatch=0
+PANIC: KT-260 net xong (9 TAP, 0 fail)
 ```
 
 - MAC `52:54:00:12:34:56` **đọc từ `virtio_net_config`** (không hardcode).
@@ -93,9 +98,23 @@ giả" đều bị từ chối). Nối vào cổng: bước **55** `selftest val
 thiết bị đã trả lời (`JOURNAL/kt246-red-arp-bug.log`). Đây là lý do ca âm "không mạng" phải có
 **timeout thật** chứ không chỉ kiểm chuỗi.
 
+## 7b. UDP + DNS (KT-260)
+
+- **`vifast-net::dns`** — codec RFC 1035: header 12 B, question, answer, **giải nén tên** (con trỏ
+  `0xC0`) có phát hiện **vòng lặp**; 21 test host gồm ca âm (cắt cụt, `qdcount=0`, con trỏ vòng
+  lặp, con trỏ ra ngoài message, `RDLENGTH` sai, `ancount` lớn hơn số record, label > 63, tên > 255,
+  buffer hẹp, `id` sai, không phải response).
+- **UDP echo**: `10.0.2.2:7` **không** có service trong libslirp (`udp_input` chỉ xử lý BOOTP/TFTP)
+  ⇒ bằng chứng UDP hai chiều lấy từ **DNS question echo**: QNAME `vifast-udp-echo`, server chép
+  nguyên question section (RFC 1035 §4.1.2) ⇒ `echoed=1`, `reply_len=33`. `udp_echo` tới
+  `10.0.2.2:7` vẫn hiện thực đầy đủ và **timeout 3 s** đúng (chẩn đoán trong log).
+- **DNS**: `example.com` → `A 172.66.147.243`, `rcode=0`, `an=1`, `rtt_ms=6`.
+- **Ca âm**: DNS tới `192.0.2.1:53` (TEST-NET-1) ⇒ timeout 3 s, không treo.
+- Runner: **9 TAP** + 2 ca âm + `--red-selftest` **21 kiểm**.
+
 ## 8. Còn thiếu
 
-1. **TCP** và **socket API** (N1) — chưa có.
+1. **TCP** và **socket API** (N1) — chưa có (UDP + DNS đã có ở KT-260).
 2. **Net server U-mode** — chưa có; hiện toàn bộ stack chạy trong kernel ảnh test.
 3. **virtio-gpu / virtio-input** — input đang mở ở KT-255.
 4. **`ping`/`ifconfig` trong shell sản phẩm** — chưa có (driver chỉ trong ảnh test).
