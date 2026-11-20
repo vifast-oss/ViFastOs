@@ -5,7 +5,7 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 sau D2-187..D2-193 ===
-HEAD          : `ab406b3e` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
+HEAD          : `a2e18cdf` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
 BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0`.
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
                 `build=b08c5c57cdbdb156`, `inputs=43df126a4a6702ec`, `dirty=0`; `data+bss=224288`,
@@ -13,25 +13,28 @@ BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0`.
 K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210). **Phạm vi**: riscv64/QEMU, đúng các
                 giới hạn đã ghi. **D2-191**: nếu đợt sửa API làm đổi đầu vào tạo ảnh ⇒ **phải
                 build ảnh mới và đo lại K6**, không ghép bằng chứng ảnh cũ.
-CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, 52 bước OK,
-                `JOURNAL/kt231-logs/kt231-gate-pass.log`). **D2-191**: đây là **gate trên
-                `a08bf042`**, **KHÔNG** phải "gate trên HEAD". Sau khi tích hợp đợt sửa này
-                **phải chạy full gate trên commit cuối**.
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=208 READY=2 BLOCKED=0 REVIEW=2** (KT-237/240 DONE; KT-238/239 còn READY).
+CỔNG          : `gate --fast` **PASS** trên `a2e18cdf` (17 m 12 s, **52** bước OK,
+                `JOURNAL/kt239-logs/kt239-gate-pass.log`) — **gate trên commit cuối** sau khi
+                tích hợp KT-237/238/239/240 (đúng D2-191 §3). Gate cũ trên `a08bf042` giữ làm
+                lịch sử (`JOURNAL/kt231-logs/kt231-gate-pass.log`).
+TASK          : `./v2/bin/v2 status` ⇒ **DONE=211 READY=0 BLOCKED=0 REVIEW=2**. KT-237/238/239/240 đều DONE.
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
 LUẬT WAKE      : **CHƯA ĐÓNG** — KT-184/KT-194 giữ **REVIEW** (D2-190: không đóng bằng số
                 selftest hay một vòng reviewer không tìm thấy lỗi).
                 **Ba đường ĐANG CHẶN NGHIỆM THU (P0, không phải "nợ không chặn")**:
                   **WB-16** `Ready` qua helper/const/static/closure/hàm trả về (6 dạng)
                   **WB-17** `transition_tcb` làm fn-pointer / generic `F: Fn` / trait object / UFCS
-                  **WB-18** crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR`
+                  ~~**WB-18** crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR`~~
+                  **WB-18 ĐÃ ĐÓNG (KT-238)** — phạm vi sinh từ `cargo metadata` (22 crate bảo vệ
+                  / 1 từ chối rõ), lớp 2 bắt `E_DEPINFO_WAKE` tại `out/evil.rs:3`.
                 Cả ba có repro **biên dịch được** (`cargo check` RC=0) mà **cả hai cơ chế kiểm
                 đều XANH**. Registry đầy đủ 18 đường: `v2/agent/BYPASS-REGISTRY.md` (mã `WB-NN`).
                 **Hai cơ chế kiểm** (D2-189 — **không** phải "ba lớp độc lập"): lớp tĩnh
-                `check-wake-paths.py` (**295** ca) + lớp dep-info `check-wake-depinfo.py`
-                (**37** ca); "thường"/"`--strict`"/"dep-info" là **ba lượt kiểm thuộc hai cơ chế**,
-                **có thành phần dùng chung** (phân vùng test/sản phẩm, nhận dạng transition,
-                phân tích macro, lọc đường dẫn) — danh sách dùng chung phải lập (D2-189 §1).
+                `check-wake-paths.py` (**331** ca) + lớp dep-info `check-wake-depinfo.py`
+                (**52** ca); "thường"/"`--strict`"/"dep-info" là **ba lượt kiểm thuộc hai cơ chế**,
+                **có thành phần dùng chung** — **10 thành phần** đã lập (KT-240), **5 chỗ thiếu
+                selftest chéo** (S1 một phần, S2 nhánh `match`, S3 UFCS/fn-pointer, S7 phạm vi,
+                S8 `feature="ktest"`).
 HƯỚNG ĐÓNG    : **D2-187** — **thu hẹp API** để đường gọi sai **không biểu diễn được** (kiểu
                 đích chuyển trạng thái **loại trừ `Ready`**; primitive ghi trạng thái thô sau
                 **ranh giới riêng tư hẹp**; compiler cưỡng chế, không chỉ checker tự xác nhận).
