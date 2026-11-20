@@ -226,3 +226,27 @@ payload với `KT77_SEND_DELAY=0.05` — shell U-mode của ảnh sản phẩm k
 dòng `help` đầu tiên tới **trước** khi shell sẵn sàng. **Không** phải lỗi sản phẩm: `ls`/`cat`/`exit`
 xanh 3/3 lần. Đã sửa: `KT251_SEND_DELAY` (mặc định **0,5 s**) — chạy lại **3 lần × smp 1,2**:
 **6/6 đạt đủ 5 phép kiểm**. Đây là **tham số thời điểm bơm**, không phải ngưỡng đạt.
+
+---
+
+## Phụ lục 3 — đo lại S1 trên HEAD **sau vòng 4** (`a52a1e3e`, 2026-11-21 06:55 JST)
+
+`build-inputs` đổi lần nữa (thêm `virtio-gpu`, `dns`, `smp`/`gic`/`shootdown`, `idt`/`tss` x86_64).
+
+```text
+REPRO … sha256=6f492f4967e412c142125d06df6ebef1efe797349311fab1645735f37177974f size=213632
+       algo=kt134-v4 inputs=0fa34f818a29c399 dirty=0 rev=a52a1e3ebe1e build=f861bd283066120f text=131728
+```
+
+| Phép đo | smp 1 | smp 2 |
+|---|---|---|
+| `shell>` | 4 dòng | 4 dòng |
+| `help cmds=` | **17** | **17** |
+| `ls n=2 path=/` | 1 | 1 |
+| `cat ok` | 1 | 1 |
+| `exit code=0` | 1 | 1 |
+| `REV-GATE` | **ACCEPT** (`inputs=0fa34f81…`, `count=283`) | **ACCEPT** |
+
+**`build=f861bd283066120f` + `text=131728` trùng cả bốn lần đo** (trước cuối tuần, sau vòng 1, 2, 4)
+⇒ mã sản phẩm **không đổi** qua 21 task; chỉ dòng `# build:` (đầu vào) đổi. Log:
+[`kt251d-s1-smp1.log`](kt251d-s1-smp1.log), [`kt251d-s1-smp2.log`](kt251d-s1-smp2.log).
