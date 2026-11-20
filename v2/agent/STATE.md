@@ -4,56 +4,29 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 sau D2-187..D2-193 ===
-HEAD          : `a2e18cdf` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
-BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0`.
-ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
-                `build=b08c5c57cdbdb156`, `inputs=43df126a4a6702ec`, `dirty=0`; `data+bss=224288`,
-                trần `262144` (không nới).
-K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210). **Phạm vi**: riscv64/QEMU, đúng các
-                giới hạn đã ghi. **D2-191**: nếu đợt sửa API làm đổi đầu vào tạo ảnh ⇒ **phải
-                build ảnh mới và đo lại K6**, không ghép bằng chứng ảnh cũ.
-CỔNG          : `gate --fast` **PASS** trên `a2e18cdf` (17 m 12 s, **52** bước OK,
-                `JOURNAL/kt239-logs/kt239-gate-pass.log`) — **gate trên commit cuối** sau khi
-                tích hợp KT-237/238/239/240 (đúng D2-191 §3). Gate cũ trên `a08bf042` giữ làm
-                lịch sử (`JOURNAL/kt231-logs/kt231-gate-pass.log`).
-TASK          : `./v2/bin/v2 status` ⇒ **DONE=211 READY=0 BLOCKED=0 REVIEW=2**. KT-237/238/239/240 đều DONE.
-                REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
-LUẬT WAKE      : **CHƯA ĐÓNG** — KT-184/KT-194 giữ **REVIEW** (D2-190: không đóng bằng số
-                selftest hay một vòng reviewer không tìm thấy lỗi).
-                **Ba đường ĐANG CHẶN NGHIỆM THU (P0, không phải "nợ không chặn")**:
-                  **WB-16** `Ready` qua helper/const/static/closure/hàm trả về (6 dạng)
-                  **WB-17** `transition_tcb` làm fn-pointer / generic `F: Fn` / trait object / UFCS
-                  ~~**WB-18** crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR`~~
-                  **WB-18 ĐÃ ĐÓNG (KT-238)** — phạm vi sinh từ `cargo metadata` (22 crate bảo vệ
-                  / 1 từ chối rõ), lớp 2 bắt `E_DEPINFO_WAKE` tại `out/evil.rs:3`.
-                Cả ba có repro **biên dịch được** (`cargo check` RC=0) mà **cả hai cơ chế kiểm
-                đều XANH**. Registry đầy đủ 18 đường: `v2/agent/BYPASS-REGISTRY.md` (mã `WB-NN`).
-                **Hai cơ chế kiểm** (D2-189 — **không** phải "ba lớp độc lập"): lớp tĩnh
-                `check-wake-paths.py` (**331** ca) + lớp dep-info `check-wake-depinfo.py`
-                (**52** ca); "thường"/"`--strict`"/"dep-info" là **ba lượt kiểm thuộc hai cơ chế**,
-                **có thành phần dùng chung** — **10 thành phần** đã lập (KT-240), **5 chỗ thiếu
-                selftest chéo** (S1 một phần, S2 nhánh `match`, S3 UFCS/fn-pointer, S7 phạm vi,
-                S8 `feature="ktest"`).
-HƯỚNG ĐÓNG    : **D2-187** — **thu hẹp API** để đường gọi sai **không biểu diễn được** (kiểu
-                đích chuyển trạng thái **loại trừ `Ready`**; primitive ghi trạng thái thô sau
-                **ranh giới riêng tư hẹp**; compiler cưỡng chế, không chỉ checker tự xác nhận).
-                **D2-188** — phạm vi bảo vệ **sinh từ `cargo metadata`**, không dùng ba đường
-                dẫn cố định; tệp rustc nạp phải **kiểm hoặc từ chối rõ**, không "cảnh báo rồi
-                PASS". **D2-189** — giữ dep-info bắt buộc; **chưa** duyệt `cargo expand` vào cổng.
-ĐỢT NÀY       : **D2-192** — bốn luồng A/B/C/D, tối đa 4 sub-agent, worktree riêng, **chỉ lead
-                tích hợp**, reviewer **không** nghiệm thu phần mình viết, gate/đo nặng **độc
-                quyền**, hết ngân sách ⇒ bàn giao + ghi blocker, **không** vòng vá vô hạn.
-                **Không** đổi ABI/spec, **không** thêm tính năng sản phẩm.
-CHƯA MỞ       : **K4' bước 3** — chưa mở triển khai (được chuẩn bị kế hoạch, không sửa mã nền
-                tảng mới). **K5'** — chưa mở triển khai tiếp; kết quả M2 giữ nguyên phạm vi
-                host-testable. **Phát hành v2.0** — chưa phê duyệt.
-NỢ / BLOCKED  : **BLOCKED=0**. Nợ **không chặn**: K4' chưa đạt (mới bước 1–2); K5' chưa mở;
-                **N1 "600 boot x86_64" ở K5'** (D2-149) — **chưa** đóng toàn bộ; C3 aarch64
-                (28/31 stub host chưa kiểm); **DEBT-KT227-1** (`v2/lib` ngoài luật token lớp 1 —
-                không nguy hiểm); B4b `#[cfg(any())] mod`; B17 OUT_DIR; `:expr` passthrough;
-                `virtio_` tiền tố tên tệp; bash 3.2 SIGTRAP/SIGSEGV đã vá (KT-207, KT-221) nhưng
-                gốc cần bash ≥ 4.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 19:40 (KT-242) ===
+HEAD          : `21cc75cd` (`main`, **đã push**). Cây sạch (`dirty=0`).
+BUILD-INPUTS  : **234 mục**, dấu vân tay **`54f3b59fc08f3221`**, `dirty=0`
+                (đổi vì toolchain 1.100.0; trước KT-242: `71d32c46b1939fe3`).
+TOOLCHAIN     : **Rust 1.100.0** — ghim ở `v2/rust-toolchain.toml`, `v2/kernel/rust-toolchain.toml`,
+                `rust-version` (`v2/Cargo.toml`), `v2/tools/repro-build.sh`,
+                `v2/tools/repro-build-windows.ps1`.
+ẢNH SẢN PHẨM  : `d915b977edbdae4661a3bb31e4aa7ec33f8e9d703bbba2c7f88069f200e541dc` (191 288 B,
+                `# build: algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0`), build trong
+                `/tmp/kt242-tc`. **Nợ P20**: sha256 **phụ thuộc thư mục build** (cây chung build
+                ra `746acb05…`); danh tính bền là dòng `# build:` (giống nhau mọi lần build).
+K6            : **đo lại đủ 5 hạng mục trên ảnh `d915b977…`** (2026-11-20): ktest **21/21**,
+                persist **PASS**, conformance **61/61**, soak **1000/1000**, L1 400k **4/4**.
+                Ánh xạ hợp đồng: **C1..C8 phủ**; **N1..N7 và S1 GIỮ MỞ** (không đo lại, trạng thái
+                cũ giữ nguyên). Log: `v2/agent/JOURNAL/kt242-logs/` (+ `SHA256SUMS`).
+CỔNG          : `gate --fast` (**T2**, 53 bước) **PASS** trên `c6127fa0` (684,6 s).
+                `gate --dev` (**T1**, 46 bước + 8 bỏ qua) **PASS** trên `21cc75cd` (433,4 s).
+                T1 **không** phải full gate — xem `KE-HOACH-CUOI-TUAN-2026-11-20.md` §2.
+TASK          : KT-241 (API `NonReadyTarget`) **đã hiện thực + đã hợp nhất**, đang **nghiệm thu**
+                (ma trận tấn công 27 ô: 19/27 đã chạy; 8 ô D5, E1–E7 đang chạy).
+                KT-184/KT-194 giữ **REVIEW** (luật wake; WB-16/WB-17 chưa đóng).
+CUỐI TUẦN    : kế hoạch `KE-HOACH-CUOI-TUAN-2026-11-20.md`; 4 luồng sub-agent (KT-241, review
+                wake, C/P3, L1+K4'/K5' design). Hạn bàn giao **09:00 JST thứ Hai 23/11/2026**.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
