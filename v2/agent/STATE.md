@@ -4,32 +4,29 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 02:45 (cuối tuần KT-243..KT-252) ===
-HEAD          : `6309b6a6` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
-CỔNG          : **T2** `gate --fast` **PASS 57/57** trên `6309b6a6` (**493,1 s**) — có bước mới
-                `QEMU aarch64` (56) và `QEMU virtio-net` (57).
-                **T1** `gate --dev` **PASS** trên `1f89f81a` (**281,5 s**; bước 58 QEMU smoke).
-BUILD-INPUTS  : **257 mục**, dấu vân tay **`f4934dc81f0c903e`**, `dirty=0` (đổi so với
-                `54f3b59fc08f3221` vì thêm `vifast-net` + `vifast-kbin-aarch64`).
-ẢNH SẢN PHẨM  : `e78f58d6d99c140aa6dccae283c3c921d0652881bd5f8259a61455e9421fcf1f` (213 632 B,
-                `# build: algo=kt134-v4 inputs=f4934dc81f0c903e dirty=0`, `build=f861bd283066120f`,
-                `text=131728`). **Nợ P20** giữ nguyên: sha phụ thuộc thư mục build + dòng `# build:`.
-AARCH64       : **boot thật** `# viFastOs aarch64: boot ok`; vector 16 ô + `brk #0` (`ec=0x3c`);
-                **MMU bật** (TCR→MAIR→TTBR0→SCTLR→ISB), probe VA `0x5000_0000` đọc ra magic ⇒
-                translation thật; `.data+.bss` **140 KiB** (trần 256 KiB); runner `run-aarch64.sh`
-                **7/7** + TAP 5/5 + 5 ca âm. **Chưa** có smp>1, soak, U-mode (B3.4–B3.7 hoãn).
-MẠNG          : **có mạng thật** — `dhcp ip=10.0.2.15 gw=10.0.2.2`, `arp gw=52:55:0a:00:02:02`,
-                `ping 10.0.2.2 ok n=3`; 7 TAP + 2 ca âm; codec ở `vifast-net` (58 test host),
-                driver ở `virtio_net` (1.074 dòng sau de-dup).
-K6            : **S1 = ĐẠT** — đo lại trên HEAD cuối: ảnh `e78f58d6…`, smp 1 và 2, `shell>` 4 dòng,
-                `help cmds=17`, `ls n=2 path=/`, `cat ok bytes=79`, `exit code=0`, `REV-GATE ACCEPT`.
-                `K6-DOD.md` §3.2 đã cập nhật; log `JOURNAL/kt251b-s1-smp{1,2}.log`.
-TASK          : **KT-243..KT-252 + KT-246b DONE** (xem `QUEUE.md`). **KT-184/KT-194 vẫn REVIEW** —
-                KT-252 tìm + vá **WB-20** (cửa thứ bảy qua trùng tên) nhưng D2-190 chưa đủ điều kiện.
-NỢ MỞ         : DEBT-KT227-1 (`v2/lib` ngoài luật token `wake`, latent); L2 (ba mẫu phạm vi vênh);
-                giả định "build sản phẩm không có `--cfg test`" chưa kiểm máy; closure trong thân cửa;
-                P20; K4' B3.4–B3.7 (Q2/Q4/Q6 hoãn); K5'.
-HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở K5', không v2.0, không sửa `spec/`.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 04:05 (vòng 2 cuối tuần) ===
+HEAD          : `ebe07582` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
+CỔNG          : **T2** `gate --fast` **PASS 62/62** trên `ebe07582` (**571,7 s**).
+                **T1** `gate --dev` **PASS** trên `ebe07582` (**299,5 s**).
+                Bước mới: 56 aarch64 (T1+T2), 57 virtio-net (T2), 58 cfg-test (T2),
+                59 x86_64 (T1+T2), 60 virtio-input (T2), 61/62 selftest validator (T1+T2),
+                63 QEMU smoke (T1).
+BUILD-INPUTS  : đổi (thêm `vifast-kbin-x86_64`, `virtio-input`, `wake_scope.py`) — **phải đo lại**
+                trước khi dùng bằng chứng ảnh cũ.
+AARCH64       : boot + vector + **MMU** + **nửa cao/physmap** (KT-253: `SplitMmu` định tuyến theo VA,
+                16 ca host, TAP 7/7, 3 đột biến). `VSpace` thật (KT-254) đang làm.
+X86_64        : **boot thật** `# viFastOs x86_64: boot ok` — long mode (`lma=1`), PVH
+                (`pvh_magic=0x336ec578`), COM1, identity map 512 trang; runner 7/7 + 5 ca âm.
+MẠNG          : virtio-net + DHCP/ARP/ICMP (KT-244/245/246/246b) — **vẫn xanh** sau vòng 2.
+BÀN PHÍM      : virtio-input (KT-255) — `sendkey a` ⇒ `ascii=0x61`, `shift-a` ⇒ `0x41`, `f1` ⇒ none;
+                30 test host, 15 kiểm `--red-selftest`, 5 TAP + ca âm.
+LUẬT WAKE     : KT-256 — **một** phạm vi từ `cargo metadata` (`wake_scope.py`), đóng DEBT-KT227-1
+                bằng ca canh `E_SCOPE_LIB_CORE`, kiểm máy `--cfg test` (`check-no-cfg-test.py`).
+                Selftest: lớp tĩnh **420**, dep-info **67**, cfg-test **10**. **KT-184/194 vẫn REVIEW**.
+TASK          : KT-243..KT-257 DONE (trừ KT-254 đang chạy). **KT-184/KT-194 REVIEW**.
+NỢ MỞ         : P20; K4' B3.5–B3.7 (Q2/Q6 hoãn); K5' đầy đủ; L2 đã đóng nhưng cần vòng tấn công mới
+                trên HEAD sau KT-256 (D2-190 mục 5); TCP/socket (N1); virtio-gpu.
+HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0, không sửa `spec/`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
