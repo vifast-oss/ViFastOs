@@ -16,6 +16,10 @@
 //!   `FMASK`, `PAT`, …) — bước M4/M7 sẽ nạp;
 //! - [`calling`]: bảng thanh ghi **System V AMD64 ABI** + **đề xuất** ánh xạ syscall ViFastOs
 //!   (`syscall` vs `int 0x80`) — bản nháp cho M7, **chưa** phải ABI.
+//! - [`serial`] (KT-257): dữ liệu COM1 16550 tại `0x3F8` — offset thanh ghi, bit `LSR.THRE/TEMT`,
+//!   `divisor()` cho 115200 8N1, **thứ tự** chuỗi khởi tạo;
+//! - [`boot`] (KT-257): dữ liệu đường boot — entry bảng trang 2 MiB, thứ tự bật long mode, GDT
+//!   tối thiểu, header multiboot2 và note PVH.
 //!
 //! # Crate này **không** làm gì
 //!
@@ -23,10 +27,17 @@
 //! `syscall`/`sysret` thật, không tuyên bố K5' đạt — D2-163. Bước M3 mới là entry + GDT/IDT/TSS;
 //! M4 mới bật paging thật; M7 mới mở `spec/` `[calling.x86_64]` theo khuôn KT-05.
 //!
-//! # Vì sao `forbid(unsafe_code)`
+//! KT-257 thêm **dữ liệu** cho bước boot đầu tiên ([`serial`], [`boot`]) và **asm đặc quyền**
+//! ([`asm`]); phần `_start` 32-bit + bật long mode vẫn nằm ở crate ảnh `vifast-kbin-x86_64`
+//! (`global_asm!` không cần `unsafe`).
 //!
-//! Bước M2 là **hợp đồng dữ liệu**; `unsafe` chỉ được phép trong danh sách đóng D2-17 và bước
-//! M2 **không** cần. `forbid` (không phải `deny`) để không ai `allow` cục bộ mà lọt.
+//! # Vì sao `deny(unsafe_code)` (không còn `forbid`)
+//!
+//! Bước M2 là **hợp đồng dữ liệu** và **không** cần `unsafe`. KT-257 thêm [`asm`] — mô-đun duy
+//! nhất có asm đặc quyền (`in`/`out`/`mov crN`/`rdmsr`/`hlt`), đúng danh sách đóng D2-17 cho
+//! `kernel/vifast-plat-*`. Vì `forbid` **không thể** bị `allow` ở module con, gốc crate đổi sang
+//! `deny` và **chỉ** [`asm`] `#![allow(unsafe_code)]` — mọi module khác vẫn bị `deny` cưỡng chế
+//! (cùng khuôn `vifast-plat-aarch64`, KT-167).
 //!
 //! ```text
 //! cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-x86_64
@@ -34,12 +45,15 @@
 //! ```
 
 #![no_std]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
+pub mod asm;
+pub mod boot;
 pub mod calling;
 pub mod control;
 pub mod format;
 pub mod mmu;
+pub mod serial;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-257 (K5' bước 1) — ảnh boot **x86_64** đầu tiên của ViFastOs.
+#
+# Phạm vi: linker script + multiboot2 header + PVH note + `_start` 32-bit + bảng trang long mode
+# + COM1 + ACPI shutdown. **Không** IDT/GDT đầy đủ (chỉ GDT tối thiểu để vào long mode), **không**
+# APIC, **không** timer, **không** U-mode, **không** PCI, **không** SMP — đó là K5' đầy đủ.
+#
+# Vì sao **không** feature như `vifast-kbin-riscv64`: bước 1 mới có **một** ảnh; tách ảnh
+# test/sản phẩm là việc của bước sau (D2-08 vẫn áp: ảnh này không chứa harness nào).
+#
+# Feature `wrong-marker` **chỉ** để runner `v2/test/boot/run-x86_64.sh` có **ca âm bằng ảnh thật**:
+# nó đổi đúng một chuỗi marker, mọi thứ khác giữ nguyên. Không phải feature sản phẩm.
+[package]
+name = "vifast-kbin-x86_64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ảnh boot x86_64 K5' bước 1 (KT-257): multiboot2 + PVH note + _start 32-bit + long mode + COM1 + ACPI halt"
+
+[[bin]]
+name = "vifast-kbin-x86_64"
+path = "src/main.rs"
+
+[features]
+# Ca âm của runner: ảnh in marker **sai** để chứng minh bộ kiểm không phải dấu cao su.
+wrong-marker = []
+
+[dependencies]
+# Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
+# thanh ghi, entry bảng trang, GDT, header) lấy từ crate arch để test host chốt đúng giá trị.
+vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }

@@ -55,6 +55,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vifast-kbin-x86_64"
+version = "0.1.0"
+dependencies = [
+ "vifast-plat-x86_64",
+]
+
+[[package]]
 name = "vifast-net"
 version = "0.1.0"
 
