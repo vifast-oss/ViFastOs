@@ -135,3 +135,30 @@ $ qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -nographic -kernel <elf> -
    `PANIC` (fail-loud), không ghi ngoài arena.
 6. **`free_frame` là no-op** trên arena boot — ghi rõ trong `bootmem.rs`; `destroy` không được
    gọi trên bảng của kernel.
+
+## 6. Bổ sung sau KT-250 — arena 64 → 32 frame để đạt bất biến **I7** (`.data + .bss ≤ 256 KiB`)
+
+Khi kiểm budget ở KT-250 (bất biến I7 của `kt242-k4-buoc3-design.md` §3: trần K0.5 áp cho **mọi**
+bước), ảnh aarch64 **vượt** trần:
+
+```text
+$ xcrun llvm-objdump -h <elf> | awk '$2==".data"||$2==".bss"{print $2, $3}'
+.data 00000008
+.bss  00043000          # 268 KiB — VƯỢT trần 262144 B
+```
+
+Nguyên nhân: arena bảng trang **64** frame (256 KiB) + trang probe (4 KiB). Đo được boot chỉ dùng
+**8** frame ⇒ giảm arena còn **32** frame (128 KiB, vẫn **4×** headroom cho B3.4):
+
+```text
+$ xcrun llvm-objdump -h <elf> | awk '$2==".data"||$2==".bss"||$2==".stack"{print $2, $3}'
+.data  00000008
+.bss   00023000         # 140 KiB tổng .data+.bss — ĐẠT
+.stack 00010000         # NOLOAD, báo riêng (D2-72 Q5) — không cộng vào trần
+```
+
+Đo lại sau khi giảm (log [`kt249-mmu.log`](kt249-mmu.log), cập nhật): `frames=32 used=8`,
+`pages=58` (ảnh nhỏ hơn), `on=1`, `same=1`, `match=1`, `qg_boot rc=0`, TAP 5/5.
+
+**Không nới ngưỡng**: trần giữ nguyên 262144 B; thứ được sửa là **kích thước arena** (một hằng
+của ảnh), không phải ngưỡng của cổng.

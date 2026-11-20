@@ -30,13 +30,17 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::mmu::TableMemory;
 
-/// Số frame 4 KiB của arena bảng trang boot: **64** (256 KiB).
+/// Số frame 4 KiB của arena bảng trang boot: **32** (128 KiB).
 ///
 /// Đo được trên ảnh KT-249: identity map kernel + UART + GIC + trang probe dùng **8** frame
-/// (gốc mức 0, mức 1, hai bảng mức 2, ba bảng mức 3, một bảng mức 3 cho trang probe). 64 là
-/// biên rộng rãi cho bước 3; vượt thì `alloc_frame` trả `None` và boot **PANIC** (fail-loud),
-/// không ghi ra ngoài arena.
-pub const BOOT_ARENA_FRAMES: usize = 64;
+/// (gốc mức 0, mức 1, hai bảng mức 2, ba bảng mức 3, một bảng mức 3 cho trang probe) ⇒ 32 là
+/// **4×** headroom cho bước sau (B3.4 physmap/nửa cao). Vượt thì `alloc_frame` trả `None` và boot
+/// **PANIC** (fail-loud), không ghi ra ngoài arena.
+///
+/// **Vì sao không phải 64**: bất biến I7 của thiết kế (`kt242-k4-buoc3-design.md` §3) áp trần
+/// K0.5 `.data + .bss ≤ 256 KiB` cho **mọi** bước. Arena 64 frame (256 KiB) + trang probe (4 KiB)
+/// đẩy `.bss` lên **268 KiB** ⇒ vượt trần. Đo lại sau khi giảm: xem journal KT-249 §6.
+pub const BOOT_ARENA_FRAMES: usize = 32;
 
 /// Số entry một frame bảng trang (512 × 8 B = 4 KiB).
 pub const ENTRIES_PER_FRAME: usize = 512;
