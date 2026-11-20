@@ -50,18 +50,28 @@ SECTIONS
         __bss_end = .;
     }
 
-    /* Guard 4 KiB **dưới** stack: tràn stack đi xuống sẽ chạm trang không map (KT-249) thay vì
-       ghi đè `.bss`. Cùng thứ tự với `vifast-kbin-riscv64/linker.ld` (D2-72 Q5). */
-    .stack_guard (NOLOAD) : ALIGN(4K) {
-        __stack_guard_start = .;
-        . += 0x1000;
-        __stack_guard_end = .;
-    }
+    /* **KT-259** — arena stack **per-hart**: mỗi hart một record `guard 4 KiB | stack 64 KiB`
+       (`HART_STRIDE = 0x1_1000`, `MAX_HARTS = 8` ⇒ `0x8_8000` = 544 KiB), khớp TUYỆT ĐỐI với
+       `vifast_plat_aarch64::smp` (ảnh PANIC nếu `__smp_stacks_end - __smp_stacks_start` lệch).
 
-    .stack (NOLOAD) : ALIGN(16) {
+       Vì sao NOLOAD: cùng lý do `.stack` cũ — không nằm trong `filesz` của LOAD segment nhưng
+       vẫn chiếm địa chỉ trong `[__kernel_start, __kernel_end)` nên MMU của KT-249 map cả khoảng
+       này và stack dùng được sau khi bật (bài học KT-46 bên riscv64: NOLOAD **phải** nằm trong
+       vùng được map).
+
+       Hart 0 dùng **slot 0**: `__stack_bottom`/`__stack_top` trỏ vào slot ấy nên `_start` và
+       bước nhảy nửa cao của KT-253 **không đổi**. `__smp_stacks_start` là gốc arena cho
+       `_start_secondary` (hart 1..7) và cho `smp::HartStacks` (kiểm bố cục lúc chạy). */
+    .smp_stacks (NOLOAD) : ALIGN(4K) {
+        __smp_stacks_start = .;
+        /* slot 0 = hart 0: guard | stack */
+        . += 0x1000;
         __stack_bottom = .;
         . += 0x10000;
         __stack_top = .;
+        /* slot 1..7 — cùng khuôn record, chỉ cấp địa chỉ (NOLOAD). */
+        . += 7 * 0x11000;
+        __smp_stacks_end = .;
     }
 
     __kernel_end = .;

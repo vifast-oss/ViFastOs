@@ -1,41 +1,49 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Ảnh boot **aarch64** của ViFastOs — KT-247 (B3.1) + KT-248 (B3.2) + KT-249 (B3.3) +
-//! KT-253 (B3.4).
+//! KT-253 (B3.4) + KT-254 (B3.5) + KT-259 (B3.9: **2 hart**).
 //!
 //! # Đường boot
 //!
 //! ```text
-//!   qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -nographic -kernel <elf>
+//!   qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 2 -kernel <elf>
 //!        │
 //!        ├─ QEMU nạp ELF tại 0x4008_0000 (linker.ld), nhảy vào _start ở EL1, x0 = địa chỉ DTB
-//!        ├─ _start: sp ← __stack_top; zero .bss; gọi kmain
+//!        ├─ _start: sp ← __stack_top (slot 0 arena per-hart); zero .bss; gọi kmain
 //!        ├─ kmain (VA **thấp**, identity): PL011 → VBAR_EL1 → brk #0 → dựng **hai** bảng trang
 //!        │     (nửa thấp + nửa cao) → bật MMU (TCR→MAIR→TTBR0→TTBR1→SCTLR→ISB)
 //!        ├─ jump_high: sp ← VA nửa cao của stack, br tới VA nửa cao của high_entry
-//!        ├─ high_entry (VA **nửa cao**): đo PC thật + physmap, phát TAP 6/7, in marker
+//!        ├─ high_entry (VA **nửa cao**): đo PC thật + physmap, phát TAP 6/7
+//!        ├─ VSpace thật (KT-254): map/walk/activate/unmap + fault `FaultKind::Vm` — TAP 8/9
+//!        ├─ KT-259: GICv3 (distributor + redistributor hart 0) → công bố thanh ghi MMU →
+//!        │     PSCI `CPU_ON(1, _start_secondary, 1)` → hart 1 online (TAP 10) → SGI 0 làm IPI
+//!        │     (TAP 11) → cả hai hart in hart id (TAP 12)
 //!        └─ debug_halt: PSCI SYSTEM_OFF (hvc #0, x0 = 0x8400_0008) ⇒ QEMU thoát mã 0
 //! ```
 //!
-//! # KT-253 — nửa cao (`TTBR1_EL1`) + physmap (B3.4, D2-199)
+//! # KT-259 — hai hart (B3.9, D2-202)
 //!
-//! - **Hai** `PageTable` trên **một** arena chia sẻ (`bootmem::shared_boot_memory`), gói trong
-//!   [`SplitMmu`] định tuyến theo VA — **không** chép walk/map, **không** đổi trait (D2-199).
-//! - Bảng **nửa thấp** (`TTBR0_EL1`): identity map ảnh + UART + GIC + trang probe (KT-249).
-//! - Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh tại [`KERNEL_HIGH_BASE`] + **physmap**
-//!   `PHYSMAP_BASE + PA` cho vùng ảnh.
-//! - Sau khi bật MMU, ảnh **nhảy** sang VA nửa cao: PC và SP đều ở nửa cao, `VBAR_EL1` được cài
-//!   lại bằng VA nửa cao của bảng vector. Bằng chứng: `# high: va=… pa=… match=1` (PC thật đọc
-//!   bằng `adr`) và `# physmap: pa=… read=… match=1` (đọc PA qua cửa sổ physmap).
+//! - **`_start_secondary`** (asm): hart 1 khởi động với MMU **tắt** (PSCI reset state) nên nó
+//!   chạy ở **PA**; nó đọc `MPIDR_EL1` (**không** tin `x0`/context id), tự chọn stack **per-hart**
+//!   trong arena `__smp_stacks_start` (guard 4 KiB + stack 64 KiB mỗi hart), bật `CPACR_EL1`
+//!   (bài học KT-254: compiler phát NEON) rồi gọi [`kmain_secondary`].
+//! - **[`kmain_secondary`]** nạp **đúng** bộ `TCR/MAIR/TTBR0/TTBR1/SCTLR` mà hart 0 đã công bố
+//!   (dùng lại [`MMU_ENABLE_SEQUENCE`] — **một** định nghĩa chuỗi), cài `VBAR_EL1` VA thấp, khởi
+//!   tạo GICv3 **của chính nó** (wake redistributor, enable `SGI 0`, `ICC_*_EL1`), in
+//!   `# smp: hart=1 online`, rồi chờ IPI.
+//! - **GICv3**: distributor `0x0800_0000` (`ARE_NS | EnableGrp1NS`), redistributor
+//!   `0x080A_0000 + hart × 0x2_0000`; IPI = `SGI 0` gửi bằng `ICC_SGI1R_EL1`, nhận ở ô vector
+//!   **IRQ EL1h** (slot 5) — handler đọc `ICC_IAR1_EL1`, in, đếm, ghi `ICC_EOIR1_EL1`.
+//! - **Đo được**: TAP 10 (`hart 1 online`), TAP 11 (`ipi 0->1`), TAP 12 (`both harts report`).
 //!
-//! **Giới hạn đã biết (ghi rõ, không giấu)**: ảnh vẫn **liên kết ở PA** (`0x4008_0000`), nên
-//! truy cập **dữ liệu** của mã sau khi nhảy vẫn dùng VA thấp qua `TTBR0` (identity) — chỉ
-//! **instruction fetch**, **stack** và **bảng vector** chạy ở nửa cao. Liên kết toàn ảnh ở VMA
-//! nửa cao (LMA thấp) là bước riêng; B3.4 chỉ yêu cầu "kernel chạy nửa cao" theo nghĩa PC/SP.
+//! **Giới hạn đã biết (ghi rõ, không giấu)**: chỉ **2 hart**; **không** smp 4, **không** timer
+//! per-hart, **không** preemption, **không** U-mode; hart 1 chạy ở **VA thấp** (hart 0 ở nửa cao)
+//! nhưng **cùng** bảng trang `VSpace` — không có "mỗi hart một address space". **Không** tuyên bố
+//! K4' đạt (tiêu chí K4' là "như K3": smp 1|2|4 + soak 1.000).
 //!
-//! # Phạm vi (D2-195 + D2-199)
+//! # Phạm vi (D2-195 + D2-199 + D2-202)
 //!
-//! Bước 3 mở **B3.1–B3.4 + B3.8**. Ảnh này có B3.1–B3.4; **chưa** `VSpace` (B3.5/KT-254),
-//! **chưa** TLBI shootdown (B3.6), **chưa** U-mode (B3.7). **Không** tuyên bố K4' đạt.
+//! Bước 3 mở **B3.1–B3.5 + B3.8 + B3.9**. Ảnh này có B3.1–B3.5 và B3.9; **chưa** TLBI shootdown
+//! (B3.6), **chưa** U-mode (B3.7). **Không** tuyên bố K4' đạt.
 
 #![no_std]
 #![no_main]
@@ -49,14 +57,23 @@ use vifast_plat_aarch64::boot_mmu::{
 };
 use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
+use vifast_plat_aarch64::gic;
 use vifast_plat_aarch64::mmu::{MapError, TableMemory};
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
+use vifast_plat_aarch64::smp;
 use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
 use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
 use vifast_plat_aarch64::{asm, debug_halt, pl011, tlb};
 use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
+
+/// **KT-259**: trạng thái SMP + `smp_bringup` + `kmain_secondary` nằm ở tệp riêng (luật R1:
+/// tệp trong `kernel/` ≤ 1.500 dòng). Tên `smpboot` để **không** đụng `vifast_plat_aarch64::smp`.
+mod smpboot;
+
+/// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
+const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
 
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-aarch64.sh`, KT-250) so **nguyên
 /// văn** dòng này và đòi nó xuất hiện **đúng một lần**.
@@ -102,7 +119,46 @@ global_asm!(
     "3:",
     "wfi",
     "b 3b",
+    // ---------------------------------------------------------------------------------------
+    // KT-259 — điểm vào của **hart phụ** (PSCI `CPU_ON` nhảy vào đây).
+    //
+    // Trạng thái do PSCI đặt: EL1h, `DAIF` mask đủ, **MMU tắt**, cache tắt, `x0 = context_id`.
+    // Vì MMU tắt nên mọi địa chỉ ở đây là **PA** — và ảnh liên kết tại PA (`0x4008_0000`) nên
+    // `adrp`/`add` cho đúng PA của symbol (không cần bảng trang để chạy đoạn này).
+    //
+    // Hart id lấy từ `MPIDR_EL1`, **không** từ `x0`: `x0` là giá trị hart gọi tự đặt, sai thì
+    // hart phụ chạy trên stack của hart khác mà không ai biết. `x0` được chuyển tiếp vào
+    // `kmain_secondary` như `ctx` để **so** và in bằng chứng.
+    ".globl _start_secondary",
+    "_start_secondary:",
+    // 1. hart id = Aff0 của MPIDR_EL1 (topology phẳng của QEMU virt)
+    "mrs x19, mpidr_el1",
+    "and x19, x19, #0xff",
+    // 2. sp = __smp_stacks_start + (hart + 1) * HART_STRIDE  (đỉnh slot của **hart này**)
+    "adrp x9, __smp_stacks_start",
+    "add x9, x9, :lo12:__smp_stacks_start",
+    // `mov` không mã hoá được immediate 16-bit lệch (0x1_1000) ⇒ dựng bằng `movz` + `movk`.
+    "movz x10, #{stride_lo}",
+    "movk x10, #{stride_hi}, lsl #16",
+    "madd x9, x19, x10, x9",
+    "add x9, x9, x10",
+    "mov sp, x9",
+    // 3. FP/SIMD **trước** mọi mã Rust — compiler phát NEON cho hàm lớn (bài học KT-254:
+    //    `CPACR_EL1.FPEN = 0` ⇒ Undefined Instruction EC=0x07).
+    "mov x9, #{cpacr}",
+    "msr cpacr_el1, x9",
+    "isb",
+    // 4. vào Rust: x0 = hart (từ MPIDR), x1 = context_id (PSCI chuyển nguyên văn)
+    "mov x1, x0",
+    "mov x0, x19",
+    "bl kmain_secondary",
+    // `kmain_secondary` không trả về; nếu có thì dừng an toàn.
+    "7:",
+    "wfi",
+    "b 7b",
     cpacr = const vifast_plat_aarch64::sysreg::CPACR_EL1_FP_SIMD,
+    stride_lo = const (smp::HART_STRIDE & 0xFFFF),
+    stride_hi = const (smp::HART_STRIDE >> 16),
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -200,12 +256,22 @@ extern "C" {
     static __kernel_end: u8;
     // Đỉnh stack (cuối `.stack` NOLOAD) — KT-253 dùng để tính SP nửa cao.
     static __stack_top: u8;
+    // **KT-259**: arena stack per-hart (NOLOAD) — `_start_secondary` và `HartStacks` dùng.
+    static __smp_stacks_start: u8;
+    static __smp_stacks_end: u8;
+    /// Điểm vào của hart phụ — chỉ lấy **địa chỉ** (PA) để truyền cho PSCI `CPU_ON`.
+    fn _start_secondary();
 }
 
 /// Địa chỉ bảng vector của ảnh này (VA **thấp** — nơi linker đặt nó).
 fn vector_base() -> u64 {
     core::ptr::addr_of!(__vector_base) as u64
 }
+
+/// Ô vector **IRQ** khi đang ở EL1 dùng `SP_EL0` (`0x080`) — KT-259.
+const IRQ_SLOT_EL1T: u64 = 1;
+/// Ô vector **IRQ** khi đang ở EL1 dùng `SP_ELx` (`0x280`) — ô mà kernel này nhận (EL1h).
+const IRQ_SLOT_EL1H: u64 = 5;
 
 // ---------------------------------------------------------------------------------------------
 // Trạng thái trap đã bắt (in bằng chứng sau khi resume)
@@ -354,8 +420,9 @@ static FAULT_ELR: AtomicU64 = AtomicU64::new(0);
 /// Số ca kiểm TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
 ///
 /// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap) + 2 ca của KT-254 (`VSpace` map/walk/
-/// activate, và fault `FaultKind::Vm` sau `unmap`).
-pub const TAP_TESTS: usize = 9;
+/// activate, và fault `FaultKind::Vm` sau `unmap`) + 3 ca của KT-259 (hart 1 online, IPI 0→1,
+/// cả hai hart báo alive).
+pub const TAP_TESTS: usize = 12;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -404,6 +471,20 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr: u64) -> u64 {
     let esr = Esr::from_bits(esr_raw);
     let ec = esr.ec_raw();
+
+    // ---- KT-259: **IRQ** (ô 1 = EL1t, ô 5 = EL1h). `ESR_EL1` của IRQ là 0 (không có syndrome),
+    // nên phân loại bằng **ô vector**, không bằng `ESR`. Handler đọc `ICC_IAR1_EL1` (nhận ngắt),
+    // in + đếm nếu là `SGI 0`, rồi **bắt buộc** ghi `ICC_EOIR1_EL1` — không ghi thì ngắt không bao
+    // giờ tới lại và phép đo IPI sẽ treo thay vì đỏ.
+    if slot == IRQ_SLOT_EL1T || slot == IRQ_SLOT_EL1H {
+        let intid = gic::ack_irq();
+        if !gic::is_spurious(intid) {
+            smpboot::note_ipi(intid);
+            gic::end_irq(intid);
+        }
+        return 1;
+    }
+
     if esr.ec() == Some(ExceptionClass::Brk64) {
         BRK_COUNT.fetch_add(1, Ordering::Relaxed);
         BRK_SLOT.store(slot, Ordering::Relaxed);
@@ -727,6 +808,23 @@ pub extern "C" fn high_entry() -> ! {
             debug_halt(3)
         }
     };
+    // **KT-259**: vùng **redistributor** GICv3 (`0x080A_0000 + hart × 0x2_0000`) — KT-254 chỉ map
+    // distributor + CPU interface, nên nếu không map thêm ở đây thì lần đọc `GICR_WAKER` đầu tiên
+    // sau `activate` sẽ **translation fault** (đo được khi dựng KT-259: `# trap: … ec=0x25`).
+    // Map cả dải `MAX_HARTS` hart (1 MiB) — cùng một bảng mức 3 với GICD nên **không** tốn frame.
+    let pages_gicr = match map_identity_into(
+        &mut vs,
+        gic::GICR_BASE,
+        gic::GICR_BASE + (smp::MAX_HARTS as u64) * gic::GICR_STRIDE,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: map gicr lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
     // **Một Frame 4 KiB** vào VA người dùng (ngoài RAM, không identity).
     let frame = match Frame::new(probe_pa) {
         Some(frame) => frame,
@@ -751,7 +849,7 @@ pub extern "C" fn high_entry() -> ! {
         console,
         "# vspace: map va=0x{VSPACE_VA:x} pa=0x{probe_pa:x} walk=0x{walk_pa:x} match={} pages_high={pages_high} pages_physmap={pages_physmap} pages_image={pages_image} pages_mmio={}",
         map_ok as u8,
-        pages_uart + pages_gic,
+        pages_uart + pages_gic + pages_gicr,
     );
 
     // `activate`: TTBR0 ← bảng VSpace, TTBR1 ← bảng nửa cao của VSpace (mã hoá bằng `Ttbr`).
@@ -838,6 +936,16 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(5)
     }
 
+    // ---- KT-259 (B3.9): hai hart. Chạy **sau** `activate` để cả hai hart dùng **cùng** bảng
+    // trang `VSpace` (hart 1 nạp đúng `TTBR0/TTBR1` mà hart 0 đã công bố) — nếu chạy trước, hart 1
+    // sẽ ở lại bảng boot trong khi hart 0 đổi sang bảng `VSpace`, tức hai address space khác nhau.
+    let sp_high = asm::read_current_sp();
+    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
+    smpboot::publish_hart0_sp_pa(text_start + (sp_high - KERNEL_HIGH_BASE));
+    if !smpboot::smp_bringup(&mut console) {
+        debug_halt(5)
+    }
+
     // Marker **duy nhất** của ảnh — chỉ in khi **mọi** ca TAP đã xanh (nếu in sớm, một ảnh hỏng
     // vẫn có marker và runner dễ nhận nhầm là boot sạch).
     let _ = pl011::write_str(BOOT_MARKER);
@@ -905,6 +1013,9 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     TEXT_START_PA.store(text_start, Ordering::Relaxed);
     KERNEL_END_PA.store(kernel_end, Ordering::Relaxed);
     VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
+    // **KT-259**: PA của `_start_secondary` — đọc **trước** khi nhảy nửa cao, vì sau đó `adrp`
+    // cho alias nửa cao chứ không phải PA, mà PSCI `CPU_ON` cần **PA** (MMU của hart phụ còn tắt).
+    smpboot::publish_entry_pa(_start_secondary as *const () as u64);
     VSPACE_PROBE_PA.store(
         core::ptr::addr_of!(VSPACE_PROBE.0) as u64,
         Ordering::Relaxed,

@@ -1,6 +1,6 @@
 # K4' bước 3 (phần đầu) — ViFastOs **boot thật trên AArch64** (QEMU `virt`)
 
-Trạng thái: **B3.1–B3.3 + B3.8 (phần đầu) DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
+Trạng thái: **B3.1–B3.5 + B3.8 + B3.9 DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
@@ -19,6 +19,7 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.6 | `TLBI` + shootdown đa hart | — | chưa mở |
 | B3.7 | U-mode + `eret` + `svc` | — | **chặn** (Q2: `spec/abi.toml [calling.aarch64]` chưa mở) |
 | B3.8 | runner QEMU + TAP + ca âm | KT-250 | **DONE (phần đầu)** |
+| B3.9 | **smp 2**: PSCI `CPU_ON` + GICv3 `SGI 0` (IPI) | KT-259 | **DONE** (2 hart; **chưa** smp 4) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
 `cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8).
@@ -26,8 +27,14 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 ## 2. Đường boot
 
 ```text
-qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -nographic -kernel <ELF> -no-reboot
+qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 2 \
+                    -kernel <ELF> -no-reboot
 ```
+
+**`gic-version=3` là bắt buộc từ KT-259**: QEMU `virt` **mặc định GICv2** (`arm,cortex-a15-gic`,
+đo bằng `-M virt,dumpdtb` + `dtc`) — GICv2 **không** có redistributor và **không** có `ICC_*_EL1`
+nên IPI `SGI 0` không thể chạy. Với `gic-version=3`, DTB ghi `arm,gic-v3` với GICD `0x0800_0000`
+và GICR `0x080A_0000 + hart × 0x2_0000`.
 
 - QEMU `virt` nạp **ELF trực tiếp** qua `-kernel` (không cần `Image`, không cần AAVMF).
 - Ảnh link tại **`0x4008_0000`** (RAM `virt` bắt đầu `0x4000_0000`); `ENTRY(_start)`.
@@ -101,14 +108,17 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 5 ca âm
 
 - Dùng `qemu_guard.sh` (process group + timeout + dọn con) — **`perl -e 'alarm N; exec @ARGV'`
   KHÔNG giết được QEMU** (qemu bỏ qua `SIGALRM`).
-- **7/7 kiểm sạch**: ELF (`.text` @ `0x4008_0000`, `.text.vectors` là TEXT, 16 stub đúng offset),
-  boot (TAP 5/5 + marker đúng 1 lần), **5 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai,
-  log rỗng) đều **ĐỎ đúng**.
+- **9/9 kiểm sạch** (KT-259): ELF (`.text` @ `0x4008_0000`, `.text.vectors` là TEXT, 16 stub đúng
+  offset), boot (**TAP 12/12** + marker đúng 1 lần + **4 dòng `# smp:`** đúng một lần mỗi dòng),
+  **7 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai, log rỗng, **thiếu dòng hart 1
+  online**, **IPI in hai lần**) đều **ĐỎ đúng**.
 - Nối vào cổng: bước **56** `QEMU aarch64 (K4' bước 3)` — chạy ở **cả T1 và T2**.
 
 ## 7. Còn thiếu (ghi rõ, không giấu)
 
-1. **smp > 1**: chưa có `_start_secondary`, GICv3, PSCI `CPU_ON` ⇒ TAP mới chạy smp 1.
+1. **smp > 2**: KT-259 mới làm **2 hart** (`_start_secondary` + PSCI `CPU_ON` + GICv3 `SGI 0`).
+   **Chưa** smp 4, **chưa** timer per-hart, **chưa** preemption, **chưa** TLBI shootdown đa hart
+   (B3.6) — nên `unmap` hiện chỉ làm mới TLB **cục bộ**.
 2. **Soak 1.000** boot: chưa chạy (thuộc "như K3").
 3. **U-mode** (B3.7): chặn bởi Q2 — `spec/abi.toml [calling.aarch64]` **chưa mở**.
 4. **Nửa cao/physmap** (B3.4) và **`VSpace`** (B3.5): đang mở (KT-253/KT-254, D2-199).

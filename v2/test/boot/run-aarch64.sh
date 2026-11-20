@@ -21,12 +21,19 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 9 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca VSpace/fault)
+#   EXPECT_TESTS    số ca TAP (mặc định 12 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
+# **KT-259**: QEMU chạy **2 hart** (`-smp 2`) và **GICv3** (`-M virt,gic-version=3`) — mặc định
+# của QEMU `virt` là GICv2 (`arm,cortex-a15-gic`, đo bằng `-M virt,dumpdtb` + `dtc`), không có
+# redistributor/`ICC_*_EL1` nên IPI `SGI 0` không thể chạy. Ngoài TAP, runner còn đòi **đúng một**
+# dòng bằng chứng cho mỗi hart (`# smp: hart=1 online`, `# smp: ipi recv=1`, `# smp: hart=0 alive`,
+# `# smp: hart=1 alive`) — TAP nói phép đo đúng, các dòng ấy nói **hart nào** đã in.
+#
 # **Không** tuyên bố K4' đạt: K4' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000) — bước sau.
-# Runner này chỉ là B3.8 **phần đầu** (một hart, một ảnh, TAP 9 ca sau KT-254).
+# Runner này là B3.8 + B3.9 **phần đầu** (hai hart, một ảnh, TAP 12 ca sau KT-259).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +45,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-9}"
+EXPECT_TESTS="${EXPECT_TESTS:-12}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 
 case "${1:-}" in
@@ -146,8 +153,32 @@ check_elf() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# smp:` (KT-259)
+# Bốn dòng **bằng chứng hart** phải có **đúng một lần** mỗi dòng. Đây là phần "mỗi hart in hart id
+# của mình" của tiêu chí KT-259: TAP nói phép đo đúng, các dòng này nói **hart nào** đã in — một
+# ảnh chỉ chạy hart 0 mà in `ok 10` vẫn bị bắt ở đây.
+#
+# So **chuỗi con** (`grep -Fc`, không phải `-Fxc`): dòng IPI của ảnh là
+# `# smp: ipi recv=1 intid=0` — mang thêm INTID đọc từ `ICC_IAR1_EL1` sau đúng tiền tố mà KT-259
+# yêu cầu. Vẫn đòi **đúng một** dòng khớp, nên in lặp (ca âm g) vẫn đỏ.
+check_smp() {
+    local log="$1" bad=0 line n
+    for line in \
+        "# smp: hart=1 online" \
+        "# smp: ipi recv=1" \
+        "# smp: hart=0 alive" \
+        "# smp: hart=1 alive"; do
+        n="$(grep -Fc "$line" "$log" || true)"
+        if [ "${n:-0}" -ne 1 ]; then
+            echo "# dòng '$line' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        fi
+    done
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
-# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker. In lý do đỏ ra stdout.
+# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:`. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
     local okn notn mn i
@@ -192,6 +223,7 @@ check_log() {
         echo "# log có dòng PANIC"
         bad=1
     fi
+    check_smp "$log" || bad=1
     return "$bad"
 }
 
@@ -258,6 +290,28 @@ selftest_negative() {
         echo "ok $n - ca âm (e): log rỗng ⇒ ĐỎ ($(head -1 "$tmp/e.out"))"
     fi
 
+    # (f) thiếu dòng bằng chứng hart 1 online — ảnh chỉ chạy hart 0
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# smp: hart=1 online' "$good" >"$tmp/f.log" 2>/dev/null || true
+    if check_log "$tmp/f.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/f.out" 2>&1; then
+        echo "not ok $n - ca âm (f): thiếu '# smp: hart=1 online' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (f): thiếu dòng hart 1 online ⇒ ĐỎ ($(head -1 "$tmp/f.out"))"
+    fi
+
+    # (g) dòng IPI xuất hiện **hai** lần — hart 1 nhận hai IPI (hoặc in lặp)
+    n=$((n + 1))
+    cases=$((cases + 1))
+    awk '{print} /^# smp: ipi recv=1/{print}' "$good" >"$tmp/g.log" 2>/dev/null || true
+    if check_log "$tmp/g.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/g.out" 2>&1; then
+        echo "not ok $n - ca âm (g): '# smp: ipi recv=1' hai lần mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (g): IPI in hai lần ⇒ ĐỎ ($(head -1 "$tmp/g.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -305,8 +359,8 @@ i=1
 while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
-    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt -cpu cortex-a72 -m 128M -nographic \
-        -kernel "$IMAGE" -no-reboot; then
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp 2 -kernel "$IMAGE" -no-reboot; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -330,7 +384,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 5))
+    total=$((total + 7))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

@@ -476,6 +476,109 @@ mod imp {
         unsafe { asm!("mrs {}, daif", out(reg) value, options(nostack, preserves_flags)) };
         value
     }
+
+    // ------------------------------------------------------------------ SMP (KT-259)
+
+    /// Đọc `MPIDR_EL1` — **hart id thật** của CPU đang chạy (không tin `x3` của PSCI).
+    pub fn read_mpidr_el1() -> u64 {
+        let value: u64;
+        // SAFETY: `mrs mpidr_el1` chỉ đọc thanh ghi nhận dạng CPU; không truy cập bộ nhớ.
+        unsafe { asm!("mrs {}, mpidr_el1", out(reg) value, options(nostack, preserves_flags)) };
+        value
+    }
+
+    /// Đọc `sp` hiện tại (`mov x, sp`) — bằng chứng "hart này đang chạy trên stack nào".
+    pub fn read_current_sp() -> u64 {
+        let value: u64;
+        // SAFETY: `mov` từ `sp` chỉ đọc thanh ghi; không truy cập bộ nhớ.
+        unsafe { asm!("mov {}, sp", out(reg) value, options(nostack, preserves_flags)) };
+        value
+    }
+
+    /// `PSCI CPU_ON(target_cpu, entry_pa, context_id)` qua `hvc #0` — trả `x0` (mã PSCI).
+    ///
+    /// PSCI v1.x, calling convention 64-bit: `x0 = 0xC400_0003`, `x1 = target_cpu`,
+    /// `x2 = entry_pa`, `x3 = context_id`. QEMU `virt` đặt conduit = **HVC** (DTB `psci.method =
+    /// "hvc"`), nên `hvc #0` là đường đúng; `smc #0` sẽ trap (không có EL3).
+    ///
+    /// Hàm **trả về** mã PSCI (kể cả lỗi) — caller phải kiểm, không giả định đã đánh thức được.
+    pub fn psci_cpu_on(target_cpu: u64, entry_pa: u64, context_id: u64) -> i64 {
+        let rc: i64;
+        // SAFETY: `hvc #0` là lệnh gọi hypervisor hợp lệ ở EL1; bốn thanh ghi tham số do PSCI
+        // quy định. Không đọc/ghi bộ nhớ của kernel.
+        unsafe {
+            asm!(
+                "hvc #0",
+                inout("x0") crate::smp::PSCI_CPU_ON => rc,
+                in("x1") target_cpu,
+                in("x2") entry_pa,
+                in("x3") context_id,
+                options(nostack, preserves_flags),
+            )
+        };
+        rc
+    }
+
+    /// `msr daifclr, #2` — **mở** mask IRQ (`DAIF.I = 0`). Chỉ hart nhận IPI gọi.
+    pub fn daif_clear_irq() {
+        // SAFETY: `daifclr` chỉ đổi mask ngắt của PSTATE của CPU hiện tại.
+        unsafe { asm!("msr daifclr, #2", options(nostack, preserves_flags)) };
+    }
+
+    /// `sev` — đánh thức các CPU đang `wfe` (rào chắn giao tiếp giữa hart).
+    pub fn sev() {
+        // SAFETY: `sev` chỉ phát sự kiện tới các CPU khác; không truy cập bộ nhớ.
+        unsafe { asm!("sev", options(nostack, preserves_flags, nomem)) };
+    }
+
+    /// Ghi `ICC_SRE_EL1` (bật/tắt system register interface của GICv3 CPU interface).
+    pub fn write_icc_sre_el1(value: u64) {
+        // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng.
+        unsafe { asm!("msr icc_sre_el1, {}", in(reg) value, options(nostack, preserves_flags)) };
+    }
+
+    /// Đọc `ICC_SRE_EL1` — bằng chứng `SRE = 1` (nếu 0 thì mọi ghi `ICC_PMR`/`ICC_IGRPEN1` bị bỏ).
+    pub fn read_icc_sre_el1() -> u64 {
+        let value: u64;
+        // SAFETY: `mrs` thanh ghi hệ thống EL1 của GICv3; chỉ đọc.
+        unsafe { asm!("mrs {}, icc_sre_el1", out(reg) value, options(nostack, preserves_flags)) };
+        value
+    }
+
+    /// Ghi `ICC_PMR_EL1` — mặt nạ ưu tiên (`0xF0` = cho qua mọi ưu tiên `0x00..0xEF`).
+    pub fn write_icc_pmr_el1(value: u64) {
+        // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng.
+        unsafe { asm!("msr icc_pmr_el1, {}", in(reg) value, options(nostack, preserves_flags)) };
+    }
+
+    /// Ghi `ICC_IGRPEN1_EL1` — bật nhóm 1 của CPU interface hiện tại.
+    pub fn write_icc_igrpen1_el1(value: u64) {
+        // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng.
+        unsafe {
+            asm!("msr icc_igrpen1_el1, {}", in(reg) value, options(nostack, preserves_flags))
+        };
+    }
+
+    /// Đọc `ICC_IAR1_EL1` — INTID của ngắt nhóm 1 đang chờ (`>= 1020` là spurious).
+    pub fn read_icc_iar1_el1() -> u64 {
+        let value: u64;
+        // SAFETY: `mrs` thanh ghi hệ thống EL1 của GICv3; chỉ đọc (đọc `IAR1` còn "nhận" ngắt —
+        // đó là ngữ nghĩa của thanh ghi, không phải tác dụng phụ ẩn).
+        unsafe { asm!("mrs {}, icc_iar1_el1", out(reg) value, options(nostack, preserves_flags)) };
+        value
+    }
+
+    /// Ghi `ICC_EOIR1_EL1` — kết thúc ngắt `intid` (không ghi thì ngắt không tới lại).
+    pub fn write_icc_eoir1_el1(value: u64) {
+        // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị là INTID vừa đọc từ `IAR1`.
+        unsafe { asm!("msr icc_eoir1_el1, {}", in(reg) value, options(nostack, preserves_flags)) };
+    }
+
+    /// Ghi `ICC_SGI1R_EL1` — gửi SGI tới danh sách hart đích (encoding ở `crate::gic::sgi1r`).
+    pub fn write_icc_sgi1r_el1(value: u64) {
+        // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng từ hart id.
+        unsafe { asm!("msr icc_sgi1r_el1, {}", in(reg) value, options(nostack, preserves_flags)) };
+    }
 }
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
@@ -648,6 +751,54 @@ mod imp {
     /// Stub host của `mrs daif`.
     pub fn read_daif() -> u64 {
         host_stub("mrs daif")
+    }
+    /// Stub host của `mrs mpidr_el1` — **panic**: trên host không có `MPIDR_EL1` của hart.
+    pub fn read_mpidr_el1() -> u64 {
+        host_stub("mrs mpidr_el1")
+    }
+    /// Stub host của `mov x, sp` — **panic**: `sp` của tiến trình test không phải stack hart.
+    pub fn read_current_sp() -> u64 {
+        host_stub("mov x, sp")
+    }
+    /// Stub host của `PSCI CPU_ON` — **panic**: trên host không có PSCI.
+    pub fn psci_cpu_on(_target_cpu: u64, _entry_pa: u64, _context_id: u64) -> i64 {
+        host_stub("psci cpu_on")
+    }
+    /// Stub host của `msr daifclr, #2` — **panic**: không mở mask ngắt trên tiến trình test.
+    pub fn daif_clear_irq() {
+        host_stub("msr daifclr")
+    }
+    /// Stub host của `sev` — **panic**: không phát sự kiện tới CPU thật từ host.
+    pub fn sev() {
+        host_stub("sev")
+    }
+    /// Stub host của `msr icc_sre_el1`.
+    pub fn write_icc_sre_el1(_value: u64) {
+        host_stub("msr icc_sre_el1")
+    }
+    /// Stub host của `mrs icc_sre_el1`.
+    pub fn read_icc_sre_el1() -> u64 {
+        host_stub("mrs icc_sre_el1")
+    }
+    /// Stub host của `msr icc_pmr_el1`.
+    pub fn write_icc_pmr_el1(_value: u64) {
+        host_stub("msr icc_pmr_el1")
+    }
+    /// Stub host của `msr icc_igrpen1_el1`.
+    pub fn write_icc_igrpen1_el1(_value: u64) {
+        host_stub("msr icc_igrpen1_el1")
+    }
+    /// Stub host của `mrs icc_iar1_el1`.
+    pub fn read_icc_iar1_el1() -> u64 {
+        host_stub("mrs icc_iar1_el1")
+    }
+    /// Stub host của `msr icc_eoir1_el1`.
+    pub fn write_icc_eoir1_el1(_value: u64) {
+        host_stub("msr icc_eoir1_el1")
+    }
+    /// Stub host của `msr icc_sgi1r_el1`.
+    pub fn write_icc_sgi1r_el1(_value: u64) {
+        host_stub("msr icc_sgi1r_el1")
     }
 }
 
