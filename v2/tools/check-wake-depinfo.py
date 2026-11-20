@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""check-wake-depinfo.py — **KT-214**: lớp kiểm `wake` theo **danh sách tệp THẬT của rustc**.
+"""check-wake-depinfo.py — **KT-214/KT-238**: lớp kiểm `wake` theo **danh sách tệp THẬT của rustc**.
 
 Vì sao có tệp này
 -----------------
@@ -20,17 +20,31 @@ vá thêm lần nữa.
 
 Cách làm
 --------
-1. `cargo check --workspace --message-format=json` cho **hai** workspace sản phẩm
+1. **KT-238 / D2-188** — sinh **phạm vi bảo vệ** từ `cargo metadata --no-deps --format-version 1`
+   của **các workspace liên quan** (`v2/Cargo.toml`, `v2/kernel/Cargo.toml`) **cộng bao đóng
+   path-dependency nội bộ**. Không dùng ba đường dẫn cố định (`v2/kernel`, `v2/sim`, `v2/lib`)
+   làm định nghĩa đầy đủ: crate thêm sau / crate chỉ tới được qua path-dep vẫn vào phạm vi.
+   Crate `v2/tools/` = **từ chối rõ** (công cụ, không phải sản phẩm) — chỉ khi bao đóng
+   dependency của nó **không** chứa crate bảo vệ nào; nếu chứa ⇒ **nâng** lên bảo vệ.
+2. `cargo check --workspace --message-format=json` cho **hai** workspace sản phẩm
    (`v2/Cargo.toml` cho host, `v2/kernel/Cargo.toml` cho bare-metal riscv64). Cargo **luôn**
    truyền `--emit=dep-info` cho mỗi unit ⇒ mỗi crate có một tệp `.d` trong `<target>/…/deps/`.
-2. Đọc `.d` (định dạng make: `<target>: <phụ thuộc…>`, có nối dòng `\\`) ⇒ **tập tệp nguồn thật**
+   Target dir lấy từ **`cargo metadata`** (không từ hằng), nên `.d`/nguồn sinh đọc đúng thư mục
+   của lần build đang kiểm (kể cả `CARGO_TARGET_DIR` / `--fresh`).
+3. Đọc `.d` (định dạng make: `<target>: <phụ thuộc…>`, có nối dòng `\\`) ⇒ **tập tệp nguồn thật**
    rustc đã nạp, gồm cả đích của `include!` và `#[path]` (đã đo: đích `include!` xuất hiện với
-   đúng đường dẫn tương đối).
-3. Áp **luật `wake`** của checker tĩnh trên từng tệp trong danh sách — **không chép** lexer/luật:
+   đúng đường dẫn tương đối). Chỉ `.d` có artifact trong **lần chạy này** mới được dùng
+   (`compiler-artifact` của cargo = fingerprint); `--no-build` chỉ đọc `.d` có trong **dấu lần
+   build** (sha256) — `.d` cũ / nguồn `OUT_DIR` cũ **không** bị đọc nhầm.
+4. **KT-238** — tệp trong **target dir của cargo metadata** (nguồn sinh `$OUT_DIR`) **được nạp +
+   quét**, không còn `W_DEPINFO_SKIPPED` (WB-18). Tệp sinh được quy về crate qua `package_id`
+   của artifact; không quy được ⇒ `E_DEPINFO_SCOPE`. Tệp rustc nạp **không thuộc crate nào**
+   ⇒ `E_DEPINFO_SCOPE` (từ chối rõ). Mọi mục "bỏ qua" cũ đều thành **ĐỎ**.
+5. Áp **luật `wake`** của checker tĩnh trên từng tệp trong danh sách — **không chép** lexer/luật:
    `import` `check-wake-paths.py` và dùng lại `_check_wake_text`, `find_functions`,
    `RE_READY_TRANSITION`, `WAKE_DOORS`, `NON_WAKE_READY_SITES`, `in_test_only_wake_scope`,
    `WAKE_PRODUCER`, `SAFE_VALUE_MACROS`.
-4. In **giá trị cốt lõi**: những tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — tức tệp
+6. In **giá trị cốt lõi**: những tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — tức tệp
    chỉ tới được qua `#[path]`/`include!`/macro, đúng lớp mà walker thủ công bỏ sót.
 
 Hai luật được áp (cùng ngữ nghĩa với checker tĩnh, khác **nguồn danh sách tệp**):
@@ -42,8 +56,10 @@ Hai luật được áp (cùng ngữ nghĩa với checker tĩnh, khác **nguồn
     chỉ miễn định nghĩa, lớp 2 phải đồng nhất (bất đối xứng cũ: tệp producer chứa lời gọi
     `wake(` XANH ở lớp 2 nhưng ĐỎ ở lớp 1).
   - **R2 chuyển `Ready`** (`E_DEPINFO_TRANSITION`): mọi `transition_tcb(…, TcbState::Ready)`
-    trong tệp dưới `v2/kernel`/`v2/sim` phải nằm trong cửa `WAKE_DOORS` hoặc có tên trong
-    `NON_WAKE_READY_SITES` (allowlist hiện có, khoá `(tệp, hàm, thứ tự)`).
+    trong tệp của crate **bảo vệ** (phạm vi sinh từ `cargo metadata` — **không** chỉ
+    `v2/kernel`/`v2/sim`) phải nằm trong cửa `WAKE_DOORS` hoặc có tên trong
+    `NON_WAKE_READY_SITES` (allowlist hiện có, khoá `(tệp, hàm, thứ tự)`). Crate "từ chối rõ"
+    chỉ áp R1 — nó không thể gọi API `wake` (bao đóng dependency không có crate sản phẩm).
 
 Khác biệt **có chủ đích** so với checker tĩnh: R1 áp cho **mọi** tệp rustc nạp, không chỉ tệp
 khớp `in_test_only_wake_scope` — vì chính cái "khớp mẫu đường dẫn" là thứ đã sai ở L47
@@ -59,14 +75,16 @@ Chạy
 
 Exit: 0 = xanh; 1 = đỏ; 2 = dùng sai.
 
-**Trạng thái: NGUYÊN MẪU (KT-214).** Chưa nối vào cổng nào — xem
-`v2/agent/JOURNAL/kt214-depinfo-prototype.md` §khuyến nghị.
+**Trạng thái: đã nối vào `./v2/bin/v2 check` (KT-217).** KT-238 đóng WB-18: phạm vi sinh từ
+`cargo metadata`, nguồn sinh `$OUT_DIR` được quét, `.d` cũ bị loại bằng artifact/fingerprint +
+dấu lần build. Nhật ký: `v2/agent/JOURNAL/kt238-metadata-scope.md`.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -77,6 +95,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -120,11 +139,12 @@ BUILD_UNITS: Tuple[Tuple[str, str, Optional[str], str], ...] = (
     ("kernel", "v2/kernel/Cargo.toml", "riscv64gc-unknown-none-elf", "v2/kernel/target"),
 )
 
-# Tệp nguồn "hiển nhiên" theo thư mục: `<cây>/<crate>/src/**`. Tệp rustc nạp mà **không** khớp
-# mẫu này là tệp chỉ tới được qua `#[path]`/`include!`/macro — **giá trị cốt lõi** của nguyên mẫu.
+# **DỰ PHÒNG** (chỉ dùng khi không có `Scope`): mẫu "tệp nguồn hiển nhiên" theo thư mục.
+# **KT-238** — định nghĩa phạm vi là `cargo metadata` (`Scope.classify`), **không** phải mẫu này;
+# mẫu chỉ còn để báo cáo `hidden_files` khi selftest cũ gọi không kèm scope.
 RE_CRATE_SRC = re.compile(r"^v2/(?:lib|kernel|sim|tools)/[^/]+/src/")
 
-# Tệp `build.rs` cấp crate: cũng là tệp "hiển nhiên" (nằm cạnh `Cargo.toml`).
+# Tệp `build.rs` cấp crate: cũng là tệp "hiển nhiên" (nằm cạnh `Cargo.toml`) — dự phòng như trên.
 RE_BUILD_RS = re.compile(r"^v2/(?:lib|kernel|sim|tools)/[^/]+/build\.rs$")
 
 # Tên tệp dep-info do cargo sinh: `<crate>-<hash>.d` (lib) hoặc `build_script_build-<hash>.d`.
@@ -137,6 +157,427 @@ RE_DEPINFO = re.compile(r"\.d$")
 # (không dùng mẫu tên). Mẫu tên chỉ có thể làm ta **quét nhiều hơn** (fail-closed), không thể
 # miễn thêm.
 RE_TESTISH = re.compile(r"(?:^|/)(?:tests?)/|ktest|_tests?\.rs$")
+
+
+# ------------------------------------------------------------------ phạm vi từ cargo metadata
+#
+# **KT-238 / D2-188** — phạm vi bảo vệ **sinh từ `cargo metadata`**, không từ ba đường dẫn cố
+# định (`v2/kernel`, `v2/sim`, `v2/lib`). Vì sao: WB-18 (KT-233) — một crate thành viên workspace
+# **ngoài** ba gốc ấy sinh mã trong `$OUT_DIR`; lớp 2 thấy tệp nhưng chỉ cảnh báo rồi bỏ qua.
+# Ba đường dẫn cố định **không phải** định nghĩa đầy đủ của phạm vi: crate thêm sau (hoặc crate
+# chỉ tới được qua path-dependency) nằm ngoài mẫu ⇒ mù. Nay:
+#
+#   1. chạy `cargo metadata --no-deps --format-version 1` cho **mọi** workspace sản phẩm;
+#   2. lấy **thành viên** + **bao đóng path-dependency nội bộ** (crate `path` trỏ vào repo);
+#   3. phân loại: **bảo vệ** (sản phẩm) / **từ chối rõ** (công cụ — `v2/tools/`), kèm lý do;
+#   4. crate "từ chối" mà bao đóng dependency chứa crate bảo vệ ⇒ **nâng** lên bảo vệ
+#      (fail-closed: công cụ phụ thuộc sản phẩm thì **có thể** gọi API `wake`).
+#
+# Tệp rustc nạp mà **không** quy được về crate nào (và không phải tệp sinh trong target dir của
+# cargo metadata) ⇒ `E_DEPINFO_SCOPE` — **từ chối rõ**, không quét-rồi-bỏ-qua.
+
+# Hai workspace sản phẩm (D2-26): host (`v2/Cargo.toml`) và bare-metal (`v2/kernel/Cargo.toml`).
+WORKSPACES: Tuple[Tuple[str, str], ...] = (
+    ("host", "v2/Cargo.toml"),
+    ("kernel", "v2/kernel/Cargo.toml"),
+)
+
+# Tiền tố crate **công cụ**: thành viên workspace nhưng **không** phải sản phẩm ⇒ "từ chối rõ".
+REFUSED_PREFIXES: Tuple[str, ...] = ("v2/tools/",)
+
+# Dấu "lần build hiện tại" cho `--no-build`: danh sách `.d` + sha256 của lần build xanh gần nhất.
+# Không có dấu / dấu lệch ⇒ `E_DEPINFO_STALE` (fail-closed) — chứng minh không đọc `.d` cũ.
+STAMP_NAME = ".kt238-depinfo-stamp.json"
+STAMP_VERSION = 1
+
+
+class CrateInfo:
+    """Một crate trong phạm vi, sinh từ `cargo metadata`."""
+
+    __slots__ = (
+        "name",
+        "dir_rel",
+        "manifest_rel",
+        "deps",
+        "target_names",
+        "src_paths",
+        "status",
+        "reason",
+    )
+
+    def __init__(
+        self,
+        name: str,
+        dir_rel: str,
+        manifest_rel: str,
+        deps: Sequence[str],
+        target_names: Sequence[str],
+        src_paths: Sequence[str],
+    ) -> None:
+        self.name = name
+        self.dir_rel = dir_rel
+        self.manifest_rel = manifest_rel
+        self.deps = list(deps)
+        self.target_names = list(target_names)
+        self.src_paths = list(src_paths)
+        self.status = "protected"
+        self.reason = ""
+
+    def __repr__(self) -> str:  # pragma: no cover - chẩn đoán
+        return f"CrateInfo({self.name!r}, {self.dir_rel!r}, {self.status!r})"
+
+
+class Scope:
+    """Phạm vi bảo vệ sinh từ `cargo metadata` + bao đóng dependency nội bộ."""
+
+    def __init__(self) -> None:
+        self.crates: Dict[str, CrateInfo] = {}  # dir_rel → crate
+        self.by_name: Dict[str, CrateInfo] = {}
+        self.by_target: Dict[str, CrateInfo] = {}
+        self.target_dirs: Dict[str, Path] = {}  # đơn vị build → target dir (tuyệt đối)
+        self.notes: List[str] = []
+
+    def classify(self, relp: str) -> Optional[CrateInfo]:
+        """Crate chứa `relp` (khớp tiền tố **dài nhất**), hoặc `None` nếu ngoài mọi crate."""
+        best: Optional[CrateInfo] = None
+        for d, c in self.crates.items():
+            if relp == d or relp.startswith(d + "/"):
+                if best is None or len(d) > len(best.dir_rel):
+                    best = c
+        return best
+
+    def protected(self) -> List[CrateInfo]:
+        return sorted((c for c in self.crates.values() if c.status == "protected"), key=lambda c: c.dir_rel)
+
+    def refused(self) -> List[CrateInfo]:
+        return sorted((c for c in self.crates.values() if c.status == "refused"), key=lambda c: c.dir_rel)
+
+    def summary(self) -> List[str]:
+        out = [
+            f"# phạm vi (cargo metadata): {len(self.protected())} crate bảo vệ, "
+            f"{len(self.refused())} crate từ chối rõ"
+        ]
+        for c in self.protected():
+            out.append(f"#   bảo vệ: {c.name} ({c.dir_rel})")
+        for c in self.refused():
+            out.append(f"#   từ chối rõ: {c.name} ({c.dir_rel}) — {c.reason}")
+        for n in self.notes:
+            out.append(f"#   ghi chú phạm vi: {n}")
+        return out
+
+
+def _rel_or_none(root: Path, p: Path) -> Optional[str]:
+    try:
+        return str(p.resolve().relative_to(root))
+    except (ValueError, OSError):
+        return None
+
+
+def _crate_from_package(root: Path, pkg: dict) -> Optional[CrateInfo]:
+    """Một mục `packages[]` của `cargo metadata` ⇒ `CrateInfo` (bỏ crate ngoài gốc repo)."""
+    mp = pkg.get("manifest_path")
+    if not mp:
+        return None
+    manifest = Path(mp)
+    dir_rel = _rel_or_none(root, manifest.parent)
+    if dir_rel is None:
+        return None
+    manifest_rel = _rel_or_none(root, manifest) or dir_rel
+    deps: List[str] = []
+    for d in pkg.get("dependencies") or []:
+        p = d.get("path")
+        if not p:
+            continue
+        r = _rel_or_none(root, Path(p))
+        if r is not None:
+            deps.append(r)
+    target_names: List[str] = []
+    src_paths: List[str] = []
+    for t in pkg.get("targets") or []:
+        sp = t.get("src_path")
+        if sp:
+            r = _rel_or_none(root, Path(sp))
+            if r is not None:
+                src_paths.append(r)
+        nm = (t.get("name") or "").replace("-", "_")
+        if nm:
+            target_names.append(nm)
+    return CrateInfo(
+        pkg.get("name") or dir_rel,
+        dir_rel,
+        manifest_rel,
+        deps,
+        target_names,
+        src_paths,
+    )
+
+
+def _dep_closure(sc: Scope, c: CrateInfo) -> Set[str]:
+    """Bao đóng dependency **nội bộ** (bắc cầu) của `c` — tập `dir_rel`."""
+    seen: Set[str] = set()
+    stack = list(c.deps)
+    while stack:
+        d = stack.pop()
+        if d in seen:
+            continue
+        seen.add(d)
+        dc = sc.crates.get(d)
+        if dc is not None:
+            stack.extend(dc.deps)
+    return seen
+
+
+def _classify_scope(sc: Scope) -> None:
+    """Gán `status`/`reason` cho mọi crate: bảo vệ / từ chối rõ (+ nâng khi cần)."""
+    for c in sc.crates.values():
+        c.status = "protected"
+        c.reason = ""
+        if any(c.dir_rel == p or c.dir_rel.startswith(p) for p in REFUSED_PREFIXES):
+            c.status = "refused"
+            c.reason = "công cụ (v2/tools/), không phải sản phẩm"
+    # Nâng: crate "từ chối" mà bao đóng dependency chứa crate bảo vệ ⇒ bảo vệ (fail-closed).
+    changed = True
+    while changed:
+        changed = False
+        for c in sc.crates.values():
+            if c.status != "refused":
+                continue
+            for d in _dep_closure(sc, c):
+                dc = sc.crates.get(d)
+                if dc is not None and dc.status == "protected":
+                    c.status = "protected"
+                    c.reason = (
+                        f"nâng từ 'từ chối rõ': bao đóng dependency chứa crate bảo vệ "
+                        f"`{dc.name}` ({dc.dir_rel})"
+                    )
+                    changed = True
+                    break
+
+
+def scope_from_metadata(root: Path, metas: Sequence[Tuple[str, dict]]) -> Scope:
+    """Dựng `Scope` từ các blob `cargo metadata --no-deps` — hàm **thuần** (selftest được).
+
+    `metas` = `[(tên đơn vị, blob), …]`. Không chạy cargo, không đọc đĩa (trừ `root` để tính
+    đường dẫn tương đối).
+    """
+    root = root.resolve()
+    sc = Scope()
+    for unit, meta in metas:
+        td = meta.get("target_directory")
+        if td:
+            sc.target_dirs[unit] = Path(td).resolve()
+        for pkg in meta.get("packages") or []:
+            c = _crate_from_package(root, pkg)
+            if c is None:
+                continue
+            sc.crates[c.dir_rel] = c
+            sc.by_name[c.name] = c
+            for nm in c.target_names:
+                sc.by_target[nm] = c
+    _classify_scope(sc)
+    return sc
+
+
+def _run_metadata(
+    root: Path,
+    manifest_rel: str,
+    cargo: str,
+    toolchain: Optional[str],
+    target_dir: Optional[Path],
+) -> Optional[dict]:
+    """Chạy `cargo metadata --no-deps --format-version 1`; `None` nếu lỗi (tầng gọi fail-closed)."""
+    cmd = [
+        cargo,
+        "metadata",
+        "--no-deps",
+        "--format-version",
+        "1",
+        "--manifest-path",
+        str(root / manifest_rel),
+    ]
+    env = dict(os.environ)
+    if toolchain:
+        env["RUSTUP_TOOLCHAIN"] = toolchain
+    if target_dir is not None:
+        env["CARGO_TARGET_DIR"] = str(target_dir)
+    env.setdefault("CARGO_TERM_COLOR", "never")
+    try:
+        proc = subprocess.run(
+            cmd, cwd=str(root), env=env, capture_output=True, text=True, timeout=180
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def load_scope(
+    root: Path,
+    cargo: Optional[str],
+    toolchain: Optional[str],
+    target_overrides: Optional[Dict[str, Path]] = None,
+) -> Scope:
+    """Sinh phạm vi từ `cargo metadata` của **các workspace liên quan** + bao đóng path-dep.
+
+    `target_overrides` = `{đơn vị: target dir}` (dùng cho `--fresh`: `CARGO_TARGET_DIR` tạm) —
+    truyền **cùng** biến môi trường cho `cargo metadata` để `target_directory` khớp lần build.
+    """
+    overrides = target_overrides or {}
+    if cargo is None:
+        sc = Scope()
+        sc.notes.append("không tìm thấy cargo ⇒ phạm vi rỗng (fail-closed)")
+        return sc
+    metas: List[Tuple[str, dict]] = []
+    notes: List[str] = []
+    for unit, manifest in WORKSPACES:
+        meta = _run_metadata(root, manifest, cargo, toolchain, overrides.get(unit))
+        if meta is None:
+            notes.append(f"không đọc được cargo metadata cho `{manifest}` (fail-closed)")
+            continue
+        metas.append((unit, meta))
+    sc = scope_from_metadata(root, metas)
+    sc.notes.extend(notes)
+    # Bao đóng: path-dependency chưa có trong `crates` ⇒ chạy metadata trên manifest của nó.
+    for _ in range(8):
+        missing = sorted(
+            {d for c in list(sc.crates.values()) for d in c.deps if d not in sc.crates}
+        )
+        if not missing:
+            break
+        added = False
+        for d in missing:
+            mf = root / d / "Cargo.toml"
+            if not mf.is_file():
+                sc.notes.append(f"path-dependency `{d}` không có Cargo.toml — bỏ khỏi bao đóng")
+                continue
+            meta = _run_metadata(root, str(mf.relative_to(root)), cargo, toolchain, None)
+            if meta is None:
+                sc.notes.append(f"không đọc được metadata cho path-dependency `{d}`")
+                continue
+            for pkg in meta.get("packages") or []:
+                c = _crate_from_package(root, pkg)
+                if c is None or c.dir_rel in sc.crates:
+                    continue
+                sc.crates[c.dir_rel] = c
+                sc.by_name[c.name] = c
+                for nm in c.target_names:
+                    sc.by_target[nm] = c
+                added = True
+        if not added:
+            break
+    _classify_scope(sc)
+    return sc
+
+
+def _under_any(p: Path, dirs: Sequence[Path]) -> bool:
+    for d in dirs:
+        try:
+            p.relative_to(d)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _pkg_dir_from_id(root: Path, pid: str) -> Optional[str]:
+    """`package_id` của cargo (`path+file:///…/v2/lib/x#0.1.0`) ⇒ `dir_rel` trong repo."""
+    if not pid.startswith("path+file://"):
+        return None
+    frag = pid[len("path+file://") :].split("#", 1)[0]
+    try:
+        p = Path(urllib.parse.unquote(frag)).resolve()
+    except OSError:  # pragma: no cover - phòng hờ
+        return None
+    return _rel_or_none(root, p)
+
+
+# ------------------------------------------------------------------ dấu lần build (--no-build)
+
+
+def _sha256_file(p: Path) -> str:
+    h = hashlib.sha256()
+    try:
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def stamp_path(target_dir: Path) -> Path:
+    return target_dir / STAMP_NAME
+
+
+def write_stamp(target_dir: Path, unit: str, deps_dir: Path, depinfo_files: Sequence[Path]) -> None:
+    """Ghi dấu "lần build hiện tại" — danh sách `.d` **đã dùng** + sha256."""
+    target_dir = target_dir.resolve()
+    deps_dir = deps_dir.resolve()
+    data = {
+        "version": STAMP_VERSION,
+        "unit": unit,
+        "deps_dir": str(deps_dir),
+        "files": {p.name: _sha256_file(p) for p in sorted(depinfo_files)},
+    }
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        stamp_path(target_dir).write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError:  # pragma: no cover - target dir lạ
+        pass
+
+
+def verify_stamp(
+    target_dir: Path, unit: str, deps_dir: Path, present: Set[str]
+) -> Tuple[Optional[Set[str]], List[str]]:
+    """Kiểm dấu lần build cho `--no-build` ⇒ `(tập .d hiện hành, lỗi)`.
+
+    Không có dấu / dấu lệch / `.d` đã đổi nội dung ⇒ lỗi (fail-closed). Chỉ `.d` **có trong
+    dấu** mới được đọc — chứng minh `.d` cũ (và nguồn `OUT_DIR` cũ mà nó trỏ tới) không bị đọc.
+    """
+    target_dir = target_dir.resolve()
+    deps_dir = deps_dir.resolve()
+    sp = stamp_path(target_dir)
+    if not sp.is_file():
+        return None, [
+            f"  đơn vị `{unit}`: không có dấu lần build `{sp}` — `--no-build` không chứng minh "
+            f"được `.d` là của lần build hiện tại (fail-closed, KT-238)"
+        ]
+    try:
+        data = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, [f"  đơn vị `{unit}`: dấu lần build hỏng `{sp}` (fail-closed, KT-238)"]
+    errs: List[str] = []
+    if data.get("version") != STAMP_VERSION:
+        errs.append(f"  đơn vị `{unit}`: dấu lần build sai phiên bản (fail-closed, KT-238)")
+    if data.get("deps_dir") != str(deps_dir):
+        errs.append(
+            f"  đơn vị `{unit}`: dấu lần build thuộc deps dir khác "
+            f"(`{data.get('deps_dir')}` ≠ `{deps_dir}`) — fail-closed (KT-238)"
+        )
+    files: Dict[str, str] = data.get("files") or {}
+    missing = sorted(set(files) - present)
+    if missing:
+        errs.append(
+            f"  đơn vị `{unit}`: `.d` trong dấu không còn trên đĩa: {', '.join(missing[:5])} "
+            f"— fail-closed (KT-238)"
+        )
+    for name, want in sorted(files.items()):
+        p = deps_dir / name
+        if not p.is_file():
+            continue
+        got = _sha256_file(p)
+        if got != want:
+            errs.append(
+                f"  đơn vị `{unit}`: `.d` đã đổi từ lần build có dấu (`{name}`) — fail-closed "
+                f"(KT-238)"
+            )
+    return set(files), errs
 
 
 # ------------------------------------------------------------------ tiện ích
@@ -299,6 +740,10 @@ class UnitResult:
         "loaded",
         "skipped",
         "note",
+        "pkg_artifacts",
+        "generated",
+        "depinfo_files",
+        "target_dir",
     )
 
     def __init__(self, name: str, cmd: Sequence[str]) -> None:
@@ -311,8 +756,33 @@ class UnitResult:
         self.loaded: Set[Path] = set()
         # **KT-227 P0-3** — tệp rustc nạp mà công cụ **không quét** (ngoài gốc repo / thư mục
         # build / không phải tệp). Trước bản này chúng bị bỏ **im lặng** — đúng lớp "xanh-giả".
+        # **KT-238**: mọi mục ở đây đều là **ĐỎ** (không còn `W_DEPINFO_SKIPPED`).
         self.skipped: List[Tuple[str, str]] = []
         self.note = ""
+        # **KT-238** — artifact của lần chạy ⇒ `dir_rel` crate (từ `package_id`), để quy tệp sinh
+        # trong target dir về đúng crate.
+        self.pkg_artifacts: Dict[str, str] = {}
+        # Tệp sinh trong target dir ⇒ `dir_rel` crate (None = không quy được ⇒ từ chối rõ).
+        self.generated: Dict[Path, Optional[str]] = {}
+        # `.d` **đã dùng** của lần chạy này (ghi vào dấu cho `--no-build`).
+        self.depinfo_files: List[Path] = []
+        self.target_dir: Optional[Path] = None
+
+
+def _unit_pkg(
+    res: UnitResult, targets: Set[str], d: Path, scope: Optional[Scope]
+) -> Optional[str]:
+    """Crate của một tệp `.d`: ưu tiên artifact của lần chạy, dự phòng theo tên crate trong `.d`."""
+    pkgs = {res.pkg_artifacts[t] for t in targets if t in res.pkg_artifacts}
+    if len(pkgs) == 1:
+        return next(iter(pkgs))
+    stem = d.name[:-2] if d.name.endswith(".d") else d.name
+    base = stem.rsplit("-", 1)[0]
+    if scope is not None:
+        c = scope.by_target.get(base)
+        if c is not None:
+            return c.dir_rel
+    return None
 
 
 def collect_depinfo(
@@ -322,18 +792,23 @@ def collect_depinfo(
     res: UnitResult,
     use_all: bool,
     artifacts: Set[str],
+    scope: Optional[Scope] = None,
+    target_dirs: Sequence[Path] = (),
+    only_files: Optional[Set[str]] = None,
 ) -> None:
-    """**KT-227 P0-3** — đọc `.d` trong `deps_dir` ⇒ `res.loaded` + `res.skipped`.
+    """**KT-227 P0-3 / KT-238** — đọc `.d` trong `deps_dir` ⇒ `res.loaded` + `res.skipped`.
 
     Dùng chung cho đường build (`run_unit`) và `--no-build` để hai đường không lệch nhau.
 
-    Ba sửa so với bản KT-214:
-      - bộ lọc `target` dùng **chung** `CWP._is_build_dir` (chỉ bỏ khi `target` đứng **trước**
-        `src`) — bản cũ `"target" in relp.parts` là **hồi quy đường lọt #12**;
-      - **không** lọc theo đuôi `.rs`: `#[path = "evil.txt"] mod m;` là mã Rust thật, rustc nạp
-        nó; bản cũ bỏ vì `suffix != ".rs"` (đường lọt B9/B12);
-      - mọi tệp bị bỏ được ghi vào `res.skipped` kèm lý do — tầng gọi báo ĐỎ (ngoài gốc repo)
-        hoặc CẢNH BÁO (thư mục build / không phải tệp), không im lặng.
+    **KT-238** — ba thay đổi so với KT-227:
+      - tệp trong **target dir của cargo metadata** (nguồn sinh `$OUT_DIR`) **được nạp + quét**,
+        không còn bị bỏ qua với `W_DEPINFO_SKIPPED` (WB-18). Tệp sinh được quy về crate qua
+        artifact của lần chạy (`package_id`); không quy được ⇒ `E_DEPINFO_SCOPE`;
+      - tệp dưới một thư mục tên `target` **không phải** target dir của metadata ⇒ **từ chối rõ**
+        (`E_DEPINFO_SCOPE`), không im lặng;
+      - mọi mục `skipped` (không resolve / không phải tệp / ngoài gốc repo) ⇒ tầng gọi báo **ĐỎ**;
+        không còn cảnh báo-rồi-PASS.
+      - `only_files` (dùng cho `--no-build`): chỉ đọc `.d` có trong **dấu lần build**.
     """
     if not deps_dir.is_dir():
         res.note = f"không có thư mục dep-info {deps_dir}"
@@ -349,10 +824,14 @@ def collect_depinfo(
     for d in sorted(deps_dir.glob("*.d")):
         if not RE_DEPINFO.search(d.name):
             continue
+        if only_files is not None and d.name not in only_files:
+            continue
         targets, deps = parse_depinfo(d)
         if not use_all and not (targets & artifacts):
             continue
         res.depinfo_used += 1
+        res.depinfo_files.append(d)
+        unit_pkg = _unit_pkg(res, targets, d, scope)
         for tok in deps:
             p = resolve_dep(tok, ws_root)
             if p is None:
@@ -366,8 +845,15 @@ def collect_depinfo(
             except ValueError:
                 skip(str(p), "ngoài gốc repo")
                 continue
+            if _under_any(p, target_dirs):
+                # **KT-238** — nguồn sinh trong target dir của **lần build này**: nạp + quét.
+                res.loaded.add(p)
+                res.generated[p] = unit_pkg
+                continue
             if CWP._is_build_dir(root, p):
-                skip(str(relp), "thư mục build")
+                # Thư mục tên `target` nhưng **không** phải target dir của cargo metadata ⇒ từ
+                # chối rõ (không im lặng, không quét-rồi-bỏ-qua).
+                skip(str(relp), "thư mục build lạ (không phải target dir của cargo metadata)")
                 continue
             res.loaded.add(p)
 
@@ -381,7 +867,7 @@ def depinfo_empty_errors(results: Sequence[UnitResult], loaded: Set[Path]) -> Li
     errs: List[str] = []
     if not loaded:
         errs.append(
-            "  không đọc được tệp `.rs` nào từ `.d` — fail-closed (KT-227 P0-1); "
+            "  không đọc được tệp nguồn nào từ `.d` — fail-closed (KT-227 P0-1); "
             "kiểm `target/`, `--no-build`, bộ lọc artifact"
         )
     for res in results:
@@ -392,7 +878,7 @@ def depinfo_empty_errors(results: Sequence[UnitResult], loaded: Set[Path]) -> Li
             )
         elif not res.loaded:
             errs.append(
-                f"  đơn vị `{res.name}`: `.d` không cho tệp `.rs` nào — fail-closed "
+                f"  đơn vị `{res.name}`: `.d` không cho tệp nguồn nào — fail-closed "
                 f"(KT-227 P0-1)"
             )
     return errs
@@ -408,8 +894,15 @@ def run_unit(
     toolchain: Optional[str],
     timeout: float,
     fresh_dir: Optional[Path],
+    scope: Optional[Scope] = None,
 ) -> UnitResult:
-    """Chạy `cargo check` cho một đơn vị và trả kết quả (không tự đỏ khi RC≠0 — tầng gọi quyết)."""
+    """Chạy `cargo check` cho một đơn vị và trả kết quả (không tự đỏ khi RC≠0 — tầng gọi quyết).
+
+    **KT-238** — target dir lấy từ `cargo metadata` (`scope.target_dirs[name]`), không từ hằng
+    `target_rel`: đó là **cùng** thư mục cargo dùng cho lần build này (kể cả `CARGO_TARGET_DIR`
+    của người dùng / `--fresh`). `target_rel` chỉ còn là dự phòng khi metadata hỏng (tầng gọi
+    báo `E_DEPINFO_SCOPE`).
+    """
     cmd = [
         cargo,
         "check",
@@ -467,14 +960,26 @@ def run_unit(
             continue
         reason = msg.get("reason")
         if reason == "compiler-artifact":
+            # **KT-238** — `package_id` ⇒ crate của artifact, để quy tệp sinh về đúng crate.
+            dir_rel = _pkg_dir_from_id(root, msg.get("package_id") or "")
             for fn in msg.get("filenames") or []:
-                artifacts.add(str(Path(fn)))
+                key = str(Path(fn))
+                artifacts.add(key)
+                if dir_rel is not None:
+                    res.pkg_artifacts[key] = dir_rel
         elif reason == "build-finished":
             build_ok = bool(msg.get("success"))
     res.artifacts = len(artifacts)
 
     # --- đọc `.d` --------------------------------------------------------------------------
-    deps_dir = Path(fresh_dir / name) if fresh_dir is not None else (root / target_rel)
+    target_dir: Optional[Path] = None
+    if scope is not None:
+        target_dir = scope.target_dirs.get(name)
+    if target_dir is None:
+        target_dir = (root / target_rel).resolve()
+        res.note = "không có target dir từ cargo metadata — dùng dự phòng (fail-closed)"
+    res.target_dir = target_dir
+    deps_dir = target_dir
     if triple:
         deps_dir = deps_dir / triple
     deps_dir = deps_dir / "debug/deps"
@@ -488,7 +993,20 @@ def run_unit(
     if build_ok is False:
         res.note = "build ĐỎ — dùng mọi .d trong thư mục (superset, fail-closed)"
 
-    collect_depinfo(deps_dir, ws_root, root, res, use_all, artifacts)
+    collect_depinfo(
+        deps_dir,
+        ws_root,
+        root,
+        res,
+        use_all,
+        artifacts,
+        scope=scope,
+        target_dirs=(target_dir,),
+    )
+    # **KT-238** — dấu "lần build hiện tại" cho `--no-build`: chỉ ghi khi build xanh và dùng
+    # target dir thật (không ghi vào target dir tạm của `--fresh`).
+    if res.rc == 0 and fresh_dir is None and build_ok is not False:
+        write_stamp(target_dir, name, deps_dir, res.depinfo_files)
     return res
 
 
@@ -507,11 +1025,26 @@ def is_producer_file(text: str) -> bool:
     return False
 
 
-def hidden_files(root: Path, loaded: Iterable[Path]) -> List[str]:
-    """Tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — chỉ tới được qua `#[path]`/`include!`."""
+def hidden_files(
+    root: Path, loaded: Iterable[Path], scope: Optional[Scope] = None
+) -> List[str]:
+    """Tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — chỉ tới được qua `#[path]`/`include!`.
+
+    **KT-238** — khi có `scope` (sinh từ `cargo metadata`), "crate" là **crate thật** của tệp,
+    không phải mẫu đường dẫn cố định; `RE_CRATE_SRC`/`RE_BUILD_RS` chỉ còn là dự phòng khi
+    không có scope (selftest cũ).
+    """
     out: List[str] = []
     for p in loaded:
         relp = CWP.rel(root, p)
+        if scope is not None:
+            c = scope.classify(relp)
+            if c is not None and (
+                relp == c.dir_rel + "/build.rs" or relp.startswith(c.dir_rel + "/src/")
+            ):
+                continue
+            out.append(relp)
+            continue
         if RE_CRATE_SRC.match(relp) or RE_BUILD_RS.match(relp):
             continue
         out.append(relp)
@@ -528,14 +1061,25 @@ def scan(
     loaded: Iterable[Path],
     test_only: Optional[Set[str]] = None,
     do_transitions: bool = True,
+    scope: Optional[Scope] = None,
+    generated: Optional[Dict[Path, Optional[str]]] = None,
 ) -> Tuple["CWP.Report", Dict[str, int]]:
     """Áp R1 (`wake`) + R2 (chuyển `Ready`) trên **danh sách tệp rustc nạp**.
 
     Trả `(Report, đếm)`. `test_only` = tập relpath test-only (đồ thị module); `None` ⇒ không miễn
     theo test (dùng cho `--selftest` khi cây fixture không có `Cargo.toml`).
+
+    **KT-238** — `scope` (sinh từ `cargo metadata`) quyết định:
+      - tệp **không thuộc crate nào** (và không phải tệp sinh trong target dir) ⇒
+        `E_DEPINFO_SCOPE` — **từ chối rõ**, không quét-rồi-PASS;
+      - tệp sinh trong target dir mà **không quy được** về crate ⇒ `E_DEPINFO_SCOPE`;
+      - R2 áp cho **mọi** tệp của crate bảo vệ + tệp sinh + tệp không rõ phạm vi (fail-closed);
+        crate "từ chối rõ" chỉ áp R1 (nó không thể gọi API `wake` — bao đóng dependency đã kiểm).
+    `scope=None` ⇒ giữ hành vi cũ (R2 chỉ trên `v2/kernel`/`v2/sim`) — dùng cho selftest cũ.
     """
     r = CWP.Report()
     files = sorted(loaded)
+    gen = generated or {}
     texts: Dict[Path, str] = {}
     triples: List[Tuple[Path, str, List["CWP.Fn"]]] = []
     for p in files:
@@ -558,6 +1102,22 @@ def scan(
         if test_only is not None and relp in test_only:
             counts["exempt_test"] += 1
             continue
+        # **KT-238** — phạm vi: tệp rustc nạp phải quy được về crate (hoặc là tệp sinh trong
+        # target dir của cargo metadata). Không quy được ⇒ **từ chối rõ** (không im lặng).
+        if scope is not None:
+            if p in gen:
+                if gen.get(p) is None:
+                    r.err(
+                        "E_DEPINFO_SCOPE",
+                        f"  {relp}: tệp sinh trong target dir nhưng KHÔNG quy được về crate nào "
+                        f"trong cargo metadata — từ chối rõ (fail-closed, KT-238)",
+                    )
+            elif scope.classify(relp) is None:
+                r.err(
+                    "E_DEPINFO_SCOPE",
+                    f"  {relp}: tệp rustc nạp KHÔNG thuộc crate nào trong cargo metadata "
+                    f"(workspace + bao đóng path-dependency) — từ chối rõ (fail-closed, KT-238)",
+                )
         # **KT-227 P0-3 / KT-226** — KHÔNG miễn **cả tệp** producer nữa: lớp 2 chỉ miễn
         # **định nghĩa** `fn wake` (do `_check_wake_text` xử lý), đồng nhất với lớp 1.
         # Trước KT-226/KT-227 tệp định nghĩa `fn wake` được miễn cả tệp ⇒ lời gọi `wake(`
@@ -584,12 +1144,20 @@ def scan(
         #   - `alias`/`unknown` ⇒ **ĐỎ** (fail-closed);
         #   - `var` ⇒ ĐỎ nếu hàm gán biến từ `TcbState::Ready` (dataflow-lite, tránh báo oan
         #     `block_current(cur, to)`).
+        # **KT-238** — phạm vi R2 sinh từ `cargo metadata`: mọi tệp của crate **bảo vệ** + tệp
+        # sinh + tệp không rõ phạm vi. Crate "từ chối rõ" (công cụ, không phụ thuộc sản phẩm)
+        # chỉ áp R1 — nó không thể gọi `transition_tcb` vì bao đóng dependency không có crate
+        # sản phẩm nào (đã kiểm ở `_classify_scope`).
         for p in files:
             text = texts.get(p)
             if text is None:
                 continue
             relp = CWP.rel(root, p)
-            if not (relp.startswith("v2/kernel/") or relp.startswith("v2/sim/")):
+            if scope is not None:
+                crate = scope.classify(relp)
+                if crate is not None and crate.status == "refused":
+                    continue
+            elif not (relp.startswith("v2/kernel/") or relp.startswith("v2/sim/")):
                 continue
             if test_only is not None and relp in test_only:
                 continue
@@ -1070,16 +1638,49 @@ def selftest() -> int:
             f"loaded={sorted(CWP.rel(root, p) for p in res_a.loaded)} errors={rep_a.errors}",
         )
 
-        # --- (30) KT-226: `.d` nạp `v2/kernel/target/evil.rs` ⇒ bị lọc ⇒ XANH ---------------
-        dd_b = base / "deps-kt226-build-target"
+        # --- (30) KT-238: `.d` nạp tệp trong target dir CỦA METADATA ⇒ nạp + quét ⇒ ĐỎ ------
+        dd_b = base / "deps-kt238-build-target"
         _ghi_d(dd_b / "libb.d", root, [build_target])
         res_b = UnitResult("kernel", ["(selftest)"])
-        collect_depinfo(dd_b, root, root.resolve(), res_b, True, set())
+        collect_depinfo(
+            dd_b,
+            root,
+            root.resolve(),
+            res_b,
+            True,
+            set(),
+            target_dirs=((root / "v2/kernel/target").resolve(),),
+        )
         rep_b, _ = scan(root, res_b.loaded, test_only=set())
         ghi(
-            "(30) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH",
-            build_target.resolve() not in res_b.loaded and not rep_b.errors,
+            "(30) KT-238: `.d` nạp `v2/kernel/target/evil.rs` (target dir của metadata) ⇒ "
+            "NẠP + quét ⇒ ĐỎ (trước KT-238: bị lọc, XANH)",
+            build_target.resolve() in res_b.loaded
+            and any("E_DEPINFO_WAKE" in e for e in rep_b.errors),
             f"loaded={sorted(CWP.rel(root, p) for p in res_b.loaded)} errors={rep_b.errors}",
+        )
+        # --- (30b) thư mục tên `target` KHÔNG phải target dir của metadata ⇒ từ chối rõ ----
+        other_target = root / "v2/other/target/evil.rs"
+        other_target.parent.mkdir(parents=True, exist_ok=True)
+        other_target.write_text(_GIA_EVIL, encoding="utf-8")
+        dd_b2 = base / "deps-kt238-other-target"
+        _ghi_d(dd_b2 / "libb2.d", root, [other_target])
+        res_b2 = UnitResult("kernel", ["(selftest)"])
+        collect_depinfo(
+            dd_b2,
+            root,
+            root.resolve(),
+            res_b2,
+            True,
+            set(),
+            target_dirs=((root / "v2/kernel/target").resolve(),),
+        )
+        ghi(
+            "(30b) KT-238: thư mục tên `target` KHÔNG phải target dir của metadata ⇒ "
+            "`skipped` (ĐỎ `E_DEPINFO_SCOPE`, không im lặng)",
+            other_target.resolve() not in res_b2.loaded
+            and any(why.startswith("thư mục build lạ") for _, why in res_b2.skipped),
+            f"loaded={sorted(CWP.rel(root, p) for p in res_b2.loaded)} skipped={res_b2.skipped}",
         )
 
         # --- (31) KT-230: macro_rules! LỒNG che tên an toàn ⇒ ĐỎ (đường lọt #14) ----------
@@ -1213,6 +1814,334 @@ def selftest() -> int:
             f"errors={rep.errors}",
         )
 
+        # ================================================================ KT-238
+        # Phạm vi sinh từ `cargo metadata` + bao đóng path-dependency nội bộ; nguồn sinh trong
+        # target dir được nạp + quét (WB-18); `.d` cũ / dấu lần build; R2 theo phạm vi.
+
+        # --- (38) scope_from_metadata: bảo vệ / từ chối rõ / nâng ---------------------------
+        sroot = base / "scope-root"
+        for d in ("v2/lib/a", "v2/sim/s", "v2/tools/t", "v2/tools/t2", "v2/extra/e", "v2/kernel/k"):
+            (sroot / d / "src").mkdir(parents=True, exist_ok=True)
+
+        def _meta(unit: str, pkgs: Sequence[Tuple[str, str, Sequence[str]]], tdir: Path):
+            return (
+                unit,
+                {
+                    "target_directory": str(tdir),
+                    "workspace_root": str(sroot / "v2"),
+                    "packages": [
+                        {
+                            "name": name,
+                            "manifest_path": str(sroot / d / "Cargo.toml"),
+                            "targets": [
+                                {
+                                    "name": name.replace("-", "_"),
+                                    "kind": ["lib"],
+                                    "src_path": str(sroot / d / "src/lib.rs"),
+                                }
+                            ],
+                            "dependencies": [
+                                {"name": dep.split("/")[-1], "path": str(sroot / dep)}
+                                for dep in deps
+                            ],
+                        }
+                        for (name, d, deps) in pkgs
+                    ],
+                },
+            )
+
+        metas = [
+            _meta(
+                "host",
+                [
+                    ("a", "v2/lib/a", ()),
+                    ("s", "v2/sim/s", ()),
+                    ("t", "v2/tools/t", ()),
+                    ("t2", "v2/tools/t2", ("v2/sim/s",)),
+                    ("e", "v2/extra/e", ("v2/sim/s",)),
+                ],
+                sroot / "v2/target",
+            ),
+            _meta("kernel", [("k", "v2/kernel/k", ("v2/lib/a",))], sroot / "v2/kernel/target"),
+        ]
+        sc = scope_from_metadata(sroot, metas)
+        ghi(
+            "(38) KT-238: phạm vi sinh từ cargo metadata — 5 bảo vệ, 1 từ chối rõ (công cụ)",
+            len(sc.protected()) == 5
+            and len(sc.refused()) == 1
+            and sc.refused()[0].name == "t"
+            and sc.target_dirs.get("host") == (sroot / "v2/target").resolve(),
+            f"protected={[c.name for c in sc.protected()]} "
+            f"refused={[c.name for c in sc.refused()]} target_dirs={sc.target_dirs}",
+        )
+        ghi(
+            "(39) KT-238: crate 'từ chối rõ' phụ thuộc crate bảo vệ ⇒ NÂNG lên bảo vệ",
+            sc.by_name["t2"].status == "protected" and "nâng" in sc.by_name["t2"].reason,
+            f"t2={sc.by_name['t2'].status} reason={sc.by_name['t2'].reason!r}",
+        )
+        ghi(
+            "(40) KT-238: classify khớp tiền tố dài nhất; tệp ngoài mọi crate ⇒ None",
+            sc.classify("v2/lib/a/src/lib.rs") is not None
+            and sc.classify("v2/lib/a/src/lib.rs").name == "a"
+            and sc.classify("v2/tools/t/src/x.rs").status == "refused"
+            and sc.classify("v2/lib/loose.rs") is None,
+            f"a={sc.classify('v2/lib/a/src/lib.rs')} loose={sc.classify('v2/lib/loose.rs')}",
+        )
+
+        # --- (41) WB-18: tệp sinh trong target dir của crate bảo vệ ⇒ nạp + quét ⇒ ĐỎ --------
+        troot = base / "gen-root"
+        tgt = troot / "v2/target"
+        out_evil = tgt / "debug/build/evil-123/out"
+        out_evil.mkdir(parents=True, exist_ok=True)
+        gen_evil = out_evil / "evil.rs"
+        gen_evil.write_text(_GIA_EVIL, encoding="utf-8")
+        dd_gen = base / "deps-gen"
+        _ghi_d(dd_gen / "libevil-123.d", troot, [gen_evil], target=dd_gen / "libevil.rmeta")
+        res_gen = UnitResult("host", ["(selftest)"])
+        res_gen.pkg_artifacts[str(dd_gen / "libevil.rmeta")] = "v2/extra/e"
+        collect_depinfo(
+            dd_gen,
+            troot,
+            troot.resolve(),
+            res_gen,
+            True,
+            set(),
+            scope=sc,
+            target_dirs=(tgt.resolve(),),
+        )
+        rep_gen, _ = scan(
+            troot, res_gen.loaded, test_only=set(), scope=sc, generated=res_gen.generated
+        )
+        ghi(
+            "(41) KT-238/WB-18: tệp sinh `$OUT_DIR` trong target dir ⇒ NẠP + quét ⇒ ĐỎ "
+            "`E_DEPINFO_WAKE` (trước: `W_DEPINFO_SKIPPED` rồi XANH)",
+            gen_evil.resolve() in res_gen.loaded
+            and res_gen.generated.get(gen_evil.resolve()) == "v2/extra/e"
+            and any("E_DEPINFO_WAKE" in e for e in rep_gen.errors),
+            f"loaded={sorted(CWP.rel(troot, p) for p in res_gen.loaded)} "
+            f"generated={res_gen.generated} errors={rep_gen.errors}",
+        )
+
+        # --- (42) đối chứng dương: tệp sinh LÀNH trong target dir ⇒ XANH ---------------------
+        gen_ok = out_evil / "ok.rs"
+        gen_ok.write_text(_GIA_CLEAN, encoding="utf-8")
+        dd_ok = base / "deps-gen-ok"
+        _ghi_d(dd_ok / "libok-456.d", troot, [gen_ok], target=dd_ok / "libok.rmeta")
+        res_ok = UnitResult("host", ["(selftest)"])
+        res_ok.pkg_artifacts[str(dd_ok / "libok.rmeta")] = "v2/extra/e"
+        collect_depinfo(
+            dd_ok,
+            troot,
+            troot.resolve(),
+            res_ok,
+            True,
+            set(),
+            scope=sc,
+            target_dirs=(tgt.resolve(),),
+        )
+        rep_ok, _ = scan(
+            troot, res_ok.loaded, test_only=set(), scope=sc, generated=res_ok.generated
+        )
+        ghi(
+            "(42) KT-238 đối chứng dương: tệp sinh LÀNH trong target dir ⇒ XANH",
+            gen_ok.resolve() in res_ok.loaded and rep_ok.ok,
+            f"loaded={sorted(CWP.rel(troot, p) for p in res_ok.loaded)} errors={rep_ok.errors}",
+        )
+
+        # --- (43) tệp sinh KHÔNG quy được về crate ⇒ từ chối rõ -----------------------------
+        dd_unk = base / "deps-gen-unknown"
+        _ghi_d(dd_unk / "libunknown-789.d", troot, [gen_evil], target=dd_unk / "libunknown.rmeta")
+        res_unk = UnitResult("host", ["(selftest)"])
+        collect_depinfo(
+            dd_unk,
+            troot,
+            troot.resolve(),
+            res_unk,
+            True,
+            set(),
+            scope=sc,
+            target_dirs=(tgt.resolve(),),
+        )
+        rep_unk, _ = scan(
+            troot, res_unk.loaded, test_only=set(), scope=sc, generated=res_unk.generated
+        )
+        ghi(
+            "(43) KT-238: tệp sinh không quy được về crate ⇒ `E_DEPINFO_SCOPE` (từ chối rõ)",
+            res_unk.generated.get(gen_evil.resolve()) is None
+            and any("E_DEPINFO_SCOPE" in e for e in rep_unk.errors),
+            f"generated={res_unk.generated} errors={rep_unk.errors}",
+        )
+
+        # --- (44) tệp trong repo nhưng NGOÀI mọi crate ⇒ từ chối rõ -------------------------
+        loose = sroot / "v2/lib/loose.rs"
+        loose.write_text(_GIA_EVIL, encoding="utf-8")
+        rep_loose, _ = scan(sroot, {loose}, test_only=set(), scope=sc)
+        ghi(
+            "(44) KT-238: tệp rustc nạp ngoài mọi crate ⇒ `E_DEPINFO_SCOPE` (vẫn quét R1)",
+            any("E_DEPINFO_SCOPE" in e for e in rep_loose.errors)
+            and any("E_DEPINFO_WAKE" in e for e in rep_loose.errors),
+            f"errors={rep_loose.errors}",
+        )
+
+        # --- (45) `.d` cũ (artifact không thuộc lần chạy) ⇒ KHÔNG đọc nguồn OUT_DIR cũ ------
+        old_out = tgt / "debug/build/old-999/out"
+        old_out.mkdir(parents=True, exist_ok=True)
+        old_evil = old_out / "evil.rs"
+        old_evil.write_text(_GIA_EVIL, encoding="utf-8")
+        dd_old = base / "deps-old"
+        _ghi_d(dd_old / "libold-999.d", troot, [old_evil], target=dd_old / "libold.rmeta")
+        res_old = UnitResult("host", ["(selftest)"])
+        collect_depinfo(
+            dd_old,
+            troot,
+            troot.resolve(),
+            res_old,
+            False,
+            {str(dd_old / "libnew-111.rmeta")},
+            scope=sc,
+            target_dirs=(tgt.resolve(),),
+        )
+        ghi(
+            "(45) KT-238: `.d` cũ (artifact không có trong lần chạy) ⇒ KHÔNG đọc nguồn OUT_DIR cũ",
+            res_old.depinfo_used == 0 and not res_old.loaded,
+            f"depinfo_used={res_old.depinfo_used} loaded={sorted(res_old.loaded)}",
+        )
+
+        # --- (46) `.d` trỏ tệp không còn ⇒ ghi `skipped` (tầng gọi báo ĐỎ) ------------------
+        dd_miss = base / "deps-missing"
+        _ghi_d(dd_miss / "libmiss-222.d", troot, [troot / "v2/lib/a/src/gone.rs"],
+               target=dd_miss / "libmiss.rmeta")
+        res_miss = UnitResult("host", ["(selftest)"])
+        collect_depinfo(
+            dd_miss,
+            troot,
+            troot.resolve(),
+            res_miss,
+            True,
+            set(),
+            scope=sc,
+            target_dirs=(tgt.resolve(),),
+        )
+        ghi(
+            "(46) KT-238: `.d` trỏ tệp không còn ⇒ `skipped` (ĐỎ `E_DEPINFO_STALE`, không cảnh báo)",
+            any(why == "không phải tệp" for _, why in res_miss.skipped),
+            f"skipped={res_miss.skipped}",
+        )
+
+        # --- (47) dấu lần build: ghi/kiểm/giả mạo -------------------------------------------
+        tdir = base / "stamp-target"
+        tdir.mkdir(parents=True, exist_ok=True)
+        sdeps = base / "stamp-deps"
+        sdeps.mkdir(parents=True, exist_ok=True)
+        d1 = sdeps / "a-1.d"
+        d1.write_text("liba.rmeta: src/a.rs\n", encoding="utf-8")
+        write_stamp(tdir, "host", sdeps, [d1])
+        only1, errs1 = verify_stamp(tdir, "host", sdeps, {"a-1.d"})
+        d1.write_text("liba.rmeta: src/b.rs\n", encoding="utf-8")
+        only2, errs2 = verify_stamp(tdir, "host", sdeps, {"a-1.d"})
+        only3, errs3 = verify_stamp(base / "no-target", "host", sdeps, {"a-1.d"})
+        ghi(
+            "(47) KT-238: dấu lần build — khớp ⇒ OK; `.d` đổi ⇒ STALE; thiếu dấu ⇒ STALE",
+            only1 == {"a-1.d"}
+            and errs1 == []
+            and only2 is not None
+            and any("đã đổi" in e for e in errs2)
+            and only3 is None
+            and bool(errs3),
+            f"only1={only1} errs1={errs1} errs2={errs2} errs3={errs3}",
+        )
+
+        # --- (48) R2 áp cho crate bảo vệ NGOÀI kernel/sim (phạm vi từ metadata) --------------
+        lib_bad = sroot / "v2/lib/a/src/bad_ready.rs"
+        lib_bad.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn khong_qua_cua() {\n"
+            "    transition_tcb(1, TcbState::Ready);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep_lib, _ = scan(sroot, {lib_bad}, test_only=set(), scope=sc)
+        ghi(
+            "(48) KT-238: R2 áp cho crate bảo vệ ngoài kernel/sim ⇒ ĐỎ `E_DEPINFO_TRANSITION`",
+            any("E_DEPINFO_TRANSITION" in e for e in rep_lib.errors),
+            f"errors={rep_lib.errors}",
+        )
+
+        # --- (49) crate 'từ chối rõ': R1 vẫn áp, R2 không áp --------------------------------
+        tool_evil = sroot / "v2/tools/t/src/evil.rs"
+        tool_evil.write_text(_GIA_EVIL, encoding="utf-8")
+        tool_ready = sroot / "v2/tools/t/src/ready.rs"
+        tool_ready.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn f() { transition_tcb(1, TcbState::Ready); }\n",
+            encoding="utf-8",
+        )
+        rep_tool, _ = scan(sroot, {tool_evil, tool_ready}, test_only=set(), scope=sc)
+        ghi(
+            "(49) KT-238: crate 'từ chối rõ' — R1 vẫn bắt `wake`, R2 không áp (không thể tới API)",
+            any("E_DEPINFO_WAKE" in e for e in rep_tool.errors)
+            and not any("E_DEPINFO_TRANSITION" in e for e in rep_tool.errors),
+            f"errors={rep_tool.errors}",
+        )
+
+        # --- (50) `--no-build` không có dấu ⇒ ĐỎ `E_DEPINFO_STALE` --------------------------
+        fake2 = base / "fake-no-stamp"
+        (fake2 / "v2/kernel").mkdir(parents=True, exist_ok=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["--root", str(fake2), "--no-build"])
+        out = buf.getvalue()
+        ghi(
+            "(50) KT-238: `--no-build` không có dấu lần build ⇒ RC=1 + `E_DEPINFO_STALE`",
+            rc == 1 and "E_DEPINFO_STALE" in out,
+            f"rc={rc} out={out[-200:]}",
+        )
+
+        # --- (51) `--no-build` có dấu ⇒ chỉ đọc `.d` trong dấu (end-to-end) ----------------
+        fake3 = base / "fake-stamp"
+        (fake3 / "v2/kernel").mkdir(parents=True, exist_ok=True)
+        (fake3 / "v2/Cargo.toml").write_text(
+            "[workspace]\nresolver = \"2\"\nmembers = [\"lib/a\"]\n", encoding="utf-8"
+        )
+        (fake3 / "v2/lib/a/src").mkdir(parents=True, exist_ok=True)
+        (fake3 / "v2/lib/a/Cargo.toml").write_text(
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            encoding="utf-8",
+        )
+        (fake3 / "v2/lib/a/src/lib.rs").write_text(_GIA_CLEAN, encoding="utf-8")
+        (fake3 / "v2/kernel/Cargo.toml").write_text(
+            "[workspace]\nresolver = \"2\"\nmembers = [\"k\"]\n", encoding="utf-8"
+        )
+        (fake3 / "v2/kernel/k/src").mkdir(parents=True, exist_ok=True)
+        (fake3 / "v2/kernel/k/Cargo.toml").write_text(
+            "[package]\nname = \"k\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            encoding="utf-8",
+        )
+        (fake3 / "v2/kernel/k/src/lib.rs").write_text(_GIA_CLEAN, encoding="utf-8")
+        for unit, tdir3, ws3, src3, triple3 in (
+            ("host", fake3 / "v2/target", fake3 / "v2", fake3 / "v2/lib/a/src/lib.rs", None),
+            (
+                "kernel",
+                fake3 / "v2/kernel/target",
+                fake3 / "v2/kernel",
+                fake3 / "v2/kernel/k/src/lib.rs",
+                "riscv64gc-unknown-none-elf",
+            ),
+        ):
+            deps3 = tdir3 / triple3 / "debug/deps" if triple3 else tdir3 / "debug/deps"
+            deps3.mkdir(parents=True, exist_ok=True)
+            _ghi_d(deps3 / "libx-1.d", ws3, [src3], target=deps3 / "libx.rmeta")
+            write_stamp(tdir3, unit, deps3, [deps3 / "libx-1.d"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["--root", str(fake3), "--no-build"])
+        out = buf.getvalue()
+        ghi(
+            "(51) KT-238: `--no-build` có dấu ⇒ XANH, chỉ đọc `.d` trong dấu (end-to-end)",
+            rc == 0 and "errors=0" in out,
+            f"rc={rc} out={out[-300:]}",
+        )
+
     ok = sum(1 for _, o, _ in cases if o)
     print(f"# selftest: {ok}/{len(cases)} ok")
     return 0 if ok == len(cases) else 1
@@ -1260,20 +2189,62 @@ def main(argv: Sequence[str]) -> int:
         fresh_dir = Path(tmp_holder.name)
 
     units = [u for u in BUILD_UNITS if args.unit in ("all", u[0])]
+
+    # **KT-238** — phạm vi sinh từ `cargo metadata` của **các workspace liên quan** + bao đóng
+    # path-dependency nội bộ. `--fresh` ⇒ truyền **cùng** `CARGO_TARGET_DIR` cho metadata để
+    # `target_directory` khớp lần build (nguồn sinh `OUT_DIR` gắn đúng lần build đang kiểm).
+    overrides: Dict[str, Path] = {}
+    if fresh_dir is not None:
+        for name, _manifest, _triple, _target_rel in units:
+            overrides[name] = fresh_dir / name
+    scope = load_scope(root, cargo, toolchain, overrides)
+
     results: List[UnitResult] = []
     build_errors: List[str] = []
+    scope_errors: List[str] = []
+    stamp_errors: List[str] = []
+
+    if not scope.crates:
+        scope_errors.append(
+            "  không dựng được phạm vi từ cargo metadata (0 crate) — fail-closed (KT-238)"
+        )
+    for name, _manifest, _triple, _target_rel in units:
+        if scope.target_dirs.get(name) is None:
+            scope_errors.append(
+                f"  đơn vị `{name}`: không lấy được target dir từ cargo metadata — fail-closed "
+                f"(KT-238)"
+            )
 
     if args.no_build:
-        # Không build: đọc `.d` đã có trong target dir mặc định (dùng cho đo chi phí quét).
+        # **KT-238** — `--no-build` chỉ đọc `.d` có trong **dấu lần build** (sha256). Không có
+        # dấu / dấu lệch ⇒ `E_DEPINFO_STALE`: chứng minh `.d` cũ (và nguồn `OUT_DIR` cũ mà nó
+        # trỏ tới) **không** được đọc nhầm.
         for name, manifest, triple, target_rel in units:
             res = UnitResult(name, ["(no-build)"])
-            deps_dir = root / target_rel
+            target_dir = scope.target_dirs.get(name)
+            if target_dir is None:
+                target_dir = (root / target_rel).resolve()
+                res.note = "không có target dir từ cargo metadata — dùng dự phòng (fail-closed)"
+            res.target_dir = target_dir
+            deps_dir = target_dir
             if triple:
                 deps_dir = deps_dir / triple
             deps_dir = deps_dir / "debug/deps"
             ws_root = (root / manifest).parent
-            # `--no-build` không có artifact của lần chạy ⇒ lấy mọi `.d` (superset).
-            collect_depinfo(deps_dir, ws_root, root, res, True, set())
+            present = {d.name for d in deps_dir.glob("*.d")} if deps_dir.is_dir() else set()
+            only, errs = verify_stamp(target_dir, name, deps_dir, present)
+            stamp_errors.extend(errs)
+            collect_depinfo(
+                deps_dir,
+                ws_root,
+                root,
+                res,
+                True,
+                set(),
+                scope=scope,
+                target_dirs=(target_dir,),
+                only_files=only if only is not None else set(),
+            )
             results.append(res)
     else:
         if cargo is None:
@@ -1290,6 +2261,7 @@ def main(argv: Sequence[str]) -> int:
                 toolchain,
                 args.timeout,
                 fresh_dir,
+                scope=scope,
             )
             results.append(res)
             if res.rc != 0:
@@ -1299,8 +2271,10 @@ def main(argv: Sequence[str]) -> int:
                 )
 
     loaded: Set[Path] = set()
+    generated: Dict[Path, Optional[str]] = {}
     for res in results:
         loaded |= res.loaded
+        generated.update(res.generated)
 
     # Test-only theo **đồ thị module** của checker tĩnh (một định nghĩa duy nhất — KT-172).
     # Chỉ dựng khi cần: bản build sản phẩm không nạp tệp test, nên nếu danh sách nạp không có
@@ -1316,14 +2290,26 @@ def main(argv: Sequence[str]) -> int:
             test_only = set()
             graph_mode = "LỖI dựng đồ thị ⇒ không miễn theo test (fail-closed)"
 
-    rep, counts = scan(root, loaded, test_only=test_only, do_transitions=not args.no_transition)
+    rep, counts = scan(
+        root,
+        loaded,
+        test_only=test_only,
+        do_transitions=not args.no_transition,
+        scope=scope,
+        generated=generated,
+    )
     for e in build_errors:
         rep.err("E_DEPINFO_BUILD", e)
+    for e in scope_errors:
+        rep.err("E_DEPINFO_SCOPE", e)
+    for e in stamp_errors:
+        rep.err("E_DEPINFO_STALE", e)
     # **KT-227 P0-1** — `.d` rỗng/thiếu/không cho tệp nào ⇒ ĐỎ (trước bản này là xanh-giả).
     for e in depinfo_empty_errors(results, loaded):
         rep.err("E_DEPINFO_EMPTY", e)
-    # **KT-227 P0-3** — tệp rustc nạp mà công cụ không quét: ngoài gốc repo ⇒ ĐỎ (fail-closed);
-    # thư mục build / không phải tệp ⇒ CẢNH BÁO (không im lặng).
+    # **KT-238** — tệp rustc nạp mà công cụ **không quét**: mọi trường hợp đều **ĐỎ** (không còn
+    # `W_DEPINFO_SKIPPED`): ngoài gốc repo ⇒ `E_DEPINFO_OUTSIDE`; thư mục build lạ ⇒
+    # `E_DEPINFO_SCOPE`; không resolve / không phải tệp ⇒ `E_DEPINFO_STALE`.
     for res in results:
         for path, why in res.skipped:
             if why == "ngoài gốc repo":
@@ -1332,13 +2318,19 @@ def main(argv: Sequence[str]) -> int:
                     f"  {path}: tệp rustc nạp nằm ngoài gốc repo — không quét được "
                     f"(fail-closed, KT-227 P0-3)",
                 )
+            elif why.startswith("thư mục build lạ"):
+                rep.err(
+                    "E_DEPINFO_SCOPE",
+                    f"  {path}: {why} — từ chối rõ (fail-closed, KT-238)",
+                )
             else:
-                rep.warn(
-                    "W_DEPINFO_SKIPPED",
-                    f"  {path}: bỏ qua ({why}) — KT-227 P0-3",
+                rep.err(
+                    "E_DEPINFO_STALE",
+                    f"  {path}: tệp rustc nạp không đọc được ({why}) — `.d` không khớp lần "
+                    f"build hiện tại (fail-closed, KT-238)",
                 )
 
-    hidden = hidden_files(root, loaded)
+    hidden = hidden_files(root, loaded, scope)
     outside = outside_static_scope(root, loaded)
     total = time.monotonic() - t0
 
@@ -1350,6 +2342,17 @@ def main(argv: Sequence[str]) -> int:
                         "ok": rep.ok,
                         "root": str(root),
                         "seconds": round(total, 3),
+                        "scope": {
+                            "protected": [
+                                {"name": c.name, "dir": c.dir_rel} for c in scope.protected()
+                            ],
+                            "refused": [
+                                {"name": c.name, "dir": c.dir_rel, "reason": c.reason}
+                                for c in scope.refused()
+                            ],
+                            "target_dirs": {k: str(v) for k, v in scope.target_dirs.items()},
+                            "notes": scope.notes,
+                        },
                         "units": [
                             {
                                 "name": u.name,
@@ -1359,12 +2362,15 @@ def main(argv: Sequence[str]) -> int:
                                 "artifacts": u.artifacts,
                                 "depinfo_used": u.depinfo_used,
                                 "loaded": len(u.loaded),
+                                "generated": len(u.generated),
+                                "target_dir": str(u.target_dir) if u.target_dir else None,
                                 "note": u.note,
                             }
                             for u in results
                         ],
                         "loaded_files": counts["loaded"],
                         "scanned_files": counts["scanned"],
+                        "generated_files": len(generated),
                         "producer_files": counts["producer_files"],
                         "exempt_test": counts["exempt_test"],
                         "hidden_files": hidden,
@@ -1382,11 +2388,15 @@ def main(argv: Sequence[str]) -> int:
         return 0 if rep.ok else 1
 
     print(f"# check-wake-depinfo: root={root}")
+    for line in scope.summary():
+        print(line)
     for u in results:
         cmd = " ".join(u.cmd)
         print(
             f"# đơn vị {u.name}: {cmd} → RC={u.rc} ({u.seconds:.2f} s), "
             f"{u.artifacts} artifact, {u.depinfo_used} tệp .d, {len(u.loaded)} tệp .rs"
+            + (f", {len(u.generated)} tệp sinh" if u.generated else "")
+            + (f" [target dir: {u.target_dir}]" if u.target_dir else "")
             + (f" [{u.note}]" if u.note else "")
         )
     print(f"# rustc nạp: {counts['loaded']} tệp .rs trong cây (gộp {len(results)} đơn vị)")
@@ -1394,6 +2404,7 @@ def main(argv: Sequence[str]) -> int:
         f"# quét: {counts['scanned']} tệp "
         f"(tệp cửa wake: {counts['producer_files']} — KHÔNG miễn cả tệp; miễn {counts['exempt_test']} tệp test-only)"
     )
+    print(f"# tệp sinh trong target dir (đã quét): {len(generated)}")
     print(f"# test-only: {graph_mode}")
     print(
         f"# tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): {len(hidden)}"
