@@ -127,12 +127,12 @@ sha256 ảnh **phụ thuộc thư mục build** (5 lần build → 4 sha). Danh 
 ## 5. Trạng thái cuối
 
 ```text
-HEAD          e12477fb  (main, đã push)
+HEAD          c6d358f3  (main, đã push)
 BUILD-INPUTS  234 mục, sha256 54f3b59fc08f3221, dirty=0   ← KHÔNG ĐỔI
 TOOLCHAIN     Rust 1.100.0
 ẢNH SẢN PHẨM  d915b977… (191 288 B, inputs=54f3b59fc08f3221) — vẫn hiệu lực
 K6            đo lại đủ 5 hạng mục trên ảnh đó; C1..C8 phủ; N1..N7 + S1 giữ mở
-CỔNG          T2 PASS 54/54 (477,2 s) trên e12477fb; T1 PASS (272,0 s)
+CỔNG          T2 PASS 54/54 (477,2 s) trên e12477fb; T1 PASS (270,2 s) trên c6d358f3 (HEAD cuối)
 TASK          KT-241 DONE; KT-184/KT-194 REVIEW; WB-19 OPEN
 ```
 
@@ -154,7 +154,7 @@ TASK          KT-241 DONE; KT-184/KT-194 REVIEW; WB-19 OPEN
 
 | Kết quả | Loại | Ghi chú |
 |---|---|---|
-| `gate --dev` PASS 272,0 s trên `e12477fb` | **T1** | **không** phải full gate |
+| `gate --dev` PASS 270,2 s trên `c6d358f3` (HEAD cuối) | **T1** | **không** phải full gate |
 | `gate --fast` PASS 54/54, 477,2 s trên `e12477fb` | **T2 / full gate** | |
 | Ma trận tấn công 28/28 | kiểm tác vụ (T0) | chạy trên worktree riêng |
 | K6 (ktest/persist/conformance/soak/L1 400k) | **K6** | đo trên ảnh `d915b977…`, **tái dùng** (inputs không đổi) |
