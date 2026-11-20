@@ -405,8 +405,9 @@ impl FrameArena {
                     return Err(AllocError::Corrupt);
                 }
             }
-            for j in 0..self.n_holes as usize {
-                let h = self.holes[j];
+            // KT-242: slicing giữ **đúng** hành vi cũ — nếu `n_holes > MAX_HOLES` thì panic
+            // như indexing, không âm thầm cắt ngắn.
+            for &h in &self.holes[..self.n_holes as usize] {
                 if u64::from(off) < u64::from(h.off) + u64::from(h.len)
                     && u64::from(h.off) < u64::from(off) + u64::from(len)
                 {

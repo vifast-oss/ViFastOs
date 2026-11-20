@@ -3,14 +3,14 @@
 # Same measures as the POSIX script, expressed for Windows paths:
 #   * -C strip=symbols                    (drop .symtab/.strtab; .text digest still readable)
 #   * CARGO_INCREMENTAL=0, SOURCE_DATE_EPOCH=0
-#   * toolchain pinned by rust-toolchain.toml (1.99.1)
+#   * toolchain pinned by rust-toolchain.toml (1.100.0)
 #   * absolute source paths -> fixed virtual paths, via one --remap-path-prefix per directory
 #     that contains a .rs file. Windows paths use '\', rustc stores the string verbatim in
 #     panic locations (file!()), so each directory prefix is remapped to the canonical '/'
 #     form. This produces exactly the same strings as the POSIX root remap:
 #       v2/lib/<crate>/src/lib.rs  ->  /vifast/v2/lib/<crate>/src/lib.rs
 #       vifast-core/src/lib.rs     ->  vifast-core/src/lib.rs   (relative, workspace member)
-# No GNU toolchain needed: rustc 1.99.1 + riscv64gc target use the bundled rust-lld.
+# No GNU toolchain needed: rustc 1.100.0 + riscv64gc target use the bundled rust-lld.
 # ASCII-only on purpose: Windows PowerShell 5.1 reads .ps1 as ANSI unless a BOM is present.
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File v2\tools\repro-build-windows.ps1 `
@@ -41,7 +41,7 @@ $rustc = Join-Path $cargoBin "rustc.exe"
 # cwd inside the tree; toolchain is pinned EXPLICITLY (A1-174: no pin file at repo root, so it
 # cannot leak into crates/ or viscript/ of other lines).
 Set-Location $Root
-$env:RUSTUP_TOOLCHAIN = "1.99.1"
+$env:RUSTUP_TOOLCHAIN = "1.100.0"
 
 $flags = New-Object System.Collections.Generic.List[string]
 $remapCount = 0

@@ -496,8 +496,13 @@ pub(crate) fn inode_decode(input: &[u8]) -> Inode {
         generation: get_u32(input, 12),
         ..Default::default()
     };
-    for index in 0..MAX_BLOCKS_PER_INODE {
-        inode.blocks[index] = get_u32(input, 16 + index * 4);
+    for (index, block) in inode
+        .blocks
+        .iter_mut()
+        .take(MAX_BLOCKS_PER_INODE)
+        .enumerate()
+    {
+        *block = get_u32(input, 16 + index * 4);
     }
     inode
 }

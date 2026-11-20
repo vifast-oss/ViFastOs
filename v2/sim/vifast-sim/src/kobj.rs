@@ -3431,9 +3431,9 @@ impl Machine {
                     d.active_on, self.hart_online
                 ));
             }
-            for hart in 0..self.hart_vspace.len() {
+            for (hart, slot) in self.hart_vspace.iter().enumerate() {
                 let bit = d.active_on.contains(hart as u16);
-                let cur = self.hart_vspace[hart] == Some(obj);
+                let cur = *slot == Some(obj);
                 if bit != cur {
                     return Err(format!(
                         "VSpace {obj}: active_on và hart_vspace lệch ở hart {hart}"
@@ -6006,11 +6006,12 @@ impl Machine {
                 continue;
             };
             let mut dest = None;
-            for y in 0..n {
+            // KT-242: slicing giữ đúng hành vi cũ (panic nếu `published.len() < n`).
+            for (y, pub_slot) in self.published[..n].iter().enumerate() {
                 if y == x || info.affinity & (1u64 << y) == 0 {
                     continue;
                 }
-                if self.published[y].idle {
+                if pub_slot.idle {
                     dest = Some(y as u16);
                     break;
                 }

@@ -55,8 +55,8 @@ impl<D: BlockDev> Fs<D> {
         header[..4].copy_from_slice(b"VJ01");
         put_u32(&mut header, 4, self.seq);
         header[8] = count as u8;
-        for index in 0..count {
-            put_u32(&mut header, 16 + index * 4, self.targets[index]);
+        for (index, &target) in self.targets.iter().take(count).enumerate() {
+            put_u32(&mut header, 16 + index * 4, target);
         }
         let mut crc = crc32(&header[..80]);
         for index in 0..count {
@@ -210,8 +210,8 @@ impl<D: BlockDev> Fs<D> {
         header[..4].copy_from_slice(b"VJ01");
         put_u32(&mut header, 4, self.seq);
         header[8] = count as u8;
-        for index in 0..count {
-            put_u32(&mut header, 16 + index * 4, self.targets[index]);
+        for (index, &target) in self.targets.iter().take(count).enumerate() {
+            put_u32(&mut header, 16 + index * 4, target);
         }
         let mut crc = crc32(&header[..80]);
         for index in 0..count {

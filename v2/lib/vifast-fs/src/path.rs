@@ -240,15 +240,16 @@ impl<D: BlockDev> Fs<D> {
         child: u16,
     ) -> Result<(), FsError> {
         let mut inode = self.inodes[dir as usize - 1];
-        for block_index in 0..inode.blocks_used() {
-            let mut block = self.read_staged(inode.blocks[block_index])?;
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for &lba in &inode.blocks[..inode.blocks_used()] {
+            let mut block = self.read_staged(lba)?;
             for slot in 0..DIR_ENTRIES_PER_BLOCK {
                 let off = slot * DIR_ENTRY_SIZE;
                 if get_u16(&block, off) == 0 {
                     put_u16(&mut block, off, child);
                     block[off + 2] = name.len() as u8;
                     block[off + 3..off + 3 + name.len()].copy_from_slice(name);
-                    self.stage(inode.blocks[block_index], &block)?;
+                    self.stage(lba, &block)?;
                     return Ok(());
                 }
             }
@@ -272,8 +273,9 @@ impl<D: BlockDev> Fs<D> {
 
     pub(crate) fn remove_dir_entry(&mut self, dir: u16, name: &[u8]) -> Result<u16, FsError> {
         let inode = self.inodes[dir as usize - 1];
-        for block_index in 0..inode.blocks_used() {
-            let mut block = self.read_staged(inode.blocks[block_index])?;
+        // KT-242: slicing giữ đúng hành vi cũ (panic nếu `blocks_used() > 12`).
+        for &lba in &inode.blocks[..inode.blocks_used()] {
+            let mut block = self.read_staged(lba)?;
             for slot in 0..DIR_ENTRIES_PER_BLOCK {
                 let off = slot * DIR_ENTRY_SIZE;
                 let ino = get_u16(&block, off);
@@ -293,7 +295,7 @@ impl<D: BlockDev> Fs<D> {
                     for byte in block[off + 3..off + 3 + MAX_NAME].iter_mut() {
                         *byte = 0;
                     }
-                    self.stage(inode.blocks[block_index], &block)?;
+                    self.stage(lba, &block)?;
                     return Ok(ino);
                 }
             }

@@ -14,31 +14,49 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Rlib của `vifast-objmem` mà test binary đang dùng (cùng thư mục `deps`).
+/// Rlib của `vifast-objmem` mà test binary đang dùng.
+///
+/// **KT-242 (nâng toolchain 1.100.0)** — cargo ≥ 1.100 đổi **bố cục artifact**: binary test
+/// nằm ở `<target>/debug/build/<pkg>/<hash>/out/` (không còn `<target>/debug/deps/`), và rlib
+/// của lib nằm ở **một thư mục hash khác** cùng cấp. Vì vậy không thể đọc `exe.parent()` nữa:
+/// phải tìm gốc `debug` (thư mục có `build/` hoặc `deps/`) rồi quét đệ quy. Cách này chạy
+/// đúng cho **cả hai** bố cục (1.99.1 và 1.100.0) nên không phải sửa lần nữa khi đổi tiếp.
 fn rlib_objmem() -> PathBuf {
     let exe = std::env::current_exe().expect("current_exe");
-    let deps = exe.parent().expect("thư mục deps").to_path_buf();
+    let mut root = exe.parent().expect("thư mục chứa binary").to_path_buf();
+    // Đi lên tối đa 8 cấp; dừng ở thư mục có `build/` hoặc `deps/` (gốc `debug` của cargo).
+    let mut len = 0;
+    while !(root.join("build").is_dir() || root.join("deps").is_dir()) {
+        len += 1;
+        if len > 8 || !root.pop() {
+            break;
+        }
+    }
     let mut moi_nhat: Option<(std::time::SystemTime, PathBuf)> = None;
-    for entry in std::fs::read_dir(&deps).expect("đọc deps") {
-        let p = entry.expect("entry").path();
-        let ten = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if ten.starts_with("libvifast_objmem-") && ten.ends_with(".rlib") {
-            let t = std::fs::metadata(&p)
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            if moi_nhat.as_ref().is_none_or(|(t0, _)| t > *t0) {
-                moi_nhat = Some((t, p));
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let ten = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if ten.starts_with("libvifast_objmem-") && ten.ends_with(".rlib") {
+                let t = std::fs::metadata(&p)
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                if moi_nhat.as_ref().is_none_or(|(t0, _)| t > *t0) {
+                    moi_nhat = Some((t, p));
+                }
             }
         }
     }
     moi_nhat
         .map(|(_, p)| p)
-        .or_else(|| {
-            // Dự phòng: artifact lib ở `<target>/debug/libvifast_objmem.rlib`.
-            let debug = deps.parent()?;
-            let p = debug.join("libvifast_objmem.rlib");
-            p.is_file().then_some(p)
-        })
         .expect("phải tìm thấy rlib của vifast-objmem")
 }
 

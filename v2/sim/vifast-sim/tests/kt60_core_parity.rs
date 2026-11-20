@@ -1851,23 +1851,23 @@ fn digest(v: &dyn View, rig: &Rig) -> Digest {
     let mut infos = Vec::new();
     let mut reads = Vec::new();
     let mut ipcs = Vec::new();
-    for i in 0..3 {
-        states.push(v.tcb_state(rig.t[i]));
+    for (i, &t) in rig.t.iter().take(3).enumerate() {
+        states.push(v.tcb_state(t));
         infos.push(v.tcb_info(rig.ts[i]));
         reads.push(v.tcb_read(rig.ts[i]));
-        ipcs.push(v.ipc_area(rig.t[i]));
+        ipcs.push(v.ipc_area(t));
     }
     let mut eps = Vec::new();
-    for i in 0..2 {
-        eps.push(v.endpoint(rig.ep[i]));
+    for &ep in rig.ep.iter().take(2) {
+        eps.push(v.endpoint(ep));
     }
     let mut replies = Vec::new();
-    for i in 0..4 {
-        replies.push(v.reply_caller_fp(rig.r[i]));
+    for &r in rig.r.iter().take(4) {
+        replies.push(v.reply_caller_fp(r));
     }
     let mut ntfns = Vec::new();
-    for i in 0..2 {
-        ntfns.push(v.notification(rig.n[i]));
+    for &n in rig.n.iter().take(2) {
+        ntfns.push(v.notification(n));
     }
     let mut wa = Vec::new();
     for &(f, o) in &WA_KEYS {
@@ -1878,8 +1878,8 @@ fn digest(v: &dyn View, rig: &Rig) -> Digest {
         mail.push(v.mail(h));
     }
     let mut windows = Vec::new();
-    for i in 0..3 {
-        windows.push(v.window(rig.t[i]));
+    for &t in rig.t.iter().take(3) {
+        windows.push(v.window(t));
     }
     Digest {
         states,
