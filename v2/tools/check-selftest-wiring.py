@@ -107,14 +107,6 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # trừ **tạm thời**: phải **xoá** hai mục này khi lead nối chúng vào `gate --fast`/`gate --dev`
     # (để lại sẽ sinh `W_EXEMPT_UNUSED`). Không phải nới luật: `--selftest` vẫn chạy được bằng
     # tay và đã được chạy trong bằng chứng của task (`kt265-aarch64-soak.md` §3).
-    (
-        "v2/test/boot/soak-aarch64.sh",
-        "KT-265: task không được thêm bước vào v2/bin/v2; lead nối cổng — xoá mục này khi nối",
-    ),
-    (
-        "v2/test/boot/budget-aarch64.sh",
-        "KT-265: task không được thêm bước vào v2/bin/v2; lead nối cổng — xoá mục này khi nối",
-    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính
