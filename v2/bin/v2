@@ -325,6 +325,311 @@ run_step() { # <tên> <lệnh...>
     return 1
 }
 
+# ---------------------------------------------------------------- làn song song (KT-242 P3)
+#
+# **Vì sao**: 53 bước chạy **tuần tự** trên máy 12 nhân. Đo KT-110 (`real 407 s, user 277 s`)
+# cho thấy cổng chỉ dùng ~0,7 nhân; phần lớn bước là **checker tĩnh chỉ đọc** (không ghi
+# `target/`, không sửa cây, không QEMU) nên chạy song song được mà **không đổi phép kiểm nào**.
+#
+# **Mô hình**: mỗi bước có **số thứ tự cố định** (đúng thứ tự cũ) và một **làn**:
+#   main — chạy tuần tự ngay, song song với các làn nền (bước đọc cây / ghi `target/`).
+#   A/B/C — chạy **nền**, song song với `main` và với nhau; **chỉ** chứa bước chỉ đọc.
+#   D    — làn nền riêng cho `selfbreak` (chỉ đọc cây thật); nó chạy **trong pha `check`**,
+#          không đặt cạnh `L0 test` (L0 có binary nhạy thời gian — D2-116/D2-141).
+#   sau  — chạy tuần tự **sau khi** mọi làn nền đã xong: bước QEMU/persist/git-guard và bước
+#          **sửa cây** (`api boundary` chèn tệp probe; `selftest runner ktest` sửa `expected.txt`).
+# Log từng bước ghi ra tệp riêng rồi **phát lại theo số thứ tự** ⇒ log hai lần chạy so sánh
+# được từng dòng dù thứ tự hoàn thành khác nhau.
+#
+# **Bất biến giữ nguyên**: cùng tập bước, cùng ngưỡng, cùng số ca; T1 vẫn bỏ đúng 8 bước
+# harness (`V2_T2_ONLY_STEPS`); mã thoát của cổng = có bước nào đỏ hay không.
+
+LANE_DIR=""
+LANE_T0=0
+LANE_STEPS=""
+LANE_BG=""
+LANE_PIDS=""
+
+lane_reset() {
+    LANE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/v2lanes.XXXXXX")" || return 1
+    # **KT-242 (P3)** — thư mục tạm **riêng cho lần chạy cổng**: script con dùng nó thay cho
+    # đường `/tmp/<cố định>` (xem `JOURNAL/kt242-lanes-inventory.md` §2), nên hai cổng ở hai
+    # worktree — hoặc hai bước song song — không ghi đè lên nhau. Chạy script **rời** (không qua
+    # cổng) vẫn dùng `${TMPDIR:-/tmp}` như cũ ⇒ không đổi hành vi cũ.
+    if [ -z "${V2_RUN_TMP:-}" ]; then
+        V2_RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/v2run.XXXXXX")" || return 1
+        export V2_RUN_TMP
+    fi
+    echo "# run-tmp: $V2_RUN_TMP"
+    LANE_T0="$(now_ms)"
+    LANE_STEPS=""
+    LANE_BG=""
+    LANE_PIDS=""
+    return 0
+}
+
+lane_step() { # <làn> <số thứ tự> <tên> <hàm>
+    local lane="$1" id="$2" name="$3" fn="$4"
+    LANE_STEPS="${LANE_STEPS}${id}	${lane}	${name}	${fn}
+"
+    case "$lane" in
+        main | sau) ;;
+        *)
+            case " $LANE_BG " in
+                *" $lane "*) ;;
+                *) LANE_BG="$LANE_BG $lane" ;;
+            esac
+            ;;
+    esac
+}
+
+lane_ids() { # <làn> -> các số thứ tự, tăng dần
+    printf '%s' "$LANE_STEPS" | awk -F'\t' -v l="$1" '$2 == l { print $1 }' | sort -n
+}
+
+lane_done() { # <số thứ tự> -> 0 nếu bước đã chạy (hoặc đã bỏ qua)
+    [ -f "$LANE_DIR/$1.rc" ] || [ -f "$LANE_DIR/$1.skip" ]
+}
+
+lane_exec() { # <số thứ tự> <tên> <hàm> <làn> — chạy một bước, ghi log/rc/ms **riêng**
+    local id="$1" name="$2" fn="$3" lane="$4" t0 t1 rc
+    # T1 (`gate --dev`) bỏ đúng 8 bước chỉ kiểm harness — cùng danh sách, cùng cách khớp tên.
+    if [ "$V2_TIER" = "t1" ]; then
+        case "$V2_T2_ONLY_STEPS" in
+            *"$name"*)
+                : >"$LANE_DIR/$id.skip"
+                return 0
+                ;;
+        esac
+    fi
+    # Tiến trình cho người xem: stdout chỉ in **sau** khi phát lại theo thứ tự cố định, nên
+    # báo tiến độ ra stderr (không làm bẩn log cổng).
+    printf '# làn %s: %s …\n' "$lane" "$name" >&2
+    t0="$(now_ms)"
+    # **`</dev/null` là bắt buộc**: `lane_run` đọc bảng bước từ heredoc, nên stdin của tiến trình
+    # là **phần còn lại của bảng**. Bước nào đọc stdin — QEMU `-nographic` đọc UART từ stdin —
+    # sẽ nuốt bảng, làm hỏng phép kiểm và **dừng vòng lặp** (các bước sau không chạy).
+    "$fn" </dev/null >"$LANE_DIR/$id.log" 2>&1
+    rc=$?
+    t1="$(now_ms)"
+    printf '%s\n' "$rc" >"$LANE_DIR/$id.rc"
+    printf '%s\n' "$((t1 - t0))" >"$LANE_DIR/$id.ms"
+    return 0
+}
+
+lane_run() {
+    local lane id l name fn p
+    # 1) làn nền: một tiến trình cho **mỗi** làn, các bước trong làn chạy tuần tự.
+    for lane in $LANE_BG; do
+        (
+            while IFS="	" read -r id l name fn; do
+                [ "$l" = "$lane" ] || continue
+                lane_done "$id" || lane_exec "$id" "$name" "$fn" "$lane"
+            done <<EOF
+$LANE_STEPS
+EOF
+        ) &
+        LANE_PIDS="$LANE_PIDS $!"
+    done
+    # 2) làn main: tuần tự, chạy **song song** với các làn nền ở trên.
+    while IFS="	" read -r id l name fn; do
+        [ "$l" = "main" ] || continue
+        lane_done "$id" || lane_exec "$id" "$name" "$fn" main
+    done <<EOF
+$LANE_STEPS
+EOF
+    # 3) chờ mọi làn nền — không để tiến trình mồ côi.
+    for p in $LANE_PIDS; do wait "$p" 2>/dev/null || true; done
+    LANE_PIDS=""
+    # 4) làn sau: **độc quyền** — chỉ chạy khi không còn làn nền nào (bước sửa cây/QEMU).
+    while IFS="	" read -r id l name fn; do
+        [ "$l" = "sau" ] || continue
+        lane_done "$id" || lane_exec "$id" "$name" "$fn" sau
+    done <<EOF
+$LANE_STEPS
+EOF
+}
+
+lane_fails() { # [id tối đa] — đếm bước đỏ; `check` chỉ đếm bước của nó (id ≤ 39)
+    local id n=0 max="${1:-999}"
+    for id in $(printf '%s' "$LANE_STEPS" | awk -F'\t' '{ print $1 }' | sort -n); do
+        [ "$id" -le "$max" ] || continue
+        [ -f "$LANE_DIR/$id.rc" ] || continue
+        [ "$(cat "$LANE_DIR/$id.rc")" -eq 0 ] || n=$((n + 1))
+    done
+    printf '%s' "$n"
+}
+
+lane_report() { # phát lại log từng bước theo **số thứ tự** (không theo thứ tự hoàn thành)
+    local id l name fn rc ms
+    [ -n "$LANE_DIR" ] || return 0
+    printf '%s' "$LANE_STEPS" | sort -n -t"	" -k1,1 >"$LANE_DIR/order"
+    while IFS="	" read -r id l name fn; do
+        if [ -f "$LANE_DIR/$id.skip" ]; then
+            echo "--- $name: BỎ QUA (T1 — chỉ chạy ở T2)"
+            continue
+        fi
+        echo "--- $name"
+        [ -f "$LANE_DIR/$id.log" ] && cat "$LANE_DIR/$id.log"
+        rc="$(cat "$LANE_DIR/$id.rc" 2>/dev/null || echo 1)"
+        ms="$(cat "$LANE_DIR/$id.ms" 2>/dev/null || echo 0)"
+        if [ "$rc" -eq 0 ]; then
+            echo "--- $name: OK"
+            printf '# step-time %s %s ms\n' "$name" "$ms"
+            step_time_add "$ms" "$name"
+        else
+            echo "--- $name: FAIL" >&2
+            printf '# step-time %s %s ms (FAIL)\n' "$name" "$ms"
+            step_time_add "$ms" "$name (FAIL)"
+        fi
+    done <"$LANE_DIR/order"
+}
+
+lane_sum() { # <làn> -> tổng ms của các bước trong làn
+    local id s=0
+    for id in $(lane_ids "$1"); do
+        [ -f "$LANE_DIR/$id.ms" ] && s=$((s + $(cat "$LANE_DIR/$id.ms")))
+    done
+    printf '%s' "$s"
+}
+
+cpu_user_sys() { # in "user sys" (giây) của shell + mọi con đã wait — không cần tiến trình ngoài
+    # `times` là builtin báo CPU của **shell hiện tại** + các con đã wait. Nó phải chạy ở shell
+    # hiện tại: đặt trong `$( … )` là subshell ⇒ luôn ra 0. Vì vậy ghi ra tệp rồi đọc.
+    times >"$LANE_DIR/times.txt"
+    awk '{
+        v = $1; sub(/s$/, "", v); split(v, a, "m"); u += a[1] * 60 + a[2]
+        v = $2; sub(/s$/, "", v); split(v, a, "m"); s += a[1] * 60 + a[2]
+    } END { printf "%.3f %.3f", u, s }' "$LANE_DIR/times.txt"
+}
+
+# **KT-242 (P3)** — tổng kết cổng: wall, CPU (user+sys), critical path, số làn.
+# Critical path = chuỗi dài nhất thật sự: `main` và các làn nền chạy **đồng thời**, rồi `sau`
+# chạy tiếp ⇒ wall ≈ max(main, làn nền dài nhất) + sau. In cả ba để thấy chỗ còn cắt được.
+gate_summary() { # <nhãn> <t_start_ms>
+    local label="$1" t_start="$2" wall us sy main_ms sau_ms bg_ms crit crit_lane lane s
+    [ -n "$LANE_DIR" ] || return 0
+    wall=$(( $(now_ms) - t_start ))
+    # `times` phải chạy ở **shell hiện tại** ⇒ gọi hàm với chuyển hướng (không `$( … )`).
+    cpu_user_sys >"$LANE_DIR/cpu.txt"
+    read -r us sy <"$LANE_DIR/cpu.txt"
+    main_ms="$(lane_sum main)"
+    sau_ms="$(lane_sum sau)"
+    bg_ms=0
+    crit_lane="main"
+    for lane in $LANE_BG; do
+        s="$(lane_sum "$lane")"
+        if [ "$s" -gt "$bg_ms" ]; then
+            bg_ms="$s"
+            crit_lane="$lane"
+        fi
+    done
+    if [ "$main_ms" -ge "$bg_ms" ]; then
+        crit=$((main_ms + sau_ms))
+        crit_lane="main"
+    else
+        crit=$((bg_ms + sau_ms))
+    fi
+    echo "--- bảng thời gian cổng ($label)"
+    printf '# gate-wall %d ms (%.1f s)\n' "$wall" "$(awk -v w="$wall" 'BEGIN { printf "%.1f", w / 1000 }')"
+    printf '# gate-cpu user=%s s sys=%s s total=%s s\n' "$us" "$sy" \
+        "$(awk -v a="$us" -v b="$sy" 'BEGIN { printf "%.3f", a + b }')"
+    printf '# gate-lanes %d làn nền (%s) + main + sau\n' \
+        "$(printf '%s' "$LANE_BG" | wc -w | tr -d ' ')" "${LANE_BG# }"
+    printf '# gate-lane-time main=%d ms sau=%d ms%s\n' "$main_ms" "$sau_ms" \
+        "$(for lane in $LANE_BG; do printf ' %s=%d ms' "$lane" "$(lane_sum "$lane")"; done)"
+    printf '# gate-critical-path %d ms (chuỗi dài nhất: làn %s + sau)\n' "$crit" "$crit_lane"
+    step_time_report
+    printf '# step-time-total %8d ms  TỔNG %s\n' "$wall" "$label"
+}
+
+# ---------------------------------------------------------------- các bước (hàm, không tham số)
+#
+# Mỗi bước là **một hàm** để bảng làn chỉ cần giữ tên hàm — không `eval`, không nối chuỗi lệnh
+# (đường dẫn có dấu cách vẫn đúng). Thân hàm là **nguyên văn** lệnh cũ.
+
+step_py() { # <script> [tham số...] — chặn sớm khi thiếu python ≥3.11 (giữ nguyên thông điệp cũ)
+    if [ -z "${V2_PY:-}" ]; then
+        echo "cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)"
+        return 1
+    fi
+    "$V2_PY" "$@"
+}
+
+# --- `check` ---
+step_fmt() { "$CARGO" fmt --all --check --manifest-path "$MANIFEST"; }
+step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
+step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }
+step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }
+step_k6() { check_k6_rules; }
+step_build_inputs() { bash "$V2_ROOT/test/boot/build-rev.sh" --selftest; }
+step_build_identity() { bash "$V2_ROOT/test/boot/build-identity.sh" --selftest; }
+step_t26() { bash "$V2_ROOT/test/boot/t26.sh" --selftest; }
+step_algo_pin() { bash "$V2_ROOT/tools/check-algo-pin.sh" --strict; }
+step_selftest_algo_pin() { bash "$V2_ROOT/tools/check-algo-pin.sh" --selftest; }
+step_shell_edge() { bash "$V2_ROOT/test/boot/shell-edge.sh" --selftest; }
+step_budget() { bash "$V2_ROOT/test/boot/budget.sh" --selftest; }
+step_counter_evidence() { bash "$V2_ROOT/test/rules/counter-evidence.sh" --selftest; }
+step_task_target() { bash "$V2_ROOT/tools/task-target.sh" --selftest; }
+step_selftest_l1_tiers() { bash "$V2_ROOT/tools/l1-tier.sh" --selftest; }
+step_scope_table() { step_py "$V2_ROOT/tools/check-scope-table.py" --root "$REPO_ROOT"; }
+step_selftest_scope_table() { step_py "$V2_ROOT/tools/check-scope-table.py" --selftest; }
+step_wiring() { step_py "$V2_ROOT/tools/check-selftest-wiring.py" --selftest; }
+step_wiring_standalone() { step_py "$V2_ROOT/tools/check-selftest-wiring.py" --standalone-red; }
+step_wake_paths() { step_py "$V2_ROOT/tools/check-wake-paths.py"; }
+step_selftest_wake_paths() { step_py "$V2_ROOT/tools/check-wake-paths.py" --selftest; }
+step_wake_paths_strict() { step_py "$V2_ROOT/tools/check-wake-paths.py" --strict; }
+step_wake_depinfo() { step_py "$V2_ROOT/tools/check-wake-depinfo.py" --root "$REPO_ROOT"; }
+step_selftest_wake_depinfo() { step_py "$V2_ROOT/tools/check-wake-depinfo.py" --selftest; }
+step_api_boundary() { step_py "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT"; }
+step_test_teeth() { step_py "$V2_ROOT/tools/check-test-teeth.py"; }
+step_selftest_test_teeth() { step_py "$V2_ROOT/tools/check-test-teeth.py" --selftest; }
+step_abi() { step_py "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml"; }
+step_golden() { (cd "$REPO_ROOT" && step_py v2/test/trace/gen_golden.py --check); }
+step_scn() { (cd "$REPO_ROOT" && step_py v2/test/scn/check_scn.py); }
+step_scn_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/scn/run_fixtures.sh); }
+step_report() { (cd "$REPO_ROOT" && step_py v2/test/report/check_report.py --all); }
+step_report_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/report/run_fixtures.sh); }
+step_abi_reserved() { step_py "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; }
+step_abi_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/abi/run_fixtures.sh); }
+step_gen() { (cd "$REPO_ROOT" && ./v2/bin/vifast-gen --check); }
+step_gen_fixtures() { (cd "$REPO_ROOT" && bash v2/test/gen/run_fixtures.sh); }
+step_idl() { (cd "$REPO_ROOT" && ./v2/bin/vifast-idl --check); }
+step_idl_fixtures() { (cd "$REPO_ROOT" && bash v2/test/gen/run_idl_fixtures.sh); }
+step_build() { "$CARGO" build --manifest-path "$MANIFEST" --workspace; }
+
+# --- `gate --fast` ---
+step_l0() { l0_test_parallel; }
+step_l0_kernel() {
+    "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" \
+        -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64
+}
+step_l1() {
+    local t0 t1 out
+    t0="$(now_ms)"
+    if out="$("$CARGO" test --manifest-path "$MANIFEST" -p vifast-sim l1_ -- --nocapture 2>&1)"; then
+        printf '%s\n' "$out" | grep -E "^# L1 OK" || true
+        t1="$(now_ms)"
+        echo "--- L1: OK ($((t1 - t0)) ms, đo bởi cổng)"
+        return 0
+    fi
+    printf '%s\n' "$out"
+    echo "--- L1: FAIL"
+    return 1
+}
+step_selftest_ktest() { bash "$V2_ROOT/test/boot/selftest.sh"; }
+step_guard() { bash "$V2_ROOT/test/boot/guard_selftest.sh"; }
+step_pre_measure() { bash "$V2_ROOT/tools/pre-measure.sh" --selftest; }
+step_pin_artifact() { bash "$V2_ROOT/tools/pin-artifact.sh" --selftest; }
+step_algo_strict() { bash "$V2_ROOT/test/boot/algo-strict.sh"; }
+step_persist_red() { bash "$V2_ROOT/test/boot/persist.sh" --red-selftest; }
+step_persist_crash() { bash "$V2_ROOT/test/boot/persist.sh" --crash; }
+step_selfbreak() { bash "$V2_ROOT/test/rules/selfbreak.sh"; }
+step_neg1() { bash "$V2_ROOT/tools/git-guard/neg-test.sh"; }
+step_neg2() { bash "$V2_ROOT/tools/git-guard/neg-test.sh" --selftest-parallel; }
+step_neg3() { bash "$V2_ROOT/tools/git-guard/neg-test-kt85b.sh"; }
+step_qemu_smoke() { bash "$V2_ROOT/test/boot/ktest.sh" 1 1; }
+
 # KT-80 / OD-K6-5 — 5 luật máy; logic nằm ở `v2/tools/verify-numbers.py` (một công cụ dùng
 # chung, không copy-paste 4 verifier cũ). `--law`/`--self-test`/`--root` chuyển tiếp nguyên văn.
 check_k6_rules() {
@@ -337,208 +642,60 @@ check_k6_rules() {
 }
 
 do_check() {
-    local fails=0 t_start
-    t_start="$(now_ms)"
-    step_time_reset
+    local fails
+    [ -n "$LANE_DIR" ] || lane_reset || return 1
+    V2_PY="$(find_python || true)"
     echo "== v2 check (HEAD $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')) =="
-    run_step "fmt" "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || fails=$((fails + 1))
-    run_step "clippy" "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings || fails=$((fails + 1))
-    echo "--- luật cấu trúc R1..R5"
-    # **KT-155 (T-INFRA)** — bash 3.2 (macOS) bị hỏng heap (`BUG IN CLIENT OF LIBMALLOC:
-    # memory corruption of free block`, SIGTRAP) sau khi `rules` quét cây lớn; heap hỏng bị
-    # các tiến trình con kế thừa ⇒ bước sau đỏ oan (exit 133).
-    # **KT-207 (T-INFRA, 2026-11-20)** — workaround **subshell** của KT-155 **không đủ**: hai
-    # reviewer độc lập (L41/L42) vẫn đỏ ngay **bước `rules`** (`Trace/BPT trap: 5`), vì subshell
-    # `( … )` là **fork** — nó **thừa hưởng** heap đã hỏng của tiến trình cha (sau `clippy`).
-    # Nay chạy `rules` trong **tiến trình bash mới** qua chính lệnh con `v2 rules --root`:
-    # heap sạch, không thừa hưởng hỏng hóc. Cùng output, cùng mã thoát, cùng ngữ nghĩa.
-    # Bằng chứng: `v2/agent/JOURNAL/kt207-logs/` (trước: SIGTRAP ở `rules`; sau: 5/5 lượt
-    # `v2 check` xanh dưới tải 3 sub-agent). Không phải nới ngưỡng.
-    if bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; then echo "--- luật cấu trúc: OK"; else echo "--- luật cấu trúc: FAIL" >&2; fails=$((fails + 1)); fi
-    run_step "self-test luật" bash "$V2_ROOT/test/rules/run.sh" || fails=$((fails + 1))
-    run_step "luật máy K6 (KT-80: 1,2,3,7,8)" check_k6_rules || fails=$((fails + 1))
-    # KT-128 (Q3 của Agent 0): ca hồi quy của **cổng build-inputs** phải chạy trong cổng, không
-    # chỉ nằm trong tệp. Trước đây `build-rev.sh --selftest` ĐỎ âm thầm vì không cổng nào gọi nó.
-    run_step "selftest build-inputs (KT-128/134: a..h)" bash "$V2_ROOT/test/boot/build-rev.sh" --selftest || fails=$((fails + 1))
-    # **KT-145 (Agent 0 phiếu lượt 5 §A4)**: cổng **danh tính ảnh** (`vbrev_image_identity`) — năm
-    # ca l1..l5, có **đối chứng dương** (l3) để một hàm luôn-từ-chối không qua được. Tách khỏi
-    # `build-rev.sh` để định nghĩa dấu vân tay không phải tăng `VBREV_ALGO` vì một hàm tiêu thụ.
-    run_step "selftest danh tính ảnh (KT-145: l1..l5)" bash "$V2_ROOT/test/boot/build-identity.sh" --selftest || fails=$((fails + 1))
-    # **KT-149 (D2-129)**: harness T26 (`t26.sh`) có `--selftest` ca âm — log đỏ giả phải bị bắt
-    # đỏ, log xanh giả phải được nhận xanh. Nối vào `check` (nhóm nhanh, không cần QEMU/ảnh) để
-    # không lặp lại lớp lỗi "selftest không cổng nào gọi" (KT-134).
-    run_step "selftest t26 (KT-149: g1..g4)" bash "$V2_ROOT/test/boot/t26.sh" --selftest || fails=$((fails + 1))
-    # **KT-134 (C1 của Agent 0)**: `build-rev.sh` đã ra khỏi danh sách ghim, nên đổi **thuật toán**
-    # mà quên tăng `VBREV_ALGO` sẽ không ai phát hiện. Tệp ghim giữ cặp (sha script, giá trị algo);
-    # `--strict` để ghim cũ (đã tăng algo nhưng quên `--update`) cũng là ĐỎ — nếu không, cơ chế chỉ
-    # bắt được lần vi phạm **đầu tiên** rồi xanh vĩnh viễn.
-    run_step "ghim thuật toán dấu vân tay (KT-134)" bash "$V2_ROOT/tools/check-algo-pin.sh" --strict || fails=$((fails + 1))
-    run_step "selftest ghim thuật toán (KT-134)" bash "$V2_ROOT/tools/check-algo-pin.sh" --selftest || fails=$((fails + 1))
-    # **KT-134 (Agent 0, phần 3)**: rà lại thì **chín** selftest khác cũng không cổng nào gọi —
-    # cùng lớp lỗi đã làm `build-rev.sh --selftest` đỏ âm thầm. Nay gọi hết; nhóm nhanh ở đây,
-    # nhóm chậm (cần QEMU/dựng ảnh) ở `gate --fast` qua `selftest_all`.
-    run_step "selftest shell-edge (KT-108)" bash "$V2_ROOT/test/boot/shell-edge.sh" --selftest || fails=$((fails + 1))
-    run_step "selftest budget (KT-88)" bash "$V2_ROOT/test/boot/budget.sh" --selftest || fails=$((fails + 1))
-    run_step "selftest counter-evidence (KT-80)" bash "$V2_ROOT/test/rules/counter-evidence.sh" --selftest || fails=$((fails + 1))
-    run_step "selftest task-target (KT-84)" bash "$V2_ROOT/tools/task-target.sh" --selftest || fails=$((fails + 1))
-    # **KT-242** — ba mức L1 (`smoke`/`medium`/`full`) + chia lô seed: selftest kiểm **bảng mức**,
-    # **công thức phủ seed** (hợp các lô = `0..seeds`, không sót không trùng), **digest XOR gộp
-    # lô được**, và **clamp `--jobs`**. 27 ca, **không** chạy sim (< 1 s). Công cụ `l1-tier.sh`
-    # tự nó **không** vào cổng: nó chạy hàng chục tiến trình, phải chạy **một mình** (AGENTS §6).
-    run_step "selftest ba mức L1 (KT-242)" bash "$V2_ROOT/tools/l1-tier.sh" --selftest || fails=$((fails + 1))
-    # **KT-134 (C7 của Agent 0)**: bảng đối chiếu số ↔ khối `scope=` phải được **kiểm máy** —
-    # đọc bảng, mở đúng khối, so giá trị với dòng log. Không có kiểm máy thì Q6 chưa xong.
-    if PY="$(find_python)"; then
-        run_step "bảng đối chiếu số ↔ khối scope= (KT-134)" "$PY" "$V2_ROOT/tools/check-scope-table.py" --root "$REPO_ROOT" || fails=$((fails + 1))
-        run_step "selftest bảng đối chiếu (KT-134)" "$PY" "$V2_ROOT/tools/check-scope-table.py" --selftest || fails=$((fails + 1))
-        # **KT-134 (Agent 0, phần 3)**: chống tái diễn lớp lỗi "selftest không cổng nào gọi".
-        # Quét repo tìm mọi script tự kiểm; script nào không cổng nào gọi ⇒ ĐỎ. Công cụ này cũng
-        # bắt được ca "cổng truyền cờ mà script không xử lý cờ" (đã xảy ra thật với
-        # `counter-evidence.sh` — bước cổng mang nhãn selftest mà không kiểm gì).
-        run_step "selftest wiring (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" --selftest || fails=$((fails + 1))
-        # **KT-139 (Agent 0)**: bật `--standalone-red` **vĩnh viễn**. Vì sao: công cụ này có **hai**
-        # lớp — lớp có cờ (`--selftest`/`--red-selftest`) vốn đã đỏ khi mồ côi, còn lớp **độc lập**
-        # (không cờ, nhận theo tên tệp: `selfbreak.sh`, `neg-test*.sh`) trước đây **chỉ được báo
-        # cáo**, nên ba script mồ côi nằm im mà cổng vẫn xanh. Nay cả ba đã được nối vào
-        # `gate --fast`; bật cờ để **script thứ tư** rơi vào lớp này là ĐỎ ngay, không chờ ai rà tay.
-        # Không thêm ngoại lệ nào: một ngoại lệ = miễn trừ phép kiểm = lại để lỗ mục âm thầm.
-        run_step "cổng selftest có cổng gọi (KT-134)" "$PY" "$V2_ROOT/tools/check-selftest-wiring.py" --standalone-red || fails=$((fails + 1))
-        # **KT-151 (N7, D2-131)** — máy kiểm "một cơ chế đánh thức TCB": quét `v2/kernel` +
-        # `v2/sim`, đòi kênh chéo hart là hộp thư duy nhất, không doorbell riêng theo arch.
-        # Fail-closed: thiếu mỏ neo (`wake_step`/`apply_mail`/`MailboxMsg`/`Msg`) ⇒ ĐỎ.
-        run_step "wake paths (KT-151: một cơ chế wake)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" || fails=$((fails + 1))
-        run_step "selftest wake paths (KT-151)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --selftest || fails=$((fails + 1))
-        # **KT-155 (N7-2b)** — `--strict` vào cổng: **allowlist tường minh** thay heuristic
-        # "thân hàm có `is_blocked()`/`Sleeping`" (heuristic chỉ phủ 4/16 đường — KT-154 §7).
-        # Mọi `transition_tcb(…, TcbState::Ready)` phải qua cửa `wake_step`/`wake_from` hoặc
-        # có tên trong allowlist kèm lý do; chỗ lạ ⇒ ĐỎ (fail-closed hai chiều). Đây là
-        # **thêm phép đo**, không nới ngưỡng nào.
-        run_step "wake paths --strict (KT-155: allowlist)" "$PY" "$V2_ROOT/tools/check-wake-paths.py" --strict || fails=$((fails + 1))
-        # **KT-217 (D2-173)** — **lớp 2** cho luật `wake`: kiểm theo **danh sách tệp thật** mà
-        # rustc nạp (`--emit=dep-info`), không tự suy luận cú pháp. Vì sao cần: luật này đã bị
-        # phá **mười hai** lần; mọi bản vá tĩnh đều bỏ sót một vị trí token hoặc một gốc phân
-        # giải. Nguyên mẫu KT-214 đo được: bắt **11/11** đường lọt đã biết (checker tĩnh bắt
-        # 5/11), chạy **stable 1.99.1**, không `-Z`, chi phí **+4,8 s** sau `clippy` (dùng chung
-        # `.rmeta`). Hai giới hạn cứng ⇒ **không** thay thế lớp 1: mã do `macro_rules!` sinh ra
-        # (không nằm trong tệp nào) và nhánh `#[cfg]` **không bật** (bản build chỉ nạp nhánh
-        # đang bật, checker tĩnh quét mọi nhánh). Vì vậy đây là **thêm**, không phải thay.
-        run_step "wake theo dep-info (KT-217: lớp 2)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --root "$REPO_ROOT" || fails=$((fails + 1))
-        run_step "selftest wake dep-info (KT-217)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --selftest || fails=$((fails + 1))
-        # **KT-241 (D2-187/D2-194)** — ranh giới API `NonReadyTarget`: chèn tệp probe vào crate
-        # thật, `cargo check` phải từ chối `TcbState::Ready` ở **đúng mã lỗi + thông điệp +
-        # tệp:dòng** (WB-16 6 dạng, WB-17 7 dạng, `write_state` private, đường chuyển đổi bị
-        # cấm), và ca dương phải biên dịch RC=0. Tệp probe được khôi phục trong `finally` +
-        # `atexit` + handler SIGINT/SIGTERM; tệp đã bẩn ⇒ từ chối chạy (fail-closed).
-        run_step "api boundary (KT-241)" "$PY" "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT" || fails=$((fails + 1))
-        # **KT-163 (N7, D2-137)** — máy kiểm "test có răng": chống lớp lỗi **xanh-giả** đã
-        # xảy ra hơn mười lần (gần nhất N7 suýt đóng sai). Bốn lớp **chắc chắn**, không
-        # heuristic mờ: (a) `assert!(true)` / `assert_eq!(x, x)` hằng-đúng; (b) `#[ignore]`;
-        # (c) `#[test]` không có token khẳng định nào và không gọi trợ giúp đã biết;
-        # (d) `let _ =` nuốt `Result` (tra bảng chữ ký dựng từ chính cây nguồn).
-        # Fail-closed: mục mới không có trong allowlist ⇒ ĐỎ; mục allowlist chết ⇒ ĐỎ.
-        run_step "test có răng (KT-163)" "$PY" "$V2_ROOT/tools/check-test-teeth.py" || fails=$((fails + 1))
-        run_step "selftest test có răng (KT-163)" "$PY" "$V2_ROOT/tools/check-test-teeth.py" --selftest || fails=$((fails + 1))
-    fi
-    echo "--- spec/abi.toml"
-    if PY="$(find_python)"; then
-        if "$PY" "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml"; then
-            echo "--- abi spec: OK"
-        else
-            echo "--- abi spec: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- golden trace (D2-43)"
-        if (cd "$REPO_ROOT" && "$PY" v2/test/trace/gen_golden.py --check); then
-            echo "--- golden trace: OK"
-        else
-            echo "--- golden trace: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- kịch bản .scn (KT-04c)"
-        if (cd "$REPO_ROOT" && "$PY" v2/test/scn/check_scn.py); then
-            echo "--- scn: OK"
-        else
-            echo "--- scn: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/scn/run_fixtures.sh >/dev/null 2>&1); then
-            echo "--- scn fixtures: OK (5 case âm, kiểm thông điệp)"
-        else
-            echo "--- scn fixtures: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- báo cáo R1-v2 (Khối E)"
-        if (cd "$REPO_ROOT" && "$PY" v2/test/report/check_report.py --all); then
-            echo "--- báo cáo: OK"
-        else
-            echo "--- báo cáo: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- fixture âm của máy kiểm báo cáo"
-        if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/report/run_fixtures.sh); then
-            echo "--- báo cáo fixtures: OK"
-        else
-            echo "--- báo cáo fixtures: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        # KT-04b: object reserved — nay nằm trong spec/abi.toml (D2-32)
-        if "$PY" "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; then
-            echo "--- abi reserved: OK"
-        echo "--- fixture âm của máy kiểm ABI"
-        if (cd "$REPO_ROOT" && PYTHON="$PY" bash v2/test/abi/run_fixtures.sh); then
-            echo "--- abi fixtures: OK"
-        echo "--- gen-check (KT-05: code + docs sinh từ spec)"
-        if (cd "$REPO_ROOT" && ./v2/bin/vifast-gen --check); then
-            echo "--- gen-check: OK"
-        else
-            echo "--- gen-check: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- fixture âm của gen-check"
-        if (cd "$REPO_ROOT" && bash v2/test/gen/run_fixtures.sh); then
-            echo "--- gen fixtures: OK"
-        else
-            echo "--- gen fixtures: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        # KT-69: stub IDL sinh từ `v2/lib/vifast-idl/idl/*.vidl` — cùng luật gen-check (D2-11):
-        # sửa tay stub hoặc sửa IDL mà không sinh lại đều bị bắt.
-        echo "--- idl-gen-check (KT-69: stub sinh từ .vidl)"
-        if (cd "$REPO_ROOT" && ./v2/bin/vifast-idl --check); then
-            echo "--- idl-gen-check: OK"
-        else
-            echo "--- idl-gen-check: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        echo "--- fixture âm của idl-gen-check"
-        if (cd "$REPO_ROOT" && bash v2/test/gen/run_idl_fixtures.sh); then
-            echo "--- idl fixtures: OK"
-        else
-            echo "--- idl fixtures: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        else
-            echo "--- abi fixtures: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-        else
-            echo "--- abi reserved: FAIL" >&2
-            fails=$((fails + 1))
-        fi
-    else
-        echo "--- abi spec: FAIL (không có python ≥3.11 với tomllib)" >&2
-        fails=$((fails + 1))
-    fi
-    run_step "build (L0 compile)" "$CARGO" build --manifest-path "$MANIFEST" --workspace || fails=$((fails + 1))
-    if [ "${V2_IN_GATE:-0}" = "0" ]; then
-        step_time_report
-        printf '# step-time-total %8d ms  TỔNG check\n' "$(( $(now_ms) - t_start ))"
-    fi
+    # Số thứ tự = **đúng thứ tự cũ** của `check`; làn quyết định chạy song song hay không.
+    # Làn nền **chỉ** chứa bước chỉ đọc (không ghi `target/`, không sửa cây, không QEMU).
+    lane_step main 1 "fmt" step_fmt
+    lane_step main 2 "clippy" step_clippy
+    lane_step main 3 "luật cấu trúc R1..R5" step_rules
+    lane_step A 4 "self-test luật" step_selftest_rules
+    lane_step A 5 "luật máy K6 (KT-80: 1,2,3,7,8)" step_k6
+    lane_step main 6 "selftest build-inputs (KT-128/134: a..h)" step_build_inputs
+    lane_step C 7 "selftest danh tính ảnh (KT-145: l1..l5)" step_build_identity
+    lane_step C 8 "selftest t26 (KT-149: g1..g4)" step_t26
+    lane_step C 9 "ghim thuật toán dấu vân tay (KT-134)" step_algo_pin
+    lane_step C 10 "selftest ghim thuật toán (KT-134)" step_selftest_algo_pin
+    lane_step B 11 "selftest shell-edge (KT-108)" step_shell_edge
+    lane_step B 12 "selftest budget (KT-88)" step_budget
+    lane_step B 13 "selftest counter-evidence (KT-80)" step_counter_evidence
+    lane_step B 14 "selftest task-target (KT-84)" step_task_target
+    lane_step B 15 "selftest ba mức L1 (KT-242)" step_selftest_l1_tiers
+    lane_step sau 16 "bảng đối chiếu số ↔ khối scope= (KT-134)" step_scope_table
+    lane_step B 17 "selftest bảng đối chiếu (KT-134)" step_selftest_scope_table
+    lane_step B 18 "selftest wiring (KT-134)" step_wiring
+    lane_step B 19 "cổng selftest có cổng gọi (KT-134)" step_wiring_standalone
+    lane_step C 20 "wake paths (KT-151: một cơ chế wake)" step_wake_paths
+    lane_step A 21 "selftest wake paths (KT-151)" step_selftest_wake_paths
+    lane_step B 22 "wake paths --strict (KT-155: allowlist)" step_wake_paths_strict
+    lane_step main 23 "wake theo dep-info (KT-217: lớp 2)" step_wake_depinfo
+    lane_step C 24 "selftest wake dep-info (KT-217)" step_selftest_wake_depinfo
+    lane_step sau 25 "api boundary (KT-241)" step_api_boundary
+    lane_step B 26 "test có răng (KT-163)" step_test_teeth
+    lane_step B 27 "selftest test có răng (KT-163)" step_selftest_test_teeth
+    lane_step C 28 "abi spec" step_abi
+    lane_step C 29 "golden trace (D2-43)" step_golden
+    lane_step C 30 "kịch bản .scn (KT-04c)" step_scn
+    lane_step C 31 "scn fixtures (KT-04c)" step_scn_fixtures
+    lane_step B 32 "báo cáo R1-v2 (Khối E)" step_report
+    lane_step C 33 "fixture âm của máy kiểm báo cáo" step_report_fixtures
+    lane_step C 34 "abi reserved (KT-04b)" step_abi_reserved
+    lane_step C 35 "abi fixtures" step_abi_fixtures
+    lane_step C 36 "gen-check (KT-05: code + docs sinh từ spec)" step_gen
+    lane_step C 37 "gen fixtures" step_gen_fixtures
+    lane_step C 38 "idl-gen-check (KT-69: stub sinh từ .vidl)" step_idl
+    lane_step C 39 "idl fixtures" step_idl_fixtures
+    lane_step sau 40 "build (L0 compile)" step_build
+    lane_run
+    fails="$(lane_fails 40)"
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
     fi
     echo "v2 check: PASS (L1 chạy trong gate --fast)"
+    return 0
 }
 
 # **KT-242 (P1)** — chạy **song song** các binary test của L0 thay vì để cargo chạy lần lượt.
@@ -707,98 +864,47 @@ SHEOF
 # **KT-242** — T1: kiểm tích hợp nhanh. Chạy `do_gate_fast` với `V2_TIER=t1` (bỏ các bước
 # harness nặng) + một smoke QEMU thật, rồi in bảng tổng có nhãn **T1** rõ ràng.
 do_gate_dev() {
-    local t_start t_end
-    t_start="$(now_ms)"
     V2_TIER=t1
     export V2_TIER
-    if ! do_gate_fast; then
-        echo "v2 gate --dev: FAIL (T1 — kiểm tích hợp nhanh)" >&2
-        return 1
-    fi
+    do_gate_fast || return 1
     # Smoke QEMU: 7 ảnh test × 1 boot, smp=1. Đây là bằng chứng "ảnh vẫn boot được", **không**
-    # thay ma trận QEMU của T2.
-    run_step "QEMU smoke (T1: 7 ảnh × 1 boot)" bash "$V2_ROOT/test/boot/ktest.sh" 1 1 || {
-        echo "v2 gate --dev: FAIL (T1 — smoke QEMU)" >&2
-        return 1
-    }
-    t_end="$(now_ms)"
-    echo "v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')"
-    printf '# step-time-total %s ms  TỔNG gate --dev (T1)\n' "$((t_end - t_start))"
+    # thay ma trận QEMU của T2. QEMU ⇒ làn `sau` (độc quyền).
+    lane_step sau 55 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
+    lane_run
+    [ "$(lane_fails 55)" -eq 0 ] || return 1
     return 0
 }
 
 do_gate_fast() {
-    local t_start
-    t_start="$(now_ms)"
-    V2_IN_GATE=1
-    do_check || { V2_IN_GATE=0; return 1; }
-    V2_IN_GATE=0
-    run_step "L0 test" l0_test_parallel || return 1
-    # KT-148 (D2-128): workspace **kernel** có manifest riêng (`v2/kernel/Cargo.toml`) nên `L0 test`
-    # của `v2/Cargo.toml` **không** chạy nó — thiếu bước này thì test `smp` (bố cục per-hart) đỏ
-    # mà cổng vẫn xanh (đúng lỗi B7). `vifast-virtio` **không** thuộc workspace kernel (nó là
-    # path-dep của `v2/lib`) nên đã nằm trong L0 của `v2/Cargo.toml` — **không** thêm lần hai.
-    # **KT-166** (review L6, KT-161 §3.5): `vifast-plat-aarch64` là member của workspace kernel
-    # nhưng **không** được test ở đâu trong cổng — 22 test host + việc crate **có biên dịch** chỉ
-    # được kiểm khi ai đó gõ tay đúng lệnh. Thêm `-p` thứ hai để crate nằm trong L0 thật sự.
-    # **KT-186 (D2-163)**: `vifast-plat-x86_64` là member mới của workspace kernel (K5' bước M2);
-    # thêm vào L0 để test host của nó nằm trong cổng thật sự, không chỉ gõ tay.
-    run_step "L0 kernel workspace (KT-148)" "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64 || return 1
-    echo "--- L1 (sim 1.000 seed)"
-    local t0 t1
-    PYTHON="$(find_python || true)"
-    t0=$("$PYTHON" -c 'import time;print(int(time.time()*1000))')
-    if out=$("$CARGO" test --manifest-path "$MANIFEST" -p vifast-sim l1_ -- --nocapture 2>&1); then
-        echo "$out" | grep -E "^# L1 OK" || true
-        t1=$("$PYTHON" -c 'import time;print(int(time.time()*1000))')
-        echo "--- L1: OK ($((t1 - t0)) ms, đo bởi cổng)"
-    else
-        echo "$out" >&2
-        echo "--- L1: FAIL" >&2
-        return 1
-    fi
-    # **KT-134 (Agent 0, phần 3)**: nhóm selftest **chậm** — chúng dựng log/ảnh giả hoặc gọi QEMU
-    # nên không đặt trong `check`; đặt ở đây để vẫn có cổng gọi (không cổng nào gọi = mục được
-    # phép mục âm thầm, đúng lỗi đã xảy ra với `build-rev.sh --selftest`).
-    run_step "selftest runner ktest (KT-54)" bash "$V2_ROOT/test/boot/selftest.sh" || return 1
-    run_step "selftest qemu guard (KT-78)" bash "$V2_ROOT/test/boot/guard_selftest.sh" || return 1
-    run_step "selftest pre-measure (KT-95)" bash "$V2_ROOT/tools/pre-measure.sh" --selftest || return 1
-    run_step "selftest pin-artifact (KT-84)" bash "$V2_ROOT/tools/pin-artifact.sh" --selftest || return 1
-    # **KT-145 (Agent 0 phiếu lượt 5 §A4)**: đường đo phải TỪ CHỐI ảnh không cùng định nghĩa dấu
-    # vân tay; chỉ `status.sh`/`pin-artifact.sh` được nhận dạng cũ. Ca này chạy **chính** ba script
-    # đường đo trên ảnh giả (dạng cũ / algo sai / algo đúng) + quét toàn bộ `v2/` tìm chỗ còn nhận
-    # dạng cũ. Không QEMU, không build ⇒ vài giây.
-    run_step "algo= nghiêm ngặt ở đường đo (KT-145)" bash "$V2_ROOT/test/boot/algo-strict.sh" || return 1
-    # **KT-134 (Agent 0, phần 3)**: `persist.sh --red-selftest` cần QEMU nên để ở đây, không ở
-    # `check`. Khi `nightly` đầy đủ có thì chuyển sang đó (Agent 0: "khi nightly đầy đủ có thì
-    # chuyển sang").
-    run_step "selftest persist đỏ-trước (KT-75)" bash "$V2_ROOT/test/boot/persist.sh" --red-selftest || return 1
-    # **KT-136 (Agent 0, lượt 4, việc 2)**: cắt điện giữa lúc kernel đang ghi pha 7 rồi kiểm ảnh
-    # đĩa (fsck sạch + dữ liệu đã commit còn nguyên + tệp dở phải là tiền tố) và kiểm FS còn
-    # đọc/ghi được sau đó. Đo bằng `date +%s%N`: ~17 s (build đã cache) ⇒ vừa `gate --fast`.
-    # Soak 100 boot (`--soak 10`) thì **không** vào cổng: ~3 phút, để chạy riêng làm bằng chứng.
-    run_step "cắt điện giữa lúc ghi (KT-136)" bash "$V2_ROOT/test/boot/persist.sh" --crash || return 1
-    # **KT-139 (Agent 0)**: ba script tự kiểm **độc lập** (không cờ `--selftest`, nhận theo tên
-    # tệp) trước đây **không cổng nào gọi** — cùng lớp lỗi đã làm `build-rev.sh --selftest` đỏ âm
-    # thầm. Cả ba đều **chậm** (đo bằng `date +%s%N`: selfbreak ~95 s, neg-test ~12 s,
-    # neg-test-kt85b ~26 s) nên đặt ở `gate --fast`, KHÔNG đặt ở `check` (check phải nhanh).
-    # Vì sao `selfbreak.sh` quan trọng: nó là **đường duy nhất** chạm `verify-numbers.py --self-test`
-    # (hai lời gọi trong ca luật 8) ⇒ nối nó là nối luôn chuỗi đó vào cổng.
-    run_step "selfbreak 5 luật K6 (KT-80)" bash "$V2_ROOT/test/rules/selfbreak.sh" || return 1
-    # Hai script git-guard cần **hook đã cài** (`v2/tools/git-guard/install.sh`; hook không đi theo
-    # git). Thiếu hook thì chúng tự in "hook CHƯA cài đúng — chạy …install.sh trước" và exit 2 ⇒
-    # cổng ĐỎ kèm lý do, không im lặng bỏ qua. Chúng tự dọn worktree/nhánh tạm và tự kiểm bất biến
-    # (HEAD/index/số worktree của checkout chính không đổi) nên chạy được trong cổng.
-    run_step "ca âm git-guard (KT-85)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" || return 1
-    # **R5 (Agent 0, lượt 4)**: tên nhánh tạm của `neg-test.sh` từng là hằng số `task/kt85neg` ⇒
-    # hai lần chạy song song tranh nhau cùng một nhánh (lần hai `worktree add -b` hỏng, trap lần
-    # nhất xoá nhánh lần hai). Ca này chạy **đúng hai lần song song** và đòi cả hai PASS; nó đỏ
-    # nếu ai đưa tên nhánh về hằng số. Đo bằng `date +%s%N`: ~14 s.
-    run_step "ca âm git-guard song song (R5)" bash "$V2_ROOT/tools/git-guard/neg-test.sh" --selftest-parallel || return 1
-    run_step "ca âm git-guard b (KT-85b)" bash "$V2_ROOT/tools/git-guard/neg-test-kt85b.sh" || return 1
-    step_time_report
-    printf '# step-time-total %8d ms  TỔNG gate --fast\n' "$(( $(now_ms) - t_start ))"
-    echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
+    local fails
+    [ -n "$LANE_DIR" ] || lane_reset || return 1
+    # **KT-242 (P3)** — `selfbreak` (95 s) **chỉ đọc** cây thật: nó băm bốn đường nguồn trước/sau
+    # để chứng minh **0 tệp bị sửa** (D2-113F) và dựng bản copy trong `mktemp`. Vì vậy nó chạy
+    # **song song với làn kiểm tĩnh** (làn D) — nhưng **KHÔNG** đặt cạnh `L0 test`: L0 chứa
+    # binary nhạy thời gian (`kt30_stress` biên 3 s) và ghi `v2/target/` (D2-116/D2-141).
+    lane_step D 51 "selfbreak 5 luật K6 (KT-80)" step_selfbreak
+    do_check || return 1
+    # **Làn `main`**: bước ghi `target/` (L0, L0 kernel, L1) hoặc bước **đo** (pre-measure/
+    # pin-artifact/algo-strict) — chạy tuần tự, **không** đặt cạnh bước khác: L0 có binary nhạy
+    # thời gian, còn ba bước đo thì số đo sẽ bị nhiễu dưới tải.
+    # **Làn `sau`**: QEMU (ktest/guard/persist/crash) + git-guard — độc quyền, chạy một mình.
+    lane_step main 41 "L0 test" step_l0
+    lane_step main 42 "L0 kernel workspace (KT-148)" step_l0_kernel
+    lane_step main 43 "L1 (sim 1.000 seed)" step_l1
+    lane_step sau 44 "selftest runner ktest (KT-54)" step_selftest_ktest
+    lane_step sau 45 "selftest qemu guard (KT-78)" step_guard
+    lane_step main 46 "selftest pre-measure (KT-95)" step_pre_measure
+    lane_step main 47 "selftest pin-artifact (KT-84)" step_pin_artifact
+    lane_step main 48 "algo= nghiêm ngặt ở đường đo (KT-145)" step_algo_strict
+    lane_step sau 49 "selftest persist đỏ-trước (KT-75)" step_persist_red
+    lane_step sau 50 "cắt điện giữa lúc ghi (KT-136)" step_persist_crash
+    lane_step sau 52 "ca âm git-guard (KT-85)" step_neg1
+    lane_step sau 53 "ca âm git-guard song song (R5)" step_neg2
+    lane_step sau 54 "ca âm git-guard b (KT-85b)" step_neg3
+    lane_run
+    fails="$(lane_fails 54)"
+    [ "$fails" -eq 0 ] || return 1
+    return 0
 }
 
 # ---------------------------------------------------------------- Miri (KT-13/KT-17, D2-47)
@@ -1000,16 +1106,38 @@ case "$cmd" in
     agentctl)
         exec "$CARGO" run -q --manifest-path "$V2_ROOT/Cargo.toml" -p vifast-agentctl -- "$@"
         ;;
-    check) do_check ;;
+    check)
+        rc=0
+        do_check || rc=1
+        lane_report
+        gate_summary "check" "$LANE_T0"
+        exit "$rc"
+        ;;
     gate)
+        rc=0
         if [ "${1:-}" = "--fast" ]; then
-            do_gate_fast
+            do_gate_fast || rc=1
+            lane_report
+            gate_summary "gate --fast (T2)" "$LANE_T0"
+            if [ "$rc" -eq 0 ]; then
+                echo "v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)"
+            else
+                echo "v2 gate --fast: FAIL" >&2
+            fi
         elif [ "${1:-}" = "--dev" ]; then
-            do_gate_dev
+            do_gate_dev || rc=1
+            lane_report
+            gate_summary "gate --dev (T1)" "$LANE_T0"
+            if [ "$rc" -eq 0 ]; then
+                echo "v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')"
+            else
+                echo "v2 gate --dev: FAIL (T1 — kiểm tích hợp nhanh)" >&2
+            fi
         else
             echo "v2: cổng đầy đủ CHƯA CÓ trong vòng 1 — chỉ dùng 'gate --fast' (AGENTS.md §6)" >&2
             exit 2
         fi
+        exit "$rc"
         ;;
     nightly)
         if [ "${1:-}" = "--only-miri" ]; then

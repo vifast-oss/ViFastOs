@@ -12,7 +12,7 @@ n=0
 run() { # <fixture> <chuỗi con bắt buộc có trong log>
     n=$((n + 1))
     local dir="$1" want="$2" log
-    log="/tmp/scn-fix-$dir.log"
+    log="${V2_RUN_TMP:-${TMPDIR:-/tmp}}/scn-fix-$dir.log"
     if "$PY" "$CHECK" --dir "$ROOT/v2/test/scn/fixtures/$dir" >"$log" 2>&1; then
         echo "not ok $n - fixture $dir phải bị bắt"
         fails=$((fails + 1))

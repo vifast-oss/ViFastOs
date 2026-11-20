@@ -72,7 +72,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$BASE" ]; then
-    BASE="/tmp/kt85bneg.$$"
+    BASE="${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt85bneg.$$"
 fi
 if [ -e "$BASE" ]; then
     echo "neg-test-kt85b.sh: [$BASE] đã tồn tại — chọn --dir khác hoặc dọn trước" >&2

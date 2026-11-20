@@ -73,7 +73,9 @@ BUDGET="$HERE/budget.sh"
 # (cùng tệp mà `v2/tools/repro-build.sh` và `build.rs` dùng), không chép lại định nghĩa.
 . "$HERE/build-rev.sh"
 EXPECTED_FILE="$HERE/expected.txt"
-LOGDIR="${KT54_LOGDIR:-/tmp/k3-ktest}"
+LOGDIR="${KT54_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-ktest}"
+# KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
+mkdir -p "$LOGDIR" 2>/dev/null || true
 TARGET="riscv64gc-unknown-none-elf"
 IMG_DIR="$V2_ROOT/kernel/target/$TARGET/release"
 # Ảnh **sản phẩm** (`src/main.rs`) — ảnh duy nhất in dòng `# build:` (KT-86).
@@ -1409,43 +1411,43 @@ run_matrix() {
     echo "# build ảnh test chính+guard ($TARGET, release, --features ktest)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
         --bin vifast-kbin-ktest --bin vifast-kbin-ktest-guard \
-        --features ktest --target "$TARGET" --release >/tmp/k3-ktest-build.log 2>&1; then
-        tail -20 /tmp/k3-ktest-build.log >&2
-        die "build ảnh test FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build.log)"
+        --features ktest --target "$TARGET" --release >"$LOGDIR/k3-ktest-build.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build.log" >&2
+        die "build ảnh test FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build.log)"
     fi
     # KT-72: ảnh **vblk** bật thêm feature `vblk` (PCI ECAM + virtio-blk) — tách khỏi ảnh trên để
     # `.text`/mapping của ảnh `ktest` không đổi (TAP 35 dùng VA 0x4000_0000).
     echo "# build ảnh test vblk ($TARGET, release, --features ktest,vblk)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
         --bin vifast-kbin-ktest-vblk --features ktest,vblk \
-        --target "$TARGET" --release >/tmp/k3-ktest-build-vblk.log 2>&1; then
-        tail -20 /tmp/k3-ktest-build-vblk.log >&2
-        die "build ảnh test vblk FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build-vblk.log)"
+        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-vblk.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build-vblk.log" >&2
+        die "build ảnh test vblk FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-vblk.log)"
     fi
     # KT-73: ảnh **console** (UART RX IRQ → ring → U-mode + virtio-console) — feature `ktest,user,con`.
     echo "# build ảnh test con ($TARGET, release, --features ktest,user,con)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
         --bin vifast-kbin-ktest-con --features ktest,user,con \
-        --target "$TARGET" --release >/tmp/k3-ktest-build-con.log 2>&1; then
-        tail -20 /tmp/k3-ktest-build-con.log >&2
-        die "build ảnh test con FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build-con.log)"
+        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-con.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build-con.log" >&2
+        die "build ảnh test con FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-con.log)"
     fi
     # KT-74: ảnh **exec/TLS** (feature `ktest,user,exec`) — tách khỏi `ktest-user`/`ktest-proc`
     # để TAP/`.text` của chúng không đổi.
     echo "# build ảnh test exec ($TARGET, release, --features ktest,user,exec)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
         --bin vifast-kbin-ktest-exec --features ktest,user,exec \
-        --target "$TARGET" --release >/tmp/k3-ktest-build-exec.log 2>&1; then
-        tail -20 /tmp/k3-ktest-build-exec.log >&2
-        die "build ảnh test exec FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build-exec.log)"
+        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-exec.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build-exec.log" >&2
+        die "build ảnh test exec FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-exec.log)"
     fi
     # KT-53: ảnh user bật thêm feature `user` (module U-mode chỉ có trong ảnh này).
     echo "# build ảnh test user+proc ($TARGET, release, --features ktest,user)"
     if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
         --bin vifast-kbin-ktest-user --bin vifast-kbin-ktest-proc --features ktest,user \
-        --target "$TARGET" --release >/tmp/k3-ktest-build-user.log 2>&1; then
-        tail -20 /tmp/k3-ktest-build-user.log >&2
-        die "build ảnh test user FAIL — CHƯA có ảnh test (xem /tmp/k3-ktest-build-user.log)"
+        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-user.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build-user.log" >&2
+        die "build ảnh test user FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-user.log)"
     fi
     for l in $LABELS; do
         [ -f "$(image_path "$l")" ] || die "không thấy ảnh test $(image_path "$l") — CHƯA có ảnh test"

@@ -64,7 +64,9 @@ PAYLOAD="T26-0123456789-abcdefghijklmnopqrstuvwxyz-ABCDEF"
 PAYLOAD_LEN=${#PAYLOAD}
 FIRST8="${PAYLOAD:0:8}"
 
-LOGDIR="${T26_LOGDIR:-/tmp/kt149-t26}"
+LOGDIR="${T26_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt149-t26}"
+# KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
+mkdir -p "$LOGDIR" 2>/dev/null || true
 QEMU_TDS=600 # trần QEMU 60 s/boot (qg_boot); harness tự kill sớm hơn khi chờ quá hạn
 BOOT_POLLS=150
 POLL_S=0.2
