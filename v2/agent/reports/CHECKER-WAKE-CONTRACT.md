@@ -60,6 +60,31 @@ sản phẩm — canh bằng `E_SCOPE_LIB_CORE` (mọi đường tới `wake()` 
 `vifast-core`). Crate ở gốc mới **không** thuộc bao đóng sản phẩm/oracle (ví dụ dep của một crate
 host thường) **không** bị luật token quét — phạm vi không mở rộng mù (ca U3).
 
+**KT-264 (nợ §7.3 của KT-258) — luật **cấu trúc** nay cùng phạm vi với luật token.** Trước
+KT-264 `scan_lexical` chỉ chạy `v2/kernel`+`v2/sim`+`v2/lib` và `scan_structure` chỉ chạy
+`v2/kernel`+`v2/sim`; `_mods_of` **bỏ im lặng** cạnh `mod NAME;` không phân giải được; cạnh
+`mod`/`#[path]` **ra ngoài crate** không bị chặn. Hệ quả đo được (**năm** đường lọt, `cargo` xanh
++ cả ba lượt XANH trước vá — `JOURNAL/kt264-struct-scope.md` §2):
+
+| Mã | Dạng | Gốc | Vá |
+|---|---|---|---|
+| **WB-24/G1** | tệp `.rs` **mồ côi** dưới `<crate>/src/` (không `mod` nào khai báo) trong crate ở **gốc mới**; `mod` có tên **không phải định danh** trong `v2/lib` | `scan_structure`/`scan_lexical` chỉ chạy `V2_SCAN`(+`v2/lib` cho lexical) | `scan_lexical`/`scan_structure` nhận `scope`; `scan_structure_scope` ⇒ `E_STRUCT_ORPHAN` |
+| **WB-24/G2** | `#[cfg(any())] mod ghost;` (không có `ghost.rs`) trong crate ở gốc mới, kể cả ở **tầng lá** của `mod` graph ba tầng | `_mods_of` chỉ thêm cạnh khi `is_file()`; `resolve_include_targets` chỉ phân giải `#[path]` | `_crate_mod_walk` giữ cạnh `None` ⇒ `E_STRUCT_MOD_MISSING` |
+| **WB-24/G3** | `#[path = "../../vifast-plat-common/src/evil.rs"] mod evil;` — đích **trong `v2/kernel`** nhưng **ngoài crate** | `resolve_include_targets` chỉ chặn đích ra ngoài `v2/kernel`+`v2/sim` | `_crate_mod_walk` so `target.relative_to(crate_dir)` ⇒ `E_STRUCT_MOD_OUTSIDE` |
+
+**Phát hiện kèm theo (bác bỏ tiền đề)**: bốn ca **literal** của đề bài (S1 `mod inner;` +
+`inner.rs` gọi `wake`; S2 `#[path]` ra ngoài crate; S3 `mod` lồng ba tầng + lá gọi `wake`; S4
+`include!` trong `mod`) **đã bị bắt** từ KT-258 (WB-21/WB-22) — luật token quét theo **tệp**,
+**không** theo `mod` graph, nên `mod` graph **không** dựng lại được đường lọt `wake`. Chúng được
+giữ làm **ca hồi quy** (`JOURNAL/kt264-attack.tsv`).
+
+**Phạm vi luật cấu trúc (KT-264)**: `scope.protected()` — **mọi** crate bảo vệ, không chỉ
+`V2_SCAN`. Crate **có** manifest mà **không** có crate root ⇒ `E_STRUCT_NO_ROOT` (fail-closed).
+Crate **không** có manifest trên đĩa (cây **fixture** của selftest dựng metadata giả) ⇒ bỏ qua —
+trên cây thật mọi crate trong `cargo metadata` đều có manifest (D2-188). Luật mồ côi **chỉ** áp
+tệp dưới `<crate>/src/`; tệp ngoài `src/` (`build.rs`, `init/*.rs` do `build.rs` biên dịch
+riêng, shim `vifast-plat-user`) **không** thuộc `mod` graph của crate theo đúng luật Rust.
+
 **Ngoại lệ có lý do** (`NON_CRATE_SOURCE_TREES`, không phải mẫu đường dẫn):
 `v2/kernel/vifast-plat-user` — shim ABI U-mode, **không phải crate**, biên dịch bởi
 `vifast-kbin-riscv64/build.rs` và đóng vào ảnh sản phẩm.
@@ -364,6 +389,10 @@ Lớp dep-info áp **cùng** hàm (`CWP._check_nonready_conv_file`) trên **mọ
 | **KT-256** — tệp `.rs` dưới ba gốc cũ (`v2/lib`, `v2/kernel`, `v2/sim`) **ngoài** phạm vi metadata | `E_SCOPE_REDUCTION` | lưới an toàn di trú: định nghĩa mới **không** được hẹp hơn ba mẫu cũ ở bất kỳ đâu |
 | **KT-258 / WB-23** — path-dependency trỏ **ra ngoài gốc repo** (không quét được) | `E_SCOPE_OUTSIDE` (lớp tĩnh) / `E_DEPINFO_SCOPE` (lớp dep-info) | D2-188 §2: nguồn ngoài hợp đồng phải **từ chối rõ**, không được bỏ im lặng khỏi phạm vi |
 | **KT-256 / DEBT-KT227-1** — crate `v2/lib` có `vifast-core` trong **bao đóng normal dependency** | `E_SCOPE_LIB_CORE` | `v2/lib` ngoài luật token `wake`; điều đó chỉ an toàn khi `wake()` **không gọi được** từ mã sản phẩm `v2/lib`. Có phụ thuộc ⇒ **mở rộng luật** (hoặc gỡ phụ thuộc) |
+| **KT-264** — `mod NAME;` **không** phân giải được tệp đích (kể cả trong nhánh `#[cfg]` tắt) | `E_STRUCT_MOD_MISSING` | cạnh nguồn **ẩn**: `_mods_of` cũ bỏ im lặng ⇒ `mod` graph của checker hụt so với rustc |
+| **KT-264** — cạnh `mod`/`#[path]` trỏ **ra ngoài thư mục crate** | `E_STRUCT_MOD_OUTSIDE` | cùng một tệp biên dịch vào **hai** crate với hai phân loại test/sản phẩm ⇒ `is_test` của luật token có thể sai; `mod` graph không khép kín |
+| **KT-264** — tệp `.rs` dưới `<crate>/src/` **không** thuộc `mod` graph và **không** phải đích `include!` | `E_STRUCT_ORPHAN` | tệp **mồ côi**: một `mod` thêm sau sẽ biên dịch nó mà không ai kiểm cạnh nguồn |
+| **KT-264** — crate **có** manifest mà **không** có crate root (`src/lib.rs`/`src/main.rs`/`[[bin]]`/`src/bin/*.rs`/`tests/*.rs`) | `E_STRUCT_NO_ROOT` | fail-closed: không dựng được `mod` graph ⇒ không được im lặng bỏ qua (D2-188 §2) |
 | Chuỗi/comment chưa đóng, delimiter lệch, escape sai, quá độ sâu | `E_LEX_*` | D2-166 §3C |
 
 ---
@@ -389,7 +418,8 @@ Lớp dep-info áp **cùng** hàm (`CWP._check_nonready_conv_file`) trên **mọ
 | **F3 (v2/lib)** | `cfg_attr` lồng nhiều tầng trong `v2/lib` **ngoài** thân macro: đích **trong** `v2/lib` ⇒ XANH; đích **ra ngoài** ⇒ ĐỎ `E_STRICT_WAKE_INCLUDE`. | **ĐÃ ĐO** (KT-242, hai ca đối chứng): `resolve_include_targets` seed **mọi** tệp `v2/lib/**/*.rs` và `attr_path_edges` đệ quy `cfg_attr` **hai tầng** ⇒ câu cũ "⇒ XANH" **chỉ đúng khi đích ở trong `v2/lib`**. Phần thật sự còn hở là **DEBT-KT227-1** (`v2/lib` ngoài luật token `wake`), **không** phải `cfg_attr`. |
 | **Báo oan có trước** (không phải hồi quy — đối chiếu checker `0fa0fe65` giống hệt) | `#[cfg(test)] include!`; `#[cfg(feature = "ktest")] fn` **inline** (chuỗi `"ktest"` bị `strip_rust_noise` xoá); `#[cfg(test)] const/static`; `macro_rules!` thân `()`/`[]`; block statement; match arm pattern literal. **KT-211** (reviewer L44 §D6) đo thêm **bốn** dạng **ĐỎ** (`--strict`) mà danh sách **không** có: (a) `#[cfg_attr(test, path = "evil.rs")] mod m;` (đích có `wake`) ⇒ **ĐỎ**; (b) `if let Some(wake) = o { wake }` ⇒ **ĐỎ** `E_STRICT_TEST_ONLY_WAKE`; (c) `let g = \|wake: u32\| wake + <số>;` ⇒ **ĐỎ**; (d) `struct S { pub wake: u32 }` + `s.wake` ⇒ **ĐỎ**. **KT-225** (L52 KT-223 §C) **đã vá bốn** dạng báo oan của luật `include!`: `stringify!(include!)` (nay **XANH** — `SAFE_TOKEN_MACROS`), `include` + `!=` / `self.include` + `!=` (nay **XANH** — `!` + `=` không phải macro), `include!("x",)` (nay **XANH** — trailing comma hợp lệ). | Cây thật **không** có dạng nào (mọi chỗ `ktest` đều không chứa `wake`); ghi để không thành "phát hiện mới". |
 | ~~**Thân `macro_rules!` trong tệp không phải `.rs`**~~ | **ĐÓNG (KT-225, L52 KT-223 — đường lọt lớp một)**: `scan_macro_bodies` chỉ `rglob("*.rs")`, nên `macro_rules! evil { () => { include!("…") } }` trong `src/macro_def.txt` (được `include!("macro_def.txt")` ở vị trí item) **không** bị `_check_macro_body` quét; `_walk_all` bỏ qua thân macro ⇒ checker tĩnh **XANH cả hai chế độ** trong khi `cargo check` thành công và mã sản phẩm gọi `wake` (lớp hai `check-wake-depinfo.py` bắt được). Nay `scan_macro_bodies` nhận `extra_files` = mọi tệp được `include!`/`#[path]` vào cây (không chỉ `.rs`) ⇒ quét thân macro ⇒ **ĐỎ** `E_STRICT_MACRO_INCLUDE`. Ca selftest KT-225 TXT. | **Đã vá**; cây thật xanh cả hai chế độ. |
-| **Luật cấu trúc cho crate ngoài `V2_SCAN`** (KT-258, mở) | WB-22 mở **worklist `include!`/`#[path]`** cho crate trong bao đóng sản phẩm; `scan_lexical`/`scan_structure`/`mod` graph **vẫn** chỉ chạy `v2/kernel`+`v2/sim` (+`v2/lib` cho lexical). Hệ quả: crate trong bao đóng sản phẩm có **lỗi từ vựng** hoặc **`mod` graph lạ** không bị lớp tĩnh bắt; lớp dep-info bắt nếu cấu hình build đang kiểm **có** build nó. | **Chưa vá** — cần mở rộng `scan_structure` + `_inside_scan_tree` theo phạm vi. Ghi nợ có tên. |
+| ~~**Luật cấu trúc cho crate ngoài `V2_SCAN`**~~ | **ĐÓNG (KT-264, nợ §7.3 của KT-258)**: `scan_lexical`/`scan_structure` nhận `scope` (`wake_scope.protected_scope`); `scan_structure_scope` thêm `E_STRUCT_MOD_MISSING`/`E_STRUCT_MOD_OUTSIDE`/`E_STRUCT_ORPHAN`/`E_STRUCT_NO_ROOT`; `_crate_roots_in` thêm `src/bin/*.rs`. **năm** đường lọt XANH cả ba trước vá → **ĐỎ** sau vá (S5/S1b/S2b/S3b/S4b); **mười hai** ca selftest mới (**bảy** đối chứng dương). Số đo: `JOURNAL/kt264-struct-scope.md`. | **Đã vá**; cây thật không lỗi cả ba lượt, `--selftest` xanh toàn bộ. |
+| **`E_STRUCT_ORPHAN` chỉ áp tệp dưới `<crate>/src/`** (KT-264, mở) | Tệp `.rs` **mồ côi ngoài** `src/` (`build.rs`, `init/*.rs` do `build.rs` biên dịch riêng, shim `vifast-plat-user`) **không** bị luật mồ côi bắt — chúng **không** nằm trong `mod` graph của crate theo đúng luật Rust. | Rủi ro **thấp**: luật token quét **mọi** `.rs` trong phạm vi nên `wake` trong tệp đó vẫn bị bắt. Muốn đóng: mô hình "crate root do `build.rs` sinh" (đọc `cargo:rerun-if-changed`). Ghi nợ có tên. |
 | **Lớp dep-info chỉ kiểm feature mặc định** (KT-258, mở) | `cargo check --workspace` không bật `product-fs`; mã chỉ tồn tại dưới feature của ảnh sản phẩm **không** được lớp dep-info thấy. Với luật `wake` đã **bù** bằng lớp tĩnh (quét **mọi** tệp trong phạm vi, không phụ thuộc feature) sau WB-21/WB-22; R2/R3/R4 vẫn chỉ thấy cấu hình mặc định. | **Chưa vá** — cần thêm lượt `cargo check --features product-fs` (~+40 s). |
 | **Macro ngoài `MACRO_SCAN_ROOTS`** (KT-181) | `v2/tools/**` (công cụ phát triển, **không** link vào ảnh sản phẩm) và `v2/test/fixtures/**` (fixture **cố tình sai**) **không** được quét thân macro. | Không phải mã sản phẩm; cây thật **không** có `macro_rules!` ở hai gốc này. Nếu tương lai có mã sản phẩm ở đó, phải thêm gốc vào `MACRO_SCAN_ROOTS` — **không** được coi là đã bảo vệ. |
 | **Không có đường lọt thật cho `wake` ngoài phạm vi cũ** (KT-181 — ghi để **không thổi phồng**) | Trước KT-181, macro ở `init/`/`tests/`/`vifast-plat-user/` chứa token `wake` **không** bị luật token bắt. Nhưng **không** dựng được đường lọt: `init/`+`vifast-plat-user/` biên dịch bằng `rustc` trực tiếp **không** `--extern vifast_core`; `tests/` không phải sản phẩm; nạp bằng `#[path]`/`include!` từ kernel thì `extra` đã quét (đột biến M1c: `cargo check` biên dịch được nhưng checker **ĐỎ**). | Đây là **phòng ngừa**, không phải lỗ hổng đã bị khai thác. |

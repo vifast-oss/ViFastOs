@@ -1515,42 +1515,250 @@ def _iter_rs_ci(base: Path, root: Path) -> List[Path]:
     return sorted(out)
 
 
-def _protected_files(root: Path) -> Iterable[Path]:
-    for base_rel in ("v2/kernel", "v2/sim", "v2/lib"):
+def _scope_rs_files(root: Path, scope: "wake_scope.ProtectedScope") -> Iterable[Path]:
+    """**KT-264** — mọi tệp `.rs` trong **phạm vi bảo vệ** (`scope.contains`), không chỉ `V2_SCAN`.
+
+    Nợ §7.3 của KT-258: `scan_lexical`/`scan_structure` chỉ chạy `v2/kernel`+`v2/sim`(+`v2/lib`
+    cho lexical) trong khi **phạm vi định nghĩa** rộng hơn (crate trong **bao đóng sản phẩm** ở
+    gốc mới, cây nguồn không-phải-crate). Hệ quả: một crate trong bao đóng sản phẩm có **lỗi từ
+    vựng** hoặc **`mod` graph lạ** không bị lớp tĩnh bắt. Hàm này là **một** nguồn cho cả hai
+    luật (một vòng lặp, không hai định nghĩa phạm vi).
+
+    Duyệt `scope.roots()` (crate bảo vệ ∪ cây nguồn không-phải-crate) rồi lọc bằng
+    `scope.contains` — nhờ vậy `v2/kernel/vifast-plat-user` (shim không phải crate) vẫn được
+    quét, và **không** thu hẹp so với `_protected_files` cũ (`check_no_reduction` bảo đảm mọi
+    tệp `.rs` dưới `LEGACY_ROOTS` còn trong phạm vi).
+    """
+    seen: set = set()
+    for base_rel in scope.roots():
         base = root / base_rel
         if not base.is_dir():
             continue
         for p in _iter_rs_ci(base, root):
-            if _is_build_dir(root, p):
+            if p in seen or _is_build_dir(root, p):
                 continue
+            if not scope.contains(rel(root, p)):
+                continue
+            seen.add(p)
             yield p
 
 
-def scan_lexical(root: Path, r: Report) -> None:
-    """**D2-166 §3C** — lỗi từ vựng trong tệp thuộc phạm vi bảo vệ ⇒ ĐỎ (không bỏ qua)."""
-    for p in _protected_files(root):
+def scan_lexical(root: Path, r: Report, scope: "wake_scope.ProtectedScope") -> None:
+    """**D2-166 §3C** — lỗi từ vựng trong tệp thuộc phạm vi bảo vệ ⇒ ĐỎ (không bỏ qua).
+
+    **KT-264** — phạm vi lấy từ `wake_scope.protected_scope` (nợ §7.3), không còn hằng
+    `("v2/kernel", "v2/sim", "v2/lib")`: crate ở gốc mới trong bao đóng sản phẩm cũng phải
+    được kiểm từ vựng, nếu không `_mods_of`/`resolve_include_targets` **âm thầm** bỏ cạnh của
+    tệp đó (chúng `continue` khi `parse_file` lỗi) ⇒ mù cấu trúc.
+    """
+    for p in _scope_rs_files(root, scope):
         _, errs = parse_file(p)
         for e in errs:
             r.err(e.code, f"  {rel(root, Path(e.relp))}:{e.line}:{e.col}: {e.msg}")
 
 
-def scan_structure(root: Path, r: Report) -> None:
-    """**D2-166 §3C** — cấu trúc liên quan tới cạnh nguồn không phân giải được ⇒ ĐỎ."""
-    for base_rel in ("v2/kernel", "v2/sim"):
-        base = root / base_rel
-        if not base.is_dir():
+def scan_structure(root: Path, r: Report, scope: "wake_scope.ProtectedScope") -> None:
+    """**D2-166 §3C** — cấu trúc liên quan tới cạnh nguồn không phân giải được ⇒ ĐỎ.
+
+    **KT-264** — phạm vi lấy từ `wake_scope.protected_scope` (nợ §7.3), không còn hằng
+    `V2_SCAN`: khai báo `mod` hỏng trong crate ở gốc mới trước bản này **không bao giờ** được
+    kiểm. Ba bất biến **cấu trúc** khác (cạnh `mod` không phân giải / ra ngoài crate / tệp mồ
+    côi) nằm ở [`scan_structure_scope`] — chạy **sau** `resolve_include_targets` để biết đích
+    `include!` (tệp được `include!` **không** phải mồ côi).
+    """
+    for p in _scope_rs_files(root, scope):
+        tree, errs = parse_file(p)
+        if tree is None or errs:
             continue
-        for p in _iter_rs_ci(base, root):
+        relp = rel(root, p)
+        errs2: List[LexError] = []
+        _walk_items(tree, relp, p.parent, errors=errs2)
+        for e in errs2:
+            r.err(e.code, f"  {relp}:{e.line}:{e.col}: {e.msg}")
+
+
+def _crate_mod_walk(
+    root: Path, crate_dir: Path
+) -> Tuple[set, List[Tuple[str, int, str, Optional[Path]]], bool]:
+    """Đi `mod` graph của **một** crate từ crate root.
+
+    Trả `(tập tệp tới được, cạnh mod, có tệp không phân tích được?)`. Mỗi cạnh là
+    `(relp, dòng, tên mod, tệp đích hoặc None)` — `None` = **không phân giải được** (fail-closed).
+
+    **KT-264** — dùng `_crate_roots_in` (cùng định nghĩa crate root với `_module_graph`) và
+    `_mods_of`-tương đương để **một** nguồn cho "cạnh `mod` giải đi đâu". Khác `_mods_of`:
+    giữ cả cạnh **không** phân giải được (để phát `E_STRUCT_MOD_MISSING`) và **không** lọc
+    theo `is_file()` (để phát `E_STRUCT_MOD_OUTSIDE` cho `#[path]` trỏ ra ngoài crate).
+    """
+    crate_dir = crate_dir.resolve()
+    reachable: set = set()
+    edges: List[Tuple[str, int, str, Optional[Path]]] = []
+    moddir: Dict[Path, Path] = {}
+    work: List[Path] = []
+    parse_fail = False
+    for p, _is_test in _crate_roots_in(root, [crate_dir]):
+        if p not in reachable:
+            reachable.add(p)
+            moddir[p] = p.parent
+            work.append(p)
+    while work:
+        p = work.pop()
+        relp = rel(root, p)
+        tree, errs = parse_file(p)
+        if tree is None or errs:
+            # Lỗi từ vựng đã được `scan_lexical` báo (ĐỎ) — không thêm `E_STRUCT_ORPHAN` oan
+            # cho con của tệp này, nhưng **không** im lặng: `parse_fail` chặn luật mồ côi.
+            parse_fail = True
+            continue
+
+        def on_mod(
+            name_tok: Tok,
+            attrs: Sequence[Attr],
+            inline: bool,
+            group: Optional[Group],
+            cur_dir: Path,
+            in_test: bool = False,
+            mod_dir: Optional[Path] = None,
+        ) -> None:
+            if inline:
+                return
+            plain_base = mod_dir if mod_dir is not None else cur_dir
+            target: Optional[Path] = None
+            # **KT-264** — `child_dir` phải đúng luật Rust (cùng `_mods_of`): `#[path]` ⇒ thư
+            # mục tệp đích; `mod NAME;` ⇒ `plain_base/NAME` (tệp non-mod-rs `src/foo.rs` có
+            # con ở `src/foo/`). Trước bản này lấy `target.parent` cho **mọi** cạnh ⇒
+            # `kobj.rs` (`mod state_write;` ⇒ `src/kobj/state_write.rs`) bị coi là
+            # `src/state_write.rs` ⇒ **báo oan** `E_STRUCT_MOD_MISSING` + `E_STRUCT_ORPHAN`
+            # trên cây thật (đo được: 2 lỗi).
+            child_dir: Optional[Path] = None
+            for a in attrs:
+                try:
+                    a_edges, _ = attr_path_edges(a, relp)
+                except LexError:
+                    continue
+                if a_edges:
+                    # **KT-242 (N6)** — đường dẫn không phân giải được ⇒ cạnh `None`
+                    # (`E_STRUCT_MOD_MISSING`), không ném ra ngoài.
+                    target = _safe_resolve(cur_dir, a_edges[0][0])
+                    if target is not None:
+                        child_dir = target.parent
+                    break
+            if target is None:
+                for cand in (
+                    plain_base / (name_tok.val + ".rs"),
+                    plain_base / name_tok.val / "mod.rs",
+                ):
+                    if cand.is_file():
+                        target = cand.resolve()
+                        child_dir = plain_base / name_tok.val
+                        break
+            edges.append((relp, name_tok.line, name_tok.val, target))
+            if target is not None and target not in reachable:
+                reachable.add(target)
+                moddir[target] = child_dir if child_dir is not None else target.parent
+                work.append(target)
+
+        _walk_items(
+            tree,
+            relp,
+            p.parent,
+            on_mod=on_mod,
+            errors=[],
+            mod_dir=moddir.get(p) or p.parent,
+        )
+    return reachable, edges, parse_fail
+
+
+def scan_structure_scope(
+    root: Path,
+    r: Report,
+    scope: "wake_scope.ProtectedScope",
+    include_targets: set,
+) -> None:
+    """**KT-264** — luật **cấu trúc** theo **phạm vi** (nợ §7.3 của KT-258, D2-166 §3C).
+
+    Ba bất biến, mỗi bất biến **một** mã lỗi (fail-closed, không allowlist):
+
+      - `E_STRUCT_MOD_MISSING` — `mod NAME;` **không** phân giải được tệp đích. Trước bản này
+        `_mods_of` **bỏ im lặng** cạnh đó (chỉ thêm khi `is_file()`), nên một `mod` nằm trong
+        vùng `#[cfg]` tắt (cargo RC=0) là **cạnh nguồn ẩn** với mọi luật khác.
+      - `E_STRUCT_MOD_OUTSIDE` — cạnh `mod`/`#[path]` trỏ **ra ngoài thư mục crate**. Cạnh như
+        vậy biên dịch **cùng một tệp** vào hai crate với hai phân loại test/sản phẩm khác nhau
+        ⇒ `is_test` của luật token có thể sai. `resolve_include_targets` chỉ chặn đích ra ngoài
+        `v2/kernel`+`v2/sim`, **không** chặn đích ra ngoài **crate** (đo: S2b).
+      - `E_STRUCT_ORPHAN` — tệp `.rs` dưới `<crate>/src/` **không** thuộc `mod` graph và
+        **không** phải đích `include!`. Tệp mồ côi là chỗ `mod` graph của checker và của rustc
+        **lệch nhau**: một `mod` thêm sau sẽ biên dịch nó mà không ai kiểm cạnh nguồn (đo: S5).
+
+    Phạm vi: **mọi** crate bảo vệ (`scope.protected()`), không chỉ `V2_SCAN`. Tệp ngoài `src/`
+    (`build.rs`, `init/*.rs` do `build.rs` biên dịch riêng, shim `vifast-plat-user`) **không**
+    thuộc luật mồ côi — chúng không nằm trong `mod` graph của crate theo đúng luật Rust.
+    """
+    for c in scope.protected():
+        crate_dir = root / c.dir_rel
+        if not crate_dir.is_dir():
+            continue
+        # **KT-264** — `mod` graph chỉ có nghĩa khi crate **có manifest trên đĩa**: crate root
+        # (`src/lib.rs`/`src/main.rs`/`[[bin]]`/`src/bin/*.rs`) do `Cargo.toml` quyết định.
+        # Cây **fixture** của selftest dựng metadata **giả** (`scope_from_metadata`) và không
+        # có `Cargo.toml` ⇒ bỏ qua (không phải cây cargo thật). Trên cây thật **mọi** crate
+        # trong `cargo metadata` đều có manifest (D2-188) ⇒ luật luôn chạy.
+        if not (root / c.manifest_rel).is_file():
+            continue
+        roots = _crate_roots_in(root, [crate_dir])
+        # **Fail-closed**: crate **có** manifest mà **không** có crate root ⇒ cargo cũng không
+        # build được, nhưng im lặng bỏ qua là sai (D2-188 §2) ⇒ ĐỎ `E_STRUCT_NO_ROOT`.
+        if not roots:
+            r.err(
+                "E_STRUCT_NO_ROOT",
+                f"  {c.dir_rel}: crate **có** `{c.manifest_rel}` nhưng **không** có crate "
+                f"root (`src/lib.rs`/`src/main.rs`/`[[bin]]`/`src/bin/*.rs`/`tests/*.rs`) — "
+                f"không dựng được `mod` graph (fail-closed, KT-264)",
+            )
+            continue
+        # Chỉ có `tests/*.rs` (integration test) ⇒ **không** có `mod` graph của lib/bin để
+        # kiểm mồ côi (`tests/*.rs` là crate **riêng**, không định nghĩa cây module của lib).
+        # Cargo cũng không build được crate chỉ có `tests/` ⇒ không có mã nào để bảo vệ.
+        if not any(p.parent != (crate_dir / "tests") for p, _t in roots):
+            continue
+        reachable, edges, parse_fail = _crate_mod_walk(root, crate_dir)
+        for relp, line, name, target in edges:
+            if target is None:
+                r.err(
+                    "E_STRUCT_MOD_MISSING",
+                    f"  {relp}:{line}: `mod {name};` không phân giải được tệp đích — cạnh "
+                    f"nguồn ẩn (fail-closed, KT-264)",
+                )
+                continue
+            try:
+                target.relative_to(crate_dir.resolve())
+            except ValueError:
+                r.err(
+                    "E_STRUCT_MOD_OUTSIDE",
+                    f"  {relp}:{line}: `mod {name};` trỏ **ra ngoài crate** `{c.dir_rel}` "
+                    f"(`{rel(root, target)}`) — cùng một tệp biên dịch vào hai crate "
+                    f"(fail-closed, KT-264)",
+                )
+        if parse_fail:
+            # Crate có tệp không phân tích được ⇒ `E_LEX_*` đã ĐỎ; luật mồ côi sẽ báo oan
+            # (con của tệp hỏng không vào graph). Không im lặng: cổng vẫn ĐỎ.
+            continue
+        src_prefix = c.dir_rel + "/src/"
+        for p in _iter_rs_ci(crate_dir, root):
             if _is_build_dir(root, p):
                 continue
-            tree, errs = parse_file(p)
-            if tree is None or errs:
+            if p in reachable:
                 continue
             relp = rel(root, p)
-            errs2: List[LexError] = []
-            _walk_items(tree, relp, p.parent, errors=errs2)
-            for e in errs2:
-                r.err(e.code, f"  {relp}:{e.line}:{e.col}: {e.msg}")
+            if relp in include_targets:
+                continue
+            if not relp.startswith(src_prefix):
+                continue
+            r.err(
+                "E_STRUCT_ORPHAN",
+                f"  {relp}: tệp `.rs` **không** thuộc `mod` graph của crate `{c.dir_rel}` và "
+                f"không phải đích `include!` — mồ côi (fail-closed, KT-264)",
+            )
 
 
 # ------------------------------------------------------------------ KT-171: test-only thật
@@ -1611,11 +1819,18 @@ def _feature_list(raw: str) -> List[str]:
     return re.findall(r'"([^"]+)"', raw)
 
 
-def crate_roots(root: Path) -> List[Tuple[Path, bool]]:
-    """Crate root trong `v2/kernel` + `v2/sim`: `(tệp, test-only?)`.
+def _crate_roots_in(root: Path, crate_dirs: Sequence[Path]) -> List[Tuple[Path, bool]]:
+    """Crate root của **các crate trong `crate_dirs`**: `(tệp, test-only?)`.
 
     Test-only khi: bin có `required-features` chứa `ktest` (ảnh test kernel), hoặc
     `tests/*.rs` cấp crate (integration test). `src/lib.rs`/`src/main.rs` là **sản phẩm**.
+
+    **KT-264** — tách khỏi [`crate_roots`] để luật **cấu trúc** dùng **cùng** một định nghĩa
+    "crate root" cho crate **ngoài `V2_SCAN`** (một nguồn, không chép luật — cùng lý do KT-213
+    tách `_module_graph` khỏi `test_only_modules`). Thêm hai dạng crate root **tự nhận** của
+    cargo mà bản cũ bỏ sót: `src/bin/*.rs` và `src/bin/*/main.rs` (không cần `[[bin]]` trong
+    `Cargo.toml`). Thiếu chúng thì `v2/lib/vifast-elf/src/bin/vifast-elf-validate.rs` bị coi là
+    **mồ côi** ⇒ luật `E_STRUCT_ORPHAN` báo oan trên cây thật (đo được: 1 ca).
     """
     out: List[Tuple[Path, bool]] = []
     seen: set = set()
@@ -1625,38 +1840,52 @@ def crate_roots(root: Path) -> List[Tuple[Path, bool]]:
             seen.add(p)
             out.append((p, is_test))
 
+    for crate in crate_dirs:
+        cargo = crate / "Cargo.toml"
+        text = ""
+        if cargo.is_file():
+            try:
+                text = cargo.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+        lib_path = "src/lib.rs"
+        bins: List[Tuple[str, List[str]]] = []
+        for name, kv in _cargo_sections(text):
+            if name == "lib" and "path" in kv:
+                lib_path = kv["path"].strip('"')
+            elif name == "bin":
+                bp = kv.get("path", "").strip('"')
+                if bp:
+                    bins.append((bp, _feature_list(kv.get("required-features", ""))))
+        add(crate / lib_path, False)
+        for bp, feats in bins:
+            add(crate / bp, "ktest" in feats)
+        # Cargo tự nhận `src/lib.rs`/`src/main.rs` khi không khai báo.
+        add(crate / "src/lib.rs", False)
+        add(crate / "src/main.rs", False)
+        # **KT-264** — `src/bin/*.rs` / `src/bin/*/main.rs` là crate root **tự nhận** của cargo.
+        src_bin = crate / "src/bin"
+        if src_bin.is_dir():
+            for b in sorted(src_bin.glob("*.rs")):
+                add(b, False)
+            for b in sorted(src_bin.glob("*/main.rs")):
+                add(b, False)
+        tests_dir = crate / "tests"
+        if tests_dir.is_dir():
+            for t in sorted(tests_dir.glob("*.rs")):
+                add(t, True)
+    return out
+
+
+def crate_roots(root: Path) -> List[Tuple[Path, bool]]:
+    """Crate root trong `v2/kernel` + `v2/sim`: `(tệp, test-only?)` (xem [`_crate_roots_in`])."""
+    dirs: List[Path] = []
     for base_rel in V2_SCAN:
         base = root / base_rel
         if not base.is_dir():
             continue
-        for crate in sorted(p for p in base.iterdir() if p.is_dir()):
-            cargo = crate / "Cargo.toml"
-            text = ""
-            if cargo.is_file():
-                try:
-                    text = cargo.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    text = ""
-            lib_path = "src/lib.rs"
-            bins: List[Tuple[str, List[str]]] = []
-            for name, kv in _cargo_sections(text):
-                if name == "lib" and "path" in kv:
-                    lib_path = kv["path"].strip('"')
-                elif name == "bin":
-                    bp = kv.get("path", "").strip('"')
-                    if bp:
-                        bins.append((bp, _feature_list(kv.get("required-features", ""))))
-            add(crate / lib_path, False)
-            for bp, feats in bins:
-                add(crate / bp, "ktest" in feats)
-            # Cargo tự nhận `src/lib.rs`/`src/main.rs` khi không khai báo.
-            add(crate / "src/lib.rs", False)
-            add(crate / "src/main.rs", False)
-            tests_dir = crate / "tests"
-            if tests_dir.is_dir():
-                for t in sorted(tests_dir.glob("*.rs")):
-                    add(t, True)
-    return out
+        dirs.extend(sorted(p for p in base.iterdir() if p.is_dir()))
+    return _crate_roots_in(root, dirs)
 
 
 def _mods_of(p: Path, mod_dir: Path) -> List[Tuple[Path, bool, Path]]:
@@ -4022,8 +4251,12 @@ def scan_v2(
     # **KT-194/D2-166 §3C** — lỗi từ vựng/cấu trúc trong tệp thuộc phạm vi bảo vệ phải **ĐỎ**;
     # không được trả về tập token/cạnh thiếu rồi tiếp tục xanh. Chạy **trước** mọi luật để
     # chẩn đoán `E_LEX_*` không bị lẫn với vi phạm chính sách `E_STRICT_*`.
-    scan_lexical(root, r)
-    scan_structure(root, r)
+    # **KT-264** — phạm vi lấy từ `wake_scope.protected_scope` (nợ §7.3 của KT-258), không
+    # còn hằng `V2_SCAN`: crate ở gốc mới trong bao đóng sản phẩm cũng phải được kiểm từ vựng
+    # + cấu trúc. Ba bất biến `E_STRUCT_*` chạy **sau** `resolve_include_targets` (cần biết
+    # đích `include!` để không báo oan tệp mồ côi).
+    scan_lexical(root, r, scope)
+    scan_structure(root, r, scope)
 
     # --- quét mọi tệp nguồn ---------------------------------------------------
     files: List[Tuple[Path, str, List[Fn]]] = []
@@ -4102,6 +4335,11 @@ def scan_v2(
         )
     for e in inc_errors:
         r.err("E_STRICT_WAKE_INCLUDE", e)
+
+    # **KT-264** — luật **cấu trúc** theo **phạm vi** (nợ §7.3): cạnh `mod` không phân giải
+    # được / trỏ ra ngoài crate / tệp `.rs` mồ côi trong crate bảo vệ. Chạy ở **mọi** chế độ
+    # (như `include!`/`#[path]` từ KT-184), sau `extra` để biết đích `include!`.
+    scan_structure_scope(root, r, scope, set(extra))
 
     # 1) Kênh chéo hart: chỉ `post_mail`/`try_push` mang message hộp thư.
     producers: Dict[str, List[str]] = {k: [] for k in WAKE_KINDS}
@@ -10019,6 +10257,220 @@ def selftest() -> int:
                 "KT-258/WB-23 U6b đối chứng dương: path-dependency TRONG repo ⇒ không "
                 "`E_SCOPE_OUTSIDE` (luật không phải luôn-đỏ)",
                 not any("E_SCOPE_OUTSIDE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # ================================================================ KT-264 (nợ §7.3)
+        # **Luật cấu trúc theo phạm vi**: trước KT-264 `scan_structure` chỉ chạy `V2_SCAN` và
+        # `_mods_of` **bỏ im lặng** cạnh `mod` không phân giải được ⇒ crate ở **gốc mới** (và
+        # `v2/lib`) có `mod` graph lạ / tệp mồ côi mà **không** luật nào thấy. Các ca dưới là
+        # **đột biến hai chiều**: trước vá XANH, sau vá ĐỎ; mỗi ca có **đối chứng dương** để
+        # chứng minh luật không phải luôn-đỏ.
+        _EVIL = "v2/drivers/evil"
+        _EVIL_MANIFEST = '[package]\nname = "vifast-evil"\nversion = "0.1.0"\n'
+        _NET = "v2/lib/vifast-net"
+        _NET_MANIFEST = '[package]\nname = "vifast-net"\nversion = "0.1.0"\n'
+        _HOST_NET = _HOST_PKGS + [("vifast-net", _NET, ())]
+
+        def _evil_scope(sroot):
+            return _scope258(sroot, _HOST_PKGS, _KERNEL_PKGS, _CLOSURE_PKGS)
+
+        # --- V1: tệp MỒ CÔI trong crate ở gốc mới ⇒ `E_STRUCT_ORPHAN` ----------------------
+        d = tmp / "kt264-v1-orphan"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(d / _EVIL / "src/lib.rs", "pub fn ok() -> u8 { 0 }\n")
+        _write(d / _EVIL / "src/orphan.rs", "pub fn not_compiled() -> u8 { 1 }\n")
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V1: tệp `.rs` **mồ côi** trong crate ở GỐC MỚI ⇒ `E_STRUCT_ORPHAN` "
+                "(trước vá: XANH — `scan_structure` chỉ chạy `V2_SCAN`)",
+                (not rep.ok)
+                and any("E_STRUCT_ORPHAN" in e and "orphan.rs" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # --- V2: đối chứng dương — mọi tệp trong `mod` graph ⇒ không `E_STRUCT_ORPHAN` ------
+        d = tmp / "kt264-v2-clean"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(d / _EVIL / "src/lib.rs", "mod inner;\npub fn ok() -> u8 { 0 }\n")
+        _write(d / _EVIL / "src/inner.rs", "pub fn f() -> u8 { 1 }\n")
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V2 đối chứng dương: mọi tệp trong `mod` graph ⇒ không "
+                "`E_STRUCT_ORPHAN` (luật không phải luôn-đỏ)",
+                not any("E_STRUCT_ORPHAN" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V3: cạnh `mod` KHÔNG phân giải được ⇒ `E_STRUCT_MOD_MISSING` ------------------
+        d = tmp / "kt264-v3-missing"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(
+            d / _EVIL / "src/lib.rs",
+            "#[cfg(any())]\nmod ghost;\npub fn ok() -> u8 { 0 }\n",
+        )
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V3: `mod ghost;` **không** phân giải được (nhánh cfg tắt) trong crate "
+                "ở GỐC MỚI ⇒ `E_STRUCT_MOD_MISSING` (trước vá: XANH — `_mods_of` bỏ im lặng)",
+                (not rep.ok)
+                and any("E_STRUCT_MOD_MISSING" in e and "ghost" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # --- V4: đối chứng dương — `mod ghost;` có `ghost.rs` ⇒ không `E_STRUCT_MOD_MISSING` -
+        d = tmp / "kt264-v4-present"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(d / _EVIL / "src/lib.rs", "mod ghost;\npub fn ok() -> u8 { 0 }\n")
+        _write(d / _EVIL / "src/ghost.rs", "pub fn g() -> u8 { 1 }\n")
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V4 đối chứng dương: `mod ghost;` có `ghost.rs` ⇒ không "
+                "`E_STRUCT_MOD_MISSING` (luật không phải luôn-đỏ)",
+                not any("E_STRUCT_MOD_MISSING" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V5: cạnh `#[path]` RA NGOÀI crate ⇒ `E_STRUCT_MOD_OUTSIDE` --------------------
+        d = tmp / "kt264-v5-outside"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(d / "v2/kernel/vifast-plat-common/src/evil.rs", "pub fn e() -> u8 { 0 }\n")
+        _write(
+            d / _EVIL / "src/lib.rs",
+            '#[path = "../../../kernel/vifast-plat-common/src/evil.rs"]\nmod evil;\n',
+        )
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V5: `#[path]` trỏ **ra ngoài crate** (vẫn trong `v2/kernel`) ⇒ "
+                "`E_STRUCT_MOD_OUTSIDE` (trước vá: XANH — `resolve_include_targets` chỉ chặn "
+                "ra ngoài `v2/kernel`+`v2/sim`)",
+                (not rep.ok)
+                and any("E_STRUCT_MOD_OUTSIDE" in e and "evil" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # --- V6: đối chứng dương — `#[path]` TRONG crate ⇒ không `E_STRUCT_MOD_OUTSIDE` -----
+        d = tmp / "kt264-v6-inside"
+        _fixture_v2(d)
+        _write(d / _EVIL / "Cargo.toml", _EVIL_MANIFEST)
+        _write(d / _EVIL / "src/evil.rs", "pub fn e() -> u8 { 0 }\n")
+        _write(d / _EVIL / "src/lib.rs", '#[path = "evil.rs"]\nmod evil;\n')
+        rep = scan_v2(d, strict=False, scope=_evil_scope(d))
+        cases.append(
+            (
+                "KT-264 V6 đối chứng dương: `#[path]` trỏ **trong** crate ⇒ không "
+                "`E_STRUCT_MOD_OUTSIDE` (luật không phải luôn-đỏ)",
+                not any("E_STRUCT_MOD_OUTSIDE" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V7: `mod` hỏng trong `v2/lib` (ngoài `V2_SCAN`) ⇒ `E_LEX_STRUCT` --------------
+        d = tmp / "kt264-v7-lib-lex"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(d / _NET / "src/lib.rs", "pub fn ok() -> u8 { 0 }\n")
+        _write(d / _NET / "src/bad.rs", "#[cfg(any())]\nmod 123;\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V7: khai báo `mod` **hỏng** trong `v2/lib` (ngoài `V2_SCAN`) ⇒ "
+                "`E_LEX_STRUCT` (trước vá: XANH — `scan_structure` chỉ chạy `V2_SCAN`)",
+                (not rep.ok)
+                and any("E_LEX_STRUCT" in e and "bad.rs" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # --- V8: đối chứng dương — `v2/lib` sạch ⇒ không `E_LEX_STRUCT` --------------------
+        d = tmp / "kt264-v8-lib-clean"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(d / _NET / "src/lib.rs", "pub fn ok() -> u8 { 0 }\n")
+        _write(d / _NET / "src/good.rs", "pub fn g() -> u8 { 1 }\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V8 đối chứng dương: `v2/lib` sạch ⇒ không `E_LEX_STRUCT` "
+                "(luật không phải luôn-đỏ)",
+                not any("E_LEX_STRUCT" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V9: `src/bin/*.rs` là crate root TỰ NHẬN ⇒ không mồ côi -----------------------
+        d = tmp / "kt264-v9-srcbin"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(d / _NET / "src/lib.rs", "pub fn ok() -> u8 { 0 }\n")
+        _write(d / _NET / "src/bin/tool.rs", "fn main() {}\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V9 đối chứng dương: `src/bin/*.rs` là crate root **tự nhận** của cargo "
+                "⇒ không `E_STRUCT_ORPHAN` (thiếu ca này thì luật báo oan trên cây thật)",
+                not any("E_STRUCT_ORPHAN" in e and "src/bin" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V10: đích `include!` dưới `src/` KHÔNG phải mồ côi ----------------------------
+        d = tmp / "kt264-v10-include"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(
+            d / _NET / "src/lib.rs",
+            'pub mod inner {\n    include!("body.rs");\n}\n',
+        )
+        _write(d / _NET / "src/body.rs", "pub fn f() -> u8 { 0 }\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V10 đối chứng dương: tệp dưới `src/` nạp bằng `include!` **không** "
+                "phải mồ côi (được biên dịch)",
+                not any("E_STRUCT_ORPHAN" in e and "body.rs" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        # --- V11: crate có manifest mà KHÔNG có crate root ⇒ `E_STRUCT_NO_ROOT` ------------
+        d = tmp / "kt264-v11-noroot"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(d / _NET / "src/foo.rs", "pub fn f() -> u8 { 0 }\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V11: crate **có** manifest mà **không** có crate root ⇒ "
+                "`E_STRUCT_NO_ROOT` (fail-closed, không im lặng bỏ qua)",
+                (not rep.ok)
+                and any("E_STRUCT_NO_ROOT" in e and _NET in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+        # --- V12: đối chứng dương — có `src/lib.rs` ⇒ không `E_STRUCT_NO_ROOT` -------------
+        d = tmp / "kt264-v12-root"
+        _fixture_v2(d)
+        _write(d / _NET / "Cargo.toml", _NET_MANIFEST)
+        _write(d / _NET / "src/lib.rs", "pub fn ok() -> u8 { 0 }\n")
+        rep = scan_v2(d, strict=False, scope=_scope258(d, _HOST_NET, _KERNEL_PKGS, _CLOSURE_PKGS))
+        cases.append(
+            (
+                "KT-264 V12 đối chứng dương: crate có `src/lib.rs` ⇒ không `E_STRUCT_NO_ROOT` "
+                "(luật không phải luôn-đỏ)",
+                not any("E_STRUCT_NO_ROOT" in e for e in rep.errors),
                 f"errors={rep.errors}",
             )
         )
