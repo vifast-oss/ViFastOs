@@ -3326,13 +3326,22 @@ def _check_type_anchors(
             if door not in by_name:
                 r.err("E_ANCHOR_MISSING", f"{sw}: thiếu cửa `fn {door}` (KT-241)")
 
-        # 5) `block_current` (bất kỳ tệp nào của crate) — tham số thứ hai `NonReadyTarget`.
-        crate_prefix = (
-            "v2/kernel/vifast-core/" if sw == KERNEL_STATE_WRITE else "v2/sim/vifast-sim/"
-        )
+        # 5) `block_current` — tham số thứ hai `NonReadyTarget`, **chỉ** ở tệp **định nghĩa**
+        #    API (`core_sched.rs` / `kobj.rs`).
+        #
+        #    **KT-241 (lead, sau hợp nhất)** — bản C quét **mọi** tệp của crate, nên báo oan
+        #    `kt59_core_parity.rs:720/987`: đó là **trait impl** của harness parity, nhận `CS`
+        #    (kiểu trạng thái trừu tượng) rồi đổi qua `sim_nonready()`/`core_nonready()` —
+        #    adapter hợp lệ, không phải định nghĩa API. Mỏ neo chỉ có nghĩa ở **nơi định nghĩa**;
+        #    nếu `block_current` bị chuyển sang tệp khác thì `E_ANCHOR_MISSING` bắt (fail-closed).
+        #    Tệp **định nghĩa** API ở cây thật là `core_sched.rs`/`kobj.rs`; cây fixture của
+        #    selftest đặt `block_current` **trong** `state_write.rs` ⇒ kiểm **cả hai** (đúng
+        #    nơi định nghĩa, không quét `tests/`).
+        bc_files = (sw, KERNEL_SCHED) if sw == KERNEL_STATE_WRITE else (sw, SIM_KOBJ)
         found_bc = False
-        for relp, (fp, _text, _fns) in by_rel.items():
-            if not relp.startswith(crate_prefix):
+        for relp in bc_files:
+            fp = root / relp
+            if not fp.is_file():
                 continue
             tree2, errs2 = parse_file(fp)
             if tree2 is None or errs2:
@@ -3352,7 +3361,10 @@ def _check_type_anchors(
                         f"`NonReadyTarget` (đang là `{got}`) — API KT-241 (D2-194 §1(d))",
                     )
         if not found_bc:
-            r.err("E_ANCHOR_MISSING", f"{crate_prefix}: thiếu `fn block_current` (KT-241)")
+            r.err(
+                "E_ANCHOR_MISSING",
+                f"{bc_files[0]}: thiếu `fn block_current` (KT-241)",
+            )
 
     # 6) Tệp cũ **không** được còn định nghĩa `transition_tcb`.
     for legacy in LEGACY_TRANSITION_FILES:

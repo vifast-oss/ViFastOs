@@ -34,7 +34,7 @@ use crate::tcb::{FaultKind, SleepReason, TcbState, TCB_STATE_COUNT};
 /// Đích chuyển trạng thái TCB **loại trừ `Ready`** — 10 biến thể còn lại của [`TcbState`].
 ///
 /// **D2-187/D2-194**: cửa chuyển trạng thái thông thường **không nhận kiểu biểu diễn được
-/// `Ready`**. `Ready` chỉ vào được qua **năm cửa ngữ nghĩa** trong [`state_write`], mỗi cửa
+/// `Ready`**. `Ready` chỉ vào được qua **năm cửa ngữ nghĩa** trong `state_write`, mỗi cửa
 /// kiểm điều kiện nguồn của mình. Không có `From`/`TryFrom` công khai nào từ [`TcbState`]
 /// sang kiểu này — đó là toàn bộ ranh giới.
 ///
