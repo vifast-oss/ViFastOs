@@ -9,14 +9,21 @@
 # các nhánh khác (KT-243..KT-251).
 #
 # Hợp đồng (fail-closed, không nới ngưỡng):
-#   1. **Ca dương** (`-netdev user`): log phải có `TAP version 13` + `1..7` đúng một lần, bảy dòng
-#      `ok 1..7` đúng **thứ tự** và đúng **tên**, **không** `not ok`, đúng **một** dòng
-#      `PANIC: KT-246 net xong (7 TAP, 0 fail)`, và các dòng bằng chứng:
+#   1. **Ca dương** (`-netdev user`): log phải có `TAP version 13` + `1..9` đúng một lần, chín dòng
+#      `ok 1..9` đúng **thứ tự** và đúng **tên**, **không** `not ok`, đúng **một** dòng
+#      `PANIC: KT-260 net xong (9 TAP, 0 fail)`, và các dòng bằng chứng:
 #        - MAC thật `52:54:00:…` (OUI QEMU) đọc từ thiết bị;
 #        - `net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`;
 #        - `net: arp gw=<mac>` (MAC gateway khác 0, không broadcast);
 #        - `net: ping 10.0.2.2 ok n=3 rtt=<ms>`;
 #        - `# net rx:` có `oper=2` + `sender_ip=10.0.2.2` + `target_mac_khop=1`;
+#        - **KT-260** `net: udp echo ok len=15 rtt=<ms>` + `# net udp echo:` có
+#          `target=10.0.2.3:53 via=dns-question-echo … echoed=1` (libslirp **không** có echo UDP
+#          ở `10.0.2.2:7`; fallback KT-260 dùng reply DNS làm bằng chứng UDP hai chiều);
+#        - **KT-260** `net: dns example.com a=<ip> ttl=<n>` + `# net dns:` có `an=1`;
+#        - **KT-260** hai dòng timeout **đúng 3 s** (fail-closed, không treo):
+#          `# net udp echo: target=10.0.2.2:7 result=Timeout elapsed_ms=3000 …` và
+#          `# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 …`;
 #        - `# net stats:` có `errors=0 timeouts=0 id_mismatch=0`.
 #   2. **Ca âm "không thiết bị"**: **cùng** ảnh, **không** `-netdev`/`-device` ⇒ log phải có
 #      `net: no device` + `not ok 1 - net device`, **không** có `ok 1`, **không** có dòng PANIC
@@ -25,9 +32,10 @@
 #      mặt, **không** peer nào trả lời) ⇒ log phải có `net: no link` + `not ok 3 - net dhcp`,
 #      **không** có `ok 3`, **không** có dòng PANIC "xong". Chứng minh DHCP **fail-closed** chứ
 #      không treo và không PASS giả.
-#   4. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`, đổi MAC,
-#      đổi `oper`, đổi `ip=`, thêm `not ok`, xoá `# net stats:`) rồi đòi validator **từ chối** từng
-#      bản; và hai log ca âm "PASS giả" phải bị từ chối.
+#   4. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`/`ok 8`/`ok 9`,
+#      đổi MAC, đổi `oper`, đổi `ip=`, đổi `len=`, đổi `a=`, xoá dòng timeout, thêm `not ok`, xoá
+#      `# net stats:`) rồi đòi validator **từ chối** từng bản; và hai log ca âm "PASS giả" phải bị
+#      từ chối.
 #
 # Dùng:
 #   bash v2/test/boot/net.sh                 # build + ca dương + hai ca âm (PASS/FAIL)
@@ -51,17 +59,26 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 QEMU_ICOUNT="-icount shift=6" # D2-74 (chỉ runner; run.sh/soak không icount)
 QEMU_MIN_MAJOR=9
 QEMU_MIN_MINOR=2
-# Số TAP của ảnh — runner đòi đúng bảy dòng `ok 1..7` đúng **tên** (thêm/bớt TAP phải sửa cả
+# Số TAP của ảnh — runner đòi đúng chín dòng `ok 1..9` đúng **tên** (thêm/bớt TAP phải sửa cả
 # kernel, tệp này và `# net stats` trong cùng commit).
-TAP_COUNT=7
+TAP_COUNT=9
 # Dòng kết thúc chủ đích của ảnh (khớp `ktest_net.rs`).
-PANIC_OK='^PANIC: KT-246 net xong \(7 TAP, 0 fail\)$'
+PANIC_OK='^PANIC: KT-260 net xong \(9 TAP, 0 fail\)$'
 # OUI mà QEMU gán cho card slirp — MAC **đọc từ thiết bị**, hằng này chỉ để đối chiếu nguồn gốc.
 MAC_PREFIX="52:54:00:"
 # Giá trị DHCP mà slirp của QEMU cấp (dữ kiện nền tảng QEMU, không phải số đo của kernel).
 DHCP_LINE='^# net: dhcp ip=10\.0\.2\.15 gw=10\.0\.2\.2 mask=255\.255\.255\.0 server=10\.0\.2\.2$'
 PING_LINE='^# net: ping 10\.0\.2\.2 ok n=3 rtt=[0-9]+$'
 ARP_LINE='^# net: arp gw=[0-9a-f]{2}(:[0-9a-f]{2}){5}$'
+# **KT-260** — UDP echo: payload `vifast-udp-echo` dài 15 byte; "gương" là reply DNS (fallback vì
+# libslirp không có echo UDP ở 10.0.2.2:7). Dòng timeout chứng minh fail-closed đúng 3 s.
+UDP_ECHO_LINE='^# net: udp echo ok len=15 rtt=[0-9]+$'
+UDP_ECHO_TIMEOUT='^# net udp echo: target=10\.0\.2\.2:7 result=Timeout elapsed_ms=3000 const:timeout_ms=3000$'
+UDP_ECHO_DNS='^# net udp echo: target=10\.0\.2\.3:53 via=dns-question-echo payload_len=15 reply_len=[0-9]+ rcode=[0-9]+ echoed=1 rtt_ms=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$'
+# **KT-260** — DNS: `example.com` A; TTL do resolver trả (không hardcode).
+DNS_A_LINE='^# net: dns example\.com a=([0-9]{1,3}\.){3}[0-9]{1,3} ttl=[0-9]+$'
+DNS_REPLY='^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$'
+DNS_TIMEOUT='^# net dns: target=192\.0\.2\.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000$'
 
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -190,7 +207,7 @@ validate_positive() {
     # 1) TAP version + kế hoạch, đúng một lần.
     check_count "ca dương: 'TAP version 13'" '^TAP version 13$' 1
     check_count "ca dương: dòng kế hoạch '1..$TAP_COUNT'" "^1\\.\\.$TAP_COUNT\$" 1
-    # 2) Bảy dòng `ok N - <tên>` đúng thứ tự, đúng tên, mỗi dòng đúng một lần.
+    # 2) Chín dòng `ok N - <tên>` đúng thứ tự, đúng tên, mỗi dòng đúng một lần.
     check_tap 1 "net device"
     check_tap 2 "net mac"
     check_tap 3 "net dhcp"
@@ -198,6 +215,8 @@ validate_positive() {
     check_tap 5 "net ping"
     check_tap 6 "net tx"
     check_tap 7 "net rx"
+    check_tap 8 "net udp echo"
+    check_tap 9 "net dns a"
     # 3) Không `not ok` nào.
     check_count "ca dương: dòng 'not ok'" '^not ok' 0
     # 4) Đúng **một** dòng PANIC kết thúc, đúng mẫu.
@@ -222,9 +241,22 @@ validate_positive() {
     # 10) Bộ đếm sạch: không lỗi, không timeout, không lệch used->id.
     check_grep "'# net stats:' có errors=0 timeouts=0 id_mismatch=0" \
         '^# net stats: .*errors=0 timeouts=0 id_mismatch=0( |$)'
-    # 11) Hai ca âm **không** được lẫn vào log ca dương.
+    # 11) **KT-260** — UDP echo: payload 15 byte quay lại **đúng** qua "gương" DNS, và dòng
+    #     timeout 3 s của `udp_echo` tới 10.0.2.2:7 (libslirp không có echo UDP).
+    check_grep "dòng 'net: udp echo ok len=15 rtt=<ms>'" "$UDP_ECHO_LINE"
+    check_grep "dòng timeout UDP 'target=10.0.2.2:7 result=Timeout elapsed_ms=3000'" \
+        "$UDP_ECHO_TIMEOUT"
+    check_grep "dòng 'net udp echo:' via=dns-question-echo … echoed=1" "$UDP_ECHO_DNS"
+    # 12) **KT-260** — DNS: bản ghi A của example.com + dòng timeout 3 s trên TEST-NET-1.
+    check_grep "dòng 'net: dns example.com a=<ip> ttl=<n>'" "$DNS_A_LINE"
+    check_grep "dòng 'net dns:' rcode=0 an=1 cho example.com" "$DNS_REPLY"
+    check_grep "dòng timeout DNS 'target=192.0.2.1:53 result=Timeout elapsed_ms=3000'" \
+        "$DNS_TIMEOUT"
+    # 13) Hai ca âm **không** được lẫn vào log ca dương.
     check_count "ca dương: dòng 'net: no device'" 'net: no device' 0
     check_count "ca dương: dòng 'net: no link'" 'net: no link' 0
+    check_count "ca dương: dòng 'net: no udp'" 'net: no udp' 0
+    check_count "ca dương: dòng 'net: no dns'" 'net: no dns' 0
     return $((FAILS - before))
 }
 
@@ -242,7 +274,7 @@ validate_negative() {
     check_count "ca âm: 'not ok 1 - net device'" '^not ok 1 - net device' 1
     # 3) **Không** được có `ok 1` — đây là chỗ bắt "PASS giả".
     check_count "ca âm: 'ok 1 - net device'" '^ok 1 - net device' 0
-    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 7 TAP).
+    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 9 TAP).
     check_count "ca âm: dòng PANIC 'xong'" "$PANIC_OK" 0
     return $((FAILS - before))
 }
@@ -277,7 +309,7 @@ run_positive() {
         return 1
     fi
     if validate_positive "$log"; then
-        ok "ca dương: 7/7 TAP + MAC thật + DHCP + ARP + ping + ARP reply + bộ đếm sạch ($log)"
+        ok "ca dương: 9/9 TAP + MAC thật + DHCP + ARP + ping + ARP reply + UDP echo + DNS A + bộ đếm sạch ($log)"
         return 0
     fi
     return 1
@@ -342,11 +374,11 @@ red_selftest() {
     local neg="$LOGDIR/kt245-selftest-neg.log"
     local nolink="$LOGDIR/kt245-selftest-nolink.log"
     local tmp="$LOGDIR/kt245-selftest-mut.log"
-    # Log **tốt** dựng tay: đúng bảy TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để kiểm
-    # validator, không dùng làm bằng chứng KT-245/246).
+    # Log **tốt** dựng tay: đúng chín TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để kiểm
+    # validator, không dùng làm bằng chứng KT-245/246/260).
     cat >"$good" <<'EOF'
 TAP version 13
-1..7
+1..9
 # net dev: mac=52:54:00:12:34:56 status=0x1 mtu_raw=65535
 ok 1 - net device
 ok 2 - net mac
@@ -360,13 +392,24 @@ ok 5 - net ping
 ok 6 - net tx
 # net rx: frame=64 oper=2 ethertype=0x806 sender_ip=10.0.2.2 sender_mac=52:55:0a:00:02:02 target_mac_khop=1
 ok 7 - net rx
-# net stats: tx_frames=4 tx_bytes=168 rx_frames=5 rx_bytes=320 notifies=9 errors=0 timeouts=0 id_mismatch=0
-PANIC: KT-246 net xong (7 TAP, 0 fail)
+# net udp echo: target=10.0.2.2:7 result=Timeout elapsed_ms=3000 const:timeout_ms=3000
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3 elapsed_ms=0
+# net udp echo: target=10.0.2.3:53 via=dns-question-echo payload_len=15 reply_len=33 rcode=0 echoed=1 rtt_ms=9 elapsed_ms=9 const:timeout_ms=3000
+# net: udp echo ok len=15 rtt=9
+ok 8 - net udp echo
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=61 rtt_ms=10 elapsed_ms=10 const:timeout_ms=3000
+# net: dns example.com a=104.20.23.154 ttl=300
+ok 9 - net dns a
+# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000
+# net stats: tx_frames=12 tx_bytes=1218 rx_frames=10 rx_bytes=1772 notifies=23 errors=0 timeouts=0 id_mismatch=0
+PANIC: KT-260 net xong (9 TAP, 0 fail)
 EOF
     expect_accept "log tốt dựng tay" validate_positive "$good"
-    # Bảy đột biến phải bị **từ chối** — nếu không, validator rỗng.
+    # Mười bốn đột biến phải bị **từ chối** — nếu không, validator rỗng.
     local name
-    for name in xoa_ok3 doi_mac doi_oper doi_ip them_not_ok xoa_stats doi_ping_n; do
+    for name in xoa_ok3 doi_mac doi_oper doi_ip them_not_ok xoa_stats doi_ping_n \
+        xoa_ok8 xoa_ok9 doi_udp_len doi_echoed doi_dns_a doi_dns_ttl doi_rcode \
+        xoa_udp_timeout xoa_dns_timeout; do
         case "$name" in
             xoa_ok3) grep -v '^ok 3 - net dhcp$' "$good" >"$tmp" ;;
             doi_mac) sed 's/mac=52:54:00:/mac=02:00:00:/' "$good" >"$tmp" ;;
@@ -375,13 +418,22 @@ EOF
             them_not_ok) sed 's/^ok 2 - net mac$/not ok 2 - net mac/' "$good" >"$tmp" ;;
             xoa_stats) grep -v '^# net stats:' "$good" >"$tmp" ;;
             doi_ping_n) sed 's/ok n=3 rtt=/ok n=2 rtt=/' "$good" >"$tmp" ;;
+            xoa_ok8) grep -v '^ok 8 - net udp echo$' "$good" >"$tmp" ;;
+            xoa_ok9) grep -v '^ok 9 - net dns a$' "$good" >"$tmp" ;;
+            doi_udp_len) sed 's/udp echo ok len=15/udp echo ok len=14/' "$good" >"$tmp" ;;
+            doi_echoed) sed 's/echoed=1/echoed=0/' "$good" >"$tmp" ;;
+            doi_dns_a) sed 's/a=104.20.23.154/a=1.2.3/' "$good" >"$tmp" ;;
+            doi_dns_ttl) sed 's/ttl=300/ttl=x/' "$good" >"$tmp" ;;
+            doi_rcode) sed 's/rcode=0 an=1/rcode=3 an=1/' "$good" >"$tmp" ;;
+            xoa_udp_timeout) grep -v '^# net udp echo: target=10.0.2.2:7 result=Timeout' "$good" >"$tmp" ;;
+            xoa_dns_timeout) grep -v '^# net dns: target=192.0.2.1:53 result=Timeout' "$good" >"$tmp" ;;
         esac
         expect_reject "đột biến '$name'" validate_positive "$tmp"
     done
     # Ca âm "không thiết bị": log đỏ đúng cách ⇒ chấp nhận; log "PASS giả" (có `ok 1`) ⇒ từ chối.
     cat >"$neg" <<'EOF'
 TAP version 13
-1..7
+1..9
 # net pci: err=NoDevice stage=nodevice
 # net: no device
 not ok 1 - net device: không tìm/khởi tạo được PCI
@@ -393,7 +445,7 @@ EOF
     # Ca âm "không mạng": DHCP fail-closed ⇒ chấp nhận; DHCP "PASS giả" ⇒ từ chối.
     cat >"$nolink" <<'EOF'
 TAP version 13
-1..7
+1..9
 ok 1 - net device
 ok 2 - net mac
 # net: no link

@@ -9,7 +9,7 @@
 //! 21 boot matrix cũ **không đổi**; (c) boot kết thúc bằng **một** dòng `PANIC:` chủ đích (cùng
 //! quy ước ảnh guard/user/proc/vblk/con/exec).
 //!
-//! # TAP (7 test; tên khớp `v2/test/boot/net.sh`)
+//! # TAP (9 test; tên khớp `v2/test/boot/net.sh`)
 //!
 //! 1. `net device` — quét ECAM tìm **vendor/device đọc từ thiết bị** (`0x1af4:0x1000`), đo cỡ BAR
 //!    bằng mask, **gán** BAR (firmware không enumerate), đọc lại BAR + `command`, đọc bốn
@@ -27,6 +27,13 @@
 //!    hoàn tất `used` (`used->id` khớp head, `used->len` không vượt số byte đã đưa).
 //! 7. `net rx` — nhận **frame trả lời** của slirp trên queue `rx`: ARP reply từ gateway
 //!    `10.0.2.2`, đúng `oper=2`, `sender_mac` khác 0, `target_mac` = MAC của ta.
+//! 8. `net udp echo` — **KT-260**: gửi UDP payload `vifast-udp-echo` và nhận lại **đúng** payload
+//!    đó. libslirp **không** có echo service UDP ở `10.0.2.2:7` (xem chú thích trong
+//!    `virtio_net.rs`), nên theo fallback của KT-260, "gương" là **reply DNS**: QNAME =
+//!    `vifast-udp-echo`, server chép nguyên question section (RFC 1035 §4.1.2) ⇒
+//!    `net: udp echo ok len=15 rtt=<ms>`.
+//! 9. `net dns a` — **KT-260**: truy vấn `example.com` type `A` tới `10.0.2.3:53`, parse bản ghi
+//!    `A` đầu tiên ⇒ `net: dns example.com a=<ip> ttl=<n>`.
 //!
 //! Mọi dòng `# net:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
@@ -37,6 +44,7 @@
 use core::fmt::Write;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::dns::TYPE_A;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
@@ -56,6 +64,12 @@ const ETHERTYPE_ARP: u16 = 0x0806;
 const ARP_FRAME_BYTES: usize = 42;
 /// Số echo request của TAP 5 (D2-196 mục (1): "gửi 3 echo request").
 const PING_COUNT: u32 = 3;
+/// `id` của truy vấn DNS "gương" UDP echo (TAP 8) — hằng số vì chưa có RNG.
+const DNS_ID_ECHO: u16 = 0x4b54;
+/// `id` của truy vấn DNS `example.com` A (TAP 9).
+const DNS_ID_A: u16 = 0x4b55;
+/// Tên hỏi cho TAP 9.
+const DNS_NAME_A: &[u8] = b"example.com";
 
 fn put(ok: bool, number: usize, name: &str, fails: &mut usize, why: &str) {
     let mut w = PlatformWriter(&PLATFORM);
@@ -94,7 +108,7 @@ fn mac_str(mac: [u8; 6], out: &mut [u8; 17]) {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..7\n");
+    PLATFORM.put_str("TAP version 13\n1..9\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let mmu_report = mmu::init();
@@ -103,7 +117,7 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(
             w,
             "# net image: hart={} stvec=0x{:x} direct={} satp=0x{:x} mode={} tables={} used={} \
-             const:gateway=10.0.2.2 const:ping_count={PING_COUNT}",
+             const:gateway=10.0.2.2 const:ping_count={PING_COUNT} const:dns=10.0.2.3:53",
             PLATFORM.hart_id(),
             stvec,
             (stvec & 0b11 == 0) as u8,
@@ -565,6 +579,291 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
 
+    // ------------------------------------------------ 8) UDP echo (KT-260)
+    // libslirp **không** có echo service UDP ở `10.0.2.2:7` (chỉ BOOTP/TFTP rồi chuyển cho socket
+    // host; `10.0.2.2` ánh xạ về loopback host). Theo fallback của KT-260, "gương" UDP là **reply
+    // DNS**: QNAME = payload, server chép nguyên question section (RFC 1035 §4.1.2) ⇒ nhận lại
+    // đúng chuỗi đã gửi là bằng chứng UDP hai chiều.
+    //
+    // Chẩn đoán (không phải TAP): gọi `udp_echo` tới `10.0.2.2:7` để đo **fail-closed 3 s**; nếu
+    // môi trường có echo thật, dòng này đổi `result=ok` và runner sẽ báo (không im lặng đổi đường).
+    {
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::udp_echo(
+            config.ip,
+            MacAddr::new(mac),
+            GATEWAY_IP,
+            gateway_mac,
+            virtio_net::UDP_CLIENT_PORT,
+            virtio_net::UDP_ECHO_PORT,
+            virtio_net::UDP_ECHO_PAYLOAD,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        let mut w = PlatformWriter(&PLATFORM);
+        match result {
+            Ok(echo) => {
+                let _ = writeln!(
+                    w,
+                    "# net udp echo: target={}:{} result=ok len={} rtt_ms={} elapsed_ms={elapsed_ms}",
+                    GATEWAY_IP,
+                    virtio_net::UDP_ECHO_PORT,
+                    echo.len,
+                    echo.rtt_ms
+                );
+            }
+            Err(error) => {
+                let _ = writeln!(
+                    w,
+                    "# net udp echo: target={}:{} result={} elapsed_ms={elapsed_ms} \
+                     const:timeout_ms={}",
+                    GATEWAY_IP,
+                    virtio_net::UDP_ECHO_PORT,
+                    error.name(),
+                    virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                        / vifast_plat_common::timer::TIMEBASE_HZ
+                );
+            }
+        }
+    }
+
+    let dns_mac = {
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::arp_resolve(
+            config.ip,
+            virtio_net::DNS_SERVER_IP,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(found) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net: arp dns={found} ip={} elapsed_ms={elapsed_ms}",
+                        virtio_net::DNS_SERVER_IP
+                    );
+                }
+                Some(found)
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net arp dns: ip={} elapsed_ms={elapsed_ms} err={}",
+                        virtio_net::DNS_SERVER_IP,
+                        error.name()
+                    );
+                    let _ = writeln!(w, "# net: no dns");
+                }
+                None
+            }
+        }
+    };
+    if let Some(dns_mac) = dns_mac {
+        // ---- TAP 8: UDP echo qua "gương" DNS (payload = QNAME)
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::dns_query(
+            config.ip,
+            MacAddr::new(mac),
+            virtio_net::DNS_SERVER_IP,
+            dns_mac,
+            DNS_ID_ECHO,
+            virtio_net::UDP_ECHO_PAYLOAD,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(answer) => {
+                let echoed = answer
+                    .question
+                    .name
+                    .eq_ignore_ascii_case(virtio_net::UDP_ECHO_PAYLOAD)
+                    && answer.question.qtype == TYPE_A;
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net udp echo: target={}:{} via=dns-question-echo payload_len={} \
+                         reply_len={} rcode={} echoed={} rtt_ms={} elapsed_ms={elapsed_ms} \
+                         const:timeout_ms={}",
+                        virtio_net::DNS_SERVER_IP,
+                        virtio_net::DNS_PORT,
+                        virtio_net::UDP_ECHO_PAYLOAD.len(),
+                        answer.reply_len,
+                        answer.rcode,
+                        echoed as u8,
+                        answer.rtt_ms,
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                    if echoed {
+                        let _ = writeln!(
+                            w,
+                            "# net: udp echo ok len={} rtt={}",
+                            virtio_net::UDP_ECHO_PAYLOAD.len(),
+                            answer.rtt_ms
+                        );
+                    } else {
+                        let _ = writeln!(w, "# net: no udp");
+                    }
+                }
+                put(
+                    echoed,
+                    8,
+                    "net udp echo",
+                    &mut fails,
+                    "reply DNS không chép lại đúng payload",
+                );
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net udp echo: elapsed_ms={elapsed_ms} err={}",
+                        error.name()
+                    );
+                    let _ = writeln!(w, "# net: no udp");
+                }
+                put(
+                    false,
+                    8,
+                    "net udp echo",
+                    &mut fails,
+                    "không nhận reply UDP trong 3 s",
+                );
+            }
+        }
+
+        // ---- TAP 9: DNS query example.com A
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::dns_query(
+            config.ip,
+            MacAddr::new(mac),
+            virtio_net::DNS_SERVER_IP,
+            dns_mac,
+            DNS_ID_A,
+            DNS_NAME_A,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        match result {
+            Ok(answer) => {
+                let record = answer.a;
+                let ok = record.is_some() && answer.rcode == 0;
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(
+                        w,
+                        "# net dns: name=example.com id=0x{:x} rcode={} an={} reply_len={} \
+                         rtt_ms={} elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                        answer.id,
+                        answer.rcode,
+                        record.is_some() as u8,
+                        answer.reply_len,
+                        answer.rtt_ms,
+                        virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                            / vifast_plat_common::timer::TIMEBASE_HZ
+                    );
+                    match record {
+                        Some(record) => {
+                            let _ = writeln!(
+                                w,
+                                "# net: dns example.com a={} ttl={}",
+                                record.addr, record.ttl
+                            );
+                        }
+                        None => {
+                            let _ = writeln!(w, "# net: no dns");
+                        }
+                    }
+                }
+                put(
+                    ok,
+                    9,
+                    "net dns a",
+                    &mut fails,
+                    "reply không có bản ghi A hoặc rcode khác 0",
+                );
+            }
+            Err(error) => {
+                {
+                    let mut w = PlatformWriter(&PLATFORM);
+                    let _ = writeln!(w, "# net dns: elapsed_ms={elapsed_ms} err={}", error.name());
+                    let _ = writeln!(w, "# net: no dns");
+                }
+                put(
+                    false,
+                    9,
+                    "net dns a",
+                    &mut fails,
+                    "không nhận reply DNS trong 3 s",
+                );
+            }
+        }
+    } else {
+        put(
+            false,
+            8,
+            "net udp echo",
+            &mut fails,
+            "không resolve được MAC của DNS server",
+        );
+        put(
+            false,
+            9,
+            "net dns a",
+            &mut fails,
+            "không resolve được MAC của DNS server",
+        );
+    }
+
+    // ---- Chẩn đoán (không phải TAP): DNS timeout 3 s trên địa chỉ **không có** server.
+    // `192.0.2.1` là TEST-NET-1 (RFC 5737) — không có dịch vụ DNS; frame đi qua MAC gateway vì
+    // slirp định tuyến theo IP đích, không theo MAC đích. Không reply ⇒ `Timeout` sau đúng 3 s.
+    {
+        let started = PLATFORM.now_ticks();
+        let result = virtio_net::dns_query(
+            config.ip,
+            MacAddr::new(mac),
+            Ipv4Addr::new(192, 0, 2, 1),
+            gateway_mac,
+            DNS_ID_A,
+            DNS_NAME_A,
+            virtio_net::NET_STEP_TIMEOUT_TICKS,
+        );
+        let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
+            / vifast_plat_common::timer::TIMEBASE_HZ;
+        let mut w = PlatformWriter(&PLATFORM);
+        match result {
+            Ok(answer) => {
+                let _ = writeln!(
+                    w,
+                    "# net dns: target=192.0.2.1:53 result=ok rcode={} reply_len={} \
+                     elapsed_ms={elapsed_ms}",
+                    answer.rcode, answer.reply_len
+                );
+            }
+            Err(error) => {
+                let _ = writeln!(
+                    w,
+                    "# net dns: target=192.0.2.1:53 result={} elapsed_ms={elapsed_ms} \
+                     const:timeout_ms={}",
+                    error.name(),
+                    virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
+                        / vifast_plat_common::timer::TIMEBASE_HZ
+                );
+            }
+        }
+    }
+
     // ------------------------------------------------ kết thúc chủ đích
     let stats = virtio_net::stats();
     {
@@ -585,7 +884,7 @@ pub extern "C" fn rust_main() -> ! {
         );
         // Dấu kết thúc **chủ đích** (không có fault): runner đòi đúng **một** dòng PANIC cho mỗi
         // boot; ảnh này không fault nên tự in dấu kết thúc rồi `halt(0)`. Nội dung lấy từ `fails`.
-        let _ = writeln!(w, "PANIC: KT-246 net xong (7 TAP, {fails} fail)");
+        let _ = writeln!(w, "PANIC: KT-260 net xong (9 TAP, {fails} fail)");
     }
     PLATFORM.halt(0)
 }
