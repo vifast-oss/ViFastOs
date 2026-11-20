@@ -96,9 +96,13 @@ lỗi chỉ tái hiện dưới stress.
 Gốc N1/N2: `_check_state_write` quy `write_state` cho hàm **ngoài** (`find_functions` nhảy qua hàm
 lồng). Vá bằng `_fn_body_groups` + `_innermost_fn_tree` (token-tree, khoảng nhỏ nhất thắng).
 
-**KT-184 và KT-194 vẫn CHƯA ĐÓNG** — bản vá khép 6 đường lọt nhưng cần **một vòng review độc lập
-trên HEAD `e12477fb`** trước khi đóng. `WB-19` (cửa thứ bảy) đã ghi **OPEN** trong
-`BYPASS-REGISTRY.md`.
+**Lead đã xác minh độc lập trên `0018f5ab`** (`JOURNAL/kt242-wake-verify.md`): N1/N3/N4 chạy lại
+trên **cây thật** — `cargo` **RC=0** (vẫn biên dịch được, đúng bản chất đường lọt) nhưng **cả ba
+lớp ĐỎ**; fixture N1–N6 ĐỎ đúng mã; đối chứng dương (`#[cfg(test)] mod`) vẫn XANH; cây sạch sau
+xác minh. ⇒ **WB-19 → CLOSED**.
+
+**KT-184 và KT-194 vẫn giữ `REVIEW`** — vòng xác minh chỉ **chạy lại repro đã biết**; để đóng cần
+một vòng **tấn công mới** (nghĩ đường lọt chưa ai thử), không phải chạy lại danh sách cũ.
 
 ### 4.2 L1: 92 % thời gian là kiểm bất biến, không phải mô phỏng
 

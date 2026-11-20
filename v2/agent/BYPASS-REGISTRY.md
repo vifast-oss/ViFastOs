@@ -34,7 +34,7 @@ repro biên dịch được mà cả hai cơ chế kiểm đều XANH); `PARTIAL
 | **WB-16** | #16 | `Ready` qua **helper liên hàm / `const` / `static` / closure / hàm trả về** (6 dạng) | L57 (KT-234) | **CLOSED** ở tầng **API** (2026-11-21) | KT-237 (thu hẹp API `NonReadyTarget`). Bằng chứng: ô **B1–B5** PASS — `cargo check` RC=101 `E0308` `expected NonReadyTarget, found TcbState`; đối chứng dương PASS |
 | **WB-17** | #17 | `transition_tcb` làm **fn-pointer / generic `F: Fn` / trait object / UFCS** (7 biến thể) | L55 (KT-232) | **CLOSED** ở tầng **API** (2026-11-21) | KT-237 (API) + KT-239 (UFCS). Bằng chứng: ô **A1–A4** PASS — `E0308`/`E0631` tại chính `transition_tcb`; đối chứng dương PASS |
 | **WB-18** | #18 | crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR` | L56 (KT-233) | **CLOSED** | KT-238 (phạm vi từ `cargo metadata`, 22 crate) |
-| **WB-19** | — | **cửa thứ bảy**: `impl`/`fn` **lồng trong thân cửa** gọi thẳng `write_state` ⇒ **cả hai lớp XANH** | review độc lập (luồng 2) | **OPEN** | đang vá (luồng 2) — **không** thuộc KT-241 |
+| **WB-19** | — | **cửa thứ bảy**: `impl`/`fn` **lồng trong thân cửa** gọi thẳng `write_state` ⇒ **cả hai lớp XANH** | review độc lập (luồng 2) | **CLOSED** | vá `c0b48f3b`; **lead xác minh độc lập** trên `0018f5ab` — `JOURNAL/kt242-wake-verify.md` (cả 3 lớp ĐỎ, `cargo` RC=0) |
 
 ---
 
@@ -57,7 +57,7 @@ Có **hai** hệ đánh số từng chạy song song (D2-175 đã chốt một h
 
 ---
 
-## Ba đường **từng chặn nghiệm thu** (D2-193 §2) — đóng ở tầng **API**; **WB-19** còn OPEN ở tầng **checker**
+## Ba đường **từng chặn nghiệm thu** (D2-193 §2) — đóng ở tầng **API**; **WB-19** đã đóng ở tầng **checker**
 
 **WB-16, WB-17, WB-18 từng là P0 chặn nghiệm thu luật `wake`** — **không** được ghi vào "nợ không
 chặn". Mỗi đường đều có repro **biên dịch được** (`cargo check` RC=0) mà **cả hai cơ chế kiểm
