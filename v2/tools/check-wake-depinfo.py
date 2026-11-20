@@ -42,7 +42,7 @@ Cách làm
    ⇒ `E_DEPINFO_SCOPE` (từ chối rõ). Mọi mục "bỏ qua" cũ đều thành **ĐỎ**.
 5. Áp **luật `wake`** của checker tĩnh trên từng tệp trong danh sách — **không chép** lexer/luật:
    `import` `check-wake-paths.py` và dùng lại `_check_wake_text`, `find_functions`,
-   `RE_READY_TRANSITION`, `WAKE_DOORS`, `NON_WAKE_READY_SITES`, `in_test_only_wake_scope`,
+   `_transition_calls`, `_check_state_write`, `STATE_WRITE_FILES`, `in_test_only_wake_scope`,
    `WAKE_PRODUCER`, `SAFE_VALUE_MACROS`.
 6. In **giá trị cốt lõi**: những tệp rustc nạp mà **không** nằm dưới `<crate>/src/` — tức tệp
    chỉ tới được qua `#[path]`/`include!`/macro, đúng lớp mà walker thủ công bỏ sót.
@@ -55,11 +55,19 @@ Hai luật được áp (cùng ngữ nghĩa với checker tĩnh, khác **nguồn
     của checker tĩnh). **KT-226**: **không** miễn **cả tệp** định nghĩa cửa `wake` nữa — lớp 1
     chỉ miễn định nghĩa, lớp 2 phải đồng nhất (bất đối xứng cũ: tệp producer chứa lời gọi
     `wake(` XANH ở lớp 2 nhưng ĐỎ ở lớp 1).
-  - **R2 chuyển `Ready`** (`E_DEPINFO_TRANSITION`): mọi `transition_tcb(…, TcbState::Ready)`
-    trong tệp của crate **bảo vệ** (phạm vi sinh từ `cargo metadata` — **không** chỉ
-    `v2/kernel`/`v2/sim`) phải nằm trong cửa `WAKE_DOORS` hoặc có tên trong
-    `NON_WAKE_READY_SITES` (allowlist hiện có, khoá `(tệp, hàm, thứ tự)`). Crate "từ chối rõ"
-    chỉ áp R1 — nó không thể gọi API `wake` (bao đóng dependency không có crate sản phẩm).
+  - **R2 chuyển trạng thái** (`E_DEPINFO_TRANSITION`, **KT-241**): mọi lời gọi
+    `transition_tcb(…)` trong tệp của crate **bảo vệ** (phạm vi sinh từ `cargo metadata` —
+    **không** chỉ `v2/kernel`/`v2/sim`) bị ĐỎ nếu đối số thứ hai là/chứa `TcbState` hoặc
+    `…::Ready` — dấu hiệu **đảo kiểu** ngược về `TcbState` (API KT-241: `to: NonReadyTarget`,
+    enum **không có** `Ready`). Dùng **cùng** bộ quét `CWP._transition_calls` của lớp 1.
+    Allowlist `NON_WAKE_READY_SITES` **đã xoá**: dưới API mới không còn chỗ `transition_tcb(…,
+    Ready)` hợp lệ nào để miễn.
+  - **R3 primitive ghi thô** (`E_DEPINFO_STATE_WRITE`, **KT-241**): `write_state`/`into_state`
+    **chỉ** được xuất hiện trong `state_write.rs`; trong đó `write_state` **chỉ** được gọi bởi
+    `CWP.STATE_WRITE_CALLERS` (cửa thông thường + 5 cửa `Ready`). Dùng **cùng**
+    `CWP._check_state_write` của lớp 1 (không chép luật).
+    Crate "từ chối rõ" chỉ áp R1 — nó không thể gọi API `wake` (bao đóng dependency không có
+    crate sản phẩm).
 
 Khác biệt **có chủ đích** so với checker tĩnh: R1 áp cho **mọi** tệp rustc nạp, không chỉ tệp
 khớp `in_test_only_wake_scope` — vì chính cái "khớp mẫu đường dẫn" là thứ đã sai ở L47
@@ -1128,22 +1136,25 @@ def scan(
         counts["scanned"] += 1
         # R1 — luật token `wake` của checker tĩnh, **nguyên văn** (không chép).
         sub = CWP.Report()
-        CWP._check_wake_text(relp, text, CWP.test_line_ranges(text), safe_macros, sub)
+        # **KT-241** — không truyền vùng test: `_check_wake_text` **tự** tính
+        # `_test_char_ranges` (một nơi sở hữu phân vùng; tham số `tr` cũ bị bỏ qua).
+        CWP._check_wake_text(relp, text, safe_macros, sub)
         for e in sub.errors:
             # `Report.err` lưu `"<mã> <thông điệp>"`; đổi mã sang mã của lớp dep-info.
             msg = e.split(" ", 1)[1] if " " in e else e
             r.err("E_DEPINFO_WAKE", msg)
 
     if do_transitions:
-        # R2 — **KT-231**: dùng **cùng** bộ quét token-tree của lớp một (`CWP._transition_calls`),
-        # không regex văn bản. Vì sao: đường lọt #15 (reviewer L54, KT-229) — `RE_READY_TRANSITION`
-        # khớp `TcbState::Ready` trên **một dòng**; `use crate::TcbState as S;` +
-        # `m.transition_tcb(t, S::Ready)` XANH cả hai lớp. Nay:
-        #   - `ready` (literal `TcbState::Ready`) ⇒ cửa wake / allowlist như cũ;
-        #   - `other` (literal `TcbState::<BiếnThểKhác>`) ⇒ chứng minh không Ready ⇒ XANH;
-        #   - `alias`/`unknown` ⇒ **ĐỎ** (fail-closed);
-        #   - `var` ⇒ ĐỎ nếu hàm gán biến từ `TcbState::Ready` (dataflow-lite, tránh báo oan
-        #     `block_current(cur, to)`).
+        # R2 — **KT-241 (D2-194 §3)**: dùng **cùng** bộ quét token-tree của lớp một
+        # (`CWP._transition_calls`), không regex văn bản. Dưới API mới (`to: NonReadyTarget`)
+        # đối số thứ hai **không thể** là `Ready`; luật còn lại là **chốt chống đảo kiểu**:
+        #   - `tcbstate` (đối số thứ hai là/chứa `TcbState`) ⇒ **ĐỎ**;
+        #   - `ready_alias` (đối số thứ hai kết thúc bằng/chứa `…::Ready`) ⇒ **ĐỎ**;
+        #   - `ok` (mọi dạng khác: `NonReadyTarget::*`, biến, lời gọi hàm) ⇒ XANH.
+        # **Bỏ** `_var_may_be_ready` và `NON_WAKE_READY_SITES` (allowlist cũ): câu hỏi "biến
+        # này có thể là Ready không" **không còn nghĩa** khi kiểu đã loại trừ `Ready`, và
+        # allowlist chỉ tồn tại để miễn những chỗ `transition_tcb(…, Ready)` hợp lệ — dưới API
+        # mới **không còn chỗ nào như vậy**.
         # **KT-238** — phạm vi R2 sinh từ `cargo metadata`: mọi tệp của crate **bảo vệ** + tệp
         # sinh + tệp không rõ phạm vi. Crate "từ chối rõ" (công cụ, không phụ thuộc sản phẩm)
         # chỉ áp R1 — nó không thể gọi `transition_tcb` vì bao đóng dependency không có crate
@@ -1163,57 +1174,73 @@ def scan(
                 continue
             tr = CWP.test_line_ranges(text)
             fns = CWP.find_functions(p, text)
-            ordinal: Dict[Tuple[str, str], int] = {}
             for lineno, kind, desc in CWP._transition_calls(text, relp):
                 if CWP.in_ranges(lineno, tr):
                     continue
+                if kind == "ok":
+                    continue
                 fn = CWP.enclosing(fns, lineno)
-                if fn is None:
+                where = f" trong `{fn.name}`" if fn is not None else ""
+                if kind == "tcbstate":
                     r.err(
                         "E_DEPINFO_TRANSITION",
-                        f"  {relp}:{lineno}: `transition_tcb` ngoài hàm — không xác định "
-                        f"được cửa (fail-closed, KT-231)",
+                        f"  {relp}:{lineno}: `transition_tcb(…, {desc})`{where} — đối số thứ "
+                        f"hai kiểu `TcbState`; API KT-241 đã thu hẹp sang `NonReadyTarget` ⇒ "
+                        f"kiểu bị đảo ngược (fail-closed, D2-194 §3)",
                     )
-                    continue
-                if (relp, fn.name) in CWP.WAKE_DOORS:
-                    continue
-                if kind == "other":
-                    continue
-                if kind == "alias":
+                else:  # ready_alias
                     r.err(
                         "E_DEPINFO_TRANSITION",
-                        f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — đối số thứ hai "
-                        f"KHÔNG phải literal `TcbState::Ready` (alias/đường dẫn lạ) ⇒ không "
-                        f"chứng minh được (fail-closed, KT-231)",
+                        f"  {relp}:{lineno}: `transition_tcb(…, {desc})`{where} — đối số thứ "
+                        f"hai là `…::Ready` (alias/đường dẫn lạ); `NonReadyTarget` **không "
+                        f"có** biến thể `Ready` ⇒ không chứng minh được (fail-closed, KT-241)",
                     )
+
+        # R3 — **KT-241**: `write_state`/`into_state` **chỉ** sống trong `state_write.rs`;
+        # trong đó `write_state` **chỉ** được gọi bởi `CWP.STATE_WRITE_CALLERS`. Dùng **cùng**
+        # `CWP._check_state_write` của lớp một (import, không chép luật) ⇒ hai lớp không lệch.
+        for p in files:
+            text = texts.get(p)
+            if text is None:
+                continue
+            relp = CWP.rel(root, p)
+            if scope is not None:
+                crate = scope.classify(relp)
+                if crate is not None and crate.status == "refused":
                     continue
-                if kind == "var":
-                    if CWP._var_may_be_ready(text, fn, desc):
-                        r.err(
-                            "E_DEPINFO_TRANSITION",
-                            f"  {relp}:{lineno}: `transition_tcb(…, {desc})` — biến `{desc}` "
-                            f"được gán từ `TcbState::Ready` trong `{fn.name}` ⇒ không chứng "
-                            f"minh được (fail-closed, KT-231)",
-                        )
-                    continue
-                if kind == "unknown":
-                    r.err(
-                        "E_DEPINFO_TRANSITION",
-                        f"  {relp}:{lineno}: `transition_tcb` — {desc} ⇒ không chứng minh "
-                        f"được (fail-closed, KT-231)",
-                    )
-                    continue
-                key = (relp, fn.name)
-                ordinal[key] = ordinal.get(key, 0) + 1
-                idx = ordinal[key]
-                if (relp, fn.name, idx) in CWP.NON_WAKE_READY_SITES:
-                    continue
-                r.err(
-                    "E_DEPINFO_TRANSITION",
-                    f"  {relp}:{lineno}: `transition_tcb(…, Ready)` #{idx} trong "
-                    f"`{fn.name}` không qua cửa wake và không có trong "
-                    f"NON_WAKE_READY_SITES",
-                )
+            elif not (relp.startswith("v2/kernel/") or relp.startswith("v2/sim/")):
+                continue
+            if test_only is not None and relp in test_only:
+                continue
+            sub = CWP.Report()
+            CWP._check_state_write(
+                relp,
+                text,
+                CWP.find_functions(p, text),
+                CWP.test_line_ranges(text),
+                None,
+                sub,
+            )
+            for e in sub.errors:
+                msg = e.split(" ", 1)[1] if " " in e else e
+                r.err("E_DEPINFO_STATE_WRITE", msg)
+
+        # R4 — **KT-241 (E1/E2)**: cấm mọi phép chuyển `TcbState` ⇄ `NonReadyTarget` ngoài
+        # `into_state` private. Dùng **cùng** `CWP._check_nonready_conv_file` của lớp một
+        # (import, không chép luật). Áp cho **mọi** tệp rustc nạp (kể cả `v2/lib` — rộng hơn
+        # phạm vi luật `wake`), vì orphan rule cho phép impl **bên trong** crate.
+        for p in files:
+            text = texts.get(p)
+            if text is None:
+                continue
+            relp = CWP.rel(root, p)
+            if test_only is not None and relp in test_only:
+                continue
+            sub = CWP.Report()
+            CWP._check_nonready_conv_file(relp, text, sub)
+            for e in sub.errors:
+                msg = e.split(" ", 1)[1] if " " in e else e
+                r.err("E_DEPINFO_NONREADY_CONV", msg)
     return r, counts
 
 
@@ -1224,6 +1251,9 @@ pub struct Machine;
 pub type ObjId = u32;
 """
 
+# **KT-241** — `wake_step` **rời** `core_sched.rs` sang `state_write.rs` (API-SPEC §3).
+# `core_sched.rs` chỉ còn các **cửa sản phẩm phát `Wake`** (`WAKE_PRODUCER`) — đúng hình
+# dạng sau khi A/B hợp nhất.
 _GIA_SCHED = """// SPDX-License-Identifier: MIT OR Apache-2.0
 pub struct Machine;
 impl Machine {
@@ -1236,15 +1266,71 @@ impl Machine {
     pub fn wake_from_unlink(&mut self, _t: u32) {
         let _ = _t;
     }
-    pub fn wake_step(&mut self, _t: u32) {
-        transition_tcb(1, TcbState::Ready);
-    }
-}
-pub fn transition_tcb(_a: u32, _b: u32) {
-    let _ = (_a, _b);
 }
 pub enum TcbState {
     Ready,
+}
+"""
+
+# **KT-241** — `state_write.rs` giả theo API-SPEC: enum `NonReadyTarget` (không `Ready`),
+# `write_state`/`into_state` private, cửa thông thường + 5 cửa `Ready` + `tcb_yield`.
+_GIA_STATE_WRITE = """// SPDX-License-Identifier: MIT OR Apache-2.0
+pub enum NonReadyTarget {
+    Inactive,
+    Running { hart: u16 },
+    BlockedOnSend { ep: u32, call: bool, fault: Option<u8> },
+    BlockedOnRecv { ep: u32, reply: Option<u32> },
+    BlockedOnReply { reply: u32 },
+    BlockedOnNotification { ntfn: u32 },
+    BlockedOnAddress { frame: u32, offset: u32 },
+    Sleeping { reason: u8 },
+    Stopping,
+    Dead,
+}
+impl NonReadyTarget {
+    fn into_state(self) -> TcbState {
+        match self {
+            NonReadyTarget::Inactive => TcbState::Inactive,
+            NonReadyTarget::Running { hart } => TcbState::Running { hart },
+            NonReadyTarget::BlockedOnSend { ep, call, fault } => TcbState::BlockedOnSend { ep, call, fault },
+            NonReadyTarget::BlockedOnRecv { ep, reply } => TcbState::BlockedOnRecv { ep, reply },
+            NonReadyTarget::BlockedOnReply { reply } => TcbState::BlockedOnReply { reply },
+            NonReadyTarget::BlockedOnNotification { ntfn } => TcbState::BlockedOnNotification { ntfn },
+            NonReadyTarget::BlockedOnAddress { frame, offset } => TcbState::BlockedOnAddress { frame, offset },
+            NonReadyTarget::Sleeping { reason } => TcbState::Sleeping { reason },
+            NonReadyTarget::Stopping => TcbState::Stopping,
+            NonReadyTarget::Dead => TcbState::Dead,
+        }
+    }
+}
+impl Machine {
+    fn write_state(&mut self, _t: u32, _to: TcbState) {
+        let _ = (_t, _to);
+    }
+    pub fn transition_tcb(&mut self, _t: u32, to: NonReadyTarget) {
+        self.write_state(_t, to.into_state());
+    }
+    pub fn wake_step(&mut self, _t: u32) {
+        self.write_state(_t, TcbState::Ready);
+    }
+    pub fn preempt_current(&mut self, _t: u32) {
+        self.write_state(_t, TcbState::Ready);
+    }
+    pub fn yield_to_ready(&mut self, _t: u32) {
+        self.write_state(_t, TcbState::Ready);
+    }
+    pub fn tcb_yield(&mut self, _t: u32) {
+        self.yield_to_ready(_t);
+    }
+    pub fn start_tcb(&mut self, _t: u32) {
+        self.write_state(_t, TcbState::Ready);
+    }
+    pub fn suspend_to_ready(&mut self, _t: u32) {
+        self.write_state(_t, TcbState::Ready);
+    }
+    pub fn block_current(&mut self, _h: u16, to: NonReadyTarget) {
+        self.transition_tcb(1, to);
+    }
 }
 """
 
@@ -1260,12 +1346,14 @@ pub fn clean() -> u32 { 1 }
 
 
 def _dung_cay(base: Path) -> Path:
-    """Dựng cây v2 tối thiểu: một crate kernel có `core_sched.rs` (cửa wake) + tệp sạch."""
+    """Dựng cây v2 tối thiểu: crate kernel có `core_sched.rs` (cửa phát `Wake`),
+    `state_write.rs` (API KT-241) + tệp sạch."""
     root = base / "repo"
     src = root / "v2/kernel/vifast-core/src"
     src.mkdir(parents=True, exist_ok=True)
     (src / "lib.rs").write_text(_GIA_LIB, encoding="utf-8")
     (src / "core_sched.rs").write_text(_GIA_SCHED, encoding="utf-8")
+    (src / "state_write.rs").write_text(_GIA_STATE_WRITE, encoding="utf-8")
     (src / "clean.rs").write_text(_GIA_CLEAN, encoding="utf-8")
     return root
 
@@ -1337,16 +1425,16 @@ def selftest() -> int:
         # --- (5) cây sạch ⇒ XANH ------------------------------------------------------------
         root = _dung_cay(base / "sach")
         src = root / "v2/kernel/vifast-core/src"
-        loaded = {src / "lib.rs", src / "core_sched.rs", src / "clean.rs"}
+        loaded = {src / "lib.rs", src / "core_sched.rs", src / "state_write.rs", src / "clean.rs"}
         rep, counts = scan(root, loaded, test_only=set())
         ghi(
             "(5) cây sạch (chỉ tệp trong src/) ⇒ XANH",
-            rep.ok and counts["scanned"] == 3 and counts["producer_files"] == 1,
+            rep.ok and counts["scanned"] == 4 and counts["producer_files"] == 1,
             f"errors={rep.errors} counts={counts}",
         )
         ghi(
             "(6) tệp định nghĩa `fn wake` VẪN được quét (chỉ miễn định nghĩa, KT-227 P0-3)",
-            counts["producer_files"] == 1 and counts["scanned"] == 3,
+            counts["producer_files"] == 1 and counts["scanned"] == 4,
             f"producer_files={counts['producer_files']} scanned={counts['scanned']}",
         )
         # **KT-226** — bất đối xứng allowlist producer: lớp 2 KHÔNG miễn cả tệp nữa. Tệp định
@@ -1429,7 +1517,7 @@ def selftest() -> int:
         rep, _ = scan(root, loaded | {loc}, test_only=set())
         ghi("(13) biến cục bộ tên `wake` ⇒ XANH", rep.ok, f"errors={rep.errors}")
 
-        # --- (14) R2: chuyển Ready ngoài cửa/allowlist ⇒ ĐỎ ---------------------------------
+        # --- (14) R2: đảo kiểu (`TcbState::*` làm đối số) ⇒ ĐỎ -------------------------------
         bad = src / "bad_ready.rs"
         bad.write_text(
             "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
@@ -1440,35 +1528,160 @@ def selftest() -> int:
         )
         rep, _ = scan(root, loaded | {bad}, test_only=set())
         ghi(
-            "(14) R2: `transition_tcb(…, Ready)` ngoài cửa wake ⇒ ĐỎ E_DEPINFO_TRANSITION",
+            "(14) R2: `transition_tcb(…, TcbState::Ready)` (đảo kiểu) ⇒ ĐỎ E_DEPINFO_TRANSITION",
             (not rep.ok) and any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
             f"errors={rep.errors}",
         )
         ghi(
-            "(15) R2: `wake_step` (cửa trong WAKE_DOORS) ⇒ XANH",
+            "(15) R2: `state_write.rs` hợp lệ (5 cửa gọi `write_state`) ⇒ XANH",
             not any("E_DEPINFO_TRANSITION" in e for e in scan(root, loaded, test_only=set())[0].errors),
-            "cửa wake_step bị báo oan",
+            "cửa trong state_write.rs bị báo oan",
         )
 
-        # --- (16) R2: mục trong NON_WAKE_READY_SITES ⇒ XANH ---------------------------------
+        # --- (16) R2: `NonReadyTarget::*` (đường hợp lệ duy nhất) ⇒ XANH ---------------------
+        # **KT-241** — thay ca cũ "mục trong `NON_WAKE_READY_SITES` ⇒ XANH": allowlist đó
+        # **đã xoá** (dưới API mới không còn chỗ `transition_tcb(…, Ready)` hợp lệ để miễn).
+        # Đối chứng dương nay là **đối số kiểu `NonReadyTarget`** — dạng duy nhất biên dịch được.
         allow = src / "allow_ready.rs"
         allow.write_text(
             "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
-            "pub fn dispatch_step() {\n"
-            "    transition_tcb(1, TcbState::Ready);\n"
+            "pub fn block_current(_h: u16, to: NonReadyTarget) {\n"
+            "    transition_tcb(1, to);\n"
+            "    transition_tcb(1, NonReadyTarget::Dead);\n"
             "}\n",
             encoding="utf-8",
         )
-        key = ("v2/kernel/vifast-core/src/allow_ready.rs", "dispatch_step", 1)
-        cu = dict(CWP.NON_WAKE_READY_SITES)
-        CWP.NON_WAKE_READY_SITES[key] = "ca kiểm KT-214"
-        try:
-            rep, _ = scan(root, loaded | {allow}, test_only=set())
-        finally:
-            del CWP.NON_WAKE_READY_SITES[key]
+        rep, _ = scan(root, loaded | {allow}, test_only=set())
         ghi(
-            "(16) R2: mục có trong NON_WAKE_READY_SITES ⇒ XANH",
+            "(16) R2: `NonReadyTarget::*`/biến `to` ⇒ XANH (đường hợp lệ duy nhất)",
             not any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        # **KT-241** — R2 vẫn ĐỎ với `TcbState::<BiếnThểKhác>` (mọi `TcbState::*` là đảo kiểu).
+        bad2 = src / "bad_other.rs"
+        bad2.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn hop_le() {\n"
+            "    transition_tcb(1, TcbState::Blocked);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {bad2}, test_only=set())
+        ghi(
+            "(16b) R2: `TcbState::Blocked` cũng ĐỎ (mọi `TcbState::*` = đảo kiểu)",
+            (not rep.ok) and any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (16c) R3: `write_state` ngoài `state_write.rs` ⇒ ĐỎ -----------------------------
+        bad3 = src / "bad_ws.rs"
+        bad3.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn goi_thang(m: &mut crate::Machine) {\n"
+            "    m.write_state(1, TcbState::Ready);\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {bad3}, test_only=set())
+        ghi(
+            "(16c) R3: `write_state` ngoài `state_write.rs` ⇒ ĐỎ E_DEPINFO_STATE_WRITE",
+            (not rep.ok) and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        # --- (16d) R3: `into_state` ngoài `state_write.rs` ⇒ ĐỎ ------------------------------
+        bad4 = src / "bad_is.rs"
+        bad4.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "pub fn doi(t: NonReadyTarget) -> TcbState {\n"
+            "    t.into_state()\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {bad4}, test_only=set())
+        ghi(
+            "(16d) R3: `into_state` ngoài `state_write.rs` ⇒ ĐỎ E_DEPINFO_STATE_WRITE",
+            (not rep.ok) and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        # --- (16e) R3: `write_state` trong `tcb_yield` (phải qua `yield_to_ready`) ⇒ ĐỎ ------
+        sw_bad = src / "state_write_bad.rs"
+        sw_bad.write_text(
+            _GIA_STATE_WRITE.replace(
+                "    pub fn tcb_yield(&mut self, _t: u32) {\n"
+                "        self.yield_to_ready(_t);\n"
+                "    }\n",
+                "    pub fn tcb_yield(&mut self, _t: u32) {\n"
+                "        self.write_state(_t, TcbState::Ready);\n"
+                "    }\n",
+            ),
+            encoding="utf-8",
+        )
+        # Tệp này **không** phải `state_write.rs` ⇒ mọi `write_state` đều ĐỎ; ca riêng dưới
+        # kiểm đúng ngữ nghĩa "trong `state_write.rs` nhưng sai cửa" bằng cách thay tệp thật.
+        rep, _ = scan(root, loaded | {sw_bad}, test_only=set())
+        ghi(
+            "(16e) R3: bản sao `state_write` ngoài đường dẫn chuẩn ⇒ ĐỎ (không miễn theo tên)",
+            (not rep.ok) and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        _sw_path = src / "state_write.rs"
+        _sw_orig = _sw_path.read_text(encoding="utf-8")
+        try:
+            _sw_path.write_text(
+                _sw_orig.replace(
+                    "    pub fn tcb_yield(&mut self, _t: u32) {\n"
+                    "        self.yield_to_ready(_t);\n"
+                    "    }\n",
+                    "    pub fn tcb_yield(&mut self, _t: u32) {\n"
+                    "        self.write_state(_t, TcbState::Ready);\n"
+                    "    }\n",
+                ),
+                encoding="utf-8",
+            )
+            rep, _ = scan(root, loaded, test_only=set())
+        finally:
+            _sw_path.write_text(_sw_orig, encoding="utf-8")
+        ghi(
+            "(16f) R3: `write_state` trong `tcb_yield` (trong `state_write.rs`) ⇒ ĐỎ",
+            (not rep.ok) and any("E_DEPINFO_STATE_WRITE" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+
+        # --- (16g) R4: `impl From<TcbState> for NonReadyTarget` ⇒ ĐỎ ------------------------
+        # **KT-241 (E1/E2)** — orphan rule cho phép impl **bên trong** crate ⇒ `cargo check`
+        # RC=0 ⇒ đường vòng tái tạo qua ranh giới kiểu. Lớp 2 dùng **cùng** hàm của lớp 1.
+        bad5 = src / "bad_conv.rs"
+        bad5.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "impl From<TcbState> for NonReadyTarget {\n"
+            "    fn from(_s: TcbState) -> NonReadyTarget {\n"
+            "        NonReadyTarget::Dead\n"
+            "    }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {bad5}, test_only=set())
+        ghi(
+            "(16g) R4: `impl From<TcbState> for NonReadyTarget` ⇒ ĐỎ E_DEPINFO_NONREADY_CONV",
+            (not rep.ok) and any("E_DEPINFO_NONREADY_CONV" in e for e in rep.errors),
+            f"errors={rep.errors}",
+        )
+        # --- (16h) R4: `impl TryFrom<TcbState> for NonReadyTarget` ⇒ ĐỎ ---------------------
+        bad6 = src / "bad_conv2.rs"
+        bad6.write_text(
+            "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+            "impl TryFrom<TcbState> for NonReadyTarget {\n"
+            "    type Error = ();\n"
+            "    fn try_from(_s: TcbState) -> Result<Self, ()> {\n"
+            "        Ok(NonReadyTarget::Dead)\n"
+            "    }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        rep, _ = scan(root, loaded | {bad6}, test_only=set())
+        ghi(
+            "(16h) R4: `impl TryFrom<TcbState> for NonReadyTarget` ⇒ ĐỎ E_DEPINFO_NONREADY_CONV",
+            (not rep.ok) and any("E_DEPINFO_NONREADY_CONV" in e for e in rep.errors),
             f"errors={rep.errors}",
         )
 
@@ -1782,7 +1995,10 @@ def selftest() -> int:
             f"errors={rep.errors}",
         )
 
-        # --- (36) KT-231 đối chứng dương: `TcbState::Blocked` ⇒ XANH ------------------------
+        # --- (36) **KT-241** — `TcbState::Blocked` cũng ĐỎ (mọi `TcbState::*` = đảo kiểu) ----
+        # Ca cũ (KT-231) là **đối chứng dương** "`TcbState::Blocked` ⇒ XANH". Dưới API KT-241
+        # (`to: NonReadyTarget`) dạng này **không biên dịch được** ⇒ nó là dấu hiệu **đảo
+        # kiểu**, không còn là "chứng minh không Ready". Kỳ vọng **đảo** thành ĐỎ.
         blocked = src / "blocked_ok.rs"
         blocked.write_text(
             "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
@@ -1793,23 +2009,23 @@ def selftest() -> int:
         )
         rep, _ = scan(root, loaded | {blocked}, test_only=set())
         ghi(
-            "(36) KT-231 đối chứng dương: `TcbState::Blocked` ngoài cửa ⇒ XANH",
-            rep.ok,
+            "(36) KT-241: `TcbState::Blocked` làm đối số ⇒ ĐỎ (đảo kiểu; ca cũ kỳ vọng XANH)",
+            (not rep.ok) and any("E_DEPINFO_TRANSITION" in e for e in rep.errors),
             f"errors={rep.errors}",
         )
 
-        # --- (37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan) ----------
+        # --- (37) KT-241 đối chứng dương: biến tham số `to: NonReadyTarget` ⇒ XANH ----------
         param = src / "param_ok.rs"
         param.write_text(
             "// SPDX-License-Identifier: MIT OR Apache-2.0\n"
-            "pub fn block_current(m: &mut crate::Machine, t: u32, to: TcbState) {\n"
+            "pub fn block_current(m: &mut crate::Machine, t: u32, to: NonReadyTarget) {\n"
             "    let _ = m.transition_tcb(t, to);\n"
             "}\n",
             encoding="utf-8",
         )
         rep, _ = scan(root, loaded | {param}, test_only=set())
         ghi(
-            "(37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan)",
+            "(37) KT-241 đối chứng dương: biến tham số `to: NonReadyTarget` ⇒ XANH (không báo oan)",
             rep.ok,
             f"errors={rep.errors}",
         )
