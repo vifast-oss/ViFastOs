@@ -174,3 +174,18 @@ gọi; danh tính bền vẫn là `# conf image:` + `git HEAD` + patch sha.
 | `kt265-guard-summary.log` | `boot_end=1001 isolated_1=1001 rc_0=1001 rc_124=0` |
 | `kt265-infra.log` | mẫu `qg_infra before/after` (gồm cảnh báo `qemu_foreign=1`) |
 | `kt265-boot-1.log` | log **một** boot đầy đủ (TAP 15/15 + `# conf image:` + `# smp:` + `# tlbi:`) |
+
+## 10. Ràng buộc bằng chứng với commit
+
+Soak chạy **trước** commit, trên cây có 5 tệp `v2/kernel` khác HEAD (header soak ghi
+`git HEAD=223d4f74… dirty-kernel-paths=5`, `sha256 patch=3a505ec8…`). Commit **`44faebbb`** chứa
+**đúng** nội dung cây đã soak. Build lại trên cây **sạch** (sau `cargo fmt`, sau commit):
+
+```text
+# BUILD_ID (D2-80) = build=68b890daa9e08f6b text=38072
+sha256 = b7568e134ebb74263599aaa22402aba62714dde4649cc6ee3e7b6e95a0edf3ae
+```
+
+**Trùng byte** với ảnh đã soak (`build=68b890daa9e08f6b`, `sha256=b7568e13…`) ⇒ bằng chứng
+**0/1000** áp đúng cho commit `44faebbb`; **không** chạy lại soak (cùng fingerprint — AGENTS §6.3
+cấm chạy lại soak trên cùng fingerprint chỉ để tăng số lần PASS).
