@@ -92,8 +92,15 @@ fn chon_rlib_tu_artifact_json() {
     let mot = r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-aaaa.rlib","/t/libvifast_objmem-aaaa.rmeta"]}"#;
     assert_eq!(chon_rlib(mot).len(), 1, "một artifact ⇒ một rlib");
     // Artifact cũ + artifact mới cùng crate ⇒ **hai** ứng viên; tầng gọi phải từ chối.
-    let hai = format!("{mot}\n{}", r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-bbbb.rlib"]}"#);
-    assert_eq!(chon_rlib(&hai).len(), 2, "artifact cũ + mới ⇒ hai ứng viên (không tự chọn)");
+    let hai = format!(
+        "{mot}\n{}",
+        r#"{"reason":"compiler-artifact","target":{"name":"vifast_objmem"},"filenames":["/t/libvifast_objmem-bbbb.rlib"]}"#
+    );
+    assert_eq!(
+        chon_rlib(&hai).len(),
+        2,
+        "artifact cũ + mới ⇒ hai ứng viên (không tự chọn)"
+    );
     // Artifact của crate khác ⇒ không lấy.
     let khac = r#"{"reason":"compiler-artifact","target":{"name":"vifast-alloc"},"filenames":["/t/libvifast_alloc-cccc.rlib"]}"#;
     assert!(chon_rlib(khac).is_empty(), "crate khác ⇒ không lấy");
