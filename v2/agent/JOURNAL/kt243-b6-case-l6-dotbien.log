@@ -1,0 +1,5 @@
+# KT-243 (B6) — ca (l6) có RĂNG: đột biến thêm v2/agent vào VBREV_INPUT_ROOTS ⇒ (l6) ĐỎ
+# lệnh: bash v2/test/boot/build-identity.sh --selftest
+# build-identity-selftest (l6) FAIL: tệp CHƯA commit dưới v2/agent/v2/docs bị tính là bẩn — phần TRỪ của build-inputs hỏng
+# build-identity-selftest: FAIL
+# RC=1

@@ -140,10 +140,68 @@ vbi_selftest() {
         lbad=1
     fi
 
+    # (l6) **KT-243 (B6, D2-197)** — thay đổi **CHƯA COMMIT** chỉ ở `v2/docs` + `v2/agent` (đúng
+    #      cách harness **ghi log trong lúc đo**) KHÔNG được đổi dấu vân tay, KHÔNG được làm
+    #      `dirty=1`, và KHÔNG được đổi quyết định của cổng. Đây là ca dương còn thiếu của B6:
+    #      ca (a) trong `build-rev.sh --selftest` chỉ kiểm tệp ngoài build-inputs **đã commit**;
+    #      ca (b) kiểm kernel **chưa commit** ⇒ `dirty=1`. Thiếu đúng vế "log harness chưa commit".
+    #      Ca này ĐỎ nếu ai đó bỏ `v2/agent`/`v2/docs` khỏi phần TRỪ của build-inputs (đo: thêm
+    #      `v2/agent` vào `VBREV_INPUT_ROOTS` ⇒ `dirty=1` ⇒ ĐỎ). Dùng **delta** (trước/sau) nên
+    #      không phụ thuộc cây đang sạch hay đang có thay đổi khác ngoài phạm vi.
+    #      Vì sao đặt ở **tệp này** chứ không ở `build-rev.sh`: `build-rev.sh` bị **ghim** bởi
+    #      `check-algo-pin.sh` (sửa tệp ⇒ phải tăng `VBREV_ALGO` ⇒ mọi ảnh cũ thành "định nghĩa
+    #      khác"), trong khi thuật toán băm **không đổi một byte**. Cùng lý do đã tách tệp này
+    #      khỏi `build-rev.sh` ở KT-145 (xem đầu tệp).
+    local l6root l6fp_before l6fp_after l6dirty_before l6dirty_after l6gate_before l6gate_after l6lines
+    local l6f1 l6f2
+    l6root="$_BI_HERE/../../.."
+    l6f1="$l6root/v2/agent/JOURNAL/.kt243-l6.$$"
+    l6f2="$l6root/v2/docs/.kt243-l6.$$"
+    l6fp_before="$fp11"
+    l6dirty_before="$(vbrev_dirty "$l6root")"
+    printf '# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$l6fp_before" >"$scratch/l6.log"
+    printf 'ELF-gia\n# build: algo=%s inputs=%s dirty=0\n' "$VBREV_ALGO" "$l6fp_before" >"$scratch/l6.bin"
+    l6gate_before="$(vbrev_gate "$scratch/l6.log" "$l6root" "$scratch/l6.bin" 2>&1)"
+    mkdir -p "$l6root/v2/agent/JOURNAL" "$l6root/v2/docs" 2>/dev/null || true
+    printf 'log harness gia lap (KT-243 l6)\n' >"$l6f1" 2>/dev/null || true
+    printf 'tai lieu gia lap (KT-243 l6)\n' >"$l6f2" 2>/dev/null || true
+    if ! vbrev_inputs_calc "$l6root" >/dev/null 2>&1; then
+        echo "# build-identity-selftest (l6) FAIL: không tính được dấu vân tay sau khi thêm tệp v2/agent+v2/docs (${VBREV_CALC_ERROR:-?})"
+        lbad=1
+    else
+        l6fp_after="$VBREV_CALC_SHORT"
+        l6dirty_after="$(vbrev_dirty "$l6root")"
+        if [ "$l6fp_before" != "$l6fp_after" ]; then
+            echo "# build-identity-selftest (l6) FAIL: thêm tệp CHƯA commit ở v2/agent+v2/docs mà dấu vân tay ĐỔI ($l6fp_before -> $l6fp_after)"
+            lbad=1
+        fi
+        if [ "$l6dirty_before" != "$l6dirty_after" ]; then
+            echo "# build-identity-selftest (l6) FAIL: thêm tệp CHƯA commit ở v2/agent+v2/docs mà dirty ĐỔI ($l6dirty_before -> $l6dirty_after) — phần TRỪ của build-inputs hỏng"
+            lbad=1
+        fi
+        # Vế **quyết định**: hai tệp vừa tạo **không** được xuất hiện trong danh sách tệp bẩn.
+        # Vì sao cần vế này (không chỉ so delta): nếu cây đang có thay đổi khác trong phạm vi thì
+        # `dirty` đã là 1 **trước** phép thử ⇒ delta = 0 ⇒ đột biến "bỏ phần TRỪ" sẽ **lọt**.
+        # Đo được: thêm `v2/agent` vào `VBREV_INPUT_ROOTS` ⇒ hai tệp này hiện trong danh sách.
+        l6lines="$(vbrev_dirty_lines "$l6root" 2>/dev/null || true)"
+        case "$l6lines" in
+            *".kt243-l6.$$"*)
+                echo "# build-identity-selftest (l6) FAIL: tệp CHƯA commit dưới v2/agent/v2/docs bị tính là bẩn — phần TRỪ của build-inputs hỏng"
+                lbad=1
+                ;;
+        esac
+        l6gate_after="$(vbrev_gate "$scratch/l6.log" "$l6root" "$scratch/l6.bin" 2>&1)"
+        if [ "$l6gate_before" != "$l6gate_after" ]; then
+            echo "# build-identity-selftest (l6) FAIL: quyết định của cổng ĐỔI sau khi chỉ thêm tệp v2/agent+v2/docs — [trước: $l6gate_before] [sau: $l6gate_after]"
+            lbad=1
+        fi
+    fi
+    rm -f "$l6f1" "$l6f2" 2>/dev/null || true
+
     rm -rf "$scratch"
     [ "$lbad" -eq 0 ] || rc=1
     if [ "$rc" -eq 0 ]; then
-        echo "# build-identity-selftest: PASS (l1/l2/l3/l4/l5)"
+        echo "# build-identity-selftest: PASS (l1/l2/l3/l4/l5/l6)"
     else
         echo "# build-identity-selftest: FAIL"
     fi

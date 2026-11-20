@@ -41,7 +41,22 @@ Agent 1 **không** được tuyên bố mốc. Khi KT-77b xong hoặc hết ngâ
 
 ---
 
-## B4 · `cd` / `pwd` có thuộc “tương đương v1” không? (mở 2026-11-17, từ review KT-77a)
+## B4 · `cd` / `pwd` có thuộc “tương đương v1” không? — **ĐÓNG 2026-11-21 (D2-197): ĐƯA VÀO** (mở 2026-11-17, từ review KT-77a)
+
+**ĐÓNG 2026-11-21 (D2-197)**: Agent 0 (uỷ quyền Agent 1) chốt **đưa vào** danh sách “tương đương
+v1”: bản **đóng băng** `v1-archive` có `cd`/`pwd` (`crates/vifast-client/src/main.rs:878-912`, help
+`:917`) ⇒ “tương đương v1” so với **bản đóng băng**, không so với ý định đã revert
+(`docs/v1/overnight-log.md:3664-3685`). Hai mục `cd`/`pwd` trong `spec/v1-parity.toml` (dòng
+120-146) **đã** `status = 'active'` từ KT-137, giữ nguyên văn bằng chứng hai chiều
+(`counter_evidence` + `decision` + `reason`).
+
+**Bằng chứng đo (KT-243, 2026-11-21)**: runner parity chạy **thật** trên ảnh sản phẩm canonical
+`product-fs` (`sha256=5bd28bec…`, `size=213632`, `inputs=54f3b59fc08f3221`, `dirty=0`), chế độ
+`--mode serial` (byte bơm qua stdin QEMU), **14/14 mục `active` xanh, exit 0**:
+`v2/agent/JOURNAL/kt243-b4-parity.log:622` `ok 5 - cd (khop=8 >= 1, waited_ms=0)`;
+`:732` `ok 6 - pwd (khop=8 >= 1, waited_ms=0)`; `:1657` `# parity: KET_LUAN=ok (exit 0)`.
+Đầu ra shell thật: `:604` `# shell: cd /`, `:714` `# shell: pwd /`. Chi tiết:
+`v2/agent/JOURNAL/kt243-b4b6b7.md` §2.
 
 **Câu hỏi**: mã v1 trong tag `v1-archive` **có** `cd`/`pwd` (`crates/vifast-client/src/main.rs:878-912`), có trong **help của v1** (`:917`) và trong bảng sinh tự động của v1 (`docs/11-hien-tai/16-van-hanh.md:109,121`). Nhưng `docs/v1/overnight-log.md:3664-3685` ghi vòng **222/223 đã revert** `cd`/`pwd`; tag `r323` lại có.
 
@@ -77,7 +92,32 @@ Như vậy: ảnh cũ + mã kernel đã đổi ⇒ **vẫn bị từ chối** (�
 
 ---
 
-## B6 · build-inputs của D2-127 bao gồm `v2/agent/JOURNAL/**` ⇒ mọi phép đo tự vô hiệu (mở 2026-11-17, TRƯỚC KT-89)
+## B6 · build-inputs của D2-127 bao gồm `v2/agent/JOURNAL/**` ⇒ mọi phép đo tự vô hiệu — **ĐÓNG 2026-11-21 (D2-197)** (mở 2026-11-17, TRƯỚC KT-89)
+
+**ĐÓNG 2026-11-21 (D2-197)**: Agent 0 (uỷ quyền Agent 1) chốt định nghĩa **D2-127 mục (3) sửa
+đổi** = (bao đóng phụ thuộc theo `cargo metadata` của kernel/plat/lib/kbin) ∪ (tệp trong `v2/` mà
+ảnh phụ thuộc: `Cargo.lock`, `rust-toolchain.toml`, linker script, script build, `v2/kernel/**`,
+`v2/lib/**`) **TRỪ** `v2/agent/**`, `v2/docs/**`, `v2/target*/**`, `v2/artifacts/**`.
+`v2/test/boot/build-rev.sh` đã cài đúng (dòng 13-19, 141-148, 196).
+
+**Bằng chứng đo (KT-243, 2026-11-21)**:
+1. `bash v2/test/boot/build-rev.sh --selftest` ⇒ **PASS (a/b/c/d/e/f/g/h/i/j/k)** (11 ca).
+   **Ca dương còn thiếu đã thêm** — nhưng đặt ở `v2/test/boot/build-identity.sh --selftest` ca
+   **(l6)**, **không** ở `build-rev.sh`: `build-rev.sh` bị **ghim** bởi `check-algo-pin.sh` (sửa tệp
+   ⇒ buộc tăng `VBREV_ALGO` ⇒ mọi ảnh cũ thành "định nghĩa khác") trong khi thuật toán băm **không
+   đổi một byte**; `build-identity.sh` là tệp **tiêu thụ** định nghĩa, đúng lý do nó được tách ra ở
+   KT-145. Ca (l6): tạo tệp **chưa commit** dưới `v2/agent` + `v2/docs` (đúng cách harness ghi log
+   trong lúc đo) ⇒ dấu vân tay **không đổi**, tệp **không** vào danh sách bẩn, quyết định của cổng
+   **không đổi**. `bash v2/test/boot/build-identity.sh --selftest` ⇒ **PASS (l1/l2/l3/l4/l5/l6)**.
+   Đột biến thêm `v2/agent` vào `VBREV_INPUT_ROOTS` ⇒ ca (l6) **ĐỎ**, hoàn nguyên ⇒ xanh — log
+   `v2/agent/JOURNAL/kt243-b6-case-l6-dotbien.log`.
+2. **Ca dương bắt buộc ở mức sha ảnh**: ba lần build ảnh canonical `product-fs` — (1) cây sạch,
+   (2) chỉ sửa `v2/docs`+`v2/agent` chưa commit cùng target dir, (3) build **lạnh** ở target dir
+   mới với thay đổi docs/agent còn nguyên — **cùng** `sha256=5bd28bec…`, `size=213632`,
+   `inputs=54f3b59fc08f3221`, `dirty=0` ⇒ phần TRỪ **không** ảnh hưởng byte ảnh. Log
+   `v2/agent/JOURNAL/kt243-b6-build.log`; chi tiết `v2/agent/JOURNAL/kt243-b4b6b7.md` §3.
+   *Nợ ghi rõ*: ca sha-ảnh đo trực tiếp, **chưa** tự động hoá thành bước cổng (2-3 lần build ảnh
+   ≈ 30-45 s); ca hồi quy thường trực là (a) của `build-rev.sh` + (l6) của `build-identity.sh` ở mức dấu vân tay + dirty + cổng.
 
 **Câu hỏi**: mục (3) của D2-127 định nghĩa build-inputs = “toàn bộ `v2/`”. Nhưng harness **ghi log trong lúc đo**, log nằm ở `v2/agent/JOURNAL/…`.
 
@@ -98,7 +138,25 @@ kèm **ca hồi quy dương bắt buộc**: chỉ sửa `v2/docs` hoặc `v2/age
 
 ---
 
-## B7 · Test `smp` ĐỎ SẴN và **không cổng nào chạy** — sửa kỳ vọng hay sửa mã? (mở 2026-11-18)
+## B7 · Test `smp` ĐỎ SẴN và **không cổng nào chạy** — **ĐÓNG 2026-11-21 (D2-197): chọn (A)** (mở 2026-11-18)
+
+**ĐÓNG 2026-11-21 (D2-197)**: Agent 0 (uỷ quyền Agent 1) chọn **(A)**: sửa **test + chú thích** cho
+khớp `HART_STRIDE` = `GUARD + STACK + TRAP + SYSCALL`, **và** thêm bước **L0 workspace kernel** vào
+cổng. **Đã thi hành ở KT-148** (`9163630d`, D2-128); KT-243 **xác minh lại bằng đo**, không sửa mã:
+
+1. `v2/kernel/vifast-plat-common/tests/smp.rs:24-27` — công thức **bốn** số hạng; chú thích đầu tệp
+   `v2/kernel/vifast-plat-common/src/smp.rs:9-11` cũng đủ bốn số hạng.
+2. **Bước gate phủ nó**: `v2/bin/v2:892` `lane_step main 42 "L0 kernel workspace (KT-148)"
+   step_l0_kernel` → `v2/bin/v2:603-606` chạy `cargo test --manifest-path v2/kernel/Cargo.toml
+   -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64`; bước **không** nằm trong
+   `V2_T2_ONLY_STEPS` (`v2/bin/v2:23`) ⇒ chạy ở **cả T1 (`gate --dev`) và T2 (`gate --fast`)**.
+   `./v2/bin/v2 check` **không** chạy test (check = fmt/clippy/luật + build) — ghi rõ, không thêm
+   bước gate trùng.
+3. **Đo xanh**: `cargo test … -p vifast-plat-common --test smp` ⇒ **9/9 PASS**.
+4. **Ca âm bắt buộc** (`v2/agent/JOURNAL/kt243-b7-red.log`): tạm hoàn nguyên công thức ba số hạng ⇒
+   đúng `left: 86016 right: 118784`, `FAILED. 8 passed; 1 failed`, RC=101; chạy **đúng lệnh của bước
+   gate** với đột biến ⇒ **RC=101 (bước gate ĐỎ)**; hoàn nguyên ⇒ RC=0, 18 passed.
+   Chi tiết: `v2/agent/JOURNAL/kt243-b4b6b7.md` §4.
 
 **Phát hiện** (khi chạy L0 của workspace kernel trong KT-81 §A5b):
 
