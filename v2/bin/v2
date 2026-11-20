@@ -12,6 +12,15 @@ set -u
 V2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/Cargo.toml"
+# **KT-242 (A0 2026-11-20)** — ba tầng kiểm, tên gọi rõ ràng:
+#   T0  trong lúc sửa: agent tự chạy `cargo test -p <crate>` + checker liên quan (không phải lệnh ở đây).
+#   T1  `gate --dev`  : fmt/lint + luật + checker + compile-fail + L0 + L1 1.000 + smoke QEMU.
+#                       **KHÔNG** phải full gate; không thay tiêu chí nghiệm thu.
+#   T2  `gate --fast` : đầy đủ 53 bước (mặc định) — dùng trên ứng viên tích hợp.
+# Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
+# **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
+V2_TIER="${V2_TIER:-t2}"
+V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)"
 
 # cargo có thể không nằm trên PATH (máy này: ~/.cargo/bin).
 find_cargo() {
@@ -79,7 +88,10 @@ usage() {
 v2 — cổng dòng OS ViFastOs v2 (vòng 1)
 
   ./v2/bin/v2 check            fmt + clippy + 5 luật cấu trúc + self-test luật + build
-  ./v2/bin/v2 gate --fast      như check + L0 (cargo test --workspace). BẮT BUỘC cuối mỗi task
+  ./v2/bin/v2 gate --dev       **T1** kiểm tích hợp nhanh: check + L0 + L1 1.000 + smoke QEMU
+                               (bỏ các selftest harness nặng). KHÔNG phải full gate.
+  ./v2/bin/v2 gate --fast      **T2** full gate: như check + L0 (cargo test --workspace) + mọi
+                               selftest harness. BẮT BUỘC trên ứng viên tích hợp
   ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
   ./v2/bin/v2 nightly --only-miri
                                CHỈ Miri trên tập chọn (KT-17, D2-47(a) + KT-23): vifast-objmem
@@ -287,6 +299,16 @@ run_step() { # <tên> <lệnh...>
     local name="$1"
     shift
     local t0 t1
+    # **KT-242** — T1 (`gate --dev`) bỏ qua các bước chỉ kiểm harness; in rõ để không ai
+    # nhầm là đã chạy. Không bỏ âm thầm: mỗi bước bỏ đều có một dòng.
+    if [ "$V2_TIER" = "t1" ]; then
+        case "$V2_T2_ONLY_STEPS" in
+            *"$name"*)
+                echo "--- $name: BỎ QUA (T1 — chỉ chạy ở T2)"
+                return 0
+                ;;
+        esac
+    fi
     t0="$(now_ms)"
     echo "--- $name"
     if "$@"; then
@@ -677,6 +699,29 @@ SHEOF
     return "$rc"
 }
 
+# **KT-242** — T1: kiểm tích hợp nhanh. Chạy `do_gate_fast` với `V2_TIER=t1` (bỏ các bước
+# harness nặng) + một smoke QEMU thật, rồi in bảng tổng có nhãn **T1** rõ ràng.
+do_gate_dev() {
+    local t_start t_end
+    t_start="$(now_ms)"
+    V2_TIER=t1
+    export V2_TIER
+    if ! do_gate_fast; then
+        echo "v2 gate --dev: FAIL (T1 — kiểm tích hợp nhanh)" >&2
+        return 1
+    fi
+    # Smoke QEMU: 7 ảnh test × 1 boot, smp=1. Đây là bằng chứng "ảnh vẫn boot được", **không**
+    # thay ma trận QEMU của T2.
+    run_step "QEMU smoke (T1: 7 ảnh × 1 boot)" bash "$V2_ROOT/test/boot/ktest.sh" 1 1 || {
+        echo "v2 gate --dev: FAIL (T1 — smoke QEMU)" >&2
+        return 1
+    }
+    t_end="$(now_ms)"
+    echo "v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')"
+    printf '# step-time-total %s ms  TỔNG gate --dev (T1)\n' "$((t_end - t_start))"
+    return 0
+}
+
 do_gate_fast() {
     local t_start
     t_start="$(now_ms)"
@@ -954,6 +999,8 @@ case "$cmd" in
     gate)
         if [ "${1:-}" = "--fast" ]; then
             do_gate_fast
+        elif [ "${1:-}" = "--dev" ]; then
+            do_gate_dev
         else
             echo "v2: cổng đầy đủ CHƯA CÓ trong vòng 1 — chỉ dùng 'gate --fast' (AGENTS.md §6)" >&2
             exit 2
