@@ -1,0 +1,18 @@
+# KT-241 N2 — đo gốc phân giải của include! trong INLINE MODULE (tệp non-mod-rs)
+# Ngày: 2026-11-20T03:04:47Z  rustc: rustc 1.100.0 (0ef1bc386 2026-11-09)
+# Câu hỏi: 'mod m { include!("x.rs") }' trong src/foo.rs tìm x.rs ở đâu?
+
+## Case A — x.rs CẠNH tệp chứa (src/x.rs)
+rustc RC=0
+(không lỗi)
+
+## Case B — x.rs trong THƯ MỤC MODULE (src/foo/x.rs)
+rustc RC=1
+error: couldn't find file `src/x.rs`
+2 |     include!("x.rs");
+error: aborting due to 1 previous error
+
+## Kết luận
+Case A RC=0, Case B lỗi 'couldn't find file src/x.rs' ⇒ include! trong inline module của
+src/foo.rs giải theo THƯ MỤC TỆP CHỨA (src/), KHÔNG theo thư mục module (src/foo/).
+Khớp khẳng định hợp đồng §2 (KT-211) — N2 đã có log đối chứng.
