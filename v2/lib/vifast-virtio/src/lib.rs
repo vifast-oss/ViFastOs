@@ -29,6 +29,9 @@ pub mod blk;
 pub mod conchan;
 pub mod console;
 pub mod features;
+/// **KT-255** `virtio_input` — device id/feature/`virtio_input_config`/`virtio_input_event` +
+/// **bảng chuyển mã phím → ASCII** (§5.8).
+pub mod input;
 /// **KT-245** `virtio_net` — device id/feature/`virtio_net_config`/`virtio_net_hdr` (§5.1).
 pub mod net;
 pub mod pci;

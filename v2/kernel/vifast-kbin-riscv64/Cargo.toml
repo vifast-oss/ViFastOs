@@ -37,6 +37,10 @@ exec = ["ktest", "user", "vifast-plat-riscv64/exec"]
 # frame thô. Tách ảnh riêng (cùng lý do KT-72/73: `.text`/mapping của các ảnh cũ không đổi, và ảnh
 # này cần `-netdev`/`-device virtio-net-pci` trong dòng QEMU).
 net = ["ktest", "vifast-plat-riscv64/net"]
+# **KT-255** (D2-200): ảnh `ktest-input` — PCI ECAM + virtio-input một queue `event` + bảng chuyển
+# mã phím → ASCII. Tách ảnh riêng (cùng lý do KT-72/73/245: `.text`/mapping của các ảnh cũ không
+# đổi, và ảnh này cần `-device virtio-keyboard-pci` + monitor `sendkey` trong dòng QEMU).
+input = ["ktest", "vifast-plat-riscv64/input"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
@@ -107,6 +111,14 @@ required-features = ["ktest", "user", "exec"]
 name = "vifast-kbin-ktest-net"
 path = "src/ktest_net.rs"
 required-features = ["ktest", "net"]
+
+# **KT-255** (D2-200): ảnh **virtio-input** riêng — cần `-device virtio-keyboard-pci` + monitor
+# `sendkey` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest` 92,6 % trần;
+# task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
+[[bin]]
+name = "vifast-kbin-ktest-input"
+path = "src/ktest_input.rs"
+required-features = ["ktest", "input"]
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }

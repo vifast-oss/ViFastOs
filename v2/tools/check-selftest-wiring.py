@@ -106,6 +106,15 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
         "build thật ảnh sản phẩm (~40 s, cần cargo + target riscv64) — không phù hợp `v2 check` "
         "(cổng nhanh); đề xuất nối vào `gate --fast` (cần sửa `v2/bin/v2`, ngoài quyền KT-256)",
     ),
+    # **KT-255 (D2-200)** — `v2/test/boot/input.sh` (`--red-selftest`) cần QEMU + build ảnh
+    # `ktest-input` + monitor `sendkey`; `v2 check` **không** chạy QEMU. D2-200 mục (5) giao
+    # **chỉ lead** nối bước "QEMU virtio-input (KT-255)" vào `gate --fast` ở bước tích hợp (cùng
+    # cách `net.sh` đã được nối ở `v2/bin/v2:628`). Khi lead nối xong, mục này thành
+    # `W_EXEMPT_UNUSED` (cảnh báo, không đỏ) và **phải xoá** — đúng như ghi chú của KT-217.
+    (
+        "v2/test/boot/input.sh",
+        "KT-255: cần QEMU + ảnh ktest-input + monitor sendkey; lead nối cổng ở bước tích hợp (D2-200)",
+    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính

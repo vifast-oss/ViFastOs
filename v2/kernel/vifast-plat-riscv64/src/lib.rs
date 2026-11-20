@@ -84,7 +84,13 @@ pub mod pager_fault;
 /// sản phẩm chưa mở K6-driver nên giữ nguyên `.text` (KT-73 mở cho sản phẩm).
 /// KT-73: console **dùng lại** module này (`init_for(VirtioKind::Console)`) — một đường quét
 /// ECAM/BAR/cap cho mọi thiết bị virtio.
-#[cfg(any(feature = "vblk", feature = "vcon", feature = "block", feature = "net"))]
+#[cfg(any(
+    feature = "vblk",
+    feature = "vcon",
+    feature = "block",
+    feature = "net",
+    feature = "input"
+))]
 pub mod pci;
 pub mod plic;
 /// KT-56: probe trap **thật** cho `FaultKind` (chỉ ảnh test — `#[cfg(feature = "ktest")]`).
@@ -122,6 +128,12 @@ pub mod virtio_blk;
 /// (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-con` (`feature = "vcon"`).
 #[cfg(feature = "vcon")]
 pub mod virtio_console;
+/// **KT-255** driver virtio-input (`0x1012`, bàn phím) — một virtqueue `event`, đọc
+/// `virtio_input_config` (tên/danh tính/`EV_BITS`), dùng lại `pci.rs` của KT-72 (không nhân đôi
+/// đường ECAM/BAR). Chỉ ảnh test `ktest-input` (`feature = "input"`); ảnh sản phẩm **không** bật
+/// (D2-200: chưa có người nhận bàn phím ở U-mode).
+#[cfg(feature = "input")]
+pub mod virtio_input;
 /// **KT-245** driver virtio-net (`0x1000`) — hai virtqueue rx/tx, MAC thật từ `virtio_net_config`,
 /// dùng lại `pci.rs` của KT-72 (không nhân đôi đường ECAM/BAR). Chỉ ảnh test `ktest-net`
 /// (`feature = "net"`); ảnh sản phẩm **không** bật (D2-196: chưa có net server U-mode).
