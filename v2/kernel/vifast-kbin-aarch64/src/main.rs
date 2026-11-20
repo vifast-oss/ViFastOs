@@ -60,17 +60,22 @@ use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::gic;
 use vifast_plat_aarch64::mmu::{MapError, TableMemory};
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
+use vifast_plat_aarch64::shootdown::{self, Targets};
 use vifast_plat_aarch64::smp;
 use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
 use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
-use vifast_plat_aarch64::{asm, debug_halt, pl011, tlb};
+use vifast_plat_aarch64::{asm, debug_halt, pl011};
 use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
 
 /// **KT-259**: trạng thái SMP + `smp_bringup` + `kmain_secondary` nằm ở tệp riêng (luật R1:
 /// tệp trong `kernel/` ≤ 1.500 dòng). Tên `smpboot` để **không** đụng `vifast_plat_aarch64::smp`.
 mod smpboot;
+
+/// **KT-262**: bản ghi fault `FaultKind::Vm` **theo hart** — TAP 9 (hart 0) và TAP 13 (hart 1)
+/// phải phân biệt được **hart nào** đã fault, nên không dùng một ô toàn cục.
+mod faults;
 
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
@@ -183,6 +188,12 @@ global_asm!(
     ".org \\idx * {stride}",
     ".globl __vec_\\idx",
     "__vec_\\idx:",
+    // **KT-262**: giữ `x9` **gốc** trước khi dùng nó làm chỉ số ô. KT-248 dùng thẳng
+    // `mov x9, #idx` ⇒ `x9` của mã bị ngắt bị **mất**, và sau `eret` nó bằng chỉ số ô (4 với
+    // `brk`/data abort ở EL1h). Đó là lỗi **thật**, chỉ lộ ra khi mã sau điểm fault còn giữ `x9`
+    // là con trỏ sống (KT-262: `faults::get` đọc mảng theo hart ⇒ `ldar x9, [x9]` với `x9 = 4`
+    // ⇒ data abort `FAR=0x4`, log `kt262-red.log`). Khung 16 B giữ `sp` căn 16.
+    "str x9, [sp, #-16]!",
     "mov x9, #\\idx",
     "b vec_common",
     ".endm",
@@ -237,6 +248,8 @@ global_asm!(
     "ldp x18, x29, [sp, #144]",
     "ldr x30, [sp, #160]",
     "add sp, sp, #176",
+    // Khôi phục `x9` **gốc** (đã cất ở khung ngoài của stub) — xem `VIFAST_VEC`.
+    "ldr x9, [sp], #16",
     "eret",
     "vec_halt:",
     "wfi",
@@ -381,9 +394,12 @@ static ARENA_PA: AtomicU64 = AtomicU64::new(0);
 /// ASID của VSpace dựng trong ảnh (nhãn `FaultKind::Vm.vspace`).
 const VSPACE_ID: VSpaceId = 1;
 /// VA **người dùng** của trang probe VSpace — ngoài RAM 128 MiB, **không** identity.
-const VSPACE_VA: u64 = 0x6000_0000;
+///
+/// `pub(crate)` từ KT-262: `smpboot` dùng **cùng** VA này cho phép đo shootdown (hart 1 đọc nó
+/// để nạp TLB, rồi đọc lại sau `unmap` để sinh fault).
+pub(crate) const VSPACE_VA: u64 = 0x6000_0000;
 /// Giá trị ghi vào trang probe VSpace **trước** khi `activate` (đọc lại qua VA của VSpace).
-const VSPACE_MAGIC: u64 = 0x5653_5041_4345_0001;
+pub(crate) const VSPACE_MAGIC: u64 = 0x5653_5041_4345_0001;
 
 /// Trang **VSpace probe**: ghi magic qua VA thấp (identity) trước khi `activate`, đọc lại qua
 /// **VA người dùng** của VSpace sau `activate` — chứng minh `TTBR0` đã đổi sang bảng của VSpace.
@@ -395,23 +411,12 @@ struct VSpaceProbePage([AtomicU64; 512]);
 static VSPACE_PROBE: VSpaceProbePage = VSpaceProbePage([const { AtomicU64::new(0) }; 512]);
 
 /// PA của trang [`VSPACE_PROBE`] (đọc lúc PC còn ở nửa thấp).
-static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
-/// `1` ⇔ lần fault kế tiếp là fault **được chờ** của phép đo VSpace (handler ghi lại rồi resume).
-static EXPECT_VSPACE_FAULT: AtomicU64 = AtomicU64::new(0);
-/// `1` ⇔ fault đã bắt được phân loại là `FaultKind::Vm`.
-static FAULT_KIND_VM: AtomicU64 = AtomicU64::new(0);
-/// `FaultKind::Vm.va` của fault đã bắt.
-static FAULT_VA: AtomicU64 = AtomicU64::new(0);
-/// `FaultKind::Vm.access` (mã ABI) của fault đã bắt.
-static FAULT_ACCESS: AtomicU64 = AtomicU64::new(u64::MAX);
-/// `FaultKind::Vm.reason` (mã ABI) của fault đã bắt.
-static FAULT_REASON: AtomicU64 = AtomicU64::new(u64::MAX);
-/// `ESR_EL1` thô của fault đã bắt.
-static FAULT_ESR: AtomicU64 = AtomicU64::new(0);
-/// `FAR_EL1` của fault đã bắt.
-static FAULT_FAR: AtomicU64 = AtomicU64::new(0);
-/// `ELR_EL1` của fault đã bắt.
-static FAULT_ELR: AtomicU64 = AtomicU64::new(0);
+pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
+
+// **KT-262**: bản ghi fault `FaultKind::Vm` **theo hart** nằm ở `crate::faults` (mảng
+// `[AtomicU64; MAX_HARTS]` + mặt nạ "đang chờ"/"đã thấy"). KT-254 dùng một ô toàn cục vì chỉ
+// hart 0 sinh fault; KT-262 đo fault trên **hart 1** nên một ô sẽ ghi đè lẫn nhau và TAP 9/TAP 13
+// không còn phân biệt được hart nào đã fault.
 
 // ---------------------------------------------------------------------------------------------
 // KT-250 — TAP trên serial
@@ -421,8 +426,9 @@ static FAULT_ELR: AtomicU64 = AtomicU64::new(0);
 ///
 /// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap) + 2 ca của KT-254 (`VSpace` map/walk/
 /// activate, và fault `FaultKind::Vm` sau `unmap`) + 3 ca của KT-259 (hart 1 online, IPI 0→1,
-/// cả hai hart báo alive).
-pub const TAP_TESTS: usize = 12;
+/// mọi hart báo alive) + 3 ca của KT-262 (`tlbi: hart 1 sees unmap`, `tlbi: ack from all harts`,
+/// `smp: 4 harts online`).
+pub const TAP_TESTS: usize = 15;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -474,12 +480,23 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
 
     // ---- KT-259: **IRQ** (ô 1 = EL1t, ô 5 = EL1h). `ESR_EL1` của IRQ là 0 (không có syndrome),
     // nên phân loại bằng **ô vector**, không bằng `ESR`. Handler đọc `ICC_IAR1_EL1` (nhận ngắt),
-    // in + đếm nếu là `SGI 0`, rồi **bắt buộc** ghi `ICC_EOIR1_EL1` — không ghi thì ngắt không bao
-    // giờ tới lại và phép đo IPI sẽ treo thay vì đỏ.
+    // rồi phân phối theo **INTID**:
+    //
+    //   - `SGI 1` (`SGI_SHOOTDOWN`, KT-262): `shootdown::handle_ipi` chạy `tlbi vae1is` + `dsb ish`
+    //     + `isb` **trong handler** rồi ack — đây là toàn bộ phía hart phụ của B3.6;
+    //   - `SGI 0` (`SGI_IPI`, KT-259): `note_ipi` in + đếm (chỉ SGI 0, nên dòng `# smp: ipi recv=`
+    //     không bị lẫn với shootdown/lệnh);
+    //   - `SGI 2` (`SGI_COMMAND`): không làm gì trong handler — lệnh nằm ở `SMP_CMD` và hart phụ
+    //     xử lý ở vòng lệnh của nó (`wfe` đã được đánh thức bởi `sev`).
+    //
+    // **Bắt buộc** ghi `ICC_EOIR1_EL1` — không ghi thì ngắt không bao giờ tới lại và phép đo sẽ
+    // treo thay vì đỏ.
     if slot == IRQ_SLOT_EL1T || slot == IRQ_SLOT_EL1H {
         let intid = gic::ack_irq();
         if !gic::is_spurious(intid) {
-            smpboot::note_ipi(intid);
+            if !shootdown::handle_ipi(intid) {
+                smpboot::note_ipi(intid);
+            }
             gic::end_irq(intid);
         }
         return 1;
@@ -496,15 +513,16 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
         asm::write_elr_el1(elr + 4);
         return 1;
     }
-    // ---- KT-254: fault **được chờ** của phép đo VSpace (đọc VA sau `unmap`).
+    // ---- KT-254 + KT-262: fault **được chờ** của phép đo VSpace (đọc VA sau `unmap`).
     //
     // Phân loại bằng `ESR_EL1`/`FAR_EL1` thật (không suy diễn từ chỗ khác), dựng
-    // `FaultKind::Vm` của ABI (`vifast-plat-common::fault`, D2-56a), ghi lại rồi **resume**
-    // (`ELR += 4` — instruction `ldr` 4 byte, không thực thi nên resume an toàn). Chỉ làm vậy
-    // khi cờ `EXPECT_VSPACE_FAULT` bật; mọi fault khác vẫn **fatal** như trước.
+    // `FaultKind::Vm` của ABI (`vifast-plat-common::fault`, D2-56a), ghi vào **ô của hart đang
+    // chạy** (`faults::record`) rồi **resume** (`ELR += 4` — instruction `ldr` 4 byte, không thực
+    // thi nên resume an toàn). Chỉ làm vậy khi hart ấy đã **đăng ký** fault được chờ
+    // (`faults::take_expect`); mọi fault khác vẫn **fatal** như trước — che lỗi là điều tệ nhất.
     if let Some(abort) = vifast_plat_aarch64::fault::classify_esr(esr_raw, far) {
-        if EXPECT_VSPACE_FAULT.load(Ordering::Relaxed) == 1 {
-            EXPECT_VSPACE_FAULT.store(0, Ordering::Relaxed);
+        let hart = smp::hart_index(asm::read_mpidr_el1()).unwrap_or(usize::MAX);
+        if faults::take_expect(hart) {
             let access = FaultAccess::from_code(abort.access.code());
             let reason = vm_reason(access, false, None);
             let kind = FaultKind::Vm {
@@ -514,14 +532,8 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
                 reason,
             };
             if let Some((_vspace, va, access, reason)) = kind.vm() {
-                FAULT_KIND_VM.store(1, Ordering::Relaxed);
-                FAULT_VA.store(va, Ordering::Relaxed);
-                FAULT_ACCESS.store(access.code(), Ordering::Relaxed);
-                FAULT_REASON.store(reason.code(), Ordering::Relaxed);
+                faults::record(hart, va, access.code(), reason.code(), esr_raw, far, elr);
             }
-            FAULT_ESR.store(esr_raw, Ordering::Relaxed);
-            FAULT_FAR.store(far, Ordering::Relaxed);
-            FAULT_ELR.store(elr, Ordering::Relaxed);
             asm::write_elr_el1(elr + 4);
             return 1;
         }
@@ -883,34 +895,39 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(5)
     }
 
-    // `unmap` + **TLBI cục bộ** (shootdown đa hart là B3.6): không xoá entry TLB thì lần đọc sau
-    // vẫn trúng entry cũ và **không** fault — phép đo sẽ nói dối.
-    let unmap_pa = match vs.unmap(VSPACE_VA) {
-        Ok(pa) => pa,
+    // `unmap` + **`TLBI` + shootdown** (KT-262, B3.6): `unmap_shootdown` chạy chuỗi cục bộ
+    // `dsb ishst` → `tlbi vae1is` → `dsb ish` → `isb` rồi (nếu có hart phụ) SGI + chờ ack. Ở đây
+    // **chưa** hart phụ nào online nên `Targets::NONE` ⇒ chỉ chuỗi cục bộ; đường đa hart được đo
+    // ở TAP 13/14. Không xoá entry TLB thì lần đọc sau vẫn trúng entry cũ và **không** fault —
+    // phép đo sẽ nói dối.
+    let (unmap_pa, unmap_sd) = match vs.unmap_shootdown(VSPACE_VA, Targets::NONE) {
+        Ok(result) => result,
         Err(error) => {
             let _ = writeln!(console, "PANIC: vspace: unmap lỗi {error:?}");
             debug_halt(3)
         }
     };
-    tlb::vae1(VSPACE_VA);
-    asm::dsb_ish();
-    asm::isb();
     let walk_after = vs.walk(VSPACE_VA);
-    let unmap_ok = unmap_pa == probe_pa && walk_after == Err(MapError::NotMapped);
+    let unmap_ok = unmap_pa == probe_pa && walk_after == Err(MapError::NotMapped) && unmap_sd.ok();
     let _ = writeln!(
         console,
-        "# vspace: unmap pa=0x{unmap_pa:x} walk={walk_after:?} match={}",
+        "# vspace: unmap pa=0x{unmap_pa:x} walk={walk_after:?} match={} tlbi_acks={} tlbi_expected={} tlbi_ok={}",
         unmap_ok as u8,
+        unmap_sd.acks,
+        unmap_sd.expected,
+        unmap_sd.ok() as u8,
     );
 
     // Đọc qua VA sau `unmap` ⇒ **fault**; handler phân loại `FaultKind::Vm` từ `ESR_EL1`/
     // `FAR_EL1` rồi resume (`ELR += 4`) để `high_entry` in bằng chứng và phát TAP 9.
-    EXPECT_VSPACE_FAULT.store(1, Ordering::Relaxed);
+    faults::reset(0);
+    faults::expect(0);
     let _ = asm::read_u64(VSPACE_VA);
-    let vm = FAULT_KIND_VM.load(Ordering::Relaxed) == 1;
-    let fault_va = FAULT_VA.load(Ordering::Relaxed);
-    let access = FaultAccess::from_code(FAULT_ACCESS.load(Ordering::Relaxed));
-    let reason = VmFaultReason::from_code(FAULT_REASON.load(Ordering::Relaxed));
+    let fault = faults::get(0);
+    let vm = fault.is_some();
+    let fault_va = fault.map(|f| f.va).unwrap_or(0);
+    let access = FaultAccess::from_code(fault.map(|f| f.access).unwrap_or(u64::MAX));
+    let reason = VmFaultReason::from_code(fault.map(|f| f.reason).unwrap_or(u64::MAX));
     let fault_ok = vm
         && fault_va == VSPACE_VA
         && access == FaultAccess::Read
@@ -918,13 +935,13 @@ pub extern "C" fn high_entry() -> ! {
         && unmap_ok;
     let _ = writeln!(
         console,
-        "# fault: kind={} va=0x{fault_va:x} access={} reason={} esr=0x{:016x} far=0x{:x} elr=0x{:x} match={}",
+        "# fault: kind={} hart=0 va=0x{fault_va:x} access={} reason={} esr=0x{:016x} far=0x{:x} elr=0x{:x} match={}",
         if vm { "Vm" } else { "?" },
         access.name(),
         reason.name(),
-        FAULT_ESR.load(Ordering::Relaxed),
-        FAULT_FAR.load(Ordering::Relaxed),
-        FAULT_ELR.load(Ordering::Relaxed),
+        fault.map(|f| f.esr).unwrap_or(0),
+        fault.map(|f| f.far).unwrap_or(0),
+        fault.map(|f| f.elr).unwrap_or(0),
         fault_ok as u8,
     );
     if !tap(
@@ -936,13 +953,26 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(5)
     }
 
-    // ---- KT-259 (B3.9): hai hart. Chạy **sau** `activate` để cả hai hart dùng **cùng** bảng
-    // trang `VSpace` (hart 1 nạp đúng `TTBR0/TTBR1` mà hart 0 đã công bố) — nếu chạy trước, hart 1
-    // sẽ ở lại bảng boot trong khi hart 0 đổi sang bảng `VSpace`, tức hai address space khác nhau.
+    // ---- KT-259 (B3.9) + KT-262 (B3.6): bốn hart. Chạy **sau** `activate` để mọi hart dùng
+    // **cùng** bảng trang `VSpace` (hart phụ nạp đúng `TTBR0/TTBR1` mà hart 0 đã công bố) — nếu
+    // chạy trước, hart phụ sẽ ở lại bảng boot trong khi hart 0 đổi sang bảng `VSpace`, tức hai
+    // address space khác nhau.
     let sp_high = asm::read_current_sp();
     let text_start = TEXT_START_PA.load(Ordering::Relaxed);
     smpboot::publish_hart0_sp_pa(text_start + (sp_high - KERNEL_HIGH_BASE));
     if !smpboot::smp_bringup(&mut console) {
+        debug_halt(5)
+    }
+
+    // ---- KT-262 (B3.6): `unmap` trên hart 0 ⇒ **hart 1** thấy VA mất hiệu lực (TAP 13) và mọi
+    // hart phụ đã ack shootdown (TAP 14).
+    let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
+    if !smpboot::tlbi_shootdown_test(&mut console, &mut vs, probe_pa) {
+        debug_halt(5)
+    }
+
+    // ---- KT-262: **bốn** hart online, đúng `MPIDR` từng hart, cả bốn đã báo alive (TAP 15).
+    if !smpboot::smp_four_harts(&mut console) {
         debug_halt(5)
     }
 

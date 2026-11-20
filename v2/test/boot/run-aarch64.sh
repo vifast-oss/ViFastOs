@@ -32,8 +32,16 @@
 # dòng bằng chứng cho mỗi hart (`# smp: hart=1 online`, `# smp: ipi recv=1`, `# smp: hart=0 alive`,
 # `# smp: hart=1 alive`) — TAP nói phép đo đúng, các dòng ấy nói **hart nào** đã in.
 #
+# **KT-262**: `-smp 4` (bốn hart) + **shootdown `TLBI`**. Runner đòi thêm:
+#   - `# smp: hart=2 online`, `# smp: hart=3 online`, `# smp: hart=2 alive`, `# smp: hart=3 alive`
+#     — đúng **một** lần mỗi dòng (một ảnh chỉ chạy 2 hart vẫn in `ok 12` nhưng **không** có các
+#     dòng này ⇒ ĐỎ);
+#   - `# tlbi: shootdown … acks=<N-1> expected=<N-1> ok=1` — **bằng chứng ack** của shootdown;
+#   - `# tlbi: hart=1 read1=… match=1` — hart 1 **đã nạp** entry vào TLB trước khi `unmap`;
+#   - `# tlbi: hart=1 read2 … fault=1` — hart 1 **fault** sau `unmap` ⇒ TLB của nó đã bị xoá.
+#
 # **Không** tuyên bố K4' đạt: K4' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000) — bước sau.
-# Runner này là B3.8 + B3.9 **phần đầu** (hai hart, một ảnh, TAP 12 ca sau KT-259).
+# Runner này là B3.8 + B3.9 + **B3.6** (bốn hart, một ảnh, TAP 15 ca sau KT-262).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,8 +53,11 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-12}"
+EXPECT_TESTS="${EXPECT_TESTS:-15}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
+# **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
+EXPECT_SMP="${EXPECT_SMP:-4}"
+EXPECT_ACKS=$((EXPECT_SMP - 1))
 
 case "${1:-}" in
 '' | *[!0-9]*) ;;
@@ -153,27 +164,93 @@ check_elf() {
     return "$bad"
 }
 
-# ---------------------------------------------------------------- kiểm dòng `# smp:` (KT-259)
-# Bốn dòng **bằng chứng hart** phải có **đúng một lần** mỗi dòng. Đây là phần "mỗi hart in hart id
-# của mình" của tiêu chí KT-259: TAP nói phép đo đúng, các dòng này nói **hart nào** đã in — một
-# ảnh chỉ chạy hart 0 mà in `ok 10` vẫn bị bắt ở đây.
+# ---------------------------------------------------------------- kiểm dòng `# smp:` (KT-259/262)
+# Các dòng **bằng chứng hart** phải có **đúng một lần** mỗi dòng. Đây là phần "mỗi hart in hart id
+# của mình" của tiêu chí KT-259/262: TAP nói phép đo đúng, các dòng này nói **hart nào** đã in —
+# một ảnh chỉ chạy hart 0 mà in `ok 10` vẫn bị bắt ở đây.
 #
 # So **chuỗi con** (`grep -Fc`, không phải `-Fxc`): dòng IPI của ảnh là
 # `# smp: ipi recv=1 intid=0` — mang thêm INTID đọc từ `ICC_IAR1_EL1` sau đúng tiền tố mà KT-259
 # yêu cầu. Vẫn đòi **đúng một** dòng khớp, nên in lặp (ca âm g) vẫn đỏ.
+#
+# **KT-262**: thêm `online`/`alive` cho hart 2 và hart 3 — bốn hart phải cùng in, không chỉ hai.
 check_smp() {
     local log="$1" bad=0 line n
     for line in \
         "# smp: hart=1 online" \
+        "# smp: hart=2 online" \
+        "# smp: hart=3 online" \
         "# smp: ipi recv=1" \
         "# smp: hart=0 alive" \
-        "# smp: hart=1 alive"; do
+        "# smp: hart=1 alive" \
+        "# smp: hart=2 alive" \
+        "# smp: hart=3 alive"; do
         n="$(grep -Fc "$line" "$log" || true)"
         if [ "${n:-0}" -ne 1 ]; then
             echo "# dòng '$line' xuất hiện ${n:-0} lần, cần đúng 1"
             bad=1
         fi
     done
+    return "$bad"
+}
+
+# ---------------------------------------------------------------- kiểm dòng `# tlbi:` (KT-262)
+# Ba dòng **bằng chứng shootdown** — đây là phần "TLB của hart khác đã bị xoá" của B3.6:
+#
+#   `# tlbi: hart=1 read1=… match=1`   hart 1 **đã nạp** entry vào TLB (nếu không, "fault" sau
+#                                      `unmap` không chứng minh được gì);
+#   `# tlbi: shootdown … acks=N expected=N ok=1`
+#                                      **mọi** hart phụ đã ack (N = `EXPECT_SMP - 1`);
+#   `# tlbi: hart=1 read2 … fault=1`   hart 1 **fault** sau `unmap` ⇒ TLB của nó đã sạch.
+#
+# Đòi **đúng một** dòng mỗi loại: in lặp nghĩa là shootdown chạy hai lần (hoặc log bịa).
+check_tlbi() {
+    local log="$1" bad=0 n line
+    for line in \
+        "# tlbi: hart=1 read1=" \
+        "# tlbi: shootdown " \
+        "# tlbi: hart=1 read2 "; do
+        n="$(grep -Fc "$line" "$log" || true)"
+        if [ "${n:-0}" -ne 1 ]; then
+            echo "# dòng '$line' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        fi
+    done
+    # Nội dung từng dòng: `match=1` (hart 1 đã nạp TLB), `acks=N expected=N ok=1` (đủ ack),
+    # `fault=1` (hart 1 fault sau unmap). So **chuỗi con** nên thêm trường vẫn khớp.
+    grep -F "# tlbi: hart=1 read1=" "$log" | grep -Fq "match=1" || {
+        echo "# dòng read1 của hart 1 không có 'match=1' (hart 1 chưa nạp TLB)"
+        bad=1
+    }
+    # Ba trường của dòng shootdown kiểm **riêng** (thứ tự in là `expected=` rồi `acks=`, và
+    # đổi thứ tự in không được làm bộ kiểm mù).
+    local sd
+    sd="$(grep -F "# tlbi: shootdown " "$log" || true)"
+    case "$sd" in
+        *"expected=$EXPECT_ACKS"*) ;;
+        *)
+            echo "# dòng shootdown không có 'expected=$EXPECT_ACKS'"
+            bad=1
+            ;;
+    esac
+    case "$sd" in
+        *"acks=$EXPECT_ACKS"*) ;;
+        *)
+            echo "# dòng shootdown không có 'acks=$EXPECT_ACKS' (thiếu ack)"
+            bad=1
+            ;;
+    esac
+    case "$sd" in
+        *"ok=1"*) ;;
+        *)
+            echo "# dòng shootdown không có 'ok=1'"
+            bad=1
+            ;;
+    esac
+    grep -F "# tlbi: hart=1 read2 " "$log" | grep -Fq "fault=1" || {
+        echo "# dòng read2 của hart 1 không có 'fault=1' (TLB của hart 1 chưa bị xoá)"
+        bad=1
+    }
     return "$bad"
 }
 
@@ -224,6 +301,7 @@ check_log() {
         bad=1
     fi
     check_smp "$log" || bad=1
+    check_tlbi "$log" || bad=1
     return "$bad"
 }
 
@@ -312,6 +390,29 @@ selftest_negative() {
         echo "ok $n - ca âm (g): IPI in hai lần ⇒ ĐỎ ($(head -1 "$tmp/g.out"))"
     fi
 
+    # (h) **KT-262** — thiếu **cả** dòng `# tlbi:` (shootdown không chạy / không ack)
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# tlbi: ' "$good" >"$tmp/h.log" 2>/dev/null || true
+    if check_log "$tmp/h.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/h.out" 2>&1; then
+        echo "not ok $n - ca âm (h): thiếu dòng '# tlbi:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (h): thiếu dòng '# tlbi:' ⇒ ĐỎ ($(head -1 "$tmp/h.out"))"
+    fi
+
+    # (i) **KT-262** — shootdown **thiếu ack** (`acks=N-1` thay vì `acks=N`)
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed "s/acks=$EXPECT_ACKS /acks=$((EXPECT_ACKS - 1)) /" \
+        "$good" >"$tmp/i.log" 2>/dev/null || true
+    if check_log "$tmp/i.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/i.out" 2>&1; then
+        echo "not ok $n - ca âm (i): thiếu ack shootdown mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (i): thiếu ack shootdown ⇒ ĐỎ ($(head -1 "$tmp/i.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -360,7 +461,7 @@ while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
-        -nographic -smp 2 -kernel "$IMAGE" -no-reboot; then
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -384,7 +485,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 7))
+    total=$((total + 9))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

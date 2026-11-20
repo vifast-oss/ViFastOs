@@ -64,6 +64,11 @@ pub fn dsb_ish() {
     crate::asm::dsb_ish();
 }
 
+/// `dsb ishst` — chờ **store** hoàn tất; bước đầu của chuỗi `TLBI` (KT-262).
+pub fn dsb_ishst() {
+    crate::asm::dsb_ishst();
+}
+
 /// `dmb sy`.
 pub fn dmb_sy() {
     crate::asm::dmb_sy();

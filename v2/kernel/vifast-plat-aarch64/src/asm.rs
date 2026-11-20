@@ -171,6 +171,21 @@ mod imp {
         };
     }
 
+    /// `dsb ishst` — chờ **store** hoàn tất trong inner-shareable domain.
+    ///
+    /// Bước **đầu** của chuỗi `TLBI` (KT-262): phải chờ store vào bảng trang xong **trước** khi
+    /// xoá entry TLB, nếu không hart khác có thể walk bảng trang khi lá mới chỉ ghi một nửa.
+    pub fn dsb_ishst() {
+        // SAFETY: như `dsb_sy`.
+        unsafe {
+            asm!(
+                ".inst {op}",
+                op = const crate::barrier::DSB_ISHST,
+                options(nostack, preserves_flags),
+            )
+        };
+    }
+
     /// `dmb sy`.
     pub fn dmb_sy() {
         // SAFETY: barrier hợp lệ ở mọi EL; không đọc/ghi thanh ghi, không đổi cờ.
@@ -223,6 +238,17 @@ mod imp {
     pub fn mmio_write_u32(addr: u64, value: u32) {
         // SAFETY: như `mmio_read_u32`; ghi 4 byte vào thanh ghi thiết bị đã map.
         unsafe { core::ptr::write_volatile(addr as *mut u32, value) };
+    }
+
+    /// Ghi **8 bit** ra MMIO (thanh ghi thiết bị).
+    ///
+    /// Cần cho `GICR_IPRIORITYR<n>` (KT-262): mỗi INTID một **byte**, nên ghi 32 bit vào
+    /// `base + 0x400 + intid` là ghi **lệch lề** với `intid` không chia hết 4 — trên Device
+    /// memory đó là **alignment fault** (`ec=0x25`, `FAR = 0x080B_0401`; đo được khi bật
+    /// `SGI 1`/`SGI 2` cho hart 0, log `kt262-red.log`). KT-259 chỉ bật `SGI 0` nên chưa lộ.
+    pub fn mmio_write_u8(addr: u64, value: u8) {
+        // SAFETY: như `mmio_read_u32`; ghi 1 byte vào thanh ghi thiết bị đã map.
+        unsafe { core::ptr::write_volatile(addr as *mut u8, value) };
     }
 
     // ------------------------------------------------------------------ bộ nhớ thô (KT-249)
@@ -531,6 +557,16 @@ mod imp {
         unsafe { asm!("sev", options(nostack, preserves_flags, nomem)) };
     }
 
+    /// `wfe` — chờ **sự kiện** (do `sev` của hart khác, hoặc một ngắt).
+    ///
+    /// Dùng trong vòng chờ lệnh của hart phụ (KT-262) thay cho spin: `sev` đặt event register
+    /// **kể cả khi hart phụ chưa vào `wfe`**, nên không có lost-wakeup như `wfi` (SGI tới trước
+    /// `wfi` thì `wfi` ngủ tiếp vì không còn ngắt chờ).
+    pub fn wfe() {
+        // SAFETY: `wfe` chỉ chờ sự kiện; không truy cập bộ nhớ, không đổi thanh ghi.
+        unsafe { asm!("wfe", options(nostack, preserves_flags, nomem)) };
+    }
+
     /// Ghi `ICC_SRE_EL1` (bật/tắt system register interface của GICv3 CPU interface).
     pub fn write_icc_sre_el1(value: u64) {
         // SAFETY: `msr` thanh ghi hệ thống EL1 của GICv3; giá trị do `crate::gic` dựng.
@@ -620,6 +656,10 @@ mod imp {
     pub fn dsb_ish() {
         host_stub("dsb ish")
     }
+    /// Stub host của `dsb ishst`.
+    pub fn dsb_ishst() {
+        host_stub("dsb ishst")
+    }
     /// Stub host của `dmb sy`.
     pub fn dmb_sy() {
         host_stub("dmb sy")
@@ -639,6 +679,10 @@ mod imp {
     /// Stub host của MMIO ghi — **panic**: trên host không có thiết bị PL011 đã map.
     pub fn mmio_write_u32(_addr: u64, _value: u32) {
         host_stub("mmio write u32")
+    }
+    /// Stub host của MMIO ghi 8 bit — **panic**: như `mmio_write_u32`.
+    pub fn mmio_write_u8(_addr: u64, _value: u8) {
+        host_stub("mmio write u8")
     }
     /// Stub host của đọc bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
     pub fn read_u64(_addr: u64) -> u64 {
@@ -771,6 +815,10 @@ mod imp {
     /// Stub host của `sev` — **panic**: không phát sự kiện tới CPU thật từ host.
     pub fn sev() {
         host_stub("sev")
+    }
+    /// Stub host của `wfe` — **panic**: không chờ sự kiện CPU thật từ host.
+    pub fn wfe() {
+        host_stub("wfe")
     }
     /// Stub host của `msr icc_sre_el1`.
     pub fn write_icc_sre_el1(_value: u64) {

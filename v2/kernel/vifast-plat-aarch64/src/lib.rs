@@ -53,6 +53,7 @@ pub mod gic;
 pub mod mmu;
 pub mod pl011;
 pub mod resources;
+pub mod shootdown;
 pub mod smp;
 pub mod split_mmu;
 pub mod sysreg;
@@ -97,6 +98,10 @@ pub use format::{
 };
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, MAX_LEVELS,
+};
+pub use shootdown::{
+    collect_acks, AckCounter, Shootdown, Step, Targets, ACK_WAIT_LIMIT, LOCAL_SEQUENCE,
+    REMOTE_SEQUENCE,
 };
 pub use split_mmu::{
     half_of, high_alias_va, map_high_alias, map_physmap, physmap_va, Half, SplitMmu,

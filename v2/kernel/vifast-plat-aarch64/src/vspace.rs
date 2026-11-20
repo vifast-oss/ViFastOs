@@ -128,10 +128,33 @@ impl<M: TableMemory> VSpace<M> {
 
     /// **`vspace_unmap`** — bỏ mapping tại `va`, trả PA đã map.
     ///
-    /// **Không** đụng TLB: xoá entry TLB sau `unmap` là B3.6 (TLBI + shootdown). Caller nào cần
-    /// đọc lại ngay trong cùng hart phải tự gọi `tlb::vae1(va)` + `dsb ish` + `isb`.
+    /// **Không** đụng TLB: đây là thao tác **bảng trang thuần**. Đường sản phẩm là
+    /// [`Self::unmap_shootdown`] — nó gọi hàm này rồi chạy chuỗi `TLBI` + shootdown đa hart
+    /// (KT-262). Gọi `unmap` trần rồi đọc lại cùng VA là **sai** (TLB còn entry cũ).
     pub fn unmap(&mut self, va: u64) -> Result<u64, MapError> {
         self.mmu.unmap(va)
+    }
+
+    /// **`vspace_unmap_shootdown`** — `unmap` + `TLBI` + shootdown đa hart (KT-262, B3.6).
+    ///
+    /// Thứ tự **bắt buộc** (xem [`crate::shootdown`]):
+    ///
+    /// 1. xoá lá bảng trang ([`Self::unmap`]);
+    /// 2. chuỗi cục bộ `dsb ishst` → `tlbi vae1is` → `dsb ish` → `isb`;
+    /// 3. SGI `SGI_SHOOTDOWN` tới từng hart trong `targets`; handler của chúng chạy
+    ///    `tlbi vae1is` + `dsb ish` + `isb` rồi **ack**;
+    /// 4. chờ đủ ack (trần [`crate::shootdown::ACK_WAIT_LIMIT`]).
+    ///
+    /// `targets = Targets::NONE` ⇒ chỉ bước 2 (đường lúc chưa có hart phụ nào online — ví dụ
+    /// TAP 9 của ảnh). Caller **phải** kiểm [`Shootdown::ok`] của kết quả: `unmap` đã xong bảng
+    /// trang kể cả khi shootdown hết trần, nên bỏ qua kết quả là bỏ qua lỗi thật.
+    pub fn unmap_shootdown(
+        &mut self,
+        va: u64,
+        targets: crate::shootdown::Targets,
+    ) -> Result<(u64, crate::shootdown::Shootdown), MapError> {
+        let pa = self.mmu.unmap(va)?;
+        Ok((pa, crate::shootdown::invalidate(va, targets)))
     }
 
     /// **`vspace_walk`** — dịch `va → pa` trên bảng **thật** của VSpace.

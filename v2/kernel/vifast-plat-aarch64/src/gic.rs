@@ -124,6 +124,17 @@ pub const ICC_SPURIOUS_MIN: u64 = 1020;
 /// SGI dùng làm IPI của KT-259 (`SGI 0`).
 pub const SGI_IPI: u32 = 0;
 
+/// SGI **shootdown `TLBI`** của KT-262 (`SGI 1`) — hart 0 → mọi hart phụ.
+///
+/// Tách khỏi [`SGI_IPI`] có chủ ý: `note_ipi` của KT-259 đếm **mọi** SGI 0 nhận được và in
+/// `# smp: ipi recv=<n>`; dùng chung số thì dòng ấy xuất hiện nhiều lần và runner ĐỎ (đúng ca âm
+/// (g) của `run-aarch64.sh`). Ba SGI của KT-262 vì thế là **ba số khác nhau**.
+pub const SGI_SHOOTDOWN: u32 = 1;
+
+/// SGI **lệnh** của KT-262 (`SGI 2`) — hart 0 yêu cầu một hart phụ thực thi một việc
+/// (in alive / đọc VA để nạp TLB / đọc lại để sinh fault).
+pub const SGI_COMMAND: u32 = 2;
+
 /// Vị trí `TargetList[15:0]` trong `ICC_SGI1R_EL1` (DDI 0487 §D17.2.55).
 pub const ICC_SGI1R_TARGET_LIST_SHIFT: u32 = 0;
 /// Vị trí `Aff1[23:16]`.
@@ -318,6 +329,11 @@ pub fn wake_redistributor(hart: usize) -> Result<u64, GicError> {
 ///
 /// Thứ tự `IGROUPR0` → `IPRIORITYR` → `ISENABLER0` là thứ tự của GICv3 §4.3 (cấu hình trước khi
 /// bật); đảo lại thì ngắt có thể tới với nhóm/ưu tiên cũ.
+///
+/// **`GICR_IPRIORITYR<n>` là thanh ghi theo BYTE** (IHI 0069 §9.3.7): mỗi INTID một byte, nên
+/// ghi phải là **ghi byte**. KT-259 ghi 32 bit vào `base + 0x400 + sgi` và chỉ bật `SGI 0` nên
+/// địa chỉ tình cờ căn 4; KT-262 bật thêm `SGI 1`/`SGI 2` ⇒ địa chỉ lệch lề ⇒ **alignment
+/// fault** trên Device memory (`ec=0x25`, `FAR=0x080B_0401` — log `kt262-red.log`).
 pub fn enable_sgi(hart: usize, sgi: u32) -> Result<(), GicError> {
     let base = sgi_frame_base(hart).ok_or(GicError::InvalidHart)?;
     if sgi >= 16 {
@@ -326,7 +342,7 @@ pub fn enable_sgi(hart: usize, sgi: u32) -> Result<(), GicError> {
     let bit = 1u32 << sgi;
     write32(base + GICR_IGROUPR0, read32(base + GICR_IGROUPR0) | bit);
     let priority = base + GICR_IPRIORITYR + (sgi as u64);
-    asm::mmio_write_u32(priority, SGI_PRIORITY as u32);
+    asm::mmio_write_u8(priority, SGI_PRIORITY);
     write32(base + GICR_ISENABLER0, bit);
     Ok(())
 }
