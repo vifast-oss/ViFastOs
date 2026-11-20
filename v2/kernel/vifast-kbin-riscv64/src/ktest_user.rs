@@ -66,7 +66,9 @@ mod ktest_vfs;
 use core::fmt::Write;
 
 use vifast_core::syscall::{SyscallEnv, SyscallOutcome, REPLY_NONE};
-use vifast_core::{FaultKind as CoreFaultKind, Machine, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{
+    FaultKind as CoreFaultKind, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
+};
 use vifast_plat_common::fault::{FaultKind, FAULT_STATS};
 use vifast_plat_common::user::TaskState;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
@@ -683,8 +685,7 @@ fn build_init_task(m: &mut Machine, rig: &SysRig) -> (ObjId, ObjId) {
         .expect("init: params");
     m.tcb_set_priority(rig.init_tcb_slot, 3, 10)
         .expect("init: priority");
-    m.transition_tcb(tcb_obj, TcbState::Ready)
-        .expect("init: Ready");
+    m.start_tcb(tcb_obj).expect("init: Ready");
     let got = m.dispatch(0).expect("init: dispatch");
     debug_assert_eq!(got, Some(tcb_obj), "init phải là TCB chạy trên hart 0");
     (tcb_obj, ep_obj)
@@ -695,7 +696,7 @@ fn make_running(m: &mut Machine, tcb: ObjId) {
     if m.tcb_state(tcb) != Ok(TcbState::Running { hart: 0 }) {
         let _ = m.wake(tcb);
         if m.tcb_state(tcb) == Ok(TcbState::Ready) {
-            let _ = m.transition_tcb(tcb, TcbState::Running { hart: 0 });
+            let _ = m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 });
         }
     }
 }

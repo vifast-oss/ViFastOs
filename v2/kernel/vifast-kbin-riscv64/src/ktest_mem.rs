@@ -16,7 +16,7 @@
 
 use core::fmt::Write;
 
-use vifast_core::{CapId as CoreCap, KError, Message, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{CapId as CoreCap, KError, Message, ObjId, ObjType, SlotRef};
 use vifast_core::{RIGHTS_ALL, RIGHT_GRANT, RIGHT_WRITE};
 use vifast_plat_common::obj::{CapId, FrameBudget, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
@@ -326,8 +326,8 @@ fn tap63_bridge(u0: CapId, fails: &mut usize) {
         let (t0, _c0) = mk(ObjType::Tcb, 1)?;
         let (t1, _c1) = mk(ObjType::Tcb, 2)?;
         mk(ObjType::Endpoint, 10)?;
-        m.transition_tcb(t0, TcbState::Ready)?;
-        m.transition_tcb(t1, TcbState::Ready)?;
+        m.start_tcb(t0)?;
+        m.start_tcb(t1)?;
         let token_cap = m.cap_at(root, 0)?;
         Ok::<_, vifast_core::KError>((root, token_cap, t0, t1))
     });

@@ -267,7 +267,7 @@ pub fn boot_smoke(untyped: ObjId) -> BootSmoke {
         if retype {
             configure = m.tcb_configure(ts, None).is_ok()
                 && m.tcb_set_priority(ts, 4, 8).is_ok()
-                && m.transition_tcb(tcb, vifast_core::TcbState::Ready).is_ok();
+                && m.start_tcb(tcb).is_ok();
             let torn = configure && m.tcb_suspend(ts, vifast_core::SuspendMode::Abort).is_ok();
             let treo = torn && m.tcb_read_state(ts).map(|s| s.suspended).unwrap_or(false);
             let go = treo && m.tcb_resume(ts).is_ok();

@@ -12,6 +12,7 @@ use crate::machine::{Machine, MAX_HARTS, MAX_OBJECTS};
 use crate::mailbox::{HartMailbox, MailboxMsg};
 use crate::sched::Published;
 use crate::tcb::TcbState;
+use crate::NonReadyTarget;
 
 impl Machine {
     // ------------------------------------------------------------- scheduler (KT-19/29)
@@ -168,7 +169,7 @@ impl Machine {
             if !matches!(self.tcb_state(cur)?, TcbState::Running { .. }) {
                 return Err(KError::IllegalOperation);
             }
-            self.transition_tcb(cur, TcbState::Ready)?;
+            self.preempt_current(cur)?;
         }
         let next = match self.sched_pick_on(hart) {
             Some(tcb) => tcb,
@@ -181,17 +182,22 @@ impl Machine {
         if info.state != TcbState::Ready || info.suspended {
             return Err(KError::IllegalOperation);
         }
-        self.transition_tcb(next, TcbState::Running { hart })?;
+        self.transition_tcb(next, NonReadyTarget::Running { hart })?;
         Ok(Some(next))
     }
 
     /// `block_current(hart, to)` — TCB đang chạy chuyển sang trạng thái chặn/ngủ `to` qua
     /// [`Machine::transition_tcb`] và rời `current`. Chỉ nhận `BlockedOn*`/`Sleeping`.
-    pub fn block_current(&mut self, hart: u16, to: TcbState) -> Result<ObjId, KError> {
+    ///
+    /// **D2-194 §1(d)** — "không phải `Ready`" **chưa** đồng nghĩa "được phép block vào":
+    /// `Running`/`Inactive`/`Stopping`/`Dead` vẫn phải bị từ chối ở **runtime** qua
+    /// `NonReadyTarget::is_block_target`. So khớp `BlockedOnNotification` làm **trên
+    /// `NonReadyTarget`** — module này **không** thấy `into_state` (private của `state_write`).
+    pub fn block_current(&mut self, hart: u16, to: NonReadyTarget) -> Result<ObjId, KError> {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        if !(to.is_blocked() || matches!(to, TcbState::Sleeping { .. })) {
+        if !to.is_block_target() {
             return Err(KError::InvalidArgument);
         }
         let cur = self.sched[hart as usize]
@@ -200,7 +206,7 @@ impl Machine {
         // KT-27 (F3 reviewer-kt60): `BlockedOnNotification` phải ghi waiter trên object — bất
         // biến "waiter ⇔ TcbState"; kiểm **trước** khi gỡ hàng. Notification sai kiểu/chết
         // trả lỗi như sim.
-        if let TcbState::BlockedOnNotification { ntfn } = to {
+        if let NonReadyTarget::BlockedOnNotification { ntfn } = to {
             if let Some(w) = self.notification_waiter(ntfn)? {
                 if w != cur {
                     return Err(KError::Busy);
@@ -209,7 +215,7 @@ impl Machine {
         }
         self.unlink_tcb_queues(cur);
         self.transition_tcb(cur, to)?;
-        if let TcbState::BlockedOnNotification { ntfn } = to {
+        if let NonReadyTarget::BlockedOnNotification { ntfn } = to {
             self.notification_data_mut(ntfn)?.waiter = Some(cur);
         }
         self.sched_after_op(false);
@@ -289,24 +295,6 @@ impl Machine {
         Ok(())
     }
 
-    /// Thân chuyển `blocked/sleeping → Ready` — **một** chỗ duy nhất (máy kiểm
-    /// `v2/tools/check-wake-paths.py --strict` đòi điều này). `unlink` quyết định có gỡ TCB
-    /// khỏi **mọi** hàng chờ trước khi `Ready` hay không: đường hộp thư/`wake`/`wake_addr`
-    /// cần (`true`); đường sản phẩm đã tự gỡ nên dùng [`Machine::wake_from`] (`false`).
-    pub(crate) fn wake_step(&mut self, tcb: ObjId, unlink: bool) -> Result<(), KError> {
-        let state = self.tcb_state(tcb)?;
-        if state == TcbState::Ready {
-            return Ok(());
-        }
-        if !(state.is_blocked() || matches!(state, TcbState::Sleeping { .. })) {
-            return Err(KError::IllegalOperation);
-        }
-        if unlink {
-            self.unlink_tcb_queues(tcb);
-        }
-        self.transition_tcb(tcb, TcbState::Ready)
-    }
-
     /// `yield_current(hart)` — `Running → Ready` (cuối hàng cùng mức) rồi `dispatch`.
     pub fn yield_current(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
         if hart as usize >= self.n_harts {
@@ -315,7 +303,7 @@ impl Machine {
         let cur = self.sched[hart as usize]
             .current()
             .ok_or(KError::IllegalOperation)?;
-        self.transition_tcb(cur, TcbState::Ready)?;
+        self.yield_to_ready(cur)?;
         let next = self.dispatch(hart)?;
         self.sched_after_op(false);
         Ok(next)

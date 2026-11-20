@@ -9,7 +9,8 @@
 use core::fmt::Write;
 
 use vifast_core::{
-    FaultKind, KError, Machine, Message, ObjId, ObjType, SlotRef, TcbState, TlbEnv, TlbScope,
+    FaultKind, KError, Machine, Message, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, TlbEnv,
+    TlbScope,
 };
 use vifast_plat_common::obj::{FlushRequest, MapFlags, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
@@ -325,8 +326,8 @@ pub(crate) fn bind_tap(m: &mut Machine, u: ObjId, fails: &mut usize) {
     let (_ep, ep_s) = mk(m, ObjType::Endpoint, 5);
     let (t0, t0_s) = mk(m, ObjType::Tcb, 10);
     let (t1, _t1_s) = mk(m, ObjType::Tcb, 11);
-    m.transition_tcb(t0, TcbState::Ready).expect("kt64: Ready");
-    m.transition_tcb(t1, TcbState::Ready).expect("kt64: Ready");
+    m.start_tcb(t0).expect("kt64: Ready");
+    m.start_tcb(t1).expect("kt64: Ready");
     let n_cap = m.cap_at(root, 3).unwrap_or(0);
     // Bind hai chiều.
     let bind_ok = m.sched_context_bind(sc_s, n_s).is_ok();
@@ -440,8 +441,8 @@ pub(crate) fn resume_tap(m: &mut Machine, u: ObjId, fails: &mut usize) {
     let (_t3, t3_s) = mk(m, ObjType::Tcb, 3);
     let (_ep, ep_s) = mk(m, ObjType::Endpoint, 4);
     let (rep, rep_s) = mk(m, ObjType::Reply, 5);
-    m.transition_tcb(t, TcbState::Ready).expect("kt64: Ready");
-    m.transition_tcb(t2, TcbState::Ready).expect("kt64: Ready");
+    m.start_tcb(t).expect("kt64: Ready");
+    m.start_tcb(t2).expect("kt64: Ready");
     m.tcb_set_fault_ep(t_s, ep_s).expect("kt64: fault_ep");
     m.inject_fault(t, FaultKind::UnknownSyscall { nr: 7 })
         .expect("kt64: fault");
@@ -467,7 +468,9 @@ pub(crate) fn resume_tap(m: &mut Machine, u: ObjId, fails: &mut usize) {
         .unwrap_or(false);
     // `Running` ⇒ cấm; thanh ghi không đổi.
     let _ = m.set_current_hart(0);
-    let running = m.transition_tcb(t, TcbState::Running { hart: 0 }).is_ok();
+    let running = m
+        .transition_tcb(t, NonReadyTarget::Running { hart: 0 })
+        .is_ok();
     let running_err = m
         .tcb_resume_with_regs(
             t_s,
@@ -479,7 +482,7 @@ pub(crate) fn resume_tap(m: &mut Machine, u: ObjId, fails: &mut usize) {
         )
         .err();
     let regs_after = m.tcb_regs(t).ok() == Some([0xAA, 0xBB, 0, 0]);
-    let _ = m.transition_tcb(t, TcbState::Ready);
+    let _ = m.tcb_yield(t);
     // `BlockedOnReply` đúng caller ⇒ resume được; `Reply.caller` sạch.
     let r2 = m.recv(t2, ep_s, Some(rep_s)).is_ok();
     let call = m

@@ -296,7 +296,7 @@ fn set_tls_phuong_thuc_va_cap_sai() {
 fn set_tls_khi_ready_van_ghi_duoc() {
     let _guard = TLS_COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
-    r.m.transition_tcb(r.tcb, TcbState::Ready).expect("Ready");
+    r.m.start_tcb(r.tcb).expect("Ready");
     assert_eq!(r.m.tcb_state(r.tcb).expect("state"), TcbState::Ready);
     assert_eq!(
         invoke_on(

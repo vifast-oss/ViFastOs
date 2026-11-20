@@ -117,8 +117,7 @@ fn build_init_task(m: &mut Machine, rig: &Rig) -> (ObjId, ObjId) {
         .expect("init: params");
     m.tcb_set_priority(rig.init_tcb_slot, 3, 10)
         .expect("init: priority");
-    m.transition_tcb(tcb_obj, TcbState::Ready)
-        .expect("init: Ready");
+    m.start_tcb(tcb_obj).expect("init: Ready");
     let got = m.dispatch(0).expect("init: dispatch");
     debug_assert_eq!(got, Some(tcb_obj), "init phải là TCB chạy trên hart 0");
     (tcb_obj, ep_obj)

@@ -31,7 +31,8 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_core::{
-    FaultKind, Machine, Message, MessageInfo, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+    FaultKind, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode,
+    TcbState,
 };
 use vifast_plat_common::obj::CapId;
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
@@ -206,8 +207,7 @@ fn build_rig(untyped: ObjId) -> Rig {
             m.set_sched_params(tcb[i], Some(sc[i]))
                 .expect("KT-65: sched params");
             m.tcb_set_priority(tcb[i], 5, 10).expect("KT-65: priority");
-            m.transition_tcb(tcb_obj[i], TcbState::Ready)
-                .expect("KT-65: Ready");
+            m.start_tcb(tcb_obj[i]).expect("KT-65: Ready");
         }
         Rig {
             tcb,
@@ -376,11 +376,19 @@ static TURN_NO: AtomicU64 = AtomicU64::new(0);
 static CUR_TASK: AtomicU64 = AtomicU64::new(0);
 
 fn task_running(m: &mut Machine, tcb: ObjId) -> bool {
-    m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()
+    m.transition_tcb(tcb, NonReadyTarget::Running { hart: 0 })
+        .is_ok()
 }
 
 fn task_ready(m: &mut Machine, tcb: ObjId) {
-    let _ = m.transition_tcb(tcb, TcbState::Ready);
+    // **D2-187/D2-194** — không còn cửa "đặt `Ready` vô điều kiện": chọn cửa khớp trạng thái
+    // nguồn. `wake` là API **test-only** (D2-144) và đúng ngữ nghĩa cho `BlockedOn*`/`Sleeping`.
+    let _ = match m.tcb_state(tcb) {
+        Ok(TcbState::Inactive) => m.start_tcb(tcb),
+        Ok(TcbState::Ready) => Ok(()),
+        Ok(TcbState::Running { .. }) => m.tcb_yield(tcb),
+        _ => m.wake(tcb),
+    };
 }
 
 /// Đệm nhỏ dựng dòng `pid=… state=…` để đối chiếu output shell (không cấp phát).

@@ -39,7 +39,7 @@
 
 use core::fmt::Write;
 
-use vifast_core::{Machine, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
 use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::pci;
@@ -158,8 +158,7 @@ fn build_core_rig(untyped: ObjId) -> ObjId {
         m.tcb_set_priority(tcb_slot, 3, 10)
             .expect("KT-73: priority");
         let tcb_obj = m.cap_obj(tcb).expect("KT-73: tcb obj");
-        m.transition_tcb(tcb_obj, TcbState::Ready)
-            .expect("KT-73: Ready");
+        m.start_tcb(tcb_obj).expect("KT-73: Ready");
         tcb_obj
     })
 }

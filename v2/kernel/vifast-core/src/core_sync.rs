@@ -19,6 +19,7 @@ use crate::objstate::{
     WAITADDR_BUCKETS,
 };
 use crate::tcb::TcbState;
+use crate::NonReadyTarget;
 
 use crate::core_ipc::NotificationValue;
 
@@ -118,7 +119,7 @@ impl Machine {
             return Err(KError::Busy);
         }
         self.notification_data_mut(ntfn)?.waiter = Some(tcb);
-        self.transition_tcb(tcb, TcbState::BlockedOnNotification { ntfn })?;
+        self.transition_tcb(tcb, NonReadyTarget::BlockedOnNotification { ntfn })?;
         self.sched_after_op(true);
         Ok(())
     }
@@ -506,7 +507,7 @@ impl Machine {
         if !self.wait_node_available() {
             return Err(KError::NotEnoughMemory);
         }
-        self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;
+        self.transition_tcb(tcb_obj, NonReadyTarget::BlockedOnAddress { frame, offset })?;
         let idx = self
             .alloc_wait_node(WaitNode {
                 frame,
