@@ -359,6 +359,12 @@ do_check() {
         # đang bật, checker tĩnh quét mọi nhánh). Vì vậy đây là **thêm**, không phải thay.
         run_step "wake theo dep-info (KT-217: lớp 2)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --root "$REPO_ROOT" || fails=$((fails + 1))
         run_step "selftest wake dep-info (KT-217)" "$PY" "$V2_ROOT/tools/check-wake-depinfo.py" --selftest || fails=$((fails + 1))
+        # **KT-241 (D2-187/D2-194)** — ranh giới API `NonReadyTarget`: chèn tệp probe vào crate
+        # thật, `cargo check` phải từ chối `TcbState::Ready` ở **đúng mã lỗi + thông điệp +
+        # tệp:dòng** (WB-16 6 dạng, WB-17 7 dạng, `write_state` private, đường chuyển đổi bị
+        # cấm), và ca dương phải biên dịch RC=0. Tệp probe được khôi phục trong `finally` +
+        # `atexit` + handler SIGINT/SIGTERM; tệp đã bẩn ⇒ từ chối chạy (fail-closed).
+        run_step "api boundary (KT-241)" "$PY" "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT" || fails=$((fails + 1))
         # **KT-163 (N7, D2-137)** — máy kiểm "test có răng": chống lớp lỗi **xanh-giả** đã
         # xảy ra hơn mười lần (gần nhất N7 suýt đóng sai). Bốn lớp **chắc chắn**, không
         # heuristic mờ: (a) `assert!(true)` / `assert_eq!(x, x)` hằng-đúng; (b) `#[ignore]`;
