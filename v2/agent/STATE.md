@@ -4,51 +4,54 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-HEAD          : `f16c5aaa` (`main`, đã push — `chưa push: 0`). Commit cuối `[KT-233]` (merge).
-                Cây `v2/` sạch (`dirty=0`).
-BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0` (`./v2/bin/v2 status`).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-20 sau D2-187..D2-193 ===
+HEAD          : `59bede14` (`main`, đã push — `chưa push: 0`). Cây `v2/` sạch (`dirty=0`).
+BUILD-INPUTS  : **233 mục**, dấu vân tay `43df126a4a6702ec`, `dirty=0`.
 ẢNH SẢN PHẨM  : `639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81`, **213 632 B**,
                 `build=b08c5c57cdbdb156`, `inputs=43df126a4a6702ec`, `dirty=0`; `data+bss=224288`,
-                trần `262144` (không nới). Ảnh nằm ở `v2/artifacts/` (gitignored).
-K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210, `JOURNAL/kt210-k6-remeasure.md`):
-                F1 shell smp 1/2/4; F2 parity + đọc lại sau reboot + persist; F3 ảnh tắt shell đỏ;
-                F4 matrix + soak **1000/1000** fail=0 (297 s); F5 `data+bss=224288` ≤ 262144;
-                F6 product `hits=0`, ảnh âm `hits=25`.
-CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, **52** bước OK;
-                `JOURNAL/kt231-logs/kt231-gate-pass.log`). `v2 check` **PASS**.
+                trần `262144` (không nới).
+K6            : **6/6 ĐẠT** trên ảnh `639ca6d1…` (KT-210). **Phạm vi**: riscv64/QEMU, đúng các
+                giới hạn đã ghi. **D2-191**: nếu đợt sửa API làm đổi đầu vào tạo ảnh ⇒ **phải
+                build ảnh mới và đo lại K6**, không ghép bằng chứng ảnh cũ.
+CỔNG          : `gate --fast` **PASS** trên `a08bf042` (13 m 07 s, 52 bước OK,
+                `JOURNAL/kt231-logs/kt231-gate-pass.log`). **D2-191**: đây là **gate trên
+                `a08bf042`**, **KHÔNG** phải "gate trên HEAD". Sau khi tích hợp đợt sửa này
+                **phải chạy full gate trên commit cuối**.
 TASK          : `./v2/bin/v2 status` ⇒ **DONE=206 READY=0 BLOCKED=0 REVIEW=2**.
                 REVIEW = **KT-184** và **KT-194** (luật `wake` — **chưa** đóng).
-ĐÊM 2026-11-20: **ĐÃ ĐÓNG**. **18** sub-agent (L37..L54), 4 chạy song song mỗi lượt.
-                Xong: KT-181, KT-182+203+206, KT-183+204+205, KT-201, KT-202, KT-207,
-                KT-209, KT-210, KT-211, KT-212+213+215, KT-214, KT-216, KT-217, KT-218+219,
-                KT-220, KT-221, KT-222, KT-223+225, KT-224+227+228, KT-226, KT-229+230+231,
-                KT-232, KT-233, KT-234, KT-235.
-                Báo cáo: `BAO-CAO-DEM-2026-11-20.md`; phiếu: `PHIEU-GUI-AGENT0-2026-11-20-VONG8.md`.
-LUẬT WAKE      : **CHƯA ĐÓNG** — KT-194 và KT-184 **REVIEW**. **Mười lăm** đường lọt đã bị phá.
-                Đêm nay tìm thêm **năm** và đóng cả năm: #11 `#[path]` non-mod-rs (KT-213),
-                #12 `src/target/` (KT-215), #13 `#[cfg(test)]` trên nhánh `match` (KT-219),
-                #14 macro lồng che tên an toàn (KT-230), #15 alias kiểu che `TcbState::Ready`
-                (KT-231). **#13, #14, #15 lọt CẢ HAI lớp.** **Hai lớp**: lớp 1
-                `check-wake-paths.py` (**295** ca) + lớp 2 `check-wake-depinfo.py` (**37** ca).
-                Cả hai `errors=0` trên cây thật. D2-169..D2-181 ghi lại.
-                **Bài học**: reviewer chọn mẫu từ danh sách đã biết thì **không thể** tìm đường
-                lọt mới — L54 tấn công **theo lớp** và tìm ra #14/#15 mà 13 đường cũ không có.
-                **Vòng cuối (L55/L56/L57) tìm thêm #16, #17, #18** — cả ba lọt **cả hai/cả ba**
-                lớp: #16 `Ready` qua tham số/hằng/closure (6 dạng); #17 `transition_tcb` làm
-                fn-pointer/UFCS (7 biến thể, **2 lỗi gốc độc lập**); #18 crate thành viên
-                workspace **ngoài ba gốc quét**. **Tổng: mười tám đường lọt, sáu đường mới đêm nay.**
-NỢ / BLOCKED  : **BLOCKED=0**. Nợ còn mở (không chặn): K4' chưa đạt (mới bước 1–2); K5' chưa mở;
-                N1 "600 boot x86_64" ở K5' (D2-149); C3 aarch64 (28/31 stub host chưa kiểm);
-                **DEBT-KT227-1** (`v2/lib` ngoài luật token lớp 1 — không nguy hiểm: không crate
-                `v2/lib` nào phụ thuộc core/sim ở `[dependencies]`); B4b `#[cfg(any())] mod`
-                (lớp 2 không thấy, lớp 1 bắt); B17 OUT_DIR (lớp 2 không thấy nhưng
-                `W_DEPINFO_SKIPPED`, lớp 1 bắt); **truyền `Ready` qua tham số liên hàm**;
-                **`transition_tcb` dùng làm giá trị** (fn-pointer); proc-macro che tên an toàn
-                (cây không có crate `proc-macro = true`); `build.rs` sinh `$OUT_DIR` + `include!`
-                ẩn trong macro ở tệp ngoài `MACRO_SCAN_ROOTS` (**chưa đo**); `:expr` passthrough
-                chưa từ chối; `virtio_` tiền tố tên tệp; bash 3.2 SIGTRAP/SIGSEGV đã vá
-                (KT-207, KT-221) nhưng gốc cần bash ≥ 4; lớp 3 (`cargo expand`) chưa có — mã do
-                macro sinh vẫn ngoài tầm cả hai lớp.
+LUẬT WAKE      : **CHƯA ĐÓNG** — KT-184/KT-194 giữ **REVIEW** (D2-190: không đóng bằng số
+                selftest hay một vòng reviewer không tìm thấy lỗi).
+                **Ba đường ĐANG CHẶN NGHIỆM THU (P0, không phải "nợ không chặn")**:
+                  **WB-16** `Ready` qua helper/const/static/closure/hàm trả về (6 dạng)
+                  **WB-17** `transition_tcb` làm fn-pointer / generic `F: Fn` / trait object / UFCS
+                  **WB-18** crate thành viên workspace **ngoài ba gốc quét** + `$OUT_DIR`
+                Cả ba có repro **biên dịch được** (`cargo check` RC=0) mà **cả hai cơ chế kiểm
+                đều XANH**. Registry đầy đủ 18 đường: `v2/agent/BYPASS-REGISTRY.md` (mã `WB-NN`).
+                **Hai cơ chế kiểm** (D2-189 — **không** phải "ba lớp độc lập"): lớp tĩnh
+                `check-wake-paths.py` (**295** ca) + lớp dep-info `check-wake-depinfo.py`
+                (**37** ca); "thường"/"`--strict`"/"dep-info" là **ba lượt kiểm thuộc hai cơ chế**,
+                **có thành phần dùng chung** (phân vùng test/sản phẩm, nhận dạng transition,
+                phân tích macro, lọc đường dẫn) — danh sách dùng chung phải lập (D2-189 §1).
+HƯỚNG ĐÓNG    : **D2-187** — **thu hẹp API** để đường gọi sai **không biểu diễn được** (kiểu
+                đích chuyển trạng thái **loại trừ `Ready`**; primitive ghi trạng thái thô sau
+                **ranh giới riêng tư hẹp**; compiler cưỡng chế, không chỉ checker tự xác nhận).
+                **D2-188** — phạm vi bảo vệ **sinh từ `cargo metadata`**, không dùng ba đường
+                dẫn cố định; tệp rustc nạp phải **kiểm hoặc từ chối rõ**, không "cảnh báo rồi
+                PASS". **D2-189** — giữ dep-info bắt buộc; **chưa** duyệt `cargo expand` vào cổng.
+ĐỢT NÀY       : **D2-192** — bốn luồng A/B/C/D, tối đa 4 sub-agent, worktree riêng, **chỉ lead
+                tích hợp**, reviewer **không** nghiệm thu phần mình viết, gate/đo nặng **độc
+                quyền**, hết ngân sách ⇒ bàn giao + ghi blocker, **không** vòng vá vô hạn.
+                **Không** đổi ABI/spec, **không** thêm tính năng sản phẩm.
+CHƯA MỞ       : **K4' bước 3** — chưa mở triển khai (được chuẩn bị kế hoạch, không sửa mã nền
+                tảng mới). **K5'** — chưa mở triển khai tiếp; kết quả M2 giữ nguyên phạm vi
+                host-testable. **Phát hành v2.0** — chưa phê duyệt.
+NỢ / BLOCKED  : **BLOCKED=0**. Nợ **không chặn**: K4' chưa đạt (mới bước 1–2); K5' chưa mở;
+                **N1 "600 boot x86_64" ở K5'** (D2-149) — **chưa** đóng toàn bộ; C3 aarch64
+                (28/31 stub host chưa kiểm); **DEBT-KT227-1** (`v2/lib` ngoài luật token lớp 1 —
+                không nguy hiểm); B4b `#[cfg(any())] mod`; B17 OUT_DIR; `:expr` passthrough;
+                `virtio_` tiền tố tên tệp; bash 3.2 SIGTRAP/SIGSEGV đã vá (KT-207, KT-221) nhưng
+                gốc cần bash ≥ 4.
+=== HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
 ## KT-64a — đồng bộ sim theo D2-89/D2-90 + parity `TlbFlush` (D2-92c)
