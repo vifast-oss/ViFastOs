@@ -128,6 +128,29 @@ fn so_seed_hai_lan(seeds: u64) -> u64 {
     }
 }
 
+/// **KT-242** — `VIFAST_L1_DIGEST=1` in thêm **dấu vân tay trace** của lượt chạy
+/// (`# L1 DIGEST: ...`). Mặc định **tắt** (không đặt env ⇒ không tốn gì, hành vi y nguyên).
+///
+/// Vì sao cần: hợp đồng K6 đòi "cùng seed ⇒ cùng trace" ở mức 400k seed, nhưng log hiện chỉ có
+/// bộ đếm tổng (`ipc_sent`, `vm map`, …) — **không** đủ để chứng minh **hai bản mã** cho ra
+/// **cùng** trace. Digest là **XOR 64-bit** của `trace_hash` **từng seed**, nên so digest cũ/mới
+/// là so **toàn bộ** trace, không phải mẫu.
+///
+/// Digest **không** phải ngưỡng cổng: không assert trên nó, không thay `assert_eq!(a, b)` của
+/// kiểm tất định. Nó chỉ là **bằng chứng** để so hai lần chạy / hai bản mã.
+fn digest_bat() -> bool {
+    std::env::var_os("VIFAST_L1_DIGEST").is_some()
+}
+
+/// Trộn `trace_hash` của một seed vào digest đang chạy.
+///
+/// **XOR** (không nhân) là cố ý: XOR **giao hoán + kết hợp**, nên digest của **hợp các lô** =
+/// XOR digest từng lô. Nhờ vậy chứng minh được "chia lô không đổi kết quả" ở mức **trace**:
+/// `digest(0/1) == digest(0/4) ^ digest(1/4) ^ digest(2/4) ^ digest(3/4)`.
+fn digest_tron(digest: &mut u64, seed: u64, trace: &[String]) {
+    *digest ^= vifast_sim::trace_hash(trace) ^ seed;
+}
+
 /// `VIFAST_SEEDS` (mặc định `1000`); `0` ⇒ panic (không chạy rỗng để "xanh").
 fn seeds_tu_env() -> u64 {
     let raw = std::env::var("VIFAST_SEEDS").unwrap_or_else(|_| "1000".to_string());
@@ -137,6 +160,80 @@ fn seeds_tu_env() -> u64 {
         .unwrap_or_else(|_| panic!("VIFAST_SEEDS: '{raw}' không phải số"));
     assert!(n > 0, "VIFAST_SEEDS phải dương");
     n
+}
+
+/// **KT-242** — `VIFAST_SHARD=i/n` (mặc định `0/1` = **không** chia lô): tiến trình này chỉ chạy
+/// các seed `seed % n == i`.
+///
+/// Chia lô **không** đổi tập seed, **không** đổi `SO_OP`, **không** đổi bất biến, **không** đổi
+/// ngưỡng: mỗi tiến trình vẫn chạy **đủ** `SO_OP` op và kiểm **đủ** mọi bất biến sau **mỗi** op
+/// trên **mọi** seed của lô mình. Nó chỉ chia **việc** — đúng cách duy nhất giảm thời gian
+/// **wall** khi ~92 % thời gian L1 là kiểm bất biến (hồ sơ: `v2/agent/JOURNAL/kt242-l1-profile.md`).
+///
+/// Mặc định `0/1` ⇒ hành vi **y nguyên** (một tiến trình, toàn bộ seed, thứ tự seed tăng dần).
+/// Sai cú pháp / `n = 0` / `i ≥ n` ⇒ panic rõ (không im lặng bỏ seed).
+fn shard_tu_env() -> (u64, u64) {
+    let raw = std::env::var("VIFAST_SHARD").unwrap_or_else(|_| "0/1".to_string());
+    let (a, b) = raw
+        .split_once('/')
+        .unwrap_or_else(|| panic!("VIFAST_SHARD: '{raw}' phải có dạng i/n (ví dụ 0/4)"));
+    let i: u64 = a
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("VIFAST_SHARD: '{a}' không phải số"));
+    let n: u64 = b
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("VIFAST_SHARD: '{b}' không phải số"));
+    assert!(n > 0, "VIFAST_SHARD: n phải dương (nhận '{raw}')");
+    assert!(i < n, "VIFAST_SHARD: i phải < n (nhận '{raw}')");
+    (i, n)
+}
+
+/// Số seed của lô `i/n` trong `0..seeds` — dùng cho ngưỡng **tổng mỗi smp** (ngưỡng vẫn là
+/// `5 × số_seed_của_lô`, tức **cùng** ngưỡng trên mỗi seed; chia lô không nới ngưỡng).
+fn so_seed_cua_lo(seeds: u64, i: u64, n: u64) -> u64 {
+    if i >= seeds {
+        0
+    } else {
+        (seeds - i).div_ceil(n)
+    }
+}
+
+/// **KT-242** — chia lô phủ **đúng** tập seed: hợp các lô `0..n` = `0..seeds`, **không sót,
+/// không trùng**. Đây là bất biến của `VIFAST_SHARD`: công thức sai ⇒ **mất seed** mà mỗi lô vẫn
+/// "xanh" — đúng lớp lỗi xanh-giả mà `v2/tools/check-test-teeth.py` (KT-163) sinh ra để chặn.
+///
+/// Tên **không** chứa `l1_` và **không** chứa `driver_smp` nên **không** lọt vào bộ lọc của
+/// `gate --fast` (`l1_`) hay `nightly --l1` (`driver_smp`) — nó chạy ở `cargo test` thường.
+#[test]
+fn shard_phu_dung_tap_seed() {
+    for seeds in [1u64, 2, 7, 999, 1_000, 10_000] {
+        for n in 1u64..=9 {
+            let mut tong = 0u64;
+            for i in 0..n {
+                tong += so_seed_cua_lo(seeds, i, n);
+            }
+            assert_eq!(
+                tong, seeds,
+                "seeds {seeds} n {n}: hợp các lô = {tong} ≠ {seeds} (sót hoặc trùng seed)"
+            );
+        }
+    }
+    // Lô rỗng khi `i >= seeds` — driver phải panic, **không** được coi là xanh.
+    assert_eq!(so_seed_cua_lo(10, 10, 4), 0, "i >= seeds phải là lô rỗng");
+    // Lô cuối nhỏ hơn: 10 seed chia 4 ⇒ lô 3 = {3, 7}.
+    assert_eq!(
+        so_seed_cua_lo(10, 3, 4),
+        2,
+        "lô 3/4 của 10 seed là {{3, 7}}"
+    );
+    // Chia 1 lô = toàn bộ seed (mặc định `0/1`).
+    assert_eq!(
+        so_seed_cua_lo(1_000, 0, 1),
+        1_000,
+        "0/1 phải là toàn bộ seed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -837,14 +934,29 @@ fn driver_smp_cung_seed_cung_trace() {
     let smps = smp_tu_env();
     let seeds = seeds_tu_env();
     let doi = so_seed_hai_lan(seeds);
+    let digest_bat = digest_bat();
+    let (shard_i, shard_n) = shard_tu_env();
+    let so_seed = so_seed_cua_lo(seeds, shard_i, shard_n);
+    assert!(
+        so_seed > 0,
+        "VIFAST_SHARD {shard_i}/{shard_n}: lô rỗng (seeds = {seeds}) — giảm n hoặc tăng seeds; \
+         lô rỗng KHÔNG được coi là xanh"
+    );
+    if shard_n > 1 {
+        println!(
+            "# L1 SHARD: {shard_i}/{shard_n} — {so_seed}/{seeds} seed (seed % {shard_n} == {shard_i}); \
+             mỗi seed vẫn {SO_OP} op + đủ bất biến sau mỗi op"
+        );
+    }
     let mut tong = 0u64;
     for &harts in &smps {
+        let mut digest: u64 = 0;
         let mut ipc_sent = 0u64;
         let mut ipc_delivered = 0u64;
         let mut ipc_dropped = 0u64;
-        let mut sent_moi_seed: Vec<u64> = Vec::with_capacity(seeds as usize);
+        let mut sent_moi_seed: Vec<u64> = Vec::with_capacity(so_seed as usize);
         let mut vm_tong = VmDem::default();
-        for seed in 0..seeds {
+        for seed in (shard_i..seeds).step_by(shard_n as usize) {
             let (a, sent_a, del_a, dr_a, vm_a) = mot_luot(seed, harts, SO_OP);
             if seed < doi {
                 let (b, sent_b, del_b, dr_b, vm_b) = mot_luot(seed, harts, SO_OP);
@@ -857,6 +969,9 @@ fn driver_smp_cung_seed_cung_trace() {
                     (sent_b, del_b, dr_b, vm_b),
                     "smp {harts} seed {seed}: cùng seed phải cùng bộ đếm IPC/VM"
                 );
+            }
+            if digest_bat {
+                digest_tron(&mut digest, seed, &a);
             }
             assert_eq!(a.len(), SO_OP, "smp {harts} seed {seed}: thiếu op");
             assert!(
@@ -882,11 +997,11 @@ fn driver_smp_cung_seed_cung_trace() {
         if !cfg!(miri) {
             assert!(
                 ipc_delivered > 0,
-                "smp {harts}: tổng ipc_delivered = 0 trên {seeds} seed — driver không giao message nào"
+                "smp {harts}: tổng ipc_delivered = 0 trên {so_seed} seed — driver không giao message nào"
             );
             assert!(
-                ipc_sent > seeds * 5,
-                "smp {harts}: tổng ipc_sent = {ipc_sent} ≤ 5 × {seeds} — 64 op không sinh đủ message (C1)"
+                ipc_sent > so_seed * 5,
+                "smp {harts}: tổng ipc_sent = {ipc_sent} ≤ 5 × {so_seed} — 64 op không sinh đủ message (C1)"
             );
             // **KT-43**: driver phải **thật sự** đi qua VM — map/walk/unmap/fault/shootdown đều
             // có xảy ra ở mức tổng mỗi smp (một seed đơn lẻ có thể không gặp nhánh nào — không
@@ -909,9 +1024,22 @@ fn driver_smp_cung_seed_cung_trace() {
             .copied()
             .unwrap_or(0);
         println!(
-            "# L1 OK: smp {harts}, {seeds} seed × {SO_OP} op ({doi} seed đầu chạy 2 lần; ipc_min {ipc_min}, ipc_median {ipc_median}; ipc_sent {ipc_sent}, ipc_delivered {ipc_delivered}, ipc_dropped {ipc_dropped}; vm map {}, walk {}, unmap {}, fault {}, shootdown {})",
+            "# L1 OK: smp {harts}, {so_seed} seed × {SO_OP} op ({doi} seed đầu chạy 2 lần; ipc_min {ipc_min}, ipc_median {ipc_median}; ipc_sent {ipc_sent}, ipc_delivered {ipc_delivered}, ipc_dropped {ipc_dropped}; vm map {}, walk {}, unmap {}, fault {}, shootdown {})",
             vm_tong.map, vm_tong.walk, vm_tong.unmap, vm_tong.fault, vm_tong.shootdown
         );
+        if digest_bat {
+            println!(
+                "# L1 DIGEST: smp {harts} shard {shard_i}/{shard_n} seeds {so_seed} digest {digest:016x} (XOR 64-bit của trace_hash từng seed — giao hoán nên gộp lô được)"
+            );
+        }
     }
-    println!("# L1 OK: {} lượt (smp {smps:?}, seeds {seeds})", tong);
+    // Mặc định (`0/1`) in **y nguyên** như trước KT-242 — chỉ thêm phần lô khi thật sự chia.
+    if shard_n > 1 {
+        println!(
+            "# L1 OK: {} lượt (smp {smps:?}, seeds {seeds}, lô {shard_i}/{shard_n})",
+            tong
+        );
+    } else {
+        println!("# L1 OK: {} lượt (smp {smps:?}, seeds {seeds})", tong);
+    }
 }
