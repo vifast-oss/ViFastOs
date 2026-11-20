@@ -51,9 +51,13 @@ pub mod asm;
 pub mod boot;
 pub mod calling;
 pub mod control;
+pub mod exc;
 pub mod format;
+pub mod gdt;
+pub mod idt;
 pub mod mmu;
 pub mod serial;
+pub mod tss;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);
@@ -76,6 +80,15 @@ pub use control::{
     MSR_IA32_FMASK, MSR_IA32_FS_BASE, MSR_IA32_GS_BASE, MSR_IA32_KERNEL_GS_BASE, MSR_IA32_LSTAR,
     MSR_IA32_PAT, MSR_IA32_STAR,
 };
+pub use exc::{
+    has_error_code, name as exc_name, stub_slot, ERROR_CODE_VECTORS, FRAME_CS_OFFSET,
+    FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
+    FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
+    PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
+    STUB_GP, STUB_NP, STUB_PF, STUB_SS, STUB_SX, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC,
+    VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF, VEC_SS, VEC_SX, VEC_TS, VEC_UD,
+    VEC_UNKNOWN, VEC_VC,
+};
 pub use format::{
     is_canonical_bits, Descriptor, MemAttr, PageTableFormat, Perms, Shareability, IA32_PAT_DEFAULT,
     PTE_ACCESSED, PTE_ADDR_MASK, PTE_ADDR_SHIFT, PTE_DIRTY, PTE_GLOBAL, PTE_NX, PTE_PAT,
@@ -83,7 +96,25 @@ pub use format::{
     X86_64, X86_64_ENTRIES, X86_64_INDEX_BITS, X86_64_LEVELS, X86_64_MAX_VA_BITS, X86_64_PAGE_BITS,
     X86_64_PAGE_BYTES, X86_64_PA_BITS, X86_64_VA_BITS,
 };
+pub use gdt::{
+    gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code, gdt_user_data, tss_descriptor,
+    tss_descriptor_type, ACCESS_KERNEL_CODE, ACCESS_KERNEL_DATA, ACCESS_USER_CODE,
+    ACCESS_USER_DATA, FLAGS_DATA, FLAGS_LONG_CODE, GDT_BYTES, GDT_ENTRIES, GDT_KERNEL_CODE,
+    GDT_KERNEL_DATA, GDT_LIMIT, GDT_NULL, GDT_USER_CODE, GDT_USER_DATA, INDEX_KERNEL_CODE,
+    INDEX_KERNEL_DATA, INDEX_NULL, INDEX_TSS, INDEX_USER_CODE, INDEX_USER_DATA, RPL_USER,
+    SELECTOR_KERNEL_CODE, SELECTOR_KERNEL_DATA, SELECTOR_TSS, SELECTOR_USER_CODE,
+    SELECTOR_USER_CODE_RPL3, SELECTOR_USER_DATA, SELECTOR_USER_DATA_RPL3, TSS_TYPE_AVAILABLE_64,
+    TSS_TYPE_BUSY_64,
+};
+pub use idt::{
+    entry as idt_entry, entry_ist, entry_offset, entry_selector, entry_type_attr, GATE_INTERRUPT,
+    GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES, IDT_LIMIT, IST_DOUBLE_FAULT,
+};
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, X86Mmu,
     MAX_LEVELS,
+};
+pub use tss::{
+    TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET, TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE,
+    TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
 };

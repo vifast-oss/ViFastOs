@@ -114,36 +114,25 @@ pub const LONG_MODE_EFER_CHECK: u64 = EFER_LMA;
 /// MSR `IA32_EFER` — asm `wrmsr`/`rdmsr` cùng một địa chỉ.
 pub const LONG_MODE_EFER_MSR: u32 = MSR_IA32_EFER;
 
-/// GDT entry 0: null descriptor (bắt buộc).
-pub const GDT_NULL: u64 = 0;
+// ---------------------------------------------------------------------------------------------
+// GDT — **chuyển** sang `crate::gdt` (KT-261) và re-export để asm của ảnh không đổi
+// ---------------------------------------------------------------------------------------------
+//
+// KT-257 để GDT tối thiểu (3 entry) ngay trong tệp này. KT-261 mở rộng thành GDT **thật** 7 entry
+// (thêm user code/data + descriptor TSS 16 byte) nên toàn bộ hình học GDT chuyển sang
+// [`crate::gdt`] — một nguồn sự thật, có test host riêng. Hai tên dưới giữ nguyên cho asm của
+// `_start` (đường boot 32-bit) đang dùng.
 
-/// Dựng descriptor 64-bit từ `access` (bit 40..47) và `flags` (bit 52..55).
-///
-/// Base và limit đều 0: ở long mode phân đoạn bị bỏ qua (base = 0, limit = 4 GiB), nên descriptor
-/// chỉ cần đúng `access` + `L`.
-pub const fn gdt_descriptor(access: u8, flags: u8) -> u64 {
-    ((flags as u64) << 52) | ((access as u64) << 40)
-}
+pub use crate::gdt::{
+    gdt_descriptor, gdt_kernel_code, gdt_kernel_data, GDT_KERNEL_CODE, GDT_KERNEL_DATA, GDT_NULL,
+};
 
-/// GDT entry 1: code 64-bit — access `0x9A` (P=1, DPL=0, S=1, code/exec/read), flags `0x2`
-/// (`L = 1`, `D/B = 0`, `G = 0`).
-pub const fn gdt_kernel_code() -> u64 {
-    gdt_descriptor(0x9A, 0x2)
-}
-
-/// GDT entry 2: data — access `0x92` (P=1, DPL=0, S=1, data/write), flags `0x0`.
-pub const fn gdt_kernel_data() -> u64 {
-    gdt_descriptor(0x92, 0x0)
-}
-
-/// Selector đoạn code 64-bit trong GDT của ảnh (`entry 1 × 8`).
-pub const GDT_KERNEL_CODE: u64 = gdt_kernel_code();
-/// Selector đoạn data trong GDT của ảnh (`entry 2 × 8`).
-pub const GDT_KERNEL_DATA: u64 = gdt_kernel_data();
-/// Selector `CS` sau `ljmp` (index 1, RPL 0).
-pub const SELECTOR_CODE: u16 = 0x08;
-/// Selector `DS/ES/SS` sau khi vào long mode (index 2, RPL 0).
-pub const SELECTOR_DATA: u16 = 0x10;
+/// Selector `CS` sau `ljmp` (index 1, RPL 0) — tên của **đường boot** cho
+/// [`crate::gdt::SELECTOR_KERNEL_CODE`].
+pub const SELECTOR_CODE: u16 = crate::gdt::SELECTOR_KERNEL_CODE;
+/// Selector `DS/ES/SS` sau khi vào long mode (index 2, RPL 0) — tên của **đường boot** cho
+/// [`crate::gdt::SELECTOR_KERNEL_DATA`].
+pub const SELECTOR_DATA: u16 = crate::gdt::SELECTOR_KERNEL_DATA;
 
 // ---------------------------------------------------------------------------------------------
 // Multiboot2 header (dự phòng GRUB) — 24 byte, đặt ở đầu `.text`

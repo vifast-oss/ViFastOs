@@ -54,6 +54,11 @@ SECTIONS
 
     .data : ALIGN(4K) {
         *(.data .data.*)
+        /* KT-261: GOT **phải** được giữ. `stub_addr` (crate plat) tham chiếu stub asm qua
+           `extern "C"`, và rustc phát sinh tham chiếu GOT-gián-tiếp cho symbol ngoài crate ⇒
+           bỏ `.got` đi thì mọi entry thành địa chỉ 0 (đo được: `movq 0x0(%rip)` / `callq *0x0`). */
+        *(.got)
+        *(.got.plt)
     }
 
     .bss : ALIGN(4K) {
@@ -77,7 +82,5 @@ SECTIONS
         *(.eh_frame)
         *(.comment)
         *(.note.GNU-stack)
-        *(.got)
-        *(.got.plt)
     }
 }

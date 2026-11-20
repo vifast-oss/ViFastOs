@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# KT-257 — runner boot **x86_64** (K5' bước 1). Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh`
-# (KT-78: process group + timeout + dọn con).
+# KT-257 (K5' bước 1) + **KT-261** (K5' bước 2: GDT/TSS/IDT + handler exception) — runner boot
+# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout
+# + dọn con).
 #
 # Việc runner làm, theo thứ tự:
 #   1. **build** ảnh `vifast-kbin-x86_64` cho `x86_64-unknown-none` (release);
@@ -10,20 +11,27 @@
 #      tag; **PVH note** (`.note.Xen`, type 18) trỏ đúng `_start` — đây là đường QEMU 11.1.3
 #      thật sự dùng cho `-kernel` (xem đầu `linker.ld`);
 #   3. **boot** QEMU `-m 128M -nographic -kernel <ELF> -no-reboot` qua `qemu_guard.sh`, kiểm
-#      marker **đúng một lần**, `lma=1` (long mode thật), dòng `halt`, không `PANIC`;
+#      **TAP** (`TAP version 13`, `1..N`, đủ N dòng `ok`, 0 dòng `not ok`), marker **đúng một
+#      lần**, `lma=1` (long mode thật), dòng `halt`, không `PANIC`, **và** các dòng `# exc:` của
+#      KT-261: đúng **5** exception, đúng vector + mã lỗi + `cs`, `#PF` có `cr2` đúng;
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
-#      (e) marker in **hai** lần. Cả năm phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261).
+#      Cả bảy phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
+#   EXPECT_TESTS    số ca TAP (mặc định 7 — KT-261: gdt/idt loaded + int3/ud2/#PF/#GP/unknown)
+#   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
+#   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
 #
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
-# runner này chỉ là **bước 1** (một ảnh, một CPU, marker + halt sạch).
+# runner này là **bước 1 + bước 2** (một ảnh, một CPU, GDT/TSS/IDT + 5 exception, marker + halt
+# sạch). **Không** APIC/timer/U-mode/PCI/SMP.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +44,10 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run-aarch64.sh`)
 LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
+# KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
+EXPECT_TESTS="${EXPECT_TESTS:-7}"
+EXPECT_EXC="${EXPECT_EXC:-5}"
+EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
 # 24 byte multiboot2 header (magic, arch=0, len=24, checksum, end tag {0,0,8}) — hex little-endian.
 MB2_HEX="d65052e8000000001800000012afad170000000008000000"
@@ -189,14 +201,87 @@ check_elf() {
 }
 
 # ---------------------------------------------------------------- kiểm log của một lần boot
-# `check_log <log> <marker>`: 0 ⇔ log đạt. In lý do đỏ ra stdout.
+# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:`. In lý do đỏ ra stdout.
+#
+# KT-261 thêm **ba** lớp kiểm mới, mỗi lớp bắt một lớp lỗi khác nhau:
+#
+#   1. **TAP** — ảnh phải phát `TAP version 13`, plan `1..N`, **đủ** N dòng `ok i - `, **0** dòng
+#      `not ok`. Một ca kiểm trong ảnh sai ⇒ runner đỏ, không chỉ log.
+#   2. **`# exc:`** — đúng `EXPECT_EXC` dòng, và **từng vector** phải có mặt với mã lỗi đúng:
+#      `#BP` 3/err 0, `#UD` 6/err 0, `#PF` 14/err 0 + `cr2` đúng, `#GP` 13/err 0x38 (selector
+#      ngoài GDT), `isr_unknown` 255/err 0. Đây là bằng chứng **handler chạy thật** với **đúng**
+#      vector — không phải chỉ "ảnh in được một dòng nào đó".
+#   3. **`cs=0x8`** — exception đến từ kernel code, không phải từ một selector rác.
 check_log() {
-    local log="$1" marker="$2" bad=0 mn
+    local log="$1" marker="$2" tests="$3" bad=0 mn okn notn i excn
 
     [ -f "$log" ] || {
         echo "# không có log $log"
         return 1
     }
+    # ---- TAP
+    grep -qx 'TAP version 13' "$log" || {
+        echo "# thiếu dòng 'TAP version 13'"
+        bad=1
+    }
+    grep -qx "1\.\.$tests" "$log" || {
+        echo "# thiếu plan '1..$tests'"
+        bad=1
+    }
+    okn="$(grep -c '^ok [0-9][0-9]* - ' "$log" || true)"
+    notn="$(grep -c '^not ok ' "$log" || true)"
+    if [ "${okn:-0}" -ne "$tests" ]; then
+        echo "# có $okn dòng 'ok', cần $tests"
+        bad=1
+    fi
+    if [ "${notn:-0}" -ne 0 ]; then
+        echo "# có $notn dòng 'not ok'"
+        bad=1
+    fi
+    i=1
+    while [ "$i" -le "$tests" ]; do
+        grep -q "^ok $i - " "$log" || {
+            echo "# thiếu 'ok $i - ...'"
+            bad=1
+        }
+        i=$((i + 1))
+    done
+    # ---- KT-261: dòng `# exc:` — đúng số lượng + đúng vector/mã lỗi/`cs`
+    excn="$(grep -c '^# exc: vec=' "$log" || true)"
+    if [ "${excn:-0}" -ne "$EXPECT_EXC" ]; then
+        echo "# có $excn dòng '# exc: vec=', cần $EXPECT_EXC"
+        bad=1
+    fi
+    # `#BP` (int3): vector 3, không mã lỗi.
+    grep -qE '^# exc: vec=3 err=0x0 rip=0x[0-9a-f]+ cs=0x8 rflags=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# exc: vec=3 err=0x0 … cs=0x8' (int3)"
+        bad=1
+    }
+    # `#UD` (ud2): vector 6, không mã lỗi.
+    grep -qE '^# exc: vec=6 err=0x0 rip=0x[0-9a-f]+ cs=0x8 rflags=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# exc: vec=6 err=0x0 … cs=0x8' (ud2)"
+        bad=1
+    }
+    # `#PF`: vector 14, `P = 0` (err 0x0 khi đọc địa chỉ chưa map), `cr2` đúng địa chỉ đã đọc.
+    grep -qE '^# exc: vec=14 err=0x0 rip=0x[0-9a-f]+ cs=0x8 rflags=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# exc: vec=14 err=0x0 … cs=0x8' (page fault)"
+        bad=1
+    }
+    grep -qxF "# exc: cr2=$EXPECT_PF_ADDR" "$log" || {
+        echo "# thiếu '# exc: cr2=$EXPECT_PF_ADDR' (CR2 của #PF)"
+        bad=1
+    }
+    # `#GP`: vector 13, mã lỗi = selector ngoài GDT (`0x38`).
+    grep -qE '^# exc: vec=13 err=0x38 rip=0x[0-9a-f]+ cs=0x8 rflags=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# exc: vec=13 err=0x38 … cs=0x8' (gp)"
+        bad=1
+    }
+    # `isr_unknown`: sentinel 255 — mọi vector không có stub riêng vẫn **thấy được**.
+    grep -qE '^# exc: vec=255 err=0x0 rip=0x[0-9a-f]+ cs=0x8 rflags=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# exc: vec=255 err=0x0 … cs=0x8' (isr_unknown)"
+        bad=1
+    }
+    # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
     if [ "${mn:-0}" -ne 1 ]; then
@@ -228,11 +313,12 @@ selftest_negative() {
     local tmp="$LOGDIR/selftest"
     n=$((start - 1))
     mkdir -p "$tmp" 2>/dev/null || true
+    # `check_log` giờ cần số ca TAP — ca âm dùng **đúng** kỳ vọng của lượt chạy thật.
 
     # (a) marker sai
     n=$((n + 1))
     cases=$((cases + 1))
-    if check_log "$good" "# viFastOs x86_64: boot BAD" >"$tmp/a.log" 2>&1; then
+    if check_log "$good" "# viFastOs x86_64: boot BAD" "$EXPECT_TESTS" >"$tmp/a.log" 2>&1; then
         echo "not ok $n - ca âm (a): marker sai mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
@@ -245,7 +331,7 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     if [ -f "$LOGDIR/boot-bad.log" ]; then
-        if check_log "$LOGDIR/boot-bad.log" "$EXPECT_MARKER" >"$tmp/b.log" 2>&1; then
+        if check_log "$LOGDIR/boot-bad.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/b.log" 2>&1; then
             echo "not ok $n - ca âm (b): ảnh marker sai mà kiểm vẫn XANH"
             fails=$((fails + 1))
         else
@@ -260,7 +346,7 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     grep -vF "$EXPECT_MARKER" "$good" >"$tmp/c.log" 2>/dev/null || true
-    if check_log "$tmp/c.log" "$EXPECT_MARKER" >"$tmp/c.out" 2>&1; then
+    if check_log "$tmp/c.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/c.out" 2>&1; then
         echo "not ok $n - ca âm (c): mất marker mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
@@ -271,7 +357,7 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     : >"$tmp/d.log"
-    if check_log "$tmp/d.log" "$EXPECT_MARKER" >"$tmp/d.out" 2>&1; then
+    if check_log "$tmp/d.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/d.out" 2>&1; then
         echo "not ok $n - ca âm (d): log rỗng mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
@@ -282,11 +368,36 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     { cat "$good"; printf '%s\n' "$EXPECT_MARKER"; } >"$tmp/e.log" 2>/dev/null || true
-    if check_log "$tmp/e.log" "$EXPECT_MARKER" >"$tmp/e.out" 2>&1; then
+    if check_log "$tmp/e.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/e.out" 2>&1; then
         echo "not ok $n - ca âm (e): marker 2 lần mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (e): marker 2 lần ⇒ ĐỎ ($(head -1 "$tmp/e.out"))"
+    fi
+
+    # (f) **mất dòng `# exc:`** (KT-261) — ảnh không chạy handler exception (hoặc handler im lặng).
+    #     Đây là ca âm trực tiếp của tiêu chí "in `# exc: vec=…`": nếu runner vẫn XANH khi log
+    #     không có một dòng `# exc:` nào thì toàn bộ phần KT-261 của bộ kiểm là dấu cao su.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -v '^# exc: ' "$good" >"$tmp/f.log" 2>/dev/null || true
+    if check_log "$tmp/f.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/f.out" 2>&1; then
+        echo "not ok $n - ca âm (f): mất dòng '# exc:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (f): mất dòng '# exc:' ⇒ ĐỎ ($(head -1 "$tmp/f.out"))"
+    fi
+
+    # (g) **sai vector** (KT-261) — `#BP` in thành `vec=4`. Bắt lớp lỗi "handler chạy nhưng đọc
+    #     sai vector" (ví dụ stub đẩy nhầm số): log vẫn có `# exc:` và TAP vẫn đủ, chỉ vector sai.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# exc: vec=3 /# exc: vec=4 /' "$good" >"$tmp/g.log" 2>/dev/null || true
+    if check_log "$tmp/g.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/g.out" 2>&1; then
+        echo "not ok $n - ca âm (g): sai vector mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (g): sai vector ⇒ ĐỎ ($(head -1 "$tmp/g.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
@@ -343,8 +454,8 @@ while [ "$i" -le "$N_BOOT" ]; do
         i=$((i + 1))
         continue
     fi
-    if check_log "$out" "$EXPECT_MARKER" >"$LOGDIR/log-$i.log" 2>&1; then
-        echo "ok $total - boot $i: marker 1 lần + lma=1 + halt sạch"
+    if check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$LOGDIR/log-$i.log" 2>&1; then
+        echo "ok $total - boot $i: TAP $EXPECT_TESTS/$EXPECT_TESTS + $EXPECT_EXC dòng '# exc:' + marker 1 lần + halt sạch"
     else
         echo "not ok $total - boot $i: $(head -3 "$LOGDIR/log-$i.log" | tr '\n' ' '), log $out"
         fails=$((fails + 1))
@@ -378,10 +489,10 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 5))
+    total=$((total + 7))
 fi
 
-echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT)"
+echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"
 echo "# infra: guard_log=$QG_LOG qemu_own=$(qg_own)"
 [ "$fails" -eq 0 ] || exit 1
 exit 0
