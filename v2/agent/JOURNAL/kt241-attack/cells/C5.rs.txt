@@ -1,0 +1,8 @@
+// KT-241 C5 — `#[cfg(any())] mod` (cfg không bao giờ đúng) che module chứa `wake`.
+// Kỳ vọng: cargo OK (module không được biên dịch); lớp 1 ĐỎ `E_STRICT_TEST_ONLY_WAKE`
+// (lớp 1 quét mọi nhánh cfg); lớp 2 XANH — giới hạn đã biết: lớp 2 chỉ thấy tệp rustc nạp.
+use crate::{Machine, ObjId};
+
+pub fn evil(m: &mut Machine, t: ObjId) {
+    let _ = m.wake(t);
+}

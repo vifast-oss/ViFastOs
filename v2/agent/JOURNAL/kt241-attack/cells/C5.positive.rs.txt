@@ -1,0 +1,4 @@
+// KT-241 C5 — đối chứng dương: `#[cfg(any())] mod` trỏ tệp lành ⇒ XANH.
+pub fn ok() -> u32 {
+    0
+}

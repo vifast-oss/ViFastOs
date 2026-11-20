@@ -1,0 +1,10 @@
+// KT-241 B1 — đối chứng dương: helper nhận `NonReadyTarget` ⇒ XANH.
+use crate::{Machine, NonReadyTarget, ObjId};
+
+fn helper(m: &mut Machine, t: ObjId, s: NonReadyTarget) {
+    let _ = m.transition_tcb(t, s);
+}
+
+pub fn positive(m: &mut Machine, t: ObjId) {
+    helper(m, t, NonReadyTarget::Inactive);
+}

@@ -1,0 +1,6 @@
+// KT-241 E6 — đối chứng dương: không `unsafe`, chỉ dựng `NonReadyTarget` hợp lệ ⇒ XANH.
+use crate::NonReadyTarget;
+
+pub fn positive() -> NonReadyTarget {
+    NonReadyTarget::Running { hart: 0 }
+}

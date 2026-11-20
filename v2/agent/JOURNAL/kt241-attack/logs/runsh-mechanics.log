@@ -1,0 +1,47 @@
+== KT-241 run.sh mechanics trên fake repo /tmp/kt241-fake (mock API + checker stub) ==
+date: 2026-11-20T11:55:15+09:00
+
+--- preflight ---
+PASS  v2/bin/v2
+PASS  cargo cargo 1.99.1 (5f94df478 2026-08-27)
+== PREFLIGHT PASS ==
+
+--- group A ---
+A1  A  core      101    E0308          0      -              0      -              skip   skip           PASS   PASS
+A2  A  core      101    E0308          0      -              0      -              skip   skip           PASS   PASS
+A3  A  core      101    E0308,E0631    0      -              0      -              skip   skip           PASS   PASS
+A4  A  core      101    E0308          0      -              0      -              skip   skip           PASS   PASS
+== TỔNG: 4 ô | PASS=4 FAIL=0 ERROR=0 ==
+
+--- từng kind (setup/restore) ---
+B2  B  core2     101    E0308          0      -              0      -              skip   skip           PASS   PASS
+== TỔNG: 1 ô | PASS=1 FAIL=0 ERROR=0 ==
+C2  C  core      0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+C3  C  path      0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+C4  C  buildrs   0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+D2  D  space     0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+D3  D  targetdir 0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+C5  C  cfg       0      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+E7  E  mutate    -      -              0      -              0      -              skip   skip           PASS   FAIL
+== TỔNG: 1 ô | PASS=0 FAIL=1 ERROR=0 ==
+
+Ghi chú: checker là stub luôn XANH ⇒ các ô cần ĐỎ báo FAIL đúng dự kiến;
+mục đích của log này là kiểm CƠ CHẾ chèn/khôi phục, không phải nghiệm thu.
+
+--- full --all trên fake repo (sau khi vá create_dir + D5 positive_kind) ---
+
+== TỔNG: 27 ô | PASS=15 FAIL=12 ERROR=0 ==
+kết quả: /tmp/kt241-fake/v2/agent/JOURNAL/kt241-attack/results/current.tsv
+log: /tmp/kt241-fake/v2/agent/JOURNAL/kt241-attack/logs/<ID>/
+
+--- restore sau --all ---
+v2/extra removed
+v2/kernel/vifast-core/src
+0
+0

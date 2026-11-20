@@ -1,0 +1,4 @@
+// KT-241 D3 — thư mục tên `target` TRONG `src/` (WB-12).
+// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_TEST_ONLY_WAKE` (sau KT-215 `src/target` KHÔNG
+// phải thư mục build); lớp 2 ĐỎ `E_DEPINFO_WAKE`.
+mod evil;

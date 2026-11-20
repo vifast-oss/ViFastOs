@@ -1,0 +1,7 @@
+// KT-241 B2 — helper ở TỆP KHÁC nhận `TcbState`.
+// Kỳ vọng: compiler E0308 tại thân helper (tệp kt241_b2_helper.rs).
+use crate::{Machine, ObjId, TcbState};
+
+pub fn attack(m: &mut Machine, t: ObjId) {
+    crate::kt241_b2_helper::helper(m, t, TcbState::Ready);
+}

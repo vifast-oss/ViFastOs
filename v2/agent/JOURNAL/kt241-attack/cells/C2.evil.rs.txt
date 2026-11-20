@@ -1,0 +1,6 @@
+// KT-241 C2 — tệp được `include!` (nằm trong `src/`, là mã sản phẩm).
+use crate::{Machine, ObjId};
+
+pub fn evil(m: &mut Machine, t: ObjId) {
+    let _ = m.wake(t);
+}

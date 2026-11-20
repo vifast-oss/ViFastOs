@@ -1,0 +1,19 @@
+// KT-241 C4 — `build.rs` ghi mã vào `$OUT_DIR` rồi `include!` không literal.
+// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_WAKE_INCLUDE` (include! không literal);
+// lớp 2 ĐỎ `E_DEPINFO_WAKE` (tệp sinh trong OUT_DIR của crate được bảo vệ).
+// Lưu ý: mã sinh được `include!` ở GỐC crate ⇒ dùng đường dẫn đầy đủ `crate::Machine`,
+// KHÔNG `use crate::{Machine, ObjId};` (sẽ trùng tên với định nghĩa ở gốc — E0255).
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+const EVIL: &str = r#"
+pub fn evil(m: &mut crate::Machine, t: crate::ObjId) {
+    let _ = m.wake(t);
+}
+"#;
+
+fn main() {
+    let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    fs::write(out.join("evil.rs"), EVIL).expect("write evil.rs");
+}

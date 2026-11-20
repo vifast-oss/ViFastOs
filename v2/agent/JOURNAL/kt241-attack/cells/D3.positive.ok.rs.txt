@@ -1,0 +1,4 @@
+// KT-241 D3 — module lành trong `src/target/`.
+pub fn ok() -> u32 {
+    0
+}

@@ -1,0 +1,11 @@
+// KT-241 B4 — `const`/`static` kiểu `TcbState` mang `Ready`.
+// Kỳ vọng: compiler E0308 tại hai lời gọi.
+use crate::{Machine, ObjId, TcbState};
+
+const R: TcbState = TcbState::Ready;
+static S: TcbState = TcbState::Ready;
+
+pub fn attack(m: &mut Machine, t: ObjId) {
+    let _ = m.transition_tcb(t, R);
+    let _ = m.transition_tcb(t, S);
+}
