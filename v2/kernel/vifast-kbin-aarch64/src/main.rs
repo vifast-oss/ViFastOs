@@ -565,6 +565,12 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
     let _ = writeln!(console, "TAP version 13");
     let _ = writeln!(console, "1..{TAP_TESTS}");
 
+    // ---- **KT-265 / D2-80** — bằng chứng neo **ảnh**: `# conf image: build=<16 hex> text=<len>`
+    // (FNV-1a 64 trên `.text` **đã nạp**, khuôn riscv64). `soak-aarch64.sh` băm lại **cùng**
+    // section từ tệp ELF (`test/conformance/image_digest.py`) và **từ chối** log không có/lệch
+    // hash. In **trước** mọi ca kiểm: log của một boot hỏng vẫn phải trả lời được "ảnh nào".
+    vifast_plat_aarch64::image::report_image_digest();
+
     // ---- Ca 1: PL011 nạp đủ chuỗi khởi tạo (DDI 0183: tắt → chia tần → khung → xoá ngắt → bật).
     let steps = pl011::init();
     if !tap(

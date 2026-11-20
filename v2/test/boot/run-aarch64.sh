@@ -15,9 +15,11 @@
 # Dùng: bash v2/test/boot/run-aarch64.sh [NBOOT]
 #
 # **Ca âm chạy MẶC ĐỊNH** (không cần cờ): sau lần boot đầu, runner chạy lại **cùng** bộ kiểm
-# `check_log` trên log tốt với 5 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
-# sai, log rỗng) và đòi **cả 5 phải ĐỎ**. Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot
-# sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
+# `check_log` trên log tốt với 10 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
+# sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, thiếu dòng `# tlbi:`, thiếu ack
+# shootdown, **hash ảnh lệch ELF**) và đòi **cả 10 phải ĐỎ**. Nhờ vậy mỗi lần chạy runner vừa
+# chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
+# "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
@@ -42,6 +44,11 @@
 #
 # **Không** tuyên bố K4' đạt: K4' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000) — bước sau.
 # Runner này là B3.8 + B3.9 + **B3.6** (bốn hart, một ảnh, TAP 15 ca sau KT-262).
+#
+# **KT-265**: ảnh in thêm `# conf image: build=<16 hex> text=<len>` (FNV-1a 64 trên `.text` đã
+# nạp, D2-80) — runner băm lại **cùng** section từ ELF (`test/conformance/image_digest.py`) và
+# đòi log khớp **từng trường**; lệch/thiếu ⇒ boot đó ĐỎ. Đây là bất biến `soak-aarch64.sh` dùng
+# chung, nên runner và soak không thể lệch nhau về định nghĩa "ảnh nào".
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +56,8 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="aarch64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
+# KT-265: bản băm `.text` từ tệp ELF — nguồn đối chiếu của dòng `# conf image:` do kernel in.
+DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
@@ -254,8 +263,34 @@ check_tlbi() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm hash ảnh (KT-265 / D2-80)
+# `check_digest <log>`: 0 ⇔ log có **đúng một** `# conf image: build=<16 hex> text=<len>` và cả
+# hai trường khớp ELF đang chạy (`WANT_BUILD`/`WANT_TEXT` do `image_digest.py` băm từ tệp).
+# Đây là bất biến **neo ảnh**: sha256 tệp không chứng minh được đoạn mã **đang chạy** là đoạn mã
+# trong tệp; dòng kernel tự in thì chứng minh được.
+check_digest() {
+    local log="$1" bad=0 n got_build got_text
+    n="$(grep -cE '^# conf image: build=[0-9a-f]{16} text=[0-9]+$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# conf image:' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    got_build="$(sed -n 's/^# conf image: build=\([0-9a-f]*\) text=.*/\1/p' "$log" | head -1)"
+    got_text="$(sed -n 's/^# conf image: build=.* text=\([0-9]*\)$/\1/p' "$log" | head -1)"
+    if [ "$got_build" != "$WANT_BUILD" ]; then
+        echo "# image-build=${got_build:-none} lệch ELF ($WANT_BUILD)"
+        bad=1
+    fi
+    if [ "$got_text" != "$WANT_TEXT" ]; then
+        echo "# image-text=${got_text:-none} lệch ELF ($WANT_TEXT)"
+        bad=1
+    fi
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
-# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:`. In lý do đỏ ra stdout.
+# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
+# hash ảnh. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
     local okn notn mn i
@@ -302,6 +337,7 @@ check_log() {
     fi
     check_smp "$log" || bad=1
     check_tlbi "$log" || bad=1
+    check_digest "$log" || bad=1
     return "$bad"
 }
 
@@ -413,6 +449,18 @@ selftest_negative() {
         echo "ok $n - ca âm (i): thiếu ack shootdown ⇒ ĐỎ ($(head -1 "$tmp/i.out"))"
     fi
 
+    # (j) **KT-265** — hash ảnh trong log **lệch** ELF (ảnh khác/không tự khai đúng)
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# conf image: build=[0-9a-f]*/# conf image: build=ffffffffffffffff/' \
+        "$good" >"$tmp/j.log" 2>/dev/null || true
+    if check_log "$tmp/j.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/j.out" 2>&1; then
+        echo "not ok $n - ca âm (j): hash ảnh lệch ELF mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (j): hash ảnh lệch ELF ⇒ ĐỎ ($(head -1 "$tmp/j.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -443,6 +491,16 @@ if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$T
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
 
+# **KT-265 / D2-80** — hash ảnh mà kernel **tự in** phải khớp bản băm lại từ tệp ELF. Băm **cùng**
+# section `.text` bằng `image_digest.py` (cùng hằng FNV-1a 64 với `vifast_plat_aarch64::image`).
+command -v python3.12 >/dev/null 2>&1 || die "không có python3.12 (cần cho image_digest.py)"
+[ -f "$DIGEST" ] || die "không thấy $DIGEST"
+DIGEST_OUT="$(python3.12 "$DIGEST" "$IMAGE" 2>/dev/null)" || die "image_digest.py lỗi trên $IMAGE"
+WANT_BUILD="$(printf '%s\n' "$DIGEST_OUT" | sed -n 's/^build=\([0-9a-f]*\).*/\1/p')"
+WANT_TEXT="$(printf '%s\n' "$DIGEST_OUT" | sed -n 's/.* text=\([0-9]*\)$/\1/p')"
+[ -n "$WANT_BUILD" ] && [ -n "$WANT_TEXT" ] || die "không đọc được BUILD_ID từ $DIGEST_OUT"
+echo "# BUILD_ID (D2-80) = build=$WANT_BUILD text=$WANT_TEXT"
+
 fails=0
 total=0
 
@@ -468,7 +526,7 @@ while [ "$i" -le "$N_BOOT" ]; do
         continue
     fi
     if check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$LOGDIR/tap-$i.log" 2>&1; then
-        echo "ok $total - boot $i: TAP $EXPECT_TESTS/$EXPECT_TESTS + marker 1 lần"
+        echo "ok $total - boot $i: TAP $EXPECT_TESTS/$EXPECT_TESTS + marker 1 lần + hash ảnh khớp ELF"
     else
         echo "not ok $total - boot $i: $(head -3 "$LOGDIR/tap-$i.log" | tr '\n' ' '), log $out"
         fails=$((fails + 1))
@@ -485,7 +543,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 9))
+    total=$((total + 10))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

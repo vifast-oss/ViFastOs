@@ -100,6 +100,21 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # QEMU. Cùng lý do lịch sử của `persist.sh` ở trên. Task KT-263 **không** được thêm bước vào
     # `v2/bin/v2` (lead nối cổng ở bước tích hợp) ⇒ miễn trừ **tạm thời**, phải **xoá** khi lead
     # nối `gpu.sh` vào `gate --fast` (nếu để lại sẽ sinh `W_EXEMPT_UNUSED`).
+    #
+    # **KT-265 (D2-204)** — `v2/test/boot/soak-aarch64.sh` và `v2/test/boot/budget-aarch64.sh`:
+    # hai script **mới** của task KT-265, `--selftest` của chúng **không** cần QEMU (thuần bash,
+    # ~0,3 s) nhưng task bị cấm thêm bước vào `v2/bin/v2` — lead nối cổng ở bước tích hợp. Miễn
+    # trừ **tạm thời**: phải **xoá** hai mục này khi lead nối chúng vào `gate --fast`/`gate --dev`
+    # (để lại sẽ sinh `W_EXEMPT_UNUSED`). Không phải nới luật: `--selftest` vẫn chạy được bằng
+    # tay và đã được chạy trong bằng chứng của task (`kt265-aarch64-soak.md` §3).
+    (
+        "v2/test/boot/soak-aarch64.sh",
+        "KT-265: task không được thêm bước vào v2/bin/v2; lead nối cổng — xoá mục này khi nối",
+    ),
+    (
+        "v2/test/boot/budget-aarch64.sh",
+        "KT-265: task không được thêm bước vào v2/bin/v2; lead nối cổng — xoá mục này khi nối",
+    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính

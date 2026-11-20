@@ -269,6 +269,17 @@ mod imp {
         unsafe { core::ptr::write_volatile(addr as *mut u64, value) };
     }
 
+    /// Đọc **8 bit** tại **địa chỉ tuyệt đối** `addr` (xem [`read_u64`]).
+    ///
+    /// Cần cho [`crate::image::image_digest`] (KT-265): hash FNV-1a 64 chạy trên **đúng** từng
+    /// byte của `.text` — đọc `u64` sẽ vượt qua `__text_end` ở đoạn đuôi và băm cả byte của
+    /// section kế tiếp. `unsafe` nằm ở đây (D2-17), caller là hàm an toàn.
+    pub fn read_u8(addr: u64) -> u8 {
+        // SAFETY: `addr` do caller cấp và phải là địa chỉ đọc được trong bản đồ hiện hành
+        // (identity map của kernel hoặc VA đã map tường minh). Đọc 1 byte, không yêu cầu căn lề.
+        unsafe { core::ptr::read_volatile(addr as *const u8) }
+    }
+
     // ------------------------------------------------------------------ probe BRK (KT-248)
 
     /// `brk #0` — trap **có chủ đích** vào ô `SyncCurrentElSpX` (`0x200`) của bảng vector.
@@ -691,6 +702,10 @@ mod imp {
     /// Stub host của ghi bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
     pub fn write_u64(_addr: u64, _value: u64) {
         host_stub("write u64")
+    }
+    /// Stub host của đọc 8 bit — **panic**: trên host không có bản đồ của kernel.
+    pub fn read_u8(_addr: u64) -> u8 {
+        host_stub("read u8")
     }
     /// Stub host của `brk #0` — **panic**: trên host `brk` sẽ giết tiến trình test.
     pub fn brk_probe() {

@@ -50,6 +50,7 @@ pub mod bootmem;
 pub mod fault;
 pub mod format;
 pub mod gic;
+pub mod image;
 pub mod mmu;
 pub mod pl011;
 pub mod resources;
@@ -95,6 +96,9 @@ pub use format::{
     DESC_ADDR_SHIFT, DESC_AF, DESC_AP_RO, DESC_AP_USER, DESC_ATTR_SHIFT, DESC_NG, DESC_NS,
     DESC_PXN, DESC_SH_SHIFT, DESC_TABLE_OR_PAGE, DESC_UXN, DESC_VALID, MAIR_DEVICE_NGNRNE,
     MAIR_EL1, MAIR_NORMAL_WB_RW_ALLOC,
+};
+pub use image::{
+    fnv1a64, fnv1a64_update, image_digest, report_image_digest, FNV_OFFSET, FNV_PRIME,
 };
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, MAX_LEVELS,

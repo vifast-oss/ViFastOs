@@ -1,13 +1,14 @@
 # K4' bước 3 (phần đầu) — ViFastOs **boot thật trên AArch64** (QEMU `virt`)
 
 Trạng thái: **B3.1–B3.6 + B3.8 + B3.9 DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
+**Soak 1.000 + `budget-aarch64.sh` DONE** (KT-265, §8) — điều kiện "như K3" đã đủ **phần soak**.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt247-*`, `kt248-*`, `kt249-*`, `kt250-*`,
-`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`.
+`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`.
 Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa cao làm trong crate arch),
-**D2-203** (KT-262: `TLBI` shootdown + smp 4).
+**D2-203** (KT-262: `TLBI` shootdown + smp 4), **D2-204** (KT-265: soak 1.000 + budget aarch64).
 
 ## 1. Phạm vi
 
@@ -160,30 +161,31 @@ hart phụ **thật sự** chạy `tlbi` trong handler.
 ## 6. Runner + TAP
 
 ```bash
-bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 5 ca âm
+bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
 ```
 
 - Dùng `qemu_guard.sh` (process group + timeout + dọn con) — **`perl -e 'alarm N; exec @ARGV'`
   KHÔNG giết được QEMU** (qemu bỏ qua `SIGALRM`).
-- **11/11 kiểm sạch** (KT-262): ELF (`.text` @ `0x4008_0000`, `.text.vectors` là TEXT, 16 stub
-  đúng offset), boot (**TAP 15/15** + marker đúng 1 lần + **8 dòng `# smp:`** + **3 dòng
-  `# tlbi:`** đúng một lần mỗi dòng), **9 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai,
-  log rỗng, thiếu dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack
-  shootdown**) đều **ĐỎ đúng**.
+- **12/12 kiểm sạch** (KT-262 + KT-265): ELF (`.text` @ `0x4008_0000`, `.text.vectors` là TEXT,
+  16 stub đúng offset), boot (**TAP 15/15** + marker đúng 1 lần + **8 dòng `# smp:`** + **3 dòng
+  `# tlbi:`** + **`# conf image:` khớp ELF** — đúng một lần mỗi dòng), **10 ca âm** (marker sai,
+  thiếu `ok`, có `not ok`, plan sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, **thiếu
+  dòng `# tlbi:`**, **thiếu ack shootdown**, **hash ảnh lệch ELF**) đều **ĐỎ đúng**.
 - Nối vào cổng: bước **56** `QEMU aarch64 (K4' bước 3)` — chạy ở **cả T1 và T2**.
 
 ## 7. Còn thiếu (ghi rõ, không giấu)
 
 1. **Timer per-hart / preemption**: chưa — chưa có `CNTP`/`CNTV` per-hart, chưa có scheduler.
    `smp 4` **đã** xong (KT-262).
-2. **Soak 1.000** boot: chưa chạy (thuộc "như K3").
+2. **Soak 1.000** boot: **DONE** (KT-265, §8) — **0/1000 lỗi**, 3 luồng, 20 s/boot, không retry.
 3. **U-mode** (B3.7): chặn bởi Q2 — `spec/abi.toml [calling.aarch64]` **chưa mở**.
 4. **Mỗi hart một address space/ASID**: chưa — bốn hart dùng **cùng** bảng trang `VSpace`
    (hart 0 ở VA nửa cao, hart phụ ở VA thấp).
 5. **DTB**: `_start` nhận con trỏ trong `x0` nhưng **chưa đọc**; địa chỉ thiết bị đang là hằng của
    `resources.rs` (memory map QEMU `virt`).
 6. **W^X chưa đầy đủ**: vùng ảnh map `KERNEL_RWX` một khối; tách `.text` RX / `.data` RW thuộc B3.5.
-7. **`budget.sh` bản aarch64**: chưa có; `.data+.bss` đo bằng `llvm-objdump`.
+7. **`budget.sh` bản aarch64**: **DONE** (KT-265) — `v2/test/boot/budget-aarch64.sh`, trần
+   262.144 B, `.smp_stacks` báo riêng (§8).
 8. **16 ô vector dùng chung một stub**: IRQ/FIQ chưa bật (`DAIF` mask đủ); khi bật ngắt phải tách
    handler theo ô.
 9. **Shootdown theo dải VA**: chỉ một VA mỗi lần (`vae1is`); `vmalle1is`/`aside1is` có hằng
@@ -191,3 +193,45 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 5 ca âm
 10. **`TLBI` trên QEMU TCG**: `vae1is` flush TLB **mọi** CPU (`tlb_flush_page_by_mmuidx_all_cpus_synced`),
     nên đột biến "bỏ `tlbi` ở hart phụ" **không** đỏ trên QEMU — xem `kt262-mutation.log` §5 và
     đối chứng dương ở §5.1. **Không** được gọi là "đã kiểm trên phần cứng".
+11. **`# build:` (KT-86) chưa có trên ảnh aarch64**: cổng danh tính bản dựng của riscv64 chưa áp
+    cho aarch64; bù bằng `# conf image:` (D2-80) + sha256 + `git HEAD` trong header soak. **Không**
+    gọi là tương đương KT-86.
+
+## 8. Soak 1.000 + ngân sách aarch64 (KT-265)
+
+```bash
+bash v2/test/boot/soak-aarch64.sh 1000 3     # cổng: N=1.000, 3 luồng, 20 s/boot, không retry
+bash v2/test/boot/soak-aarch64.sh --smoke 3 3 # N < 1.000: LUÔN exit 1 (không phải bằng chứng)
+bash v2/test/boot/soak-aarch64.sh --selftest  # 1 ca dương + 13 ca âm, không mở QEMU
+bash v2/test/boot/budget-aarch64.sh <ảnh> product
+bash v2/test/boot/budget-aarch64.sh --selftest
+```
+
+**Bất biến mỗi boot** (cùng khuôn `soak.sh` riscv64, **không nới**): đúng 1 `TAP version 13`,
+đúng 1 `1..15`, đúng 15 dòng `ok` (đủ 1..15), 0 `not ok`, đúng 1 marker
+`# viFastOs aarch64: boot ok`, đúng 1 `# conf image:` **khớp ELF**, `# smp: online mask=0xf …
+harts=4 mpidr_ok=1` + bằng chứng từng hart + ba dòng `# tlbi:`, 0 `PANIC`, quá 20 s ⇒ đỏ.
+
+**Đo được** (log `kt265-soak-1000.log`, `kt265-soak-results.log`):
+
+| Phép đo | Kết quả |
+|---|---|
+| N / luồng / timeout | **1.000** / **3** / **20 s** mỗi boot |
+| boot đỏ | **0** (`results.txt`: 1000 `ok`, 0 `fail`) |
+| wall | 247 s (≈ 4 boot/s) — **thời gian KHÔNG HỢP LỆ**: mẫu `qg_infra after` thấy **QEMU x86_64 của sub-agent KT-266** (`qemu_foreign=1`), không phải QEMU của soak (`qemu_own=0`) |
+| guard | `boot_end=1001 isolated_1=1001 rc_0=1001 rc_124=0` (1000 soak + 1 probe) |
+| ảnh | `# conf image: build=68b890daa9e08f6b text=38072`, sha256 `b7568e13…`; **không** đổi giữa soak |
+| `.data+.bss` | **155.872 B** / trần **262.144 B** (59,5 %) |
+| `.smp_stacks` (NOLOAD) | **557.056 B** — báo riêng, **không** cộng trần |
+
+**Dòng `# conf image:`** (D2-80, KT-265): `vifast_plat_aarch64::image` băm FNV-1a 64 trên
+`[__text_start, __text_end)` **từng byte** (`asm::read_u8`; đọc `u64` sẽ vượt `__text_end` vì
+`text=38072` không chia hết 8) và in ngay sau `1..15`. `image_digest.py` băm **cùng** section từ
+ELF ⇒ runner/soak đối chiếu được hai phía. `unsafe` **không** tăng: chỉ `asm::read_u8` (D2-17);
+`image.rs` không có `unsafe`; host **panic** (fail-loud) và có 5 test host (5 vector FNV chuẩn).
+
+**Nợ P20 (đo được, chưa sửa)**: sha ảnh phụ thuộc **cách viết đường dẫn** build — cùng cây, cùng
+lệnh, `--manifest-path v2/kernel/Cargo.toml` (từ `/tmp/kt264-s2`) cho `build=31e033672c0648de`,
+còn `--manifest-path /tmp/kt264-s2/v2/kernel/Cargo.toml` (từ `/`) cho `build=68b890daa9e08f6b`
+(`.text` lệch 3.707 byte, cùng cỡ). Soak **tự build + tự băm trong cùng một lần chạy** nên nhất
+quán; **không** so sha ảnh giữa hai lần chạy khác cách gọi.
