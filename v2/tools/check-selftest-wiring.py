@@ -100,10 +100,6 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # QEMU. Cùng lý do lịch sử của `persist.sh` ở trên. Task KT-263 **không** được thêm bước vào
     # `v2/bin/v2` (lead nối cổng ở bước tích hợp) ⇒ miễn trừ **tạm thời**, phải **xoá** khi lead
     # nối `gpu.sh` vào `gate --fast` (nếu để lại sẽ sinh `W_EXEMPT_UNUSED`).
-    (
-        "v2/test/boot/gpu.sh",
-        "cần QEMU + build ảnh kernel; `v2 check` không chạy QEMU — lead nối cổng ở bước tích hợp",
-    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính

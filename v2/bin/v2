@@ -20,7 +20,7 @@ MANIFEST="$V2_ROOT/Cargo.toml"
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
-V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)"
+V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)"
 
 # cargo có thể không nằm trên PATH (máy này: ~/.cargo/bin).
 find_cargo() {
@@ -643,6 +643,9 @@ step_no_cfg_test() { python3 "$V2_ROOT/tools/check-no-cfg-test.py"; }
 # cổng gọi; hai bước dưới đây là bản rẻ của KT-255/KT-256, chạy ở **cả T1 và T2**.
 step_input_red() { bash "$V2_ROOT/test/boot/input.sh" --red-selftest; }
 step_no_cfg_test_red() { python3 "$V2_ROOT/tools/check-no-cfg-test.py" --selftest; }
+# **KT-263**: runner virtio-gpu — QEMU + `screendump` PPM + kiểm điểm ảnh (~6 s) ⇒ T2.
+step_gpu_run() { bash "$V2_ROOT/test/boot/gpu.sh"; }
+step_gpu_red() { bash "$V2_ROOT/test/boot/gpu.sh" --red-selftest; }
 step_persist_crash() { bash "$V2_ROOT/test/boot/persist.sh" --crash; }
 step_selfbreak() { bash "$V2_ROOT/test/rules/selfbreak.sh"; }
 step_neg1() { bash "$V2_ROOT/tools/git-guard/neg-test.sh"; }
@@ -891,9 +894,9 @@ do_gate_dev() {
     # thay ma trận QEMU của T2. QEMU ⇒ làn `sau` (độc quyền).
     # **KT-250** — id **58** (không phải 55): `do_gate_fast` đã dùng 55 cho `selftest validator
     # net`; trùng id thì `lane_done` coi bước này đã chạy và **bỏ qua im lặng** QEMU smoke.
-    lane_step sau 63 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
+    lane_step sau 65 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
     lane_run
-    [ "$(lane_fails 63)" -eq 0 ] || return 1
+    [ "$(lane_fails 65)" -eq 0 ] || return 1
     return 0
 }
 
@@ -931,8 +934,10 @@ do_gate_fast() {
     lane_step sau 60 "QEMU virtio-input (KT-255)" step_input_run
     lane_step B 61 "selftest validator input (KT-255)" step_input_red
     lane_step B 62 "selftest validator cfg-test (KT-256)" step_no_cfg_test_red
+    lane_step sau 63 "QEMU virtio-gpu (KT-263)" step_gpu_run
+    lane_step B 64 "selftest validator gpu (KT-263)" step_gpu_red
     lane_run
-    fails="$(lane_fails 62)"
+    fails="$(lane_fails 64)"
     [ "$fails" -eq 0 ] || return 1
     return 0
 }
