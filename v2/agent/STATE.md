@@ -4,21 +4,31 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 01:40 (KT-244/245/246/247 đã merge) ===
-HEAD          : `d0ef2d35` (`main`, **đã push**). T1 **PASS** trên `d0ef2d35` (197,9 s).
-BUILD-INPUTS  : đổi (có crate mới `vifast-net`, `vifast-kbin-aarch64`) — **phải đo lại** trước khi
-                dùng bằng chứng ảnh cũ; ảnh sản phẩm `d915b977…` **hết hiệu lực** cho HEAD này.
-TOOLCHAIN     : Rust 1.100.0; `aarch64-unknown-none` đã cài; `qemu-system-aarch64` 11.1.3.
-ẢNH AARCH64   : **boot thật** `# viFastOs aarch64: boot ok`, 3/3 lần, halt sạch qua PSCI
-                (`hvc #0`, `x0=0x8400_0008`); `.text` @ `0x4008_0000`; sha `4852009c…` (nợ P20).
-MẠNG          : **có mạng thật trên QEMU** — MAC `52:54:00:12:34:56` đọc từ thiết bị;
-                DHCP `ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`;
-                ARP `gw=52:55:0a:00:02:02`; `ping 10.0.2.2 ok n=3`; 7 TAP + 2 ca âm fail-closed.
-TASK ĐÃ XONG  : **KT-244** (vifast-net, 58 test host), **KT-245** (driver virtio-net, 4 TAP),
-                **KT-246** (DHCP+ARP+ICMP, 7 TAP), **KT-247** (K4' B3.1: boot aarch64).
-TASK ĐANG CHẠY: KT-248/249/250 (a64), KT-251 (K6/S1), KT-243+KT-252 (infra), KT-246b (de-dup codec).
-NỢ MỚI        : **KT-246b** — codec tạm trong `virtio_net.rs` (1.494 dòng, sát trần R1 1.500) phải
-                thay bằng `vifast-net`; xong mới coi KT-246 là bản cuối.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 02:45 (cuối tuần KT-243..KT-252) ===
+HEAD          : `6309b6a6` (`main`, **đã push**). Cây sạch (trừ tệp báo cáo chưa commit).
+CỔNG          : **T2** `gate --fast` **PASS 57/57** trên `6309b6a6` (**493,1 s**) — có bước mới
+                `QEMU aarch64` (56) và `QEMU virtio-net` (57).
+                **T1** `gate --dev` **PASS** trên `1f89f81a` (**281,5 s**; bước 58 QEMU smoke).
+BUILD-INPUTS  : **257 mục**, dấu vân tay **`f4934dc81f0c903e`**, `dirty=0` (đổi so với
+                `54f3b59fc08f3221` vì thêm `vifast-net` + `vifast-kbin-aarch64`).
+ẢNH SẢN PHẨM  : `e78f58d6d99c140aa6dccae283c3c921d0652881bd5f8259a61455e9421fcf1f` (213 632 B,
+                `# build: algo=kt134-v4 inputs=f4934dc81f0c903e dirty=0`, `build=f861bd283066120f`,
+                `text=131728`). **Nợ P20** giữ nguyên: sha phụ thuộc thư mục build + dòng `# build:`.
+AARCH64       : **boot thật** `# viFastOs aarch64: boot ok`; vector 16 ô + `brk #0` (`ec=0x3c`);
+                **MMU bật** (TCR→MAIR→TTBR0→SCTLR→ISB), probe VA `0x5000_0000` đọc ra magic ⇒
+                translation thật; `.data+.bss` **140 KiB** (trần 256 KiB); runner `run-aarch64.sh`
+                **7/7** + TAP 5/5 + 5 ca âm. **Chưa** có smp>1, soak, U-mode (B3.4–B3.7 hoãn).
+MẠNG          : **có mạng thật** — `dhcp ip=10.0.2.15 gw=10.0.2.2`, `arp gw=52:55:0a:00:02:02`,
+                `ping 10.0.2.2 ok n=3`; 7 TAP + 2 ca âm; codec ở `vifast-net` (58 test host),
+                driver ở `virtio_net` (1.074 dòng sau de-dup).
+K6            : **S1 = ĐẠT** — đo lại trên HEAD cuối: ảnh `e78f58d6…`, smp 1 và 2, `shell>` 4 dòng,
+                `help cmds=17`, `ls n=2 path=/`, `cat ok bytes=79`, `exit code=0`, `REV-GATE ACCEPT`.
+                `K6-DOD.md` §3.2 đã cập nhật; log `JOURNAL/kt251b-s1-smp{1,2}.log`.
+TASK          : **KT-243..KT-252 + KT-246b DONE** (xem `QUEUE.md`). **KT-184/KT-194 vẫn REVIEW** —
+                KT-252 tìm + vá **WB-20** (cửa thứ bảy qua trùng tên) nhưng D2-190 chưa đủ điều kiện.
+NỢ MỞ         : DEBT-KT227-1 (`v2/lib` ngoài luật token `wake`, latent); L2 (ba mẫu phạm vi vênh);
+                giả định "build sản phẩm không có `--cfg test`" chưa kiểm máy; closure trong thân cửa;
+                P20; K4' B3.4–B3.7 (Q2/Q4/Q6 hoãn); K5'.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở K5', không v2.0, không sửa `spec/`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

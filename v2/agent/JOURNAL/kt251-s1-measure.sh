@@ -12,7 +12,7 @@
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT" || exit 1
-LOGDIR="$ROOT/v2/agent/JOURNAL"
+LOGDIR="${KT251_LOGDIR:-$ROOT/v2/agent/JOURNAL}"
 IMAGE="${KT251_IMAGE:?dat KT251_IMAGE=<duong dan anh san pham>}"
 [ -f "$IMAGE" ] || {
     echo "kt251: không thấy ảnh $IMAGE" >&2
@@ -31,7 +31,7 @@ QEMU="$(command -v qemu-system-riscv64)" || {
 . "$ROOT/v2/test/boot/qemu_guard.sh"
 . "$ROOT/v2/test/boot/build-rev.sh"
 QG_DIR="${TMPDIR:-/tmp}"
-QG_LOG="$LOGDIR/kt251-qemu-guard.log"
+QG_LOG="$LOGDIR/${KT251_PREFIX:-kt251}-qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
 qg_init || {
     echo "kt251: qg_init FAIL" >&2
@@ -47,7 +47,7 @@ echo "### qemu=$("$QEMU" --version | head -1)"
 echo "### opensbi=$SBI"
 
 for SMP in 1 2; do
-    L="$LOGDIR/kt251-s1-smp$SMP.log"
+    L="$LOGDIR/${KT251_PREFIX:-kt251}-s1-smp$SMP.log"
     PAY="$LOGDIR/.kt251-pay-$SMP"
     printf 'help\nls /\ncat /README\nexit\n' >"$PAY"
     KT77_SEND_DELAY=0.05 qg_boot "$L" 300 "$ROOT/v2/test/parity/stdin_wrap.sh" "$PAY" \

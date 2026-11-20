@@ -167,3 +167,31 @@ dirty=0`), cả smp 1 và smp 2.
 | `v2/agent/JOURNAL/kt251-s1-smp2.log` | log serial nguyên văn, smp 2 (109 dòng) |
 | `v2/agent/JOURNAL/kt251-qemu-guard.log` | log `qemu_guard.sh` (process group, `rc=0`) |
 | `v2/agent/JOURNAL/kt251-k6-closure.md` | tệp này |
+
+---
+
+## Phụ lục — đo lại **S1** trên **HEAD cuối tuần** (`6309b6a6`, 2026-11-21 02:41 JST)
+
+Lý do đo lại: sau KT-251, `main` nhận thêm 8 commit (KT-244/245/246/246b/247/248/249/250/252) ⇒
+`build-inputs` đổi ⇒ bằng chứng S1 phải gắn với **đầu vào mới** (AGENTS §6.3), không ghép ảnh cũ.
+
+```text
+$ VIFAST_REPRO_CARGO_EXTRA="--features product-fs" bash v2/tools/repro-build.sh
+REPRO … sha256=e78f58d6d99c140aa6dccae283c3c921d0652881bd5f8259a61455e9421fcf1f size=213632
+       algo=kt134-v4 inputs=f4934dc81f0c903e dirty=0 rev=6309b6a66b5b build=f861bd283066120f text=131728
+$ KT251_LOGDIR=/tmp/kt251b KT251_PREFIX=kt251b KT251_IMAGE=<ảnh trên> bash JOURNAL/kt251-s1-measure.sh
+```
+
+| Phép đo | smp 1 | smp 2 |
+|---|---|---|
+| boot `qemu_rc` | 0 (2 s) | 0 (2 s) |
+| `shell>` | 4 dòng | 4 dòng |
+| `help cmds=` | **17** | **17** |
+| `ls n=2 path=/` | 1 | 1 |
+| `cat ok` | 1 | 1 |
+| `exit code=0` | 1 | 1 |
+| `REV-GATE` | **ACCEPT** (`inputs=f4934dc8…`, `head_rev=6309b6a6…`, `count=257`) | **ACCEPT** |
+
+Log: [`kt251b-s1-smp1.log`](kt251b-s1-smp1.log), [`kt251b-s1-smp2.log`](kt251b-s1-smp2.log).
+**Kết luận**: S1 **ĐẠT** giữ nguyên trên HEAD cuối tuần; `build=f861bd283066120f` và `text=131728`
+**trùng** bản đo trước ⇒ mã sản phẩm không đổi, chỉ dòng `# build:` (đầu vào) đổi.
