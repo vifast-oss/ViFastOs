@@ -4,25 +4,21 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 00:25 (KT-243 mở màn cuối tuần) ===
-HEAD          : `9719c720` (`main`, **đã push**). Cây sạch, trừ tệp kế hoạch/báo cáo chưa commit.
-BUILD-INPUTS  : **234 mục**, dấu vân tay **`54f3b59fc08f3221`**, `dirty=0` — **KHÔNG ĐỔI** so với
-                trước cuối tuần ⇒ **bằng chứng K6 trên ảnh `d915b977…` vẫn hiệu lực** (KT-251 kiểm lại).
-TOOLCHAIN     : **Rust 1.100.0**; `aarch64-unknown-none` **đã cài**; `qemu-system-aarch64` **có**.
-ẢNH SẢN PHẨM  : `d915b977edbdae4661a3bb31e4aa7ec33f8e9d703bbba2c7f88069f200e541dc` (191 288 B,
-                `# build: algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0`). **Nợ P20**: sha256 phụ
-                thuộc thư mục build; danh tính bền là dòng `# build:`.
-K6            : đo lại đủ 5 hạng mục trên ảnh `d915b977…`: ktest **21/21**, persist **PASS**,
-                conformance **61/61**, soak **1000/1000**, L1 400k **4/4**. Ánh xạ: **C1..C8 phủ**;
-                **N1..N7 GIỮ MỞ**; **S1** → KT-251 kiểm lại trên ảnh sản phẩm hiện tại.
-CỔNG          : **T2** `gate --fast` PASS 54/54 trên `e12477fb` (477,2 s); **T1** `gate --dev`
-                PASS trên `e12477fb` (272,0 s). Baseline `v2 check` trên `9719c720`: **PASS 74,6 s**.
-TASK          : **KT-241 DONE**; **KT-184/KT-194 REVIEW** (cần vòng tấn công mới, không replay).
-                **MỞ CUỐI TUẦN 2026-11-21/22**: KT-243 (B4/B6/B7), KT-244/245/246 (mạng D1),
-                KT-247/248/249/250 (K4' bước 3: aarch64 boot), KT-251 (chốt K6).
-                Kế hoạch: `KE-HOACH-CUOI-TUAN-2026-11-21.md`; quyết định D2-195..D2-198.
-CHIA VIỆC     : 4 sub-agent, 4 worktree — `a64` (KT-247..250), `net` (KT-244..246),
-                `infra` (KT-243, KT-251); lead giữ tích hợp + `STATE/QUEUE/DECISIONS` + push.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 01:40 (KT-244/245/246/247 đã merge) ===
+HEAD          : `d0ef2d35` (`main`, **đã push**). T1 **PASS** trên `d0ef2d35` (197,9 s).
+BUILD-INPUTS  : đổi (có crate mới `vifast-net`, `vifast-kbin-aarch64`) — **phải đo lại** trước khi
+                dùng bằng chứng ảnh cũ; ảnh sản phẩm `d915b977…` **hết hiệu lực** cho HEAD này.
+TOOLCHAIN     : Rust 1.100.0; `aarch64-unknown-none` đã cài; `qemu-system-aarch64` 11.1.3.
+ẢNH AARCH64   : **boot thật** `# viFastOs aarch64: boot ok`, 3/3 lần, halt sạch qua PSCI
+                (`hvc #0`, `x0=0x8400_0008`); `.text` @ `0x4008_0000`; sha `4852009c…` (nợ P20).
+MẠNG          : **có mạng thật trên QEMU** — MAC `52:54:00:12:34:56` đọc từ thiết bị;
+                DHCP `ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`;
+                ARP `gw=52:55:0a:00:02:02`; `ping 10.0.2.2 ok n=3`; 7 TAP + 2 ca âm fail-closed.
+TASK ĐÃ XONG  : **KT-244** (vifast-net, 58 test host), **KT-245** (driver virtio-net, 4 TAP),
+                **KT-246** (DHCP+ARP+ICMP, 7 TAP), **KT-247** (K4' B3.1: boot aarch64).
+TASK ĐANG CHẠY: KT-248/249/250 (a64), KT-251 (K6/S1), KT-243+KT-252 (infra), KT-246b (de-dup codec).
+NỢ MỚI        : **KT-246b** — codec tạm trong `virtio_net.rs` (1.494 dòng, sát trần R1 1.500) phải
+                thay bằng `vifast-net`; xong mới coi KT-246 là bản cuối.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở K5', không v2.0, không sửa `spec/`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
