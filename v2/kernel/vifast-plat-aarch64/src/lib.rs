@@ -47,6 +47,7 @@ pub mod asm;
 pub mod barrier;
 pub mod boot_mmu;
 pub mod bootmem;
+pub mod fault;
 pub mod format;
 pub mod mmu;
 pub mod pl011;
@@ -55,6 +56,7 @@ pub mod split_mmu;
 pub mod sysreg;
 pub mod tlb;
 pub mod vector;
+pub mod vspace;
 
 /// Dừng máy **sạch** (KT-247): `PSCI SYSTEM_OFF` qua `hvc #0`, dự phòng `wfi` vô hạn.
 ///
@@ -76,8 +78,12 @@ pub use boot_mmu::{
     ttbr0_base, ttbr1_base, MmuStep, MMU_ENABLE_SEQUENCE,
 };
 pub use bootmem::{
-    boot_memory, shared_boot_memory, BootMemory, SharedBootMemory, BOOT_ARENA_FRAMES,
-    BOOT_ARENA_WORDS,
+    boot_memory, shared_boot_memory, shared_boot_memory_at, BootMemory, SharedBootMemory,
+    BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS,
+};
+pub use fault::{
+    classify_esr, Abort, Access, EC_DATA_ABORT_LOWER_EL, EC_DATA_ABORT_SAME_EL,
+    EC_INSTRUCTION_ABORT_LOWER_EL, EC_INSTRUCTION_ABORT_SAME_EL, ISS_WNR,
 };
 pub use format::{
     is_canonical_bits, mair_byte, mair_index, Aarch64, Descriptor, MemAttr, PageTableFormat, Perms,
@@ -119,3 +125,4 @@ pub use tlb::{
 pub use vector::{
     is_aligned, vector_offset, VectorKind, VECTOR_ALIGN, VECTOR_COUNT, VECTOR_STRIDE,
 };
+pub use vspace::{Frame, VSpace, VSpaceId};

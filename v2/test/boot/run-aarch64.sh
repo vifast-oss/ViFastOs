@@ -21,12 +21,12 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 7 — KT-253 thêm 2 ca nửa cao/physmap)
+#   EXPECT_TESTS    số ca TAP (mặc định 9 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca VSpace/fault)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
 # **Không** tuyên bố K4' đạt: K4' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000) — bước sau.
-# Runner này chỉ là B3.8 **phần đầu** (một hart, một ảnh, TAP 7 ca sau KT-253).
+# Runner này chỉ là B3.8 **phần đầu** (một hart, một ảnh, TAP 9 ca sau KT-254).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +38,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-7}"
+EXPECT_TESTS="${EXPECT_TESTS:-9}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 
 case "${1:-}" in

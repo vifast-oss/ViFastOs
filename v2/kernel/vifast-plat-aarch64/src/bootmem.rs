@@ -271,7 +271,16 @@ impl TableMemory for SharedBootMemory {
 /// Gọi **một lần** trong `kmain` (bộ đếm `SHARED_NEXT` là `static`, gọi lần hai sẽ cấp tiếp từ
 /// chỗ cũ chứ không reset — vẫn an toàn, chỉ tốn frame).
 pub fn shared_boot_memory() -> (SharedBootMemory, SharedBootMemory) {
-    let base = core::ptr::addr_of!(ARENA.0) as u64;
+    shared_boot_memory_at(core::ptr::addr_of!(ARENA.0) as u64)
+}
+
+/// Như [`shared_boot_memory`] nhưng **chỉ định PA** của arena.
+///
+/// **Vì sao cần**: sau khi nhảy sang nửa cao (KT-253), `addr_of!(ARENA.0)` là **PC-relative**
+/// nên trả **alias nửa cao** của arena, không phải PA. `TableMemory` phải dùng **PA** trong
+/// descriptor (`BADDR`), nên caller đọc PA **trước** khi nhảy rồi truyền vào đây; còn `words`
+/// vẫn là `&ARENA.0` (alias nửa cao — cùng bộ nhớ vật lý, đã map).
+pub fn shared_boot_memory_at(base: u64) -> (SharedBootMemory, SharedBootMemory) {
     let low = SharedBootMemory::new(&ARENA.0, base, &SHARED_NEXT);
     let high = SharedBootMemory::new(&ARENA.0, base, &SHARED_NEXT);
     (low, high)

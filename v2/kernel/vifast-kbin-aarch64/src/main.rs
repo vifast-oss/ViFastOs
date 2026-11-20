@@ -49,11 +49,14 @@ use vifast_plat_aarch64::boot_mmu::{
 };
 use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
+use vifast_plat_aarch64::mmu::{MapError, TableMemory};
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
 use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
-use vifast_plat_aarch64::{asm, debug_halt, pl011};
+use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
+use vifast_plat_aarch64::{asm, debug_halt, pl011, tlb};
+use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
 
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-aarch64.sh`, KT-250) so **nguyên
 /// văn** dòng này và đòi nó xuất hiện **đúng một lần**.
@@ -73,6 +76,11 @@ global_asm!(
     ".section .text.entry, \"ax\"",
     ".globl _start",
     "_start:",
+    // 0. FP/SIMD: trình biên dịch phát NEON cho hàm lớn (`PageTable::unmap` zero 176 B stack);
+    //    `CPACR_EL1.FPEN = 0` ⇒ Undefined Instruction (EC=0x07). Bật **trước** mọi mã Rust.
+    "mov x9, #{cpacr}",
+    "msr cpacr_el1, x9",
+    "isb",
     // 1. stack
     "adrp x9, __stack_top",
     "add x9, x9, :lo12:__stack_top",
@@ -94,6 +102,7 @@ global_asm!(
     "3:",
     "wfi",
     "b 3b",
+    cpacr = const vifast_plat_aarch64::sysreg::CPACR_EL1_FP_SIMD,
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -291,6 +300,52 @@ static HIGH_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
 static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
 /// PA của `__vector_base` (địa chỉ liên kết, đọc lúc PC còn ở nửa thấp).
 static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
+/// PA của `__kernel_end` (đọc lúc PC còn ở nửa thấp — cùng lý do `TEXT_START_PA`).
+static KERNEL_END_PA: AtomicU64 = AtomicU64::new(0);
+/// PA của arena bảng trang (đọc lúc PC còn ở nửa thấp).
+///
+/// `TableMemory` phải dùng **PA** trong descriptor; sau khi nhảy nửa cao, `addr_of!(ARENA.0)`
+/// là alias nửa cao nên không dùng làm PA được (xem `bootmem::shared_boot_memory_at`).
+static ARENA_PA: AtomicU64 = AtomicU64::new(0);
+
+// ---------------------------------------------------------------------------------------------
+// KT-254 — VSpace + fault `FaultKind::Vm`
+// ---------------------------------------------------------------------------------------------
+
+/// ASID của VSpace dựng trong ảnh (nhãn `FaultKind::Vm.vspace`).
+const VSPACE_ID: VSpaceId = 1;
+/// VA **người dùng** của trang probe VSpace — ngoài RAM 128 MiB, **không** identity.
+const VSPACE_VA: u64 = 0x6000_0000;
+/// Giá trị ghi vào trang probe VSpace **trước** khi `activate` (đọc lại qua VA của VSpace).
+const VSPACE_MAGIC: u64 = 0x5653_5041_4345_0001;
+
+/// Trang **VSpace probe**: ghi magic qua VA thấp (identity) trước khi `activate`, đọc lại qua
+/// **VA người dùng** của VSpace sau `activate` — chứng minh `TTBR0` đã đổi sang bảng của VSpace.
+#[repr(align(4096))]
+struct VSpaceProbePage([AtomicU64; 512]);
+
+/// Trang VSpace probe — `.bss`, nằm trong khoảng ảnh nên được map cả identity (bảng kernel) lẫn
+/// alias nửa cao (bảng của VSpace).
+static VSPACE_PROBE: VSpaceProbePage = VSpaceProbePage([const { AtomicU64::new(0) }; 512]);
+
+/// PA của trang [`VSPACE_PROBE`] (đọc lúc PC còn ở nửa thấp).
+static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
+/// `1` ⇔ lần fault kế tiếp là fault **được chờ** của phép đo VSpace (handler ghi lại rồi resume).
+static EXPECT_VSPACE_FAULT: AtomicU64 = AtomicU64::new(0);
+/// `1` ⇔ fault đã bắt được phân loại là `FaultKind::Vm`.
+static FAULT_KIND_VM: AtomicU64 = AtomicU64::new(0);
+/// `FaultKind::Vm.va` của fault đã bắt.
+static FAULT_VA: AtomicU64 = AtomicU64::new(0);
+/// `FaultKind::Vm.access` (mã ABI) của fault đã bắt.
+static FAULT_ACCESS: AtomicU64 = AtomicU64::new(u64::MAX);
+/// `FaultKind::Vm.reason` (mã ABI) của fault đã bắt.
+static FAULT_REASON: AtomicU64 = AtomicU64::new(u64::MAX);
+/// `ESR_EL1` thô của fault đã bắt.
+static FAULT_ESR: AtomicU64 = AtomicU64::new(0);
+/// `FAR_EL1` của fault đã bắt.
+static FAULT_FAR: AtomicU64 = AtomicU64::new(0);
+/// `ELR_EL1` của fault đã bắt.
+static FAULT_ELR: AtomicU64 = AtomicU64::new(0);
 
 // ---------------------------------------------------------------------------------------------
 // KT-250 — TAP trên serial
@@ -298,8 +353,9 @@ static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
 
 /// Số ca kiểm TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
 ///
-/// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap).
-pub const TAP_TESTS: usize = 7;
+/// 5 ca của KT-249 + 2 ca của KT-253 (nửa cao, physmap) + 2 ca của KT-254 (`VSpace` map/walk/
+/// activate, và fault `FaultKind::Vm` sau `unmap`).
+pub const TAP_TESTS: usize = 9;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -358,6 +414,36 @@ pub extern "C" fn vec_handler(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr:
         // `BRK`: ELR_EL1 = **địa chỉ instruction BRK** (DDI 0487 §D17.2.37) ⇒ resume ở ELR + 4.
         asm::write_elr_el1(elr + 4);
         return 1;
+    }
+    // ---- KT-254: fault **được chờ** của phép đo VSpace (đọc VA sau `unmap`).
+    //
+    // Phân loại bằng `ESR_EL1`/`FAR_EL1` thật (không suy diễn từ chỗ khác), dựng
+    // `FaultKind::Vm` của ABI (`vifast-plat-common::fault`, D2-56a), ghi lại rồi **resume**
+    // (`ELR += 4` — instruction `ldr` 4 byte, không thực thi nên resume an toàn). Chỉ làm vậy
+    // khi cờ `EXPECT_VSPACE_FAULT` bật; mọi fault khác vẫn **fatal** như trước.
+    if let Some(abort) = vifast_plat_aarch64::fault::classify_esr(esr_raw, far) {
+        if EXPECT_VSPACE_FAULT.load(Ordering::Relaxed) == 1 {
+            EXPECT_VSPACE_FAULT.store(0, Ordering::Relaxed);
+            let access = FaultAccess::from_code(abort.access.code());
+            let reason = vm_reason(access, false, None);
+            let kind = FaultKind::Vm {
+                vspace: VSPACE_ID as u64,
+                va: abort.va,
+                access,
+                reason,
+            };
+            if let Some((_vspace, va, access, reason)) = kind.vm() {
+                FAULT_KIND_VM.store(1, Ordering::Relaxed);
+                FAULT_VA.store(va, Ordering::Relaxed);
+                FAULT_ACCESS.store(access.code(), Ordering::Relaxed);
+                FAULT_REASON.store(reason.code(), Ordering::Relaxed);
+            }
+            FAULT_ESR.store(esr_raw, Ordering::Relaxed);
+            FAULT_FAR.store(far, Ordering::Relaxed);
+            FAULT_ELR.store(elr, Ordering::Relaxed);
+            asm::write_elr_el1(elr + 4);
+            return 1;
+        }
     }
     // Trap thật: in đủ nguyên nhân rồi dừng. Không resume — che lỗi là điều tệ nhất có thể làm.
     OTHER_TRAPS.fetch_add(1, Ordering::Relaxed);
@@ -559,11 +645,226 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(5)
     }
 
+    // ---- KT-254 (B3.5): `VSpace` thật — map **một Frame 4 KiB**, `walk`, `activate`, `unmap`,
+    // rồi đọc qua VA sau `unmap` để sinh fault `FaultKind::Vm`.
+    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
+    let kernel_end = KERNEL_END_PA.load(Ordering::Relaxed);
+    let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
+    let arena_pa = ARENA_PA.load(Ordering::Relaxed);
+    let (low_mem, high_mem) = bootmem::shared_boot_memory_at(arena_pa);
+    let mut vs = match VSpace::create(VSPACE_ID, low_mem, high_mem) {
+        Ok(vs) => vs,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: create lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // VSpace phải **tự có** alias nửa cao + physmap của kernel: `activate` đổi cả `TTBR1`, nên
+    // nếu thiếu, lệnh kế tiếp (PC/SP/static ở nửa cao) fault ngay.
+    let pages_high = match vs.map_kernel_high(
+        text_start,
+        kernel_end,
+        KERNEL_HIGH_BASE,
+        Perms::KERNEL_RWX,
+        MemAttr::Normal,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: map kernel high lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let pages_physmap =
+        match vs.map_physmap(text_start, kernel_end, Perms::KERNEL_RW, MemAttr::Normal) {
+            Ok(pages) => pages,
+            Err(error) => {
+                let _ = writeln!(console, "PANIC: vspace: map physmap lỗi {error:?}");
+                debug_halt(3)
+            }
+        };
+    // **Ảnh kernel identity** trong bảng nửa thấp của VSpace — bắt buộc, không phải tuỳ chọn:
+    // ảnh liên kết ở **PA** (`0x4008_0000`), nên `core::fmt` (vtable của `&dyn Display`) và mọi
+    // con trỏ hàm trong `.rodata` là **địa chỉ tuyệt đối nửa thấp**. Đổi `TTBR0` sang bảng không
+    // map ảnh ⇒ `blr` tới vtable fault (đo được: prefetch abort `FAR=0x4008_0ab0`). Map với
+    // `user = false` ⇒ EL0 **không** đọc được ảnh kernel (đúng bất biến cách ly).
+    let pages_image = match map_identity_into(
+        &mut vs,
+        text_start,
+        kernel_end,
+        Perms::KERNEL_RWX,
+        MemAttr::Normal,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: map image identity lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // UART + GIC identity (Device) — kernel vẫn in được sau khi `TTBR0` đổi sang bảng VSpace.
+    let pages_uart = match map_identity_into(
+        &mut vs,
+        UART0.base,
+        UART0.end(),
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: map uart lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let pages_gic = match map_identity_into(
+        &mut vs,
+        GIC.base,
+        GIC_CPU.end(),
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: map gic lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // **Một Frame 4 KiB** vào VA người dùng (ngoài RAM, không identity).
+    let frame = match Frame::new(probe_pa) {
+        Some(frame) => frame,
+        None => {
+            let _ = writeln!(console, "PANIC: vspace: PA probe không căn 4 KiB");
+            debug_halt(3)
+        }
+    };
+    if let Err(error) = vs.map_obj(VSPACE_VA, frame, Perms::USER_RW) {
+        let _ = writeln!(console, "PANIC: vspace: map_obj lỗi {error:?}");
+        debug_halt(3)
+    }
+    let walk_pa = match vs.walk(VSPACE_VA) {
+        Ok(t) => t.pa,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: walk lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let map_ok = walk_pa == probe_pa;
+    let _ = writeln!(
+        console,
+        "# vspace: map va=0x{VSPACE_VA:x} pa=0x{probe_pa:x} walk=0x{walk_pa:x} match={} pages_high={pages_high} pages_physmap={pages_physmap} pages_image={pages_image} pages_mmio={}",
+        map_ok as u8,
+        pages_uart + pages_gic,
+    );
+
+    // `activate`: TTBR0 ← bảng VSpace, TTBR1 ← bảng nửa cao của VSpace (mã hoá bằng `Ttbr`).
+    // Marker **trước/sau** (R5): nếu treo/fault ở bước đổi gốc, log cho biết đúng bước.
+    let _ = writeln!(console, "# vspace: activate begin");
+    if let Err(error) = vs.activate() {
+        let _ = writeln!(console, "PANIC: vspace: activate lỗi {error:?}");
+        debug_halt(3)
+    }
+    let _ = writeln!(console, "# vspace: activate ok");
+    let _ = writeln!(
+        console,
+        "# vspace: activate ttbr0=0x{:x} ttbr1=0x{:x} asid={}",
+        vs.ttbr0().unwrap_or(0),
+        vs.ttbr1().unwrap_or(0),
+        vs.id(),
+    );
+    let read = asm::read_u64(VSPACE_VA);
+    let active_ok = read == VSPACE_MAGIC;
+    let _ = writeln!(
+        console,
+        "# vspace: active read=0x{read:016x} magic=0x{VSPACE_MAGIC:016x} match={}",
+        active_ok as u8,
+    );
+    if !tap(
+        &mut console,
+        8,
+        "vspace: map Frame 4 KiB + walk + activate + read",
+        map_ok && active_ok,
+    ) {
+        debug_halt(5)
+    }
+
+    // `unmap` + **TLBI cục bộ** (shootdown đa hart là B3.6): không xoá entry TLB thì lần đọc sau
+    // vẫn trúng entry cũ và **không** fault — phép đo sẽ nói dối.
+    let unmap_pa = match vs.unmap(VSPACE_VA) {
+        Ok(pa) => pa,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: vspace: unmap lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    tlb::vae1(VSPACE_VA);
+    asm::dsb_ish();
+    asm::isb();
+    let walk_after = vs.walk(VSPACE_VA);
+    let unmap_ok = unmap_pa == probe_pa && walk_after == Err(MapError::NotMapped);
+    let _ = writeln!(
+        console,
+        "# vspace: unmap pa=0x{unmap_pa:x} walk={walk_after:?} match={}",
+        unmap_ok as u8,
+    );
+
+    // Đọc qua VA sau `unmap` ⇒ **fault**; handler phân loại `FaultKind::Vm` từ `ESR_EL1`/
+    // `FAR_EL1` rồi resume (`ELR += 4`) để `high_entry` in bằng chứng và phát TAP 9.
+    EXPECT_VSPACE_FAULT.store(1, Ordering::Relaxed);
+    let _ = asm::read_u64(VSPACE_VA);
+    let vm = FAULT_KIND_VM.load(Ordering::Relaxed) == 1;
+    let fault_va = FAULT_VA.load(Ordering::Relaxed);
+    let access = FaultAccess::from_code(FAULT_ACCESS.load(Ordering::Relaxed));
+    let reason = VmFaultReason::from_code(FAULT_REASON.load(Ordering::Relaxed));
+    let fault_ok = vm
+        && fault_va == VSPACE_VA
+        && access == FaultAccess::Read
+        && reason == VmFaultReason::NotMapped
+        && unmap_ok;
+    let _ = writeln!(
+        console,
+        "# fault: kind={} va=0x{fault_va:x} access={} reason={} esr=0x{:016x} far=0x{:x} elr=0x{:x} match={}",
+        if vm { "Vm" } else { "?" },
+        access.name(),
+        reason.name(),
+        FAULT_ESR.load(Ordering::Relaxed),
+        FAULT_FAR.load(Ordering::Relaxed),
+        FAULT_ELR.load(Ordering::Relaxed),
+        fault_ok as u8,
+    );
+    if !tap(
+        &mut console,
+        9,
+        "vspace: read after unmap faults with FaultKind::Vm",
+        fault_ok,
+    ) {
+        debug_halt(5)
+    }
+
     // Marker **duy nhất** của ảnh — chỉ in khi **mọi** ca TAP đã xanh (nếu in sớm, một ảnh hỏng
     // vẫn có marker và runner dễ nhận nhầm là boot sạch).
     let _ = pl011::write_str(BOOT_MARKER);
     let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)
+}
+
+/// Map **identity** `[start, end)` vào `VSpace` bằng trang 4 KiB (làm tròn ra ngoài) — dùng cho
+/// UART/GIC trong VSpace của ảnh (kernel vẫn cần chúng sau khi `TTBR0` đổi).
+fn map_identity_into<M: TableMemory>(
+    vs: &mut VSpace<M>,
+    start: u64,
+    end: u64,
+    perms: Perms,
+    attr: MemAttr,
+) -> Result<usize, MapError> {
+    let first = start & !0xFFF;
+    let last = (end + 0xFFF) & !0xFFF;
+    let mut pages = 0;
+    let mut pa = first;
+    while pa < last {
+        let frame = Frame::new(pa).ok_or(MapError::Unaligned)?;
+        vs.map_obj_with(pa, frame, perms, attr)?;
+        pages += 1;
+        pa += 0x1000;
+    }
+    Ok(pages)
 }
 
 /// Kết quả các phép đo của B3.3 + thông tin nhảy nửa cao của B3.4 — `mmu_bringup` trả về để
@@ -599,6 +900,15 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     MMU_MARKER.store(MMU_MARKER_VALUE, Ordering::Relaxed);
     PROBE_PAGE.0[0].store(PROBE_MAGIC, Ordering::Relaxed);
     PHYS_PROBE.0[0].store(PHYSMAP_MAGIC, Ordering::Relaxed);
+    VSPACE_PROBE.0[0].store(VSPACE_MAGIC, Ordering::Relaxed);
+    // PA (không phải alias nửa cao) của các vùng ảnh — đọc lúc PC còn ở nửa thấp.
+    TEXT_START_PA.store(text_start, Ordering::Relaxed);
+    KERNEL_END_PA.store(kernel_end, Ordering::Relaxed);
+    VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
+    VSPACE_PROBE_PA.store(
+        core::ptr::addr_of!(VSPACE_PROBE.0) as u64,
+        Ordering::Relaxed,
+    );
 
     // ---- Hai bảng trang trên **một** arena chia sẻ (KT-253): nếu mỗi bảng có bộ đếm riêng thì
     // cả hai cấp từ frame 0 và ghi đè lên nhau.
@@ -797,8 +1107,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let high_sp = high_alias_va(stack_top, text_start, KERNEL_HIGH_BASE);
     let physmap_probe_va = vifast_plat_aarch64::split_mmu::physmap_va(phys_probe_pa);
 
-    TEXT_START_PA.store(text_start, Ordering::Relaxed);
-    VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
+    ARENA_PA.store(arena_base, Ordering::Relaxed);
     KMAIN_HIGH_VA.store(kmain_va, Ordering::Relaxed);
     KMAIN_PA.store(kmain_pa, Ordering::Relaxed);
     KMAIN_TRANSLATED_PA.store(kmain_translated, Ordering::Relaxed);

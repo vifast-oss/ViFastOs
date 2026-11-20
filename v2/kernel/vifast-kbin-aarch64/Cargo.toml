@@ -22,3 +22,8 @@ path = "src/main.rs"
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
 vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
+# KT-254 (B3.5): `FaultKind` ABI (`Vm{vspace,va,access,reason}`) + `vm_reason` nằm ở
+# `vifast-plat-common::fault` (D2-56a) — ảnh dựng **đúng** kiểu ABI từ kết quả giải mã ESR/FAR
+# của crate arch (`vifast_plat_aarch64::fault`), không định nghĩa lại `FaultKind` thứ hai.
+# Chỉ ảnh (leaf) kéo crate này; crate arch **không** phụ thuộc ngược (tránh vòng dev-dep).
+vifast-plat-common = { path = "../vifast-plat-common" }

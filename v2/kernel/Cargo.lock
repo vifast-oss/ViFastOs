@@ -34,6 +34,7 @@ name = "vifast-kbin-aarch64"
 version = "0.1.0"
 dependencies = [
  "vifast-plat-aarch64",
+ "vifast-plat-common",
 ]
 
 [[package]]

@@ -430,6 +430,16 @@ impl Tcr {
     }
 }
 
+/// `CPACR_EL1` — cho phép **FP/SIMD** (`FPEN[21:20] = 0b11`) và **SVE** (`ZEN[17:16] = 0b11`)
+/// ở EL0/EL1.
+///
+/// **Vì sao bắt buộc ở `_start`**: trình biên dịch phát instruction NEON (`movi v0.2d`,
+/// `stp q0, q0`) cho các hàm lớn — ví dụ `PageTable::unmap` zero buffer 176 B trên stack. Nếu
+/// `CPACR_EL1.FPEN` còn 0, mọi instruction NEON trap **Undefined Instruction** (`EC = 0x07`).
+/// Đo được trên QEMU: `ELR = 0xffffffc08000065c` = `movi v0.2d, #0` trong `PageTable::unmap`.
+/// Bật **trước** mọi mã Rust (trong `_start`) để không hàm nào chạy với FP/SIMD bị trap.
+pub const CPACR_EL1_FP_SIMD: u64 = (0b11 << 20) | (0b11 << 16);
+
 /// `TCR_EL1` mục tiêu của kernel: 39-bit VA canonical (D2-147), 48-bit PA, 4 KiB granule,
 /// bảng trang Normal write-back write-allocate, inner-shareable, ASID 16 bit.
 ///
