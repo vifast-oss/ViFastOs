@@ -50,7 +50,7 @@ for SMP in 1 2; do
     L="$LOGDIR/${KT251_PREFIX:-kt251}-s1-smp$SMP.log"
     PAY="$LOGDIR/.kt251-pay-$SMP"
     printf 'help\nls /\ncat /README\nexit\n' >"$PAY"
-    KT77_SEND_DELAY=0.05 qg_boot "$L" 300 "$ROOT/v2/test/parity/stdin_wrap.sh" "$PAY" \
+    KT77_SEND_DELAY="${KT251_SEND_DELAY:-0.5}" qg_boot "$L" 300 "$ROOT/v2/test/parity/stdin_wrap.sh" "$PAY" \
         "$QEMU" -machine virt,aia=none,aclint=on -bios "$SBI" \
         -kernel "$IMAGE" -nographic -cpu rv64 -m 128M -smp "$SMP" -no-reboot
     echo "### boot smp=$SMP qemu_rc=$? secs=$QG_LAST_SECS log=$L"

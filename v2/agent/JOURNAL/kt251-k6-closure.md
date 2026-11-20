@@ -195,3 +195,34 @@ $ KT251_LOGDIR=/tmp/kt251b KT251_PREFIX=kt251b KT251_IMAGE=<ảnh trên> bash JO
 Log: [`kt251b-s1-smp1.log`](kt251b-s1-smp1.log), [`kt251b-s1-smp2.log`](kt251b-s1-smp2.log).
 **Kết luận**: S1 **ĐẠT** giữ nguyên trên HEAD cuối tuần; `build=f861bd283066120f` và `text=131728`
 **trùng** bản đo trước ⇒ mã sản phẩm không đổi, chỉ dòng `# build:` (đầu vào) đổi.
+
+---
+
+## Phụ lục 2 — đo lại S1 trên HEAD **sau vòng 2** (`e88f5f77`, 2026-11-21 04:35 JST)
+
+`build-inputs` đổi lần nữa (thêm `vifast-kbin-x86_64`, `virtio-input`, `wake_scope.py`) ⇒ đo lại.
+
+```text
+REPRO … sha256=94fc1c6e09e9dd569666c95ebb2bc36ac639027afd52155e764d1d3855048664 size=213632
+       algo=kt134-v4 inputs=c981995a5d55b107 dirty=0 rev=e88f5f77a45d build=f861bd283066120f text=131728
+```
+
+| Phép đo | smp 1 | smp 2 |
+|---|---|---|
+| `shell>` | 4 dòng | 4 dòng |
+| `help cmds=` | **17** | **17** |
+| `ls n=2 path=/` | 1 | 1 |
+| `cat ok` | 1 | 1 |
+| `exit code=0` | 1 | 1 |
+| `REV-GATE` | **ACCEPT** (`inputs=c981995a…`, `count=270`) | **ACCEPT** |
+
+**`build=f861bd283066120f` + `text=131728` trùng** cả ba lần đo (trước cuối tuần, sau vòng 1, sau
+vòng 2) ⇒ mã sản phẩm **không đổi**; chỉ dòng `# build:` (đầu vào) đổi.
+
+### Flake tìm thấy và đã sửa (T-INFRA)
+
+Lần đo đầu trên HEAD này: **smp 2** in `# shell: ?` cho `help` (1/3 lần). Nguyên nhân: script bơm
+payload với `KT77_SEND_DELAY=0.05` — shell U-mode của ảnh sản phẩm khởi động chậm hơn ảnh test, nên
+dòng `help` đầu tiên tới **trước** khi shell sẵn sàng. **Không** phải lỗi sản phẩm: `ls`/`cat`/`exit`
+xanh 3/3 lần. Đã sửa: `KT251_SEND_DELAY` (mặc định **0,5 s**) — chạy lại **3 lần × smp 1,2**:
+**6/6 đạt đủ 5 phép kiểm**. Đây là **tham số thời điểm bơm**, không phải ngưỡng đạt.
