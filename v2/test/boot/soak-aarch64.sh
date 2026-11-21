@@ -14,10 +14,10 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..25`; đúng **25** dòng `ok N - `, đủ số 1..25,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..27`; đúng **27** dòng `ok N - `, đủ số 1..27,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25);
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..23`; đúng **23** dòng `ok N - `, đủ số 1..23,
+
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; KT-277 thêm 2 ca W^X/cache-DMA: 21 → 23);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
@@ -373,8 +373,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..25
-1..23
+1..27
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -429,9 +428,9 @@ ok 24 - net: arp
 ok 25 - net: ping
 # net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
 # wx: text=RX data=RW ok=1 text_bytes=77824 data_bytes=782336 guard_pages=8 guard_bytes=32768 text_va=0xffffffc080000100 data_va=0xffffffc080013000 text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080000100 fault_elr=0xffffffc080004cf4 low_fault_ec=0x25 low_fault_va=0x40080100 text_unchanged=1 data_rw=1 data_in_rw=1
-ok 22 - wx: text RX (write faults), data RW
+ok 26 - wx: text RX (write faults), data RW
 # dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1 poll_inval=1 line=64 ctr=0x000000008444c004
-ok 23 - dma: cache maintenance before/after DMA
+ok 27 - dma: cache maintenance before/after DMA
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
