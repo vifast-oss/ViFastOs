@@ -59,6 +59,7 @@ use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::gic;
 use vifast_plat_aarch64::mmu::{MapError, TableMemory};
+use vifast_plat_aarch64::pci;
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
 use vifast_plat_aarch64::shootdown::{self, Targets};
 use vifast_plat_aarch64::smp;
@@ -80,6 +81,10 @@ mod faults;
 /// **KT-269** (B3.7, D2-206): U-mode — stub EL0 (`.el0`), handler `svc`, `eret` xuống EL0 và
 /// đường `Exit` quay về EL1h. Tách tệp riêng (luật R1: tệp trong `kernel/` ≤ 1.500 dòng).
 mod umode;
+
+/// **KT-273** (K4' bước 3): PCI ECAM + virtio-blk — TAP 19/20/21, chạy ở `el0_done` (sau U-mode)
+/// để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+mod blk;
 
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
@@ -384,7 +389,7 @@ static HIGH_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
 /// `addr_of!(__text_start)` trả **alias nửa cao** của symbol, không phải PA liên kết. Giá trị
 /// PA thật phải đọc **trước** khi nhảy rồi truyền qua static (static được đọc qua `adrp` ⇒ đi
 /// qua `TTBR1`, đúng bản đồ nửa cao).
-static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
+pub(crate) static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
 /// PA của `__vector_base` (địa chỉ liên kết, đọc lúc PC còn ở nửa thấp).
 static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
 /// PA của `__kernel_end` (đọc lúc PC còn ở nửa thấp — cùng lý do `TEXT_START_PA`).
@@ -436,8 +441,9 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// activate, và fault `FaultKind::Vm` sau `unmap`) + 3 ca của KT-259 (hart 1 online, IPI 0→1,
 /// mọi hart báo alive) + 3 ca của KT-262 (`tlbi: hart 1 sees unmap`, `tlbi: ack from all harts`,
 /// `smp: 4 harts online`) + **3 ca của KT-269** (EL0 vào được, `svc` được xử lý, EL0 chạy tiếp
-/// sau `svc` rồi `Exit`).
-pub const TAP_TESTS: usize = 18;
+/// sau `svc` rồi `Exit`) + **3 ca của KT-273** (`pci: ecam`, `pci: virtio-blk found`,
+/// `blk: sector0`).
+pub const TAP_TESTS: usize = 21;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -868,6 +874,61 @@ pub extern "C" fn high_entry() -> ! {
             debug_halt(3)
         }
     };
+    // ---- **KT-273** (K4' bước 3): PCI ECAM + cửa sổ BAR của virtio-blk.
+    //
+    // ECAM của QEMU `virt` aarch64 ở PA `0x40_1000_0000` — **không** canonical 39-bit và
+    // `PHYSMAP_BASE + PA` **tràn u64**, nên phải map vào một **cửa sổ VA riêng**
+    // (`pci::ECAM_VA_BASE = 0x8000_0000`, nối tiếp dãy VA 0x5/0x6/0x7 đã dùng). Cửa sổ BAR
+    // (`0x1000_0000`, 2 MiB) thì identity-map được — cùng khuôn riscv64.
+    //
+    // Kiểm **trước** khi map: cửa sổ BAR phải **chưa** có mapping nào (nếu có, gán BAR vào đó là
+    // đè im lặng — CAO-2/D2-110C). Đây là lớp kiểm **bảng trang** mà `pci::init_for` không làm
+    // được (nó không có `VSpace`), bù lại `pci::RESERVED_RANGES` đã kiểm lúc biên dịch.
+    if vs.walk(pci::BAR_ASSIGN_BASE) != Err(MapError::NotMapped) {
+        let _ = writeln!(
+            console,
+            "PANIC: pci: cửa sổ BAR 0x{:x} đã có mapping trước khi gán",
+            pci::BAR_ASSIGN_BASE
+        );
+        debug_halt(3)
+    }
+    let pages_ecam = match map_window_into(
+        &mut vs,
+        pci::ECAM_VA_BASE,
+        pci::ECAM_BASE,
+        pci::ECAM_MAP_BYTES,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: pci: map ECAM lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let pages_bar = match map_window_into(
+        &mut vs,
+        pci::BAR_ASSIGN_BASE,
+        pci::BAR_ASSIGN_BASE,
+        pci::BAR_ASSIGN_BYTES,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    let _ = writeln!(
+        console,
+        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} frames_used={}",
+        pci::ECAM_BASE,
+        pci::ECAM_VA_BASE,
+        pci::BAR_ASSIGN_BASE,
+        vs.mmu().low().memory().frames_used(),
+    );
+
     // **Một Frame 4 KiB** vào VA người dùng (ngoài RAM, không identity).
     let frame = match Frame::new(probe_pa) {
         Some(frame) => frame,
@@ -1011,6 +1072,32 @@ pub extern "C" fn high_entry() -> ! {
     // EL0; **không trả về** — đường `Exit` của EL0 `eret` về EL1h tại `umode::el0_done`, nơi in
     // marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi TAP 1..18 đã xanh.
     umode::run(&mut console, &mut vs, text_start)
+}
+
+/// Map cửa sổ `[pa_base, pa_base+bytes)` vào `[va_base, va_base+bytes)` bằng trang 4 KiB —
+/// KT-273 dùng cho ECAM (VA riêng, PA không identity được) và cửa sổ BAR (VA == PA).
+///
+/// `bytes` phải là bội của 4 KiB và `pa_base`/`va_base` phải căn 4 KiB; lệch ⇒ `Unaligned`
+/// (không map lệch trang).
+fn map_window_into<M: TableMemory>(
+    vs: &mut VSpace<M>,
+    va_base: u64,
+    pa_base: u64,
+    bytes: u64,
+    perms: Perms,
+    attr: MemAttr,
+) -> Result<usize, MapError> {
+    if bytes == 0 || bytes & 0xFFF != 0 || va_base & 0xFFF != 0 || pa_base & 0xFFF != 0 {
+        return Err(MapError::Unaligned);
+    }
+    let pages = bytes / 0x1000;
+    let mut index = 0;
+    while index < pages {
+        let frame = Frame::new(pa_base + index * 0x1000).ok_or(MapError::Unaligned)?;
+        vs.map_obj_with(va_base + index * 0x1000, frame, perms, attr)?;
+        index += 1;
+    }
+    Ok(pages as usize)
 }
 
 /// Map **identity** `[start, end)` vào `VSpace` bằng trang 4 KiB (làm tròn ra ngoài) — dùng cho

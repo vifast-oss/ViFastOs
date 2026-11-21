@@ -1,13 +1,15 @@
 # K4' bước 3 (phần đầu) — ViFastOs **boot thật trên AArch64** (QEMU `virt`)
 
-Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) DONE** — Agent 1 (toàn quyền A0), 2026-11-21.
+Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) + B3.10 (PCI ECAM + virtio-blk) DONE** — Agent 1
+(toàn quyền A0), 2026-11-21.
 **Soak 1.000 + `budget-aarch64.sh` DONE** (KT-265, §8) — điều kiện "như K3" đã đủ **phần soak**.
 **U-mode/EL0 + `svc` DONE** (KT-269, §9) — `[calling.aarch64]` đã mở (D2-206).
+**PCI ECAM + virtio-blk DONE** (KT-273, §10) — đọc được sector 0 của đĩa QEMU.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt247-*`, `kt248-*`, `kt249-*`, `kt250-*`,
-`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`, `kt269-*`.
+`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`, `kt269-*`, `kt273-*`.
 Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa cao làm trong crate arch),
 **D2-203** (KT-262: `TLBI` shootdown + smp 4), **D2-204** (KT-265: soak 1.000 + budget aarch64),
 **D2-206** (KT-269: mở `[calling.aarch64]` + U-mode).
@@ -26,6 +28,7 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.8 | runner QEMU + TAP + ca âm | KT-250 | **DONE (phần đầu)** |
 | B3.9 | **smp 2**: PSCI `CPU_ON` + GICv3 `SGI 0` (IPI) | KT-259 | **DONE** (2 hart) |
 | B3.9+ | **smp 4** + ba SGI (IPI 0, shootdown 1, lệnh 2) | KT-262 | **DONE** (4 hart) |
+| B3.10 | **PCI ECAM** + quét bus/device/function + gán BAR + **virtio-blk** đọc sector 0 | KT-273 | **DONE** (§10) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
 `cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8). **U-mode** (B3.7) chỉ
@@ -165,17 +168,20 @@ hart phụ **thật sự** chạy `tlbi` trong handler.
 ## 6. Runner + TAP
 
 ```bash
-bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
+bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 12 ca âm
 ```
 
 - Dùng `qemu_guard.sh` (process group + timeout + dọn con) — **`perl -e 'alarm N; exec @ARGV'`
   KHÔNG giết được QEMU** (qemu bỏ qua `SIGALRM`).
-- **13/13 kiểm sạch** (KT-262 + KT-265 + KT-269): ELF (`.text` @ `0x4008_0000`, `.text.vectors`
-  là TEXT, 16 stub đúng offset), boot (**TAP 18/18** + marker đúng 1 lần + **8 dòng `# smp:`** +
-  **3 dòng `# tlbi:`** + **`# umode: el0 ran svc=0 ret=<len>`** + **`# conf image:` khớp ELF** —
-  đúng một lần mỗi dòng), **11 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai, log rỗng,
-  thiếu dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack shootdown**,
-  **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) đều **ĐỎ đúng**.
+- **14/14 kiểm sạch** (KT-262 + KT-265 + KT-269 + KT-273): ELF (`.text` @ `0x4008_0000`,
+  `.text.vectors` là TEXT, 16 stub đúng offset), boot (**TAP 21/21** + marker đúng 1 lần +
+  **8 dòng `# smp:`** + **3 dòng `# tlbi:`** + **`# umode: el0 ran svc=0 ret=<len>`** +
+  **`# pci: ecam … class=0x060000 … empty=0xffff`** + **`# pci: virtio-blk found …`** +
+  **`# blk: sector0 hex=<khớp đĩa tạm> … magic=1`** + **`# conf image:` khớp ELF** — đúng một
+  lần mỗi dòng), **12 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai, log rỗng, thiếu
+  dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack shootdown**, **hash
+  ảnh lệch ELF**, **thiếu dòng `# umode:`**, **không có đĩa ⇒ `# blk: no device` + TAP đỏ**)
+  đều **ĐỎ đúng**.
 - Nối vào cổng: bước **56** `QEMU aarch64 (K4' bước 3)` — chạy ở **cả T1 và T2**.
 
 ## 7. Còn thiếu (ghi rõ, không giấu)
@@ -200,7 +206,12 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
 10. **`TLBI` trên QEMU TCG**: `vae1is` flush TLB **mọi** CPU (`tlb_flush_page_by_mmuidx_all_cpus_synced`),
     nên đột biến "bỏ `tlbi` ở hart phụ" **không** đỏ trên QEMU — xem `kt262-mutation.log` §5 và
     đối chứng dương ở §5.1. **Không** được gọi là "đã kiểm trên phần cứng".
-11. **`# build:` (KT-86) chưa có trên ảnh aarch64**: cổng danh tính bản dựng của riscv64 chưa áp
+11. **PCI**: chỉ **virtio-blk** (KT-273, §10). **Chưa** virtio-net/gpu/input trên aarch64, **chưa**
+    MSI-X (dùng poll `used`), **chưa** hotplug, **chưa** PCIe 64-bit MMIO window
+    (`0x80_0000_0000` — BAR modern của virtio nằm trong cửa sổ 32-bit nên chưa cần). ECAM map
+    **16 MiB = 16 bus** (không phải 256 MiB): 256 MiB cần **129** frame bảng trang, vượt arena
+    44 frame và trần `.data+.bss`; QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo `info pci`).
+12. **`# build:` (KT-86) chưa có trên ảnh aarch64**: cổng danh tính bản dựng của riscv64 chưa áp
     cho aarch64; bù bằng `# conf image:` (D2-80) + sha256 + `git HEAD` trong header soak. **Không**
     gọi là tương đương KT-86.
 
@@ -209,15 +220,18 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 10 ca âm
 ```bash
 bash v2/test/boot/soak-aarch64.sh 1000 3     # cổng: N=1.000, 3 luồng, 20 s/boot, không retry
 bash v2/test/boot/soak-aarch64.sh --smoke 3 3 # N < 1.000: LUÔN exit 1 (không phải bằng chứng)
-bash v2/test/boot/soak-aarch64.sh --selftest  # 1 ca dương + 13 ca âm, không mở QEMU
+bash v2/test/boot/soak-aarch64.sh --selftest  # 1 ca dương + 18 ca âm, không mở QEMU
 bash v2/test/boot/budget-aarch64.sh <ảnh> product
 bash v2/test/boot/budget-aarch64.sh --selftest
 ```
 
 **Bất biến mỗi boot** (cùng khuôn `soak.sh` riscv64, **không nới**): đúng 1 `TAP version 13`,
-đúng 1 `1..15`, đúng 15 dòng `ok` (đủ 1..15), 0 `not ok`, đúng 1 marker
+đúng 1 `1..21`, đúng 21 dòng `ok` (đủ 1..21), 0 `not ok`, đúng 1 marker
 `# viFastOs aarch64: boot ok`, đúng 1 `# conf image:` **khớp ELF**, `# smp: online mask=0xf …
-harts=4 mpidr_ok=1` + bằng chứng từng hart + ba dòng `# tlbi:`, 0 `PANIC`, quá 20 s ⇒ đỏ.
+harts=4 mpidr_ok=1` + bằng chứng từng hart + ba dòng `# tlbi:` + `# umode: el0 ran …` +
+`# pci: ecam …` + `# pci: virtio-blk found …` + `# blk: sector0 …` (hex khớp đĩa tạm), 0
+`PANIC`, quá 20 s ⇒ đỏ. **KT-273** thêm đĩa tạm + `-nic none` vào `QEMU_ARGS` (cùng cấu hình
+runner) — nếu không ảnh in `not ok 20/21` và soak đỏ vì lý do sai.
 
 **Đo được** (log `kt265-soak-1000.log`, `kt265-soak-results.log`):
 
@@ -342,4 +356,95 @@ ok 18 - umode: returned to el0
    tại `el0_done` để in marker rồi tắt máy.
 4. **Không** có `Tcb`/`VSpace` object cho tiến trình EL0: trang mã/stack được map trực tiếp vào
    `VSpace` của ảnh, chưa qua cap/Untyped (nợ M17 của object layer).
+5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+
+## 10. PCI ECAM + virtio-blk — B3.10 (KT-273)
+
+### 10.1 ECAM ở đâu — **đo**, không suy đoán
+
+QEMU `virt` aarch64 **không** đặt ECAM ở `0x3f00_0000` (địa chỉ của bản QEMU cũ / của riscv64).
+Đo bằng DTB của chính QEMU 11.1.3 trên máy đo:
+
+```bash
+qemu-system-aarch64 -M virt,gic-version=3,dumpdtb=/tmp/virt.dtb -cpu cortex-a72 -m 128M -display none
+dtc -I dtb -O dts /tmp/virt.dtb | sed -n '/pcie@10000000/,/^};/p'
+#   reg    = <0x40 0x10000000 0x00 0x10000000>                        ← ECAM 0x40_1000_0000, 256 MiB
+#   ranges = <0x1000000 0x00 0x00 0x00 0x3eff0000 0x00 0x10000        ← PIO  0x3eff_0000, 64 KiB
+#             0x2000000 0x00 0x10000000 0x00 0x10000000 0x00 0x2eff0000 ← MMIO32 0x1000_0000
+#             0x3000000 0x80 0x00 0x80 0x00 0x80 0x00>                 ← MMIO64 0x80_0000_0000
+```
+
+Ba vùng này nằm trong bảng tài nguyên aarch64 (`resources::{PCI_ECAM, PCI_MMIO32, PCI_PIO}`) và
+được kiểm **không chồng lấn** ở host test.
+
+### 10.2 Vì sao ECAM phải đi qua **cửa sổ VA riêng**
+
+PA `0x40_1000_0000` có bit 38 = 1 nhưng bit 63..39 = 0 ⇒ **không canonical** với 39-bit VA
+(D2-147) ⇒ **không** identity-map được. Cửa sổ **physmap** cũng không cứu được:
+`PHYSMAP_BASE + PA` **tràn `u64`** (nửa cao 39-bit chỉ phủ PA `< 2^38` = 256 GiB; ECAM ở
+256 GiB + 16 MiB). Vì vậy driver map ECAM vào **cửa sổ VA riêng** `pci::ECAM_VA_BASE =
+0x8000_0000` (nối tiếp dãy VA đã dùng: `0x5000_0000` probe, `0x6000_0000` VSpace,
+`0x7000_0000` EL0) và đọc `VA = ECAM_VA_BASE + (PA - ECAM_BASE)`. Cửa sổ BAR (`0x1000_0000`,
+2 MiB) thì identity-map được — cùng khuôn riscv64.
+
+**Cửa sổ ECAM map 16 MiB = 16 bus**, không phải 256 MiB: ảnh chỉ map trang 4 KiB (không dùng
+block descriptor) nên mỗi 2 MiB cần một bảng mức 3 ⇒ 256 MiB cần **129 frame**, vượt arena boot
+44 frame và trần `.data+.bss` 256 KiB (I7). QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo
+`info pci`: host bridge dev 0, virtio-blk dev 1 khi `-nic none`), nên 16 bus là 16× dải cần;
+`SCAN_BUSES` **suy từ** số byte đã map, không viết tay.
+
+### 10.3 Đo được (log `boot-1.log` của runner)
+
+```text
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 frames_used=37
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=2 buses=16
+ok 19 - pci: ecam
+# pci: virtio-blk found bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
+ok 20 - pci: virtio-blk found
+# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400c8000 desc=0x400c8000 avail=0x400c8080 used=0x400c8098
+ok 21 - blk: sector0
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| ECAM | PA `0x40_1000_0000` → VA `0x8000_0000`, **4096** trang (16 MiB) |
+| host bridge | `1b36:0008`, class **`0x060000`**, rev `0x00`; slot trống trả **`0xffff`** |
+| quét | **16** bus × 32 device × 8 function; **2** function có mặt (host bridge + virtio-blk) |
+| virtio-blk | `1af4:1001` (transitional), BAR **4** `mem64` cỡ `0x4000`, gán `0x10000000`, **đọc lại khớp** |
+| `command` | `0x0006` = `MEMORY | BUS_MASTER` (đọc lại sau khi bật) |
+| capability | đủ bốn (`common`/`notify`/`device`/`isr`) cùng BAR 4, `offset+length ≤ bar_size` |
+| sector 0 | hex `5649464153544f532d4b543237332d53` = `VIFASTOS-KT273-S`, `magic=1`, `capacity=8` |
+| DMA | trang 4 KiB trong `.bss`; descriptor mang **PA** (`high_to_pa`), không phải alias nửa cao |
+| frame | `frames_used=37` / arena **44** (KT-273 nâng 32 → 44; 7 dự phòng) |
+| `.data+.bss` | **221.392 B** / trần **262.144 B** (84,5 %) |
+
+**Ca âm "không có đĩa"** (runner, boot lần hai **không** `-drive`): ảnh in `# pci: no virtio-blk
+stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **không** marker ⇒
+`check_log` ĐỎ. Đây là ca âm **thật** (không phải biến đổi log): nó chứng minh driver
+**fail-closed** khi thiếu thiết bị.
+
+### 10.4 Bất biến của driver
+
+- Feature đàm phán **duy nhất** `VIRTIO_F_VERSION_1` + `VIRTIO_BLK_F_FLUSH` **nếu** thiết bị có
+  (`vifast_virtio::blk::negotiated_features`, test host); gửi `T_FLUSH` khi chưa đàm phán là
+  vi phạm spec §5.2.3.
+- Thứ tự spec §2.7: descriptor → `avail->ring` → **`dsb sy`** → `avail->idx` → **`dsb sy`** →
+  notify → poll `used->idx` → **`dsb sy`** → đọc `used->elem`/status.
+- `used->id` phải khớp head descriptor (0); lệch ⇒ `id_mismatch` + lỗi, không im lặng.
+- Request dựng bằng `vifast_virtio::blk::build_request` — **cùng** mã test host kiểm, không ghép
+  header bằng tay (bài học v1 #2).
+- Trần poll bằng `CNTPCT_EL0` (2 s) — bước 3 **chưa** có timer per-hart (nợ §7.1); `CNTFRQ_EL0 = 0`
+  ⇒ lùi về trần **số vòng** (`POLL_SPIN_LIMIT`), ghi rõ trong mã.
+- Trạng thái driver bằng `Atomic*` (không `UnsafeCell`): crate `#![deny(unsafe_code)]` ngoài
+  `asm` (D2-17); trang DMA nằm ở `asm::dma_page` — mô-đun duy nhất được `unsafe`.
+
+### 10.5 Còn thiếu của B3.10 (ghi rõ)
+
+1. **Chỉ virtio-blk**: chưa virtio-net/gpu/input trên aarch64 (D1 vẫn là riscv64), chưa MSI-X
+   (poll `used`), chưa hotplug.
+2. **ECAM 16/256 bus** — lý do frame/trần ở §10.2; bus ≥ 16 **không** quét được (đọc ra ngoài
+   cửa sổ đã map ⇒ data abort), không phải "bỏ qua cho nhanh".
+3. **Không cache maintenance**: QEMU TCG không mô hình hoá cache nên DMA nhất quán; trên phần cứng
+   thật cần `dc civac`/`dsb` trước khi bàn giao ring — **chưa** làm, **chưa** đo.
+4. **Không** dùng ngắt: driver poll; `ISR` chỉ đọc chẩn đoán.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

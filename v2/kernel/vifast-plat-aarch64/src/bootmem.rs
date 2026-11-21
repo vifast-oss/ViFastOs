@@ -30,17 +30,23 @@ use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::mmu::TableMemory;
 
-/// Số frame 4 KiB của arena bảng trang boot: **32** (128 KiB).
+/// Số frame 4 KiB của arena bảng trang boot: **44** (176 KiB).
 ///
 /// Đo được trên ảnh KT-249: identity map kernel + UART + GIC + trang probe dùng **8** frame
 /// (gốc mức 0, mức 1, hai bảng mức 2, ba bảng mức 3, một bảng mức 3 cho trang probe) ⇒ 32 là
 /// **4×** headroom cho bước sau (B3.4 physmap/nửa cao). Vượt thì `alloc_frame` trả `None` và boot
 /// **PANIC** (fail-loud), không ghi ra ngoài arena.
 ///
-/// **Vì sao không phải 64**: bất biến I7 của thiết kế (`kt242-k4-buoc3-design.md` §3) áp trần
-/// K0.5 `.data + .bss ≤ 256 KiB` cho **mọi** bước. Arena 64 frame (256 KiB) + trang probe (4 KiB)
-/// đẩy `.bss` lên **268 KiB** ⇒ vượt trần. Đo lại sau khi giảm: xem journal KT-249 §6.
-pub const BOOT_ARENA_FRAMES: usize = 32;
+/// **KT-273 nâng 32 → 44** (vẫn dưới trần I7): ảnh KT-269 đã dùng **hết 32** frame (đo được
+/// `used=32` sau `VSpace` + U-mode), nên PCI ECAM + cửa sổ BAR **không còn frame nào**. Nhu cầu
+/// mới: ECAM 16 MiB = **8** bảng mức 3 (mỗi 2 MiB một bảng; ảnh chỉ map trang 4 KiB, không dùng
+/// block descriptor) + cửa sổ BAR 2 MiB = **2** frame (một bảng mức 2 + một bảng mức 3) ⇒ **10**
+/// frame. Đo trên ảnh KT-273: `frames_used=37` ⇒ 44 frame còn **7** dự phòng.
+///
+/// **Vì sao không 48**: `.data+.bss` của ảnh KT-273 là **237.776 B** với arena 48 frame
+/// (90,7 % trần) — quá sát trần I7 cho bước sau; 44 frame cho **221.392 B** (84,5 %) mà vẫn đủ
+/// frame. 64 frame (256 KiB) **vẫn** không dùng được (`.bss` sẽ vượt trần).
+pub const BOOT_ARENA_FRAMES: usize = 44;
 
 /// Số entry một frame bảng trang (512 × 8 B = 4 KiB).
 pub const ENTRIES_PER_FRAME: usize = 512;

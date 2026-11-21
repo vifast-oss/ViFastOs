@@ -251,6 +251,93 @@ mod imp {
         unsafe { core::ptr::write_volatile(addr as *mut u8, value) };
     }
 
+    /// Đọc **8 bit** từ MMIO (thanh ghi thiết bị) — KT-273 (PCI config space).
+    pub fn mmio_read_u8(addr: u64) -> u8 {
+        // SAFETY: như `mmio_read_u32`; đọc 1 byte, không yêu cầu căn lề.
+        unsafe { core::ptr::read_volatile(addr as *const u8) }
+    }
+
+    /// Đọc **16 bit** từ MMIO — KT-273 (`vendor_id`/`command` của PCI config space).
+    pub fn mmio_read_u16(addr: u64) -> u16 {
+        // SAFETY: như `mmio_read_u32`; đọc 2 byte căn 2 (thanh ghi PCI 16 bit).
+        unsafe { core::ptr::read_volatile(addr as *const u16) }
+    }
+
+    /// Ghi **16 bit** ra MMIO — KT-273 (`command` của PCI: bật memory + bus master).
+    pub fn mmio_write_u16(addr: u64, value: u16) {
+        // SAFETY: như `mmio_write_u32`; ghi 2 byte vào thanh ghi thiết bị đã map.
+        unsafe { core::ptr::write_volatile(addr as *mut u16, value) };
+    }
+
+    /// Ghi **64 bit** ra MMIO — KT-273 (ba thanh ghi địa chỉ 64 bit của virtio-pci:
+    /// `queue_desc`/`queue_driver`/`queue_device`).
+    pub fn mmio_write_u64(addr: u64, value: u64) {
+        // SAFETY: như `mmio_write_u32`; ghi 8 byte căn 8 vào thanh ghi thiết bị đã map.
+        unsafe { core::ptr::write_volatile(addr as *mut u64, value) };
+    }
+
+    // ------------------------------------------------------------------ bộ đếm (KT-273)
+
+    /// Đọc `CNTPCT_EL0` — bộ đếm **vật lý** của generic timer (luôn có trên AArch64, không cần
+    /// bật `CNTP_CTL_EL0`).
+    ///
+    /// **Vì sao cần**: driver virtio-blk phải có **trần** khi poll `used` (spec §2.7.13: không
+    /// có ngắt thì driver poll; poll vô hạn = treo im lặng). Bước 3 **chưa** có timer per-hart
+    /// (nợ §7.1 của `k4-aarch64-boot.md`), nhưng `CNTPCT_EL0` là bộ đếm **đọc được** không cần
+    /// cấu hình — đúng thứ cần cho một trần **thời gian** thay vì trần số vòng.
+    pub fn read_cntpct_el0() -> u64 {
+        let value: u64;
+        // SAFETY: `mrs` thanh ghi hệ thống đọc được ở EL1; không truy cập bộ nhớ.
+        unsafe {
+            core::arch::asm!("mrs {}, cntpct_el0", out(reg) value, options(nostack, preserves_flags))
+        };
+        value
+    }
+
+    /// Đọc `CNTFRQ_EL0` — tần số bộ đếm (Hz). QEMU `virt` đặt 62,5 MHz; firmware thật có thể
+    /// khác nên driver **không** hardcode tần số, và chịu được giá trị 0 (xem `virtio_blk`).
+    pub fn read_cntfrq_el0() -> u64 {
+        let value: u64;
+        // SAFETY: như `read_cntpct_el0`.
+        unsafe {
+            core::arch::asm!("mrs {}, cntfrq_el0", out(reg) value, options(nostack, preserves_flags))
+        };
+        value
+    }
+
+    // ------------------------------------------------------------------ trang DMA (KT-273)
+
+    /// Trang **DMA 4 KiB** căn lề của ảnh — virtqueue + request header + đệm dữ liệu + status
+    /// của virtio-blk (KT-273).
+    ///
+    /// **Vì sao ở `asm`**: đây là mô-đun **duy nhất** của crate được `unsafe` (D2-17), và vùng
+    /// DMA là bộ nhớ thô chia sẻ với **thiết bị** — cùng loại với `read_u64`/`write_u64` ở trên.
+    /// Giữ bất biến "chỉ `asm` có `unsafe`" thay vì mở mô-đun thứ hai.
+    ///
+    /// **Vì sao `UnsafeCell` + `unsafe impl Sync`**: `static` cần `Sync`; vùng này **có** bị ghi
+    /// (driver ghi descriptor, thiết bị ghi `used`/status qua DMA). An toàn nhờ hợp đồng: ảnh
+    /// boot chạy **một** hart trên đường driver và driver tự tuần tự hoá (một request một lúc).
+    #[repr(align(4096))]
+    struct DmaPage(core::cell::UnsafeCell<[u8; 4096]>);
+    // SAFETY: xem tài liệu `DmaPage` — một hart, truy cập tuần tự trong `virtio_blk`.
+    unsafe impl Sync for DmaPage {}
+    static DMA_PAGE: DmaPage = DmaPage(core::cell::UnsafeCell::new([0u8; 4096]));
+
+    /// Địa chỉ của trang DMA **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias nửa cao).
+    ///
+    /// Thiết bị DMA bằng **PA**, nên caller phải đổi alias nửa cao → PA
+    /// (`virtio_blk::high_to_pa`) trước khi ghi vào descriptor.
+    pub fn dma_page_addr() -> u64 {
+        DMA_PAGE.0.get() as *const _ as u64
+    }
+
+    /// Trang DMA dưới dạng lát byte ghi được (4 KiB).
+    pub fn dma_page() -> &'static mut [u8; 4096] {
+        // SAFETY: xem `DmaPage` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
+        // bị) giữ tham chiếu tới vùng này.
+        unsafe { &mut *DMA_PAGE.0.get() }
+    }
+
     // ------------------------------------------------------------------ bộ nhớ thô (KT-249)
 
     /// Đọc 64 bit tại **địa chỉ tuyệt đối** `addr` (VA sau khi MMU bật, PA trước đó).
@@ -753,6 +840,38 @@ mod imp {
     /// Stub host của MMIO ghi 8 bit — **panic**: như `mmio_write_u32`.
     pub fn mmio_write_u8(_addr: u64, _value: u8) {
         host_stub("mmio write u8")
+    }
+    /// Stub host của MMIO đọc 8 bit — **panic**: như `mmio_read_u32`.
+    pub fn mmio_read_u8(_addr: u64) -> u8 {
+        host_stub("mmio read u8")
+    }
+    /// Stub host của MMIO đọc 16 bit — **panic**: như `mmio_read_u32`.
+    pub fn mmio_read_u16(_addr: u64) -> u16 {
+        host_stub("mmio read u16")
+    }
+    /// Stub host của MMIO ghi 16 bit — **panic**: như `mmio_write_u32`.
+    pub fn mmio_write_u16(_addr: u64, _value: u16) {
+        host_stub("mmio write u16")
+    }
+    /// Stub host của MMIO ghi 64 bit — **panic**: như `mmio_write_u32`.
+    pub fn mmio_write_u64(_addr: u64, _value: u64) {
+        host_stub("mmio write u64")
+    }
+    /// Stub host của `CNTPCT_EL0` — **panic**: trên host không có generic timer của khách.
+    pub fn read_cntpct_el0() -> u64 {
+        host_stub("mrs cntpct_el0")
+    }
+    /// Stub host của `CNTFRQ_EL0` — **panic**: như `read_cntpct_el0`.
+    pub fn read_cntfrq_el0() -> u64 {
+        host_stub("mrs cntfrq_el0")
+    }
+    /// Stub host của trang DMA — **panic**: trên host không có vùng DMA của ảnh.
+    pub fn dma_page_addr() -> u64 {
+        host_stub("dma page addr")
+    }
+    /// Stub host của trang DMA — **panic**: như `dma_page_addr`.
+    pub fn dma_page() -> &'static mut [u8; 4096] {
+        host_stub("dma page")
     }
     /// Stub host của đọc bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
     pub fn read_u64(_addr: u64) -> u64 {

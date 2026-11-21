@@ -16,3 +16,8 @@ description = "Platform AArch64 K4' bước 1: PageTableFormat 4 mức 4 KiB (39
 # (thiết kế §358/§1101) — crate này chỉ còn impl, không định nghĩa lại (nợ N1 của KT-160 đã đóng).
 # Crate nội bộ, `no_std`, không dependency ngoài (D2-21).
 vifast-pte = { path = "../../lib/vifast-pte" }
+# **KT-273** (K4' bước 3, PCI ECAM + virtio-blk): phần **thuần** của virtio-pci/virtio-blk
+# (BAR mask, capability list, split queue, request header) đã có ở `vifast-virtio` từ KT-72 —
+# crate arch **dùng lại**, không chép logic sang bản thứ hai (D2-110A). Crate đó `no_std`,
+# `forbid(unsafe_code)`, không dependency ngoài.
+vifast-virtio = { path = "../../lib/vifast-virtio" }

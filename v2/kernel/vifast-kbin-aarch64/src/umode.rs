@@ -340,10 +340,17 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
 ///
 /// Đây là "kết thúc tiến trình" của B3.7: chưa có procsrv/scheduler nên kernel tự in marker
 /// (marker **chỉ** được in khi mọi ca TAP đã xanh — nếu in sớm, một ảnh hỏng vẫn có marker).
+///
+/// **KT-273**: trước marker, chạy ba phép đo PCI/virtio-blk (TAP 19/20/21). Chúng phải ở **đây**
+/// (không phải `high_entry`) để số hiệu TAP tuần tự sau `ok 18`; `VSpace` vẫn đang hoạt động nên
+/// MMIO tới ECAM/BAR đi qua bảng trang đã map trong `high_entry`.
 #[no_mangle]
 pub extern "C" fn el0_done() -> ! {
     let mut console = Console;
     let _ = writeln!(console, "# umode: done");
+    if !crate::blk::run(&mut console) {
+        debug_halt(5)
+    }
     let _ = pl011::write_str(BOOT_MARKER);
     let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)

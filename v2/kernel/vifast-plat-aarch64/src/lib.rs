@@ -52,6 +52,9 @@ pub mod format;
 pub mod gic;
 pub mod image;
 pub mod mmu;
+/// **KT-273** (K4' bước 3): PCIe **ECAM** trên QEMU `virt` aarch64 — quét bus/device/function,
+/// đọc vendor/device/class/revision + BAR + capability list, **gán BAR** trong cửa sổ MMIO.
+pub mod pci;
 pub mod pl011;
 pub mod resources;
 pub mod shootdown;
@@ -61,6 +64,9 @@ pub mod sysreg;
 pub mod tlb;
 pub mod umode;
 pub mod vector;
+/// **KT-273**: driver **virtio-blk** (virtio-pci modern) — virtqueue trong một trang DMA, request
+/// `IN`/`OUT`/`FLUSH`, poll `used` có trần `CNTPCT_EL0`.
+pub mod virtio_blk;
 pub mod vspace;
 
 /// Dừng máy **sạch** (KT-247): `PSCI SYSTEM_OFF` qua `hvc #0`, dự phòng `wfi` vô hạn.
@@ -104,6 +110,11 @@ pub use image::{
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, MAX_LEVELS,
 };
+pub use pci::{
+    bar_assign_base, bar_kind_name, ecam_pa, ecam_va, Ecam, EcamProbe, PciFail, PciReport,
+    BAR_ASSIGN_BASE, BAR_ASSIGN_BYTES, ECAM_BASE, ECAM_MAP_BYTES, PCI_MMIO_WINDOW_BASE,
+    PCI_MMIO_WINDOW_BYTES, RESERVED_RANGES, SCAN_BUSES, SCAN_DEVICES, SCAN_FUNCTIONS,
+};
 pub use shootdown::{
     collect_acks, AckCounter, Shootdown, Step, Targets, ACK_WAIT_LIMIT, LOCAL_SEQUENCE,
     REMOTE_SEQUENCE,
@@ -140,5 +151,8 @@ pub use umode::{
 };
 pub use vector::{
     is_aligned, vector_offset, VectorKind, VECTOR_ALIGN, VECTOR_COUNT, VECTOR_STRIDE,
+};
+pub use virtio_blk::{
+    ascii16, has_magic, hex16, high_to_pa, sector0_evidence, BlkReport, Sector0, SECTOR0_MAGIC,
 };
 pub use vspace::{Frame, VSpace, VSpaceId};

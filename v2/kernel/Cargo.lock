@@ -73,6 +73,7 @@ name = "vifast-plat-aarch64"
 version = "0.1.0"
 dependencies = [
  "vifast-pte",
+ "vifast-virtio",
 ]
 
 [[package]]

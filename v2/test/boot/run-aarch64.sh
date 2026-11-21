@@ -17,16 +17,18 @@
 # **Ca âm chạy MẶC ĐỊNH** (không cần cờ): sau lần boot đầu, runner chạy lại **cùng** bộ kiểm
 # `check_log` trên log tốt với 11 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
 # sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, thiếu dòng `# tlbi:`, thiếu ack
-# shootdown, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) và đòi **cả 11 phải ĐỎ**. Nhờ vậy mỗi lần chạy runner vừa
-# chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
-# "PASS giả".
+# shootdown, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) và đòi **cả 11 phải ĐỎ**; cộng
+# **ca âm (l) của KT-273** — boot **không có đĩa** phải in `# blk: no device` và TAP phải ĐỎ
+# (12 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm
+# **không phải dấu cao su** — không có đường "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 18 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#   EXPECT_TESTS    số ca TAP (mặc định 21 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
 #                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
-#                   KT-262 thêm 3 ca TLBI/smp 4, **KT-269 thêm 3 ca U-mode**: EL0 vào được, `svc`
-#                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`)
+#                   KT-262 thêm 3 ca TLBI/smp 4, KT-269 thêm 3 ca U-mode: EL0 vào được, `svc`
+#                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`, **KT-273 thêm 3 ca PCI/blk**:
+#                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
@@ -51,6 +53,18 @@
 # nạp, D2-80) — runner băm lại **cùng** section từ ELF (`test/conformance/image_digest.py`) và
 # đòi log khớp **từng trường**; lệch/thiếu ⇒ boot đó ĐỎ. Đây là bất biến `soak-aarch64.sh` dùng
 # chung, nên runner và soak không thể lệch nhau về định nghĩa "ảnh nào".
+#
+# **KT-273**: QEMU nhận thêm một **đĩa tạm** có nội dung **biết trước**
+# (`-drive file=<tmp>,if=none,id=d0,format=raw,snapshot=on -device virtio-blk-pci,drive=d0`;
+# 8 sector 512 B, 17 byte đầu `VIFASTOS-KT273-S0`). `snapshot=on` để QEMU **không** giữ khoá ghi
+# trên tệp đĩa — soak chạy 3 luồng song song trên **cùng** tệp (nếu thiếu, QEMU báo
+# `Failed to get "write" lock`, đo được khi dựng KT-273). và `-nic none` để **topology PCI tất định** (chỉ host bridge +
+# virtio-blk). Runner đòi thêm ba dòng bằng chứng:
+#   - `# pci: ecam … class=0x060000 … empty=0xffff …` — ECAM map đúng và giải mã thật;
+#   - `# pci: virtio-blk found … vendor=0x1af4 … assigned=… readback=…` — BAR gán rồi **đọc lại**
+#     đúng;
+#   - `# blk: sector0 hex=<32 hex> … magic=1` — hex phải khớp **16 byte đầu của đĩa tạm** (runner
+#     băm lại từ tệp bằng `od`), nên "đọc được sector 0" không thể là đọc ra số 0.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +78,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-18}"
+EXPECT_TESTS="${EXPECT_TESTS:-21}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -83,6 +97,20 @@ die() {
 }
 
 mkdir -p "$LOGDIR" 2>/dev/null || true
+
+# ---------------------------------------------------------------- đĩa tạm (KT-273)
+# Nội dung **biết trước**: 8 sector 512 B, 17 byte đầu là chữ ký `VIFASTOS-KT273-S0` (8 byte đầu
+# khớp `virtio_blk::SECTOR0_MAGIC`). Ảnh in hex 16 byte đầu của sector 0; runner băm lại **cùng**
+# 16 byte từ tệp ⇒ "đọc được sector 0" không thể là đọc ra số 0 rồi tự khen.
+DISK="$LOGDIR/disk0.raw"
+make_disk() {
+    dd if=/dev/zero of="$DISK" bs=512 count=8 2>/dev/null || return 1
+    printf 'VIFASTOS-KT273-S0' | dd of="$DISK" bs=1 seek=0 conv=notrunc 2>/dev/null || return 1
+    return 0
+}
+make_disk || die "không tạo được đĩa tạm $DISK"
+WANT_SECTOR0_HEX="$(od -An -tx1 -N16 "$DISK" 2>/dev/null | tr -d ' \n')"
+[ "${#WANT_SECTOR0_HEX}" -eq 32 ] || die "không đọc được 16 byte đầu của $DISK"
 
 # ---------------------------------------------------------------- objdump (nhiều nguồn)
 # macOS không có `llvm-objdump` trong PATH mặc định; `llvm-tools` của rustup thì có. Thử lần lượt
@@ -310,6 +338,90 @@ check_umode() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# pci:` (KT-273)
+# Ba dòng **bằng chứng PCI** — đây là phần "ECAM map đúng + BAR gán rồi đọc lại" của KT-273:
+#
+#   `# pci: ecam … class=0x060000 … empty=0xffff …`
+#       host bridge **phải** là class `0x060000` (PCI class code "bridge/host") và một slot
+#       **trống** phải trả `0xffff`. Hai điều kiện ấy **cùng đúng** chỉ khi ECAM trỏ đúng chỗ và
+#       giải mã thật — ECAM trỏ sai thì một trong hai sai.
+#   `# pci: virtio-blk found … vendor=0x1af4 … assigned=… readback=…`
+#       BAR gán xong phải **đọc lại** đúng địa chỉ đã ghi (nếu không, thiết bị không nhận BAR).
+#
+# Đòi **đúng một** dòng mỗi loại: in lặp nghĩa là scan chạy hai lần (hoặc log bịa).
+check_pci() {
+    local log="$1" bad=0 n line assigned readback
+    n="$(grep -cE '^# pci: ecam ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# pci: ecam ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# pci: ecam ' "$log" || true)"
+    case "$line" in
+        *"class=0x060000"*) ;;
+        *)
+            echo "# dòng '# pci: ecam' không có 'class=0x060000' (host bridge class)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"empty=0xffff"*) ;;
+        *)
+            echo "# dòng '# pci: ecam' không có 'empty=0xffff' (slot trống phải trả 0xffff)"
+            bad=1
+            ;;
+    esac
+    n="$(grep -cE '^# pci: virtio-blk found ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# pci: virtio-blk found ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# pci: virtio-blk found ' "$log" || true)"
+    case "$line" in
+        *"vendor=0x1af4"*) ;;
+        *)
+            echo "# dòng virtio-blk không có 'vendor=0x1af4' (vendor của virtio)"
+            bad=1
+            ;;
+    esac
+    assigned="$(printf '%s\n' "$line" | sed -n 's/.* assigned=\(0x[0-9a-f]*\).*/\1/p')"
+    readback="$(printf '%s\n' "$line" | sed -n 's/.* readback=\(0x[0-9a-f]*\).*/\1/p')"
+    if [ -z "$assigned" ] || [ "$assigned" != "$readback" ]; then
+        echo "# BAR đọc lại (${readback:-none}) khác địa chỉ đã gán (${assigned:-none})"
+        bad=1
+    fi
+    return "$bad"
+}
+
+# ---------------------------------------------------------------- kiểm dòng `# blk:` (KT-273)
+# `# blk: sector0 hex=<32 hex> … magic=1` — hex phải khớp **16 byte đầu của đĩa tạm** (runner
+# băm lại từ tệp bằng `od`) và `magic=1` chỉ khi 8 byte đầu khớp `VIFASTOS`. Nhờ vậy "đọc được
+# sector 0" không thể là đọc ra số 0 rồi tự khen.
+check_blk() {
+    local log="$1" bad=0 n line
+    n="$(grep -cE '^# blk: sector0 hex=[0-9a-f]{32} ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# blk: sector0 hex=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# blk: sector0 ' "$log" || true)"
+    case "$line" in
+        *"hex=$WANT_SECTOR0_HEX"*) ;;
+        *)
+            echo "# sector0 hex không khớp 16 byte đầu của đĩa tạm ($WANT_SECTOR0_HEX)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"magic=1"*) ;;
+        *)
+            echo "# sector0 không có 'magic=1' (chữ ký VIFASTOS không khớp)"
+            bad=1
+            ;;
+    esac
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
 # `# umode:` + hash ảnh. In lý do đỏ ra stdout.
@@ -360,6 +472,8 @@ check_log() {
     check_smp "$log" || bad=1
     check_tlbi "$log" || bad=1
     check_umode "$log" || bad=1
+    check_pci "$log" || bad=1
+    check_blk "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -495,6 +609,26 @@ selftest_negative() {
         echo "ok $n - ca âm (k): thiếu dòng '# umode:' ⇒ ĐỎ ($(head -1 "$tmp/k.out"))"
     fi
 
+    # (l) **KT-273** — **không có đĩa**: ảnh phải in `# blk: no device` và TAP phải ĐỎ.
+    # Đây là ca âm **thật** (boot QEMU lần hai, không `-drive`), không phải biến đổi log: nó
+    # chứng minh driver **fail-closed** khi thiếu thiết bị, thay vì đọc ra số 0 rồi in `ok`.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    out="$LOGDIR/boot-nodisk.log"
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none; then
+        echo "not ok $n - ca âm (l): boot không có đĩa bị treo/timeout"
+        fails=$((fails + 1))
+    elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/l.out" 2>&1; then
+        echo "not ok $n - ca âm (l): không có đĩa mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -Fq '# blk: no device' "$out"; then
+        echo "not ok $n - ca âm (l): thiếu dòng '# blk: no device'"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (l): không có đĩa ⇒ '# blk: no device' + TAP ĐỎ ($(head -1 "$tmp/l.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -553,7 +687,9 @@ while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
-        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot; then
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+        -device virtio-blk-pci,drive=d0; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -577,7 +713,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 11))
+    total=$((total + 12))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

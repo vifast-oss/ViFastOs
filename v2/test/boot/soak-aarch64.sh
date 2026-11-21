@@ -14,7 +14,7 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..18`; đúng **18** dòng `ok N - `, đủ số 1..18,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..21`; đúng **21** dòng `ok N - `, đủ số 1..21,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
@@ -24,7 +24,7 @@
 #   5. **KT-269** — đúng **một** dòng `# umode: el0 ran svc=<n> ret=<v>` với `svc=0` (imm16 của
 #      `svc #0`) và `ret > 0` (DebugPutStr trả độ dài chuỗi đã in): bằng chứng EL0 **thật sự** chạy
 #      và `svc` được xử lý. Ảnh chỉ chạy EL1 (không `eret` xuống EL0) **không** có dòng này ⇒ ĐỎ
-#      dù TAP 1..18 vẫn xanh;
+#      dù TAP 1..21 vẫn xanh;
 #   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
 #   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
@@ -61,7 +61,10 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=18   # KT-269: 18 ca (KT-262 15 + 3 ca U-mode; khớp `1..18` của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=21   # KT-273: 21 ca (KT-269 18 + 3 ca PCI/blk; khớp `1..21` của ảnh và `EXPECT_TESTS` của runner)
+# **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
+# (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
+WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
 SMOKE=0
 SELFTEST=0
 
@@ -89,7 +92,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..18, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..21, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -193,7 +196,7 @@ check_boot_log() {
     # (5) KT-269 — bằng chứng U-mode: đúng **một** dòng `# umode: el0 ran svc=<n> ret=<v>`, với
     #     `svc=0` (imm16 của `svc #0`) và `ret > 0` (DebugPutStr trả độ dài chuỗi đã in). Dòng này
     #     chỉ in khi EL0 **thật sự** chạy và handler `svc` đọc được số hiệu từ `x8` của EL0; ảnh chỉ
-    #     chạy EL1 (không `eret`) **không** có ⇒ ĐỎ, dù TAP 1..18 vẫn xanh. Cùng bộ kiểm với
+    #     chạy EL1 (không `eret`) **không** có ⇒ ĐỎ, dù TAP 1..21 vẫn xanh. Cùng bộ kiểm với
     #     `run-aarch64.sh` (`check_umode`) — không có đường thứ hai lệch kỳ vọng.
     n="$(grep -cE '^# umode: el0 ran svc=[0-9]+ ret=[0-9]+$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
@@ -202,6 +205,46 @@ check_boot_log() {
     }
     grep -Eq '^# umode: el0 ran svc=0 ret=[1-9][0-9]*$' "$log" || {
         echo "# dòng '# umode: el0 ran svc=0 ret=<len>' không đúng (imm16 phải 0, ret > 0)"
+        bad=1
+    }
+
+    # (5b) **KT-273** — PCI ECAM + virtio-blk + sector 0. Cùng bất biến `run-aarch64.sh`
+    #      (`check_pci`/`check_blk`): ECAM giải mã thật (host bridge class `0x060000`, slot trống
+    #      `0xffff`), BAR gán rồi **đọc lại** đúng, và hex sector 0 khớp **16 byte đầu của đĩa
+    #      tạm** với `magic=1`. Ảnh mất PCI/blk ⇒ soak ĐỎ dù TAP 1..21 vẫn xanh.
+    n="$(grep -cE '^# pci: ecam ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# pci: ecam ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# pci: ecam ' "$log" | grep -Fq "class=0x060000" || {
+        echo "# dòng '# pci: ecam' không có 'class=0x060000'"
+        bad=1
+    }
+    grep -E '^# pci: ecam ' "$log" | grep -Fq "empty=0xffff" || {
+        echo "# dòng '# pci: ecam' không có 'empty=0xffff'"
+        bad=1
+    }
+    n="$(grep -cE '^# pci: virtio-blk found ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# pci: virtio-blk found ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# pci: virtio-blk found ' "$log" | grep -Fq "vendor=0x1af4" || {
+        echo "# dòng virtio-blk không có 'vendor=0x1af4'"
+        bad=1
+    }
+    n="$(grep -cE '^# blk: sector0 hex=[0-9a-f]{32} ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# blk: sector0 hex=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# blk: sector0 ' "$log" | grep -Fq "hex=$WANT_SECTOR0_HEX" || {
+        echo "# sector0 hex không khớp 16 byte đầu của đĩa tạm ($WANT_SECTOR0_HEX)"
+        bad=1
+    }
+    grep -E '^# blk: sector0 ' "$log" | grep -Fq "magic=1" || {
+        echo "# sector0 không có 'magic=1'"
         bad=1
     }
 
@@ -223,7 +266,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..18
+1..21
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -260,6 +303,13 @@ ok 17 - umode: svc handled
 ok 18 - umode: returned to el0
 # umode: exit code=0 nr=14 imm=0
 # umode: done
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 frames_used=37
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=2 buses=16
+ok 19 - pci: ecam
+# pci: virtio-blk found bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
+ok 20 - pci: virtio-blk found
+# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400cc000 desc=0x400cc000 avail=0x400cc080 used=0x400cc098
+ok 21 - blk: sector0
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -339,6 +389,13 @@ EOF
         "$good" >"$tmp/p.log" || true
     neg "ret=0 (DebugPutStr không in được gì)" "$tmp/p.log"
 
+    # **KT-273** — hai ca âm cho bất biến PCI/blk (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# pci: ecam ' "$good" >"$tmp/q.log" || true
+    neg "thiếu dòng '# pci: ecam ' (ECAM không chạy)" "$tmp/q.log"
+
+    grep -v -F '# blk: sector0 ' "$good" >"$tmp/r.log" || true
+    neg "thiếu dòng '# blk: sector0 ' (không đọc được đĩa)" "$tmp/r.log"
+
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
     [ "$fails" -eq 0 ] || return 1
@@ -410,8 +467,14 @@ fi
 # Cấu hình QEMU **đúng** đường boot của ảnh (k4-aarch64-boot.md §2 + run-aarch64.sh):
 # `gic-version=3` bắt buộc từ KT-259 (GICv2 không có redistributor/`ICC_*_EL1`), `-smp 4` từ
 # KT-262, `-cpu cortex-a72` như runner. KHÔNG `-icount` (D2-74 điều kiện c).
+# **KT-273**: thêm **đĩa tạm** có nội dung biết trước + `-nic none` (topology PCI tất định) —
+# cùng cấu hình `run-aarch64.sh`, nếu không ảnh sẽ in `not ok 20/21` và soak đỏ vì lý do sai.
+# `snapshot=on` **bắt buộc**: 3 luồng soak dùng **cùng** tệp đĩa, thiếu nó QEMU báo
+# `Failed to get "write" lock` và 2/3 boot đỏ (đo được khi dựng KT-273).
+DISK="$LOGDIR/disk0.raw"
 QEMU_ARGS=(-M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 4 \
-    -kernel "$IMAGE" -no-reboot)
+    -kernel "$IMAGE" -no-reboot -nic none \
+    -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" -device virtio-blk-pci,drive=d0)
 
 # ------------------------------------------------------------------ build + neo ảnh
 echo "# soak-aarch64 KT-265 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -428,6 +491,13 @@ else
 fi
 
 mkdir -p "$LOGDIR" 2>/dev/null || true
+# **KT-273** — đĩa tạm: 8 sector 512 B, 17 byte đầu `VIFASTOS-KT273-S0` (8 byte đầu khớp
+# `virtio_blk::SECTOR0_MAGIC`). Soak đòi **cùng** hex 16 byte đầu trong mỗi log.
+dd if=/dev/zero of="$DISK" bs=512 count=8 2>/dev/null || die "không tạo được đĩa tạm $DISK"
+printf 'VIFASTOS-KT273-S0' | dd of="$DISK" bs=1 seek=0 conv=notrunc 2>/dev/null ||
+    die "không ghi được chữ ký vào $DISK"
+WANT_SECTOR0_HEX="$(od -An -tx1 -N16 "$DISK" 2>/dev/null | tr -d ' \n')"
+[ "${#WANT_SECTOR0_HEX}" -eq 32 ] || die "không đọc được 16 byte đầu của $DISK"
 # KT-78/OD-K6-6: boot đi qua `qemu_guard.sh` — process group riêng, timeout kill **cả group**,
 # trap dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL). 3 luồng = 3 subshell cùng script.
 # shellcheck source=/dev/null
