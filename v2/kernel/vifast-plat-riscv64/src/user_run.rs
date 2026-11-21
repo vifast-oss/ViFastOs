@@ -68,6 +68,26 @@ pub enum Stop {
     Fault,
 }
 
+/// Tên trạng thái TCB ổn định cho log/TAP (không in `{:?}` có số hart).
+///
+/// **KT-314** — chuyển từ `user.rs` sang đây để `user.rs` giữ trần R1 1.500 dòng (cùng lý do tệp
+/// này được tách khỏi `user` ở KT-74/KT-280); hành vi **không** đổi.
+pub(crate) fn tcb_state_name(state: TcbState) -> &'static str {
+    match state {
+        TcbState::Inactive => "Inactive",
+        TcbState::Ready => "Ready",
+        TcbState::Running { .. } => "Running",
+        TcbState::BlockedOnSend { .. } => "BlockedOnSend",
+        TcbState::BlockedOnRecv { .. } => "BlockedOnRecv",
+        TcbState::BlockedOnReply { .. } => "BlockedOnReply",
+        TcbState::BlockedOnNotification { .. } => "BlockedOnNotification",
+        TcbState::BlockedOnAddress { .. } => "BlockedOnAddress",
+        TcbState::Sleeping { .. } => "Sleeping",
+        TcbState::Stopping => "Stopping",
+        TcbState::Dead => "Dead",
+    }
+}
+
 /// Dịch `(loại, mã)` do `on_u_exception` ghi thành [`Stop`] — cùng bảng số như trước KT-74.
 fn decode(kind: u32, code: u64) -> Stop {
     match kind {
@@ -116,7 +136,7 @@ fn take_resume_pc(tcb: ObjId) -> Option<u64> {
 /// **không** đặt `tf.sepc` cho tác vụ được resume: nó để `0`, nên nếu hook không nạp thì tác vụ
 /// fault ở `0` và TAP đỏ).
 fn apply_resume_pc(tf: &mut TrapFrame) {
-    let Some(tcb) = user::bound_core_tcb() else {
+    let Some(tcb) = user::core_tcb() else {
         return;
     };
     if let Some(pc) = take_resume_pc(tcb) {

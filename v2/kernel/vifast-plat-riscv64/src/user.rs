@@ -322,17 +322,6 @@ pub fn bind_core_tcb(tcb: ObjId) {
     CORE_TCB.store(tcb, Ordering::Release);
 }
 
-/// **KT-314** — TCB core đang gắn (`None` = chưa gắn). [`crate::user_run::run_task`] dùng để biết
-/// `Tcb.Resume` đã chờ `sepc` cho **đúng** tác vụ sắp `sret` hay không.
-pub(crate) fn bound_core_tcb() -> Option<ObjId> {
-    let tcb = CORE_TCB.load(Ordering::Acquire);
-    if tcb == u32::MAX {
-        None
-    } else {
-        Some(tcb)
-    }
-}
-
 /// Số syscall tối đa ghi sổ theo số hiệu (ABI `0..15`) — KT-62.
 pub const SYS_MAX: usize = 16;
 /// Số lần gọi theo số hiệu (KT-62) — TAP ảnh `ktest-user` đọc sau lượt U-mode.
@@ -926,7 +915,7 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                     let _ = writeln!(
                         w,
                         "# sys: nr={nr} err={error} value={value} tcb={tcb} state={} src=core",
-                        state.map(tcb_state_name).unwrap_or("none")
+                        state.map(crate::user_run::tcb_state_name).unwrap_or("none")
                     );
                 }
                 tf.advance_pc(4);
@@ -940,7 +929,7 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                     let _ = writeln!(
                         w,
                         "# sys: nr={nr} err=0 value={code} tcb={tcb} state={} src=core",
-                        state.map(tcb_state_name).unwrap_or("none")
+                        state.map(crate::user_run::tcb_state_name).unwrap_or("none")
                     );
                 }
                 // KT-56/D2-56a: `Exit` là fault kind ABI (đi hàng gửi không Reply — D2-25).
@@ -957,7 +946,7 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                     );
                     match state {
                         Some(state) => {
-                            let _ = writeln!(w, "{}", tcb_state_name(state));
+                            let _ = writeln!(w, "{}", crate::user_run::tcb_state_name(state));
                         }
                         None => {
                             let _ = writeln!(w, "none");
@@ -1006,7 +995,7 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                     let _ = writeln!(
                         w,
                         "# u-mode switched: nr={nr} tcb={tcb} state={}",
-                        tcb_state_name(state)
+                        crate::user_run::tcb_state_name(state)
                     );
                 }
                 crate::TRAP_STATS.record_exception(&saved, exc.kind, false);
@@ -1130,24 +1119,7 @@ fn is_kernel_addr(addr: u64) -> bool {
 
 /// Lớp đọc bộ nhớ user của syscall `DebugPutStr`: kiểm dải user + PTE (`U|R`), đọc bằng
 /// `sstatus.SUM`, in **raw** từng byte ra UART.
-struct UserMemAccess;
-
-/// Tên trạng thái TCB ổn định cho log/TAP (không in `{:?}` có số hart).
-fn tcb_state_name(state: TcbState) -> &'static str {
-    match state {
-        TcbState::Inactive => "Inactive",
-        TcbState::Ready => "Ready",
-        TcbState::Running { .. } => "Running",
-        TcbState::BlockedOnSend { .. } => "BlockedOnSend",
-        TcbState::BlockedOnRecv { .. } => "BlockedOnRecv",
-        TcbState::BlockedOnReply { .. } => "BlockedOnReply",
-        TcbState::BlockedOnNotification { .. } => "BlockedOnNotification",
-        TcbState::BlockedOnAddress { .. } => "BlockedOnAddress",
-        TcbState::Sleeping { .. } => "Sleeping",
-        TcbState::Stopping => "Stopping",
-        TcbState::Dead => "Dead",
-    }
-}
+pub(crate) struct UserMemAccess;
 
 /// `[va, va+len)` nằm trong một dải **đã map** của tác vụ đang chạy (một nguồn: `active_ranges`)
 /// — cho `ipc_buffer::read_header` (KT-67b) và `put_str`.
@@ -1156,6 +1128,12 @@ pub(crate) fn user_range_mapped(va: u64, len: u64) -> bool {
 }
 
 impl SyscallEnv for UserMemAccess {
+    /// **KT-314** — `Tcb.Resume`: giữ `entry` để `run_task` nạp `sepc` (D2-83: core không ghi CSR).
+    fn tcb_resume(&mut self, tcb: ObjId, entry: u64) -> bool {
+        crate::user_run::arm_resume_pc(tcb, entry);
+        true
+    }
+
     /// KT-62: `DebugPutStr` (12) — cùng đường đọc user như KT-53 (dải đã map + `sstatus.SUM`).
     fn put_str(&mut self, ptr: u64, len: u64) -> Result<u64, u64> {
         let range = UserRange::new(USER_BASE, USER_TOP);
@@ -1195,14 +1173,6 @@ impl SyscallEnv for UserMemAccess {
             copied += n as u64;
         }
         Ok(len)
-    }
-
-    /// **KT-314** — `Tcb.Resume` đã chuyển TCB đích sang `Running`: giữ `entry` để
-    /// [`crate::user_run::run_task`] nạp `sepc` ở lần vào U-mode kế tiếp của **đúng** TCB đó
-    /// (D2-83: `sepc` là CSR của arch — core chỉ **giao** giá trị).
-    fn tcb_resume(&mut self, tcb: ObjId, entry: u64) -> bool {
-        crate::user_run::arm_resume_pc(tcb, entry);
-        true
     }
 
     /// WaitAddr/WakeAddr (9/10): dịch VA user ⇒ **nhãn** `(ppn, offset)` cho core (D2-83 — core
