@@ -221,7 +221,40 @@ PANIC: KT-319 ipc u-mode + mr buffer + tcb configure + cap transfer + configure 
 
 Matrix `bash v2/test/boot/ktest.sh 1 matrix` (8 ảnh × smp 1/2/4 = 24 boot):
 
-_(chưa chạy tại thời điểm commit này — cổng danh tính KT-86 từ chối đo trên cây bẩn; kết quả điền ở commit báo cáo ngay sau)_
+```text
+# KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+```
+
+`ktest-ipc` **8/8** ở **cả ba** cấu hình; dòng evidence TAP 8 **giống hệt** nhau (nên phép kiểm
+**không** phụ thuộc số hart):
+
+```text
+# ipc: suspend ok=1 entry=0x40001502
+# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1
+# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend
+```
+
+Thư mục log **riêng** của lần đo sạch: `/tmp/kt319-matrix/` (`ktest-ipc-smp{1,2,4}-1.log`).
+
+**`selftest.sh` ca (r) — kiểm bằng đúng hai lệnh của ca** (không chạy được **toàn bộ**
+`selftest.sh`: nó `die` khi thấy `ktest.sh` khác đang chạy, và lúc đó **phiên khác**
+(`/tmp/kt318-s3`, KT-320) đang chạy matrix — không được giết tiến trình của phiên khác, AGENTS §9):
+
+```text
+$ bash v2/test/boot/ktest.sh --print-evidence ktest-ipc 1 | grep suspend
+34	^# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend$
+35	^# ipc: suspend ok=1 entry=0x[0-9a-f]+$
+36	^# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1$
+
+$ grep -v -F '# ipc: suspend state=Inactive' /tmp/kt319-matrix/ktest-ipc-smp1-1.log > log-no-suspend.log
+$ bash v2/test/boot/ktest.sh --check-log ktest-ipc log-no-suspend.log 1
+#   thiếu evidence#34: ^# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend$
+not ok - check-log ktest-ipc smp=1: thiếu ev34, log log-no-suspend.log
+```
+
+⇒ ca (r) đỏ **đúng** token `ev34`, đúng lý do. Chạy **toàn bộ** `selftest.sh` để dành cho cổng
+`--fast` khi không có phiên khác đo (ghi ở §7).
 
 ## 6. Đột biến
 
@@ -297,6 +330,24 @@ PANIC: KT-319 ipc u-mode + mr buffer + tcb configure + cap transfer + configure 
    nếu mở SMP thật cho ảnh U-mode cần luật "không `Suspend` tác vụ `Running` trên hart khác"
    (hoặc IPI preempt).
 6. `ktest.sh` build lại toàn bộ 8 ảnh mỗi vòng (hành vi cũ, không phải nợ mới).
+7. **Hạ tầng — LOGDIR mặc định dùng chung giữa các worktree** (`$TMPDIR/k3-ktest`, không theo
+   worktree): lúc KT-319 chạy matrix, phiên `/tmp/kt318-s3` (KT-320) chạy **cùng lúc** vào **cùng**
+   thư mục ⇒ log của KT-319 bị ghi đè **sau** khi kiểm (lần đo vẫn xanh vì mỗi log được kiểm ngay
+   sau boot; nếu đọc trộn thì sẽ **đỏ**, không thể "xanh oan"). Đã đo lại **sạch** với
+   `KT54_LOGDIR=/tmp/kt319-matrix` — cùng kết quả `27/27`. Đề nghị: `ktest.sh` mặc định LOGDIR
+   theo `git rev-parse --git-common-dir`/worktree (hoặc `mktemp -d` riêng) để hai phiên song song
+   không đạp lên nhau. **Không** tự sửa `ktest.sh` ngoài phạm vi KT-319.
+8. **Giao thoa với KT-320 khi tích hợp (cần lead biết)**: `main` **đã tiến** trong lúc KT-319 làm
+   — `main` nay là `5f52e5b4` (KT-320 "configure vspace"), trong khi nhánh này base
+   `90ea39ef` như yêu cầu. KT-320 chạm **7 tệp trùng** với KT-319:
+   `core_tcb.rs`, `invoke.rs`, `init/ipc_client_user.rs`, `src/ktest_ipc.rs`,
+   `expected.txt`, `ktest.sh`, `selftest.sh`. Cả hai đều thêm **TAP 8** cho `ktest-ipc`
+   (`tcb suspend` vs `tcb configure vspace`) ⇒ khi tích hợp **phải** đánh số lại: kế hoạch
+   `1..9`, một bên thành **TAP 9** (manifest + 3 evidence + mẫu PANIC + `expected.txt` +
+   ca selftest tương ứng), và `# ipc final`/`# ipc: suspend` vẫn độc lập nên không phải đổi nội
+   dung. **KT-319 không merge/tự đánh số lại** (luật: không merge, không chạm `main`); đây là
+   việc của lead ở bước tích hợp. Cổng xanh ghi ở §5 áp cho **nhánh này** (`task/kt319-suspend`),
+   **không** phải cho ứng viên tích hợp sau khi trộn KT-320.
 
 ## 8. Xác nhận luật
 
