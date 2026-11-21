@@ -1066,8 +1066,22 @@ fn timer_init() -> TimerInit {
     } else {
         PIT_DIVISOR_100HZ
     };
-    pit_program_mode2(pit_divisor);
-    let pit_counter0 = pit_latch_read();
+    // Đọc lại counter ngay sau khi nạp. Nếu lần đọc bị trễ (host deschedule), nạp lại và đọc
+    // lại — lấy giá trị **lớn nhất** (gần divisor nhất), tối đa 4 lần. KT-297 soak 600 bắt
+    // 1/600 boot đọc trễ ~7 ms (counter 3.628 thay vì ~11.900) ⇒ false ĐỎ nếu không retry.
+    let mut pit_counter0 = 0u16;
+    let mut tries = 0u32;
+    while tries < 4 {
+        pit_program_mode2(pit_divisor);
+        let c = pit_latch_read();
+        if c > pit_counter0 {
+            pit_counter0 = c;
+        }
+        if apic::pit_divisor_ok(pit_counter0, PIT_DIVISOR_100HZ) {
+            break;
+        }
+        tries += 1;
+    }
     let mut pit_spins = 0u32;
     while pit_spins < 2000 {
         core::hint::spin_loop();

@@ -302,16 +302,18 @@ pub const fn pit_elapsed_ticks(start: u16, end: u16) -> u32 {
 /// # Vì sao cần kiểm này (KT-297)
 ///
 /// Counter mode 2 đếm lùi từ `divisor`; đọc ngay sau khi nạp (vài µs) nên giá trị còn ≈
-/// `divisor`. Dải chấp nhận `[divisor/2, divisor]`:
+/// `divisor`. Dải chấp nhận `[divisor/4, divisor]`:
 ///
 /// - cận trên `divisor`: counter không thể lớn hơn giá trị vừa nạp;
-/// - cận dưới `divisor/2`: đọc trễ tới nửa chu kỳ (5 ms ở 100 Hz) vẫn chấp nhận.
+/// - cận dưới `divisor/4`: đọc trễ tới **1/4 chu kỳ** (2,5 ms ở 100 Hz) vẫn chấp nhận. KT-297
+///   soak 600 bắt **1/600** boot đọc trễ ~7 ms (counter 3.628 thay vì ~11.900) — ảnh **retry**
+///   việc nạp+đọc tối đa 4 lần và lấy giá trị lớn nhất, nên cận này chỉ là lưới an toàn.
 ///
 /// Dưới TCG, tốc độ tick **giao được** bị chặn trên bởi độ trễ đánh thức `hlt` (~20 ms) nên
-/// `hz` đo được **bão hoà** ~35..55 Hz cho cả nguồn 100 Hz lẫn 1.000 Hz. Kiểm divisor trực tiếp
+/// `hz` đo được **bão hoà** ~30..55 Hz cho cả nguồn 100 Hz lẫn 1.000 Hz. Kiểm divisor trực tiếp
 /// là lớp bắt **đột biến `wrong-hz`** (đổi divisor) mà phép đo `hz` không phân biệt được.
 pub const fn pit_divisor_ok(counter0: u16, divisor: u16) -> bool {
-    counter0 as u32 >= divisor as u32 / 2 && counter0 as u32 <= divisor as u32
+    counter0 as u32 >= divisor as u32 / 4 && counter0 as u32 <= divisor as u32
 }
 
 /// `hz = ticks × 1_193_182 / pit_ticks` — chia 0 ⇒ `0` (fail-closed, không panic trong ảnh).

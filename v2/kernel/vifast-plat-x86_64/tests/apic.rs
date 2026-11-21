@@ -457,8 +457,10 @@ fn pit_divisor_ok_literal() {
     // Đọc ngay sau khi nạp: counter còn ≈ divisor (KT-293 đo được 0x2e31 = 11.825).
     assert!(pit_divisor_ok(11_825, DIV));
     assert!(pit_divisor_ok(DIV, DIV));
-    // Đọc trễ tới nửa chu kỳ (5 ms ở 100 Hz) vẫn chấp nhận.
+    // Đọc trễ tới 1/4 chu kỳ (2,5 ms ở 100 Hz) vẫn chấp nhận; 1/4 − 1 thì không.
     assert!(pit_divisor_ok(DIV / 2, DIV));
+    assert!(pit_divisor_ok(DIV / 4, DIV));
+    assert!(!pit_divisor_ok(DIV / 4 - 1, DIV));
     // Đột biến `wrong-hz` nhanh 10× (divisor 1.193): counter ≈ 1.125 ⇒ ngoài dải.
     assert!(!pit_divisor_ok(1_125, DIV));
     assert!(!pit_divisor_ok(1_193, DIV));
