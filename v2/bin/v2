@@ -20,7 +20,7 @@ MANIFEST="$V2_ROOT/Cargo.toml"
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
-V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)"
+V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)|wake dep-info --product-fs (KT-267)"
 
 # cargo có thể không nằm trên PATH (máy này: ~/.cargo/bin).
 find_cargo() {
@@ -650,6 +650,9 @@ step_gpu_red() { bash "$V2_ROOT/test/boot/gpu.sh" --red-selftest; }
 # `--selftest` ở cổng; soak thật là bước bàn giao riêng (`soak-aarch64.sh 1000 3`).
 step_a64_soak_selfcheck() { bash "$V2_ROOT/test/boot/soak-aarch64.sh" --selftest; }
 step_a64_budget() { bash "$V2_ROOT/test/boot/budget-aarch64.sh" --selftest; }
+# **KT-267 (c)**: lớp dep-info thấy mã chỉ tồn tại dưới feature của ảnh sản phẩm (`product-fs`).
+# Tốn thêm ~20 s ấm ⇒ chỉ T2.
+step_wake_depinfo_product_fs() { python3 "$V2_ROOT/tools/check-wake-depinfo.py" --product-fs; }
 step_persist_crash() { bash "$V2_ROOT/test/boot/persist.sh" --crash; }
 step_selfbreak() { bash "$V2_ROOT/test/rules/selfbreak.sh"; }
 step_neg1() { bash "$V2_ROOT/tools/git-guard/neg-test.sh"; }
@@ -898,9 +901,9 @@ do_gate_dev() {
     # thay ma trận QEMU của T2. QEMU ⇒ làn `sau` (độc quyền).
     # **KT-250** — id **58** (không phải 55): `do_gate_fast` đã dùng 55 cho `selftest validator
     # net`; trùng id thì `lane_done` coi bước này đã chạy và **bỏ qua im lặng** QEMU smoke.
-    lane_step sau 68 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
+    lane_step sau 70 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
     lane_run
-    [ "$(lane_fails 68)" -eq 0 ] || return 1
+    [ "$(lane_fails 70)" -eq 0 ] || return 1
     return 0
 }
 
@@ -942,8 +945,9 @@ do_gate_fast() {
     lane_step B 64 "selftest validator gpu (KT-263)" step_gpu_red
     lane_step B 66 "selftest soak aarch64 (KT-265)" step_a64_soak_selfcheck
     lane_step B 67 "selftest budget aarch64 (KT-265)" step_a64_budget
+    lane_step B 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_run
-    fails="$(lane_fails 67)"
+    fails="$(lane_fails 69)"
     [ "$fails" -eq 0 ] || return 1
     return 0
 }

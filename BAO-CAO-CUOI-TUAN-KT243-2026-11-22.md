@@ -4,8 +4,9 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (hai vòng).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
-> HEAD cuối `14df1639` (đã push), T1 + T2 xanh, cây sạch.
+> **Trạng thái: HOÀN TẤT (sáu vòng).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
+> HEAD cuối `be89d716` (đã push), T1 + T2 xanh, cây sạch.
 
 ---
 
@@ -23,6 +24,16 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 8 | **K5' bước 1** — x86_64 boot | **ĐẠT** | `# viFastOs x86_64: boot ok`, long mode `lma=1`, PVH `0x336ec578` |
 | 9 | **D1 phần 3** — virtio-input (bàn phím) | **ĐẠT** | `sendkey a` ⇒ `ascii=0x61`, `shift-a` ⇒ `0x41`, `f1` ⇒ none |
 | 10 | **Đóng nợ luật `wake`** | **L2 + DEBT-KT227-1 đóng; `--cfg test` kiểm máy** | selftest 411→420, 65→67, cfg-test 10 |
+| 11 | **Vòng tấn công wake 2** | **WB-21/22/23 tìm + vá** | 27 biến thể/8 nhóm; selftest 420→430 |
+| 12 | **aarch64 smp 2 hart** | **ĐẠT** | `# smp: hart=1 online`, `# smp: ipi recv=1`; TAP 12/12 |
+| 13 | **UDP echo + DNS** | **ĐẠT** | `# net: dns example.com a=172.66.147.243`; TAP 9/9 |
+| 14 | **x86_64 GDT/TSS/IDT** | **ĐẠT** | 5 exception (`int3`/`ud2`/`#PF`/`#GP`/unknown) resume `iretq` |
+| 15 | **TLBI shootdown + smp 4** | **ĐẠT** | `acks=3`, hart 1 thấy unmap; TAP 15/15 |
+| 16 | **virtio-gpu 2D** | **ĐẠT** | PPM `(40,40)=(255,0,0)`, 122 pixel chữ "ViFast" |
+| 17 | **Luật cấu trúc wake** | **5 đường lọt cấu trúc đóng (WB-24)** | selftest 430→442 |
+| 18 | **aarch64 soak 1.000** | **ĐẠT — 0/1000 lỗi** | `ok=1000 fail=0`, `rc_124=0` |
+| 19 | **x86_64 APIC + timer** | **ĐẠT** | `# apic: id=0 version=0x14`, `# timer: hz=57 ticks=3` |
+| 20 | **ĐÓNG KT-184/KT-194** | **ĐÓNG (D2-205)** — hợp đồng hữu hạn D2-190 7/7 | T2 66/66 trên `1f2d8310` |
 
 ---
 
@@ -331,13 +342,55 @@ timer giao ngắt **2,8–38,5 ms** cho chu kỳ danh định 100 µs và **đ�
 kênh 2 làm đồng hồ đo độc lập ⇒ `hz` **đo** được 36–218 Hz (dao động do TCG), **không** hardcode;
 (5) `VEC_UNKNOWN` dời **255 → 254** vì 255 là vector thật của spurious.
 
+### 3.24 KT-269 — K4' B3.7: **mở `[calling.aarch64]`** + U-mode (EL0)
+**XONG — mốc lớn nhất của K4'.** `spec/abi.toml` **chỉ** đổi `[calling.aarch64]` (đối xứng từng
+trường với `[calling.riscv64]`: `x8` = số hiệu, `x0/x1` = tham số + `(error,value)`, `x2` =
+MessageInfo, `x3..x6` = 4 MR, chuyển bằng **`svc #0`**); `vifast-gen` mở rộng sinh hằng cho arch đã
+mở; `check_abi.py` **siết** (kiểm từng trường + đối xứng cấu trúc), `x86_64` vẫn `reserved = true`.
+**Đo**:
+```text
+# umode: eret entry=0x70000000 sp=0x70002000 spsr=0x3c0 mode=EL0t code_va=0x70000000 code_pa=0x4008b000
+ok 16 - umode: el0 entered
+el0 says hi
+ok 17 - umode: svc handled
+# umode: el0 ran svc=0 ret=12
+# umode: svc nr=12 imm=0 elr=0x70000010 ptr=0x70000028 len=12 printed=12 error=0 ret=12
+ok 18 - umode: returned to el0
+# umode: exit code=0 nr=14 imm=0
+```
+TAP **18/18**, runner **13/13** (11 ca âm). **Phát hiện quan trọng**: AArch64 `svc` đặt `ELR_EL1` =
+instruction **kế tiếp** (DDI 0487 §D17.2.37), khác `brk` (ELR trỏ vào chính instruction) ⇒ handler
+**không** cộng 4. **Ba đột biến**: (i) `SPSR` để EL1h ⇒ `# trap: ec=0x21` (instruction abort từ EL1
+vì `USER_RX` đặt `PXN=1`); (ii) trang EL0 map `KERNEL_RX` ⇒ `# umode: fault ec=0x20 esr=0x8200000f`
+(instruction abort **từ EL0**); (iii) lùi `ELR` về `svc` ⇒ `# trap: ec=0x25`; lùi về đầu stub ⇒
+`svc` lặp vô hạn, `rc=124` timeout 5 s (**treo có kiểm soát**).
+
+### 3.25 KT-268 — N1 phần 2: TCP client
+**XONG.** `vifast-net::tcp` (header 20 B, cờ, checksum pseudo-header, **máy trạng thái**
+`Closed→SynSent→Established→FinWait1→FinWait2/Closing→TimeWait`, `on_segment()` trả `Actions`,
+retransmit ≤ 3) — **43 test host** (24 ca âm/edge). Driver `tcp.rs` tách khỏi `virtio_net.rs` (R1).
+**Đo**:
+```text
+# net: tcp connect 10.0.2.2:45678 ok rtt=4 state=established
+ok 10 - net tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+ok 11 - net tcp data
+```
+**Bằng chứng hai chiều từ log server host** (không chỉ tin log khách): `accept peer=127.0.0.1:54596`,
+`sent=13`, `recv=15`. Runner **11 TAP** + 2 ca âm + `--red-selftest` **28 kiểm**. **Hai phát hiện**:
+(1) **`hostfwd` là host→guest**, không dùng được cho chiều guest→host — đường thật là ánh xạ có sẵn
+của slirp `10.0.2.2 → 127.0.0.1`; (2) **sửa lỗi đo có sẵn**: `udp_echo`/`dns_query` tính `elapsed_ms`
+gồm cả thời gian gửi ⇒ `elapsed_ms=3000` là flake; nay ngân sách 3 s tính cho **cả bước**, **không**
+nới ngưỡng.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `14df1639` (cuối) | **PASS 62/62, 534,3 s** | `/tmp/t2-r2b.log` |
-| **T1** `gate --dev` trên `14df1639` (cuối) | **PASS 301,5 s** | `/tmp/t1-r2c.log` |
+| **T2** `gate --fast` trên `1f2d8310` (ứng viên bàn giao) | **PASS 66/66, 574,8 s** | `/tmp/t2-r5b.log` |
+| **T1** `gate --dev` trên `7bb39d9c` | **PASS 342,4 s** | `/tmp/t1-r5.log` |
+| T2 trên `14df1639` (vòng 2) | PASS 62/62, 534,3 s | `/tmp/t2-r2b.log` |
 | T2 vòng 1 trên `6309b6a6` | PASS 57/57, 493,1 s | `/tmp/t2-final.log` |
 | Bước mới trong cổng | 55 net validator, 56 **aarch64** (T1+T2), 57 virtio-net (T2), 58 cfg-test (T2), 59 **x86_64** (T1+T2), 60 virtio-input (T2), 61/62 validator (T1+T2), 63 QEMU smoke (T1) | `v2/bin/v2` |
 | Build-inputs | **257 mục**, `f4934dc81f0c903e`, `dirty=0` | `repro-build.sh` |
