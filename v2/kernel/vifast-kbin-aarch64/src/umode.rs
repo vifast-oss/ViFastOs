@@ -367,6 +367,12 @@ pub extern "C" fn el0_done() -> ! {
     if !crate::gpu::run(&mut console) {
         debug_halt(5)
     }
+    // **KT-283**: virtio-input (bàn phím) — TAP 31/32, sau `gpu` để số hiệu TAP tuần tự. Không có
+    // `-device virtio-keyboard-pci` ⇒ `# input: no device` + hai TAP đỏ ⇒ dừng **trước** marker
+    // (ca âm của runner). Có thiết bị nhưng không có phím ⇒ TAP 32 đỏ sau `INPUT_WAIT_SECS`.
+    if !crate::input::run(&mut console) {
+        debug_halt(5)
+    }
     let _ = pl011::write_str(BOOT_MARKER);
     let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)

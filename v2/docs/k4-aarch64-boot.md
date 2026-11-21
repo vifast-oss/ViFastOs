@@ -218,7 +218,8 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 14 ca âm
     nên đột biến "bỏ `tlbi` ở hart phụ" **không** đỏ trên QEMU — xem `kt262-mutation.log` §5 và
     đối chứng dương ở §5.1. **Không** được gọi là "đã kiểm trên phần cứng".
 11. **PCI**: **virtio-blk** (KT-273, §10) + **virtio-net** (KT-275, §11) + **virtio-gpu**
-    (KT-279, §13). **Chưa** virtio-input trên aarch64, **chưa** MSI-X (dùng poll `used`), **chưa**
+    (KT-279, §13) + **virtio-input** (KT-283, §14). **Chưa** chuột/tablet, **chưa** MSI-X (dùng
+    poll `used`), **chưa**
     hotplug, **chưa** PCIe 64-bit MMIO window
     (`0x80_0000_0000` — BAR modern của virtio nằm trong cửa sổ 32-bit nên chưa cần). ECAM map
     **16 MiB = 16 bus** (không phải 256 MiB): 256 MiB cần **129** frame bảng trang, vượt arena
@@ -728,11 +729,103 @@ TAP — không được phép.
 
 ### 13.6 Còn thiếu của B3.13 (ghi rõ)
 
-1. **Không** virtio-input trên aarch64, **không** 3D/VIRGL, **không** MSI-X, **không** hotplug —
-   driver poll `used`, `ISR` chỉ đọc chẩn đoán.
+1. **Không** 3D/VIRGL, **không** MSI-X, **không** hotplug — driver poll `used`, `ISR` chỉ đọc
+   chẩn đoán. (virtio-input trên aarch64 **đã** xong ở KT-283, §14.)
 2. **Không** GPU trong U-mode: console chạy ở EL1 (`el0_done`), không có syscall đồ hoạ.
 3. **Cache maintenance framebuffer** chỉ quan sát được ở tầng **bộ đếm** (`fb_clean_lines`): QEMU
    TCG **không** mô hình hoá cache nên **hiệu ứng** không đo được — cùng giới hạn đã ghi ở §11.3.
 4. **`-display none` vẫn chụp được**: console của QEMU tồn tại không cần cửa sổ; sau `SET_SCANOUT`
    QEMU thay surface bằng **chính** resource của khách nên PPM đúng 640×480 (đo được).
+5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+
+## 14. virtio-input (bàn phím) — B3.14 (KT-283)
+
+### 14.1 Phạm vi
+
+D1 phần 3 (virtio-input) trước KT-283 **chỉ có trên riscv64** (KT-255). KT-283 mở **cùng** đường
+đó trên aarch64, dùng lại **nguyên** codec `vifast_virtio::input` (bảng chuyển mã + `KeyState` +
+`virtio_input_config`/`virtio_input_event`, 16 test host) — **không** có bảng thứ hai:
+
+| Tệp | Nội dung |
+|---|---|
+| `kernel/vifast-plat-aarch64/src/virtio_input.rs` | driver virtio-pci modern: **hai** queue `event`/`status`, `virtio_input_event` 8 byte, poll `used` có trần `CNTPCT_EL0`, cache maintenance trước/sau DMA |
+| `kernel/vifast-kbin-aarch64/src/input.rs` | hai phép đo + TAP 31/32 + `sendkey a` ⇒ `'a'`; `map_window` (leaf BAR + PA trang DMA) |
+| `kernel/vifast-plat-aarch64/tests/virtio_input.rs` | **6 test host** cho phần thuần (bố cục trang DMA, leaf BAR, device id, VA→PA, bảng chuyển mã dùng chung, hằng số thiết bị) |
+
+**Không** làm (đúng phạm vi KT-283): chuột/tablet, nhiều thiết bị input, MSI-X, hotplug, input
+trong U-mode. **Không** tuyên bố K4' đạt.
+
+### 14.2 Ngân sách: **một** trang DMA 4 KiB — đo trước khi viết driver
+
+Đo bằng `budget-aarch64.sh` **trước** khi thêm bất kỳ dòng nào của driver:
+
+| Mốc | `.data+.bss` | Trần I7 | % |
+|---|---:|---:|---:|
+| trước KT-283 (HEAD `20208255`) | **229.608 B** | 262.144 B | 87,6 % |
+| sau KT-283 | **233.704 B** | 262.144 B | 89,2 % |
+| **delta** | **+4.096 B** | — | +1,6 điểm |
+
+Delta **đúng 4.096 B** = **một** trang DMA 4 KiB của virtio-input (`asm::dma_page_input`), chứa
+**cả hai** ring (`event` 430 B tại `0x000`, `status` 430 B tại `0x200`) + 8 đệm sự kiện 8 B tại
+`0x400`. Trạng thái driver là `Atomic*` (~20 ô = 160 B, nằm trong `.bss` đã có). Còn **28.440 B**
+trống — **không** nới trần I7 một byte nào.
+
+### 14.3 Đo được (log `boot-1.log` của runner, TAP 31/32)
+
+```text
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc080056000 input_dma_walk=0x400d6000 frames_used=41
+# input pci: bus=0 dev=4 func=0 vendor=0x1af4 device=0x1052 class=0x090000 rev=0x01 bar=4 kind=mem64 size=0x4000 assigned=0x10600000 readback=0x10600000 command=0x0006 caps=1 other_bars=3 reserved=6
+# input cap: common=0x0 notify=0x3000 device=0x2000 isr=0x1000 mul=4 cap_bar=4 ecam=0x80020000 cap_ranges_ok=1 overlap_checked=1
+# input name: QEMU Virtio Keyboard
+# input dev: name_len=20 devids_bustype=6 devids_vendor=0x627 devids_product=0x1 devids_version=0x1 num_queues=2 queue_max=64 queue_size=16 status_queue_size=16 device_features=0x10130000000 driver_features=0x100000000 version1=1 rep_feature=0 device_status=0x0f config_generation=6 ev_bits_len=29 key_a_bit=1
+# input dma: desc=0x400d6000 avail=0x400d6100 used=0x400d6128 buf=0x400d6400 dma=0x400d6000 walk=0x400d6000 identity=1 armed=8 notify_off=0 notify_addr=0x10603000 queue=0 status_notify_off=1 status_queue_idle=1
+ok 31 - input: device
+# input: ready
+# input: key a code=30 ascii=0x61 shift=0 elapsed_ms=265
+ok 32 - input: key
+# input stats: events=1 syncs=0 key_downs=1 key_ups=0 notifies=2 errors=0 timeouts=0 id_mismatch=0 clean_lines=128 clean_bytes=8192 clean_ops=2 inval_lines=64 inval_ops=1 published=9 queue_size=16 device_status=0x0f
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| thiết bị | `1af4:1052` (modern-only), bus 0 dev 4, BAR **4** `mem64` `0x4000`, gán `0x1060_0000` (**leaf 3**, không đụng leaf blk `0x1000_0000` / net `0x1040_0000` / gpu `0x1080_0000`), đọc lại khớp |
+| feature | `device=0x10130000000`, `driver=0x100000000` — **chỉ** `VIRTIO_F_VERSION_1`; `rep_feature=0` (không đàm phán `VIRTIO_INPUT_F_REP`) |
+| queue | `num_queues=2` (event + status), `queue_max=64`, driver đặt **16** cho **cả hai**; `status` bật nhưng **không** arm đệm (`status_queue_idle=1`) |
+| tên | `QEMU Virtio Keyboard` — **đọc từ** `virtio_input_config` (`select = ID_NAME`), không phải hằng trong ảnh |
+| bitmap | `ev_bits_len=29`, `key_a_bit=1` — thiết bị **có** `KEY_A` (đọc từ `EV_BITS`/`EV_KEY`) |
+| trang DMA | `dma=0x400d6000 walk=0x400d6000 identity=1` — PA **đọc lại từ bảng trang**, 8 đệm arm sẵn |
+| phím | `sendkey a` ⇒ `EV_KEY KEY_A 1` ⇒ `code=30 ascii=0x61 shift=0` (bảng chuyển mã của `vifast_virtio::input`) |
+| cache DMA | `clean_lines=128` (2 lần × 64 dòng × 4 KiB), `inval_lines=64` — `dc civac`/`dc ivac` **đã chạy** |
+| bộ đếm | `errors=0 timeouts=0 id_mismatch=0` |
+| `.data+.bss` | **233.704 B** / trần **262.144 B** (89,2 %) — **+4.096 B** so với trước KT-283 |
+
+Runner `run-aarch64.sh`: **20/20** kiểm sạch, TAP **32/32**, **17 ca âm** (16 cũ + ca "không có
+bàn phím"). Soak `soak-aarch64.sh`: `--selftest` **36/36** (1 dương + 35 âm), smoke **3/3** boot.
+
+### 14.4 Ca âm (fail-closed)
+
+| Ca | Cách dựng | Kỳ vọng |
+|---|---|---|
+| **không có bàn phím** | cùng ảnh + đĩa + mạng + GPU, **không** `-device virtio-keyboard-pci` | `# input: no device` + `not ok 31/32`; runner coi là **đạt** khi ảnh đỏ đúng cách |
+
+### 14.5 Đột biến — ghi trung thực **tầng nào** đỏ
+
+| Đột biến | Kết quả đo | Tầng đỏ |
+|---|---|---|
+| (i) bỏ `-device virtio-keyboard-pci` | `# input: no device` + `not ok 31` + `not ok 32`, **không** marker | TAP + runner (ca âm q) |
+| (ii) `sendkey b` thay `sendkey a` | `# input: key a code=0 ascii=0x00 shift=0 elapsed_ms=5000` + `not ok 32` (driver **vẫn** nhận 4 sự kiện: `events=4`) | TAP 32 |
+| (iii) bỏ xử lý `EV_KEY` trong ảnh | `# input: key a code=0 ascii=0x00` + `not ok 32` (driver nhận `events=4` nhưng không chuyển mã) | TAP 32 |
+
+Cả ba đột biến **không** làm hỏng TAP 31 (thiết bị vẫn đúng) — đúng thiết kế: TAP 31 đo **thiết
+bị**, TAP 32 đo **phím**.
+
+### 14.6 Còn thiếu của B3.14 (ghi rõ)
+
+1. **Không** chuột/tablet (`EV_REL`/`EV_ABS`), **không** nhiều thiết bị input, **không** MSI-X —
+   driver poll `used`, `ISR` chỉ đọc chẩn đoán.
+2. **Không** input trong U-mode: đọc phím chạy ở EL1 (`el0_done`), không có syscall input.
+3. **Queue `status`** (LED) được bật cho đúng topology nhưng **không** arm đệm — driver chưa gửi
+   `LED` event nào; muốn làm thì cần thêm descriptor device-readable + một lệnh `sendkey` có LED.
+4. **Cache maintenance** chỉ quan sát được ở tầng **bộ đếm** (`clean_lines`/`inval_lines`): QEMU
+   TCG **không** mô hình hoá cache nên **hiệu ứng** không đo được — cùng giới hạn đã ghi ở §11.3.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

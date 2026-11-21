@@ -22,8 +22,10 @@
 # cộng **ca âm (m) của KT-275** — boot **không có mạng** phải in `# net: no device` và TAP phải
 # ĐỎ; cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
 # maintenance) đều phải ĐỎ; cộng **ca âm (p) của KT-279** — boot **không có GPU** phải in
-# `# gpu: no device` và TAP phải ĐỎ (**16 ca âm**). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh
-# boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
+# `# gpu: no device` và TAP phải ĐỎ; cộng **ca âm (q) của KT-283** — boot **không có bàn phím**
+# phải in `# input: no device` và TAP phải ĐỎ (**17 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
+# chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
+# "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
@@ -104,6 +106,23 @@
 #   - `# gpu stats: … errors=0 timeouts=0 id_mismatch=0 rejects=1 … fb_clean_lines=<n> …` — bộ đếm
 #     cache maintenance của framebuffer **đã chạy** (`n > 0`).
 #
+# **KT-283**: QEMU nhận thêm **bàn phím** (`-device virtio-keyboard-pci`) và runner bơm phím qua
+# **HMP monitor** (`sendkey a`) — cùng kỹ thuật `input.sh` riscv64 (KT-255), không `sleep` mù: mốc
+# là dòng `# input: ready` của **khách** (ảnh in **sau** khi đã arm 8 đệm; bơm sớm là mất lô).
+# Runner đòi thêm các dòng bằng chứng:
+#   - `# input pci: … vendor=0x1af4 device=0x1052 … assigned=0x10600000 readback=0x10600000` — BAR
+#     gán rồi **đọc lại** đúng, ở leaf **riêng** của input (`0x1060_0000`, không đụng blk/net/gpu);
+#   - `# input name: QEMU Virtio Keyboard` — tên **đọc từ** `virtio_input_config`;
+#   - `# input dev: … version1=1 rep_feature=0 device_status=0x0f num_queues=2 queue_size=16
+#     status_queue_size=16 key_a_bit=1` — feature VERSION_1 hai chiều, **không** `REP`, **hai**
+#     queue `event`/`status`, bitmap `EV_BITS` bật `KEY_A`;
+#   - `# input dma: … identity=1 armed=8 status_queue_idle=1` — trang DMA map identity (PA **đọc
+#     lại từ bảng trang**), 8 đệm arm sẵn, queue `status` bật nhưng **không** arm đệm;
+#   - `# input: ready` đúng một lần (bằng chứng runner bơm phím **sau** khi arm);
+#   - `# input: key a code=30 ascii=0x61 shift=0` — `sendkey a` ⇒ `EV_KEY KEY_A 1` ⇒ `'a'`;
+#   - `# input stats: … errors=0 timeouts=0 id_mismatch=0 clean_lines=<n> inval_lines=<n>` — bộ đếm
+#     cache maintenance **đã chạy** (`n > 0`; bỏ `dc` ⇒ 0 ⇒ ĐỎ).
+#
 # **KT-275**: QEMU nhận thêm **card mạng** slirp
 # (`-netdev user,id=n0 -device virtio-net-pci,netdev=n0`; `-nic none` vẫn giữ để **không** có NIC
 # mặc định thứ hai — topology PCI tất định: host bridge + virtio-net + virtio-blk). Runner đòi
@@ -127,7 +146,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-30}"
+EXPECT_TESTS="${EXPECT_TESTS:-32}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -141,8 +160,13 @@ READY_DS=100
 # 4 × 2 MiB). Đây là **hằng thiết kế** của driver (không phải số đo), runner đối chiếu để bắt
 # "gán nhầm leaf của blk/net".
 GPU_BAR_ASSIGNED='0x10800000'
-# Socket monitor — tên ngắn (giới hạn 104 byte của unix socket trên macOS).
-SOCK="${TMPDIR:-/tmp}/kt279-mon-$$.sock"
+# **KT-283**: địa chỉ BAR driver **gán** cho virtio-input = leaf thứ 4 của cửa sổ PCIe
+# (`PCI_MMIO_WINDOW_BASE` + 3 × 2 MiB). Hằng thiết kế của driver (không phải số đo) — runner đối
+# chiếu để bắt "gán nhầm leaf của blk/net/gpu".
+INPUT_BAR_ASSIGNED='0x10600000'
+# Socket monitor — tên ngắn (giới hạn 104 byte của unix socket trên macOS). **KT-283**: cùng
+# socket phục vụ `screendump` (GPU) và `sendkey` (bàn phím).
+SOCK="${TMPDIR:-/tmp}/kt283-mon-$$.sock"
 
 case "${1:-}" in
 '' | *[!0-9]*) ;;
@@ -596,16 +620,62 @@ sys.exit(0)
 PY
 }
 
-# `boot_gpu <log> <ppm>`: khởi động QEMU **có màn hình + monitor**, chờ marker của **khách**
-# (`# gpu: console done lines=3`), chụp PPM, rồi chờ QEMU tự thoát trong ngân sách.
+# `send_keys`: nối **một** phiên HMP, đọc banner tới `(qemu) `, gửi `sendkey a`, đọc prompt.
+# Trả 0 = đã gửi; 1 = không nối được / monitor không trả prompt. Cùng kỹ thuật `input.sh` riscv64
+# (KT-255) — **không** `sleep` mù trước khi gửi: mốc là dòng `# input: ready` của khách.
+send_keys() {
+    "$PYTHON" - "$SOCK" <<'PY'
+import socket
+import sys
+import time
+
+sock = sys.argv[1]
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5.0)
+    s.connect(sock)
+except OSError as exc:
+    print(f"# run-aarch64.sh: không nối được monitor {sock}: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+
+def read_prompt():
+    buf = b""
+    try:
+        while b"(qemu)" not in buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+    except socket.timeout:
+        pass
+    return buf
+
+
+read_prompt()
+s.sendall(b"sendkey a\n")
+read_prompt()
+time.sleep(0.05)
+s.close()
+sys.exit(0)
+PY
+}
+
+# `boot_full <log> <ppm>`: khởi động QEMU **có màn hình + bàn phím + monitor**, chờ marker của
+# **khách** (`# gpu: console done lines=3`), chụp PPM, chờ `# input: ready` rồi bơm `sendkey a`,
+# rồi chờ QEMU tự thoát trong ngân sách.
 #
 # Vì sao không dùng `qg_boot`: `qg_boot` chờ QEMU thoát **rồi** mới trả về, mà ảnh `halt` ngay sau
 # marker ⇒ monitor socket biến mất trước khi runner kịp nối (đo được bên riscv64). Ảnh giữ khung
 # hình `gpu::GPU_HOLD_MS` = 500 ms để runner kịp; runner **không** `sleep` mù — mốc là marker của
 # khách, không phải đồng hồ của host.
 #
+# **KT-283**: cùng một phiên monitor phục vụ **hai** việc (screendump của GPU + `sendkey` của bàn
+# phím) — không mở socket thứ hai, và **mọi** boot (kể cả boot 2..N) đi qua đây để "ảnh nào" không
+# lệch giữa boot 1 và boot N.
+#
 # Trả 0 = QEMU tự thoát; 124 = quá hạn (đã kill cả group); 125 = không khởi động được.
-boot_gpu() {
+boot_full() {
     local out="$1" ppm="$2"
     rm -f "$SOCK" "$ppm" 2>/dev/null
     qg_tmp "$SOCK"
@@ -614,9 +684,10 @@ boot_gpu() {
         -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
         -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci \
+        -device virtio-keyboard-pci \
         -monitor "unix:$SOCK,server=on,wait=off" || return 125
     local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0
-    # 1) chờ marker của **khách** (không sleep mù): ảnh in sau lô flush console.
+    # 1) chờ marker GPU của **khách** (không sleep mù): ảnh in sau lô flush console.
     while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
         grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null && break
         sleep 0.05
@@ -625,7 +696,18 @@ boot_gpu() {
     if grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null; then
         screendump "$ppm" || true
     fi
-    # 2) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
+    # 2) **KT-283**: chờ `# input: ready` (ảnh đã arm 8 đệm) rồi bơm `sendkey a`.
+    i=0
+    while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
+        grep -aq '^# input: ready$' "$out" 2>/dev/null && break
+        sleep 0.05
+        i=$((i + 1))
+    done
+    if grep -aq '^# input: ready$' "$out" 2>/dev/null; then
+        # Gửi hỏng ⇒ TAP 32 đỏ ⇒ `check_log` bắt; không nuốt lỗi thành "xanh".
+        send_keys || true
+    fi
+    # 3) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
     local t0=$SECONDS tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
     while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_DS" ] &&
         [ $((SECONDS - t0)) -lt "$tmax" ]; do
@@ -906,6 +988,119 @@ check_dma() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# input:` (KT-283)
+# Tám dòng **bằng chứng bàn phím** — đây là phần "virtio-input trên aarch64" của KT-283. Mỗi dòng
+# đòi **đúng một** lần (in lặp = bước input chạy hai lần, hoặc log bịa):
+#
+#   `# input pci: … vendor=0x1af4 device=0x1052 … assigned=0x10600000 readback=0x10600000`
+#       BAR gán xong phải **đọc lại** đúng, và đúng leaf **riêng** của input (không đụng blk/net/gpu).
+#   `# input name: QEMU Virtio Keyboard`
+#       tên **đọc từ** `virtio_input_config` (`select = ID_NAME`) — không phải hằng trong ảnh.
+#   `# input dev: … version1=1 rep_feature=0 device_status=0x0f num_queues=2 queue_size=16
+#        status_queue_size=16 key_a_bit=1`
+#       feature VERSION_1 hai chiều, **không** đàm phán `REP`, **hai** queue `event`/`status`,
+#       bitmap `EV_BITS` bật `KEY_A` (thiết bị **có** phím ta sắp bơm).
+#   `# input dma: … identity=1 armed=8 status_queue_idle=1`
+#       trang DMA map identity (PA **đọc lại từ bảng trang**), 8 đệm arm sẵn, queue `status` bật
+#       nhưng **không** arm đệm.
+#   `# input: ready` — ảnh in **sau** khi arm; runner bơm phím sau dòng này.
+#   `# input: key a code=30 ascii=0x61 shift=0` — `sendkey a` ⇒ `EV_KEY KEY_A 1` ⇒ `'a'`.
+#   `# input stats: … errors=0 timeouts=0 id_mismatch=0 clean_lines=<n> inval_lines=<n>`
+#       đường đi sạch + cache maintenance **đã chạy** (`n > 0`; bỏ `dc` ⇒ 0 ⇒ ĐỎ).
+check_input() {
+    local log="$1" bad=0 n line assigned readback lines inval
+    for want in \
+        '^# input pci: ' \
+        '^# input cap: ' \
+        '^# input name: ' \
+        '^# input dev: ' \
+        '^# input dma: ' \
+        '^# input: ready$' \
+        '^# input: key a ' \
+        '^# input stats: '; do
+        n="$(grep -cE "$want" "$log" || true)"
+        if [ "${n:-0}" -ne 1 ]; then
+            echo "# dòng khớp '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        fi
+    done
+    line="$(grep -E '^# input pci: ' "$log" || true)"
+    for want in "vendor=0x1af4" "device=0x1052" "assigned=$INPUT_BAR_ASSIGNED"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# input pci:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    assigned="$(printf '%s\n' "$line" | sed -n 's/.* assigned=\(0x[0-9a-f]*\).*/\1/p')"
+    readback="$(printf '%s\n' "$line" | sed -n 's/.* readback=\(0x[0-9a-f]*\).*/\1/p')"
+    if [ -z "$assigned" ] || [ "$assigned" != "$readback" ]; then
+        echo "# BAR input đọc lại (${readback:-none}) khác địa chỉ đã gán (${assigned:-none})"
+        bad=1
+    fi
+    line="$(grep -E '^# input name: ' "$log" || true)"
+    if [ "$line" != "# input name: QEMU Virtio Keyboard" ]; then
+        echo "# tên thiết bị ('${line:-none}') không phải 'QEMU Virtio Keyboard' (đọc từ thiết bị)"
+        bad=1
+    fi
+    line="$(grep -E '^# input dev: ' "$log" || true)"
+    for want in "version1=1" "rep_feature=0" "device_status=0x0f" "num_queues=2" \
+        "queue_size=16" "status_queue_size=16" "key_a_bit=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# input dev:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# input dma: ' "$log" || true)"
+    for want in "identity=1" "armed=8" "status_queue_idle=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# input dma:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# input: key a ' "$log" || true)"
+    for want in "code=30" "ascii=0x61" "shift=0"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# input: key a' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# input stats: ' "$log" || true)"
+    for want in "errors=0" "timeouts=0" "id_mismatch=0"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# input stats:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    # Cache maintenance **đã chạy**: `clean_lines`/`inval_lines` đều dương. Bỏ `dc civac`/`dc ivac`
+    # ⇒ 0 ⇒ ĐỎ (tầng quan sát được trên QEMU TCG — cùng giới hạn đã ghi ở §11.3).
+    lines="$(printf '%s\n' "$line" | sed -n 's/.* clean_lines=\([0-9][0-9]*\).*/\1/p')"
+    inval="$(printf '%s\n' "$line" | sed -n 's/.* inval_lines=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$lines" ] || [ "$lines" -le 0 ]; then
+        echo "# dòng '# input stats:' có clean_lines=${lines:-none} — không có lệnh 'dc civac' nào chạy trên vùng DMA"
+        bad=1
+    fi
+    if [ -z "$inval" ] || [ "$inval" -le 0 ]; then
+        echo "# dòng '# input stats:' có inval_lines=${inval:-none} — không có lệnh 'dc ivac' nào sau khi thiết bị ghi"
+        bad=1
+    fi
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
 # `# umode:` + `# pci:` + `# blk:` + `# net:` + hash ảnh. In lý do đỏ ra stdout.
@@ -963,6 +1158,7 @@ check_log() {
     check_wx "$log" || bad=1
     check_dma "$log" || bad=1
     check_gpu "$log" || bad=1
+    check_input "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -1192,6 +1388,32 @@ selftest_negative() {
         echo "ok $n - ca âm (p): không có GPU ⇒ '# gpu: no device' + TAP ĐỎ ($(head -1 "$tmp/p.out"))"
     fi
 
+    # (q) **KT-283** — **không có bàn phím**: ảnh phải in `# input: no device` và TAP phải ĐỎ.
+    # Ca âm **thật** (boot QEMU lần năm, có đĩa + mạng + GPU nhưng **không**
+    # `-device virtio-keyboard-pci`): chứng minh driver bàn phím **fail-closed** khi thiếu thiết bị,
+    # thay vì in `ok` cho một bàn phím không tồn tại. Ba thiết bị kia vẫn có để `blk`/`net`/`gpu`
+    # xanh — nếu không, ảnh dừng ở bước trước và **không** in dòng `# input:` nào, tức ca âm sẽ đỏ
+    # vì lý do sai.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    out="$LOGDIR/boot-nokbd.log"
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+        -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci; then
+        echo "not ok $n - ca âm (q): boot không có bàn phím bị treo/timeout"
+        fails=$((fails + 1))
+    elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/q.out" 2>&1; then
+        echo "not ok $n - ca âm (q): không có bàn phím mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -Fq '# input: no device' "$out"; then
+        echo "not ok $n - ca âm (q): thiếu dòng '# input: no device'"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (q): không có bàn phím ⇒ '# input: no device' + TAP ĐỎ ($(head -1 "$tmp/q.out"))"
+    fi
+
     NEG_CASES=$cases
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
@@ -1251,25 +1473,17 @@ fi
 
 # ---- kiểm 2..: boot N lần
 #
-# **KT-279**: boot **đầu** đi qua `boot_gpu` (mở monitor + `-device virtio-gpu-pci`, chờ marker
-# của khách rồi `screendump`); các boot sau dùng `qg_boot` (không cần ảnh chụp). Cả hai đường
-# dùng **cùng** bộ cờ QEMU, nên "ảnh nào" không lệch giữa boot 1 và boot N.
+# **KT-279 + KT-283**: **mọi** boot đi qua `boot_full` (mở monitor + `-device virtio-gpu-pci` +
+# `-device virtio-keyboard-pci`, chờ marker của khách rồi `screendump`, chờ `# input: ready` rồi
+# `sendkey a`). Trước KT-283 boot 2..N dùng `qg_boot` (không monitor) — nhưng ảnh giờ **cần** phím
+# ở mọi boot, nên một đường duy nhất để "ảnh nào" không lệch giữa boot 1 và boot N.
 i=1
 while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
     ppm="$LOGDIR/boot-$i.ppm"
-    if [ "$i" -eq 1 ]; then
-        boot_gpu "$out" "$ppm"
-        rc=$?
-    else
-        qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
-            -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
-            -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-            -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
-            -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci
-        rc=$?
-    fi
+    boot_full "$out" "$ppm"
+    rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))

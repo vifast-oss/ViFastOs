@@ -61,7 +61,7 @@ use vifast_plat_aarch64::boot_mmu::{
 use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::gic;
-use vifast_plat_aarch64::mmu::{MapError, TableMemory};
+use vifast_plat_aarch64::mmu::MapError;
 use vifast_plat_aarch64::pci;
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
 use vifast_plat_aarch64::shootdown::{self, Targets};
@@ -73,6 +73,8 @@ use vifast_plat_aarch64::virtio_gpu;
 use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
 use vifast_plat_aarch64::{asm, debug_halt, pl011};
 use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
+
+use crate::mapwin::{map_identity_into, map_window_into};
 
 /// **KT-259**: trạng thái SMP + `smp_bringup` + `kmain_secondary` nằm ở tệp riêng (luật R1:
 /// tệp trong `kernel/` ≤ 1.500 dòng). Tên `smpboot` để **không** đụng `vifast_plat_aarch64::smp`.
@@ -101,6 +103,13 @@ mod wxprobe;
 /// — TAP 28/29/30, chạy ở `el0_done` **sau** `wxprobe` để số hiệu TAP tuần tự. Tách tệp riêng
 /// (luật R1).
 mod gpu;
+
+/// **KT-283** (K4' bước 3, D1 phần 3 trên aarch64): **virtio-input (bàn phím)** — TAP 31/32, chạy
+/// ở `el0_done` **sau** `gpu` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+mod input;
+/// Hai hàm map cửa sổ vào `VSpace` (`map_window_into`/`map_identity_into`) — tách khỏi `main.rs`
+/// để giữ trần R1 (1.500 dòng/tệp); dùng chung cho ECAM/BAR/framebuffer/UART/GIC.
+mod mapwin;
 
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
@@ -464,8 +473,8 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`)
 /// + **2 ca của KT-277** (`wx: text RX (write faults), data RW`,
 /// `dma: cache maintenance before/after DMA`) + **3 ca của KT-279** (`gpu: device`, `gpu: draw`,
-/// `gpu: console`).
-pub const TAP_TESTS: usize = 30;
+/// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`).
+pub const TAP_TESTS: usize = 32;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -1016,9 +1025,19 @@ pub extern "C" fn high_entry() -> ! {
         }
     };
     gpu::publish_fb_walk(fb_walk_pa);
+    // ---- **KT-283**: leaf BAR của **virtio-input** (leaf 3, `0x1060_0000`) + PA **đọc lại từ
+    // bảng trang** của trang DMA. Chi tiết ở `input::map_window` (giữ `main.rs` dưới trần R1).
+    let (input_bar_base, pages_bar_input, input_dma_va, input_dma_walk_pa) =
+        match input::map_window(&mut vs) {
+            Ok(measured) => measured,
+            Err(stage) => {
+                let _ = writeln!(console, "PANIC: input: map BAR/trang DMA lỗi {stage}");
+                debug_halt(3)
+            }
+        };
     let _ = writeln!(
         console,
-        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} frames_used={}",
+        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} input_bar_va=0x{input_bar_base:x} input_bar_pages={pages_bar_input} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} input_dma_va=0x{input_dma_va:x} input_dma_walk=0x{input_dma_walk_pa:x} frames_used={}",
         pci::ECAM_BASE,
         pci::ECAM_VA_BASE,
         pci::BAR_ASSIGN_BASE,
@@ -1169,54 +1188,6 @@ pub extern "C" fn high_entry() -> ! {
     // EL0; **không trả về** — đường `Exit` của EL0 `eret` về EL1h tại `umode::el0_done`, nơi in
     // marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi TAP 1..18 đã xanh.
     umode::run(&mut console, &mut vs, text_start)
-}
-
-/// Map cửa sổ `[pa_base, pa_base+bytes)` vào `[va_base, va_base+bytes)` bằng trang 4 KiB —
-/// KT-273 dùng cho ECAM (VA riêng, PA không identity được) và cửa sổ BAR (VA == PA).
-///
-/// `bytes` phải là bội của 4 KiB và `pa_base`/`va_base` phải căn 4 KiB; lệch ⇒ `Unaligned`
-/// (không map lệch trang).
-fn map_window_into<M: TableMemory>(
-    vs: &mut VSpace<M>,
-    va_base: u64,
-    pa_base: u64,
-    bytes: u64,
-    perms: Perms,
-    attr: MemAttr,
-) -> Result<usize, MapError> {
-    if bytes == 0 || bytes & 0xFFF != 0 || va_base & 0xFFF != 0 || pa_base & 0xFFF != 0 {
-        return Err(MapError::Unaligned);
-    }
-    let pages = bytes / 0x1000;
-    let mut index = 0;
-    while index < pages {
-        let frame = Frame::new(pa_base + index * 0x1000).ok_or(MapError::Unaligned)?;
-        vs.map_obj_with(va_base + index * 0x1000, frame, perms, attr)?;
-        index += 1;
-    }
-    Ok(pages as usize)
-}
-
-/// Map **identity** `[start, end)` vào `VSpace` bằng trang 4 KiB (làm tròn ra ngoài) — dùng cho
-/// UART/GIC trong VSpace của ảnh (kernel vẫn cần chúng sau khi `TTBR0` đổi).
-fn map_identity_into<M: TableMemory>(
-    vs: &mut VSpace<M>,
-    start: u64,
-    end: u64,
-    perms: Perms,
-    attr: MemAttr,
-) -> Result<usize, MapError> {
-    let first = start & !0xFFF;
-    let last = (end + 0xFFF) & !0xFFF;
-    let mut pages = 0;
-    let mut pa = first;
-    while pa < last {
-        let frame = Frame::new(pa).ok_or(MapError::Unaligned)?;
-        vs.map_obj_with(pa, frame, perms, attr)?;
-        pages += 1;
-        pa += 0x1000;
-    }
-    Ok(pages)
 }
 
 /// Kết quả các phép đo của B3.3 + thông tin nhảy nửa cao của B3.4 — `mmu_bringup` trả về để

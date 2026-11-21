@@ -446,6 +446,38 @@ mod imp {
         unsafe { &mut *DMA_PAGE_GPU.0.get() }
     }
 
+    // ------------------------------------------------------------------ trang DMA thứ tư (KT-283)
+
+    /// Trang **DMA 4 KiB** thứ tư — **hai** virtqueue (`event` + `status`) và vùng đệm sự kiện
+    /// của **virtio-input** (KT-283).
+    ///
+    /// **Vì sao phải là trang riêng**: bốn driver virtio cùng chạy trong một lần boot (blk, net,
+    /// gpu, input) và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`, descriptor)
+    /// trong trang DMA của nó. Dùng chung một trang thì driver sau ghi đè ring của driver trước —
+    /// hỏng im lặng, chỉ lộ ra khi thứ tự gọi đổi (bài học KT-275). Bốn trang 4 KiB vẫn nằm
+    /// trong trần `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
+    ///
+    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
+    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
+    #[repr(align(4096))]
+    struct DmaPageInput(core::cell::UnsafeCell<[u8; 4096]>);
+    // SAFETY: xem tài liệu `DmaPageInput` — một hart, truy cập tuần tự trong `virtio_input`.
+    unsafe impl Sync for DmaPageInput {}
+    static DMA_PAGE_INPUT: DmaPageInput = DmaPageInput(core::cell::UnsafeCell::new([0u8; 4096]));
+
+    /// Địa chỉ trang DMA của virtio-input **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
+    /// nửa cao) — caller đổi sang PA bằng `virtio_input::high_to_pa` trước khi ghi descriptor.
+    pub fn dma_page_input_addr() -> u64 {
+        DMA_PAGE_INPUT.0.get() as *const _ as u64
+    }
+
+    /// Trang DMA của virtio-input dưới dạng lát byte ghi được (4 KiB).
+    pub fn dma_page_input() -> &'static mut [u8; 4096] {
+        // SAFETY: xem `DmaPageInput` — một hart, truy cập tuần tự; không ai khác (trừ DMA của
+        // thiết bị) giữ tham chiếu tới vùng này.
+        unsafe { &mut *DMA_PAGE_INPUT.0.get() }
+    }
+
     // ------------------------------------------------------------------ framebuffer GPU (KT-279)
 
     /// Lát byte ghi được trên vùng RAM **ngoài ảnh** — framebuffer của virtio-gpu (KT-279).
@@ -1029,6 +1061,14 @@ mod imp {
     /// Stub host của trang DMA thứ ba (virtio-gpu) — **panic**: như `dma_page_addr`.
     pub fn dma_page_gpu() -> &'static mut [u8; 4096] {
         host_stub("dma page gpu")
+    }
+    /// Stub host của trang DMA thứ tư (virtio-input) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_input_addr() -> u64 {
+        host_stub("dma page input addr")
+    }
+    /// Stub host của trang DMA thứ tư (virtio-input) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_input() -> &'static mut [u8; 4096] {
+        host_stub("dma page input")
     }
     /// Stub host của framebuffer GPU — **panic**: trên host không có cửa sổ RAM ngoài ảnh.
     pub fn gpu_framebuffer(_addr: u64, _len: usize) -> &'static mut [u8] {

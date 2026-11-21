@@ -75,6 +75,11 @@ pub mod virtio_blk;
 /// `TRANSFER_TO_HOST_2D`/`RESOURCE_FLUSH`, framebuffer **300 trang ngoài ảnh** (không vào
 /// `.data+.bss`), cache maintenance trước/sau DMA.
 pub mod virtio_gpu;
+/// **KT-283** (K4' bước 3, D1 phần 3 trên aarch64): driver **virtio-input** (bàn phím,
+/// virtio-pci modern) — hai queue `event`/`status`, `virtio_input_event` 8 byte, poll `used` có
+/// trần `CNTPCT_EL0`, cache maintenance trước/sau DMA; bảng chuyển mã là của
+/// `vifast_virtio::input` (**không** viết lại).
+pub mod virtio_input;
 /// **KT-275** (K4' bước 3, D1 trên aarch64): driver **virtio-net** (virtio-pci modern) — hai
 /// queue `rx`/`tx`, MAC thật từ `virtio_net_config`, DHCP client + ARP + ICMP echo trên
 /// `vifast-net` (codec thuần, không viết lại).
