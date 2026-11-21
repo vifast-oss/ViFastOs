@@ -1092,9 +1092,19 @@ boot_keys() {
         # Gửi hỏng ⇒ TAP 32 đỏ ⇒ `check_boot_log` bắt; không nuốt lỗi thành "xanh".
         send_key "$sock" || true
     fi
-    # 2) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
-    local t0=$SECONDS tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
-    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_DS" ] &&
+    # 2) chờ QEMU tự thoát trong phần ngân sách **còn lại** (cùng công thức `qg_boot`).
+    # **KT-287** — bước 1 ở trên tiêu tối đa `READY_DS` (10 s) **trước** khi đồng hồ này chạy ⇒
+    # trước đây boot treo bị kill ở ~30 s chứ không phải 20 s (nới ngưỡng D2-72 Q10, KT-285 phát
+    # hiện). Nay trừ phần đã tiêu: `i` đếm 0,05 s ⇒ `spent_ds = i / 2` (đơn vị 0,1 s).
+    # `local a=… b=$a` KHÔNG dùng được: bash tính **mọi** vế phải trước khi gán ⇒ `b` thấy `a`
+    # chưa đặt (`set -u` báo unbound). Phải tách hai dòng.
+    local spent_ds budget
+    spent_ds=$((i / 2))
+    budget=$((TIMEOUT_DS - spent_ds))
+    [ "$budget" -lt 10 ] && budget=10
+    local t0=$SECONDS
+    local tmax=$(((budget / 10) * 2 + 5))
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$budget" ] &&
         [ $((SECONDS - t0)) -lt "$tmax" ]; do
         sleep 0.1
         waited=$((waited + 1))
