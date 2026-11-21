@@ -1104,10 +1104,16 @@ boot_keys() {
         qg_kill_group "$pid"
         wait "$pid" 2>/dev/null
         QG_LAST_RC=124
+        # **KT-285** — ghi `# boot_end` như `qg_boot` (KT-283 thêm `boot_keys` nhưng bỏ dòng này
+        # ⇒ `guard-summary.log` chỉ đếm được boot probe, **không** đếm 1.000 boot soak ⇒ không
+        # có bằng chứng `rc_124=0`/`isolated_1` cho soak). Chỉ **thêm** dòng log, **không** đổi
+        # bất biến/ngưỡng nào.
+        qg_guard_note boot_end
         return 124
     fi
     wait "$pid" 2>/dev/null
     QG_LAST_RC=$?
+    qg_guard_note boot_end
     return 0
 }
 
