@@ -4,10 +4,10 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (chín vòng, 35 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười vòng, 38 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
-> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. HEAD cuối `55afb139`
-> (đã push), T2 xanh, cây sạch.
+> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
+> HEAD cuối `6ef8ee97` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -46,6 +46,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 29 | **aarch64 virtio-net + DHCP/ARP/ICMP** | **ĐẠT** | `# net: dhcp ip=10.0.2.15`, `# net: ping 10.0.2.2 ok n=3`; TAP 25/25 |
 | 30 | **x86_64 SMP 2 hart** | **ĐẠT** | `# smp: online mask=0x3 alive=0x3 harts=2`; TAP 19/19 |
 | 31 | **aarch64 W^X + cache maintenance trước DMA** | **ĐẠT** | `# wx: text=RX data=RW ok=1 … fault_ec=0x25`; `# dma: cache-clean ok=1 lines=64` |
+| 32 | **x86_64 4 hart + IPI + TSS per-hart** | **ĐẠT** | `# smp: online mask=0xf alive=0xf harts=4`, `# smp: ipi recv=1 intid=0x30` |
+| 33 | **aarch64 virtio-gpu 2D + console** | **ĐẠT** | `matched=29/29`; PPM 23/23; `.data+.bss` chỉ +4 KiB |
+| 34 | **riscv64 IPC từ U-mode** | **ĐẠT — mốc microkernel** | `# ipc: umode call ok reply=23130`, `# ipc: server ran nr=1` |
 
 ---
 
@@ -546,13 +549,82 @@ theo dõi** của phiên khác (gồm video >20 MB trong `review/video/`). GitHu
 1.555 tệp đó; `v2/` **không đổi một byte** (`git diff --stat 3f0fcb4b HEAD -- v2/` rỗng). **Bài
 học**: khi giải xung đột, `git add <đường-dẫn-cụ-thể>`, **không** `git add -A`.
 
+### 3.36 KT-278 — x86_64 **4 hart + IPI + TSS per-hart**
+**XONG.** **Đo**:
+```text
+# smp: hart=1 tss base=0x12d10c tr=0x28 type=0x8b ist1=0x11d000 rsp0=0x150000
+# smp: online mask=0xf expect=0xf harts=4 booted=3 slots=[Some(0), Some(1), Some(2), Some(3)]
+ok 18 - smp: 4 harts online
+# smp: tss bases=[0x12d0a4, 0x12d10c, 0x12d174, 0x12d1dc] ist1=[0x11c000, 0x11d000, 0x11e000, 0x11f000]
+       distinct=Ok(()) ist1_distinct=Ok(()) tr=0x28 type=0x8b ok=1
+ok 19 - smp: tss per-hart
+# smp: ipi send dest=1 vector=0x30 low=0x4030 high=0x01000000
+# smp: ipi recv=1 intid=0x30
+ok 20 - smp: ipi delivered
+# smp: online mask=0xf alive=0xf expect=0xf harts=4 ap_ticks=6
+ok 21 - smp: all harts report
+```
+TAP **21/21**, runner **15/15** (13 ca âm). **Hai phát hiện**: (1) vector IPI `0x30` **đụng** probe
+`isr_unknown` ⇒ dời probe sang `0x31` (nếu không, TAP 7 chạy vào handler IPI); (2) **in `# smp: ipi
+send` TRƯỚC khi ghi ICR** — in sau thì log xen ký tự (`low# smp: ipi r=0x4030`). **Bốn đột biến**:
+`no-ipi` ⇒ `sent=0 count=0`; `bad-ipi-dest` (dest=7) ⇒ `count=0` **không treo** (hết trần 100 ms);
+`same-tss` ⇒ `distinct=Err(Duplicate { a: 0, b: 1 })`; `no-sipi` ⇒ TAP 18 đỏ như cũ.
+
+### 3.37 KT-279 — aarch64 **virtio-gpu 2D + console**
+**XONG.** **Ngân sách đo TRƯỚC khi viết driver** — bốn phương án:
+
+| Phương án | Chi phí | Kết luận |
+|---|---:|---|
+| `.bss` 640×480×4 | 1.228.800 B | **vượt trần I7 4,7×** |
+| `.bss` 128×64×4 | 32.768 B | không (chỉ còn 36.632 B trống) |
+| arena boot | 6 frame = 24 KiB | không đủ 32 KiB |
+| **RAM ngoài ảnh** `0x4200_0000` | **+4.096 B** (1 trang DMA) | **chọn** — 300 trang map bằng **một** bảng mức 3 |
+
+`.data+.bss`: **225.512 → 229.608 B (87,6 %)**; trần I7 **không** nới một byte. **Đo**:
+```text
+# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300 stride=2560 attach_entries=19
+# gpu console: cols=79 rows=59 lines=3 chars=29 flushes=1 commands=2 matched=29/29 text=ViFastOs|gpu console|0123456789
+ok 28 - gpu: device
+ok 29 - gpu: draw
+ok 30 - gpu: console
+# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 fb_clean_lines=19344 fb_clean_bytes=1237248
+```
+TAP **30/30**, runner **19/19** (16 ca âm), PPM **23/23 kiểm** (dùng **nguyên bản** `gpu_ppm.py` của
+riscv64, không sửa): 29/29 ký tự khớp bitmap 8×8. **Đột biến quan trọng**: bỏ `Rect::byte_offset`
+(gửi `offset=0`, đúng lỗi KT-271) ⇒ **TAP vẫn 30/30 xanh** nhưng **PPM ĐỎ 30 lỗi** — chứng minh PPM
+mới là bằng chứng thật, TAP không đủ.
+
+### 3.38 KT-280 — riscv64 **IPC từ U-mode** (mốc microkernel)
+**XONG.** **Khảo sát trước khi làm** (bắt buộc) phát hiện **ba lỗ hổng thật**:
+1. mọi `call()` của U-mode đều nhắm cap **không phải Endpoint** ⇒ invocation trả ngay, không chặn;
+2. nhánh `Switched` coi tác vụ bị chặn là **kết thúc** (`Stop::Blocked` → `exited=true`);
+3. trapframe lưu `sepc` **trỏ vào `ecall`** và **không có chỗ** nạp `a0..a6` khi resume.
+
+**Đo**:
+```text
+# ipc call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0x1234 label=0x280 stop=Blocked
+# ipc server: recv=1 label=0x280 mr=0x1234 client=BlockedOnReply caller=3 server=Running stop=Yield
+# ipc: server ran nr=1
+# ipc reply: server_exit=0 client=Ready reply_caller=0 server=Inactive stop=Exit
+# ipc: umode call ok reply=23130
+# ipc client: reply_label=0x281 reply_mr0=0x5a5a reply_mr1=1
+ok 1 - ipc: umode call
+ok 2 - ipc: server replied
+```
+**Bằng chứng mạnh**: hai dòng `# ipc: umode call ok reply=23130` và `# ipc: server ran nr=1` do **chính
+hai chương trình U-mode** in; `client=BlockedOnReply` được kernel quan sát **giữa** `Recv` và `Reply`
+(server `Yield` để lộ trạng thái trung gian); `# ipc client:` là kernel đọc **độc lập** vùng nhận IPC
+của client. TAP **2/2**, ktest matrix **24/24** (8 ảnh × smp 1/2/4). **Ba đột biến đỏ đúng token**:
+server không `Reply` (client còn `BlockedOnReply`, `applied=0`), endpoint sai (`err=1`), `Call` không
+cap (`client_exit=84`). Ảnh mới `.data+.bss` = **209.784 B** (headroom 52.360 B).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `21d396c6` (ứng viên bàn giao) | **PASS 67/67, 632,7 s** | `/tmp/t2-r9.log` |
-| T2 trên `e35bacda` (vòng 8) | PASS 67/67, 617,6 s | `/tmp/t2-r8.log` |
+| **T2** `gate --fast` trên `e908a97c` (ứng viên bàn giao) | **PASS 67/67, 649,3 s** | `/tmp/t2-r10.log` |
+| T2 trên `21d396c6` (vòng 9) | PASS 67/67, 632,7 s | `/tmp/t2-r9.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
