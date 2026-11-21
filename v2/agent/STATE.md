@@ -4,30 +4,32 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 09:30 (sau vòng 6) ===
-HEAD          : `2ea261c1` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `2ea261c1` (**569,8 s**) — ứng viên bàn giao.
-                **T1** `gate --dev` **PASS** trên `1e96f792` (**359,0 s**).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 10:10 (sau vòng 7) ===
+HEAD          : `9704539a` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `9704539a` (**594,4 s**) — ứng viên bàn giao.
+                **T1** `gate --dev` **PASS** trên `ca3a490a` (**384,5 s**).
                 Bước mới: 55 net validator, 56 aarch64, 57 virtio-net, 58 cfg-test, 59 x86_64,
                 60 virtio-input, 61/62 validator, 63 virtio-gpu, 64 validator gpu,
                 66/67 selftest soak+budget aarch64, 69 wake dep-info `--product-fs`, 70 QEMU smoke.
-BUILD-INPUTS  : đổi (thêm `tcp.rs`, `umode.rs`, `generated.rs` mở rộng) — ảnh sản phẩm **chưa**
-                build lại sau vòng 6.
+BUILD-INPUTS  : đổi (thêm `tcp.rs`, `umode.rs` hai arch, `gpu_console.rs`, `generated.rs` mở rộng).
+                **Ảnh sản phẩm KHÔNG đổi**: `build=f861bd283066120f text=131728` ở **mọi** lần đo
+                (trước cuối tuần, sau vòng 1/2/4/6) ⇒ bằng chứng K6/soak riscv64 **vẫn áp dụng**.
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
-                soak 1.000 (0 lỗi) + budget + `# conf image:` + **U-mode EL0** (`svc #0` chạy được,
-                `# umode: el0 ran svc=0 ret=12`); TAP **18/18**, runner **13/13** (11 ca âm).
-                **`[calling.aarch64]` ĐÃ MỞ** trong `spec/abi.toml` (D2-206).
-X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT 100 Hz; TAP **11/11**, runner **11/11**.
-MẠNG          : virtio-net + DHCP/ARP/ICMP + UDP + DNS + **TCP** (43 test host, server thật);
-                TAP **11/11**, runner 3 ca + 28 kiểm red-selftest.
+                soak 1.000 **hai lần** (0 lỗi, lần 2 sau U-mode) + budget + `# conf image:` +
+                **U-mode EL0** (`svc #0`); TAP **18/18**, runner **13/13** (11 ca âm).
+                **`[calling.aarch64]` ĐÃ MỞ** (D2-206).
+X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT 100 Hz + **U-mode ring 3**
+                (`int 0x80`); TAP **14/14**, runner **12/12** (10 ca âm).
+                **`[calling.x86_64]` ĐÃ MỞ** (D2-207).
+MẠNG          : virtio-net + DHCP/ARP/ICMP + UDP + DNS + **TCP** — TAP **11/11**.
 BÀN PHÍM      : virtio-input — 5 TAP, 30 test host.
-ĐỒ HOẠ        : virtio-gpu 2D — 5 TAP, 33 test host, PPM đúng màu.
+ĐỒ HOẠ        : virtio-gpu 2D + **console** (29/29 ký tự khớp bitmap) — 6 TAP, 50 test host.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); **ba nợ ngoài hợp đồng ĐÓNG** (KT-267);
                 selftest **452**/**70**/**10**; cổng có bước `wake dep-info --product-fs`.
-TASK          : **KT-243..KT-269 DONE** (27 task). **0 REVIEW**, **0 READY**.
-NỢ MỞ         : P20 (sha ảnh phụ thuộc **cách viết đường dẫn** build); K5' đầy đủ (U-mode x86_64/
-                PCI/SMP/`-cpu max`); net server U-mode (N1 phần 3); IPC từ EL0; W^X toàn ảnh;
-                soak 1.000 riscv64 sau vòng 6 (ảnh đổi).
+TASK          : **KT-243..KT-272 DONE** (30 task). **0 REVIEW**, **0 READY**.
+NỢ MỞ         : P20 (sha ảnh phụ thuộc **cách viết đường dẫn** build); K5' đầy đủ (PCI/SMP/
+                `-cpu max`/soak 600); IPC từ EL0 (cả hai arch); net server U-mode (N1 phần 3);
+                W^X toàn ảnh; số ca TAP hard-code ở hai nơi (nợ quy trình).
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
