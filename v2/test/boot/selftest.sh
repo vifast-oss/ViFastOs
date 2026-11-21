@@ -3,9 +3,9 @@
 # KT-54 — tự kiểm **runner** `ktest.sh` bằng mutation của **harness** (không đụng kernel).
 #
 # Vì sao cần: một runner TAP chỉ đáng tin khi nó **đỏ** đúng lúc, **đúng lý do**, và **không xanh
-# khi không chạy gì**. Tệp này dựng 20 ca quanh một log thật:
+# khi không chạy gì**. Tệp này dựng 21 ca quanh một log thật:
 #   • 1 ca XANH (log thật qua, không báo động giả);
-#   • 17 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
+#   • 19 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
 #     nhận "exit ≠ 0 vô tội vạ"):
 #       (a) `expected.txt`: bớt 1 TAP (N→N-1, N đọc từ tệp) / mất dòng ảnh `ktest-user`;
 #       (b) log: một dòng `ok` → `not ok` / xoá 1 dòng `ok` / nhân đôi 1 dòng `ok`;
