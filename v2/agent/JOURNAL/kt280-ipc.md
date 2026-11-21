@@ -65,7 +65,9 @@ D2-109/D2-111 (thêm đường mới ⇒ tách ảnh, không nới trần, `.tex
 | Ảnh mới `vifast-kbin-ktest-ipc` (feature `ipc = ["ktest","user"]`) | **DONE** — 2 TAP, `.data+.bss` = **209.784 B** / 262.144 (headroom 52.360 B) |
 | Hai chương trình U-mode `ipc_client_user.rs` / `ipc_server_user.rs` | **DONE** — 8.912 B / 8.896 B ELF |
 | Runner: `expected.txt` + `ktest.sh` (LABELS/image_path/manifest/evidence/panic/build) | **DONE** — matrix **8 ảnh × smp 1/2/4 = 24 boot** |
+| Runner: ca âm thường trực cho dòng `# ipc:` (`selftest.sh` ca 18) | **DONE** — 19/19 ca, đỏ đúng token `ev6` |
 | `./v2/bin/v2 check` | **XANH** (exit 0, 113 s) |
+| `./v2/bin/v2 gate --dev` (T1) | **PASS** (476,8 s) |
 | Runner riscv64 `ktest.sh 1 matrix` | **XANH — 24/24 boot sạch** |
 | Ba đột biến | **ĐỎ đúng cả ba** (§6) |
 
@@ -125,6 +127,17 @@ ok - ktest-ipc smp=4 boot 1 (2 TAP, 0s) log /tmp/kt280-ktest/ktest-ipc-smp4-1.lo
 # ktest.sh: PASS
 ```
 
+**Ca âm thường trực** trong `v2/test/boot/selftest.sh` (ca 18, thêm bởi KT-280): xoá đúng dòng
+`# ipc: umode call ok reply=…` khỏi log `ktest-ipc` ⇒ runner **phải đỏ** với token `ev6` (ordinal
+tra từ `--print-evidence`, không hardcode). Chạy thật:
+
+```text
+ok 18 - log ktest-ipc: xoá dòng '# ipc: umode call ok reply=' (evidence bắt buộc của KT-280)
+#   runner đỏ vì [ev6]: not ok - check-log ktest-ipc smp=1: thiếu ev6, log …/log-ipc-no-call.log
+# selftest: 19/19 ca đúng như kỳ vọng
+# selftest.sh: PASS
+```
+
 `--check-log` (11 evidence bắt buộc):
 
 ```text
@@ -164,7 +177,8 @@ kiểm soát, có chẩn đoán, không treo máy.
    tác vụ `Stop::Blocked` (chúng coi đó là lỗi/kết thúc), nên `sepc` đổi không ảnh hưởng; matrix
    24/24 xác nhận.
 6. **Chưa chạy T2 `gate --fast`** (task yêu cầu `v2 check` + runner riscv64; T2 là việc của lead
-   trên ứng viên tích hợp).
+   trên ứng viên tích hợp). Đã chạy **T1 `gate --dev` = PASS** (476,8 s) — T1 **không** phải full
+   gate.
 
 ## 8. Xác nhận luật
 

@@ -3,9 +3,9 @@
 # KT-54 — tự kiểm **runner** `ktest.sh` bằng mutation của **harness** (không đụng kernel).
 #
 # Vì sao cần: một runner TAP chỉ đáng tin khi nó **đỏ** đúng lúc, **đúng lý do**, và **không xanh
-# khi không chạy gì**. Tệp này dựng 17 ca quanh một log thật:
+# khi không chạy gì**. Tệp này dựng 18 ca quanh một log thật:
 #   • 1 ca XANH (log thật qua, không báo động giả);
-#   • 15 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
+#   • 16 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
 #     nhận "exit ≠ 0 vô tội vạ"):
 #       (a) `expected.txt`: bớt 1 TAP (N→N-1, N đọc từ tệp) / mất dòng ảnh `ktest-user`;
 #       (b) log: một dòng `ok` → `not ok` / xoá 1 dòng `ok` / nhân đôi 1 dòng `ok`;
@@ -16,6 +16,8 @@
 #       (g) evidence bị thêm đuôi lạ (`# mmu on: … EXTRA`) phải đỏ (mẫu neo cả dòng);
 #       (h) lặp dòng per-hart của hart 0 thay hart 1 (`# timer hart=`/`# hart … alive`) phải đỏ
 #           (kiểm **tập hart**, không chỉ đếm dòng);
+#       (k) **KT-280**: xoá dòng `# ipc: umode call ok reply=…` của ảnh `ktest-ipc` (do chính
+#           chương trình U-mode in) phải đỏ — dòng `# ipc:` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -298,6 +300,26 @@ else
     cat "$WORK/stack-selftest.log"
     fail=$((fail + 1))
 fi
+
+# --- ca (k): dòng `# ipc:` của ảnh KT-280 (IPC từ U-mode) --------------
+# **KT-280** (D2-210): ảnh thứ tám `ktest-ipc` có **hai** dòng do **chính chương trình U-mode** in
+# (`# ipc: umode call ok reply=…` của client, `# ipc: server ran nr=…` của server). Xoá đúng dòng
+# của client ⇒ runner phải đỏ với token `ev<ordinal>` của dòng đó — chứng minh dòng `# ipc:` là
+# **bắt buộc**, không phải trang trí. Log lấy từ cùng LOGDIR của runner; chưa có thì boot một vòng
+# (đường không-tham-số của selftest vốn đã boot `ktest.sh 1 $SMP`).
+IPC_LOG="$(bash "$KTEST" --log-path ktest-ipc "$SMP" 1)"
+if [ ! -f "$IPC_LOG" ]; then
+    echo "# ca (k): chưa có log ktest-ipc ($IPC_LOG) — boot một vòng matrix để lấy"
+    bash "$KTEST" 1 "$SMP" >/dev/null 2>&1 || die "không lấy được log ktest-ipc"
+fi
+[ -f "$IPC_LOG" ] || die "không thấy log ktest-ipc $IPC_LOG"
+IPC_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: umode call ok reply=')"
+[ -n "$IPC_EV" ] || die "không tra được ordinal evidence '# ipc: umode call ok reply=' của ktest-ipc"
+grep -v -F '# ipc: umode call ok reply=' "$IPC_LOG" >"$WORK/log-ipc-no-call.log"
+mut_diff "$WORK/log-ipc-no-call.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: umode call ok reply='"
+case_red "ev$IPC_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: umode call ok reply=' (evidence bắt buộc của KT-280)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-call.log" "$SMP"
 
 # --- ca cuối: expected.txt trả lại **nguyên vẹn** (sha256 + cmp) ------
 total=$((total + 1))
