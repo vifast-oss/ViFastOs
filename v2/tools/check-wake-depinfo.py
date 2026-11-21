@@ -80,6 +80,8 @@ Chạy
     python3 v2/tools/check-wake-depinfo.py --fresh         # target dir tạm ⇒ build lạnh
     python3 v2/tools/check-wake-depinfo.py --unit host     # chỉ một đơn vị build
     python3 v2/tools/check-wake-depinfo.py --verbose       # in danh sách tệp ẩn
+    python3 v2/tools/check-wake-depinfo.py --product-fs    # + lượt `--features product-fs`
+                                                           # (KT-267 (c), tuỳ chọn, ~+20 s ấm)
 
 Exit: 0 = xanh; 1 = đỏ; 2 = dùng sai.
 
@@ -160,6 +162,23 @@ BUILD_UNITS: Tuple[Tuple[str, str, Optional[str], str], ...] = (
     ("host", "v2/Cargo.toml", None, "v2/target"),
     ("kernel", "v2/kernel/Cargo.toml", "riscv64gc-unknown-none-elf", "v2/kernel/target"),
 )
+
+# **KT-267 (c)** — lượt `--features product-fs` (**tuỳ chọn**, `--product-fs`): `cargo check
+# --workspace` mặc định **không** bật `product-fs`, nên mã chỉ tồn tại dưới feature của ảnh sản
+# phẩm (`vifast-kbin-riscv64/src/proc_fs.rs`, `vifast-plat-riscv64::static_slot`, nhánh
+# `#[cfg(feature = "product-fs")]`) **không** được lớp dep-info thấy. Lượt này bổ sung danh sách
+# tệp rustc nạp ở cấu hình ảnh sản phẩm.
+#
+# Cùng target dir với `kernel` (cùng workspace): `.d` của lượt này là **superset** của lượt mặc
+# định (cùng tệp nguồn, thêm `proc_fs.rs`) nên dấu `--no-build` vẫn fail-closed. `--no-build`
+# + `--product-fs` bị **từ chối** (hai lượt build chia sẻ target dir ⇒ dấu không xác định).
+PRODUCT_FS_UNIT: Tuple[str, str, Optional[str], str] = (
+    "kernel-product-fs",
+    "v2/kernel/Cargo.toml",
+    "riscv64gc-unknown-none-elf",
+    "v2/kernel/target",
+)
+PRODUCT_FS_FEATURES: Tuple[str, ...] = ("product-fs",)
 
 # **KT-256 (L2)** — `RE_CRATE_SRC`/`RE_BUILD_RS` **xoá**: "tệp nguồn hiển nhiên" nay là
 # `wake_scope.protected_scope(root).contains(relp)` (định nghĩa duy nhất sinh từ `cargo metadata`).
@@ -689,6 +708,7 @@ def run_unit(
     timeout: float,
     fresh_dir: Optional[Path],
     scope: Optional[Scope] = None,
+    features: Sequence[str] = (),
 ) -> UnitResult:
     """Chạy `cargo check` cho một đơn vị và trả kết quả (không tự đỏ khi RC≠0 — tầng gọi quyết).
 
@@ -696,6 +716,9 @@ def run_unit(
     `target_rel`: đó là **cùng** thư mục cargo dùng cho lần build này (kể cả `CARGO_TARGET_DIR`
     của người dùng / `--fresh`). `target_rel` chỉ còn là dự phòng khi metadata hỏng (tầng gọi
     báo `E_DEPINFO_SCOPE`).
+
+    **KT-267 (c)** — `features`: lượt `--features product-fs` (tuỳ chọn `--product-fs`) để lớp
+    dep-info thấy mã chỉ tồn tại dưới feature của ảnh sản phẩm.
     """
     cmd = [
         cargo,
@@ -707,6 +730,8 @@ def run_unit(
     ]
     if triple:
         cmd += ["--target", triple]
+    for feat in features:
+        cmd += ["--features", feat]
     res = UnitResult(name, cmd)
 
     env = dict(os.environ)
@@ -2286,6 +2311,67 @@ def selftest() -> int:
             f"got={got54}",
         )
 
+        # --- (55)(56)(57) **KT-267 (c)** — lượt `--features product-fs` (tuỳ chọn) ----------
+        # Nợ §7.3(c): `cargo check --workspace` mặc định **không** bật `product-fs`, nên mã chỉ
+        # tồn tại dưới feature của ảnh sản phẩm (`vifast-kbin-riscv64/src/proc_fs.rs`) **không**
+        # được lớp dep-info thấy. Đo trên cây thật: `wake` trong `proc_fs.rs` ⇒ lớp dep-info
+        # **XANH** (25,7 s) khi không `--product-fs`, **ĐỎ** `E_DEPINFO_WAKE` khi có (45,9 s).
+        # Lượt này **tuỳ chọn** (mặc định TẮT) vì tốn thêm ~20 s ấm; đề xuất lead nối vào
+        # `gate --fast`.
+        ghi(
+            "(55) KT-267 (c) `PRODUCT_FS_UNIT` đúng đơn vị kernel + triple bare-metal",
+            PRODUCT_FS_UNIT[0] == "kernel-product-fs"
+            and PRODUCT_FS_UNIT[1] == "v2/kernel/Cargo.toml"
+            and PRODUCT_FS_UNIT[2] == "riscv64gc-unknown-none-elf"
+            and PRODUCT_FS_FEATURES == ("product-fs",),
+            f"unit={PRODUCT_FS_UNIT} features={PRODUCT_FS_FEATURES}",
+        )
+        # `run_unit` phải **thêm** `--features product-fs` khi có `features` (và **không** thêm
+        # khi rỗng) — ca này chết nếu ai đó bỏ tham số mà vẫn tưởng đã bật feature.
+        _fake_cargo = base / "fake-cargo.sh"
+        _fake_cargo.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        _fake_cargo.chmod(0o755)
+        _res_feat = run_unit(
+            base,
+            "kernel-product-fs",
+            "v2/kernel/Cargo.toml",
+            "riscv64gc-unknown-none-elf",
+            "v2/kernel/target",
+            str(_fake_cargo),
+            None,
+            30.0,
+            None,
+            features=PRODUCT_FS_FEATURES,
+        )
+        _res_plain = run_unit(
+            base,
+            "kernel",
+            "v2/kernel/Cargo.toml",
+            "riscv64gc-unknown-none-elf",
+            "v2/kernel/target",
+            str(_fake_cargo),
+            None,
+            30.0,
+            None,
+        )
+        ghi(
+            "(56) KT-267 (c) `run_unit` thêm `--features product-fs` khi có `features`",
+            "--features" in _res_feat.cmd
+            and _res_feat.cmd[_res_feat.cmd.index("--features") + 1] == "product-fs"
+            and "--features" not in _res_plain.cmd,
+            f"feat={_res_feat.cmd} plain={_res_plain.cmd}",
+        )
+        # `--no-build` + `--product-fs` phải **từ chối** (exit 2): hai lượt build chia sẻ target
+        # dir ⇒ dấu `--no-build` không xác định được thuộc lượt nào.
+        _root_nb = base / "root-nb"
+        (_root_nb / "v2/kernel").mkdir(parents=True, exist_ok=True)
+        _rc_nb = main(["--no-build", "--product-fs", "--root", str(_root_nb)])
+        ghi(
+            "(57) KT-267 (c) `--no-build` + `--product-fs` ⇒ từ chối (exit 2)",
+            _rc_nb == 2,
+            f"rc={_rc_nb}",
+        )
+
     ok = sum(1 for _, o, _ in cases if o)
     print(f"# selftest: {ok}/{len(cases)} ok")
     return 0 if ok == len(cases) else 1
@@ -2313,6 +2399,14 @@ def main(argv: Sequence[str]) -> int:
         action="store_true",
         help="bỏ luật R2 (chuyển Ready) — chỉ áp luật token `wake`",
     )
+    ap.add_argument(
+        "--product-fs",
+        action="store_true",
+        help=(
+            "thêm lượt `cargo check --features product-fs` (KT-267 (c)): lớp dep-info thấy mã "
+            "chỉ tồn tại dưới feature của ảnh sản phẩm (mặc định TẮT — tốn thêm ~20 s ấm)"
+        ),
+    )
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -2321,6 +2415,15 @@ def main(argv: Sequence[str]) -> int:
     root = Path(args.root).resolve() if args.root else DEFAULT_ROOT
     if not (root / "v2/kernel").is_dir():
         print(f"check-wake-depinfo: {root} không có `v2/kernel` — fail-closed", file=sys.stderr)
+        return 2
+    # **KT-267 (c)** — `--no-build` + `--product-fs` không xác định được dấu: hai lượt build
+    # chia sẻ **cùng** target dir nên dấu chỉ thuộc lượt chạy sau. Từ chối rõ (fail-closed).
+    if args.no_build and args.product_fs:
+        print(
+            "check-wake-depinfo: `--no-build` không hỗ trợ `--product-fs` (hai lượt build chia "
+            "sẻ target dir ⇒ dấu không xác định) — chạy không `--no-build`",
+            file=sys.stderr,
+        )
         return 2
 
     t0 = time.monotonic()
@@ -2333,6 +2436,10 @@ def main(argv: Sequence[str]) -> int:
         fresh_dir = Path(tmp_holder.name)
 
     units = [u for u in BUILD_UNITS if args.unit in ("all", u[0])]
+    # **KT-267 (c)** — lượt `--features product-fs` (tuỳ chọn). Chỉ thêm khi đơn vị `kernel`
+    # được chọn (feature thuộc workspace bare-metal).
+    if args.product_fs and args.unit in ("all", "kernel"):
+        units.append(PRODUCT_FS_UNIT)
 
     # **KT-238** — phạm vi sinh từ `cargo metadata` của **các workspace liên quan** + bao đóng
     # path-dependency nội bộ. `--fresh` ⇒ truyền **cùng** `CARGO_TARGET_DIR` cho metadata để
@@ -2342,6 +2449,12 @@ def main(argv: Sequence[str]) -> int:
         for name, _manifest, _triple, _target_rel in units:
             overrides[name] = fresh_dir / name
     scope = load_scope(root, cargo, toolchain, overrides)
+    # **KT-267 (c)** — lượt product-fs dùng **cùng** target dir với `kernel` (cùng workspace);
+    # `cargo metadata` không biết đơn vị này nên gán tường minh (fail-closed nếu thiếu).
+    if args.product_fs and args.unit in ("all", "kernel"):
+        _kdir = scope.target_dirs.get("kernel")
+        if _kdir is not None:
+            scope.target_dirs["kernel-product-fs"] = _kdir
 
     results: List[UnitResult] = []
     build_errors: List[str] = []
@@ -2409,6 +2522,7 @@ def main(argv: Sequence[str]) -> int:
                 args.timeout,
                 fresh_dir,
                 scope=scope,
+                features=PRODUCT_FS_FEATURES if name == PRODUCT_FS_UNIT[0] else (),
             )
             results.append(res)
             if res.rc != 0:

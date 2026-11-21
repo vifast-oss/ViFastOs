@@ -357,9 +357,29 @@ RE_MSG = re.compile(r"\bMsg::(Wake|Reschedule|Migrate|Stop|VmKick|PowerReq)\b")
 RE_IPI_WAKE_POST = re.compile(r"\bIpiKind::Wake\b")
 RE_IPI_POST = re.compile(r"\b(?:post|unpost)\s*\(")
 RE_DOORBELL = re.compile(r"\bdoorbell\b", re.IGNORECASE)
+# **KT-267 (b)** — miễn luật arch `doorbell` theo **ngữ nghĩa**, không theo **tên tệp**.
+# Trước bản này: `p.name.startswith("virtio_")` ⇒ **bất kỳ** tệp `virtio_*.rs` nào (kể cả
+# `virtio_evil.rs` **không** phải driver) được miễn. Nay: chỉ miễn khi tệp **thật sự** là driver
+# virtio — dùng virtqueue của crate `vifast_virtio` (`SplitQueue`/`VqLayout`) hoặc định nghĩa
+# kiểu `Virtio*`/`impl … VirtioKind`. Marker đọc trên **mã** (đã khử chú thích/chuỗi) nên
+# **không** thể giả bằng comment.
+RE_VIRTIO_DRIVER = re.compile(
+    r"\b(?:SplitQueue|VqLayout)\b"
+    r"|\b(?:struct|enum|trait|union)\s+Virtio[A-Za-z0-9_]*\b"
+    r"|\bimpl\b[^\n{;]*\bVirtio[A-Za-z0-9_]*\b"
+)
 RE_ARCH_FORBIDDEN = re.compile(
     r"\b(?:TcbState|transition_tcb|MailboxMsg|wake_step|MailboxMsg::Wake)\b"
 )
+
+
+def _is_virtio_driver(text: str) -> bool:
+    """**KT-267 (b)** — tệp có phải driver virtio **thật** không (kiểm **ngữ nghĩa**).
+
+    Không dựa vào tên tệp: `virtio_evil.rs` không dùng virtqueue/kiểu virtio ⇒ **không** miễn.
+    Marker đọc trên mã đã khử chú thích/chuỗi (`strip_rust_noise`) ⇒ comment không đánh lừa được.
+    """
+    return bool(RE_VIRTIO_DRIVER.search(strip_rust_noise(text)))
 
 
 # ------------------------------------------------------------------ đọc/parse Rust
@@ -4446,6 +4466,8 @@ def scan_v2(
             continue
         tr = test_ranges.get(str(p), [])
         ls = line_starts.get(str(p), [0])
+        # **KT-267 (b)** — miễn `doorbell` theo **ngữ nghĩa** (một lần/tệp), không theo tên tệp.
+        virtio_driver = _is_virtio_driver(text)
 
         def _exempt(col: int) -> bool:
             """**KT-242 (N5)** — vị trí (dòng, cột) có nằm trong vùng test không."""
@@ -4465,7 +4487,7 @@ def scan_v2(
                     f"{relp}:{lineno}: arch tự post `IpiKind::Wake` (doorbell riêng)",
                 )
             _m_door = RE_DOORBELL.search(line)
-            if _m_door and not p.name.startswith("virtio_") and not _exempt(_m_door.start()):
+            if _m_door and not virtio_driver and not _exempt(_m_door.start()):
                 r.err(
                     "E_ARCH_DOORBELL",
                     f"{relp}:{lineno}: `doorbell` ngoài thiết bị virtio",
@@ -5043,6 +5065,86 @@ def selftest() -> int:
                 "v2 thiếu `wake_step` ⇒ đỏ (fail-closed)",
                 (not rep.ok) and any("E_ANCHOR_MISSING" in e for e in rep.errors),
                 "; ".join(rep.errors),
+            )
+        )
+
+        # --- **KT-267 (b)** — miễn luật arch `doorbell` theo **ngữ nghĩa**, không theo tên tệp.
+        # Trước bản này `p.name.startswith("virtio_")` miễn **mọi** tệp `virtio_*.rs`; một tệp
+        # `virtio_evil.rs` **không** phải driver virtio dùng `doorbell` ⇒ XANH (nợ §7.3(b)).
+        # Nay chỉ miễn khi tệp **thật sự** là driver virtio (dùng `SplitQueue`/`VqLayout` hoặc
+        # định nghĩa kiểu `Virtio*`/`impl … VirtioKind`), marker đọc trên **mã** đã khử chú thích.
+        _KT267B = "v2/kernel/vifast-plat-riscv64/src/"
+        _kt267b_cases = (
+            (
+                "âm: `virtio_evil.rs` không phải driver, `doorbell` trong **mã**",
+                _KT267B + "virtio_evil.rs",
+                "pub fn evil() -> u32 { let doorbell = 1u32; doorbell }\n",
+                True,
+            ),
+            (
+                "âm: `virtio_evil.rs` không phải driver, `doorbell` trong **chú thích**",
+                _KT267B + "virtio_evil.rs",
+                "// doorbell riêng\npub fn evil() -> u32 { 1 }\n",
+                True,
+            ),
+            (
+                "âm: marker `SplitQueue`/`VqLayout` chỉ trong **chú thích** ⇒ vẫn đỏ",
+                _KT267B + "virtio_evil2.rs",
+                "// SplitQueue VqLayout\n"
+                "pub fn evil() -> u32 { let doorbell = 1u32; doorbell }\n",
+                True,
+            ),
+            (
+                "dương: driver virtio thật (virtqueue `SplitQueue`/`VqLayout`) ⇒ xanh",
+                _KT267B + "virtio_ok.rs",
+                "use vifast_virtio::queue::{SplitQueue, VqLayout};\n"
+                "// doorbell\n"
+                "pub fn ok() -> u32 { let _ = VqLayout::new(8); 1 }\n",
+                False,
+            ),
+            (
+                "dương: kiểu `Virtio*` ⇒ xanh",
+                _KT267B + "virtio_ok2.rs",
+                "pub struct VirtioThing { pub n: u32 }\n// doorbell\npub fn ok() -> u32 { 1 }\n",
+                False,
+            ),
+        )
+        for _i, (_n, _relp, _text, _red) in enumerate(_kt267b_cases):
+            d = tmp / f"kt267b-{_i}"
+            _fixture_v2(d)
+            _write(d / _relp, _text)
+            rep = scan_v2(d, strict=False, extra_doors=set())
+            hits = [e for e in rep.errors if "E_ARCH_DOORBELL" in e]
+            cases.append(
+                (
+                    f"KT-267 (b) {_n} ⇒ {'đỏ' if _red else 'xanh'}",
+                    bool(hits) == _red,
+                    "; ".join(rep.errors),
+                )
+            )
+        # Đối chứng dương **trên tệp THẬT**: năm driver virtio thật phải được nhận là driver
+        # (nếu không, luật arch báo oan trên cây thật ⇒ `v2 check` đỏ). Ca này chết nếu ai đó
+        # đổi marker ngữ nghĩa sang thứ các driver thật **không** có.
+        _real_root = Path(__file__).resolve().parent.parent.parent
+        _real_virtio = (
+            "v2/kernel/vifast-plat-riscv64/src/virtio_net.rs",
+            "v2/kernel/vifast-plat-riscv64/src/virtio_input.rs",
+            "v2/kernel/vifast-plat-riscv64/src/virtio_gpu.rs",
+            "v2/kernel/vifast-plat-riscv64/src/virtio_blk.rs",
+            "v2/kernel/vifast-plat-riscv64/src/virtio_console.rs",
+        )
+        _real_missing = [r for r in _real_virtio if not (_real_root / r).is_file()]
+        _real_not_driver = [
+            r
+            for r in _real_virtio
+            if (_real_root / r).is_file()
+            and not _is_virtio_driver((_real_root / r).read_text(encoding="utf-8", errors="replace"))
+        ]
+        cases.append(
+            (
+                "KT-267 (b) đối chứng dương trên tệp THẬT: 5 driver virtio được nhận",
+                not _real_missing and not _real_not_driver,
+                f"missing={_real_missing} not_driver={_real_not_driver}",
             )
         )
 
@@ -8034,6 +8136,72 @@ def selftest() -> int:
                     'macro_rules! evil_txt225 { () => { include!("../../../lib/evil_expr.rs") } }\n'
                 ),
             },
+            code="E_STRICT_MACRO_INCLUDE",
+        )
+
+        # --- **KT-267 (a)** — `:expr` passthrough: đo xem `:expr` có chở được
+        # `include!`/`#[path]`/`mod` từ **tệp trong phạm vi** không. Đo trên cây thật
+        # (`JOURNAL/kt267-attack/`): A1 (`include!` trong đối số, macro **khác tệp**) và A2
+        # (block chứa `#[path]`+`mod` trong đối số) đều **ĐỎ cả ba lượt**; `mod`/`#[path]`
+        # **trực tiếp** trong đối số `:expr` là **lỗi cú pháp** (rustc: "no rules expected
+        # keyword `mod`" / "expected expression, found keyword `mod`"). ⇒ `:expr` **không**
+        # chở được từ tệp trong phạm vi; nợ §7.3(a) **đóng**. Bốn ca dưới canh bất biến: nếu
+        # mai kia luật "đối số lời gọi" bị nới, chúng **XANH** ⇒ selftest đỏ.
+        _kt211_case(
+            "KT-267 (a) `:expr` + `include!` trong đối số, macro **khác tệp** ⇒ ĐỎ",
+            "v2/kernel/vifast-core/src/kt267_expr_call.rs",
+            "use crate::kt267_expr_def::kt267_pass;\n"
+            "pub fn kt267_evil() {\n"
+            f'    let _ = kt267_pass!(include! {{"{_KT211_EVIL}"}});\n'
+            "}\n",
+            True,
+            {
+                "v2/kernel/vifast-core/src/kt267_expr_def.rs": (
+                    "macro_rules! kt267_pass { ($e:expr) => { $e }; }\n"
+                    "pub(crate) use kt267_pass;\n"
+                ),
+            },
+            code="E_STRICT_MACRO_INCLUDE",
+        )
+        _kt211_case(
+            "KT-267 (a) `:expr` + block chứa `#[path]` trong đối số ⇒ ĐỎ",
+            "v2/kernel/vifast-core/src/kt267_expr_block.rs",
+            "macro_rules! kt267_pass { ($e:expr) => { $e }; }\n"
+            "pub fn kt267_evil() {\n"
+            "    let _ = kt267_pass!({\n"
+            '        #[path = "kt267_evil_mod.rs"]\n'
+            "        mod evil;\n"
+            "        1u8\n"
+            "    });\n"
+            "}\n",
+            True,
+            {"v2/kernel/vifast-core/src/kt267_evil_mod.rs": "pub fn f() -> u8 { 1 }\n"},
+            code="E_STRICT_MACRO_INCLUDE",
+        )
+        _kt211_case(
+            "KT-267 (a) `:expr` + block chứa `mod` trong đối số ⇒ ĐỎ",
+            "v2/kernel/vifast-core/src/kt267_expr_mod.rs",
+            "macro_rules! kt267_pass { ($e:expr) => { $e }; }\n"
+            "pub fn kt267_evil() {\n"
+            "    let _ = kt267_pass!({\n"
+            "        mod evil { pub fn f() -> u8 { 1 } }\n"
+            "        evil::f()\n"
+            "    });\n"
+            "}\n",
+            True,
+            code="E_STRICT_MACRO_MOD",
+        )
+        _kt211_case(
+            "KT-267 (a) đối chứng dương: `:expr` + block biểu thức thường ⇒ xanh",
+            "v2/kernel/vifast-core/src/kt267_expr_ok.rs",
+            "macro_rules! kt267_pass { ($e:expr) => { $e }; }\n"
+            "pub fn kt267_ok() -> u8 {\n"
+            "    kt267_pass!({\n"
+            "        let x = 1u8;\n"
+            "        x + 1\n"
+            "    })\n"
+            "}\n",
+            False,
             code="E_STRICT_MACRO_INCLUDE",
         )
 

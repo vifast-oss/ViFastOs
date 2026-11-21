@@ -1,0 +1,5 @@
+A-expr	a1-expr-include-call	0	3	3	1	bị bắt: l1(3) l1s(3) l2(1)
+A-expr	a2-expr-block-path-mod	0	4	4	1	bị bắt: l1(4) l1s(4) l2(1)
+B-virtio	b1-virtio-evil-code	0	2	2	0	bị bắt: l1(2) l1s(2)
+B-virtio	b2-virtio-evil-comment	0	1	1	0	bị bắt: l1(1) l1s(1)
+C-product-fs	c1-product-fs-wake	0	1	1	0	bị bắt: l1(1) l1s(1)
