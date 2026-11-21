@@ -38,10 +38,13 @@
 //!   tràn. Đột biến "bỏ guard khỏi stride" làm hai record đè nhau ⇒ `Overlap` (test host
 //!   `layout_rejects_overlap_without_guard`).
 //!
-//! # Phạm vi (KT-276)
+//! # Phạm vi (KT-276 → KT-278)
 //!
-//! Chỉ **2 hart**: `INIT-SIPI-SIPI` hart 1, LAPIC riêng cho AP, cả hai in hart id. **Không** 4
-//! hart, **không** IPI, **không** scheduler/preemption, **không** tuyên bố K5' đạt.
+//! KT-276 làm **2 hart** (`INIT-SIPI-SIPI` hart 1, LAPIC riêng cho AP, cả hai in hart id).
+//! **KT-278** mở lên **4 hart** (`SMP_HARTS = 4`, `INIT-SIPI-SIPI` tuần tự cho hart 1..3) và thêm
+//! **IPI** fixed-delivery qua `ICR` ([`icr_fixed_low`], vector [`crate::exc::VEC_IPI`] `0x30`).
+//! **Không** scheduler/preemption, **không** `-cpu max`, **không** `syscall`/`sysret`, **không**
+//! tuyên bố K5' đạt.
 
 /// Số hart tối đa `[TK]` — **8**, đúng D2-195 Q5 (giữ nguyên từ K3).
 ///
@@ -62,10 +65,13 @@ pub const HART_STRIDE: u64 = HART_GUARD_BYTES + HART_STACK_BYTES;
 /// Tổng vùng NOLOAD theo hart: `MAX_HARTS × HART_STRIDE` = `0x8_8000` (544 KiB).
 pub const HART_AREA_BYTES: u64 = HART_STRIDE * MAX_HARTS as u64;
 
-/// Số hart ảnh KT-276 **thật sự đánh thức** — hart 0 (BSP) + hart 1 (AP), runner `-smp 2`.
-pub const SMP_HARTS: usize = 2;
+/// Số hart ảnh KT-278 **thật sự đánh thức** — hart 0 (BSP) + hart 1..3 (AP), runner `-smp 4`.
+///
+/// KT-276 đánh thức **một** hart phụ (2 hart); KT-278 mở lên **bốn** — arena stack đã đủ 8 slot
+/// từ KT-276 nên không đổi bố cục, chỉ đổi số hart ảnh đánh thức.
+pub const SMP_HARTS: usize = 4;
 
-/// Mặt nạ hart **kỳ vọng** online (`0b11` với [`SMP_HARTS`] = 2).
+/// Mặt nạ hart **kỳ vọng** online (`0b1111` với [`SMP_HARTS`] = 4).
 pub const SMP_EXPECT_MASK: u32 = (1u32 << SMP_HARTS) - 1;
 
 /// `true` ⇔ `hart` là hart id hợp lệ (`< MAX_HARTS`).
@@ -327,6 +333,18 @@ pub const fn icr_sipi_low(vector: u8) -> u32 {
     icr_low(ICR_DM_STARTUP, vector, false, false)
 }
 
+/// `ICR` thấp cho **IPI** (KT-278): delivery mode `000` (**fixed**), `Level = 1` (assert),
+/// `Trigger = 0` (edge), vector = `vector`.
+///
+/// SDM Vol 3A §10.6.1 + Hình 10-27: với fixed delivery, `Level`/`Trigger` chỉ có nghĩa khi
+/// `Trigger = 1` (level); nhưng **mọi** IPI fixed-delivery của hệ điều hành (kể cả Linux:
+/// `APIC_INT_ASSERT | APIC_DM_FIXED`) đặt `Level = 1` — đó là giá trị **đo được** trên QEMU và
+/// là giá trị test host chốt (`icr_fixed_low(0x30) == 0x4030`). `Trigger = 0` (edge) là điều kiện
+/// để một IPI **không** bị lặp lại khi `EOI`.
+pub const fn icr_fixed_low(vector: u8) -> u32 {
+    icr_low(ICR_DM_FIXED, vector, true, false)
+}
+
 /// `ICR` cao: destination APIC ID ở bit 24..31.
 pub const fn icr_high(dest_apic_id: u8) -> u32 {
     ((dest_apic_id as u32) & 0xFF) << ICR_DEST_SHIFT
@@ -431,6 +449,13 @@ pub const SIPI_WAIT_US: u64 = 200;
 /// Trần chờ hart phụ **online** — ngân sách của ảnh (2 s), đo bằng PIT kênh 2.
 pub const ONLINE_TIMEOUT_US: u64 = 2_000_000;
 
+/// Trần chờ **IPI** tới (KT-278) — **100 ms**, đo bằng PIT kênh 2.
+///
+/// Hữu hạn là điều kiện của đột biến (ii): gửi IPI tới một `APIC ID` **không tồn tại** thì không
+/// hart nào nhận, và BSP phải **hết trần rồi đi tiếp** (TAP 20 ĐỎ) — **không treo**. 100 ms là
+/// dư ~10× so với độ trễ đo được của một IPI trên QEMU TCG (hàng chục µs).
+pub const IPI_TIMEOUT_US: u64 = 100_000;
+
 /// Số chia LAPIC timer của hart phụ: **1** (mã `0b1011`).
 pub const AP_TIMER_DIVIDE: u32 = 1;
 /// `initial_count` của LAPIC timer hart phụ — 100 µs danh định (mô hình QEMU 1 count/ns).
@@ -463,15 +488,20 @@ const _: () = {
     assert!(opt_is(stack_top_offset(MAX_HARTS - 1), HART_AREA_BYTES));
     assert!(opt_is(guard_offset(1), HART_STRIDE));
     assert!(SMP_HARTS <= MAX_HARTS);
-    assert!(SMP_EXPECT_MASK == 0b11);
+    assert!(SMP_EXPECT_MASK == 0b1111);
+    assert!(SMP_EXPECT_MASK.count_ones() as usize == SMP_HARTS);
     // Trampoline: GDT + GDTR + boot block không đè nhau và nằm trong một trang.
     assert!(TRAMPOLINE_GDT_OFFSET + 24 <= TRAMPOLINE_GDTR_OFFSET);
     assert!(TRAMPOLINE_GDTR_OFFSET + 6 <= TRAMPOLINE_BOOT_OFFSET);
     assert!(BOOT_MAGIC + 8 <= TRAMPOLINE_BYTES);
     assert!(TRAMPOLINE_BASE + TRAMPOLINE_BYTES <= SIPI_MAX_ADDR);
     assert!(TRAMPOLINE_BASE.is_multiple_of(0x1000));
-    // ICR: INIT phải level-asserted, SIPI phải edge.
+    // ICR: INIT phải level-asserted, SIPI phải edge, IPI fixed phải level-asserted + edge.
     assert!(icr_init_low() == 0xC500);
     assert!(icr_sipi_low(0x08) == 0x608);
     assert!(icr_high(1) == 0x0100_0000);
+    assert!(icr_fixed_low(crate::exc::VEC_IPI) == 0x4030);
+    assert!(icr_fixed_low(crate::exc::VEC_IPI) & ICR_LEVEL_TRIGGER == 0);
+    assert!(icr_fixed_low(crate::exc::VEC_IPI) & ICR_LEVEL_ASSERT != 0);
+    assert!(IPI_TIMEOUT_US > 0 && IPI_TIMEOUT_US < ONLINE_TIMEOUT_US);
 };

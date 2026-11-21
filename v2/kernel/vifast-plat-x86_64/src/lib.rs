@@ -24,10 +24,12 @@
 //!   ghi, bảng chia LAPIC timer, redirection entry IOAPIC, và số học PIT để **đo** `hz`.
 //! - [`umode`] (KT-270): dữ liệu **U-mode ring 3** — VA user, selector user, `RFLAGS`, bố cục
 //!   frame `int 0x80`, `SyscallRet`; asm `iretq`/stub `int 0x80` nằm ở [`asm`].
-//! - [`smp`] (KT-276): dữ liệu **SMP 2 hart** — arena stack per-hart (`guard 4 KiB | stack
-//!   64 KiB`), `ICR` (`INIT`/`SIPI`), `SIPI` vector, topology `APIC ID`, bố cục trang trampoline
-//!   `0x8000` (GDT tạm + boot block) và hằng thời gian của SDM; trampoline 16-bit nằm ở asm của
-//!   ảnh (`vifast-kbin-x86_64::smp`).
+//! - [`smp`] (KT-276 + **KT-278**): dữ liệu **SMP 4 hart** — arena stack per-hart (`guard 4 KiB |
+//!   stack 64 KiB`), `ICR` (`INIT`/`SIPI`/**fixed-delivery IPI**), `SIPI` vector, topology
+//!   `APIC ID`, bố cục trang trampoline `0x8000` (GDT tạm + boot block) và hằng thời gian của
+//!   SDM; trampoline 16-bit nằm ở asm của ảnh (`vifast-kbin-x86_64::smp`).
+//! - [`tss`]/[`gdt`] (**KT-278**): **per-hart** — mỗi hart một TSS 104 byte, một bảng GDT 7 entry
+//!   và một `GDTR`; `check_distinct` kiểm **địa chỉ** bốn vùng TSS rời nhau.
 //!
 //! # Crate này **không** làm gì
 //!
@@ -118,10 +120,10 @@ pub use exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS,
-    STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP,
-    VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN,
-    VEC_VC,
+    STUB_GP, STUB_IPI, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER,
+    STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF,
+    VEC_GP, VEC_IPI, VEC_NP, VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS,
+    VEC_UD, VEC_UNKNOWN, VEC_UNKNOWN_PROBE, VEC_VC,
 };
 pub use format::{
     is_canonical_bits, Descriptor, MemAttr, PageTableFormat, Perms, Shareability, IA32_PAT_DEFAULT,
@@ -131,8 +133,8 @@ pub use format::{
     X86_64_PAGE_BYTES, X86_64_PA_BITS, X86_64_VA_BITS,
 };
 pub use gdt::{
-    gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code, gdt_user_data, tss_descriptor,
-    tss_descriptor_type, ACCESS_KERNEL_CODE, ACCESS_KERNEL_DATA, ACCESS_USER_CODE,
+    gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code, gdt_user_data, tss_base_of,
+    tss_descriptor, tss_descriptor_type, ACCESS_KERNEL_CODE, ACCESS_KERNEL_DATA, ACCESS_USER_CODE,
     ACCESS_USER_DATA, FLAGS_DATA, FLAGS_LONG_CODE, GDT_BYTES, GDT_ENTRIES, GDT_KERNEL_CODE,
     GDT_KERNEL_DATA, GDT_LIMIT, GDT_NULL, GDT_USER_CODE, GDT_USER_DATA, INDEX_KERNEL_CODE,
     INDEX_KERNEL_DATA, INDEX_NULL, INDEX_TSS, INDEX_USER_CODE, INDEX_USER_DATA, RPL_USER,
@@ -150,21 +152,21 @@ pub use mmu::{
     MAX_LEVELS,
 };
 pub use smp::{
-    apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_high, icr_init_low,
-    icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset, trampoline_addr,
-    valid_hart, HartStacks, StackError, AP_TIMER_DIVIDE, AP_TIMER_INITIAL_COUNT, BOOT_CR0,
-    BOOT_CR4, BOOT_EFER, BOOT_ENTRY, BOOT_HART, BOOT_IDT_BASE, BOOT_IDT_LIMIT, BOOT_LAPIC_BASE,
-    BOOT_LAPIC_ID, BOOT_MAGIC, BOOT_PML4, BOOT_STACK_TOP, HART_AREA_BYTES, HART_GUARD_BYTES,
-    HART_STACK_BYTES, HART_STRIDE, ICR_DELIVERY_MODE_MASK, ICR_DELIVERY_MODE_SHIFT,
-    ICR_DELIVERY_PENDING, ICR_DEST_SHIFT, ICR_DM_FIXED, ICR_DM_INIT, ICR_DM_STARTUP,
-    ICR_LEVEL_ASSERT, ICR_LEVEL_TRIGGER, ICR_VECTOR_MASK, INIT_WAIT_US, LAPIC_ICR_HIGH,
-    LAPIC_ICR_LOW, MAX_HARTS, ONLINE_TIMEOUT_US, SIPI_MAX_ADDR, SIPI_WAIT_US, SMP_EXPECT_MASK,
-    SMP_HARTS, TRAMPOLINE_BASE, TRAMPOLINE_BOOT_OFFSET, TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET,
-    TRAMPOLINE_GDT_OFFSET, TRAMPOLINE_MAGIC,
+    apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_fixed_low, icr_high,
+    icr_init_low, icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset,
+    trampoline_addr, valid_hart, HartStacks, StackError, AP_TIMER_DIVIDE, AP_TIMER_INITIAL_COUNT,
+    BOOT_CR0, BOOT_CR4, BOOT_EFER, BOOT_ENTRY, BOOT_HART, BOOT_IDT_BASE, BOOT_IDT_LIMIT,
+    BOOT_LAPIC_BASE, BOOT_LAPIC_ID, BOOT_MAGIC, BOOT_PML4, BOOT_STACK_TOP, HART_AREA_BYTES,
+    HART_GUARD_BYTES, HART_STACK_BYTES, HART_STRIDE, ICR_DELIVERY_MODE_MASK,
+    ICR_DELIVERY_MODE_SHIFT, ICR_DELIVERY_PENDING, ICR_DEST_SHIFT, ICR_DM_FIXED, ICR_DM_INIT,
+    ICR_DM_STARTUP, ICR_LEVEL_ASSERT, ICR_LEVEL_TRIGGER, ICR_VECTOR_MASK, INIT_WAIT_US,
+    IPI_TIMEOUT_US, LAPIC_ICR_HIGH, LAPIC_ICR_LOW, MAX_HARTS, ONLINE_TIMEOUT_US, SIPI_MAX_ADDR,
+    SIPI_WAIT_US, SMP_EXPECT_MASK, SMP_HARTS, TRAMPOLINE_BASE, TRAMPOLINE_BOOT_OFFSET,
+    TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET, TRAMPOLINE_GDT_OFFSET, TRAMPOLINE_MAGIC,
 };
 pub use tss::{
-    TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET, TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE,
-    TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
+    check_distinct as tss_check_distinct, TssError, TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET,
+    TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE, TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
 };
 pub use umode::{
     is_kernel_cs, is_user_cs, rflags_if, SyscallRet, KERNEL_DS, RFLAGS_IF, SYSCALL_FRAME_CS,

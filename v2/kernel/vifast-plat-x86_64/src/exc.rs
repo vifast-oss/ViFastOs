@@ -77,6 +77,25 @@ pub const VEC_SPURIOUS: u8 = 255;
 /// ([`crate::idt::GATE_INTERRUPT_USER`]) để ring 3 gọi được; mọi vector khác giữ `DPL = 0`.
 pub const VEC_SYSCALL: u8 = 0x80;
 
+/// **IPI** — vector `0x30` của ngắt liên-hart (KT-278, K5' bước 7).
+///
+/// BSP gửi bằng `ICR` với delivery mode **fixed** ([`crate::smp::icr_fixed_low`]); hart đích nhận
+/// qua LAPIC **của nó** và vào stub riêng [`STUB_IPI`]. Vector nằm **ngoài** dải exception
+/// `0..31` và khác mọi vector đã dùng: timer `32`, syscall `0x80`, spurious `255`, sentinel
+/// [`VEC_UNKNOWN`] `254`.
+///
+/// **Vì sao không dùng `0x30` cho probe `isr_unknown` nữa**: KT-261 dùng `int 0x30` để chứng minh
+/// "vector lạ vẫn thấy được"; từ KT-278 `0x30` là vector IPI **có stub riêng**, nên probe dời
+/// sang [`VEC_UNKNOWN_PROBE`] (`0x31`) — nếu không, TAP 7 sẽ chạy vào handler IPI.
+pub const VEC_IPI: u8 = 0x30;
+
+/// Vector dùng cho probe `int` của ca `isr_unknown` (TAP 7) — **không** có stub riêng nên rơi về
+/// [`STUB_UNKNOWN`] và handler in `vec=254`.
+///
+/// `0x31` là vector **kế tiếp** vector IPI: vẫn ngoài dải exception, vẫn không có stub riêng, và
+/// cách `VEC_IPI` đúng một số để một thay đổi `stub_slot` không thể vô tình gộp hai ca làm một.
+pub const VEC_UNKNOWN_PROBE: u8 = 0x31;
+
 /// Vector **giả** mà stub `isr_unknown` đẩy: stub dùng chung không biết vector thật, nên nó đẩy
 /// một sentinel và handler in `vec=254`.
 ///
@@ -143,14 +162,16 @@ pub const STUB_TIMER: usize = 15;
 pub const STUB_SPURIOUS: usize = 16;
 /// Slot stub **syscall** (vector `0x80`, không mã lỗi) — KT-270.
 pub const STUB_SYSCALL: usize = 17;
+/// Slot stub **IPI** (vector `0x30`, không mã lỗi) — KT-278.
+pub const STUB_IPI: usize = 18;
 /// Số slot stub — **khớp** số nhánh của `asm::stub_addr`.
-pub const STUB_COUNT: usize = 18;
+pub const STUB_COUNT: usize = 19;
 
 /// Vector → slot stub. Vector không có stub riêng rơi về [`STUB_UNKNOWN`].
 ///
 /// **Hợp đồng với asm**: `asm::stub_addr(slot)` phải trả đúng stub của slot này, và stub phải
 /// đẩy đúng vector (hoặc [`VEC_UNKNOWN`] với slot 0). Test host chốt ánh xạ; ảnh boot chốt hành
-/// vi thật (`int3` ⇒ `vec=3`, timer ⇒ `vec=32`, …).
+/// vi thật (`int3` ⇒ `vec=3`, timer ⇒ `vec=32`, IPI ⇒ `vec=0x30`, …).
 pub const fn stub_slot(vec: u8) -> usize {
     match vec {
         VEC_DE => STUB_DE,
@@ -170,6 +191,7 @@ pub const fn stub_slot(vec: u8) -> usize {
         VEC_TIMER => STUB_TIMER,
         VEC_SPURIOUS => STUB_SPURIOUS,
         VEC_SYSCALL => STUB_SYSCALL,
+        VEC_IPI => STUB_IPI,
         _ => STUB_UNKNOWN,
     }
 }
@@ -192,6 +214,7 @@ pub const fn name(vec: u64) -> &'static str {
         29 => "vc",
         30 => "sx",
         32 => "timer",
+        48 => "ipi",
         128 => "syscall",
         254 => "unknown",
         255 => "spurious",

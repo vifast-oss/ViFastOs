@@ -483,6 +483,14 @@ core::arch::global_asm!(
     "push 0",
     "push {spurious_vec}",
     "jmp vifast_isr_common",
+    // ---- **KT-278**: stub **IPI** (vector 0x30) — ngắt liên-hart do BSP gửi qua `ICR`
+    // (fixed delivery). Không mã lỗi, không đổi CPL ⇒ cùng bố cục frame với timer.
+    ".p2align 4",
+    ".globl vifast_isr_ipi",
+    "vifast_isr_ipi:",
+    "push 0",
+    "push {ipi_vec}",
+    "jmp vifast_isr_common",
     // ---- KT-270: stub `int 0x80` (vector 0x80) — đường syscall từ ring 3.
     //
     // `int 0x80` từ CPL3 đẩy `SS/RSP/RFLAGS/CS/RIP` (5 qword); stub đẩy `err = 0`,
@@ -640,7 +648,9 @@ core::arch::global_asm!(
     ".p2align 4",
     ".globl vifast_probe_unknown",
     "vifast_probe_unknown:",
-    "int 0x30",
+    // **KT-278**: vector probe dời từ `0x30` sang `0x31` — `0x30` giờ là vector **IPI** có stub
+    // riêng, nên `int 0x30` sẽ chạy vào handler IPI thay vì `isr_unknown` và TAP 7 mất bằng chứng.
+    "int {unknown_probe_vec}",
     ".globl vifast_probe_unknown_resume",
     "vifast_probe_unknown_resume:",
     "ret",
@@ -654,6 +664,9 @@ core::arch::global_asm!(
     timer_vec = const crate::exc::VEC_TIMER as u32,
     spurious_vec = const crate::exc::VEC_SPURIOUS as u32,
     unknown_vec = const crate::exc::VEC_UNKNOWN as u32,
+    // KT-278: vector IPI + vector của probe `isr_unknown` (0x31, **khác** 0x30).
+    ipi_vec = const crate::exc::VEC_IPI as u32,
+    unknown_probe_vec = const crate::exc::VEC_UNKNOWN_PROBE as u32,
     // KT-270: vector `int 0x80` + offset frame của stub syscall (khớp `crate::umode`).
     syscall_vec = const crate::exc::VEC_SYSCALL as u32,
     sc_rax = const crate::umode::SYSCALL_FRAME_RAX,
@@ -687,6 +700,7 @@ extern "C" {
     fn vifast_isr_timer();
     fn vifast_isr_spurious();
     fn vifast_isr_syscall();
+    fn vifast_isr_ipi();
     fn vifast_probe_int3();
     fn vifast_probe_int3_next();
     fn vifast_probe_ud2();
@@ -726,7 +740,7 @@ extern "C" {
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn stub_addr(slot: usize) -> u64 {
     use crate::exc::{
-        STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_NP, STUB_PF,
+        STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_IPI, STUB_NP, STUB_PF,
         STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN,
         STUB_VC,
     };
@@ -749,6 +763,7 @@ pub fn stub_addr(slot: usize) -> u64 {
         STUB_TIMER => vifast_isr_timer,
         STUB_SPURIOUS => vifast_isr_spurious,
         STUB_SYSCALL => vifast_isr_syscall,
+        STUB_IPI => vifast_isr_ipi,
         _ => return 0,
     };
     f as usize as u64

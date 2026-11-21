@@ -29,10 +29,10 @@ use vifast_plat_x86_64::exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS,
-    STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP,
-    VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN,
-    VEC_VC,
+    STUB_GP, STUB_IPI, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER,
+    STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF,
+    VEC_GP, VEC_IPI, VEC_NP, VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS,
+    VEC_UD, VEC_UNKNOWN, VEC_UNKNOWN_PROBE, VEC_VC,
 };
 use vifast_plat_x86_64::gdt::{
     entry as gdt_entry, gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code,
@@ -50,8 +50,9 @@ use vifast_plat_x86_64::idt::{
     IDT_LIMIT, IST_DOUBLE_FAULT,
 };
 use vifast_plat_x86_64::tss::{
-    init as tss_init, io_map_base, ist, rsp0, TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET,
-    TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE, TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
+    base as tss_base, check_distinct as tss_check_distinct, init as tss_init, io_map_base, ist,
+    rsp0, TssError, TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET, TSS_IST1_OFFSET, TSS_IST_COUNT,
+    TSS_IST_STRIDE, TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -145,20 +146,27 @@ fn gdt_dpl_bits() {
     assert_eq!((GDT_USER_DATA >> 47) & 1, 1);
 }
 
-/// Bảng GDT tĩnh: 5 entry đầu đúng hằng, 2 entry TSS **bằng 0** trước `install`.
+/// Bảng GDT tĩnh **per-hart**: 5 entry đầu đúng hằng, 2 entry TSS **bằng 0** trước `install`.
+///
+/// **KT-278**: mỗi hart một bảng riêng — kiểm **hart 0** và **hart 3** để chốt rằng bảng thứ tư
+/// cũng được khởi tạo đúng (không phải "hart 0 đúng, còn lại rác").
 #[test]
 fn gdt_static_initial_contents() {
-    assert_eq!(gdt_entry(INDEX_NULL), GDT_NULL);
-    assert_eq!(gdt_entry(INDEX_KERNEL_CODE), GDT_KERNEL_CODE);
-    assert_eq!(gdt_entry(INDEX_KERNEL_DATA), GDT_KERNEL_DATA);
-    assert_eq!(gdt_entry(INDEX_USER_CODE), GDT_USER_CODE);
-    assert_eq!(gdt_entry(INDEX_USER_DATA), GDT_USER_DATA);
-    // Descriptor TSS do `install` điền; trước đó phải là 0 (không trỏ rác).
-    assert_eq!(gdt_entry(INDEX_TSS), 0);
-    assert_eq!(gdt_entry(INDEX_TSS + 1), 0);
-    // Ngoài phạm vi trả 0, không panic.
-    assert_eq!(gdt_entry(GDT_ENTRIES), 0);
-    assert_eq!(gdt_entry(usize::MAX), 0);
+    for hart in [0usize, 3] {
+        assert_eq!(gdt_entry(hart, INDEX_NULL), GDT_NULL);
+        assert_eq!(gdt_entry(hart, INDEX_KERNEL_CODE), GDT_KERNEL_CODE);
+        assert_eq!(gdt_entry(hart, INDEX_KERNEL_DATA), GDT_KERNEL_DATA);
+        assert_eq!(gdt_entry(hart, INDEX_USER_CODE), GDT_USER_CODE);
+        assert_eq!(gdt_entry(hart, INDEX_USER_DATA), GDT_USER_DATA);
+        // Descriptor TSS do `install` điền; trước đó phải là 0 (không trỏ rác).
+        assert_eq!(gdt_entry(hart, INDEX_TSS), 0);
+        assert_eq!(gdt_entry(hart, INDEX_TSS + 1), 0);
+        // Ngoài phạm vi trả 0, không panic.
+        assert_eq!(gdt_entry(hart, GDT_ENTRIES), 0);
+        assert_eq!(gdt_entry(hart, usize::MAX), 0);
+    }
+    // Hart ngoài `MAX_HARTS` trả 0 (không panic) — fail-closed ở tầng đọc.
+    assert_eq!(gdt_entry(usize::MAX, INDEX_KERNEL_CODE), 0);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -258,27 +266,50 @@ fn tss_layout_literal() {
 
 /// `init` ghi `RSP0`/`IST1`/`I/O map base`; đọc lại đúng; `IST` ngoài phạm vi trả 0.
 ///
-/// Một test duy nhất cho mọi phép ghi: `TSS` là static dùng chung, nhiều test ghi song song sẽ
-/// đua nhau (atomic nên không UB, nhưng khẳng định sẽ sai).
+/// **KT-278**: TSS là **per-hart** — mỗi hart một vùng 104 byte riêng. Test ghi **hart 0** và
+/// **hart 1** rồi đọc lại cả hai: nếu hai hart trỏ cùng một vùng thì khẳng định của hart 0 sẽ
+/// thấy giá trị của hart 1 (đó chính là đột biến (iii) của KT-278, phát hiện bằng kiểm địa chỉ).
 #[test]
 fn tss_init_and_read_back() {
     let want_rsp0 = 0x0000_0000_0011_9000u64;
     let want_ist1 = 0x0000_0000_0010_9000u64;
-    tss_init(want_rsp0, want_ist1);
-    assert_eq!(rsp0(), want_rsp0);
-    assert_eq!(ist(1), want_ist1);
-    assert_eq!(io_map_base(), TSS_IO_MAP_BASE);
+    tss_init(0, want_rsp0, want_ist1);
+    assert_eq!(rsp0(0), want_rsp0);
+    assert_eq!(ist(0, 1), want_ist1);
+    assert_eq!(io_map_base(0), TSS_IO_MAP_BASE);
     // `IST0` không tồn tại; `IST8` ngoài phạm vi ⇒ 0 (không đọc rác).
-    assert_eq!(ist(0), 0);
-    assert_eq!(ist(TSS_IST_COUNT + 1), 0);
+    assert_eq!(ist(0, 0), 0);
+    assert_eq!(ist(0, TSS_IST_COUNT + 1), 0);
     // Các `IST` khác chưa nạp ⇒ 0.
     for n in 2..=TSS_IST_COUNT {
-        assert_eq!(ist(n), 0);
+        assert_eq!(ist(0, n), 0);
     }
     // Ghi lại giá trị khác phải thay, không cộng dồn.
-    tss_init(0x2000, 0x3000);
-    assert_eq!(rsp0(), 0x2000);
-    assert_eq!(ist(1), 0x3000);
+    tss_init(0, 0x2000, 0x3000);
+    assert_eq!(rsp0(0), 0x2000);
+    assert_eq!(ist(0, 1), 0x3000);
+    // **Per-hart**: ghi hart 1 **không** đổi giá trị của hart 0.
+    tss_init(1, 0x4000, 0x5000);
+    assert_eq!(rsp0(1), 0x4000);
+    assert_eq!(ist(1, 1), 0x5000);
+    assert_eq!(rsp0(0), 0x2000);
+    assert_eq!(ist(0, 1), 0x3000);
+    // Địa chỉ hai vùng TSS **rời nhau** và cách nhau đúng `TSS_BYTES`.
+    assert_ne!(tss_base(0), tss_base(1));
+    assert_eq!(tss_base(1) - tss_base(0), TSS_BYTES as u64);
+    // Kiểm địa chỉ: 4 hart của ảnh KT-278 phải **rời nhau**.
+    let bases = [tss_base(0), tss_base(1), tss_base(2), tss_base(3)];
+    assert_eq!(tss_check_distinct(&bases), Ok(()));
+    // Đột biến (iii): hai hart **cùng** địa chỉ ⇒ `Duplicate` (ĐỎ ở tầng kiểm địa chỉ).
+    assert_eq!(
+        tss_check_distinct(&[bases[0], bases[1], bases[0], bases[3]]),
+        Err(TssError::Duplicate { a: 0, b: 2 })
+    );
+    // Chồng lấn (cách nhau < 104 byte) cũng là lỗi — không chỉ trùng tuyệt đối.
+    assert_eq!(
+        tss_check_distinct(&[bases[0], bases[0] + 8]),
+        Err(TssError::Overlap { a: 0, b: 1 })
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -466,18 +497,21 @@ fn stub_slot_mapping() {
     assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
     // KT-270: `int 0x80` có stub riêng (không đi qua `isr_unknown`).
     assert_eq!(stub_slot(VEC_SYSCALL), STUB_SYSCALL);
-    // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x30, 0xFE) về stub chung.
-    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x30, 0xFE] {
+    // **KT-278**: vector IPI `0x30` có stub riêng; vector lạ của ca `isr_unknown` là `0x31`.
+    assert_eq!(stub_slot(VEC_IPI), STUB_IPI);
+    assert_eq!(stub_slot(VEC_UNKNOWN_PROBE), STUB_UNKNOWN);
+    // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x31, 0xFE) về stub chung.
+    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x31, 0xFE] {
         assert_eq!(stub_slot(vec), STUB_UNKNOWN, "vector {vec}");
     }
-    // Đếm: đúng 17 vector có stub riêng (14 exception + timer + spurious + syscall).
+    // Đếm: đúng 18 vector có stub riêng (14 exception + timer + spurious + syscall + IPI).
     let special = (0..=255u8)
         .filter(|v| stub_slot(*v) != STUB_UNKNOWN)
         .count();
-    assert_eq!(special, 17);
+    assert_eq!(special, 18);
 }
 
-/// 17 slot là **17 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
+/// 18 slot là **18 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
 #[test]
 fn stub_slots_are_distinct() {
     let slots = [
@@ -499,6 +533,7 @@ fn stub_slots_are_distinct() {
         STUB_TIMER,
         STUB_SPURIOUS,
         STUB_SYSCALL,
+        STUB_IPI,
     ];
     assert_eq!(slots.len(), STUB_COUNT);
     for (i, a) in slots.iter().enumerate() {
@@ -554,7 +589,9 @@ fn exception_names() {
     assert_eq!(exc_name(VEC_PF as u64), "pf");
     assert_eq!(exc_name(VEC_UNKNOWN), "unknown");
     assert_eq!(exc_name(VEC_SYSCALL as u64), "syscall");
+    // **KT-278**: vector IPI có tên riêng; vector lạ của ca `isr_unknown` vẫn là "other".
+    assert_eq!(exc_name(VEC_IPI as u64), "ipi");
+    assert_eq!(exc_name(VEC_UNKNOWN_PROBE as u64), "other");
     // Vector không có tên riêng vẫn có nhãn, không panic.
     assert_eq!(exc_name(2), "other");
-    assert_eq!(exc_name(0x30), "other");
 }

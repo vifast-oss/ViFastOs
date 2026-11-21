@@ -1,29 +1,37 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **KT-276** (K5' bước 6) — SMP 2 hart trên x86_64: trampoline real mode → long mode, `INIT` +
-//! `SIPI` qua ICR, LAPIC riêng cho hart phụ, TAP 18/19.
+//! **KT-276 + KT-278** (K5' bước 6 → bước 7) — SMP trên x86_64: trampoline real mode → long mode,
+//! `INIT`+`SIPI` qua ICR, LAPIC per-hart, **4 hart**, **IPI** fixed-delivery, **TSS per-hart**.
 //!
 //! Tách khỏi `main.rs` vì luật **R1** (`v2/bin/v2 rules`): tệp trong `kernel/` ≤ **1.500 dòng**.
 //! Tên mô-đun là `smp` (không đụng `vifast_plat_x86_64::smp` — crate arch giữ phần **dữ liệu**:
-//! arena, ICR, bố cục trampoline; tệp này giữ phần **điều phối** + asm trampoline).
+//! arena, ICR, bố cục trampoline, hằng thời gian; tệp này giữ phần **điều phối** + asm trampoline).
 //!
-//! # Đường đánh thức hart phụ
+//! # Đường đánh thức hart phụ (KT-278: **ba** hart phụ, tuần tự)
 //!
 //! ```text
-//!   BSP (kmain → net::run → smp::run)
+//!   BSP (kmain → umode::run → net::run → smp::run)
 //!     │ 1. copy trang trampoline (link 64 KiB-aligned trong `.text`) xuống 0x8000
-//!     │ 2. ghi boot block vào 0x8900 (PML4, stack, hart, entry, IDTR, CR0/CR4/EFER, LAPIC)
-//!     │ 3. ICR: INIT (level assert) → chờ 10 ms → SIPI vector 0x08 → chờ 200 µs → SIPI
-//!     │ 4. chờ `SMP_ONLINE_MASK` bit 1 (trần 2 s, đo bằng PIT kênh 2) ⇒ TAP 18
-//!     │ 5. đặt `SMP_CMD[1] = CMD_REPORT`, chờ `SMP_ALIVE_MASK` bit 1 ⇒ in `# smp: hart=0 alive`
-//!     │ 6. TAP 19 (cả hai hart báo alive) → trả về cho `net::run` in marker + halt
+//!     │ 2. bật bit online của hart 0 (BSP luôn online — nó đang chạy đây)
+//!     │ 3. với hart = 1, 2, 3 **tuần tự**:
+//!     │      a. ghi boot block (PML4, stack của hart ấy, hart id, entry, IDTR, CR0/CR4/EFER,
+//!     │         LAPIC base, LAPIC ID kỳ vọng, magic)
+//!     │      b. ICR: INIT (level assert) → 10 ms → SIPI vector 0x08 → 200 µs → SIPI
+//!     │      c. chờ `SMP_ONLINE_MASK` bit hart (trần 2 s, đo bằng PIT kênh 2)
+//!     │ 4. TAP 18: **bốn** hart online (mask 0xf, LAPIC ID đúng, stack **khác slot**)
+//!     │ 5. TAP 19: **TSS per-hart** — bốn địa chỉ TSS rời nhau, `tr=0x28`, descriptor busy
+//!     │ 6. IPI: ICR fixed-delivery vector 0x30 → hart 1; chờ `SMP_IPI_COUNT == 1` (trần 100 ms)
+//!     │    ⇒ TAP 20
+//!     │ 7. `SMP_CMD[h] = CMD_REPORT` **tuần tự** từng hart phụ, chờ `SMP_ALIVE_MASK` bit h
+//!     │ 8. TAP 21 (cả bốn hart báo alive) → trả về cho `net::run` in marker + halt
 //!     ↓
 //!   AP (SIPI ⇒ 0x8000, real mode)
 //!     ├─ 16-bit: cli/cld, DS=ES=SS=CS, lgdt GDT tạm, CR4.PAE, CR3, EFER.LME|NXE, CR0.PG|PE
 //!     ├─ ljmp 0x08:0x8046 ⇒ 64-bit: DS/ES/SS=0x10, rsp = boot.stack_top, lidt boot.idt
 //!     ├─ call boot.entry = `kmain_secondary(hart)`
-//!     └─ kmain_secondary: kiểm slot stack + LAPIC_ID, bật LAPIC (SVR/TPR/LINT), in
-//!        `# smp: hart=1 online`, bật bit online, cấu hình LAPIC timer (vector 32) + `sti`,
-//!        rồi vòng `hlt`: thấy `CMD_REPORT` ⇒ in `# smp: hart=1 alive` + bật bit alive.
+//!     └─ kmain_secondary: kiểm slot stack + LAPIC_ID → **TSS riêng + GDT riêng + `ltr`** →
+//!        bật LAPIC (SVR/TPR/LINT) → in `# smp: hart=N online` → bật bit online → LAPIC timer
+//!        (vector 32) + `sti` → vòng `hlt`: thấy `CMD_REPORT` ⇒ in `# smp: hart=N alive` + bit
+//!        alive; thấy IPI (vector 0x30) ⇒ handler in `# smp: ipi recv=<n> intid=0x30` + `EOI`.
 //! ```
 //!
 //! # Vì sao trampoline **copy xuống** thay vì để linker đặt ở 0x8000
@@ -36,6 +44,15 @@
 //! cắt còn 16 bit = `off`); mọi địa chỉ tuyệt đối trong đoạn 64-bit dùng hằng `0x8000 + off` nên
 //! **đúng sau khi copy**.
 //!
+//! # Vì sao boot block **dùng lại một chỗ** cho ba hart phụ
+//!
+//! Trang trampoline chỉ có **một** boot block (`0x8900`). Ba hart phụ được đánh thức **tuần tự**:
+//! BSP ghi boot block cho hart `h`, gửi `INIT`+`SIPI`, rồi **chờ hart ấy online** trước khi ghi
+//! boot block cho hart `kế`. Hart phụ đọc **mọi** trường của boot block (kể cả `BOOT_LAPIC_ID`)
+//! **trước** khi bật bit online, nên sau khi thấy bit ấy BSP ghi đè là an toàn — không cần ba bản
+//! boot block, và không có hai hart phụ nào chạy trampoline cùng lúc (stack 16-bit tạm `0xFC00`
+//! cũng chỉ một người dùng).
+//!
 //! # Vì sao không có đoạn 32-bit protected mode
 //!
 //! Từ real mode có thể đặt thẳng `CR4.PAE`/`CR3`/`EFER.LME` (đều là lệnh CPL0 hợp lệ trong real
@@ -44,11 +61,20 @@
 //! selector `0x08`/`0x10` **trùng** GDT thật của BSP nên bảng IDT dùng chung (`selector 0x08`)
 //! vẫn hợp lệ trên hart phụ.
 //!
-//! # Phạm vi (KT-276)
+//! # KT-278 — TSS per-hart (bỏ nợ của KT-276)
 //!
-//! Chỉ **2 hart**. **Không** 4 hart, **không** IPI, **không** scheduler/preemption, **không**
-//! TSS per-hart (hart phụ chỉ chạy ring 0 với `IF` bật cho timer đánh thức; `#DF` trên AP dùng
-//! chung `IST1` của BSP — nợ đã ghi). **Không** tuyên bố K5' đạt.
+//! KT-276 để hart phụ dùng **chung** GDT tạm 3 entry + IDT của BSP, **không** `ltr`; `#DF` trên AP
+//! vì thế dùng chung `IST1` của BSP. Với **bốn** hart nợ đó thành nguy hiểm thật (hai hart cùng
+//! `#DF` ghi vào một stack). KT-278: mỗi hart gọi [`tss::init`] cho **slot của mình**, rồi
+//! [`gdt::install`] nạp **bảng GDT riêng** với descriptor TSS trỏ **TSS của chính nó**, và `ltr`.
+//! Hart phụ **đọc lại** base từ descriptor nó vừa nạp ([`gdt::tss_base_of`]) rồi công bố — BSP
+//! kiểm **địa chỉ** ([`tss::check_distinct`]) nên đột biến "TSS trùng địa chỉ" **đỏ ở tầng kiểm**,
+//! không phải "hy vọng nó không xảy ra".
+//!
+//! # Phạm vi (KT-278)
+//!
+//! **Bốn** hart + IPI + TSS per-hart. **Không** scheduler/preemption, **không** `-cpu max`,
+//! **không** `syscall`/`sysret`, **không** tuyên bố K5' đạt.
 
 use core::arch::global_asm;
 use core::fmt::Write;
@@ -59,11 +85,13 @@ use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::boot;
 use vifast_plat_x86_64::control::{EFER_LME, EFER_NXE, MSR_IA32_APIC_BASE};
 use vifast_plat_x86_64::exc;
+use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
 use vifast_plat_x86_64::smp::{self, HartStacks};
 use vifast_plat_x86_64::timebase::PitClock;
+use vifast_plat_x86_64::tss;
 
-use crate::{check, pit2_latch_read, Console};
+use crate::{check, ist1_top, pit2_latch_read, Console};
 
 // Arena stack per-hart do `linker.ld` cấp (`__smp_stacks_start`/`__smp_stacks_end`).
 extern "C" {
@@ -78,7 +106,7 @@ const CMD_NONE: u64 = 0;
 /// In `# smp: hart=<id> alive` rồi bật bit trong [`SMP_ALIVE_MASK`].
 const CMD_REPORT: u64 = 1;
 
-/// Mặt nạ hart đã online (bit `i` = hart `i` đã in `# smp: hart=i online` + LAPIC sẵn sàng).
+/// Mặt nạ hart đã online (bit `i` = hart `i` đã in `# smp: hart=i online` + LAPIC + TSS sẵn sàng).
 static SMP_ONLINE_MASK: AtomicU32 = AtomicU32::new(0);
 /// Mặt nạ hart đã in `# smp: hart=i alive` (bit `i` = hart `i`).
 static SMP_ALIVE_MASK: AtomicU32 = AtomicU32::new(0);
@@ -89,10 +117,26 @@ static SMP_HART_LAPIC_ID: [AtomicU64; smp::MAX_HARTS] =
     [const { AtomicU64::new(u64::MAX) }; smp::MAX_HARTS];
 /// `sp` **từng hart tự đọc** sau khi vào long mode (PA, identity map).
 static SMP_HART_SP: [AtomicU64; smp::MAX_HARTS] = [const { AtomicU64::new(0) }; smp::MAX_HARTS];
-/// Số vòng BSP đã chờ hart phụ online (µs, đo bằng PIT) — bằng chứng "chờ bao lâu".
-static SMP_WAIT_ONLINE_US: AtomicU64 = AtomicU64::new(u64::MAX);
-/// Số vòng BSP đã chờ hart phụ báo alive (µs).
+/// **KT-278** — địa chỉ TSS **hart phụ đọc lại từ descriptor GDT của chính nó** (không phải giá
+/// trị nó vừa ghi): bằng chứng `ltr` nạp đúng TSS, và là dữ liệu của phép kiểm địa chỉ.
+static SMP_HART_TSS_BASE: [AtomicU64; smp::MAX_HARTS] =
+    [const { AtomicU64::new(0) }; smp::MAX_HARTS];
+/// `TR` (`str`) **từng hart tự đọc** — phải bằng [`gdt::SELECTOR_TSS`].
+static SMP_HART_TR: [AtomicU64; smp::MAX_HARTS] = [const { AtomicU64::new(0) }; smp::MAX_HARTS];
+/// Byte `type_attr` của descriptor TSS **sau** `ltr` — CPU đổi `0x89` → `0x8B` (busy).
+static SMP_HART_TSS_TYPE: [AtomicU64; smp::MAX_HARTS] =
+    [const { AtomicU64::new(0) }; smp::MAX_HARTS];
+/// `IST1` **từng hart** đã nạp vào TSS của chính nó — bốn giá trị phải **rời nhau**.
+static SMP_HART_IST1: [AtomicU64; smp::MAX_HARTS] = [const { AtomicU64::new(0) }; smp::MAX_HARTS];
+/// Số µs BSP đã chờ từng hart phụ online (đo bằng PIT) — bằng chứng "chờ bao lâu".
+static SMP_WAIT_ONLINE_US: [AtomicU64; smp::MAX_HARTS] =
+    [const { AtomicU64::new(u64::MAX) }; smp::MAX_HARTS];
+/// Số µs BSP đã chờ hart phụ báo alive (µs).
 static SMP_WAIT_ALIVE_US: AtomicU64 = AtomicU64::new(u64::MAX);
+/// **KT-278** — số IPI (vector `0x30`) đã nhận, tăng trong **handler ngắt** của hart đích.
+static SMP_IPI_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Số µs BSP đã chờ IPI (`u64::MAX` = chưa chờ).
+static SMP_WAIT_IPI_US: AtomicU64 = AtomicU64::new(u64::MAX);
 /// Số tick timer hart phụ đã nhận (handler vector 32 tăng khi `LAPIC_ID != BSP`).
 static AP_TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 /// `LAPIC_ID` của BSP — handler timer dùng để **phân biệt** tick của BSP và của AP.
@@ -282,10 +326,11 @@ fn copy_trampoline() -> (u64, u64, bool) {
     (src, bytes, true)
 }
 
-/// Ghi boot block vào trang trampoline (địa chỉ tuyệt đối `0x8900..`).
+/// Ghi boot block vào trang trampoline (địa chỉ tuyệt đối `0x8900..`) cho hart `hart`.
 ///
 /// Mọi giá trị lấy từ **thanh ghi của BSP** hoặc hằng của crate arch — không có bản thứ hai của
-/// con số nào trong tệp này.
+/// con số nào trong tệp này. Gọi **tuần tự** cho từng hart phụ: boot block chỉ có một chỗ, và
+/// hart phụ đọc xong **mọi** trường trước khi bật bit online (xem đầu tệp).
 fn publish_boot_block(hart: usize, stack_top: u64, entry: u64, lapic_base: u64, lapic_id: u8) {
     let (idt_base, idt_limit) = idt::read_idtr();
     asm::write_u64(
@@ -314,7 +359,7 @@ fn trampoline_magic() -> u64 {
 }
 
 // ---------------------------------------------------------------------------------------------
-// INIT + SIPI
+// INIT + SIPI + IPI
 // ---------------------------------------------------------------------------------------------
 
 /// Gửi `INIT` rồi **hai** `SIPI` tới `dest` (APIC ID), đúng thứ tự + thời gian của SDM.
@@ -350,6 +395,20 @@ fn send_init_sipi(dest: u8, vector: u8, clock: &mut PitClock) -> (bool, bool, bo
     (ok[0], ok[1], ok[2])
 }
 
+/// **KT-278** — gửi **một** IPI fixed-delivery (vector [`exc::VEC_IPI`]) tới `dest` (APIC ID).
+///
+/// Trả `true` ⇔ lệnh đã được gửi xong (`ICR.Delivery Status` về 0). Việc hart đích **có nhận**
+/// hay không là chuyện khác — nó được đo bằng [`SMP_IPI_COUNT`], nên "gửi xong" không bao giờ bị
+/// nhầm với "đã nhận" (đó là toàn bộ ý nghĩa của đột biến (ii)).
+fn send_ipi(dest: u8, clock: &mut PitClock) -> bool {
+    if !wait_icr_idle(clock) {
+        return false;
+    }
+    crate::lapic_write(smp::LAPIC_ICR_HIGH, smp::icr_high(dest));
+    crate::lapic_write(smp::LAPIC_ICR_LOW, smp::icr_fixed_low(exc::VEC_IPI));
+    wait_icr_idle(clock)
+}
+
 /// Chờ bit `hart` trong `mask` bật; trả số µs đã chờ, `None` nếu quá [`smp::ONLINE_TIMEOUT_US`].
 fn wait_mask(mask: &AtomicU32, hart: usize, clock: &mut PitClock) -> Option<u64> {
     let start = pit_now(clock);
@@ -365,11 +424,45 @@ fn wait_mask(mask: &AtomicU32, hart: usize, clock: &mut PitClock) -> Option<u64>
     }
 }
 
+/// In một danh sách `u64` dạng `[0x…, 0x…]` **một dòng** — `{:#x?}` của `core::fmt` bật
+/// **pretty-print nhiều dòng** (cờ `#` của `Debug`), làm hỏng hợp đồng "mỗi dòng `# smp:` là một
+/// dòng log" của runner. Hàm này in tường minh nên không phụ thuộc `SMP_HARTS`.
+fn write_hex_list(console: &mut Console, values: &[u64]) {
+    let _ = write!(console, "[");
+    let mut i = 0;
+    while i < values.len() {
+        if i > 0 {
+            let _ = write!(console, ", ");
+        }
+        let _ = write!(console, "0x{:x}", values[i]);
+        i += 1;
+    }
+    let _ = write!(console, "]");
+}
+
+/// Chờ `SMP_IPI_COUNT >= 1`; trả số µs đã chờ, `None` nếu quá [`smp::IPI_TIMEOUT_US`].
+///
+/// Trần **hữu hạn** là điều kiện của đột biến (ii): IPI tới một `APIC ID` không tồn tại thì không
+/// hart nào nhận, và BSP phải **đi tiếp** (TAP 20 ĐỎ) — **không treo**.
+fn wait_ipi(clock: &mut PitClock) -> Option<u64> {
+    let start = pit_now(clock);
+    loop {
+        if SMP_IPI_COUNT.load(Ordering::Acquire) >= 1 {
+            return Some(pit_now(clock).saturating_sub(start));
+        }
+        let elapsed = pit_now(clock).saturating_sub(start);
+        if elapsed > smp::IPI_TIMEOUT_US {
+            return None;
+        }
+        core::hint::spin_loop();
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // BSP — smp::run
 // ---------------------------------------------------------------------------------------------
 
-/// **KT-276** — đánh thức hart 1, in bằng chứng, phát TAP 18/19.
+/// **KT-278** — đánh thức hart 1..3, kiểm TSS per-hart, gửi IPI, in bằng chứng, phát TAP 18..21.
 ///
 /// Gọi từ `net::run` **sau** TAP 17 và **trước** marker: chưa có procsrv/scheduler nên đây là
 /// chỗ duy nhất kernel còn chạy được sau `Exit` của ring 3. Thứ tự TAP 1..17 **không đổi**.
@@ -401,63 +494,15 @@ pub fn run(console: &mut Console, tap_first: usize) {
         asm::halt(4)
     }
 
-    // BSP **luôn** online (nó đang chạy đây): bật bit 0 để `SMP_ONLINE_MASK` là mặt nạ **cả hai**
-    // hart, không phải "một hart phụ" — TAP 19 so `alive == online` trên cùng mặt nạ.
+    // BSP **luôn** online (nó đang chạy đây): bật bit 0 để `SMP_ONLINE_MASK` là mặt nạ **cả bốn**
+    // hart, không phải "ba hart phụ" — TAP 18/21 so `alive == online` trên cùng mặt nạ.
     SMP_ONLINE_MASK.fetch_or(1, Ordering::Release);
 
-    // ---- 2. Copy trampoline xuống 0x8000 + ghi boot block.
+    // ---- 2. Copy trampoline xuống 0x8000 (một lần cho cả ba hart phụ).
     let (src, bytes, copy_ok) = copy_trampoline();
-    let hart = 1usize;
-    // `stack_top` (tham số `kmain`) là đỉnh slot **hart 0**; đỉnh slot hart phụ là biến khác —
-    // đặt cùng tên sẽ che mất giá trị của BSP và `bsp_slot` thành `Some(1)` (đo được lần chạy đầu).
-    let ap_stack_top = match stacks.stack_top(hart) {
-        Some(top) => top,
-        None => {
-            let _ = writeln!(console, "PANIC: smp: hart {hart} ngoài arena");
-            asm::halt(4)
-        }
-    };
     let lapic_base = crate::lapic_base();
     let bsp_lapic_id = crate::lapic_id();
-    let dest = match smp::apic_id_for_hart(hart) {
-        Some(id) => id,
-        None => {
-            let _ = writeln!(console, "PANIC: smp: không có APIC ID cho hart {hart}");
-            asm::halt(4)
-        }
-    };
-    publish_boot_block(
-        hart,
-        ap_stack_top,
-        kmain_secondary as *const () as u64,
-        lapic_base,
-        dest,
-    );
-    let magic = trampoline_magic();
-    let tramp_ok = copy_ok && magic == smp::TRAMPOLINE_MAGIC;
-    let _ = writeln!(
-        console,
-        "# smp: trampoline base=0x{:x} bytes={bytes} src=0x{src:x} magic=0x{magic:016x} ok={}",
-        smp::TRAMPOLINE_BASE,
-        tramp_ok as u8,
-    );
-    if !tramp_ok {
-        let _ = writeln!(console, "PANIC: smp: copy trampoline thất bại");
-        asm::halt(4)
-    }
-    let _ = writeln!(
-        console,
-        "# smp: boot block pml4=0x{:x} stack=0x{ap_stack_top:x} hart={hart} entry=0x{:x} idt=0x{:x}/0x{:x} cr0=0x{:x} cr4=0x{:x} efer=0x{:x} lapic=0x{lapic_base:x} bsp_id={bsp_lapic_id} dest={dest}",
-        asm::read_cr3() & !0xFFF,
-        kmain_secondary as *const () as u64,
-        idt::read_idtr().0,
-        idt::read_idtr().1,
-        asm::read_cr0(),
-        asm::read_cr4(),
-        (EFER_LME | EFER_NXE) as u64,
-    );
-
-    // ---- 3. INIT + SIPI + SIPI.
+    let entry = kmain_secondary as *const () as u64;
     let vector = match smp::sipi_vector(smp::TRAMPOLINE_BASE) {
         Some(vector) => vector,
         None => {
@@ -466,68 +511,231 @@ pub fn run(console: &mut Console, tap_first: usize) {
         }
     };
     // **Đột biến (ii) của KT-276** (`--features bad-trampoline`): SIPI tới **trang bên cạnh**
-    // (0x9000) — vùng không có code trampoline. Đo được: hart phụ chạy vào vùng 0 rồi kẹt, **không**
-    // online; BSP hết trần 2 s ⇒ TAP 18 ĐỎ, không marker; QEMU **không** tự thoát (treo **có kiểm
-    // soát** — runner timeout 20 s giết). Không có `# smp: hart=1 online`.
+    // (0x9000) — vùng không có code trampoline. Hart phụ chạy vào vùng 0 rồi kẹt, **không**
+    // online; BSP hết trần 2 s ⇒ TAP 18 ĐỎ, không marker.
     let vector = if cfg!(feature = "bad-trampoline") {
         vector.wrapping_add(1)
     } else {
         vector
     };
-    // In **trước** khi gửi: hart phụ in `# smp: hart=1 online` ngay khi lên (đo được ~171 µs sau
-    // SIPI), nên in sau `send_init_sipi` có thể xen ký tự với dòng của AP trên COM1. Dòng này chỉ
-    // chứa giá trị **sắp ghi** (hằng của crate arch); kết quả từng bước in ở dòng `cpu_on`.
-    let _ = writeln!(
-        console,
-        "# smp: icr init dest={dest} low=0x{:04x} high=0x{:08x} sipi vector=0x{vector:02x} low=0x{:04x}",
-        smp::icr_init_low(),
-        smp::icr_high(dest),
-        smp::icr_sipi_low(vector),
-    );
-    let (init_ok, sipi1_ok, sipi2_ok) = send_init_sipi(dest, vector, &mut clock);
 
-    // ---- 4. Chờ hart phụ online (trần 2 s, đo bằng PIT).
-    let waited = wait_mask(&SMP_ONLINE_MASK, hart, &mut clock);
-    SMP_WAIT_ONLINE_US.store(waited.unwrap_or(u64::MAX), Ordering::Release);
-    let ap_lapic_id = SMP_HART_LAPIC_ID[hart].load(Ordering::Acquire);
-    let ap_sp = SMP_HART_SP[hart].load(Ordering::Acquire);
-    let ap_slot = stacks.slot_of(ap_sp);
-    let bsp_slot = stacks.slot_of_top(bsp_stack_top());
+    // ---- 3. Từng hart phụ, **tuần tự**: ghi boot block → INIT+SIPI+SIPI → chờ online.
+    let mut init_ok = [false; smp::MAX_HARTS];
+    let mut sipi_ok = [false; smp::MAX_HARTS];
+    let mut waited = [None; smp::MAX_HARTS];
+    let mut booted = 0usize;
+    for hart in 1..smp::SMP_HARTS {
+        let ap_stack_top = match stacks.stack_top(hart) {
+            Some(top) => top,
+            None => {
+                let _ = writeln!(console, "PANIC: smp: hart {hart} ngoài arena");
+                asm::halt(4)
+            }
+        };
+        let dest = match smp::apic_id_for_hart(hart) {
+            Some(id) => id,
+            None => {
+                let _ = writeln!(console, "PANIC: smp: không có APIC ID cho hart {hart}");
+                asm::halt(4)
+            }
+        };
+        publish_boot_block(hart, ap_stack_top, entry, lapic_base, dest);
+        let magic = trampoline_magic();
+        let tramp_ok = copy_ok && magic == smp::TRAMPOLINE_MAGIC;
+        if hart == 1 {
+            let _ = writeln!(
+                console,
+                "# smp: trampoline base=0x{:x} bytes={bytes} src=0x{src:x} magic=0x{magic:016x} ok={}",
+                smp::TRAMPOLINE_BASE,
+                tramp_ok as u8,
+            );
+            if !tramp_ok {
+                let _ = writeln!(console, "PANIC: smp: copy trampoline thất bại");
+                asm::halt(4)
+            }
+            let _ = writeln!(
+                console,
+                "# smp: boot block pml4=0x{:x} stack=0x{ap_stack_top:x} hart={hart} entry=0x{entry:x} idt=0x{:x}/0x{:x} cr0=0x{:x} cr4=0x{:x} efer=0x{:x} lapic=0x{lapic_base:x} bsp_id={bsp_lapic_id} dest={dest}",
+                asm::read_cr3() & !0xFFF,
+                idt::read_idtr().0,
+                idt::read_idtr().1,
+                asm::read_cr0(),
+                asm::read_cr4(),
+                (EFER_LME | EFER_NXE) as u64,
+            );
+        }
+        // In **trước** khi gửi: hart phụ in `# smp: hart=N online` ngay khi lên (đo được ~171 µs
+        // sau SIPI), nên in sau `send_init_sipi` có thể xen ký tự với dòng của AP trên COM1.
+        let _ = writeln!(
+            console,
+            "# smp: icr init dest={dest} low=0x{:04x} high=0x{:08x} sipi vector=0x{vector:02x} low=0x{:04x}",
+            smp::icr_init_low(),
+            smp::icr_high(dest),
+            smp::icr_sipi_low(vector),
+        );
+        let (i_ok, s1_ok, s2_ok) = send_init_sipi(dest, vector, &mut clock);
+        init_ok[hart] = i_ok;
+        sipi_ok[hart] = s1_ok && s2_ok;
+        waited[hart] = wait_mask(&SMP_ONLINE_MASK, hart, &mut clock);
+        SMP_WAIT_ONLINE_US[hart].store(waited[hart].unwrap_or(u64::MAX), Ordering::Release);
+        let ap_lapic_id = SMP_HART_LAPIC_ID[hart].load(Ordering::Acquire);
+        let ap_sp = SMP_HART_SP[hart].load(Ordering::Acquire);
+        let ap_slot = stacks.slot_of(ap_sp);
+        let _ = writeln!(
+            console,
+            "# smp: cpu_on hart={hart} online={} waited_us={} lapic_id={ap_lapic_id} sp=0x{ap_sp:x} slot={ap_slot:?} init_ok={} sipi_ok={}/{}",
+            waited[hart].is_some() as u8,
+            waited[hart].unwrap_or(u64::MAX),
+            i_ok as u8,
+            s1_ok as u8,
+            s2_ok as u8,
+        );
+        if waited[hart].is_none() {
+            // Fail-fast: hart này không lên thì ba hart sau cũng không có nghĩa, và chờ tiếp chỉ
+            // đốt ngân sách của runner.
+            break;
+        }
+        booted += 1;
+    }
+
+    // ---- 4. TAP 18: **bốn** hart online — mask đủ, LAPIC ID đúng, stack **khác slot**.
     let online = SMP_ONLINE_MASK.load(Ordering::Acquire);
+    let bsp_slot = stacks.slot_of_top(bsp_stack_top());
+    let mut online_ok = online == smp::SMP_EXPECT_MASK && bsp_slot == Some(0);
+    let mut slots = [None; smp::MAX_HARTS];
+    slots[0] = bsp_slot;
+    for hart in 1..smp::SMP_HARTS {
+        let dest = smp::apic_id_for_hart(hart).unwrap_or(u8::MAX);
+        let ap_lapic_id = SMP_HART_LAPIC_ID[hart].load(Ordering::Acquire);
+        let ap_sp = SMP_HART_SP[hart].load(Ordering::Acquire);
+        slots[hart] = stacks.slot_of(ap_sp);
+        online_ok &= init_ok[hart]
+            && sipi_ok[hart]
+            && waited[hart].is_some()
+            && online & (1u32 << hart) != 0
+            && ap_lapic_id == dest as u64
+            && slots[hart] == Some(hart);
+    }
+    // Bốn slot phải **đôi một khác nhau** — đột biến (iii) "stack chồng nhau" của KT-276, mở rộng
+    // cho bốn hart.
+    for a in 0..smp::SMP_HARTS {
+        for b in (a + 1)..smp::SMP_HARTS {
+            online_ok &= slots[a].is_some() && slots[a] != slots[b];
+        }
+    }
     let _ = writeln!(
         console,
-        "# smp: cpu_on hart={hart} online={} waited_us={} lapic_id={ap_lapic_id} sp=0x{ap_sp:x} slot={ap_slot:?} bsp_slot={bsp_slot:?} init_ok={} sipi_ok={}/{}",
-        waited.is_some() as u8,
-        waited.unwrap_or(u64::MAX),
-        init_ok as u8,
-        sipi1_ok as u8,
-        sipi2_ok as u8,
+        "# smp: online mask=0x{online:x} expect=0x{:x} harts={} booted={booted} slots={:?}",
+        smp::SMP_EXPECT_MASK,
+        online.count_ones(),
+        &slots[..smp::SMP_HARTS],
     );
-    // TAP 18: hart phụ **online** + LAPIC ID đúng + stack hai hart **khác slot** (đột biến iii).
-    let ap_online_ok = init_ok
-        && sipi1_ok
-        && sipi2_ok
-        && waited.is_some()
-        && online & (1u32 << hart) != 0
-        && ap_lapic_id == dest as u64
-        && ap_slot == Some(hart)
-        && bsp_slot == Some(0)
-        && ap_slot != bsp_slot;
-    check(console, tap_first, "smp: ap online", ap_online_ok);
+    check(console, tap_first, "smp: 4 harts online", online_ok);
 
-    // ---- 5. Lệnh `CMD_REPORT` cho hart phụ; chờ nó **in xong** rồi mới in dòng của BSP.
+    // ---- 5. TAP 19: **TSS per-hart** — bốn địa chỉ rời nhau, `tr=0x28`, descriptor busy.
     //
-    // Quy tắc "in trước, đếm sau" (bài học KT-259): hart phụ in `# smp: hart=1 alive` rồi mới bật
-    // bit; BSP chờ bit ấy rồi mới in `# smp: hart=0 alive` ⇒ hai dòng không xen ký tự trên COM1.
-    SMP_CMD[hart].store(CMD_REPORT, Ordering::Release);
-    let waited_alive = wait_mask(&SMP_ALIVE_MASK, hart, &mut clock);
-    SMP_WAIT_ALIVE_US.store(waited_alive.unwrap_or(u64::MAX), Ordering::Release);
-    let ap_alive = SMP_ALIVE_MASK.load(Ordering::Acquire) & (1u32 << hart) != 0;
-    if ap_alive {
+    // BSP đọc base từ **descriptor của chính nó** (không tin `tss::base(0)`), hart phụ đã công bố
+    // base đọc từ descriptor của nó ⇒ phép kiểm là "kiểm **địa chỉ**", đúng yêu cầu của KT-278.
+    let bsp_tss = gdt::tss_base_of(
+        gdt::entry(0, gdt::INDEX_TSS),
+        gdt::entry(0, gdt::INDEX_TSS + 1),
+    );
+    let mut tss_bases = [0u64; smp::MAX_HARTS];
+    let mut ist1_tops = [0u64; smp::MAX_HARTS];
+    tss_bases[0] = bsp_tss;
+    ist1_tops[0] = tss::ist(0, 1);
+    let mut tss_ok = bsp_tss == tss::base(0)
+        && asm::str_reg() == gdt::SELECTOR_TSS
+        && gdt::tss_type_of(gdt::entry(0, gdt::INDEX_TSS)) == gdt::TSS_TYPE_BUSY_64
+        && ist1_tops[0] == ist1_top(0);
+    for hart in 1..smp::SMP_HARTS {
+        tss_bases[hart] = SMP_HART_TSS_BASE[hart].load(Ordering::Acquire);
+        ist1_tops[hart] = SMP_HART_IST1[hart].load(Ordering::Acquire);
+        tss_ok &= tss_bases[hart] == tss::base(hart)
+            && SMP_HART_TR[hart].load(Ordering::Acquire) == gdt::SELECTOR_TSS as u64
+            && SMP_HART_TSS_TYPE[hart].load(Ordering::Acquire) == gdt::TSS_TYPE_BUSY_64 as u64
+            && ist1_tops[hart] == ist1_top(hart);
+    }
+    // **Kiểm địa chỉ**: bốn vùng TSS rời nhau, bốn stack IST1 rời nhau.
+    let distinct = tss::check_distinct(&tss_bases[..smp::SMP_HARTS]);
+    let ist1_distinct = tss::check_distinct(&ist1_tops[..smp::SMP_HARTS]);
+    tss_ok &= distinct.is_ok() && ist1_distinct.is_ok();
+    let _ = write!(console, "# smp: tss bases=");
+    write_hex_list(console, &tss_bases[..smp::SMP_HARTS]);
+    let _ = write!(console, " ist1=");
+    write_hex_list(console, &ist1_tops[..smp::SMP_HARTS]);
+    let _ = writeln!(
+        console,
+        " distinct={distinct:?} ist1_distinct={ist1_distinct:?} tr=0x{:x} type=0x{:02x} ok={}",
+        asm::str_reg(),
+        gdt::tss_type_of(gdt::entry(0, gdt::INDEX_TSS)),
+        tss_ok as u8,
+    );
+    check(console, tap_first + 1, "smp: tss per-hart", tss_ok);
+
+    // ---- 6. TAP 20: **IPI** fixed-delivery hart 0 → hart 1 (hart 1 đếm trong **handler ngắt**).
+    //
+    // **Đột biến (i)** (`--features no-ipi`): **không** gửi ⇒ `recv=0` ⇒ TAP 20 ĐỎ.
+    // **Đột biến (ii)** (`--features bad-ipi-dest`): gửi tới `APIC ID = 7` — hart **không tồn tại**
+    // với `-smp 4` ⇒ không ai nhận, BSP hết trần 100 ms rồi **đi tiếp** (không treo) ⇒ TAP 20 ĐỎ.
+    let ipi_dest = if cfg!(feature = "bad-ipi-dest") {
+        7u8
+    } else {
+        1u8
+    };
+    // In **trước** khi gửi (cùng lý do với dòng `icr init`): hart đích in
+    // `# smp: ipi recv=1 intid=0x30` ngay khi nhận, nên in sau `send_ipi` sẽ xen ký tự trên COM1
+    // (đo được ở lần chạy đầu: `# smp: ipi send … low# smp: ipi r=0x4030 …`).
+    let _ = writeln!(
+        console,
+        "# smp: ipi send dest={ipi_dest} vector=0x{:02x} low=0x{:04x} high=0x{:08x}",
+        exc::VEC_IPI,
+        smp::icr_fixed_low(exc::VEC_IPI),
+        smp::icr_high(ipi_dest),
+    );
+    let ipi_sent = if cfg!(feature = "no-ipi") {
+        false
+    } else {
+        send_ipi(ipi_dest, &mut clock)
+    };
+    let ipi_waited = wait_ipi(&mut clock);
+    SMP_WAIT_IPI_US.store(ipi_waited.unwrap_or(u64::MAX), Ordering::Release);
+    let ipi_count = SMP_IPI_COUNT.load(Ordering::Acquire);
+    let ipi_ok = ipi_sent && ipi_waited.is_some() && ipi_count == 1;
+    let _ = writeln!(
+        console,
+        "# smp: ipi sent={} count={ipi_count} waited_us={} ok={}",
+        ipi_sent as u8,
+        ipi_waited.unwrap_or(u64::MAX),
+        ipi_ok as u8,
+    );
+    check(console, tap_first + 2, "smp: ipi delivered", ipi_ok);
+
+    // ---- 7. Lệnh `CMD_REPORT` cho **từng** hart phụ, tuần tự; chờ nó **in xong** rồi mới sang
+    // hart kế (quy tắc "in trước, đếm sau" — bài học KT-259: hai hart in xen ký tự trên COM1).
+    let mut report_ok = true;
+    let mut alive_wait_total = 0u64;
+    for hart in 1..smp::SMP_HARTS {
+        SMP_CMD[hart].store(CMD_REPORT, Ordering::Release);
+        let waited_alive = wait_mask(&SMP_ALIVE_MASK, hart, &mut clock);
+        alive_wait_total = alive_wait_total.saturating_add(waited_alive.unwrap_or(u64::MAX));
+        let alive = SMP_ALIVE_MASK.load(Ordering::Acquire) & (1u32 << hart) != 0;
+        let _ = writeln!(
+            console,
+            "# smp: report hart={hart} done={} waited_us={} alive={}",
+            waited_alive.is_some() as u8,
+            waited_alive.unwrap_or(u64::MAX),
+            alive as u8,
+        );
+        report_ok &= waited_alive.is_some() && alive;
+    }
+    SMP_WAIT_ALIVE_US.store(alive_wait_total, Ordering::Release);
+    if report_ok {
         let _ = writeln!(console, "# smp: hart=0 alive");
         SMP_ALIVE_MASK.fetch_or(1, Ordering::Release);
     }
     let alive = SMP_ALIVE_MASK.load(Ordering::Acquire);
+    let online = SMP_ONLINE_MASK.load(Ordering::Acquire);
     let _ = writeln!(
         console,
         "# smp: online mask=0x{online:x} alive=0x{alive:x} expect=0x{:x} harts={} ap_ticks={} waited_online_us={} waited_alive_us={}",
@@ -537,12 +745,12 @@ pub fn run(console: &mut Console, tap_first: usize) {
         wait_online_us(),
         wait_alive_us(),
     );
-    // TAP 19: **cả hai** hart đã báo alive (bit 0 do BSP, bit 1 do hart phụ).
+    // TAP 21: **cả bốn** hart đã báo alive (bit 0 do BSP, bit 1..3 do hart phụ).
     check(
         console,
-        tap_first + 1,
-        "smp: both harts report",
-        ap_alive && alive == smp::SMP_EXPECT_MASK,
+        tap_first + 3,
+        "smp: all harts report",
+        report_ok && alive == smp::SMP_EXPECT_MASK,
     );
 }
 
@@ -550,19 +758,23 @@ pub fn run(console: &mut Console, tap_first: usize) {
 // AP — kmain_secondary
 // ---------------------------------------------------------------------------------------------
 
-/// **KT-276** — điểm vào Rust của **hart phụ** (trampoline gọi sau khi đã vào long mode).
+/// **KT-276 + KT-278** — điểm vào Rust của **hart phụ** (trampoline gọi sau khi đã vào long mode).
 ///
 /// `hart` = hart id BSP ghi vào boot block (trampoline đọc rồi truyền qua `rdi`).
 ///
 /// Thứ tự **bắt buộc**:
 ///
 /// 1. kiểm `sp` nằm trong **slot của chính mình** — đột biến (iii) "stack chồng nhau" lộ ra ở đây;
-/// 2. bật LAPIC **của hart này** (`IA32_APIC_BASE`, `SVR`, `TPR`, mask `LINT0/1`) và **so**
+/// 2. **TSS riêng + GDT riêng + `ltr`** (KT-278): `tss::init(hart, …)`, `gdt::install(hart, …)`,
+///    rồi **đọc lại** base từ descriptor + `str` + type busy — bằng chứng `ltr` nạp **đúng** TSS
+///    của hart này, không phải TSS của hart khác;
+/// 3. bật LAPIC **của hart này** (`IA32_APIC_BASE`, `SVR`, `TPR`, mask `LINT0/1`) và **so**
 ///    `LAPIC_ID` với giá trị BSP đã ghi — lệch ⇒ PANIC (không tin chỉ số vòng lặp);
-/// 3. in `# smp: hart=<id> online` rồi bật bit online;
-/// 4. cấu hình LAPIC timer (vector 32, periodic) + `sti` — nguồn **đánh thức** để vòng `hlt`
+/// 4. in `# smp: hart=<id> online` rồi bật bit online;
+/// 5. cấu hình LAPIC timer (vector 32, periodic) + `sti` — nguồn **đánh thức** để vòng `hlt`
 ///    kiểm lệnh; **không** phải nguồn tick của hệ (PIT của BSP vẫn là nguồn tick);
-/// 5. vòng `hlt`: thấy `CMD_REPORT` ⇒ in `# smp: hart=<id> alive` + bật bit alive.
+/// 6. vòng `hlt`: thấy `CMD_REPORT` ⇒ in `# smp: hart=<id> alive` + bật bit alive. IPI (vector
+///    `0x30`) do handler chung xử lý ([`note_ipi`]).
 #[no_mangle]
 pub extern "C" fn kmain_secondary(hart: u64) -> ! {
     let mut console = Console;
@@ -590,6 +802,7 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
         );
         asm::halt(4)
     }
+    let stack_top = stacks.stack_top(hart).unwrap_or(0);
 
     // ---- 1b. IDT **dùng chung**: trampoline đã `lidt` từ boot block; nạp lại bằng API của crate
     // (idempotent) rồi đọc lại bằng `sidt` — bằng chứng `IDTR` của **hart này** trỏ đúng bảng,
@@ -605,6 +818,51 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
         );
         asm::halt(4)
     }
+
+    // ---- 1c. **KT-278** — TSS **riêng** + GDT **riêng** + `ltr`.
+    //
+    // `IST1` của hart này là stack IST1 **của nó** (`__ist1_top + hart * 0x1000`): hai hart cùng
+    // `#DF` không còn ghi vào một stack. `RSP0` = đỉnh slot stack của hart (AP không chạy ring 3,
+    // nhưng TSS phải hợp lệ — và giá trị **khác nhau** giữa các hart là bằng chứng per-hart).
+    let ist1 = ist1_top(hart);
+    if ist1 == 0 {
+        let _ = writeln!(console, "PANIC: smp: hart {hart} không có stack IST1");
+        asm::halt(4)
+    }
+    tss::init(hart, stack_top, ist1);
+    // **Đột biến (iii) của KT-278** (`--features same-tss`): descriptor TSS của hart phụ trỏ
+    // **TSS của hart 0** — đúng lỗi "TSS per-hart trùng địa chỉ". Không fault (TSS 0 hợp lệ),
+    // nhưng phép **kiểm địa chỉ** của BSP thấy trùng ⇒ TAP 19 ĐỎ.
+    let tss_base = if cfg!(feature = "same-tss") {
+        tss::base(0)
+    } else {
+        tss::base(hart)
+    };
+    gdt::install(hart, tss_base);
+    // Đọc lại **từ descriptor** (không tin giá trị vừa ghi) + `str` + type busy.
+    let tss_low = gdt::entry(hart, gdt::INDEX_TSS);
+    let tss_high = gdt::entry(hart, gdt::INDEX_TSS + 1);
+    let loaded_tss = gdt::tss_base_of(tss_low, tss_high);
+    let tr = asm::str_reg();
+    let tss_type = gdt::tss_type_of(tss_low);
+    let (gdt_base, gdt_limit) = gdt::read_gdtr(hart);
+    if tr != gdt::SELECTOR_TSS
+        || tss_type != gdt::TSS_TYPE_BUSY_64
+        || gdt_base != gdt::base(hart)
+        || gdt_limit != gdt::GDT_LIMIT
+    {
+        let _ = writeln!(
+            console,
+            "PANIC: smp: hart {hart} GDT/TSS sai tr=0x{tr:x} type=0x{tss_type:02x} gdt=0x{gdt_base:x}/0x{gdt_limit:x} cần 0x{:x}/0x{:x}",
+            gdt::base(hart),
+            gdt::GDT_LIMIT,
+        );
+        asm::halt(4)
+    }
+    SMP_HART_TSS_BASE[hart].store(loaded_tss, Ordering::Release);
+    SMP_HART_TR[hart].store(tr as u64, Ordering::Release);
+    SMP_HART_TSS_TYPE[hart].store(tss_type as u64, Ordering::Release);
+    SMP_HART_IST1[hart].store(tss::ist(hart, 1), Ordering::Release);
 
     // ---- 2. LAPIC của hart này.
     let mut msr = asm::read_msr(MSR_IA32_APIC_BASE);
@@ -623,7 +881,8 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
         );
         asm::halt(4)
     }
-    // Bật APIC bằng phần mềm + TPR = 0 + mask LINT0/LINT1 (nguồn ngắt duy nhất là timer của AP).
+    // Bật APIC bằng phần mềm + TPR = 0 + mask LINT0/LINT1 (nguồn ngắt duy nhất là timer của AP
+    // và IPI từ BSP).
     asm::write_u32(
         base + apic::LAPIC_SVR as u64,
         apic::svr_value(exc::VEC_SPURIOUS),
@@ -634,13 +893,17 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
     let svr = asm::read_u32(base + apic::LAPIC_SVR as u64);
     let tpr = asm::read_u32(base + apic::LAPIC_TPR as u64);
 
-    // ---- 3. Báo online **sau** khi LAPIC sẵn sàng (BSP gửi lệnh ngay khi thấy cờ này).
+    // ---- 3. Báo online **sau** khi LAPIC + TSS sẵn sàng (BSP gửi lệnh ngay khi thấy cờ này).
     let _ = writeln!(console, "# smp: hart={hart} online");
     let _ = writeln!(
         console,
         "# smp: hart={hart} lapic id={id} base=0x{base:x} svr=0x{svr:03x} tpr={tpr} sp=0x{sp:x} slot={hart} stack=0x{:x}-0x{:x}",
         stacks.stack(hart).map(|(b, _)| b).unwrap_or(0),
         stacks.stack(hart).map(|(_, t)| t).unwrap_or(0),
+    );
+    let _ = writeln!(
+        console,
+        "# smp: hart={hart} tss base=0x{loaded_tss:x} tr=0x{tr:x} type=0x{tss_type:02x} ist1=0x{ist1:x} rsp0=0x{stack_top:x}",
     );
     SMP_HART_LAPIC_ID[hart].store(id as u64, Ordering::Release);
     SMP_HART_SP[hart].store(sp, Ordering::Release);
@@ -662,7 +925,7 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
     );
     asm::sti();
 
-    // ---- 5. Vòng lệnh: `hlt` (timer đánh thức) → kiểm `SMP_CMD` → in + bật bit.
+    // ---- 5. Vòng lệnh: `hlt` (timer/IPI đánh thức) → kiểm `SMP_CMD` → in + bật bit.
     loop {
         let cmd = SMP_CMD[hart].load(Ordering::Acquire);
         if cmd == CMD_REPORT {
@@ -676,7 +939,7 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Truy vấn trạng thái cho `main.rs` (handler timer + TAP)
+// Truy vấn trạng thái cho `main.rs` (handler timer/IPI + TAP)
 // ---------------------------------------------------------------------------------------------
 
 /// Ghi `sp` ban đầu của BSP — gọi **một lần** trong `kmain` (giá trị `__stack_top` của linker).
@@ -709,9 +972,30 @@ pub(crate) fn ap_ticks() -> u64 {
     AP_TICK_COUNT.load(Ordering::Relaxed)
 }
 
-/// Số µs BSP đã chờ hart phụ online (`u64::MAX` = chưa chờ).
+/// **KT-278** — ghi nhận **một** IPI (vector `0x30`) vừa tới; gọi từ handler ngắt của hart đích.
+///
+/// **In trước, đếm sau**: BSP chờ `SMP_IPI_COUNT` nên khi nó thấy `1` thì dòng
+/// `# smp: ipi recv=1 intid=0x30` **chắc chắn** đã ra COM1 — không có hai dòng xen ký tự.
+pub(crate) fn note_ipi() {
+    let n = SMP_IPI_COUNT.load(Ordering::Acquire) + 1;
+    let mut console = Console;
+    let _ = writeln!(console, "# smp: ipi recv={n} intid=0x{:02x}", exc::VEC_IPI,);
+    SMP_IPI_COUNT.store(n, Ordering::Release);
+}
+
+/// Số µs BSP đã chờ hart phụ online (`u64::MAX` = chưa chờ) — tổng trên mọi hart phụ.
 pub(crate) fn wait_online_us() -> u64 {
-    SMP_WAIT_ONLINE_US.load(Ordering::Acquire)
+    let mut total = 0u64;
+    let mut hart = 1;
+    while hart < smp::SMP_HARTS {
+        let value = SMP_WAIT_ONLINE_US[hart].load(Ordering::Acquire);
+        if value == u64::MAX {
+            return u64::MAX;
+        }
+        total = total.saturating_add(value);
+        hart += 1;
+    }
+    total
 }
 
 /// Số µs BSP đã chờ hart phụ báo alive (`u64::MAX` = chưa chờ).

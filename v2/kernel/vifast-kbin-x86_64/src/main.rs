@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Ảnh boot **x86_64** của ViFastOs — KT-257 (K5' bước 1) + KT-261 (K5' bước 2: GDT/TSS/IDT) +
 //! KT-266 (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) +
-//! KT-274 (K5' bước 5: PCI + virtio-net) + **KT-276** (K5' bước 6: SMP 2 hart).
+//! KT-274 (K5' bước 5: PCI + virtio-net) + KT-276 (K5' bước 6: SMP 2 hart) + **KT-278** (K5' bước
+//! 7: SMP **4 hart** + **IPI** + **TSS per-hart**).
 //!
 //! # Đường boot
 //!
@@ -24,19 +25,22 @@
 //!        │    ↓
 //!        │  ring 3: ghi stack user → `int 0x80` DebugPutStr → handler in chuỗi user
 //!        │    → TAP 12/13 + `# umode: ring3 ran nr=12 ret=14` → `iretq` về ring 3
-//!        │    → `int 0x80` Exit → TAP 14 → PCI/net (TAP 15..17) → **SMP** (TAP 18/19)
+//!        │    → `int 0x80` Exit → TAP 14 → PCI/net (TAP 15..17) → **SMP** (TAP 18..21)
 //!        │    → marker → halt
 //!        └─ asm::halt: chờ LSR.TEMT (có trần) → outw(0x604, 0x2000) ⇒ QEMU thoát mã 0
 //!
-//! # KT-276 — SMP 2 hart (K5' bước 6)
+//! # KT-276 + KT-278 — SMP 4 hart, IPI, TSS per-hart (K5' bước 6 → bước 7)
 //!
 //! Sau TAP 17, [`smp::run`] copy trang trampoline (link 64 KiB-aligned trong `.text`) xuống
-//! `0x8000`, ghi boot block, rồi `INIT` + `SIPI` + `SIPI` qua `ICR` (`0x300`/`0x310`) tới
-//! `APIC ID = 1`. Hart phụ chạy trampoline **real mode → long mode** (không qua 32-bit protected
-//! mode), bật LAPIC **của nó** (`SVR`/`TPR`/`LINT`), in `# smp: hart=1 online`, rồi vòng `hlt`
-//! được đánh thức bằng LAPIC timer **của hart ấy** (vector 32 dùng chung stub; handler phân biệt
-//! tick BSP/AP bằng `LAPIC_ID` đọc qua MMIO). BSP in `# smp: hart=0 alive`, hart phụ in
-//! `# smp: hart=1 alive`; TAP 18/19 chốt. **Không** 4 hart, **không** IPI, **không** scheduler.
+//! `0x8000`, rồi với **từng** hart 1..3 **tuần tự**: ghi boot block, `INIT` + `SIPI` + `SIPI` qua
+//! `ICR` (`0x300`/`0x310`) tới `APIC ID = hart`, chờ hart ấy online. Hart phụ chạy trampoline
+//! **real mode → long mode** (không qua 32-bit protected mode), nạp **TSS riêng + GDT riêng +
+//! `ltr`** (KT-278), bật LAPIC **của nó** (`SVR`/`TPR`/`LINT`), in `# smp: hart=N online`, rồi
+//! vòng `hlt` được đánh thức bằng LAPIC timer **của hart ấy** (vector 32 dùng chung stub; handler
+//! phân biệt tick BSP/AP bằng `LAPIC_ID` đọc qua MMIO). BSP gửi **IPI** fixed-delivery (vector
+//! `0x30`) tới hart 1 — hart 1 đếm trong handler và in `# smp: ipi recv=1 intid=0x30`. Cuối cùng
+//! cả bốn hart in `# smp: hart=N alive`; TAP 18..21 chốt. **Không** scheduler/preemption,
+//! **không** `-cpu max`, **không** `syscall`/`sysret`.
 //! ```
 //!
 //! # Vì sao có **hai** header
@@ -79,9 +83,9 @@
 //! 3** — trang mã/stack user `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler
 //! → `iretq` về ring 3, `Exit` kết thúc (KT-270).
 //!
-//! **Chưa**: IPC từ ring 3, nhiều process, preemption, IPI, 4 hart, TSS per-hart, `-cpu max`,
-//! `syscall`/`sysret`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp
-//! 1|2|4 + soak 600 boot, D2-149) — đây là **bước 6** (2 hart).
+//! **Chưa**: IPC từ ring 3, nhiều process, preemption, `-cpu max`, `syscall`/`sysret`, soak 600
+//! boot. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600
+//! boot, D2-149) — đây là **bước 7** (4 hart + IPI + TSS per-hart).
 
 #![no_std]
 #![no_main]
@@ -112,8 +116,9 @@ mod umode;
 /// còn chạy được tiếp mà không cần scheduler).
 mod net;
 
-/// **KT-276** (K5' bước 6): SMP 2 hart — trampoline real mode → long mode, `INIT`+`SIPI` qua ICR,
-/// LAPIC riêng cho hart phụ, TAP 18/19. Tách tệp riêng (luật R1) và chạy **sau** TAP 17.
+/// **KT-276 + KT-278** (K5' bước 6 → 7): SMP **4 hart** — trampoline real mode → long mode,
+/// `INIT`+`SIPI` tuần tự qua ICR, LAPIC riêng cho từng hart phụ, **IPI** fixed-delivery vector
+/// `0x30`, **TSS/GDT/IST1 per-hart**, TAP 18..21. Tách tệp riêng (luật R1) và chạy **sau** TAP 17.
 mod smp;
 
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
@@ -135,7 +140,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// `net: arp` (TAP 15..17, chạy sau `Exit` của ring 3 — xem [`net`]).
 /// **KT-276** thêm **hai** ca SMP: `smp: ap online`, `smp: both harts report` (TAP 18/19, chạy
 /// sau TAP 17 — xem [`smp`]).
-pub const TAP_TESTS: usize = 19;
+/// **KT-278** thay hai ca ấy bằng **bốn** ca SMP: `smp: 4 harts online` (18), `smp: tss per-hart`
+/// (19), `smp: ipi delivered` (20), `smp: all harts report` (21) — tổng **21**.
+pub const TAP_TESTS: usize = 21;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -367,10 +374,18 @@ global_asm!(
     "__pd_mmio_low:",
     ".skip 4096",
     // Stack IST1 cho `#DF` (KT-261): 4 KiB riêng, `__ist1_top` = đỉnh (stack mọc xuống).
+    //
+    // **KT-278**: **mỗi hart một stack IST1** — 4 × 4 KiB. `__ist1_top` vẫn là đỉnh của hart 0
+    // (nên `long_mode_entry` không đổi); đỉnh của hart `h` là `__ist1_top + h * 0x1000`, và
+    // `__ist1_stacks_end` là đỉnh của hart 3. Hai hart cùng `#DF` không còn ghi vào một stack.
     ".align 4096",
-    "__ist1_stack:",
+    "__ist1_stacks:",
     ".skip 4096",
     "__ist1_top:",
+    ".skip 4096",
+    ".skip 4096",
+    ".skip 4096",
+    "__ist1_stacks_end:",
     // **KT-270** — bảng trang user (PD + PT) cho ring 3, và hai stack:
     //   - `__user_stack`: stack **user** (map ở USER_STACK_VA, `US = 1`, RW, NX);
     //   - `__syscall_stack`: stack **kernel** riêng cho đường vào từ ring 3 (`TSS.RSP0`), để
@@ -521,6 +536,31 @@ pub(crate) fn check(console: &mut Console, n: usize, name: &str, ok: bool) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// IST1 per-hart — KT-278
+// ---------------------------------------------------------------------------------------------
+
+// Bốn stack IST1 (mỗi hart một stack 4 KiB) do `global_asm!` ở trên khai trong `.bss`.
+extern "C" {
+    static __ist1_top: u8;
+    static __ist1_stacks_end: u8;
+}
+
+/// Đỉnh stack `IST1` của `hart` — `__ist1_top + hart * 0x1000`.
+///
+/// `__ist1_top` là đỉnh stack của **hart 0** (giá trị `long_mode_entry` truyền vào `kmain`), nên
+/// hart 0 giữ nguyên đường boot; hart `h` dùng stack kế tiếp. `hart >= 4` trả `0` để caller
+/// fail-closed thay vì trỏ vào rác.
+pub(crate) fn ist1_top(hart: usize) -> u64 {
+    let base = core::ptr::addr_of!(__ist1_top) as u64;
+    let end = core::ptr::addr_of!(__ist1_stacks_end) as u64;
+    let top = base + (hart as u64) * 0x1000;
+    if top > end {
+        return 0;
+    }
+    top
+}
+
+// ---------------------------------------------------------------------------------------------
 // Trạng thái exception — handler ghi, ca kiểm đọc
 // ---------------------------------------------------------------------------------------------
 
@@ -615,6 +655,14 @@ pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u6
     // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
     if vec == exc::VEC_SPURIOUS as u64 {
         SPURIOUS_COUNT.fetch_add(1, Ordering::Relaxed);
+        return rip;
+    }
+    // **KT-278**: IPI (vector `0x30`) — hart đích đếm + in `# smp: ipi recv=<n> intid=0x30` rồi
+    // `EOI`. In **trước**, tăng biến đếm **sau** (quy tắc "in trước, đếm sau" của KT-259): BSP
+    // chờ đúng biến đếm nên dòng log chắc chắn đã ra trước khi BSP in dòng của nó.
+    if vec == exc::VEC_IPI as u64 {
+        smp::note_ipi();
+        lapic_eoi();
         return rip;
     }
 
@@ -1158,29 +1206,33 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
     //
     // Thứ tự là hợp đồng: TSS phải hợp lệ **trước** khi descriptor trỏ vào nó, và GDT phải nạp
     // **trước** `ltr` (nếu không `ltr` đọc bảng tạm 3 entry ⇒ #GP).
-    tss::init(stack_top, ist1_top);
-    gdt::install(tss::base());
+    // **KT-278**: TSS/GDT là **per-hart** — hart 0 dùng slot 0, `IST1` là stack IST1 của slot 0.
+    tss::init(0, stack_top, ist1_top);
+    gdt::install(0, tss::base(0));
     idt::install();
 
     // ---- TAP 1: GDT đã nạp **thật** — `sgdt`/`str` đọc lại khớp bảng + descriptor TSS.
-    let (gdt_base, gdt_limit) = gdt::read_gdtr();
+    let (gdt_base, gdt_limit) = gdt::read_gdtr(0);
     let tr = asm::str_reg();
     // Sau `ltr`, CPU đánh dấu descriptor TSS là **busy** (`0x89 → 0x8B`) — kiểm dạng busy
     // là bằng chứng `ltr` đã nạp thật, không chỉ "đã gọi".
     let want_tss =
-        gdt::tss_descriptor_type(tss::base(), tss::TSS_LIMIT as u32, gdt::TSS_TYPE_BUSY_64);
-    let got_tss = [gdt::entry(gdt::INDEX_TSS), gdt::entry(gdt::INDEX_TSS + 1)];
-    let gdt_ok = gdt_base == gdt::base()
+        gdt::tss_descriptor_type(tss::base(0), tss::TSS_LIMIT as u32, gdt::TSS_TYPE_BUSY_64);
+    let got_tss = [
+        gdt::entry(0, gdt::INDEX_TSS),
+        gdt::entry(0, gdt::INDEX_TSS + 1),
+    ];
+    let gdt_ok = gdt_base == gdt::base(0)
         && gdt_limit == gdt::GDT_LIMIT
         && tr == gdt::SELECTOR_TSS
         && got_tss == want_tss
-        && tss::rsp0() == stack_top
-        && tss::ist(1) == ist1_top
-        && tss::io_map_base() == tss::TSS_IO_MAP_BASE;
+        && tss::rsp0(0) == stack_top
+        && tss::ist(0, 1) == ist1_top
+        && tss::io_map_base(0) == tss::TSS_IO_MAP_BASE;
     let _ = writeln!(
         console,
         "# viFastOs x86_64: gdt base=0x{gdt_base:x} limit={gdt_limit} tr=0x{tr:x} tss=0x{:x} ist1=0x{ist1_top:x}",
-        tss::base(),
+        tss::base(0),
     );
     check(&mut console, 1, "exc: gdt loaded", gdt_ok);
 

@@ -129,7 +129,10 @@ pub fn run(console: &mut Console) -> ! {
     );
     // Stack kernel **riêng** cho đường vào từ CPL3: `kmain` không quay lại sau `iretq`, nhưng
     // dùng stack boot làm `RSP0` sẽ để handler đè lên frame còn sống của `kmain`.
-    tss::set_rsp0(syscall_stack_top);
+    //
+    // **KT-278**: TSS là per-hart — ring 3 chỉ chạy trên **hart 0** (BSP), nên chỉ đổi `RSP0` của
+    // slot 0. Ba hart phụ không bao giờ xuống CPL3 ở bước này.
+    tss::set_rsp0(0, syscall_stack_top);
     asm::enter_user(entry, USER_STACK_TOP, USER_RFLAGS)
 }
 

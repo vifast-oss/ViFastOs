@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **GDT 64-bit + descriptor TSS** — KT-261 (K5' bước 2).
+//! **GDT 64-bit per-hart + descriptor TSS** — KT-261 (K5' bước 2) + **KT-278** (per-hart).
 //!
 //! Tệp này là **dữ liệu + bảng**: hình học GDT (7 entry × 8 byte), mã hoá descriptor, pseudo-
 //! descriptor `GDTR` và hàm [`install`] nạp bảng bằng `lgdt` + `ltr`. Asm đặc quyền nằm ở
@@ -13,6 +13,18 @@
 //! `AtomicU64` **đúng bằng** `u64` (cùng cỡ 8, cùng căn 8) nên `lgdt` đọc được từng entry như
 //! một `u64` thường. Không có bản thứ hai của con số nào: asm của ảnh dùng chính các hằng ở đây
 //! làm `const` operand.
+//!
+//! # KT-278 — vì sao GDT là **per-hart**
+//!
+//! Descriptor TSS chứa **base** của vùng TSS. Nếu bốn hart dùng chung một bảng GDT thì chỉ có
+//! **một** descriptor TSS ⇒ `ltr` trên hart 2 sẽ nạp **cùng** TSS với hart 1 (đúng nợ của
+//! KT-276). Vì vậy mỗi hart có **bảng GDT riêng** ([`GDT`] là `[[AtomicU64; 7]; MAX_HARTS]`) và
+//! **GDTR riêng** ([`GDTR`]) — `lgdt` của hart này không đụng hart khác, và descriptor TSS của
+//! hart `i` trỏ [`crate::tss::base`]`(i)`.
+//!
+//! Bố cục **giống hệt nhau** ở mọi hart (null, kernel code/data, user code/data, TSS) nên
+//! selector `0x08`/`0x10`/`0x28` có **cùng nghĩa** trên mọi hart — điều kiện để bảng IDT **dùng
+//! chung** (mọi ô `selector = 0x08`) vẫn hợp lệ sau khi hart phụ `lgdt` bảng riêng của nó.
 //!
 //! # Bố cục (Intel SDM Vol 3A §3.4.5, §3.5.1)
 //!
@@ -38,6 +50,7 @@
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::asm;
+use crate::smp::MAX_HARTS;
 
 /// Số entry của GDT: null + 2 kernel + 2 user + **2** cho descriptor TSS 16 byte.
 pub const GDT_ENTRIES: usize = 7;
@@ -174,58 +187,92 @@ pub const fn tss_descriptor_type(base: u64, limit: u32, type_attr: u8) -> [u64; 
     [low, high]
 }
 
-/// Bảng GDT **thật** của ảnh — 7 entry, ghi/đọc bằng atomic (an toàn, không `unsafe`).
+/// Giải mã **base** từ hai `u64` của descriptor TSS 16 byte — phép nghịch của
+/// [`tss_descriptor_type`].
+///
+/// Dùng để hart phụ đọc lại **địa chỉ TSS mà CPU thật sự nạp** (`ltr`) từ bảng GDT của chính nó,
+/// thay vì tin giá trị nó vừa ghi: đó là "kiểm địa chỉ" của đột biến (iii) KT-278.
+pub const fn tss_base_of(low: u64, high: u64) -> u64 {
+    (low >> 16) & 0xFFFF
+        | (((low >> 32) & 0xFF) << 16)
+        | (((low >> 56) & 0xFF) << 24)
+        | ((high & 0xFFFF_FFFF) << 32)
+}
+
+/// Giải mã **byte `type_attr`** từ `u64` đầu của descriptor TSS — dùng để hart phụ chứng minh
+/// `ltr` đã chạy thật (CPU đổi `0x89` → `0x8B`).
+pub const fn tss_type_of(low: u64) -> u8 {
+    ((low >> 40) & 0xFF) as u8
+}
+
+/// Bảng GDT **thật** của ảnh — **mỗi hart một bảng** 7 entry, ghi/đọc bằng atomic (an toàn).
 ///
 /// Entry 5–6 (TSS) bằng 0 cho tới khi [`install`] điền; `lgdt` nạp cả bảng nên entry rác **không**
 /// bao giờ được `ltr` dùng trước khi điền.
-static GDT: [AtomicU64; GDT_ENTRIES] = [
-    AtomicU64::new(GDT_NULL),
-    AtomicU64::new(GDT_KERNEL_CODE),
-    AtomicU64::new(GDT_KERNEL_DATA),
-    AtomicU64::new(GDT_USER_CODE),
-    AtomicU64::new(GDT_USER_DATA),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-];
+static GDT: [[AtomicU64; GDT_ENTRIES]; MAX_HARTS] = [const {
+    [
+        AtomicU64::new(GDT_NULL),
+        AtomicU64::new(GDT_KERNEL_CODE),
+        AtomicU64::new(GDT_KERNEL_DATA),
+        AtomicU64::new(GDT_USER_CODE),
+        AtomicU64::new(GDT_USER_DATA),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+    ]
+}; MAX_HARTS];
 
-/// Pseudo-descriptor `GDTR` (10 byte có nghĩa, đệm cho tròn 12): `limit` 16-bit + `base` 64-bit.
+/// Pseudo-descriptor `GDTR` **per-hart** (10 byte có nghĩa, đệm cho tròn 12): `limit` 16-bit +
+/// `base` 64-bit.
 ///
 /// Dùng `[AtomicU32; 3]` thay vì `#[repr(C)] struct { limit: u16, base: u64 }` vì `repr(C)` sẽ
 /// **chèn 6 byte đệm** giữa hai trường (base thành offset 8), trong khi CPU đọc base ở offset
 /// **2**. Ba `u32` cho đúng layout đặc tả mà vẫn ghi được bằng atomic an toàn.
-static GDTR: [AtomicU32; 3] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
+///
+/// **Per-hart** vì `sgdt`/`lgdt` của hart này không được ghi vào vùng nhớ hart khác đang dùng.
+static GDTR: [[AtomicU32; 3]; MAX_HARTS] =
+    [const { [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)] }; MAX_HARTS];
 
-/// Địa chỉ (VA = PA, identity map) của bảng GDT — asm của ảnh và `lgdt` dùng cùng giá trị.
-pub fn base() -> u64 {
-    GDT.as_ptr() as u64
+/// Địa chỉ (VA = PA, identity map) bảng GDT của `hart` — asm của ảnh và `lgdt` dùng cùng giá trị.
+///
+/// `hart >= MAX_HARTS` là lỗi lập trình ⇒ panic fail-loud.
+pub fn base(hart: usize) -> u64 {
+    assert!(hart < MAX_HARTS, "hart {hart} ngoài MAX_HARTS");
+    GDT[hart].as_ptr() as u64
 }
 
-/// Đọc entry `index` của GDT (0..[`GDT_ENTRIES`]); ngoài phạm vi trả 0.
-pub fn entry(index: usize) -> u64 {
-    match GDT.get(index) {
+/// Đọc entry `index` của GDT hart `hart` (0..[`GDT_ENTRIES`]); ngoài phạm vi trả 0.
+pub fn entry(hart: usize, index: usize) -> u64 {
+    if hart >= MAX_HARTS {
+        return 0;
+    }
+    match GDT[hart].get(index) {
         Some(slot) => slot.load(Ordering::Relaxed),
         None => 0,
     }
 }
 
-/// Ghi `limit`/`base` vào pseudo-descriptor `GDTR` (chưa nạp — [`install`] mới `lgdt`).
-fn set_gdtr(base: u64, limit: u16) {
+/// Ghi `limit`/`base` vào pseudo-descriptor `GDTR` của hart `hart` (chưa nạp — [`install`] mới
+/// `lgdt`).
+fn set_gdtr(hart: usize, base: u64, limit: u16) {
     let word0 = (limit as u32) | (((base & 0xFFFF) as u32) << 16);
     let word1 = ((base >> 16) & 0xFFFF_FFFF) as u32;
     let word2 = ((base >> 48) & 0xFFFF) as u32;
-    GDTR[0].store(word0, Ordering::Relaxed);
-    GDTR[1].store(word1, Ordering::Relaxed);
-    GDTR[2].store(word2, Ordering::Relaxed);
+    GDTR[hart][0].store(word0, Ordering::Relaxed);
+    GDTR[hart][1].store(word1, Ordering::Relaxed);
+    GDTR[hart][2].store(word2, Ordering::Relaxed);
 }
 
-/// Đọc lại `GDTR` bằng `sgdt` — bằng chứng "GDT đã nạp thật", không chỉ tin `lgdt`.
+/// Đọc lại `GDTR` của hart `hart` bằng `sgdt` — bằng chứng "GDT đã nạp thật", không chỉ tin
+/// `lgdt`.
 ///
-/// Trả `(base, limit)`. Ghi vào chính [`GDTR`] rồi đọc lại ba `u32` (cùng layout ở [`set_gdtr`]).
-pub fn read_gdtr() -> (u64, u16) {
-    asm::sgdt(GDTR.as_ptr() as u64);
-    let word0 = GDTR[0].load(Ordering::Relaxed);
-    let word1 = GDTR[1].load(Ordering::Relaxed);
-    let word2 = GDTR[2].load(Ordering::Relaxed);
+/// Trả `(base, limit)`. Ghi vào chính [`GDTR`] của hart rồi đọc lại ba `u32` (cùng layout ở
+/// [`set_gdtr`]).
+pub fn read_gdtr(hart: usize) -> (u64, u16) {
+    assert!(hart < MAX_HARTS, "hart {hart} ngoài MAX_HARTS");
+    asm::sgdt(GDTR[hart].as_ptr() as u64);
+    let word0 = GDTR[hart][0].load(Ordering::Relaxed);
+    let word1 = GDTR[hart][1].load(Ordering::Relaxed);
+    let word2 = GDTR[hart][2].load(Ordering::Relaxed);
     let limit = (word0 & 0xFFFF) as u16;
     let base = (((word0 >> 16) & 0xFFFF) as u64)
         | ((word1 as u64) << 16)
@@ -233,16 +280,22 @@ pub fn read_gdtr() -> (u64, u16) {
     (base, limit)
 }
 
-/// Nạp GDT **thật** (7 entry) + descriptor TSS trỏ `tss_base`, rồi `ltr` selector TSS.
+/// Nạp GDT **thật** (7 entry) của hart `hart` + descriptor TSS trỏ `tss_base`, rồi `ltr` selector
+/// TSS.
 ///
 /// Thứ tự là hợp đồng: điền descriptor TSS **trước** `lgdt` (nếu không, `ltr` đọc entry rác), và
 /// `ltr` **sau** `lgdt` (nếu không, `ltr` đọc bảng cũ). `CS`/`DS` đang dùng (`0x08`/`0x10`) trỏ
-/// entry **không đổi** giữa GDT tạm của `_start` và bảng này, nên `lgdt` giữa chừng an toàn.
-pub fn install(tss_base: u64) {
+/// entry **không đổi** giữa GDT tạm của `_start`/trampoline và bảng này, nên `lgdt` giữa chừng an
+/// toàn.
+///
+/// **KT-278**: mỗi hart gọi hàm này với `hart` của **chính nó** và `tss_base = tss::base(hart)` —
+/// descriptor TSS của hart này không bao giờ trỏ TSS của hart khác (trừ đột biến `same-tss`).
+pub fn install(hart: usize, tss_base: u64) {
+    assert!(hart < MAX_HARTS, "hart {hart} ngoài MAX_HARTS");
     let [low, high] = tss_descriptor(tss_base, crate::tss::TSS_LIMIT as u32);
-    GDT[INDEX_TSS].store(low, Ordering::Relaxed);
-    GDT[INDEX_TSS + 1].store(high, Ordering::Relaxed);
-    set_gdtr(base(), GDT_LIMIT);
-    asm::lgdt(GDTR.as_ptr() as u64);
+    GDT[hart][INDEX_TSS].store(low, Ordering::Relaxed);
+    GDT[hart][INDEX_TSS + 1].store(high, Ordering::Relaxed);
+    set_gdtr(hart, base(hart), GDT_LIMIT);
+    asm::lgdt(GDTR[hart].as_ptr() as u64);
     asm::ltr(SELECTOR_TSS);
 }

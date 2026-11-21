@@ -38,18 +38,26 @@
 // ảnh boot nạp. Clippy coi `assert!(HẰNG < HẰNG)` là "constant value"; đó chính là mục đích.
 #![allow(clippy::assertions_on_constants)]
 
+use vifast_plat_x86_64::exc::{
+    name as exc_name, stub_slot, STUB_COUNT, STUB_IPI, STUB_UNKNOWN, VEC_IPI, VEC_SPURIOUS,
+    VEC_SYSCALL, VEC_TIMER, VEC_UNKNOWN, VEC_UNKNOWN_PROBE,
+};
+use vifast_plat_x86_64::gdt::{base as gdt_base, tss_base_of, tss_descriptor, GDT_BYTES};
 use vifast_plat_x86_64::smp::{
-    apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_high, icr_init_low,
-    icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset, trampoline_addr,
-    valid_hart, HartStacks, StackError, AP_TIMER_DIVIDE, AP_TIMER_INITIAL_COUNT, BOOT_CR0,
-    BOOT_CR4, BOOT_EFER, BOOT_ENTRY, BOOT_HART, BOOT_IDT_BASE, BOOT_IDT_LIMIT, BOOT_LAPIC_BASE,
-    BOOT_LAPIC_ID, BOOT_MAGIC, BOOT_PML4, BOOT_STACK_TOP, HART_AREA_BYTES, HART_GUARD_BYTES,
-    HART_STACK_BYTES, HART_STRIDE, ICR_DELIVERY_MODE_MASK, ICR_DELIVERY_MODE_SHIFT,
-    ICR_DELIVERY_PENDING, ICR_DEST_SHIFT, ICR_DM_INIT, ICR_DM_STARTUP, ICR_LEVEL_ASSERT,
-    ICR_LEVEL_TRIGGER, ICR_VECTOR_MASK, INIT_WAIT_US, LAPIC_ICR_HIGH, LAPIC_ICR_LOW, MAX_HARTS,
-    ONLINE_TIMEOUT_US, SIPI_MAX_ADDR, SIPI_WAIT_US, SMP_EXPECT_MASK, SMP_HARTS, TRAMPOLINE_BASE,
-    TRAMPOLINE_BOOT_OFFSET, TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET, TRAMPOLINE_GDT_OFFSET,
-    TRAMPOLINE_MAGIC,
+    apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_fixed_low, icr_high,
+    icr_init_low, icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset,
+    trampoline_addr, valid_hart, HartStacks, StackError, AP_TIMER_DIVIDE, AP_TIMER_INITIAL_COUNT,
+    BOOT_CR0, BOOT_CR4, BOOT_EFER, BOOT_ENTRY, BOOT_HART, BOOT_IDT_BASE, BOOT_IDT_LIMIT,
+    BOOT_LAPIC_BASE, BOOT_LAPIC_ID, BOOT_MAGIC, BOOT_PML4, BOOT_STACK_TOP, HART_AREA_BYTES,
+    HART_GUARD_BYTES, HART_STACK_BYTES, HART_STRIDE, ICR_DELIVERY_MODE_MASK,
+    ICR_DELIVERY_MODE_SHIFT, ICR_DELIVERY_PENDING, ICR_DEST_SHIFT, ICR_DM_FIXED, ICR_DM_INIT,
+    ICR_DM_STARTUP, ICR_LEVEL_ASSERT, ICR_LEVEL_TRIGGER, ICR_VECTOR_MASK, INIT_WAIT_US,
+    IPI_TIMEOUT_US, LAPIC_ICR_HIGH, LAPIC_ICR_LOW, MAX_HARTS, ONLINE_TIMEOUT_US, SIPI_MAX_ADDR,
+    SIPI_WAIT_US, SMP_EXPECT_MASK, SMP_HARTS, TRAMPOLINE_BASE, TRAMPOLINE_BOOT_OFFSET,
+    TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET, TRAMPOLINE_GDT_OFFSET, TRAMPOLINE_MAGIC,
+};
+use vifast_plat_x86_64::tss::{
+    base as tss_base, check_distinct as tss_check_distinct, TssError, TSS_LIMIT,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -372,8 +380,111 @@ fn smp_timing_constants_are_spec_values() {
 
 #[test]
 fn smp_hart_count_matches_the_runner() {
-    // Runner `run-x86_64.sh` chạy `-smp 2`; ảnh đánh thức **một** hart phụ (hart 1).
-    assert_eq!(SMP_HARTS, 2);
-    assert_eq!(SMP_EXPECT_MASK, 0b11);
+    // **KT-278**: runner `run-x86_64.sh` chạy `-smp 4`; ảnh đánh thức **ba** hart phụ (1, 2, 3).
+    assert_eq!(SMP_HARTS, 4);
+    assert_eq!(SMP_EXPECT_MASK, 0xF);
     assert!(SMP_HARTS <= MAX_HARTS);
+    // Mặt nạ kỳ vọng phủ **đúng** `SMP_HARTS` bit thấp — không thừa, không thiếu.
+    assert_eq!(SMP_EXPECT_MASK.count_ones() as usize, SMP_HARTS);
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-278 — IPI: vector riêng + ICR fixed-delivery
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn ipi_vector_is_private_and_has_its_own_stub() {
+    // Vector IPI là **0x30** — nằm ngoài dải exception 0..31 và khác timer (32), syscall (0x80),
+    // spurious (255), sentinel `isr_unknown` (254).
+    assert_eq!(VEC_IPI, 0x30);
+    assert!(VEC_IPI > 31);
+    assert_ne!(VEC_IPI, VEC_TIMER);
+    assert_ne!(VEC_IPI, VEC_SYSCALL);
+    assert_ne!(VEC_IPI, VEC_SPURIOUS);
+    assert_ne!(VEC_IPI as u64, VEC_UNKNOWN);
+    // Có stub **riêng** (không rơi về `isr_unknown`), và slot nằm trong `STUB_COUNT`.
+    assert_eq!(stub_slot(VEC_IPI), STUB_IPI);
+    assert!(STUB_IPI < STUB_COUNT);
+    assert_eq!(STUB_COUNT, 19);
+    // Tên trong log.
+    assert_eq!(exc_name(VEC_IPI as u64), "ipi");
+    // Vector của probe `int` (ca `isr_unknown`) **phải khác** vector IPI — nếu trùng, TAP 7 sẽ
+    // chạy vào handler IPI thay vì `isr_unknown` và mất bằng chứng "vector lạ vẫn thấy được".
+    assert_ne!(VEC_UNKNOWN_PROBE, VEC_IPI);
+    assert_eq!(stub_slot(VEC_UNKNOWN_PROBE), STUB_UNKNOWN);
+    assert_eq!(exc_name(VEC_UNKNOWN_PROBE as u64), "other");
+}
+
+#[test]
+fn icr_fixed_delivery_encoding_is_sdm_literal() {
+    // SDM Vol 3A Hình 10-27: vector bit 0..7, delivery mode bit 8..10, level bit 14, trigger bit 15.
+    // Fixed = `000`, level = **assert** (1), trigger = **edge** (0) ⇒ `0x4000 | vector`.
+    assert_eq!(icr_fixed_low(VEC_IPI), 0x4030);
+    assert_eq!(icr_fixed_low(0x30) & ICR_VECTOR_MASK, 0x30);
+    assert_eq!(
+        (icr_fixed_low(0x30) & ICR_DELIVERY_MODE_MASK) >> ICR_DELIVERY_MODE_SHIFT,
+        ICR_DM_FIXED
+    );
+    assert_eq!(ICR_DM_FIXED, 0);
+    assert_ne!(icr_fixed_low(0x30) & ICR_LEVEL_ASSERT, 0);
+    assert_eq!(icr_fixed_low(0x30) & ICR_LEVEL_TRIGGER, 0);
+    // Không phải INIT/SIPI: hai lệnh kia có delivery mode khác.
+    assert_ne!(icr_fixed_low(0x30), icr_init_low());
+    assert_ne!(icr_fixed_low(0x30), icr_sipi_low(0x08));
+    // Đích nằm ở thanh ghi **cao** (bit 24..31) — gửi tới hart 1 ⇒ `0x0100_0000`.
+    assert_eq!(icr_high(1), 0x0100_0000);
+    assert_eq!(icr_high(3), 0x0300_0000);
+    // Lệnh fixed-delivery **không** đặt bit delivery-pending khi mới dựng.
+    assert!(!icr_delivery_pending(icr_fixed_low(VEC_IPI)));
+}
+
+#[test]
+fn ipi_timeout_is_bounded() {
+    // Trần chờ IPI là **ngân sách của ảnh** (100 ms), đo bằng PIT — không phải số vòng, và phải
+    // **hữu hạn** để đột biến (ii) "IPI tới hart không tồn tại" **không treo**.
+    assert_eq!(IPI_TIMEOUT_US, 100_000);
+    assert!(IPI_TIMEOUT_US > 0);
+    assert!(IPI_TIMEOUT_US < ONLINE_TIMEOUT_US);
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-278 — TSS per-hart: địa chỉ rời nhau
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn tss_per_hart_addresses_are_distinct() {
+    // Mỗi hart một vùng TSS 104 byte; 4 hart của ảnh ⇒ bốn địa chỉ **rời nhau**.
+    let bases = [tss_base(0), tss_base(1), tss_base(2), tss_base(3)];
+    assert_eq!(tss_check_distinct(&bases), Ok(()));
+    // Đột biến (iii): trùng địa chỉ ⇒ `Duplicate`; chồng lấn ⇒ `Overlap`.
+    assert_eq!(
+        tss_check_distinct(&[bases[0], bases[0]]),
+        Err(TssError::Duplicate { a: 0, b: 1 })
+    );
+    assert_eq!(
+        tss_check_distinct(&[bases[0], bases[0] + 4]),
+        Err(TssError::Overlap { a: 0, b: 1 })
+    );
+    // Một hart: luôn hợp lệ (không có cặp nào để so).
+    assert_eq!(tss_check_distinct(&bases[..1]), Ok(()));
+    // Rỗng: hợp lệ (không có gì để kiểm) — caller phải tự đòi `SMP_HARTS` phần tử.
+    assert_eq!(tss_check_distinct(&[]), Ok(()));
+}
+
+#[test]
+fn gdt_per_hart_is_a_separate_table() {
+    // Mỗi hart một bảng GDT riêng (7 entry) để descriptor TSS trỏ **TSS của chính nó**.
+    assert_ne!(gdt_base(0), gdt_base(1));
+    assert_ne!(gdt_base(1), gdt_base(2));
+    assert_eq!(gdt_base(1) - gdt_base(0), GDT_BYTES as u64);
+    // Giải mã base từ descriptor TSS 16 byte — khứ hồi với `tss_descriptor`.
+    let want = 0x0000_0000_1234_5000u64;
+    let [low, high] = tss_descriptor(want, TSS_LIMIT as u32);
+    assert_eq!(tss_base_of(low, high), want);
+    // Base > 4 GiB vẫn giải mã đúng (trường `base[63:32]` ở `u64` thứ hai).
+    let high_base = 0x0000_0001_2345_6000u64;
+    let [low2, high2] = tss_descriptor(high_base, TSS_LIMIT as u32);
+    assert_eq!(tss_base_of(low2, high2), high_base);
+    // Limit vẫn là byte cuối (103) — không bị base làm nhiễu.
+    assert_eq!(TSS_LIMIT, 103);
 }

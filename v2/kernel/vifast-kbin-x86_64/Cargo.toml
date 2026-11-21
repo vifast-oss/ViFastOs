@@ -33,6 +33,17 @@ no-sipi = []
 # chạy vào rác, không online; BSP hết trần 2 s ⇒ TAP 18 ĐỎ, không marker (QEMU không tự thoát —
 # treo có kiểm soát, runner timeout giết). Chỉ dùng cho đột biến.
 bad-trampoline = []
+# **KT-278** — đột biến (i) của IPI: **không** gửi IPI. Hart 1 không nhận ⇒ `# smp: ipi recv=`
+# không xuất hiện, `SMP_IPI_COUNT = 0` ⇒ TAP 20 ĐỎ (không marker). Chỉ dùng cho đột biến.
+no-ipi = []
+# **KT-278** — đột biến (ii) của IPI: gửi tới `APIC ID = 7` — hart **không tồn tại** với `-smp 4`.
+# Không ai nhận ⇒ BSP hết trần 100 ms rồi **đi tiếp** (không treo) ⇒ TAP 20 ĐỎ. Chỉ dùng cho
+# đột biến.
+bad-ipi-dest = []
+# **KT-278** — đột biến (iii) của TSS per-hart: descriptor TSS của hart phụ trỏ **TSS của hart 0**
+# (trùng địa chỉ). Không fault, nhưng phép **kiểm địa chỉ** của BSP thấy trùng ⇒ TAP 19 ĐỎ.
+# Chỉ dùng cho đột biến.
+same-tss = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # KT-257 (K5' bước 1) + **KT-261** (K5' bước 2: GDT/TSS/IDT + handler exception) + **KT-266**
 # (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) + **KT-274**
-# (K5' bước 5: PCI ECAM + virtio-net + ARP) + **KT-276** (K5' bước 6: SMP 2 hart) — runner boot
-# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout
-# + dọn con).
+# (K5' bước 5: PCI ECAM + virtio-net + ARP) + **KT-276** (K5' bước 6: SMP 2 hart) + **KT-278**
+# (K5' bước 7: SMP **4 hart** + **IPI** + **TSS per-hart**) — runner boot **x86_64**. Khuôn:
+# `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
 # `virtio-net-pci` trên `-netdev user` (slirp). `-M pc` (i440fx) **không** có ECAM ⇒ ảnh rơi xuống
@@ -16,7 +16,7 @@
 #      `0x0010_0000`; **multiboot2 header** 24 byte ở đầu `.text` đúng magic/arch/len/checksum/end
 #      tag; **PVH note** (`.note.Xen`, type 18) trỏ đúng `_start` — đây là đường QEMU 11.1.3
 #      thật sự dùng cho `-kernel` (xem đầu `linker.ld`);
-#   3. **boot** QEMU `-M q35 -m 128M -nographic -kernel <ELF> -no-reboot -smp 2` +
+#   3. **boot** QEMU `-M q35 -m 128M -nographic -kernel <ELF> -no-reboot -smp 4` +
 #      `virtio-net-pci` trên `-netdev user` qua `qemu_guard.sh`, kiểm
 #      **TAP** (`TAP version 13`, `1..N`, đủ N dòng `ok`, 0 dòng `not ok`), marker **đúng một
 #      lần**, `lma=1` (long mode thật), dòng `halt`, không `PANIC`, **và** các dòng `# exc:` của
@@ -30,30 +30,36 @@
 #      (ARP reply **thật** của slirp);
 #      KT-276: `# smp: hart=1 online`, `# smp: hart=0 alive`, `# smp: hart=1 alive` (hart phụ vào
 #      long mode qua trampoline real mode + LAPIC riêng, cả hai hart báo alive);
+#      **KT-278**: `# smp: hart=1|2|3 online` (ba hart phụ), `# smp: hart=0|1|2|3 alive`,
+#      `# smp: tss bases=[…] … distinct=Ok(()) … tr=0x28 type=0x8b ok=1` (TSS **per-hart**, bốn
+#      địa chỉ rời nhau), `# smp: ipi recv=1 intid=0x30` (IPI fixed-delivery hart 0 → hart 1),
+#      `# smp: online mask=0xf alive=0xf … harts=4` (bốn hart cùng online **và** cùng báo alive);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
 #      (h) **mất dòng `# timer:`** (KT-266); (i) **mất dòng `# apic:`** (KT-266);
 #      (j) **mất dòng `# umode:`** (KT-270); (k) **không có mạng** — boot **thật** không có
 #      `-device virtio-net-pci` ⇒ ảnh in `# net: no device` và TAP 16 ĐỎ (KT-274);
-#      (l) **mất dòng `# smp:`** (KT-276) — ảnh không đánh thức được hart phụ.
-#      Cả **mười hai** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (l) **mất dòng `# smp:`** (KT-276) — ảnh không đánh thức được hart phụ;
+#      (m) **mất dòng `# smp: ipi recv=`** (KT-278) — IPI không tới hart đích.
+#      Cả **mười ba** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 19 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
-#                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-276: 2 ca SMP)
+#   EXPECT_TESTS    số ca TAP (mặc định 21 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
 #
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
-# runner này là **bước 1 + bước 2 + bước 3 + bước 4** (một ảnh, một CPU, GDT/TSS/IDT + 5
-# exception, LAPIC + IOAPIC + timer, U-mode ring 3 + `int 0x80`, marker + halt sạch).
-# **Không** IPC từ ring 3/PCI/SMP/`syscall`/`sysret`.
+# runner này là **bước 1..7** (một ảnh, GDT/TSS/IDT + 5 exception, LAPIC + IOAPIC + timer, U-mode
+# ring 3 + `int 0x80`, PCI/virtio-net/ARP, **4 hart + IPI + TSS per-hart**, marker + halt sạch).
+# **Không** IPC từ ring 3, **không** scheduler/preemption, **không** `-cpu max`,
+# **không** `syscall`/`sysret`, **không** soak 600 boot.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,16 +73,17 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-19}"
+EXPECT_TESTS="${EXPECT_TESTS:-21}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
 # **KT-274**: `-M q35` (ECAM qua `MCFG`) + một `virtio-net-pci` trên slirp. Một chỗ quyết định:
 # mọi lần boot của runner dùng **cùng** máy + **cùng** thiết bị, trừ ca âm (k) cố ý bỏ thiết bị.
-# **KT-276**: `-smp 2` — BSP (hart 0) + **một** hart phụ (hart 1). Ảnh đánh thức hart 1 bằng
-# `INIT`+`SIPI`; runner không có ca âm "1 hart" vì ảnh **đòi** hart 1 online (TAP 18) — thiếu
-# `-smp 2` thì QEMU chỉ có hart 0 và TAP 18 ĐỎ (đó là hành vi đúng, không phải ca âm riêng).
-QEMU_MACHINE=(-M q35 -m 128M -nographic -no-reboot -smp 2)
+# **KT-278**: `-smp 4` — BSP (hart 0) + **ba** hart phụ (hart 1..3). Ảnh đánh thức từng hart phụ
+# bằng `INIT`+`SIPI` **tuần tự**; runner không có ca âm "1 hart" vì ảnh **đòi** mask `0xf` online
+# (TAP 18) — thiếu `-smp 4` thì QEMU chỉ có hart 0 và TAP 18 ĐỎ (đó là hành vi đúng, không phải
+# ca âm riêng).
+QEMU_MACHINE=(-M q35 -m 128M -nographic -no-reboot -smp 4)
 QEMU_NET=(-netdev user,id=n0 -device virtio-net-pci,netdev=n0)
 # Ngân sách riêng cho boot **không mạng**: ảnh dừng ở TAP 16 đỏ (`cli; hlt`) nên QEMU **không**
 # tự thoát; 10 s là dư cho phần in (đo được ~2 s) mà không phí 20 s như boot thường.
@@ -396,20 +403,35 @@ check_log() {
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
     check_umode "$log" || bad=1
-    # ---- KT-276: SMP 2 hart — **ba** dòng bằng chứng, mỗi dòng một lớp lỗi khác nhau.
-    # `hart=1 online`: hart phụ vào được long mode (trampoline real mode chạy thật).
-    grep -qxF '# smp: hart=1 online' "$log" || {
-        echo "# thiếu '# smp: hart=1 online' (hart phụ chưa vào long mode)"
+    # ---- KT-276 + **KT-278**: SMP **4 hart** — mỗi dòng một lớp lỗi khác nhau.
+    # `hart=N online` cho **cả ba** hart phụ: trampoline real mode chạy thật trên từng hart.
+    for h in 1 2 3; do
+        grep -qxF "# smp: hart=$h online" "$log" || {
+            echo "# thiếu '# smp: hart=$h online' (hart phụ $h chưa vào long mode)"
+            bad=1
+        }
+    done
+    # `hart=N alive` cho **cả bốn** hart: LAPIC riêng của từng hart chạy (timer đánh thức `hlt`).
+    for h in 0 1 2 3; do
+        grep -qxF "# smp: hart=$h alive" "$log" || {
+            echo "# thiếu '# smp: hart=$h alive' (hart $h không báo alive)"
+            bad=1
+        }
+    done
+    # **KT-278** — TSS **per-hart**: bốn địa chỉ TSS rời nhau (`distinct=Ok(())`), `tr=0x28`,
+    # descriptor **busy** (`type=0x8b` — CPU đổi `0x89`→`0x8b` khi `ltr`), `ok=1`.
+    grep -qE '^# smp: tss bases=\[0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+\] ist1=\[0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+\] distinct=Ok\(\(\)\) ist1_distinct=Ok\(\(\)\) tr=0x28 type=0x8b ok=1$' "$log" || {
+        echo "# thiếu '# smp: tss bases=[…] … distinct=Ok(()) … tr=0x28 type=0x8b ok=1' (TSS per-hart)"
         bad=1
     }
-    # `hart=1 alive`: LAPIC riêng của hart phụ chạy (timer đánh thức vòng `hlt`).
-    grep -qxF '# smp: hart=1 alive' "$log" || {
-        echo "# thiếu '# smp: hart=1 alive' (hart phụ không báo alive)"
+    # **KT-278** — IPI: hart 1 **nhận** đúng **một** IPI vector `0x30` (đếm trong handler ngắt).
+    grep -qxF '# smp: ipi recv=1 intid=0x30' "$log" || {
+        echo "# thiếu '# smp: ipi recv=1 intid=0x30' (IPI không tới hart 1)"
         bad=1
     }
-    # `hart=0 alive`: BSP cũng báo alive — chứng minh **cả hai** hart cùng chạy.
-    grep -qxF '# smp: hart=0 alive' "$log" || {
-        echo "# thiếu '# smp: hart=0 alive' (BSP không báo alive)"
+    # **KT-278** — bốn hart **cùng** online **và** cùng báo alive trên **cùng** mặt nạ `0xf`.
+    grep -qE '^# smp: online mask=0xf alive=0xf expect=0xf harts=4 ' "$log" || {
+        echo "# thiếu '# smp: online mask=0xf alive=0xf … harts=4' (bốn hart chưa cùng online+alive)"
         bad=1
     }
     # ---- marker + long mode + halt
@@ -596,6 +618,19 @@ selftest_negative() {
         echo "ok $n - ca âm (l): mất dòng '# smp:' ⇒ ĐỎ ($(head -1 "$tmp/l.out"))"
     fi
 
+    # (m) **KT-278** — mất dòng `# smp: ipi recv=` (IPI không tới hart đích). Đây là ca âm trực
+    #     tiếp của tiêu chí "in `# smp: ipi recv=1 intid=0x30`": nếu runner vẫn XANH khi log không
+    #     có dòng ấy thì phần IPI của bộ kiểm là dấu cao su.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -v '^# smp: ipi recv=' "$good" >"$tmp/m.log" 2>/dev/null || true
+    if check_log "$tmp/m.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/m.out" 2>&1; then
+        echo "not ok $n - ca âm (m): mất dòng '# smp: ipi recv=' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (m): mất dòng '# smp: ipi recv=' ⇒ ĐỎ ($(head -1 "$tmp/m.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -695,7 +730,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 12))
+    total=$((total + 13))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"
