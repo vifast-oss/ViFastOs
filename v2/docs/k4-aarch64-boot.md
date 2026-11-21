@@ -400,36 +400,46 @@ PA `0x40_1000_0000` có bit 38 = 1 nhưng bit 63..39 = 0 ⇒ **không canonical*
 `0x7000_0000` EL0) và đọc `VA = ECAM_VA_BASE + (PA - ECAM_BASE)`. Cửa sổ BAR (`0x1000_0000`,
 2 MiB) thì identity-map được — cùng khuôn riscv64.
 
-**Cửa sổ ECAM map 16 MiB = 16 bus**, không phải 256 MiB: ảnh chỉ map trang 4 KiB (không dùng
-block descriptor) nên mỗi 2 MiB cần một bảng mức 3 ⇒ 256 MiB cần **129 frame**, vượt arena boot
-44 frame và trần `.data+.bss` 256 KiB (I7). QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo
-`info pci`: host bridge dev 0, virtio-blk dev 1 khi `-nic none`), nên 16 bus là 16× dải cần;
-`SCAN_BUSES` **suy từ** số byte đã map, không viết tay.
+**Cửa sổ ECAM map đủ 256 MiB = 256 bus** bằng **block descriptor 2 MiB ở mức 2** (KT-302):
+256 MiB = **128 block** nằm trọn **một** bảng mức 2 (512 entry) ⇒ chỉ tốn **2 frame** (bảng mức 1
++ bảng mức 2). Map bằng trang 4 KiB sẽ cần **129 frame** (mỗi 2 MiB một bảng mức 3 + một bảng
+mức 2) — vượt arena boot 44 frame và trần `.data+.bss` 256 KiB (I7), nên **không** phải lựa chọn
+phong cách. `SCAN_BUSES` vẫn **suy từ** số byte đã map (`ECAM_MAP_BYTES >> 20`), không viết tay.
+QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo `info pci`: host bridge dev 0, virtio-blk dev 2
+khi có net/gpu/input), nhưng dải quét **đủ 256 bus** là yêu cầu của KT-302; bus ≥ 16 trước đây
+**không** quét được vì đọc ra ngoài cửa sổ đã map ⇒ data abort.
+
+`PageTable::map_block` (trong `vifast-pte`) là đường **duy nhất** tạo block: nó kiểm cấp/căn
+lề/canonical/dải PA/quyền **trước** khi walk, gọi `PageTableFormat::encode_block` (mặc định
+`None` ⇒ format không hỗ trợ block trả `BlockUnsupported`), rồi ghi descriptor. `translate`/
+`unmap` **giữ nguyên** ngữ nghĩa cũ: gặp block ⇒ `BlockUnsupported` (block là mapping một chiều
+cho MMIO). `main.rs` **walk bảng trang thật** tại `ECAM_VA_BASE` và đòi
+`WalkOutcome::Block { pa: ECAM_BASE, level: 2 }` — sai thì PANIC, không in số rồi tự khen.
 
 ### 10.3 Đo được (log `boot-1.log` của runner)
 
 ```text
-# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 frames_used=37
-# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=2 buses=16
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_blocks=128 ecam_block_level=2 ecam_block_pa=0x4010000000 ecam_block_ok=1 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc08005b000 input_dma_walk=0x400db000 frames_used=33
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=5 buses=256
 ok 19 - pci: ecam
-# pci: virtio-blk found bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
+# pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
 ok 20 - pci: virtio-blk found
-# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400c8000 desc=0x400c8000 avail=0x400c8080 used=0x400c8098
+# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400dc000 desc=0x400dc000 avail=0x400dc080 used=0x400dc098
 ok 21 - blk: sector0
 ```
 
 | Phép đo | Kết quả |
 |---|---|
-| ECAM | PA `0x40_1000_0000` → VA `0x8000_0000`, **4096** trang (16 MiB) |
+| ECAM | PA `0x40_1000_0000` → VA `0x8000_0000`, **128 block 2 MiB** (256 MiB), block ở **mức 2** |
 | host bridge | `1b36:0008`, class **`0x060000`**, rev `0x00`; slot trống trả **`0xffff`** |
-| quét | **16** bus × 32 device × 8 function; **2** function có mặt (host bridge + virtio-blk) |
+| quét | **256** bus × 32 device × 8 function; **5** function có mặt (host bridge + net + blk + gpu + input) |
 | virtio-blk | `1af4:1001` (transitional), BAR **4** `mem64` cỡ `0x4000`, gán `0x10000000`, **đọc lại khớp** |
 | `command` | `0x0006` = `MEMORY | BUS_MASTER` (đọc lại sau khi bật) |
 | capability | đủ bốn (`common`/`notify`/`device`/`isr`) cùng BAR 4, `offset+length ≤ bar_size` |
 | sector 0 | hex `5649464153544f532d4b543237332d53` = `VIFASTOS-KT273-S`, `magic=1`, `capacity=8` |
 | DMA | trang 4 KiB trong `.bss`; descriptor mang **PA** (`high_to_pa`), không phải alias nửa cao |
-| frame | `frames_used=37` / arena **44** (KT-273 nâng 32 → 44; 7 dự phòng) |
-| `.data+.bss` | **221.392 B** / trần **262.144 B** (84,5 %) |
+| frame | `frames_used=33` / arena **44** (KT-302: block 2 MiB tốn 2 frame thay 10; trước KT-302 là 41) |
+| `.data+.bss` | **233.704 B** / trần **262.144 B** (89,1 %) — **không đổi** so với trước KT-302 |
 
 **Ca âm "không có đĩa"** (runner, boot lần hai **không** `-drive`): ảnh in `# pci: no virtio-blk
 stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **không** marker ⇒
@@ -455,8 +465,8 @@ stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **
 
 1. **virtio-blk + virtio-net + virtio-gpu** đã có; **chưa** virtio-input trên aarch64, chưa
    MSI-X (poll `used`), chưa hotplug. TCP/DNS trên aarch64: xem §11.5. GPU: xem §13.
-2. **ECAM 16/256 bus** — lý do frame/trần ở §10.2; bus ≥ 16 **không** quét được (đọc ra ngoài
-   cửa sổ đã map ⇒ data abort), không phải "bỏ qua cho nhanh".
+2. **ECAM 256/256 bus** — **DONE** (KT-302): block 2 MiB ở mức 2, 128 block trong một bảng mức
+   2. **Chưa** làm: ECAM > 256 bus (không có trong QEMU `virt`), MSI-X, hotplug.
 3. **Cache maintenance**: **DONE** (KT-277, §11) — `dc civac` từng dòng + `dsb ish`/`dsb sy`
    trước notify, `dc ivac` sau khi thiết bị ghi; virtio-gpu dùng **cùng** chuỗi cho trang DMA
    **và** cho framebuffer (§13.3, `fb_clean_lines`). **Giới hạn**: QEMU TCG **không** mô hình hoá

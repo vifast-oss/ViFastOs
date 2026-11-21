@@ -18,16 +18,18 @@
 //! Cửa sổ BAR thì gán trong MMIO 32-bit (`0x1000_0000`, dưới 2^38) nên identity-map được, cùng
 //! khuôn riscv64.
 //!
-//! # Cửa sổ ECAM **map bao nhiêu** — và vì sao không phải 256 MiB
+//! # Cửa sổ ECAM map **đủ 256 bus** bằng block descriptor 2 MiB (KT-302)
 //!
-//! ECAM phủ **256 bus** (1 MiB/bus), nhưng mỗi 2 MiB cần **một** bảng trang mức 3 (ảnh chỉ map
-//! trang 4 KiB, không dùng block descriptor): 256 MiB ⇒ **129 frame** — vượt arena boot
-//! ([`crate::bootmem::BOOT_ARENA_FRAMES`]) và trần `.data+.bss` 256 KiB (bất biến I7). Driver
-//! map **16 MiB = 16 bus** ([`ECAM_MAP_BYTES`]) và [`SCAN_BUSES`] **suy từ** số byte đã map
-//! (không viết tay 256). QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo bằng `info pci` của
-//! monitor: host bridge dev 0, virtio-net dev 1, virtio-blk dev 2), nên 16 bus là **16×** dải
-//! cần. Bus ≥ 16 **không** quét được vì đọc ra ngoài cửa sổ đã map ⇒ data abort, không phải
-//! "bỏ qua cho nhanh".
+//! ECAM phủ **256 bus** (1 MiB/bus) = **256 MiB**. Map bằng trang 4 KiB cần **129** bảng trang
+//! (mỗi 2 MiB một bảng mức 3 + một bảng mức 2) — vượt arena boot
+//! ([`crate::bootmem::BOOT_ARENA_FRAMES`] = 44) và trần `.data+.bss` 256 KiB (bất biến I7).
+//! KT-302 map bằng **block descriptor 2 MiB ở mức 2**: 256 MiB = **128 block** nằm trọn **một**
+//! bảng mức 2 (512 entry) ⇒ chỉ tốn **2 frame** (bảng mức 1 + bảng mức 2). [`SCAN_BUSES`] vẫn
+//! **suy từ** số byte đã map (`ECAM_MAP_BYTES >> 20`), không viết tay 256.
+//!
+//! QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo bằng `info pci` của monitor: host bridge
+//! dev 0, virtio-net dev 1, virtio-blk dev 2), nhưng dải quét **đủ 256 bus** là yêu cầu của
+//! KT-302: bus ≥ 16 trước đây **không** quét được vì đọc ra ngoài cửa sổ đã map ⇒ data abort.
 //!
 //! # Không có firmware enumerate ⇒ driver tự gán BAR
 //!
@@ -64,11 +66,17 @@ pub const ECAM_BASE: u64 = PCI_ECAM.base;
 /// ECAM không canonical 39-bit **và** `PHYSMAP_BASE + PA` tràn `u64`.
 pub const ECAM_VA_BASE: u64 = 0x8000_0000;
 
-/// Cỡ ECAM driver **map** (16 MiB = 16 bus). Xem tài liệu đầu tệp: 256 MiB cần 129 frame.
-pub const ECAM_MAP_BYTES: u64 = 16 << 20;
+/// Cỡ ECAM driver **map** — **256 MiB = 256 bus**, map bằng block 2 MiB (KT-302).
+///
+/// 256 MiB bằng trang 4 KiB cần 129 frame (vượt arena 44 frame + trần I7); bằng block 2 MiB chỉ
+/// tốn 2 frame. Xem tài liệu đầu tệp.
+pub const ECAM_MAP_BYTES: u64 = 256 << 20;
 
 /// Số bus quét — **suy từ** cửa sổ ECAM đã map, không viết tay.
-pub const SCAN_BUSES: u8 = (ECAM_MAP_BYTES >> 20) as u8;
+///
+/// `u16` vì 256 **không** vừa `u8`; số bus PCI vẫn là 8 bit (0..=255) nên [`Ecam::bus`] giữ
+/// `u8` và vòng lặp ép `bus as u8` sau khi đã chặn biên bằng `SCAN_BUSES`.
+pub const SCAN_BUSES: u16 = (ECAM_MAP_BYTES >> 20) as u16;
 
 /// Số device trên một bus (PCI: 0..31).
 pub const SCAN_DEVICES: u8 = 32;
@@ -248,7 +256,7 @@ pub struct EcamProbe {
     /// Số function **có mặt** đã thấy trong toàn dải quét.
     pub functions_seen: u32,
     /// Số bus đã quét (= [`SCAN_BUSES`]).
-    pub buses_scanned: u8,
+    pub buses_scanned: u16,
 }
 
 impl EcamProbe {
@@ -287,6 +295,8 @@ pub fn probe_ecam() -> EcamProbe {
     let empty_vendor = empty.read16(CFG_VENDOR_ID);
     let mut functions_seen = 0u32;
     for bus in 0..SCAN_BUSES {
+        // `SCAN_BUSES = 256` ⇒ bus 0..=255 vừa `u8`; ép sau khi biên đã do vòng lặp chặn.
+        let bus = bus as u8;
         for dev in 0..SCAN_DEVICES {
             for func in 0..SCAN_FUNCTIONS {
                 let ecam = Ecam { bus, dev, func };
@@ -378,6 +388,7 @@ fn collect_other_bars(target: Ecam) -> ([(u64, u64); MAX_OTHER_BARS], usize) {
     let mut bars = [(0u64, 0u64); MAX_OTHER_BARS];
     let mut count = 0usize;
     for bus in 0..SCAN_BUSES {
+        let bus = bus as u8;
         for dev in 0..SCAN_DEVICES {
             for func in 0..SCAN_FUNCTIONS {
                 let other = Ecam { bus, dev, func };
@@ -436,6 +447,7 @@ pub fn init_for(kind: VirtioKind) -> Result<PciReport, PciFail> {
     let mut functions_seen = 0u32;
     let mut found: Option<(u8, u8, u8)> = None;
     'scan: for bus in 0..SCAN_BUSES {
+        let bus = bus as u8;
         for dev in 0..SCAN_DEVICES {
             for func in 0..SCAN_FUNCTIONS {
                 let ecam = Ecam { bus, dev, func };

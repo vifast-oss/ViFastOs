@@ -158,17 +158,10 @@ impl Aarch64 {
         DESC_VALID | DESC_TABLE_OR_PAGE | (pa & DESC_ADDR_MASK)
     }
 
-    /// Descriptor lá 4 KiB.
-    ///
-    /// Bất biến **bắt buộc** (test `descriptor_bits_aarch64` chốt từng bit):
-    /// - `AF = 1` — thiếu thì mọi truy cập fault;
-    /// - `AP[2] = !write`, `AP[1] = user`;
-    /// - `nG = user` — leaf user phải non-global;
-    /// - `UXN = !(exec && user)`, `PXN = !(exec && !user)` — kernel exec chỉ ở EL1, user exec chỉ
-    ///   ở EL0, không exec thì cấm cả hai;
-    /// - `AttrIndx = attr`, `SH = share`.
-    pub const fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64 {
-        let mut d = DESC_VALID | DESC_TABLE_OR_PAGE | DESC_AF;
+    /// Bit **thuộc tính chung** của leaf và block: `AF`, `AttrIndx`, `SH`, `AP`, `nG`,
+    /// `PXN`/`UXN`. Tách ra để leaf và block **không** có hai bản sao của cùng bộ bit (KT-302).
+    const fn encode_attrs(perms: Perms, attr: MemAttr, share: Shareability) -> u64 {
+        let mut d = DESC_AF;
         d |= attr.index() << DESC_ATTR_SHIFT;
         d |= share.bits() << DESC_SH_SHIFT;
         if !perms.write {
@@ -183,7 +176,44 @@ impl Aarch64 {
         if !(perms.exec && !perms.user) {
             d |= DESC_PXN;
         }
-        d | (pa & DESC_ADDR_MASK)
+        d
+    }
+
+    /// Descriptor lá 4 KiB.
+    ///
+    /// Bất biến **bắt buộc** (test `descriptor_bits_aarch64` chốt từng bit):
+    /// - `AF = 1` — thiếu thì mọi truy cập fault;
+    /// - `AP[2] = !write`, `AP[1] = user`;
+    /// - `nG = user` — leaf user phải non-global;
+    /// - `UXN = !(exec && user)`, `PXN = !(exec && !user)` — kernel exec chỉ ở EL1, user exec chỉ
+    ///   ở EL0, không exec thì cấm cả hai;
+    /// - `AttrIndx = attr`, `SH = share`.
+    pub const fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64 {
+        DESC_VALID
+            | DESC_TABLE_OR_PAGE
+            | Aarch64::encode_attrs(perms, attr, share)
+            | (pa & DESC_ADDR_MASK)
+    }
+
+    /// Descriptor **block** (superpage) ở `level` — `None` nếu mức ấy **không** có block.
+    ///
+    /// Với granule 4 KiB, AArch64 chỉ có block ở **mức 1** (1 GiB) và **mức 2** (2 MiB); mức 0
+    /// (gốc) và mức 3 (lá) không có block. Bit 1 = 0 phân biệt block với table/page; các bit
+    /// quyền/thuộc tính dùng **chung** [`Aarch64::encode_attrs`] với leaf.
+    ///
+    /// **KT-302**: ECAM PCIe 256 MiB map bằng 128 block 2 MiB ở mức 2 ⇒ một bảng mức 2 thay cho
+    /// 128 bảng mức 3 (xem `PageTable::map_block`).
+    pub const fn encode_block(
+        level: usize,
+        pa: u64,
+        perms: Perms,
+        attr: MemAttr,
+        share: Shareability,
+    ) -> Option<u64> {
+        if level != 1 && level != 2 {
+            return None;
+        }
+        Some(DESC_VALID | Aarch64::encode_attrs(perms, attr, share) | (pa & DESC_ADDR_MASK))
     }
 
     /// Bóc descriptor tại `level` (0 = gốc, 3 = lá).
@@ -267,6 +297,16 @@ impl PageTableFormat for Aarch64 {
 
     fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64 {
         Aarch64::encode_leaf(pa, perms, attr, share)
+    }
+
+    fn encode_block(
+        level: usize,
+        pa: u64,
+        perms: Perms,
+        attr: MemAttr,
+        share: Shareability,
+    ) -> Option<u64> {
+        Aarch64::encode_block(level, pa, perms, attr, share)
     }
 
     fn decode(entry: u64, level: usize) -> Descriptor {

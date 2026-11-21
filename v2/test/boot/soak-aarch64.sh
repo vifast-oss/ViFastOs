@@ -286,6 +286,12 @@ check_boot_log() {
         echo "# dòng '# pci: ecam' không có 'empty=0xffff'"
         bad=1
     }
+    # **KT-302**: phải quét **đủ 256 bus** (ECAM 256 MiB map bằng block 2 MiB). `buses=16` là
+    # hành vi cũ của KT-273 ⇒ soak ĐỎ, không được coi là "vẫn chạy".
+    grep -E '^# pci: ecam ' "$log" | grep -Fq "buses=256" || {
+        echo "# dòng '# pci: ecam' không có 'buses=256' (KT-302)"
+        bad=1
+    }
     n="$(grep -cE '^# pci: virtio-blk found ' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# dòng '# pci: virtio-blk found ' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -689,10 +695,10 @@ ok 17 - umode: svc handled
 ok 18 - umode: returned to el0
 # umode: exit code=0 nr=14 imm=0
 # umode: done
-# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 frames_used=37
-# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=2 buses=16
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_blocks=128 ecam_block_level=2 ecam_block_pa=0x4010000000 ecam_block_ok=1 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc08005b000 input_dma_walk=0x400db000 frames_used=33
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=5 buses=256
 ok 19 - pci: ecam
-# pci: virtio-blk found bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
+# pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
 ok 20 - pci: virtio-blk found
 # blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400cc000 desc=0x400cc000 avail=0x400cc080 used=0x400cc098
 ok 21 - blk: sector0

@@ -55,7 +55,12 @@ fn ecam_address_is_bus_dev_func_reg() {
         ECAM_BASE + 2 * 0x10_0000 + 3 * 0x8000 + 4 * 0x1000 + 0x34
     );
     // Bus cuối của cửa sổ quét vẫn nằm trong vùng ECAM khai ở bảng tài nguyên.
-    let last = ecam_pa(SCAN_BUSES - 1, SCAN_DEVICES - 1, SCAN_FUNCTIONS - 1, 0xff);
+    let last = ecam_pa(
+        (SCAN_BUSES - 1) as u8,
+        SCAN_DEVICES - 1,
+        SCAN_FUNCTIONS - 1,
+        0xff,
+    );
     assert!(last < PCI_ECAM.end(), "ECAM cuối 0x{last:x} vượt vùng khai");
 }
 
@@ -73,7 +78,7 @@ fn ecam_va_is_dedicated_window_and_canonical() {
     assert!(Aarch64::is_canonical(va));
     assert!(ECAM_VA_BASE + ECAM_MAP_BYTES <= (1u64 << 38));
     // Bus cuối vẫn canonical và vẫn trong cửa sổ đã map.
-    let last = ecam_va(SCAN_BUSES - 1, 31, 7, 0xff);
+    let last = ecam_va((SCAN_BUSES - 1) as u8, 31, 7, 0xff);
     assert!(Aarch64::is_canonical(last));
     assert!(last < ECAM_VA_BASE + ECAM_MAP_BYTES);
     // Cửa sổ ECAM **không** đè các VA đã dùng của ảnh (probe/VSpace/EL0 đều < 0x8000_0000).
@@ -111,6 +116,26 @@ fn scan_window_is_derived_from_mapped_ecam() {
     // Dải quét đầy đủ của PCI là 32 device × 8 function; driver quét đúng dải ấy.
     assert_eq!(SCAN_DEVICES, 32);
     assert_eq!(SCAN_FUNCTIONS, 8);
+}
+
+#[test]
+fn scan_covers_all_256_buses_with_one_level2_table() {
+    // **KT-302**: ECAM của QEMU `virt` aarch64 phủ **256 bus** (256 MiB). Ảnh map **block
+    // descriptor 2 MiB** ở mức 2 ⇒ 256 MiB = **128 block** nằm trọn trong **một** bảng mức 2
+    // (512 entry), tốn **2 frame** (bảng mức 1 + bảng mức 2) thay vì 129 bảng mức 3.
+    assert_eq!(ECAM_MAP_BYTES, 256 << 20, "ECAM phải map đủ 256 MiB");
+    assert_eq!(SCAN_BUSES as u64, 256, "phải quét đủ 256 bus");
+    // 128 block 2 MiB vừa **một** bảng mức 2 (512 entry) — đây là toàn bộ lý do dùng block.
+    let blocks = ECAM_MAP_BYTES / (2 << 20);
+    assert_eq!(blocks, 128);
+    assert!(blocks <= 512, "128 block phải vừa một bảng mức 2");
+    // Cửa sổ VA vẫn căn 2 MiB và vẫn nằm trọn nửa thấp canonical.
+    assert_eq!(ECAM_VA_BASE % (2 << 20), 0);
+    assert_eq!(ECAM_BASE % (2 << 20), 0);
+    assert!(ECAM_VA_BASE + ECAM_MAP_BYTES <= (1u64 << 38));
+    // Bus cuối (255) vẫn nằm trong vùng ECAM khai ở bảng tài nguyên.
+    let last = ecam_pa(255, SCAN_DEVICES - 1, SCAN_FUNCTIONS - 1, 0xff);
+    assert!(last < PCI_ECAM.end(), "ECAM cuối 0x{last:x} vượt vùng khai");
 }
 
 // ---------------------------------------------------------------- 3. BAR

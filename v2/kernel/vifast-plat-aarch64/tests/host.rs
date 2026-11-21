@@ -701,6 +701,236 @@ fn block_descriptor_rejected() {
     assert_eq!(mmu.translate(VA), Err(MapError::CorruptTable));
 }
 
+// ---------------------------------------------------------------- 4b. block descriptor (KT-302)
+
+/// **KT-302**: map ECAM 256 MiB bằng **block 2 MiB** ở mức 2 — 128 block trong **một** bảng mức 2
+/// ⇒ chỉ tốn **2 frame** (bảng mức 1 + bảng mức 2), không phải 129 bảng mức 3.
+#[test]
+fn map_block_2m_covers_256mib_with_two_frames() {
+    const BLOCK: u64 = 2 << 20;
+    const VA_BASE: u64 = 0x0000_0000_8000_0000; // ECAM_VA_BASE
+    const PA_BASE: u64 = 0x0000_0040_1000_0000; // ECAM_BASE (0x40_1000_0000)
+    let mut mmu = new_mmu();
+    let before = mmu.memory().outstanding();
+    let mut i = 0u64;
+    while i < 128 {
+        mmu.map_block(
+            VA_BASE + i * BLOCK,
+            PA_BASE + i * BLOCK,
+            2,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner,
+        )
+        .expect("map block 2 MiB");
+        i += 1;
+    }
+    // Chỉ **2** frame mới: bảng mức 1 (index 2 của gốc) + bảng mức 2 (128 block).
+    assert_eq!(
+        mmu.memory().outstanding() - before,
+        2,
+        "128 block 2 MiB chỉ tốn 2 frame (không phải 129 bảng mức 3)"
+    );
+    // Walk **thấy** block ở mức 2 với PA đúng — bằng chứng bảng trang thật sự dùng block.
+    assert_eq!(
+        mmu.walk(VA_BASE + 3 * BLOCK).outcome,
+        WalkOutcome::Block {
+            pa: PA_BASE + 3 * BLOCK,
+            level: 2
+        }
+    );
+    // `translate`/`unmap` **giữ nguyên** ngữ nghĩa cũ: gặp block ⇒ `BlockUnsupported`.
+    assert_eq!(mmu.translate(VA_BASE), Err(MapError::BlockUnsupported));
+    assert_eq!(mmu.unmap(VA_BASE), Err(MapError::BlockUnsupported));
+    // Map 4 KiB vào trong block ⇒ `AlreadyMapped` (không ghi đè block).
+    assert_eq!(
+        mmu.map(VA_BASE + 0x1000, PA, Perms::KERNEL_RW),
+        Err(MapError::AlreadyMapped)
+    );
+}
+
+#[test]
+fn map_block_unaligned_rejected_without_allocating() {
+    let mut mmu = new_mmu();
+    let before = mmu.memory().outstanding();
+    // VA lệch 4 KiB (không căn 2 MiB).
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000 + 0x1000,
+            0x40_1000_0000,
+            2,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::Unaligned)
+    );
+    // PA lệch 4 KiB.
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000,
+            0x40_1000_0000 + 0x1000,
+            2,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::Unaligned)
+    );
+    // Block 1 GiB ở mức 1: VA/PA phải căn 1 GiB — PA lệch 2 MiB ⇒ Unaligned.
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000,
+            0x4000_0000 + 0x20_0000,
+            1,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::Unaligned)
+    );
+    assert_eq!(
+        mmu.memory().outstanding(),
+        before,
+        "từ chối trước khi cấp frame"
+    );
+}
+
+#[test]
+fn map_block_level_out_of_range_rejected() {
+    let mut mmu = new_mmu();
+    let before = mmu.memory().outstanding();
+    // Mức lá (3) không có block; mức 0 (gốc) cũng không.
+    for level in [0usize, 3] {
+        assert_eq!(
+            mmu.map_block(
+                0x8000_0000,
+                0x40_1000_0000,
+                level,
+                Perms::KERNEL_RW,
+                MemAttr::Device,
+                Shareability::Inner
+            ),
+            Err(MapError::BlockUnsupported),
+            "mức {level} không có block descriptor"
+        );
+    }
+    // Mức ngoài `0..LEVELS` là lỗi cấp, không phải "format không hỗ trợ".
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000,
+            0x40_1000_0000,
+            4,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::LevelOutOfRange)
+    );
+    assert_eq!(mmu.memory().outstanding(), before);
+}
+
+#[test]
+fn map_block_overlap_rejected() {
+    const BLOCK: u64 = 2 << 20;
+    let mut mmu = new_mmu();
+    // Lá 4 KiB đã có ⇒ block phủ lên phải bị từ chối.
+    mmu.map(0x8000_0000, PA, Perms::KERNEL_RW).expect("leaf");
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000,
+            0x40_1000_0000,
+            2,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::AlreadyMapped)
+    );
+    // Block đã có ⇒ map lại cùng VA cũng bị từ chối.
+    let mut mmu = new_mmu();
+    mmu.map_block(
+        0x8000_0000,
+        0x40_1000_0000,
+        2,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+        Shareability::Inner,
+    )
+    .expect("block");
+    assert_eq!(
+        mmu.map_block(
+            0x8000_0000,
+            0x40_1000_0000 + BLOCK,
+            2,
+            Perms::KERNEL_RW,
+            MemAttr::Device,
+            Shareability::Inner
+        ),
+        Err(MapError::AlreadyMapped)
+    );
+}
+
+#[test]
+fn map_block_unsupported_format_rejected() {
+    // Format **không** cài `encode_block` ⇒ mặc định `None` ⇒ `BlockUnsupported`, **trước** khi
+    // cấp frame nào (kiểm tra năng lực format chạy trước bước walk).
+    struct NoBlock3;
+    impl PageTableFormat for NoBlock3 {
+        const LEVELS: usize = 3;
+        const PAGE_BITS: u32 = 12;
+        const INDEX_BITS: u32 = 9;
+        const VA_BITS: u32 = 30;
+        const PA_BITS: u32 = 32;
+        const PAGE_BYTES: u64 = 4096;
+        const ENTRIES: usize = 512;
+
+        fn index(va: u64, level: usize) -> usize {
+            ((va >> (12 + 9 * (2 - level))) & 0x1FF) as usize
+        }
+        fn is_canonical(va: u64) -> bool {
+            va >> 30 == 0
+        }
+        fn encode_table(pa: u64) -> u64 {
+            (pa & !0xFFF) | 1
+        }
+        fn encode_leaf(pa: u64, _perms: Perms, _attr: MemAttr, _share: Shareability) -> u64 {
+            (pa & !0xFFF) | 1 | 2
+        }
+        fn decode(entry: u64, level: usize) -> Descriptor {
+            if entry & 1 == 0 {
+                return Descriptor::Invalid;
+            }
+            let pa = entry & !0xFFF;
+            if level + 1 == 3 {
+                Descriptor::Leaf {
+                    pa,
+                    perms: Perms::KERNEL_RW,
+                }
+            } else if entry & 2 != 0 {
+                Descriptor::Reserved
+            } else {
+                Descriptor::Table { pa }
+            }
+        }
+    }
+
+    let mut mmu = PageTable::<NoBlock3, _>::new(TestMemory::new(FRAME_BASE)).expect("gốc");
+    let before = mmu.memory().outstanding();
+    assert_eq!(
+        mmu.map_block(
+            0,
+            0,
+            1,
+            Perms::KERNEL_RW,
+            MemAttr::Normal,
+            Shareability::Inner
+        ),
+        Err(MapError::BlockUnsupported)
+    );
+    assert_eq!(mmu.memory().outstanding(), before, "không cấp frame");
+}
+
 /// Format **cố ý hỏng** cho ca âm "bảng ở mức lá" (KT-166): `decode` trả `Table` ở **mọi** mức,
 /// kể cả mức lá. Không format thật nào làm vậy — AArch64 giải mã `0b11` ở mức lá thành `Leaf`
 /// (page descriptor, đúng ARMv8-A), nên nhánh phòng thủ `translate`

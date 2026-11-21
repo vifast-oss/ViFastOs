@@ -25,7 +25,7 @@
 //! shootdown đa hart (B3.6), **không** U-mode (B3.7).
 
 use crate::asm;
-use crate::format::{Aarch64, MemAttr, Perms};
+use crate::format::{Aarch64, MemAttr, Perms, Shareability};
 use crate::mmu::{MapError, PageTable, TableMemory, Translation, Walk};
 use crate::split_mmu::{map_high_alias, map_physmap, SplitMmu};
 use crate::sysreg::Ttbr;
@@ -124,6 +124,23 @@ impl<M: TableMemory> VSpace<M> {
             attr,
             crate::format::Shareability::Inner,
         )
+    }
+
+    /// **`vspace_map_block`** — map **block** (superpage) `va → pa` ở `level` — KT-302.
+    ///
+    /// Dùng cho ECAM PCIe 256 MiB: 128 block 2 MiB ở mức 2 ⇒ **một** bảng mức 2 (2 frame) thay
+    /// cho 128 bảng mức 3 (129 frame). Định tuyến theo VA qua [`SplitMmu`]; mọi kiểm tra là của
+    /// [`PageTable::map_block`] — **không** lặp lại ở đây.
+    pub fn map_block(
+        &mut self,
+        va: u64,
+        pa: u64,
+        level: usize,
+        perms: Perms,
+        attr: MemAttr,
+    ) -> Result<(), MapError> {
+        self.mmu
+            .map_block(va, pa, level, perms, attr, Shareability::Inner)
     }
 
     /// **`vspace_unmap`** — bỏ mapping tại `va`, trả PA đã map.

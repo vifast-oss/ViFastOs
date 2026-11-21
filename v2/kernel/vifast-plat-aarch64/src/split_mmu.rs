@@ -276,6 +276,27 @@ impl<M: TableMemory> SplitMmu<M> {
         }
     }
 
+    /// Map **block** (superpage) `va → pa` ở `level`, định tuyến theo VA — KT-302.
+    ///
+    /// Dùng cho ECAM PCIe 256 MiB: 128 block 2 MiB ở mức 2 ⇒ **một** bảng mức 2 thay cho 128
+    /// bảng mức 3. Mọi kiểm tra (cấp, căn lề, canonical, dải PA, quyền, format hỗ trợ block) là
+    /// của [`PageTable::map_block`] — **không** lặp lại ở đây.
+    pub fn map_block(
+        &mut self,
+        va: u64,
+        pa: u64,
+        level: usize,
+        perms: Perms,
+        attr: MemAttr,
+        share: Shareability,
+    ) -> Result<(), MapError> {
+        match half_of(va) {
+            Some(Half::Low) => self.low.map_block(va, pa, level, perms, attr, share),
+            Some(Half::High) => self.high.map_block(va, pa, level, perms, attr, share),
+            None => Err(MapError::NotCanonical),
+        }
+    }
+
     /// Bỏ mapping 4 KiB tại `va`, trả PA; định tuyến theo VA.
     pub fn unmap(&mut self, va: u64) -> Result<u64, MapError> {
         match half_of(va) {

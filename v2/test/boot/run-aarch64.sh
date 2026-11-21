@@ -25,8 +25,10 @@
 # `# gpu: no device` và TAP phải ĐỎ; cộng **ca âm (q) của KT-283** — boot **không có bàn phím**
 # phải in `# input: no device` và TAP phải ĐỎ; cộng **hai ca âm (r)/(s) của KT-289** — thiếu dòng
 # `# net: tcp`/`# net: dns` đều phải ĐỎ; cộng **hai ca âm (t)/(u) của KT-294** — log có
-# `# net: no dns` (cả hai lần thử timeout) và log có `attempts=3` (retransmit vô hạn) đều phải ĐỎ
-# (**21 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
+# `# net: no dns` (cả hai lần thử timeout) và log có `attempts=3` (retransmit vô hạn) đều phải ĐỎ;
+# cộng **hai ca âm (v)/(w) của KT-302** — log có `buses=16` (quét thiếu bus) và log có
+# `ecam_block_ok=0` (ECAM map bằng lá 4 KiB thay block 2 MiB) đều phải ĐỎ (**23 ca âm**). Nhờ vậy
+# mỗi lần chạy runner vừa
 # chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
 # "PASS giả".
 #
@@ -150,7 +152,16 @@
 #     …` — nhận **đúng** chuỗi server gửi, gửi lại payload, đóng bằng FIN;
 #   - `# net: dns example.com a=<ip> ttl=<n>` — truy vấn DNS **thật** tới `10.0.2.3:53` của slirp.
 # Cộng **hai ca âm** cho hai dòng `# net: tcp`/`# net: dns` (thiếu dòng ⇒ ĐỎ) — **19 ca âm**;
-# **KT-294** thêm **hai** ca âm nữa (cả hai lần thử timeout; `attempts=3`) — **21 ca âm**.
+# **KT-294** thêm **hai** ca âm nữa (cả hai lần thử timeout; `attempts=3`) — **21 ca âm**;
+# **KT-302** thêm **hai** ca âm nữa (`buses=16`; `ecam_block_ok=0`) — **23 ca âm**.
+#
+# **KT-302**: ECAM 256 MiB map bằng **block descriptor 2 MiB ở mức 2** (128 block trong **một**
+# bảng mức 2 ⇒ 2 frame) thay vì 128 bảng mức 3 (129 frame — vượt arena 44 frame + trần I7).
+# Runner đòi thêm hai điều kiện **đo được**:
+#   - `# pci: ecam … buses=256` — quét **đủ** 256 bus (trước KT-302 chỉ 16);
+#   - `# pci: map … ecam_blocks=128 ecam_block_level=2 ecam_block_ok=1` — `main.rs` walk bảng
+#     trang **thật** tại VA đầu cửa sổ ECAM và thấy `Block { pa: ECAM_BASE, level: 2 }`; nếu map
+#     bằng lá 4 KiB thì `ecam_block_ok=0` ⇒ ĐỎ.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -486,6 +497,45 @@ check_pci() {
         *"empty=0xffff"*) ;;
         *)
             echo "# dòng '# pci: ecam' không có 'empty=0xffff' (slot trống phải trả 0xffff)"
+            bad=1
+            ;;
+    esac
+    # **KT-302**: phải quét **đủ 256 bus** (ECAM 256 MiB map bằng block 2 MiB). `buses=16` là
+    # đúng hành vi cũ (KT-273) — runner phải ĐỎ, không được coi là "vẫn chạy".
+    case "$line" in
+        *"buses=256"*) ;;
+        *)
+            echo "# dòng '# pci: ecam' không có 'buses=256' (KT-302: phải quét đủ 256 bus)"
+            bad=1
+            ;;
+    esac
+    # **KT-302**: bằng chứng **đo được** rằng ECAM map bằng **block descriptor 2 MiB ở mức 2**
+    # (128 block, một bảng mức 2) — không phải 128 bảng mức 3. Dòng `# pci: map` do `main.rs` in
+    # từ kết quả `walk_steps` trên bảng trang thật, không phải lời khai.
+    n="$(grep -cE '^# pci: map ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# pci: map ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# pci: map ' "$log" || true)"
+    case "$line" in
+        *"ecam_blocks=128"*) ;;
+        *)
+            echo "# dòng '# pci: map' không có 'ecam_blocks=128' (256 MiB / 2 MiB)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"ecam_block_level=2"*) ;;
+        *)
+            echo "# dòng '# pci: map' không có 'ecam_block_level=2' (block 2 MiB ở mức 2)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"ecam_block_ok=1"*) ;;
+        *)
+            echo "# dòng '# pci: map' không có 'ecam_block_ok=1' (walk thấy block đúng PA)"
             bad=1
             ;;
     esac
@@ -1688,6 +1738,32 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (u): attempts=3 ⇒ ĐỎ ($(head -1 "$tmp/u.out"))"
+    fi
+
+    # (v) **KT-302** — quét **thiếu bus** (`buses=16`, hành vi cũ của KT-273): runner phải ĐỎ.
+    # Đây là đột biến "map thiếu bus" ở tầng log: nếu `check_pci` không đòi `buses=256`, một ảnh
+    # chỉ quét 16 bus vẫn PASS — đúng lỗi KT-302 sinh ra để đóng.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/ buses=256$/ buses=16/' "$good" >"$tmp/v.log" 2>/dev/null || true
+    if check_log "$tmp/v.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/v.out" 2>&1; then
+        echo "not ok $n - ca âm (v): buses=16 (quét thiếu bus) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (v): buses=16 ⇒ ĐỎ ($(head -1 "$tmp/v.out"))"
+    fi
+
+    # (w) **KT-302** — ECAM map bằng **lá 4 KiB** thay block (`ecam_block_ok=0`): runner phải ĐỎ.
+    # Nếu không đòi `ecam_block_ok=1`, một ảnh map 256 MiB bằng 128 bảng mức 3 (nếu arena đủ) vẫn
+    # PASS — trong khi yêu cầu là **block descriptor**.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/ ecam_block_ok=1 / ecam_block_ok=0 /' "$good" >"$tmp/w.log" 2>/dev/null || true
+    if check_log "$tmp/w.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/w.out" 2>&1; then
+        echo "not ok $n - ca âm (w): ecam_block_ok=0 (map bằng lá 4 KiB) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (w): ecam_block_ok=0 ⇒ ĐỎ ($(head -1 "$tmp/w.out"))"
     fi
 
     NEG_CASES=$cases

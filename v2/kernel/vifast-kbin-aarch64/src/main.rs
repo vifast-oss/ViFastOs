@@ -61,7 +61,7 @@ use vifast_plat_aarch64::boot_mmu::{
 use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::gic;
-use vifast_plat_aarch64::mmu::MapError;
+use vifast_plat_aarch64::mmu::{MapError, WalkOutcome};
 use vifast_plat_aarch64::pci;
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
 use vifast_plat_aarch64::shootdown::{self, Targets};
@@ -74,7 +74,7 @@ use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
 use vifast_plat_aarch64::{asm, debug_halt, pl011};
 use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
 
-use crate::mapwin::{map_identity_into, map_window_into};
+use crate::mapwin::{map_identity_into, map_window_blocks_into, map_window_into};
 
 /// **KT-259**: trạng thái SMP + `smp_bringup` + `kmain_secondary` nằm ở tệp riêng (luật R1:
 /// tệp trong `kernel/` ≤ 1.500 dòng). Tên `smpboot` để **không** đụng `vifast_plat_aarch64::smp`.
@@ -920,7 +920,10 @@ pub extern "C" fn high_entry() -> ! {
         );
         debug_halt(3)
     }
-    let pages_ecam = match map_window_into(
+    // **KT-302**: ECAM 256 MiB map bằng **block descriptor 2 MiB** ở mức 2 (128 block trong
+    // **một** bảng mức 2 ⇒ 2 frame), không phải 128 bảng mức 3 (129 frame — vượt arena 44 frame
+    // và trần `.data+.bss` I7). `map_window_blocks_into` từ chối nếu VA/PA/cỡ không căn 2 MiB.
+    let ecam_blocks = match map_window_blocks_into(
         &mut vs,
         pci::ECAM_VA_BASE,
         pci::ECAM_BASE,
@@ -928,12 +931,28 @@ pub extern "C" fn high_entry() -> ! {
         Perms::KERNEL_RW,
         MemAttr::Device,
     ) {
-        Ok(pages) => pages,
+        Ok(blocks) => blocks,
         Err(error) => {
             let _ = writeln!(console, "PANIC: pci: map ECAM lỗi {error:?}");
             debug_halt(3)
         }
     };
+    // Bằng chứng **đo được** rằng ECAM được map bằng **block descriptor** ở mức 2 (không phải
+    // 128 bảng mức 3): walk bảng trang thật tại VA đầu cửa sổ. `translate` cố ý từ chối block
+    // (`BlockUnsupported`) nên phải dùng `walk_steps` — nó trả kết cục `Block { pa, level }`.
+    let ecam_walk = vs.walk_steps(pci::ECAM_VA_BASE);
+    let (ecam_block_pa, ecam_block_level, ecam_block_ok) = match ecam_walk.outcome {
+        WalkOutcome::Block { pa, level } => (pa, level, pa == pci::ECAM_BASE && level == 2),
+        _ => (0, 0, false),
+    };
+    if !ecam_block_ok {
+        let _ = writeln!(
+            console,
+            "PANIC: pci: ECAM không map bằng block mức 2 (walk={:?})",
+            ecam_walk.outcome
+        );
+        debug_halt(3)
+    }
     let pages_bar = match map_window_into(
         &mut vs,
         pci::BAR_ASSIGN_BASE,
@@ -1038,9 +1057,10 @@ pub extern "C" fn high_entry() -> ! {
         };
     let _ = writeln!(
         console,
-        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} input_bar_va=0x{input_bar_base:x} input_bar_pages={pages_bar_input} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} input_dma_va=0x{input_dma_va:x} input_dma_walk=0x{input_dma_walk_pa:x} frames_used={}",
+        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_blocks={ecam_blocks} ecam_block_level={ecam_block_level} ecam_block_pa=0x{ecam_block_pa:x} ecam_block_ok={} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} input_bar_va=0x{input_bar_base:x} input_bar_pages={pages_bar_input} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} input_dma_va=0x{input_dma_va:x} input_dma_walk=0x{input_dma_walk_pa:x} frames_used={}",
         pci::ECAM_BASE,
         pci::ECAM_VA_BASE,
+        ecam_block_ok as u8,
         pci::BAR_ASSIGN_BASE,
         virtio_gpu::FB_PHYS_BASE,
         vs.mmu().low().memory().frames_used(),

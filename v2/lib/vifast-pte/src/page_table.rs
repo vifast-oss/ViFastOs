@@ -251,6 +251,110 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
         Ok(())
     }
 
+    /// Map **block** (superpage) `va → pa` ở `level` (0 = gốc, `LEVELS - 1` = lá).
+    ///
+    /// Block chỉ hợp lệ ở mức **giữa** (`1..LEVELS-1`): AArch64 4 KiB granule có block 1 GiB ở
+    /// mức 1 và 2 MiB ở mức 2; mức 0 và mức lá không có block. Cỡ block suy từ hình học:
+    /// `PAGE_BYTES << (INDEX_BITS * (LEVELS - 1 - level))`.
+    ///
+    /// # Vì sao cần (KT-302)
+    ///
+    /// ECAM PCIe của QEMU `virt` aarch64 phủ **256 MiB**. Map bằng lá 4 KiB cần **129** bảng
+    /// trang (mỗi 2 MiB một bảng mức 3) — vượt arena boot và trần `.data+.bss` (I7). Block 2 MiB
+    /// ở mức 2 gói 256 MiB vào **một** bảng mức 2 (128 entry) ⇒ chỉ tốn 2 frame.
+    ///
+    /// # Ngữ nghĩa
+    ///
+    /// - `translate`/`unmap` **không đổi**: gặp block vẫn trả [`MapError::BlockUnsupported`]
+    ///   (block là mapping "một chiều" cho MMIO; muốn bỏ phải `destroy` cả cây).
+    /// - Map lá 4 KiB vào trong block ⇒ [`MapError::AlreadyMapped`]; map block phủ lên lá/bảng
+    ///   đã có ⇒ `AlreadyMapped`.
+    /// - Mọi kiểm tra (cấp, căn lề, canonical, dải PA, quyền, format có hỗ trợ block) chạy
+    ///   **trước** bước walk ⇒ từ chối không cấp frame.
+    pub fn map_block(
+        &mut self,
+        va: u64,
+        pa: u64,
+        level: usize,
+        perms: Perms,
+        attr: MemAttr,
+        share: Shareability,
+    ) -> Result<(), MapError> {
+        if level >= F::LEVELS {
+            return Err(MapError::LevelOutOfRange);
+        }
+        // Block chỉ có ở mức giữa: mức 0 (gốc) và mức lá không có block descriptor.
+        if level == 0 || level + 1 == F::LEVELS {
+            return Err(MapError::BlockUnsupported);
+        }
+        let span = F::PAGE_BYTES << (F::INDEX_BITS * (F::LEVELS - 1 - level) as u32);
+        if va & (span - 1) != 0 || pa & (span - 1) != 0 {
+            return Err(MapError::Unaligned);
+        }
+        if !F::is_canonical(va) {
+            return Err(MapError::NotCanonical);
+        }
+        if pa >> F::PA_BITS != 0 {
+            return Err(MapError::PaOutOfRange);
+        }
+        if !F::perms_valid(perms) {
+            return Err(MapError::InvalidPerms);
+        }
+        // Năng lực format kiểm **trước** khi cấp frame: format không hỗ trợ block ⇒ từ chối.
+        let block =
+            F::encode_block(level, pa, perms, attr, share).ok_or(MapError::BlockUnsupported)?;
+
+        let mut table = self.root;
+        let mut current = 0;
+        while current < level {
+            let index = F::index(va, current);
+            let entry = self
+                .memory
+                .read_entry(table, index)
+                .ok_or(MapError::CorruptTable)?;
+            match F::decode(entry, current) {
+                Descriptor::Invalid => {
+                    let new_table = self.memory.alloc_frame().ok_or(MapError::OutOfFrames)?;
+                    if !self.memory.zero_frame(new_table) {
+                        self.memory.free_frame(new_table);
+                        return Err(MapError::CorruptTable);
+                    }
+                    if !self
+                        .memory
+                        .write_entry(table, index, F::encode_table(new_table))
+                    {
+                        self.memory.free_frame(new_table);
+                        return Err(MapError::CorruptTable);
+                    }
+                    table = new_table;
+                }
+                Descriptor::Table { pa: next } => table = next,
+                Descriptor::Leaf { .. } | Descriptor::Block { .. } => {
+                    return Err(MapError::AlreadyMapped)
+                }
+                Descriptor::Reserved => return Err(MapError::CorruptTable),
+            }
+            current += 1;
+        }
+
+        let index = F::index(va, level);
+        let old = self
+            .memory
+            .read_entry(table, index)
+            .ok_or(MapError::CorruptTable)?;
+        match F::decode(old, level) {
+            Descriptor::Invalid => {}
+            Descriptor::Leaf { .. } | Descriptor::Block { .. } | Descriptor::Table { .. } => {
+                return Err(MapError::AlreadyMapped)
+            }
+            Descriptor::Reserved => return Err(MapError::CorruptTable),
+        }
+        if !self.memory.write_entry(table, index, block) {
+            return Err(MapError::CorruptTable);
+        }
+        Ok(())
+    }
+
     /// Bỏ mapping 4 KiB tại `va`, trả PA đã map; giải phóng bảng trung gian rỗng.
     ///
     /// Không đụng TLB (bước 2 mới có `TLBI`). VA chưa map ⇒ `NotMapped`; gặp block ⇒

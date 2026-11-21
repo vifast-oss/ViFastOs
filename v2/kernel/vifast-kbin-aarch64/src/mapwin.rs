@@ -39,6 +39,47 @@ pub fn map_window_into<M: TableMemory>(
     Ok(pages as usize)
 }
 
+/// Map cửa sổ `[pa_base, pa_base+bytes)` vào `[va_base, va_base+bytes)` bằng **block 2 MiB**
+/// (mức 2) — KT-302 dùng cho ECAM PCIe 256 MiB.
+///
+/// **Vì sao block**: 256 MiB bằng trang 4 KiB cần 128 bảng mức 3 + 1 bảng mức 2 = 129 frame
+/// (516 KiB) — vượt arena boot 44 frame và trần `.data+.bss` 256 KiB (I7). 128 block 2 MiB nằm
+/// trọn **một** bảng mức 2 ⇒ 2 frame. `bytes` phải là bội của 2 MiB và `pa_base`/`va_base` phải
+/// căn 2 MiB; lệch ⇒ `Unaligned` (không map lệch block).
+///
+/// Trả **số block** đã map (không phải số trang) — caller in `ecam_blocks=…` để bằng chứng nói
+/// đúng đơn vị.
+pub fn map_window_blocks_into<M: TableMemory>(
+    vs: &mut VSpace<M>,
+    va_base: u64,
+    pa_base: u64,
+    bytes: u64,
+    perms: Perms,
+    attr: MemAttr,
+) -> Result<usize, MapError> {
+    const BLOCK_BYTES: u64 = 2 << 20;
+    if bytes == 0
+        || bytes % BLOCK_BYTES != 0
+        || va_base % BLOCK_BYTES != 0
+        || pa_base % BLOCK_BYTES != 0
+    {
+        return Err(MapError::Unaligned);
+    }
+    let blocks = bytes / BLOCK_BYTES;
+    let mut index = 0;
+    while index < blocks {
+        vs.map_block(
+            va_base + index * BLOCK_BYTES,
+            pa_base + index * BLOCK_BYTES,
+            2,
+            perms,
+            attr,
+        )?;
+        index += 1;
+    }
+    Ok(blocks as usize)
+}
+
 /// Map **identity** `[start, end)` vào `VSpace` bằng trang 4 KiB (làm tròn ra ngoài) — dùng cho
 /// UART/GIC trong VSpace của ảnh (kernel vẫn cần chúng sau khi `TTBR0` đổi).
 pub fn map_identity_into<M: TableMemory>(

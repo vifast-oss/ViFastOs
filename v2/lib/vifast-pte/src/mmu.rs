@@ -278,6 +278,27 @@ pub trait PageTableFormat {
     /// Mã hoá descriptor **lá** ở mức cuối cho `pa` với quyền/thuộc tính/shareability.
     fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64;
 
+    /// Mã hoá descriptor **block** (superpage) ở `level` cho `pa` — `None` nếu format **không**
+    /// hỗ trợ block ở mức ấy.
+    ///
+    /// Mặc định trả `None`: ba format hiện có chỉ map lá 4 KiB, nên thêm block là **tuỳ chọn**
+    /// của từng format (KT-302 mở cho AArch64: block 2 MiB ở mức 2, 1 GiB ở mức 1). Nhờ mặc định
+    /// này, `PageTable::map_block` **không** cần sửa impl nào khác và trả
+    /// [`MapError::BlockUnsupported`] thay vì bịa descriptor.
+    ///
+    /// Hợp đồng: `pa` phải căn theo cỡ block của `level` — [`PageTable::map_block`] kiểm trước
+    /// khi gọi; hàm này chỉ mã hoá bit.
+    fn encode_block(
+        level: usize,
+        pa: u64,
+        perms: Perms,
+        attr: MemAttr,
+        share: Shareability,
+    ) -> Option<u64> {
+        let _ = (level, pa, perms, attr, share);
+        None
+    }
+
     /// Bóc descriptor tại `level`.
     fn decode(entry: u64, level: usize) -> Descriptor;
 
