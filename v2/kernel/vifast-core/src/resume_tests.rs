@@ -197,8 +197,10 @@ fn so_method_resume_sinh_tu_spec() {
         .iter()
         .any(|(name, id)| *name == "Resume" && u32::from(*id) == invoke::TCB_RESUME));
     assert!(invoke::is_whitelisted(ObjType::Tcb, invoke::TCB_RESUME));
-    // `Suspend` (3) **chưa** cài ⇒ vẫn ngoài danh sách trắng (không mở rộng ngoài phạm vi).
-    assert!(!invoke::is_whitelisted(ObjType::Tcb, 3));
+    // `Suspend` (3) **đã** cài ở KT-319 ⇒ trong danh sách trắng; `SetPriority` (4) **chưa** cài
+    // ⇒ vẫn ngoài danh sách (không mở rộng ngoài phạm vi).
+    assert!(invoke::is_whitelisted(ObjType::Tcb, 3));
+    assert!(!invoke::is_whitelisted(ObjType::Tcb, 4));
 }
 
 /// `Resume` trên TCB `Inactive` **chưa chạy**: chuyển `Running{hart:0}`, trả `a1 = entry`, và

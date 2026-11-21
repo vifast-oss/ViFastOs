@@ -12,6 +12,7 @@
 //! | `Tcb` (3) | 0 | `Configure` | **cài** (KT-290) — bind `ipc_buffer?` (MR0 CPTR Frame, MR1 VA); **KT-311** — kênh đầy đủ `length = 3` (MR2 = mask, `cspace?`/`entry?`/`priority?` ở vùng 608..640 của IPC buffer) |
 //! | `Tcb` (3) | 15 | `SetTls` | **cài** (KT-74) |
 //! | `Tcb` (3) | 12 | `Resume` | **cài** (KT-314) — chuyển đích `Running` + giao `TcbData.entry` cho arch đặt `sepc` |
+//! | `Tcb` (3) | 3 | `Suspend` | **cài** (KT-319) — `Running`/`Ready` → `Inactive`, **giữ** `entry` để `Resume` chạy lại |
 //! | khác | — | — | `NotSupported` **18** (giữ D2-53 Q11 cho phần chưa cài) |
 //!
 //! # Vì sao `Frame.Map` chứ không phải `VSpace.Map`
@@ -129,6 +130,17 @@ pub const TCB_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
 /// qua hằng sinh tự động `vifast_abi::TCB_RESUME` — **không** chép số tay (D2-11/D2-102).
 pub const TCB_RESUME: u32 = vifast_abi::TCB_RESUME;
 
+/// **KT-319** — `Tcb.Suspend` — method **3** của object `Tcb` (`spec/abi.toml` `[object].Tcb`),
+/// qua hằng sinh tự động `vifast_abi::TCB_SUSPEND` — **không** chép số tay (D2-11/D2-102).
+pub const TCB_SUSPEND: u32 = vifast_abi::TCB_SUSPEND;
+
+/// `Tcb.Suspend` — biến thể `mode` **`Abort`** (`[method_signature."Tcb.Suspend"].variants.mode`
+/// = `["Abort", "Defer"]`, thứ tự trong spec: `0` = `Abort`).
+pub const SUSPEND_MODE_ABORT: u64 = 0;
+/// `Tcb.Suspend` — biến thể `mode` **`Defer`** (`1`). K1b chưa có `Restart` ⇒ `InvalidArgument`
+/// **5** (cùng ngữ nghĩa model `Machine::tcb_suspend`, KT-65).
+pub const SUSPEND_MODE_DEFER: u64 = 1;
+
 /// `true` ⇔ `spec/abi.toml` khai `SetTls` đúng ở số này (test/TAP đối chiếu bảng sinh).
 pub fn tcb_set_tls_matches_spec() -> bool {
     vifast_abi::TCB_METHODS
@@ -199,6 +211,8 @@ pub struct InvocationStats {
     pub configure: u32,
     /// **KT-314** `Tcb.Resume` thành công (chuyển `Running` + giao `entry` cho arch).
     pub resume: u32,
+    /// **KT-319** `Tcb.Suspend` thành công (`Running`/`Ready` → `Inactive`).
+    pub suspend: u32,
 }
 
 static ALLOWED: AtomicU32 = AtomicU32::new(0);
@@ -217,6 +231,8 @@ static TLS_SET: AtomicU32 = AtomicU32::new(0);
 static CONFIGURED: AtomicU32 = AtomicU32::new(0);
 /// **KT-314** số `Tcb.Resume` thành công (TAP `# ipc: resume` đối chiếu).
 static RESUMED: AtomicU32 = AtomicU32::new(0);
+/// **KT-319** số `Tcb.Suspend` thành công (TAP `# ipc: suspend` đối chiếu).
+static SUSPENDED: AtomicU32 = AtomicU32::new(0);
 
 fn bump(counter: &AtomicU32) {
     let _ = counter.fetch_add(1, Ordering::Relaxed);
@@ -238,6 +254,7 @@ pub fn stats() -> InvocationStats {
         set_tls: TLS_SET.load(Ordering::Relaxed),
         configure: CONFIGURED.load(Ordering::Relaxed),
         resume: RESUMED.load(Ordering::Relaxed),
+        suspend: SUSPENDED.load(Ordering::Relaxed),
     }
 }
 
@@ -358,6 +375,9 @@ pub fn dispatch(
         // KT-314: `Tcb.Resume` (method 12 của `[object].Tcb`) — chuyển tác vụ đích `Running` và
         // giao `TcbData.entry` cho arch đặt `sepc` (D2-83: core không ghi CSR).
         (ObjType::Tcb, TCB_RESUME) => resume(m, tcb, slot, c, args, len, env),
+        // KT-319: `Tcb.Suspend` (method 3 của `[object].Tcb`) — `Running`/`Ready` → `Inactive`,
+        // **giữ** `entry` để `Resume` chạy lại được (không đụng CSR/bộ nhớ user — D2-83).
+        (ObjType::Tcb, TCB_SUSPEND) => suspend(m, slot, c, args, len),
         // Danh sách trắng hẹp: mọi loại/method khác giữ `NotSupported` (D2-53 Q11) — **không**
         // trả `Ok` giả. Đếm để TAP `# inv:` chứng minh nhánh này chạy thật.
         _ => {
@@ -590,6 +610,64 @@ fn resume(
     bump(&RESUMED);
     bump(&ALLOWED);
     Ok((0, entry))
+}
+
+// =============================================================================================
+// KT-319 — `Tcb.Suspend` (method 3 của `[object].Tcb`) qua invocation từ U-mode
+// =============================================================================================
+
+/// `Tcb.Suspend` — treo **tác vụ đích** (cap TCB đã gọi): `Running`/`Ready` → `Inactive`.
+///
+/// # Kênh tham số
+///
+/// **Arity chính xác 1** (D2-104): `[method_signature."Tcb.Suspend"]` khai
+/// `params = ["tcb", "mode"]` — `tcb` là **chính cap đã gọi**, nên invocation mang **một** MR:
+/// `MR0 = mode` (`0` = `Abort`, `1` = `Defer`; `variants.mode` của spec). `length` khác 1 ⇒
+/// `InvalidArgument` **5**, có đếm.
+///
+/// # Ngữ nghĩa
+///
+/// 1. Cap TCB phải có `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3** (cùng luật quyền như
+///    `Tcb.Configure`/`Tcb.SetTls`/`Tcb.Resume`, D2-99(e)).
+/// 2. `mode = Defer` ⇒ `InvalidArgument` **5** (K1b chưa có `Restart`, đúng ngữ nghĩa model
+///    `Machine::tcb_suspend` — KT-65); mode lạ ⇒ **5**.
+/// 3. [`Machine::tcb_suspend_invocation`] kiểm **trạng thái trước**: chỉ `Running`/`Ready` ⇒ đi;
+///    `Inactive`/`BlockedOn*`/`Sleeping`/`Stopping`/`Dead` ⇒ `IllegalOperation` **17**.
+/// 4. Chuyển `Inactive` qua **một** cửa `transition_tcb` (bảng 11×11 D2-49(d) vẫn là nguồn sự
+///    thật); **giữ** `TcbData.entry` (để `Tcb.Resume` sau đó chạy lại được) và `exit_code`
+///    (D2-25: chỉ `Configure`/`Resume` xoá).
+///
+/// Trả `(a0, a1) = (0, 0)` — `[method_signature."Tcb.Suspend"].returns = []`.
+fn suspend(
+    m: &mut Machine,
+    slot: SlotRef,
+    c: crate::error::CapInfo,
+    args: [u64; 4],
+    len: usize,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        bump(&DENIED);
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    if len != 1 {
+        bump(&DENIED);
+        return Err(KError::InvalidArgument.id() as u64);
+    }
+    let mode = match args[0] {
+        SUSPEND_MODE_ABORT => crate::tcb::SuspendMode::Abort,
+        SUSPEND_MODE_DEFER => crate::tcb::SuspendMode::Defer,
+        _ => {
+            bump(&DENIED);
+            return Err(KError::InvalidArgument.id() as u64);
+        }
+    };
+    m.tcb_suspend_invocation(slot, mode).map_err(|e| {
+        bump(&DENIED);
+        e.id() as u64
+    })?;
+    bump(&SUSPENDED);
+    bump(&ALLOWED);
+    Ok((0, 0))
 }
 
 // =============================================================================================
@@ -914,6 +992,7 @@ pub const fn is_whitelisted(ty: ObjType, method: u32) -> bool {
             | (ObjType::Tcb, TCB_CONFIGURE)
             | (ObjType::Tcb, TCB_SET_TLS)
             | (ObjType::Tcb, TCB_RESUME)
+            | (ObjType::Tcb, TCB_SUSPEND)
     )
 }
 
@@ -995,8 +1074,10 @@ mod tests {
         assert!(!is_whitelisted(ObjType::Untyped, 7));
         assert!(!is_whitelisted(ObjType::VSpace, METHOD_MAP));
         assert!(!is_whitelisted(ObjType::Endpoint, METHOD_RETYPE));
-        // **KT-290**: `Tcb.Configure` (0) **cài**; các method khác của Tcb **chưa** cài.
+        // **KT-290**: `Tcb.Configure` (0) **cài**; **KT-319**: `Tcb.Suspend` (3) **cài**; các
+        // method khác của Tcb **chưa** cài.
         assert!(is_whitelisted(ObjType::Tcb, TCB_CONFIGURE));
+        assert!(is_whitelisted(ObjType::Tcb, TCB_SUSPEND));
         assert!(!is_whitelisted(ObjType::Tcb, 1), "Tcb.SetFaultEp chưa cài");
         assert!(!is_whitelisted(ObjType::Tcb, 4), "Tcb.SetPriority chưa cài");
     }

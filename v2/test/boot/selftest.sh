@@ -28,6 +28,9 @@
 #       (n) **KT-306**: xoá dòng `# netping: label=0x291 reply=0 rtt_ms=…` của ảnh `ktest-netsrv`
 #           (do chính chương trình U-mode in sau syscall `Call` trên `EP_KERN`) phải đỏ — dòng
 #           `# netping:` là evidence **bắt buộc**;
+#       (r) **KT-319**: xoá dòng `# ipc: suspend state=Inactive suspended=0 calls=2 …` của ảnh
+#           `ktest-ipc` (`Tcb.Suspend` — kernel in sau khi đo **độc lập** `Tcb.ReadState` của
+#           đích bị treo) phải đỏ — dòng `# ipc: suspend` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -413,6 +416,23 @@ mut_diff "$WORK/log-ipc-no-vspace.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# 
 case_red "ev$VSPACE_EV" \
     "log ktest-ipc: xoá dòng '# ipc: vspace ok obj=' (evidence bắt buộc của KT-320)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-vspace.log" "$SMP"
+
+# --- ca (r): dòng `# ipc: suspend` của ảnh KT-319 (Tcb.Suspend giữ entry để Resume chạy lại) ----
+# **KT-319**: dòng `# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running` do **kernel**
+# in sau khi đo **độc lập** `Tcb.ReadState` của TCB đích thứ ba (client vừa `Suspend` nó từ U-mode)
+# + **đúng hai** `Tcb.Suspend` thành công (đích `Ready` và đích `Running`) + đích `Running` vẫn
+# `Running` sau cặp `Suspend`/`Resume`. Xoá đúng dòng đó ⇒ runner phải đỏ với token `ev<ordinal>` —
+# chứng minh dòng `# ipc: suspend` là evidence **bắt buộc**, không phải trang trí (đột biến của
+# KT-319 làm dòng này sai/thiếu: bỏ kiểm trạng thái ⇒ đích `Inactive` "treo" lại; bỏ kiểm `mode`
+# ⇒ nhận `Defer` và tác vụ **không có đường đánh thức**).
+SUSPEND_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: suspend state=Inactive')"
+[ -n "$SUSPEND_EV" ] || die "không tra được ordinal evidence '# ipc: suspend state=Inactive' của ktest-ipc"
+grep -v -F '# ipc: suspend state=Inactive' "$IPC_LOG" >"$WORK/log-ipc-no-suspend.log"
+mut_diff "$WORK/log-ipc-no-suspend.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: suspend state=Inactive'"
+case_red "ev$SUSPEND_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: suspend state=Inactive' (evidence bắt buộc của KT-319)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-suspend.log" "$SMP"
+
 
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình

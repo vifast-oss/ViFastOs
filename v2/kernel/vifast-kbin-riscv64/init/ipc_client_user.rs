@@ -18,6 +18,16 @@
 //! `_start` thật, `priority` = 4) + **chứng minh** `cspace?` thật sự đổi CSpace (`Call` trên ô 8
 //! **chỉ có** ở `cnode_alt` ⇒ 18 thay vì 1) + trả `cspace` về CSpace gốc.
 //!
+//! **KT-319** — **`Tcb.Suspend`** (method **3** của `[object].Tcb`) qua **invocation**: client gọi
+//! `Call(cap TCB đích, {label = Tcb.Suspend, length = 1}, MR0 = mode)` (`0` = `Abort`, `1` =
+//! `Defer`). Đường xanh **hai** lần: (a) TCB đích **`Ready`** (ô 17) ⇒ `(0, 0)`, kernel đo **độc
+//! lập** `state = Inactive suspended = 0`; (b) TCB đích **`Running`** (`SLOT_TCB_T`, TAP 7 vừa
+//! `Resume`) ⇒ `(0, 0)` rồi `Resume` lại ⇒ `(0, entry)` và tác vụ **chạy lại thật** ở `resume_entry`
+//! (mốc thật của KT-319 — `TcbData.entry` **giữ** qua `Suspend`). **Sáu** ca âm trong cùng boot:
+//! `mode = Defer` ⇒ 5, arity thiếu (0) ⇒ 5, arity thừa (2) ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
+//! `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** cặp đó ⇒ chỉ kiểm trạng thái chặn được), cap TCB
+//! thiếu `RIGHT_WRITE` ⇒ 3.
+//!
 //! Đây là mắt xích mà K3 chưa có: trước KT-280 mọi `call()` của chương trình U-mode đều nhắm cap
 //! **không phải Endpoint** (invocation `Frame.Map`/`Untyped.Retype`/`Tcb.SetTls`/`CNode.*`) nên
 //! trả về ngay; IPC U-mode hiện có là `NBSend`+`NBRecv` polling. Ở đây client gọi `Call` trên
@@ -38,6 +48,13 @@
 //! | 7 | `CNode` của **CSpace thứ hai** (`cnode_alt`) — **KT-311** `cspace?` |
 //! | 8 | ô **rỗng** ở CSpace gốc (nhưng có cap `Reply` ở `cnode_alt`) — KT-311 chứng minh `cspace?` |
 //! | 9 | ô **rỗng** — ca âm `Call` trên ô rỗng |
+//! | 10..13 | cửa sổ nhận 4 ô (spec dòng 58) — **rỗng** cho message không mang cap |
+//! | 14 | `Tcb` của **server** (đã `Exit`) — KT-314 ca âm `Resume`/`Suspend` trên `Inactive` |
+//! | 15 | `Tcb` **đích** — KT-314 `Configure(entry?)` + `Resume` (chạy `resume_entry`) |
+//! | 16 | `Tcb` **đích 2** (`entry = 0`) — KT-314 ca âm `InvalidArgument` |
+//! | 17 | `Tcb` **đích 3** (`Ready`) — **KT-319** `Suspend` ⇒ kernel đo `Inactive suspended=0` |
+//! | 18 | `Tcb` **chỉ đọc** (mint `RIGHT_READ` từ ô 17) — **KT-319** ca âm `InsufficientRights` |
+//! | 19 | `Tcb` **`BlockedOnSend`** — **KT-319** ca âm `IllegalOperation` (đường invocation hẹp) |
 //!
 //! Không `unsafe`, không `asm!` (R5): mọi `ecall` qua shim `vifast_user_abi`.
 #![no_std]
@@ -68,6 +85,15 @@ const METHOD_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
 /// **KT-314** — method id của `Tcb.Resume` **sinh từ `spec/abi.toml`** (`[object].Tcb` method
 /// 12), không chép số tay (D2-11) — cùng nguồn với core.
 const METHOD_RESUME: u32 = vifast_abi::TCB_RESUME;
+/// **KT-319** — method id của `Tcb.Suspend` **sinh từ `spec/abi.toml`** (`[object].Tcb` method
+/// 3), không chép số tay (D2-11) — cùng nguồn với core (`vifast_core::invoke::TCB_SUSPEND`).
+const METHOD_SUSPEND: u32 = vifast_abi::TCB_SUSPEND;
+/// **KT-319** — biến thể `mode` của `Tcb.Suspend`: `[method_signature."Tcb.Suspend"].variants.mode
+/// = ["Abort", "Defer"]` ⇒ `Abort` = **0**, `Defer` = **1** (spec **không** sinh hằng cho biến
+/// thể; cùng giá trị `vifast_core::invoke::SUSPEND_MODE_ABORT/DEFER`). `Defer` ⇒ `InvalidArgument`
+/// (5) vì K1b chưa có `Restart`.
+const SUSPEND_MODE_ABORT: u64 = 0;
+const SUSPEND_MODE_DEFER: u64 = 1;
 /// **KT-290** — VA cố định của trang IPC buffer (loader map `R|W|U|NX` cho mọi ELF U-mode).
 const IPC_BUF_VA: u64 = 0x4002_0000;
 /// **KT-290** — VA **ngoài** frame IPC buffer (trang kế, chưa map) — ca âm fail-closed.
@@ -100,6 +126,20 @@ const SLOT_TCB_T2: u64 = 16;
 /// `foreign_key` trỏ VSpace **thật** của object layer): `MR1` của `Tcb.Configure` tham số
 /// `vspace?`. Ô 4 (`Frame`) là ca âm "vspace không phải VSpace".
 const SLOT_VSPACE: u64 = 17;
+// KT-319 (merge vòng 22): ba slot dưới đây **dời** 17/18/19 → 18/19/20 để không đụng
+// `SLOT_VSPACE = 17` của KT-320 (cùng vòng, hai nhánh độc lập). Rig `ktest_ipc.rs` cấp cap ở
+// đúng ba ô này.
+/// **KT-319** — cap `Tcb` **đích thứ ba** (rig để `Ready`): `Suspend` ⇒ `(0, 0)` rồi kernel đo
+/// **độc lập** `state = Inactive suspended = 0` (đích **không** được `Resume` ⇒ `entry = 0`).
+const SLOT_TCB_T3: u64 = 18;
+/// **KT-319** — cap `Tcb` **chỉ đọc** (`RIGHT_READ`, mint từ cap đích thứ ba): ca âm quyền —
+/// `Suspend` thiếu `RIGHT_WRITE` ⇒ `InsufficientRights` (3).
+const SLOT_TCB_RO: u64 = 19;
+/// **KT-319** — cap `Tcb` **đích thứ tư** (rig để `BlockedOnSend`): `Suspend` ⇒
+/// `IllegalOperation` (17) — đường invocation **không** nhận `BlockedOn*` (khác model KT-65);
+/// bảng 11×11 **cho** `BlockedOnSend → Inactive` nên đây là ca duy nhất chứng minh **kiểm trạng
+/// thái** của đường invocation chạy thật.
+const SLOT_TCB_T4: u64 = 20;
 /// **KT-311** — mask tham số mở rộng (`MR2` của `Tcb.Configure`, `length = 3`).
 const MASK_CSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_CSPACE;
 const MASK_VSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_VSPACE;
@@ -197,6 +237,28 @@ const EXIT_CFG3_MASK: u64 = 111;
 const EXIT_CFG3_FRAME: u64 = 112;
 /// **KT-320** — đường xanh `vspace?` = cap `VSpace` không trả `(0, 0)`.
 const EXIT_CFG3_FULL: u64 = 113;
+
+// KT-319 (merge vòng 22): bảy mã dưới đây **dời** 111..117 → 120..126 để không đụng ba mã
+// 111/112/113 của KT-320 (cùng vòng, hai nhánh độc lập). Rig/tài liệu đọc đúng các hằng này,
+// không nơi nào chép số.
+/// **KT-319** — `Tcb.Suspend` với `mode = Defer` **không** trả `InvalidArgument` (5) — K1b chưa có
+/// `Restart` ⇒ phải từ chối (nếu không, tác vụ bị treo **mà không có đường đánh thức**).
+const EXIT_SUSPEND_DEFER: u64 = 120;
+/// **KT-319** — `Tcb.Suspend` với `length` sai (0 hoặc 2) **không** trả `InvalidArgument` (5) —
+/// arity **chính xác 1** (D2-104).
+const EXIT_SUSPEND_ARITY: u64 = 121;
+/// **KT-319** — `Tcb.Suspend` trên tác vụ `Inactive` **không** trả `IllegalOperation` (17).
+const EXIT_SUSPEND_INACTIVE: u64 = 122;
+/// **KT-319** — `Tcb.Suspend` trên cap `Tcb` **thiếu `RIGHT_WRITE`** không trả
+/// `InsufficientRights` (3).
+const EXIT_SUSPEND_RIGHTS: u64 = 123;
+/// **KT-319** — đường xanh `Tcb.Suspend` (`Ready` / `Running`) không trả `(0, 0)`.
+const EXIT_SUSPEND_OK: u64 = 124;
+/// **KT-319** — `Suspend` rồi `Resume` không trả `(0, entry)` — tác vụ **không** chạy lại được.
+const EXIT_SUSPEND_RESUME: u64 = 125;
+/// **KT-319** — `Tcb.Suspend` trên tác vụ **`BlockedOnSend`** không trả `IllegalOperation` (17) —
+/// đường invocation **không** nhận `BlockedOn*` (bảng 11×11 lại **cho** cặp đó).
+const EXIT_SUSPEND_BLOCKED: u64 = 126;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -738,6 +800,115 @@ pub extern "C" fn _start() -> ! {
     put(b" ok=1\n");
     put(b"# ipc: neg mr over=");
     put_u64(over[0]);
+    put(b" ok=1\n");
+
+    // ---- 9) **KT-319** — `Tcb.Suspend` (method 3, `[object].Tcb`) qua **invocation**.
+    //          Năm ca âm **trước** (chúng không được đổi trạng thái gì), rồi **hai** đường xanh:
+    //          (a) đích `Ready` (ô 17) — kernel đo **độc lập** `Inactive suspended = 0`;
+    //          (b) đích `Running` (`SLOT_TCB_T`, TAP 7 vừa `Resume`) — `Suspend` rồi `Resume`
+    //          lại ⇒ tác vụ **chạy lại thật** ở `resume_entry` (mốc thật của KT-319).
+    //
+    //          (i) `mode = Defer` ⇒ `InvalidArgument` (5): K1b chưa có `Restart` ⇒ nhận `Defer`
+    //          là treo tác vụ **không có đường đánh thức** (cùng ngữ nghĩa model KT-65).
+    let sus_defer = call(
+        SLOT_TCB_T3,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_DEFER, 0, 0, 0],
+    );
+    if sus_defer[0] != 5 {
+        exit(EXIT_SUSPEND_DEFER);
+    }
+    //          (ii) arity **chính xác 1** (D2-104): `length = 0` (thiếu) và `length = 2` (thừa)
+    //          đều ⇒ `InvalidArgument` (5).
+    let sus_len0 = call(SLOT_TCB_T3, info(METHOD_SUSPEND, 0, false, 0), [0, 0, 0, 0]);
+    if sus_len0[0] != 5 {
+        exit(EXIT_SUSPEND_ARITY);
+    }
+    let sus_len2 = call(
+        SLOT_TCB_T3,
+        info(METHOD_SUSPEND, 0, false, 2),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_len2[0] != 5 {
+        exit(EXIT_SUSPEND_ARITY);
+    }
+    //          (iii) tác vụ **`Inactive`** (server đã `Exit` ở lượt 7) ⇒ `IllegalOperation` (17):
+    //          treo một tác vụ đã kết thúc không phải việc của `Suspend`.
+    let sus_inactive = call(
+        SLOT_TCB_S,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_inactive[0] != 17 {
+        exit(EXIT_SUSPEND_INACTIVE);
+    }
+    //          (iii-b) tác vụ **`BlockedOnSend`** ⇒ `IllegalOperation` (17): bảng 11×11 **cho**
+    //          `BlockedOnSend → Inactive` nên nếu thiếu **kiểm trạng thái** thì lệnh này trả
+    //          `(0, 0)` và treo một tác vụ đang chờ IPC (đột biến (i) của KT-319 phải đỏ ở đây).
+    let sus_blocked = call(
+        SLOT_TCB_T4,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_blocked[0] != 17 {
+        exit(EXIT_SUSPEND_BLOCKED);
+    }
+    //          (iv) cap `Tcb` **thiếu `RIGHT_WRITE`** ⇒ `InsufficientRights` (3) — cùng luật quyền
+    //          như `Tcb.Configure`/`Tcb.SetTls`/`Tcb.Resume` (D2-99(e)).
+    let sus_ro = call(
+        SLOT_TCB_RO,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_ro[0] != 3 {
+        exit(EXIT_SUSPEND_RIGHTS);
+    }
+    //          (a) đường xanh trên đích **`Ready`** ⇒ `(0, 0)`. Đích **không** được `Resume`:
+    //          kernel đo trạng thái **thật** sau lượt này (`Inactive`, cờ `suspended` **không**
+    //          bật — khác đường model `kill` của KT-65).
+    let sus_ready = call(
+        SLOT_TCB_T3,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_ready[0] != 0 || sus_ready[1] != 0 {
+        exit(EXIT_SUSPEND_OK);
+    }
+    //          (b) đường xanh trên đích **`Running`** (`SLOT_TCB_T` — TAP 7 vừa `Resume` nó) ⇒
+    //          `(0, 0)`; rồi `Resume` lại ⇒ `(0, entry)` — `TcbData.entry` **giữ** qua `Suspend`
+    //          nên arch nạp đúng `sepc` và tác vụ chạy lại (lượt 10 của kernel).
+    let sus_running = call(
+        SLOT_TCB_T,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_ABORT, 0, 0, 0],
+    );
+    if sus_running[0] != 0 || sus_running[1] != 0 {
+        exit(EXIT_SUSPEND_OK);
+    }
+    let sus_resumed = call(SLOT_TCB_T, info(METHOD_RESUME, 0, false, 0), [0, 0, 0, 0]);
+    if sus_resumed[0] != 0 || sus_resumed[1] != entry_va {
+        put(b"# ipc: suspend resume err=");
+        put_u64(sus_resumed[0]);
+        put(b" val=0x");
+        put_hex(sus_resumed[1]);
+        put(b"\n");
+        exit(EXIT_SUSPEND_RESUME);
+    }
+    put(b"# ipc: suspend ok=1 entry=0x");
+    put_hex(sus_resumed[1]);
+    put(b"\n");
+    put(b"# ipc: suspend neg defer=");
+    put_u64(sus_defer[0]);
+    put(b" arity=");
+    put_u64(sus_len0[0]);
+    put(b" arity2=");
+    put_u64(sus_len2[0]);
+    put(b" inactive=");
+    put_u64(sus_inactive[0]);
+    put(b" blocked=");
+    put_u64(sus_blocked[0]);
+    put(b" ro=");
+    put_u64(sus_ro[0]);
     put(b" ok=1\n");
 
     exit(0)

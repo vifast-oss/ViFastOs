@@ -95,6 +95,22 @@
 //!    `SyscallEnv::tcb_vspace`; arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó
 //!    (`# ipc: vspace ok obj=… applied=… match=1`). Ca âm: mask có **bit lạ** ⇒ `InvalidArgument`
 //!    **5**; CPTR là cap **`Frame`** ⇒ `WrongObjectType` **2** (không nhận Frame làm VSpace).
+//! 8. `ipc: tcb configure vspace` — **KT-320**: `Call(cap TCB, {label = Tcb.Configure, length = 3},
+//!    MR0 = CPTR Frame, MR1 = VA, MR2 = `MASK_VSPACE`)` với `vspace?` (word 1 của vùng 608..640) =
+//!    CPTR cap **`VSpace`** trong CSpace caller ⇒ core kiểm **loại** rồi lưu **danh tính** vào
+//!    `TcbData.vspace` (D2-83: PTE/`satp` thuộc arch), rồi **giao** cho arch qua hook
+//!    `SyscallEnv::tcb_vspace`; arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó
+//!    (`# ipc: vspace ok obj=… applied=… match=1`). Ca âm: mask có **bit lạ** ⇒ `InvalidArgument`
+//!    **5**; CPTR là cap **`Frame`** ⇒ `WrongObjectType` **2** (không nhận Frame làm VSpace).
+//! 9. `ipc: tcb suspend` — **KT-319**: `Call(cap TCB đích, {label = Tcb.Suspend, length = 1},
+//!    MR0 = mode)` (`0` = `Abort`). Đường xanh **hai** lần: (a) đích **`Ready`** → `Inactive`,
+//!    kernel đo **độc lập** `state = Inactive suspended = 0` (`Tcb.ReadState` — cờ `suspended`
+//!    **không** bật: đây là đường invocation, khác model `kill` của KT-65); (b) đích **`Running`**
+//!    (ô 15, TAP 7 vừa `Resume`) → `Inactive` rồi `Resume` lại ⇒ `(0, entry)` và tác vụ **chạy lại
+//!    thật** — mốc thật của KT-319: `TcbData.entry` **giữ** qua `Suspend`. **Sáu** ca âm trong
+//!    cùng boot: `mode = Defer` ⇒ 5, arity 0/2 ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
+//!    `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** `BlockedOnSend → Inactive` ⇒ chỉ kiểm trạng thái
+//!    chặn được), thiếu `RIGHT_WRITE` ⇒ 3.
 //!
 //! **Ca âm** (trong cùng boot, chương trình client tự kiểm): `Call` trên ô rỗng ⇒ 1
 //! (`InvalidCapability`); `Call` trên cap `Reply` (không phải Endpoint) ⇒ 18 (`NotSupported`);
@@ -169,6 +185,21 @@ const CS_TCB_T2: usize = 16;
 /// **KT-320** — cap **`VSpace`** của client trong cspace **của client** (`MR1` của
 /// `Tcb.Configure` tham số `vspace?`). Ô 4 (`Frame`) là ca âm "vspace không phải VSpace".
 const CS_VSPACE: usize = 17;
+// KT-319 (merge vòng 22): bốn ô dưới đây **dời** 17/18/19 → 18/19/20 để không đụng
+// `CS_VSPACE = 17` của KT-320 (cùng vòng, hai nhánh độc lập) — khớp `ipc_client_user.rs`.
+/// **KT-319** — cap `Tcb` **đích thứ ba** (rig để `Ready`): `Suspend` ⇒ `(0, 0)`; kernel đo
+/// **độc lập** `state = Inactive suspended = 0` (đích **không** được `Resume` ⇒ `entry = 0`).
+const CS_TCB_T3: usize = 18;
+/// **KT-319** — cap `Tcb` **chỉ đọc** (`RIGHT_READ`, mint từ cap đích thứ ba): ca âm quyền —
+/// `Suspend` thiếu `RIGHT_WRITE` ⇒ `InsufficientRights` (3).
+const CS_TCB_RO: usize = 19;
+/// **KT-319** — cap `Tcb` **đích thứ tư** — rig để `BlockedOnSend`: bảng 11×11 **cho**
+/// `BlockedOnSend → Inactive`, nên **chỉ** kiểm trạng thái của đường invocation mới chặn được
+/// (đột biến "bỏ kiểm trạng thái" sẽ treo tác vụ đang chờ IPC ⇒ TAP 8 đỏ).
+const CS_TCB_T4: usize = 20;
+/// **KT-319** — slot trong cspace **server** giữ cap `Endpoint` **riêng** của đích thứ tư (không
+/// đụng `EP` của luồng `Call`/`Reply` — TAP 1..7 giữ nguyên).
+const CS_SRV_EP2: usize = 12;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -190,6 +221,10 @@ const RIG_TCB_T2: usize = 11;
 /// **KT-314** — `SchedContext` cho hai TCB đích (bất biến KT-20: `Running ⇒ còn budget`).
 const RIG_SC_T: usize = 12;
 const RIG_SC_T2: usize = 13;
+/// **KT-319** — TCB **đích thứ ba** (`Ready`, chỉ bị `Suspend` — không bao giờ chạy) + SC của nó
+/// (ô 14/15 là hai ô cuối của CNode gốc 16 ô).
+const RIG_TCB_T3: usize = 14;
+const RIG_SC_T3: usize = 15;
 
 /// Label/MR **hợp đồng** giữa hai chương trình U-mode (không phải ABI) — khớp
 /// `init/ipc_client_user.rs` + `init/ipc_server_user.rs`.
@@ -232,6 +267,12 @@ struct Rig {
     /// VSpace **thật** của object layer — D2-83). `TcbData.vspace` sau `Configure(vspace?)` phải
     /// **bằng đúng** giá trị này, và `user_run::vspace_applied` phải báo nó đã được tiêu thụ.
     vspace_obj: ObjId,
+    /// **KT-319** — TCB đích thứ ba: rig để `Ready`, U-mode `Suspend` nó (không `Resume`).
+    tcb_t3: ObjId,
+    /// **KT-319** — TCB đích thứ tư: rig để **`BlockedOnSend`** trên Endpoint riêng (ca âm
+    /// "đường invocation **không** nhận `BlockedOn*`"); kernel đo **độc lập** trạng thái **không**
+    /// đổi sau lượt U-mode.
+    tcb_t4: ObjId,
 }
 
 /// Đưa TCB về `Running{hart:0}` — cùng khuôn `ktest_capx::set_running` (chỉ `Inactive` mới
@@ -260,7 +301,7 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
     // **KT-314** — bảng `(ô, loại)` **tường minh** (trước KT-314 là `RIG_TCB_C + i`, chỉ đúng vì
     // các ô 1..7 liền nhau; thêm TCB đích ở ô 10..13 thì phải khai rõ để không đè `RIG_CSPACE`=8
     // / `RIG_IPC_BUF`=9).
-    let objs: [(usize, ObjType); 11] = [
+    let objs: [(usize, ObjType); 13] = [
         (RIG_TCB_C, ObjType::Tcb),
         (RIG_TCB_S, ObjType::Tcb),
         (RIG_EP, ObjType::Endpoint),
@@ -273,8 +314,11 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
         (RIG_TCB_T2, ObjType::Tcb),
         (RIG_SC_T, ObjType::SchedContext),
         (RIG_SC_T2, ObjType::SchedContext),
+        // **KT-319** — TCB đích thứ ba (`Ready`) + `SchedContext` của nó.
+        (RIG_TCB_T3, ObjType::Tcb),
+        (RIG_SC_T3, ObjType::SchedContext),
     ];
-    let mut obj = [0u32; 11];
+    let mut obj = [0u32; 13];
     for (i, (slot, ty)) in objs.iter().enumerate() {
         let cap = m.retype(us, *ty, 0, 0).expect("rig: retype object lõi");
         m.put_cap(root, *slot, cap).expect("rig: đặt cap");
@@ -412,6 +456,44 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
             .expect("rig: vspace -> client");
         obj
     };
+    // **KT-319** — cap `Tcb` đích thứ ba (đủ quyền — đường xanh `Suspend`) + bản **chỉ đọc**
+    // (mint `RIGHT_READ` từ chính cap đó — ca âm quyền 3).
+    m.copy(
+        SlotRef::new(root, RIG_TCB_T3),
+        SlotRef::new(cnode_c, CS_TCB_T3),
+    )
+    .expect("rig: tcb dich 3 -> client");
+    m.copy_rights(
+        SlotRef::new(root, RIG_TCB_T3),
+        SlotRef::new(cnode_c, CS_TCB_RO),
+        Some(vifast_core::RIGHT_READ),
+    )
+    .expect("rig: tcb dich 3 ro -> client");
+    // **KT-319** — TCB đích thứ tư, **`BlockedOnSend`** trên một `Endpoint` **riêng**: bảng 11×11
+    // **cho** `BlockedOnSend → Inactive`, nên ca âm này chỉ bị chặn bởi **kiểm trạng thái** của
+    // đường invocation (mutation "bỏ kiểm trạng thái" ⇒ treo tác vụ đang chờ IPC ⇒ TAP 8 đỏ).
+    // Cap đặt **thẳng** vào cspace client (ô 19) để không phải nới CNode gốc 16 ô.
+    let t4_cap = m
+        .retype(SlotRef::new(root, RIG_UNTYPED), ObjType::Tcb, 0, 0)
+        .expect("rig: retype dich 4");
+    m.put_cap(cnode_c, CS_TCB_T4, t4_cap)
+        .expect("rig: tcb dich 4 -> client");
+    let tcb_t4 = m.cap_obj(t4_cap).expect("rig: obj dich 4");
+    let ep2_cap = m
+        .retype(SlotRef::new(root, RIG_UNTYPED), ObjType::Endpoint, 0, 0)
+        .expect("rig: retype ep2");
+    m.put_cap(cnode_s, CS_SRV_EP2, ep2_cap)
+        .expect("rig: ep2 -> server");
+    let ep2 = m.cap_obj(ep2_cap).expect("rig: obj ep2");
+    m.transition_tcb(
+        tcb_t4,
+        NonReadyTarget::BlockedOnSend {
+            ep: ep2,
+            call: false,
+            fault: None,
+        },
+    )
+    .expect("rig: dich 4 blocked on send");
     // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
     // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
     // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
@@ -432,7 +514,7 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
     // **KT-314** — hai TCB đích: cspace (để `Tcb.Configure` giải CPTR trong CSpace **caller** và
     // để syscall của đích chạy được) + SC (KT-20) + priority. `entry` **không** đặt ở đây: đích
     // thứ nhất nhận `entry?` từ **chính client** (đường xanh), đích thứ hai giữ `0` (ca âm).
-    for slot in [RIG_TCB_T, RIG_TCB_T2] {
+    for slot in [RIG_TCB_T, RIG_TCB_T2, RIG_TCB_T3] {
         m.tcb_configure(
             SlotRef::new(root, slot),
             Some(SlotRef::new(cnode_c, CS_SELF)),
@@ -444,6 +526,7 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
         (RIG_TCB_S, RIG_SC_S, PRIO_SERVER),
         (RIG_TCB_T, RIG_SC_T, PRIO_CLIENT),
         (RIG_TCB_T2, RIG_SC_T2, PRIO_CLIENT),
+        (RIG_TCB_T3, RIG_SC_T3, PRIO_CLIENT),
     ] {
         m.sched_control_configure(
             SlotRef::new(root, RIG_CTL),
@@ -457,6 +540,10 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
         m.tcb_set_priority(SlotRef::new(root, tcb_slot), prio, 10)
             .expect("rig: priority");
     }
+    // **KT-319** — đích thứ ba `Ready` **trước** lượt U-mode: đường xanh `Suspend` trên `Ready`
+    // (đích thứ nhất, `Inactive`, sẽ `Resume`; đích thứ ba không bao giờ chạy). `entry` để `0` —
+    // nó **không** được `Resume`, và `Suspend` không đọc `entry`.
+    m.start_tcb(obj[11]).expect("rig: dich 3 ready");
     Rig {
         tcb_c: obj[0],
         tcb_s: obj[1],
@@ -470,6 +557,8 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: CapI
         tcb_t: obj[7],
         tcb_t2: obj[8],
         vspace_obj,
+        tcb_t3: obj[11],
+        tcb_t4,
     }
 }
 
@@ -856,7 +945,14 @@ pub extern "C" fn rust_main() -> ! {
     // ================================================================ lượt 9: client — ca âm cũ + `Exit(0)`
     // Client đã `Yield` sau pha KT-311 ⇒ lượt này **không** `apply_ipc_return` (không có message
     // mới; áp lại message cũ sẽ stale — cùng lý do lượt 7 của server).
+    //
+    // **KT-319** — mốc số đếm invocation **trước** lượt 9: lượt này chứa **hai** `Tcb.Suspend`
+    // đường xanh (đích `Ready` + đích `Running`) trên nền năm ca âm (defer/arity 0/arity 2/
+    // inactive/quyền) ⇒ `delta.suspend` phải **đúng 2** (không phải "ít nhất 1").
+    let inv_before9 = vifast_core::invoke::stats();
     let stop9 = run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT);
+    let inv_after9 = vifast_core::invoke::stats();
+    let suspend_calls = inv_after9.suspend.saturating_sub(inv_before9.suspend);
     let state_c9 = state_of(rig.tcb_c);
 
     // ================================================================ KT-314: đo `Tcb.Resume` + lượt 10
@@ -864,6 +960,18 @@ pub extern "C" fn rust_main() -> ! {
     // vừa ghi bằng `Configure(entry?)`) và trạng thái **thật** sau `Resume` (`Running`).
     let resume_entry = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t).ok());
     let resume_state = state_of(rig.tcb_t);
+    // **KT-319** — đo **độc lập** ở kernel `Tcb.ReadState` của TCB đích thứ ba **sau** `Suspend`
+    // từ U-mode: `state = Inactive`, `suspended = 0` (đường invocation **không** bật cờ của đường
+    // model KT-65), `blocked_on_kind = None`, `exit_code = None` (D2-25: chỉ `Configure`/`Resume`
+    // xoá). Đích này **không** được `Resume` ⇒ `entry` vẫn `0` và nó **không** chạy.
+    let suspend_read_t3 =
+        core_bridge::with_machine(|m| m.tcb_read_state(SlotRef::new(rig.root, RIG_TCB_T3)).ok());
+    // Đọc **lần thứ hai** bằng cửa khác (`tcb_state`) — hai accessor phải **khớp**; lệch ⇒ TAP 8
+    // đỏ (không tin một cửa duy nhất).
+    let suspend_state_t3 = state_of(rig.tcb_t3);
+    // **KT-319** — ca âm `BlockedOnSend` **không** được đổi trạng thái: đích thứ tư vẫn
+    // `BlockedOnSend` **sau** lượt U-mode (đo bằng cửa thứ hai, độc lập với lời chương trình).
+    let suspend_state_t4 = state_of(rig.tcb_t4);
     // Ca âm đo **độc lập** bằng **cùng** cửa core (`Machine::tcb_resume_invocation`) trên TCB
     // đích thứ hai (`entry = 0`): phải là `InvalidArgument` (5) và trạng thái **không** đổi.
     let neg_noentry = core_bridge::with_machine(|m| {
@@ -894,6 +1002,27 @@ pub extern "C" fn rust_main() -> ! {
             "# ipc: resume neg noentry={} state={}",
             neg_noentry.map(u64::from).unwrap_or(u64::MAX),
             neg_state.map(tcb_state_name).unwrap_or("none")
+        );
+    }
+    // **KT-319** — một dòng do **kernel** in sau khi đo **độc lập** `Tcb.ReadState` của đích thứ
+    // ba (bị `Suspend` từ U-mode, **không** `Resume`) + số `Tcb.Suspend` thành công của lượt 9 +
+    // trạng thái đích thứ nhất **sau cặp** `Suspend`/`Resume` (`Running`). `suspended=0` là điểm
+    // khác biệt **có chủ đích** với model `kill` (KT-65): đường invocation chuyển `Inactive`,
+    // **không** đánh cờ treo.
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc: suspend state={} suspended={} calls={} resumed={} blocked={}",
+            suspend_read_t3
+                .map(|s| tcb_state_name(s.state))
+                .unwrap_or("none"),
+            suspend_read_t3
+                .map(|s| u8::from(s.suspended))
+                .unwrap_or(u8::MAX),
+            suspend_calls,
+            resume_state.map(tcb_state_name).unwrap_or("none"),
+            suspend_state_t4.map(tcb_state_name).unwrap_or("none")
         );
     }
     // **Lượt 10** — chạy **TCB đích** vừa được `Resume`. `tf_t.sepc` **cố ý để `0`**: chỉ hook
@@ -971,6 +1100,12 @@ pub extern "C" fn rust_main() -> ! {
     let client_said_cfg3 = user::captured_contains(SLOT_CLIENT, b"# ipc: configure3 ok=1");
     let client_said_cfg3_neg =
         user::captured_contains(SLOT_CLIENT, b"# ipc: configure3 neg mask=5 frame=2 ok=1");
+    // **KT-319** — hai dòng do **chính chương trình U-mode** in sau `Tcb.Suspend`.
+    let client_said_suspend = user::captured_contains(SLOT_CLIENT, b"# ipc: suspend ok=1 entry=0x");
+    let client_said_suspend_neg = user::captured_contains(
+        SLOT_CLIENT,
+        b"# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1",
+    );
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
     let (check_ipc, check_caps) =
@@ -1314,14 +1449,70 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+
+    // TAP 9 — **KT-319**: `Tcb.Suspend` (method 3) chuyển `Running`/`Ready` → `Inactive`. Đo
+    // **độc lập** ở kernel: (a) `Tcb.ReadState` của đích thứ ba **sau** `Suspend` từ U-mode =
+    // `Inactive` + `suspended = 0` + `blocked_on_kind = None` + `exit_code = None`; (b) **hai**
+    // `Tcb.Suspend` thành công trong lượt 9 (`delta.suspend = 2`, không phải "ít nhất 1"); (c) cặp
+    // `Suspend`/`Resume` trên đích `Running` cho lại `Running` và tác vụ **chạy lại thật** ở
+    // `resume_entry` (`target_exit = 0` — bằng chứng `TcbData.entry` **giữ** qua `Suspend`); cộng
+    // hai dòng do chính chương trình U-mode in (đường xanh + năm mã ca âm).
+    let ok9 = client_said_suspend
+        && client_said_suspend_neg
+        && suspend_calls == 2
+        && suspend_read_t3.is_some_and(|s| {
+            s.state == TcbState::Inactive
+                && !s.suspended
+                && s.blocked_on_kind.is_none()
+                && s.exit_code.is_none()
+        })
+        && suspend_state_t3 == Some(TcbState::Inactive)
+        && matches!(suspend_state_t4, Some(TcbState::BlockedOnSend { .. }))
+        && resume_state == Some(TcbState::Running { hart: 0 })
+        && target_said_ran
+        && target_exit == Some(0)
+        && check_ipc
+        && check_caps;
+    if ok9 {
+        PLATFORM.put_str("ok 9 - ipc: tcb suspend\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 9 - ipc: tcb suspend: said_ok={} said_neg={} calls={} state={} state2={} state4={} suspended={} blocked={} exit={} resumed={} ran={} target_exit={} check_ipc={} check_caps={}",
+            u8::from(client_said_suspend),
+            u8::from(client_said_suspend_neg),
+            suspend_calls,
+            suspend_read_t3
+                .map(|s| tcb_state_name(s.state))
+                .unwrap_or("none"),
+            suspend_state_t3.map(tcb_state_name).unwrap_or("none"),
+            suspend_state_t4.map(tcb_state_name).unwrap_or("none"),
+            suspend_read_t3
+                .map(|s| u8::from(s.suspended))
+                .unwrap_or(u8::MAX),
+            suspend_read_t3
+                .map(|s| u8::from(s.blocked_on_kind.is_some()))
+                .unwrap_or(u8::MAX),
+            suspend_read_t3
+                .map(|s| s.exit_code.is_none() as u8)
+                .unwrap_or(u8::MAX),
+            resume_state.map(tcb_state_name).unwrap_or("none"),
+            u8::from(target_said_ran),
+            target_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(check_ipc),
+            u8::from(check_caps)
+        );
+        fails += 1;
+    }
     if fails == 0 {
         PLATFORM.put_str(
-            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace xong (8 TAP, 0 fail)\n",
+            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend xong (9 TAP, 0 fail)\n",
         );
         PLATFORM.halt(0)
     } else {
         PLATFORM.put_str(
-            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace CO LOI\n",
+            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend CO LOI\n",
         );
         PLATFORM.halt(1)
     }

@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 8 8
+ktest-ipc 9 9
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -201,3 +201,23 @@ ktest-netsrv 3 3
 # KT-311 đổi tiền đề từ "`vspace?` chưa cài ⇒ 18" sang "sai loại ⇒ 2" — `k6-test-invariants.md`
 # §4.1). Đường xanh đòi thêm: tác vụ đích vẫn `Exit(0)` **sau khi** `satp` được chọn từ VSpace
 # của TCB. TAP 1..7 giữ nguyên nội dung.
+
+
+# **KT-319** (nợ KT-314 §7.1): ảnh `ktest-ipc` thêm **TAP 9** — **`Tcb.Suspend`** (method **3**
+# của `[object].Tcb`) qua **invocation**: client U-mode gọi
+# `Call(cap TCB đích, {label = Tcb.Suspend, length = 1}, MR0 = mode)` (`0` = `Abort`, `1` =
+# `Defer`). Core kiểm quyền (`RIGHT_WRITE`, thiếu ⇒ 3) → arity **chính xác 1** (D2-104; `0`/`2`
+# ⇒ `InvalidArgument` 5) → `mode` (`Defer` ⇒ 5 vì K1b chưa có `Restart`) → **trạng thái trước**
+# (chỉ `Running`/`Ready`; `Inactive` và mọi `BlockedOn*`/`Sleeping`/`Stopping`/`Dead` ⇒
+# `IllegalOperation` 17), rồi chuyển `Inactive` qua **một** cửa `transition_tcb` (bảng 11×11
+# D2-49(d)) — **giữ** `TcbData.entry` (để `Resume` chạy lại) và `exit_code` (D2-25). Bằng chứng:
+# `# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend`
+# (kernel đo **độc lập** `Tcb.ReadState` của đích `Ready` sau `Suspend`, **đúng hai** `Tcb.Suspend`
+# thành công, đích `Running` vẫn `Running` sau cặp `Suspend`/`Resume` và đích `BlockedOnSend`
+# **không** đổi trạng thái), `# ipc: suspend ok=1 entry=0x…` +
+# `# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1` (client in), và
+# `# ipc: resume ran entry=0x…` — **cùng** tác vụ đích chạy `resume_entry` sau khi bị `Suspend`
+# rồi `Resume` lại (mốc thật: `entry` **giữ** qua `Suspend`). Năm ca âm trong cùng boot:
+# `mode = Defer` ⇒ 5, `length = 0` ⇒ 5, `length = 2` ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
+# `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** `BlockedOnSend → Inactive` ⇒ chỉ kiểm trạng thái của
+# đường invocation chặn được), thiếu `RIGHT_WRITE` ⇒ 3. TAP 1..8 giữ nguyên nội dung.

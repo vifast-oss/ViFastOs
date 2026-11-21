@@ -230,6 +230,9 @@ pub fn invocation_phase(
         // **KT-314**: pha KT-67a không gọi `Tcb.Resume` ⇒ delta phải **0** (giữ nguyên khẳng
         // định cũ, không nới).
         resume: stats.resume.saturating_sub(before.resume),
+        // **KT-319**: pha KT-67a không gọi `Tcb.Suspend` ⇒ delta phải **0** (giữ nguyên khẳng
+        // định cũ, không nới).
+        suspend: stats.suspend.saturating_sub(before.suspend),
     };
     let fault = FAULT_STATS.last();
     let mut frame_obj = 0u32;

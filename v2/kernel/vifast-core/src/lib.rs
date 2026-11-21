@@ -92,6 +92,10 @@ mod configure_tests;
 // `cargo test`.
 #[cfg(test)]
 mod resume_tests;
+// KT-319 — test host cho `Tcb.Suspend` (method 3 của `[object].Tcb`) qua invocation, chỉ khi
+// `cargo test`.
+#[cfg(test)]
+mod suspend_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

@@ -25,7 +25,7 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
-#   - `ktest-ipc`   : 8 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311** + **KT-314** + **KT-320**) — **IPC từ U-mode**
+#   - `ktest-ipc`   : 9 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311** + **KT-314** + **KT-320** + **KT-319**) — **IPC từ U-mode**
 #                     + **MR4..MR63 qua IPC buffer** + **`Tcb.Configure` qua invocation**: client
 #                     U-mode `Call` chặn trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB),
 #                     server `Recv` + `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng
@@ -34,7 +34,11 @@
 #                     `Call(cap TCB, label = Tcb.Configure, length = 2)` để bind buffer (rig không
 #                     bind hộ) + ba ca âm (cap không phải TCB ⇒ 18, method sai ⇒ 18, buffer ngoài
 #                     frame ⇒ 5); ca âm cũ trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên cap
-#                     `Reply` ⇒ 18, `length = 65` ⇒ 5).
+#                     `Reply` ⇒ 18, `length = 65` ⇒ 5). **KT-319** thêm TAP 8: `Tcb.Suspend`
+#                     (method 3) chuyển `Running`/`Ready` → `Inactive`, **giữ** `entry` để
+#                     `Resume` chạy lại (tác vụ đích chạy thật ở `resume_entry`); năm ca âm
+#                     (`Defer` ⇒ 5, arity 0/2 ⇒ 5, `Inactive`/`BlockedOnSend` ⇒ 17, thiếu
+#                     `RIGHT_WRITE` ⇒ 3).
 #   - `ktest-netsrv`: 2 TAP (**KT-281**, D2-210, N1 phần 3) — **net server U-mode**: client U-mode
 #                     `Call` chặn tới server U-mode `netsrv`; server `Recv` `Ping(ip)`, gọi **dịch
 #                     vụ mạng của kernel** bằng syscall `Call` trên `Endpoint` (driver `virtio_net`
@@ -445,6 +449,7 @@ ipc: cap transfer
 ipc: tcb configure full
 ipc: tcb resume
 ipc: tcb configure vspace
+ipc: tcb suspend
 EOF
 }
 
@@ -763,6 +768,9 @@ EOF
 ^# ipc: resume neg noentry=5 state=Inactive$
 ^# ipc: resume ran entry=0x[0-9a-f]+$
 ^# ipc: vspace ok obj=[0-9]+ applied=[0-9]+ match=1 root=0x[0-9a-f]+ asid=[0-9]+$
+^# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend$
+^# ipc: suspend ok=1 entry=0x[0-9a-f]+$
+^# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1$
 ^# ipc final: client_exit=0 server_exit=0 target_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive target=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
@@ -868,7 +876,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
-        ktest-ipc) printf '%s' '^PANIC: KT-320 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full \+ tcb resume \+ configure vspace xong \(8 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-320 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full \+ tcb resume \+ configure vspace \+ tcb suspend xong \(9 TAP, 0 fail\)$' ;;
         ktest-netsrv) printf '%s' '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac

@@ -372,6 +372,40 @@ impl Machine {
         Ok(self.tcb_data(tcb)?.vspace)
     }
 
+    /// **KT-319** — `Tcb.Suspend` qua **invocation** (method 3 của `[object].Tcb`): treo tác vụ
+    /// đích bằng cách chuyển `Inactive`.
+    ///
+    /// # Ngữ nghĩa (thứ tự **bắt buộc** — lỗi không đổi gì)
+    ///
+    /// 1. Cap phải là `Tcb` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1.
+    /// 2. `mode = Defer` ⇒ `InvalidArgument` 5 (K1b chưa có `Restart` — cùng ngữ nghĩa model
+    ///    [`Machine::tcb_suspend`], KT-65).
+    /// 3. **Trạng thái trước**: chỉ `Running`/`Ready` ⇒ đi; còn lại — `Inactive`, `BlockedOn*`,
+    ///    `Sleeping`, `Stopping`, `Dead` — ⇒ `IllegalOperation` 17. Đường **invocation** hẹp hơn
+    ///    model API KT-65 (model nhận cả `BlockedOn*`): treo một tác vụ đang chờ IPC là việc của
+    ///    `Reply`/`Notification`/`Exit`, không phải `Suspend` (`[TK]` KT-319).
+    /// 4. Chuyển `Inactive` qua **một** cửa [`Machine::transition_tcb`] (bảng 11×11 D2-49(d) vẫn
+    ///    là nguồn sự thật: `Running → Inactive` và `Ready → Inactive` đều ALLOWED).
+    /// 5. **Giữ** `TcbData.entry` (để [`Machine::tcb_resume_invocation`] sau đó chạy lại được —
+    ///    mốc thật của KT-319) và **giữ** `exit_code` (D2-25: chỉ `Configure`/`Resume` xoá).
+    pub fn tcb_suspend_invocation(
+        &mut self,
+        tcb: SlotRef,
+        mode: SuspendMode,
+    ) -> Result<(), KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        if mode == SuspendMode::Defer {
+            return Err(KError::InvalidArgument);
+        }
+        let state = self.tcb_state(obj)?;
+        if !matches!(state, TcbState::Running { .. } | TcbState::Ready) {
+            return Err(KError::IllegalOperation);
+        }
+        self.transition_tcb(obj, NonReadyTarget::Inactive)?;
+        self.sched_after_op(true);
+        Ok(())
+    }
+
     /// Kiểm + dựng [`crate::ipc::IpcBufferBinding`] từ tham số `ipc_buffer?` — **một** nguồn cho
     /// cả [`Machine::tcb_configure_with_ipc_buffer`] (rig/ảnh test) và
     /// [`Machine::tcb_configure_ipc_buffer`] (invocation KT-290): cap phải là `Frame` sống,
