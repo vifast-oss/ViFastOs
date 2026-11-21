@@ -373,6 +373,11 @@ pub extern "C" fn el0_done() -> ! {
     if !crate::input::run(&mut console) {
         debug_halt(5)
     }
+    // **KT-303** — TAP 35 (DNS) đỏ ⇒ **không** in marker (bất biến "TAP đỏ ⇒ không marker"),
+    // nhưng các bước `wx`/`gpu`/`input` đã chạy và in TAP của chúng.
+    if crate::net::dns_red() {
+        debug_halt(5)
+    }
     let _ = pl011::write_str(BOOT_MARKER);
     let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)

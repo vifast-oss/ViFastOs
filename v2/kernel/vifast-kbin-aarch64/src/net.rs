@@ -38,6 +38,14 @@
 use core::fmt::{self, Write};
 use core::sync::atomic::Ordering;
 
+/// **KT-303** — TAP 35 (DNS) đỏ ⇒ ảnh **không** in marker nhưng **vẫn chạy** các bước sau.
+pub static DNS_RED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Đã có TAP đỏ vì DNS chưa (dùng để chặn marker).
+pub fn dns_red() -> bool {
+    DNS_RED.load(core::sync::atomic::Ordering::Relaxed)
+}
+
 use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_net::dns::DnsRetry;
 use vifast_net::tcp::State;
@@ -494,8 +502,14 @@ pub fn run(console: &mut Console) -> bool {
     } else {
         let _ = writeln!(console, "# net: dns skipped (no dhcp)");
     }
+    // **KT-303** — DNS đi qua **resolver của host** (dịch vụ ngoài) nên có thể timeout; nếu
+    // `net::run` trả `false` thì ảnh **dừng** ở đây và **che** kết quả `wx`/`gpu`/`input` (đo được:
+    // boot không bàn phím dừng ở `not ok 35` nên **không** in `# input: no device` ⇒ ca âm (q) của
+    // runner đỏ **vì lý do sai**). Vì vậy TAP 35 đỏ **không** dừng ảnh: đặt cờ `DNS_RED` để
+    // `umode::run` **không in marker** (bất biến "TAP đỏ ⇒ không marker" giữ nguyên), các bước sau
+    // vẫn chạy và in TAP của chúng.
     if !tap(console, 35, "net: dns", dns_ok) {
-        all_ok = false;
+        DNS_RED.store(true, core::sync::atomic::Ordering::Relaxed);
     }
 
     // Bộ đếm driver: `errors=0 timeouts=0 id_mismatch=0` là bằng chứng đường đi sạch (cùng khuôn

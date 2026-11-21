@@ -1731,7 +1731,10 @@ selftest_negative() {
     # "bỏ trần" ở driver sẽ in `attempts=3` (hoặc treo tới timeout boot) — cả hai đều ĐỎ.
     n=$((n + 1))
     cases=$((cases + 1))
-    sed 's/ attempts=1 const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' "$good" \
+    # **KT-303** — đột biến phải khớp **cả** `attempts=1` **và** `attempts=2`: lần chạy thật có
+    # `attempts=2` khi lần thử đầu timeout (đo được ở `/tmp/a64-r17d.log`), nên mẫu cũ chỉ khớp
+    # `attempts=1` ⇒ `sed` không đổi gì ⇒ ca âm (u) **XANH giả**. Dùng `attempts=[12]`.
+    sed -E 's/ attempts=[12] const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' "$good" \
         >"$tmp/u.log" 2>/dev/null || true
     if check_log "$tmp/u.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/u.out" 2>&1; then
         echo "not ok $n - ca âm (u): attempts=3 (retransmit vô hạn) mà kiểm vẫn XANH"
