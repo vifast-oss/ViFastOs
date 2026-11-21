@@ -165,6 +165,28 @@ fn rect_tien_ich_bien() {
 }
 
 #[test]
+fn rect_byte_offset_trong_backing() {
+    // `TRANSFER_TO_HOST_2D.offset` là offset byte của **pixel đầu** `rect` trong backing, không
+    // phải 0: QEMU đọc từng hàng tại `offset + stride * h` (hw/display/virtio-gpu.c). Gửi 0 cho
+    // một rect lệch gốc ⇒ thiết bị chép **hàng 0** của backing vào `rect.y` ⇒ chữ hiện lệch đúng
+    // `(rect.x, rect.y)` pixel — lỗi KT-271 đã đo được trên PPM trước khi vá.
+    let stride = 640 * BYTES_PER_PIXEL;
+    let stride64 = stride as u64;
+    assert_eq!(Rect::full(640, 480).byte_offset(stride), 0);
+    assert_eq!(
+        Rect::new(8, 8, 88, 24).byte_offset(stride),
+        8 * stride64 + 8 * 4
+    );
+    assert_eq!(Rect::new(0, 7, 640, 3).byte_offset(stride), 7 * stride64);
+    assert_eq!(
+        Rect::new(639, 479, 1, 1).byte_offset(stride),
+        479 * stride64 + 639 * 4
+    );
+    // `stride` khác `width * 4` (đệm hàng) vẫn tính đúng theo `stride`.
+    assert_eq!(Rect::new(2, 3, 1, 1).byte_offset(4096), 3 * 4096 + 8);
+}
+
+#[test]
 fn resource_create_2d_encode_byte_exact() {
     let cmd = ResourceCreate2d::new(1, VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM, 640, 480);
     let bytes = cmd.encode();

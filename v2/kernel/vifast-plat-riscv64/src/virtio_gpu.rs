@@ -83,6 +83,9 @@ pub const FB_WIDTH: u32 = 640;
 pub const FB_HEIGHT: u32 = 480;
 /// Số byte framebuffer = 640 × 480 × 4.
 pub const FB_BYTES: usize = 640 * 480 * 4;
+/// Số byte **mỗi hàng** của resource = `FB_WIDTH × 4` (pixman của QEMU dùng đúng stride này cho
+/// ảnh 640 px 32 bpp; `TRANSFER_TO_HOST_2D.offset` tính theo nó).
+pub const FB_STRIDE: usize = FB_WIDTH as usize * 4;
 /// Số trang 4 KiB framebuffer chiếm = 300.
 pub const FB_PAGES: usize = FB_BYTES / 4096;
 /// Base **vật lý** của framebuffer: 2 MiB đầu **sau** vùng probe của ảnh `ktest`
@@ -689,8 +692,14 @@ pub fn probe_bogus_scanout(bogus_id: u32, rect: Rect) -> Result<&'static str, &'
 }
 
 /// `TRANSFER_TO_HOST_2D` — chép `rect` từ backing (guest RAM) sang resource của thiết bị.
+///
+/// `offset` **không** phải 0 khi `rect` lệch gốc: thiết bị đọc từng hàng tại `offset + stride*h`
+/// rồi ghi vào `(rect.y + h) * stride + rect.x * 4` (QEMU `hw/display/virtio-gpu.c`). Vì vậy
+/// `offset` = [`Rect::byte_offset`] của `rect` trong backing. Gửi 0 cho rect lệch gốc ⇒ thiết bị
+/// chép hàng 0 của framebuffer vào `rect.y` ⇒ nội dung hiện lệch đúng `(rect.x, rect.y)` pixel —
+/// lỗi KT-271 đã **đo được** trên PPM (`ViFastOs` hiện ở `(16,16)` thay vì `(8,8)`) trước khi vá.
 pub fn transfer_to_host_2d(rect: Rect) -> Result<(), &'static str> {
-    let cmd = TransferToHost2d::new(RESOURCE_ID, rect, 0).encode();
+    let cmd = TransferToHost2d::new(RESOURCE_ID, rect, rect.byte_offset(FB_STRIDE)).encode();
     page()[CMD_OFF..CMD_OFF + cmd.len()].copy_from_slice(&cmd);
     let used = submit(cmd.len(), CTRL_HDR_BYTES)?;
     check_nodata(used)
@@ -702,6 +711,19 @@ pub fn resource_flush(rect: Rect) -> Result<(), &'static str> {
     page()[CMD_OFF..CMD_OFF + cmd.len()].copy_from_slice(&cmd);
     let used = submit(cmd.len(), CTRL_HDR_BYTES)?;
     check_nodata(used)
+}
+
+/// Flush **một vùng đã đổi**: `TRANSFER_TO_HOST_2D` + `RESOURCE_FLUSH` — đúng **hai** lệnh.
+///
+/// Đây là đường flush theo lô của console (KT-271): console tích vùng bẩn rồi gọi hàm này **một**
+/// lần cho cả khối chữ, thay vì hai lệnh cho **mỗi** ký tự. Số lệnh là số **đo được** — bộ đếm
+/// [`stats`]`.commands` tăng đúng 2 cho mỗi lần gọi, và ảnh `ktest-gpu` in delta đó ra TAP.
+///
+/// Không gộp hai lệnh vào một descriptor: spec §5.7.6.5/§5.7.6.6 định nghĩa chúng là hai lệnh
+/// riêng, và `submit` của driver gửi **một** lệnh mỗi vòng (head 0) — gộp sẽ phải đổi cả ring.
+pub fn flush_rect(rect: Rect) -> Result<(), &'static str> {
+    transfer_to_host_2d(rect)?;
+    resource_flush(rect)
 }
 
 /// Framebuffer driver vẽ — **alias physmap** của dải PA [`FB_PHYS_BASE`] (leaf 2 MiB RW NX đã map

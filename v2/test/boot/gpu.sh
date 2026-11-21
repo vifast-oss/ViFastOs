@@ -13,7 +13,8 @@
 #   1. khởi động QEMU (process group riêng qua `qemu_guard.sh`) với `-device virtio-gpu-pci
 #      -display none`; **không** `-icount` (bài test này tương tác — host phải chụp tại một thời
 #      điểm thật, nên `rdtime` của khách phải bám đồng hồ thật);
-#   2. chờ log có dòng `# gpu: drawn` (ảnh in **sau** `RESOURCE_FLUSH` — chụp sớm là chưa có gì);
+#   2. chờ log có dòng `# gpu: console done lines=3` (ảnh in **sau** lô flush console — chụp sớm
+#      là chưa có ba dòng chữ);
 #   3. nối socket, đọc banner tới `(qemu) `, gửi `screendump <tệp.ppm>`;
 #   4. chờ QEMU tự thoát trong ngân sách.
 # Không dùng `sleep` mù: mốc là **marker của khách**, không phải đồng hồ của host.
@@ -27,13 +28,16 @@
 #
 # TAP chỉ nói "lệnh gửi xong". `gpu_ppm.py` đọc PPM và đòi **đúng màu tại đúng toạ độ** đã vẽ:
 # đỏ `(255,0,0)` trong hình chữ nhật `(40,40,200,120)`, đen ngoài nó, trắng ở vùng chữ `"ViFast"`
-# (đúng 122 pixel trắng — tổng `popcount` của sáu glyph 8×8). Nếu driver không vẽ hoặc không
-# `TRANSFER_TO_HOST_2D`, PPM vẫn là nền console cũ ⇒ mọi ca PPM đỏ.
+# (đúng 122 pixel trắng — tổng `popcount` của sáu glyph 8×8), và (**KT-271**) **từng ký tự** của
+# ba dòng console `ViFastOs` / `gpu console` / `0123456789` tại gốc `(8,8)` so **đủ 64 pixel** của
+# ô 8×8 với bảng font **đọc từ** `v2/lib/vifast-virtio/src/gpu.rs` — không có bản font thứ hai
+# chép tay trong Python. Nếu driver không vẽ hoặc không `TRANSFER_TO_HOST_2D`, PPM vẫn là nền
+# console cũ ⇒ mọi ca PPM đỏ.
 #
 # Hợp đồng (fail-closed, không nới ngưỡng):
-#   1. **Ca dương** (`-device virtio-gpu-pci` + monitor): log phải có `TAP version 13` + `1..5`
-#      đúng một lần, năm dòng `ok 1..5` đúng **thứ tự** và đúng **tên**, **không** `not ok`, đúng
-#      **một** dòng `PANIC: KT-263 gpu xong (5 TAP, 0 fail)`, và các dòng bằng chứng:
+#   1. **Ca dương** (`-device virtio-gpu-pci` + monitor): log phải có `TAP version 13` + `1..6`
+#      đúng một lần, **sáu** dòng `ok 1..6` đúng **thứ tự** và đúng **tên**, **không** `not ok`,
+#      đúng **một** dòng `PANIC: KT-271 gpu console xong (6 TAP, 0 fail)`, và các dòng bằng chứng:
 #        - `# gpu pci:` có `vendor=0x1af4 device=0x1050|0x1010` + `assigned=0x40800000
 #          readback=0x40800000` (leaf 4 của cửa sổ PCIe, **không** đụng leaf blk/console/net/input);
 #        - `# gpu dev:` có `version1=1 device_status=0xf num_scanouts=1`;
@@ -44,23 +48,34 @@
 #        - `# gpu scanout:` có `bogus=InvalidResourceId` (ca âm đối chứng: thiết bị **kiểm**
 #          `resource_id`, nên "SET_SCANOUT thành công" không phải lệnh rỗng);
 #        - `# gpu draw:` có `rect=40,40,200,120` + `text=ViFast at=40,200`;
-#        - `# gpu: drawn` đúng một lần (bằng chứng runner chụp **sau** flush);
+#        - `# gpu console:` (**KT-271**) có `chars=29 newlines=3 scrolls=0`, `dirty=8,8,88,24
+#          flushes=1 commands=2` (flush **một lô** = đúng **hai** lệnh cho cả khối, không phải hai
+#          lệnh mỗi ký tự), `matched=29/29` (đọc lại framebuffer trong RAM) và
+#          `text=ViFastOs|gpu console|0123456789`;
+#        - `# gpu: drawn` đúng một lần (TAP 5 đã flush **trước** console);
+#        - `# gpu: console done lines=3` đúng một lần (marker runner chụp **sau** lô flush console);
 #        - `# gpu stats:` có `errors=0 timeouts=0 id_mismatch=0 rejects=1`.
-#      **Và** `gpu_ppm.py` phải xanh trên PPM vừa chụp.
+#      **Và** `gpu_ppm.py` phải xanh trên PPM vừa chụp — gồm **từng ký tự** của ba dòng console so
+#      bitmap 8×8 với bảng font **đọc từ** `v2/lib/vifast-virtio/src/gpu.rs` (một nguồn, không hai
+#      bản font chép tay).
 #   2. **Ca âm "không thiết bị"**: **cùng** ảnh, **không** `-device` ⇒ log phải có
 #      `gpu: no device` + `not ok 1 - gpu device`, **không** có `ok 1`, **không** có dòng PANIC
 #      "xong". Runner coi ca âm **đạt** khi ảnh đỏ đúng cách; ảnh PASS giả ⇒ runner **đỏ**.
-#   3. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`, đổi
+#   3. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`/`ok 6`, đổi
 #      `bogus`, `assigned`, `identity`, `physmap`, `entries`, `version1`, `device_status`, `rect`,
-#      `text`, `errors`, thêm `not ok`, xoá `# gpu: drawn`, xoá `# gpu stats:`, đổi dòng PANIC) và
-#      sửa PPM tốt (đổi pixel đỏ thành đen, đổi pixel nền thành đỏ, xoá một pixel trắng của chữ,
-#      đổi kích thước, đổi magic) rồi đòi validator **từ chối** từng bản; và log ca âm "PASS giả"
-#      phải bị từ chối.
+#      `text`, `errors`, `chars`, `dirty`, `commands`, `matched`, `lines`, thêm `not ok`, xoá
+#      `# gpu: drawn`, xoá `# gpu: console done`, xoá `# gpu stats:`, đổi dòng PANIC) và sửa PPM
+#      tốt (đổi pixel đỏ thành đen, đổi pixel nền thành đỏ, xoá một pixel trắng của chữ, xoá một
+#      pixel của **ký tự console**, xoá cả **dòng** console, làm **lem** ô sau dòng console, đổi
+#      kích thước, đổi magic) rồi đòi validator **từ chối** từng bản; **và** đổi **một ký tự kỳ
+#      vọng** trong `gpu_ppm.py` ⇒ PPM tốt phải **ĐỎ** (exit 1, không phải 2); và log ca âm
+#      "PASS giả" phải bị từ chối.
 #
 # Dùng:
 #   bash v2/test/boot/gpu.sh                 # build + ca dương + ca âm (PASS/FAIL)
 #   bash v2/test/boot/gpu.sh --red-selftest  # chỉ tự kiểm validator (không build, không QEMU)
-#   bash v2/test/boot/gpu.sh --check-log <log> [positive|negative]   # kiểm MỘT log đã có
+#   bash v2/test/boot/gpu.sh --check-log <log> [positive|negative] [ppm]  # kiểm MỘT log đã có
+#       (`positive` cần thêm đường dẫn PPM — ca dương đòi **cả** log **và** ảnh chụp)
 #   bash v2/test/boot/gpu.sh --check-ppm <ppm>                       # kiểm MỘT PPM đã có
 #   KT263_SKIP_BUILD=1 bash v2/test/boot/gpu.sh                      # dùng ảnh có sẵn
 #   KT263_LOGDIR=<dir> bash v2/test/boot/gpu.sh                      # nơi để log
@@ -82,11 +97,11 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 QEMU_MIN_MAJOR=9
 QEMU_MIN_MINOR=2
-# Số TAP của ảnh — runner đòi đúng năm dòng `ok 1..5` đúng **tên** (thêm/bớt TAP phải sửa cả
+# Số TAP của ảnh — runner đòi đúng sáu dòng `ok 1..6` đúng **tên** (thêm/bớt TAP phải sửa cả
 # kernel, tệp này và `# gpu stats` trong cùng commit).
-TAP_COUNT=5
+TAP_COUNT=6
 # Dòng kết thúc chủ đích của ảnh (khớp `ktest_gpu.rs`).
-PANIC_OK='^PANIC: KT-263 gpu xong \(5 TAP, 0 fail\)$'
+PANIC_OK='^PANIC: KT-271 gpu console xong \(6 TAP, 0 fail\)$'
 # Địa chỉ BAR driver **gán** cho gpu = leaf thứ 5 của cửa sổ PCIe (`PCI_MMIO_WINDOW_BASE` +
 # 4 × 2 MiB). Đây là **hằng thiết kế** của driver (không phải số đo), runner đối chiếu để bắt
 # "gán nhầm leaf của blk/console/net/input".
@@ -227,18 +242,18 @@ boot_gpu() {
         -device virtio-gpu-pci -display none \
         -monitor "unix:$SOCK,server=on,wait=off" || return 125
     local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0
-    # 1) chờ marker của **khách** (không sleep mù): ảnh in sau `RESOURCE_FLUSH`.
+    # 1) chờ marker của **khách** (không sleep mù): ảnh in sau lô flush console.
     while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
-        grep -aq '^# gpu: drawn$' "$out" 2>/dev/null && break
+        grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null && break
         sleep 0.1
         i=$((i + 1))
     done
-    if grep -aq '^# gpu: drawn$' "$out" 2>/dev/null; then
+    if grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null; then
         if ! screendump "$ppm"; then
             bad "ca dương: không chụp được màn hình qua monitor $SOCK"
         fi
     else
-        bad "ca dương: không thấy marker '# gpu: drawn' sau $((READY_DS / 10)) s"
+        bad "ca dương: không thấy marker '# gpu: console done lines=3' sau $((READY_DS / 10)) s"
     fi
     # 2) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
     local t0=$SECONDS tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
@@ -307,6 +322,7 @@ validate_positive() {
     check_tap 3 "gpu resource"
     check_tap 4 "gpu scanout"
     check_tap 5 "gpu draw"
+    check_tap 6 "gpu console"
     # 3) Không `not ok` nào.
     check_count "ca dương: dòng 'not ok'" '^not ok' 0
     # 4) Đúng **một** dòng PANIC kết thúc, đúng mẫu.
@@ -335,8 +351,24 @@ validate_positive() {
     # 12) Toạ độ đã vẽ (runner đối chiếu **cùng** hằng với `gpu_ppm.py`).
     check_grep "'# gpu draw:' có rect=40,40,200,120 text=ViFast at=40,200" \
         '^# gpu draw: rect=40,40,200,120 .*text=ViFast at=40,200( |$)'
-    # 13) Marker chụp: đúng một lần (runner chụp **sau** flush).
+    # 13) Marker chụp: đúng một lần (runner chụp **sau** lô flush console).
     check_count "ca dương: dòng '# gpu: drawn'" '^# gpu: drawn$' 1
+    check_count "ca dương: dòng '# gpu: console done lines=3'" '^# gpu: console done lines=3$' 1
+    # 13b) **KT-271** console: 29 ký tự, 3 dòng, không cuộn; flush **một lô** = đúng **hai** lệnh
+    #      (`TRANSFER_TO_HOST_2D` + `RESOURCE_FLUSH`) cho cả khối — flush từng ký tự sẽ là 58.
+    check_grep "'# gpu console:' có lines=3 chars=29 newlines=3 scrolls=0" \
+        '^# gpu console: .*lines=3 chars=29 newlines=3 scrolls=0( |$)'
+    check_grep "'# gpu console:' có dirty=8,8,88,24 flushes=1 commands=2" \
+        '^# gpu console: .*dirty=8,8,88,24 flushes=1 commands=2( |$)'
+    check_grep "'# gpu console:' có matched=29/29 (đọc lại framebuffer)" \
+        '^# gpu console: .*matched=29/29( |$)'
+    check_grep "'# gpu console:' có text=ViFastOs|gpu console|0123456789" \
+        '^# gpu console: .*text=ViFastOs[|]gpu console[|]0123456789$'
+    # 13c) **Cuộn** trên framebuffer thật: 60 dòng > `rows=59` ⇒ đúng một lần cuộn, dòng 0 là ký tự
+    #      của dòng thứ hai ('1'), dòng cuối là của dòng 60 ('9'). Probe chạy **trước** khung vẽ
+    #      của TAP 5 nên PPM không đổi.
+    check_grep "'# gpu console scroll:' có lines=60 scrolls=1 row0=1 row_last=1 ok=1" \
+        '^# gpu console scroll: lines=60 scrolls=1 row0=1 row_last=1 ok=1$'
     # 14) Bộ đếm sạch: không lỗi, không timeout, không lệch used->id; đúng **một** lần từ chối
     #     (ca âm đối chứng ở mục 11).
     check_grep "'# gpu stats:' có errors=0 timeouts=0 id_mismatch=0 rejects=1" \
@@ -383,7 +415,7 @@ run_positive() {
         return 1
     fi
     if validate_positive "$log" "$ppm"; then
-        ok "ca dương: 5/5 TAP + PPM đúng màu tại toạ độ đã vẽ ($log, $ppm)"
+        ok "ca dương: 6/6 TAP + PPM đúng màu tại toạ độ đã vẽ + 29/29 ký tự console ($log, $ppm)"
         return 0
     fi
     return 1
@@ -435,44 +467,13 @@ expect_reject() {
     FAILS="$before"
 }
 
-# `make_good_ppm <tệp>`: dựng PPM **tốt** bằng Python (không cần QEMU) — nền đen, hình chữ nhật
-# đỏ `(40,40,200,120)`, chữ "ViFast" trắng tại `(40,200)` bằng **sáu glyph 8×8** của bảng font
-# public domain (chỉ 6 glyph cần cho fixture; bảng đầy đủ ở `vifast_virtio::gpu::FONT_8X8`).
-# Đây là **fixture để kiểm validator**, không phải bằng chứng KT-263.
+# `make_good_ppm <tệp>`: dựng PPM **tốt** bằng `gpu_ppm.py --make-fixture` — **cùng** hằng số và
+# **cùng** bảng font mà validator dùng (đọc từ `v2/lib/vifast-virtio/src/gpu.rs`). Bản cũ chép
+# tay sáu glyph vào shell; KT-271 cần 29 ký tự nên chép tay sẽ thành **bản font thứ hai** — đúng
+# thứ task cấm. Đây là **fixture để kiểm validator**, không phải bằng chứng KT-263/KT-271.
 make_good_ppm() {
     local path="$1"
-    "$PYTHON" - "$path" <<'PY'
-import sys
-
-path = sys.argv[1]
-W, H = 640, 480
-RECT = (40, 40, 200, 120)
-TEXT_X, TEXT_Y = 40, 200
-GLYPHS = {
-    "V": [0x33, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x0C, 0x00],
-    "i": [0x0C, 0x00, 0x0E, 0x0C, 0x0C, 0x0C, 0x1E, 0x00],
-    "F": [0x7F, 0x46, 0x16, 0x1E, 0x16, 0x06, 0x0F, 0x00],
-    "a": [0x00, 0x00, 0x1E, 0x30, 0x3E, 0x33, 0x6E, 0x00],
-    "s": [0x00, 0x00, 0x3E, 0x03, 0x1E, 0x30, 0x1F, 0x00],
-    "t": [0x08, 0x0C, 0x3E, 0x0C, 0x0C, 0x2C, 0x18, 0x00],
-}
-buf = bytearray(W * H * 3)
-rx, ry, rw, rh = RECT
-for y in range(ry, ry + rh):
-    for x in range(rx, rx + rw):
-        o = (y * W + x) * 3
-        buf[o : o + 3] = b"\xff\x00\x00"
-for index, ch in enumerate("ViFast"):
-    bits = GLYPHS[ch]
-    for row in range(8):
-        for col in range(8):
-            if bits[row] >> col & 1:
-                o = ((TEXT_Y + row) * W + TEXT_X + index * 8 + col) * 3
-                buf[o : o + 3] = b"\xff\xff\xff"
-with open(path, "wb") as handle:
-    handle.write(b"P6\n%d %d\n255\n" % (W, H))
-    handle.write(bytes(buf))
-PY
+    "$PYTHON" "$PPM_CHECK" --make-fixture "$path"
 }
 
 # `mutate_ppm <nguồn> <đích> <kiểu>`: sửa **một** điểm ảnh / header để đòi validator từ chối.
@@ -502,6 +503,18 @@ elif kind == "nen_thanh_do":
     put(639, 479, (255, 0, 0))
 elif kind == "xoa_pixel_trang":
     put(40, 200, (0, 0, 0))
+elif kind == "xoa_pixel_console":
+    # (8,8) = bit 0 hàng 0 của 'V' trong dòng console đầu — `gpu_ppm.py` kiểm **đủ 64 pixel** của
+    # ô đó, nên một pixel sai là ký tự đó không khớp.
+    put(8, 8, (0, 0, 0))
+elif kind == "xoa_dong_console":
+    # Xoá **cả** dòng 1 (`gpu console`, 11 ký tự) ⇒ 11 ký tự không khớp.
+    for y in range(16, 24):
+        for x in range(8, 8 + 11 * 8):
+            put(x, y, (0, 0, 0))
+elif kind == "lem_console":
+    # Ô ngay **sau** ký tự cuối dòng 0 (8 + 8*8 = 72) phải là nền; tô trắng ⇒ ca "không lem" đỏ.
+    put(72, 8, (255, 255, 255))
 elif kind == "sai_kich_thuoc":
     data[3:12] = b"320 240\n\x32"
 elif kind == "sai_magic":
@@ -514,22 +527,59 @@ open(dst, "wb").write(bytes(data))
 PY
 }
 
+# `expect_ppm_reject <mô tả> <script> <ppm>`: chạy một bản `gpu_ppm.py` (có thể đã bị **đột biến
+# kỳ vọng**) và đòi nó **từ chối** PPM với **exit 1**.
+#
+# Vì sao đòi đúng `1`: `2` là "không đọc được tệp/bảng font" — một script gãy cú pháp cũng ra `2`,
+# nên nếu chỉ đòi "khác 0" thì ca "đổi một ký tự kỳ vọng" sẽ **xanh giả** đúng lúc bộ kiểm hỏng.
+expect_ppm_reject() {
+    local what="$1" script="$2" ppm="$3" rc
+    "$PYTHON" "$script" "$ppm" >/dev/null 2>&1
+    rc=$?
+    CHECKS=$((CHECKS + 1))
+    if [ "$rc" = 1 ]; then
+        echo "ok $CHECKS - selftest: $what bị từ chối"
+    else
+        echo "not ok - selftest: $what KHÔNG bị bắt (rc=$rc, đòi 1)"
+        SELFTEST_BAD=$((SELFTEST_BAD + 1))
+    fi
+}
+
+# `make_mutated_checker <tệp-ra> <tuple CONSOLE_LINES mới>`: sinh một bản `gpu_ppm.py` **đột biến
+# kỳ vọng** — nạp module thật bằng `importlib` (nên `FONT_RS` vẫn đúng) rồi thay `CONSOLE_LINES`.
+make_mutated_checker() {
+    local out="$1" lines="$2"
+    "$PYTHON" - "$PPM_CHECK" "$out" "$lines" <<'PYMUT'
+import sys
+
+src, out, lines = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(out, "w", encoding="utf-8") as handle:
+    handle.write("import importlib.util, sys\n")
+    handle.write(f"spec = importlib.util.spec_from_file_location('gpu_ppm', {src!r})\n")
+    handle.write("mod = importlib.util.module_from_spec(spec)\n")
+    handle.write("spec.loader.exec_module(mod)\n")
+    handle.write(f"mod.CONSOLE_LINES = {lines}\n")
+    handle.write("sys.exit(mod.main(sys.argv[1]))\n")
+PYMUT
+}
+
 red_selftest() {
-    local good="$LOGDIR/kt263-selftest-good.log"
-    local neg="$LOGDIR/kt263-selftest-neg.log"
-    local tmp="$LOGDIR/kt263-selftest-mut.log"
-    local goodppm="$LOGDIR/kt263-selftest-good.ppm"
-    local tmpppm="$LOGDIR/kt263-selftest-mut.ppm"
-    # Log **tốt** dựng tay: đúng năm TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để kiểm
-    # validator, không dùng làm bằng chứng KT-263).
+    local good="$LOGDIR/kt271-selftest-good.log"
+    local neg="$LOGDIR/kt271-selftest-neg.log"
+    local tmp="$LOGDIR/kt271-selftest-mut.log"
+    local goodppm="$LOGDIR/kt271-selftest-good.ppm"
+    local tmpppm="$LOGDIR/kt271-selftest-mut.ppm"
+    local mutpy="$LOGDIR/kt271-selftest-ppm-mut.py"
+    # Log **tốt** dựng tay: đúng sáu TAP + đủ bằng chứng (không phải log QEMU thật — chỉ để kiểm
+    # validator, không dùng làm bằng chứng KT-263/KT-271).
     cat >"$good" <<'EOF'
 TAP version 13
-1..5
+1..6
 # gpu image: hart=0 stvec=0x802000a0 direct=1 satp=0x80000000000804e8 mode=8 tables=10 used=40960 const:wait_ms=2000 const:fb=640x480 const:fb_pages=300 const:attach_entries=19
 # gpu pci: functions=2 bus=0 dev=1 func=0 vendor=0x1af4 device=0x1050 bar=4 kind=mem64 size=16384 assigned=0x40800000 readback=0x40800000 command=0x6
 # gpu cap: common=0x0 notify=0x3000 device=0x2000 isr=0x1000 mul=4 cap_bar=4 ecam=0x30008000 ecam_identity=1 bar_identity=1 cap_ranges_ok=1 overlap_checked=1 other_bars=0 reserved_ranges=5
 # gpu dev: num_queues=2 queue_max=64 queue_size=16 device_features=0x10130000002 driver_features=0x100000000 version1=1 device_status=0xf num_scanouts=1 num_capsets=0
-# gpu dma: desc=0x80209000 avail=0x80209100 used=0x80209128 cmd=0x80209200 resp=0x80209600 identity=1 notify_off=0 notify_addr=0x40803000 queue=0
+# gpu dma: desc=0x8020a000 avail=0x8020a100 used=0x8020a128 cmd=0x8020a200 resp=0x8020a600 identity=1 notify_off=0 notify_addr=0x40803000 queue=0
 # gpu fb: pa=0x81000000 bytes=1228800 pages=300 physmap=1 stride=2560
 ok 1 - gpu device
 # gpu display: w=1280 h=800 enabled=1 scanouts=1
@@ -541,18 +591,24 @@ ok 4 - gpu scanout
 # gpu draw: rect=40,40,200,120 color=0xff0000 text=ViFast at=40,200 fg=0xffffff bg=0x000000 stride=2560
 ok 5 - gpu draw
 # gpu: drawn
-# gpu stats: commands=8 notifies=8 errors=0 timeouts=0 id_mismatch=0 rejects=1 published=8 queue_size=16 device_status=0xf
-PANIC: KT-263 gpu xong (5 TAP, 0 fail)
+# gpu console scroll: lines=60 scrolls=1 row0=1 row_last=1 ok=1
+# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29/29 text=ViFastOs|gpu console|0123456789
+ok 6 - gpu console
+# gpu: console done lines=3
+# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 published=10 queue_size=16 device_status=0xf
+PANIC: KT-271 gpu console xong (6 TAP, 0 fail)
 EOF
     make_good_ppm "$goodppm"
     expect_accept "log tốt + PPM tốt dựng tay" validate_positive "$good" "$goodppm"
-    # Mười bốn đột biến **log** phải bị **từ chối** — nếu không, validator rỗng.
+    # Hai mươi tư đột biến **log** phải bị **từ chối** — nếu không, validator rỗng.
     local name
-    for name in xoa_ok3 doi_bogus doi_assigned doi_identity doi_physmap doi_entries \
-        doi_version1 doi_status doi_rect doi_text doi_errors them_not_ok xoa_drawn \
-        xoa_stats doi_panic; do
+    for name in xoa_ok3 xoa_ok6 doi_bogus doi_assigned doi_identity doi_physmap doi_entries \
+        doi_version1 doi_status doi_rect doi_text doi_errors doi_chars doi_dirty doi_commands \
+        doi_matched doi_lines doi_console_text doi_scroll them_not_ok xoa_drawn \
+        xoa_console_done xoa_stats doi_panic; do
         case "$name" in
             xoa_ok3) grep -v '^ok 3 - gpu resource$' "$good" >"$tmp" ;;
+            xoa_ok6) grep -v '^ok 6 - gpu console$' "$good" >"$tmp" ;;
             doi_bogus) sed 's/bogus=InvalidResourceId/bogus=accepted/' "$good" >"$tmp" ;;
             doi_assigned) sed 's/assigned=0x40800000/assigned=0x40000000/' "$good" >"$tmp" ;;
             doi_identity) sed 's/identity=1/identity=0/' "$good" >"$tmp" ;;
@@ -563,22 +619,53 @@ EOF
             doi_rect) sed 's/rect=40,40,200,120/rect=0,0,200,120/' "$good" >"$tmp" ;;
             doi_text) sed 's/text=ViFast/text=XXXXXX/' "$good" >"$tmp" ;;
             doi_errors) sed 's/errors=0/errors=1/' "$good" >"$tmp" ;;
+            # KT-271: bốn số **đo được** của console + số dòng + chuỗi kỳ vọng.
+            doi_chars) sed 's/chars=29/chars=28/' "$good" >"$tmp" ;;
+            doi_dirty) sed 's/dirty=8,8,88,24/dirty=0,0,88,24/' "$good" >"$tmp" ;;
+            doi_commands) sed 's/commands=2 /commands=58 /' "$good" >"$tmp" ;;
+            doi_matched) sed 's/matched=29\/29/matched=28\/29/' "$good" >"$tmp" ;;
+            doi_lines) sed 's/lines=3 chars=29/lines=2 chars=29/' "$good" >"$tmp" ;;
+            doi_console_text) sed 's/text=ViFastOs|gpu console|0123456789/text=ViFastOs|gpu consolX|0123456789/' "$good" >"$tmp" ;;
+            doi_scroll) sed 's/lines=60 scrolls=1/lines=60 scrolls=0/' "$good" >"$tmp" ;;
             them_not_ok) sed 's/^ok 2 - gpu display info$/not ok 2 - gpu display info/' "$good" >"$tmp" ;;
             xoa_drawn) grep -v '^# gpu: drawn$' "$good" >"$tmp" ;;
+            xoa_console_done) grep -v '^# gpu: console done lines=3$' "$good" >"$tmp" ;;
             xoa_stats) grep -v '^# gpu stats:' "$good" >"$tmp" ;;
-            doi_panic) sed 's/(5 TAP, 0 fail)/(5 TAP, 1 fail)/' "$good" >"$tmp" ;;
+            doi_panic) sed 's/(6 TAP, 0 fail)/(6 TAP, 1 fail)/' "$good" >"$tmp" ;;
         esac
         expect_reject "đột biến log '$name'" validate_positive "$tmp" "$goodppm"
     done
-    # Sáu đột biến **PPM** phải bị **từ chối** (log tốt, ảnh sai).
-    for name in red_thanh_den nen_thanh_do xoa_pixel_trang sai_kich_thuoc sai_magic thieu_du_lieu; do
+    # Chín đột biến **PPM** phải bị **từ chối** (log tốt, ảnh sai) — ba ca cuối là của console.
+    for name in red_thanh_den nen_thanh_do xoa_pixel_trang xoa_pixel_console xoa_dong_console \
+        lem_console sai_kich_thuoc sai_magic thieu_du_lieu; do
         mutate_ppm "$goodppm" "$tmpppm" "$name"
         expect_reject "đột biến PPM '$name'" validate_positive "$good" "$tmpppm"
     done
+    # **Ca âm trọng tâm của KT-271**: đổi **một ký tự kỳ vọng** trong `gpu_ppm.py` ⇒ PPM tốt phải
+    # **ĐỎ**. Đây là phép kiểm chứng minh bộ so bitmap **thật sự** so từng ký tự, chứ không phải
+    # "đếm số pixel trắng" (đếm pixel sẽ không phân biệt 's' với 'X').
+    #
+    # Bản đột biến là một **wrapper** `importlib` trỏ tới `gpu_ppm.py` **thật** (nạp từ đúng thư
+    # mục của nó) rồi thay `CONSOLE_LINES`: chép tệp sang `$LOGDIR` sẽ làm `FONT_RS` trỏ sai chỗ ⇒
+    # `rc=2` (lỗi môi trường) chứ không phải `rc=1` (bắt được đột biến) — đúng bẫy "xanh giả".
+    make_mutated_checker "$mutpy" '("ViFastXs", "gpu console", "0123456789")'
+    expect_ppm_reject "đổi ký tự kỳ vọng 'ViFastOs'→'ViFastXs'" "$mutpy" "$goodppm"
+    make_mutated_checker "$mutpy" '("ViFastOs", "gpu console", "0123456780")'
+    expect_ppm_reject "đổi ký tự kỳ vọng '0123456789'→'0123456780'" "$mutpy" "$goodppm"
+    # Đối chứng dương: bản **không** đột biến phải chấp nhận chính PPM đó (nếu không, hai ca trên
+    # "đỏ" vì lý do khác — validator hỏng chứ không phải bắt được đột biến).
+    "$PYTHON" "$PPM_CHECK" "$goodppm" >/dev/null 2>&1
+    if [ $? = 0 ]; then
+        ok "selftest: bản gốc gpu_ppm.py chấp nhận PPM tốt (đối chứng dương)"
+    else
+        CHECKS=$((CHECKS + 1))
+        echo "not ok - selftest: bản gốc gpu_ppm.py TỪ CHỐI PPM tốt (validator hỏng)"
+        SELFTEST_BAD=$((SELFTEST_BAD + 1))
+    fi
     # Ca âm "không thiết bị": log đỏ đúng cách ⇒ chấp nhận; log "PASS giả" (có `ok 1`) ⇒ từ chối.
     cat >"$neg" <<'EOF'
 TAP version 13
-1..5
+1..6
 # gpu pci: err=NoDevice stage=nodevice
 # gpu: no device
 not ok 1 - gpu device: không tìm/khởi tạo được PCI
@@ -590,10 +677,10 @@ EOF
     # Ca âm "PASS giả" thứ hai: có `ok 1` **và** dòng PANIC "xong" ⇒ vẫn phải bị từ chối.
     {
         cat "$neg"
-        echo "PANIC: KT-263 gpu xong (5 TAP, 0 fail)"
+        echo "PANIC: KT-271 gpu console xong (6 TAP, 0 fail)"
     } >"$tmp"
     expect_reject "ca âm có dòng PANIC 'xong'" validate_negative "$tmp"
-    rm -f "$tmp" "$good" "$neg" "$goodppm" "$tmpppm"
+    rm -f "$tmp" "$good" "$neg" "$goodppm" "$tmpppm" "$mutpy"
     # Kỳ vọng sai của selftest **phải** làm đỏ lần chạy (không bị `FAILS="$before"` nuốt).
     FAILS=$((FAILS + SELFTEST_BAD))
 }
@@ -635,8 +722,14 @@ if [ "$MODE" = selftest ]; then
 fi
 
 if [ "$MODE" = check ]; then
+    # `validate_positive` gọi `$PYTHON` để kiểm PPM — trước KT-271 biến này chưa được đặt ở chế độ
+    # `--check-log` nên ca dương chết vì `PYTHON: unbound variable` (set -u).
+    PYTHON="$(command -v python3 || true)"
+    [ -n "$PYTHON" ] || die "không có python3 (cần để kiểm PPM)"
     case "$CHECK_KIND" in
-        positive) validate_positive "$CHECK_LOG" "${3:-}" ;;
+        # `positive` cần PPM: trước KT-271 chỗ này truyền `$3` (chính là **kiểu**) làm đường dẫn
+        # PPM ⇒ ca dương luôn đỏ "không có ảnh chụp". Nay PPM là tham số **thứ tư**.
+        positive) validate_positive "$CHECK_LOG" "${4:-}" ;;
         negative) validate_negative "$CHECK_LOG" ;;
         *) die "--check-log: kiểu phải là positive|negative" ;;
     esac

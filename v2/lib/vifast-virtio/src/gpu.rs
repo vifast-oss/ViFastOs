@@ -295,6 +295,17 @@ impl Rect {
         self.y.saturating_add(self.height)
     }
 
+    /// Offset **byte** của pixel đầu `rect` trong backing có `stride` byte/hàng.
+    ///
+    /// Đây là giá trị `virtio_gpu_transfer_to_host_2d.offset` phải mang khi `rect` **không** bắt
+    /// đầu ở gốc resource: thiết bị đọc từng hàng tại `offset + stride * h` rồi ghi vào
+    /// `(rect.y + h) * stride + rect.x * 4` (QEMU `hw/display/virtio-gpu.c`). Gửi `0` cho một
+    /// rect lệch gốc ⇒ thiết bị chép **hàng 0** của backing vào `rect.y` ⇒ nội dung hiện lệch
+    /// đúng `(rect.x, rect.y)` pixel — lỗi KT-271 đã đo được trên PPM trước khi vá.
+    pub const fn byte_offset(&self, stride: usize) -> u64 {
+        (self.y as u64) * (stride as u64) + (self.x as u64) * (BYTES_PER_PIXEL as u64)
+    }
+
     /// Mã hoá little-endian đúng 16 byte.
     pub fn encode(&self) -> [u8; RECT_BYTES] {
         let mut out = [0u8; RECT_BYTES];
@@ -947,7 +958,7 @@ impl DrawError {
 ///
 /// **Từ chối**, không kẹp: một `rect` vượt biên mà bị kẹp im lặng sẽ vẽ ra ngoài vùng đã khai và
 /// ghi đè pixel của hàng khác (đúng lỗi cần chặn trước khi chạm QEMU).
-fn check_rect(
+pub(crate) fn check_rect(
     len: usize,
     width: usize,
     height: usize,

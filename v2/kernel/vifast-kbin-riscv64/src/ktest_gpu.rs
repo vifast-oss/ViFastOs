@@ -10,7 +10,7 @@
 //! **không đổi**; (c) boot kết thúc bằng **một** dòng `PANIC:` chủ đích (cùng quy ước ảnh
 //! guard/user/proc/vblk/con/net/input).
 //!
-//! # TAP (5 test; tên khớp `v2/test/boot/gpu.sh`)
+//! # TAP (6 test; tên khớp `v2/test/boot/gpu.sh`)
 //!
 //! 1. `gpu device` — quét ECAM tìm **vendor/device đọc từ thiết bị** (`0x1af4:0x1050`), đo cỡ BAR
 //!    bằng mask, **gán** BAR (firmware không enumerate), đọc lại BAR + `command`, đọc bốn
@@ -25,6 +25,14 @@
 //! 5. `gpu draw` — tô nền đen, hình chữ nhật **đỏ** `(40,40,200,120)`, chữ **"ViFast" trắng** tại
 //!    `(40,200)` bằng font 8×8, rồi `TRANSFER_TO_HOST_2D` + `RESOURCE_FLUSH`. In `# gpu: drawn` để
 //!    runner biết lúc `screendump` — bằng chứng **thật** là điểm ảnh trong PPM, không phải TAP này.
+//! 6. `gpu console` (**KT-271**) — console chữ trên framebuffer: in **ba** dòng
+//!    `ViFastOs` / `gpu console` / `0123456789` tại gốc `(8,8)` bằng `gpu_console::Console`
+//!    (con trỏ `(col,row)`, `putc`/`puts`/`newline`, cuộn), rồi flush **một lô** — đúng **hai**
+//!    lệnh `TRANSFER_TO_HOST_2D` + `RESOURCE_FLUSH` cho **cả** khối, đo bằng delta bộ đếm
+//!    `commands` (flush từng ký tự sẽ là 58 lệnh). Sau đó **đọc lại framebuffer** và so **bitmap
+//!    8×8** từng ký tự với `glyph()` (`verify_text`) ⇒ `matched=29/29`. In
+//!    `# gpu: console done lines=3` — marker để runner `screendump`; `gpu_ppm.py` kiểm lại **từng
+//!    ký tự** trên ảnh chụp (đường kiểm thứ hai, độc lập với framebuffer trong RAM).
 //!
 //! Mọi dòng `# gpu:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
@@ -41,8 +49,9 @@ use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::virtio_gpu;
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::gpu::{
-    draw_text, fill_rect, Rect, COLOR_BLACK, COLOR_RED, COLOR_WHITE, Q_CONTROL,
+    draw_text, fill_rect, Rect, COLOR_BLACK, COLOR_RED, COLOR_WHITE, GLYPH_H, GLYPH_W, Q_CONTROL,
 };
+use vifast_virtio::gpu_console::{verify_text, Console};
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
@@ -62,7 +71,20 @@ pub const TEXT_X: u32 = 40;
 pub const TEXT_Y: u32 = 200;
 /// Chuỗi vẽ lên framebuffer.
 pub const TEXT: &str = "ViFast";
-/// Thời gian **giữ khung hình** sau khi in `# gpu: drawn` (tick timebase) — 5 s ảo.
+/// Gốc x của console (pixel) — **lệch 8 px** để pixel `(0,0)` vẫn là nền đen (ca PPM "gốc" của
+/// KT-263 giữ nguyên) và khối chữ không chạm hình chữ nhật đỏ `(40,40,200,120)`.
+pub const CONSOLE_X: usize = 8;
+/// Gốc y của console (pixel) — cùng lý do [`CONSOLE_X`].
+pub const CONSOLE_Y: usize = 8;
+/// Ba dòng console in lên framebuffer. Runner (`gpu.sh`) và `gpu_ppm.py` đối chiếu **từng ký tự**
+/// với bảng font trong `vifast_virtio::gpu::FONT_8X8` — đổi một bên phải đổi cả ba.
+pub const CONSOLE_LINES: [&str; 3] = ["ViFastOs", "gpu console", "0123456789"];
+/// Số dòng của phép kiểm **cuộn**: console 640×480 gốc `(8,8)` có `rows = 59`, nên 60 dòng ⇒
+/// **đúng một** lần cuộn; dòng 0 phải là ký tự của dòng thứ hai (`'1'`), dòng cuối (`'9'`) của
+/// dòng 60. Chạy **trước** khung vẽ của TAP 5 (khung tô nền đen xoá sạch vùng này) nên PPM không
+/// đổi — đây là phép kiểm **bộ nhớ framebuffer**, không phải phép kiểm thiết bị.
+pub const SCROLL_PROBE_LINES: usize = 60;
+/// Thời gian **giữ khung hình** sau khi in `# gpu: console done lines=3` (tick timebase) — 5 s ảo.
 ///
 /// QEMU tắt máy ngay khi khách `halt`, nên nếu ảnh thoát ngay sau marker thì runner **không bao
 /// giờ** kịp `screendump` (đo được: monitor socket biến mất trước khi runner nối). Giữ **có hạn**
@@ -107,7 +129,7 @@ fn physmap_ok(pa: u64) -> bool {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..5\n");
+    PLATFORM.put_str("TAP version 13\n1..6\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let mmu_report = mmu::init();
@@ -492,6 +514,76 @@ pub extern "C" fn rust_main() -> ! {
         virtio_gpu::FB_HEIGHT as usize,
     );
     let stride = fb_w * vifast_virtio::gpu::BYTES_PER_PIXEL;
+    // **KT-271** — kiểm **cuộn** trên framebuffer thật: 60 dòng > `rows = 59` ⇒ đúng một lần cuộn.
+    // Chạy **trước** khung vẽ bên dưới (khung tô nền đen xoá sạch vùng này) nên ảnh chụp PPM không
+    // đổi. Không flush: cuộn là phép kiểm **bộ nhớ**, không phải phép kiểm thiết bị.
+    let mut scroll_ok = false;
+    if let Some(mut probe) = Console::new(fb_w, fb_h, stride, CONSOLE_X, CONSOLE_Y) {
+        let mut probe_ok = true;
+        {
+            let fb = virtio_gpu::framebuffer();
+            let mut index = 0;
+            while index < SCROLL_PROBE_LINES {
+                let ch = b'0' + (index % 10) as u8;
+                if probe.putc(fb, ch, COLOR_WHITE, COLOR_BLACK).is_err() {
+                    probe_ok = false;
+                }
+                // **Không** xuống dòng sau dòng **cuối**: nếu có, dòng cuối ở hàng `rows - 1` sẽ
+                // cuộn thêm lần nữa (đo được: `scrolls=2`, dòng 0 thành `'2'`) — phép kiểm sẽ đo
+                // nhầm "cuộn hai lần" thay vì "cuộn đúng một lần".
+                if index + 1 < SCROLL_PROBE_LINES
+                    && probe.putc(fb, b'\n', COLOR_WHITE, COLOR_BLACK).is_err()
+                {
+                    probe_ok = false;
+                }
+                index += 1;
+            }
+        }
+        let probe_stats = probe.stats();
+        let last_y = CONSOLE_Y + (probe.rows() - 1) * GLYPH_H;
+        let (row0, row_last) = {
+            let fb = virtio_gpu::framebuffer();
+            let row0 = verify_text(
+                fb,
+                fb_w,
+                fb_h,
+                stride,
+                CONSOLE_X,
+                CONSOLE_Y,
+                "1",
+                COLOR_WHITE,
+                COLOR_BLACK,
+            )
+            .unwrap_or(0);
+            let row_last = verify_text(
+                fb,
+                fb_w,
+                fb_h,
+                stride,
+                CONSOLE_X,
+                last_y,
+                "9",
+                COLOR_WHITE,
+                COLOR_BLACK,
+            )
+            .unwrap_or(0);
+            (row0, row_last)
+        };
+        scroll_ok = probe_ok
+            && probe_stats.chars == SCROLL_PROBE_LINES as u64
+            && probe_stats.scrolls == 1
+            && row0 == 1
+            && row_last == 1;
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# gpu console scroll: lines={} scrolls={} row0={} row_last={} ok={}",
+            probe_stats.chars, probe_stats.scrolls, row0, row_last, scroll_ok as u8
+        );
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(w, "# gpu console scroll: err=geometry");
+    }
     let rect = Rect::new(RECT_X, RECT_Y, RECT_W, RECT_H);
     let drawn = {
         let fb = virtio_gpu::framebuffer();
@@ -537,6 +629,143 @@ pub extern "C" fn rust_main() -> ! {
     // đọc đúng nội dung vừa vẽ. Runner **không** dùng `sleep` mù.
     PLATFORM.put_str("# gpu: drawn\n");
 
+    // ------------------------------------------------ 6) console trên framebuffer (KT-271)
+    //
+    // Ba dòng chữ có kiểm soát tại gốc `(8,8)`: `ViFastOs` / `gpu console` / `0123456789`. Console
+    // **tích** vùng đã đổi rồi flush **một lô** — đúng hai lệnh cho cả khối, không phải hai lệnh
+    // mỗi ký tự. Delta bộ đếm `commands` là số **đo được** (D2-102), không phải lời hứa.
+    let mut console = match Console::new(fb_w, fb_h, stride, CONSOLE_X, CONSOLE_Y) {
+        Some(console) => console,
+        None => {
+            let mut w = PlatformWriter(&PLATFORM);
+            let _ = writeln!(w, "# gpu console: err=geometry");
+            put(
+                false,
+                6,
+                "gpu console",
+                &mut fails,
+                "hình học console không hợp lệ",
+            );
+            PLATFORM.put_str("# ktest halt\n");
+            PLATFORM.halt(1)
+        }
+    };
+    let mut draw_ok = true;
+    {
+        let fb = virtio_gpu::framebuffer();
+        for line in CONSOLE_LINES {
+            if console.puts(fb, line, COLOR_WHITE, COLOR_BLACK).is_err() {
+                draw_ok = false;
+            }
+            if console.putc(fb, b'\n', COLOR_WHITE, COLOR_BLACK).is_err() {
+                draw_ok = false;
+            }
+        }
+    }
+    let dirty = console.take_dirty();
+    let commands_before = virtio_gpu::stats().commands;
+    let flushed = match dirty {
+        Some(rect) => virtio_gpu::flush_rect(rect).is_ok(),
+        None => false,
+    };
+    let commands_after = virtio_gpu::stats().commands;
+    if flushed {
+        console.note_flush();
+    }
+    // Đọc lại **framebuffer trong RAM**: mỗi ký tự phải khớp bitmap 8×8 của `glyph()`. Đây là
+    // đường kiểm thứ nhất; đường thứ hai là `gpu_ppm.py` trên ảnh chụp của QEMU.
+    let mut matched = 0usize;
+    let mut total = 0usize;
+    {
+        let fb = virtio_gpu::framebuffer();
+        for (index, line) in CONSOLE_LINES.iter().enumerate() {
+            let y = CONSOLE_Y + index * GLYPH_H;
+            match verify_text(
+                fb,
+                fb_w,
+                fb_h,
+                stride,
+                CONSOLE_X,
+                y,
+                line,
+                COLOR_WHITE,
+                COLOR_BLACK,
+            ) {
+                Ok(count) => {
+                    matched += count;
+                    total += line.len();
+                }
+                Err(_) => draw_ok = false,
+            }
+        }
+    }
+    let console_stats = console.stats();
+    let commands = commands_after.wrapping_sub(commands_before);
+    let mut widest = 0usize;
+    for line in CONSOLE_LINES {
+        if line.len() > widest {
+            widest = line.len();
+        }
+    }
+    // Hộp bao **kỳ vọng** suy từ chính ba dòng (không hardcode số): rộng nhất × 8, cao = số dòng × 8.
+    let expect_dirty = Rect::new(
+        CONSOLE_X as u32,
+        CONSOLE_Y as u32,
+        (widest * GLYPH_W) as u32,
+        (CONSOLE_LINES.len() * GLYPH_H) as u32,
+    );
+    let console_ok = draw_ok
+        && scroll_ok
+        && flushed
+        && dirty == Some(expect_dirty)
+        && console_stats.chars as usize == total
+        && console_stats.newlines as usize == CONSOLE_LINES.len()
+        && console_stats.scrolls == 0
+        && console_stats.flushes == 1
+        && commands == 2
+        && matched == total;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = write!(
+            w,
+            "# gpu console: origin={},{} cols={} rows={} lines={} chars={} newlines={} scrolls={} \
+             dirty={},{},{},{} flushes={} commands={} matched={}/{} text=",
+            CONSOLE_X,
+            CONSOLE_Y,
+            console.cols(),
+            console.rows(),
+            CONSOLE_LINES.len(),
+            console_stats.chars,
+            console_stats.newlines,
+            console_stats.scrolls,
+            expect_dirty.x,
+            expect_dirty.y,
+            expect_dirty.width,
+            expect_dirty.height,
+            console_stats.flushes,
+            commands,
+            matched,
+            total
+        );
+        for (index, line) in CONSOLE_LINES.iter().enumerate() {
+            if index > 0 {
+                let _ = w.write_str("|");
+            }
+            let _ = w.write_str(line);
+        }
+        let _ = writeln!(w);
+    }
+    put(
+        console_ok,
+        6,
+        "gpu console",
+        &mut fails,
+        "console vẽ/flush/đọc lại không đúng",
+    );
+    // Marker cho runner: **sau** khi flush lô console xong ⇒ `screendump` lúc này có đủ ba dòng.
+    // In **kể cả** khi TAP 6 đỏ: ảnh chụp là bằng chứng để chẩn đoán, không phải phần thưởng.
+    PLATFORM.put_str("# gpu: console done lines=3\n");
+
     // ------------------------------------------------ kết thúc chủ đích
     let stats = virtio_gpu::stats();
     {
@@ -557,7 +786,7 @@ pub extern "C" fn rust_main() -> ! {
         );
         // Dấu kết thúc **chủ đích** (không có fault): runner đòi đúng **một** dòng PANIC cho mỗi
         // boot; ảnh này không fault nên tự in dấu kết thúc rồi `halt(0)`. Nội dung lấy từ `fails`.
-        let _ = writeln!(w, "PANIC: KT-263 gpu xong (5 TAP, {fails} fail)");
+        let _ = writeln!(w, "PANIC: KT-271 gpu console xong (6 TAP, {fails} fail)");
     }
     // Giữ khung hình cho runner kịp `screendump` (xem [`HOLD_TICKS`]). Log đã **đủ** trước khi
     // giữ, nên runner đọc được toàn bộ bằng chứng trong lúc chờ.
