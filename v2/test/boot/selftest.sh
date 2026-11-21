@@ -22,6 +22,9 @@
 #           **IPC buffer**) phải đỏ — dòng `# ipc: mr` là evidence **bắt buộc**;
 #       (m) **KT-290**: xoá dòng `# ipc: configure ok va=…` của ảnh `ktest-ipc` (`Tcb.Configure`
 #           qua **invocation** từ U-mode) phải đỏ — dòng `# ipc: configure` là evidence **bắt buộc**;
+#       (n) **KT-306**: xoá dòng `# netping: label=0x291 reply=0 rtt_ms=…` của ảnh `ktest-netsrv`
+#           (do chính chương trình U-mode in sau syscall `Call` trên `EP_KERN`) phải đỏ — dòng
+#           `# netping:` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -349,6 +352,25 @@ mut_diff "$WORK/log-ipc-no-cfg.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc
 case_red "ev$CFG_EV" \
     "log ktest-ipc: xoá dòng '# ipc: configure ok va=' (evidence bắt buộc của KT-290)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-cfg.log" "$SMP"
+
+# --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
+# **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình
+# U-mode** in sau khi syscall `Call` trên `EP_KERN` trả kết quả của **dịch vụ kernel** `NetPing`
+# (`net_svc::NetSvc` — kiểm quyền rồi mới chạm driver). Xoá đúng dòng đó ⇒ runner phải đỏ với
+# token `ev<ordinal>` — chứng minh dòng `# netping:` là evidence **bắt buộc**, không phải trang trí.
+NETSRV_LOG="$(bash "$KTEST" --log-path ktest-netsrv "$SMP" 1)"
+if [ ! -f "$NETSRV_LOG" ]; then
+    echo "# ca (n): chưa có log ktest-netsrv ($NETSRV_LOG) — boot một vòng matrix để lấy"
+    bash "$KTEST" 1 "$SMP" >/dev/null 2>&1 || die "không lấy được log ktest-netsrv"
+fi
+[ -f "$NETSRV_LOG" ] || die "không thấy log ktest-netsrv $NETSRV_LOG"
+NP_EV="$(ev_idx ktest-netsrv "$SMP" '# netping: label=0x291 reply=0 rtt_ms=')"
+[ -n "$NP_EV" ] || die "không tra được ordinal evidence '# netping: label=0x291 reply=0 rtt_ms=' của ktest-netsrv"
+grep -v -F '# netping: label=0x291 reply=0 rtt_ms=' "$NETSRV_LOG" >"$WORK/log-netsrv-no-netping.log"
+mut_diff "$WORK/log-netsrv-no-netping.log" "$NETSRV_LOG" "log ktest-netsrv: xoá dòng '# netping: label=0x291 reply=0 rtt_ms='"
+case_red "ev$NP_EV" \
+    "log ktest-netsrv: xoá dòng '# netping: label=0x291 reply=0 rtt_ms=' (evidence bắt buộc của KT-306)" \
+    bash "$KTEST" --check-log ktest-netsrv "$WORK/log-netsrv-no-netping.log" "$SMP"
 
 # --- ca cuối: expected.txt trả lại **nguyên vẹn** (sha256 + cmp) ------
 total=$((total + 1))

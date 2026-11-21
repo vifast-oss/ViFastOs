@@ -42,16 +42,20 @@ const SLOT_EP_KERN: u64 = 3;
 
 /// Label request `Ping(ip)` từ client (hợp đồng của bài test, **không** phải ABI).
 const LABEL_REQ: u32 = 0x290;
-/// Label request `NetPing(ip)` gửi **kernel**.
+/// Label request `NetPing(ip)` gửi **kernel** — **syscall thật** (KT-306: dịch vụ kernel
+/// `net_svc::NetSvc` kiểm quyền rồi mới chạm driver).
 const LABEL_KERN: u32 = 0x291;
 /// Label reply `Reply(rtt)` gửi lại client.
 const LABEL_REPLY: u32 = 0x292;
+/// Label **sai** cho ca âm: dịch vụ kernel phải trả `InvalidArgument` (5) và **không** gửi gói.
+const LABEL_BAD: u32 = 0x999;
 
 /// Mã thoát khi hỏng (TAP đỏ vì khác 0).
 const EXIT_RECV: u64 = 70;
 const EXIT_LABEL: u64 = 71;
 const EXIT_KERN: u64 = 72;
 const EXIT_REPLY: u64 = 73;
+const EXIT_NEG_LABEL: u64 = 74;
 
 /// In số thập phân (không cấp phát, không `unsafe`).
 fn put_u64(mut value: u64) {
@@ -65,6 +69,23 @@ fn put_u64(mut value: u64) {
         i -= 1;
         buf[i] = b'0' + (value % 10) as u8;
         value /= 10;
+    }
+    put(&buf[i..]);
+}
+
+/// In số hex **không** tiền tố (dùng cho `label=0x…`).
+fn put_hex(mut value: u64) {
+    let mut buf = [0u8; 16];
+    let mut i = buf.len();
+    if value == 0 {
+        i -= 1;
+        buf[i] = b'0';
+    }
+    while value > 0 {
+        i -= 1;
+        let digit = (value & 0xf) as u8;
+        buf[i] = if digit < 10 { b'0' + digit } else { b'a' + digit - 10 };
+        value >>= 4;
     }
     put(&buf[i..]);
 }
@@ -125,7 +146,30 @@ pub extern "C" fn _start() -> ! {
     put_u64(rtt);
     put(b"\n");
 
-    // ---- 3) `Send` trên cap `Reply` = `Reply` của seL4: giao `Reply(rtt)` cho client đang
+    // ---- 3) **KT-306** — `NetPing` là **syscall thật**: in **kết quả syscall** vừa nhận. `label`
+    // lấy từ `MessageInfo` của **reply** (kernel echo label request), `reply` = mã lỗi `a0`,
+    // `rtt_ms` = MR0 — cả ba đều là **số đo**, không phải hằng của bài test.
+    put(b"# netping: label=0x");
+    put_hex(u64::from(info_label(ping[2])));
+    put(b" reply=");
+    put_u64(ping[0]);
+    put(b" rtt_ms=");
+    put_u64(rtt);
+    put(b"\n");
+
+    // ---- 4) Ca âm: **label sai** ⇒ dịch vụ kernel **kiểm quyền** rồi từ chối (`InvalidArgument`
+    // 5) và **không** gửi gói nào. Đây là phép kiểm **quyền**, không phải kiểm định dạng chuỗi.
+    // `Call` trả `a0 = 0` (IPC thành công) + `a1 = length` + `a3 = MR0` = **mã lỗi** của dịch vụ.
+    let bad = call(SLOT_EP_KERN, info(LABEL_BAD, 0, false, 1), [ip, 0, 0, 0]);
+    if bad[0] != 0 || bad[3] != 5 {
+        put(b"# netping: neg label err=");
+        put_u64(bad[3]);
+        put(b"\n");
+        exit(EXIT_NEG_LABEL);
+    }
+    put(b"# netping: neg label err=5 ok=1\n");
+
+    // ---- 5) `Send` trên cap `Reply` = `Reply` của seL4: giao `Reply(rtt)` cho client đang
     // `BlockedOnReply` và đánh thức nó.
     let reply = send(SLOT_REPLY, info(LABEL_REPLY, 0, false, 1), [rtt, 0, 0, 0]);
     if reply[0] != 0 {

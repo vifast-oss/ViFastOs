@@ -384,13 +384,18 @@ validate_netsrv_negative() {
     check_count "netsrv ca âm: 'not ok 1 - netsrv: server ran'" '^not ok 1 - netsrv: server ran' 1
     # 3) **Không** được có `ok 1` — đây là chỗ bắt "PASS giả".
     check_count "netsrv ca âm: 'ok 1 - netsrv: server ran'" '^ok 1 - netsrv: server ran' 0
-    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 2 TAP).
+    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 3 TAP).
     check_count "netsrv ca âm: dòng PANIC 'xong'" \
-        '^PANIC: KT-281 netsrv xong \(2 TAP, 0 fail\)$' 0
+        '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' 0
     # 5) **Không** được có dòng do chương trình U-mode in (nếu có, ảnh đã chạy được dịch vụ mạng
     #    mà không có thiết bị ⇒ bằng chứng giả).
     check_count "netsrv ca âm: dòng '# netsrv: ping'" '^# netsrv: ping ' 0
     check_count "netsrv ca âm: dòng '# netsrv: client got reply'" '^# netsrv: client got reply=' 0
+    # 6) **KT-306** — không có dòng `# netping:` nào (syscall `NetPing` không được chạy khi thiếu
+    #    thiết bị) và không có `ok 3 - netping: via ipc`.
+    check_count "netsrv ca âm: dòng '# netping:'" '^# netping: ' 0
+    check_count "netsrv ca âm: dòng '# netping kern:'" '^# netping kern: ' 0
+    check_count "netsrv ca âm: 'ok 3 - netping: via ipc'" '^ok 3 - netping: via ipc$' 0
     return $((FAILS - before))
 }
 

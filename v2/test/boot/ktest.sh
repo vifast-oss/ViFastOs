@@ -445,10 +445,13 @@ EOF
 }
 
 # **KT-281** (D2-210, N1 phần 3) — net server U-mode: hai TAP của ảnh `ktest-netsrv`.
+# **KT-306** (D2-219): thêm TAP 3 — **`NetPing` là syscall thật** (dịch vụ kernel `net_svc::NetSvc`
+# kiểm quyền trước khi chạm driver + ca âm label sai ⇒ `InvalidArgument` 5, không gửi gói).
 manifest_netsrv() {
     cat <<'EOF'
 netsrv: server ran
 netsrv: client got reply
+netping: via ipc
 EOF
 }
 
@@ -752,13 +755,16 @@ EOF
 ^# netsrv rig: untyped=[0-9]+ core_untyped=[0-9]+ cspace_c=[0-9]+ cspace_s=[0-9]+ cspace_k=[0-9]+ tcb_c=[0-9]+ tcb_s=[0-9]+ tcb_k=[0-9]+ ep_srv=[0-9]+ ep_kern=[0-9]+ reply_client=[0-9]+ reply_kern=[0-9]+$
 ^# netsrv call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0xa000202 label=0x290 stop=Blocked$
 ^# netsrv server: recv=1 label=0x290 mr=0xa000202 client=BlockedOnReply caller=[0-9]+ server=BlockedOnSend kern_blocked=1 kern_len=1 kern_mr=0xa000202 stop=Blocked$
-^# netsrv kern: recv=1 label=0x291 mr=0xa000202 server=BlockedOnReply caller=[0-9]+ ping=ok sent=1 received=1 rtt_ms=[0-9]+ reply=ok$
+^# netping kern: n=1 outcome=Served served=1 denied=0 failed=0 label=0x291 len=1 mr=0xa000202 caller=[0-9]+ err=0 rtt_ms=[0-9]+ sent=1 received=1 reply_label=0x291 reply_mr=[0-9]+ server=Ready$
 ^# netsrv: ping 10\.0\.2\.2 ok rtt=[0-9]+$
+^# netping: label=0x291 reply=0 rtt_ms=[0-9]+$
+^# netping kern: n=2 outcome=Denied served=1 denied=1 failed=0 label=0x999 len=1 mr=0xa000202 caller=[0-9]+ err=5 rtt_ms=0 sent=1 received=1 reply_label=0x999 reply_mr=5 server=Ready stop=Blocked$
+^# netping: neg label err=5 ok=1$
 ^# netsrv reply: applied=1 server_exit=0 client=Ready reply_caller=0 server=Inactive stop=Exit$
 ^# netsrv: client got reply=[0-9]+$
 ^# netsrv: neg empty=1 reply=18 ok=1$
 ^# netsrv client: reply_label=0x292 reply_mr0=[0-9]+ const:label_reply=0x292 const:rtt_ms=[0-9]+$
-^# netsrv final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive$
+^# netsrv final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 served=1 denied=1 sent=1 received=1 client=Inactive server=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
@@ -841,7 +847,7 @@ panic_allow_re() {
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
         ktest-ipc) printf '%s' '^PANIC: KT-290 ipc u-mode \+ mr buffer \+ tcb configure xong \(4 TAP, 0 fail\)$' ;;
-        ktest-netsrv) printf '%s' '^PANIC: KT-281 netsrv xong \(2 TAP, 0 fail\)$' ;;
+        ktest-netsrv) printf '%s' '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac
 }

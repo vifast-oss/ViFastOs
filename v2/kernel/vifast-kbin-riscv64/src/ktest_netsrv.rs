@@ -32,16 +32,22 @@
 //! nghĩa cần (chặn → kernel xử lý → trả `(error, value)` qua `a0/a1`), đúng khuôn dịch vụ FS của
 //! kernel (`proc_fs.rs`). Khảo sát + lý do: `JOURNAL/kt281-netsrv.md` §1.
 //!
-//! # Hai TAP (kế hoạch `1..2`)
+//! # Ba TAP (kế hoạch `1..3`)
 //!
-//! 1. `netsrv: server ran` — server U-mode **thật** nhận `Ping(ip)` từ client U-mode, gọi kernel
-//!    driver ping **thật** (`virtio_net::ping` → ICMP echo → slirp trả lời), in
-//!    `# netsrv: ping 10.0.2.2 ok rtt=<ms>`; kernel đọc **độc lập** message server gửi kernel
-//!    (`label=0x291 mr=0x0a000202`) và `PingStats` thật (`sent=1 received=1`).
+//! 1. `netsrv: server ran` — server U-mode **thật** nhận `Ping(ip)` từ client U-mode, gọi **dịch
+//!    vụ kernel** `NetPing` bằng syscall `Call` (KT-306: `net_svc::NetSvc`, **không** phải
+//!    `virtio_net::ping` gọi thẳng trong rig), driver ping **thật** (ICMP echo → slirp trả lời),
+//!    in `# netsrv: ping 10.0.2.2 ok rtt=<ms>` + `# netping: label=0x291 reply=0 rtt_ms=<ms>`;
+//!    kernel đọc **độc lập** message server gửi kernel (`label=0x291 mr=0x0a000202`), `PingStats`
+//!    thật (`sent=1 received=1`) và reply trong vùng nhận IPC của server.
 //! 2. `netsrv: client got reply` — server `Send` trên cap `Reply` ⇒ client **được resume** với
 //!    `a0=0`, `a2` = `MessageInfo{label=0x292,length=1}`, `a3` = RTT; client in
 //!    `# netsrv: client got reply=<v>`; ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên cap
 //!    `Reply` ⇒ 18).
+//! 3. `netping: via ipc` — **`NetPing` là syscall thật**: dịch vụ kernel **kiểm quyền** (caller =
+//!    TCB net server, `label = 0x291`, `length = 1`, IP trong chính sách) **trước** khi chạm
+//!    driver. Ca âm trong cùng boot: `Call` với **label sai** (`0x999`) ⇒ `InvalidArgument` (5),
+//!    **không** gói nào được gửi (`sent` vẫn 1) — server in `# netping: neg label err=5 ok=1`.
 //!
 //! **Ca âm** (fail-closed): không `-netdev`/`-device` ⇒ `# netsrv: no device` + `not ok 1` +
 //! `halt(1)` — runner `net.sh` coi là **đạt** khi ảnh đỏ đúng cách.
@@ -55,7 +61,7 @@ use core::fmt::Write;
 use vifast_core::{
     KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
 };
-use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::addr::MacAddr;
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
@@ -63,6 +69,10 @@ use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{pci, virtio_net};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::pci::VirtioKind;
+
+mod net_svc;
+
+use net_svc::{NetSvc, Outcome, LABEL_BAD, LABEL_NETPING};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
 static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
@@ -319,6 +329,17 @@ fn tcb_state_name(state: TcbState) -> &'static str {
     }
 }
 
+/// Tên [`Outcome`] cho log (KT-306).
+fn outcome_name(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Empty => "Empty",
+        Outcome::Served => "Served",
+        Outcome::Denied => "Denied",
+        Outcome::Failed => "Failed",
+        Outcome::Error => "Error",
+    }
+}
+
 /// Tên `Stop` cho log.
 fn stop_name(stop: Option<Stop>) -> &'static str {
     match stop {
@@ -342,7 +363,7 @@ fn put_mac(w: &mut PlatformWriter<'_, Riscv64Virt>, mac: [u8; 6]) {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..2\n");
+    PLATFORM.put_str("TAP version 13\n1..3\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let mmu_report = vifast_plat_riscv64::mmu::init();
@@ -570,82 +591,64 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
 
-    // ================================================================ kernel: dịch vụ mạng
-    // Kernel `recv` trên `EP_KERN` **kèm cap Reply** ⇒ server chuyển `BlockedOnSend{call}` →
-    // `BlockedOnReply` và kernel giữ `Reply.caller`. Đây là chỗ **duy nhất** chạm thiết bị.
-    let kern_recv = core_bridge::with_machine(|m| {
-        m.recv(
-            rig.tcb_k,
-            SlotRef::new(rig.cnode_k, K_EP_KERN),
-            Some(SlotRef::new(rig.cnode_k, K_REPLY)),
-        )
-    });
-    let (kern_label, kern_mr) = received(rig.tcb_k);
+    // ================================================================ dịch vụ kernel #1 — `NetPing`
+    // **KT-306**: `NetPing` **không** còn là `virtio_net::ping` gọi thẳng trong rig — nó là dịch
+    // vụ kernel (`net_svc::NetSvc`) trên `EP_KERN`, có **kiểm quyền** trước khi chạm driver.
+    let mut svc = NetSvc::new(
+        rig.tcb_k,
+        SlotRef::new(rig.cnode_k, K_EP_KERN),
+        SlotRef::new(rig.cnode_k, K_REPLY),
+        rig.reply_kern,
+        rig.tcb_s,
+        config.ip,
+        our_mac,
+        config.gw,
+        gw_mac,
+    );
+    let outcome1 = core_bridge::with_machine(|m| svc.service(m));
+    // Ảnh chụp **sau** lượt #1 (lượt #2 sẽ ghi đè các trường `last_*`).
+    let s1_served = svc.served;
+    let s1_denied = svc.denied;
+    let s1_failed = svc.failed;
+    let s1_label = svc.last_label;
+    let s1_len = svc.last_length;
+    let s1_ip = svc.last_ip;
+    let s1_caller = svc.last_caller;
+    let s1_err = svc.last_err;
+    let s1_sent = svc.sent;
+    let s1_received = svc.received;
     let srv_state_kern = state_of(rig.tcb_s);
-    let kern_caller = core_bridge::with_machine(|m| m.reply_caller(rig.reply_kern).ok().flatten());
-    // Chỉ ping khi message tới **đúng** hợp đồng (`label=0x291`, `MR0=ip`) — sai hợp đồng thì
-    // coi như lỗi, không gửi gói tin nào (fail-closed).
-    let ping_result = if kern_recv.is_ok() && kern_label == LABEL_KERN && kern_mr == TARGET_IP {
-        virtio_net::ping(
-            config.ip,
-            our_mac,
-            Ipv4Addr::new(10, 0, 2, 2),
-            gw_mac,
-            1,
-            virtio_net::NET_STEP_TIMEOUT_TICKS,
-        )
-        .ok()
-    } else {
-        None
-    };
-    let (ping_ok, ping_sent, ping_recv, rtt_ms) = match ping_result {
-        Some(stats) => (
-            stats.received == stats.sent && stats.sent >= 1,
-            stats.sent,
-            stats.received,
-            stats.rtt_min_ms,
-        ),
-        None => (false, 0, 0, 0),
-    };
-    // Trả lời server: `Reply(rtt)` trên cap Reply của kernel. Ping lỗi ⇒ vẫn trả lời (mã lỗi
-    // `Timeout` 16) để server không treo — đỏ có kiểm soát, có chẩn đoán.
-    let kern_reply = if ping_ok {
-        core_bridge::with_machine(|m| {
-            m.reply_msg(
-                rig.tcb_k,
-                SlotRef::new(rig.cnode_k, K_REPLY),
-                msg(LABEL_REPLY, &[rtt_ms]),
-            )
-        })
-    } else {
-        core_bridge::with_machine(|m| {
-            m.reply_msg(
-                rig.tcb_k,
-                SlotRef::new(rig.cnode_k, K_REPLY),
-                msg(LABEL_REPLY, &[u64::from(KError::Timeout.id())]),
-            )
-        })
-    };
+    // Kernel đọc **độc lập** vùng nhận IPC của server: reply phải đúng label `NetPing` + MR0 = RTT.
+    let (srv_reply_label, srv_reply_mr) = received(rig.tcb_s);
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# netsrv kern: recv={} label=0x{:x} mr=0x{:x} server={} caller={} ping={} sent={} \
-             received={} rtt_ms={} reply={}",
-            u8::from(kern_recv.is_ok() && kern_label == LABEL_KERN && kern_mr == TARGET_IP),
-            kern_label,
-            kern_mr,
-            srv_state_kern.map(tcb_state_name).unwrap_or("none"),
-            kern_caller.map(|t| t as u64).unwrap_or(0),
-            if ping_ok { "ok" } else { "err" },
-            ping_sent,
-            ping_recv,
-            rtt_ms,
-            if kern_reply.is_ok() { "ok" } else { "err" }
+            "# netping kern: n=1 outcome={} served={} denied={} failed={} label=0x{:x} len={} \
+             mr=0x{:x} caller={} err={} rtt_ms={} sent={} received={} reply_label=0x{:x} \
+             reply_mr={} server={}",
+            outcome_name(outcome1),
+            svc.served,
+            svc.denied,
+            svc.failed,
+            svc.last_label,
+            svc.last_length,
+            svc.last_ip,
+            svc.last_caller,
+            svc.last_err,
+            svc.last_rtt_ms,
+            svc.sent,
+            svc.received,
+            srv_reply_label,
+            srv_reply_mr,
+            srv_state_kern.map(tcb_state_name).unwrap_or("none")
         );
     }
+    let rtt_ms = svc.last_rtt_ms;
 
-    // ================================================================ lượt 3: server resume + `Reply` client
+    // ================================================================ lượt 3: server resume + `Call` label SAI
+    // Nửa thứ hai của hợp đồng resume: `a0..a6` lấy từ vùng nhận IPC của server (message dịch vụ
+    // vừa giao). Không có message ⇒ `false` và server **không** được resume (đỏ có chẩn đoán).
     let applied_s = user::apply_ipc_return(&mut tf_s, rig.tcb_s);
     let stop3 = if applied_s {
         run_turn(&server, &mut tf_s, rig.tcb_s, SLOT_SERVER)
@@ -653,7 +656,63 @@ pub extern "C" fn rust_main() -> ! {
         None
     };
     let state_s3 = state_of(rig.tcb_s);
-    let state_c3 = state_of(rig.tcb_c);
+    // Ca âm: server `Call` lại dịch vụ với **label sai** ⇒ chặn ở Send trên `EP_KERN`.
+    let srv_blocked_bad = matches!(state_s3, Some(TcbState::BlockedOnSend { call: true, .. }));
+    let (bad_len, bad_mr) = core_bridge::with_machine(|m| {
+        (
+            m.endpoint_send_len(rig.ep_kern).ok(),
+            m.endpoint_last_mr(rig.ep_kern).ok().flatten(),
+        )
+    });
+
+    // ================================================================ dịch vụ kernel #2 — label sai ⇒ TỪ CHỐI
+    let outcome2 = core_bridge::with_machine(|m| svc.service(m));
+    let s2_served = svc.served;
+    let s2_denied = svc.denied;
+    let s2_failed = svc.failed;
+    let s2_label = svc.last_label;
+    let s2_len = svc.last_length;
+    let s2_ip = svc.last_ip;
+    let s2_caller = svc.last_caller;
+    let s2_err = svc.last_err;
+    let s2_sent = svc.sent;
+    let s2_received = svc.received;
+    let (srv_deny_label, srv_deny_mr) = received(rig.tcb_s);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# netping kern: n=2 outcome={} served={} denied={} failed={} label=0x{:x} len={} \
+             mr=0x{:x} caller={} err={} rtt_ms={} sent={} received={} reply_label=0x{:x} \
+             reply_mr={} server={} stop={}",
+            outcome_name(outcome2),
+            svc.served,
+            svc.denied,
+            svc.failed,
+            svc.last_label,
+            svc.last_length,
+            svc.last_ip,
+            svc.last_caller,
+            svc.last_err,
+            svc.last_rtt_ms,
+            svc.sent,
+            svc.received,
+            srv_deny_label,
+            srv_deny_mr,
+            state_of(rig.tcb_s).map(tcb_state_name).unwrap_or("none"),
+            stop_name(stop3)
+        );
+    }
+
+    // ================================================================ lượt 4: server resume + `Reply` client
+    let applied_s2 = user::apply_ipc_return(&mut tf_s, rig.tcb_s);
+    let stop4 = if applied_s2 {
+        run_turn(&server, &mut tf_s, rig.tcb_s, SLOT_SERVER)
+    } else {
+        None
+    };
+    let state_s4 = state_of(rig.tcb_s);
+    let state_c4 = state_of(rig.tcb_c);
     let reply_caller =
         core_bridge::with_machine(|m| m.reply_caller(rig.reply_client).ok().flatten());
     {
@@ -661,29 +720,27 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(
             w,
             "# netsrv reply: applied={} server_exit={} client={} reply_caller={} server={} stop={}",
-            u8::from(applied_s),
-            match stop3 {
+            u8::from(applied_s && applied_s2),
+            match stop4 {
                 Some(Stop::Exit { code }) => code as i64,
                 _ => -1,
             },
-            state_c3.map(tcb_state_name).unwrap_or("none"),
+            state_c4.map(tcb_state_name).unwrap_or("none"),
             reply_caller.map(|t| t as u64).unwrap_or(0),
-            state_s3.map(tcb_state_name).unwrap_or("none"),
-            stop_name(stop3)
+            state_s4.map(tcb_state_name).unwrap_or("none"),
+            stop_name(stop4)
         );
     }
 
-    // ================================================================ lượt 4: resume client
-    // Nửa thứ hai của hợp đồng resume: `a0..a6` lấy từ vùng nhận IPC của client (message server
-    // vừa giao). Không có message ⇒ `false` và client **không** được resume (đỏ có chẩn đoán).
+    // ================================================================ lượt 5: resume client
     let applied_c = user::apply_ipc_return(&mut tf_c, rig.tcb_c);
-    let stop4 = if applied_c {
+    let stop5 = if applied_c {
         run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT)
     } else {
         None
     };
-    let state_c4 = state_of(rig.tcb_c);
-    let state_s4 = state_of(rig.tcb_s);
+    let state_c5 = state_of(rig.tcb_c);
+    let state_s5 = state_of(rig.tcb_s);
     // Message **client nhận được** — kernel đọc độc lập từ vùng nhận IPC của client (không tin
     // lời chương trình): label/MR phải đúng hợp đồng với server.
     let (cli_label, cli_mr0) = received(rig.tcb_c);
@@ -698,8 +755,12 @@ pub extern "C" fn rust_main() -> ! {
     }
     user::capture_end();
 
-    // ================================================================ TAP 1..2
+    // ================================================================ TAP 1..3
     let server_said_ping = user::captured_contains(SLOT_SERVER, b"# netsrv: ping 10.0.2.2 ok rtt=");
+    let server_said_netping =
+        user::captured_contains(SLOT_SERVER, b"# netping: label=0x291 reply=0 rtt_ms=");
+    let server_said_neg_label =
+        user::captured_contains(SLOT_SERVER, b"# netping: neg label err=5 ok=1");
     let client_said_reply = user::captured_contains(SLOT_CLIENT, b"# netsrv: client got reply=");
     let client_said_neg =
         user::captured_contains(SLOT_CLIENT, b"# netsrv: neg empty=1 reply=18 ok=1");
@@ -708,17 +769,18 @@ pub extern "C" fn rust_main() -> ! {
     let reply_clean = reply_caller.is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply_client).ok().flatten()).is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply_kern).ok().flatten()).is_none();
-    let client_exit = match stop4 {
+    let client_exit = match stop5 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
-    let server_exit = match stop3 {
+    let server_exit = match stop4 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
     let mut fails = 0usize;
-    // TAP 1 — server U-mode **thật** nhận `Ping(ip)`, gọi kernel driver ping **thật**, in dòng
-    // `# netsrv: ping 10.0.2.2 ok rtt=<ms>`; kernel đọc độc lập message + `PingStats`.
+    // TAP 1 — server U-mode **thật** nhận `Ping(ip)`, gọi **dịch vụ kernel** `NetPing` bằng syscall
+    // `Call` (KT-306: `net_svc::NetSvc`, không phải `virtio_net::ping` gọi thẳng trong rig), driver
+    // ping **thật**; kernel đọc độc lập message + `PingStats` + reply trong vùng nhận IPC của server.
     let ok1 = blocked_send
         && ep_len == Some(1)
         && ep_mr == Some(TARGET_IP)
@@ -727,15 +789,22 @@ pub extern "C" fn rust_main() -> ! {
         && blocked_reply
         && srv_blocked_kern
         && kern_len == Some(1)
-        && kern_mr == TARGET_IP
-        && kern_recv.is_ok()
-        && kern_label == LABEL_KERN
-        && kern_mr == TARGET_IP
-        && ping_ok
-        && ping_sent == 1
-        && ping_recv == 1
-        && kern_reply.is_ok()
-        && server_said_ping;
+        && kern_mr == Some(TARGET_IP)
+        && outcome1 == Outcome::Served
+        && s1_served == 1
+        && s1_denied == 0
+        && s1_failed == 0
+        && s1_label == LABEL_NETPING
+        && s1_len == 1
+        && s1_ip == TARGET_IP
+        && s1_caller == u64::from(rig.tcb_s)
+        && s1_err == 0
+        && s1_sent == 1
+        && s1_received == 1
+        && srv_reply_label == LABEL_NETPING
+        && srv_reply_mr == rtt_ms
+        && server_said_ping
+        && server_said_netping;
     if ok1 {
         PLATFORM.put_str("ok 1 - netsrv: server ran\n");
     } else {
@@ -744,8 +813,9 @@ pub extern "C" fn rust_main() -> ! {
             w,
             "not ok 1 - netsrv: server ran: blocked_send={} ep_len={} ep_mr=0x{:x} \
              srv_label=0x{:x} srv_mr=0x{:x} blocked_reply={} srv_blocked_kern={} kern_len={} \
-             kern_mr=0x{:x} kern_recv={} kern_label=0x{:x} ping_ok={} sent={} received={} \
-             reply={} said_ping={}",
+             kern_mr=0x{:x} outcome1={} served={} denied={} failed={} label=0x{:x} len={} \
+             ip=0x{:x} caller={} err={} sent={} received={} reply_label=0x{:x} reply_mr={} \
+             rtt_ms={} said_ping={} said_netping={}",
             u8::from(blocked_send),
             ep_len.map(|n| n as u64).unwrap_or(u64::MAX),
             ep_mr.unwrap_or(0),
@@ -754,19 +824,29 @@ pub extern "C" fn rust_main() -> ! {
             u8::from(blocked_reply),
             u8::from(srv_blocked_kern),
             kern_len.map(|n| n as u64).unwrap_or(u64::MAX),
-            kern_mr,
-            u8::from(kern_recv.is_ok()),
-            kern_label,
-            u8::from(ping_ok),
-            ping_sent,
-            ping_recv,
-            u8::from(kern_reply.is_ok()),
-            u8::from(server_said_ping)
+            kern_mr.unwrap_or(0),
+            outcome_name(outcome1),
+            s1_served,
+            s1_denied,
+            s1_failed,
+            s1_label,
+            s1_len,
+            s1_ip,
+            s1_caller,
+            s1_err,
+            s1_sent,
+            s1_received,
+            srv_reply_label,
+            srv_reply_mr,
+            rtt_ms,
+            u8::from(server_said_ping),
+            u8::from(server_said_netping)
         );
         fails += 1;
     }
     // TAP 2 — server `Reply` ⇒ client **resume** với `Reply(rtt)`; ca âm đúng mã.
     let ok2 = applied_s
+        && applied_s2
         && applied_c
         && client_exit == Some(0)
         && server_exit == Some(0)
@@ -783,10 +863,11 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "not ok 2 - netsrv: client got reply: applied_s={} applied_c={} client_exit={} \
-             server_exit={} said_reply={} said_neg={} reply_label=0x{:x} reply_mr0={} rtt_ms={} \
-             reply_clean={} check_ipc={} check_caps={}",
+            "not ok 2 - netsrv: client got reply: applied_s={} applied_s2={} applied_c={} \
+             client_exit={} server_exit={} said_reply={} said_neg={} reply_label=0x{:x} \
+             reply_mr0={} rtt_ms={} reply_clean={} check_ipc={} check_caps={}",
             u8::from(applied_s),
+            u8::from(applied_s2),
             u8::from(applied_c),
             client_exit.map(|c| c as i64).unwrap_or(-1),
             server_exit.map(|c| c as i64).unwrap_or(-1),
@@ -801,12 +882,63 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 3 — **`NetPing` là syscall thật** (KT-306): dịch vụ kernel **kiểm quyền** rồi mới chạm
+    // driver. Ca âm trong cùng boot: `Call` với **label sai** ⇒ `InvalidArgument` (5) và **không**
+    // gói nào được gửi (`sent` vẫn 1). Đây là phép kiểm **quyền**, không phải phép kiểm định dạng.
+    let ok3 = outcome2 == Outcome::Denied
+        && s2_served == 1
+        && s2_denied == 1
+        && s2_failed == 0
+        && s2_label == LABEL_BAD
+        && s2_len == 1
+        && s2_ip == TARGET_IP
+        && s2_caller == u64::from(rig.tcb_s)
+        && s2_err == u64::from(KError::InvalidArgument.id())
+        && s2_sent == 1
+        && s2_received == 1
+        && srv_blocked_bad
+        && bad_len == Some(1)
+        && bad_mr == Some(TARGET_IP)
+        && srv_deny_label == LABEL_BAD
+        && srv_deny_mr == u64::from(KError::InvalidArgument.id())
+        && server_said_neg_label;
+    if ok3 {
+        PLATFORM.put_str("ok 3 - netping: via ipc\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 3 - netping: via ipc: outcome2={} served={} denied={} failed={} \
+             label=0x{:x} len={} ip=0x{:x} caller={} err={} sent={} received={} \
+             srv_blocked_bad={} bad_len={} bad_mr=0x{:x} deny_label=0x{:x} deny_mr={} \
+             said_neg_label={}",
+            outcome_name(outcome2),
+            s2_served,
+            s2_denied,
+            s2_failed,
+            s2_label,
+            s2_len,
+            s2_ip,
+            s2_caller,
+            s2_err,
+            s2_sent,
+            s2_received,
+            u8::from(srv_blocked_bad),
+            bad_len.map(|n| n as u64).unwrap_or(u64::MAX),
+            bad_mr.unwrap_or(0),
+            srv_deny_label,
+            srv_deny_mr,
+            u8::from(server_said_neg_label)
+        );
+        fails += 1;
+    }
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
             "# netsrv final: client_exit={} server_exit={} reply_clean={} check_ipc={} \
-             check_caps={} capture_client={} capture_server={} client={} server={}",
+             check_caps={} capture_client={} capture_server={} served={} denied={} sent={} \
+             received={} client={} server={}",
             client_exit.map(|c| c as i64).unwrap_or(-1),
             server_exit.map(|c| c as i64).unwrap_or(-1),
             u8::from(reply_clean),
@@ -814,15 +946,19 @@ pub extern "C" fn rust_main() -> ! {
             u8::from(check_caps),
             u8::from(client_said_reply),
             u8::from(server_said_ping),
-            state_c4.map(tcb_state_name).unwrap_or("none"),
-            state_s4.map(tcb_state_name).unwrap_or("none")
+            s2_served,
+            s2_denied,
+            s2_sent,
+            s2_received,
+            state_c5.map(tcb_state_name).unwrap_or("none"),
+            state_s5.map(tcb_state_name).unwrap_or("none")
         );
     }
     if fails == 0 {
-        PLATFORM.put_str("PANIC: KT-281 netsrv xong (2 TAP, 0 fail)\n");
+        PLATFORM.put_str("PANIC: KT-306 netping xong (3 TAP, 0 fail)\n");
         PLATFORM.halt(0)
     } else {
-        PLATFORM.put_str("PANIC: KT-281 netsrv CO LOI\n");
+        PLATFORM.put_str("PANIC: KT-306 netping CO LOI\n");
         PLATFORM.halt(1)
     }
 }
