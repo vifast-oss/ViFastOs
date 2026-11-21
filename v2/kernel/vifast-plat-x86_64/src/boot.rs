@@ -89,7 +89,49 @@ pub const fn pd_entry(index: usize) -> u64 {
 
 /// Entry **lá 2 MiB** của vùng MMIO map: `MMIO_MAP_BASE + index × 2 MiB | P | RW | PS | PCD`.
 pub const fn mmio_pd_entry(index: usize) -> u64 {
-    MMIO_MAP_BASE + ((index as u64) * LARGE_PAGE_BYTES) | PD_MMIO_FLAGS
+    (MMIO_MAP_BASE + ((index as u64) * LARGE_PAGE_BYTES)) | PD_MMIO_FLAGS
+}
+
+// ---------------------------------------------------------------------------------------------
+// MMIO map **thấp** 2..3 GiB — KT-274 (K5' bước 5: PCI)
+// ---------------------------------------------------------------------------------------------
+//
+// ECAM của QEMU `-M q35` nằm ở `0xB000_0000` (đo được: `info mtree` ⇒
+// `pcie-mmcfg-mmio @ 0xb0000000`, 256 MiB) — **dưới** 3 GiB nên ngoài cả identity map 1 GiB lẫn
+// vùng MMIO 3..4 GiB của KT-266. Đọc nó khi chưa map ⇒ `#PF` ngay lần đọc vendor đầu tiên.
+//
+// Vùng 2..3 GiB của PC là **PCI hole** (32-bit MMIO window) ⇒ map identity 2 MiB/lá với `PCD = 1`
+// như vùng 3..4 GiB. Nhờ vậy cả ECAM (`0xB000_0000`) lẫn BAR 32-bit mà firmware cấp trong
+// `0x8000_0000..0xBFFF_FFFF` đều đọc/ghi được.
+
+/// Gốc vùng MMIO **thấp**: 2 GiB (`PDPT[2]`).
+pub const MMIO_MAP_LOW_BASE: u64 = 0x8000_0000;
+/// Cỡ vùng MMIO thấp: 1 GiB = 512 × 2 MiB.
+pub const MMIO_MAP_LOW_BYTES: u64 = 1 << 30;
+/// Chỉ số `PDPT` của vùng MMIO thấp (`2 GiB / 1 GiB`).
+pub const MMIO_LOW_PDPT_INDEX: usize = 2;
+
+/// Entry **lá 2 MiB** của vùng MMIO thấp: `MMIO_MAP_LOW_BASE + index × 2 MiB | P | RW | PS | PCD`.
+pub const fn mmio_low_pd_entry(index: usize) -> u64 {
+    (MMIO_MAP_LOW_BASE + ((index as u64) * LARGE_PAGE_BYTES)) | PD_MMIO_FLAGS
+}
+
+/// `true` ⇔ `[addr, addr + len)` nằm **trọn** trong một trong hai cửa sổ MMIO đã map
+/// (2..3 GiB hoặc 3..4 GiB).
+///
+/// Dùng để **fail-closed** trước khi chạm một địa chỉ MMIO: đọc/ghi ngoài cửa sổ đã map là `#PF`
+/// (giết ảnh), không phải "trả 0". ECAM và BAR mà firmware cấp đều phải qua phép kiểm này.
+pub const fn mmio_mapped(addr: u64, len: u64) -> bool {
+    if len == 0 {
+        return false;
+    }
+    let end = match addr.checked_add(len) {
+        Some(end) => end,
+        None => return false,
+    };
+    let low_end = MMIO_MAP_LOW_BASE + MMIO_MAP_LOW_BYTES;
+    let high_end = MMIO_MAP_BASE + MMIO_MAP_BYTES;
+    (addr >= MMIO_MAP_LOW_BASE && end <= low_end) || (addr >= MMIO_MAP_BASE && end <= high_end)
 }
 
 /// Một bước của chuỗi bật long mode — **thứ tự** là hợp đồng (SDM §9.8.5).

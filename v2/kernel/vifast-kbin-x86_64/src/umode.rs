@@ -48,7 +48,7 @@ use vifast_plat_x86_64::umode::{
     USER_STACK_VA,
 };
 
-use crate::{check, write_byte, Console, BOOT_MARKER, HALT_LINE};
+use crate::{check, write_byte, Console};
 
 /// Chuỗi ring 3 in qua `DebugPutStr` — nằm **cùng trang** với mã ring 3 (stub dùng `lea`).
 pub(crate) const USER_MSG: &str = "ring3 says hi\n";
@@ -188,9 +188,10 @@ pub extern "C" fn syscall_dispatch(
         check(&mut console, 14, "umode: returned to ring3", user);
         let _ = writeln!(console, "# umode: exit code={a0} nr={nr}");
         let _ = writeln!(console, "# umode: done");
-        let _ = write!(console, "{BOOT_MARKER}");
-        let _ = writeln!(console, "{HALT_LINE}");
-        asm::halt(0)
+        // **KT-274** (D2-208): chạy tiếp phần **PCI + virtio-net + ARP** (TAP 15..17) rồi in
+        // marker + tắt máy. Chưa có procsrv/scheduler nên đây là chỗ duy nhất kernel còn chạy
+        // được sau `Exit`; thứ tự TAP 1..14 của các bước trước **không đổi**.
+        crate::net::run(&mut console, 15)
     }
 
     // Số hiệu lạ (chưa cài): in **một** lần rồi trả `NotSupported` (18) — không treo máy vì một

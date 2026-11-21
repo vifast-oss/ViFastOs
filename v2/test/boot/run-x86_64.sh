@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # KT-257 (K5' bước 1) + **KT-261** (K5' bước 2: GDT/TSS/IDT + handler exception) + **KT-266**
-# (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) — runner boot
-# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout +
-# dọn con).
+# (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) + **KT-274**
+# (K5' bước 5: PCI ECAM + virtio-net + ARP) — runner boot **x86_64**. Khuôn: `run-aarch64.sh`
+# (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
+#
+# **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
+# `virtio-net-pci` trên `-netdev user` (slirp). `-M pc` (i440fx) **không** có ECAM ⇒ ảnh rơi xuống
+# legacy `0xCF8`/`0xCFC` và TAP `pci: ecam` ĐỎ — đó là hợp đồng của runner này, không phải lỗi.
 #
 # Việc runner làm, theo thứ tự:
 #   1. **build** ảnh `vifast-kbin-x86_64` cho `x86_64-unknown-none` (release);
@@ -11,7 +15,8 @@
 #      `0x0010_0000`; **multiboot2 header** 24 byte ở đầu `.text` đúng magic/arch/len/checksum/end
 #      tag; **PVH note** (`.note.Xen`, type 18) trỏ đúng `_start` — đây là đường QEMU 11.1.3
 #      thật sự dùng cho `-kernel` (xem đầu `linker.ld`);
-#   3. **boot** QEMU `-m 128M -nographic -kernel <ELF> -no-reboot` qua `qemu_guard.sh`, kiểm
+#   3. **boot** QEMU `-M q35 -m 128M -nographic -kernel <ELF> -no-reboot` + `virtio-net-pci` trên
+#      `-netdev user` qua `qemu_guard.sh`, kiểm
 #      **TAP** (`TAP version 13`, `1..N`, đủ N dòng `ok`, 0 dòng `not ok`), marker **đúng một
 #      lần**, `lma=1` (long mode thật), dòng `halt`, không `PANIC`, **và** các dòng `# exc:` của
 #      KT-261: đúng **5** exception, đúng vector + mã lỗi + `cs`, `#PF` có `cr2` đúng;
@@ -19,19 +24,23 @@
 #      `# timer: hz=… ticks=…` (ticks > 0), `# timer: eoi=… ticks=…`;
 #      KT-270: đúng **một** dòng `# umode: ring3 ran nr=12 ret=<len>` (ring 3 thật sự chạy và
 #      `int 0x80` được xử lý);
+#      KT-274: `# pci: ecam base=… buses=… functions=…` (ECAM thật, không phải legacy),
+#      `# net: mac=aa:bb:…` (MAC đọc từ `virtio_net_config`), `# net: arp gw=… mac=… sent=… recv=…`
+#      (ARP reply **thật** của slirp);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
 #      (h) **mất dòng `# timer:`** (KT-266); (i) **mất dòng `# apic:`** (KT-266);
-#      (j) **mất dòng `# umode:`** (KT-270).
-#      Cả **mười** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (j) **mất dòng `# umode:`** (KT-270); (k) **không có mạng** — boot **thật** không có
+#      `-device virtio-net-pci` ⇒ ảnh in `# net: no device` và TAP 16 ĐỎ (KT-274).
+#      Cả **mười một** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 14 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
-#                   KT-270: 3 ca U-mode)
+#   EXPECT_TESTS    số ca TAP (mặc định 17 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -54,10 +63,17 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-14}"
+EXPECT_TESTS="${EXPECT_TESTS:-17}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
+# **KT-274**: `-M q35` (ECAM qua `MCFG`) + một `virtio-net-pci` trên slirp. Một chỗ quyết định:
+# mọi lần boot của runner dùng **cùng** máy + **cùng** thiết bị, trừ ca âm (k) cố ý bỏ thiết bị.
+QEMU_MACHINE=(-M q35 -m 128M -nographic -no-reboot)
+QEMU_NET=(-netdev user,id=n0 -device virtio-net-pci,netdev=n0)
+# Ngân sách riêng cho boot **không mạng**: ảnh dừng ở TAP 16 đỏ (`cli; hlt`) nên QEMU **không**
+# tự thoát; 10 s là dư cho phần in (đo được ~2 s) mà không phí 20 s như boot thường.
+NONET_TIMEOUT_DS=100
 # 24 byte multiboot2 header (magic, arch=0, len=24, checksum, end tag {0,0,8}) — hex little-endian.
 MB2_HEX="d65052e8000000001800000012afad170000000008000000"
 # 16 byte đầu của PVH note: namesz=4, descsz=4, type=18, "Xen\0".
@@ -337,6 +353,24 @@ check_log() {
         echo "# thiếu '# timer: eoi=… ticks=…' (EOI)"
         bad=1
     }
+    # ---- KT-274: PCI + virtio-net + ARP — ba dòng bằng chứng, mỗi dòng một lớp lỗi khác nhau.
+    # ECAM: đường truy cập **phải** là `ecam` (q35) và đã thấy ≥ 1 function. Log rơi xuống
+    # `# pci: legacy …` (hoặc không có dòng nào) ⇒ ĐỎ: TAP 15 của ảnh cũng đỏ, nhưng runner phải
+    # bắt được **từ log** chứ không chỉ tin TAP.
+    grep -qE '^# pci: ecam base=0x[0-9a-f]+ buses=[0-9]+\.\.[0-9]+ functions=[1-9][0-9]*$' "$log" || {
+        echo "# thiếu '# pci: ecam base=0x… buses=… functions=…' (ECAM thật)"
+        bad=1
+    }
+    # MAC: đọc từ `virtio_net_config`, dạng `aa:bb:cc:dd:ee:ff` (không phải hằng viết tay).
+    grep -qE '^# net: mac=([0-9a-f]{2}:){5}[0-9a-f]{2} ' "$log" || {
+        echo "# thiếu '# net: mac=aa:bb:cc:dd:ee:ff …' (MAC từ thiết bị)"
+        bad=1
+    }
+    # ARP: gateway + MAC trả lời + đã **gửi** và **nhận** ≥ 1 frame (reply thật của slirp).
+    grep -qE '^# net: arp gw=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ mac=([0-9a-f]{2}:){5}[0-9a-f]{2} sent=[1-9][0-9]* recv=[1-9][0-9]*' "$log" || {
+        echo "# thiếu '# net: arp gw=… mac=… sent=… recv=…' (ARP reply thật)"
+        bad=1
+    }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
     check_umode "$log" || bad=1
     # ---- marker + long mode + halt
@@ -492,6 +526,25 @@ selftest_negative() {
         echo "ok $n - ca âm (j): thiếu dòng '# umode:' ⇒ ĐỎ ($(head -1 "$tmp/j.out"))"
     fi
 
+    # (k) **KT-274** — "không có mạng": boot **thật** không có `-device virtio-net-pci` ⇒ ảnh in
+    #     `# net: no device` rồi TAP 16 đỏ (không marker). Ca này đòi **cả hai** điều kiện: có
+    #     dòng evidence **và** `check_log` đỏ — thiếu dòng đó nghĩa là ảnh chết trước khi tới
+    #     bước mạng, và khi đó ca âm không chứng minh được gì.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    if [ -f "$LOGDIR/boot-nonet.log" ]; then
+        if grep -qxF '# net: no device' "$LOGDIR/boot-nonet.log" &&
+            ! check_log "$LOGDIR/boot-nonet.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/k.log" 2>&1; then
+            echo "ok $n - ca âm (k): không có mạng ⇒ '# net: no device' + TAP đỏ ($(head -1 "$tmp/k.log"))"
+        else
+            echo "not ok $n - ca âm (k): thiếu mạng mà kiểm vẫn XANH (hoặc thiếu dòng '# net: no device')"
+            fails=$((fails + 1))
+        fi
+    else
+        echo "not ok $n - ca âm (k): không có log boot không mạng ($LOGDIR/boot-nonet.log)"
+        fails=$((fails + 1))
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -539,8 +592,8 @@ i=1
 while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
-    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -m 128M -nographic \
-        -kernel "$IMAGE" -no-reboot; then
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+        -kernel "$IMAGE" "${QEMU_NET[@]}"; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -563,13 +616,23 @@ if cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARG
     --features wrong-marker --target-dir "$LOGDIR/target-bad" >"$LOGDIR/build-bad.log" 2>&1; then
     cp "$LOGDIR/target-bad/$TARGET/release/vifast-kbin-x86_64" "$BAD_IMAGE" 2>/dev/null || true
     if [ -f "$BAD_IMAGE" ]; then
-        if ! qg_boot "$LOGDIR/boot-bad.log" "$TIMEOUT_DS" "$QEMU" -m 128M -nographic \
-            -kernel "$BAD_IMAGE" -no-reboot; then
+        if ! qg_boot "$LOGDIR/boot-bad.log" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+            -kernel "$BAD_IMAGE" "${QEMU_NET[@]}"; then
             echo "# cảnh báo: ảnh marker sai không thoát (pid=$QG_LAST_PID) — ca âm (b) vẫn dùng log"
         fi
     fi
 else
     echo "# cảnh báo: build ảnh marker sai FAIL (xem $LOGDIR/build-bad.log)"
+fi
+
+# ---- ca âm (k) **KT-274**: boot **thật** không có mạng. `-nic none` tắt cả NIC mặc định của
+#      QEMU (q35 tự thêm e1000 khi không có `-net*`), nên đây đúng là "không có thiết bị mạng".
+#      Ảnh in `# net: no device` rồi TAP 16 đỏ ⇒ `cli; hlt` (QEMU không tự thoát) nên dùng ngân
+#      sách riêng ngắn hơn.
+echo "# boot không mạng (ca âm k) — -nic none, không có thiết bị mạng"
+if ! qg_boot "$LOGDIR/boot-nonet.log" "$NONET_TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+    -nic none -kernel "$IMAGE"; then
+    echo "# cảnh báo: boot không mạng không tự thoát (pid=$QG_LAST_PID) — ca âm (k) vẫn dùng log"
 fi
 
 # ---- ca âm (bắt buộc, chạy **mặc định**): bộ kiểm phải ĐỎ khi kỳ vọng/ảnh sai
@@ -581,7 +644,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 10))
+    total=$((total + 11))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

@@ -95,6 +95,11 @@ use vifast_plat_x86_64::tss;
 /// dòng).
 mod umode;
 
+/// **KT-274** (K5' bước 5, D2-208): PCI (ECAM/legacy) + virtio-net + ARP — TAP 15..17. Tách tệp
+/// riêng (luật R1) và chạy **sau** `Exit` của ring 3 (chưa có procsrv nên handler là nơi duy nhất
+/// còn chạy được tiếp mà không cần scheduler).
+mod net;
+
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
 /// này và đòi nó xuất hiện **đúng một lần**.
 #[cfg(not(feature = "wrong-marker"))]
@@ -110,8 +115,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 ///
 /// KT-266 thêm **bốn** ca: `apic: lapic id`, `apic: ioapic`, `timer: ticks`, `timer: eoi`.
 /// **KT-270** thêm **ba** ca U-mode: `umode: ring3 entered`, `umode: syscall handled`,
-/// `umode: returned to ring3`.
-pub const TAP_TESTS: usize = 14;
+/// `umode: returned to ring3`. **KT-274** thêm **ba** ca PCI/net: `pci: ecam`, `net: mac`,
+/// `net: arp` (TAP 15..17, chạy sau `Exit` của ring 3 — xem [`net`]).
+pub const TAP_TESTS: usize = 17;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -206,6 +212,15 @@ global_asm!(
     "or eax, 3",
     "mov dword ptr [edi + 24], eax",
     "mov dword ptr [edi + 28], 0",
+    // 5c. **KT-274** — PDPT[2] = __pd_mmio_low | P|RW: **MMIO map 2..3 GiB**. ECAM của QEMU
+    //     `-M q35` ở `0xB000_0000` (đo được: `info mtree` ⇒ `pcie-mmcfg-mmio @ 0xb0000000`,
+    //     256 MiB) — **dưới** 3 GiB nên ngoài cả identity map 1 GiB lẫn vùng 3..4 GiB của
+    //     KT-266. Offset của PDPT entry 2 = 2 × 8 = 16.
+    "mov edi, offset __pdpt",
+    "mov eax, offset __pd_mmio_low",
+    "or eax, 3",
+    "mov dword ptr [edi + 16], eax",
+    "mov dword ptr [edi + 20], 0",
     // 6. PD[i] = i*2MiB | P|RW|PS — identity map 1 GiB bằng 512 lá 2 MiB.
     "mov edi, offset __pd",
     "mov eax, 0x83",
@@ -229,6 +244,18 @@ global_asm!(
     "add edi, 8",
     "dec ecx",
     "jnz 2b",
+    // 6b2. **KT-274** — __pd_mmio_low[i] = 0x8000_0000 + i*2MiB | P|RW|PS|PCD: 512 lá 2 MiB
+    //      phủ 2..3 GiB (PCI hole 32-bit + ECAM). Cùng cờ `0x93` = P|RW|PS|PCD như vùng 3..4 GiB.
+    "mov edi, offset __pd_mmio_low",
+    "mov eax, 0x80000093",
+    "mov ecx, 512",
+    "3:",
+    "mov dword ptr [edi], eax",
+    "mov dword ptr [edi + 4], 0",
+    "add eax, 0x200000",
+    "add edi, 8",
+    "dec ecx",
+    "jnz 3b",
     // 6c. **KT-270** — cây bảng trang **user** cho ring 3: `PDPT[256]` (VA 0x0000_0040_0000_0000
     //     = 256 GiB, `PML4[0]`) → `__pd_user` → `__pt_user` → hai lá 4 KiB. `PML4[0]` đã
     //     `US = 1` ở bước 4; các entry dưới đây cũng `US = 1`, còn identity map/MMIO giữ `US = 0`.
@@ -317,6 +344,10 @@ global_asm!(
     ".align 4096",
     "__pd_mmio:",
     ".skip 4096",
+    // **KT-274**: bảng PD thứ ba cho MMIO map 2..3 GiB (ECAM + PCI hole 32-bit).
+    ".align 4096",
+    "__pd_mmio_low:",
+    ".skip 4096",
     // Stack IST1 cho `#DF` (KT-261): 4 KiB riêng, `__ist1_top` = đỉnh (stack mọc xuống).
     ".align 4096",
     "__ist1_stack:",
@@ -338,7 +369,9 @@ global_asm!(
     "__user_stack_top:",
     ".align 4096",
     "__syscall_stack:",
-    ".skip 16384",
+    // **KT-274**: 32 KiB (trước 16 KiB) — sau `Exit`, handler chạy tiếp phần PCI/net (TAP 15..17)
+    // trên stack này; `find_mcfg` dùng hai bộ đệm ACPI 4 KiB lồng nhau.
+    ".skip 32768",
     "__syscall_stack_top:",
     // ---- .data: GDT **tạm** + con trỏ `lgdt` (6 byte: limit 16-bit + base 32-bit).
     ".section .data",
@@ -404,7 +437,7 @@ global_asm!(
 // ---------------------------------------------------------------------------------------------
 
 /// `core::fmt::Write` trên COM1 — để `panic!`/`write!` in được số mà không cần `alloc`.
-struct Console;
+pub(crate) struct Console;
 
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -462,7 +495,7 @@ fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
 }
 
 /// Phát TAP `n`; **halt ngay** nếu đỏ (fail-fast: một ca sai thì các ca sau không còn nghĩa).
-fn check(console: &mut Console, n: usize, name: &str, ok: bool) {
+pub(crate) fn check(console: &mut Console, n: usize, name: &str, ok: bool) {
     if !tap(console, n, name, ok) {
         let _ = writeln!(console, "# TAP {n} FAIL — dừng (không in marker)");
         asm::halt(3)
@@ -690,7 +723,10 @@ fn pit2_program_mode2(divisor: u16) {
 }
 
 /// Đọc counter PIT **kênh 2** bằng lệnh latch.
-fn pit2_latch_read() -> u16 {
+///
+/// **KT-274**: `pub(crate)` — đồng hồ của bước PCI/net ([`net`]) dùng lại chính counter này
+/// (mode 2 divisor `0xFFFF` đã được [`measure_timer`] lập trình, không phát ngắt).
+pub(crate) fn pit2_latch_read() -> u16 {
     asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_LATCH_CH2);
     let lo = asm::inb(apic::PIT_CH2_DATA) as u16;
     let hi = asm::inb(apic::PIT_CH2_DATA) as u16;
@@ -1052,12 +1088,13 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         cr3 & !0xFFF,
     );
     // KT-266: MMIO map 3..4 GiB — LAPIC/IOAPIC nằm ngoài identity map 1 GiB.
+    // KT-274: thêm MMIO map 2..3 GiB — ECAM của q35 (`0xB000_0000`) nằm dưới 3 GiB.
     let _ = writeln!(
         console,
         "# viFastOs x86_64: mmio map 0x{:x}..0x{:x} pages={} pcd={}",
-        boot::MMIO_MAP_BASE,
+        boot::MMIO_MAP_LOW_BASE,
         boot::MMIO_MAP_BASE + boot::MMIO_MAP_BYTES,
-        boot::PD_ENTRIES,
+        boot::PD_ENTRIES * 2,
         (boot::PD_MMIO_FLAGS & 0x10) >> 4,
     );
 

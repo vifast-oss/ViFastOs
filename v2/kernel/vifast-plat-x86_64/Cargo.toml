@@ -16,3 +16,9 @@ description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + h
 # định nghĩa lại (nợ "hai bản trùng" của audit K5' §2.4 đã đóng). Crate nội bộ, `no_std`,
 # không dependency ngoài (D2-21).
 vifast-pte = { path = "../../lib/vifast-pte" }
+# **KT-274** (K5' bước 5): PCI (BAR/capability/BAR-probe) + virtio-net (feature, `virtio_net_config`,
+# `virtio_net_hdr`, split queue) là logic **thuần** đã có host test ở `v2/lib/vifast-virtio`; codec
+# mạng (Ethernet/ARP) ở `v2/lib/vifast-net`. Crate arch chỉ còn phần chạm thanh ghi — **không**
+# viết lại codec (D2-110A/B). Cả hai crate nội bộ, `no_std`, không dependency ngoài (D2-21).
+vifast-virtio = { path = "../../lib/vifast-virtio" }
+vifast-net = { path = "../../lib/vifast-net" }

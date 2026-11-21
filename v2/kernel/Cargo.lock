@@ -61,7 +61,9 @@ name = "vifast-kbin-x86_64"
 version = "0.1.0"
 dependencies = [
  "vifast-abi",
+ "vifast-net",
  "vifast-plat-x86_64",
+ "vifast-virtio",
 ]
 
 [[package]]
@@ -103,7 +105,9 @@ dependencies = [
 name = "vifast-plat-x86_64"
 version = "0.1.0"
 dependencies = [
+ "vifast-net",
  "vifast-pte",
+ "vifast-virtio",
 ]
 
 [[package]]

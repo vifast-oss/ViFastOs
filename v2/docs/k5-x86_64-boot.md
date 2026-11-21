@@ -1,9 +1,10 @@
 # K5' — ViFastOs **boot thật trên x86_64** (QEMU, long mode)
 
 Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261) + **K5' bước 3 DONE**
-(KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) — Agent 1 (toàn
-quyền A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3),
-**D2-207** (bước 4).
+(KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) + **K5' bước 5 DONE**
+(KT-274: PCI ECAM/legacy + virtio-net + ARP) — Agent 1 (toàn quyền A0), 2026-11-21. Quyết định:
+**D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3), **D2-207** (bước 4), **D2-208**
+(bước 5).
 **Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (PCI/SMP/`syscall`/`sysret`).
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
@@ -30,8 +31,10 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **IDT** thêm vector 32 (timer) + 255 (spurious); sentinel `isr_unknown` dời 255 → 254 | **DONE** (KT-266) |
 | **`spec/abi.toml [calling.x86_64]`** mở (đối xứng riscv64/aarch64) | **DONE** (KT-270) |
 | **U-mode ring 3**: trang mã/stack `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler → `iretq` về ring 3, `Exit` kết thúc | **DONE** (KT-270) |
-| runner + TAP + **10 ca âm** | **DONE** (KT-257/261/266/270) |
-| PCI, SMP, `-cpu max`, `syscall`/`sysret` | **chưa** (K5' đầy đủ) |
+| **PCI**: ECAM (q35, `MCFG` từ ACPI) + legacy `0xCF8`/`0xCFC` (pc); quét bus/dev/func, class, BAR, capability list | **DONE** (KT-274) |
+| **virtio-net**: 2 split virtqueue, MAC từ `virtio_net_config`, ARP request → **reply thật** của slirp | **DONE** (KT-274) |
+| runner + TAP + **11 ca âm** | **DONE** (KT-257/261/266/270/274) |
+| SMP, `-cpu max`, `syscall`/`sysret`, virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP | **chưa** (K5' đầy đủ) |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
 
@@ -188,12 +191,12 @@ theo từng chu kỳ. Vì vậy chọn **phương án dự phòng đã ghi trong
 
 ```text
 TAP version 13
-1..11
-# viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000106000 efer=0x0000000000000500 lma=1
+1..17
+# viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x000000000010b000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
 # viFastOs x86_64: serial com1=0x3f8 divisor=1 lcr=0x03
-# viFastOs x86_64: identity map 0x0..0x40000000 pages=512 pml4=0x106000
-# viFastOs x86_64: mmio map 0xc0000000..0x100000000 pages=512 pcd=1
+# viFastOs x86_64: identity map 0x0..0x40000000 pages=512 pml4=0x10b000
+# viFastOs x86_64: mmio map 0x80000000..0x100000000 pages=1024 pcd=1
 # viFastOs x86_64: gdt base=0x104088 limit=55 tr=0x28 tss=0x10c064 ist1=0x10b000
 ok 1 - exc: gdt loaded
 # viFastOs x86_64: idt base=0x10b058 limit=4095 entries=256 df_ist=1
@@ -219,6 +222,29 @@ ok 10 - timer: ticks
 # timer: eoi=3 ticks=3 spurious=0
 ok 11 - timer: eoi
 # viFastOs x86_64: exc count=5 last_vec=254
+# umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x4000000000 code_pa=0x109000 code_bytes=71 stack_va=0x4000001000 stack_pa=0x113000 syscall_stack=0x11c000
+ok 12 - umode: ring3 entered
+# umode: int80 nr=12 cs=0x1b rip=0x4000000025 user=1
+ring3 says hi
+ok 13 - umode: syscall handled
+# umode: ring3 ran nr=12 ret=14
+# umode: int80 ret error=0 value=14 printed=14 ptr=0x4000000039 len=14
+ok 14 - umode: returned to ring3
+# umode: exit code=0 nr=14
+# umode: done
+# pci: ecam base=0xb0000000 buses=0..255 functions=6
+# pci: dev 00:00.0 vendor=0x8086 device=0x29c0 class=0x0600 bridge hdr=0x00
+# pci: dev 00:01.0 vendor=0x1234 device=0x1111 class=0x0300 display hdr=0x00
+# pci: dev 00:02.0 vendor=0x1af4 device=0x1000 class=0x0200 network hdr=0x00
+# pci: dev 00:1f.0 vendor=0x8086 device=0x2918 class=0x0601 bridge hdr=0x80
+# pci: dev 00:1f.2 vendor=0x8086 device=0x2922 class=0x0106 storage hdr=0x80
+# pci: dev 00:1f.3 vendor=0x8086 device=0x2930 class=0x0c05 other hdr=0x80
+ok 15 - pci: ecam
+# pci: net 00:02.0 bar=4 kind=mem64 base=0xfe000000 size=0x4000 command=0x0107 caps=4
+# net: mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16 features=0x0000010130bf8024 driver=0x0000000100000020
+ok 16 - net: mac
+# net: arp gw=10.0.2.2 mac=52:55:0a:00:02:02 sent=1 recv=1 elapsed_us=1705 errors=0 timeouts=0
+ok 17 - net: arp
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 ```
@@ -248,14 +274,18 @@ ok 11 - timer: eoi
 ## 7. Runner + ca âm
 
 ```bash
-bash v2/test/boot/run-x86_64.sh     # build + boot + 11 kiểm + 9 ca âm
+bash v2/test/boot/run-x86_64.sh     # build + boot + 13 kiểm + 11 ca âm
 ```
 
-- **11/11 kiểm sạch** (chạy lại 3 boot: 11/11).
-- **9 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
+- **13/13 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng**).
+- **11 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
   (log QEMU thật, không sửa tay), (c) mất marker, (d) log rỗng, (e) marker 2 lần,
   (f) **mất dòng `# exc:`** (KT-261), (g) **sai vector** (KT-261), (h) **mất dòng `# timer:`**
-  (KT-266), (i) **mất dòng `# apic:`** (KT-266).
+  (KT-266), (i) **mất dòng `# apic:`** (KT-266), (j) **mất dòng `# umode:`** (KT-270),
+  (k) **không có mạng** (KT-274): boot **thật** không có `-device virtio-net-pci` ⇒ ảnh in
+  `# net: no device` rồi TAP 16 đỏ; ca này đòi **cả** dòng evidence **và** `check_log` đỏ.
+- Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` (một chỗ
+  quyết định: `QEMU_MACHINE`/`QEMU_NET`). `-M pc` **không** có ECAM ⇒ TAP 15 đỏ (xem §11.2).
 - Nối vào cổng: bước **59** `QEMU x86_64 (K5' bước 1)` — chạy ở **cả T1 và T2** (tên bước giữ
   nguyên theo `v2/bin/v2`; nội dung đã gồm bước 1+2+3).
 
@@ -289,7 +319,8 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 11 kiểm + 9 ca âm
    (`DebugPutStr`) + `Exit` (xem §10.6).
 3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
    cần đổi thứ tự GDT (user data ở `CS - 8`) + per-CPU/`swapgs`.
-4. **PCI/ECAM**, virtio trên x86.
+4. ~~**PCI/ECAM**, virtio trên x86~~ — **DONE** (KT-274: ECAM + legacy + virtio-net + ARP).
+   Còn: virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP.
 5. **`-cpu max`**, KPTI (tuỳ chọn), soak 1.000.
 6. **Nợ N5 của v1** (x86 AP→BSP + PCID) — mở ở K5' đầy đủ, không phải bước này.
 
@@ -420,3 +451,89 @@ ok 14 - umode: returned to ring3
    bảng trang của ảnh, chưa qua cap/Untyped (nợ M17 của object layer).
 5. **Không** `syscall`/`sysret` (lý do §10.2); **không** tuyên bố K5' đạt — tiêu chí K5' vẫn là
    "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
+
+## 11. PCI + virtio-net + ARP — K5' bước 5 (KT-274, D2-208)
+
+### 11.1 Hai đường truy cập cấu hình, chọn theo **máy**
+
+| Máy | ECAM | Đường ảnh dùng | Bằng chứng |
+|---|---|---|---|
+| `-M q35` | `pcie-mmcfg-mmio` @ **`0xB000_0000`**, 256 MiB (bus 0..255) — bảng ACPI `MCFG` mô tả | **ECAM** | `# pci: ecam base=0xb0000000 buses=0..255 functions=6` |
+| `-M pc` (i440fx) | **không có** (không có `MCFG`) | **legacy `0xCF8`/`0xCFC`** | `# pci: legacy base=0x0 buses=0..0 functions=6` |
+
+- Địa chỉ ECAM **không** viết tay: `find_mcfg` đi `RSDP` → `RSDT`/`XSDT` → `MCFG`, **kiểm checksum**
+  từng bảng (ACPI §5.2.6). Chỉ khi không có `MCFG` (hoặc ECAM đọc ra `0xffff`) mới rơi xuống legacy.
+- **`MCFG` có 8 byte `Reserved` trước allocation structure** (ACPI 6.4 §5.2.6.2) ⇒ `base_address` ở
+  offset **44**, không phải 36. Đo được: bảng thật của SeaBIOS dài `0x3C` = 44 + 16; đọc sai offset
+  cho `base=0, bus_end=0xB0` (đúng là `0xB000_0000`, `0xFF`) — lỗi đã bắt được bằng log QEMU.
+- `RSDP` của SeaBIOS nằm ở **`0xF52E0`** (bản 1.0, `revision = 0`, `rsdt` trỏ vào vùng
+  `0x07FE2xxx`), và các bảng ACPI **không** căn 8 byte (`RSDT` @ `0x07FE2345`) — vì vậy mọi phép
+  đọc bảng đi theo **địa chỉ trong bảng mục lục**, không suy ra từ căn lề.
+- **Không gán lại BAR**: SeaBIOS đã enumerate và cấp BAR trước khi ảnh chạy (đo được trên q35 **và**
+  `-M pc`: virtio-net `BAR4 = 0xFE00_0000`, cỡ `0x4000`). Ảnh chỉ **đọc** BAR rồi **kiểm nó nằm
+  trong cửa sổ MMIO đã map** (`boot::mmio_mapped`) — ngoài cửa sổ ⇒ `BarUnassigned` chặng
+  `bar-unmapped` (fail-closed). Khác riscv64 (`virt` không có firmware enumerate ⇒ driver tự gán).
+- Cỡ BAR vẫn **đo** bằng mask `0xffff_ffff` (PCI §6.2.5.1) rồi khôi phục nguyên giá trị firmware.
+
+### 11.2 `-M pc`: legacy chạy **thật**, nhưng TAP `pci: ecam` đỏ **có chủ đích**
+
+Đo được (cùng ảnh, `-M pc`, có `-device virtio-net-pci`):
+
+```text
+# pci: legacy base=0x0 buses=0..0 functions=6
+# pci: dev 00:03.0 vendor=0x1af4 device=0x1000 class=0x0200 network hdr=0x00
+not ok 15 - pci: ecam
+```
+
+Đường legacy **không** chỉ enumerate: khi tạm nới điều kiện TAP 15 (bản đo tay, **không** commit),
+cùng ảnh trên `-M pc` chạy hết `# pci: net 00:03.0 bar=4 kind=mem64 base=0xfe000000 size=0x4000
+command=0x0107 caps=4`, `# net: mac=52:54:00:12:34:56`, `# net: arp gw=10.0.2.2
+mac=52:55:0a:00:02:02 sent=1 recv=1` — tức BAR/capability/virtio-net/ARP đều đúng qua
+`0xCF8`/`0xCFC`. Bản **commit** giữ TAP 15 **đòi ECAM** vì tên ca là `pci: ecam`: một TAP xanh trên
+đường legacy sẽ là dòng log nói sai sự thật. Hợp đồng của runner là **q35**; runner còn kiểm **từ
+log** (`^# pci: ecam base=…`) nên ECAM không thể "xanh giả".
+
+### 11.3 virtio-net: MAC thật + ARP reply thật
+
+- Driver ở `vifast-plat-x86_64::virtio_net` — **dùng lại** `vifast_virtio::net` (feature,
+  `virtio_net_config`, `virtio_net_hdr`, split queue) và `vifast_net` (Ethernet/ARP); **không** viết
+  lại codec nào (D2-110A/B).
+- Feature đàm phán: `VIRTIO_F_VERSION_1` + `VIRTIO_NET_F_MAC` (đo được `driver=0x0000000100000020`).
+  **Không** `MRG_RXBUF`/`STATUS` — quyết định ở `negotiated_features` (host test).
+- MAC đọc từ `virtio_net_config` **sau** khi đọc `config_generation` hai lần (spec §2.4.4: lệch ⇒
+  `Err("config_generation")`, không dùng MAC đọc nửa vời). MAC toàn 0/broadcast ⇒ `Err("mac")`.
+- ARP: `10.0.2.15` (địa chỉ chuẩn của slirp) hỏi `10.0.2.2` (gateway) ⇒ slirp trả
+  `52:55:0a:00:02:02`. Kiểm `oper = reply`, `spa = 10.0.2.2`, `tpa = 10.0.2.15`, `tha = MAC của ta`
+  — **không** kiểm `ar_tip == target_ip` (bẫy KT-246: trong reply, `ar_tip` là địa chỉ **người
+  hỏi**).
+- **Không** DHCP (ngoài phạm vi D2-208) ⇒ địa chỉ tĩnh theo dải slirp.
+
+### 11.4 Đồng hồ cho bước mạng: PIT **kênh 2**, không cần ngắt
+
+Bước PCI/net chạy **sau** `cli` (và sau `Exit` của ring 3) nên `TICK_COUNT` (PIT kênh 0 → IOAPIC →
+LAPIC) **không** tăng. Đồng hồ là PIT **kênh 2** — đã được `measure_timer` lập trình mode 2 divisor
+`0xFFFF` và **không** phát ngắt: mỗi lần đọc là một ảnh 16 bit, `PitClock` cộng dồn chênh lệch (xử
+lý bọc) rồi đổi sang µs bằng `1_193_182 Hz`. Timeout ARP 3 s; đo được `elapsed_us=1705` cho lần
+thành công (không phải hằng — số thật của lần chạy).
+
+### 11.5 Đánh đổi đã ghi nhận (KT-274)
+
+1. **MMIO map thêm 2..3 GiB** (`PDPT[2]` → `__pd_mmio_low`, 512 lá 2 MiB, `PCD = 1`): ECAM của q35
+   ở `0xB000_0000` nằm **dưới** 3 GiB nên ngoài cả identity map 1 GiB lẫn vùng 3..4 GiB của KT-266.
+   Dòng evidence đổi thành `mmio map 0x80000000..0x100000000 pages=1024 pcd=1`.
+2. **Stack syscall 16 KiB → 32 KiB**: sau `Exit`, handler chạy tiếp phần PCI/net trên stack này;
+   `find_mcfg` dùng hai bộ đệm bảng ACPI 4 KiB **lồng nhau**.
+3. **`virtio_net.rs` có `#![allow(unsafe_code)]`** (MMIO + vùng DMA `UnsafeCell`), đúng danh sách
+   đóng D2-17 và **y hệt** khuôn `vifast-plat-riscv64/src/virtio_net.rs`. Crate vẫn
+   `#![deny(unsafe_code)]`; chỉ `asm.rs` + `virtio_net.rs` được `allow`.
+4. **TAP 15..17 nối tiếp sau TAP 14** (không đánh số lại 12/13/14 của U-mode): handler `Exit` gọi
+   `net::run` — chưa có procsrv/scheduler nên đây là chỗ duy nhất kernel còn chạy được sau `Exit`.
+5. **Không** đàm phán `VIRTIO_NET_F_STATUS` ⇒ "không có mạng" phát hiện bằng **timeout ARP**
+   (fail-closed), không bằng bit link.
+
+### 11.6 Còn thiếu của bước 5 (ghi rõ)
+
+1. **Không** virtio-blk/gpu trên x86_64, **không** MSI-X, **không** hotplug, **không** DHCP.
+2. **Không** ngắt cho virtio (poll `used`), **không** nhiều frame đồng thời (queue depth 1 thực tế).
+3. **Không** `-cpu max`, **không** SMP, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ.
+4. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).

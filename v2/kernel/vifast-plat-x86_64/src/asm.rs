@@ -85,6 +85,36 @@ pub fn inb(port: u16) -> u8 {
     value
 }
 
+/// Ghi một dword ra cổng I/O 32-bit (`out dx, eax`) — **KT-274**: `CONFIG_ADDRESS` `0xCF8`.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn outl(port: u16, value: u32) {
+    // SAFETY: `out` chỉ ghi cổng I/O; `nomem`/`nostack` đúng vì không đụng bộ nhớ/stack.
+    unsafe {
+        asm!(
+            "out dx, eax",
+            in("dx") port,
+            in("eax") value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
+/// Đọc một dword từ cổng I/O 32-bit (`in eax, dx`) — **KT-274**: `CONFIG_DATA` `0xCFC`.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn inl(port: u16) -> u32 {
+    let value: u32;
+    // SAFETY: `in` chỉ đọc cổng I/O; không đụng bộ nhớ.
+    unsafe {
+        asm!(
+            "in eax, dx",
+            in("dx") port,
+            out("eax") value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    value
+}
+
 // ---------------------------------------------------------------------------------------------
 // Thanh ghi điều khiển + MSR
 // ---------------------------------------------------------------------------------------------
@@ -184,6 +214,38 @@ pub fn write_u32(addr: u64, value: u32) {
 pub fn read_u64(addr: u64) -> u64 {
     // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (identity map 1 GiB của ảnh boot).
     unsafe { core::ptr::read_volatile(addr as *const u64) }
+}
+
+/// Đọc 16-bit tại địa chỉ **vật lý** — **KT-274**: thanh ghi cấu hình PCI (ECAM) và `used->idx`
+/// của virtqueue (đọc `volatile` để compiler **không** hoist khỏi vòng poll DMA).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn read_u16(addr: u64) -> u16 {
+    // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (identity map/MMIO map của ảnh).
+    unsafe { core::ptr::read_volatile(addr as *const u16) }
+}
+
+/// Ghi 8-bit tại địa chỉ **vật lý** — **KT-274**: thanh ghi `device_status`/`queue_enable` của
+/// virtio-pci (MMIO).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_u8(addr: u64, value: u8) {
+    // SAFETY: caller bảo đảm `addr` là MMIO đã map và ghi được (BAR virtio).
+    unsafe { core::ptr::write_volatile(addr as *mut u8, value) }
+}
+
+/// Ghi 16-bit tại địa chỉ **vật lý** — **KT-274**: `queue_select`/`queue_size`/cửa thông báo
+/// (notify) của virtio-pci.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_u16(addr: u64, value: u16) {
+    // SAFETY: caller bảo đảm `addr` là MMIO đã map và ghi được (BAR virtio).
+    unsafe { core::ptr::write_volatile(addr as *mut u16, value) }
+}
+
+/// Ghi 64-bit tại địa chỉ **vật lý** — **KT-274**: `queue_desc`/`queue_driver`/`queue_device`
+/// của virtio-pci (địa chỉ 64 bit).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_u64(addr: u64, value: u64) {
+    // SAFETY: caller bảo đảm `addr` là MMIO đã map và ghi được (BAR virtio).
+    unsafe { core::ptr::write_volatile(addr as *mut u64, value) }
 }
 
 /// Đọc `CR2` — địa chỉ gây `#PF` (SDM Vol 3A §6.15).
@@ -881,6 +943,18 @@ pub fn inb(_port: u16) -> u8 {
     host_only("inb")
 }
 
+/// Stub host của [`outl`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn outl(_port: u16, _value: u32) {
+    host_only("outl")
+}
+
+/// Stub host của [`inl`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn inl(_port: u16) -> u32 {
+    host_only("inl")
+}
+
 /// Stub host của [`read_cr0`].
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_cr0() -> u64 {
@@ -951,6 +1025,30 @@ pub fn halt(_code: u32) -> ! {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_u64(_addr: u64) -> u64 {
     host_only("read_u64")
+}
+
+/// Stub host của [`read_u16`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn read_u16(_addr: u64) -> u16 {
+    host_only("read_u16")
+}
+
+/// Stub host của [`write_u8`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_u8(_addr: u64, _value: u8) {
+    host_only("write_u8")
+}
+
+/// Stub host của [`write_u16`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_u16(_addr: u64, _value: u16) {
+    host_only("write_u16")
+}
+
+/// Stub host của [`write_u64`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_u64(_addr: u64, _value: u64) {
+    host_only("write_u64")
 }
 
 /// Stub host của [`read_cr2`].

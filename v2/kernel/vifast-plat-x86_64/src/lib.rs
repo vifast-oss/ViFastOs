@@ -63,9 +63,12 @@ pub mod format;
 pub mod gdt;
 pub mod idt;
 pub mod mmu;
+pub mod pci;
 pub mod serial;
+pub mod timebase;
 pub mod tss;
 pub mod umode;
+pub mod virtio_net;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);
