@@ -3,9 +3,11 @@
 Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261) + **K5' bước 3 DONE**
 (KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) + **K5' bước 5 DONE**
 (KT-274: PCI ECAM/legacy + virtio-net + ARP) + **K5' bước 6 DONE** (KT-276: SMP 2 hart) +
-**K5' bước 7 DONE** (KT-278: SMP **4 hart** + **IPI** + **TSS per-hart**) — Agent 1 (toàn quyền
+**K5' bước 7 DONE** (KT-278: SMP **4 hart** + **IPI** + **TSS per-hart**) + **K5' bước 8 DONE**
+(KT-286: **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) — Agent 1 (toàn quyền
 A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3),
-**D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6), **D2-210** (bước 7).
+**D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6), **D2-210** (bước 7),
+**D2-212** (bước 8).
 **Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (soak 600 boot, `syscall`/`sysret`,
 virtio-blk/gpu, MSI-X, DHCP).
 
@@ -749,3 +751,86 @@ ok 21 - smp: all harts report
    chưa có `unmap` trên x86_64), **không** `GS`/`FS` base per-hart.
 2. **Không** `-cpu max`, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ.
 3. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
+
+## 13. KT-286 — preemption: hai tác vụ kernel + timer chuyển ngữ cảnh
+
+Trạng thái: **DONE** (KT-286, 2026-11-21). Quyết định: **D2-212**.
+
+### 13.1 Phạm vi
+
+| Việc | Trạng thái |
+|---|---|
+| **Hai** tác vụ kernel, mỗi tác vụ **stack riêng** 16 KiB + frame ngắt riêng | **DONE** |
+| Timer vector 32 gọi `schedule()`: lưu ngữ cảnh, chọn tác vụ kế, nạp ngữ cảnh, `iretq` | **DONE** |
+| Đo: `# sched: switch a→b n=…`, `# sched: switch b→a n=…`, `# sched: ticks=… tasks=2` | **DONE** |
+| TAP 22/23 + runner **14 ca âm** | **DONE** |
+| U-mode task, nhiều hart schedule, priority, sleep/wake | **chưa** (bước sau) |
+
+### 13.2 Cơ chế: đổi `rsp` trước `iretq`
+
+Stub ngắt chung đã là một context switch hoàn chỉnh: CPU đẩy `rflags/cs/rip`, stub đẩy `vector`
++ mã lỗi + 15 GPR, gọi `exc_dispatch`, rồi `pop`/`iretq`. Chỉ cần **đổi `rsp`** sang frame của
+tác vụ kế là chuyển được ngữ cảnh — không cần asm riêng cho tác vụ, không lưu/khôi phục thanh
+ghi bằng tay:
+
+1. `exc_dispatch` nhận thêm tham số thứ 6 `frame_rsp` (stub truyền `rbx` trong `r9`).
+2. Nhánh timer gọi `sched::on_tick(frame_rsp)`: lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
+   trả `(rsp, rip)` của frame đích.
+3. Handler đặt `rsp` đích vào ô `VIFAST_SCHED_NEW_RSP`; stub đọc ô ấy (**một lần dùng**),
+   `mov rsp, rcx`, rồi `pop`/`iretq` trên frame mới.
+
+### 13.3 Frame khởi tạo **22** qword — vì sao không phải 20
+
+Intel SDM nói `IRET` chỉ pop `SS:RSP` khi **đổi mức đặc quyền** (`CS.RPL != CPL`); frame cùng
+CPL đáng lẽ chỉ 20 qword. Nhưng **QEMU 11.1.3** (`target/i386/tcg/seg_helper.c`,
+`helper_ret_protected`) dùng điều kiện:
+
+```text
+rpl == cpl && (!(HF_CS64) || (HF_CS64 && !is_iret))
+```
+
+Trong **64-bit mode** (`HF_CS64 = 1`) với **`iret`** (`is_iret = 1`) điều kiện này **luôn sai**
+⇒ QEMU **luôn** pop `SS:RSP`, kể cả khi `CS.RPL == CPL`. Đo được: frame 20 qword làm `iretq` lấy
+`rsp` từ ô ngay sau frame (0) ⇒ tác vụ chạy với `rsp = 0` ⇒ timer đẩy frame vào `0xffff…fff8`
+⇒ `#PF` rồi `#DF` (`# exc: vec=8 err=0x0 rip=<task_a> cs=0x8`).
+
+Vì vậy frame khởi tạo mang **thêm** hai ô `rsp`/`ss`:
+
+- **QEMU** (pop 5): `rsp = stack_top - 8`, `ss = 0x10` — đúng trạng thái kernel.
+- **CPU thật** (pop 3, đúng SDM): hai ô ấy **không** được đọc; `rsp` sau `iretq` =
+  `frame + 160` = `stack_top - 24` — vẫn nằm trong stack, chỉ hụt 16 byte (vô hại).
+
+Frame 22 qword vì vậy đúng trên **cả hai**, không phải workaround chỉ cho QEMU.
+
+### 13.4 Đo được (log `boot-1.log`, TAP 22/23)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: ticks=7 tasks=2
+# sched: runs a=300242 b=363551 switches=6 ab=1 ba=2 a_rsp=0x12e158 b_rsp=0x132158
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| stack tác vụ | `a_rsp=0x12e158`, `b_rsp=0x132158` — hai vùng `.bss` rời nhau, mỗi vùng 16 KiB |
+| chuyển ngữ cảnh | `switches=6` (A→B, B→A, … ba vòng), `ab=1`, `ba=2` — **cả hai** chiều |
+| tác vụ chạy thật | `runs a=300242 b=363551` — bộ đếm do **chính tác vụ** tăng, không phải hằng |
+| tick | `ticks=7` — timer PIT thật sự ngắt trong lúc scheduler bật |
+| nhường lại `main` | sau 6 lần chuyển, scheduler quay về `main` ⇒ in tổng kết + marker |
+
+### 13.5 Đột biến bắt buộc (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **không gọi `schedule()`** | `--features no-preempt` (sau tick đầu không chuyển nữa) | chỉ tác vụ A chạy, `main` không được nhường lại ⇒ không `# sched: ticks=…`, không marker; QEMU treo tới hết ngân sách runner (ĐỎ) |
+| (ii) **nạp `rsp` hỏng** | `--features bad-rsp` (nạp `rsp` tác vụ kế = địa chỉ chưa map `0x7000_0000_0000`) | stub `pop` từ địa chỉ ấy ⇒ `#PF` (rồi `#DF` vì đẩy frame `#PF` cũng fault) ⇒ `# exc: vec=8`, không marker (ĐỎ) |
+| (iii) **không `EOI`** | `--features no-eoi` (bỏ `lapic_eoi()` trong handler timer) | LAPIC giữ ISR bit của vector 32 ⇒ timer **tắt sau tick đầu** ⇒ `not ok 10 - timer: ticks`, không marker (ĐỎ) |
+
+### 13.6 Còn thiếu của bước 8 (ghi rõ)
+
+1. **Không** U-mode task (tác vụ vẫn ở CPL0), **không** nhiều hart schedule (chỉ BSP), **không**
+   priority, **không** sleep/wake — đúng phạm vi D2-212.
+2. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).

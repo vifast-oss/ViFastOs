@@ -26,7 +26,7 @@
 //!        │  ring 3: ghi stack user → `int 0x80` DebugPutStr → handler in chuỗi user
 //!        │    → TAP 12/13 + `# umode: ring3 ran nr=12 ret=14` → `iretq` về ring 3
 //!        │    → `int 0x80` Exit → TAP 14 → PCI/net (TAP 15..17) → **SMP** (TAP 18..21)
-//!        │    → marker → halt
+//!        │    → **preemption** (TAP 22/23) → marker → halt
 //!        └─ asm::halt: chờ LSR.TEMT (có trần) → outw(0x604, 0x2000) ⇒ QEMU thoát mã 0
 //!
 //! # KT-276 + KT-278 — SMP 4 hart, IPI, TSS per-hart (K5' bước 6 → bước 7)
@@ -81,11 +81,13 @@
 //! **Đã có**: GDT/TSS/IDT + handler exception (KT-261); LAPIC (ID/version/SVR/TPR), IOAPIC
 //! (ID/version + mask toàn bộ redirection), LAPIC timer periodic + `EOI` (KT-266); **U-mode ring
 //! 3** — trang mã/stack user `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler
-//! → `iretq` về ring 3, `Exit` kết thúc (KT-270).
+//! → `iretq` về ring 3, `Exit` kết thúc (KT-270); **preemption** — hai tác vụ kernel, timer
+//! vector 32 chuyển ngữ cảnh bằng cách đổi `rsp` sang frame tác vụ kế (KT-286).
 //!
-//! **Chưa**: IPC từ ring 3, nhiều process, preemption, `-cpu max`, `syscall`/`sysret`, soak 600
-//! boot. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600
-//! boot, D2-149) — đây là **bước 7** (4 hart + IPI + TSS per-hart).
+//! **Chưa**: IPC từ ring 3, nhiều process, U-mode task, nhiều hart schedule, priority,
+//! sleep/wake, `-cpu max`, `syscall`/`sysret`, soak 600 boot. **Không** tuyên bố K5' đạt: tiêu
+//! chí K5' là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) — đây là **bước 8**
+//! (preemption hai tác vụ kernel).
 
 #![no_std]
 #![no_main]
@@ -121,6 +123,11 @@ mod net;
 /// `0x30`, **TSS/GDT/IST1 per-hart**, TAP 18..21. Tách tệp riêng (luật R1) và chạy **sau** TAP 17.
 mod smp;
 
+/// **KT-286** (K5' bước 8, D2-212): **preemption** — hai tác vụ kernel, timer vector 32 chuyển
+/// ngữ cảnh bằng cách đổi `rsp` sang frame của tác vụ kế, TAP 22/23. Tách tệp riêng (luật R1) và
+/// chạy **sau** TAP 21 (SMP), **trước** marker.
+mod sched;
+
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
 /// này và đòi nó xuất hiện **đúng một lần**.
 #[cfg(not(feature = "wrong-marker"))]
@@ -141,8 +148,10 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-276** thêm **hai** ca SMP: `smp: ap online`, `smp: both harts report` (TAP 18/19, chạy
 /// sau TAP 17 — xem [`smp`]).
 /// **KT-278** thay hai ca ấy bằng **bốn** ca SMP: `smp: 4 harts online` (18), `smp: tss per-hart`
-/// (19), `smp: ipi delivered` (20), `smp: all harts report` (21) — tổng **21**.
-pub const TAP_TESTS: usize = 21;
+/// (19), `smp: ipi delivered` (20), `smp: all harts report` (21).
+/// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23) —
+/// tổng **23**.
+pub const TAP_TESTS: usize = 23;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -629,9 +638,18 @@ fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
 /// # Vì sao nhận **giá trị** chứ không nhận con trỏ frame
 ///
 /// Ảnh này **không** được có `unsafe` (R5), nên không thể deref con trỏ frame. Stub asm đọc 5
-/// trường của frame và truyền thành 5 tham số SysV — cùng thông tin, không cần `unsafe`.
+/// trường của frame và truyền thành 5 tham số SysV; **KT-286** thêm tham số thứ 6 `frame_rsp`
+/// (địa chỉ frame, **giá trị** `u64`) để scheduler lưu `rsp` của tác vụ đang chạy — cùng thông
+/// tin, không cần `unsafe`.
 #[no_mangle]
-pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u64) -> u64 {
+pub extern "C" fn exc_dispatch(
+    vec: u64,
+    err: u64,
+    rip: u64,
+    cs: u64,
+    rflags: u64,
+    frame_rsp: u64,
+) -> u64 {
     // ---- KT-266: **ngắt** (không phải exception) — xử lý trước, **không** in dòng `# exc:`.
     //
     // Timer: tăng tick, ghi `EOI`, tăng bộ đếm EOI, rồi `iretq` về đúng chỗ bị ngắt. Không in
@@ -644,8 +662,19 @@ pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u6
         let id = lapic_id() as u64;
         if id == smp::bsp_lapic_id() {
             TICK_COUNT.fetch_add(1, Ordering::Relaxed);
-            lapic_eoi();
+            // **Đột biến (iii)** (`--features no-eoi`): không `EOI` ⇒ LAPIC giữ ISR bit của
+            // vector 32 ⇒ timer **tắt sau tick đầu** (ĐỎ ở TAP 10 `timer: ticks`).
+            if !cfg!(feature = "no-eoi") {
+                lapic_eoi();
+            }
             EOI_COUNT.fetch_add(1, Ordering::Relaxed);
+            // **KT-286**: preemption — handler lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
+            // và (nếu chuyển) đặt `rsp` frame đích vào ô của stub. Stub chung đọc ô ấy rồi
+            // `pop`/`iretq` trên frame mới — đó là toàn bộ context switch.
+            if let Some((new_rsp, new_rip)) = sched::on_tick(frame_rsp) {
+                vifast_plat_x86_64::sched::set_new_rsp(new_rsp);
+                return new_rip;
+            }
         } else {
             smp::note_ap_tick();
             lapic_eoi();

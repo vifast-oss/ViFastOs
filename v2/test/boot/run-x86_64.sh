@@ -3,7 +3,8 @@
 # KT-257 (K5' bước 1) + **KT-261** (K5' bước 2: GDT/TSS/IDT + handler exception) + **KT-266**
 # (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) + **KT-274**
 # (K5' bước 5: PCI ECAM + virtio-net + ARP) + **KT-276** (K5' bước 6: SMP 2 hart) + **KT-278**
-# (K5' bước 7: SMP **4 hart** + **IPI** + **TSS per-hart**) — runner boot **x86_64**. Khuôn:
+# (K5' bước 7: SMP **4 hart** + **IPI** + **TSS per-hart**) + **KT-286** (K5' bước 8:
+# **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) — runner boot **x86_64**. Khuôn:
 # `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
@@ -34,6 +35,9 @@
 #      `# smp: tss bases=[…] … distinct=Ok(()) … tr=0x28 type=0x8b ok=1` (TSS **per-hart**, bốn
 #      địa chỉ rời nhau), `# smp: ipi recv=1 intid=0x30` (IPI fixed-delivery hart 0 → hart 1),
 #      `# smp: online mask=0xf alive=0xf … harts=4` (bốn hart cùng online **và** cùng báo alive);
+#      **KT-286**: `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer **thật sự**
+#      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=2` (tổng kết sau khi
+#      scheduler nhường lại `main`);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
@@ -41,15 +45,17 @@
 #      (j) **mất dòng `# umode:`** (KT-270); (k) **không có mạng** — boot **thật** không có
 #      `-device virtio-net-pci` ⇒ ảnh in `# net: no device` và TAP 16 ĐỎ (KT-274);
 #      (l) **mất dòng `# smp:`** (KT-276) — ảnh không đánh thức được hart phụ;
-#      (m) **mất dòng `# smp: ipi recv=`** (KT-278) — IPI không tới hart đích.
-#      Cả **mười ba** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (m) **mất dòng `# smp: ipi recv=`** (KT-278) — IPI không tới hart đích;
+#      (n) **mất dòng `# sched:`** (KT-286) — timer không chuyển ngữ cảnh.
+#      Cả **mười bốn** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 21 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
-#                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP)
+#   EXPECT_TESTS    số ca TAP (mặc định 23 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
+#                   preemption)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -73,7 +79,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-21}"
+EXPECT_TESTS="${EXPECT_TESTS:-23}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -434,6 +440,26 @@ check_log() {
         echo "# thiếu '# smp: online mask=0xf alive=0xf … harts=4' (bốn hart chưa cùng online+alive)"
         bad=1
     }
+    # ---- **KT-286**: preemption — ba dòng bằng chứng, mỗi dòng một lớp lỗi khác nhau.
+    # Chuyển **A→B**: timer đã thật sự lưu ngữ cảnh A và nạp ngữ cảnh B.
+    grep -qE '^# sched: switch a→b n=[0-9]+$' "$log" || {
+        echo "# thiếu '# sched: switch a→b n=<k>' (timer chưa chuyển A→B)"
+        bad=1
+    }
+    # Chuyển **B→A**: chiều ngược lại — một chiều thôi thì chỉ là "chạy B rồi dừng".
+    grep -qE '^# sched: switch b→a n=[0-9]+$' "$log" || {
+        echo "# thiếu '# sched: switch b→a n=<k>' (timer chưa chuyển B→A)"
+        bad=1
+    }
+    # Tổng kết: scheduler đã nhường lại `main` và đếm được tick.
+    grep -qE '^# sched: ticks=[0-9]+ tasks=2$' "$log" || {
+        echo "# thiếu '# sched: ticks=<t> tasks=2' (scheduler không nhường lại main)"
+        bad=1
+    }
+    if grep -qE '^# sched: ticks=0 ' "$log"; then
+        echo "# sched ticks=0 (timer không chạy trong lúc scheduler bật)"
+        bad=1
+    fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -631,6 +657,18 @@ selftest_negative() {
         echo "ok $n - ca âm (m): mất dòng '# smp: ipi recv=' ⇒ ĐỎ ($(head -1 "$tmp/m.out"))"
     fi
 
+    # (n) **KT-286** — mất **cả** ba dòng `# sched:` (timer không chuyển ngữ cảnh / scheduler
+    #     không nhường lại `main`). Đây là ca âm trực tiếp của tiêu chí "in `# sched: switch …`".
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -v '^# sched: ' "$good" >"$tmp/n.log" 2>/dev/null || true
+    if check_log "$tmp/n.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/n.out" 2>&1; then
+        echo "not ok $n - ca âm (n): mất dòng '# sched:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (n): mất dòng '# sched:' ⇒ ĐỎ ($(head -1 "$tmp/n.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -730,7 +768,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 13))
+    total=$((total + 14))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

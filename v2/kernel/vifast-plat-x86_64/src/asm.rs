@@ -38,6 +38,26 @@ use crate::serial::{self, COM1_BASE, REG_LSR, TX_WAIT_LIMIT};
 use core::arch::asm;
 
 // ---------------------------------------------------------------------------------------------
+// Preemption — KT-286 (K5' bước 8)
+// ---------------------------------------------------------------------------------------------
+
+/// Ô "đổi `rsp` trước `iretq`" — **hợp đồng** giữa handler Rust và stub chung
+/// (`vifast_isr_common`).
+///
+/// Stub chung trả `rip` trong `rax` và ghi nó vào frame **hiện tại**. Khi handler quyết định
+/// **chuyển tác vụ**, frame đích đã có sẵn `rip` đúng, nên stub phải **đổi `rsp`** sang frame
+/// đích thay vì ghi `rax`: handler đặt `rsp` của tác vụ kế vào ô này, stub đọc rồi **xoá** (một
+/// lần dùng) và `pop`/`iretq` trên frame mới.
+///
+/// `0` = không đổi `rsp` — mọi exception/ngắt không chuyển tác vụ đi đúng đường cũ.
+///
+/// Định nghĩa **ở đây** (không ở `crate::sched`) vì stub asm đọc trực tiếp symbol này và mô-đun
+/// này là nơi duy nhất của crate được `unsafe` (D2-17); `crate::sched` chỉ `pub use` lại.
+#[no_mangle]
+pub static VIFAST_SCHED_NEW_RSP: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+
+// ---------------------------------------------------------------------------------------------
 // Cổng I/O
 // ---------------------------------------------------------------------------------------------
 
@@ -583,12 +603,27 @@ core::arch::global_asm!(
     // frame là an toàn; `x86_64-unknown-none` **tắt red zone** (đo được: hàm lá vẫn `sub rsp`),
     // nên vùng dưới `rsp` không chứa dữ liệu sống của mã bị ngắt.
     "mov rbx, rsp",
+    // **KT-286**: tham số thứ 6 = con trỏ frame (rsp trỏ ô `r15`). Handler cần nó để **lưu
+    // `rsp`** của tác vụ đang chạy khi preempt.
+    "mov r9, rbx",
     "and rsp, -16",
     "call exc_dispatch",
     "mov rsp, rbx",
+    // **KT-286**: handler có thể yêu cầu **đổi `rsp`** sang frame của tác vụ kế (preemption).
+    // Ô này là **một lần dùng**: đọc rồi xoá, để tick sau không "dính" yêu cầu cũ.
+    "mov rcx, [rip + VIFAST_SCHED_NEW_RSP]",
+    "test rcx, rcx",
+    "jnz 7f",
     "test rax, rax",
     "jz 9f",
     "mov [rsp + {rip_off}], rax",
+    "jmp 8f",
+    // Có yêu cầu đổi `rsp`: frame đích đã có `rip`/`cs`/`rflags` đúng, nên **không** ghi `rax`
+    // vào frame cũ — chỉ chuyển `rsp` rồi `pop`/`iretq` trên frame mới.
+    "7:",
+    "mov qword ptr [rip + VIFAST_SCHED_NEW_RSP], 0",
+    "mov rsp, rcx",
+    "8:",
     "pop r15",
     "pop r14",
     "pop r13",

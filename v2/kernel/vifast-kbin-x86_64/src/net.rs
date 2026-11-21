@@ -232,6 +232,10 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // marker: đây là chỗ cuối cùng kernel còn chạy được sau `Exit` của ring 3 (chưa có procsrv).
     crate::smp::run(console, tap_first + 3);
 
+    // ---- 5b. **KT-286** (K5' bước 8): preemption — hai tác vụ kernel + timer chuyển ngữ cảnh,
+    // TAP 22/23. Chạy **sau** TAP 21 (SMP) và **trước** marker; thứ tự TAP 1..21 **không đổi**.
+    crate::sched::run(console, tap_first + 7);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

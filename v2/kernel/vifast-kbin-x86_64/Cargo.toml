@@ -44,6 +44,16 @@ bad-ipi-dest = []
 # (trùng địa chỉ). Không fault, nhưng phép **kiểm địa chỉ** của BSP thấy trùng ⇒ TAP 19 ĐỎ.
 # Chỉ dùng cho đột biến.
 same-tss = []
+# **KT-286** — đột biến (i) của preemption: sau tick đầu **không** gọi `schedule()` nữa ⇒ chỉ tác
+# vụ A chạy, `main` không bao giờ được nhường lại ⇒ không có `# sched: ticks=…`/marker (ĐỎ).
+# Chỉ dùng cho đột biến.
+no-preempt = []
+# **KT-286** — đột biến (ii): nạp `rsp` của tác vụ kế bằng địa chỉ **chưa map** thay vì frame đã
+# lưu ⇒ stub `pop` từ đó ⇒ `#PF` rồi `#DF` (ĐỎ, không marker). Chỉ dùng cho đột biến.
+bad-rsp = []
+# **KT-286** — đột biến (iii): không `EOI` trong handler timer ⇒ LAPIC giữ ISR bit ⇒ timer **tắt
+# sau tick đầu** ⇒ TAP 10 `timer: ticks` ĐỎ. Chỉ dùng cho đột biến.
+no-eoi = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
