@@ -1,6 +1,6 @@
 # KT-281 — riscv64 **net server U-mode** (N1 phần 3)
 
-Trạng thái: **đang làm** (nhánh `task/kt281-netsrv`, base `main` @ `20208255`), 2026-11-21.
+Trạng thái: **DONE** (nhánh `task/kt281-netsrv`, base `main` @ `20208255`), 2026-11-21.
 Sub-agent `netsrv`. Quyết định: **D2-196** (mở D1), **D2-210** (vòng 10), **D2-198** (uỷ quyền
 commit trên nhánh task), **D2-05** (test đỏ trước), **D2-109/D2-111** (tách ảnh khi thêm đường mới),
 **D2-211** — *không tìm thấy mục này trong `v2/agent/DECISIONS.md`* (tệp dừng ở **D2-210**, 397
@@ -93,4 +93,173 @@ không `MapIo`) ⇒ nó **không thể** chạm thiết bị kể cả muốn; m
 
 ## 3. Kết quả
 
-_(điền sau khi chạy)_
+| Việc | Kết quả |
+|---|---|
+| Ảnh mới `vifast-kbin-ktest-netsrv` (feature `netsrv = ["ktest","user","vifast-plat-riscv64/net"]`) | **DONE** — 2 TAP, `.data+.bss` = **217.952 B** / 262.144 (headroom 44.192 B) |
+| Hai chương trình U-mode `init/netcli_user.rs` / `init/netsrv_user.rs` | **DONE** — 8.928 B / 8.904 B ELF |
+| Kernel `src/ktest_netsrv.rs` — rig 3 TCB + 2 Endpoint + 2 Reply + 3 cspace + 3 SC, 4 lượt tất định, kernel `recv`+`reply_msg` giữa lượt 2 và 3 | **DONE** |
+| Runner `ktest.sh`: ảnh thứ **chín** (`LABELS`/`image_path`/`manifest_netsrv`/`evidence_for` 15 mục/`panic_allow_re`/build/`qextra` `-netdev`) | **DONE** — matrix **9 ảnh × smp 1/2/4 = 27 boot** |
+| Runner `net.sh`: ca âm `# netsrv: no device` + `--red-selftest` **+5 kiểm** (28 → **33**) | **DONE** |
+| `./v2/bin/v2 check` | **XANH** (exit 0; 118,8 s) |
+| Runner riscv64 `ktest.sh 1 matrix` | **XANH — 27/27 boot sạch** |
+| Ba đột biến | **ĐỎ đúng cả ba** (§6) |
+
+Commit trên nhánh `task/kt281-netsrv` (base `20208255`):
+
+| Commit | Nội dung |
+|---|---|
+| **`10035055`** | `[KT-281] net server U-mode riscv64: client Call chặn → server điều phối gọi dịch vụ mạng của kernel → Reply(rtt) (TAP 2/2, ảnh ktest-netsrv thứ chín)` — 9 tệp, +1.384/−3 |
+
+Tổng so với base: **9 tệp** (không tệp nào trong `v2/agent/{STATE,QUEUE,DECISIONS}.md`,
+`v2/bin/v2`, `spec/`).
+
+## 4. Log QEMU nguyên văn (smp=1, ảnh `ktest-netsrv`, commit `10035055`)
+
+```text
+TAP version 13
+1..2
+# netsrv image: hart=0 stvec=0x802000a0 satp=0x80000000000804e8 mode=8 tables=10 used=40960 const:target=10.0.2.2
+# netsrv net: mac=52:54:00:12:34:56 dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+# netsrv arp: gw=52:55:0a:00:02:02
+# netsrv rig: untyped=0 core_untyped=1 cspace_c=14 cspace_s=15 cspace_k=16 tcb_c=3 tcb_s=4 tcb_k=5 ep_srv=6 ep_kern=7 reply_client=8 reply_kern=9
+# netsrv call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0xa000202 label=0x290 stop=Blocked
+# netsrv server: recv=1 label=0x290 mr=0xa000202 client=BlockedOnReply caller=3 server=BlockedOnSend kern_blocked=1 kern_len=1 kern_mr=0xa000202 stop=Blocked
+# netsrv kern: recv=1 label=0x291 mr=0xa000202 server=BlockedOnReply caller=4 ping=ok sent=1 received=1 rtt_ms=0 reply=ok
+# netsrv: ping 10.0.2.2 ok rtt=0
+# sys: nr=14 err=0 value=0 tcb=4 state=Inactive src=core
+# u-mode exit: code=0 faultkind=Exit{0} tcb=4 state=Inactive
+# netsrv reply: applied=1 server_exit=0 client=Ready reply_caller=0 server=Inactive stop=Exit
+# netsrv: client got reply=0
+# netsrv: neg empty=1 reply=18 ok=1
+# sys: nr=14 err=0 value=0 tcb=3 state=Inactive src=core
+# u-mode exit: code=0 faultkind=Exit{0} tcb=3 state=Inactive
+# netsrv client: reply_label=0x292 reply_mr0=0 const:label_reply=0x292 const:rtt_ms=0
+ok 1 - netsrv: server ran
+ok 2 - netsrv: client got reply
+# netsrv final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive
+PANIC: KT-281 netsrv xong (2 TAP, 0 fail)
+```
+
+Đọc dòng theo dòng (mỗi dòng là một phép đo, không phải lời khai):
+
+1. `# netsrv net:` / `# netsrv arp:` — MAC **đọc từ `virtio_net_config`** (`52:54:00:…`, OUI QEMU),
+   DHCP thật của slirp (`ip=10.0.2.15 gw=10.0.2.2`), ARP gateway thật (`52:55:0a:00:02:02`). Đây là
+   **driver trong kernel** làm, trước khi có tác vụ U-mode nào.
+2. `# netsrv call:` — client U-mode `Call` trên `EP_SRV` **khi chưa có người nhận** ⇒ core đưa TCB
+   client sang `BlockedOnSend{call:true}`, message `Ping(ip)` nằm trong **hàng Endpoint**
+   (`ep_len=1`, `ep_mr=0xa000202` = `10.0.2.2`). `stop=Blocked` = nhánh `Switched` chạy thật.
+3. `# netsrv server:` — server U-mode `Recv` lấy message: caller chuyển
+   `BlockedOnSend{call}` → **`BlockedOnReply`** (`caller=3` = TCB client), message server nhận đúng
+   `label=0x290 mr=0xa000202`. **Rồi** server `Call` **kernel** trên `EP_KERN` ⇒ chặn ở Send
+   (`server=BlockedOnSend`, `kern_len=1`, `kern_mr=0xa000202`). Đây là **bằng chứng trực tiếp** của
+   kiến trúc "server chỉ điều phối": server không có cap thiết bị nào, chỉ có hai cap `Endpoint`.
+4. `# netsrv kern:` — kernel `recv` trên `EP_KERN` **kèm cap Reply** ⇒ server `BlockedOnReply`
+   (`caller=4` = TCB server), message đúng `label=0x291 mr=0xa000202`; kernel chạy
+   `virtio_net::ping` **thật** ⇒ `ping=ok sent=1 received=1 rtt_ms=0`, rồi `reply_msg` (`reply=ok`).
+5. `# netsrv: ping 10.0.2.2 ok rtt=0` — **chính server U-mode** in (qua `DebugPutStr`), sau khi
+   **được resume** từ `Call` chặn: `a0=0`, `a3` = RTT. IP in ra là **giá trị nhận được từ client**
+   (`put_ipv4`), không phải hằng của kernel.
+6. `# netsrv reply:` — server `Send` trên cap `Reply` ⇒ client `Ready`, `Reply.caller` **sạch** (0),
+   server `Inactive` (Exit 0).
+7. `# netsrv: client got reply=0` — **chính client U-mode** in sau khi **được resume**:
+   `a0=0`, `a2` = `MessageInfo{label=0x292,length=1}`, `a3` = RTT.
+8. `# netsrv: neg empty=1 reply=18 ok=1` — hai ca âm trong cùng boot: `Call` trên ô rỗng ⇒ **1**
+   (`InvalidCapability`), `Call` trên cap `Reply` (không phải Endpoint) ⇒ **18** (`NotSupported`).
+9. `# netsrv client:` — kernel đọc **độc lập** vùng nhận IPC của client: `reply_label=0x292
+   reply_mr0=0` khớp `const:rtt_ms=0` (không tin lời chương trình).
+10. `# netsrv final:` — `check_ipc`/`check_caps` xanh, `capture_client=1`/`capture_server=1`
+    (output của **cả hai** chương trình U-mode được chụp đúng ô), hai TCB `Inactive`.
+
+`rtt=0` là **số đo thật** dưới `-icount shift=6` (đồng hồ ảo) — cùng hiện tượng đã ghi ở
+`docs/d1-net.md` §5 cho `ktest-net`; điều kiện của TAP là **có** reply (`received == sent == 1`),
+không phải RTT khác 0.
+
+## 5. TAP + matrix
+
+```text
+$ bash v2/test/boot/ktest.sh 1 matrix
+# expected[ktest-netsrv]: plan=2 ok=2 ten-TAP=2
+# image=ktest-netsrv path=…/vifast-kbin-ktest-netsrv file=424440 data+bss=217952 budget=262144 …
+ok - ktest-netsrv smp=1 boot 1 (2 TAP, 1s) log …/ktest-netsrv-smp1-1.log
+ok - ktest-netsrv smp=2 boot 1 (2 TAP, 1s) log …/ktest-netsrv-smp2-1.log
+ok - ktest-netsrv smp=4 boot 1 (2 TAP, 0s) log …/ktest-netsrv-smp4-1.log
+# KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+```
+
+`--check-log` (15 evidence bắt buộc):
+
+```text
+$ bash v2/test/boot/ktest.sh --check-log ktest-netsrv /tmp/kt281-final.log 1
+ok - check-log ktest-netsrv smp=1 (plan=2 ok=2, 15 evidence) log /tmp/kt281-final.log
+# check-log: PASS
+```
+
+**Ca âm thường trực** (`net.sh`, cùng ảnh, **không** `-netdev`/`-device`):
+
+```text
+# netsrv pci: err=NoDevice stage=nodevice
+# netsrv: no device
+not ok 1 - netsrv: server ran: khong tim thay thiet bi mang
+# ktest halt
+```
+
+`net.sh --red-selftest` = **33 kiểm, 0 lỗi** (trước KT-281: 28). Năm kiểm mới:
+
+```text
+ok 29 - selftest: netsrv ca âm 'không thiết bị' đỏ đúng cách được chấp nhận
+ok 30 - selftest: netsrv ca âm PASS giả (có 'ok 1') bị từ chối
+ok 31 - selftest: netsrv ca âm thiếu dòng '# netsrv: no device' bị từ chối
+ok 32 - selftest: netsrv ca âm có dòng PANIC 'xong' (PASS giả) bị từ chối
+ok 33 - selftest: netsrv ca âm có dòng '# netsrv: ping' (bằng chứng giả) bị từ chối
+# net.sh --red-selftest: 33 kiểm, 0 lỗi
+```
+
+## 6. Đột biến (đỏ có kiểm soát) — cả ba ĐỎ đúng
+
+Script: `/tmp/kt281-mutations.sh` (sửa **một** chỗ → build → boot thật qua `qemu_guard.sh` →
+`ktest.sh --check-log` phải đỏ → `git checkout --` trả tệp). Cây sạch sau cả ba.
+
+| # | Đột biến | Kết quả log | Runner |
+|---|---|---|---|
+| M1 | server **không** `Reply` (bỏ `Send` trên cap Reply) | `# netsrv: ping 10.0.2.2 ok rtt=0` + `ok 1`; `not ok 2 … applied_c=0 client_exit=-1 said_reply=0 reply_label=0xffffffff`; `PANIC: KT-281 netsrv CO LOI` — **không treo**, kernel phát hiện client chưa nhận message và dừng có chẩn đoán | **ĐỎ**: `thiếu TAP #2`, `thiếu evidence#9..#13` |
+| M2 | **syscall trả lỗi**: server `Call` trên cap `Reply` (không phải Endpoint) ⇒ `err=18` | `# netsrv: ping err=18`; `# netsrv: client got reply=18`; `not ok 1 … ping_ok=0 sent=0 received=0 said_ping=0`; `not ok 2 … reply_mr0=18 rtt_ms=0` | **ĐỎ**: `thiếu TAP #1/#2`, `thiếu evidence#6/#7/#8/#13` |
+| M3 | client `Call` **sai endpoint** (ô 5 rỗng) ⇒ `err=1` | `# netsrv: client call err=1`; `not ok 1 … blocked_send=0 ep_len=0`; `not ok 2 … applied_s=0 applied_c=0` | **ĐỎ**: `thiếu TAP #1/#2`, `thiếu evidence#5..#8` |
+
+M1 là ca "server không Reply" theo yêu cầu: thay vì treo 20 s, ảnh **phát hiện** client chưa có
+message trong vùng nhận IPC (`apply_ipc_return` trả `false`) và in `not ok 2` +
+`PANIC … CO LOI` — đỏ có kiểm soát, có chẩn đoán, không treo máy.
+
+## 7. Còn gì chưa xong / rủi ro
+
+1. **Không** làm (đúng phạm vi task): driver trong U-mode, nhiều client, TCP/DNS qua server,
+   preemption giữa các tác vụ (scheduler của ảnh là **tuần tự tất định** 4 lượt, không phải
+   scheduler ưu tiên đầy đủ).
+2. **Không** tuyên bố K3/N1 đạt — K3 đã đóng theo D2-205; KT-281 chỉ thêm **một đường mới**
+   (server U-mode điều phối dịch vụ mạng của kernel) và **không** mở lại mục nào của hợp đồng K3.
+3. **Nợ (thiết kế)**: `NetPing` đi qua **syscall 0 `Call` trên Endpoint** chứ không phải một số
+   syscall riêng, vì `spec/abi.toml` cấp đúng 16 số `0..15` và luật vòng này **cấm sửa `spec/`**.
+   Ngữ nghĩa giống hệt (chặn → kernel xử lý → `(error, value)`), nhưng nếu sau này A0 mở
+   `[syscall]` cho một số `NetPing` thật thì đường này nên được thay, **không** để song song hai
+   đường. Ghi ở §1.2.
+4. **Nợ**: `Stop::Blocked(TcbState::Inactive)` vẫn mang `Inactive` (bảng mã `decode` của
+   `user_run.rs` không đổi) — ảnh KT-281 đọc trạng thái **thật** từ core (`Machine::tcb_state`)
+   thay vì tin `Stop`; sửa `decode` là việc của task khác (chạm mọi ảnh).
+5. **Rủi ro thấp**: ảnh `ktest-netsrv` cần `-netdev`/`-device` trong dòng QEMU (như `ktest-net`);
+   `ktest.sh` thêm `qextra` theo nhãn. Nếu ai bỏ `qextra` đó, ảnh in `# netsrv: no device` +
+   `not ok 1` ⇒ matrix **đỏ** ngay (không PASS giả).
+6. **Chưa chạy T2 `gate --fast`** (task yêu cầu `v2 check` + runner riscv64; T2 là việc của lead
+   trên ứng viên tích hợp).
+
+## 8. Xác nhận luật
+
+- **Không** push, **không** merge, **không** chạm `main` (nhánh `task/kt281-netsrv`, commit
+  `10035055`).
+- **Không** sửa `v2/agent/{STATE,QUEUE,DECISIONS}.md`, **không** sửa `v2/bin/v2`, **không** sửa
+  `spec/`.
+- **Không** nới ngưỡng, **không** `#[ignore]`/retry, **không** `cfg(target_arch)` trong
+  `vifast-core`/`vifast-plat-common` (không chạm hai crate đó).
+- **Không** viết lại codec mạng — dùng `vifast_net` (`Ipv4Addr`/`MacAddr`) và driver
+  `virtio_net` sẵn có.
+- Stage theo **đường dẫn cụ thể** (9 tệp), **không** `git add -A`.
+- Cây sạch sau commit + sau ba đột biến (`git status --short` rỗng).
