@@ -5,9 +5,10 @@
 # (K5' bước 5: PCI ECAM + virtio-net + ARP) + **KT-276** (K5' bước 6: SMP 2 hart) + **KT-278**
 # (K5' bước 7: SMP **4 hart** + **IPI** + **TSS per-hart**) + **KT-286** (K5' bước 8:
 # **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) + **KT-288** (K5' bước 9:
-# **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) — runner boot
-# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout
-# + dọn con).
+# **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) + **KT-304**
+# (**tác vụ ring 3 trong scheduler** — `schedule()` chọn nó, tick preempt nó, nó chạy lại ở
+# ring 3) — runner boot **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78:
+# process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
 # `virtio-net-pci` trên `-netdev user` (slirp). `-M pc` (i440fx) **không** có ECAM ⇒ ảnh rơi xuống
@@ -39,8 +40,11 @@
 #      địa chỉ rời nhau), `# smp: ipi recv=1 intid=0x30` (IPI fixed-delivery hart 0 → hart 1),
 #      `# smp: online mask=0xf alive=0xf … harts=4` (bốn hart cùng online **và** cùng báo alive);
 #      **KT-286**: `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer **thật sự**
-#      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=2` (tổng kết sau khi
+#      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=3` (tổng kết sau khi
 #      scheduler nhường lại `main`);
+#      **KT-304**: `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>` — tác vụ
+#      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
+#      `schedule()` chọn **lại** (`resumed ≥ 1`) và bộ đếm **tăng** giữa hai lần preempt;
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -55,16 +59,18 @@
 #      (m) **mất dòng `# smp: ipi recv=`** (KT-278) — IPI không tới hart đích;
 #      (n) **mất dòng `# sched:`** (KT-286) — timer không chuyển ngữ cảnh;
 #      (o) **không có đĩa** (KT-288) — boot **thật** không có `-drive`/`-device virtio-blk-pci`
-#          ⇒ ảnh in `# blk: no device` và TAP 24 ĐỎ.
-#      Cả **mười lăm** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#          ⇒ ảnh in `# blk: no device` và TAP 25 ĐỎ;
+#      (p) **tác vụ ring 3 không chạy lại** (KT-304) — log tốt bị sửa `resumed=0` (bị preempt
+#          nhưng `schedule()` không chọn lại) ⇒ phải ĐỎ.
+#      Cả **mười sáu** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 25 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 26 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
-#                   preemption; KT-288: 2 ca virtio-blk)
+#                   preemption; KT-304: 1 ca tác vụ ring 3; KT-288: 2 ca virtio-blk)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -89,7 +95,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-25}"
+EXPECT_TESTS="${EXPECT_TESTS:-26}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -105,8 +111,8 @@ QEMU_NET=(-netdev user,id=n0 -device virtio-net-pci,netdev=n0)
 # Ngân sách riêng cho boot **không mạng**: ảnh dừng ở TAP 16 đỏ (`cli; hlt`) nên QEMU **không**
 # tự thoát; 10 s là dư cho phần in (đo được ~2 s) mà không phí 20 s như boot thường.
 NONET_TIMEOUT_DS=100
-# Ngân sách cho boot **không đĩa**: ảnh chạy hết net + SMP + preemption rồi mới tới TAP 24 đỏ
-# (`cli; hlt`) — đo được ~4 s, 15 s là dư mà không phí 20 s như boot thường.
+# Ngân sách cho boot **không đĩa**: ảnh chạy hết net + SMP + preemption + tác vụ ring 3 rồi
+# mới tới TAP 25 đỏ (`cli; hlt`) — đo được ~4 s, 15 s là dư mà không phí 20 s như boot thường.
 NODISK_TIMEOUT_DS=150
 # 24 byte multiboot2 header (magic, arch=0, len=24, checksum, end tag {0,0,8}) — hex little-endian.
 MB2_HEX="d65052e8000000001800000012afad170000000008000000"
@@ -579,14 +585,22 @@ check_log() {
         bad=1
     }
     # Tổng kết: scheduler đã nhường lại `main` và đếm được tick.
-    grep -qE '^# sched: ticks=[0-9]+ tasks=2$' "$log" || {
-        echo "# thiếu '# sched: ticks=<t> tasks=2' (scheduler không nhường lại main)"
+    grep -qE '^# sched: ticks=[0-9]+ tasks=3$' "$log" || {
+        echo "# thiếu '# sched: ticks=<t> tasks=3' (scheduler không nhường lại main)"
         bad=1
     }
     if grep -qE '^# sched: ticks=0 ' "$log"; then
         echo "# sched ticks=0 (timer không chạy trong lúc scheduler bật)"
         bad=1
     fi
+    # ---- **KT-304**: tác vụ **ring 3** trong scheduler — chạy thật, bị preempt khi ở CPL3,
+    # được `schedule()` chọn **lại** và bộ đếm **tăng** giữa hai lần preempt. Bốn điều kiện
+    # tách bạch: `n > 0` (đã chạy), `ring=3` (cs lúc preempt = 0x1B), `preempted ≥ 2` (rời U
+    # hai lần), `resumed ≥ 1` (được chọn lại). Thiếu dòng ⇒ ĐỎ, không thể "xanh nhờ TAP 24".
+    grep -qE '^# sched: umode task ran n=[1-9][0-9]* ring=3 preempted=[2-9][0-9]* resumed=[1-9][0-9]*$' "$log" || {
+        echo "# thiếu '# sched: umode task ran n=… ring=3 preempted=… resumed=…' (tác vụ ring 3 không chạy lại)"
+        bad=1
+    }
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -797,7 +811,7 @@ selftest_negative() {
     fi
 
     # (o) **KT-288** — "không có đĩa": boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒
-    #     ảnh in `# blk: no device` rồi TAP 24 đỏ (không marker). Ca này đòi **cả hai** điều kiện:
+    #     ảnh in `# blk: no device` rồi TAP 25 đỏ (không marker). Ca này đòi **cả hai** điều kiện:
     #     có dòng evidence **và** `check_log` đỏ — thiếu dòng đó nghĩa là ảnh chết trước khi tới
     #     bước đĩa, và khi đó ca âm không chứng minh được gì.
     n=$((n + 1))
@@ -813,6 +827,19 @@ selftest_negative() {
     else
         echo "not ok $n - ca âm (o): không có log boot không đĩa ($LOGDIR/boot-nodisk.log)"
         fails=$((fails + 1))
+    fi
+
+    # (p) **KT-304** — tác vụ ring 3 **không chạy lại**: log tốt bị sửa `resumed=0` (bị preempt
+    #     nhưng `schedule()` không chọn lại). Đây là ca âm trực tiếp của tiêu chí "nó chạy lại ở
+    #     ring 3": nếu runner vẫn XANH khi `resumed=0` thì phép kiểm mới là dấu cao su.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# sched: umode task ran .*\) resumed=[0-9][0-9]*$/\1 resumed=0/' "$good" >"$tmp/p.log" 2>/dev/null || true
+    if check_log "$tmp/p.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/p.out" 2>&1; then
+        echo "not ok $n - ca âm (p): tác vụ ring 3 không chạy lại mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (p): tác vụ ring 3 không chạy lại ⇒ ĐỎ ($(head -1 "$tmp/p.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
@@ -907,7 +934,7 @@ fi
 
 # ---- ca âm (o) **KT-288**: boot **thật** không có đĩa. Mạng vẫn có để ảnh chạy qua TAP 15..23;
 #      tới bước blk thì `pci::init_for(VirtioKind::Blk)` trả `NoDevice` ⇒ ảnh in
-#      `# blk: no device` rồi TAP 24 ĐỎ ⇒ `cli; hlt` (QEMU không tự thoát) nên dùng ngân sách
+#      `# blk: no device` rồi TAP 25 ĐỎ ⇒ `cli; hlt` (QEMU không tự thoát) nên dùng ngân sách
 #      riêng ngắn hơn. Đây là ca âm **thật** (boot QEMU lần hai, không `-drive`), không phải biến
 #      đổi log: nó chứng minh driver **fail-closed** khi thiếu thiết bị, thay vì đọc ra số 0 rồi
 #      in `ok`.
@@ -926,7 +953,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 15))
+    total=$((total + 16))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

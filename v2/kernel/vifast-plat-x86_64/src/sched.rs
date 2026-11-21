@@ -73,23 +73,39 @@
 //! không cần `cli`, không có cửa sổ: cùng bản vá ấy sau khi sửa chỉ còn **bỏ đói** tác vụ, không
 //! còn làm hỏng ngữ cảnh.
 //!
+//! # KT-304 — tác vụ **ring 3** trong scheduler
+//!
+//! Thêm slot [`TASK_U`] chạy ở **CPL3**: frame khởi tạo của nó cùng 22 qword nhưng `cs = 0x1B`
+//! ([`crate::umode::USER_CS`]), `ss = 0x23` ([`crate::umode::USER_SS`]), `rsp` = **user rsp**
+//! ([`init_user_frame_words`]). Frame nằm trên **stack kernel riêng** của tác vụ (không phải
+//! stack user): khi timer ngắt từ CPL3, CPU đẩy `SS:RSP:RFLAGS:CS:RIP` vào `TSS.RSP0` rồi stub
+//! đẩy 17 qword — frame mới rơi **đúng** chỗ frame khởi tạo (xem `init_user_frame_words`).
+//!
+//! [`switch_frame_ok`] vì vậy có **hai nhánh**: frame kernel (`cs = 0x08`, `rsp` kernel bất kỳ
+//! canonical/căn 8) và frame ring 3 (`cs = 0x1B`, `ss = 0x23`, `rsp` trong trang stack user,
+//! `rip` trong trang mã user). `ss` của frame kernel **không** kiểm được: frame thật do CPU đẩy
+//! khi cùng CPL chỉ có 20 qword, hai ô `rsp`/`ss` mà QEMU pop thêm nằm **ngoài** frame.
+//!
 //! # Phạm vi
 //!
-//! **Hai** tác vụ kernel + preemption bằng timer. **Không** U-mode task, **không** nhiều hart
-//! schedule, **không** priority, **không** sleep/wake — đó là các bước sau (D2-212).
+//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer. **Không** nhiều tác vụ ring
+//! 3, **không** IPC giữa chúng, **không** nhiều hart schedule, **không** priority, **không**
+//! sleep/wake — đó là các bước sau (D2-212, D2-219).
 
 use crate::exc;
 
-/// Số tác vụ **thật** của scheduler (không tính ngữ cảnh `main`).
-pub const TASK_COUNT: usize = 2;
+/// Số tác vụ **thật** của scheduler (không tính ngữ cảnh `main`): A, B (kernel) + U (ring 3).
+pub const TASK_COUNT: usize = 3;
 
 /// Slot ngữ cảnh của đường boot (`sched::run`) — nơi scheduler quay về để in tổng kết.
 pub const TASK_MAIN: usize = 0;
-/// Slot tác vụ **A**.
+/// Slot tác vụ **A** (kernel).
 pub const TASK_A: usize = 1;
-/// Slot tác vụ **B**.
+/// Slot tác vụ **B** (kernel).
 pub const TASK_B: usize = 2;
-/// Tổng số slot ngữ cảnh: `main` + hai tác vụ.
+/// Slot tác vụ **U** — chạy ở **ring 3** (KT-304).
+pub const TASK_U: usize = 3;
+/// Tổng số slot ngữ cảnh: `main` + ba tác vụ.
 pub const TASK_SLOTS: usize = TASK_COUNT + 1;
 
 /// Số qword của một frame ngắt **khởi tạo**: 15 GPR + vector + mã lỗi + rip + cs + rflags +
@@ -104,11 +120,25 @@ pub const INITIAL_RSP_SLACK: u64 = 8;
 /// ngắt được tác vụ; thiếu `IF` thì preemption không bao giờ xảy ra.
 pub const TASK_RFLAGS: u64 = 0x202;
 
-/// Số lần **chuyển** tác vụ trước khi scheduler nhường lại `main` (A→B, B→A, … ba vòng).
+/// Thứ tự tác vụ sau **mỗi** lần chuyển (chỉ số = `switches - 1`), bắt đầu sau tick đầu
+/// (`main → A`).
 ///
-/// Số chẵn để lần chuyển cuối là B→A: cả hai chiều đều xuất hiện **ba** lần, nên dòng
-/// `# sched: switch a→b` và `# sched: switch b→a` đều có bằng chứng thật.
-pub const MAX_SWITCHES: u64 = 6;
+/// **KT-304** thay luân phiên thuần bằng **bảng cố định** vì có ba tác vụ và thứ tự phải giữ
+/// **hai** bất biến cùng lúc:
+///
+/// 1. **cả hai** chiều `A→B` và `B→A` xuất hiện (TAP 23 của KT-286 — một chiều thôi chỉ là
+///    "chạy B rồi dừng");
+/// 2. tác vụ **U** (ring 3) được chọn **≥ 2** lần: lần đầu bị tick preempt, lần sau **chạy lại**
+///    ở ring 3 (yêu cầu của K5' — "schedule() chọn nó, tick preempt nó, nó chạy lại").
+///
+/// Bảng: `A→B→A→B→A→B→U→A→U→main`. U bị preempt ở bước 7 (`U→A`) và bước 9 (`U→main`), được
+/// chạy lại ở bước 8 (`A→U`).
+pub const TASK_SEQUENCE: [usize; 9] = [
+    TASK_B, TASK_A, TASK_B, TASK_A, TASK_B, TASK_U, TASK_A, TASK_U, TASK_MAIN,
+];
+
+/// Số lần **chuyển** tác vụ trước khi scheduler nhường lại `main` — độ dài [`TASK_SEQUENCE`].
+pub const MAX_SWITCHES: u64 = TASK_SEQUENCE.len() as u64;
 
 /// Dựng **frame khởi tạo** cho một tác vụ: trả `(22 qword, rsp)`.
 ///
@@ -135,20 +165,54 @@ pub const fn init_frame_words(
     (words, rsp)
 }
 
-/// Quyết định tác vụ kế: luân phiên `A → B → A …`; sau `max_switches` lần chuyển thì trả về
+/// Dựng **frame khởi tạo** cho tác vụ **ring 3** (KT-304): trả `(22 qword, rsp)`.
+///
+/// Khác [`init_frame_words`] ở **ba** ô:
+///
+/// - `cs = USER_CS` (`0x1B`) — `iretq` hạ đặc quyền xuống CPL3;
+/// - `ss = USER_SS` (`0x23`) — selector stack user;
+/// - `rsp = user_rsp` — `RSP` **user** sau `iretq` (không phải kernel rsp).
+///
+/// `kernel_stack_top` là đỉnh **stack kernel riêng** của tác vụ (nơi frame nằm và nơi
+/// `TSS.RSP0` trỏ tới). Frame kết thúc **đúng** `kernel_stack_top` — **không** slack 8 như tác
+/// vụ kernel: `iretq` đổi CPL **luôn** pop 5 qword (SDM Vol 3A §5.5), nên sau `iretq` kernel
+/// `rsp = kernel_stack_top`; khi timer ngắt từ CPL3, CPU đẩy 5 qword rồi stub đẩy 17 qword ⇒
+/// frame mới ở **đúng** `kernel_stack_top - 176`, trùng chỗ frame khởi tạo, không tràn.
+///
+/// Hàm **thuần** như [`init_frame_words`]: ảnh ghi từng qword bằng `asm::write_u64`.
+pub const fn init_user_frame_words(
+    kernel_stack_top: u64,
+    entry: u64,
+    rflags: u64,
+    user_rsp: u64,
+) -> ([u64; FRAME_WORDS], u64) {
+    let mut words = [0u64; FRAME_WORDS];
+    // 15 GPR đầu = 0: tác vụ ring 3 không thừa hưởng thanh ghi của kernel.
+    words[FRAME_WORDS - 7] = 0; // vector — stub bỏ qua bằng `add rsp, 16`
+    words[FRAME_WORDS - 6] = 0; // mã lỗi — stub bỏ qua
+    words[FRAME_WORDS - 5] = entry; // rip — `iretq` nhảy vào đây (VA user)
+    words[FRAME_WORDS - 4] = crate::umode::USER_CS as u64; // cs — user code `0x1B`
+    words[FRAME_WORDS - 3] = rflags; // rflags — `IF = 1`
+    words[FRAME_WORDS - 2] = user_rsp; // rsp — **user** rsp sau `iretq`
+    words[FRAME_WORDS - 1] = crate::umode::USER_SS as u64; // ss — user data `0x23`
+    let rsp = kernel_stack_top.saturating_sub(FRAME_BYTES as u64);
+    (words, rsp)
+}
+
+/// Quyết định tác vụ kế theo [`TASK_SEQUENCE`]; sau `max_switches` lần chuyển thì trả về
 /// [`TASK_MAIN`] để `sched::run` in tổng kết rồi nhường lại đường boot.
 ///
-/// `current` lạ (kể cả [`TASK_MAIN`]) khởi động [`TASK_A`] — không bao giờ trả về chính nó, nên
-/// một trạng thái hỏng không thể làm scheduler "chuyển sang chính mình" (vòng lặp vô hạn im lặng).
+/// `switches == 0` (tick đầu) khởi động [`TASK_A`]; `current` lạ (slot ngoài `0..=TASK_U`) cũng
+/// khởi động [`TASK_A`] — không bao giờ trả về chính nó, nên một trạng thái hỏng không thể làm
+/// scheduler "chuyển sang chính mình" (vòng lặp vô hạn im lặng).
 pub const fn next_task(current: usize, switches: u64, max_switches: u64) -> usize {
     if switches >= max_switches {
         return TASK_MAIN;
     }
-    match current {
-        TASK_A => TASK_B,
-        TASK_B => TASK_A,
-        _ => TASK_A,
+    if switches == 0 || current > TASK_U {
+        return TASK_A;
     }
+    TASK_SEQUENCE[(switches - 1) as usize]
 }
 
 /// Giá trị stub chung (`vifast_isr_common`) nhận lại từ handler `exc_dispatch` — **hai** qword
@@ -185,41 +249,62 @@ impl FrameReturn {
     }
 }
 
-/// `true` ⇔ frame tại `rsp` **đủ** để `iretq` vào một tác vụ kernel — kiểm **trước** khi stub
-/// đổi `rsp` (KT-298, yêu cầu (b) của task).
+/// `true` ⇔ frame tại `rsp` **đủ** để `iretq` vào tác vụ — kiểm **trước** khi stub đổi `rsp`
+/// (KT-298, yêu cầu (b) của task; **KT-304** thêm nhánh ring 3).
 ///
 /// Hàm **thuần** (nhận giá trị, không đọc bộ nhớ) nên test host chốt được từng điều kiện; ảnh
-/// đọc bốn ô của frame bằng `asm::read_u64` rồi gọi hàm này.
+/// đọc năm ô của frame bằng `asm::read_u64` rồi gọi hàm này.
 ///
-/// Bốn điều kiện, mỗi điều kiện là một lớp lỗi **thật** đã gặp:
+/// Điều kiện **chung** (mọi frame):
 ///
 /// 1. `rip` **khác 0** và **canonical** — `iretq` tới địa chỉ không canonical ⇒ `#GP(0)` ngay
 ///    tại `iretq` (đúng dấu hiệu `# exc: vec=13 err=0x0` của boot 410).
-/// 2. `cs == KERNEL_CS` — frame của tác vụ kernel luôn mang `0x08`; selector khác ⇒ `#GP` có
-///    mã lỗi **khác 0** (và `err=0x0` của boot 410 nói rằng lỗi **không** phải selector).
-/// 3. `rflags` có `IF` — thiếu `IF` thì tác vụ không bao giờ bị preempt (preemption chết im lặng).
-/// 4. `rsp` **khác 0**, **canonical** và căn 8 — `rsp` hỏng làm `pop`/`iretq` đọc rác.
+/// 2. `rflags` có `IF` — thiếu `IF` thì tác vụ không bao giờ bị preempt (preemption chết im lặng).
 ///
-/// **Không** kiểm `ss`: frame **thật** của `main` chỉ có 20 qword (CPU không đẩy `SS:RSP` khi
-/// cùng CPL), nên hai ô `rsp`/`ss` mà QEMU pop thêm nằm **ngoài** frame — với `main` chúng là
-/// stack của `sched::run`, không phải dữ liệu frame. `ss` chỉ có nghĩa với frame **khởi tạo**
-/// 22 qword, và ở đó nó là hằng [`crate::umode::KERNEL_DS`] do chính ảnh ghi.
-pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64) -> bool {
-    if rip == 0 || !crate::format::is_canonical_bits(rip, crate::format::X86_64_VA_BITS) {
-        return false;
-    }
-    if cs != exc::KERNEL_CS {
+/// Nhánh **kernel** (`cs == KERNEL_CS`): `rsp` **khác 0**, **canonical**, căn 8. **Không** kiểm
+/// `ss`: frame **thật** của `main` chỉ có 20 qword (CPU không đẩy `SS:RSP` khi cùng CPL), nên
+/// hai ô `rsp`/`ss` mà QEMU pop thêm nằm **ngoài** frame — với `main` chúng là stack của
+/// `sched::run`, không phải dữ liệu frame.
+///
+/// Nhánh **ring 3** (`cs == USER_CS`, KT-304): `ss == USER_SS`, `rsp` nằm trong trang stack user
+/// `[USER_STACK_VA, USER_STACK_TOP]` và căn 8, `rip` nằm trong trang mã user
+/// `[USER_CODE_VA, USER_CODE_VA + 0x1000)`. Đây là **ba** lớp lỗi thật của tác vụ ring 3: `ss`
+/// kernel ⇒ `iretq` không hạ đặc quyền đúng; `rsp` kernel ⇒ tác vụ chạy trên stack kernel;
+/// `rip` kernel ⇒ tác vụ chạy mã kernel ở CPL3 (fault ngay lệnh đầu).
+pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64) -> bool {
+    if rip == 0 {
         return false;
     }
     // `IF` (bit 9) — thiếu nó thì tác vụ không bị ngắt được.
     if rflags & (1 << 9) == 0 {
         return false;
     }
-    if rsp == 0
-        || rsp % 8 != 0
-        || !crate::format::is_canonical_bits(rsp, crate::format::X86_64_VA_BITS)
-    {
-        return false;
+    if cs == exc::KERNEL_CS {
+        // Cửa sổ VA của kernel là 39-bit (D2-147); `rip`/`rsp` ngoài cửa sổ ⇒ `iretq` hỏng.
+        return rsp != 0
+            && rsp % 8 == 0
+            && crate::format::is_canonical_bits(rip, crate::format::X86_64_VA_BITS)
+            && crate::format::is_canonical_bits(rsp, crate::format::X86_64_VA_BITS);
     }
-    true
+    if cs == crate::umode::USER_CS as u64 {
+        // `ss` **có** nghĩa với frame ring 3: CPU đẩy `SS` khi đổi CPL, và frame khởi tạo do
+        // chính ảnh ghi. Sai selector ⇒ `iretq` không hạ đặc quyền đúng.
+        if ss != crate::umode::USER_SS as u64 {
+            return false;
+        }
+        // `rsp` là **user** rsp: phải nằm trong trang stack user (một trang 4 KiB).
+        if rsp < crate::umode::USER_STACK_VA || rsp > crate::umode::USER_STACK_TOP {
+            return false;
+        }
+        if rsp % 8 != 0 {
+            return false;
+        }
+        // `rip` phải nằm trong trang mã user đã map `US = 1` — không được chạy mã kernel ở CPL3.
+        let code_end = crate::umode::USER_CODE_VA + crate::umode::USER_CODE_BYTES;
+        if rip < crate::umode::USER_CODE_VA || rip >= code_end {
+            return false;
+        }
+        return true;
+    }
+    false
 }

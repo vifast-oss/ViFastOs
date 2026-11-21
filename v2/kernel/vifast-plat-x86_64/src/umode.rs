@@ -40,6 +40,12 @@ use crate::gdt;
 /// `US = 1`; identity map vẫn supervisor vì `PDPT[0]` giữ `US = 0`).
 pub const USER_CODE_VA: u64 = 0x0000_0040_0000_0000;
 
+/// Cỡ trang mã ring 3 — **một** trang 4 KiB (linker `ASSERT` section `.user` vừa một trang).
+///
+/// **KT-304** dùng hằng này để [`crate::sched::switch_frame_ok`] kiểm `rip` của frame ring 3 nằm
+/// trong trang mã user: chạy mã kernel ở CPL3 là fault ngay lệnh đầu.
+pub const USER_CODE_BYTES: u64 = 0x1000;
+
 /// VA **canonical nửa thấp** của trang stack ring 3 (map `US = 1`, đọc + ghi, `NX = 1`).
 pub const USER_STACK_VA: u64 = 0x0000_0040_0000_1000;
 

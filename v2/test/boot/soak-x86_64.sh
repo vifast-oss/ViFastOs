@@ -19,10 +19,10 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..25`; đúng **25** dòng `ok N - `, đủ số 1..25,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..26`; đúng **26** dòng `ok N - `, đủ số 1..26,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
-#      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-288 2 ca
-#      virtio-blk = 25);
+#      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
+#      vụ ring 3 + KT-288 2 ca virtio-blk = 26);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -44,7 +44,10 @@
 #      `# smp: ipi recv=1 intid=0x30` (IPI tới hart 1), `# smp: online mask=0xf alive=0xf expect=0xf
 #      harts=4` (bốn hart cùng online **và** cùng báo alive);
 #  10. **KT-286** — `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer chuyển ngữ
-#      cảnh **cả hai** chiều) và `# sched: ticks=<t> tasks=2` (scheduler nhường lại `main`);
+#      cảnh **cả hai** chiều) và `# sched: ticks=<t> tasks=3` (scheduler nhường lại `main`);
+#  10b. **KT-304** — `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>`: tác vụ
+#      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
+#      `schedule()` chọn **lại** (`resumed ≥ 1`) — thiếu dòng ⇒ ĐỎ;
 #  11. `lma=1` (long mode **thật**, đọc lại `IA32_EFER.LMA`) + đúng 1 `# viFastOs x86_64: halt`
 #      (thoát sạch, không triple-fault);
 #  12. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
@@ -84,7 +87,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=25   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-288 2
+TAP_TESTS=26   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-288 2
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -340,13 +343,19 @@ check_boot_log() {
         echo "# dòng '# sched: switch b→a n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
-    n="$(grep -cE '^# sched: ticks=[0-9]+ tasks=2$' "$log" || true)"
+    n="$(grep -cE '^# sched: ticks=[0-9]+ tasks=3$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: ticks=<t> tasks=2' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: ticks=<t> tasks=3' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
     grep -E '^# sched: ticks=' "$log" | grep -qE 'ticks=0 ' && {
         echo "# sched ticks=0 (timer không chạy trong lúc scheduler bật)"
+        bad=1
+    }
+    # **KT-304** — tác vụ ring 3: chạy thật, bị preempt khi ở CPL3, được chọn lại.
+    n="$(grep -cE '^# sched: umode task ran n=[1-9][0-9]* ring=3 preempted=[2-9][0-9]* resumed=[1-9][0-9]*$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: umode task ran n=… ring=3 preempted=… resumed=…' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
 
@@ -379,7 +388,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..25
+1..26
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -442,12 +451,15 @@ ok 21 - smp: alive
 ok 22 - sched: a→b
 # sched: switch b→a n=2
 ok 23 - sched: b→a
-# sched: ticks=7 tasks=2
-# sched: runs a=128618 b=204226 switches=6 ab=1 ba=2 a_rsp=0x12e158 b_rsp=0x132158
+# sched: ticks=10 tasks=3
+# sched: runs a=128618 b=204226 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x136170
+# sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
+# sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
+ok 24 - sched: umode task
 # blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
-ok 24 - blk: device
+ok 25 - blk: device
 # blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8 status=0x0f dma=0x133000 desc=0x133000 avail=0x133080 used=0x133098 requests=1 completions=1 errors=0 timeouts=0
-ok 25 - blk: sector0
+ok 26 - blk: sector0
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -564,6 +576,13 @@ EOF
 
     grep -v -F '# sched: ticks=' "$good" >"$tmp/ac.log" || true
     neg "thiếu '# sched: ticks='" "$tmp/ac.log"
+
+    grep -v -F '# sched: umode task ran ' "$good" >"$tmp/af.log" || true
+    neg "thiếu '# sched: umode task ran …' (tác vụ ring 3 không chạy lại)" "$tmp/af.log"
+
+    sed 's/^\(# sched: umode task ran .*\) resumed=[0-9][0-9]*$/\1 resumed=0/' \
+        "$good" >"$tmp/ag.log" || true
+    neg "tác vụ ring 3 resumed=0 (không chạy lại)" "$tmp/ag.log"
 
     sed 's/ lma=1$/ lma=0/' "$good" >"$tmp/ad.log" || true
     neg "lma=0 (long mode chưa bật)" "$tmp/ad.log"

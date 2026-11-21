@@ -157,8 +157,10 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-278** thay hai ca ấy bằng **bốn** ca SMP: `smp: 4 harts online` (18), `smp: tss per-hart`
 /// (19), `smp: ipi delivered` (20), `smp: all harts report` (21).
 /// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23).
-/// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25) — tổng **25**.
-pub const TAP_TESTS: usize = 25;
+/// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25).
+/// **KT-304** thêm **một** ca preemption ring 3: `sched: umode task` (24) — blk dời sang 25/26,
+/// tổng **26**.
+pub const TAP_TESTS: usize = 26;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -438,8 +440,12 @@ global_asm!(
     // Chạy ở CPL3 với `RSP = USER_STACK_TOP`; mọi địa chỉ đều **PC-relative** (`lea`/`rip`) nên
     // đúng ở VA user dù ảnh liên kết ở PA. Số hiệu syscall lấy từ **hằng sinh**
     // (`vifast_abi::SYS_DEBUG_PUT_STR`/`SYS_EXIT`) — không có số 12/14 viết tay (D2-11).
+    // **KT-304**: **không** `.p2align 12` ở đây — stub ring 3 của scheduler nằm trong một
+    // `global_asm!` khác (`umode.rs`) và có thể được phát **trước** khối này; căn 4 KiB giữa
+    // section sẽ đệm tới 4096 byte và làm `ASSERT(__user_end - __user_start <= 0x1000)` của
+    // linker **đỏ**. Section đã được linker script căn 4 KiB (`ALIGN(4K)`), nên `__user_start`
+    // vẫn căn trang; entry chỉ cần nằm trong trang ấy, không cần căn.
     ".section .user, \"ax\"",
-    ".p2align 12",
     ".globl __user_entry",
     "__user_entry:",
     // Chạm stack user (chứng minh trang stack map `US = 1`): ghi rồi đọc lại.

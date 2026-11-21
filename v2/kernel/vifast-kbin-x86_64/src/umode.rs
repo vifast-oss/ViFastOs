@@ -50,6 +50,36 @@ use vifast_plat_x86_64::umode::{
 
 use crate::{check, write_byte, Console};
 
+/// `RSP` **user** của tác vụ ring 3 khi scheduler `iretq` xuống (KT-304) — chừa 16 byte trên
+/// đỉnh trang stack user cho bộ đếm [`USER_COUNTER_VA`].
+pub(crate) const USER_TASK_RSP: u64 = USER_STACK_TOP - 16;
+
+/// VA **bộ đếm** mà tác vụ ring 3 tự tăng — 8 byte cuối trang stack user (trang `RW`, `US = 1`).
+///
+/// Kernel **zero** ô này trước khi bật scheduler (`sched::run`) rồi đọc lại sau khi scheduler
+/// dừng: `n > 0` là bằng chứng tác vụ ring 3 **đã chạy thật**, không phải hằng. Zero trước là
+/// bắt buộc — chương trình ring 3 của KT-270 đã ghi `0x1234` vào đúng ô này, nên không zero thì
+/// "chưa chạy" vẫn đọc ra số dương (dương tính giả).
+pub(crate) const USER_COUNTER_VA: u64 = USER_STACK_TOP - 8;
+
+// Stub **ring 3** của tác vụ scheduler (KT-304): tăng bộ đếm `USER_COUNTER_VA` trong vòng lặp
+// vô hạn; timer preempt nó, scheduler chạy lại nó, và kernel đọc bộ đếm sau khi dừng.
+//
+// Nằm trong **cùng** section `.user` với stub KT-270 (linker gom `KEEP(*(.user))`, `ASSERT` ≤
+// một trang 4 KiB) nên được map ở `USER_CODE_VA` với `US = 1`, chỉ đọc + exec. Không `push`
+// (không đụng `rsp` user) — bộ đếm ở cuối trang stack, không chồng lên `rsp`.
+core::arch::global_asm!(
+    ".section .user, \"ax\"",
+    ".p2align 4",
+    ".globl __user_sched_entry",
+    "__user_sched_entry:",
+    "mov rcx, {counter}",
+    "1:",
+    "inc qword ptr [rcx]",
+    "jmp 1b",
+    counter = const USER_COUNTER_VA,
+);
+
 /// Chuỗi ring 3 in qua `DebugPutStr` — nằm **cùng trang** với mã ring 3 (stub dùng `lea`).
 pub(crate) const USER_MSG: &str = "ring3 says hi\n";
 /// Độ dài chuỗi — `const` operand cho `mov rsi, #len` của stub.
@@ -77,10 +107,23 @@ extern "C" {
     static __user_end: u8;
     /// Điểm vào ring 3 (offset trong section).
     fn __user_entry();
+    /// **KT-304**: điểm vào ring 3 của tác vụ scheduler (cùng section `.user`).
+    fn __user_sched_entry();
     /// Trang stack user (PA trong `.bss`; map ở [`USER_STACK_VA`] với `US = 1`).
     static __user_stack: u8;
     /// Đỉnh stack kernel riêng cho đường vào từ ring 3 (`TSS.RSP0`).
     static __syscall_stack_top: u8;
+}
+
+/// VA của entry **tác vụ ring 3** của scheduler (KT-304) — `USER_CODE_VA + (PA - __user_start)`.
+///
+/// Cùng phép tính với [`run`] cho `__user_entry`: section `.user` được map **nguyên trang** ở
+/// `USER_CODE_VA`, nên offset trong section là offset trong trang. Hàm **không** kiểm bố cục —
+/// `run` đã `PANIC` nếu section không vừa một trang; ở đây chỉ cần offset.
+pub(crate) fn sched_entry_va() -> u64 {
+    let code_start = core::ptr::addr_of!(__user_start) as u64;
+    let entry_pa = __user_sched_entry as *const () as u64;
+    USER_CODE_VA + entry_pa.saturating_sub(code_start)
 }
 
 /// In tối đa [`MAX_USER_PRINT`] byte từ con trỏ **user**; trả số byte đã in.

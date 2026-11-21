@@ -40,15 +40,24 @@ use vifast_plat_x86_64::exc::{
     FRAME_VECTOR_OFFSET, KERNEL_CS,
 };
 use vifast_plat_x86_64::sched::{
-    init_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES, FRAME_WORDS,
-    INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_COUNT, TASK_MAIN, TASK_RFLAGS,
-    TASK_SLOTS,
+    init_frame_words, init_user_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES,
+    FRAME_WORDS, INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_COUNT, TASK_MAIN,
+    TASK_RFLAGS, TASK_SEQUENCE, TASK_SLOTS, TASK_U,
+};
+use vifast_plat_x86_64::umode::{
+    USER_CODE_VA, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP, USER_STACK_VA,
 };
 
 /// Stack top giả căn 16 byte (đúng như `#[repr(align(16))]` của stack tác vụ trong ảnh).
 const STACK_TOP: u64 = 0x0000_0000_0020_0000;
 /// Entry giả của tác vụ.
 const ENTRY: u64 = 0x0000_0000_0010_1234;
+/// Đỉnh stack **kernel** của tác vụ ring 3 — nơi frame khởi tạo 22 qword nằm.
+const U_KERNEL_TOP: u64 = 0x0000_0000_0030_0000;
+/// `rsp` **user** của tác vụ ring 3 — chừa 16 byte trên đỉnh trang stack user cho bộ đếm.
+const U_RSP: u64 = USER_STACK_TOP - 16;
+/// Entry **user** giả — phải nằm trong trang mã user (khác `ENTRY` của tác vụ kernel).
+const USER_ENTRY: u64 = USER_CODE_VA + 0x40;
 
 /// Frame khởi tạo: **22** qword, `vector`/`err` = 0, `rip` = entry, `cs` = kernel code,
 /// `rflags` = [`TASK_RFLAGS`], `rsp`/`ss` cho `iretq` pop 5 của QEMU; 15 GPR = 0.
@@ -124,31 +133,57 @@ fn task_rflags_enables_interrupts() {
     assert_eq!(TASK_RFLAGS, 0x202);
 }
 
-/// Luân phiên A → B → A; sau `max_switches` lần chuyển thì trả về **main** (để `sched::run`
-/// in tổng kết rồi nhường lại đường boot).
+/// **KT-304** — thứ tự tác vụ có **ba** slot: A/B (kernel) + **U (ring 3)**; sau `max_switches`
+/// lần chuyển thì trả về **main** (để `sched::run` in tổng kết rồi nhường lại đường boot).
+///
+/// Bảng `TASK_SEQUENCE` là **nguồn sự thật** của thứ tự (không còn luân phiên thuần): nó phải
+/// giữ **cả hai** chiều A↔B (TAP 23 của KT-286) **và** chọn U **≥ 2** lần (preempt rồi chạy lại).
 #[test]
-fn next_task_round_robin() {
-    assert_eq!(TASK_COUNT, 2);
-    assert_eq!(TASK_SLOTS, 3);
+fn next_task_sequence_includes_umode() {
+    assert_eq!(TASK_COUNT, 3, "hai tác vụ kernel + một tác vụ ring 3");
+    assert_eq!(TASK_SLOTS, 4, "main + A + B + U");
     assert_eq!(TASK_MAIN, 0);
     assert_eq!(TASK_A, 1);
     assert_eq!(TASK_B, 2);
+    assert_eq!(TASK_U, 3);
 
-    assert_eq!(
-        MAX_SWITCHES, 6,
-        "số chuyển phải chẵn để cả hai chiều có bằng chứng"
-    );
-    // Chưa chạm trần: luân phiên.
+    assert_eq!(MAX_SWITCHES, 9, "bảng có 9 bước (bước cuối về main)");
+    assert_eq!(TASK_SEQUENCE.len(), MAX_SWITCHES as usize);
+    // Sau tick đầu (main→A): A→B→A→B→A→B→U→A→U→main.
     assert_eq!(next_task(TASK_A, 1, MAX_SWITCHES), TASK_B);
     assert_eq!(next_task(TASK_B, 2, MAX_SWITCHES), TASK_A);
     assert_eq!(next_task(TASK_A, 3, MAX_SWITCHES), TASK_B);
     assert_eq!(next_task(TASK_B, 4, MAX_SWITCHES), TASK_A);
     assert_eq!(next_task(TASK_A, 5, MAX_SWITCHES), TASK_B);
+    assert_eq!(next_task(TASK_B, 6, MAX_SWITCHES), TASK_U);
+    assert_eq!(next_task(TASK_U, 7, MAX_SWITCHES), TASK_A);
+    assert_eq!(next_task(TASK_A, 8, MAX_SWITCHES), TASK_U);
     // Chạm trần: về main.
-    assert_eq!(next_task(TASK_B, MAX_SWITCHES, MAX_SWITCHES), TASK_MAIN);
+    assert_eq!(next_task(TASK_U, MAX_SWITCHES, MAX_SWITCHES), TASK_MAIN);
     assert_eq!(next_task(TASK_A, MAX_SWITCHES + 1, MAX_SWITCHES), TASK_MAIN);
     // `current` lạ (main) vẫn khởi động A — không bao giờ trả về chính nó.
     assert_eq!(next_task(TASK_MAIN, 0, MAX_SWITCHES), TASK_A);
+
+    // Bất biến của bảng: cả hai chiều A↔B **và** U được chọn ≥ 2 lần (preempt + chạy lại).
+    let mut ab = 0;
+    let mut ba = 0;
+    let mut u = 0;
+    let mut prev = TASK_A; // sau tick đầu
+    for &next in TASK_SEQUENCE.iter() {
+        if prev == TASK_A && next == TASK_B {
+            ab += 1;
+        }
+        if prev == TASK_B && next == TASK_A {
+            ba += 1;
+        }
+        if next == TASK_U {
+            u += 1;
+        }
+        prev = next;
+    }
+    assert!(ab >= 1, "bảng phải có A→B (TAP 23)");
+    assert!(ba >= 1, "bảng phải có B→A (TAP 23)");
+    assert!(u >= 2, "U phải được chọn ≥ 2 lần (preempt rồi chạy lại)");
 }
 
 /// **KT-298** — bàn giao `rsp` đi qua **thanh ghi** (`rax`/`rdx`), không qua ô `static` dùng
@@ -193,8 +228,110 @@ fn switch_frame_ok_accepts_task_frame() {
     let rflags = words[FRAME_RFLAGS_OFFSET / 8];
     let task_rsp = words[20];
     assert!(
-        switch_frame_ok(rip, cs, rflags, task_rsp),
+        switch_frame_ok(rip, cs, rflags, task_rsp, 0x10),
         "frame khởi tạo hợp lệ phải qua"
+    );
+}
+
+/// **KT-304** — frame khởi tạo của tác vụ **ring 3**: 22 qword, `cs = 0x1B`, `ss = 0x23`,
+/// `rsp` = user rsp; frame kết thúc **đúng** đỉnh stack kernel (không slack) để lần ngắt đầu
+/// tiên từ CPL3 đẩy frame vào **đúng** chỗ ấy.
+#[test]
+fn init_user_frame_layout_literal() {
+    let (words, rsp) = init_user_frame_words(U_KERNEL_TOP, USER_ENTRY, USER_RFLAGS, U_RSP);
+    assert_eq!(words.len(), FRAME_WORDS);
+
+    // 15 GPR = 0; vector/mã lỗi = 0 (stub bỏ qua 16 byte).
+    for (i, word) in words.iter().take(FRAME_GPR_COUNT).enumerate() {
+        assert_eq!(*word, 0, "GPR thứ {i} phải 0");
+    }
+    assert_eq!(words[15], 0, "vector phải 0");
+    assert_eq!(words[16], 0, "mã lỗi phải 0");
+    // Năm trường `iretq` đọc — **khác** frame kernel ở `cs`/`ss`/`rsp`.
+    assert_eq!(words[17], USER_ENTRY, "rip phải là entry ring 3");
+    assert_eq!(words[18], USER_CS as u64, "cs phải user code 0x1B");
+    assert_eq!(words[19], USER_RFLAGS, "rflags phải bật IF");
+    assert_eq!(words[20], U_RSP, "rsp phải là user rsp");
+    assert_eq!(words[21], USER_SS as u64, "ss phải user data 0x23");
+
+    // Frame kết thúc đúng đỉnh stack kernel: sau `iretq` (pop 5) kernel `rsp` = top.
+    assert_eq!(rsp, U_KERNEL_TOP - FRAME_BYTES as u64);
+    assert_eq!(rsp % 8, 0);
+    assert_eq!(rsp + FRAME_BYTES as u64, U_KERNEL_TOP);
+    // Timer ngắt từ CPL3: CPU đẩy 5 qword rồi stub đẩy 17 ⇒ frame mới ở **đúng** chỗ này.
+    assert_eq!(U_KERNEL_TOP - 5 * 8 - 17 * 8, rsp);
+}
+
+/// **KT-304** — `switch_frame_ok` phải nhận **cả** frame ring 3 (ca dương), và `ss` của frame
+/// kernel thật (rác, nằm ngoài frame) **không** được làm nó từ chối.
+#[test]
+fn switch_frame_ok_accepts_user_frame() {
+    let (words, _rsp) = init_user_frame_words(U_KERNEL_TOP, USER_ENTRY, USER_RFLAGS, U_RSP);
+    let rip = words[FRAME_RIP_OFFSET / 8];
+    let cs = words[FRAME_CS_OFFSET / 8];
+    let rflags = words[FRAME_RFLAGS_OFFSET / 8];
+    let user_rsp = words[20];
+    let ss = words[21];
+    assert!(
+        switch_frame_ok(rip, cs, rflags, user_rsp, ss),
+        "frame ring 3 hợp lệ phải qua"
+    );
+    // Frame kernel: `ss` đọc từ ô 168 của frame thật là **rác** (QEMU pop thêm) ⇒ phải bỏ qua.
+    let (kw, _) = init_frame_words(STACK_TOP, ENTRY, TASK_RFLAGS);
+    assert!(
+        switch_frame_ok(kw[17], kw[18], kw[19], kw[20], 0xDEAD_BEEF),
+        "frame kernel phải qua dù ss rác"
+    );
+}
+
+/// **KT-304** — từng điều kiện của nhánh **ring 3** phải **có răng**: `ss` sai, `rsp` ngoài trang
+/// stack user, `rip` ngoài trang mã user, `cs` lạ, thiếu `IF` — mỗi thứ phải bị từ chối.
+#[test]
+fn switch_frame_ok_rejects_bad_user_frame() {
+    let (words, _rsp) = init_user_frame_words(U_KERNEL_TOP, USER_ENTRY, USER_RFLAGS, U_RSP);
+    let rip = words[FRAME_RIP_OFFSET / 8];
+    let cs = words[FRAME_CS_OFFSET / 8];
+    let rflags = words[FRAME_RFLAGS_OFFSET / 8];
+    let user_rsp = words[20];
+    let ss = words[21];
+
+    // (1) `ss` kernel ⇒ không phải frame ring 3.
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, user_rsp, 0x10),
+        "ss kernel phải bị từ chối"
+    );
+    // (2) `rsp` kernel (ngoài trang stack user) ⇒ không phải frame ring 3.
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, STACK_TOP - 8, ss),
+        "rsp kernel phải bị từ chối"
+    );
+    // (3) `rsp` dưới đáy / trên đỉnh trang stack user.
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, USER_STACK_VA - 8, ss),
+        "rsp dưới stack user phải bị từ chối"
+    );
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, USER_STACK_TOP + 8, ss),
+        "rsp trên stack user phải bị từ chối"
+    );
+    // (4) `rip` ngoài trang mã user (ví dụ `.text` kernel) ⇒ không phải frame ring 3.
+    assert!(
+        !switch_frame_ok(0x0000_0000_0010_0000, cs, rflags, user_rsp, ss),
+        "rip kernel phải bị từ chối"
+    );
+    assert!(
+        !switch_frame_ok(USER_CODE_VA + 0x1000, cs, rflags, user_rsp, ss),
+        "rip ngoài trang mã user phải bị từ chối"
+    );
+    // (5) `cs` lạ (kernel data | RPL 3) ⇒ từ chối.
+    assert!(
+        !switch_frame_ok(rip, 0x13, rflags, user_rsp, ss),
+        "cs lạ phải bị từ chối"
+    );
+    // (6) thiếu `IF` ⇒ tác vụ không bị preempt.
+    assert!(
+        !switch_frame_ok(rip, cs, USER_RFLAGS & !(1 << 9), user_rsp, ss),
+        "thiếu IF phải bị từ chối"
     );
 }
 
@@ -210,35 +347,40 @@ fn switch_frame_ok_rejects_each_bad_field() {
 
     // (1) `rip` = 0 ⇒ không có chỗ để `iretq` về.
     assert!(
-        !switch_frame_ok(0, cs, rflags, task_rsp),
+        !switch_frame_ok(0, cs, rflags, task_rsp, 0x10),
         "rip=0 phải bị từ chối"
     );
     // (1b) `rip` **không canonical** ⇒ `iretq` sinh `#GP(0)` — đúng dấu hiệu boot 410.
     assert!(
-        !switch_frame_ok(0x0000_8000_0000_0000, cs, rflags, task_rsp),
+        !switch_frame_ok(0x0000_8000_0000_0000, cs, rflags, task_rsp, 0x10),
         "rip không canonical phải bị từ chối"
     );
-    // (2) `cs` khác kernel code ⇒ `#GP` có mã lỗi là selector.
+    // (2) `cs` khác kernel code **và** khác user code ⇒ `#GP` có mã lỗi là selector.
     assert!(
-        !switch_frame_ok(rip, 0x1B, rflags, task_rsp),
-        "cs user phải bị từ chối"
+        !switch_frame_ok(rip, 0x13, rflags, task_rsp, 0x10),
+        "cs lạ phải bị từ chối"
+    );
+    // (2b) `cs` user nhưng `rsp` kernel ⇒ không phải frame ring 3 (KT-304).
+    assert!(
+        !switch_frame_ok(rip, 0x1B, rflags, task_rsp, 0x10),
+        "cs user + rsp kernel phải bị từ chối"
     );
     // (3) thiếu `IF` ⇒ tác vụ không bao giờ bị preempt (preemption chết im lặng).
     assert!(
-        !switch_frame_ok(rip, cs, TASK_RFLAGS & !(1 << 9), task_rsp),
+        !switch_frame_ok(rip, cs, TASK_RFLAGS & !(1 << 9), task_rsp, 0x10),
         "rflags thiếu IF phải bị từ chối"
     );
     // (4) `rsp` hỏng: 0, lệch căn 8, hoặc không canonical.
     assert!(
-        !switch_frame_ok(rip, cs, rflags, 0),
+        !switch_frame_ok(rip, cs, rflags, 0, 0x10),
         "rsp=0 phải bị từ chối"
     );
     assert!(
-        !switch_frame_ok(rip, cs, rflags, task_rsp + 4),
+        !switch_frame_ok(rip, cs, rflags, task_rsp + 4, 0x10),
         "rsp lệch căn 8 phải bị từ chối"
     );
     assert!(
-        !switch_frame_ok(rip, cs, rflags, 0xFFFF_8000_0000_0000),
+        !switch_frame_ok(rip, cs, rflags, 0xFFFF_8000_0000_0000, 0x10),
         "rsp không canonical phải bị từ chối"
     );
 }

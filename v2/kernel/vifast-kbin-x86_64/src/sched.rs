@@ -34,10 +34,24 @@
 //! biến phép đo "hai tác vụ cùng chạy" thành đo tốc độ UART. Bằng chứng "đã chạy" là **bộ đếm**
 //! (`runs a=… b=…`) do chính tác vụ tăng, đọc sau khi scheduler dừng.
 //!
-//! # Phạm vi (D2-212)
+//! # KT-304 — tác vụ **ring 3** trong scheduler
 //!
-//! **Hai** tác vụ kernel + preemption bằng timer. **Không** U-mode task, **không** nhiều hart
-//! schedule, **không** priority, **không** sleep/wake. **Không** tuyên bố K5' đạt.
+//! Thêm tác vụ **U** chạy ở **CPL3** (dùng `umode` sẵn có của KT-270): frame khởi tạo 22 qword
+//! với `cs = 0x1B`, `ss = 0x23`, `rsp` = user rsp, nằm trên **stack kernel riêng** của U. Trước
+//! lần `iretq` đầu tiên, `TSS.RSP0` được nạp **đỉnh stack kernel ấy** — nếu không, tick timer từ
+//! CPL3 sẽ đẩy frame vào stack syscall mà `main` đang chạy và ghi đè frame của `main` (đúng lớp
+//! lỗi boot 410 của KT-298).
+//!
+//! Thứ tự [`psched::TASK_SEQUENCE`]: `A→B→A→B→A→B→U→A→U→main` — U bị preempt **hai** lần
+//! (`U→A`, `U→main`) và được chạy lại **một** lần (`A→U`). Bằng chứng: bộ đếm user do chính
+//! tác vụ ring 3 tăng (`n`), `cs` của frame lúc preempt (`ring=3`), số lần preempt/resume, và
+//! `last > first` (bộ đếm tăng giữa hai lần preempt ⇒ chạy lại thật).
+//!
+//! # Phạm vi (D2-212, D2-219)
+//!
+//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer. **Không** nhiều tác vụ ring
+//! 3, **không** IPC giữa chúng, **không** nhiều hart schedule, **không** priority, **không**
+//! sleep/wake. **Không** tuyên bố K5' đạt.
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -45,8 +59,10 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::exc;
 use vifast_plat_x86_64::sched as psched;
+use vifast_plat_x86_64::tss;
+use vifast_plat_x86_64::umode::USER_CS;
 
-use crate::{check, Console};
+use crate::{check, umode, Console};
 
 /// Cỡ stack **riêng** của mỗi tác vụ — 16 KiB (đủ cho handler ngắt chạy trên stack ấy khi
 /// preempt; tác vụ chỉ tăng bộ đếm nên dùng rất ít).
@@ -63,11 +79,27 @@ struct TaskStack([AtomicU64; TASK_STACK_QWORDS]);
 static TASK_A_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 /// Stack của tác vụ **B** — vùng `.bss` riêng, **không** chồng lên A.
 static TASK_B_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
+/// **KT-304** — stack **kernel** riêng của tác vụ **ring 3** (U). Đây là nơi frame khởi tạo 22
+/// qword nằm và là `TSS.RSP0` khi tác vụ chạy ở CPL3: timer ngắt từ ring 3 đẩy frame vào đây,
+/// **không** đụng stack syscall mà `main` đang chạy.
+static TASK_U_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 
 /// Số vòng tác vụ **A** đã chạy — tác vụ tự tăng, scheduler đọc sau khi dừng.
 static TASK_A_RUNS: AtomicU64 = AtomicU64::new(0);
 /// Số vòng tác vụ **B** đã chạy.
 static TASK_B_RUNS: AtomicU64 = AtomicU64::new(0);
+
+/// **KT-304** — số lần tác vụ **ring 3** bị tick preempt (phải ≥ 2: lần đầu rời U, lần cuối về
+/// `main`).
+static U_PREEMPTED: AtomicU64 = AtomicU64::new(0);
+/// **KT-304** — số lần tác vụ ring 3 được `schedule()` chọn **lại** sau khi đã bị preempt.
+static U_RESUMED: AtomicU64 = AtomicU64::new(0);
+/// **KT-304** — `cs` của frame lúc preempt tác vụ ring 3 (`0x1B` = ring 3 thật).
+static U_PREEMPT_CS: AtomicU64 = AtomicU64::new(0);
+/// **KT-304** — bộ đếm user tại lần preempt **đầu** (để so với lần cuối: tăng ⇒ đã chạy lại).
+static U_COUNT_FIRST: AtomicU64 = AtomicU64::new(0);
+/// **KT-304** — bộ đếm user tại lần preempt **cuối**.
+static U_COUNT_LAST: AtomicU64 = AtomicU64::new(0);
 
 /// `1` ⇔ scheduler đang bật (handler timer được phép chuyển tác vụ).
 static SCHED_ACTIVE: AtomicU64 = AtomicU64::new(0);
@@ -124,6 +156,23 @@ fn build_frame(stack_top: u64, entry: u64) -> u64 {
     rsp
 }
 
+/// **KT-304** — ghi frame khởi tạo **ring 3** lên đỉnh stack **kernel** của tác vụ U; trả `rsp`
+/// của frame (nằm trên stack kernel, không phải stack user).
+fn build_user_frame(kernel_stack_top: u64, entry: u64) -> u64 {
+    let (words, rsp) = psched::init_user_frame_words(
+        kernel_stack_top,
+        entry,
+        vifast_plat_x86_64::umode::USER_RFLAGS,
+        umode::USER_TASK_RSP,
+    );
+    let mut i = 0;
+    while i < psched::FRAME_WORDS {
+        asm::write_u64(rsp + (i as u64) * 8, words[i]);
+        i += 1;
+    }
+    rsp
+}
+
 /// Đọc `rip` đã lưu trong frame tại `rsp` — giá trị stub sẽ `iretq` tới.
 fn frame_rip(rsp: u64) -> u64 {
     asm::read_u64(rsp + exc::FRAME_RIP_OFFSET as u64)
@@ -152,6 +201,12 @@ fn slot_stack(slot: usize) -> Option<(u64, u64)> {
             let base = core::ptr::addr_of!(TASK_B_STACK.0) as u64;
             Some((base, base + TASK_STACK_BYTES as u64))
         }
+        // **KT-304** — tác vụ ring 3 chạy trên **stack kernel riêng** của nó (frame do CPU đẩy
+        // khi ngắt từ CPL3 nằm ở đây, không phải trên stack user).
+        psched::TASK_U => {
+            let base = core::ptr::addr_of!(TASK_U_STACK.0) as u64;
+            Some((base, base + TASK_STACK_BYTES as u64))
+        }
         _ => None,
     }
 }
@@ -168,7 +223,11 @@ fn slot_stack(slot: usize) -> Option<(u64, u64)> {
 ///    `rsp` rác) ⇒ hai ngữ cảnh chồng lên nhau. Không có lớp này, `#GP` chỉ hiện ra **sau** khi
 ///    stack đã bị ghi đè, không truy được về nguồn.
 fn frame_ok(rsp: u64, slot: usize) -> bool {
-    if slot != psched::TASK_MAIN && slot != psched::TASK_A && slot != psched::TASK_B {
+    if slot != psched::TASK_MAIN
+        && slot != psched::TASK_A
+        && slot != psched::TASK_B
+        && slot != psched::TASK_U
+    {
         return false;
     }
     if let Some((bottom, top)) = slot_stack(slot) {
@@ -181,7 +240,14 @@ fn frame_ok(rsp: u64, slot: usize) -> bool {
     let rflags = asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64);
     // Hai ô `rsp`/`ss` mà `iretq` của QEMU pop thêm nằm ngay sau `rflags` (frame 22 qword).
     let task_rsp = asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8);
-    psched::switch_frame_ok(rip, cs, rflags, task_rsp)
+    let ss = asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 16);
+    // **Đột biến (ii)** (`--features reject-user-cs`): từ chối **mọi** frame ring 3 ⇒ lần chuyển
+    // sang tác vụ U in `# sched: BAD frame` rồi halt (ĐỎ, không marker). Chứng minh nhánh ring 3
+    // của `switch_frame_ok` là **có răng**, không phải nhánh chết.
+    if cfg!(feature = "reject-user-cs") && cs == USER_CS as u64 {
+        return false;
+    }
+    psched::switch_frame_ok(rip, cs, rflags, task_rsp, ss)
 }
 
 /// Frame của `slot` **không** qua được [`frame_ok`]: in chẩn đoán rồi **halt** — thà đỏ một boot
@@ -197,11 +263,12 @@ fn bad_frame(slot: usize, rsp: u64) -> ! {
         if rsp >= bottom && rsp < top {
             let _ = writeln!(
                 console,
-                "# sched: BAD frame fields rip=0x{:x} cs=0x{:x} rflags=0x{:x} task_rsp=0x{:x}",
+                "# sched: BAD frame fields rip=0x{:x} cs=0x{:x} rflags=0x{:x} task_rsp=0x{:x} ss=0x{:x}",
                 asm::read_u64(rsp + exc::FRAME_RIP_OFFSET as u64),
                 asm::read_u64(rsp + exc::FRAME_CS_OFFSET as u64),
                 asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64),
                 asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8),
+                asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 16),
             );
         }
     }
@@ -248,6 +315,26 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
     SCHED_SWITCHES.store(switches, Ordering::Release);
     let next = psched::next_task(current, switches, psched::MAX_SWITCHES);
 
+    // ---- **KT-304**: tác vụ **ring 3** — đo preempt/resume **trước** khi đổi ngữ cảnh.
+    //
+    // `frame_rsp` là frame do CPU đẩy khi ngắt từ CPL3 (trên stack kernel riêng của U), nên ô
+    // `cs` của nó là **bằng chứng đã thật sự ở ring 3** lúc bị preempt. Bộ đếm user đọc được vì
+    // kernel đọc thẳng trang stack user (`CR4.SMAP = 0`) — cùng đường `DebugPutStr` của KT-270.
+    if current == psched::TASK_U {
+        let cs = asm::read_u64(frame_rsp + exc::FRAME_CS_OFFSET as u64);
+        U_PREEMPT_CS.store(cs, Ordering::Release);
+        let count = asm::read_u64(umode::USER_COUNTER_VA);
+        if U_PREEMPTED.load(Ordering::Acquire) == 0 {
+            U_COUNT_FIRST.store(count, Ordering::Release);
+        }
+        U_COUNT_LAST.store(count, Ordering::Release);
+        U_PREEMPTED.fetch_add(1, Ordering::Relaxed);
+    }
+    // `schedule()` chọn **lại** U sau khi nó đã bị preempt ⇒ đây là lần **chạy lại** ở ring 3.
+    if next == psched::TASK_U && U_PREEMPTED.load(Ordering::Acquire) > 0 {
+        U_RESUMED.fetch_add(1, Ordering::Relaxed);
+    }
+
     // In **một lần** cho mỗi chiều: đủ bằng chứng, không nghẽn COM1 (mỗi tick một dòng sẽ biến
     // phép đo thành đo tốc độ UART — bài học KT-266).
     if current == psched::TASK_A && next == psched::TASK_B && SCHED_AB.load(Ordering::Relaxed) == 0
@@ -292,8 +379,29 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
 pub fn run(console: &mut Console, tap_first: usize) {
     let a_rsp = build_frame(stack_top(&TASK_A_STACK), task_a as *const () as u64);
     let b_rsp = build_frame(stack_top(&TASK_B_STACK), task_b as *const () as u64);
+    // **KT-304**: tác vụ ring 3 — frame khởi tạo nằm trên **stack kernel riêng** của U, `cs`/
+    // `ss`/`rsp` là của ring 3 (xem `psched::init_user_frame_words`).
+    let u_kernel_top = stack_top(&TASK_U_STACK);
+    let u_rsp = build_user_frame(u_kernel_top, umode::sched_entry_va());
     SCHED_RSP[psched::TASK_A].store(a_rsp, Ordering::Release);
     SCHED_RSP[psched::TASK_B].store(b_rsp, Ordering::Release);
+    SCHED_RSP[psched::TASK_U].store(u_rsp, Ordering::Release);
+
+    // Bộ đếm user: **zero trước** khi chạy. Chương trình ring 3 của KT-270 đã ghi `0x1234` vào
+    // đúng ô này; không zero thì "tác vụ chưa chạy" vẫn đọc ra số dương (dương tính giả).
+    asm::write_u64(umode::USER_COUNTER_VA, 0);
+
+    // `TSS.RSP0` cho đường vào từ CPL3: stack kernel **riêng** của tác vụ ring 3 — **không**
+    // phải stack syscall mà `main` đang chạy (frame của `main` đã lưu ở `SCHED_RSP[TASK_MAIN]`;
+    // dùng chung stack sẽ ghi đè nó — đúng lớp lỗi boot 410 của KT-298).
+    //
+    // **Đột biến (i)** (`--features no-rsp0`): nạp `RSP0 = 0` ⇒ tick đầu tiên từ CPL3 đẩy frame
+    // vào địa chỉ 0 ⇒ `#DF` (ĐỎ, không marker).
+    if cfg!(feature = "no-rsp0") {
+        tss::set_rsp0(0, 0);
+    } else {
+        tss::set_rsp0(0, u_kernel_top);
+    }
     SCHED_ACTIVE.store(1, Ordering::Release);
 
     // Ngắt đã tắt từ `kmain` (sau khi đo timer); bật lại để PIT preempt `main` đang `hlt`.
@@ -310,13 +418,31 @@ pub fn run(console: &mut Console, tap_first: usize) {
     let switches = SCHED_SWITCHES.load(Ordering::Relaxed);
     let ab = SCHED_AB.load(Ordering::Relaxed);
     let ba = SCHED_BA.load(Ordering::Relaxed);
-    let _ = writeln!(console, "# sched: ticks={ticks} tasks=2");
+    // **KT-304**: bằng chứng tác vụ ring 3 — bộ đếm do **chính tác vụ** tăng, `cs` của frame
+    // lúc preempt, số lần preempt/resume.
+    let u_runs = asm::read_u64(umode::USER_COUNTER_VA);
+    let u_preempted = U_PREEMPTED.load(Ordering::Relaxed);
+    let u_resumed = U_RESUMED.load(Ordering::Relaxed);
+    let u_cs = U_PREEMPT_CS.load(Ordering::Relaxed);
+    let u_first = U_COUNT_FIRST.load(Ordering::Relaxed);
+    let u_last = U_COUNT_LAST.load(Ordering::Relaxed);
+    let u_ring3 = u_cs == USER_CS as u64;
+    let _ = writeln!(console, "# sched: ticks={ticks} tasks=3");
     let _ = writeln!(
         console,
-        "# sched: runs a={a} b={b} switches={switches} ab={ab} ba={ba} a_rsp=0x{a_rsp:x} b_rsp=0x{b_rsp:x}"
+        "# sched: runs a={a} b={b} switches={switches} ab={ab} ba={ba} a_rsp=0x{a_rsp:x} b_rsp=0x{b_rsp:x} u_rsp=0x{u_rsp:x}"
+    );
+    let _ = writeln!(
+        console,
+        "# sched: umode task ran n={u_runs} ring={} preempted={u_preempted} resumed={u_resumed}",
+        if u_ring3 { 3 } else { 0 },
+    );
+    let _ = writeln!(
+        console,
+        "# sched: umode counts first={u_first} last={u_last} cs=0x{u_cs:x} kernel_stack=0x{u_kernel_top:x}"
     );
 
-    // TAP 22: **cả hai** tác vụ đã chạy thật (bộ đếm do chính tác vụ tăng, không phải hằng).
+    // TAP 22: **cả hai** tác vụ kernel đã chạy thật (bộ đếm do chính tác vụ tăng, không phải hằng).
     check(console, tap_first, "sched: two tasks ran", a > 0 && b > 0);
     // TAP 23: đã **preempt** — có chuyển tác vụ theo **cả hai** chiều, và có ≥ 2 tick.
     check(
@@ -324,5 +450,14 @@ pub fn run(console: &mut Console, tap_first: usize) {
         tap_first + 1,
         "sched: preempted",
         switches >= 2 && ab >= 1 && ba >= 1 && ticks >= 2,
+    );
+    // TAP 24 (**KT-304**): tác vụ **ring 3** — đã chạy thật (`n > 0`), bị preempt khi đang ở
+    // CPL3 (`cs = 0x1B`), được `schedule()` chọn **lại** (`resumed ≥ 1`) và bộ đếm **tăng**
+    // giữa hai lần preempt (`last > first` ⇒ chạy lại thật, không phải chỉ được chọn).
+    check(
+        console,
+        tap_first + 2,
+        "sched: umode task",
+        u_runs > 0 && u_ring3 && u_preempted >= 2 && u_resumed >= 1 && u_last > u_first,
     );
 }

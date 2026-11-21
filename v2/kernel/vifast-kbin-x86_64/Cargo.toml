@@ -83,6 +83,14 @@ bad-blk-magic = []
 # **KT-288** — đột biến (iii) của virtio-blk: BAR lấy **sai leaf** (địa chỉ chưa map) ⇒ lần đọc
 # common config đầu tiên `#PF` ⇒ ảnh halt, không marker (ĐỎ). Chỉ dùng cho đột biến.
 bad-blk-bar = []
+# **KT-304** — đột biến (i) của tác vụ ring 3: **không** nạp `TSS.RSP0` cho tác vụ U (nạp 0).
+# Tick timer đầu tiên từ CPL3 đẩy frame vào địa chỉ 0 ⇒ `#DF` (vector 8) ⇒ ảnh halt, không
+# marker (ĐỎ). Chứng minh `RSP0` là **bắt buộc** khi vào ring 3 từ scheduler. Chỉ dùng cho đột biến.
+no-rsp0 = []
+# **KT-304** — đột biến (ii): `switch_frame_ok` **từ chối** frame ring 3 (`cs = 0x1B`) ⇒ lần
+# chuyển sang tác vụ U in `# sched: BAD frame slot=3 …` rồi halt, không marker (ĐỎ). Chứng minh
+# nhánh ring 3 của phép kiểm frame là **có răng**. Chỉ dùng cho đột biến.
+reject-user-cs = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

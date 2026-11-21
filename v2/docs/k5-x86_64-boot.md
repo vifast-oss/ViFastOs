@@ -43,7 +43,8 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **IPI**: vector riêng `0x30` + stub riêng, `ICR` fixed-delivery (`low=0x4030`), hart 1 nhận + đếm trong handler, in `# smp: ipi recv=1 intid=0x30` | **DONE** (KT-278) |
 | **TSS per-hart**: mỗi hart một TSS 104 byte + **GDT riêng** + `ltr` trên AP; `IST1` riêng cho `#DF`; kiểm **địa chỉ** (`distinct=Ok(())`) | **DONE** (KT-278) |
 | **virtio-blk**: `VirtioKind::Blk` (0x1001/0x1042), BAR firmware gán **rời** BAR net (`bar_distinct=1`), split virtqueue 8 descriptor, đọc **sector 0** của đĩa QEMU thật | **DONE** (KT-288) |
-| runner + TAP **25** + **15 ca âm** | **DONE** (KT-257/261/266/270/274/276/278/286/288) |
+| **tác vụ ring 3 trong scheduler**: `schedule()` chọn nó, tick preempt nó, nó chạy lại ở ring 3 (`# sched: umode task ran n=… ring=3 preempted=… resumed=…`) | **DONE** (KT-304) |
+| runner + TAP **26** + **16 ca âm** | **DONE** (KT-257/261/266/270/274/276/278/286/288/304) |
 | `-cpu max`, `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug, DHCP, soak 600 boot | **chưa** (K5' đầy đủ) |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
@@ -284,20 +285,21 @@ ok 17 - net: arp
 ## 7. Runner + ca âm
 
 ```bash
-bash v2/test/boot/run-x86_64.sh     # build + boot + 17 kiểm + 15 ca âm
+bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 16 ca âm
 ```
 
-- **17/17 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng** + 1 boot **không
+- **18/18 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng** + 1 boot **không
   đĩa**).
-- **15 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
+- **16 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
   (log QEMU thật, không sửa tay), (c) mất marker, (d) log rỗng, (e) marker 2 lần,
   (f) **mất dòng `# exc:`** (KT-261), (g) **sai vector** (KT-261), (h) **mất dòng `# timer:`**
   (KT-266), (i) **mất dòng `# apic:`** (KT-266), (j) **mất dòng `# umode:`** (KT-270),
   (k) **không có mạng** (KT-274): boot **thật** không có `-device virtio-net-pci` ⇒ ảnh in
   `# net: no device` rồi TAP 16 đỏ; (l) mất dòng `# smp:` (KT-276), (m) mất dòng
   `# smp: ipi recv=` (KT-278), (n) mất dòng `# sched:` (KT-286); (o) **không có đĩa** (KT-288):
-  boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒ ảnh in `# blk: no device` rồi TAP 24
-  đỏ. Ba ca (k)/(o) đòi **cả** dòng evidence **và** `check_log` đỏ.
+  boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒ ảnh in `# blk: no device` rồi TAP 25
+  đỏ; (p) **tác vụ ring 3 không chạy lại** (KT-304): log tốt bị sửa `resumed=0` ⇒ ĐỎ. Ba ca
+  (k)/(o) đòi **cả** dòng evidence **và** `check_log` đỏ.
 - Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` +
   `-drive file=<tmp>,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0` (một chỗ quyết
   định: `QEMU_MACHINE`/`QEMU_NET`/`QEMU_DISK`). `-M pc` **không** có ECAM ⇒ TAP 15 đỏ (xem §11.2).
@@ -843,8 +845,9 @@ ok 23 - sched: preempted
 
 ### 13.6 Còn thiếu của bước 8 (ghi rõ)
 
-1. **Không** U-mode task (tác vụ vẫn ở CPL0), **không** nhiều hart schedule (chỉ BSP), **không**
-   priority, **không** sleep/wake — đúng phạm vi D2-212.
+1. **Không** U-mode task (tác vụ vẫn ở CPL0) — **KT-304 đã làm** (xem §17: tác vụ ring 3 được
+   `schedule()` chọn, tick preempt, chạy lại ở ring 3); **không** nhiều hart schedule (chỉ BSP),
+   **không** priority, **không** sleep/wake — đúng phạm vi D2-212.
 2. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
 
 ## 14. KT-288 — virtio-blk: BAR leaf riêng + virtqueue + đọc **sector 0**
@@ -859,7 +862,7 @@ Trạng thái: **DONE** (KT-288, 2026-11-21). Quyết định: **D2-213**.
 | Split virtqueue 8 descriptor trong **một** trang DMA 4 KiB (header 16 B + data 512 B + status 1 B) | **DONE** |
 | Đọc **sector 0** của đĩa QEMU thật (`-drive file=…,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0`) | **DONE** |
 | Bằng chứng: `# blk: device …` + `# blk: sector0 hex=<32 hex> … magic=1` | **DONE** |
-| TAP 24/25 + runner **15 ca âm** (thêm ca "không có đĩa") | **DONE** |
+| TAP 25/26 (**KT-304** dời từ 24/25) + runner **16 ca âm** (thêm ca "không có đĩa" + "tác vụ ring 3 không chạy lại") | **DONE** |
 | virtio-gpu trên x86_64, MSI-X, hotplug | **chưa** (bước sau) |
 
 ### 14.2 Khác khuôn aarch64 (KT-273) ở đúng ba điểm, đều do kiến trúc
@@ -876,7 +879,7 @@ Trạng thái: **DONE** (KT-288, 2026-11-21). Quyết định: **D2-213**.
    PIT→IOAPIC→LAPIC; đồng hồ là PIT **kênh 2** (`PitClock`, cùng §11.4) do ảnh sở hữu. Mọi hàm
    chờ nhận `now: &mut dyn FnMut() -> u64` (µs) — driver **không** giữ trạng thái thời gian.
 
-### 14.3 Đo được (log `boot-1.log`, TAP 24/25)
+### 14.3 Đo được (log `boot-1.log`, TAP 25/26 — **KT-304** dời từ 24/25)
 
 ```text
 # pci: blk 00:03.0 vendor=0x1af4 device=0x1001 bar=4 kind=mem64 base=0xfe004000 size=0x4000 command=0x0107 caps=4
@@ -901,8 +904,8 @@ ok 25 - blk: sector0
 
 | Đột biến | Cách làm | Kết quả |
 |---|---|---|
-| (i) **không có đĩa** | runner boot **thật** không `-drive`/`-device virtio-blk-pci` (ca âm (o)) | `# blk: no device` + `not ok 24 - blk: device` + `# TAP 24 FAIL — dừng (không in marker)`; QEMU treo tới hết ngân sách (ĐỎ) |
-| (ii) **chữ ký sai** | `--features bad-blk-magic` (ảnh in `magic=0` dù hex vẫn đúng) | `# blk: sector0 … magic=0 …` + `not ok 25 - blk: sector0` + `# TAP 25 FAIL` (ĐỎ) |
+| (i) **không có đĩa** | runner boot **thật** không `-drive`/`-device virtio-blk-pci` (ca âm (o)) | `# blk: no device` + `not ok 25 - blk: device` + `# TAP 25 FAIL — dừng (không in marker)`; QEMU treo tới hết ngân sách (ĐỎ) |
+| (ii) **chữ ký sai** | `--features bad-blk-magic` (ảnh in `magic=0` dù hex vẫn đúng) | `# blk: sector0 … magic=0 …` + `not ok 26 - blk: sector0` + `# TAP 26 FAIL` (ĐỎ) |
 | (iii) **BAR sai** | `--features bad-blk-bar` (BAR = địa chỉ chưa map `0x7000_0000_0000`) | `# exc: vec=14 err=0x2 rip=0x10084f cs=0x8 rflags=0x10046` + `# exc: cr2=0x700000000014` ⇒ halt, không marker (ĐỎ) |
 
 ### 14.5 Còn thiếu của bước 9 (ghi rõ)
@@ -1131,3 +1134,99 @@ thời gian cũ 100 ms ⇒ độ trễ lập lịch của hart phụ **thường
 2. **Không** sửa `Console` thành có khoá: hai hart cùng in vẫn xen ký tự (triệu chứng cũ, không
    phải gốc của KT-301).
 3. **Không** tuyên bố K5' đạt: K5' còn các mục ngoài soak (xem §12.12).
+
+## 17. KT-304 — tác vụ **ring 3** trong scheduler (K5')
+
+Trạng thái: **DONE** (KT-304, 2026-11-21). Quyết định: **D2-201** (K5' bước 1), **D2-212**
+(KT-286 preemption), **D2-216** (KT-297/298), **D2-219** (KT-301), **D2-198** (uỷ quyền commit
+nhánh task), **D2-05** (test đỏ trước), **D2-07** (không retry).
+
+> **D2-219 không tồn tại** trong `v2/agent/DECISIONS.md` tại base `58a1f867` (mục cuối là
+> **D2-218**). Nhiệm vụ yêu cầu đọc D2-219 ⇒ đã đọc D2-201/D2-212/D2-216 và **ghi lại** việc
+> thiếu mục này thay vì tự suy ra nội dung.
+
+**Không** tuyên bố K5' đạt.
+
+### 17.1 Khảo sát trước: ba câu hỏi của task
+
+**(1) `switch_frame_ok` (KT-298) có chấp nhận frame ring 3 không? — KHÔNG.** Hàm kiểm
+`cs == KERNEL_CS` (`0x08`) ở điều kiện (2), nên frame `cs = 0x1B` bị từ chối **ngay**. Hàm cũng
+**không nhận `ss`** (frame ring 3 cần `ss = 0x23`; frame kernel thật có ô `ss` **ngoài** frame vì
+CPU chỉ đẩy 20 qword khi cùng CPL), và điều kiện `rsp` cũ (canonical/căn 8) **không đủ** — `rsp`
+của frame ring 3 là **user rsp**, phải nằm trong trang stack user. `frame_ok` của ảnh cũng chỉ
+nhận ba slot `MAIN/A/B`; `slot_stack` trả `None` cho slot khác.
+
+**Đính chính selector**: task viết "`cs=0x23`/`ss=0x1b`" — trong code **ngược lại**:
+`USER_CS = 0x1B` (code), `USER_SS = 0x23` (data) — xem `vifast-plat-x86_64::umode` và
+`tests/umode.rs::user_selectors_literal`. Bản làm theo **code**.
+
+**(2) `TSS.rsp0` có được nạp khi vào ring 3 không? — có, nhưng chỉ cho đường KT-270.**
+`umode::run` gọi `tss::set_rsp0(0, __syscall_stack_top)` ngay trước `enter_user`. `sched::run`
+thì **không** đụng `RSP0`: nếu `schedule()` `iretq` xuống ring 3 mà không nạp lại, tick timer từ
+CPL3 sẽ đẩy frame vào **stack syscall** — đúng stack `main` đang chạy sau `Exit` — và ghi đè
+frame của `main` đã lưu ở `SCHED_RSP[TASK_MAIN]` (đúng lớp lỗi boot 410 của KT-298). Vì vậy tác
+vụ ring 3 có **stack kernel riêng** 16 KiB và `RSP0` được nạp **đỉnh stack ấy** trước lần `iretq`
+đầu tiên.
+
+**(3) Frame `iretq` ring 3 khác frame kernel ở đâu?** Cùng 22 qword/offset, nhưng `cs = 0x1B`,
+`ss = 0x23`, `rsp` = **user rsp** (`USER_STACK_TOP - 16`), và `rsp` khởi tạo = `kernel_stack_top -
+176` **không slack 8**: `iretq` đổi CPL **luôn** pop 5 qword (SDM Vol 3A §5.5), nên sau `iretq`
+kernel `rsp = kernel_stack_top`; timer ngắt từ CPL3 đẩy 5 qword rồi stub đẩy 17 qword ⇒ frame mới
+rơi **đúng** chỗ frame khởi tạo.
+
+### 17.2 Cơ chế
+
+| Thành phần | Thay đổi |
+|---|---|
+| `vifast-plat-x86_64::sched` | thêm `TASK_U` (slot 3), `TASK_SEQUENCE` (9 bước), `init_user_frame_words`, `switch_frame_ok(rip, cs, rflags, rsp, ss)` có **nhánh ring 3** |
+| `vifast-kbin-x86_64::umode` | stub `.user` thứ hai `__user_sched_entry` (tăng bộ đếm `USER_COUNTER_VA` trong vòng lặp), `USER_TASK_RSP`, `USER_COUNTER_VA`, `sched_entry_va()` |
+| `vifast-kbin-x86_64::sched` | `TASK_U_STACK` 16 KiB, `build_user_frame`, `slot_stack(TASK_U)`, `frame_ok` đọc thêm `ss`, `on_tick` đo preempt/resume, `run` nạp `TSS.RSP0` + zero bộ đếm + in bằng chứng + TAP 24 |
+| `vifast-kbin-x86_64::main` | `TAP_TESTS = 26`; bỏ `.p2align 12` trong `.user` (stub thứ hai có thể được phát **trước** khối của `main.rs`; căn 4 KiB giữa section sẽ đệm tới 4096 và làm `ASSERT` của linker đỏ — section đã được linker script `ALIGN(4K)`) |
+| `vifast-kbin-x86_64::net` | blk dời `tap_first + 9` → `+ 10` (TAP 25/26) |
+
+Thứ tự `TASK_SEQUENCE`: `A→B→A→B→A→B→U→A→U→main` (9 lần chuyển, `MAX_SWITCHES = 9`). U bị
+preempt **hai** lần (`U→A` bước 7, `U→main` bước 9) và được chạy lại **một** lần (`A→U` bước 8).
+Bảng giữ **cả hai** chiều `A→B`/`B→A` (TAP 23 của KT-286) — không nới phép kiểm cũ.
+
+### 17.3 Đo được (log QEMU nguyên văn)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: ticks=10 tasks=3
+# sched: runs a=283832 b=157811 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x136170
+# sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
+# sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: umode task
+ok 25 - blk: device
+ok 26 - blk: sector0
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| tác vụ ring 3 chạy thật | `n=5015211` — bộ đếm do **chính tác vụ** tăng trong vòng lặp `inc [rcx]` ở CPL3 |
+| đang ở ring 3 khi bị preempt | `cs=0x1b` — `cs` của frame do CPU đẩy khi timer ngắt từ CPL3 |
+| preempt | `preempted=2` — rời U hai lần (`U→A`, `U→main`) |
+| chạy lại | `resumed=1` — `schedule()` chọn U lại sau preempt; `last=5015211 > first=4279886` ⇒ bộ đếm **tăng** giữa hai lần preempt (chạy lại thật, không phải chỉ được chọn) |
+| stack kernel riêng | `u_rsp=0x136170`, `kernel_stack=0x136220` — frame nằm trong `TASK_U_STACK` 16 KiB, **không** đụng stack syscall của `main` |
+| TAP | 26/26 xanh; runner 18/18 kiểm sạch + **16 ca âm** ĐỎ |
+
+### 17.4 Đột biến bắt buộc (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **không nạp `TSS.RSP0`** | `--features no-rsp0` (nạp `RSP0 = 0`) | tick đầu tiên từ CPL3 đẩy frame vào địa chỉ 0 ⇒ `# exc: vec=8 err=0x0 rip=0x400000005a cs=0x1b rflags=0x206` + `# exc: frame rsp=0x11bf50 ss=0x23 task_rsp=0x4000001ff0` ⇒ halt, **không marker** (ĐỎ) |
+| (ii) **`switch_frame_ok` từ chối `cs=0x1B`** | `--features reject-user-cs` | `# sched: BAD frame slot=3 rsp=0x136170` + `# sched: BAD frame fields rip=0x4000000050 cs=0x1b rflags=0x202 task_rsp=0x4000001ff0 ss=0x23` ⇒ halt, **không marker** (ĐỎ) |
+
+### 17.5 Còn thiếu / rủi ro
+
+1. **Một** tác vụ ring 3, **không** IPC giữa các tác vụ ring 3, **không** nhiều hart schedule
+   (chỉ BSP), **không** priority, **không** sleep/wake — đúng phạm vi task.
+2. Tác vụ ring 3 **không** gọi syscall (không có số hiệu mới — `spec/` không mở trong task này);
+   bằng chứng "chạy lại" là **bộ đếm user** kernel đọc trực tiếp, không phải in từ ring 3.
+3. `TASK_SEQUENCE` là **bảng cố định** (không phải runqueue): đủ cho phép đo "chọn → preempt →
+   chạy lại", **không** phải scheduler sản phẩm.
+4. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot) và các mục
+   ngoài soak (§12.12).
