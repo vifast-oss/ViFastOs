@@ -4,12 +4,13 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười bảy vòng, 61 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười tám vòng, 64 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
 > Vòng 14–16: KT-291..KT-299 (soak ba arch + sửa bốn lỗi thật soak bắt được).
-> Vòng 17: KT-300..KT-303 (**cả ba soak về 0/N**). HEAD cuối `ebd7886e` (đã push), T2 xanh, cây sạch.
+> Vòng 17: KT-300..KT-303 (**cả ba soak về 0/N**). Vòng 18: KT-304..KT-306 (U-mode task trong
+> scheduler, block unmap, `NetPing` dịch vụ). HEAD cuối `2e8b67c8` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -71,6 +72,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 52 | **`wait_ipi` chờ theo biến đếm** | **ĐẠT — 0/600** | `report` p99 141.256 µs **vượt** trần cũ 100 ms |
 | 53 | **aarch64 quét 256 bus** | **ĐẠT** | `buses=256`, `ecam_block_ok=1`; `frames_used` 41→33 |
 | 54 | **TAP 35 đỏ không dừng ảnh** | **ĐẠT** | cờ `DNS_RED` chặn marker, bước sau vẫn chạy |
+| 55 | **x86_64: U-mode task trong scheduler** | **ĐẠT** | `# sched: umode task ran n=1939597 ring=3 preempted=2 resumed=1` |
+| 56 | **`translate`/`unmap` block descriptor** | **ĐẠT** | `blocks_split=1`, `neighbor_ok=1`; 38 test host |
+| 57 | **`NetPing` thành dịch vụ kernel kiểm quyền** | **ĐẠT** | `outcome=Served`/`Denied`; `sent=1` suốt ba request |
 
 ---
 
@@ -818,13 +822,51 @@ trên cap TCB nay là `Tcb.Configure` ⇒ `InvalidArgument(5)`; label 1 `SetFaul
 đưa DNS về **cục bộ** (server DNS do runner dựng) — cần đổi cổng DNS trong ảnh hoặc `-netdev
 user,dns=`; **mở task riêng**, không tự quyết.
 
+### 3.51 KT-304 — x86_64: **tác vụ ring 3 trong scheduler** (tiêu chí K5')
+**XONG.** **Đo**:
+```text
+# sched: ticks=10 tasks=3
+# sched: runs a=209170 b=240183 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x136170
+# sched: umode task ran n=1939597 ring=3 preempted=2 resumed=1
+# sched: umode counts first=577041 last=1939597 cs=0x1b kernel_stack=0x136220
+```
+TAP **26/26**, runner **18/18** (16 ca âm). **Khảo sát phát hiện hai lỗi tiềm ẩn**:
+(a) `switch_frame_ok` (KT-298) chỉ nhận `cs == 0x08` ⇒ **từ chối** frame ring 3 (`cs = 0x1B`);
+(b) `sched::run` **không** nạp `TSS.rsp0` ⇒ tick từ CPL3 sẽ đẩy frame vào **stack syscall** và ghi đè
+frame của `main` — **đúng lớp lỗi boot 410** của KT-298. Vá: tác vụ ring 3 có **stack kernel riêng
+16 KiB** + nạp `RSP0`. Hai đột biến đỏ (`no-rsp0` ⇒ `# exc: vec=8`; `reject-user-cs` ⇒
+`# sched: BAD frame`).
+
+### 3.52 KT-305 — **`translate`/`unmap` hiểu block descriptor**
+**XONG.** **Đo**: `# pci: unmap va=0x8fe01000 pa=0x401fe01000 level=2 translate_ok=1 split=1
+neighbor_ok=1 unmapped_ok=1 remap_ok=1 blocks_split=1`. **38 test host** (9 ca mới, 6 đỏ-trước).
+Phương án **(A) hỗ trợ đầy đủ** có **cổng năng lực** `block_span(level)` mặc định `None` ⇒
+x86_64/Sv39 **không phải sửa dòng nào** và vẫn trả `BlockUnsupported` như trước. `unmap` **chia nhỏ**
+1 GiB → 2 MiB → lá. Runner **27/27** (24 ca âm), soak selftest **40/40**. Ngân sách `.data+.bss`
+**không đổi** (233.704 B).
+
+### 3.53 KT-306 — **`NetPing` thành dịch vụ kernel kiểm quyền**
+**XONG.** **Khảo sát quan trọng**: **KHÔNG** cần syscall mới — `Call` (syscall 0) trên cap `Endpoint`
+**đã** là đường đúng; nợ thật là **thiếu dịch vụ kernel** (`NetPing` cài trong rig nên **không kiểm
+quyền** trước khi chạm thiết bị). **Đo**:
+```text
+# netping kern: n=1 outcome=Served served=1 denied=0 failed=0 label=0x291 len=1 caller=4 err=0 sent=1 received=1
+# netping: label=0x291 reply=0 rtt_ms=0
+# netping kern: n=2 outcome=Denied served=1 denied=1 label=0x999 err=5 sent=1 received=1
+# netping kern: n=3 outcome=Denied served=1 denied=2 label=0x291 caller=3 err=3 sent=1 received=1
+ok 3 - netping: via ipc
+```
+Kiểm quyền **fail-closed trước khi chạm driver**: caller ≠ TCB net server ⇒ `InsufficientRights` (3);
+label/len/IP sai ⇒ `InvalidArgument` (5). `sent=1` suốt **ba** request ⇒ hai request bị từ chối
+**không** gửi gói nào. TAP **3/3**, matrix **27/27**. Ba đột biến đỏ.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `4e4b3500` (ứng viên bàn giao) | **PASS 68/68, 753,7 s** | `/tmp/t2-r17c.log` |
-| T2 trên `1b7e72c8` (vòng 16) | PASS 68/68, 759,1 s | `/tmp/t2-r16.log` |
+| **T2** `gate --fast` trên `903138e5` (ứng viên bàn giao) | **PASS 68/68, 769,3 s** | `/tmp/t2-r18c.log` |
+| T2 trên `4e4b3500` (vòng 17) | PASS 68/68, 753,7 s | `/tmp/t2-r17c.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
