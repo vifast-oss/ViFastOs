@@ -4,9 +4,10 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (bảy vòng, 30 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (tám vòng, 32 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
-> Vòng 7: KT-270..KT-272. HEAD cuối `c8bacb4f` (đã push), T1 + T2 xanh, cây sạch.
+> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. HEAD cuối `d22454df` (đã push), T1 + T2 xanh,
+> cây sạch.
 
 ---
 
@@ -40,6 +41,8 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 24 | **x86_64 U-mode + `[calling.x86_64]`** | **ĐẠT** | `# umode: ring3 ran nr=12 ret=14`, `ring3 says hi` |
 | 25 | **virtio-gpu console** | **ĐẠT** | 29/29 ký tự khớp bitmap 8×8; 2 lệnh GPU cho cả khối |
 | 26 | **soak 1.000 aarch64 sau U-mode** | **ĐẠT — 0/1000**, hạ tầng hợp lệ | wall 239 s, `qemu_foreign=0` |
+| 27 | **aarch64 PCI ECAM + virtio-blk** | **ĐẠT** | `# blk: sector0 … ascii="VIFASTOS-KT273-S"`; TAP 21/21 |
+| 28 | **x86_64 PCI ECAM + virtio-net + ARP** | **ĐẠT** | `# net: arp gw=10.0.2.2 … sent=1 recv=1`; TAP 17/17 |
 
 ---
 
@@ -460,13 +463,33 @@ cần **129** bảng mức 3 = 516 KiB, vượt arena **và** trần `.data+.bss
 mọi thiết bị trên bus 0 (đo `info pci`) nên 16 bus = 16× dải cần; `SCAN_BUSES` **suy từ** số byte đã
 map, không viết tay. `.data+.bss` = **221.392 B / 262.144 B** (84,5 %); arena 32 → **44** frame.
 
+### 3.31 KT-274 — x86_64 **PCI ECAM + virtio-net + ARP**
+**XONG.** **ECAM đọc từ ACPI `MCFG`** (RSDP → RSDT/XSDT → MCFG, kiểm checksum từng bảng). **Đo**:
+```text
+# pci: ecam base=0xb0000000 buses=0..255 functions=6
+# pci: dev 00:02.0 vendor=0x1af4 device=0x1000 class=0x0200 network hdr=0x00
+ok 15 - pci: ecam
+# pci: net 00:02.0 bar=4 kind=mem64 base=0xfe000000 size=0x4000 command=0x0107 caps=4
+# net: mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16
+ok 16 - net: mac
+# net: arp gw=10.0.2.2 mac=52:55:0a:00:02:02 sent=1 recv=1 elapsed_us=1687 errors=0 timeouts=0
+ok 17 - net: arp
+```
+TAP **17/17**, runner **13/13** (11 ca âm). **Ba phát hiện**: (1) ECAM ở **`0xB000_0000`** không phải
+`0xE000_0000` như dự kiến; (2) **`MCFG` có 8 byte `Reserved`** trước allocation structure (ACPI 6.4
+§5.2.6.2) ⇒ `base_address` ở offset **44** không phải 36 — đọc sai cho `base=0, bus_end=0xB0`, log
+QEMU bắt được; (3) **SeaBIOS đã cấp BAR** ⇒ ảnh chỉ đọc + **kiểm nằm trong cửa sổ MMIO đã map**
+(fail-closed `bar-unmapped`). Đường **legacy `0xCF8`/`0xCFC`** cũng đo được đầy đủ (không nằm trong
+cổng tự động vì TAP 15 đòi ECAM — một TAP xanh trên legacy là log nói sai).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `9704539a` (ứng viên bàn giao) | **PASS 67/67, 594,4 s** | `/tmp/t2-r7.log` |
-| **T1** `gate --dev` trên `ca3a490a` | **PASS 384,5 s** | `/tmp/t1-r7.log` |
+| **T2** `gate --fast` trên `e35bacda` (ứng viên bàn giao) | **PASS 67/67, 617,6 s** | `/tmp/t2-r8.log` |
+| **T1** `gate --dev` trên `fdae9941` | **PASS 388,0 s** | `/tmp/t1-r8.log` |
+| T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
 | T2 trên `14df1639` (vòng 2) | PASS 62/62, 534,3 s | `/tmp/t2-r2b.log` |
