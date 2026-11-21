@@ -338,6 +338,37 @@ mod imp {
         unsafe { &mut *DMA_PAGE.0.get() }
     }
 
+    // ------------------------------------------------------------------ trang DMA thứ hai (KT-275)
+
+    /// Trang **DMA 4 KiB** thứ hai — virtqueue + đệm `rx`/`tx` của **virtio-net** (KT-275).
+    ///
+    /// **Vì sao phải là trang riêng**: virtio-blk (KT-273) và virtio-net (KT-275) cùng chạy
+    /// trong một lần boot và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`,
+    /// descriptor) trong trang DMA của nó. Dùng chung một trang thì driver thứ hai ghi đè ring
+    /// của driver thứ nhất — hỏng im lặng, chỉ lộ ra khi thứ tự gọi đổi. Hai trang 4 KiB vẫn
+    /// nằm trong trần `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
+    ///
+    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
+    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
+    #[repr(align(4096))]
+    struct DmaPageNet(core::cell::UnsafeCell<[u8; 4096]>);
+    // SAFETY: xem tài liệu `DmaPageNet` — một hart, truy cập tuần tự trong `virtio_net`.
+    unsafe impl Sync for DmaPageNet {}
+    static DMA_PAGE_NET: DmaPageNet = DmaPageNet(core::cell::UnsafeCell::new([0u8; 4096]));
+
+    /// Địa chỉ trang DMA của virtio-net **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
+    /// nửa cao) — caller đổi sang PA bằng `virtio_net::high_to_pa` trước khi ghi descriptor.
+    pub fn dma_page_net_addr() -> u64 {
+        DMA_PAGE_NET.0.get() as *const _ as u64
+    }
+
+    /// Trang DMA của virtio-net dưới dạng lát byte ghi được (4 KiB).
+    pub fn dma_page_net() -> &'static mut [u8; 4096] {
+        // SAFETY: xem `DmaPageNet` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
+        // bị) giữ tham chiếu tới vùng này.
+        unsafe { &mut *DMA_PAGE_NET.0.get() }
+    }
+
     // ------------------------------------------------------------------ bộ nhớ thô (KT-249)
 
     /// Đọc 64 bit tại **địa chỉ tuyệt đối** `addr` (VA sau khi MMU bật, PA trước đó).
@@ -872,6 +903,14 @@ mod imp {
     /// Stub host của trang DMA — **panic**: như `dma_page_addr`.
     pub fn dma_page() -> &'static mut [u8; 4096] {
         host_stub("dma page")
+    }
+    /// Stub host của trang DMA thứ hai (virtio-net) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_net_addr() -> u64 {
+        host_stub("dma page net addr")
+    }
+    /// Stub host của trang DMA thứ hai (virtio-net) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_net() -> &'static mut [u8; 4096] {
+        host_stub("dma page net")
     }
     /// Stub host của đọc bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
     pub fn read_u64(_addr: u64) -> u64 {

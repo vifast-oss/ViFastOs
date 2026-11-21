@@ -5,6 +5,7 @@ Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) + B3.10 (PCI ECAM + virtio-blk) DON
 **Soak 1.000 + `budget-aarch64.sh` DONE** (KT-265, §8) — điều kiện "như K3" đã đủ **phần soak**.
 **U-mode/EL0 + `svc` DONE** (KT-269, §9) — `[calling.aarch64]` đã mở (D2-206).
 **PCI ECAM + virtio-blk DONE** (KT-273, §10) — đọc được sector 0 của đĩa QEMU.
+**virtio-net + DHCP + ARP + ICMP DONE** (KT-275, §11) — MAC thật, DHCP/ARP/ping thật của slirp.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
@@ -29,6 +30,7 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.9 | **smp 2**: PSCI `CPU_ON` + GICv3 `SGI 0` (IPI) | KT-259 | **DONE** (2 hart) |
 | B3.9+ | **smp 4** + ba SGI (IPI 0, shootdown 1, lệnh 2) | KT-262 | **DONE** (4 hart) |
 | B3.10 | **PCI ECAM** + quét bus/device/function + gán BAR + **virtio-blk** đọc sector 0 | KT-273 | **DONE** (§10) |
+| B3.11 | **virtio-net** (hai queue, MAC thật) + **DHCP** + **ARP** + **ICMP echo** | KT-275 | **DONE** (§11) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
 `cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8). **U-mode** (B3.7) chỉ
@@ -440,11 +442,86 @@ stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **
 
 ### 10.5 Còn thiếu của B3.10 (ghi rõ)
 
-1. **Chỉ virtio-blk**: chưa virtio-net/gpu/input trên aarch64 (D1 vẫn là riscv64), chưa MSI-X
-   (poll `used`), chưa hotplug.
+1. **virtio-blk + virtio-net** đã có; **chưa** virtio-gpu/input trên aarch64, chưa MSI-X
+   (poll `used`), chưa hotplug. TCP/DNS trên aarch64: xem §11.5.
 2. **ECAM 16/256 bus** — lý do frame/trần ở §10.2; bus ≥ 16 **không** quét được (đọc ra ngoài
    cửa sổ đã map ⇒ data abort), không phải "bỏ qua cho nhanh".
 3. **Không cache maintenance**: QEMU TCG không mô hình hoá cache nên DMA nhất quán; trên phần cứng
    thật cần `dc civac`/`dsb` trước khi bàn giao ring — **chưa** làm, **chưa** đo.
 4. **Không** dùng ngắt: driver poll; `ISR` chỉ đọc chẩn đoán.
+5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+
+## 11. virtio-net + DHCP + ARP + ICMP — B3.11 (KT-275)
+
+### 11.1 Phạm vi
+
+D1 (virtio-net) trước KT-275 **chỉ có trên riscv64** (`d1-net.md`). KT-275 mở **cùng** đường đó
+trên aarch64, dùng lại **nguyên** codec `vifast-net` (KT-244) và **không** chép codec nào vào
+kernel:
+
+| Tệp | Nội dung |
+|---|---|
+| `kernel/vifast-plat-aarch64/src/virtio_net.rs` | driver virtio-pci modern: hai queue `rx`/`tx`, MAC thật, `send_frame`/`recv_frame_wait`, `dhcp_acquire`, `arp_resolve`, `ping` |
+| `kernel/vifast-kbin-aarch64/src/net.rs` | bốn phép đo + TAP 22/23/24/25 |
+| `kernel/vifast-plat-aarch64/tests/virtio_net.rs` | **7 test host** cho phần thuần (bố cục DMA, ARP request/reply, DHCP DISCOVER/parse, ICMP echo, hằng số) |
+
+**Không** làm (đúng phạm vi D2-208 + KT-275): TCP/DNS trên aarch64, virtio-gpu/input trên aarch64,
+MSI-X, net server U-mode. **Không** tuyên bố K4' đạt.
+
+### 11.2 Khác khuôn riscv64/x86_64 ở ba điểm (do kiến trúc)
+
+1. **DMA bằng PA**: sau `activate` hart 0 chạy ở alias nửa cao ⇒ caller đổi bằng
+   `virtio_net::high_to_pa` (cùng công thức `virtio_blk` KT-273) trước khi ghi descriptor.
+2. **Trạng thái bằng `Atomic*`**, không `UnsafeCell`: crate `#![deny(unsafe_code)]` ngoài `asm`
+   (D2-17). Trang DMA là **trang thứ hai** trong `asm` (`dma_page_net`) — dùng chung trang với
+   virtio-blk thì driver thứ hai ghi đè ring của driver thứ nhất (hỏng im lặng).
+3. **Trần thời gian bằng `CNTPCT_EL0`** (2 s poll, 3 s/bước mạng); `CNTFRQ_EL0 = 0` ⇒ `now_us`
+   trả tick (ngân sách **ngắn hơn** thật ⇒ fail-closed, không treo).
+
+### 11.3 Đo được (log `boot-1.log` của runner, TAP 22..25)
+
+```text
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 frames_used=38
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=3 buses=16
+# pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 … assigned=0x10000000 readback=0x10000000 …
+ok 21 - blk: sector0
+# net: device bus=0 dev=1 func=0 vendor=0x1af4 device=0x1000 bar=4 kind=mem64 size=0x4000 assigned=0x10400000 readback=0x10400000 mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16 features=0x0000010130bf8024 driver=0x0000000100000020 dma=0x400cd000
+ok 22 - net: device
+# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+ok 23 - net: dhcp
+# net: arp gw=52:55:0a:00:02:02
+ok 24 - net: arp
+# net: ping 10.0.2.2 ok n=3 rtt=0
+ok 25 - net: ping
+# net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
+# viFastOs aarch64: boot ok
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| thiết bị | `1af4:1000` (transitional), bus 0 dev 1, BAR **4** `mem64` `0x4000`, gán `0x1040_0000` (**leaf 2**, không đụng leaf blk `0x1000_0000`), đọc lại khớp |
+| MAC | `52:54:00:12:34:56` — **đọc từ `virtio_net_config`**, không hardcode |
+| DHCP | `ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2` (slirp thật) |
+| ARP | `gw=52:55:0a:00:02:02` — reply **thật** của slirp |
+| ICMP | `n=3` reply, `rtt=0` ms (đồng hồ ảo của TCG) |
+| bộ đếm | `errors=0 timeouts=0 id_mismatch=0` |
+| `.data+.bss` | **225.488 B** / trần **262.144 B** (86,0 %) — thêm 4 KiB trang DMA mạng |
+| frame table | `frames_used=38` / arena **44** (leaf BAR mạng tốn 1 frame) |
+
+### 11.4 Ca âm (fail-closed)
+
+| Ca | Cách dựng | Kỳ vọng |
+|---|---|---|
+| **không có mạng** | cùng ảnh + đĩa, **không** `-netdev`/`-device virtio-net-pci` | `# net: no device` + `not ok 22..25`; runner coi là **đạt** khi ảnh đỏ đúng cách |
+
+Runner `run-aarch64.sh`: **15/15** kiểm sạch, TAP **25/25**, **13 ca âm** (12 cũ + ca "không có
+mạng"). Soak `soak-aarch64.sh`: `--selftest` **23/23** (1 dương + 22 âm), smoke **20/20** boot.
+
+### 11.5 Còn thiếu của B3.11 (ghi rõ)
+
+1. **TCP/DNS** trên aarch64 — chưa có (riscv64 có từ KT-260/KT-268).
+2. **Không** dùng ngắt: driver poll `used`; `ISR` chỉ đọc chẩn đoán. **Không** MSI-X.
+3. **Không** cache maintenance (`dc civac`/`dsb`) trước khi bàn giao ring — QEMU TCG không mô
+   hình hoá cache nên DMA nhất quán; trên phần cứng thật **chưa** làm, **chưa** đo.
+4. **Không** net server U-mode, **không** socket API — toàn bộ stack chạy trong kernel ảnh.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

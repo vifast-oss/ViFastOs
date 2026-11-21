@@ -18,17 +18,19 @@
 # `check_log` trên log tốt với 11 kỳ vọng **sai** (marker sai, thiếu một `ok`, có `not ok`, plan
 # sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, thiếu dòng `# tlbi:`, thiếu ack
 # shootdown, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) và đòi **cả 11 phải ĐỎ**; cộng
-# **ca âm (l) của KT-273** — boot **không có đĩa** phải in `# blk: no device` và TAP phải ĐỎ
-# (12 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm
+# **ca âm (l) của KT-273** — boot **không có đĩa** phải in `# blk: no device` và TAP phải ĐỎ;
+# cộng **ca âm (m) của KT-275** — boot **không có mạng** phải in `# net: no device` và TAP phải
+# ĐỎ (13 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm
 # **không phải dấu cao su** — không có đường "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 21 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#   EXPECT_TESTS    số ca TAP (mặc định 25 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
 #                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
 #                   KT-262 thêm 3 ca TLBI/smp 4, KT-269 thêm 3 ca U-mode: EL0 vào được, `svc`
 #                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`, **KT-273 thêm 3 ca PCI/blk**:
-#                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`)
+#                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`, **KT-275 thêm 4 ca
+#                   mạng**: `net: device`, `net: dhcp`, `net: arp`, `net: ping`)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
@@ -65,6 +67,17 @@
 #     đúng;
 #   - `# blk: sector0 hex=<32 hex> … magic=1` — hex phải khớp **16 byte đầu của đĩa tạm** (runner
 #     băm lại từ tệp bằng `od`), nên "đọc được sector 0" không thể là đọc ra số 0.
+#
+# **KT-275**: QEMU nhận thêm **card mạng** slirp
+# (`-netdev user,id=n0 -device virtio-net-pci,netdev=n0`; `-nic none` vẫn giữ để **không** có NIC
+# mặc định thứ hai — topology PCI tất định: host bridge + virtio-net + virtio-blk). Runner đòi
+# thêm bốn dòng bằng chứng:
+#   - `# net: device … vendor=0x1af4 … mac=<6 octet> …` — MAC **đọc từ `virtio_net_config`**,
+#     BAR gán rồi đọc lại đúng;
+#   - `# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2` — DHCP **thật**
+#     của slirp (cùng khuôn `net.sh` riscv64);
+#   - `# net: arp gw=<mac>` — ARP reply **thật** của slirp (MAC khác 0/broadcast);
+#   - `# net: ping 10.0.2.2 ok n=3 rtt=<ms>` — ICMP echo **thật** qua gateway.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +91,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-21}"
+EXPECT_TESTS="${EXPECT_TESTS:-25}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -422,9 +435,80 @@ check_blk() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# net:` (KT-275)
+# Bốn dòng **bằng chứng mạng** — đây là phần "virtio-net + DHCP + ARP + ICMP thật" của KT-275:
+#
+#   `# net: device … vendor=0x1af4 … mac=<6 octet> … assigned=… readback=…`
+#       MAC **đọc từ `virtio_net_config`** (không hardcode) và BAR gán xong phải **đọc lại**
+#       đúng địa chỉ đã ghi.
+#   `# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`
+#       DHCP **thật** của slirp — cùng khuôn `net.sh` riscv64 (KT-246), nên hai arch không lệch
+#       nhau về định nghĩa "lấy được địa chỉ".
+#   `# net: arp gw=<mac>` — ARP reply **thật**; MAC toàn 0/broadcast là giá trị vô nghĩa.
+#   `# net: ping 10.0.2.2 ok n=3 rtt=<ms>` — ICMP echo **thật** qua gateway.
+#
+# Đòi **đúng một** dòng mỗi loại: in lặp nghĩa là bước mạng chạy hai lần (hoặc log bịa).
+check_net() {
+    local log="$1" bad=0 n line assigned readback
+    n="$(grep -cE '^# net: device ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: device ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# net: device ' "$log" || true)"
+    case "$line" in
+        *"vendor=0x1af4"*) ;;
+        *)
+            echo "# dòng '# net: device' không có 'vendor=0x1af4' (vendor của virtio)"
+            bad=1
+            ;;
+    esac
+    # MAC phải là **6 octet hex** — MAC rỗng/toàn 0 là dấu hiệu đọc sai `virtio_net_config`.
+    printf '%s\n' "$line" | grep -Eq 'mac=([0-9a-f]{2}:){5}[0-9a-f]{2}( |$)' || {
+        echo "# dòng '# net: device' không có 'mac=<6 octet>'"
+        bad=1
+    }
+    printf '%s\n' "$line" | grep -Eq 'mac=(00:){5}00( |$)' && {
+        echo "# MAC toàn 0 — không phải MAC đọc từ thiết bị"
+        bad=1
+    }
+    assigned="$(printf '%s\n' "$line" | sed -n 's/.* assigned=\(0x[0-9a-f]*\).*/\1/p')"
+    readback="$(printf '%s\n' "$line" | sed -n 's/.* readback=\(0x[0-9a-f]*\).*/\1/p')"
+    if [ -z "$assigned" ] || [ "$assigned" != "$readback" ]; then
+        echo "# BAR mạng đọc lại (${readback:-none}) khác địa chỉ đã gán (${assigned:-none})"
+        bad=1
+    fi
+    n="$(grep -cE '^# net: dhcp ip=10\.0\.2\.15 gw=10\.0\.2\.2 mask=255\.255\.255\.0 server=10\.0\.2\.2$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    n="$(grep -cE '^# net: arp gw=[0-9a-f]{2}(:[0-9a-f]{2}){5}$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: arp gw=<mac>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    # MAC toàn 0 / broadcast là giá trị **vô nghĩa** cho một host — driver từ chối, nên log có nó
+    # nghĩa là phép kiểm của driver bị bỏ (cùng bất biến `arp_parse_reply`).
+    grep -E '^# net: arp gw=' "$log" | grep -Eq 'gw=(00:){5}00$' && {
+        echo "# ARP trả MAC toàn 0 — không phải reply hợp lệ"
+        bad=1
+    }
+    grep -E '^# net: arp gw=' "$log" | grep -Eq 'gw=(ff:){5}ff$' && {
+        echo "# ARP trả MAC broadcast — không phải reply hợp lệ"
+        bad=1
+    }
+    n="$(grep -cE '^# net: ping 10\.0\.2\.2 ok n=3 rtt=[0-9]+$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm TAP của một log
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
-# `# umode:` + hash ảnh. In lý do đỏ ra stdout.
+# `# umode:` + `# pci:` + `# blk:` + `# net:` + hash ảnh. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
     local okn notn mn i
@@ -474,6 +558,7 @@ check_log() {
     check_umode "$log" || bad=1
     check_pci "$log" || bad=1
     check_blk "$log" || bad=1
+    check_net "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -629,6 +714,30 @@ selftest_negative() {
         echo "ok $n - ca âm (l): không có đĩa ⇒ '# blk: no device' + TAP ĐỎ ($(head -1 "$tmp/l.out"))"
     fi
 
+    # (m) **KT-275** — **không có mạng**: ảnh phải in `# net: no device` và TAP phải ĐỎ.
+    # Ca âm **thật** (boot QEMU lần ba, có đĩa nhưng **không** `-netdev`/`-device virtio-net-pci`):
+    # chứng minh driver mạng **fail-closed** khi thiếu thiết bị, thay vì in `ok` cho một card
+    # không tồn tại. Đĩa vẫn có để `blk` xanh — nếu không, ảnh dừng ở `blk` và **không** in dòng
+    # `# net:` nào, tức ca âm sẽ đỏ vì lý do sai.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    out="$LOGDIR/boot-nonet.log"
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+        -device virtio-blk-pci,drive=d0; then
+        echo "not ok $n - ca âm (m): boot không có mạng bị treo/timeout"
+        fails=$((fails + 1))
+    elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/m.out" 2>&1; then
+        echo "not ok $n - ca âm (m): không có mạng mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -Fq '# net: no device' "$out"; then
+        echo "not ok $n - ca âm (m): thiếu dòng '# net: no device'"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (m): không có mạng ⇒ '# net: no device' + TAP ĐỎ ($(head -1 "$tmp/m.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -688,6 +797,7 @@ while [ "$i" -le "$N_BOOT" ]; do
     out="$LOGDIR/boot-$i.log"
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
         -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
         -device virtio-blk-pci,drive=d0; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
@@ -713,7 +823,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 12))
+    total=$((total + 13))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

@@ -344,11 +344,16 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
 /// **KT-273**: trước marker, chạy ba phép đo PCI/virtio-blk (TAP 19/20/21). Chúng phải ở **đây**
 /// (không phải `high_entry`) để số hiệu TAP tuần tự sau `ok 18`; `VSpace` vẫn đang hoạt động nên
 /// MMIO tới ECAM/BAR đi qua bảng trang đã map trong `high_entry`.
+///
+/// **KT-275**: sau `blk`, chạy bốn phép đo mạng (TAP 22/23/24/25) — cùng lý do thứ tự TAP.
 #[no_mangle]
 pub extern "C" fn el0_done() -> ! {
     let mut console = Console;
     let _ = writeln!(console, "# umode: done");
     if !crate::blk::run(&mut console) {
+        debug_halt(5)
+    }
+    if !crate::net::run(&mut console) {
         debug_halt(5)
     }
     let _ = pl011::write_str(BOOT_MARKER);

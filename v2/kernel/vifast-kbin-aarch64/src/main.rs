@@ -86,6 +86,10 @@ mod umode;
 /// để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
 mod blk;
 
+/// **KT-275** (K4' bước 3, D1 trên aarch64): virtio-net + DHCP + ARP + ICMP — TAP 22/23/24/25,
+/// chạy ở `el0_done` **sau** `blk` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+mod net;
+
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
 
@@ -442,8 +446,8 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// mọi hart báo alive) + 3 ca của KT-262 (`tlbi: hart 1 sees unmap`, `tlbi: ack from all harts`,
 /// `smp: 4 harts online`) + **3 ca của KT-269** (EL0 vào được, `svc` được xử lý, EL0 chạy tiếp
 /// sau `svc` rồi `Exit`) + **3 ca của KT-273** (`pci: ecam`, `pci: virtio-blk found`,
-/// `blk: sector0`).
-pub const TAP_TESTS: usize = 21;
+/// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`).
+pub const TAP_TESTS: usize = 25;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -892,6 +896,17 @@ pub extern "C" fn high_entry() -> ! {
         );
         debug_halt(3)
     }
+    // **KT-275**: leaf BAR của **virtio-net** (leaf 2, `0x1040_0000`) — mỗi loại thiết bị một
+    // leaf 2 MiB (`pci::bar_assign_base`), nên driver mạng **không** đụng leaf của virtio-blk.
+    // Kiểm "chưa có mapping" **trước** khi map, cùng lý do CAO-2/D2-110C ở trên.
+    let net_bar_base = pci::bar_assign_base(pci::VirtioKind::Net);
+    if vs.walk(net_bar_base) != Err(MapError::NotMapped) {
+        let _ = writeln!(
+            console,
+            "PANIC: pci: cửa sổ BAR mạng 0x{net_bar_base:x} đã có mapping trước khi gán"
+        );
+        debug_halt(3)
+    }
     let pages_ecam = match map_window_into(
         &mut vs,
         pci::ECAM_VA_BASE,
@@ -920,9 +935,23 @@ pub extern "C" fn high_entry() -> ! {
             debug_halt(3)
         }
     };
+    let pages_bar_net = match map_window_into(
+        &mut vs,
+        net_bar_base,
+        net_bar_base,
+        pci::BAR_ASSIGN_BYTES,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR mạng lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
     let _ = writeln!(
         console,
-        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} frames_used={}",
+        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} frames_used={}",
         pci::ECAM_BASE,
         pci::ECAM_VA_BASE,
         pci::BAR_ASSIGN_BASE,

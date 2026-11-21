@@ -14,8 +14,9 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..21`; đúng **21** dòng `ok N - `, đủ số 1..21,
-#      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18);
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..25`; đúng **25** dòng `ok N - `, đủ số 1..25,
+#      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
+#      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. `# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1` — **bốn** hart (KT-262);
@@ -25,8 +26,12 @@
 #      `svc #0`) và `ret > 0` (DebugPutStr trả độ dài chuỗi đã in): bằng chứng EL0 **thật sự** chạy
 #      và `svc` được xử lý. Ảnh chỉ chạy EL1 (không `eret` xuống EL0) **không** có dòng này ⇒ ĐỎ
 #      dù TAP 1..21 vẫn xanh;
-#   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
-#   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
+#   6. **KT-275** — bốn dòng bằng chứng mạng: `# net: device … vendor=0x1af4 … mac=<6 octet> …
+#      assigned=… readback=…`, `# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0
+#      server=10.0.2.2`, `# net: arp gw=<mac>`, `# net: ping 10.0.2.2 ok n=3 rtt=<ms>` — mỗi dòng
+#      **đúng một** lần. Ảnh mất virtio-net/DHCP/ARP/ICMP ⇒ soak ĐỎ dù TAP 1..21 vẫn xanh;
+#   7. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
+#   8. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
 # Khác `soak.sh` riscv64 **chỉ ở phần danh tính ảnh**: ảnh aarch64 **chưa** in dòng `# build:`
 # của KT-86 (nợ ghi ở `v2/docs/k4-aarch64-boot.md` §7), nên cổng danh tính ở đây là
@@ -61,7 +66,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=21   # KT-273: 21 ca (KT-269 18 + 3 ca PCI/blk; khớp `1..21` của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=25   # KT-275: 25 ca (KT-273 21 + 4 ca mạng; khớp `1..25` của ảnh và `EXPECT_TESTS` của runner)
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -248,6 +253,51 @@ check_boot_log() {
         bad=1
     }
 
+    # (5c) **KT-275** — virtio-net + DHCP + ARP + ICMP. Cùng bất biến `run-aarch64.sh`
+    #      (`check_net`): MAC **đọc từ `virtio_net_config`** (không toàn 0), BAR gán rồi đọc lại
+    #      đúng, DHCP/ARP/ping **thật** của slirp. Ảnh mất mạng ⇒ soak ĐỎ dù TAP 1..21 vẫn xanh.
+    n="$(grep -cE '^# net: device ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: device ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# net: device ' "$log" | grep -Fq "vendor=0x1af4" || {
+        echo "# dòng '# net: device' không có 'vendor=0x1af4'"
+        bad=1
+    }
+    grep -E '^# net: device ' "$log" | grep -Eq 'mac=([0-9a-f]{2}:){5}[0-9a-f]{2}( |$)' || {
+        echo "# dòng '# net: device' không có 'mac=<6 octet>'"
+        bad=1
+    }
+    grep -E '^# net: device ' "$log" | grep -Eq 'mac=(00:){5}00( |$)' && {
+        echo "# MAC toàn 0 — không phải MAC đọc từ thiết bị"
+        bad=1
+    }
+    n="$(grep -cE '^# net: dhcp ip=10\.0\.2\.15 gw=10\.0\.2\.2 mask=255\.255\.255\.0 server=10\.0\.2\.2$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# net: arp gw=[0-9a-f]{2}(:[0-9a-f]{2}){5}$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: arp gw=<mac>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    # MAC toàn 0 / broadcast là giá trị **vô nghĩa** cho một host (cùng bất biến `arp_parse_reply`).
+    grep -E '^# net: arp gw=' "$log" | grep -Eq 'gw=(00:){5}00$' && {
+        echo "# ARP trả MAC toàn 0 — không phải reply hợp lệ"
+        bad=1
+    }
+    grep -E '^# net: arp gw=' "$log" | grep -Eq 'gw=(ff:){5}ff$' && {
+        echo "# ARP trả MAC broadcast — không phải reply hợp lệ"
+        bad=1
+    }
+    n="$(grep -cE '^# net: ping 10\.0\.2\.2 ok n=3 rtt=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (6) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
     [ "${n:-0}" -eq 0 ] || {
@@ -266,7 +316,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..21
+1..25
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -310,6 +360,15 @@ ok 19 - pci: ecam
 ok 20 - pci: virtio-blk found
 # blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400cc000 desc=0x400cc000 avail=0x400cc080 used=0x400cc098
 ok 21 - blk: sector0
+# net: device bus=0 dev=1 func=0 vendor=0x1af4 device=0x1000 bar=4 kind=mem64 size=0x4000 assigned=0x10400000 readback=0x10400000 mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16 features=0x0000010130bf8024 driver=0x0000000100000020 dma=0x400cd000
+ok 22 - net: device
+# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+ok 23 - net: dhcp
+# net: arp gw=52:55:0a:00:02:02
+ok 24 - net: arp
+# net: ping 10.0.2.2 ok n=3 rtt=0
+ok 25 - net: ping
+# net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -396,6 +455,22 @@ EOF
     grep -v -F '# blk: sector0 ' "$good" >"$tmp/r.log" || true
     neg "thiếu dòng '# blk: sector0 ' (không đọc được đĩa)" "$tmp/r.log"
 
+    # **KT-275** — bốn ca âm cho bất biến mạng (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# net: device ' "$good" >"$tmp/s.log" || true
+    neg "thiếu dòng '# net: device ' (không có card mạng)" "$tmp/s.log"
+
+    sed 's/^# net: dhcp ip=10\.0\.2\.15 gw=10\.0\.2\.2 mask=255\.255\.255\.0 server=10\.0\.2\.2$/# net: dhcp error=Timeout/' \
+        "$good" >"$tmp/t.log" || true
+    neg "DHCP timeout (không lấy được địa chỉ)" "$tmp/t.log"
+
+    sed 's/^# net: arp gw=52:55:0a:00:02:02$/# net: arp gw=00:00:00:00:00:00/' \
+        "$good" >"$tmp/u.log" || true
+    neg "ARP trả MAC toàn 0" "$tmp/u.log"
+
+    sed 's/^# net: ping 10\.0\.2\.2 ok n=3 rtt=0$/# net: ping 10.0.2.2 ok n=2 rtt=0/' \
+        "$good" >"$tmp/v.log" || true
+    neg "ping chỉ 2/3 reply (mất gói)" "$tmp/v.log"
+
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
     [ "$fails" -eq 0 ] || return 1
@@ -471,9 +546,14 @@ fi
 # cùng cấu hình `run-aarch64.sh`, nếu không ảnh sẽ in `not ok 20/21` và soak đỏ vì lý do sai.
 # `snapshot=on` **bắt buộc**: 3 luồng soak dùng **cùng** tệp đĩa, thiếu nó QEMU báo
 # `Failed to get "write" lock` và 2/3 boot đỏ (đo được khi dựng KT-273).
+# **KT-275**: thêm **card mạng** slirp (`-netdev user,id=n0 -device virtio-net-pci,netdev=n0`) —
+# DHCP/ARP/ICMP cần server thật của slirp; `-nic none` vẫn giữ để **không** có NIC mặc định thứ
+# hai (topology PCI tất định: host bridge + virtio-net + virtio-blk). Ba luồng song song mỗi luồng
+# một QEMU ⇒ mỗi QEMU một slirp riêng, cùng dải `10.0.2.x`, không tranh cổng host (không hostfwd).
 DISK="$LOGDIR/disk0.raw"
 QEMU_ARGS=(-M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 4 \
     -kernel "$IMAGE" -no-reboot -nic none \
+    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
     -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" -device virtio-blk-pci,drive=d0)
 
 # ------------------------------------------------------------------ build + neo ảnh

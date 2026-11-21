@@ -21,3 +21,8 @@ vifast-pte = { path = "../../lib/vifast-pte" }
 # crate arch **dùng lại**, không chép logic sang bản thứ hai (D2-110A). Crate đó `no_std`,
 # `forbid(unsafe_code)`, không dependency ngoài.
 vifast-virtio = { path = "../../lib/vifast-virtio" }
+# **KT-275** (K4' bước 3, D1 trên aarch64): codec mạng **thuần** (Ethernet/ARP/IPv4/ICMP/UDP/
+# DHCP) — `no_std`, `deny(unsafe_code)`, không dependency ngoài (D2-21), 58 test host. Driver
+# `virtio_net` của crate này chỉ còn phần MMIO/queue/DMA + chính sách client; **không** có bản
+# sao codec nào trong kernel (cùng lý do KT-246b đã de-dup bên riscv64).
+vifast-net = { path = "../../lib/vifast-net" }

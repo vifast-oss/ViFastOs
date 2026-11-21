@@ -12,6 +12,7 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt244-*`, `kt245-*`, `kt
 | KT-246 | DHCP client + ARP + ICMP echo trên QEMU `-netdev user` | **DONE** |
 | KT-246b | de-dup: `virtio_net` dùng `vifast-net`, xoá codec trùng | **DONE** |
 | KT-260 | UDP echo + DNS query (RFC 1035) — N1 phần đầu | **DONE** |
+| KT-275 | **aarch64**: virtio-net + DHCP + ARP + ICMP echo (cùng codec `vifast-net`) | **DONE** (§9) |
 
 **Không** làm: TCP, socket API, net server U-mode (N1), virtio-gpu/input (input = KT-255),
 `spec/` change, ảnh sản phẩm (driver chỉ trong ảnh test `ktest-net`).
@@ -119,3 +120,19 @@ thiết bị đã trả lời (`JOURNAL/kt246-red-arp-bug.log`). Đây là lý d
 3. **virtio-gpu / virtio-input** — input đang mở ở KT-255.
 4. **`ping`/`ifconfig` trong shell sản phẩm** — chưa có (driver chỉ trong ảnh test).
 5. **IPv6**, **phân mảnh**, **ICMP lỗi** (destination unreachable) — chưa có.
+
+## 9. aarch64 (KT-275)
+
+Cùng **một** codec `vifast-net`, driver thứ hai ở `kernel/vifast-plat-aarch64/src/virtio_net.rs`
+(virtio-pci modern trên ECAM của KT-273, hai queue `rx`/`tx`, MAC thật từ `virtio_net_config`).
+Ảnh `vifast-kbin-aarch64` in TAP 22..25 (`net: device`, `net: dhcp`, `net: arp`, `net: ping`);
+runner `run-aarch64.sh` đòi bốn dòng bằng chứng **nguyên văn** cùng khuôn `net.sh` riscv64
+(`# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2`,
+`# net: arp gw=<mac>`, `# net: ping 10.0.2.2 ok n=3 rtt=<ms>`), nên hai arch **không** lệch nhau
+về định nghĩa "lấy được địa chỉ / resolve được gateway / ping được".
+
+Khác biệt **chỉ** ở tầng driver (không phải codec): DMA bằng **PA** (ảnh chạy ở alias nửa cao),
+trạng thái bằng `Atomic*` (crate `deny(unsafe_code)` ngoài `asm`), trần thời gian bằng
+`CNTPCT_EL0`. Chi tiết + số đo: `k4-aarch64-boot.md` §11.
+
+**Chưa** có trên aarch64: TCP, DNS, net server U-mode, MSI-X (driver poll `used`).
