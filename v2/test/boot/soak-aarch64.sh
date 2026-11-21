@@ -1193,6 +1193,11 @@ echo "# probe: '# conf image:' khớp ELF (build=$WANT_BUILD text=$WANT_TEXT)"
 
 # ------------------------------------------------------------------ log
 RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
+# **KT-295** — socket monitor phải nằm ở đường dẫn **ngắn**: `AF_UNIX` trên macOS giới hạn 104
+# byte kể cả NUL, mà `$RUNDIR/mon-<i>.sock` đã dài 104 khi `i >= 100` ⇒ `connect` thất bại.
+# Thư mục riêng dưới `/tmp` (ngắn, cùng ổ đĩa) — **không** đổi bất biến/ngưỡng nào.
+SOCKDIR="$(mktemp -d /tmp/kt-sock.XXXXXX)" || die "không tạo được SOCKDIR"
+trap 'rm -rf "$SOCKDIR" 2>/dev/null || true' EXIT
 mkdir -p "$RUNDIR" || die "không tạo được $RUNDIR"
 RESULTS="$RUNDIR/results.txt"
 : >"$RESULTS" || die "không ghi được $RESULTS"
@@ -1305,7 +1310,11 @@ boot_one() {
     # KT-78: QEMU trong process group riêng + timeout kill cả group (124 = quá 20 s).
     # **KT-283**: mỗi boot một socket monitor riêng (`$RUNDIR/mon-<i>.sock`) — 1.000 boot không
     # tranh một đường dẫn, và socket nằm trong thư mục log của lần chạy (dọn theo `RUNDIR`).
-    boot_keys "$out" "$RUNDIR/mon-$i.sock"
+    # **KT-295** — `AF_UNIX` trên macOS giới hạn **104 byte** (kể cả NUL) ⇒ đường dẫn
+    # `$RUNDIR/mon-<i>.sock` dài đúng 104 khi `i >= 100` ⇒ `connect` thất bại, `sendkey` không
+    # gửi được, TAP 32 đỏ **sai**. Đo được: boot 1..99 xanh, boot 100..1000 đỏ (901/1000).
+    # Dùng thư mục **ngắn** cố định cho socket (không đổi bất biến nào).
+    boot_keys "$out" "$SOCKDIR/mon-$i.sock"
     if [ "$?" -ne 0 ]; then
         printf 'fail %s timeout-%ss\n' "$i" "$((TIMEOUT_DS / 10))" >>"$RESULTS"
         echo "boot $i/$N FAIL: quá $((TIMEOUT_DS / 10)) s (treo) pid=$QG_LAST_PID log=$out" >&2
