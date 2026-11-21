@@ -98,12 +98,12 @@ Hằng/API mới: `invoke::TCB_RESUME` (= `vifast_abi::TCB_RESUME`), `Machine::t
 | Runner: `expected.txt` 6→7, `manifest_ipc` 7, 5 evidence mới, mẫu PANIC mới, `selftest.sh` ca (q) | **DONE** |
 | `cargo test -p vifast-core` | **XANH — 79/79** (9 test mới cho KT-314) |
 | `size_of::<Machine>()` | **KHÔNG ĐỔI** (184.792) — không thêm trường `TcbData` |
-| `./v2/bin/v2 check` (cây **sạch**) | **XANH** |
+| `./v2/bin/v2 check` (cây **sạch**, HEAD `c99e8a30`) | **XANH** — `v2 check: PASS`, `rules: PASS` |
 | Runner riscv64 `ktest.sh 1 matrix` (cây **sạch**, `KT54_LOGDIR` riêng) | **XANH — 27/27 boot sạch** |
 | `selftest.sh` | **XANH — 25/25 ca** (ca (q) mới) |
 | Ba đột biến | **ĐỎ đúng cả ba** (§6) |
 
-## 4. Log QEMU nguyên văn (smp=1, ảnh `ktest-ipc`, HEAD `8fe7cf86`)
+## 4. Log QEMU nguyên văn (smp=1, ảnh `ktest-ipc`, HEAD `c99e8a30`)
 
 ```text
 TAP version 13
@@ -172,7 +172,7 @@ PANIC: KT-314 ipc u-mode + mr buffer + tcb configure + cap transfer + configure 
 
 - Ảnh `ktest-ipc`: **7/7 TAP**, **36** evidence (thêm 5), PANIC mẫu mới.
 - `expected.txt`: `ktest-ipc 7 7` (6 → 7); `manifest_ipc` thêm `ipc: tcb resume`.
-- `ktest.sh 1 matrix` (HEAD `8fe7cf86`, `KT54_LOGDIR=/tmp/kt314-logs`): **27/27 boot sạch**
+- `ktest.sh 1 matrix` (HEAD `c99e8a30`, `KT54_LOGDIR=/tmp/kt314-logs2`): **27/27 boot sạch**
   (9 ảnh × smp 1/2/4), `ktest.sh: PASS`.
 - `selftest.sh`: **25/25 ca**, gồm ca (q) mới — xoá dòng `# ipc: resume ok entry=0x` ⇒ runner
   **đỏ** đúng token `ev<ordinal>`.
@@ -214,7 +214,11 @@ chặn. Đột biến vẫn **đỏ** vì mã lỗi đổi 17 → 0.
    hình một-VSpace-mỗi-ô; cần task riêng khi có `vspace?`.
 5. **Chưa chạy T2 `gate --fast`** (task yêu cầu `v2 check` + runner riscv64; T2 là việc của lead
    trên ứng viên tích hợp).
-6. **Không** tuyên bố K3 đạt lại — K3 đã đóng theo D2-205.
+6. **R1 (≤ 1.500 dòng/tệp)**: `user.rs` ở base đã **đúng** 1.500 dòng; KT-314 thêm hook
+   `tcb_resume` (+8) nên phải **chuyển** `tcb_state_name` (17 dòng, 4 điểm gọi) sang
+   `user_run.rs` (`pub(crate)`, hành vi **không** đổi) ⇒ `user.rs` = **1.489** dòng. Không nới
+   ngưỡng R1.
+7. **Không** tuyên bố K3 đạt lại — K3 đã đóng theo D2-205.
 
 ## 8. Xác nhận luật
 
@@ -228,4 +232,5 @@ chặn. Đột biến vẫn **đỏ** vì mã lỗi đổi 17 → 0.
   `vifast-core`/`vifast-plat-common`.
 - Stage theo **đường dẫn cụ thể** (12 tệp + 2 tệp sửa), **không** `git add -A`.
 - Cây sạch sau commit + sau ba đột biến.
-- Commit: `9fdaf6ec` (mã + runner) và `8fe7cf86` (sửa build `ktest-user` + `entry` TCB server).
+- Commit: `9fdaf6ec` (mã + runner), `8fe7cf86` (sửa build `ktest-user` + `entry` TCB server),
+  `deefd579` (nhật ký), `c99e8a30` (giữ R1: chuyển `tcb_state_name` sang `user_run.rs`).
