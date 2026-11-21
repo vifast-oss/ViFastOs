@@ -59,6 +59,11 @@ pub(crate) struct TcbData {
     /// Model-only `[TK]`: kernel **không** đọc vùng TLS, chỉ giữ giá trị và nạp vào `x4`/`tp`
     /// của U-mode mỗi lần resume (RISC-V: `tp` = `x4`). `0` = chưa đặt.
     pub(crate) tls: u64,
+    /// **KT-311** — điểm vào (VA) của tiến trình (`Tcb.Configure` tham số `entry?`,
+    /// `spec/abi.toml` `[method_signature."Tcb.Configure"]`). Model-only `[TK]`: kernel chỉ
+    /// **giữ** giá trị (đã kiểm căn 4 B ở `Machine::tcb_configure_invocation`); đường `Resume`
+    /// tiêu thụ giá trị này **chưa** cài (ghi nợ `JOURNAL/kt311-cfgfull.md` §7.2). `0` = chưa đặt.
+    pub(crate) entry: u64,
 }
 
 impl TcbData {
@@ -83,6 +88,7 @@ impl TcbData {
         ipc_buffer: None,
         extra_caps_dst: None,
         tls: 0,
+        entry: 0,
     };
 
     pub(crate) fn snapshot(&self) -> TcbInfo {

@@ -13,7 +13,8 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use vifast_core::ipc::{
-    IpcExtraCaps, IpcHeader, IPC_BUFFER_EXTRA_CAPS_OFFSET, IPC_BUFFER_EXTRA_CAPS_READ_WORDS,
+    IpcConfigureParams, IpcExtraCaps, IpcHeader, IPC_BUFFER_CONFIGURE_OFFSET,
+    IPC_BUFFER_CONFIGURE_WORDS, IPC_BUFFER_EXTRA_CAPS_OFFSET, IPC_BUFFER_EXTRA_CAPS_READ_WORDS,
     IPC_BUFFER_MR_OFFSET, IPC_HEADER_MAGIC, IPC_HEADER_WORDS, IPC_HEADER_W_INFO,
     IPC_HEADER_W_SEND_CAPS, IPC_HEADER_W_WINDOW, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
 };
@@ -62,6 +63,11 @@ pub(crate) fn read_header() -> Option<IpcHeader> {
         }
     }
     aobj::set_sum(false);
+    // **KT-311** — vùng **tham số mở rộng** của `Tcb.Configure` (offset 608, cùng trang, cùng
+    // magic): `cspace`, `vspace`, `entry`, `priority`.
+    let configure = read_configure_params().map_or(IpcConfigureParams::EMPTY, |words| {
+        IpcConfigureParams::from_words(&words)
+    });
     Some(IpcHeader {
         info: words[IPC_HEADER_W_INFO],
         recv_window: [
@@ -77,7 +83,37 @@ pub(crate) fn read_header() -> Option<IpcHeader> {
             words[IPC_HEADER_W_SEND_CAPS + 3],
         ],
         extra: IpcExtraCaps::from_words(&extra_words),
+        configure,
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-311 — vùng **tham số mở rộng** của `Tcb.Configure` trong IPC buffer
+// ---------------------------------------------------------------------------------------------
+
+/// **KT-311** — đọc 4 word **tham số mở rộng** của `Tcb.Configure` (`cspace`, `vspace`, `entry`,
+/// `priority`) tại offset [`IPC_BUFFER_CONFIGURE_OFFSET`] = 608 B của trang IPC buffer **cố
+/// định** (`USER_IPC_BUFFER_VA`, cùng chỗ với header KT-67b + extra caps KT-309).
+///
+/// `None` ⇔ dải `[608, 640)` **không** nằm trọn trong dải đã map của tác vụ đang chạy — fail-
+/// closed, không đọc bừa (cùng khuôn [`read_header`]).
+pub(crate) fn read_configure_params() -> Option<[u64; IPC_BUFFER_CONFIGURE_WORDS]> {
+    let start = USER_IPC_BUFFER_VA + IPC_BUFFER_CONFIGURE_OFFSET as u64;
+    let bytes = (IPC_BUFFER_CONFIGURE_WORDS as u64) * 8;
+    if !user_range_mapped(start, bytes) {
+        return None;
+    }
+    let mut words = [0u64; IPC_BUFFER_CONFIGURE_WORDS];
+    aobj::set_sum(true);
+    // SAFETY: `[start, start+32)` đã kiểm nằm trong dải `U|R|W` đã map của tác vụ đang chạy;
+    // SUM bật nên S-mode đọc được trang U; tắt ngay sau vòng (cùng khuôn `read_header`).
+    unsafe {
+        for (index, slot) in words.iter_mut().enumerate() {
+            *slot = core::ptr::read_volatile((start + (index as u64) * 8) as *const u64);
+        }
+    }
+    aobj::set_sum(false);
+    Some(words)
 }
 
 // ---------------------------------------------------------------------------------------------

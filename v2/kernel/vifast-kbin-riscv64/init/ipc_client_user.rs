@@ -11,6 +11,13 @@
 //! `(error, value) = (0, 0)`. Đây là mắt xích còn thiếu của KT-282 §6.3: nếu invocation không
 //! chạy, vòng 8 MR/64 MR **không thể** xanh (buffer chưa bind ⇒ `InvalidArgument` 5).
 //!
+//! **KT-311** — **`Tcb.Configure` kênh đầy đủ**: `length = 3` + `MR2` = **mask** tham số mở rộng;
+//! `cspace?`/`vspace?`/`entry?`/`priority?` nằm trong **vùng riêng** của IPC buffer (byte
+//! 608..640, `[TK]` KT-311 — **không** đổi ABI). Bốn ca âm (entry lẻ ⇒ 6, priority 256 ⇒ 5,
+//! cspace = cap `Frame` ⇒ 2, vspace ⇒ 18), rồi đường xanh (`cspace` = `cnode_alt`, `entry` =
+//! `_start` thật, `priority` = 4) + **chứng minh** `cspace?` thật sự đổi CSpace (`Call` trên ô 8
+//! **chỉ có** ở `cnode_alt` ⇒ 18 thay vì 1) + trả `cspace` về CSpace gốc.
+//!
 //! Đây là mắt xích mà K3 chưa có: trước KT-280 mọi `call()` của chương trình U-mode đều nhắm cap
 //! **không phải Endpoint** (invocation `Frame.Map`/`Untyped.Retype`/`Tcb.SetTls`/`CNode.*`) nên
 //! trả về ngay; IPC U-mode hiện có là `NBSend`+`NBRecv` polling. Ở đây client gọi `Call` trên
@@ -27,6 +34,9 @@
 //! | 2 | `Reply` (client **không** dùng — ca âm "Call trên cap không phải Endpoint") |
 //! | 3 | `Tcb` của chính client — **KT-290** `Call` với `label = Tcb.Configure` |
 //! | 4 | `Frame` 4 KiB — IPC buffer bind qua invocation (KT-290) |
+//! | 5/6 | `Frame` nguồn extra cap (có/thiếu `RIGHT_GRANT`) — KT-309 |
+//! | 7 | `CNode` của **CSpace thứ hai** (`cnode_alt`) — **KT-311** `cspace?` |
+//! | 8 | ô **rỗng** ở CSpace gốc (nhưng có cap `Reply` ở `cnode_alt`) — KT-311 chứng minh `cspace?` |
 //! | 9 | ô **rỗng** — ca âm `Call` trên ô rỗng |
 //!
 //! Không `unsafe`, không `asm!` (R5): mọi `ecall` qua shim `vifast_user_abi`.
@@ -37,8 +47,8 @@ extern crate vifast_abi;
 extern crate vifast_user_abi;
 
 use vifast_user_abi::{
-    call, exit, info, info_label, info_length, init_ipc_buffer, mrs, put, set_extra_caps, set_mrs,
-    set_recv_window,
+    call, exit, info, info_label, info_length, init_ipc_buffer, mrs, put, set_configure_params,
+    set_extra_caps, set_mrs, set_recv_window,
 };
 
 /// Slot `Endpoint` — nơi client gửi `Call`.
@@ -64,6 +74,28 @@ const IPC_BUF_VA_OUTSIDE: u64 = 0x4002_1000;
 const SLOT_FRAME_GRANT: u64 = 5;
 /// **KT-309** — slot cap `Frame` **thiếu** `RIGHT_GRANT` — ca âm (i).
 const SLOT_FRAME_NO_GRANT: u64 = 6;
+/// **KT-311** — slot cap `CNode` của **CSpace thứ hai** (`cnode_alt`) — `cspace?` đường xanh.
+const SLOT_ALT_CNODE: u64 = 7;
+/// **KT-311** — ô **chỉ có** trong `cnode_alt` (cap `Reply`): `Call` trên nó trả **18** khi
+/// CSpace đã đổi, **1** (`InvalidCapability`) khi vẫn ở CSpace gốc — chứng minh `cspace?` **thật
+/// sự** đổi CSpace, không phải chỉ ghi một trường.
+const SLOT_ALT_ONLY: u64 = 8;
+/// **KT-311** — trong `cnode_alt`: ô 0 = cap tới **CSpace gốc** (để trả `cspace` về), ô 3 = cap
+/// `Tcb` của chính client (để gọi `Configure` khi CSpace đang là `cnode_alt`).
+const SLOT_ALT_BACK: u64 = 0;
+const SLOT_ALT_TCB: u64 = 3;
+/// **KT-311** — mask tham số mở rộng (`MR2` của `Tcb.Configure`, `length = 3`).
+const MASK_CSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_CSPACE;
+const MASK_VSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_VSPACE;
+const MASK_ENTRY: u64 = vifast_user_abi::CONFIGURE_MASK_ENTRY;
+const MASK_PRIORITY: u64 = vifast_user_abi::CONFIGURE_MASK_PRIORITY;
+/// **KT-311** — VA entry **không căn 2 B** (lẻ — ca âm `Alignment`). VA entry **hợp lệ** là địa
+/// chỉ `_start` **thật** của chính ảnh này (`_start as usize` — trùng `e_entry` của ELF, không
+/// chép tay hằng số): rig đối chiếu `TcbData.entry` với `LoadedInit.entry` đọc từ ELF.
+const ENTRY_VA_BAD: u64 = 0x4000_0001;
+/// **KT-311** — priority hợp lệ (≤ `mcp` = 10 của rig) và **ngoài dải** `u8` (ca âm).
+const PRIORITY_OK: u64 = 4;
+const PRIORITY_BAD: u64 = 256;
 /// **KT-309** — label của message mang extra cap (hợp đồng client ↔ server).
 const LABEL_CAP: u32 = 0x282;
 /// **KT-309** — label reply của server cho message mang extra cap.
@@ -117,6 +149,20 @@ const EXIT_CAP_OVER: u64 = 96;
 const EXIT_CAP_CALL: u64 = 97;
 /// **KT-309** — reply của server cho message mang extra cap sai label/slot.
 const EXIT_CAP_REPLY: u64 = 98;
+/// **KT-311** — ca âm (i): `entry` không căn 4 B không trả `Alignment` (6).
+const EXIT_CFG2_ALIGN: u64 = 100;
+/// **KT-311** — ca âm (ii): `priority` ngoài dải không trả `InvalidArgument` (5).
+const EXIT_CFG2_PRIO: u64 = 101;
+/// **KT-311** — ca âm (iii): `cspace` không phải `CNode` không trả `WrongObjectType` (2).
+const EXIT_CFG2_CSPACE: u64 = 102;
+/// **KT-311** — ca âm (iv): `vspace?` (chưa cài) không trả `NotSupported` (18).
+const EXIT_CFG2_VSPACE: u64 = 103;
+/// **KT-311** — `Tcb.Configure` kênh đầy đủ (mask = cspace|entry|priority) không trả 0.
+const EXIT_CFG2_FULL: u64 = 104;
+/// **KT-311** — `cspace?` không **thật sự** đổi CSpace (ô 8 vẫn trả 1 thay vì 18).
+const EXIT_CFG2_MOVED: u64 = 105;
+/// **KT-311** — trả `cspace` về CSpace gốc hỏng, hoặc ô 9 không trả 1 (chưa về CSpace gốc).
+const EXIT_CFG2_BACK: u64 = 106;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -342,19 +388,149 @@ pub extern "C" fn _start() -> ! {
     put_u64(neg_over[0]);
     put(b" ok=1\n");
 
-    // ---- 3) Ca âm (a): `Call` trên ô **rỗng** ⇒ `InvalidCapability` (1), không chặn.
+    // ---- 6) **KT-311** — `Tcb.Configure` **kênh đầy đủ** (`length = 3`, `MR2` = mask): các
+    //         tham số `cspace?`/`entry?`/`priority?` nằm trong **vùng riêng** của IPC buffer
+    //         (byte 608..640, `[TK]` KT-311) — **không** đổi ABI, **không** đổi `MessageInfo`.
+    //         Bốn ca âm trước (mỗi ca đúng **một** tham số sai), rồi đường xanh + chứng minh
+    //         `cspace?` **thật sự** đổi CSpace (ô 8 chỉ có trong `cnode_alt`).
+    //
+    //         Ca âm (i): `entry` **không căn 4 B** ⇒ `Alignment` (6).
+    set_configure_params(0, 0, ENTRY_VA_BAD, 0);
+    let neg_align = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_ENTRY, 0],
+    );
+    if neg_align[0] != 6 {
+        put(b"# ipc: configure2 neg align err=");
+        put_u64(neg_align[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_ALIGN);
+    }
+    //         Ca âm (ii): `priority` **ngoài dải** `u8` (256) ⇒ `InvalidArgument` (5).
+    set_configure_params(0, 0, 0, PRIORITY_BAD);
+    let neg_prio = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_PRIORITY, 0],
+    );
+    if neg_prio[0] != 5 {
+        put(b"# ipc: configure2 neg prio err=");
+        put_u64(neg_prio[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_PRIO);
+    }
+    //         Ca âm (iii): `cspace` = cap `Frame` (ô 4) — **không phải `CNode`** ⇒
+    //         `WrongObjectType` (2).
+    set_configure_params(SLOT_FRAME, 0, 0, 0);
+    let neg_cspace = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_CSPACE, 0],
+    );
+    if neg_cspace[0] != 2 {
+        put(b"# ipc: configure2 neg cspace err=");
+        put_u64(neg_cspace[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_CSPACE);
+    }
+    //         Ca âm (iv): `vspace?` **chưa cài** ⇒ `NotSupported` (18) — fail-closed.
+    let neg_vspace = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
+    );
+    if neg_vspace[0] != 18 {
+        put(b"# ipc: configure2 neg vspace err=");
+        put_u64(neg_vspace[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_VSPACE);
+    }
+    //         Đường xanh: `cspace` = ô 7 (cap `CNode` của `cnode_alt`), `entry` = 0x4000_0000,
+    //         `priority` = 4 (≤ `mcp` = 10). Kernel kiểm **tất cả** rồi mới ghi (nguyên tử).
+    let entry_va = _start as usize as u64;
+    set_configure_params(SLOT_ALT_CNODE, 0, entry_va, PRIORITY_OK);
+    let full = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [
+            SLOT_FRAME,
+            IPC_BUF_VA,
+            MASK_CSPACE | MASK_ENTRY | MASK_PRIORITY,
+            0,
+        ],
+    );
+    if full[0] != 0 {
+        put(b"# ipc: configure2 full err=");
+        put_u64(full[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_FULL);
+    }
+    //         Chứng minh `cspace?` **thật sự** đổi CSpace: ô 8 **chỉ có** trong `cnode_alt`
+    //         (cap `Reply`) ⇒ `Call` trên nó trả **18** (`NotSupported` — cap sống, không phải
+    //         Endpoint); nếu CSpace **không** đổi thì ô 8 rỗng ⇒ **1** (`InvalidCapability`).
+    let moved = call(SLOT_ALT_ONLY, info(LABEL_REQ, 0, false, 1), [ARG, 0, 0, 0]);
+    if moved[0] != 18 {
+        put(b"# ipc: configure2 moved err=");
+        put_u64(moved[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_MOVED);
+    }
+    //         Trả `cspace` về CSpace gốc: trong `cnode_alt`, ô 0 = cap tới CSpace gốc.
+    set_configure_params(SLOT_ALT_BACK, 0, 0, 0);
+    let back = call(
+        SLOT_ALT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_CSPACE, 0],
+    );
+    if back[0] != 0 {
+        put(b"# ipc: configure2 back err=");
+        put_u64(back[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_BACK);
+    }
+    //         Chứng minh đã về CSpace gốc: ô 9 **rỗng** ở đó ⇒ `Call` trả **1**.
+    let restored = call(SLOT_EMPTY, info(LABEL_REQ, 0, false, 1), [ARG, 0, 0, 0]);
+    if restored[0] != 1 {
+        put(b"# ipc: configure2 restored err=");
+        put_u64(restored[0]);
+        put(b"\n");
+        exit(EXIT_CFG2_BACK);
+    }
+    put(b"# ipc: configure2 ok=1 entry=0x");
+    put_hex(entry_va);
+    put(b" prio=");
+    put_u64(PRIORITY_OK);
+    put(b"\n");
+    put(b"# ipc: configure2 neg align=");
+    put_u64(neg_align[0]);
+    put(b" prio=");
+    put_u64(neg_prio[0]);
+    put(b" cspace=");
+    put_u64(neg_cspace[0]);
+    put(b" vspace=");
+    put_u64(neg_vspace[0]);
+    put(b" ok=1\n");
+
+    // ---- 7) **Nhường CPU** — ranh giới để kernel đo **độc lập** `TcbData.entry`/`priority`/
+    //         `cspace` **ngay sau** pha `Configure` kênh đầy đủ (trước các ca âm cũ bên dưới,
+    //         để số đếm `calls`/`denied` của TAP 6 chỉ gồm sáu invocation của pha này).
+    let _ = vifast_user_abi::yield_now();
+
+    // ---- 8) Ca âm cũ (giữ nguyên từ KT-280/KT-282): `Call` trên ô **rỗng** ⇒
+    //         `InvalidCapability` (1), không chặn.
     let empty = call(SLOT_EMPTY, info(LABEL_REQ, 0, false, 1), [ARG, 0, 0, 0]);
     if empty[0] != 1 {
         exit(EXIT_NEG_EMPTY);
     }
-    // ---- 4) Ca âm (b): `Call` trên cap **Reply** (không phải Endpoint) ⇒ invocation không có
-    // method ⇒ `NotSupported` (18), không chặn, không gửi message nào.
+    //         `Call` trên cap **Reply** (không phải Endpoint) ⇒ invocation không có method ⇒
+    //         `NotSupported` (18), không chặn, không gửi message nào.
     let wrong = call(SLOT_REPLY, info(LABEL_REQ, 0, false, 1), [ARG, 0, 0, 0]);
     if wrong[0] != 18 {
         exit(EXIT_NEG_REPLY);
     }
-    // ---- 5) Ca âm (c) **KT-282**: `length = 65` vượt `max_words = 64` ⇒ `InvalidArgument` (5)
-    // trước khi chạm buffer — **không tràn** vùng 60 word.
+    //         `length = 65` vượt `max_words = 64` ⇒ `InvalidArgument` (5) trước khi chạm buffer
+    //         — **không tràn** vùng 60 word.
     let over = call(SLOT_EP, info(LABEL_REQ, 0, false, 65), [ARG, 0, 0, 0]);
     if over[0] != 5 {
         exit(EXIT_MR_OVER);

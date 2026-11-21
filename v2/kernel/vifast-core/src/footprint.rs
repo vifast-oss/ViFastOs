@@ -169,9 +169,12 @@ mod tests {
             48,
             "Meta phải 48 B (ba trường chỉ số dùng kiểu hẹp, không Option<usize>)"
         );
+        // **KT-311** (merge cùng vòng 20) thêm `TcbData.entry: u64` ⇒ `+8 × MAX_TCBS(64) = 512`
+        // ⇒ trần của KT-312 là `184320 + 512 = 184832`. Trần **không** nới: nó vẫn chốt đúng
+        // "thu hồi ≥ 10.200 B của KT-312" cộng phần tăng **có ghi** của KT-311.
         assert!(
-            size_of::<Machine>() <= 184_320,
-            "KT-312: size_of::<Machine>() = {} > 184320 (thu hồi < 10.200 B)",
+            size_of::<Machine>() <= 184_832,
+            "KT-312 + KT-311: size_of::<Machine>() = {} > 184832 (thu hồi < 10.200 B)",
             size_of::<Machine>()
         );
     }

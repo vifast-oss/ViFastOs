@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 5 5
+ktest-ipc 6 6
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -162,3 +162,15 @@ ktest-netsrv 3 3
 # `RIGHT_GRANT`** ⇒ `InsufficientRights` (3); `n = 5` > `max_caps = 4` ⇒ `InvalidArgument` (5);
 # slot đích **bận** ⇒ `SlotOccupied` (7) **trước** khi pop (message **không** mất — server khai
 # lại `dst` = ô trống rồi `Recv` lần hai mới nhận). TAP 1/2/3/4 giữ nguyên nội dung.
+# **KT-311** (nợ KT-290 §7.1): ảnh `ktest-ipc` thêm **TAP 6** — **`Tcb.Configure` kênh đầy đủ**:
+# `Call(cap TCB, {label = Tcb.Configure, length = 3}, MR0 = CPTR Frame, MR1 = VA, MR2 = mask)`;
+# `cspace?`/`vspace?`/`entry?`/`priority?` nằm trong **vùng riêng** của IPC buffer (byte 608..640,
+# `[TK]` KT-311 — `spec/abi.toml` **không** chốt layout vùng dự phòng, cùng khuôn KT-282/KT-309;
+# **không** đổi ABI, **không** đổi `MessageInfo` 35 bit). Bằng chứng: `# ipc: configure2 entry=0x…
+# prio=4 cspace=… vspace=0 calls=2 denied=4 ok=1` (kernel đo **độc lập**: `entry` = entry ELF
+# client, `priority` = 4, `cspace` = CSpace gốc sau khi client đổi sang `cnode_alt` rồi trả về,
+# `calls = 2` đường xanh, `denied = 4` ca âm), `# ipc: configure2 ok=1 entry=0x… prio=4` +
+# `# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=18 ok=1` (client in). Bốn ca âm trong
+# cùng boot: `entry` không căn 4 B ⇒ `Alignment` (6); `priority` ngoài dải `u8` ⇒
+# `InvalidArgument` (5); `cspace` không phải `CNode` ⇒ `WrongObjectType` (2); `vspace?` **chưa
+# cài** ⇒ `NotSupported` (18). TAP 1..5 giữ nguyên nội dung.

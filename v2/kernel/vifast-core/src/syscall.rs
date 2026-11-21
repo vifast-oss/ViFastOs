@@ -820,6 +820,7 @@ mod tests {
             recv_window: window,
             send_caps,
             extra: IpcExtraCaps::EMPTY,
+            configure: crate::ipc::IpcConfigureParams::EMPTY,
         }
     }
 

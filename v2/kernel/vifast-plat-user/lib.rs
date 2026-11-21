@@ -281,6 +281,65 @@ pub fn extra_caps_dst() -> u64 {
     unsafe { core::ptr::read_volatile((IPC_BUFFER_VA + EXTRA_CAPS_DST_OFFSET as u64) as *const u64) }
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-311 — vùng **tham số mở rộng** của `Tcb.Configure` trong IPC buffer
+// ---------------------------------------------------------------------------------------------
+
+/// Byte offset của vùng **tham số mở rộng** của `Tcb.Configure` — `[TK]` KT-311: ngay sau vùng
+/// extra caps (`EXTRA_CAPS_DST_OFFSET + 8` = 608). Cùng hằng với kernel
+/// (`vifast_core::ipc::IPC_BUFFER_CONFIGURE_OFFSET`) — một layout, hai phía đọc/ghi.
+pub const CONFIGURE_OFFSET: usize = EXTRA_CAPS_DST_OFFSET + 8;
+/// Số word của vùng tham số mở rộng: `cspace`, `vspace`, `entry`, `priority` = **4**.
+pub const CONFIGURE_WORDS: usize = 4;
+/// Mask bit của `cspace?` trong `MR2` của `Tcb.Configure` (kênh đầy đủ, `length = 3`).
+pub const CONFIGURE_MASK_CSPACE: u64 = 1 << 0;
+/// Mask bit của `vspace?` — **chưa cài** ở kernel (bật ⇒ `NotSupported` 18).
+pub const CONFIGURE_MASK_VSPACE: u64 = 1 << 1;
+/// Mask bit của `entry?`.
+pub const CONFIGURE_MASK_ENTRY: u64 = 1 << 2;
+/// Mask bit của `priority?`.
+pub const CONFIGURE_MASK_PRIORITY: u64 = 1 << 3;
+
+fn write_configure_word(index: usize, value: u64) {
+    // SAFETY: `CONFIGURE_OFFSET + index*8` nằm trong trang IPC buffer 4 KiB đã map `R|W|U|NX`
+    // cho mọi ELF U-mode; `index < 4` ⇒ địa chỉ < 608 + 32 = 640 < 4096. Một tiến trình một
+    // luồng ⇒ không có writer đồng thời.
+    unsafe {
+        core::ptr::write_volatile(
+            (IPC_BUFFER_VA + (CONFIGURE_OFFSET + index * 8) as u64) as *mut u64,
+            value,
+        )
+    }
+}
+
+/// **KT-311** — ghi **tham số mở rộng** của `Tcb.Configure` vào vùng dự phòng của IPC buffer
+/// (byte 608..640, `[TK]` KT-311): `cspace` CPTR, `vspace` CPTR (dự phòng), `entry` VA,
+/// `priority`. Kernel đọc vùng này khi `length = 3` và `MR2` (mask) bật bit tương ứng — qua hook
+/// `SyscallEnv::ipc_buffer_configure` (D2-83: core không đọc bộ nhớ user).
+///
+/// Thứ tự word **khớp** `vifast_core::ipc::IPC_BUFFER_CONFIGURE_OFFSET`:
+/// `[cspace, vspace, entry, priority]`.
+pub fn set_configure_params(cspace: u64, vspace: u64, entry: u64, priority: u64) {
+    write_configure_word(0, cspace);
+    write_configure_word(1, vspace);
+    write_configure_word(2, entry);
+    write_configure_word(3, priority);
+}
+
+/// **KT-311** — đọc lại word tham số mở rộng thứ `index` (0 = `cspace`, 1 = `vspace`,
+/// 2 = `entry`, 3 = `priority`); `0` nếu ngoài biên.
+pub fn configure_param(index: usize) -> u64 {
+    if index >= CONFIGURE_WORDS {
+        return 0;
+    }
+    // SAFETY: như [`write_configure_word`] — đọc trong vùng 608..640 của trang RW của chính nó.
+    unsafe {
+        core::ptr::read_volatile(
+            (IPC_BUFFER_VA + (CONFIGURE_OFFSET + index * 8) as u64) as *const u64,
+        )
+    }
+}
+
 /// Đặt header về 0 rồi bật magic (chưa có window ⇒ kernel sẽ **từ chối** IPC cho tới khi
 /// [`set_recv_window`] được gọi — fail-closed, không im lặng).
 pub fn init_ipc_buffer() {

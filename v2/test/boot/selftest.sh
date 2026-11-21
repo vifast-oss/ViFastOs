@@ -370,6 +370,20 @@ case_red "ev$CAP_EV" \
     "log ktest-ipc: xoá dòng '# ipc caps: sent=1 received=1 slot=5 rights=0x' (evidence bắt buộc của KT-309)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-caps.log" "$SMP"
 
+# --- ca (p): dòng `# ipc: configure2` của ảnh KT-311 (Tcb.Configure kênh đầy đủ) ----------
+# **KT-311**: dòng `# ipc: configure2 entry=0x… prio=4 cspace=… vspace=0 calls=2 denied=5 ok=1`
+# do **kernel** in sau khi đo **độc lập** `TcbData.entry`/`priority`/`cspace` của TCB client
+# (client đã đổi `cspace` sang `cnode_alt` rồi trả về). Xoá đúng dòng đó ⇒ runner phải đỏ với
+# token `ev<ordinal>` — chứng minh dòng `# ipc: configure2` là evidence **bắt buộc**, không phải
+# trang trí (đột biến M1/M2/M3 của KT-311 làm dòng này sai/thiếu).
+CFG2_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: configure2 entry=0x')"
+[ -n "$CFG2_EV" ] || die "không tra được ordinal evidence '# ipc: configure2 entry=0x' của ktest-ipc"
+grep -v -F '# ipc: configure2 entry=0x' "$IPC_LOG" >"$WORK/log-ipc-no-cfg2.log"
+mut_diff "$WORK/log-ipc-no-cfg2.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: configure2 entry=0x'"
+case_red "ev$CFG2_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: configure2 entry=0x' (evidence bắt buộc của KT-311)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-cfg2.log" "$SMP"
+
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình
 # U-mode** in sau khi syscall `Call` trên `EP_KERN` trả kết quả của **dịch vụ kernel** `NetPing`

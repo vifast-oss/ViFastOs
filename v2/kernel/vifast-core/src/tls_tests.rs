@@ -336,12 +336,15 @@ fn set_tls_khi_ready_van_ghi_duoc() {
 /// (c) hai bộ đếm `u64` (`extra_caps_sent`/`extra_caps_installed`) ⇒ `+16`.
 /// Tổng `190920 + 512 + 3072 + 16 = 194520` B — pin `196608` **vẫn không đổi** (headroom 2.088).
 ///
+/// **KT-311** — `TcbData.entry: u64` (tham số `entry?` của `Tcb.Configure`) — `TcbData` **824** B
+/// (trước 816) ⇒ `+8 × 64 = 512`.
 /// **KT-312** — **giảm** `40 B × MAX_OBJECTS(256) = 10240` B: `Meta` **88 → 48 B** nhờ thu hẹp
 /// ba trường chỉ số (`untyped`/`region`: `Option<usize>` 16 B → `Option<u8>` 2 B; `slots_meta`:
 /// `Option<usize>` 16 B → `Option<u16>` 4 B) — miền giá trị **chứng minh được** (`< MAX_UNTYPEDS
-/// = 16`, `≤ MAX_SLOT_WORDS = 4096`), ngữ nghĩa **không đổi**. `194520 − 10240 = 184280` B;
-/// pin `196608` **vẫn không đổi** (headroom **12.328** B). Phép tính ở đây là **đại số có dấu**
-/// (tăng có ghi, **giảm có ghi**), không phải nới ngưỡng.
+/// = 16`, `≤ MAX_SLOT_WORDS = 4096`), ngữ nghĩa **không đổi**.
+/// Tổng sau **cả hai**: `194520 + 512 − 10240 = 184792` B — pin `196608` **vẫn không đổi**
+/// (headroom **11.816**). Phép tính là **đại số có dấu** (tăng có ghi, **giảm có ghi**),
+/// không phải nới ngưỡng.
 #[test]
 fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const PIN_CU: usize = 188_872;
@@ -355,6 +358,8 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const KT309_THEM_MOI_MSG: usize = 128;
     /// **KT-309**: hai bộ đếm `u64` vô hướng.
     const KT309_THEM_SCALAR: usize = 16;
+    /// **KT-311**: `TcbData.entry: u64` mỗi TCB (căn 8 ⇒ 8 B).
+    const KT311_THEM_MOI_TCB: usize = 8;
     /// **KT-312**: `Meta` 88 → 48 B (thu hẹp ba trường chỉ số) ⇒ **giảm** `40 × MAX_OBJECTS`.
     const KT312_GIAM_MOI_META: usize = 40;
     let them = core::mem::size_of::<Machine>() as isize - PIN_CU as isize;
@@ -364,11 +369,12 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
         + KT282_THEM_MOI_TCB * crate::MAX_TCBS
         + KT309_THEM_MOI_TCB * crate::MAX_TCBS
         + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
-        + KT309_THEM_SCALAR) as isize;
+        + KT309_THEM_SCALAR
+        + KT311_THEM_MOI_TCB * crate::MAX_TCBS) as isize;
     let giam = (KT312_GIAM_MOI_META * crate::MAX_OBJECTS) as isize;
     let tinh = tang - giam;
     std::println!(
-        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} size_of_message={} max_tcbs={} 8xmax={} kt282={} kt309_tcb={} kt309_msg={} kt309_scalar={} kt312_giam={} tinh={} khop={} duoi_pin={}",
+        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} size_of_message={} max_tcbs={} 8xmax={} kt282={} kt309_tcb={} kt309_msg={} kt309_scalar={} kt311_tcb={} kt312_giam={} tinh={} khop={} duoi_pin={}",
         core::mem::size_of::<Machine>(),
         PIN_CU,
         them,
@@ -380,6 +386,7 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
         KT309_THEM_MOI_TCB * crate::MAX_TCBS,
         KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES,
         KT309_THEM_SCALAR,
+        KT311_THEM_MOI_TCB * crate::MAX_TCBS,
         giam,
         tinh,
         u8::from(them == tinh),
@@ -388,16 +395,18 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
     assert_eq!(
         them, tinh,
         "tăng pin phải đúng 8 B (TLS) + 24 B (IPC buffer) + 8 B (extra_caps_dst) × MAX_TCBS \
-         + 128 B × MAX_QUEUED_MESSAGES + 16 B (hai bộ đếm) − 40 B × MAX_OBJECTS (KT-312)"
+         + 128 B × MAX_QUEUED_MESSAGES + 16 B (hai bộ đếm) + 8 B (entry) × MAX_TCBS \
+         − 40 B × MAX_OBJECTS (KT-312)"
     );
     assert_eq!(
         core::mem::size_of::<Machine>() as isize - KT74_CU as isize,
         (KT282_THEM_MOI_TCB * crate::MAX_TCBS
             + KT309_THEM_MOI_TCB * crate::MAX_TCBS
             + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
-            + KT309_THEM_SCALAR) as isize
+            + KT309_THEM_SCALAR
+            + KT311_THEM_MOI_TCB * crate::MAX_TCBS) as isize
             - (KT312_GIAM_MOI_META * crate::MAX_OBJECTS) as isize,
-        "KT-282 + KT-309 (tăng) và KT-312 (giảm) là **toàn bộ** phần lệch so với mốc KT-74"
+        "KT-282 + KT-309 + KT-311 (tăng) và KT-312 (giảm) là **toàn bộ** phần lệch so với mốc KT-74"
     );
     // **KT-312** — `Meta` phải đúng 48 B: nếu ai thêm lại `Option<usize>` vào `Meta`, phép
     // tính trên lệch ngay (không có chỗ "trôi").

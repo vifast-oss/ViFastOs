@@ -46,7 +46,13 @@
 //! KT-282 đóng nợ đó: `Tcb.Configure` bind **frame 4 KiB + VA**, `length > 4` ⇒ MR4..MR63 đọc/ghi
 //! ở **offset 80** của buffer (`[TK]` — spec không chốt offset, xem `vifast_core::ipc`).
 //!
-//! # Bốn TAP (kế hoạch `1..4`)
+//! **KT-311** — trả nợ KT-290 §7.1: **`Tcb.Configure` kênh đầy đủ**. `length = 3` + `MR2` =
+//! **mask** tham số mở rộng; giá trị `cspace?`/`vspace?`/`entry?`/`priority?` nằm trong **vùng
+//! riêng** của IPC buffer (byte 608..640, `[TK]` KT-311 — **không** đổi ABI, **không** đổi
+//! `MessageInfo` 35 bit). TAP 6 đo đường đó; bốn ca âm (entry không căn 2 B ⇒ 6, priority ngoài
+//! dải ⇒ 5, cspace không phải CNode ⇒ 2, vspace chưa cài ⇒ 18) nằm trong cùng boot.
+//!
+//! # Sáu TAP (kế hoạch `1..6`)
 //!
 //! 1. `ipc: umode call` — client U-mode gọi `Call(EP, {label=0x280,length=8}, MR0..MR3)`:
 //!    core đưa TCB client sang `BlockedOnReply`, message **nằm trong hàng Endpoint**
@@ -67,6 +73,15 @@
 //!    `delta.denied = 2`, `sys_err(0) = 0`, binding đúng VA (`# ipc configure: …`). Ba ca âm
 //!    trong cùng boot: cap không phải TCB ⇒ 18, method id sai ⇒ 18, buffer ngoài frame ⇒
 //!    `Configure` 0 nhưng `Call` 8 MR fail-closed 5 (`# ipc: configure neg …`).
+//! 5. `ipc: cap transfer` — **KT-309**: cap `Frame` đi qua **vùng dự phòng** của IPC buffer
+//!    (offset 560) từ CSpace client sang CSpace server; kernel kiểm `RIGHT_GRANT`, cài cap vào
+//!    slot server khai, server **dùng** cap bằng `CNode.Copy` (`# ipc caps: …`).
+//! 6. `ipc: tcb configure full` — **KT-311**: `Call(cap TCB, {label = Tcb.Configure, length = 3},
+//!    MR0 = CPTR Frame, MR1 = VA, MR2 = mask)`; `cspace?`/`entry?`/`priority?` đọc từ vùng
+//!    608..640 của IPC buffer. Kernel đo **độc lập** `entry` (= entry ELF client), `priority`,
+//!    `cspace` (đã trả về CSpace gốc), `calls = 2`, `denied = 5` (`# ipc: configure2 …`); client
+//!    in `# ipc: configure2 ok=1 …` + `# ipc: configure2 neg …`, và **chứng minh** `cspace?` thật
+//!    sự đổi CSpace bằng `Call` trên ô **chỉ có** ở `cnode_alt` (18 thay vì 1).
 //!
 //! **Ca âm** (trong cùng boot, chương trình client tự kiểm): `Call` trên ô rỗng ⇒ 1
 //! (`InvalidCapability`); `Call` trên cap `Reply` (không phải Endpoint) ⇒ 18 (`NotSupported`);
@@ -120,6 +135,17 @@ const CS_SRV_DST: usize = 5;
 const CS_SRV_DST_BUSY: usize = 1;
 /// **KT-309** — slot server **copy** cap nhận được sang (chứng minh cap dùng được thật).
 const CS_SRV_COPY: usize = 6;
+/// **KT-311** — slot trong cspace **client** giữ cap `CNode` của **CSpace thứ hai**
+/// (`cnode_alt`) — `cspace?` đường xanh.
+const CS_ALT_CNODE: usize = 7;
+/// **KT-311** — slot trong `cnode_alt` giữ cap tới **CSpace gốc** (client trả `cspace` về đây).
+const CS_ALT_BACK: usize = 0;
+/// **KT-311** — slot trong `cnode_alt` giữ cap `Tcb` của client (gọi `Configure` khi CSpace đang
+/// là `cnode_alt`).
+const CS_ALT_TCB: usize = 3;
+/// **KT-311** — slot trong `cnode_alt` giữ cap `Reply` — **chỉ có** ở đó, nên `Call` trên nó trả
+/// **18** khi CSpace đã đổi và **1** khi chưa (chứng minh `cspace?` thật sự đổi CSpace).
+const CS_ALT_ONLY: usize = 8;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -162,6 +188,8 @@ struct Rig {
     reply: ObjId,
     cnode_c: ObjId,
     cnode_s: ObjId,
+    /// **KT-311** — CSpace **thứ hai** của client (`cspace?` đổi sang rồi trả về).
+    cnode_alt: ObjId,
     /// **KT-282** — object `Frame` 4 KiB đã bind làm IPC buffer cho **cả hai** TCB.
     ipc_buf: ObjId,
 }
@@ -269,6 +297,35 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         Some(RIGHTS_ALL & !RIGHT_GRANT),
     )
     .expect("rig: frame no-grant -> client");
+    // **KT-311** — CSpace **thứ hai** (`cnode_alt`) cho tham số `cspace?`:
+    //   * ô 0 = cap tới **CSpace gốc** (`cnode_c`) — client trả `cspace` về;
+    //   * ô 3 = cap `Tcb` của client — gọi `Configure` khi CSpace đang là `cnode_alt`;
+    //   * ô 8 = cap `Reply` — **chỉ có** ở đây ⇒ `Call` trên ô 8 trả 18 khi CSpace đã đổi,
+    //     1 khi chưa (chứng minh `cspace?` thật sự đổi CSpace, không chỉ ghi trường).
+    let cnode_alt = m.add_cnode(16);
+    let back_cap = m.root_cap(cnode_c);
+    m.put_cap(cnode_alt, CS_ALT_BACK, back_cap)
+        .expect("rig: cnode_alt -> cnode_c");
+    m.copy(
+        SlotRef::new(root, RIG_TCB_C),
+        SlotRef::new(cnode_alt, CS_ALT_TCB),
+    )
+    .expect("rig: tcb -> cnode_alt");
+    m.copy(
+        SlotRef::new(root, RIG_REPLY),
+        SlotRef::new(cnode_alt, CS_ALT_ONLY),
+    )
+    .expect("rig: reply -> cnode_alt");
+    // Ô 4 = cap `Frame` IPC buffer (client truyền `SLOT_FRAME` = 4 làm `ipc_buffer?` **cả khi**
+    // CSpace đang là `cnode_alt` — CPTR giải trong CSpace **caller**, không phải CSpace gốc).
+    m.copy(
+        SlotRef::new(root, RIG_IPC_BUF),
+        SlotRef::new(cnode_alt, CS_FRAME),
+    )
+    .expect("rig: frame -> cnode_alt");
+    let alt_cap = m.root_cap(cnode_alt);
+    m.put_cap(cnode_c, CS_ALT_CNODE, alt_cap)
+        .expect("rig: cnode_alt -> client");
     // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
     // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
     // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
@@ -309,6 +366,7 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         reply: obj[3],
         cnode_c,
         cnode_s,
+        cnode_alt,
         ipc_buf,
     }
 }
@@ -353,7 +411,7 @@ fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..5\n");
+    PLATFORM.put_str("TAP version 13\n1..6\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -404,12 +462,13 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# ipc rig: stvec=0x{:x} untyped={} core_untyped={} cspace_c={} cspace_s={} tcb_c={} tcb_s={} ep={} reply={} ipc_buf={}",
+            "# ipc rig: stvec=0x{:x} untyped={} core_untyped={} cspace_c={} cspace_s={} cspace_alt={} tcb_c={} tcb_s={} ep={} reply={} ipc_buf={}",
             stvec,
             obj.untyped0.0,
             core.untyped,
             rig.cnode_c,
             rig.cnode_s,
+            rig.cnode_alt,
             rig.tcb_c,
             rig.tcb_s,
             rig.ep,
@@ -658,7 +717,11 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
 
-    // ================================================================ lượt 8: resume client — kiểm reply cap + ca âm cũ
+    // ================================================================ lượt 8: resume client — kiểm reply cap + KT-311
+    // **KT-311** — mốc số đếm invocation TRƯỚC lượt 8: lượt này chứa **sáu** `Tcb.Configure`
+    // kênh đầy đủ (bốn ca âm + đường xanh + trả `cspace` về) rồi client `Yield` ⇒ đo **độc lập**
+    // ở kernel **ngay sau** pha đó (trước các ca âm cũ của lượt 9).
+    let inv_before2 = vifast_core::invoke::stats();
     let applied3 = user::apply_ipc_return(&mut tf_c, rig.tcb_c);
     let stop8 = if applied3 {
         run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT)
@@ -666,6 +729,32 @@ pub extern "C" fn rust_main() -> ! {
         None
     };
     let state_c8 = state_of(rig.tcb_c);
+    let inv_after2 = vifast_core::invoke::stats();
+    let cfg2_calls = inv_after2.configure.saturating_sub(inv_before2.configure);
+    let cfg2_denied = inv_after2.denied.saturating_sub(inv_before2.denied);
+    // **KT-311** — đo **độc lập** ở kernel: `entry`/`priority`/`cspace` **thật** của TCB client
+    // sau lượt U-mode (client đã trả `cspace` về CSpace gốc; `entry`/`priority` giữ nguyên).
+    let cfg2_entry = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_c).ok());
+    let cfg2_info = core_bridge::with_machine(|m| m.tcb_info_obj(rig.tcb_c).ok());
+    let cfg2_prio = cfg2_info.map(|i| i.priority);
+    let cfg2_cspace = cfg2_info.and_then(|i| i.cspace);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc: configure2 entry=0x{:x} prio={} cspace={} vspace=0 calls={} denied={} ok=1",
+            cfg2_entry.unwrap_or(0),
+            cfg2_prio.map(|p| p as u64).unwrap_or(u64::MAX),
+            cfg2_cspace.map(|c| c as u64).unwrap_or(u64::MAX),
+            cfg2_calls,
+            cfg2_denied
+        );
+    }
+    // ================================================================ lượt 9: client — ca âm cũ + `Exit(0)`
+    // Client đã `Yield` sau pha KT-311 ⇒ lượt này **không** `apply_ipc_return` (không có message
+    // mới; áp lại message cũ sẽ stale — cùng lý do lượt 7 của server).
+    let stop9 = run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT);
+    let state_c9 = state_of(rig.tcb_c);
     user::capture_end();
 
     // ================================================================ TAP 1..5
@@ -688,13 +777,19 @@ pub extern "C" fn rust_main() -> ! {
     let server_said_cap_busy = user::captured_contains(SLOT_SERVER, b"# ipc: cap busy=7 ok=1");
     let server_said_cap_used =
         user::captured_contains(SLOT_SERVER, b"# ipc: cap used slot=5 copy=6");
+    // **KT-311** — hai dòng do **chính chương trình U-mode** in sau `Tcb.Configure` kênh đầy đủ.
+    let client_said_cfg2 = user::captured_contains(SLOT_CLIENT, b"# ipc: configure2 ok=1 entry=0x");
+    let client_said_cfg2_neg = user::captured_contains(
+        SLOT_CLIENT,
+        b"# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=18 ok=1",
+    );
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
     let (check_ipc, check_caps) =
         core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
     let reply_clean = reply_caller.is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply).ok().flatten()).is_none();
-    let client_exit = match stop8 {
+    let client_exit = match stop9 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
@@ -907,19 +1002,56 @@ pub extern "C" fn rust_main() -> ! {
             u8::from(check_caps),
             u8::from(client_said_call),
             u8::from(server_said_ran),
-            state_c8.map(tcb_state_name).unwrap_or("none"),
+            state_c9.map(tcb_state_name).unwrap_or("none"),
             state_s7.map(tcb_state_name).unwrap_or("none")
         );
+    }
+    // TAP 6 — **KT-311**: `Tcb.Configure` **kênh đầy đủ** (`length = 3`, `MR2` = mask). Đo
+    // **độc lập** ở kernel: `entry` = entry của ELF client (đọc từ ảnh, không phải hằng chép
+    // tay), `priority` = 4, `cspace` = **CSpace gốc** (client đã trả về sau khi đổi sang
+    // `cnode_alt`), `calls = 2` (đường xanh + trả `cspace`), `denied = 4` (bốn ca âm). Cộng hai
+    // dòng do chính chương trình U-mode in (đường xanh + bốn mã ca âm).
+    let ok6 = client_said_cfg2
+        && client_said_cfg2_neg
+        && cfg2_entry == Some(client.entry)
+        && cfg2_prio == Some(4)
+        && cfg2_cspace == Some(rig.cnode_c)
+        && cfg2_calls == 2
+        && cfg2_denied == 5
+        && client_exit == Some(0)
+        && check_ipc
+        && check_caps;
+    if ok6 {
+        PLATFORM.put_str("ok 6 - ipc: tcb configure full\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 6 - ipc: tcb configure full: said_ok={} said_neg={} entry=0x{:x} want_entry=0x{:x} prio={} cspace={} want_cspace={} calls={} denied={} client_exit={} check_ipc={} check_caps={}",
+            u8::from(client_said_cfg2),
+            u8::from(client_said_cfg2_neg),
+            cfg2_entry.unwrap_or(0),
+            client.entry,
+            cfg2_prio.map(|p| p as u64).unwrap_or(u64::MAX),
+            cfg2_cspace.map(|c| c as u64).unwrap_or(u64::MAX),
+            rig.cnode_c,
+            cfg2_calls,
+            cfg2_denied,
+            client_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(check_ipc),
+            u8::from(check_caps)
+        );
+        fails += 1;
     }
     let _ = (state_c4, state_s5);
     if fails == 0 {
         PLATFORM.put_str(
-            "PANIC: KT-309 ipc u-mode + mr buffer + tcb configure + cap transfer xong (5 TAP, 0 fail)\n",
+            "PANIC: KT-311 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full xong (6 TAP, 0 fail)\n",
         );
         PLATFORM.halt(0)
     } else {
         PLATFORM.put_str(
-            "PANIC: KT-309 ipc u-mode + mr buffer + tcb configure + cap transfer CO LOI\n",
+            "PANIC: KT-311 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full CO LOI\n",
         );
         PLATFORM.halt(1)
     }

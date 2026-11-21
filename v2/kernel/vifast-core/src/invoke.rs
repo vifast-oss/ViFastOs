@@ -9,7 +9,7 @@
 //! | `Untyped` (1) | 0 | `Retype` | **cài** (đợt 1) — chỉ `Frame`/`PageTable`/`VSpace` qua object layer |
 //! | `Frame` (11) | 0 | `Map` | **cài** (đợt 2) — map chính Frame vào VSpace (arg: cap VSpace) |
 //! | `Frame` (11) | 1 | `Unmap` | **cài** (đợt 2) |
-//! | `Tcb` (3) | 0 | `Configure` | **cài** (KT-290) — bind `ipc_buffer?` (MR0 CPTR Frame, MR1 VA) |
+//! | `Tcb` (3) | 0 | `Configure` | **cài** (KT-290) — bind `ipc_buffer?` (MR0 CPTR Frame, MR1 VA); **KT-311** — kênh đầy đủ `length = 3` (MR2 = mask, `cspace?`/`entry?`/`priority?` ở vùng 608..640 của IPC buffer) |
 //! | `Tcb` (3) | 15 | `SetTls` | **cài** (KT-74) |
 //! | khác | — | — | `NotSupported` **18** (giữ D2-53 Q11 cho phần chưa cài) |
 //!
@@ -339,9 +339,10 @@ pub fn dispatch(
         // KT-68: `CNode.Copy/Mint/Move/Delete/Revoke` trên **chính cap CNode** đã gọi — cap
         // này chỉ vào CSpace của caller (khác `Untyped.Retype` không cần cap phụ).
         (ObjType::CNode, _) => cnode(m, tcb, c, method, args, len),
-        // KT-290: `Tcb.Configure` (method 0 của `[object].Tcb`) — bind **IPC buffer** của cap
-        // TCB đã gọi (kênh hẹp: `ipc_buffer?` = MR0 CPTR Frame + MR1 VA).
-        (ObjType::Tcb, TCB_CONFIGURE) => configure(m, tcb, slot, c, args, len),
+        // KT-290/KT-311: `Tcb.Configure` (method 0 của `[object].Tcb`) — bind **IPC buffer**
+        // (kênh hẹp: `ipc_buffer?` = MR0 CPTR Frame + MR1 VA) + **kênh đầy đủ** (`length = 3`:
+        // MR2 = mask, giá trị ở vùng 608..640 của IPC buffer — `[TK]` KT-311).
+        (ObjType::Tcb, TCB_CONFIGURE) => configure(m, tcb, slot, c, args, len, env),
         // KT-74: `Tcb.SetTls` (method 15 của `[object].Tcb`) — cap **chính là** TCB đã gọi.
         (ObjType::Tcb, TCB_SET_TLS) => set_tls(m, slot, c, args, len),
         // Danh sách trắng hẹp: mọi loại/method khác giữ `NotSupported` (D2-53 Q11) — **không**
@@ -396,21 +397,31 @@ fn set_tls(
 // KT-290 — `Tcb.Configure` (method 0 của `[object].Tcb`) qua invocation từ U-mode
 // =============================================================================================
 
-/// `Tcb.Configure` — bind **IPC buffer** của cap TCB đã gọi (method `TCB_CONFIGURE` = 0).
+/// `Tcb.Configure` — cấu hình cap TCB đã gọi (method `TCB_CONFIGURE` = 0).
 ///
-/// # Kênh tham số (hẹp — chỉ phần `ipc_buffer?` đã cài)
+/// # Kênh tham số (`[TK]` KT-290 + KT-311 — **không** đổi `MessageInfo` 35 bit, **không** đổi
+/// `spec/`)
 ///
-/// | Tham số | Nguồn | Ghi chú |
+/// | `length` | Nghĩa | MR |
 /// |---|---|---|
-/// | `ipc_buffer` (cap `Frame`) | `MR0` | CPTR trong **CSpace của caller** |
-/// | `ipc_buffer` (VA) | `MR1` | phải căn `IPC_BUFFER_BYTES` (4 KiB) |
+/// | **2** | KT-290: chỉ `ipc_buffer?` | `MR0` CPTR `Frame` (CSpace caller), `MR1` VA |
+/// | **3** | KT-311: `ipc_buffer?` + mask tham số mở rộng | `MR0`/`MR1` như trên, `MR2` = mask |
 ///
-/// **Arity chính xác 2** (D2-104): `length` khác 2 ⇒ `InvalidArgument` **5**, có đếm. Các tham
-/// số `cspace?`/`vspace?`/`entry?`/`priority?` của `[method_signature."Tcb.Configure"]` **chưa
-/// cài** ⇒ phải vắng; CSpace của TCB **giữ nguyên** (khác `Machine::tcb_configure(tcb, None)` —
-/// API đó xoá CSpace). Cap TCB phải có `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3**. Cap
-/// `Frame` sai loại/chết ⇒ `WrongObjectType` **2** / `InvalidCapability` **1**. Trả `a1 = 0`;
-/// **không** đổi trạng thái TCB/scheduler (chỉ lưu cấu hình, như `Tcb.SetTls`).
+/// `MR2` (mask) — bit nào bật thì tham số đó **có mặt**; giá trị đọc từ **vùng riêng** của IPC
+/// buffer (byte 608..640, `[TK]` KT-311 — xem [`crate::ipc::IPC_BUFFER_CONFIGURE_OFFSET`]):
+///
+/// | Bit | Tham số | Word | Kiểm |
+/// |---|---|---|---|
+/// | 0 | `cspace?` | 608..616 CPTR | cap `CNode` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1 |
+/// | 1 | `vspace?` | 616..624 | **chưa cài** ⇒ `NotSupported` 18 |
+/// | 2 | `entry?` | 624..632 | căn 2 B (biên lệnh RISC-V có `C`) ⇒ không: `Alignment` 6 |
+/// | 3 | `priority?` | 632..640 | vừa `u8` + ≤ `mcp` ⇒ không: `InvalidArgument` 5 |
+///
+/// Bit ngoài `0..3` ⇒ `InvalidArgument` 5. Mask = 0 ⇒ như `length = 2`. **Arity chính xác**
+/// (D2-104): `length` khác 2 và 3 ⇒ `InvalidArgument` **5**, có đếm. Cap TCB phải có
+/// `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3**. Cap `Frame` sai loại/chết ⇒
+/// `WrongObjectType` **2** / `InvalidCapability` **1**. Trả `a1 = 0`; **không** đổi trạng thái
+/// TCB/scheduler (chỉ lưu cấu hình, như `Tcb.SetTls`).
 fn configure(
     m: &mut Machine,
     tcb: ObjId,
@@ -418,12 +429,13 @@ fn configure(
     c: crate::error::CapInfo,
     args: [u64; 4],
     len: usize,
+    env: &mut impl SyscallEnv,
 ) -> Result<(u64, u64), u64> {
     if c.rights & RIGHT_WRITE == 0 {
         bump(&DENIED);
         return Err(KError::InsufficientRights.id() as u64);
     }
-    if len != 2 {
+    if len != 2 && len != 3 {
         bump(&DENIED);
         return Err(KError::InvalidArgument.id() as u64);
     }
@@ -439,11 +451,55 @@ fn configure(
         return Err(KError::InvalidCapability.id() as u64);
     }
     let frame = SlotRef::new(cspace, frame_slot);
-    m.tcb_configure_ipc_buffer(slot, Some((frame, args[1])))
-        .map_err(|e| {
+    // ---- KT-311: `length = 3` ⇒ mask + vùng tham số mở rộng của IPC buffer ----
+    let mut params = crate::core_tcb::TcbConfigure {
+        ipc_buffer: Some((frame, args[1])),
+        ..crate::core_tcb::TcbConfigure::EMPTY
+    };
+    if len == 3 {
+        let mask = args[2];
+        if mask & !crate::ipc::CONFIGURE_MASK_ALL != 0 {
             bump(&DENIED);
-            e.id() as u64
-        })?;
+            return Err(KError::InvalidArgument.id() as u64);
+        }
+        if mask & crate::ipc::CONFIGURE_MASK_VSPACE != 0 {
+            // `vspace?` chưa cài (VSpace thuộc arch — D2-83): fail-closed, không im lặng.
+            bump(&DENIED);
+            return Err(KError::NotSupported.id() as u64);
+        }
+        if mask != 0 {
+            // D2-83: core **không** đọc bộ nhớ user — arch đọc vùng 608..640 **cùng lần** với
+            // header IPC buffer (`SyscallEnv::ipc_header`, một trang + một magic).
+            let Some(header) = env.ipc_header(tcb) else {
+                bump(&DENIED);
+                return Err(KError::InvalidArgument.id() as u64);
+            };
+            let extra = header.configure;
+            if mask & crate::ipc::CONFIGURE_MASK_CSPACE != 0 {
+                let cptr = usize::try_from(extra.cspace)
+                    .map_err(|_| KError::InvalidCapability.id() as u64)?;
+                if cptr >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
+                    bump(&DENIED);
+                    return Err(KError::InvalidCapability.id() as u64);
+                }
+                params.cspace = Some(SlotRef::new(cspace, cptr));
+            }
+            if mask & crate::ipc::CONFIGURE_MASK_ENTRY != 0 {
+                params.entry = Some(extra.entry);
+            }
+            if mask & crate::ipc::CONFIGURE_MASK_PRIORITY != 0 {
+                let Some(priority) = u8::try_from(extra.priority).ok() else {
+                    bump(&DENIED);
+                    return Err(KError::InvalidArgument.id() as u64);
+                };
+                params.priority = Some(priority);
+            }
+        }
+    }
+    m.tcb_configure_invocation(slot, params).map_err(|e| {
+        bump(&DENIED);
+        e.id() as u64
+    })?;
     bump(&CONFIGURED);
     bump(&ALLOWED);
     Ok((0, 0))

@@ -19,6 +19,40 @@ use crate::tcb::{
 use crate::tcbdata::{ScData, TcbData};
 use crate::NonReadyTarget;
 
+/// **KT-311** — căn lề của `Tcb.Configure` tham số `entry?` (byte). Biên **lệnh** RISC-V: **2 B**
+/// khi có extension `C` (target `riscv64gc` của dòng OS — `e_entry` thật của ảnh test là
+/// `0x4000_0112`, **không** căn 4 B), 4 B khi không có `C`. Chọn 2 B = biên **phần cứng** thật
+/// của target, không phải con số tuỳ ý. Vi phạm ⇒ `Alignment` (6).
+pub(crate) const TCB_ENTRY_ALIGN: u64 = 2;
+
+/// **KT-311** — tham số `Tcb.Configure` **đã kiểm** ở tầng invocation, chuyển cho
+/// [`Machine::tcb_configure_invocation`] (một nguồn ngữ nghĩa cho invocation + rig).
+///
+/// `Some` = tham số **có mặt** (mask của kênh invocation bật bit tương ứng); `None` = **giữ
+/// nguyên** giá trị hiện có của TCB. Khác `Machine::tcb_configure_with_ipc_buffer` (rig API):
+/// ở đó `cspace = None` nghĩa là **xoá** CSpace.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct TcbConfigure {
+    /// `cspace?` — cap `CNode` trong CSpace **caller**.
+    pub cspace: Option<SlotRef>,
+    /// `entry?` — VA điểm vào, phải căn [`TCB_ENTRY_ALIGN`].
+    pub entry: Option<u64>,
+    /// `ipc_buffer?` — cap `Frame` 4 KiB + VA (căn `IPC_BUFFER_BYTES`).
+    pub ipc_buffer: Option<(SlotRef, u64)>,
+    /// `priority?` — phải ≤ `max_controlled_priority` (luật MCS).
+    pub priority: Option<u8>,
+}
+
+impl TcbConfigure {
+    /// Không tham số nào (tương đương `Tcb.Configure` rỗng — chỉ xoá `exit_code`).
+    pub const EMPTY: Self = Self {
+        cspace: None,
+        entry: None,
+        ipc_buffer: None,
+        priority: None,
+    };
+}
+
 impl Machine {
     // ------------------------------------------------------- body TCB/SchedContext
 
@@ -183,20 +217,90 @@ impl Machine {
     /// Ngữ nghĩa còn lại giống hệt `Tcb.Configure`: kiểm cap `Frame` sống + `va` căn
     /// `IPC_BUFFER_BYTES` (4 KiB) + không tràn `u64` (vi phạm ⇒ `InvalidArgument` 5, **nguyên
     /// tử**), **xoá `exit_code`** (D2-25), **không** đổi trạng thái TCB/scheduler.
+    ///
+    /// **KT-311**: đây là dạng `length = 2` của kênh invocation; dạng đầy đủ (`length = 3`,
+    /// `cspace?`/`entry?`/`priority?`) đi qua [`Machine::tcb_configure_invocation`].
     pub fn tcb_configure_ipc_buffer(
         &mut self,
         tcb: SlotRef,
         ipc_buffer: Option<(SlotRef, u64)>,
     ) -> Result<(), KError> {
+        self.tcb_configure_invocation(
+            tcb,
+            TcbConfigure {
+                ipc_buffer,
+                ..TcbConfigure::EMPTY
+            },
+        )
+    }
+
+    /// **KT-311** — `Tcb.Configure` **kênh đầy đủ** qua invocation: `cspace?` + `entry?` +
+    /// `ipc_buffer?` + `priority?` (mỗi tham số `Some` = **có mặt**; `None` = **giữ nguyên**).
+    ///
+    /// # Ngữ nghĩa
+    ///
+    /// - `cspace`: cap `CNode` sống trong CSpace **caller** ⇒ gán `TcbData.cspace` (khác
+    ///   [`Machine::tcb_configure_with_ipc_buffer`] với `cspace = None` — API đó **xoá** CSpace).
+    /// - `entry`: VA điểm vào, phải **căn [`TCB_ENTRY_ALIGN`]** (2 B — biên lệnh RISC-V có `C`)
+    ///   ⇒ không: `Alignment` (6).
+    /// - `ipc_buffer`: như [`Machine::tcb_configure_ipc_buffer`] (cap `Frame` sống + VA căn
+    ///   `IPC_BUFFER_BYTES` + không tràn `u64`).
+    /// - `priority`: phải ≤ `max_controlled_priority` (luật MCS của
+    ///   [`Machine::tcb_set_priority`]) ⇒ không: `InvalidArgument` (5); cập nhật bucket scheduler
+    ///   qua `tcb_set_priority` (giữ nguyên `mcp`).
+    ///
+    /// **Nguyên tử**: mọi tham số được kiểm **trước** khi ghi bất cứ trường nào — cùng luật
+    /// `tcb_configure_with_ipc_buffer`. `Configure` **xoá `exit_code`** (D2-25) và **không** đổi
+    /// trạng thái TCB.
+    pub(crate) fn tcb_configure_invocation(
+        &mut self,
+        tcb: SlotRef,
+        params: TcbConfigure,
+    ) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
-        let binding = self.ipc_buffer_binding(ipc_buffer)?;
+        // ---- kiểm TẤT CẢ trước (nguyên tử) ----
+        let cspace_obj = match params.cspace {
+            Some(slot) => Some(self.require_type(slot, ObjType::CNode)?),
+            None => None,
+        };
+        let binding = self.ipc_buffer_binding(params.ipc_buffer)?;
+        if let Some(entry) = params.entry {
+            if entry % TCB_ENTRY_ALIGN != 0 {
+                return Err(KError::Alignment);
+            }
+        }
+        let mcp = self.tcb_data(tcb_obj)?.max_controlled_priority;
+        if let Some(priority) = params.priority {
+            if priority > mcp {
+                return Err(KError::InvalidArgument);
+            }
+        }
+        // ---- áp ----
         {
             let t = self.tcb_data_mut(tcb_obj)?;
-            t.ipc_buffer = binding;
+            if params.cspace.is_some() {
+                t.cspace = cspace_obj;
+            }
+            if let Some(entry) = params.entry {
+                t.entry = entry;
+            }
+            if params.ipc_buffer.is_some() {
+                t.ipc_buffer = binding;
+            }
             t.exit_code = None;
+        }
+        if let Some(priority) = params.priority {
+            self.tcb_set_priority(tcb, priority, mcp)?;
         }
         self.sched_after_op(false);
         Ok(())
+    }
+
+    /// **KT-311** — điểm vào đã cấu hình của TCB (`Tcb.Configure` tham số `entry?`); `0` = chưa
+    /// đặt. Model-only `[TK]` — đường `Resume` tiêu thụ giá trị này **chưa** cài (nợ §7.2 của
+    /// `JOURNAL/kt311-cfgfull.md`).
+    pub fn tcb_entry(&self, tcb: ObjId) -> Result<u64, KError> {
+        Ok(self.tcb_data(tcb)?.entry)
     }
 
     /// Kiểm + dựng [`crate::ipc::IpcBufferBinding`] từ tham số `ipc_buffer?` — **một** nguồn cho

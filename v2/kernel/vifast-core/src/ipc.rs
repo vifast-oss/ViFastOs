@@ -84,6 +84,82 @@ pub const IPC_BUFFER_EXTRA_CAPS_READ_WORDS: usize = 1 + IPC_BUFFER_EXTRA_CAPS_WO
 /// Byte cuối (không tính) của vùng extra caps — `560 + 48 = 608 ≤ 4096`.
 pub const IPC_BUFFER_EXTRA_CAPS_END: usize = IPC_BUFFER_EXTRA_CAPS_DST_OFFSET + 8;
 
+// ---------------------------------------------------------------------------------------------
+// KT-311 — vùng **tham số mở rộng** của `Tcb.Configure` trong IPC buffer
+// ---------------------------------------------------------------------------------------------
+
+/// Byte offset của vùng **tham số mở rộng** của `Tcb.Configure` — `[TK]` **KT-311**, ngay sau
+/// vùng extra caps (`IPC_BUFFER_EXTRA_CAPS_END` = 608).
+///
+/// `spec/abi.toml` **không** chốt layout vùng dự phòng của IPC buffer (chỉ chốt *"header chứa
+/// receive window (CPTR, ≤4 cap)"* + `ipc_buffer_bytes = 4096`), nên đây là **model `[TK]`**,
+/// **không** phải ABI — cùng khuôn KT-282 (vùng MR4..MR63) và KT-309 (vùng extra caps).
+/// **Không** đổi `spec/`.
+///
+/// ```text
+/// byte 608..616 : cspace CPTR (CSpace caller)       — mask bit 0
+/// byte 616..624 : vspace CPTR (dự phòng — chưa cài) — mask bit 1
+/// byte 624..632 : entry (VA, căn 2 B — biên lệnh RISC-V có `C`) — mask bit 2
+/// byte 632..640 : priority (u8)                     — mask bit 3
+/// ```
+pub const IPC_BUFFER_CONFIGURE_OFFSET: usize = IPC_BUFFER_EXTRA_CAPS_END;
+/// Số word của vùng tham số mở rộng: `cspace`, `vspace`, `entry`, `priority` = **4**.
+pub const IPC_BUFFER_CONFIGURE_WORDS: usize = 4;
+/// Byte cuối (không tính) của vùng tham số mở rộng — `608 + 32 = 640 ≤ 4096`.
+pub const IPC_BUFFER_CONFIGURE_END: usize =
+    IPC_BUFFER_CONFIGURE_OFFSET + IPC_BUFFER_CONFIGURE_WORDS * 8;
+
+/// Mask bit của `cspace?` trong `MR2` của `Tcb.Configure` (kênh đầy đủ, `length = 3`).
+pub const CONFIGURE_MASK_CSPACE: u64 = 1 << 0;
+/// Mask bit của `vspace?` — **chưa cài** (VSpace thuộc arch, D2-83) ⇒ bật bit này là
+/// `NotSupported` (18), fail-closed.
+pub const CONFIGURE_MASK_VSPACE: u64 = 1 << 1;
+/// Mask bit của `entry?`.
+pub const CONFIGURE_MASK_ENTRY: u64 = 1 << 2;
+/// Mask bit của `priority?`.
+pub const CONFIGURE_MASK_PRIORITY: u64 = 1 << 3;
+/// Toàn bộ bit hợp lệ của mask; bit ngoài tập này ⇒ `InvalidArgument` (5).
+pub const CONFIGURE_MASK_ALL: u64 =
+    CONFIGURE_MASK_CSPACE | CONFIGURE_MASK_VSPACE | CONFIGURE_MASK_ENTRY | CONFIGURE_MASK_PRIORITY;
+
+/// **KT-311** — vùng **tham số mở rộng** của `Tcb.Configure` đọc từ IPC buffer của TCB đang chạy
+/// (`[TK]`, không phải ABI).
+///
+/// Arch đọc **bộ nhớ user** (D2-83: core không đọc/ghi bộ nhớ user) rồi trả qua
+/// [`crate::syscall::SyscallEnv::ipc_buffer_configure`]; `None` = trang chưa map / nền tảng
+/// không có IPC buffer ⇒ kênh đầy đủ trả `InvalidArgument` (5) — fail-closed, không đoán.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct IpcConfigureParams {
+    /// CPTR cap `CNode` cho `cspace?` (CSpace **caller**).
+    pub cspace: u64,
+    /// CPTR `VSpace` cho `vspace?` — **dự phòng** (chưa cài).
+    pub vspace: u64,
+    /// VA entry cho `entry?`.
+    pub entry: u64,
+    /// Priority cho `priority?`.
+    pub priority: u64,
+}
+
+impl IpcConfigureParams {
+    /// Vùng rỗng (không tham số mở rộng nào).
+    pub const EMPTY: Self = Self {
+        cspace: 0,
+        vspace: 0,
+        entry: 0,
+        priority: 0,
+    };
+
+    /// Dựng từ 4 word arch đọc được (`cspace`, `vspace`, `entry`, `priority`).
+    pub fn from_words(words: &[u64; IPC_BUFFER_CONFIGURE_WORDS]) -> Self {
+        Self {
+            cspace: words[0],
+            vspace: words[1],
+            entry: words[2],
+            priority: words[3],
+        }
+    }
+}
+
 /// **KT-309** — vùng **extra caps** đọc từ IPC buffer của TCB đang chạy (`[TK]`, không phải ABI).
 ///
 /// Arch đọc **bộ nhớ user** (D2-83: core không đọc/ghi bộ nhớ user) rồi trả qua
@@ -709,4 +785,8 @@ pub struct IpcHeader {
     /// **KT-309** — vùng **extra caps** (offset 560, cùng trang IPC buffer): `n` + 4 CPTR nguồn
     /// + `dst`. Đọc **cùng** lần với header (một trang, một magic) — `[TK]`, không phải ABI.
     pub extra: IpcExtraCaps,
+    /// **KT-311** — vùng **tham số mở rộng** của `Tcb.Configure` (offset 608, cùng trang IPC
+    /// buffer): `cspace`, `vspace`, `entry`, `priority`. Đọc **cùng** lần với header (một trang,
+    /// một magic) — `[TK]`, không phải ABI.
+    pub configure: IpcConfigureParams,
 }
