@@ -114,9 +114,11 @@ ktest-ipc 4 4
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
 # sách) rồi mới chạm driver; ca âm trong cùng boot: `Call` **label sai** (`0x999`) ⇒
 # `InvalidArgument` (5) và **không** gói nào được gửi (`sent` vẫn 1). Bằng chứng:
-# `# netping kern: n=1 outcome=Served …` / `# netping kern: n=2 outcome=Denied … err=5 … sent=1`,
-# `# netping: label=0x291 reply=0 rtt_ms=<ms>` + `# netping: neg label err=5 ok=1` (do **chính**
-# chương trình U-mode in). TAP 1/2 giữ nguyên nội dung.
+# `# netping kern: n=1 outcome=Served …` / `n=2 … err=5` (label sai) / `n=3 … err=3` (**quyền**:
+# request hợp lệ từ TCB không phải net server ⇒ `InsufficientRights`), `sent=1` suốt cả ba lượt
+# (hai request bị từ chối **không** gửi gói nào), `# netping: label=0x291 reply=0 rtt_ms=<ms>` +
+# `# netping: neg label err=5 ok=1` + `# netping: neg caller err=3 ok=1` (do **chính** chương trình
+# U-mode in). TAP 1/2 giữ nguyên nội dung.
 #
 # **KT-281** (D2-210, N1 phần 3): ảnh **`ktest-netsrv`** thứ chín — **net server U-mode**: client
 # U-mode `Call` **chặn** tới server U-mode `netsrv`; server `Recv` request `Ping(ip)`, gọi **dịch

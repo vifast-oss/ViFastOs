@@ -89,6 +89,10 @@ const SLOT_SERVER: usize = 2;
 const C_SELF: usize = 0;
 const C_EP_SRV: usize = 1;
 const C_REPLY: usize = 2;
+/// **KT-306** — client giữ **một bản** cap `EP_KERN` **chỉ để kiểm quyền**: nó gọi dịch vụ với
+/// request **hợp lệ** (`label = 0x291`) nhưng **không phải** net server ⇒ dịch vụ phải trả
+/// `InsufficientRights` (3). Không có bản cap này thì nhánh kiểm `caller` không có phép kiểm nào.
+const C_EP_KERN: usize = 3;
 const C_EMPTY: usize = 9;
 
 const S_SELF: usize = 0;
@@ -218,6 +222,13 @@ fn build_rig(m: &mut Machine, u: ObjId) -> Rig {
         SlotRef::new(cnode_k, K_EP_KERN),
     )
     .expect("rig: ep_kern -> kernel");
+    // **KT-306**: client giữ **một bản** `EP_KERN` để kiểm nhánh **quyền** của dịch vụ (request
+    // hợp lệ nhưng caller không phải net server ⇒ `InsufficientRights` 3).
+    m.copy(
+        SlotRef::new(root, RIG_EP_KERN),
+        SlotRef::new(cnode_c, C_EP_KERN),
+    )
+    .expect("rig: ep_kern -> client (kiem quyen)");
     // Reply trả client: server giữ để `Send`; client giữ một bản cho ca âm "Call trên cap Reply".
     m.copy(
         SlotRef::new(root, RIG_REPLY_CLIENT),
@@ -739,10 +750,9 @@ pub extern "C" fn rust_main() -> ! {
     } else {
         None
     };
-    let state_c5 = state_of(rig.tcb_c);
-    let state_s5 = state_of(rig.tcb_s);
-    // Message **client nhận được** — kernel đọc độc lập từ vùng nhận IPC của client (không tin
-    // lời chương trình): label/MR phải đúng hợp đồng với server.
+    // Message **client nhận được** từ server — kernel đọc **độc lập** từ vùng nhận IPC của client
+    // (không tin lời chương trình): label/MR phải đúng hợp đồng. Đọc **trước** ca âm quyền bên
+    // dưới (lượt kế sẽ ghi đè vùng nhận IPC của client bằng reply `InsufficientRights`).
     let (cli_label, cli_mr0) = received(rig.tcb_c);
     {
         let mut w = PlatformWriter(&PLATFORM);
@@ -753,6 +763,60 @@ pub extern "C" fn rust_main() -> ! {
             cli_label, cli_mr0, LABEL_REPLY, rtt_ms
         );
     }
+    // **KT-306** — client gọi dịch vụ với request **hợp lệ** nhưng nó **không phải** net server
+    // ⇒ chặn ở Send trên `EP_KERN` (dịch vụ sẽ từ chối ở lượt kế).
+    let cli_blocked_kern = matches!(
+        state_of(rig.tcb_c),
+        Some(TcbState::BlockedOnSend { call: true, .. })
+    );
+
+    // ================================================================ dịch vụ kernel #3 — SAI CALLER
+    let outcome3 = core_bridge::with_machine(|m| svc.service(m));
+    let s3_served = svc.served;
+    let s3_denied = svc.denied;
+    let s3_failed = svc.failed;
+    let s3_label = svc.last_label;
+    let s3_len = svc.last_length;
+    let s3_ip = svc.last_ip;
+    let s3_caller = svc.last_caller;
+    let s3_err = svc.last_err;
+    let s3_sent = svc.sent;
+    let s3_received = svc.received;
+    let (cli_deny_label, cli_deny_mr) = received(rig.tcb_c);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# netping kern: n=3 outcome={} served={} denied={} failed={} label=0x{:x} len={} \
+             mr=0x{:x} caller={} err={} rtt_ms={} sent={} received={} reply_label=0x{:x} \
+             reply_mr={} server={}",
+            outcome_name(outcome3),
+            s3_served,
+            s3_denied,
+            s3_failed,
+            s3_label,
+            s3_len,
+            s3_ip,
+            s3_caller,
+            s3_err,
+            svc.last_rtt_ms,
+            s3_sent,
+            s3_received,
+            cli_deny_label,
+            cli_deny_mr,
+            state_of(rig.tcb_s).map(tcb_state_name).unwrap_or("none")
+        );
+    }
+
+    // ================================================================ lượt 6: resume client (in ca âm quyền)
+    let applied_c2 = user::apply_ipc_return(&mut tf_c, rig.tcb_c);
+    let stop6 = if applied_c2 {
+        run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT)
+    } else {
+        None
+    };
+    let state_c5 = state_of(rig.tcb_c);
+    let state_s5 = state_of(rig.tcb_s);
     user::capture_end();
 
     // ================================================================ TAP 1..3
@@ -764,12 +828,14 @@ pub extern "C" fn rust_main() -> ! {
     let client_said_reply = user::captured_contains(SLOT_CLIENT, b"# netsrv: client got reply=");
     let client_said_neg =
         user::captured_contains(SLOT_CLIENT, b"# netsrv: neg empty=1 reply=18 ok=1");
+    let client_said_neg_caller =
+        user::captured_contains(SLOT_CLIENT, b"# netping: neg caller err=3 ok=1");
     let (check_ipc, check_caps) =
         core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
     let reply_clean = reply_caller.is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply_client).ok().flatten()).is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply_kern).ok().flatten()).is_none();
-    let client_exit = match stop5 {
+    let client_exit = match stop6 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
@@ -848,6 +914,7 @@ pub extern "C" fn rust_main() -> ! {
     let ok2 = applied_s
         && applied_s2
         && applied_c
+        && applied_c2
         && client_exit == Some(0)
         && server_exit == Some(0)
         && client_said_reply
@@ -864,11 +931,13 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(
             w,
             "not ok 2 - netsrv: client got reply: applied_s={} applied_s2={} applied_c={} \
+             applied_c2={} \
              client_exit={} server_exit={} said_reply={} said_neg={} reply_label=0x{:x} \
              reply_mr0={} rtt_ms={} reply_clean={} check_ipc={} check_caps={}",
             u8::from(applied_s),
             u8::from(applied_s2),
             u8::from(applied_c),
+            u8::from(applied_c2),
             client_exit.map(|c| c as i64).unwrap_or(-1),
             server_exit.map(|c| c as i64).unwrap_or(-1),
             u8::from(client_said_reply),
@@ -901,7 +970,24 @@ pub extern "C" fn rust_main() -> ! {
         && bad_mr == Some(TARGET_IP)
         && srv_deny_label == LABEL_BAD
         && srv_deny_mr == u64::from(KError::InvalidArgument.id())
-        && server_said_neg_label;
+        && server_said_neg_label
+        // **Quyền**: request **hợp lệ** từ một TCB **không phải** net server ⇒ `InsufficientRights`
+        // (3), vẫn **không** gói nào (`sent` = 1). Đây là nhánh kiểm `caller` của dịch vụ.
+        && outcome3 == Outcome::Denied
+        && s3_served == 1
+        && s3_denied == 2
+        && s3_failed == 0
+        && s3_label == LABEL_NETPING
+        && s3_len == 1
+        && s3_ip == TARGET_IP
+        && s3_caller == u64::from(rig.tcb_c)
+        && s3_err == u64::from(KError::InsufficientRights.id())
+        && s3_sent == 1
+        && s3_received == 1
+        && cli_blocked_kern
+        && cli_deny_label == LABEL_NETPING
+        && cli_deny_mr == u64::from(KError::InsufficientRights.id())
+        && client_said_neg_caller;
     if ok3 {
         PLATFORM.put_str("ok 3 - netping: via ipc\n");
     } else {
@@ -911,7 +997,9 @@ pub extern "C" fn rust_main() -> ! {
             "not ok 3 - netping: via ipc: outcome2={} served={} denied={} failed={} \
              label=0x{:x} len={} ip=0x{:x} caller={} err={} sent={} received={} \
              srv_blocked_bad={} bad_len={} bad_mr=0x{:x} deny_label=0x{:x} deny_mr={} \
-             said_neg_label={}",
+             said_neg_label={} outcome3={} s3_served={} s3_denied={} s3_label=0x{:x} \
+             s3_caller={} s3_err={} s3_sent={} cli_blocked_kern={} cli_deny_label=0x{:x} \
+             cli_deny_mr={} said_neg_caller={}",
             outcome_name(outcome2),
             s2_served,
             s2_denied,
@@ -928,7 +1016,18 @@ pub extern "C" fn rust_main() -> ! {
             bad_mr.unwrap_or(0),
             srv_deny_label,
             srv_deny_mr,
-            u8::from(server_said_neg_label)
+            u8::from(server_said_neg_label),
+            outcome_name(outcome3),
+            s3_served,
+            s3_denied,
+            s3_label,
+            s3_caller,
+            s3_err,
+            s3_sent,
+            u8::from(cli_blocked_kern),
+            cli_deny_label,
+            cli_deny_mr,
+            u8::from(client_said_neg_caller)
         );
         fails += 1;
     }
@@ -946,10 +1045,10 @@ pub extern "C" fn rust_main() -> ! {
             u8::from(check_caps),
             u8::from(client_said_reply),
             u8::from(server_said_ping),
-            s2_served,
-            s2_denied,
-            s2_sent,
-            s2_received,
+            s3_served,
+            s3_denied,
+            s3_sent,
+            s3_received,
             state_c5.map(tcb_state_name).unwrap_or("none"),
             state_s5.map(tcb_state_name).unwrap_or("none")
         );

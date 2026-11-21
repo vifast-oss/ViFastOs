@@ -760,11 +760,13 @@ EOF
 ^# netping: label=0x291 reply=0 rtt_ms=[0-9]+$
 ^# netping kern: n=2 outcome=Denied served=1 denied=1 failed=0 label=0x999 len=1 mr=0xa000202 caller=[0-9]+ err=5 rtt_ms=0 sent=1 received=1 reply_label=0x999 reply_mr=5 server=Ready stop=Blocked$
 ^# netping: neg label err=5 ok=1$
+^# netping kern: n=3 outcome=Denied served=1 denied=2 failed=0 label=0x291 len=1 mr=0xa000202 caller=[0-9]+ err=3 rtt_ms=0 sent=1 received=1 reply_label=0x291 reply_mr=3 server=Inactive$
+^# netping: neg caller err=3 ok=1$
 ^# netsrv reply: applied=1 server_exit=0 client=Ready reply_caller=0 server=Inactive stop=Exit$
 ^# netsrv: client got reply=[0-9]+$
 ^# netsrv: neg empty=1 reply=18 ok=1$
 ^# netsrv client: reply_label=0x292 reply_mr0=[0-9]+ const:label_reply=0x292 const:rtt_ms=[0-9]+$
-^# netsrv final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 served=1 denied=1 sent=1 received=1 client=Inactive server=Inactive$
+^# netsrv final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 served=1 denied=2 sent=1 received=1 client=Inactive server=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF

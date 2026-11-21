@@ -30,6 +30,12 @@ const SLOT_EP_SRV: u64 = 1;
 const SLOT_REPLY: u64 = 2;
 /// Slot **rỗng** — `Call` trên ô rỗng phải trả `InvalidCapability` (1) (ca âm).
 const SLOT_EMPTY: u64 = 9;
+/// **KT-306** — bản cap `EP_KERN` của **dịch vụ kernel** `NetPing`. Client **không** phải net
+/// server ⇒ request **hợp lệ** vẫn bị từ chối `InsufficientRights` (3): đây là phép kiểm **quyền**
+/// của dịch vụ (không phải kiểm định dạng chuỗi).
+const SLOT_EP_KERN: u64 = 3;
+/// Label `NetPing` **hợp lệ** — dùng cho ca âm quyền (chỉ **caller** sai).
+const LABEL_NETPING: u32 = 0x291;
 
 /// Label request `Ping(ip)` (hợp đồng giữa hai chương trình, **không** phải ABI).
 const LABEL_REQ: u32 = 0x290;
@@ -46,6 +52,7 @@ const EXIT_LABEL: u64 = 81;
 const EXIT_VALUE: u64 = 82;
 const EXIT_NEG_EMPTY: u64 = 84;
 const EXIT_NEG_REPLY: u64 = 85;
+const EXIT_NEG_CALLER: u64 = 86;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `ipc_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -110,6 +117,22 @@ pub extern "C" fn _start() -> ! {
     put(b" reply=");
     put_u64(wrong[0]);
     put(b" ok=1\n");
+
+    // ---- 4) **KT-306** ca âm **quyền**: client giữ cap `EP_KERN` và gửi request **hợp lệ**
+    // (`label = 0x291`, `MR0 = ip`) nhưng **không phải** net server ⇒ dịch vụ kernel trả
+    // `InsufficientRights` (3) trong `MR0` và **không** gửi gói nào. Cap một mình **không đủ**.
+    let rogue = call(
+        SLOT_EP_KERN,
+        info(LABEL_NETPING, 0, false, 1),
+        [TARGET_IP, 0, 0, 0],
+    );
+    if rogue[0] != 0 || rogue[3] != 3 {
+        put(b"# netping: neg caller err=");
+        put_u64(rogue[3]);
+        put(b"\n");
+        exit(EXIT_NEG_CALLER);
+    }
+    put(b"# netping: neg caller err=3 ok=1\n");
 
     exit(0)
 }
