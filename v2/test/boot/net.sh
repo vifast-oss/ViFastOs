@@ -65,6 +65,10 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 TARGET="riscv64gc-unknown-none-elf"
 KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
 IMAGE="${KT245_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-net}"
+# **KT-281** (D2-210, N1 phần 3) — ảnh **net server U-mode**. Runner này chỉ chạy **ca âm**
+# "không thiết bị" của nó (`# netsrv: no device` + `not ok 1`); ca dương (2 TAP) nằm trong
+# `ktest.sh` matrix vì ảnh đó là ảnh thứ **chín** của matrix.
+NETSRV_IMAGE="${KT281_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-netsrv}"
 LOGDIR="${KT245_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt245-net}"
 BUDGET="$HERE/budget.sh"
 # KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
@@ -170,7 +174,22 @@ build_image() {
             die "build ảnh net FAIL"
         fi
     fi
+    if [ "${KT245_SKIP_BUILD:-0}" != "1" ]; then
+        echo "# build ảnh netsrv ($TARGET, release, --features ktest,user,netsrv) — KT-281"
+        if ! cargo build --manifest-path "$KMANIFEST" -p vifast-kbin-riscv64 \
+            --bin vifast-kbin-ktest-netsrv --features ktest,user,netsrv \
+            --target "$TARGET" --release >"$LOGDIR/kt281-build-netsrv.log" 2>&1; then
+            tail -20 "$LOGDIR/kt281-build-netsrv.log" >&2
+            die "build ảnh netsrv FAIL"
+        fi
+    fi
     [ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+    [ -f "$NETSRV_IMAGE" ] || die "không thấy ảnh $NETSRV_IMAGE"
+    if ! bash "$BUDGET" "$NETSRV_IMAGE" ktest-netsrv >"$LOGDIR/kt281-budget.log" 2>&1; then
+        cat "$LOGDIR/kt281-budget.log" >&2
+        die "budget ảnh netsrv VƯỢT trần"
+    fi
+    grep '^# image=' "$LOGDIR/kt281-budget.log" || true
     # D2-72 Q5: trần `.data+.bss` 262.144 B — ảnh mới cũng chịu trần, không nới.
     if ! bash "$BUDGET" "$IMAGE" ktest-net >"$LOGDIR/kt245-budget.log" 2>&1; then
         cat "$LOGDIR/kt245-budget.log" >&2
@@ -186,6 +205,14 @@ boot() {
     shift
     qg_boot "$out" "$TIMEOUT_DS" "$QEMU" $QEMU_ICOUNT -machine virt,aia=none,aclint=on -bios "$SBI" \
         -kernel "$IMAGE" -nographic -cpu rv64 -m 128M -smp 1 -no-reboot "$@"
+}
+
+# `boot_netsrv <log> [tham số QEMU thêm]`: như [`boot`] nhưng nạp ảnh **netsrv** (KT-281).
+boot_netsrv() {
+    local out="$1"
+    shift
+    qg_boot "$out" "$TIMEOUT_DS" "$QEMU" $QEMU_ICOUNT -machine virt,aia=none,aclint=on -bios "$SBI" \
+        -kernel "$NETSRV_IMAGE" -nographic -cpu rv64 -m 128M -smp 1 -no-reboot "$@"
 }
 
 # ---------------------------------------------------------------- validator
@@ -331,6 +358,33 @@ validate_nolink() {
     check_count "ca không mạng: 'ok 3 - net dhcp'" '^ok 3 - net dhcp' 0
     # 4) **Không** được có dòng kết thúc "xong".
     check_count "ca không mạng: dòng PANIC 'xong'" "$PANIC_OK" 0
+    return $((FAILS - before))
+}
+
+# `validate_netsrv_negative <log>`: 0 = ảnh **netsrv** đỏ **đúng cách** khi không có thiết bị mạng.
+#
+# **KT-281** — ca âm thường trực của dòng `# netsrv:`. Ảnh phải in đúng dòng fail-closed
+# `# netsrv: no device`, TAP 1 **đỏ**, **không** có `ok 1`, **không** có dòng PANIC "xong".
+validate_netsrv_negative() {
+    local before="$FAILS"
+    LOG="$1"
+    if [ ! -f "$LOG" ]; then
+        bad "netsrv ca âm: không có log $LOG"
+        return 1
+    fi
+    # 1) Ảnh phải in đúng dòng fail-closed.
+    check_grep "dòng fail-closed 'netsrv: no device'" '^# netsrv: no device$'
+    # 2) TAP 1 phải **đỏ**.
+    check_count "netsrv ca âm: 'not ok 1 - netsrv: server ran'" '^not ok 1 - netsrv: server ran' 1
+    # 3) **Không** được có `ok 1` — đây là chỗ bắt "PASS giả".
+    check_count "netsrv ca âm: 'ok 1 - netsrv: server ran'" '^ok 1 - netsrv: server ran' 0
+    # 4) **Không** được có dòng kết thúc "xong" (nghĩa là đã đi hết 2 TAP).
+    check_count "netsrv ca âm: dòng PANIC 'xong'" \
+        '^PANIC: KT-281 netsrv xong \(2 TAP, 0 fail\)$' 0
+    # 5) **Không** được có dòng do chương trình U-mode in (nếu có, ảnh đã chạy được dịch vụ mạng
+    #    mà không có thiết bị ⇒ bằng chứng giả).
+    check_count "netsrv ca âm: dòng '# netsrv: ping'" '^# netsrv: ping ' 0
+    check_count "netsrv ca âm: dòng '# netsrv: client got reply'" '^# netsrv: client got reply=' 0
     return $((FAILS - before))
 }
 
@@ -512,6 +566,22 @@ run_nolink() {
     return 1
 }
 
+# **KT-281** — ca âm "không thiết bị" của ảnh **net server U-mode**: cùng ảnh, **không**
+# `-netdev`/`-device` ⇒ `# netsrv: no device` + `not ok 1`, không treo, không PASS giả.
+run_netsrv_negative() {
+    local log="$LOGDIR/kt281-netsrv-negative.log"
+    echo "# netsrv ca âm: cùng ảnh netsrv, KHÔNG -netdev/-device"
+    if ! boot_netsrv "$log"; then
+        bad "netsrv ca âm: QEMU không tự thoát trong 20 s (timeout/kill cả group)"
+        return 1
+    fi
+    if validate_netsrv_negative "$log"; then
+        ok "netsrv ca âm: ảnh in 'netsrv: no device' + TAP 1 đỏ, không PASS giả ($log)"
+        return 0
+    fi
+    return 1
+}
+
 # ---------------------------------------------------------------- tự kiểm validator
 # `expect_accept <mô tả> <hàm> <log>` / `expect_reject …`: chạy validator và đòi kết quả.
 # Lỗi do **ca cố ý xấu** không tính vào `FAILS` cuối (chỉ tính khi kỳ vọng sai) — nếu không, dòng
@@ -636,7 +706,29 @@ EOF
     expect_accept "log ca 'không mạng' đỏ đúng cách" validate_nolink "$nolink"
     sed 's/^not ok 3 - net dhcp.*$/ok 3 - net dhcp/' "$nolink" >"$tmp"
     expect_reject "ca 'không mạng' PASS giả (có 'ok 3')" validate_nolink "$tmp"
-    rm -f "$tmp" "$good" "$neg" "$nolink"
+    # **KT-281** — ca âm của ảnh **net server U-mode**: log đỏ đúng cách ⇒ chấp nhận; ba bản
+    # "PASS giả"/thiếu bằng chứng ⇒ **từ chối** (validator không rỗng).
+    local netsrv="$LOGDIR/kt281-selftest-netsrv-neg.log"
+    cat >"$netsrv" <<'EOF'
+TAP version 13
+1..2
+# netsrv pci: err=NoDevice stage=nodevice
+# netsrv: no device
+not ok 1 - netsrv: server ran: khong tim thay thiet bi mang
+# ktest halt
+EOF
+    expect_accept "netsrv ca âm 'không thiết bị' đỏ đúng cách" validate_netsrv_negative "$netsrv"
+    sed 's/^not ok 1 - netsrv: server ran.*$/ok 1 - netsrv: server ran/' "$netsrv" >"$tmp"
+    expect_reject "netsrv ca âm PASS giả (có 'ok 1')" validate_netsrv_negative "$tmp"
+    grep -v '^# netsrv: no device$' "$netsrv" >"$tmp"
+    expect_reject "netsrv ca âm thiếu dòng '# netsrv: no device'" validate_netsrv_negative "$tmp"
+    cat "$netsrv" >"$tmp"
+    echo 'PANIC: KT-281 netsrv xong (2 TAP, 0 fail)' >>"$tmp"
+    expect_reject "netsrv ca âm có dòng PANIC 'xong' (PASS giả)" validate_netsrv_negative "$tmp"
+    cat "$netsrv" >"$tmp"
+    echo '# netsrv: ping 10.0.2.2 ok rtt=0' >>"$tmp"
+    expect_reject "netsrv ca âm có dòng '# netsrv: ping' (bằng chứng giả)" validate_netsrv_negative "$tmp"
+    rm -f "$tmp" "$good" "$neg" "$nolink" "$netsrv"
 }
 
 # ---------------------------------------------------------------- main
@@ -671,7 +763,8 @@ if [ "$MODE" = check ]; then
         positive) validate_positive "$CHECK_LOG" ;;
         negative) validate_negative "$CHECK_LOG" ;;
         nolink) validate_nolink "$CHECK_LOG" ;;
-        *) die "--check-log: kiểu phải là positive|negative|nolink" ;;
+        netsrv-negative) validate_netsrv_negative "$CHECK_LOG" ;;
+        *) die "--check-log: kiểu phải là positive|negative|nolink|netsrv-negative" ;;
     esac
     rc=$?
     echo "# net.sh --check-log $CHECK_KIND $CHECK_LOG: rc=$rc"
@@ -688,6 +781,7 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?) — OD-
 run_positive || true
 run_negative || true
 run_nolink || true
+run_netsrv_negative || true
 qg_infra "kt245-net" "$LOGDIR/kt245-infra.log" || true
 
 echo "# net.sh: $CHECKS kiểm đạt, $FAILS lỗi (log: $LOGDIR)"

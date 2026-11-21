@@ -58,6 +58,10 @@ fn main() {
     // KT-280: hai chương trình IPC từ U-mode (client `Call` chặn + server `Recv`/`Reply`).
     println!("cargo:rerun-if-changed=init/ipc_client_user.rs");
     println!("cargo:rerun-if-changed=init/ipc_server_user.rs");
+    // **KT-281**: hai chương trình **net server U-mode** (client `Call` chặn + server điều phối
+    // gọi dịch vụ mạng của kernel).
+    println!("cargo:rerun-if-changed=init/netcli_user.rs");
+    println!("cargo:rerun-if-changed=init/netsrv_user.rs");
     println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/generated.rs");
@@ -210,6 +214,11 @@ fn main() {
     // Chỉ shim ABI (không ring/IDL/FS): hai chương trình này chỉ dùng syscall 0/1/3/12/14.
     build_user_elf(dir, "ipc_client_user.rs", "ipc_client.elf", &shim);
     build_user_elf(dir, "ipc_server_user.rs", "ipc_server.elf", &shim);
+    // **KT-281** (D2-210, N1 phần 3): **hai tiến trình net server** — client `Call` chặn, server
+    // `Recv` + `Call` dịch vụ mạng của kernel + `Send` trên cap `Reply`. Chỉ shim ABI (không
+    // ring/IDL/FS/virtio): server **không** chạm thiết bị, driver ở kernel.
+    build_user_elf(dir, "netcli_user.rs", "netcli.elf", &shim);
+    build_user_elf(dir, "netsrv_user.rs", "netsrv.elf", &shim);
 }
 
 /// **KT-92 / A1-184** — cờ `--remap-path-prefix` mà cargo đã cấp cho **crate chính**, để các lần

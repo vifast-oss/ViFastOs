@@ -42,6 +42,12 @@ ipc = ["ktest", "user"]
 # frame thô. Tách ảnh riêng (cùng lý do KT-72/73: `.text`/mapping của các ảnh cũ không đổi, và ảnh
 # này cần `-netdev`/`-device virtio-net-pci` trong dòng QEMU).
 net = ["ktest", "vifast-plat-riscv64/net"]
+# **KT-281** (D2-210, N1 phần 3): ảnh `ktest-netsrv` — **net server U-mode**: client U-mode `Call`
+# chặn tới server U-mode, server gọi **dịch vụ mạng của kernel** (syscall `Call` trên Endpoint —
+# driver `virtio_net` ở kernel) rồi `Reply(rtt)` về client. Tách ảnh riêng (D2-109/D2-111: thêm
+# đường mới ⇒ tách ảnh, không nới trần; `.text`/TAP của 8 ảnh cũ không đổi) và cần `-netdev`/
+# `-device virtio-net-pci` trong dòng QEMU như `ktest-net`.
+netsrv = ["ktest", "user", "vifast-plat-riscv64/net"]
 # **KT-255** (D2-200): ảnh `ktest-input` — PCI ECAM + virtio-input một queue `event` + bảng chuyển
 # mã phím → ASCII. Tách ảnh riêng (cùng lý do KT-72/73/245: `.text`/mapping của các ảnh cũ không
 # đổi, và ảnh này cần `-device virtio-keyboard-pci` + monitor `sendkey` trong dòng QEMU).
@@ -129,6 +135,15 @@ required-features = ["ktest", "user", "ipc"]
 name = "vifast-kbin-ktest-net"
 path = "src/ktest_net.rs"
 required-features = ["ktest", "net"]
+
+# **KT-281** (D2-210, N1 phần 3): ảnh **net server U-mode** riêng — client U-mode `Call` chặn tới
+# server U-mode, server gọi dịch vụ mạng của kernel (syscall `Call` trên Endpoint) rồi `Reply(rtt)`
+# về client. Tách khỏi `ktest-ipc`/`ktest-net` để TAP/`.text` của chúng không đổi (D2-109/D2-111:
+# thêm đường mới ⇒ tách ảnh, không nới trần).
+[[bin]]
+name = "vifast-kbin-ktest-netsrv"
+path = "src/ktest_netsrv.rs"
+required-features = ["ktest", "user", "netsrv"]
 
 # **KT-255** (D2-200): ảnh **virtio-input** riêng — cần `-device virtio-keyboard-pci` + monitor
 # `sendkey` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest` 92,6 % trần;

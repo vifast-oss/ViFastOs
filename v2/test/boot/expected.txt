@@ -109,3 +109,15 @@ ktest-exec 6 6
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
 ktest-ipc 2 2
+# **KT-281** (D2-210, N1 phần 3): ảnh **`ktest-netsrv`** thứ chín — **net server U-mode**: client
+# U-mode `Call` **chặn** tới server U-mode `netsrv`; server `Recv` request `Ping(ip)`, gọi **dịch
+# vụ mạng của kernel** bằng syscall `Call` trên `Endpoint` (driver `virtio_net` chạy **trong
+# kernel** — server **không** map MMIO, không giữ cap `Frame`/BAR), rồi `Send` trên cap `Reply` để
+# trả `Reply(rtt)` cho client. Bằng chứng: `# netsrv call:` (client chặn ở Send, message trong
+# hàng Endpoint), `# netsrv server:` (caller `BlockedOnReply`, server chặn ở Send trên `EP_KERN`),
+# `# netsrv kern:` (kernel `recv` đúng `label=0x291 mr=0x0a000202`, `ping=ok sent=1 received=1`),
+# hai dòng do **chính chương trình U-mode** in (`# netsrv: ping 10.0.2.2 ok rtt=<ms>`,
+# `# netsrv: client got reply=<v>`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên cap
+# `Reply` ⇒ 18). Ca âm "không thiết bị" (`# netsrv: no device` + `not ok 1`) do `net.sh` chạy
+# **cùng ảnh** không `-netdev`. Matrix thành **9 ảnh × smp 1/2/4 = 27**.
+ktest-netsrv 2 2
