@@ -4,10 +4,10 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười vòng, 38 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười một vòng, 41 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
-> HEAD cuối `6ef8ee97` (đã push), T2 xanh, cây sạch.
+> Vòng 11: KT-281..KT-283. HEAD cuối `098dd1f3` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -49,6 +49,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 32 | **x86_64 4 hart + IPI + TSS per-hart** | **ĐẠT** | `# smp: online mask=0xf alive=0xf harts=4`, `# smp: ipi recv=1 intid=0x30` |
 | 33 | **aarch64 virtio-gpu 2D + console** | **ĐẠT** | `matched=29/29`; PPM 23/23; `.data+.bss` chỉ +4 KiB |
 | 34 | **riscv64 IPC từ U-mode** | **ĐẠT — mốc microkernel** | `# ipc: umode call ok reply=23130`, `# ipc: server ran nr=1` |
+| 35 | **riscv64 net server U-mode** | **ĐẠT** | `# netsrv: ping 10.0.2.2 ok rtt=0`, `# netsrv: client got reply=0` |
+| 36 | **riscv64 MR4..MR63 qua IPC buffer** | **ĐẠT** | `# ipc: mr count=64 mr63=0x2821003f` |
+| 37 | **aarch64 virtio-input** | **ĐẠT** | `# input: key a code=30 ascii=0x61`; `.data+.bss` +4 KiB |
 
 ---
 
@@ -618,13 +621,62 @@ của client. TAP **2/2**, ktest matrix **24/24** (8 ảnh × smp 1/2/4). **Ba �
 server không `Reply` (client còn `BlockedOnReply`, `applied=0`), endpoint sai (`err=1`), `Call` không
 cap (`client_exit=84`). Ảnh mới `.data+.bss` = **209.784 B** (headroom 52.360 B).
 
+### 3.39 KT-281 — riscv64 **net server U-mode** (N1 phần 3)
+**XONG.** Kiến trúc: client `Call` chặn → server U-mode `Recv` → server `Call` **kernel** trên
+`EP_KERN` (chặn) → kernel `virtio_net::ping` **thật** + `reply_msg` → server resume → `Send` trên cap
+`Reply` → client resume. **Đo**:
+```text
+# netsrv call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0xa000202 label=0x290
+# netsrv server: recv=1 label=0x290 mr=0xa000202 client=BlockedOnReply server=BlockedOnSend kern_blocked=1
+# netsrv kern: recv=1 label=0x291 mr=0xa000202 ping=ok sent=1 received=1 rtt_ms=0 reply=ok
+# netsrv: ping 10.0.2.2 ok rtt=0
+# netsrv: client got reply=0
+ok 1 - netsrv: server ran
+ok 2 - netsrv: client got reply
+```
+TAP **2/2**, matrix **27/27** (9 ảnh × smp 1/2/4), `net.sh --red-selftest` **33 kiểm**. **Khảo sát
+phát hiện**: `spec/` cấp đúng **16** syscall (`0..15`), dải `16..31` reserved ⇒ **không** thêm được
+`NetPing`; dùng `Call` trên `Endpoint` (ngữ nghĩa y hệt: chặn → kernel xử lý → `(error, value)`).
+Server U-mode **chỉ có cap Endpoint** — không cap `Frame`/BAR, không MMIO. Ba đột biến đỏ đúng.
+
+### 3.40 KT-282 — riscv64 **MR4..MR63 qua IPC buffer**
+**XONG.** **Khảo sát phát hiện cả ba mảnh đều thiếu**: `Tcb.Configure` **chưa** bind frame; đường
+syscall **từ chối** `len > 4`; resume **chưa** nạp MR4..MR63. **Đo**:
+```text
+# ipc: mr count=8 mr7=0x28210007
+# ipc mr: round=1 srv_len=8 srv_mr4=0x28200004 srv_mr7=0x28200007 cli_len=8 cli_mr4=0x28210004
+# ipc: mr count=64 mr63=0x2821003f
+# ipc buf: bound=1 va=0x40020000 mr_off=80 mr_words=60
+ok 3 - ipc: mr4..mr7 via buffer
+```
+Layout `[TK]` (spec không chốt): `0..80` header KT-67b · `80..560` MR4..MR63 (60 word) · `560..4096`
+dự phòng. TAP **3/3**, matrix **24/24**, selftest **20/20**. **Ba đột biến**: không bind buffer ⇒
+`err=5`; `length=64` bị từ chối ⇒ `exit 88` (chứng minh `64` **hợp lệ**, chỉ `>64` mới lỗi); buffer
+ngoài frame ⇒ `err=5`. `size_of::<Machine>()` 189.384 → **190.920 B** (+24 B/TCB); pin 196.608
+**không đổi**.
+
+### 3.41 KT-283 — aarch64 **virtio-input (bàn phím)**
+**XONG.** **Đo**:
+```text
+# input name: QEMU Virtio Keyboard
+# input dev: num_queues=2 queue_max=64 queue_size=16 ev_bits_len=29 key_a_bit=1 device_status=0x0f
+ok 31 - input: device
+# input: key a code=30 ascii=0x61 shift=0 elapsed_ms=216
+ok 32 - input: key
+# input stats: events=1 key_downs=1 notifies=2 errors=0 clean_lines=128 clean_bytes=8192
+```
+TAP **32/32**, runner **20/20** (17 ca âm), soak selftest **36/36**. **Ngân sách**: `.data+.bss`
+**229.608 → 233.704 B (89,2 %)** — delta **đúng 4.096 B** = **một** trang DMA chứa **cả hai** ring
+(event 430 B @`0x000`, status 430 B @`0x200`) + 8 đệm 8 B; trần I7 **không** nới. Tách `mapwin.rs` để
+`main.rs` về **1466** dòng (R1). Ba đột biến đỏ.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `e908a97c` (ứng viên bàn giao) | **PASS 67/67, 649,3 s** | `/tmp/t2-r10.log` |
-| T2 trên `21d396c6` (vòng 9) | PASS 67/67, 632,7 s | `/tmp/t2-r9.log` |
+| **T2** `gate --fast` trên `a35aa529` (ứng viên bàn giao) | **PASS 67/67, 725,7 s** | `/tmp/t2-r11.log` |
+| T2 trên `e908a97c` (vòng 10) | PASS 67/67, 649,3 s | `/tmp/t2-r10.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
