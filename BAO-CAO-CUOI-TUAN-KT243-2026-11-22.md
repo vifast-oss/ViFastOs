@@ -4,12 +4,12 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười sáu vòng, 57 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười bảy vòng, 61 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
 > Vòng 14–16: KT-291..KT-299 (soak ba arch + sửa bốn lỗi thật soak bắt được).
-> HEAD cuối `b4bb1cb7` (đã push), T2 xanh, cây sạch.
+> Vòng 17: KT-300..KT-303 (**cả ba soak về 0/N**). HEAD cuối `ebd7886e` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -67,6 +67,10 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 48 | **DNS retransmit** | **ĐẠT** | `# net dns: … attempts=2`, `elapsed_ms=6000` |
 | 49 | **Sửa gốc rễ bão `#GP`** | **ĐẠT** | `rsp` bàn giao qua `rax`/`rdx` thay ô `static` dùng chung |
 | 50 | **Sửa phép kiểm timer x86_64** | **ĐẠT** | TAP 10 **600/600 xanh** |
+| 51 | **DNS cục bộ cho soak aarch64** | **ĐẠT — 0/1000** | `local_hits=1001/1001`; `rtt_ms` p50 4 (trước 26) |
+| 52 | **`wait_ipi` chờ theo biến đếm** | **ĐẠT — 0/600** | `report` p99 141.256 µs **vượt** trần cũ 100 ms |
+| 53 | **aarch64 quét 256 bus** | **ĐẠT** | `buses=256`, `ecam_block_ok=1`; `frames_used` 41→33 |
+| 54 | **TAP 35 đỏ không dừng ảnh** | **ĐẠT** | cờ `DNS_RED` chặn marker, bước sau vẫn chạy |
 
 ---
 
@@ -800,12 +804,14 @@ trên cap TCB nay là `Tcb.Configure` ⇒ `InvalidArgument(5)`; label 1 `SetFaul
    bằng busy-wait dưới TCG. Vá: `runs` theo **periodic**, cửa sổ PIT **cố định 500 ms**, kiểm
    divisor. Sau vá: **TAP 10 timer 600/600 xanh**.
 
-### 3.50 Kết luận trung thực về soak
-| Ảnh | Kết quả | Ghi chú |
+### 3.50 Kết luận về soak — **cả ba ảnh đạt 0/N** (vòng 17)
+| Ảnh | Kết quả | Cách đạt |
 |---|---|---|
 | riscv64 (sản phẩm) | **0/1000** | `rc_124=0`, hash khớp ELF 1000/1000 |
-| aarch64 | **992/1000** | 8 đỏ **đều DNS** — resolver của **host** dưới 3 QEMU song song; **TCP 1000/1000 xanh** ⇒ kernel ổn định, nút thắt là dịch vụ ngoài |
-| x86_64 | **597/600** | 0 bão `#GP` sau KT-298; còn 2 timer + 1 IPI timeout (`wait_ipi` trần **thời gian tuyệt đối** — nợ mới) |
+| aarch64 | **0/1000** | **DNS cục bộ** (KT-300): server `python3` UDP + `DYLD_INTERPOSE` trên `res_9_getservers`; `local_hits=1001/1001`, `rtt_ms` p50 **4** (trước 26) |
+| x86_64 | **0/600** | `wait_ipi`/`wait_report` chờ theo **biến đếm** + trần **số vòng** (KT-301); `report` p99 **141.256 µs** **vượt** trần cũ 100 ms ⇒ chẩn đoán đúng |
+
+**Khảo sát đáng giá của KT-300**: `-netdev user,dns=` **không** đổi resolver thượng nguồn — slirp **luôn** chuyển DNS tới `get_dns_addr()` của host; `guestfwd` **chỉ TCP**; `hostfwd` là chiều host→guest. Vì vậy phương án "trỏ slirp tới server cục bộ" **bất khả thi**; đường thật là **interpose `res_9_getservers`** + wrapper QEMU (vì `perl` của `qemu_guard.sh` là binary SIP nên dyld **xoá** `DYLD_*` trước `exec`).
 
 **Đã thử và HOÀN TÁC**: bỏ đòi dòng DNS ở soak (KT-299) **không** có tác dụng — **chính ảnh** in
 `not ok 35 - net: dns` khi DNS timeout ⇒ TAP chỉ còn 27 `ok` thay vì 35. Muốn aarch64 đạt 0/1000 phải
@@ -817,8 +823,8 @@ user,dns=`; **mở task riêng**, không tự quyết.
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `1b7e72c8` (ứng viên bàn giao) | **PASS 68/68, 759,1 s** | `/tmp/t2-r16.log` |
-| T2 trên `5857c209` (vòng 13) | PASS 67/67, 733,7 s | `/tmp/t2-r13b.log` |
+| **T2** `gate --fast` trên `4e4b3500` (ứng viên bàn giao) | **PASS 68/68, 753,7 s** | `/tmp/t2-r17c.log` |
+| T2 trên `1b7e72c8` (vòng 16) | PASS 68/68, 759,1 s | `/tmp/t2-r16.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
