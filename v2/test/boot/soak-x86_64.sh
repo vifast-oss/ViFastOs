@@ -19,10 +19,10 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..26`; đúng **26** dòng `ok N - `, đủ số 1..26,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..27`; đúng **27** dòng `ok N - `, đủ số 1..27,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
-#      vụ ring 3 + KT-288 2 ca virtio-blk = 26);
+#      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk = 27);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -48,6 +48,10 @@
 #  10b. **KT-304** — `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>`: tác vụ
 #      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
 #      `schedule()` chọn **lại** (`resumed ≥ 1`) — thiếu dòng ⇒ ĐỎ;
+#  10c. **KT-310** — `# sched: hart=0|1 picked=<task> n=<k>` (mỗi hart **một** dòng) **và**
+#      `# sched: multi-hart harts=2 rounds=<r> picks=[<a>, <b>] first=[<x>, <y>] double=0`:
+#      hai hart cùng chọn từ **một** hàng đợi toàn cục, chọn **khác** tác vụ ở lần đầu, hart phụ
+#      chọn ≥ 1, **không** double-pick — thiếu/lệch ⇒ ĐỎ;
 #  11. `lma=1` (long mode **thật**, đọc lại `IA32_EFER.LMA`) + đúng 1 `# viFastOs x86_64: halt`
 #      (thoát sạch, không triple-fault);
 #  12. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
@@ -87,7 +91,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=26   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-288 2
+TAP_TESTS=27   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -359,6 +363,36 @@ check_boot_log() {
         bad=1
     }
 
+    # (10c) **KT-310** — **nhiều hart** schedule: mỗi hart một dòng `picked=`, cộng dòng tổng hợp
+    # có `double=0`; hai hart phải chọn **khác** tác vụ ở lần đầu và hart phụ phải chọn ≥ 1.
+    n="$(grep -cE '^# sched: hart=0 picked=[abu] n=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: hart=0 picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# sched: hart=1 picked=[abu] n=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: hart=1 picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    mh_sum="$(grep -E '^# sched: multi-hart harts=2 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+\] first=\[[abu], [abu]\] double=0$' "$log" || true)"
+    if [ -z "$mh_sum" ]; then
+        echo "# thiếu '# sched: multi-hart harts=2 … picks=[…] first=[…] double=0' (không có bằng chứng nhiều hart)"
+        bad=1
+    else
+        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abu]\), [abu]\].*/\1/p')"
+        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abu], \([abu]\)\].*/\1/p')"
+        [ "$mh_f0" != "$mh_f1" ] || {
+            echo "# multi-hart first=[$mh_f0, $mh_f1] — hai hart chọn **cùng** tác vụ"
+            bad=1
+        }
+        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\)\].*/\1/p')"
+        [ "${mh_p1:-0}" -ge 1 ] || {
+            echo "# multi-hart picks[1]=${mh_p1:-0} — hart phụ chưa chọn tác vụ nào"
+            bad=1
+        }
+    fi
+
     # (11) long mode **thật** + halt sạch.
     grep -q 'lma=1' "$log" || {
         echo "# thiếu 'lma=1' (long mode chưa bật thật)"
@@ -388,7 +422,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..26
+1..27
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -456,10 +490,14 @@ ok 23 - sched: b→a
 # sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
 # sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
 ok 24 - sched: umode task
+# sched: hart=1 picked=a n=1
+# sched: hart=0 picked=b n=2
+# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[b, a] double=0
+ok 25 - sched: multi-hart
 # blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
-ok 25 - blk: device
+ok 26 - blk: device
 # blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8 status=0x0f dma=0x133000 desc=0x133000 avail=0x133080 used=0x133098 requests=1 completions=1 errors=0 timeouts=0
-ok 26 - blk: sector0
+ok 27 - blk: sector0
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -583,6 +621,17 @@ EOF
     sed 's/^\(# sched: umode task ran .*\) resumed=[0-9][0-9]*$/\1 resumed=0/' \
         "$good" >"$tmp/ag.log" || true
     neg "tác vụ ring 3 resumed=0 (không chạy lại)" "$tmp/ag.log"
+
+    grep -v -F '# sched: hart=1 picked=' "$good" >"$tmp/ah.log" || true
+    neg "chỉ BSP schedule (mất '# sched: hart=1 picked=')" "$tmp/ah.log"
+
+    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 0] first=[a, ?] double=0/' \
+        "$good" >"$tmp/ai.log" || true
+    neg "hart phụ không chọn tác vụ nào (picks=[6, 0])" "$tmp/ai.log"
+
+    sed 's/^# sched: multi-hart \(.*\)first=\[b, a\] double=0$/# sched: multi-hart \1first=[a, a] double=0/' \
+        "$good" >"$tmp/aj.log" || true
+    neg "hai hart chọn cùng tác vụ (first=[a, a])" "$tmp/aj.log"
 
     sed 's/ lma=1$/ lma=0/' "$good" >"$tmp/ad.log" || true
     neg "lma=0 (long mode chưa bật)" "$tmp/ad.log"

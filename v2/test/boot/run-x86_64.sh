@@ -8,7 +8,9 @@
 # **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) + **KT-304**
 # (**tác vụ ring 3 trong scheduler** — `schedule()` chọn nó, tick preempt nó, nó chạy lại ở
 # ring 3) + **KT-308** (sửa **giả định sai** của phép kiểm KT-304: `last > first` không được
-# bảo đảm dưới tải — xem dòng `# sched: umode progress`) — runner boot **x86_64**. Khuôn:
+# bảo đảm dưới tải — xem dòng `# sched: umode progress`) + **KT-310** (**nhiều hart schedule**:
+# hàng đợi chạy **toàn cục** + khoá, BSP **và** hart 1 cùng `schedule()`) — runner boot
+# **x86_64**. Khuôn:
 # `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
@@ -51,6 +53,11 @@
 #      `first > 0`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
 #      0 vòng ở **một trong hai** cửa sổ là **hợp lệ** (soak KT-308: boot 331 `first>0,
 #      last==first`; boot 231 `first==0, last>first` — hai ảnh ngược của cùng race);
+#      **KT-310**: `# sched: hart=0|1 picked=<task> n=<k>` (mỗi hart **một** dòng — hart phụ in
+#      trong handler của nó, hart 0 in ở tổng kết) và `# sched: multi-hart harts=2 rounds=<r>
+#      picks=[<a>, <b>] first=[<x>, <y>] double=0` — hai hart chọn **khác** tác vụ ở lần đầu,
+#      hart phụ chọn ≥ 1, **không** double-pick. Đây là bằng chứng **trực tiếp** "hart phụ chọn
+#      được tác vụ khác BSP", không phải một bộ đếm chung;
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -73,16 +80,20 @@
 #      (r) **bộ đếm giảm** (KT-308) — log tốt bị sửa `# sched: umode progress` thành
 #          `first=100 last=50 delta=-50` ⇒ phải ĐỎ;
 #      (s) **tác vụ ring 3 không chạy** (KT-308) — log tốt bị sửa `n=<n>` → `n=0` ở dòng
-#          `# sched: umode task ran` ⇒ phải ĐỎ.
-#      Cả **mười chín** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#          `# sched: umode task ran` ⇒ phải ĐỎ;
+#      (t) **chỉ BSP schedule** (KT-310) — log tốt bị xoá dòng `# sched: hart=1 picked=…` **và**
+#          sửa dòng tổng hợp thành `picks=[<n>, 0] first=[<x>, ?]` (đúng ảnh `--features
+#          bsp-only-sched`) ⇒ phải ĐỎ.
+#      Cả **hai mươi** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 26 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 27 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
-#                   preemption; KT-304: 1 ca tác vụ ring 3; KT-288: 2 ca virtio-blk)
+#                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310: 1 ca nhiều hart;
+#                   KT-288: 2 ca virtio-blk)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -107,7 +118,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-26}"
+EXPECT_TESTS="${EXPECT_TESTS:-27}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -642,6 +653,34 @@ check_log() {
             bad=1
         fi
     fi
+    # ---- **KT-310**: **nhiều hart** schedule — hai hart cùng chọn từ **một** hàng đợi toàn cục.
+    # Mỗi hart **một** dòng `picked=` (hart phụ in **trong** handler của nó trước khi tăng bộ đếm,
+    # nên không có hai dòng xen ký tự; hart 0 in ở tổng kết) và **một** dòng tổng hợp có
+    # `double=0`. Hai hart phải chọn **khác** tác vụ ở lần đầu — bằng chứng **trực tiếp** "hart
+    # phụ chọn được tác vụ khác BSP", mạnh hơn một bộ đếm chung.
+    mh0="$(grep -E '^# sched: hart=0 picked=[abu] n=[0-9]+$' "$log" || true)"
+    mh1="$(grep -E '^# sched: hart=1 picked=[abu] n=[0-9]+$' "$log" || true)"
+    if [ -z "$mh0" ] || [ -z "$mh1" ]; then
+        echo "# thiếu '# sched: hart=0|1 picked=<task> n=<k>' (chỉ một hart schedule)"
+        bad=1
+    fi
+    mh_sum="$(grep -E '^# sched: multi-hart harts=2 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+\] first=\[[abu], [abu]\] double=0$' "$log" || true)"
+    if [ -z "$mh_sum" ]; then
+        echo "# thiếu '# sched: multi-hart harts=2 … picks=[…] first=[…] double=0' (không có bằng chứng nhiều hart)"
+        bad=1
+    else
+        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abu]\), [abu]\].*/\1/p')"
+        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abu], \([abu]\)\].*/\1/p')"
+        if [ "$mh_f0" = "$mh_f1" ]; then
+            echo "# multi-hart first=[$mh_f0, $mh_f1] — hai hart chọn **cùng** tác vụ"
+            bad=1
+        fi
+        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\)\].*/\1/p')"
+        if [ "${mh_p1:-0}" -lt 1 ]; then
+            echo "# multi-hart picks[1]=${mh_p1:-0} — hart phụ chưa chọn tác vụ nào"
+            bad=1
+        fi
+    fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -921,6 +960,22 @@ selftest_negative() {
         echo "ok $n - ca âm (s): n=0 (tác vụ chưa chạy) ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
     fi
 
+    # (t) **KT-310** — **chỉ BSP schedule**: xoá dòng `# sched: hart=1 picked=…` **và** sửa dòng
+    #     tổng hợp thành `picks=[<n>, 0] first=[<x>, ?]` — đúng log của ảnh `--features
+    #     bsp-only-sched`. Đây là ca âm trực tiếp của tiêu chí "nhiều hart schedule": nếu runner
+    #     vẫn XANH thì "nhiều hart" chỉ là chữ in, không phải phép đo.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed -e '/^# sched: hart=1 picked=/d' \
+        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 0] first=[a, ?] double=0/' \
+        "$good" >"$tmp/t.log" 2>/dev/null || true
+    if check_log "$tmp/t.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/t.out" 2>&1; then
+        echo "not ok $n - ca âm (t): chỉ BSP schedule mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (t): chỉ BSP schedule ⇒ ĐỎ ($(head -1 "$tmp/t.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -1032,7 +1087,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 16))
+    total=$((total + 17))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

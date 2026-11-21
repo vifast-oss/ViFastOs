@@ -86,11 +86,35 @@
 //! `rip` trong trang mã user). `ss` của frame kernel **không** kiểm được: frame thật do CPU đẩy
 //! khi cùng CPL chỉ có 20 qword, hai ô `rsp`/`ss` mà QEMU pop thêm nằm **ngoài** frame.
 //!
+//! # KT-310 — **nhiều hart** schedule: hàng đợi chạy **toàn cục** + khoá
+//!
+//! KT-286..KT-308 chỉ **BSP** gọi `schedule()`: `on_tick` của ảnh chỉ chạy trên hart 0 (handler
+//! timer so `LAPIC_ID` với BSP), còn hart phụ chỉ tăng `AP_TICK_COUNT`. KT-310 thêm **pha nhiều
+//! hart** — một hàng đợi chạy **toàn cục** (FIFO ba tác vụ đã có) mà **cả BSP và hart 1** cùng
+//! `schedule()`, dưới **một** khoá.
+//!
+//! Pha này chạy **sau** chuỗi cố định [`TASK_SEQUENCE`] (nên TAP 22/23/24 của KT-286/KT-304
+//! **không** đổi nghĩa) và có **trần cứng** số vòng ⇒ không bao giờ treo boot.
+//!
+//! Bốn bất biến (mỗi cái là một lớp lỗi thật):
+//!
+//! 1. **Một chủ**: một tác vụ chỉ thuộc **một** hart tại một thời điểm ([`MH_FREE`] + CAS
+//!    ownership). Không có nó, hai hart `iretq` vào **cùng** một frame trên **cùng** một stack —
+//!    đúng lớp lỗi boot 410 của KT-298 nhưng ở tầng scheduler.
+//! 2. **Không double-pick**: hàng đợi nói tác vụ rảnh mà ownership nói khác ⇒ dừng có chẩn đoán
+//!    (`# sched: BAD double-pick`), không chạy tiếp. Đột biến `--features no-sched-lock` chứng
+//!    minh phép kiểm này **có răng**.
+//! 3. **Chờ hart kia**: pha chỉ kết thúc khi **mọi** hart tham gia đã chọn ≥ 1 tác vụ
+//!    ([`mh_end`]) — nếu không, "nhiều hart" có thể là **một** hart chạy còn hart kia im lặng.
+//! 4. **Trần cứng**: hết [`MH_HARD_ROUNDS`] thì kết thúc **dù** hart kia chưa chọn ⇒ fail-closed
+//!    (TAP đỏ), **không** treo. Cùng khuôn "trần số vòng" của KT-301.
+//!
 //! # Phạm vi
 //!
-//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer. **Không** nhiều tác vụ ring
-//! 3, **không** IPC giữa chúng, **không** nhiều hart schedule, **không** priority, **không**
-//! sleep/wake — đó là các bước sau (D2-212, D2-219).
+//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (hai hart,
+//! hàng đợi toàn cục, khoá). **Không** nhiều tác vụ ring 3, **không** IPC giữa chúng, **không**
+//! load balancing, **không** priority, **không** migration chủ động, **không** sleep/wake — đó là
+//! các bước sau (D2-212, D2-219). **Không** tuyên bố K5' đạt.
 
 use crate::exc;
 
@@ -307,4 +331,118 @@ pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64) 
         return true;
     }
     false
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-310 — pha **nhiều hart**: hàng đợi chạy toàn cục + khoá
+// ---------------------------------------------------------------------------------------------
+
+/// Số hart **tham gia** pha nhiều hart: BSP (hart 0) + hart 1.
+///
+/// **Hai** là con số nhỏ nhất chứng minh được "nhiều hart schedule" (một hart không chứng minh
+/// được gì), và là con số **đủ** để có **chuyển** tác vụ thật: hàng đợi có **ba** tác vụ
+/// ([`MH_TASKS`]) nên mỗi hart luôn còn một tác vụ **khác** để chọn sau khi trả tác vụ cũ về.
+pub const MH_HARTS: usize = 2;
+
+/// Hàng đợi chạy **toàn cục** của pha nhiều hart — **ba** tác vụ đã có của scheduler.
+///
+/// Không thêm tác vụ mới: KT-310 chứng minh **cơ chế** nhiều hart, không mở rộng tập tác vụ.
+pub const MH_TASKS: [usize; 3] = [TASK_A, TASK_B, TASK_U];
+
+/// Số phần tử của hàng đợi **vòng** (chỉ số `head`/`tail` đơn điệu, lấy `% MH_QUEUE_SLOTS`).
+///
+/// Phải **rộng hơn** `MH_TASKS.len() + MH_HARTS`: mỗi hart đẩy tác vụ cũ về **trước** khi lấy tác
+/// vụ mới, nên hàng đợi tạm thời chứa tới `3 + 2 = 5` phần tử. Đây là **sức chứa**, không phải
+/// ngưỡng thời gian.
+pub const MH_QUEUE_SLOTS: usize = 8;
+
+/// Số vòng **mềm**: đủ để mỗi hart chọn ≥ 1 tác vụ **và** có ít nhất một lần chuyển tác vụ.
+///
+/// Với hai hart và ba tác vụ, 6 vòng = 3 lượt mỗi hart ⇒ mỗi hart chạm **cả ba** tác vụ.
+pub const MH_MAX_ROUNDS: u64 = 6;
+
+/// Trần **cứng** số vòng: hết số này thì pha kết thúc **dù** hart kia chưa chọn.
+///
+/// Đây là **trần số vòng**, không phải ngưỡng thời gian (bài học KT-301): boot **không** treo khi
+/// một hart im lặng, và TAP nhiều hart **đỏ** vì thiếu bằng chứng — đúng fail-closed.
+pub const MH_HARD_ROUNDS: u64 = 48;
+
+/// Giá trị "**không** hart nào sở hữu tác vụ" trong bảng ownership.
+///
+/// `u64::MAX` không trùng slot nào (`TASK_SLOTS` = 4) và cũng là giá trị "chưa chọn" của
+/// [`MH_FIRST`](crate) bên ảnh — một sentinel, hai cách dùng, không mơ hồ.
+pub const MH_FREE: u64 = u64::MAX;
+
+/// Tên tác vụ để in `# sched: hart=<n> picked=<task> n=<n>` — **chữ thường**, một ký tự.
+///
+/// Slot lạ trả `"?"` thay vì panic: dòng chẩn đoán phải in được **cả** trạng thái hỏng (cùng lý
+/// do `bad_frame` của KT-298 đọc được frame rác).
+pub const fn task_name(slot: usize) -> &'static str {
+    if slot == TASK_A {
+        return "a";
+    }
+    if slot == TASK_B {
+        return "b";
+    }
+    if slot == TASK_U {
+        return "u";
+    }
+    "?"
+}
+
+/// `true` ⇔ **mọi** hart tham gia đã chọn ít nhất một tác vụ.
+pub const fn mh_all_picked(picks: &[u64; MH_HARTS]) -> bool {
+    let mut i = 0;
+    while i < MH_HARTS {
+        if picks[i] == 0 {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// `true` ⇔ pha nhiều hart phải **kết thúc** ở vòng `rounds` với `picks` hiện tại.
+///
+/// Hai điều kiện, theo thứ tự **ưu tiên**:
+///
+/// 1. `rounds >= MH_HARD_ROUNDS` ⇒ kết thúc **bất kể** `picks` — trần cứng, chống treo.
+/// 2. `rounds >= MH_MAX_ROUNDS` **và** mọi hart đã chọn ⇒ kết thúc bình thường.
+///
+/// Hàm **thuần** nên test host chốt được cả hai nhánh, kể cả nhánh "hart kia im lặng".
+pub const fn mh_end(rounds: u64, picks: &[u64; MH_HARTS]) -> bool {
+    if rounds >= MH_HARD_ROUNDS {
+        return true;
+    }
+    rounds >= MH_MAX_ROUNDS && mh_all_picked(picks)
+}
+
+/// `true` ⇔ pha nhiều hart **đủ bằng chứng** để TAP `sched: multi-hart` xanh.
+///
+/// Bốn điều kiện, mỗi điều kiện là một lớp lỗi **khác** nhau:
+///
+/// 1. `double == 0` — không có hai hart nào nhận **cùng** một tác vụ (khoá + ownership có tác
+///    dụng). Đột biến `--features no-sched-lock` làm điều kiện này sai.
+/// 2. `rounds >= 2` — có **ít nhất** hai lượt chọn, tức không phải "một hart chọn một lần rồi
+///    thôi".
+/// 3. **mọi** hart đã chọn ≥ 1 — đột biến `--features bsp-only-sched` làm điều kiện này sai.
+/// 4. `first[0] != first[1]` — hai hart chọn **khác** tác vụ ở lần đầu. Đây là bằng chứng **trực
+///    tiếp** của "hart phụ chọn được tác vụ **khác** BSP" (mốc thật của KT-310), mạnh hơn một
+///    bộ đếm chung.
+pub const fn mh_ok(
+    rounds: u64,
+    picks: &[u64; MH_HARTS],
+    first: &[u64; MH_HARTS],
+    double: u64,
+) -> bool {
+    if double != 0 {
+        return false;
+    }
+    if rounds < 2 {
+        return false;
+    }
+    if !mh_all_picked(picks) {
+        return false;
+    }
+    first[0] != first[1]
 }

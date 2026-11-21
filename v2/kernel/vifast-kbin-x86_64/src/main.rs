@@ -158,9 +158,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// (19), `smp: ipi delivered` (20), `smp: all harts report` (21).
 /// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23).
 /// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25).
-/// **KT-304** thêm **một** ca preemption ring 3: `sched: umode task` (24) — blk dời sang 25/26,
-/// tổng **26**.
-pub const TAP_TESTS: usize = 26;
+/// **KT-304** thêm `sched: umode task` (24) — blk dời sang 25/26. **KT-310** thêm
+/// `sched: multi-hart` (25) — blk dời sang 26/27, tổng **27**.
+pub const TAP_TESTS: usize = 27;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -701,6 +701,10 @@ pub extern "C" fn exc_dispatch(
         } else {
             smp::note_ap_tick();
             lapic_eoi();
+            // **KT-310**: hart phụ cũng `schedule()` — chỉ trong **pha nhiều hart**.
+            if let Some((rsp, rip)) = sched::on_tick_ap(frame_rsp) {
+                return FrameReturn::switch(rsp, rip);
+            }
         }
         return FrameReturn::resume(rip);
     }

@@ -91,6 +91,15 @@ no-rsp0 = []
 # chuyển sang tác vụ U in `# sched: BAD frame slot=3 …` rồi halt, không marker (ĐỎ). Chứng minh
 # nhánh ring 3 của phép kiểm frame là **có răng**. Chỉ dùng cho đột biến.
 reject-user-cs = []
+# **KT-310** — đột biến (i) của pha nhiều hart: hart **phụ** không gọi `schedule()` (chỉ BSP) ⇒
+# `MH_PICKS[1] = 0` ⇒ TAP 25 `sched: multi-hart` ĐỎ, không marker. Chứng minh phép kiểm **đòi**
+# hart thứ hai thật, không phải "một hart chạy rồi tự khen". Chỉ dùng cho đột biến.
+bsp-only-sched = []
+# **KT-310** — đột biến (ii): khoá pha nhiều hart thành **no-op** + kéo dài cửa sổ đọc `head`
+# **30 ms** (PIT kênh 2) ⇒ hai hart cùng lấy **một** tác vụ ⇒ `# sched: BAD double-pick` + halt
+# (ĐỎ, không marker). Chứng minh khoá + ownership là **bắt buộc**, không phải trang trí. Chỉ dùng
+# cho đột biến.
+no-sched-lock = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

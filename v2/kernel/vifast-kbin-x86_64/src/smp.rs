@@ -1012,6 +1012,22 @@ pub(crate) fn bsp_lapic_id() -> u64 {
     BSP_LAPIC_ID.load(Ordering::Acquire)
 }
 
+/// **KT-310** — chỉ số hart sở hữu `LAPIC_ID` này (`None` = chưa hart nào công bố id ấy).
+///
+/// Handler timer đọc `LAPIC_ID` qua MMIO (**của hart đang chạy**) nên đây là đường **duy nhất**
+/// biết "tick này của hart nào" mà không tin một biến toàn cục. Bảng [`SMP_HART_LAPIC_ID`] do
+/// **chính hart phụ** ghi trước khi bật bit online, nên tra bảng là tra dữ liệu hart ấy công bố.
+pub(crate) fn hart_of_lapic(id: u8) -> Option<usize> {
+    let mut hart = 0;
+    while hart < smp::SMP_HARTS {
+        if SMP_HART_LAPIC_ID[hart].load(Ordering::Acquire) == id as u64 {
+            return Some(hart);
+        }
+        hart += 1;
+    }
+    None
+}
+
 /// Tăng bộ đếm tick của hart phụ — handler vector 32 gọi khi `LAPIC_ID != BSP`.
 pub(crate) fn note_ap_tick() {
     AP_TICK_COUNT.fetch_add(1, Ordering::Relaxed);

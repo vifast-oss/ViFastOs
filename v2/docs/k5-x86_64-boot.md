@@ -1272,3 +1272,122 @@ thêm dòng `# sched: umode progress first=… last=… delta=…` (delta **có 
 Bằng chứng "chạy lại sau resume" là **tổng hợp** (qua 1.200 boot: boot nào tác vụ cũng chạy ít
 nhất một cửa sổ, `n > 0`), **không** phải một cửa sổ cụ thể. Bằng chứng đo lại 600 boot trên máy
 sạch: xem `v2/agent/JOURNAL/kt308-x86_64-soak2.md`.
+
+## 18. KT-310 — **nhiều hart schedule**: hàng đợi chạy toàn cục + khoá
+
+Trạng thái: **DONE** (KT-310, 2026-11-22). Quyết định: **D2-201** (K5' bước 1), **D2-212**
+(KT-286 preemption), **D2-216** (KT-297/298), **D2-221** (nhiệm vụ KT-310), **D2-198** (uỷ quyền
+commit nhánh task), **D2-05** (test đỏ trước), **D2-07** (không retry).
+
+**Không** tuyên bố K5' đạt.
+
+### 18.1 Khảo sát trước: ba câu hỏi của task
+
+**(1) `sched.rs` có runqueue toàn cục hay per-hart? — KHÔNG có runqueue.** `vifast-plat-x86_64::
+sched` là **bảng cố định** `TASK_SEQUENCE` (`[B, A, B, A, B, U, A, U, MAIN]`) + hàm thuần
+`next_task`; `vifast-kbin-x86_64::sched` giữ trạng thái **toàn cục** (`SCHED_RSP[slot]`,
+`SCHED_CURRENT`, `SCHED_SWITCHES`, …) — **một** bản, **không** per-hart, **không** khoá. Vì vậy
+`schedule()` hiện **chỉ đúng khi một hart gọi**: hai hart cùng gọi sẽ cùng tăng `SCHED_SWITCHES`
+và cùng đọc/ghi `SCHED_RSP` ⇒ hai hart `iretq` vào **cùng** một frame trên **cùng** một stack —
+đúng lớp lỗi boot 410/600 của KT-293, nhưng ở tầng **chọn tác vụ** (KT-298 mới sửa tầng **bàn
+giao `rsp`**).
+
+**(2) `TASK_SEQUENCE` là bảng cố định — hart phụ đọc nó thế nào? — KHÔNG đọc được.**
+`exc_dispatch` so `LAPIC_ID` với `smp::bsp_lapic_id()`: nhánh BSP mới gọi `sched::on_tick`, nhánh
+hart phụ chỉ `smp::note_ap_tick()` + `lapic_eoi()`. Cho hart phụ vào **nguyên trạng** thì
+`SCHED_SWITCHES` (toàn cục) bị hai hart cùng tăng ⇒ hai hart chọn **cùng** bước của bảng.
+
+**(3) `TSS.rsp0` per-hart đã có (KT-278) — hart phụ `iretq` xuống ring 3 cần gì thêm?**
+`tss::init(hart, …)` đã nạp `RSP0` = đỉnh slot stack **của hart ấy** và `gdt::install(hart, …)`
+nạp **GDT riêng** có đủ `USER_CS`/`USER_SS`. Còn thiếu **hai** thứ: (a) `RSP0` của hart phụ đang
+trỏ stack `hlt` của chính nó, **không** phải `TASK_U_STACK` — phải nạp lại **khi hart ấy chọn
+`TASK_U`**, nếu không tick từ CPL3 ghi đè ngữ cảnh hart phụ (lớp lỗi `no-rsp0` của KT-304, ở hart
+khác); (b) `frame_ok` chỉ nhận bốn slot `MAIN/A/B/U`, nên frame **của hart phụ** (do CPU đẩy trên
+stack `hlt` của nó) **không** được đưa qua `frame_ok` — cùng lý do `TASK_MAIN` trả `None` ở
+`slot_stack`: frame do CPU đẩy tại chỗ ngắt là hợp lệ **theo định nghĩa**.
+
+### 18.2 Phương án: **(A) hàng đợi toàn cục + khoá**
+
+Chọn **(A)** — nhỏ hơn (B), đúng khuyến nghị của task, và **tự nhiên** phát hiện double-pick:
+hàng đợi nói "rảnh" mà bảng ownership nói "có chủ" ⇒ dừng có chẩn đoán. (B) (per-hart runqueue +
+chuyển tác vụ qua IPI) cần thêm cơ chế **migration** — ngoài phạm vi ("**không** migration").
+
+Phạm vi **hẹp có chủ đích**: pha nhiều hart chạy **sau** chuỗi cố định (TAP 22/23/24 **không** đổi
+nghĩa, **không** nới ngưỡng nào); **hai** hart (BSP + hart 1); hàng đợi là **ba** tác vụ **đã có**
+(`A`, `B`, `U`) nên có **chuyển** tác vụ thật mà **không** thêm tác vụ mới; **trần cứng**
+`MH_HARD_ROUNDS = 48` nên boot **không** treo khi một hart im lặng (khuôn KT-301).
+
+### 18.3 Cơ chế
+
+| Thành phần | Thay đổi |
+|---|---|
+| `vifast-plat-x86_64::sched` | `MH_HARTS=2`, `MH_TASKS=[A,B,U]`, `MH_QUEUE_SLOTS=8`, `MH_MAX_ROUNDS=6`, `MH_HARD_ROUNDS=48`, `MH_FREE=u64::MAX`; hàm thuần `task_name`, `mh_all_picked`, `mh_end`, `mh_ok` |
+| `vifast-plat-x86_64/tests/runqueue.rs` | **mới** — 6 test host (đỏ-trước): hằng, tên tác vụ, FIFO **có khoá** (không hart nào chia tác vụ), FIFO **không khoá** (double-pick **phải** bị phát hiện), `mh_end` (chờ hart kia + trần cứng), `mh_ok` (bốn điều kiện) |
+| `vifast-kbin-x86_64::sched` | hàng đợi vòng `MH_QUEUE`/`MH_HEAD`/`MH_TAIL`, bảng `MH_OWNER`, khoá spin `MH_LOCK`, `MH_CURRENT`/`MH_PICKS`/`MH_FIRST`/`MH_FIRST_N`/`MH_ROUNDS`/`MH_DOUBLE`; `mh_lock`/`mh_unlock`/`mh_push`/`mh_pop`/`mh_tick`/`mh_start`/`on_tick_ap`; nhánh `MH_ACTIVE` trong `on_tick`; TAP 25 |
+| `vifast-kbin-x86_64::smp` | `hart_of_lapic(id)` — tra `SMP_HART_LAPIC_ID` (dữ liệu **do chính hart phụ** công bố trước khi bật bit online) |
+| `vifast-kbin-x86_64::main` | nhánh hart phụ của `exc_dispatch` gọi `sched::on_tick_ap(frame_rsp)`; `TAP_TESTS` 26 → **27** |
+| `vifast-kbin-x86_64::net` | blk dời `tap_first + 10` → `+ 11` (TAP 26/27) |
+| `Cargo.toml` | feature đột biến `bsp-only-sched`, `no-sched-lock` |
+
+**Bốn bất biến của pha** (mỗi cái là một lớp lỗi thật): (1) **một chủ** — `MH_OWNER[task]` +
+`compare_exchange`, hàng đợi chỉ chứa tác vụ **rảnh**; (2) **không double-pick** — `mh_pop` trả
+`Err(task)` ⇒ `# sched: BAD double-pick` + halt; (3) **chờ hart kia** — `mh_end` đòi **mọi** hart
+đã chọn ≥ 1 trước khi kết thúc (trừ trần cứng); (4) **trần cứng** — `MH_HARD_ROUNDS` ⇒ kết thúc dù
+thiếu bằng chứng (TAP đỏ, **không** treo).
+
+**Vì sao dòng của hart 0 in ở tổng kết, không in trong handler:** hart phụ in dòng của nó **trước**
+khi tăng `MH_PICKS[1]` ("in trước, đếm sau" — khuôn KT-259/KT-278) và BSP chỉ tới phần tổng kết
+**sau** khi pha kết thúc ⇒ **không** có hai dòng xen ký tự trên COM1. Nếu cả hai hart cùng in
+trong handler thì hai dòng có thể xen nhau và regex của runner đỏ **oan**.
+
+### 18.4 Đo được (log QEMU nguyên văn, `-smp 4`)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: hart=1 picked=a n=1
+# sched: ticks=10 tasks=3
+# sched: runs a=1245744 b=1471487 switches=9 ab=1 ba=2 a_rsp=0x12e178 b_rsp=0x132178 u_rsp=0x136180
+# sched: umode task ran n=24270228 ring=3 preempted=2 resumed=1
+# sched: umode counts first=12915741 last=24232588 cs=0x1b kernel_stack=0x136230
+# sched: umode progress first=12915741 last=24232588 delta=11316847
+# sched: hart=0 picked=b n=2
+# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[b, a] double=0
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: umode task
+ok 25 - sched: multi-hart
+ok 26 - blk: device
+ok 27 - blk: sector0
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| hart phụ `schedule()` | `# sched: hart=1 picked=a n=1` — hart 1 chọn **A** ở vòng 1 |
+| BSP `schedule()` trên **cùng** hàng đợi | `# sched: hart=0 picked=b n=2` — BSP chọn **B** ở vòng 2 |
+| hai hart chọn **khác** tác vụ | `first=[b, a]` |
+| chuyển tác vụ thật trong pha | `rounds=7`, `picks=[3, 4]` — mỗi hart chạm **cả ba** tác vụ (kể cả `U` ring 3 trên hart 1) |
+| không double-pick | `double=0` |
+| TAP | **27/27** xanh; runner 19/19 kiểm sạch + **20 ca âm** ĐỎ |
+
+### 18.5 Đột biến bắt buộc (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **hart phụ không schedule** | `--features bsp-only-sched` | `# sched: hart=0 picked=a n=1` + `# sched: multi-hart harts=2 rounds=48 picks=[48, 0] first=[a, ?] double=0` ⇒ `not ok 25 - sched: multi-hart` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo: `rounds=48` = trần cứng) |
+| (ii) **bỏ khoá** | `--features no-sched-lock` (khoá no-op + cửa sổ **30 ms** bằng PIT kênh 2) | `# sched: hart=1 picked=a n=1` + `# sched: BAD double-pick hart=0 task=a n=1` ⇒ halt, **không marker** (ĐỎ) |
+
+### 18.6 Còn thiếu / rủi ro
+
+1. **Hai** hart (BSP + hart 1), **không** phải bốn: hart 2/3 vẫn chỉ `hlt` — đúng phạm vi task.
+2. **Không** load balancing, **không** priority, **không** migration chủ động, **không** sleep/wake.
+   Hàng đợi là FIFO **cố định** ba tác vụ, **không** phải scheduler sản phẩm.
+3. Hart phụ **không** quay về `hlt` sau pha: nó ở lại trong tác vụ cuối (tick sau chỉ `resume`).
+   Không ảnh hưởng boot (sau TAP 21 hart phụ không còn việc gì), nhưng là **nợ** nếu sau này cần
+   hart phụ làm việc khác — khi đó phải thêm slot "ngữ cảnh riêng của hart phụ" và cho `frame_ok`
+   nhận slot ấy.
+4. Pha nhiều hart chạy **sau** chuỗi cố định nên nó **không** chứng minh "hai hart cùng chạy tác
+   vụ trong lúc tác vụ ring 3 đang chạy" — chỉ chứng minh "hai hart cùng `schedule()` trên **một**
+   hàng đợi". Đó là mốc thật của task, không hơn.
+5. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot) và các mục
+   ngoài soak (§12.12).
