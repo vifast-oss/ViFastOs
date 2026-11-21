@@ -1,6 +1,6 @@
 # KT-302 — aarch64 quét **256 bus** (block descriptor 2 MiB cho ECAM)
 
-Trạng thái: **đang làm** — nhánh `task/kt302-a64bus`, base `main` @ `a78e67a9`, 2026-11-21.
+Trạng thái: **DONE** — nhánh `task/kt302-a64bus`, base `main` @ `a78e67a9`, 2026-11-21.
 Sub-agent `a64bus`. Quyết định: **D2-218** (vòng 17 — KT-302), **D2-208** (KT-273 PCI ECAM),
 **D2-195** (mở K4' bước 3), **D2-05** (test đỏ trước), **D2-198** (uỷ quyền commit nhánh task),
 **D2-17** (`unsafe` chỉ trong crate arch), **D2-199** (không đổi trait `PageTableFormat`/`Mmu`
