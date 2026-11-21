@@ -44,17 +44,17 @@
 //!
 //! Thứ tự [`psched::TASK_SEQUENCE`]: `A→B→A→B→A→B→U→A→U→main` — U bị preempt **hai** lần
 //! (`U→A`, `U→main`) và được chạy lại **một** lần (`A→U`). Bằng chứng: bộ đếm user do chính
-//! tác vụ ring 3 tăng (`n`), `cs` của frame lúc preempt (`ring=3` ở **cả hai** lần), số lần
-//! preempt/resume, `first > 0` (đã chạy trước lần preempt đầu) và `last >= first` (bộ đếm
-//! **không giảm**).
+//! tác vụ ring 3 tăng (`n > 0`), `cs` của frame lúc preempt (`ring=3` ở **cả hai** lần), số lần
+//! preempt/resume, và `last >= first` (bộ đếm **không giảm**).
 //!
 //! **KT-308** — KT-304 đòi thêm `last > first` ("bộ đếm tăng giữa hai lần preempt"). Đó là
 //! **giả định sai**: tick là PIT 100 Hz (10 ms); nếu vCPU bị host deschedule ≥ 10 ms đúng lúc
 //! `iretq` xuống CPL3 thì tick kế đã pending ⇒ CPU nhận ngắt **trước** lệnh user đầu tiên ⇒
-//! 0 vòng, `first == last`. Soak KT-308 bắt đúng 1/600 boot như vậy (boot 331; 13/600 boot có
-//! `last - first < 100.000` ⇒ biên là **dải liên tục**). Sửa: bỏ `last > first`, thay bằng
-//! `first > 0` + `last >= first` + `cs = 0x1B` ở **cả hai** lần preempt — vẫn chứng minh "đã
-//! chạy, bị preempt ở ring 3, được chọn lại", không nới ngưỡng nào khác.
+//! 0 vòng. Race xảy ra được ở **cả hai** cửa sổ: soak KT-308 bắt boot 331 (`first > 0`,
+//! `last == first` — 0 vòng ở cửa sổ **sau**) và boot 231 (`first == 0`, `last > first` — 0 vòng
+//! ở cửa sổ **đầu**). Vì vậy **không** cửa sổ nào được đòi có tiến bộ; bất biến thật là "tác vụ
+//! chạy **ít nhất một** cửa sổ" (`n > 0`) + bộ đếm **không giảm** (`last >= first`) + `cs = 0x1B`
+//! ở **cả hai** lần preempt + `resumed ≥ 1`. Không nới ngưỡng nào khác.
 //!
 //! # Phạm vi (D2-212, D2-219)
 //!
@@ -109,7 +109,8 @@ static U_PREEMPT_CS: AtomicU64 = AtomicU64::new(0);
 /// preempt: một lần ở CPL3 không chứng minh lần còn lại cũng ở CPL3.
 static U_PREEMPT_CS_FIRST: AtomicU64 = AtomicU64::new(0);
 /// **KT-304** — bộ đếm user tại lần preempt **đầu** (để so với lần cuối: `last >= first` ⇒ bộ
-/// đếm **không giảm**; `first > 0` ⇒ tác vụ **đã chạy** trước lần preempt đầu).
+/// đếm **không giảm**). **KT-308**: `first` **không** được đòi `> 0` — cửa sổ đầu cũng có thể
+/// 0 vòng dưới host deschedule (boot 231 của soak KT-308).
 static U_COUNT_FIRST: AtomicU64 = AtomicU64::new(0);
 /// **KT-304** — bộ đếm user tại lần preempt **cuối**.
 static U_COUNT_LAST: AtomicU64 = AtomicU64::new(0);
@@ -443,11 +444,11 @@ pub fn run(console: &mut Console, tap_first: usize) {
     let u_first = U_COUNT_FIRST.load(Ordering::Relaxed);
     let u_last = U_COUNT_LAST.load(Ordering::Relaxed);
     // **KT-308** — ring 3 ở **cả hai** lần preempt; `last >= first` là bất biến thật (bộ đếm
-    // đơn điệu). `last > first` **không** được đòi: tick là PIT 100 Hz; nếu vCPU bị host
-    // deschedule ≥ 10 ms đúng lúc `iretq` xuống CPL3 thì tick kế đã pending ⇒ CPU nhận ngắt
-    // **trước** lệnh user đầu tiên ⇒ 0 vòng. Đo được ở soak KT-308: 1/600 boot `first == last`
-    // (boot 331); 13/600 boot có `last - first < 100.000` ⇒ biên là **dải liên tục**, không
-    // phải lỗi logic của đường resume.
+    // đơn điệu). `last > first` **và** `first > 0` **không** được đòi: tick là PIT 100 Hz; nếu
+    // vCPU bị host deschedule ≥ 10 ms đúng lúc `iretq` xuống CPL3 thì tick kế đã pending ⇒ CPU
+    // nhận ngắt **trước** lệnh user đầu tiên ⇒ 0 vòng. Race xảy ra được ở **cả hai** cửa sổ:
+    // soak KT-308 bắt boot 331 (`first > 0`, `last == first`) và boot 231 (`first == 0`,
+    // `last > first`). Bất biến thật: `n > 0` (chạy **ít nhất một** cửa sổ) + `last >= first`.
     let u_ring3 = u_cs_first == USER_CS as u64 && u_cs_last == USER_CS as u64;
     let u_delta = u_last as i128 - u_first as i128;
     let _ = writeln!(console, "# sched: ticks={ticks} tasks=3");
@@ -464,9 +465,9 @@ pub fn run(console: &mut Console, tap_first: usize) {
         console,
         "# sched: umode counts first={u_first} last={u_last} cs=0x{u_cs_last:x} kernel_stack=0x{u_kernel_top:x}"
     );
-    // **KT-308** — dòng bằng chứng định lượng: `first > 0` (đã chạy trước lần preempt đầu) và
-    // `last >= first` / `delta >= 0` (bộ đếm **không giảm**). `delta` in **có dấu** để ca âm
-    // "bộ đếm giảm" (`last < first`) đọc được trực tiếp.
+    // **KT-308** — dòng bằng chứng định lượng: `last >= first` / `delta >= 0` (bộ đếm **không
+    // giảm**). `delta` in **có dấu** để ca âm "bộ đếm giảm" (`last < first`) đọc được trực tiếp.
+    // `first`/`last` vẫn in để người đọc thấy cửa sổ nào 0 vòng — **không** phải điều kiện.
     let _ = writeln!(
         console,
         "# sched: umode progress first={u_first} last={u_last} delta={u_delta}"
@@ -481,25 +482,21 @@ pub fn run(console: &mut Console, tap_first: usize) {
         "sched: preempted",
         switches >= 2 && ab >= 1 && ba >= 1 && ticks >= 2,
     );
-    // TAP 24 (**KT-304**, siết lại **KT-308**): tác vụ **ring 3** — đã chạy thật (`n > 0`),
-    // bị preempt khi đang ở CPL3 **cả hai** lần (`cs = 0x1B` ở lần đầu **và** lần cuối), được
-    // `schedule()` chọn **lại** (`resumed ≥ 1`), **đã chạy trước** lần preempt đầu (`first > 0`)
-    // và bộ đếm **không giảm** giữa hai lần preempt (`last >= first`).
+    // TAP 24 (**KT-304**, sửa **KT-308**): tác vụ **ring 3** — đã chạy thật (`n > 0`), bị
+    // preempt khi đang ở CPL3 **cả hai** lần (`cs = 0x1B` ở lần đầu **và** lần cuối), được
+    // `schedule()` chọn **lại** (`resumed ≥ 1`) và bộ đếm **không giảm** giữa hai lần preempt
+    // (`last >= first`).
     //
-    // **KT-308** — bỏ điều kiện `last > first` của KT-304: nó đòi tác vụ chạy ≥ 1 vòng **giữa
-    // hai lần preempt**, điều **không** được bảo đảm (PIT 100 Hz; host deschedule ≥ 10 ms đúng
-    // lúc `iretq` ⇒ tick kế pending ⇒ 0 vòng). Đây là **sửa giả định sai của phép kiểm**, không
-    // phải nới ngưỡng: `first > 0` + `last >= first` + `resumed ≥ 1` + `cs = 0x1B` **cả hai**
-    // lần vẫn chứng minh "đã chạy, bị preempt ở ring 3, được chọn lại, bộ đếm đơn điệu".
+    // **KT-308** — bỏ `last > first` của KT-304 **và** không thay bằng `first > 0`: cả hai đều
+    // đòi một **cửa sổ cụ thể** có tiến bộ, điều **không** được bảo đảm (PIT 100 Hz; host
+    // deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒ 0 vòng). Hai ảnh ngược đo được:
+    // boot 331 (`first > 0`, `last == first`) và boot 231 (`first == 0`, `last > first`). Bất
+    // biến thật là "tác vụ chạy **ít nhất một** cửa sổ" (`n > 0`) + bộ đếm **không giảm**
+    // (`last >= first`) + `cs = 0x1B` **cả hai** lần + `resumed ≥ 1` — không nới ngưỡng nào.
     check(
         console,
         tap_first + 2,
         "sched: umode task",
-        u_runs > 0
-            && u_ring3
-            && u_preempted >= 2
-            && u_resumed >= 1
-            && u_first > 0
-            && u_last >= u_first,
+        u_runs > 0 && u_ring3 && u_preempted >= 2 && u_resumed >= 1 && u_last >= u_first,
     );
 }

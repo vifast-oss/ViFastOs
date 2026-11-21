@@ -46,10 +46,11 @@
 #      **KT-304**: `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>` — tác vụ
 #      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3` ở **cả hai** lần),
 #      được `schedule()` chọn **lại** (`resumed ≥ 1`);
-#      **KT-308**: `# sched: umode progress first=<n> last=<n> delta=<n>` — `first > 0` (đã chạy
-#      trước lần preempt đầu) và `last >= first` / `delta >= 0` (bộ đếm **không giảm**).
-#      **Không** đòi `last > first`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick
-#      kế pending ⇒ 0 vòng là **hợp lệ** (soak KT-308: 1/600 boot, boot 331);
+#      **KT-308**: `# sched: umode progress first=<n> last=<n> delta=<n>` — `last >= first` /
+#      `delta >= 0` (bộ đếm **không giảm**). **Không** đòi `last > first` **cũng không** đòi
+#      `first > 0`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
+#      0 vòng ở **một trong hai** cửa sổ là **hợp lệ** (soak KT-308: boot 331 `first>0,
+#      last==first`; boot 231 `first==0, last>first` — hai ảnh ngược của cùng race);
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -71,7 +72,8 @@
 #          `# sched: umode counts` ⇒ phải ĐỎ;
 #      (r) **bộ đếm giảm** (KT-308) — log tốt bị sửa `# sched: umode progress` thành
 #          `first=100 last=50 delta=-50` ⇒ phải ĐỎ;
-#      (s) **chưa chạy trước lần preempt đầu** (KT-308) — log tốt bị sửa thành `first=0` ⇒ ĐỎ.
+#      (s) **tác vụ ring 3 không chạy** (KT-308) — log tốt bị sửa `n=<n>` → `n=0` ở dòng
+#          `# sched: umode task ran` ⇒ phải ĐỎ.
 #      Cả **mười chín** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
@@ -604,11 +606,10 @@ check_log() {
         bad=1
     fi
     # ---- **KT-304** + **KT-308**: tác vụ **ring 3** trong scheduler — chạy thật, bị preempt
-    # khi ở CPL3 **cả hai** lần, được `schedule()` chọn **lại**, đã chạy trước lần preempt đầu
-    # và bộ đếm **không giảm**. Năm điều kiện tách bạch: `n > 0` (đã chạy), `ring=3` (cs lúc
-    # preempt = 0x1B ở **cả hai** lần), `preempted ≥ 2` (rời U hai lần), `resumed ≥ 1` (được
-    # chọn lại), `first > 0` + `last >= first` (bộ đếm đơn điệu). Thiếu dòng ⇒ ĐỎ, không thể
-    # "xanh nhờ TAP 24".
+    # khi ở CPL3 **cả hai** lần, được `schedule()` chọn **lại**, bộ đếm **không giảm**. Năm
+    # điều kiện tách bạch: `n > 0` (đã chạy **ít nhất một** cửa sổ), `ring=3` (cs lúc preempt =
+    # 0x1B ở **cả hai** lần), `preempted ≥ 2` (rời U hai lần), `resumed ≥ 1` (được chọn lại),
+    # `last >= first` (bộ đếm đơn điệu). Thiếu dòng ⇒ ĐỎ, không thể "xanh nhờ TAP 24".
     grep -qE '^# sched: umode task ran n=[1-9][0-9]* ring=3 preempted=[2-9][0-9]* resumed=[1-9][0-9]*$' "$log" || {
         echo "# thiếu '# sched: umode task ran n=… ring=3 preempted=… resumed=…' (tác vụ ring 3 không chạy lại)"
         bad=1
@@ -620,10 +621,10 @@ check_log() {
         echo "# thiếu '# sched: umode counts … cs=0x1b …' (lần preempt cuối không ở ring 3)"
         bad=1
     }
-    # **KT-308** — dòng bằng chứng định lượng: `first > 0` (tác vụ **đã chạy** trước lần preempt
-    # đầu) và `last >= first` / `delta >= 0` (bộ đếm **không giảm**). **Không** đòi
-    # `last > first`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
-    # 0 vòng là hợp lệ (soak KT-308: 1/600 boot, boot 331; 13/600 boot `last - first < 100.000`).
+    # **KT-308** — dòng bằng chứng định lượng: `last >= first` / `delta >= 0` (bộ đếm **không
+    # giảm**). **Không** đòi `last > first` **cũng không** đòi `first > 0`: PIT 100 Hz, host
+    # deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒ 0 vòng ở **một trong hai** cửa sổ
+    # là hợp lệ (soak KT-308: boot 331 `first>0, last==first`; boot 231 `first==0, last>first`).
     u_prog="$(grep -E '^# sched: umode progress first=[0-9]+ last=[0-9]+ delta=-?[0-9]+$' "$log" || true)"
     if [ -z "$u_prog" ]; then
         echo "# thiếu '# sched: umode progress first=… last=… delta=…' (không có bằng chứng bộ đếm)"
@@ -632,10 +633,6 @@ check_log() {
         u_first="$(printf '%s\n' "$u_prog" | sed -n 's/.*first=\([0-9]*\).*/\1/p')"
         u_last="$(printf '%s\n' "$u_prog" | sed -n 's/.*last=\([0-9]*\).*/\1/p')"
         u_delta="$(printf '%s\n' "$u_prog" | sed -n 's/.*delta=\(-\{0,1\}[0-9]*\).*/\1/p')"
-        if [ "${u_first:-0}" -le 0 ]; then
-            echo "# umode progress first=${u_first:-0} (tác vụ chưa chạy trước lần preempt đầu)"
-            bad=1
-        fi
         if [ "${u_last:-0}" -lt "${u_first:-0}" ]; then
             echo "# umode progress last=${u_last:-0} < first=${u_first:-0} (bộ đếm giảm)"
             bad=1
@@ -911,17 +908,17 @@ selftest_negative() {
         echo "ok $n - ca âm (r): bộ đếm giảm (last < first) ⇒ ĐỎ ($(head -1 "$tmp/r.out"))"
     fi
 
-    # (s) **KT-308** — tác vụ **chưa chạy** trước lần preempt đầu: log tốt bị sửa thành
-    #     `first=0`. `first > 0` là bằng chứng "đã chạy thật"; thiếu nó thì `n > 0` có thể là
-    #     bộ đếm cũ (dương tính giả) ⇒ ĐỎ.
+    # (s) **KT-308** — tác vụ ring 3 **không chạy** (bộ đếm `n=0`): log tốt bị sửa `n=<n>` →
+    #     `n=0` ở dòng `# sched: umode task ran`. `n > 0` là bằng chứng "đã chạy **ít nhất một**
+    #     cửa sổ"; `n=0` nghĩa là tác vụ chưa từng chạy ⇒ ĐỎ.
     n=$((n + 1))
     cases=$((cases + 1))
-    sed 's/^# sched: umode progress .*$/# sched: umode progress first=0 last=100 delta=100/' "$good" >"$tmp/s.log" 2>/dev/null || true
+    sed 's/^\(# sched: umode task ran \)n=[0-9][0-9]* /\1n=0 /' "$good" >"$tmp/s.log" 2>/dev/null || true
     if check_log "$tmp/s.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/s.out" 2>&1; then
-        echo "not ok $n - ca âm (s): first=0 (chưa chạy trước preempt đầu) mà kiểm vẫn XANH"
+        echo "not ok $n - ca âm (s): n=0 (tác vụ chưa chạy) mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
-        echo "ok $n - ca âm (s): first=0 (chưa chạy trước preempt đầu) ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
+        echo "ok $n - ca âm (s): n=0 (tác vụ chưa chạy) ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"

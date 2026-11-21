@@ -301,7 +301,7 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 19 ca âm
   đỏ; (p) **tác vụ ring 3 không chạy lại** (KT-304): log tốt bị sửa `resumed=0` ⇒ ĐỎ;
   (q) **preempt không ở ring 3** (KT-308): sửa `cs=0x1b` → `cs=0x8` ⇒ ĐỎ; (r) **bộ đếm giảm**
   (KT-308): sửa `# sched: umode progress` thành `first=100 last=50 delta=-50` ⇒ ĐỎ;
-  (s) **chưa chạy trước lần preempt đầu** (KT-308): sửa thành `first=0` ⇒ ĐỎ. Ba ca
+  (s) **tác vụ chưa chạy** (KT-308): sửa `n=<n>` → `n=0` ⇒ ĐỎ. Ba ca
   (k)/(o) đòi **cả** dòng evidence **và** `check_log` đỏ.
 - Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` +
   `-drive file=<tmp>,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0` (một chỗ quyết
@@ -865,7 +865,7 @@ Trạng thái: **DONE** (KT-288, 2026-11-21). Quyết định: **D2-213**.
 | Split virtqueue 8 descriptor trong **một** trang DMA 4 KiB (header 16 B + data 512 B + status 1 B) | **DONE** |
 | Đọc **sector 0** của đĩa QEMU thật (`-drive file=…,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0`) | **DONE** |
 | Bằng chứng: `# blk: device …` + `# blk: sector0 hex=<32 hex> … magic=1` | **DONE** |
-| TAP 25/26 (**KT-304** dời từ 24/25) + runner **19 ca âm** (thêm ca "không có đĩa", "tác vụ ring 3 không chạy lại", "preempt không ở ring 3", "bộ đếm giảm", "chưa chạy trước preempt đầu") | **DONE** |
+| TAP 25/26 (**KT-304** dời từ 24/25) + runner **19 ca âm** (thêm ca "không có đĩa", "tác vụ ring 3 không chạy lại", "preempt không ở ring 3", "bộ đếm giảm", "tác vụ chưa chạy (n=0)") | **DONE** |
 | virtio-gpu trên x86_64, MSI-X, hotplug | **chưa** (bước sau) |
 
 ### 14.2 Khác khuôn aarch64 (KT-273) ở đúng ba điểm, đều do kiến trúc
@@ -1252,8 +1252,23 @@ CPL3 thì tick kế đã **pending** ⇒ CPU nhận ngắt **trước** lệnh u
 p99 = 6.457.271; **13/600** boot < 100.000 ⇒ biên là **dải liên tục**, không phải lỗi logic của
 đường resume (`resumed=1`, `cs=0x1b` ở cả hai lần, không exception).
 
-**Sửa** (không nới ngưỡng nào khác): TAP 24 = `n > 0` ∧ `resumed ≥ 1` ∧ `cs = 0x1B` ở **cả hai**
-lần preempt ∧ `first > 0` ∧ `last >= first`; thêm dòng `# sched: umode progress first=… last=…
-delta=…` (delta **có dấu**); runner đòi `first > 0` + `last >= first` + `delta >= 0` và thêm ba
-ca âm (q) `cs=0x08`, (r) `last < first`, (s) `first=0`. Bằng chứng đo lại 600 boot trên máy sạch:
-xem `v2/agent/JOURNAL/kt308-x86_64-soak2.md`.
+Bản sửa đầu tiên thay `last > first` bằng `first > 0` — **cũng sai**: đo lại 600 boot trên máy
+sạch ra **599/600**, boot 231 in
+
+```text
+# sched: umode task ran n=1194730 ring=3 preempted=2 resumed=1
+# sched: umode counts first=0 last=1194730 cs=0x1b kernel_stack=0x136220
+not ok 24 - sched: umode task
+```
+
+Tác vụ bị preempt lần đầu **trước khi thi hành lệnh nào** (`first=0`), rồi được resume và chạy
+**1.194.730 vòng** (`last=1194730`). Boot 331 (`first>0`, `last==first`) và boot 231 (`first=0`,
+`last>first`) là **hai ảnh ngược của cùng một race** ⇒ **không** cửa sổ nào được đòi có tiến bộ.
+
+**Sửa cuối** (không nới ngưỡng nào khác): TAP 24 = `n > 0` (chạy **ít nhất một** cửa sổ) ∧
+`resumed ≥ 1` ∧ `cs = 0x1B` ở **cả hai** lần preempt ∧ `last >= first` (bộ đếm **không giảm**);
+thêm dòng `# sched: umode progress first=… last=… delta=…` (delta **có dấu**); runner đòi
+`last >= first` + `delta >= 0` và thêm ba ca âm (q) `cs=0x08`, (r) `last < first`, (s) `n=0`.
+Bằng chứng "chạy lại sau resume" là **tổng hợp** (qua 1.200 boot: boot nào tác vụ cũng chạy ít
+nhất một cửa sổ, `n > 0`), **không** phải một cửa sổ cụ thể. Bằng chứng đo lại 600 boot trên máy
+sạch: xem `v2/agent/JOURNAL/kt308-x86_64-soak2.md`.
