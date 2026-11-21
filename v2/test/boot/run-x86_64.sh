@@ -12,7 +12,9 @@
 # hàng đợi chạy **toàn cục** + khoá, BSP **và** hart 1 cùng `schedule()`) + **KT-315** (**bốn**
 # hart schedule: tác vụ thứ tư `C`, cổng khởi động + cổng giữ của BSP, `harts=` là **số đo**) +
 # **KT-316** (**khoá COM1** — một dòng log không bị hart khác xen ký tự; `# com: lock ok=1
-# contended=<n>` + TAP 28) — runner boot **x86_64**. Khuôn:
+# contended=<n>` + TAP 28) + **KT-318** (**priority tĩnh + sleep/wake** — pha thứ ba trên BSP:
+# chọn tác vụ ưu tiên cao nhất (hoà ⇒ FIFO), tác vụ đang ngủ **không** được chọn; `# sched: prio
+# …` + `# sched: sleep …` + TAP 29/30) — runner boot **x86_64**. Khuôn:
 # `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
@@ -75,6 +77,13 @@
 #      **KT-316**: `# com: lock ok=1 contended=<n>` — khoá COM1 **đã được dùng** (`ok=1` đòi
 #      `acquired > 0` **và** `overlap = 0`) và dòng log ra **nguyên vẹn** (dòng bị xen ký tự sẽ
 #      không khớp mẫu ⇒ ĐỎ);
+#      **KT-318**: `# sched: prio first=<a|b|c|u> viol=<n> ticks=<n> hard=<0|1> picks=[…]` — lượt
+#      chọn **đầu** của pha priority (cả bốn tác vụ sẵn sàng) là `b` (priority 3; FIFO sẽ là `a`),
+#      **không** vi phạm priority, pha kết thúc **bình thường** (`hard=0`); và `# sched: sleep
+#      wakes=<n> viol=<n> ticks=<n> picks=[…]` — **cả bốn** tác vụ đã **thức** lại (`wakes=4`, kể
+#      cả `u` với `sleep(0)`), **không** lượt nào chọn tác vụ đang ngủ (`viol=0`), mỗi tác vụ đã
+#      chạy → ngủ → chạy lại (`picks=[2, 2, 2, 2]`). Hai dòng là **hàm thuần của tick** nên giá
+#      trị là **hằng** — không đòi một cửa sổ thời gian nào (bài học KT-308/KT-313);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
@@ -104,8 +113,15 @@
 #          tác vụ BSP đang chạy ⇒ phải ĐỎ (ca âm của **bất biến mới** thay `first[0] != first[i]`);
 #      (w) **không khoá ⇒ xen ký tự** (KT-316) — log tốt bị ghép dòng `# com: lock …` với dòng
 #          khác (đúng triệu chứng soak vòng 21: `# exc:`/`PANIC` bị cắt ghép giữa hai hart) ⇒
-#          phải ĐỎ.
-#      Cả **hai mươi ba** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#          phải ĐỎ;
+#      (x) **bỏ priority** (KT-318) — dòng `# sched: prio` bị sửa `first=b` → `first=a` (đúng
+#          log `--features no-prio`: FIFO chọn đầu hàng đợi) ⇒ phải ĐỎ;
+#      (y) **`sleep(0)` không thức** (KT-318) — dòng `# sched: sleep` bị sửa `wakes=4` → `wakes=3`
+#          + `picks=[3, 3, 3, 1]` (đúng log `--features no-wake`: chỉ trần cứng kết thúc được
+#          pha) ⇒ phải ĐỎ;
+#      (z) **pha bị trần cứng cắt** (KT-318) — dòng `# sched: prio` bị sửa `ticks=8 hard=0` →
+#          `ticks=48 hard=1` (không còn bằng chứng đủ) ⇒ phải ĐỎ.
+#      Cả **hai mươi sáu** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
 #      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
 #      `first[0] != first[i]`).
@@ -114,10 +130,11 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 28 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 30 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
-#                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1)
+#                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
+#                   (priority tĩnh + sleep/wake))
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -142,7 +159,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-28}"
+EXPECT_TESTS="${EXPECT_TESTS:-30}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -732,6 +749,26 @@ check_log() {
         echo "# dòng '# com: lock ok=1 contended=<n>' xuất hiện ${comn:-0} lần, cần đúng 1"
         bad=1
     fi
+    # ---- **KT-318**: priority **tĩnh** + sleep/wake — hai dòng bằng chứng với giá trị **tuyệt
+    # đối** (pha là **hàm thuần của tick**: chuỗi lượt chọn `b, c, a, u, b, c, a, u`, 8 tick, mỗi
+    # tác vụ 2 lượt, 4 lần thức ⇒ các số dưới đây **không** phụ thuộc thời điểm, hart nào tick
+    # trước hay host có deschedule hay không — bài học KT-308/KT-313). Mỗi dòng in **đúng một**
+    # lần (dòng lặp = in hai pha, sai).
+    #
+    # `first=b` là điều kiện **priority**: FIFO chọn `a`, priority chọn `b` (3 > 2 > 1 > 0).
+    # `hard=0` là điều kiện **không bị trần cứng cắt**: `hard=1`/`ticks=48` ⇔ pha hết bằng chứng
+    # giữa chừng (đột biến `--features no-wake`) — fail-closed, **không** treo.
+    # `wakes=4` là điều kiện **sleep/wake**: cả bốn tác vụ (kể cả `u` với `sleep(0)`) đã thức lại.
+    prio_n="$(grep -Fxc '# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]' "$log" || true)"
+    if [ "${prio_n:-0}" -ne 1 ]; then
+        echo "# dòng '# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]' xuất hiện ${prio_n:-0} lần, cần đúng 1 (priority tĩnh, TAP 29)"
+        bad=1
+    fi
+    sleep_n="$(grep -Fxc '# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]' "$log" || true)"
+    if [ "${sleep_n:-0}" -ne 1 ]; then
+        echo "# dòng '# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]' xuất hiện ${sleep_n:-0} lần, cần đúng 1 (sleep/wake, TAP 30)"
+        bad=1
+    fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -1069,6 +1106,46 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (w): dòng '# com:' bị xen ký tự ⇒ ĐỎ ($(head -1 "$tmp/w.out"))"
+    fi
+
+    # (x) **KT-318** — **bỏ priority**: dòng `# sched: prio` bị sửa `first=b` → `first=a` — đúng
+    #     log của ảnh `--features no-prio` (chọn FIFO, đầu hàng đợi là `a`). Nếu runner vẫn XANH
+    #     thì "priority tĩnh" chỉ là bảng in ra, không phải điều kiện được kiểm.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# sched: prio .*\)first=b /\1first=a /' "$good" >"$tmp/x.log" 2>/dev/null || true
+    if check_log "$tmp/x.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/x.out" 2>&1; then
+        echo "not ok $n - ca âm (x): priority bị bỏ (first=a) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (x): priority bị bỏ (first=a) ⇒ ĐỎ ($(head -1 "$tmp/x.out"))"
+    fi
+
+    # (y) **KT-318** — **`sleep(0)` không thức**: dòng `# sched: sleep` bị sửa thành `wakes=3` +
+    #     tác vụ `u` chỉ 1 lượt — đúng log của ảnh `--features no-wake` (chỉ trần cứng kết thúc
+    #     được pha). Nếu runner vẫn XANH thì "sleep/wake" chỉ là chữ in.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# sched: sleep .*$/# sched: sleep wakes=3 viol=0 ticks=48 picks=[3, 3, 3, 1]/' \
+        "$good" >"$tmp/y.log" 2>/dev/null || true
+    if check_log "$tmp/y.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/y.out" 2>&1; then
+        echo "not ok $n - ca âm (y): sleep(0) không thức (wakes=3) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (y): sleep(0) không thức (wakes=3) ⇒ ĐỎ ($(head -1 "$tmp/y.out"))"
+    fi
+
+    # (z) **KT-318** — **pha bị trần cứng cắt**: dòng `# sched: prio` bị sửa `ticks=48 hard=1`
+    #     (bằng chứng **chưa** đủ nhưng pha đã hết). Nếu runner vẫn XANH thì trần cứng có thể
+    #     "kết thúc pha" mà không ai thấy — đúng lỗi mà `hard=` sinh ra để chặn.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# sched: prio .*\)ticks=8 hard=0 /\1ticks=48 hard=1 /' "$good" >"$tmp/z.log" 2>/dev/null || true
+    if check_log "$tmp/z.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/z.out" 2>&1; then
+        echo "not ok $n - ca âm (z): pha bị trần cứng cắt (hard=1) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (z): pha bị trần cứng cắt (hard=1) ⇒ ĐỎ ($(head -1 "$tmp/z.out"))"
     fi
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot

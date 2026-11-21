@@ -115,9 +115,10 @@
 //! # Phạm vi
 //!
 //! **Bốn** tác vụ (ba kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (**bốn**
-//! hart, hàng đợi toàn cục, khoá). **Không** nhiều tác vụ ring 3, **không** IPC giữa chúng,
-//! **không** load balancing, **không** priority, **không** migration chủ động, **không**
-//! sleep/wake — đó là các bước sau (D2-212, D2-219). **Không** tuyên bố K5' đạt.
+//! hart, hàng đợi toàn cục, khoá) + **priority tĩnh + sleep/wake** (**KT-318**). **Không** nhiều
+//! tác vụ ring 3, **không** IPC giữa chúng, **không** load balancing, **không** priority **động**,
+//! **không** deadline/EDF, **không** migration chủ động — đó là các bước sau (D2-212, D2-219).
+//! **Không** tuyên bố K5' đạt.
 //!
 //! # KT-315 — pha nhiều hart mở lên **bốn** hart
 //!
@@ -548,4 +549,238 @@ pub const fn mh_ok(rounds: u64, picks: &[u64; MH_HARTS], double: u64, diff: u64)
         return false;
     }
     diff >= 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-318 — priority **tĩnh** + sleep/wake
+// ---------------------------------------------------------------------------------------------
+//
+// # Vì sao là **pha riêng**, không nhét vào `TASK_SEQUENCE`/`MH_*`
+//
+// `TASK_SEQUENCE` là **bảng cố định** của chuỗi BSP (TAP 22/23/24 của KT-286/KT-304 đo **đúng**
+// bảng ấy), còn `MH_*` là hàng đợi **nhiều hart** với bất biến `diff >= 1` (KT-313/KT-317). Nhét
+// priority vào một trong hai sẽ **đổi nghĩa** bằng chứng cũ — đúng lớp lỗi "sửa phép kiểm để
+// xanh". Vì vậy KT-318 thêm **pha thứ ba**, chạy **sau** chuỗi cố định và **trước** pha nhiều
+// hart, trên **BSP** với bốn tác vụ sẵn có (A/B/C/U). Ba pha độc lập ⇒ ba bộ TAP độc lập.
+//
+// # Vì sao `WakeAt` ghi lúc tác vụ **rời CPU**, không phải lúc chạy lệnh `sleep`
+//
+// Nếu tác vụ tự gọi `sleep(n)` trong thân nó thì **thời điểm** ghi phụ thuộc host: tác vụ có thể
+// bị preempt **trước lệnh đầu tiên** (KT-308 đo được đúng race ấy với tác vụ ring 3), nên có lần
+// nó ngủ, có lần không ⇒ **chuỗi lượt chọn** đổi theo thời điểm. Đó là **giả định thời điểm**,
+// không phải bất biến (bài học KT-308/KT-313, đã lặp ba lần trong tuần).
+//
+// Vì vậy yêu cầu ngủ là **hằng số của tác vụ** ([`sleep_ticks`]) — tương đương tác vụ gọi
+// `sleep(n)` **một lần** ở đầu vòng đời — và scheduler ghi `WakeAt = tick + n` **khi tác vụ rời
+// CPU**. Nhờ vậy toàn bộ quyết định của pha là **hàm thuần của số tick**: không hart nào tick
+// trước, không host nào deschedule, không thứ tự ngắt nào làm đổi chuỗi lượt chọn. Test host
+// `deterministic_sequence_is_tick_only` chốt đúng điều ấy.
+//
+// # Vì sao `sleep(0)` là ca kiểm **bắt buộc**
+//
+// `sleep(0)` = "nhường CPU, sẵn sàng lại **ngay**". Nếu bản hiện thực coi `WakeAt == tick` là
+// **còn ngủ** (so sánh `>=` thay vì `>`) hoặc biến nó thành "không bao giờ thức", tác vụ ấy
+// **không bao giờ** được chọn lần hai ⇒ pha chờ mãi. Trần cứng [`PRIO_HARD_TICKS`] biến tình
+// huống ấy thành **ĐỎ có chẩn đoán** thay vì treo boot (đột biến `--features no-wake`).
+
+/// Số tác vụ của hàng đợi **ưu tiên** — bốn tác vụ A/B/C/U (đúng bốn tác vụ của pha nhiều hart).
+pub const PRIO_TASKS: usize = 4;
+
+/// Thứ tự **FIFO** của hàng đợi ưu tiên: thứ tự đẩy tác vụ vào hàng đợi lúc pha bắt đầu.
+///
+/// Đây là **thứ tự hoà** (tie-break) của [`prio_pick`] **và** là thứ tự mà đột biến
+/// `--features no-prio` dùng ([`prio_pick_fifo`]) — nhờ vậy hai hàm **khác nhau** ngay ở lượt
+/// chọn đầu (`a` đầu FIFO vs. `b` priority cao nhất), tức đột biến **đỏ được**.
+pub const PRIO_ORDER: [usize; PRIO_TASKS] = [TASK_A, TASK_B, TASK_C, TASK_U];
+
+/// Priority **tĩnh** của tác vụ A (kernel).
+pub const PRIO_A: u8 = 1;
+/// Priority **tĩnh** của tác vụ B (kernel) — **cao nhất**: lượt chọn đầu của pha phải là B.
+pub const PRIO_B: u8 = 3;
+/// Priority **tĩnh** của tác vụ C (kernel).
+pub const PRIO_C: u8 = 2;
+/// Priority **tĩnh** của tác vụ U (ring 3) — **thấp nhất**.
+pub const PRIO_U: u8 = 0;
+
+/// Priority của `slot`; slot không phải tác vụ (`main`, slot lạ) ⇒ `0` (thấp nhất), **không**
+/// panic — dòng chẩn đoán phải in được cả trạng thái hỏng (cùng lý do [`task_name`]).
+pub const fn task_priority(slot: usize) -> u8 {
+    if slot == TASK_A {
+        return PRIO_A;
+    }
+    if slot == TASK_B {
+        return PRIO_B;
+    }
+    if slot == TASK_C {
+        return PRIO_C;
+    }
+    if slot == TASK_U {
+        return PRIO_U;
+    }
+    0
+}
+
+/// Số tick tác vụ A yêu cầu ngủ sau **mỗi** lần chạy.
+pub const SLEEP_A: u64 = 2;
+/// Số tick tác vụ B yêu cầu ngủ sau **mỗi** lần chạy (dài nhất ⇒ B thức muộn nhất).
+pub const SLEEP_B: u64 = 3;
+/// Số tick tác vụ C yêu cầu ngủ sau **mỗi** lần chạy.
+pub const SLEEP_C: u64 = 2;
+/// Tác vụ U ngủ **0** tick — ca `sleep(0)`: phải **thức ngay** (cùng tick). Đột biến
+/// `--features no-wake` biến nó thành "không bao giờ thức" ⇒ pha chỉ kết thúc được nhờ trần cứng.
+pub const SLEEP_U: u64 = 0;
+
+/// Số tick `slot` yêu cầu ngủ; slot không phải tác vụ ⇒ `0` (không ngủ).
+pub const fn sleep_ticks(slot: usize) -> u64 {
+    if slot == TASK_A {
+        return SLEEP_A;
+    }
+    if slot == TASK_B {
+        return SLEEP_B;
+    }
+    if slot == TASK_C {
+        return SLEEP_C;
+    }
+    if slot == TASK_U {
+        return SLEEP_U;
+    }
+    0
+}
+
+/// `WakeAt` sau khi tác vụ ngủ `sleep` tick kể từ `tick` — `tick + sleep`, bão hoà khi tràn.
+pub const fn prio_wake_at(tick: u64, sleep: u64) -> u64 {
+    tick.saturating_add(sleep)
+}
+
+/// `true` ⇔ tác vụ **sẵn sàng** ở `tick`: không ngủ (`wake_at == 0`) hoặc đã hết hạn ngủ.
+///
+/// `0` là sentinel "không ngủ" — pha bắt đầu với **mọi** `WakeAt = 0` và tác vụ đầu tiên chỉ ngủ
+/// ở tick 1 (sau lượt chọn đầu), nên `0` **không** trùng một hạn ngủ thật. `sleep(0)` tại tick
+/// `t > 0` cho `WakeAt = t > 0` ⇒ sẵn sàng **ngay** ở tick ấy (điều kiện là `<=`, không phải `<`).
+pub const fn prio_ready(wake_at: u64, tick: u64) -> bool {
+    wake_at == 0 || wake_at <= tick
+}
+
+/// Chọn tác vụ kế: **priority cao nhất** trong các tác vụ **sẵn sàng**; hoà ⇒ **FIFO**
+/// ([`PRIO_ORDER`]). `None` ⇔ không tác vụ nào sẵn sàng (ảnh fail-closed: kết thúc pha).
+pub const fn prio_pick(wake_at: &[u64; TASK_SLOTS], tick: u64) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    let mut i = 0;
+    while i < PRIO_TASKS {
+        let slot = PRIO_ORDER[i];
+        if prio_ready(wake_at[slot], tick) {
+            match best {
+                None => best = Some(slot),
+                Some(b) => {
+                    if task_priority(slot) > task_priority(b) {
+                        best = Some(slot);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    best
+}
+
+/// **Đột biến (i)** (`--features no-prio`): chọn **FIFO** — tác vụ sẵn sàng **đầu** [`PRIO_ORDER`],
+/// bỏ qua priority.
+///
+/// Hàm **thuần** để test host chứng minh nó **khác** [`prio_pick`] ngay ở lượt chọn đầu (`a` vs.
+/// `b`) ⇒ đột biến **đỏ được**, không phải "hy vọng nó khác".
+pub const fn prio_pick_fifo(wake_at: &[u64; TASK_SLOTS], tick: u64) -> Option<usize> {
+    let mut i = 0;
+    while i < PRIO_TASKS {
+        let slot = PRIO_ORDER[i];
+        if prio_ready(wake_at[slot], tick) {
+            return Some(slot);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// `true` ⇔ `picked` **không** phải tác vụ ưu tiên cao nhất trong các tác vụ **sẵn sàng** ở
+/// `tick` — bộ đếm `viol=` của ảnh (phải `0`).
+pub const fn prio_violation(wake_at: &[u64; TASK_SLOTS], tick: u64, picked: usize) -> bool {
+    let mut i = 0;
+    while i < PRIO_TASKS {
+        let slot = PRIO_ORDER[i];
+        if slot != picked
+            && prio_ready(wake_at[slot], tick)
+            && task_priority(slot) > task_priority(picked)
+        {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Số tick **mềm** của pha: đủ để mỗi tác vụ chạy → ngủ → chạy lại (mô phỏng: **8** tick).
+pub const PRIO_MIN_TICKS: u64 = 8;
+
+/// Trần **cứng** số tick: hết thì kết thúc **dù** thiếu bằng chứng ⇒ boot **không** treo khi một
+/// tác vụ không bao giờ thức (đột biến `no-wake`). Cùng khuôn [`MH_HARD_ROUNDS`] của KT-310.
+pub const PRIO_HARD_TICKS: u64 = 48;
+
+/// `true` ⇔ pha phải **kết thúc** ở `ticks` với `picks`/`wakes` hiện tại.
+///
+/// Hai điều kiện, theo thứ tự **ưu tiên**:
+///
+/// 1. `ticks >= PRIO_HARD_TICKS` ⇒ kết thúc **bất kể** `picks`/`wakes` — trần cứng, chống treo.
+/// 2. `ticks >= PRIO_MIN_TICKS` **và** mọi tác vụ đã chọn **≥ 2** lần (chạy → ngủ → chạy lại)
+///    **và** `wakes >= PRIO_TASKS` (mỗi tác vụ thức ≥ 1 lần) ⇒ kết thúc bình thường.
+pub const fn prio_end(ticks: u64, picks: &[u64; TASK_SLOTS], wakes: u64) -> bool {
+    if ticks >= PRIO_HARD_TICKS {
+        return true;
+    }
+    if ticks < PRIO_MIN_TICKS || wakes < PRIO_TASKS as u64 {
+        return false;
+    }
+    let mut i = 0;
+    while i < PRIO_TASKS {
+        if picks[PRIO_ORDER[i]] < 2 {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// `true` ⇔ pha đủ bằng chứng **priority** để TAP `sched: priority` xanh.
+///
+/// Ba điều kiện, mỗi điều kiện là một lớp lỗi **khác** nhau:
+///
+/// 1. `first_pick == TASK_B` — lượt chọn **đầu** (cả bốn tác vụ sẵn sàng) là tác vụ **ưu tiên
+///    cao nhất** ([`PRIO_B`] = 3). Đột biến `--features no-prio` chọn `a` (đầu FIFO) ⇒ sai.
+/// 2. `viol == 0` — **không** lượt nào chọn tác vụ thấp hơn trong khi có tác vụ ưu tiên cao hơn
+///    sẵn sàng.
+/// 3. `ticks < PRIO_HARD_TICKS` — pha kết thúc **bình thường**, không phải bị trần cứng cắt (nếu
+///    bị cắt thì bằng chứng chưa đủ, kể cả khi hai điều kiện trên đúng).
+pub const fn prio_ok(first_pick: usize, viol: u64, ticks: u64) -> bool {
+    first_pick == TASK_B && viol == 0 && ticks < PRIO_HARD_TICKS
+}
+
+/// `true` ⇔ pha đủ bằng chứng **sleep/wake** để TAP `sched: sleep wake` xanh.
+///
+/// Bốn điều kiện:
+///
+/// 1. `sleep_viol == 0` — **không** lượt nào chọn tác vụ đang ngủ (`WakeAt > tick`).
+/// 2. `wakes >= PRIO_TASKS` — **mỗi** tác vụ đã thức ≥ 1 lần (kể cả `u` với `sleep(0)`).
+/// 3. mọi tác vụ được chọn **≥ 2** lần — chạy → ngủ → **chạy lại** (bằng chứng "thức" không chỉ
+///    là bộ đếm: tác vụ thật sự chạy lại sau khi ngủ).
+/// 4. `ticks < PRIO_HARD_TICKS` — pha kết thúc bình thường, không bị trần cứng cắt.
+pub const fn sleep_ok(wakes: u64, sleep_viol: u64, ticks: u64, picks: &[u64; TASK_SLOTS]) -> bool {
+    if sleep_viol != 0 || wakes < PRIO_TASKS as u64 || ticks >= PRIO_HARD_TICKS {
+        return false;
+    }
+    let mut i = 0;
+    while i < PRIO_TASKS {
+        if picks[PRIO_ORDER[i]] < 2 {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }

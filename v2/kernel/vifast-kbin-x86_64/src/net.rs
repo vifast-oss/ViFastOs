@@ -247,6 +247,11 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // `contended` là số lần **thật** phải chờ trong cả boot.
     crate::com_report(console, tap_first + 13);
 
+    // ---- 5e. **KT-318**: priority **tĩnh** + sleep/wake — in bằng chứng của pha (đã chạy trong
+    // `sched::run`, **sau** chuỗi cố định và **trước** pha nhiều hart) + TAP 29/30. Đặt **sau**
+    // TAP 28 để số hiệu ra đúng thứ tự trong log; pha không chạy lại ở đây, chỉ đọc bộ đếm.
+    crate::sched::prio_report(console, tap_first + 14);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

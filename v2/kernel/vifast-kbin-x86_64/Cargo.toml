@@ -114,6 +114,16 @@ no-com-lock = []
 # feature cùng tên của `vifast-plat-x86_64`). Mô phỏng "khoá mà không tắt ngắt" ⇒ hazard tự
 # deadlock khi ngắt in trên chính hart đang giữ khoá. Chỉ dùng cho đột biến.
 no-com-cli = ["vifast-plat-x86_64/no-com-cli"]
+# **KT-318** — đột biến (i) của priority: chọn **FIFO** (`psched::prio_pick_fifo`) thay vì tác vụ
+# ưu tiên cao nhất ⇒ lượt chọn đầu là `a` thay vì `b` ⇒ TAP 29 `sched: priority` ĐỎ (không
+# marker). Chứng minh phép kiểm priority **có răng**, không phải "in bảng rồi tự khen". Chỉ dùng
+# cho đột biến.
+no-prio = []
+# **KT-318** — đột biến (ii) của sleep/wake: `sleep(0)` (tác vụ `u`) trở thành "**không bao giờ**
+# thức" (`WakeAt = u64::MAX`) ⇒ pha chỉ kết thúc được nhờ **trần cứng** `PRIO_HARD_TICKS` (48
+# tick) ⇒ log in `hard=1 wakes=3` và TAP 29/30 ĐỎ. Đây là ca chứng minh trần cứng: boot **không**
+# treo, đỏ **có chẩn đoán**. Chỉ dùng cho đột biến.
+no-wake = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

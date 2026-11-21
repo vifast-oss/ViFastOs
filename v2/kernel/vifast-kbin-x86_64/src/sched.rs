@@ -59,9 +59,36 @@
 //! # Phạm vi (D2-212, D2-219, D2-221)
 //!
 //! **Bốn** tác vụ (ba kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (**bốn**
-//! hart, hàng đợi toàn cục, khoá — KT-310 mở rộng bởi KT-315). **Không** nhiều tác vụ ring 3,
-//! **không** IPC giữa chúng, **không** load balancing, **không** priority, **không** migration chủ
-//! động, **không** sleep/wake. **Không** tuyên bố K5' đạt.
+//! hart, hàng đợi toàn cục, khoá — KT-310 mở rộng bởi KT-315) + **priority tĩnh + sleep/wake**
+//! (**KT-318**). **Không** nhiều tác vụ ring 3, **không** IPC giữa chúng, **không** load
+//! balancing, **không** priority **động**, **không** deadline/EDF, **không** migration chủ động.
+//! **Không** tuyên bố K5' đạt.
+//!
+//! # KT-318 — priority **tĩnh** + sleep/wake (pha thứ ba)
+//!
+//! Hai pha trước **không** được đụng: `TASK_SEQUENCE` là bảng cố định mà TAP 22/23/24 đo, còn
+//! `MH_*` là hàng đợi nhiều hart với bất biến `diff >= 1` (KT-313/KT-317). Nhét priority vào một
+//! trong hai sẽ **đổi nghĩa** bằng chứng cũ. Vì vậy KT-318 thêm **pha thứ ba** chạy **sau** chuỗi
+//! cố định và **trước** pha nhiều hart, trên **BSP**, với bốn tác vụ sẵn có (A/B/C/U):
+//!
+//! - **Priority tĩnh** ([`psched::task_priority`]): B (3) > C (2) > A (1) > U (0). Mỗi tick chọn
+//!   tác vụ **sẵn sàng** có priority cao nhất; hoà ⇒ FIFO ([`psched::PRIO_ORDER`]).
+//! - **Sleep/wake** ([`psched::sleep_ticks`]): tác vụ rời CPU ở tick `t` thì `WakeAt = t + n`;
+//!   tác vụ có `WakeAt > tick` **không** được chọn. `U` ngủ **0** tick — ca `sleep(0)` phải thức
+//!   **ngay**.
+//!
+//! **Vì sao pha này chạy trước pha nhiều hart:** hart phụ lúc ấy còn `hlt` (chưa vào `MH_ACTIVE`),
+//! nên bốn tác vụ A/B/C/U **không** bị hart nào khác giữ — không có hai hart `iretq` vào cùng một
+//! frame (đúng lớp lỗi boot 410 của KT-298). Sau `mh_finish`, hart phụ vẫn ở lại trong tác vụ cuối
+//! (nợ KT-310), nên dùng lại A/B/C/U **sau** pha nhiều hart sẽ là double-run.
+//!
+//! **Vì sao bất biến không phụ thuộc thời điểm:** yêu cầu ngủ là **hằng số của tác vụ** và
+//! scheduler ghi `WakeAt` **khi tác vụ rời CPU**, nên toàn bộ chuỗi lượt chọn là **hàm thuần của
+//! số tick** — không hart nào tick trước, không host nào deschedule (bài học KT-308/KT-313). Test
+//! host `deterministic_sequence_is_tick_only` chốt chuỗi `b, c, a, u, b, c, a, u`.
+//!
+//! **Trần cứng** [`psched::PRIO_HARD_TICKS`] = 48 tick: pha kết thúc **dù** thiếu bằng chứng ⇒
+//! boot **không** treo khi một tác vụ không bao giờ thức (đột biến `--features no-wake`).
 //!
 //! # KT-315 — pha nhiều hart mở lên **bốn** hart
 //!
@@ -574,6 +601,262 @@ fn mh_start() {
     MH_ACTIVE.store(1, Ordering::Release);
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-318 — priority **tĩnh** + sleep/wake (pha thứ ba, BSP, sau chuỗi cố định)
+// ---------------------------------------------------------------------------------------------
+
+/// `1` ⇔ pha priority/sleep đang bật.
+static PRIO_ACTIVE: AtomicU64 = AtomicU64::new(0);
+/// `1` ⇔ pha đã kết thúc; [`run`] thấy cờ này thì in tổng kết.
+static PRIO_DONE: AtomicU64 = AtomicU64::new(0);
+/// `1` ⇔ tick đầu của pha đã lưu ngữ cảnh `main`.
+static PRIO_STARTED: AtomicU64 = AtomicU64::new(0);
+/// Số tick **của pha** đã xử lý — đồng hồ của pha, không phải `TICK_COUNT` toàn cục.
+static PRIO_TICKS: AtomicU64 = AtomicU64::new(0);
+/// Tác vụ **đang chạy** của pha ([`psched::MH_FREE`] = chưa có).
+static PRIO_CURRENT: AtomicU64 = AtomicU64::new(psched::MH_FREE);
+/// `rsp` ngữ cảnh `main` của BSP trong pha.
+static PRIO_MAIN_RSP: AtomicU64 = AtomicU64::new(0);
+/// `WakeAt` của từng slot (`0` = không ngủ).
+static PRIO_WAKE_AT: [AtomicU64; psched::TASK_SLOTS] =
+    [const { AtomicU64::new(0) }; psched::TASK_SLOTS];
+/// Số lượt chọn của từng slot.
+static PRIO_PICKS: [AtomicU64; psched::TASK_SLOTS] =
+    [const { AtomicU64::new(0) }; psched::TASK_SLOTS];
+/// Số lần **thức** (chọn lại một tác vụ đã ngủ).
+static PRIO_WAKES: AtomicU64 = AtomicU64::new(0);
+/// Số lượt chọn **vi phạm** priority (phải `0`).
+static PRIO_VIOL: AtomicU64 = AtomicU64::new(0);
+/// Số lượt chọn tác vụ **đang ngủ** (phải `0`).
+static PRIO_SLEEP_VIOL: AtomicU64 = AtomicU64::new(0);
+/// Tác vụ được chọn ở lượt **đầu** (lượt mà cả bốn tác vụ đều sẵn sàng — nơi priority khác FIFO).
+static PRIO_FIRST: AtomicU64 = AtomicU64::new(psched::MH_FREE);
+
+/// Ảnh chụp `PRIO_WAKE_AT` — đầu vào của các hàm thuần `psched::prio_*`.
+fn prio_wake_snapshot() -> [u64; psched::TASK_SLOTS] {
+    let mut wake = [0u64; psched::TASK_SLOTS];
+    let mut i = 0;
+    while i < psched::TASK_SLOTS {
+        wake[i] = PRIO_WAKE_AT[i].load(Ordering::Acquire);
+        i += 1;
+    }
+    wake
+}
+
+/// Ảnh chụp `PRIO_PICKS` — đầu vào của [`psched::prio_end`]/[`psched::sleep_ok`].
+fn prio_picks_now() -> [u64; psched::TASK_SLOTS] {
+    let mut picks = [0u64; psched::TASK_SLOTS];
+    let mut i = 0;
+    while i < psched::TASK_SLOTS {
+        picks[i] = PRIO_PICKS[i].load(Ordering::Acquire);
+        i += 1;
+    }
+    picks
+}
+
+/// Khởi động pha: xoá mọi bộ đếm, **mọi** tác vụ thức (`WakeAt = 0`), bật cờ.
+fn prio_start() {
+    PRIO_TICKS.store(0, Ordering::Relaxed);
+    PRIO_STARTED.store(0, Ordering::Relaxed);
+    PRIO_CURRENT.store(psched::MH_FREE, Ordering::Relaxed);
+    PRIO_MAIN_RSP.store(0, Ordering::Relaxed);
+    PRIO_WAKES.store(0, Ordering::Relaxed);
+    PRIO_VIOL.store(0, Ordering::Relaxed);
+    PRIO_SLEEP_VIOL.store(0, Ordering::Relaxed);
+    PRIO_FIRST.store(psched::MH_FREE, Ordering::Relaxed);
+    let mut i = 0;
+    while i < psched::TASK_SLOTS {
+        PRIO_WAKE_AT[i].store(0, Ordering::Relaxed);
+        PRIO_PICKS[i].store(0, Ordering::Relaxed);
+        i += 1;
+    }
+    PRIO_DONE.store(0, Ordering::Relaxed);
+    PRIO_ACTIVE.store(1, Ordering::Release);
+}
+
+/// Kết thúc pha: trả ngữ cảnh `main` cho BSP (mọi đường ra của [`prio_tick`] đều đi qua đây).
+fn prio_finish() -> Option<(u64, u64)> {
+    PRIO_ACTIVE.store(0, Ordering::Release);
+    PRIO_DONE.store(1, Ordering::Release);
+    PRIO_CURRENT.store(psched::MH_FREE, Ordering::Release);
+    let rsp = PRIO_MAIN_RSP.load(Ordering::Acquire);
+    if !frame_ok(rsp, psched::TASK_MAIN) {
+        bad_frame(psched::TASK_MAIN, rsp);
+    }
+    Some((rsp, frame_rip(rsp)))
+}
+
+/// Một tick của pha priority/sleep trên **BSP**: trả tác vụ đang chạy về trạng thái ngủ, chọn tác
+/// vụ **sẵn sàng** có priority cao nhất, trả `(rsp, rip)` của frame tác vụ kế — hoặc `None` nếu
+/// tick này **không** chuyển.
+///
+/// Toàn bộ quyết định là **hàm thuần của `tick`** (xem đầu tệp): `WakeAt` ghi lúc tác vụ **rời
+/// CPU**, không phải lúc chạy lệnh `sleep` ⇒ không có giả định thời điểm.
+fn prio_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
+    // Pha này chỉ chạy trên **BSP**: hart phụ đang `hlt` (chưa vào pha nhiều hart) nên bốn tác vụ
+    // A/B/C/U **không** bị hart nào khác giữ — không có hai hart `iretq` vào cùng một frame.
+    if hart != 0 || PRIO_ACTIVE.load(Ordering::Acquire) == 0 {
+        return None;
+    }
+    let tick = PRIO_TICKS.load(Ordering::Acquire);
+    if PRIO_STARTED.load(Ordering::Acquire) == 0 {
+        // ---- Tick đầu: lưu ngữ cảnh `main`; cả bốn tác vụ đang thức.
+        PRIO_STARTED.store(1, Ordering::Release);
+        PRIO_MAIN_RSP.store(frame_rsp, Ordering::Release);
+    } else {
+        // ---- 1. Lưu ngữ cảnh tác vụ đang chạy + ghi **yêu cầu ngủ** của nó.
+        let current = PRIO_CURRENT.load(Ordering::Acquire);
+        if current != psched::MH_FREE {
+            let slot = current as usize;
+            SCHED_RSP[slot].store(frame_rsp, Ordering::Release);
+            let sleep = psched::sleep_ticks(slot);
+            // **Đột biến (ii)** (`--features no-wake`): `sleep(0)` **không bao giờ** thức
+            // (`WakeAt = u64::MAX`) ⇒ pha không bao giờ đủ "mỗi tác vụ chọn ≥ 2 lần" ⇒ chỉ trần
+            // cứng `PRIO_HARD_TICKS` mới kết thúc được (ĐỎ, **không** treo).
+            let wake_at = if cfg!(feature = "no-wake") && sleep == 0 {
+                u64::MAX
+            } else {
+                psched::prio_wake_at(tick, sleep)
+            };
+            PRIO_WAKE_AT[slot].store(wake_at, Ordering::Release);
+        }
+        // ---- 2. Kết thúc pha? (trần cứng, hoặc đủ bằng chứng)
+        if psched::prio_end(tick, &prio_picks_now(), PRIO_WAKES.load(Ordering::Acquire)) {
+            return prio_finish();
+        }
+    }
+
+    // ---- 3. Chọn tác vụ kế: priority cao nhất trong các tác vụ **sẵn sàng**.
+    let wake = prio_wake_snapshot();
+    // **Đột biến (i)** (`--features no-prio`): chọn **FIFO** (bỏ priority) ⇒ lượt chọn đầu là `a`
+    // thay vì `b` ⇒ TAP 29 `sched: priority` ĐỎ.
+    let next = if cfg!(feature = "no-prio") {
+        psched::prio_pick_fifo(&wake, tick)
+    } else {
+        psched::prio_pick(&wake, tick)
+    };
+    let Some(next) = next else {
+        // Hàng đợi **rỗng**: không chuyển, nhưng tick vẫn tăng ⇒ trần cứng chắc chắn chạm
+        // (fail-closed, **không** treo). Với bảng hiện tại đường này chỉ xảy ra khi đột biến
+        // `no-wake` làm một tác vụ ngủ vĩnh viễn.
+        PRIO_TICKS.store(tick + 1, Ordering::Release);
+        return None;
+    };
+
+    // ---- 4. Bộ đếm + bằng chứng.
+    if psched::prio_violation(&wake, tick, next) {
+        PRIO_VIOL.fetch_add(1, Ordering::Relaxed);
+    }
+    if !psched::prio_ready(wake[next], tick) {
+        PRIO_SLEEP_VIOL.fetch_add(1, Ordering::Relaxed);
+    }
+    // **Thức**: tác vụ **đã ngủ** (`WakeAt != 0`) và nay `WakeAt <= tick` — in **một** dòng cho
+    // mỗi lần thức (bốn dòng cả pha, không nghẽn COM1 — bài học KT-266).
+    if wake[next] != 0 {
+        let n = PRIO_WAKES.fetch_add(1, Ordering::Relaxed) + 1;
+        let mut console = Console;
+        let _ = writeln!(
+            console,
+            "# sched: sleep task={} until={} woke={n}",
+            psched::task_name(next),
+            wake[next],
+        );
+        PRIO_WAKE_AT[next].store(0, Ordering::Release);
+    }
+    let picks = PRIO_PICKS[next].load(Ordering::Acquire) + 1;
+    PRIO_PICKS[next].store(picks, Ordering::Release);
+    if PRIO_FIRST.load(Ordering::Acquire) == psched::MH_FREE {
+        PRIO_FIRST.store(next as u64, Ordering::Release);
+    }
+    PRIO_CURRENT.store(next as u64, Ordering::Release);
+    PRIO_TICKS.store(tick + 1, Ordering::Release);
+
+    // ---- 5. Tác vụ **ring 3**: `TSS.RSP0` của hart này phải trỏ stack kernel của U — nếu không,
+    // tick từ CPL3 đẩy frame vào stack của `main` (đúng lớp lỗi `no-rsp0` của KT-304).
+    if next == psched::TASK_U {
+        tss::set_rsp0(hart, MH_U_KERNEL_TOP.load(Ordering::Acquire));
+    }
+    let rsp = SCHED_RSP[next].load(Ordering::Acquire);
+    if !frame_ok(rsp, next) {
+        bad_frame(next, rsp);
+    }
+    Some((rsp, frame_rip(rsp)))
+}
+
+/// **KT-318** — in bằng chứng **priority tĩnh + sleep/wake** + TAP `sched: priority` (29) và
+/// `sched: sleep wake` (30).
+///
+/// Gọi từ [`crate::net::run`] **ngay sau** `com_report` (TAP 28) và **trước** marker: pha đã chạy
+/// xong trong [`run`], ở đây chỉ **đọc** bộ đếm — nhờ vậy số hiệu TAP ra đúng thứ tự `29, 30` sau
+/// `28` trong log (không in chen giữa 25 và 26).
+///
+/// Hai dòng bằng chứng in **trước** hai dòng `ok`/`not ok` để log ca đỏ vẫn đọc được **lý do**:
+///
+/// - `# sched: prio first=<a|b|c|u> viol=<n> ticks=<n> hard=<0|1> picks=[a, b, c, u]` — lượt
+///   chọn **đầu** (nơi priority khác FIFO), số vi phạm priority, số tick, `hard=1` ⇔ pha bị trần
+///   cứng cắt (bằng chứng **chưa** đủ).
+/// - `# sched: sleep wakes=<n> viol=<n> ticks=<n> picks=[a, b, c, u]` — số lần **thức**, số lượt
+///   chọn tác vụ **đang ngủ** (phải `0`), và lượt chọn từng tác vụ (mỗi tác vụ ≥ 2 mới chứng minh
+///   "chạy → ngủ → chạy lại").
+///
+/// `check` (không phải `tap`) để ca đỏ **dừng** ảnh: marker chỉ in khi cả 30 ca xanh.
+pub fn prio_report(console: &mut Console, tap_first: usize) {
+    let ticks = PRIO_TICKS.load(Ordering::Acquire);
+    let hard = ticks >= psched::PRIO_HARD_TICKS;
+    let first = PRIO_FIRST.load(Ordering::Acquire) as usize;
+    let viol = PRIO_VIOL.load(Ordering::Acquire);
+    let wakes = PRIO_WAKES.load(Ordering::Acquire);
+    let sleep_viol = PRIO_SLEEP_VIOL.load(Ordering::Acquire);
+    let picks = prio_picks_now();
+    let _ = writeln!(
+        console,
+        "# sched: prio first={} viol={viol} ticks={ticks} hard={} picks=[{}, {}, {}, {}]",
+        psched::task_name(first),
+        hard as u8,
+        picks[psched::TASK_A],
+        picks[psched::TASK_B],
+        picks[psched::TASK_C],
+        picks[psched::TASK_U],
+    );
+    let _ = writeln!(
+        console,
+        "# sched: sleep wakes={wakes} viol={sleep_viol} ticks={ticks} picks=[{}, {}, {}, {}]",
+        picks[psched::TASK_A],
+        picks[psched::TASK_B],
+        picks[psched::TASK_C],
+        picks[psched::TASK_U],
+    );
+    // **Chẩn đoán** trần cứng: `hard=1` ⇔ pha bị [`psched::PRIO_HARD_TICKS`] cắt vì **hết bằng
+    // chứng** (một tác vụ không bao giờ thức). In **rõ lý do** thay vì để người đọc tự suy từ
+    // `hard=1` — đột biến (ii) `--features no-wake` đi đúng đường này (`picks[u]=1`). Đây **không**
+    // phải điều kiện mới: hai `check` dưới đã đòi `ticks < PRIO_HARD_TICKS`.
+    if hard {
+        let _ = writeln!(
+            console,
+            "# sched: BAD hard cap ticks={ticks} — pha hết bằng chứng giữa chừng (một tác vụ không bao giờ thức)"
+        );
+    }
+    // TAP 29: priority **tĩnh** — lượt chọn đầu là tác vụ ưu tiên cao nhất (`b`), **không** lượt
+    // nào vi phạm, pha kết thúc **bình thường**. Đột biến (i) `--features no-prio` chọn `a`
+    // (FIFO) ⇒ ĐỎ.
+    check(
+        console,
+        tap_first,
+        "sched: priority",
+        psched::prio_ok(first, viol, ticks),
+    );
+    // TAP 30: sleep/wake — mỗi tác vụ **thức** ≥ 1 lần (kể cả `u` với `sleep(0)`), **không** lượt
+    // nào chọn tác vụ đang ngủ, mỗi tác vụ chạy lại ≥ 2 lần, pha kết thúc **bình thường**. Đột
+    // biến (ii) `--features no-wake` để `sleep(0)` **không bao giờ** thức ⇒ pha chạm trần cứng
+    // (`hard=1`, `wakes=3`) ⇒ ĐỎ **không** treo.
+    check(
+        console,
+        tap_first + 1,
+        "sched: sleep wake",
+        psched::sleep_ok(wakes, sleep_viol, ticks, &picks),
+    );
+}
+
 /// Tác vụ **A**: tăng bộ đếm rồi quay vòng — timer sẽ preempt.
 extern "C" fn task_a() -> ! {
     loop {
@@ -751,6 +1034,12 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
     if SCHED_ACTIVE.load(Ordering::Acquire) == 0 {
         return None;
     }
+    // **KT-318** — pha **priority tĩnh + sleep/wake** đang bật: chạy **sau** chuỗi cố định (cờ
+    // `SCHED_DONE` đã bật) và **trước** pha nhiều hart. Kiểm **trước** `SCHED_DONE` vì chuỗi cố
+    // định đã xong mà pha này vẫn chạy.
+    if PRIO_ACTIVE.load(Ordering::Acquire) != 0 {
+        return prio_tick(0, frame_rsp);
+    }
     // **KT-310** — pha **nhiều hart** đang bật: BSP cũng đi qua hàng đợi **toàn cục** như hart
     // phụ. Kiểm **trước** `SCHED_DONE` vì chuỗi cố định đã xong (cờ ấy đã bật) mà pha vẫn chạy.
     if MH_ACTIVE.load(Ordering::Acquire) != 0 {
@@ -881,6 +1170,11 @@ pub fn run(console: &mut Console, tap_first: usize) {
     } else {
         tss::set_rsp0(0, u_kernel_top);
     }
+    // **KT-318** — đỉnh stack kernel của U phải biết **trước** pha priority (pha ấy chọn U và đặt
+    // `RSP0` mỗi lần chọn), không chỉ trước pha nhiều hart: để `MH_U_KERNEL_TOP = 0` tới lúc ấy thì
+    // tick đầu tiên từ CPL3 đẩy frame vào địa chỉ 0 ⇒ `#DF` (đúng lớp lỗi `no-rsp0` của KT-304 —
+    // boot 08:33 của KT-318 đã đo được `# exc: vec=8 … cs=0x1b`). Một chỗ ghi, cả hai pha đọc.
+    MH_U_KERNEL_TOP.store(u_kernel_top, Ordering::Release);
     SCHED_ACTIVE.store(1, Ordering::Release);
 
     // Ngắt đã tắt từ `kmain` (sau khi đo timer); bật lại để PIT preempt `main` đang `hlt`.
@@ -889,10 +1183,22 @@ pub fn run(console: &mut Console, tap_first: usize) {
         asm::hlt();
     }
 
+    // ---- **KT-318**: pha **priority tĩnh + sleep/wake** — chạy **sau** chuỗi cố định (TAP 22/23/24
+    // đã đo xong, cờ `SCHED_DONE` đã bật) và **trước** pha nhiều hart (hart phụ còn `hlt` nên bốn
+    // tác vụ A/B/C/U **không** bị hart nào khác giữ). Ngắt vẫn **bật**: mỗi tick PIT của BSP là
+    // **một** tick logic của pha ([`PRIO_TICKS`]), không phải tick phần cứng.
+    //
+    // Bằng chứng của pha in ở [`prio_report`] **cuối** boot (sau TAP 28) để số hiệu TAP 29/30 ra
+    // **sau** 28 — người đọc log thấy đúng thứ tự, không phải "TAP 29 trước 26".
+    prio_start();
+    while PRIO_DONE.load(Ordering::Acquire) == 0 {
+        asm::hlt();
+    }
+
     // ---- **KT-310**: pha **nhiều hart** — BSP và hart 1 cùng `schedule()` trên **một** hàng đợi
     // toàn cục, dưới **một** khoá. Chạy **sau** chuỗi cố định nên TAP 22/23/24 (KT-286/KT-304)
     // **không** đổi nghĩa; chạy **trước** tổng kết nên mọi bộ đếm đọc được ở một chỗ.
-    MH_U_KERNEL_TOP.store(u_kernel_top, Ordering::Release);
+    // `MH_U_KERNEL_TOP` đã ghi **một lần** ở trên (pha priority dùng chung), không ghi lại.
     mh_start();
     while MH_DONE.load(Ordering::Acquire) == 0 {
         asm::hlt();
