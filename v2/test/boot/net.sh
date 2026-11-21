@@ -21,9 +21,11 @@
 #          `target=10.0.2.3:53 via=dns-question-echo … echoed=1` (libslirp **không** có echo UDP
 #          ở `10.0.2.2:7`; fallback KT-260 dùng reply DNS làm bằng chứng UDP hai chiều);
 #        - **KT-260** `net: dns example.com a=<ip> ttl=<n>` + `# net dns:` có `an=1`;
-#        - **KT-260** hai dòng timeout **đúng 3 s** (fail-closed, không treo):
-#          `# net udp echo: target=10.0.2.2:7 result=Timeout elapsed_ms=3000 …` và
-#          `# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 …`;
+#        - **KT-260** hai dòng timeout (fail-closed, không treo): `# net udp echo:
+#          target=10.0.2.2:7 result=Timeout elapsed_ms=3000 …` (một lần thử, 3 s) và
+#          `# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=6000 attempts=2 …`
+#          (**KT-294**: hai lần thử × 3 s — ngân sách **mỗi lần** vẫn `const:timeout_ms=3000`,
+#          không nới ngưỡng; `attempts=2` là bằng chứng retransmit **thật**);
 #        - **KT-268** `net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established` +
 #          `# net tcp connect:` (server TCP **thật** trên host: slirp ánh xạ `10.0.2.2` → loopback
 #          của host — xem ghi chú `hostfwd` dưới đây);
@@ -40,7 +42,7 @@
 #      không treo và không PASS giả.
 #   4. `--red-selftest`: chứng minh bộ kiểm **không rỗng** — sửa log tốt (xoá `ok 3`/`ok 8`/`ok 9`/
 #      `ok 10`/`ok 11`, đổi MAC, đổi `oper`, đổi `ip=`, đổi `len=`, đổi `a=`, đổi `first=`, đổi
-#      `recv=`, đổi `send=ok`, xoá dòng timeout, thêm `not ok`, xoá `# net stats:`) rồi đòi
+#      `recv=`, đổi `send=ok`, xoá dòng timeout, đổi `attempts=`, thêm `not ok`, xoá `# net stats:`) rồi đòi
 #      validator **từ chối** từng bản; và hai log ca âm "PASS giả" phải bị từ chối.
 #
 # **Ghi chú `hostfwd` (KT-268)**: đề bài gợi ý `-netdev user,hostfwd=tcp::<port>-:<port>`, nhưng
@@ -95,8 +97,12 @@ UDP_ECHO_TIMEOUT='^# net udp echo: target=10\.0\.2\.2:7 result=Timeout elapsed_m
 UDP_ECHO_DNS='^# net udp echo: target=10\.0\.2\.3:53 via=dns-question-echo payload_len=15 reply_len=[0-9]+ rcode=[0-9]+ echoed=1 rtt_ms=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$'
 # **KT-260** — DNS: `example.com` A; TTL do resolver trả (không hardcode).
 DNS_A_LINE='^# net: dns example\.com a=([0-9]{1,3}\.){3}[0-9]{1,3} ttl=[0-9]+$'
-DNS_REPLY='^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$'
-DNS_TIMEOUT='^# net dns: target=192\.0\.2\.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000$'
+# **KT-294** — `attempts=1` (lần đầu được) hoặc `attempts=2` (lần đầu timeout, gửi lại **cùng
+# `id`**); `attempts=3` là **retransmit vô hạn** ⇒ ĐỎ. Ngân sách **mỗi lần thử** vẫn 3000 ms.
+DNS_REPLY='^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=(1|2) const:timeout_ms=3000$'
+# Đích **không có** server ⇒ **cả hai** lần thử timeout: `elapsed_ms=6000` (2 × 3000) và
+# `attempts=2`. Đây là bằng chứng retransmit **thật** trên phần cứng, không phải suy luận từ mã.
+DNS_TIMEOUT='^# net dns: target=192\.0\.2\.1:53 result=Timeout elapsed_ms=6000 attempts=2 const:timeout_ms=3000$'
 # **KT-268** — TCP: server **thật** trên host. Runner dựng `python3` lắng nghe
 # `127.0.0.1:$TCP_PORT`; khách nối `10.0.2.2:$TCP_PORT` (slirp ánh xạ 10.0.2.2 → loopback host —
 # xem ghi chú `hostfwd` ở đầu tệp). Server gửi đúng `$TCP_TOKEN` (13 byte) rồi chờ khách gửi
@@ -634,10 +640,10 @@ ok 7 - net rx
 # net udp echo: target=10.0.2.3:53 via=dns-question-echo payload_len=15 reply_len=33 rcode=0 echoed=1 rtt_ms=9 elapsed_ms=9 const:timeout_ms=3000
 # net: udp echo ok len=15 rtt=9
 ok 8 - net udp echo
-# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=61 rtt_ms=10 elapsed_ms=10 const:timeout_ms=3000
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=61 rtt_ms=10 elapsed_ms=10 attempts=1 const:timeout_ms=3000
 # net: dns example.com a=104.20.23.154 ttl=300
 ok 9 - net dns a
-# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=3000 const:timeout_ms=3000
+# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=6000 attempts=2 const:timeout_ms=3000
 # net: tcp connect 10.0.2.2:45678 ok rtt=2 state=established
 # net tcp connect: iss=0x4b540001 snd_una=0x4b540002 rcv_nxt=0x20000001 retransmits=0 elapsed_ms=2 const:timeout_ms=3000 const:port=45678
 ok 10 - net tcp connect
@@ -648,11 +654,12 @@ ok 11 - net tcp data
 PANIC: KT-268 net xong (11 TAP, 0 fail)
 EOF
     expect_accept "log tốt dựng tay" validate_positive "$good"
-    # Hai mươi đột biến phải bị **từ chối** — nếu không, validator rỗng.
+    # Hai mươi lăm đột biến phải bị **từ chối** — nếu không, validator rỗng.
     local name
     for name in xoa_ok3 doi_mac doi_oper doi_ip them_not_ok xoa_stats doi_ping_n \
         xoa_ok8 xoa_ok9 doi_udp_len doi_echoed doi_dns_a doi_dns_ttl doi_rcode \
-        xoa_udp_timeout xoa_dns_timeout xoa_ok10 xoa_ok11 doi_tcp_port doi_tcp_recv \
+        xoa_udp_timeout xoa_dns_timeout doi_attempts doi_dns_timeout_attempts \
+        xoa_ok10 xoa_ok11 doi_tcp_port doi_tcp_recv \
         doi_tcp_first doi_tcp_send doi_tcp_state; do
         case "$name" in
             xoa_ok3) grep -v '^ok 3 - net dhcp$' "$good" >"$tmp" ;;
@@ -671,6 +678,10 @@ EOF
             doi_rcode) sed 's/rcode=0 an=1/rcode=3 an=1/' "$good" >"$tmp" ;;
             xoa_udp_timeout) grep -v '^# net udp echo: target=10.0.2.2:7 result=Timeout' "$good" >"$tmp" ;;
             xoa_dns_timeout) grep -v '^# net dns: target=192.0.2.1:53 result=Timeout' "$good" >"$tmp" ;;
+            # **KT-294**: `attempts=3` = retransmit vô hạn ⇒ phải bị từ chối.
+            doi_attempts) sed 's/ attempts=1 const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' "$good" >"$tmp" ;;
+            # **KT-294**: đột biến "bỏ retransmit" ⇒ dòng timeout chỉ có `attempts=1`/3000 ms.
+            doi_dns_timeout_attempts) sed 's/elapsed_ms=6000 attempts=2 const:timeout_ms=3000$/elapsed_ms=3000 attempts=1 const:timeout_ms=3000/' "$good" >"$tmp" ;;
             xoa_ok10) grep -v '^ok 10 - net tcp connect$' "$good" >"$tmp" ;;
             xoa_ok11) grep -v '^ok 11 - net tcp data$' "$good" >"$tmp" ;;
             doi_tcp_port) sed 's/10.0.2.2:45678/10.0.2.2:45679/' "$good" >"$tmp" ;;

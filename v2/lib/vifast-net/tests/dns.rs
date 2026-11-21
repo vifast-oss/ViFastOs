@@ -7,8 +7,8 @@
 
 use vifast_net::addr::Ipv4Addr;
 use vifast_net::dns::{
-    ARecord, DnsError, DnsHeader, DnsMessage, DnsQuery, DnsQuestion, Name, CLASS_IN,
-    DNS_HEADER_LEN, DNS_MAX_LABEL_LEN, FLAG_RD, TYPE_A,
+    ARecord, DnsError, DnsHeader, DnsMessage, DnsQuery, DnsQuestion, DnsRetry, Name, CLASS_IN,
+    DNS_HEADER_LEN, DNS_MAX_ATTEMPTS, DNS_MAX_LABEL_LEN, FLAG_RD, TYPE_A,
 };
 
 /// Header reply tối thiểu: `id`, QR=1, RD=1, RA=1, `qd`, `an`.
@@ -319,4 +319,71 @@ fn dns_arcord_khop_va_khong_khop() {
     assert_eq!(a.addr, Ipv4Addr::new(10, 0, 2, 3));
     assert_eq!(a.ttl, 7);
     assert_ne!(a.addr, Ipv4Addr::new(10, 0, 2, 4));
+}
+
+// ================================================================================
+// KT-294 — **thử lại** DNS (RFC 1035 §4.2.1)
+//
+// Soak aarch64 vòng 14 bắt `# net dns: elapsed_ms=3000 err=Timeout` trong khi TCP cùng boot
+// **xanh**: 3000 ms là **outlier** của slirp dưới tải (p50 = 31 ms, p99 = 150 ms, max thành công
+// = 286 ms), không phải ngưỡng quá chặt. RFC 1035 §4.2.1 buộc resolver **thử lại**; `dns_query`
+// cũ chỉ gửi **một** truy vấn nên mọi outlier thành lỗi boot. Chính sách nằm ở đây (thuần, test
+// host) để hai kiến trúc dùng **cùng** một bản — không có hai bản sao lệch nhau.
+// ================================================================================
+
+#[test]
+fn dns_max_attempts_la_hai() {
+    // Hằng thiết kế: **hai** lần thử, không nới. Đổi số này là đổi hợp đồng KT-294.
+    assert_eq!(DNS_MAX_ATTEMPTS, 2);
+}
+
+#[test]
+fn dns_retry_timeout_thi_gui_lai_toi_da_hai_lan() {
+    let mut retry = DnsRetry::new();
+    assert_eq!(retry.attempts(), 0);
+    assert!(!retry.exhausted());
+    // Lần 1: gửi, timeout ⇒ còn lượt ⇒ gửi lại.
+    assert_eq!(retry.record_attempt(), 1);
+    assert!(retry.should_retry(true));
+    assert!(!retry.exhausted());
+    // Lần 2: gửi, timeout ⇒ **hết** lượt ⇒ không gửi lần 3.
+    assert_eq!(retry.record_attempt(), 2);
+    assert!(!retry.should_retry(true));
+    assert!(retry.exhausted());
+}
+
+#[test]
+fn dns_retry_reply_hong_thi_khong_gui_lai() {
+    // Reply hỏng (`BadFrame`, `id` lệch, parse lỗi) là lỗi **giao thức**: thử lại chỉ che lỗi.
+    let mut retry = DnsRetry::new();
+    retry.record_attempt();
+    assert!(!retry.should_retry(false));
+}
+
+#[test]
+fn dns_retry_khong_bao_gio_vuot_hai() {
+    // Đột biến "retransmit vô hạn": gọi thêm bao nhiêu lần cũng không vượt trần, và không có
+    // đường nào để `should_retry` trả `true` sau khi đã dùng hết lượt.
+    let mut retry = DnsRetry::new();
+    for _ in 0..1000 {
+        retry.record_attempt();
+        assert!(retry.attempts() <= DNS_MAX_ATTEMPTS);
+    }
+    assert_eq!(retry.attempts(), DNS_MAX_ATTEMPTS);
+    assert!(!retry.should_retry(true));
+}
+
+#[test]
+fn dns_retry_gui_lai_dung_message_cu() {
+    // Driver **không** dựng query mới cho lần thử thứ hai: nó giữ nguyên `request` đã encode, nên
+    // `id` và question của hai lần gửi giống nhau **từng byte** (RFC 1035 §4.2.1 cho phép `id`
+    // mới; giữ `id` để reply của lần trước không bị nhận nhầm — `parse_response` kiểm `id`).
+    let query = DnsQuery::new(0x4b55, b"example.com", TYPE_A).expect("hợp lệ");
+    let mut first = [0u8; 64];
+    let mut second = [0u8; 64];
+    let n = query.encode(&mut first).expect("vừa");
+    let m = query.encode(&mut second).expect("vừa");
+    assert_eq!(n, m);
+    assert_eq!(&first[..n], &second[..m]);
+    assert_eq!(u16::from_be_bytes([first[0], first[1]]), 0x4b55);
 }

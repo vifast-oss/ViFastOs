@@ -24,7 +24,9 @@
 # maintenance) đều phải ĐỎ; cộng **ca âm (p) của KT-279** — boot **không có GPU** phải in
 # `# gpu: no device` và TAP phải ĐỎ; cộng **ca âm (q) của KT-283** — boot **không có bàn phím**
 # phải in `# input: no device` và TAP phải ĐỎ; cộng **hai ca âm (r)/(s) của KT-289** — thiếu dòng
-# `# net: tcp`/`# net: dns` đều phải ĐỎ (**19 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
+# `# net: tcp`/`# net: dns` đều phải ĐỎ; cộng **hai ca âm (t)/(u) của KT-294** — log có
+# `# net: no dns` (cả hai lần thử timeout) và log có `attempts=3` (retransmit vô hạn) đều phải ĐỎ
+# (**21 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
 # chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
 # "PASS giả".
 #
@@ -147,7 +149,8 @@
 #   - `# net: tcp recv=13 first=vifast-tcp-ok` + `# net tcp data: recv=13 sent=15 send=ok close=ok
 #     …` — nhận **đúng** chuỗi server gửi, gửi lại payload, đóng bằng FIN;
 #   - `# net: dns example.com a=<ip> ttl=<n>` — truy vấn DNS **thật** tới `10.0.2.3:53` của slirp.
-# Cộng **hai ca âm** cho hai dòng `# net: tcp`/`# net: dns` (thiếu dòng ⇒ ĐỎ) — **19 ca âm**.
+# Cộng **hai ca âm** cho hai dòng `# net: tcp`/`# net: dns` (thiếu dòng ⇒ ĐỎ) — **19 ca âm**;
+# **KT-294** thêm **hai** ca âm nữa (cả hai lần thử timeout; `attempts=3`) — **21 ca âm**.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -194,6 +197,10 @@ TCP_CONNECT_LINE="^# net: tcp connect 10\\.0\\.2\\.2:${TCP_PORT} ok rtt=[0-9]+ s
 TCP_RECV_LINE="^# net: tcp recv=${TCP_TOKEN_LEN} first=${TCP_TOKEN}$"
 TCP_DATA_LINE="^# net tcp data: recv=${TCP_TOKEN_LEN} sent=${TCP_SEND_LEN} send=ok close=ok state=(fin-wait-2|time-wait|closing|last-ack|closed) retransmits=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$"
 DNS_LINE='^# net: dns example\.com a=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ttl=[0-9]+$'
+# **KT-294** — dòng `# net dns:` (bằng chứng **thử lại** DNS): `attempts=1` (lần đầu được) hoặc
+# `attempts=2` (lần đầu timeout, gửi lại **cùng `id`**). `attempts=3` là **retransmit vô hạn** ⇒
+# ĐỎ. Ngân sách **mỗi lần thử** vẫn `const:timeout_ms=3000` — không nới ngưỡng.
+DNS_REPLY_LINE='^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=(1|2) const:timeout_ms=3000$'
 
 case "${1:-}" in
 '' | *[!0-9]*) ;;
@@ -625,6 +632,13 @@ check_net() {
     n="$(grep -cE "$DNS_LINE" "$log" || true)"
     if [ "${n:-0}" -ne 1 ]; then
         echo "# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    # **KT-294** — dòng `# net dns:` phải có `attempts=1|2`: chứng minh ảnh **có** chính sách thử
+    # lại và **không** retransmit vô hạn (`attempts=3` ⇒ ĐỎ). `attempts=2` = lần đầu timeout.
+    n="$(grep -cE "$DNS_REPLY_LINE" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net dns: … attempts=(1|2) const:timeout_ms=3000' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
     for want in '# net: no tcp' '# net: no dns'; do
@@ -1647,6 +1661,33 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (s): thiếu dòng '# net: dns' ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
+    fi
+
+    # (t) **KT-294** — **cả hai** lần thử timeout: ảnh in `# net dns: … attempts=2 err=Timeout` +
+    # `# net: no dns` (TAP 35 đỏ). Log **giả** ở đây vẫn giữ `ok 35` — đúng kiểu "PASS giả" mà bộ
+    # kiểm phải bắt: có `# net: no dns` là ĐỎ, dù TAP tự khai xanh.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed -e 's/^# net dns: name=example\.com .*$/# net dns: elapsed_ms=6000 attempts=2 err=Timeout/' \
+        -e 's/^# net: dns example\.com .*$/# net: no dns/' "$good" >"$tmp/t.log" 2>/dev/null || true
+    if check_log "$tmp/t.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/t.out" 2>&1; then
+        echo "not ok $n - ca âm (t): cả hai lần thử timeout ('# net: no dns') mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (t): cả hai lần thử timeout ⇒ ĐỎ ($(head -1 "$tmp/t.out"))"
+    fi
+
+    # (u) **KT-294** — **retransmit vô hạn**: `attempts=3` phải bị từ chối (trần là 2). Đột biến
+    # "bỏ trần" ở driver sẽ in `attempts=3` (hoặc treo tới timeout boot) — cả hai đều ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/ attempts=1 const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' "$good" \
+        >"$tmp/u.log" 2>/dev/null || true
+    if check_log "$tmp/u.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/u.out" 2>&1; then
+        echo "not ok $n - ca âm (u): attempts=3 (retransmit vô hạn) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (u): attempts=3 ⇒ ĐỎ ($(head -1 "$tmp/u.out"))"
     fi
 
     NEG_CASES=$cases

@@ -561,3 +561,61 @@ impl<'a> DnsMessage<'a> {
         Ok(None)
     }
 }
+
+// ================================================================================
+// KT-294 — **thử lại** một truy vấn DNS (RFC 1035 §4.2.1)
+//
+// Soak aarch64 vòng 14 bắt `# net dns: elapsed_ms=3000 err=Timeout` trong khi TCP cùng boot
+// **xanh**: 3000 ms là **outlier** của slirp dưới tải (p50 = 31 ms, p99 = 150 ms, max thành công
+// = 286 ms), không phải ngưỡng quá chặt. RFC 1035 §4.2.1: "the resolver should retry" — driver
+// cũ chỉ gửi **một** truy vấn nên mọi outlier thành lỗi boot. Chính sách ở đây là **thuần** (test
+// host, D2-05) và **dùng chung** cho hai kiến trúc: không có bản sao lệch nhau.
+// ================================================================================
+
+/// Số lần thử tối đa của **một** truy vấn DNS.
+///
+/// **Hai** lần, mỗi lần có ngân sách timeout **riêng** (3 s — không đổi, không nới). Đây là ngữ
+/// nghĩa giao thức DNS (RFC 1035 §4.2.1), **không** phải nới ngưỡng thời gian.
+pub const DNS_MAX_ATTEMPTS: u8 = 2;
+
+/// Chính sách **thử lại** của một truy vấn DNS: tối đa [`DNS_MAX_ATTEMPTS`] lần, **cùng `id`**.
+///
+/// Tạo **mới** cho mỗi truy vấn; driver ghi nhận từng lần gửi rồi hỏi [`DnsRetry::should_retry`].
+/// Bộ đếm **bão hoà** ở trần nên "retransmit vô hạn" không biểu diễn được qua API này.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DnsRetry {
+    attempts: u8,
+}
+
+impl DnsRetry {
+    /// Chưa gửi lần nào.
+    pub const fn new() -> Self {
+        Self { attempts: 0 }
+    }
+
+    /// Số lần đã gửi (`0..=`[`DNS_MAX_ATTEMPTS`]).
+    pub const fn attempts(&self) -> u8 {
+        self.attempts
+    }
+
+    /// Ghi nhận **một** lần gửi; trả số thứ tự lần gửi (`1..=`[`DNS_MAX_ATTEMPTS`]).
+    ///
+    /// Bão hoà ở [`DNS_MAX_ATTEMPTS`]: gọi thêm không làm bộ đếm vượt trần.
+    pub fn record_attempt(&mut self) -> u8 {
+        self.attempts = self.attempts.saturating_add(1).min(DNS_MAX_ATTEMPTS);
+        self.attempts
+    }
+
+    /// `true` ⇔ lần vừa rồi **timeout** và còn lượt ⇒ gửi lại **đúng** message cũ (cùng `id`).
+    ///
+    /// Reply hỏng (`BadFrame`, `id` lệch, parse lỗi) **không** thử lại: đó là lỗi giao thức, thử
+    /// lại chỉ che lỗi.
+    pub const fn should_retry(&self, timed_out: bool) -> bool {
+        timed_out && self.attempts < DNS_MAX_ATTEMPTS
+    }
+
+    /// `true` ⇔ đã dùng hết lượt.
+    pub const fn exhausted(&self) -> bool {
+        self.attempts >= DNS_MAX_ATTEMPTS
+    }
+}

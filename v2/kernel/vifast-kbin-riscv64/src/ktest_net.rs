@@ -50,7 +50,7 @@
 use core::fmt::Write;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
-use vifast_net::dns::TYPE_A;
+use vifast_net::dns::{DnsRetry, TYPE_A};
 use vifast_net::tcp::State;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
@@ -695,6 +695,8 @@ pub extern "C" fn rust_main() -> ! {
     if let Some(dns_mac) = dns_mac {
         // ---- TAP 8: UDP echo qua "gương" DNS (payload = QNAME)
         let started = PLATFORM.now_ticks();
+        // **KT-294**: bộ đếm thử lại của **lần gọi này** (tạo mới mỗi truy vấn).
+        let mut retry = DnsRetry::new();
         let result = virtio_net::dns_query(
             config.ip,
             MacAddr::new(mac),
@@ -703,6 +705,7 @@ pub extern "C" fn rust_main() -> ! {
             DNS_ID_ECHO,
             virtio_net::UDP_ECHO_PAYLOAD,
             virtio_net::NET_STEP_TIMEOUT_TICKS,
+            &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
             / vifast_plat_common::timer::TIMEBASE_HZ;
@@ -771,6 +774,8 @@ pub extern "C" fn rust_main() -> ! {
 
         // ---- TAP 9: DNS query example.com A
         let started = PLATFORM.now_ticks();
+        // **KT-294**: bộ đếm thử lại — in vào dòng evidence ở cả hai nhánh.
+        let mut retry = DnsRetry::new();
         let result = virtio_net::dns_query(
             config.ip,
             MacAddr::new(mac),
@@ -779,6 +784,7 @@ pub extern "C" fn rust_main() -> ! {
             DNS_ID_A,
             DNS_NAME_A,
             virtio_net::NET_STEP_TIMEOUT_TICKS,
+            &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
             / vifast_plat_common::timer::TIMEBASE_HZ;
@@ -791,12 +797,13 @@ pub extern "C" fn rust_main() -> ! {
                     let _ = writeln!(
                         w,
                         "# net dns: name=example.com id=0x{:x} rcode={} an={} reply_len={} \
-                         rtt_ms={} elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                         rtt_ms={} elapsed_ms={elapsed_ms} attempts={} const:timeout_ms={}",
                         answer.id,
                         answer.rcode,
                         record.is_some() as u8,
                         answer.reply_len,
                         answer.rtt_ms,
+                        retry.attempts(),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
                             / vifast_plat_common::timer::TIMEBASE_HZ
                     );
@@ -824,7 +831,12 @@ pub extern "C" fn rust_main() -> ! {
             Err(error) => {
                 {
                     let mut w = PlatformWriter(&PLATFORM);
-                    let _ = writeln!(w, "# net dns: elapsed_ms={elapsed_ms} err={}", error.name());
+                    let _ = writeln!(
+                        w,
+                        "# net dns: elapsed_ms={elapsed_ms} attempts={} err={}",
+                        retry.attempts(),
+                        error.name()
+                    );
                     let _ = writeln!(w, "# net: no dns");
                 }
                 put(
@@ -832,7 +844,7 @@ pub extern "C" fn rust_main() -> ! {
                     9,
                     "net dns a",
                     &mut fails,
-                    "không nhận reply DNS trong 3 s",
+                    "không nhận reply DNS trong 2 lần thử × 3 s",
                 );
             }
         }
@@ -853,11 +865,15 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
 
-    // ---- Chẩn đoán (không phải TAP): DNS timeout 3 s trên địa chỉ **không có** server.
+    // ---- Chẩn đoán (không phải TAP): DNS timeout trên địa chỉ **không có** server.
     // `192.0.2.1` là TEST-NET-1 (RFC 5737) — không có dịch vụ DNS; frame đi qua MAC gateway vì
-    // slirp định tuyến theo IP đích, không theo MAC đích. Không reply ⇒ `Timeout` sau đúng 3 s.
+    // slirp định tuyến theo IP đích, không theo MAC đích. Không reply ⇒ **KT-294**: hai lần thử,
+    // mỗi lần 3 s ⇒ `Timeout` sau đúng 6 s với `attempts=2` (bằng chứng retransmit **thật**).
     {
         let started = PLATFORM.now_ticks();
+        // **KT-294**: đích **không có** server ⇒ **cả hai** lần thử timeout; `attempts=2` +
+        // `elapsed_ms=6000` là bằng chứng retransmit **thật** (không phải suy luận từ mã).
+        let mut retry = DnsRetry::new();
         let result = virtio_net::dns_query(
             config.ip,
             MacAddr::new(mac),
@@ -866,6 +882,7 @@ pub extern "C" fn rust_main() -> ! {
             DNS_ID_A,
             DNS_NAME_A,
             virtio_net::NET_STEP_TIMEOUT_TICKS,
+            &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
             / vifast_plat_common::timer::TIMEBASE_HZ;
@@ -875,16 +892,19 @@ pub extern "C" fn rust_main() -> ! {
                 let _ = writeln!(
                     w,
                     "# net dns: target=192.0.2.1:53 result=ok rcode={} reply_len={} \
-                     elapsed_ms={elapsed_ms}",
-                    answer.rcode, answer.reply_len
+                     elapsed_ms={elapsed_ms} attempts={}",
+                    answer.rcode,
+                    answer.reply_len,
+                    retry.attempts()
                 );
             }
             Err(error) => {
                 let _ = writeln!(
                     w,
                     "# net dns: target=192.0.2.1:53 result={} elapsed_ms={elapsed_ms} \
-                     const:timeout_ms={}",
+                     attempts={} const:timeout_ms={}",
                     error.name(),
+                    retry.attempts(),
                     virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
                         / vifast_plat_common::timer::TIMEBASE_HZ
                 );

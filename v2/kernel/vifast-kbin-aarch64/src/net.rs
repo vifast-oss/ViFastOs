@@ -39,6 +39,7 @@ use core::fmt::{self, Write};
 use core::sync::atomic::Ordering;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::dns::DnsRetry;
 use vifast_net::tcp::State;
 use vifast_plat_aarch64::asm;
 use vifast_plat_aarch64::pci::{self, bar_kind_name, PciError, VirtioKind};
@@ -426,6 +427,9 @@ pub fn run(console: &mut Console) -> bool {
                     IpText(virtio_net::DNS_SERVER_IP)
                 );
                 let started = virtio_net::now_us();
+                // **KT-294**: bộ đếm thử lại của **lần gọi này** — in vào dòng evidence ở cả hai
+                // nhánh (thành công và lỗi), nên `attempts=2` là bằng chứng đã retransmit.
+                let mut retry = DnsRetry::new();
                 match virtio_net::dns_query(
                     cfg.ip,
                     our_mac,
@@ -434,6 +438,7 @@ pub fn run(console: &mut Console) -> bool {
                     DNS_ID_A,
                     DNS_NAME_A,
                     virtio_net::NET_STEP_TIMEOUT_US,
+                    &mut retry,
                 ) {
                     Ok(answer) => {
                         let record = answer.a;
@@ -441,12 +446,13 @@ pub fn run(console: &mut Console) -> bool {
                         let _ = writeln!(
                             console,
                             "# net dns: name=example.com id=0x{:x} rcode={} an={} reply_len={} \
-                             rtt_ms={} elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                             rtt_ms={} elapsed_ms={elapsed_ms} attempts={} const:timeout_ms={}",
                             answer.id,
                             answer.rcode,
                             record.is_some() as u8,
                             answer.reply_len,
                             answer.rtt_ms,
+                            retry.attempts(),
                             virtio_net::NET_STEP_TIMEOUT_US / 1000
                         );
                         match record {
@@ -467,7 +473,8 @@ pub fn run(console: &mut Console) -> bool {
                         let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
                         let _ = writeln!(
                             console,
-                            "# net dns: elapsed_ms={elapsed_ms} err={}",
+                            "# net dns: elapsed_ms={elapsed_ms} attempts={} err={}",
+                            retry.attempts(),
                             error.name()
                         );
                         let _ = writeln!(console, "# net: no dns");

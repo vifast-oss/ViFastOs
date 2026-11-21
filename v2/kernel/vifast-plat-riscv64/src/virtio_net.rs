@@ -45,7 +45,7 @@ use vifast_virtio::queue::{Desc, DescFlags, SplitQueue, VqLayout};
 use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_net::arp::{ArpPacket, ARP_LEN};
 use vifast_net::dhcp::{DhcpMessage, DHCPACK, DHCPOFFER};
-use vifast_net::dns::{ARecord, DnsMessage, DnsQuery, DnsQuestion, TYPE_A};
+use vifast_net::dns::{ARecord, DnsMessage, DnsQuery, DnsQuestion, DnsRetry, TYPE_A};
 use vifast_net::eth::{EthHeader, ETHERTYPE_ARP, ETHERTYPE_IPV4, ETH_HEADER_LEN};
 use vifast_net::frame::EthernetFrame;
 use vifast_net::icmp::{IcmpEcho, IcmpMessage};
@@ -1240,10 +1240,22 @@ pub fn udp_echo(
     })
 }
 
-/// Gửi **một** truy vấn DNS `A` tới `dns_ip:53` qua UDP và parse reply.
+/// Gửi truy vấn DNS `A` tới `dns_ip:53` qua UDP và parse reply.
 ///
-/// `Err(NetError::Timeout)` nếu không có reply trong `timeout_ticks`; `Err(NetError::BadFrame)`
-/// nếu reply không parse được / `id` lệch / không đúng một câu hỏi.
+/// **KT-294** — **thử lại** theo RFC 1035 §4.2.1: lần thử **timeout** thì gửi lại **đúng** message
+/// cũ (**cùng `id`** — RFC cho phép `id` mới, nhưng giữ `id` để reply của lần trước không bị nhận
+/// nhầm; `parse_response` kiểm `id`), tối đa [`DNS_MAX_ATTEMPTS`] lần, mỗi lần có ngân sách
+/// `timeout_ticks` **riêng** (3 s — **không** đổi). Reply hỏng **không** thử lại: đó là lỗi giao
+/// thức, thử lại chỉ che lỗi.
+///
+/// `retry` là bộ đếm của **lần gọi này** (tạo mới cho mỗi truy vấn): sau khi trả về,
+/// `retry.attempts()` là số lần đã gửi — caller in nó vào dòng evidence, **kể cả** khi lỗi.
+///
+/// `Err(NetError::Timeout)` nếu **cả hai** lần thử không có reply; `Err(NetError::BadFrame)` nếu
+/// reply không parse được / `id` lệch / không đúng một câu hỏi.
+// 8 tham số: hai đầu cuối (IP + MAC) + `id` + tên + timeout + bộ đếm thử lại — gói thành struct sẽ
+// làm call-site khó đọc hơn ở ảnh test; cùng khuôn `#[allow]` đã dùng ở `udp_echo`.
+#[allow(clippy::too_many_arguments)]
 pub fn dns_query(
     our_ip: Ipv4Addr,
     our_mac: MacAddr,
@@ -1252,47 +1264,64 @@ pub fn dns_query(
     id: u16,
     name: &[u8],
     timeout_ticks: u64,
+    retry: &mut DnsRetry,
 ) -> Result<DnsAnswer, NetError> {
     let query = DnsQuery::new(id, name, TYPE_A).map_err(|_| NetError::BadFrame)?;
     let mut request = [0u8; UDP_MAX_PAYLOAD];
     let request_len = query.encode(&mut request).map_err(|_| NetError::BadFrame)?;
     let started = Riscv64Virt.now_ticks();
-    udp_send(
-        our_ip,
-        our_mac,
-        dns_ip,
-        dns_mac,
-        UDP_CLIENT_PORT,
-        DNS_PORT,
-        &request[..request_len],
-    )?;
-    // **KT-268**: như `udp_echo` — ngân sách tính cho cả bước, nên `elapsed_ms` của ca timeout
-    // đúng bằng `timeout_ticks` (3000 ms), không cộng thời gian gửi.
-    let spent = Riscv64Virt.now_ticks().wrapping_sub(started);
-    let mut reply = [0u8; UDP_MAX_PAYLOAD];
-    let reply_len = udp_recv(
-        our_ip,
-        dns_ip,
-        DNS_PORT,
-        UDP_CLIENT_PORT,
-        &mut reply,
-        timeout_ticks.saturating_sub(spent),
-    )?;
-    let message =
-        DnsMessage::parse_response(&reply[..reply_len], id).map_err(|_| NetError::BadFrame)?;
-    let question = message
-        .question()
-        .map_err(|_| NetError::BadFrame)?
-        .ok_or(NetError::BadFrame)?;
-    let a = message.first_a().map_err(|_| NetError::BadFrame)?;
-    Ok(DnsAnswer {
-        id,
-        rcode: message.header().rcode(),
-        question,
-        a,
-        rtt_ms: ticks_to_ms(Riscv64Virt.now_ticks().wrapping_sub(started)),
-        reply_len,
-    })
+    loop {
+        retry.record_attempt();
+        let attempt_started = Riscv64Virt.now_ticks();
+        // Một lần thử = **gửi + chờ**; ngân sách `timeout_ticks` tính cho cả hai (KT-268), nên
+        // `elapsed_ms` của ca timeout là `attempts × timeout_ticks`, không cộng thời gian gửi.
+        let sent = udp_send(
+            our_ip,
+            our_mac,
+            dns_ip,
+            dns_mac,
+            UDP_CLIENT_PORT,
+            DNS_PORT,
+            &request[..request_len],
+        );
+        let mut reply = [0u8; UDP_MAX_PAYLOAD];
+        let received = match sent {
+            Ok(()) => {
+                let spent = Riscv64Virt.now_ticks().wrapping_sub(attempt_started);
+                udp_recv(
+                    our_ip,
+                    dns_ip,
+                    DNS_PORT,
+                    UDP_CLIENT_PORT,
+                    &mut reply,
+                    timeout_ticks.saturating_sub(spent),
+                )
+            }
+            Err(error) => Err(error),
+        };
+        match received {
+            Ok(reply_len) => {
+                let message = DnsMessage::parse_response(&reply[..reply_len], id)
+                    .map_err(|_| NetError::BadFrame)?;
+                let question = message
+                    .question()
+                    .map_err(|_| NetError::BadFrame)?
+                    .ok_or(NetError::BadFrame)?;
+                let a = message.first_a().map_err(|_| NetError::BadFrame)?;
+                return Ok(DnsAnswer {
+                    id,
+                    rcode: message.header().rcode(),
+                    question,
+                    a,
+                    rtt_ms: ticks_to_ms(Riscv64Virt.now_ticks().wrapping_sub(started)),
+                    reply_len,
+                });
+            }
+            // Chỉ **timeout** mới thử lại; hết lượt thì trả lỗi (fail-closed, không treo).
+            Err(NetError::Timeout) if retry.should_retry(true) => continue,
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 const _: () = {

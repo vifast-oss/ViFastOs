@@ -379,6 +379,13 @@ check_boot_log() {
         echo "# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
+    # **KT-294** — dòng `# net dns:` phải có `attempts=1|2` (cùng bất biến `run-aarch64.sh`):
+    # `attempts=2` = lần đầu timeout rồi gửi lại; `attempts=3` = retransmit vô hạn ⇒ ĐỎ.
+    n="$(grep -cE '^# net dns: name=example\.com id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=(1|2) const:timeout_ms=3000$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net dns: … attempts=(1|2) const:timeout_ms=3000' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
     for want in '# net: no tcp' '# net: no dns'; do
         n="$(grep -Fc "$want" "$log" || true)"
         [ "${n:-0}" -eq 0 ] || {
@@ -704,7 +711,7 @@ ok 33 - net: tcp connect
 # net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=2 const:timeout_ms=3000
 ok 34 - net: tcp data
 # net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
-# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=45 rtt_ms=1 elapsed_ms=1 const:timeout_ms=3000
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=45 rtt_ms=1 elapsed_ms=1 attempts=1 const:timeout_ms=3000
 # net: dns example.com a=93.184.216.34 ttl=3600
 ok 35 - net: dns
 # net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
@@ -895,6 +902,11 @@ EOF
 
     grep -v -F '# net: dns ' "$good" >"$tmp/ag.log" || true
     neg "thiếu dòng '# net: dns' (không có bản ghi A)" "$tmp/ag.log"
+
+    # **KT-294** — `attempts=3` = retransmit vô hạn (trần là 2) ⇒ phải ĐỎ.
+    sed 's/ attempts=1 const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' \
+        "$good" >"$tmp/ah.log" || true
+    neg "attempts=3 (retransmit vô hạn)" "$tmp/ah.log"
 
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
