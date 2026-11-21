@@ -29,21 +29,21 @@
 #![allow(clippy::assertions_on_constants)]
 
 use vifast_plat_x86_64::apic::{
-    hz_from_pit, ioapic_id, ioapic_redir_is_masked, ioapic_redir_low_masked,
-    ioapic_redirection_count, ioapic_redtbl_reg, ioapic_version, lapic_id, lapic_version,
-    lvt_is_masked, lvt_timer_value, lvt_vector, pit_elapsed_ticks, svr_value, timer_divide_code,
-    timer_divide_value, APIC_BASE_ADDR_MASK, APIC_BASE_BSP, APIC_BASE_ENABLE, IOAPIC_DEFAULT_BASE,
-    IOAPIC_ID_REG, IOAPIC_MAX_REDIRECTIONS, IOAPIC_REDIR_MASKED, IOAPIC_REDTBL_BASE,
-    IOAPIC_REDTBL_STRIDE, IOAPIC_REGSEL, IOAPIC_VER_REG, IOAPIC_WIN, LAPIC_DEFAULT_BASE, LAPIC_EOI,
-    LAPIC_ID, LAPIC_ID_SHIFT, LAPIC_LVT_LINT0, LAPIC_LVT_LINT1, LAPIC_LVT_TIMER, LAPIC_SVR,
-    LAPIC_TIMER_CURRENT_COUNT, LAPIC_TIMER_DIVIDE, LAPIC_TIMER_INITIAL_COUNT, LAPIC_TPR,
-    LAPIC_VERSION, LVT_MASKED, LVT_TIMER_PERIODIC, LVT_VECTOR_MASK, PIC1_DATA, PIC2_DATA,
-    PIC_MASK_ALL, PIT_CH0_CMD, PIT_CH0_DATA, PIT_CH2_DATA, PIT_CMD_CH0_MODE0_LOHI,
-    PIT_CMD_CH0_MODE2_LOHI, PIT_CMD_CH2_MODE2_LOHI, PIT_CMD_LATCH_CH0, PIT_CMD_LATCH_CH2,
-    PIT_FREQUENCY_HZ, PIT_MAX_DIVISOR, PIT_SPEAKER_DATA, PIT_SPEAKER_GATE2, PIT_SPEAKER_PORT,
-    SVR_APIC_ENABLE, SVR_VECTOR_MASK, TIMER_DIVIDE_BY_1, TIMER_DIVIDE_BY_128, TIMER_DIVIDE_BY_16,
-    TIMER_DIVIDE_BY_2, TIMER_DIVIDE_BY_32, TIMER_DIVIDE_BY_4, TIMER_DIVIDE_BY_64,
-    TIMER_DIVIDE_BY_8,
+    hz_from_pit, hz_ok, ioapic_id, ioapic_redir_is_masked, ioapic_redir_low_masked,
+    ioapic_redirection_count, ioapic_redtbl_reg, ioapic_version, lapic_id, lapic_timer_runs,
+    lapic_version, lvt_is_masked, lvt_timer_value, lvt_vector, pit_divisor_ok, pit_elapsed_ticks,
+    svr_value, timer_divide_code, timer_divide_value, APIC_BASE_ADDR_MASK, APIC_BASE_BSP,
+    APIC_BASE_ENABLE, HZ_MAX, HZ_MIN, IOAPIC_DEFAULT_BASE, IOAPIC_ID_REG, IOAPIC_MAX_REDIRECTIONS,
+    IOAPIC_REDIR_MASKED, IOAPIC_REDTBL_BASE, IOAPIC_REDTBL_STRIDE, IOAPIC_REGSEL, IOAPIC_VER_REG,
+    IOAPIC_WIN, LAPIC_DEFAULT_BASE, LAPIC_EOI, LAPIC_ID, LAPIC_ID_SHIFT, LAPIC_LVT_LINT0,
+    LAPIC_LVT_LINT1, LAPIC_LVT_TIMER, LAPIC_SVR, LAPIC_TIMER_CURRENT_COUNT, LAPIC_TIMER_DIVIDE,
+    LAPIC_TIMER_INITIAL_COUNT, LAPIC_TPR, LAPIC_VERSION, LVT_MASKED, LVT_TIMER_PERIODIC,
+    LVT_VECTOR_MASK, PIC1_DATA, PIC2_DATA, PIC_MASK_ALL, PIT_CH0_CMD, PIT_CH0_DATA, PIT_CH2_DATA,
+    PIT_CMD_CH0_MODE0_LOHI, PIT_CMD_CH0_MODE2_LOHI, PIT_CMD_CH2_MODE2_LOHI, PIT_CMD_LATCH_CH0,
+    PIT_CMD_LATCH_CH2, PIT_FREQUENCY_HZ, PIT_MAX_DIVISOR, PIT_SPEAKER_DATA, PIT_SPEAKER_GATE2,
+    PIT_SPEAKER_PORT, SVR_APIC_ENABLE, SVR_VECTOR_MASK, TIMER_DIVIDE_BY_1, TIMER_DIVIDE_BY_128,
+    TIMER_DIVIDE_BY_16, TIMER_DIVIDE_BY_2, TIMER_DIVIDE_BY_32, TIMER_DIVIDE_BY_4,
+    TIMER_DIVIDE_BY_64, TIMER_DIVIDE_BY_8,
 };
 use vifast_plat_x86_64::boot::{MMIO_MAP_BASE, MMIO_MAP_BYTES};
 use vifast_plat_x86_64::exc::{
@@ -385,4 +385,85 @@ fn apic_vector_names() {
     assert_eq!(exc_name(VEC_TIMER as u64), "timer");
     assert_eq!(exc_name(VEC_SPURIOUS as u64), "spurious");
     assert_eq!(exc_name(VEC_UNKNOWN), "unknown");
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-297 — phép kiểm timer **periodic** + khoảng `hz` hợp lệ
+// ---------------------------------------------------------------------------------------------
+
+/// `lapic_timer_runs` phải chấp nhận **quay vòng** của LAPIC timer periodic.
+///
+/// KT-293 bắt 4/600 boot `runs=0` **giả** vì phép kiểm cũ đòi `count1 < count0` (giả định
+/// one-shot). `LVT_TIMER` của ảnh đặt **periodic** (bit 17) ⇒ counter nạp lại, nên
+/// `count1 > count0` là hợp lệ. Bốn cặp số dưới đây là **nguyên văn** log đỏ của KT-293.
+#[test]
+fn lapic_timer_runs_accepts_periodic_wrap() {
+    const INITIAL: u32 = 1_000_000;
+    // Nguyên văn bốn boot đỏ KT-293: count1 > count0 nhưng timer **đang chạy**.
+    assert!(lapic_timer_runs(317_000, 803_001, INITIAL));
+    assert!(lapic_timer_runs(233_000, 718_001, INITIAL));
+    assert!(lapic_timer_runs(969_000, 975_002, INITIAL));
+    assert!(lapic_timer_runs(18_003, 472_004, INITIAL));
+    // Đếm lùi bình thường (không quay vòng) vẫn đúng.
+    assert!(lapic_timer_runs(979_000, 283_000, INITIAL));
+    // Ảnh chụp hiếm gặp `0` (vừa hết hạn, chưa nạp lại) vẫn là timer chạy nếu lần sau khác 0.
+    assert!(lapic_timer_runs(0, 500_000, INITIAL));
+}
+
+/// `lapic_timer_runs` phải **fail-closed** khi timer không chạy hoặc đọc ra rác.
+#[test]
+fn lapic_timer_runs_rejects_stopped_or_garbage() {
+    const INITIAL: u32 = 1_000_000;
+    // Timer chưa nạp `INITIAL_COUNT` (hoặc đã dừng): counter đứng yên ở 0.
+    assert!(!lapic_timer_runs(0, 0, INITIAL));
+    // Counter đứng yên ở giá trị bất kỳ (timer bị tắt sau khi nạp).
+    assert!(!lapic_timer_runs(500_000, 500_000, INITIAL));
+    assert!(!lapic_timer_runs(INITIAL, INITIAL, INITIAL));
+    // Không có APIC: MMIO trả `0xFFFF_FFFF` — ngoài dải kiến trúc ⇒ fail-closed.
+    assert!(!lapic_timer_runs(0xFFFF_FFFF, 0xFFFF_FFFE, INITIAL));
+    assert!(!lapic_timer_runs(0, 0xFFFF_FFFF, INITIAL));
+    // Giá trị vượt `INITIAL_COUNT` không thể là counter hợp lệ.
+    assert!(!lapic_timer_runs(INITIAL + 1, 500_000, INITIAL));
+}
+
+/// `hz_ok` chốt khoảng hợp lệ của nguồn tick 100 Hz **đo được** dưới TCG.
+///
+/// Đây là **kiểm đúng đắn** (đột biến `wrong-hz` phải ĐỎ), không phải nới ngưỡng: trước KT-297
+/// cổng chỉ đòi `hz > 0` nên một timer chạy sai nhịp vẫn xanh.
+#[test]
+fn hz_ok_literal() {
+    // Danh định 100 Hz — đo được trên ảnh thật (KT-293: 36..~150 Hz trên cửa sổ 2 tick).
+    assert!(hz_ok(100));
+    assert!(hz_ok(HZ_MIN));
+    assert!(hz_ok(HZ_MAX));
+    // 0 = không đo được (fail-closed).
+    assert!(!hz_ok(0));
+    // Sai nhịp 10× (đột biến `wrong-hz`): 1.000 Hz và 10 Hz đều ngoài khoảng.
+    assert!(!hz_ok(1_000));
+    assert!(!hz_ok(10));
+    // Trần/dưới biên.
+    assert!(!hz_ok(HZ_MIN - 1));
+    assert!(!hz_ok(HZ_MAX + 1));
+}
+
+/// `pit_divisor_ok` chốt **divisor đã nạp** từ counter đọc ngay sau khi nạp mode 2.
+///
+/// Dưới TCG, tốc độ tick **giao được** bị chặn trên bởi độ trễ đánh thức `hlt` (~20 ms) nên
+/// `hz` đo được **bão hoà** ~35..55 Hz cho cả nguồn 100 Hz lẫn 1.000 Hz. Kiểm divisor trực tiếp
+/// là lớp bắt **đột biến `wrong-hz`** (đổi divisor) mà phép đo `hz` không phân biệt được.
+#[test]
+fn pit_divisor_ok_literal() {
+    const DIV: u16 = 11_932;
+    // Đọc ngay sau khi nạp: counter còn ≈ divisor (KT-293 đo được 0x2e31 = 11.825).
+    assert!(pit_divisor_ok(11_825, DIV));
+    assert!(pit_divisor_ok(DIV, DIV));
+    // Đọc trễ tới nửa chu kỳ (5 ms ở 100 Hz) vẫn chấp nhận.
+    assert!(pit_divisor_ok(DIV / 2, DIV));
+    // Đột biến `wrong-hz` nhanh 10× (divisor 1.193): counter ≈ 1.125 ⇒ ngoài dải.
+    assert!(!pit_divisor_ok(1_125, DIV));
+    assert!(!pit_divisor_ok(1_193, DIV));
+    // Đột biến chậm (divisor 65.535): counter > divisor ⇒ ngoài dải.
+    assert!(!pit_divisor_ok(65_512, DIV));
+    // Counter 0 (PIT không chạy / không nạp) ⇒ fail-closed.
+    assert!(!pit_divisor_ok(0, DIV));
 }

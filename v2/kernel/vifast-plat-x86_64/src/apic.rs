@@ -137,6 +137,28 @@ pub const fn lvt_vector(raw: u32) -> u8 {
     (raw & LVT_VECTOR_MASK) as u8
 }
 
+/// `true` ⇔ hai ảnh `LAPIC_TIMER_CURRENT_COUNT` chứng minh timer **periodic** đang chạy.
+///
+/// # Vì sao **không** so `count1 < count0` (KT-297)
+///
+/// Ảnh đặt `LVT_TIMER` **periodic** ([`LVT_TIMER_PERIODIC`], bit 17): counter đếm lùi từ
+/// `INITIAL_COUNT` rồi **nạp lại**, nên giữa hai lần đọc nó có thể **quay vòng** và
+/// `count1 > count0` là hợp lệ. KT-293 soak 600 boot bắt **4 boot `runs=0` giả** vì phép kiểm
+/// one-shot cũ (`count1 < count0`) gặp quay vòng — nguyên văn:
+/// `count0=317000 count1=803001`, `233000→718001`, `969000→975002`, `18003→472004`.
+///
+/// Bằng chứng "timer chạy" là counter **đổi giá trị** trong một cửa sổ có trần (ảnh chờ tới khi
+/// đổi, không đọc hai lần liền nhau), **và** cả hai ảnh nằm trong dải kiến trúc
+/// `0..=initial`:
+///
+/// - `0` là ảnh chụp hiếm khi counter vừa hết hạn, chưa nạp lại — vẫn hợp lệ nếu ảnh kia khác;
+/// - `0xFFFF_FFFF` (không có APIC / MMIO không map) và mọi giá trị `> initial` ⇒ **fail-closed**.
+///
+/// Hàm **thuần** để test host chốt được (D2-05); ảnh chỉ đọc MMIO rồi gọi hàm này.
+pub const fn lapic_timer_runs(count0: u32, count1: u32, initial: u32) -> bool {
+    count0 != count1 && count0 <= initial && count1 <= initial
+}
+
 /// Số chia từ **mã** 4 bit; mã không dùng ⇒ `None` (không đoán bừa).
 pub const fn timer_divide_value(code: u32) -> Option<u32> {
     match code {
@@ -275,10 +297,56 @@ pub const fn pit_elapsed_ticks(start: u16, end: u16) -> u32 {
     (start.wrapping_sub(end)) as u32
 }
 
+/// `true` ⇔ counter PIT đọc **ngay sau** khi nạp mode 2 khớp `divisor` đã nạp.
+///
+/// # Vì sao cần kiểm này (KT-297)
+///
+/// Counter mode 2 đếm lùi từ `divisor`; đọc ngay sau khi nạp (vài µs) nên giá trị còn ≈
+/// `divisor`. Dải chấp nhận `[divisor/2, divisor]`:
+///
+/// - cận trên `divisor`: counter không thể lớn hơn giá trị vừa nạp;
+/// - cận dưới `divisor/2`: đọc trễ tới nửa chu kỳ (5 ms ở 100 Hz) vẫn chấp nhận.
+///
+/// Dưới TCG, tốc độ tick **giao được** bị chặn trên bởi độ trễ đánh thức `hlt` (~20 ms) nên
+/// `hz` đo được **bão hoà** ~35..55 Hz cho cả nguồn 100 Hz lẫn 1.000 Hz. Kiểm divisor trực tiếp
+/// là lớp bắt **đột biến `wrong-hz`** (đổi divisor) mà phép đo `hz` không phân biệt được.
+pub const fn pit_divisor_ok(counter0: u16, divisor: u16) -> bool {
+    counter0 as u32 >= divisor as u32 / 2 && counter0 as u32 <= divisor as u32
+}
+
 /// `hz = ticks × 1_193_182 / pit_ticks` — chia 0 ⇒ `0` (fail-closed, không panic trong ảnh).
 pub const fn hz_from_pit(ticks: u32, pit_ticks: u32) -> u32 {
     if pit_ticks == 0 {
         return 0;
     }
     ((ticks as u64 * PIT_FREQUENCY_HZ as u64) / pit_ticks as u64) as u32
+}
+
+// ---------------------------------------------------------------------------------------------
+// Khoảng `hz` hợp lệ của nguồn tick 100 Hz — KT-297
+// ---------------------------------------------------------------------------------------------
+
+/// Sàn `hz` **giao được** của nguồn tick PIT 100 Hz dưới TCG.
+///
+/// Danh định là 100 Hz; dưới TCG QEMU giao tick **không đều** và tốc độ **giao được** bị chặn
+/// trên bởi độ trễ đánh thức `hlt` (~20 ms). KT-297 đo trên cửa sổ cố định 500 ms: 29..51 Hz
+/// (p50 37). Sàn 20 Hz là ~1,5× dưới mức thấp nhất đo được — đủ rộng cho host bận, vẫn bắt
+/// nguồn tick **quá chậm**.
+pub const HZ_MIN: u32 = 20;
+/// Trần `hz` **giao được** — 500 Hz, rộng hơn nhiều mức đo được (max 51 Hz). Đây là **chặn
+/// trên an toàn** (giá trị vô lý), **không** phải phép kiểm divisor: dưới TCG tốc độ giao được
+/// **bão hoà** ở ~55 Hz nên một nguồn 1.000 Hz vẫn đo ra ~55 Hz. Việc bắt nguồn sai nhịp nằm ở
+/// [`pit_divisor_ok`] (đọc lại divisor từ counter PIT).
+pub const HZ_MAX: u32 = 500;
+
+/// `true` ⇔ `hz` **giao được** nằm trong khoảng hợp lệ [`HZ_MIN`]..=[`HZ_MAX`].
+///
+/// # Vì sao thêm kiểm này (KT-297)
+///
+/// Trước KT-297 cổng chỉ đòi `hz > 0`, nên một nguồn tick **quá chậm** (hoặc giá trị vô lý)
+/// vẫn xanh miễn là còn tick. Đây là **kiểm đúng đắn** (chặt hơn phép kiểm cũ), khoảng chốt từ
+/// số đo thật của soak — **không** phải nới ngưỡng. Nguồn tick **sai divisor** được bắt riêng
+/// bằng [`pit_divisor_ok`] vì `hz` giao được bão hoà dưới TCG.
+pub const fn hz_ok(hz: u32) -> bool {
+    hz >= HZ_MIN && hz <= HZ_MAX
 }

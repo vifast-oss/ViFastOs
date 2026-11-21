@@ -107,6 +107,7 @@ use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
 use vifast_plat_x86_64::sched::FrameReturn;
 use vifast_plat_x86_64::serial;
+use vifast_plat_x86_64::timebase::PitClock;
 use vifast_plat_x86_64::tss;
 
 /// **KT-270** (K5' bước 4, D2-207): U-mode ring 3 — stub `.user`, handler `int 0x80`, `iretq`
@@ -779,8 +780,9 @@ const TIMER_DIVIDE: u32 = 1;
 /// Giá trị đếm đầu tiên của LAPIC timer — 1 ms danh định (mô hình QEMU: 1 count/ns).
 ///
 /// **Không** dùng làm nguồn tick: QEMU TCG giao ngắt LAPIC timer không đều (đo được chu kỳ
-/// 2,8–38,5 ms cho chu kỳ danh định 100 µs). Ảnh cấu hình đủ ba thanh ghi + **kiểm đếm ngược**
-/// (bằng chứng timer chạy) rồi mask `LVT`; nguồn tick là **PIT** (xem [`timer_init`]).
+/// 2,8–38,5 ms cho chu kỳ danh định 100 µs). Ảnh cấu hình đủ ba thanh ghi + **kiểm counter
+/// đổi giá trị** (bằng chứng timer chạy, KT-297) rồi mask `LVT`; nguồn tick là **PIT** (xem
+/// [`timer_init`]).
 const TIMER_INITIAL_COUNT: u32 = 1_000_000;
 /// Số chia PIT cho **100 Hz**: 1_193_182 / 100 = 11_931,82 ⇒ 11_932 (sai số 0,0015 %).
 const PIT_DIVISOR_100HZ: u16 = 11_932;
@@ -789,14 +791,26 @@ const PIT_TICK_HZ: u32 =
     (apic::PIT_FREQUENCY_HZ + PIT_DIVISOR_100HZ as u32 / 2) / PIT_DIVISOR_100HZ as u32;
 /// Chân IOAPIC của IRQ0 (PIT) trên PC: **pin 2** (IRQ0 → pin 2, IRQ1 → pin 1, IRQ2 → pin 0).
 const IOAPIC_PIT_PIN: u32 = 2;
-/// Trần vòng chờ **một** mốc tick — mốc đầu busy-wait (mỗi vòng 3 cổng I/O PIT) nên timer hỏng
-/// thì trần này cắt (ĐỎ) thay vì treo; hai mốc sau dùng `hlt` (timer đã chứng minh chạy).
+/// Trần vòng chờ **counter LAPIC đổi giá trị** — timer hỏng thì cắt (ĐỎ) thay vì treo.
 ///
-/// Đo được: mốc đầu tới sau ~150 ms ≈ vài chục nghìn vòng ⇒ 500_000 là dư ~10×.
-const TICK_SPIN_BOUND: u32 = 500_000;
-/// Chênh lệch tick tối đa giữa hai mốc liên tiếp — vượt là timer chạy sai nhịp (không hardcode
-/// số tick chính xác: QEMU TCG không đều).
-const MAX_TICK_DELTA: u64 = 1_000;
+/// Mỗi vòng là một lần đọc MMIO (~1 µs); counter QEMU đổi mỗi ns nên timer chạy đổi ngay vòng
+/// đầu. 100_000 vòng ≈ 0,1 s là dư cho timer chết (đột biến `no-lapic-timer`).
+const LAPIC_RUNS_SPIN_BOUND: u32 = 100_000;
+/// Số count PIT kênh 2 của cửa sổ đo `hz` — **500 ms** (1.193.182 × 0,5 = 596.591 count).
+///
+/// # Vì sao cửa sổ **cố định** thay vì "chờ ba mốc tick" (KT-297)
+///
+/// KT-293 đo `hz` trên **hai** khoảng tick (mỗi khoảng 1 tick): dưới TCG QEMU giao tick không
+/// đều (đo được 9..55 ms cho chu kỳ danh định 10 ms) ⇒ `hz` trải 0..24.350 và 2/600 boot ra
+/// `window_pit=0` (mốc tick đã chờ sẵn ⇒ vòng chờ thoát trước lần đọc PIT đầu). Cửa sổ **cố
+/// định 500 ms** đo trên ~20 tick ⇒ `hz` là trung bình, không phụ thuộc một mốc tick đơn lẻ;
+/// cửa sổ luôn có ảnh PIT (đọc mốc trước khi chờ) nên không thể ra 0.
+const HZ_WINDOW_COUNTS: u32 = 596_591;
+/// Trần vòng poll cửa sổ đo — PIT hỏng thì cắt (ĐỎ) thay vì treo.
+///
+/// Mỗi vòng ~2 µs (3 cổng I/O) ⇒ 500 ms cần ~250.000 vòng; 500.000 là dư ~2×. Với `hlt` mỗi
+/// vòng ~20 ms (một tick) nên trần này chỉ cắt khi `hlt` trả về ngay (ngắt spurious liên tục).
+const HZ_WINDOW_SPIN_BOUND: u32 = 500_000;
 
 /// Đọc thanh ghi LAPIC (MMIO 32-bit) theo offset.
 pub(crate) fn lapic_read(offset: u32) -> u32 {
@@ -876,41 +890,6 @@ pub(crate) fn pit2_latch_read() -> u16 {
     let lo = asm::inb(apic::PIT_CH2_DATA) as u16;
     let hi = asm::inb(apic::PIT_CH2_DATA) as u16;
     (hi << 8) | lo
-}
-
-/// Chờ tới khi `TICK_COUNT >= target`, tối đa `bound` vòng; trả tick hiện tại hoặc `None`.
-///
-/// Trong lúc chờ, **cộng dồn** số tick PIT đã trôi qua vào `elapsed` (xử lý bọc mode 2 mỗi lần
-/// đọc) — nhờ vậy cửa sổ đo `hz` không bị đếm thiếu khi counter PIT nạp lại nhiều lần.
-fn wait_ticks_pit(
-    target: u64,
-    bound: u32,
-    prev: &mut u16,
-    elapsed: &mut u32,
-    allow_hlt: bool,
-) -> Option<u64> {
-    let mut spins = 0u32;
-    loop {
-        let now = TICK_COUNT.load(Ordering::Relaxed);
-        if now >= target {
-            return Some(now);
-        }
-        if spins >= bound {
-            return None;
-        }
-        let p = pit2_latch_read();
-        *elapsed += apic::pit_elapsed_ticks(*prev, p);
-        *prev = p;
-        spins += 1;
-        if allow_hlt {
-            // `hlt` (ngắt đã bật) nhường BQL cho QEMU xử lý timer — busy-wait làm ngắt trễ
-            // ~100 ms. Chỉ dùng **sau** khi đã thấy tick đầu tiên: nếu timer hỏng, `hlt` sẽ
-            // chặn tới khi runner hết ngân sách, còn busy-wait thì trần `bound` cắt được.
-            asm::hlt();
-        } else {
-            core::hint::spin_loop();
-        }
-    }
 }
 
 /// Kết quả khởi tạo LAPIC — bằng chứng in ra log + dùng cho TAP.
@@ -1041,25 +1020,36 @@ struct TimerInit {
 /// 2,8–38,5 ms và đổi giữa các lần boot — QEMU chỉ xử lý timer ở ranh giới vòng lặp chính, không
 /// theo từng chu kỳ. Vì vậy ảnh dùng **PIT kênh 0 mode 2** (1,193182 MHz, chia 11_932 ⇒ 100 Hz)
 /// làm nguồn tick, còn LAPIC **nhận** ngắt qua IOAPIC (redirection IRQ0 → vector 32) và ghi
-/// `EOI`. LAPIC timer vẫn được cấu hình đủ ba thanh ghi và **kiểm đếm ngược** — bằng chứng nó
-/// chạy — rồi mask để không tranh nguồn tick.
+/// `EOI`. LAPIC timer vẫn được cấu hình đủ ba thanh ghi và **kiểm counter đổi giá trị** — bằng
+/// chứng nó chạy — rồi mask để không tranh nguồn tick.
 fn timer_init() -> TimerInit {
-    // ---- 1. LAPIC timer: đủ ba thanh ghi (divide, LVT, initial count) + kiểm đếm ngược.
+    // ---- 1. LAPIC timer: đủ ba thanh ghi (divide, LVT, initial count) + kiểm **periodic** chạy.
     let divide_code = apic::timer_divide_code(TIMER_DIVIDE).unwrap_or(apic::TIMER_DIVIDE_BY_1);
     lapic_write(apic::LAPIC_TIMER_DIVIDE, divide_code);
     lapic_write(
         apic::LAPIC_LVT_TIMER,
         apic::lvt_timer_value(exc::VEC_TIMER, true),
     );
-    lapic_write(apic::LAPIC_TIMER_INITIAL_COUNT, TIMER_INITIAL_COUNT);
+    // **Đột biến (i)** (`--features no-lapic-timer`): **không** nạp `INITIAL_COUNT` ⇒ counter
+    // đứng yên ở 0 ⇒ `runs=0` **thật** (ĐỎ ở TAP 10). Chỉ dùng để chứng minh bộ kiểm có răng.
+    if !cfg!(feature = "no-lapic-timer") {
+        lapic_write(apic::LAPIC_TIMER_INITIAL_COUNT, TIMER_INITIAL_COUNT);
+    }
     let lapic_count0 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
+    // Chờ counter **đổi giá trị** — **không** đòi giảm: `LVT_TIMER` là periodic nên counter
+    // quay vòng và `count1 > count0` là hợp lệ (KT-293: 4/600 boot `runs=0` giả). Xem
+    // [`apic::lapic_timer_runs`].
+    let mut lapic_count1 = lapic_count0;
     let mut spins = 0u32;
-    while spins < 1_000 {
+    while spins < LAPIC_RUNS_SPIN_BOUND {
         core::hint::spin_loop();
         spins += 1;
+        lapic_count1 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
+        if lapic_count1 != lapic_count0 {
+            break;
+        }
     }
-    let lapic_count1 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
-    let lapic_timer_runs = lapic_count1 < lapic_count0;
+    let lapic_timer_runs = apic::lapic_timer_runs(lapic_count0, lapic_count1, TIMER_INITIAL_COUNT);
     // Mask `LVT`: nguồn tick là PIT, LAPIC timer **không** được phát ngắt.
     lapic_write(
         apic::LAPIC_LVT_TIMER,
@@ -1067,7 +1057,16 @@ fn timer_init() -> TimerInit {
     );
 
     // ---- 2. PIT kênh 0 mode 2 — 100 Hz.
-    pit_program_mode2(PIT_DIVISOR_100HZ);
+    //
+    // **Đột biến (ii)** (`--features wrong-hz`): nạp divisor **nhỏ hơn 10×** ⇒ nguồn tick
+    // 1.000 Hz danh định ⇒ `div_ok=0` (counter đọc lại ≈ 1.125, ngoài dải) ⇒ TAP 10 ĐỎ. Chỉ
+    // dùng để chứng minh bộ kiểm có răng. (Đột biến **chậm** hơn cũng bị bắt: counter > divisor.)
+    let pit_divisor = if cfg!(feature = "wrong-hz") {
+        PIT_DIVISOR_100HZ / 10
+    } else {
+        PIT_DIVISOR_100HZ
+    };
+    pit_program_mode2(pit_divisor);
     let pit_counter0 = pit_latch_read();
     let mut pit_spins = 0u32;
     while pit_spins < 2000 {
@@ -1100,79 +1099,74 @@ fn timer_init() -> TimerInit {
 
 /// Kết quả đo timer.
 struct TimerInfo {
-    /// Tần số tick **đo được** (Hz) trên cửa sổ ba mốc — không phải tần số danh định.
+    /// Tần số tick **đo được** (Hz) trên cửa sổ cố định — không phải tần số danh định.
     hz: u32,
-    /// Tick tại mốc thứ ba.
+    /// `TICK_COUNT` tại cuối cửa sổ đo (tổng số tick đã nhận từ đầu boot).
     ticks: u64,
-    /// `true` ⇔ ba mốc **tăng nghiêm ngặt** và chênh lệch trong khoảng hợp lý.
+    /// `true` ⇔ cửa sổ đo **đủ dài**, tick **tăng**, và `hz` trong khoảng hợp lệ.
     ticks_ok: bool,
-    /// `true` ⇔ số `EOI` == số tick.
-    eoi_ok: bool,
-    /// Cửa sổ đo **đo được** (tick PIT) từ mốc đầu tới mốc cuối — bằng chứng nhịp.
+    /// Cửa sổ đo **đo được** (count PIT kênh 2) — bằng chứng nhịp.
     period_pit: u32,
 }
 
-/// Đo timer: ba mốc tick + `hz` **đo** bằng PIT + đối chiếu `EOI` với tick.
+/// Đo timer: cửa sổ **cố định 500 ms** bằng PIT kênh 2 + `hz` **đo** + đối chiếu `EOI` với tick.
 ///
-/// # Vì sao **không** hardcode số tick
+/// # Vì sao cửa sổ cố định, không "chờ ba mốc tick" (KT-297)
 ///
-/// QEMU TCG không bảo đảm nhịp đều: một mốc có thể nhảy 1 hoặc vài tick. Vì vậy ca kiểm chỉ đòi
-/// (i) ba mốc **tăng nghiêm ngặt**, (ii) mỗi chênh lệch ≤ [`MAX_TICK_DELTA`], (iii) `hz > 0`.
-/// Số tick **tuyệt đối** không phải hợp đồng.
+/// KT-293 đo `hz` trên **hai** khoảng tick (mỗi khoảng 1 tick). Dưới TCG, QEMU giao tick không
+/// đều (đo được 9..55 ms cho chu kỳ danh định 10 ms) nên `hz` trải **0..24.350**; 2/600 boot ra
+/// `window_pit=0` vì mốc tick đã chờ sẵn (vòng chờ thoát trước lần đọc PIT đầu), và một số boot
+/// `ticks_ok=false` vì một mốc nhảy quá `MAX_TICK_DELTA`. Cửa sổ **cố định 500 ms**:
 ///
-/// `hz` là **trung bình đo được** trên cả cửa sổ ba mốc (không phải tần số danh định): PIT đếm
-/// bằng counter mode 2, còn tick đếm bằng handler. Dưới TCG, QEMU xử lý timer ở ranh giới vòng
-/// lặp chính nên `hz` đo được **thấp hơn** 100 Hz danh định và đổi giữa các lần boot — đó là số
-/// thật, không phải lỗi cấu hình.
+/// - đo trên ~20 tick ⇒ `hz` là **trung bình**, không phụ thuộc một mốc tick đơn lẻ;
+/// - đọc mốc PIT **trước** khi đọc tick ⇒ cửa sổ luôn có ảnh PIT, không thể `window_pit=0`;
+/// - `ticks_ok` chỉ đòi tick **tăng** trong cửa sổ (không đòi từng mốc cách nhau ≤ 1.000 tick
+///   — dưới TCG host bận, một mốc có thể nhảy xa; đó là **jitter của QEMU**, không phải timer
+///   hỏng), **và** `hz` giao được nằm trong [`apic::HZ_MIN`]..=[`apic::HZ_MAX`].
+///
+/// # Vì sao vẫn cần kiểm divisor PIT (KT-297)
+///
+/// Dưới TCG, tốc độ tick **giao được** bị chặn trên bởi độ trễ đánh thức `hlt` (~20 ms) nên
+/// `hz` **bão hoà** ~30..55 Hz cho cả nguồn 100 Hz lẫn 1.000 Hz. Vì vậy TAP 10 còn đòi
+/// [`apic::pit_divisor_ok`] — đọc lại counter PIT ngay sau khi nạp mode 2 — để bắt nguồn tick
+/// **sai divisor** (đột biến `wrong-hz`). Đây là **kiểm đúng đắn**, không phải nới ngưỡng.
+///
+/// Số tick **tuyệt đối** không phải hợp đồng; `hz` là số **đo**, không hardcode.
 fn measure_timer() -> TimerInfo {
-    // ---- 1. Ba mốc tick: mỗi mốc chờ tick tăng thêm 1 (có trần), **cộng dồn** PIT kênh 2.
+    // ---- 1. Cửa sổ cố định 500 ms: PIT kênh 2 mode 2 divisor 0xFFFF, cộng dồn qua mỗi lần
+    //         counter nạp lại (`PitClock` xử lý bọc — cùng bộ đếm `net`/`blk`/`smp` dùng).
     pit2_program_mode2(apic::PIT_MAX_DIVISOR);
-    let mut prev = pit2_latch_read();
-    let mut elapsed = 0u32;
-    let s0 = TICK_COUNT.load(Ordering::Relaxed);
-    // Mốc đầu **busy-wait** (trần `bound` cắt được nếu timer hỏng); hai mốc sau `hlt` vì timer
-    // đã chứng minh chạy.
-    let s1 = wait_ticks_pit(s0 + 1, TICK_SPIN_BOUND, &mut prev, &mut elapsed, false);
-    // `hz` đo trên **hai mốc sau** (busy-wait đầu chậm hơn hẳn nên không đại diện nhịp).
-    let mut prev2 = pit2_latch_read();
-    let mut elapsed2 = 0u32;
-    let s2 = match s1 {
-        Some(t) => wait_ticks_pit(t + 1, TICK_SPIN_BOUND, &mut prev2, &mut elapsed2, true),
-        None => None,
-    };
-    let s3 = match s2 {
-        Some(t) => wait_ticks_pit(t + 1, TICK_SPIN_BOUND, &mut prev2, &mut elapsed2, true),
-        None => None,
-    };
-    let ticks_ok = match (s1, s2, s3) {
-        (Some(a), Some(b), Some(c)) => {
-            a > s0
-                && b > a
-                && c > b
-                && (a - s0) <= MAX_TICK_DELTA
-                && (b - a) <= MAX_TICK_DELTA
-                && (c - b) <= MAX_TICK_DELTA
+    let mut clock = PitClock::new();
+    clock.reset(pit2_latch_read());
+    let t0 = TICK_COUNT.load(Ordering::Relaxed);
+    let mut t1;
+    let mut spins = 0u32;
+    loop {
+        clock.update(pit2_latch_read());
+        t1 = TICK_COUNT.load(Ordering::Relaxed);
+        if clock.counts() >= HZ_WINDOW_COUNTS as u64 || spins >= HZ_WINDOW_SPIN_BOUND {
+            break;
         }
-        _ => false,
-    };
-    let ticks = s3.unwrap_or_else(|| TICK_COUNT.load(Ordering::Relaxed));
-
-    // ---- 2. `hz` trung bình trên cửa sổ hai mốc sau: tick LAPIC / tick PIT × 1,193182 MHz.
-    let tick_delta = match (s1, s3) {
-        (Some(a), Some(c)) => c.saturating_sub(a).min(u32::MAX as u64) as u32,
-        _ => 0,
-    };
-    let hz = apic::hz_from_pit(tick_delta, elapsed2);
-
-    // ---- 3. `EOI` phải bằng tick: handler ghi EOI **mỗi** tick, không thừa không thiếu.
-    let eoi_ok = EOI_COUNT.load(Ordering::Relaxed) == TICK_COUNT.load(Ordering::Relaxed);
+        spins += 1;
+        // `hlt` **bắt buộc**: vòng busy-wait (kể cả đọc PIT thưa) giữ BQL của QEMU, làm callback
+        // PIT của main loop trễ ⇒ đo được 1..7 tick/1 s thay vì ~40. `hlt` nhường vCPU, QEMU
+        // phục vụ timer rồi đánh thức bằng chính ngắt tick.
+        asm::hlt();
+    }
+    let window = clock.counts().min(u32::MAX as u64) as u32;
+    let tick_delta = t1.saturating_sub(t0).min(u32::MAX as u64) as u32;
+    let hz = apic::hz_from_pit(tick_delta, window);
+    // `ticks_ok`: cửa sổ **đủ dài** + tick **tăng** + `hz` giao được trong khoảng hợp lệ. Cửa sổ
+    // bị trần cắt (PIT hỏng) ⇒ `window < HZ_WINDOW_COUNTS` ⇒ ĐỎ; timer không tick ⇒
+    // `tick_delta=0` ⇒ ĐỎ; nguồn tick quá chậm/vô lý ⇒ `hz_ok=false` ⇒ ĐỎ. Nguồn tick **sai
+    // divisor** do `pit_divisor_ok` bắt ở TAP 10 (xem đầu hàm).
+    let ticks_ok = window >= HZ_WINDOW_COUNTS && tick_delta >= 1 && apic::hz_ok(hz);
 
     TimerInfo {
         hz,
-        ticks,
+        ticks: t1,
         ticks_ok,
-        eoi_ok,
-        period_pit: elapsed2,
+        period_pit: window,
     }
 }
 
@@ -1420,13 +1414,18 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
 
     // ---- TAP 10/11: timer — cấu hình LAPIC timer + PIT, bật ngắt, đo tick + EOI.
     let timer_init = timer_init();
+    // **KT-297** — divisor PIT đọc lại từ counter: dưới TCG `hz` đo được bão hoà ở tốc độ
+    // **giao được** (độ trễ đánh thức `hlt`), nên kiểm divisor trực tiếp mới bắt được nguồn
+    // tick sai nhịp (đột biến `wrong-hz`).
+    let pit_div_ok = apic::pit_divisor_ok(timer_init.pit_counter0, PIT_DIVISOR_100HZ);
     let _ = writeln!(
         console,
-        "# timer: lapic count0={} count1={} runs={} ioapic_route={} nominal_hz={} pit=0x{:04x}->0x{:04x}",
+        "# timer: lapic count0={} count1={} runs={} ioapic_route={} div_ok={} nominal_hz={} pit=0x{:04x}->0x{:04x}",
         timer_init.lapic_count0,
         timer_init.lapic_count1,
         timer_init.lapic_timer_runs as u8,
         timer_init.ioapic_route_ok as u8,
+        pit_div_ok as u8,
         PIT_TICK_HZ,
         timer_init.pit_counter0,
         timer_init.pit_counter1,
@@ -1434,6 +1433,9 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
     asm::sti();
     let timer = measure_timer();
     asm::cli();
+    // `EOI` phải bằng tick: handler ghi EOI **mỗi** tick, không thừa không thiếu. Đọc **sau**
+    // `cli` để không có tick chen giữa hai lần đọc (KT-297: bỏ race của phép so cũ).
+    let eoi_ok = EOI_COUNT.load(Ordering::Relaxed) == TICK_COUNT.load(Ordering::Relaxed);
     let _ = writeln!(
         console,
         "# timer: hz={} ticks={} window_pit={}",
@@ -1443,7 +1445,11 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         &mut console,
         10,
         "timer: ticks",
-        timer.ticks_ok && timer.hz > 0 && timer_init.lapic_timer_runs && timer_init.ioapic_route_ok,
+        timer.ticks_ok
+            && timer.hz > 0
+            && timer_init.lapic_timer_runs
+            && timer_init.ioapic_route_ok
+            && pit_div_ok,
     );
     let _ = writeln!(
         console,
@@ -1452,7 +1458,7 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         TICK_COUNT.load(Ordering::Relaxed),
         SPURIOUS_COUNT.load(Ordering::Relaxed),
     );
-    check(&mut console, 11, "timer: eoi", timer.eoi_ok);
+    check(&mut console, 11, "timer: eoi", eoi_ok);
 
     let _ = writeln!(
         console,

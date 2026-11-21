@@ -58,6 +58,14 @@ bad-rsp = []
 # **KT-286** — đột biến (iii): không `EOI` trong handler timer ⇒ LAPIC giữ ISR bit ⇒ timer **tắt
 # sau tick đầu** ⇒ TAP 10 `timer: ticks` ĐỎ. Chỉ dùng cho đột biến.
 no-eoi = []
+# **KT-297** — đột biến (i) của phép kiểm timer: **không** nạp `LAPIC_TIMER_INITIAL_COUNT` ⇒
+# counter đứng yên ở 0 ⇒ `runs=0` **thật** ⇒ TAP 10 ĐỎ. Chứng minh phép kiểm periodic mới không
+# phải dấu cao su (trước KT-297, `runs` chỉ so `count1 < count0`). Chỉ dùng cho đột biến.
+no-lapic-timer = []
+# **KT-297** — đột biến (ii): nạp PIT kênh 0 divisor **nhỏ hơn 10×** ⇒ tick 1.000 Hz ⇒ `hz` đo
+# được ngoài `HZ_MAX` ⇒ TAP 10 ĐỎ. Chứng minh cổng bắt được timer **sai nhịp** (trước KT-297
+# cổng chỉ đòi `hz > 0`). Chỉ dùng cho đột biến.
+wrong-hz = []
 # **KT-288** — đột biến (ii) của virtio-blk: chữ ký sector 0 sai ⇒ `magic=0` ⇒ TAP 25 ĐỎ (hex vẫn
 # đúng — lớp lỗi "đọc được nhưng không nhận ra chữ ký"). Chỉ dùng cho đột biến.
 bad-blk-magic = []
