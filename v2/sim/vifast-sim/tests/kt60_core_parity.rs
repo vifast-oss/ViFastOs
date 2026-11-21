@@ -2969,9 +2969,20 @@ fn kt60_pin_dau_chan_d2_84() {
     // 4 CPTR đích + `n` + `dst` + 6 bộ đếm) ⇒ `20 × usize` → **`20 × usize + 16 × u64`** giữ
     // nguyên, cộng **16** đơn vị vô hướng. Pin **cố ý** đổi (D2-84): tăng trường phải là quyết
     // định có ghi, không phải trôi.
+    // **KT-312**: **không** thêm/bớt trường vô hướng ⇒ `scalars` **311 không đổi**; phần thu hồi
+    // 10.240 B nằm ở dòng `objects[256]` (22.528 → **12.288**), không phải ở đây.
     assert_eq!(
         f.scalars,
         20 * core::mem::size_of::<usize>() + 16 * core::mem::size_of::<u64>() + 2 + 4 + 1 + 16
+    );
+    // **KT-312** — bảng phải **thật**: dòng `objects[256]` là `256 × size_of::<Meta>()`, và
+    // `Meta` **48 B** (không phải 88 B) vì ba trường chỉ số đã dùng kiểu hẹp (`Option<u8>`/
+    // `Option<u16>`, miền giá trị chứng minh được `< MAX_UNTYPEDS`/`≤ MAX_SLOT_WORDS`). Nếu ai
+    // nới lại `Meta` thành `Option<usize>`, dòng này đỏ **ngay** — bảng không còn là lời khai.
+    assert_eq!(
+        f.bytes[1],
+        256 * 48,
+        "objects[256] phải = 256 × 48 B (Meta 48 B, KT-312)"
     );
     assert!(
         f.total <= 196_608,

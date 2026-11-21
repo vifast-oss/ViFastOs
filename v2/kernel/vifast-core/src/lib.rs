@@ -67,6 +67,7 @@ mod machine_slot;
 pub mod mailbox;
 pub mod mcs;
 mod mdb;
+mod objmeta;
 mod objstate;
 pub mod sched;
 mod slotmem;

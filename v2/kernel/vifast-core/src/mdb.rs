@@ -45,7 +45,7 @@ impl Machine {
                 let m = &self.objects[i];
                 (m.alive, m.untyped, m.ty)
             };
-            if !alive || unty != Some(u_idx) {
+            if !alive || unty.map(usize::from) != Some(u_idx) {
                 continue;
             }
             push_id(out, n, (i as u32) + 1);

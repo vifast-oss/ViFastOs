@@ -133,7 +133,90 @@ impl Machine {
 mod tests {
     extern crate std;
     use super::*;
+    use crate::MAX_SLOT_WORDS;
     use std::println;
+
+    /// **KT-312** — `Meta` **không** được đệm thừa: ba trường chỉ số có miền giá trị **chứng
+    /// minh được** nhỏ hơn nhiều so với `usize`:
+    ///
+    /// - `untyped` = chỉ số **object** của Untyped chứa object ⇒ `< MAX_OBJECTS = 256`;
+    /// - `region` = chỉ số arena trong `Machine::regions` ⇒ `< MAX_UNTYPEDS = 16`;
+    /// - `slots_meta` = số slot CNode ⇒ `≤ MAX_SLOT_WORDS = 4096` (harness ≤ `HARNESS_SLOT_WORDS`
+    ///   = 1024, arena ≤ `REGION_SLOT_WORDS` = 192).
+    ///
+    /// `Option<usize>` chiếm **16 B** mỗi trường (không niche) ⇒ `Meta` **88 B**; kiểu hẹp
+    /// `Option<u8>`/`Option<u16>` giữ **nguyên** ngữ nghĩa (`Some`/`None`, cùng giá trị) và cho
+    /// `Meta` **48 B** ⇒ thu hồi **40 B × 256 = 10.240 B** trên `objects[256]`. D2-84: **tối ưu**
+    /// chứ không nới pin.
+    #[test]
+    fn kt312_meta_khong_dem_thua() {
+        // Miền giá trị của ba trường — tiền đề của việc thu hẹp kiểu.
+        assert!(
+            MAX_OBJECTS - 1 <= u8::MAX as usize,
+            "untyped phải vừa u8: MAX_OBJECTS = {MAX_OBJECTS}"
+        );
+        assert!(
+            MAX_UNTYPEDS - 1 <= u8::MAX as usize,
+            "region phải vừa u8: MAX_UNTYPEDS = {MAX_UNTYPEDS}"
+        );
+        assert!(
+            MAX_SLOT_WORDS <= u16::MAX as usize,
+            "slots_meta phải vừa u16: MAX_SLOT_WORDS = {MAX_SLOT_WORDS}"
+        );
+        assert_eq!(
+            size_of::<crate::machine::Meta>(),
+            48,
+            "Meta phải 48 B (ba trường chỉ số dùng kiểu hẹp, không Option<usize>)"
+        );
+        assert!(
+            size_of::<Machine>() <= 184_320,
+            "KT-312: size_of::<Machine>() = {} > 184320 (thu hồi < 10.200 B)",
+            size_of::<Machine>()
+        );
+    }
+
+    /// **KT-312** — giá trị **cực đại** của ba trường chỉ số vẫn **vừa** kiểu hẹp: 16 Untyped
+    /// (chỉ số `0..=15`), object retype từ Untyped **cuối** (`untyped = 15`), CNode harness
+    /// **1000 slot** (`slots_meta = 1000 > u8::MAX`). Nếu kiểu hẹp **cắt** giá trị thì
+    /// `untyped_arena`/`object_bytes`/`cnode_slot_count` trả sai **ngay** — test này là chứng
+    /// minh ngữ nghĩa, không chỉ chứng minh byte.
+    #[test]
+    fn kt312_meta_gia_tri_cuc_dai_van_vua_kieu_hep() {
+        use crate::error::{ObjType, SlotRef};
+        let mut m = Machine::new();
+        let root = m.add_cnode(MAX_UNTYPEDS);
+        let mut last_untyped = 0;
+        for i in 0..MAX_UNTYPEDS {
+            let base = 0x1000_0000 + (i as u64) * 0x10_0000;
+            let u = m.add_untyped(base, 1 << 16);
+            let uc = m.root_cap(u);
+            m.put_cap(root, i, uc).expect("cap untyped");
+            last_untyped = u;
+        }
+        // `region = Some(15)` — chỉ số arena lớn nhất.
+        assert_eq!(
+            m.untyped_arena(last_untyped),
+            Some((0x1000_0000 + 15 * 0x10_0000, 1 << 16)),
+            "region = 15 phải đọc lại đúng (Option<u8>)"
+        );
+        // `untyped = Some(15)` — chỉ số Untyped lớn nhất.
+        let cap = m
+            .retype(SlotRef::new(root, MAX_UNTYPEDS - 1), ObjType::Tcb, 0, 0)
+            .expect("retype TCB từ Untyped cuối");
+        let obj = m.cap_obj(cap).expect("object của cap");
+        let (off, len) = m
+            .object_bytes(obj)
+            .expect("object_bytes phải Some (untyped = 15)");
+        assert!(len > 0, "len phải dương");
+        assert!(
+            off + len <= 1 << 16,
+            "object phải nằm trong Untyped: off={off} len={len}"
+        );
+        // `slots_meta = 1000` — lớn hơn `u8::MAX` ⇒ chứng minh phải là `u16`, không phải `u8`.
+        let big = m.add_cnode(1000);
+        assert_eq!(m.cnode_slot_count(big), Ok(1000), "slots_meta = 1000");
+        assert!(1000 > u8::MAX as usize, "ca này phải vượt u8");
+    }
 
     #[test]
     fn in_bang_phan_bo_va_pin_d2_84() {

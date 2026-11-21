@@ -68,114 +68,13 @@ pub const MAX_HARTS: usize = 8;
 /// Đầy ⇒ [`Machine::finalise_tcb`] trả `NotEnoughMemory` (không cắt im lặng, không panic).
 pub const MAX_FINALISE: usize = MAX_OBJECTS;
 
-// ---------------------------------------------------------------------------------------------
-// Body của object (phần trạng thái KT-59 thêm vào; `.bss`, không cấp phát)
-// ---------------------------------------------------------------------------------------------
-
-/// Loại body đã cấp cho một object — `NONE` với các loại chưa port body (Endpoint/...).
-pub(crate) const BODY_NONE: u8 = 0;
-/// Body TCB (`Machine::tcbs`).
-pub(crate) const BODY_TCB: u8 = 1;
-/// Body SchedContext (`Machine::scs`).
-pub(crate) const BODY_SC: u8 = 2;
-/// Body Endpoint (`Machine::endpoints`, KT-60).
-pub(crate) const BODY_ENDPOINT: u8 = 3;
-/// Body Reply (`Machine::replies`, KT-60).
-pub(crate) const BODY_REPLY: u8 = 4;
-/// Body Notification (`Machine::notifications`, KT-60).
-pub(crate) const BODY_NOTIFICATION: u8 = 5;
-
-/// Tham chiếu body của object — chỉ số + cờ sống.
-///
-/// sim `destroy` body khi object chết; core đánh dấu `alive = false` và trả chỉ số vào
-/// free-list để tái dùng. Truy cập body đã chết trả `InvalidCapability` như sim.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BodyRef {
-    pub(crate) kind: u8,
-    pub(crate) idx: u16,
-    pub(crate) alive: bool,
-}
-
-impl BodyRef {
-    pub(crate) const NONE: Self = Self {
-        kind: BODY_NONE,
-        idx: 0,
-        alive: false,
-    };
-}
-
-/// Một dòng log finalise TCB (KT-18 DoD 9) — port `FinaliseEntry` của sim.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FinaliseEntry {
-    /// TCB.
-    pub tcb: ObjId,
-    /// Trạng thái ghi log (luôn `Dead` ở sim).
-    pub state: TcbState,
-    /// SC được trả lại (hook finalise).
-    pub released_sched_context: Option<ObjId>,
-}
-/// Sổ cái một object (metadata; body của object lõi **chưa** port ở tầng này).
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Meta {
-    pub(crate) ty: ObjType,
-    pub(crate) alive: bool,
-    /// Chỉ số Untyped chứa object (None với object harness cấp / Untyped gốc).
-    pub(crate) untyped: Option<usize>,
-    /// Offset logic trong Untyped.
-    pub(crate) offset: usize,
-    /// Cỡ logic của spec.
-    pub(crate) len: usize,
-    /// Untyped: chỉ số arena trong `Machine::regions`.
-    pub(crate) region: Option<usize>,
-    /// CNode: số slot trong **metadata** (đọc được cả sau khi chết; `None` với CNode
-    /// `add_kernel_object` như sim `ChoDat::default`).
-    pub(crate) slots_meta: Option<usize>,
-    /// CNode: số slot **của body** (bảng từ).
-    pub(crate) slot_len: usize,
-    /// CNode: offset trong pool word.
-    pub(crate) slot_base: usize,
-    /// Body TCB/SchedContext (KT-59); `NONE` với loại chưa port body.
-    pub(crate) body: BodyRef,
-}
-
-impl Meta {
-    pub(crate) const EMPTY: Self = Self {
-        ty: ObjType::Untyped,
-        alive: false,
-        untyped: None,
-        offset: 0,
-        len: 0,
-        region: None,
-        slots_meta: None,
-        slot_len: 0,
-        slot_base: 0,
-        body: BodyRef::NONE,
-    };
-}
-
-/// Một cap: object + quan hệ cha (MDB) + slot + quyền + badge.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Cap {
-    pub(crate) obj: ObjId,
-    pub(crate) ty: ObjType,
-    pub(crate) parent: Option<CapId>,
-    pub(crate) slot: Option<SlotRef>,
-    pub(crate) rights: u8,
-    pub(crate) badge: Option<u64>,
-    pub(crate) alive: bool,
-}
-
-impl Cap {
-    pub(crate) const EMPTY: Self = Self {
-        obj: 0,
-        ty: ObjType::Untyped,
-        parent: None,
-        slot: None,
-        rights: 0,
-        badge: None,
-        alive: false,
-    };
-}
+// **KT-312** — `BodyRef`/`Meta`/`Cap`/`FinaliseEntry` + mã body chuyển sang
+// [`crate::objmeta`] (giữ **R1** ≤ 1.500 dòng/tệp); tái xuất **đúng tên cũ** nên mọi
+// `use crate::machine::{…}` giữ nguyên.
+pub use crate::objmeta::FinaliseEntry;
+pub(crate) use crate::objmeta::{
+    BodyRef, Cap, Meta, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, BODY_SC, BODY_TCB,
+};
 
 /// Core model K3b — **không** `unsafe`, **không** cấp phát động.
 #[derive(Debug, Clone, Copy)]
@@ -667,7 +566,9 @@ impl Machine {
         if m.ty != ObjType::Untyped {
             return 0;
         }
-        m.region.map(|r| self.regions[r].capacity).unwrap_or(0)
+        m.region
+            .map(|r| self.regions[r as usize].capacity)
+            .unwrap_or(0)
     }
 
     /// Untyped: watermark byte đã cấp (0 nếu không phải Untyped).
@@ -679,7 +580,9 @@ impl Machine {
         if m.ty != ObjType::Untyped {
             return 0;
         }
-        m.region.map(|r| self.regions[r].cursor).unwrap_or(0)
+        m.region
+            .map(|r| self.regions[r as usize].cursor)
+            .unwrap_or(0)
     }
 
     /// Untyped: byte còn tự do.
@@ -696,7 +599,7 @@ impl Machine {
         let idx = obj as usize - 1;
         self.objects[..self.n_objects]
             .iter()
-            .filter(|m| m.alive && m.untyped == Some(idx))
+            .filter(|m| m.alive && m.untyped.map(usize::from) == Some(idx))
             .map(|m| m.len)
             .sum()
     }
@@ -712,7 +615,11 @@ impl Machine {
         self.objects[..self.n_objects]
             .iter()
             .filter(|m| m.alive && m.ty == ObjType::Untyped)
-            .map(|m| m.region.map(|r| self.regions[r].cursor).unwrap_or(0))
+            .map(|m| {
+                m.region
+                    .map(|r| self.regions[r as usize].cursor)
+                    .unwrap_or(0)
+            })
             .sum()
     }
 
@@ -725,7 +632,7 @@ impl Machine {
         if m.ty != ObjType::Untyped {
             return None;
         }
-        let r = m.region?;
+        let r = m.region? as usize;
         Some((self.regions[r].base, self.regions[r].capacity))
     }
 
@@ -756,7 +663,7 @@ impl Machine {
             if m.ty != ObjType::Untyped {
                 return Err(KError::WrongObjectType);
             }
-            let region = m.region.ok_or(KError::WrongObjectType)?;
+            let region = m.region.map(usize::from).ok_or(KError::WrongObjectType)?;
             (idx, region, self.regions[region].capacity, c.rights)
         };
         if src_rights & RIGHT_WRITE == 0 {
@@ -1229,11 +1136,11 @@ impl Machine {
             // Reset arena của **mọi** Untyped trong cây + Untyped gốc.
             for &id in &dead[..ndead] {
                 if let Some(r) = self.objects[id as usize - 1].region {
-                    self.regions[r].reset();
+                    self.regions[r as usize].reset();
                 }
             }
             if let Some(r) = self.objects[u_idx].region {
-                self.regions[r].reset();
+                self.regions[r as usize].reset();
             }
             // Cap còn sống trỏ object vừa chết cũng phải chết (không cap nào trỏ object chết).
             for i in 1..=self.n_caps as CapId {
@@ -1291,6 +1198,23 @@ impl Machine {
             self.n_objects < MAX_OBJECTS,
             "vifast-core: hết MAX_OBJECTS ({MAX_OBJECTS})"
         );
+        // **KT-312** — thu hẹp kiểu **có chứng minh**: ba trường chỉ số chỉ nhận giá trị trong
+        // miền của bảng tương ứng (`untyped` = chỉ số **object** < `MAX_OBJECTS`; `region` =
+        // chỉ số arena < `MAX_UNTYPEDS`; `slots_meta` = số slot CNode ≤ `MAX_SLOT_WORDS`).
+        // `debug_assert` giữ bất biến này khi phát triển; bản release dùng `as` (không thể tràn
+        // vì mọi caller đã bị chặn bởi `MAX_OBJECTS`/`MAX_UNTYPEDS`/`HARNESS_SLOT_WORDS`).
+        let untyped = untyped.map(|u| {
+            debug_assert!(u < MAX_OBJECTS, "untyped {u} >= MAX_OBJECTS");
+            u as u8
+        });
+        let region = region.map(|r| {
+            debug_assert!(r < MAX_UNTYPEDS, "region {r} >= MAX_UNTYPEDS");
+            r as u8
+        });
+        let slots_meta = slots_meta.map(|n| {
+            debug_assert!(n <= MAX_SLOT_WORDS, "slots_meta {n} > MAX_SLOT_WORDS");
+            n as u16
+        });
         self.objects[self.n_objects] = Meta {
             ty,
             alive: true,

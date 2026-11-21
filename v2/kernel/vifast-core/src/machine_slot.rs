@@ -12,7 +12,7 @@ impl Machine {
     pub fn cnode_slot_count(&self, cnode: ObjId) -> Result<usize, KError> {
         let m = self.meta(cnode)?;
         if !m.alive {
-            return m.slots_meta.ok_or(KError::WrongObjectType);
+            return m.slots_meta.map(usize::from).ok_or(KError::WrongObjectType);
         }
         if m.ty != ObjType::CNode {
             return Err(KError::WrongObjectType);
@@ -37,15 +37,18 @@ impl Machine {
         if !m.alive {
             return Ok(None);
         }
-        let n = m.slots_meta.ok_or(KError::WrongObjectType)?;
-        let Some(u_idx) = m.untyped else {
+        let n = m
+            .slots_meta
+            .map(usize::from)
+            .ok_or(KError::WrongObjectType)?;
+        let Some(u_idx) = m.untyped.map(usize::from) else {
             // CNode harness: không tiêu byte arena (như `add_cnode` của sim).
             return Ok(None);
         };
         let region = self
             .objects
             .get(u_idx)
-            .and_then(|u| u.region)
+            .and_then(|u| u.region.map(usize::from))
             .ok_or(KError::WrongObjectType)?;
         let pa = self.regions[region]
             .base
@@ -68,7 +71,10 @@ impl Machine {
     pub(crate) fn cnode_slot(&self, cnode: ObjId, slot: usize) -> Result<Option<CapId>, KError> {
         let m = self.meta(cnode)?;
         if !m.alive {
-            let n = m.slots_meta.ok_or(KError::WrongObjectType)?;
+            let n = m
+                .slots_meta
+                .map(usize::from)
+                .ok_or(KError::WrongObjectType)?;
             return if slot < n {
                 Ok(None)
             } else {

@@ -154,6 +154,7 @@ impl Machine {
         }
         let region = m
             .region
+            .map(usize::from)
             .ok_or(CheckFailure::one("Untyped khong co vung nho", untyped))?;
         let size = self.regions[region].capacity;
         let watermark = self.regions[region].cursor;
@@ -164,7 +165,7 @@ impl Machine {
         let mut allocated = 0usize;
         for i in 0..self.n_objects {
             let o = &self.objects[i];
-            if !o.alive || o.untyped != Some(u_idx) {
+            if !o.alive || o.untyped.map(usize::from) != Some(u_idx) {
                 continue;
             }
             let Some(end) = o.offset.checked_add(o.len) else {
@@ -186,13 +187,13 @@ impl Machine {
         }
         for i in 0..self.n_objects {
             let a = &self.objects[i];
-            if !a.alive || a.untyped != Some(u_idx) {
+            if !a.alive || a.untyped.map(usize::from) != Some(u_idx) {
                 continue;
             }
             let (a0, a1) = (a.offset, a.offset + a.len);
             for j in (i + 1)..self.n_objects {
                 let b = &self.objects[j];
-                if !b.alive || b.untyped != Some(u_idx) {
+                if !b.alive || b.untyped.map(usize::from) != Some(u_idx) {
                     continue;
                 }
                 let (b0, b1) = (b.offset, b.offset + b.len);
