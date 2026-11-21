@@ -4,33 +4,32 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 23:00 (sau vòng 18) ===
-HEAD          : `903138e5` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `903138e5` (**769,3 s**) — ứng viên bàn giao.
-SOAK          : riscv64 **0/1000**; aarch64 **0/1000** (đo ở vòng 17 — **ảnh đã đổi** ở KT-305
-                ⇒ **cần soak lại**); x86_64 **0/600** (đo ở vòng 17 — **ảnh đã đổi** ở KT-304
-                ⇒ **cần soak lại**).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 00:40 (sau vòng 19) ===
+HEAD          : `3a10b62c` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `3a10b62c` (**736,2 s**) — ứng viên bàn giao.
+SOAK          : riscv64 **0/1000**; aarch64 **0/1000** (ảnh vòng 18, `invalid=0`); x86_64 **0/600**
+                (ảnh vòng 18, `invalid=0`). **Cả ba ảnh đạt 0/N trên ảnh hiện tại.**
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
                 soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** (block 2 MiB) +
-                **translate/unmap block** + virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) +
-                W^X + cache DMA + virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**
-                (24 ca âm).
+                translate/unmap block + virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) +
+                W^X + cache DMA + virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**.
 X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
                 virtio-net + ARP + SMP 4 hart + IPI (chờ theo **biến đếm**) + TSS/IST1 per-hart +
-                preemption (bàn giao `rsp` qua **thanh ghi**) + **tác vụ ring 3 trong scheduler** +
-                virtio-blk + neo ảnh D2-80; TAP **26/26**, runner **18/18** (16 ca âm).
+                preemption (bàn giao `rsp` qua **thanh ghi**) + tác vụ ring 3 trong scheduler +
+                virtio-blk + neo ảnh D2-80; TAP **26/26**, runner **18/18** (19 ca âm).
 RISCV64       : IPC từ U-mode + MR4..MR63 qua IPC buffer + net server U-mode +
-                `Tcb.Configure` invocation + **`NetPing` là dịch vụ kernel kiểm quyền**;
-                ktest matrix **27/27**; soak **0/1000**.
+                `Tcb.Configure` invocation + `NetPing` dịch vụ kiểm quyền + **cap transfer**
+                (vùng riêng IPC buffer); ktest matrix **27/27**; soak **0/1000**.
 MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode + NetPing dịch vụ),
                 aarch64 (DHCP/ARP/ICMP/TCP/DNS), x86_64 (ARP).
 THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64; đĩa cả ba arch.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267).
-TASK          : **KT-243..KT-306 DONE** (64 task). **0 REVIEW**, **0 READY**.
+TASK          : **KT-243..KT-309 DONE** (67 task). **0 REVIEW**, **0 READY**.
 NỢ MỞ         : P20; K5' đầy đủ (nhiều hart schedule, priority, sleep/wake, `-cpu max`);
-                cap transfer qua IPC buffer; `Tcb.Configure` **kênh hẹp**; `NetSvc` chỉ phục vụ
-                **một** caller; dịch vụ kernel chạy **giữa các lượt U-mode** (không trong trap
-                handler); DNS cục bộ chỉ trong soak (interpose macOS-specific).
+                `Tcb.Configure` **kênh hẹp**; `NetSvc` chỉ phục vụ **một** caller; dịch vụ kernel
+                chạy **giữa các lượt U-mode**; `extra_caps_unwrapped` **đã có chủ** (unwrap) ⇒
+                muốn thành trường ABI thật phải **mở `spec/`**; `size_of::<Machine>()` **194.520**
+                / pin 196.608 (headroom **2.088** — mỏng); DNS cục bộ chỉ trong soak.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
