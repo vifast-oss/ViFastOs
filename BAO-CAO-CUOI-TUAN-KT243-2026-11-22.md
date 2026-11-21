@@ -4,10 +4,10 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (tám vòng, 32 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (chín vòng, 35 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
-> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. HEAD cuối `d22454df` (đã push), T1 + T2 xanh,
-> cây sạch.
+> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. HEAD cuối `55afb139`
+> (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -43,6 +43,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 26 | **soak 1.000 aarch64 sau U-mode** | **ĐẠT — 0/1000**, hạ tầng hợp lệ | wall 239 s, `qemu_foreign=0` |
 | 27 | **aarch64 PCI ECAM + virtio-blk** | **ĐẠT** | `# blk: sector0 … ascii="VIFASTOS-KT273-S"`; TAP 21/21 |
 | 28 | **x86_64 PCI ECAM + virtio-net + ARP** | **ĐẠT** | `# net: arp gw=10.0.2.2 … sent=1 recv=1`; TAP 17/17 |
+| 29 | **aarch64 virtio-net + DHCP/ARP/ICMP** | **ĐẠT** | `# net: dhcp ip=10.0.2.15`, `# net: ping 10.0.2.2 ok n=3`; TAP 25/25 |
+| 30 | **x86_64 SMP 2 hart** | **ĐẠT** | `# smp: online mask=0x3 alive=0x3 harts=2`; TAP 19/19 |
+| 31 | **aarch64 W^X + cache maintenance trước DMA** | **ĐẠT** | `# wx: text=RX data=RW ok=1 … fault_ec=0x25`; `# dma: cache-clean ok=1 lines=64` |
 
 ---
 
@@ -500,13 +503,56 @@ ARP reply `52:55:0a:00:02:02` và DHCP là **thật của slirp**. **Cảnh báo
 `.data+.bss` = **225.488 B / 262.144 B (86,0 %)** — chỉ còn ~36 KiB; virtio-gpu/input trên aarch64
 sẽ cần tính lại (trang DMA mạng tốn 4 KiB, leaf BAR mạng tốn 1 frame: `frames_used=38/44`).
 
+### 3.33 KT-276 — x86_64 **SMP 2 hart**
+**XONG.** `INIT-SIPI-SIPI` qua ICR + trampoline real mode → long mode. **Đo**:
+```text
+# smp: trampoline base=0x8000 bytes=4096 src=0x110000 magic=0x00000000534d5032 ok=1
+# smp: icr init dest=1 low=0xc500 high=0x01000000 sipi vector=0x08 low=0x0608
+# smp: hart=1 online
+# smp: hart=1 lapic id=1 base=0xfee00000 svr=0x1ff tpr=0 sp=0x14cee0 slot=1
+ok 18 - smp: ap online
+# smp: online mask=0x3 alive=0x3 expect=0x3 harts=2 ap_ticks=1 waited_online_us=2623
+ok 19 - smp: both harts report
+```
+TAP **19/19**, runner **14/14** (12 ca âm). **Năm phát hiện**: (1) QEMU `-kernel` (PVH) nạp segment
+ở `0x8000` nhưng **SeaBIOS ghi đè** (đo `u32 @ 0x8000 = 0`) ⇒ trampoline link 64 KiB-aligned rồi
+**copy xuống lúc chạy**; (2) **multiboot2 header phải ở 32 KiB đầu tệp** — `ALIGN(64K)` ở output
+section làm segment nhận `align 2**16` ⇒ header rơi ra ngoài, phải `ALIGN(64K)` **trong** `.text`;
+(3) **16-bit `moffs16` vs `moffs32`** — `mov eax, [0x900]` trong `.code16` dùng địa chỉ 16-bit;
+(4) **64-bit absolute** `[0x908]` phải là `[0x8908]` (quên cộng `0x8000` ⇒ `rsp=0` ⇒ `#PF`/`#DF`);
+(5) **vector 32 dùng chung** cho tick PIT của BSP và timer AP ⇒ phân biệt bằng `LAPIC_ID`.
+
+### 3.34 KT-277 — aarch64 **W^X toàn ảnh + cache maintenance trước DMA**
+**XONG.** **Đo**:
+```text
+# wx: text=RX data=RW ok=1 text_bytes=77824 data_bytes=782336 guard_pages=8 guard_bytes=32768
+      text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080000100
+      low_fault_ec=0x25 low_fault_va=0x40080100 text_unchanged=1 data_rw=1 data_in_rw=1
+ok 26 - wx: text RX (write faults), data RW
+# dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1
+       poll_inval=1 line=64 ctr=0x000000008444c004
+ok 27 - dma: cache maintenance before/after DMA
+```
+TAP **27/27** (sau merge KT-275), runner **29/29** (15 ca âm). **Guard không map** kiểm bằng **số
+trang**: `pages=202 = (77824+782336−32768)/4096`; nếu map guard sẽ là 210. `line=64` đọc từ
+`CTR_EL0` (không hard-code). **Trung thực**: đột biến "bỏ **đúng lệnh** `dc civac` nhưng giữ vòng
+lặp" **vẫn XANH** — QEMU TCG không mô hình hoá cache; tầng host chỉ kiểm **mã lệnh tuyệt đối** + số
+lệnh/địa chỉ từng dòng của vòng lặp. **Không** tuyên bố "đã kiểm trên phần cứng".
+
+### 3.35 Sự cố trong vòng 9 — `git add -A` và 1.555 tệp không theo dõi
+Khi giải xung đột cherry-pick KT-277, tôi dùng `git add -A` ⇒ commit kéo theo **1.555 tệp không
+theo dõi** của phiên khác (gồm video >20 MB trong `review/video/`). GitHub từ chối push
+(`GH001: Large files detected`). **Đã sửa**: viết lại commit (`de445d1d` → `991e516c`) bỏ đúng
+1.555 tệp đó; `v2/` **không đổi một byte** (`git diff --stat 3f0fcb4b HEAD -- v2/` rỗng). **Bài
+học**: khi giải xung đột, `git add <đường-dẫn-cụ-thể>`, **không** `git add -A`.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `e35bacda` (ứng viên bàn giao) | **PASS 67/67, 617,6 s** | `/tmp/t2-r8.log` |
-| **T1** `gate --dev` trên `fdae9941` | **PASS 388,0 s** | `/tmp/t1-r8.log` |
+| **T2** `gate --fast` trên `21d396c6` (ứng viên bàn giao) | **PASS 67/67, 632,7 s** | `/tmp/t2-r9.log` |
+| T2 trên `e35bacda` (vòng 8) | PASS 67/67, 617,6 s | `/tmp/t2-r8.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
