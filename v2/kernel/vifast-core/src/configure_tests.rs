@@ -139,6 +139,9 @@ struct Rig {
     frame_slot: SlotRef,
     ep_slot: SlotRef,
     cnode2_slot: SlotRef,
+    /// **KT-320** — cap `VSpace` (đường xanh `vspace?`) + object đại diện của nó.
+    vspace_slot: SlotRef,
+    vspace_obj: ObjId,
 }
 
 fn rig() -> Rig {
@@ -180,6 +183,13 @@ fn rig() -> Rig {
         .retype(SlotRef::new(c, 10), ObjType::Endpoint, 0, 0)
         .expect("retype endpoint 2");
     m.put_cap(c, 14, ep2_cap).expect("cap endpoint 2");
+    // **KT-320** — cap `VSpace` (object **đại diện** của object layer, D2-83) cho `vspace?`
+    // đường xanh; slot 2 (`Frame`) là ca âm "vspace không phải VSpace".
+    let vspace_obj = m
+        .add_foreign_object(ObjType::VSpace, 0x3200_0000)
+        .expect("vspace đại diện");
+    let vspace_cap = m.root_cap(vspace_obj);
+    m.put_cap(c, 15, vspace_cap).expect("cap vspace");
     // **KT-311** — priority/mcp ban đầu (3/10) để `priority?` có dải thật để kiểm: 4..10 hợp lệ,
     // 11 vượt `mcp` ⇒ `InvalidArgument`.
     m.tcb_set_priority(SlotRef::new(c, 1), 3, 10)
@@ -195,6 +205,8 @@ fn rig() -> Rig {
         frame_slot: SlotRef::new(c, 2),
         ep_slot: SlotRef::new(c, 12),
         cnode2_slot: SlotRef::new(c, 13),
+        vspace_slot: SlotRef::new(c, 15),
+        vspace_obj,
     }
 }
 
@@ -691,32 +703,17 @@ fn configure_cspace_khong_phai_cnode() {
     );
 }
 
-/// **KT-311** — `vspace?` **chưa cài** ⇒ `NotSupported` **18** (fail-closed, không im lặng);
-/// mask có bit lạ (≥ bit 4) ⇒ `InvalidArgument` **5**; arch không đọc được vùng (trang chưa map)
-/// ⇒ `InvalidArgument` **5**.
+/// **KT-311** — mask có bit lạ (≥ bit 4) ⇒ `InvalidArgument` **5**; arch không đọc được vùng
+/// (trang chưa map) ⇒ `InvalidArgument` **5**.
+///
+/// **KT-320** — `vspace?` **đã cài**: bật bit 1 **không** còn trả `NotSupported` (18); CPTR
+/// `vspace` đọc từ word 1 của vùng 608..640 (xem `configure_vspace_duong_xanh_va_ca_am`).
 #[test]
 fn configure_vspace_va_mask_la() {
     let _guard = CONFIGURE_COUNTER_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
-    assert_eq!(
-        invoke_on_cfg(
-            &mut r.m,
-            r.tcb,
-            r.tcb_slot,
-            3,
-            [
-                r.frame_slot.slot as u64,
-                0x4002_0000,
-                crate::ipc::CONFIGURE_MASK_VSPACE,
-                0
-            ],
-            Some([0, 0, 0, 0])
-        ),
-        Err(KError::NotSupported.id() as u64),
-        "vspace? chưa cài ⇒ 18"
-    );
     assert_eq!(
         invoke_on_cfg(
             &mut r.m,
@@ -797,4 +794,193 @@ fn configure_nguyen_tu() {
         0,
         "entry hợp lệ KHÔNG được ghi khi cspace sai (nguyên tử)"
     );
+}
+
+/// **KT-320** — `vspace?` **đã cài**: CPTR `VSpace` (word 1 của vùng 608..640) được kiểm **loại**
+/// rồi **lưu** vào `TcbData.vspace`; hook arch `SyscallEnv::tcb_vspace` nhận **đúng** object.
+///
+/// Ca âm: CPTR trỏ cap `Frame` ⇒ `WrongObjectType` **2** (không nhận Frame làm VSpace); ô rỗng ⇒
+/// `InvalidCapability` **1**; CPTR ngoài bảng ⇒ **1**. **Nguyên tử**: `vspace` hợp lệ + `entry`
+/// sai ⇒ `vspace` **không** đổi.
+#[test]
+fn configure_vspace_duong_xanh_va_ca_am() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    // Chưa cấu hình ⇒ 0 (không phải `Some`/giá trị rác).
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), 0);
+    // ---- ca âm (i): CPTR trỏ cap `Frame` ⇒ `WrongObjectType` 2 ----
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            Some([0, r.frame_slot.slot as u64, 0, 0])
+        ),
+        Err(KError::WrongObjectType.id() as u64),
+        "vspace = cap Frame ⇒ 2 (không nhận Frame làm VSpace)"
+    );
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), 0, "ca âm không ghi");
+    // ---- ca âm (ii): ô rỗng ⇒ `SlotEmpty` 8 (cùng mã như `cspace?` trỏ ô rỗng) ----
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            Some([0, 5, 0, 0])
+        ),
+        Err(KError::SlotEmpty.id() as u64),
+        "vspace = ô rỗng ⇒ 8"
+    );
+    // ---- ca âm (iii): CPTR ngoài bảng ⇒ `InvalidCapability` 1 ----
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            Some([0, 16, 0, 0])
+        ),
+        Err(KError::InvalidCapability.id() as u64),
+        "vspace CPTR ngoài bảng ⇒ 1"
+    );
+    // ---- nguyên tử: `vspace` hợp lệ + `entry` lẻ ⇒ 6, `vspace` KHÔNG đổi ----
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [
+                r.frame_slot.slot as u64,
+                0x4002_0000,
+                mask | crate::ipc::CONFIGURE_MASK_ENTRY,
+                0
+            ],
+            Some([0, r.vspace_slot.slot as u64, 0x4000_0001, 0])
+        ),
+        Err(KError::Alignment.id() as u64),
+        "entry lẻ ⇒ 6 (kiểm TẤT CẢ trước khi ghi)"
+    );
+    assert_eq!(
+        r.m.tcb_vspace(r.tcb).expect("vspace"),
+        0,
+        "vspace hợp lệ KHÔNG được ghi khi entry sai (nguyên tử)"
+    );
+    // ---- đường xanh: CPTR `VSpace` ⇒ lưu đúng object ----
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            Some([0, r.vspace_slot.slot as u64, 0, 0])
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(
+        r.m.tcb_vspace(r.tcb).expect("vspace"),
+        r.vspace_obj,
+        "vspace? phải lưu đúng object VSpace"
+    );
+    // `ipc_buffer?` vẫn bind như cũ (cùng invocation) — `vspace?` không phá tham số khác.
+    assert_eq!(
+        r.m.tcb_ipc_buffer_binding(r.tcb)
+            .expect("binding")
+            .expect("đã bind")
+            .va,
+        0x4002_0000
+    );
+}
+
+/// **KT-320** — hook arch `SyscallEnv::tcb_vspace` được gọi **đúng một lần** với **đúng**
+/// `(tcb, object VSpace)` sau khi `Configure` thành công; ca âm **không** gọi hook (D2-83: core
+/// giao VSpace cho arch, arch mới chạm `satp`).
+#[test]
+fn configure_vspace_goi_hook_arch() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mut env = HookEnv::default();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    // Ca âm (CPTR `vspace` = cap `Frame`): hook **không** được gọi.
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            Some([0, r.frame_slot.slot as u64, 0, 0])
+        ),
+        Err(KError::WrongObjectType.id() as u64)
+    );
+    assert_eq!(env.calls, 0, "ca âm không được gọi hook arch");
+    // Đường xanh: đúng một lần, đúng cặp `(tcb, vspace)`.
+    assert_eq!(
+        invoke::dispatch(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            info(invoke::TCB_CONFIGURE, 3),
+            &[r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(env.calls, 1, "hook arch phải được gọi đúng một lần");
+    assert_eq!(env.last, Some((r.tcb, r.vspace_obj)));
+}
+
+/// **KT-320** — `SyscallEnv` ghi lại lời gọi hook `tcb_vspace` (mặc định của trait là `false`).
+#[derive(Default)]
+struct HookEnv {
+    calls: usize,
+    last: Option<(ObjId, ObjId)>,
+}
+
+impl SyscallEnv for HookEnv {
+    fn put_str(&mut self, _ptr: u64, len: u64) -> Result<u64, u64> {
+        Ok(len)
+    }
+    fn resolve_addr(&mut self, _va: u64) -> Result<(u32, u32), u64> {
+        Err(11)
+    }
+    fn now_ns(&mut self) -> u64 {
+        0
+    }
+    fn features(&mut self) -> u64 {
+        0
+    }
+    fn num_harts(&mut self) -> u64 {
+        1
+    }
+    fn ipc_header(&mut self, _tcb: ObjId) -> Option<crate::ipc::IpcHeader> {
+        Some(crate::ipc::IpcHeader {
+            info: 0,
+            recv_window: [0; 4],
+            send_caps: [0; 4],
+            extra: crate::ipc::IpcExtraCaps::EMPTY,
+            configure: crate::ipc::IpcConfigureParams {
+                cspace: 0,
+                vspace: 15,
+                entry: 0,
+                priority: 0,
+            },
+        })
+    }
+    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> bool {
+        self.calls += 1;
+        self.last = Some((tcb, vspace));
+        true
+    }
 }

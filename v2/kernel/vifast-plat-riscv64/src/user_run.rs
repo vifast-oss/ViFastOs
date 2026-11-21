@@ -144,14 +144,138 @@ fn apply_resume_pc(tf: &mut TrapFrame) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-320 — `Tcb.Configure` `vspace?`: core **giao** danh tính VSpace, arch **chọn root `satp`**
+// ---------------------------------------------------------------------------------------------
+
+/// TCB đang chờ áp `VSpace` — `u32::MAX` = không có (cùng khuôn `RESUME_TCB`).
+static VSPACE_TCB: AtomicU32 = AtomicU32::new(u32::MAX);
+/// `ObjId` (core) của `VSpace` mà `Tcb.Configure` đã giao cho arch.
+static VSPACE_OBJ: AtomicU32 = AtomicU32::new(0);
+/// `(obj, root_pa, asid, match)` của lần **tiêu thụ** gần nhất — bằng chứng cho TAP/rig.
+static VSPACE_APPLIED: AtomicU32 = AtomicU32::new(0);
+static VSPACE_ROOT: AtomicU64 = AtomicU64::new(0);
+static VSPACE_ASID: AtomicU32 = AtomicU32::new(0);
+static VSPACE_MATCH: AtomicU32 = AtomicU32::new(0);
+
+/// **KT-320** — `Tcb.Configure` vừa ghi `TcbData.vspace` cho `tcb`: giữ **danh tính** object để
+/// lần vào U-mode **kế tiếp** của **đúng** TCB đó chọn root `satp` từ nó.
+///
+/// Vì sao phải chờ: `Configure` là invocation của **tác vụ giám sát** (caller), không phải của
+/// tác vụ đích — `satp` của đích chỉ ghi được lúc scheduler `sret` vào nó. Core **không** ghi CSR
+/// (D2-83) nên nó gọi hook `SyscallEnv::tcb_vspace`, hook này chỉ **giữ** giá trị; [`run_task`]
+/// tiêu thụ ở lượt chạy kế tiếp (một lần — `take` xoá).
+pub(crate) fn arm_vspace(tcb: ObjId, vspace: ObjId) {
+    VSPACE_OBJ.store(vspace, Ordering::Release);
+    VSPACE_TCB.store(tcb, Ordering::Release);
+}
+
+/// Lấy + **xoá** `VSpace` đã chờ cho `tcb` (`None` = không có, hoặc đang chờ TCB khác).
+fn take_vspace(tcb: ObjId) -> Option<ObjId> {
+    if VSPACE_TCB.load(Ordering::Acquire) != tcb {
+        return None;
+    }
+    VSPACE_TCB.store(u32::MAX, Ordering::Release);
+    let obj = VSPACE_OBJ.swap(0, Ordering::AcqRel);
+    if obj == 0 {
+        None
+    } else {
+        Some(obj)
+    }
+}
+
+/// **KT-320** — `(obj, root_pa, asid, match)` của lần **tiêu thụ** `vspace?` gần nhất; `None` =
+/// chưa có lần nào. `match` = root của VSpace đã cấu hình **khớp** root của ảnh đã nạp.
+pub fn vspace_applied() -> Option<(ObjId, u64, u16, bool)> {
+    let obj = VSPACE_APPLIED.load(Ordering::Acquire);
+    if obj == 0 {
+        return None;
+    }
+    Some((
+        obj,
+        VSPACE_ROOT.load(Ordering::Acquire),
+        VSPACE_ASID.load(Ordering::Acquire) as u16,
+        VSPACE_MATCH.load(Ordering::Acquire) != 0,
+    ))
+}
+
+/// **KT-320** — giải `ObjId` (core) của `VSpace` thành `(root_pa, asid)` của object layer.
+///
+/// D2-83: core **không** sở hữu PTE/PA — danh tính object đi qua `Machine::foreign_key` (khoá
+/// đóng gói `CapId`+`object_id` của object layer, cùng khuôn `Frame.Map`), rồi object layer trả
+/// root PA/ASID. `None` = object đã chết/không phải `VSpace` ⇒ fail-closed.
+fn resolve_vspace(obj: ObjId) -> Option<(u64, u16)> {
+    let key = crate::core_bridge::with_machine(|m| m.foreign_key(obj).ok())?;
+    let (cap, _) = crate::mem_bridge::decode_key(key);
+    let m = crate::obj::machine();
+    let root = m.vspace_root_pa(cap).ok()?;
+    let asid = m.vspace_asid(cap).ok()?;
+    Some((root, asid))
+}
+
+/// **KT-320** — chọn root `satp` cho lượt vào U-mode **kế tiếp** từ `TcbData.vspace` (đã giao
+/// qua hook `SyscallEnv::tcb_vspace`).
+///
+/// Trả `Some((root_pa, asid))` ⇔ TCB đang chạy có `vspace?` đã cấu hình **và** root của nó khớp
+/// root của ảnh đã nạp (`loaded.root`) — khi đó `satp` lấy **từ VSpace của TCB**, không phải từ
+/// `loaded`. Lệch root ⇒ `None` + cờ `match=0`: **từ chối** vào U-mode (fail-closed) vì ảnh
+/// chưa được map vào VSpace khác (`Frame.Map` vào VSpace mới **ngoài phạm vi** KT-320) — chạy
+/// tiếp sẽ fault ngay ở byte đầu tiên.
+fn apply_vspace(loaded: &LoadedInit) -> VspaceChoice {
+    let Some(tcb) = user::core_tcb() else {
+        return VspaceChoice::None;
+    };
+    let Some(obj) = take_vspace(tcb) else {
+        return VspaceChoice::None;
+    };
+    let Some((root, asid)) = resolve_vspace(obj) else {
+        // Danh tính object không giải được (đã chết/không phải VSpace) ⇒ fail-closed.
+        VSPACE_APPLIED.store(obj, Ordering::Release);
+        VSPACE_ROOT.store(0, Ordering::Release);
+        VSPACE_ASID.store(0, Ordering::Release);
+        VSPACE_MATCH.store(0, Ordering::Release);
+        return VspaceChoice::Refuse;
+    };
+    let khop = root == loaded.root;
+    VSPACE_APPLIED.store(obj, Ordering::Release);
+    VSPACE_ROOT.store(root, Ordering::Release);
+    VSPACE_ASID.store(u32::from(asid), Ordering::Release);
+    VSPACE_MATCH.store(u32::from(khop), Ordering::Release);
+    if khop {
+        VspaceChoice::Use(root, asid)
+    } else {
+        VspaceChoice::Refuse
+    }
+}
+
+/// **KT-320** — kết quả [`apply_vspace`]: không có `vspace?` / dùng root của VSpace đã cấu hình /
+/// **từ chối** vào U-mode (root lệch ảnh đã nạp hoặc danh tính không giải được).
+enum VspaceChoice {
+    None,
+    Use(u64, u16),
+    Refuse,
+}
+
 /// Chạy một tác vụ U-mode từ `loaded` với trapframe `tf` (đã có `sepc`/`sp`/regs). Trả về khi
 /// tác vụ `Yield`/`Exit` (đa nhiệm) hoặc `DebugHalt`; `tf` **không** bị sửa tại chỗ — bản mới
 /// nằm ở [`user::saved_tf`].
 ///
 /// **KT-314**: trước khi `sret`, nạp `sepc` từ `TcbData.entry` nếu `Tcb.Resume` đã chờ TCB này
 /// ([`apply_resume_pc`]) — mọi ảnh đi qua đây nên không có đường "resume nửa vời".
+///
+/// **KT-320**: nếu TCB này có `vspace?` đã cấu hình ([`apply_vspace`]), root `satp` lấy **từ
+/// VSpace của TCB**; root lệch root ảnh đã nạp ⇒ **không** vào U-mode (fail-closed, trả
+/// `Stop::Blocked` — cùng mã dừng của nhánh `Switched`).
 pub fn run_task(loaded: &LoadedInit, tf: &mut TrapFrame) -> Stop {
     apply_resume_pc(tf);
-    user::enter_loaded(loaded, tf);
+    let root = match apply_vspace(loaded) {
+        VspaceChoice::None => None,
+        VspaceChoice::Use(root, asid) => Some((root, asid)),
+        // `vspace?` đã cấu hình nhưng root lệch ảnh đã nạp (hoặc danh tính không giải được) ⇒
+        // **không** vào U-mode: chạy tiếp sẽ fault ở byte đầu tiên vì ảnh chưa được map vào
+        // VSpace đó (`Frame.Map` vào VSpace mới ngoài phạm vi KT-320).
+        VspaceChoice::Refuse => return Stop::Blocked(TcbState::Inactive),
+    };
+    user::enter_loaded_with_root(loaded, tf, root);
     decode(user::stop_kind(), user::stop_code())
 }

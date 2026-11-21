@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 7 7
+ktest-ipc 8 8
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -188,3 +188,16 @@ ktest-netsrv 3 3
 # cùng boot: `entry = 0` ⇒ `InvalidArgument` (5); tác vụ **`Running`** ⇒ `IllegalOperation` (17)
 # — và **kiểm trạng thái đứng trước** kiểm `entry` (TCB `Running` + `entry = 0` vẫn 17, không 5);
 # tác vụ **đã `Exit`** (`Inactive` + `exit_code`) ⇒ 17 (không tự chạy lại). TAP 1..6 giữ nguyên.
+# **KT-320** (D2-224): ảnh `ktest-ipc` thêm **TAP 8** — **`Tcb.Configure` tham số `vspace?`**
+# (mask bit **1** của kênh đầy đủ `length = 3`): `vspace` là **CPTR `VSpace`** trong CSpace
+# **caller** (word 1 của vùng 608..640, cùng chỗ `cspace?`), core kiểm **loại** (`Frame`/`CNode`
+# ⇒ `WrongObjectType` 2) rồi lưu **danh tính** object vào `TcbData.vspace` (D2-83: `satp`/PTE
+# thuộc arch, core **không** ghi CSR) và **giao** cho arch qua hook `SyscallEnv::tcb_vspace`;
+# arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó (`# ipc: vspace ok obj=…
+# applied=… match=1 root=0x… asid=…` — kernel đo **độc lập** `TcbData.vspace` **và** kết quả
+# tiêu thụ của arch, không tin lời chương trình). Ba ca âm trong cùng boot: mask có **bit lạ**
+# (bit 4) ⇒ `InvalidArgument` (**5**, kiểm mask đứng **trước** mọi kiểm khác); CPTR là cap
+# **`Frame`** ⇒ `WrongObjectType` (**2**); ô 0 của CSpace gốc là cap `CNode` ⇒ **2** (ca âm của
+# KT-311 đổi tiền đề từ "`vspace?` chưa cài ⇒ 18" sang "sai loại ⇒ 2" — `k6-test-invariants.md`
+# §4.1). Đường xanh đòi thêm: tác vụ đích vẫn `Exit(0)` **sau khi** `satp` được chọn từ VSpace
+# của TCB. TAP 1..7 giữ nguyên nội dung.

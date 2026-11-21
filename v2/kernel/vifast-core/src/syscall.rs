@@ -225,6 +225,16 @@ pub trait SyscallEnv {
         false
     }
 
+    /// **KT-320** — `Tcb.Configure` đã ghi **VSpace** của `tcb` (`TcbData.vspace`): arch **giữ**
+    /// danh tính object để **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó (D2-83:
+    /// `satp`/PTE là của arch, core **không** ghi). Trả `true` ⇔ arch đã giữ giá trị; nền tảng
+    /// không có U-mode trả `false` (danh tính trong core vẫn là hiệu ứng model).
+    ///
+    /// Mặc định `false` — mọi `SyscallEnv` cũ (test host, ảnh không U-mode) giữ nguyên hành vi.
+    fn tcb_vspace(&mut self, _tcb: ObjId, _vspace: ObjId) -> bool {
+        false
+    }
+
     /// **KT-282** — 60 word **MR4..MR63** trong **IPC buffer** của TCB gọi (D2-83: core không
     /// đọc bộ nhớ user). Arch đọc trang 4 KiB tại **VA đã bind** (`Tcb.Configure` tham số
     /// `ipc_buffer?`, xem [`Machine::tcb_ipc_buffer_binding`]) ở offset

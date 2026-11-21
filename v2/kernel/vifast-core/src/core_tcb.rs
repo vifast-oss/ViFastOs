@@ -37,6 +37,9 @@ pub(crate) struct TcbConfigure {
     pub cspace: Option<SlotRef>,
     /// `entry?` — VA điểm vào, phải căn [`TCB_ENTRY_ALIGN`].
     pub entry: Option<u64>,
+    /// **KT-320** — `vspace?` — cap `VSpace` trong CSpace **caller** (D2-83: core chỉ giữ
+    /// **danh tính** object; `satp`/PTE thuộc arch).
+    pub vspace: Option<SlotRef>,
     /// `ipc_buffer?` — cap `Frame` 4 KiB + VA (căn `IPC_BUFFER_BYTES`).
     pub ipc_buffer: Option<(SlotRef, u64)>,
     /// `priority?` — phải ≤ `max_controlled_priority` (luật MCS).
@@ -48,6 +51,7 @@ impl TcbConfigure {
     pub const EMPTY: Self = Self {
         cspace: None,
         entry: None,
+        vspace: None,
         ipc_buffer: None,
         priority: None,
     };
@@ -241,6 +245,8 @@ impl Machine {
     ///
     /// - `cspace`: cap `CNode` sống trong CSpace **caller** ⇒ gán `TcbData.cspace` (khác
     ///   [`Machine::tcb_configure_with_ipc_buffer`] với `cspace = None` — API đó **xoá** CSpace).
+    /// - `vspace`: cap `VSpace` sống trong CSpace **caller** ⇒ gán `TcbData.vspace` (danh tính
+    ///   object; D2-83: core **không** sở hữu PTE/PA). Sai loại ⇒ `WrongObjectType` (2).
     /// - `entry`: VA điểm vào, phải **căn [`TCB_ENTRY_ALIGN`]** (2 B — biên lệnh RISC-V có `C`)
     ///   ⇒ không: `Alignment` (6).
     /// - `ipc_buffer`: như [`Machine::tcb_configure_ipc_buffer`] (cap `Frame` sống + VA căn
@@ -263,6 +269,13 @@ impl Machine {
             Some(slot) => Some(self.require_type(slot, ObjType::CNode)?),
             None => None,
         };
+        // **KT-320** — `vspace?` phải là cap `VSpace` **sống** (D2-83: core không sở hữu
+        // PTE/PA, chỉ giữ danh tính object đại diện). Cap `Frame`/`PageTable`/loại khác ⇒
+        // `WrongObjectType` (2); ô rỗng/chết ⇒ `InvalidCapability` (1) — `require_type` lo.
+        let vspace_obj = match params.vspace {
+            Some(slot) => Some(self.require_type(slot, ObjType::VSpace)?),
+            None => None,
+        };
         let binding = self.ipc_buffer_binding(params.ipc_buffer)?;
         if let Some(entry) = params.entry {
             if entry % TCB_ENTRY_ALIGN != 0 {
@@ -283,6 +296,9 @@ impl Machine {
             }
             if let Some(entry) = params.entry {
                 t.entry = entry;
+            }
+            if let Some(vspace) = vspace_obj {
+                t.vspace = vspace;
             }
             if params.ipc_buffer.is_some() {
                 t.ipc_buffer = binding;
@@ -343,6 +359,17 @@ impl Machine {
     /// ([`Machine::tcb_resume_invocation`]) rồi arch nạp vào `sepc`.
     pub fn tcb_entry(&self, tcb: ObjId) -> Result<u64, KError> {
         Ok(self.tcb_data(tcb)?.entry)
+    }
+
+    /// **KT-320** — **VSpace** đã cấu hình của TCB (`Tcb.Configure` tham số `vspace?`); `0` =
+    /// **chưa** cấu hình (`ObjId` 1-based ⇒ `0` không phải object hợp lệ, cùng quy ước
+    /// [`Machine::tcb_entry`]).
+    ///
+    /// Đây là **danh tính** object đại diện trong core (D2-83: `VSpace` thuộc object layer);
+    /// arch đọc hàm này để **tiêu thụ** khi vào U-mode — hook `SyscallEnv::tcb_vspace` chỉ là
+    /// đường **giao** giá trị (core **không** ghi `satp`).
+    pub fn tcb_vspace(&self, tcb: ObjId) -> Result<ObjId, KError> {
+        Ok(self.tcb_data(tcb)?.vspace)
     }
 
     /// Kiểm + dựng [`crate::ipc::IpcBufferBinding`] từ tham số `ipc_buffer?` — **một** nguồn cho

@@ -64,6 +64,19 @@ pub(crate) struct TcbData {
     /// **giữ** giá trị (đã kiểm căn 4 B ở `Machine::tcb_configure_invocation`); đường `Resume`
     /// tiêu thụ giá trị này **chưa** cài (ghi nợ `JOURNAL/kt311-cfgfull.md` §7.2). `0` = chưa đặt.
     pub(crate) entry: u64,
+    /// **KT-320** — **VSpace** của tiến trình (`Tcb.Configure` tham số `vspace?`,
+    /// `spec/abi.toml` `[method_signature."Tcb.Configure"]`): `ObjId` của object **đại diện**
+    /// trong core (D2-83: `Frame`/`PageTable`/`VSpace` thuộc object layer; core chỉ giữ **danh
+    /// tính** + cap). `0` = **chưa cấu hình** — `ObjId` của core là **1-based**
+    /// (`Machine::object_index` từ chối `0`), nên `0` không thể là object hợp lệ: cùng quy ước
+    /// "0 = chưa đặt" của [`TcbData::entry`]/[`TcbData::tls`].
+    ///
+    /// Vì sao **không** `Option<ObjId>`: `Option<u32>` chiếm **8 B** (không niche) ⇒
+    /// `+8 × MAX_TCBS(64) = 512 B` vào `size_of::<Machine>()`; `ObjId` (4 B) **vừa đúng** phần
+    /// đệm sẵn có của `TcbData` ⇒ `TcbData` **824 B** và `size_of::<Machine>()` **184.792 B**
+    /// **không đổi** (đo ở `footprint::tests`, pin D2-84 **196.608** và trần KT-312 **184.832**
+    /// đều **không** bị chạm). Ngữ nghĩa `None`/`0` do [`Machine::tcb_vspace`] quy định.
+    pub(crate) vspace: ObjId,
 }
 
 impl TcbData {
@@ -89,6 +102,7 @@ impl TcbData {
         extra_caps_dst: None,
         tls: 0,
         entry: 0,
+        vspace: 0,
     };
 
     pub(crate) fn snapshot(&self) -> TcbInfo {

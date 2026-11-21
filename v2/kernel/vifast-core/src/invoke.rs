@@ -426,7 +426,7 @@ fn set_tls(
 /// | Bit | Tham số | Word | Kiểm |
 /// |---|---|---|---|
 /// | 0 | `cspace?` | 608..616 CPTR | cap `CNode` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1 |
-/// | 1 | `vspace?` | 616..624 | **chưa cài** ⇒ `NotSupported` 18 |
+/// | 1 | `vspace?` | 616..624 CPTR | cap `VSpace` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1 |
 /// | 2 | `entry?` | 624..632 | căn 2 B (biên lệnh RISC-V có `C`) ⇒ không: `Alignment` 6 |
 /// | 3 | `priority?` | 632..640 | vừa `u8` + ≤ `mcp` ⇒ không: `InvalidArgument` 5 |
 ///
@@ -475,11 +475,6 @@ fn configure(
             bump(&DENIED);
             return Err(KError::InvalidArgument.id() as u64);
         }
-        if mask & crate::ipc::CONFIGURE_MASK_VSPACE != 0 {
-            // `vspace?` chưa cài (VSpace thuộc arch — D2-83): fail-closed, không im lặng.
-            bump(&DENIED);
-            return Err(KError::NotSupported.id() as u64);
-        }
         if mask != 0 {
             // D2-83: core **không** đọc bộ nhớ user — arch đọc vùng 608..640 **cùng lần** với
             // header IPC buffer (`SyscallEnv::ipc_header`, một trang + một magic).
@@ -497,6 +492,17 @@ fn configure(
                 }
                 params.cspace = Some(SlotRef::new(cspace, cptr));
             }
+            if mask & crate::ipc::CONFIGURE_MASK_VSPACE != 0 {
+                // **KT-320** — CPTR `VSpace` giải trong CSpace **caller** (như `cspace?`); kiểm
+                // **loại** ở `Machine::tcb_configure_invocation` (D2-83: core chỉ giữ danh tính).
+                let cptr = usize::try_from(extra.vspace)
+                    .map_err(|_| KError::InvalidCapability.id() as u64)?;
+                if cptr >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
+                    bump(&DENIED);
+                    return Err(KError::InvalidCapability.id() as u64);
+                }
+                params.vspace = Some(SlotRef::new(cspace, cptr));
+            }
             if mask & crate::ipc::CONFIGURE_MASK_ENTRY != 0 {
                 params.entry = Some(extra.entry);
             }
@@ -513,6 +519,14 @@ fn configure(
         bump(&DENIED);
         e.id() as u64
     })?;
+    // **KT-320** — giao **VSpace** đã cấu hình cho arch (D2-83: `satp`/PTE thuộc arch; core chỉ
+    // giữ danh tính). Cùng khuôn `SyscallEnv::tcb_resume` (KT-314): hook **giữ** giá trị, arch
+    // **tiêu thụ** ở lần vào U-mode kế tiếp của đúng TCB. Nền tảng không có U-mode trả `false`.
+    if params.vspace.is_some() {
+        if let Ok(vspace) = m.tcb_vspace(c.obj) {
+            let _ = env.tcb_vspace(c.obj, vspace);
+        }
+    }
     bump(&CONFIGURED);
     bump(&ALLOWED);
     Ok((0, 0))

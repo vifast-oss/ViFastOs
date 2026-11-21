@@ -98,7 +98,7 @@ pub const IPC_BUFFER_EXTRA_CAPS_END: usize = IPC_BUFFER_EXTRA_CAPS_DST_OFFSET + 
 ///
 /// ```text
 /// byte 608..616 : cspace CPTR (CSpace caller)       — mask bit 0
-/// byte 616..624 : vspace CPTR (dự phòng — chưa cài) — mask bit 1
+/// byte 616..624 : vspace CPTR (CSpace caller)          — mask bit 1
 /// byte 624..632 : entry (VA, căn 2 B — biên lệnh RISC-V có `C`) — mask bit 2
 /// byte 632..640 : priority (u8)                     — mask bit 3
 /// ```
@@ -111,8 +111,9 @@ pub const IPC_BUFFER_CONFIGURE_END: usize =
 
 /// Mask bit của `cspace?` trong `MR2` của `Tcb.Configure` (kênh đầy đủ, `length = 3`).
 pub const CONFIGURE_MASK_CSPACE: u64 = 1 << 0;
-/// Mask bit của `vspace?` — **chưa cài** (VSpace thuộc arch, D2-83) ⇒ bật bit này là
-/// `NotSupported` (18), fail-closed.
+/// Mask bit của `vspace?` — **KT-320** đã cài: CPTR `VSpace` (word 1) được kiểm **loại** rồi lưu
+/// vào `TcbData.vspace`; arch **tiêu thụ** qua hook `SyscallEnv::tcb_vspace` (D2-83: `satp`/PTE
+/// thuộc arch, core chỉ giữ danh tính).
 pub const CONFIGURE_MASK_VSPACE: u64 = 1 << 1;
 /// Mask bit của `entry?`.
 pub const CONFIGURE_MASK_ENTRY: u64 = 1 << 2;
@@ -132,7 +133,7 @@ pub const CONFIGURE_MASK_ALL: u64 =
 pub struct IpcConfigureParams {
     /// CPTR cap `CNode` cho `cspace?` (CSpace **caller**).
     pub cspace: u64,
-    /// CPTR `VSpace` cho `vspace?` — **dự phòng** (chưa cài).
+    /// CPTR `VSpace` cho `vspace?` (CSpace **caller**) — **KT-320** đã cài.
     pub vspace: u64,
     /// VA entry cho `entry?`.
     pub entry: u64,

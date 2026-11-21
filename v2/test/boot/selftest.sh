@@ -399,6 +399,21 @@ case_red "ev$RESUME_EV" \
     "log ktest-ipc: xoá dòng '# ipc: resume ok entry=0x' (evidence bắt buộc của KT-314)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-resume.log" "$SMP"
 
+# --- ca (q2): dòng `# ipc: vspace` của ảnh KT-320 (`Tcb.Configure` tham số `vspace?`) ----------
+# **KT-320**: dòng `# ipc: vspace ok obj=… applied=… match=1 root=0x… asid=…` do **kernel** in sau
+# khi đo **độc lập** `TcbData.vspace` (client vừa ghi từ U-mode) **và** kết quả arch **tiêu thụ**
+# VSpace khi vào U-mode. Xoá đúng dòng đó ⇒ runner phải đỏ với token `ev<ordinal>` — chứng minh
+# dòng `# ipc: vspace` là evidence **bắt buộc**, không phải trang trí (ba đột biến của KT-320 làm
+# nó sai/thiếu: bỏ kiểm loại ⇒ nhận `Frame`; bỏ kiểm mask lạ ⇒ nhận mask lạ; bỏ hook arch ⇒
+# `applied`/`obj` không khớp).
+VSPACE_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: vspace ok obj=')"
+[ -n "$VSPACE_EV" ] || die "không tra được ordinal evidence '# ipc: vspace ok obj=' của ktest-ipc"
+grep -v -F '# ipc: vspace ok obj=' "$IPC_LOG" >"$WORK/log-ipc-no-vspace.log"
+mut_diff "$WORK/log-ipc-no-vspace.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: vspace ok obj='"
+case_red "ev$VSPACE_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: vspace ok obj=' (evidence bắt buộc của KT-320)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-vspace.log" "$SMP"
+
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình
 # U-mode** in sau khi syscall `Call` trên `EP_KERN` trả kết quả của **dịch vụ kernel** `NetPing`

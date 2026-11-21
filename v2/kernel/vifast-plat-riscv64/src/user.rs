@@ -285,8 +285,25 @@ pub(crate) fn ranges_restore(saved: &UserRanges) {
 /// (`Yield`/`Exit`/`Halt`/`Fault`). Loại/mã dừng nằm ở [`stop_kind`]/[`stop_code`];
 /// [`crate::user_run::run_task`] là cái bọc công khai (tách để giữ R1).
 pub(crate) fn enter_loaded(loaded: &LoadedInit, tf: &mut TrapFrame) {
+    enter_loaded_with_root(loaded, tf, None)
+}
+
+/// **KT-320** — như [`enter_loaded`] nhưng **root page table** của `satp` do **VSpace đã cấu
+/// hình** của TCB quyết định (`Tcb.Configure` tham số `vspace?`): `Some((root_pa, asid))` ⇒ dùng
+/// đúng cặp đó (arch **tiêu thụ** VSpace của TCB, không phải VSpace của ảnh nạp); `None` ⇒ như cũ
+/// (`loaded.root`/`loaded.asid`).
+///
+/// Vì sao cần tham số thay vì đọc `TcbData` ở đây: `enter_loaded` chạy **sau** khi `satp` còn là
+/// root kernel — nó là chỗ **duy nhất** hạ `sret`; caller ([`crate::user_run::run_task`]) đã giải
+/// `ObjId` → `(root_pa, asid)` qua object layer (D2-83: core không sở hữu PTE/PA).
+pub(crate) fn enter_loaded_with_root(
+    loaded: &LoadedInit,
+    tf: &mut TrapFrame,
+    root: Option<(u64, u16)>,
+) {
+    let (root_pa, asid) = root.unwrap_or((loaded.root, loaded.asid));
     LAST_VSPACE.store(u32::from(loaded.vspace.0), Ordering::Relaxed);
-    LAST_ASID.store(u64::from(loaded.asid), Ordering::Relaxed);
+    LAST_ASID.store(u64::from(asid), Ordering::Relaxed);
     USER_FAULT_RECOVER.store(0, Ordering::Relaxed);
     let current = read_sstatus();
     tf.sstatus = current & !(SSTATUS_SPP | SSTATUS_SPIE | SSTATUS_SIE | SSTATUS_SUM);
@@ -296,7 +313,7 @@ pub(crate) fn enter_loaded(loaded: &LoadedInit, tf: &mut TrapFrame) {
     // trong trapframe của lần chạy trước.
     crate::user_tls::apply_tls(tf);
     STOP_KIND.store(0, Ordering::Release);
-    if !aobj::switch_root(loaded.root, loaded.asid) {
+    if !aobj::switch_root(root_pa, asid) {
         let _ = aobj::restore_kernel_root();
         stop(3, 0);
         return;
@@ -1131,6 +1148,14 @@ impl SyscallEnv for UserMemAccess {
     /// **KT-314** — `Tcb.Resume`: giữ `entry` để `run_task` nạp `sepc` (D2-83: core không ghi CSR).
     fn tcb_resume(&mut self, tcb: ObjId, entry: u64) -> bool {
         crate::user_run::arm_resume_pc(tcb, entry);
+        true
+    }
+
+    /// **KT-320** — `Tcb.Configure` tham số `vspace?`: giữ **danh tính** `VSpace` của TCB để
+    /// `run_task` **tiêu thụ** ở lần vào U-mode kế tiếp (D2-83: `satp` là CSR của arch, core
+    /// **không** ghi). Trả `true` ⇔ arch đã giữ giá trị.
+    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> bool {
+        crate::user_run::arm_vspace(tcb, vspace);
         true
     }
 

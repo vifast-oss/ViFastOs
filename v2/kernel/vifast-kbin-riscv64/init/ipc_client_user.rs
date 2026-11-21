@@ -96,11 +96,18 @@ const SLOT_TCB_T: u64 = 15;
 /// **KT-314** — cap `Tcb` **đích thứ hai** (`Inactive`, `entry = 0`): `Resume` ⇒
 /// `InvalidArgument` (5) — fail-closed, không đoán điểm vào.
 const SLOT_TCB_T2: u64 = 16;
+/// **KT-320** — cap **`VSpace`** của chính client (rig dựng object đại diện trong core, khoá
+/// `foreign_key` trỏ VSpace **thật** của object layer): `MR1` của `Tcb.Configure` tham số
+/// `vspace?`. Ô 4 (`Frame`) là ca âm "vspace không phải VSpace".
+const SLOT_VSPACE: u64 = 17;
 /// **KT-311** — mask tham số mở rộng (`MR2` của `Tcb.Configure`, `length = 3`).
 const MASK_CSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_CSPACE;
 const MASK_VSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_VSPACE;
 const MASK_ENTRY: u64 = vifast_user_abi::CONFIGURE_MASK_ENTRY;
 const MASK_PRIORITY: u64 = vifast_user_abi::CONFIGURE_MASK_PRIORITY;
+/// **KT-320** — mask có bit **lạ** (bit 4 — ngoài `cspace?`/`vspace?`/`entry?`/`priority?`) ⇒
+/// `InvalidArgument` (5): kiểm mask đứng **trước** mọi kiểm khác (không đọc vùng 608..640).
+const MASK_VSPACE_BAD: u64 = MASK_VSPACE | (1 << 4);
 /// **KT-311** — VA entry **không căn 2 B** (lẻ — ca âm `Alignment`). VA entry **hợp lệ** là địa
 /// chỉ `_start` **thật** của chính ảnh này (`_start as usize` — trùng `e_entry` của ELF, không
 /// chép tay hằng số): rig đối chiếu `TcbData.entry` với `LoadedInit.entry` đọc từ ELF.
@@ -184,6 +191,12 @@ const EXIT_RESUME_RUNNING: u64 = 108;
 const EXIT_RESUME_EXITED: u64 = 109;
 /// **KT-314** — đường xanh `Configure(entry?)` + `Resume` không trả `(0, entry)`.
 const EXIT_RESUME_FULL: u64 = 110;
+/// **KT-320** — ca âm (i): mask có bit lạ không trả `InvalidArgument` (5).
+const EXIT_CFG3_MASK: u64 = 111;
+/// **KT-320** — ca âm (ii): `vspace` = cap `Frame` không trả `WrongObjectType` (2).
+const EXIT_CFG3_FRAME: u64 = 112;
+/// **KT-320** — đường xanh `vspace?` = cap `VSpace` không trả `(0, 0)`.
+const EXIT_CFG3_FULL: u64 = 113;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -487,13 +500,17 @@ pub extern "C" fn _start() -> ! {
         put(b"\n");
         exit(EXIT_CFG2_CSPACE);
     }
-    //         Ca âm (iv): `vspace?` **chưa cài** ⇒ `NotSupported` (18) — fail-closed.
+    //         Ca âm (iv): **KT-320** — `vspace?` **đã cài**, nên tiền đề "chưa cài ⇒ 18" của
+    //         KT-311 **hết hiệu lực** (bất biến §4.1 của `k6-test-invariants.md`). Ô **0** của
+    //         CSpace gốc là cap `CNode` (`CS_SELF`) — **không phải `VSpace`** ⇒
+    //         `WrongObjectType` (**2**). Đường xanh (`vspace` = cap `VSpace` thật) ở mục 7c.
+    set_configure_params(0, 0, 0, 0);
     let neg_vspace = call(
         SLOT_TCB,
         info(METHOD_CONFIGURE, 0, false, 3),
         [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
     );
-    if neg_vspace[0] != 18 {
+    if neg_vspace[0] != 2 {
         put(b"# ipc: configure2 neg vspace err=");
         put_u64(neg_vspace[0]);
         put(b"\n");
@@ -642,6 +659,58 @@ pub extern "C" fn _start() -> ! {
     put_u64(neg_running[0]);
     put(b" exited=");
     put_u64(neg_exited[0]);
+    put(b" ok=1\n");
+
+    // ---- 7c) **KT-320** — `Tcb.Configure` tham số `vspace?` (mask bit 1). CPTR `VSpace` được
+    //          giải trong CSpace **caller** (như `cspace?`), core kiểm **loại** rồi lưu **danh
+    //          tính** vào `TcbData.vspace` (D2-83: `satp`/PTE thuộc arch) và **giao** cho arch qua
+    //          hook `SyscallEnv::tcb_vspace`; arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của
+    //          **đúng** TCB đó (rig chạy TCB đích ở lượt sau — tuần tự, một hart).
+    //
+    //          Ba ca, thứ tự cố định — (i) mask **bit lạ** ⇒ 5 (kiểm mask đứng **trước** mọi kiểm
+    //          khác), (ii) `vspace` = cap `Frame` ⇒ 2 (không nhận Frame làm VSpace), (iii) đường
+    //          xanh = cap `VSpace` ⇒ `(0, 0)`.
+    set_configure_params(0, 0, 0, 0);
+    let neg_vs_mask = call(
+        SLOT_TCB_T,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE_BAD, 0],
+    );
+    if neg_vs_mask[0] != 5 {
+        put(b"# ipc: configure3 neg mask err=");
+        put_u64(neg_vs_mask[0]);
+        put(b"\n");
+        exit(EXIT_CFG3_MASK);
+    }
+    set_configure_params(0, SLOT_FRAME, 0, 0);
+    let neg_vs_frame = call(
+        SLOT_TCB_T,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
+    );
+    if neg_vs_frame[0] != 2 {
+        put(b"# ipc: configure3 neg frame err=");
+        put_u64(neg_vs_frame[0]);
+        put(b"\n");
+        exit(EXIT_CFG3_FRAME);
+    }
+    set_configure_params(0, SLOT_VSPACE, 0, 0);
+    let cfg_vspace = call(
+        SLOT_TCB_T,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
+    );
+    if cfg_vspace[0] != 0 {
+        put(b"# ipc: configure3 full err=");
+        put_u64(cfg_vspace[0]);
+        put(b"\n");
+        exit(EXIT_CFG3_FULL);
+    }
+    put(b"# ipc: configure3 ok=1\n");
+    put(b"# ipc: configure3 neg mask=");
+    put_u64(neg_vs_mask[0]);
+    put(b" frame=");
+    put_u64(neg_vs_frame[0]);
     put(b" ok=1\n");
 
     // ---- 8) Ca âm cũ (giữ nguyên từ KT-280/KT-282): `Call` trên ô **rỗng** ⇒
