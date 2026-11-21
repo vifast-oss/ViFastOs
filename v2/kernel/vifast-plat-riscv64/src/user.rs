@@ -377,7 +377,7 @@ pub fn core_tcb() -> Option<ObjId> {
 
 /// **KT-74** — `Stop`/`run_task` chuyển sang [`crate::user_run`] cho R1; tái xuất để ảnh test
 /// giữ nguyên đường dẫn `crate::user::{Stop, run_task}`.
-pub use crate::user_run::{run_task, Stop};
+pub use crate::user_run::{apply_ipc_return, run_task, Stop};
 /// **KT-74** — API TLS/`exec` giữ **cùng đường dẫn** `crate::user::*` cho ảnh test; cài đặt nằm ở
 /// module riêng [`crate::user_tls`] để giữ luật R1 (≤ 1.500 dòng/tệp).
 pub use crate::user_tls::{apply_tls, exec_frame, record_tls_trap, tls_observed, tls_trap_count};
@@ -970,6 +970,13 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                 if MULTITASK.load(Ordering::Relaxed) != 0 {
                     // KT-65: tác vụ chặn trong core ⇒ nhường CPU cho scheduler (không PANIC).
                     // Chương trình KT-65 chỉ dùng NBRecv/NBSend nên nhánh này là lưới an toàn.
+                    //
+                    // **KT-280**: syscall **đã hoàn tất** ở phía core (chặn = chờ message/reply),
+                    // nên khi tác vụ được resume nó phải chạy tiếp **sau** `ecall`, không chạy lại
+                    // `ecall` (chạy lại sẽ gửi/nhận lần hai — sai ngữ nghĩa và có thể treo).
+                    // `sepc += 4` ở đây là nửa thứ nhất của hợp đồng resume; nửa thứ hai là
+                    // [`apply_ipc_return`] (nạp `a0..a6` từ vùng nhận IPC của TCB).
+                    tf.advance_pc(4);
                     save_tf(tf);
                     stop(3, 0);
                     crate::TRAP_STATS.record_exception(&saved, exc.kind, true);

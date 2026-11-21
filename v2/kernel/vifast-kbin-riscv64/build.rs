@@ -55,6 +55,9 @@ fn main() {
     println!("cargo:rerun-if-changed=init/pager_client_cd_common.rs");
     println!("cargo:rerun-if-changed=init/pager_client_c_user.rs");
     println!("cargo:rerun-if-changed=init/pager_client_d_user.rs");
+    // KT-280: hai chương trình IPC từ U-mode (client `Call` chặn + server `Recv`/`Reply`).
+    println!("cargo:rerun-if-changed=init/ipc_client_user.rs");
+    println!("cargo:rerun-if-changed=init/ipc_server_user.rs");
     println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/generated.rs");
@@ -203,6 +206,10 @@ fn main() {
         "pager_client_d.elf",
         &shim_all,
     );
+    // **KT-280** (D2-210): **hai tiến trình IPC** — client `Call` chặn, server `Recv`+`Reply`.
+    // Chỉ shim ABI (không ring/IDL/FS): hai chương trình này chỉ dùng syscall 0/1/3/12/14.
+    build_user_elf(dir, "ipc_client_user.rs", "ipc_client.elf", &shim);
+    build_user_elf(dir, "ipc_server_user.rs", "ipc_server.elf", &shim);
 }
 
 /// **KT-92 / A1-184** — cờ `--remap-path-prefix` mà cargo đã cấp cho **crate chính**, để các lần

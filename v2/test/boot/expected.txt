@@ -99,3 +99,13 @@ ktest-con 5 5
 # thật (`exit` 3/4/1) với `recycled` suy ra (D2-106); thất bại (`path` lạ, ELF hỏng) **nguyên tử**;
 # TLS **reset** sau `exec` rồi `SetTls` lại ⇒ `tp` đổi theo. Matrix thành **7 ảnh × smp 1/2/4 = 21**.
 ktest-exec 6 6
+# **KT-280** (D2-210, mốc microkernel): ảnh **`ktest-ipc`** thứ tám — **IPC từ U-mode**: client
+# U-mode `Call` **chặn** trên Endpoint tới **server U-mode** (hai VSpace, hai cspace, hai TCB),
+# server `Recv` + `Send` trên cap `Reply`, client được **resume** với `a0..a6` lấy từ vùng nhận IPC
+# của TCB (`BlockedOnSend{call}` → `BlockedOnReply` → `Ready`). Bằng chứng: `# ipc call:` (caller
+# chặn ở Send, message trong hàng Endpoint), `# ipc server:` (caller `BlockedOnReply` **giữa**
+# `Recv` và `Reply`, message server nhận đúng label/MR), `# ipc reply:` (client `Ready`,
+# `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
+# reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
+# cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
+ktest-ipc 2 2

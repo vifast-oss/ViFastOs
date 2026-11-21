@@ -25,6 +25,10 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
+#   - `ktest-ipc`   : 2 TAP (**KT-280**, D2-210) — **IPC từ U-mode**: client U-mode `Call` chặn
+#                     trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB), server `Recv` +
+#                     `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng nhận IPC của TCB;
+#                     ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên cap `Reply` ⇒ 18).
 #
 # **KT-54 — nguồn sự thật duy nhất là `v2/test/boot/expected.txt`** (mỗi ảnh một dòng
 # `<ảnh> <kế hoạch TAP> <số dòng ok>`): runner **đọc số từ tệp**, không hardcode; `expected.txt` lệch
@@ -80,7 +84,7 @@ TARGET="riscv64gc-unknown-none-elf"
 IMG_DIR="$V2_ROOT/kernel/target/$TARGET/release"
 # Ảnh **sản phẩm** (`src/main.rs`) — ảnh duy nhất in dòng `# build:` (KT-86).
 PRODUCT_IMAGE="$IMG_DIR/vifast-kbin-riscv64"
-LABELS="ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec" # thứ tự in bảng + thứ tự boot trong một vòng
+LABELS="ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc" # thứ tự in bảng + thứ tự boot trong một vòng
 LABEL_COUNT=0                              # số ảnh (đếm từ LABELS; không hardcode 3/4)
 TIMEOUT_DS=200                        # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 QEMU_ICOUNT="-icount shift=6"         # D2-74 (shift CỐ ĐỊNH, không `auto`)
@@ -141,6 +145,7 @@ image_path() {
         ktest-vblk) printf '%s/vifast-kbin-ktest-vblk' "$IMG_DIR" ;;
         ktest-con) printf '%s/vifast-kbin-ktest-con' "$IMG_DIR" ;;
         ktest-exec) printf '%s/vifast-kbin-ktest-exec' "$IMG_DIR" ;;
+        ktest-ipc) printf '%s/vifast-kbin-ktest-ipc' "$IMG_DIR" ;;
         *) return 1 ;;
     esac
 }
@@ -413,6 +418,15 @@ tls reset sau exec
 EOF
 }
 
+# **KT-280** (D2-210): ảnh **IPC từ U-mode** (2 TAP) — client U-mode `Call` **chặn** tới server
+# U-mode, server `Recv`+`Reply`, client resume với message trả lời.
+manifest_ipc() {
+    cat <<'EOF'
+ipc: umode call
+ipc: server replied
+EOF
+}
+
 # Tên TAP 37 của KT-55 phụ thuộc smp: `-smp 1` không chạy ca 24 (cần 2 hart thật).
 conf37_name() {
     if [ "${1:-1}" -ge 2 ]; then printf 'conformance 5/5'; else printf 'conformance 4/5 + 1 skipped'; fi
@@ -428,6 +442,7 @@ manifest_for() {
         ktest-vblk) manifest_vblk ;;
         ktest-con) manifest_con ;;
         ktest-exec) manifest_exec ;;
+        ktest-ipc) manifest_ipc ;;
         *) return 1 ;;
     esac | sed -e "s|__SMP__|$2|g" -e "s|__IPI20__|$(ipi_name "$2")|g" \
         -e "s|__CONF37__|$(conf37_name "$2")|g"
@@ -678,6 +693,20 @@ EOF
 ^# exec final: c0 objects=[0-9]+ frames=[0-9]+ caps=[0-9]+ .* releases_clean=1 fail=0 execs_total=[0-9]+$
 EOF
             ;;
+        ktest-ipc) cat <<'EOF'
+^# ipc rig: stvec=0x[0-9a-f]+ untyped=[0-9]+ core_untyped=[0-9]+ cspace_c=[0-9]+ cspace_s=[0-9]+ tcb_c=[0-9]+ tcb_s=[0-9]+ ep=[0-9]+ reply=[0-9]+$
+^# ipc call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0x1234 label=0x280 stop=Blocked$
+^# ipc server: recv=1 label=0x280 mr=0x1234 client=BlockedOnReply caller=[0-9]+ server=Running stop=Yield$
+^# ipc: server ran nr=1$
+^# ipc reply: server_exit=0 client=Ready reply_caller=0 server=Inactive stop=Exit$
+^# ipc: umode call ok reply=23130$
+^# ipc: neg empty=1 reply=18 ok=1$
+^# ipc client: reply_label=0x281 reply_mr0=0x5a5a reply_mr1=1 const:label_reply=0x281 const:reply_value=0x5a5a$
+^# ipc final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive$
+^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
+^Platform HART Count *: *__SMP__$
+EOF
+            ;;
         ktest-con) cat <<'EOF'
 ^# con image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ obj_arena=0x[0-9a-f]+-0x[0-9a-f]+ untyped=[0-9]+ tcb=[0-9]+ elf=[0-9]+$
 ^# con plic: base=0x[0-9a-f]+ ndev=[0-9]+ hart=[0-9]+ ctx=[0-9]+ threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0$
@@ -755,6 +784,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-280 ipc u-mode xong \(2 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac
 }
@@ -1013,6 +1043,9 @@ validate_norm() {
             check_evidence "$log" "$label" "$smp"
             ;;
         ktest-con)
+            check_evidence "$log" "$label" "$smp"
+            ;;
+        ktest-ipc)
             check_evidence "$log" "$label" "$smp"
             ;;
     esac
@@ -1448,6 +1481,15 @@ run_matrix() {
         --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-user.log" 2>&1; then
         tail -20 "$LOGDIR/k3-ktest-build-user.log" >&2
         die "build ảnh test user FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-user.log)"
+    fi
+    # **KT-280** (D2-210): ảnh **IPC từ U-mode** (feature `ktest,user,ipc`) — tách khỏi
+    # `ktest-user`/`ktest-proc` để TAP/`.text` của chúng không đổi.
+    echo "# build ảnh test ipc ($TARGET, release, --features ktest,user,ipc)"
+    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
+        --bin vifast-kbin-ktest-ipc --features ktest,user,ipc \
+        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-ipc.log" 2>&1; then
+        tail -20 "$LOGDIR/k3-ktest-build-ipc.log" >&2
+        die "build ảnh test ipc FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-ipc.log)"
     fi
     for l in $LABELS; do
         [ -f "$(image_path "$l")" ] || die "không thấy ảnh test $(image_path "$l") — CHƯA có ảnh test"

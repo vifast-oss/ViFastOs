@@ -33,6 +33,11 @@ con = ["ktest", "user", "vifast-plat-riscv64/vcon"]
 # KT-74: ảnh `ktest-exec` — `Tcb.SetTls` (core) + `exec(path)` (plat). Tách ảnh riêng để `.text`
 # của 6 ảnh cũ **không đổi** (D2-109/D2-111: tách khi chạm trần hoặc khi thêm đường mới).
 exec = ["ktest", "user", "vifast-plat-riscv64/exec"]
+# **KT-280** (D2-210): ảnh `ktest-ipc` — **IPC từ U-mode**: client U-mode `Call` **chặn** tới
+# server U-mode, server `Recv`+`Reply`, client được resume với message trả lời. Tách ảnh riêng
+# (cùng lý do KT-72/73/74/245/255/263: `.text`/TAP của các ảnh cũ không đổi, và đây là **đường
+# mới** — tác vụ U-mode chặn trong IPC rồi resume).
+ipc = ["ktest", "user"]
 # **KT-245** (D2-196): ảnh `ktest-net` — PCI ECAM + virtio-net hai queue + MAC thật + gửi/nhận
 # frame thô. Tách ảnh riêng (cùng lý do KT-72/73: `.text`/mapping của các ảnh cũ không đổi, và ảnh
 # này cần `-netdev`/`-device virtio-net-pci` trong dòng QEMU).
@@ -108,6 +113,14 @@ required-features = ["ktest", "user", "con"]
 name = "vifast-kbin-ktest-exec"
 path = "src/ktest_exec.rs"
 required-features = ["ktest", "user", "exec"]
+
+# **KT-280** (D2-210): ảnh **IPC từ U-mode** riêng — client U-mode `Call` chặn tới server U-mode,
+# server `Recv`+`Reply`, client resume với message trả lời. Tách khỏi `ktest-user`/`ktest-proc` để
+# TAP/`.text` của chúng không đổi (D2-109/D2-111: thêm đường mới ⇒ tách ảnh, không nới trần).
+[[bin]]
+name = "vifast-kbin-ktest-ipc"
+path = "src/ktest_ipc.rs"
+required-features = ["ktest", "user", "ipc"]
 
 # **KT-245** (D2-196): ảnh **virtio-net** riêng — cần `-netdev user,id=n0 -device
 # virtio-net-pci,netdev=n0` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest`

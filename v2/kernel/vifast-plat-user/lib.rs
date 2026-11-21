@@ -42,6 +42,9 @@ use core::sync::atomic::Ordering;
 
 /// Syscall `Call` — Endpoint: IPC; object khác: invocation (D2-97).
 pub const SYS_CALL: u64 = 0;
+/// Syscall `Send` — Endpoint/Reply/Notification (spec `:107`). **KT-280**: server U-mode dùng
+/// `Send` trên cap `Reply` để trả lời `Call` (đường `Reply` của seL4).
+pub const SYS_SEND: u64 = 1;
 /// Syscall `NBSend`.
 pub const SYS_NB_SEND: u64 = 2;
 /// Syscall `Recv`.
@@ -286,6 +289,12 @@ pub fn call(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
 /// `NBSend(cap, MessageInfo, MR0..MR3)` — không chặn.
 pub fn nb_send(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
     syscall7(SYS_NB_SEND, cap, raw_info, mrs[0], mrs[1], mrs[2], mrs[3])
+}
+
+/// `Send(cap, MessageInfo, MR0..MR3)` — **KT-280**: trên cap `Reply` đây là `Reply` của seL4
+/// (giao message cho caller đang `BlockedOnReply` và đánh thức nó).
+pub fn send(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
+    syscall7(SYS_SEND, cap, raw_info, mrs[0], mrs[1], mrs[2], mrs[3])
 }
 
 /// `Recv(cap, reply_cptr?)` — `reply = `[`REPLY_NONE`] khi không có cap Reply.
