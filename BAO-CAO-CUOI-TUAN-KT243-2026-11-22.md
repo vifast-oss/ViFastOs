@@ -4,9 +4,9 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (sáu vòng).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (bảy vòng, 30 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
-> HEAD cuối `be89d716` (đã push), T1 + T2 xanh, cây sạch.
+> Vòng 7: KT-270..KT-272. HEAD cuối `c8bacb4f` (đã push), T1 + T2 xanh, cây sạch.
 
 ---
 
@@ -34,6 +34,12 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 18 | **aarch64 soak 1.000** | **ĐẠT — 0/1000 lỗi** | `ok=1000 fail=0`, `rc_124=0` |
 | 19 | **x86_64 APIC + timer** | **ĐẠT** | `# apic: id=0 version=0x14`, `# timer: hz=57 ticks=3` |
 | 20 | **ĐÓNG KT-184/KT-194** | **ĐÓNG (D2-205)** — hợp đồng hữu hạn D2-190 7/7 | T2 66/66 trên `1f2d8310` |
+| 21 | **TCP client** | **ĐẠT** | `# net: tcp connect … state=established`, `recv=13`; server host xác nhận |
+| 22 | **aarch64 U-mode + `[calling.aarch64]`** | **ĐẠT** | `# umode: el0 ran svc=0 ret=12`, `el0 says hi` |
+| 23 | **Ba nợ ngoài hợp đồng wake** | **ĐÓNG cả ba** | selftest 442→452, 67→70; cổng có `--product-fs` |
+| 24 | **x86_64 U-mode + `[calling.x86_64]`** | **ĐẠT** | `# umode: ring3 ran nr=12 ret=14`, `ring3 says hi` |
+| 25 | **virtio-gpu console** | **ĐẠT** | 29/29 ký tự khớp bitmap 8×8; 2 lệnh GPU cho cả khối |
+| 26 | **soak 1.000 aarch64 sau U-mode** | **ĐẠT — 0/1000**, hạ tầng hợp lệ | wall 239 s, `qemu_foreign=0` |
 
 ---
 
@@ -383,13 +389,64 @@ của slirp `10.0.2.2 → 127.0.0.1`; (2) **sửa lỗi đo có sẵn**: `udp_ec
 gồm cả thời gian gửi ⇒ `elapsed_ms=3000` là flake; nay ngân sách 3 s tính cho **cả bước**, **không**
 nới ngưỡng.
 
+### 3.26 KT-267 — ba nợ **ngoài** hợp đồng luật `wake`: **ĐÓNG cả ba**
+- **(a) `:expr` passthrough** — **ĐÓNG**: đo trên cây thật, `:expr` **không** chở được `include!`/
+  `mod` từ tệp **trong** phạm vi (luật "đối số lời gọi" KT-202 đã chặn ở **tệp gọi**); `mod`/`#[path]`
+  **trực tiếp** trong `:expr` là **lỗi cú pháp** rustc. Ngoài phạm vi thì không gọi được `wake`.
+  Đóng bằng **4 ca selftest canh**.
+- **(b) Miễn arch theo tiền tố `virtio_`** — **ĐÓNG**: thay `name.startswith("virtio_")` bằng
+  `_is_virtio_driver(text)` kiểm **ngữ nghĩa** trên mã đã khử chú thích/chuỗi (`SplitQueue`/
+  `VqLayout`/`Virtio*`/`impl … VirtioKind`). Ca âm `virtio_evil.rs` **ĐỎ** (kể cả khi `doorbell`
+  nằm trong chú thích); 5 driver thật **XANH**.
+- **(c) Dep-info chỉ kiểm feature mặc định** — **ĐÓNG**: thêm cờ **`--product-fs`** (tuỳ chọn, +20 s
+  ấm). Đo: `wake` trong `proc_fs.rs` (chỉ biên dịch dưới `product-fs`) ⇒ **lớp tĩnh ĐỎ** ở cả hai chế
+  độ, **lớp dep-info XANH** không cờ / **ĐỎ** có cờ. Đã nối vào cổng: bước **69** (T2).
+- Selftest: lớp tĩnh **442→452** (+10), dep-info **67→70** (+3); cây thật 0 lỗi cả bốn lượt.
+
+### 3.27 KT-270 — K5' bước 4: x86_64 **U-mode (ring 3)** + mở `[calling.x86_64]`
+**XONG.** `spec/abi.toml` **chỉ** đổi `[calling.x86_64]` (đối xứng: `rax` số hiệu, `rdi/rsi` tham số
++ `(error,value)`, `rdx` MessageInfo, `r10/r8/r9/r12` MR, **`int 0x80`**). **Đo**:
+```text
+# umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23
+ok 12 - umode: ring3 entered
+# umode: int80 nr=12 cs=0x1b rip=0x4000000025 user=1
+ring3 says hi
+ok 13 - umode: syscall handled
+# umode: ring3 ran nr=12 ret=14
+ok 14 - umode: returned to ring3
+```
+TAP **14/14**, runner **12/12** (10 ca âm). **Vì sao `int 0x80` không `syscall`/`sysret`**: `sysret`
+nạp `SS = STAR[63:48]+8`; GDT KT-261 đặt user code `0x18` **trước** user data `0x20` ⇒ `SS = 0x13`
+(kernel data | RPL3) ⇒ `#GP`; `syscall` khắc phục CS/SS nhưng **không đổi stack** (cần `swapgs`/
+per-CPU). **Hai lỗi thật**: (a) chọn VA `0x6000_0000_0000` = 96 **TiB** ⇒ phải `PML4[192]` chứ không
+phải `PDPT[96]` — sửa thành 256 GiB (`PML4[0]`, `PDPT[256]`); (b) thứ tự `push` của stub (`r15` đẩy
+cuối ⇒ offset 0, `rax` offset 112) — lần đầu đọc `nr` ra địa chỉ entry; test host chốt từng offset.
+
+### 3.28 KT-271 — virtio-gpu **console**
+**XONG.** `# gpu console: cols=79 rows=59 lines=3 chars=29 flushes=1 commands=2 matched=29/29`.
+**Bằng chứng thật**: PPM kiểm **từng ký tự** — so đủ **64 pixel/ô** với `glyph()`; Python **parse**
+mảng `FONT_8X8` từ **mã nguồn kernel** (không có bản font thứ hai), kiểm cả thứ tự + độ phủ 95 glyph.
+`commands=2` là **delta đo được** cho cả khối 3 dòng (1 `TRANSFER_TO_HOST_2D` + 1 `RESOURCE_FLUSH`);
+flush từng ký tự sẽ là 58. TAP **6/6**, `--red-selftest` **40 kiểm**. **Lỗi thật vá**:
+`TRANSFER_TO_HOST_2D.offset` luôn `0` ⇒ rect lệch gốc bị chép **hàng 0** vào `rect.y` (PPM cho thấy
+`ViFastOs` ở `(16,16)` thay vì `(8,8)`).
+
+### 3.29 KT-272 — soak 1.000 aarch64 **sau U-mode**
+**XONG — 0/1000 lỗi, hạ tầng HỢP LỆ.** `wall=239 s`, `qemu_foreign=0` cả hai mẫu, `invalid=0`,
+`rc_124=0`, hash ảnh khớp ELF **1000/1000**. Vá bất biến soak: `TAP_TESTS` 15→18 + **thêm** kiểm
+`# umode: el0 ran svc=0 ret>0` (chỉ thêm, không bỏ); `--selftest` **17/17**. **Không có lỗi mới** —
+U-mode ổn định dưới soak. **Nợ quy trình ghi nhận**: số ca TAP hard-code ở **hai** nơi
+(`run-aarch64.sh`, `soak-aarch64.sh`) — KT-269 chỉ cập nhật một nơi.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `1f2d8310` (ứng viên bàn giao) | **PASS 66/66, 574,8 s** | `/tmp/t2-r5b.log` |
-| **T1** `gate --dev` trên `7bb39d9c` | **PASS 342,4 s** | `/tmp/t1-r5.log` |
+| **T2** `gate --fast` trên `9704539a` (ứng viên bàn giao) | **PASS 67/67, 594,4 s** | `/tmp/t2-r7.log` |
+| **T1** `gate --dev` trên `ca3a490a` | **PASS 384,5 s** | `/tmp/t1-r7.log` |
+| T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
+| T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
 | T2 trên `14df1639` (vòng 2) | PASS 62/62, 534,3 s | `/tmp/t2-r2b.log` |
 | T2 vòng 1 trên `6309b6a6` | PASS 57/57, 493,1 s | `/tmp/t2-final.log` |
 | Bước mới trong cổng | 55 net validator, 56 **aarch64** (T1+T2), 57 virtio-net (T2), 58 cfg-test (T2), 59 **x86_64** (T1+T2), 60 virtio-input (T2), 61/62 validator (T1+T2), 63 QEMU smoke (T1) | `v2/bin/v2` |
@@ -405,7 +462,7 @@ giao sau, khi K4'/K5' cần). Ghi rõ để không ai đọc thành "K6 đã đo
 
 ---
 
-## 5. Việc còn mở sau cuối tuần (cập nhật sau vòng 2)
+## 5. Việc còn mở sau cuối tuần (cập nhật sau vòng 7)
 
 1. **KT-184/KT-194 vẫn REVIEW.** KT-252 tìm + vá **WB-20** nhưng D2-190 đòi 7 mục; còn nợ:
    DEBT-KT227-1 (`v2/lib` ngoài luật token `wake`, latent), **L2** (ba mẫu phạm vi vênh nhau),
@@ -424,8 +481,15 @@ giao sau, khi K4'/K5' cần). Ghi rõ để không ai đọc thành "K6 đã đo
    DEBT-KT227-1 nhưng **chưa** có vòng tấn công mới sau khi đổi phạm vi.
 8. **Arena aarch64 dùng 28/32 frame** — VSpace thứ hai sẽ `PANIC` fail-loud; tăng lên 48 frame vẫn
    ĐẠT I7 (`.data+.bss` 155.680 B / 262.144 B) nhưng phải đo lại.
-9. **Ảnh sản phẩm cuối tuần chưa build lại sau vòng 2** — `build-inputs` đã đổi; nếu cần bằng chứng
-   K6 trên HEAD cuối thì phải build + đo lại S1 (quy trình đã có ở `JOURNAL/kt251-s1-measure.sh`).
+9. **Ảnh sản phẩm** — đã build + đo S1 **năm lần** trên các HEAD khác nhau; `build=f861bd283066120f`
+   + `text=131728` **trùng cả năm lần** ⇒ mã sản phẩm **không đổi** qua 30 task ⇒ bằng chứng K6/soak
+   riscv64 **vẫn áp dụng**. Không cần soak lại.
+10. **IPC từ EL0** (cả hai arch) — U-mode đã chạy nhưng chưa có `Send`/`Recv`/`Call` từ EL0; đây là
+    bước tiếp theo của microkernel.
+11. **Net server U-mode (N1 phần 3)** — phụ thuộc mục 10.
+12. **K5' đầy đủ**: PCI/ECAM trên x86_64, SMP, `-cpu max`, soak 600 boot (N1 của K5').
+13. **W^X toàn ảnh** — hiện chỉ mapping user đúng W^X; `.text` RX toàn ảnh chưa tách.
+14. **Nợ quy trình**: số ca TAP hard-code ở hai nơi (`run-aarch64.sh` + `soak-aarch64.sh`).
 
 ---
 
@@ -457,6 +521,11 @@ giao sau, khi K4'/K5' cần). Ghi rõ để không ai đọc thành "K6 đã đo
    mã dùng float.
 9. **Vtable `core::fmt` là địa chỉ liên kết (PA)** ⇒ sau `activate` phải identity-map ảnh kernel.
    Bài học: "chạy nửa cao" không chỉ là đổi `TTBR1`; mọi con trỏ hàm trong ảnh vẫn trỏ PA.
-10. **Ảnh sản phẩm không đổi khi thêm crate mới**: `build=f861bd283066120f`/`text=131728` trùng
+10. **`sysret` không dùng được vì thứ tự GDT** — `sysret` nạp `SS = STAR[63:48]+8`; GDT đặt user
+    code `0x18` trước user data `0x20` ⇒ `SS=0x13` ⇒ `#GP`. Bài học: thứ tự descriptor trong GDT là
+    **hợp đồng ngầm** với `sysret`; đổi thứ tự phải kiểm lại.
+11. **`TRANSFER_TO_HOST_2D.offset` phải là offset byte của rect**, không phải 0 — QEMU đọc từng hàng
+    tại `offset + stride*h`; sai thì hàng 0 bị chép vào `rect.y`. Chỉ PPM mới phát hiện được.
+12. **Ảnh sản phẩm không đổi khi thêm crate mới**: `build=f861bd283066120f`/`text=131728` trùng
    trước và sau cuối tuần ⇒ bằng chứng ảnh cũ vẫn đúng **về byte**, chỉ dòng `# build:` (đầu vào)
    đổi. Đây là lý do S1 phải đo lại nhưng soak **không** cần chạy lại.
