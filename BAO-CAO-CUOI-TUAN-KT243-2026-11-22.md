@@ -4,10 +4,11 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười một vòng, 41 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười hai vòng, 45 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
-> Vòng 11: KT-281..KT-283. HEAD cuối `098dd1f3` (đã push), T2 xanh, cây sạch.
+> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. HEAD cuối `ead7d829` (đã push), T2 xanh,
+> cây sạch.
 
 ---
 
@@ -52,6 +53,10 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 35 | **riscv64 net server U-mode** | **ĐẠT** | `# netsrv: ping 10.0.2.2 ok rtt=0`, `# netsrv: client got reply=0` |
 | 36 | **riscv64 MR4..MR63 qua IPC buffer** | **ĐẠT** | `# ipc: mr count=64 mr63=0x2821003f` |
 | 37 | **aarch64 virtio-input** | **ĐẠT** | `# input: key a code=30 ascii=0x61`; `.data+.bss` +4 KiB |
+| 38 | **riscv64 soak 1.000 trên ảnh hiện tại** | **ĐẠT — 0/1000** | `rc_124=0`, hash khớp ELF 1000/1000 |
+| 39 | **aarch64 soak 1.000 trên ảnh hiện tại** | **ĐẠT — 0/1000**, `invalid=0` | wall 972 s, GPU+input 1000/1000 |
+| 40 | **x86_64 preemption** | **ĐẠT** | `# sched: switch a→b n=1`, `switches=6`; TAP 23/23 |
+| 41 | **Sửa nới ngưỡng KT-283** | **ĐẠT** | ngân sách soak về đúng 20 s/boot (D2-72 Q10) |
 
 ---
 
@@ -670,13 +675,56 @@ TAP **32/32**, runner **20/20** (17 ca âm), soak selftest **36/36**. **Ngân s�
 (event 430 B @`0x000`, status 430 B @`0x200`) + 8 đệm 8 B; trần I7 **không** nới. Tách `mapwin.rs` để
 `main.rs` về **1466** dòng (R1). Ba đột biến đỏ.
 
+### 3.42 KT-284 — riscv64 **soak 1.000 trên ảnh hiện tại**
+**XONG — 0/1000 lỗi.** Ảnh đã đổi thật (`text` 49.874 → **50.702**, +828 B) ⇒ bằng chứng soak cũ
+**không** tái dùng được (AGENTS §6.3). **Đo**: `boot_end=1001 isolated_1=1001 rc_0=1001 rc_124=0`,
+`results.txt` 1000 `ok` / 0 `fail`, hash ảnh khớp ELF **1000/1000**, `REV-GATE: ACCEPT`
+(`inputs=ab99dd4b4662bbe0 dirty=0`), `data+bss=202232/262144` (77,1 %). **Trung thực**: `invalid=2`
+— `loadavg_1m=12.65 > ncpu=12` trước soak và `qemu_foreign=1` sau (QEMU của sub-agent KT-285) ⇒
+**số thời gian 303 s KHÔNG dùng để kết luận** (D2-116); số lỗi **0/1000 vẫn hợp lệ**. **Phạm vi**:
+`soak.sh` boot ảnh sản phẩm **không shell** tới `# k3 halt` — **không** chạy U-mode/IPC/netsrv (những
+thứ đó ở ảnh `ktest-*`, đo bằng ktest matrix).
+
+### 3.43 KT-286 — x86_64 **preemption** (timer chuyển ngữ cảnh)
+**XONG.** **Đo**:
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: ticks=7 tasks=2
+# sched: runs a=311210 b=48923 switches=6 ab=1 ba=2 a_rsp=0x12e158 b_rsp=0x132158
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+```
+TAP **23/23**, runner **16/16** (14 ca âm). **Phát hiện quan trọng**: Intel SDM nói `IRET` chỉ pop
+`SS:RSP` khi đổi CPL, nhưng **QEMU 11.1.3** (`target/i386/tcg/seg_helper.c`, `helper_ret_protected`)
+dùng điều kiện `rpl == cpl && (!(HF_CS64) || (HF_CS64 && !is_iret))` — trong 64-bit mode với `iret`
+điều kiện này **luôn sai** ⇒ QEMU **luôn** pop `SS:RSP`. Frame 20 qword làm tác vụ chạy với `rsp = 0`
+⇒ `#PF`/`#DF` (đã đo). Frame **22 qword** mang thêm `rsp`/`ss`: QEMU pop 5 dùng đúng hai ô ấy; CPU
+thật (pop 3 theo SDM) không đọc và `rsp` chỉ hụt 16 byte — vẫn trong stack ⇒ **đúng trên cả hai**,
+không phải workaround chỉ cho QEMU. **Ba đột biến**: `no-preempt` ⇒ 0 dòng `# sched:`; `bad-rsp` ⇒
+`# exc: vec=8 err=0x0 rip=0x100407`; `no-eoi` ⇒ timer tắt sau tick đầu (TAP 10 đỏ).
+
+### 3.44 KT-285 — aarch64 **soak 1.000 trên ảnh GPU+input**
+**XONG — 0/1000 lỗi, `invalid=0`** (hạ tầng **hợp lệ**), wall **972 s**, `rc_124=0`, hash ảnh khớp
+ELF 1000/1000; 1000/1000 boot có `# gpu: drawn` + `# input: key a code=30 ascii=0x61`. **Vá bằng
+chứng**: `boot_keys` thiếu `qg_guard_note boot_end` (KT-283 bỏ sót) ⇒ guard summary chỉ đếm 1 boot;
+đã thêm 6 dòng log (không đổi bất biến). **Phát hiện nới ngưỡng**: 5 s chờ `# input: ready` **không**
+tính vào ngân sách 20 s ⇒ boot treo bị kill ở ~25–30 s ⇒ **đã vá ở KT-287**.
+
+### 3.45 KT-287 — sửa **nới ngưỡng** do KT-283
+`boot_keys` chờ `# input: ready` (tối đa `READY_DS` = 10 s) **trước** khi đồng hồ 20 s chạy ⇒ boot
+treo bị kill ở ~30 s thay vì 20 s (D2-72 Q10). Nay trừ phần đã tiêu: `spent_ds = i/2`,
+`budget = TIMEOUT_DS - spent_ds` (sàn 10) ⇒ tổng ≤ 20 s. `--selftest` **36/36**, `--smoke 3 3`
+**3/3 lỗi=0**. **Bài học bash**: `local a=… b=$a` **không** dùng được — bash tính **mọi** vế phải
+trước khi gán ⇒ `set -u` báo `unbound variable`; phải tách hai dòng.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `a35aa529` (ứng viên bàn giao) | **PASS 67/67, 725,7 s** | `/tmp/t2-r11.log` |
-| T2 trên `e908a97c` (vòng 10) | PASS 67/67, 649,3 s | `/tmp/t2-r10.log` |
+| **T2** `gate --fast` trên `80360f82` (ứng viên bàn giao) | **PASS 67/67, 705,4 s** | `/tmp/t2-r12.log` |
+| T2 trên `a35aa529` (vòng 11) | PASS 67/67, 725,7 s | `/tmp/t2-r11.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
