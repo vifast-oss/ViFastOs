@@ -114,10 +114,29 @@ pub fn map_high_alias<M: TableMemory>(
     perms: Perms,
     attr: MemAttr,
 ) -> Result<usize, MapError> {
+    map_high_alias_from(table, start_pa, end_pa, start_pa, high_base, perms, attr)
+}
+
+/// Như [`map_high_alias`] nhưng **gốc alias** là `origin_pa` riêng:
+/// `VA = high_base + (PA - origin_pa)`.
+///
+/// **Vì sao cần** (KT-277): W^X tách vùng ảnh thành nhiều khoảng (`.text` RX, `.data`/`.bss`/
+/// stack RW). Mọi khoảng phải dùng **cùng** một gốc alias (`__text_start`) — nếu mỗi khoảng lấy
+/// đầu của chính nó làm gốc thì alias của `.data` lệch đúng bằng kích thước vùng RX và kernel
+/// nhảy vào giữa `.data` sau khi đổi `TTBR1`. Tách tham số gốc thay vì chép vòng lặp map.
+pub fn map_high_alias_from<M: TableMemory>(
+    table: &mut PageTable<Aarch64, M>,
+    start_pa: u64,
+    end_pa: u64,
+    origin_pa: u64,
+    high_base: u64,
+    perms: Perms,
+    attr: MemAttr,
+) -> Result<usize, MapError> {
     if end_pa <= start_pa {
         return Ok(0);
     }
-    if start_pa & 0xFFF != 0 {
+    if start_pa & 0xFFF != 0 || origin_pa & 0xFFF != 0 {
         return Err(MapError::Unaligned);
     }
     let last = (end_pa + 0xFFF) & !0xFFF;
@@ -125,7 +144,7 @@ pub fn map_high_alias<M: TableMemory>(
     let mut pa = start_pa;
     while pa < last {
         table.map_with(
-            high_alias_va(pa, start_pa, high_base),
+            high_alias_va(pa, origin_pa, high_base),
             pa,
             perms,
             attr,

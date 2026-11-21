@@ -346,14 +346,19 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
 /// MMIO tới ECAM/BAR đi qua bảng trang đã map trong `high_entry`.
 ///
 /// **KT-275**: sau `blk`, chạy bốn phép đo mạng (TAP 22/23/24/25) — cùng lý do thứ tự TAP.
+/// **KT-277**: sau PCI, chạy hai phép đo **W^X** (TAP 22) và **cache maintenance trước DMA**
+/// (TAP 23). Phép đo W^X phải ở đây vì nó chỉ có nghĩa khi bảng trang **đang hoạt động** là bảng
+/// của `VSpace` (đã `activate` trong `high_entry`); phép đo DMA đọc bộ đếm mà `blk::run` vừa
+/// sinh ra.
 #[no_mangle]
 pub extern "C" fn el0_done() -> ! {
     let mut console = Console;
     let _ = writeln!(console, "# umode: done");
-    if !crate::blk::run(&mut console) {
+    let blk_ok = crate::blk::run(&mut console);
+    if !crate::net::run(&mut console) {
         debug_halt(5)
     }
-    if !crate::net::run(&mut console) {
+    if !crate::wxprobe::run(&mut console, blk_ok) {
         debug_halt(5)
     }
     let _ = pl011::write_str(BOOT_MARKER);

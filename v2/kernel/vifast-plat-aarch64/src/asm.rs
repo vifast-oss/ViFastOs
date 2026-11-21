@@ -222,6 +222,51 @@ mod imp {
         };
     }
 
+    // ------------------------------------------------------------------ cache maintenance (KT-277)
+
+    /// `dc civac, x0` — clean **và** invalidate dòng dữ liệu chứa `addr` tới PoC.
+    ///
+    /// Dùng **trước** khi bàn giao vùng DMA cho thiết bị: ghi bản bẩn ra PoC rồi bỏ bản sao
+    /// trong cache. Encoding ở [`crate::cache::DC_CIVAC`] (đối chiếu `llvm-objdump`).
+    pub fn dc_civac(addr: u64) {
+        // SAFETY: `dc civac` là system instruction hợp lệ ở EL1; nó **không** đọc/ghi thanh ghi
+        // kiến trúc, chỉ tác động cache của dòng chứa `addr`. `addr` do caller cấp và phải là
+        // địa chỉ đã map trong bản đồ hiện hành.
+        unsafe {
+            asm!(
+                ".inst {op}",
+                op = const crate::cache::DC_CIVAC,
+                in("x0") addr,
+                options(nostack, preserves_flags),
+            )
+        };
+    }
+
+    /// `dc ivac, x0` — invalidate dòng dữ liệu chứa `addr` tới PoC.
+    ///
+    /// Dùng **sau** khi thiết bị ghi xong, **trước** khi CPU đọc dữ liệu thiết bị vừa ghi.
+    pub fn dc_ivac(addr: u64) {
+        // SAFETY: như `dc_civac` — system instruction hợp lệ ở EL1, không đọc/ghi thanh ghi.
+        unsafe {
+            asm!(
+                ".inst {op}",
+                op = const crate::cache::DC_IVAC,
+                in("x0") addr,
+                options(nostack, preserves_flags),
+            )
+        };
+    }
+
+    /// Đọc `CTR_EL0` — cỡ dòng cache dữ liệu nhỏ nhất (`DminLine[19:16]`).
+    ///
+    /// `CTR_EL0` đọc được ở EL1 (và EL0 nếu `SCTLR_EL1.UCT`), không cần cấu hình gì.
+    pub fn read_ctr_el0() -> u64 {
+        let value: u64;
+        // SAFETY: `mrs` thanh ghi chỉ đọc `CTR_EL0`; không đọc/ghi bộ nhớ.
+        unsafe { asm!("mrs {}, ctr_el0", out(reg) value, options(nostack, preserves_flags)) };
+        value
+    }
+
     // ------------------------------------------------------------------ MMIO
 
     /// Đọc 32 bit từ MMIO (thanh ghi thiết bị) — `ldr w` với địa chỉ tuyệt đối.
@@ -859,6 +904,18 @@ mod imp {
     /// Stub host của `isb`.
     pub fn isb() {
         host_stub("isb")
+    }
+    /// Stub host của `dc civac` — **panic**: trên host không có cache của khách để làm sạch.
+    pub fn dc_civac(_addr: u64) {
+        host_stub("dc civac")
+    }
+    /// Stub host của `dc ivac` — **panic**: như `dc_civac`.
+    pub fn dc_ivac(_addr: u64) {
+        host_stub("dc ivac")
+    }
+    /// Stub host của `CTR_EL0` — **panic**: trên host không có `CTR_EL0` của khách.
+    pub fn read_ctr_el0() -> u64 {
+        host_stub("mrs ctr_el0")
     }
     /// Stub host của MMIO đọc — **panic**: trên host không có thiết bị PL011 đã map.
     pub fn mmio_read_u32(_addr: u64) -> u32 {

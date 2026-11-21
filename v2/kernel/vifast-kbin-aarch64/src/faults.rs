@@ -46,6 +46,37 @@ static EXPECT: AtomicU32 = AtomicU32::new(0);
 /// Mặt nạ hart **đã** bắt được fault `Vm` (bit `i` = hart `i`).
 static SEEN: AtomicU32 = AtomicU32::new(0);
 
+// ---------------------------------------------------------------------------------------------
+// KT-277 — fault **thô** (ESR/FAR/ELR) cho phép đo W^X
+// ---------------------------------------------------------------------------------------------
+//
+// Phép đo W^X ghi vào `.text` từ EL1 và **chờ** một data abort quyền (`EC=0x25`, `WnR=1`). Đó
+// **không** phải `FaultKind::Vm` "chưa map": trang **có** map, chỉ read-only. Dựng `FaultKind::Vm`
+// từ nó sẽ ghi `reason=NotMapped` — một lời nói dối trong log. Vì vậy nhánh này ghi **nguyên văn**
+// `ESR_EL1`/`FAR_EL1`/`ELR_EL1` và không bịa lý do.
+
+/// Một fault **thô** đã bắt trên một hart (KT-277).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RawFault {
+    /// `ESR_EL1` thô — `EC`/`ISS` đọc trực tiếp từ đây.
+    pub esr: u64,
+    /// `FAR_EL1` — địa chỉ gây fault.
+    pub far: u64,
+    /// `ELR_EL1` — instruction gây fault (handler resume ở `ELR + 4`).
+    pub elr: u64,
+}
+
+/// Mặt nạ hart **đang chờ** một fault thô (bit `i` = hart `i`).
+static EXPECT_RAW: AtomicU32 = AtomicU32::new(0);
+/// Mặt nạ hart **đã** bắt được fault thô (bit `i` = hart `i`).
+static RAW_SEEN: AtomicU32 = AtomicU32::new(0);
+/// `ESR_EL1` thô theo hart.
+static RAW_ESR: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
+/// `FAR_EL1` thô theo hart.
+static RAW_FAR: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
+/// `ELR_EL1` thô theo hart.
+static RAW_ELR: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
+
 /// `FaultKind::Vm.va` theo hart.
 static VA: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
 /// `FaultKind::Vm.access` theo hart (`u64::MAX` = chưa có).
@@ -124,4 +155,58 @@ pub fn get(hart: usize) -> Option<VmFault> {
 /// Mặt nạ hart đã bắt được fault `Vm` — bằng chứng "hart nào" cho log/TAP.
 pub fn seen_mask() -> u32 {
     SEEN.load(Ordering::Acquire)
+}
+
+// ---------------------------------------------------------------------------------------------
+// KT-277 — fault thô (W^X)
+// ---------------------------------------------------------------------------------------------
+
+/// Đăng ký **một** fault thô được chờ trên `hart` — handler sẽ resume thay vì dừng máy.
+pub fn expect_raw(hart: usize) {
+    if hart < MAX_HARTS {
+        EXPECT_RAW.fetch_or(1u32 << hart, Ordering::Release);
+    }
+}
+
+/// Lấy (và xoá) cờ "đang chờ fault thô" của `hart`.
+pub fn take_expect_raw(hart: usize) -> bool {
+    if hart >= MAX_HARTS {
+        return false;
+    }
+    let bit = 1u32 << hart;
+    EXPECT_RAW.fetch_and(!bit, Ordering::AcqRel) & bit != 0
+}
+
+/// Xoá bản ghi fault thô của `hart` (dùng trước mỗi phép đo).
+pub fn reset_raw(hart: usize) {
+    if hart >= MAX_HARTS {
+        return;
+    }
+    RAW_SEEN.fetch_and(!(1u32 << hart), Ordering::AcqRel);
+    RAW_ESR[hart].store(0, Ordering::Release);
+    RAW_FAR[hart].store(0, Ordering::Release);
+    RAW_ELR[hart].store(0, Ordering::Release);
+}
+
+/// Ghi một fault thô đã bắt trên `hart` rồi bật bit trong [`RAW_SEEN`] (bit bật **sau** cùng).
+pub fn record_raw(hart: usize, esr: u64, far: u64, elr: u64) {
+    if hart >= MAX_HARTS {
+        return;
+    }
+    RAW_ESR[hart].store(esr, Ordering::Release);
+    RAW_FAR[hart].store(far, Ordering::Release);
+    RAW_ELR[hart].store(elr, Ordering::Release);
+    RAW_SEEN.fetch_or(1u32 << hart, Ordering::Release);
+}
+
+/// Bản ghi fault thô của `hart`; `None` nếu hart ấy chưa bắt được fault thô nào.
+pub fn raw(hart: usize) -> Option<RawFault> {
+    if hart >= MAX_HARTS || RAW_SEEN.load(Ordering::Acquire) & (1u32 << hart) == 0 {
+        return None;
+    }
+    Some(RawFault {
+        esr: RAW_ESR[hart].load(Ordering::Acquire),
+        far: RAW_FAR[hart].load(Ordering::Acquire),
+        elr: RAW_ELR[hart].load(Ordering::Acquire),
+    })
 }

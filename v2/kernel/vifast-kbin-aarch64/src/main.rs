@@ -89,6 +89,9 @@ mod blk;
 /// **KT-275** (K4' bước 3, D1 trên aarch64): virtio-net + DHCP + ARP + ICMP — TAP 22/23/24/25,
 /// chạy ở `el0_done` **sau** `blk` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
 mod net;
+/// **KT-277** (K4' bước 3): **W^X toàn ảnh** + **cache maintenance trước DMA** — TAP 22/23, chạy
+/// ở `el0_done` sau `blk` (số hiệu TAP tuần tự). Tách tệp riêng (luật R1).
+mod wxprobe;
 
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
@@ -284,6 +287,9 @@ extern "C" {
     // NOLOAD, vì stack phải dùng được sau khi bật MMU).
     static __text_start: u8;
     static __kernel_end: u8;
+    // **KT-277** — ranh giới W^X: `[__text_start, __data_start)` là vùng **RX**,
+    // `[__data_start, __kernel_end)` là vùng **RW** (xem `linker.ld`).
+    static __data_start: u8;
     // Đỉnh stack (cuối `.stack` NOLOAD) — KT-253 dùng để tính SP nửa cao.
     static __stack_top: u8;
     // **KT-259**: arena stack per-hart (NOLOAD) — `_start_secondary` và `HartStacks` dùng.
@@ -446,8 +452,10 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// mọi hart báo alive) + 3 ca của KT-262 (`tlbi: hart 1 sees unmap`, `tlbi: ack from all harts`,
 /// `smp: 4 harts online`) + **3 ca của KT-269** (EL0 vào được, `svc` được xử lý, EL0 chạy tiếp
 /// sau `svc` rồi `Exit`) + **3 ca của KT-273** (`pci: ecam`, `pci: virtio-blk found`,
-/// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`).
-pub const TAP_TESTS: usize = 25;
+/// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`)
+/// + **2 ca của KT-277** (`wx: text RX (write faults), data RW`,
+/// `dma: cache maintenance before/after DMA`).
+pub const TAP_TESTS: usize = 27;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -569,6 +577,15 @@ pub extern "C" fn vec_handler(
             if let Some((_vspace, va, access, reason)) = kind.vm() {
                 faults::record(hart, va, access.code(), reason.code(), esr_raw, far, elr);
             }
+            asm::write_elr_el1(elr + 4);
+            return 1;
+        }
+        // ---- **KT-277**: fault **thô** được chờ của phép đo W^X (ghi vào `.text` ⇒ data abort
+        // quyền). Không dựng `FaultKind::Vm`: trang **có** map, chỉ read-only — ghi
+        // `reason=NotMapped` sẽ là lời nói dối trong log. Ghi nguyên văn `ESR`/`FAR`/`ELR` rồi
+        // resume (`ELR += 4` — instruction `str` 8 byte, không thực thi nên resume an toàn).
+        if faults::take_expect_raw(hart) {
+            faults::record_raw(hart, esr_raw, far, elr);
             asm::write_elr_el1(elr + 4);
             return 1;
         }
@@ -781,8 +798,6 @@ pub extern "C" fn high_entry() -> ! {
 
     // ---- KT-254 (B3.5): `VSpace` thật — map **một Frame 4 KiB**, `walk`, `activate`, `unmap`,
     // rồi đọc qua VA sau `unmap` để sinh fault `FaultKind::Vm`.
-    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-    let kernel_end = KERNEL_END_PA.load(Ordering::Relaxed);
     let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
     let arena_pa = ARENA_PA.load(Ordering::Relaxed);
     let (low_mem, high_mem) = bootmem::shared_boot_memory_at(arena_pa);
@@ -795,45 +810,23 @@ pub extern "C" fn high_entry() -> ! {
     };
     // VSpace phải **tự có** alias nửa cao + physmap của kernel: `activate` đổi cả `TTBR1`, nên
     // nếu thiếu, lệnh kế tiếp (PC/SP/static ở nửa cao) fault ngay.
-    let pages_high = match vs.map_kernel_high(
-        text_start,
-        kernel_end,
-        KERNEL_HIGH_BASE,
-        Perms::KERNEL_RWX,
-        MemAttr::Normal,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: map kernel high lỗi {error:?}");
-            debug_halt(3)
-        }
+    //
+    // **KT-277**: cả **ba** đường (alias nửa cao, physmap, identity nửa thấp) map **W^X** qua
+    // `wxprobe::map_vspace_image` — một định nghĩa duy nhất cho quyền của vùng ảnh, và quyền được
+    // **đọc lại từ bảng trang** để dòng `# wx:` là bằng chứng chứ không phải lời khai.
+    //
+    // **Ảnh kernel identity** trong bảng nửa thấp là bắt buộc, không phải tuỳ chọn: ảnh liên kết
+    // ở **PA** (`0x4008_0000`), nên `core::fmt` (vtable của `&dyn Display`) và mọi con trỏ hàm
+    // trong `.rodata` là **địa chỉ tuyệt đối nửa thấp**. Đổi `TTBR0` sang bảng không map ảnh ⇒
+    // `blr` tới vtable fault (đo được: prefetch abort `FAR=0x4008_0ab0`). Map với `user = false`
+    // ⇒ EL0 **không** đọc được ảnh kernel (đúng bất biến cách ly).
+    let image_pages = match wxprobe::map_vspace_image(&mut vs, &mut console) {
+        Some(pages) => pages,
+        None => debug_halt(3),
     };
-    let pages_physmap =
-        match vs.map_physmap(text_start, kernel_end, Perms::KERNEL_RW, MemAttr::Normal) {
-            Ok(pages) => pages,
-            Err(error) => {
-                let _ = writeln!(console, "PANIC: vspace: map physmap lỗi {error:?}");
-                debug_halt(3)
-            }
-        };
-    // **Ảnh kernel identity** trong bảng nửa thấp của VSpace — bắt buộc, không phải tuỳ chọn:
-    // ảnh liên kết ở **PA** (`0x4008_0000`), nên `core::fmt` (vtable của `&dyn Display`) và mọi
-    // con trỏ hàm trong `.rodata` là **địa chỉ tuyệt đối nửa thấp**. Đổi `TTBR0` sang bảng không
-    // map ảnh ⇒ `blr` tới vtable fault (đo được: prefetch abort `FAR=0x4008_0ab0`). Map với
-    // `user = false` ⇒ EL0 **không** đọc được ảnh kernel (đúng bất biến cách ly).
-    let pages_image = match map_identity_into(
-        &mut vs,
-        text_start,
-        kernel_end,
-        Perms::KERNEL_RWX,
-        MemAttr::Normal,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: map image identity lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
+    let pages_high = image_pages.high;
+    let pages_physmap = image_pages.phys;
+    let pages_image = image_pages.identity;
     // UART + GIC identity (Device) — kernel vẫn in được sau khi `TTBR0` đổi sang bảng VSpace.
     let pages_uart = match map_identity_into(
         &mut vs,
@@ -1177,6 +1170,10 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let text_start = core::ptr::addr_of!(__text_start) as u64;
     let kernel_end = core::ptr::addr_of!(__kernel_end) as u64;
     let stack_top = core::ptr::addr_of!(__stack_top) as u64;
+    // **KT-277** — ranh giới W^X (đọc lúc PC còn ở nửa thấp ⇒ đây là **PA** liên kết).
+    let data_start = core::ptr::addr_of!(__data_start) as u64;
+    let stacks_start = core::ptr::addr_of!(__smp_stacks_start) as u64;
+    let stacks_end = core::ptr::addr_of!(__smp_stacks_end) as u64;
     let probe_pa = core::ptr::addr_of!(PROBE_PAGE.0) as u64;
     let phys_probe_pa = core::ptr::addr_of!(PHYS_PROBE.0) as u64;
 
@@ -1189,6 +1186,9 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     TEXT_START_PA.store(text_start, Ordering::Relaxed);
     KERNEL_END_PA.store(kernel_end, Ordering::Relaxed);
     VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
+    // **KT-277**: công bố bố cục W^X cho `wxprobe` (sau khi nhảy nửa cao, `adrp` trả alias nên
+    // không đọc lại được PA của symbol).
+    wxprobe::publish_layout(text_start, data_start, kernel_end, stacks_start, stacks_end);
     // **KT-259**: PA của `_start_secondary` — đọc **trước** khi nhảy nửa cao, vì sau đó `adrp`
     // cho alias nửa cao chứ không phải PA, mà PSCI `CPU_ON` cần **PA** (MMU của hart phụ còn tắt).
     smpboot::publish_entry_pa(_start_secondary as *const () as u64);
@@ -1211,14 +1211,11 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     };
 
     // ---- Bảng **nửa thấp** (`TTBR0_EL1`): identity map ảnh + UART + GIC + trang probe.
-    // Vùng ảnh: RWX (W^X đầy đủ là việc của tầng VSpace, B3.5 — không thuộc bước 3).
-    let pages_kernel = match map_identity(
-        mmu.low_mut(),
-        text_start,
-        kernel_end,
-        Perms::KERNEL_RWX,
-        MemAttr::Normal,
-    ) {
+    // **KT-277**: vùng ảnh map **W^X** — `[__text_start, __data_start)` RX (`.text` +
+    // `.text.vectors` + `.el0` + `.rodata`), `[__data_start, __kernel_end)` RW (`.data` + `.bss`
+    // + stack), trang guard của stack per-hart **không map** (`wx::map_low`).
+    let layout = wxprobe::layout();
+    let pages_kernel = match vifast_plat_aarch64::wx::map_low(mmu.low_mut(), &layout) {
         Ok(pages) => pages,
         Err(error) => {
             let _ = writeln!(console, "PANIC: mmu: map kernel lỗi {error:?}");
@@ -1264,28 +1261,21 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         debug_halt(3)
     }
 
-    // ---- Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh + physmap (KT-253).
-    let pages_high = match mmu.map_high_alias(
-        text_start,
-        kernel_end,
-        KERNEL_HIGH_BASE,
-        Perms::KERNEL_RWX,
-        MemAttr::Normal,
-    ) {
+    // ---- Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh + physmap (KT-253), **W^X** từ KT-277.
+    let pages_high = match vifast_plat_aarch64::wx::map_high(&mut mmu, &layout) {
         Ok(pages) => pages,
         Err(error) => {
             let _ = writeln!(console, "PANIC: mmu: map alias nửa cao lỗi {error:?}");
             debug_halt(3)
         }
     };
-    let pages_physmap =
-        match mmu.map_physmap(text_start, kernel_end, Perms::KERNEL_RW, MemAttr::Normal) {
-            Ok(pages) => pages,
-            Err(error) => {
-                let _ = writeln!(console, "PANIC: mmu: map physmap lỗi {error:?}");
-                debug_halt(3)
-            }
-        };
+    let pages_physmap = match vifast_plat_aarch64::wx::map_phys(&mut mmu, &layout) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: mmu: map physmap lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
 
     let ttbr0 = match mmu.ttbr0_base() {
         Some(pa) => pa,

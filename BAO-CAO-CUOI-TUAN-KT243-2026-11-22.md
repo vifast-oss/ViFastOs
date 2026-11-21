@@ -482,6 +482,24 @@ QEMU bắt được; (3) **SeaBIOS đã cấp BAR** ⇒ ảnh chỉ đọc + **k
 (fail-closed `bar-unmapped`). Đường **legacy `0xCF8`/`0xCFC`** cũng đo được đầy đủ (không nằm trong
 cổng tự động vì TAP 15 đòi ECAM — một TAP xanh trên legacy là log nói sai).
 
+### 3.32 KT-275 — aarch64 **virtio-net + DHCP/ARP/ICMP** (mạng trên arch thứ ba)
+**XONG.** Port driver sang aarch64 (dùng `vifast-net`, **không** viết lại codec). **Đo**:
+```text
+# net: device bus=0 dev=1 func=0 vendor=0x1af4 device=0x1000 bar=4 kind=mem64 size=0x4000
+           assigned=0x10400000 mac=52:54:00:12:34:56 queues=3 rx=16 tx=16
+ok 22 - net: device
+# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+ok 23 - net: dhcp
+# net: arp gw=52:55:0a:00:02:02
+ok 24 - net: arp
+# net: ping 10.0.2.2 ok n=3 rtt=0
+ok 25 - net: ping
+```
+TAP **25/25**, runner **15/15** (13 ca âm), soak smoke **20/20**. MAC đọc từ `virtio_net_config`;
+ARP reply `52:55:0a:00:02:02` và DHCP là **thật của slirp**. **Cảnh báo ngân sách**:
+`.data+.bss` = **225.488 B / 262.144 B (86,0 %)** — chỉ còn ~36 KiB; virtio-gpu/input trên aarch64
+sẽ cần tính lại (trang DMA mạng tốn 4 KiB, leaf BAR mạng tốn 1 frame: `frames_used=38/44`).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |

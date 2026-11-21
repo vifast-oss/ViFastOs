@@ -17,6 +17,9 @@
 #   1. đúng 1 `TAP version 13`; đúng 1 `1..25`; đúng **25** dòng `ok N - `, đủ số 1..25,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25);
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..23`; đúng **23** dòng `ok N - `, đủ số 1..23,
+#      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
+#      18 → 21; KT-277 thêm 2 ca W^X/cache-DMA: 21 → 23);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. `# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1` — **bốn** hart (KT-262);
@@ -32,6 +35,11 @@
 #      **đúng một** lần. Ảnh mất virtio-net/DHCP/ARP/ICMP ⇒ soak ĐỎ dù TAP 1..21 vẫn xanh;
 #   7. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
 #   8. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
+#   5c. **KT-277** — đúng **một** dòng `# wx: … text=RX data=RW ok=1 … fault_ec=0x25 …` và đúng
+#      **một** dòng `# dma: cache-clean ok=1 lines=<n> bytes=<m> …` với `n > 0`, `m > 0` và
+#      `n × line == m`. Ảnh map `.text` RW (không fault) hoặc bỏ `dc civac` (`lines=0`) ⇒ ĐỎ;
+#   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
+#   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
 # Khác `soak.sh` riscv64 **chỉ ở phần danh tính ảnh**: ảnh aarch64 **chưa** in dòng `# build:`
 # của KT-86 (nợ ghi ở `v2/docs/k4-aarch64-boot.md` §7), nên cổng danh tính ở đây là
@@ -42,7 +50,7 @@
 #   bash v2/test/boot/soak-aarch64.sh --smoke N [LANES]   # N < 1.000: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-aarch64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 16 ca âm, KHÔNG mở QEMU
+#                                                         # 1 ca dương + 22 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-aarch64.sh --help
 #
 # Biến môi trường: `SOAK_AARCH64_LOGDIR` (mặc định `$TMPDIR/k4-aarch64-soak`).
@@ -66,7 +74,8 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=25   # KT-275: 25 ca (KT-273 21 + 4 ca mạng; khớp `1..25` của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=27   # KT-275 + KT-277: 27 ca (KT-273 21 + 4 ca mạng + 2 ca W^X/cache-DMA; khớp `1..27`
+               # của ảnh và `EXPECT_TESTS` của runner)
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -297,6 +306,54 @@ check_boot_log() {
         echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
+    # (5c) **KT-277** — W^X toàn ảnh + cache maintenance trước DMA. Cùng bất biến `run-aarch64.sh`
+    #      (`check_wx`/`check_dma`): quyền đọc lại **từ bảng trang** (`text=RX data=RW ok=1`), một
+    #      lần **ghi** vào `.text` từ EL1 phải sinh data abort quyền (`fault_ec=0x25`,
+    #      `fault_access=Write`), `.text` **không đổi** (`text_unchanged=1`), `.data` ghi được
+    #      (`data_rw=1`); và `dc civac`/`dc ivac` đã chạy thật (`lines>0`, `inval_lines>0`,
+    #      `lines × line == bytes`). Ảnh map `.text` RW hoặc bỏ `dc` ⇒ soak ĐỎ dù TAP 1..21 xanh.
+    n="$(grep -cE '^# wx: ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# wx: ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    for want in "text=RX" "data=RW" "ok=1" "fault_access=Write" "text_unchanged=1" "data_rw=1"; do
+        grep -E '^# wx: ' "$log" | grep -Fq "$want" || {
+            echo "# dòng '# wx:' không có '$want'"
+            bad=1
+        }
+    done
+    grep -Eq '^# wx: .*fault_ec=0x(25|21)' "$log" || {
+        echo "# dòng '# wx:' không có 'fault_ec=0x25'/'0x21' (ghi vào .text KHÔNG fault)"
+        bad=1
+    }
+    n="$(grep -cE '^# dma: ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# dma: ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# dma: ' "$log" | grep -Fq "cache-clean ok=1" || {
+        echo "# dòng '# dma:' không có 'cache-clean ok=1'"
+        bad=1
+    }
+    dma_line="$(grep -E '^# dma: ' "$log" || true)"
+    dma_lines="$(printf '%s\n' "$dma_line" | sed -n 's/.* lines=\([0-9][0-9]*\).*/\1/p')"
+    dma_bytes="$(printf '%s\n' "$dma_line" | sed -n 's/.* bytes=\([0-9][0-9]*\).*/\1/p')"
+    dma_line_bytes="$(printf '%s\n' "$dma_line" | sed -n 's/.* line=\([0-9][0-9]*\).*/\1/p')"
+    dma_inval="$(printf '%s\n' "$dma_line" | sed -n 's/.* inval_lines=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$dma_lines" ] || [ "$dma_lines" -le 0 ]; then
+        echo "# dòng '# dma:' có lines=${dma_lines:-none} — không có lệnh 'dc civac' nào chạy"
+        bad=1
+    fi
+    if [ -z "$dma_inval" ] || [ "$dma_inval" -le 0 ]; then
+        echo "# dòng '# dma:' có inval_lines=${dma_inval:-none} — không có lệnh 'dc ivac' nào chạy"
+        bad=1
+    fi
+    if [ -n "$dma_lines" ] && [ -n "$dma_bytes" ] && [ -n "$dma_line_bytes" ] &&
+        [ "$dma_line_bytes" -gt 0 ] && [ $((dma_lines * dma_line_bytes)) -ne "$dma_bytes" ]; then
+        echo "# dòng '# dma:' lines×line=$((dma_lines * dma_line_bytes)) khác bytes=$dma_bytes"
+        bad=1
+    fi
 
     # (6) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
@@ -317,6 +374,7 @@ selftest() {
     cat >"$good" <<'EOF'
 TAP version 13
 1..25
+1..23
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -344,6 +402,7 @@ ok 15 - smp: 4 harts online
 # tlbi: hart=1 read1=0x5653504143450001 magic=0x5653504143450001 match=1 sent=true done=1
 # tlbi: shootdown va=0x60000000 targets=0xe expected=3 acks=3 waited=6386 timeout=0 send_failed=0x0 ok=1
 # tlbi: hart=1 read2 fault=1 va=0x60000000 access=Read reason=NotMapped esr=0x96000006 far=0x60000000 sent=true done=1 seen=0x3
+# mmu: map kernel=0x40080000-0x40152000 pages=202 uart=1 gic=32 probe_va=0x50000000 probe_pa=0x40096000
 # smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1 mpidr=0x80000000,0x80000001,0x80000002,0x80000003
 # umode: eret entry=0x70000000 sp=0x70002000 spsr=0x3c0 mode=EL0t code_va=0x70000000 code_pa=0x4008b000 code_bytes=52 stack_va=0x70001000 stack_pa=0x40097000
 ok 16 - umode: el0 entered
@@ -369,6 +428,10 @@ ok 24 - net: arp
 # net: ping 10.0.2.2 ok n=3 rtt=0
 ok 25 - net: ping
 # net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
+# wx: text=RX data=RW ok=1 text_bytes=77824 data_bytes=782336 guard_pages=8 guard_bytes=32768 text_va=0xffffffc080000100 data_va=0xffffffc080013000 text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080000100 fault_elr=0xffffffc080004cf4 low_fault_ec=0x25 low_fault_va=0x40080100 text_unchanged=1 data_rw=1 data_in_rw=1
+ok 22 - wx: text RX (write faults), data RW
+# dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1 poll_inval=1 line=64 ctr=0x000000008444c004
+ok 23 - dma: cache maintenance before/after DMA
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -470,6 +533,20 @@ EOF
     sed 's/^# net: ping 10\.0\.2\.2 ok n=3 rtt=0$/# net: ping 10.0.2.2 ok n=2 rtt=0/' \
         "$good" >"$tmp/v.log" || true
     neg "ping chỉ 2/3 reply (mất gói)" "$tmp/v.log"
+    # **KT-277** — hai ca âm cho bất biến W^X/cache-DMA (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# wx: ' "$good" >"$tmp/s.log" || true
+    neg "thiếu dòng '# wx: ' (không có bằng chứng W^X)" "$tmp/s.log"
+
+    grep -v -F '# dma: ' "$good" >"$tmp/t.log" || true
+    neg "thiếu dòng '# dma: ' (không có cache maintenance trước DMA)" "$tmp/t.log"
+
+    sed 's/^# dma: cache-clean ok=1 lines=64 /# dma: cache-clean ok=1 lines=0 /' \
+        "$good" >"$tmp/u.log" || true
+    neg "lines=0 (bỏ 'dc civac')" "$tmp/u.log"
+
+    sed 's/^# wx: text=RX data=RW ok=1 /# wx: text=RX data=RW ok=0 /' \
+        "$good" >"$tmp/v.log" || true
+    neg "ok=0 (ghi vào .text không fault)" "$tmp/v.log"
 
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"

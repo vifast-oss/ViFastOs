@@ -47,6 +47,9 @@ pub mod asm;
 pub mod barrier;
 pub mod boot_mmu;
 pub mod bootmem;
+/// **KT-277** (K4' bước 3): cache maintenance trước/sau DMA — `dc civac`/`dc ivac` + barrier,
+/// encoding host-testable, cỡ dòng lấy từ `CTR_EL0`.
+pub mod cache;
 pub mod fault;
 pub mod format;
 pub mod gic;
@@ -72,6 +75,9 @@ pub mod virtio_blk;
 /// `vifast-net` (codec thuần, không viết lại).
 pub mod virtio_net;
 pub mod vspace;
+/// **KT-277** (K4' bước 3): **W^X toàn ảnh** — tách `.text` RX / `.data` RW theo symbol linker,
+/// trang guard của stack per-hart **không map**, một định nghĩa cho cả bảng boot lẫn `VSpace`.
+pub mod wx;
 
 /// Dừng máy **sạch** (KT-247): `PSCI SYSTEM_OFF` qua `hvc #0`, dự phòng `wfi` vô hạn.
 ///
@@ -95,6 +101,13 @@ pub use boot_mmu::{
 pub use bootmem::{
     boot_memory, shared_boot_memory, shared_boot_memory_at, BootMemory, SharedBootMemory,
     BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS,
+};
+pub use cache::{
+    apply_complete, apply_handoff, cache_line_bytes, clean_invalidate_lines, current_line_bytes,
+    dc_encoding, for_each_line, invalidate_line, invalidate_lines, line_count, CompleteStep,
+    HandoffStep, COMPLETE_SEQUENCE, CTR_DMINLINE_MASK, CTR_DMINLINE_SHIFT, DC_CIVAC, DC_CVAC,
+    DC_CVAU, DC_IVAC, DC_SYS_BASE_OP1_0, DC_SYS_BASE_OP1_3, DEFAULT_CACHE_LINE, HANDOFF_SEQUENCE,
+    IC_IVAU,
 };
 pub use fault::{
     classify_esr, Abort, Access, EC_DATA_ABORT_LOWER_EL, EC_DATA_ABORT_SAME_EL,
@@ -124,8 +137,8 @@ pub use shootdown::{
     REMOTE_SEQUENCE,
 };
 pub use split_mmu::{
-    half_of, high_alias_va, map_high_alias, map_physmap, physmap_va, Half, SplitMmu,
-    HIGH_HALF_BASE, KERNEL_HIGH_BASE, PHYSMAP_BASE,
+    half_of, high_alias_va, map_high_alias, map_high_alias_from, map_physmap, physmap_va, Half,
+    SplitMmu, HIGH_HALF_BASE, KERNEL_HIGH_BASE, PHYSMAP_BASE,
 };
 pub use sysreg::{
     Daif, ElrEl1, Esr, ExceptionClass, FarEl1, Granule, Ips, Mair, Sctlr, Spsr, SpsrMode, Tcr,
@@ -157,10 +170,15 @@ pub use vector::{
     is_aligned, vector_offset, VectorKind, VECTOR_ALIGN, VECTOR_COUNT, VECTOR_STRIDE,
 };
 pub use virtio_blk::{
-    ascii16, has_magic, hex16, high_to_pa, sector0_evidence, BlkReport, Sector0, SECTOR0_MAGIC,
+    ascii16, has_magic, hex16, high_to_pa, sector0_evidence, BlkReport, CacheStats, Sector0,
+    SECTOR0_MAGIC,
 };
 pub use virtio_net::{
     arp_build_request, arp_parse_reply, dhcp_acquire, dhcp_frame, dhcp_frame_parse,
     icmp_echo_frame, ping, NetConfig4, NetReport, PingStats, Stats as NetStats,
 };
 pub use vspace::{Frame, VSpace, VSpaceId};
+pub use wx::{
+    map_high, map_low, map_phys, map_vspace_high, map_vspace_low, map_vspace_phys, ImageLayout,
+    Range, MAX_RW_RANGES,
+};

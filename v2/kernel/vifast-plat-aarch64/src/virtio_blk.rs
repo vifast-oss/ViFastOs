@@ -45,6 +45,7 @@ use vifast_virtio::features::{
 use vifast_virtio::queue::{Desc, DescFlags, SplitQueue, VqLayout};
 
 use crate::asm;
+use crate::cache;
 use crate::pci::PciReport;
 
 /// Số descriptor của queue (luỹ thừa 2). 8 đủ cho một request 3 descriptor và rẻ về `.bss`.
@@ -112,6 +113,67 @@ static ERRORS: AtomicU64 = AtomicU64::new(0);
 static NOTIFIES: AtomicU64 = AtomicU64::new(0);
 static ID_MISMATCH: AtomicU64 = AtomicU64::new(0);
 static TIMEOUTS: AtomicU64 = AtomicU64::new(0);
+
+// ---------------------------------------------------------------- cache maintenance (KT-277)
+//
+// Bộ đếm **của chính vòng lặp phát `dc`** — nhờ vậy `# dma: … lines=` là số lệnh `dc` **đã
+// chạy**, không phải một hằng viết tay. Bỏ lời gọi `dc civac` ⇒ `lines=0` ⇒ runner ĐỎ (tầng
+// quan sát được trên QEMU TCG; **hiệu ứng** của cache thì TCG không mô hình hoá — ghi trung thực
+// ở `v2/docs/k4-aarch64-boot.md` §11).
+static CLEAN_LINES: AtomicU64 = AtomicU64::new(0);
+static CLEAN_BYTES: AtomicU64 = AtomicU64::new(0);
+static CLEAN_OPS: AtomicU64 = AtomicU64::new(0);
+static INVAL_LINES: AtomicU64 = AtomicU64::new(0);
+static INVAL_BYTES: AtomicU64 = AtomicU64::new(0);
+static INVAL_OPS: AtomicU64 = AtomicU64::new(0);
+static POLL_INVAL: AtomicU64 = AtomicU64::new(0);
+
+/// Ảnh chụp bộ đếm cache maintenance — in vào dòng `# dma:` của ảnh.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CacheStats {
+    /// Số dòng đã `dc civac` **trước** khi bàn giao ring (tổng qua mọi request).
+    pub clean_lines: u64,
+    /// Số byte vùng DMA đã làm sạch (tổng, mỗi request một lần toàn trang).
+    pub clean_bytes: u64,
+    /// Số lần chạy chuỗi bàn giao (mỗi request một lần).
+    pub clean_ops: u64,
+    /// Số dòng đã `dc ivac` **sau** khi thiết bị báo hoàn tất.
+    pub inval_lines: u64,
+    /// Số byte vùng DMA đã bỏ cache sau khi thiết bị ghi.
+    pub inval_bytes: u64,
+    /// Số lần chạy chuỗi hoàn tất.
+    pub inval_ops: u64,
+    /// Số lần `dc ivac` một dòng trong vòng poll `used->idx`.
+    pub poll_inval: u64,
+}
+
+impl CacheStats {
+    /// `true` ⇔ **cả hai** chiều đã chạy ít nhất một lần và mỗi lần làm sạch đều có dòng thật.
+    ///
+    /// Đây là điều kiện của `ok=1` trong dòng `# dma:`: một ảnh không có đĩa (không request nào)
+    /// hoặc một ảnh bỏ bước `dc` đều cho `false`.
+    pub const fn ok(self) -> bool {
+        self.clean_ops > 0
+            && self.clean_lines > 0
+            && self.inval_ops > 0
+            && self.inval_lines > 0
+            && self.clean_bytes > 0
+            && self.inval_bytes > 0
+    }
+}
+
+/// Đọc ảnh chụp bộ đếm cache maintenance.
+pub fn cache_stats() -> CacheStats {
+    CacheStats {
+        clean_lines: CLEAN_LINES.load(Ordering::SeqCst),
+        clean_bytes: CLEAN_BYTES.load(Ordering::SeqCst),
+        clean_ops: CLEAN_OPS.load(Ordering::SeqCst),
+        inval_lines: INVAL_LINES.load(Ordering::SeqCst),
+        inval_bytes: INVAL_BYTES.load(Ordering::SeqCst),
+        inval_ops: INVAL_OPS.load(Ordering::SeqCst),
+        poll_inval: POLL_INVAL.load(Ordering::SeqCst),
+    }
+}
 
 /// Ảnh chụp bộ đếm để in evidence (đọc một lần, không tách rời từng số).
 #[derive(Clone, Copy, Debug, Default)]
@@ -625,13 +687,20 @@ fn submit(
         // thấy idx khi ring đã xong. (Spec §2.7.13.)
         q.push_avail(0);
     }
-    fence();
-    // Ghi **index queue** vào cửa thông báo (driver → thiết bị). `notify_off` đã đọc lúc init và
-    // **cache** trong trạng thái (không ghi `queue_select` giữa lúc request đang bay).
+    // ---- **KT-277**: bàn giao vùng DMA cho thiết bị theo [`cache::HANDOFF_SEQUENCE`]:
+    // `dc civac` từng dòng (ghi bản bẩn ra PoC + bỏ bản sao) → `dsb ish` → `dsb sy` → notify.
+    // Thứ tự là **dữ liệu** (test host khẳng định), không phải ba dòng rời có thể xoá lẫn nhau.
     let notify = NOTIFY.load(Ordering::Relaxed);
     let notify_off = NOTIFY_OFF.load(Ordering::Relaxed) as u16;
     let notify_mul = NOTIFY_MUL.load(Ordering::Relaxed) as u32;
-    write16(notify + notify_off as u64 * notify_mul as u64, 0);
+    let notify_addr = notify + notify_off as u64 * notify_mul as u64;
+    let mut clean_lines = 0u64;
+    for step in cache::HANDOFF_SEQUENCE {
+        clean_lines += cache::apply_handoff(step, dma_pa, DMA_PAGE_BYTES as u64, notify_addr);
+    }
+    CLEAN_LINES.fetch_add(clean_lines, Ordering::SeqCst);
+    CLEAN_BYTES.fetch_add(DMA_PAGE_BYTES as u64, Ordering::SeqCst);
+    CLEAN_OPS.fetch_add(1, Ordering::SeqCst);
     NOTIFIES.fetch_add(1, Ordering::SeqCst);
 
     // ---- poll used (một chiều) — offset lấy từ **qsize thật** của queue.
@@ -640,10 +709,24 @@ fn submit(
     let deadline = poll_deadline();
     let mut spins = 0u64;
     loop {
+        // **KT-277**: `dc ivac` dòng chứa `used->idx` **trước** mỗi lần đọc. Thiết bị ghi qua
+        // DMA (không đi qua cache của CPU), nên đọc mà không bỏ cache có thể thấy mãi giá trị cũ
+        // và poll treo tới hết trần. An toàn: `HANDOFF_SEQUENCE` vừa `dc civac` toàn trang nên
+        // mọi dòng đều **sạch** — `dc ivac` chỉ bỏ bản sao đã sạch, không mất dữ liệu chưa ghi.
+        cache::invalidate_line(used_idx_addr);
+        POLL_INVAL.fetch_add(1, Ordering::SeqCst);
         let idx = asm::mmio_read_u16(used_idx_addr);
         let last = LAST_USED.load(Ordering::Relaxed) as u16;
         if idx != last {
-            fence();
+            // **KT-277**: thiết bị đã ghi xong — bỏ cache **trước** khi đọc `used->elem`,
+            // byte status và đệm dữ liệu, theo [`cache::COMPLETE_SEQUENCE`].
+            let mut inval_lines = 0u64;
+            for step in cache::COMPLETE_SEQUENCE {
+                inval_lines += cache::apply_complete(step, dma_pa, DMA_PAGE_BYTES as u64);
+            }
+            INVAL_LINES.fetch_add(inval_lines, Ordering::SeqCst);
+            INVAL_BYTES.fetch_add(DMA_PAGE_BYTES as u64, Ordering::SeqCst);
+            INVAL_OPS.fetch_add(1, Ordering::SeqCst);
             let element = {
                 let q = queue_with(qsize)?;
                 q.used_elem(last & (qsize - 1))

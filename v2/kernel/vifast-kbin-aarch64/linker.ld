@@ -49,7 +49,13 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    /* **KT-277** — ranh giới **W^X**: `[__text_start, __data_start)` là vùng **RX** (`.text` +
+       `.text.vectors` + `.el0` + `.rodata`), `[__data_start, __kernel_end)` là vùng **RW**
+       (`.data` + `.bss` + `.smp_stacks`). `__data_start` phải đứng **đầu** `.data` và căn 4 KiB
+       (mọi đường map dùng trang 4 KiB). `.data.rel.ro` rơi vào `*(.data .data.*)` ⇒ **RW**,
+       đúng bản chất dữ liệu (vtable `core::fmt` đọc được nhưng không exec). */
     .data : ALIGN(4K) {
+        __data_start = .;
         *(.data .data.*)
     }
 

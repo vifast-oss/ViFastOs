@@ -6,6 +6,8 @@ Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) + B3.10 (PCI ECAM + virtio-blk) DON
 **U-mode/EL0 + `svc` DONE** (KT-269, §9) — `[calling.aarch64]` đã mở (D2-206).
 **PCI ECAM + virtio-blk DONE** (KT-273, §10) — đọc được sector 0 của đĩa QEMU.
 **virtio-net + DHCP + ARP + ICMP DONE** (KT-275, §11) — MAC thật, DHCP/ARP/ping thật của slirp.
+**W^X toàn ảnh + cache maintenance trước DMA DONE** (KT-277, §11) — `.text`/`.rodata` **RX**,
+`.data`/`.bss`/stack **RW**, trang guard **không map**; `dc civac`/`dc ivac` trước/sau DMA.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
@@ -31,6 +33,7 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.9+ | **smp 4** + ba SGI (IPI 0, shootdown 1, lệnh 2) | KT-262 | **DONE** (4 hart) |
 | B3.10 | **PCI ECAM** + quét bus/device/function + gán BAR + **virtio-blk** đọc sector 0 | KT-273 | **DONE** (§10) |
 | B3.11 | **virtio-net** (hai queue, MAC thật) + **DHCP** + **ARP** + **ICMP echo** | KT-275 | **DONE** (§11) |
+| B3.11 | **W^X toàn ảnh** (`.text` RX / `.data` RW, guard không map) + **cache maintenance** trước/sau DMA | KT-277 | **DONE** (§11) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
 `cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8). **U-mode** (B3.7) chỉ
@@ -170,20 +173,21 @@ hart phụ **thật sự** chạy `tlbi` trong handler.
 ## 6. Runner + TAP
 
 ```bash
-bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 12 ca âm
+bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 14 ca âm
 ```
 
 - Dùng `qemu_guard.sh` (process group + timeout + dọn con) — **`perl -e 'alarm N; exec @ARGV'`
   KHÔNG giết được QEMU** (qemu bỏ qua `SIGALRM`).
-- **14/14 kiểm sạch** (KT-262 + KT-265 + KT-269 + KT-273): ELF (`.text` @ `0x4008_0000`,
-  `.text.vectors` là TEXT, 16 stub đúng offset), boot (**TAP 21/21** + marker đúng 1 lần +
-  **8 dòng `# smp:`** + **3 dòng `# tlbi:`** + **`# umode: el0 ran svc=0 ret=<len>`** +
-  **`# pci: ecam … class=0x060000 … empty=0xffff`** + **`# pci: virtio-blk found …`** +
-  **`# blk: sector0 hex=<khớp đĩa tạm> … magic=1`** + **`# conf image:` khớp ELF** — đúng một
-  lần mỗi dòng), **12 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan sai, log rỗng, thiếu
-  dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack shootdown**, **hash
-  ảnh lệch ELF**, **thiếu dòng `# umode:`**, **không có đĩa ⇒ `# blk: no device` + TAP đỏ**)
-  đều **ĐỎ đúng**.
+- **16/16 kiểm sạch** (KT-262 + KT-265 + KT-269 + KT-273 + KT-277): ELF (`.text` @
+  `0x4008_0000`, `.text.vectors` là TEXT, 16 stub đúng offset), boot (**TAP 23/23** + marker
+  đúng 1 lần + **8 dòng `# smp:`** + **3 dòng `# tlbi:`** + **`# umode: el0 ran svc=0 ret=<len>`**
+  + **`# pci: ecam … class=0x060000 … empty=0xffff`** + **`# pci: virtio-blk found …`** +
+  **`# blk: sector0 hex=<khớp đĩa tạm> … magic=1`** + **`# wx: … text=RX data=RW ok=1 …
+  fault_ec=0x25 …`** + **`# dma: cache-clean ok=1 lines=<n> bytes=<m> …`** + **`# conf image:`
+  khớp ELF** — đúng một lần mỗi dòng), **14 ca âm** (marker sai, thiếu `ok`, có `not ok`, plan
+  sai, log rỗng, thiếu dòng hart 1 online, IPI in hai lần, **thiếu dòng `# tlbi:`**, **thiếu ack
+  shootdown**, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**, **không có đĩa ⇒ `# blk: no
+  device` + TAP đỏ**, **thiếu dòng `# wx:`**, **thiếu dòng `# dma:`**) đều **ĐỎ đúng**.
 - Nối vào cổng: bước **56** `QEMU aarch64 (K4' bước 3)` — chạy ở **cả T1 và T2**.
 
 ## 7. Còn thiếu (ghi rõ, không giấu)
@@ -198,7 +202,9 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 12 ca âm
    (hart 0 ở VA nửa cao, hart phụ ở VA thấp).
 5. **DTB**: `_start` nhận con trỏ trong `x0` nhưng **chưa đọc**; địa chỉ thiết bị đang là hằng của
    `resources.rs` (memory map QEMU `virt`).
-6. **W^X chưa đầy đủ**: vùng ảnh map `KERNEL_RWX` một khối; tách `.text` RX / `.data` RW thuộc B3.5.
+6. **W^X toàn ảnh**: **DONE** (KT-277, §11) — `.text`/`.text.vectors`/`.el0`/`.rodata` **RX**,
+   `.data`/`.bss`/`.smp_stacks` **RW**, trang guard của stack per-hart **không map**. **Chưa**
+   KPTI, **chưa** PAN/UAO (ngoài phạm vi D2-209).
 7. **`budget.sh` bản aarch64**: **DONE** (KT-265) — `v2/test/boot/budget-aarch64.sh`, trần
    262.144 B, `.smp_stacks` báo riêng (§8).
 8. **16 ô vector dùng chung một stub**: IRQ/FIQ chưa bật (`DAIF` mask đủ); khi bật ngắt phải tách
@@ -446,8 +452,9 @@ stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **
    (poll `used`), chưa hotplug. TCP/DNS trên aarch64: xem §11.5.
 2. **ECAM 16/256 bus** — lý do frame/trần ở §10.2; bus ≥ 16 **không** quét được (đọc ra ngoài
    cửa sổ đã map ⇒ data abort), không phải "bỏ qua cho nhanh".
-3. **Không cache maintenance**: QEMU TCG không mô hình hoá cache nên DMA nhất quán; trên phần cứng
-   thật cần `dc civac`/`dsb` trước khi bàn giao ring — **chưa** làm, **chưa** đo.
+3. **Cache maintenance**: **DONE** (KT-277, §11) — `dc civac` từng dòng + `dsb ish`/`dsb sy`
+   trước notify, `dc ivac` sau khi thiết bị ghi. **Giới hạn**: QEMU TCG **không** mô hình hoá
+   cache nên **hiệu ứng** không quan sát được; tầng quan sát được là bộ đếm `lines=` (§11.3).
 4. **Không** dùng ngắt: driver poll; `ISR` chỉ đọc chẩn đoán.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
 
@@ -495,6 +502,47 @@ ok 24 - net: arp
 ok 25 - net: ping
 # net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
 # viFastOs aarch64: boot ok
+## 12. W^X toàn ảnh + cache maintenance trước DMA — B3.12 (KT-277)
+
+### 11.1 Vấn đề và cách tách
+
+Trước KT-277 **mọi** đường map vùng ảnh dùng **một** khối `Perms::KERNEL_RWX` (bảng boot nửa
+thấp, alias nửa cao, physmap, và ba đường tương ứng trong `VSpace`) ⇒ `.text` **ghi được** từ
+EL1, W^X không có (nợ §7.6 cũ). KT-277 tách theo **symbol linker**, không theo địa chỉ viết tay:
+
+```text
+  [__text_start, __data_start)   RX   .text + .text.vectors + .el0 + .rodata
+  [__data_start, __kernel_end)   RW   .data + .bss + .smp_stacks (NOLOAD)
+```
+
+- `__data_start` là symbol **mới** trong `linker.ld`, đặt ở đầu `.data` (căn 4 KiB).
+- `.rodata` nằm trong vùng **RX**: nó là dữ liệu **chỉ đọc** (vtable `core::fmt`, bảng chuỗi…).
+  `.data.rel.ro` **không** nằm trong `.rodata` ở ảnh này — linker script gom nó vào `.data`
+  (`*(.data .data.*)`) nên nó **RW**, đúng bản chất "dữ liệu" của nó. Đây là điểm đã lường trước
+  trong phiếu giao việc; **không** phải sửa gì thêm.
+- Trang **guard** của stack per-hart (`MAX_HARTS` record `guard 4 KiB | stack 64 KiB`) **không
+  map**: `wx::ImageLayout::rw_ranges` trả các khoảng RW **đã trừ** 8 trang guard. Tràn stack đi
+  xuống chạm guard ⇒ fault; KT-277 **không** kiểm fault đó (phạm vi: chỉ cần không map), nhưng
+  bất biến "guard không map" được kiểm **hai** tầng: test host (`rw_ranges_exclude_guard`,
+  `map_low_perms`) và **số trang** ở runner (§11.3).
+- **Một** định nghĩa cho **sáu** đường map (`wx::map_low`/`map_high`/`map_phys` cho bảng boot;
+  `wx::map_vspace_low`/`map_vspace_high`/`map_vspace_phys` cho `VSpace`) ⇒ không có đường map thứ
+  hai lệch quyền.
+- Alias nửa cao dùng **một** gốc (`__text_start`) cho **mọi** khoảng: `map_high_alias_from` thêm
+  tham số `origin_pa` thay vì chép vòng lặp map. Nếu mỗi khoảng lấy đầu của chính nó làm gốc,
+  alias của `.data` lệch đúng bằng kích thước vùng RX và kernel nhảy vào giữa `.data` sau khi đổi
+  `TTBR1` — test host `map_high_alias_origin` bắt lỗi ấy.
+
+### 11.2 Đo được (log `boot-1.log` của runner)
+
+```text
+# mmu: map kernel=0x40080000-0x40152000 pages=202 uart=1 gic=32 probe_va=0x50000000 probe_pa=0x40096000
+# mmu: high alias=0x40080000-0x40152000 base=0xffffffc080000000 pages=202 physmap_base=0xffffffc000000000 pages_physmap=202
+# vspace: map va=0x60000000 pa=0x40098000 walk=0x40098000 match=1 pages_high=202 pages_physmap=202 pages_image=202 pages_mmio=289
+# wx: text=RX data=RW ok=1 text_bytes=77824 data_bytes=782336 guard_pages=8 guard_bytes=32768 text_va=0xffffffc080000100 data_va=0xffffffc080013000 text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080000100 fault_elr=0xffffffc080004cf4 low_fault_ec=0x25 low_fault_va=0x40080100 text_unchanged=1 data_rw=1 data_in_rw=1
+ok 22 - wx: text RX (write faults), data RW
+# dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1 poll_inval=1 line=64 ctr=0x000000008444c004
+ok 23 - dma: cache maintenance before/after DMA
 ```
 
 | Phép đo | Kết quả |
@@ -525,3 +573,44 @@ mạng"). Soak `soak-aarch64.sh`: `--selftest` **23/23** (1 dương + 22 âm), s
    hình hoá cache nên DMA nhất quán; trên phần cứng thật **chưa** làm, **chưa** đo.
 4. **Không** net server U-mode, **không** socket API — toàn bộ stack chạy trong kernel ảnh.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+| vùng RX | `text_bytes=77824` (76 KiB) = `.text` + `.text.vectors` + `.el0` + `.rodata` |
+| vùng RW | `data_bytes=782336` (764 KiB) = `.data` + `.bss` + `.smp_stacks` (NOLOAD) |
+| guard | `guard_pages=8`, `guard_bytes=32768` — **không** nằm trong khoảng RW nào |
+| số trang map | **202** = `(77824 + 782336 − 32768) / 4096` — khớp **chính xác**; nếu 8 trang guard bị map thì **210** |
+| quyền lá (đọc lại **từ bảng trang**) | `.text` = `RX` (read + exec, **không** write), `.data` = `RW` (read + write, **không** exec) |
+| ghi vào `.text` từ EL1 (alias nửa cao) | **fault**: `EC=0x25` (data abort same EL), `WnR=1`, `FAR=0xffffffc080000100` |
+| ghi vào `.text` từ EL1 (identity nửa thấp) | **fault**: `EC=0x25`, `FAR=0x40080100` |
+| `.text` sau lần ghi bị từ chối | **không đổi** (`text_unchanged=1`) |
+| ghi vào `.data` | **thành công**, đọc lại đúng (`data_rw=1`, `data_in_rw=1`) |
+| cache line | `line=64`, `CTR_EL0=0x000000008444c004` (`DminLine=4` ⇒ `4 << 4 = 64`) |
+| `dc civac` trước bàn giao | **64** dòng / **4096** B / **1** lần (`lines × line == bytes`) |
+| `dc ivac` sau khi thiết bị ghi | **64** dòng / **4096** B / **1** lần + **1** lần `dc ivac` dòng `used->idx` trong poll |
+| runner | **16/16** kiểm sạch, TAP **23/23**, **14 ca âm** ĐỎ đúng |
+| `.data+.bss` | **221.416 B** / trần **262.144 B** (84,5 %) — không đổi đáng kể |
+
+### 11.3 Đột biến — ghi trung thực **tầng nào** đỏ
+
+| # | Đột biến | Host | QEMU |
+|---|---|---|---|
+| (i) | map vùng RX bằng `KERNEL_RWX` (như trước KT-277) | **ĐỎ** — 4 test (`map_low_perms`, `map_high_alias_origin`, `map_phys_perms`, `map_vspace_perms`) | **ĐỎ** — `# wx: … ok=0 … text_perms=RWX … fault_ec=0x00 … text_unchanged=0` ⇒ `not ok 22`; lần ghi **thành công** (8 byte đầu `.text` bị đổi) |
+| (ii) | bỏ **bước** `CleanInvalidate` khỏi `HANDOFF_SEQUENCE` | **ĐỎ** — `handoff_sequence_cleans_before_notify` | **ĐỎ** — `# dma: cache-clean ok=0 lines=0 …` ⇒ `not ok 23` |
+| (iii) | map **cả** 8 trang guard (bỏ tách guard khỏi khoảng RW) | **ĐỎ** — 5 test (`rw_ranges_exclude_guard`, `map_low_perms`, `map_high_alias_origin`, `map_phys_perms`, `map_vspace_perms`) | **ĐỎ** — `# mmu: map kernel=… pages=210` ⇒ runner: `số trang map vùng ảnh (210) khác (text+data-guard)/4096 = 202` |
+| (iv) | bỏ **đúng lệnh** `dc civac` nhưng **giữ** vòng lặp (closure rỗng) | **XANH** | **XANH** — `lines=64`, `ok=1`, boot sạch |
+
+**Về (iv) — giới hạn thật, không giấu**: QEMU TCG **không** mô hình hoá cache, nên **hiệu ứng**
+của `dc civac`/`dc ivac` không quan sát được ở tầng QEMU; và tầng host chỉ kiểm **vòng lặp** (số
+lệnh + địa chỉ từng dòng, `tests/cache.rs::for_each_line_addresses`) cùng **mã lệnh tuyệt đối**
+(`dc_encodings`), **không** kiểm được "closure có gọi `asm::dc_civac` hay không" (asm đặc quyền
+panic trên host). Chuỗi bằng chứng vì thế là: mã lệnh đúng (test tuyệt đối) → vòng lặp phát đúng
+địa chỉ (test host) → vòng lặp **đã chạy trong ảnh** (`lines=64` do chính vòng lặp đếm). Mắt
+"closure gọi asm" là **một dòng mã**, không kiểm được nếu không chạy trên phần cứng — **không**
+được gọi là "đã kiểm trên phần cứng".
+
+### 11.4 Còn thiếu của B3.11 (ghi rõ)
+
+1. **KPTI** và **PAN/UAO**: **không** làm (ngoài phạm vi D2-209). `SCTLR_EL1.SPAN = 1` nên kernel
+   vẫn đọc được trang user (điều kiện của U-mode KT-269).
+2. **Guard chỉ "không map"**, **không** kiểm fault khi tràn stack — đúng phạm vi phiếu giao việc.
+3. **Cache maintenance chỉ cho virtio-blk**: virtio-net aarch64 (KT-275) **chưa** merge; khi merge
+   phải dùng **cùng** `cache::HANDOFF_SEQUENCE`/`COMPLETE_SEQUENCE`, không viết bản thứ hai.
+4. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

@@ -20,17 +20,32 @@
 # shootdown, **hash ảnh lệch ELF**, **thiếu dòng `# umode:`**) và đòi **cả 11 phải ĐỎ**; cộng
 # **ca âm (l) của KT-273** — boot **không có đĩa** phải in `# blk: no device` và TAP phải ĐỎ;
 # cộng **ca âm (m) của KT-275** — boot **không có mạng** phải in `# net: no device` và TAP phải
-# ĐỎ (13 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm
-# **không phải dấu cao su** — không có đường "PASS giả".
+# ĐỎ; cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
+# maintenance) đều phải ĐỎ (**15 ca âm**). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot
+# sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 25 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#   EXPECT_TESTS    số ca TAP (mặc định 27 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
 #                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
 #                   KT-262 thêm 3 ca TLBI/smp 4, KT-269 thêm 3 ca U-mode: EL0 vào được, `svc`
 #                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`, **KT-273 thêm 3 ca PCI/blk**:
 #                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`, **KT-275 thêm 4 ca
-#                   mạng**: `net: device`, `net: dhcp`, `net: arp`, `net: ping`)
+#                   mạng**: `net: device`, `net: dhcp`, `net: arp`, `net: ping`, **KT-277 thêm 2
+#                   ca**: `wx: text RX (write faults), data RW`, `dma: cache maintenance
+#                   before/after DMA`)
+# cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
+# maintenance) đều phải ĐỎ (14 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch,
+# vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
+#
+# Biến môi trường (dùng cho ca âm và cho đo lại):
+#   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
+#   EXPECT_TESTS    số ca TAP (mặc định 23 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
+#                   KT-262 thêm 3 ca TLBI/smp 4, KT-269 thêm 3 ca U-mode: EL0 vào được, `svc`
+#                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`, **KT-273 thêm 3 ca PCI/blk**:
+#                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`, **KT-277 thêm 2 ca**:
+#                   `wx: text RX (write faults), data RW`, `dma: cache maintenance before/after DMA`)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
 #   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
 #
@@ -91,7 +106,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-25}"
+EXPECT_TESTS="${EXPECT_TESTS:-27}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -503,12 +518,134 @@ check_net() {
         echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
+    [ "$bad" -eq 0 ]
+}
+
+# ---------------------------------------------------------------- kiểm dòng `# wx:` (KT-277)
+# `# wx: text=RX data=RW ok=1 text_bytes=… data_bytes=… guard_pages=… guard_bytes=… … fault_ec=0x25
+#        fault_access=Write fault_va=… text_unchanged=1 data_rw=1 …`
+#
+# Đây là phần "**W^X thật**" của KT-277:
+#   - `text=RX`/`data=RW`/`ok=1` — quyền **đọc lại từ bảng trang** (không phải hằng viết tay);
+#   - `fault_ec=0x25` + `fault_access=Write` — một lần **ghi** vào `.text` từ EL1 đã sinh data
+#     abort quyền; ảnh map `.text` RW sẽ **không** fault ⇒ `ok=0` ⇒ ĐỎ;
+#   - `text_unchanged=1` — 8 byte của `.text` **không đổi** sau lần ghi bị từ chối;
+#   - `data_rw=1` — ghi vào `.data` thì **thành công** (không phải "RX cả ảnh").
+#
+# **Guard không map** được kiểm bằng **số trang**: `# mmu: map kernel=… pages=N` phải bằng
+# `(text_bytes + data_bytes - guard_bytes) / 4096`. Nếu 8 trang guard bị map, `N` lớn hơn đúng 8
+# ⇒ ĐỎ. Đây là phép kiểm QEMU-quan-sát-được cho bất biến "guard **không** map".
+check_wx() {
+    local log="$1" bad=0 n line want text_bytes data_bytes guard_bytes mmu_line mmu_pages want_pages
+    n="$(grep -cE '^# wx: ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# wx: ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# wx: ' "$log" || true)"
+    for want in "text=RX" "data=RW" "ok=1" "fault_access=Write" "text_unchanged=1" "data_rw=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# wx:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    # Một lần **ghi** vào `.text` phải là data abort **cùng EL** (`EC=0x25`). Nhận `0x21`
+    # (instruction abort) làm phương án dự phòng nhưng vẫn đòi **có** fault — không có fault
+    # nghĩa là `.text` ghi được.
+    case "$line" in
+        *"fault_ec=0x25"* | *"fault_ec=0x21"*) ;;
+        *)
+            echo "# dòng '# wx:' không có 'fault_ec=0x25'/'0x21' (ghi vào .text KHÔNG fault)"
+            bad=1
+            ;;
+    esac
+    text_bytes="$(printf '%s\n' "$line" | sed -n 's/.* text_bytes=\([0-9][0-9]*\).*/\1/p')"
+    data_bytes="$(printf '%s\n' "$line" | sed -n 's/.* data_bytes=\([0-9][0-9]*\).*/\1/p')"
+    guard_bytes="$(printf '%s\n' "$line" | sed -n 's/.* guard_bytes=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$text_bytes" ] || [ "$text_bytes" -le 0 ]; then
+        echo "# dòng '# wx:' thiếu 'text_bytes=' dương (vùng RX rỗng)"
+        bad=1
+    fi
+    if [ -z "$data_bytes" ] || [ "$data_bytes" -le 0 ]; then
+        echo "# dòng '# wx:' thiếu 'data_bytes=' dương (vùng RW rỗng)"
+        bad=1
+    fi
+    if [ -z "$guard_bytes" ] || [ "$guard_bytes" -le 0 ]; then
+        echo "# dòng '# wx:' thiếu 'guard_bytes=' dương (không có trang guard nào bị loại)"
+        bad=1
+    fi
+    # **Guard không map**: số trang map vùng ảnh phải bằng (text + data - guard) / 4096.
+    mmu_line="$(grep -E '^# mmu: map kernel=' "$log" || true)"
+    mmu_pages="$(printf '%s\n' "$mmu_line" | sed -n 's/.* pages=\([0-9][0-9]*\).*/\1/p')"
+    if [ -n "$text_bytes" ] && [ -n "$data_bytes" ] && [ -n "$guard_bytes" ]; then
+        want_pages=$(((text_bytes + data_bytes - guard_bytes) / 4096))
+        if [ -z "$mmu_pages" ]; then
+            echo "# thiếu dòng '# mmu: map kernel=… pages=…' để đối chiếu số trang"
+            bad=1
+        elif [ "$mmu_pages" -ne "$want_pages" ]; then
+            echo "# số trang map vùng ảnh ($mmu_pages) khác (text+data-guard)/4096 = $want_pages — guard có thể đã bị map"
+            bad=1
+        fi
+    fi
+    return "$bad"
+}
+
+# ---------------------------------------------------------------- kiểm dòng `# dma:` (KT-277)
+# `# dma: cache-clean ok=1 lines=… bytes=… ops=… inval_lines=… inval_bytes=… inval_ops=… …`
+#
+# `lines`/`inval_lines` là bộ đếm của **chính vòng lặp phát `dc`** (không phải hằng viết tay):
+# bỏ lời gọi `dc civac` ⇒ `lines=0` ⇒ ĐỎ. `lines × line == bytes` chốt luôn phép tính dòng.
+#
+# **Trung thực về QEMU TCG**: TCG **không** mô hình hoá cache, nên **hiệu ứng** của `dc` không
+# quan sát được ở đây — tầng này chỉ chứng minh **lệnh đã chạy** (số dòng + số byte). Bằng chứng
+# "địa chỉ từng dòng" nằm ở test host `v2/kernel/vifast-plat-aarch64/tests/cache.rs`.
+check_dma() {
+    local log="$1" bad=0 n line lines bytes line_bytes inval_lines
+    n="$(grep -cE '^# dma: ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# dma: ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# dma: ' "$log" || true)"
+    case "$line" in
+        *"cache-clean ok=1"*) ;;
+        *)
+            echo "# dòng '# dma:' không có 'cache-clean ok=1'"
+            bad=1
+            ;;
+    esac
+    lines="$(printf '%s\n' "$line" | sed -n 's/.* lines=\([0-9][0-9]*\).*/\1/p')"
+    bytes="$(printf '%s\n' "$line" | sed -n 's/.* bytes=\([0-9][0-9]*\).*/\1/p')"
+    line_bytes="$(printf '%s\n' "$line" | sed -n 's/.* line=\([0-9][0-9]*\).*/\1/p')"
+    inval_lines="$(printf '%s\n' "$line" | sed -n 's/.* inval_lines=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$lines" ] || [ "$lines" -le 0 ]; then
+        echo "# dòng '# dma:' có lines=${lines:-none} — không có lệnh 'dc civac' nào chạy"
+        bad=1
+    fi
+    if [ -z "$inval_lines" ] || [ "$inval_lines" -le 0 ]; then
+        echo "# dòng '# dma:' có inval_lines=${inval_lines:-none} — không có lệnh 'dc ivac' nào chạy"
+        bad=1
+    fi
+    if [ -z "$bytes" ] || [ "$bytes" -le 0 ]; then
+        echo "# dòng '# dma:' có bytes=${bytes:-none} — vùng DMA rỗng"
+        bad=1
+    fi
+    if [ -n "$lines" ] && [ -n "$bytes" ] && [ -n "$line_bytes" ] && [ "$line_bytes" -gt 0 ]; then
+        if [ $((lines * line_bytes)) -ne "$bytes" ]; then
+            echo "# dòng '# dma:' lines×line=$((lines * line_bytes)) khác bytes=$bytes"
+            bad=1
+        fi
+    fi
     return "$bad"
 }
 
 # ---------------------------------------------------------------- kiểm TAP của một log
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
 # `# umode:` + `# pci:` + `# blk:` + `# net:` + hash ảnh. In lý do đỏ ra stdout.
+# `# umode:` + `# pci:` + `# blk:` + `# wx:` + `# dma:` + hash ảnh. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
     local okn notn mn i
@@ -559,6 +696,8 @@ check_log() {
     check_pci "$log" || bad=1
     check_blk "$log" || bad=1
     check_net "$log" || bad=1
+    check_wx "$log" || bad=1
+    check_dma "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -738,6 +877,30 @@ selftest_negative() {
         echo "ok $n - ca âm (m): không có mạng ⇒ '# net: no device' + TAP ĐỎ ($(head -1 "$tmp/m.out"))"
     fi
 
+    # (n) **KT-277** — thiếu **cả** dòng `# wx:` (ảnh không tách `.text` RX / `.data` RW, hoặc
+    # không thử ghi vào `.text`). TAP 22 vẫn có thể `ok` nếu ảnh tự khai — dòng bằng chứng mới là
+    # thứ bộ kiểm đòi, nên thiếu nó phải ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# wx: ' "$good" >"$tmp/m.log" 2>/dev/null || true
+    if check_log "$tmp/m.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/m.out" 2>&1; then
+        echo "not ok $n - ca âm (n): thiếu dòng '# wx:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (n): thiếu dòng '# wx:' ⇒ ĐỎ ($(head -1 "$tmp/m.out"))"
+    fi
+
+    # (o) **KT-277** — thiếu **cả** dòng `# dma:` (ảnh không chạy cache maintenance trước DMA).
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# dma: ' "$good" >"$tmp/n.log" 2>/dev/null || true
+    if check_log "$tmp/n.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/n.out" 2>&1; then
+        echo "not ok $n - ca âm (o): thiếu dòng '# dma:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (o): thiếu dòng '# dma:' ⇒ ĐỎ ($(head -1 "$tmp/n.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -824,6 +987,7 @@ else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
     total=$((total + 13))
+    total=$((total + 14))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"
