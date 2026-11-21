@@ -3,9 +3,9 @@
 # KT-54 — tự kiểm **runner** `ktest.sh` bằng mutation của **harness** (không đụng kernel).
 #
 # Vì sao cần: một runner TAP chỉ đáng tin khi nó **đỏ** đúng lúc, **đúng lý do**, và **không xanh
-# khi không chạy gì**. Tệp này dựng 18 ca quanh một log thật:
+# khi không chạy gì**. Tệp này dựng 19 ca quanh một log thật:
 #   • 1 ca XANH (log thật qua, không báo động giả);
-#   • 16 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
+#   • 17 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
 #     nhận "exit ≠ 0 vô tội vạ"):
 #       (a) `expected.txt`: bớt 1 TAP (N→N-1, N đọc từ tệp) / mất dòng ảnh `ktest-user`;
 #       (b) log: một dòng `ok` → `not ok` / xoá 1 dòng `ok` / nhân đôi 1 dòng `ok`;
@@ -18,6 +18,8 @@
 #           (kiểm **tập hart**, không chỉ đếm dòng);
 #       (k) **KT-280**: xoá dòng `# ipc: umode call ok reply=…` của ảnh `ktest-ipc` (do chính
 #           chương trình U-mode in) phải đỏ — dòng `# ipc:` là evidence **bắt buộc**;
+#       (l) **KT-282**: xoá dòng `# ipc: mr count=8 mr7=…` của ảnh `ktest-ipc` (MR4..MR7 qua
+#           **IPC buffer**) phải đỏ — dòng `# ipc: mr` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -320,6 +322,19 @@ mut_diff "$WORK/log-ipc-no-call.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ip
 case_red "ev$IPC_EV" \
     "log ktest-ipc: xoá dòng '# ipc: umode call ok reply=' (evidence bắt buộc của KT-280)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-call.log" "$SMP"
+
+# --- ca (l): dòng `# ipc: mr` của ảnh KT-282 (MR4..MR63 qua IPC buffer) --------------
+# **KT-282** (D2-211): dòng `# ipc: mr count=8 mr7=0x…` do **chính chương trình U-mode** in sau
+# khi đọc **IPC buffer** của nó (kernel ghi MR4..MR7 khi resume). Xoá đúng dòng đó ⇒ runner phải
+# đỏ với token `ev<ordinal>` — chứng minh dòng `# ipc: mr` là evidence **bắt buộc**, không phải
+# trang trí (đột biến M1/M2/M3 của KT-282 làm dòng này sai/thiếu).
+MR_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: mr count=8 mr7=')"
+[ -n "$MR_EV" ] || die "không tra được ordinal evidence '# ipc: mr count=8 mr7=' của ktest-ipc"
+grep -v -F '# ipc: mr count=8 mr7=' "$IPC_LOG" >"$WORK/log-ipc-no-mr.log"
+mut_diff "$WORK/log-ipc-no-mr.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: mr count=8 mr7='"
+case_red "ev$MR_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: mr count=8 mr7=' (evidence bắt buộc của KT-282)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-mr.log" "$SMP"
 
 # --- ca cuối: expected.txt trả lại **nguyên vẹn** (sha256 + cmp) ------
 total=$((total + 1))

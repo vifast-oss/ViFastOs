@@ -113,6 +113,84 @@ pub const fn ipc_buffer_addr() -> u64 {
     IPC_BUFFER_VA
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-282 — vùng **MR4..MR63** trong IPC buffer (frame 4 KiB bind qua `Tcb.Configure`)
+// ---------------------------------------------------------------------------------------------
+
+/// Byte offset của vùng **MR4..MR63** trong IPC buffer — `[TK]` KT-282: ngay sau header 10 word
+/// (80 B, đã căn 16 theo `spec/abi.toml` `[message].ipc_buffer_align`). Cùng hằng với kernel
+/// (`vifast_core::ipc::IPC_BUFFER_MR_OFFSET`) — một layout, hai phía đọc/ghi.
+pub const MR_OFFSET: usize = HEADER_WORDS * 8;
+/// Số word của vùng MR4..MR63 — `spec/abi.toml` `[message].words_in_ipc_buffer = 60`.
+pub const MR_WORDS: usize = 60;
+
+fn read_mr_word(index: usize) -> u64 {
+    // SAFETY: `MR_OFFSET + index*8` nằm trong trang IPC buffer 4 KiB đã map `R|W|U|NX` cho mọi
+    // ELF U-mode; `index < MR_WORDS` ⇒ địa chỉ < 80 + 480 = 560 < 4096. Một tiến trình một
+    // luồng ⇒ không có writer đồng thời.
+    unsafe {
+        core::ptr::read_volatile((IPC_BUFFER_VA + (MR_OFFSET + index * 8) as u64) as *const u64)
+    }
+}
+
+fn write_mr_word(index: usize, value: u64) {
+    // SAFETY: như [`read_mr_word`] — ghi trong vùng MR của trang RW của chính tiến trình.
+    unsafe {
+        core::ptr::write_volatile(
+            (IPC_BUFFER_VA + (MR_OFFSET + index * 8) as u64) as *mut u64,
+            value,
+        )
+    }
+}
+
+/// Ghi **MR4..** vào vùng buffer (word 0 = MR4, word 1 = MR5, …). Trả số word đã ghi
+/// (≤ [`MR_WORDS`] = 60; phần thừa của `words` bị bỏ — biên `max_words = 64`).
+///
+/// Chương trình U-mode gọi hàm này **trước** `call`/`send` khi `MessageInfo.length > 4`; kernel
+/// đọc đúng vùng này qua hook `SyscallEnv::ipc_buffer_words` (D2-83).
+pub fn set_mrs(words: &[u64]) -> usize {
+    let n = if words.len() > MR_WORDS {
+        MR_WORDS
+    } else {
+        words.len()
+    };
+    let mut index = 0;
+    while index < n {
+        write_mr_word(index, words[index]);
+        index += 1;
+    }
+    n
+}
+
+/// Đọc **MR4..MR63** từ vùng buffer (word 0 = MR4). Kernel ghi vùng này khi giao message có
+/// `length > 4` (đường `Recv`/`ReplyRecv`/resume sau `Call`).
+pub fn mrs() -> [u64; MR_WORDS] {
+    let mut words = [0u64; MR_WORDS];
+    let mut index = 0;
+    while index < MR_WORDS {
+        words[index] = read_mr_word(index);
+        index += 1;
+    }
+    words
+}
+
+/// MR thứ `index` (0..60) của vùng buffer = **MR(index + 4)** của message vừa nhận/gửi.
+pub fn mr(index: usize) -> u64 {
+    if index >= MR_WORDS {
+        return 0;
+    }
+    read_mr_word(index)
+}
+
+/// Ghi **một** MR vào vùng buffer: `index` 0..60 = MR(index+4). Trả `false` nếu ngoài biên.
+pub fn set_mr(index: usize, value: u64) -> bool {
+    if index >= MR_WORDS {
+        return false;
+    }
+    write_mr_word(index, value);
+    true
+}
+
 /// Đặt header về 0 rồi bật magic (chưa có window ⇒ kernel sẽ **từ chối** IPC cho tới khi
 /// [`set_recv_window`] được gọi — fail-closed, không im lặng).
 pub fn init_ipc_buffer() {

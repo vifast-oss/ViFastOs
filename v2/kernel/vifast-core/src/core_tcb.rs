@@ -131,19 +131,71 @@ impl Machine {
     // ------------------------------------------------------------- cấu hình TCB
 
     /// `Tcb.Configure`: gắn CSpace; **xoá `exit_code`** (D2-25: `Configure`/`Resume` xoá).
+    ///
+    /// **KT-282**: đây là dạng **arity 2** (chỉ CSpace) — giữ nguyên cho 20+ điểm gọi đã có;
+    /// tham số `ipc_buffer?` của `spec/abi.toml` `[method_signature."Tcb.Configure"]` đi qua
+    /// [`Machine::tcb_configure_with_ipc_buffer`] (cùng một `Tcb.Configure`, cùng ngữ nghĩa
+    /// "xoá `exit_code`").
     pub fn tcb_configure(&mut self, tcb: SlotRef, cspace: Option<SlotRef>) -> Result<(), KError> {
+        self.tcb_configure_with_ipc_buffer(tcb, cspace, None)
+    }
+
+    /// **KT-282** — `Tcb.Configure` **đầy đủ**: CSpace + `ipc_buffer?` (frame 4 KiB + VA).
+    ///
+    /// `ipc_buffer = Some((frame_cap, va))` bind **IPC buffer** của TCB: `frame_cap` phải là cap
+    /// `Frame` sống (core kiểm loại — D2-83: core không sở hữu PTE/PA, chỉ giữ danh tính), `va`
+    /// phải **căn `IPC_BUFFER_BYTES`** (4 KiB) để frame phủ đúng một trang và `va + 4096` không
+    /// tràn `u64`. Vi phạm ⇒ `InvalidArgument` (5), **nguyên tử** (không đổi CSpace/`exit_code`).
+    ///
+    /// `ipc_buffer = None` ⇒ **bỏ bind** (TCB không có buffer ⇒ message `length > 4` bị
+    /// `InvalidArgument` — fail-closed, không đoán địa chỉ).
+    pub fn tcb_configure_with_ipc_buffer(
+        &mut self,
+        tcb: SlotRef,
+        cspace: Option<SlotRef>,
+        ipc_buffer: Option<(SlotRef, u64)>,
+    ) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
         let cspace_obj = match cspace {
             Some(s) => Some(self.require_type(s, ObjType::CNode)?),
             None => None,
         };
+        let binding = match ipc_buffer {
+            Some((frame, va)) => {
+                let frame_obj = self.require_type(frame, ObjType::Frame)?;
+                if va % crate::ipc::IPC_BUFFER_BYTES as u64 != 0 {
+                    return Err(KError::InvalidArgument);
+                }
+                if va
+                    .checked_add(crate::ipc::IPC_BUFFER_BYTES as u64)
+                    .is_none()
+                {
+                    return Err(KError::InvalidArgument);
+                }
+                Some(crate::ipc::IpcBufferBinding {
+                    frame: frame_obj,
+                    va,
+                })
+            }
+            None => None,
+        };
         {
             let t = self.tcb_data_mut(tcb_obj)?;
             t.cspace = cspace_obj;
+            t.ipc_buffer = binding;
             t.exit_code = None;
         }
         self.sched_after_op(false);
         Ok(())
+    }
+
+    /// **KT-282** — IPC buffer đã bind của TCB (`None` = chưa bind). Arch đọc hàm này để biết
+    /// **VA** cần đọc/ghi vùng MR4..MR63 (D2-83: core không chạm bộ nhớ user).
+    pub fn tcb_ipc_buffer_binding(
+        &self,
+        tcb: ObjId,
+    ) -> Result<Option<crate::ipc::IpcBufferBinding>, KError> {
+        Ok(self.tcb_data(tcb)?.ipc_buffer)
     }
 
     /// `Tcb.SetFaultEp`: cap Endpoint; ghi `fault_ep`.

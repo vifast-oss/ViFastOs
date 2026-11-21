@@ -94,8 +94,9 @@ pub use core_sync::Waiters;
 pub use error::{CapId, CapInfo, CheckFailure, KError, ObjId, ObjType, SlotRef};
 pub use footprint::{Footprint, FOOTPRINT_PARTS};
 pub use ipc::{
-    transfer, IpcArea, Message, MessageInfo, MAX_CAPS as IPC_MAX_CAPS, MAX_WORDS as IPC_MAX_WORDS,
-    WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
+    mr_buffer_offset, transfer, IpcArea, IpcBufferBinding, Message, MessageInfo, IPC_BUFFER_ALIGN,
+    IPC_BUFFER_BYTES, IPC_BUFFER_MR_END, IPC_BUFFER_MR_OFFSET, IPC_BUFFER_MR_WORDS,
+    MAX_CAPS as IPC_MAX_CAPS, MAX_WORDS as IPC_MAX_WORDS, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
 };
 pub use machine::{
     FinaliseEntry, Machine, MAX_CAPS, MAX_ENDPOINTS, MAX_FINALISE, MAX_HARTS, MAX_NOTIFICATIONS,

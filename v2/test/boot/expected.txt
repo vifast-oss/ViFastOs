@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 2 2
+ktest-ipc 3 3
 # **KT-281** (D2-210, N1 phần 3): ảnh **`ktest-netsrv`** thứ chín — **net server U-mode**: client
 # U-mode `Call` **chặn** tới server U-mode `netsrv`; server `Recv` request `Ping(ip)`, gọi **dịch
 # vụ mạng của kernel** bằng syscall `Call` trên `Endpoint` (driver `virtio_net` chạy **trong
@@ -121,3 +121,11 @@ ktest-ipc 2 2
 # `Reply` ⇒ 18). Ca âm "không thiết bị" (`# netsrv: no device` + `not ok 1`) do `net.sh` chạy
 # **cùng ảnh** không `-netdev`. Matrix thành **9 ảnh × smp 1/2/4 = 27**.
 ktest-netsrv 2 2
+#
+# **KT-282** (D2-211): ảnh `ktest-ipc` thêm **TAP 3** — **MR4..MR63 qua IPC buffer**: `Tcb.Configure`
+# bind **frame 4 KiB** + VA (`ipc_buffer?` của `[method_signature."Tcb.Configure"]`), `length > 4`
+# ⇒ MR4..MR63 đọc/ghi ở **offset 80** của buffer (`[TK]` KT-282). Hai vòng `Call`/`Reply` mang
+# **8 MR** rồi **64 MR** (biên `max_words = 64`); kernel đọc **độc lập** `tcb_ipc_area` của cả hai
+# bên (`# ipc mr: round=1 …`, `# ipc mr: round=2 …`) và chương trình U-mode tự đọc buffer của mình
+# (`# ipc: mr count=8 mr7=0x…`, `# ipc: mr count=64 mr63=0x…`). Ca âm mới: `length = 65` ⇒ 5
+# (`InvalidArgument`, không tràn vùng 60 word). TAP 1/2 giữ nguyên nội dung.

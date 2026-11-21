@@ -24,6 +24,55 @@ pub const WORDS_IN_REGISTERS: usize = 4;
 /// MR4..MR63 đi trong **IPC buffer model** (`spec/abi.toml` `words_in_ipc_buffer = 60`).
 pub const WORDS_IN_IPC_BUFFER: usize = 60;
 
+// ---------------------------------------------------------------------------------------------
+// KT-282 — IPC buffer **thật** (frame 4 KiB bind qua `Tcb.Configure`) chở MR4..MR63
+// ---------------------------------------------------------------------------------------------
+
+/// Cỡ IPC buffer — `spec/abi.toml` `[message].ipc_buffer_bytes = 4096`.
+pub const IPC_BUFFER_BYTES: usize = 4096;
+/// Căn của IPC buffer — `spec/abi.toml` `[message].ipc_buffer_align = 16`.
+pub const IPC_BUFFER_ALIGN: usize = 16;
+/// Byte offset của **vùng MR4..MR63** trong IPC buffer: ngay sau header 10 word
+/// (`IPC_HEADER_WORDS * 8 = 80`, đã căn 16 theo `ipc_buffer_align`).
+///
+/// `[TK]` **KT-282** — `spec/abi.toml` `[calling.*].ipc_buffer` chỉ chốt *"header chứa receive
+/// window (CPTR, ≤4 cap)"*, **không** chốt offset vùng MR. Định nghĩa ở đây (một nguồn cho
+/// core + arch + shim U-mode) và ghi rõ trong `JOURNAL/kt282-mrbuf.md` §2:
+///
+/// ```text
+/// byte   0.. 80 : header 10 word (magic, info, receive window 4, send caps 4) — KT-67b
+/// byte  80..560 : MR4..MR63 (60 word = 480 B) — KT-282
+/// byte 560..4096: dự phòng (zero)
+/// ```
+pub const IPC_BUFFER_MR_OFFSET: usize = IPC_HEADER_WORDS * 8;
+/// Số word của vùng MR4..MR63 — `[message].words_in_ipc_buffer = 60`.
+pub const IPC_BUFFER_MR_WORDS: usize = WORDS_IN_IPC_BUFFER;
+/// Byte cuối (không tính) của vùng MR4..MR63 — `80 + 480 = 560 ≤ 4096`.
+pub const IPC_BUFFER_MR_END: usize = IPC_BUFFER_MR_OFFSET + IPC_BUFFER_MR_WORDS * 8;
+
+/// Byte offset của MR thứ `index` trong IPC buffer: `Some(80 + (index-4)*8)` cho `4..=63`,
+/// `None` cho `index < 4` (MR thanh ghi) hoặc `index >= 64` (ngoài `max_words`).
+pub const fn mr_buffer_offset(index: usize) -> Option<usize> {
+    if index < WORDS_IN_REGISTERS || index >= MAX_WORDS {
+        return None;
+    }
+    Some(IPC_BUFFER_MR_OFFSET + (index - WORDS_IN_REGISTERS) * 8)
+}
+
+/// **KT-282** — liên kết **IPC buffer** của một TCB: tham số `ipc_buffer?` của `Tcb.Configure`
+/// (`spec/abi.toml` `[method_signature."Tcb.Configure"]`).
+///
+/// Model-only `[TK]`: core **không** sở hữu Frame/PTE (D2-83) — nó giữ **cap Frame** (danh
+/// tính, để `Tcb.Configure` kiểm đúng loại + `check_caps` thấy cap sống) và **VA** của buffer;
+/// arch đọc/ghi bộ nhớ user tại `va` (trang 4 KiB đã map, `R|W|U|NX`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpcBufferBinding {
+    /// Object `Frame` 4 KiB đã bind (đại diện trong core, `ObjType::Frame`).
+    pub frame: ObjId,
+    /// VA của buffer trong VSpace của TCB — phải căn `IPC_BUFFER_BYTES`.
+    pub va: u64,
+}
+
 /// Số bit của `MessageInfo` — `spec/abi.toml` `[message_info].bits = 35`.
 pub const INFO_BITS: u32 = 35;
 /// Mặt nạ 35 bit hợp lệ của `MessageInfo`.

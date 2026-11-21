@@ -301,8 +301,9 @@ pub(crate) fn enter_loaded(loaded: &LoadedInit, tf: &mut TrapFrame) {
         stop(3, 0);
         return;
     }
-    // SAFETY: trapframe do scheduler dựng từ lần nạp/trap trước; `user_enter` chỉ quay lại qua
-    // `user_exit_resume` sau khi handler gọi `exit_to_kernel`.
+    crate::ipc_buffer::flush_pending(); // KT-282: `satp` vừa trỏ root user — ghi MR4..MR63.
+                                        // SAFETY: trapframe do scheduler dựng từ lần nạp/trap trước; `user_enter` chỉ quay lại qua
+                                        // `user_exit_resume` sau khi handler gọi `exit_to_kernel`.
     unsafe { user_enter(tf as *const TrapFrame) };
     // KT-65: trả về S-mode với `satp` kernel để scheduler/physmap chạy.
     let _ = aobj::restore_kernel_root();
@@ -900,6 +901,10 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
                 for (index, word) in mr.iter().enumerate() {
                     tf.set_arg(3 + index, *word);
                 }
+                // **KT-282** — MR4..MR63 của message vừa nhận vào IPC buffer (đường **nhận**).
+                if matches!(nr, 3..=7) {
+                    crate::ipc_buffer::apply_received_now(tcb);
+                }
                 record_sys(nr, error, value);
                 if MULTITASK.load(Ordering::Relaxed) == 0 {
                     // Bằng chứng `# sys:` KT-62: số hiệu, mã trả về, TCB + trạng thái **core**.
@@ -1279,6 +1284,11 @@ impl SyscallEnv for UserMemAccess {
             return None;
         }
         crate::ipc_buffer::read_header()
+    }
+
+    /// **KT-282** — MR4..MR63 trong IPC buffer (D2-83); `va` do core truyền, `None` ⇔ chưa map.
+    fn ipc_buffer_words(&mut self, _tcb: ObjId, va: u64) -> Option<[u64; 60]> {
+        crate::ipc_buffer::read_words(va)
     }
 }
 

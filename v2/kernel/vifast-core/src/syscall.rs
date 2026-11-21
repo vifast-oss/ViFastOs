@@ -38,10 +38,20 @@
 //! trả **nhãn PPN + offset trong trang** — đúng tinh thần D2-83 (core chỉ giữ *khoá* WaitAddr,
 //! không sở hữu Frame/PTE).
 //!
+//! # KT-282 — MR4..MR63 qua **IPC buffer** (nợ K3.5 đã trả)
+//!
+//! Trước KT-282 `build_message` chỉ nhận 4 MR thanh ghi ⇒ `length > 4` là `InvalidArgument`
+//! (nợ K3.5 ghi ở đầu tệp). Từ KT-282:
+//!
+//! - `Tcb.Configure` bind **frame 4 KiB** + VA ([`Machine::tcb_configure_with_ipc_buffer`],
+//!   tham số `ipc_buffer?` của `spec/abi.toml`);
+//! - `length > 4` ⇒ MR4..MR63 đọc từ **IPC buffer** qua hook [`SyscallEnv::ipc_buffer_words`]
+//!   (arch đọc bộ nhớ user — D2-83), offset [`crate::ipc::IPC_BUFFER_MR_OFFSET`] = 80 B;
+//! - `length > 64` ⇒ `InvalidArgument` (5) từ [`MessageInfo::unpack`] (`max_words = 64`) ⇒
+//!   **không tràn** vùng 60 word; `length > 4` mà **chưa bind** buffer ⇒ `InvalidArgument` (5).
+//!
 //! # Chưa làm (nợ K3.5, có chủ)
 //!
-//! - **MR > 4** (MR4..MR63 qua IPC buffer) chưa đọc được ra/ghi vào user buffer ⇒ `InvalidArgument`
-//!   ghi nợ; 4 MR thanh ghi `a3..a6` chạy đầy đủ.
 //! - **Invocation** ngoài danh sách trắng `Untyped.Retype`/`Frame.Map`/`Frame.Unmap` trả
 //!   `NotSupported` (D2-53 Q11) — xem [`crate::invoke`].
 //!
@@ -57,7 +67,9 @@
 //! `#![forbid(unsafe_code)]` của crate áp dụng nguyên vẹn: tệp này chỉ gọi API an toàn.
 
 use crate::error::{KError, ObjId, ObjType, SlotRef};
-use crate::ipc::{IpcHeader, Message, MessageInfo, MAX_CAPS, WORDS_IN_REGISTERS};
+use crate::ipc::{
+    IpcHeader, Message, MessageInfo, MAX_CAPS, MAX_WORDS, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
+};
 use crate::machine::Machine;
 use crate::spec::SYSCALL_COUNT;
 use crate::tcb::TcbState;
@@ -200,6 +212,19 @@ pub trait SyscallEnv {
     fn ipc_header(&mut self, _tcb: ObjId) -> Option<IpcHeader> {
         None
     }
+
+    /// **KT-282** — 60 word **MR4..MR63** trong **IPC buffer** của TCB gọi (D2-83: core không
+    /// đọc bộ nhớ user). Arch đọc trang 4 KiB tại **VA đã bind** (`Tcb.Configure` tham số
+    /// `ipc_buffer?`, xem [`Machine::tcb_ipc_buffer_binding`]) ở offset
+    /// [`crate::ipc::IPC_BUFFER_MR_OFFSET`] (80 B, ngay sau header 10 word).
+    ///
+    /// `va` do **core** truyền vào (lấy từ [`Machine::tcb_ipc_buffer_binding`]) — arch **không**
+    /// gọi lại `with_machine` (sẽ tự khoá lồng trong syscall). `None` = trang chưa map / nền tảng
+    /// không có IPC buffer ⇒ message có `length > 4` bị `InvalidArgument` (5) — **fail-closed**,
+    /// không đoán.
+    fn ipc_buffer_words(&mut self, _tcb: ObjId, _va: u64) -> Option<[u64; WORDS_IN_IPC_BUFFER]> {
+        None
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -260,9 +285,12 @@ fn apply_ipc_header(
     Ok(Some(header))
 }
 
-/// Dựng `Message` từ `MessageInfo` thô + tối đa 4 MR thanh ghi (+ header IPC buffer nếu có).
+/// Dựng `Message` từ `MessageInfo` thô + 4 MR thanh ghi + (khi `length > 4`) 60 word
+/// **MR4..MR63** trong IPC buffer (+ header IPC buffer nếu có).
 ///
-/// `length > mr.len()` ⇒ `InvalidArgument` (MR4..MR63 qua IPC buffer là nợ K3.5 — ghi ở đầu tệp).
+/// **KT-282**: `length > 4` ⇒ MR4..MR63 lấy từ `buffer` (arch đọc trang user tại VA đã bind);
+/// **không** có buffer ⇒ `InvalidArgument` (5) — fail-closed, không đoán. `length > 64` đã bị
+/// [`MessageInfo::unpack`] chặn (`max_words = 64`) nên **không tràn** vùng 60 word.
 /// **KT-67b**: `info.caps() > 0` ⇒ giải mã `caps` CPTR nguồn từ header (không có header ⇒
 /// `InvalidArgument`), cap nguồn phải sống trong CSpace caller (rỗng/chết ⇒ `InvalidCapability`).
 /// Cap **không** được kiểm quyền `RIGHT_GRANT` ở đây — `plan_cap_transfer` xử lý **mềm** khi giao
@@ -271,17 +299,26 @@ fn build_message(
     m: &Machine,
     tcb: ObjId,
     raw_info: u64,
-    mrs: &[u64],
+    mrs: &[u64; WORDS_IN_REGISTERS],
+    buffer: Option<&[u64; WORDS_IN_IPC_BUFFER]>,
     header: Option<IpcHeader>,
 ) -> Result<Message, KError> {
     let info = MessageInfo::unpack(raw_info)?;
     let len = info.length() as usize;
-    if len > mrs.len() {
-        return Err(KError::InvalidArgument);
+    // MR0..MR3 ở thanh ghi; MR4..MR63 ở IPC buffer (spec `words_in_ipc_buffer = 60`).
+    let mut words = [0u64; MAX_WORDS];
+    let in_regs = core::cmp::min(len, WORDS_IN_REGISTERS);
+    words[..in_regs].copy_from_slice(&mrs[..in_regs]);
+    if len > WORDS_IN_REGISTERS {
+        let Some(buffer) = buffer else {
+            return Err(KError::InvalidArgument);
+        };
+        let extra = len - WORDS_IN_REGISTERS;
+        words[WORDS_IN_REGISTERS..len].copy_from_slice(&buffer[..extra]);
     }
     let n_caps = usize::from(info.caps());
     if n_caps == 0 {
-        return Message::new(info, &mrs[..len]);
+        return Message::new(info, &words[..len]);
     }
     let Some(header) = header else {
         return Err(KError::InvalidArgument);
@@ -300,7 +337,7 @@ fn build_message(
         }
         caps[index] = cap;
     }
-    Message::with_caps(info, &mrs[..len], &caps[..n_caps], 0)
+    Message::with_caps(info, &words[..len], &caps[..n_caps], 0)
 }
 
 /// [`apply_ipc_header`] rồi [`build_message`] — đường chuẩn của mọi syscall IPC **gửi** (0/1/2/
@@ -309,11 +346,23 @@ fn build_with_header(
     m: &mut Machine,
     tcb: ObjId,
     raw_info: u64,
-    mrs: &[u64; 4],
+    mrs: &[u64; WORDS_IN_REGISTERS],
     env: &mut impl SyscallEnv,
 ) -> Result<Message, KError> {
     let header = apply_ipc_header(m, tcb, env)?;
-    build_message(m, tcb, raw_info, mrs, header)
+    // KT-282: chỉ chạm **bộ nhớ user** khi message thật sự cần (`length > 4`) — message ≤ 4 MR
+    // giữ nguyên hành vi trước KT-282 (mọi ảnh cũ không đổi).
+    let len = MessageInfo::unpack(raw_info)?.length() as usize;
+    let buffer = if len > WORDS_IN_REGISTERS {
+        // Core quyết **có** buffer hay không (và VA nào); arch chỉ đọc bộ nhớ user tại VA đó.
+        match m.tcb_ipc_buffer_binding(tcb) {
+            Ok(Some(binding)) => env.ipc_buffer_words(tcb, binding.va),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    build_message(m, tcb, raw_info, mrs, buffer.as_ref(), header)
 }
 
 /// `true` ⇔ cap tại `slot` là **Notification** (nhánh trả `word/badge`, không có `MessageInfo`).
@@ -794,6 +843,7 @@ mod tests {
             tcb,
             info,
             &[0xAA, 0, 0, 0],
+            None,
             Some(header([8, 9, 10, 11], [3, 0, 0, 0])),
         )
         .expect("message mang cap");
@@ -810,9 +860,43 @@ mod tests {
             .expect("MessageInfo hợp lệ")
             .pack();
         assert_eq!(
-            build_message(&m, tcb, info, &[0; 4], None),
+            build_message(&m, tcb, info, &[0; 4], None, None),
             Err(KError::InvalidArgument)
         );
+    }
+
+    /// **KT-282** — `length = 8` ⇒ MR4..MR7 lấy từ **IPC buffer**; không có buffer ⇒
+    /// `InvalidArgument` (5); `length = 65` ⇒ `InvalidArgument` (không tràn 60 word).
+    #[test]
+    fn mr4_qua_ipc_buffer() {
+        let (m, _root, tcb, _ep) = fixture();
+        let info = MessageInfo::new(0x282, 0, false, 0, 8)
+            .expect("MessageInfo 8 MR")
+            .pack();
+        let mut buffer = [0u64; WORDS_IN_IPC_BUFFER];
+        buffer[0] = 0x2820_0004;
+        buffer[3] = 0x2820_0007;
+        let msg = build_message(&m, tcb, info, &[1, 2, 3, 4], Some(&buffer), None)
+            .expect("8 MR qua buffer");
+        assert_eq!(msg.words(), &[1, 2, 3, 4, 0x2820_0004, 0, 0, 0x2820_0007]);
+        // Chưa bind buffer ⇒ fail-closed (đúng hành vi trước KT-282 — đột biến M1).
+        assert_eq!(
+            build_message(&m, tcb, info, &[1, 2, 3, 4], None, None),
+            Err(KError::InvalidArgument)
+        );
+        // `length = 65` vượt `max_words = 64` ⇒ `InvalidArgument` (không tràn).
+        assert_eq!(
+            MessageInfo::new(0x282, 0, false, 0, 65),
+            Err(KError::InvalidArgument)
+        );
+        // `length = 64` là **hợp lệ** (MR0..MR63) — đột biến M2 (`>= 64`) làm ca này đỏ.
+        let full = MessageInfo::new(0x282, 0, false, 0, 64).expect("64 MR hợp lệ");
+        let mut all = [0u64; WORDS_IN_IPC_BUFFER];
+        all[59] = 0x2820_003f;
+        let msg = build_message(&m, tcb, full.pack(), &[1, 2, 3, 4], Some(&all), None)
+            .expect("64 MR qua buffer");
+        assert_eq!(msg.words().len(), 64);
+        assert_eq!(msg.words()[63], 0x2820_003f);
     }
 
     /// CPTR nguồn trỏ ô **rỗng** ⇒ `InvalidCapability` (1) — ca âm của memsrv trong TAP 19.
@@ -828,6 +912,7 @@ mod tests {
                 tcb,
                 info,
                 &[0; 4],
+                None,
                 Some(header([8, 9, 10, 11], [9, 0, 0, 0]))
             ),
             Err(KError::InvalidCapability)

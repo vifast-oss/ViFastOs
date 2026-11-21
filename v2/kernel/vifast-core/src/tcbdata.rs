@@ -7,7 +7,7 @@
 //! lại là model API của sim (oracle) và được parity so từng bước.
 
 use crate::error::{CapId, KError, ObjId, SlotRef};
-use crate::ipc::IpcArea;
+use crate::ipc::{IpcArea, IpcBufferBinding};
 use crate::mcs::ScBudget;
 use crate::tcb::{TcbInfo, TcbState};
 
@@ -46,6 +46,10 @@ pub(crate) struct TcbData {
     pub(crate) last_fault: Option<(ObjId, crate::tcb::FaultKind)>,
     /// `(word, badge)` của lần `Wait`/`Poll` Notification gần nhất (KT-27, KT-60).
     pub(crate) notif: Option<(u64, u64)>,
+    /// **KT-282** — **IPC buffer** đã bind (`Tcb.Configure` tham số `ipc_buffer?`,
+    /// `spec/abi.toml` `[method_signature."Tcb.Configure"]`): `Frame` 4 KiB + VA. `None` =
+    /// chưa bind ⇒ message có `length > 4` bị `InvalidArgument` (không đoán buffer).
+    pub(crate) ipc_buffer: Option<IpcBufferBinding>,
     /// **KT-74** — con trỏ TLS của tiến trình (`Tcb.SetTls`, method **15** của `[object].Tcb`).
     /// Model-only `[TK]`: kernel **không** đọc vùng TLS, chỉ giữ giá trị và nạp vào `x4`/`tp`
     /// của U-mode mỗi lần resume (RISC-V: `tp` = `x4`). `0` = chưa đặt.
@@ -71,6 +75,7 @@ impl TcbData {
         last_ipc_error: None,
         last_fault: None,
         notif: None,
+        ipc_buffer: None,
         tls: 0,
     };
 

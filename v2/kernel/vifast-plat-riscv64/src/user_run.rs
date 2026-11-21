@@ -42,6 +42,11 @@ pub fn apply_ipc_return(tf: &mut TrapFrame, tcb: ObjId) -> bool {
     for index in 0..4 {
         tf.set_arg(3 + index, area.mr(index).unwrap_or(0));
     }
+    // **KT-282** — MR4..MR63 của message vừa nhận phải ghi vào **IPC buffer** của tác vụ (VA đã
+    // bind bằng `Tcb.Configure` tham số `ipc_buffer?`). Ở đây `satp` = **root kernel** (hàm này
+    // chạy sau `enter_loaded`), nên **không** ghi trực tiếp được: đặt cờ để `enter_loaded` ghi
+    // ngay sau khi chuyển sang root user (một lần, đúng lúc). Message ≤ 4 MR ⇒ không chạm gì.
+    crate::ipc_buffer::request_write(tcb);
     true
 }
 

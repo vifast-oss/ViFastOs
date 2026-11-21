@@ -324,26 +324,40 @@ fn set_tls_khi_ready_van_ghi_duoc() {
 /// `docs/k3b-core.md` §13.7; pin `196608` **không** đổi. Test này là chỗ reviewer kiểm phép
 /// tính mà không phải tin lời khai:
 /// `188872 + 8 × 64 = 189384`.
+///
+/// **KT-282** — `TcbData` thêm **đúng một** `Option<IpcBufferBinding>` (`ObjId` 4 B + `va` 8 B,
+/// căn 8 ⇒ **24 B**) ⇒ mốc KT-74 `189384` + `24 × 64 = 1536` = **190920** B. Pin `196608`
+/// **vẫn không đổi** (headroom còn 5.688 B); đây là phép tính, không phải nới ngưỡng.
 #[test]
 fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const PIN_CU: usize = 188_872;
+    /// Mốc KT-74 (`188872 + 8 × 64`) — trước KT-282.
+    const KT74_CU: usize = 189_384;
+    /// **KT-282**: `Option<IpcBufferBinding>` mỗi TCB (`ObjId` 4 B + `va` 8 B, căn 8).
+    const KT282_THEM_MOI_TCB: usize = 24;
     let them = core::mem::size_of::<Machine>() - PIN_CU;
     let tcb = core::mem::size_of::<TcbData>();
     std::println!(
-        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} max_tcbs={} 8xmax={} khop={} duoi_pin={}",
+        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} max_tcbs={} 8xmax={} kt282={} khop={} duoi_pin={}",
         core::mem::size_of::<Machine>(),
         PIN_CU,
         them,
         tcb,
         crate::MAX_TCBS,
         8 * crate::MAX_TCBS,
-        u8::from(them == 8 * crate::MAX_TCBS),
+        KT282_THEM_MOI_TCB * crate::MAX_TCBS,
+        u8::from(them == 8 * crate::MAX_TCBS + KT282_THEM_MOI_TCB * crate::MAX_TCBS),
         u8::from(core::mem::size_of::<Machine>() <= 196_608)
     );
     assert_eq!(
         them,
-        8 * crate::MAX_TCBS,
-        "tăng pin phải đúng 8 B × MAX_TCBS (một u64 TLS mỗi TCB)"
+        8 * crate::MAX_TCBS + KT282_THEM_MOI_TCB * crate::MAX_TCBS,
+        "tăng pin phải đúng 8 B (TLS) + 24 B (IPC buffer) × MAX_TCBS"
+    );
+    assert_eq!(
+        core::mem::size_of::<Machine>() - KT74_CU,
+        KT282_THEM_MOI_TCB * crate::MAX_TCBS,
+        "KT-282 chỉ thêm đúng một Option<IpcBufferBinding> mỗi TCB"
     );
     assert_eq!(crate::MAX_TCBS, 64);
     assert!(
