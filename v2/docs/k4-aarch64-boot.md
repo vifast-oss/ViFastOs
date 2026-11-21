@@ -8,11 +8,13 @@ Trạng thái: **B3.1–B3.9 + B3.7 (U-mode) + B3.10 (PCI ECAM + virtio-blk) DON
 **virtio-net + DHCP + ARP + ICMP DONE** (KT-275, §11) — MAC thật, DHCP/ARP/ping thật của slirp.
 **W^X toàn ảnh + cache maintenance trước DMA DONE** (KT-277, §11) — `.text`/`.rodata` **RX**,
 `.data`/`.bss`/stack **RW**, trang guard **không map**; `dc civac`/`dc ivac` trước/sau DMA.
+**virtio-gpu 2D + console trên framebuffer DONE** (KT-279, §13) — TAP 28/29/30, PPM 640×480 đúng
+màu + **29/29** ký tự console; framebuffer **ngoài ảnh** nên trần I7 **không** bị nới.
 **Không** tuyên bố K4' đạt: tiêu chí K4' là "**như K3**" (TAP đầy đủ smp 1|2|4 + soak 1.000) —
 xem §7 "Còn thiếu".
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/kt247-*`, `kt248-*`, `kt249-*`, `kt250-*`,
-`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`, `kt269-*`, `kt273-*`.
+`kt253-*`, `kt254-*`, `kt259-*`, `kt262-*`, `kt265-*`, `kt269-*`, `kt273-*`, `kt279-*`.
 Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa cao làm trong crate arch),
 **D2-203** (KT-262: `TLBI` shootdown + smp 4), **D2-204** (KT-265: soak 1.000 + budget aarch64),
 **D2-206** (KT-269: mở `[calling.aarch64]` + U-mode).
@@ -34,6 +36,7 @@ Quyết định: **D2-195** (mở bước 3, phạm vi), **D2-199** (Q4: nửa c
 | B3.10 | **PCI ECAM** + quét bus/device/function + gán BAR + **virtio-blk** đọc sector 0 | KT-273 | **DONE** (§10) |
 | B3.11 | **virtio-net** (hai queue, MAC thật) + **DHCP** + **ARP** + **ICMP echo** | KT-275 | **DONE** (§11) |
 | B3.11 | **W^X toàn ảnh** (`.text` RX / `.data` RW, guard không map) + **cache maintenance** trước/sau DMA | KT-277 | **DONE** (§11) |
+| B3.13 | **virtio-gpu 2D** (controlq, `RESOURCE_CREATE_2D`/`ATTACH_BACKING`/`SET_SCANOUT`/`TRANSFER_TO_HOST_2D`/`RESOURCE_FLUSH`) + **console 8×8** trên framebuffer | KT-279 | **DONE** (§13) |
 
 **Không** làm trong bước này: UEFI/AAVMF (thiết kế đặt **sau** K5'), EL2/ảo hoá (thuộc H1),
 `cfg(target_arch)` trong `vifast-core`/`vifast-plat-common` (AGENTS §4.8). **U-mode** (B3.7) chỉ
@@ -214,8 +217,9 @@ bash v2/test/boot/run-aarch64.sh      # build + boot + TAP + 14 ca âm
 10. **`TLBI` trên QEMU TCG**: `vae1is` flush TLB **mọi** CPU (`tlb_flush_page_by_mmuidx_all_cpus_synced`),
     nên đột biến "bỏ `tlbi` ở hart phụ" **không** đỏ trên QEMU — xem `kt262-mutation.log` §5 và
     đối chứng dương ở §5.1. **Không** được gọi là "đã kiểm trên phần cứng".
-11. **PCI**: chỉ **virtio-blk** (KT-273, §10). **Chưa** virtio-net/gpu/input trên aarch64, **chưa**
-    MSI-X (dùng poll `used`), **chưa** hotplug, **chưa** PCIe 64-bit MMIO window
+11. **PCI**: **virtio-blk** (KT-273, §10) + **virtio-net** (KT-275, §11) + **virtio-gpu**
+    (KT-279, §13). **Chưa** virtio-input trên aarch64, **chưa** MSI-X (dùng poll `used`), **chưa**
+    hotplug, **chưa** PCIe 64-bit MMIO window
     (`0x80_0000_0000` — BAR modern của virtio nằm trong cửa sổ 32-bit nên chưa cần). ECAM map
     **16 MiB = 16 bus** (không phải 256 MiB): 256 MiB cần **129** frame bảng trang, vượt arena
     44 frame và trần `.data+.bss`; QEMU `virt` đặt **mọi** thiết bị trên bus 0 (đo `info pci`).
@@ -448,12 +452,13 @@ stage=nodevice error=NoDevice`, `# blk: no device`, `not ok 20`, `not ok 21`, **
 
 ### 10.5 Còn thiếu của B3.10 (ghi rõ)
 
-1. **virtio-blk + virtio-net** đã có; **chưa** virtio-gpu/input trên aarch64, chưa MSI-X
-   (poll `used`), chưa hotplug. TCP/DNS trên aarch64: xem §11.5.
+1. **virtio-blk + virtio-net + virtio-gpu** đã có; **chưa** virtio-input trên aarch64, chưa
+   MSI-X (poll `used`), chưa hotplug. TCP/DNS trên aarch64: xem §11.5. GPU: xem §13.
 2. **ECAM 16/256 bus** — lý do frame/trần ở §10.2; bus ≥ 16 **không** quét được (đọc ra ngoài
    cửa sổ đã map ⇒ data abort), không phải "bỏ qua cho nhanh".
 3. **Cache maintenance**: **DONE** (KT-277, §11) — `dc civac` từng dòng + `dsb ish`/`dsb sy`
-   trước notify, `dc ivac` sau khi thiết bị ghi. **Giới hạn**: QEMU TCG **không** mô hình hoá
+   trước notify, `dc ivac` sau khi thiết bị ghi; virtio-gpu dùng **cùng** chuỗi cho trang DMA
+   **và** cho framebuffer (§13.3, `fb_clean_lines`). **Giới hạn**: QEMU TCG **không** mô hình hoá
    cache nên **hiệu ứng** không quan sát được; tầng quan sát được là bộ đếm `lines=` (§11.3).
 4. **Không** dùng ngắt: driver poll; `ISR` chỉ đọc chẩn đoán.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
@@ -614,3 +619,120 @@ panic trên host). Chuỗi bằng chứng vì thế là: mã lệnh đúng (test
 3. **Cache maintenance chỉ cho virtio-blk**: virtio-net aarch64 (KT-275) **chưa** merge; khi merge
    phải dùng **cùng** `cache::HANDOFF_SEQUENCE`/`COMPLETE_SEQUENCE`, không viết bản thứ hai.
 4. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+
+## 13. virtio-gpu 2D + console trên framebuffer — B3.13 (KT-279)
+
+### 13.1 Phạm vi
+
+D1 (virtio-gpu) trước KT-279 **chỉ có trên riscv64** (KT-263/KT-271). KT-279 mở **cùng** đường đó
+trên aarch64, dùng lại **nguyên** codec `vifast_virtio::gpu` + `vifast_virtio::gpu_console` (đã có
+16 test host) và **nguyên** `gpu_ppm.py` của riscv64 — không có bản thứ hai cho aarch64:
+
+| Tệp | Nội dung |
+|---|---|
+| `kernel/vifast-plat-aarch64/src/virtio_gpu.rs` | driver virtio-pci modern: một queue `controlq`, `GET_DISPLAY_INFO`/`RESOURCE_CREATE_2D`/`ATTACH_BACKING`/`SET_SCANOUT`/`TRANSFER_TO_HOST_2D`/`RESOURCE_FLUSH`, poll `used` có trần `CNTPCT_EL0`, cache maintenance trước/sau DMA |
+| `kernel/vifast-kbin-aarch64/src/gpu.rs` | ba phép đo + TAP 28/29/30 + console ba dòng + giữ khung hình 500 ms cho `screendump` |
+| `kernel/vifast-plat-aarch64/tests/virtio_gpu.rs` | **7 test host** cho phần thuần (bố cục DMA, hình học framebuffer, `Rect::byte_offset`, VA→PA, console 8×8, số dòng cache, hằng số thiết bị) |
+
+**Không** làm (đúng phạm vi KT-279): virtio-input trên aarch64, 3D/VIRGL, MSI-X, hotplug, GPU
+trong U-mode. **Không** tuyên bố K4' đạt.
+
+### 13.2 Ngân sách: framebuffer **không** nằm trong `.data+.bss` — đo trước khi viết driver
+
+Đo bằng `budget-aarch64.sh` **trước** khi thêm bất kỳ dòng nào của driver:
+
+| Mốc | `.data+.bss` | Trần I7 | % |
+|---|---:|---:|---:|
+| trước KT-279 (HEAD `35938d8c`) | **225.512 B** | 262.144 B | 86,0 % |
+| sau KT-279 | **229.608 B** | 262.144 B | 87,6 % |
+| **delta** | **+4.096 B** | — | +1,6 điểm |
+
+Delta **đúng 4.096 B** = **một** trang DMA 4 KiB của virtio-gpu (`asm::dma_page_gpu`). Framebuffer
+đóng góp **0 B** vào `.data+.bss`. Bốn phương án đã **đo** trước khi chọn:
+
+| Phương án | Cỡ | Vừa? |
+|---|---:|---|
+| `.bss` 640×480×4 | 1.228.800 B | **không** — vượt trần 4,7× |
+| `.bss` 128×64×4 | 32.768 B | **không** — còn 36.632 B trống, nhưng phải thêm trang DMA 4 KiB + trạng thái ⇒ sát/vượt trần, và 128×64 chỉ in được 15×5 ô |
+| arena boot (`bootmem`) | 44 frame, **38 đã dùng** ⇒ 6 frame = 24 KiB | **không** — thiếu cả cho 32 KiB |
+| **RAM ngoài ảnh** (chọn) | 300 trang ở `FB_PHYS_BASE = 0x4200_0000` | **vừa** — 0 B vào `.data+.bss` |
+
+Framebuffer lấy dải PA `0x4200_0000` (32 MiB sau gốc RAM, **24 MiB** sau vùng ảnh, căn 2 MiB) và
+được map vào `VSpace` thành **một cửa sổ 2 MiB** (`KERNEL_RW` + `MemAttr::Normal`, **identity**
+`VA == PA`) — **một** bảng mức 3 = **1 frame** của arena (38 → 40/44). Đây đúng khuôn riscv64
+(`FB_PHYS_BASE` của KT-263): framebuffer là vùng DMA **liền** mà thiết bị đọc thẳng, **không** phải
+trạng thái tĩnh của kernel, nên trần I7 **không** bị nới một byte nào.
+
+### 13.3 Đo được (log `boot-1.log` của runner, TAP 28..30)
+
+```text
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 frames_used=40
+# gpu pci: bus=0 dev=3 func=0 vendor=0x1af4 device=0x1050 bar=4 kind=mem64 size=0x4000 assigned=0x10800000 readback=0x10800000 command=0x0006 caps=1 other_bars=2 reserved=6
+# gpu dev: num_queues=2 queue_max=64 queue_size=16 device_features=0x0000010130000002 driver_features=0x0000000100000000 version1=1 device_status=0x0f num_scanouts=1 num_capsets=0
+# gpu dma: desc=0x400d2000 avail=0x400d2100 used=0x400d2128 cmd=0x400d2200 resp=0x400d2600 dma=0x400d2000 notify_off=0 notify_addr=0x10803000 queue=0
+# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300 stride=2560 attach_entries=19
+ok 28 - gpu: device
+# gpu display: w=1280 h=800 enabled=1 scanouts=1
+# gpu resource: id=1 format=1 w=640 h=480 entries=19 chunk=65536
+# gpu scanout: id=0 resource=1 w=640 h=480 host_w=1280 host_h=800 enabled=1 bogus=InvalidResourceId
+# gpu draw: rect=40,40,200,120 color=0xff0000 text=ViFast at=40,200 fg=0xffffff bg=0x000000 stride=2560
+# gpu: drawn
+ok 29 - gpu: draw
+# gpu console scroll: lines=60 scrolls=1 row0=1 row_last=1 ok=1
+# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29/29 text=ViFastOs|gpu console|0123456789
+ok 30 - gpu: console
+# gpu: console done lines=3
+# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 fb_clean_lines=19344 fb_clean_bytes=1237248 fb_clean_ops=2 published=10 queue_size=16 device_status=0x0f
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| thiết bị | `1af4:1050` (modern), bus 0 dev 3, BAR **4** `mem64` `0x4000`, gán `0x1080_0000` (**leaf 4**, không đụng leaf blk `0x1000_0000` / net `0x1040_0000`), đọc lại khớp |
+| feature | `device=0x0000010130000002`, `driver=0x0000000100000000` — **chỉ** `VIRTIO_F_VERSION_1` |
+| queue | `num_queues=2` (controlq + cursorq), `queue_max=64`, driver đặt **16**; `cursorq` **bỏ trống** (không có con trỏ) |
+| framebuffer | PA `0x4200_0000`, **300** trang, `walk=0x4200_0000` ⇒ `identity=1` (PA **đọc lại từ bảng trang**) |
+| frame arena | `frames_used=40` / **44** (thêm 1 frame cho leaf BAR GPU + 1 frame cho cửa sổ framebuffer) |
+| `GET_DISPLAY_INFO` | host báo `1280×800 enabled=1` — mode **của host**, không đổi khi `SET_SCANOUT` (cùng hiện tượng đã đo bên riscv64) |
+| `SET_SCANOUT` | ca âm đối chứng `resource_id=999` ⇒ `bogus=InvalidResourceId` (thiết bị **kiểm** id) |
+| console | `chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29/29` — flush **một lô** = đúng **hai** lệnh cho cả khối (flush từng ký tự sẽ là 58) |
+| cache framebuffer | `fb_clean_lines=19344` = 19.200 (rect toàn khung) + 144 (hộp bao console), `fb_clean_bytes=1237248` = 1.228.800 + 8.448 |
+| bộ đếm | `errors=0 timeouts=0 id_mismatch=0 rejects=1` |
+| `.data+.bss` | **229.608 B** / trần **262.144 B** (87,6 %) — **+4.096 B** so với trước KT-279 |
+
+**PPM** (`screendump` qua HMP monitor, `gpu_ppm.py` **nguyên bản** của riscv64): **23/23** kiểm
+xanh — 640×480, bốn điểm đỏ trong `(40,40,200,120)`, sáu điểm đen ngoài, 122 pixel trắng của
+`ViFast`, biên chính xác, và **29/29 ký tự** của ba dòng console khớp bitmap 8×8 đọc từ
+`v2/lib/vifast-virtio/src/gpu.rs`.
+
+### 13.4 Ca âm (fail-closed)
+
+| Ca | Cách dựng | Kỳ vọng |
+|---|---|---|
+| **không có GPU** | cùng ảnh + đĩa + mạng, **không** `-device virtio-gpu-pci` | `# gpu: no device` + `not ok 28..30`; runner coi là **đạt** khi ảnh đỏ đúng cách |
+
+Runner `run-aarch64.sh`: **19/19** kiểm sạch, TAP **30/30**, **16 ca âm** (15 cũ + ca "không có
+GPU"). Soak `soak-aarch64.sh`: `--selftest` **31/31** (1 dương + 30 âm), smoke **3/3** boot.
+
+### 13.5 Vì sao ảnh **giữ khung hình 500 ms**
+
+QEMU tắt máy ngay khi khách `halt`, nên nếu ảnh thoát ngay sau marker thì runner **không bao giờ**
+kịp `screendump` (đo được bên riscv64: monitor socket biến mất trước khi runner nối). Ảnh giữ
+khung hình `gpu::GPU_HOLD_MS` = **500 ms** bằng `CNTPCT_EL0` — **có hạn**, hết hạn thì tự `halt`,
+không cần host kill, không treo. Runner chờ **marker của khách** (`# gpu: console done lines=3`)
+rồi mới chụp, **không** `sleep` mù.
+
+**Chi phí thật, ghi rõ**: soak **giữ** `-device virtio-gpu-pci` (cùng topology với runner) nên
+mỗi boot soak chịu 500 ms giữ khung ⇒ 1.000 boot ÷ 3 luồng ≈ **+2,8 phút** cho toàn soak. Lựa
+chọn "bỏ GPU trong soak" **bị loại**: ảnh sẽ in `not ok 28..30` ⇒ soak ĐỎ, tức phải nới bất biến
+TAP — không được phép.
+
+### 13.6 Còn thiếu của B3.13 (ghi rõ)
+
+1. **Không** virtio-input trên aarch64, **không** 3D/VIRGL, **không** MSI-X, **không** hotplug —
+   driver poll `used`, `ISR` chỉ đọc chẩn đoán.
+2. **Không** GPU trong U-mode: console chạy ở EL1 (`el0_done`), không có syscall đồ hoạ.
+3. **Cache maintenance framebuffer** chỉ quan sát được ở tầng **bộ đếm** (`fb_clean_lines`): QEMU
+   TCG **không** mô hình hoá cache nên **hiệu ứng** không đo được — cùng giới hạn đã ghi ở §11.3.
+4. **`-display none` vẫn chụp được**: console của QEMU tồn tại không cần cửa sổ; sau `SET_SCANOUT`
+   QEMU thay surface bằng **chính** resource của khách nên PPM đúng 640×480 (đo được).
+5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

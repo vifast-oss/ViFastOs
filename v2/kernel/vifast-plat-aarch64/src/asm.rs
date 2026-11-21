@@ -414,6 +414,59 @@ mod imp {
         unsafe { &mut *DMA_PAGE_NET.0.get() }
     }
 
+    // ------------------------------------------------------------------ trang DMA thứ ba (KT-279)
+
+    /// Trang **DMA 4 KiB** thứ ba — virtqueue + vùng lệnh + vùng response của **virtio-gpu**
+    /// (KT-279).
+    ///
+    /// **Vì sao phải là trang riêng**: ba driver virtio cùng chạy trong một lần boot (blk, net,
+    /// gpu) và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`, descriptor) trong
+    /// trang DMA của nó. Dùng chung một trang thì driver sau ghi đè ring của driver trước — hỏng
+    /// im lặng, chỉ lộ ra khi thứ tự gọi đổi (bài học KT-275). Ba trang 4 KiB vẫn nằm trong trần
+    /// `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
+    ///
+    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
+    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
+    #[repr(align(4096))]
+    struct DmaPageGpu(core::cell::UnsafeCell<[u8; 4096]>);
+    // SAFETY: xem tài liệu `DmaPageGpu` — một hart, truy cập tuần tự trong `virtio_gpu`.
+    unsafe impl Sync for DmaPageGpu {}
+    static DMA_PAGE_GPU: DmaPageGpu = DmaPageGpu(core::cell::UnsafeCell::new([0u8; 4096]));
+
+    /// Địa chỉ trang DMA của virtio-gpu **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
+    /// nửa cao) — caller đổi sang PA bằng `virtio_gpu::high_to_pa` trước khi ghi descriptor.
+    pub fn dma_page_gpu_addr() -> u64 {
+        DMA_PAGE_GPU.0.get() as *const _ as u64
+    }
+
+    /// Trang DMA của virtio-gpu dưới dạng lát byte ghi được (4 KiB).
+    pub fn dma_page_gpu() -> &'static mut [u8; 4096] {
+        // SAFETY: xem `DmaPageGpu` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
+        // bị) giữ tham chiếu tới vùng này.
+        unsafe { &mut *DMA_PAGE_GPU.0.get() }
+    }
+
+    // ------------------------------------------------------------------ framebuffer GPU (KT-279)
+
+    /// Lát byte ghi được trên vùng RAM **ngoài ảnh** — framebuffer của virtio-gpu (KT-279).
+    ///
+    /// **Vì sao ở `asm`**: đây là bộ nhớ thô chia sẻ với **thiết bị** (DMA), cùng loại với ba
+    /// trang DMA ở trên; `asm` là mô-đun duy nhất của crate được `unsafe` (D2-17). Framebuffer
+    /// **không** nằm trong `.bss` (1.228.800 B sẽ vượt trần I7 262.144 B) mà ở dải PA
+    /// `virtio_gpu::FB_PHYS_BASE`, đã map **identity** (`VA == PA`) trong `VSpace` của ảnh.
+    ///
+    /// # Hợp đồng của caller
+    ///
+    /// `addr` phải là base của một cửa sổ đã map `KERNEL_RW` + `MemAttr::Normal`, `len` phải nằm
+    /// **trọn** trong cửa sổ ấy, và không ai khác (trừ DMA của thiết bị) giữ tham chiếu tới vùng
+    /// này. Ảnh boot gọi **một** lần qua `virtio_gpu::framebuffer()`.
+    pub fn gpu_framebuffer(addr: u64, len: usize) -> &'static mut [u8] {
+        // SAFETY: xem "Hợp đồng của caller" — `addr`/`len` do `virtio_gpu` cấp từ hằng đã kiểm
+        // `const _: () = assert!` (trong RAM, sau vùng ảnh, căn 2 MiB) và cửa sổ đã map trong
+        // `main.rs` trước `activate`.
+        unsafe { core::slice::from_raw_parts_mut(addr as *mut u8, len) }
+    }
+
     // ------------------------------------------------------------------ bộ nhớ thô (KT-249)
 
     /// Đọc 64 bit tại **địa chỉ tuyệt đối** `addr` (VA sau khi MMU bật, PA trước đó).
@@ -968,6 +1021,18 @@ mod imp {
     /// Stub host của trang DMA thứ hai (virtio-net) — **panic**: như `dma_page_addr`.
     pub fn dma_page_net() -> &'static mut [u8; 4096] {
         host_stub("dma page net")
+    }
+    /// Stub host của trang DMA thứ ba (virtio-gpu) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_gpu_addr() -> u64 {
+        host_stub("dma page gpu addr")
+    }
+    /// Stub host của trang DMA thứ ba (virtio-gpu) — **panic**: như `dma_page_addr`.
+    pub fn dma_page_gpu() -> &'static mut [u8; 4096] {
+        host_stub("dma page gpu")
+    }
+    /// Stub host của framebuffer GPU — **panic**: trên host không có cửa sổ RAM ngoài ảnh.
+    pub fn gpu_framebuffer(_addr: u64, _len: usize) -> &'static mut [u8] {
+        host_stub("gpu framebuffer")
     }
     /// Stub host của đọc bộ nhớ thô — **panic**: trên host không có bản đồ của kernel.
     pub fn read_u64(_addr: u64) -> u64 {

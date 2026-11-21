@@ -21,8 +21,9 @@
 # **ca âm (l) của KT-273** — boot **không có đĩa** phải in `# blk: no device` và TAP phải ĐỎ;
 # cộng **ca âm (m) của KT-275** — boot **không có mạng** phải in `# net: no device` và TAP phải
 # ĐỎ; cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
-# maintenance) đều phải ĐỎ (**15 ca âm**). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot
-# sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
+# maintenance) đều phải ĐỎ; cộng **ca âm (p) của KT-279** — boot **không có GPU** phải in
+# `# gpu: no device` và TAP phải ĐỎ (**16 ca âm**). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh
+# boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
@@ -83,6 +84,26 @@
 #   - `# blk: sector0 hex=<32 hex> … magic=1` — hex phải khớp **16 byte đầu của đĩa tạm** (runner
 #     băm lại từ tệp bằng `od`), nên "đọc được sector 0" không thể là đọc ra số 0.
 #
+# **KT-279**: QEMU nhận thêm **card đồ hoạ** (`-device virtio-gpu-pci`) và runner mở **HMP
+# monitor** trên unix socket (`-monitor unix:<sock>,server=on,wait=off`) để `screendump` **trong
+# lúc khách đang chạy**. Ảnh in `# gpu: console done lines=3` rồi **giữ khung hình 500 ms**
+# (`gpu::GPU_HOLD_MS`) — runner chờ **marker của khách** (không `sleep` mù), chụp PPM, rồi chờ
+# QEMU tự thoát. `gpu_ppm.py` (dùng **nguyên** bản của riscv64, không sửa) đòi **đúng màu tại
+# đúng toạ độ** + **từng ký tự** của ba dòng console so bitmap 8×8 đọc từ
+# `v2/lib/vifast-virtio/src/gpu.rs`. Runner đòi thêm các dòng bằng chứng:
+#   - `# gpu pci: … vendor=0x1af4 device=0x1050 … assigned=… readback=…` — BAR gán rồi **đọc lại**
+#     đúng, ở leaf **riêng** của GPU (`0x1080_0000`, không đụng leaf blk/net);
+#   - `# gpu dev: … version1=1 device_status=0x0f num_scanouts=1`;
+#   - `# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300` — framebuffer
+#     **ngoài ảnh**, map identity (PA **đọc lại từ bảng trang**), nên `.data+.bss` **không** tăng
+#     vì framebuffer (trần I7 262.144 B **không** bị nới);
+#   - `# gpu scanout: … bogus=InvalidResourceId` — ca âm đối chứng: thiết bị **kiểm**
+#     `resource_id`, nên "SET_SCANOUT thành công" không phải lệnh rỗng;
+#   - `# gpu console: … chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2
+#     matched=29/29 text=ViFastOs|gpu console|0123456789` — flush **một lô** = đúng **hai** lệnh;
+#   - `# gpu stats: … errors=0 timeouts=0 id_mismatch=0 rejects=1 … fb_clean_lines=<n> …` — bộ đếm
+#     cache maintenance của framebuffer **đã chạy** (`n > 0`).
+#
 # **KT-275**: QEMU nhận thêm **card mạng** slirp
 # (`-netdev user,id=n0 -device virtio-net-pci,netdev=n0`; `-nic none` vẫn giữ để **không** có NIC
 # mặc định thứ hai — topology PCI tất định: host bridge + virtio-net + virtio-blk). Runner đòi
@@ -106,11 +127,22 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-27}"
+EXPECT_TESTS="${EXPECT_TESTS:-30}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
 EXPECT_ACKS=$((EXPECT_SMP - 1))
+# **KT-279**: PPM + monitor. `gpu_ppm.py` là **nguyên** bản của riscv64 (KT-263/KT-271) — cùng
+# hình học 640×480, cùng bốn điểm đỏ, cùng 29 ký tự console; không có bản thứ hai cho aarch64.
+PPM_CHECK="$HERE/gpu_ppm.py"
+# Số bước 0,1 s chờ marker `# gpu: console done lines=3` trước khi coi là ảnh không lên được.
+READY_DS=100
+# Địa chỉ BAR driver **gán** cho GPU = leaf thứ 5 của cửa sổ PCIe (`PCI_MMIO_WINDOW_BASE` +
+# 4 × 2 MiB). Đây là **hằng thiết kế** của driver (không phải số đo), runner đối chiếu để bắt
+# "gán nhầm leaf của blk/net".
+GPU_BAR_ASSIGNED='0x10800000'
+# Socket monitor — tên ngắn (giới hạn 104 byte của unix socket trên macOS).
+SOCK="${TMPDIR:-/tmp}/kt279-mon-$$.sock"
 
 case "${1:-}" in
 '' | *[!0-9]*) ;;
@@ -521,6 +553,238 @@ check_net() {
     [ "$bad" -eq 0 ]
 }
 
+# ---------------------------------------------------------------- chụp màn hình qua monitor (KT-279)
+# `screendump <tệp.ppm>`: nối **một** phiên HMP, đọc banner tới `(qemu) `, gửi `screendump`, đọc
+# prompt. Trả 0 = đã gửi; 1 = không nối được / monitor báo lỗi. Cùng khuôn `gpu.sh` (KT-263).
+screendump() {
+    local path="$1"
+    "$PYTHON" - "$SOCK" "$path" <<'PY'
+import socket
+import sys
+
+sock, path = sys.argv[1], sys.argv[2]
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5.0)
+    s.connect(sock)
+except OSError as exc:
+    print(f"# run-aarch64.sh: không nối được monitor {sock}: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+
+def read_prompt():
+    buf = b""
+    try:
+        while b"(qemu)" not in buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+    except socket.timeout:
+        pass
+    return buf
+
+
+read_prompt()
+s.sendall(("screendump " + path + "\n").encode())
+out = read_prompt()
+s.close()
+if b"Error" in out or b"error" in out:
+    print(f"# run-aarch64.sh: monitor báo lỗi: {out!r}", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
+# `boot_gpu <log> <ppm>`: khởi động QEMU **có màn hình + monitor**, chờ marker của **khách**
+# (`# gpu: console done lines=3`), chụp PPM, rồi chờ QEMU tự thoát trong ngân sách.
+#
+# Vì sao không dùng `qg_boot`: `qg_boot` chờ QEMU thoát **rồi** mới trả về, mà ảnh `halt` ngay sau
+# marker ⇒ monitor socket biến mất trước khi runner kịp nối (đo được bên riscv64). Ảnh giữ khung
+# hình `gpu::GPU_HOLD_MS` = 500 ms để runner kịp; runner **không** `sleep` mù — mốc là marker của
+# khách, không phải đồng hồ của host.
+#
+# Trả 0 = QEMU tự thoát; 124 = quá hạn (đã kill cả group); 125 = không khởi động được.
+boot_gpu() {
+    local out="$1" ppm="$2"
+    rm -f "$SOCK" "$ppm" 2>/dev/null
+    qg_tmp "$SOCK"
+    qg_start "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+        -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci \
+        -monitor "unix:$SOCK,server=on,wait=off" || return 125
+    local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0
+    # 1) chờ marker của **khách** (không sleep mù): ảnh in sau lô flush console.
+    while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
+        grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null && break
+        sleep 0.05
+        i=$((i + 1))
+    done
+    if grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null; then
+        screendump "$ppm" || true
+    fi
+    # 2) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
+    local t0=$SECONDS tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_DS" ] &&
+        [ $((SECONDS - t0)) -lt "$tmax" ]; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        qg_kill_group "$pid"
+        wait "$pid" 2>/dev/null
+        return 124
+    fi
+    wait "$pid" 2>/dev/null
+    return 0
+}
+
+# ---------------------------------------------------------------- kiểm dòng `# gpu:` (KT-279)
+# Mười một dòng **bằng chứng GPU** — đây là phần "virtio-gpu 2D + console trên framebuffer" của
+# KT-279. Mỗi dòng đòi **đúng một** lần (in lặp = bước GPU chạy hai lần, hoặc log bịa):
+#
+#   `# gpu pci: … vendor=0x1af4 device=0x1050 … assigned=0x10800000 readback=0x10800000`
+#       BAR gán xong phải **đọc lại** đúng, và đúng leaf **riêng** của GPU (không đụng blk/net).
+#   `# gpu dev: … version1=1 device_status=0x0f num_scanouts=1`
+#       feature VERSION_1 hai chiều + `device_status` còn DRIVER_OK + thiết bị báo **có** scanout.
+#   `# gpu fb: … identity=1 bytes=1228800 pages=300`
+#       framebuffer **ngoài ảnh**, map identity (PA **đọc lại từ bảng trang**) — nếu framebuffer
+#       nằm trong `.bss` thì `bytes` sẽ không phải 1.228.800 (trần I7 262.144 B).
+#   `# gpu scanout: … bogus=InvalidResourceId`
+#       ca âm đối chứng: thiết bị **kiểm** `resource_id`.
+#   `# gpu console: … chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2
+#        matched=29/29 text=ViFastOs|gpu console|0123456789`
+#       flush **một lô** = đúng **hai** lệnh cho cả khối (flush từng ký tự sẽ là 58).
+#   `# gpu stats: … errors=0 timeouts=0 id_mismatch=0 rejects=1 … fb_clean_lines=<n>`
+#       đường đi sạch + cache maintenance framebuffer **đã chạy** (`n > 0`).
+check_gpu() {
+    local log="$1" bad=0 n line assigned readback lines bytes ops
+    for want in \
+        '^# gpu pci: ' \
+        '^# gpu dev: ' \
+        '^# gpu dma: ' \
+        '^# gpu fb: ' \
+        '^# gpu display: ' \
+        '^# gpu resource: ' \
+        '^# gpu scanout: ' \
+        '^# gpu draw: ' \
+        '^# gpu console: ' \
+        '^# gpu stats: '; do
+        n="$(grep -cE "$want" "$log" || true)"
+        if [ "${n:-0}" -ne 1 ]; then
+            echo "# dòng khớp '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        fi
+    done
+    # Marker của khách — runner chụp PPM **sau** dòng này, nên nó phải có đúng một lần.
+    for want in '^# gpu: drawn$' '^# gpu: console done lines=3$'; do
+        n="$(grep -cE "$want" "$log" || true)"
+        if [ "${n:-0}" -ne 1 ]; then
+            echo "# dòng khớp '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        fi
+    done
+    line="$(grep -E '^# gpu pci: ' "$log" || true)"
+    for want in "vendor=0x1af4" "device=0x1050" "assigned=$GPU_BAR_ASSIGNED"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu pci:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    assigned="$(printf '%s\n' "$line" | sed -n 's/.* assigned=\(0x[0-9a-f]*\).*/\1/p')"
+    readback="$(printf '%s\n' "$line" | sed -n 's/.* readback=\(0x[0-9a-f]*\).*/\1/p')"
+    if [ -z "$assigned" ] || [ "$assigned" != "$readback" ]; then
+        echo "# BAR GPU đọc lại (${readback:-none}) khác địa chỉ đã gán (${assigned:-none})"
+        bad=1
+    fi
+    line="$(grep -E '^# gpu dev: ' "$log" || true)"
+    for want in "version1=1" "device_status=0x0f" "num_scanouts=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu dev:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# gpu fb: ' "$log" || true)"
+    for want in "identity=1" "bytes=1228800" "pages=300" "pa=0x42000000" "walk=0x42000000"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu fb:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# gpu scanout: ' "$log" || true)"
+    case "$line" in
+        *"bogus=InvalidResourceId"*) ;;
+        *)
+            echo "# dòng '# gpu scanout:' không có 'bogus=InvalidResourceId' (thiết bị không kiểm resource_id)"
+            bad=1
+            ;;
+    esac
+    line="$(grep -E '^# gpu console: ' "$log" || true)"
+    for want in "chars=29" "newlines=3" "scrolls=0" "dirty=8,8,88,24" "flushes=1" "commands=2" \
+        "matched=29/29" "text=ViFastOs|gpu console|0123456789"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu console:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    line="$(grep -E '^# gpu stats: ' "$log" || true)"
+    for want in "errors=0" "timeouts=0" "id_mismatch=0" "rejects=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu stats:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    # Cache maintenance framebuffer **đã chạy**: `fb_clean_lines`/`fb_clean_bytes`/`fb_clean_ops`
+    # đều dương. Bỏ `dc civac` ⇒ `0` ⇒ ĐỎ (tầng quan sát được trên QEMU TCG).
+    lines="$(printf '%s\n' "$line" | sed -n 's/.* fb_clean_lines=\([0-9][0-9]*\).*/\1/p')"
+    bytes="$(printf '%s\n' "$line" | sed -n 's/.* fb_clean_bytes=\([0-9][0-9]*\).*/\1/p')"
+    ops="$(printf '%s\n' "$line" | sed -n 's/.* fb_clean_ops=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$lines" ] || [ "$lines" -le 0 ]; then
+        echo "# dòng '# gpu stats:' có fb_clean_lines=${lines:-none} — không có lệnh 'dc civac' nào chạy trên framebuffer"
+        bad=1
+    fi
+    if [ -z "$bytes" ] || [ "$bytes" -le 0 ]; then
+        echo "# dòng '# gpu stats:' có fb_clean_bytes=${bytes:-none} — vùng framebuffer rỗng"
+        bad=1
+    fi
+    if [ -z "$ops" ] || [ "$ops" -le 0 ]; then
+        echo "# dòng '# gpu stats:' có fb_clean_ops=${ops:-none} — chưa lần nào làm sạch framebuffer"
+        bad=1
+    fi
+    return "$bad"
+}
+
+# ---------------------------------------------------------------- kiểm ảnh chụp PPM (KT-279)
+# `check_ppm <ppm>`: 0 ⇔ `gpu_ppm.py` xanh trên ảnh chụp. Đây là **bằng chứng thật** rằng GPU đã
+# vẽ: TAP chỉ nói "lệnh gửi xong", còn PPM đòi **đúng màu tại đúng toạ độ** + **từng ký tự** của
+# ba dòng console so bitmap 8×8 đọc từ `v2/lib/vifast-virtio/src/gpu.rs`.
+check_ppm() {
+    local ppm="$1"
+    [ -f "$ppm" ] || {
+        echo "# không có ảnh chụp $ppm"
+        return 1
+    }
+    "$PYTHON" "$PPM_CHECK" "$ppm" || return 1
+    return 0
+}
+
 # ---------------------------------------------------------------- kiểm dòng `# wx:` (KT-277)
 # `# wx: text=RX data=RW ok=1 text_bytes=… data_bytes=… guard_pages=… guard_bytes=… … fault_ec=0x25
 #        fault_access=Write fault_va=… text_unchanged=1 data_rw=1 …`
@@ -698,6 +962,7 @@ check_log() {
     check_net "$log" || bad=1
     check_wx "$log" || bad=1
     check_dma "$log" || bad=1
+    check_gpu "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -840,7 +1105,8 @@ selftest_negative() {
     cases=$((cases + 1))
     out="$LOGDIR/boot-nodisk.log"
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
-        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none; then
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -device virtio-gpu-pci; then
         echo "not ok $n - ca âm (l): boot không có đĩa bị treo/timeout"
         fails=$((fails + 1))
     elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/l.out" 2>&1; then
@@ -864,7 +1130,7 @@ selftest_negative() {
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
         -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
-        -device virtio-blk-pci,drive=d0; then
+        -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci; then
         echo "not ok $n - ca âm (m): boot không có mạng bị treo/timeout"
         fails=$((fails + 1))
     elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/m.out" 2>&1; then
@@ -901,6 +1167,32 @@ selftest_negative() {
         echo "ok $n - ca âm (o): thiếu dòng '# dma:' ⇒ ĐỎ ($(head -1 "$tmp/n.out"))"
     fi
 
+    # (p) **KT-279** — **không có GPU**: ảnh phải in `# gpu: no device` và TAP phải ĐỎ.
+    # Ca âm **thật** (boot QEMU lần tư, có đĩa + mạng nhưng **không** `-device virtio-gpu-pci`):
+    # chứng minh driver GPU **fail-closed** khi thiếu thiết bị, thay vì in `ok` cho một card không
+    # tồn tại. Đĩa + mạng vẫn có để `blk`/`net` xanh — nếu không, ảnh dừng ở bước trước và **không**
+    # in dòng `# gpu:` nào, tức ca âm sẽ đỏ vì lý do sai.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    out="$LOGDIR/boot-nogpu.log"
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+        -device virtio-blk-pci,drive=d0; then
+        echo "not ok $n - ca âm (p): boot không có GPU bị treo/timeout"
+        fails=$((fails + 1))
+    elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/p.out" 2>&1; then
+        echo "not ok $n - ca âm (p): không có GPU mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -Fq '# gpu: no device' "$out"; then
+        echo "not ok $n - ca âm (p): thiếu dòng '# gpu: no device'"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (p): không có GPU ⇒ '# gpu: no device' + TAP ĐỎ ($(head -1 "$tmp/p.out"))"
+    fi
+
+    NEG_CASES=$cases
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -910,6 +1202,10 @@ command -v cargo >/dev/null 2>&1 || die "không có cargo"
 QEMU="$(command -v qemu-system-aarch64 || true)"
 [ -n "$QEMU" ] || die "không có qemu-system-aarch64"
 OBJDUMP="$(find_objdump)" || die "không có objdump (llvm-objdump/rust-objdump/xcrun/objdump)"
+# **KT-279**: `python3` để gửi `screendump` qua monitor + chạy `gpu_ppm.py` (không cần 3.12).
+PYTHON="$(command -v python3 || true)"
+[ -n "$PYTHON" ] || die "không có python3 (cần cho monitor screendump + gpu_ppm.py)"
+[ -f "$PPM_CHECK" ] || die "không thấy $PPM_CHECK"
 
 QEMU_VERSION="$("$QEMU" --version 2>/dev/null | sed -n '1s/.*version \([0-9][^ ]*\).*/\1/p')"
 [ -n "$QEMU_VERSION" ] || die "không đọc được phiên bản QEMU"
@@ -954,15 +1250,27 @@ else
 fi
 
 # ---- kiểm 2..: boot N lần
+#
+# **KT-279**: boot **đầu** đi qua `boot_gpu` (mở monitor + `-device virtio-gpu-pci`, chờ marker
+# của khách rồi `screendump`); các boot sau dùng `qg_boot` (không cần ảnh chụp). Cả hai đường
+# dùng **cùng** bộ cờ QEMU, nên "ảnh nào" không lệch giữa boot 1 và boot N.
 i=1
 while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
-    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
-        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
-        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-        -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
-        -device virtio-blk-pci,drive=d0; then
+    ppm="$LOGDIR/boot-$i.ppm"
+    if [ "$i" -eq 1 ]; then
+        boot_gpu "$out" "$ppm"
+        rc=$?
+    else
+        qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+            -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+            -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+            -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
+            -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci
+        rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -973,6 +1281,17 @@ while [ "$i" -le "$N_BOOT" ]; do
     else
         echo "not ok $total - boot $i: $(head -3 "$LOGDIR/tap-$i.log" | tr '\n' ' '), log $out"
         fails=$((fails + 1))
+    fi
+    # **KT-279**: ảnh chụp màn hình của boot 1 — bằng chứng **thật** rằng GPU đã vẽ (điểm ảnh +
+    # từng ký tự console), độc lập với TAP và với framebuffer trong RAM.
+    if [ "$i" -eq 1 ]; then
+        total=$((total + 1))
+        if check_ppm "$ppm" >"$LOGDIR/ppm-$i.log" 2>&1; then
+            echo "ok $total - ppm: $(grep -c '^ok ' "$LOGDIR/ppm-$i.log" || true) kiểm PPM xanh (màu rect + 29/29 ký tự console)"
+        else
+            echo "not ok $total - ppm: $(head -3 "$LOGDIR/ppm-$i.log" | tr '\n' ' '), ảnh $ppm"
+            fails=$((fails + 1))
+        fi
     fi
     i=$((i + 1))
 done
@@ -985,9 +1304,11 @@ if [ ! -f "$good" ]; then
     total=$((total + 1))
 else
     # Ca âm đánh số **tiếp** dãy của runner để log TAP không trùng số hiệu.
+    # Số ca đếm **từ chính hàm** (`NEG_CASES`) — trước KT-279 chỗ này cộng cứng 13+14 = 27 trong
+    # khi hàm chỉ chạy 15 ca, nên dòng tổng kết phồng lên. Không đổi ca nào, chỉ đếm đúng.
+    NEG_CASES=0
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 13))
-    total=$((total + 14))
+    total=$((total + NEG_CASES))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS)"

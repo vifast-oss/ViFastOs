@@ -70,6 +70,11 @@ pub mod vector;
 /// **KT-273**: driver **virtio-blk** (virtio-pci modern) — virtqueue trong một trang DMA, request
 /// `IN`/`OUT`/`FLUSH`, poll `used` có trần `CNTPCT_EL0`.
 pub mod virtio_blk;
+/// **KT-279** (K4' bước 3, D1 phần 4 trên aarch64): driver **virtio-gpu 2D** (virtio-pci
+/// modern) — một queue `controlq`, `RESOURCE_CREATE_2D`/`ATTACH_BACKING`/`SET_SCANOUT`/
+/// `TRANSFER_TO_HOST_2D`/`RESOURCE_FLUSH`, framebuffer **300 trang ngoài ảnh** (không vào
+/// `.data+.bss`), cache maintenance trước/sau DMA.
+pub mod virtio_gpu;
 /// **KT-275** (K4' bước 3, D1 trên aarch64): driver **virtio-net** (virtio-pci modern) — hai
 /// queue `rx`/`tx`, MAC thật từ `virtio_net_config`, DHCP client + ARP + ICMP echo trên
 /// `vifast-net` (codec thuần, không viết lại).

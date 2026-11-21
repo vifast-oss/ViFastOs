@@ -361,6 +361,12 @@ pub extern "C" fn el0_done() -> ! {
     if !crate::wxprobe::run(&mut console, blk_ok) {
         debug_halt(5)
     }
+    // **KT-279**: virtio-gpu 2D + console trên framebuffer — TAP 28/29/30, sau `wxprobe` để số
+    // hiệu TAP tuần tự. Không có `-device virtio-gpu-pci` ⇒ `# gpu: no device` + ba TAP đỏ ⇒
+    // dừng **trước** marker (ca âm của runner).
+    if !crate::gpu::run(&mut console) {
+        debug_halt(5)
+    }
     let _ = pl011::write_str(BOOT_MARKER);
     let _ = writeln!(console, "# viFastOs aarch64: halt");
     debug_halt(0)

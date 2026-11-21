@@ -14,12 +14,10 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..27`; đúng **27** dòng `ok N - `, đủ số 1..27,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..30`; đúng **30** dòng `ok N - `, đủ số 1..30,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
-#      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25);
-
-#      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
-#      18 → 21; KT-277 thêm 2 ca W^X/cache-DMA: 21 → 23);
+#      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25; KT-277 thêm 2 ca W^X/cache-DMA: 25 → 27;
+#      **KT-279** thêm 3 ca GPU: 27 → 30);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. `# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1` — **bốn** hart (KT-262);
@@ -38,6 +36,21 @@
 #   5c. **KT-277** — đúng **một** dòng `# wx: … text=RX data=RW ok=1 … fault_ec=0x25 …` và đúng
 #      **một** dòng `# dma: cache-clean ok=1 lines=<n> bytes=<m> …` với `n > 0`, `m > 0` và
 #      `n × line == m`. Ảnh map `.text` RW (không fault) hoặc bỏ `dc civac` (`lines=0`) ⇒ ĐỎ;
+#   5d. **KT-279** — mười dòng bằng chứng GPU (`# gpu pci:`/`dev:`/`dma:`/`fb:`/`display:`/
+#      `resource:`/`scanout:`/`draw:`/`console:`/`stats:`) + hai marker (`# gpu: drawn`,
+#      `# gpu: console done lines=3`), mỗi dòng **đúng một** lần; `# gpu fb:` phải có
+#      `identity=1 bytes=1228800 pages=300 pa=0x42000000 walk=0x42000000` (framebuffer **ngoài
+#      ảnh** — trần I7 **không** bị nới), `# gpu scanout:` phải có `bogus=InvalidResourceId`,
+#      `# gpu console:` phải có `commands=2 matched=29/29`, `# gpu stats:` phải có
+#      `errors=0 timeouts=0 id_mismatch=0 rejects=1` và `fb_clean_lines > 0`. Ảnh mất GPU ⇒ ĐỎ;
+#
+# **KT-279 — GPU có mặt trong soak, ghi rõ lựa chọn**: `QEMU_ARGS` **giữ** `-device virtio-gpu-pci`
+# (cùng topology với `run-aarch64.sh`), nên mỗi boot soak chạy **cả** đường GPU. Hệ quả **đo được**:
+# ảnh giữ khung hình `gpu::GPU_HOLD_MS` = **500 ms** sau marker console để runner kịp `screendump`
+# (soak **không** chụp, nhưng dùng **cùng** ảnh — không có cờ "chế độ soak" trong ảnh sản phẩm,
+# D2-08). Chi phí: 1.000 boot × 0,5 s ÷ 3 luồng ≈ **+2,8 phút** cho toàn soak. Lựa chọn thay thế
+# (bỏ `-device virtio-gpu-pci` trong soak) **bị loại**: ảnh sẽ in `not ok 28..30` ⇒ soak ĐỎ, tức
+# phải nới bất biến TAP — không được phép.
 #   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
 #   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
@@ -74,8 +87,8 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=27   # KT-275 + KT-277: 27 ca (KT-273 21 + 4 ca mạng + 2 ca W^X/cache-DMA; khớp `1..27`
-               # của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=30   # KT-275 + KT-277 + KT-279: 30 ca (KT-273 21 + 4 ca mạng + 2 ca W^X/cache-DMA +
+               # 3 ca GPU: device/draw/console; khớp `1..30` của ảnh và `EXPECT_TESTS` của runner)
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -355,6 +368,102 @@ check_boot_log() {
         bad=1
     fi
 
+    # (5d) **KT-279** — virtio-gpu 2D + console trên framebuffer. Cùng bất biến `run-aarch64.sh`
+    #      (`check_gpu`): BAR gán rồi **đọc lại** đúng ở leaf riêng của GPU (`0x10800000`), feature
+    #      VERSION_1 + `device_status=0x0f` + `num_scanouts=1`, framebuffer **ngoài ảnh** map
+    #      identity (`pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300`), ca âm đối
+    #      chứng `bogus=InvalidResourceId`, console flush **một lô** (`commands=2`, `matched=29/29`),
+    #      và cache maintenance framebuffer **đã chạy** (`fb_clean_lines>0`). Ảnh mất GPU ⇒ soak ĐỎ
+    #      dù TAP 1..27 vẫn xanh.
+    for want in \
+        '^# gpu pci: ' \
+        '^# gpu dev: ' \
+        '^# gpu dma: ' \
+        '^# gpu fb: ' \
+        '^# gpu display: ' \
+        '^# gpu resource: ' \
+        '^# gpu scanout: ' \
+        '^# gpu draw: ' \
+        '^# gpu console: ' \
+        '^# gpu stats: '; do
+        n="$(grep -cE "$want" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng khớp '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    for want in '^# gpu: drawn$' '^# gpu: console done lines=3$'; do
+        n="$(grep -cE "$want" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng khớp '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    gpu_pci="$(grep -E '^# gpu pci: ' "$log" || true)"
+    for want in "vendor=0x1af4" "device=0x1050" "assigned=0x10800000"; do
+        case "$gpu_pci" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu pci:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    gpu_dev="$(grep -E '^# gpu dev: ' "$log" || true)"
+    for want in "version1=1" "device_status=0x0f" "num_scanouts=1"; do
+        case "$gpu_dev" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu dev:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    gpu_fb="$(grep -E '^# gpu fb: ' "$log" || true)"
+    for want in "identity=1" "bytes=1228800" "pages=300" "pa=0x42000000" "walk=0x42000000"; do
+        case "$gpu_fb" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu fb:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    gpu_scanout="$(grep -E '^# gpu scanout: ' "$log" || true)"
+    case "$gpu_scanout" in
+        *"bogus=InvalidResourceId"*) ;;
+        *)
+            echo "# dòng '# gpu scanout:' không có 'bogus=InvalidResourceId' (thiết bị không kiểm resource_id)"
+            bad=1
+            ;;
+    esac
+    gpu_console="$(grep -E '^# gpu console: ' "$log" || true)"
+    for want in "chars=29" "newlines=3" "scrolls=0" "dirty=8,8,88,24" "flushes=1" "commands=2" \
+        "matched=29/29" "text=ViFastOs|gpu console|0123456789"; do
+        case "$gpu_console" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu console:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    gpu_stats="$(grep -E '^# gpu stats: ' "$log" || true)"
+    for want in "errors=0" "timeouts=0" "id_mismatch=0" "rejects=1"; do
+        case "$gpu_stats" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# gpu stats:' không có '$want'"
+                bad=1
+                ;;
+        esac
+    done
+    gpu_clean="$(printf '%s\n' "$gpu_stats" | sed -n 's/.* fb_clean_lines=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$gpu_clean" ] || [ "$gpu_clean" -le 0 ]; then
+        echo "# dòng '# gpu stats:' có fb_clean_lines=${gpu_clean:-none} — không có lệnh 'dc civac' nào chạy trên framebuffer"
+        bad=1
+    fi
+
     # (6) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
     [ "${n:-0}" -eq 0 ] || {
@@ -373,7 +482,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..27
+1..30
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -431,6 +540,22 @@ ok 25 - net: ping
 ok 26 - wx: text RX (write faults), data RW
 # dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1 poll_inval=1 line=64 ctr=0x000000008444c004
 ok 27 - dma: cache maintenance before/after DMA
+# gpu pci: bus=0 dev=3 func=0 vendor=0x1af4 device=0x1050 bar=4 kind=mem64 size=0x4000 assigned=0x10800000 readback=0x10800000 command=0x0006 caps=1 other_bars=2 reserved=6
+# gpu dev: num_queues=2 queue_max=64 queue_size=16 device_features=0x0000010130000002 driver_features=0x0000000100000000 version1=1 device_status=0x0f num_scanouts=1 num_capsets=0
+# gpu dma: desc=0x400d2000 avail=0x400d2100 used=0x400d2128 cmd=0x400d2200 resp=0x400d2600 dma=0x400d2000 notify_off=0 notify_addr=0x10803000 queue=0
+# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300 stride=2560 attach_entries=19
+ok 28 - gpu: device
+# gpu display: w=1280 h=800 enabled=1 scanouts=1
+# gpu resource: id=1 format=1 w=640 h=480 entries=19 chunk=65536
+# gpu scanout: id=0 resource=1 w=640 h=480 host_w=1280 host_h=800 enabled=1 bogus=InvalidResourceId
+# gpu draw: rect=40,40,200,120 color=0xff0000 text=ViFast at=40,200 fg=0xffffff bg=0x000000 stride=2560
+# gpu: drawn
+ok 29 - gpu: draw
+# gpu console scroll: lines=60 scrolls=1 row0=1 row_last=1 ok=1
+# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29/29 text=ViFastOs|gpu console|0123456789
+ok 30 - gpu: console
+# gpu: console done lines=3
+# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 fb_clean_lines=19344 fb_clean_bytes=1237248 fb_clean_ops=2 published=10 queue_size=16 device_status=0x0f
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -547,6 +672,22 @@ EOF
         "$good" >"$tmp/v.log" || true
     neg "ok=0 (ghi vào .text không fault)" "$tmp/v.log"
 
+    # **KT-279** — bốn ca âm cho bất biến GPU (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# gpu fb: ' "$good" >"$tmp/w.log" || true
+    neg "thiếu dòng '# gpu fb: ' (không có bằng chứng framebuffer)" "$tmp/w.log"
+
+    sed 's/^# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 /# gpu fb: pa=0x42000000 walk=0x42001000 identity=0 /' \
+        "$good" >"$tmp/x.log" || true
+    neg "identity=0 (framebuffer không map identity)" "$tmp/x.log"
+
+    sed 's/^# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29\/29 /# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=58 matched=29\/29 /' \
+        "$good" >"$tmp/y.log" || true
+    neg "commands=58 (flush từng ký tự thay vì một lô)" "$tmp/y.log"
+
+    sed 's/^# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 fb_clean_lines=19344 /# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 fb_clean_lines=0 /' \
+        "$good" >"$tmp/z.log" || true
+    neg "fb_clean_lines=0 (bỏ 'dc civac' trên framebuffer)" "$tmp/z.log"
+
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
     [ "$fails" -eq 0 ] || return 1
@@ -630,7 +771,8 @@ DISK="$LOGDIR/disk0.raw"
 QEMU_ARGS=(-M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 4 \
     -kernel "$IMAGE" -no-reboot -nic none \
     -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-    -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" -device virtio-blk-pci,drive=d0)
+    -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" -device virtio-blk-pci,drive=d0 \
+    -device virtio-gpu-pci)
 
 # ------------------------------------------------------------------ build + neo ảnh
 echo "# soak-aarch64 KT-265 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"

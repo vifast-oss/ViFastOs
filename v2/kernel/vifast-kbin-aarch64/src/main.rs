@@ -17,6 +17,9 @@
 //!        ├─ KT-259: GICv3 (distributor + redistributor hart 0) → công bố thanh ghi MMU →
 //!        │     PSCI `CPU_ON(1, _start_secondary, 1)` → hart 1 online (TAP 10) → SGI 0 làm IPI
 //!        │     (TAP 11) → cả hai hart in hart id (TAP 12)
+//!        ├─ KT-273/275/277/279 (ở `el0_done`, sau U-mode): PCI ECAM + virtio-blk (TAP 19..21) →
+//!        │     virtio-net + DHCP/ARP/ICMP (TAP 22..25) → W^X + cache DMA (TAP 26/27) →
+//!        │     virtio-gpu 2D + console trên framebuffer (TAP 28..30)
 //!        └─ debug_halt: PSCI SYSTEM_OFF (hvc #0, x0 = 0x8400_0008) ⇒ QEMU thoát mã 0
 //! ```
 //!
@@ -66,6 +69,7 @@ use vifast_plat_aarch64::smp;
 use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
 use vifast_plat_aarch64::vector::{self, VectorKind};
+use vifast_plat_aarch64::virtio_gpu;
 use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
 use vifast_plat_aarch64::{asm, debug_halt, pl011};
 use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
@@ -92,6 +96,11 @@ mod net;
 /// **KT-277** (K4' bước 3): **W^X toàn ảnh** + **cache maintenance trước DMA** — TAP 22/23, chạy
 /// ở `el0_done` sau `blk` (số hiệu TAP tuần tự). Tách tệp riêng (luật R1).
 mod wxprobe;
+
+/// **KT-279** (K4' bước 3, D1 phần 4 trên aarch64): **virtio-gpu 2D + console trên framebuffer**
+/// — TAP 28/29/30, chạy ở `el0_done` **sau** `wxprobe` để số hiệu TAP tuần tự. Tách tệp riêng
+/// (luật R1).
+mod gpu;
 
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
@@ -454,8 +463,9 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// sau `svc` rồi `Exit`) + **3 ca của KT-273** (`pci: ecam`, `pci: virtio-blk found`,
 /// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`)
 /// + **2 ca của KT-277** (`wx: text RX (write faults), data RW`,
-/// `dma: cache maintenance before/after DMA`).
-pub const TAP_TESTS: usize = 27;
+/// `dma: cache maintenance before/after DMA`) + **3 ca của KT-279** (`gpu: device`, `gpu: draw`,
+/// `gpu: console`).
+pub const TAP_TESTS: usize = 30;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
@@ -942,12 +952,77 @@ pub extern "C" fn high_entry() -> ! {
             debug_halt(3)
         }
     };
+    // ---- **KT-279**: leaf BAR của **virtio-gpu** (leaf 4, `0x1080_0000`) — mỗi loại thiết bị một
+    // leaf 2 MiB (`pci::bar_assign_base`), nên driver GPU **không** đụng leaf blk/net. Kiểm "chưa
+    // có mapping" **trước** khi map, cùng lý do CAO-2/D2-110C ở trên.
+    let gpu_bar_base = pci::bar_assign_base(pci::VirtioKind::Gpu);
+    if vs.walk(gpu_bar_base) != Err(MapError::NotMapped) {
+        let _ = writeln!(
+            console,
+            "PANIC: pci: cửa sổ BAR GPU 0x{gpu_bar_base:x} đã có mapping trước khi gán"
+        );
+        debug_halt(3)
+    }
+    let pages_bar_gpu = match map_window_into(
+        &mut vs,
+        gpu_bar_base,
+        gpu_bar_base,
+        pci::BAR_ASSIGN_BYTES,
+        Perms::KERNEL_RW,
+        MemAttr::Device,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR GPU lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // ---- **KT-279**: cửa sổ **framebuffer** của virtio-gpu — 300 trang RAM **ngoài ảnh**
+    // (`virtio_gpu::FB_PHYS_BASE = 0x4200_0000`), map **identity** (`VA == PA`) với `Normal` (đây
+    // là RAM, không phải MMIO) để driver vẽ và thiết bị DMA đọc **cùng** một dải PA. Căn 2 MiB ⇒
+    // **một** bảng mức 3 (1 frame arena) phủ trọn 300 trang.
+    //
+    // Vì sao **không** `.bss`: 640×480×4 = 1.228.800 B > trần `.data+.bss` 262.144 B (I7) — xem
+    // bảng ba phương án đã đo trong tài liệu đầu `virtio_gpu.rs`.
+    if vs.walk(virtio_gpu::FB_PHYS_BASE) != Err(MapError::NotMapped) {
+        let _ = writeln!(
+            console,
+            "PANIC: gpu: cửa sổ framebuffer 0x{:x} đã có mapping trước khi map",
+            virtio_gpu::FB_PHYS_BASE
+        );
+        debug_halt(3)
+    }
+    let pages_fb = match map_window_into(
+        &mut vs,
+        virtio_gpu::FB_PHYS_BASE,
+        virtio_gpu::FB_PHYS_BASE,
+        virtio_gpu::FB_BYTES as u64,
+        Perms::KERNEL_RW,
+        MemAttr::Normal,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: gpu: map framebuffer lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    // PA **đọc lại từ bảng trang** cho VA của framebuffer — `gpu.rs` in `identity=` từ số này,
+    // nên "framebuffer map identity" là phép **đo**, không phải lời khai.
+    let fb_walk_pa = match vs.walk(virtio_gpu::FB_PHYS_BASE) {
+        Ok(translation) => translation.pa,
+        Err(error) => {
+            let _ = writeln!(console, "PANIC: gpu: walk framebuffer lỗi {error:?}");
+            debug_halt(3)
+        }
+    };
+    gpu::publish_fb_walk(fb_walk_pa);
     let _ = writeln!(
         console,
-        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} frames_used={}",
+        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_pages={pages_ecam} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} frames_used={}",
         pci::ECAM_BASE,
         pci::ECAM_VA_BASE,
         pci::BAR_ASSIGN_BASE,
+        virtio_gpu::FB_PHYS_BASE,
         vs.mmu().low().memory().frames_used(),
     );
 
