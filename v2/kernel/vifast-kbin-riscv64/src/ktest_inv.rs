@@ -224,6 +224,9 @@ pub fn invocation_phase(
         // KT-74: `Tcb.SetTls` — pha KT-67a không gọi method này ⇒ delta phải **0** (giữ nguyên
         // khẳng định cũ, không nới).
         set_tls: stats.set_tls.saturating_sub(before.set_tls),
+        // **KT-290**: pha KT-67a không gọi `Tcb.Configure` ⇒ delta phải **0** (giữ nguyên
+        // khẳng định cũ, không nới).
+        configure: stats.configure.saturating_sub(before.configure),
     };
     let fault = FAULT_STATS.last();
     let mut frame_obj = 0u32;

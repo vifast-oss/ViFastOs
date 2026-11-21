@@ -160,7 +160,54 @@ impl Machine {
             Some(s) => Some(self.require_type(s, ObjType::CNode)?),
             None => None,
         };
-        let binding = match ipc_buffer {
+        let binding = self.ipc_buffer_binding(ipc_buffer)?;
+        {
+            let t = self.tcb_data_mut(tcb_obj)?;
+            t.cspace = cspace_obj;
+            t.ipc_buffer = binding;
+            t.exit_code = None;
+        }
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// **KT-290** — `Tcb.Configure` qua **invocation** từ U-mode: bind **chỉ** `ipc_buffer?`,
+    /// **giữ nguyên** CSpace (tham số `cspace?` của `[method_signature."Tcb.Configure"]` **chưa**
+    /// cài ở kênh invocation — xem `invoke::configure`).
+    ///
+    /// Vì sao không dùng [`Machine::tcb_configure_with_ipc_buffer`] với `cspace = None`: API đó
+    /// **xoá** CSpace (`t.cspace = None`) — đúng ngữ nghĩa "Configure không có cspace" của rig,
+    /// nhưng invocation **không** mang tham số `cspace?` nên phải **giữ** CSpace hiện có, nếu
+    /// không TCB mất CSpace và mọi syscall sau đó trả `InvalidCapability`.
+    ///
+    /// Ngữ nghĩa còn lại giống hệt `Tcb.Configure`: kiểm cap `Frame` sống + `va` căn
+    /// `IPC_BUFFER_BYTES` (4 KiB) + không tràn `u64` (vi phạm ⇒ `InvalidArgument` 5, **nguyên
+    /// tử**), **xoá `exit_code`** (D2-25), **không** đổi trạng thái TCB/scheduler.
+    pub fn tcb_configure_ipc_buffer(
+        &mut self,
+        tcb: SlotRef,
+        ipc_buffer: Option<(SlotRef, u64)>,
+    ) -> Result<(), KError> {
+        let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;
+        let binding = self.ipc_buffer_binding(ipc_buffer)?;
+        {
+            let t = self.tcb_data_mut(tcb_obj)?;
+            t.ipc_buffer = binding;
+            t.exit_code = None;
+        }
+        self.sched_after_op(false);
+        Ok(())
+    }
+
+    /// Kiểm + dựng [`crate::ipc::IpcBufferBinding`] từ tham số `ipc_buffer?` — **một** nguồn cho
+    /// cả [`Machine::tcb_configure_with_ipc_buffer`] (rig/ảnh test) và
+    /// [`Machine::tcb_configure_ipc_buffer`] (invocation KT-290): cap phải là `Frame` sống,
+    /// `va` căn 4 KiB và `va + 4096` không tràn `u64`.
+    fn ipc_buffer_binding(
+        &self,
+        ipc_buffer: Option<(SlotRef, u64)>,
+    ) -> Result<Option<crate::ipc::IpcBufferBinding>, KError> {
+        match ipc_buffer {
             Some((frame, va)) => {
                 let frame_obj = self.require_type(frame, ObjType::Frame)?;
                 if va % crate::ipc::IPC_BUFFER_BYTES as u64 != 0 {
@@ -172,21 +219,13 @@ impl Machine {
                 {
                     return Err(KError::InvalidArgument);
                 }
-                Some(crate::ipc::IpcBufferBinding {
+                Ok(Some(crate::ipc::IpcBufferBinding {
                     frame: frame_obj,
                     va,
-                })
+                }))
             }
-            None => None,
-        };
-        {
-            let t = self.tcb_data_mut(tcb_obj)?;
-            t.cspace = cspace_obj;
-            t.ipc_buffer = binding;
-            t.exit_code = None;
+            None => Ok(None),
         }
-        self.sched_after_op(false);
-        Ok(())
     }
 
     /// **KT-282** — IPC buffer đã bind của TCB (`None` = chưa bind). Arch đọc hàm này để biết

@@ -604,12 +604,15 @@ fn cnode_ca_am_ma_loi() {
         Err(KError::NotSupported.id() as u64)
     );
     assert_eq!(invoke::stats().denied, denied0 + 2);
-    // Gọi `CNode.Copy` trên cap TCB (object khác) ⇒ 18.
+    // Gọi `CNode.Copy` trên cap **không phải CNode** (Endpoint, slot 1) ⇒ 18.
+    // **KT-290**: trước đây ca này dùng cap TCB (slot 2) + method 0; từ KT-290 `(Tcb, 0)` là
+    // `Tcb.Configure` **đã cài** nên không còn là "method ngoài danh sách" — đổi sang Endpoint
+    // (vẫn giữ nguyên điều cần đo: cap sai loại ⇒ 18, không trả `Ok` giả).
     assert_eq!(
         invoke_on(
             &mut r.m,
             r.tcb,
-            SlotRef::new(r.c, 2),
+            SlotRef::new(r.c, 1),
             invoke::CNODE_COPY,
             2,
             [1, 4, 0, 0],

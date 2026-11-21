@@ -4,6 +4,14 @@
 //!
 //! **KT-282** — mở rộng cùng ảnh: **MR4..MR63 qua IPC buffer** (nợ K3.5 của KT-280 §7.3).
 //!
+//! **KT-290** — trả nợ KT-282 §6.3: **`Tcb.Configure` qua invocation từ U-mode**. Trước KT-290
+//! rig gọi thẳng `Machine::tcb_configure_with_ipc_buffer` để bind IPC buffer của client; nay
+//! **chính chương trình U-mode** gọi `Call` trên cap **TCB** với `label = TCB_CONFIGURE` (0, hằng
+//! sinh từ `spec/abi.toml`) và `length = 2` (`MR0` = CPTR cap `Frame`, `MR1` = VA) ⇒ kernel bind
+//! buffer rồi trả `(error, value) = (0, 0)`. Rig **không** bind hộ client nữa ⇒ vòng 8 MR/64 MR
+//! chỉ xanh nếu invocation chạy thật. TAP 4 đo đường đó; ba ca âm (cap không phải TCB, method id
+//! sai, buffer ngoài frame) nằm trong cùng boot.
+//!
 //! # Vì sao tách ảnh
 //!
 //! D2-109/D2-111: mỗi ảnh test một ngân sách (262.144 B `.data+.bss`), thêm **đường mới** ⇒ tách
@@ -38,7 +46,7 @@
 //! KT-282 đóng nợ đó: `Tcb.Configure` bind **frame 4 KiB + VA**, `length > 4` ⇒ MR4..MR63 đọc/ghi
 //! ở **offset 80** của buffer (`[TK]` — spec không chốt offset, xem `vifast_core::ipc`).
 //!
-//! # Ba TAP (kế hoạch `1..3`)
+//! # Bốn TAP (kế hoạch `1..4`)
 //!
 //! 1. `ipc: umode call` — client U-mode gọi `Call(EP, {label=0x280,length=8}, MR0..MR3)`:
 //!    core đưa TCB client sang `BlockedOnReply`, message **nằm trong hàng Endpoint**
@@ -52,6 +60,13 @@
 //!    (MR0..MR3 thanh ghi + MR4..MR63 **IPC buffer**); kernel đọc **độc lập** `tcb_ipc_area` của
 //!    cả hai bên sau mỗi vòng (`# ipc mr: round=…`) và chương trình U-mode tự đọc buffer của mình
 //!    (`# ipc: mr count=8 mr7=0x…`, `# ipc: mr count=64 mr63=0x…`).
+//! 4. `ipc: tcb configure via invocation` — **KT-290**: chính client U-mode gọi
+//!    `Call(cap TCB, {label = TCB_CONFIGURE, length = 2}, MR0 = CPTR Frame, MR1 = VA)` ⇒ kernel
+//!    bind IPC buffer rồi trả `(0, 0)`; client in `# ipc: configure ok va=0x…` +
+//!    `# ipc: configure err=0`; kernel đo **độc lập** `delta.configure = 3`,
+//!    `delta.denied = 2`, `sys_err(0) = 0`, binding đúng VA (`# ipc configure: …`). Ba ca âm
+//!    trong cùng boot: cap không phải TCB ⇒ 18, method id sai ⇒ 18, buffer ngoài frame ⇒
+//!    `Configure` 0 nhưng `Call` 8 MR fail-closed 5 (`# ipc: configure neg …`).
 //!
 //! **Ca âm** (trong cùng boot, chương trình client tự kiểm): `Call` trên ô rỗng ⇒ 1
 //! (`InvalidCapability`); `Call` trên cap `Reply` (không phải Endpoint) ⇒ 18 (`NotSupported`);
@@ -89,6 +104,10 @@ const SLOT_SERVER: usize = 2;
 const CS_SELF: usize = 0;
 const CS_EP: usize = 1;
 const CS_REPLY: usize = 2;
+/// **KT-290** — cap `Tcb` của chính client: `Call` với `label = Tcb.Configure`.
+const CS_TCB: usize = 3;
+/// **KT-290** — cap `Frame` 4 KiB làm IPC buffer: `MR0` của `Tcb.Configure`.
+const CS_FRAME: usize = 4;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -216,20 +235,36 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         SlotRef::new(cnode_c, CS_REPLY),
     )
     .expect("rig: reply -> client");
-    // Cấu hình 2 TCB: cspace riêng + **IPC buffer** (KT-282) + SC + priority (server cao hơn).
-    for (tcb_slot, cnode, sc, prio) in [
-        (RIG_TCB_C, cnode_c, RIG_SC_C, PRIO_CLIENT),
-        (RIG_TCB_S, cnode_s, RIG_SC_S, PRIO_SERVER),
+    // **KT-290** — client giữ cap `Tcb` của chính nó + cap `Frame` IPC buffer để **tự** gọi
+    // `Tcb.Configure` qua invocation (rig **không** bind hộ client nữa).
+    m.copy(SlotRef::new(root, RIG_TCB_C), SlotRef::new(cnode_c, CS_TCB))
+        .expect("rig: tcb -> client");
+    m.copy(
+        SlotRef::new(root, RIG_IPC_BUF),
+        SlotRef::new(cnode_c, CS_FRAME),
+    )
+    .expect("rig: frame -> client");
+    // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
+    // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
+    // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
+    m.tcb_configure(
+        SlotRef::new(root, RIG_TCB_C),
+        Some(SlotRef::new(cnode_c, CS_SELF)),
+    )
+    .expect("rig: cspace client");
+    m.tcb_configure_with_ipc_buffer(
+        SlotRef::new(root, RIG_TCB_S),
+        Some(SlotRef::new(cnode_s, CS_SELF)),
+        Some((
+            SlotRef::new(root, RIG_IPC_BUF),
+            vifast_plat_riscv64::ipc_buffer::USER_IPC_BUFFER_VA,
+        )),
+    )
+    .expect("rig: cspace + ipc buffer server");
+    for (tcb_slot, sc, prio) in [
+        (RIG_TCB_C, RIG_SC_C, PRIO_CLIENT),
+        (RIG_TCB_S, RIG_SC_S, PRIO_SERVER),
     ] {
-        m.tcb_configure_with_ipc_buffer(
-            SlotRef::new(root, tcb_slot),
-            Some(SlotRef::new(cnode, CS_SELF)),
-            Some((
-                SlotRef::new(root, RIG_IPC_BUF),
-                vifast_plat_riscv64::ipc_buffer::USER_IPC_BUFFER_VA,
-            )),
-        )
-        .expect("rig: cspace + ipc buffer");
         m.sched_control_configure(
             SlotRef::new(root, RIG_CTL),
             SlotRef::new(root, sc),
@@ -293,7 +328,7 @@ fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..3\n");
+    PLATFORM.put_str("TAP version 13\n1..4\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -359,11 +394,35 @@ pub extern "C" fn rust_main() -> ! {
     }
 
     // ================================================================ lượt 1: client `Call` (8 MR)
+    // **KT-290** — mốc số đếm invocation TRƯỚC lượt 1: lượt này chứa **ba** `Tcb.Configure`
+    // (bind đúng, bind ngoài frame, bind lại) + **hai** ca âm (cap không phải TCB, method sai).
+    let inv_before = vifast_core::invoke::stats();
     let mut tf_c = TrapFrame::zeroed();
     tf_c.x[REG_SP] = user::USER_STACK_TOP;
     tf_c.sepc = client.entry;
     let stop1 = run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT);
     let state1 = state_of(rig.tcb_c);
+    // **KT-290** — đo **độc lập** ở kernel: số `Tcb.Configure` được phép/bị từ chối, lỗi `Call`
+    // cuối cùng đã trả về U-mode (`sys_err(0)`), và **binding** thật của TCB client (do chính
+    // invocation ghi — rig không bind hộ).
+    let inv_after = vifast_core::invoke::stats();
+    let cfg_delta = inv_after.configure.saturating_sub(inv_before.configure);
+    let denied_delta = inv_after.denied.saturating_sub(inv_before.denied);
+    let cfg_err = user::sys_err(0);
+    let binding = core_bridge::with_machine(|m| m.tcb_ipc_buffer_binding(rig.tcb_c).ok().flatten());
+    let bound = binding.is_some();
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc configure: method={} delta={} denied={} bound={} va=0x{:x}",
+            vifast_core::invoke::TCB_CONFIGURE,
+            cfg_delta,
+            denied_delta,
+            u8::from(bound),
+            binding.map(|b| b.va).unwrap_or(0)
+        );
+    }
     // seL4: `Call` khi **chưa** có người nhận ⇒ caller chặn ở **Send** (`call = true`), message
     // nằm trong hàng Endpoint. Chuyển sang `BlockedOnReply` chỉ khi server `Recv` lấy message.
     let blocked_send = matches!(state1, Some(TcbState::BlockedOnSend { call: true, .. }));
@@ -532,12 +591,19 @@ pub extern "C" fn rust_main() -> ! {
     }
     user::capture_end();
 
-    // ================================================================ TAP 1..3
+    // ================================================================ TAP 1..4
     let client_said_call = user::captured_contains(SLOT_CLIENT, b"# ipc: umode call ok reply=");
     let client_said_neg = user::captured_contains(SLOT_CLIENT, b"# ipc: neg empty=1 reply=18 ok=1");
     let client_said_mr8 = user::captured_contains(SLOT_CLIENT, b"# ipc: mr count=8 mr7=0x");
     let client_said_mr64 = user::captured_contains(SLOT_CLIENT, b"# ipc: mr count=64 mr63=0x");
     let client_said_neg_mr = user::captured_contains(SLOT_CLIENT, b"# ipc: neg mr over=5 ok=1");
+    // **KT-290** — ba dòng do **chính chương trình U-mode** in sau `Tcb.Configure` invocation.
+    let client_said_cfg = user::captured_contains(SLOT_CLIENT, b"# ipc: configure ok va=0x");
+    let client_said_cfg_err = user::captured_contains(SLOT_CLIENT, b"# ipc: configure err=0");
+    let client_said_cfg_neg = user::captured_contains(
+        SLOT_CLIENT,
+        b"# ipc: configure neg cap=18 method=18 outside=5 ok=1",
+    );
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
     let (check_ipc, check_caps) =
@@ -552,9 +618,8 @@ pub extern "C" fn rust_main() -> ! {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
-    // **KT-282** — liên kết IPC buffer của client (bằng chứng `Tcb.Configure` đã bind).
-    let binding = core_bridge::with_machine(|m| m.tcb_ipc_buffer_binding(rig.tcb_c).ok().flatten());
-    let bound = binding.is_some();
+    // **KT-282/KT-290** — liên kết IPC buffer của client: **KT-290** binding này do chính
+    // chương trình U-mode ghi qua `Tcb.Configure` invocation (đo ở lượt 1, không đổi sau đó).
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -664,6 +729,43 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 4 — **KT-290**: `Tcb.Configure` qua **invocation** từ U-mode. Đo **độc lập** ở kernel:
+    // `delta.configure == 3` (bind đúng + bind ngoài frame + bind lại), `delta.denied == 2` (cap
+    // không phải TCB + method sai), `sys_err(0) == 0` (lỗi `Call` cuối cùng đã trả về U-mode),
+    // binding **thật** của TCB client đúng VA (do chính invocation ghi — rig không bind hộ), và
+    // ba dòng do chương trình U-mode in. Vòng 8 MR/64 MR của TAP 3 chỉ xanh **sau** khi buffer
+    // được bind bằng đường này ⇒ TAP 4 không thể xanh nếu invocation không chạy.
+    let ok4 = client_said_cfg
+        && client_said_cfg_err
+        && client_said_cfg_neg
+        && cfg_delta == 3
+        && denied_delta == 2
+        && cfg_err == 0
+        && binding.map(|b| b.va) == Some(vifast_plat_riscv64::ipc_buffer::USER_IPC_BUFFER_VA)
+        && client_exit == Some(0)
+        && check_ipc
+        && check_caps;
+    if ok4 {
+        PLATFORM.put_str("ok 4 - ipc: tcb configure via invocation\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 4 - ipc: tcb configure via invocation: said_cfg={} said_err={} said_neg={} delta={} denied={} sys_err={} bound={} va=0x{:x} client_exit={} check_ipc={} check_caps={}",
+            u8::from(client_said_cfg),
+            u8::from(client_said_cfg_err),
+            u8::from(client_said_cfg_neg),
+            cfg_delta,
+            denied_delta,
+            cfg_err,
+            u8::from(bound),
+            binding.map(|b| b.va).unwrap_or(0),
+            client_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(check_ipc),
+            u8::from(check_caps)
+        );
+        fails += 1;
+    }
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -682,10 +784,11 @@ pub extern "C" fn rust_main() -> ! {
     }
     let _ = state_c4;
     if fails == 0 {
-        PLATFORM.put_str("PANIC: KT-282 ipc u-mode + mr buffer xong (3 TAP, 0 fail)\n");
+        PLATFORM
+            .put_str("PANIC: KT-290 ipc u-mode + mr buffer + tcb configure xong (4 TAP, 0 fail)\n");
         PLATFORM.halt(0)
     } else {
-        PLATFORM.put_str("PANIC: KT-282 ipc u-mode + mr buffer CO LOI\n");
+        PLATFORM.put_str("PANIC: KT-290 ipc u-mode + mr buffer + tcb configure CO LOI\n");
         PLATFORM.halt(1)
     }
 }

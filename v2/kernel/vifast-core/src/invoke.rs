@@ -9,6 +9,8 @@
 //! | `Untyped` (1) | 0 | `Retype` | **cài** (đợt 1) — chỉ `Frame`/`PageTable`/`VSpace` qua object layer |
 //! | `Frame` (11) | 0 | `Map` | **cài** (đợt 2) — map chính Frame vào VSpace (arg: cap VSpace) |
 //! | `Frame` (11) | 1 | `Unmap` | **cài** (đợt 2) |
+//! | `Tcb` (3) | 0 | `Configure` | **cài** (KT-290) — bind `ipc_buffer?` (MR0 CPTR Frame, MR1 VA) |
+//! | `Tcb` (3) | 15 | `SetTls` | **cài** (KT-74) |
 //! | khác | — | — | `NotSupported` **18** (giữ D2-53 Q11 cho phần chưa cài) |
 //!
 //! # Vì sao `Frame.Map` chứ không phải `VSpace.Map`
@@ -118,6 +120,10 @@ pub const CNODE_REVOKE: u32 = 5;
 /// `Tcb.SetTls` — method **15** của object `Tcb` (`spec/abi.toml` `[object].Tcb`).
 pub const TCB_SET_TLS: u32 = vifast_abi::TCB_SETTLS;
 
+/// **KT-290** — `Tcb.Configure` — method **0** của object `Tcb` (`spec/abi.toml` `[object].Tcb`),
+/// qua hằng sinh tự động `vifast_abi::TCB_CONFIGURE` — **không** chép số tay (D2-11/D2-102).
+pub const TCB_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
+
 /// `true` ⇔ `spec/abi.toml` khai `SetTls` đúng ở số này (test/TAP đối chiếu bảng sinh).
 pub fn tcb_set_tls_matches_spec() -> bool {
     vifast_abi::TCB_METHODS
@@ -184,6 +190,8 @@ pub struct InvocationStats {
     pub revoke: u32,
     /// **KT-74** `Tcb.SetTls` thành công.
     pub set_tls: u32,
+    /// **KT-290** `Tcb.Configure` thành công (bind IPC buffer qua invocation).
+    pub configure: u32,
 }
 
 static ALLOWED: AtomicU32 = AtomicU32::new(0);
@@ -198,6 +206,8 @@ static CNODE_DELETED: AtomicU32 = AtomicU32::new(0);
 static CNODE_REVOKED: AtomicU32 = AtomicU32::new(0);
 /// **KT-74** số `Tcb.SetTls` thành công (TAP `# tls:` đối chiếu).
 static TLS_SET: AtomicU32 = AtomicU32::new(0);
+/// **KT-290** số `Tcb.Configure` thành công (TAP `# ipc configure:` đối chiếu).
+static CONFIGURED: AtomicU32 = AtomicU32::new(0);
 
 fn bump(counter: &AtomicU32) {
     let _ = counter.fetch_add(1, Ordering::Relaxed);
@@ -217,6 +227,7 @@ pub fn stats() -> InvocationStats {
         delete: CNODE_DELETED.load(Ordering::Relaxed),
         revoke: CNODE_REVOKED.load(Ordering::Relaxed),
         set_tls: TLS_SET.load(Ordering::Relaxed),
+        configure: CONFIGURED.load(Ordering::Relaxed),
     }
 }
 
@@ -328,6 +339,9 @@ pub fn dispatch(
         // KT-68: `CNode.Copy/Mint/Move/Delete/Revoke` trên **chính cap CNode** đã gọi — cap
         // này chỉ vào CSpace của caller (khác `Untyped.Retype` không cần cap phụ).
         (ObjType::CNode, _) => cnode(m, tcb, c, method, args, len),
+        // KT-290: `Tcb.Configure` (method 0 của `[object].Tcb`) — bind **IPC buffer** của cap
+        // TCB đã gọi (kênh hẹp: `ipc_buffer?` = MR0 CPTR Frame + MR1 VA).
+        (ObjType::Tcb, TCB_CONFIGURE) => configure(m, tcb, slot, c, args, len),
         // KT-74: `Tcb.SetTls` (method 15 của `[object].Tcb`) — cap **chính là** TCB đã gọi.
         (ObjType::Tcb, TCB_SET_TLS) => set_tls(m, slot, c, args, len),
         // Danh sách trắng hẹp: mọi loại/method khác giữ `NotSupported` (D2-53 Q11) — **không**
@@ -374,6 +388,63 @@ fn set_tls(
     }
     m.tcb_set_tls(slot, args[0]).map_err(|e| e.id() as u64)?;
     bump(&TLS_SET);
+    bump(&ALLOWED);
+    Ok((0, 0))
+}
+
+// =============================================================================================
+// KT-290 — `Tcb.Configure` (method 0 của `[object].Tcb`) qua invocation từ U-mode
+// =============================================================================================
+
+/// `Tcb.Configure` — bind **IPC buffer** của cap TCB đã gọi (method `TCB_CONFIGURE` = 0).
+///
+/// # Kênh tham số (hẹp — chỉ phần `ipc_buffer?` đã cài)
+///
+/// | Tham số | Nguồn | Ghi chú |
+/// |---|---|---|
+/// | `ipc_buffer` (cap `Frame`) | `MR0` | CPTR trong **CSpace của caller** |
+/// | `ipc_buffer` (VA) | `MR1` | phải căn `IPC_BUFFER_BYTES` (4 KiB) |
+///
+/// **Arity chính xác 2** (D2-104): `length` khác 2 ⇒ `InvalidArgument` **5**, có đếm. Các tham
+/// số `cspace?`/`vspace?`/`entry?`/`priority?` của `[method_signature."Tcb.Configure"]` **chưa
+/// cài** ⇒ phải vắng; CSpace của TCB **giữ nguyên** (khác `Machine::tcb_configure(tcb, None)` —
+/// API đó xoá CSpace). Cap TCB phải có `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3**. Cap
+/// `Frame` sai loại/chết ⇒ `WrongObjectType` **2** / `InvalidCapability` **1**. Trả `a1 = 0`;
+/// **không** đổi trạng thái TCB/scheduler (chỉ lưu cấu hình, như `Tcb.SetTls`).
+fn configure(
+    m: &mut Machine,
+    tcb: ObjId,
+    slot: SlotRef,
+    c: crate::error::CapInfo,
+    args: [u64; 4],
+    len: usize,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        bump(&DENIED);
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    if len != 2 {
+        bump(&DENIED);
+        return Err(KError::InvalidArgument.id() as u64);
+    }
+    // CPTR của `ipc_buffer` nằm trong CSpace **caller** (không phải CSpace của TCB đích).
+    let cspace = m
+        .tcb_info_obj(tcb)
+        .map_err(|_| KError::InvalidCapability.id() as u64)?
+        .cspace
+        .ok_or(KError::InvalidCapability.id() as u64)?;
+    let frame_slot = usize::try_from(args[0]).map_err(|_| KError::InvalidCapability.id() as u64)?;
+    if frame_slot >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
+        bump(&DENIED);
+        return Err(KError::InvalidCapability.id() as u64);
+    }
+    let frame = SlotRef::new(cspace, frame_slot);
+    m.tcb_configure_ipc_buffer(slot, Some((frame, args[1])))
+        .map_err(|e| {
+            bump(&DENIED);
+            e.id() as u64
+        })?;
+    bump(&CONFIGURED);
     bump(&ALLOWED);
     Ok((0, 0))
 }
@@ -697,6 +768,7 @@ pub const fn is_whitelisted(ty: ObjType, method: u32) -> bool {
             | (ObjType::CNode, CNODE_MOVE)
             | (ObjType::CNode, CNODE_DELETE)
             | (ObjType::CNode, CNODE_REVOKE)
+            | (ObjType::Tcb, TCB_CONFIGURE)
             | (ObjType::Tcb, TCB_SET_TLS)
     )
 }
@@ -779,7 +851,10 @@ mod tests {
         assert!(!is_whitelisted(ObjType::Untyped, 7));
         assert!(!is_whitelisted(ObjType::VSpace, METHOD_MAP));
         assert!(!is_whitelisted(ObjType::Endpoint, METHOD_RETYPE));
-        assert!(!is_whitelisted(ObjType::Tcb, METHOD_RETYPE));
+        // **KT-290**: `Tcb.Configure` (0) **cài**; các method khác của Tcb **chưa** cài.
+        assert!(is_whitelisted(ObjType::Tcb, TCB_CONFIGURE));
+        assert!(!is_whitelisted(ObjType::Tcb, 1), "Tcb.SetFaultEp chưa cài");
+        assert!(!is_whitelisted(ObjType::Tcb, 4), "Tcb.SetPriority chưa cài");
     }
 
     /// Số method `CNode` **khớp `spec/abi.toml`** `[object].CNode` — đọc từ spec sinh

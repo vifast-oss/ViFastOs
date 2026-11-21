@@ -83,6 +83,10 @@ mod capalloc_tests;
 // KT-74 — test host cho `Tcb.SetTls` (method 15 của `[object].Tcb`), chỉ khi `cargo test`.
 #[cfg(test)]
 mod tls_tests;
+// KT-290 — test host cho `Tcb.Configure` (method 0 của `[object].Tcb`) qua invocation, chỉ khi
+// `cargo test`.
+#[cfg(test)]
+mod configure_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

@@ -25,12 +25,16 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
-#   - `ktest-ipc`   : 3 TAP (**KT-280** D2-210 + **KT-282** D2-211) — **IPC từ U-mode** + **MR4..MR63
-#                     qua IPC buffer**: client U-mode `Call` chặn trên Endpoint tới **server U-mode**
-#                     (hai VSpace/cspace/TCB), server `Recv` + `Send` trên cap `Reply`, client resume
-#                     với `a0..a6` từ vùng nhận IPC của TCB; **KT-282** `Tcb.Configure` bind frame
-#                     4 KiB + VA, hai vòng 8 MR / 64 MR đi qua buffer (offset 80); ca âm trong cùng
-#                     boot (`Call` ô rỗng ⇒ 1, `Call` trên cap `Reply` ⇒ 18, `length = 65` ⇒ 5).
+#   - `ktest-ipc`   : 4 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290**) — **IPC từ U-mode**
+#                     + **MR4..MR63 qua IPC buffer** + **`Tcb.Configure` qua invocation**: client
+#                     U-mode `Call` chặn trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB),
+#                     server `Recv` + `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng
+#                     nhận IPC của TCB; **KT-282** `Tcb.Configure` bind frame 4 KiB + VA, hai vòng
+#                     8 MR / 64 MR đi qua buffer (offset 80); **KT-290** chính client gọi
+#                     `Call(cap TCB, label = Tcb.Configure, length = 2)` để bind buffer (rig không
+#                     bind hộ) + ba ca âm (cap không phải TCB ⇒ 18, method sai ⇒ 18, buffer ngoài
+#                     frame ⇒ 5); ca âm cũ trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên cap
+#                     `Reply` ⇒ 18, `length = 65` ⇒ 5).
 #   - `ktest-netsrv`: 2 TAP (**KT-281**, D2-210, N1 phần 3) — **net server U-mode**: client U-mode
 #                     `Call` chặn tới server U-mode `netsrv`; server `Recv` `Ping(ip)`, gọi **dịch
 #                     vụ mạng của kernel** bằng syscall `Call` trên `Endpoint` (driver `virtio_net`
@@ -436,6 +440,7 @@ manifest_ipc() {
 ipc: umode call
 ipc: server replied
 ipc: mr4..mr7 via buffer
+ipc: tcb configure via invocation
 EOF
 }
 
@@ -716,6 +721,10 @@ EOF
             ;;
         ktest-ipc) cat <<'EOF'
 ^# ipc rig: stvec=0x[0-9a-f]+ untyped=[0-9]+ core_untyped=[0-9]+ cspace_c=[0-9]+ cspace_s=[0-9]+ tcb_c=[0-9]+ tcb_s=[0-9]+ ep=[0-9]+ reply=[0-9]+ ipc_buf=[0-9]+$
+^# ipc: configure ok va=0x[0-9a-f]+$
+^# ipc: configure err=0$
+^# ipc: configure neg cap=18 method=18 outside=5 ok=1$
+^# ipc configure: method=0 delta=3 denied=2 bound=1 va=0x[0-9a-f]+$
 ^# ipc call: blocked=1 state=BlockedOnSend call=1 ep_len=1 ep_mr=0x1234 label=0x280 stop=Blocked$
 ^# ipc server: recv=1 label=0x280 mr=0x1234 client=BlockedOnReply caller=[0-9]+ server=Running stop=Yield$
 ^# ipc: server ran nr=1$
@@ -831,7 +840,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
-        ktest-ipc) printf '%s' '^PANIC: KT-282 ipc u-mode \+ mr buffer xong \(3 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-290 ipc u-mode \+ mr buffer \+ tcb configure xong \(4 TAP, 0 fail\)$' ;;
         ktest-netsrv) printf '%s' '^PANIC: KT-281 netsrv xong \(2 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac

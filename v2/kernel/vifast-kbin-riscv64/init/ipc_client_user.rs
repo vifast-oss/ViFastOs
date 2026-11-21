@@ -4,6 +4,13 @@
 //! **KT-282** — mở rộng: hai vòng `Call` mang **8 MR** rồi **64 MR**, trong đó **MR4..MR63 đi
 //! qua IPC buffer** (offset 80 B, `[TK]` KT-282) — MR0..MR3 vẫn ở thanh ghi `a3..a6`.
 //!
+//! **KT-290** — **`Tcb.Configure` qua invocation từ U-mode**: trước KT-290 rig gọi thẳng API core
+//! (`tcb_configure_with_ipc_buffer`) để bind IPC buffer; nay **chính chương trình U-mode** gọi
+//! `Call` trên cap **TCB** với `label = TCB_CONFIGURE` (0, hằng **sinh từ spec**) và
+//! `length = 2` (`MR0` = CPTR cap `Frame`, `MR1` = VA) ⇒ kernel bind buffer rồi trả
+//! `(error, value) = (0, 0)`. Đây là mắt xích còn thiếu của KT-282 §6.3: nếu invocation không
+//! chạy, vòng 8 MR/64 MR **không thể** xanh (buffer chưa bind ⇒ `InvalidArgument` 5).
+//!
 //! Đây là mắt xích mà K3 chưa có: trước KT-280 mọi `call()` của chương trình U-mode đều nhắm cap
 //! **không phải Endpoint** (invocation `Frame.Map`/`Untyped.Retype`/`Tcb.SetTls`/`CNode.*`) nên
 //! trả về ngay; IPC U-mode hiện có là `NBSend`+`NBRecv` polling. Ở đây client gọi `Call` trên
@@ -18,12 +25,15 @@
 //! | 0 | `CNode` của chính cspace |
 //! | 1 | `Endpoint` `EP` (gửi `Call`) |
 //! | 2 | `Reply` (client **không** dùng — ca âm "Call trên cap không phải Endpoint") |
-//! | 3 | `VSpace` của chính client (không dùng — giữ bố cục đối xứng với server) |
+//! | 3 | `Tcb` của chính client — **KT-290** `Call` với `label = Tcb.Configure` |
+//! | 4 | `Frame` 4 KiB — IPC buffer bind qua invocation (KT-290) |
+//! | 9 | ô **rỗng** — ca âm `Call` trên ô rỗng |
 //!
 //! Không `unsafe`, không `asm!` (R5): mọi `ecall` qua shim `vifast_user_abi`.
 #![no_std]
 #![no_main]
 
+extern crate vifast_abi;
 extern crate vifast_user_abi;
 
 use vifast_user_abi::{
@@ -34,8 +44,20 @@ use vifast_user_abi::{
 const SLOT_EP: u64 = 1;
 /// Slot `Reply` — **không** phải Endpoint: `Call` trên nó phải trả lỗi (ca âm).
 const SLOT_REPLY: u64 = 2;
+/// **KT-290** — slot cap `Tcb` của chính client (kernel dựng): `Call` với `label = Configure`.
+const SLOT_TCB: u64 = 3;
+/// **KT-290** — slot cap `Frame` 4 KiB làm IPC buffer (kernel dựng).
+const SLOT_FRAME: u64 = 4;
 /// Slot **rỗng** — `Call` trên ô rỗng phải trả `InvalidCapability` (1) (ca âm).
 const SLOT_EMPTY: u64 = 9;
+
+/// **KT-290** — method id của `Tcb.Configure` **sinh từ `spec/abi.toml`** (`[object].Tcb` method
+/// 0), không chép số tay (D2-11) — cùng nguồn với core.
+const METHOD_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
+/// **KT-290** — VA cố định của trang IPC buffer (loader map `R|W|U|NX` cho mọi ELF U-mode).
+const IPC_BUF_VA: u64 = 0x4002_0000;
+/// **KT-290** — VA **ngoài** frame IPC buffer (trang kế, chưa map) — ca âm fail-closed.
+const IPC_BUF_VA_OUTSIDE: u64 = 0x4002_1000;
 
 /// Label request (không phải ABI — hợp đồng giữa client và server của bài test).
 const LABEL_REQ: u32 = 0x280;
@@ -71,6 +93,12 @@ const EXIT_MR64_CALL: u64 = 88;
 const EXIT_MR64_LEN: u64 = 89;
 const EXIT_MR64_VALUE: u64 = 90;
 const EXIT_MR_OVER: u64 = 91;
+/// **KT-290** — `Tcb.Configure` invocation (bind IPC buffer) hỏng.
+const EXIT_CONFIGURE: u64 = 92;
+/// **KT-290** — ca âm của `Tcb.Configure` (cap sai loại / method sai) trả mã khác 18.
+const EXIT_CONFIGURE_NEG: u64 = 93;
+/// **KT-290** — ca âm "buffer ngoài frame" không fail-closed đúng 5.
+const EXIT_CONFIGURE_OUTSIDE: u64 = 94;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -110,7 +138,81 @@ pub extern "C" fn _start() -> ! {
     init_ipc_buffer();
     // Receive window 4 ô **phân biệt** (spec dòng 58): core từ chối window trùng ô
     // (`InvalidArgument` 5) — message của bài test không mang cap nên window chỉ cần hợp lệ.
-    set_recv_window([4, 5, 6, 7]);
+    // **KT-290**: ô 4 đã là cap `Frame` (IPC buffer) ⇒ dời window sang 5..8 (đều rỗng).
+    set_recv_window([5, 6, 7, 8]);
+
+    // ---- 0) **KT-290** — `Tcb.Configure` qua **invocation** từ U-mode: bind IPC buffer.
+    // `Call(cap TCB, MessageInfo{label = TCB_CONFIGURE, length = 2}, MR0 = CPTR Frame,
+    // MR1 = VA)`. Kernel kiểm cap/quyền/arity/loại Frame/VA rồi bind; trả `a0 = error`,
+    // `a1 = value`. Đây là đường **duy nhất** bind buffer của client trong ảnh này (rig
+    // **không** bind hộ) ⇒ vòng 8 MR/64 MR bên dưới chỉ chạy được nếu invocation xanh.
+    let cfg = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
+    if cfg[0] != 0 {
+        put(b"# ipc: configure err=");
+        put_u64(cfg[0]);
+        put(b"\n");
+        exit(EXIT_CONFIGURE);
+    }
+    put(b"# ipc: configure ok va=0x");
+    put_hex(IPC_BUF_VA);
+    put(b"\n");
+    put(b"# ipc: configure err=0\n");
+
+    // ---- 0a) ca âm (i): cap **không phải TCB** (Reply) + `label = Configure` ⇒ danh sách
+    // trắng hẹp trả `NotSupported` **18** (không phải 0/2) — không có đường "đoán TCB".
+    let neg_cap = call(
+        SLOT_REPLY,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
+    if neg_cap[0] != 18 {
+        exit(EXIT_CONFIGURE_NEG);
+    }
+    // ---- 0b) ca âm (ii): **method id sai** (1 = `SetFaultEp`, chưa cài) trên cap TCB ⇒ 18.
+    let neg_method = call(
+        SLOT_TCB,
+        info(1, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
+    if neg_method[0] != 18 {
+        exit(EXIT_CONFIGURE_NEG);
+    }
+    // ---- 0c) ca âm (iii): **buffer ngoài frame** — bind VA `0x4002_1000` (trang kế, chưa map).
+    // Core **không** sở hữu PTE (D2-83) nên `Configure` trả 0 (VA căn 4 KiB, không tràn); lỗi
+    // phải lộ ra ở **đường dùng** buffer: `Call` 8 MR ⇒ `InvalidArgument` **5** (arch kiểm dải
+    // đã map trước khi đọc — fail-closed, không đọc bừa ngoài frame).
+    let outside = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA_OUTSIDE, 0, 0],
+    );
+    if outside[0] != 0 {
+        exit(EXIT_CONFIGURE_OUTSIDE);
+    }
+    let bad = call(SLOT_EP, info(LABEL_REQ, 0, false, 8), [ARG, 0, 0, 0]);
+    if bad[0] != 5 {
+        exit(EXIT_CONFIGURE_OUTSIDE);
+    }
+    // Bind lại VA **đúng** để vòng 8 MR thật chạy được (cùng một invocation, lần thứ ba).
+    let rebind = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
+    if rebind[0] != 0 {
+        exit(EXIT_CONFIGURE);
+    }
+    put(b"# ipc: configure neg cap=");
+    put_u64(neg_cap[0]);
+    put(b" method=");
+    put_u64(neg_method[0]);
+    put(b" outside=");
+    put_u64(bad[0]);
+    put(b" ok=1\n");
 
     // ---- 1) `Call` **chặn** trên Endpoint, message **8 MR**: MR0..MR3 ở thanh ghi `a3..a6`,
     //         MR4..MR7 ở **IPC buffer** (offset 80 — KT-282). Kernel chuyển sang server U-mode

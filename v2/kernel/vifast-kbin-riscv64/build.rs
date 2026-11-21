@@ -212,7 +212,17 @@ fn main() {
     );
     // **KT-280** (D2-210): **hai tiến trình IPC** — client `Call` chặn, server `Recv`+`Reply`.
     // Chỉ shim ABI (không ring/IDL/FS): hai chương trình này chỉ dùng syscall 0/1/3/12/14.
-    build_user_elf(dir, "ipc_client_user.rs", "ipc_client.elf", &shim);
+    // **KT-290**: client thêm `vifast_abi` để lấy **method id `Tcb.Configure` từ spec**
+    // (`vifast_abi::TCB_CONFIGURE`) — cùng nguồn với core, không chép số tay (D2-11).
+    build_user_elf(
+        dir,
+        "ipc_client_user.rs",
+        "ipc_client.elf",
+        &[
+            ("vifast_user_abi", user_lib.as_path()),
+            ("vifast_abi", abi_lib.as_path()),
+        ],
+    );
     build_user_elf(dir, "ipc_server_user.rs", "ipc_server.elf", &shim);
     // **KT-281** (D2-210, N1 phần 3): **hai tiến trình net server** — client `Call` chặn, server
     // `Recv` + `Call` dịch vụ mạng của kernel + `Send` trên cap `Reply`. Chỉ shim ABI (không

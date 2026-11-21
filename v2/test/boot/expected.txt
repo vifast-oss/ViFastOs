@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 3 3
+ktest-ipc 4 4
 # **KT-281** (D2-210, N1 phần 3): ảnh **`ktest-netsrv`** thứ chín — **net server U-mode**: client
 # U-mode `Call` **chặn** tới server U-mode `netsrv`; server `Recv` request `Ping(ip)`, gọi **dịch
 # vụ mạng của kernel** bằng syscall `Call` trên `Endpoint` (driver `virtio_net` chạy **trong
@@ -129,3 +129,12 @@ ktest-netsrv 2 2
 # bên (`# ipc mr: round=1 …`, `# ipc mr: round=2 …`) và chương trình U-mode tự đọc buffer của mình
 # (`# ipc: mr count=8 mr7=0x…`, `# ipc: mr count=64 mr63=0x…`). Ca âm mới: `length = 65` ⇒ 5
 # (`InvalidArgument`, không tràn vùng 60 word). TAP 1/2 giữ nguyên nội dung.
+# **KT-290** (D2-211 nợ KT-282 §6.3): ảnh `ktest-ipc` thêm **TAP 4** — **`Tcb.Configure` qua
+# invocation từ U-mode**: chính client U-mode gọi `Call` trên cap **TCB** với `label =
+# TCB_CONFIGURE` (0, hằng sinh từ spec) và `length = 2` (`MR0` = CPTR cap `Frame`, `MR1` = VA) ⇒
+# kernel bind IPC buffer rồi trả `(0, 0)`; rig **không** bind hộ client nữa ⇒ vòng 8 MR/64 MR của
+# TAP 3 chỉ xanh nếu invocation chạy thật. Bằng chứng: `# ipc: configure ok va=0x…` +
+# `# ipc: configure err=0` (do chính chương trình U-mode in), `# ipc configure: method=0 delta=3
+# denied=2 bound=1 va=0x…` (kernel đo độc lập), ca âm `# ipc: configure neg cap=18 method=18
+# outside=5 ok=1` (cap không phải TCB ⇒ 18, method id sai ⇒ 18, buffer ngoài frame ⇒ `Call` 8 MR
+# fail-closed 5). TAP 1/2/3 giữ nguyên nội dung.

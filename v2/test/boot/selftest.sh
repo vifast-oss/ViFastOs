@@ -3,7 +3,7 @@
 # KT-54 — tự kiểm **runner** `ktest.sh` bằng mutation của **harness** (không đụng kernel).
 #
 # Vì sao cần: một runner TAP chỉ đáng tin khi nó **đỏ** đúng lúc, **đúng lý do**, và **không xanh
-# khi không chạy gì**. Tệp này dựng 19 ca quanh một log thật:
+# khi không chạy gì**. Tệp này dựng 20 ca quanh một log thật:
 #   • 1 ca XANH (log thật qua, không báo động giả);
 #   • 17 ca ĐỎ — mỗi ca phá **đúng một** bất biến, và phải đỏ **kèm đúng token lý do** (không chấp
 #     nhận "exit ≠ 0 vô tội vạ"):
@@ -20,6 +20,8 @@
 #           chương trình U-mode in) phải đỏ — dòng `# ipc:` là evidence **bắt buộc**;
 #       (l) **KT-282**: xoá dòng `# ipc: mr count=8 mr7=…` của ảnh `ktest-ipc` (MR4..MR7 qua
 #           **IPC buffer**) phải đỏ — dòng `# ipc: mr` là evidence **bắt buộc**;
+#       (m) **KT-290**: xoá dòng `# ipc: configure ok va=…` của ảnh `ktest-ipc` (`Tcb.Configure`
+#           qua **invocation** từ U-mode) phải đỏ — dòng `# ipc: configure` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -335,6 +337,18 @@ mut_diff "$WORK/log-ipc-no-mr.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc:
 case_red "ev$MR_EV" \
     "log ktest-ipc: xoá dòng '# ipc: mr count=8 mr7=' (evidence bắt buộc của KT-282)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-mr.log" "$SMP"
+
+# --- ca (m): dòng `# ipc: configure` của ảnh KT-290 (Tcb.Configure qua invocation) ----------
+# **KT-290**: dòng `# ipc: configure ok va=0x…` do **chính chương trình U-mode** in sau khi
+# `Call` trên cap TCB với `label = Tcb.Configure` trả `error = 0`. Xoá đúng dòng đó ⇒ runner phải
+# đỏ với token `ev<ordinal>` — chứng minh dòng `# ipc: configure` là evidence **bắt buộc**.
+CFG_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: configure ok va=')"
+[ -n "$CFG_EV" ] || die "không tra được ordinal evidence '# ipc: configure ok va=' của ktest-ipc"
+grep -v -F '# ipc: configure ok va=' "$IPC_LOG" >"$WORK/log-ipc-no-cfg.log"
+mut_diff "$WORK/log-ipc-no-cfg.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: configure ok va='"
+case_red "ev$CFG_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: configure ok va=' (evidence bắt buộc của KT-290)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-cfg.log" "$SMP"
 
 # --- ca cuối: expected.txt trả lại **nguyên vẹn** (sha256 + cmp) ------
 total=$((total + 1))
