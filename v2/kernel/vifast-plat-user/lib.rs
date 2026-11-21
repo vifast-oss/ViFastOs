@@ -293,7 +293,8 @@ pub const CONFIGURE_OFFSET: usize = EXTRA_CAPS_DST_OFFSET + 8;
 pub const CONFIGURE_WORDS: usize = 4;
 /// Mask bit của `cspace?` trong `MR2` của `Tcb.Configure` (kênh đầy đủ, `length = 3`).
 pub const CONFIGURE_MASK_CSPACE: u64 = 1 << 0;
-/// Mask bit của `vspace?` — **chưa cài** ở kernel (bật ⇒ `NotSupported` 18).
+/// Mask bit của `vspace?` — **KT-320** đã cài: giá trị là **CPTR cap `VSpace`** trong CSpace
+/// caller, core kiểm **loại** rồi lưu `TcbData.vspace`; arch tiêu thụ khi vào U-mode (D2-83).
 pub const CONFIGURE_MASK_VSPACE: u64 = 1 << 1;
 /// Mask bit của `entry?`.
 pub const CONFIGURE_MASK_ENTRY: u64 = 1 << 2;
