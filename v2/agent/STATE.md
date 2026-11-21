@@ -4,29 +4,30 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 15:45 (sau vòng 12) ===
-HEAD          : `80360f82` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `80360f82` (**705,4 s**) — ứng viên bàn giao.
-SOAK          : riscv64 **0/1000** (ảnh `text=50702`), aarch64 **0/1000** (ảnh `text=89092`,
-                `invalid=0`). Cả hai trên ảnh **hiện tại** ⇒ bằng chứng K6/K4' **còn áp dụng**.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 17:00 (sau vòng 13) ===
+HEAD          : `5857c209` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `5857c209` (**733,7 s**) — ứng viên bàn giao.
+SOAK          : riscv64 **0/1000**, aarch64 **0/1000** (đo ở vòng 12 trên ảnh lúc đó; ảnh đã đổi
+                tiếp ở vòng 13 ⇒ **cần soak lại** trước khi dùng làm bằng chứng bàn giao).
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
                 soak 1.000 (ba lần, 0 lỗi) + budget + U-mode EL0 + PCI ECAM + virtio-blk +
-                virtio-net (DHCP/ARP/ICMP) + W^X + cache DMA + virtio-gpu 2D/console +
-                virtio-input; TAP **32/32**, runner **20/20** (17 ca âm).
+                virtio-net (DHCP/ARP/ICMP/**TCP**/**DNS**) + W^X + cache DMA + virtio-gpu +
+                virtio-input; TAP **35/35**, runner **22/22** (19 ca âm).
 X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
-                virtio-net + ARP + SMP 4 hart + IPI + TSS/IST1 per-hart + **preemption**
-                (hai tác vụ kernel, timer chuyển ngữ cảnh); TAP **23/23**, runner **16/16**.
-RISCV64       : IPC từ U-mode + MR4..MR63 qua IPC buffer + net server U-mode;
-                ktest matrix **27/27** (9 ảnh × smp 1/2/4); soak **0/1000**.
+                virtio-net + ARP + SMP 4 hart + IPI + TSS/IST1 per-hart + preemption +
+                **virtio-blk**; TAP **25/25**, runner **17/17** (15 ca âm).
+RISCV64       : IPC từ U-mode + MR4..MR63 qua IPC buffer + net server U-mode +
+                **`Tcb.Configure` invocation từ U-mode**; ktest matrix **27/27**.
 MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode), aarch64
-                (DHCP/ARP/ICMP), x86_64 (ARP).
-THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64 (2D + console).
+                (DHCP/ARP/ICMP/TCP/DNS), x86_64 (ARP).
+THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64; đĩa riscv64 + aarch64 +
+                x86_64.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267).
-TASK          : **KT-243..KT-287 DONE** (45 task). **0 REVIEW**, **0 READY**.
+TASK          : **KT-243..KT-290 DONE** (48 task). **0 REVIEW**, **0 READY**.
 NỢ MỞ         : P20; K5' đầy đủ (U-mode task trong scheduler, nhiều hart schedule, `-cpu max`,
-                soak 600); aarch64 quét 16/256 bus; `NetPing` nên thành syscall thật khi A0 mở
-                `[syscall]`; cap transfer qua IPC buffer; `Tcb.Configure` chưa có invocation từ
-                U-mode; `Stop::Blocked` mang `Inactive`; MR4..MR63 dùng cờ `PENDING_IPC_BUFFER`.
+                soak 600); aarch64 quét 16/256 bus; `NetPing` nên thành syscall thật; cap transfer
+                qua IPC buffer; `Tcb.Configure` **kênh hẹp** (chỉ `ipc_buffer?`, chưa
+                `cspace?`/`vspace?`/`entry?`/`priority?`); `Stop::Blocked` mang `Inactive`.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
