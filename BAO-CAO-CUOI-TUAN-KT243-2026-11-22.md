@@ -4,7 +4,7 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười tám vòng, 64 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười chín vòng, 67 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
@@ -75,6 +75,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 55 | **x86_64: U-mode task trong scheduler** | **ĐẠT** | `# sched: umode task ran n=1939597 ring=3 preempted=2 resumed=1` |
 | 56 | **`translate`/`unmap` block descriptor** | **ĐẠT** | `blocks_split=1`, `neighbor_ok=1`; 38 test host |
 | 57 | **`NetPing` thành dịch vụ kernel kiểm quyền** | **ĐẠT** | `outcome=Served`/`Denied`; `sent=1` suốt ba request |
+| 58 | **soak lại aarch64 trên ảnh vòng 18** | **ĐẠT — 0/1000** | `invalid=0`; 60 phép kiểm × 1000/1000 |
+| 59 | **soak lại x86_64 trên ảnh vòng 18** | **ĐẠT — 0/600** | `invalid=0`; soak bắt **giả định sai** của TAP 24 |
+| 60 | **cap transfer qua IPC buffer** | **ĐẠT** | `sent=1 received=1 rights=0xb`; TAP 5/5 |
 
 ---
 
@@ -860,13 +863,43 @@ Kiểm quyền **fail-closed trước khi chạm driver**: caller ≠ TCB net se
 label/len/IP sai ⇒ `InvalidArgument` (5). `sent=1` suốt **ba** request ⇒ hai request bị từ chối
 **không** gửi gói nào. TAP **3/3**, matrix **27/27**. Ba đột biến đỏ.
 
+### 3.54 KT-308 — soak x86_64 bắt **giả định sai** của phép kiểm (bài học đáng giá nhất vòng 19)
+Soak 600 lần 1: **599/600**, boot 331 đỏ ở TAP 24 `sched: umode task` với `first=275791 last=275791`
+⇒ bộ đếm user **không tăng** giữa hai lần preempt. Phân tích: `resumed=1`, `cs=0x1b` cả hai lần,
+không exception ⇒ tác vụ **đã** được chọn lại và **đã** ở CPL3; chỉ là giữa `iretq` và tick kế nó
+chạy **0 vòng**. Cơ chế: PIT 100 Hz; nếu vCPU bị host deschedule ≥ 10 ms đúng lúc chuyển A→U thì
+tick kế đã pending khi `iretq` ⇒ CPU nhận ngắt **trước** lệnh user đầu tiên.
+
+Sửa lần 1 (`last >= first` + bỏ `last > first`) — **vẫn sai**: lần 2 bắt boot 231 với **`first=0`**
+(tác vụ bị preempt **trước khi thi hành lệnh nào**), rồi resume và chạy **1.194.730 vòng**. Đây là
+**ảnh ngược** của boot 331 ⇒ **không** cửa sổ nào được đòi có tiến bộ.
+
+**Sửa cuối**: TAP 24 = `n > 0` ∧ `resumed >= 1` ∧ `cs=0x1B` **cả hai** lần preempt ∧ `last >= first`;
+**bỏ cả** `last > first` **và** `first > 0`. Bất biến thật là "tác vụ chạy **ít nhất một** cửa sổ",
+không phải "mỗi cửa sổ". **Bằng chứng bản sửa đúng**: lần 3 boot 443 có `first=0` (đúng race của boot
+231) nhưng **PASS**; `last-first` min 50.110, p50 1.766.569. Kết quả cuối: **600/600**, `invalid=0`,
+`qemu_foreign=0` cả hai mẫu.
+
+### 3.55 KT-309 — cap transfer: **tiền đề phiếu sai**, và cách xử lý đúng
+Phiếu ghi "`ipc.rs` từ chối `extra_caps > 0`". **Khảo sát cho thấy sai**: `extra_caps_unwrapped`
+(bit 24..27) **đã có chủ** từ KT-63 (số cap **unwrap**, badge OR) và `MessageInfo::new` chỉ từ chối
+`>= 16`. Dùng nó làm **số cap chuyển** là **đổi ngữ nghĩa ABI** ⇒ agent **không tự làm**, mà dùng
+**vùng riêng** của IPC buffer (byte 560..608) — đúng phương án D2-220 cho phép ("MR60..MR63 **hoặc
+vùng riêng**"). **Đo**: `# ipc caps: sent=1 received=1 slot=5 rights=0xb obj=10 ty=Frame alive=1
+copy_slot=6 copy_obj=10 same=1`; `rights=0xb` = **đã bỏ `RIGHT_GRANT`** (nguồn `0xf`); server **dùng
+được** cap (`CNode.Copy` ô 5→6). TAP **5/5**, matrix **27/27**, ba đột biến đỏ.
+
+**Nợ mới ghi nhận**: `size_of::<Machine>()` 190.920 → **194.520** / pin 196.608 ⇒ headroom còn
+**2.088 B** (mỏng). Pin D2-84 đã cập nhật 295 → 311 **có ghi lý do** (tăng trường phải là quyết định,
+không phải trôi).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `903138e5` (ứng viên bàn giao) | **PASS 68/68, 769,3 s** | `/tmp/t2-r18c.log` |
-| T2 trên `4e4b3500` (vòng 17) | PASS 68/68, 753,7 s | `/tmp/t2-r17c.log` |
+| **T2** `gate --fast` trên `3a10b62c` (ứng viên bàn giao) | **PASS 68/68, 736,2 s** | `/tmp/t2-r19b.log` |
+| T2 trên `903138e5` (vòng 18) | PASS 68/68, 769,3 s | `/tmp/t2-r18c.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
