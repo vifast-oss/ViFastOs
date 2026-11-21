@@ -216,6 +216,53 @@ impl Aarch64 {
         Some(DESC_VALID | Aarch64::encode_attrs(perms, attr, share) | (pa & DESC_ADDR_MASK))
     }
 
+    /// Cỡ **block** ở `level` — `Some(1 GiB)` mức 1, `Some(2 MiB)` mức 2, `None` mức khác.
+    ///
+    /// **KT-305**: đây là **một** nguồn hình học cho cả `map_block` (cỡ + căn lề) và
+    /// `translate`/`unmap` (năng lực hiểu block). Trước KT-305 hình học block nằm rải trong
+    /// `PageTable::map_block`; gom về đây để `block_span`/`encode_block`/`split_block` **không**
+    /// lệch nhau (test `block_span_matches_encode_block` chốt).
+    pub const fn block_span(level: usize) -> Option<u64> {
+        if level != 1 && level != 2 {
+            return None;
+        }
+        Some(Aarch64::span(level))
+    }
+
+    /// Mã hoá entry con thứ `index` khi **chia nhỏ** block ở `level` — KT-305.
+    ///
+    /// Mức 1 (1 GiB) → 512 **block** 2 MiB ở mức 2; mức 2 (2 MiB) → 512 **lá** 4 KiB ở mức 3.
+    /// Quyền/thuộc tính/shareability **giải mã từ chính descriptor block** rồi mã hoá lại bằng
+    /// [`Aarch64::encode_leaf`]/[`Aarch64::encode_block`] — không chép bit lạ (bit reserved của
+    /// entry hỏng không được nhân bản vào 512 entry con).
+    pub const fn split_block(entry: u64, level: usize, index: usize) -> Option<u64> {
+        // Chỉ chia block ở mức **có** block (mức 0 và mức lá không có).
+        if Aarch64::block_span(level).is_none() {
+            return None;
+        }
+        let child_level = level + 1;
+        if child_level >= AARCH64_LEVELS || index >= AARCH64_ENTRIES {
+            return None;
+        }
+        let child_span = Aarch64::span(child_level);
+        if child_span == 0 {
+            return None;
+        }
+        let perms = decode_perms(entry);
+        let Some(attr) = MemAttr::from_index((entry >> DESC_ATTR_SHIFT) & 0b111) else {
+            return None;
+        };
+        let Some(share) = Shareability::from_bits(entry >> DESC_SH_SHIFT) else {
+            return None;
+        };
+        let pa = (entry & DESC_ADDR_MASK) + (index as u64) * child_span;
+        if child_level + 1 == AARCH64_LEVELS {
+            Some(Aarch64::encode_leaf(pa, perms, attr, share))
+        } else {
+            Aarch64::encode_block(child_level, pa, perms, attr, share)
+        }
+    }
+
     /// Bóc descriptor tại `level` (0 = gốc, 3 = lá).
     pub const fn decode(entry: u64, level: usize) -> Descriptor {
         if entry & DESC_VALID == 0 {
@@ -239,8 +286,14 @@ impl Aarch64 {
         } else if kind == 0b11 {
             Descriptor::Table { pa }
         } else if kind == 0b01 && level >= 1 {
-            // Block 1 GiB (mức 1) / 2 MiB (mức 2); mức 0 không có block.
-            Descriptor::Block { pa, level }
+            // Block 1 GiB (mức 1) / 2 MiB (mức 2); mức 0 không có block. Quyền của block dùng
+            // **cùng** bộ bit với lá (`AP`/`UXN`/`PXN`) — KT-305 thêm `perms` để `translate`
+            // trả quyền thật thay vì bịa.
+            Descriptor::Block {
+                pa,
+                level,
+                perms: decode_perms(entry),
+            }
         } else {
             Descriptor::Reserved
         }
@@ -307,6 +360,14 @@ impl PageTableFormat for Aarch64 {
         share: Shareability,
     ) -> Option<u64> {
         Aarch64::encode_block(level, pa, perms, attr, share)
+    }
+
+    fn block_span(level: usize) -> Option<u64> {
+        Aarch64::block_span(level)
+    }
+
+    fn split_block(entry: u64, level: usize, index: usize) -> Option<u64> {
+        Aarch64::split_block(entry, level, index)
     }
 
     fn decode(entry: u64, level: usize) -> Descriptor {

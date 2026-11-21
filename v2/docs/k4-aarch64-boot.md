@@ -410,16 +410,31 @@ khi có net/gpu/input), nhưng dải quét **đủ 256 bus** là yêu cầu củ
 **không** quét được vì đọc ra ngoài cửa sổ đã map ⇒ data abort.
 
 `PageTable::map_block` (trong `vifast-pte`) là đường **duy nhất** tạo block: nó kiểm cấp/căn
-lề/canonical/dải PA/quyền **trước** khi walk, gọi `PageTableFormat::encode_block` (mặc định
-`None` ⇒ format không hỗ trợ block trả `BlockUnsupported`), rồi ghi descriptor. `translate`/
-`unmap` **giữ nguyên** ngữ nghĩa cũ: gặp block ⇒ `BlockUnsupported` (block là mapping một chiều
-cho MMIO). `main.rs` **walk bảng trang thật** tại `ECAM_VA_BASE` và đòi
+lề/canonical/dải PA/quyền **trước** khi walk, gọi `PageTableFormat::block_span` (mặc định `None`
+⇒ format không hỗ trợ block trả `BlockUnsupported`) + `encode_block`, rồi ghi descriptor.
+`main.rs` **walk bảng trang thật** tại `ECAM_VA_BASE` và đòi
 `WalkOutcome::Block { pa: ECAM_BASE, level: 2 }` — sai thì PANIC, không in số rồi tự khen.
+
+**KT-305** đóng nửa còn lại của block descriptor (trước KT-305 `translate`/`unmap` trả
+`BlockUnsupported` ⇒ mapping **một chiều**):
+
+- `translate` gặp block ⇒ `Translation { pa: đáy block + (va & (span − 1)), perms, level }` —
+  PA **đúng địa chỉ được dịch**, `level` = mức của block (2 với 2 MiB), quyền giải mã từ
+  descriptor (`Descriptor::Block` mang thêm `perms`).
+- `unmap` gặp block ⇒ **chia nhỏ** xuống mức lá rồi bỏ **một** lá: 2 MiB → 512 lá 4 KiB (một
+  bảng mức 3); 1 GiB → 512 block 2 MiB → 512 lá (hai bảng). Nhờ vậy **511 trang kế cận giữ
+  nguyên** mapping — xoá cả block là mất mapping của chúng. Hết frame ⇒ `OutOfFrames` và block
+  **còn nguyên** (bảng mới chưa gắn vào cây).
+- Năng lực do `PageTableFormat::block_span` quyết định: AArch64 khai mức 1/2; x86_64 và Sv39
+  **không** khai nên vẫn từ chối `BlockUnsupported` như trước (không phải sửa một dòng nào).
+- Ảnh tự kiểm trên bảng trang thật (`ecam.rs`, block **cuối** dải ECAM để bằng chứng block đầu
+  vẫn đúng) và in `# pci: unmap … blocks_split=1 …`; runner đòi dòng ấy.
 
 ### 10.3 Đo được (log `boot-1.log` của runner)
 
 ```text
 # pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_blocks=128 ecam_block_level=2 ecam_block_pa=0x4010000000 ecam_block_ok=1 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc08005b000 input_dma_walk=0x400db000 frames_used=33
+# pci: unmap va=0x8fe01000 pa=0x401fe01000 unmap_pa=0x401fe01000 level=2 translate_ok=1 split=1 neighbor_ok=1 unmapped_ok=1 remap_ok=1 blocks_split=1
 # pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=5 buses=256
 ok 19 - pci: ecam
 # pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6

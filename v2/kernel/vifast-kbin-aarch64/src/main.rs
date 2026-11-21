@@ -111,6 +111,10 @@ mod input;
 /// để giữ trần R1 (1.500 dòng/tệp); dùng chung cho ECAM/BAR/framebuffer/UART/GIC.
 mod mapwin;
 
+/// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
+/// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
+mod ecam;
+
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
 
@@ -1065,6 +1069,13 @@ pub extern "C" fn high_entry() -> ! {
         virtio_gpu::FB_PHYS_BASE,
         vs.mmu().low().memory().frames_used(),
     );
+
+    // **KT-305**: `translate`/`unmap` **hiểu** block descriptor — tự kiểm trên bảng trang thật
+    // của ảnh (chi tiết ở `ecam.rs`), in `# pci: unmap … blocks_split=1` cho runner.
+    if let Err(error) = ecam::probe(&mut vs, &mut console) {
+        let _ = writeln!(console, "PANIC: pci: probe block lỗi {error:?}");
+        debug_halt(3)
+    }
 
     // **Một Frame 4 KiB** vào VA người dùng (ngoài RAM, không identity).
     let frame = match Frame::new(probe_pa) {

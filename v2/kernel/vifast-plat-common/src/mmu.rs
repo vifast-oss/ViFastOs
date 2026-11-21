@@ -538,7 +538,17 @@ impl PageTableFormat for Sv39 {
             }
         } else if leaf {
             // Superpage 2 MiB (mức 1) / 1 GiB (mức 0) — `PageTableBuilder` không tạo ở đây.
-            Descriptor::Block { pa, level }
+            // KT-305: block mang cùng bộ bit quyền với lá (`R/W/X/U`).
+            Descriptor::Block {
+                pa,
+                level,
+                perms: Perms {
+                    read: entry & PTE_READ != 0,
+                    write: entry & PTE_WRITE != 0,
+                    exec: entry & PTE_EXEC != 0,
+                    user: entry & PTE_USER != 0,
+                },
+            }
         } else {
             Descriptor::Table { pa }
         }

@@ -265,8 +265,8 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
     ///
     /// # Ngữ nghĩa
     ///
-    /// - `translate`/`unmap` **không đổi**: gặp block vẫn trả [`MapError::BlockUnsupported`]
-    ///   (block là mapping "một chiều" cho MMIO; muốn bỏ phải `destroy` cả cây).
+    /// - `translate` **hiểu** block (KT-305): trả PA đáy block **+ offset trong block** và
+    ///   `level` của block; `unmap` **chia nhỏ** block (xem [`Self::unmap`]).
     /// - Map lá 4 KiB vào trong block ⇒ [`MapError::AlreadyMapped`]; map block phủ lên lá/bảng
     ///   đã có ⇒ `AlreadyMapped`.
     /// - Mọi kiểm tra (cấp, căn lề, canonical, dải PA, quyền, format có hỗ trợ block) chạy
@@ -283,11 +283,10 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
         if level >= F::LEVELS {
             return Err(MapError::LevelOutOfRange);
         }
-        // Block chỉ có ở mức giữa: mức 0 (gốc) và mức lá không có block descriptor.
-        if level == 0 || level + 1 == F::LEVELS {
-            return Err(MapError::BlockUnsupported);
-        }
-        let span = F::PAGE_BYTES << (F::INDEX_BITS * (F::LEVELS - 1 - level) as u32);
+        // Năng lực format + cỡ block: mức 0 (gốc) và mức lá **không** có block descriptor, và
+        // format không khai `block_span` cũng không có ⇒ `BlockUnsupported` (KT-305 gom hình học
+        // về **một** nguồn: `block_span`).
+        let span = F::block_span(level).ok_or(MapError::BlockUnsupported)?;
         if va & (span - 1) != 0 || pa & (span - 1) != 0 {
             return Err(MapError::Unaligned);
         }
@@ -357,8 +356,19 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
 
     /// Bỏ mapping 4 KiB tại `va`, trả PA đã map; giải phóng bảng trung gian rỗng.
     ///
-    /// Không đụng TLB (bước 2 mới có `TLBI`). VA chưa map ⇒ `NotMapped`; gặp block ⇒
-    /// `BlockUnsupported`; bảng hỏng ⇒ `CorruptTable`.
+    /// Không đụng TLB (bước 2 mới có `TLBI`). VA chưa map ⇒ `NotMapped`; bảng hỏng ⇒
+    /// `CorruptTable`.
+    ///
+    /// # Block descriptor (KT-305)
+    ///
+    /// Gặp block phủ `va` mà format khai [`PageTableFormat::block_span`] ⇒ **chia nhỏ** block
+    /// xuống mức lá rồi bỏ **một** lá: 2 MiB → 512 lá 4 KiB (một bảng mức 3); 1 GiB → 512 block
+    /// 2 MiB → 512 lá (hai bảng). Nhờ vậy **511 trang kế cận giữ nguyên mapping** — xoá cả block
+    /// là mất mapping của chúng (đột biến (i) của KT-305).
+    ///
+    /// Chia nhỏ cần **một frame mỗi mức**; hết frame ⇒ [`MapError::OutOfFrames`] và block **còn
+    /// nguyên** (không có bảng nửa vời nào được gắn vào cây). Format **không** khai `block_span`
+    /// (x86_64, Sv39) vẫn trả [`MapError::BlockUnsupported`] như trước.
     pub fn unmap(&mut self, va: u64) -> Result<u64, MapError> {
         if va & (F::PAGE_BYTES - 1) != 0 {
             return Err(MapError::Unaligned);
@@ -383,7 +393,11 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
                 .ok_or(MapError::CorruptTable)?;
             match F::decode(entry, level) {
                 Descriptor::Table { pa: next } => table = next,
-                Descriptor::Block { .. } => return Err(MapError::BlockUnsupported),
+                // KT-305: block phủ `va` ⇒ chia **một** mức rồi đi tiếp; vòng lặp chia tiếp nếu
+                // mức kế vẫn là block (1 GiB → 2 MiB → lá).
+                Descriptor::Block { .. } => {
+                    table = self.split_block_once(table, index, level)?;
+                }
                 Descriptor::Invalid => return Err(MapError::NotMapped),
                 Descriptor::Leaf { .. } | Descriptor::Reserved => {
                     return Err(MapError::CorruptTable)
@@ -429,7 +443,71 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
         Ok(pa)
     }
 
-    /// Dịch `va`; `NotMapped` nếu trống, `BlockUnsupported` nếu gặp block.
+    /// **Chia nhỏ một mức**: thay block ở `(table, index, level)` bằng **một bảng mới** 512 entry
+    /// ở mức `level + 1`, trả PA bảng mới.
+    ///
+    /// Chỉ chia **một** mức — `unmap` gọi lặp khi mức kế vẫn là block (1 GiB → 2 MiB → lá). Mọi
+    /// entry con do [`PageTableFormat::split_block`] sinh (format quyết định block hay lá).
+    ///
+    /// # Fail-closed
+    ///
+    /// - Format không khai `block_span`/`split_block` ⇒ [`MapError::BlockUnsupported`] **trước**
+    ///   khi cấp frame.
+    /// - Block lệch căn theo cỡ block ⇒ [`MapError::CorruptTable`] (chia nhỏ block lệch sẽ sinh
+    ///   PA sai lặng lẽ).
+    /// - Hết frame ⇒ [`MapError::OutOfFrames`]; bảng mới **chưa** được gắn vào cây nên block còn
+    ///   nguyên (không có bảng nửa vời).
+    fn split_block_once(
+        &mut self,
+        table: u64,
+        index: usize,
+        level: usize,
+    ) -> Result<u64, MapError> {
+        let entry = self
+            .memory
+            .read_entry(table, index)
+            .ok_or(MapError::CorruptTable)?;
+        let Descriptor::Block { pa, .. } = F::decode(entry, level) else {
+            return Err(MapError::CorruptTable);
+        };
+        let span = F::block_span(level).ok_or(MapError::BlockUnsupported)?;
+        if pa & (span - 1) != 0 {
+            return Err(MapError::CorruptTable);
+        }
+        let new_table = self.memory.alloc_frame().ok_or(MapError::OutOfFrames)?;
+        if !self.memory.zero_frame(new_table) {
+            self.memory.free_frame(new_table);
+            return Err(MapError::CorruptTable);
+        }
+        for child_index in 0..F::ENTRIES {
+            let Some(child) = F::split_block(entry, level, child_index) else {
+                // Format khai `block_span` mà không chia được ⇒ không đoán entry con.
+                self.memory.free_frame(new_table);
+                return Err(MapError::BlockUnsupported);
+            };
+            if !self.memory.write_entry(new_table, child_index, child) {
+                self.memory.free_frame(new_table);
+                return Err(MapError::CorruptTable);
+            }
+        }
+        if !self
+            .memory
+            .write_entry(table, index, F::encode_table(new_table))
+        {
+            self.memory.free_frame(new_table);
+            return Err(MapError::CorruptTable);
+        }
+        Ok(new_table)
+    }
+
+    /// Dịch `va`; `NotMapped` nếu trống, `CorruptTable` nếu bảng hỏng.
+    ///
+    /// # Block descriptor (KT-305)
+    ///
+    /// Gặp block ở mức `level` mà format khai [`PageTableFormat::block_span`] ⇒ trả
+    /// `Translation { pa: đáy block + (va & (span - 1)), perms, level }` — PA **đúng địa chỉ
+    /// được dịch**, không phải đáy block (đột biến (ii) của KT-305). Format **không** khai
+    /// `block_span` (x86_64, Sv39) vẫn trả [`MapError::BlockUnsupported`] như trước.
     pub fn translate(&self, va: u64) -> Result<Translation, MapError> {
         if !F::is_canonical(va) {
             return Err(MapError::NotCanonical);
@@ -453,7 +531,19 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
                 Descriptor::Leaf { pa, perms } => {
                     return Ok(Translation { pa, perms, level });
                 }
-                Descriptor::Block { .. } => return Err(MapError::BlockUnsupported),
+                Descriptor::Block { pa, level, perms } => {
+                    let span = F::block_span(level).ok_or(MapError::BlockUnsupported)?;
+                    // Block do `map_block` tạo luôn căn theo cỡ block; lệch ⇒ dữ liệu hỏng,
+                    // không đoán PA (cộng offset vào đáy lệch sẽ ra PA sai lặng lẽ).
+                    if pa & (span - 1) != 0 {
+                        return Err(MapError::CorruptTable);
+                    }
+                    return Ok(Translation {
+                        pa: pa + (va & (span - 1)),
+                        perms,
+                        level,
+                    });
+                }
                 Descriptor::Reserved => return Err(MapError::CorruptTable),
             }
             level += 1;
@@ -497,7 +587,7 @@ impl<F: PageTableFormat, M: TableMemory> PageTable<F, M> {
                     walk.outcome = WalkOutcome::Leaf { pa, perms };
                     return walk;
                 }
-                Descriptor::Block { pa, level } => {
+                Descriptor::Block { pa, level, .. } => {
                     walk.outcome = WalkOutcome::Block { pa, level };
                     return walk;
                 }

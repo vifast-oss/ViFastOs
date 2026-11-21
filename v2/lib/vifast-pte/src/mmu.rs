@@ -194,10 +194,16 @@ pub enum Descriptor {
     },
     /// Block/superpage (AArch64 block 2 MiB/1 GiB; Sv39 superpage 2 MiB/1 GiB).
     Block {
-        /// Địa chỉ vật lý khối.
+        /// Địa chỉ vật lý khối (đáy block, đã căn theo cỡ block).
         pa: u64,
         /// Mức của block (theo quy ước của [`PageTableFormat`]: 0 = gốc).
         level: usize,
+        /// Quyền đọc/ghi/thực thi/user của **cả** block.
+        ///
+        /// **KT-305**: block descriptor mang **cùng** bộ bit quyền với lá (AArch64 `AP`/`UXN`/
+        /// `PXN`, x86_64 `RW`/`US`/`NX`, Sv39 `R/W/X/U`), nên `translate` trả được quyền thật
+        /// thay vì bịa. Trước KT-305 trường này không có vì `translate` từ chối block.
+        perms: Perms,
     },
 }
 
@@ -278,6 +284,25 @@ pub trait PageTableFormat {
     /// Mã hoá descriptor **lá** ở mức cuối cho `pa` với quyền/thuộc tính/shareability.
     fn encode_leaf(pa: u64, perms: Perms, attr: MemAttr, share: Shareability) -> u64;
 
+    /// Cỡ **block** (byte) mà format hỗ trợ ở `level` — `None` nếu format **không** có block ở
+    /// mức ấy.
+    ///
+    /// Đây là **năng lực** mà `translate`/`unmap` dùng để quyết định: gặp `Descriptor::Block` ở
+    /// mức `level` mà `block_span(level)` là `Some` ⇒ dịch/chia nhỏ được; `None` ⇒
+    /// [`MapError::BlockUnsupported`] (giữ nguyên hành vi cũ cho format chỉ map lá).
+    ///
+    /// Mặc định `None`: ba format hiện có chỉ map lá 4 KiB; KT-302 mở block cho AArch64 (2 MiB ở
+    /// mức 2, 1 GiB ở mức 1) và KT-305 mở `translate`/`unmap` cho đúng những mức ấy. Nhờ mặc định
+    /// này, x86_64/Sv39 **không** phải sửa mà vẫn từ chối block như trước.
+    ///
+    /// Hợp đồng: `Some(span)` ⇔ [`Self::encode_block`] mã hoá được ở `level` **và**
+    /// [`Self::split_block`] chia được block ở `level` (test `block_span_matches_encode_block`
+    /// chốt điều này cho AArch64).
+    fn block_span(level: usize) -> Option<u64> {
+        let _ = level;
+        None
+    }
+
     /// Mã hoá descriptor **block** (superpage) ở `level` cho `pa` — `None` nếu format **không**
     /// hỗ trợ block ở mức ấy.
     ///
@@ -296,6 +321,22 @@ pub trait PageTableFormat {
         share: Shareability,
     ) -> Option<u64> {
         let _ = (level, pa, perms, attr, share);
+        None
+    }
+
+    /// Mã hoá **entry con thứ `index`** khi **chia nhỏ** một block ở `level` — `None` nếu format
+    /// không chia được.
+    ///
+    /// `entry` là **nguyên** descriptor block đọc từ bảng (đã giải mã thành `Descriptor::Block`);
+    /// `index` là chỉ số con trong bảng mới (`0..ENTRIES`). Kết quả là descriptor của **mức
+    /// `level + 1`**: block (nếu `level + 1` vẫn là mức block) hoặc lá 4 KiB (nếu `level + 1` là
+    /// mức lá). PA con = PA block + `index × span(level + 1)`.
+    ///
+    /// **KT-305**: `PageTable::unmap` dùng hàm này để **chia nhỏ** block thay vì xoá cả block —
+    /// xoá cả block là mất mapping của 511 trang kế cận. Mặc định `None` ⇒ `unmap` trả
+    /// [`MapError::BlockUnsupported`] (hành vi cũ của x86_64/Sv39).
+    fn split_block(entry: u64, level: usize, index: usize) -> Option<u64> {
+        let _ = (entry, level, index);
         None
     }
 

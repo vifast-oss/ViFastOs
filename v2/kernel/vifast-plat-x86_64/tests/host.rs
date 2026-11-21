@@ -403,18 +403,22 @@ fn descriptor_bits_literal_intel_sdm() {
 fn descriptor_ps_bit_by_level() {
     // PS = 1 ở mức 1 ⇒ block 1 GiB; mức 2 ⇒ block 2 MiB; mức 0 ⇒ reserved (không có 512 GiB).
     let block = intel_sdm::P | intel_sdm::PS_OR_PAT | 0x4000_0000;
+    // KT-305: `Descriptor::Block` mang thêm `perms` (giải mã từ `RW`/`US`/`NX` của entry).
+    // Entry chỉ có `P | PS` ⇒ đọc + thực thi, không ghi, không user = `KERNEL_RX`.
     assert_eq!(
         X86_64::decode(block, 1),
         Descriptor::Block {
             pa: 0x4000_0000,
-            level: 1
+            level: 1,
+            perms: Perms::KERNEL_RX
         }
     );
     assert_eq!(
         X86_64::decode(block, 2),
         Descriptor::Block {
             pa: 0x4000_0000,
-            level: 2
+            level: 2,
+            perms: Perms::KERNEL_RX
         }
     );
     assert_eq!(X86_64::decode(block, 0), Descriptor::Reserved);

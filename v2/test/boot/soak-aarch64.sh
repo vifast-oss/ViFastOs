@@ -320,6 +320,19 @@ check_boot_log() {
         echo "# dòng '# pci: ecam' không có 'buses=256' (KT-302)"
         bad=1
     }
+    # **KT-305**: `translate`/`unmap` phải **hiểu** block descriptor — dòng `# pci: unmap` do
+    # `ecam.rs` in từ phép đo trên bảng trang thật. `blocks_split=0` (xoá cả block) ⇒ soak ĐỎ.
+    n="$(grep -cE '^# pci: unmap ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# pci: unmap ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    for want in "level=2" "translate_ok=1" "split=1" "neighbor_ok=1" "unmapped_ok=1" "remap_ok=1" "blocks_split=1"; do
+        grep -E '^# pci: unmap ' "$log" | grep -Fq "$want" || {
+            echo "# dòng '# pci: unmap' không có '$want' (KT-305)"
+            bad=1
+        }
+    done
     n="$(grep -cE '^# pci: virtio-blk found ' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# dòng '# pci: virtio-blk found ' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -724,6 +737,7 @@ ok 18 - umode: returned to el0
 # umode: exit code=0 nr=14 imm=0
 # umode: done
 # pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_blocks=128 ecam_block_level=2 ecam_block_pa=0x4010000000 ecam_block_ok=1 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc08005b000 input_dma_walk=0x400db000 frames_used=33
+# pci: unmap va=0x8fe01000 pa=0x401fe01000 unmap_pa=0x401fe01000 level=2 translate_ok=1 split=1 neighbor_ok=1 unmapped_ok=1 remap_ok=1 blocks_split=1
 # pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=5 buses=256
 ok 19 - pci: ecam
 # pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
@@ -941,6 +955,10 @@ EOF
     sed 's/ attempts=1 const:timeout_ms=3000$/ attempts=3 const:timeout_ms=3000/' \
         "$good" >"$tmp/ah.log" || true
     neg "attempts=3 (retransmit vô hạn)" "$tmp/ah.log"
+
+    # **KT-305** — `blocks_split=0` (unmap block **không** chia nhỏ, tức xoá cả block) ⇒ phải ĐỎ.
+    sed 's/ blocks_split=1$/ blocks_split=0/' "$good" >"$tmp/ai.log" || true
+    neg "blocks_split=0 (unmap block không chia nhỏ)" "$tmp/ai.log"
 
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"

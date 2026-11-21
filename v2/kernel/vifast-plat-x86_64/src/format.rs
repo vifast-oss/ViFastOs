@@ -218,7 +218,12 @@ impl X86_64 {
                 // 512 GiB page không tồn tại trong 4-level paging.
                 Descriptor::Reserved
             } else {
-                Descriptor::Block { pa, level }
+                // KT-305: block mang cùng bộ bit quyền với lá (`RW`/`US`/`NX`).
+                Descriptor::Block {
+                    pa,
+                    level,
+                    perms: decode_perms(entry),
+                }
             }
         } else {
             Descriptor::Table { pa }

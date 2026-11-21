@@ -27,7 +27,8 @@
 # `# net: tcp`/`# net: dns` đều phải ĐỎ; cộng **hai ca âm (t)/(u) của KT-294** — log có
 # `# net: no dns` (cả hai lần thử timeout) và log có `attempts=3` (retransmit vô hạn) đều phải ĐỎ;
 # cộng **hai ca âm (v)/(w) của KT-302** — log có `buses=16` (quét thiếu bus) và log có
-# `ecam_block_ok=0` (ECAM map bằng lá 4 KiB thay block 2 MiB) đều phải ĐỎ (**23 ca âm**). Nhờ vậy
+# `ecam_block_ok=0` (ECAM map bằng lá 4 KiB thay block 2 MiB) đều phải ĐỎ; cộng **ca âm (x) của
+# KT-305** — log có `blocks_split=0` (unmap block **không** chia nhỏ) phải ĐỎ (**24 ca âm**). Nhờ vậy
 # mỗi lần chạy runner vừa
 # chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
 # "PASS giả".
@@ -153,7 +154,8 @@
 #   - `# net: dns example.com a=<ip> ttl=<n>` — truy vấn DNS **thật** tới `10.0.2.3:53` của slirp.
 # Cộng **hai ca âm** cho hai dòng `# net: tcp`/`# net: dns` (thiếu dòng ⇒ ĐỎ) — **19 ca âm**;
 # **KT-294** thêm **hai** ca âm nữa (cả hai lần thử timeout; `attempts=3`) — **21 ca âm**;
-# **KT-302** thêm **hai** ca âm nữa (`buses=16`; `ecam_block_ok=0`) — **23 ca âm**.
+# **KT-302** thêm **hai** ca âm nữa (`buses=16`; `ecam_block_ok=0`) — **23 ca âm**;
+# **KT-305** thêm **một** ca âm nữa (`blocks_split=0`) — **24 ca âm**.
 #
 # **KT-302**: ECAM 256 MiB map bằng **block descriptor 2 MiB ở mức 2** (128 block trong **một**
 # bảng mức 2 ⇒ 2 frame) thay vì 128 bảng mức 3 (129 frame — vượt arena 44 frame + trần I7).
@@ -162,6 +164,12 @@
 #   - `# pci: map … ecam_blocks=128 ecam_block_level=2 ecam_block_ok=1` — `main.rs` walk bảng
 #     trang **thật** tại VA đầu cửa sổ ECAM và thấy `Block { pa: ECAM_BASE, level: 2 }`; nếu map
 #     bằng lá 4 KiB thì `ecam_block_ok=0` ⇒ ĐỎ.
+#
+# **KT-305**: `translate`/`unmap` **hiểu** block descriptor (trước KT-305 cả hai trả
+# `BlockUnsupported`). Runner đòi thêm dòng **đo được** `# pci: unmap … level=2 translate_ok=1
+# split=1 neighbor_ok=1 unmapped_ok=1 remap_ok=1 blocks_split=1` — `ecam.rs` đo trên bảng trang
+# thật: translate trả PA + mức 2, unmap **chia nhỏ** block (trang kế cận còn map), map lại được.
+# `blocks_split=0` (xoá cả block) ⇒ ĐỎ.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -539,6 +547,25 @@ check_pci() {
             bad=1
             ;;
     esac
+    # **KT-305**: `translate`/`unmap` phải **hiểu** block descriptor — dòng `# pci: unmap` do
+    # `ecam.rs` in từ phép đo trên bảng trang **thật**: `translate` trả PA + `level=2`, `unmap`
+    # **chia nhỏ** block (trang kế cận còn map), map lại được. `blocks_split=0` (xoá cả block)
+    # ⇒ ĐỎ — đó là đột biến (i) của KT-305.
+    n="$(grep -cE '^# pci: unmap ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# pci: unmap ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# pci: unmap ' "$log" || true)"
+    for want in "level=2" "translate_ok=1" "split=1" "neighbor_ok=1" "unmapped_ok=1" "remap_ok=1" "blocks_split=1"; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# pci: unmap' không có '$want' (KT-305)"
+                bad=1
+                ;;
+        esac
+    done
     n="$(grep -cE '^# pci: virtio-blk found ' "$log" || true)"
     if [ "${n:-0}" -ne 1 ]; then
         echo "# dòng '# pci: virtio-blk found ' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -1767,6 +1794,19 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (w): ecam_block_ok=0 ⇒ ĐỎ ($(head -1 "$tmp/w.out"))"
+    fi
+
+    # (x) **KT-305** — `unmap` block **không chia nhỏ** (`blocks_split=0`, tức xoá cả block):
+    # runner phải ĐỎ. Nếu không đòi `blocks_split=1`, một ảnh "unmap block = xoá block" (mất
+    # mapping 511 trang kế cận) vẫn PASS — đúng lỗi KT-305 sinh ra để đóng.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/ blocks_split=1$/ blocks_split=0/' "$good" >"$tmp/x.log" 2>/dev/null || true
+    if check_log "$tmp/x.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/x.out" 2>&1; then
+        echo "not ok $n - ca âm (x): blocks_split=0 (không chia nhỏ block) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (x): blocks_split=0 ⇒ ĐỎ ($(head -1 "$tmp/x.out"))"
     fi
 
     NEG_CASES=$cases
