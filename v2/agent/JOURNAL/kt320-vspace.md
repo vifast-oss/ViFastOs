@@ -178,6 +178,13 @@ vifast-core --lib` = **81 passed / 0 failed**. Không `#[ignore]`, không retry,
 `ktest-ipc` xanh ở **cả ba** `-smp 1/2/4`; ảnh `ktest` (in `bytes=184792`/`static=184792`) xanh ⇒
 bốn dòng evidence kích thước **khớp số mới** (thực chất là **không đổi số**).
 
+**Hiệu lực phép đo (D2-116/OD-K6-6)**: matrix in **2** dòng `# MEASUREMENT_INVALID`
+(`tag=before ly_do=loadavg_1m=14.26>ncpu=12`; `tag=after ly_do=qemu_foreign=1` — máy đang chạy
+**ba** agent song song, một QEMU `x86_64` của agent khác, pid 74954). Theo D2-116 điều đó làm
+**số THỜI GIAN** không dùng được để kết luận — và journal này **không** dùng số thời gian nào.
+Kết quả matrix là **chức năng** (đếm `ok N`, khớp tên TAP, khớp evidence regex trong
+`expected.txt`), **không** phụ thuộc thời gian ⇒ vẫn hiệu lực. Không có dòng `^not ok` nào.
+
 ## 9. Rủi ro / nợ đã biết (ghi trung thực)
 
 1. **Một khe chờ `VSpace` toàn cục** (`user_run::VSPACE_TCB`/`VSPACE_OBJ`): `arm_vspace` **ghi
