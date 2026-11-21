@@ -4,12 +4,13 @@ Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261)
 (KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) + **K5' bước 5 DONE**
 (KT-274: PCI ECAM/legacy + virtio-net + ARP) + **K5' bước 6 DONE** (KT-276: SMP 2 hart) +
 **K5' bước 7 DONE** (KT-278: SMP **4 hart** + **IPI** + **TSS per-hart**) + **K5' bước 8 DONE**
-(KT-286: **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) — Agent 1 (toàn quyền
-A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3),
-**D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6), **D2-210** (bước 7),
-**D2-212** (bước 8).
+(KT-286: **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) + **K5' bước 9 DONE**
+(KT-288: **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) —
+Agent 1 (toàn quyền A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2),
+**D2-204** (bước 3), **D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6),
+**D2-210** (bước 7), **D2-212** (bước 8), **D2-213** (bước 9).
 **Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (soak 600 boot, `syscall`/`sysret`,
-virtio-blk/gpu, MSI-X, DHCP).
+virtio-gpu, MSI-X, DHCP).
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 `v2/test/boot/run-x86_64.sh`.
@@ -41,8 +42,9 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **SMP 4 hart**: `INIT`+`SIPI`+`SIPI` **tuần tự** cho hart 1..3, chờ `online mask=0xf`, bốn stack **khác slot** | **DONE** (KT-278) |
 | **IPI**: vector riêng `0x30` + stub riêng, `ICR` fixed-delivery (`low=0x4030`), hart 1 nhận + đếm trong handler, in `# smp: ipi recv=1 intid=0x30` | **DONE** (KT-278) |
 | **TSS per-hart**: mỗi hart một TSS 104 byte + **GDT riêng** + `ltr` trên AP; `IST1` riêng cho `#DF`; kiểm **địa chỉ** (`distinct=Ok(())`) | **DONE** (KT-278) |
-| runner + TAP + **13 ca âm** | **DONE** (KT-257/261/266/270/274/276/278) |
-| `-cpu max`, `syscall`/`sysret`, virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP, soak 600 boot | **chưa** (K5' đầy đủ) |
+| **virtio-blk**: `VirtioKind::Blk` (0x1001/0x1042), BAR firmware gán **rời** BAR net (`bar_distinct=1`), split virtqueue 8 descriptor, đọc **sector 0** của đĩa QEMU thật | **DONE** (KT-288) |
+| runner + TAP **25** + **15 ca âm** | **DONE** (KT-257/261/266/270/274/276/278/286/288) |
+| `-cpu max`, `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug, DHCP, soak 600 boot | **chưa** (K5' đầy đủ) |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
 
@@ -282,18 +284,23 @@ ok 17 - net: arp
 ## 7. Runner + ca âm
 
 ```bash
-bash v2/test/boot/run-x86_64.sh     # build + boot + 13 kiểm + 11 ca âm
+bash v2/test/boot/run-x86_64.sh     # build + boot + 17 kiểm + 15 ca âm
 ```
 
-- **13/13 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng**).
-- **11 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
+- **17/17 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng** + 1 boot **không
+  đĩa**).
+- **15 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
   (log QEMU thật, không sửa tay), (c) mất marker, (d) log rỗng, (e) marker 2 lần,
   (f) **mất dòng `# exc:`** (KT-261), (g) **sai vector** (KT-261), (h) **mất dòng `# timer:`**
   (KT-266), (i) **mất dòng `# apic:`** (KT-266), (j) **mất dòng `# umode:`** (KT-270),
   (k) **không có mạng** (KT-274): boot **thật** không có `-device virtio-net-pci` ⇒ ảnh in
-  `# net: no device` rồi TAP 16 đỏ; ca này đòi **cả** dòng evidence **và** `check_log` đỏ.
-- Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` (một chỗ
-  quyết định: `QEMU_MACHINE`/`QEMU_NET`). `-M pc` **không** có ECAM ⇒ TAP 15 đỏ (xem §11.2).
+  `# net: no device` rồi TAP 16 đỏ; (l) mất dòng `# smp:` (KT-276), (m) mất dòng
+  `# smp: ipi recv=` (KT-278), (n) mất dòng `# sched:` (KT-286); (o) **không có đĩa** (KT-288):
+  boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒ ảnh in `# blk: no device` rồi TAP 24
+  đỏ. Ba ca (k)/(o) đòi **cả** dòng evidence **và** `check_log` đỏ.
+- Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` +
+  `-drive file=<tmp>,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0` (một chỗ quyết
+  định: `QEMU_MACHINE`/`QEMU_NET`/`QEMU_DISK`). `-M pc` **không** có ECAM ⇒ TAP 15 đỏ (xem §11.2).
 - Nối vào cổng: bước **59** `QEMU x86_64 (K5' bước 1)` — chạy ở **cả T1 và T2** (tên bước giữ
   nguyên theo `v2/bin/v2`; nội dung đã gồm bước 1+2+3).
 
@@ -328,8 +335,8 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 13 kiểm + 11 ca âm
    (`DebugPutStr`) + `Exit` (xem §10.6).
 3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
    cần đổi thứ tự GDT (user data ở `CS - 8`) + per-CPU/`swapgs`.
-4. ~~**PCI/ECAM**, virtio trên x86~~ — **DONE** (KT-274: ECAM + legacy + virtio-net + ARP).
-   Còn: virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP.
+4. ~~**PCI/ECAM**, virtio trên x86~~ — **DONE** (KT-274: ECAM + legacy + virtio-net + ARP;
+   KT-288: virtio-blk đọc sector 0). Còn: virtio-gpu trên x86_64, MSI-X, hotplug, DHCP.
 5. **`-cpu max`**, KPTI (tuỳ chọn), soak 1.000.
 6. **Nợ N5 của v1** (x86 AP→BSP + PCID) — mở ở K5' đầy đủ, không phải bước này.
 
@@ -542,7 +549,8 @@ thành công (không phải hằng — số thật của lần chạy).
 
 ### 11.6 Còn thiếu của bước 5 (ghi rõ)
 
-1. **Không** virtio-blk/gpu trên x86_64, **không** MSI-X, **không** hotplug, **không** DHCP.
+1. **Không** virtio-gpu trên x86_64 (virtio-blk **đã có** từ KT-288), **không** MSI-X, **không**
+   hotplug, **không** DHCP.
 2. **Không** ngắt cho virtio (poll `used`), **không** nhiều frame đồng thời (queue depth 1 thực tế).
 3. **Không** `-cpu max`, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. SMP **4 hart +
    IPI + TSS per-hart** đã có từ KT-278 (bước 7).
@@ -834,3 +842,68 @@ ok 23 - sched: preempted
 1. **Không** U-mode task (tác vụ vẫn ở CPL0), **không** nhiều hart schedule (chỉ BSP), **không**
    priority, **không** sleep/wake — đúng phạm vi D2-212.
 2. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
+
+## 14. KT-288 — virtio-blk: BAR leaf riêng + virtqueue + đọc **sector 0**
+
+Trạng thái: **DONE** (KT-288, 2026-11-21). Quyết định: **D2-213**.
+
+### 14.1 Phạm vi
+
+| Việc | Trạng thái |
+|---|---|
+| `pci::VirtioKind::Blk` (0x1001/0x1042) + BAR firmware gán + bốn capability | **DONE** |
+| Split virtqueue 8 descriptor trong **một** trang DMA 4 KiB (header 16 B + data 512 B + status 1 B) | **DONE** |
+| Đọc **sector 0** của đĩa QEMU thật (`-drive file=…,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0`) | **DONE** |
+| Bằng chứng: `# blk: device …` + `# blk: sector0 hex=<32 hex> … magic=1` | **DONE** |
+| TAP 24/25 + runner **15 ca âm** (thêm ca "không có đĩa") | **DONE** |
+| virtio-gpu trên x86_64, MSI-X, hotplug | **chưa** (bước sau) |
+
+### 14.2 Khác khuôn aarch64 (KT-273) ở đúng ba điểm, đều do kiến trúc
+
+1. **DMA bằng VA = PA**: x86_64 chạy identity map 1 GiB nên `addr_of!(trang DMA)` **là** PA —
+   không có alias nửa cao, không cần `high_to_pa` như aarch64.
+2. **BAR do firmware gán**: SeaBIOS đã enumerate và gán BAR trước khi ảnh chạy, nên driver **đọc**
+   rồi kiểm BAR nằm trong cửa sổ MMIO đã map — **không** ghi đè địa chỉ firmware đã cấp (xem đầu
+   `v2/kernel/vifast-plat-x86_64/src/pci.rs`). Vì vậy "leaf riêng" trên x86_64 **không** phải một
+   hằng địa chỉ như aarch64 mà là **bất biến kiểm được**: `virtio_blk::bar_disjoint(blk_base,
+   blk_size, net_base, net_size)` — BAR của blk phải **rời** BAR của virtio-net. Hàm thuần này có
+   test host cho cả ca âm (trùng leaf, chồng một phần, BAR 0, cỡ 0, tràn 64 bit).
+3. **Đồng hồ là tham số**, không phải singleton: bước này chạy sau `cli` nên không dùng được tick
+   PIT→IOAPIC→LAPIC; đồng hồ là PIT **kênh 2** (`PitClock`, cùng §11.4) do ảnh sở hữu. Mọi hàm
+   chờ nhận `now: &mut dyn FnMut() -> u64` (µs) — driver **không** giữ trạng thái thời gian.
+
+### 14.3 Đo được (log `boot-1.log`, TAP 24/25)
+
+```text
+# pci: blk 00:03.0 vendor=0x1af4 device=0x1001 bar=4 kind=mem64 base=0xfe004000 size=0x4000 command=0x0107 caps=4
+# blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
+ok 24 - blk: device
+# blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8 status=0x0f dma=0x133000 desc=0x133000 avail=0x133080 used=0x133098 requests=1 completions=1 errors=0 timeouts=0
+ok 25 - blk: sector0
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| thiết bị | `vendor=0x1af4 device=0x1001` — virtio-blk transitional, bus `00:03.0` |
+| BAR **leaf riêng** | blk `0xfe004000` vs net `0xfe000000` ⇒ `bar_distinct=1` (hai leaf 16 KiB rời nhau) |
+| dung lượng | `capacity=8` — **đọc từ `virtio_blk_config`**, khớp đĩa tạm 8 sector của runner |
+| trạng thái | `status=0x0f` = `ACK\|DRIVER\|FEATURES_OK\|DRIVER_OK` (đọc lại sau DRIVER_OK) |
+| feature | `driver=0x0000000100000200` = `VIRTIO_F_VERSION_1` (bit 32) + `VIRTIO_BLK_F_FLUSH` (bit 9) |
+| sector 0 | `hex=5649464153544f532d4b543238382d53` = `VIFASTOS-KT288-S` — **khớp từng ký tự** với 16 byte đầu đĩa tạm (`od -An -tx1 -N16`) |
+| chữ ký | `magic=1` — 8 byte đầu khớp `SECTOR0_MAGIC = b"VIFASTOS"` |
+| request | `requests=1 completions=1 errors=0 timeouts=0` — một request `IN`, hoàn tất thật |
+
+### 14.4 Đột biến bắt buộc (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **không có đĩa** | runner boot **thật** không `-drive`/`-device virtio-blk-pci` (ca âm (o)) | `# blk: no device` + `not ok 24 - blk: device` + `# TAP 24 FAIL — dừng (không in marker)`; QEMU treo tới hết ngân sách (ĐỎ) |
+| (ii) **chữ ký sai** | `--features bad-blk-magic` (ảnh in `magic=0` dù hex vẫn đúng) | `# blk: sector0 … magic=0 …` + `not ok 25 - blk: sector0` + `# TAP 25 FAIL` (ĐỎ) |
+| (iii) **BAR sai** | `--features bad-blk-bar` (BAR = địa chỉ chưa map `0x7000_0000_0000`) | `# exc: vec=14 err=0x2 rip=0x10084f cs=0x8 rflags=0x10046` + `# exc: cr2=0x700000000014` ⇒ halt, không marker (ĐỎ) |
+
+### 14.5 Còn thiếu của bước 9 (ghi rõ)
+
+1. **Không** virtio-gpu trên x86_64, **không** MSI-X, **không** hotplug — đúng phạm vi D2-213.
+2. **Không** ngắt cho virtio (poll `used`), **không** nhiều request đồng thời (queue depth 1 thực
+   tế), **không** ghi/flush trên đường sản phẩm (hàm có, chỉ đọc sector 0 được đo).
+3. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).

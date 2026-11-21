@@ -32,9 +32,13 @@
 //! [`crate::asm`] (mô-đun duy nhất có `unsafe`), nên tệp này **không** có `unsafe`.
 
 use vifast_virtio::pci::{
-    bar_probe, parse_caps, BarKind, PciCfg, PciError, VirtioCaps, VirtioKind, BAR_COUNT, CFG_BAR0,
-    CFG_COMMAND, CFG_DEVICE_ID, CFG_HEADER_TYPE, CFG_VENDOR_ID, COMMAND_BUS_MASTER, COMMAND_MEMORY,
+    bar_probe, parse_caps, BarKind, PciCfg, VirtioCaps, BAR_COUNT, CFG_BAR0, CFG_COMMAND,
+    CFG_DEVICE_ID, CFG_HEADER_TYPE, CFG_VENDOR_ID, COMMAND_BUS_MASTER, COMMAND_MEMORY,
 };
+// **KT-288**: tái xuất **công khai** hai kiểu mà ảnh cần để phân biệt "không có thiết bị"
+// (`PciError::NoDevice` — ca âm "không có đĩa") và để chọn loại thiết bị (`VirtioKind::Blk`) —
+// cùng khuôn `vifast-plat-aarch64/src/pci.rs` (KT-273). Không đổi hành vi, chỉ mở đường dùng.
+pub use vifast_virtio::pci::{PciError, VirtioKind};
 
 use crate::asm;
 use crate::boot;

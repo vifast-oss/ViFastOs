@@ -236,6 +236,11 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // TAP 22/23. Chạy **sau** TAP 21 (SMP) và **trước** marker; thứ tự TAP 1..21 **không đổi**.
     crate::sched::run(console, tap_first + 7);
 
+    // ---- 5c. **KT-288** (K5' bước 9): virtio-blk — TAP 24/25. Chạy **sau** TAP 23 và **trước**
+    // marker. `scan` là kết quả quét PCI **đã có** (không quét lại toàn bus) và `pci.bar_base`
+    // là BAR của virtio-net — blk phải chứng minh **leaf riêng** (không đè BAR net).
+    crate::blk::run(console, tap_first + 9, &scan, pci.bar_base);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

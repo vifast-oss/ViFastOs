@@ -128,6 +128,11 @@ mod smp;
 /// chạy **sau** TAP 21 (SMP), **trước** marker.
 mod sched;
 
+/// **KT-288** (K5' bước 9, D2-213): **virtio-blk** — PCI tìm thiết bị, BAR leaf riêng, virtqueue,
+/// đọc **sector 0** của đĩa QEMU thật, TAP 24/25. Tách tệp riêng (luật R1) và chạy **sau** TAP 23
+/// (preemption), **trước** marker.
+mod blk;
+
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
 /// này và đòi nó xuất hiện **đúng một lần**.
 #[cfg(not(feature = "wrong-marker"))]
@@ -149,9 +154,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// sau TAP 17 — xem [`smp`]).
 /// **KT-278** thay hai ca ấy bằng **bốn** ca SMP: `smp: 4 harts online` (18), `smp: tss per-hart`
 /// (19), `smp: ipi delivered` (20), `smp: all harts report` (21).
-/// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23) —
-/// tổng **23**.
-pub const TAP_TESTS: usize = 23;
+/// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23).
+/// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25) — tổng **25**.
+pub const TAP_TESTS: usize = 25;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

@@ -4,8 +4,10 @@
 # (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) + **KT-274**
 # (K5' bước 5: PCI ECAM + virtio-net + ARP) + **KT-276** (K5' bước 6: SMP 2 hart) + **KT-278**
 # (K5' bước 7: SMP **4 hart** + **IPI** + **TSS per-hart**) + **KT-286** (K5' bước 8:
-# **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) — runner boot **x86_64**. Khuôn:
-# `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
+# **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) + **KT-288** (K5' bước 9:
+# **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) — runner boot
+# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout
+# + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
 # `virtio-net-pci` trên `-netdev user` (slirp). `-M pc` (i440fx) **không** có ECAM ⇒ ảnh rơi xuống
@@ -18,7 +20,8 @@
 #      tag; **PVH note** (`.note.Xen`, type 18) trỏ đúng `_start` — đây là đường QEMU 11.1.3
 #      thật sự dùng cho `-kernel` (xem đầu `linker.ld`);
 #   3. **boot** QEMU `-M q35 -m 128M -nographic -kernel <ELF> -no-reboot -smp 4` +
-#      `virtio-net-pci` trên `-netdev user` qua `qemu_guard.sh`, kiểm
+#      `virtio-net-pci` trên `-netdev user` + **`virtio-blk-pci` trên đĩa tạm** (KT-288) qua
+#      `qemu_guard.sh`, kiểm
 #      **TAP** (`TAP version 13`, `1..N`, đủ N dòng `ok`, 0 dòng `not ok`), marker **đúng một
 #      lần**, `lma=1` (long mode thật), dòng `halt`, không `PANIC`, **và** các dòng `# exc:` của
 #      KT-261: đúng **5** exception, đúng vector + mã lỗi + `cs`, `#PF` có `cr2` đúng;
@@ -38,6 +41,10 @@
 #      **KT-286**: `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer **thật sự**
 #      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=2` (tổng kết sau khi
 #      scheduler nhường lại `main`);
+#      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
+#      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
+#      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
+#      băm lại từ tệp bằng `od`, nên "đọc được sector 0" không thể là đọc ra số 0 rồi tự khen);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
@@ -46,26 +53,29 @@
 #      `-device virtio-net-pci` ⇒ ảnh in `# net: no device` và TAP 16 ĐỎ (KT-274);
 #      (l) **mất dòng `# smp:`** (KT-276) — ảnh không đánh thức được hart phụ;
 #      (m) **mất dòng `# smp: ipi recv=`** (KT-278) — IPI không tới hart đích;
-#      (n) **mất dòng `# sched:`** (KT-286) — timer không chuyển ngữ cảnh.
-#      Cả **mười bốn** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (n) **mất dòng `# sched:`** (KT-286) — timer không chuyển ngữ cảnh;
+#      (o) **không có đĩa** (KT-288) — boot **thật** không có `-drive`/`-device virtio-blk-pci`
+#          ⇒ ảnh in `# blk: no device` và TAP 24 ĐỎ.
+#      Cả **mười lăm** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 23 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 25 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
-#                   preemption)
+#                   preemption; KT-288: 2 ca virtio-blk)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
 #
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
-# runner này là **bước 1..7** (một ảnh, GDT/TSS/IDT + 5 exception, LAPIC + IOAPIC + timer, U-mode
-# ring 3 + `int 0x80`, PCI/virtio-net/ARP, **4 hart + IPI + TSS per-hart**, marker + halt sạch).
-# **Không** IPC từ ring 3, **không** scheduler/preemption, **không** `-cpu max`,
-# **không** `syscall`/`sysret`, **không** soak 600 boot.
+# runner này là **bước 1..9** (một ảnh, GDT/TSS/IDT + 5 exception, LAPIC + IOAPIC + timer, U-mode
+# ring 3 + `int 0x80`, PCI/virtio-net/ARP, **4 hart + IPI + TSS per-hart**, preemption hai tác vụ,
+# **virtio-blk đọc sector 0**, marker + halt sạch). **Không** IPC từ ring 3, **không** virtio-gpu
+# trên x86_64, **không** MSI-X, **không** hotplug, **không** `-cpu max`, **không**
+# `syscall`/`sysret`, **không** soak 600 boot.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +89,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-23}"
+EXPECT_TESTS="${EXPECT_TESTS:-25}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -91,9 +101,13 @@ HALT_LINE="# viFastOs x86_64: halt"
 # ca âm riêng).
 QEMU_MACHINE=(-M q35 -m 128M -nographic -no-reboot -smp 4)
 QEMU_NET=(-netdev user,id=n0 -device virtio-net-pci,netdev=n0)
+
 # Ngân sách riêng cho boot **không mạng**: ảnh dừng ở TAP 16 đỏ (`cli; hlt`) nên QEMU **không**
 # tự thoát; 10 s là dư cho phần in (đo được ~2 s) mà không phí 20 s như boot thường.
 NONET_TIMEOUT_DS=100
+# Ngân sách cho boot **không đĩa**: ảnh chạy hết net + SMP + preemption rồi mới tới TAP 24 đỏ
+# (`cli; hlt`) — đo được ~4 s, 15 s là dư mà không phí 20 s như boot thường.
+NODISK_TIMEOUT_DS=150
 # 24 byte multiboot2 header (magic, arch=0, len=24, checksum, end tag {0,0,8}) — hex little-endian.
 MB2_HEX="d65052e8000000001800000012afad170000000008000000"
 # 16 byte đầu của PVH note: namesz=4, descsz=4, type=18, "Xen\0".
@@ -112,6 +126,32 @@ die() {
 }
 
 mkdir -p "$LOGDIR" 2>/dev/null || true
+
+# ---------------------------------------------------------------- đĩa tạm (KT-288)
+# Nội dung **biết trước**: 8 sector 512 B, 17 byte đầu là chữ ký `VIFASTOS-KT288-S0` (8 byte đầu
+# khớp `virtio_blk::SECTOR0_MAGIC`). Ảnh in hex 16 byte đầu của sector 0; runner băm lại **cùng**
+# 16 byte từ tệp bằng `od` ⇒ "đọc được sector 0" không thể là đọc ra số 0 rồi tự khen (khuôn
+# KT-273 của `run-aarch64.sh`).
+DISK="$LOGDIR/disk0.raw"
+DISK_SECTORS=8
+make_disk() {
+    dd if=/dev/zero of="$DISK" bs=512 count="$DISK_SECTORS" 2>/dev/null || return 1
+    printf 'VIFASTOS-KT288-S0' | dd of="$DISK" bs=1 seek=0 conv=notrunc 2>/dev/null || return 1
+    return 0
+}
+make_disk || die "không tạo được đĩa tạm $DISK"
+WANT_SECTOR0_HEX="$(od -An -tx1 -N16 "$DISK" 2>/dev/null | tr -d ' \n')"
+[ "${#WANT_SECTOR0_HEX}" -eq 32 ] || die "không đọc được 16 byte đầu của $DISK"
+# Dung lượng theo sector 512 B — **đo từ tệp** (không hardcode 8): ảnh đọc `capacity` từ
+# `virtio_blk_config`, runner đối chiếu với đĩa nó vừa tạo.
+DISK_BYTES="$(wc -c <"$DISK" | tr -d ' ')"
+WANT_CAPACITY=$((DISK_BYTES / 512))
+[ "$WANT_CAPACITY" -eq "$DISK_SECTORS" ] || die "đĩa tạm $DISK_BYTES byte, cần $((DISK_SECTORS * 512))"
+
+# **KT-288**: một đĩa `virtio-blk-pci` trên tệp tạm 8 sector. Một chỗ quyết định: mọi lần boot
+# của runner dùng **cùng** máy + **cùng** thiết bị, trừ ca âm (k) cố ý bỏ mạng và ca âm (o) cố ý
+# bỏ đĩa. `format=raw` + `if=none` + `id=d0` đúng khuôn KT-273.
+QEMU_DISK=(-drive "file=$DISK,if=none,id=d0,format=raw" -device virtio-blk-pci,drive=d0)
 
 # ---------------------------------------------------------------- objdump (nhiều nguồn)
 # macOS không có `llvm-objdump` trong PATH mặc định; `llvm-tools` của rustup thì có. Thử lần lượt
@@ -281,9 +321,94 @@ check_umode() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# blk:` (KT-288)
+# Hai dòng **bằng chứng đĩa** — đây là phần "virtio-blk đọc sector 0 thật" của KT-288:
+#
+#   `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
+#       Thiết bị **thật** (vendor virtio), BAR **rời** BAR của virtio-net (leaf riêng — trên
+#       x86_64 firmware gán BAR nên "riêng" là bất biến kiểm được), dung lượng **đọc từ
+#       `virtio_blk_config`** khớp đĩa runner vừa tạo, và `device_status` đọc lại đủ bốn bit
+#       `ACK|DRIVER|FEATURES_OK|DRIVER_OK` (`0x0f`).
+#   `# blk: sector0 hex=<32 hex> … magic=1`
+#       Hex phải khớp **16 byte đầu của đĩa tạm** (runner băm lại từ tệp bằng `od`) và `magic=1`
+#       chỉ khi 8 byte đầu khớp `VIFASTOS`. Nhờ vậy "đọc được sector 0" không thể là đọc ra số 0
+#       rồi tự khen. `errors=0`/`timeouts=0` chốt là request hoàn tất thật, không phải timeout.
+check_blk() {
+    local log="$1" bad=0 n line
+    n="$(grep -cE '^# blk: device ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# blk: device ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# blk: device ' "$log" || true)"
+    case "$line" in
+        *"vendor=0x1af4"*) ;;
+        *)
+            echo "# dòng blk: device không có 'vendor=0x1af4' (vendor của virtio)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"bar_distinct=1"*) ;;
+        *)
+            echo "# dòng blk: device không có 'bar_distinct=1' (BAR blk đè BAR net?)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"capacity=$WANT_CAPACITY "*) ;;
+        *)
+            echo "# dòng blk: device không có 'capacity=$WANT_CAPACITY' (dung lượng đĩa tạm)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"status=0x0f"*) ;;
+        *)
+            echo "# dòng blk: device không có 'status=0x0f' (chưa DRIVER_OK đầy đủ)"
+            bad=1
+            ;;
+    esac
+    n="$(grep -cE '^# blk: sector0 hex=[0-9a-f]{32} ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# blk: sector0 hex=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# blk: sector0 ' "$log" || true)"
+    case "$line" in
+        *"hex=$WANT_SECTOR0_HEX"*) ;;
+        *)
+            echo "# sector0 hex không khớp 16 byte đầu của đĩa tạm ($WANT_SECTOR0_HEX)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"magic=1"*) ;;
+        *)
+            echo "# sector0 không có 'magic=1' (chữ ký VIFASTOS không khớp)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"errors=0"*) ;;
+        *)
+            echo "# sector0 không có 'errors=0' (request đĩa có lỗi)"
+            bad=1
+            ;;
+    esac
+    case "$line" in
+        *"timeouts=0"*) ;;
+        *)
+            echo "# sector0 không có 'timeouts=0' (poll used quá hạn)"
+            bad=1
+            ;;
+    esac
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm log của một lần boot
-# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:` + `# umode:`. In lý do
-# đỏ ra stdout.
+# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:` + `# umode:` + `# blk:`.
+# In lý do đỏ ra stdout.
 #
 # KT-261 thêm **ba** lớp kiểm mới, mỗi lớp bắt một lớp lỗi khác nhau:
 #
@@ -409,6 +534,8 @@ check_log() {
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
     check_umode "$log" || bad=1
+    # ---- **KT-288**: hai dòng `# blk:` — thiết bị + sector 0 khớp đĩa tạm.
+    check_blk "$log" || bad=1
     # ---- KT-276 + **KT-278**: SMP **4 hart** — mỗi dòng một lớp lỗi khác nhau.
     # `hart=N online` cho **cả ba** hart phụ: trampoline real mode chạy thật trên từng hart.
     for h in 1 2 3; do
@@ -669,6 +796,25 @@ selftest_negative() {
         echo "ok $n - ca âm (n): mất dòng '# sched:' ⇒ ĐỎ ($(head -1 "$tmp/n.out"))"
     fi
 
+    # (o) **KT-288** — "không có đĩa": boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒
+    #     ảnh in `# blk: no device` rồi TAP 24 đỏ (không marker). Ca này đòi **cả hai** điều kiện:
+    #     có dòng evidence **và** `check_log` đỏ — thiếu dòng đó nghĩa là ảnh chết trước khi tới
+    #     bước đĩa, và khi đó ca âm không chứng minh được gì.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    if [ -f "$LOGDIR/boot-nodisk.log" ]; then
+        if grep -qxF '# blk: no device' "$LOGDIR/boot-nodisk.log" &&
+            ! check_log "$LOGDIR/boot-nodisk.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/o.log" 2>&1; then
+            echo "ok $n - ca âm (o): không có đĩa ⇒ '# blk: no device' + TAP đỏ ($(head -1 "$tmp/o.log"))"
+        else
+            echo "not ok $n - ca âm (o): thiếu đĩa mà kiểm vẫn XANH (hoặc thiếu dòng '# blk: no device')"
+            fails=$((fails + 1))
+        fi
+    else
+        echo "not ok $n - ca âm (o): không có log boot không đĩa ($LOGDIR/boot-nodisk.log)"
+        fails=$((fails + 1))
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -717,7 +863,7 @@ while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
     if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
-        -kernel "$IMAGE" "${QEMU_NET[@]}"; then
+        -kernel "$IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
         i=$((i + 1))
@@ -741,7 +887,7 @@ if cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARG
     cp "$LOGDIR/target-bad/$TARGET/release/vifast-kbin-x86_64" "$BAD_IMAGE" 2>/dev/null || true
     if [ -f "$BAD_IMAGE" ]; then
         if ! qg_boot "$LOGDIR/boot-bad.log" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
-            -kernel "$BAD_IMAGE" "${QEMU_NET[@]}"; then
+            -kernel "$BAD_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
             echo "# cảnh báo: ảnh marker sai không thoát (pid=$QG_LAST_PID) — ca âm (b) vẫn dùng log"
         fi
     fi
@@ -755,8 +901,20 @@ fi
 #      sách riêng ngắn hơn.
 echo "# boot không mạng (ca âm k) — -nic none, không có thiết bị mạng"
 if ! qg_boot "$LOGDIR/boot-nonet.log" "$NONET_TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
-    -nic none -kernel "$IMAGE"; then
+    -nic none -kernel "$IMAGE" "${QEMU_DISK[@]}"; then
     echo "# cảnh báo: boot không mạng không tự thoát (pid=$QG_LAST_PID) — ca âm (k) vẫn dùng log"
+fi
+
+# ---- ca âm (o) **KT-288**: boot **thật** không có đĩa. Mạng vẫn có để ảnh chạy qua TAP 15..23;
+#      tới bước blk thì `pci::init_for(VirtioKind::Blk)` trả `NoDevice` ⇒ ảnh in
+#      `# blk: no device` rồi TAP 24 ĐỎ ⇒ `cli; hlt` (QEMU không tự thoát) nên dùng ngân sách
+#      riêng ngắn hơn. Đây là ca âm **thật** (boot QEMU lần hai, không `-drive`), không phải biến
+#      đổi log: nó chứng minh driver **fail-closed** khi thiếu thiết bị, thay vì đọc ra số 0 rồi
+#      in `ok`.
+echo "# boot không đĩa (ca âm o) — không có -drive/-device virtio-blk-pci"
+if ! qg_boot "$LOGDIR/boot-nodisk.log" "$NODISK_TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+    -kernel "$IMAGE" "${QEMU_NET[@]}"; then
+    echo "# cảnh báo: boot không đĩa không tự thoát (pid=$QG_LAST_PID) — ca âm (o) vẫn dùng log"
 fi
 
 # ---- ca âm (bắt buộc, chạy **mặc định**): bộ kiểm phải ĐỎ khi kỳ vọng/ảnh sai
@@ -768,7 +926,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 14))
+    total=$((total + 15))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

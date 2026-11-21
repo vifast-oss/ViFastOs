@@ -76,6 +76,7 @@ pub mod smp;
 pub mod timebase;
 pub mod tss;
 pub mod umode;
+pub mod virtio_blk;
 pub mod virtio_net;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.

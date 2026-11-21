@@ -54,6 +54,12 @@ bad-rsp = []
 # **KT-286** — đột biến (iii): không `EOI` trong handler timer ⇒ LAPIC giữ ISR bit ⇒ timer **tắt
 # sau tick đầu** ⇒ TAP 10 `timer: ticks` ĐỎ. Chỉ dùng cho đột biến.
 no-eoi = []
+# **KT-288** — đột biến (ii) của virtio-blk: chữ ký sector 0 sai ⇒ `magic=0` ⇒ TAP 25 ĐỎ (hex vẫn
+# đúng — lớp lỗi "đọc được nhưng không nhận ra chữ ký"). Chỉ dùng cho đột biến.
+bad-blk-magic = []
+# **KT-288** — đột biến (iii) của virtio-blk: BAR lấy **sai leaf** (địa chỉ chưa map) ⇒ lần đọc
+# common config đầu tiên `#PF` ⇒ ảnh halt, không marker (ĐỎ). Chỉ dùng cho đột biến.
+bad-blk-bar = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
