@@ -4,11 +4,11 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười hai vòng, 45 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười ba vòng, 48 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
-> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. HEAD cuối `ead7d829` (đã push), T2 xanh,
-> cây sạch.
+> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290. HEAD cuối `8fc26469`
+> (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -57,6 +57,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 39 | **aarch64 soak 1.000 trên ảnh hiện tại** | **ĐẠT — 0/1000**, `invalid=0` | wall 972 s, GPU+input 1000/1000 |
 | 40 | **x86_64 preemption** | **ĐẠT** | `# sched: switch a→b n=1`, `switches=6`; TAP 23/23 |
 | 41 | **Sửa nới ngưỡng KT-283** | **ĐẠT** | ngân sách soak về đúng 20 s/boot (D2-72 Q10) |
+| 42 | **x86_64 virtio-blk** | **ĐẠT** | `# blk: sector0 … ascii="VIFASTOS-KT288-S" magic=1`; TAP 25/25 |
+| 43 | **aarch64 TCP + DNS** | **ĐẠT** | `# net: tcp connect … state=established`, `# net: dns example.com a=172.66.147.243` |
+| 44 | **riscv64 `Tcb.Configure` invocation** | **ĐẠT** | `# ipc: configure ok va=0x40020000`; TAP 4/4 |
 
 ---
 
@@ -718,13 +721,60 @@ treo bị kill ở ~30 s thay vì 20 s (D2-72 Q10). Nay trừ phần đã tiêu:
 **3/3 lỗi=0**. **Bài học bash**: `local a=… b=$a` **không** dùng được — bash tính **mọi** vế phải
 trước khi gán ⇒ `set -u` báo `unbound variable`; phải tách hai dòng.
 
+### 3.46 KT-288 — x86_64 **virtio-blk**
+**XONG.** **Đo**:
+```text
+# blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000
+       bar_distinct=1 capacity=8 blk_size=512 queue=8 max=256 status=0x0f
+ok 24 - blk: device
+# blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8
+       status=0x0f requests=1 completions=1 errors=0 timeouts=0
+ok 25 - blk: sector0
+```
+TAP **25/25**, runner **17/17** (15 ca âm). Đĩa tạm 8 sector; runner băm lại 16 byte đầu bằng `od` và
+đòi `hex=` khớp **từng ký tự**. `bar_distinct=1` chứng minh BAR blk (`0xfe004000`) **rời** BAR net
+(`0xfe000000`) — trên x86_64 firmware gán BAR nên "riêng" là bất biến **kiểm được**, không phải hằng.
+**Ba đột biến**: không `-drive` ⇒ `# blk: no device`; `bad-blk-magic` ⇒ `magic=0`; `bad-blk-bar` ⇒
+`# exc: vec=14 err=0x2 cr2=0x700000000014`.
+
+### 3.47 KT-289 — aarch64 **TCP + DNS**
+**XONG.** **Đo**:
+```text
+# net: tcp connect 10.0.2.2:45678 ok rtt=2 state=established
+ok 33 - net: tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+ok 34 - net: tcp data
+# net: dns example.com a=172.66.147.243 ttl=221
+ok 35 - net: dns
+```
+TAP **35/35**, runner **22/22** (19 ca âm), soak selftest **38/38**, smoke **30/30**. **Bằng chứng hai
+chiều từ log server host**: `accept peer=127.0.0.1:59883`, `sent=13`, `recv=15`. **Ba đột biến**:
+không server ⇒ `err=Io` (slirp RST); DNS sai ⇒ `rcode=3 an=0`; bỏ `tcp_recv` ⇒ `recv=0`.
+
+### 3.48 KT-290 — riscv64 **`Tcb.Configure` invocation từ U-mode**
+**XONG.** **Khảo sát phát hiện ba lý do chưa nối được**: (a) whitelist `invoke.rs` **thiếu**
+`Tcb.Configure` ⇒ rơi nhánh `_` ⇒ `NotSupported`; (b) `cspace = None` **xoá CSpace**; (c) `dispatch`
+chỉ mang **4 MR** trong khi chữ ký có **5** tham số tuỳ chọn. **Đo**:
+```text
+# ipc: configure ok va=0x40020000
+# ipc: configure err=0
+# ipc: configure neg cap=18 method=18 outside=5 ok=1
+# ipc configure: method=0 delta=3 denied=2 bound=1 va=0x40020000
+ok 4 - ipc: tcb configure via invocation
+```
+Thiết kế **kênh hẹp** (ghi rõ): `ipc_buffer?` = MR0 CPTR Frame + MR1 VA, **arity chính xác 2**;
+`cspace?`/`vspace?`/`entry?`/`priority?` **chưa cài**. TAP **4/4**, matrix **27/27**, selftest
+**21/21**. **Ba đột biến** đỏ. **Lead vá thêm**: sim `kt62_cap_loi_dung_ma` **đổi tiền đề** (label 0
+trên cap TCB nay là `Tcb.Configure` ⇒ `InvalidArgument(5)`; label 1 `SetFaultEp` chưa cài vẫn
+`NotSupported(18)`) — **T2 đỏ ở lần chạy đầu** vì test này, đã sửa và chạy lại xanh.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `80360f82` (ứng viên bàn giao) | **PASS 67/67, 705,4 s** | `/tmp/t2-r12.log` |
-| T2 trên `a35aa529` (vòng 11) | PASS 67/67, 725,7 s | `/tmp/t2-r11.log` |
+| **T2** `gate --fast` trên `5857c209` (ứng viên bàn giao) | **PASS 67/67, 733,7 s** | `/tmp/t2-r13b.log` |
+| T2 trên `80360f82` (vòng 12) | PASS 67/67, 705,4 s | `/tmp/t2-r12.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
