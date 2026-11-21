@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **virtio-net + DHCP + ARP + ICMP của ảnh aarch64** — KT-275 (K4' bước 3, D1 trên aarch64).
+//! **virtio-net + DHCP + ARP + ICMP + TCP + DNS của ảnh aarch64** — KT-275 (K4' bước 3, D1 trên
+//! aarch64) + KT-289 (TCP client + DNS).
 //!
 //! # Vì sao chạy ở `el0_done` (sau U-mode, sau virtio-blk)
 //!
@@ -7,7 +8,7 @@
 //! và phải in **sau** `ok 21`. `el0_done` chạy ở EL1h với **cùng** `VSpace` đang hoạt động, nên
 //! MMIO tới ECAM/BAR đi qua bảng trang đã map trong `high_entry` — không cần `&mut VSpace` ở đây.
 //!
-//! # Bốn phép đo (mỗi phép một dòng `#` + một TAP)
+//! # Bảy phép đo (mỗi phép một dòng `#` + một TAP)
 //!
 //! 1. `# net: device …` — tìm `virtio-net` trên bus PCI (ECAM của KT-273), gán BAR trong leaf
 //!    **riêng** của loại Net (không đụng leaf blk), khởi tạo driver, đọc **MAC thật** từ
@@ -16,24 +17,32 @@
 //!    REQUEST/ACK), cùng khuôn `net.sh` riscv64 (KT-246).
 //! 3. `# net: arp gw=<mac>` — ARP reply **thật** của slirp cho gateway.
 //! 4. `# net: ping 10.0.2.2 ok n=3 rtt=<ms>` — ICMP echo **thật** qua gateway.
+//! 5. `# net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established` — **KT-289**: bắt tay ba
+//!    bước **thật** với server TCP trên host (slirp ánh xạ `10.0.2.2` → loopback host).
+//! 6. `# net: tcp recv=13 first=vifast-tcp-ok` + `# net tcp data: … send=ok close=ok` — **KT-289**:
+//!    nhận **đúng** chuỗi server gửi, gửi lại payload, đóng bằng FIN.
+//! 7. `# net: dns example.com a=<ip> ttl=<n>` — **KT-289**: truy vấn DNS `A` **thật** tới
+//!    `10.0.2.3:53` của slirp (codec `vifast_net::dns`, không viết lại).
 //!
 //! # Không có thiết bị ⇒ **ĐỎ**, không im lặng
 //!
 //! `pci::init_for` trả `Err(NoDevice)` ⇒ in `# net: no device` (dòng **nguyên văn** mà runner
-//! dùng cho ca âm "không có mạng") rồi cả bốn TAP đỏ ⇒ `el0_done` dừng **trước** marker. Nhờ vậy
+//! dùng cho ca âm "không có mạng") rồi cả bảy TAP đỏ ⇒ `el0_done` dừng **trước** marker. Nhờ vậy
 //! một lần boot thiếu `-device virtio-net-pci` **không** thể trông giống boot sạch.
 //!
 //! # Codec: **không** viết lại
 //!
-//! Ethernet/ARP/IPv4/ICMP/UDP/DHCP là của `vifast-net` (KT-244, host test); tệp này chỉ gọi
-//! driver `vifast_plat_aarch64::virtio_net` và in bằng chứng.
+//! Ethernet/ARP/IPv4/ICMP/UDP/DHCP/TCP/DNS là của `vifast-net` (KT-244/KT-260/KT-268, host test);
+//! tệp này chỉ gọi driver `vifast_plat_aarch64::virtio_net`/`tcp` và in bằng chứng.
 
 use core::fmt::{self, Write};
 use core::sync::atomic::Ordering;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::tcp::State;
 use vifast_plat_aarch64::asm;
 use vifast_plat_aarch64::pci::{self, bar_kind_name, PciError, VirtioKind};
+use vifast_plat_aarch64::tcp;
 use vifast_plat_aarch64::virtio_net::{self, NetConfig4, NetReport};
 use vifast_virtio::features::DRIVER_OK;
 
@@ -41,6 +50,31 @@ use crate::{tap, Console, TEXT_START_PA};
 
 /// Số lần echo request của phép đo ping (khớp `n=3` mà runner đòi).
 pub const PING_COUNT: u32 = 3;
+
+/// Cổng server TCP trên host — khớp `tcp::TCP_SERVER_PORT` của driver và `TCP_PORT` của runner.
+pub const TCP_SERVER_PORT: u16 = tcp::TCP_SERVER_PORT;
+/// Payload khách gửi lại server (15 byte — runner đối chiếu `recv=15` trong log server).
+pub const TCP_SEND_PAYLOAD: &[u8] = b"vifast-tcp-send";
+/// Số byte đầu của chuỗi nhận được in vào evidence (đủ để đối chiếu `vifast-tcp-ok`).
+pub const TCP_FIRST_BYTES: usize = 32;
+/// `id` cố định của truy vấn DNS (chưa có RNG; còn kiểm `id` trong reply).
+pub const DNS_ID_A: u16 = 0x4b55;
+/// Tên truy vấn DNS `A`.
+pub const DNS_NAME_A: &[u8] = b"example.com";
+
+/// Tên trạng thái TCP để in evidence (khớp `vifast_net::tcp::State`).
+fn state_name(state: State) -> &'static str {
+    match state {
+        State::Closed => "closed",
+        State::SynSent => "syn-sent",
+        State::Established => "established",
+        State::FinWait1 => "fin-wait-1",
+        State::FinWait2 => "fin-wait-2",
+        State::Closing => "closing",
+        State::TimeWait => "time-wait",
+        State::LastAck => "last-ack",
+    }
+}
 
 /// In MAC dạng `aa:bb:cc:dd:ee:ff` (không cần `alloc`).
 struct MacText([u8; 6]);
@@ -233,6 +267,227 @@ pub fn run(console: &mut Console) -> bool {
         let _ = writeln!(console, "# net: ping skipped (no arp)");
     }
     if !tap(console, 25, "net: ping", ping_ok) {
+        all_ok = false;
+    }
+
+    // ---------------------------------------------------------------- TAP 33: TCP connect
+    // **Server thật trên host**: runner dựng `python3` lắng nghe `127.0.0.1:45678`; khách nối
+    // `10.0.2.2:45678` — slirp ánh xạ `10.0.2.2` → loopback của host (`sotranslate_out4`).
+    // `hostfwd` của QEMU là chiều host → guest nên **không** dùng được cho chiều này (KT-268).
+    // Không có server ⇒ `tcp_connect` timeout 3 s (fail-closed, không treo).
+    let mut tcp_conn: Option<tcp::TcpConn> = None;
+    if let (Some(cfg), Some(gw_mac)) = (&config, gateway_mac) {
+        let our_mac = MacAddr::new(virtio_net::mac());
+        let started = virtio_net::now_us();
+        match tcp::tcp_connect(
+            cfg.ip,
+            our_mac,
+            cfg.gw,
+            gw_mac,
+            TCP_SERVER_PORT,
+            virtio_net::NET_STEP_TIMEOUT_US,
+        ) {
+            Ok(conn) => {
+                let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                let _ = writeln!(
+                    console,
+                    "# net: tcp connect {}:{} ok rtt={} state={}",
+                    IpText(cfg.gw),
+                    TCP_SERVER_PORT,
+                    elapsed_ms,
+                    state_name(conn.state())
+                );
+                let _ = writeln!(
+                    console,
+                    "# net tcp connect: iss=0x{:x} snd_una=0x{:x} rcv_nxt=0x{:x} retransmits={} \
+                     elapsed_ms={elapsed_ms} const:timeout_ms={} const:port={}",
+                    conn.iss(),
+                    conn.snd_una(),
+                    conn.rcv_nxt(),
+                    conn.retries(),
+                    virtio_net::NET_STEP_TIMEOUT_US / 1000,
+                    TCP_SERVER_PORT
+                );
+                tcp_conn = Some(conn);
+            }
+            Err(error) => {
+                let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                let _ = writeln!(
+                    console,
+                    "# net tcp connect: target={}:{} err={} elapsed_ms={elapsed_ms} \
+                     const:timeout_ms={}",
+                    IpText(cfg.gw),
+                    TCP_SERVER_PORT,
+                    error.name(),
+                    virtio_net::NET_STEP_TIMEOUT_US / 1000
+                );
+                let _ = writeln!(console, "# net: no tcp");
+            }
+        }
+    } else {
+        let _ = writeln!(console, "# net: tcp skipped (no arp)");
+    }
+    if !tap(console, 33, "net: tcp connect", tcp_conn.is_some()) {
+        all_ok = false;
+    }
+
+    // ---------------------------------------------------------------- TAP 34: TCP data
+    // Nhận **đúng** chuỗi server gửi, gửi lại payload, đóng bằng FIN. Server ghi `recv=15` trong
+    // log của nó — bằng chứng **hai chiều** khách ↔ host (runner đối chiếu).
+    let mut tcp_data_ok = false;
+    if let Some(conn) = tcp_conn.as_mut() {
+        let mut buf = [0u8; 64];
+        let started = virtio_net::now_us();
+        match tcp::tcp_recv(conn, &mut buf, virtio_net::NET_STEP_TIMEOUT_US) {
+            Ok(n) if n > 0 => {
+                // `first=` in **đúng byte nhận được** (ký tự không in được thay bằng '.'), tối đa
+                // `TCP_FIRST_BYTES` — runner đối chiếu với chuỗi server gửi.
+                let mut first = [0u8; TCP_FIRST_BYTES];
+                let mut first_len = 0;
+                while first_len < n && first_len < TCP_FIRST_BYTES {
+                    let byte = buf[first_len];
+                    first[first_len] = if (0x20..0x7f).contains(&byte) {
+                        byte
+                    } else {
+                        b'.'
+                    };
+                    first_len += 1;
+                }
+                let first = core::str::from_utf8(&first[..first_len]).unwrap_or("?");
+                let _ = writeln!(console, "# net: tcp recv={n} first={first}");
+                let sent = tcp::tcp_send(conn, TCP_SEND_PAYLOAD, virtio_net::NET_STEP_TIMEOUT_US);
+                let closed = tcp::tcp_close(conn, virtio_net::NET_STEP_TIMEOUT_US);
+                let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                let _ = writeln!(
+                    console,
+                    "# net tcp data: recv={n} sent={} send={} close={} state={} retransmits={} \
+                     elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                    TCP_SEND_PAYLOAD.len(),
+                    match sent {
+                        Ok(_) => "ok",
+                        Err(error) => error.name(),
+                    },
+                    match closed {
+                        Ok(()) => "ok",
+                        Err(error) => error.name(),
+                    },
+                    state_name(conn.state()),
+                    conn.retries(),
+                    virtio_net::NET_STEP_TIMEOUT_US / 1000
+                );
+                tcp_data_ok = sent.is_ok() && closed.is_ok();
+            }
+            Ok(_) => {
+                let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                let _ = writeln!(
+                    console,
+                    "# net tcp data: recv=0 elapsed_ms={elapsed_ms} state={}",
+                    state_name(conn.state())
+                );
+                let _ = writeln!(console, "# net: no tcp");
+            }
+            Err(error) => {
+                let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                let _ = writeln!(
+                    console,
+                    "# net tcp data: recv_err={} elapsed_ms={elapsed_ms} state={} \
+                     const:timeout_ms={}",
+                    error.name(),
+                    state_name(conn.state()),
+                    virtio_net::NET_STEP_TIMEOUT_US / 1000
+                );
+                let _ = writeln!(console, "# net: no tcp");
+            }
+        }
+    } else {
+        let _ = writeln!(console, "# net: tcp data skipped (no connect)");
+    }
+    if !tap(console, 34, "net: tcp data", tcp_data_ok) {
+        all_ok = false;
+    }
+
+    // ---------------------------------------------------------------- TAP 35: DNS
+    // Truy vấn `example.com` type `A` tới `10.0.2.3:53` (DNS server của slirp). MAC của DNS
+    // server resolve bằng ARP **thật** (10.0.2.3 cùng dải 10.0.2.0/24 với ta) — không dùng MAC
+    // gateway cho một host cùng mạng.
+    let mut dns_ok = false;
+    if let Some(cfg) = &config {
+        let our_mac = MacAddr::new(virtio_net::mac());
+        match virtio_net::arp_resolve(
+            cfg.ip,
+            virtio_net::DNS_SERVER_IP,
+            virtio_net::NET_STEP_TIMEOUT_US,
+        ) {
+            Ok(dns_mac) => {
+                let _ = writeln!(
+                    console,
+                    "# net: arp dns={} ip={}",
+                    MacText(dns_mac.octets()),
+                    IpText(virtio_net::DNS_SERVER_IP)
+                );
+                let started = virtio_net::now_us();
+                match virtio_net::dns_query(
+                    cfg.ip,
+                    our_mac,
+                    virtio_net::DNS_SERVER_IP,
+                    dns_mac,
+                    DNS_ID_A,
+                    DNS_NAME_A,
+                    virtio_net::NET_STEP_TIMEOUT_US,
+                ) {
+                    Ok(answer) => {
+                        let record = answer.a;
+                        let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                        let _ = writeln!(
+                            console,
+                            "# net dns: name=example.com id=0x{:x} rcode={} an={} reply_len={} \
+                             rtt_ms={} elapsed_ms={elapsed_ms} const:timeout_ms={}",
+                            answer.id,
+                            answer.rcode,
+                            record.is_some() as u8,
+                            answer.reply_len,
+                            answer.rtt_ms,
+                            virtio_net::NET_STEP_TIMEOUT_US / 1000
+                        );
+                        match record {
+                            Some(record) => {
+                                let _ = writeln!(
+                                    console,
+                                    "# net: dns example.com a={} ttl={}",
+                                    record.addr, record.ttl
+                                );
+                                dns_ok = answer.rcode == 0;
+                            }
+                            None => {
+                                let _ = writeln!(console, "# net: no dns");
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let elapsed_ms = virtio_net::now_us().saturating_sub(started) / 1000;
+                        let _ = writeln!(
+                            console,
+                            "# net dns: elapsed_ms={elapsed_ms} err={}",
+                            error.name()
+                        );
+                        let _ = writeln!(console, "# net: no dns");
+                    }
+                }
+            }
+            Err(error) => {
+                let _ = writeln!(
+                    console,
+                    "# net arp dns: ip={} err={}",
+                    IpText(virtio_net::DNS_SERVER_IP),
+                    error.name()
+                );
+                let _ = writeln!(console, "# net: no dns");
+            }
+        }
+    } else {
+        let _ = writeln!(console, "# net: dns skipped (no dhcp)");
+    }
+    if !tap(console, 35, "net: dns", dns_ok) {
         all_ok = false;
     }
 

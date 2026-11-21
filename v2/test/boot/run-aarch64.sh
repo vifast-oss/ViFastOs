@@ -23,20 +23,22 @@
 # ĐỎ; cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
 # maintenance) đều phải ĐỎ; cộng **ca âm (p) của KT-279** — boot **không có GPU** phải in
 # `# gpu: no device` và TAP phải ĐỎ; cộng **ca âm (q) của KT-283** — boot **không có bàn phím**
-# phải in `# input: no device` và TAP phải ĐỎ (**17 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
+# phải in `# input: no device` và TAP phải ĐỎ; cộng **hai ca âm (r)/(s) của KT-289** — thiếu dòng
+# `# net: tcp`/`# net: dns` đều phải ĐỎ (**19 ca âm**). Nhờ vậy mỗi lần chạy runner vừa
 # chứng minh ảnh boot sạch, vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường
 # "PASS giả".
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs aarch64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 27 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
+#   EXPECT_TESTS    số ca TAP (mặc định 35 — KT-253 thêm 2 ca nửa cao/physmap, KT-254 thêm 2 ca
 #                   VSpace/fault, KT-259 thêm 3 ca SMP: hart 1 online, IPI 0->1, cả hai hart báo,
 #                   KT-262 thêm 3 ca TLBI/smp 4, KT-269 thêm 3 ca U-mode: EL0 vào được, `svc`
 #                   được xử lý, EL0 chạy tiếp sau `svc` rồi `Exit`, **KT-273 thêm 3 ca PCI/blk**:
 #                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`, **KT-275 thêm 4 ca
 #                   mạng**: `net: device`, `net: dhcp`, `net: arp`, `net: ping`, **KT-277 thêm 2
 #                   ca**: `wx: text RX (write faults), data RW`, `dma: cache maintenance
-#                   before/after DMA`)
+#                   before/after DMA`, **KT-279 thêm 3 ca GPU**, **KT-283 thêm 2 ca bàn phím**,
+#                   **KT-289 thêm 3 ca TCP/DNS**: `net: tcp connect`, `net: tcp data`, `net: dns`)
 # cộng **hai ca âm của KT-277** — thiếu dòng `# wx:` (W^X) và thiếu dòng `# dma:` (cache
 # maintenance) đều phải ĐỎ (14 ca âm). Nhờ vậy mỗi lần chạy runner vừa chứng minh ảnh boot sạch,
 # vừa chứng minh bộ kiểm **không phải dấu cao su** — không có đường "PASS giả".
@@ -133,6 +135,19 @@
 #     của slirp (cùng khuôn `net.sh` riscv64);
 #   - `# net: arp gw=<mac>` — ARP reply **thật** của slirp (MAC khác 0/broadcast);
 #   - `# net: ping 10.0.2.2 ok n=3 rtt=<ms>` — ICMP echo **thật** qua gateway.
+#
+# **KT-289**: TCP client + DNS trên aarch64 (khuôn `net.sh` riscv64 KT-268). Runner dựng **server
+# TCP thật** bằng `python3` trên `127.0.0.1:45678`; khách nối `10.0.2.2:45678` — slirp ánh xạ
+# `10.0.2.2` → loopback host (`sotranslate_out4`). **Không** dùng `hostfwd`: nó là chiều
+# host → guest, không dùng được cho chiều guest → host (KT-268 đã đo). Server ghi log
+# `listen`/`accept`/`sent`/`recv` để runner có bằng chứng **hai chiều** khách ↔ host. Runner đòi
+# thêm ba dòng bằng chứng:
+#   - `# net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established` — bắt tay ba bước **thật**
+#     với server trên host;
+#   - `# net: tcp recv=13 first=vifast-tcp-ok` + `# net tcp data: recv=13 sent=15 send=ok close=ok
+#     …` — nhận **đúng** chuỗi server gửi, gửi lại payload, đóng bằng FIN;
+#   - `# net: dns example.com a=<ip> ttl=<n>` — truy vấn DNS **thật** tới `10.0.2.3:53` của slirp.
+# Cộng **hai ca âm** cho hai dòng `# net: tcp`/`# net: dns` (thiếu dòng ⇒ ĐỎ) — **19 ca âm**.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,7 +161,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-32}"
+EXPECT_TESTS="${EXPECT_TESTS:-35}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -167,6 +182,18 @@ INPUT_BAR_ASSIGNED='0x10600000'
 # Socket monitor — tên ngắn (giới hạn 104 byte của unix socket trên macOS). **KT-283**: cùng
 # socket phục vụ `screendump` (GPU) và `sendkey` (bàn phím).
 SOCK="${TMPDIR:-/tmp}/kt283-mon-$$.sock"
+# **KT-289** — TCP: server **thật** trên host. Runner dựng `python3` lắng nghe
+# `127.0.0.1:$TCP_PORT`; khách nối `10.0.2.2:$TCP_PORT` (slirp ánh xạ 10.0.2.2 → loopback host —
+# xem ghi chú `hostfwd` ở đầu tệp). Server gửi đúng `$TCP_TOKEN` (13 byte) rồi chờ khách gửi
+# `$TCP_SEND_LEN` byte + FIN; log server là bằng chứng **hai chiều**.
+TCP_PORT=45678
+TCP_TOKEN="vifast-tcp-ok"
+TCP_TOKEN_LEN=${#TCP_TOKEN}
+TCP_SEND_LEN=15 # `vifast-tcp-send`
+TCP_CONNECT_LINE="^# net: tcp connect 10\\.0\\.2\\.2:${TCP_PORT} ok rtt=[0-9]+ state=established$"
+TCP_RECV_LINE="^# net: tcp recv=${TCP_TOKEN_LEN} first=${TCP_TOKEN}$"
+TCP_DATA_LINE="^# net tcp data: recv=${TCP_TOKEN_LEN} sent=${TCP_SEND_LEN} send=ok close=ok state=(fin-wait-2|time-wait|closing|last-ack|closed) retransmits=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$"
+DNS_LINE='^# net: dns example\.com a=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ttl=[0-9]+$'
 
 case "${1:-}" in
 '' | *[!0-9]*) ;;
@@ -574,6 +601,39 @@ check_net() {
         echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
+    # **KT-289** — TCP client + DNS. Ba dòng bằng chứng, mỗi dòng **đúng một** lần:
+    #   `# net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established` — bắt tay ba bước thật;
+    #   `# net: tcp recv=13 first=vifast-tcp-ok` — nhận **đúng** chuỗi server gửi;
+    #   `# net tcp data: recv=13 sent=15 send=ok close=ok …` — gửi lại + đóng FIN;
+    #   `# net: dns example.com a=<ip> ttl=<n>` — DNS **thật** của slirp.
+    # Dòng `# net: no tcp`/`# net: no dns` là dấu hiệu **thất bại** — có nó là ĐỎ.
+    n="$(grep -cE "$TCP_CONNECT_LINE" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: tcp connect 10.0.2.2:$TCP_PORT ok rtt=<ms> state=established' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    n="$(grep -cE "$TCP_RECV_LINE" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: tcp recv=$TCP_TOKEN_LEN first=$TCP_TOKEN' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    n="$(grep -cE "$TCP_DATA_LINE" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net tcp data:' (recv=$TCP_TOKEN_LEN sent=$TCP_SEND_LEN send=ok close=ok) xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    n="$(grep -cE "$DNS_LINE" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    for want in '# net: no tcp' '# net: no dns'; do
+        n="$(grep -Fc "$want" "$log" || true)"
+        if [ "${n:-0}" -ne 0 ]; then
+            echo "# log có '$want' (bước TCP/DNS thất bại)"
+            bad=1
+        fi
+    done
     [ "$bad" -eq 0 ]
 }
 
@@ -659,6 +719,129 @@ time.sleep(0.05)
 s.close()
 sys.exit(0)
 PY
+}
+
+# ---------------------------------------------------------------- TCP server trên host (KT-289)
+# Vì sao `python3` chứ không `socat`/`nc`: hai công cụ đó **có thể không có** trên máy đo; python3
+# là thứ runner đã đòi cho monitor/`gpu_ppm.py`. Server ghi log từng mốc
+# (`listen`/`accept`/`sent`/`recv`) để runner có bằng chứng **hai chiều** khách ↔ host, không chỉ
+# tin log của khách. Cùng khuôn `net.sh` riscv64 (KT-268) — **không** có bản thứ hai lệch hành vi.
+TCP_SERVER_PID=""
+
+write_tcp_server() {
+    cat >"$LOGDIR/kt289-tcp-server.py" <<'PY'
+import socket, sys
+
+port = int(sys.argv[1])
+token = sys.argv[2].encode()
+log = sys.argv[3]
+
+
+def note(line):
+    with open(log, "a") as handle:
+        handle.write(line + "\n")
+
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    srv.bind(("127.0.0.1", port))
+except OSError as error:
+    note("bind_err=%s" % error)
+    sys.exit(2)
+srv.listen(1)
+note("listen port=%d" % port)
+srv.settimeout(60.0)
+try:
+    conn, addr = srv.accept()
+except socket.timeout:
+    note("accept_timeout")
+    sys.exit(3)
+note("accept peer=%s:%d" % addr)
+conn.sendall(token)
+note("sent=%d" % len(token))
+conn.settimeout(5.0)
+total = 0
+try:
+    while True:
+        data = conn.recv(4096)
+        if not data:
+            break
+        total += len(data)
+except socket.timeout:
+    note("recv_timeout")
+note("recv=%d" % total)
+conn.close()
+srv.close()
+PY
+}
+
+# `start_tcp_server <log>`: dựng server, chờ dòng `listen` (tối đa 5 s). 0 = sẵn sàng.
+start_tcp_server() {
+    local srv_log="$1" i
+    command -v python3 >/dev/null 2>&1 || {
+        echo "run-aarch64.sh: không có python3 để dựng TCP server" >&2
+        return 1
+    }
+    write_tcp_server
+    rm -f "$srv_log"
+    python3 "$LOGDIR/kt289-tcp-server.py" "$TCP_PORT" "$TCP_TOKEN" "$srv_log" &
+    TCP_SERVER_PID=$!
+    for i in $(seq 1 50); do
+        if grep -q '^listen ' "$srv_log" 2>/dev/null; then
+            return 0
+        fi
+        if grep -q '^bind_err=' "$srv_log" 2>/dev/null; then
+            echo "run-aarch64.sh: TCP server không bind được 127.0.0.1:$TCP_PORT — port đang bận?" >&2
+            cat "$srv_log" >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+    echo "run-aarch64.sh: TCP server không lắng nghe sau 5 s" >&2
+    return 1
+}
+
+# `wait_tcp_server <log>`: chờ server xong (tối đa 20 s) và đòi đủ ba mốc bằng chứng.
+wait_tcp_server() {
+    local srv_log="$1" i
+    for i in $(seq 1 200); do
+        if grep -qE '^(recv=|accept_timeout|bind_err)' "$srv_log" 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+    if [ -n "$TCP_SERVER_PID" ]; then
+        if kill -0 "$TCP_SERVER_PID" 2>/dev/null; then
+            kill "$TCP_SERVER_PID" 2>/dev/null || true
+            echo "run-aarch64.sh: server TCP vẫn chạy sau 20 s — đã kill" >&2
+            TCP_SERVER_PID=""
+            return 1
+        fi
+        wait "$TCP_SERVER_PID" 2>/dev/null || true
+        TCP_SERVER_PID=""
+    fi
+    grep -q '^accept ' "$srv_log" || {
+        echo "run-aarch64.sh: server TCP không nhận kết nối từ khách" >&2
+        return 1
+    }
+    grep -qx "sent=$TCP_TOKEN_LEN" "$srv_log" || {
+        echo "run-aarch64.sh: server TCP không gửi đủ $TCP_TOKEN_LEN byte" >&2
+        return 1
+    }
+    grep -qx "recv=$TCP_SEND_LEN" "$srv_log" || {
+        echo "run-aarch64.sh: server TCP không nhận đúng $TCP_SEND_LEN byte từ khách" >&2
+        return 1
+    }
+    return 0
+}
+
+stop_tcp_server() {
+    if [ -n "$TCP_SERVER_PID" ]; then
+        kill "$TCP_SERVER_PID" 2>/dev/null || true
+        wait "$TCP_SERVER_PID" 2>/dev/null || true
+        TCP_SERVER_PID=""
+    fi
 }
 
 # `boot_full <log> <ppm>`: khởi động QEMU **có màn hình + bàn phím + monitor**, chờ marker của
@@ -1371,20 +1554,35 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     out="$LOGDIR/boot-nogpu.log"
-    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+    srv_log="$LOGDIR/kt289-tcp-server-nogpu.log"
+    # **KT-289**: boot này **có** mạng nên khách chạy tới TCP trước khi hỏng ở GPU — server phải
+    # có, nếu không TAP 33/34 đỏ vì lý do sai và `# gpu: no device` không bao giờ được in.
+    if ! start_tcp_server "$srv_log"; then
+        echo "not ok $n - ca âm (p): không dựng được TCP server trên 127.0.0.1:$TCP_PORT"
+        fails=$((fails + 1))
+        stop_tcp_server
+    elif ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
         -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
         -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
         -device virtio-blk-pci,drive=d0; then
         echo "not ok $n - ca âm (p): boot không có GPU bị treo/timeout"
         fails=$((fails + 1))
+        stop_tcp_server
+    elif ! wait_tcp_server "$srv_log"; then
+        echo "not ok $n - ca âm (p): server TCP không có đủ bằng chứng hai chiều (log $srv_log)"
+        fails=$((fails + 1))
+        stop_tcp_server
     elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/p.out" 2>&1; then
         echo "not ok $n - ca âm (p): không có GPU mà kiểm vẫn XANH"
         fails=$((fails + 1))
+        stop_tcp_server
     elif ! grep -Fq '# gpu: no device' "$out"; then
         echo "not ok $n - ca âm (p): thiếu dòng '# gpu: no device'"
         fails=$((fails + 1))
+        stop_tcp_server
     else
+        stop_tcp_server
         echo "ok $n - ca âm (p): không có GPU ⇒ '# gpu: no device' + TAP ĐỎ ($(head -1 "$tmp/p.out"))"
     fi
 
@@ -1397,21 +1595,58 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     out="$LOGDIR/boot-nokbd.log"
-    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+    srv_log="$LOGDIR/kt289-tcp-server-nokbd.log"
+    # **KT-289**: như (p) — boot này có mạng nên khách chạy tới TCP trước khi hỏng ở bàn phím.
+    if ! start_tcp_server "$srv_log"; then
+        echo "not ok $n - ca âm (q): không dựng được TCP server trên 127.0.0.1:$TCP_PORT"
+        fails=$((fails + 1))
+        stop_tcp_server
+    elif ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
         -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
         -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
         -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci; then
         echo "not ok $n - ca âm (q): boot không có bàn phím bị treo/timeout"
         fails=$((fails + 1))
+        stop_tcp_server
+    elif ! wait_tcp_server "$srv_log"; then
+        echo "not ok $n - ca âm (q): server TCP không có đủ bằng chứng hai chiều (log $srv_log)"
+        fails=$((fails + 1))
+        stop_tcp_server
     elif check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/q.out" 2>&1; then
         echo "not ok $n - ca âm (q): không có bàn phím mà kiểm vẫn XANH"
         fails=$((fails + 1))
+        stop_tcp_server
     elif ! grep -Fq '# input: no device' "$out"; then
         echo "not ok $n - ca âm (q): thiếu dòng '# input: no device'"
         fails=$((fails + 1))
+        stop_tcp_server
     else
+        stop_tcp_server
         echo "ok $n - ca âm (q): không có bàn phím ⇒ '# input: no device' + TAP ĐỎ ($(head -1 "$tmp/q.out"))"
+    fi
+
+    # (r) **KT-289** — thiếu **cả** dòng `# net: tcp` (ảnh không mở TCP / không nhận dữ liệu).
+    # TAP 33/34 vẫn có thể `ok` nếu ảnh tự khai — dòng bằng chứng mới là thứ bộ kiểm đòi.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# net: tcp ' "$good" | grep -vF '# net tcp data: ' >"$tmp/r.log" 2>/dev/null || true
+    if check_log "$tmp/r.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/r.out" 2>&1; then
+        echo "not ok $n - ca âm (r): thiếu dòng '# net: tcp' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (r): thiếu dòng '# net: tcp' ⇒ ĐỎ ($(head -1 "$tmp/r.out"))"
+    fi
+
+    # (s) **KT-289** — thiếu **cả** dòng `# net: dns` (ảnh không truy vấn DNS / không có bản ghi A).
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# net: dns ' "$good" >"$tmp/s.log" 2>/dev/null || true
+    if check_log "$tmp/s.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/s.out" 2>&1; then
+        echo "not ok $n - ca âm (s): thiếu dòng '# net: dns' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (s): thiếu dòng '# net: dns' ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
     fi
 
     NEG_CASES=$cases
@@ -1482,14 +1717,34 @@ while [ "$i" -le "$N_BOOT" ]; do
     total=$((total + 1))
     out="$LOGDIR/boot-$i.log"
     ppm="$LOGDIR/boot-$i.ppm"
+    srv_log="$LOGDIR/kt289-tcp-server-$i.log"
+    # **KT-289**: server TCP **thật** phải lắng nghe **trước** khi khách bắt tay. Không dựng được
+    # ⇒ boot đó ĐỎ (không có đường "TCP xanh nhờ timeout").
+    if ! start_tcp_server "$srv_log"; then
+        echo "not ok $total - boot $i: không dựng được TCP server trên 127.0.0.1:$TCP_PORT"
+        fails=$((fails + 1))
+        stop_tcp_server
+        i=$((i + 1))
+        continue
+    fi
     boot_full "$out" "$ppm"
     rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
         fails=$((fails + 1))
+        stop_tcp_server
         i=$((i + 1))
         continue
     fi
+    # Bằng chứng **hai chiều**: log server phải có `accept` + `sent=13` + `recv=15`.
+    if ! wait_tcp_server "$srv_log"; then
+        echo "not ok $total - boot $i: server TCP không có đủ bằng chứng hai chiều (log $srv_log)"
+        fails=$((fails + 1))
+        stop_tcp_server
+        i=$((i + 1))
+        continue
+    fi
+    stop_tcp_server
     if check_log "$out" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$LOGDIR/tap-$i.log" 2>&1; then
         echo "ok $total - boot $i: TAP $EXPECT_TESTS/$EXPECT_TESTS + marker 1 lần + hash ảnh khớp ELF"
     else

@@ -17,9 +17,9 @@
 //!        ├─ KT-259: GICv3 (distributor + redistributor hart 0) → công bố thanh ghi MMU →
 //!        │     PSCI `CPU_ON(1, _start_secondary, 1)` → hart 1 online (TAP 10) → SGI 0 làm IPI
 //!        │     (TAP 11) → cả hai hart in hart id (TAP 12)
-//!        ├─ KT-273/275/277/279 (ở `el0_done`, sau U-mode): PCI ECAM + virtio-blk (TAP 19..21) →
-//!        │     virtio-net + DHCP/ARP/ICMP (TAP 22..25) → W^X + cache DMA (TAP 26/27) →
-//!        │     virtio-gpu 2D + console trên framebuffer (TAP 28..30)
+//!        ├─ KT-273/275/277/279/289 (ở `el0_done`, sau U-mode): PCI ECAM + virtio-blk (TAP 19..21) →
+//!        │     virtio-net + DHCP/ARP/ICMP (TAP 22..25) → TCP client + DNS (TAP 33..35) →
+//!        │     W^X + cache DMA (TAP 26/27) → virtio-gpu 2D + console trên framebuffer (TAP 28..30)
 //!        └─ debug_halt: PSCI SYSTEM_OFF (hvc #0, x0 = 0x8400_0008) ⇒ QEMU thoát mã 0
 //! ```
 //!
@@ -473,8 +473,9 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// `blk: sector0`) + **4 ca của KT-275** (`net: device`, `net: dhcp`, `net: arp`, `net: ping`)
 /// + **2 ca của KT-277** (`wx: text RX (write faults), data RW`,
 /// `dma: cache maintenance before/after DMA`) + **3 ca của KT-279** (`gpu: device`, `gpu: draw`,
-/// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`).
-pub const TAP_TESTS: usize = 32;
+/// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
+/// (`net: tcp connect`, `net: tcp data`, `net: dns`).
+pub const TAP_TESTS: usize = 35;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///

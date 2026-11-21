@@ -115,7 +115,8 @@ thiết bị đã trả lời (`JOURNAL/kt246-red-arp-bug.log`). Đây là lý d
 
 ## 8. Còn thiếu
 
-1. **TCP** và **socket API** (N1) — chưa có (UDP + DNS đã có ở KT-260).
+1. **TCP** và **socket API** (N1) — TCP client + DNS đã có trên riscv64 (KT-260/KT-268) và
+   aarch64 (KT-289); **socket API** và **TCP server** vẫn chưa.
 2. **Net server U-mode** — chưa có; hiện toàn bộ stack chạy trong kernel ảnh test.
 3. **virtio-gpu / virtio-input** — input đang mở ở KT-255.
 4. **`ping`/`ifconfig` trong shell sản phẩm** — chưa có (driver chỉ trong ảnh test).
@@ -135,4 +136,7 @@ Khác biệt **chỉ** ở tầng driver (không phải codec): DMA bằng **PA*
 trạng thái bằng `Atomic*` (crate `deny(unsafe_code)` ngoài `asm`), trần thời gian bằng
 `CNTPCT_EL0`. Chi tiết + số đo: `k4-aarch64-boot.md` §11.
 
-**Chưa** có trên aarch64: TCP, DNS, net server U-mode, MSI-X (driver poll `used`).
+**Đã có trên aarch64 từ KT-289**: TCP client (`vifast_net::tcp`, timeout 3 s, retransmit ≤ 3) và
+DNS `A` (`vifast_net::dns`) — TAP 33/34/35, runner dựng **server TCP thật** trên host
+(`127.0.0.1:45678`, slirp ánh xạ `10.0.2.2` → loopback). Chi tiết: `k4-aarch64-boot.md` §15.
+**Chưa** có trên aarch64: TCP server, IPv6, SACK, net server U-mode, MSI-X (driver poll `used`).

@@ -14,10 +14,11 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..32`; đúng **32** dòng `ok N - `, đủ số 1..32,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..35`; đúng **35** dòng `ok N - `, đủ số 1..35,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25; KT-277 thêm 2 ca W^X/cache-DMA: 25 → 27;
-#      **KT-279** thêm 3 ca GPU: 27 → 30; **KT-283** thêm 2 ca bàn phím: 30 → 32);
+#      **KT-279** thêm 3 ca GPU: 27 → 30; **KT-283** thêm 2 ca bàn phím: 30 → 32;
+#      **KT-289** thêm 3 ca TCP/DNS: 32 → 35);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. `# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1` — **bốn** hart (KT-262);
@@ -70,6 +71,15 @@
 # D2-08). Chi phí: 1.000 boot × 0,5 s ÷ 3 luồng ≈ **+2,8 phút** cho toàn soak. Lựa chọn thay thế
 # (bỏ `-device virtio-gpu-pci` trong soak) **bị loại**: ảnh sẽ in `not ok 28..30` ⇒ soak ĐỎ, tức
 # phải nới bất biến TAP — không được phép.
+#
+# **KT-289 — TCP/DNS có mặt trong soak, ghi rõ lựa chọn**: ảnh in TAP 33/34 cho **TCP client**
+# (khuôn `net.sh` riscv64 KT-268), nên mỗi boot soak cần **server TCP thật** trên host. Soak chạy
+# **3 luồng song song** ⇒ dùng **một** server `python3` nhận **nhiều** kết nối (mỗi boot một kết
+# nối, xử lý tuần tự), khởi động **trước** boot dò và dừng sau khi mọi luồng xong; trap `EXIT`
+# dọn server (chuỗi với `qg_cleanup` của `qemu_guard.sh`). Lựa chọn thay thế **bị loại**: (a) bỏ
+# TCP khỏi ảnh ⇒ `not ok 33/34` ⇒ soak ĐỎ, tức phải nới bất biến TAP; (b) cờ "chế độ soak" trong
+# ảnh ⇒ nhánh chỉ dùng cho test (D2-08 cấm). Chi phí **đo được**: một kết nối TCP + DNS trên mỗi
+# boot (~10 ms dưới TCG) — không đáng kể so với 500 ms giữ khung hình của GPU.
 #   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
 #   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
@@ -109,9 +119,10 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=32   # KT-275 + KT-277 + KT-279 + KT-283: 32 ca (KT-273 21 + 4 ca mạng + 2 ca
-               # W^X/cache-DMA + 3 ca GPU: device/draw/console + 2 ca bàn phím: device/key; khớp
-               # `1..32` của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=35   # KT-275 + KT-277 + KT-279 + KT-283 + KT-289: 35 ca (KT-273 21 + 4 ca mạng + 2
+               # ca W^X/cache-DMA + 3 ca GPU: device/draw/console + 2 ca bàn phím: device/key +
+               # 3 ca TCP/DNS: tcp connect/tcp data/dns; khớp `1..35` của ảnh và `EXPECT_TESTS`
+               # của runner)
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -342,6 +353,39 @@ check_boot_log() {
         echo "# dòng '# net: ping 10.0.2.2 ok n=3 rtt=<ms>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
+    # (5c2) **KT-289** — TCP client + DNS. Cùng bất biến `run-aarch64.sh` (`check_net`): bắt tay
+    #       ba bước **thật** với server trên host (`# net: tcp connect … state=established`), nhận
+    #       **đúng** chuỗi server gửi (`# net: tcp recv=13 first=vifast-tcp-ok`), gửi lại + đóng
+    #       FIN (`# net tcp data: … send=ok close=ok`), và DNS **thật** của slirp
+    #       (`# net: dns example.com a=<ip> ttl=<n>`). Ảnh mất TCP/DNS ⇒ soak ĐỎ dù TAP 1..32
+    #       vẫn xanh. Dòng `# net: no tcp`/`# net: no dns` là dấu hiệu **thất bại** — có nó là ĐỎ.
+    n="$(grep -cE '^# net: tcp connect 10\.0\.2\.2:45678 ok rtt=[0-9]+ state=established$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# net: tcp recv=13 first=vifast-tcp-ok$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: tcp recv=13 first=vifast-tcp-ok' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# net tcp data: recv=13 sent=15 send=ok close=ok state=(fin-wait-2|time-wait|closing|last-ack|closed) retransmits=[0-9]+ elapsed_ms=[0-9]+ const:timeout_ms=3000$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net tcp data:' (recv=13 sent=15 send=ok close=ok) xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# net: dns example\.com a=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ttl=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    for want in '# net: no tcp' '# net: no dns'; do
+        n="$(grep -Fc "$want" "$log" || true)"
+        [ "${n:-0}" -eq 0 ] || {
+            echo "# log có '$want' (bước TCP/DNS thất bại)"
+            bad=1
+        }
+    done
     # (5c) **KT-277** — W^X toàn ảnh + cache maintenance trước DMA. Cùng bất biến `run-aarch64.sh`
     #      (`check_wx`/`check_dma`): quyền đọc lại **từ bảng trang** (`text=RX data=RW ok=1`), một
     #      lần **ghi** vào `.text` từ EL1 phải sinh data abort quyền (`fault_ec=0x25`,
@@ -600,7 +644,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..32
+1..35
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -653,6 +697,16 @@ ok 23 - net: dhcp
 ok 24 - net: arp
 # net: ping 10.0.2.2 ok n=3 rtt=0
 ok 25 - net: ping
+# net: tcp connect 10.0.2.2:45678 ok rtt=1 state=established
+# net tcp connect: iss=0x4b540001 snd_una=0x4b540002 rcv_nxt=0x12345679 retransmits=0 elapsed_ms=1 const:timeout_ms=3000 const:port=45678
+ok 33 - net: tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+# net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=2 const:timeout_ms=3000
+ok 34 - net: tcp data
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=45 rtt_ms=1 elapsed_ms=1 const:timeout_ms=3000
+# net: dns example.com a=93.184.216.34 ttl=3600
+ok 35 - net: dns
 # net stats: tx_frames=6 tx_bytes=860 rx_frames=6 rx_bytes=1466 notifies=13 errors=0 timeouts=0 id_mismatch=0
 # wx: text=RX data=RW ok=1 text_bytes=77824 data_bytes=782336 guard_pages=8 guard_bytes=32768 text_va=0xffffffc080000100 data_va=0xffffffc080013000 text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080000100 fault_elr=0xffffffc080004cf4 low_fault_ec=0x25 low_fault_va=0x40080100 text_unchanged=1 data_rw=1 data_in_rw=1
 ok 26 - wx: text RX (write faults), data RW
@@ -835,6 +889,13 @@ EOF
     grep -v -F '# input: ready' "$good" >"$tmp/ae.log" || true
     neg "thiếu dòng '# input: ready' (không arm đệm trước khi bơm phím)" "$tmp/ae.log"
 
+    # **KT-289** — hai ca âm cho bất biến TCP/DNS (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# net: tcp ' "$good" | grep -v -F '# net tcp data: ' >"$tmp/af.log" || true
+    neg "thiếu dòng '# net: tcp' (không mở/nhận được TCP)" "$tmp/af.log"
+
+    grep -v -F '# net: dns ' "$good" >"$tmp/ag.log" || true
+    neg "thiếu dòng '# net: dns' (không có bản ghi A)" "$tmp/ag.log"
+
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
     [ "$fails" -eq 0 ] || return 1
@@ -961,6 +1022,96 @@ INFRA_INVALID=0
 INFRA_LOG="$LOGDIR/kt265-infra.log"
 qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 
+# ------------------------------------------------------------------ TCP server trên host (KT-289)
+# Ảnh aarch64 in TAP 33/34 cho **TCP client**; khách nối `10.0.2.2:45678` → slirp ánh xạ về
+# `127.0.0.1:45678` của host (`sotranslate_out4`; `hostfwd` là chiều host → guest nên **không**
+# dùng được — KT-268). Soak chạy **3 luồng song song** ⇒ **một** server nhận **nhiều** kết nối
+# (mỗi boot một kết nối), xử lý tuần tự; log ghi từng mốc để đếm bằng chứng hai chiều. Cùng khuôn
+# `net.sh`/`run-aarch64.sh` (KT-268/KT-289) — không có bản thứ hai lệch hành vi.
+TCP_PORT=45678
+TCP_TOKEN="vifast-tcp-ok"
+TCP_TOKEN_LEN=${#TCP_TOKEN}
+TCP_SEND_LEN=15 # `vifast-tcp-send`
+TCP_SERVER_PID=""
+TCP_SERVER_LOG=""
+
+write_soak_tcp_server() {
+    cat >"$LOGDIR/kt289-tcp-server.py" <<'PY'
+import socket, sys
+
+port = int(sys.argv[1])
+token = sys.argv[2].encode()
+log = sys.argv[3]
+
+
+def note(line):
+    with open(log, "a") as handle:
+        handle.write(line + "\n")
+
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    srv.bind(("127.0.0.1", port))
+except OSError as error:
+    note("bind_err=%s" % error)
+    sys.exit(2)
+srv.listen(8)
+note("listen port=%d" % port)
+srv.settimeout(1.0)
+while True:
+    try:
+        conn, addr = srv.accept()
+    except socket.timeout:
+        continue
+    except OSError:
+        break
+    note("accept peer=%s:%d" % addr)
+    try:
+        conn.sendall(token)
+        note("sent=%d" % len(token))
+        conn.settimeout(5.0)
+        total = 0
+        while True:
+            data = conn.recv(4096)
+            if not data:
+                break
+            total += len(data)
+        note("recv=%d" % total)
+    except OSError as error:
+        note("conn_err=%s" % error)
+    finally:
+        conn.close()
+PY
+}
+
+start_soak_tcp_server() {
+    local i
+    command -v python3 >/dev/null 2>&1 || die "không có python3 để dựng TCP server (KT-289)"
+    write_soak_tcp_server
+    TCP_SERVER_LOG="$LOGDIR/kt289-tcp-server.log"
+    rm -f "$TCP_SERVER_LOG"
+    python3 "$LOGDIR/kt289-tcp-server.py" "$TCP_PORT" "$TCP_TOKEN" "$TCP_SERVER_LOG" &
+    TCP_SERVER_PID=$!
+    for i in $(seq 1 50); do
+        grep -q '^listen ' "$TCP_SERVER_LOG" 2>/dev/null && return 0
+        if grep -q '^bind_err=' "$TCP_SERVER_LOG" 2>/dev/null; then
+            cat "$TCP_SERVER_LOG" >&2
+            die "TCP server không bind được 127.0.0.1:$TCP_PORT — port đang bận?"
+        fi
+        sleep 0.1
+    done
+    die "TCP server không lắng nghe sau 5 s"
+}
+
+stop_soak_tcp_server() {
+    if [ -n "$TCP_SERVER_PID" ]; then
+        kill "$TCP_SERVER_PID" 2>/dev/null || true
+        wait "$TCP_SERVER_PID" 2>/dev/null || true
+        TCP_SERVER_PID=""
+    fi
+}
+
 echo "# build ảnh aarch64 ($TARGET, release)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
     >"$LOGDIR/kt265-soak-build.log" 2>&1; then
@@ -1007,6 +1158,13 @@ fi
 # ở đây là **một** boot dò: log phải có **đúng một** `# conf image:` khớp ELF. Không có/lệch ⇒
 # TỪ CHỐI ĐO (exit 3), **không** đếm một boot soak nào — thà không đo còn hơn đo ảnh không rõ nguồn.
 PROBE_LOG="$LOGDIR/kt265-probe.log"
+# Trap **chuỗi**: giữ `qg_cleanup` của `qemu_guard.sh` (KT-78) và thêm dọn server TCP — đặt
+# **trước** khi dựng server để `die` giữa chừng cũng không để tiến trình nền lại.
+trap 'stop_soak_tcp_server; qg_cleanup' EXIT
+trap 'stop_soak_tcp_server; qg_cleanup; exit 130' INT
+trap 'stop_soak_tcp_server; qg_cleanup; exit 143' TERM
+# **KT-289**: server TCP phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 33/34 ở mọi boot).
+start_soak_tcp_server
 echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
 if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
     echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
@@ -1165,12 +1323,27 @@ lane_worker() {
 echo "# soak: bắt đầu N=$N lanes=$LANES $(date -u '+%H:%M:%SZ')"
 SECONDS=0
 lane=1
+LANE_PIDS=""
 while [ "$lane" -le "$LANES" ]; do
     lane_worker "$lane" "$lane" &
+    # **KT-289**: `wait` **không tham số** sẽ chờ **cả** TCP server nền (chạy vô hạn) ⇒ treo.
+    # Chỉ chờ đúng PID của từng luồng.
+    LANE_PIDS="$LANE_PIDS $!"
     lane=$((lane + 1))
 done
-wait
+for lane_pid in $LANE_PIDS; do
+    wait "$lane_pid"
+done
 WALL="$SECONDS"
+
+# **KT-289** — dừng server TCP và in bằng chứng **hai chiều** tổng hợp: mỗi boot (kể cả boot dò)
+# phải để lại `accept` + `sent=13` + `recv=15`. Không đủ số kết nối nghĩa là có boot không chạy
+# tới TCP — boot đó đã ĐỎ ở `check_boot_log`, đây chỉ là bằng chứng phụ (không nới ngưỡng nào).
+stop_soak_tcp_server
+TCP_CONNS="$(grep -c '^accept ' "$TCP_SERVER_LOG" 2>/dev/null || true)"
+TCP_SENT="$(grep -c "^sent=$TCP_TOKEN_LEN$" "$TCP_SERVER_LOG" 2>/dev/null || true)"
+TCP_RECV="$(grep -c "^recv=$TCP_SEND_LEN$" "$TCP_SERVER_LOG" 2>/dev/null || true)"
+echo "# tcp server: connections=${TCP_CONNS:-0} sent${TCP_TOKEN_LEN}=${TCP_SENT:-0} recv${TCP_SEND_LEN}=${TCP_RECV:-0} (mỗi boot một kết nối; log $TCP_SERVER_LOG)"
 
 # ------------------------------------------------------------------ ảnh không được đổi giữa soak
 if command -v shasum >/dev/null 2>&1; then

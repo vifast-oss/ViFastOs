@@ -573,7 +573,7 @@ mạng"). Soak `soak-aarch64.sh`: `--selftest` **23/23** (1 dương + 22 âm), s
 
 ### 11.5 Còn thiếu của B3.11 (ghi rõ)
 
-1. **TCP/DNS** trên aarch64 — chưa có (riscv64 có từ KT-260/KT-268).
+1. **TCP/DNS** trên aarch64 — **đã có từ KT-289** (§15); TCP **server**/IPv6/SACK vẫn chưa.
 2. **Không** dùng ngắt: driver poll `used`; `ISR` chỉ đọc chẩn đoán. **Không** MSI-X.
 3. **Không** cache maintenance (`dc civac`/`dsb`) trước khi bàn giao ring — QEMU TCG không mô
    hình hoá cache nên DMA nhất quán; trên phần cứng thật **chưa** làm, **chưa** đo.
@@ -829,3 +829,89 @@ bị**, TAP 32 đo **phím**.
 4. **Cache maintenance** chỉ quan sát được ở tầng **bộ đếm** (`clean_lines`/`inval_lines`): QEMU
    TCG **không** mô hình hoá cache nên **hiệu ứng** không đo được — cùng giới hạn đã ghi ở §11.3.
 5. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).
+
+## 15. TCP client + DNS — B3.15 (KT-289)
+
+### 15.1 Phạm vi
+
+D1 trên aarch64 trước KT-289 có virtio-net + DHCP/ARP/ICMP (KT-275) nhưng **chưa** TCP/DNS
+(riscv64 có từ KT-260/KT-268). KT-289 mở **cùng** đường đó trên aarch64, dùng lại **nguyên**
+codec `vifast-net` (`tcp`, `dns`) và **không** chép máy trạng thái nào vào kernel:
+
+| Tệp | Nội dung |
+|---|---|
+| `kernel/vifast-plat-aarch64/src/tcp.rs` | **chính sách** TCP client: dựng Ethernet/IPv4/TCP, gửi, chờ segment khớp, thi hành `Action`, retransmit ≤ 3 lần; máy trạng thái là `vifast_net::tcp` |
+| `kernel/vifast-plat-aarch64/src/virtio_net.rs` | thêm `udp_send`/`udp_recv`/`udp_echo`/`dns_query` (cùng khuôn riscv64 KT-260) + `past_deadline` `pub` để `tcp.rs` dùng **một** định nghĩa |
+| `kernel/vifast-kbin-aarch64/src/net.rs` | thêm TAP 33/34/35 (`net: tcp connect`, `net: tcp data`, `net: dns`) sau TAP 25 |
+| `test/boot/run-aarch64.sh` | **server TCP thật** bằng `python3` trên `127.0.0.1:45678` + 3 dòng bằng chứng + 2 ca âm (r)/(s) |
+| `test/boot/soak-aarch64.sh` | TAP 35 + cùng 3 dòng bằng chứng + **một** server TCP nhận nhiều kết nối (3 luồng song song) |
+
+**Không** làm (đúng phạm vi KT-289): TCP **server** trên aarch64, IPv6, SACK, socket API, net
+server U-mode. **Không** tuyên bố K4' đạt.
+
+### 15.2 Khác khuôn riscv64 ở đúng một điểm (do kiến trúc)
+
+Đồng hồ: aarch64 dùng `CNTPCT_EL0 / CNTFRQ_EL0` (`virtio_net::now_us`) thay vì timebase của
+`Platform`; `tcp.rs` vì thế dùng `NET_STEP_TIMEOUT_US` (3 s) và `TCP_RETRANSMIT_US = 3 s / 4`
+thay cho `*_TICKS`. Mọi bất biến còn lại **giữ nguyên**: timeout 3 s/bước, retransmit ≤ 3,
+segment không khớp bị bỏ qua, `Action::Reset` ⇒ `Err(Io)`, fail-closed khi thiếu mạng.
+
+### 15.3 Đo được (log `boot-1.log` của runner, TAP 33..35)
+
+```text
+# net: tcp connect 10.0.2.2:45678 ok rtt=5 state=established
+# net tcp connect: iss=0x4b540001 snd_una=0x4b540002 rcv_nxt=0x2 retransmits=0 elapsed_ms=5 const:timeout_ms=3000 const:port=45678
+ok 33 - net: tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+# net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=2 const:timeout_ms=3000
+ok 34 - net: tcp data
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=61 rtt_ms=43 elapsed_ms=44 const:timeout_ms=3000
+# net: dns example.com a=104.20.23.154 ttl=300
+ok 35 - net: dns
+# net stats: tx_frames=13 tx_bytes=1258 rx_frames=13 rx_bytes=1940 notifies=27 errors=0 timeouts=0 id_mismatch=0
+```
+
+Bằng chứng **hai chiều** phía host (log server của runner):
+
+```text
+listen port=45678
+accept peer=127.0.0.1:59650
+sent=13
+recv=15
+```
+
+- **Đường thật**: khách nối `10.0.2.2:45678`; slirp ánh xạ `10.0.2.2` → loopback host
+  (`sotranslate_out4`). **Không** dùng `hostfwd` — nó là chiều host → guest (KT-268 đã đo).
+- `rtt=5` ms là số đo thật dưới TCG; `retransmits=0` chứng minh không phải đường retransmit.
+- DNS `example.com` → `A 104.20.23.154`, `rcode=0`, `an=1` — reply **thật** của slirp
+  (`10.0.2.3:53`), MAC của DNS server resolve bằng ARP **thật** (`52:55:0a:00:02:03`).
+- `.data+.bss` sau KT-289: xem `budget-aarch64.sh` (runner/soak đều chạy cổng trần 262.144 B).
+
+### 15.4 Ca âm (fail-closed)
+
+| Ca | Cách dựng | Kỳ vọng |
+|---|---|---|
+| **không có server TCP** | cùng ảnh, **không** dựng `python3` server | `# net tcp connect: … err=Timeout` + `# net: no tcp` + `not ok 33/34`; runner coi là **đạt** khi ảnh đỏ đúng cách |
+| **thiếu dòng `# net: tcp`** | biến đổi log tốt (ca âm (r) của runner) | `check_log` ĐỎ |
+| **thiếu dòng `# net: dns`** | biến đổi log tốt (ca âm (s) của runner) | `check_log` ĐỎ |
+
+Runner: **22/22** kiểm sạch, TAP **35/35**, **19 ca âm** (17 cũ + 2 mới). Soak: `--selftest`
+**38/38** (1 dương + 37 âm).
+
+### 15.5 Đột biến — ghi trung thực **tầng nào** đỏ
+
+| # | Đột biến | Host | QEMU |
+|---|---|---|---|
+| (i) | server không trả lời (không dựng server) | — | **ĐỎ** — `# net tcp connect: … err=Timeout` + `not ok 33`; `tcp data`/`dns` cũng đỏ ⇒ không marker |
+| (ii) | DNS sai (trả `id` khác / không có bản ghi A) | — | **ĐỎ** — `# net dns: … err=BadFrame` hoặc `# net: no dns` + `not ok 35` |
+| (iii) | bỏ `tcp_recv` (không nhận dữ liệu) | — | **ĐỎ** — `# net tcp data: recv_err=Timeout` + `not ok 34` |
+
+Chi tiết từng lần chạy: `v2/agent/JOURNAL/` (lead ghi) — mục này chỉ chốt **tầng** đỏ.
+
+### 15.6 Còn thiếu của B3.15 (ghi rõ)
+
+1. **TCP server** trên aarch64 (chỉ client), **IPv6**, **SACK**, **window scaling** — chưa có.
+2. **Socket API** và **net server U-mode** — chưa có; toàn bộ stack chạy trong kernel ảnh test.
+3. **Không** MSI-X: driver poll `used`; `ISR` chỉ đọc chẩn đoán.
+4. **Không** tuyên bố K4' đạt — tiêu chí K4' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 1.000).

@@ -64,6 +64,10 @@ pub mod shootdown;
 pub mod smp;
 pub mod split_mmu;
 pub mod sysreg;
+/// **KT-289** (K4' bước 3, N1 phần 2 trên aarch64): **TCP client** — máy trạng thái ở
+/// `vifast_net::tcp` (không viết lại), tệp này chỉ còn chính sách dựng/gửi/chờ segment + retransmit
+/// có hạn (3 s/bước, ≤ 3 lần).
+pub mod tcp;
 pub mod tlb;
 pub mod umode;
 pub mod vector;
@@ -184,8 +188,10 @@ pub use virtio_blk::{
     SECTOR0_MAGIC,
 };
 pub use virtio_net::{
-    arp_build_request, arp_parse_reply, dhcp_acquire, dhcp_frame, dhcp_frame_parse,
-    icmp_echo_frame, ping, NetConfig4, NetReport, PingStats, Stats as NetStats,
+    arp_build_request, arp_parse_reply, dhcp_acquire, dhcp_frame, dhcp_frame_parse, dns_query,
+    icmp_echo_frame, ping, udp_echo, udp_recv, udp_send, DnsAnswer, NetConfig4, NetReport,
+    PingStats, Stats as NetStats, UdpEcho, DNS_PORT, DNS_SERVER_IP, UDP_CLIENT_PORT,
+    UDP_ECHO_PAYLOAD, UDP_ECHO_PORT, UDP_MAX_PAYLOAD,
 };
 pub use vspace::{Frame, VSpace, VSpaceId};
 pub use wx::{

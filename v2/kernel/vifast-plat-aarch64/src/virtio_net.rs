@@ -49,11 +49,12 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_net::arp::{ArpPacket, ARP_LEN};
 use vifast_net::dhcp::{DhcpMessage, DHCPACK, DHCPOFFER};
-use vifast_net::eth::{EthHeader, ETHERTYPE_ARP, ETHERTYPE_IPV4};
+use vifast_net::dns::{ARecord, DnsMessage, DnsQuery, DnsQuestion, TYPE_A};
+use vifast_net::eth::{EthHeader, ETHERTYPE_ARP, ETHERTYPE_IPV4, ETH_HEADER_LEN};
 use vifast_net::frame::EthernetFrame;
 use vifast_net::icmp::{IcmpEcho, IcmpMessage};
-use vifast_net::ipv4::{Ipv4Header, PROTO_ICMP, PROTO_UDP};
-use vifast_net::udp::{UdpHeader, DHCP_CLIENT_PORT, DHCP_SERVER_PORT};
+use vifast_net::ipv4::{Ipv4Header, IPV4_MIN_HEADER_LEN, PROTO_ICMP, PROTO_UDP};
+use vifast_net::udp::{UdpHeader, DHCP_CLIENT_PORT, DHCP_SERVER_PORT, UDP_HEADER_LEN};
 use vifast_virtio::features::{
     features_ok, status_sequence_ok, ACK, DRIVER, DRIVER_OK, FEATURES_OK, F_VERSION_1,
 };
@@ -238,7 +239,9 @@ pub fn now_us() -> u64 {
 }
 
 /// `true` ⇔ `now` **đã** qua `deadline` (so sánh an toàn với wrap của bộ đếm).
-fn past_deadline(now: u64, deadline: u64) -> bool {
+///
+/// `pub` từ KT-289: `tcp.rs` dùng **cùng** phép so sánh — không có bản thứ hai lệch ngữ nghĩa.
+pub fn past_deadline(now: u64, deadline: u64) -> bool {
     now.wrapping_sub(deadline) < u64::MAX / 2
 }
 
@@ -1111,6 +1114,242 @@ pub fn ping(
         return Err(NetError::Io);
     }
     Ok(stats)
+}
+
+// ================================================================================
+// KT-289 — UDP + DNS query (N1 phần đầu trên aarch64)
+//
+// Cùng khuôn `vifast-plat-riscv64/src/virtio_net.rs` (KT-260): codec DNS nằm ở `vifast_net::dns`
+// (host test, gồm ca âm), tệp này chỉ còn **chính sách** client (gửi gì, chờ gì, timeout bao
+// lâu). Khác biệt **chỉ** ở đồng hồ: aarch64 dùng [`now_us`] (`CNTPCT_EL0 / CNTFRQ_EL0`).
+//
+// **Vì sao UDP echo dùng DNS làm "gương"**: libslirp **không** có echo service UDP ở
+// `10.0.2.2:7` — `udp_input` chỉ xử lý BOOTP (67) và TFTP (69) rồi chuyển mọi datagram khác cho
+// socket của **host**; `sotranslate_out4` ánh xạ `10.0.2.2` → loopback host, nên `10.0.2.2:7`
+// chỉ tới `127.0.0.1:7` (không có gì lắng nghe). Vì vậy, theo fallback của KT-260, bằng chứng UDP
+// hai chiều lấy từ **reply DNS**: RFC 1035 §4.1.2 buộc server **chép nguyên** question section
+// vào response, nên gửi QNAME = `vifast-udp-echo` rồi đọc lại đúng chuỗi đó trong reply là một
+// vòng UDP **gửi → nhận → đúng payload**. `udp_echo` tới `10.0.2.2:7` vẫn được hiện thực đầy đủ
+// (dùng ở ca âm timeout) để hành vi fail-closed 3 s có bằng chứng đo được.
+// ================================================================================
+
+/// Cổng UDP của slirp echo service (`10.0.2.2:7`) — dữ kiện nền tảng QEMU.
+pub const UDP_ECHO_PORT: u16 = 7;
+/// Cổng UDP của DNS (`10.0.2.3:53`).
+pub const DNS_PORT: u16 = 53;
+/// Địa chỉ DNS server của slirp (`-netdev user`): `10.0.2.3` (dữ kiện nền tảng QEMU).
+pub const DNS_SERVER_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 3);
+/// Cổng nguồn UDP cố định của client (không có RNG; còn kiểm địa chỉ/cổng đích nên đủ phân biệt).
+pub const UDP_CLIENT_PORT: u16 = 0x4b54;
+/// Payload UDP echo theo KT-260.
+pub const UDP_ECHO_PAYLOAD: &[u8] = b"vifast-udp-echo";
+/// Cỡ payload UDP tối đa (DNS không EDNS: 512 byte, RFC 1035 §4.2.1).
+pub const UDP_MAX_PAYLOAD: usize = 512;
+
+/// Kết quả một lần UDP echo.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UdpEcho {
+    /// Số byte payload nhận lại (bằng payload đã gửi).
+    pub len: usize,
+    /// RTT (ms).
+    pub rtt_ms: u64,
+}
+
+/// Kết quả một truy vấn DNS `A`.
+#[derive(Clone, Copy, Debug)]
+pub struct DnsAnswer {
+    /// `id` của query.
+    pub id: u16,
+    /// `rcode` của reply.
+    pub rcode: u8,
+    /// Câu hỏi trong reply (server **chép nguyên** question section — RFC 1035 §4.1.2).
+    pub question: DnsQuestion,
+    /// Bản ghi `A` đầu tiên; `None` nếu reply không có `A` (ví dụ NODATA/NXDOMAIN).
+    pub a: Option<ARecord>,
+    /// RTT (ms).
+    pub rtt_ms: u64,
+    /// Độ dài message reply (byte).
+    pub reply_len: usize,
+}
+
+/// Gửi **một** datagram UDP (Ethernet + IPv4 + UDP) tới `dst_ip:dst_port`.
+pub fn udp_send(
+    our_ip: Ipv4Addr,
+    our_mac: MacAddr,
+    dst_ip: Ipv4Addr,
+    dst_mac: MacAddr,
+    src_port: u16,
+    dst_port: u16,
+    payload: &[u8],
+) -> Result<(), NetError> {
+    if payload.len() > UDP_MAX_PAYLOAD {
+        return Err(NetError::BadFrame);
+    }
+    let mut udp = [0u8; UDP_HEADER_LEN + UDP_MAX_PAYLOAD];
+    let udp_len = UdpHeader::encode(our_ip, dst_ip, src_port, dst_port, payload, &mut udp)
+        .map_err(|_| NetError::BadFrame)?;
+    let mut ip = [0u8; IPV4_MIN_HEADER_LEN + UDP_HEADER_LEN + UDP_MAX_PAYLOAD];
+    let header_len = Ipv4Header::new(PROTO_UDP, our_ip, dst_ip, udp_len)
+        .encode(&mut ip)
+        .map_err(|_| NetError::BadFrame)?;
+    ip[header_len..header_len + udp_len].copy_from_slice(&udp[..udp_len]);
+    let ip_len = header_len + udp_len;
+    let mut frame = [0u8; ETH_HEADER_LEN + IPV4_MIN_HEADER_LEN + UDP_HEADER_LEN + UDP_MAX_PAYLOAD];
+    let len = EthernetFrame {
+        header: EthHeader::new(dst_mac, our_mac, ETHERTYPE_IPV4),
+        payload: &ip[..ip_len],
+    }
+    .encode(&mut frame)
+    .map_err(|_| NetError::BadFrame)?;
+    send_frame(&frame[..len], POLL_TIMEOUT_US)
+}
+
+/// Chờ **một** datagram UDP khớp `src_ip:src_port` → `our_ip:dst_port`, tối đa `timeout_us`.
+///
+/// Trả độ dài payload và copy payload vào `out`. Frame không khớp (ARP, ICMP, cổng khác) bị bỏ
+/// qua — cùng cách `dhcp_wait`/`ping` đang làm. Hết hạn ⇒ [`NetError::Timeout`] (fail-closed).
+pub fn udp_recv(
+    our_ip: Ipv4Addr,
+    src_ip: Ipv4Addr,
+    src_port: u16,
+    dst_port: u16,
+    out: &mut [u8],
+    timeout_us: u64,
+) -> Result<usize, NetError> {
+    let deadline = now_us().saturating_add(timeout_us);
+    let mut frame = [0u8; MAX_FRAME_BYTES];
+    loop {
+        let now = now_us();
+        if past_deadline(now, deadline) {
+            return Err(NetError::Timeout);
+        }
+        let remaining = deadline.saturating_sub(now);
+        let Some(got) = recv_frame_wait(&mut frame, remaining) else {
+            continue;
+        };
+        let Ok(eth) = EthernetFrame::parse(&frame[..got]) else {
+            continue;
+        };
+        if eth.header.ethertype != ETHERTYPE_IPV4 {
+            continue;
+        }
+        let Ok(ip) = Ipv4Header::parse(eth.payload, true) else {
+            continue;
+        };
+        if ip.header.protocol != PROTO_UDP || ip.header.src != src_ip || ip.header.dst != our_ip {
+            continue;
+        }
+        let Ok(udp) = UdpHeader::parse(ip.header.src, ip.header.dst, ip.payload(), true) else {
+            continue;
+        };
+        if udp.header.src_port != src_port || udp.header.dst_port != dst_port {
+            continue;
+        }
+        let payload = udp.payload();
+        if payload.len() > out.len() {
+            return Err(NetError::BadFrame);
+        }
+        out[..payload.len()].copy_from_slice(payload);
+        return Ok(payload.len());
+    }
+}
+
+/// Gửi `payload` tới `dst_ip:dst_port` và chờ **đúng** payload đó quay lại (echo), tối đa
+/// `timeout_us`.
+///
+/// `Err(NetError::Timeout)` nếu không có reply; `Err(NetError::BadFrame)` nếu reply khác payload
+/// (không nhận "gần đúng").
+// 8 tham số: hai đầu cuối (IP + MAC) + hai cổng + payload + timeout — gói thành struct sẽ làm
+// call-site khó đọc hơn ở ảnh test; cùng khuôn `#[allow]` đã dùng ở riscv64 KT-260.
+#[allow(clippy::too_many_arguments)]
+pub fn udp_echo(
+    our_ip: Ipv4Addr,
+    our_mac: MacAddr,
+    dst_ip: Ipv4Addr,
+    dst_mac: MacAddr,
+    src_port: u16,
+    dst_port: u16,
+    payload: &[u8],
+    timeout_us: u64,
+) -> Result<UdpEcho, NetError> {
+    let started = now_us();
+    udp_send(
+        our_ip, our_mac, dst_ip, dst_mac, src_port, dst_port, payload,
+    )?;
+    // Ngân sách `timeout_us` tính cho **cả bước** (gửi + chờ) — cùng lý do KT-268 bên riscv64:
+    // nếu hạn chờ bắt đầu **sau** khi gửi, `elapsed_ms` của ca timeout là 3000 + thời gian gửi.
+    let spent = now_us().saturating_sub(started);
+    let mut reply = [0u8; UDP_MAX_PAYLOAD];
+    let len = udp_recv(
+        our_ip,
+        dst_ip,
+        dst_port,
+        src_port,
+        &mut reply,
+        timeout_us.saturating_sub(spent),
+    )?;
+    if &reply[..len] != payload {
+        return Err(NetError::BadFrame);
+    }
+    Ok(UdpEcho {
+        len,
+        rtt_ms: us_to_ms(now_us().saturating_sub(started)),
+    })
+}
+
+/// Gửi **một** truy vấn DNS `A` tới `dns_ip:53` qua UDP và parse reply.
+///
+/// `Err(NetError::Timeout)` nếu không có reply trong `timeout_us`; `Err(NetError::BadFrame)`
+/// nếu reply không parse được / `id` lệch / không đúng một câu hỏi.
+pub fn dns_query(
+    our_ip: Ipv4Addr,
+    our_mac: MacAddr,
+    dns_ip: Ipv4Addr,
+    dns_mac: MacAddr,
+    id: u16,
+    name: &[u8],
+    timeout_us: u64,
+) -> Result<DnsAnswer, NetError> {
+    let query = DnsQuery::new(id, name, TYPE_A).map_err(|_| NetError::BadFrame)?;
+    let mut request = [0u8; UDP_MAX_PAYLOAD];
+    let request_len = query.encode(&mut request).map_err(|_| NetError::BadFrame)?;
+    let started = now_us();
+    udp_send(
+        our_ip,
+        our_mac,
+        dns_ip,
+        dns_mac,
+        UDP_CLIENT_PORT,
+        DNS_PORT,
+        &request[..request_len],
+    )?;
+    // Như `udp_echo`: ngân sách tính cho cả bước, nên `elapsed_ms` của ca timeout đúng bằng
+    // `timeout_us` (3000 ms), không cộng thời gian gửi.
+    let spent = now_us().saturating_sub(started);
+    let mut reply = [0u8; UDP_MAX_PAYLOAD];
+    let reply_len = udp_recv(
+        our_ip,
+        dns_ip,
+        DNS_PORT,
+        UDP_CLIENT_PORT,
+        &mut reply,
+        timeout_us.saturating_sub(spent),
+    )?;
+    let message =
+        DnsMessage::parse_response(&reply[..reply_len], id).map_err(|_| NetError::BadFrame)?;
+    let question = message
+        .question()
+        .map_err(|_| NetError::BadFrame)?
+        .ok_or(NetError::BadFrame)?;
+    let a = message.first_a().map_err(|_| NetError::BadFrame)?;
+    Ok(DnsAnswer {
+        id,
+        rcode: message.header().rcode(),
+        question,
+        a,
+        rtt_ms: us_to_ms(now_us().saturating_sub(started)),
+        reply_len,
+    })
 }
 
 const _: () = {
