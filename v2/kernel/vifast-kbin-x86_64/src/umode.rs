@@ -130,10 +130,15 @@ pub(crate) fn sched_entry_va() -> u64 {
 ///
 /// Kernel đọc được trang user vì `CR4.SMAP = 0` (chưa bật SMAP) — đo được: nếu SMAP bật, lần đọc
 /// đầu fault và handler in `# exc: vec=14` thay vì im lặng.
+///
+/// **KT-316** — giữ khoá COM1 cho **cả** chuỗi của một syscall `DebugPutStr`: đây là đường in
+/// từng byte trong handler `int 0x80`, nếu chỉ khoá từng byte thì hart khác chen được vào giữa
+/// chuỗi user.
 fn print_user(ptr: u64, len: u64) -> u64 {
     let already = USER_BYTES_PRINTED.load(Ordering::Relaxed);
     let budget = MAX_USER_PRINT.saturating_sub(already);
     let limit = len.min(budget);
+    let _guard = crate::com_guard();
     let mut printed = 0;
     while printed < limit {
         let byte = asm::read_u8(ptr + printed);

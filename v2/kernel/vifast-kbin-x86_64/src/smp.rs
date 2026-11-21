@@ -483,17 +483,23 @@ fn wait_mask(mask: &AtomicU32, hart: usize, clock: &mut PitClock) -> Option<u64>
 /// In một danh sách `u64` dạng `[0x…, 0x…]` **một dòng** — `{:#x?}` của `core::fmt` bật
 /// **pretty-print nhiều dòng** (cờ `#` của `Debug`), làm hỏng hợp đồng "mỗi dòng `# smp:` là một
 /// dòng log" của runner. Hàm này in tường minh nên không phụ thuộc `SMP_HARTS`.
+///
+/// **KT-316** — cả danh sách nằm trong **một** lần giữ khoá COM1: dòng này ghép từ nhiều `write!`
+/// (mỗi `write!` là một `write_fmt` riêng), nên khoá từng `write!` sẽ để hart khác chen vào giữa
+/// `[` và `]`.
 fn write_hex_list(console: &mut Console, values: &[u64]) {
-    let _ = write!(console, "[");
-    let mut i = 0;
-    while i < values.len() {
-        if i > 0 {
-            let _ = write!(console, ", ");
+    console.with_lock(|raw| {
+        let _ = write!(raw, "[");
+        let mut i = 0;
+        while i < values.len() {
+            if i > 0 {
+                let _ = write!(raw, ", ");
+            }
+            let _ = write!(raw, "0x{:x}", values[i]);
+            i += 1;
         }
-        let _ = write!(console, "0x{:x}", values[i]);
-        i += 1;
-    }
-    let _ = write!(console, "]");
+        let _ = write!(raw, "]");
+    });
 }
 
 /// Chờ `SMP_IPI_COUNT >= 1`; trả số µs đã chờ, `None` nếu hết trần **số vòng**.
@@ -1041,7 +1047,9 @@ pub(crate) fn ap_ticks() -> u64 {
 /// **KT-278** — ghi nhận **một** IPI (vector `0x30`) vừa tới; gọi từ handler ngắt của hart đích.
 ///
 /// **In trước, đếm sau**: BSP chờ `SMP_IPI_COUNT` nên khi nó thấy `1` thì dòng
-/// `# smp: ipi recv=1 intid=0x30` **chắc chắn** đã ra COM1 — không có hai dòng xen ký tự.
+/// `# smp: ipi recv=1 intid=0x30` **chắc chắn** đã ra COM1. **KT-316** — "in trước" chỉ bảo đảm
+/// **thứ tự**; dòng ra **nguyên vẹn** là nhờ khoá COM1 (trước KT-316 nó có thể bị hart khác xen
+/// ký tự).
 pub(crate) fn note_ipi() {
     // **KT-301** — kiểm **đỏ-trước** (`--features slow-ipi`): hart đích **nhận** IPI nhưng trì
     // hoãn việc tăng bộ đếm **150 ms** (đo bằng PIT kênh 2). Đây là mô phỏng **tất định** của độ

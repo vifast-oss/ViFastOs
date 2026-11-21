@@ -242,6 +242,11 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // (không đè BAR net).
     crate::blk::run(console, tap_first + 11, &scan, pci.bar_base);
 
+    // ---- 5d. **KT-316**: khoá COM1 — in `# com: lock ok=… contended=…` **một lần** + TAP 28,
+    // ngay **trước** marker. Đây là chỗ cuối boot còn chạy được sau mọi pha nhiều hart, nên số
+    // `contended` là số lần **thật** phải chờ trong cả boot.
+    crate::com_report(console, tap_first + 13);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

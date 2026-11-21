@@ -442,7 +442,9 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
 
     // ---- 3. Hart **phụ** in **một** dòng cho lần chọn đầu — bằng chứng **trực tiếp** nó đã
     // `schedule()`. "In trước, đếm sau": BSP chờ `MH_PICKS[hart]` nên khi thấy số ấy thì dòng này
-    // **chắc chắn** đã ra COM1 (không có hai dòng xen ký tự). BSP in dòng của nó ở tổng kết.
+    // **chắc chắn** đã ra COM1. **KT-316** — "in trước" chỉ bảo đảm **thứ tự**, không bảo đảm
+    // nguyên vẹn: trước KT-316 dòng này vẫn có thể bị hart khác xen ký tự; khoá COM1 mới bảo đảm
+    // dòng ra nguyên vẹn. BSP in dòng của nó ở tổng kết.
     if picks == 1 && hart != 0 {
         let mut console = Console;
         let _ = writeln!(
@@ -920,7 +922,14 @@ pub fn run(console: &mut Console, tap_first: usize) {
     // **KT-310** — bằng chứng **nhiều hart**: mỗi hart một dòng `picked=`, cộng một dòng tổng hợp
     // có `double=` (phải `0`). Dòng của hart 0 in **ở đây** (không in trong handler): hart phụ đã
     // in dòng của nó **trước** khi tăng `MH_PICKS[1]`, và BSP chỉ tới đây **sau** khi pha kết
-    // thúc ⇒ không có hai dòng xen ký tự trên COM1.
+    // thúc.
+    //
+    // **KT-316** — đính chính: trước KT-316, hai hart **có** xen ký tự trên COM1 (soak vòng 21
+    // bắt được `# exc:`/`PANIC` bị cắt ghép giữa hai hart — xem journal KT-298 §8.2: KT-298 **cố
+    // ý** không khoá vì khi đó dòng xen ký tự còn là manh mối của "hai hart chung một stack").
+    // Nay nhiều hart `schedule()` là **tính năng** (KT-310/KT-315), nên xen ký tự chỉ làm **sai
+    // chẩn đoán**; khoá COM1 của KT-316 bảo đảm mỗi dòng ra nguyên vẹn — "in trước, đếm sau" ở
+    // trên chỉ còn là **thứ tự**, không còn là điều kiện chống xen ký tự.
     let mh_rounds = MH_ROUNDS.load(Ordering::Relaxed);
     let mh_picks = [
         MH_PICKS[0].load(Ordering::Relaxed),

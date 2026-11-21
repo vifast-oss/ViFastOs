@@ -93,7 +93,7 @@
 #![no_main]
 
 use core::arch::global_asm;
-use core::fmt::{self, Write};
+use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_x86_64::apic;
@@ -109,6 +109,12 @@ use vifast_plat_x86_64::sched::FrameReturn;
 use vifast_plat_x86_64::serial;
 use vifast_plat_x86_64::timebase::PitClock;
 use vifast_plat_x86_64::tss;
+
+/// **KT-316** — Console COM1 + khoá **một dòng** (`write_fmt` giữ khoá suốt dòng). Tách tệp
+/// riêng (luật R1) và tái xuất để mọi chỗ dùng `crate::Console` như cũ.
+mod com;
+
+pub(crate) use com::{com_guard, com_report, Console};
 
 /// **KT-270** (K5' bước 4, D2-207): U-mode ring 3 — stub `.user`, handler `int 0x80`, `iretq`
 /// xuống CPL3 và đường `Exit` kết thúc. Tách tệp riêng (luật R1: tệp trong `kernel/` ≤ 1.500
@@ -159,8 +165,8 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-286** thêm **hai** ca preemption: `sched: two tasks ran` (22), `sched: preempted` (23).
 /// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25).
 /// **KT-304** thêm `sched: umode task` (24) — blk dời sang 25/26. **KT-310** thêm
-/// `sched: multi-hart` (25) — blk dời sang 26/27, tổng **27**.
-pub const TAP_TESTS: usize = 27;
+/// `sched: multi-hart` (25) — blk dời sang 26/27. **KT-316** thêm `com: lock` (28) — tổng **28**.
+pub const TAP_TESTS: usize = 28;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -487,22 +493,6 @@ global_asm!(
     user_msg_len = const umode::USER_MSG_LEN,
 );
 
-// ---------------------------------------------------------------------------------------------
-// Console tối giản trên COM1
-// ---------------------------------------------------------------------------------------------
-
-/// `core::fmt::Write` trên COM1 — để `panic!`/`write!` in được số mà không cần `alloc`.
-pub(crate) struct Console;
-
-impl Write for Console {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.bytes() {
-            write_byte(byte);
-        }
-        Ok(())
-    }
-}
-
 /// Khởi tạo COM1 115200 8N1 theo [`serial::init_sequence`]; trả divisor đã dùng để in bằng chứng.
 fn serial_init() -> (u8, u8) {
     let divisor = serial::divisor(serial::BAUD_115200).unwrap_or(serial::DIVISOR_FALLBACK);
@@ -516,7 +506,7 @@ fn serial_init() -> (u8, u8) {
 ///
 /// Trần là **số vòng**, không phải thời gian: UART hỏng không được treo máy, và một lần ghi bình
 /// thường không bao giờ chạm trần.
-fn write_byte(byte: u8) {
+pub(crate) fn write_byte(byte: u8) {
     let mut spins = 0u32;
     while spins < serial::TX_WAIT_LIMIT {
         if asm::inb(serial::COM1_BASE + serial::REG_LSR) & serial::LSR_THRE != 0 {

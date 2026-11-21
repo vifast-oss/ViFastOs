@@ -10,8 +10,9 @@
 # ring 3) + **KT-308** (sửa **giả định sai** của phép kiểm KT-304: `last > first` không được
 # bảo đảm dưới tải — xem dòng `# sched: umode progress`) + **KT-310** (**nhiều hart schedule**:
 # hàng đợi chạy **toàn cục** + khoá, BSP **và** hart 1 cùng `schedule()`) + **KT-315** (**bốn**
-# hart schedule: tác vụ thứ tư `C`, cổng khởi động + cổng giữ của BSP, `harts=` là **số đo**) —
-# runner boot **x86_64**. Khuôn:
+# hart schedule: tác vụ thứ tư `C`, cổng khởi động + cổng giữ của BSP, `harts=` là **số đo**) +
+# **KT-316** (**khoá COM1** — một dòng log không bị hart khác xen ký tự; `# com: lock ok=1
+# contended=<n>` + TAP 28) — runner boot **x86_64**. Khuôn:
 # `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
@@ -65,6 +66,9 @@
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
 #      băm lại từ tệp bằng `od`, nên "đọc được sector 0" không thể là đọc ra số 0 rồi tự khen);
+#      **KT-316**: `# com: lock ok=1 contended=<n>` — khoá COM1 **đã được dùng** (`ok=1` đòi
+#      `acquired > 0` **và** `overlap = 0`) và dòng log ra **nguyên vẹn** (dòng bị xen ký tự sẽ
+#      không khớp mẫu ⇒ ĐỎ);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
@@ -90,16 +94,19 @@
 #      (u) **chỉ 2 hart schedule** (KT-315) — log tốt bị xoá hai dòng `# sched: hart=2|3 picked=…`
 #          **và** sửa dòng tổng hợp thành `harts=2 picks=[<n>, <n>, 0, 0] first=[a, b, ?, ?]` (đúng
 #          ảnh `--features two-hart-sched`) ⇒ phải ĐỎ.
+#      (v) **không khoá ⇒ xen ký tự** (KT-316) — log tốt bị ghép dòng `# com: lock …` với dòng
+#          khác (đúng triệu chứng soak vòng 21: `# exc:`/`PANIC` bị cắt ghép giữa hai hart) ⇒
+#          phải ĐỎ.
 #      Cả **hai mươi mốt** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 27 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 28 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
-#                   KT-288: 2 ca virtio-blk)
+#                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -124,7 +131,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-27}"
+EXPECT_TESTS="${EXPECT_TESTS:-28}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -699,6 +706,15 @@ check_log() {
             fi
         done
     fi
+    # ---- **KT-316**: khoá COM1 — đúng **một** dòng `# com: lock ok=1 contended=<n>`.
+    # `ok=1` đòi khoá **đã được dùng** (`acquired > 0`) **và** chưa từng có hai người trong vùng
+    # găng (`overlap = 0`). Dòng bị **xen ký tự** (không khoá) sẽ không khớp mẫu ⇒ ĐỎ — đây là
+    # phép kiểm trực tiếp của "một dòng log nguyên vẹn", không phải "có một dòng nào đó".
+    comn="$(grep -cE '^# com: lock ok=1 contended=[0-9]+$' "$log" || true)"
+    if [ "${comn:-0}" -ne 1 ]; then
+        echo "# dòng '# com: lock ok=1 contended=<n>' xuất hiện ${comn:-0} lần, cần đúng 1"
+        bad=1
+    fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -1008,6 +1024,20 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (u): chỉ 2 hart schedule ⇒ ĐỎ ($(head -1 "$tmp/u.out"))"
+    fi
+
+    # (v) **KT-316** — **không khoá ⇒ xen ký tự**: log tốt bị ghép dòng `# com: lock …` với dòng
+    #     khác — đúng triệu chứng soak vòng 21 (`# exc:`/`PANIC` bị cắt ghép giữa hai hart). Nếu
+    #     runner vẫn XANH thì "một dòng nguyên vẹn" chỉ là lời nói, không phải điều kiện được kiểm.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# com: lock ok=1 contended=[0-9]*\)$/\1# sched: ticks=10 tasks=3/' \
+        "$good" >"$tmp/v.log" 2>/dev/null || true
+    if check_log "$tmp/v.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/v.out" 2>&1; then
+        echo "not ok $n - ca âm (v): dòng '# com:' bị xen ký tự mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (v): dòng '# com:' bị xen ký tự ⇒ ĐỎ ($(head -1 "$tmp/v.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"

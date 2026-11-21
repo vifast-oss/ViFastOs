@@ -105,6 +105,15 @@ two-hart-sched = []
 # (ĐỎ, không marker). Chứng minh khoá + ownership là **bắt buộc**, không phải trang trí. Chỉ dùng
 # cho đột biến.
 no-sched-lock = []
+# **KT-316** — đột biến (i) của khoá COM1: **bỏ hẳn** khoá (mọi đường in gọi thẳng byte). Khoá
+# không bao giờ được lấy ⇒ `acquired = 0` ⇒ `# com: lock ok=0` + TAP 28 ĐỎ (không marker). Đây là
+# đột biến **tất định**; log xen ký tự (triệu chứng gốc) có thể không tái hiện mỗi boot — xem
+# journal KT-316 §5. Chỉ dùng cho đột biến.
+no-com-lock = []
+# **KT-316** — đột biến (ii): giữ CAS nhưng **không** `cli`/`sti` quanh vùng găng (chuyển tiếp
+# feature cùng tên của `vifast-plat-x86_64`). Mô phỏng "khoá mà không tắt ngắt" ⇒ hazard tự
+# deadlock khi ngắt in trên chính hart đang giữ khoá. Chỉ dùng cho đột biến.
+no-com-cli = ["vifast-plat-x86_64/no-com-cli"]
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

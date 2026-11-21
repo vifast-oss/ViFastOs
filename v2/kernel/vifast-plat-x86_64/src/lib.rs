@@ -30,6 +30,9 @@
 //!   SDM; trampoline 16-bit nằm ở asm của ảnh (`vifast-kbin-x86_64::smp`).
 //! - [`tss`]/[`gdt`] (**KT-278**): **per-hart** — mỗi hart một TSS 104 byte, một bảng GDT 7 entry
 //!   và một `GDTR`; `check_distinct` kiểm **địa chỉ** bốn vùng TSS rời nhau.
+//! - [`com`] (**KT-316**): khoá COM1 — CAS quay vòng **quanh một dòng** (`write_fmt`), `cli` trước
+//!   khi lấy khoá và khôi phục `IF` sau khi nhả (đường in trong ngắt không tự deadlock); bộ đếm
+//!   `acquired`/`contended`/`overlap` làm bằng chứng `# com: lock` + TAP 28.
 //!
 //! # Crate này **không** làm gì
 //!
@@ -63,6 +66,7 @@ pub mod apic;
 pub mod asm;
 pub mod boot;
 pub mod calling;
+pub mod com;
 pub mod control;
 pub mod exc;
 pub mod format;

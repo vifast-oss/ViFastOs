@@ -19,10 +19,11 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..27`; đúng **27** dòng `ok N - `, đủ số 1..27,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..28`; đúng **28** dòng `ok N - `, đủ số 1..28,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
-#      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk = 27);
+#      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk + KT-316 1 ca khoá COM1
+#      = 28);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -53,6 +54,9 @@
 #      first=[<w>, <x>, <y>, <z>] double=0`: **bốn** hart cùng chọn từ **một** hàng đợi toàn cục,
 #      BSP chọn **khác** mọi hart phụ ở lần đầu, mọi hart chọn ≥ 1, **không** double-pick —
 #      thiếu/lệch ⇒ ĐỎ;
+#  10d. **KT-316** — đúng **một** dòng `# com: lock ok=1 contended=<n>`: khoá COM1 **đã được
+#      dùng** (`ok=1` đòi `acquired > 0` **và** `overlap = 0`). Dòng bị **xen ký tự** (không
+#      khoá) không khớp mẫu ⇒ ĐỎ;
 #  11. `lma=1` (long mode **thật**, đọc lại `IA32_EFER.LMA`) + đúng 1 `# viFastOs x86_64: halt`
 #      (thoát sạch, không triple-fault);
 #  12. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
@@ -69,7 +73,7 @@
 #   bash v2/test/boot/soak-x86_64.sh --smoke N [LANES]   # N < 600: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-x86_64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 27 ca âm, KHÔNG mở QEMU
+#                                                         # 1 ca dương + 37 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
 # Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`).
@@ -92,7 +96,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=27   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2
+TAP_TESTS=28   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -400,6 +404,14 @@ check_boot_log() {
         done
     fi
 
+    # (10d) **KT-316** — khoá COM1: đúng **một** dòng `# com: lock ok=1 contended=<n>`. `ok=1`
+    # đòi khoá **đã được dùng** và **chưa từng** chồng lấn; dòng bị xen ký tự không khớp mẫu.
+    n="$(grep -cE '^# com: lock ok=1 contended=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# com: lock ok=1 contended=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (11) long mode **thật** + halt sạch.
     grep -q 'lma=1' "$log" || {
         echo "# thiếu 'lma=1' (long mode chưa bật thật)"
@@ -429,7 +441,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..27
+1..28
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -507,6 +519,8 @@ ok 25 - sched: multi-hart
 ok 26 - blk: device
 # blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8 status=0x0f dma=0x133000 desc=0x133000 avail=0x133080 used=0x133098 requests=1 completions=1 errors=0 timeouts=0
 ok 27 - blk: sector0
+# com: lock ok=1 contended=3
+ok 28 - com: lock
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -650,6 +664,12 @@ EOF
 
     grep -v -F "$HALT_LINE" "$good" >"$tmp/ae.log" || true
     neg "thiếu dòng halt" "$tmp/ae.log"
+
+    # **KT-316** — dòng `# com: lock` bị **xen ký tự** (không khoá): ghép với dòng khác ⇒ mẫu
+    # `^# com: lock ok=1 contended=<n>$` không còn khớp ⇒ ĐỎ.
+    sed 's/^\(# com: lock ok=1 contended=[0-9]*\)$/\1# sched: ticks=10 tasks=3/' \
+        "$good" >"$tmp/ak.log" || true
+    neg "dòng '# com: lock' bị xen ký tự (không khoá)" "$tmp/ak.log"
 
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-x86_64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"

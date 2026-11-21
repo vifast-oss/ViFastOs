@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # KT-186 (D2-163) — K5' bước M2: phần **host-testable** của platform x86_64.
-# Crate **thuần dữ liệu**: không asm, không `cfg(target_arch)`, không `unsafe`, không dependency
-# ngoài (D2-21). Không boot, không QEMU — bằng chứng là `cargo test` trên host.
+# Crate **dữ liệu + asm đặc quyền**: chỉ `asm.rs` có `unsafe` (D2-17); `com.rs` (KT-316) là khoá
+# CAS dùng `asm::cli`/`sti` qua wrapper an toàn. Không dependency ngoài (D2-21), không boot/QEMU —
+# bằng chứng là `cargo test` trên host + TAP của ảnh.
 [package]
 name = "vifast-plat-x86_64"
 version.workspace = true
@@ -9,6 +10,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + hằng thanh ghi/CR0/CR4/EFER thuần dữ liệu, host-testable"
+
+[features]
+# **KT-316** — đột biến (ii) của khoá COM1: giữ CAS nhưng **không** `cli`/`sti` quanh vùng găng.
+# Mô phỏng "khoá mà không tắt ngắt" ⇒ hazard tự deadlock khi ngắt in trên chính hart đang giữ
+# khoá. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
+no-com-cli = []
 
 [dependencies]
 # KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate

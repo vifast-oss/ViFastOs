@@ -311,6 +311,22 @@ pub fn cli() {
     }
 }
 
+/// Đọc `RFLAGS.IF` — `true` ⇔ ngắt che được đang **bật**.
+///
+/// **KT-316** — khoá COM1 cần biết trạng thái ngắt **trước** khi `cli` để khôi phục đúng: gọi từ
+/// handler ngắt (`IF = 0`) thì nhả khoá **không** được `sti` (sẽ bật ngắt giữa handler); gọi từ
+/// luồng thường (`IF = 1`) thì phải `sti` lại. `pushfq`/`pop` là cặp **cân bằng stack**, không
+/// đụng bộ nhớ khác và không đổi cờ.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn interrupts_enabled() -> bool {
+    let flags: u64;
+    // SAFETY: `pushfq`/`pop` ở CPL0; cặp lệnh cân bằng stack, chỉ đọc `RFLAGS`.
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags));
+    }
+    flags & (1 << 9) != 0
+}
+
 // ---------------------------------------------------------------------------------------------
 // GDT/IDT/TSS — KT-261 (K5' bước 2)
 // ---------------------------------------------------------------------------------------------
@@ -1067,6 +1083,12 @@ pub fn sti() {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn cli() {
     host_only("cli")
+}
+
+/// Stub host của [`interrupts_enabled`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn interrupts_enabled() -> bool {
+    host_only("interrupts_enabled")
 }
 
 /// Stub host của [`hlt`].
