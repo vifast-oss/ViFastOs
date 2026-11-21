@@ -23,12 +23,15 @@
 //! - **Intel SDM Vol 3A**, mục "Extended Feature Enable Register (IA32_EFER)" (`SCE` bit 0) và
 //!   **Vol 4** (`IA32_STAR`/`IA32_LSTAR`/`IA32_FMASK`).
 //!
-//! # Trạng thái: **đề xuất**, chưa phải ABI
+//! # Trạng thái: **đã mở** ở `spec/abi.toml` (D2-207 / KT-270)
 //!
-//! `spec/abi.toml` `[calling.x86_64]` vẫn `reserved = true` (D2-163). Bảng syscall dưới đây là
-//! **đề xuất** cho bước M7, chưa được Agent 0 duyệt; mở `spec/` **một lần** theo khuôn KT-05 tại
-//! M7. Bản nháp đầy đủ + đối chiếu `[calling.riscv64]`:
-//! `v2/agent/reports/K5-X86-CALLING-DRAFT.md`.
+//! `spec/abi.toml` `[calling.x86_64]` đã mở ở **KT-270** (D2-207): `rax` = số hiệu + error,
+//! `rdx` = MessageInfo + value, `rdi`/`rsi` = tham số, `r10`/`r8`/`r9`/`r12` = 4 MR, chuyển bằng
+//! **`int 0x80`** (IDT vector `0x80`, gate `DPL = 3`) — xem `spec/abi.toml` và
+//! `v2/docs/k5-x86_64-boot.md` §10. Bảng dưới đây là **cùng** quy ước, giữ làm dữ liệu host-test;
+//! nguồn sự thật vẫn là `spec/` (D2-11). `SYSCALL_MSRS`/`SYSCALL_CLOBBERED` mô tả đường
+//! `syscall`/`sysret` **chưa dùng** (bước sau); đường đang chạy là `int 0x80` với
+//! [`INT80_CLOBBERED`].
 //!
 //! # Vì sao MR3 là `R12` (callee-saved)
 //!
@@ -164,6 +167,12 @@ pub const INT80_VECTOR: u8 = 0x80;
 pub const INT80_MR_REGS: [Reg; 4] = [Reg::Rcx, Reg::R8, Reg::R9, Reg::R10];
 /// **Đề xuất** kênh trả `MessageInfo` nếu dùng `int 0x80`: `R11`.
 pub const INT80_RETURN_MSGINFO_REG: Reg = Reg::R11;
+/// Thanh ghi **syscall được phép đổi** trên đường `int 0x80` — khớp `spec/abi.toml`
+/// `[calling.x86_64].clobbered` (D2-207): `rax` = error, `rdx` = value.
+///
+/// Khác [`SYSCALL_CLOBBERED`] (`RCX`/`R11` bị **lệnh** `syscall` clobber): `int 0x80` không clobber
+/// `RCX`/`R11`, và stub của ảnh khôi phục **mọi** GPR khác từ frame trước `iretq`.
+pub const INT80_CLOBBERED: [Reg; 2] = [Reg::Rax, Reg::Rdx];
 
 /// MSR phải nạp trước khi dùng `syscall`/`sysret` (bước M7): `STAR`, `LSTAR`, `FMASK`.
 pub const SYSCALL_MSRS: [u32; 3] = [

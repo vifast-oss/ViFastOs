@@ -30,3 +30,7 @@ wrong-marker = []
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
 # thanh ghi, entry bảng trang, GDT, header) lấy từ crate arch để test host chốt đúng giá trị.
 vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }
+# **KT-270** (D2-207): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`
+# (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — không chép tay 12/14 (D2-11). Crate `no_std`, không
+# dependency ngoài; `global_asm!` nhận `const` operand nên stub ring 3 đổi theo spec.
+vifast-abi = { path = "../../lib/vifast-abi" }

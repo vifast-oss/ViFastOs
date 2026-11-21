@@ -117,6 +117,15 @@ pub fn rsp0() -> u64 {
     read_u64(TSS_RSP0_OFFSET)
 }
 
+/// Đổi `RSP0` — stack kernel dùng khi vào từ CPL3 (KT-270).
+///
+/// Ảnh gọi hàm này **ngay trước** `iretq` xuống ring 3 để chuyển từ stack boot sang một stack
+/// riêng cho đường vào kernel từ ring 3 (`int 0x80` + ngắt). Không đổi descriptor TSS: chỉ đổi
+/// giá trị `RSP0` trong vùng nhớ TSS mà descriptor đã trỏ.
+pub fn set_rsp0(value: u64) {
+    write_u64(TSS_RSP0_OFFSET, value);
+}
+
 /// `ISTn` (`n` từ 1 tới 7) đã nạp; ngoài phạm vi trả 0.
 pub fn ist(n: usize) -> u64 {
     if n == 0 || n > TSS_IST_COUNT {

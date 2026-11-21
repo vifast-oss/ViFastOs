@@ -78,9 +78,32 @@ ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, 
 preserved = ["sp", "x19..x28", "x29", "d8..d15"]   # callee-saved của AAPCS64
 note = "Đối xứng [calling.riscv64] (D2-206/KT-269): x8 = số hiệu, x0/x1 = tham số + (error,value), x2 = MessageInfo, x3..x6 = 4 MR; chuyển bằng `svc #0`. Không tự đặt số khác — bám khuôn AArch64 (x8) và giữ đúng vai trò từng trường của riscv64."
 
+# **KT-270 / D2-207** — MỞ `[calling.x86_64]` (K5' bước 4). Đối xứng **từng trường** với
+# `[calling.riscv64]`/`[calling.aarch64]`: cùng vai trò, chỉ đổi tên thanh ghi theo x86_64 và cơ
+# chế chuyển `int 0x80`. Ba trường `trap`/`stack`/`clobbered` là bổ sung tường minh (như aarch64);
+# chúng **không** đổi ngữ nghĩa của 5 thứ đóng băng ở `[frozen]` (D2-15). `reserved` đã bỏ.
+#
+# Vì sao `int 0x80` chứ không `syscall`/`sysret`: `sysret` đòi user data ở `CS - 8`
+# (`STAR[63:48] + 8` = SS), trong khi GDT của KT-261 đặt user code `0x18` **trước** user data
+# `0x20` ⇒ `sysret` nạp SS = `0x13` (kernel data | RPL 3) và #GP. `syscall` khắc phục được phần
+# đó nhưng **không** đổi stack: cần `swapgs`/per-CPU hoặc một static RSP + dựng lại frame `iretq`
+# bằng tay. Bước này chọn `int 0x80` (IDT vector 0x80, gate DPL=3) vì nó dùng đúng `TSS.RSP0` đã
+# có từ KT-261 và `iretq` khôi phục nguyên `RSP`/`SS` của ring 3 — đủ cho tiêu chí "vào ring 3 +
+# một syscall được xử lý + trả về". Nâng lên `syscall`/`sysret` là bước sau (cần đổi thứ tự GDT +
+# per-CPU).
 [calling.x86_64]
-reserved = true
-note = "Mở ở K5' theo D2-10; chỉ giữ số, không đóng băng chữ ký"
+syscall_number = "rax"         # x86_64: số hiệu syscall ở rax (khuôn Linux x86_64)
+args = ["rdi", "rsi"]          # 2 tham số đầu — đối xứng a0/a1 của riscv64
+message_info = "rdx"           # MessageInfo (35 bit) — đối xứng a2
+mr_registers = ["r10", "r8", "r9", "r12"]   # MR0..MR3 — đối xứng a3..a6
+return_error = "rax"           # 0 = thành công, khác 0 = mã lỗi (1..19)
+return_value = "rdx"
+trap = "int 0x80"              # cơ chế chuyển: `int 0x80` (IDT vector 0x80, gate DPL=3)
+stack = "RSP user → RSP0 của TSS khi vào CPL0; `int 0x80` đẩy SS/RSP/RFLAGS/CS/RIP, `iretq` khôi phục đúng RSP user"
+clobbered = ["rax", "rdx"]     # thanh ghi syscall được phép đổi (error/value); cờ được `iretq` khôi phục
+ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, ≤4 cap)"
+preserved = ["rsp", "rbx", "rbp", "r12..r15"]   # callee-saved của SysV AMD64
+note = "Đối xứng [calling.riscv64] (D2-207/KT-270): rax = số hiệu + (error), rdx = MessageInfo + value, rdi/rsi = tham số, r10/r8/r9/r12 = 4 MR; chuyển bằng `int 0x80` (IDT vector 0x80, gate DPL=3) vì `sysret` đòi user data ở CS-8 (GDT KT-261: user code 0x18, user data 0x20) và `syscall` đòi đổi stack + per-CPU. Không tự đặt số khác — bám khuôn x86_64 (rax) và giữ đúng vai trò từng trường của riscv64."
 
 # ---------------------------------------------------------------------------
 # Kích thước/căn lề (thứ đóng băng thứ 4). slot 48 B là [TK] của QD §3.9.

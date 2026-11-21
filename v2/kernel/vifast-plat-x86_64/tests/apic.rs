@@ -363,12 +363,12 @@ fn apic_vectors_literal() {
     assert_ne!(VEC_UNKNOWN, VEC_TIMER as u64);
 }
 
-/// Slot stub: timer 15, spurious 16, tổng 17 — khớp số nhánh của `asm::stub_addr`.
+/// Slot stub: timer 15, spurious 16, syscall 17 (KT-270), tổng 18 — khớp `asm::stub_addr`.
 #[test]
 fn apic_stub_slots_literal() {
     assert_eq!(STUB_TIMER, 15);
     assert_eq!(STUB_SPURIOUS, 16);
-    assert_eq!(STUB_COUNT, 17);
+    assert_eq!(STUB_COUNT, 18);
     assert_eq!(stub_slot(VEC_TIMER), STUB_TIMER);
     assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
     // Vector không có stub riêng vẫn rơi về `isr_unknown`.

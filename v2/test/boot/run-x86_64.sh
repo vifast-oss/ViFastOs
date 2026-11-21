@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # KT-257 (K5' bước 1) + **KT-261** (K5' bước 2: GDT/TSS/IDT + handler exception) + **KT-266**
-# (K5' bước 3: APIC + timer) — runner boot **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) +
-# `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
+# (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) — runner boot
+# **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout +
+# dọn con).
 #
 # Việc runner làm, theo thứ tự:
 #   1. **build** ảnh `vifast-kbin-x86_64` cho `x86_64-unknown-none` (release);
@@ -16,25 +17,30 @@
 #      KT-261: đúng **5** exception, đúng vector + mã lỗi + `cs`, `#PF` có `cr2` đúng;
 #      KT-266: `# apic: id=… version=… svr=…`, `# apic: ioapic id=… ver=… entries=…`,
 #      `# timer: hz=… ticks=…` (ticks > 0), `# timer: eoi=… ticks=…`;
+#      KT-270: đúng **một** dòng `# umode: ring3 ran nr=12 ret=<len>` (ring 3 thật sự chạy và
+#      `int 0x80` được xử lý);
 #   4. **ca âm** (chạy MẶC ĐỊNH): (a) `EXPECT_MARKER` sai trên log tốt; (b) **ảnh thật** in marker
 #      sai (build `--features wrong-marker`) boot ra log sai; (c) log mất marker; (d) log rỗng;
 #      (e) marker in **hai** lần; (f) **mất dòng `# exc:`** (KT-261); (g) **sai vector** (KT-261);
-#      (h) **mất dòng `# timer:`** (KT-266); (i) **mất dòng `# apic:`** (KT-266).
-#      Cả chín phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (h) **mất dòng `# timer:`** (KT-266); (i) **mất dòng `# apic:`** (KT-266);
+#      (j) **mất dòng `# umode:`** (KT-270).
+#      Cả **mười** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 11 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer)
+#   EXPECT_TESTS    số ca TAP (mặc định 14 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#                   KT-270: 3 ca U-mode)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
 #
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
-# runner này là **bước 1 + bước 2 + bước 3** (một ảnh, một CPU, GDT/TSS/IDT + 5 exception, LAPIC +
-# IOAPIC + timer, marker + halt sạch). **Không** U-mode/PCI/SMP.
+# runner này là **bước 1 + bước 2 + bước 3 + bước 4** (một ảnh, một CPU, GDT/TSS/IDT + 5
+# exception, LAPIC + IOAPIC + timer, U-mode ring 3 + `int 0x80`, marker + halt sạch).
+# **Không** IPC từ ring 3/PCI/SMP/`syscall`/`sysret`.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +54,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-11}"
+EXPECT_TESTS="${EXPECT_TESTS:-14}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -203,8 +209,29 @@ check_elf() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# umode:` (KT-270)
+# **Bằng chứng U-mode**: đúng **một** dòng `# umode: ring3 ran nr=<n> ret=<v>` — nó chỉ được in
+# khi handler `int 0x80` **thật sự** đọc được số hiệu syscall từ `rax` của ring 3 và trả kết quả
+# qua `rdx` (quy ước `[calling.x86_64]`). Ảnh chỉ chạy CPL0 (không `iretq` xuống ring 3) sẽ
+# **không** có dòng này ⇒ ĐỎ, dù TAP 1..11 vẫn xanh.
+check_umode() {
+    local log="$1" bad=0 n
+    n="$(grep -cE '^# umode: ring3 ran nr=[0-9]+ ret=[0-9]+$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# umode: ring3 ran nr=<n> ret=<v>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    # `DebugPutStr` = syscall 12; `ret` phải > 0 (số byte chuỗi user đã in).
+    grep -Eq '^# umode: ring3 ran nr=12 ret=[1-9][0-9]*$' "$log" || {
+        echo "# dòng '# umode: ring3 ran nr=12 ret=<len>' không đúng (nr phải 12, ret > 0)"
+        bad=1
+    }
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm log của một lần boot
-# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:`. In lý do đỏ ra stdout.
+# `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:` + `# umode:`. In lý do
+# đỏ ra stdout.
 #
 # KT-261 thêm **ba** lớp kiểm mới, mỗi lớp bắt một lớp lỗi khác nhau:
 #
@@ -310,6 +337,8 @@ check_log() {
         echo "# thiếu '# timer: eoi=… ticks=…' (EOI)"
         bad=1
     }
+    # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
+    check_umode "$log" || bad=1
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -451,6 +480,18 @@ selftest_negative() {
         echo "ok $n - ca âm (i): mất dòng '# apic:' ⇒ ĐỎ ($(head -1 "$tmp/i.out"))"
     fi
 
+    # (j) **KT-270** — thiếu **cả** dòng `# umode:` (ảnh không `iretq` xuống ring 3 / không xử
+    #     lý `int 0x80`). Đây là ca âm trực tiếp của tiêu chí "in `# umode: ring3 ran …`".
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# umode: ' "$good" >"$tmp/j.log" 2>/dev/null || true
+    if check_log "$tmp/j.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/j.out" 2>&1; then
+        echo "not ok $n - ca âm (j): thiếu dòng '# umode:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (j): thiếu dòng '# umode:' ⇒ ĐỎ ($(head -1 "$tmp/j.out"))"
+    fi
+
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
 }
@@ -540,7 +581,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 9))
+    total=$((total + 10))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

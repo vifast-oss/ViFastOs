@@ -22,7 +22,7 @@
 //!    lại bị bẩn vẫn được zero trước khi dùng.
 
 use vifast_plat_x86_64::calling::{
-    Reg, INT80_MR_REGS, INT80_RETURN_MSGINFO_REG, INT80_VECTOR, SYSCALL_ARG_REGS,
+    Reg, INT80_CLOBBERED, INT80_MR_REGS, INT80_RETURN_MSGINFO_REG, INT80_VECTOR, SYSCALL_ARG_REGS,
     SYSCALL_CLOBBERED, SYSCALL_MR_REGS, SYSCALL_MSGINFO_REG, SYSCALL_MSRS, SYSCALL_NUMBER_REG,
     SYSCALL_RETURN_ERROR_REG, SYSCALL_RETURN_MSGINFO_REG, SYSCALL_RETURN_VALUE_REG, SYSV_ARG_REGS,
     SYSV_CALLEE_SAVED, SYSV_CALLER_SAVED, SYSV_DIRECTION_FLAG_CLEAR, SYSV_FRAME_POINTER,
@@ -725,7 +725,8 @@ fn sysv_register_table_literal() {
 
 #[test]
 fn syscall_proposal_registers() {
-    // Đề xuất M7 — chưa phải ABI (spec/abi.toml [calling.x86_64] vẫn reserved).
+    // **KT-270 / D2-207**: `spec/abi.toml [calling.x86_64]` đã mở — các hằng dưới đây khớp
+    // đúng spec (nguồn sự thật vẫn là `spec/`, D2-11).
     assert_eq!(SYSCALL_NUMBER_REG, Reg::Rax);
     assert_eq!(SYSCALL_ARG_REGS, [Reg::Rdi, Reg::Rsi]);
     assert_eq!(SYSCALL_MSGINFO_REG, Reg::Rdx);
@@ -757,6 +758,10 @@ fn syscall_proposal_registers() {
         INT80_MR_REGS.contains(&Reg::Rcx),
         "int 0x80 không clobber RCX"
     );
+    // Đường **đang chạy** (KT-270): `int 0x80` + `[calling.x86_64].clobbered` = rax/rdx.
+    assert_eq!(INT80_CLOBBERED, [Reg::Rax, Reg::Rdx]);
+    assert_eq!(INT80_CLOBBERED[0], SYSCALL_RETURN_ERROR_REG);
+    assert_eq!(INT80_CLOBBERED[1], SYSCALL_RETURN_VALUE_REG);
 }
 
 // ------------------------------------------------- 4. map/translate 4 mức

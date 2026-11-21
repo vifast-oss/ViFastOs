@@ -45,8 +45,21 @@ pub const IDT_LIMIT: u16 = (IDT_BYTES - 1) as u16;
 pub const GATE_INTERRUPT: u8 = 0x8E;
 /// `type_attr` của **trap gate** 64-bit: `P=1`, `DPL=0`, `S=0`, `type=0xF`.
 pub const GATE_TRAP: u8 = 0x8F;
-/// `type_attr` của interrupt gate gọi được từ CPL3 (`DPL=3`) — **chưa** dùng (không U-mode).
+/// `type_attr` của interrupt gate gọi được từ CPL3 (`DPL=3`) — dùng cho vector `0x80` (KT-270).
 pub const GATE_INTERRUPT_USER: u8 = 0xEE;
+
+/// `type_attr` của ô IDT cho `vec`: **chỉ** vector syscall `0x80` có `DPL = 3` (ring 3 gọi được);
+/// mọi vector khác giữ `DPL = 0` (ring 3 **không** được gọi `int` vào exception handler).
+///
+/// Tách thành hàm `const` để test host chốt được lựa chọn này mà không cần `lidt` (asm đặc quyền
+/// chỉ chạy trên bare-metal).
+pub const fn gate_type_attr(vec: u8) -> u8 {
+    if vec == crate::exc::VEC_SYSCALL {
+        GATE_INTERRUPT_USER
+    } else {
+        GATE_INTERRUPT
+    }
+}
 
 /// `IST` gán cho `#DF` — `IST1` (index 1). `0` nghĩa là "không dùng IST".
 pub const IST_DOUBLE_FAULT: u8 = 1;
@@ -185,7 +198,8 @@ pub fn read_idtr() -> (u64, u16) {
 /// Điền **cả 256 ô** rồi nạp `IDTR`.
 ///
 /// Mỗi ô lấy địa chỉ stub từ [`asm::stub_addr`] theo [`exc::stub_slot`]; `#DF` được gán `IST1`
-/// (stack riêng), mọi vector khác `IST = 0` (stack hiện tại).
+/// (stack riêng), mọi vector khác `IST = 0` (stack hiện tại). Vector `0x80` (syscall) dùng gate
+/// `DPL = 3` ([`gate_type_attr`]) để ring 3 gọi được; mọi vector khác `DPL = 0`.
 pub fn install() {
     let mut vec = 0;
     while vec < IDT_ENTRIES {
@@ -200,7 +214,7 @@ pub fn install() {
             offset,
             gdt::SELECTOR_KERNEL_CODE,
             ist,
-            GATE_INTERRUPT,
+            gate_type_attr(vec as u8),
         ));
         vec += 1;
     }

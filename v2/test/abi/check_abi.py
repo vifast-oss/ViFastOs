@@ -316,9 +316,52 @@ def main():
     check(set(a64) == set(call) | extra,
           "aarch64: trường phải đối xứng riscv64 + {trap,stack,clobbered}; lệch "
           f"{sorted(set(a64) ^ (set(call) | extra))}")
-    # x86_64 **vẫn** chỉ giữ số reserved (D2-10) — chưa mở.
+    # **KT-270 / D2-207**: `[calling.x86_64]` đã MỞ — kiểm **đối xứng** từng trường với riscv64
+    # (cùng vai trò, chỉ đổi tên thanh ghi + cơ chế chuyển `int 0x80`). Ba trường
+    # `trap`/`stack`/`clobbered` là bổ sung tường minh (như aarch64).
     x64 = doc.get("calling", {}).get("x86_64", {})
-    check(x64.get("reserved") is True, "x86_64: chỉ reserved tới K5' (D2-10)")
+    check(x64.get("reserved") is not True, "x86_64: đã mở (D2-207) ⇒ KHÔNG còn reserved = true")
+    check(x64.get("syscall_number") == "rax", "x86_64: số syscall phải ở rax")
+    check(x64.get("return_error") == "rax", "x86_64: trả lỗi ở rax")
+    check(x64.get("return_value") == "rdx", "x86_64: trả value ở rdx")
+    check(x64.get("args") == ["rdi", "rsi"], "x86_64: 2 tham số ở rdi/rsi (đối xứng a0/a1)")
+    check(x64.get("message_info") == "rdx", "x86_64: MessageInfo ở rdx (đối xứng a2)")
+    check(x64.get("mr_registers") == ["r10", "r8", "r9", "r12"],
+          "x86_64: MR0..MR3 ở r10/r8/r9/r12 (đối xứng a3..a6)")
+    check(x64.get("trap") == "int 0x80", "x86_64: cơ chế chuyển phải là 'int 0x80' (D2-207)")
+    check(bool(x64.get("stack")), "x86_64: phải khai báo quy ước ngăn xếp (RSP user/TSS RSP0)")
+    check(bool(x64.get("clobbered")), "x86_64: phải khai báo thanh ghi bị clobber")
+    check(bool(x64.get("ipc_buffer")), "x86_64: phải khai báo ipc_buffer (receive window)")
+    check(bool(x64.get("preserved")), "x86_64: phải khai báo preserved")
+    check(bool(x64.get("note")), "x86_64: phải có note giải thích")
+    # Đối xứng **cấu trúc**: cùng tập khoá với riscv64 + đúng ba trường bổ sung.
+    check(set(x64) == set(call) | extra,
+          "x86_64: trường phải đối xứng riscv64 + {trap,stack,clobbered}; lệch "
+          f"{sorted(set(x64) ^ (set(call) | extra))}")
+    # Vai trò từng trường: 2 tham số, 4 MR, error/value khác nhau, MR không trùng tham số.
+    check(len(x64.get("args") or []) == 2, "x86_64: phải có đúng 2 thanh ghi tham số")
+    check(len(x64.get("mr_registers") or []) == 4, "x86_64: phải có đúng 4 MR")
+    check(x64.get("return_error") != x64.get("return_value"),
+          "x86_64: error và value phải ở hai thanh ghi khác nhau")
+    for reg in x64.get("mr_registers") or []:
+        check(reg not in (x64.get("args") or []),
+              f"x86_64: MR {reg} không được trùng thanh ghi tham số")
+    # Nguồn thứ hai (cùng pipeline): `vifast-gen` phải sinh hằng cho **cả ba** arch đã mở.
+    if generated.exists():
+        text = generated.read_text(encoding="utf-8")
+        check('CALLING_ARCHES: [&str; 3] = ["aarch64", "riscv64", "x86_64"]' in text,
+              "generated.rs: CALLING_ARCHES phải có đủ aarch64/riscv64/x86_64")
+        for const, want in (
+            ("X86_64_SYSCALL_NUMBER_REG", "rax"),
+            ("X86_64_MESSAGE_INFO_REG", "rdx"),
+            ("X86_64_RETURN_ERROR_REG", "rax"),
+            ("X86_64_RETURN_VALUE_REG", "rdx"),
+            ("X86_64_TRAP", "int 0x80"),
+        ):
+            check(f'pub const {const}: &str = "{want}";' in text,
+                  f"generated.rs: thiếu {const} = {want!r}")
+        check('pub const X86_64_MR_REGS: [&str; 4] = ["r10", "r8", "r9", "r12"];' in text,
+              "generated.rs: X86_64_MR_REGS phải là r10/r8/r9/r12")
 
     # --- kích thước/căn lề -------------------------------------------
     slot = doc.get("object_size", {}).get("slot", {})

@@ -1,9 +1,10 @@
 # K5' — ViFastOs **boot thật trên x86_64** (QEMU, long mode)
 
 Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261) + **K5' bước 3 DONE**
-(KT-266) — Agent 1 (toàn quyền A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203**
-(bước 2), **D2-204** (bước 3).
-**Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (U-mode/PCI/SMP).
+(KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) — Agent 1 (toàn
+quyền A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3),
+**D2-207** (bước 4).
+**Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (PCI/SMP/`syscall`/`sysret`).
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 `v2/test/boot/run-x86_64.sh`.
@@ -27,8 +28,10 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **LAPIC timer**: `LVT_TIMER` (vector 32, periodic), `TIMER_DIVIDE`, `TIMER_INITIAL_COUNT` + kiểm đếm ngược | **DONE** (KT-266) |
 | **Nguồn tick**: PIT kênh 0 mode 2 (100 Hz) → IOAPIC → LAPIC → vector 32; handler đếm tick + `EOI` | **DONE** (KT-266) |
 | **IDT** thêm vector 32 (timer) + 255 (spurious); sentinel `isr_unknown` dời 255 → 254 | **DONE** (KT-266) |
-| runner + TAP + **9 ca âm** | **DONE** (KT-257/261/266) |
-| U-mode, PCI, SMP, `-cpu max` | **chưa** (K5' đầy đủ) |
+| **`spec/abi.toml [calling.x86_64]`** mở (đối xứng riscv64/aarch64) | **DONE** (KT-270) |
+| **U-mode ring 3**: trang mã/stack `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler → `iretq` về ring 3, `Exit` kết thúc | **DONE** (KT-270) |
+| runner + TAP + **10 ca âm** | **DONE** (KT-257/261/266/270) |
+| PCI, SMP, `-cpu max`, `syscall`/`sysret` | **chưa** (K5' đầy đủ) |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
 
@@ -282,8 +285,138 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 11 kiểm + 9 ca âm
 ## 9. Còn thiếu (K5' đầy đủ)
 
 1. **IPI**, **SMP** (APIC đã có LAPIC/IOAPIC/timer ở bước 3).
-2. **U-mode** + quy ước gọi `[calling.x86_64]` (chưa mở trong `spec/abi.toml`) — GDT đã có
-   descriptor user và TSS đã có `RSP0`, nhưng chưa có đường vào CPL3.
-3. **PCI/ECAM**, virtio trên x86.
-4. **`-cpu max`**, KPTI (tuỳ chọn), soak 1.000.
-5. **Nợ N5 của v1** (x86 AP→BSP + PCID) — mở ở K5' đầy đủ, không phải bước này.
+2. **IPC từ ring 3**, nhiều process, preemption — bước 4 chỉ có **một** syscall thật
+   (`DebugPutStr`) + `Exit` (xem §10.6).
+3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
+   cần đổi thứ tự GDT (user data ở `CS - 8`) + per-CPU/`swapgs`.
+4. **PCI/ECAM**, virtio trên x86.
+5. **`-cpu max`**, KPTI (tuỳ chọn), soak 1.000.
+6. **Nợ N5 của v1** (x86 AP→BSP + PCID) — mở ở K5' đầy đủ, không phải bước này.
+
+## 10. U-mode (ring 3) + `[calling.x86_64]` — K5' bước 4 (KT-270, D2-207)
+
+### 10.1 `spec/abi.toml [calling.x86_64]` — đã mở
+
+`reserved = true` đã bỏ; mục này **đối xứng từng trường** với `[calling.riscv64]` (cùng vai trò,
+chỉ đổi tên thanh ghi + cơ chế chuyển), cộng ba trường **bổ sung tường minh** như aarch64
+(`trap`/`stack`/`clobbered` — riscv64 đóng băng nên không được thêm vào mục ấy):
+
+| Trường | riscv64 | aarch64 | x86_64 |
+|---|---|---|---|
+| `syscall_number` | `a7` | `x8` | **`rax`** |
+| `args` | `a0`, `a1` | `x0`, `x1` | **`rdi`, `rsi`** |
+| `message_info` | `a2` | `x2` | **`rdx`** |
+| `mr_registers` | `a3..a6` | `x3..x6` | **`r10`, `r8`, `r9`, `r12`** |
+| `return_error` / `return_value` | `a0` / `a1` | `x0` / `x1` | **`rax` / `rdx`** |
+| `trap` | — (đóng băng) | `svc #0` | **`int 0x80`** |
+| `stack` | — (đóng băng) | SP_EL0 user / SP_EL1 kernel | **RSP user / TSS `RSP0`** |
+| `clobbered` | — (đóng băng) | `x0`, `x1`, `nzcv` | **`rax`, `rdx`** |
+| `preserved` | `sp, gp, tp, s0..s11, fs0..fs11` | `sp, x19..x28, x29, d8..d15` | **`rsp, rbx, rbp, r12..r15`** |
+
+`vifast-gen` **tự nhận** arch đã mở (điều kiện: có `syscall_number`) — không phải sửa `gen.py`:
+`CALLING_ARCHES` thành `["aarch64", "riscv64", "x86_64"]` và sinh `X86_64_*` vào
+`v2/lib/vifast-abi/src/generated.rs` + bảng trong `docs/abi.md`. Ảnh dùng hằng **sinh** cho số
+hiệu syscall (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — `global_asm!` nhận `const` operand nên stub
+ring 3 đổi theo spec, không có số 12/14 viết tay (D2-11). `check_abi.py` **siết** tương ứng: kiểm
+**từng trường** của x86_64 + **đối xứng cấu trúc** (`set(x64) == set(riscv64) | {trap,stack,
+clobbered}`) + cross-check `generated.rs` có `CALLING_ARCHES` ba arch và `X86_64_*` đúng giá trị.
+
+### 10.2 Vì sao `int 0x80` chứ không `syscall`/`sysret`
+
+Đo và đọc đặc tả trước khi chọn:
+
+- **`sysret`** nạp `CS = STAR[63:48] + 16`, `SS = STAR[63:48] + 8` (SDM Vol 2B "SYSRET"). GDT của
+  KT-261 đặt **user code `0x18` trước user data `0x20`** ⇒ muốn `CS = 0x1B` thì `STAR[63:48] =
+  0x0B` ⇒ `SS = 0x13` = kernel data | RPL 3 ⇒ `#GP` khi `sysret` về CPL3. Muốn dùng `sysret` phải
+  **đảo thứ tự** hai descriptor user (đổi hợp đồng GDT + test của KT-261) — ngoài phạm vi bước này.
+- **`syscall`** khắc phục được phần `CS`/`SS` (lấy từ `STAR[47:32]`), nhưng **không đổi stack**:
+  `syscall` nhảy tới `LSTAR` với `RSP` của ring 3, nên entry stub phải tự đổi sang stack kernel
+  (`swapgs` + per-CPU, hoặc một static `RSP` + dựng lại frame `iretq` bằng tay) — thêm một tầng
+  trạng thái chưa có (chưa có `GS` base/`swapgs`, chưa có per-CPU).
+- **`int 0x80`** dùng đúng đường đã có: IDT vector `0x80` (gate `DPL = 3`), CPU tự đổi sang
+  `TSS.RSP0` và đẩy `SS/RSP/RFLAGS/CS/RIP`; `iretq` khôi phục nguyên trạng ring 3. Đủ cho tiêu chí
+  "vào ring 3 + một syscall được xử lý + trả về".
+
+⇒ `trap = "int 0x80"` trong spec, ghi rõ lý do; nâng lên `syscall`/`sysret` là bước sau (§9.3).
+
+### 10.3 Đường chạy
+
+```text
+kmain (CPL0, stack boot)
+  ├─ `_start` dựng cây bảng trang user: PML4[0] (US=1) → PDPT[256] → __pd_user → __pt_user
+  │    ├─ lá 0 = __user_start | P|US        (mã ring 3: đọc + exec, W^X)
+  │    └─ lá 1 = __user_stack | P|RW|US|NX  (stack ring 3: đọc + ghi, không exec)
+  ├─ TSS.RSP0 ← __syscall_stack_top (stack kernel riêng cho đường vào từ CPL3)
+  ├─ iretq: SS=0x23, RSP=0x4000_0000_2000, RFLAGS=0x202 (IF=1), CS=0x1B, RIP=0x4000_0000_0000
+  ↓
+ring 3: ghi/đọc stack user → `int 0x80` DebugPutStr(ptr, len)
+  ↑ stub `vifast_isr_syscall` (crate plat): đẩy frame, gọi `syscall_dispatch`
+    → in chuỗi user qua COM1 → trả (rax=0, rdx=14) → `iretq` về ring 3
+  ↓
+ring 3: `int 0x80` Exit(0)
+  ↑ handler: TAP 14 (ring 3 **đã chạy tiếp** sau `int 0x80` đầu) → marker + halt
+```
+
+**Bốn điểm kỹ thuật đo được, không suy đoán:**
+
+1. **VA user phải chọn đúng cấp bảng trang.** Lần chạy đầu chọn `0x6000_0000_0000` và ghi
+   `PDPT[96]` — sai: `0x6000_0000_0000` = **96 TiB** ⇒ `PML4[192]`, không phải `PML4[0]`; kết quả
+   `# exc: vec=14 err=0x14 rip=0x600000000000 cs=0x1b` (instruction fetch, `P=0`). Chọn lại
+   `0x0000_0040_0000_0000` = **256 GiB** ⇒ `PML4[0]`, `PDPT[256]` — đúng.
+2. **Thứ tự `push` quyết định offset frame.** Stub đẩy `rax … r15`; `r15` đẩy **cuối** nên ở
+   offset **0**, `rax` ở offset **112**. Lần chạy đầu đọc `nr` ở offset 0 ⇒ ra `r15` = địa chỉ
+   entry (`nr=274877906944`), TAP 12 vẫn xanh nhưng `nr` sai. Test host
+   `syscall_frame_offsets_literal` chốt **từng** offset.
+3. **`int 0x80` lưu RIP của lệnh KẾ TIẾP** (SDM Vol 2B "INT n") — khác fault. Vì vậy handler
+   **không** cộng RIP; đột biến tương đương là **lùi** RIP (§10.5 (iii)).
+4. **Kernel đọc được trang user** vì `CR4.SMAP = 0` (chưa bật SMAP) — nếu bật, lần đọc chuỗi đầu
+   fault và handler in `# exc: vec=14` thay vì im lặng.
+
+### 10.4 Đo được (log `boot-1.log`, TAP 12/13/14)
+
+```text
+# umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x4000000000 code_pa=0x106000 code_bytes=71 stack_va=0x4000001000 stack_pa=0x10f000 syscall_stack=0x114000
+ok 12 - umode: ring3 entered
+# umode: int80 nr=12 cs=0x1b rip=0x4000000025 user=1
+ring3 says hi
+ok 13 - umode: syscall handled
+# umode: ring3 ran nr=12 ret=14
+# umode: int80 ret error=0 value=14 printed=14 ptr=0x4000000039 len=14
+ok 14 - umode: returned to ring3
+# umode: exit code=0 nr=14
+# umode: done
+# viFastOs x86_64: boot ok
+# viFastOs x86_64: halt
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| trang mã ring 3 | `code_bytes=71`, một Frame 4 KiB, `US = 1`, chỉ đọc + exec |
+| trang stack ring 3 | `stack_pa=0x10f000`, `US = 1`, RW, `NX = 1` |
+| `iretq` | `cs=0x1b`, `ss=0x23`, `rflags=0x202` (`IF = 1`) |
+| `int 0x80` đầu | `nr=12` (DebugPutStr), `cs=0x1b` (**từ CPL3**), `rip=0x4000_0000_0025` (= lệnh kế) |
+| trả kết quả | `rax=0` (error), `rdx=14` (value) — đúng `[calling.x86_64]` |
+| ring 3 chạy tiếp | `int 0x80` thứ hai `nr=14` (Exit) ⇒ TAP 14 |
+| runner | **12/12** kiểm sạch, TAP **14/14**, **10 ca âm** ĐỎ đúng |
+
+### 10.5 Đột biến bắt buộc (ghi trung thực **tầng nào** đỏ)
+
+| # | Đột biến | Kết quả |
+|---|---|---|
+| (i) | `iretq` frame để `CS = 0x08` / `SS = 0x10` (ring 0) | **ĐỎ** — `not ok 12 - umode: ring3 entered`, `# TAP 12 FAIL — dừng (không in marker)`, `qg_boot rc=124` (treo có kiểm soát). Handler thấy `cs = 0x08` ⇒ `is_user_cs` sai ngay ở tầng dữ liệu (test host `kernel_cs_is_not_user` cũng ĐỎ nếu đổi hằng). |
+| (ii) | trang mã ring 3 map `P` **không** `US` (`or eax, 1`) | **ĐỎ** — `# exc: vec=14 err=0x15 rip=0x4000000000 cs=0x1b rflags=0x10202` + `# exc: cr2=0x4000000000` (instruction fetch từ CPL3 trên trang supervisor: `P=1`, `U/S=1`, `I/D=1`), **không** có TAP 12, **không** marker, `rc=124`. |
+| (iii) | handler **không** tiến `rip` | **Không phải đột biến trên x86_64**: `int 0x80` đã đặt RIP = lệnh **kế tiếp**, nên "không tăng" là hành vi **đúng** (xem §10.3 điểm 3). Đột biến tương đương đã chạy: **lùi** RIP 2 byte (`sub qword ptr [rsp+136], 2`) ⇒ `int 0x80` lặp vô hạn; log bị chặn ở **2.271 B** (trần `MAX_USER_PRINT = 256` + chỉ in dòng "không phải" cho 2 lần đầu), `qg_boot rc=124` (timeout 5 s) — **ĐỎ, treo có kiểm soát**, không có TAP 14/marker. |
+
+**Không** được gọi (i)/(ii) là "đã kiểm trên phần cứng": cả hai đo trên QEMU TCG.
+
+### 10.6 Còn thiếu của bước 4 (ghi rõ)
+
+1. **Một** syscall thật (`DebugPutStr`) + `Exit`; **không** IPC từ ring 3, **không** nhiều process.
+2. **Không** preemption/context switch từ ring 3: `RFLAGS.IF = 1` nên timer (vector 32) vẫn vào
+   handler và `iretq` về ring 3, nhưng **không** có scheduler — chỉ là ngắt trong suốt.
+3. `Exit` **chưa** đi qua `fault_ep`/`FaultKind::Exit` (chưa có procsrv) — nó in marker rồi tắt
+   máy trong handler.
+4. **Không** có `Tcb`/`VSpace` object cho tiến trình ring 3: trang mã/stack được map trực tiếp vào
+   bảng trang của ảnh, chưa qua cap/Untyped (nợ M17 của object layer).
+5. **Không** `syscall`/`sysret` (lý do §10.2); **không** tuyên bố K5' đạt — tiêu chí K5' vẫn là
+   "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).

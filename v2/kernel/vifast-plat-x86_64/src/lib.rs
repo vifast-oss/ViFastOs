@@ -22,12 +22,16 @@
 //!   tối thiểu, header multiboot2 và note PVH.
 //! - [`apic`] (KT-266): dữ liệu **APIC + timer** — địa chỉ MMIO LAPIC/IOAPIC, offset + bit thanh
 //!   ghi, bảng chia LAPIC timer, redirection entry IOAPIC, và số học PIT để **đo** `hz`.
+//! - [`umode`] (KT-270): dữ liệu **U-mode ring 3** — VA user, selector user, `RFLAGS`, bố cục
+//!   frame `int 0x80`, `SyscallRet`; asm `iretq`/stub `int 0x80` nằm ở [`asm`].
 //!
 //! # Crate này **không** làm gì
 //!
 //! Không boot, không QEMU, không linker script, không GDT/IDT/TSS, không `CR3`/`INVLPG`, không
 //! `syscall`/`sysret` thật, không tuyên bố K5' đạt — D2-163. Bước M3 mới là entry + GDT/IDT/TSS;
-//! M4 mới bật paging thật; M7 mới mở `spec/` `[calling.x86_64]` theo khuôn KT-05.
+//! M4 mới bật paging thật; M7 mới mở `spec/` `[calling.x86_64]` theo khuôn KT-05. **KT-270** đã
+//! mở `[calling.x86_64]` (D2-207) và thêm đường **`int 0x80`** + `iretq` xuống ring 3 — vẫn
+//! **không** `syscall`/`sysret` (xem `spec/abi.toml` `[calling.x86_64].trap`).
 //!
 //! KT-257 thêm **dữ liệu** cho bước boot đầu tiên ([`serial`], [`boot`]) và **asm đặc quyền**
 //! ([`asm`]); phần `_start` 32-bit + bật long mode vẫn nằm ở crate ảnh `vifast-kbin-x86_64`
@@ -61,6 +65,7 @@ pub mod idt;
 pub mod mmu;
 pub mod serial;
 pub mod tss;
+pub mod umode;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);
@@ -83,7 +88,7 @@ pub use apic::{
     TIMER_DIVIDE_BY_8,
 };
 pub use calling::{
-    Reg, INT80_MR_REGS, INT80_RETURN_MSGINFO_REG, INT80_VECTOR, SYSCALL_ARG_REGS,
+    Reg, INT80_CLOBBERED, INT80_MR_REGS, INT80_RETURN_MSGINFO_REG, INT80_VECTOR, SYSCALL_ARG_REGS,
     SYSCALL_CLOBBERED, SYSCALL_MR_REGS, SYSCALL_MSGINFO_REG, SYSCALL_MSRS, SYSCALL_NUMBER_REG,
     SYSCALL_RETURN_ERROR_REG, SYSCALL_RETURN_MSGINFO_REG, SYSCALL_RETURN_VALUE_REG, SYSV_ARG_REGS,
     SYSV_CALLEE_SAVED, SYSV_CALLER_SAVED, SYSV_DIRECTION_FLAG_CLEAR, SYSV_FRAME_POINTER,
@@ -105,9 +110,10 @@ pub use exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD,
-    STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF,
-    VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN, VEC_VC,
+    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS,
+    STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP,
+    VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN,
+    VEC_VC,
 };
 pub use format::{
     is_canonical_bits, Descriptor, MemAttr, PageTableFormat, Perms, Shareability, IA32_PAT_DEFAULT,
@@ -127,8 +133,9 @@ pub use gdt::{
     TSS_TYPE_BUSY_64,
 };
 pub use idt::{
-    entry as idt_entry, entry_ist, entry_offset, entry_selector, entry_type_attr, GATE_INTERRUPT,
-    GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES, IDT_LIMIT, IST_DOUBLE_FAULT,
+    entry as idt_entry, entry_ist, entry_offset, entry_selector, entry_type_attr, gate_type_attr,
+    GATE_INTERRUPT, GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES, IDT_LIMIT,
+    IST_DOUBLE_FAULT,
 };
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, X86Mmu,
@@ -137,4 +144,13 @@ pub use mmu::{
 pub use tss::{
     TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET, TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE,
     TSS_LIMIT, TSS_RSP0_OFFSET, TSS_WORDS,
+};
+pub use umode::{
+    is_kernel_cs, is_user_cs, rflags_if, SyscallRet, KERNEL_DS, RFLAGS_IF, SYSCALL_FRAME_CS,
+    SYSCALL_FRAME_ERROR, SYSCALL_FRAME_R10, SYSCALL_FRAME_R11, SYSCALL_FRAME_R12,
+    SYSCALL_FRAME_R13, SYSCALL_FRAME_R14, SYSCALL_FRAME_R15, SYSCALL_FRAME_R8, SYSCALL_FRAME_R9,
+    SYSCALL_FRAME_RAX, SYSCALL_FRAME_RBP, SYSCALL_FRAME_RBX, SYSCALL_FRAME_RCX, SYSCALL_FRAME_RDI,
+    SYSCALL_FRAME_RDX, SYSCALL_FRAME_RFLAGS, SYSCALL_FRAME_RIP, SYSCALL_FRAME_RSI,
+    SYSCALL_FRAME_RSP, SYSCALL_FRAME_SS, SYSCALL_FRAME_VECTOR, USER_CODE_VA, USER_CS, USER_RFLAGS,
+    USER_SS, USER_STACK_BYTES, USER_STACK_TOP, USER_STACK_VA,
 };

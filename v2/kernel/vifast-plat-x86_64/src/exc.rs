@@ -70,6 +70,13 @@ pub const VEC_TIMER: u8 = 32;
 /// **không** cần `EOI`; handler chỉ đếm rồi `iretq`.
 pub const VEC_SPURIOUS: u8 = 255;
 
+/// **Syscall** — vector `0x80` của `int 0x80` (KT-270, D2-207).
+///
+/// Đây là **software interrupt** (SDM Vol 2B "INT n/INTO/INT3/INT1"): CPU lưu RIP của lệnh **kế
+/// tiếp** (khác fault), nên handler **không** cộng RIP. Gate IDT của vector này có `DPL = 3`
+/// ([`crate::idt::GATE_INTERRUPT_USER`]) để ring 3 gọi được; mọi vector khác giữ `DPL = 0`.
+pub const VEC_SYSCALL: u8 = 0x80;
+
 /// Vector **giả** mà stub `isr_unknown` đẩy: stub dùng chung không biết vector thật, nên nó đẩy
 /// một sentinel và handler in `vec=254`.
 ///
@@ -134,8 +141,10 @@ pub const STUB_SX: usize = 14;
 pub const STUB_TIMER: usize = 15;
 /// Slot stub **spurious** (vector 255, không mã lỗi) — KT-266.
 pub const STUB_SPURIOUS: usize = 16;
+/// Slot stub **syscall** (vector `0x80`, không mã lỗi) — KT-270.
+pub const STUB_SYSCALL: usize = 17;
 /// Số slot stub — **khớp** số nhánh của `asm::stub_addr`.
-pub const STUB_COUNT: usize = 17;
+pub const STUB_COUNT: usize = 18;
 
 /// Vector → slot stub. Vector không có stub riêng rơi về [`STUB_UNKNOWN`].
 ///
@@ -160,6 +169,7 @@ pub const fn stub_slot(vec: u8) -> usize {
         VEC_SX => STUB_SX,
         VEC_TIMER => STUB_TIMER,
         VEC_SPURIOUS => STUB_SPURIOUS,
+        VEC_SYSCALL => STUB_SYSCALL,
         _ => STUB_UNKNOWN,
     }
 }
@@ -182,6 +192,7 @@ pub const fn name(vec: u64) -> &'static str {
         29 => "vc",
         30 => "sx",
         32 => "timer",
+        128 => "syscall",
         254 => "unknown",
         255 => "spurious",
         _ => "other",

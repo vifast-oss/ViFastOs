@@ -97,6 +97,7 @@ SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng
 |---|---|---|---|---|---|---|---|
 | `aarch64` | `x8` | x0, x1 | `x2` | x3, x4, x5, x6 | `x0` | `x1` | `svc #0` |
 | `riscv64` | `a7` | a0, a1 | `a2` | a3, a4, a5, a6 | `a0` | `a1` | `—` |
+| `x86_64` | `rax` | rdi, rsi | `rdx` | r10, r8, r9, r12 | `rax` | `rdx` | `int 0x80` |
 
 Arch còn `reserved = true` (chưa mở) không có mặt trong bảng này; `—` = spec không khai báo trường ấy (riscv64 đóng băng, không được thêm trường).
 

@@ -61,6 +61,19 @@ SECTIONS
         *(.got.plt)
     }
 
+    /* **KT-270** — trang mã **ring 3** (K5' bước 4): section riêng, căn 4 KiB, để ảnh map
+       **cùng PA** ở một VA user (`USER_CODE_VA`) với `US = 1`. `KEEP` chống `--gc-sections`
+       xoá (không ai tham chiếu từng instruction). Phải vừa **một** Frame 4 KiB — `ASSERT` dưới
+       đây là lỗi **liên kết** nếu vượt, không phải lỗi lúc chạy. Nằm **ngoài** `.text` nên
+       không đổi `# conf image:` (bản băm `.text` của KT-265). */
+    .user : ALIGN(4K) {
+        __user_start = .;
+        KEEP(*(.user))
+        __user_end = .;
+    }
+    ASSERT(__user_end - __user_start <= 0x1000,
+           "KT-270: section .user phải vừa một trang 4 KiB (USER_CODE_VA map một Frame)")
+
     .bss : ALIGN(4K) {
         __bss_start = .;
         *(.bss .bss.*)

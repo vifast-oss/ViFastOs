@@ -409,6 +409,71 @@ core::arch::global_asm!(
     "push 0",
     "push {spurious_vec}",
     "jmp vifast_isr_common",
+    // ---- KT-270: stub `int 0x80` (vector 0x80) — đường syscall từ ring 3.
+    //
+    // `int 0x80` từ CPL3 đẩy `SS/RSP/RFLAGS/CS/RIP` (5 qword); stub đẩy `err = 0`,
+    // `vector = 0x80`, rồi **15 GPR** — cùng bố cục frame với exception chung. Handler
+    // `syscall_dispatch` nhận `(nr, a0, a1, mi, mr0, mr1, cs, rip)` theo SysV (6 thanh ghi + 2
+    // trên stack) và trả `SyscallRet` (`rax:rdx`); stub ghi hai giá trị vào ô `rax`/`rdx` của
+    // frame rồi `iretq` — ring 3 đọc đúng `[calling.x86_64].return_error`/`return_value`.
+    ".p2align 4",
+    ".globl vifast_isr_syscall",
+    "vifast_isr_syscall:",
+    "push 0",
+    "push {syscall_vec}",
+    "push rax",
+    "push rcx",
+    "push rdx",
+    "push rbx",
+    "push rbp",
+    "push rsi",
+    "push rdi",
+    "push r8",
+    "push r9",
+    "push r10",
+    "push r11",
+    "push r12",
+    "push r13",
+    "push r14",
+    "push r15",
+    // `rbx` = con trỏ frame; mọi tham số đọc **từ bộ nhớ** nên việc ghi đè thanh ghi không ảnh
+    // hưởng thứ tự đọc.
+    "mov rbx, rsp",
+    "mov rdi, [rbx + {sc_rax}]", // nr
+    "mov rsi, [rbx + {sc_rdi}]", // a0
+    "mov rdx, [rbx + {sc_rsi}]", // a1
+    "mov rcx, [rbx + {sc_rdx}]", // mi
+    "mov r8,  [rbx + {sc_r10}]", // mr0
+    "mov r9,  [rbx + {sc_r8}]",  // mr1
+    "mov r12, [rbx + {sc_rip}]", // rip (tham số thứ 8)
+    "mov r13, [rbx + {sc_cs}]",  // cs (tham số thứ 7)
+    // Căn stack 16 byte trước `call` (SysV); hai tham số cuối đẩy lên stack.
+    "and rsp, -16",
+    "push r12", // 8: rip
+    "push r13", // 7: cs
+    "call syscall_dispatch",
+    "add rsp, 16",
+    "mov rsp, rbx",
+    // Trả kết quả theo `[calling.x86_64]`: `rax` = error, `rdx` = value.
+    "mov [rsp + {sc_rax}], rax",
+    "mov [rsp + {sc_rdx}], rdx",
+    "pop r15",
+    "pop r14",
+    "pop r13",
+    "pop r12",
+    "pop r11",
+    "pop r10",
+    "pop r9",
+    "pop r8",
+    "pop rdi",
+    "pop rsi",
+    "pop rbp",
+    "pop rbx",
+    "pop rdx",
+    "pop rcx",
+    "pop rax",
+    "add rsp, 16",
+    "iretq",
     // ---- stub chung: giữ 15 GPR, gọi handler Rust, `iretq` hoặc halt.
     ".p2align 4",
     "vifast_isr_common:",
@@ -515,6 +580,16 @@ core::arch::global_asm!(
     timer_vec = const crate::exc::VEC_TIMER as u32,
     spurious_vec = const crate::exc::VEC_SPURIOUS as u32,
     unknown_vec = const crate::exc::VEC_UNKNOWN as u32,
+    // KT-270: vector `int 0x80` + offset frame của stub syscall (khớp `crate::umode`).
+    syscall_vec = const crate::exc::VEC_SYSCALL as u32,
+    sc_rax = const crate::umode::SYSCALL_FRAME_RAX,
+    sc_rdx = const crate::umode::SYSCALL_FRAME_RDX,
+    sc_rsi = const crate::umode::SYSCALL_FRAME_RSI,
+    sc_rdi = const crate::umode::SYSCALL_FRAME_RDI,
+    sc_r8 = const crate::umode::SYSCALL_FRAME_R8,
+    sc_r10 = const crate::umode::SYSCALL_FRAME_R10,
+    sc_rip = const crate::umode::SYSCALL_FRAME_RIP,
+    sc_cs = const crate::umode::SYSCALL_FRAME_CS,
 );
 
 // Khai báo stub asm — định nghĩa trong `global_asm!` ở trên.
@@ -537,6 +612,7 @@ extern "C" {
     fn vifast_isr_sx();
     fn vifast_isr_timer();
     fn vifast_isr_spurious();
+    fn vifast_isr_syscall();
     fn vifast_probe_int3();
     fn vifast_probe_int3_next();
     fn vifast_probe_ud2();
@@ -549,6 +625,26 @@ extern "C" {
     fn vifast_probe_unknown_resume();
 }
 
+// Handler **syscall** của ảnh — định nghĩa ở `vifast-kbin-x86_64` (`#[no_mangle]`).
+//
+// Stub `vifast_isr_syscall` gọi hàm này với 8 tham số SysV (6 thanh ghi + 2 trên stack) và nhận
+// `SyscallRet` ở `rax:rdx`. Khai báo ở đây (crate plat) để stub asm gọi được mà ảnh **không**
+// cần `unsafe` (R5).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+#[allow(dead_code)] // chỉ được gọi từ stub asm (`vifast_isr_syscall`), không từ Rust.
+extern "C" {
+    fn syscall_dispatch(
+        nr: u64,
+        a0: u64,
+        a1: u64,
+        mi: u64,
+        mr0: u64,
+        mr1: u64,
+        cs: u64,
+        rip: u64,
+    ) -> crate::umode::SyscallRet;
+}
+
 /// Địa chỉ stub của `slot` (theo [`crate::exc::stub_slot`]); slot lạ trả `0`.
 ///
 /// `0` là sentinel an toàn: [`crate::idt::install`] ghi offset 0 vào ô IDT, và một exception rơi
@@ -557,7 +653,8 @@ extern "C" {
 pub fn stub_addr(slot: usize) -> u64 {
     use crate::exc::{
         STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_NP, STUB_PF,
-        STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC,
+        STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN,
+        STUB_VC,
     };
     let f: unsafe extern "C" fn() = match slot {
         STUB_UNKNOWN => vifast_isr_unknown,
@@ -577,6 +674,7 @@ pub fn stub_addr(slot: usize) -> u64 {
         STUB_SX => vifast_isr_sx,
         STUB_TIMER => vifast_isr_timer,
         STUB_SPURIOUS => vifast_isr_spurious,
+        STUB_SYSCALL => vifast_isr_syscall,
         _ => return 0,
     };
     f as usize as u64
@@ -669,6 +767,60 @@ pub fn probe_unknown_insn() -> u64 {
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn probe_unknown_resume() -> u64 {
     vifast_probe_unknown_resume as *const () as usize as u64
+}
+
+// ---------------------------------------------------------------------------------------------
+// U-mode (ring 3) — KT-270 (K5' bước 4)
+// ---------------------------------------------------------------------------------------------
+
+/// `iretq` xuống **ring 3** tại `entry` với `RSP = stack_top` và `RFLAGS = rflags`. **Không trả về.**
+///
+/// Dựng frame `iretq` theo đúng thứ tự CPU đọc (SDM Vol 3A §5.5, Hình 5-9 "Stack Usage on
+/// Transitions to Inner Privilege Levels"): `SS`, `RSP`, `RFLAGS`, `CS`, `RIP`. `CS = 0x1B`
+/// (`RPL 3`) và `SS = 0x23` (`RPL 3`) là điều kiện **bắt buộc** để hạ đặc quyền; `DS`/`ES` được
+/// đặt về selector user data trước `iretq` (ring 3 không dùng phân đoạn ở long mode, nhưng giữ
+/// đúng trạng thái).
+///
+/// `rflags` do caller dựng ([`crate::umode::USER_RFLAGS`] = `0x202`: `IF = 1`). Hàm **không** trả
+/// về: đường về duy nhất là `int 0x80` → handler → `iretq` (hoặc halt khi lỗi).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn enter_user(entry: u64, stack_top: u64, rflags: u64) -> ! {
+    // SAFETY: GDT/IDT/TSS đã nạp; `entry`/`stack_top` trỏ trang user đã map `US = 1`; `rflags`
+    // dựng bởi `crate::umode::USER_RFLAGS`. `iretq` hạ đặc quyền và **không** trả về.
+    unsafe {
+        asm!(
+            // Giữ `rax` (không khai `out("rax")` vì `noreturn` cấm output): `mov ax` chỉ để nạp
+            // `DS`/`ES` bằng selector user data.
+            "push rax",
+            "mov ax, {user_ds}",
+            "mov ds, ax",
+            "mov es, ax",
+            "pop rax",
+            "push {user_ss}",
+            "push {stack_top}",
+            "push {rflags}",
+            "push {user_cs}",
+            "push {entry}",
+            "iretq",
+            user_ds = const crate::umode::USER_SS,
+            user_ss = in(reg) crate::umode::USER_SS as u64,
+            stack_top = in(reg) stack_top,
+            rflags = in(reg) rflags,
+            user_cs = in(reg) crate::umode::USER_CS as u64,
+            entry = in(reg) entry,
+            options(noreturn),
+        )
+    }
+}
+
+/// Đọc một byte tại địa chỉ **user** (identity map ⇒ VA == PA) — dùng cho `DebugPutStr` từ ring 3.
+///
+/// Kernel đọc được trang user vì `CR4.SMAP = 0` (chưa bật SMAP); nếu bật SMAP, lần đọc đầu fault
+/// và handler in `# exc: vec=14` thay vì im lặng.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn read_u8(addr: u64) -> u8 {
+    // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (trang user của ring 3).
+    unsafe { core::ptr::read_volatile(addr as *const u8) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -931,4 +1083,16 @@ pub fn probe_unknown_insn() -> u64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn probe_unknown_resume() -> u64 {
     host_only("probe_unknown_resume")
+}
+
+/// Stub host của [`enter_user`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn enter_user(_entry: u64, _stack_top: u64, _rflags: u64) -> ! {
+    host_only("enter_user")
+}
+
+/// Stub host của [`read_u8`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn read_u8(_addr: u64) -> u8 {
+    host_only("read_u8")
 }

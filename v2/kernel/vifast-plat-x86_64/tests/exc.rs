@@ -29,9 +29,10 @@ use vifast_plat_x86_64::exc::{
     FRAME_ERROR_OFFSET, FRAME_GPR_COUNT, FRAME_RFLAGS_OFFSET, FRAME_RIP_OFFSET,
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
-    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_TIMER, STUB_TS, STUB_UD,
-    STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP, VEC_PF,
-    VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN, VEC_VC,
+    STUB_GP, STUB_NP, STUB_PF, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS,
+    STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_NP,
+    VEC_PF, VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN,
+    VEC_VC,
 };
 use vifast_plat_x86_64::gdt::{
     entry as gdt_entry, gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code,
@@ -45,8 +46,8 @@ use vifast_plat_x86_64::gdt::{
 };
 use vifast_plat_x86_64::idt::{
     entry as idt_entry, entry_at, entry_ist, entry_offset, entry_selector, entry_type_attr,
-    GATE_INTERRUPT, GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES, IDT_LIMIT,
-    IST_DOUBLE_FAULT,
+    gate_type_attr, GATE_INTERRUPT, GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES,
+    IDT_LIMIT, IST_DOUBLE_FAULT,
 };
 use vifast_plat_x86_64::tss::{
     init as tss_init, io_map_base, ist, rsp0, TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET,
@@ -362,6 +363,21 @@ fn idt_gate_types_literal() {
     assert_eq!((GATE_INTERRUPT >> 4) & 1, 0);
 }
 
+/// **KT-270**: chỉ vector `0x80` (syscall) có gate `DPL = 3`; mọi vector khác `DPL = 0`.
+///
+/// Đây là điều kiện để ring 3 gọi được `int 0x80` mà **không** gọi được `int 3`/`int 0x0e` (một
+/// ring 3 gọi `int 3` với gate `DPL = 0` sẽ `#GP` — đúng hành vi mong muốn).
+#[test]
+fn idt_gate_type_attr_only_syscall_is_user() {
+    assert_eq!(gate_type_attr(VEC_SYSCALL), GATE_INTERRUPT_USER);
+    for vec in [0u8, 1, 3, 6, 8, 13, 14, 32, 0x30, 0xFE, 255] {
+        assert_eq!(gate_type_attr(vec), GATE_INTERRUPT, "vector {vec}");
+    }
+    // `DPL` của gate syscall là 3, của mọi gate khác là 0.
+    assert_eq!((gate_type_attr(VEC_SYSCALL) >> 5) & 0x3, 3);
+    assert_eq!((gate_type_attr(3) >> 5) & 0x3, 0);
+}
+
 /// Bảng IDT tĩnh: mọi ô **rỗng** (`P = 0`) trước `install` — không có ô rác trỏ vào đâu.
 #[test]
 fn idt_static_initial_zero() {
@@ -402,6 +418,11 @@ fn exception_vectors_literal() {
     // Hai vector **ngắt** của KT-266.
     assert_eq!(VEC_TIMER, 32);
     assert_eq!(VEC_SPURIOUS, 255);
+    // KT-270: vector `int 0x80` — software interrupt, ngoài dải exception.
+    assert_eq!(VEC_SYSCALL, 0x80);
+    assert!(VEC_SYSCALL > 31);
+    assert_ne!(VEC_SYSCALL, VEC_TIMER);
+    assert_ne!(VEC_SYSCALL, VEC_SPURIOUS);
 }
 
 /// Tập vector **có mã lỗi** đúng 10 vector của SDM Bảng 6-1.
@@ -443,15 +464,17 @@ fn stub_slot_mapping() {
     // KT-266: timer 32 và spurious 255 có stub riêng.
     assert_eq!(stub_slot(VEC_TIMER), STUB_TIMER);
     assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
+    // KT-270: `int 0x80` có stub riêng (không đi qua `isr_unknown`).
+    assert_eq!(stub_slot(VEC_SYSCALL), STUB_SYSCALL);
     // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x30, 0xFE) về stub chung.
-    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x30, 0x80, 0xFE] {
+    for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x30, 0xFE] {
         assert_eq!(stub_slot(vec), STUB_UNKNOWN, "vector {vec}");
     }
-    // Đếm: đúng 16 vector có stub riêng (14 exception + timer + spurious).
+    // Đếm: đúng 17 vector có stub riêng (14 exception + timer + spurious + syscall).
     let special = (0..=255u8)
         .filter(|v| stub_slot(*v) != STUB_UNKNOWN)
         .count();
-    assert_eq!(special, 16);
+    assert_eq!(special, 17);
 }
 
 /// 17 slot là **17 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
@@ -475,6 +498,7 @@ fn stub_slots_are_distinct() {
         STUB_SX,
         STUB_TIMER,
         STUB_SPURIOUS,
+        STUB_SYSCALL,
     ];
     assert_eq!(slots.len(), STUB_COUNT);
     for (i, a) in slots.iter().enumerate() {
@@ -529,6 +553,7 @@ fn exception_names() {
     assert_eq!(exc_name(VEC_GP as u64), "gp");
     assert_eq!(exc_name(VEC_PF as u64), "pf");
     assert_eq!(exc_name(VEC_UNKNOWN), "unknown");
+    assert_eq!(exc_name(VEC_SYSCALL as u64), "syscall");
     // Vector không có tên riêng vẫn có nhãn, không panic.
     assert_eq!(exc_name(2), "other");
     assert_eq!(exc_name(0x30), "other");

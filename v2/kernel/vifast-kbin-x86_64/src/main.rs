@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Ảnh boot **x86_64** của ViFastOs — KT-257 (K5' bước 1) + KT-261 (K5' bước 2: GDT/TSS/IDT) +
-//! KT-266 (K5' bước 3: APIC + timer).
+//! KT-266 (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`).
 //!
 //! # Đường boot
 //!
@@ -19,7 +19,11 @@
 //!        │    → TAP 1..7 (gdt/idt loaded + int3/ud2/#PF/#GP/unknown)
 //!        │    → LAPIC (SVR/TPR) → IOAPIC (mask hết) → timer (LVT + initial count)
 //!        │    → `sti` → TAP 8..11 (lapic id, ioapic, timer ticks, timer eoi) → `cli`
-//!        │    → marker → halt
+//!        │    → TSS.RSP0 = stack syscall riêng → `iretq` xuống ring 3 (CS=0x1B, SS=0x23, IF=1)
+//!        │    ↓
+//!        │  ring 3: ghi stack user → `int 0x80` DebugPutStr → handler in chuỗi user
+//!        │    → TAP 12/13 + `# umode: ring3 ran nr=12 ret=14` → `iretq` về ring 3
+//!        │    → `int 0x80` Exit → TAP 14 → marker → halt
 //!        └─ asm::halt: chờ LSR.TEMT (có trần) → outw(0x604, 0x2000) ⇒ QEMU thoát mã 0
 //! ```
 //!
@@ -56,13 +60,16 @@
 //! nằm ở [`vifast_plat_x86_64::asm`] — crate `kernel/vifast-plat-*` mà D2-17 cho phép `unsafe`.
 //! Nhờ vậy ảnh giữ đúng luật R5 mà vẫn có đủ đường boot + xử lý exception.
 //!
-//! # Phạm vi (D2-203, KT-261; D2-204, KT-266)
+//! # Phạm vi (D2-203, KT-261; D2-204, KT-266; D2-207, KT-270)
 //!
 //! **Đã có**: GDT/TSS/IDT + handler exception (KT-261); LAPIC (ID/version/SVR/TPR), IOAPIC
-//! (ID/version + mask toàn bộ redirection), LAPIC timer periodic + `EOI` (KT-266).
+//! (ID/version + mask toàn bộ redirection), LAPIC timer periodic + `EOI` (KT-266); **U-mode ring
+//! 3** — trang mã/stack user `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler
+//! → `iretq` về ring 3, `Exit` kết thúc (KT-270).
 //!
-//! **Chưa**: U-mode, PCI, SMP, IPI, `-cpu max`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như
-//! K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) — đây là **bước 3**.
+//! **Chưa**: IPC từ ring 3, nhiều process, preemption, PCI, SMP, IPI, `-cpu max`,
+//! `syscall`/`sysret`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp
+//! 1|2|4 + soak 600 boot, D2-149) — đây là **bước 4**.
 
 #![no_std]
 #![no_main]
@@ -74,12 +81,19 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use vifast_plat_x86_64::apic;
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::boot;
-use vifast_plat_x86_64::control::{CR0_PE, CR0_PG, CR4_PAE, MSR_IA32_APIC_BASE};
+use vifast_plat_x86_64::control::{
+    CR0_PE, CR0_PG, CR4_PAE, EFER_LME, EFER_NXE, MSR_IA32_APIC_BASE,
+};
 use vifast_plat_x86_64::exc;
 use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
 use vifast_plat_x86_64::serial;
 use vifast_plat_x86_64::tss;
+
+/// **KT-270** (K5' bước 4, D2-207): U-mode ring 3 — stub `.user`, handler `int 0x80`, `iretq`
+/// xuống CPL3 và đường `Exit` kết thúc. Tách tệp riêng (luật R1: tệp trong `kernel/` ≤ 1.500
+/// dòng).
+mod umode;
 
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
 /// này và đòi nó xuất hiện **đúng một lần**.
@@ -95,7 +109,15 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// Số ca TAP mà ảnh phát ra (khớp `1..N` và `EXPECT_TESTS` của runner).
 ///
 /// KT-266 thêm **bốn** ca: `apic: lapic id`, `apic: ioapic`, `timer: ticks`, `timer: eoi`.
-pub const TAP_TESTS: usize = 11;
+/// **KT-270** thêm **ba** ca U-mode: `umode: ring3 entered`, `umode: syscall handled`,
+/// `umode: returned to ring3`.
+pub const TAP_TESTS: usize = 14;
+
+/// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
+///
+/// `NXE` cần cho **NX** của trang stack ring 3 (KT-270): không bật thì bit 63 của entry bảng
+/// trang là reserved và mọi truy cập sinh `#PF` với `RSVD = 1`.
+const EFER_LME_NXE: u32 = (EFER_LME | EFER_NXE) as u32;
 
 /// Địa chỉ **canonical** nhưng **chưa map** dùng cho ca `#PF`: `0x0000_7000_0000_0000`.
 ///
@@ -162,10 +184,12 @@ global_asm!(
     "rep stosb",
     "mov dword ptr [__boot_eax], esi",
     "mov dword ptr [__boot_ebx], ebp",
-    // 4. PML4[0] = __pdpt | P|RW.
+    // 4. PML4[0] = __pdpt | P|RW|US. `US = 1` ở **gốc** là điều kiện cần để cây con user
+    //    (PDPT[256]) truy cập được từ CPL3; identity map vẫn **supervisor** vì `PDPT[0]` giữ
+    //    `US = 0` (bit US được AND qua các cấp).
     "mov edi, offset __pml4",
     "mov eax, offset __pdpt",
-    "or eax, 3",
+    "or eax, 7",
     "mov dword ptr [edi], eax",
     "mov dword ptr [edi + 4], 0",
     // 5. PDPT[0] = __pd | P|RW.
@@ -205,6 +229,32 @@ global_asm!(
     "add edi, 8",
     "dec ecx",
     "jnz 2b",
+    // 6c. **KT-270** — cây bảng trang **user** cho ring 3: `PDPT[256]` (VA 0x0000_0040_0000_0000
+    //     = 256 GiB, `PML4[0]`) → `__pd_user` → `__pt_user` → hai lá 4 KiB. `PML4[0]` đã
+    //     `US = 1` ở bước 4; các entry dưới đây cũng `US = 1`, còn identity map/MMIO giữ `US = 0`.
+    "mov edi, offset __pdpt",
+    "mov eax, offset __pd_user",
+    "or eax, 7",
+    "mov dword ptr [edi + 2048], eax", // 256 × 8 = 2048
+    "mov dword ptr [edi + 2052], 0",
+    // 6d. __pd_user[0] = __pt_user | P|RW|US.
+    "mov edi, offset __pd_user",
+    "mov eax, offset __pt_user",
+    "or eax, 7",
+    "mov dword ptr [edi], eax",
+    "mov dword ptr [edi + 4], 0",
+    // 6e. __pt_user[0] = __user_start | P|US — trang mã ring 3: **chỉ đọc + exec** (W^X).
+    "mov edi, offset __pt_user",
+    "mov eax, offset __user_start",
+    "or eax, 5",
+    "mov dword ptr [edi], eax",
+    "mov dword ptr [edi + 4], 0",
+    // 6f. __pt_user[1] = __user_stack | P|RW|US|NX — trang stack ring 3: đọc + ghi, **không**
+    //     exec (NX = bit 63 ⇒ dword cao = 0x8000_0000; EFER.NXE bật ở bước 9).
+    "mov eax, offset __user_stack",
+    "or eax, 7",
+    "mov dword ptr [edi + 8], eax",
+    "mov dword ptr [edi + 12], 0x80000000",
     // 7. CR4.PAE = 1 (bắt buộc trước CR3 cho long mode).
     "mov eax, cr4",
     "or eax, 0x20",
@@ -212,10 +262,10 @@ global_asm!(
     // 8. CR3 = PML4 (địa chỉ vật lý).
     "mov eax, offset __pml4",
     "mov cr3, eax",
-    // 9. IA32_EFER.LME = 1.
+    // 9. IA32_EFER.LME = 1 **và** NXE = 1 (KT-270: NX cho trang stack ring 3).
     "mov ecx, 0xC0000080",
     "rdmsr",
-    "or eax, 0x100",
+    "or eax, {efer_lme_nxe}",
     "wrmsr",
     // 10. CR0.PG | CR0.PE — từ lệnh này paging bật, mọi địa chỉ đi qua bảng trang identity.
     "mov eax, cr0",
@@ -272,6 +322,24 @@ global_asm!(
     "__ist1_stack:",
     ".skip 4096",
     "__ist1_top:",
+    // **KT-270** — bảng trang user (PD + PT) cho ring 3, và hai stack:
+    //   - `__user_stack`: stack **user** (map ở USER_STACK_VA, `US = 1`, RW, NX);
+    //   - `__syscall_stack`: stack **kernel** riêng cho đường vào từ ring 3 (`TSS.RSP0`), để
+    //     `int 0x80`/ngắt không đè lên stack boot của `kmain` (kmain không quay lại sau `iretq`).
+    ".align 4096",
+    "__pd_user:",
+    ".skip 4096",
+    ".align 4096",
+    "__pt_user:",
+    ".skip 4096",
+    ".align 4096",
+    "__user_stack:",
+    ".skip 4096",
+    "__user_stack_top:",
+    ".align 4096",
+    "__syscall_stack:",
+    ".skip 16384",
+    "__syscall_stack_top:",
     // ---- .data: GDT **tạm** + con trỏ `lgdt` (6 byte: limit 16-bit + base 32-bit).
     ".section .data",
     ".align 8",
@@ -283,6 +351,35 @@ global_asm!(
     "__gdt_ptr:",
     ".word __gdt_end - __gdt - 1",
     ".long __gdt",
+    // ---- **KT-270**: trang mã **ring 3** (section `.user`, linker đặt một trang 4 KiB).
+    //
+    // Chạy ở CPL3 với `RSP = USER_STACK_TOP`; mọi địa chỉ đều **PC-relative** (`lea`/`rip`) nên
+    // đúng ở VA user dù ảnh liên kết ở PA. Số hiệu syscall lấy từ **hằng sinh**
+    // (`vifast_abi::SYS_DEBUG_PUT_STR`/`SYS_EXIT`) — không có số 12/14 viết tay (D2-11).
+    ".section .user, \"ax\"",
+    ".p2align 12",
+    ".globl __user_entry",
+    "__user_entry:",
+    // Chạm stack user (chứng minh trang stack map `US = 1`): ghi rồi đọc lại.
+    "mov qword ptr [rsp - 8], 0x1234",
+    "mov rax, qword ptr [rsp - 8]",
+    // DebugPutStr(ptr, len): rdi = chuỗi (cùng trang), rsi = độ dài, rax = 12.
+    "lea rdi, [rip + __user_msg]",
+    "mov rsi, {user_msg_len}",
+    "mov rax, {sys_debug_put_str}",
+    "int 0x80",
+    // Trả về theo `[calling.x86_64]`: rax = error, rdx = value. Giữ lại rồi gọi Exit.
+    "mov r12, rax",
+    "mov r13, rdx",
+    // Exit(0): rdi = 0, rax = 14. Không trả về ring 3.
+    "xor rdi, rdi",
+    "mov rax, {sys_exit}",
+    "int 0x80",
+    // `Exit` không trả về; nếu có thì dừng an toàn thay vì chạy vào rác.
+    "1:",
+    "jmp 1b",
+    "__user_msg:",
+    ".ascii \"ring3 says hi\\n\"",
     mb_magic = const boot::MULTIBOOT2_MAGIC,
     mb_arch = const boot::MULTIBOOT2_ARCH_I386,
     mb_len = const boot::MULTIBOOT2_HEADER_LEN,
@@ -295,6 +392,11 @@ global_asm!(
     gdt_null = const boot::GDT_NULL,
     gdt_code = const boot::GDT_KERNEL_CODE,
     gdt_data = const boot::GDT_KERNEL_DATA,
+    // KT-270: EFER.LME|NXE + số hiệu syscall sinh từ spec + độ dài chuỗi ring 3.
+    efer_lme_nxe = const EFER_LME_NXE,
+    sys_debug_put_str = const vifast_abi::SYS_DEBUG_PUT_STR,
+    sys_exit = const vifast_abi::SYS_EXIT,
+    user_msg_len = const umode::USER_MSG_LEN,
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -1156,7 +1258,9 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         EXC_VEC.load(Ordering::Relaxed),
     );
 
-    let _ = write!(console, "{BOOT_MARKER}");
-    let _ = writeln!(console, "{HALT_LINE}");
-    asm::halt(0)
+    // ---- **KT-270** (K5' bước 4, D2-207): U-mode ring 3. Map trang mã/stack user đã dựng ở
+    // `_start`, đặt `TSS.RSP0` sang stack syscall riêng rồi `iretq` xuống CPL3; **không trả về**
+    // — đường `Exit` của ring 3 in marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi
+    // TAP 1..14 đã xanh.
+    umode::run(&mut console)
 }

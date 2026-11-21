@@ -373,7 +373,7 @@ pub const FAULT_KINDS: [(&str, &[&str]); 4] = [
     ("UserException", &["ip: u64", "kind: u64"]),
 ];
 #[rustfmt::skip]
-pub const CALLING_ARCHES: [&str; 2] = ["aarch64", "riscv64"];
+pub const CALLING_ARCHES: [&str; 3] = ["aarch64", "riscv64", "x86_64"];
 #[rustfmt::skip]
 pub const AARCH64_SYSCALL_NUMBER_REG: &str = "x8";
 #[rustfmt::skip]
@@ -406,3 +406,21 @@ pub const RISCV64_ARG_REGS: [&str; 2] = ["a0", "a1"];
 pub const RISCV64_MR_REGS: [&str; 4] = ["a3", "a4", "a5", "a6"];
 #[rustfmt::skip]
 pub const RISCV64_PRESERVED_REGS: [&str; 5] = ["sp", "gp", "tp", "s0..s11", "fs0..fs11"];
+#[rustfmt::skip]
+pub const X86_64_SYSCALL_NUMBER_REG: &str = "rax";
+#[rustfmt::skip]
+pub const X86_64_MESSAGE_INFO_REG: &str = "rdx";
+#[rustfmt::skip]
+pub const X86_64_RETURN_ERROR_REG: &str = "rax";
+#[rustfmt::skip]
+pub const X86_64_RETURN_VALUE_REG: &str = "rdx";
+#[rustfmt::skip]
+pub const X86_64_TRAP: &str = "int 0x80";
+#[rustfmt::skip]
+pub const X86_64_ARG_REGS: [&str; 2] = ["rdi", "rsi"];
+#[rustfmt::skip]
+pub const X86_64_MR_REGS: [&str; 4] = ["r10", "r8", "r9", "r12"];
+#[rustfmt::skip]
+pub const X86_64_PRESERVED_REGS: [&str; 4] = ["rsp", "rbx", "rbp", "r12..r15"];
+#[rustfmt::skip]
+pub const X86_64_CLOBBERED_REGS: [&str; 2] = ["rax", "rdx"];
