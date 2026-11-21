@@ -2965,9 +2965,13 @@ fn kt60_pin_dau_chan_d2_84() {
     // `cap_transfer_failed`) ⇒ 12 × u64. KT-64: + 4 bộ đếm TLB (`tlb_seq`/`tlb_local_flushes`/
     // `tlb_remote_posts`/`tlb_serviced`) ⇒ **16 × u64**, + `slot_win_top` ⇒ **21 × usize**;
     // `slot_pool` → `slot_mem` + `harness_region`; dải slot theo Region là **hằng**, không field.
+    // **KT-309**: cap transfer qua IPC buffer thêm **16** trường vô hướng (4 CPTR nguồn +
+    // 4 CPTR đích + `n` + `dst` + 6 bộ đếm) ⇒ `20 × usize` → **`20 × usize + 16 × u64`** giữ
+    // nguyên, cộng **16** đơn vị vô hướng. Pin **cố ý** đổi (D2-84): tăng trường phải là quyết
+    // định có ghi, không phải trôi.
     assert_eq!(
         f.scalars,
-        20 * core::mem::size_of::<usize>() + 16 * core::mem::size_of::<u64>() + 2 + 4 + 1
+        20 * core::mem::size_of::<usize>() + 16 * core::mem::size_of::<u64>() + 2 + 4 + 1 + 16
     );
     assert!(
         f.total <= 196_608,
