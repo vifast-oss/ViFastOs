@@ -438,6 +438,28 @@ flush từng ký tự sẽ là 58. TAP **6/6**, `--red-selftest` **40 kiểm**. 
 U-mode ổn định dưới soak. **Nợ quy trình ghi nhận**: số ca TAP hard-code ở **hai** nơi
 (`run-aarch64.sh`, `soak-aarch64.sh`) — KT-269 chỉ cập nhật một nơi.
 
+### 3.30 KT-273 — aarch64 **PCI ECAM + virtio-blk**
+**XONG.** **Phát hiện quan trọng: ECAM KHÔNG ở `0x3f00_0000`.** Đo bằng DTB của chính QEMU 11.1.3
+(`-M virt,gic-version=3,dumpdtb=…` + `dtc`): QEMU `virt` aarch64 bật `highmem` mặc định ⇒ ECAM ở
+**`0x40_1000_0000`** (256 GiB + 16 MiB), 256 MiB. PA ấy **không canonical 39-bit** và
+`PHYSMAP_BASE + PA` **tràn `u64`** ⇒ không identity-map, không physmap ⇒ phải map vào **cửa sổ VA
+riêng** `0x8000_0000`. **Đo**:
+```text
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_pages=4096 bar_va=0x10000000 frames_used=37
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 empty=0xffff functions=2 buses=16
+# pci: virtio-blk found bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 bar=4 kind=mem64 size=0x4000 assigned=0x10000000
+# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f
+ok 19 - pci: ecam
+ok 20 - pci: virtio-blk found
+ok 21 - blk: sector0
+```
+TAP **21/21**, runner **14/14** (12 ca âm). **Ba đột biến**: `SECTOR0_MAGIC` sai ⇒ ĐỎ; `PCI_ECAM.base`
+→ `0x3f00_0000` (địa chỉ "tưởng đúng") ⇒ `# trap: ec=0x25 far=0x80000000`; `BAR_ASSIGN_BASE` đè RAM
+⇒ **ĐỎ lúc biên dịch** (2 `const assert`). **Trung thực**: quét **16 bus** không phải 256 — ECAM 256 MiB
+cần **129** bảng mức 3 = 516 KiB, vượt arena **và** trần `.data+.bss` 256 KiB (I7); QEMU `virt` đặt
+mọi thiết bị trên bus 0 (đo `info pci`) nên 16 bus = 16× dải cần; `SCAN_BUSES` **suy từ** số byte đã
+map, không viết tay. `.data+.bss` = **221.392 B / 262.144 B** (84,5 %); arena 32 → **44** frame.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
