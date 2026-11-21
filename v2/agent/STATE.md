@@ -4,28 +4,32 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 11:10 (sau vòng 8) ===
-HEAD          : `e35bacda` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `e35bacda` (**617,6 s**) — ứng viên bàn giao.
-                **T1** `gate --dev` **PASS** trên `fdae9941` (**388,0 s**).
-BUILD-INPUTS  : đổi (thêm `pci.rs`/`virtio_blk.rs` aarch64, `pci.rs`/`virtio_net.rs`/`timebase.rs`
-                x86_64). **Ảnh sản phẩm KHÔNG đổi**: `build=f861bd283066120f text=131728` ở **mọi**
-                lần đo ⇒ bằng chứng K6/soak riscv64 **vẫn áp dụng**.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 12:15 (sau vòng 9) ===
+HEAD          : `21d396c6` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 67/67** trên `21d396c6` (**632,7 s**) — ứng viên bàn giao.
+BUILD-INPUTS  : đổi (thêm `virtio_net.rs`/`wx.rs`/`cache.rs` aarch64, `smp.rs` x86_64, linker hai arch).
+                **Ảnh sản phẩm KHÔNG đổi**: `build=f861bd283066120f text=131728` ở **mọi** lần đo.
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
-                soak 1.000 (hai lần, 0 lỗi) + budget + `# conf image:` + U-mode EL0 +
-                **PCI ECAM + virtio-blk** (đọc sector 0); TAP **21/21**, runner **14/14** (12 ca âm).
-X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 +
-                **PCI ECAM (ACPI MCFG) + virtio-net + ARP**; TAP **17/17**, runner **13/13** (11 ca âm).
-MẠNG          : riscv64: virtio-net + DHCP/ARP/ICMP + UDP + DNS + **TCP** (TAP 11/11);
-                x86_64: virtio-net + ARP (TAP 17/17).
+                soak 1.000 (hai lần, 0 lỗi) + budget + U-mode EL0 + PCI ECAM + virtio-blk +
+                **virtio-net (DHCP/ARP/ICMP)** + **W^X toàn ảnh** + **cache maintenance trước DMA**;
+                TAP **27/27**, runner **29/29** (15 ca âm). `.data+.bss` 221.416/262.144 B (84,5 %).
+X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
+                virtio-net + ARP + **SMP 2 hart** (INIT-SIPI-SIPI + trampoline); TAP **19/19**,
+                runner **14/14** (12 ca âm).
+MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP), aarch64 (DHCP/ARP/ICMP), x86_64 (ARP).
 BÀN PHÍM      : virtio-input — 5 TAP, 30 test host.
 ĐỒ HOẠ        : virtio-gpu 2D + console (29/29 ký tự khớp bitmap) — 6 TAP, 50 test host.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267);
                 selftest **452**/**70**/**10**.
-TASK          : **KT-243..KT-274 DONE** (32 task). **0 REVIEW**, **0 READY**.
-NỢ MỞ         : P20; K5' đầy đủ (SMP/`-cpu max`/soak 600); IPC từ EL0 (cả hai arch);
-                net server U-mode (N1 phần 3); W^X toàn ảnh; aarch64 quét 16/256 bus;
-                cache maintenance trước DMA (chưa làm, chưa đo trên phần cứng).
+TASK          : **KT-243..KT-277 DONE** (35 task). **0 REVIEW**, **0 READY**.
+SỰ CỐ         : `git add -A` khi giải xung đột cherry-pick đã thêm **1.555 tệp không theo dõi**
+                (gồm video >20 MB) ⇒ GitHub từ chối push (`GH001`). Đã **viết lại** commit KT-277
+                (`de445d1d` → `991e516c`) bỏ đúng 1.555 tệp đó; `v2/` **không đổi một byte**
+                (`git diff --stat 3f0fcb4b HEAD -- v2/` rỗng). **Bài học**: khi giải xung đột, dùng
+                `git add <đường-dẫn-cụ-thể>`, **không** `git add -A`.
+NỢ MỞ         : P20; K5' đầy đủ (4 hart/IPI/scheduler/`-cpu max`/soak 600); IPC từ EL0;
+                net server U-mode (N1 phần 3); aarch64 quét 16/256 bus; TSS per-hart x86_64;
+                virtio-net aarch64 chưa nối `cache::HANDOFF_SEQUENCE`.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
