@@ -106,6 +106,13 @@ const CMD_NONE: u64 = 0;
 /// In `# smp: hart=<id> alive` rồi bật bit trong [`SMP_ALIVE_MASK`].
 const CMD_REPORT: u64 = 1;
 
+/// **KT-301** — độ trễ **150 ms** của kiểm đỏ-trước `--features slow-ipi` (đo bằng PIT kênh 2).
+///
+/// 150 ms **lớn hơn** trần thời gian cũ 100 ms (`smp::IPI_TIMEOUT_US`) và **nhỏ hơn** trần số vòng
+/// mới ⇒ cùng một ảnh cho **hai** kết quả: trước KT-301 ĐỎ, sau KT-301 XANH. Đây là **kiểm**, không
+/// phải ngưỡng của sản phẩm.
+const SLOW_IPI_DELAY_US: u64 = 150_000;
+
 /// Mặt nạ hart đã online (bit `i` = hart `i` đã in `# smp: hart=i online` + LAPIC + TSS sẵn sàng).
 static SMP_ONLINE_MASK: AtomicU32 = AtomicU32::new(0);
 /// Mặt nạ hart đã in `# smp: hart=i alive` (bit `i` = hart `i`).
@@ -409,19 +416,68 @@ fn send_ipi(dest: u8, clock: &mut PitClock) -> bool {
     wait_icr_idle(clock)
 }
 
-/// Chờ bit `hart` trong `mask` bật; trả số µs đã chờ, `None` nếu quá [`smp::ONLINE_TIMEOUT_US`].
-fn wait_mask(mask: &AtomicU32, hart: usize, clock: &mut PitClock) -> Option<u64> {
+/// Số vòng tối đa của **chốt an toàn thời gian** — chỉ dùng khi trần vòng cạn **trước** khi
+/// `latch_us` trôi qua (vòng chạy nhanh bất thường); PIT hỏng (elapsed luôn 0) cũng dừng sau
+/// chừng ấy vòng ⇒ **không treo**.
+const SMP_SPIN_ROUNDS: u32 = 4;
+
+/// Chờ `ready()` đúng — **điều kiện dừng chính là biến đếm**, không phải thời gian (KT-301).
+///
+/// Trả số µs đã chờ (đo bằng PIT kênh 2, chỉ để **báo**), `None` nếu hết trần **số vòng**.
+///
+/// # Vì sao đổi cách chờ (KT-301)
+///
+/// KT-298 soak 600 bắt boot 422: `# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0`
+/// **trước** khi `# smp: ipi recv=1` in ra, dưới `qemu_foreign=3 loadavg_1m=6.95`. Trần **thời
+/// gian tuyệt đối** đo bằng PIT là **thời gian tường**: host deschedule vCPU hart phụ quá 100 ms
+/// thì IPI **không thể** tới trong hạn — phép chờ sai **đại lượng**, không phải ngưỡng quá chặt.
+/// Vì vậy điều kiện dừng là **biến đếm** (hart đích tăng trong handler), với trần **số vòng** rất
+/// lớn ([`smp::SMP_SPIN_LIMIT`]); thời gian chỉ còn là **chốt an toàn** hỏi **sau** khi trần vòng
+/// cạn. Đây là **sửa cách chờ**, không phải nới ngưỡng: `IPI_TIMEOUT_US` (100 ms) và
+/// `ONLINE_TIMEOUT_US` (2 s) **giữ nguyên**.
+fn wait_counter(
+    clock: &mut PitClock,
+    latch_us: u64,
+    mut ready: impl FnMut() -> bool,
+) -> Option<u64> {
     let start = pit_now(clock);
+    let mut spins = 0u64;
+    let mut rounds = 0u32;
     loop {
-        if mask.load(Ordering::Acquire) & (1u32 << hart) != 0 {
+        if ready() {
             return Some(pit_now(clock).saturating_sub(start));
         }
-        let elapsed = pit_now(clock).saturating_sub(start);
-        if elapsed > smp::ONLINE_TIMEOUT_US {
-            return None;
+        if spins >= smp::SMP_SPIN_LIMIT {
+            // Trần **số vòng** đã cạn — điều kiện dừng **chính**. Chốt an toàn **thời gian**:
+            // chỉ khi PIT đã trôi quá `latch_us` mới kết luận hết trần; nếu chưa (vòng chạy
+            // nhanh bất thường) thì chờ thêm một vòng, tối đa [`SMP_SPIN_ROUNDS`] vòng.
+            if rounds + 1 >= SMP_SPIN_ROUNDS || pit_now(clock).saturating_sub(start) > latch_us {
+                return None;
+            }
+            rounds += 1;
+            spins = 0;
+            continue;
         }
-        core::hint::spin_loop();
+        spins += 1;
+        // `pause` mỗi 64 vòng: nhường host scheduler cho vCPU hart phụ. Đo được `pause` ~0,5 µs
+        // dưới TCG nên pause **mỗi** vòng làm vòng chậm ~40× (10 triệu vòng = 5,3 s thay vì
+        // 0,13 s) — không dùng mỗi vòng.
+        if spins & 0x3F == 0 {
+            core::hint::spin_loop();
+        }
+        // Nạp ảnh PIT mỗi 65.536 vòng (~1,7 ms): `PitClock` chỉ xử lý **một** lần bọc (54,9 ms)
+        // giữa hai lần đọc nên không được để thưa hơn.
+        if spins & 0xFFFF == 0 {
+            let _ = pit_now(clock);
+        }
     }
+}
+
+/// Chờ bit `hart` trong `mask` bật; trả số µs đã chờ, `None` nếu hết trần **số vòng**.
+fn wait_mask(mask: &AtomicU32, hart: usize, clock: &mut PitClock) -> Option<u64> {
+    wait_counter(clock, smp::ONLINE_TIMEOUT_US, || {
+        mask.load(Ordering::Acquire) & (1u32 << hart) != 0
+    })
 }
 
 /// In một danh sách `u64` dạng `[0x…, 0x…]` **một dòng** — `{:#x?}` của `core::fmt` bật
@@ -440,22 +496,16 @@ fn write_hex_list(console: &mut Console, values: &[u64]) {
     let _ = write!(console, "]");
 }
 
-/// Chờ `SMP_IPI_COUNT >= 1`; trả số µs đã chờ, `None` nếu quá [`smp::IPI_TIMEOUT_US`].
+/// Chờ `SMP_IPI_COUNT >= 1`; trả số µs đã chờ, `None` nếu hết trần **số vòng**.
 ///
-/// Trần **hữu hạn** là điều kiện của đột biến (ii): IPI tới một `APIC ID` không tồn tại thì không
-/// hart nào nhận, và BSP phải **đi tiếp** (TAP 20 ĐỎ) — **không treo**.
+/// Trần **hữu hạn** là điều kiện của đột biến (ii): IPI tới một `APIC ID` không tồn tại (hoặc
+/// hart đích nhận mà **không** tăng bộ đếm — `--features no-ipi-count`) thì BSP phải **đi tiếp**
+/// (TAP 20 ĐỎ) — **không treo**. Trần là **số vòng** ([`smp::SMP_SPIN_LIMIT`]), không phải thời
+/// gian: xem [`wait_counter`].
 fn wait_ipi(clock: &mut PitClock) -> Option<u64> {
-    let start = pit_now(clock);
-    loop {
-        if SMP_IPI_COUNT.load(Ordering::Acquire) >= 1 {
-            return Some(pit_now(clock).saturating_sub(start));
-        }
-        let elapsed = pit_now(clock).saturating_sub(start);
-        if elapsed > smp::IPI_TIMEOUT_US {
-            return None;
-        }
-        core::hint::spin_loop();
-    }
+    wait_counter(clock, smp::IPI_TIMEOUT_US, || {
+        SMP_IPI_COUNT.load(Ordering::Acquire) >= 1
+    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -977,10 +1027,26 @@ pub(crate) fn ap_ticks() -> u64 {
 /// **In trước, đếm sau**: BSP chờ `SMP_IPI_COUNT` nên khi nó thấy `1` thì dòng
 /// `# smp: ipi recv=1 intid=0x30` **chắc chắn** đã ra COM1 — không có hai dòng xen ký tự.
 pub(crate) fn note_ipi() {
+    // **KT-301** — kiểm **đỏ-trước** (`--features slow-ipi`): hart đích **nhận** IPI nhưng trì
+    // hoãn việc tăng bộ đếm **150 ms** (đo bằng PIT kênh 2). Đây là mô phỏng **tất định** của độ
+    // trễ lập lịch host đã làm boot 422/600 của KT-298 đỏ: `wait_ipi` cũ hết trần **thời gian**
+    // 100 ms **trước** khi `# smp: ipi recv=1` in ra. Chỉ dùng cho kiểm, không phải feature sản phẩm.
+    if cfg!(feature = "slow-ipi") {
+        let mut clock = PitClock::new();
+        clock.reset(pit2_latch_read());
+        while clock.now_us(pit2_latch_read()) < SLOW_IPI_DELAY_US {
+            core::hint::spin_loop();
+        }
+    }
     let n = SMP_IPI_COUNT.load(Ordering::Acquire) + 1;
     let mut console = Console;
     let _ = writeln!(console, "# smp: ipi recv={n} intid=0x{:02x}", exc::VEC_IPI,);
-    SMP_IPI_COUNT.store(n, Ordering::Release);
+    // **KT-301** — đột biến (ii) (`--features no-ipi-count`): hart đích **nhận** IPI và in dòng
+    // `# smp: ipi recv=1` nhưng **không** tăng bộ đếm ⇒ BSP chờ hết **trần số vòng** rồi đi tiếp
+    // (TAP 20 ĐỎ, **không treo**). Chứng minh điều kiện dừng là **biến đếm**, không phải thời gian.
+    if !cfg!(feature = "no-ipi-count") {
+        SMP_IPI_COUNT.store(n, Ordering::Release);
+    }
 }
 
 /// Số µs BSP đã chờ hart phụ online (`u64::MAX` = chưa chờ) — tổng trên mọi hart phụ.

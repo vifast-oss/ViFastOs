@@ -44,6 +44,17 @@ bad-ipi-dest = []
 # (trùng địa chỉ). Không fault, nhưng phép **kiểm địa chỉ** của BSP thấy trùng ⇒ TAP 19 ĐỎ.
 # Chỉ dùng cho đột biến.
 same-tss = []
+# **KT-301** — kiểm **đỏ-trước** của `wait_ipi`: hart đích **nhận** IPI nhưng trì hoãn việc tăng
+# bộ đếm **150 ms** (đo bằng PIT kênh 2) — mô phỏng **tất định** độ trễ lập lịch của host đã làm
+# boot 422/600 của KT-298 đỏ (`waited_us=u64::MAX` trước khi `# smp: ipi recv=1` in ra). Trước
+# KT-301 (`wait_ipi` trần **thời gian** 100 ms) ⇒ TAP 20 ĐỎ; sau KT-301 (chờ **biến đếm**) ⇒ TAP
+# 20 XANH. Chỉ dùng cho kiểm, **không** phải feature sản phẩm.
+slow-ipi = []
+# **KT-301** — đột biến (ii): hart đích **nhận** IPI và in `# smp: ipi recv=1` nhưng **không**
+# tăng `SMP_IPI_COUNT` ⇒ BSP chờ hết **trần số vòng** rồi đi tiếp (TAP 20 ĐỎ, **không treo**).
+# Chứng minh trần số vòng là **hữu hạn** và điều kiện dừng là **biến đếm**, không phải thời gian.
+# Chỉ dùng cho đột biến.
+no-ipi-count = []
 # **KT-286** — đột biến (i) của preemption: sau tick đầu **không** gọi `schedule()` nữa ⇒ chỉ tác
 # vụ A chạy, `main` không bao giờ được nhường lại ⇒ không có `# sched: ticks=…`/marker (ĐỎ).
 # Chỉ dùng cho đột biến.

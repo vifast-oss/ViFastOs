@@ -672,7 +672,7 @@ phụ làm bẩn — nếu không, `timer: eoi` sẽ đỏ oan.
 | Stub | `STUB_IPI = 18` (`vifast_isr_ipi`) | `exc::stub_slot(0x30)`; `STUB_COUNT` 18 → **19** |
 | `ICR` thấp | `0x4030` = vector `0x30` \| `Level = 1` (bit 14) \| `Trigger = 0` (bit 15) \| delivery mode `000` (fixed) | SDM Vol 3A Hình 10-27 |
 | `ICR` cao | `0x0100_0000` (destination = `APIC ID 1`) | SDM §10.6.1 |
-| Trần chờ | `IPI_TIMEOUT_US = 100_000` (100 ms, PIT kênh 2) | ngân sách của ảnh |
+| Trần chờ | **KT-301**: trần **số vòng** `SMP_SPIN_LIMIT = 100_000_000` (điều kiện dừng **chính**, chờ biến đếm `SMP_IPI_COUNT`); `IPI_TIMEOUT_US = 100_000` (100 ms, PIT kênh 2) **giữ nguyên** nhưng chỉ còn là **chốt an toàn** hỏi sau khi trần vòng cạn | ngân sách của ảnh + §16 |
 
 **Vì sao probe `isr_unknown` dời từ `0x30` sang `0x31`**: KT-261 dùng `int 0x30` để chứng minh
 "vector lạ vẫn thấy được". Từ KT-278 `0x30` là vector IPI **có stub riêng**, nên `int 0x30` sẽ
@@ -750,7 +750,7 @@ ok 21 - smp: all harts report
 | (ii) **trampoline sai địa chỉ** | `--features bad-trampoline` (SIPI vector `0x09` ⇒ `0x9000`) | hart phụ chạy vào vùng 0, không online ⇒ `not ok 18`, không marker; BSP hết trần 2 s rồi `cli; hlt`, QEMU không tự thoát (treo **có kiểm soát**, runner timeout 20 s giết) |
 | (iii) **stack per-hart chồng nhau** | bỏ guard khỏi `.smp_stacks` của `linker.ld` | `arena bytes=524288 expect=557056 ok=0` ⇒ `PANIC: smp: bố cục arena stack không khớp linker`, không marker (ĐỎ). Test host `layout_rejects_overlap_without_guard` chốt `check_layout` trả `Overlap { a: 0, b: 1 }` |
 | (iv) **không gửi IPI** | `--features no-ipi` | `# smp: ipi sent=0 count=0` ⇒ `not ok 20`, không marker (ĐỎ) — TAP 18/19 vẫn xanh, nên ca này đo **đúng** phần IPI |
-| (v) **IPI tới hart không tồn tại** | `--features bad-ipi-dest` (dest = `APIC ID 7`, `-smp 4` chỉ có 0..3) | `# smp: ipi sent=1 count=0 waited_us=18446744073709551615` ⇒ `not ok 20`, không marker. **Không treo**: BSP hết trần 100 ms rồi **đi tiếp** và in `not ok 20` (ĐỎ) |
+| (v) **IPI tới hart không tồn tại** | `--features bad-ipi-dest` (dest = `APIC ID 7`, `-smp 4` chỉ có 0..3) | `# smp: ipi sent=1 count=0 waited_us=18446744073709551615` ⇒ `not ok 20`, không marker. **Không treo**: BSP hết **trần số vòng** (KT-301; trước KT-301 là trần 100 ms) rồi **đi tiếp** và in `not ok 20` (ĐỎ) |
 | (vi) **TSS per-hart trùng địa chỉ** | `--features same-tss` (descriptor TSS của AP trỏ TSS của hart 0) | `# smp: tss bases=[0x12d0a4, 0x12d0a4, 0x12d0a4, 0x12d0a4] … distinct=Err(Duplicate { a: 0, b: 1 }) … ok=0` ⇒ `not ok 19`, không marker (ĐỎ) — phát hiện bằng **kiểm địa chỉ**, không fault |
 
 ### 12.12 Còn thiếu của bước 7 (ghi rõ)
@@ -1034,3 +1034,100 @@ ok 23 - sched: preempted
 2. **Không** sửa `Console` thành có khoá: hai hart cùng in vẫn xen ký tự. Đó là **triệu chứng**
    từng thấy, không phải gốc; thêm khoá sẽ che mất lớp lỗi này thay vì sửa nó.
 3. **Không** tuyên bố K5' đạt.
+
+## 16. KT-301 — `wait_ipi`/`wait_report`: chờ theo **biến đếm**, không theo **thời gian**
+
+Trạng thái: **DONE** (KT-301, 2026-11-21). Quyết định: **D2-201** (K5' bước 1), **D2-216** (vòng 15:
+sửa ba lỗi thật soak bắt được), **D2-198** (uỷ quyền commit nhánh task), **D2-05** (test đỏ trước),
+**D2-07** (không retry).
+
+> **D2-218 không tồn tại** trong `v2/agent/DECISIONS.md` tại base `a78e67a9` (mục cuối là **D2-217**).
+> Nhiệm vụ yêu cầu đọc D2-218 ⇒ đã đọc D2-201/D2-216 và **ghi lại** việc thiếu mục này thay vì tự
+> suy ra nội dung.
+
+**Không** tuyên bố K5' đạt.
+
+### 16.1 Triệu chứng nguyên văn (boot 422/600 của KT-298)
+
+```text
+# smp: ipi send dest=1 vector=0x30 low=0x4030 high=0x01000000
+# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0
+not ok 20 - smp: ipi delivered
+# TAP 20 FAIL — dừng (không in marker)
+# smp: ipi recv=1 intid=0x30
+```
+
+`wait_ipi` hết trần **100 ms** **trước** khi IPI tới; dòng `# smp: ipi recv=1` in **sau** dòng đỏ.
+Máy lúc đo: `qemu_foreign=3 loadavg_1m=6.95` (ba QEMU của sub-agent khác). Cùng dấu hiệu xuất hiện
+ở KT-297 soak 600 (boot 27/600: `# smp: ipi sent=1 count=0 waited_us=18446744073709551615`).
+
+### 16.2 Gốc rễ: trần **thời gian tuyệt đối** là sai **đại lượng**
+
+`wait_ipi`/`wait_mask` cũ dừng khi **PIT kênh 2** trôi quá `IPI_TIMEOUT_US` (100 ms) /
+`ONLINE_TIMEOUT_US` (2 s). PIT đếm theo **thời gian tường**; còn điều kiện thật cần chờ là **hart
+đích chạy được handler**. Dưới tải ngoài, host deschedule vCPU hart phụ > 100 ms thì IPI **không
+thể** tới trong hạn — phép chờ sai **đại lượng**, không phải ngưỡng quá chặt. Vì vậy **không** nới
+ngưỡng thời gian (100 ms **giữ nguyên**); đổi **cách chờ**.
+
+### 16.3 Bản sửa
+
+| Thành phần | Trước KT-301 | Sau KT-301 |
+|---|---|---|
+| Điều kiện dừng **chính** | thời gian PIT > 100 ms (IPI) / 2 s (report) | **biến đếm**: `SMP_IPI_COUNT >= 1` / bit `SMP_ALIVE_MASK` của hart |
+| Trần | thời gian tuyệt đối | **số vòng** `SMP_SPIN_LIMIT = 100_000_000` (`vifast-plat-x86_64::smp`) |
+| Thời gian | điều kiện dừng | **chốt an toàn**: chỉ hỏi **sau** khi trần vòng cạn; `IPI_TIMEOUT_US` (100 ms) và `ONLINE_TIMEOUT_US` (2 s) **không đổi** |
+| Vòng chờ | `pit_now` **mỗi** vòng (3 cổng I/O) + `pause` mỗi vòng | `load` mỗi vòng; `pause` mỗi 64 vòng; nạp ảnh PIT mỗi 65.536 vòng |
+
+Một helper `wait_counter(clock, latch_us, ready)` dùng cho **cả** `wait_ipi` và `wait_mask` (report
+và online). Chốt an toàn thời gian có thêm trần `SMP_SPIN_ROUNDS = 4` vòng: nếu trần vòng cạn
+**trước** khi `latch_us` trôi qua (vòng chạy nhanh bất thường) thì chờ thêm, tối đa 4 vòng; PIT
+hỏng (elapsed luôn 0) cũng dừng sau 4 vòng ⇒ **không treo**.
+
+**Số đo chọn trần** (QEMU 11.1.3 TCG, máy 12 core, đo 2 lần): 2.000.000 vòng `load` + `pause` mỗi
+64 vòng ≈ **51 ms** ⇒ **~39 triệu vòng/s** ⇒ 100.000.000 vòng ≈ **2,5 s**, dư ~25× so với trần cũ
+100 ms. Đo đối chứng: `pause` **mỗi** vòng đắt ~0,5 µs (2.000.000 vòng ≈ 1,05 s) nên **không** dùng
+mỗi vòng; không `pause` thì 2.000.000 vòng ≈ 25 ms nhưng vòng chờ chiếm vCPU — `pause` mỗi 64 vòng
+là điểm cân bằng.
+
+### 16.4 Kiểm **đỏ-trước** (D2-05): `--features slow-ipi`
+
+Feature **chỉ để kiểm** (không phải sản phẩm): hart đích **nhận** IPI nhưng trì hoãn việc tăng bộ
+đếm **150 ms** (đo bằng PIT kênh 2) — mô phỏng **tất định** độ trễ lập lịch host của boot 422.
+150 ms **lớn hơn** trần cũ 100 ms và **nhỏ hơn** trần số vòng mới ⇒ cùng một ảnh cho hai kết quả.
+
+| Ảnh | Log nguyên văn | Kết quả |
+|---|---|---|
+| **trước** KT-301 (trần 100 ms) | `# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0` + `not ok 20 - smp: ipi delivered` + `# TAP 20 FAIL — dừng` rồi mới `# smp: ipi recv=1 intid=0x30` | **ĐỎ** — tái hiện **đúng** dấu hiệu boot 422 |
+| **sau** KT-301 (chờ biến đếm) | `# smp: ipi recv=1 intid=0x30` + `# smp: ipi sent=1 count=1 waited_us=152117 ok=1` + `ok 20 - smp: ipi delivered` | **XANH** — chờ 152 ms, vượt trần cũ 100 ms mà vẫn đúng |
+
+### 16.5 Đột biến (đều ĐỎ, **không treo**)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **không gửi IPI** | `--features no-ipi` | `# smp: ipi sent=0 count=0 waited_us=18446744073709551615 ok=0` ⇒ `not ok 20`, không marker (ĐỎ) |
+| (ii) **hart phụ không tăng bộ đếm** | `--features no-ipi-count` (hart đích **nhận** và in `# smp: ipi recv=1` nhưng **không** tăng `SMP_IPI_COUNT`) | `# smp: ipi recv=1 intid=0x30` + `# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0` ⇒ `not ok 20` (ĐỎ). **Không treo**: log đạt `not ok 20` trong **< 10 s** (guard 10 s), tức trần **số vòng** hữu hạn đã cắt |
+| (iii) **IPI tới hart không tồn tại** | `--features bad-ipi-dest` (dest = `APIC ID 7`) | `# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0` ⇒ `not ok 20` (ĐỎ), không treo |
+
+Đột biến (ii) là ca **trực tiếp** của thay đổi này: bộ đếm **không** tăng thì **không** có đường
+nào khác làm `wait_ipi` trả `Some` — điều kiện dừng đúng là biến đếm, không phải thời gian.
+
+### 16.6 Đo được
+
+Soak **600 boot / 3 luồng** trên ảnh KT-301: **600/600**, `rc_124=0`, `qemu_own=0`,
+`qemu_foreign=0`, `verdict=OK`, wall **786 s**, ảnh không đổi giữa soak
+(`BUILD_ID=37238e1ad66748d4`, `git=a78e67a9`). Trước KT-301 (KT-298, ảnh **trước** bản sửa timer
+của KT-297): 597/600 — 2× TAP 10 `timer: ticks` (KT-297 đã sửa) + 1× TAP 20 IPI (KT-301 đã sửa).
+
+Phân bố độ chờ đo được trên 600 boot (PIT kênh 2, µs): IPI p50 **622**, p99 **5.705**, max
+**37.617**; report p50 **25.098**, p99 **141.256**, max **180.549**. p99 của **report** vượt trần
+thời gian cũ 100 ms ⇒ độ trễ lập lịch của hart phụ **thường xuyên** vượt 100 ms dưới tải soak —
+đúng lý do phải đổi **đại lượng** chờ.
+
+### 16.7 Còn thiếu / rủi ro
+
+1. **Trần số vòng** là proxy của thời gian: máy **chậm** thì chờ **lâu hơn** (đúng ý), nhưng nếu
+   host deschedule BSP quá lâu thì một boot có thể chạm timeout 20 s của runner. Đo được: trần
+   100.000.000 vòng ≈ 2,5 s danh định; dưới tải soak 3 luồng vẫn < 20 s.
+2. **Không** sửa `Console` thành có khoá: hai hart cùng in vẫn xen ký tự (triệu chứng cũ, không
+   phải gốc của KT-301).
+3. **Không** tuyên bố K5' đạt: K5' còn các mục ngoài soak (xem §12.12).

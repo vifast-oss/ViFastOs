@@ -456,6 +456,27 @@ pub const ONLINE_TIMEOUT_US: u64 = 2_000_000;
 /// dư ~10× so với độ trễ đo được của một IPI trên QEMU TCG (hàng chục µs).
 pub const IPI_TIMEOUT_US: u64 = 100_000;
 
+/// Trần **số vòng** của một lần chờ SMP (KT-301) — **điều kiện dừng chính**, thay trần **thời
+/// gian tuyệt đối**.
+///
+/// # Vì sao đổi **đại lượng** chờ, không phải nới ngưỡng
+///
+/// KT-298 soak 600 bắt boot 422: `# smp: ipi sent=1 count=0 waited_us=18446744073709551615 ok=0`
+/// **trước** khi `# smp: ipi recv=1` in ra, dưới `qemu_foreign=3 loadavg_1m=6.95`. Trần thời gian
+/// đo bằng PIT là **thời gian tường**: host deschedule vCPU hart phụ quá 100 ms thì IPI **không
+/// thể** tới trong hạn — phép chờ sai **đại lượng**, không phải ngưỡng quá chặt. Vì vậy điều kiện
+/// dừng là **biến đếm** (hart đích tăng trong handler), với trần **số vòng** rất lớn; thời gian
+/// (`IPI_TIMEOUT_US` 100 ms, `ONLINE_TIMEOUT_US` 2 s — **giữ nguyên**) chỉ còn là **chốt an toàn**
+/// hỏi **sau** khi trần vòng cạn.
+///
+/// # Số đo chọn trần (QEMU 11.1.3 TCG, máy 12 core)
+///
+/// Vòng `load` + `pause` mỗi 64 vòng chạy **~39 triệu vòng/s** (đo 2 lần: 2.000.000 vòng ≈ 51 ms;
+/// `pause` mỗi vòng đắt ~0,5 µs nên **không** dùng mỗi vòng) ⇒ 100.000.000 vòng ≈ **2,5 s**, dư
+/// ~25× so với trần cũ 100 ms. Đây là **trần số vòng**, không phải ngưỡng thời gian: máy chậm thì
+/// chờ **lâu hơn** (đúng ý), máy nhanh thì chốt thời gian bên dưới mới có tác dụng.
+pub const SMP_SPIN_LIMIT: u64 = 100_000_000;
+
 /// Số chia LAPIC timer của hart phụ: **1** (mã `0b1011`).
 pub const AP_TIMER_DIVIDE: u32 = 1;
 /// `initial_count` của LAPIC timer hart phụ — 100 µs danh định (mô hình QEMU 1 count/ns).
@@ -504,4 +525,5 @@ const _: () = {
     assert!(icr_fixed_low(crate::exc::VEC_IPI) & ICR_LEVEL_TRIGGER == 0);
     assert!(icr_fixed_low(crate::exc::VEC_IPI) & ICR_LEVEL_ASSERT != 0);
     assert!(IPI_TIMEOUT_US > 0 && IPI_TIMEOUT_US < ONLINE_TIMEOUT_US);
+    assert!(SMP_SPIN_LIMIT > 0);
 };
