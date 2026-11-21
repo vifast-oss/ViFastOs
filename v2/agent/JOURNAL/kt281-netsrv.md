@@ -100,8 +100,8 @@ không `MapIo`) ⇒ nó **không thể** chạm thiết bị kể cả muốn; m
 | Kernel `src/ktest_netsrv.rs` — rig 3 TCB + 2 Endpoint + 2 Reply + 3 cspace + 3 SC, 4 lượt tất định, kernel `recv`+`reply_msg` giữa lượt 2 và 3 | **DONE** |
 | Runner `ktest.sh`: ảnh thứ **chín** (`LABELS`/`image_path`/`manifest_netsrv`/`evidence_for` 15 mục/`panic_allow_re`/build/`qextra` `-netdev`) | **DONE** — matrix **9 ảnh × smp 1/2/4 = 27 boot** |
 | Runner `net.sh`: ca âm `# netsrv: no device` + `--red-selftest` **+5 kiểm** (28 → **33**) | **DONE** |
-| `./v2/bin/v2 check` | **XANH** (exit 0; 118,8 s) |
-| Runner riscv64 `ktest.sh 1 matrix` | **XANH — 27/27 boot sạch** |
+| `./v2/bin/v2 check` | **XANH** (exit 0; 118,8 s trên `10035055`, **138,2 s** trên cây cuối `36f2af20`) |
+| Runner riscv64 `ktest.sh 1 matrix` | **XANH — 27/27 boot sạch** (chạy trên `10035055` **và** chạy lại trên `36f2af20`) |
 | Ba đột biến | **ĐỎ đúng cả ba** (§6) |
 
 Commit trên nhánh `task/kt281-netsrv` (base `20208255`):
@@ -186,6 +186,10 @@ ok - ktest-netsrv smp=4 boot 1 (2 TAP, 0s) log …/ktest-netsrv-smp4-1.log
 # KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
 # ktest.sh: PASS
 ```
+
+Chạy **hai lần** trên hai commit khác nhau (`10035055` = commit mã, `36f2af20` = commit journal):
+cả hai **27/27**. Lần hai là phép đo **hợp lệ trên fingerprint mới** — `# build: rev=` của ảnh đổi
+theo `HEAD`, nên đây không phải "chạy lại cùng fingerprint để tăng số lần PASS" (AGENTS §6.3).
 
 `--check-log` (15 evidence bắt buộc):
 
