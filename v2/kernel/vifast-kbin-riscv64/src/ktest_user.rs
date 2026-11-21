@@ -25,7 +25,9 @@
 //!    `Running→Ready→Running`, `a1` = budget còn lại.
 //! 7. `ok 7 - syscall 16 duong` — pha **kernel-level**: gọi từng `nr` `0..15` (trừ 14) qua
 //!    `vifast_core::syscall::dispatch` trên `Machine` của ảnh; in `# sys: tap=7 nr=…`.
-//! 8. `ok 8 - syscall sai cap` — slot rỗng ⇒ 1, Send trên cap TCB ⇒ 2, Call trên cap TCB ⇒ 18
+//! 8. `ok 8 - syscall sai cap` — slot rỗng ⇒ 1, Send trên cap TCB ⇒ 2, Call trên cap TCB với
+//!    **method chưa cài** (1 `SetFaultEp`) ⇒ 18 (từ KT-290, method 0 của Tcb là `Configure`
+//!    **đã cài** nên không còn là "method ngoài danh sách")
 //!    (D2-53 Q11).
 //! 9. `ok 9 - syscall ipc vong` — Call(0)/Recv(3)/Send trên Reply cap(1) qua dispatch, MR tới
 //!    đích, `Reply.caller` sạch.
@@ -860,12 +862,15 @@ fn kernel_sys_taps(rig: &SysRig, fails: &mut usize) -> bool {
             args6(rig.t0s.slot as u64, mk_info(0), 0, 0, 0, 0),
             &mut env,
         ));
+        // **KT-290**: `Call` trên cap TCB với `label = 1` (`SetFaultEp`, **chưa cài**) ⇒ 18.
+        // Trước KT-290 ca này dùng `label = 0`; từ KT-290 `(Tcb, 0)` là `Tcb.Configure` **đã
+        // cài** nên `label = 0` không còn là "method ngoài danh sách" (arity 0 ⇒ 5).
         let e_call = outcome_err(&vifast_core::syscall::dispatch(
             m,
             rig.t0,
             0,
             0,
-            args6(rig.t0s.slot as u64, mk_info(0), 0, 0, 0, 0),
+            args6(rig.t0s.slot as u64, 1, 0, 0, 0, 0),
             &mut env,
         ));
         let e_recv = outcome_err(&vifast_core::syscall::dispatch(
