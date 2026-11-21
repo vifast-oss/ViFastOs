@@ -296,9 +296,51 @@ impl Machine {
         Ok(())
     }
 
+    /// **KT-314** — `Tcb.Resume` qua **invocation** (method 12 của `[object].Tcb`): đưa tác vụ
+    /// đích lên `Running` trên `hart` và trả **điểm vào** đã cấu hình để arch nạp `sepc`.
+    ///
+    /// # Ngữ nghĩa (thứ tự **bắt buộc** — lỗi không đổi gì)
+    ///
+    /// 1. Cap phải là `Tcb` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1.
+    /// 2. **Trạng thái trước**: `Ready` ⇒ đi; `Inactive` **chưa từng chạy** (`exit_code = None`)
+    ///    ⇒ `start_tcb` rồi đi; còn lại — `Running`, `BlockedOn*`, `Sleeping`, `Stopping`,
+    ///    `Dead`, và `Inactive` **đã chạy** (`exit_code = Some`) — ⇒ `IllegalOperation` 7.
+    ///    `Inactive` đã chạy bị từ chối vì **không tự chạy lại** một tác vụ đã kết thúc; muốn
+    ///    chạy lại thì `Tcb.Configure` trước (D2-25: `Configure` xoá `exit_code`).
+    /// 3. **`TcbData.entry`** (KT-311): `0` = chưa cấu hình ⇒ `InvalidArgument` 5 — fail-closed,
+    ///    **không** đoán điểm vào. Kiểm **sau** trạng thái: TCB `Running` + `entry = 0` trả **7**
+    ///    (không phải 5) — trạng thái là điều kiện mạnh hơn.
+    /// 4. Chuyển `Running{hart}` qua **một** cửa [`Machine::transition_tcb`] (bảng 11×11 D2-49(d)
+    ///    vẫn là nguồn sự thật; `Inactive → Running` không có trong bảng nên phải qua
+    ///    `start_tcb`), xoá `exit_code` (D2-25).
+    ///
+    /// Trả `Ok(entry)` — **cùng** giá trị arch phải nạp vào `sepc` (D2-83: core không ghi CSR).
+    pub fn tcb_resume_invocation(&mut self, tcb: SlotRef, hart: u16) -> Result<u64, KError> {
+        let obj = self.require_type(tcb, ObjType::Tcb)?;
+        let state = self.tcb_state(obj)?;
+        let da_chay = self.tcb_data(obj)?.exit_code.is_some();
+        if state == TcbState::Inactive && da_chay {
+            return Err(KError::IllegalOperation);
+        }
+        if !matches!(state, TcbState::Ready | TcbState::Inactive) {
+            return Err(KError::IllegalOperation);
+        }
+        let entry = self.tcb_data(obj)?.entry;
+        if entry == 0 {
+            return Err(KError::InvalidArgument);
+        }
+        if state == TcbState::Inactive {
+            self.start_tcb(obj)?;
+        }
+        self.transition_tcb(obj, NonReadyTarget::Running { hart })?;
+        self.tcb_data_mut(obj)?.exit_code = None;
+        self.sched_after_op(true);
+        Ok(entry)
+    }
+
     /// **KT-311** — điểm vào đã cấu hình của TCB (`Tcb.Configure` tham số `entry?`); `0` = chưa
-    /// đặt. Model-only `[TK]` — đường `Resume` tiêu thụ giá trị này **chưa** cài (nợ §7.2 của
-    /// `JOURNAL/kt311-cfgfull.md`).
+    /// đặt. Model-only `[TK]` — **KT-314** đã có đường tiêu thụ: `Tcb.Resume` đọc giá trị này
+    /// ([`Machine::tcb_resume_invocation`]) rồi arch nạp vào `sepc`.
     pub fn tcb_entry(&self, tcb: ObjId) -> Result<u64, KError> {
         Ok(self.tcb_data(tcb)?.entry)
     }

@@ -25,7 +25,7 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
-#   - `ktest-ipc`   : 6 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311**) — **IPC từ U-mode**
+#   - `ktest-ipc`   : 7 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311** + **KT-314**) — **IPC từ U-mode**
 #                     + **MR4..MR63 qua IPC buffer** + **`Tcb.Configure` qua invocation**: client
 #                     U-mode `Call` chặn trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB),
 #                     server `Recv` + `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng
@@ -443,6 +443,7 @@ ipc: mr4..mr7 via buffer
 ipc: tcb configure via invocation
 ipc: cap transfer
 ipc: tcb configure full
+ipc: tcb resume
 EOF
 }
 
@@ -753,7 +754,12 @@ EOF
 ^# ipc: configure2 ok=1 entry=0x[0-9a-f]+ prio=[0-9]+$
 ^# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=18 ok=1$
 ^# ipc: configure2 entry=0x[0-9a-f]+ prio=[0-9]+ cspace=[0-9]+ vspace=0 calls=2 denied=5 ok=1$
-^# ipc final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive$
+^# ipc: resume ok=1 entry=0x[0-9a-f]+$
+^# ipc: resume neg noentry=5 running=17 exited=17 ok=1$
+^# ipc: resume ok entry=0x[0-9a-f]+ state=Running$
+^# ipc: resume neg noentry=5 state=Inactive$
+^# ipc: resume ran entry=0x[0-9a-f]+$
+^# ipc final: client_exit=0 server_exit=0 target_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive target=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
@@ -858,7 +864,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
-        ktest-ipc) printf '%s' '^PANIC: KT-311 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full xong \(6 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-314 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full \+ tcb resume xong \(7 TAP, 0 fail\)$' ;;
         ktest-netsrv) printf '%s' '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac

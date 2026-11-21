@@ -11,6 +11,7 @@
 //! | `Frame` (11) | 1 | `Unmap` | **cài** (đợt 2) |
 //! | `Tcb` (3) | 0 | `Configure` | **cài** (KT-290) — bind `ipc_buffer?` (MR0 CPTR Frame, MR1 VA); **KT-311** — kênh đầy đủ `length = 3` (MR2 = mask, `cspace?`/`entry?`/`priority?` ở vùng 608..640 của IPC buffer) |
 //! | `Tcb` (3) | 15 | `SetTls` | **cài** (KT-74) |
+//! | `Tcb` (3) | 12 | `Resume` | **cài** (KT-314) — chuyển đích `Running` + giao `TcbData.entry` cho arch đặt `sepc` |
 //! | khác | — | — | `NotSupported` **18** (giữ D2-53 Q11 cho phần chưa cài) |
 //!
 //! # Vì sao `Frame.Map` chứ không phải `VSpace.Map`
@@ -124,6 +125,10 @@ pub const TCB_SET_TLS: u32 = vifast_abi::TCB_SETTLS;
 /// qua hằng sinh tự động `vifast_abi::TCB_CONFIGURE` — **không** chép số tay (D2-11/D2-102).
 pub const TCB_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
 
+/// **KT-314** — `Tcb.Resume` — method **12** của object `Tcb` (`spec/abi.toml` `[object].Tcb`),
+/// qua hằng sinh tự động `vifast_abi::TCB_RESUME` — **không** chép số tay (D2-11/D2-102).
+pub const TCB_RESUME: u32 = vifast_abi::TCB_RESUME;
+
 /// `true` ⇔ `spec/abi.toml` khai `SetTls` đúng ở số này (test/TAP đối chiếu bảng sinh).
 pub fn tcb_set_tls_matches_spec() -> bool {
     vifast_abi::TCB_METHODS
@@ -192,6 +197,8 @@ pub struct InvocationStats {
     pub set_tls: u32,
     /// **KT-290** `Tcb.Configure` thành công (bind IPC buffer qua invocation).
     pub configure: u32,
+    /// **KT-314** `Tcb.Resume` thành công (chuyển `Running` + giao `entry` cho arch).
+    pub resume: u32,
 }
 
 static ALLOWED: AtomicU32 = AtomicU32::new(0);
@@ -208,6 +215,8 @@ static CNODE_REVOKED: AtomicU32 = AtomicU32::new(0);
 static TLS_SET: AtomicU32 = AtomicU32::new(0);
 /// **KT-290** số `Tcb.Configure` thành công (TAP `# ipc configure:` đối chiếu).
 static CONFIGURED: AtomicU32 = AtomicU32::new(0);
+/// **KT-314** số `Tcb.Resume` thành công (TAP `# ipc: resume` đối chiếu).
+static RESUMED: AtomicU32 = AtomicU32::new(0);
 
 fn bump(counter: &AtomicU32) {
     let _ = counter.fetch_add(1, Ordering::Relaxed);
@@ -228,6 +237,7 @@ pub fn stats() -> InvocationStats {
         revoke: CNODE_REVOKED.load(Ordering::Relaxed),
         set_tls: TLS_SET.load(Ordering::Relaxed),
         configure: CONFIGURED.load(Ordering::Relaxed),
+        resume: RESUMED.load(Ordering::Relaxed),
     }
 }
 
@@ -345,6 +355,9 @@ pub fn dispatch(
         (ObjType::Tcb, TCB_CONFIGURE) => configure(m, tcb, slot, c, args, len, env),
         // KT-74: `Tcb.SetTls` (method 15 của `[object].Tcb`) — cap **chính là** TCB đã gọi.
         (ObjType::Tcb, TCB_SET_TLS) => set_tls(m, slot, c, args, len),
+        // KT-314: `Tcb.Resume` (method 12 của `[object].Tcb`) — chuyển tác vụ đích `Running` và
+        // giao `TcbData.entry` cho arch đặt `sepc` (D2-83: core không ghi CSR).
+        (ObjType::Tcb, TCB_RESUME) => resume(m, tcb, slot, c, args, len, env),
         // Danh sách trắng hẹp: mọi loại/method khác giữ `NotSupported` (D2-53 Q11) — **không**
         // trả `Ok` giả. Đếm để TAP `# inv:` chứng minh nhánh này chạy thật.
         _ => {
@@ -503,6 +516,66 @@ fn configure(
     bump(&CONFIGURED);
     bump(&ALLOWED);
     Ok((0, 0))
+}
+
+// =============================================================================================
+// KT-314 — `Tcb.Resume` (method 12 của `[object].Tcb`) qua invocation từ U-mode
+// =============================================================================================
+
+/// `Tcb.Resume` — chuyển **tác vụ đích** (cap TCB đã gọi) sang `Running` và giao điểm vào cho
+/// arch đặt `sepc`.
+///
+/// # Kênh tham số
+///
+/// **Arity chính xác 0** (D2-104): `[method_signature."Tcb.Resume"]` khai `params = ["tcb"]`,
+/// `returns = []` — `tcb` là **chính cap đã gọi**, nên invocation **không** mang MR nào.
+/// `length` khác 0 ⇒ `InvalidArgument` **5**, có đếm.
+///
+/// # Ngữ nghĩa
+///
+/// 1. Cap TCB phải có `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3** (cùng luật quyền như
+///    `Tcb.Configure`/`Tcb.SetTls`, D2-99(e)).
+/// 2. [`Machine::tcb_resume_invocation`] kiểm **trạng thái trước** (`Ready`/`Inactive` chưa từng
+///    chạy), rồi `TcbData.entry` (`0` ⇒ `InvalidArgument` 5 — fail-closed), rồi chuyển
+///    `Running{hart của caller}` + xoá `exit_code` (D2-25).
+/// 3. **Giao `entry` cho arch** qua [`SyscallEnv::tcb_resume`] — D2-83: core **không** ghi `sepc`
+///    (CSR của arch). Arch nạp `sepc` ở lần vào U-mode kế tiếp của **đúng** TCB đó.
+///
+/// Trả `a1 = entry` (giá trị đã nạp vào `sepc`) để TAP/người đọc log đối chiếu được **cùng một
+/// số** với `TcbData.entry` — không có đường "trả 0 giả".
+fn resume(
+    m: &mut Machine,
+    tcb: ObjId,
+    slot: SlotRef,
+    c: crate::error::CapInfo,
+    _args: [u64; 4],
+    len: usize,
+    env: &mut impl SyscallEnv,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        bump(&DENIED);
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    if len != 0 {
+        bump(&DENIED);
+        return Err(KError::InvalidArgument.id() as u64);
+    }
+    // Hart của **caller** (tác vụ đang gọi invocation) — `Resume` đưa đích lên chạy trên hart
+    // đó; caller không `Running` (không có hart) ⇒ `0` (mô hình một hart của ảnh test).
+    let hart = match m.tcb_state(tcb) {
+        Ok(crate::tcb::TcbState::Running { hart }) => hart,
+        _ => 0,
+    };
+    let entry = m.tcb_resume_invocation(slot, hart).map_err(|e| {
+        bump(&DENIED);
+        e.id() as u64
+    })?;
+    // D2-83: core **giao** điểm vào, arch ghi `sepc`. Nền tảng không có U-mode trả `false` —
+    // không có `sepc` để nạp, trạng thái `Running` vẫn là hiệu ứng model (đã kiểm ở core).
+    let _ = env.tcb_resume(c.obj, entry);
+    bump(&RESUMED);
+    bump(&ALLOWED);
+    Ok((0, entry))
 }
 
 // =============================================================================================
@@ -826,6 +899,7 @@ pub const fn is_whitelisted(ty: ObjType, method: u32) -> bool {
             | (ObjType::CNode, CNODE_REVOKE)
             | (ObjType::Tcb, TCB_CONFIGURE)
             | (ObjType::Tcb, TCB_SET_TLS)
+            | (ObjType::Tcb, TCB_RESUME)
     )
 }
 

@@ -146,6 +146,13 @@ const CS_ALT_TCB: usize = 3;
 /// **KT-311** — slot trong `cnode_alt` giữ cap `Reply` — **chỉ có** ở đó, nên `Call` trên nó trả
 /// **18** khi CSpace đã đổi và **1** khi chưa (chứng minh `cspace?` thật sự đổi CSpace).
 const CS_ALT_ONLY: usize = 8;
+/// **KT-314** — cap `Tcb` của **server** (đã `Exit`) trong cspace client — ca âm "resume tác vụ
+/// đã kết thúc" ⇒ `IllegalOperation` (**17**).
+const CS_TCB_S: usize = 14;
+/// **KT-314** — cap `Tcb` **đích** (đường xanh `Configure(entry?)` + `Resume`).
+const CS_TCB_T: usize = 15;
+/// **KT-314** — cap `Tcb` **đích thứ hai** (`entry = 0`) — ca âm `InvalidArgument` (5).
+const CS_TCB_T2: usize = 16;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -159,6 +166,14 @@ const RIG_SC_S: usize = 7;
 const RIG_CSPACE: usize = 8;
 /// **KT-282** — cap `Frame` 4 KiB của **IPC buffer** (bind qua `Tcb.Configure`).
 const RIG_IPC_BUF: usize = 9;
+/// **KT-314** — TCB **đích** (rig để `Inactive`, chưa từng chạy): `Tcb.Resume` đưa nó lên
+/// `Running` và arch nạp `sepc` = `TcbData.entry` ở lượt chạy kế tiếp.
+const RIG_TCB_T: usize = 10;
+/// **KT-314** — TCB **đích thứ hai** (`Inactive`, `entry = 0`): ca âm `InvalidArgument` (5).
+const RIG_TCB_T2: usize = 11;
+/// **KT-314** — `SchedContext` cho hai TCB đích (bất biến KT-20: `Running ⇒ còn budget`).
+const RIG_SC_T: usize = 12;
+const RIG_SC_T2: usize = 13;
 
 /// Label/MR **hợp đồng** giữa hai chương trình U-mode (không phải ABI) — khớp
 /// `init/ipc_client_user.rs` + `init/ipc_server_user.rs`.
@@ -192,6 +207,11 @@ struct Rig {
     cnode_alt: ObjId,
     /// **KT-282** — object `Frame` 4 KiB đã bind làm IPC buffer cho **cả hai** TCB.
     ipc_buf: ObjId,
+    /// **KT-314** — CNode gốc của rig (đo **độc lập** `Tcb.Resume` bằng model API).
+    root: ObjId,
+    /// **KT-314** — TCB đích (được `Resume` từ U-mode) và TCB đích `entry = 0` (ca âm).
+    tcb_t: ObjId,
+    tcb_t2: ObjId,
 }
 
 /// Đưa TCB về `Running{hart:0}` — cùng khuôn `ktest_capx::set_running` (chỉ `Inactive` mới
@@ -217,19 +237,27 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
     let us = SlotRef::new(root, RIG_UNTYPED);
     let uc = m.root_cap(u);
     m.put_cap(root, RIG_UNTYPED, uc).expect("rig: cap Untyped");
-    let types = [
-        ObjType::Tcb,
-        ObjType::Tcb,
-        ObjType::Endpoint,
-        ObjType::Reply,
-        ObjType::SchedControl,
-        ObjType::SchedContext,
-        ObjType::SchedContext,
+    // **KT-314** — bảng `(ô, loại)` **tường minh** (trước KT-314 là `RIG_TCB_C + i`, chỉ đúng vì
+    // các ô 1..7 liền nhau; thêm TCB đích ở ô 10..13 thì phải khai rõ để không đè `RIG_CSPACE`=8
+    // / `RIG_IPC_BUF`=9).
+    let objs: [(usize, ObjType); 11] = [
+        (RIG_TCB_C, ObjType::Tcb),
+        (RIG_TCB_S, ObjType::Tcb),
+        (RIG_EP, ObjType::Endpoint),
+        (RIG_REPLY, ObjType::Reply),
+        (RIG_CTL, ObjType::SchedControl),
+        (RIG_SC_C, ObjType::SchedContext),
+        (RIG_SC_S, ObjType::SchedContext),
+        // **KT-314** — hai TCB đích + hai `SchedContext` (KT-20: `Running ⇒ còn budget`).
+        (RIG_TCB_T, ObjType::Tcb),
+        (RIG_TCB_T2, ObjType::Tcb),
+        (RIG_SC_T, ObjType::SchedContext),
+        (RIG_SC_T2, ObjType::SchedContext),
     ];
-    let mut obj = [0u32; 7];
-    for (i, ty) in types.iter().enumerate() {
+    let mut obj = [0u32; 11];
+    for (i, (slot, ty)) in objs.iter().enumerate() {
         let cap = m.retype(us, *ty, 0, 0).expect("rig: retype object lõi");
-        m.put_cap(root, RIG_TCB_C + i, cap).expect("rig: đặt cap");
+        m.put_cap(root, *slot, cap).expect("rig: đặt cap");
         obj[i] = m.cap_obj(cap).expect("rig: cap_obj");
     }
     let cs = m.root_cap(root);
@@ -253,7 +281,8 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
             .expect("rig: cap ipc buffer");
         frame_obj
     };
-    let cnode_c = m.add_cnode(16);
+    // **KT-314** — 32 ô (16 ô cũ + cap `Tcb` server/đích/đích-2 ở ô 14..16).
+    let cnode_c = m.add_cnode(32);
     let cnode_s = m.add_cnode(16);
     let self_c = m.root_cap(cnode_c);
     m.put_cap(cnode_c, CS_SELF, self_c).expect("rig: self c");
@@ -326,6 +355,23 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
     let alt_cap = m.root_cap(cnode_alt);
     m.put_cap(cnode_c, CS_ALT_CNODE, alt_cap)
         .expect("rig: cnode_alt -> client");
+    // **KT-314** — cap `Tcb` của **server** (đã `Exit`) + **hai TCB đích** vào cspace client:
+    // client tự gọi `Tcb.Resume` (method 12) trên chúng.
+    m.copy(
+        SlotRef::new(root, RIG_TCB_S),
+        SlotRef::new(cnode_c, CS_TCB_S),
+    )
+    .expect("rig: tcb server -> client");
+    m.copy(
+        SlotRef::new(root, RIG_TCB_T),
+        SlotRef::new(cnode_c, CS_TCB_T),
+    )
+    .expect("rig: tcb dich -> client");
+    m.copy(
+        SlotRef::new(root, RIG_TCB_T2),
+        SlotRef::new(cnode_c, CS_TCB_T2),
+    )
+    .expect("rig: tcb dich 2 -> client");
     // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
     // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
     // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
@@ -343,9 +389,21 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         )),
     )
     .expect("rig: cspace + ipc buffer server");
+    // **KT-314** — hai TCB đích: cspace (để `Tcb.Configure` giải CPTR trong CSpace **caller** và
+    // để syscall của đích chạy được) + SC (KT-20) + priority. `entry` **không** đặt ở đây: đích
+    // thứ nhất nhận `entry?` từ **chính client** (đường xanh), đích thứ hai giữ `0` (ca âm).
+    for slot in [RIG_TCB_T, RIG_TCB_T2] {
+        m.tcb_configure(
+            SlotRef::new(root, slot),
+            Some(SlotRef::new(cnode_c, CS_SELF)),
+        )
+        .expect("rig: cspace dich");
+    }
     for (tcb_slot, sc, prio) in [
         (RIG_TCB_C, RIG_SC_C, PRIO_CLIENT),
         (RIG_TCB_S, RIG_SC_S, PRIO_SERVER),
+        (RIG_TCB_T, RIG_SC_T, PRIO_CLIENT),
+        (RIG_TCB_T2, RIG_SC_T2, PRIO_CLIENT),
     ] {
         m.sched_control_configure(
             SlotRef::new(root, RIG_CTL),
@@ -368,6 +426,9 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         cnode_s,
         cnode_alt,
         ipc_buf,
+        root,
+        tcb_t: obj[7],
+        tcb_t2: obj[8],
     }
 }
 
@@ -411,7 +472,7 @@ fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..6\n");
+    PLATFORM.put_str("TAP version 13\n1..7\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -755,6 +816,42 @@ pub extern "C" fn rust_main() -> ! {
     // mới; áp lại message cũ sẽ stale — cùng lý do lượt 7 của server).
     let stop9 = run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT);
     let state_c9 = state_of(rig.tcb_c);
+
+    // ================================================================ KT-314: đo `Tcb.Resume` + lượt 10
+    // **Đo độc lập ở kernel** ngay sau lượt U-mode: `TcbData.entry` **thật** của TCB đích (client
+    // vừa ghi bằng `Configure(entry?)`) và trạng thái **thật** sau `Resume` (`Running`).
+    let resume_entry = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t).ok());
+    let resume_state = state_of(rig.tcb_t);
+    // Ca âm đo **độc lập** bằng **cùng** cửa core (`Machine::tcb_resume_invocation`) trên TCB
+    // đích thứ hai (`entry = 0`): phải là `InvalidArgument` (5) và trạng thái **không** đổi.
+    let neg_noentry = core_bridge::with_machine(|m| {
+        m.tcb_resume_invocation(SlotRef::new(rig.root, RIG_TCB_T2), 0)
+            .err()
+            .map(|e| e.id())
+    });
+    let neg_state = state_of(rig.tcb_t2);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc: resume ok entry=0x{:x} state={}",
+            resume_entry.unwrap_or(0),
+            resume_state.map(tcb_state_name).unwrap_or("none")
+        );
+        let _ = writeln!(
+            w,
+            "# ipc: resume neg noentry={} state={}",
+            neg_noentry.map(u64::from).unwrap_or(u64::MAX),
+            neg_state.map(tcb_state_name).unwrap_or("none")
+        );
+    }
+    // **Lượt 10** — chạy **TCB đích** vừa được `Resume`. `tf_t.sepc` **cố ý để `0`**: chỉ hook
+    // `SyscallEnv::tcb_resume` (arch) nạp `sepc` từ `TcbData.entry` — nếu không, đích fault ở
+    // `0` và TAP 7 đỏ. Đích chạy `resume_entry` (in dấu rồi `Exit(0)`), **không** phải `_start`.
+    let mut tf_t = TrapFrame::zeroed();
+    tf_t.x[REG_SP] = user::USER_STACK_TOP;
+    let stop10 = run_turn(&client, &mut tf_t, rig.tcb_t, SLOT_CLIENT);
+    let state_t10 = state_of(rig.tcb_t);
     user::capture_end();
 
     // ================================================================ TAP 1..5
@@ -783,6 +880,14 @@ pub extern "C" fn rust_main() -> ! {
         SLOT_CLIENT,
         b"# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=18 ok=1",
     );
+    // **KT-314** — hai dòng do **chính chương trình U-mode** in sau `Tcb.Resume`, và dấu của
+    // **tác vụ đích** (nó chạy `resume_entry`, không phải `_start`).
+    let client_said_resume = user::captured_contains(SLOT_CLIENT, b"# ipc: resume ok=1 entry=0x");
+    let client_said_resume_neg = user::captured_contains(
+        SLOT_CLIENT,
+        b"# ipc: resume neg noentry=5 running=17 exited=17 ok=1",
+    );
+    let target_said_ran = user::captured_contains(SLOT_CLIENT, b"# ipc: resume ran entry=0x");
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
     let (check_ipc, check_caps) =
@@ -794,6 +899,12 @@ pub extern "C" fn rust_main() -> ! {
         _ => None,
     };
     let server_exit = match stop7 {
+        Some(Stop::Exit { code }) => Some(code),
+        _ => None,
+    };
+    // **KT-314** — tác vụ đích (lượt 10) phải `Exit(0)` — nó chạy được **chỉ vì** `sepc` đã được
+    // nạp từ `TcbData.entry`.
+    let target_exit = match stop10 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
@@ -994,16 +1105,18 @@ pub extern "C" fn rust_main() -> ! {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
             w,
-            "# ipc final: client_exit={} server_exit={} reply_clean={} check_ipc={} check_caps={} capture_client={} capture_server={} client={} server={}",
+            "# ipc final: client_exit={} server_exit={} target_exit={} reply_clean={} check_ipc={} check_caps={} capture_client={} capture_server={} client={} server={} target={}",
             client_exit.map(|c| c as i64).unwrap_or(-1),
             server_exit.map(|c| c as i64).unwrap_or(-1),
+            target_exit.map(|c| c as i64).unwrap_or(-1),
             u8::from(reply_clean),
             u8::from(check_ipc),
             u8::from(check_caps),
             u8::from(client_said_call),
             u8::from(server_said_ran),
             state_c9.map(tcb_state_name).unwrap_or("none"),
-            state_s7.map(tcb_state_name).unwrap_or("none")
+            state_s7.map(tcb_state_name).unwrap_or("none"),
+            state_t10.map(tcb_state_name).unwrap_or("none")
         );
     }
     // TAP 6 — **KT-311**: `Tcb.Configure` **kênh đầy đủ** (`length = 3`, `MR2` = mask). Đo
@@ -1043,15 +1156,51 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 7 — **KT-314**: `Tcb.Resume` (method 12) **tiêu thụ** `TcbData.entry`. Đo **độc lập** ở
+    // kernel: `entry` **thật** của TCB đích (client ghi bằng `Configure(entry?)`), trạng thái
+    // **thật** sau `Resume` (`Running`), ca âm `entry = 0` ⇒ `InvalidArgument` 5 với trạng thái
+    // **không** đổi, và **tác vụ đích chạy thật** ở `resume_entry` (in dấu + `Exit(0)`) với
+    // `tf.sepc = 0` — chỉ hook arch nạp được `sepc` từ `TcbData.entry`. Cộng hai dòng do chính
+    // chương trình U-mode in (đường xanh + ba mã ca âm).
+    let ok7 = client_said_resume
+        && client_said_resume_neg
+        && target_said_ran
+        && resume_entry.is_some_and(|e| e != 0)
+        && resume_state == Some(TcbState::Running { hart: 0 })
+        && neg_noentry == Some(KError::InvalidArgument.id())
+        && neg_state == Some(TcbState::Inactive)
+        && target_exit == Some(0)
+        && check_ipc
+        && check_caps;
+    if ok7 {
+        PLATFORM.put_str("ok 7 - ipc: tcb resume\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 7 - ipc: tcb resume: said_ok={} said_neg={} said_ran={} entry=0x{:x} state={} neg_noentry={} neg_state={} target_exit={} check_ipc={} check_caps={}",
+            u8::from(client_said_resume),
+            u8::from(client_said_resume_neg),
+            u8::from(target_said_ran),
+            resume_entry.unwrap_or(0),
+            resume_state.map(tcb_state_name).unwrap_or("none"),
+            neg_noentry.map(u64::from).unwrap_or(u64::MAX),
+            neg_state.map(tcb_state_name).unwrap_or("none"),
+            target_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(check_ipc),
+            u8::from(check_caps)
+        );
+        fails += 1;
+    }
     let _ = (state_c4, state_s5);
     if fails == 0 {
         PLATFORM.put_str(
-            "PANIC: KT-311 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full xong (6 TAP, 0 fail)\n",
+            "PANIC: KT-314 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume xong (7 TAP, 0 fail)\n",
         );
         PLATFORM.halt(0)
     } else {
         PLATFORM.put_str(
-            "PANIC: KT-311 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full CO LOI\n",
+            "PANIC: KT-314 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume CO LOI\n",
         );
         PLATFORM.halt(1)
     }

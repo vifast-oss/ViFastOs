@@ -9,6 +9,8 @@
 //! vào static của `user`; tệp này chỉ **dịch** chúng thành [`Stop`] cho scheduler của ảnh test.
 //! `user` tái xuất [`Stop`]/[`run_task`] nên mọi ảnh test giữ nguyên đường dẫn cũ.
 
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
 use vifast_core::{ObjId, TcbState};
 use vifast_plat_common::trap::TrapFrame;
 
@@ -78,10 +80,58 @@ fn decode(kind: u32, code: u64) -> Stop {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-314 — `Tcb.Resume`: core **giao** `TcbData.entry`, arch **ghi `sepc`** (D2-83)
+// ---------------------------------------------------------------------------------------------
+
+/// TCB đang chờ nạp `sepc` — `u32::MAX` = không có (cùng khuôn `user::CORE_TCB`).
+static RESUME_TCB: AtomicU32 = AtomicU32::new(u32::MAX);
+/// Điểm vào (`TcbData.entry`) mà `Tcb.Resume` đã giao cho arch.
+static RESUME_PC: AtomicU64 = AtomicU64::new(0);
+
+/// **KT-314** — `Tcb.Resume` vừa chuyển `tcb` sang `Running`: giữ `entry` để lần vào U-mode **kế
+/// tiếp** của **đúng** TCB đó nạp vào `sepc`.
+///
+/// Vì sao phải chờ: `Resume` là invocation của **tác vụ giám sát** (caller), không phải của tác
+/// vụ đích — `sepc` của đích chỉ ghi được lúc scheduler `sret` vào nó. Core **không** ghi CSR
+/// (D2-83) nên nó gọi hook `SyscallEnv::tcb_resume`, hook này chỉ **giữ** giá trị; [`run_task`]
+/// tiêu thụ ở lượt chạy kế tiếp (một lần — `take` xoá).
+pub(crate) fn arm_resume_pc(tcb: ObjId, entry: u64) {
+    RESUME_PC.store(entry, Ordering::Release);
+    RESUME_TCB.store(tcb, Ordering::Release);
+}
+
+/// Lấy + **xoá** điểm vào đã chờ cho `tcb` (`None` = không có, hoặc đang chờ TCB khác).
+fn take_resume_pc(tcb: ObjId) -> Option<u64> {
+    if RESUME_TCB.load(Ordering::Acquire) != tcb {
+        return None;
+    }
+    RESUME_TCB.store(u32::MAX, Ordering::Release);
+    Some(RESUME_PC.swap(0, Ordering::AcqRel))
+}
+
+/// **KT-314** — nạp `sepc` từ `TcbData.entry` nếu `Tcb.Resume` đã chờ đúng TCB đang chạy.
+///
+/// Đây là chỗ **duy nhất** biến `TcbData.entry` thành `sepc` — không có đường thứ hai (rig
+/// **không** đặt `tf.sepc` cho tác vụ được resume: nó để `0`, nên nếu hook không nạp thì tác vụ
+/// fault ở `0` và TAP đỏ).
+fn apply_resume_pc(tf: &mut TrapFrame) {
+    let Some(tcb) = user::bound_core_tcb() else {
+        return;
+    };
+    if let Some(pc) = take_resume_pc(tcb) {
+        tf.sepc = pc;
+    }
+}
+
 /// Chạy một tác vụ U-mode từ `loaded` với trapframe `tf` (đã có `sepc`/`sp`/regs). Trả về khi
 /// tác vụ `Yield`/`Exit` (đa nhiệm) hoặc `DebugHalt`; `tf` **không** bị sửa tại chỗ — bản mới
 /// nằm ở [`user::saved_tf`].
+///
+/// **KT-314**: trước khi `sret`, nạp `sepc` từ `TcbData.entry` nếu `Tcb.Resume` đã chờ TCB này
+/// ([`apply_resume_pc`]) — mọi ảnh đi qua đây nên không có đường "resume nửa vời".
 pub fn run_task(loaded: &LoadedInit, tf: &mut TrapFrame) -> Stop {
+    apply_resume_pc(tf);
     user::enter_loaded(loaded, tf);
     decode(user::stop_kind(), user::stop_code())
 }

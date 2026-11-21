@@ -215,6 +215,16 @@ pub trait SyscallEnv {
         None
     }
 
+    /// **KT-314** — `Tcb.Resume` đã chuyển `tcb` sang `Running`: arch nạp `entry` vào `sepc` ở
+    /// lần vào U-mode **kế tiếp** của **đúng** TCB đó (D2-83: `sepc` là CSR của arch, core
+    /// **không** ghi được). Trả `true` ⇔ arch đã giữ giá trị; nền tảng **không** có U-mode trả
+    /// `false` (không có `sepc` để nạp — trạng thái `Running` vẫn là hiệu ứng model).
+    ///
+    /// Mặc định `false` — mọi `SyscallEnv` cũ (test host, ảnh không U-mode) giữ nguyên hành vi.
+    fn tcb_resume(&mut self, _tcb: ObjId, _entry: u64) -> bool {
+        false
+    }
+
     /// **KT-282** — 60 word **MR4..MR63** trong **IPC buffer** của TCB gọi (D2-83: core không
     /// đọc bộ nhớ user). Arch đọc trang 4 KiB tại **VA đã bind** (`Tcb.Configure` tham số
     /// `ipc_buffer?`, xem [`Machine::tcb_ipc_buffer_binding`]) ở offset

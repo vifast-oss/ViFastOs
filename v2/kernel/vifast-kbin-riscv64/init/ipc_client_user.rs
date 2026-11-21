@@ -65,6 +65,9 @@ const SLOT_EMPTY: u64 = 9;
 /// **KT-290** — method id của `Tcb.Configure` **sinh từ `spec/abi.toml`** (`[object].Tcb` method
 /// 0), không chép số tay (D2-11) — cùng nguồn với core.
 const METHOD_CONFIGURE: u32 = vifast_abi::TCB_CONFIGURE;
+/// **KT-314** — method id của `Tcb.Resume` **sinh từ `spec/abi.toml`** (`[object].Tcb` method
+/// 12), không chép số tay (D2-11) — cùng nguồn với core.
+const METHOD_RESUME: u32 = vifast_abi::TCB_RESUME;
 /// **KT-290** — VA cố định của trang IPC buffer (loader map `R|W|U|NX` cho mọi ELF U-mode).
 const IPC_BUF_VA: u64 = 0x4002_0000;
 /// **KT-290** — VA **ngoài** frame IPC buffer (trang kế, chưa map) — ca âm fail-closed.
@@ -84,6 +87,15 @@ const SLOT_ALT_ONLY: u64 = 8;
 /// `Tcb` của chính client (để gọi `Configure` khi CSpace đang là `cnode_alt`).
 const SLOT_ALT_BACK: u64 = 0;
 const SLOT_ALT_TCB: u64 = 3;
+/// **KT-314** — cap `Tcb` của **server** (đã `Exit` ở lượt 7 ⇒ `Inactive` + `exit_code`):
+/// `Resume` trên nó phải trả `IllegalOperation` (**17**) — không tự chạy lại tác vụ đã kết thúc.
+const SLOT_TCB_S: u64 = 14;
+/// **KT-314** — cap `Tcb` **đích** (rig để `Inactive`, chưa từng chạy): `Configure(entry?)` rồi
+/// `Resume` ⇒ kernel nạp `sepc` = `entry` ở lượt chạy kế tiếp của nó.
+const SLOT_TCB_T: u64 = 15;
+/// **KT-314** — cap `Tcb` **đích thứ hai** (`Inactive`, `entry = 0`): `Resume` ⇒
+/// `InvalidArgument` (5) — fail-closed, không đoán điểm vào.
+const SLOT_TCB_T2: u64 = 16;
 /// **KT-311** — mask tham số mở rộng (`MR2` của `Tcb.Configure`, `length = 3`).
 const MASK_CSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_CSPACE;
 const MASK_VSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_VSPACE;
@@ -163,6 +175,15 @@ const EXIT_CFG2_FULL: u64 = 104;
 const EXIT_CFG2_MOVED: u64 = 105;
 /// **KT-311** — trả `cspace` về CSpace gốc hỏng, hoặc ô 9 không trả 1 (chưa về CSpace gốc).
 const EXIT_CFG2_BACK: u64 = 106;
+/// **KT-314** — `Resume` trên TCB `entry = 0` **không** trả `InvalidArgument` (5).
+const EXIT_RESUME_NOENTRY: u64 = 107;
+/// **KT-314** — `Resume` trên tác vụ **`Running`** (chính ta) **không** trả `IllegalOperation`
+/// (**17**) — hoặc kiểm `entry` chạy **trước** kiểm trạng thái (sẽ ra 5).
+const EXIT_RESUME_RUNNING: u64 = 108;
+/// **KT-314** — `Resume` trên tác vụ **đã `Exit`** (`Inactive` + `exit_code`) không trả **17**.
+const EXIT_RESUME_EXITED: u64 = 109;
+/// **KT-314** — đường xanh `Configure(entry?)` + `Resume` không trả `(0, entry)`.
+const EXIT_RESUME_FULL: u64 = 110;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -195,6 +216,20 @@ fn put_hex(mut value: u64) {
         value >>= 4;
     }
     put(&buf[i..]);
+}
+
+/// **KT-314** — điểm vào **thay thế** của TCB đích: `Tcb.Resume` nạp `sepc` từ `TcbData.entry`
+/// ⇒ tác vụ đích bắt đầu chạy **ở đây** (không phải `_start`). In dấu rồi `Exit(0)`.
+///
+/// Địa chỉ hàm này là giá trị `entry?` mà client ghi vào TCB đích (`resume_entry as usize`);
+/// rig **không** đặt `tf.sepc` cho lượt chạy của đích (để `0`) ⇒ nếu `Resume`/hook arch không
+/// nạp `sepc` thì đích fault ở `0` và TAP 7 đỏ.
+#[no_mangle]
+pub extern "C" fn resume_entry() -> ! {
+    put(b"# ipc: resume ran entry=0x");
+    put_hex(resume_entry as usize as u64);
+    put(b"\n");
+    exit(0)
 }
 
 #[no_mangle]
@@ -516,6 +551,80 @@ pub extern "C" fn _start() -> ! {
     //         `cspace` **ngay sau** pha `Configure` kênh đầy đủ (trước các ca âm cũ bên dưới,
     //         để số đếm `calls`/`denied` của TAP 6 chỉ gồm sáu invocation của pha này).
     let _ = vifast_user_abi::yield_now();
+
+    // ---- 7b) **KT-314** — `Tcb.Resume` (method 12) **tiêu thụ** `TcbData.entry` (nợ §7.2 của
+    //          KT-311). Bốn ca, theo thứ tự **bắt buộc**: ba ca âm chạy khi ta còn `Running`,
+    //          đường xanh **cuối cùng** (nó đưa TCB đích lên `Running` ⇒ ta bị preempt về
+    //          `Ready`, đúng bất biến ≤1 `Running`/hart của core).
+    //
+    //          (i) đích `Inactive` **chưa cấu hình `entry`** ⇒ `InvalidArgument` (5).
+    let neg_noentry = call(SLOT_TCB_T2, info(METHOD_RESUME, 0, false, 0), [0, 0, 0, 0]);
+    if neg_noentry[0] != 5 {
+        put(b"# ipc: resume neg noentry err=");
+        put_u64(neg_noentry[0]);
+        put(b"\n");
+        exit(EXIT_RESUME_NOENTRY);
+    }
+    //          (ii) **chính ta** đang `Running` ⇒ `IllegalOperation` (**17**). Xoá `entry` của ta về
+    //          `0` **trước** để chứng minh **kiểm trạng thái đứng trước** kiểm `entry`: nếu thứ
+    //          tự sai, kết quả là 5 chứ không phải 7.
+    let clear = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_ENTRY, 0],
+    );
+    if clear[0] != 0 {
+        exit(EXIT_RESUME_RUNNING);
+    }
+    let neg_running = call(SLOT_TCB, info(METHOD_RESUME, 0, false, 0), [0, 0, 0, 0]);
+    if neg_running[0] != 17 {
+        put(b"# ipc: resume neg running err=");
+        put_u64(neg_running[0]);
+        put(b"\n");
+        exit(EXIT_RESUME_RUNNING);
+    }
+    //          (iii) server **đã `Exit`** (`Inactive` + `exit_code`) ⇒ **17** — không tự chạy lại.
+    let neg_exited = call(SLOT_TCB_S, info(METHOD_RESUME, 0, false, 0), [0, 0, 0, 0]);
+    if neg_exited[0] != 17 {
+        put(b"# ipc: resume neg exited err=");
+        put_u64(neg_exited[0]);
+        put(b"\n");
+        exit(EXIT_RESUME_EXITED);
+    }
+    //          (iv) đường xanh: `Configure(entry? = resume_entry)` rồi `Resume` ⇒ `(0, entry)`.
+    //          Kernel nạp `sepc` = `entry` ở lượt chạy kế tiếp của TCB đích.
+    let entry_va = resume_entry as usize as u64;
+    set_configure_params(0, 0, entry_va, 0);
+    let cfg_t = call(
+        SLOT_TCB_T,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_ENTRY, 0],
+    );
+    if cfg_t[0] != 0 {
+        put(b"# ipc: resume cfg err=");
+        put_u64(cfg_t[0]);
+        put(b"\n");
+        exit(EXIT_RESUME_FULL);
+    }
+    let resumed = call(SLOT_TCB_T, info(METHOD_RESUME, 0, false, 0), [0, 0, 0, 0]);
+    if resumed[0] != 0 || resumed[1] != entry_va {
+        put(b"# ipc: resume full err=");
+        put_u64(resumed[0]);
+        put(b" val=0x");
+        put_hex(resumed[1]);
+        put(b"\n");
+        exit(EXIT_RESUME_FULL);
+    }
+    put(b"# ipc: resume ok=1 entry=0x");
+    put_hex(entry_va);
+    put(b"\n");
+    put(b"# ipc: resume neg noentry=");
+    put_u64(neg_noentry[0]);
+    put(b" running=");
+    put_u64(neg_running[0]);
+    put(b" exited=");
+    put_u64(neg_exited[0]);
+    put(b" ok=1\n");
 
     // ---- 8) Ca âm cũ (giữ nguyên từ KT-280/KT-282): `Call` trên ô **rỗng** ⇒
     //         `InvalidCapability` (1), không chặn.

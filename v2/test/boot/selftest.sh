@@ -384,6 +384,21 @@ case_red "ev$CFG2_EV" \
     "log ktest-ipc: xoá dòng '# ipc: configure2 entry=0x' (evidence bắt buộc của KT-311)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-cfg2.log" "$SMP"
 
+# --- ca (q): dòng `# ipc: resume` của ảnh KT-314 (Tcb.Resume tiêu thụ TcbData.entry) ----------
+# **KT-314**: dòng `# ipc: resume ok entry=0x… state=Running` do **kernel** in sau khi đo **độc
+# lập** `TcbData.entry` + trạng thái **thật** của TCB đích (client vừa `Resume` nó từ U-mode).
+# Xoá đúng dòng đó ⇒ runner phải đỏ với token `ev<ordinal>` — chứng minh dòng `# ipc: resume` là
+# evidence **bắt buộc**, không phải trang trí (đột biến M1/M2/M3 của KT-314 làm dòng này
+# sai/thiếu: `entry = 0` ⇒ 5, tác vụ `Running` ⇒ 17, bỏ kiểm trạng thái ⇒ chạy lại tác vụ đã
+# `Exit`).
+RESUME_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: resume ok entry=0x')"
+[ -n "$RESUME_EV" ] || die "không tra được ordinal evidence '# ipc: resume ok entry=0x' của ktest-ipc"
+grep -v -F '# ipc: resume ok entry=0x' "$IPC_LOG" >"$WORK/log-ipc-no-resume.log"
+mut_diff "$WORK/log-ipc-no-resume.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: resume ok entry=0x'"
+case_red "ev$RESUME_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: resume ok entry=0x' (evidence bắt buộc của KT-314)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-resume.log" "$SMP"
+
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình
 # U-mode** in sau khi syscall `Call` trên `EP_KERN` trả kết quả của **dịch vụ kernel** `NetPing`

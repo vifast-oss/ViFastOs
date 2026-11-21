@@ -322,6 +322,17 @@ pub fn bind_core_tcb(tcb: ObjId) {
     CORE_TCB.store(tcb, Ordering::Release);
 }
 
+/// **KT-314** — TCB core đang gắn (`None` = chưa gắn). [`crate::user_run::run_task`] dùng để biết
+/// `Tcb.Resume` đã chờ `sepc` cho **đúng** tác vụ sắp `sret` hay không.
+pub(crate) fn bound_core_tcb() -> Option<ObjId> {
+    let tcb = CORE_TCB.load(Ordering::Acquire);
+    if tcb == u32::MAX {
+        None
+    } else {
+        Some(tcb)
+    }
+}
+
 /// Số syscall tối đa ghi sổ theo số hiệu (ABI `0..15`) — KT-62.
 pub const SYS_MAX: usize = 16;
 /// Số lần gọi theo số hiệu (KT-62) — TAP ảnh `ktest-user` đọc sau lượt U-mode.
@@ -1184,6 +1195,14 @@ impl SyscallEnv for UserMemAccess {
             copied += n as u64;
         }
         Ok(len)
+    }
+
+    /// **KT-314** — `Tcb.Resume` đã chuyển TCB đích sang `Running`: giữ `entry` để
+    /// [`crate::user_run::run_task`] nạp `sepc` ở lần vào U-mode kế tiếp của **đúng** TCB đó
+    /// (D2-83: `sepc` là CSR của arch — core chỉ **giao** giá trị).
+    fn tcb_resume(&mut self, tcb: ObjId, entry: u64) -> bool {
+        crate::user_run::arm_resume_pc(tcb, entry);
+        true
     }
 
     /// WaitAddr/WakeAddr (9/10): dịch VA user ⇒ **nhãn** `(ppn, offset)` cho core (D2-83 — core

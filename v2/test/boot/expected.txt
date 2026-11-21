@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 6 6
+ktest-ipc 7 7
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -174,3 +174,17 @@ ktest-netsrv 3 3
 # cùng boot: `entry` không căn 4 B ⇒ `Alignment` (6); `priority` ngoài dải `u8` ⇒
 # `InvalidArgument` (5); `cspace` không phải `CNode` ⇒ `WrongObjectType` (2); `vspace?` **chưa
 # cài** ⇒ `NotSupported` (18). TAP 1..5 giữ nguyên nội dung.
+# **KT-314** (nợ KT-311 §7.2): ảnh `ktest-ipc` thêm **TAP 7** — **`Tcb.Resume`** (method **12**
+# của `[object].Tcb`) **tiêu thụ** `TcbData.entry` (KT-311 mới **lưu**). Client U-mode gọi
+# `Call(cap TCB đích, {label = Tcb.Resume, length = 0})`; core kiểm **trạng thái trước**
+# (`Ready`/`Inactive` **chưa từng chạy**), rồi `TcbData.entry` (`0` ⇒ `InvalidArgument` 5 —
+# fail-closed), chuyển `Running{hart của caller}`, xoá `exit_code` (D2-25), và **giao `entry`**
+# cho arch qua hook `SyscallEnv::tcb_resume` (D2-83: core **không** ghi `sepc`). Bằng chứng:
+# `# ipc: resume ok entry=0x… state=Running` + `# ipc: resume neg noentry=5 state=Inactive`
+# (kernel đo **độc lập** `TcbData.entry`/trạng thái **thật**), `# ipc: resume ok=1 entry=0x…` +
+# `# ipc: resume neg noentry=5 running=17 exited=17 ok=1` (client in), và
+# `# ipc: resume ran entry=0x…` do **chính tác vụ đích** in — nó chạy `resume_entry` (không phải
+# `_start`) với `tf.sepc = 0` ⇒ chỉ hook arch nạp được `sepc` từ `TcbData.entry`. Ba ca âm trong
+# cùng boot: `entry = 0` ⇒ `InvalidArgument` (5); tác vụ **`Running`** ⇒ `IllegalOperation` (17)
+# — và **kiểm trạng thái đứng trước** kiểm `entry` (TCB `Running` + `entry = 0` vẫn 17, không 5);
+# tác vụ **đã `Exit`** (`Inactive` + `exit_code`) ⇒ 17 (không tự chạy lại). TAP 1..6 giữ nguyên.

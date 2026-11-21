@@ -88,6 +88,10 @@ mod tls_tests;
 // `cargo test`.
 #[cfg(test)]
 mod configure_tests;
+// KT-314 — test host cho `Tcb.Resume` (method 12 của `[object].Tcb`) qua invocation, chỉ khi
+// `cargo test`.
+#[cfg(test)]
+mod resume_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};
