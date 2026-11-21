@@ -73,12 +73,24 @@
 //!    chính nó trong cùng vùng tới hạn).
 //! 2. **Cổng khởi động** trong [`mh_tick`]: hart phụ chờ BSP chọn **lần đầu**. Nhịp PIT của BSP
 //!    (100 Hz) chậm hơn LAPIC timer của hart phụ (~1 ms) 10×; không có cổng thì hart phụ hút sạch
-//!    hàng đợi trước tick đầu của BSP và `first[0]` có thể trùng `first[i]` **hợp lệ** ⇒ phép kiểm
-//!    "hart phụ chọn khác BSP" mất nghĩa.
+//!    hàng đợi trước tick đầu của BSP và `first[0]` có thể trùng `first[i]` **hợp lệ**.
 //!
 //! Dòng tổng hợp đổi thành `harts=<số đo> rounds=<n> picks=[a, b, c, d] first=[a, b, c, d]
-//! double=0`; `harts=` là **số hart đã chọn ≥ 1** (không phải hằng) nên đột biến "chỉ 2 hart" in
-//! `harts=2` và runner **đỏ**.
+//! diff=<n> double=0`; `harts=` là **số hart đã chọn ≥ 1** (không phải hằng) nên đột biến "chỉ 2
+//! hart" in `harts=2` và runner **đỏ**.
+//!
+//! # KT-313 — bất biến `diff >= 1` thay `first[0] != first[i]`
+//!
+//! Soak KT-313 (600 boot, **hai** hart) bắt **5/600** boot có `first=[a, a]` dù `double=0` và mọi
+//! điều kiện **thật** đều đạt: hàng đợi FIFO quay vòng, hart phụ kịp **ba** lượt trước lượt đầu
+//! của BSP thì tác vụ `a` về lại đầu hàng đợi đúng lúc BSP pop lần đầu. `first[0] != first[i]` là
+//! **giả định thời điểm**, không phải bất biến (cùng lớp lỗi `last > first` của KT-308).
+//!
+//! Bất biến **thật** là [`MH_DIFF`] `>= 1`: **tồn tại** một lượt hart **phụ** chọn tác vụ **khác**
+//! tác vụ BSP **đang chạy**. Sau lượt chọn đầu của BSP, BSP sở hữu một tác vụ nên lượt chọn kế
+//! của hart phụ **buộc** phải khác (ownership) ⇒ `diff` tăng, **không** phụ thuộc hart nào tick
+//! trước. **KT-317** đếm cho **cả ba** hart phụ (1, 2, 3). `first=[…]` vẫn **in** để **chẩn đoán**,
+//! **không** còn là điều kiện.
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -215,6 +227,14 @@ static MH_ROUNDS: AtomicU64 = AtomicU64::new(0);
 static MH_BSP_TICKS: AtomicU64 = AtomicU64::new(0);
 /// Số lần phát hiện **double-pick** (phải là `0`).
 static MH_DOUBLE: AtomicU64 = AtomicU64::new(0);
+/// **KT-313** — số lượt hart **phụ** chọn tác vụ **khác** tác vụ BSP **đang chạy** tại thời điểm
+/// đó (cả hai đều là tác vụ thật, không phải `main`/`MH_FREE`). Phải `>= 1`: đây là bằng chứng
+/// "hai hart cùng schedule trên **một** hàng đợi và chạy **khác** tác vụ", **không** phụ thuộc
+/// thời điểm — thay `first[0] != first[i]` của KT-310/KT-315 (đỏ 5/600 boot dù `double=0`).
+///
+/// **KT-317** — đếm cho **cả ba** hart phụ (1, 2, 3), không chỉ hart 1: bất biến của pha bốn hart
+/// là "**tồn tại** một lượt hart phụ chọn khác tác vụ BSP", không phải "hart 1 làm được điều ấy".
+static MH_DIFF: AtomicU64 = AtomicU64::new(0);
 /// `rsp` ngữ cảnh `main` của BSP trong pha nhiều hart.
 static MH_MAIN_RSP: AtomicU64 = AtomicU64::new(0);
 /// Đỉnh stack **kernel** của tác vụ ring 3 — nạp vào `TSS.RSP0` của hart nào chọn `TASK_U`.
@@ -405,7 +425,7 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         let picks_now = mh_picks_now();
         if hart == 0 && psched::mh_hold(MH_BSP_TICKS.load(Ordering::Acquire), &picks_now) {
             let rounds = MH_ROUNDS.load(Ordering::Acquire);
-            if psched::mh_end(rounds, &picks_now) {
+            if psched::mh_end(rounds, &picks_now, MH_DIFF.load(Ordering::Acquire)) {
                 return mh_finish(hart, current as usize);
             }
             mh_unlock();
@@ -438,6 +458,19 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         MH_FIRST[hart].store(next as u64, Ordering::Release);
         MH_FIRST_N[hart].store(rounds, Ordering::Release);
     }
+    // **KT-313** — bằng chứng **không phụ thuộc thời điểm**: hart **phụ** vừa chọn `next` trong
+    // khi BSP **đang chạy** một tác vụ **thật** khác `next`. Đọc `MH_CURRENT[0]` **trong** vùng
+    // tới hạn nên giá trị đứng yên (BSP không vào `mh_tick` khi hart này giữ khoá). `next` không
+    // thể trùng tác vụ BSP đang giữ (ownership), nên điều kiện `bsp != next` chỉ là phòng thủ.
+    //
+    // **KT-317** — áp cho **cả ba** hart phụ (1, 2, 3): bất biến là "**tồn tại** một lượt hart phụ
+    // chọn khác tác vụ BSP", không phải "hart 1 làm được". Hart 0 **không** tự đếm (nó là BSP).
+    if hart != 0 {
+        let bsp = MH_CURRENT[0].load(Ordering::Acquire);
+        if bsp != psched::TASK_MAIN as u64 && bsp != psched::MH_FREE && bsp != next as u64 {
+            MH_DIFF.fetch_add(1, Ordering::Relaxed);
+        }
+    }
     MH_CURRENT[hart].store(next as u64, Ordering::Release);
 
     // ---- 3. Hart **phụ** in **một** dòng cho lần chọn đầu — bằng chứng **trực tiếp** nó đã
@@ -456,7 +489,7 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
 
     // ---- 4. Kết thúc pha? **Chỉ BSP** quyết định — một người quyết, không đua.
     let picks_now = mh_picks_now();
-    if hart == 0 && psched::mh_end(rounds, &picks_now) {
+    if hart == 0 && psched::mh_end(rounds, &picks_now, MH_DIFF.load(Ordering::Acquire)) {
         return mh_finish(hart, next);
     }
 
@@ -508,6 +541,7 @@ fn mh_start() {
     MH_TAIL.store(0, Ordering::Relaxed);
     MH_ROUNDS.store(0, Ordering::Relaxed);
     MH_DOUBLE.store(0, Ordering::Relaxed);
+    MH_DIFF.store(0, Ordering::Relaxed);
     MH_MAIN_RSP.store(0, Ordering::Relaxed);
     MH_BSP_TICKS.store(0, Ordering::Relaxed);
     let mut i = 0;
@@ -920,16 +954,19 @@ pub fn run(console: &mut Console, tap_first: usize) {
     );
 
     // **KT-310** — bằng chứng **nhiều hart**: mỗi hart một dòng `picked=`, cộng một dòng tổng hợp
-    // có `double=` (phải `0`). Dòng của hart 0 in **ở đây** (không in trong handler): hart phụ đã
-    // in dòng của nó **trước** khi tăng `MH_PICKS[1]`, và BSP chỉ tới đây **sau** khi pha kết
-    // thúc.
+    // có `diff=` (phải `>= 1`) và `double=` (phải `0`). Dòng của hart 0 in **ở đây** (không in
+    // trong handler): hart phụ đã in dòng của nó **trước** khi tăng `MH_PICKS[1]`, và BSP chỉ tới
+    // đây **sau** khi pha kết thúc.
+    //
+    // **KT-313** — `diff=<n>` là **bất biến** (hart phụ đã chọn tác vụ **khác** tác vụ BSP đang
+    // chạy); `first=[…]` vẫn in để **chẩn đoán** (thấy được race `first=[a, a, …]`), **không** còn
+    // là điều kiện của TAP 25.
     //
     // **KT-316** — đính chính: trước KT-316, hai hart **có** xen ký tự trên COM1 (soak vòng 21
     // bắt được `# exc:`/`PANIC` bị cắt ghép giữa hai hart — xem journal KT-298 §8.2: KT-298 **cố
     // ý** không khoá vì khi đó dòng xen ký tự còn là manh mối của "hai hart chung một stack").
     // Nay nhiều hart `schedule()` là **tính năng** (KT-310/KT-315), nên xen ký tự chỉ làm **sai
-    // chẩn đoán**; khoá COM1 của KT-316 bảo đảm mỗi dòng ra nguyên vẹn — "in trước, đếm sau" ở
-    // trên chỉ còn là **thứ tự**, không còn là điều kiện chống xen ký tự.
+    // chẩn đoán**; khoá COM1 của KT-316 bảo đảm mỗi dòng ra nguyên vẹn.
     let mh_rounds = MH_ROUNDS.load(Ordering::Relaxed);
     let mh_picks = [
         MH_PICKS[0].load(Ordering::Relaxed),
@@ -950,6 +987,9 @@ pub fn run(console: &mut Console, tap_first: usize) {
         MH_FIRST_N[3].load(Ordering::Relaxed),
     ];
     let mh_double = MH_DOUBLE.load(Ordering::Relaxed);
+    // **KT-313** — `diff=` là **bất biến** của pha (hart phụ đã chọn tác vụ **khác** tác vụ BSP
+    // đang chạy); `first=[…]` chỉ còn là **chẩn đoán** (thấy được race `first=[a, a, …]`).
+    let mh_diff = MH_DIFF.load(Ordering::Relaxed);
     // **KT-315** — `harts=` là **số đo** (số hart đã chọn ≥ 1), không phải hằng `MH_HARTS`: đột
     // biến `--features two-hart-sched` in `harts=2` và runner **đỏ**.
     let mh_harts = psched::mh_harts_picked(&mh_picks);
@@ -961,7 +1001,7 @@ pub fn run(console: &mut Console, tap_first: usize) {
     );
     let _ = writeln!(
         console,
-        "# sched: multi-hart harts={mh_harts} rounds={mh_rounds} picks=[{}, {}, {}, {}] first=[{}, {}, {}, {}] double={mh_double}",
+        "# sched: multi-hart harts={mh_harts} rounds={mh_rounds} picks=[{}, {}, {}, {}] first=[{}, {}, {}, {}] diff={mh_diff} double={mh_double}",
         mh_picks[0],
         mh_picks[1],
         mh_picks[2],
@@ -998,19 +1038,21 @@ pub fn run(console: &mut Console, tap_first: usize) {
         "sched: umode task",
         u_runs > 0 && u_ring3 && u_preempted >= 2 && u_resumed >= 1 && u_last >= u_first,
     );
-    // TAP 25 (**KT-310**, mở lên **bốn** hart bởi **KT-315**): **nhiều hart** schedule — bốn hart
-    // cùng chọn từ **một** hàng đợi toàn cục, mỗi tác vụ **một** chủ, BSP và **mọi** hart phụ chọn
-    // **khác** tác vụ ở lần đầu, không double-pick.
+    // TAP 25 (**KT-310**, mở lên **bốn** hart bởi **KT-315**, sửa bất biến bởi **KT-313**/
+    // **KT-317**): **nhiều hart** schedule — bốn hart cùng chọn từ **một** hàng đợi toàn cục, mỗi
+    // tác vụ **một** chủ, và có **ít nhất một** lượt hart phụ chọn tác vụ **khác** tác vụ BSP
+    // **đang chạy** (`diff >= 1`), không double-pick.
     //
     // Điều kiện nằm trong [`psched::mh_ok`] (hàm **thuần**, có test host `tests/runqueue.rs`):
-    // `double == 0` ∧ `rounds >= MH_HARTS` ∧ mọi hart đã chọn ∧ `first[0] != first[i]` với mọi
-    // `i ≥ 1`. Hai đột biến chứng minh phép kiểm **có răng**: `--features two-hart-sched` (chỉ
-    // BSP + hart 1 ⇒ `harts=2`) và `--features no-sched-lock` (double-pick ⇒ `# sched: BAD
-    // double-pick`).
+    // `double == 0` ∧ `rounds >= MH_HARTS` ∧ mọi hart đã chọn ∧ `diff >= 1`. **KT-313** thay điều
+    // kiện cũ `first[0] != first[i]` (với mọi `i ≥ 1`) — nó **phụ thuộc thời điểm** (soak KT-313:
+    // 5/600 boot đỏ dù `double=0`). Hai đột biến chứng minh phép kiểm **có răng**:
+    // `--features two-hart-sched` (chỉ BSP + hart 1 ⇒ `harts=2`) và `--features no-sched-lock`
+    // (double-pick ⇒ `# sched: BAD double-pick`).
     check(
         console,
         tap_first + 3,
         "sched: multi-hart",
-        psched::mh_ok(mh_rounds, &mh_picks, &mh_first, mh_double),
+        psched::mh_ok(mh_rounds, &mh_picks, mh_double, mh_diff),
     );
 }

@@ -49,11 +49,15 @@
 #  10b. **KT-304** — `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>`: tác vụ
 #      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
 #      `schedule()` chọn **lại** (`resumed ≥ 1`) — thiếu dòng ⇒ ĐỎ;
-#  10c. **KT-310**/**KT-315** — `# sched: hart=0|1|2|3 picked=<task> n=<k>` (mỗi hart **một**
-#      dòng) **và** `# sched: multi-hart harts=4 rounds=<r> picks=[<a>, <b>, <c>, <d>]
-#      first=[<w>, <x>, <y>, <z>] double=0`: **bốn** hart cùng chọn từ **một** hàng đợi toàn cục,
-#      BSP chọn **khác** mọi hart phụ ở lần đầu, mọi hart chọn ≥ 1, **không** double-pick —
-#      thiếu/lệch ⇒ ĐỎ;
+#  10c. **KT-310**/**KT-315** (sửa **KT-313**/**KT-317**) — `# sched: hart=0|1|2|3 picked=<task>
+#      n=<k>` (mỗi hart **một** dòng) **và** `# sched: multi-hart harts=4 rounds=<r>
+#      picks=[<a>, <b>, <c>, <d>] first=[<w>, <x>, <y>, <z>] diff=<n> double=0`: **bốn** hart cùng
+#      chọn từ **một** hàng đợi toàn cục, mọi hart chọn ≥ 1, **có** lượt hart phụ chọn tác vụ
+#      **khác** tác vụ BSP **đang chạy** (`diff ≥ 1`), **không** double-pick — thiếu/lệch ⇒ ĐỎ.
+#      **KT-313** bỏ `first[0] != first[i]` của KT-310/KT-315: nó **phụ thuộc thời điểm** (hàng
+#      đợi FIFO **bốn** tác vụ quay vòng ⇒ hart phụ kịp **bốn** lượt trước lượt đầu của BSP thì
+#      `first=[a, a, …]` dù `double=0`); soak KT-313 đo **5/600** boot đỏ vì nó — cùng lớp lỗi
+#      `last > first` của KT-308. `first=[…]` vẫn in để **chẩn đoán**, **không** phải điều kiện;
 #  10d. **KT-316** — đúng **một** dòng `# com: lock ok=1 contended=<n>`: khoá COM1 **đã được
 #      dùng** (`ok=1` đòi `acquired > 0` **và** `overlap = 0`). Dòng bị **xen ký tự** (không
 #      khoá) không khớp mẫu ⇒ ĐỎ;
@@ -73,7 +77,7 @@
 #   bash v2/test/boot/soak-x86_64.sh --smoke N [LANES]   # N < 600: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-x86_64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 37 ca âm, KHÔNG mở QEMU
+#                                                         # 2 ca dương + 38 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
 # Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`).
@@ -368,9 +372,16 @@ check_boot_log() {
         bad=1
     }
 
-    # (10c) **KT-310**/**KT-315** — **nhiều hart** schedule: mỗi hart một dòng `picked=`, cộng
-    # dòng tổng hợp có `harts=4` + `double=0`; BSP phải chọn **khác** mọi hart phụ ở lần đầu và
-    # **mọi** hart phải chọn ≥ 1.
+    # (10c) **KT-310**/**KT-315** (sửa **KT-313**/**KT-317**) — **nhiều hart** schedule: mỗi hart
+    # một dòng `picked=`, cộng dòng tổng hợp có `harts=4` + `diff=<n>` + `double=0`; **mọi** hart
+    # phải chọn ≥ 1 và phải **có** lượt hart phụ chọn tác vụ **khác** tác vụ BSP **đang chạy**
+    # (`diff ≥ 1`), **không** double-pick.
+    #
+    # **KT-313** — bỏ điều kiện `first[0] != first[i]` của KT-310/KT-315: nó **phụ thuộc thời
+    # điểm** (hàng đợi FIFO **bốn** tác vụ quay vòng ⇒ hart phụ kịp **bốn** lượt trước lượt đầu
+    # của BSP thì tác vụ `a` về lại đầu hàng đợi ⇒ `first=[a, a, …]` dù `double=0`). Soak KT-313
+    # đo **5/600** boot đỏ vì điều kiện ấy — cùng lớp lỗi `last > first` của KT-308. `first=[…]`
+    # vẫn in để **chẩn đoán**, **không** phải điều kiện.
     for h in 0 1 2 3; do
         n="$(grep -cE "^# sched: hart=$h picked=[abuc] n=[0-9]+$" "$log" || true)"
         [ "${n:-0}" -eq 1 ] || {
@@ -378,21 +389,11 @@ check_boot_log() {
             bad=1
         }
     done
-    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] double=0$' "$log" || true)"
+    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] diff=[0-9]+ double=[0-9]+$' "$log" || true)"
     if [ -z "$mh_sum" ]; then
-        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] double=0' (không có bằng chứng bốn hart)"
+        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] diff=<n> double=<n>' (không có bằng chứng bốn hart)"
         bad=1
     else
-        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abuc]\), [abuc], [abuc], [abuc]\].*/\1/p')"
-        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], \([abuc]\), [abuc], [abuc]\].*/\1/p')"
-        mh_f2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], \([abuc]\), [abuc]\].*/\1/p')"
-        mh_f3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], [abuc], \([abuc]\)\].*/\1/p')"
-        for pair in "1:$mh_f1" "2:$mh_f2" "3:$mh_f3"; do
-            [ "$mh_f0" != "${pair#*:}" ] || {
-                echo "# multi-hart first=[$mh_f0, $mh_f1, $mh_f2, $mh_f3] — hart ${pair%%:*} chọn **cùng** tác vụ với BSP"
-                bad=1
-            }
-        done
         mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\), [0-9]*, [0-9]*\].*/\1/p')"
         mh_p2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, \([0-9]*\), [0-9]*\].*/\1/p')"
         mh_p3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, [0-9]*, \([0-9]*\)\].*/\1/p')"
@@ -402,6 +403,16 @@ check_boot_log() {
                 bad=1
             }
         done
+        mh_diff="$(printf '%s\n' "$mh_sum" | sed -n 's/.*diff=\([0-9]*\) double=.*/\1/p')"
+        [ "${mh_diff:-0}" -ge 1 ] || {
+            echo "# multi-hart diff=${mh_diff:-0} — hart phụ chưa chọn tác vụ **khác** tác vụ BSP đang chạy"
+            bad=1
+        }
+        mh_dbl="$(printf '%s\n' "$mh_sum" | sed -n 's/.*double=\([0-9]*\)$/\1/p')"
+        [ "${mh_dbl:-0}" -eq 0 ] || {
+            echo "# multi-hart double=${mh_dbl:-0} — có double-pick (hai hart cùng một tác vụ)"
+            bad=1
+        }
     fi
 
     # (10d) **KT-316** — khoá COM1: đúng **một** dòng `# com: lock ok=1 contended=<n>`. `ok=1`
@@ -436,7 +447,7 @@ check_boot_log() {
 # Log **tổng hợp** đúng khuôn ảnh in ra (chỉ các dòng bộ đọc dùng tới). Ca dương phải XANH; mỗi ca
 # âm phải ĐỎ. Nếu một ca âm lại XANH thì bộ đọc là "dấu cao su" và soak đang PASS giả.
 selftest() {
-    local tmp fails=0 cases=0 good
+    local tmp fails=0 cases=0 pos=1 good
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/soak-x64-selftest.XXXXXX")" || die "không tạo được thư mục tạm"
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
@@ -513,7 +524,7 @@ ok 24 - sched: umode task
 # sched: hart=2 picked=u n=3
 # sched: hart=3 picked=c n=4
 # sched: hart=0 picked=a n=1
-# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, b, u, c] double=0
+# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, b, u, c] diff=3 double=0
 ok 25 - sched: multi-hart
 # blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
 ok 26 - blk: device
@@ -655,9 +666,18 @@ EOF
         "$good" >"$tmp/ai.log" || true
     neg "chỉ 2 hart schedule (harts=2, picks=[6, 6, 0, 0])" "$tmp/ai.log"
 
-    sed 's/^# sched: multi-hart \(.*\)first=\[a, b, u, c\] double=0$/# sched: multi-hart \1first=[a, a, u, c] double=0/' \
+    # **KT-313** — `diff=0`: hart phụ **có** chọn nhưng **chưa bao giờ** chọn tác vụ **khác** tác
+    # vụ BSP đang chạy. Ca âm của **bất biến mới** thay `first[0] != first[i]`; nếu bộ đọc vẫn
+    # XANH thì bản sửa KT-313 đã **bỏ mất** phép kiểm thay vì thay nó.
+    sed 's/^# sched: multi-hart \(.*\) diff=[0-9][0-9]* double=\([0-9][0-9]*\)$/# sched: multi-hart \1 diff=0 double=\2/' \
         "$good" >"$tmp/aj.log" || true
-    neg "hart phụ chọn cùng tác vụ với BSP (first=[a, a, u, c])" "$tmp/aj.log"
+    neg "hart phụ chưa chọn tác vụ khác tác vụ BSP (diff=0)" "$tmp/aj.log"
+
+    # **KT-313** — `double=1`: có double-pick (hai hart cùng một tác vụ). Phải ĐỎ **dù** `diff`
+    # khác 0 — chứng minh điều kiện `double == 0` vẫn còn răng sau khi thay điều kiện.
+    sed 's/^# sched: multi-hart \(.*\) double=0$/# sched: multi-hart \1 double=1/' \
+        "$good" >"$tmp/al.log" || true
+    neg "có double-pick (double=1)" "$tmp/al.log"
 
     sed 's/ lma=1$/ lma=0/' "$good" >"$tmp/ad.log" || true
     neg "lma=0 (long mode chưa bật)" "$tmp/ad.log"
@@ -671,8 +691,24 @@ EOF
         "$good" >"$tmp/ak.log" || true
     neg "dòng '# com: lock' bị xen ký tự (không khoá)" "$tmp/ak.log"
 
+
+    # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
+    # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
+    # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào (hoặc đã bỏ mất phép
+    # kiểm). Đếm riêng (`pos`) để không trộn với số ca âm.
+    cases=$((cases + 1))
+    pos=$((pos + 1))
+    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=4 rounds=6 picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0/' \
+        "$good" >"$tmp/pos.log" || true
+    if check_boot_log "$tmp/pos.log" "$wb" "$wt" >"$tmp/pos.out" 2>&1; then
+        echo "ok $cases - ca dương (KT-313): picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 ⇒ XANH"
+    else
+        echo "not ok $cases - ca dương (KT-313): khuôn soak first=[a, a, …] diff=1 mà bộ đọc ĐỎ ($(head -1 "$tmp/pos.out"))"
+        fails=$((fails + 1))
+    fi
+
     rm -rf "$tmp" 2>/dev/null || true
-    echo "# soak-x86_64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
+    echo "# soak-x86_64 --selftest: $((cases - fails))/$cases ca đúng như phải ($pos dương + $((cases - pos)) âm)"
     [ "$fails" -eq 0 ] || return 1
     echo "# soak-x86_64 --selftest: PASS"
     return 0

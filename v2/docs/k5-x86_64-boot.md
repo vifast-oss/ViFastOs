@@ -1352,7 +1352,7 @@ trong handler thì hai dòng có thể xen nhau và regex của runner đỏ **o
 # sched: umode counts first=12915741 last=24232588 cs=0x1b kernel_stack=0x136230
 # sched: umode progress first=12915741 last=24232588 delta=11316847
 # sched: hart=0 picked=b n=2
-# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[b, a] double=0
+# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[b, a] diff=2 double=0
 ok 22 - sched: two tasks ran
 ok 23 - sched: preempted
 ok 24 - sched: umode task
@@ -1365,7 +1365,7 @@ ok 27 - blk: sector0
 |---|---|
 | hart phụ `schedule()` | `# sched: hart=1 picked=a n=1` — hart 1 chọn **A** ở vòng 1 |
 | BSP `schedule()` trên **cùng** hàng đợi | `# sched: hart=0 picked=b n=2` — BSP chọn **B** ở vòng 2 |
-| hai hart chọn **khác** tác vụ | `first=[b, a]` |
+| hart phụ chọn **khác** tác vụ BSP đang chạy | `diff=2` (**KT-313**; `first=[b, a]` chỉ còn là **chẩn đoán**) |
 | chuyển tác vụ thật trong pha | `rounds=7`, `picks=[3, 4]` — mỗi hart chạm **cả ba** tác vụ (kể cả `U` ring 3 trên hart 1) |
 | không double-pick | `double=0` |
 | TAP | **27/27** xanh; runner 19/19 kiểm sạch + **20 ca âm** ĐỎ |
@@ -1374,7 +1374,7 @@ ok 27 - blk: sector0
 
 | Đột biến | Cách làm | Kết quả |
 |---|---|---|
-| (i) **hart phụ không schedule** | `--features bsp-only-sched` | `# sched: hart=0 picked=a n=1` + `# sched: multi-hart harts=2 rounds=48 picks=[48, 0] first=[a, ?] double=0` ⇒ `not ok 25 - sched: multi-hart` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo: `rounds=48` = trần cứng) |
+| (i) **hart phụ không schedule** | `--features bsp-only-sched` | `# sched: hart=0 picked=a n=1` + `# sched: multi-hart harts=2 rounds=48 picks=[48, 0] first=[a, ?] diff=0 double=0` ⇒ `not ok 25 - sched: multi-hart` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo: `rounds=48` = trần cứng) |
 | (ii) **bỏ khoá** | `--features no-sched-lock` (khoá no-op + cửa sổ **30 ms** bằng PIT kênh 2) | `# sched: hart=1 picked=a n=1` + `# sched: BAD double-pick hart=0 task=a n=1` ⇒ halt, **không marker** (ĐỎ) |
 
 ### 18.6 Còn thiếu / rủi ro
@@ -1392,11 +1392,14 @@ ok 27 - blk: sector0
 5. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot) và các mục
    ngoài soak (§12.12).
 
-## 19. KT-315 — **bốn** hart schedule: tác vụ thứ tư + cổng khởi động/giữ
+## 19. KT-315 + KT-313 — **bốn** hart schedule, và bất biến `diff >= 1` thay `first[0] != first[i]`
 
-Trạng thái: **DONE** (KT-315, 2026-11-22). Quyết định: **D2-221** (nhiệm vụ KT-315), **D2-212**,
+Trạng thái: **DONE** (KT-315, 2026-11-22; bất biến của phép kiểm sửa bởi **KT-313**, áp cho bốn
+hart bởi **KT-317**). Quyết định: **D2-221** (nhiệm vụ KT-315), **D2-222** (KT-313), **D2-212**,
 **D2-216**, **D2-198**, **D2-05**, **D2-07**. Nhật ký đầy đủ:
-[`../agent/JOURNAL/kt315-x86_64-fourhart.md`](../agent/JOURNAL/kt315-x86_64-fourhart.md).
+[`../agent/JOURNAL/kt315-x86_64-fourhart.md`](../agent/JOURNAL/kt315-x86_64-fourhart.md),
+[`../agent/JOURNAL/kt317-merge313.md`](../agent/JOURNAL/kt317-merge313.md) (hợp nhất KT-313 vào
+KT-315).
 
 **Không** tuyên bố K5' đạt.
 
@@ -1430,33 +1433,117 @@ không theo hart; ownership bảo đảm không đồng thời. Cái thiếu là
 
 | Thành phần | Thay đổi |
 |---|---|
-| `vifast-plat-x86_64::sched` | `TASK_COUNT` 3 → **4**, `TASK_C = 4`, `TASK_SLOTS` 4 → **5**; `MH_HARTS` 2 → **4**; `MH_TASKS` 3 → **4**; `MH_QUEUE_SLOTS` 8 → **16**; `MH_MAX_ROUNDS` 6 → **8**; `MH_HARD_ROUNDS` **giữ 48**; `MH_HOLD_TICKS = 4`; `mh_harts_picked`, `mh_hold`; `mh_ok` đòi `first[0] != first[i]` với **mọi** `i ≥ 1`; `task_name` thêm `"c"` |
-| `vifast-kbin-x86_64::sched` | `TASK_C_STACK` + `TASK_C_RUNS` + `task_c`; `slot_stack`/`frame_ok` nhận `TASK_C`; `MH_BSP_TICKS`; `mh_picks_now`/`mh_finish`; cổng khởi động + cổng giữ; dòng tổng hợp `harts=<số đo> … picks=[4] first=[4]`; `tasks=4`; `runs … c=… c_rsp=…` |
+| `vifast-plat-x86_64::sched` | `TASK_COUNT` 3 → **4**, `TASK_C = 4`, `TASK_SLOTS` 4 → **5**; `MH_HARTS` 2 → **4**; `MH_TASKS` 3 → **4**; `MH_QUEUE_SLOTS` 8 → **16**; `MH_MAX_ROUNDS` 6 → **8**; `MH_HARD_ROUNDS` **giữ 48**; `MH_HOLD_TICKS = 4`; `mh_harts_picked`, `mh_hold`; `mh_ok(rounds, picks, double, diff)` / `mh_end(rounds, picks, diff)` — điều kiện 4 là **`diff >= 1`** (**KT-313**, bỏ tham số `first`); `task_name` thêm `"c"` |
+| `vifast-kbin-x86_64::sched` | `TASK_C_STACK` + `TASK_C_RUNS` + `task_c`; `slot_stack`/`frame_ok` nhận `TASK_C`; `MH_BSP_TICKS`; `MH_DIFF` (**KT-313**, đếm cho **cả ba** hart phụ 1/2/3 — **KT-317**); `mh_picks_now`/`mh_finish`; cổng khởi động + cổng giữ; dòng tổng hợp `harts=<số đo> … picks=[4] first=[4] diff=<n> double=0`; `tasks=4`; `runs … c=… c_rsp=…` |
 | `Cargo.toml` | feature đột biến `two-hart-sched` |
-| runner + soak | mẫu 4 hart, `tasks=4`, ca âm (u) "chỉ 2 hart" ⇒ **21** ca âm; soak selftest **38** ca |
+| runner + soak | mẫu 4 hart, `tasks=4`, `diff ≥ 1` + `double=0` + `harts=4`, **bỏ** điều kiện `first`; ca âm (u) "chỉ 2 hart" + ca âm (v) `diff=0` ⇒ **22** ca âm; soak selftest **40** ca (2 dương + 38 âm) |
 
 `harts=` là **số đo** (số hart có `picks ≥ 1`), không phải hằng `MH_HARTS` — nhờ vậy đột biến
 "chỉ 2 hart" in `harts=2` và runner **đỏ**.
 
-`first[0] != first[i]` (**không** phải "bốn giá trị đôi một khác"): đo được `first=[a, u, b, b]` —
-hai hart phụ cùng chọn `b` ở lần đầu là **hợp lệ**. Đòi đôi một khác là giả định sai (lớp lỗi
-KT-308).
+`first=[…]` **vẫn in** nhưng **không** còn là điều kiện: nó là **chẩn đoán** để thấy race
+`first=[a, a, …]` (xem §19.3). Bất biến của pha là `diff >= 1` — **tồn tại** một lượt hart **phụ**
+chọn tác vụ **khác** tác vụ BSP **đang chạy**.
 
-### 19.3 Đo được (log QEMU nguyên văn, `-smp 4`)
+### 19.3 KT-313 — soak 600 bắt **bất biến sai** của TAP 25 (`first[0] != first[i]`)
+
+**Đo được** (soak 600 trên ảnh KT-310, `build=33773cfe64a48b7b`): **593/600**, 7 boot đỏ, **không**
+retry (D2-07). Phân loại **từ log nguyên văn**:
+
+| Lớp | Boot | Số | Nguyên nhân |
+|---|---|---:|---|
+| (A) `first=[a, a]` | 98, 211, 269, 304, 431 | **5** | **bất biến sai** của TAP 25 — `double=0`, scheduler đúng |
+| (B) log xen ký tự + `# exc:`/`PANIC` | 64, 326 | **2** | **lỗi thật** khác (COM1 không khoá) — KT-316 |
+
+Cả 5 boot (A) in **cùng một khuôn** (nguyên văn boot 98):
+
+```text
+# sched: hart=1 picked=a n=1
+# sched: hart=0 picked=a n=4
+# sched: multi-hart harts=2 rounds=6 picks=[2, 4] first=[a, a] double=0
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: umode task
+not ok 25 - sched: multi-hart
+# TAP 25 FAIL — dừng (không in marker)
+```
+
+`double=0` (không double-pick), cả hai hart đều chọn, `rounds=6` — **mọi** điều kiện **thật** đều
+đạt; chỉ `first[0] != first[1]` sai.
+
+**Vì sao điều kiện ấy sai** (không phải lỗi scheduler): hàng đợi là FIFO **ba** tác vụ `[a, b, u]`;
+mỗi hart **đẩy tác vụ cũ về trước** rồi mới pop. Nếu hart phụ tick trước và kịp **ba** lượt trước
+lượt đầu của BSP (BSP còn ở `main`), thì `a` đã quay lại **đầu** hàng đợi đúng lúc BSP pop lần đầu:
+
+```text
+R1 h1: pop a (FIRST[1]=a)   R2 h1: push a, pop b   R3 h1: push b, pop u
+R4 h0: pop a (FIRST[0]=a)   ← a quay lại đầu hàng đợi
+R5 h1: push u, pop b        R6 h0: push a, pop u   ⇒ picks=[2, 4] first=[a, a]
+```
+
+Đúng khớp `picks=[2, 4]` của **cả 5** boot. Phân bố `first=` trên 392 log đọc được:
+`a,b` 274 · `b,a` 84 · `u,a` 30 · **`a,a` 5** ⇒ ~1,3 %. Đây **cùng lớp lỗi** với `last > first`
+của KT-308: một điều kiện **phụ thuộc thời điểm**, không được thiết kế bảo đảm.
+
+**Sửa: `diff >= 1` thay `first[0] != first[i]`.**
+
+| Thành phần | Thay đổi |
+|---|---|
+| `vifast-plat-x86_64::sched` | `mh_ok(rounds, picks, double, diff)` — **bỏ** tham số `first`, điều kiện 4 = `diff >= 1`; `mh_end(rounds, picks, diff)` — kết thúc bình thường **đòi** `diff >= 1` (trần cứng `MH_HARD_ROUNDS = 48` giữ nguyên) |
+| `vifast-kbin-x86_64::sched` | `MH_DIFF` — đếm lượt hart **phụ** chọn tác vụ **khác** tác vụ BSP **đang chạy** (đọc `MH_CURRENT[0]` **trong** vùng tới hạn; cả hai phải là tác vụ thật); in `diff=<n>` trong `# sched: multi-hart`; `first=[…]` **vẫn in** để **chẩn đoán** nhưng **không** còn là điều kiện. **KT-317** đếm cho **cả ba** hart phụ (1, 2, 3), không chỉ hart 1 |
+| `vifast-plat-x86_64/tests/runqueue.rs` | 10 test host; thêm `kt313_first_collision_is_not_a_failure` — **tái hiện đúng** chuỗi R1..R8 với **bốn** hart và đòi `mh_ok` **XANH** với `picks=[1, 5, 1, 1] first=[a, a, u, c] diff=3` |
+| `v2/test/boot/soak-x86_64.sh` | đòi `diff ≥ 1` + `double=0` + `harts=4`; **bỏ** `first[0] != first[i]`; selftest **40 ca** (2 dương + 38 âm), gồm ca dương hồi quy `picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1` ⇒ **XANH** |
+| `v2/test/boot/run-x86_64.sh` | như trên; ca âm mới (v) `diff=0` ⇒ ĐỎ; ca dương hồi quy KT-313 |
+
+**Vì sao `diff >= 1` là bất biến thật:** sau lượt chọn **đầu** của BSP, BSP **sở hữu** một tác vụ
+`X`; lượt chọn kế của hart phụ **không thể** là `X` (ownership) ⇒ `diff` tăng. `mh_end` **kéo dài**
+pha tới khi `diff >= 1` (trần cứng 48 vòng vẫn chặn treo) nên điều kiện **không** phụ thuộc việc
+hart nào tick trước. Đây là **sửa phép kiểm**, **không** nới ngưỡng nào (N=600, 20 s/boot, 3 luồng,
+0 lỗi/N giữ nguyên).
+
+**Bằng chứng bản sửa có tác dụng** (đo trên chính 600 log của lần soak thứ hai): `first=[a, a]`
+xuất hiện **8/600** boot — **cả 8 đều `ok 25` XANH** (boot 17, 177, 229, 311, 346, 368, 520, 528);
+`diff` phân bố **1..6** (`2` 255 · `3` 234 · `4` 75 · `1` 28 · `5` 5 · `6` 3) ⇒ **600/600** boot
+`diff ≥ 1`; `double=0` **600/600**. Tức race **vẫn còn** (8/600 boot có cửa sổ đầu trùng — **nhiều
+hơn** 5/600 của lần 1 vì máy tải nặng hơn) nhưng **không** còn là điều kiện đỏ — đúng thiết kế.
+
+**Lớp (B) — lỗi thật, ghi nhận, không sửa ở đây.** Boot 64 và 326 có log **xen ký tự COM1** giữa
+hai hart, kèm `# exc: vec=13 … rip=0x3000000000000`, `# exc: vec=1`, `# exc: vec=6`,
+`PANIC: smp: arena … không căn 4 KiB`, `# sched: BAD frame …`. Comment cũ ở `sched.rs` khẳng định
+"không có hai dòng xen ký tự" là **sai** khi có hai hart `schedule()` thật. Việc **khoá COM1** là
+task riêng (**KT-316**) — mục này chỉ ghi nhận.
+
+**Bài học — lần thứ ba trong tuần một phép kiểm có giả định phụ thuộc thời điểm:**
+
+| Lần | Điều kiện sai | Vì sao sai | Sửa |
+|---|---|---|---|
+| KT-308 lần 1 | `last > first` (TAP 24) | PIT 100 Hz; host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒ 0 vòng ở cửa sổ sau | `n > 0` ∧ `resumed ≥ 1` ∧ `cs=0x1B` cả hai lần ∧ `last >= first` |
+| KT-308 lần 1 (bản sửa đầu) | `first > 0` | **ảnh ngược** của cùng race: preempt trước lệnh user đầu ⇒ `first = 0` | (bỏ — không cửa sổ nào được đòi tiến bộ) |
+| **KT-313** | `first[0] != first[i]` (TAP 25) | FIFO **ba** tác vụ quay vòng; hart phụ kịp **ba** lượt trước lượt đầu của BSP ⇒ tác vụ đầu trùng | `diff >= 1` (hart phụ chọn **khác** tác vụ BSP **đang chạy**) |
+
+> **Bất biến của một phép kiểm nhiều hart KHÔNG được phụ thuộc thứ tự/thời điểm giữa các hart**,
+> trừ khi có **cơ chế bảo đảm** thứ tự ấy (hàng rào, khoá, hoặc pha kéo dài tới khi bằng chứng tồn
+> tại). Cụ thể: **không** đòi "hart A chọn trước hart B", "lần đầu của A khác lần đầu của B",
+> "cửa sổ thứ k có tiến bộ". Chỉ đòi những gì **cơ chế** bảo đảm: `double == 0` (ownership),
+> mỗi hart đã chọn ≥ 1, và **tồn tại** một lượt hai hart chạy **khác** tác vụ (`diff >= 1`).
+> Cách nhận ra: nếu điều kiện có thể **đảo** khi chỉ đổi **thứ tự tick** (không đổi code) thì nó
+> là giả định thời điểm, **không** phải bất biến.
+
+### 19.4 Đo được (log QEMU nguyên văn, `-smp 4`)
 
 ```text
 # sched: switch a→b n=1
 # sched: switch b→a n=2
 # sched: hart=3 picked=b n=2
-# sched: hart=2 picked=u n=3
-# sched: hart=1 picked=c n=4
+# sched: hart=1 picked=u n=3
+# sched: hart=2 picked=c n=4
 # sched: ticks=10 tasks=4
-# sched: runs a=235434 b=201113 c=19372 switches=9 ab=1 ba=2 a_rsp=0x12e198 b_rsp=0x132198 u_rsp=0x13a1a0 c_rsp=0x136198
-# sched: umode task ran n=8444832 ring=3 preempted=2 resumed=1
-# sched: umode counts first=2844727 last=6984179 cs=0x1b kernel_stack=0x13a250
-# sched: umode progress first=2844727 last=6984179 delta=4139452
+# sched: runs a=296300 b=228876 c=67113 switches=9 ab=1 ba=2 a_rsp=0x12e198 b_rsp=0x132198 u_rsp=0x13a1a0 c_rsp=0x136198
+# sched: umode task ran n=11685558 ring=3 preempted=2 resumed=1
+# sched: umode counts first=3665460 last=4989088 cs=0x1b kernel_stack=0x13a250
+# sched: umode progress first=3665460 last=4989088 delta=1323628
 # sched: hart=0 picked=a n=1
-# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, c, u, b] double=0
+# sched: multi-hart harts=4 rounds=10 picks=[3, 2, 2, 3] first=[a, u, c, b] diff=7 double=0
 ok 22 - sched: two tasks ran
 ok 23 - sched: preempted
 ok 24 - sched: umode task
@@ -1468,27 +1555,30 @@ ok 27 - blk: sector0
 | Phép đo | Kết quả |
 |---|---|
 | **bốn** hart `schedule()` | bốn dòng `# sched: hart=0|1|2|3 picked=…` |
-| BSP chọn **khác** mọi hart phụ | `first=[a, c, u, b]` |
-| mọi hart chọn ≥ 1 | `picks=[2, 2, 2, 2]`, `harts=4` |
-| tác vụ thứ tư **chạy thật** | `c=19372` vòng |
+| hart phụ chọn **khác** tác vụ BSP đang chạy | `diff=7` (**KT-313**; `first=[a, u, c, b]` chỉ còn là **chẩn đoán**) |
+| mọi hart chọn ≥ 1 | `picks=[3, 2, 2, 3]`, `harts=4` |
+| tác vụ thứ tư **chạy thật** | `c=67113` vòng |
 | không double-pick | `double=0` |
-| TAP | **27/27** xanh; runner 20/20 kiểm sạch + **21 ca âm** ĐỎ |
+| TAP | **27/27** xanh; runner 20/20 kiểm sạch + **22 ca âm** ĐỎ (+ 1 ca dương KT-313) |
 
-### 19.4 Đột biến (đều ĐỎ)
+### 19.5 Đột biến (đều ĐỎ)
 
 | Đột biến | Cách làm | Kết quả |
 |---|---|---|
-| (i) **chỉ 2 hart** | `--features two-hart-sched` | `# sched: multi-hart harts=2 rounds=48 picks=[21, 27, 0, 0] first=[a, b, ?, ?] double=0` ⇒ `not ok 25` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo) |
-| (ii) **bỏ khoá** | `--features no-sched-lock` | `# sched: BAD double-pick hart=2 task=b …` + `# sched: BAD double-pick hart=3 task=c n=4` + `double=3` ⇒ `not ok 25`, không marker (ĐỎ) |
+| (i) **chỉ 2 hart** | `--features two-hart-sched` | `# sched: multi-hart harts=2 rounds=50 picks=[22, 28, 0, 0] first=[a, b, ?, ?] diff=28 double=0` ⇒ `not ok 25` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo) |
+| (ii) **bỏ khoá** | `--features no-sched-lock` | `# sched: BAD double-pick hart=1 task=b n=8` + `# sched: BAD double-pick hart=3 task=b n=8` + `# sched: multi-hart harts=3 rounds=48 picks=[42, 3, 0, 3] first=[a, u, ?, b] diff=6 double=3` ⇒ `not ok 25`, không marker (ĐỎ) |
+| (iii) **`diff=0`** | ca âm của runner/soak (sửa log tốt) | `# multi-hart diff=0 — hart phụ chưa chọn tác vụ **khác** tác vụ BSP đang chạy` ⇒ ĐỎ — chứng minh bất biến **mới** có răng, không phải "bỏ phép kiểm" |
 
-### 19.5 Còn thiếu / rủi ro
+### 19.6 Còn thiếu / rủi ro
 
 1. Bốn hart schedule **trong pha nhiều hart**, **không** phải "bốn hart cùng chạy tác vụ trong lúc
    tác vụ ring 3 đang chạy": pha vẫn chạy **sau** chuỗi cố định.
 2. **Không** load balancing, **không** priority, **không** migration chủ động, **không** sleep/wake.
 3. Hart phụ **không** quay về `hlt` sau pha (nợ KT-310, giữ nguyên) — nay là **ba** hart phụ.
 4. **Cổng giữ** dựa trên tick của BSP (PIT 100 Hz): host deschedule hart phụ > 40 ms thì BSP trả
-   tác vụ trước ⇒ `first[0] == first[i]` **có thể** xảy ra ⇒ TAP 25 đỏ (fail-closed, không xanh
-   oan). Biên đã biết, soak 60 boot chưa gặp.
-5. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak **600** boot, D2-149)
+   tác vụ trước. Từ **KT-313** điều này **không** còn làm TAP 25 đỏ (điều kiện là `diff >= 1`,
+   không phải `first`), nhưng nó làm `diff` **chậm** đạt hơn — trần cứng 48 vòng vẫn chặn treo.
+5. `diff >= 1` chứng minh "**tồn tại** một lượt hart phụ chạy khác tác vụ BSP", **không** chứng
+   minh "bốn hart chạy song song **lâu dài**" — đúng mức bằng chứng của pha (8–15 vòng), không hơn.
+6. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak **600** boot, D2-149)
    và các mục ngoài soak (§12.12). `--smoke 60` **không** phải bằng chứng cổng K5'.

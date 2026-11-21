@@ -55,13 +55,19 @@
 #      `first > 0`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
 #      0 vòng ở **một trong hai** cửa sổ là **hợp lệ** (soak KT-308: boot 331 `first>0,
 #      last==first`; boot 231 `first==0, last>first` — hai ảnh ngược của cùng race);
-#      **KT-310**/**KT-315**: `# sched: hart=0|1|2|3 picked=<task> n=<k>` (mỗi hart **một** dòng —
-#      hart phụ in trong handler của nó, hart 0 in ở tổng kết) và `# sched: multi-hart harts=4
-#      rounds=<r> picks=[<a>, <b>, <c>, <d>] first=[<w>, <x>, <y>, <z>] double=0` — **bốn** hart
-#      chọn từ **một** hàng đợi toàn cục, BSP chọn **khác** mọi hart phụ ở lần đầu, mọi hart chọn
-#      ≥ 1, **không** double-pick. `harts=` là **số đo** (số hart đã chọn ≥ 1), không phải hằng —
-#      nhờ vậy đột biến "chỉ 2 hart" in `harts=2` và bị bắt. Đây là bằng chứng **trực tiếp**
-#      "hart phụ chọn được tác vụ khác BSP", không phải một bộ đếm chung;
+#      **KT-310**/**KT-315** (sửa **KT-313**/**KT-317**): `# sched: hart=0|1|2|3 picked=<task>
+#      n=<k>` (mỗi hart **một** dòng — hart phụ in trong handler của nó, hart 0 in ở tổng kết) và
+#      `# sched: multi-hart harts=4 rounds=<r> picks=[<a>, <b>, <c>, <d>] first=[<w>, <x>, <y>,
+#      <z>] diff=<n> double=0` — **bốn** hart chọn từ **một** hàng đợi toàn cục, mọi hart chọn
+#      ≥ 1, **có** lượt hart phụ chọn tác vụ **khác** tác vụ BSP **đang chạy** (`diff ≥ 1`),
+#      **không** double-pick. `harts=` là **số đo** (số hart đã chọn ≥ 1), không phải hằng — nhờ
+#      vậy đột biến "chỉ 2 hart" in `harts=2` và bị bắt. Đây là bằng chứng **trực tiếp** "hart phụ
+#      chọn được tác vụ khác BSP", không phải một bộ đếm chung.
+#      **KT-313** — bất biến là `diff ≥ 1`, **không** phải `first[0] != first[i]`: điều kiện cũ
+#      **phụ thuộc thời điểm** (hàng đợi FIFO **bốn** tác vụ quay vòng ⇒ hart phụ kịp **bốn** lượt
+#      trước lượt đầu của BSP thì `first=[a, a, …]` dù `double=0`; soak KT-313 đo **5/600** boot
+#      đỏ vì nó — cùng lớp lỗi `last > first` của KT-308). `first=[…]` vẫn in để **chẩn đoán**,
+#      **không** phải điều kiện;
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -89,15 +95,20 @@
 #      (s) **tác vụ ring 3 không chạy** (KT-308) — log tốt bị sửa `n=<n>` → `n=0` ở dòng
 #          `# sched: umode task ran` ⇒ phải ĐỎ;
 #      (t) **chỉ BSP schedule** (KT-310) — log tốt bị xoá ba dòng `# sched: hart=1|2|3 picked=…`
-#          **và** sửa dòng tổng hợp thành `harts=1 picks=[<n>, 0, 0, 0] first=[a, ?, ?, ?]` (đúng
-#          ảnh `--features bsp-only-sched`) ⇒ phải ĐỎ;
+#          **và** sửa dòng tổng hợp thành `harts=1 picks=[<n>, 0, 0, 0] first=[a, ?, ?, ?]
+#          diff=1` (đúng ảnh `--features bsp-only-sched`) ⇒ phải ĐỎ;
 #      (u) **chỉ 2 hart schedule** (KT-315) — log tốt bị xoá hai dòng `# sched: hart=2|3 picked=…`
-#          **và** sửa dòng tổng hợp thành `harts=2 picks=[<n>, <n>, 0, 0] first=[a, b, ?, ?]` (đúng
-#          ảnh `--features two-hart-sched`) ⇒ phải ĐỎ.
-#      (v) **không khoá ⇒ xen ký tự** (KT-316) — log tốt bị ghép dòng `# com: lock …` với dòng
+#          **và** sửa dòng tổng hợp thành `harts=2 picks=[<n>, <n>, 0, 0] first=[a, b, ?, ?]
+#          diff=1` (đúng ảnh `--features two-hart-sched`) ⇒ phải ĐỎ;
+#      (v) **`diff=0`** (KT-313) — hart phụ **có** chọn nhưng **chưa bao giờ** chọn tác vụ **khác**
+#          tác vụ BSP đang chạy ⇒ phải ĐỎ (ca âm của **bất biến mới** thay `first[0] != first[i]`);
+#      (w) **không khoá ⇒ xen ký tự** (KT-316) — log tốt bị ghép dòng `# com: lock …` với dòng
 #          khác (đúng triệu chứng soak vòng 21: `# exc:`/`PANIC` bị cắt ghép giữa hai hart) ⇒
 #          phải ĐỎ.
-#      Cả **hai mươi mốt** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      Cả **hai mươi ba** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
+#      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
+#      `first[0] != first[i]`).
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
@@ -666,13 +677,19 @@ check_log() {
             bad=1
         fi
     fi
-    # ---- **KT-310/KT-315**: **nhiều hart** schedule — **bốn** hart cùng chọn từ **một** hàng đợi
-    # toàn cục. Mỗi hart **một** dòng `picked=` (hart phụ in **trong** handler của nó trước khi
-    # tăng bộ đếm, nên không có hai dòng xen ký tự; hart 0 in ở tổng kết) và **một** dòng tổng hợp
-    # có `harts=4` + `double=0`. `harts=` là **số đo** (số hart đã chọn ≥ 1) nên đột biến "chỉ 2
-    # hart" (`--features two-hart-sched`) in `harts=2` và bị bắt. BSP phải chọn **khác** mọi hart
-    # phụ ở lần đầu — bằng chứng **trực tiếp** "hart phụ chọn được tác vụ khác BSP", mạnh hơn một
-    # bộ đếm chung.
+    # ---- **KT-310/KT-315** (sửa **KT-313**/**KT-317**): **nhiều hart** schedule — **bốn** hart
+    # cùng chọn từ **một** hàng đợi toàn cục. Mỗi hart **một** dòng `picked=` (hart phụ in **trong**
+    # handler của nó trước khi tăng bộ đếm, nên không có hai dòng xen ký tự; hart 0 in ở tổng kết)
+    # và **một** dòng tổng hợp có `harts=4` + `diff=<n>` + `double=0`. `harts=` là **số đo** (số
+    # hart đã chọn ≥ 1) nên đột biến "chỉ 2 hart" (`--features two-hart-sched`) in `harts=2` và bị
+    # bắt.
+    #
+    # **KT-313** — bất biến là `diff >= 1` (hart phụ đã chọn tác vụ **khác** tác vụ BSP **đang
+    # chạy**), **không** phải `first[0] != first[i]`. Điều kiện cũ **phụ thuộc thời điểm**: hàng
+    # đợi FIFO **bốn** tác vụ quay vòng, hart phụ kịp **bốn** lượt trước lượt đầu của BSP thì tác
+    # vụ `a` về lại đầu hàng đợi đúng lúc BSP pop lần đầu ⇒ `first=[a, a, …]` dù `double=0` (soak
+    # KT-313: **5/600** boot đỏ vì điều kiện ấy — cùng lớp lỗi `last > first` của KT-308).
+    # `first=[…]` vẫn **in** để chẩn đoán nhưng **không** còn là điều kiện.
     mh_missing=""
     for h in 0 1 2 3; do
         grep -qE "^# sched: hart=$h picked=[abuc] n=[0-9]+$" "$log" || mh_missing="$mh_missing $h"
@@ -681,21 +698,11 @@ check_log() {
         echo "# thiếu '# sched: hart=<n> picked=<task> n=<k>' cho hart:$mh_missing (hart ấy chưa schedule)"
         bad=1
     fi
-    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] double=0$' "$log" || true)"
+    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] diff=[0-9]+ double=[0-9]+$' "$log" || true)"
     if [ -z "$mh_sum" ]; then
-        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] double=0' (không có bằng chứng bốn hart)"
+        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] diff=<n> double=<n>' (không có bằng chứng bốn hart)"
         bad=1
     else
-        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abuc]\), [abuc], [abuc], [abuc]\].*/\1/p')"
-        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], \([abuc]\), [abuc], [abuc]\].*/\1/p')"
-        mh_f2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], \([abuc]\), [abuc]\].*/\1/p')"
-        mh_f3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], [abuc], \([abuc]\)\].*/\1/p')"
-        for pair in "1:$mh_f1" "2:$mh_f2" "3:$mh_f3"; do
-            if [ "$mh_f0" = "${pair#*:}" ]; then
-                echo "# multi-hart first=[$mh_f0, $mh_f1, $mh_f2, $mh_f3] — hart ${pair%%:*} chọn **cùng** tác vụ với BSP"
-                bad=1
-            fi
-        done
         mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\), [0-9]*, [0-9]*\].*/\1/p')"
         mh_p2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, \([0-9]*\), [0-9]*\].*/\1/p')"
         mh_p3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, [0-9]*, \([0-9]*\)\].*/\1/p')"
@@ -705,6 +712,16 @@ check_log() {
                 bad=1
             fi
         done
+        mh_diff="$(printf '%s\n' "$mh_sum" | sed -n 's/.*diff=\([0-9]*\) double=.*/\1/p')"
+        if [ "${mh_diff:-0}" -lt 1 ]; then
+            echo "# multi-hart diff=${mh_diff:-0} — hart phụ chưa chọn tác vụ **khác** tác vụ BSP đang chạy"
+            bad=1
+        fi
+        mh_dbl="$(printf '%s\n' "$mh_sum" | sed -n 's/.*double=\([0-9]*\)$/\1/p')"
+        if [ "${mh_dbl:-0}" -ne 0 ]; then
+            echo "# multi-hart double=${mh_dbl:-0} — có double-pick (hai hart cùng một tác vụ)"
+            bad=1
+        fi
     fi
     # ---- **KT-316**: khoá COM1 — đúng **một** dòng `# com: lock ok=1 contended=<n>`.
     # `ok=1` đòi khoá **đã được dùng** (`acquired > 0`) **và** chưa từng có hai người trong vùng
@@ -743,7 +760,7 @@ check_log() {
 # Chạy **cùng** `check_log` trên log tốt với kỳ vọng **sai** ⇒ phải ĐỎ. Nếu một ca âm lại XANH thì
 # bộ kiểm là "dấu cao su" và runner đang PASS giả.
 selftest_negative() {
-    local good="$1" start="${2:-1}" fails=0 n="$2" cases=0
+    local good="$1" start="${2:-1}" fails=0 n="$2" cases=0 pos_cases=0
     local tmp="$LOGDIR/selftest"
     n=$((start - 1))
     mkdir -p "$tmp" 2>/dev/null || true
@@ -1001,7 +1018,7 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     sed -e '/^# sched: hart=[123] picked=/d' \
-        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=1 rounds=48 picks=[48, 0, 0, 0] first=[a, ?, ?, ?] double=0/' \
+        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=1 rounds=48 picks=[48, 0, 0, 0] first=[a, ?, ?, ?] diff=1 double=0/' \
         "$good" >"$tmp/t.log" 2>/dev/null || true
     if check_log "$tmp/t.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/t.out" 2>&1; then
         echo "not ok $n - ca âm (t): chỉ BSP schedule mà kiểm vẫn XANH"
@@ -1017,7 +1034,7 @@ selftest_negative() {
     n=$((n + 1))
     cases=$((cases + 1))
     sed -e '/^# sched: hart=[23] picked=/d' \
-        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 6, 0, 0] first=[a, b, ?, ?] double=0/' \
+        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 6, 0, 0] first=[a, b, ?, ?] diff=1 double=0/' \
         "$good" >"$tmp/u.log" 2>/dev/null || true
     if check_log "$tmp/u.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/u.out" 2>&1; then
         echo "not ok $n - ca âm (u): chỉ 2 hart schedule mà kiểm vẫn XANH"
@@ -1026,21 +1043,49 @@ selftest_negative() {
         echo "ok $n - ca âm (u): chỉ 2 hart schedule ⇒ ĐỎ ($(head -1 "$tmp/u.out"))"
     fi
 
-    # (v) **KT-316** — **không khoá ⇒ xen ký tự**: log tốt bị ghép dòng `# com: lock …` với dòng
+    # (v) **KT-313** — `diff=0`: hart phụ **có** chọn nhưng **chưa bao giờ** chọn tác vụ **khác**
+    #     tác vụ BSP đang chạy. Đây là ca âm của **bất biến mới** thay `first[0] != first[i]`;
+    #     nếu runner vẫn XANH thì bản sửa KT-313 đã **bỏ mất** phép kiểm thay vì thay nó.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# sched: multi-hart \(.*\) diff=[0-9][0-9]* double=\([0-9][0-9]*\)$/# sched: multi-hart \1 diff=0 double=\2/' \
+        "$good" >"$tmp/v.log" 2>/dev/null || true
+    if check_log "$tmp/v.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/v.out" 2>&1; then
+        echo "not ok $n - ca âm (v): diff=0 (hart phụ chưa chọn khác tác vụ BSP) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (v): diff=0 ⇒ ĐỎ ($(head -1 "$tmp/v.out"))"
+    fi
+
+    # (w) **KT-316** — **không khoá ⇒ xen ký tự**: log tốt bị ghép dòng `# com: lock …` với dòng
     #     khác — đúng triệu chứng soak vòng 21 (`# exc:`/`PANIC` bị cắt ghép giữa hai hart). Nếu
     #     runner vẫn XANH thì "một dòng nguyên vẹn" chỉ là lời nói, không phải điều kiện được kiểm.
     n=$((n + 1))
     cases=$((cases + 1))
     sed 's/^\(# com: lock ok=1 contended=[0-9]*\)$/\1# sched: ticks=10 tasks=3/' \
-        "$good" >"$tmp/v.log" 2>/dev/null || true
-    if check_log "$tmp/v.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/v.out" 2>&1; then
-        echo "not ok $n - ca âm (v): dòng '# com:' bị xen ký tự mà kiểm vẫn XANH"
+        "$good" >"$tmp/w.log" 2>/dev/null || true
+    if check_log "$tmp/w.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/w.out" 2>&1; then
+        echo "not ok $n - ca âm (w): dòng '# com:' bị xen ký tự mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
-        echo "ok $n - ca âm (v): dòng '# com:' bị xen ký tự ⇒ ĐỎ ($(head -1 "$tmp/v.out"))"
+        echo "ok $n - ca âm (w): dòng '# com:' bị xen ký tự ⇒ ĐỎ ($(head -1 "$tmp/w.out"))"
     fi
 
-    echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
+    # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
+    # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
+    # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào. Đếm riêng (`pos_*`)
+    # để không trộn với số ca âm.
+    pos_cases=$((pos_cases + 1))
+    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=4 rounds=6 picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0/' \
+        "$good" >"$tmp/pos.log" 2>/dev/null || true
+    if check_log "$tmp/pos.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/pos.out" 2>&1; then
+        echo "ok $((n + 1)) - ca dương (KT-313): picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 ⇒ XANH"
+    else
+        echo "not ok $((n + 1)) - ca dương (KT-313): khuôn soak first=[a, a, …] diff=1 mà kiểm ĐỎ ($(head -1 "$tmp/pos.out"))"
+        fails=$((fails + 1))
+    fi
+
+    echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải (+ $pos_cases ca dương KT-313)"
     [ "$fails" -eq 0 ]
 }
 

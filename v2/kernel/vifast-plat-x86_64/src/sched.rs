@@ -109,6 +109,9 @@
 //! 4. **Trần cứng**: hết [`MH_HARD_ROUNDS`] thì kết thúc **dù** hart kia chưa chọn ⇒ fail-closed
 //!    (TAP đỏ), **không** treo. Cùng khuôn "trần số vòng" của KT-301.
 //!
+//! Bất biến **thứ năm** — `diff >= 1` (**KT-313**, áp cho bốn hart ở **KT-317**) — thay điều kiện
+//! `first[0] != first[i]` của KT-310/KT-315: xem mục "KT-313" dưới đây.
+//!
 //! # Phạm vi
 //!
 //! **Bốn** tác vụ (ba kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (**bốn**
@@ -136,6 +139,23 @@
 //! (hai lượt mỗi hart). [`MH_HARD_ROUNDS`] **giữ nguyên** 48: nó là trần **số vòng** chống treo,
 //! không phải ngưỡng của phép kiểm, và với bốn hart nó vẫn dư (đo được: pha kết thúc ở **8..15**
 //! vòng, xa trần 48).
+//!
+//! # KT-313 — bất biến của phép kiểm **không** được phụ thuộc thời điểm
+//!
+//! KT-310/KT-315 đòi `first[0] != first[i]` với **mọi** `i ≥ 1` ("BSP chọn tác vụ khác mọi hart
+//! phụ ở lần đầu"). Soak KT-313 (600 boot, **hai** hart) bắt **5/600** boot có `first=[a, a]` dù
+//! `double=0` và mọi điều kiện **thật** đều đạt: hàng đợi FIFO quay vòng, hart phụ kịp **ba** lượt
+//! trước lượt đầu của BSP thì tác vụ `a` về lại đầu hàng đợi đúng lúc BSP pop lần đầu. Đó là
+//! **giả định thời điểm**, không phải bất biến — cùng lớp lỗi `last > first` của KT-308.
+//!
+//! Bất biến **thật** là `diff >= 1`: **tồn tại** một lượt hart **phụ** chọn tác vụ **khác** tác vụ
+//! BSP **đang chạy**. Sau lượt chọn **đầu** của BSP, BSP **sở hữu** một tác vụ `X`; lượt chọn kế
+//! của hart phụ **không thể** là `X` (ownership) ⇒ `diff` tăng. [`mh_end`] **kéo dài** pha tới khi
+//! `diff >= 1` (trần cứng 48 vòng vẫn chặn treo) nên điều kiện **không** phụ thuộc hart nào tick
+//! trước. `first=[…]` vẫn **in** để **chẩn đoán**, **không** còn là điều kiện.
+//!
+//! **KT-317** áp bất biến ấy cho **bốn** hart: `diff` đếm lượt chọn của **cả ba** hart phụ (1, 2,
+//! 3) so với tác vụ BSP đang chạy — không chỉ hart 1.
 
 use crate::exc;
 
@@ -436,19 +456,24 @@ pub const fn mh_all_picked(picks: &[u64; MH_HARTS]) -> bool {
     true
 }
 
-/// `true` ⇔ pha nhiều hart phải **kết thúc** ở vòng `rounds` với `picks` hiện tại.
+/// `true` ⇔ pha nhiều hart phải **kết thúc** ở vòng `rounds` với `picks`/`diff` hiện tại.
 ///
 /// Hai điều kiện, theo thứ tự **ưu tiên**:
 ///
-/// 1. `rounds >= MH_HARD_ROUNDS` ⇒ kết thúc **bất kể** `picks` — trần cứng, chống treo.
-/// 2. `rounds >= MH_MAX_ROUNDS` **và** mọi hart đã chọn ⇒ kết thúc bình thường.
+/// 1. `rounds >= MH_HARD_ROUNDS` ⇒ kết thúc **bất kể** `picks`/`diff` — trần cứng, chống treo.
+/// 2. `rounds >= MH_MAX_ROUNDS` **và** mọi hart đã chọn **và** `diff >= 1` ⇒ kết thúc bình thường.
+///
+/// **KT-313** — điều kiện `diff >= 1` **kéo dài** pha cho tới khi bằng chứng "hart phụ chọn tác vụ
+/// khác tác vụ BSP đang chạy" **tồn tại**, thay vì đòi nó ở một vòng cố định (điều kiện cũ
+/// `first[0] != first[i]` **phụ thuộc thời điểm**). Trần cứng vẫn chặn treo: hết 48 vòng thì kết
+/// thúc dù `diff = 0` ⇒ TAP đỏ, **không** treo.
 ///
 /// Hàm **thuần** nên test host chốt được cả hai nhánh, kể cả nhánh "hart kia im lặng".
-pub const fn mh_end(rounds: u64, picks: &[u64; MH_HARTS]) -> bool {
+pub const fn mh_end(rounds: u64, picks: &[u64; MH_HARTS], diff: u64) -> bool {
     if rounds >= MH_HARD_ROUNDS {
         return true;
     }
-    rounds >= MH_MAX_ROUNDS && mh_all_picked(picks)
+    rounds >= MH_MAX_ROUNDS && mh_all_picked(picks) && diff >= 1
 }
 
 /// Số tick **của BSP** BSP **giữ** tác vụ đầu của nó để chờ mọi hart chọn lần đầu.
@@ -456,9 +481,11 @@ pub const fn mh_end(rounds: u64, picks: &[u64; MH_HARTS]) -> bool {
 /// **KT-315** — cổng khởi động (hart phụ chờ BSP chọn lần đầu) **không đủ**: nó chỉ bảo đảm hart
 /// phụ chọn **sau** BSP, không bảo đảm BSP còn **giữ** tác vụ đầu hàng đợi lúc hart phụ chọn. Đo
 /// được (boot 4/5 của lượt runner đầu): hart 1 bị host deschedule, BSP đã trả `a` ở tick 2 ⇒
-/// hart 1 chọn `a` ⇒ `first=[a, a, b, u]` — **hợp lệ** nhưng làm phép kiểm "hart phụ chọn khác
-/// BSP" đỏ oan. Vì vậy BSP giữ tác vụ của nó tối đa **bốn** tick của chính nó (≈ 40 ms với PIT
-/// 100 Hz) — dư cho hart phụ chậm nhất (LAPIC timer ~1 ms) chọn lần đầu.
+/// hart 1 chọn `a` ⇒ `first=[a, a, b, u]`. **KT-313** cho thấy `first` trùng **không** phải lỗi,
+/// nhưng cổng giữ vẫn **có ích**: trong lúc BSP giữ một tác vụ **thật**, mọi lượt chọn của hart
+/// phụ **buộc** phải khác tác vụ ấy (ownership) ⇒ `diff >= 1` **tất định** thay vì chỉ "gần như
+/// chắc". Vì vậy BSP giữ tác vụ của nó tối đa **bốn** tick của chính nó (≈ 40 ms với PIT 100 Hz)
+/// — dư cho hart phụ chậm nhất (LAPIC timer ~1 ms) chọn lần đầu.
 ///
 /// Đây là **cửa sổ chờ**, không phải ngưỡng của phép kiểm: hết hạn thì BSP trả tác vụ và chọn
 /// lại mỗi tick ⇒ [`MH_ROUNDS`] tăng đều ⇒ [`MH_HARD_ROUNDS`] chắc chắn chạm (boot **không**
@@ -501,17 +528,16 @@ pub const fn mh_harts_picked(picks: &[u64; MH_HARTS]) -> u64 {
 ///    hart chọn một lần rồi thôi".
 /// 3. **mọi** hart đã chọn ≥ 1 — đột biến `--features two-hart-sched` (chỉ BSP + hart 1) làm
 ///    điều kiện này sai.
-/// 4. `first[0] != first[i]` với **mọi** `i ≥ 1` — BSP chọn tác vụ **khác** mọi hart phụ ở lần
-///    đầu. Đây là bằng chứng **trực tiếp** của "hart phụ chọn được tác vụ khác BSP" (mốc thật của
-///    KT-310/KT-315), mạnh hơn một bộ đếm chung. **Hai** cơ chế làm điều kiện này **tất định**:
-///    cổng khởi động (hart phụ chờ BSP chọn lần đầu) **và** cổng giữ ([`mh_hold`]: BSP giữ tác
-///    vụ đầu của nó cho tới khi mọi hart đã chọn, tối đa [`MH_HOLD_TICKS`] tick).
-pub const fn mh_ok(
-    rounds: u64,
-    picks: &[u64; MH_HARTS],
-    first: &[u64; MH_HARTS],
-    double: u64,
-) -> bool {
+/// 4. `diff >= 1` — **tồn tại** một lượt hart **phụ** chọn tác vụ **khác** tác vụ BSP **đang
+///    chạy**. Đây là bằng chứng **trực tiếp** của "hart phụ chọn được tác vụ khác BSP" (mốc thật
+///    của KT-310/KT-315) mà **không** phụ thuộc thứ tự tick: sau lượt chọn đầu của BSP, BSP sở
+///    hữu một tác vụ nên lượt chọn kế của hart phụ **buộc** phải khác (ownership).
+///
+/// **KT-313** thay điều kiện 4 cũ (`first[0] != first[i]` với mọi `i ≥ 1`) bằng `diff >= 1`:
+/// điều kiện cũ **phụ thuộc thời điểm** — hàng đợi FIFO quay vòng nên hart phụ kịp **bốn** lượt
+/// trước lượt đầu của BSP thì `first=[a, a, …]` dù scheduler đúng (soak KT-313: **5/600** boot đỏ
+/// vì nó). `first` **không** còn là tham số: nó chỉ để **chẩn đoán** trong log.
+pub const fn mh_ok(rounds: u64, picks: &[u64; MH_HARTS], double: u64, diff: u64) -> bool {
     if double != 0 {
         return false;
     }
@@ -521,12 +547,5 @@ pub const fn mh_ok(
     if !mh_all_picked(picks) {
         return false;
     }
-    let mut i = 1;
-    while i < MH_HARTS {
-        if first[i] == first[0] {
-            return false;
-        }
-        i += 1;
-    }
-    true
+    diff >= 1
 }

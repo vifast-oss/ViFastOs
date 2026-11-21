@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Test **host** cho **hàng đợi chạy toàn cục** của pha nhiều hart — KT-310 (K5' bước 10),
-//! **KT-315** mở lên **bốn** hart.
+//! **KT-315** mở lên **bốn** hart, **KT-313**/**KT-317** sửa bất biến của phép kiểm.
 //!
 //! ```text
 //! cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-x86_64 --test runqueue
@@ -25,6 +25,16 @@
 //! tác vụ; test [`four_harts_need_four_tasks`] chốt đúng điều kiện ấy (và chứng minh ba tác vụ
 //! **không** đủ — mô hình hoá đúng lý do đã hạ phạm vi ở KT-310).
 //!
+//! # Vì sao bất biến là `diff >= 1`, **không** phải `first[0] != first[i]` (KT-313/KT-317)
+//!
+//! `first[0] != first[i]` **phụ thuộc thời điểm**: hàng đợi FIFO **bốn** tác vụ quay vòng, hart
+//! phụ kịp **bốn** lượt trước lượt đầu của BSP thì tác vụ `a` về lại đầu hàng đợi đúng lúc BSP
+//! pop lần đầu ⇒ `first=[a, a, …]` dù `double=0` và scheduler đúng. Soak KT-313 đo **5/600** boot
+//! đỏ vì điều kiện ấy (cùng lớp lỗi `last > first` của KT-308). Bất biến **thật** là `diff >= 1`:
+//! **tồn tại** một lượt hart **phụ** chọn tác vụ **khác** tác vụ BSP **đang chạy** — ownership bảo
+//! đảm điều này sau lượt chọn đầu của BSP, nên nó **không** phụ thuộc hart nào tick trước.
+//! `first=[…]` vẫn **in** để **chẩn đoán**, **không** còn là điều kiện.
+//!
 //! # Vì sao mô hình hàng đợi nằm **trong test**, không trong crate
 //!
 //! Hàng đợi thật là `AtomicU64` + `AtomicBool` trong ảnh (không test host được: cần MMIO/ngắt).
@@ -39,8 +49,8 @@
 
 use vifast_plat_x86_64::sched::{
     mh_end, mh_harts_picked, mh_hold, mh_ok, task_name, MH_FREE, MH_HARD_ROUNDS, MH_HARTS,
-    MH_HOLD_TICKS, MH_MAX_ROUNDS, MH_QUEUE_SLOTS, MH_TASKS, TASK_A, TASK_B, TASK_C, TASK_SLOTS,
-    TASK_U,
+    MH_HOLD_TICKS, MH_MAX_ROUNDS, MH_QUEUE_SLOTS, MH_TASKS, TASK_A, TASK_B, TASK_C, TASK_MAIN,
+    TASK_SLOTS, TASK_U,
 };
 
 /// Mô hình **FIFO** của hàng đợi toàn cục: `slots` là vòng, `head`/`tail` là chỉ số **đơn điệu**
@@ -50,6 +60,9 @@ struct Queue {
     head: u64,
     tail: u64,
     owner: [u64; TASK_SLOTS],
+    /// **KT-313** — số lượt hart **phụ** chọn tác vụ **khác** tác vụ BSP **đang chạy** (như
+    /// `MH_DIFF` của ảnh). Bất biến của pha là `diff >= 1`.
+    diff: u64,
 }
 
 impl Queue {
@@ -65,6 +78,7 @@ impl Queue {
             head: 0,
             tail: MH_TASKS.len() as u64,
             owner: [MH_FREE; TASK_SLOTS],
+            diff: 0,
         }
     }
 
@@ -127,7 +141,10 @@ impl Hart {
     }
 
     /// Một tick **có khoá**: trả tác vụ cũ về hàng đợi rồi lấy tác vụ mới.
-    fn tick_locked(&mut self, q: &mut Queue) -> Result<(), usize> {
+    ///
+    /// `bsp_current` là `MH_CURRENT[0]` **tại thời điểm** hart này giữ khoá (ảnh đọc nó **trong**
+    /// vùng tới hạn nên giá trị đứng yên). Chỉ hart **phụ** mới đếm `diff` — như `MH_DIFF` của ảnh.
+    fn tick_locked(&mut self, q: &mut Queue, bsp_current: u64) -> Result<(), usize> {
         if self.current != MH_FREE {
             q.release(self.current as usize);
             self.current = MH_FREE;
@@ -138,6 +155,17 @@ impl Hart {
                 self.picks += 1;
                 if self.first == MH_FREE {
                     self.first = task as u64;
+                }
+                // **KT-313** — bằng chứng **không phụ thuộc thời điểm**: hart **phụ** vừa chọn
+                // `task` trong khi BSP **đang chạy** một tác vụ **thật** khác `task`. `task` không
+                // thể trùng tác vụ BSP đang giữ (ownership) nên điều kiện `bsp != task` chỉ là
+                // phòng thủ — đúng như ảnh.
+                if self.id != 0
+                    && bsp_current != MH_FREE
+                    && bsp_current != TASK_MAIN as u64
+                    && bsp_current != task as u64
+                {
+                    q.diff += 1;
                 }
                 Ok(())
             }
@@ -210,15 +238,22 @@ fn four_harts_need_four_tasks() {
     let mut harts = four_harts();
     // Mô phỏng hàng đợi **ba** tác vụ: bỏ tác vụ thứ tư khỏi `tail`.
     q.tail = 3;
-    harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+    harts[0]
+        .tick_locked(&mut q, MH_FREE)
+        .expect("hart 0: double-pick");
     let mut round = 0u64;
     while round < 6 {
         let mut i = 1;
         while i < MH_HARTS {
-            harts[i].tick_locked(&mut q).expect("hart phụ: double-pick");
+            let bsp = harts[0].current;
+            harts[i]
+                .tick_locked(&mut q, bsp)
+                .expect("hart phụ: double-pick");
             i += 1;
         }
-        harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+        harts[0]
+            .tick_locked(&mut q, MH_FREE)
+            .expect("hart 0: double-pick");
         round += 1;
     }
     let (picks3, _) = snapshot(&harts);
@@ -231,15 +266,22 @@ fn four_harts_need_four_tasks() {
     // Bốn tác vụ + bốn hart ⇒ **mọi** hart chọn được.
     let mut q = Queue::new();
     let mut harts = four_harts();
-    harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+    harts[0]
+        .tick_locked(&mut q, MH_FREE)
+        .expect("hart 0: double-pick");
     let mut round = 0u64;
     while round < 2 {
         let mut i = 1;
         while i < MH_HARTS {
-            harts[i].tick_locked(&mut q).expect("hart phụ: double-pick");
+            let bsp = harts[0].current;
+            harts[i]
+                .tick_locked(&mut q, bsp)
+                .expect("hart phụ: double-pick");
             i += 1;
         }
-        harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+        harts[0]
+            .tick_locked(&mut q, MH_FREE)
+            .expect("hart 0: double-pick");
         round += 1;
     }
     let (picks4, _) = snapshot(&harts);
@@ -253,15 +295,22 @@ fn locked_harts_never_share_a_task() {
     // **Cổng khởi động** của ảnh: hart phụ chỉ chọn sau khi BSP đã chọn lần đầu (nhịp PIT của BSP
     // 100 Hz chậm hơn LAPIC timer của hart phụ ~1 ms; không có cổng thì hart phụ hút sạch hàng
     // đợi trước tick đầu của BSP). Mô hình hoá đúng thứ tự ấy.
-    harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+    harts[0]
+        .tick_locked(&mut q, MH_FREE)
+        .expect("hart 0: double-pick");
     let mut round = 0u64;
     while round < 2 {
         let mut i = 1;
         while i < MH_HARTS {
-            harts[i].tick_locked(&mut q).expect("hart phụ: double-pick");
+            let bsp = harts[0].current;
+            harts[i]
+                .tick_locked(&mut q, bsp)
+                .expect("hart phụ: double-pick");
             i += 1;
         }
-        harts[0].tick_locked(&mut q).expect("hart 0: double-pick");
+        harts[0]
+            .tick_locked(&mut q, MH_FREE)
+            .expect("hart 0: double-pick");
         round += 1;
     }
     let (picks, first) = snapshot(&harts);
@@ -270,8 +319,10 @@ fn locked_harts_never_share_a_task() {
         assert!(picks[i] >= 1, "hart {i} chưa chọn tác vụ nào");
         i += 1;
     }
-    // BSP và **mọi** hart phụ chọn tác vụ **khác** nhau ở lần đầu — đó là bằng chứng khoá + cổng
-    // khởi động có tác dụng (BSP giữ tác vụ đầu hàng đợi, hart phụ không thể lấy lại nó).
+    // **Tính chất của cổng** (không phải điều kiện của pha — KT-313): với cổng khởi động, BSP giữ
+    // tác vụ đầu hàng đợi nên hart phụ **không thể** lấy lại nó ở lần đầu. Đây là lý do `diff`
+    // **tất định**; `mh_ok` **không** đòi `first` khác nhau (xem
+    // [`kt313_first_collision_is_not_a_failure`]).
     let mut i = 1;
     while i < MH_HARTS {
         assert_ne!(first[0], first[i], "hart {i} chọn cùng tác vụ với BSP");
@@ -288,7 +339,11 @@ fn locked_harts_never_share_a_task() {
         i += 1;
     }
     let rounds: u64 = picks.iter().sum();
-    assert!(mh_ok(rounds, &picks, &first, 0));
+    assert!(
+        q.diff >= 1,
+        "pha phải có ít nhất một lượt hart phụ chọn khác BSP"
+    );
+    assert!(mh_ok(rounds, &picks, 0, q.diff));
 }
 
 #[test]
@@ -305,47 +360,93 @@ fn unlocked_harts_double_pick_is_detected() {
     assert_eq!(q.pop_at(head, 1), Err(task0));
     // Và pha **không** được coi là đạt: `double != 0` ⇒ `mh_ok` sai, dù mọi hart đều đã chọn.
     let picks = [1u64; MH_HARTS];
-    let first = [task0 as u64; MH_HARTS];
-    assert!(!mh_ok(MH_HARTS as u64, &picks, &first, 1));
-    // Cùng dữ liệu nhưng `double = 0` thì **vẫn** sai vì `first` trùng — chứng minh điều kiện
-    // "hart phụ chọn khác BSP" là **có răng**, không phải hằng sai.
-    assert!(!mh_ok(MH_HARTS as u64, &picks, &first, 0));
-    // Bốn tác vụ **khác** nhau + không double-pick ⇒ đạt.
-    let first_ok = [TASK_A as u64, TASK_B as u64, TASK_U as u64, TASK_C as u64];
-    assert!(mh_ok(MH_HARTS as u64, &picks, &first_ok, 0));
+    assert!(!mh_ok(MH_HARTS as u64, &picks, 1, 1));
+    // Cùng dữ liệu nhưng `double = 0` và **không** có lượt hart phụ chọn khác tác vụ BSP
+    // (`diff = 0`) thì **vẫn** sai — chứng minh điều kiện `diff >= 1` là **có răng**.
+    assert!(!mh_ok(MH_HARTS as u64, &picks, 0, 0));
+    // Bốn tác vụ **khác** nhau + không double-pick + có `diff` ⇒ đạt.
+    assert!(mh_ok(MH_HARTS as u64, &picks, 0, 1));
 }
 
 #[test]
 fn phase_end_waits_for_every_hart_but_never_hangs() {
     // Chưa đủ vòng mềm ⇒ chưa kết thúc, dù cả bốn đã chọn.
-    assert!(!mh_end(0, &[0, 0, 0, 0]));
-    assert!(!mh_end(MH_MAX_ROUNDS - 1, &[3, 3, 3, 3]));
-    // Đủ vòng mềm **và** mọi hart đã chọn ⇒ kết thúc.
-    assert!(mh_end(MH_MAX_ROUNDS, &[3, 3, 3, 3]));
+    assert!(!mh_end(0, &[0, 0, 0, 0], 0));
+    assert!(!mh_end(MH_MAX_ROUNDS - 1, &[3, 3, 3, 3], 1));
+    // Đủ vòng mềm **và** mọi hart đã chọn **và** có `diff` ⇒ kết thúc.
+    assert!(mh_end(MH_MAX_ROUNDS, &[3, 3, 3, 3], 1));
+    // Đủ vòng mềm nhưng **chưa** có lượt hart phụ chọn khác tác vụ BSP ⇒ **chưa** kết thúc
+    // (**KT-313**: kéo dài pha cho tới khi bằng chứng tồn tại, thay vì đòi nó ở vòng cố định).
+    assert!(!mh_end(MH_MAX_ROUNDS, &[3, 3, 3, 3], 0));
     // Đủ vòng mềm nhưng **một** hart chưa chọn ⇒ **chưa** kết thúc (chờ hart kia).
-    assert!(!mh_end(MH_MAX_ROUNDS, &[6, 6, 6, 0]));
-    // Trần **cứng** ⇒ kết thúc **dù** hart kia chưa chọn: fail-closed, không treo boot.
-    assert!(mh_end(MH_HARD_ROUNDS, &[MH_HARD_ROUNDS, 0, 0, 0]));
+    assert!(!mh_end(MH_MAX_ROUNDS, &[6, 6, 6, 0], 1));
+    // Trần **cứng** ⇒ kết thúc **dù** hart kia chưa chọn / chưa có `diff`: fail-closed, không treo.
+    assert!(mh_end(MH_HARD_ROUNDS, &[MH_HARD_ROUNDS, 0, 0, 0], 0));
 }
 
 #[test]
 fn phase_ok_requires_four_harts() {
-    let first = [TASK_A as u64, TASK_B as u64, TASK_U as u64, TASK_C as u64];
-    // Đủ: bốn hart, bốn tác vụ khác nhau ở lần đầu, không double-pick, ≥ 4 vòng.
-    assert!(mh_ok(4, &[1, 1, 1, 1], &first, 0));
+    // Đủ: bốn hart, không double-pick, ≥ 4 vòng, có lượt hart phụ chọn khác tác vụ BSP.
+    assert!(mh_ok(4, &[1, 1, 1, 1], 0, 1));
     // Thiếu: một hart chưa chọn (đột biến `--features two-hart-sched`).
-    assert!(!mh_ok(4, &[2, 2, 0, 0], &first, 0));
-    // Thiếu: hart phụ chọn **cùng** tác vụ với BSP ở lần đầu.
-    assert!(!mh_ok(
-        4,
-        &[1, 1, 1, 1],
-        &[TASK_A as u64, TASK_A as u64, TASK_U as u64, TASK_C as u64],
-        0
-    ));
-    // Thiếu: có double-pick dù `first` khác nhau.
-    assert!(!mh_ok(4, &[1, 1, 1, 1], &first, 1));
+    assert!(!mh_ok(4, &[2, 2, 0, 0], 0, 1));
+    // Thiếu: có double-pick dù `diff` khác 0.
+    assert!(!mh_ok(4, &[1, 1, 1, 1], 1, 1));
+    // Thiếu: **không** có lượt hart phụ chọn tác vụ khác tác vụ BSP đang chạy.
+    assert!(!mh_ok(4, &[1, 1, 1, 1], 0, 0));
     // Thiếu: chưa đủ 4 vòng.
-    assert!(!mh_ok(3, &[1, 1, 1, 1], &first, 0));
+    assert!(!mh_ok(3, &[1, 1, 1, 1], 0, 1));
+}
+
+/// **KT-313** — hồi quy **đúng dữ liệu soak**: `first=[a, a, …] double=0 diff>=1` **ĐẠT**.
+///
+/// Đây là khuôn của **5/600** boot đỏ ở soak KT-313 (boot 98, 211, 269, 304, 431 — lúc ấy **hai**
+/// hart). Trước KT-313 `mh_ok` đòi `first[0] != first[1]` nên khuôn này **ĐỎ** dù scheduler đúng:
+/// hàng đợi FIFO quay vòng, hart phụ kịp **bốn** lượt trước lượt đầu của BSP nên tác vụ `a` về
+/// lại đầu hàng đợi đúng lúc BSP pop lần đầu. Mô hình dưới đây **tái hiện đúng** chuỗi ấy với
+/// **bốn** hart của KT-315.
+#[test]
+fn kt313_first_collision_is_not_a_failure() {
+    let mut q = Queue::new();
+    let mut harts = four_harts();
+    // R1..R4: hart phụ chọn `a`, `b`, `u`, `c` trong khi BSP còn ở `main` (`MH_FREE`).
+    let mut k = 0;
+    while k < MH_TASKS.len() {
+        let bsp = harts[0].current;
+        harts[1]
+            .tick_locked(&mut q, bsp)
+            .expect("hart 1: double-pick");
+        k += 1;
+    }
+    // R5: BSP chọn lần đầu — `a` đã quay lại đầu hàng đợi.
+    harts[0]
+        .tick_locked(&mut q, MH_FREE)
+        .expect("hart 0: double-pick");
+    assert_eq!(harts[0].first, TASK_A as u64);
+    assert_eq!(
+        harts[0].first, harts[1].first,
+        "race KT-313: hai hart chọn **cùng** tác vụ ở lần đầu"
+    );
+    // R6: hart 1 chọn tiếp — **khác** tác vụ BSP đang chạy ⇒ `diff >= 1`.
+    let bsp = harts[0].current;
+    harts[1]
+        .tick_locked(&mut q, bsp)
+        .expect("hart 1: double-pick");
+    // R7..R8: hai hart phụ còn lại chọn lần đầu (đủ điều kiện "mọi hart đã chọn").
+    harts[2]
+        .tick_locked(&mut q, bsp)
+        .expect("hart 2: double-pick");
+    harts[3]
+        .tick_locked(&mut q, bsp)
+        .expect("hart 3: double-pick");
+    let (picks, _) = snapshot(&harts);
+    assert_eq!(picks, [1, 5, 1, 1], "đúng khuôn soak KT-313 (bốn hart)");
+    assert!(q.diff >= 1, "phải có lượt hart phụ chọn khác tác vụ BSP");
+    let rounds: u64 = picks.iter().sum();
+    // **KT-313**: dữ liệu này **ĐẠT** — `first` trùng **không** phải lỗi scheduler.
+    assert!(mh_ok(rounds, &picks, 0, q.diff));
+    // Nhưng nếu **không** có lượt nào khác tác vụ BSP thì vẫn ĐỎ (điều kiện có răng).
+    assert!(!mh_ok(rounds, &picks, 0, 0));
 }
 
 /// **KT-315** — `harts=` của dòng tổng hợp là **số đo** (số hart đã chọn ≥ 1), không phải hằng
@@ -366,8 +467,9 @@ fn harts_picked_counts_only_harts_with_a_pick() {
 ///
 /// Vì sao cần: cổng khởi động chỉ bảo đảm hart phụ chọn **sau** BSP. Nếu BSP đã **trả** tác vụ
 /// đầu trước khi hart phụ chậm nhất chọn thì hart ấy chọn **đúng** tác vụ của BSP ⇒
-/// `first[0] == first[i]` **hợp lệ** ⇒ phép kiểm "hart phụ chọn khác BSP" đỏ oan (đo được: boot
-/// 4/5 của lượt runner đầu, `first=[a, a, b, u]`).
+/// `first[0] == first[i]` **hợp lệ** (KT-313: **không** còn là điều kiện) và `diff` có thể bằng 0
+/// lâu hơn. Cổng giữ làm `diff >= 1` **tất định**: trong lúc BSP giữ một tác vụ thật, mọi lượt
+/// chọn của hart phụ **buộc** phải khác tác vụ ấy (ownership) ⇒ `diff` tăng.
 #[test]
 fn bsp_holds_its_first_task_but_only_for_a_bounded_window() {
     // Chưa đủ hart ⇒ giữ, trong hạn.
@@ -378,6 +480,6 @@ fn bsp_holds_its_first_task_but_only_for_a_bounded_window() {
     // Đủ hart ⇒ **trả** ngay, không chờ hết hạn.
     assert!(!mh_hold(1, &[1, 1, 1, 1]));
     // Cổng giữ **không** thay đổi luật kết thúc pha.
-    assert!(!mh_end(MH_MAX_ROUNDS - 1, &[1, 1, 1, 1]));
-    assert!(mh_end(MH_MAX_ROUNDS, &[1, 1, 1, 1]));
+    assert!(!mh_end(MH_MAX_ROUNDS - 1, &[1, 1, 1, 1], 1));
+    assert!(mh_end(MH_MAX_ROUNDS, &[1, 1, 1, 1], 1));
 }
