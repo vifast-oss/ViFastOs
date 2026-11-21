@@ -80,6 +80,34 @@
 # TCP khỏi ảnh ⇒ `not ok 33/34` ⇒ soak ĐỎ, tức phải nới bất biến TAP; (b) cờ "chế độ soak" trong
 # ảnh ⇒ nhánh chỉ dùng cho test (D2-08 cấm). Chi phí **đo được**: một kết nối TCP + DNS trên mỗi
 # boot (~10 ms dưới TCG) — không đáng kể so với 500 ms giữ khung hình của GPU.
+#
+# **KT-300 — DNS cục bộ cho soak, ghi rõ khảo sát + lựa chọn**: soak vòng 16 đạt **992/1000**,
+# **8 boot đỏ đều** là `# net dns: elapsed_ms=6000 attempts=2 err=Timeout` trong khi TCP cùng boot
+# xanh (D2-217) ⇒ nút thắt là **resolver của host** dưới 3 QEMU song song, không phải kernel.
+# Khảo sát QEMU 11.1.3 + libslirp 4.9.7 (đo trên máy này, xem journal `kt300-dns-local.md`):
+#   - `-netdev user,dns=<ip>` chỉ đặt **địa chỉ DNS ảo** (DHCP option 6 + địa chỉ slirp chặn ở
+#     cổng 53); nó **không** đổi resolver thượng nguồn. slirp luôn chuyển truy vấn DNS tới
+#     `get_dns_addr()` = resolver của host (`res_ninit`/`res_getservers` trên macOS).
+#   - `10.0.2.2:53` (gateway) **cũng** bị chặn làm DNS (đường tương thích VirtualBox) ⇒ cũng đi
+#     resolver host; chỉ `10.0.2.2:<cổng khác 53>` mới map về loopback host.
+#   - `guestfwd` của QEMU **chỉ TCP** (`slirp_guestfwd`: `if (strcmp(buf, "tcp") ...) fail`);
+#     `hostfwd` là chiều host → guest ⇒ **không** có đường QEMU-native cho UDP guest → host.
+#   ⇒ Phương án "`dns=10.0.2.2` + `guestfwd`/`hostfwd`" **bất khả thi**. Giữ nguyên **ảnh** (T2
+#     vẫn đòi DNS thật qua slirp → resolver host) và **chỉ trong soak** chuyển resolver thượng
+#     nguồn của **tiến trình QEMU** về server DNS cục bộ: dylib nhỏ `DYLD_INTERPOSE`
+#     `res_9_ninit`/`res_9_getservers`/`res_9_ndestroy` trả `127.0.0.1:53`; server `python3` UDP
+#     bind `0.0.0.0:53` (macOS cho phép **không cần root**; `127.0.0.1:53` bị EACCES) trả A cố
+#     định `192.0.2.123` TTL 3600 cho `example.com`. QEMU chạy qua **wrapper** vì `perl` của
+#     `qemu_guard.sh` là binary SIP nên dyld **xoá** `DYLD_*` khỏi môi trường trước `exec` —
+#     wrapper đặt lại biến rồi `exec` QEMU thật. **Không** đổi ảnh, **không** đổi
+#     `run-aarch64.sh`, **không** đổi ngưỡng, **không** retry (D2-07).
+#   - Bằng chứng **fail-closed**: log server phải có ≥ N+1 truy vấn (probe + N boot) và ≥ N+1 câu
+#     trả lời; mỗi log boot phải có `# net: dns example.com a=192.0.2.123 ttl=3600` (TEST-NET-1
+#     **không** thể do resolver thật trả) ⇒ interpose hỏng là soak ĐỎ, **không** âm thầm quay
+#     lại resolver host.
+#   - Đột biến (`SOAK_DNS_MUTATION`, **chỉ** để kiểm chứng cơ chế, không phải cổng): `off` =
+#     không dựng server ⇒ DNS timeout ⇒ ĐỎ; `nxdomain` = server trả NXDOMAIN ⇒ TAP 35 ĐỎ;
+#     `wrongip` = server trả `203.0.113.9` ⇒ log boot không có `a=192.0.2.123` ⇒ ĐỎ.
 #   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
 #   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
@@ -1130,6 +1158,215 @@ stop_soak_tcp_server() {
     fi
 }
 
+# ------------------------------------------------------------------ DNS server cục bộ (KT-300)
+# Vì sao phải có (khảo sát đầy đủ ở header): QEMU/slirp **luôn** chuyển DNS tới resolver của
+# host; `dns=` chỉ đổi địa chỉ DNS ảo, `guestfwd` chỉ TCP, `hostfwd` ngược chiều. Muốn DNS cục
+# bộ **chỉ trong soak** mà không đổi ảnh/T2: interpose `res_getservers` của **tiến trình QEMU**
+# (dylib) trỏ resolver thượng nguồn về `127.0.0.1:53`, nơi server python3 dưới đây trả A cố định.
+# `0.0.0.0:53` (không phải `127.0.0.1:53`): macOS cho bind **không cần root** ở địa chỉ wildcard,
+# còn `127.0.0.1:53` trả EACCES (đo được). Server chỉ trả lời `example.com`; tên khác NXDOMAIN.
+DNS_PORT=53
+DNS_ANSWER_IP="192.0.2.123" # TEST-NET-1: resolver thật **không** bao giờ trả địa chỉ này
+DNS_TTL=3600
+DNS_MUTATION="${SOAK_DNS_MUTATION:-}" # "" | off | nxdomain | wrongip — chỉ dùng cho đột biến
+DNS_SERVER_PID=""
+DNS_SERVER_LOG=""
+DNS_DYLIB=""
+DNS_WRAPPER=""
+DNS_REAL_QEMU=""
+
+write_soak_dns_server() {
+    cat >"$LOGDIR/kt300-dns-server.py" <<'PY'
+import socket, struct, sys
+
+port = int(sys.argv[1])
+log = sys.argv[2]
+mode = sys.argv[3] if len(sys.argv) > 3 else "ok"
+answer_ip = sys.argv[4] if len(sys.argv) > 4 else "192.0.2.123"
+ttl = int(sys.argv[5]) if len(sys.argv) > 5 else 3600
+
+
+def note(line):
+    with open(log, "a") as handle:
+        handle.write(line + "\n")
+
+
+def parse_qname(data, off):
+    labels = []
+    while True:
+        if off >= len(data):
+            return None, off
+        ln = data[off]
+        off += 1
+        if ln == 0:
+            break
+        if ln & 0xC0:
+            return None, off
+        labels.append(data[off:off + ln].decode("latin-1"))
+        off += ln
+    return ".".join(labels), off
+
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    srv.bind(("0.0.0.0", port))
+except OSError as error:
+    note("bind_err=%s" % error)
+    sys.exit(2)
+note("listen port=%d mode=%s answer=%s ttl=%d" % (port, mode, answer_ip, ttl))
+srv.settimeout(1.0)
+while True:
+    try:
+        data, addr = srv.recvfrom(2048)
+    except socket.timeout:
+        continue
+    except OSError:
+        break
+    if len(data) < 12:
+        continue
+    tid, flags, qd, an, ns, ar = struct.unpack("!HHHHHH", data[:12])
+    qname, off = parse_qname(data, 12)
+    if qname is None or off + 4 > len(data):
+        note("bad_query len=%d" % len(data))
+        continue
+    qtype, qclass = struct.unpack("!HH", data[off:off + 4])
+    qend = off + 4
+    note("query id=0x%04x name=%s type=%d class=%d from=%s:%d"
+         % (tid, qname, qtype, qclass, addr[0], addr[1]))
+    if qname != "example.com" or qtype != 1:
+        rcode = 3
+        answer = b""
+        ancount = 0
+    elif mode == "nxdomain":
+        rcode = 3
+        answer = b""
+        ancount = 0
+    elif mode == "wrongip":
+        rcode = 0
+        answer = b"\xc0\x0c" + struct.pack("!HHIH", 1, 1, ttl, 4) + socket.inet_aton("203.0.113.9")
+        ancount = 1
+    else:
+        rcode = 0
+        answer = b"\xc0\x0c" + struct.pack("!HHIH", 1, 1, ttl, 4) + socket.inet_aton(answer_ip)
+        ancount = 1
+    resp = struct.pack("!HHHHHH", tid, 0x8180 | rcode, 1, ancount, 0, 0) + data[12:qend] + answer
+    srv.sendto(resp, addr)
+    note("reply id=0x%04x rcode=%d an=%d len=%d" % (tid, rcode, ancount, len(resp)))
+PY
+}
+
+start_soak_dns_server() {
+    local i
+    if [ "$DNS_MUTATION" = "off" ]; then
+        echo "# dns server: KHÔNG dựng (SOAK_DNS_MUTATION=off — đột biến KT-300)"
+        return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || die "không có python3 để dựng DNS server (KT-300)"
+    write_soak_dns_server
+    DNS_SERVER_LOG="$LOGDIR/kt300-dns-server.log"
+    rm -f "$DNS_SERVER_LOG"
+    python3 "$LOGDIR/kt300-dns-server.py" "$DNS_PORT" "$DNS_SERVER_LOG" "$DNS_MUTATION" \
+        "$DNS_ANSWER_IP" "$DNS_TTL" &
+    DNS_SERVER_PID=$!
+    for i in $(seq 1 50); do
+        grep -q '^listen ' "$DNS_SERVER_LOG" 2>/dev/null && return 0
+        if grep -q '^bind_err=' "$DNS_SERVER_LOG" 2>/dev/null; then
+            cat "$DNS_SERVER_LOG" >&2
+            die "DNS server không bind được 0.0.0.0:$DNS_PORT — port đang bận? (KT-300)"
+        fi
+        sleep 0.1
+    done
+    die "DNS server không lắng nghe sau 5 s (KT-300)"
+}
+
+stop_soak_dns_server() {
+    if [ -n "$DNS_SERVER_PID" ]; then
+        kill "$DNS_SERVER_PID" 2>/dev/null || true
+        wait "$DNS_SERVER_PID" 2>/dev/null || true
+        DNS_SERVER_PID=""
+    fi
+}
+
+# Dylib interpose: thay `res_9_ninit`/`res_9_getservers`/`res_9_ndestroy` (macOS) để
+# `get_dns_addr()` của libslirp trả `127.0.0.1:53` — **chỉ** tiến trình QEMU của soak nạp nó.
+write_soak_dns_interpose() {
+    cat >"$LOGDIR/kt300-dns-interpose.c" <<'C'
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* KT-300 — chỉ soak: interpose resolver của libslirp (macOS) để DNS đi server cục bộ.
+ * Vì sao: QEMU/slirp luôn chuyển DNS tới get_dns_addr() = resolver host; không có option QEMU
+ * nào trỏ UDP guest → server host (guestfwd chỉ TCP). Dylib này thay res_9_ninit/getservers/
+ * ndestroy để get_dns_addr() trả 127.0.0.1:53. Chỉ nạp cho tiến trình QEMU của soak (wrapper). */
+#include <string.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <resolv.h>
+
+static int kt300_ninit(struct __res_state *statp) {
+    memset(statp, 0, sizeof(*statp));
+    return 0;
+}
+
+static int kt300_getservers(struct __res_state *statp, union res_sockaddr_union *u, int max) {
+    (void)statp;
+    if (max < 1) {
+        return 0;
+    }
+    memset(u, 0, sizeof(u[0]));
+    u[0].sin.sin_family = AF_INET;
+    u[0].sin.sin_port = htons(53);
+    inet_pton(AF_INET, "127.0.0.1", &u[0].sin.sin_addr);
+    return 1;
+}
+
+static void kt300_ndestroy(struct __res_state *statp) {
+    (void)statp;
+}
+
+#define KT300_INTERPOSE(_replacement, _replacee)                                      \
+    __attribute__((used)) static struct {                                             \
+        const void *replacement;                                                      \
+        const void *replacee;                                                         \
+    } _kt300_interpose_##_replacee __attribute__((section("__DATA,__interpose"))) =   \
+        { (const void *)(unsigned long)&_replacement,                                 \
+          (const void *)(unsigned long)&_replacee };
+
+KT300_INTERPOSE(kt300_ninit, res_9_ninit)
+KT300_INTERPOSE(kt300_getservers, res_9_getservers)
+KT300_INTERPOSE(kt300_ndestroy, res_9_ndestroy)
+C
+}
+
+build_soak_dns_interpose() {
+    command -v cc >/dev/null 2>&1 || die "không có cc để biên dịch interpose DNS (KT-300)"
+    write_soak_dns_interpose
+    DNS_DYLIB="$LOGDIR/kt300-dns-interpose.dylib"
+    rm -f "$DNS_DYLIB"
+    if ! cc -dynamiclib -o "$DNS_DYLIB" "$LOGDIR/kt300-dns-interpose.c" -lresolv \
+        >"$LOGDIR/kt300-dns-interpose-build.log" 2>&1; then
+        tail -20 "$LOGDIR/kt300-dns-interpose-build.log" >&2
+        die "biên dịch interpose DNS FAIL (KT-300)"
+    fi
+    [ -f "$DNS_DYLIB" ] || die "không thấy $DNS_DYLIB (KT-300)"
+    # arm64: linker đã ký ad-hoc; `codesign -s -` (nếu có) chỉ để chắc — không bắt buộc.
+    if command -v codesign >/dev/null 2>&1; then
+        codesign -s - "$DNS_DYLIB" >/dev/null 2>&1 || true
+    fi
+}
+
+# Wrapper QEMU: `qemu_guard.sh` chạy QEMU qua `perl` (binary SIP) nên dyld **xoá** `DYLD_*` khỏi
+# môi trường trước `exec`; wrapper (bash thường) đặt lại biến rồi `exec` QEMU thật.
+write_soak_qemu_wrapper() {
+    DNS_REAL_QEMU="$QEMU"
+    DNS_WRAPPER="$LOGDIR/kt300-qemu-dns-wrap.sh"
+    cat >"$DNS_WRAPPER" <<SH
+#!/bin/bash
+# KT-300 — chỉ soak: đặt lại DYLD_INSERT_LIBRARIES rồi exec QEMU thật.
+export DYLD_INSERT_LIBRARIES="$DNS_DYLIB"
+exec "$DNS_REAL_QEMU" "\$@"
+SH
+    chmod +x "$DNS_WRAPPER" || die "không chmod được $DNS_WRAPPER (KT-300)"
+}
+
 echo "# build ảnh aarch64 ($TARGET, release)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
     >"$LOGDIR/kt265-soak-build.log" 2>&1; then
@@ -1176,13 +1413,21 @@ fi
 # ở đây là **một** boot dò: log phải có **đúng một** `# conf image:` khớp ELF. Không có/lệch ⇒
 # TỪ CHỐI ĐO (exit 3), **không** đếm một boot soak nào — thà không đo còn hơn đo ảnh không rõ nguồn.
 PROBE_LOG="$LOGDIR/kt265-probe.log"
-# Trap **chuỗi**: giữ `qg_cleanup` của `qemu_guard.sh` (KT-78) và thêm dọn server TCP — đặt
-# **trước** khi dựng server để `die` giữa chừng cũng không để tiến trình nền lại.
-trap 'stop_soak_tcp_server; qg_cleanup' EXIT
-trap 'stop_soak_tcp_server; qg_cleanup; exit 130' INT
-trap 'stop_soak_tcp_server; qg_cleanup; exit 143' TERM
+# **KT-300** — dựng interpose + wrapper DNS **trước** mọi boot (probe cũng phải dùng DNS cục bộ).
+build_soak_dns_interpose
+write_soak_qemu_wrapper
+# Trap **chuỗi**: giữ `qg_cleanup` của `qemu_guard.sh` (KT-78) và thêm dọn server TCP + DNS —
+# đặt **trước** khi dựng server để `die` giữa chừng cũng không để tiến trình nền lại.
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup' EXIT
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; exit 130' INT
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; exit 143' TERM
 # **KT-289**: server TCP phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 33/34 ở mọi boot).
 start_soak_tcp_server
+# **KT-300**: server DNS cục bộ phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 35 ở mọi
+# boot), và QEMU từ đây chạy qua wrapper nạp interpose (chỉ soak; `run-aarch64.sh` giữ nguyên).
+start_soak_dns_server
+QEMU="$DNS_WRAPPER"
+echo "# dns server: local=0.0.0.0:$DNS_PORT answer=$DNS_ANSWER_IP ttl=$DNS_TTL mutation=${DNS_MUTATION:-none} dylib=$DNS_DYLIB"
 echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
 if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
     echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
@@ -1372,6 +1617,34 @@ TCP_SENT="$(grep -c "^sent=$TCP_TOKEN_LEN$" "$TCP_SERVER_LOG" 2>/dev/null || tru
 TCP_RECV="$(grep -c "^recv=$TCP_SEND_LEN$" "$TCP_SERVER_LOG" 2>/dev/null || true)"
 echo "# tcp server: connections=${TCP_CONNS:-0} sent${TCP_TOKEN_LEN}=${TCP_SENT:-0} recv${TCP_SEND_LEN}=${TCP_RECV:-0} (mỗi boot một kết nối; log $TCP_SERVER_LOG)"
 
+# **KT-300** — dừng server DNS và kiểm **fail-closed** rằng DNS của **mọi** boot đi server cục bộ:
+#   (a) log server có ≥ N+1 truy vấn (probe + N boot) và ≥ N+1 câu trả lời;
+#   (b) mỗi log boot (kể cả probe) có `# net: dns example.com a=192.0.2.123 ttl=3600` — địa chỉ
+#       TEST-NET-1 mà resolver thật **không** trả ⇒ interpose hỏng là ĐỎ, không âm thầm quay lại
+#       resolver host.
+# Đây là **thêm** kiểm (KT-300), không thay/nới kiểm cũ nào.
+stop_soak_dns_server
+DNS_QUERIES="$(grep -c '^query ' "$DNS_SERVER_LOG" 2>/dev/null || true)"
+DNS_REPLIES="$(grep -c '^reply ' "$DNS_SERVER_LOG" 2>/dev/null || true)"
+DNS_LOCAL_HITS="$(grep -h -F "# net: dns example.com a=$DNS_ANSWER_IP ttl=$DNS_TTL" \
+    "$PROBE_LOG" "$RUNDIR"/boot-*.log 2>/dev/null | wc -l | tr -d ' ')"
+DNS_ATTEMPTS1="$(grep -h -c 'attempts=1 const:timeout_ms=3000' \
+    "$PROBE_LOG" "$RUNDIR"/boot-*.log 2>/dev/null | awk '{s += $1} END {print s + 0}')"
+echo "# dns server: queries=${DNS_QUERIES:-0} replies=${DNS_REPLIES:-0} local_hits=${DNS_LOCAL_HITS:-0} attempts1=${DNS_ATTEMPTS1:-0} (cần ≥ $((N + 1)) truy vấn/trả lời và đúng $((N + 1)) local_hits; log $DNS_SERVER_LOG)"
+DNS_BAD=0
+[ "${DNS_QUERIES:-0}" -ge $((N + 1)) ] || {
+    echo "# dns server: chỉ ${DNS_QUERIES:-0} truy vấn < $((N + 1)) (probe + N boot) — interpose KHÔNG có tác dụng?"
+    DNS_BAD=1
+}
+[ "${DNS_REPLIES:-0}" -ge $((N + 1)) ] || {
+    echo "# dns server: chỉ ${DNS_REPLIES:-0} câu trả lời < $((N + 1)) — server không trả lời đủ?"
+    DNS_BAD=1
+}
+[ "${DNS_LOCAL_HITS:-0}" -eq $((N + 1)) ] || {
+    echo "# dns server: ${DNS_LOCAL_HITS:-0} log boot có 'a=$DNS_ANSWER_IP ttl=$DNS_TTL', cần đúng $((N + 1)) (probe + N boot)"
+    DNS_BAD=1
+}
+
 # ------------------------------------------------------------------ ảnh không được đổi giữa soak
 if command -v shasum >/dev/null 2>&1; then
     IMG_SHA_END="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
@@ -1406,6 +1679,12 @@ if [ "$IMG_CHANGED" -ne 0 ]; then
 fi
 echo "# soak: BUILD_ID=$WANT_BUILD sha256=$IMG_SHA git=$GIT_HEAD"
 echo "# soak: $OK_COUNT/$N lỗi=$FAIL_COUNT — 0/N chỉ là trần (QD §5.3); không retry (D2-07)"
+# **KT-300** — DNS cục bộ phải được dùng ở **mọi** boot; thiếu bằng chứng là ĐỎ (fail-closed).
+# Kiểm **trước** nhánh SMOKE để đột biến `wrongip` (TAP 35 vẫn xanh) vẫn ĐỎ vì `local_hits` sai.
+[ "$DNS_BAD" -eq 0 ] || {
+    echo "# soak-aarch64.sh: FAIL — DNS cục bộ không được dùng đủ (KT-300, xem dòng '# dns server:')"
+    exit 1
+}
 if [ "$SMOKE" -eq 1 ]; then
     echo "# soak: SMOKE N=$N < $NEED — KHÔNG phải bằng chứng cổng K4'"
     exit 1
