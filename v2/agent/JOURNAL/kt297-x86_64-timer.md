@@ -137,7 +137,7 @@ lần, lấy giá trị lớn nhất; nới cận dưới `divisor/2 → divisor
 | `ok 10 - timer: ticks` | **600/600** (`not ok 10` = **0**) |
 | `hz` | min **26**, p50 **37**, max **53** (danh định 100; TCG bão hoà — §2.3) |
 | `ticks` | 14..27 |
-| `window_pit` | ~604.800..623.000 count (500 ms + một tick overshoot) |
+| `window_pit` | **596.601..657.917** count (500 ms + tối đa một tick overshoot) |
 | `pit_counter0` | min **3.892**, p1 11.132, p50 11.897, max 11.925; **1/600** dưới 5.966 nhưng **retry** lấy max ⇒ `div_ok=1` |
 | boot đỏ | **1** — boot 478, `#GP` storm ở preemption (KT-286), **không** phải timer |
 
