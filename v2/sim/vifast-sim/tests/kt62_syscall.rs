@@ -535,13 +535,28 @@ fn kt62_cap_loi_dung_ma() {
         )),
         KError::WrongObjectType.id() as u64
     );
-    // Call trên cap không phải Endpoint ⇒ 18 `NotSupported` (D2-53 Q11).
+    // Call trên cap không phải Endpoint ⇒ **invocation** (D2-53 Q11). **KT-290** cài
+    // `Tcb.Configure` (method 0) ⇒ label 0 trên cap TCB nay vào handler và trả `InvalidArgument`
+    // (5) vì arity 0 ≠ 2 (chữ ký `ipc_buffer?` chiếm 2 word). Đây là **đổi tiền đề có chủ đích**:
+    // trước KT-290 mọi label trên cap TCB đều `NotSupported` (18).
     assert_eq!(
         err(call(
             &mut m,
             rig.t0,
             0,
             args(rig.t0s.slot as u64, info(0), 0, 0, 0, 0),
+            &mut env
+        )),
+        KError::InvalidArgument.id() as u64
+    );
+    // Method **chưa cài** trên cap TCB (label 1 = `Tcb.SetFaultEp`) ⇒ vẫn 18 `NotSupported`.
+    // `info()` chỉ đặt **length**; label nằm ở 12 bit thấp của MessageInfo ⇒ phải đặt riêng.
+    assert_eq!(
+        err(call(
+            &mut m,
+            rig.t0,
+            0,
+            args(rig.t0s.slot as u64, 1, 0, 0, 0, 0),
             &mut env
         )),
         KError::NotSupported.id() as u64
