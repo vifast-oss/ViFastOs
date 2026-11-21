@@ -43,7 +43,7 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **IPI**: vector riêng `0x30` + stub riêng, `ICR` fixed-delivery (`low=0x4030`), hart 1 nhận + đếm trong handler, in `# smp: ipi recv=1 intid=0x30` | **DONE** (KT-278) |
 | **TSS per-hart**: mỗi hart một TSS 104 byte + **GDT riêng** + `ltr` trên AP; `IST1` riêng cho `#DF`; kiểm **địa chỉ** (`distinct=Ok(())`) | **DONE** (KT-278) |
 | **virtio-blk**: `VirtioKind::Blk` (0x1001/0x1042), BAR firmware gán **rời** BAR net (`bar_distinct=1`), split virtqueue 8 descriptor, đọc **sector 0** của đĩa QEMU thật | **DONE** (KT-288) |
-| **tác vụ ring 3 trong scheduler**: `schedule()` chọn nó, tick preempt nó, nó chạy lại ở ring 3 (`# sched: umode task ran n=… ring=3 preempted=… resumed=…`) | **DONE** (KT-304) |
+| **tác vụ ring 3 trong scheduler**: `schedule()` chọn nó, tick preempt nó, nó chạy lại ở ring 3 (`# sched: umode task ran n=… ring=3 preempted=… resumed=…` + `# sched: umode progress first=… last=… delta=…`) | **DONE** (KT-304, siết lại KT-308) |
 | runner + TAP **26** + **16 ca âm** | **DONE** (KT-257/261/266/270/274/276/278/286/288/304) |
 | `-cpu max`, `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug, DHCP, soak 600 boot | **chưa** (K5' đầy đủ) |
 
@@ -285,12 +285,12 @@ ok 17 - net: arp
 ## 7. Runner + ca âm
 
 ```bash
-bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 16 ca âm
+bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 19 ca âm
 ```
 
 - **18/18 kiểm sạch** (1 boot + 1 boot ảnh marker sai + 1 boot **không mạng** + 1 boot **không
   đĩa**).
-- **16 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
+- **19 ca âm ĐỎ**: (a) `EXPECT` sai, (b) **ảnh thật** build `--features wrong-marker` in `boot BAD`
   (log QEMU thật, không sửa tay), (c) mất marker, (d) log rỗng, (e) marker 2 lần,
   (f) **mất dòng `# exc:`** (KT-261), (g) **sai vector** (KT-261), (h) **mất dòng `# timer:`**
   (KT-266), (i) **mất dòng `# apic:`** (KT-266), (j) **mất dòng `# umode:`** (KT-270),
@@ -298,7 +298,10 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 16 ca âm
   `# net: no device` rồi TAP 16 đỏ; (l) mất dòng `# smp:` (KT-276), (m) mất dòng
   `# smp: ipi recv=` (KT-278), (n) mất dòng `# sched:` (KT-286); (o) **không có đĩa** (KT-288):
   boot **thật** không có `-drive`/`-device virtio-blk-pci` ⇒ ảnh in `# blk: no device` rồi TAP 25
-  đỏ; (p) **tác vụ ring 3 không chạy lại** (KT-304): log tốt bị sửa `resumed=0` ⇒ ĐỎ. Ba ca
+  đỏ; (p) **tác vụ ring 3 không chạy lại** (KT-304): log tốt bị sửa `resumed=0` ⇒ ĐỎ;
+  (q) **preempt không ở ring 3** (KT-308): sửa `cs=0x1b` → `cs=0x8` ⇒ ĐỎ; (r) **bộ đếm giảm**
+  (KT-308): sửa `# sched: umode progress` thành `first=100 last=50 delta=-50` ⇒ ĐỎ;
+  (s) **chưa chạy trước lần preempt đầu** (KT-308): sửa thành `first=0` ⇒ ĐỎ. Ba ca
   (k)/(o) đòi **cả** dòng evidence **và** `check_log` đỏ.
 - Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` +
   `-drive file=<tmp>,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0` (một chỗ quyết
@@ -862,7 +865,7 @@ Trạng thái: **DONE** (KT-288, 2026-11-21). Quyết định: **D2-213**.
 | Split virtqueue 8 descriptor trong **một** trang DMA 4 KiB (header 16 B + data 512 B + status 1 B) | **DONE** |
 | Đọc **sector 0** của đĩa QEMU thật (`-drive file=…,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0`) | **DONE** |
 | Bằng chứng: `# blk: device …` + `# blk: sector0 hex=<32 hex> … magic=1` | **DONE** |
-| TAP 25/26 (**KT-304** dời từ 24/25) + runner **16 ca âm** (thêm ca "không có đĩa" + "tác vụ ring 3 không chạy lại") | **DONE** |
+| TAP 25/26 (**KT-304** dời từ 24/25) + runner **19 ca âm** (thêm ca "không có đĩa", "tác vụ ring 3 không chạy lại", "preempt không ở ring 3", "bộ đếm giảm", "chưa chạy trước preempt đầu") | **DONE** |
 | virtio-gpu trên x86_64, MSI-X, hotplug | **chưa** (bước sau) |
 
 ### 14.2 Khác khuôn aarch64 (KT-273) ở đúng ba điểm, đều do kiến trúc
@@ -1197,6 +1200,7 @@ Bảng giữ **cả hai** chiều `A→B`/`B→A` (TAP 23 của KT-286) — khô
 # sched: runs a=283832 b=157811 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x136170
 # sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
 # sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
+# sched: umode progress first=4279886 last=5015211 delta=735325
 ok 22 - sched: two tasks ran
 ok 23 - sched: preempted
 ok 24 - sched: umode task
@@ -1207,11 +1211,11 @@ ok 26 - blk: sector0
 | Phép đo | Kết quả |
 |---|---|
 | tác vụ ring 3 chạy thật | `n=5015211` — bộ đếm do **chính tác vụ** tăng trong vòng lặp `inc [rcx]` ở CPL3 |
-| đang ở ring 3 khi bị preempt | `cs=0x1b` — `cs` của frame do CPU đẩy khi timer ngắt từ CPL3 |
+| đang ở ring 3 khi bị preempt | `cs=0x1b` — `cs` của frame do CPU đẩy khi timer ngắt từ CPL3, ở **cả hai** lần preempt |
 | preempt | `preempted=2` — rời U hai lần (`U→A`, `U→main`) |
-| chạy lại | `resumed=1` — `schedule()` chọn U lại sau preempt; `last=5015211 > first=4279886` ⇒ bộ đếm **tăng** giữa hai lần preempt (chạy lại thật, không phải chỉ được chọn) |
+| chạy lại | `resumed=1` — `schedule()` chọn U lại sau preempt; `first=4279886 > 0` (đã chạy trước lần preempt đầu) và `last=5015211 >= first` (bộ đếm **không giảm**) |
 | stack kernel riêng | `u_rsp=0x136170`, `kernel_stack=0x136220` — frame nằm trong `TASK_U_STACK` 16 KiB, **không** đụng stack syscall của `main` |
-| TAP | 26/26 xanh; runner 18/18 kiểm sạch + **16 ca âm** ĐỎ |
+| TAP | 26/26 xanh; runner 18/18 kiểm sạch + **19 ca âm** ĐỎ |
 
 ### 17.4 Đột biến bắt buộc (đều ĐỎ)
 
@@ -1230,3 +1234,26 @@ ok 26 - blk: sector0
    chạy lại", **không** phải scheduler sản phẩm.
 4. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot) và các mục
    ngoài soak (§12.12).
+
+### 17.6 KT-308 — sửa **giả định sai** của phép kiểm TAP 24 (soak 600 bắt được)
+
+Soak x86_64 600 boot trên ảnh KT-304 (KT-308, 2026-11-21) ra **599/600**: boot 331 in
+
+```text
+# sched: umode task ran n=275791 ring=3 preempted=2 resumed=1
+# sched: umode counts first=275791 last=275791 cs=0x1b kernel_stack=0x136220
+not ok 24 - sched: umode task
+```
+
+TAP 24 của KT-304 đòi `last > first` ("bộ đếm **tăng** giữa hai lần preempt"). Đó là **giả định
+sai**: tick là **PIT 100 Hz** (10 ms); nếu vCPU bị host deschedule ≥ 10 ms đúng lúc `iretq` xuống
+CPL3 thì tick kế đã **pending** ⇒ CPU nhận ngắt **trước** lệnh user đầu tiên ⇒ 0 vòng. Phân bố
+`last - first` trên 600 boot: **min = 0** (chỉ boot 331), p1 = 58.490, p50 = 1.238.069,
+p99 = 6.457.271; **13/600** boot < 100.000 ⇒ biên là **dải liên tục**, không phải lỗi logic của
+đường resume (`resumed=1`, `cs=0x1b` ở cả hai lần, không exception).
+
+**Sửa** (không nới ngưỡng nào khác): TAP 24 = `n > 0` ∧ `resumed ≥ 1` ∧ `cs = 0x1B` ở **cả hai**
+lần preempt ∧ `first > 0` ∧ `last >= first`; thêm dòng `# sched: umode progress first=… last=…
+delta=…` (delta **có dấu**); runner đòi `first > 0` + `last >= first` + `delta >= 0` và thêm ba
+ca âm (q) `cs=0x08`, (r) `last < first`, (s) `first=0`. Bằng chứng đo lại 600 boot trên máy sạch:
+xem `v2/agent/JOURNAL/kt308-x86_64-soak2.md`.

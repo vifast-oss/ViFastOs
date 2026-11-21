@@ -7,8 +7,9 @@
 # **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) + **KT-288** (K5' bước 9:
 # **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) + **KT-304**
 # (**tác vụ ring 3 trong scheduler** — `schedule()` chọn nó, tick preempt nó, nó chạy lại ở
-# ring 3) — runner boot **x86_64**. Khuôn: `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78:
-# process group + timeout + dọn con).
+# ring 3) + **KT-308** (sửa **giả định sai** của phép kiểm KT-304: `last > first` không được
+# bảo đảm dưới tải — xem dòng `# sched: umode progress`) — runner boot **x86_64**. Khuôn:
+# `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
 # `virtio-net-pci` trên `-netdev user` (slirp). `-M pc` (i440fx) **không** có ECAM ⇒ ảnh rơi xuống
@@ -43,8 +44,12 @@
 #      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=3` (tổng kết sau khi
 #      scheduler nhường lại `main`);
 #      **KT-304**: `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>` — tác vụ
-#      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
-#      `schedule()` chọn **lại** (`resumed ≥ 1`) và bộ đếm **tăng** giữa hai lần preempt;
+#      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3` ở **cả hai** lần),
+#      được `schedule()` chọn **lại** (`resumed ≥ 1`);
+#      **KT-308**: `# sched: umode progress first=<n> last=<n> delta=<n>` — `first > 0` (đã chạy
+#      trước lần preempt đầu) và `last >= first` / `delta >= 0` (bộ đếm **không giảm**).
+#      **Không** đòi `last > first`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick
+#      kế pending ⇒ 0 vòng là **hợp lệ** (soak KT-308: 1/600 boot, boot 331);
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -61,8 +66,13 @@
 #      (o) **không có đĩa** (KT-288) — boot **thật** không có `-drive`/`-device virtio-blk-pci`
 #          ⇒ ảnh in `# blk: no device` và TAP 25 ĐỎ;
 #      (p) **tác vụ ring 3 không chạy lại** (KT-304) — log tốt bị sửa `resumed=0` (bị preempt
-#          nhưng `schedule()` không chọn lại) ⇒ phải ĐỎ.
-#      Cả **mười sáu** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#          nhưng `schedule()` không chọn lại) ⇒ phải ĐỎ;
+#      (q) **preempt không ở ring 3** (KT-308) — log tốt bị sửa `cs=0x1b` → `cs=0x8` ở dòng
+#          `# sched: umode counts` ⇒ phải ĐỎ;
+#      (r) **bộ đếm giảm** (KT-308) — log tốt bị sửa `# sched: umode progress` thành
+#          `first=100 last=50 delta=-50` ⇒ phải ĐỎ;
+#      (s) **chưa chạy trước lần preempt đầu** (KT-308) — log tốt bị sửa thành `first=0` ⇒ ĐỎ.
+#      Cả **mười chín** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
@@ -593,14 +603,48 @@ check_log() {
         echo "# sched ticks=0 (timer không chạy trong lúc scheduler bật)"
         bad=1
     fi
-    # ---- **KT-304**: tác vụ **ring 3** trong scheduler — chạy thật, bị preempt khi ở CPL3,
-    # được `schedule()` chọn **lại** và bộ đếm **tăng** giữa hai lần preempt. Bốn điều kiện
-    # tách bạch: `n > 0` (đã chạy), `ring=3` (cs lúc preempt = 0x1B), `preempted ≥ 2` (rời U
-    # hai lần), `resumed ≥ 1` (được chọn lại). Thiếu dòng ⇒ ĐỎ, không thể "xanh nhờ TAP 24".
+    # ---- **KT-304** + **KT-308**: tác vụ **ring 3** trong scheduler — chạy thật, bị preempt
+    # khi ở CPL3 **cả hai** lần, được `schedule()` chọn **lại**, đã chạy trước lần preempt đầu
+    # và bộ đếm **không giảm**. Năm điều kiện tách bạch: `n > 0` (đã chạy), `ring=3` (cs lúc
+    # preempt = 0x1B ở **cả hai** lần), `preempted ≥ 2` (rời U hai lần), `resumed ≥ 1` (được
+    # chọn lại), `first > 0` + `last >= first` (bộ đếm đơn điệu). Thiếu dòng ⇒ ĐỎ, không thể
+    # "xanh nhờ TAP 24".
     grep -qE '^# sched: umode task ran n=[1-9][0-9]* ring=3 preempted=[2-9][0-9]* resumed=[1-9][0-9]*$' "$log" || {
         echo "# thiếu '# sched: umode task ran n=… ring=3 preempted=… resumed=…' (tác vụ ring 3 không chạy lại)"
         bad=1
     }
+    # **KT-308** — `cs` của lần preempt **cuối** phải là ring 3 (`0x1B`). `ring=3` ở dòng trên
+    # đã đòi **cả hai** lần; dòng này là bằng chứng trực tiếp của lần cuối (ca âm (q) sửa
+    # `cs=0x1b` → `cs=0x8` phải bị bắt).
+    grep -qE '^# sched: umode counts first=[0-9]+ last=[0-9]+ cs=0x1b kernel_stack=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# sched: umode counts … cs=0x1b …' (lần preempt cuối không ở ring 3)"
+        bad=1
+    }
+    # **KT-308** — dòng bằng chứng định lượng: `first > 0` (tác vụ **đã chạy** trước lần preempt
+    # đầu) và `last >= first` / `delta >= 0` (bộ đếm **không giảm**). **Không** đòi
+    # `last > first`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
+    # 0 vòng là hợp lệ (soak KT-308: 1/600 boot, boot 331; 13/600 boot `last - first < 100.000`).
+    u_prog="$(grep -E '^# sched: umode progress first=[0-9]+ last=[0-9]+ delta=-?[0-9]+$' "$log" || true)"
+    if [ -z "$u_prog" ]; then
+        echo "# thiếu '# sched: umode progress first=… last=… delta=…' (không có bằng chứng bộ đếm)"
+        bad=1
+    else
+        u_first="$(printf '%s\n' "$u_prog" | sed -n 's/.*first=\([0-9]*\).*/\1/p')"
+        u_last="$(printf '%s\n' "$u_prog" | sed -n 's/.*last=\([0-9]*\).*/\1/p')"
+        u_delta="$(printf '%s\n' "$u_prog" | sed -n 's/.*delta=\(-\{0,1\}[0-9]*\).*/\1/p')"
+        if [ "${u_first:-0}" -le 0 ]; then
+            echo "# umode progress first=${u_first:-0} (tác vụ chưa chạy trước lần preempt đầu)"
+            bad=1
+        fi
+        if [ "${u_last:-0}" -lt "${u_first:-0}" ]; then
+            echo "# umode progress last=${u_last:-0} < first=${u_first:-0} (bộ đếm giảm)"
+            bad=1
+        fi
+        if [ "${u_delta:-0}" -lt 0 ]; then
+            echo "# umode progress delta=${u_delta:-0} < 0 (bộ đếm giảm)"
+            bad=1
+        fi
+    fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
     mn="$(grep -Fxc "$marker" "$log" || true)"
@@ -840,6 +884,44 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (p): tác vụ ring 3 không chạy lại ⇒ ĐỎ ($(head -1 "$tmp/p.out"))"
+    fi
+
+    # (q) **KT-308** — preempt **không** ở ring 3: log tốt bị sửa `cs=0x1b` → `cs=0x8` ở dòng
+    #     `# sched: umode counts`. Nếu runner vẫn XANH thì "ring 3" chỉ là chữ in, không phải
+    #     điều kiện được kiểm.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# sched: umode counts .*\) cs=0x1b /\1 cs=0x8 /' "$good" >"$tmp/q.log" 2>/dev/null || true
+    if check_log "$tmp/q.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/q.out" 2>&1; then
+        echo "not ok $n - ca âm (q): preempt không ở ring 3 (cs=0x8) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (q): preempt không ở ring 3 (cs=0x8) ⇒ ĐỎ ($(head -1 "$tmp/q.out"))"
+    fi
+
+    # (r) **KT-308** — bộ đếm **giảm**: log tốt bị sửa dòng `# sched: umode progress` thành
+    #     `first=100 last=50 delta=-50`. Bộ đếm đơn điệu là bất biến thật; giảm ⇒ ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# sched: umode progress .*$/# sched: umode progress first=100 last=50 delta=-50/' "$good" >"$tmp/r.log" 2>/dev/null || true
+    if check_log "$tmp/r.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/r.out" 2>&1; then
+        echo "not ok $n - ca âm (r): bộ đếm giảm (last < first) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (r): bộ đếm giảm (last < first) ⇒ ĐỎ ($(head -1 "$tmp/r.out"))"
+    fi
+
+    # (s) **KT-308** — tác vụ **chưa chạy** trước lần preempt đầu: log tốt bị sửa thành
+    #     `first=0`. `first > 0` là bằng chứng "đã chạy thật"; thiếu nó thì `n > 0` có thể là
+    #     bộ đếm cũ (dương tính giả) ⇒ ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^# sched: umode progress .*$/# sched: umode progress first=0 last=100 delta=100/' "$good" >"$tmp/s.log" 2>/dev/null || true
+    if check_log "$tmp/s.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/s.out" 2>&1; then
+        echo "not ok $n - ca âm (s): first=0 (chưa chạy trước preempt đầu) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (s): first=0 (chưa chạy trước preempt đầu) ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
